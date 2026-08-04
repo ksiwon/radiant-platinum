@@ -3,8 +3,8 @@ import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import { activeZone } from '../map/zone'
 
-const WALK_SPEED = 4.5
-const RUN_SPEED = 8
+export const WALK_SPEED = 4.5
+export const RUN_SPEED = 8
 /** 캐릭터 반지름(타일 단위). 벽에 얼굴이 박히지 않게 여유를 둔다 */
 const RADIUS = 0.3
 /** 존이 없을 때(회색 박스 월드) 쓰는 경계 */

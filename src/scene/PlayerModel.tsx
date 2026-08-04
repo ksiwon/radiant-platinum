@@ -5,6 +5,7 @@ import { useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Mesh, type MeshStandardMaterial, type Group } from 'three'
 import { normalizeModel } from '../engine/model/normalize'
+import { createRig } from '../engine/actor/locomotion'
 import { sceneRefs } from './sceneRefs'
 
 /** 빛나의 목표 신장 (게임 단위 = 미터) */
@@ -44,6 +45,16 @@ export function PlayerModel() {
         `[model] dawn.glb 원본 ${r.nativeHeight.toFixed(3)} → ${PLAYER_HEIGHT}m (×${r.scale.toFixed(4)})`,
       )
     }
+
+    // 리그는 정규화 **이후**에 만든다. 본의 월드 회전에서 로컬 축을 뽑기 때문에
+    // 래퍼 변환이 확정된 뒤라야 축이 맞는다.
+    // bob은 본이 아니라 래퍼에 건다 — 스킨 바인드를 건드리지 않는다
+    const rig = createRig(gltf.scene, normRef.current)
+    sceneRefs.playerRig = rig
+    if (import.meta.env.DEV && !rig) {
+      console.warn('[model] 보행 리그를 만들지 못했다 — 필요한 본이 없다. 바인드 포즈로 둔다')
+    }
+    return () => { sceneRefs.playerRig = null }
   }, [gltf])
 
   useEffect(() => {

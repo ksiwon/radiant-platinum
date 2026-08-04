@@ -5,7 +5,8 @@ import { Vector3 } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { inputSystem } from '../engine/input/keyboard'
-import { playerSystem } from '../engine/actor/player'
+import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
+import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
 import { encounterSystem } from '../engine/battle/encounterSystem'
@@ -56,6 +57,13 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       interpolated.copy(p.prevPosition).lerp(p.position, gameLoop.alpha)
       sceneRefs.player.position.copy(interpolated)
       sceneRefs.player.rotation.y = p.facing
+    }
+
+    // 보행 포즈. 시뮬레이션이 아니라 표현이라 고정 스텝이 아닌 렌더 델타로 돈다 —
+    // 60fps가 아니어도 위상 속도가 속도에 묶여 있어 발이 미끄러지지 않는다
+    if (sceneRefs.playerRig) {
+      const speed = Math.hypot(p.velocity.x, p.velocity.z)
+      updateLocomotion(sceneRefs.playerRig, delta, speed, WALK_SPEED, RUN_SPEED)
     }
     state.camera.position.copy(worldState.camera.position)
     state.camera.lookAt(worldState.camera.target)
