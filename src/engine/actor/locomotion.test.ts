@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { Object3D, Quaternion, Vector3 } from 'three'
+import { Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { createRig, resetRig, updateLocomotion } from './locomotion'
 
 interface GlbNode {
@@ -25,6 +25,19 @@ interface GlbNode {
   translation?: [number, number, number]
   rotation?: [number, number, number, number]
   scale?: [number, number, number]
+}
+
+const GLB = resolve(__dirname, '../../../public/models/dawn.glb')
+
+/** glb의 JSON 청크와 BIN 청크 */
+function chunks() {
+  const buf = readFileSync(GLB)
+  const jsonLen = buf.readUInt32LE(12)
+  const binOff = 20 + jsonLen
+  return {
+    json: JSON.parse(buf.toString('utf8', 20, 20 + jsonLen)),
+    bin: buf.subarray(binOff + 8, binOff + 8 + buf.readUInt32LE(binOff)),
+  }
 }
 
 /** glb의 노드 트리를 Object3D로 그대로 복원한다 (메시·스킨은 빼고 변환만) */
@@ -53,6 +66,97 @@ function loadSkeleton() {
 }
 
 const { jointNames } = loadSkeleton()
+
+/**
+ * 몸통 실루엣과 팔 굵기를 **메시에서 직접 잰다**.
+ *
+ * 팔을 얼마나 내릴지는 눈으로 정할 수 없다 — 덜 내리면 날개처럼 벌어지고 더 내리면
+ * 옆구리를 파고든다. 둘 다 한 번씩 겪었다. 기준은 몸통 폭이고, 그건 모델이 안다.
+ *
+ * 바인드 포즈에서는 스키닝 행렬이 `본의 월드 × 역바인드`라 정점의 월드 위치를 그대로
+ * 준다. 정점을 지배 본으로 갈라서 몸통/팔로 나눈다.
+ */
+function bodyProfile() {
+  const { json: g, bin } = chunks()
+  const CT: Record<number, [string, number]> = {
+    5121: ['UInt8', 1], 5123: ['UInt16', 2], 5125: ['UInt32', 4], 5126: ['Float', 4],
+  }
+  const NC: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 }
+  const read = (ai: number) => {
+    const a = g.accessors[ai]
+    const [ty, sz] = CT[a.componentType]!
+    const n = NC[a.type]!
+    const v = g.bufferViews[a.bufferView]
+    const base = (v.byteOffset ?? 0) + (a.byteOffset ?? 0)
+    const stride = v.byteStride || sz * n
+    const fn = (sz === 1 ? `read${ty}` : `read${ty}LE`) as 'readFloatLE'
+    const out: number[][] = []
+    for (let k = 0; k < a.count; k++) {
+      const o = base + k * stride
+      const row: number[] = []
+      for (let c = 0; c < n; c++) row.push(bin[fn](o + c * sz))
+      out.push(row)
+    }
+    return out
+  }
+
+  const objs: Object3D[] = []
+  const build = (i: number): Object3D => {
+    const n = g.nodes[i] as GlbNode
+    const o = new Object3D()
+    if (n.translation) o.position.fromArray(n.translation)
+    if (n.rotation) o.quaternion.fromArray(n.rotation)
+    if (n.scale) o.scale.fromArray(n.scale)
+    objs[i] = o
+    for (const c of n.children ?? []) o.add(build(c))
+    return o
+  }
+  const root = new Object3D()
+  for (const i of g.scenes[0].nodes as number[]) root.add(build(i))
+  root.updateMatrixWorld(true)
+
+  const skin = g.skins[0]
+  const ibm = read(skin.inverseBindMatrices)
+  const names: string[] = skin.joints.map((i: number) => g.nodes[i].name)
+  const bindMat = (skin.joints as number[]).map((ni, k) =>
+    objs[ni]!.matrixWorld.clone().multiply(new Matrix4().fromArray(ibm[k]!)))
+
+  const TORSO = new Set(['Waist', 'Spine1', 'Spine2', 'Spine3', 'Hips'])
+  const ARM = new Set(['LArm', 'LArmEX', 'LForeArm', 'LForeArmEX'])
+  const torso: Vector3[] = []
+  const arm: Vector3[] = []
+  for (const m of g.meshes) for (const p of m.primitives) {
+    if (p.attributes.JOINTS_0 === undefined) continue
+    const pos = read(p.attributes.POSITION)
+    const jt = read(p.attributes.JOINTS_0)
+    const wt = read(p.attributes.WEIGHTS_0)
+    for (let k = 0; k < pos.length; k++) {
+      let best = 0, bi = 0
+      for (let c = 0; c < 4; c++) if (wt[k]![c]! > best) { best = wt[k]![c]!; bi = jt[k]![c]! }
+      const nm = names[bi]!
+      if (!TORSO.has(nm) && !ARM.has(nm)) continue
+      const v = new Vector3().fromArray(pos[k]!).applyMatrix4(bindMat[bi]!)
+      ;(TORSO.has(nm) ? torso : arm).push(v)
+    }
+  }
+
+  // 팔 반지름: 바인드는 T포즈라 팔이 어깨 높이의 수평선이다. 그 축에서의 수직거리
+  const sh = objs[skin.joints[names.indexOf('LArm')]!]!.matrixWorld
+  const shoulder = new Vector3().setFromMatrixPosition(sh)
+  const radii = arm
+    .filter((p) => p.x > 0.20 && p.x < 0.70)
+    .map((p) => Math.hypot(p.y - shoulder.y, p.z - shoulder.z))
+    .sort((a, b) => a - b)
+
+  return {
+    armRadius: radii[Math.floor(radii.length * 0.75)]!,
+    /** 팔이 있는 자리(높이·깊이)의 몸통 반폭 */
+    halfWidth(y: number, z: number) {
+      const near = torso.filter((p) => Math.abs(p.y - y) < 0.08 && Math.abs(p.z - z) < 0.10)
+      return near.length ? Math.max(...near.map((p) => Math.abs(p.x))) : 0
+    },
+  }
+}
 
 describe('dawn.glb 스켈레톤', () => {
   it('리그가 요구하는 본이 실제 모델에 전부 있다', () => {
@@ -304,6 +408,47 @@ describe('포즈 적용', () => {
     expect(elbowFront, `팔꿈치 최대 전방 ${elbowFront.toFixed(3)}`).toBeLessThan(0.10)
     expect(-elbowBack, `전방 ${elbowFront.toFixed(3)} 후방 ${(-elbowBack).toFixed(3)}`)
       .toBeGreaterThan(elbowFront * 2)
+  })
+
+  it('팔이 몸통을 파고들지도, 몸통에서 뜨지도 않는다', () => {
+    // 팔 내림(armDrop)의 유일한 근거다. 덜 내리면 날개처럼 벌어지고 더 내리면
+    // 옆구리를 파고든다 — 양쪽 다 실제로 한 번씩 나왔다.
+    //
+    // 기준은 모델이 안다: **팔꿈치가 몸통 표면에서 얼마나 떨어져 있나를 팔 반지름으로
+    // 잰다.** 1이면 팔 겉면이 몸에 닿은 상태다. 절대 좌표 대신 이 비로 보면 모델이
+    // 바뀌어도 뜻이 그대로 남는다
+    const body = bodyProfile()
+    const { root, nodes } = loadSkeleton()
+    const rig = createRig(root, new Object3D())!
+
+    const gap = (speed: number, frames: number) => {
+      let min = Infinity
+      let worst = ''
+      for (let i = 0; i < frames; i++) {
+        updateLocomotion(rig, 1 / 240, speed, 4.5, 8)
+        root.updateMatrixWorld(true)
+        const p = nodes.get('LForeArm')!.getWorldPosition(new Vector3())
+        const half = body.halfWidth(p.y, p.z)
+        const ratio = (p.x - half) / body.armRadius
+        if (ratio < min) {
+          min = ratio
+          worst = `팔꿈치 x ${p.x.toFixed(3)} 몸통반폭 ${half.toFixed(3)}`
+        }
+      }
+      return { min, worst }
+    }
+
+    const idle = gap(0, 2)
+    expect(idle.min, `정지 ${idle.min.toFixed(2)}배 — 옆구리를 파고든다 (${idle.worst})`)
+      .toBeGreaterThan(0.6)
+    expect(idle.min, `정지 ${idle.min.toFixed(2)}배 — 날개처럼 벌어졌다 (${idle.worst})`)
+      .toBeLessThan(1.4)
+
+    // 스윙 중에도 파고들지 않는다. 벌어지는 쪽은 팔을 흔들면 당연히 커지므로 안 본다
+    for (const speed of [4.5, 8]) {
+      const { min, worst } = gap(speed, 480)
+      expect(min, `speed ${speed} 최소 ${min.toFixed(2)}배 (${worst})`).toBeGreaterThan(0.5)
+    }
   })
 
   it('쇄골이 어깨 동작의 일부를 나눠 진다 — 팔 하나에 몰면 삼각근이 파인다', () => {
