@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { gen4, simMove, simSpecies } from './bridge'
+import { gen4, simAbility, simMove, simSpecies } from './bridge'
 
 const data = (name: string) =>
   JSON.parse(readFileSync(resolve(__dirname, '../../../../public/data', name), 'utf8'))
@@ -27,6 +27,7 @@ const ourMoves = data('moves.json') as {
 }
 const speciesNames = data('names/species.en.json') as string[]
 const moveNames = data('names/moves.en.json') as string[]
+const abilityNames = (data('names/labels.en.json') as { abilities: string[] }).abilities
 
 /** 롬 타입 번호 순서. 9번 ???는 4세대에 남아 있던 미사용 타입이다 */
 const TYPES = ['Normal', 'Fighting', 'Flying', 'Poison', 'Ground', 'Rock', 'Bug', 'Ghost',
@@ -145,5 +146,28 @@ describe('기술 데이터', () => {
     expect(bad).toEqual(['203 Endure: 3 vs 4'])
     expect(gen4.moves.get('Protect').priority).toBe(3)
     expect(gen4.moves.get('Detect').priority).toBe(3)
+  })
+})
+
+describe('특성 데이터', () => {
+  it('123개 특성이 번호로 sim과 일치한다', () => {
+    // 특성은 PID가 두 후보 중 하나를 고른다. 안 이으면 절반이 조용히 틀린 특성으로
+    // 싸우는데 배틀 로그에는 아무 표시도 안 난다
+    const bad: string[] = []
+    let checked = 0
+    for (let id = 1; id < abilityNames.length; id++) {
+      const ours = abilityNames[id]
+      if (!ours || ours.trim() === '-') continue
+      const theirs = simAbility(id)
+      if (!theirs) { bad.push(`${id} ${ours}: sim에 없음`); continue }
+      checked++
+      if (norm(ours) !== norm(theirs)) bad.push(`${id}: 우리 ${ours} vs sim ${theirs}`)
+    }
+    expect(checked, '4세대 특성은 123종이다').toBe(123)
+    expect(bad, bad.slice(0, 5).join(' / ')).toHaveLength(0)
+  })
+
+  it('0번은 특성 없음이다', () => {
+    expect(simAbility(0)).toBeNull()
   })
 })

@@ -18,6 +18,7 @@ export const gen4 = Dex.forGen(4)
 
 let speciesIndex: Map<number, string> | null = null
 let moveIndex: Map<number, string> | null = null
+let abilityIndex: Map<number, string> | null = null
 
 /**
  * 번호 → 종족 이름.
@@ -54,6 +55,28 @@ function moves(): Map<number, string> {
   }
   moveIndex = new Map([...shortest].map(([num, v]) => [num, v.name]))
   return moveIndex
+}
+
+/**
+ * 번호 → 특성 이름.
+ *
+ * 특성은 PID의 최하위 비트가 두 후보 중 하나를 고른다. 번호를 안 넘기면 sim이
+ * 종족의 첫 특성을 쓰므로, 안 이으면 절반이 조용히 틀린 특성으로 싸운다
+ */
+function abilities(): Map<number, string> {
+  if (abilityIndex) return abilityIndex
+  const m = new Map<number, string>()
+  for (const a of gen4.abilities.all()) {
+    if (a.num <= 0) continue
+    if (!m.has(a.num)) m.set(a.num, a.name)
+  }
+  abilityIndex = m
+  return m
+}
+
+/** 롬 특성 번호 → sim 특성 이름. 0(특성 없음)이나 모르는 번호면 null */
+export function simAbility(id: number): string | null {
+  return abilities().get(id) ?? null
 }
 
 /** 롬 종족 번호 → sim 종족 이름. 모르는 번호면 null */
