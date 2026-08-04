@@ -141,18 +141,37 @@ describe('보행 사이클', () => {
     expect(sampleGait(0, 1, 1).armDrop).toBeGreaterThan(sampleGait(0, 1, 0).armDrop)
   })
 
-  it('달릴 때 팔이 앞보다 뒤로 더 간다 — 팔꿈치를 뒤로 당겨 친다', () => {
+  /** 한 사이클에서 팔이 앞뒤로 간 최대 각 */
+  function armRange(run: number) {
     let front = -Infinity, back = Infinity
     for (let p = 0; p < TWO_PI; p += 0.02) {
-      const g = sampleGait(p, 1, 1)
+      const g = sampleGait(p, 1, run)
       const swing = g.armL + g.armBias
       front = Math.max(front, swing)
       back = Math.min(back, swing)
     }
+    return { front, back: -back }
+  }
+
+  it('걸을 때 팔이 뒤로도 확실히 간다 — 앞으로만 흔들면 어색하다', () => {
+    // ⚠️ 서 있는 자세의 앞쪽 오프셋을 이동 중에도 걸어 뒀다가 앞 26° / 뒤 10°가 됐다.
+    // 정면에서 보면 팔이 아예 안 뒤로 가는 것처럼 보인다
+    const { front, back } = armRange(0)
+    expect(back, `앞 ${front.toFixed(2)} 뒤 ${back.toFixed(2)}`).toBeGreaterThan(0.3)
+    // 걷기는 대칭에 가깝고 뒤가 조금 더 크다
+    expect(back).toBeGreaterThan(front)
+    expect(back).toBeLessThan(front * 1.6)
+  })
+
+  it('달릴 때는 앞보다 뒤로 훨씬 더 간다 — 팔꿈치를 뒤로 당겨 친다', () => {
+    const { front, back } = armRange(1)
     expect(front, '앞으로 아예 안 나온다').toBeGreaterThan(0.15)
-    expect(-back, `앞 ${front.toFixed(2)} 뒤 ${(-back).toFixed(2)}`).toBeGreaterThan(front * 1.5)
-    // 걷기는 반대로 앞이 조금 더 나온다 — 팔이 몸통 앞에 있는 평범한 자세다
-    expect(sampleGait(0, 1, 0).armBias).toBeGreaterThan(0)
+    expect(back, `앞 ${front.toFixed(2)} 뒤 ${back.toFixed(2)}`).toBeGreaterThan(front * 1.5)
+  })
+
+  it('서 있을 때만 팔이 몸통보다 앞에 온다 — 쉬는 자세다', () => {
+    expect(sampleGait(0, 0, 0).armBias).toBeGreaterThan(0)
+    expect(sampleGait(0, 1, 0).armBias).toBeLessThan(0)
   })
 
   it('달리면 진폭이 커진다', () => {
