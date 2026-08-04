@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import type { Species } from '../../../data/schema'
 import { statsOf } from '../../pokemon/instance'
-import { BattleSession, type SideMon } from './session'
+import { BattleSession, IDLE_MOVE_ID, type SideMon } from './session'
 import { simMove } from './bridge'
 import { movesById, speciesById, speciesNames as names, spawn } from './fixtures.testkit'
 
@@ -90,7 +90,10 @@ describe('야생 배틀', () => {
     }
     const offered = request.active[0]!.moves.map((m) => m.id)
     const expected = player.mon.moves.map((s) => simMove(s.move)!.replace(/[^a-z0-9]/gi, '').toLowerCase())
-    expect(offered.sort()).toEqual(expected.sort())
+    // 맨 뒤 한 칸은 우리가 몰래 붙인 빈 턴용 기술이다 (session.ts의 IDLE_MOVE).
+    // 볼·도망이 이 칸으로 턴을 쓰고, 화면에는 컨트롤러가 걸러서 안 보여준다
+    expect(offered[offered.length - 1]).toBe(IDLE_MOVE_ID)
+    expect(offered.slice(0, -1).sort()).toEqual(expected.sort())
     battle.destroy()
   })
 

@@ -10,7 +10,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeAll, beforeEach, describe, it, expect } from 'vitest'
 import { useBattleStore } from './battleStore'
-import { useSaveStore, createNewSave } from './saveStore'
+import { useSaveStore, createNewSave, dexHas } from './saveStore'
+import { Ball } from '../engine/battle/meta/capture'
 import { statsOf } from '../engine/pokemon/instance'
 import { loadSpecies } from '../data/gameData'
 
@@ -25,10 +26,12 @@ beforeAll(() => {
 })
 
 const STARLY = 396
+const RATTATA = 19
 
 beforeEach(() => {
-  useSaveStore.setState(createNewSave())
+  // 닫기가 먼저다 — 앞 판이 남아 있으면 close가 새 세이브에 옛 결과를 쓴다
   useBattleStore.getState().close()
+  useSaveStore.setState(createNewSave())
 })
 
 /** 아무거나 골라 가며 배틀이 끝날 때까지 민다 */
@@ -123,5 +126,93 @@ describe('배틀 스토어', () => {
     const view = useBattleStore.getState().view
     await useBattleStore.getState().startWild({ species: 19, level: 40 })
     expect(useBattleStore.getState().view).toBe(view)
+  }, 30_000)
+})
+
+describe('포획', () => {
+  it('마스터볼로 잡으면 파티에 들어가고 도감이 켜진다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 5 })
+    const before = useSaveStore.getState().party.length
+    await useBattleStore.getState().throwBall(Ball.MASTER)
+
+    expect(useBattleStore.getState().outcome).toBe('caught')
+    expect(useBattleStore.getState().phase).toBe('over')
+    // 닫기 전에는 세이브가 안 바뀐다 — 연출이 도는 동안 파티가 늘면 안 된다
+    expect(useSaveStore.getState().party).toHaveLength(before)
+
+    useBattleStore.getState().close()
+    const party = useSaveStore.getState().party
+    expect(party).toHaveLength(before + 1)
+    expect(party[party.length - 1]!.species).toBe(STARLY)
+    // 잡은 개체의 원트레이너는 우리여야 한다. 안 그러면 교환 보정이 잘못 붙는다
+    expect(party[party.length - 1]!.otId).toBe(useSaveStore.getState().trainer.id)
+    expect(dexHas(useSaveStore.getState().pokedex.caught, STARLY)).toBe(true)
+  }, 30_000)
+
+  it('파티가 여섯이면 박스로 간다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 5 })
+    useBattleStore.getState().close()
+
+    const one = useSaveStore.getState().party[0]!
+    useSaveStore.setState({ party: Array.from({ length: 6 }, () => ({ ...one })) })
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 5 })
+    await useBattleStore.getState().throwBall(Ball.MASTER)
+    useBattleStore.getState().close()
+
+    expect(useSaveStore.getState().party).toHaveLength(6)
+    expect(useSaveStore.getState().boxes.flat().map((m) => m.species)).toContain(RATTATA)
+  }, 30_000)
+})
+
+describe('도망', () => {
+  it('빠르면 도망친다', async () => {
+    // 시작 파트너는 5레벨이라 느리다. 상대를 2레벨로 두면 우리가 더 빠르다
+    await useBattleStore.getState().startWild({ species: STARLY, level: 2 })
+    await useBattleStore.getState().run()
+    // 실패할 수도 있으니 몇 번 더 시도한다. 시도할수록 쉬워진다
+    for (let i = 0; i < 8 && useBattleStore.getState().phase === 'running'; i++) {
+      await useBattleStore.getState().run()
+    }
+    expect(useBattleStore.getState().outcome).toBe('fled')
+    useBattleStore.getState().close()
+    expect(useSaveStore.getState().party.length).toBeGreaterThan(0)
+  }, 30_000)
+})
+
+describe('보상', () => {
+  it('쓰러뜨리면 경험치가 붙고 세이브에 남는다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const before = useSaveStore.getState().party[0]!.exp
+    await playToEnd()
+
+    const reward = useBattleStore.getState().events.find((e) => e.kind === 'reward')
+    expect(reward, '경험치 이벤트가 없다').toBeDefined()
+    expect(reward!.kind === 'reward' && reward!.exp).toBeGreaterThan(0)
+    // 배틀 중에 이미 반영돼야 한다 — 닫을 때 몰아 주면 두 마리째에서 레벨이 안 맞는다
+    expect(useSaveStore.getState().party[0]!.exp).toBeGreaterThan(before)
+    useBattleStore.getState().close()
+  }, 30_000)
+
+  it('노력치도 붙는다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const before = { ...useSaveStore.getState().party[0]!.evs }
+    await playToEnd()
+    useBattleStore.getState().close()
+
+    const after = useSaveStore.getState().party[0]!.evs
+    const grew = (['hp', 'atk', 'def', 'spa', 'spd', 'spe'] as const)
+      .some((k) => after[k] > before[k])
+    expect(grew, '노력치가 하나도 안 늘었다').toBe(true)
+  }, 30_000)
+
+  it('쓰러진 개체는 경험치를 못 받는다', async () => {
+    // 20레벨 상대에게 5레벨로 지면 아무것도 못 받는다
+    await useBattleStore.getState().startWild({ species: STARLY, level: 20 })
+    const before = useSaveStore.getState().party[0]!.exp
+    await playToEnd()
+    expect(useBattleStore.getState().outcome).toBe('loss')
+    expect(useSaveStore.getState().party[0]!.exp).toBe(before)
+    useBattleStore.getState().close()
   }, 30_000)
 })

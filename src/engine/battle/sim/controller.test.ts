@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import type { BattleAction } from '../choice'
 import { applyEvents, emptyView } from '../view'
+import { Ball } from '../meta/capture'
 import { BattleController } from './controller'
 import { rng, spawn } from './fixtures.testkit'
 
@@ -138,6 +139,74 @@ describe('배틀 진행', () => {
     const after = await controller.choose({ type: 'move', slot: 1, id: 'tackle', name: 'Tackle', move: 33 })
     expect(after.events).toHaveLength(0)
     expect(controller.actions).toHaveLength(0)
+    controller.destroy()
+  }, 30_000)
+})
+
+describe('볼과 도망', () => {
+  /** 잡거나 도망칠 판 하나. 야생은 한 마리다 */
+  const wild = (seed: number, foeLevel = 3) => BattleController.start({
+    player: { name: '빛나', team: [spawn(TURTWIG, 30, seed, 'p1-0')] },
+    foe: { name: '야생', team: [spawn(STARLY, foeLevel, seed + 1, 'p2-0')] },
+    seed: [seed & 0xffff, (seed * 7) & 0xffff, (seed * 13) & 0xffff, (seed * 29) & 0xffff],
+    random: rng(seed),
+  })
+
+  const catchCtx = { caughtBefore: false, inWater: false, darkness: false }
+
+  it('마스터볼은 반드시 잡고 그 자리에서 끝난다', async () => {
+    const { controller } = await wild(101)
+    const step = await controller.throwBall(Ball.MASTER, catchCtx)
+    const ball = step.events.find((e) => e.kind === 'ball')
+    expect(ball, '볼 이벤트가 없다').toBeDefined()
+    expect(ball!.kind === 'ball' && ball!.caught).toBe(true)
+    expect(controller.finish).toBe('caught')
+    expect(controller.ended).toBe(true)
+    expect(controller.captured?.key).toBe('p2-0')
+    controller.destroy()
+  }, 30_000)
+
+  it('볼을 던져 놓치면 야생이 반격한다 — 우리 턴이 사라진다', async () => {
+    // sim에는 "이번 턴 아무것도 안 함"이 없다. 숨긴 기술 칸으로 턴을 비우는데,
+    // 그게 안 되면 볼이 공짜가 되어 원작과 다른 게임이 된다
+    const { controller } = await wild(102, 30)
+    const before = controller.state.turn
+    const step = await controller.throwBall(Ball.POKE, catchCtx)
+
+    const ball = step.events.find((e) => e.kind === 'ball')
+    expect(ball!.kind === 'ball' && ball!.caught, '이 씨앗에서는 잡히면 안 된다').toBe(false)
+    // 턴이 넘어갔다는 것이 곧 야생이 행동했다는 뜻이다
+    expect(controller.state.turn).toBe(before + 1)
+    expect(step.events.some((e) => e.kind === 'move' && e.actor.side === 'p2'),
+      '야생이 아무것도 안 했다').toBe(true)
+    controller.destroy()
+  }, 30_000)
+
+  it('숨긴 칸은 기술 목록에 안 보인다', async () => {
+    // 보이면 플레이어가 "아무것도 안 하기"를 직접 고를 수 있게 된다
+    const { controller } = await wild(103)
+    const moves = controller.actions.filter((a) => a.type === 'move')
+    expect(moves.length, '기술이 하나도 없다').toBeGreaterThan(0)
+    expect(moves.some((m) => m.id === 'splash'), 'Splash가 노출됐다').toBe(false)
+    controller.destroy()
+  }, 30_000)
+
+  it('30레벨이 3레벨한테서 도망치는 것은 언제나 성공한다', async () => {
+    const { controller } = await wild(104)
+    const step = await controller.run()
+    expect(step.events.some((e) => e.kind === 'escape' && e.success)).toBe(true)
+    expect(controller.finish).toBe('fled')
+    expect(controller.ended).toBe(true)
+    controller.destroy()
+  }, 30_000)
+
+  it('끝난 뒤에 볼을 더 던져도 아무 일도 안 일어난다', async () => {
+    const { controller } = await wild(105)
+    await controller.throwBall(Ball.MASTER, catchCtx)
+    const again = await controller.throwBall(Ball.MASTER, catchCtx)
+    expect(again.events).toHaveLength(0)
+    const fled = await controller.run()
+    expect(fled.events).toHaveLength(0)
     controller.destroy()
   }, 30_000)
 })

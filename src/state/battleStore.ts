@@ -10,11 +10,17 @@ import type { Species } from '../data/schema'
 import { partyKey, applyResults } from '../engine/battle/aftermath'
 import type { BattleAction } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
+import type { BallId } from '../engine/battle/meta/capture'
+import { Ball } from '../engine/battle/meta/capture'
+import { applyReward, expGain } from '../engine/battle/meta/reward'
 import type { BattleView } from '../engine/battle/view'
-import type { BattleController } from '../engine/battle/sim/controller'
+import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon } from '../engine/battle/sim/session'
 import { createWild, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
-import { useSaveStore } from './saveStore'
+import { dexSet, useSaveStore } from './saveStore'
+
+/** 파티 최대 인원. 넘으면 박스로 간다 */
+const PARTY_MAX = 6
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
@@ -41,16 +47,24 @@ interface BattleState {
   /** 배틀 내내 쌓인 사건. 텍스트 박스와 연출이 같은 줄기를 본다 */
   events: BattleEvent[]
   roster: Record<string, RosterEntry>
-  outcome: 'win' | 'loss' | null
+  outcome: BattleFinish
   error: string | null
   startWild: (wild: WildStart) => Promise<void>
   choose: (action: BattleAction) => Promise<void>
+  /** 볼을 던진다. 우리 턴을 쓴다 — 실패하면 야생이 반격한다 */
+  throwBall: (ball?: BallId) => Promise<void>
+  /** 도망친다. 실패하면 마찬가지로 턴을 버린 것이다 */
+  run: () => Promise<void>
   /** 화면을 닫는다. 결과는 이 시점에 세이브로 넘어간다 */
   close: () => void
 }
 
 /** 컨트롤러는 직렬화되지 않는다 — 스토어 밖에 둔다 */
 let current: BattleController | null = null
+/** 이번 배틀에서 한 번이라도 나온 우리 개체의 키. 경험치를 나눠 가질 인원이다 */
+let participants = new Set<string>()
+/** 종족 표. 보상 계산이 매번 다시 받지 않도록 들고 있는다 */
+let speciesTable: { get(id: number): Species } | null = null
 
 /**
  * PP까지 채운 전투용 사본.
@@ -121,6 +135,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         loadMoves(),
       ])
       const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
+      speciesTable = species
+      participants = new Set()
 
       const party = ensureParty(species)
       const foeSpecies = species.get(wild.species)
@@ -145,6 +161,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         foe: { name: '야생', team: [ready(foe, foeSpecies, 'p2-0', pp)] },
       })
       current = controller
+      // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
+      trackParticipants(step.events)
       set({
         phase: 'running',
         view: step.view,
@@ -159,21 +177,18 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   },
 
   choose: async (action) => {
-    const controller = current
-    if (!controller || get().phase !== 'running') return
-    // 고르는 즉시 후보를 비운다 — 계산 중에 두 번 누르면 sim이 거절한다
-    set({ actions: [] })
-    const step = await controller.choose(action)
-    const ended = step.view.ended
-    set({
-      view: step.view,
-      events: [...get().events, ...step.events],
-      actions: controller.actions,
-      phase: ended ? 'over' : 'running',
-      // 승패는 이름이 아니라 파티 상태로 판단한다 — `|win|`은 트레이너 이름을
-      // 주는데 그건 겹칠 수 있고, 우리 쪽이 다 쓰러졌는지는 겹칠 수 없다
-      outcome: ended ? (controller.results('p1').every((r) => r.fainted) ? 'loss' : 'win') : null,
-    })
+    await advance(set, get, (c) => c.choose(action))
+  },
+
+  throwBall: async (ball = Ball.POKE) => {
+    await advance(set, get, (c) => c.throwBall(ball, {
+      // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
+      caughtBefore: false, inWater: false, darkness: false,
+    }))
+  },
+
+  run: async () => {
+    await advance(set, get, (c) => c.run())
   },
 
   close: () => {
@@ -181,12 +196,122 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (controller) {
       // 결과를 먼저 꺼낸다 — destroy 뒤에는 배틀 객체가 사라진다
       const results = controller.results('p1')
-      if (results.length) {
-        useSaveStore.setState({ party: applyResults(useSaveStore.getState().party, results) })
+      const save = useSaveStore.getState()
+      let party = results.length ? applyResults(save.party, results) : save.party
+      let boxes = save.boxes
+      let pokedex = save.pokedex
+
+      const caught = controller.captured
+      if (caught) {
+        const seen = get().view?.active.p2
+        const mon: PokemonInstance = {
+          ...caught.mon,
+          hp: seen?.hp ?? caught.mon.hp,
+          status: seen?.status ?? 'ok',
+          otId: save.trainer.id,
+          otSecretId: save.trainer.secretId,
+          ball: Ball.POKE,
+        }
+        // 파티가 차 있으면 박스로 간다. 원작과 같다
+        if (party.length < PARTY_MAX) party = [...party, mon]
+        else boxes = [...boxes.slice(0, -1), [...(boxes[boxes.length - 1] ?? []), mon]]
+        pokedex = {
+          seen: dexSet(pokedex.seen, mon.species),
+          caught: dexSet(pokedex.caught, mon.species),
+        }
       }
+      useSaveStore.setState({ party, boxes, pokedex })
       controller.destroy()
       current = null
     }
+    participants = new Set()
     set({ phase: 'off', view: null, actions: [], events: [], roster: {}, outcome: null })
   },
 }))
+
+type SetState = (partial: Partial<BattleState>) => void
+type GetState = () => BattleState
+
+/**
+ * 한 걸음을 밀고 그 결과를 스토어에 반영한다. 고르기·볼·도망이 전부 여기로 온다.
+ *
+ * 경험치는 **이 안에서** 준다. 배틀이 끝난 뒤 몰아서 주면 레벨업이 승부가 난
+ * 뒤에야 뜨고, 두 마리째를 상대할 때 이미 올라 있어야 할 레벨이 안 올라 있다
+ */
+async function advance(
+  set: SetState,
+  get: GetState,
+  step: (controller: BattleController) => Promise<BattleStep>,
+): Promise<void> {
+  const controller = current
+  if (!controller || get().phase !== 'running') return
+  // 미는 즉시 후보를 비운다 — 계산 중에 두 번 누르면 sim이 거절한다
+  set({ actions: [] })
+
+  const result = await step(controller)
+  const events = [...result.events]
+
+  trackParticipants(events)
+  // 쓰러뜨린 만큼 보상을 준다. 여러 마리가 한 턴에 쓰러질 수 있다
+  for (const e of result.events) {
+    if (e.kind === 'faint' && e.actor.side === 'p2') {
+      events.push(...grantRewards(get(), e.actor.name, controller))
+    }
+  }
+
+  const ended = result.view.ended
+  set({
+    view: result.view,
+    events: [...get().events, ...events],
+    actions: controller.actions,
+    phase: ended ? 'over' : 'running',
+    outcome: controller.finish,
+  })
+}
+
+/** 나온 적이 있어야 경험치를 나눠 가진다 */
+function trackParticipants(events: readonly BattleEvent[]): void {
+  for (const e of events) {
+    if (e.kind === 'switch' && e.actor.side === 'p1') participants.add(e.actor.name)
+  }
+}
+
+/** 쓰러진 상대 하나분의 경험치를 참가자에게 나눠 준다. 세이브를 바로 갱신한다 */
+function grantRewards(
+  state: BattleState,
+  foeKey: string,
+  controller: BattleController,
+): BattleEvent[] {
+  const table = speciesTable
+  const foe = state.roster[foeKey]
+  if (!table || !foe) return []
+
+  // 쓰러진 참가자는 4세대에서도 경험치를 못 받는다
+  const down = new Set(controller.results('p1').filter((r) => r.fainted).map((r) => r.key))
+  const alive = [...participants].filter((k) => !down.has(k))
+  if (!alive.length) return []
+
+  const foeSpecies = table.get(foe.species)
+  const gain = expGain({
+    baseExp: foeSpecies.baseExp, level: foe.level, participants: alive.length,
+  })
+
+  const party = [...useSaveStore.getState().party]
+  const out: BattleEvent[] = []
+  for (const key of alive) {
+    const index = party.findIndex((_, i) => partyKey(i) === key)
+    const mon = party[index]
+    if (!mon) continue
+    const reward = applyReward(mon, table.get(mon.species), gain, foeSpecies.ev)
+    party[index] = reward.mon
+    out.push({
+      kind: 'reward',
+      key,
+      exp: reward.gainedExp,
+      levels: reward.levelUps.map((l) => l.level),
+      learned: reward.levelUps.flatMap((l) => l.moves),
+    })
+  }
+  useSaveStore.setState({ party })
+  return out
+}

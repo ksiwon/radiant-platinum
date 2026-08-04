@@ -145,6 +145,16 @@ export type BattleEvent =
   | { kind: 'tie' }
   | { kind: 'request'; request: BattleRequest | null }
   | { kind: 'other'; cmd: string; args: string[] }
+  // ── 아래 둘은 프로토콜에 없다 ──────────────────────────────────────────────
+  // 포획과 도망은 대전 규칙 밖의 일이라 sim이 모른다. 컨트롤러가 직접 넣는다.
+  // 그래도 같은 줄기에 섞어 흘리는 이유는, 연출과 텍스트가 이것들을 **순서대로**
+  // 봐야 하기 때문이다 — 볼이 흔들린 뒤에 야생이 반격한다
+  /** 볼을 던졌다. `shakes`는 0~3이고 잡히면 4다 */
+  | { kind: 'ball'; actor: Actor; ball: number; shakes: number; caught: boolean }
+  /** 도망을 시도했다 */
+  | { kind: 'escape'; success: boolean }
+  /** 경험치를 받았다. `levels`는 새로 도달한 레벨, `learned`는 그 레벨에 배우는 기술 번호 */
+  | { kind: 'reward'; key: string; exp: number; levels: number[]; learned: number[] }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {

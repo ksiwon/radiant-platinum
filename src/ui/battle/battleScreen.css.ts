@@ -104,8 +104,9 @@ export const textBox = style({
   overflow: 'hidden',
 })
 
-export const textLine = style({ opacity: 0.55 })
-export const textLast = style({ opacity: 1 })
+// 경험치·레벨업처럼 한 사건이 여러 줄인 경우가 있다. 줄바꿈을 살린다
+export const textLine = style({ opacity: 0.55, whiteSpace: 'pre-line' })
+export const textLast = style({ opacity: 1, whiteSpace: 'pre-line' })
 
 export const menu = style({
   display: 'grid',

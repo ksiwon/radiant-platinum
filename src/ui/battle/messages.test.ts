@@ -145,3 +145,38 @@ describe('배틀 문구', () => {
     expect(say({ kind: 'other', cmd: '-hitcount', args: ['p2a: X', '3'] })).toBeNull()
   })
 })
+
+describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
+  const ball = (shakes: number, caught: boolean): BattleEvent =>
+    ({ kind: 'ball', actor: FOE, ball: 4, shakes, caught })
+
+  it('잡히면 이름에 목적격 조사가 붙는다', () => {
+    expect(say(ball(4, true))).toBe('신난다! 야생의 팬텀을 잡았다!')
+  })
+
+  it('흔들린 횟수마다 말이 다르다', () => {
+    // 세 번 흔들리고 놓치는 것이 가장 아깝다. 원작도 그때만 "앗!"을 붙인다
+    const texts = [0, 1, 2, 3].map((n) => say(ball(n, false)))
+    expect(new Set(texts).size, '전부 같은 문장이면 흔들림을 세는 의미가 없다').toBe(4)
+    expect(texts[1]).toBe('앗! 야생의 팬텀이 볼에서 나와 버렸다!')
+  })
+
+  it('도망', () => {
+    expect(say({ kind: 'escape', success: true })).toBe('무사히 도망쳤다!')
+    expect(say({ kind: 'escape', success: false })).toBe('도망칠 수 없다!')
+  })
+
+  it('경험치와 레벨업과 새 기술이 한 덩어리로 나온다', () => {
+    const text = say({ kind: 'reward', key: 'p1-0', exp: 160, levels: [6, 7], learned: [33] })
+    expect(text).toBe(
+      '모부기는 경험치를 160 얻었다!\n'
+      + '모부기의 레벨이 올랐다! (Lv.7)\n'
+      + '모부기는 몸통박치기를 배우고 싶어 한다!',
+    )
+  })
+
+  it('레벨이 안 올랐으면 경험치 줄만 나온다', () => {
+    expect(say({ kind: 'reward', key: 'p1-0', exp: 12, levels: [], learned: [] }))
+      .toBe('모부기는 경험치를 12 얻었다!')
+  })
+})

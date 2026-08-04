@@ -35,13 +35,27 @@ export interface SideMon {
 }
 
 /**
+ * 아무 일도 안 일어나는 기술. **볼을 던지거나 도망칠 때 우리 턴을 비우는 데 쓴다.**
+ *
+ * sim에는 "이번 턴 아무것도 안 함"이 없다 — `pass`는 싱글에서 거절되고(실측:
+ * "Can't pass: Your a0 must make a move"), `default`는 그냥 공격한다. 그래서
+ * 우리 팀에만 다섯 번째 칸으로 이 기술을 몰래 붙인다. Custom Game은 기술 다섯 개를
+ * 그대로 받아 주고, 같은 기술이 두 번 들어가도 합치지 않는다(실측) — 그래서
+ * **이 칸은 언제나 맨 뒤**다.
+ *
+ * 이게 없으면 볼을 던져도 야생이 반격을 안 하고, 그건 원작과 다른 게임이 된다.
+ */
+export const IDLE_MOVE = 'Splash'
+export const IDLE_MOVE_ID = 'splash'
+
+/**
  * 우리 개체를 sim의 팀 항목으로.
  *
  * 능력치를 직접 넘기지 않는다 — sim이 레벨·개체값·노력치·성격에서 다시 계산하고,
  * 그 값이 우리 `computeStats`와 같다는 것은 `stats.test.ts`가 3000건으로 확인한다.
  * 계산된 값을 넘기려 하면 sim이 그것을 무시하거나 이중 적용해서 더 위험하다.
  */
-function toSet(side: SideMon) {
+function toSet(side: SideMon, idle: boolean) {
   const { mon, species } = side
   const name = simSpecies(mon.species)
   if (!name) throw new Error(`종족 #${mon.species}를 sim에서 못 찾는다`)
@@ -52,6 +66,8 @@ function toSet(side: SideMon) {
     // 모르는 기술은 조용히 버린다. 하나도 안 남으면 아래에서 발버둥으로 채워진다
     if (mv) moves.push(mv)
   }
+  // 맨 뒤에 붙인다. 화면에는 안 보이고 `legalActions`가 걸러낸다
+  if (idle) moves.push(IDLE_MOVE)
 
   // 특성은 PID의 최하위 비트가 고른다. 두 번째 칸이 비어 있으면 첫 칸으로 떨어진다
   const slot = mon.pid & 1
@@ -128,10 +144,12 @@ export class BattleSession {
     if (options.seed) spec.seed = options.seed
     this.write(`>start ${JSON.stringify(spec)}`)
     this.write(`>player p1 ${JSON.stringify({
-      name: options.player.name, team: Teams.pack(options.player.team.map(toSet)),
+      name: options.player.name,
+      // 우리만 빈 턴이 필요하다. 상대는 볼을 던지지도 도망치지도 않는다
+      team: Teams.pack(options.player.team.map((m) => toSet(m, true))),
     })}`)
     this.write(`>player p2 ${JSON.stringify({
-      name: options.foe.name, team: Teams.pack(options.foe.team.map(toSet)),
+      name: options.foe.name, team: Teams.pack(options.foe.team.map((m) => toSet(m, false))),
     })}`)
   }
 

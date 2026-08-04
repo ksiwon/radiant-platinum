@@ -148,8 +148,8 @@ const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
  * 배틀이 성립한다. 연출 계층(PLAN §7.3)을 만들 때 여기부터 채우면 된다
  */
 const UNMODELLED = [
-  '-activate', '-end', '-fieldend', '-fieldstart', '-hitcount', '-ohko',
-  '-prepare', '-sideend', '-sidestart', '-singleturn', '-start',
+  '-activate', '-end', '-fieldend', '-fieldstart', '-ohko',
+  '-prepare', '-sideend', '-sidestart', '-start',
 ]
 
 /** 배틀 굴리기는 비싸다. 두 테스트가 같은 판을 나눠 쓴다 */

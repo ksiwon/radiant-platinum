@@ -159,6 +159,32 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     case 'heal':
       return `${withTopic(ctx.label(e.actor))} 체력을 회복했다!`
 
+    case 'ball': {
+      const who = ctx.label(e.actor)
+      if (e.caught) return `신난다! ${withObject(who)} 잡았다!`
+      // 흔들린 횟수만큼 아깝다. 원작도 세 번에서 빠져나오면 따로 말한다
+      if (e.shakes >= 3) return '앗! 아깝다! 조금만 더 하면 잡을 수 있었는데!'
+      if (e.shakes === 2) return '아깝다! 조금만 더 하면 잡을 수 있었는데!'
+      if (e.shakes === 1) return `앗! ${withSubject(who)} 볼에서 나와 버렸다!`
+      return '앗! 볼에 넣지 못했다!'
+    }
+
+    case 'escape':
+      return e.success ? '무사히 도망쳤다!' : '도망칠 수 없다!'
+
+    case 'reward': {
+      // 숫자 뒤에는 조사를 붙이지 않는다 — 읽는 소리로 갈리기 때문에(5는 "오가",
+      // 6은 "육이") 받침 규칙으로는 못 고른다. 문장을 그렇게 안 쓰면 그만이다
+      const who = ctx.label({ slot: '', side: 'p1', name: e.key })
+      const lines = [`${withTopic(who)} 경험치를 ${e.exp} 얻었다!`]
+      const top = e.levels[e.levels.length - 1]
+      if (top !== undefined) lines.push(`${who}의 레벨이 올랐다! (Lv.${top})`)
+      for (const move of e.learned) {
+        lines.push(`${withTopic(who)} ${withObject(names.moves[move] ?? `#${move}`)} 배우고 싶어 한다!`)
+      }
+      return lines.join('\n')
+    }
+
     case 'tie':
       return '무승부다!'
 

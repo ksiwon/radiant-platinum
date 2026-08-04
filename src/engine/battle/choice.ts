@@ -23,6 +23,15 @@ export type BattleAction =
 /** 기술 이름 → 롬 번호. sim을 아는 쪽만 줄 수 있어서 밖에서 받는다 */
 export type MoveResolver = (name: string) => number | null
 
+export interface ActionOptions {
+  moveId?: MoveResolver
+  /**
+   * 화면에서 감출 기술 칸 번호(1부터). 볼·도망이 쓰는 빈 턴 칸이다
+   * (`session.ts`의 `IDLE_MOVE` 참고). 플레이어가 이걸 직접 고르면 안 된다
+   */
+  hiddenSlot?: number | null
+}
+
 /** sim이 알아듣는 명령 꼬리. `p1 ` 같은 쪽 표시는 부르는 쪽이 붙인다 */
 export function encodeAction(action: BattleAction): string {
   return action.type === 'move' ? `move ${action.slot}` : `switch ${action.index}`
@@ -49,9 +58,10 @@ function bench(request: BattleRequest): { index: number; key: string }[] {
  */
 export function legalActions(
   request: BattleRequest | null,
-  moveId: MoveResolver = () => null,
+  options: ActionOptions = {},
 ): BattleAction[] {
   if (!request || request.wait) return []
+  const moveId = options.moveId ?? (() => null)
 
   const switches = bench(request).map(
     ({ index, key }): BattleAction => ({ type: 'switch', index, key }),
@@ -68,8 +78,9 @@ export function legalActions(
       type: 'move', slot: i + 1, id: m.id, name: m.move, move: moveId(m.move),
     }))
     // PP가 0이면 sim이 애초에 발버둥 하나만 담아 보낸다. 그래도 방어적으로 거른다
-    .filter((_, i) => {
+    .filter((a, i) => {
       const m = active.moves[i]!
+      if (a.type === 'move' && a.slot === options.hiddenSlot) return false
       return !m.disabled && (m.pp > 0 || active.moves.length === 1)
     })
 

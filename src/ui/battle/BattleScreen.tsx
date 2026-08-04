@@ -42,6 +42,8 @@ export function BattleScreen() {
   const roster = useBattleStore((s) => s.roster)
   const outcome = useBattleStore((s) => s.outcome)
   const choose = useBattleStore((s) => s.choose)
+  const throwBall = useBattleStore((s) => s.throwBall)
+  const run = useBattleStore((s) => s.run)
   const close = useBattleStore((s) => s.close)
   const names = useNames()
 
@@ -62,6 +64,7 @@ export function BattleScreen() {
     }
     if (outcome === 'win') out.push('배틀에서 이겼다!')
     if (outcome === 'loss') out.push('눈앞이 캄캄해졌다…')
+    // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
     return out
   }, [events, names, label, outcome])
 
@@ -88,7 +91,21 @@ export function BattleScreen() {
               계속
             </button>
           ) : (
-            <ActionMenu actions={actions} names={names} roster={roster} onPick={choose} />
+            <>
+              <ActionMenu actions={actions} names={names} roster={roster} onPick={choose} />
+              {/* 쓰러져서 교체만 골라야 하는 턴에는 볼도 도망도 못 쓴다 */}
+              {actions.some((a) => a.type === 'move') && (
+                <>
+                  <button className={css.button} onClick={() => void throwBall()}>
+                    <span>몬스터볼</span>
+                    <span className={css.buttonSub}>던진다</span>
+                  </button>
+                  <button className={css.button} onClick={() => void run()}>
+                    <span>도망친다</span>
+                  </button>
+                </>
+              )}
+            </>
           )}
         </div>
       </div>
