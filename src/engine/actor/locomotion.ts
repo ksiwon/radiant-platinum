@@ -60,6 +60,8 @@ interface Joint {
 
 export interface Rig {
   joints: Record<string, Joint>
+  /** 팔꿈치 경첩 축(바인드 월드). 상완 이름으로 색인한다 */
+  hinge: Record<string, Vector3>
   /** bob을 걸 노드. 본이 아니라 정규화 래퍼라 스킨 바인드를 건드리지 않는다 */
   bobTarget: Object3D
   bobBase: number
@@ -73,6 +75,12 @@ const delta = new Quaternion()
 const identity = new Quaternion()
 /** 관절별로 이번 프레임에 건 월드 회전. 헬퍼 본이 그 절반을 되돌릴 때 쓴다 */
 const applied = new Map<string, Quaternion>()
+
+function store(name: string, q: Quaternion) {
+  let slot = applied.get(name)
+  if (!slot) { slot = new Quaternion(); applied.set(name, slot) }
+  slot.copy(q)
+}
 
 function makeJoint(node: Object3D): Joint {
   node.updateWorldMatrix(true, false)
@@ -102,7 +110,20 @@ export function createRig(root: Object3D, bobTarget: Object3D): Rig | null {
     const node = found.get(name)
     if (node) joints[name] = makeJoint(node)
   }
-  return { joints, bobTarget, bobBase: bobTarget.position.y, phase: 0, elapsed: 0 }
+
+  // 팔꿈치 경첩 축. 상완이 뻗은 방향은 자식의 위치에서 잰다 — 본의 로컬 축을
+  // 가정하지 않는 유일한 방법이다. 축은 그 방향과 정면에 모두 수직인 가로 방향이고,
+  // 좌우 부호는 외적이 알아서 뒤집는다 (바인드에서 왼팔 +X → −Y, 오른팔 −X → +Y)
+  const hinge: Record<string, Vector3> = {}
+  for (const [arm, tip] of [['LArm', 'LForeArm'], ['RArm', 'RForeArm']]) {
+    const a = found.get(arm!), b = found.get(tip!)
+    if (!a || !b) continue
+    const dir = b.getWorldPosition(new Vector3()).sub(a.getWorldPosition(new Vector3()))
+    const axis = dir.cross(FACING)
+    if (axis.lengthSq() > 1e-10) hinge[arm!] = axis.normalize()
+  }
+
+  return { joints, hinge, bobTarget, bobBase: bobTarget.position.y, phase: 0, elapsed: 0 }
 }
 
 /** 관절을 바인드 포즈로 되돌린다 */
@@ -128,9 +149,35 @@ function apply(j: Joint | undefined, name: string, pitch: number, roll = 0, yaw 
   if (yaw) worldRot.multiply(step.setFromAxisAngle(AXIS_YAW, yaw))
   if (pitch) worldRot.premultiply(step.setFromAxisAngle(AXIS_PITCH, pitch))
   applyWorld(j, worldRot)
-  let slot = applied.get(name)
-  if (!slot) { slot = new Quaternion(); applied.set(name, slot) }
-  slot.copy(worldRot)
+  store(name, worldRot)
+}
+
+/** 캐릭터가 보는 방향 */
+const FACING = new Vector3(0, 0, 1)
+
+/**
+ * 팔꿈치를 굽힌다. 축은 리그에서 미리 잰 경첩 축이다 (createRig 참고).
+ *
+ * 월드 X축으로는 안 된다. apply()가 거는 회전은 바인드 포즈 기준인데(부모의 **바인드**
+ * 월드로 켤레변환한다) 바인드는 T포즈라 팔이 월드 ±X로 뻗어 있다. 그 축을 쓰면 팔과
+ * 나란해서 굽힘이 아니라 전완 비틀림이 된다 — 실측 굽힘각이 2.3°였다.
+ *
+ * ⚠️ "전완을 정면 쪽으로 돌린다"로도 해봤는데 더 나빴다(손이 어깨선 바깥으로 0.30 →
+ * 0.51). 팔이 뒤로 크게 스윙된 상태에서 정면까지의 대원은 옆으로 불룩하게 돌아간다 —
+ * 두 방향이 반대에 가까울수록 중간 지점이 둘 다에서 멀어지기 때문이다. 팔꿈치는
+ * 목표를 향해 도는 관절이 아니라 축이 정해진 경첩이다.
+ *
+ * ⚠️ 축을 사슬 누적 회전 C로 실어 주고 C⁻¹·R·C로 되돌리는 코드를 한 번 넣었다가
+ * 지웠다. R(C·a, θ) = C·R(a,θ)·C⁻¹ 이므로 C⁻¹·R(C·a,θ)·C = R(a,θ)로 **정확히
+ * 상쇄된다** — 바인드 축을 그대로 거는 것과 완전히 같다. 실측값이 소수점까지 같았다.
+ */
+function applyElbow(rig: Rig, name: string, parent: string, angle: number) {
+  const j = rig.joints[name]
+  const axis = rig.hinge[parent]
+  if (!j || !axis) return
+  step.setFromAxisAngle(axis, angle)
+  applyWorld(j, step)
+  store(name, step)
 }
 
 /**
@@ -204,6 +251,8 @@ export function updateLocomotion(
   const g = sampleGait(rig.phase, moving, run)
   const j = rig.joints
 
+  // 다리는 사슬 전체가 월드 X축 하나만 쓰고 바인드에서도 아래로 뻗어 있다.
+  // 그래서 바인드 기준 축이 그대로 맞는다 — 무릎은 넓적다리에 대한 정확한 경첩이다
   apply(j.LThigh, 'LThigh', FORWARD * g.thighL)
   apply(j.RThigh, 'RThigh', FORWARD * g.thighR)
   // 무릎은 뒤로만 접힌다 — FORWARD를 곱하지 않는다
@@ -211,28 +260,6 @@ export function updateLocomotion(
   apply(j.RLeg, 'RLeg', g.kneeR)
   apply(j.LFoot, 'LFoot', FORWARD * g.footL)
   apply(j.RFoot, 'RFoot', FORWARD * g.footR)
-
-  // 팔: T포즈에서 옆구리로 내린 뒤(roll) 그 자세에서 앞뒤로 흔든다(pitch).
-  // 좌우가 거울이라 내리는 방향의 부호가 반대다.
-  // armForward는 상수 오프셋이라 서 있을 때도 팔이 몸통보다 조금 앞에 온다
-  const swingL = FORWARD * (g.armL + g.armForward)
-  const swingR = FORWARD * (g.armR + g.armForward)
-  const arm = 1 - SHOULDER_SHARE
-  apply(j.LShoulder, 'LShoulder', swingL * SHOULDER_SHARE, -g.armDrop * SHOULDER_SHARE)
-  apply(j.RShoulder, 'RShoulder', swingR * SHOULDER_SHARE, g.armDrop * SHOULDER_SHARE)
-  apply(j.LArm, 'LArm', swingL * arm, -g.armDrop * arm)
-  apply(j.RArm, 'RArm', swingR * arm, g.armDrop * arm)
-  // 팔꿈치는 무릎과 축이 다르다.
-  //
-  // apply가 거는 회전은 **바인드 포즈 기준**이고(부모의 바인드 월드로 켤레변환한다),
-  // 바인드는 T포즈라 팔이 월드 ±X로 뻗어 있다. 그 상태에서 X축 회전은 팔을 굽히는
-  // 게 아니라 전완을 축 방향으로 비트는 것이다 — 실측 굽힘각이 2.3°였다.
-  // 굽힘 축은 팔에 수직인 월드 Y이고, 좌우가 거울이라 부호가 반대다.
-  apply(j.LForeArm, 'LForeArm', 0, 0, -g.forearmL)
-  apply(j.RForeArm, 'RForeArm', 0, 0, g.forearmR)
-
-  // 어깨·팔꿈치 변형을 헬퍼 본과 나눈다 (원본 리그의 제약을 되살린 것)
-  for (const [helper, joint] of HELPERS) applyHelper(rig, helper, joint)
 
   // 상체는 팔과 반대로 비틀어 어깨가 따라 돌지 않게 하고, 앞으로 기운다.
   // 기울기는 세 마디에 나눠 건다 — 한 관절에 몰면 배가 접히는 것처럼 보인다
@@ -242,6 +269,25 @@ export function updateLocomotion(
   apply(j.Spine3, 'Spine3', FORWARD_UP * g.lean * 0.3, 0, g.torsoYaw * 0.6)
   // 머리는 상체의 비틀림과 기울기를 절반쯤 되받아 계속 정면을 본다
   apply(j.Neck, 'Neck', -FORWARD_UP * g.lean * 0.55, 0, -g.torsoYaw * 0.5)
+
+  // 팔: T포즈에서 옆구리로 내린 뒤(roll) 그 자세에서 앞뒤로 흔든다(pitch).
+  // 좌우가 거울이라 내리는 방향의 부호가 반대다.
+  // armBias는 스윙의 중심이다 — 서 있을 땐 조금 앞, 달릴 땐 뒤로 간다
+  const swingL = FORWARD * (g.armL + g.armBias)
+  const swingR = FORWARD * (g.armR + g.armBias)
+  const arm = 1 - SHOULDER_SHARE
+  apply(j.LShoulder, 'LShoulder',
+    swingL * SHOULDER_SHARE, -g.armDrop * SHOULDER_SHARE)
+  apply(j.RShoulder, 'RShoulder',
+    swingR * SHOULDER_SHARE, g.armDrop * SHOULDER_SHARE)
+  apply(j.LArm, 'LArm', swingL * arm, -g.armDrop * arm)
+  apply(j.RArm, 'RArm', swingR * arm, g.armDrop * arm)
+  // 팔꿈치는 팔이 다 내려온 뒤의 자세에서 몸 앞으로 굽어야 한다 (applyElbow 주석 참고)
+  applyElbow(rig, 'LForeArm', 'LArm', g.forearmL)
+  applyElbow(rig, 'RForeArm', 'RArm', g.forearmR)
+
+  // 어깨·팔꿈치 변형을 헬퍼 본과 나눈다 (원본 리그의 제약을 되살린 것)
+  for (const [helper, joint] of HELPERS) applyHelper(rig, helper, joint)
 
   rig.bobTarget.position.y = rig.bobBase + g.bob
 }

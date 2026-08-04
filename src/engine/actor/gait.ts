@@ -34,10 +34,10 @@ export interface Gait {
   lean: number
   /** 골반 상하 진동(m). 발이 땅에 닿을 때 낮아진다 */
   bob: number
-  /** T포즈에서 팔을 옆구리로 내리는 양. 이동과 무관한 상수 자세 */
+  /** T포즈에서 팔을 옆구리로 내리는 양. 정지에서도 유지되고 달리면 더 붙는다 */
   armDrop: number
-  /** 팔을 몸통보다 살짝 앞에 두는 상수 오프셋. 등에 멘 가방을 파고들지 않게 한다 */
-  armForward: number
+  /** 팔 스윙의 중심 위치. 양수가 앞. 서 있으면 조금 앞, 달리면 뒤로 간다 */
+  armBias: number
 }
 
 const TWO_PI = Math.PI * 2
@@ -58,7 +58,7 @@ const AMP = {
   /** 팔꿈치 상시 굽힘. 달리면 65°대에서 유지된다 */
   forearm: 0.30, forearmRun: 0.60,
   /** 팔이 앞으로 나올 때만 더 접힌다. 최대 88°로 전형적인 조깅 자세다 */
-  forearmSwing: 0.25, forearmSwingRun: 0.15,
+  forearmSwing: 0.25, forearmSwingRun: 0.30,
   torsoYaw: 0.07,
   /**
    * 상체 전방 기울기. 걷기 3°, 달리기 13°.
@@ -71,11 +71,21 @@ const AMP = {
   bob: 0.022,
   /**
    * 바인드 포즈가 T포즈라 팔을 내려야 한다. 1.20rad(69°)면 수직에서 21° 벌어져
-   * 팔이 몸통·가방을 스치지 않는다. 90°까지 내리면 팔이 옆구리에 붙어 파고든다
+   * 팔이 몸통·가방을 스치지 않는다. 90°까지 내리면 팔이 옆구리에 붙어 파고든다.
+   *
+   * 달리면 9°까지 붙는다 — 팔을 벌리고 뛰면 손이 몸 옆으로 크게 돈다
    */
-  armDrop: 1.20,
+  armDrop: 1.20, armDropRun: 0.20,
   /** 팔을 살짝 앞으로. 사람이 서 있을 때 팔은 몸통 평면보다 조금 앞에 있다 */
   armForward: 0.14,
+  /**
+   * 달릴 때 스윙 중심이 뒤로 가는 양.
+   *
+   * 달리기의 팔치기는 앞뒤 대칭이 아니다 — 팔꿈치를 뒤로 당겨 치고 앞으로는 조금만
+   * 나온다(어깨 신전 53° 대 굴곡 23°). 중심을 앞에 둔 채 대칭으로 흔들면 팔꿈치가
+   * 앞에 머무르고 접힌 전완이 그만큼 더 나가서 손이 몸 앞으로 튀어나온다
+   */
+  armBackRun: 0.40,
   /** 쉬는 자세의 팔꿈치 굽힘. 완전히 펴면 마네킹처럼 뻣뻣해 보인다 */
   forearmRest: 0.24,
   breath: 0.020,
@@ -184,8 +194,8 @@ export function sampleGait(phase: number, moving: number, run: number): Gait {
     lean: (AMP.lean + AMP.leanRun * r) * m,
     // 한 사이클에 두 번 내려앉는다 — 양발이 각각 착지하므로 주파수가 두 배다
     bob: -Math.abs(Math.sin(phase)) * AMP.bob * m,
-    armDrop: AMP.armDrop,
-    armForward: AMP.armForward,
+    armDrop: AMP.armDrop + AMP.armDropRun * r,
+    armBias: AMP.armForward - AMP.armBackRun * r,
   }
 }
 

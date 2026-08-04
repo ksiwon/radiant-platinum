@@ -283,27 +283,51 @@ describe('포즈 적용', () => {
       .toBeGreaterThan(Math.PI * 0.4)
   })
 
-  it('쇄골이 어깨 동작의 일부를 나눠 진다 — 팔 하나에 몰면 삼각근이 파인다', () => {
+  it('달릴 때 팔이 몸 앞·옆으로 벌어지지 않는다 — 팔꿈치를 뒤로 당겨 친다', () => {
+    // 굽힘 축이 팔에 고정된 경첩이 아니면 전완이 옆으로 벌어지고, 스윙 중심이
+    // 앞에 있으면 팔꿈치가 앞에 머무른다. 둘 다 손의 실제 위치로만 잡힌다
     const { root, nodes } = loadSkeleton()
-    const bind = new Map<string, Quaternion>()
-    for (const n of ['LShoulder', 'LArm']) {
-      const q = new Quaternion()
-      nodes.get(n)!.getWorldQuaternion(q)
-      bind.set(n, q)
-    }
     const rig = createRig(root, new Object3D())!
+    const w = (n: string) => nodes.get(n)!.getWorldPosition(new Vector3())
+    let handOut = -Infinity, elbowFront = -Infinity, elbowBack = Infinity
+    for (let i = 0; i < 480; i++) {
+      updateLocomotion(rig, 1 / 240, 8, 4.5, 8)
+      root.updateMatrixWorld(true)
+      const sh = w('LArm'), el = w('LForeArm'), ha = w('LHand')
+      handOut = Math.max(handOut, ha.x - sh.x)
+      elbowFront = Math.max(elbowFront, el.z - sh.z)
+      elbowBack = Math.min(elbowBack, el.z - sh.z)
+    }
+    // 상완 길이가 0.336이다. 손이 어깨선 바깥으로 그 절반 넘게 나가면 날개처럼 보인다
+    expect(handOut, `손이 어깨선 바깥으로 ${handOut.toFixed(3)}`).toBeLessThan(0.17)
+    // 팔꿈치는 어깨보다 앞으로 거의 안 나가고 뒤로는 크게 간다
+    expect(elbowFront, `팔꿈치 최대 전방 ${elbowFront.toFixed(3)}`).toBeLessThan(0.10)
+    expect(-elbowBack, `전방 ${elbowFront.toFixed(3)} 후방 ${(-elbowBack).toFixed(3)}`)
+      .toBeGreaterThan(elbowFront * 2)
+  })
+
+  it('쇄골이 어깨 동작의 일부를 나눠 진다 — 팔 하나에 몰면 삼각근이 파인다', () => {
+    // ⚠️ 처음엔 월드 회전량의 비로 쟀는데, 쇄골은 가슴(Spine3)의 회전도 그대로
+    // 물려받으므로 쇄골 몫을 0으로 만들어도 그 값이 남아 변이가 안 잡혔다.
+    // **부모 기준 상대 회전**으로 재야 그 관절 자신이 얼마나 돌았는지가 나온다
+    const { root, nodes } = loadSkeleton()
+    const w = (n: string) => nodes.get(n)!.getWorldQuaternion(new Quaternion())
+    const relative = (parent: string, child: string) =>
+      w(parent).invert().multiply(w(child))
+
+    const rig = createRig(root, new Object3D())!
+    // 리그를 만든 직후가 바인드다. 상대 회전을 먼저 잡아 둔다
+    const bindShoulder = relative('Spine3', 'LShoulder')
+    const bindArm = relative('LShoulder', 'LArm')
+
     for (let i = 0; i < 40; i++) updateLocomotion(rig, 1 / 120, 4.5, 4.5, 8)
     root.updateMatrixWorld(true)
 
-    const moved = (n: string) => {
-      const q = new Quaternion()
-      nodes.get(n)!.getWorldQuaternion(q)
-      return bind.get(n)!.angleTo(q)
-    }
-    // 팔의 회전에는 쇄골 몫이 이미 포함돼 있다(자식이라 곱해진다). 그 비율을 본다
-    const ratio = moved('LShoulder') / moved('LArm')
-    expect(ratio, `쇄골 몫 ${ratio.toFixed(3)}`).toBeGreaterThan(0.05)
-    expect(ratio, `쇄골 몫 ${ratio.toFixed(3)}`).toBeLessThan(0.35)
+    const clavicle = bindShoulder.angleTo(relative('Spine3', 'LShoulder'))
+    const shoulder = bindArm.angleTo(relative('LShoulder', 'LArm'))
+    const share = clavicle / (clavicle + shoulder)
+    expect(share, `쇄골 몫 ${share.toFixed(3)}`).toBeGreaterThan(0.08)
+    expect(share, `쇄골 몫 ${share.toFixed(3)}`).toBeLessThan(0.30)
   })
 
   it('헬퍼 본이 관절 회전의 절반만 받는다 — 어깨가 한 본에 몰리지 않게', () => {

@@ -131,9 +131,28 @@ describe('보행 사이클', () => {
     }
   })
 
-  it('팔 내림은 이동과 무관하다 — 서 있어도 T포즈로 돌아가지 않는다', () => {
+  it('팔 내림은 스윙과 무관하다 — 서 있어도 T포즈로 돌아가지 않는다', () => {
     expect(sampleGait(0, 0, 0).armDrop).toBeGreaterThan(1)
-    expect(sampleGait(2, 1, 1).armDrop).toBe(sampleGait(0, 0, 0).armDrop)
+    // 위상이 바뀌어도 흔들리지 않는다. 자세지 스윙이 아니다
+    expect(sampleGait(2, 1, 0).armDrop).toBe(sampleGait(5, 1, 0).armDrop)
+  })
+
+  it('달리면 팔을 몸에 더 붙인다 — 벌리고 뛰면 손이 몸 옆으로 크게 돈다', () => {
+    expect(sampleGait(0, 1, 1).armDrop).toBeGreaterThan(sampleGait(0, 1, 0).armDrop)
+  })
+
+  it('달릴 때 팔이 앞보다 뒤로 더 간다 — 팔꿈치를 뒤로 당겨 친다', () => {
+    let front = -Infinity, back = Infinity
+    for (let p = 0; p < TWO_PI; p += 0.02) {
+      const g = sampleGait(p, 1, 1)
+      const swing = g.armL + g.armBias
+      front = Math.max(front, swing)
+      back = Math.min(back, swing)
+    }
+    expect(front, '앞으로 아예 안 나온다').toBeGreaterThan(0.15)
+    expect(-back, `앞 ${front.toFixed(2)} 뒤 ${(-back).toFixed(2)}`).toBeGreaterThan(front * 1.5)
+    // 걷기는 반대로 앞이 조금 더 나온다 — 팔이 몸통 앞에 있는 평범한 자세다
+    expect(sampleGait(0, 1, 0).armBias).toBeGreaterThan(0)
   })
 
   it('달리면 진폭이 커진다', () => {
