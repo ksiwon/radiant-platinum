@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Color, InstancedMesh, Object3D } from 'three'
-import { activeZone, Behavior, IMPASSABLE } from '../engine/map/zone'
+import { activeZone, Behavior, IMPASSABLE, isWater } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
@@ -26,7 +26,7 @@ const dummy = new Object3D()
 function tileColor(behavior: number): Color {
   if (behavior === Behavior.NORMAL) return new Color('#6f7a52')
   if (behavior === Behavior.TALL_GRASS) return new Color('#3f7d3a')
-  if (behavior === Behavior.WATER) return new Color('#2f5f8f')
+  if (isWater(behavior)) return new Color('#2f5f8f')
   const h = ((behavior * 2654435761) % 360) / 360
   return new Color().setHSL(h, 0.35, 0.45)
 }

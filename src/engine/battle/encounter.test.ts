@@ -33,7 +33,8 @@ describe('타일 판정', () => {
   it('풀숲에서만 야생이 나온다', () => {
     expect(isEncounterTile(Behavior.TALL_GRASS)).toBe(true)
     expect(isEncounterTile(Behavior.NORMAL)).toBe(false)
-    expect(isEncounterTile(Behavior.WATER)).toBe(false)
+    expect(isEncounterTile(Behavior.WATER_OPEN)).toBe(false)
+    expect(isEncounterTile(Behavior.WATER_POND)).toBe(false)
   })
 })
 

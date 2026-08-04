@@ -39,6 +39,9 @@ export function Stage() {
         }}
       >
         <color attach="background" args={['#131722']} />
+        {/* 렌더 창은 5×5청크(160타일)까지다. 그 경계가 검게 잘려 보이지 않도록
+            배경색과 같은 안개로 녹인다 — 창을 넓히는 것보다 훨씬 싸다 */}
+        <fog attach="fog" args={['#131722', 45, 115]} />
         {/* 신오 전체. 트윈리프에서 시작해 걸어서 이동하고, 문으로 실내에 들어간다 */}
         <Suspense fallback={null}>
           <WorldLoader />

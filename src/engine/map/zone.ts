@@ -22,8 +22,25 @@ export const BEHAVIOR_MASK = 0x7fff
 export const Behavior = {
   NORMAL: 0x0000,
   TALL_GRASS: 0x0002,
-  WATER: 0x0015,
+  /** 넓은 수면. 수로(W) 존을 채운다 — W231에만 6912칸 */
+  WATER_OPEN: 0x0015,
+  /** 작은 물. 13개 존에 1114칸뿐이고 트윈리프의 연못이 여기다 */
+  WATER_POND: 0x0010,
 } as const
+
+/**
+ * 물 판정.
+ *
+ * 두 값을 합쳐야 맞다 — 파도타기가 있는 36개 존 중 **35개**를 덮고 누락은 1개다.
+ * 하나씩 보면 어느 쪽도 결정적이지 않다: 0x0015는 오탐 11(수면은 있는데 파도타기
+ * 표가 없는 존), 0x0010은 오탐 0이지만 누락 23이다.
+ *
+ * ⚠️ 처음엔 0x0015만 물로 적었다. 트윈리프 연못이 파랗게 렌더되지 않아서 들켰다 —
+ * 그 연못은 0x0010이다. 하나를 찾았다고 그게 전부라고 볼 근거는 없었다.
+ */
+export function isWater(behavior: number): boolean {
+  return behavior === Behavior.WATER_OPEN || behavior === Behavior.WATER_POND
+}
 
 /**
  * 이동 시스템이 필요로 하는 것의 전부. 존 격자든 오버월드 전역 격자든

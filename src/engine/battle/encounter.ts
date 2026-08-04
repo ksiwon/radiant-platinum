@@ -78,7 +78,7 @@ export function rollWater(t: WaterTable, rng: Rng): WildEncounter | null {
   return { species: s.species, level, slot }
 }
 
-/** 이 타일에서 야생이 나올 수 있는가 */
+/** 이 타일에서 야생이 나올 수 있는가. 물 위는 파도타기가 들어올 때 함께 다룬다 */
 export function isEncounterTile(behavior: number): boolean {
   return behavior === Behavior.TALL_GRASS
 }
