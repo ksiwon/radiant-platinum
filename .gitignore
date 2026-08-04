@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-assets/
+
+# 원본 ROM·추출물. 리포에 절대 들어가면 안 된다 (§14.1) — 롬 1개가 128MB다
+raw/
+
+# raw/ + tools/ 파이프라인으로 재생성되는 산출물. 최종적으로는 R2에서 서빙한다 (§4.6)
+public/models/
+*.nds
+*.sdat
+*.local
+.DS_Store
+tools/spike/*.cpp
+tools/spike/*.h
