@@ -249,6 +249,40 @@ describe('포즈 적용', () => {
       .toBeLessThan(back.hand)
   })
 
+  it('팔꿈치가 실제로 접힌다 — 각도만 맞고 축이 틀리면 전완이 비틀릴 뿐이다', () => {
+    // ⚠️ 이 테스트가 없어서 팔꿈치가 2.3°만 접힌 채 통과했다. gait이 내놓는 각은
+    // 45°였는데 축이 팔과 나란해서 굽힘이 아니라 비틀림이 되고 있었다.
+    // 그래서 **뼈 세 개의 실제 위치로 사잇각을 잰다** — 축을 가정할 여지가 없다
+    const { root, nodes } = loadSkeleton()
+    const rig = createRig(root, new Object3D())!
+    const at = (side: 'L' | 'R') => {
+      const sh = nodes.get(`${side}Arm`)!.getWorldPosition(new Vector3())
+      const el = nodes.get(`${side}ForeArm`)!.getWorldPosition(new Vector3())
+      const ha = nodes.get(`${side}Hand`)!.getWorldPosition(new Vector3())
+      return { bend: el.clone().sub(sh).angleTo(ha.clone().sub(el)), forward: ha.z - el.z }
+    }
+
+    updateLocomotion(rig, 0, 0, 4.5, 8) // 정지 포즈
+    root.updateMatrixWorld(true)
+    for (const side of ['L', 'R'] as const) {
+      const { bend, forward } = at(side)
+      expect(bend, `${side} 정지 굽힘 ${(bend * 180 / Math.PI).toFixed(1)}°`).toBeGreaterThan(0.2)
+      // 팔꿈치는 무릎과 반대로 **앞으로** 접힌다. 손이 팔꿈치보다 뒤면 부호가 틀렸다
+      expect(forward, `${side} 손이 팔꿈치보다 ${forward > 0 ? '앞' : '뒤'}`).toBeGreaterThan(0)
+    }
+    // 좌우가 거울이라 굽힘량이 같아야 한다 — 한쪽만 축을 틀리면 여기서 갈라진다
+    expect(at('L').bend).toBeCloseTo(at('R').bend, 4)
+
+    let maxBend = 0
+    for (let i = 0; i < 240; i++) {
+      updateLocomotion(rig, 1 / 120, 8, 4.5, 8)
+      root.updateMatrixWorld(true)
+      maxBend = Math.max(maxBend, at('L').bend)
+    }
+    expect(maxBend, `달리기 최대 굽힘 ${(maxBend * 180 / Math.PI).toFixed(1)}°`)
+      .toBeGreaterThan(Math.PI * 0.4)
+  })
+
   it('쇄골이 어깨 동작의 일부를 나눠 진다 — 팔 하나에 몰면 삼각근이 파인다', () => {
     const { root, nodes } = loadSkeleton()
     const bind = new Map<string, Quaternion>()

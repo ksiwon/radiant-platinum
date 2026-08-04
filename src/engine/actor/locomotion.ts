@@ -222,9 +222,14 @@ export function updateLocomotion(
   apply(j.RShoulder, 'RShoulder', swingR * SHOULDER_SHARE, g.armDrop * SHOULDER_SHARE)
   apply(j.LArm, 'LArm', swingL * arm, -g.armDrop * arm)
   apply(j.RArm, 'RArm', swingR * arm, g.armDrop * arm)
-  // 팔꿈치도 뒤로만 접힌다
-  apply(j.LForeArm, 'LForeArm', g.forearmL)
-  apply(j.RForeArm, 'RForeArm', g.forearmR)
+  // 팔꿈치는 무릎과 축이 다르다.
+  //
+  // apply가 거는 회전은 **바인드 포즈 기준**이고(부모의 바인드 월드로 켤레변환한다),
+  // 바인드는 T포즈라 팔이 월드 ±X로 뻗어 있다. 그 상태에서 X축 회전은 팔을 굽히는
+  // 게 아니라 전완을 축 방향으로 비트는 것이다 — 실측 굽힘각이 2.3°였다.
+  // 굽힘 축은 팔에 수직인 월드 Y이고, 좌우가 거울이라 부호가 반대다.
+  apply(j.LForeArm, 'LForeArm', 0, 0, -g.forearmL)
+  apply(j.RForeArm, 'RForeArm', 0, 0, g.forearmR)
 
   // 어깨·팔꿈치 변형을 헬퍼 본과 나눈다 (원본 리그의 제약을 되살린 것)
   for (const [helper, joint] of HELPERS) applyHelper(rig, helper, joint)

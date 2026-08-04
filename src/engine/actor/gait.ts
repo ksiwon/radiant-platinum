@@ -55,10 +55,10 @@ const AMP = {
   /** 무릎 굽힘을 발목이 되받는 비율. 정강이가 접혀도 발바닥이 덜 들린다 */
   footKneeComp: 0.35,
   arm: 0.32, armRun: 0.35,
-  /** 팔꿈치 상시 굽힘. 달리면 70°대에서 유지된다 */
-  forearm: 0.30, forearmRun: 0.70,
-  /** 팔이 앞으로 나올 때만 더 접힌다 */
-  forearmSwing: 0.25, forearmSwingRun: 0.20,
+  /** 팔꿈치 상시 굽힘. 달리면 65°대에서 유지된다 */
+  forearm: 0.30, forearmRun: 0.60,
+  /** 팔이 앞으로 나올 때만 더 접힌다. 최대 88°로 전형적인 조깅 자세다 */
+  forearmSwing: 0.25, forearmSwingRun: 0.15,
   torsoYaw: 0.07,
   /**
    * 상체 전방 기울기. 걷기 3°, 달리기 13°.
