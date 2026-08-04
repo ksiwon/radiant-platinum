@@ -80,7 +80,7 @@ describe('야생 배틀', () => {
     const player = spawn(TURTWIG, 5, 1)
     const foe = spawn(STARLY, 2, 2)
     const battle = wildBattle(player, foe)
-    const log = await battle.settle()
+    const log = (await battle.settle()).p1
 
     expect(log.join('\n')).toContain('|player|p1|빛나')
     expect(log.join('\n')).toContain('|player|p2|야생')
@@ -95,7 +95,7 @@ describe('야생 배틀', () => {
     // 배틀 밖(파티 메뉴)과 안(HP 바)이 다른 값을 쓰면 배틀 진입 순간 HP가 튄다
     const player = spawn(TURTWIG, 23, 3)
     const battle = wildBattle(player, spawn(STARLY, 20, 4))
-    const log = await battle.settle()
+    const log = (await battle.settle()).p1
 
     const request = log.find((l) => l.startsWith('|request|'))
     expect(request, 'request 줄이 없다').toBeDefined()
@@ -115,7 +115,7 @@ describe('야생 배틀', () => {
   it('우리가 넣은 기술만 쓸 수 있다', async () => {
     const player = spawn(TURTWIG, 15, 5)
     const battle = wildBattle(player, spawn(STARLY, 12, 6))
-    const log = await battle.settle()
+    const log = (await battle.settle()).p1
     const request = JSON.parse(log.find((l) => l.startsWith('|request|'))!.slice(9)) as {
       active: { moves: { id: string; pp: number }[] }[]
     }
@@ -133,7 +133,7 @@ describe('야생 배틀', () => {
 
     battle.send('p1 move 1')
     battle.send('p2 move 1')
-    const log = await battle.settle()
+    const log = (await battle.settle()).p1
 
     expect(log.some((l) => l.startsWith('|move|'))).toBe(true)
     const damage = log.filter((l) => l.startsWith('|-damage|'))
@@ -154,7 +154,7 @@ describe('야생 배틀', () => {
     for (let turn = 0; turn < 20 && !win; turn++) {
       battle.send(`p1 move ${slot}`)
       battle.send('p2 move 1')
-      const log = await battle.settle()
+      const log = (await battle.settle()).p1
       if (log.some((l) => l.startsWith('|faint|p2a:'))) faint = true
       if (log.some((l) => l.startsWith('|win|'))) win = true
       if (log.length === 0) break
@@ -174,7 +174,7 @@ describe('야생 배틀', () => {
     for (let turn = 0; turn < 20; turn++) {
       battle.send(`p1 move ${slot}`)
       battle.send('p2 move 1')
-      const log = await battle.settle()
+      const log = (await battle.settle()).p1
       if (log.some((l) => l.startsWith('|win|'))) break
     }
     expect(() => { battle.destroy(); battle.destroy() }).not.toThrow()
@@ -186,7 +186,7 @@ describe('야생 배틀', () => {
       await battle.settle()
       battle.send('p1 move 1')
       battle.send('p2 move 1')
-      const log = await battle.settle()
+      const log = (await battle.settle()).p1
       battle.destroy()
       // request는 매번 rqid가 달라질 수 있으니 배틀 줄만 본다
       return log.filter((l) => l.startsWith('|-damage|') || l.startsWith('|move|'))
@@ -214,7 +214,7 @@ describe('야생 배틀', () => {
 /** sim이 실제로 쓰는 특성 이름. request의 첫 포켓몬에서 읽는다 */
 async function abilityInBattle(side: SideMon): Promise<string> {
   const battle = wildBattle(side, spawn(STARLY, 5, 99))
-  const log = await battle.settle()
+  const log = (await battle.settle()).p1
   battle.destroy()
   const request = log.find((l) => l.startsWith('|request|'))!
   return (JSON.parse(request.slice('|request|'.length)) as {

@@ -7,6 +7,7 @@
 // ⚠️ 이 폴더는 지연 로딩 경계다 (bridge.ts 주석 참고). 오버월드에서 정적 import 금지.
 import { BattleStreams, Teams } from '@pkmn/sim'
 import type { Species } from '../../../data/schema'
+import type { SideId } from '../events'
 import type { PokemonInstance } from '../../pokemon/instance'
 import { natureOf } from '../../pokemon/instance'
 import { simAbility, simMove, simSpecies } from './bridge'
@@ -80,61 +81,78 @@ export interface BattleOptions {
   seed?: [number, number, number, number]
 }
 
+/** 한 번 정산에서 각 쪽이 받은 줄 */
+export type SideLines = Record<SideId, string[]>
+
 /**
  * 한 배틀의 수명을 감싼다.
  *
- * `BattleStream`은 비동기 이터레이터로 결과를 흘리는데, 우리는 "명령을 넣고 그
- * 결과 줄들을 받는" 동기적인 모양이 필요하다. 그래서 흘러나오는 줄을 버퍼에 모으고
- * `drain()`으로 꺼낸다 — 시뮬은 즉시 끝나므로 이 버퍼는 항상 곧바로 찬다.
+ * **쪽별 스트림을 쓴다.** `BattleStream`을 그냥 읽으면 전지적 시점이라 `|split|p1`
+ * 뒤에 같은 사건이 두 줄(비공개판·공개판) 온다 — 그대로 접으면 **데미지가 두 번
+ * 들어간다.** `getPlayerStreams`가 그 갈래를 정리해 각 쪽이 실제로 보는 줄만 준다.
+ *
+ * 덤으로 AI가 p2 스트림만 보게 되므로 **컨닝을 할 수 없다** — 우리 쪽 기술·개체값이
+ * 애초에 그쪽 줄에 안 들어 있다.
  */
 export class BattleSession {
-  private readonly stream: BattleStreams.BattleStream
-  private readonly buffer: string[] = []
+  private readonly raw: BattleStreams.BattleStream
+  private readonly streams: ReturnType<typeof BattleStreams.getPlayerStreams>
+  private readonly buffer: SideLines = { p1: [], p2: [] }
   private closed = false
   private destroyed = false
 
   constructor(options: BattleOptions) {
-    const stream = new BattleStreams.BattleStream()
-    this.stream = stream
-    // 스트림이 흘리는 줄을 계속 버퍼에 담는다. 이 루프는 배틀이 끝날 때까지 산다
-    void (async () => {
-      for await (const chunk of stream) {
-        for (const line of chunk.split('\n')) if (line) this.buffer.push(line)
-      }
-      this.closed = true
-    })()
+    this.raw = new BattleStreams.BattleStream()
+    const streams = BattleStreams.getPlayerStreams(this.raw)
+    this.streams = streams
+
+    for (const side of ['p1', 'p2'] as const) {
+      const stream = streams[side]
+      void (async () => {
+        for await (const chunk of stream) {
+          for (const line of chunk.split('\n')) if (line) this.buffer[side].push(line)
+        }
+        if (side === 'p1') this.closed = true
+      })()
+    }
+    // 안 읽는 갈래(전지적·관전·p3·p4)는 그냥 버퍼에 쌓인다. `push`가 배압을 걸지
+    // 않으므로 막히지는 않고, 한 배틀 분량의 문자열이라 destroy에서 통째로 사라진다
 
     const spec: Record<string, unknown> = { formatid: 'gen4customgame' }
     if (options.seed) spec.seed = options.seed
-    this.stream.write(`>start ${JSON.stringify(spec)}`)
-    this.stream.write(`>player p1 ${JSON.stringify({
+    this.write(`>start ${JSON.stringify(spec)}`)
+    this.write(`>player p1 ${JSON.stringify({
       name: options.player.name, team: Teams.pack(options.player.team.map(toSet)),
     })}`)
-    this.stream.write(`>player p2 ${JSON.stringify({
+    this.write(`>player p2 ${JSON.stringify({
       name: options.foe.name, team: Teams.pack(options.foe.team.map(toSet)),
     })}`)
   }
 
-  /** 명령을 넣는다. `p1 move 1`, `p2 move 2` 같은 sim 문법 그대로 */
-  send(command: string): void {
-    this.stream.write(`>${command}`)
+  private write(line: string): void {
+    void this.streams.omniscient.write(line)
   }
 
-  /** 모여 있는 프로토콜 줄을 전부 꺼낸다. 꺼낸 줄은 버퍼에서 사라진다 */
-  drain(): string[] {
-    return this.buffer.splice(0, this.buffer.length)
+  /** 명령을 넣는다. `p1 move 1`, `p2 move 2` 같은 sim 문법 그대로 */
+  send(command: string): void {
+    this.write(`>${command}`)
+  }
+
+  /** 한쪽에 모여 있는 줄을 전부 꺼낸다. 꺼낸 줄은 버퍼에서 사라진다 */
+  drain(side: SideId): string[] {
+    return this.buffer[side].splice(0, this.buffer[side].length)
   }
 
   /**
-   * 버퍼가 찰 때까지 한 틱 양보한다.
+   * 버퍼가 찰 때까지 한 틱 양보하고 양쪽 줄을 꺼낸다.
    *
    * sim은 즉시 계산하지만 스트림이 마이크로태스크로 흐르기 때문에, 명령을 넣은
    * 직후에는 아직 버퍼가 비어 있다. 시간이 걸리는 게 아니라 순서 문제다
    */
-  async settle(): Promise<string[]> {
+  async settle(): Promise<SideLines> {
     await Promise.resolve()
     await new Promise((r) => setTimeout(r, 0))
-    return this.drain()
+    return { p1: this.drain('p1'), p2: this.drain('p2') }
   }
 
   get ended(): boolean {
@@ -152,7 +170,7 @@ export class BattleSession {
     if (this.destroyed) return
     this.destroyed = true
     try {
-      void this.stream.destroy()
+      void this.raw.destroy()
     } catch {
       // 이미 닫힌 스트림. 정리가 목적이므로 여기서 더 할 일이 없다
     }

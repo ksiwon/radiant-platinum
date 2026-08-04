@@ -16,6 +16,16 @@ import { Dex } from '@pkmn/sim'
 /** 플래티넘은 4세대다. sim의 세대별 덱스를 그 세대로 고정한다 */
 export const gen4 = Dex.forGen(4)
 
+// ⚠️ `Dex.forGen(4)`는 **세대로 거르지 않는다.** 4세대 규칙과 4세대 수치를 얹어
+// 줄 뿐, 표에는 이후 세대 항목이 그대로 남아 있다 — 실측으로 종족 532개, 기술
+// 468개, 특성 193개가 더 들어 있고 전부 `exists: true`다. 그대로 두면 `조로아크`가
+// 571번으로 오가는데 우리 데이터에는 493번까지밖에 없다.
+//
+// 그래서 양방향 모두 4세대 범위에서 자른다. 경계 밖은 "그런 것 없음"이다.
+const MAX_SPECIES = 493
+const MAX_MOVE = 467
+const MAX_ABILITY = 123
+
 let speciesIndex: Map<number, string> | null = null
 let moveIndex: Map<number, string> | null = null
 let abilityIndex: Map<number, string> | null = null
@@ -31,7 +41,7 @@ function species(): Map<number, string> {
   if (speciesIndex) return speciesIndex
   const m = new Map<number, string>()
   for (const s of gen4.species.all()) {
-    if (s.num <= 0 || s.forme) continue
+    if (s.num <= 0 || s.num > MAX_SPECIES || s.forme) continue
     if (!m.has(s.num)) m.set(s.num, s.name)
   }
   speciesIndex = m
@@ -49,7 +59,7 @@ function moves(): Map<number, string> {
   if (moveIndex) return moveIndex
   const shortest = new Map<number, { id: string; name: string }>()
   for (const mv of gen4.moves.all()) {
-    if (mv.num <= 0) continue
+    if (mv.num <= 0 || mv.num > MAX_MOVE) continue
     const cur = shortest.get(mv.num)
     if (!cur || mv.id.length < cur.id.length) shortest.set(mv.num, { id: mv.id, name: mv.name })
   }
@@ -67,7 +77,7 @@ function abilities(): Map<number, string> {
   if (abilityIndex) return abilityIndex
   const m = new Map<number, string>()
   for (const a of gen4.abilities.all()) {
-    if (a.num <= 0) continue
+    if (a.num <= 0 || a.num > MAX_ABILITY) continue
     if (!m.has(a.num)) m.set(a.num, a.name)
   }
   abilityIndex = m
@@ -87,4 +97,30 @@ export function simSpecies(id: number): string | null {
 /** 롬 기술 번호 → sim 기술 이름. 모르는 번호면 null */
 export function simMove(id: number): string | null {
   return moves().get(id) ?? null
+}
+
+// ── 반대 방향 ────────────────────────────────────────────────────────────────
+// 프로토콜은 이름으로 말한다(`|switch|p1a: 빛나|Turtwig, L5, F`). 우리 UI·모델·
+// 연출은 전부 번호로 도는 체계라, 들어오는 이름을 여기서 번호로 되돌린다.
+//
+// 위쪽 정방향 색인을 뒤집지 않고 덱스에 직접 묻는다 — 폼 이름(`Deoxys-Attack`)이나
+// 파생 기술(`Hidden Power Water`)처럼 정방향 색인이 안 담고 있는 이름도 프로토콜에는
+// 나올 수 있고, 그 경우에도 번호는 기본형과 같기 때문이다.
+
+/** sim 종족 이름 → 롬 번호. 모르는 이름이면 null */
+export function romSpecies(name: string): number | null {
+  const s = gen4.species.get(name)
+  return s.exists && s.num > 0 && s.num <= MAX_SPECIES ? s.num : null
+}
+
+/** sim 기술 이름 → 롬 번호. 모르는 이름이면 null */
+export function romMove(name: string): number | null {
+  const m = gen4.moves.get(name)
+  return m.exists && m.num > 0 && m.num <= MAX_MOVE ? m.num : null
+}
+
+/** sim 특성 이름 → 롬 번호. 모르는 이름이면 null */
+export function romAbility(name: string): number | null {
+  const a = gen4.abilities.get(name)
+  return a.exists && a.num > 0 && a.num <= MAX_ABILITY ? a.num : null
 }

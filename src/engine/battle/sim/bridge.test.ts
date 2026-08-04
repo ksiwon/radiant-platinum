@@ -9,7 +9,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { gen4, simAbility, simMove, simSpecies } from './bridge'
+import {
+  gen4, romAbility, romMove, romSpecies, simAbility, simMove, simSpecies,
+} from './bridge'
 
 const data = (name: string) =>
   JSON.parse(readFileSync(resolve(__dirname, '../../../../public/data', name), 'utf8'))
@@ -169,5 +171,45 @@ describe('특성 데이터', () => {
 
   it('0번은 특성 없음이다', () => {
     expect(simAbility(0)).toBeNull()
+  })
+})
+
+describe('반대 방향 — 이름에서 번호로', () => {
+  // 프로토콜은 이름으로 말한다. 그 이름이 번호로 안 돌아오면 화면에 한국어 이름도,
+  // 3D 모델도 못 띄운다 — 조용히 "?"가 뜨는 게 아니라 아무것도 안 뜬다
+  it('493종이 왕복한다', () => {
+    for (let id = 1; id <= DEX; id++) {
+      expect(romSpecies(simSpecies(id)!), `${id} ${speciesNames[id]}`).toBe(id)
+    }
+  })
+
+  it('기술이 왕복한다', () => {
+    for (const m of realMoves()) {
+      expect(romMove(simMove(m.id)!), `${m.id} ${moveNames[m.id]}`).toBe(m.id)
+    }
+  })
+
+  it('파생 이름도 같은 번호로 온다', () => {
+    // 프로토콜에는 정방향 색인이 안 담고 있는 이름이 나올 수 있다. 폼과 파생 기술이
+    // 그렇다 — 번호는 기본형과 같아야 한다
+    expect(romSpecies('Deoxys-Attack')).toBe(386)
+    expect(romSpecies('Shaymin-Sky')).toBe(492)
+    expect(romMove('Hidden Power Water')).toBe(237)
+  })
+
+  it('5세대 이상은 양방향 다 없는 것으로 친다', () => {
+    // `Dex.forGen(4)`는 세대로 거르지 않는다 — 표에 조로아크(571)가 그대로 있고
+    // exists도 true다. 안 자르면 우리 데이터에 없는 번호가 흘러다닌다
+    expect(romSpecies('Zoroark')).toBeNull()
+    expect(romMove('Hurricane')).toBeNull()
+    expect(romAbility('Justified')).toBeNull()
+    expect(simSpecies(571)).toBeNull()
+    expect(simMove(542)).toBeNull()
+    expect(simAbility(154)).toBeNull()
+  })
+
+  it('모르는 이름은 null이다', () => {
+    expect(romSpecies('')).toBeNull()
+    expect(romMove('없는기술')).toBeNull()
   })
 })

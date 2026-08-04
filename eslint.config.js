@@ -98,7 +98,9 @@ export default tseslint.config(
     },
   },
   {
-    files: ['**/*.test.ts'],
+    // `.testkit.ts`는 여러 테스트가 나눠 쓰는 준비 코드다. 테스트와 같은 규칙을
+    // 받되 이름으로 구분되어, 앱 코드가 실수로 가져다 쓰면 바로 눈에 띈다
+    files: ['**/*.test.ts', '**/*.testkit.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',
       // 테스트는 추출물을 디스크에서 직접 읽는다 — 유일하게 노드 API가 허용되는 곳
