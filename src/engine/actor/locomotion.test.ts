@@ -116,6 +116,27 @@ describe('포즈 적용', () => {
     expect(spreadX).toBeLessThan(0.08)
   })
 
+  it('넓적다리가 gait의 부호를 그대로 따른다 — 양수가 앞이다', () => {
+    // ⚠️ 이 테스트가 없어서 FORWARD가 반대로 박힌 채 통과했다. 아래 "발은 뜬 채로
+    // 앞으로"는 발 **높이**를 무릎이 지배하기 때문에 넓적다리 부호를 못 잡는다.
+    // 여기서는 넓적다리 본이 가리키는 월드 방향만 본다 — 무릎이 개입할 여지가 없다
+    const { root, nodes } = loadSkeleton()
+    const rig = createRig(root, new Object3D())!
+    const q = new Quaternion()
+    const at = (target: number) => {
+      resetRig(rig)
+      rig.phase = 0
+      // 위상만 원하는 값으로 밀어 놓고 한 프레임 적용한다
+      while (rig.phase < target) updateLocomotion(rig, 1 / 2000, 4.5, 4.5, 8)
+      root.updateMatrixWorld(true)
+      nodes.get('LThigh')!.getWorldQuaternion(q)
+      return new Vector3(1, 0, 0).applyQuaternion(q).z
+    }
+    // sin(π/2)=+1 → 최대 전방, sin(3π/2)=-1 → 최대 후방
+    expect(at(Math.PI / 2), '최대 전방에서 넓적다리가 뒤를 본다').toBeGreaterThan(0.3)
+    expect(at((3 * Math.PI) / 2), '최대 후방에서 넓적다리가 앞을 본다').toBeLessThan(-0.3)
+  })
+
   it('발은 뜬 채로 앞으로, 붙은 채로 뒤로 간다 — 걷기의 정의다', () => {
     const frames = sampleCycle(4.5)
     const ys = frames.map((f) => f.footY)
@@ -179,6 +200,29 @@ describe('포즈 적용', () => {
     // 좌우가 거울이다 — 한쪽 부호만 틀리면 그 팔이 몸통을 뚫는다
     expect(l.x).toBeCloseTo(-r.x, 4)
     expect(l.z).toBeCloseTo(r.z, 4)
+  })
+
+  it('쇄골이 어깨 동작의 일부를 나눠 진다 — 팔 하나에 몰면 삼각근이 파인다', () => {
+    const { root, nodes } = loadSkeleton()
+    const bind = new Map<string, Quaternion>()
+    for (const n of ['LShoulder', 'LArm']) {
+      const q = new Quaternion()
+      nodes.get(n)!.getWorldQuaternion(q)
+      bind.set(n, q)
+    }
+    const rig = createRig(root, new Object3D())!
+    for (let i = 0; i < 40; i++) updateLocomotion(rig, 1 / 120, 4.5, 4.5, 8)
+    root.updateMatrixWorld(true)
+
+    const moved = (n: string) => {
+      const q = new Quaternion()
+      nodes.get(n)!.getWorldQuaternion(q)
+      return bind.get(n)!.angleTo(q)
+    }
+    // 팔의 회전에는 쇄골 몫이 이미 포함돼 있다(자식이라 곱해진다). 그 비율을 본다
+    const ratio = moved('LShoulder') / moved('LArm')
+    expect(ratio, `쇄골 몫 ${ratio.toFixed(3)}`).toBeGreaterThan(0.05)
+    expect(ratio, `쇄골 몫 ${ratio.toFixed(3)}`).toBeLessThan(0.35)
   })
 
   it('헬퍼 본이 관절 회전의 절반만 받는다 — 어깨가 한 본에 몰리지 않게', () => {

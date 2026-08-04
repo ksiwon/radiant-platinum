@@ -38,12 +38,14 @@ const REQUIRED = [
  * 여기서 되살린다 — 안 하면 어깨·팔꿈치가 한 본에 몰려 뭉개진다.
  */
 const HELPERS: [helper: string, joint: string][] = [
+  ['LShoulderEX', 'LShoulder'], ['RShoulderEX', 'RShoulder'],
   ['LArmEX', 'LArm'], ['RArmEX', 'RArm'],
   ['LForeArmEX', 'LForeArm'], ['RForeArmEX', 'RForeArm'],
 ]
 
 const OPTIONAL = [
   'LToe', 'RToe', 'Spine2', 'Spine3', 'Neck', 'Head',
+  'LShoulder', 'RShoulder',
   ...HELPERS.map(([h]) => h),
 ] as const
 
@@ -153,10 +155,27 @@ function applyHelper(rig: Rig, helper: string, joint: string, fraction = 0.5) {
  *
  * ⚠️ 부호를 눈으로 유도하지 말 것. 본이 로컬 +X로 뻗고 Hips가 180° 돌아 있는
  * 리그에서는 "월드 X 양의 회전이 아래를 -Z로 보낸다"까지 맞아도 최종 부호가
- * 뒤집힌다. 실제로 한 번 틀려서 캐릭터가 뒤로 걸었다. `locomotion.test.ts`의
- * "발은 뜬 채로 앞으로" 테스트가 이 상수의 유일한 근거다.
+ * 뒤집힌다.
+ *
+ * ⚠️⚠️ 이 상수는 한 번 +1로 잘못 박힌 채 테스트를 통과했다. "발은 뜬 채로 앞으로"
+ * 테스트가 근거였는데, 발 **높이**를 넓적다리가 아니라 무릎이 지배하기 때문에
+ * 그 테스트는 무릎 굽힘이 만든 앞뒤 이동을 넓적다리의 것으로 착각하고 통과했다.
+ * 이제 `넓적다리 방향` 테스트가 무릎과 무관하게 이 부호만 직접 못박는다.
  */
-const FORWARD = 1
+const FORWARD = -1
+
+/**
+ * 쇄골이 가져가는 어깨 동작의 몫.
+ *
+ * 사람의 팔은 어깨 관절 하나로 움직이지 않는다 — 팔을 앞으로 내밀면 쇄골이 따라
+ * 나오고, 팔을 내리면 어깨가 함께 내려앉는다. 전부 LArm 하나에 걸면 삼각근이
+ * 제자리에서 접히면서 어깨가 파인다.
+ *
+ * 나머지 몫은 LArm이 받는다. 두 본의 월드 회전은 곱해지므로(자식이 부모 회전을
+ * 그대로 물려받는다) 같은 축이면 합이 정확히 보존된다 — 팔이 내려오는 총량은
+ * 이 값을 바꿔도 변하지 않고, 변형만 두 관절에 나뉜다.
+ */
+const SHOULDER_SHARE = 0.15
 
 /**
  * @param dt    렌더 델타(초). 시뮬레이션이 아니라 표현이라 렌더 레이트로 돌린다
@@ -167,11 +186,12 @@ export function updateLocomotion(
   rig: Rig, dt: number, speed: number, walkSpeed: number, runSpeed: number,
 ) {
   rig.elapsed += dt
-  rig.phase = (rig.phase + phaseRate(speed) * dt) % (Math.PI * 2)
-
   // 아주 느린 속도까지 걷게 하면 제자리에서 발을 떠는 것처럼 보인다
   const moving = Math.min(1, speed / (walkSpeed * 0.55))
   const run = Math.max(0, Math.min(1, (speed - walkSpeed) / Math.max(1e-3, runSpeed - walkSpeed)))
+  // 보폭이 달리기에서 늘어나므로 run을 먼저 구해야 위상 속도를 정할 수 있다
+  rig.phase = (rig.phase + phaseRate(speed, run) * dt) % (Math.PI * 2)
+
   const g = sampleGait(rig.phase, moving, run)
   const j = rig.joints
 
@@ -186,8 +206,13 @@ export function updateLocomotion(
   // 팔: T포즈에서 옆구리로 내린 뒤(roll) 그 자세에서 앞뒤로 흔든다(pitch).
   // 좌우가 거울이라 내리는 방향의 부호가 반대다.
   // armForward는 상수 오프셋이라 서 있을 때도 팔이 몸통보다 조금 앞에 온다
-  apply(j.LArm, 'LArm', FORWARD * (g.armL + g.armForward), -g.armDrop)
-  apply(j.RArm, 'RArm', FORWARD * (g.armR + g.armForward), g.armDrop)
+  const swingL = FORWARD * (g.armL + g.armForward)
+  const swingR = FORWARD * (g.armR + g.armForward)
+  const arm = 1 - SHOULDER_SHARE
+  apply(j.LShoulder, 'LShoulder', swingL * SHOULDER_SHARE, -g.armDrop * SHOULDER_SHARE)
+  apply(j.RShoulder, 'RShoulder', swingR * SHOULDER_SHARE, g.armDrop * SHOULDER_SHARE)
+  apply(j.LArm, 'LArm', swingL * arm, -g.armDrop * arm)
+  apply(j.RArm, 'RArm', swingR * arm, g.armDrop * arm)
   // 팔꿈치도 뒤로만 접힌다
   apply(j.LForeArm, 'LForeArm', g.forearmL)
   apply(j.RForeArm, 'RForeArm', g.forearmR)

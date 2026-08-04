@@ -4,9 +4,15 @@
 // 숫자로 잡힌다: 양다리가 같은 위상이면 깡충거리고, 무릎이 반대로 꺾이면
 // 관절이 뒤집히고, 위상 속도가 속도에 안 묶이면 발이 미끄러진다.
 import { describe, it, expect } from 'vitest'
-import { phaseRate, sampleGait, idleBreath, STRIDE_LENGTH } from './gait'
+import { phaseRate, sampleGait, idleBreath, strideLength, STRIDE_LENGTH } from './gait'
 
 const TWO_PI = Math.PI * 2
+
+/** 넓적다리 각이 sin(p)이고 양수가 앞이므로 접지는 π/2, 이탈은 3π/2다 */
+const CONTACT = Math.PI / 2
+const MID_STANCE = Math.PI
+const TOE_OFF = (3 * Math.PI) / 2
+const MID_SWING = 0
 
 describe('위상 속도', () => {
   it('보폭에서 유도된다 — 속도 × 시간 = 걸음 수 × 보폭', () => {
@@ -16,6 +22,25 @@ describe('위상 속도', () => {
     // 한 사이클이 두 걸음이다
     const distance = cycles * 2 * STRIDE_LENGTH
     expect(distance).toBeCloseTo(speed * seconds, 6)
+  })
+
+  it('달릴 때도 보폭에서 유도된다 — 진폭만 키우면 발이 미끄러진다', () => {
+    const speed = 8
+    const cycles = phaseRate(speed, 1) / TWO_PI
+    expect(cycles * 2 * strideLength(1)).toBeCloseTo(speed, 6)
+  })
+
+  it('보폭이 넓적다리 진폭과 함께 늘어난다', () => {
+    expect(strideLength(1) / strideLength(0)).toBeCloseTo(
+      Math.abs(sampleGait(CONTACT, 1, 1).thighL / sampleGait(CONTACT, 1, 0).thighL), 6,
+    )
+  })
+
+  it('달리기 회전수가 사람 범위 안에 있다', () => {
+    // 보폭을 걷기 값에 고정하면 8m/s에서 초당 9.4걸음이 나온다. 그렇게 뛰는 사람은 없다
+    const stepsPerSecond = (2 * phaseRate(8, 1)) / TWO_PI
+    expect(stepsPerSecond).toBeGreaterThan(4)
+    expect(stepsPerSecond).toBeLessThan(6.5)
   })
 
   it('정지하면 위상이 멈춘다 — 제자리걸음이 나오지 않는다', () => {
@@ -53,6 +78,44 @@ describe('보행 사이클', () => {
       expect(g.forearmL).toBeGreaterThanOrEqual(0)
       expect(g.forearmR).toBeGreaterThanOrEqual(0)
     }
+  })
+
+  it('무릎이 완전히 펴지는 순간이 없다 — 락되면 죽마를 짚은 것처럼 보인다', () => {
+    for (let p = 0; p < TWO_PI; p += 0.05) {
+      expect(sampleGait(p, 1, 1).kneeL, `phase ${p.toFixed(2)}`).toBeGreaterThan(0.1)
+      expect(sampleGait(p, 1, 0).kneeL, `phase ${p.toFixed(2)}`).toBeGreaterThan(0.1)
+    }
+  })
+
+  it('유각기에 입각기보다 훨씬 많이 접힌다 — 두 굽힘의 크기가 다르다', () => {
+    for (const run of [0, 1]) {
+      const swing = sampleGait(MID_SWING, 1, run).kneeL
+      const stance = sampleGait(MID_STANCE, 1, run).kneeL
+      expect(swing / stance, `run=${run}`).toBeGreaterThan(2.5)
+      // 그래도 입각기 흡수는 있어야 한다 — 없으면 뻣뻣하게 착지한다
+      expect(stance, `run=${run}`).toBeGreaterThan(0.2)
+    }
+  })
+
+  it('달릴 때 무릎이 90°를 넘게 접힌다 — 다리를 쭉 편 채 벌리지 않는다', () => {
+    expect(sampleGait(MID_SWING, 1, 1).kneeL).toBeGreaterThan(Math.PI / 2)
+  })
+
+  it('접지·이탈 순간에는 다리가 거의 펴져 있다', () => {
+    expect(sampleGait(CONTACT, 1, 0).kneeL).toBeLessThan(0.4)
+    expect(sampleGait(TOE_OFF, 1, 0).kneeL).toBeLessThan(0.4)
+  })
+
+  it('팔꿈치는 앞으로 나올 때 더 접힌다', () => {
+    // armL은 sOpp 위상이라 이탈(3π/2)에서 최대 전방이다
+    expect(sampleGait(TOE_OFF, 1, 1).armL).toBeGreaterThan(0)
+    expect(sampleGait(TOE_OFF, 1, 1).forearmL).toBeGreaterThan(sampleGait(CONTACT, 1, 1).forearmL)
+  })
+
+  it('달릴 때 팔꿈치가 60°를 넘게 접힌다 — 팔을 쭉 펴고 뛰지 않는다', () => {
+    expect(sampleGait(MID_SWING, 1, 1).forearmL).toBeGreaterThan(1.05)
+    // 걷기는 그 정도까지 접지 않는다
+    expect(sampleGait(MID_SWING, 1, 0).forearmL).toBeLessThan(0.9)
   })
 
   it('골반은 내려가기만 한다 — 발이 지면을 뚫고 뜨지 않는다', () => {
