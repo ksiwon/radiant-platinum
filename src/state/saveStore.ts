@@ -7,6 +7,12 @@ import { idbStorage } from './idbStorage'
 /** 전국도감 493종을 담는 비트필드 크기 (ceil(493/8) = 62, 여유 두어 64) */
 export const DEX_BYTES = 64
 
+/**
+ * 도감 비트필드. `Uint8Array`는 기본이 `ArrayBufferLike`라 SharedArrayBuffer 뷰까지 허용하는데,
+ * 세이브 데이터는 structured clone으로 오가는 독립 버퍼여야 하므로 `ArrayBuffer`로 좁힌다.
+ */
+export type DexField = Uint8Array<ArrayBuffer>
+
 export interface TrainerInfo {
   name: string
   gender: 'boy' | 'girl'
@@ -31,7 +37,7 @@ export interface SaveData {
   boxes: PokemonInstance[][]
   bag: Record<ItemId, number>
   badges: number // 비트마스크
-  pokedex: { seen: Uint8Array; caught: Uint8Array }
+  pokedex: { seen: DexField; caught: DexField }
   flags: Record<string, boolean | number>
   position: { mapId: string; x: number; y: number; z: number; facing: number }
   money: number
@@ -60,8 +66,11 @@ export function dexHas(field: Uint8Array, dexNo: number): boolean {
   return (field[i >> 3]! & (1 << (i & 7))) !== 0
 }
 
-export function dexSet(field: Uint8Array, dexNo: number): Uint8Array {
-  const next = new Uint8Array(field) // 불변 갱신 — 구독자가 변화를 감지할 수 있어야 한다
+export function dexSet(field: Uint8Array, dexNo: number): DexField {
+  // 불변 갱신 — 구독자가 변화를 감지할 수 있어야 한다.
+  // new Uint8Array(view)는 ArrayBufferLike로 추론되므로 길이로 만들고 복사한다.
+  const next = new Uint8Array(field.length)
+  next.set(field)
   const i = dexNo - 1
   next[i >> 3]! |= 1 << (i & 7)
   return next
