@@ -3,13 +3,6 @@ import { create } from 'zustand'
 
 export type GamePhase = 'title' | 'overworld'
 
-export interface Encounter {
-  species: number
-  level: number
-  /** 현재 로케일 이름. 씬이 종족 번호로 찾아 넣는다 */
-  name: string
-}
-
 interface SessionState {
   phase: GamePhase
   setPhase: (p: GamePhase) => void
@@ -23,9 +16,6 @@ interface SessionState {
    */
   zoneName: string | null
   setZoneName: (name: string | null) => void
-  /** 방금 튀어나온 야생. 전투 화면이 생기기 전까지는 배너로만 보여준다 */
-  encounter: Encounter | null
-  setEncounter: (e: Encounter | null) => void
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -35,6 +25,4 @@ export const useSessionStore = create<SessionState>((set) => ({
   mountStage: () => set({ stageMounted: true }),
   zoneName: null,
   setZoneName: (zoneName) => set((s) => (s.zoneName === zoneName ? s : { zoneName })),
-  encounter: null,
-  setEncounter: (encounter) => set({ encounter }),
 }))

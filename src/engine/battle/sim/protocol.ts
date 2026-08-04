@@ -6,16 +6,38 @@
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import { Protocol } from '@pkmn/protocol'
 import type {
-  Actor, BattleEvent, BattleRequest, BoostStat, Effectiveness,
+  Actor, BattleEvent, BattleRequest, BoostStat, Cause, Effectiveness,
 } from '../events'
 import { parseActor, parseCondition, parseDetails } from '../events'
 import type { Status } from '../../pokemon/instance'
 import { romAbility, romMove, romSpecies } from './bridge'
 
-/** `[from] ability: Sand Stream` → `ability: Sand Stream` */
-function from(kw: Record<string, unknown>): string | null {
+const STATUS_CAUSES = new Set(['psn', 'tox', 'brn', 'frz', 'par', 'slp'])
+
+/**
+ * `[from] ability: Sand Stream` → 종류·번호·이름.
+ *
+ * 번호까지 여기서 푼다. 위층은 sim을 모르므로 `Leech Seed`를 한국어 이름으로
+ * 바꿀 방법이 없다 — 문구도 연출도 번호로 골라야 한다
+ */
+function from(kw: Record<string, unknown>): Cause | null {
   const v = kw['from']
-  return typeof v === 'string' && v ? v : null
+  if (typeof v !== 'string' || !v) return null
+  const colon = v.indexOf(':')
+  if (colon < 0) {
+    const name = v.trim()
+    return {
+      kind: STATUS_CAUSES.has(name) ? 'status' : 'other',
+      id: null,
+      name,
+    }
+  }
+  const kind = v.slice(0, colon).trim()
+  const name = v.slice(colon + 1).trim()
+  if (kind === 'move') return { kind: 'move', id: romMove(name), name }
+  if (kind === 'ability') return { kind: 'ability', id: romAbility(name), name }
+  if (kind === 'item') return { kind: 'item', id: null, name }
+  return { kind: 'other', id: null, name }
 }
 
 const BOOST_STATS: BoostStat[] = ['atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion']

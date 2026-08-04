@@ -33,11 +33,11 @@ export function rng(seed: number): () => number {
 }
 
 /** 개체를 만들고 HP·PP를 채운다. createWild는 기술 데이터를 모르므로 여기서 마무리한다 */
-export function spawn(id: number, level: number, seed: number): SideMon {
+export function spawn(id: number, level: number, seed: number, key = `k${seed}`): SideMon {
   const sp = speciesById.get(id)
   if (!sp) throw new Error(`종족 #${id}가 데이터에 없다`)
   const mon = createWild({ species: sp, level, rng: rng(seed), otId: 1234, otSecretId: 5678 })
   mon.hp = statsOf(mon, sp).hp
   for (const slot of mon.moves) slot.pp = movesById.get(slot.move)?.pp ?? 5
-  return { mon, species: sp, label: speciesNames[id] ?? `#${id}` }
+  return { mon, species: sp, key }
 }

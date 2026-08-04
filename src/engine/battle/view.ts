@@ -22,8 +22,11 @@ export function noBoosts(): Boosts {
 export interface ViewMon {
   slot: string
   side: SideId
-  /** 별명. 표시용 */
-  name: string
+  /**
+   * 세션에 넣은 고유 키(`SideMon.key`). **표시 이름이 아니다** — 화면에 쓸 이름은
+   * `species`로 찾는다. 같은 종을 둘 데리고 있어도 여기서는 구분된다
+   */
+  key: string
   /** 롬 종족 번호. 모델·한국어 이름·도감이 전부 이걸로 돈다 */
   species: number | null
   speciesName: string
@@ -87,7 +90,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       const mon: ViewMon = {
         slot: e.actor.slot,
         side: e.actor.side,
-        name: e.actor.name,
+        key: e.actor.name,
         species: e.species,
         speciesName: e.speciesName,
         level: e.level,

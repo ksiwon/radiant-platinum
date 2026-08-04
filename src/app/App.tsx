@@ -8,7 +8,7 @@ import { BrowserRouter, Routes, Route } from 'react-router'
 import { TitleScreen } from '../ui/screens/TitleScreen'
 import { PerfOverlay } from '../ui/hud/PerfOverlay'
 import { ZoneBanner } from '../ui/hud/ZoneBanner'
-import { EncounterBanner } from '../ui/hud/EncounterBanner'
+import { BattleScreen } from '../ui/battle/BattleScreen'
 import { dayTheme } from '../ui/theme/day.css'
 import { installAudioUnlock } from '../engine/audio/unlock'
 import { useSessionStore } from '../state/sessionStore'
@@ -38,7 +38,7 @@ export function App() {
       )}
       <PerfOverlay />
       <ZoneBanner />
-      <EncounterBanner />
+      <BattleScreen />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<TitleScreen />} />

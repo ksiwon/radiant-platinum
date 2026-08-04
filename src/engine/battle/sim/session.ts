@@ -7,8 +7,8 @@
 // ⚠️ 이 폴더는 지연 로딩 경계다 (bridge.ts 주석 참고). 오버월드에서 정적 import 금지.
 import { BattleStreams, Teams } from '@pkmn/sim'
 import type { Species } from '../../../data/schema'
-import type { SideId } from '../events'
-import type { PokemonInstance } from '../../pokemon/instance'
+import type { FinalMon, SideId } from '../events'
+import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { natureOf } from '../../pokemon/instance'
 import { simAbility, simMove, simSpecies } from './bridge'
 
@@ -24,8 +24,14 @@ const NATURE_NAMES = [
 export interface SideMon {
   mon: PokemonInstance
   species: Species
-  /** 화면에 보일 이름. 별명이 없으면 종족 이름 */
-  label: string
+  /**
+   * sim 안에서 이 개체를 가리키는 **고유 키**. 화면에 쓰는 이름이 아니다.
+   *
+   * 프로토콜은 개체를 `p1a: <이름>`으로만 가리키므로, 여기에 표시 이름을 넣으면
+   * 같은 종을 둘 데리고 있을 때(이브이 둘) 어느 쪽인지 구분할 수 없다. 배틀이
+   * 끝나고 HP를 세이브에 되돌릴 때 그 구분이 반드시 필요하다.
+   */
+  key: string
 }
 
 /**
@@ -52,7 +58,7 @@ function toSet(side: SideMon) {
   const abilityId = species.abilities[slot] || species.abilities[0] || 0
 
   return {
-    name: side.label,
+    name: side.key,
     species: name,
     level: mon.level,
     moves,
@@ -157,6 +163,31 @@ export class BattleSession {
 
   get ended(): boolean {
     return this.closed
+  }
+
+  /**
+   * 배틀이 끝난 시점의 한쪽 개체 상태. 세이브에 HP·상태이상을 되돌릴 때 쓴다.
+   *
+   * 프로토콜로는 이걸 정확히 알 수 없다 — 벤치에 있는 애들의 최종 HP는 어느 줄에도
+   * 안 나오고, `|request|`는 마지막 선택 시점 것이라 그 뒤 데미지가 빠져 있다.
+   * 그래서 sim의 배틀 객체를 직접 읽는다.
+   *
+   * **`sides[i].pokemon`은 팀 순서가 아니다** — 교체하면 나온 애가 0번으로 앞당겨진다
+   * (실측: `a0 a1 a2` → `a2 a1 a0`). 그래서 순서가 아니라 키로 짝짓는다.
+   * `destroy()` 뒤에는 빈 배열이다
+   */
+  results(side: SideId): FinalMon[] {
+    const battle = this.raw.battle
+    if (!battle) return []
+    const s = battle.sides[side === 'p1' ? 0 : 1]
+    if (!s) return []
+    return s.pokemon.map((p) => ({
+      key: p.name,
+      hp: p.hp,
+      maxHp: p.maxhp,
+      status: (p.status || 'ok') as Status,
+      fainted: p.fainted,
+    }))
   }
 
   /**

@@ -36,19 +36,16 @@ let interiorLoad: Promise<void> | null = null
 export interface WorldBoot {
   overworld: MapGrid
   spawn: { x: number; z: number; map: number }
-  /** 종족 번호로 색인된 이름. 조우 배너가 쓴다 */
-  speciesNames: string[]
   /** 지역명 126개. 맵 헤더의 label로 색인한다 */
   locationNames: string[]
 }
 
 /** 시작 데이터. world 싱글톤을 채우고 오버월드 격자를 돌려준다 */
 export async function bootWorld(): Promise<WorldBoot> {
-  const [mapsFile, eventsFile, encFile, speciesNames, locationNames, meta, bin] = await Promise.all([
+  const [mapsFile, eventsFile, encFile, locationNames, meta, bin] = await Promise.all([
     json<{ maps: MapHeader[] }>('maps.json'),
     json<{ events: Record<string, EventFile> }>('events.json'),
     json<{ tables: EncounterTable[] }>('encounters.json'),
-    json<string[]>('names/species.ko.json'),
     json<string[]>('names/locations.ko.json'),
     json<MatrixMeta>('matrices/0.json'),
     bytes('matrices/0.bin'),
@@ -59,7 +56,7 @@ export async function bootWorld(): Promise<WorldBoot> {
   const grid = new MapGrid(meta, new Uint16Array(bin))
   grids.set(0, grid)
   if (!meta.spawn) throw new Error('오버월드 메타에 스폰이 없다')
-  return { overworld: grid, spawn: meta.spawn, speciesNames, locationNames }
+  return { overworld: grid, spawn: meta.spawn, locationNames }
 }
 
 function loadInteriors(): Promise<void> {

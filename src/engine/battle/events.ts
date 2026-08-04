@@ -66,6 +66,34 @@ export interface BattleRequest {
 export type Effectiveness = 'super' | 'resisted' | 'immune'
 
 /**
+ * 배틀이 끝난 시점의 개체 하나. `key`는 `SideMon.key`와 같다.
+ *
+ * 프로토콜에는 벤치에 있던 애들의 최종 HP가 안 나온다. 이건 sim의 배틀 객체에서
+ * 직접 읽은 값이고, 세이브에 되돌릴 정본이다
+ */
+export interface FinalMon {
+  key: string
+  hp: number
+  maxHp: number
+  status: Status
+  fainted: boolean
+}
+
+/**
+ * `[from]`이 가리키는 원인. `ability: Sand Stream`, `move: Leech Seed`, `psn`처럼 온다.
+ *
+ * 이름을 그대로 두지 않고 번호까지 풀어 둔다 — 문구도 연출도 번호로 골라야 하고,
+ * 이 변환은 sim을 아는 파서만 할 수 있다.
+ */
+export interface Cause {
+  kind: 'ability' | 'item' | 'move' | 'status' | 'other'
+  /** 기술·특성이면 롬 번호. 못 찾으면 null */
+  id: number | null
+  /** 번호가 없을 때 쓸 원문 (`psn`, `Sandstorm`) */
+  name: string
+}
+
+/**
  * 한 줄에서 뽑아낸 사건 하나.
  *
  * `other`는 아직 모양을 안 준 줄이다 — **버리지 않는다.** 조용히 사라지면 연출이
@@ -96,10 +124,10 @@ export type BattleEvent =
       /** `[miss]` — 빗나간 기술도 `|move|`는 나온다 */
       miss: boolean
       /** `[from] ability: Magic Bounce` 같은 유래 */
-      from: string | null
+      from: Cause | null
     }
-  | { kind: 'damage'; actor: Actor; condition: Condition; from: string | null }
-  | { kind: 'heal'; actor: Actor; condition: Condition; from: string | null }
+  | { kind: 'damage'; actor: Actor; condition: Condition; from: Cause | null }
+  | { kind: 'heal'; actor: Actor; condition: Condition; from: Cause | null }
   | { kind: 'faint'; actor: Actor }
   | { kind: 'status'; actor: Actor; status: Status }
   | { kind: 'curestatus'; actor: Actor; status: Status }

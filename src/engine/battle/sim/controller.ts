@@ -10,9 +10,10 @@
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import type { BattleAction } from '../choice'
 import { chooseRandom, encodeAction, legalActions } from '../choice'
-import type { BattleEvent, BattleRequest, SideId } from '../events'
+import type { BattleEvent, BattleRequest, FinalMon, SideId } from '../events'
 import { applyEvent, emptyView, type BattleView } from '../view'
 import { parseLines } from './protocol'
+import { romMove } from './bridge'
 import { BattleSession, type BattleOptions } from './session'
 
 /** 한 걸음의 결과 */
@@ -56,9 +57,14 @@ export class BattleController {
     return { controller, step: await controller.advance() }
   }
 
-  /** 지금 우리가 고를 수 있는 것. 비어 있으면 배틀이 끝났거나 아직 준비 전이다 */
+  /**
+   * 지금 우리가 고를 수 있는 것. 비어 있으면 배틀이 끝났거나 아직 준비 전이다.
+   *
+   * 기술 번호를 여기서 풀어 준다 — 프로토콜은 영어 이름만 주고, 이름을 번호로
+   * 되돌릴 수 있는 것은 sim을 아는 이 계층뿐이다
+   */
   get actions(): BattleAction[] {
-    return legalActions(this.request.p1)
+    return legalActions(this.request.p1, romMove)
   }
 
   /** 쓰러져서 교체만 골라야 하는 턴인가. UI가 "도망" 버튼을 막는 데 쓴다 */
@@ -72,6 +78,11 @@ export class BattleController {
 
   get ended(): boolean {
     return this.view.ended
+  }
+
+  /** 배틀이 끝난 시점의 우리 파티 상태. 세이브에 되돌릴 값이다 */
+  results(side: SideId = 'p1'): FinalMon[] {
+    return this.session.results(side)
   }
 
   /** 우리 수를 두고 다음 선택 시점까지 나아간다 */

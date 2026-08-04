@@ -29,7 +29,6 @@ export function WorldLoader() {
     <MapStreamer
       initial={boot.overworld}
       spawn={boot.spawn}
-      speciesNames={boot.speciesNames}
       locationNames={boot.locationNames}
     />
   )

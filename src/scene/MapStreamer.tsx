@@ -15,6 +15,8 @@ import { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
+import { useBattleStore } from '../state/battleStore'
+import { setGameActive } from '../engine/input/keyboard'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
 
@@ -62,15 +64,13 @@ function buildWindow(grid: MapGrid, chunkIndex: number) {
 interface Props {
   initial: MapGrid
   spawn: { x: number; z: number; map: number }
-  /** 종족 번호로 색인된 이름 */
-  speciesNames: string[]
   /** 지역명. 맵 헤더의 label로 색인한다 */
   locationNames: string[]
 }
 
-export function MapStreamer({ initial, spawn, speciesNames, locationNames }: Props) {
+export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const setZone = useSessionStore((s) => s.setZoneName)
-  const setEncounter = useSessionStore((s) => s.setEncounter)
+  const startWild = useBattleStore((s) => s.startWild)
   const [grid, setGrid] = useState(initial)
   const [chunkIndex, setChunkIndex] = useState(() =>
     initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)))
@@ -107,6 +107,17 @@ export function MapStreamer({ initial, spawn, speciesNames, locationNames }: Pro
     resetEncounterTile()
   }, [setZone, displayName])
 
+  // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —
+  // 안 그러면 배틀 화면 뒤에서 계속 걸어다니고 두 번째 조우가 겹쳐 들어온다.
+  // 돌아올 때 `lastTile`은 일부러 초기화하지 않는다: 서 있던 풀숲 칸에서 곧바로
+  // 또 튀어나오면 안 되고, 원작도 한 칸 움직여야 다시 굴린다
+  const battlePhase = useBattleStore((s) => s.phase)
+  useEffect(() => {
+    const inBattle = battlePhase !== 'off'
+    encounters.suspended = inBattle
+    setGameActive(!inBattle)
+  }, [battlePhase])
+
   useEffect(() => {
     enter(initial, spawn.map, spawn.x, spawn.z)
     return () => {
@@ -116,9 +127,8 @@ export function MapStreamer({ initial, spawn, speciesNames, locationNames }: Pro
       world.pending = null
       encounters.pending = null
       setZone(null)
-      setEncounter(null)
     }
-  }, [initial, spawn, enter, setZone, setEncounter])
+  }, [initial, spawn, enter, setZone])
 
   // 프레임마다 도는 일은 정수 비교 둘뿐이다
   const warping = useRef(false)
@@ -147,11 +157,12 @@ export function MapStreamer({ initial, spawn, speciesNames, locationNames }: Pro
     const i = grid.chunkIndexAt(tx, tz)
     if (i >= 0) setChunkIndex((prev) => (prev === i ? prev : i))
 
-    // 야생이 나왔다 — 전투 화면이 생기기 전까지는 배너로만 알린다
+    // 야생이 나왔다. 배틀 청크는 이때 처음 받는다 — 그동안 판정을 멈춰 둔다
     if (encounters.pending) {
       const e = encounters.pending
       encounters.pending = null
-      setEncounter({ species: e.species, level: e.level, name: speciesNames[e.species] ?? `#${e.species}` })
+      encounters.suspended = true
+      void startWild({ species: e.species, level: e.level })
     }
   })
 

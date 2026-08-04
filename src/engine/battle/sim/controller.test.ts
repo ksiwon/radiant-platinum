@@ -18,8 +18,14 @@ const RATTATA = 19
 async function play(seed: number, playerTeam: number[], foeTeam: number[]) {
   const r = rng(seed)
   const { controller, step } = await BattleController.start({
-    player: { name: '빛나', team: playerTeam.map((id, i) => spawn(id, 20 + i * 3, seed * 10 + i)) },
-    foe: { name: '야생', team: foeTeam.map((id, i) => spawn(id, 18 + i * 3, seed * 10 + 50 + i)) },
+    player: {
+      name: '빛나',
+      team: playerTeam.map((id, i) => spawn(id, 20 + i * 3, seed * 10 + i, `p1-${i}`)),
+    },
+    foe: {
+      name: '야생',
+      team: foeTeam.map((id, i) => spawn(id, 18 + i * 3, seed * 10 + 50 + i, `p2-${i}`)),
+    },
     seed: [seed & 0xffff, (seed * 7) & 0xffff, (seed * 13) & 0xffff, (seed * 29) & 0xffff],
     random: r,
   })
@@ -43,8 +49,9 @@ async function play(seed: number, playerTeam: number[], foeTeam: number[]) {
   }
 
   const view = controller.state
+  const results = controller.results('p1')
   controller.destroy()
-  return { view, all, steps, stuck, sawForceSwitch }
+  return { view, all, steps, stuck, sawForceSwitch, results }
 }
 
 describe('배틀 진행', () => {
@@ -86,6 +93,25 @@ describe('배틀 진행', () => {
     expect(rebuilt.ended).toBe(view.ended)
   }, 30_000)
 
+  it('끝난 뒤 파티 상태를 키로 전부 돌려준다', async () => {
+    // 세이브에 HP를 되돌리려면 벤치에 있던 애들 것까지 알아야 한다. 프로토콜에는
+    // 그게 안 나오므로 sim 배틀 객체를 직접 읽는데, 그 배열은 **팀 순서가 아니다**
+    const { results, view } = await play(8, [TURTWIG, LUXRAY, RATTATA], [STARLY, RATTATA])
+    expect(results.map((r) => r.key).sort()).toEqual(['p1-0', 'p1-1', 'p1-2'])
+    for (const r of results) {
+      expect(r.hp, `${r.key} HP 범위`).toBeGreaterThanOrEqual(0)
+      expect(r.hp).toBeLessThanOrEqual(r.maxHp)
+      expect(r.fainted).toBe(r.hp === 0)
+    }
+    // 나와 있던 애의 HP는 프로토콜로 접은 화면과 같아야 한다 — 서로 모르는 두 출처다
+    const active = view.active.p1!
+    const same = results.find((r) => r.key === active.key)
+    expect(same, `${active.key}가 결과에 없다`).toBeDefined()
+    expect(same!.hp).toBe(active.hp)
+    expect(same!.maxHp).toBe(active.maxHp)
+    expect(same!.status).toBe(active.status)
+  }, 30_000)
+
   it('같은 씨앗이면 같은 배틀이 나온다', async () => {
     const a = await play(7, [TURTWIG, LUXRAY], [STARLY, RATTATA])
     const b = await play(7, [TURTWIG, LUXRAY], [STARLY, RATTATA])
@@ -109,7 +135,7 @@ describe('배틀 진행', () => {
     }
     expect(controller.ended).toBe(true)
     // 연출이 끝나기 전에 입력이 한 번 더 들어올 수 있다. 터지면 안 된다
-    const after = await controller.choose({ type: 'move', slot: 1, id: 'tackle', name: 'Tackle' })
+    const after = await controller.choose({ type: 'move', slot: 1, id: 'tackle', name: 'Tackle', move: 33 })
     expect(after.events).toHaveLength(0)
     expect(controller.actions).toHaveLength(0)
     controller.destroy()
