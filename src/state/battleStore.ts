@@ -5,27 +5,39 @@
 // 위쪽 import에 `type`이 붙어 있는 것은 그래서다. 하나라도 값 import로 바꾸면
 // 초기 청크에 715 kB가 실린다.
 import { create } from 'zustand'
-import { loadMoves, loadSpecies } from '../data/gameData'
+import {
+  loadMoves, loadSpecies, loadTrainerClasses, loadTrainerNames, loadTrainers,
+  type SpeciesTable,
+} from '../data/gameData'
 import type { Species } from '../data/schema'
-import { partyKey, applyResults } from '../engine/battle/aftermath'
+import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
 import type { BattleAction } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
 import { Ball } from '../engine/battle/meta/capture'
 import { applyReward, expGain } from '../engine/battle/meta/reward'
+import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
 import type { BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
-import type { SideMon } from '../engine/battle/sim/session'
+import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import { createWild, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { dexSet, useSaveStore } from './saveStore'
 
 /** 파티 최대 인원. 넘으면 박스로 간다 */
 const PARTY_MAX = 6
+/** 표시 로케일. 설정이 생기면 여기서 갈라진다 */
+const LOCALE = 'ko' as const
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
 
 export type BattlePhase = 'off' | 'loading' | 'running' | 'over'
+
+/**
+ * 야생전인가 트레이너전인가. 규칙이 갈리는 지점이 여럿이다 —
+ * 볼·도망은 야생에서만 되고, 경험치는 트레이너전이 1.5배다
+ */
+export type BattleKind = 'wild' | 'trainer'
 
 /** 키로 찾는 개체 정보. 화면이 이름·모델을 고르는 데 쓴다 */
 export interface RosterEntry {
@@ -42,6 +54,9 @@ export interface WildStart {
 
 interface BattleState {
   phase: BattlePhase
+  kind: BattleKind
+  /** 상대 트레이너 표시 이름("체육관 관장 동관"). 야생이면 null */
+  foeName: string | null
   view: BattleView | null
   actions: BattleAction[]
   /** 배틀 내내 쌓인 사건. 텍스트 박스와 연출이 같은 줄기를 본다 */
@@ -50,6 +65,8 @@ interface BattleState {
   outcome: BattleFinish
   error: string | null
   startWild: (wild: WildStart) => Promise<void>
+  /** 트레이너전을 연다. `trainerId`는 trdata 번호다 */
+  startTrainer: (trainerId: number) => Promise<void>
   choose: (action: BattleAction) => Promise<void>
   /** 볼을 던진다. 우리 턴을 쓴다 — 실패하면 야생이 반격한다 */
   throwBall: (ball?: BallId) => Promise<void>
@@ -116,6 +133,8 @@ function ensureParty(table: { get(id: number): Species }): PokemonInstance[] {
 
 export const useBattleStore = create<BattleState>((set, get) => ({
   phase: 'off',
+  kind: 'wild',
+  foeName: null,
   view: null,
   actions: [],
   events: [],
@@ -124,56 +143,37 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   error: null,
 
   startWild: async (wild) => {
-    if (get().phase !== 'off') return
-    set({ phase: 'loading', view: null, actions: [], events: [], roster: {}, outcome: null, error: null })
-
-    try {
-      // 여기가 지연 로딩 경계다. 첫 배틀에서만 0.4~0.8초 걸리고 이후 캐시된다
-      const [{ BattleController }, species, moves] = await Promise.all([
-        import('../engine/battle/sim/controller'),
-        loadSpecies(),
-        loadMoves(),
-      ])
-      const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
-      speciesTable = species
-      participants = new Set()
-
-      const party = ensureParty(species)
+    await open(set, get, 'wild', null, ({ species, pp }) => {
       const foeSpecies = species.get(wild.species)
       const foe = createWild({
-        species: foeSpecies, level: wild.level, rng: Math.random,
-        otId: 0, otSecretId: 0,
+        species: foeSpecies, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
       })
       foe.hp = statsOf(foe, foeSpecies).hp
+      return { name: '야생', team: [ready(foe, foeSpecies, foeKey(0), pp)] }
+    })
+  },
 
-      const roster: Record<string, RosterEntry> = {}
-      const team = party.map((mon, i) => {
-        roster[partyKey(i)] = {
-          side: 'p1', species: mon.species, nickname: mon.nickname, level: mon.level,
-        }
-        return ready(mon, species.get(mon.species), partyKey(i), pp)
-      })
-      roster['p2-0'] = { side: 'p2', species: foe.species, nickname: null, level: foe.level }
-
-      const trainer = useSaveStore.getState().trainer
-      const { controller, step } = await BattleController.start({
-        player: { name: trainer.name || '나', team },
-        foe: { name: '야생', team: [ready(foe, foeSpecies, 'p2-0', pp)] },
-      })
-      current = controller
-      // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
-      trackParticipants(step.events)
-      set({
-        phase: 'running',
-        view: step.view,
-        events: step.events,
-        actions: controller.actions,
-        roster,
-      })
-    } catch (e) {
-      // 배틀 청크를 못 받은 경우(오프라인, 캐시 실패)를 화면이 알아야 한다
-      set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
+  startTrainer: async (trainerId) => {
+    const [table, names, classes] = await Promise.all([
+      loadTrainers(), loadTrainerNames(LOCALE), loadTrainerClasses(LOCALE),
+    ])
+    const trainer = table.get(trainerId)
+    if (!trainer.party.length) {
+      set({ error: `트레이너 #${trainerId}은(는) 파티가 없다` })
+      return
     }
+    // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
+    const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
+
+    await open(set, get, 'trainer', label, ({ species, pp }) => ({
+      name: label || '상대',
+      team: trainer.party.map((entry, i) => {
+        const sp = species.get(entry.species)
+        const mon = trainerMonToInstance(entry, sp, trainerId, i)
+        mon.hp = statsOf(mon, sp).hp
+        return ready(mon, sp, foeKey(i), pp)
+      }),
+    }))
   },
 
   choose: async (action) => {
@@ -181,6 +181,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   },
 
   throwBall: async (ball = Ball.POKE) => {
+    // 트레이너의 포켓몬에는 볼을 못 던진다. 화면도 버튼을 안 보여주지만,
+    // 규칙은 화면이 아니라 여기가 갖고 있어야 한다
+    if (get().kind !== 'wild') return
     await advance(set, get, (c) => c.throwBall(ball, {
       // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
       caughtBefore: false, inWater: false, darkness: false,
@@ -188,6 +191,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   },
 
   run: async () => {
+    // 트레이너전은 도망칠 수 없다
+    if (get().kind !== 'wild') return
     await advance(set, get, (c) => c.run())
   },
 
@@ -225,7 +230,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       current = null
     }
     participants = new Set()
-    set({ phase: 'off', view: null, actions: [], events: [], roster: {}, outcome: null })
+    set({
+      phase: 'off', kind: 'wild', foeName: null,
+      view: null, actions: [], events: [], roster: {}, outcome: null,
+    })
   },
 }))
 
@@ -293,7 +301,10 @@ function grantRewards(
 
   const foeSpecies = table.get(foe.species)
   const gain = expGain({
-    baseExp: foeSpecies.baseExp, level: foe.level, participants: alive.length,
+    baseExp: foeSpecies.baseExp,
+    level: foe.level,
+    participants: alive.length,
+    trainerBattle: state.kind === 'trainer',
   })
 
   const party = [...useSaveStore.getState().party]
@@ -314,4 +325,71 @@ function grantRewards(
   }
   useSaveStore.setState({ party })
   return out
+}
+
+/** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
+type BuildFoe = (ctx: { species: SpeciesTable; pp: (move: number) => number }) => SideSpec
+
+/**
+ * 배틀을 연다. 야생·트레이너가 다른 것은 상대를 어떻게 만드느냐뿐이다.
+ *
+ * **여기가 지연 로딩 경계다** — `@pkmn/sim`은 이 `await import()`에서 처음 들어온다.
+ * 첫 배틀에서만 0.4~0.8초 걸리고 이후 캐시된다 (PLAN §7.5.1)
+ */
+async function open(
+  set: SetState,
+  get: GetState,
+  kind: BattleKind,
+  foeName: string | null,
+  buildFoe: BuildFoe,
+): Promise<void> {
+  if (get().phase !== 'off') return
+  set({
+    phase: 'loading', kind, foeName,
+    view: null, actions: [], events: [], roster: {}, outcome: null, error: null,
+  })
+
+  try {
+    const [{ BattleController }, species, moves] = await Promise.all([
+      import('../engine/battle/sim/controller'),
+      loadSpecies(),
+      loadMoves(),
+    ])
+    const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
+    speciesTable = species
+    participants = new Set()
+
+    const party = ensureParty(species)
+    const roster: Record<string, RosterEntry> = {}
+    const team = party.map((mon, i) => {
+      roster[partyKey(i)] = {
+        side: 'p1', species: mon.species, nickname: mon.nickname, level: mon.level,
+      }
+      return ready(mon, species.get(mon.species), partyKey(i), pp)
+    })
+
+    const foe = buildFoe({ species, pp })
+    foe.team.forEach((m, i) => {
+      roster[foeKey(i)] = { side: 'p2', species: m.mon.species, nickname: null, level: m.mon.level }
+    })
+
+    const trainer = useSaveStore.getState().trainer
+    const { controller, step } = await BattleController.start({
+      player: { name: trainer.name || '나', team },
+      foe,
+    })
+    current = controller
+    // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
+    trackParticipants(step.events)
+    set({
+      phase: 'running',
+      view: step.view,
+      events: step.events,
+      actions: controller.actions,
+      roster,
+    })
+  } catch (e) {
+    // 배틀 청크를 못 받은 경우(오프라인, 캐시 실패)를 화면이 알아야 한다
+    set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
+  }
 }

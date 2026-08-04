@@ -28,6 +28,14 @@ export const field = style({
 export const foeSlot = style({ gridColumn: 2, gridRow: 1, justifySelf: 'end' })
 export const mineSlot = style({ gridColumn: 1, gridRow: 2, justifySelf: 'start' })
 
+/** 상대 트레이너 이름. 야생전에는 안 뜬다 */
+export const foeTrainer = style({
+  marginBottom: 6,
+  fontSize: 13,
+  opacity: 0.8,
+  textAlign: 'right',
+})
+
 export const card = style({
   minWidth: 260,
   padding: '10px 14px',

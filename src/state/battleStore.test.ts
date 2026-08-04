@@ -12,8 +12,9 @@ import { beforeAll, beforeEach, describe, it, expect } from 'vitest'
 import { useBattleStore } from './battleStore'
 import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
-import { statsOf } from '../engine/pokemon/instance'
-import { loadSpecies } from '../data/gameData'
+import { createWild, statsOf, wildMoves } from '../engine/pokemon/instance'
+import { expForLevel } from '../engine/pokemon/exp'
+import { loadMoves, loadSpecies, loadTrainers } from '../data/gameData'
 
 // gameData는 fetch로 받는다. 테스트에서는 같은 파일을 디스크에서 읽어 준다
 beforeAll(() => {
@@ -34,15 +35,22 @@ beforeEach(() => {
   useSaveStore.setState(createNewSave())
 })
 
-/** 아무거나 골라 가며 배틀이 끝날 때까지 민다 */
+/**
+ * 가장 센 기술을 골라 가며 배틀이 끝날 때까지 민다.
+ *
+ * ⚠️ "첫 기술"을 고르면 안 된다 — 그 칸이 광합성이면 아무리 때려도 상대가 안
+ * 쓰러진다. 이 프로젝트에서 이미 한 번 그렇게 틀렸다
+ */
 async function playToEnd(limit = 60): Promise<number> {
+  const moves = await loadMoves()
+  const power = (id: number | null) => (id === null ? 0 : moves.byId.get(id)?.power ?? 0)
   let steps = 0
   while (useBattleStore.getState().phase === 'running' && steps < limit) {
     const actions = useBattleStore.getState().actions
     if (!actions.length) break
-    // 기술이 있으면 기술을 쓴다 — 교체만 고르면 승부가 안 난다
-    const pick = actions.find((a) => a.type === 'move') ?? actions[0]!
-    await useBattleStore.getState().choose(pick)
+    const attacks = actions.filter((a) => a.type === 'move')
+    const best = attacks.sort((a, b) => power(b.move) - power(a.move))[0]
+    await useBattleStore.getState().choose(best ?? actions[0]!)
     steps++
   }
   return steps
@@ -215,4 +223,120 @@ describe('보상', () => {
     expect(useSaveStore.getState().party[0]!.exp).toBe(before)
     useBattleStore.getState().close()
   }, 30_000)
+})
+
+/**
+ * 100레벨 강자 셋을 파티에 넣는다.
+ *
+ * 경험치도 레벨에 맞춰야 한다 — 안 맞추면 배틀 중 보상이 들어오는 순간
+ * `levelForExp`가 레벨을 도로 5로 끌어내린다
+ */
+async function giveStrongParty(ids = [483, 484, 445]) {
+  const table = await loadSpecies()
+  const party = ids.map((id, i) => {
+    const sp = table.get(id)
+    const mon = createWild({ species: sp, level: 100, rng: rng(i + 1), otId: 1, otSecretId: 2 })
+    mon.exp = expForLevel(sp.growthRate, 100)
+    mon.moves = wildMoves(sp, 100)
+    mon.hp = statsOf(mon, sp).hp
+    return mon
+  })
+  useSaveStore.setState({ party })
+}
+
+/** 재현 가능한 난수 (mulberry32) */
+function rng(seed: number) {
+  let a = seed
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** 강석(#250) 3마리 · 난천(#267) 6마리 — 실제 롬 데이터로 연다 */
+const BYRON = 250
+const CYNTHIA = 267
+
+describe('트레이너전', () => {
+  it('롬에서 읽은 파티가 그대로 등판한다', async () => {
+    await useBattleStore.getState().startTrainer(BYRON)
+    expect(useBattleStore.getState().error).toBeNull()
+    expect(useBattleStore.getState().kind).toBe('trainer')
+    expect(useBattleStore.getState().foeName).toBe('체육관 관장 동관')
+
+    // 자철석 L37이 먼저 나온다 — 파티 순서가 그대로여야 한다
+    const foe = useBattleStore.getState().view!.active.p2!
+    expect(foe.species).toBe(82)
+    expect(foe.level).toBe(37)
+    // 명부에 세 마리가 다 있어야 교체할 때 이름을 찾을 수 있다
+    const p2 = Object.values(useBattleStore.getState().roster).filter((r) => r.side === 'p2')
+    expect(p2.map((r) => r.species)).toEqual([82, 208, 411])
+    useBattleStore.getState().close()
+  }, 30_000)
+
+  it('볼도 도망도 안 통한다', async () => {
+    await useBattleStore.getState().startTrainer(BYRON)
+    const before = useBattleStore.getState().events.length
+    await useBattleStore.getState().throwBall(Ball.MASTER)
+    await useBattleStore.getState().run()
+    // 아무 일도 안 일어나야 한다. 마스터볼이 먹히면 관장을 잡아 버린다
+    expect(useBattleStore.getState().events).toHaveLength(before)
+    expect(useBattleStore.getState().phase).toBe('running')
+    useBattleStore.getState().close()
+  }, 30_000)
+
+  it('여섯 마리를 상대로도 끝까지 간다 — 상대가 알아서 교체한다', async () => {
+    // 상대가 쓰러지면 그쪽만 교체하는 턴이 오는데, 그 구간을 못 삼키면 여기서 멈춘다.
+    //
+    // ⚠️ 처음엔 Lv5 파트너로 붙였는데, 난천의 첫 마리도 못 넘기고 져서 교체 구간을
+    // 아예 안 지나갔다. 끝까지 갔다는 것만 봤으면 통과했을 것이다 — 그래서
+    // **이겨야** 하고, 상대가 실제로 갈아탔는지도 세야 한다
+    await giveStrongParty()
+    await useBattleStore.getState().startTrainer(CYNTHIA)
+    const steps = await playToEnd(120)
+    expect(steps, '한 수도 안 뒀다').toBeGreaterThan(0)
+    expect(useBattleStore.getState().phase, '승부가 안 났다').toBe('over')
+    expect(useBattleStore.getState().outcome).toBe('win')
+
+    // 상대가 실제로 갈아탔는지 본다. 한 마리만 나오고 끝났다면 위 단언은
+    // 교체 구간을 전혀 안 지나간 것이라 공허하다
+    const sent = new Set(useBattleStore.getState().events
+      .filter((e) => e.kind === 'switch' && e.actor.side === 'p2')
+      .map((e) => (e.kind === 'switch' ? e.actor.name : '')))
+    expect(sent.size, '상대가 한 마리도 안 바뀌었다').toBe(6)
+    useBattleStore.getState().close()
+  }, 60_000)
+
+  it('이기면 트레이너 보정이 붙은 경험치가 들어온다', async () => {
+    // 3레벨 잡트레이너를 60레벨로 짓밟는다. 같은 상대를 야생으로 만났을 때보다
+    // 1.5배여야 한다 — 그 배수가 빠지면 육성 속도가 통째로 달라진다
+    const table = await loadTrainers()
+    const weak = table.all.find((t) => t.party.length === 1 && t.party[0]!.level <= 5)!
+    const foe = weak.party[0]!
+
+    useSaveStore.setState({ party: [] })
+    await useBattleStore.getState().startWild({ species: foe.species, level: foe.level })
+    // 상대를 확실히 이기도록 우리 쪽을 키운다
+    const boosted = useSaveStore.getState().party.map((m) => ({ ...m, level: 60 }))
+    useBattleStore.getState().close()
+    useSaveStore.setState({ party: boosted })
+
+    const gained = async (start: () => Promise<void>) => {
+      const before = useSaveStore.getState().party[0]!.exp
+      await start()
+      await playToEnd()
+      const after = useSaveStore.getState().party[0]!.exp
+      useBattleStore.getState().close()
+      useSaveStore.setState({ party: boosted })
+      return after - before
+    }
+
+    const wild = await gained(() =>
+      useBattleStore.getState().startWild({ species: foe.species, level: foe.level }))
+    const trainer = await gained(() => useBattleStore.getState().startTrainer(weak.id))
+    expect(wild, '야생에서 경험치가 안 들어왔다').toBeGreaterThan(0)
+    expect(trainer).toBe(Math.floor((wild * 3) / 2))
+  }, 60_000)
 })

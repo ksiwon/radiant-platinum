@@ -9,7 +9,7 @@ import type { Actor } from '../../engine/battle/events'
 import type { ViewMon } from '../../engine/battle/view'
 import { loadLabels, loadMoveNames, loadSpeciesNames } from '../../data/gameData'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
-import { withSubject } from '../korean'
+import { withObject, withSubject } from '../korean'
 import { battleText, type BattleNames } from './messages'
 import * as css from './battleScreen.css'
 
@@ -36,6 +36,8 @@ function useNames(): BattleNames | null {
 
 export function BattleScreen() {
   const phase = useBattleStore((s) => s.phase)
+  const kind = useBattleStore((s) => s.kind)
+  const foeName = useBattleStore((s) => s.foeName)
   const view = useBattleStore((s) => s.view)
   const actions = useBattleStore((s) => s.actions)
   const events = useBattleStore((s) => s.events)
@@ -47,26 +49,31 @@ export function BattleScreen() {
   const close = useBattleStore((s) => s.close)
   const names = useNames()
 
-  /** 키 → 화면에 쓸 이름. 야생은 "야생의"를 앞에 붙인다 */
+  /** 키 → 화면에 쓸 이름. 상대 쪽에는 "야생의"나 "상대"를 앞에 붙인다 */
   const label = useMemo(() => (actor: Actor) => {
     const entry: RosterEntry | undefined = roster[actor.name]
     const base = entry?.nickname ?? names?.species[entry?.species ?? -1] ?? actor.name
-    return entry?.side === 'p2' ? `야생의 ${base}` : base
-  }, [roster, names])
+    if (entry?.side !== 'p2') return base
+    return kind === 'wild' ? `야생의 ${base}` : `상대 ${base}`
+  }, [roster, names, kind])
 
   const lines = useMemo(() => {
     if (!names) return []
     const out: string[] = []
+    // 트레이너전은 누가 걸어왔는지부터 말한다
+    if (kind === 'trainer' && foeName) out.push(`${withSubject(foeName)} 승부를 걸어왔다!`)
     for (const e of events) {
       const text = battleText(e, { names, label })
       // 같은 줄이 연달아 나오면(연타 데미지) 한 번만 보인다
       if (text && text !== out[out.length - 1]) out.push(text)
     }
-    if (outcome === 'win') out.push('배틀에서 이겼다!')
+    if (outcome === 'win') {
+      out.push(kind === 'trainer' && foeName ? `${withObject(foeName)} 이겼다!` : '배틀에서 이겼다!')
+    }
     if (outcome === 'loss') out.push('눈앞이 캄캄해졌다…')
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
     return out
-  }, [events, names, label, outcome])
+  }, [events, names, label, outcome, kind, foeName])
 
   if (phase === 'off') return null
   if (phase === 'loading') {
@@ -79,7 +86,10 @@ export function BattleScreen() {
   return (
     <div className={css.screen}>
       <div className={css.field}>
-        <div className={css.foeSlot}>{foe && <MonCard mon={foe} names={names} wild />}</div>
+        <div className={css.foeSlot}>
+          {foeName && <div className={css.foeTrainer}>{foeName}</div>}
+          {foe && <MonCard mon={foe} names={names} prefix={kind === 'wild' ? '야생의 ' : '상대 '} />}
+        </div>
         <div className={css.mineSlot}>{mine && <MonCard mon={mine} names={names} showHp />}</div>
       </div>
 
@@ -93,8 +103,8 @@ export function BattleScreen() {
           ) : (
             <>
               <ActionMenu actions={actions} names={names} roster={roster} onPick={choose} />
-              {/* 쓰러져서 교체만 골라야 하는 턴에는 볼도 도망도 못 쓴다 */}
-              {actions.some((a) => a.type === 'move') && (
+              {/* 볼·도망은 야생에서만. 교체만 골라야 하는 턴에도 안 보인다 */}
+              {kind === 'wild' && actions.some((a) => a.type === 'move') && (
                 <>
                   <button className={css.button} onClick={() => void throwBall()}>
                     <span>몬스터볼</span>
@@ -131,8 +141,8 @@ function TextBox({ lines }: { lines: string[] }) {
 }
 
 function MonCard(
-  { mon, names, wild = false, showHp = false }:
-  { mon: ViewMon; names: BattleNames | null; wild?: boolean; showHp?: boolean },
+  { mon, names, prefix = '', showHp = false }:
+  { mon: ViewMon; names: BattleNames | null; prefix?: string; showHp?: boolean },
 ) {
   const name = (mon.species !== null ? names?.species[mon.species] : null) ?? mon.speciesName
   const ratio = mon.maxHp > 0 ? Math.max(0, mon.hp) / mon.maxHp : 0
@@ -141,7 +151,7 @@ function MonCard(
     <div className={css.card}>
       <div className={css.cardHead}>
         <span className={css.monName}>
-          {wild ? `야생의 ${name}` : name}
+          {prefix}{name}
           {mon.status !== 'ok' && (
             <span className={css.statusTag}>{STATUS_LABEL[mon.status] ?? mon.status}</span>
           )}
