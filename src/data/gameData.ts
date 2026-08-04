@@ -66,7 +66,11 @@ export function loadMoves(): Promise<MoveTable> {
   return fetchJson('moves.json', (v) => indexed(moveFileSchema.parse(v).moves, '기술'))
 }
 
-/** 종족 이름 배열. 인덱스는 species.json의 배열 순서와 같다(id가 아니다) */
+/**
+ * 종족 이름 배열. 인덱스는 **종족 번호(id)**다 — 배열 순서가 아니다.
+ * 추출기가 일부러 번호로 색인해 둔다. 순서로 색인하면 id와 어긋나서 조용히 옆
+ * 포켓몬 이름이 나오고, 그런 버그는 눈으로 안 잡힌다
+ */
 export function loadSpeciesNames(locale: DataLocale): Promise<string[]> {
   return fetchJson(`names/species.${locale}.json`, (v) => nameListSchema.parse(v))
 }

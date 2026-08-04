@@ -21,12 +21,11 @@ export interface TrainerInfo {
   playtimeMs: number
 }
 
-// Phase 1에서 확장한다. 지금은 필드의 존재와 자리를 확정하는 것이 목적 —
-// 마이그레이션 체인을 v1부터 시작해 두어야 나중에 붙일 필요가 없다.
-export interface PokemonInstance {
-  species: number
-  level: number
-}
+// 개체 모델은 엔진이 갖는다 — 능력치·경험치 계산이 붙어 있고 배틀에서도 같은 것을
+// 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
+import type { PokemonInstance } from '../engine/pokemon/instance'
+
+export type { PokemonInstance }
 
 export type ItemId = string
 
