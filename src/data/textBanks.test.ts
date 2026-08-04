@@ -14,10 +14,15 @@ const VERIFIED: Record<TextBankName, { us: number; ko: number; ja: number; entri
   type_names:     { us: 624, ko: 617, ja: 616, entries: 18 },
   nature_names:   { us: 202, ko: 201, ja: 201, entries: 25 },
   location_names: { us: 433, ko: 428, ja: 427, entries: 126 },
+  // 트레이너 이름은 내용으로 확인했다: ko#250 "동관"이 강석이고, 같은 번호의
+  // trpoke가 자철석37/강철톤38/바리톱스41 — 원작 강석의 파티다 (DATA.md §2.9).
+  // ⚠️ us 뱅크는 928칸 중 43칸만 차 있다. 복호화 실패가 아니라 데이터가 비어 있다
+  trainer_names:   { us: 618, ko: 612, ja: 611, entries: 928 },
+  trainer_classes: { us: 619, ko: 613, ja: 612, entries: 105 },
 }
 
 describe('텍스트 뱅크 대응표', () => {
-  it('검증된 7개 뱅크가 모두 들어 있다', () => {
+  it('검증된 뱅크가 모두 들어 있다', () => {
     expect(TEXT_BANKS.map((b) => b.name).sort()).toEqual(Object.keys(VERIFIED).sort())
   })
 

@@ -39,6 +39,8 @@ export const TEXT_BANK_NAMES = [
   'type_names',
   'nature_names',
   'location_names',
+  'trainer_names',
+  'trainer_classes',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

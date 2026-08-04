@@ -96,6 +96,43 @@ export const moveFileSchema = z.object({
   moves: z.array(moveSchema).nonempty(),
 })
 
+/**
+ * 트레이너 파티 한 마리 (DATA.md §2.9).
+ *
+ * `moves`가 비어 있으면 "그 레벨의 레벨업 기술을 쓴다"는 뜻이다 — 빈 배열과
+ * 네 칸이 다 0인 것은 롬에서도 다른 상태다
+ */
+export const trainerMonSchema = z.object({
+  /** 난이도 바이트 0~255. 실제 개체값은 `ivs × 31 / 255`다 */
+  ivs: z.number().int().min(0).max(255),
+  level: z.number().int().min(1).max(100),
+  species: z.number().int().min(1).max(1023),
+  moves: z.array(z.number().int().min(1)).max(4),
+  /** 폼 번호. 없으면 기본형 */
+  form: z.number().int().min(1).optional(),
+  item: z.number().int().min(1).optional(),
+  /** 볼 캡슐 씰. 연출용이라 배틀에는 영향이 없다 */
+  seal: z.number().int().min(1).optional(),
+  /** 1878마리 중 하나에만 있는 정체불명 바이트. 버리지 않고 보존만 한다 */
+  unknown1: z.number().int().min(1).optional(),
+})
+
+export const trainerSchema = z.object({
+  id: z.number().int().min(0),
+  class: z.number().int().min(0),
+  /** 4세대 AI 비트필드. `battle/ai`가 해석한다 */
+  ai: z.number().int().min(0),
+  /** 배틀 중에 쓰는 가방 도구 */
+  items: z.array(z.number().int().min(1)).max(4),
+  double: z.boolean(),
+  party: z.array(trainerMonSchema).max(6),
+})
+
+export const trainerFileSchema = z.object({
+  count: z.number().int().positive(),
+  trainers: z.array(trainerSchema).nonempty(),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -108,3 +145,5 @@ export type LearnMove = z.infer<typeof learnMoveSchema>
 export type Species = z.infer<typeof speciesSchema>
 export type Move = z.infer<typeof moveSchema>
 export type Labels = z.infer<typeof labelsSchema>
+export type TrainerMon = z.infer<typeof trainerMonSchema>
+export type Trainer = z.infer<typeof trainerSchema>

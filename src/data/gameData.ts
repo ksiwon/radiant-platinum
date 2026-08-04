@@ -6,8 +6,8 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  labelsSchema, moveFileSchema, nameListSchema, speciesFileSchema,
-  type Labels, type Move, type Species,
+  labelsSchema, moveFileSchema, nameListSchema, speciesFileSchema, trainerFileSchema,
+  type Labels, type Move, type Species, type Trainer,
 } from './schema'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
@@ -77,6 +77,42 @@ export function loadSpeciesNames(locale: DataLocale): Promise<string[]> {
 
 export function loadMoveNames(locale: DataLocale): Promise<string[]> {
   return fetchJson(`names/moves.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+export interface TrainerTable {
+  all: readonly Trainer[]
+  get(id: number): Trainer
+}
+
+/**
+ * 트레이너 928명. 파티·AI 플래그·가방까지 한 파일이다.
+ *
+ * 154 kB(gzip 16 kB)라 통째로 받아도 부담이 없다. 트레이너전이 시작될 때
+ * 처음 받으므로 오버월드 예산에는 안 들어간다
+ */
+export function loadTrainers(): Promise<TrainerTable> {
+  return fetchJson('trainers.json', (v) => {
+    const all = trainerFileSchema.parse(v).trainers
+    const byId = new Map(all.map((t) => [t.id, t]))
+    return {
+      all,
+      get(id: number) {
+        const t = byId.get(id)
+        if (!t) throw new Error(`트레이너 #${id}이(가) 데이터에 없다`)
+        return t
+      },
+    }
+  })
+}
+
+/** 트레이너 이름 928개. 번호로 색인한다 */
+export function loadTrainerNames(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/trainers.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+/** 트레이너 분류 이름 105개("체육관 관장"). trdata의 class로 색인한다 */
+export function loadTrainerClasses(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/trainerClasses.${locale}.json`, (v) => nameListSchema.parse(v))
 }
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {
