@@ -47,9 +47,16 @@ def prop_pairs(entries):
         yield k, v
 
 
-# 마스크 RGB 채널 → 셰이더 색 프로퍼티. ColorVariation의 channel 인덱스도 같은 순서를 쓴다.
-# [Skin, Primary, Secondary] 순서도 시험했으나 머리·눈 색이 깨졌다 — 이 순서가 맞다.
-CHANNEL_PROPS = ["_PrimaryColor", "_SecondaryColor", "_SkinColor"]
+# ⚠️ 두 매핑은 별개다. 하나로 묶으면 의상을 맞추는 순간 머리·눈·얼굴이 깨진다.
+#
+# ① _MaskTex의 RGB 채널 → 셰이더 색 프로퍼티.
+#    실제 게임 화면과 대조해 확정: 조끼(R)=검정 _Skin, 치마(G)=분홍 _Primary,
+#    목도리·비니몸통(B)=빨강·흰색 _Secondary, 비니 엠블럼(R)=분홍 _Skin.
+MASK_CHANNEL_PROPS = ["_SkinColor", "_PrimaryColor", "_SecondaryColor"]
+
+# ② ColorVariation 컴포넌트의 channel 인덱스 → 셰이더 색 프로퍼티.
+#    이쪽은 프로퍼티 선언 순서를 그대로 따른다 (face ch0=피부톤, hair ch1=머리색).
+VARIATION_CHANNEL_PROPS = ["_PrimaryColor", "_SecondaryColor", "_SkinColor"]
 
 
 def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, dict]]:
@@ -113,8 +120,8 @@ def bake(bundle: Path, outdir: Path, color_index: int | None = None) -> int:
         colors = {k: v for k, v in prop_pairs(props.get("m_Colors", []))}
         # ColorVariation이 지정한 값이 머티리얼 기본값을 이긴다
         for ch, col in overrides.get(obj.path_id, {}).items():
-            if 0 <= ch < len(CHANNEL_PROPS):
-                colors[CHANNEL_PROPS[ch]] = col
+            if 0 <= ch < len(VARIATION_CHANNEL_PROPS):
+                colors[VARIATION_CHANNEL_PROPS[ch]] = col
         slots = {}
         for k, v in prop_pairs(props.get("m_TexEnvs", [])):
             pid = v.get("m_Texture", {}).get("m_PathID", 0) if isinstance(v, dict) else 0
@@ -145,10 +152,8 @@ def bake(bundle: Path, outdir: Path, color_index: int | None = None) -> int:
                 return np.ones(3, dtype=np.float32)
             return np.array([c["r"], c["g"], c["b"]], dtype=np.float32)
 
-        tint = (
-            mask[..., 0:1] * layer("_PrimaryColor")
-            + mask[..., 1:2] * layer("_SecondaryColor")
-            + mask[..., 2:3] * layer("_SkinColor")
+        tint = sum(
+            mask[..., i : i + 1] * layer(prop) for i, prop in enumerate(MASK_CHANNEL_PROPS)
         )
         # 어느 채널에도 속하지 않은(검정) 영역은 틴트 없이 _col 그대로 둔다
         coverage = np.clip(mask.sum(axis=2, keepdims=True), 0.0, 1.0)
