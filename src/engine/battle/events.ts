@@ -141,6 +141,16 @@ export type BattleEvent =
   | { kind: 'cant'; actor: Actor; reason: string }
   | { kind: 'ability'; actor: Actor; ability: number | null; abilityName: string }
   | { kind: 'weather'; weather: string | null; upkeep: boolean }
+  // ── 지속 효과 세 갈래 ────────────────────────────────────────────────────
+  // 화면(리플렉터)·장(트릭룸)·개체(대타출동)는 걸리는 곳이 달라서 따로 접어야 한다.
+  // 이름은 `reflect`, `trickroom`, `leechseed`처럼 sim의 id 꼴로 정규화된다 —
+  // 원문(`move: Trick Room`)을 그대로 두면 비교할 때마다 접두사를 떼야 한다
+  /** 한 쪽 진영 전체에 걸린 것. 리플렉터·빛의장막·압정뿌리기·신비의부적 */
+  | { kind: 'sidecondition'; side: SideId; condition: string; start: boolean }
+  /** 필드 전체에 걸린 것. 트릭룸·중력·매직룸 */
+  | { kind: 'fieldcondition'; condition: string; start: boolean }
+  /** 지금 나와 있는 한 마리에게 걸린 것. 대타출동·씨뿌리기·혼란·조이기 */
+  | { kind: 'volatile'; actor: Actor; volatile: string; start: boolean }
   | { kind: 'win'; winner: string }
   | { kind: 'tie' }
   | { kind: 'request'; request: BattleRequest | null }
@@ -166,6 +176,24 @@ export function parseActor(raw: string): Actor | null {
     side: slot.slice(0, 2) as SideId,
     name: colon < 0 ? '' : raw.slice(colon + 1).trim(),
   }
+}
+
+/**
+ * `move: Trick Room`, `Substitute`, `perish3` → `trickroom`, `substitute`, `perish3`.
+ *
+ * 프로토콜은 같은 효과를 자리마다 다른 꼴로 쓴다. 비교하는 쪽이 매번 접두사를
+ * 신경 쓰면 언젠가 한 군데를 빠뜨리므로 들어오는 자리에서 한 번에 정규화한다
+ */
+export function conditionId(raw: string): string {
+  const colon = raw.indexOf(':')
+  const body = colon < 0 ? raw : raw.slice(colon + 1)
+  return body.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** `p1: 빛나`, `p1a: 빛나` → `p1`. 쪽 표기가 아니면 null */
+export function parseSide(raw: string): SideId | null {
+  const m = /^(p[12])/.exec(raw.trim())
+  return m ? (m[1] as SideId) : null
 }
 
 const STATUSES: Status[] = ['slp', 'psn', 'tox', 'brn', 'frz', 'par']

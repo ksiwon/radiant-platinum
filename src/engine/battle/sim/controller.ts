@@ -18,6 +18,7 @@ import { statsOf } from '../../pokemon/instance'
 import { applyEvent, emptyView, type BattleView } from '../view'
 import { parseLines } from './protocol'
 import { romMove } from './bridge'
+import { TrainerBrain, type MoveTable } from './brain'
 import { BattleSession, IDLE_MOVE_ID, type BattleOptions, type SideMon } from './session'
 
 /** 배틀이 어떻게 끝났는가. 승패 말고도 포획·도망이 있다 */
@@ -38,6 +39,13 @@ export interface ControllerOptions extends BattleOptions {
   foePolicy?: FoePolicy
   /** 무작위 정책이 쓸 난수. 안 주면 Math.random */
   random?: () => number
+  /**
+   * 트레이너 AI. 주면 무작위 대신 원작 4세대 AI가 상대의 수를 고른다 (PLAN §7.7).
+   *
+   * `flags`는 `trainers.json`의 `ai` 바이트 그대로다. `foePolicy`를 같이 주면
+   * 그쪽이 이긴다 — 테스트가 정책만 바꿔 끼울 수 있어야 해서다
+   */
+  ai?: { flags: number; moves: MoveTable }
 }
 
 /** 한 걸음 안에서 sim과 주고받는 횟수의 상한. 넘으면 정책이 못 고르고 있는 것이다 */
@@ -55,13 +63,26 @@ export class BattleController {
   private fled = false
   /** 도망 시도 횟수. 시도할수록 쉬워진다 */
   private escapeAttempts = 0
+  /** 트레이너 AI. 없으면(야생) null이고 상대는 무작위로 둔다 */
+  private readonly brain: TrainerBrain | null
 
   private constructor(options: ControllerOptions) {
     this.session = new BattleSession(options)
     this.playerTeam = options.player.team
     this.foeTeam = options.foe.team
     this.random = options.random ?? Math.random
-    this.foePolicy = options.foePolicy ?? ((r) => chooseRandom(r, this.random))
+    this.brain = options.ai
+      ? new TrainerBrain({
+        flags: options.ai.flags,
+        moves: options.ai.moves,
+        random: this.random,
+        side: 'p2',
+        team: this.foeTeam,
+        foeTeam: this.playerTeam,
+      })
+      : null
+    const fromBrain = this.brain?.policy(() => this.view)
+    this.foePolicy = options.foePolicy ?? fromBrain ?? ((r) => chooseRandom(r, this.random))
   }
 
   /** 배틀을 열고 첫 등판까지 진행한다 */
@@ -229,11 +250,15 @@ export class BattleController {
     for (let i = 0; i < MAX_EXCHANGES; i++) {
       const lines = await this.session.settle()
 
-      for (const e of parseLines(lines.p1)) {
+      const seen = parseLines(lines.p1)
+      for (const e of seen) {
         if (e.kind === 'request') this.request.p1 = e.request
         else events.push(e)
         this.view = applyEvent(this.view, e)
       }
+      // AI가 상황을 읽는 것은 **정책을 묻기 전**이어야 한다. 순서가 바뀌면
+      // 방금 드러난 특성을 모르는 채로 이번 수를 고른다
+      this.brain?.observe(seen)
       for (const e of parseLines(lines.p2)) {
         if (e.kind === 'request') this.request.p2 = e.request
       }

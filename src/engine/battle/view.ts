@@ -38,19 +38,67 @@ export interface ViewMon {
   status: Status
   boosts: Boosts
   fainted: boolean
+  /**
+   * 이 개체에게 걸려 있는 것. `substitute`, `leechseed`, `confusion`.
+   *
+   * 교체하면 통째로 사라진다 — 개체가 아니라 **자리**에 붙은 값이라서다
+   */
+  volatiles: ReadonlySet<string>
 }
 
 export interface BattleView {
   turn: number
   active: Record<SideId, ViewMon | null>
   weather: string | null
+  /**
+   * 진영별 지속 효과와 **겹친 횟수**. `reflect`, `lightscreen`, `spikes`, `safeguard`.
+   *
+   * 집합이 아니라 개수인 이유는 압정뿌리기다 — 세 번까지 겹치고 층수마다 데미지가
+   * 다르다. 프로토콜은 층이 늘 때마다 `-sidestart`를 한 번씩 더 보낸다
+   */
+  sideConditions: Record<SideId, ReadonlyMap<string, number>>
+  /** 필드 전체. `trickroom`, `gravity` */
+  field: ReadonlySet<string>
   ended: boolean
   /** 이긴 쪽 이름. 무승부면 null인 채로 `ended`만 선다 */
   winner: string | null
 }
 
+const EMPTY: ReadonlySet<string> = new Set()
+const EMPTY_MAP: ReadonlyMap<string, number> = new Map()
+
 export function emptyView(): BattleView {
-  return { turn: 0, active: { p1: null, p2: null }, weather: null, ended: false, winner: null }
+  return {
+    turn: 0,
+    active: { p1: null, p2: null },
+    weather: null,
+    sideConditions: { p1: EMPTY_MAP, p2: EMPTY_MAP },
+    field: EMPTY,
+    ended: false,
+    winner: null,
+  }
+}
+
+/** 집합 하나를 켜거나 끈 새 집합. 안 바뀌면 같은 객체를 돌려준다 */
+function toggle(set: ReadonlySet<string>, name: string, on: boolean): ReadonlySet<string> {
+  if (set.has(name) === on) return set
+  const next = new Set(set)
+  if (on) next.add(name)
+  else next.delete(name)
+  return next
+}
+
+/** 층을 하나 쌓거나 통째로 걷어낸다. `-sideend`는 층이 몇이든 한 번에 사라진다 */
+function stack(
+  map: ReadonlyMap<string, number>,
+  name: string,
+  on: boolean,
+): ReadonlyMap<string, number> {
+  if (!on && !map.has(name)) return map
+  const next = new Map(map)
+  if (on) next.set(name, (next.get(name) ?? 0) + 1)
+  else next.delete(name)
+  return next
 }
 
 /** 한 마리만 바꾼 새 뷰. zustand가 변화를 감지해야 하므로 전부 새 객체로 만든다 */
@@ -102,6 +150,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         status: e.condition.status,
         boosts: noBoosts(), // 랭크는 교체로 사라진다
         fainted: e.condition.hp <= 0,
+        volatiles: EMPTY, // 대타출동·씨뿌리기도 마찬가지다
       }
       return { ...view, active: { ...view.active, [e.actor.side]: mon } }
     }
@@ -129,6 +178,23 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
 
     case 'weather':
       return { ...view, weather: e.weather }
+
+    case 'sidecondition': {
+      const next = stack(view.sideConditions[e.side], e.condition, e.start)
+      if (next === view.sideConditions[e.side]) return view
+      return { ...view, sideConditions: { ...view.sideConditions, [e.side]: next } }
+    }
+
+    case 'fieldcondition': {
+      const next = toggle(view.field, e.condition, e.start)
+      return next === view.field ? view : { ...view, field: next }
+    }
+
+    case 'volatile':
+      return patch(view, e.actor.side, (m) => {
+        const next = toggle(m.volatiles, e.volatile, e.start)
+        return next === m.volatiles ? m : { ...m, volatiles: next }
+      })
 
     case 'win':
       return { ...view, ended: true, winner: e.winner }

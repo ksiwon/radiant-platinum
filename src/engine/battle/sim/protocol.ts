@@ -8,7 +8,7 @@ import { Protocol } from '@pkmn/protocol'
 import type {
   Actor, BattleEvent, BattleRequest, BoostStat, Cause, Effectiveness,
 } from '../events'
-import { parseActor, parseCondition, parseDetails } from '../events'
+import { conditionId, parseActor, parseCondition, parseDetails, parseSide } from '../events'
 import type { Status } from '../../pokemon/instance'
 import { romAbility, romMove, romSpecies } from './bridge'
 
@@ -210,6 +210,32 @@ export function parseLine(line: string): BattleEvent | null {
         weather: w === 'none' || !w ? null : w,
         upkeep: 'upkeep' in kw,
       }
+    }
+
+    // `|-sidestart|p1: 빛나|Reflect`. 쪽 표기가 `p1a`가 아니라 `p1`이라 parseActor는 못 쓴다
+    case '-sidestart':
+    case '-sideend': {
+      const side = parseSide(rest[0] ?? '')
+      const condition = conditionId(rest[1] ?? '')
+      if (!side || !condition) break
+      return { kind: 'sidecondition', side, condition, start: cmd === '-sidestart' }
+    }
+
+    // `|-fieldstart|move: Trick Room|[of] p2a: 난천`
+    case '-fieldstart':
+    case '-fieldend': {
+      const condition = conditionId(rest[0] ?? '')
+      if (!condition) break
+      return { kind: 'fieldcondition', condition, start: cmd === '-fieldstart' }
+    }
+
+    // `|-start|p1a: 빛나|Substitute`, `|-end|p2a: 난천|move: Leech Seed`
+    case '-start':
+    case '-end': {
+      const actor = need(0)
+      const volatile = conditionId(rest[1] ?? '')
+      if (!actor || !volatile) break
+      return { kind: 'volatile', actor, volatile, start: cmd === '-start' }
     }
   }
 

@@ -173,7 +173,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         mon.hp = statsOf(mon, sp).hp
         return ready(mon, sp, foeKey(i), pp)
       }),
-    }))
+    }), trainer.ai)
   },
 
   choose: async (action) => {
@@ -342,6 +342,8 @@ async function open(
   kind: BattleKind,
   foeName: string | null,
   buildFoe: BuildFoe,
+  /** 트레이너 AI 비트. 안 주면 상대는 무작위로 둔다 — 야생이 그렇다 */
+  aiFlags?: number,
 ): Promise<void> {
   if (get().phase !== 'off') return
   set({
@@ -377,6 +379,8 @@ async function open(
     const { controller, step } = await BattleController.start({
       player: { name: trainer.name || '나', team },
       foe,
+      // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
+      ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
     })
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다

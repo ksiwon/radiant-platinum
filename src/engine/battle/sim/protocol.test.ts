@@ -39,6 +39,79 @@ describe('프로토콜 표기', () => {
   })
 })
 
+describe('지속 효과 접기', () => {
+  // 트레이너 AI가 이 세 갈래를 본다 (PLAN §7.7). 하나라도 안 쌓이면 AI는
+  // 리플렉터가 깔린 줄 모르고 깨트리다를 안 쓴다 — 배틀은 멀쩡히 돌아간다
+
+  const fold = (lines: string[]) => {
+    let view = emptyView()
+    for (const e of parseLines(lines)) view = applyEvent(view, e)
+    return view
+  }
+
+  it('진영 효과가 쪽별로 쌓이고 걷힌다', () => {
+    const on = fold([
+      '|-sidestart|p1: 빛나|Reflect',
+      '|-sidestart|p2: 난천|move: Light Screen',
+    ])
+    expect(on.sideConditions.p1.has('reflect')).toBe(true)
+    expect(on.sideConditions.p2.has('lightscreen')).toBe(true)
+    // 쪽이 안 섞여야 한다 — 섞이면 AI가 자기 벽을 상대 벽으로 착각한다
+    expect(on.sideConditions.p1.has('lightscreen')).toBe(false)
+
+    const off = fold([
+      '|-sidestart|p1: 빛나|Reflect',
+      '|-sideend|p1: 빛나|Reflect',
+    ])
+    expect(off.sideConditions.p1.has('reflect')).toBe(false)
+  })
+
+  it('압정은 층수를 센다', () => {
+    // 프로토콜은 층이 늘 때마다 같은 줄을 한 번 더 보낸다. 집합으로 담으면
+    // 1층과 3층이 구분이 안 되고, AI는 다 찼는데도 계속 깔려 한다
+    const two = fold([
+      '|-sidestart|p2: 난천|Spikes',
+      '|-sidestart|p2: 난천|Spikes',
+    ])
+    expect(two.sideConditions.p2.get('spikes')).toBe(2)
+
+    // 걷힐 때는 층이 몇이든 한 번에 사라진다
+    const gone = fold([
+      '|-sidestart|p2: 난천|Spikes',
+      '|-sidestart|p2: 난천|Spikes',
+      '|-sideend|p2: 난천|Spikes',
+    ])
+    expect(gone.sideConditions.p2.has('spikes')).toBe(false)
+  })
+
+  it('개체 효과는 그 자리에 붙고 교체로 사라진다', () => {
+    const seeded = fold([
+      '|switch|p2a: 난천|Roserade, L58, F|100/100',
+      '|-start|p2a: 난천|move: Leech Seed',
+      '|-start|p2a: 난천|Substitute',
+    ])
+    expect(seeded.active.p2?.volatiles.has('leechseed')).toBe(true)
+    expect(seeded.active.p2?.volatiles.has('substitute')).toBe(true)
+
+    const switched = fold([
+      '|switch|p2a: 난천|Roserade, L58, F|100/100',
+      '|-start|p2a: 난천|move: Leech Seed',
+      '|switch|p2a: 난천2|Milotic, L58, F|100/100',
+    ])
+    expect(switched.active.p2?.volatiles.size).toBe(0)
+  })
+
+  it('필드 효과는 쪽이 없다', () => {
+    const on = fold(['|-fieldstart|move: Trick Room|[of] p2a: 난천'])
+    expect(on.field.has('trickroom')).toBe(true)
+    const off = fold([
+      '|-fieldstart|move: Trick Room',
+      '|-fieldend|move: Trick Room',
+    ])
+    expect(off.field.has('trickroom')).toBe(false)
+  })
+})
+
 /** 4세대 각 계열에서 하나씩. 특성·상태이상·타입이 골고루 나오도록 고른다 */
 const POOL = [
   387, 390, 393, 396, 399, 403, 406, 417, 418, 425, 427, 431, 434, 436, 442,
@@ -147,10 +220,9 @@ const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
  * 2타 맞았다(`-hitcount`) 같은 것들. 진행과 HP에는 영향이 없어서 지금 없어도
  * 배틀이 성립한다. 연출 계층(PLAN §7.3)을 만들 때 여기부터 채우면 된다
  */
-const UNMODELLED = [
-  '-activate', '-end', '-fieldend', '-fieldstart', '-ohko',
-  '-prepare', '-sideend', '-sidestart', '-start',
-]
+// 지속 효과 여섯 줄(`-start`/`-end`/`-sidestart`/`-sideend`/`-fieldstart`/`-fieldend`)은
+// 트레이너 AI가 리플렉터·대타출동·트릭룸을 보게 하려고 모양을 줬다 (PLAN §7.7)
+const UNMODELLED = ['-activate', '-ohko', '-prepare']
 
 /** 배틀 굴리기는 비싸다. 두 테스트가 같은 판을 나눠 쓴다 */
 let cached: Promise<Playout[]> | null = null
