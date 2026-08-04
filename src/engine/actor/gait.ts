@@ -34,6 +34,8 @@ export interface Gait {
   bob: number
   /** T포즈에서 팔을 옆구리로 내리는 양. 이동과 무관한 상수 자세 */
   armDrop: number
+  /** 팔을 몸통보다 살짝 앞에 두는 상수 오프셋. 등에 멘 가방을 파고들지 않게 한다 */
+  armForward: number
 }
 
 const TWO_PI = Math.PI * 2
@@ -47,8 +49,15 @@ const AMP = {
   forearm: 0.20, forearmRun: 0.35,
   torsoYaw: 0.07,
   bob: 0.022,
-  /** 바인드 포즈가 T포즈라 팔을 약 72° 내려야 자연스럽다 */
-  armDrop: 1.26,
+  /**
+   * 바인드 포즈가 T포즈라 팔을 내려야 한다. 1.20rad(69°)면 수직에서 21° 벌어져
+   * 팔이 몸통·가방을 스치지 않는다. 90°까지 내리면 팔이 옆구리에 붙어 파고든다
+   */
+  armDrop: 1.20,
+  /** 팔을 살짝 앞으로. 사람이 서 있을 때 팔은 몸통 평면보다 조금 앞에 있다 */
+  armForward: 0.14,
+  /** 쉬는 자세의 팔꿈치 굽힘. 완전히 펴면 마네킹처럼 뻣뻣해 보인다 */
+  forearmRest: 0.24,
   breath: 0.020,
 }
 
@@ -100,12 +109,13 @@ export function sampleGait(phase: number, moving: number, run: number): Gait {
     // 팔은 같은 쪽 다리와 반대 위상이다
     armL: sOpp * armAmp,
     armR: s * armAmp,
-    forearmL: (AMP.forearm + AMP.forearmRun * r) * m + 0.12,
-    forearmR: (AMP.forearm + AMP.forearmRun * r) * m + 0.12,
+    forearmL: (AMP.forearm + AMP.forearmRun * r) * m + AMP.forearmRest,
+    forearmR: (AMP.forearm + AMP.forearmRun * r) * m + AMP.forearmRest,
     torsoYaw: sOpp * AMP.torsoYaw * m,
     // 한 사이클에 두 번 내려앉는다 — 양발이 각각 착지하므로 주파수가 두 배다
     bob: -Math.abs(Math.sin(phase)) * AMP.bob * m,
     armDrop: AMP.armDrop,
+    armForward: AMP.armForward,
   }
 }
 

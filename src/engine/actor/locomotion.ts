@@ -29,7 +29,23 @@ const REQUIRED = [
   'LArm', 'RArm', 'LForeArm', 'RForeArm', 'Spine1', 'Hips',
 ] as const
 
-const OPTIONAL = ['LToe', 'RToe', 'Spine2', 'Spine3', 'Neck', 'Head'] as const
+/**
+ * 스키닝 보정 헬퍼 본. 부모와 같은 자리에 길이 0으로 붙어 있고 실제로 가중치를
+ * 지고 있다 — LArmEX만 해도 어깨 주변 가중치의 41%다(LArm 52.6 vs LArmEX 36.8).
+ *
+ * 씬 그래프상 부모의 자식이라 어깨 회전을 **100% 그대로** 물려받는데, 원본 리그는
+ * 제약으로 절반만 받게 해서 변형을 두 본에 나눈다. 그 제약이 glTF에는 없으므로
+ * 여기서 되살린다 — 안 하면 어깨·팔꿈치가 한 본에 몰려 뭉개진다.
+ */
+const HELPERS: [helper: string, joint: string][] = [
+  ['LArmEX', 'LArm'], ['RArmEX', 'RArm'],
+  ['LForeArmEX', 'LForeArm'], ['RForeArmEX', 'RForeArm'],
+]
+
+const OPTIONAL = [
+  'LToe', 'RToe', 'Spine2', 'Spine3', 'Neck', 'Head',
+  ...HELPERS.map(([h]) => h),
+] as const
 
 interface Joint {
   node: Object3D
@@ -52,6 +68,9 @@ export interface Rig {
 const worldRot = new Quaternion()
 const step = new Quaternion()
 const delta = new Quaternion()
+const identity = new Quaternion()
+/** 관절별로 이번 프레임에 건 월드 회전. 헬퍼 본이 그 절반을 되돌릴 때 쓴다 */
+const applied = new Map<string, Quaternion>()
 
 function makeJoint(node: Object3D): Joint {
   node.updateWorldMatrix(true, false)
@@ -90,19 +109,42 @@ export function resetRig(rig: Rig) {
   rig.bobTarget.position.y = rig.bobBase
 }
 
+/** 월드 회전을 본의 로컬로 켤레변환해 건다. Δ = 부모월드⁻¹ × R_w × 부모월드 */
+function applyWorld(j: Joint, rot: Quaternion) {
+  delta.copy(j.parentInv).multiply(rot).multiply(j.parentQ)
+  j.node.quaternion.copy(delta).multiply(j.rest)
+}
+
 /**
  * 월드 축 회전을 본에 건다. roll → yaw → pitch 순서로 합성한다 —
  * 팔은 먼저 옆구리로 내린(roll) 뒤 그 자세에서 앞뒤로 흔들어야(pitch) 하기 때문이다.
  */
-function apply(j: Joint | undefined, pitch: number, roll = 0, yaw = 0) {
+function apply(j: Joint | undefined, name: string, pitch: number, roll = 0, yaw = 0) {
   if (!j) return
   worldRot.identity()
   if (roll) worldRot.multiply(step.setFromAxisAngle(AXIS_ROLL, roll))
   if (yaw) worldRot.multiply(step.setFromAxisAngle(AXIS_YAW, yaw))
   if (pitch) worldRot.premultiply(step.setFromAxisAngle(AXIS_PITCH, pitch))
-  // Δ = 부모월드⁻¹ × R_w × 부모월드
-  delta.copy(j.parentInv).multiply(worldRot).multiply(j.parentQ)
-  j.node.quaternion.copy(delta).multiply(j.rest)
+  applyWorld(j, worldRot)
+  let slot = applied.get(name)
+  if (!slot) { slot = new Quaternion(); applied.set(name, slot) }
+  slot.copy(worldRot)
+}
+
+/**
+ * 헬퍼 본이 관절 회전의 `fraction`만 받게 만든다.
+ *
+ * 헬퍼는 부모의 회전 R을 그대로 물려받으므로, 자기 로컬에 R⁻¹·slerp(I, R, f)를
+ * 걸면 최종 월드 회전이 slerp(I, R, f)가 된다. 축·순서를 손으로 맞추는 대신
+ * slerp을 쓰는 이유는 "회전의 절반"이 정확히 그것이기 때문이다.
+ */
+function applyHelper(rig: Rig, helper: string, joint: string, fraction = 0.5) {
+  const j = rig.joints[helper]
+  const rot = applied.get(joint)
+  if (!j || !rot) return
+  worldRot.copy(identity).slerp(rot, fraction)
+  worldRot.premultiply(step.copy(rot).invert())
+  applyWorld(j, worldRot)
 }
 
 /**
@@ -133,29 +175,33 @@ export function updateLocomotion(
   const g = sampleGait(rig.phase, moving, run)
   const j = rig.joints
 
-  apply(j.LThigh, FORWARD * g.thighL)
-  apply(j.RThigh, FORWARD * g.thighR)
+  apply(j.LThigh, 'LThigh', FORWARD * g.thighL)
+  apply(j.RThigh, 'RThigh', FORWARD * g.thighR)
   // 무릎은 뒤로만 접힌다 — FORWARD를 곱하지 않는다
-  apply(j.LLeg, g.kneeL)
-  apply(j.RLeg, g.kneeR)
-  apply(j.LFoot, FORWARD * g.footL)
-  apply(j.RFoot, FORWARD * g.footR)
+  apply(j.LLeg, 'LLeg', g.kneeL)
+  apply(j.RLeg, 'RLeg', g.kneeR)
+  apply(j.LFoot, 'LFoot', FORWARD * g.footL)
+  apply(j.RFoot, 'RFoot', FORWARD * g.footR)
 
   // 팔: T포즈에서 옆구리로 내린 뒤(roll) 그 자세에서 앞뒤로 흔든다(pitch).
-  // 좌우가 거울이라 내리는 방향의 부호가 반대다
-  apply(j.LArm, FORWARD * g.armL, -g.armDrop)
-  apply(j.RArm, FORWARD * g.armR, g.armDrop)
+  // 좌우가 거울이라 내리는 방향의 부호가 반대다.
+  // armForward는 상수 오프셋이라 서 있을 때도 팔이 몸통보다 조금 앞에 온다
+  apply(j.LArm, 'LArm', FORWARD * (g.armL + g.armForward), -g.armDrop)
+  apply(j.RArm, 'RArm', FORWARD * (g.armR + g.armForward), g.armDrop)
   // 팔꿈치도 뒤로만 접힌다
-  apply(j.LForeArm, g.forearmL)
-  apply(j.RForeArm, g.forearmR)
+  apply(j.LForeArm, 'LForeArm', g.forearmL)
+  apply(j.RForeArm, 'RForeArm', g.forearmR)
+
+  // 어깨·팔꿈치 변형을 헬퍼 본과 나눈다 (원본 리그의 제약을 되살린 것)
+  for (const [helper, joint] of HELPERS) applyHelper(rig, helper, joint)
 
   // 상체는 팔과 반대로 비틀어 어깨가 따라 돌지 않게 한다
-  apply(j.Spine1, 0, 0, g.torsoYaw * 0.4)
-  apply(j.Spine3, 0, 0, g.torsoYaw * 0.6)
+  apply(j.Spine1, 'Spine1', 0, 0, g.torsoYaw * 0.4)
+  apply(j.Spine3, 'Spine3', 0, 0, g.torsoYaw * 0.6)
   // 정지 중 호흡. 가슴만 아주 조금 젖힌다
-  apply(j.Spine2, idleBreath(rig.elapsed, moving))
+  apply(j.Spine2, 'Spine2', idleBreath(rig.elapsed, moving))
   // 머리는 상체 비틀림을 되받아 정면을 본다
-  apply(j.Neck, 0, 0, -g.torsoYaw * 0.5)
+  apply(j.Neck, 'Neck', 0, 0, -g.torsoYaw * 0.5)
 
   rig.bobTarget.position.y = rig.bobBase + g.bob
 }

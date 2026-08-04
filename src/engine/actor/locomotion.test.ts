@@ -181,6 +181,39 @@ describe('포즈 적용', () => {
     expect(l.z).toBeCloseTo(r.z, 4)
   })
 
+  it('헬퍼 본이 관절 회전의 절반만 받는다 — 어깨가 한 본에 몰리지 않게', () => {
+    const { root, nodes } = loadSkeleton()
+    // 바인드 월드 회전을 먼저 잡아 둔다
+    const bind = new Map<string, Quaternion>()
+    for (const n of ['LArm', 'LArmEX', 'LForeArm', 'LForeArmEX']) {
+      const q = new Quaternion()
+      nodes.get(n)!.getWorldQuaternion(q)
+      bind.set(n, q)
+    }
+    const rig = createRig(root, new Object3D())!
+    for (let i = 0; i < 40; i++) updateLocomotion(rig, 1 / 120, 4.5, 4.5, 8)
+    root.updateMatrixWorld(true)
+
+    const swing = (n: string) => {
+      const q = new Quaternion()
+      nodes.get(n)!.getWorldQuaternion(q)
+      return bind.get(n)!.angleTo(q)
+    }
+    const arm = swing('LArm')
+    expect(arm, '팔이 아예 안 움직인다').toBeGreaterThan(0.5)
+    // 정확히 절반은 아니다 — 팔은 상체 비틀림(Spine3)도 함께 물려받는데
+    // 헬퍼는 어깨 회전분만 줄이기 때문이다. 그래도 절반 언저리여야 한다
+    const ratio = swing('LArmEX') / arm
+    expect(ratio, `어깨 헬퍼 비율 ${ratio.toFixed(3)}`).toBeGreaterThan(0.4)
+    expect(ratio, `어깨 헬퍼 비율 ${ratio.toFixed(3)}`).toBeLessThan(0.6)
+
+    // 팔꿈치 헬퍼는 팔꿈치 회전분만 줄인다 — 팔에서 물려받은 몫은 그대로 남는다
+    const fore = swing('LForeArm')
+    expect(fore).toBeGreaterThan(0.5)
+    expect(swing('LForeArmEX')).toBeLessThan(fore)
+    expect(swing('LForeArmEX')).toBeGreaterThan(0)
+  })
+
   it('정지 상태에서는 위상이 진행하지 않는다', () => {
     const { root } = loadSkeleton()
     const rig = createRig(root, new Object3D())!
