@@ -1,0 +1,4 @@
+{
+  "//": "루트 package.json이 type:module이라 이 디렉터리의 CommonJS 추출 도구가 깨진다. 스코프를 여기서 되돌린다.",
+  "type": "commonjs"
+}

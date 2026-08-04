@@ -3,8 +3,9 @@ import { Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { WebGPURenderer } from 'three/webgpu'
 import { EngineDriver } from './EngineDriver'
-import { GreyBox, PlayerCapsule } from './GreyBox'
+import { PlayerCapsule } from './GreyBox'
 import { PlayerModel } from './PlayerModel'
+import { ZoneLoader } from './ZoneLoader'
 import { attachKeyboard } from '../engine/input/keyboard'
 
 let keyboardAttached = false
@@ -38,7 +39,10 @@ export function Stage() {
         }}
       >
         <color attach="background" args={['#131722']} />
-        <GreyBox />
+        {/* 트윈리프타운 — 롬에서 뽑은 충돌·거동·배치를 블록아웃으로 세운다 */}
+        <Suspense fallback={null}>
+          <ZoneLoader name="T01" />
+        </Suspense>
         <Suspense fallback={<PlayerCapsule />}>
           <PlayerModel />
         </Suspense>
