@@ -447,6 +447,7 @@ CDN  +  assets-manifest.json            ← 이 매니페스트만 커밋
 | **맵 지오메트리** | ⚠️ 최종 렌더 ❌ / **블록아웃 레퍼런스 ✅** | DS 원본 지오메트리는 웹 품질 미달. 단 Blender에 임포트해 **리모델링 기준선**으로 쓰면 타일 데이터만 보고 재구축하는 것보다 훨씬 빠르고 정확 |
 | **맵 매트릭스 · 타일 충돌 · 높이 데이터** | ✅ JSON 추출 | 레이아웃의 정본. 이게 있어야 "신오지방"이다 |
 | **포켓몬 모델** | ✅ **전량 활용** (§4.3) | 제약 해제로 최대 병목 소멸 |
+| **인간 캐릭터 모델·애니메이션** | ✅ **BDSP 덤프 자가 추출** (§4.3.1) | 풀비율 배틀 모델 + 클립 23종 + 트레이너 96종 |
 | **종족값 · 기술 · 특성 · 진화** | ✅ JSON 추출 | pokeplatinum `res/pokemon`, `res/moves` |
 | **트레이너 · 인카운터 테이블** | ✅ JSON 추출 | `res/trainers`, `res/field` |
 | **텍스트/대사** | ✅ JSON 추출 — **영어·한국어·일본어. 스파이크 검증 완료** | 자체 구현 디코더(`tools/spike/gen4text.js`, pret msgenc 알고리즘 이식)로 3개 로케일 전 뱅크 **2,147개 복호화 성공, 실패 0**. 4세대는 통합 문자 테이블이라 pret charmap 하나로 한글까지 커버되지만 **결함 2개를 고쳐야 했다** — 아래 참조. 뱅크 매핑 테이블 완성(§4.2.1). US는 종족명을 대문자(TURTWIG)로 저장 — 표기 정책 결정 필요 |
@@ -530,19 +531,21 @@ interface PokemonModelSource {
 
 트레이너판 Pokemon-3D-api(웹용 glb 일괄 팩)는 존재하지 않는다 — 변환 파이프라인은 직접 만들되, 소스는 기성 립으로 대부분 충당된다. v1.0 약 20명 기준 조달 계획:
 
-| 캐릭터 | 소스 | 경로 |
+**조달은 BDSP 덤프 자가 추출로 일원화한다** (§4.3.1에서 경로 확보). 수동 다운로드 사이트를 뒤질 필요가 없어졌다:
+
+| 캐릭터 | 소스 | 상태 |
 |---|---|---|
-| 주인공 빛나 | **Models Resource BDSP "Dawn (Platinum Style)"** — 플라티나 의상 배틀 모델 | dae → Blender → glb, 즉시 가능 |
-| 주인공 광휘(Lucas) | New3DsSuchti BDSP Battle Trainer PMX 팩 (Models Resource에는 없음) | pmx → MMD Tools → glb |
-| 라이벌·강석·난천 등 주요 인물 12+명 | Models Resource BDSP Battle 섹션 (Barry, Roark, 관장 8인, Cynthia 등) | dae → glb, 즉시 가능 |
-| 트레이너 클래스 ~6종 (반바지꼬마·미니스커트 등) | **BDSP 덤프 자가 추출** — 전 클래스 VS 모델 존재 확인, 단 사이트 일괄 업로드는 없음. 차선: Masters EX 팩(파시오 의상이라 정통성↓) | AssetStudio(Unity 2019.4) → FBX → glb |
-| 일반 주민 ~10종 | BDSP VS 민간인풍 클래스 전용(신사·아이돌·낚시꾼 등, 자가 추출) | 동상 |
-| **로우 박사·엄마** | **전무 — 유일한 커스텀 제작 대상** (BDSP 치비뿐, Masters 미등장, MMD 커뮤니티 마스터리스트에도 부재). BDSP 바디 키트배시 + 커스텀 헤드 | Blender 자작 |
+| 주인공 빛나 | `persons/battle/pc0002_00` (+ `_10`~`_22` 의상 변형) | ✅ 추출 완료 |
+| 주인공 광휘(Lucas) | `persons/battle/pc0001_*` | ✅ 확인됨 |
+| 트레이너 클래스·주요 인물 | `persons/battle/tr####_00` — **96종** | ✅ 확인됨 |
+| 일반 주민 | `persons/field/fc####_00` (치비) — 풀비율 대응 필요 | ⚠️ 대조 필요 |
+| 로우 박사·엄마 | 위 96종에 포함되는지 미확인 | ⚠️ 확인 후 판단 |
+
+`tr####` 96종이 어떤 인물·직업군에 대응하는지는 아직 매핑하지 않았다. 필요한 시점에 렌더를 떠서 대조한다.
 
 변환 파이프라인 주의사항:
 
-- **Blender는 4.2 LTS** — 5.0에서 Collada(.dae) 임포트가 제거됐다. Models Resource 립이 전부 .dae다
-- .pmx는 **MMD Tools**(Blender 공식 익스텐션, 활발히 유지보수 중) 경유. MMD 툰 머티리얼은 PBR/unlit 재구성 필요, 본 이름이 일본어
+- **Blender는 4.2 LTS** — 5.0에서 Collada(.dae) 임포트가 제거됐다
 - 후처리는 포켓몬 모델과 동일한 gltf-transform 파이프라인(§4.4) — 스타일·최적화 일관성 확보
 - 어차피 리깅·정규화·클립 폴백은 위 어댑터 인터페이스가 흡수한다
 
@@ -551,19 +554,45 @@ interface PokemonModelSource {
 - **지오메트리·리그는 그대로 쓸 수 있다.** 6메시 18,544 트라이앵글, 166본 풀리그(손가락 3관절·눈알·눈썹·귀·머리카락 물리본 포함). 원본이 Z-up이라 glTF 변환 시 **모델 전방이 +Z가 되어 `facing = atan2(vx, vz)` 규약과 그대로 일치**한다 — 회전 보정 불필요
 - ⚠️ **스케일은 Blender에서 만지면 안 된다.** 아머처 오브젝트에 스케일을 걸고 내보내면 **역바인드 행렬과 노드 스케일에 이중으로 실려** 결과가 제곱으로 줄어든다(1.50m 의도 → 실측 0.88m). **정규화는 전적으로 로드 시점 `normalizeModel()`이 담당**하고 glb는 네이티브 크기로 내보낸다. 어차피 Pokemon-3D-api 1300종의 제각각인 스케일도 같은 코드로 흡수해야 하므로, 이게 원래 맞는 구조다
 - **대체 복장 메시가 겹쳐 들어있다.** `hair1Skin`(비니 착용)/`hair2Skin`, `shoes1Skin`/`shoes2Skin`이 동일 위치에 중복 존재해 그대로 두면 z-fighting이 난다. 노드명으로 `.visible` 토글해 처리 — glb 하나로 복장 변형을 커버할 수 있는 이점이기도 하다
-- ⚠️ **애니메이션 클립이 0개다.** Models Resource 립은 T포즈 메시+본만 담고 있다. 클립은 BDSP 자가 추출(§4.3 트레이너 클래스와 동일 경로)이거나 자작이어야 한다. **§4.3 어댑터의 "누락 클립 절차적 폴백"이 포켓몬뿐 아니라 플레이어에도 필수**가 된다
+- **Models Resource 립에는 애니메이션 클립이 0개다.** T포즈 메시+본만 담고 있다. 아래 자가 추출로 해결됐다
 
-⚠️ **BDSP 마스크 채색 문제 — 색상이 텍스처에 없다.** `_col`은 알베도가 아니라 **그레이스케일 음영 맵**이고, `_msk`/`_msk2`/`_msk3`는 흑백 이진 영역 선택자다. 실제 색은 Unity 머티리얼의 **`SkinColor` / `PrimaryColor` / `SecondaryColor`** 값에 있고 **dae 익스포트가 그걸 싣지 않는다.** 그대로 로드하면 캐릭터가 순백으로 나온다(모딩 커뮤니티에서도 동일하게 기술된 알려진 구조다). 셰이딩 모델은 `albedo = 팔레트색[msk 영역] × _col 음영`. 해결 경로 셋:
+**용량 실측:** 무압축 glb 5.0MB (텍스처 embed PNG가 대부분). §10.4 예산 대비 캐릭터 1인분으로는 과대 — §4.4의 KTX2(ETC1S) + Meshopt 적용이 선택이 아니라 필수임을 확인.
 
-| 경로 | 비용 | 정확도 |
-|---|---|---|
-| BDSP 덤프에서 `.mat` 추출 → 세 색상값 읽기 | 덤프 필요, 자동화 가능 | 원작 정확 |
-| `_msk` 기반으로 팔레트를 직접 지정해 알베도 베이크 | 캐릭터당 30~60분 수작업 | 임의 지정 — **플래티넘 원작 색을 쓸 수 있어 오히려 유리** |
-| 색 없이 진행 | 0 | 불가 |
+#### 4.3.1 BDSP 자가 추출 — 완료
 
-**이건 오히려 최적화 기회다.** `_col`이 그레이스케일이므로 단일 채널로 저장 가능하고, `_msk` 3장은 이진 마스크라 RGB 채널에 패킹해 한 장으로 합칠 수 있다 — §4.4의 KTX2 규격에 이 두 가지를 반영한다.
+**Switch 덤프에서 캐릭터 에셋을 전량 추출하는 경로가 뚫렸다. Models Resource 수동 다운로드는 더 이상 필요 없다.**
 
-**용량 실측:** 무압축 glb 4.63MB (텍스처 embed PNG가 대부분). §10.4 예산 대비 캐릭터 1인분으로는 과대 — §4.4의 KTX2(ETC1S) + Meshopt 적용이 선택이 아니라 필수임을 확인. 위 채널 패킹까지 적용하면 캐릭터당 수백 KB 수준이 목표.
+```
+NSP → (nstool + prod.keys) → NCA → romfs
+  → /Data/StreamingAssets/AssetAssistant/Characters/persons/{battle,field}/
+```
+
+- `battle/`은 **풀비율**, `field/`는 치비 오버월드다. 우리가 쓰는 `pc0002`(빛나)가 battle 쪽이라는 것이 원본에서 확인됐다 — §4.3의 아트 방향 결정이 소스 구조와 일치한다
+- 번들 하나가 자급자족이다. `pc0002_00` 기준 **Mesh 6 + Transform 180(스켈레톤) + Material 12 + Texture2D 36 + AnimationClip 23 + AvatarMask + Animator**
+- **애니메이션 확보.** `stand_b` `wait_b` `wait02_b` `walk_b` `run_b` `pose_b` `win01_b` `order_b` + 표정·눈 깜빡임. 접미사 `_b`는 배틀용이다
+- **`tr####` 트레이너 클래스 96종** — 기존에 "덤프 없으면 불가"로 표시했던 항목이 전부 열렸다. `pc0002_10`~`_22`는 의상 변형 세트다
+- 도구: [nstool](https://github.com/jakcron/nstool)(NSP/NCA/romfs) + **UnityPy**(에셋번들 파싱). Unity 2019.4.27f1
+- ⚠️ 타이틀 업데이트(v1.3.0)는 불필요하다. 캐릭터 에셋은 전부 베이스에 있다
+
+#### 4.3.2 BDSP 채색 구조 — 해독 완료
+
+`_col`은 알베도가 아니라 **그레이스케일 음영 맵**이다. 실제 색은 텍스처가 아니라 머티리얼·컴포넌트에 있다:
+
+```
+albedo = _MainTex(음영) × 레이어색[_MaskTex 채널]
+  🔴 R → _PrimaryColor   🟢 G → _SecondaryColor   🔵 B → _SkinColor   ⬛ 검정 → 틴트 없음
+```
+
+- **마스크는 한 장이다.** `_MaskTex` 하나의 RGB 채널이 세 색을 고른다. Models Resource 립의 `_msk`/`_msk2`/`_msk3`는 그 채널을 분리해 저장한 것이었다
+- **`_SkinColor`는 피부 전용이 아니라 세 번째 범용 레이어 색이다.** 가방엔 노랑(#eedfa7), 모자엔 분홍이 들어간다
+- **`ColorVariation` 컴포넌트가 머티리얼 기본값을 이긴다.** `Property00`~`03`이 게임 시작 시 고르는 외형 프리셋이고 `ColorIndex`가 기본값을 가리킨다. **다루는 범위는 피부·머리·눈 색뿐이고 의상은 건드리지 않는다** — 프리셋 4개를 전부 덤프해 확인했다. 이걸 반영하기 전엔 머리가 회백색, 눈이 무채색으로 나왔다
+- 채널 순서는 `[_PrimaryColor, _SecondaryColor, _SkinColor]`가 맞다. `[Skin, Primary, Secondary]`도 시험했으나 머리·눈·피부가 전부 깨졌다
+
+`tools/extract/bdsp_bake_albedo.py`가 위 식을 오프라인에서 계산해 **평범한 알베도 PNG로 굽는다.** 런타임에서 BDSP 셰이더를 재현할 필요가 없어지고, KTX2(§4.4)에도 그대로 태울 수 있다. 선형↔sRGB 변환과 마스크 NEAREST 업스케일(영역 경계 번짐 방지)을 포함한다.
+
+⚠️ **남은 불확실성 — 의상 색이 원작 배색과 다르게 보인다.** 베이크는 롬의 머티리얼 데이터를 충실히 재현하지만, 결과물이 DS 원작 도트의 배색(흰 비니·검정 조끼·노란 가방)과 다르다. 확인된 사실은 **`pc0002_00`~`_22` 어느 번들에도 검정 계열 `wear` 색이 없다**는 것이다(가장 어두운 값이 #737373). 즉 채널 매핑 오류가 아니라 **BDSP의 기본 복장 디자인 자체가 DS 원작과 다르다**고 보는 것이 데이터에 부합한다. 판단 보류 — 실제 BDSP 스크린샷과 대조해 확정할 것. 필요하면 베이크 단계에서 팔레트를 원작 색으로 덮어쓰면 되고, 그 훅은 이미 있다(`ColorVariation` 오버라이드 경로).
+
+또한 베이크는 알베도만 다룬다. 셰이더의 림 라이트·서브서피스·스펙큘러(`_ComplexTex`가 채널에 패킹)는 재현 대상이 아니다 — 우리는 자체 툰 셰이더(§2.4)를 쓴다.
 
 - **맵은 별개 판단** — BDSP 맵 립은 "블록아웃 레퍼런스 + 자작 아트 킷"(§4.2)의 대안이지만, Unity 씬 조각이라 추출 후 재조립 비용이 있고 아트 스타일 통일 문제가 있다. **v1.0은 자작 아트 킷을 유지**하고, BDSP 맵은 비율·소품 배치 레퍼런스로 쓴다. 맵 자작이 병목이 되면 그때 전환을 재검토(ADR로 기록)
 
@@ -1428,13 +1457,16 @@ pt-3d/
 - ✅ **텍스트 — 완료.** `tools/spike/`의 자체 NDS/NARC/텍스트 디코더로 3개 로케일 전 뱅크 복호화 성공(실패 0). **뱅크 매핑 테이블까지 완료**(§4.2.1) — 7개 데이터 뱅크를 3로케일 내용 대조로 검증하고 테스트로 고정했다. 그 과정에서 charmap 결함 2개(한글 표 오프바이원 구간, 제어코드 구역이 문자 매핑을 덮어씀)를 발견·수정. 이 스파이크 코드가 Phase 1 `tools/extract`의 기반이 된다
 - ✅ **배틀 시뮬 — 완료.** `@pkmn/sim` gen4customgame에서 양측 구동·프로토콜 수신, `@smogon/calc` Gen 4 데미지 계산 동작 확인
 - **오디오**: ROM에서 추출해 둔 `raw/extracted/us/pl_sound_data.sdat`(7.7MB — 전곡이 이 크기다)를 OptimePlayer 웹 데모에 올려 곡이 나오는지 확인 — §4.5의 성패 판단
-- **캐릭터 모델**: Models Resource의 "Dawn (Platinum Style)"을 받아 dae → Blender 4.2 → glb → 포켓몬 모델과 같은 씬에 배치 — BDSP 덤프 없이 즉시 가능. 스타일 정합(§4.3)과 변환 파이프라인을 동시에 검증한다
+- ✅ **캐릭터 모델 — 완료.** 빛나를 glb로 변환해 게임 씬에 배치, 60fps 유지 확인. 정규화 레이어(§4.3)와 BDSP 채색 구조 해독(§4.3.2)까지 마쳤다. 이어서 **BDSP 덤프 자가 추출 경로를 확보**(§4.3.1)해 애니메이션 23종과 트레이너 96종이 열렸다
+- **애니메이션 파이프라인**(다음 차례): 번들의 `AnimationClip`(`walk_b`/`run_b`/`wait_b`)을 glTF 애니메이션으로 옮겨 캐릭터를 실제로 걷게 만든다. UnityPy로 클립을 읽을 수는 있으나 glTF 변환 경로는 미검증 — AssetStudioModCLI로 FBX(메시+리그+클립) 추출 후 Blender 경유가 유력하다
 
 ---
 
 ## 참고 링크
 
 - [pret/pokeplatinum](https://github.com/pret/pokeplatinum) — 플래티넘 디컴파일
+- [nstool](https://github.com/jakcron/nstool) — NSP/NCA/romfs 추출 (BDSP 덤프, §4.3.1)
+- [UnityPy](https://github.com/K0lb3/UnityPy) — Unity 에셋번들 파싱. 머티리얼 색·컴포넌트를 스크립트로 직접 읽는다
 - [scurest/apicula](https://github.com/scurest/apicula) — NSBMD → glTF
 - [DSPRE](https://github.com/DS-Pokemon-Rom-Editor/DSPRE) — DS 포켓몬 ROM 에디터
 - [Trifindo/Pokemon-DS-Map-Studio](https://github.com/Trifindo/Pokemon-DS-Map-Studio) — 4·5세대 맵 에디터

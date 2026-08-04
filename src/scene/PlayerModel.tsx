@@ -3,29 +3,12 @@
 import { useEffect, useRef } from 'react'
 import { useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { Color, Mesh, MeshStandardMaterial, type Group } from 'three'
+import { Mesh, type MeshStandardMaterial, type Group } from 'three'
 import { normalizeModel } from '../engine/model/normalize'
 import { sceneRefs } from './sceneRefs'
 
 /** 빛나의 목표 신장 (게임 단위 = 미터) */
 const PLAYER_HEIGHT = 1.5
-
-// BDSP는 _col 텍스처가 알베도가 아니라 그레이스케일 음영 맵이고, 실제 색은
-// Unity 머티리얼의 SkinColor / PrimaryColor / SecondaryColor 값에 있다 (dae 익스포트에 실리지 않음).
-// _msk가 이 세 색을 칠할 영역을 고르고, _col은 그 위에 음영만 곱한다.
-// 아래는 그 팔레트를 확보하기 전까지 쓰는 임시값 — 모델이 순백으로 보이는 것만 막는다.
-// TODO(§4.3): BDSP .mat에서 세 색을 추출하거나, _msk 기반으로 알베도를 베이크
-const PROVISIONAL_PALETTE: Record<string, string> = {
-  face: '#f6d5bc',
-  body: '#f6d5bc',
-  hair: '#1c2440',
-  hat: '#f2f2f4',
-  wear: '#2a2d38',
-  shoes: '#e05a7a',
-  bag: '#e8c04b',
-  metal: '#c9ccd4',
-  acce: '#e05a7a',
-}
 
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
 const ALT_OUTFIT = ['hair2', 'shoes2']
@@ -41,11 +24,11 @@ export function PlayerModel() {
       const mesh = o as Mesh
       if (!mesh.isMesh) return
       mesh.castShadow = true
+      // 알베도는 tools/extract/bdsp_bake_albedo.py가 이미 구워 넣었다 (BDSP 레이어 색상 →
+      // 평범한 albedo 텍스처). 여기서는 원작 툰 룩에 맞게 반사만 눌러둔다.
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
       for (const m of mats) {
         const std = m as MeshStandardMaterial
-        const tint = PROVISIONAL_PALETTE[std.name]
-        if (tint) std.color = new Color(tint)
         std.roughness = 0.85
         std.metalness = 0.0
       }

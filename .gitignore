@@ -13,3 +13,6 @@ public/models/
 .DS_Store
 tools/spike/*.cpp
 tools/spike/*.h
+
+# BDSP 추출 산출물 (raw/ 하위지만 명시해 둔다)
+raw/models/*/baked/
