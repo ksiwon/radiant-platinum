@@ -71,6 +71,36 @@ function parseParty(buf, type, count) {
   return party
 }
 
+// ── 상금 배수 ────────────────────────────────────────────────────────────────
+// 분류마다 상금 배수가 하나씩 있고, 상금은 `마지막 포켓몬 레벨 × 4 × 배수`다.
+// 이 표는 NARC이 아니라 **배틀 오버레이 안에** 통째로 박혀 있다.
+//
+// 위치는 "105바이트가 오버레이 전체에서 딱 한 군데"로 확정했다 — 아래에서 매번
+// 다시 세어 본다. 두 군데 이상이면 우리가 잡은 오프셋이 우연일 수 있다는 뜻이다.
+const PRIZE_OVERLAY = 16
+const PRIZE_OFFSET = 0x359e0
+const CLASS_COUNT = 105
+
+function extractPrizeMul(rom) {
+  const ov = rom.overlay(PRIZE_OVERLAY)
+  const table = ov.subarray(PRIZE_OFFSET, PRIZE_OFFSET + CLASS_COUNT)
+  if (table.length !== CLASS_COUNT) {
+    throw new Error(`상금 배수표가 오버레이 밖으로 나간다 (${table.length}B)`)
+  }
+
+  // 같은 바이트열이 오버레이 안에 몇 번 나오는가. 하나여야 이 자리가 유일하다
+  let at = -1
+  let hits = 0
+  while ((at = ov.indexOf(table, at + 1)) >= 0) hits++
+  if (hits !== 1) throw new Error(`상금 배수표와 같은 바이트열이 ${hits}군데 있다 — 자리가 안 정해진다`)
+
+  // 주인공 두 칸은 상금이 없다. 여기가 0이 아니면 표의 시작이 밀린 것이다
+  if (table[0] !== 0 || table[1] !== 0) {
+    throw new Error(`상금 배수표 앞 두 칸이 0이 아니다 (${table[0]}, ${table[1]}) — 오프셋이 밀렸다`)
+  }
+  return [...table]
+}
+
 function extractTrainers(rom, text) {
   const trdata = rom.narc('/poketool/trainer/trdata.narc')
   const trpoke = rom.narc('/poketool/trainer/trpoke.narc')
@@ -99,7 +129,10 @@ function extractTrainers(rom, text) {
 
     trainers.push({
       id,
+      /** 트레이너 분류. 상금 배수와 화면 표시("체육관 관장")가 이걸로 정해진다 */
       class: d[1],
+      // d[2]는 디컴프가 `sprite`라 부르는 칸인데 928명 전부 0이다. 플래티넘은
+      // 그림을 분류에서 고르므로 안 쓴다 — 담아 봐야 파일만 커진다
       /** 4세대 AI 비트. 실제로 쓰이는 값은 아홉 가지뿐이다 */
       ai: d.readUInt32LE(0x0c),
       /** 트레이너가 배틀 중에 쓰는 가방 도구 4칸 */
@@ -121,16 +154,16 @@ function extractTrainers(rom, text) {
     names[loc] = text.bank('trainer_names', loc)
     classes[loc] = text.bank('trainer_classes', loc)
   }
-  return { trainers, names, classes, sizeMismatch }
+  return { trainers, names, classes, sizeMismatch, prizeMul: extractPrizeMul(rom) }
 }
 
 function main() {
   const romPath = process.argv.find((a) => a.startsWith('--rom='))?.slice(6)
   const rom = openRom(romPath)
   const text = openText()
-  const { trainers, names, classes, sizeMismatch } = extractTrainers(rom, text)
+  const { trainers, names, classes, sizeMismatch, prizeMul } = extractTrainers(rom, text)
 
-  const out = writeJson('trainers.json', { count: trainers.length, trainers })
+  const out = writeJson('trainers.json', { count: trainers.length, trainers, prizeMul })
   console.log(`trainers: ${trainers.length}명 → ${out.rel} (${out.kb}KB)`)
   console.log(`  크기 합 검증: 불일치 ${sizeMismatch.length}건 ${sizeMismatch.join(' ')}`)
 
@@ -158,6 +191,11 @@ function main() {
   console.log(`  검증 #250 ${names.ko[250]}(${classes.ko[byron.class]}): ` +
     byron.party.map((m) => `#${m.species} L${m.level}${m.item ? ` 도구${m.item}` : ''}`).join(' / ') +
     ` | AI 0x${byron.ai.toString(16)}`)
+
+  // 상금 대조 — 원작에서 난천은 12400엔, 강석은 4920엔을 준다
+  const money = (t) => (t.party.length ? t.party[t.party.length - 1].level * 4 * prizeMul[t.class] : 0)
+  console.log(`  상금 배수 ${prizeMul.length}칸 · 검증 난천 ${money(trainers[267])}엔 · ` +
+    `강석 ${money(byron)}엔`)
 }
 
 if (require.main === module) main()

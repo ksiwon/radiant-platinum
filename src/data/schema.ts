@@ -119,6 +119,7 @@ export const trainerMonSchema = z.object({
 
 export const trainerSchema = z.object({
   id: z.number().int().min(0),
+  /** 분류. 상금 배수와 화면 표시("체육관 관장")가 이걸로 정해진다 */
   class: z.number().int().min(0),
   /** 4세대 AI 비트필드. `battle/ai`가 해석한다 */
   ai: z.number().int().min(0),
@@ -128,9 +129,18 @@ export const trainerSchema = z.object({
   party: z.array(trainerMonSchema).max(6),
 })
 
+/** 트레이너 분류 개수. 상금 배수표의 길이와 같아야 한다 */
+export const TRAINER_CLASS_COUNT = 105
+
 export const trainerFileSchema = z.object({
   count: z.number().int().positive(),
   trainers: z.array(trainerSchema).nonempty(),
+  /**
+   * 분류별 상금 배수. 상금은 `마지막 포켓몬 레벨 × 4 × 배수`다 (DATA.md §2.9).
+   *
+   * NARC이 아니라 배틀 오버레이에 박혀 있어서 트레이너 데이터와 같이 뽑는다
+   */
+  prizeMul: z.array(z.number().int().min(0).max(255)).length(TRAINER_CLASS_COUNT),
 })
 
 export const nameListSchema = z.array(z.string())

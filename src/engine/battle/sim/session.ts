@@ -10,7 +10,7 @@ import type { Species } from '../../../data/schema'
 import type { FinalMon, SideId } from '../events'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { natureOf } from '../../pokemon/instance'
-import { simAbility, simMove, simSpecies } from './bridge'
+import { romMove, simAbility, simMove, simSpecies } from './bridge'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
 const NATURE_NAMES = [
@@ -205,6 +205,14 @@ export class BattleSession {
       maxHp: p.maxhp,
       status: (p.status || 'ok') as Status,
       fainted: p.fainted,
+      // 남은 PP가 아니라 **쓴 양**이다 (`FinalMon.pp` 주석 참고).
+      //
+      // 같은 번호가 두 번 나오면 앞의 것을 쓴다 — 빈 턴용으로 맨 뒤에 붙인
+      // 물장구 칸이 진짜 물장구를 덮어쓰지 않게 하기 위해서다
+      pp: p.moveSlots.flatMap((slot) => {
+        const move = romMove(slot.id)
+        return move === null ? [] : [{ move, used: Math.max(0, slot.maxpp - slot.pp) }]
+      }).filter((slot, i, all) => all.findIndex((o) => o.move === slot.move) === i),
     }))
   }
 

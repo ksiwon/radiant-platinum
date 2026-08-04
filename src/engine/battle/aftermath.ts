@@ -21,8 +21,11 @@ export function foeKey(index: number): string {
 /**
  * 배틀 결과를 파티에 반영한다. 새 배열을 돌려준다 — 세이브는 불변으로 다룬다.
  *
- * HP와 상태이상만 옮긴다. 경험치·노력치는 별도 계산이고, PP는 sim이 우리 슬롯
- * 순서를 보장하지 않으므로 여기서 손대지 않는다
+ * HP·상태이상·PP를 옮긴다. 경험치·노력치는 별도 계산이다.
+ *
+ * **PP는 쓴 만큼 뺀다.** sim은 포인트업을 다 먹인 최대치를 쓰므로 남은 값을 그대로
+ * 옮기면 배틀마다 PP가 늘어난다. 짝짓기는 칸 순서가 아니라 기술 번호로 한다 —
+ * sim은 우리가 넣은 순서를 안 지켜 준다
  */
 export function applyResults(
   party: readonly PokemonInstance[],
@@ -32,7 +35,18 @@ export function applyResults(
   return party.map((mon, i) => {
     const r = byKey.get(partyKey(i))
     if (!r) return mon // 배틀에 안 나간 개체. 원본 그대로 둔다
-    return { ...mon, hp: r.hp, status: r.status, statusTurns: r.status === 'ok' ? 0 : mon.statusTurns }
+    const used = new Map(r.pp.map((s) => [s.move, s.used]))
+    return {
+      ...mon,
+      hp: r.hp,
+      status: r.status,
+      statusTurns: r.status === 'ok' ? 0 : mon.statusTurns,
+      // 결과에 없는 기술은 안 건드린다 — 배틀에 안 나갔거나 sim이 모르는 기술이다
+      moves: mon.moves.map((slot) => {
+        const spent = used.get(slot.move) ?? 0
+        return spent === 0 ? slot : { ...slot, pp: Math.max(0, slot.pp - spent) }
+      }),
+    }
   })
 }
 

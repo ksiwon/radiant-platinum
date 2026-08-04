@@ -5,7 +5,9 @@ import { describe, it, expect } from 'vitest'
 import { speciesFileSchema, type Species } from '../../../data/schema'
 import { expForLevel, levelForExp } from '../../pokemon/exp'
 import type { PokemonInstance } from '../../pokemon/instance'
-import { addEvs, applyReward, EV_PER_STAT, EV_TOTAL, expGain, type StatKey } from './reward'
+import {
+  addEvs, applyReward, EV_PER_STAT, EV_TOTAL, expGain, learnMoves, MOVE_SLOTS, type StatKey,
+} from './reward'
 
 const species = new Map<number, Species>(
   speciesFileSchema
@@ -157,5 +159,56 @@ describe('보상 반영', () => {
       const r = applyReward(mon(TURTWIG, 5), sp, gain, sp.ev)
       expect(r.mon.level, `${gain}`).toBe(levelForExp(sp.growthRate, r.mon.exp))
     }
+  })
+})
+
+describe('기술 습득', () => {
+  const pp = () => 20
+
+  it('빈 칸이 있으면 그냥 들어간다', () => {
+    const m = mon(TURTWIG, 10)
+    m.moves = [{ move: 33, pp: 35, ppUps: 0 }]
+    const r = learnMoves(m, [45, 71], pp)
+    expect(r.learned).toEqual([45, 71])
+    expect(r.pending).toEqual([])
+    expect(r.mon.moves.map((s) => s.move)).toEqual([33, 45, 71])
+    // PP가 안 차 있으면 배우자마자 못 쓰는 기술이 된다
+    expect(r.mon.moves[1]!.pp).toBe(20)
+  })
+
+  it('네 칸이 차 있으면 안 넣고 넘긴다', () => {
+    // 마음대로 지우면 마지막에 배운 기술이 조용히 첫 칸을 덮어쓴다
+    const m = mon(TURTWIG, 10)
+    m.moves = [33, 45, 71, 22].map((move) => ({ move, pp: 20, ppUps: 0 }))
+    const r = learnMoves(m, [77], pp)
+    expect(r.learned).toEqual([])
+    expect(r.pending).toEqual([77])
+    expect(r.mon.moves.map((s) => s.move)).toEqual([33, 45, 71, 22])
+    expect(r.mon.moves).toHaveLength(MOVE_SLOTS)
+  })
+
+  it('이미 아는 기술은 건너뛴다', () => {
+    // 같은 기술을 두 번 배우는 종이 있다. 두 칸을 차지하면 안 된다
+    const m = mon(TURTWIG, 10)
+    m.moves = [{ move: 33, pp: 20, ppUps: 0 }]
+    const r = learnMoves(m, [33], pp)
+    expect(r.learned).toEqual([])
+    expect(r.pending).toEqual([])
+    expect(r.mon.moves).toHaveLength(1)
+  })
+
+  it('원본을 바꾸지 않는다', () => {
+    const m = mon(TURTWIG, 10)
+    m.moves = [{ move: 33, pp: 20, ppUps: 0 }]
+    learnMoves(m, [45], pp)
+    expect(m.moves).toHaveLength(1)
+  })
+
+  it('빈 칸보다 배울 게 많으면 앞에서부터 채우고 나머지는 넘긴다', () => {
+    const m = mon(TURTWIG, 10)
+    m.moves = [33, 45, 71].map((move) => ({ move, pp: 20, ppUps: 0 }))
+    const r = learnMoves(m, [22, 77], pp)
+    expect(r.learned).toEqual([22])
+    expect(r.pending).toEqual([77])
   })
 })

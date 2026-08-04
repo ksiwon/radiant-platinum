@@ -179,11 +179,18 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       const lines = [`${withTopic(who)} 경험치를 ${e.exp} 얻었다!`]
       const top = e.levels[e.levels.length - 1]
       if (top !== undefined) lines.push(`${who}의 레벨이 올랐다! (Lv.${top})`)
+      // 빈 칸에 그냥 들어간 것과, 무엇을 지울지 물어야 하는 것은 다른 문장이다
       for (const move of e.learned) {
+        lines.push(`${withTopic(who)} 새로 ${withObject(names.moves[move] ?? `#${move}`)} 배웠다!`)
+      }
+      for (const move of e.pending) {
         lines.push(`${withTopic(who)} ${withObject(names.moves[move] ?? `#${move}`)} 배우고 싶어 한다!`)
       }
       return lines.join('\n')
     }
+
+    case 'prize':
+      return `상금으로 ${e.money}엔을 받았다!`
 
     case 'tie':
       return '무승부다!'

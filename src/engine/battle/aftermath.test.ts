@@ -15,7 +15,7 @@ function mon(species: number, hp: number): PokemonInstance {
 }
 
 const result = (key: string, hp: number, extra: Partial<FinalMon> = {}): FinalMon => ({
-  key, hp, maxHp: 40, status: 'ok', fainted: hp <= 0, ...extra,
+  key, hp, maxHp: 40, status: 'ok', fainted: hp <= 0, pp: [], ...extra,
 })
 
 describe('배틀 결과 되돌리기', () => {
@@ -58,6 +58,48 @@ describe('배틀 결과 되돌리기', () => {
   it('우리 키와 상대 키는 겹치지 않는다', () => {
     // 겹치면 상대 결과가 우리 파티에 들어간다
     for (let i = 0; i < 6; i++) expect(partyKey(i)).not.toBe(foeKey(i))
+  })
+
+  it('PP를 칸 순서가 아니라 기술 번호로 뺀다', () => {
+    // sim이 우리 칸 순서를 안 지켜 주므로 순서로 되돌리면 안 쓴 기술의 PP가 준다.
+    // 여기서는 sim 쪽 순서를 일부러 뒤집어 둔다
+    const party = [mon(387, 40)]
+    party[0]!.moves = [
+      { move: 33, pp: 35, ppUps: 0 }, // 몸통박치기
+      { move: 45, pp: 40, ppUps: 0 }, // 울음소리
+      { move: 71, pp: 25, ppUps: 0 }, // 흡수
+    ]
+    const after = applyResults(party, [result(partyKey(0), 30, {
+      pp: [{ move: 71, used: 5 }, { move: 33, used: 4 }],
+    })])
+    expect(after[0]!.moves.map((m) => m.pp)).toEqual([31, 40, 20])
+  })
+
+  it('남은 값이 아니라 쓴 만큼을 뺀다', () => {
+    // sim은 포인트업을 다 먹인 최대치를 쓴다(10 → 16). 남은 값을 그대로 옮기면
+    // 배틀을 할 때마다 PP가 늘어난다
+    const party = [mon(387, 40)]
+    party[0]!.moves = [{ move: 33, pp: 10, ppUps: 0 }]
+    const after = applyResults(party, [result(partyKey(0), 30, {
+      pp: [{ move: 33, used: 3 }],
+    })])
+    expect(after[0]!.moves[0]!.pp).toBe(7)
+  })
+
+  it('PP는 0 밑으로 안 내려간다', () => {
+    const party = [mon(387, 40)]
+    party[0]!.moves = [{ move: 33, pp: 2, ppUps: 0 }]
+    const after = applyResults(party, [result(partyKey(0), 30, {
+      pp: [{ move: 33, used: 9 }],
+    })])
+    expect(after[0]!.moves[0]!.pp).toBe(0)
+  })
+
+  it('결과에 없는 기술은 안 건드린다', () => {
+    const party = [mon(387, 40)]
+    party[0]!.moves = [{ move: 33, pp: 35, ppUps: 0 }]
+    const after = applyResults(party, [result(partyKey(0), 30, { pp: [] })])
+    expect(after[0]!.moves[0]!.pp).toBe(35)
   })
 
   it('전멸 판정 — 빈 파티는 전멸이 아니다', () => {

@@ -12,7 +12,7 @@ import { beforeAll, beforeEach, describe, it, expect } from 'vitest'
 import { useBattleStore } from './battleStore'
 import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
-import { createWild, statsOf, wildMoves } from '../engine/pokemon/instance'
+import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instance'
 import { expForLevel } from '../engine/pokemon/exp'
 import { loadMoves, loadSpecies, loadTrainers } from '../data/gameData'
 
@@ -232,14 +232,17 @@ describe('보상', () => {
  * `levelForExp`가 레벨을 도로 5로 끌어내린다
  */
 async function giveStrongParty(ids = [483, 484, 445]) {
-  const table = await loadSpecies()
+  const [table, moves] = await Promise.all([loadSpecies(), loadMoves()])
+  // PP를 안 채우면 전부 0으로 들어가서 발버둥만 쓴다. 세이브의 PP가 정본이 된
+  // 뒤로는 개체를 만드는 쪽이 반드시 채워야 한다
+  const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
   const party = ids.map((id, i) => {
     const sp = table.get(id)
     const mon = createWild({ species: sp, level: 100, rng: rng(i + 1), otId: 1, otSecretId: 2 })
     mon.exp = expForLevel(sp.growthRate, 100)
     mon.moves = wildMoves(sp, 100)
     mon.hp = statsOf(mon, sp).hp
-    return mon
+    return fillPp(mon, pp)
   })
   useSaveStore.setState({ party })
 }
@@ -338,5 +341,103 @@ describe('트레이너전', () => {
     const trainer = await gained(() => useBattleStore.getState().startTrainer(weak.id))
     expect(wild, '야생에서 경험치가 안 들어왔다').toBeGreaterThan(0)
     expect(trainer).toBe(Math.floor((wild * 3) / 2))
+  }, 60_000)
+
+  it('이기면 상금이 세이브의 돈에 들어온다', async () => {
+    // 강석(#250)은 원작에서 4920엔을 준다
+    await giveStrongParty()
+    const before = useSaveStore.getState().money
+    await useBattleStore.getState().startTrainer(250)
+    await playToEnd(120)
+
+    expect(useBattleStore.getState().outcome, '못 이겼다').toBe('win')
+    expect(useSaveStore.getState().money - before).toBe(4920)
+
+    // 화면에도 나와야 한다. 돈만 늘고 아무 말이 없으면 플레이어가 모른다
+    const said = useBattleStore.getState().events.find((e) => e.kind === 'prize')
+    expect(said).toBeDefined()
+    useBattleStore.getState().close()
+  }, 60_000)
+
+  it('졌으면 상금이 없다', async () => {
+    // 5레벨 하나로 강석에게 덤빈다
+    useSaveStore.setState({ party: [] })
+    const before = useSaveStore.getState().money
+    await useBattleStore.getState().startTrainer(250)
+    await playToEnd(120)
+
+    expect(useBattleStore.getState().outcome, '이겨 버렸다 — 이 테스트가 공허하다').toBe('loss')
+    expect(useSaveStore.getState().money).toBe(before)
+    useBattleStore.getState().close()
+  }, 60_000)
+})
+
+describe('배틀 뒤에 남는 것', () => {
+  it('쓴 PP가 세이브에 남는다', async () => {
+    // 안 남으면 기술을 무한히 쓸 수 있어서 PP라는 자원이 없는 것과 같다
+    await giveStrongParty([483])
+    const before = useSaveStore.getState().party[0]!.moves.map((m) => m.pp)
+    expect(before.some((pp) => pp > 0), 'PP가 처음부터 0이다').toBe(true)
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 3 })
+    const steps = await playToEnd(30)
+    expect(steps, '한 수도 안 뒀다').toBeGreaterThan(0)
+    useBattleStore.getState().close()
+
+    const after = useSaveStore.getState().party[0]!.moves.map((m) => m.pp)
+    expect(after.length).toBe(before.length)
+    // 적어도 한 칸은 줄어 있어야 한다. 전부 그대로면 되돌리기가 안 된 것이다
+    expect(after.some((pp, i) => pp < before[i]!), `${before} → ${after}`).toBe(true)
+    // 안 쓴 칸까지 줄면 칸 순서로 되돌린 것이다
+    expect(after.every((pp, i) => pp <= before[i]!)).toBe(true)
+  }, 60_000)
+
+  it('레벨업으로 배우는 기술이 빈 칸에 실제로 들어간다', async () => {
+    // "배우고 싶어 한다"만 하고 안 넣으면 기술이 영영 안 늘어난다
+    const species = await loadSpecies()
+    const sp = species.get(STARLY)
+    // 기술 한 칸만 들고 레벨업 직전까지 채워 둔다
+    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 2 })
+    mon.hp = statsOf(mon, sp).hp
+    mon.moves = [{ move: 33, pp: 35, ppUps: 0 }]
+    mon.exp = expForLevel(sp.growthRate, 5) - 1
+    mon.level = 4
+    useSaveStore.setState({ party: [mon] })
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    await playToEnd(30)
+    useBattleStore.getState().close()
+
+    const after = useSaveStore.getState().party[0]!
+    expect(after.level, '레벨이 안 올랐다 — 이 테스트가 공허하다').toBeGreaterThan(4)
+    // 그 레벨에 배우는 기술이 실제로 있어야 비교가 성립한다
+    const due = sp.learnset.filter((l) => l.level > 4 && l.level <= after.level).map((l) => l.move)
+    expect(due.length, '그 구간에 배우는 기술이 없다').toBeGreaterThan(0)
+    const have = after.moves.map((m) => m.move)
+    expect(have).toContain(due[0])
+    // PP도 채워져야 한다 — 0이면 배우자마자 못 쓰는 기술이다
+    expect(after.moves.find((m) => m.move === due[0])!.pp).toBeGreaterThan(0)
+  }, 60_000)
+
+  it('네 칸이 차 있으면 안 넣고 물어본다', async () => {
+    const species = await loadSpecies()
+    const sp = species.get(STARLY)
+    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 2 })
+    mon.hp = statsOf(mon, sp).hp
+    // 5레벨에 배우는 전광석화(98)는 일부러 뺀다 — 이미 알고 있으면 물어볼 일이 없다
+    mon.moves = [33, 45, 116, 10].map((move) => ({ move, pp: 30, ppUps: 0 }))
+    mon.exp = expForLevel(sp.growthRate, 5) - 1
+    mon.level = 4
+    useSaveStore.setState({ party: [mon] })
+
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 2 })
+    await playToEnd(30)
+
+    const reward = useBattleStore.getState().events.find((e) => e.kind === 'reward')
+    expect(reward?.kind === 'reward' && reward.learned).toEqual([])
+    expect(reward?.kind === 'reward' && reward.pending.length, '물어볼 게 없다').toBeGreaterThan(0)
+    useBattleStore.getState().close()
+    // 기술칸이 다섯 개가 되면 안 된다
+    expect(useSaveStore.getState().party[0]!.moves).toHaveLength(4)
   }, 60_000)
 })

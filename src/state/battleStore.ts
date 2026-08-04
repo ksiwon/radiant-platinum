@@ -15,12 +15,13 @@ import type { BattleAction } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
 import { Ball } from '../engine/battle/meta/capture'
-import { applyReward, expGain } from '../engine/battle/meta/reward'
+import { applyReward, expGain, learnMoves } from '../engine/battle/meta/reward'
+import { MAX_MONEY, prizeFor } from '../engine/battle/meta/prize'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
 import type { BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
-import { createWild, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
+import { createWild, fillPp, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { dexSet, useSaveStore } from './saveStore'
 
 /** 파티 최대 인원. 넘으면 박스로 간다 */
@@ -57,6 +58,13 @@ interface BattleState {
   kind: BattleKind
   /** 상대 트레이너 표시 이름("체육관 관장 동관"). 야생이면 null */
   foeName: string | null
+  /**
+   * 이기면 받을 상금. 야생이면 0.
+   *
+   * 배틀을 열 때 정해 둔다 — 끝난 뒤에 계산하려면 트레이너 데이터를 다시 받아야 하고,
+   * 그 사이에 트레이너 번호를 들고 있어야 한다
+   */
+  prize: number
   view: BattleView | null
   actions: BattleAction[]
   /** 배틀 내내 쌓인 사건. 텍스트 박스와 연출이 같은 줄기를 본다 */
@@ -82,25 +90,20 @@ let current: BattleController | null = null
 let participants = new Set<string>()
 /** 종족 표. 보상 계산이 매번 다시 받지 않도록 들고 있는다 */
 let speciesTable: { get(id: number): Species } | null = null
+/** 기술 번호 → 최대 PP. 레벨업으로 배운 기술의 PP를 채우는 데 쓴다 */
+let ppOf: (move: number) => number = () => 5
 
 /**
- * PP까지 채운 전투용 사본.
+ * 전투용 사본.
  *
- * 세이브의 객체를 그대로 넘기면 안 된다 — 여기서 PP를 채우는 순간 영속 상태를
- * 직접 건드리게 된다. 배틀 결과는 끝난 뒤 `applyResults`로만 돌아간다.
- * (PP 소모는 아직 세이브에 안 남는다. 도구·기술 관리와 같이 온다)
+ * 세이브의 객체를 그대로 넘기면 안 된다 — sim이 안에서 손대면 영속 상태가 같이
+ * 바뀐다. 배틀 결과는 끝난 뒤 `applyResults`로만 돌아간다.
+ *
+ * **PP는 세이브 값을 그대로 쓴다.** 여기서 "0이면 채운다"를 하면 다 쓴 기술이
+ * 배틀마다 되살아난다 — 개체를 만들 때 `fillPp`로 채우는 것이 그래서다
  */
-function ready(
-  mon: PokemonInstance,
-  species: Species,
-  key: string,
-  pp: (move: number) => number,
-): SideMon {
-  const copy: PokemonInstance = {
-    ...mon,
-    moves: mon.moves.map((s) => ({ ...s, pp: s.pp > 0 ? s.pp : pp(s.move) })),
-  }
-  return { mon: copy, species, key }
+function ready(mon: PokemonInstance, species: Species, key: string): SideMon {
+  return { mon: { ...mon, moves: mon.moves.map((s) => ({ ...s })) }, species, key }
 }
 
 /**
@@ -109,7 +112,10 @@ function ready(
  * 아직 나로 이벤트가 없어서 파티가 비어 있을 수 있고, 포켓몬센터도 없어서 전멸한
  * 채로 남을 수 있다. 둘 다 임시로 여기서 메운다 — 진짜 이벤트가 생기면 지운다
  */
-function ensureParty(table: { get(id: number): Species }): PokemonInstance[] {
+function ensureParty(
+  table: { get(id: number): Species },
+  pp: (move: number) => number,
+): PokemonInstance[] {
   const save = useSaveStore.getState()
   let party = save.party
 
@@ -120,9 +126,12 @@ function ensureParty(table: { get(id: number): Species }): PokemonInstance[] {
       otId: save.trainer.id, otSecretId: save.trainer.secretId,
     })
     mon.hp = statsOf(mon, species).hp
-    party = [mon]
+    party = [fillPp(mon, pp)]
   } else if (party.every((m) => m.hp <= 0)) {
-    party = party.map((m) => ({ ...m, hp: statsOf(m, table.get(m.species)).hp, status: 'ok' as const }))
+    // 전멸 회복은 포켓몬센터를 대신하는 자리다. 센터는 PP도 채워 준다
+    party = party.map((m) => fillPp(
+      { ...m, hp: statsOf(m, table.get(m.species)).hp, status: 'ok' as const }, pp,
+    ))
   } else {
     return party
   }
@@ -135,6 +144,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   phase: 'off',
   kind: 'wild',
   foeName: null,
+  prize: 0,
   view: null,
   actions: [],
   events: [],
@@ -143,13 +153,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   error: null,
 
   startWild: async (wild) => {
-    await open(set, get, 'wild', null, ({ species, pp }) => {
+    await open(set, get, 'wild', null, 0, ({ species, pp }) => {
       const foeSpecies = species.get(wild.species)
       const foe = createWild({
         species: foeSpecies, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
       })
       foe.hp = statsOf(foe, foeSpecies).hp
-      return { name: '야생', team: [ready(foe, foeSpecies, foeKey(0), pp)] }
+      return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }
     })
   },
 
@@ -158,6 +168,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       loadTrainers(), loadTrainerNames(LOCALE), loadTrainerClasses(LOCALE),
     ])
     const trainer = table.get(trainerId)
+    // 부적금화는 도구 데이터가 아직 없어서 안 본다
+    const prize = prizeFor(trainer, table.prizeMul)
     if (!trainer.party.length) {
       set({ error: `트레이너 #${trainerId}은(는) 파티가 없다` })
       return
@@ -165,13 +177,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
     const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
 
-    await open(set, get, 'trainer', label, ({ species, pp }) => ({
+    await open(set, get, 'trainer', label, prize, ({ species, pp }) => ({
       name: label || '상대',
       team: trainer.party.map((entry, i) => {
         const sp = species.get(entry.species)
         const mon = trainerMonToInstance(entry, sp, trainerId, i)
         mon.hp = statsOf(mon, sp).hp
-        return ready(mon, sp, foeKey(i), pp)
+        return ready(fillPp(mon, pp), sp, foeKey(i))
       }),
     }), trainer.ai)
   },
@@ -231,7 +243,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
     participants = new Set()
     set({
-      phase: 'off', kind: 'wild', foeName: null,
+      phase: 'off', kind: 'wild', foeName: null, prize: 0,
       view: null, actions: [], events: [], roster: {}, outcome: null,
     })
   },
@@ -268,6 +280,9 @@ async function advance(
   }
 
   const ended = result.view.ended
+  // 상금은 이긴 그 순간 한 번만. `phase`가 'over'로 바뀌므로 두 번 올 수 없다
+  if (ended && controller.finish === 'win') events.push(...grantPrize(get()))
+
   set({
     view: result.view,
     events: [...get().events, ...events],
@@ -314,17 +329,29 @@ function grantRewards(
     const mon = party[index]
     if (!mon) continue
     const reward = applyReward(mon, table.get(mon.species), gain, foeSpecies.ev)
-    party[index] = reward.mon
+    // 레벨업 기술은 **여기서 실제로 넣는다.** 배틀이 끝난 뒤로 미루면 다음
+    // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다
+    const taught = learnMoves(reward.mon, reward.levelUps.flatMap((l) => l.moves), ppOf)
+    party[index] = taught.mon
     out.push({
       kind: 'reward',
       key,
       exp: reward.gainedExp,
       levels: reward.levelUps.map((l) => l.level),
-      learned: reward.levelUps.flatMap((l) => l.moves),
+      learned: taught.learned,
+      pending: taught.pending,
     })
   }
   useSaveStore.setState({ party })
   return out
+}
+
+/** 트레이너를 이겼으면 상금을 준다. 이미 끝난 판에서 두 번 부르면 안 된다 */
+function grantPrize(state: BattleState): BattleEvent[] {
+  if (state.kind !== 'trainer' || !state.prize) return []
+  const save = useSaveStore.getState()
+  useSaveStore.setState({ money: Math.min(MAX_MONEY, save.money + state.prize) })
+  return [{ kind: 'prize', money: state.prize }]
 }
 
 /** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
@@ -341,13 +368,14 @@ async function open(
   get: GetState,
   kind: BattleKind,
   foeName: string | null,
+  prize: number,
   buildFoe: BuildFoe,
   /** 트레이너 AI 비트. 안 주면 상대는 무작위로 둔다 — 야생이 그렇다 */
   aiFlags?: number,
 ): Promise<void> {
   if (get().phase !== 'off') return
   set({
-    phase: 'loading', kind, foeName,
+    phase: 'loading', kind, foeName, prize,
     view: null, actions: [], events: [], roster: {}, outcome: null, error: null,
   })
 
@@ -359,15 +387,16 @@ async function open(
     ])
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
     speciesTable = species
+    ppOf = pp
     participants = new Set()
 
-    const party = ensureParty(species)
+    const party = ensureParty(species, pp)
     const roster: Record<string, RosterEntry> = {}
     const team = party.map((mon, i) => {
       roster[partyKey(i)] = {
         side: 'p1', species: mon.species, nickname: mon.nickname, level: mon.level,
       }
-      return ready(mon, species.get(mon.species), partyKey(i), pp)
+      return ready(mon, species.get(mon.species), partyKey(i))
     })
 
     const foe = buildFoe({ species, pp })

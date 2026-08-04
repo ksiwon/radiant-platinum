@@ -20,7 +20,37 @@ const BANK_KEY = { en: 'us', ko: 'ko', ja: 'ja' }
 function openRom(romPath = DEFAULT_ROM) {
   if (!fs.existsSync(romPath)) throw new Error(`롬이 없다: ${romPath}`)
   const rom = readRom(romPath)
-  return { rom, narc: (p) => parseNarc(rom.read(p)), read: (p) => rom.read(p) }
+  return {
+    rom,
+    narc: (p) => parseNarc(rom.read(p)),
+    read: (p) => rom.read(p),
+    overlay: (id) => overlay(rom, id),
+  }
+}
+
+/**
+ * arm9 오버레이 하나를 통째로.
+ *
+ * 오버레이는 파일시스템(FNT)에 이름이 없어서 `read('/...')`로는 못 꺼낸다. 헤더의
+ * 오버레이 표(+0x50)가 오버레이 번호 → 파일 번호를 주고, 그 파일 번호로 FAT를 본다.
+ *
+ * 배틀 상수표처럼 NARC에 안 담긴 데이터가 여기 들어 있다 (DATA.md §2.10)
+ */
+function overlay(rom, id) {
+  const { buf } = rom
+  const tableOff = buf.readUInt32LE(0x50)
+  const tableSize = buf.readUInt32LE(0x54)
+  const count = tableSize / 32
+  if (id < 0 || id >= count) throw new Error(`오버레이 #${id}가 없다 (전체 ${count}개)`)
+  const entry = tableOff + id * 32
+  // 압축된 오버레이는 그대로 읽으면 안 된다. 지금 쓰는 것들은 전부 비압축이다
+  const compressed = buf.readUInt32LE(entry + 28) & 0xffffff
+  if (compressed) throw new Error(`오버레이 #${id}는 압축돼 있다 — 풀어야 읽을 수 있다`)
+  const fileId = buf.readUInt32LE(entry + 24) & 0xffffff
+  const fatOff = buf.readUInt32LE(0x48)
+  const start = buf.readUInt32LE(fatOff + fileId * 8)
+  const end = buf.readUInt32LE(fatOff + fileId * 8 + 4)
+  return buf.subarray(start, end)
 }
 
 /**

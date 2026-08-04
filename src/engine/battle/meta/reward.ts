@@ -109,6 +109,46 @@ export function applyReward(
   }
 }
 
+/** 기술 네 칸 */
+export const MOVE_SLOTS = 4
+
+export interface LearnResult {
+  mon: PokemonInstance
+  /** 실제로 들어간 기술 */
+  learned: number[]
+  /** 칸이 없어서 못 넣은 기술. 무엇을 지울지 물어야 한다 */
+  pending: number[]
+}
+
+/**
+ * 레벨업으로 배우는 기술을 실제로 넣는다.
+ *
+ * **빈 칸이 있을 때만 넣는다.** 네 칸이 차 있으면 무엇을 지울지는 플레이어가
+ * 정해야 하므로 `pending`으로 넘긴다 — 여기서 마음대로 지우면 마지막에 배운
+ * 기술이 조용히 첫 칸을 덮어쓴다.
+ *
+ * 이미 아는 기술은 건너뛴다. 같은 기술을 두 번 배우는 종이 있다
+ */
+export function learnMoves(
+  mon: PokemonInstance,
+  moves: readonly number[],
+  pp: (move: number) => number,
+): LearnResult {
+  const slots = [...mon.moves]
+  const learned: number[] = []
+  const pending: number[] = []
+  for (const move of moves) {
+    if (slots.some((s) => s.move === move)) continue
+    if (slots.length >= MOVE_SLOTS) {
+      if (!pending.includes(move)) pending.push(move)
+      continue
+    }
+    slots.push({ move, pp: pp(move), ppUps: 0 })
+    learned.push(move)
+  }
+  return { mon: learned.length ? { ...mon, moves: slots } : mon, learned, pending }
+}
+
 /** 종족의 노력치 산출값. 롬은 능력치당 0~3으로 담고 있다 */
 export function evYieldOf(species: Species): Record<StatKey, number> {
   return { ...species.ev }

@@ -167,16 +167,31 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
   })
 
   it('경험치와 레벨업과 새 기술이 한 덩어리로 나온다', () => {
-    const text = say({ kind: 'reward', key: 'p1-0', exp: 160, levels: [6, 7], learned: [33] })
+    const text = say({
+      kind: 'reward', key: 'p1-0', exp: 160, levels: [6, 7], learned: [33], pending: [],
+    })
     expect(text).toBe(
       '모부기는 경험치를 160 얻었다!\n'
       + '모부기의 레벨이 올랐다! (Lv.7)\n'
-      + '모부기는 몸통박치기를 배우고 싶어 한다!',
+      + '모부기는 새로 몸통박치기를 배웠다!',
     )
   })
 
+  it('칸이 차서 못 배운 기술은 다르게 말한다', () => {
+    // "배웠다"와 "배우고 싶어 한다"가 같은 문장이면 플레이어가 뭘 해야 하는지 모른다
+    const text = say({
+      kind: 'reward', key: 'p1-0', exp: 10, levels: [7], learned: [], pending: [33],
+    })
+    expect(text).toContain('모부기는 몸통박치기를 배우고 싶어 한다!')
+    expect(text).not.toContain('배웠다')
+  })
+
   it('레벨이 안 올랐으면 경험치 줄만 나온다', () => {
-    expect(say({ kind: 'reward', key: 'p1-0', exp: 12, levels: [], learned: [] }))
+    expect(say({ kind: 'reward', key: 'p1-0', exp: 12, levels: [], learned: [], pending: [] }))
       .toBe('모부기는 경험치를 12 얻었다!')
+  })
+
+  it('상금 줄', () => {
+    expect(say({ kind: 'prize', money: 4920 })).toBe('상금으로 4920엔을 받았다!')
   })
 })

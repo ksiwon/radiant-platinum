@@ -119,6 +119,17 @@ export function setExp(mon: PokemonInstance, species: Species, exp: number): voi
   mon.level = levelForExp(species.growthRate, mon.exp)
 }
 
+/**
+ * PP를 가득 채운다. 새 개체를 돌려준다.
+ *
+ * **개체를 만드는 쪽이 반드시 한 번은 불러야 한다.** `createWild`는 기술 데이터를
+ * 모르므로 PP를 0으로 두는데, 그 상태로 세이브에 들어가면 "안 채운 0"과 "다 쓴 0"이
+ * 구분이 안 된다 — 다 쓴 기술이 배틀마다 되살아난다
+ */
+export function fillPp(mon: PokemonInstance, maxPp: (move: number) => number): PokemonInstance {
+  return { ...mon, moves: mon.moves.map((s) => ({ ...s, pp: maxPp(s.move) })) }
+}
+
 /** 쓰러졌는가 */
 export function isFainted(mon: PokemonInstance): boolean {
   return mon.hp <= 0

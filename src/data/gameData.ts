@@ -81,6 +81,8 @@ export function loadMoveNames(locale: DataLocale): Promise<string[]> {
 
 export interface TrainerTable {
   all: readonly Trainer[]
+  /** 분류별 상금 배수. 색인은 `Trainer.class`다 */
+  prizeMul: readonly number[]
   get(id: number): Trainer
 }
 
@@ -92,10 +94,12 @@ export interface TrainerTable {
  */
 export function loadTrainers(): Promise<TrainerTable> {
   return fetchJson('trainers.json', (v) => {
-    const all = trainerFileSchema.parse(v).trainers
+    const file = trainerFileSchema.parse(v)
+    const all = file.trainers
     const byId = new Map(all.map((t) => [t.id, t]))
     return {
       all,
+      prizeMul: file.prizeMul,
       get(id: number) {
         const t = byId.get(id)
         if (!t) throw new Error(`트레이너 #${id}이(가) 데이터에 없다`)

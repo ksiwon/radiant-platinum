@@ -77,6 +77,16 @@ export interface FinalMon {
   maxHp: number
   status: Status
   fainted: boolean
+  /**
+   * 이 배틀에서 **쓴** PP. 남은 PP가 아니다.
+   *
+   * sim은 모든 기술에 포인트업 3회를 먹인 최대치를 준다(10 → 16, 20 → 32).
+   * 남은 값을 그대로 세이브에 옮기면 배틀을 할 때마다 PP가 늘어난다. 그래서
+   * 최대치가 아니라 **줄어든 양**만 가져와 우리 쪽 최대치에서 뺀다.
+   *
+   * 기술 번호로 짝짓는다 — sim은 우리가 넣은 칸 순서를 지켜 주지 않는다
+   */
+  pp: { move: number; used: number }[]
 }
 
 /**
@@ -163,8 +173,22 @@ export type BattleEvent =
   | { kind: 'ball'; actor: Actor; ball: number; shakes: number; caught: boolean }
   /** 도망을 시도했다 */
   | { kind: 'escape'; success: boolean }
-  /** 경험치를 받았다. `levels`는 새로 도달한 레벨, `learned`는 그 레벨에 배우는 기술 번호 */
-  | { kind: 'reward'; key: string; exp: number; levels: number[]; learned: number[] }
+  /**
+   * 경험치를 받았다. `levels`는 새로 도달한 레벨.
+   *
+   * `learned`는 **실제로 들어간** 기술이고, `pending`은 칸이 없어서 못 넣은 것이다.
+   * 둘을 나눠 두지 않으면 화면이 "배웠다"와 "배우고 싶어 한다"를 구분 못 한다
+   */
+  | {
+      kind: 'reward'
+      key: string
+      exp: number
+      levels: number[]
+      learned: number[]
+      pending: number[]
+    }
+  /** 트레이너전에서 상금을 받았다 */
+  | { kind: 'prize'; money: number }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {
