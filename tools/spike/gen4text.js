@@ -47,19 +47,29 @@ function decodeBank(bank) {
   return messages
 }
 
+// charmap.txt는 두 구역이다: 문자 매핑과, "// Function codes" 이후의 명령 코드.
+// 명령 코드는 0xFFFE 뒤에서만 의미가 있는데 같은 맵에 합치면 문자를 덮어쓴다 —
+// 실제로 0x600/0x602/0x603의 한글 됨/됩/됫이 {STRVAR_6}/{UNK_*}에 가려져 있었다.
 function loadCharmap(path) {
   const map = new Map()
+  const functions = new Map()
+  let inFunctions = false
   for (const line of fs.readFileSync(path, 'utf8').split('\n')) {
     const t = line.replace(/\r$/, '')
-    if (!t || t.startsWith('//')) continue
+    if (!t) continue
+    if (t.startsWith('//')) {
+      if (/function codes/i.test(t)) inFunctions = true
+      continue
+    }
     const eq = t.indexOf('=')
     if (eq < 0) continue
     const code = parseInt(t.slice(0, eq).trim(), 16)
     if (Number.isNaN(code)) continue
     let ch = t.slice(eq + 1)
     if (ch === '\\x0000') ch = ''
-    map.set(code, ch)
+    ;(inFunctions ? functions : map).set(code, ch)
   }
+  map.functions = functions
   return map
 }
 
