@@ -17,6 +17,10 @@ export default defineConfig({
           // '@react-three/fiber'는 'react'에도 매치되므로 three 검사가 먼저 와야 한다
           if (id.includes('three')) return 'three'
           if (id.includes('react')) return 'react'
+          // 배틀 시뮬레이터. brotli 715 kB로 신오 전체 데이터(165 kB)의 4배가 넘는다.
+          // 별도 청크로 떼어 **첫 배틀에서만** 받게 한다 — src/engine/battle/sim/은
+          // 정적 import 하지 않는 것이 그 전제다
+          if (id.includes('@pkmn')) return 'battle-sim'
         },
       },
     },

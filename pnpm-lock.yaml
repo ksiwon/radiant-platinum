@@ -8,6 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@pkmn/data':
+        specifier: ^0.10.11
+        version: 0.10.11
+      '@pkmn/protocol':
+        specifier: ^0.7.3
+        version: 0.7.3
+      '@pkmn/sim':
+        specifier: ^0.10.11
+        version: 0.10.11
       '@react-three/fiber':
         specifier: ^9.0.0
         version: 9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.1)
@@ -419,6 +428,28 @@ packages:
 
   '@oxc-project/types@0.142.0':
     resolution: {integrity: sha512-7W+2q5AKQVU36fkaryontrHn3YDt1RyUYXatw9i5H8ocYe2sPKSFB6eS8WNPeRKiN1qAWWZUPm7gwFzJGrccqQ==}
+
+  '@pkmn/data@0.10.11':
+    resolution: {integrity: sha512-WZiOOZEdIJybC1M2EJVazx+OKH5Hh544cPhNnjgNjn3B0LORP82YkL4jpZqkww+NoIHIXMvJBYLKg3GZBNm4kQ==}
+
+  '@pkmn/dex-types@0.10.11':
+    resolution: {integrity: sha512-6hvvi/iHCdBbUGK7RmWPCKuZGujEC+1elvxcLK2BpL/j7Q0roSuC33xrodDsyg2EuyJ5szGunzRtFztyrtb7aQ==}
+
+  '@pkmn/protocol@0.7.3':
+    resolution: {integrity: sha512-ohSQhckON0OWf/0rlO3gioiR0pFdI/0YNh4lUtsFyrJ2ntrpdsF/n3tasFo2Mxag0fuWNsIGo9lwCFNbxSdi1A==}
+    hasBin: true
+
+  '@pkmn/sets@5.2.0':
+    resolution: {integrity: sha512-WHAW6bZu0WCo/3b+LTW7BE0fBhYZnWH1lCXIu2an8/wTiZ/+s1eTcQYj7W/YQKxWT5dm/La03AZ6CeqdJip9CQ==}
+
+  '@pkmn/sim@0.10.11':
+    resolution: {integrity: sha512-v45jqIgFnEB3hc7e97QlWDnfkIef6mfZ0WjWHWw+f21cYyksGVLzxIEulR9xuOazeszA+ycDx6O6B3JOJAS5Xg==}
+
+  '@pkmn/streams@1.1.0':
+    resolution: {integrity: sha512-Pp9k7gt4xd76DqTU+LQEUyzuaauM4bV1MlehVtX1NS7o9zMFtjw50MfaEQ62dIMZyzxNjsJGoLGBeY1iSYLsRA==}
+
+  '@pkmn/types@4.0.0':
+    resolution: {integrity: sha512-gR2s/pxJYEegek1TtsYCQupNR3d5hMlcJFsiD+2LyfKr4tc+gETTql47tWLX5mFSbPcbXh7f4+7txlMIDoZx/g==}
 
   '@react-three/fiber@9.7.0':
     resolution: {integrity: sha512-EWm9FwcaOZQu/ExFW5rggoCMM1NJet5YbxVxKaOE+KSncrjU0Wx7017qSyGFvupviK89nMYGCWU3BIK4dI1clw==}
@@ -1289,6 +1320,9 @@ packages:
     peerDependencies:
       typescript: '>=4.8.4'
 
+  ts-chacha20@1.2.0:
+    resolution: {integrity: sha512-PTyPoWYHc2we8P2NTn5hpYG211popWbkjiw+k63xqjeMrx9pPtXSclz9F3fu0Tpr+vfR1xxcQFwsEkh1cXMLqw==}
+
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -1735,6 +1769,32 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@oxc-project/types@0.142.0': {}
+
+  '@pkmn/data@0.10.11':
+    dependencies:
+      '@pkmn/dex-types': 0.10.11
+
+  '@pkmn/dex-types@0.10.11':
+    dependencies:
+      '@pkmn/types': 4.0.0
+
+  '@pkmn/protocol@0.7.3':
+    dependencies:
+      '@pkmn/types': 4.0.0
+
+  '@pkmn/sets@5.2.0':
+    dependencies:
+      '@pkmn/types': 4.0.0
+
+  '@pkmn/sim@0.10.11':
+    dependencies:
+      '@pkmn/sets': 5.2.0
+      '@pkmn/streams': 1.1.0
+      ts-chacha20: 1.2.0
+
+  '@pkmn/streams@1.1.0': {}
+
+  '@pkmn/types@4.0.0': {}
 
   '@react-three/fiber@9.7.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(three@0.185.1)':
     dependencies:
@@ -2614,6 +2674,8 @@ snapshots:
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:
       typescript: 5.9.3
+
+  ts-chacha20@1.2.0: {}
 
   type-check@0.4.0:
     dependencies:
