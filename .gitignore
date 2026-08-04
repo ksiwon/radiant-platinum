@@ -16,3 +16,6 @@ tools/spike/*.h
 
 # BDSP 추출 산출물 (raw/ 하위지만 명시해 둔다)
 raw/models/*/baked/
+
+# tsc -b 캐시. 빌드 산출물이라 추적하지 않는다
+tsconfig.tsbuildinfo
