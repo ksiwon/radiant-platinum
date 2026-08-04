@@ -1,0 +1,130 @@
+// 현재 맵과 워프 전이 (DATA.md §2.3, §4.1)
+//
+// 존 전환은 두 종류다. 마을에서 도로로 걸어 나가는 것은 **전환이 아니다** —
+// 같은 행렬 안에서 좌표가 이어질 뿐이라 아무것도 할 일이 없다. 문·계단만 전환이고,
+// 그것이 여기서 다루는 워프다.
+//
+// 이 모듈은 React를 모른다. 워프를 감지하면 pending에 올려 두기만 하고, 실제 격자
+// 교체(비동기 fetch가 필요하다)는 씬이 가져간다.
+import type { MapGrid } from './grid'
+import { worldState } from '../../state/worldState'
+
+export interface MapHeader {
+  id: number
+  name: string
+  matrix: number
+  events: number
+  /** pl_enc_data 인덱스. 야생이 없으면 null */
+  encounters: number | null
+  /** 지역명 인덱스 (names/locations.*.json) */
+  label: number
+  bgmDay: number
+  bgmNight: number
+  scripts: number
+  msg: number
+}
+
+export interface Warp {
+  x: number
+  z: number
+  /** 목적지 맵 헤더 id */
+  to: number
+  /** 목적지 맵의 몇 번째 워프로 나오는지 */
+  anchor: number
+}
+
+/**
+ * NPC 배치. 확정된 것은 좌표뿐이고 나머지 이름은 값 분포로 붙인 추정이다
+ * (DATA.md §2.3). raw에 원시 16워드가 그대로 있으니 이름이 틀려도 잃는 건 없다.
+ */
+export interface Npc {
+  x: number
+  z: number
+  height: number
+  sprite: number
+  move: number
+  facing: number
+  script: number
+  /** 등장 조건 플래그. 조건이 없으면 null */
+  flag: number | null
+  raw: number[]
+}
+
+export interface EventFile {
+  warps: Warp[]
+  npcs: Npc[]
+  signs: number
+  triggers: number
+}
+
+export interface PendingWarp {
+  /** 목적지 맵 헤더 id */
+  to: number
+  /** 목적지 행렬 번호 */
+  matrix: number
+  /** 목적지 행렬 안의 타일 좌표 */
+  x: number
+  z: number
+}
+
+export const world = {
+  maps: null as MapHeader[] | null,
+  events: null as Record<string, EventFile> | null,
+  grid: null as MapGrid | null,
+  /** 현재 서 있는 맵 헤더 id */
+  mapId: -1,
+  /** 씬이 처리해야 할 전이. 처리 후 씬이 null로 되돌린다 */
+  pending: null as PendingWarp | null,
+  /**
+   * 워프 타일 위에서 시작했을 때 즉시 되돌아가는 것을 막는다.
+   * 워프로 도착한 직후엔 해제돼 있고, 워프 타일에서 발을 떼면 다시 걸린다.
+   */
+  armed: false,
+}
+
+export function mapById(id: number): MapHeader | null {
+  return world.maps?.[id] ?? null
+}
+
+export function warpsOf(mapId: number): Warp[] {
+  return eventsOf(mapId)?.warps ?? []
+}
+
+export function npcsOf(mapId: number): Npc[] {
+  return eventsOf(mapId)?.npcs ?? []
+}
+
+function eventsOf(mapId: number): EventFile | null {
+  const m = mapById(mapId)
+  if (!m || !world.events) return null
+  return world.events[String(m.events)] ?? null
+}
+
+/** 목적지 워프가 가리키는 도착 지점. 목적지가 실재하지 않으면 null */
+export function resolveWarp(w: Warp): PendingWarp | null {
+  const dest = mapById(w.to)
+  if (!dest) return null
+  const back = warpsOf(w.to)[w.anchor]
+  if (!back) return null
+  return { to: w.to, matrix: dest.matrix, x: back.x + 0.5, z: back.z + 0.5 }
+}
+
+/**
+ * 워프 감지. 씬은 pending을 보고 격자를 갈아 끼운다.
+ * 도착 지점은 상대편 워프 타일 자체다 — 원작도 문 안쪽 타일에 세운다.
+ */
+export const warpSystem = {
+  fixedUpdate() {
+    if (world.mapId < 0 || world.pending) return
+    const p = worldState.player.position
+    const tx = Math.floor(p.x), tz = Math.floor(p.z)
+    const here = warpsOf(world.mapId).find((w) => w.x === tx && w.z === tz)
+    if (!here) { world.armed = true; return }
+    if (!world.armed) return
+    const target = resolveWarp(here)
+    // 목적지가 없는 워프가 6개 있다(더미). 밟아도 아무 일도 일어나지 않는 게 맞다
+    if (!target) return
+    world.armed = false
+    world.pending = target
+  },
+}

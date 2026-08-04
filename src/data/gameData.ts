@@ -1,0 +1,86 @@
+// 정적 게임 데이터 로더 (DATA.md §3.2)
+//
+// 롬은 런타임에 파싱하지 않는다 — 브라우저에서 128MB를 다룰 이유도, 로케일 3벌을
+// 매번 디코드할 이유도 없다. 추출기가 만든 JSON만 받아 스키마로 검증한다.
+//
+// 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
+// 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
+import {
+  labelsSchema, moveFileSchema, nameListSchema, speciesFileSchema,
+  type Labels, type Move, type Species,
+} from './schema'
+
+export type DataLocale = 'en' | 'ko' | 'ja'
+
+/** 모듈 스코프 캐시 — 같은 파일을 두 번 받지 않는다 */
+const cache = new Map<string, Promise<unknown>>()
+
+async function fetchJson<T>(path: string, parse: (v: unknown) => T): Promise<T> {
+  const hit = cache.get(path)
+  if (hit) return hit as Promise<T>
+  const promise = fetch(`${import.meta.env.BASE_URL}data/${path}`)
+    .then((r) => {
+      if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
+      return r.json()
+    })
+    .then(parse)
+    .catch((e) => {
+      cache.delete(path) // 실패를 캐시하면 재시도가 영영 막힌다
+      throw e
+    })
+  cache.set(path, promise)
+  return promise
+}
+
+export interface SpeciesTable {
+  all: readonly Species[]
+  byId: ReadonlyMap<number, Species>
+  get(id: number): Species
+}
+
+export interface MoveTable {
+  all: readonly Move[]
+  byId: ReadonlyMap<number, Move>
+  get(id: number): Move
+}
+
+function indexed<T extends { id: number }>(all: T[], what: string) {
+  const byId = new Map(all.map((x) => [x.id, x]))
+  return {
+    all,
+    byId,
+    get(id: number) {
+      const v = byId.get(id)
+      if (!v) throw new Error(`${what} #${id}이(가) 데이터에 없다`)
+      return v
+    },
+  }
+}
+
+export function loadSpecies(): Promise<SpeciesTable> {
+  return fetchJson('species.json', (v) =>
+    indexed(speciesFileSchema.parse(v).species, '종족'))
+}
+
+export function loadMoves(): Promise<MoveTable> {
+  return fetchJson('moves.json', (v) => indexed(moveFileSchema.parse(v).moves, '기술'))
+}
+
+/** 종족 이름 배열. 인덱스는 species.json의 배열 순서와 같다(id가 아니다) */
+export function loadSpeciesNames(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/species.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+export function loadMoveNames(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/moves.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+export function loadLabels(locale: DataLocale): Promise<Labels> {
+  return fetchJson(`names/labels.${locale}.json`, (v) => labelsSchema.parse(v))
+}
+
+/** 성비 바이트를 암컷 확률로. 무성이면 null */
+export function femaleChance(genderRatio: number): number | null {
+  if (genderRatio === 255) return null
+  return genderRatio / 254
+}

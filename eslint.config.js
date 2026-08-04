@@ -3,6 +3,19 @@ import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 
+// ⚠️ 플랫 설정에서 같은 규칙을 두 블록에 쓰면 뒤가 앞을 통째로 덮는다.
+// no-restricted-imports를 계층별로 따로 선언하면 마지막 블록만 살아남아
+// 앞선 경계가 조용히 죽는다 — 실제로 한 번 그렇게 죽었다. 그래서 조각을
+// 상수로 두고 각 블록이 필요한 것을 전부 합쳐서 쓴다.
+
+/** 브라우저 번들에는 노드 API가 들어갈 수 없다. @types/node는 테스트용이다 */
+const NODE_FORBIDDEN = [
+  {
+    group: ['node:*', 'fs', 'path', 'crypto'],
+    message: '브라우저 번들에 노드 API가 들어갈 수 없다. 데이터는 fetch로 받는다 (DATA.md §3.2).',
+  },
+]
+
 /** 엔진 계층에서 금지되는 임포트 (PLAN §3.2 ③, §15) */
 const ENGINE_FORBIDDEN = {
   paths: [
@@ -33,6 +46,7 @@ const ENGINE_FORBIDDEN = {
       group: ['**/sessionStore', '**/saveStore', '**/*.css'],
       message: 'src/engine은 UI 상태·스타일에 의존하지 않는다 (PLAN §3.2).',
     },
+    ...NODE_FORBIDDEN,
   ],
 }
 
@@ -51,6 +65,7 @@ export default tseslint.config(
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-restricted-imports': ['error', { patterns: [...NODE_FORBIDDEN] }],
     },
   },
   {
@@ -76,6 +91,7 @@ export default tseslint.config(
           ],
           patterns: [
             { group: ['three/*', '@react-three/*'], message: 'UI는 렌더러를 몰라야 한다 (PLAN §15).' },
+            ...NODE_FORBIDDEN,
           ],
         },
       ],
@@ -83,6 +99,10 @@ export default tseslint.config(
   },
   {
     files: ['**/*.test.ts'],
-    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+    rules: {
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      // 테스트는 추출물을 디스크에서 직접 읽는다 — 유일하게 노드 API가 허용되는 곳
+      'no-restricted-imports': 'off',
+    },
   },
 )

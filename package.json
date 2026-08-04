@@ -14,7 +14,14 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "spike:extract": "node tools/spike/extract.js",
     "spike:text": "node tools/spike/text-test4.js",
-    "spike:sdat": "node tools/spike/sdat-test.js"
+    "spike:sdat": "node tools/spike/sdat-test.js",
+    "extract:species": "node tools/extract/species.js",
+    "extract:moves": "node tools/extract/moves.js",
+    "extract:headers": "node tools/extract/headers.js",
+    "extract:matrices": "node tools/extract/matrices.js",
+    "extract:events": "node tools/extract/events.js",
+    "extract": "pnpm extract:headers && pnpm extract:matrices && pnpm extract:events && pnpm extract:encounters && pnpm extract:species && pnpm extract:moves",
+    "extract:encounters": "node tools/extract/encounters.js"
   },
   "dependencies": {
     "@react-three/fiber": "^9.0.0",
@@ -30,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.185.0",

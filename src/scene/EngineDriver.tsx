@@ -7,6 +7,8 @@ import { gameLoop } from '../engine/loop/GameLoop'
 import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem } from '../engine/actor/player'
 import { cameraSystem } from '../engine/actor/camera'
+import { warpSystem } from '../engine/map/world'
+import { encounterSystem } from '../engine/battle/encounterSystem'
 import { worldState } from '../state/worldState'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
 import { createPostChain, type PostChain } from './fx/post'
@@ -20,9 +22,11 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
 
   useEffect(() => {
     if (!systemsRegistered) {
-      // 시스템 실행 순서 고정 (PLAN §3.4): Input → Movement → Camera
+      // 시스템 실행 순서 고정 (PLAN §3.4): Input → Movement → Warp → Encounter → Camera
       gameLoop.register(inputSystem)
       gameLoop.register(playerSystem)
+      gameLoop.register(warpSystem)
+      gameLoop.register(encounterSystem)
       gameLoop.register(cameraSystem)
       systemsRegistered = true
     }

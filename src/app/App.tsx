@@ -7,6 +7,8 @@ import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import { TitleScreen } from '../ui/screens/TitleScreen'
 import { PerfOverlay } from '../ui/hud/PerfOverlay'
+import { ZoneBanner } from '../ui/hud/ZoneBanner'
+import { EncounterBanner } from '../ui/hud/EncounterBanner'
 import { dayTheme } from '../ui/theme/day.css'
 import { installAudioUnlock } from '../engine/audio/unlock'
 import { useSessionStore } from '../state/sessionStore'
@@ -35,6 +37,8 @@ export function App() {
         </Suspense>
       )}
       <PerfOverlay />
+      <ZoneBanner />
+      <EncounterBanner />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<TitleScreen />} />

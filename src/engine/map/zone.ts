@@ -7,11 +7,33 @@ export const IMPASSABLE = 0x8000
 /** 나머지 비트가 타일 거동. 오버월드 전체 어휘는 54종 */
 export const BEHAVIOR_MASK = 0x7fff
 
-/** 확인된 거동 값. 나머지는 아직 의미를 특정하지 않았다 — 원시값으로 다룬다 */
+/**
+ * 확인된 거동 값. 나머지는 아직 의미를 특정하지 않았다 — 원시값으로 다룬다.
+ *
+ * 풀숲은 인카운터 표와의 교차검증으로 확정했다: 오버월드 67개 존에서
+ * "육상 인카운터가 있다 ⟺ 0x0002 타일이 있다"가 오탐·누락 0으로 성립한다.
+ * 완전히 독립된 두 자료(타일 격자와 pl_enc_data)의 대조라 우연히 맞을 수 없다.
+ *
+ * ⚠️ 처음엔 0x0015를 풀숲으로 봤다. 빈도 2위에 넓은 덩어리 분포라는 이유였는데,
+ * 같은 교차검증에서 33:34로 깨졌다 — 231번**수로**에 0x0015가 6912칸인데 육상
+ * 출현률이 0이고, 217번도로는 출현률 30인데 0x0015가 하나도 없었다. 물이었다.
+ * 빈도와 분포 모양은 의미의 근거가 되지 못한다.
+ */
 export const Behavior = {
   NORMAL: 0x0000,
-  TALL_GRASS: 0x0015,
+  TALL_GRASS: 0x0002,
+  WATER: 0x0015,
 } as const
+
+/**
+ * 이동 시스템이 필요로 하는 것의 전부. 존 격자든 오버월드 전역 격자든
+ * 이것만 만족하면 갈아 끼울 수 있다 — 실내(존)와 실외(오버월드)는 격자의
+ * 크기와 출처가 다를 뿐 이동 코드에는 같은 것이다.
+ */
+export interface CollisionGrid {
+  /** 월드 좌표(1타일 = 1유닛) 기준 */
+  isBlockedAtWorld(x: number, z: number): boolean
+}
 
 export interface Building {
   model: number
@@ -44,7 +66,7 @@ export interface ZoneData {
  * 여러 청크를 하나의 평평한 격자로 펴 둔다.
  * 청크 경계를 매 질의마다 계산하면 이동 코드가 지저분해지고 느려진다.
  */
-export class ZoneGrid {
+export class ZoneGrid implements CollisionGrid {
   readonly width: number
   readonly depth: number
   readonly data: ZoneData
@@ -104,5 +126,5 @@ export class ZoneGrid {
   }
 }
 
-/** 현재 로드된 존. 씬과 이동 시스템이 함께 읽는다 */
-export const activeZone: { grid: ZoneGrid | null } = { grid: null }
+/** 현재 이동 판정에 쓰이는 격자. 씬이 넣고 이동 시스템이 읽는다 */
+export const activeZone: { grid: CollisionGrid | null } = { grid: null }

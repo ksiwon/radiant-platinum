@@ -5,7 +5,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { EngineDriver } from './EngineDriver'
 import { PlayerCapsule } from './GreyBox'
 import { PlayerModel } from './PlayerModel'
-import { ZoneLoader } from './ZoneLoader'
+import { WorldLoader } from './WorldLoader'
 import { attachKeyboard } from '../engine/input/keyboard'
 
 let keyboardAttached = false
@@ -39,9 +39,9 @@ export function Stage() {
         }}
       >
         <color attach="background" args={['#131722']} />
-        {/* 트윈리프타운 — 롬에서 뽑은 충돌·거동·배치를 블록아웃으로 세운다 */}
+        {/* 신오 전체. 트윈리프에서 시작해 걸어서 이동하고, 문으로 실내에 들어간다 */}
         <Suspense fallback={null}>
-          <ZoneLoader name="T01" />
+          <WorldLoader />
         </Suspense>
         <Suspense fallback={<PlayerCapsule />}>
           <PlayerModel />
