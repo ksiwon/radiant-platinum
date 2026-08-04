@@ -30,6 +30,8 @@ export interface Gait {
   forearmR: number
   /** 상체 좌우 비틀림 */
   torsoYaw: number
+  /** 상체 전방 기울기. 양수가 앞. 달릴수록 커진다 */
+  lean: number
   /** 골반 상하 진동(m). 발이 땅에 닿을 때 낮아진다 */
   bob: number
   /** T포즈에서 팔을 옆구리로 내리는 양. 이동과 무관한 상수 자세 */
@@ -58,6 +60,14 @@ const AMP = {
   /** 팔이 앞으로 나올 때만 더 접힌다 */
   forearmSwing: 0.25, forearmSwingRun: 0.20,
   torsoYaw: 0.07,
+  /**
+   * 상체 전방 기울기. 걷기 3°, 달리기 13°.
+   *
+   * 달릴 때 몸을 세우고 있으면 발이 몸을 밀어내는 게 아니라 끌고 가는 것처럼 보인다.
+   * 실제로는 발목부터 온몸이 기울지만 여기서는 척추만 기울인다 — 골반을 기울이면
+   * 다리가 통째로 따라가 발이 지면을 뚫는다
+   */
+  lean: 0.05, leanRun: 0.17,
   bob: 0.022,
   /**
    * 바인드 포즈가 T포즈라 팔을 내려야 한다. 1.20rad(69°)면 수직에서 21° 벌어져
@@ -171,6 +181,7 @@ export function sampleGait(phase: number, moving: number, run: number): Gait {
     forearmL: forearm(sOpp),
     forearmR: forearm(s),
     torsoYaw: sOpp * AMP.torsoYaw * m,
+    lean: (AMP.lean + AMP.leanRun * r) * m,
     // 한 사이클에 두 번 내려앉는다 — 양발이 각각 착지하므로 주파수가 두 배다
     bob: -Math.abs(Math.sin(phase)) * AMP.bob * m,
     armDrop: AMP.armDrop,

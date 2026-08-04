@@ -165,6 +165,15 @@ function applyHelper(rig: Rig, helper: string, joint: string, fraction = 0.5) {
 const FORWARD = -1
 
 /**
+ * 척추·목처럼 **위로** 뻗은 사슬의 "앞" 부호.
+ *
+ * 같은 월드 X 회전이라도 아래로 뻗은 팔다리와 위로 뻗은 상체는 Z가 반대로 움직인다 —
+ * 축을 하나 정해 놓고 회전시키면 축 위쪽과 아래쪽이 서로 반대로 가는 게 당연하다.
+ * `FORWARD`를 그대로 쓰면 달릴 때 몸이 뒤로 젖혀진다(머리 월드 Z −0.096으로 확인).
+ */
+const FORWARD_UP = -FORWARD
+
+/**
  * 쇄골이 가져가는 어깨 동작의 몫.
  *
  * 사람의 팔은 어깨 관절 하나로 움직이지 않는다 — 팔을 앞으로 내밀면 쇄골이 따라
@@ -220,13 +229,14 @@ export function updateLocomotion(
   // 어깨·팔꿈치 변형을 헬퍼 본과 나눈다 (원본 리그의 제약을 되살린 것)
   for (const [helper, joint] of HELPERS) applyHelper(rig, helper, joint)
 
-  // 상체는 팔과 반대로 비틀어 어깨가 따라 돌지 않게 한다
-  apply(j.Spine1, 'Spine1', 0, 0, g.torsoYaw * 0.4)
-  apply(j.Spine3, 'Spine3', 0, 0, g.torsoYaw * 0.6)
-  // 정지 중 호흡. 가슴만 아주 조금 젖힌다
-  apply(j.Spine2, 'Spine2', idleBreath(rig.elapsed, moving))
-  // 머리는 상체 비틀림을 되받아 정면을 본다
-  apply(j.Neck, 'Neck', 0, 0, -g.torsoYaw * 0.5)
+  // 상체는 팔과 반대로 비틀어 어깨가 따라 돌지 않게 하고, 앞으로 기운다.
+  // 기울기는 세 마디에 나눠 건다 — 한 관절에 몰면 배가 접히는 것처럼 보인다
+  apply(j.Spine1, 'Spine1', FORWARD_UP * g.lean * 0.4, 0, g.torsoYaw * 0.4)
+  // 정지 중 호흡. 가슴을 아주 조금 젖히므로 기울기와 부호가 반대다
+  apply(j.Spine2, 'Spine2', FORWARD_UP * (g.lean * 0.3 - idleBreath(rig.elapsed, moving)))
+  apply(j.Spine3, 'Spine3', FORWARD_UP * g.lean * 0.3, 0, g.torsoYaw * 0.6)
+  // 머리는 상체의 비틀림과 기울기를 절반쯤 되받아 계속 정면을 본다
+  apply(j.Neck, 'Neck', -FORWARD_UP * g.lean * 0.55, 0, -g.torsoYaw * 0.5)
 
   rig.bobTarget.position.y = rig.bobBase + g.bob
 }

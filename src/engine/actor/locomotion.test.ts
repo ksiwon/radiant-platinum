@@ -202,6 +202,53 @@ describe('포즈 적용', () => {
     expect(l.z).toBeCloseTo(r.z, 4)
   })
 
+  it('달릴수록 상체가 앞으로 기운다 — 뒤로 젖혀지면 부호가 틀린 것이다', () => {
+    // 척추는 위로 뻗어 있어서 같은 월드 회전에 팔다리와 반대로 기운다.
+    // 그래서 여기는 **머리의 월드 위치**로 잰다 — 본 축을 가정하지 않는 유일한 방법이다
+    const headZ = (speed: number) => {
+      const { root, nodes } = loadSkeleton()
+      const rig = createRig(root, new Object3D())!
+      const head = new Vector3(), hips = new Vector3()
+      let sum = 0
+      // 한 사이클 이상 돌려 앞뒤 스윙을 평균으로 지운다
+      for (let i = 0; i < 400; i++) {
+        updateLocomotion(rig, 1 / 400, speed, 4.5, 8)
+        root.updateMatrixWorld(true)
+        nodes.get('Head')!.getWorldPosition(head)
+        nodes.get('Hips')!.getWorldPosition(hips)
+        sum += head.z - hips.z
+      }
+      return sum / 400
+    }
+    const stand = headZ(0), walk = headZ(4.5), run = headZ(8)
+    expect(walk, `걷기 ${walk.toFixed(4)} vs 정지 ${stand.toFixed(4)}`).toBeGreaterThan(stand)
+    expect(run, `달리기 ${run.toFixed(4)} vs 걷기 ${walk.toFixed(4)}`).toBeGreaterThan(walk)
+    expect(run - stand).toBeGreaterThan(0.05)
+  })
+
+  it('팔이 같은 쪽 다리와 반대로 흔들린다 — 월드 위치로 확인한다', () => {
+    // gait.test.ts는 각도 부호만 본다. 축을 잘못 걸면 각도는 맞는데 실제로는
+    // 같이 흔들릴 수 있으므로 여기서 손과 발의 실제 위치로 확인한다
+    const { root, nodes } = loadSkeleton()
+    const rig = createRig(root, new Object3D())!
+    const hand = new Vector3(), toe = new Vector3(), hips = new Vector3()
+    const at = (target: number) => {
+      resetRig(rig)
+      rig.phase = 0
+      while (rig.phase < target) updateLocomotion(rig, 1 / 2000, 8, 4.5, 8)
+      root.updateMatrixWorld(true)
+      nodes.get('LHand')!.getWorldPosition(hand)
+      nodes.get('LToe')!.getWorldPosition(toe)
+      nodes.get('Hips')!.getWorldPosition(hips)
+      return { hand: hand.z - hips.z, toe: toe.z - hips.z }
+    }
+    const front = at(Math.PI / 2) // 왼발이 앞
+    const back = at((3 * Math.PI) / 2) // 왼발이 뒤
+    expect(front.toe).toBeGreaterThan(back.toe)
+    expect(front.hand, `왼발 앞 ${front.hand.toFixed(3)} / 뒤 ${back.hand.toFixed(3)}`)
+      .toBeLessThan(back.hand)
+  })
+
   it('쇄골이 어깨 동작의 일부를 나눠 진다 — 팔 하나에 몰면 삼각근이 파인다', () => {
     const { root, nodes } = loadSkeleton()
     const bind = new Map<string, Quaternion>()
