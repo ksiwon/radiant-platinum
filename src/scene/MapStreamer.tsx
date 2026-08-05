@@ -9,8 +9,10 @@
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Color, InstancedMesh, Object3D } from 'three'
-import { activeZone, Behavior, IMPASSABLE, isWater } from '../engine/map/zone'
+import {
+  BackSide, InstancedBufferAttribute, InstancedMesh, Mesh, Object3D, type Color,
+} from 'three'
+import { activeZone, IMPASSABLE } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
@@ -19,21 +21,33 @@ import { useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
+import { CLIFF_COLOR, tileColor } from './fx/palette'
+import { DAY, makeSkyTexture } from './fx/sky'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
 const VIEW_RADIUS = 2
 const WALL_HEIGHT = 1.2
 const dummy = new Object3D()
 
-function tileColor(behavior: number): Color {
-  if (behavior === Behavior.NORMAL) return new Color('#6f7a52')
-  if (behavior === Behavior.TALL_GRASS) return new Color('#3f7d3a')
-  if (isWater(behavior)) return new Color('#2f5f8f')
-  const h = ((behavior * 2654435761) % 360) / 360
-  return new Color().setHSL(h, 0.35, 0.45)
-}
-
 interface Cell { x: number; z: number; y: number; color?: Color }
+
+/**
+ * 인스턴스 색 버퍼를 **첫 렌더 전에** 만들어 둔다.
+ *
+ * `setColorAt`은 버퍼가 없으면 그때 만든다. 그런데 그 호출은 effect 안에서
+ * 일어나고, 그 사이에 렌더러가 이미 `instanceColor === null`인 상태로 머티리얼을
+ * 컴파일해 버리면 **그 뒤에 넣은 색은 셰이더에 영영 안 들어간다.**
+ *
+ * 실측으로 잡았다: 머티리얼 색을 빨강으로 두고 인스턴스 색을 올리브로 넣었더니
+ * 화면이 rgb(185, 0, 10) — 곱해지지 않고 순수 빨강이었다. 타일 색이 실행할
+ * 때마다 나왔다 안 나왔다 한 것이 이 경쟁 때문이다.
+ *
+ * ref 콜백은 커밋 시점, 즉 첫 프레임 전에 돈다
+ */
+function ensureInstanceColor(mesh: InstancedMesh | null, count: number): void {
+  if (!mesh || mesh.instanceColor) return
+  mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(count * 3).fill(1), 3)
+}
 
 /**
  * 창 안의 타일을 바닥/벽으로 나눈다. 벽은 걸을 수 있는 칸에 접한 것만 세운다.
@@ -85,6 +99,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const [chunkIndex, setChunkIndex] = useState(() =>
     initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)))
 
+  const skyRef = useRef<Mesh>(null)
   const floorRef = useRef<InstancedMesh>(null)
   const wallRef = useRef<InstancedMesh>(null)
   const buildingRef = useRef<InstancedMesh>(null)
@@ -142,6 +157,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
   }, [initial, spawn, enter, setZone])
 
+  // 하늘 텍스처는 한 번만 만든다
+  const sky = useMemo(() => makeSkyTexture(DAY), [])
+
   // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
   // 정수로 반올림해 두는 이유는 계단을 오르는 동안 매 프레임 창을 다시 세우지
   // 않기 위해서다 — 한 번 다시 세우는 데 5×5청크 × 1024타일을 훑는다
@@ -175,6 +193,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
     const i = grid.chunkIndexAt(tx, tz)
     if (i >= 0) setChunkIndex((prev) => (prev === i ? prev : i))
+
+    // 하늘 돔을 플레이어 위로 옮긴다. 안 옮기면 오버월드 끝(960타일)에서
+    // 돔 밖으로 걸어 나가 하늘이 사라진다
+    if (skyRef.current) skyRef.current.position.set(p.x, 0, p.z)
 
     // 야생이 나왔다. 배틀 청크는 이때 처음 받는다 — 그동안 판정을 멈춰 둔다
     if (encounters.pending) {
@@ -256,17 +278,37 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   return (
     <group>
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[20, 40, 15]} intensity={1.5} />
+      {/*
+        하늘 돔. 카메라를 따라다니게 두지 않고 플레이어 위에 세운다 — 반지름
+        400이면 far(200) 밖으로 나가지 않는 한 어디서 봐도 지평선이 보인다.
+        안개는 끈다: 안 그러면 하늘 자체가 안개색으로 뭉개진다
+      */}
+      {sky && (
+        <mesh ref={skyRef} renderOrder={-1}>
+          <sphereGeometry args={[190, 32, 20]} />
+          <meshBasicMaterial map={sky} side={BackSide} fog={false} depthWrite={false} />
+        </mesh>
+      )}
+      {/*
+        조명 셋. 앰비언트 하나로 평평하게 채우면 절벽의 단차가 안 보인다 —
+        하늘/지면 두 색을 섞는 반구광이 야외에서는 훨씬 낫다
+      */}
+      <hemisphereLight args={['#cfe4f2', '#5b6b46', 0.62]} />
+      <directionalLight position={[24, 42, 18]} intensity={1.15} color="#fff4e0" />
+      {/* 반대쪽에서 넣는 약한 빛. 그늘진 면이 검게 죽는 것을 막는다 */}
+      <directionalLight position={[-20, 16, -24]} intensity={0.22} color="#9fc4e8" />
 
-      <instancedMesh ref={floorRef} args={[undefined, undefined, capacity.tiles]}>
+      <instancedMesh
+        ref={(m) => { floorRef.current = m; ensureInstanceColor(m, capacity.tiles) }}
+        args={[undefined, undefined, capacity.tiles]}
+      >
         <boxGeometry args={[1, 0.1, 1]} />
         <meshStandardMaterial roughness={0.95} />
       </instancedMesh>
 
       <instancedMesh ref={wallRef} args={[undefined, undefined, capacity.tiles]}>
         <boxGeometry args={[1, WALL_HEIGHT, 1]} />
-        <meshStandardMaterial color="#4a5163" roughness={0.9} />
+        <meshStandardMaterial color={CLIFF_COLOR} roughness={0.95} />
       </instancedMesh>
 
       <instancedMesh ref={buildingRef} args={[undefined, undefined, capacity.buildings]}>

@@ -1,12 +1,14 @@
 // 영속 Canvas (PLAN §3.3) — 라우트 트리 위에 있어 절대 언마운트되지 않는다
 import { Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { NeutralToneMapping } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { EngineDriver } from './EngineDriver'
 import { PlayerCapsule } from './GreyBox'
 import { PlayerModel } from './PlayerModel'
 import { WorldLoader } from './WorldLoader'
 import { BattleStage } from './battle/BattleStage'
+import { DAY } from './fx/sky'
 import { attachKeyboard } from '../engine/input/keyboard'
 import { useBattleStore } from '../state/battleStore'
 
@@ -39,14 +41,20 @@ export function Stage() {
             ...(props as ConstructorParameters<typeof WebGPURenderer>[0]),
             antialias: true,
           })
+          // 톤매핑을 안 켜면 밝은 면이 그냥 잘려서 흰색이 된다 — 조명 합이 2를
+          // 넘는 순간 바닥이 통째로 하얘진다(실제로 그렇게 만들었다).
+          // Neutral은 ACES보다 색이 덜 빠져서 파스텔 팔레트에 맞는다
+          renderer.toneMapping = NeutralToneMapping
+          renderer.toneMappingExposure = 1.05
           await renderer.init()
           return renderer
         }}
       >
-        <color attach="background" args={['#131722']} />
-        {/* 렌더 창은 5×5청크(160타일)까지다. 그 경계가 검게 잘려 보이지 않도록
-            배경색과 같은 안개로 녹인다 — 창을 넓히는 것보다 훨씬 싸다 */}
-        <fog attach="fog" args={['#131722', 45, 115]} />
+        {/* 하늘색으로 지운다. 하늘 돔이 덮지만 로드 한 프레임 동안 검게 번쩍인다 */}
+        <color attach="background" args={[DAY.stops[0]![1]]} />
+        {/* 렌더 창은 5×5청크(160타일)까지다. 그 경계가 잘려 보이지 않도록
+            지평선 색과 같은 안개로 녹인다 — 창을 넓히는 것보다 훨씬 싸다 */}
+        <fog attach="fog" args={[DAY.fog, DAY.fogNear, DAY.fogFar]} />
         {/* 신오 전체. 트윈리프에서 시작해 걸어서 이동하고, 문으로 실내에 들어간다 */}
         <Suspense fallback={null}>
           <WorldLoader />
