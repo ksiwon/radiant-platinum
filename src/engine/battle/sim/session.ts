@@ -9,7 +9,7 @@ import { BattleStreams, Teams } from '@pkmn/sim'
 import type { Species } from '../../../data/schema'
 import type { FinalMon, SideId } from '../events'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
-import { natureOf } from '../../pokemon/instance'
+import { maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simMove, simSpecies } from './bridge'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
@@ -101,6 +101,12 @@ export interface BattleOptions {
   foe: SideSpec
   /** 재현용 시드 4개(각 0~65535). 안 주면 sim이 알아서 굴린다 */
   seed?: [number, number, number, number]
+  /**
+   * 롬 기술 번호 → 기본 PP. 주면 세이브의 남은 PP를 sim에 맞춰 넣는다.
+   *
+   * 안 주면 sim이 정한 최대치로 싸운다 — 규칙은 맞지만 PP가 늘 가득이다
+   */
+  basePp?: (move: number) => number
 }
 
 /** 한 번 정산에서 각 쪽이 받은 줄 */
@@ -148,9 +154,53 @@ export class BattleSession {
       // 우리만 빈 턴이 필요하다. 상대는 볼을 던지지도 도망치지도 않는다
       team: Teams.pack(options.player.team.map((m) => toSet(m, true))),
     })}`)
+    // p2가 들어오는 순간 배틀이 시작되고 첫 `|request|`가 나간다. PP는 그 전에
+    // 맞춰야 요청에 실린 숫자부터 우리 값이다 (실측으로 확인했다)
+    if (options.basePp) this.syncPp(0, options.player.team, options.basePp)
     this.write(`>player p2 ${JSON.stringify({
       name: options.foe.name, team: Teams.pack(options.foe.team.map((m) => toSet(m, false))),
     })}`)
+    if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
+  }
+
+  /**
+   * 세이브의 남은 PP를 sim의 개체에 밀어 넣는다.
+   *
+   * **sim의 팀 목록에는 PP 칸이 없다.** 그래서 모든 기술이 포인트업 3회를 먹인
+   * 최대치로 시작한다(PP 35짜리가 56). 그대로 두면 다 쓴 기술이 배틀마다 되살아나고,
+   * 진짜로 다 떨어져도 발버둥이 안 나온다. 배틀 객체를 직접 고쳐 맞춘다 —
+   * `>player`는 동기로 처리되므로 이 시점에 이미 개체가 서 있다.
+   *
+   * 짝짓기는 **칸 순서**로 한다. `toSet`이 만든 기술 목록과 순서가 같기 때문이다.
+   * 이름으로 짝지으면 같은 기술이 두 칸에 있을 때 갈라지지 않고, 맨 뒤에 몰래
+   * 붙인 빈 턴 칸이 진짜 물장구를 덮어쓴다 — 그 칸은 대응하는 세이브 칸이
+   * 없으므로 여기서 건드리지 않는 것이 맞다
+   */
+  private syncPp(side: 0 | 1, team: readonly SideMon[], basePp: (move: number) => number): void {
+    const pokemon = this.raw.battle?.sides[side]?.pokemon
+    if (!pokemon) return
+    for (const p of pokemon) {
+      const mine = team.find((m) => m.key === p.name)
+      if (!mine) continue
+      // `toSet`이 버린 기술은 sim에 칸이 없다. 같은 조건으로 걸러야 순서가 맞는다
+      const kept = mine.mon.moves.filter((s) => simMove(s.move) !== null)
+      kept.forEach((slot, i) => {
+        const target = p.moveSlots[i]
+        if (!target) return
+        target.maxpp = maxPpOf(slot, basePp(slot.move))
+        target.pp = Math.min(slot.pp, target.maxpp)
+      })
+
+      // 네 칸이 다 비어 있으면 발버둥이 나와야 한다. 그런데 우리 쪽에는 빈 턴용
+      // 물장구 칸이 하나 더 붙어 있어서(`IDLE_MOVE`) sim이 "아직 쓸 게 있다"고
+      // 본다 — 그 칸까지 비워야 발버둥으로 넘어간다.
+      //
+      // ⚠️ 배틀 **도중에** 다 떨어지는 경우는 아직 못 잡는다. 한 배틀에서 100턴
+      // 넘게 같은 기술만 써야 닿는 자리라 지금은 열어 둔다. 시작 시점은 회복
+      // 수단이 없는 지금 실제로 닿으므로 여기서 막는다
+      const idle = p.moveSlots[kept.length]
+      if (idle && kept.length > 0 && kept.every((s) => s.pp <= 0)) idle.pp = 0
+    }
   }
 
   private write(line: string): void {
@@ -205,13 +255,14 @@ export class BattleSession {
       maxHp: p.maxhp,
       status: (p.status || 'ok') as Status,
       fainted: p.fainted,
-      // 남은 PP가 아니라 **쓴 양**이다 (`FinalMon.pp` 주석 참고).
+      // 남은 PP를 그대로 준다. `syncPp`가 들어갈 때 우리 값으로 맞춰 놨으므로
+      // 여기 숫자는 이미 세이브와 같은 척도다.
       //
       // 같은 번호가 두 번 나오면 앞의 것을 쓴다 — 빈 턴용으로 맨 뒤에 붙인
       // 물장구 칸이 진짜 물장구를 덮어쓰지 않게 하기 위해서다
       pp: p.moveSlots.flatMap((slot) => {
         const move = romMove(slot.id)
-        return move === null ? [] : [{ move, used: Math.max(0, slot.maxpp - slot.pp) }]
+        return move === null ? [] : [{ move, pp: slot.pp }]
       }).filter((slot, i, all) => all.findIndex((o) => o.move === slot.move) === i),
     }))
   }

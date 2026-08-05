@@ -16,6 +16,14 @@ export type BattleAction =
       name: string
       /** 롬 기술 번호. 화면의 한국어 이름·연출이 이걸로 돈다 */
       move: number | null
+      /**
+       * 남은 PP와 최대 PP. **sim의 값이 아니라 우리 세이브 기준이다** —
+       * sim은 모든 기술에 포인트업을 다 먹인 최대치를 쓴다(10짜리가 16).
+       *
+       * 못 풀면 둘 다 없다. 발버둥과 빈 턴 칸이 그렇다
+       */
+      pp?: number
+      maxPp?: number
     }
   /** 파티 칸 번호. 1부터 */
   | { type: 'switch'; index: number; key: string }

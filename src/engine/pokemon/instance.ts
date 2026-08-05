@@ -127,7 +127,17 @@ export function setExp(mon: PokemonInstance, species: Species, exp: number): voi
  * 구분이 안 된다 — 다 쓴 기술이 배틀마다 되살아난다
  */
 export function fillPp(mon: PokemonInstance, maxPp: (move: number) => number): PokemonInstance {
-  return { ...mon, moves: mon.moves.map((s) => ({ ...s, pp: maxPp(s.move) })) }
+  return { ...mon, moves: mon.moves.map((s) => ({ ...s, pp: maxPpOf(s, maxPp(s.move)) })) }
+}
+
+/**
+ * 포인트업까지 반영한 그 칸의 최대 PP.
+ *
+ * 4세대는 기본 PP의 5분의 1씩 세 번까지 늘어난다. 지금은 `ppUps`를 올리는 길이
+ * 없어서 항상 기본값이지만, 최대치를 두 군데서 따로 계산하면 어긋난다
+ */
+export function maxPpOf(slot: MoveSlot, basePp: number): number {
+  return Math.floor((basePp * (5 + slot.ppUps)) / 5)
 }
 
 /** 쓰러졌는가 */

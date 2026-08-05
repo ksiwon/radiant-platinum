@@ -101,7 +101,19 @@ export class BattleController {
    * 되돌릴 수 있는 것은 sim을 아는 이 계층뿐이다
    */
   get actions(): BattleAction[] {
-    return legalActions(this.request.p1, { moveId: romMove, hiddenSlot: this.idleSlot })
+    const actions = legalActions(this.request.p1, { moveId: romMove, hiddenSlot: this.idleSlot })
+    return actions.map((a) => (a.type === 'move' ? { ...a, ...this.ppOf(a) } : a))
+  }
+
+  /**
+   * 그 기술 칸의 남은 PP. 요청에 실린 값을 그대로 쓴다.
+   *
+   * 그래도 되는 것은 `session.syncPp`가 배틀을 열 때 세이브 값으로 맞춰 놓기
+   * 때문이다. 그게 없으면 여기 숫자는 포인트업을 다 먹인 sim의 최대치다
+   */
+  private ppOf(action: BattleAction & { type: 'move' }): { pp?: number; maxPp?: number } {
+    const req = this.request.p1?.active?.[0]?.moves[action.slot - 1]
+    return req ? { pp: req.pp, maxPp: req.maxpp } : {}
   }
 
   /**

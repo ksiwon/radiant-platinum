@@ -408,6 +408,8 @@ async function open(
     const { controller, step } = await BattleController.start({
       player: { name: trainer.name || '나', team },
       foe,
+      // 기술 칸에 남은 PP를 띄우려면 최대치를 알아야 한다. sim 값은 못 쓴다
+      basePp: pp,
       // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
     })

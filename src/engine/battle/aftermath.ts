@@ -23,8 +23,8 @@ export function foeKey(index: number): string {
  *
  * HP·상태이상·PP를 옮긴다. 경험치·노력치는 별도 계산이다.
  *
- * **PP는 쓴 만큼 뺀다.** sim은 포인트업을 다 먹인 최대치를 쓰므로 남은 값을 그대로
- * 옮기면 배틀마다 PP가 늘어난다. 짝짓기는 칸 순서가 아니라 기술 번호로 한다 —
+ * PP는 남은 값을 그대로 덮어쓴다 — 배틀을 열 때 세이브 값을 sim에 넣어 뒀으므로
+ * 척도가 같다(`session.syncPp`). 짝짓기는 칸 순서가 아니라 기술 번호로 한다 —
  * sim은 우리가 넣은 순서를 안 지켜 준다
  */
 export function applyResults(
@@ -35,7 +35,7 @@ export function applyResults(
   return party.map((mon, i) => {
     const r = byKey.get(partyKey(i))
     if (!r) return mon // 배틀에 안 나간 개체. 원본 그대로 둔다
-    const used = new Map(r.pp.map((s) => [s.move, s.used]))
+    const left = new Map(r.pp.map((s) => [s.move, s.pp]))
     return {
       ...mon,
       hp: r.hp,
@@ -43,8 +43,8 @@ export function applyResults(
       statusTurns: r.status === 'ok' ? 0 : mon.statusTurns,
       // 결과에 없는 기술은 안 건드린다 — 배틀에 안 나갔거나 sim이 모르는 기술이다
       moves: mon.moves.map((slot) => {
-        const spent = used.get(slot.move) ?? 0
-        return spent === 0 ? slot : { ...slot, pp: Math.max(0, slot.pp - spent) }
+        const pp = left.get(slot.move)
+        return pp === undefined || pp === slot.pp ? slot : { ...slot, pp: Math.max(0, pp) }
       }),
     }
   })

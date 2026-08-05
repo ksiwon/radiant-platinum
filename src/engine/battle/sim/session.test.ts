@@ -183,6 +183,77 @@ describe('야생 배틀', () => {
   })
 })
 
+// ── PP ───────────────────────────────────────────────────────────────────────
+// sim의 팀 목록에는 PP 칸이 없다. 그래서 넣는 대로 두면 **모든 기술이 포인트업
+// 3회를 먹인 최대치**로 시작한다(35 → 56). 세이브를 그 값으로 되돌리면 배틀마다
+// PP가 늘어나고, 다 쓴 기술이 되살아난다. `syncPp`가 그 사이를 메운다.
+describe('PP', () => {
+  const basePp = (move: number) => moves.get(move)?.pp ?? 5
+
+  /** 요청에 실린 기술 칸. `id`는 sim 쪽 이름이다 */
+  async function slotsOf(player: SideMon, pp?: (move: number) => number) {
+    const battle = new BattleSession({
+      player: { name: '빛나', team: [player] },
+      foe: { name: '야생', team: [spawn(STARLY, 5, 98)] },
+      seed: SEED,
+      ...(pp ? { basePp: pp } : {}),
+    })
+    const log = (await battle.settle()).p1
+    battle.destroy()
+    const request = log.find((l) => l.startsWith('|request|'))!
+    return (JSON.parse(request.slice('|request|'.length)) as {
+      active?: { moves: { id: string; pp: number; maxpp: number }[] }[]
+    }).active![0]!.moves
+  }
+
+  it('안 맞추면 sim은 포인트업을 다 먹인 값으로 준다', async () => {
+    // 이 대조군이 있어야 아래 테스트가 무엇을 고치는지가 숫자로 보인다
+    const player = spawn(TURTWIG, 30, 11)
+    const first = player.mon.moves[0]!
+    const slots = await slotsOf(player)
+    expect(slots[0]!.maxpp).toBe(Math.floor((basePp(first.move) * 8) / 5))
+  })
+
+  it('맞추면 요청의 PP가 세이브 값 그대로다', async () => {
+    const player = spawn(TURTWIG, 30, 12)
+    const first = player.mon.moves[0]!
+    first.pp = 3 // 거의 다 쓴 상태로 배틀에 들어간다
+    const slots = await slotsOf(player, basePp)
+    expect(slots[0]!.pp).toBe(3)
+    expect(slots[0]!.maxpp).toBe(basePp(first.move))
+  })
+
+  it('한 번 쓰면 하나 줄고, 그 값이 결과로 나온다', async () => {
+    const player = spawn(TURTWIG, 30, 13)
+    const slot = attackSlot(player)
+    const before = player.mon.moves[slot - 1]!
+    const battle = new BattleSession({
+      player: { name: '빛나', team: [player] },
+      foe: { name: '야생', team: [spawn(STARLY, 5, 97)] },
+      seed: SEED,
+      basePp,
+    })
+    await battle.settle()
+    battle.send(`p1 move ${slot}`)
+    battle.send('p2 move 1')
+    await battle.settle()
+
+    const result = battle.results('p1')[0]!
+    const used = result.pp.find((p) => p.move === before.move)!
+    expect(used.pp).toBe(before.pp - 1)
+    battle.destroy()
+  })
+
+  it('네 칸이 다 비면 발버둥만 남는다', async () => {
+    // 포켓몬센터가 없어서 실제로 닿는 상태다. 안 막으면 고를 게 하나도 없어서
+    // 배틀이 멈춘다 — 빈 턴용 물장구 칸까지 같이 비워야 sim이 발버둥을 준다
+    const player = spawn(TURTWIG, 30, 14)
+    for (const s of player.mon.moves) s.pp = 0
+    const slots = await slotsOf(player, basePp)
+    expect(slots.map((s) => s.id)).toEqual(['struggle'])
+  })
+})
+
 /** sim이 실제로 쓰는 특성 이름. request의 첫 포켓몬에서 읽는다 */
 async function abilityInBattle(side: SideMon): Promise<string> {
   const battle = wildBattle(side, spawn(STARLY, 5, 99))

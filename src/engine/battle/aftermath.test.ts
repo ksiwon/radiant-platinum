@@ -60,8 +60,8 @@ describe('배틀 결과 되돌리기', () => {
     for (let i = 0; i < 6; i++) expect(partyKey(i)).not.toBe(foeKey(i))
   })
 
-  it('PP를 칸 순서가 아니라 기술 번호로 뺀다', () => {
-    // sim이 우리 칸 순서를 안 지켜 주므로 순서로 되돌리면 안 쓴 기술의 PP가 준다.
+  it('PP를 칸 순서가 아니라 기술 번호로 되돌린다', () => {
+    // sim이 우리 칸 순서를 안 지켜 주므로 순서로 되돌리면 엉뚱한 칸에 적힌다.
     // 여기서는 sim 쪽 순서를 일부러 뒤집어 둔다
     const party = [mon(387, 40)]
     party[0]!.moves = [
@@ -70,27 +70,16 @@ describe('배틀 결과 되돌리기', () => {
       { move: 71, pp: 25, ppUps: 0 }, // 흡수
     ]
     const after = applyResults(party, [result(partyKey(0), 30, {
-      pp: [{ move: 71, used: 5 }, { move: 33, used: 4 }],
+      pp: [{ move: 71, pp: 20 }, { move: 33, pp: 31 }],
     })])
     expect(after[0]!.moves.map((m) => m.pp)).toEqual([31, 40, 20])
-  })
-
-  it('남은 값이 아니라 쓴 만큼을 뺀다', () => {
-    // sim은 포인트업을 다 먹인 최대치를 쓴다(10 → 16). 남은 값을 그대로 옮기면
-    // 배틀을 할 때마다 PP가 늘어난다
-    const party = [mon(387, 40)]
-    party[0]!.moves = [{ move: 33, pp: 10, ppUps: 0 }]
-    const after = applyResults(party, [result(partyKey(0), 30, {
-      pp: [{ move: 33, used: 3 }],
-    })])
-    expect(after[0]!.moves[0]!.pp).toBe(7)
   })
 
   it('PP는 0 밑으로 안 내려간다', () => {
     const party = [mon(387, 40)]
     party[0]!.moves = [{ move: 33, pp: 2, ppUps: 0 }]
     const after = applyResults(party, [result(partyKey(0), 30, {
-      pp: [{ move: 33, used: 9 }],
+      pp: [{ move: 33, pp: -3 }],
     })])
     expect(after[0]!.moves[0]!.pp).toBe(0)
   })
