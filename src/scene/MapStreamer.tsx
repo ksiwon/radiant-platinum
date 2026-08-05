@@ -9,10 +9,8 @@
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import {
-  BackSide, InstancedBufferAttribute, InstancedMesh, Mesh, Object3D, type Color,
-} from 'three'
-import { activeZone, Behavior, BEHAVIOR_MASK, IMPASSABLE, isWater } from '../engine/map/zone'
+import { BackSide, InstancedMesh, Mesh, Object3D } from 'three'
+import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, world } from '../engine/map/world'
 import { enterMap, fieldScripts, initFieldScripts, loadVars } from '../engine/script/field'
@@ -26,90 +24,17 @@ import { useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
-import { CLIFF_COLOR, GRASS_COLOR, WATER_COLOR, tileColor } from './fx/palette'
+import { ChunkModels } from './ChunkModels'
 import { DAY, makeSkyTexture } from './fx/sky'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
 const VIEW_RADIUS = 2
-const WALL_HEIGHT = 1.2
-/** 풀숲 덤불 높이(타일). 무릎쯤 — 더 높으면 플레이어를 가린다 */
-const GRASS_HEIGHT = 0.42
-/** 물이 바닥에서 뜨는 높이. 같은 면에 두면 z-파이팅이 난다 */
-const WATER_RISE = 0.055
 const dummy = new Object3D()
 
 /** NPC를 그리는 거리(타일). 청크 창보다 조금 넉넉하게 둔다 */
 const NPC_DRAW_RANGE = 48
 /** 원작 방향(0 북 · 1 남 · 2 서 · 3 동) → 모델 y 회전 */
 const NPC_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
-
-interface Cell { x: number; z: number; y: number; color?: Color }
-
-/**
- * 인스턴스 색 버퍼를 **첫 렌더 전에** 만들어 둔다.
- *
- * `setColorAt`은 버퍼가 없으면 그때 만든다. 그런데 그 호출은 effect 안에서
- * 일어나고, 그 사이에 렌더러가 이미 `instanceColor === null`인 상태로 머티리얼을
- * 컴파일해 버리면 **그 뒤에 넣은 색은 셰이더에 영영 안 들어간다.**
- *
- * 실측으로 잡았다: 머티리얼 색을 빨강으로 두고 인스턴스 색을 올리브로 넣었더니
- * 화면이 rgb(185, 0, 10) — 곱해지지 않고 순수 빨강이었다. 타일 색이 실행할
- * 때마다 나왔다 안 나왔다 한 것이 이 경쟁 때문이다.
- *
- * ref 콜백은 커밋 시점, 즉 첫 프레임 전에 돈다
- */
-function ensureInstanceColor(mesh: InstancedMesh | null, count: number): void {
-  if (!mesh || mesh.instanceColor) return
-  mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(count * 3).fill(1), 3)
-}
-
-/**
- * 창 안의 타일을 바닥/벽으로 나눈다. 벽은 걸을 수 있는 칸에 접한 것만 세운다.
- *
- * `layer`는 지금 플레이어가 선 높이다. 판이 겹치는 자리(다리와 그 밑, 666개 중
- * 81개 청크)에서 **어느 층을 그릴지**를 그걸로 고른다 — 0으로 고정하면 다리
- * 위를 걸어도 화면에는 밑바닥이 깔린다
- */
-function buildWindow(grid: MapGrid, chunkIndex: number, layer: number) {
-  const floors: Cell[] = []
-  const walls: Cell[] = []
-  // 풀숲과 물은 바닥 위에 **따로** 세운다. 색만 다르게 칠하면 풀숲은 밟을
-  // 자리로 안 보이고 물은 그냥 파란 바닥이다 — 재질도 움직임도 달라야 한다
-  const grass: Cell[] = []
-  const water: Cell[] = []
-  const buildings = []
-  const n = grid.chunkTiles
-  /** 타일 한가운데의 지면 높이. 판이 없으면 0 — 높이 데이터가 아직 없을 때다 */
-  const groundAt = (x: number, z: number) =>
-    grid.heightAtWorld(x + 0.5, z + 0.5, layer) ?? 0
-  for (const c of grid.chunksAround(chunkIndex, VIEW_RADIUS)) {
-    const ox = c.mx * n, oz = c.my * n
-    for (let ty = 0; ty < n; ty++) {
-      for (let tx = 0; tx < n; tx++) {
-        const x = ox + tx, z = oz + ty
-        const t = grid.tileAt(x, z)
-        const y = groundAt(x, z)
-        if (!(t & IMPASSABLE)) {
-          const b = t & BEHAVIOR_MASK
-          floors.push({ x, z, y, color: tileColor(t) })
-          if (b === Behavior.TALL_GRASS) grass.push({ x, z, y })
-          else if (isWater(b)) water.push({ x, z, y })
-          continue
-        }
-        // 막힌 칸도 **전부** 세운다.
-        //
-        // 전에는 걸을 수 있는 칸에 접한 껍질만 세웠다. 옆에서 보면 안 보이니
-        // 아낀 셈이었는데, 위에서 내려다보는 카메라라 막힌 구역 한가운데가
-        // 통째로 뚫려 하늘이 비쳤다(강처럼 보이던 창백한 면이 그것이다).
-        // 창 안 타일이 25600개고 용량도 그만큼이라 다 세워도 넘치지 않는다
-        walls.push({ x, z, y })
-      }
-    }
-    const bs = grid.meta.buildings[String(c.i)]
-    if (bs) buildings.push(...bs)
-  }
-  return { floors, walls, grass, water, buildings }
-}
 
 interface Props {
   initial: MapGrid
@@ -126,11 +51,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)))
 
   const skyRef = useRef<Mesh>(null)
-  const floorRef = useRef<InstancedMesh>(null)
-  const grassRef = useRef<InstancedMesh>(null)
-  const waterRef = useRef<InstancedMesh>(null)
-  const wallRef = useRef<InstancedMesh>(null)
-  const buildingRef = useRef<InstancedMesh>(null)
   const npcRef = useRef<InstancedMesh>(null)
   const [mapId, setMapId] = useState(spawn.map)
 
@@ -139,6 +59,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     () => ({ tiles: (VIEW_RADIUS * 2 + 1) ** 2 * 32 * 32, buildings: 512, npcs: 64 }), [])
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
+  /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
+  const texSet = useMemo(() => {
+    const area = mapById(mapId)?.area ?? 0
+    return world.areas?.[area]?.tex ?? 0
+  }, [mapId])
+
   const displayName = useCallback((mapId: number) => {
     const m = mapById(mapId)
     return m ? (locationNames[m.label] ?? m.name) : null
@@ -299,12 +225,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       npcMesh.computeBoundingSphere()
     }
 
-    // 물결. 인스턴스를 하나씩 흔들면 타일 수만큼 행렬을 다시 쓰게 되므로
-    // 메시 전체를 아주 조금 띄웠다 내린다 — 멀리서는 구분이 안 간다
-    if (waterRef.current) {
-      waterRef.current.position.y = Math.sin(worldState.time.elapsed * 1.6) * 0.02
-    }
-
     // 야생이 나왔다. 배틀 청크는 이때 처음 받는다 — 그동안 판정을 멈춰 둔다
     if (encounters.pending) {
       const e = encounters.pending
@@ -314,81 +234,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
   })
 
-  const window_ = useMemo(() => buildWindow(grid, chunkIndex, layer), [grid, chunkIndex, layer])
-  // NPC 배치는 **매 프레임** 다시 쓴다. 스크립트가 걷게 만들면 좌표가 바뀌는데
-  // 한 번 세우고 끝내면 그 자리에 얼어붙는다 (아래 useFrame)
-
-  useEffect(() => {
-    const { floors, walls, grass, water, buildings } = window_
-    // 풀숲 — 타일마다 덤불 하나. 살짝 돌리고 크기를 흔들어 격자 티를 지운다.
-    // 위치로 각도를 정하므로(난수가 아니라) 청크를 다시 세워도 안 흔들린다
-    const gm = grassRef.current
-    if (gm) {
-      gm.count = Math.min(grass.length, capacity.tiles)
-      grass.slice(0, capacity.tiles).forEach((t, i) => {
-        const seed = (t.x * 73856093) ^ (t.z * 19349663)
-        dummy.position.set(t.x + 0.5, t.y + GRASS_HEIGHT / 2, t.z + 0.5)
-        dummy.rotation.set(0, ((seed >>> 8) % 360) * (Math.PI / 180), 0)
-        const s = 0.86 + ((seed >>> 3) % 24) / 100
-        dummy.scale.set(s, 0.9 + ((seed >>> 11) % 30) / 100, s)
-        dummy.updateMatrix()
-        gm.setMatrixAt(i, dummy.matrix)
-      })
-      gm.instanceMatrix.needsUpdate = true
-      gm.computeBoundingSphere()
-    }
-    // 물 — 바닥보다 아주 조금 위. 같은 높이에 두면 z-파이팅으로 지글거린다
-    const wm = waterRef.current
-    if (wm) {
-      wm.count = Math.min(water.length, capacity.tiles)
-      water.slice(0, capacity.tiles).forEach((t, i) => {
-        dummy.position.set(t.x + 0.5, t.y + WATER_RISE, t.z + 0.5)
-        dummy.rotation.set(0, 0, 0)
-        dummy.scale.set(1, 1, 1)
-        dummy.updateMatrix()
-        wm.setMatrixAt(i, dummy.matrix)
-      })
-      wm.instanceMatrix.needsUpdate = true
-      wm.computeBoundingSphere()
-    }
-    const f = floorRef.current
-    if (f) {
-      f.count = Math.min(floors.length, capacity.tiles)
-      floors.slice(0, capacity.tiles).forEach((t, i) => {
-        dummy.position.set(t.x + 0.5, t.y, t.z + 0.5)
-        dummy.updateMatrix()
-        f.setMatrixAt(i, dummy.matrix)
-        f.setColorAt(i, t.color!)
-      })
-      f.instanceMatrix.needsUpdate = true
-      if (f.instanceColor) f.instanceColor.needsUpdate = true
-      f.computeBoundingSphere()
-    }
-    const w = wallRef.current
-    if (w) {
-      w.count = Math.min(walls.length, capacity.tiles)
-      walls.slice(0, capacity.tiles).forEach((t, i) => {
-        dummy.position.set(t.x + 0.5, t.y + WALL_HEIGHT / 2, t.z + 0.5)
-        dummy.updateMatrix()
-        w.setMatrixAt(i, dummy.matrix)
-      })
-      w.instanceMatrix.needsUpdate = true
-      w.computeBoundingSphere()
-    }
-    const b = buildingRef.current
-    if (b) {
-      b.count = Math.min(buildings.length, capacity.buildings)
-      buildings.slice(0, capacity.buildings).forEach((o, i) => {
-        dummy.position.set(o.x, o.y + 1, o.z)
-        dummy.rotation.set(0, 0, 0)
-        dummy.scale.set(1, 1, 1)
-        dummy.updateMatrix()
-        b.setMatrixAt(i, dummy.matrix)
-      })
-      b.instanceMatrix.needsUpdate = true
-      b.computeBoundingSphere()
-    }
-  }, [window_, capacity])
 
   return (
     <group>
@@ -417,48 +262,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
       <directionalLight position={[-14, 12, 26]} intensity={0.38} color="#cfe0f0" />
 
-      <instancedMesh
-        ref={(m) => { floorRef.current = m; ensureInstanceColor(m, capacity.tiles) }}
-        args={[undefined, undefined, capacity.tiles]}
-      >
-        <boxGeometry args={[1, 0.1, 1]} />
-        <meshStandardMaterial roughness={0.95} />
-      </instancedMesh>
-
       {/*
-        풀숲. 납작한 색 칸이 아니라 실제로 서 있는 덤불이어야 "밟으면 나온다"가
-        읽힌다. 여덟 면 원기둥이면 위에서 볼 때 둥글고 삼각형은 타일당 28개다
+        땅. 색칠한 상자가 아니라 **원작 모델**이다 — 길·계단·물가·나무·건물 윤곽이
+        전부 여기서 나온다 (DATA.md §2.2). 청크 하나가 파일 하나고 창 안의 것만
+        받는다. 충돌·높이는 여전히 perm/BDHC가 잡으므로 이 층은 그림만 담당한다
       */}
-      <instancedMesh ref={grassRef} args={[undefined, undefined, capacity.tiles]}>
-        <cylinderGeometry args={[0.34, 0.42, GRASS_HEIGHT, 8]} />
-        <meshStandardMaterial color={GRASS_COLOR} roughness={0.92} flatShading />
-      </instancedMesh>
-
-      {/*
-        물. 반투명 + 낮은 거칠기로 하늘을 받아 낸다. 위아래로 아주 조금 흔드는
-        것만으로 정지 화면이 아니게 되는데, 파도 셰이더보다 훨씬 싸다
-      */}
-      <instancedMesh ref={waterRef} args={[undefined, undefined, capacity.tiles]}>
-        <boxGeometry args={[1, 0.06, 1]} />
-        {/*
-          거칠기를 낮추면 수면 전체가 정반사로 날아간다 — 0.18로 뒀더니 강이
-          하늘색 판이 됐다(실측). 물은 거울이 아니라 **하늘을 옅게 받는 면**이다
-        */}
-        <meshStandardMaterial
-          color={WATER_COLOR} roughness={0.55} metalness={0}
-          transparent opacity={0.9}
-        />
-      </instancedMesh>
-
-      <instancedMesh ref={wallRef} args={[undefined, undefined, capacity.tiles]}>
-        <boxGeometry args={[1, WALL_HEIGHT, 1]} />
-        <meshStandardMaterial color={CLIFF_COLOR} roughness={0.95} />
-      </instancedMesh>
-
-      <instancedMesh ref={buildingRef} args={[undefined, undefined, capacity.buildings]}>
-        <boxGeometry args={[2, 2, 2]} />
-        <meshStandardMaterial color="#b07a4a" roughness={0.85} />
-      </instancedMesh>
+      <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
 
       {/* NPC 블록아웃. 모델(sprite)은 아직 안 뽑았으므로 자리만 세운다 */}
       <instancedMesh ref={npcRef} args={[undefined, undefined, capacity.npcs]}>

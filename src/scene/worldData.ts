@@ -5,7 +5,7 @@
 // 행렬마다 따로 두는 것(파일 500개 + 문 열 때마다 왕복)보다 낫다.
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField, type HeightData } from '../engine/map/height'
-import { world, type EventFile, type MapHeader } from '../engine/map/world'
+import { world, type AreaData, type EventFile, type MapHeader } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
 import type { EncounterTable } from '../engine/battle/encounter'
 
@@ -74,7 +74,7 @@ export interface WorldBoot {
 export async function bootWorld(): Promise<WorldBoot> {
   const [mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin] =
     await Promise.all([
-      json<{ maps: MapHeader[] }>('maps.json'),
+      json<{ maps: MapHeader[], areas: AreaData[] }>('maps.json'),
       json<{ events: Record<string, EventFile> }>('events.json'),
       json<{ tables: EncounterTable[] }>('encounters.json'),
       json<string[]>('names/locations.ko.json'),
@@ -86,6 +86,7 @@ export async function bootWorld(): Promise<WorldBoot> {
       bytes('bdhc.bin'),
     ])
   world.maps = mapsFile.maps
+  world.areas = mapsFile.areas
   world.events = eventsFile.events
   encounters.tables = encFile.tables
   heightField.data = bindHeights(bdhcMeta, bdhcBin)

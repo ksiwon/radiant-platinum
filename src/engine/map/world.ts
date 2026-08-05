@@ -11,6 +11,8 @@ import { worldState } from '../../state/worldState'
 
 export interface MapHeader {
   id: number
+  /** 영역 번호. `world.areas`가 텍스처·건물 모델 묶음을 준다 */
+  area: number
   name: string
   matrix: number
   events: number
@@ -117,8 +119,16 @@ export interface PendingWarp {
   z: number
 }
 
+/** `area_data.narc` — 영역이 어느 텍스처·소품 묶음을 쓰는가 */
+export interface AreaData {
+  props: number
+  tex: number
+  light: number
+}
+
 export const world = {
   maps: null as MapHeader[] | null,
+  areas: null as AreaData[] | null,
   events: null as Record<string, EventFile> | null,
   grid: null as MapGrid | null,
   /** 현재 서 있는 맵 헤더 id */

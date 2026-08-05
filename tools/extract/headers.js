@@ -85,10 +85,16 @@ function main() {
   const text = openText()
   const { maps } = extractHeaders(rom)
 
-  const out = writeJson('maps.json', { count: maps.length, maps })
+  // 영역 자료 — 맵 헤더의 `area`가 이 표를 가리키고, 표가 다시 텍스처 묶음과
+  // 건물 모델 묶음을 가리킨다 (`AreaDataFile`: u16 소품·텍스처·미사용·조명)
+  const areas = rom.narc('/fielddata/areadata/area_data.narc').map((b) => ({
+    props: b.readUInt16LE(0), tex: b.readUInt16LE(2), light: b.readUInt16LE(6),
+  }))
+  const out = writeJson('maps.json', { count: maps.length, maps, areas })
   const withEnc = maps.filter((m) => m.encounters !== null).length
   const matrices = new Set(maps.map((m) => m.matrix))
   console.log(`maps: ${maps.length}개 → ${out.rel} (${out.kb}KB)`)
+  console.log(`  영역 ${areas.length}개 · 텍스처 묶음 ${new Set(areas.map((a) => a.tex)).size}종`)
   console.log(`  행렬 ${matrices.size}종 · 인카운터 보유 ${withEnc}개 · 이벤트 파일 ${new Set(maps.map((m) => m.events)).size}개`)
 
   for (const loc of LOCALES) {
