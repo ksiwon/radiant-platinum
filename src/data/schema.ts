@@ -241,3 +241,5 @@ export type TrainerMon = z.infer<typeof trainerMonSchema>
 export type Trainer = z.infer<typeof trainerSchema>
 export type BdhcFile = z.infer<typeof bdhcFileSchema>
 export type ScriptFile = z.infer<typeof scriptFileSchema>
+export type ScriptCommand = ScriptFile['commands'][number]
+export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
