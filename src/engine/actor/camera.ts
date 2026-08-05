@@ -1,8 +1,12 @@
 // 추적 카메라 (PLAN §6.2 필드 프리셋) — 3인칭과 1인칭.
 //
-// 조작은 두 시점이 같다. 원작처럼 방향키가 **월드 축**을 가리키고 캐릭터가
-// 그쪽을 본다. 1인칭은 그 시선 위에 눈을 얹은 것뿐이라 이동 코드가 안 갈린다 —
-// 마우스로 도는 카메라를 붙이면 격자 이동과 어긋나서 문 하나를 못 들어간다.
+// **조작이 갈린다.** 3인칭은 원작 그대로다: 카메라가 북쪽에 고정이고 방향키가
+// 월드 축을 가리킨다. 1인칭은 마우스가 시선을 돌리고 그 시선이 이동의 기준이 된다
+// (`input/mouse`, `actor/player`).
+//
+// 처음에는 1인칭도 월드 축으로 뒀었다. 격자와 어긋나 문을 못 들어갈까 봐였는데,
+// 이동이 격자 고정이 아니라 연속이고 충돌을 축별로 보기 때문에 근거 없는 걱정이었다.
+// 서쪽을 보면서 W를 눌렀는데 옆으로 걷는 쪽이 훨씬 나쁘다.
 //
 // 두 시점 다 크리티컬 댐프드로 따라간다. 즉시 붙이면 계단에서 화면이 튄다.
 import { Vector3 } from 'three'
@@ -34,11 +38,16 @@ export const cameraSystem = {
     const first = cam.mode === 'first'
 
     if (first) {
-      // 모델 전방이 +Z고 facing = atan2(vx, vz)다. 같은 규약으로 앞을 만든다
-      const fx = Math.sin(worldState.player.facing)
-      const fz = Math.cos(worldState.player.facing)
-      goal.set(p.x + fx * EYE_FORWARD, p.y + EYE_HEIGHT, p.z + fz * EYE_FORWARD)
-      look.set(p.x + fx * LOOK_AHEAD, p.y + EYE_HEIGHT, p.z + fz * LOOK_AHEAD)
+      // 시선은 마우스가 정한다. yaw 0이 북쪽(−Z)이고 오른쪽으로 돌면 커진다
+      const flat = Math.cos(cam.pitch)
+      const fx = Math.sin(cam.yaw) * flat
+      const fz = -Math.cos(cam.yaw) * flat
+      const fy = Math.sin(cam.pitch)
+      // 눈은 수평으로만 앞으로 내민다. 위아래까지 따라가면 고개를 들 때 눈이
+      // 뒤통수 밖으로 나가 제 모자가 화면에 걸린다
+      goal.set(p.x + Math.sin(cam.yaw) * EYE_FORWARD, p.y + EYE_HEIGHT,
+        p.z - Math.cos(cam.yaw) * EYE_FORWARD)
+      look.set(goal.x + fx * LOOK_AHEAD, goal.y + fy * LOOK_AHEAD, goal.z + fz * LOOK_AHEAD)
     } else {
       goal.set(p.x, p.y + THIRD.height, p.z + THIRD.distance)
       look.copy(p)

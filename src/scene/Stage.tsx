@@ -1,5 +1,5 @@
 // 영속 Canvas (PLAN §3.3) — 라우트 트리 위에 있어 절대 언마운트되지 않는다
-import { Suspense, useEffect } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { NeutralToneMapping, PCFSoftShadowMap } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
@@ -10,7 +10,9 @@ import { WorldLoader } from './WorldLoader'
 import { BattleStage } from './battle/BattleStage'
 import { DAY } from './fx/sky'
 import { attachKeyboard } from '../engine/input/keyboard'
+import { attachMouse } from '../engine/input/mouse'
 import { useBattleStore } from '../state/battleStore'
+import { useOptionsStore } from '../state/optionsStore'
 
 let keyboardAttached = false
 
@@ -25,8 +27,18 @@ export function Stage() {
     attachKeyboard()
   }, [])
 
+  // 마우스는 이 요소에 포인터를 가둔다. 캔버스가 아니라 감싼 div인 이유:
+  // 캔버스는 R3F가 다시 만들 수 있고, 가둔 요소가 사라지면 시선이 풀린다
+  const wrapRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = wrapRef.current
+    if (el === null) return
+    return attachMouse(el, (mode) => { useOptionsStore.getState().set('view', mode) })
+  }, [])
+
   return (
     <div
+      ref={wrapRef}
       id="stage-wrap"
       style={{ position: 'fixed', inset: 0 }}
       onContextMenu={(e) => e.preventDefault()}

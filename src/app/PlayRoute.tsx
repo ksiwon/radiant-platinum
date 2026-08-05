@@ -5,6 +5,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { setGameActive } from '../engine/input/keyboard'
+import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
@@ -21,12 +22,18 @@ export function PlayRoute() {
     if (!useSaveStore.getState().hydrated) void useSaveStore.getState().loadReport()
   }, [])
 
-  // V로 시점을 바꾼다. 설정 화면에도 같은 항목이 있고 값은 한 곳에만 있다
+  // V로 시점을 바꾼다. 휠과 설정 화면에도 같은 항목이 있고 값은 한 곳에만 있다.
+  //
+  // 1인칭으로 들어가면 곧바로 시선을 잡는다 — 키를 누른 것이 사용자 동작이라
+  // 브라우저가 이 자리에서는 허락한다. 클릭을 한 번 더 시키지 않는다
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.code !== 'KeyV' || e.repeat) return
       const options = useOptionsStore.getState()
-      options.set('view', options.view === 0 ? 1 : 0)
+      const next = options.view === 0 ? 1 : 0
+      options.set('view', next)
+      if (next === 1) requestLook()
+      else exitLook()
     }
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
@@ -35,6 +42,7 @@ export function PlayRoute() {
   useEffect(() => {
     mountStage() // 멱등 — 이미 켜져 있으면 그대로 둔다
     setGameActive(true)
+    setMouseActive(true)
     setPhase('overworld')
     // Escape는 이제 시작 메뉴가 먼저 가져간다 (캡처 단계). 메뉴가 안 떠 있고
     // 스크립트도 안 돌 때만 여기까지 내려온다 — 그때는 타이틀로 나간다
@@ -44,6 +52,7 @@ export function PlayRoute() {
     window.addEventListener('keydown', onEsc)
     return () => {
       setGameActive(false)
+      setMouseActive(false)
       setPhase('title')
       window.removeEventListener('keydown', onEsc)
     }

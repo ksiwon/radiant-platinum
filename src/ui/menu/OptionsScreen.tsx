@@ -85,7 +85,8 @@ export function OptionsScreen() {
     {
       key: 'view', label: '시점',
       values: ['3인칭', '1인칭'], at: options.view,
-      help: 'V로도 바꿀 수 있습니다', ours: true,
+      help: '휠과 V로도 바꿉니다\n1인칭은 마우스로 둘러보고 보는 쪽으로 걷습니다',
+      ours: true,
     },
     {
       key: 'reset', label: '처음부터',

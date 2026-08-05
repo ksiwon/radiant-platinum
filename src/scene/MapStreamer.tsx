@@ -24,6 +24,7 @@ import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
 import { useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
+import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
 import { ChunkModels } from './ChunkModels'
@@ -106,6 +107,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     const inBattle = battlePhase !== 'off'
     encounters.suspended = inBattle
     setGameActive(!inBattle)
+    // 배틀 중에는 포인터를 놓아준다. 가둔 채로 두면 배틀 화면에서 마우스가 없다
+    setMouseActive(!inBattle)
   }, [battlePhase])
 
   // 세이브가 적어 둔 자리에서 시작한다. 새 판이면 그것이 주인공 방이고
@@ -198,7 +201,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 시점은 설정에 있고 카메라는 프레임 상태를 본다. 그 사이를 여기서 잇는다 —
   // 카메라 시스템이 zustand를 구독하면 프레임마다 스토어를 읽게 된다
   const viewMode = useOptionsStore((s) => s.view)
-  useEffect(() => { worldState.camera.mode = viewMode === 1 ? 'first' : 'third' }, [viewMode])
+  useEffect(() => {
+    const first = viewMode === 1
+    worldState.camera.mode = first ? 'first' : 'third'
+    // 3인칭으로 돌아가면 포인터를 놓는다. 반대 방향(잡기)은 여기서 못 한다 —
+    // 브라우저가 사용자 동작 안에서만 허락해서 V·휠·클릭이 직접 부른다
+    if (!first) exitLook()
+  }, [viewMode])
 
   // 하늘 텍스처는 한 번만 만든다
   const sky = useMemo(() => makeSkyTexture(DAY), [])

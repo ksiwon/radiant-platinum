@@ -131,7 +131,10 @@ export function TitleScreen() {
       )}
 
       <p className={css.hint}>
-        WASD·방향키 이동 · Shift 달리기 · X 메뉴 · V 시점 · Z 말 걸기
+        WASD·방향키 이동 · Shift 달리기 · X 메뉴 · Z 말 걸기
+      </p>
+      <p className={css.hint}>
+        휠·V 시점 전환 · 1인칭은 마우스로 둘러보고 보는 쪽으로 걷습니다 (Esc로 풀기)
       </p>
     </div>
   )

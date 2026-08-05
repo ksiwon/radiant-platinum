@@ -2,6 +2,7 @@
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import { activeZone } from '../map/zone'
+import { facingFromYaw, moveByYaw } from '../input/mouse'
 
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
@@ -37,7 +38,12 @@ export const playerSystem = {
     p.prevPosition.copy(p.position)
 
     const speed = input.run ? RUN_SPEED : WALK_SPEED
-    desired.set(input.move.x, 0, input.move.y).multiplyScalar(speed)
+    // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
+    // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
+    const dir = worldState.camera.mode === 'first'
+      ? moveByYaw(input.move.x, input.move.y, worldState.camera.yaw)
+      : { x: input.move.x, z: input.move.y }
+    desired.set(dir.x, 0, dir.z).multiplyScalar(speed)
 
     // 간단한 가감속 (스파이크 수준)
     p.velocity.lerp(desired, 1 - Math.exp(-12 * dt))
@@ -68,7 +74,12 @@ export const playerSystem = {
         : gap * (1 - Math.exp(-CLIMB_RATE * dt))
     }
 
-    if (p.velocity.lengthSq() > 0.01) {
+    // 1인칭은 **보는 쪽이 곧 앞**이다. 서서 고개만 돌려도 몸이 따라 돌아야
+    // 말을 걸 때(`tileInFront`) 눈에 보이는 사람에게 걸린다. 3인칭은 원작대로
+    // 걸어간 쪽을 본다
+    if (worldState.camera.mode === 'first') {
+      p.facing = facingFromYaw(worldState.camera.yaw)
+    } else if (p.velocity.lengthSq() > 0.01) {
       p.facing = Math.atan2(p.velocity.x, p.velocity.z)
     }
     worldState.time.elapsed += dt
