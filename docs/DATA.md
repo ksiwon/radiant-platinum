@@ -25,6 +25,7 @@
 | 기술 데이터 | `poketool/waza/pl_waza_tbl.narc` | ✅ 471개 × 16B |
 | 트레이너 | `poketool/trainer/trdata` + `trpoke` | ✅ 928명 × (20B + 가변), AI 플래그 포함 |
 | 이벤트 스크립트 | `fielddata/script/scr_seq.narc` | ✅ **포맷 확정** — 1124개를 디컴프 원본과 바이트 대조 (§2.10) |
+| 대사 | `msgdata/pl_msg.narc` | ✅ 뱅크 430개 — 미국 685개가 디컴프 원문과 완전 일치 (§2.11) |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 게임에는 아직 안 붙였다 |
 | BGM | `data/sound/pl_sound_data.sdat` | ✅ 구조 파싱 / 재생 미검증 |
 | 캐릭터 모델·애니메이션 | BDSP 덤프 (롬 아님) | ✅ 추출 (PLAN §4.3.1) |
@@ -463,6 +464,72 @@ VM이 원본 바이트를 그대로 돌면 DS와 같은 것을 한다.
 
 ---
 
+### 2.11 pl_msg — 대사
+
+맵 헤더의 `msg` 번호가 텍스트 뱅크를 가리키고, 스크립트의 `Message n`이 그 뱅크의
+n번째 글을 띄운다. 그 두 고리를 잇는 것이 여기다.
+
+**뱅크 이름 표는 디컴프에 있다.** `generated/text_banks.txt` 724줄이고 **줄 번호가
+곧 미국 롬의 뱅크 번호**다. 확정 근거는 두 겹이다 — 손으로 확인해 둔 이름표 뱅크
+9개가 전부 맞고, 그보다 결정적으로 **디컴프 원문과 글까지 대조해서 685개가 완전
+일치**한다 (`pnpm verify:dialogue`).
+
+#### 로케일마다 뱅크 번호가 다르다
+
+미국 724 · 한국 714 · 일본 709. 몇 개가 빠져 있어서 번호가 밀린다(같은 뱅크가
+미국 647, 한국 637). 대응을 이렇게 확정했다:
+
+1. 항목 수 배열로 최장 공통 부분수열 정렬 — 삭제만 있는 모양이라 이걸로 짝이 난다
+2. **한국어 롬의 맵 헤더 표를 따로 찾아** 그 `msg` 열과 맞춰 봤다
+
+2번이 독립된 두 번째 자료다. 미국 표에서 msg 열만 뺀 13046바이트가 한국어 롬 전체에
+**딱 한 군데**만 있었고(`0xEAAA4`, 나머지 필드 593/593 일치), 그 표의 msg 열이
+1번 정렬과 **593/593 일치**한다.
+
+#### 제어 코드를 뭉개면 안 된다
+
+이름표용 디코더는 제어 코드를 `{103:2}`처럼 코드와 인자 **개수**만 남기고 값을
+버렸다. 이름에는 제어 코드가 안 들어가서 문제가 안 됐지만 대사는 다르다:
+
+```
+{STRVAR_1 3, 0, 0}   주인공 이름
+{STRVAR_1 3, 1, 0}   라이벌 이름       (미국판)
+{STRVAR_1 3, 1, 6}   라이벌 이름 + 조사 (한국판)
+```
+
+셋 다 `{103:2}`가 된다. 문장은 여전히 읽혀서 눈으로는 안 잡힌다. **한국판은 셋째
+인자가 조사 선택자**라 이걸 버리면 "이/가"를 영영 못 고른다.
+
+`tools/extract/message.js`가 디컴프의 `MessagesDecoder.cpp`와 같은 규칙으로 푼다.
+STRVAR 계열은 명령 코드의 **아래 바이트가 첫 인자**다(`0x0103` → `STRVAR_1 3`).
+이 규칙을 모든 명령에 적용하면 안 된다 — 0xFF01(SIZE)이 0xFF00(COLOR)으로 읽힌다.
+
+줄바꿈도 셋이 다르다: `
+` 줄바꿈 · `` 스크롤(입력 대기) · `` 새 쪽.
+하나로 뭉치면 대화창 연출을 복원할 수 없다.
+
+#### 문자표는 디컴프 것을 안 쓴다
+
+디컴프의 `charmap.txt`는 한글 구역 `0x400~0x40F`가 **한 칸 밀려 있다**. 미국·일본
+롬용이라 한국어 표가 권위가 아니다. 실측으로 갈랐다 — 가디안(282)이 우리 표로는
+`가디안`, 디컴프 표로는 `각디안`이 된다. 함수 코드 19개는 두 쪽이 완전히 같아서
+그쪽만 이름을 가져다 썼다.
+
+#### 싣는 형태
+
+맵이 쓰는 404개 + 공용 스크립트가 쓰는 것, 합쳐 **430개 뱅크**를
+`dialogue/{로케일}/{미국번호}.json`에 하나씩 둔다. 맵 하나가 쓰는 것은 몇 KB뿐이라
+필요할 때 받는다(PLAN §11). 전부 합치면 한국어 141KB(brotli)인데 첫 대화 한 번에
+그걸 다 받을 이유가 없다.
+
+번호를 **미국 기준**으로 쓴다 — 맵 헤더가 그 번호이고, 로케일이 바뀌어도 같은
+파일 이름을 가리켜야 하기 때문이다.
+
+일본어는 안 싣는다. 한국어 롬의 헤더 표는 찾았지만 일본어는 아직 안 찾았고,
+소비자도 없다. 필요해지면 같은 방법으로 하면 된다.
+
+---
+
 ## 3. 추출 파이프라인
 
 ```
@@ -479,6 +546,9 @@ tools/
     scrasm.js       디컴프 .s를 조립 — 롬과 대조해 명령표를 검증한다
     scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
     scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
+    message.js      메시지 디코더 (제어 코드까지 살린다)
+    dialogue.js     대사 뱅크 430개 → dialogue/{로케일}/{번호}.json
+    dialogue-verify.js  디컴프 원문·한국어 헤더와 대조 (pnpm verify:dialogue)
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
     moves.js        waza_tbl → moves.json
@@ -487,7 +557,7 @@ tools/
 
 `spike/`와 `extract/`를 나누는 이유: 스파이크 코드는 **틀린 가설을 담고 있을 수 있다**. 실제로 charmap·BDSP 채널 매핑·풀숲 타일이 그랬다. NDS 파일시스템과 NARC 파서만 예외로 spike에서 그대로 쓴다 — 크기 합 검증을 666/666, 534/534로 통과한 실측 확정이라 가설이 아니다.
 
-`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → bdhc → events → scripts → encounters → species → moves → trainers). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
+`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → bdhc → events → scripts → dialogue → encounters → species → moves → trainers). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
 
 ### 3.1 산출물
 
@@ -500,6 +570,7 @@ tools/
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
 | `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
 | `scripts.json` + `scripts.bin` (스크립트 1124개) | 425KB | 86KB |
+| `dialogue/ko/*.json` (뱅크 430개, 지연 로딩) | 701KB | 141KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
 | `trainers.json` | 154KB | 11.5KB |

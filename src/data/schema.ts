@@ -209,6 +209,22 @@ export const scriptFileSchema = z.object({
   })).nonempty(),
 })
 
+/**
+ * 대사 뱅크 목록 (DATA.md §2.11).
+ *
+ * 글 자체는 `dialogue/{로케일}/{번호}.json`에 뱅크 단위로 따로 있다 — 맵 하나가
+ * 쓰는 것은 몇 KB뿐이라 필요할 때 받는다.
+ */
+export const dialogueIndexSchema = z.object({
+  /** 미국 뱅크 번호가 이름이다 — 맵 헤더의 `msg`가 그 번호다 */
+  banks: z.array(z.object({
+    index: z.number().int().nonnegative(),
+    name: z.string().regex(/^TEXT_BANK_/),
+    entries: z.number().int().nonnegative(),
+  })).nonempty(),
+  locales: z.array(z.string()).nonempty(),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
