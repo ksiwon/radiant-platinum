@@ -13,7 +13,7 @@ import type { BattleEvent } from '../../engine/battle/events'
 import type { Beat } from '../../engine/battle/playback'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
-import { textSpeedFrames } from '../../state/optionsStore'
+import { battlePaceScale, textSpeedFrames } from '../../state/optionsStore'
 
 /**
  * 배틀 글은 인쇄기가 스스로 버튼을 묻지 않는다. 빨리 감기는 `advance`가 시킨다.
@@ -95,11 +95,16 @@ export function useBattlePlayback(
           if (!p.finished) return
           r.printer = null
         }
-        // ② 화면. 체력바 전환 길이를 같은 렌더에 실어 보낸다
-        setHoldMs(beat.hold * FRAME_MS)
+        // ② 화면. 체력바 전환 길이를 같은 렌더에 실어 보낸다.
+        //
+        // 쉼에만 설정의 빠르기를 곱한다 — `beat.hold`는 원작이 정한 프레임 수고
+        // (`playback.ts`) 그 값은 자료라서 안 건드린다. 0으로 접히지 않게 1프레임은
+        // 남긴다: 0이면 체력바 전환 시간이 사라져 게이지가 순간이동한다
+        const hold = beat.hold === 0 ? 0 : Math.max(1, Math.round(beat.hold * battlePaceScale()))
+        setHoldMs(hold * FRAME_MS)
         fold(beat.events)
         r.applied = true
-        r.wait = beat.hold
+        r.wait = hold
         return
       }
 

@@ -3,17 +3,19 @@
 // 항목도 값도 `options_menu` 뱅크(us#220)에서 그대로 온다. 우리가 이름을 새로
 // 짓지 않는다.
 //
-// 넷만 실제로 먹는다: **이야기의 속도**는 대사창 인쇄기로 바로 가고, **시점**은
-// 카메라가 본다. 배틀 애니메이션·시합 룰·사운드는 아직 걸 데가 없어서 값만
-// 남는다 — 있는 척하지 않고 흐리게 그린다.
+// 실제로 먹는 것은 **이야기의 속도**(대사창 인쇄기), **배틀 진행**, **시점**이다.
+// 배틀 애니메이션·시합 룰·사운드는 아직 걸 데가 없어서 값만 남는다 — 있는 척하지
+// 않고 흐리게 그린다.
 //
-// 마지막 두 줄은 원작에 없다. 시점 전환은 3D로 옮기면서 생긴 자리고, "처음부터"는
-// 원작이 타이틀에서 위+SELECT+B로 하는 것을 여기로 옮긴 것이다.
+// 아래 세 줄은 원작에 없다. **배틀 진행**은 원작이 느리다고 오래 비판받은 대목을
+// 우리가 손댈 수 있게 연 자리고(원작 길이는 `playback.ts`에 그대로 있다),
+// 시점 전환은 3D로 옮기면서 생겼고, "처음부터"는 원작이 타이틀에서
+// 위+SELECT+B로 하는 것을 여기로 옮긴 것이다.
 import { useEffect, useState } from 'react'
 import { loadUiText, OPTIONS_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import {
-  useOptionsStore, type BattleRule, type BattleScene, type Options,
+  useOptionsStore, type BattlePace, type BattleRule, type BattleScene, type Options,
   type SoundMode, type TextSpeed, type ViewMode,
 } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -76,6 +78,11 @@ export function OptionsScreen() {
       help: at(OPTIONS_TEXT.help.sound), inert: true,
     },
     {
+      key: 'battlePace', label: '배틀 진행',
+      values: ['원작대로', '빠르게', '아주 빠르게'], at: options.battlePace,
+      help: '글이 머무는 시간과 체력바 속도\n원작 후반 한 턴이 14초쯤 걸립니다', ours: true,
+    },
+    {
       key: 'view', label: '시점',
       values: ['3인칭', '1인칭'], at: options.view,
       help: 'V로도 바꿀 수 있습니다', ours: true,
@@ -92,7 +99,8 @@ export function OptionsScreen() {
   const move = (delta: number): void => {
     if (!row || row.key === 'reset' || row.values.length === 0) return
     const next = wrapCursor(row.at, delta, row.values.length)
-    options.set(row.key, next as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode)
+    options.set(row.key,
+      next as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode & BattlePace)
   }
 
   useMenuKeys({

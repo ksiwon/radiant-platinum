@@ -19,6 +19,8 @@ export type BattleRule = 0 | 1
 export type SoundMode = 0 | 1
 /** 3인칭 · 1인칭. 원작에 없는 우리 항목이다 */
 export type ViewMode = 0 | 1
+/** 배틀이 흐르는 빠르기. 원작에 없는 우리 항목이다 */
+export type BattlePace = 0 | 1 | 2
 
 export interface Options {
   speed: TextSpeed
@@ -27,6 +29,8 @@ export interface Options {
   sound: SoundMode
   /** 카메라 시점. 원작에 없다 — 3D로 옮기면서 생긴 자리다 */
   view: ViewMode
+  /** 배틀 진행. 원작에 없다 — 아래 참조 */
+  battlePace: BattlePace
 }
 
 /**
@@ -43,7 +47,25 @@ export const SPEED_FRAMES: readonly number[] = [
   TEXT_SPEED.slow, TEXT_SPEED.normal, TEXT_SPEED.fast, TEXT_SPEED.instant,
 ]
 
-const DEFAULTS: Options = { speed: 1, battleScene: 0, battleRule: 0, sound: 0, view: 0 }
+/**
+ * 배틀 박자의 쉼에 곱하는 값.
+ *
+ * `engine/battle/playback`이 내는 길이는 **원작 그대로**다 — 글 하나에
+ * `WaitButtonABTime 30`, 게이지는 `UpdateGauge`가 프레임마다 한 칸. 그 숫자는
+ * 자료라서 안 건드린다. 대신 화면에 접을 때 여기서 곱한다.
+ *
+ * 원작이 느리다는 말은 오래된 불평이고 사실이다. 재 보면 후반 한 턴이 13.7초인데
+ * 그중 11초가 글이다 — 게이지가 아니라 **글자 찍기와 줄마다 30프레임 머무름**이
+ * 대부분이다. 그래서 이 곱은 머무름·게이지·기절에 다 걸린다
+ */
+export const BATTLE_PACE: readonly number[] = [1, 0.5, 0.25]
+
+// 기본 글자 속도를 "빠름"으로 둔다. 원작 기본은 "보통"이지만 그건 원작이 느리다고
+// 오래 비판받은 바로 그 값이고, 셋 다 원작이 내놓는 값이라 무엇을 기본으로 삼든
+// 지어낸 속도는 아니다. 원작대로 보고 싶으면 설정에서 한 칸 왼쪽이다
+const DEFAULTS: Options = {
+  speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1,
+}
 
 const KEY = 'pt3d.options'
 
@@ -78,13 +100,20 @@ export const useOptionsStore = create<OptionsStore>()((set, get) => ({
 }))
 
 function save(o: Options): void {
-  const { speed, battleScene, battleRule, sound, view } = o
+  const { speed, battleScene, battleRule, sound, view, battlePace } = o
   try {
-    localStorage.setItem(KEY, JSON.stringify({ speed, battleScene, battleRule, sound, view }))
+    localStorage.setItem(KEY, JSON.stringify({
+      speed, battleScene, battleRule, sound, view, battlePace,
+    }))
   } catch { /* 사생활 보호 모드면 못 쓴다. 이번 판만 유지된다 */ }
 }
 
 /** 인쇄기에 넘길 글자 속도. 화면 여러 곳이 같은 값을 봐야 한다 */
 export function textSpeedFrames(): number {
   return SPEED_FRAMES[useOptionsStore.getState().speed] ?? TEXT_SPEED.normal
+}
+
+/** 배틀 박자의 쉼에 곱할 값 */
+export function battlePaceScale(): number {
+  return BATTLE_PACE[useOptionsStore.getState().battlePace] ?? 1
 }
