@@ -10,12 +10,13 @@
 // 그대로 끼워 넣으면 된다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BackSide, CanvasTexture, Group, LinearFilter, SRGBColorSpace } from 'three'
+import { BackSide, Group, type CanvasTexture } from 'three'
 import { loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
+import { DAY, makeBlobShadow, makeSkyTexture } from '../fx/sky'
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
 // 원작의 문법 그대로다: **내 포켓몬은 앞쪽 왼쪽에 뒷모습으로, 상대는 뒤쪽 오른쪽에
@@ -35,54 +36,6 @@ const CAMERA_TARGET = [0.9, 1.0, -1.6] as const
 
 /** 등판·기절이 딱 끊기지 않게 하는 시간(초) */
 const FADE = 0.35
-
-/**
- * 위에서 아래로 어두워지는 하늘 텍스처.
- *
- * 배경을 단색으로 두면 지면과 하늘의 경계가 사라져서 무대가 종이처럼 보인다.
- * 2×N 캔버스 하나면 충분하다 — 셰이더를 쓸 일이 아니다
- */
-function useSkyTexture(): CanvasTexture | null {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 2
-    canvas.height = 256
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    const grad = ctx.createLinearGradient(0, 0, 0, 256)
-    grad.addColorStop(0, '#3f6ea8')
-    grad.addColorStop(0.45, '#7fb0d8')
-    grad.addColorStop(0.72, '#cfe3ef')
-    grad.addColorStop(1, '#8fa87c') // 지평선에서 지면 색으로 넘어간다
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, 2, 256)
-    const tex = new CanvasTexture(canvas)
-    tex.colorSpace = SRGBColorSpace
-    tex.minFilter = LinearFilter
-    tex.magFilter = LinearFilter
-    return tex
-  }, [])
-}
-
-/** 발밑 그림자. 방향광 그림자를 켜는 것보다 훨씬 싸고, 여기서는 더 안정적이다 */
-function useShadowTexture(): CanvasTexture | null {
-  return useMemo(() => {
-    const canvas = document.createElement('canvas')
-    canvas.width = 64
-    canvas.height = 64
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32)
-    grad.addColorStop(0, 'rgba(0,0,0,0.5)')
-    grad.addColorStop(0.55, 'rgba(0,0,0,0.28)')
-    grad.addColorStop(1, 'rgba(0,0,0,0)')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, 64, 64)
-    const tex = new CanvasTexture(canvas)
-    tex.colorSpace = SRGBColorSpace
-    return tex
-  }, [])
-}
 
 interface SpeciesLook {
   color: string
@@ -161,8 +114,10 @@ function Slot(
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
-  const sky = useSkyTexture()
-  const shadow = useShadowTexture()
+  // 오버월드와 **같은 하늘·같은 조명**을 쓴다. 두 화면의 톤이 어긋나면
+  // 배틀에 들어갈 때마다 다른 게임처럼 보인다
+  const sky = useMemo(() => makeSkyTexture(DAY), [])
+  const shadow = useMemo(() => makeBlobShadow(), [])
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
 
   // 몸 색은 롬의 종족 데이터에 있다. 배틀 스토어가 이미 받아 둔 표라 캐시에 걸린다
@@ -204,10 +159,10 @@ export function BattleStage() {
         </mesh>
       )}
 
-      <hemisphereLight args={['#cfe3ef', '#4a5a3a', 1.1]} />
-      <directionalLight position={[6, 12, 8]} intensity={1.9} />
-      {/* 뒤에서 넣는 약한 빛. 이게 없으면 몸통의 그늘진 쪽이 배경에 묻는다 */}
-      <directionalLight position={[-8, 5, -10]} intensity={0.5} color="#9fc4e8" />
+      <hemisphereLight args={['#d4e9f7', '#8d8468', 0.85]} />
+      <directionalLight position={[8, 14, 9]} intensity={1.05} color="#fff4e0" />
+      {/* 카메라 쪽 필. 이게 없으면 몸통의 그늘진 쪽이 배경에 묻는다 */}
+      <directionalLight position={[-7, 6, 12]} intensity={0.38} color="#cfe0f0" />
 
       {/* 지면. 하늘 구(반지름 120)보다 훨씬 작아서 그 경계가 지평선이 된다 */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>

@@ -12,7 +12,7 @@ import { useFrame } from '@react-three/fiber'
 import {
   BackSide, InstancedBufferAttribute, InstancedMesh, Mesh, Object3D, type Color,
 } from 'three'
-import { activeZone, IMPASSABLE } from '../engine/map/zone'
+import { activeZone, Behavior, BEHAVIOR_MASK, IMPASSABLE, isWater } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
@@ -21,12 +21,16 @@ import { useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
-import { CLIFF_COLOR, tileColor } from './fx/palette'
+import { CLIFF_COLOR, GRASS_COLOR, WATER_COLOR, tileColor } from './fx/palette'
 import { DAY, makeSkyTexture } from './fx/sky'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
 const VIEW_RADIUS = 2
 const WALL_HEIGHT = 1.2
+/** 풀숲 덤불 높이(타일). 무릎쯤 — 더 높으면 플레이어를 가린다 */
+const GRASS_HEIGHT = 0.42
+/** 물이 바닥에서 뜨는 높이. 같은 면에 두면 z-파이팅이 난다 */
+const WATER_RISE = 0.055
 const dummy = new Object3D()
 
 interface Cell { x: number; z: number; y: number; color?: Color }
@@ -59,6 +63,10 @@ function ensureInstanceColor(mesh: InstancedMesh | null, count: number): void {
 function buildWindow(grid: MapGrid, chunkIndex: number, layer: number) {
   const floors: Cell[] = []
   const walls: Cell[] = []
+  // 풀숲과 물은 바닥 위에 **따로** 세운다. 색만 다르게 칠하면 풀숲은 밟을
+  // 자리로 안 보이고 물은 그냥 파란 바닥이다 — 재질도 움직임도 달라야 한다
+  const grass: Cell[] = []
+  const water: Cell[] = []
   const buildings = []
   const n = grid.chunkTiles
   /** 타일 한가운데의 지면 높이. 판이 없으면 0 — 높이 데이터가 아직 없을 때다 */
@@ -71,18 +79,26 @@ function buildWindow(grid: MapGrid, chunkIndex: number, layer: number) {
         const x = ox + tx, z = oz + ty
         const t = grid.tileAt(x, z)
         const y = groundAt(x, z)
-        if (!(t & IMPASSABLE)) { floors.push({ x, z, y, color: tileColor(t) }); continue }
-        // 벽 속을 채워봐야 보이지 않는다 — 걸을 수 있는 칸에 접한 껍질만 세운다
-        if (
-          !grid.isBlocked(x - 1, z) || !grid.isBlocked(x + 1, z) ||
-          !grid.isBlocked(x, z - 1) || !grid.isBlocked(x, z + 1)
-        ) walls.push({ x, z, y })
+        if (!(t & IMPASSABLE)) {
+          const b = t & BEHAVIOR_MASK
+          floors.push({ x, z, y, color: tileColor(t) })
+          if (b === Behavior.TALL_GRASS) grass.push({ x, z, y })
+          else if (isWater(b)) water.push({ x, z, y })
+          continue
+        }
+        // 막힌 칸도 **전부** 세운다.
+        //
+        // 전에는 걸을 수 있는 칸에 접한 껍질만 세웠다. 옆에서 보면 안 보이니
+        // 아낀 셈이었는데, 위에서 내려다보는 카메라라 막힌 구역 한가운데가
+        // 통째로 뚫려 하늘이 비쳤다(강처럼 보이던 창백한 면이 그것이다).
+        // 창 안 타일이 25600개고 용량도 그만큼이라 다 세워도 넘치지 않는다
+        walls.push({ x, z, y })
       }
     }
     const bs = grid.meta.buildings[String(c.i)]
     if (bs) buildings.push(...bs)
   }
-  return { floors, walls, buildings }
+  return { floors, walls, grass, water, buildings }
 }
 
 interface Props {
@@ -101,6 +117,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   const skyRef = useRef<Mesh>(null)
   const floorRef = useRef<InstancedMesh>(null)
+  const grassRef = useRef<InstancedMesh>(null)
+  const waterRef = useRef<InstancedMesh>(null)
   const wallRef = useRef<InstancedMesh>(null)
   const buildingRef = useRef<InstancedMesh>(null)
   const npcRef = useRef<InstancedMesh>(null)
@@ -198,6 +216,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 돔 밖으로 걸어 나가 하늘이 사라진다
     if (skyRef.current) skyRef.current.position.set(p.x, 0, p.z)
 
+    // 물결. 인스턴스를 하나씩 흔들면 타일 수만큼 행렬을 다시 쓰게 되므로
+    // 메시 전체를 아주 조금 띄웠다 내린다 — 멀리서는 구분이 안 간다
+    if (waterRef.current) {
+      waterRef.current.position.y = Math.sin(worldState.time.elapsed * 1.6) * 0.02
+    }
+
     // 야생이 나왔다. 배틀 청크는 이때 처음 받는다 — 그동안 판정을 멈춰 둔다
     if (encounters.pending) {
       const e = encounters.pending
@@ -223,7 +247,38 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [grid, chunkIndex, mapId, layer])
 
   useEffect(() => {
-    const { floors, walls, buildings } = window_
+    const { floors, walls, grass, water, buildings } = window_
+    // 풀숲 — 타일마다 덤불 하나. 살짝 돌리고 크기를 흔들어 격자 티를 지운다.
+    // 위치로 각도를 정하므로(난수가 아니라) 청크를 다시 세워도 안 흔들린다
+    const gm = grassRef.current
+    if (gm) {
+      gm.count = Math.min(grass.length, capacity.tiles)
+      grass.slice(0, capacity.tiles).forEach((t, i) => {
+        const seed = (t.x * 73856093) ^ (t.z * 19349663)
+        dummy.position.set(t.x + 0.5, t.y + GRASS_HEIGHT / 2, t.z + 0.5)
+        dummy.rotation.set(0, ((seed >>> 8) % 360) * (Math.PI / 180), 0)
+        const s = 0.86 + ((seed >>> 3) % 24) / 100
+        dummy.scale.set(s, 0.9 + ((seed >>> 11) % 30) / 100, s)
+        dummy.updateMatrix()
+        gm.setMatrixAt(i, dummy.matrix)
+      })
+      gm.instanceMatrix.needsUpdate = true
+      gm.computeBoundingSphere()
+    }
+    // 물 — 바닥보다 아주 조금 위. 같은 높이에 두면 z-파이팅으로 지글거린다
+    const wm = waterRef.current
+    if (wm) {
+      wm.count = Math.min(water.length, capacity.tiles)
+      water.slice(0, capacity.tiles).forEach((t, i) => {
+        dummy.position.set(t.x + 0.5, t.y + WATER_RISE, t.z + 0.5)
+        dummy.rotation.set(0, 0, 0)
+        dummy.scale.set(1, 1, 1)
+        dummy.updateMatrix()
+        wm.setMatrixAt(i, dummy.matrix)
+      })
+      wm.instanceMatrix.needsUpdate = true
+      wm.computeBoundingSphere()
+    }
     const f = floorRef.current
     if (f) {
       f.count = Math.min(floors.length, capacity.tiles)
@@ -293,10 +348,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         조명 셋. 앰비언트 하나로 평평하게 채우면 절벽의 단차가 안 보인다 —
         하늘/지면 두 색을 섞는 반구광이 야외에서는 훨씬 낫다
       */}
-      <hemisphereLight args={['#cfe4f2', '#5b6b46', 0.62]} />
-      <directionalLight position={[24, 42, 18]} intensity={1.15} color="#fff4e0" />
-      {/* 반대쪽에서 넣는 약한 빛. 그늘진 면이 검게 죽는 것을 막는다 */}
-      <directionalLight position={[-20, 16, -24]} intensity={0.22} color="#9fc4e8" />
+      {/*
+        반구광의 **아래쪽 색**이 그늘진 면을 정한다. 어둡게 두면 절벽 옆면이
+        rgb(34,30,21)까지 죽어서 단차가 검은 덩어리로 뭉친다(실측). 지면에서
+        튀는 빛이라 생각하고 흙 계열로 밝게 잡는다
+      */}
+      <hemisphereLight args={['#d4e9f7', '#8d8468', 0.85]} />
+      <directionalLight position={[24, 42, 18]} intensity={1.05} color="#fff4e0" />
+      {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
+      <directionalLight position={[-14, 12, 26]} intensity={0.38} color="#cfe0f0" />
 
       <instancedMesh
         ref={(m) => { floorRef.current = m; ensureInstanceColor(m, capacity.tiles) }}
@@ -304,6 +364,31 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       >
         <boxGeometry args={[1, 0.1, 1]} />
         <meshStandardMaterial roughness={0.95} />
+      </instancedMesh>
+
+      {/*
+        풀숲. 납작한 색 칸이 아니라 실제로 서 있는 덤불이어야 "밟으면 나온다"가
+        읽힌다. 여덟 면 원기둥이면 위에서 볼 때 둥글고 삼각형은 타일당 28개다
+      */}
+      <instancedMesh ref={grassRef} args={[undefined, undefined, capacity.tiles]}>
+        <cylinderGeometry args={[0.34, 0.42, GRASS_HEIGHT, 8]} />
+        <meshStandardMaterial color={GRASS_COLOR} roughness={0.92} flatShading />
+      </instancedMesh>
+
+      {/*
+        물. 반투명 + 낮은 거칠기로 하늘을 받아 낸다. 위아래로 아주 조금 흔드는
+        것만으로 정지 화면이 아니게 되는데, 파도 셰이더보다 훨씬 싸다
+      */}
+      <instancedMesh ref={waterRef} args={[undefined, undefined, capacity.tiles]}>
+        <boxGeometry args={[1, 0.06, 1]} />
+        {/*
+          거칠기를 낮추면 수면 전체가 정반사로 날아간다 — 0.18로 뒀더니 강이
+          하늘색 판이 됐다(실측). 물은 거울이 아니라 **하늘을 옅게 받는 면**이다
+        */}
+        <meshStandardMaterial
+          color={WATER_COLOR} roughness={0.55} metalness={0}
+          transparent opacity={0.9}
+        />
       </instancedMesh>
 
       <instancedMesh ref={wallRef} args={[undefined, undefined, capacity.tiles]}>

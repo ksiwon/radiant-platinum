@@ -19,7 +19,7 @@ const COLORS = {
   water: '#4a7fa8',
   warp: '#b8a06a',
   /** 아직 의미를 모르는 거동. 하나로 묶어서 "안 밝힌 자리"가 보이게 한다 */
-  unknown: '#7c8a76',
+  unknown: '#7f9161',
   /** 통행 불가 면. 절벽·건물 옆면이다 */
   cliff: '#6b6355',
 } as const
@@ -41,3 +41,7 @@ export function tileColor(behavior: number): Color {
 }
 
 export const CLIFF_COLOR = COLORS.cliff
+/** 풀숲 덤불. 바닥의 풀 색보다 조금 진해야 서 있는 것으로 보인다 */
+export const GRASS_COLOR = '#4a7d36'
+/** 물. 바닥 타일보다 진하게 — 반투명이라 밑에 깔린 바닥이 비친다 */
+export const WATER_COLOR = '#2f6c9c'
