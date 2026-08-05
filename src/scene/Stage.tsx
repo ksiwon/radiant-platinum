@@ -6,11 +6,16 @@ import { EngineDriver } from './EngineDriver'
 import { PlayerCapsule } from './GreyBox'
 import { PlayerModel } from './PlayerModel'
 import { WorldLoader } from './WorldLoader'
+import { BattleStage } from './battle/BattleStage'
 import { attachKeyboard } from '../engine/input/keyboard'
+import { useBattleStore } from '../state/battleStore'
 
 let keyboardAttached = false
 
 export function Stage() {
+  // 배틀 무대는 배틀이 열려 있는 동안만 씬에 있다. 오버월드를 언마운트하지는
+  // 않는다 — 배틀이 끝나면 걷던 자리 그대로 돌아와야 한다
+  const inBattle = useBattleStore((s) => s.phase !== 'off')
   // 입력 리스너는 게임 청크에 속한다 — 초기 청크가 worldState(three 의존)를 끌어오지 않게 한다
   useEffect(() => {
     if (keyboardAttached) return
@@ -49,6 +54,7 @@ export function Stage() {
         <Suspense fallback={<PlayerCapsule />}>
           <PlayerModel />
         </Suspense>
+        {inBattle && <BattleStage />}
         <EngineDriver />
       </Canvas>
     </div>

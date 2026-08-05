@@ -12,6 +12,7 @@ import { warpSystem } from '../engine/map/world'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { worldState } from '../state/worldState'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
+import { battleStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
 
 let systemsRegistered = false
@@ -65,8 +66,11 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       const speed = Math.hypot(p.velocity.x, p.velocity.z)
       updateLocomotion(sceneRefs.playerRig, delta, speed, WALK_SPEED, RUN_SPEED)
     }
-    state.camera.position.copy(worldState.camera.position)
-    state.camera.lookAt(worldState.camera.target)
+    // 배틀 중에는 무대가 카메라를 갖는다. 오버월드 카메라 시스템은 계속 돌지만
+    // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다
+    const shot = battleStage.active ? battleStage : worldState.camera
+    state.camera.position.copy(shot.position)
+    state.camera.lookAt(shot.target)
 
     // 렌더 (post 실패 시 기본 렌더 폴백)
     if (postRef.current) postRef.current.render()
