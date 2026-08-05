@@ -149,6 +149,71 @@ export const textBox = style({
 export const textLine = style({ opacity: 0.45, whiteSpace: 'pre-line' })
 export const textLast = style({ opacity: 1, whiteSpace: 'pre-line' })
 
+/** 지금 찍는 중인 글. 한 번에 한 문장만 있는다 — 원작의 박자다 */
+export const textNow = style({
+  whiteSpace: 'pre-line',
+  fontSize: 17,
+  lineHeight: 1.65,
+  minHeight: '3.3em',
+})
+
+const blink = keyframes({
+  '0%, 45%': { opacity: 1, transform: 'translateY(0)' },
+  '55%, 100%': { opacity: 0.2, transform: 'translateY(2px)' },
+})
+
+/** 다음을 기다리는 표시 */
+export const nextArrow = style({
+  alignSelf: 'flex-end',
+  fontSize: 13,
+  opacity: 0.85,
+  animation: `${blink} 0.7s steps(1, end) infinite`,
+})
+
+/** 키보드 커서가 올라간 칸. 마우스 hover와 겹쳐도 되게 테두리로만 표시한다 */
+export const buttonOn = style({
+  borderColor: 'rgba(255,255,255,0.72)',
+  boxShadow: '0 8px 26px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.3)',
+})
+
+/** 배틀 가방의 갈래 줄 */
+export const bagTabs = style({
+  gridColumn: '1 / -1',
+  display: 'flex',
+  gap: 6,
+  fontSize: 12,
+})
+
+export const bagTab = style({
+  padding: '3px 10px',
+  borderRadius: 999,
+  border: '1px solid rgba(255,255,255,0.18)',
+  opacity: 0.55,
+})
+
+export const bagTabOn = style([bagTab, {
+  opacity: 1,
+  background: 'rgba(255,255,255,0.9)',
+  color: '#111827',
+  fontWeight: 700,
+  borderColor: 'transparent',
+}])
+
+/** 아이템 아이콘 32×32. 아틀라스를 배경 위치로 잘라 쓴다 */
+export const itemIcon = style({
+  width: 28,
+  height: 28,
+  imageRendering: 'pixelated',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'auto',
+})
+
+export const itemRow = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+})
+
 export const menu = style({
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',

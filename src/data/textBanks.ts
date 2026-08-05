@@ -52,6 +52,7 @@ export const TEXT_BANK_NAMES = [
   'trainer_class_names',
   'generic_names',
   'start_menu',
+  'menu_entries',
   'bag',
   'bag_pocket_names',
   'party_menu',

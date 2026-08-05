@@ -1,0 +1,55 @@
+// 메뉴 화면 스택 (PLAN §3.2)
+//
+// 화면이 쌓인다: 시작 메뉴 → 가방 → 포켓몬(누구에게 쓸까). B는 한 겹만 벗긴다.
+// 스택으로 두는 이유는 되돌아갈 자리가 화면마다 다르기 때문이다 — 가방을
+// 시작 메뉴에서 열었으면 시작 메뉴로, 배틀에서 열었으면 배틀로 돌아가야 한다.
+//
+// 프레임 값은 여기 안 넣는다. 커서 자리처럼 화면이 혼자 쓰는 것은 컴포넌트가
+// 갖고, 이 스토어는 **어느 화면이 떠 있는가**만 안다.
+import { create } from 'zustand'
+import { setUiCapture } from '../engine/input/keyboard'
+
+export type MenuScreen = 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard'
+
+interface MenuStore {
+  stack: MenuScreen[]
+  /** 맨 위 화면. 없으면 null */
+  top: MenuScreen | null
+  open: (screen: MenuScreen) => void
+  push: (screen: MenuScreen) => void
+  back: () => void
+  closeAll: () => void
+}
+
+/** 키를 화면이 가져가는 것은 스택이 빌 때까지다 */
+function capture(stack: MenuScreen[]): void {
+  setUiCapture(stack.length > 0)
+}
+
+export const useMenuStore = create<MenuStore>()((set) => ({
+  stack: [],
+  top: null,
+
+  open: (screen) => set(() => {
+    const stack = [screen]
+    capture(stack)
+    return { stack, top: screen }
+  }),
+
+  push: (screen) => set((s) => {
+    const stack = [...s.stack, screen]
+    capture(stack)
+    return { stack, top: screen }
+  }),
+
+  back: () => set((s) => {
+    const stack = s.stack.slice(0, -1)
+    capture(stack)
+    return { stack, top: stack[stack.length - 1] ?? null }
+  }),
+
+  closeAll: () => set(() => {
+    capture([])
+    return { stack: [], top: null }
+  }),
+}))

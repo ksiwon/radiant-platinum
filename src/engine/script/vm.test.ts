@@ -20,11 +20,14 @@ import { ScriptContext, ScriptError, type CommandFn } from './context'
 import { MessagePrinter, printedText, TEXT_SPEED, type PrinterOptions } from './printer'
 import { MessageSlots } from './text'
 import { VarStore, VAR_RESULT } from './vars'
-import { FieldWorld, MENU_NO } from './world'
+import { FieldWorld, MENU_NO, type FieldServices } from './world'
+import { addItem, canFit, emptyBag, quantity, removeItem } from '../bag/bag'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'scripts.json')) && existsSync(resolve(DATA, 'scripts.bin'))
 const maybe = present ? describe : describe.skip
+const MENU_ENTRIES_FILE = resolve(DATA, 'dialogue/ko/361.json')
+const ITEMS_FILE = resolve(DATA, 'items.json')
 
 /** 한 진입점이 이 이상 명령을 밟으면 되돌아 도는 것이다 */
 const STEP_CAP = 100_000
@@ -56,6 +59,53 @@ maybe('스크립트 VM', () => {
     bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength),
   }
   const { map, unhandled } = buildCommands(meta.commands)
+  /** 아이템 468종. 주머니 번호만 쓴다 */
+  const items: { pocket?: number }[] = existsSync(ITEMS_FILE)
+    ? JSON.parse(readFileSync(ITEMS_FILE, 'utf8')).items
+    : []
+  let money = 3000
+
+  /**
+   * 훑을 때 쓰는 가방. 진입점마다 새로 만든다.
+   *
+   * 안 붙이면 도구를 받는 스크립트가 전부 "가방이 꽉 찼다" 가지로 새고, 그
+   * 너머의 명령이 한 번도 안 밟힌다 — 실제로 `Noop`·`SetFlagFromVar`가
+   * 그 뒤에 있었다
+   */
+  const sweepBag = (): FieldServices => {
+    let pockets = emptyBag()
+    const at = (item: number): number => items[item]?.pocket ?? 0
+    return {
+      bag: {
+        pocketOf: at,
+        add: (item, count) => {
+          const next = addItem(pockets, at(item), item, count)
+          if (next === null) return false
+          pockets = next
+          return true
+        },
+        remove: (item, count) => {
+          const next = removeItem(pockets, at(item), item, count)
+          if (next === null) return false
+          pockets = next
+          return true
+        },
+        canFit: (item, count) => canFit(pockets, at(item), item, count),
+        quantity: (item) => quantity(pockets, at(item), item),
+        pocketHasItems: (pocket) => (pockets[pocket]?.length ?? 0) > 0,
+        name: (item) => `도구${String(item)}`,
+      },
+      money: {
+        get: () => money,
+        add: (amount) => { money += amount },
+        spend: (amount) => {
+          if (money < amount) return false
+          money -= amount
+          return true
+        },
+      },
+    }
+  }
 
   /**
    * 진입점 하나를 끝까지 돌린다.
@@ -74,7 +124,7 @@ maybe('스크립트 VM', () => {
       movements: meta.movements,
       // 배틀은 늘 이긴 것으로 친다. 지는 쪽만 훑으면 이긴 뒤 가지(플래그를
       // 세우고 대사를 바꾸는 부분)를 한 번도 안 밟는다
-      services: { battleResult: () => 'win' },
+      services: { battleResult: () => 'win', ...sweepBag() },
     })
     const commands = opts.commands ?? map
     const ctx = new ScriptContext({ vars, world, commands }, fileBytes(data, file), file)
@@ -84,7 +134,10 @@ maybe('스크립트 VM', () => {
         throw new ScriptError(`프레임 ${FRAME_CAP}개를 넘겼다 — 되돌아 도는 중이다`, ctx)
       }
       if (!ctx.step(STEP_CAP)) break
-      if (world.menu !== null) world.choose(opts.answer ?? MENU_NO)
+      // 예/아니오는 정해진 답으로, 목록 메뉴는 커서가 놓인 자리로 답한다.
+      // 목록은 값이 항목마다 달라서 0·1로 답하면 없는 항목을 고르는 셈이 된다
+      if (world.menu?.kind === 'list') world.chooseAtCursor()
+      else if (world.menu !== null) world.choose(opts.answer ?? MENU_NO)
       world.tick()
     }
     return world
@@ -206,6 +259,33 @@ maybe('스크립트 VM', () => {
     expect(printedText(printer)).toBe('모두 모험을 떠나면서\n어른이 되어가는 것이지')
   })
 
+  it('선단시티 백화점 엘리베이터에 층이 그대로 뜬다', () => {
+    // 목록 메뉴가 끝까지 이어지는지 보는 기준점이다. 항목 글은 **전역 뱅크**
+    // (`TEXT_BANK_MENU_ENTRIES`)에서 오고 값은 나열 순서와 따로 붙는다 —
+    // 뱅크를 잘못 짚으면 층 대신 엉뚱한 낱말이 뜨고, 값을 순서로 읽으면
+    // 5층을 골랐는데 지하로 간다
+    const file = meta.files.findIndex((f) => f.name === 'scripts_veilstone_store_elevator')
+    const vars = new VarStore()
+    const world = new FieldWorld({
+      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements,
+    })
+    world.menuEntryTexts = MENU_ENTRIES
+    const ctx = new ScriptContext({ vars, world, commands: map }, fileBytes(data, file), file)
+    ctx.start(entryOffset(data, file, 0))
+    let seen: readonly { text: string, value: number }[] = []
+    for (let frame = 0; frame < 500; frame++) {
+      if (!ctx.step(STEP_CAP)) break
+      if (world.menu?.kind === 'list') {
+        seen = world.menu.entries
+        world.chooseAtCursor()
+      }
+      world.tick()
+    }
+    expect(seen.map((e) => `${e.text}=${String(e.value)}`)).toEqual([
+      '5층=0', '4층=1', '3층=2', '2층=3', '1층=4', '지하1층=5', '그만둔다=6',
+    ])
+  })
+
   it('상수와 변수를 구분한다', () => {
     // `SetVar VAR_0x8004, 5`의 5는 변수 5번이 아니라 숫자 5다. 이걸 헷갈리면
     // 상수 인자가 전부 0이 된다
@@ -246,9 +326,9 @@ const FLAG_HAS_POKEDEX = 144
  * 중요한 것은 해독 오류가 0이라는 쪽이고, 이 숫자는 **얼마나 멀리 가는가**의
  * 눈금이라 값이 바뀌면 왜 바뀌었는지 설명이 되어야 한다
  */
-const LOOPING_ENTRIES = 38
+const LOOPING_ENTRIES = 37
 /** 예/아니오에 "예"로 답했을 때. 갈라지는 가지가 달라서 수도 다르다 */
-const LOOPING_ENTRIES_YES = 41
+const LOOPING_ENTRIES_YES = 40
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -257,10 +337,19 @@ const LOOPING_ENTRIES_YES = 41
  * 남는다**는 뜻이라 목록으로 못 박아 둔다
  */
 const IDLE_COMMANDS = [
-  'Dummy', 'CheckFlagFromVar', 'MessageNoSkip', 'MessageSynchronized',
+  // 0번 opcode다. 어셈블러가 실제로 안 내보낸다
+  'Noop',
+  'Dummy', 'CheckFlagFromVar', 'MessageNoSkip',
+  // 시작 메뉴를 스크립트가 여는 자리는 초반 안내뿐이고, 그 앞이 통신·이름
+  // 짓기라 훑기가 못 닿는다
+  'ShowStartMenu',
+  // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
+  'GiveMoney',
   // 이 셋은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
   // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
   'GetRematchTrainerID', 'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
+  // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다
+  'GetItemQuantity',
 ]
 
 /**
@@ -269,6 +358,16 @@ const IDLE_COMMANDS = [
  * 파일에서 읽지 않고 여기 박아 둔 이유: 이 시험이 보는 것은 **번호가 글로
  * 이어지는가**지 추출기가 맞는가가 아니다. 추출기 쪽은 `dialogue.test.ts`가 본다
  */
+/**
+ * `TEXT_BANK_MENU_ENTRIES`(미국 361번) — 전역 메뉴의 항목 글 280개.
+ *
+ * 여기만 파일에서 읽는다. 다른 시험은 "번호가 글로 이어지는가"를 보므로 글을
+ * 박아 두지만, 이 시험이 보려는 것 자체가 **전역 뱅크를 제대로 짚는가**다
+ */
+const MENU_ENTRIES: readonly string[] = present && existsSync(MENU_ENTRIES_FILE)
+  ? JSON.parse(readFileSync(MENU_ENTRIES_FILE, 'utf8'))
+  : []
+
 const TWINLEAF_EVERYONE_GOES = 7
 const TWINLEAF: readonly string[] = [
   '{SIZE 200}꽈당!!{SIZE 100}\r',

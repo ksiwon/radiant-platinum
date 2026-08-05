@@ -38,6 +38,10 @@ export interface SpeciesTable {
   all: readonly Species[]
   byId: ReadonlyMap<number, Species>
   get(id: number): Species
+  /** 종족 번호 → 신오도감 번호. 0이면 신오도감에 없다 */
+  sinnohOf: readonly number[]
+  /** 신오도감 순서 (1번이 모부기다). 0번 칸은 비어 있다 */
+  sinnohDex: readonly number[]
 }
 
 export interface MoveTable {
@@ -60,8 +64,10 @@ function indexed<T extends { id: number }>(all: T[], what: string) {
 }
 
 export function loadSpecies(): Promise<SpeciesTable> {
-  return fetchJson('species.json', (v) =>
-    indexed(speciesFileSchema.parse(v).species, '종족'))
+  return fetchJson('species.json', (v) => {
+    const file = speciesFileSchema.parse(v)
+    return { ...indexed(file.species, '종족'), sinnohOf: file.sinnohOf, sinnohDex: file.sinnohDex }
+  })
 }
 
 export function loadMoves(): Promise<MoveTable> {

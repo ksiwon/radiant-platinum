@@ -97,17 +97,46 @@ function extractSpecies(rom, text) {
     const bank = text.bank('species_name', loc)
     names[loc] = Array.from({ length: maxId + 1 }, (_, id) => bank[id] ?? '')
   }
-  return { species, names }
+  return { species, names, ...dexOrder(rom) }
+}
+
+/**
+ * 신오도감 순서 (`Pokemon_SinnohDexNumber`).
+ *
+ * 표가 **양방향으로 두 벌** 있다. `pl_pokezukan`이 종족 → 신오 번호(494칸),
+ * `shinzukan`이 신오 번호 → 종족(211칸)이다. 둘이 서로의 역이어야 하고,
+ * 그것이 표를 제대로 읽었다는 증거다 — 한 칸만 밀려도 역이 깨진다.
+ *
+ * 211칸인 것은 0번을 비워 두기 때문이다. 신오도감은 210마리다.
+ */
+function dexOrder(rom) {
+  const forward = rom.narc('/poketool/pl_pokezukan.narc')[0]
+  const backward = rom.narc('/poketool/shinzukan.narc')[0]
+  const sinnohOf = Array.from({ length: forward.length / 2 }, (_, i) => forward.readUInt16LE(i * 2))
+  const speciesOf = Array.from({ length: backward.length / 2 }, (_, i) => backward.readUInt16LE(i * 2))
+
+  let checked = 0
+  for (let n = 1; n < speciesOf.length; n++) {
+    const species = speciesOf[n]
+    if (sinnohOf[species] !== n) {
+      throw new Error(`신오도감 ${n}번이 종족 ${species}인데 역표는 ${sinnohOf[species]}라고 한다`)
+    }
+    checked++
+  }
+  const listed = sinnohOf.filter((n) => n !== 0).length
+  if (listed !== checked) throw new Error(`신오도감에 오른 종족 ${listed}종 ≠ 역표 ${checked}칸`)
+  return { sinnohOf, sinnohDex: speciesOf }
 }
 
 function main() {
   const romPath = process.argv.find((a) => a.startsWith('--rom='))?.slice(6)
   const rom = openRom(romPath)
   const text = openText()
-  const { species, names } = extractSpecies(rom, text)
+  const { species, names, sinnohOf, sinnohDex } = extractSpecies(rom, text)
 
-  const out = writeJson('species.json', { count: species.length, species })
+  const out = writeJson('species.json', { count: species.length, species, sinnohOf, sinnohDex })
   console.log(`species: ${species.length}종 → ${out.rel} (${out.kb}KB)`)
+  console.log(`  신오도감 ${sinnohDex.length - 1}마리 (양방향 표가 서로의 역)`)
   for (const loc of LOCALES) {
     const n = writeJson(`names/species.${loc}.json`, names[loc])
     console.log(`  이름/${loc}: ${names[loc].filter(Boolean).length}개 → ${n.rel} (${n.kb}KB)`)

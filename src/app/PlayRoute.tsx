@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router'
 import { setGameActive } from '../engine/input/keyboard'
 import { useSessionStore } from '../state/sessionStore'
 import { MessageBox } from '../ui/field/MessageBox'
+import { MenuLayer } from '../ui/menu/MenuLayer'
 
 export function PlayRoute() {
   const navigate = useNavigate()
@@ -17,8 +18,10 @@ export function PlayRoute() {
     mountStage() // 멱등 — 이미 켜져 있으면 그대로 둔다
     setGameActive(true)
     setPhase('overworld')
+    // Escape는 이제 시작 메뉴가 먼저 가져간다 (캡처 단계). 메뉴가 안 떠 있고
+    // 스크립트도 안 돌 때만 여기까지 내려온다 — 그때는 타이틀로 나간다
     const onEsc = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') navigate('/')
+      if (e.code === 'Escape' && !e.defaultPrevented) navigate('/')
     }
     window.addEventListener('keydown', onEsc)
     return () => {
@@ -28,5 +31,10 @@ export function PlayRoute() {
     }
   }, [navigate, setPhase, mountStage])
 
-  return <MessageBox />
+  return (
+    <>
+      <MessageBox />
+      <MenuLayer />
+    </>
+  )
 }

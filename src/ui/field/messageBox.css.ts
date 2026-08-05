@@ -74,6 +74,35 @@ export const menu = style({
   lineHeight: '30px',
 })
 
+/**
+ * 목록 메뉴. 예/아니오와 달리 항목이 길고 많다 — 여덟 개를 넘으면 스크롤한다.
+ *
+ * 원작은 창 자리를 명령 인자로 받지만(`anchorX`/`anchorY`) 우리 화면은 해상도가
+ * 다르므로 대사창 위 오른쪽에 붙인다. 자리가 달라도 고르는 값은 같다
+ */
+export const listMenu = style([menu, {
+  display: 'grid',
+  gap: '0 18px',
+  maxHeight: 8 * 30 + 16,
+  overflowY: 'auto',
+}])
+
+/** 커서를 올린 항목의 설명 (`AddListMenuEntry`의 셋째 인자) */
+export const altText = style({
+  position: 'absolute',
+  left: 0,
+  bottom: 'calc(100% + 10px)',
+  maxWidth: '55%',
+  background: 'rgba(24, 30, 46, 0.92)',
+  border: '2px solid rgba(60, 74, 102, 0.85)',
+  borderRadius: 10,
+  color: '#e8ecf4',
+  padding: '8px 14px',
+  fontSize: 16,
+  lineHeight: '24px',
+  whiteSpace: 'pre-line',
+})
+
 export const menuItem = style({
   paddingLeft: 22,
 })

@@ -22,12 +22,51 @@ import type { VarStore } from './vars'
 export const MENU_YES = 0
 export const MENU_NO = 1
 export const MENU_NOTHING_CHOSEN = -1
+export const MENU_CANCEL = -2
+
+/**
+ * `list_menu.h`의 `LIST_MENU_NO_SELECTION_YET`.
+ *
+ * 메뉴를 열 때 결과 변수를 이 값으로 채워 두고, `ShowMenu`는 값이 바뀔 때까지
+ * 선다. 0이나 −1을 쓰면 "예를 골랐다"·"아직이다"와 구분이 안 된다
+ */
+export const LIST_MENU_NO_SELECTION_YET = 0xeeee
+
+/** 목록 메뉴 항목 하나 */
+export interface MenuEntry {
+  text: string
+  /** 고르면 결과 변수에 들어갈 값. 나열 순서와 다를 수 있다 */
+  value: number
+  /** 커서를 올리면 아래에 따로 뜨는 설명 (`AddListMenuEntry`의 셋째 인자) */
+  alt: string | null
+}
 
 /** 지금 답을 기다리는 메뉴 */
 export interface PendingMenu {
-  kind: 'yesno'
+  /** `yesno`는 창 안에 붙고, `list`는 따로 뜬다 */
+  kind: 'yesno' | 'list'
   /** 고른 값이 들어갈 변수 번호 */
   dest: number
+  entries: readonly MenuEntry[]
+  /** B로 빠져나갈 수 있는가. 못 나가는 메뉴가 실제로 있다 */
+  canCancel: boolean
+  /** `ShowMenuMultiColumn`. 보통은 1이다 */
+  columns: number
+}
+
+/**
+ * 짓는 중인 메뉴 (`FieldMenuManager`).
+ *
+ * `Init…`이 만들고 `Add…`가 채우고 `Show…`가 띄운다. 세 명령이 나뉘어 있어서
+ * 중간 상태를 어딘가 들고 있어야 한다
+ */
+interface MenuBuilder {
+  dest: number
+  cursor: number
+  canCancel: boolean
+  /** 항목 글을 어디서 읽는가. 지역이면 지금 스크립트의 뱅크다 */
+  scope: 'local' | 'global'
+  entries: MenuEntry[]
 }
 
 /**
@@ -65,6 +104,25 @@ export interface FieldServices {
   trainerMessage?: (index: number) => string
   /** 싸울 수 있는 포켓몬 수 */
   aliveMons?: () => number
+  /** 가방. 주머니 번호는 아이템 자료가 정하므로 여기서 물어본다 */
+  bag?: {
+    pocketOf: (item: number) => number
+    add: (item: number, count: number) => boolean
+    remove: (item: number, count: number) => boolean
+    canFit: (item: number, count: number) => boolean
+    quantity: (item: number) => number
+    pocketHasItems: (pocket: number) => boolean
+    name: (item: number) => string
+  }
+  money?: {
+    get: () => number
+    add: (amount: number) => void
+    spend: (amount: number) => boolean
+  }
+  /** 시작 메뉴를 연다 (`ShowStartMenu`) */
+  openStartMenu?: () => void
+  /** 메뉴가 아직 떠 있는가 */
+  menuOpen?: () => boolean
 }
 
 export interface WorldInit {
@@ -211,15 +269,75 @@ export class FieldWorld {
   }
 
   openYesNo(dest: number): void {
-    this.menu = { kind: 'yesno', dest }
+    this.menu = {
+      kind: 'yesno',
+      dest,
+      entries: [{ text: '예', value: MENU_YES, alt: null }, { text: '아니오', value: MENU_NO, alt: null }],
+      canCancel: true,
+      columns: 1,
+    }
     this.menuCursor = MENU_YES
+  }
+
+  // ── 목록 메뉴 ──────────────────────────────────────────────────────────────
+
+  /** 짓는 중인 메뉴. `Init…`과 `Show…` 사이에만 있다 */
+  private builder: MenuBuilder | null = null
+
+  /** 전역 메뉴가 읽는 뱅크 (`TEXT_BANK_MENU_ENTRIES`). 없으면 빈 글이 나온다 */
+  menuEntryTexts: readonly string[] = []
+
+  /** `InitLocalTextMenu` · `InitGlobalTextMenu` 계열 */
+  initMenu(dest: number, cursor: number, canCancel: boolean, scope: 'local' | 'global'): void {
+    // 아직 안 골랐다는 표시를 먼저 박는다. `ShowMenu`가 이 값으로 기다린다
+    this.vars.set(dest, LIST_MENU_NO_SELECTION_YET)
+    this.builder = { dest, cursor, canCancel, scope, entries: [] }
+  }
+
+  /** `AddMenuEntry` · `AddListMenuEntry`. `alt`는 목록 메뉴에만 있다 */
+  addMenuEntry(stringID: number, value: number, altID: number | null = null): void {
+    if (this.builder === null) return
+    const bank = this.builder.scope === 'global' ? this.menuEntryTexts : this.messages
+    this.builder.entries.push({
+      text: bank[stringID] ?? '',
+      value,
+      alt: altID === null ? null : bank[altID] ?? null,
+    })
+  }
+
+  /** `ShowMenu` · `ShowListMenu` 계열. 여기서부터 답을 기다린다 */
+  showMenu(kind: 'list', columns = 1): void {
+    if (this.builder === null) return
+    const { dest, cursor, canCancel, entries } = this.builder
+    this.builder = null
+    this.menu = { kind, dest, entries, canCancel, columns }
+    this.menuCursor = Math.min(cursor, Math.max(0, entries.length - 1))
+  }
+
+  /** 지금 메뉴가 정말 떠 있는가. 항목이 하나도 없으면 띄울 것이 없다 */
+  get menuOpen(): boolean {
+    return this.menu !== null && this.menu.entries.length > 0
   }
 
   /** 메뉴에 답한다. 화면이 부르기도 하고 시험이 부르기도 한다 */
   choose(value: number): void {
     if (this.menu === null || value === MENU_NOTHING_CHOSEN) return
+    if (value === MENU_CANCEL && !this.menu.canCancel) return
     this.vars.set(this.menu.dest, value)
     this.menu = null
+  }
+
+  /** 커서 자리의 항목을 고른다 */
+  chooseAtCursor(): void {
+    const entry = this.menu?.entries[this.menuCursor]
+    this.choose(entry === undefined ? MENU_NOTHING_CHOSEN : entry.value)
+  }
+
+  /** 커서를 움직인다. 끝에서 돌지 않는다 — 원작도 안 돈다 */
+  moveCursor(delta: number): void {
+    if (this.menu === null) return
+    const last = this.menu.entries.length - 1
+    this.menuCursor = Math.max(0, Math.min(last, this.menuCursor + delta))
   }
 
   /** 이번 프레임에 A나 B가 눌렸는가 */
@@ -242,5 +360,7 @@ export class FieldWorld {
     this.runners.length = 0
     this.target = null
     this.slots.clear()
+    this.menu = null
+    this.builder = null
   }
 }

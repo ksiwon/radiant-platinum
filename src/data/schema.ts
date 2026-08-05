@@ -67,9 +67,16 @@ export const speciesSchema = z.object({
   learnset: z.array(learnMoveSchema),
 })
 
+/** 신오도감 210마리. 0번은 비워 두므로 표는 211칸이다 */
+export const REGIONAL_DEX_COUNT = 210
+
 export const speciesFileSchema = z.object({
   count: z.number().int().positive(),
   species: z.array(speciesSchema).nonempty(),
+  /** 종족 번호 → 신오도감 번호. 0이면 신오도감에 없다 */
+  sinnohOf: z.array(z.number().int().min(0).max(REGIONAL_DEX_COUNT)).nonempty(),
+  /** 신오도감 번호 → 종족 번호. 0번 칸은 비어 있다 */
+  sinnohDex: z.array(z.number().int().min(0)).length(REGIONAL_DEX_COUNT + 1),
 })
 
 export const moveSchema = z.object({

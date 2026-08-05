@@ -18,7 +18,7 @@ import { npcActors, spawnNpcs } from '../actor/npcs'
 import { DIR, type Movable, type MovementTable } from './movement'
 import { TEXT_SPEED, type PrinterInput } from './printer'
 import { VarStore, VAR_LAST_TALKED } from './vars'
-import { FieldWorld, MENU_NO, MENU_YES, type FieldServices, type NameSource } from './world'
+import { FieldWorld, MENU_CANCEL, MENU_NO, type FieldServices, type NameSource } from './world'
 
 /**
  * 한 프레임에 이만큼 넘게 명령을 밟으면 스크립트가 되돌아 도는 것이다.
@@ -94,7 +94,14 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
   fieldScripts.data = { meta, bytes }
   fieldScripts.commands = buildCommands(meta.commands)
   fieldScripts.world = makeWorld(fieldScripts.vars)
+  // 전역 메뉴가 항목 글을 여기서 읽는다. 맵과 무관하므로 한 번만 받는다
+  loadDialogueBank(which, MENU_ENTRIES_BANK)
+    .then((bank) => { if (fieldScripts.world) fieldScripts.world.menuEntryTexts = bank })
+    .catch(() => { /* 전역 메뉴 글만 빈다 */ })
 }
+
+/** `TEXT_BANK_MENU_ENTRIES` — 전역 메뉴가 쓰는 항목 글 280개 (미국 번호) */
+export const MENU_ENTRIES_BANK = 361
 
 /**
  * 세계 하나. 버튼을 이 모듈이 읽는 프레임 입력에 묶는다 —
@@ -219,12 +226,22 @@ export const scriptSystem = {
   },
 }
 
-/** 예/아니오 커서. B는 곧바로 "아니오"다 — 원작도 B로 물러난다 */
+/**
+ * 메뉴 커서.
+ *
+ * 예/아니오는 B가 곧바로 "아니오"다 — 원작도 B로 물러난다. 목록 메뉴의 B는
+ * 취소(−2)고, 그마저 막힌 메뉴가 있어서 세계가 걸러낸다
+ */
 function chooseFromMenu(world: FieldWorld): void {
-  if (edges.up) world.menuCursor = MENU_YES
-  if (edges.down) world.menuCursor = MENU_NO
-  if (edges.b) world.choose(MENU_NO)
-  else if (edges.a) world.choose(world.menuCursor)
+  if (edges.up) world.moveCursor(-1)
+  if (edges.down) world.moveCursor(1)
+  if (world.menu?.kind === 'yesno') {
+    if (edges.b) world.choose(MENU_NO)
+    else if (edges.a) world.choose(world.menuCursor)
+    return
+  }
+  if (edges.b) world.choose(MENU_CANCEL)
+  else if (edges.a) world.chooseAtCursor()
 }
 
 function step(ctx: ScriptContext, world: FieldWorld): void {

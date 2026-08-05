@@ -31,7 +31,9 @@ import { FLAG_COUNT, SAVED_VAR_COUNT } from '../engine/script/vars'
 
 export type { PokemonInstance }
 
-export type ItemId = string
+// 가방은 사전이 아니라 **주머니 8개 × 칸**이다. 원작이 그렇고, 그 모양이
+// 화면에도 그대로 드러난다 (칸 수 상한·번호순 정렬)
+import { addItem, emptyBag, removeItem, type Pockets } from '../engine/bag/bag'
 
 /**
  * 스크립트 플래그·변수 (DATA.md §2.10).
@@ -50,7 +52,7 @@ export interface SaveData {
   rivalName: string
   party: PokemonInstance[]
   boxes: PokemonInstance[][]
-  bag: Record<ItemId, number>
+  bag: Pockets
   badges: number // 비트마스크
   pokedex: { seen: DexField; caught: DexField }
   /** 스크립트 플래그 4106개 */
@@ -61,7 +63,27 @@ export interface SaveData {
   money: number
 }
 
-export const SAVE_VERSION = 2
+export const SAVE_VERSION = 3
+
+/** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
+export const MAX_MONEY = 999999
+
+/**
+ * 새 세이브의 가방.
+ *
+ * ⚠️ **원작은 빈 가방으로 시작한다.** 몬스터볼 5개는 예진호수에서 마박사가
+ * 주는 것이고, 그 장면은 인트로 스크립트에 있는데 인트로가 아직 없다. 지금
+ * 빈 가방으로 두면 야생 포켓몬을 아예 못 잡으므로 그 자리를 임시로 채운다 —
+ * 인트로가 붙으면 이 함수는 `emptyBag()`으로 되돌려야 한다
+ */
+function startingBag(): Pockets {
+  const POKE_BALL = 4
+  const POTION = 17
+  return addItem(addItem(emptyBag(), POCKET_BALLS, POKE_BALL, 5)!, POCKET_MEDICINE, POTION, 5)!
+}
+
+const POCKET_BALLS = 2
+const POCKET_MEDICINE = 1
 
 export function createNewSave(): SaveData {
   return {
@@ -70,7 +92,7 @@ export function createNewSave(): SaveData {
     rivalName: '',
     party: [],
     boxes: [],
-    bag: {},
+    bag: startingBag(),
     badges: 0,
     pokedex: { seen: new Uint8Array(DEX_BYTES), caught: new Uint8Array(DEX_BYTES) },
     flags: new Uint8Array(FLAG_BYTES),
@@ -104,6 +126,12 @@ interface SaveStore extends SaveData {
   /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
   commitScriptState: (vars: ArrayLike<number>, flags: ArrayLike<number>) => void
   addPlaytime: (ms: number) => void
+  /** 넣는다. 자리가 없으면 false — 스크립트가 그 결과로 갈린다 */
+  addItem: (pocket: number, item: number, count: number) => boolean
+  removeItem: (pocket: number, item: number, count: number) => boolean
+  addMoney: (amount: number) => void
+  /** 낸다. 모자라면 false */
+  spendMoney: (amount: number) => boolean
   resetSave: () => void
 }
 
@@ -114,6 +142,9 @@ function migrate(persisted: unknown, from: number): SaveData {
   // 2에서 `flags`가 이름표 묶음에서 원작의 번호 공간으로 바뀌었다. 옛 값은
   // 옮길 곳이 없다 — 그 시절 플래그를 쓰는 코드가 하나도 없었다
   if (from < 2) s = { ...s, ...createNewSave(), version: 2, party: s.party, boxes: s.boxes }
+  // 3에서 가방이 {이름: 개수} 사전에서 원작의 주머니 8개로 바뀌었다. 옛 값은
+  // 아이템 번호가 아니라 우리가 지은 문자열이라 옮길 수 없다
+  if (from < 3) s = { ...s, version: 3, bag: emptyBag() }
   return s
 }
 
@@ -141,6 +172,30 @@ export const useSaveStore = create<SaveStore>()(
 
       addPlaytime: (ms) =>
         set((s) => ({ trainer: { ...s.trainer, playtimeMs: s.trainer.playtimeMs + ms } })),
+
+      addItem: (pocket, item, count) => {
+        const next = addItem(useSaveStore.getState().bag, pocket, item, count)
+        if (next === null) return false
+        set({ bag: next })
+        return true
+      },
+
+      removeItem: (pocket, item, count) => {
+        const next = removeItem(useSaveStore.getState().bag, pocket, item, count)
+        if (next === null) return false
+        set({ bag: next })
+        return true
+      },
+
+      addMoney: (amount) =>
+        set((s) => ({ money: Math.min(MAX_MONEY, s.money + amount) })),
+
+      spendMoney: (amount) => {
+        const { money } = useSaveStore.getState()
+        if (money < amount) return false
+        set({ money: money - amount })
+        return true
+      },
 
       resetSave: () => set(createNewSave()),
     }),

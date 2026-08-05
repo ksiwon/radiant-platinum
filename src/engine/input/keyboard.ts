@@ -25,6 +25,24 @@ export function setGameActive(active: boolean) {
   if (!active) pressed.clear()
 }
 
+/**
+ * 메뉴 화면이 키를 가져갔는가.
+ *
+ * 가방·도감처럼 전체 화면을 덮는 것이 떠 있는 동안 주인공이 걸어 다니면 안 된다.
+ * 게임 자체를 끄지(`setGameActive(false)`) 않는 이유는 뒤에서 3D가 계속 돌아야
+ * 하기 때문이다 — 입력만 끊는다
+ */
+let uiCapture = false
+export function setUiCapture(captured: boolean) {
+  uiCapture = captured
+  // 붙잡을 때 눌린 키를 지운다. 안 그러면 메뉴를 닫는 순간 그 키가 필드로 샌다
+  if (captured) pressed.clear()
+}
+
+export function isUiCaptured(): boolean {
+  return uiCapture
+}
+
 export function attachKeyboard(target: Window = window) {
   target.addEventListener('keydown', (e) => {
     if (gameActive && GAME_KEYS.has(e.code)) e.preventDefault()
@@ -39,8 +57,11 @@ const some = (codes: string[]) => codes.some((c) => pressed.has(c))
 /** 매 fixedUpdate 직전에 호출 — 키 상태를 InputState로 합성 */
 export const inputSystem = {
   fixedUpdate() {
-    if (!gameActive) {
+    if (!gameActive || uiCapture) {
       worldState.input.move.set(0, 0)
+      worldState.input.run = false
+      worldState.input.interact = false
+      worldState.input.cancel = false
       return
     }
     const x = (some(BINDINGS.right) ? 1 : 0) - (some(BINDINGS.left) ? 1 : 0)

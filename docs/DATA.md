@@ -284,6 +284,20 @@ arm9 안 절대 오프셋 **`0xea01c`**, 24바이트 × 593개. NARC 파일이 �
 
 ⚠️ **스탯 순서가 HP/공/방/스피드/특공/특방이다** — 스피드가 4번째인 4세대 내부 순서다. 추출기가 이름 붙인 객체로 바꿔 내보내므로 이후로는 착각할 수 없다. 팬텀(특공 130 / 스피드 110 / 특방 75)과 딱구리(방어 160 / 스피드 70)로 회귀 테스트를 걸어 뒀다 — 순서가 뒤집히면 반드시 걸린다.
 
+#### 신오도감 순서는 따로 있다
+
+전국 번호로 늘어놓으면 안 된다. 신오도감은 **1번이 모부기**다. 표가 롬에 두 벌
+있고 서로의 역이다:
+
+| 파일 | 크기 | 뜻 |
+|---|---|---|
+| `poketool/pl_pokezukan.narc` | 988B = **494칸** | 종족 번호 → 신오 번호 (0이면 없음) |
+| `poketool/shinzukan.narc` | 422B = **211칸** | 신오 번호 → 종족 번호 |
+
+211칸인 것은 0번을 비워 두기 때문이고, 그래서 신오도감은 210마리다. 추출기가
+**두 표가 서로의 역인지** 210칸 전부 확인한다 — 한 칸만 밀려도 역이 깨지므로
+이것으로 확정된다.
+
 ### 2.6 evo · wotbl — 진화와 레벨업 기술
 
 **evo (44B)**: `{u16 method, u16 param, u16 to}` × 7 + 2B 패딩. 508개 전부 꼬리 2B가 0.
@@ -681,7 +695,7 @@ STRVAR 계열은 명령 코드의 **아래 바이트가 첫 인자**다(`0x0103`
 #### 싣는 형태
 
 맵이 쓰는 404개 + 공용 스크립트가 쓰는 것 + 이름 짓기 표 + 트레이너 대사 + 메뉴 화면
-글(시작 메뉴·가방·주머니 이름·포켓몬·도감), 합쳐 **436개 뱅크**를
+글(시작 메뉴·가방·주머니 이름·포켓몬·도감·전역 목록 메뉴) + 도감 알맹이(분류·설명문·키·몸무게), 합쳐 **441개 뱅크**를
 `dialogue/{로케일}/{미국번호}.json`에 하나씩 둔다. 맵 하나가 쓰는 것은 몇 KB뿐이라
 필요할 때 받는다(PLAN §11). 전부 합치면 한국어 186KB(brotli)인데 첫 대화 한 번에
 그걸 다 받을 이유가 없다.
@@ -772,7 +786,7 @@ tools/
     scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
     scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
     message.js      메시지 디코더 (제어 코드까지 살린다)
-    dialogue.js     대사 뱅크 436개 → dialogue/{로케일}/{번호}.json
+    dialogue.js     대사 뱅크 441개 → dialogue/{로케일}/{번호}.json
     dialogue-verify.js  디컴프 원문·한국어 헤더와 대조 (pnpm verify:dialogue)
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
@@ -798,7 +812,7 @@ tools/
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
 | `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
 | `scripts.json` + `scripts.bin` (스크립트 1124개 + 이동 동작 표) | 435KB | 87KB |
-| `dialogue/ko/*.json` (뱅크 436개, 지연 로딩) | 863KB | 188KB |
+| `dialogue/ko/*.json` (뱅크 441개, 지연 로딩) | 945KB | 199KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
 | `trainers.json` (대사 색인 포함) | 183KB | 16KB |

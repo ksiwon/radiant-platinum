@@ -123,9 +123,15 @@ function commonBanks(names) {
  */
 const EXTRA_BANKS = [
   'TEXT_BANK_GENERIC_NAMES', 'TEXT_BANK_NPC_TRAINER_MESSAGES',
+  // 전역 메뉴(`InitGlobalTextMenu`)가 항목 글을 여기서 읽는다
+  'TEXT_BANK_MENU_ENTRIES',
   // 메뉴 화면들이 쓰는 글. 스크립트가 안 가리키므로 따로 적어야 한다
   'TEXT_BANK_START_MENU', 'TEXT_BANK_BAG', 'TEXT_BANK_BAG_POCKET_NAMES',
   'TEXT_BANK_PARTY_MENU', 'TEXT_BANK_POKEDEX',
+  // 도감 화면의 알맹이. 분류("씨앗포켓몬")·설명문·키·몸무게 넷이 따로 있다.
+  // 다이아 판과 펄 판의 설명문이 종마다 달라서, Pt는 다이아 쪽을 쓴다
+  'TEXT_BANK_SPECIES_CATEGORY', 'TEXT_BANK_SPECIES_POKEDEX_ENTRY_DIAMOND',
+  'TEXT_BANK_SPECIES_HEIGHT', 'TEXT_BANK_SPECIES_WEIGHT',
 ]
 
 function main() {

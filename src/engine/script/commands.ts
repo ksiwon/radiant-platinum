@@ -13,6 +13,7 @@ import {
 } from './context'
 import { DIR, parseMovements } from './movement'
 import { VAR_LAST_TALKED } from './vars'
+import { LIST_MENU_NO_SELECTION_YET } from './world'
 
 /**
  * 이름으로 등록한다.
@@ -251,6 +252,169 @@ on('ShowYesNoMenu', (ctx) => {
   ctx.host.world.openYesNo(ctx.readHalfWord())
   ctx.pause((c) => c.host.world.menu === null)
   return true
+})
+
+// ── 목록 메뉴 ────────────────────────────────────────────────────────────────
+//
+// 셋으로 나뉘어 있다: `Init…`이 자리와 결과 변수를 잡고, `Add…`가 항목을 쌓고,
+// `Show…`가 띄운 뒤 답을 기다린다. 기다리는 방법이 특이한데, 원작은 결과
+// 변수를 0xEEEE로 채워 두고 **그 값이 바뀌는 것**으로 선택을 안다.
+//
+// 지역(Local)과 전역(Global)의 차이는 항목 글을 어느 뱅크에서 읽느냐다.
+// 지역은 지금 스크립트의 뱅크, 전역은 `TEXT_BANK_MENU_ENTRIES` 하나다.
+
+/** `Init…TextMenu` 넷의 몸통. 인자 배치가 전부 같다 */
+const initMenu = (scope: 'local' | 'global'): CommandFn => (ctx) => {
+  const anchorX = ctx.readByte()
+  const anchorY = ctx.readByte()
+  const cursor = ctx.readByte()
+  const canExitWithB = ctx.readByte()
+  const dest = ctx.readHalfWord()
+  void anchorX; void anchorY // 자리는 원작 화면 격자다. 우리 화면은 CSS가 잡는다
+  ctx.host.world.initMenu(dest, cursor, canExitWithB !== 0, scope)
+  ctx.scratch[0] = dest
+  return true
+}
+
+on('InitLocalTextMenu', initMenu('local'))
+on('InitGlobalTextMenu', initMenu('global'))
+on('InitLocalTextListMenu', initMenu('local'))
+on('InitGlobalTextListMenu', initMenu('global'))
+
+on('AddMenuEntryImm', (ctx) => {
+  // 바이트판이다. 변수도 255 넘는 글 번호도 못 쓴다
+  const stringID = ctx.readByte()
+  ctx.host.world.addMenuEntry(stringID, ctx.readByte())
+  return false
+})
+
+on('AddMenuEntry', (ctx) => {
+  const stringID = ctx.readVar()
+  ctx.host.world.addMenuEntry(stringID, ctx.readVar())
+  return false
+})
+
+on('AddListMenuEntry', (ctx) => {
+  const stringID = ctx.readVar()
+  const altID = ctx.readVar()
+  // 0xff는 "설명 없음"이다 (`LIST_MENU_ENTRY_NO_ALT_TEXT`)
+  ctx.host.world.addMenuEntry(stringID, ctx.readVar(), altID === LIST_MENU_ENTRY_NO_ALT_TEXT ? null : altID)
+  return false
+})
+
+const LIST_MENU_ENTRY_NO_ALT_TEXT = 0xff
+
+/** 답을 기다린다. 결과 변수가 0xEEEE에서 벗어나면 골랐다는 뜻이다 */
+const chosen: ResumeFn = (ctx) =>
+  ctx.host.world.vars.get(ctx.scratch[0]!) !== LIST_MENU_NO_SELECTION_YET
+
+const showMenu = (columns: (ctx: ScriptContext) => number): CommandFn => (ctx) => {
+  ctx.host.world.showMenu('list', columns(ctx))
+  ctx.pause(chosen)
+  return true
+}
+
+on('ShowStartMenu', (ctx) => {
+  // 스크립트가 여는 시작 메뉴다 (튜토리얼에서 "가방을 열어 봐" 하는 자리).
+  // 화면이 닫힐 때까지 선다
+  ctx.host.world.services.openStartMenu?.()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+on('ShowMenu', showMenu(() => 1))
+on('ShowListMenu', showMenu(() => 1))
+on('ShowMenuMultiColumn', showMenu((ctx) => Math.max(1, ctx.readByte())))
+// 폭과 커서 기억은 화면이 알아서 한다 — 인자는 읽어서 버려야 그 뒤가 안 밀린다
+on('ShowListMenuSetWidth', showMenu((ctx) => { ctx.readVar(); return 1 }))
+on('ShowListMenuRememberCursor', showMenu((ctx) => { ctx.readVar(); ctx.readVar(); return 1 }))
+
+// ── 가방과 돈 ────────────────────────────────────────────────────────────────
+//
+// 넣기·빼기가 **성공했는지를 변수로 돌려준다**. 자리가 없어서 실패하는 일이
+// 실제로 있고(볼 주머니는 15칸뿐이다) 스크립트가 그 값으로 갈린다.
+
+/** 가방이 안 붙어 있으면 아무 일도 못 한다. 그때는 실패로 답한다 */
+const bagOf = (ctx: ScriptContext) => ctx.host.world.services.bag ?? null
+
+on('AddItem', (ctx) => {
+  const item = ctx.readVar()
+  const count = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.world.vars.set(dest, bagOf(ctx)?.add(item, count) === true ? 1 : 0)
+  return false
+})
+
+on('RemoveItem', (ctx) => {
+  const item = ctx.readVar()
+  const count = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.world.vars.set(dest, bagOf(ctx)?.remove(item, count) === true ? 1 : 0)
+  return false
+})
+
+on('CanFitItem', (ctx) => {
+  const item = ctx.readVar()
+  const count = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.world.vars.set(dest, bagOf(ctx)?.canFit(item, count) === true ? 1 : 0)
+  return false
+})
+
+on('CheckItem', (ctx) => {
+  // "뺄 수 있는가"다 — 개수까지 본다 (`Bag_CanRemoveItem`)
+  const item = ctx.readVar()
+  const count = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.world.vars.set(dest, (bagOf(ctx)?.quantity(item) ?? 0) >= count ? 1 : 0)
+  return false
+})
+
+on('GetItemQuantity', (ctx) => {
+  const item = ctx.readVar()
+  ctx.host.world.vars.set(ctx.readHalfWord(), bagOf(ctx)?.quantity(item) ?? 0)
+  return false
+})
+
+on('GetItemPocket', (ctx) => {
+  const item = ctx.readVar()
+  ctx.host.world.vars.set(ctx.readHalfWord(), bagOf(ctx)?.pocketOf(item) ?? 0)
+  return false
+})
+
+on('CheckPocketHasItems', (ctx) => {
+  const pocket = ctx.readVar()
+  ctx.host.world.vars.set(ctx.readHalfWord(), bagOf(ctx)?.pocketHasItems(pocket) === true ? 1 : 0)
+  return false
+})
+
+on('BufferItemName', (ctx) => {
+  const slot = ctx.readByte()
+  // ⚠️ 인자를 **먼저** 읽는다. `bag?.name(ctx.readVar())`로 쓰면 가방이 안 붙어
+  // 있을 때 `?.`가 인자까지 건너뛰어서 2바이트가 안 읽히고, 그 뒤가 전부 밀린다
+  const item = ctx.readVar()
+  ctx.host.world.slots.set(slot, bagOf(ctx)?.name(item) ?? '')
+  return false
+})
+
+on('GiveMoney', (ctx) => {
+  const amount = ctx.readWord()
+  ctx.host.world.services.money?.add(amount)
+  return false
+})
+
+on('RemoveMoney', (ctx) => {
+  const amount = ctx.readWord()
+  ctx.host.world.services.money?.spend(amount)
+  return false
+})
+
+on('CheckMoney', (ctx) => {
+  // 원작은 "이만큼 있는가"를 0/1로 돌려준다
+  const dest = ctx.readHalfWord()
+  const amount = ctx.readWord()
+  ctx.host.world.vars.set(dest, (ctx.host.world.services.money?.get() ?? 0) >= amount ? 1 : 0)
+  return false
 })
 
 // ── 이동 ─────────────────────────────────────────────────────────────────────

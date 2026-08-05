@@ -7,31 +7,47 @@
 import { useEffect, useState } from 'react'
 import { fieldScripts } from '../../engine/script/field'
 import type { Line } from '../../engine/script/printer'
-import { MENU_NO, MENU_YES } from '../../engine/script/world'
+import type { MenuEntry } from '../../engine/script/world'
 import * as css from './messageBox.css'
 
+interface MenuView {
+  kind: 'yesno' | 'list'
+  entries: readonly MenuEntry[]
+  cursor: number
+  columns: number
+}
+
 interface View {
-  lines: Line[]
-  /** 다음을 기다리는 중 — 화살표를 띄운다 */
-  waiting: boolean
-  /** 예/아니오가 떠 있으면 지금 가리키는 칸 */
-  menu: number | null
+  /** 대사창이 떠 있을 때만 있다. 목록 메뉴는 창 없이 뜨기도 한다 */
+  text: { lines: Line[], waiting: boolean } | null
+  menu: MenuView | null
 }
 
 /** 지금 화면을 이 문자열로 요약해 바뀐 프레임만 고른다 */
 function digest(view: View | null): string {
   if (view === null) return ''
-  const text = view.lines.map((l) => `${l.indent}:${l.runs.map((r) => `${r.color}/${r.size}/${r.text}`).join('')}`)
-  return `${text.join('|')}#${String(view.waiting)}#${String(view.menu)}`
+  const lines = view.text?.lines
+    .map((l) => `${l.indent}:${l.runs.map((r) => `${r.color}/${r.size}/${r.text}`).join('')}`)
+    .join('|') ?? ''
+  const menu = view.menu === null
+    ? ''
+    : `${view.menu.kind}/${String(view.menu.cursor)}/${view.menu.entries.map((e) => e.text).join(',')}`
+  return `${lines}#${String(view.text?.waiting)}#${menu}`
 }
 
 function snapshot(): View | null {
   const world = fieldScripts.world
-  if (!world || !world.boxOpen || world.printer === null) return null
+  if (!world) return null
+  const printing = world.boxOpen && world.printer !== null
+  const menu = world.menu
+  if (!printing && menu === null) return null
   return {
-    lines: world.printer.lines,
-    waiting: world.printer.waiting !== null,
-    menu: world.menu === null ? null : world.menuCursor,
+    text: printing && world.printer
+      ? { lines: world.printer.lines, waiting: world.printer.waiting !== null }
+      : null,
+    menu: menu === null
+      ? null
+      : { kind: menu.kind, entries: menu.entries, cursor: world.menuCursor, columns: menu.columns },
   }
 }
 
@@ -49,45 +65,60 @@ export function MessageBox() {
       last = key
       // 줄 배열은 인쇄기가 제자리에서 고치는 것이라 그대로 넘기면 React가
       // 같은 참조로 보고 넘어간다. 얕게 복사해서 새 값으로 만든다
-      setView(next === null ? null : { ...next, lines: next.lines.map((l) => ({ ...l, runs: [...l.runs] })) })
+      setView(next === null || next.text === null ? next : {
+        ...next,
+        text: { ...next.text, lines: next.text.lines.map((l) => ({ ...l, runs: [...l.runs] })) },
+      })
     }
     raf = requestAnimationFrame(poll)
     return () => { cancelAnimationFrame(raf) }
   }, [])
 
   if (view === null) return null
+  const alt = view.menu?.entries[view.menu.cursor]?.alt ?? null
   return (
     <div className={css.frame}>
-      <div className={css.box}>
-        {view.lines.map((line, i) => (
-          <div key={i} className={css.line} style={{ paddingLeft: line.indent }}>
-            {line.runs.map((run, j) => (
-              <span
-                key={j}
-                className={css.run}
-                style={{ color: COLORS[run.color] ?? undefined, fontSize: run.size === 100 ? undefined : `${run.size}%` }}
-              >
-                {run.text}
-              </span>
-            ))}
-          </div>
-        ))}
-        {view.waiting && <span className={css.arrow} aria-hidden>▼</span>}
-      </div>
-      {view.menu !== null && (
-        <div className={css.menu} role="radiogroup" aria-label="예 아니오">
-          {[['예', MENU_YES], ['아니오', MENU_NO]].map(([label, value]) => (
+      {view.text !== null && (
+        <div className={css.box}>
+          {view.text.lines.map((line, i) => (
+            <div key={i} className={css.line} style={{ paddingLeft: line.indent }}>
+              {line.runs.map((run, j) => (
+                <span
+                  key={j}
+                  className={css.run}
+                  style={{ color: COLORS[run.color] ?? undefined, fontSize: run.size === 100 ? undefined : `${run.size}%` }}
+                >
+                  {run.text}
+                </span>
+              ))}
+            </div>
+          ))}
+          {view.text.waiting && <span className={css.arrow} aria-hidden>▼</span>}
+        </div>
+      )}
+      {view.menu !== null && view.menu.entries.length > 0 && (
+        <div
+          className={view.menu.kind === 'yesno' ? css.menu : css.listMenu}
+          role="radiogroup"
+          aria-label={view.menu.kind === 'yesno' ? '예 아니오' : '선택'}
+          style={view.menu.columns > 1
+            ? { gridTemplateColumns: `repeat(${view.menu.columns}, max-content)` }
+            : undefined}
+        >
+          {view.menu.entries.map((entry, i) => (
             <div
-              key={label}
+              key={`${entry.value}/${i}`}
               role="radio"
-              aria-checked={view.menu === value}
-              className={view.menu === value ? css.menuItemOn : css.menuItem}
+              aria-checked={view.menu?.cursor === i}
+              className={view.menu?.cursor === i ? css.menuItemOn : css.menuItem}
             >
-              {label as string}
+              {entry.text}
             </div>
           ))}
         </div>
       )}
+      {/* 커서를 올린 항목의 설명. 목록 메뉴에만 있고, 없는 항목이 더 많다 */}
+      {alt !== null && <div className={css.altText}>{alt}</div>}
     </div>
   )
 }

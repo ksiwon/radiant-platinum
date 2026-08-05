@@ -7,7 +7,7 @@
 //
 // 기술 연출과 카메라 컷(PLAN §7.3·§7.4)은 아직 없다. 사건은 전부 0ms에 도착하고
 // 여기서 곧바로 글로 나간다 — 그것을 시간축에 펴는 Director가 다음 계층이다.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { Actor } from '../../engine/battle/events'
 import type { ViewMon } from '../../engine/battle/view'
@@ -16,12 +16,12 @@ import type { Move } from '../../data/schema'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { withObject, withSubject } from '../korean'
+import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
+import { BattleBag } from './BattleBag'
 import { battleText, type BattleNames } from './messages'
 import { typeColor } from './typeColor'
+import { useBattleText } from './useBattleText'
 import * as css from './battleScreen.css'
-
-/** 화면에 보이는 텍스트 줄 수. 원작 텍스트 박스도 두 줄이지만 흐름이 보이게 넉넉히 둔다 */
-const VISIBLE_LINES = 6
 
 const STATUS_LABEL: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
@@ -117,6 +117,12 @@ export function BattleScreen() {
     return out
   }, [events, names, label, outcome, kind, foeName])
 
+  // 글을 한 줄씩 흘린다. 다 읽기 전에는 명령이 안 뜬다 — 원작의 박자다
+  const script = useBattleText(lines)
+  // 아직 읽을 글이 남았으면 A가 그것부터 넘긴다. 메뉴 키와 겹치면 안 된다
+  const reading = !script.done || script.pending
+  useMenuKeys({ confirm: script.advance, cancel: script.advance }, phase !== 'off' && reading)
+
   const shell = staged ? css.screen : `${css.screen} ${css.fallback}`
 
   if (phase === 'off') return null
@@ -139,9 +145,12 @@ export function BattleScreen() {
       </div>
 
       <div className={css.console_}>
-        <TextBox lines={lines} />
+        <div className={css.textBox} onClick={script.advance}>
+          <div className={css.textNow}>{script.text}</div>
+          {reading && <span className={css.nextArrow} aria-hidden>▼</span>}
+        </div>
         <div className={css.menu}>
-          {phase === 'over' ? (
+          {reading ? null : phase === 'over' ? (
             <button className={`${css.button} ${css.buttonWide}`} onClick={close} autoFocus>
               계속
             </button>
@@ -158,15 +167,11 @@ export function BattleScreen() {
               onBack={() => setPage('root')}
             />
           ) : page === 'bag' ? (
-            <>
-              {/* 가방은 아직 몬스터볼 하나다. 도구 데이터가 들어오면 여기가 목록이 된다 */}
-              <button className={`${css.button} ${css.buttonWide}`}
-                onClick={() => void throwBall()}>
-                <span>몬스터볼</span>
-                <span className={css.buttonSub}>던진다</span>
-              </button>
-              <button className={css.backButton} onClick={() => setPage('root')}>← 돌아가기</button>
-            </>
+            <BattleBag
+              wild={kind === 'wild'}
+              onThrow={(ball) => void throwBall(ball)}
+              onBack={() => setPage('root')}
+            />
           ) : (
             <RootMenu
               canFight={moveActions.length > 0}
@@ -183,21 +188,24 @@ export function BattleScreen() {
   )
 }
 
-function TextBox({ lines }: { lines: string[] }) {
-  const shown = lines.slice(-VISIBLE_LINES)
-  const bottom = useRef<HTMLDivElement>(null)
-  useEffect(() => { bottom.current?.scrollIntoView({ block: 'end' }) }, [lines.length])
-  return (
-    <div className={css.textBox}>
-      {shown.map((line, i) => (
-        <div key={`${lines.length - shown.length + i}`}
-          className={i === shown.length - 1 ? css.textLast : css.textLine}>
-          {line}
-        </div>
-      ))}
-      <div ref={bottom} />
-    </div>
-  )
+/**
+ * 명령 격자의 커서.
+ *
+ * 원작은 십자키로 고른다. 2열 격자라 위아래가 두 칸씩 움직이고, 좌우가 한 칸씩
+ * 움직인다 — 목록으로 다루면 오른쪽 칸에서 아래를 눌렀을 때 왼쪽으로 샌다
+ */
+function useGridCursor(count: number, columns: number, onPick: (i: number) => void, onBack?: () => void) {
+  const [at, setAt] = useState(0)
+  const cursor = Math.min(at, Math.max(0, count - 1))
+  useMenuKeys({
+    up: () => { setAt(clampCursor(cursor, -columns, count)) },
+    down: () => { setAt(clampCursor(cursor, columns, count)) },
+    left: () => { setAt(clampCursor(cursor, -1, count)) },
+    right: () => { setAt(clampCursor(cursor, 1, count)) },
+    confirm: () => { onPick(cursor) },
+    cancel: onBack,
+  })
+  return cursor
 }
 
 function MonCard(
@@ -237,25 +245,26 @@ function RootMenu(
     onRun: () => void
   },
 ) {
+  const entries = [
+    { label: '싸운다', sub: null, on: canFight, go: () => { onPick('fight') } },
+    { label: '가방', sub: null, on: true, go: () => { onPick('bag') } },
+    { label: '포켓몬', sub: '교체', on: canSwitch, go: () => { onPick('party') } },
+    { label: '도망친다', sub: wild ? null : '도망칠 수 없다', on: wild, go: onRun },
+  ]
+  const cursor = useGridCursor(entries.length, 2, (i) => { if (entries[i]?.on) entries[i].go() })
   return (
     <>
-      <button className={css.button} onClick={() => onPick('fight')}
-        disabled={!canFight} autoFocus>
-        <span>싸운다</span>
-      </button>
-      {/* 트레이너전에서는 볼을 못 던진다. 지금 가방에 든 것이 볼뿐이라 통째로 잠근다 */}
-      <button className={css.button} onClick={() => onPick('bag')} disabled={!wild}>
-        <span>가방</span>
-        <span className={css.buttonSub}>{wild ? '몬스터볼' : '쓸 수 없다'}</span>
-      </button>
-      <button className={css.button} onClick={() => onPick('party')} disabled={!canSwitch}>
-        <span>포켓몬</span>
-        <span className={css.buttonSub}>교체</span>
-      </button>
-      <button className={css.button} onClick={onRun} disabled={!wild}>
-        <span>도망친다</span>
-        {!wild && <span className={css.buttonSub}>도망칠 수 없다</span>}
-      </button>
+      {entries.map((entry, i) => (
+        <button
+          key={entry.label}
+          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+          onClick={entry.go}
+          disabled={!entry.on}
+        >
+          <span>{entry.label}</span>
+          {entry.sub !== null && <span className={css.buttonSub}>{entry.sub}</span>}
+        </button>
+      ))}
     </>
   )
 }
@@ -270,6 +279,10 @@ function MoveMenu(
     onBack: () => void
   },
 ) {
+  const cursor = useGridCursor(actions.length, 2, (i) => {
+    const action = actions[i]
+    if (action) onPick(action)
+  }, onBack)
   return (
     <>
       {actions.map((action, i) => {
@@ -284,8 +297,9 @@ function MoveMenu(
             : action.pp! <= Math.max(1, Math.floor(action.maxPp! / 4)) ? css.ppLow
               : ''
         return (
-          <button key={`m${action.slot}`} className={css.button}
-            onClick={() => onPick(action)} autoFocus={i === 0}>
+          <button key={`m${action.slot}`}
+            className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+            onClick={() => onPick(action)}>
             <span>{label}</span>
             <span className={css.moveFoot}>
               {type && move
@@ -311,6 +325,10 @@ function SwitchMenu(
     onBack: (() => void) | null
   },
 ) {
+  const cursor = useGridCursor(actions.length, 1, (i) => {
+    const action = actions[i]
+    if (action) onPick(action)
+  }, onBack ?? undefined)
   return (
     <>
       {actions.map((action, i) => {
@@ -320,8 +338,9 @@ function SwitchMenu(
           ?? (entry ? names?.species[entry.species] : null)
           ?? action.key
         return (
-          <button key={`s${action.index}`} className={`${css.button} ${css.buttonWide}`}
-            onClick={() => onPick(action)} autoFocus={i === 0}>
+          <button key={`s${action.index}`}
+            className={`${css.button} ${css.buttonWide} ${i === cursor ? css.buttonOn : ''}`}
+            onClick={() => onPick(action)}>
             <span>{withSubject(label)} 나간다</span>
             {entry && <span className={css.buttonSub}>Lv.{entry.level}</span>}
           </button>
