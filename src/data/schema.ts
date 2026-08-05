@@ -143,6 +143,29 @@ export const trainerFileSchema = z.object({
   prizeMul: z.array(z.number().int().min(0).max(255)).length(TRAINER_CLASS_COUNT),
 })
 
+/**
+ * 지면 높이 (DATA.md §2.2).
+ *
+ * 판(plate)은 사각형 + 평면 방정식이다. 사각형 안의 점 `(x, z)`의 높이는
+ * `-(nx·x + nz·z + d) / ny`이고 전부 타일 척도다.
+ *
+ * 좌표는 `bdhc.bin`에 따로 있다 — 8974개 판의 좌표 4개씩이라 JSON으로 담으면
+ * 파일이 열 배가 된다. 여기 있는 것은 판이 가리키는 **평면 표**와 청크별 구간이다.
+ */
+export const bdhcFileSchema = z.object({
+  plateCount: z.number().int().nonnegative(),
+  /** `bdhc.bin`의 int32 좌표를 이걸로 나누면 타일이 된다 */
+  fixedPerTile: z.number().int().positive(),
+  /**
+   * `[nx, ny, nz, d]`. 전역에서 321종뿐이라 판마다 담지 않고 색인으로 가리킨다.
+   *
+   * 법선은 단위벡터다 — `ny`가 0이면 수직면이라 높이를 못 구한다
+   */
+  planes: z.array(z.tuple([z.number(), z.number(), z.number(), z.number()])).nonempty(),
+  /** land_data 청크 번호로 색인한 `[시작 판 번호, 개수]` */
+  chunks: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -157,3 +180,4 @@ export type Move = z.infer<typeof moveSchema>
 export type Labels = z.infer<typeof labelsSchema>
 export type TrainerMon = z.infer<typeof trainerMonSchema>
 export type Trainer = z.infer<typeof trainerSchema>
+export type BdhcFile = z.infer<typeof bdhcFileSchema>

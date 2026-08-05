@@ -14,7 +14,7 @@
 | **맵 헤더 표** | arm9 `0xea01c` | ✅ 593개 × 24B, 전 필드 확정 |
 | 맵 행렬 | `fielddata/mapmatrix/map_matrix.narc` | ✅ 289개 전부 |
 | 맵 청크 | `fielddata/land_data/land_data.narc` | ✅ 666개 전부 |
-| 타일 거동 | land_data의 `perm` | ⚠️ 풀숲·물만 확정, 나머지 33종 미확정 |
+| 타일 거동 | land_data의 `perm` | ⚠️ 94종 중 풀숲·물 확정 · 워프 무리 유력 (§2.2) |
 | 워프 | `zone_event`의 12B 구역 | ✅ 1213개, 그래프 정합 1207 |
 | NPC 배치 | `zone_event`의 32B 구역 | ⚠️ 좌표만 확정, 나머지 필드는 추정 |
 | 간판·트리거 | `zone_event`의 20B·16B 구역 | ❌ 개수만 앎 (682 / 186) |
@@ -58,7 +58,17 @@ u8  bdhc[bdhcSize]      // 높이 지오메트리 ("BDHC")
 
 666개 전부 크기 합 일치, 전원 `BMD0` + `BDHC` 보유.
 
-**타일 u16**: 최상위 비트(`0x8000`)가 통행 불가, 하위 비트가 거동. 오버월드 어휘 35종.
+**타일 u16**: 최상위 비트(`0x8000`)가 통행 불가, 하위 비트가 거동.
+
+어휘 크기는 무엇을 세느냐로 갈린다 — 세 숫자를 헷갈리면 안 된다:
+
+| 세는 것 | 개수 |
+|---|---|
+| 오버월드(행렬 0)의 원시 u16 | **54** |
+| 오버월드의 거동값 (`& 0x7fff`) | **47** |
+| 헤더가 참조하는 행렬 전부의 거동값 | **94** |
+
+실내·던전에만 나오는 값이 47종 더 있다. 청크 666개를 전부 훑어도 94종에서 안 늘어난다 — 행렬이 안 쓰는 청크에도 새 어휘는 없다.
 
 | 값 | 의미 | 근거 |
 |---|---|---|
@@ -368,15 +378,17 @@ tools/
     maps.js         행렬·청크·건물 파서 (다른 추출기가 공유)
     headers.js      맵 헤더 표 → maps.json + 지역명
     matrices.js     행렬별 충돌 격자 → 0.bin / interiors.bin
+    bdhc.js         지면 높이 → bdhc.json + bdhc.bin
     events.js       워프·NPC → events.json
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
     moves.js        waza_tbl → moves.json
+    trainers.js     trdata/trpoke + 상금 배수 → trainers.json
 ```
 
 `spike/`와 `extract/`를 나누는 이유: 스파이크 코드는 **틀린 가설을 담고 있을 수 있다**. 실제로 charmap·BDSP 채널 매핑·풀숲 타일이 그랬다. NDS 파일시스템과 NARC 파서만 예외로 spike에서 그대로 쓴다 — 크기 합 검증을 666/666, 534/534로 통과한 실측 확정이라 가설이 아니다.
 
-`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → events → encounters → species → moves). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
+`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → bdhc → events → encounters → species → moves → trainers). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
 
 ### 3.1 산출물
 
@@ -387,14 +399,17 @@ tools/
 | `encounters.json` | 248KB | 12KB |
 | `matrices/0.json` + `0.bin` (오버월드) | 1859KB | 20.5KB |
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
+| `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
 | `trainers.json` | 154KB | 11.5KB |
 | `names/*.json` (3로케일) | 93KB | 26KB |
 
-**신오 전체가 압축 후 180KB 남짓이다.** 전부 정적 JSON·바이너리이고 런타임에 롬을 파싱하지 않는다.
+**신오 전체가 압축 후 210KB 남짓이다.** 전부 정적 JSON·바이너리이고 런타임에 롬을 파싱하지 않는다.
 
-충돌 격자만 JSON이 아니라 원시 `Uint16LE`다 — 92만 개 숫자를 JSON으로 쓰면 4MB에 파싱도 느리다. 원시 바이트는 1.8MB이고 `fetch → ArrayBuffer`로 그대로 뷰를 얹는다.
+충돌 격자와 높이만 JSON이 아니라 원시 바이너리다 — 격자는 92만 개 숫자라 JSON으로 쓰면 4MB에 파싱도 느리고, 높이는 판 8974개의 좌표 4개씩이다. `fetch → ArrayBuffer`로 그대로 뷰를 얹는다.
+
+높이 좌표를 반 타일 int8로 줄이면 40KB가 빠지지만 **안 한다.** 좌표 30928개 중 29426개는 정수 타일인데 40개가 DS 유닛 정수도 아니라서(−2.3535타일 같은 값) 그 40개가 조용히 어긋난다. 평면 표만 색인으로 공유해도 판 하나가 18바이트다.
 
 실내 269개를 **한 파일로 이어 붙인** 이유: 행렬마다 나누면 파일 500개에 문 열 때마다 왕복이 생긴다. 다 합쳐도 압축하면 32KB라 나눌 이유가 없다. 첫 워프 때 한 번만 받으면 이후 건물 출입이 즉시다.
 

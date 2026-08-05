@@ -20,9 +20,10 @@
     "extract:headers": "node tools/extract/headers.js",
     "extract:matrices": "node tools/extract/matrices.js",
     "extract:events": "node tools/extract/events.js",
-    "extract": "pnpm extract:headers && pnpm extract:matrices && pnpm extract:events && pnpm extract:encounters && pnpm extract:species && pnpm extract:moves && pnpm extract:trainers",
+    "extract": "pnpm extract:headers && pnpm extract:matrices && pnpm extract:bdhc && pnpm extract:events && pnpm extract:encounters && pnpm extract:species && pnpm extract:moves && pnpm extract:trainers",
     "extract:encounters": "node tools/extract/encounters.js",
-    "extract:trainers": "node tools/extract/trainers.js"
+    "extract:trainers": "node tools/extract/trainers.js",
+    "extract:bdhc": "node tools/extract/bdhc.js"
   },
   "dependencies": {
     "@pkmn/data": "^0.10.11",

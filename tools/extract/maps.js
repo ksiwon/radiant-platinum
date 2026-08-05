@@ -49,8 +49,11 @@ function parseLand(buf) {
   }
   let p = LAND_HEADER
   const perm = buf.subarray(p, p + sizes.perm); p += sizes.perm
-  const objects = buf.subarray(p, p + sizes.obj)
-  return { sizes, perm, objects }
+  const objects = buf.subarray(p, p + sizes.obj); p += sizes.obj
+  // 모델은 건너뛴다 — DS 지오메트리는 블록아웃 레퍼런스일 뿐이다 (PLAN §4.2)
+  p += sizes.model
+  const bdhc = buf.subarray(p, p + sizes.bdhc)
+  return { sizes, perm, objects, bdhc }
 }
 
 /** 건물 배치: i32 modelId, pos×3, rot×3, scale×3 (전부 20.12 고정소수점) */
