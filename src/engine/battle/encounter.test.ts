@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
-  LAND_SLOT_RATES, WATER_SLOT_RATES, isEncounterTile,
+  LAND_SLOT_RATES, WATER_SLOT_RATES, graceSteps, isEncounterTile, newEncounterState,
   rollLand, rollWater, shouldEncounter, type EncounterTable,
 } from './encounter'
 import { Behavior } from '../map/zone'
@@ -38,13 +38,76 @@ describe('타일 판정', () => {
   })
 })
 
+// 관문이 셋이다 (pokeplatinum `ShouldGetRandomEncounter`):
+//   ① 조우 직후 유예 구간이면 95%가 떨어진다
+//   ② 평평한 40% 관문
+//   ③ 표의 출현률
+// ②를 빠뜨리면 실효 확률이 2.5배가 되어 풀숲을 지나갈 수가 없다 — 실제로 그랬다.
 describe('출현 판정', () => {
+  /** 유예를 다 쓴 상태. 걸음마다의 정상 판정을 보려면 이게 필요하다 */
+  const settled = () => ({ attempts: 8 })
+
   it('출현률 0이면 절대 나오지 않는다', () => {
-    expect(shouldEncounter(0, () => 0)).toBe(false)
+    expect(shouldEncounter(0, settled(), () => 0)).toBe(false)
   })
-  it('출현률 30이면 굴린 값 29.9는 나오고 30.1은 안 나온다', () => {
-    expect(shouldEncounter(30, () => 0.299)).toBe(true)
-    expect(shouldEncounter(30, () => 0.301)).toBe(false)
+
+  it('평평한 관문에서 60%가 떨어진다', () => {
+    // ②는 rng()*100 < 40. 39.9는 통과하고 40.1은 출현률을 보지도 못한다
+    expect(shouldEncounter(30, settled(), seq(0.399, 0))).toBe(true)
+    expect(shouldEncounter(30, settled(), seq(0.401, 0))).toBe(false)
+  })
+
+  it('관문을 지나면 출현률 30에서 29.9는 나오고 30.1은 안 나온다', () => {
+    expect(shouldEncounter(30, settled(), seq(0, 0.299))).toBe(true)
+    expect(shouldEncounter(30, settled(), seq(0, 0.301))).toBe(false)
+  })
+
+  it('유예 구간 길이는 출현률이 높을수록 짧다', () => {
+    // 우리 표에 있는 여섯 값 전부. 원작의 8 - (rate<<8 / 10 >> 8)이다
+    expect([0, 5, 10, 15, 30, 35].map(graceSteps)).toEqual([8, 8, 7, 7, 5, 5])
+  })
+
+  it('유예 구간에서는 95%가 첫 관문에서 떨어진다', () => {
+    const state = newEncounterState()
+    // 5 이상이면 즉시 실패. 뒤 관문을 다 통과할 값을 줘도 안 나온다
+    expect(shouldEncounter(30, state, seq(0.05, 0, 0))).toBe(false)
+    expect(state.attempts).toBe(1)
+    // 5 미만이면 통과해서 ②③을 본다
+    expect(shouldEncounter(30, state, seq(0.049, 0, 0))).toBe(true)
+    expect(state.attempts).toBe(2)
+  })
+
+  it('유예를 다 쓰면 첫 관문이 사라진다', () => {
+    const state = { attempts: graceSteps(30) }
+    // 첫 값이 ②로 바로 간다 — 유예가 살아 있었다면 0.5는 즉시 실패였다
+    expect(shouldEncounter(30, state, seq(0.399, 0))).toBe(true)
+    expect(state.attempts, '유예가 끝나면 더 안 센다').toBe(graceSteps(30))
+  })
+
+  it('201번도로에서 평균 13걸음에 한 번 나온다', () => {
+    // 관문 ②③만 보면 0.40 × 0.30 = 12%로 8.3걸음인데, 조우 뒤 5걸음의 유예가
+    // 붙어 12.8걸음이 된다. 관문 ②를 빼면 7.8, 유예까지 빼면 3.3걸음이다 —
+    // 세 번째가 옛날 우리 식이었고, 그래서 걸을 때마다 튀어나왔다
+    let seed = 12345
+    const rng = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      return seed / 0x7fffffff
+    }
+    let state = newEncounterState()
+    let steps = 0
+    const gaps: number[] = []
+    for (let i = 0; i < 200_000; i++) {
+      steps++
+      if (shouldEncounter(30, state, rng)) {
+        gaps.push(steps)
+        steps = 0
+        state = newEncounterState() // 조우하면 유예가 다시 열린다
+      }
+    }
+    const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length
+    expect(gaps.length).toBeGreaterThan(1000)
+    expect(mean, `평균 ${mean.toFixed(1)}걸음`).toBeGreaterThan(11)
+    expect(mean, `평균 ${mean.toFixed(1)}걸음`).toBeLessThan(15)
   })
 })
 
