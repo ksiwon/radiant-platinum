@@ -184,9 +184,39 @@ export function resolveWarp(w: Warp): PendingWarp | null {
   return { to: w.to, matrix: dest.matrix, x: back.x + 0.5, z: back.z + 0.5 }
 }
 
+/** `TILE_BEHAVIOR_DOOR`. 이름이 16진수를 담고 있어 값이 확정된다 (`UNUSED_x68` 다음) */
+export const TILE_BEHAVIOR_DOOR = 0x69
+
+/**
+ * 문에서 나온 자리를 한 칸 아래로 옮긴다.
+ *
+ * 원작은 도착 좌표가 **워프 타일 그 자체**다(`FieldMapChange`가
+ * `location->x = warpEvent->x`). 그런데 문 타일은 통행 불가로 찍혀 있다 —
+ * 실외 워프 293개 중 145개가 막힌 칸이고 그중 141개가 문이다. 원작은 도착한 뒤
+ * **문에서 걸어 나오는 연출**로 그 칸을 벗어난다(`transitionType = 1`).
+ *
+ * 우리는 그 연출이 없어서 막힌 칸 한가운데에 서게 되고, 반지름 판정 때문에
+ * 어느 쪽으로도 못 나간다 — 영영 갇힌다.
+ *
+ * 어느 쪽으로 내보낼지는 지어내지 않았다. 문 **177개(실외 141 · 실내 36)**를
+ * 전부 재 보면 **177개가 남쪽이 열려 있고 동·서가 열린 것은 0개**다. 만장일치다.
+ */
+export function walkOutOfDoor(
+  grid: { behavior(x: number, z: number): number; isBlocked(x: number, z: number): boolean },
+  x: number, z: number,
+): { x: number; z: number } {
+  const tx = Math.floor(x)
+  const tz = Math.floor(z)
+  if (grid.behavior(tx, tz) !== TILE_BEHAVIOR_DOOR) return { x, z }
+  if (grid.isBlocked(tx, tz + 1)) return { x, z } // 남쪽마저 막혔으면 손대지 않는다
+  return { x, z: z + 1 }
+}
+
 /**
  * 워프 감지. 씬은 pending을 보고 격자를 갈아 끼운다.
- * 도착 지점은 상대편 워프 타일 자체다 — 원작도 문 안쪽 타일에 세운다.
+ *
+ * 도착 지점은 상대편 워프 타일 자체다 — 원작도 그렇다. 다만 그 칸이 문이면
+ * 통행 불가라서 씬이 `walkOutOfDoor`로 한 칸 내려 세운다.
  */
 export const warpSystem = {
   fixedUpdate() {

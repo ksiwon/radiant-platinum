@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import {
-  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT,
+  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, TILE_BEHAVIOR_DOOR, walkOutOfDoor,
   type EventFile, type MapHeader,
 } from './world'
 import { resolveScript } from '../script/data'
@@ -92,6 +92,88 @@ maybe('워프 그래프', () => {
       expect(outside.x).toBe(w.x + 0.5)
       expect(outside.z).toBe(w.z + 0.5)
     }
+  })
+
+  // 문 타일은 통행 불가로 찍혀 있다. 원작은 도착한 뒤 걸어 나오는 연출로 그 칸을
+  // 벗어나지만 우리는 그 연출이 없어서, 손대지 않으면 문 앞에 **영영 갇힌다** —
+  // 반지름으로 네 모서리를 보기 때문에 조금 움직여도 그 벽을 다시 짚는다
+  describe('문에서 걸어 나온다', () => {
+    const grid = readGrid('matrices/0.json', 'matrices/0.bin')
+
+    it('실외 문은 전부 통행 불가이고 남쪽만 열려 있다', () => {
+      const doors = warpsOf(411).filter((w) => grid.behavior(w.x, w.z) === TILE_BEHAVIOR_DOOR)
+      expect(doors).toHaveLength(4)
+      for (const d of doors) {
+        expect(grid.isBlocked(d.x, d.z), `문 (${d.x},${d.z})`).toBe(true)
+        expect(grid.isBlocked(d.x, d.z + 1), `남 (${d.x},${d.z})`).toBe(false)
+        expect(grid.isBlocked(d.x - 1, d.z), `서 (${d.x},${d.z})`).toBe(true)
+        expect(grid.isBlocked(d.x + 1, d.z), `동 (${d.x},${d.z})`).toBe(true)
+      }
+    })
+
+    it('주인공 집에서 나오면 문 앞이 아니라 그 한 칸 아래다', () => {
+      // 집 1층(414)의 바깥 워프 → 마을(411) 앵커 1 = (116,885)
+      const out = resolveWarp(warpsOf(414)[0]!)!
+      expect(out.to).toBe(411)
+      expect([out.x, out.z]).toEqual([116.5, 885.5])
+      expect(grid.isBlocked(116, 885)).toBe(true)
+
+      const at = walkOutOfDoor(grid, out.x, out.z)
+      expect([at.x, at.z]).toEqual([116.5, 886.5])
+      expect(grid.isBlocked(Math.floor(at.x), Math.floor(at.z))).toBe(false)
+    })
+
+    it('실외 문 어디로 나와도 안 막힌 칸에 선다', () => {
+      let doors = 0
+      for (const m of (world.maps ?? [])) {
+        if (m.matrix !== 0) continue
+        for (const w of warpsOf(m.id)) {
+          if (grid.behavior(w.x, w.z) !== TILE_BEHAVIOR_DOOR) continue
+          doors++
+          const at = walkOutOfDoor(grid, w.x + 0.5, w.z + 0.5)
+          expect(grid.isBlocked(Math.floor(at.x), Math.floor(at.z)), `문 ${m.id}(${w.x},${w.z})`)
+            .toBe(false)
+        }
+      }
+      expect(doors).toBe(141)
+    })
+
+    it('실내 문 36개도 마찬가지다', () => {
+      // 실내는 행렬 269개가 한 덩어리로 붙어 있다
+      const index = read('matrices/interiors.json') as {
+        matrices: Record<string, MatrixMeta & { byteOffset: number }>
+      }
+      const buf = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      let doors = 0
+      for (const m of (world.maps ?? [])) {
+        if (m.matrix === 0) continue
+        const meta = index.matrices[String(m.matrix)]
+        if (!meta) continue
+        const tiles = new Uint16Array(
+          buf.buffer, buf.byteOffset + meta.byteOffset, meta.tileWidth * meta.tileHeight,
+        )
+        const inner = new MapGrid(meta, tiles)
+        for (const w of warpsOf(m.id)) {
+          if (inner.behavior(w.x, w.z) !== TILE_BEHAVIOR_DOOR) continue
+          doors++
+          const at = walkOutOfDoor(inner, w.x + 0.5, w.z + 0.5)
+          expect(at.z, `문 ${m.id}(${w.x},${w.z})`).toBe(w.z + 1.5)
+          expect(inner.isBlocked(Math.floor(at.x), Math.floor(at.z))).toBe(false)
+        }
+      }
+      // 실내외 합쳐 177개가 전부 남쪽으로 나온다 — 동·서로 열린 문은 하나도 없다
+      expect(doors).toBe(36)
+    })
+
+    it('문이 아닌 칸은 손대지 않는다', () => {
+      // 계단·동굴 입구(0x6c~0x6f)는 원래 안 막혀 있다. 옮기면 엉뚱한 데 선다
+      const stairs = warpsOf(411).filter((w) => grid.behavior(w.x, w.z) !== TILE_BEHAVIOR_DOOR)
+      for (const w of stairs) {
+        expect(walkOutOfDoor(grid, w.x + 0.5, w.z + 0.5)).toEqual({ x: w.x + 0.5, z: w.z + 0.5 })
+      }
+      // 아무것도 아닌 빈 칸도 그대로
+      expect(walkOutOfDoor(grid, 116.5, 886.5)).toEqual({ x: 116.5, z: 886.5 })
+    })
   })
 
   it('트윈리프 NPC 8명이 마을 안에 서 있다', () => {

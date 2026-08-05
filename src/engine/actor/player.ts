@@ -52,10 +52,18 @@ export const playerSystem = {
     const nz = p.position.z + p.velocity.z * dt
 
     if (activeZone.grid) {
+      // 이미 막힌 칸 안에 서 있으면 판정을 건너뛴다.
+      //
+      // 반지름으로 네 모서리를 보기 때문에, 한 번 벽 안에 들어가면 **어느 쪽으로
+      // 조금 움직여도 그 벽을 다시 짚어서** 영영 못 나온다. 문 타일이 통행 불가라
+      // 거기 세워지면 그대로 갇혔다(§4.2). 그 자리는 `walkOutOfDoor`가 막았지만
+      // 안전망은 남겨 둔다 — 벽 안은 이미 잘못된 상태고, 갇히는 것보다 걸어
+      // 나오는 편이 낫다
+      const stuck = blocked(p.position.x, p.position.z)
       // 축별로 따로 시도 — 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
-      if (!blocked(nx, p.position.z)) p.position.x = nx
+      if (stuck || !blocked(nx, p.position.z)) p.position.x = nx
       else p.velocity.x = 0
-      if (!blocked(p.position.x, nz)) p.position.z = nz
+      if (stuck || !blocked(p.position.x, nz)) p.position.z = nz
       else p.velocity.z = 0
     } else {
       p.position.x = Math.max(-FALLBACK_ARENA, Math.min(FALLBACK_ARENA, nx))

@@ -12,7 +12,7 @@ import { useFrame } from '@react-three/fiber'
 import { BackSide, DirectionalLight, Mesh } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { mapById, world } from '../engine/map/world'
+import { mapById, walkOutOfDoor, world } from '../engine/map/world'
 import {
   enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars,
 } from '../engine/script/field'
@@ -238,7 +238,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       const target = world.pending
       warping.current = true
       gridFor(target.matrix)
-        .then((next) => { enter(next, target.to, target.x, target.z, target.matrix) })
+        .then((next) => {
+          // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
+          // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
+          const at = walkOutOfDoor(next, target.x, target.z)
+          enter(next, target.to, at.x, at.z, target.matrix)
+        })
         .catch((e) => { console.error('워프 실패', e) })
         .finally(() => { world.pending = null; warping.current = false })
       return
