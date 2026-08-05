@@ -231,7 +231,14 @@ describe('보상', () => {
  * 경험치도 레벨에 맞춰야 한다 — 안 맞추면 배틀 중 보상이 들어오는 순간
  * `levelForExp`가 레벨을 도로 5로 끌어내린다
  */
-async function giveStrongParty(ids = [483, 484, 445]) {
+/**
+ * 확실히 이기는 파티.
+ *
+ * **여섯 마리 다 채운다.** 배틀은 `Math.random`으로 돌아서 결과가 매번 다른데,
+ * 세 마리로는 난천에게 여덟 판에 한 번쯤 진다(실측). 그러면 "이겼다" 단언이
+ * 이유 없이 깨진다 — 씨앗을 심는 길이 스토어에 없으므로 표본을 늘려 막는다
+ */
+async function giveStrongParty(ids = [483, 484, 445, 487, 493, 249]) {
   const [table, moves] = await Promise.all([loadSpecies(), loadMoves()])
   // PP를 안 채우면 전부 0으로 들어가서 발버둥만 쓴다. 세이브의 PP가 정본이 된
   // 뒤로는 개체를 만드는 쪽이 반드시 채워야 한다
