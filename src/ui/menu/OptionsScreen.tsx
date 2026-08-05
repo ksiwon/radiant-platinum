@@ -55,7 +55,10 @@ export function OptionsScreen() {
   const rows: Row[] = [
     {
       key: 'speed', label: at(OPTIONS_TEXT.labels.speed),
-      values: pick(OPTIONS_TEXT.speed), at: options.speed, help: at(OPTIONS_TEXT.help.speed),
+      // 앞 셋은 원작 글이고 "즉시"는 우리가 연 자리다. 값은 원작의
+      // `TEXT_SPEED_INSTANT`라 새로 지어낸 속도는 아니다
+      values: [...pick(OPTIONS_TEXT.speed), '즉시'], at: options.speed,
+      help: at(OPTIONS_TEXT.help.speed),
     },
     {
       key: 'battleScene', label: at(OPTIONS_TEXT.labels.battleScene),

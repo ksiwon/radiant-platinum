@@ -11,11 +11,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BattleEvent } from '../../engine/battle/events'
 import type { Beat } from '../../engine/battle/playback'
-import { MessagePrinter, printedText, TEXT_SPEED } from '../../engine/script/printer'
+import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
+import { textSpeedFrames } from '../../state/optionsStore'
 
-/** 배틀 글은 인쇄기가 스스로 버튼을 묻지 않는다. 빨리 감기는 `advance`가 시킨다 */
-const OPTIONS = { speed: TEXT_SPEED.normal, canSkip: true, autoScroll: false }
+/**
+ * 배틀 글은 인쇄기가 스스로 버튼을 묻지 않는다. 빨리 감기는 `advance`가 시킨다.
+ *
+ * 속도는 **글을 띄울 때마다** 물어본다 — 여기서 값을 붙잡아 두면 설정에서
+ * 바꿔도 배틀만 옛 속도로 남는다
+ */
+const options = () => ({ speed: textSpeedFrames(), canSkip: true, autoScroll: false })
 
 export interface Playback {
   /** 지금 찍힌 만큼 */
@@ -79,7 +85,7 @@ export function useBattlePlayback(
       // ① 글. 다 찍기 전에는 화면이 안 바뀐다
       if (!r.applied) {
         if (beat.text !== null && r.printer === null) {
-          r.printer = new MessagePrinter(beat.text, slots.current, OPTIONS)
+          r.printer = new MessagePrinter(beat.text, slots.current, options())
         }
         const p = r.printer
         if (p !== null) {

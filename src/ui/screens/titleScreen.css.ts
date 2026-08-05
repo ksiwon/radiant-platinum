@@ -38,6 +38,20 @@ export const hint = style({
   opacity: 0.7,
 })
 
+/** 시험용 손잡이. 진짜 메뉴와 헷갈리면 안 되므로 작고 흐리게 둔다 */
+export const devButton = style({
+  padding: '6px 18px',
+  fontSize: 12,
+  fontFamily: vars.font.ui,
+  color: vars.panel.text,
+  background: 'transparent',
+  border: `1px dashed ${vars.panel.border}`,
+  borderRadius: 6,
+  opacity: 0.55,
+  cursor: 'pointer',
+  ':hover': { opacity: 1 },
+})
+
 /** 리포트 요약. 원작 메인 메뉴도 이 넷을 보여준다 */
 export const summary = style({
   display: 'grid',

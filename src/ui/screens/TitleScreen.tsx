@@ -10,7 +10,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
 import { readReport } from '../../state/report'
-import { dexHas, SAVE_VERSION, useSaveStore, type SaveData } from '../../state/saveStore'
+import {
+  dexHas, SAVE_VERSION, startNewGame, useSaveStore, type SaveData,
+} from '../../state/saveStore'
 import * as css from './titleScreen.css'
 
 /** 게임 청크를 미리 받아둔다 — 클릭 시점의 대기를 없앤다 (PLAN §10.4) */
@@ -58,6 +60,26 @@ export function TitleScreen() {
     void save.loadReport().then(() => { navigate('/play') })
   }
 
+  /**
+   * 인트로를 건너뛰고 방에서 시작한다. **개발 빌드에만 있다.**
+   *
+   * 이름은 지어내지 않고 인트로가 실제로 내미는 첫 후보를 쓴다 — 늘 같은 값이라
+   * 여기서 시작한 판끼리 서로 비교가 된다 (`engine/intro/skip`)
+   */
+  const skip = (): void => {
+    const save = useSaveStore.getState()
+    void save.resetSave()
+      .then(async () => {
+        const { introSkipChoice } = await import('../../engine/intro/skip')
+        return introSkipChoice()
+      })
+      .then((choice) => {
+        startNewGame(choice)
+        navigate('/play')
+      })
+      .catch(() => { navigate('/intro') })
+  }
+
   return (
     <div className={css.wrap}>
       <h1 className={css.title}>pt-3d</h1>
@@ -96,6 +118,18 @@ export function TitleScreen() {
       {report && (
         <p className={css.hint}>새로 시작하면 위 리포트는 지워집니다</p>
       )}
+
+      {/*
+        시험용. 마박사 대목을 건너뛰고 방에서 시작한다 — 그 뒤를 손볼 때 매번
+        45줄을 다시 읽을 수는 없다. `import.meta.env.DEV`라 배포 빌드에서는
+        이 가지가 통째로 죽고 `engine/intro/skip`은 청크로도 안 나온다
+      */}
+      {import.meta.env.DEV && (
+        <button className={css.devButton} onClick={skip} onPointerEnter={prefetchGameChunk}>
+          인트로 건너뛰기 (시험용)
+        </button>
+      )}
+
       <p className={css.hint}>
         WASD·방향키 이동 · Shift 달리기 · X 메뉴 · V 시점 · Z 말 걸기
       </p>

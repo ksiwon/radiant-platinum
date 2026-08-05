@@ -10,7 +10,7 @@ import { create } from 'zustand'
 import { TEXT_SPEED } from '../engine/script/printer'
 
 /** `options_menu`의 10·11·12번 — 느리게 · 보통 · 빠르게 */
-export type TextSpeed = 0 | 1 | 2
+export type TextSpeed = 0 | 1 | 2 | 3
 /** 13·14번 — 본다 · 보지 않는다 */
 export type BattleScene = 0 | 1
 /** 15·16번 — 교체 · 토너먼트 */
@@ -32,9 +32,16 @@ export interface Options {
 /**
  * 설정의 속도 → 인쇄기의 글자당 프레임.
  *
- * `include/text.h`의 값이다. 원작 기본값이 "보통"이고 그것이 4프레임이다
+ * 앞 셋은 `Options_TextFrameDelay`가 주는 그대로다 — 느림 8 · 보통 4 · 빠름 1.
+ * 원작 기본값이 "보통"이고 화면에 뜨는 것도 이 셋뿐이다.
+ *
+ * **네 번째는 우리가 연 자리다.** 값 자체는 지어낸 것이 아니라 `include/text.h`의
+ * `TEXT_SPEED_INSTANT`(0)이고, 원작도 알림창 같은 데서 쓴다 — 설정 화면에만
+ * 안 걸려 있었다. 대기 없이 프레임마다 한 자씩이라 60자/초다
  */
-export const SPEED_FRAMES: readonly number[] = [TEXT_SPEED.slow, TEXT_SPEED.normal, TEXT_SPEED.fast]
+export const SPEED_FRAMES: readonly number[] = [
+  TEXT_SPEED.slow, TEXT_SPEED.normal, TEXT_SPEED.fast, TEXT_SPEED.instant,
+]
 
 const DEFAULTS: Options = { speed: 1, battleScene: 0, battleRule: 0, sound: 0, view: 0 }
 

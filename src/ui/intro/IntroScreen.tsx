@@ -63,6 +63,30 @@ export function IntroScreen() {
    * 지나간다
    */
   const pressed = useRef(false)
+  /**
+   * A를 **누르고 있는가.** 누른 순간과 따로 봐야 한다.
+   *
+   * 원작은 누르고 있는 동안 글자 사이 대기를 0으로 만든다(`speedUp`). 눌린
+   * 순간만 넘기면 그 길이 영영 안 열려서, 다 읽은 글을 넘기려고 연타하는
+   * 수밖에 없다. `useMenuKeys`는 keydown만 듣기 때문에 여기서 따로 잡는다
+   */
+  const holding = useRef(false)
+
+  useEffect(() => {
+    const CONFIRM = new Set(['Space', 'KeyZ', 'Enter'])
+    const down = (e: KeyboardEvent): void => { if (CONFIRM.has(e.code)) holding.current = true }
+    const up = (e: KeyboardEvent): void => { if (CONFIRM.has(e.code)) holding.current = false }
+    // 창 밖으로 나가면 뗀 것으로 친다 — 안 그러면 돌아왔을 때 계속 눌린 상태다
+    const blur = (): void => { holding.current = false }
+    window.addEventListener('keydown', down, true)
+    window.addEventListener('keyup', up, true)
+    window.addEventListener('blur', blur)
+    return () => {
+      window.removeEventListener('keydown', down, true)
+      window.removeEventListener('keyup', up, true)
+      window.removeEventListener('blur', blur)
+    }
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -134,7 +158,7 @@ export function IntroScreen() {
       if (p === null) return
       const hit = pressed.current
       pressed.current = false
-      p.tick({ pressed: hit, held: hit })
+      p.tick({ pressed: hit, held: holding.current })
       const now = printedText(p)
       if (now !== last) { last = now; setText(now) }
       setReady((r) => (r === p.finished ? r : p.finished))
