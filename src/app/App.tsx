@@ -27,6 +27,9 @@ export function App() {
     // 오디오 언락은 three를 끌고 오지 않으므로 초기 청크에 남긴다.
     // 타이틀의 "게임 시작" 클릭이 첫 제스처가 되도록 일찍 설치해야 한다 (§11.1).
     installAudioUnlock()
+    // 개발용 손잡이. 이 가지는 프로덕션 빌드에서 `false`로 접혀 사라지므로
+    // devConsole은 청크로도 나오지 않는다
+    if (import.meta.env.DEV) void import('./devConsole').then((m) => { m.installDevConsole() })
   }, [])
 
   return (
