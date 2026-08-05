@@ -9,7 +9,7 @@
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BackSide, DirectionalLight, InstancedMesh, Mesh, Object3D } from 'three'
+import { BackSide, DirectionalLight, Mesh } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, world } from '../engine/map/world'
@@ -17,7 +17,6 @@ import {
   enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars,
 } from '../engine/script/field'
 import { installFieldServices } from './fieldServices'
-import { npcActors } from '../engine/actor/npcs'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
 import { textSpeedFrames, useOptionsStore } from '../state/optionsStore'
@@ -28,14 +27,11 @@ import { setGameActive } from '../engine/input/keyboard'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
 import { ChunkModels } from './ChunkModels'
+import { NpcSprites } from './NpcSprites'
 import { DAY, makeSkyTexture } from './fx/sky'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
 const VIEW_RADIUS = 2
-const dummy = new Object3D()
-
-/** NPC를 그리는 거리(타일). 청크 창보다 조금 넉넉하게 둔다 */
-const NPC_DRAW_RANGE = 48
 
 /**
  * 그림자 맵 한 변.
@@ -48,8 +44,6 @@ const SHADOW_MAP = 2048
 const SHADOW_SPAN = 30
 /** 태양이 플레이어보다 얼마나 위·옆에 서는가. 방향은 아래 `directionalLight`와 같다 */
 const SUN_OFFSET: readonly [number, number, number] = [24, 42, 18]
-/** 원작 방향(0 북 · 1 남 · 2 서 · 3 동) → 모델 y 회전 */
-const NPC_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
 
 interface Props {
   initial: MapGrid
@@ -66,13 +60,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)))
 
   const skyRef = useRef<Mesh>(null)
-  const npcRef = useRef<InstancedMesh>(null)
   const sunRef = useRef<DirectionalLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
-
-  // 오버월드 창이 가장 크다. 실내로 바뀌어도 이 용량 안에 들어온다
-  const capacity = useMemo(
-    () => ({ tiles: (VIEW_RADIUS * 2 + 1) ** 2 * 32 * 32, buildings: 512, npcs: 64 }), [])
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -261,29 +250,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 돔 밖으로 걸어 나가 하늘이 사라진다
     if (skyRef.current) skyRef.current.position.set(p.x, 0, p.z)
 
-    // NPC. 스크립트가 걷게 만들면 좌표가 프레임마다 바뀌므로 여기서 다시 쓴다.
-    // 맵 하나의 NPC는 많아야 수십 명이라 전수를 훑어도 부담이 없다
-    const npcMesh = npcRef.current
-    if (npcMesh) {
-      let n = 0
-      for (const actor of npcActors.list) {
-        if (n >= capacity.npcs) break
-        if (!actor.visible) continue
-        // 창 밖은 안 그린다 — 오버월드는 한 행렬에 존이 67개다
-        if (Math.abs(actor.x - p.x) > NPC_DRAW_RANGE) continue
-        if (Math.abs(actor.z - p.z) > NPC_DRAW_RANGE) continue
-        const y = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, layer) ?? 0
-        dummy.position.set(actor.x + 0.5, y + 0.55, actor.z + 0.5)
-        dummy.rotation.set(0, NPC_FACING[actor.dir] ?? 0, 0)
-        dummy.scale.set(1, 1, 1)
-        dummy.updateMatrix()
-        npcMesh.setMatrixAt(n++, dummy.matrix)
-      }
-      npcMesh.count = n
-      npcMesh.instanceMatrix.needsUpdate = true
-      npcMesh.computeBoundingSphere()
-    }
-
     // 야생이 나왔다. 배틀 청크는 이때 처음 받는다 — 그동안 판정을 멈춰 둔다
     if (encounters.pending) {
       const e = encounters.pending
@@ -349,11 +315,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       */}
       <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
 
-      {/* NPC 블록아웃. 모델(sprite)은 아직 안 뽑았으므로 자리만 세운다 */}
-      <instancedMesh ref={npcRef} args={[undefined, undefined, capacity.npcs]}>
-        <capsuleGeometry args={[0.28, 0.5, 4, 8]} />
-        <meshStandardMaterial color="#d6c26a" roughness={0.7} />
-      </instancedMesh>
+      {/* NPC. 원작 판때기 그림이다 — 방향도 걸음도 텍스처가 바뀌는 것이다 */}
+      <NpcSprites grid={grid} layer={layer} />
     </group>
   )
 }

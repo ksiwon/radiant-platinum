@@ -7,6 +7,7 @@ import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField, type HeightData } from '../engine/map/height'
 import { world, type AreaData, type EventFile, type MapHeader } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
+import { loadNpcSprites, type NpcSprite } from '../engine/actor/sprites'
 import type { EncounterTable } from '../engine/battle/encounter'
 
 const base = () => `${import.meta.env.BASE_URL}data/`
@@ -72,7 +73,7 @@ export interface WorldBoot {
 
 /** 시작 데이터. world 싱글톤을 채우고 오버월드 격자를 돌려준다 */
 export async function bootWorld(): Promise<WorldBoot> {
-  const [mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin] =
+  const [mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin, sprites] =
     await Promise.all([
       json<{ maps: MapHeader[], areas: AreaData[] }>('maps.json'),
       json<{ events: Record<string, EventFile> }>('events.json'),
@@ -84,12 +85,16 @@ export async function bootWorld(): Promise<WorldBoot> {
       // 실내처럼 미루지 않고 처음에 받는다 — 첫 걸음부터 지면을 따라가야 한다
       json<BdhcFile>('bdhc.json'),
       bytes('bdhc.bin'),
+      // NPC 그림표. 33KB고 사람이 서 있어야 첫 화면이 완성되므로 미루지 않는다.
+      // 그림(PNG)은 서 있는 사람 것만 그때그때 받는다
+      json<Record<string, NpcSprite>>('npcSprites.json'),
     ])
   world.maps = mapsFile.maps
   world.areas = mapsFile.areas
   world.events = eventsFile.events
   encounters.tables = encFile.tables
   heightField.data = bindHeights(bdhcMeta, bdhcBin)
+  loadNpcSprites(sprites)
   const grid = new MapGrid(meta, new Uint16Array(bin))
   grids.set(0, grid)
   if (!meta.spawn) throw new Error('오버월드 메타에 스폰이 없다')
