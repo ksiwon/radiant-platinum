@@ -6,7 +6,10 @@
 //
 // 이 모듈은 React를 모른다. 화면은 `world`를 들여다보기만 한다.
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
-import { mapById, npcsOf, NO_SCRIPT, world as mapWorld, type Npc } from '../map/world'
+import {
+  BG_EVENT_DIR, BG_EVENT_TYPE, mapById, npcsOf, NO_SCRIPT, signsOf, triggersOf,
+  world as mapWorld, type Npc, type Sign,
+} from '../map/world'
 import { worldState } from '../../state/worldState'
 import { buildCommands, type CommandTable } from './commands'
 import { ScriptContext, ScriptError } from './context'
@@ -164,7 +167,9 @@ export const scriptSystem = {
       step(ctx, world)
       return
     }
-    if (edges.a) tryTalk()
+    // 밟아서 걸리는 것이 먼저다. 원작도 이동이 끝난 자리에서 좌표를 먼저 본다
+    tryTrigger()
+    if (fieldScripts.ctx === null && edges.a) tryTalk()
   },
 }
 
@@ -244,11 +249,124 @@ function tryTalk(): void {
 
   const p = worldState.player
   const front = tileInFront(p.position.x, p.position.z, p.facing)
-  const npc = npcAt(mapWorld.mapId, front.x, front.z, vars)
-  if (!npc || npc.script === NO_SCRIPT) return
 
-  const id = npc.trainerType === TRAINER_TYPE_NO_TALK ? 0 : npc.script
-  start(id, header.scripts, npc.localID)
+  const npc = npcAt(mapWorld.mapId, front.x, front.z, vars)
+  if (npc && npc.script !== NO_SCRIPT) {
+    const id = npc.trainerType === TRAINER_TYPE_NO_TALK ? 0 : npc.script
+    start(id, header.scripts, npc.localID)
+    return
+  }
+
+  // 사람이 없으면 간판이다. 원작도 이 순서다 (`field_control.c`)
+  const sign = signAt(mapWorld.mapId, front.x, front.z, quarterOf(p.facing), vars)
+  if (sign) start(sign.script, header.scripts)
+}
+
+/**
+ * 앞 타일의 간판. 방향이 안 맞으면 없는 것으로 친다.
+ *
+ * 숨은 도구는 방향을 안 보는 대신 **이미 주웠는지**를 본다 — 그 플래그가
+ * scriptID 안에 들어 있다(`Script_GetHiddenItemFlag`)
+ */
+export function signAt(
+  mapId: number, x: number, z: number, facing: number, vars: VarStore,
+): Sign | null {
+  for (const sign of signsOf(mapId)) {
+    if (sign.x !== x || sign.z !== z) continue
+    if (sign.type === BG_EVENT_TYPE.hiddenItem) {
+      if (vars.checkFlag(hiddenItemFlag(sign.script))) continue
+      return sign
+    }
+    if (facesSign(sign.facing, facing)) return sign
+  }
+  return null
+}
+
+/** `BgEvent_CheckPlayerFacingDirection` */
+function facesSign(want: number, facing: number): boolean {
+  if (want === BG_EVENT_DIR.all) return true
+  const dir = COMPASS[facing]
+  if (dir === undefined) return false
+  if (want === dir) return true
+  if (want === BG_EVENT_DIR.westEast) return dir === BG_EVENT_DIR.west || dir === BG_EVENT_DIR.east
+  if (want === BG_EVENT_DIR.northSouth) return dir === BG_EVENT_DIR.north || dir === BG_EVENT_DIR.south
+  return false
+}
+
+/**
+ * 우리 사분면 → 나침반.
+ *
+ * z가 커지는 쪽이 남쪽이다 — 떡잎마을(z≈875)에서 북쪽 201번도로(z≈856)로
+ * 가면 z가 줄어든다. 간판 682개 중 방향이 붙은 것의 최다값이 북쪽인 것도
+ * 이 배치와 맞는다(벽에 붙은 간판은 남쪽에 서서 북쪽을 보고 읽는다)
+ */
+const COMPASS: readonly number[] = [
+  BG_EVENT_DIR.south, // 0  +z
+  BG_EVENT_DIR.east, //  1  +x
+  BG_EVENT_DIR.north, // 2  −z
+  BG_EVENT_DIR.west, //  3  −x
+]
+
+function quarterOf(facing: number): number {
+  return ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
+}
+
+/**
+ * 숨은 도구의 "이미 주웠다" 플래그 (`Script_GetHiddenItemFlag`).
+ *
+ * scriptID가 도구 번호와 플래그를 한 수에 담고 있다 — 8000번대가 그 구역이고
+ * 번호 차이가 곧 플래그 순번이다
+ */
+function hiddenItemFlag(scriptID: number): number {
+  return HIDDEN_ITEM_FLAGS_START + (scriptID - SCRIPT_ID_OFFSET_HIDDEN_ITEMS)
+}
+
+/** `include/constants/scripts.h` */
+const SCRIPT_ID_OFFSET_HIDDEN_ITEMS = 8000
+/** `generated/vars_flags.txt`의 `HIDDEN_ITEM_FLAGS_START` */
+const HIDDEN_ITEM_FLAGS_START = 730
+
+// ── 좌표 트리거 ──────────────────────────────────────────────────────────────
+
+/** 마지막으로 판정한 칸. 한 칸에 여러 번 돌지 않게 한다 */
+let lastTile = { x: Number.NaN, z: Number.NaN }
+
+/**
+ * 도착한 칸을 "방금 밟았다"로 친다.
+ *
+ * 워프로 내린 자리가 트리거 상자 안일 수 있는데, 그걸 밟은 것으로 세면
+ * 문에서 나오자마자 이야기가 시작된다. 조우 판정도 같은 이유로 이렇게 한다
+ */
+export function resetTriggerTile(): void {
+  const p = worldState.player.position
+  lastTile = { x: Math.floor(p.x), z: Math.floor(p.z) }
+}
+
+/**
+ * 지금 칸에 걸린 트리거 (`sub_0203CC14`).
+ *
+ * 상자 안에 있고 그 변수 값이 맞아야 한다. 조건 변수가 있어서 같은 자리를
+ * 여러 번 지나도 이야기가 한 번만 돈다
+ */
+export function triggerAt(mapId: number, x: number, z: number, vars: VarStore): number | null {
+  for (const t of triggersOf(mapId)) {
+    if (x < t.x || x >= t.x + t.width) continue
+    if (z < t.z || z >= t.z + t.length) continue
+    if (vars.get(t.var) !== t.value) continue
+    return t.script
+  }
+  return null
+}
+
+function tryTrigger(): void {
+  const header = mapById(mapWorld.mapId)
+  if (!header) return
+  const p = worldState.player.position
+  const x = Math.floor(p.x), z = Math.floor(p.z)
+  if (x === lastTile.x && z === lastTile.z) return
+  lastTile = { x, z }
+  const script = triggerAt(mapWorld.mapId, x, z, fieldScripts.vars)
+  if (script !== null) start(script, header.scripts)
 }
 
 /**

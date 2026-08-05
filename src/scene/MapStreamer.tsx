@@ -15,7 +15,9 @@ import {
 import { activeZone, Behavior, BEHAVIOR_MASK, IMPASSABLE, isWater } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, world } from '../engine/map/world'
-import { fieldScripts, initFieldScripts, loadMapDialogue, loadVars } from '../engine/script/field'
+import {
+  fieldScripts, initFieldScripts, loadMapDialogue, loadVars, resetTriggerTile,
+} from '../engine/script/field'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
@@ -153,6 +155,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setMapId(mapId)
     // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
     resetEncounterTile()
+    resetTriggerTile()
   }, [setZone, displayName])
 
   // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —

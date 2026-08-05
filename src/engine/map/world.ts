@@ -60,12 +60,52 @@ export interface Npc {
 /** `ObjectEvent_HasNoScript` — 말을 걸어도 아무 일이 없다 */
 export const NO_SCRIPT = 0xffff
 
+/**
+ * 간판·숨은 도구 (`BgEvent`).
+ *
+ * 앞 타일에 이게 있으면 읽는다. `facing`이 `BG_EVENT_DIR.all`이 아니면
+ * **그 방향으로 보고 있을 때만** 반응한다 — 벽에 붙은 간판을 옆에서 못 읽는다.
+ */
+export interface Sign {
+  script: number
+  type: number
+  x: number
+  z: number
+  y: number
+  facing: number
+}
+
+/**
+ * 좌표 트리거 (`CoordEvent`).
+ *
+ * 상자 안에 발을 들이고 `vars[var] === value`면 스크립트가 돈다. 이야기
+ * 진행을 좌표로 거는 장치다.
+ */
+export interface Trigger {
+  script: number
+  x: number
+  z: number
+  width: number
+  length: number
+  y: number
+  value: number
+  var: number
+}
+
 export interface EventFile {
   warps: Warp[]
   npcs: Npc[]
-  signs: number
-  triggers: number
+  signs: Sign[]
+  triggers: Trigger[]
 }
+
+/** `generated/bg_event_types.txt` */
+export const BG_EVENT_TYPE = { facing: 0, wallSign: 1, hiddenItem: 2 } as const
+
+/** `generated/bg_event_dirs.txt` */
+export const BG_EVENT_DIR = {
+  north: 0, east: 1, west: 2, south: 3, all: 4, westEast: 5, northSouth: 6,
+} as const
 
 export interface PendingWarp {
   /** 목적지 맵 헤더 id */
@@ -102,6 +142,14 @@ export function warpsOf(mapId: number): Warp[] {
 
 export function npcsOf(mapId: number): Npc[] {
   return eventsOf(mapId)?.npcs ?? []
+}
+
+export function signsOf(mapId: number): Sign[] {
+  return eventsOf(mapId)?.signs ?? []
+}
+
+export function triggersOf(mapId: number): Trigger[] {
+  return eventsOf(mapId)?.triggers ?? []
 }
 
 function eventsOf(mapId: number): EventFile | null {

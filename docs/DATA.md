@@ -17,7 +17,7 @@
 | 타일 거동 | land_data의 `perm` | ⚠️ 94종 중 풀숲·물 확정 · 워프 무리 유력 (§2.2) |
 | 워프 | `zone_event`의 12B 구역 | ✅ 1213개, 그래프 정합 1207 |
 | NPC 배치 | `zone_event`의 32B 구역 | ✅ 디컴프 `ObjectEvent`와 필드 일치 (§2.3) |
-| 간판·트리거 | `zone_event`의 20B·16B 구역 | ❌ 개수만 앎 (682 / 186) |
+| 간판·트리거 | `zone_event`의 20B·16B 구역 | ✅ `BgEvent`·`CoordEvent`와 필드 일치 (§2.3) |
 | 야생 인카운터 | `fielddata/encountdata/pl_enc_data.narc` | ✅ 183개 × 424B, 전 필드 |
 | 종족 데이터 | `poketool/personal/pl_personal.narc` | ✅ 508개 × 44B |
 | 진화 | `poketool/personal/evo.narc` | ✅ 508개, 246분기 |
@@ -184,7 +184,45 @@ u16 0, 0      // 1213개 전부 0
 
 필드를 잘못 읽어도 자료를 잃지 않게 원시 16워드를 `raw`에 함께 싣는다.
 
-간판(20B)·트리거(16B)는 **미착수**.
+**간판 (20B) — `BgEvent`**
+
+```c
+u16 script, type;   // type: 0 방향 · 1 벽 간판 · 2 숨은 도구
+int x, z, y;        // 타일 그대로. 고정소수점이 아니다
+u16 playerFacingDir;  u8 padding[2];
+```
+
+`playerFacingDir`이 `BG_EVENT_DIR_ALL`이 아니면 **그 방향으로 보고 있을 때만**
+반응한다. 682개의 분포가 그 열거형에 정확히 들어간다 — type은 0/1/2뿐(418·2·262),
+방향은 0~6뿐이고 최다값이 `ALL`(404)과 `NORTH`(248)다. 북쪽이 많은 것이 배치와
+맞는다: 벽에 붙은 간판은 남쪽에 서서 북쪽을 보고 읽는다.
+
+숨은 도구는 scriptID가 도구와 플래그를 한 수에 담는다 —
+플래그 = `HIDDEN_ITEM_FLAGS_START`(730) + (scriptID − 8000).
+
+**트리거 (16B) — `CoordEvent`**
+
+```c
+u16 script, x, z, width, length, y, value, var;
+```
+
+상자 안에 발을 들이고 **`var`의 값이 `value`와 같을 때** 스크립트가 돈다.
+조건 변수가 있어서 같은 자리를 여러 번 지나도 이야기가 한 번만 돈다.
+
+#### 전량 대조 — 534/534
+
+디컴프가 이벤트 파일 534개를 **JSON 원본으로** 갖고 있다(`res/field/events/`).
+그래서 스크립트 때와 같은 방식으로 확정했다: 원본을 읽어 롬에서 꺼낸 것과 필드
+하나하나 맞춘다 (`pnpm verify:events`). **간판 682 · NPC 3555 · 워프 1213 ·
+트리거 186 전부 불일치 0.**
+
+빌드 스크립트(`tools/jsoncnv/event.py`)가 그 자체로 명세다. 거기서 세 가지가
+드러났다:
+
+- `localID`는 JSON의 `id`가 아니라 **배열 순서**다(`clone_id`가 있으면 그것)
+- NPC의 `y`는 `타일 × 0x10000`이라 **위쪽 16비트가 곧 타일 높이**다
+- NPC의 `script`가 트레이너 이름이면 **3000 + 번호 − 1**로 바뀐다(더블은 5000).
+  트레이너전이 걸리는 방식이 이것이다
 
 ### 2.4 맵 헤더 표 — 모든 것의 등뼈
 
@@ -596,7 +634,8 @@ tools/
     headers.js      맵 헤더 표 → maps.json + 지역명
     matrices.js     행렬별 충돌 격자 → 0.bin / interiors.bin
     bdhc.js         지면 높이 → bdhc.json + bdhc.bin
-    events.js       워프·NPC → events.json
+    events.js       워프·NPC·간판·트리거 → events.json
+    events-verify.js  디컴프 원본 534개와 필드 대조 (pnpm verify:events)
     scrcmd-table.js 스크립트 명령 840개의 피연산자 폭 (디컴프 매크로에서)
     scrasm.js       디컴프 .s를 조립 — 롬과 대조해 명령표를 검증한다
     scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
@@ -619,7 +658,7 @@ tools/
 | 파일 | 원본 | brotli |
 |---|---|---|
 | `maps.json` | 104KB | 7.2KB |
-| `events.json` (워프+NPC) | 445KB | 34KB |
+| `events.json` (워프·NPC·간판·트리거) | 712KB | 56KB |
 | `encounters.json` | 248KB | 12KB |
 | `matrices/0.json` + `0.bin` (오버월드) | 1859KB | 20.5KB |
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |

@@ -12,14 +12,16 @@
 // NPC(32B)는 디컴프에 구조체가 그대로 있다(`ObjectEvent`). 좌표는 그 전에 값으로
 // 먼저 확정했었고(+24/+26으로 읽으면 오버월드 1184명 중 1143명이 자기 존 상자 안,
 // 차점 후보는 3.7%) 구조체와 일치한다.
-// 트리거(16B)·A구역(20B)은 아직 필드 배치를 모른다. 개수만 실어 둔다.
+// 간판(20B)·트리거(16B)도 같은 헤더에 `BgEvent`·`CoordEvent`로 있다.
 'use strict'
 const { openRom, writeJson } = require('./rom')
 
-/** [간판·숨은아이템?, NPC, 워프, 트리거] */
+/** [간판, NPC, 워프, 트리거] — `MapHeaderData`의 네 배열 순서다 */
 const SECTION_SIZES = [20, 32, 12, 16]
-const WARP_INDEX = 2
+const SIGN_INDEX = 0
 const NPC_INDEX = 1
+const WARP_INDEX = 2
+const TRIGGER_INDEX = 3
 /** 조건 플래그 없음 */
 const NO_FLAG = 0xffff
 
@@ -89,6 +91,62 @@ function parseNpcs(section) {
   return out
 }
 
+/**
+ * 간판 20B — 디컴프의 `BgEvent`.
+ *
+ * ```c
+ * u16 script, type; int x, z, y; u16 playerFacingDir; u8 padding[2];
+ * ```
+ *
+ * `type`이 0이면 보통 간판이고, 그 외는 숨은 도구·비밀기지 같은 특수한 자리다.
+ * `playerFacingDir`은 **그 방향으로 보고 있을 때만** 반응한다는 뜻이다 —
+ * 벽에 붙은 간판을 옆에서 읽을 수 없게 한다.
+ *
+ * 좌표는 int32인데 NPC와 달리 **타일 그대로**다(고정소수점이 아니다).
+ */
+function parseSigns(section) {
+  const out = []
+  for (let i = 0; i < section.count; i++) {
+    const o = i * section.size
+    out.push({
+      script: section.data.readUInt16LE(o),
+      type: section.data.readUInt16LE(o + 2),
+      x: section.data.readInt32LE(o + 4),
+      z: section.data.readInt32LE(o + 8),
+      y: section.data.readInt32LE(o + 12),
+      facing: section.data.readUInt16LE(o + 16),
+    })
+  }
+  return out
+}
+
+/**
+ * 좌표 트리거 16B — 디컴프의 `CoordEvent`.
+ *
+ * ```c
+ * u16 script, x, z, width, length, y, value, var;
+ * ```
+ *
+ * 그 상자 안에 발을 들이고 **`var`의 값이 `value`와 같을 때** 스크립트가 돈다.
+ * 이야기 진행을 좌표로 거는 장치다 — 떡잎마을을 처음 나설 때 라이벌이
+ * 달려오는 것이 이것이다.
+ */
+function parseTriggers(section) {
+  const out = []
+  for (let i = 0; i < section.count; i++) {
+    const o = i * section.size
+    const u = (f) => section.data.readUInt16LE(o + f * 2)
+    out.push({
+      script: u(0),
+      x: u(1), z: u(2),
+      width: u(3), length: u(4),
+      y: u(5),
+      value: u(6), var: u(7),
+    })
+  }
+  return out
+}
+
 function extractEvents(rom) {
   const files = rom.narc('/fielddata/eventdata/zone_event.narc')
   const events = {}
@@ -99,8 +157,8 @@ function extractEvents(rom) {
     events[i] = {
       warps: parseWarps(sec[WARP_INDEX]),
       npcs: parseNpcs(sec[NPC_INDEX]),
-      // 아직 못 읽는 것들. 개수라도 남겨 두면 나중에 대조할 기준이 된다
-      signs: sec[0].count, triggers: sec[3].count,
+      signs: parseSigns(sec[SIGN_INDEX]),
+      triggers: parseTriggers(sec[TRIGGER_INDEX]),
     }
   }
   return { events, counts }
@@ -142,4 +200,6 @@ function main() {
 }
 
 if (require.main === module) main()
-module.exports = { extractEvents, parseEventFile, parseWarps, parseNpcs, SECTION_SIZES }
+module.exports = {
+  extractEvents, parseEventFile, parseWarps, parseNpcs, parseSigns, parseTriggers, SECTION_SIZES,
+}

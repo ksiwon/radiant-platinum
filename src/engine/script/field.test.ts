@@ -8,11 +8,14 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MapHeader, EventFile } from '../map/world'
-import { world as mapWorld, npcsOf } from '../map/world'
+import { BG_EVENT_DIR, signsOf, triggersOf, world as mapWorld, npcsOf } from '../map/world'
 import { worldState } from '../../state/worldState'
 import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
-import { fieldScripts, makeWorld, npcAt, scriptBusy, scriptSystem, tileInFront } from './field'
+import {
+  fieldScripts, makeWorld, npcAt, resetTriggerTile, scriptBusy, scriptSystem, signAt,
+  tileInFront, triggerAt,
+} from './field'
 import { printedText } from './printer'
 import { VarStore } from './vars'
 
@@ -32,6 +35,8 @@ const GUITARIST_SCRIPT = 3
 const GUITARIST_LINE = '모두 모험을 떠나면서\n어른이 되어가는 것이지'
 /** `generated/vars_flags.txt`의 번호 */
 const FLAG_HAS_POKEDEX = 144
+/** 떡잎마을 숨은 도구. `HIDDEN_ITEM_FLAGS_START`(730) + (8201 − 8000) */
+const HIDDEN_ITEM_FLAG_OF_8201 = 730 + 201
 
 describe('앞 타일 고르기', () => {
   // `facing`은 `atan2(vx, vz)`라 0이 +z다. 부호를 뒤집으면 등 뒤 NPC에게 말을 건다
@@ -70,6 +75,8 @@ maybe('떡잎마을에서 말 걸기', () => {
     worldState.input.interact = false
     worldState.input.cancel = false
     worldState.input.move.set(0, 0)
+    worldState.player.position.set(0, 0, 0)
+    resetTriggerTile()
   })
 
   /** n 프레임. `a`를 주면 그 프레임 동안 A를 누르고 있는다 */
@@ -129,7 +136,7 @@ maybe('떡잎마을에서 말 걸기', () => {
   })
 
   it('도감이 없으면 다른 대사로 가고 \\r에서 버튼을 기다린다', () => {
-    // 6번 글은 `…\r…\f…` 세 쪽짜리다. 버튼을 안 누르면 첫 쪽에서 멈춰 있어야 한다
+    // 여러 쪽짜리 글로 간다. 버튼을 안 누르면 첫 쪽에서 멈춰 있어야 한다
     standInFrontOfGuitarist()
     run(1, true)
     run(600)
@@ -177,6 +184,58 @@ maybe('떡잎마을에서 말 걸기', () => {
     worldState.player.facing = Math.PI // 등을 돌린다
     run(3, true)
     expect(scriptBusy()).toBe(false)
+  })
+
+  it('떡잎마을의 숨은 도구는 주우면 사라진다', () => {
+    // 떡잎마을 간판 구역에 든 것은 숨은 도구 하나뿐이다. scriptID 8201이
+    // 도구 번호와 플래그를 한 수에 담고 있다 — 플래그 = 730 + (8201 − 8000)
+    const [sign] = signsOf(TWINLEAF_MAP)
+    expect(sign!.type).toBe(2)
+    expect(sign!.facing).toBe(BG_EVENT_DIR.all)
+    const vars = new VarStore()
+    expect(signAt(TWINLEAF_MAP, sign!.x, sign!.z, 0, vars)).toBe(sign)
+    vars.setFlag(HIDDEN_ITEM_FLAG_OF_8201)
+    expect(signAt(TWINLEAF_MAP, sign!.x, sign!.z, 0, vars)).toBeNull()
+  })
+
+  it('간판은 맞는 방향에서만 읽힌다', () => {
+    // 방향이 붙은 간판 418개가 있다. 원작이 그러는 이유는 벽에 붙은 간판을
+    // 옆에서 읽으면 이상해서다
+    const northSign = { script: 1, type: 0, x: 10, z: 20, y: 0, facing: BG_EVENT_DIR.north }
+    mapWorld.events!['390']!.signs.push(northSign)
+    const vars = new VarStore()
+    // z가 커지는 쪽이 남쪽이다 → −z(사분면 2)를 보는 것이 북쪽을 보는 것이다
+    expect(signAt(TWINLEAF_MAP, 10, 20, 2, vars)).toBe(northSign)
+    expect(signAt(TWINLEAF_MAP, 10, 20, 0, vars)).toBeNull()
+    mapWorld.events!['390']!.signs.pop()
+  })
+
+  it('떡잎마을 북쪽 끝을 밟으면 트리거가 걸린다', () => {
+    // 상자 8×1이 마을 북쪽 출구를 가로지른다. 조건 변수가 맞을 때만 돈다
+    const north = triggersOf(TWINLEAF_MAP).find((t) => t.width === 8)!
+    const vars = new VarStore()
+    expect(triggerAt(TWINLEAF_MAP, north.x, north.z, vars)).toBeNull()
+    vars.set(north.var, north.value)
+    expect(triggerAt(TWINLEAF_MAP, north.x, north.z, vars)).toBe(north.script)
+    // 상자 밖은 안 걸린다 — 폭을 잘못 읽으면 마을 절반이 트리거가 된다
+    expect(triggerAt(TWINLEAF_MAP, north.x + north.width, north.z, vars)).toBeNull()
+    expect(triggerAt(TWINLEAF_MAP, north.x, north.z + 1, vars)).toBeNull()
+  })
+
+  it('밟은 칸이 바뀔 때만 트리거가 돈다', () => {
+    const north = triggersOf(TWINLEAF_MAP).find((t) => t.width === 8)!
+    fieldScripts.vars.set(north.var, north.value)
+    // 도착한 자리는 "이미 밟은 것"으로 친다 — 문에서 나오자마자 도는 것을 막는다
+    worldState.player.position.set(north.x + 0.5, 0, north.z + 0.5)
+    resetTriggerTile()
+    run(2)
+    expect(scriptBusy()).toBe(false)
+    // 한 칸 나갔다가 다시 들어오면 걸린다
+    worldState.player.position.set(north.x + 0.5, 0, north.z + 1.5)
+    run(1)
+    worldState.player.position.set(north.x + 0.5, 0, north.z + 0.5)
+    run(1)
+    expect(scriptBusy()).toBe(true)
   })
 
   it('플래그가 서면 그 자리에 NPC가 없는 것이 된다', () => {
