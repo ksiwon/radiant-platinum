@@ -72,10 +72,13 @@ function openText() {
     bank(name, locale) {
       const b = banks.find((x) => x.name === name)
       if (!b) throw new Error(`뱅크 "${name}"이 textBanks.json에 없다`)
-      const idx = b[BANK_KEY[locale]]
+      const key = BANK_KEY[locale]
+      const idx = b.bank[key]
+      if (idx === null) throw new Error(`뱅크 "${name}"은 ${locale} 롬에 없다`)
       const decoded = decodeBank(narcs[locale][idx])
-      if (decoded.length !== b.entries) {
-        throw new Error(`${name}/${locale} 엔트리 수 불일치: ${decoded.length} ≠ ${b.entries} — 뱅크 매핑이 깨졌다`)
+      // 엔트리 수는 표가 롬에서 직접 읽은 값이다. 어긋나면 인덱스가 밀린 것이다
+      if (decoded.length !== b.entries[key]) {
+        throw new Error(`${name}/${locale} 엔트리 수 불일치: ${decoded.length} ≠ ${b.entries[key]} — 뱅크 매핑이 깨졌다`)
       }
       return decoded.map((codes) => codesToString(codes, charmap))
     },

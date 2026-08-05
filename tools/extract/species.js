@@ -94,7 +94,7 @@ function extractSpecies(rom, text) {
   const maxId = species[species.length - 1].id
   const names = {}
   for (const loc of LOCALES) {
-    const bank = text.bank('species_names', loc)
+    const bank = text.bank('species_name', loc)
     names[loc] = Array.from({ length: maxId + 1 }, (_, id) => bank[id] ?? '')
   }
   return { species, names }

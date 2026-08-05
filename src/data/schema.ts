@@ -246,6 +246,56 @@ export const dialogueIndexSchema = z.object({
   locales: z.array(z.string()).nonempty(),
 })
 
+// ── 아이템 (DATA.md §2.12) ────────────────────────────────────────────────────
+
+/** 주머니 8칸. 순서가 곧 번호다 (POCKET_ITEMS 0 … POCKET_KEY_ITEMS 7) */
+export const POCKET_COUNT = 8
+
+/**
+ * 사용 효과. 40칸 중 0이 아닌 것만 실려 온다 — 상처약이면 `hpRestored: 20` 하나다.
+ * 없는 칸은 0으로 본다
+ */
+export const itemParamSchema = z.record(z.string(), z.number().int())
+
+export const itemSchema = z.object({
+  name: z.string(),
+  constant: z.string().regex(/^ITEM_/),
+  /** ITEM_UNUSED_* 22종은 아카이브에 자료가 없다 */
+  data: z.null().optional(),
+  dataID: z.number().int().nonnegative().optional(),
+  icon: z.number().int().nonnegative().optional(),
+  palette: z.number().int().nonnegative().optional(),
+  price: z.number().int().nonnegative().optional(),
+  holdEffect: z.number().int().min(0).max(255).optional(),
+  effectParam: z.number().int().min(0).max(255).optional(),
+  pluckEffect: z.number().int().min(0).max(255).optional(),
+  flingEffect: z.number().int().min(0).max(255).optional(),
+  flingPower: z.number().int().min(0).max(255).optional(),
+  naturalGiftPower: z.number().int().min(0).max(255).optional(),
+  /** 31은 "없음"이다 — 5비트를 전부 세운 값 */
+  naturalGiftType: z.number().int().min(0).max(31).optional(),
+  preventToss: z.number().int().min(0).max(1).optional(),
+  canRegister: z.number().int().min(0).max(1).optional(),
+  pocket: z.number().int().min(0).max(POCKET_COUNT - 1).optional(),
+  battlePocket: z.number().int().min(0).max(31).optional(),
+  fieldUseFunc: z.number().int().min(0).max(255).optional(),
+  battleUseFunc: z.number().int().min(0).max(255).optional(),
+  partyUse: z.number().int().min(0).max(255).optional(),
+  param: itemParamSchema.nullable().optional(),
+})
+
+export const itemFileSchema = z.object({
+  pockets: z.array(z.string()).length(POCKET_COUNT),
+  items: z.array(itemSchema).length(468),
+})
+
+export const itemIconsSchema = z.object({
+  size: z.literal(32),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+  count: z.number().int().positive(),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -264,3 +314,5 @@ export type BdhcFile = z.infer<typeof bdhcFileSchema>
 export type ScriptFile = z.infer<typeof scriptFileSchema>
 export type ScriptCommand = ScriptFile['commands'][number]
 export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
+export type Item = z.infer<typeof itemSchema>
+export type ItemIcons = z.infer<typeof itemIconsSchema>

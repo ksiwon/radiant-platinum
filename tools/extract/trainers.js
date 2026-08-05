@@ -183,8 +183,8 @@ function extractTrainers(rom, text) {
   for (const loc of LOCALES) {
     // 영어 트레이너 이름 뱅크는 미국 롬에서 비어 있다 (DATA.md §2.9). 빈 배열이
     // 아니라 빈 문자열로 채워 두면 화면이 "이름 없음"으로 조용히 넘어간다
-    names[loc] = text.bank('trainer_names', loc)
-    classes[loc] = text.bank('trainer_classes', loc)
+    names[loc] = text.bank('npc_trainer_names', loc)
+    classes[loc] = text.bank('trainer_class_names', loc)
   }
   return { trainers, names, classes, sizeMismatch, prizeMul: extractPrizeMul(rom) }
 }

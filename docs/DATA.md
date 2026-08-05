@@ -580,17 +580,42 @@ n번째 글을 띄운다. 그 두 고리를 잇는 것이 여기다.
 9개가 전부 맞고, 그보다 결정적으로 **디컴프 원문과 글까지 대조해서 685개가 완전
 일치**한다 (`pnpm verify:dialogue`).
 
-#### 로케일마다 뱅크 번호가 다르다
+#### 로케일마다 뱅크 번호가 다르다 — 키가 이름을 확정한다
 
 미국 724 · 한국 714 · 일본 709. 몇 개가 빠져 있어서 번호가 밀린다(같은 뱅크가
-미국 647, 한국 637). 대응을 이렇게 확정했다:
+미국 647, 한국 637).
 
-1. 항목 수 배열로 최장 공통 부분수열 정렬 — 삭제만 있는 모양이라 이걸로 짝이 난다
-2. **한국어 롬의 맵 헤더 표를 따로 찾아** 그 `msg` 열과 맞춰 봤다
+**뱅크 헤더 +2에 암호화 키가 들어 있고, 디컴프의 `res/text/*.json`에 그 키가
+그대로 적혀 있다.** (키, 항목 수) 쌍은 디컴프 685개 안에서도 세 롬 안에서도
+겹치는 것이 하나도 없다. 곧 이름이 추정이 아니라 확정된다.
 
-2번이 독립된 두 번째 자료다. 미국 표에서 msg 열만 뺀 13046바이트가 한국어 롬 전체에
-**딱 한 군데**만 있었고(`0xEAAA4`, 나머지 필드 593/593 일치), 그 표의 msg 열이
-1번 정렬과 **593/593 일치**한다.
+빌드가 만들어내는 뱅크(종족·기술·아이템 이름/설명)는 `res/text`에 파일이 없는
+대신 `tools/dataproc/src/*proc.c`의 `textbank_template`에 키가 박혀 있다.
+둘을 합치면 **724개가 전부 짚힌다.**
+
+| | 결과 |
+|---|---|
+| us 뱅크에 이름 붙음 | 724 / 724 |
+| ko·ja를 (키, 항목 수)로 확정 | 1407 |
+| 항목 수가 달라 키만으로 확정 | 14 |
+| ko에 아예 없음 | 11 |
+| ja에 아예 없음 | 16 |
+
+없는 11개는 전부 `_with_articles`·`_plural`·`_uppercase`다 — 관사도 복수형도
+대소문자도 없는 언어라 그 뱅크가 실리지 않았다. `null`이지 못 찾은 것이 아니다.
+
+**예전 방식은 추정이었고 두 군데가 틀렸다.** 항목 수 LCS 정렬로는 9개밖에 못
+짚었는데, 다 짚어 놓고 비교하니 이렇게 갈렸다:
+
+- `ability_names_uppercase`(124칸)는 한국어 롬에 **없다**. 정렬은 같은 124칸인
+  ko#606을 짝지었는데 그건 `ability_descriptions`다 — 이름 자리에 설명이 들어온다
+- `greetings_es`는 한국어판이 인사말을 하나 더 끼워 넣어(ko#657) 한 칸 밀린다.
+  셋 다 3칸이라 항목 수로는 못 가른다
+
+나머지 722곳은 두 방식이 일치한다. 그리고 **한국어 롬의 맵 헤더 표**라는 세 번째
+독립 자료가 있다 — 미국 표에서 msg 열만 뺀 13046바이트가 한국어 롬 전체에 딱 한
+군데만 있었고(`0xEAAA4`, 나머지 필드 593/593 일치), 그 표의 msg 열이 이 표와
+**593/593 일치**한다.
 
 #### 제어 코드를 뭉개면 안 된다
 
@@ -655,7 +680,8 @@ STRVAR 계열은 명령 코드의 **아래 바이트가 첫 인자**다(`0x0103`
 
 #### 싣는 형태
 
-맵이 쓰는 404개 + 공용 스크립트가 쓰는 것 + 이름 짓기 표 + 트레이너 대사, 합쳐 **432개 뱅크**를
+맵이 쓰는 404개 + 공용 스크립트가 쓰는 것 + 이름 짓기 표 + 트레이너 대사 + 메뉴 화면
+글(시작 메뉴·가방·주머니 이름·포켓몬·도감), 합쳐 **436개 뱅크**를
 `dialogue/{로케일}/{미국번호}.json`에 하나씩 둔다. 맵 하나가 쓰는 것은 몇 KB뿐이라
 필요할 때 받는다(PLAN §11). 전부 합치면 한국어 186KB(brotli)인데 첫 대화 한 번에
 그걸 다 받을 이유가 없다.
@@ -668,6 +694,65 @@ STRVAR 계열은 명령 코드의 **아래 바이트가 첫 인자**다(`0x0103`
 
 ---
 
+### 2.12 pl_item_data — 아이템 468종
+
+`itemtool/itemdata/pl_item_data.narc`. 파일 하나가 아이템 하나고 **전부 34바이트**다.
+
+34는 `include/item.h`의 `ItemData`를 비트필드까지 세면 나오는 값이다 — 앞 14바이트
+(값·효과·주머니)에 `ItemPartyParam` 20바이트가 붙는다. **파일 크기가 정확히 그
+값이라는 것 자체가 구조체를 제대로 읽었다는 증거다.**
+
+```c
+u16 price;  u8 holdEffect;  u8 effectParam;
+u8 pluckEffect;  u8 flingEffect;  u8 flingPower;  u8 naturalGiftPower;
+u16 naturalGiftType:5, preventToss:1, canRegister:1, fieldPocket:4, battlePocket:5;
+u8 fieldUseFunc;  u8 battleUseFunc;  u8 partyUse;  u8 padding;
+ItemPartyParam partyUseParam;   // 20바이트
+```
+
+비트필드 하나에 여섯 개가 들어가고 순서는 선언 순서대로 하위부터다. 뒤집으면
+주머니가 통째로 어긋나 가방이 엉뚱하게 나뉜다 — 그래도 값 자체는 그럴듯해서
+눈으로는 안 잡힌다.
+
+**파일 446개, 열거형 468개.** 차이 22개는 전부 `ITEM_UNUSED_*`이고, 디컴프의
+`has_data()`가 걸러내는 것과 정확히 같다. 446 = 468 − 22이 맞아떨어진다.
+
+#### 전량 대조 — 446/446
+
+디컴프에 `res/items/data/*.json` 446개가 있다. `pnpm extract:items`가 롬에서 읽은
+값과 필드별로 맞대 본다:
+
+```
+디컴프 아이템 446개와 대조 / 불일치 0개
+아이템 468종 (자료 446개) → public/data/items.json
+```
+
+열거형 이름(`POCKET_MEDICINE`, `HOLD_EFFECT_NONE`, `TYPE_GRASS`)은 디컴프의
+`constants/items.h`와 `generated/*.txt`에서 읽어 값으로 옮긴다. `naturalGiftType`이
+`null`인 것은 5비트를 전부 세운 31이다(`~0 & 0x1f`).
+
+`ItemPartyParam` 40칸은 0이 아닌 것만 싣는다. 그대로 실으면 435KB인데 아이템 하나가
+실제로 쓰는 칸은 두세 개뿐이다 — 상처약은 `hpRestored: 20` 하나다.
+
+#### 아이콘
+
+`item_icon.narc`에 **NCGR 328장 + NCLR 381장**. 팔레트가 더 많은 것은 기술머신처럼
+그림 하나를 색만 바꿔 돌려쓰기 때문이다(`tm.NCGR` + `tm_<타입>.NCLR` 17장).
+어느 아이템이 어느 파일을 쓰는지는 아이템 JSON의 `icon.sprite`/`icon.palette`가
+`res/items/item_icon.order`(711줄, 아카이브 순서와 같음)를 가리켜 확정된다.
+
+- NCGR 560B = 헤더 0x30 + 512. 4bpp라 512바이트가 픽셀 1024개, 곧 **32×32**
+- NCLR 552B = 헤더 0x28 + 512. 색 256칸짜리지만 실제로 쓰는 것은 앞 16개뿐이다
+  (뒤 240칸이 전부 0이고 타일 데이터에 15보다 큰 번호가 안 나온다)
+
+번호가 밀렸는지는 자원 종류로 확인한다 — 446개 전부 `icon`이 `RGCN`, `palette`가
+`RLCN`이어야 한다. 한 칸만 밀려도 절반이 어긋난다.
+
+468칸을 24×20 격자로 굽고(768×640, **88.6KB**) 자료 없는 22칸은 `none` 아이콘으로
+채운다. 빈칸을 남기면 잘못 그렸을 때 "원래 빈 칸"과 구분이 안 된다.
+
+---
+
 ## 3. 추출 파이프라인
 
 ```
@@ -675,6 +760,7 @@ tools/
   spike/          역공학용. 포맷을 뚫을 때만 쓰고 산출물은 신뢰하지 않는다
   extract/        정식 파이프라인. 여기 나온 산출물만 게임이 소비한다
     rom.js          롬 접근 + 로케일 텍스트 뱅크
+    textbanks.js    뱅크 헤더의 키로 724개 이름 확정 → src/data/textBanks.json
     maps.js         행렬·청크·건물 파서 (다른 추출기가 공유)
     headers.js      맵 헤더 표 → maps.json + 지역명
     matrices.js     행렬별 충돌 격자 → 0.bin / interiors.bin
@@ -686,17 +772,20 @@ tools/
     scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
     scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
     message.js      메시지 디코더 (제어 코드까지 살린다)
-    dialogue.js     대사 뱅크 432개 → dialogue/{로케일}/{번호}.json
+    dialogue.js     대사 뱅크 436개 → dialogue/{로케일}/{번호}.json
     dialogue-verify.js  디컴프 원문·한국어 헤더와 대조 (pnpm verify:dialogue)
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
     moves.js        waza_tbl → moves.json
     trainers.js     trdata/trpoke + 상금 배수 → trainers.json
+    items.js        pl_item_data → items.json (디컴프 446개와 필드 대조)
+    itemIcons.js    NCGR/NCLR → itemIcons.png 아틀라스
+    png.js          최소 PNG 인코더 (zlib만 쓴다)
 ```
 
 `spike/`와 `extract/`를 나누는 이유: 스파이크 코드는 **틀린 가설을 담고 있을 수 있다**. 실제로 charmap·BDSP 채널 매핑·풀숲 타일이 그랬다. NDS 파일시스템과 NARC 파서만 예외로 spike에서 그대로 쓴다 — 크기 합 검증을 666/666, 534/534로 통과한 실측 확정이라 가설이 아니다.
 
-`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → bdhc → events → scripts → dialogue → encounters → species → moves → trainers). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
+`pnpm extract`가 순서대로 전부 돌린다 (textbanks → headers → matrices → bdhc → events → scripts → dialogue → encounters → species → moves → trainers → items → itemIcons). 앞의 산출물을 뒤가 참조하므로 순서가 있다 — 뱅크 표가 맨 앞인 것은 텍스트를 읽는 추출기가 전부 그것을 쓰기 때문이고, 아이콘이 맨 뒤인 것은 `items.json`의 아이콘 번호를 쓰기 때문이다.
 
 ### 3.1 산출물
 
@@ -709,11 +798,13 @@ tools/
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
 | `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
 | `scripts.json` + `scripts.bin` (스크립트 1124개 + 이동 동작 표) | 435KB | 87KB |
-| `dialogue/ko/*.json` (뱅크 432개, 지연 로딩) | 854KB | 186KB |
+| `dialogue/ko/*.json` (뱅크 436개, 지연 로딩) | 863KB | 188KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
 | `trainers.json` (대사 색인 포함) | 183KB | 16KB |
-| `names/*.json` (3로케일) | 93KB | 26KB |
+| `items.json` (468종) | 155KB | 7.9KB |
+| `itemIcons.png` (468칸 아틀라스, 768×640) | 88.6KB | — |
+| `names/*.json` (3로케일, 아이템 이름·설명 포함) | 264KB | 59KB |
 
 **신오 전체가 압축 후 210KB 남짓이다.** 전부 정적 JSON·바이너리이고 런타임에 롬을 파싱하지 않는다.
 

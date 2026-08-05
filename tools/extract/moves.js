@@ -62,7 +62,7 @@ function extractLabels(text) {
   // 타입·특성 이름은 종족/기술 양쪽이 참조한다. 한 파일로 묶어 낸다
   const out = {}
   for (const loc of LOCALES) {
-    out[loc] = { types: text.bank('type_names', loc), abilities: text.bank('ability_names', loc) }
+    out[loc] = { types: text.bank('pokemon_type_names', loc), abilities: text.bank('ability_names', loc) }
   }
   return out
 }

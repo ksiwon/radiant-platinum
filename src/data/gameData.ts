@@ -6,9 +6,10 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  dialogueIndexSchema, labelsSchema, moveFileSchema, nameListSchema, scriptFileSchema,
-  speciesFileSchema, trainerFileSchema,
-  type DialogueIndex, type Labels, type Move, type ScriptFile, type Species, type Trainer,
+  dialogueIndexSchema, itemFileSchema, itemIconsSchema, labelsSchema, moveFileSchema,
+  nameListSchema, scriptFileSchema, speciesFileSchema, trainerFileSchema,
+  type DialogueIndex, type Item, type ItemIcons, type Labels, type Move, type ScriptFile,
+  type Species, type Trainer,
 } from './schema'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
@@ -118,6 +119,49 @@ export function loadTrainerNames(locale: DataLocale): Promise<string[]> {
 /** 트레이너 분류 이름 105개("체육관 관장"). trdata의 class로 색인한다 */
 export function loadTrainerClasses(locale: DataLocale): Promise<string[]> {
   return fetchJson(`names/trainerClasses.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+export interface ItemTable {
+  all: readonly Item[]
+  pockets: readonly string[]
+  /** 번호가 곧 배열 자리다 — 468칸이 빠짐없이 차 있다 */
+  get(id: number): Item
+  /** 주머니별 아이템 번호. 가방이 이 순서로 보여 준다 */
+  pocket(index: number): readonly number[]
+}
+
+/** 아이템 468종. 자료가 없는 ITEM_UNUSED_* 22종도 자리를 지킨다 */
+export function loadItems(): Promise<ItemTable> {
+  return fetchJson('items.json', (v) => {
+    const file = itemFileSchema.parse(v)
+    const byPocket = file.pockets.map(() => [] as number[])
+    file.items.forEach((it, id) => {
+      if (it.pocket !== undefined) byPocket[it.pocket]!.push(id)
+    })
+    return {
+      all: file.items,
+      pockets: file.pockets,
+      get(id: number) {
+        const it = file.items[id]
+        if (!it) throw new Error(`아이템 #${id}이(가) 데이터에 없다`)
+        return it
+      },
+      pocket: (index: number) => byPocket[index] ?? [],
+    }
+  })
+}
+
+export function loadItemNames(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/items.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+export function loadItemDescriptions(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/itemDescriptions.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
+/** 아이콘 아틀라스의 칸 크기. 그림 자체는 `data/itemIcons.png`다 */
+export function loadItemIcons(): Promise<ItemIcons> {
+  return fetchJson('itemIcons.json', (v) => itemIconsSchema.parse(v))
 }
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {
