@@ -55,6 +55,13 @@ export function isWater(behavior: number): boolean {
 export interface CollisionGrid {
   /** 월드 좌표(1타일 = 1유닛) 기준 */
   isBlockedAtWorld(x: number, z: number): boolean
+  /**
+   * 그 자리의 지면 높이(타일 단위). 높이 데이터가 없으면 null.
+   *
+   * `near`는 지금 높이다 — 다리와 그 밑처럼 판이 겹치는 자리에서 어느 층인지
+   * 가르는 유일한 단서라 이동 코드가 반드시 넘겨야 한다 (DATA.md §2.2)
+   */
+  heightAtWorld(x: number, z: number, near?: number): number | null
 }
 
 export interface Building {
@@ -64,88 +71,6 @@ export interface Building {
   z: number
   rot: [number, number, number]
   scale: [number, number, number]
-}
-
-export interface ZoneChunk {
-  id: number
-  matrix: { x: number; y: number }
-  /** 존 로컬 타일 좌표에서 이 청크의 좌상단 */
-  origin: { x: number; z: number }
-  tiles: number[]
-  buildings: Building[]
-}
-
-export interface ZoneData {
-  zone: string
-  zoneId: number
-  matrix: { id: number; name: string }
-  chunkTiles: number
-  size: { x: number; z: number }
-  chunks: ZoneChunk[]
-}
-
-/**
- * 여러 청크를 하나의 평평한 격자로 펴 둔다.
- * 청크 경계를 매 질의마다 계산하면 이동 코드가 지저분해지고 느려진다.
- */
-export class ZoneGrid implements CollisionGrid {
-  readonly width: number
-  readonly depth: number
-  readonly data: ZoneData
-  private readonly tiles: Uint16Array
-
-  constructor(data: ZoneData) {
-    this.data = data
-    this.width = data.size.x
-    this.depth = data.size.z
-    // 청크가 없는 칸은 통행 불가로 채운다 — 존 경계 밖으로 걸어 나가지 않게
-    this.tiles = new Uint16Array(this.width * this.depth).fill(IMPASSABLE)
-    const n = data.chunkTiles
-    for (const c of data.chunks) {
-      for (let ty = 0; ty < n; ty++) {
-        for (let tx = 0; tx < n; tx++) {
-          const gx = c.origin.x + tx
-          const gz = c.origin.z + ty
-          if (gx >= this.width || gz >= this.depth) continue
-          this.tiles[gz * this.width + gx] = c.tiles[ty * n + tx]!
-        }
-      }
-    }
-  }
-
-  /** 격자 밖은 통행 불가로 취급한다 */
-  tileAt(tx: number, tz: number): number {
-    if (tx < 0 || tz < 0 || tx >= this.width || tz >= this.depth) return IMPASSABLE
-    return this.tiles[tz * this.width + tx]!
-  }
-
-  isBlocked(tx: number, tz: number): boolean {
-    return (this.tileAt(tx, tz) & IMPASSABLE) !== 0
-  }
-
-  behavior(tx: number, tz: number): number {
-    return this.tileAt(tx, tz) & BEHAVIOR_MASK
-  }
-
-  /** 월드 좌표(1타일 = 1유닛) 기준 질의 */
-  isBlockedAtWorld(x: number, z: number): boolean {
-    return this.isBlocked(Math.floor(x), Math.floor(z))
-  }
-
-  /** 통행 가능한 타일 중 격자 중앙에 가장 가까운 곳 — 스폰 지점 기본값 */
-  findSpawn(): { x: number; z: number } {
-    const cx = this.width / 2, cz = this.depth / 2
-    let best: { x: number; z: number } | null = null
-    let bestD = Infinity
-    for (let tz = 0; tz < this.depth; tz++) {
-      for (let tx = 0; tx < this.width; tx++) {
-        if (this.isBlocked(tx, tz)) continue
-        const d = (tx - cx) ** 2 + (tz - cz) ** 2
-        if (d < bestD) { bestD = d; best = { x: tx + 0.5, z: tz + 0.5 } }
-      }
-    }
-    return best ?? { x: cx, z: cz }
-  }
 }
 
 /** 현재 이동 판정에 쓰이는 격자. 씬이 넣고 이동 시스템이 읽는다 */

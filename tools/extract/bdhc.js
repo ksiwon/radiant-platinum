@@ -31,6 +31,9 @@ const MAGIC = 'BDHC'
 const HEADER = 16
 /** 고정소수점 원본을 타일로 옮기는 나눗수. 건물 배치의 `/65536`과 같다 */
 const TILE = FX * UNITS_PER_TILE
+/** 청크 한 변의 타일 수. 좌표가 청크 **중심** 기준이라 절반을 더해 원점 기준으로 옮긴다 */
+const CENTER_TILES = 16
+const CENTER = CENTER_TILES * TILE
 
 /**
  * 스트립은 안 뽑는다.
@@ -78,13 +81,24 @@ function parseBdhc(buf, id) {
     //
     // 눈금에 맞춰 줄이고 싶었지만 데이터가 허락하지 않는다: 30928개 중 29426개는
     // 정수 타일인데 40개는 DS 유닛 정수도 아니다(−2.3535타일 같은 값). 반 타일로
-    // 담으면 그 40개가 조용히 어긋난다. `/65536`이 타일인 것은 건물 배치와 같다
-    const raw = (j, off) => buf.readInt32LE(pAt + j * 8 + off)
+    // 담으면 그 40개가 조용히 어긋난다. `/65536`이 타일인 것은 건물 배치와 같다.
+    //
+    // ⚠️ 원본은 **청크 중심 기준**이다 — 건물 배치와 같은 규약이라 청크별 좌표
+    //    최소값이 −16, 최대값이 +16에 몰린다(478/666, 457/666). 여기서 청크
+    //    원점 기준으로 옮겨 둔다. 안 옮기면 런타임에서 지형이 16타일 밀린다
+    const raw = (j, off) => buf.readInt32LE(pAt + j * 8 + off) + CENTER
+    const nv = [0, 1, 2].map((k) => buf.readInt32LE(nAt + ni * 12 + k * 4) / FX)
     plates.push({
       x1: raw(a, 0), z1: raw(a, 4), x2: raw(b, 0), z2: raw(b, 4),
-      normal: [0, 1, 2].map((k) => buf.readInt32LE(nAt + ni * 12 + k * 4) / FX),
-      // d도 타일 척도로 맞춘다. 평면식이 유닛 기준이라 그대로 두면 높이가 16배가 된다
-      d: buf.readInt32LE(cAt + ci * 4) / FX / UNITS_PER_TILE,
+      normal: nv,
+      // d는 두 번 고친다.
+      //
+      // ① 타일 척도로. 평면식이 유닛 기준이라 그대로 두면 높이가 16배가 된다
+      // ② 원점을 옮긴 만큼 보정. 좌표를 +16타일 밀었으므로 평면식도 같이 밀어야
+      //    한다: nx(x−16) + ny·y + nz(z−16) + d = 0 → d′ = d − 16(nx + nz).
+      //    **평평한 판(nx=nz=0)은 안 변한다** — 8974개 중 7969개가 그래서, 이걸
+      //    빠뜨려도 대부분 멀쩡해 보이고 계단만 조용히 어긋난다
+      d: buf.readInt32LE(cAt + ci * 4) / FX / UNITS_PER_TILE - CENTER_TILES * (nv[0] + nv[2]),
     })
   }
   return plates

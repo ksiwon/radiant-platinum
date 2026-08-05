@@ -9,6 +9,10 @@ export const RUN_SPEED = 8
 const RADIUS = 0.3
 /** 존이 없을 때(회색 박스 월드) 쓰는 경계 */
 const FALLBACK_ARENA = 19
+/** 지면을 따라붙는 속도. 클수록 계단에 딱 붙는다 */
+const CLIMB_RATE = 18
+/** 이보다 크게 벌어지면 따라붙이지 않고 즉시 맞춘다 — 워프가 그렇다 */
+const CLIMB_SNAP = 1.5
 
 const desired = new Vector3()
 
@@ -50,6 +54,18 @@ export const playerSystem = {
     } else {
       p.position.x = Math.max(-FALLBACK_ARENA, Math.min(FALLBACK_ARENA, nx))
       p.position.z = Math.max(-FALLBACK_ARENA, Math.min(FALLBACK_ARENA, nz))
+    }
+
+    // 지면을 따라간다. 판이 겹치는 자리(다리와 그 밑)에서는 **지금 높이**가
+    // 어느 층인지 가르는 유일한 단서라, 직전 y를 그대로 넘겨야 한다
+    const ground = activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
+    if (ground !== null && ground !== undefined) {
+      // 계단은 한 칸에 반 타일씩 오른다. 그대로 대입하면 판 경계에서 튀므로
+      // 짧게 따라붙인다 — 시뮬레이션이 아니라 표현이라 눈에 맞추면 된다
+      const gap = ground - p.position.y
+      p.position.y += Math.abs(gap) > CLIMB_SNAP
+        ? gap // 워프·낙하처럼 크게 벌어지면 즉시 맞춘다
+        : gap * (1 - Math.exp(-CLIMB_RATE * dt))
     }
 
     if (p.velocity.lengthSq() > 0.01) {

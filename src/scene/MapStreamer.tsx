@@ -33,26 +33,36 @@ function tileColor(behavior: number): Color {
   return new Color().setHSL(h, 0.35, 0.45)
 }
 
-interface Cell { x: number; z: number; color?: Color }
+interface Cell { x: number; z: number; y: number; color?: Color }
 
-/** 창 안의 타일을 바닥/벽으로 나눈다. 벽은 걸을 수 있는 칸에 접한 것만 세운다 */
-function buildWindow(grid: MapGrid, chunkIndex: number) {
+/**
+ * 창 안의 타일을 바닥/벽으로 나눈다. 벽은 걸을 수 있는 칸에 접한 것만 세운다.
+ *
+ * `layer`는 지금 플레이어가 선 높이다. 판이 겹치는 자리(다리와 그 밑, 666개 중
+ * 81개 청크)에서 **어느 층을 그릴지**를 그걸로 고른다 — 0으로 고정하면 다리
+ * 위를 걸어도 화면에는 밑바닥이 깔린다
+ */
+function buildWindow(grid: MapGrid, chunkIndex: number, layer: number) {
   const floors: Cell[] = []
   const walls: Cell[] = []
   const buildings = []
   const n = grid.chunkTiles
+  /** 타일 한가운데의 지면 높이. 판이 없으면 0 — 높이 데이터가 아직 없을 때다 */
+  const groundAt = (x: number, z: number) =>
+    grid.heightAtWorld(x + 0.5, z + 0.5, layer) ?? 0
   for (const c of grid.chunksAround(chunkIndex, VIEW_RADIUS)) {
     const ox = c.mx * n, oz = c.my * n
     for (let ty = 0; ty < n; ty++) {
       for (let tx = 0; tx < n; tx++) {
         const x = ox + tx, z = oz + ty
         const t = grid.tileAt(x, z)
-        if (!(t & IMPASSABLE)) { floors.push({ x, z, color: tileColor(t) }); continue }
+        const y = groundAt(x, z)
+        if (!(t & IMPASSABLE)) { floors.push({ x, z, y, color: tileColor(t) }); continue }
         // 벽 속을 채워봐야 보이지 않는다 — 걸을 수 있는 칸에 접한 껍질만 세운다
         if (
           !grid.isBlocked(x - 1, z) || !grid.isBlocked(x + 1, z) ||
           !grid.isBlocked(x, z - 1) || !grid.isBlocked(x, z + 1)
-        ) walls.push({ x, z })
+        ) walls.push({ x, z, y })
       }
     }
     const bs = grid.meta.buildings[String(c.i)]
@@ -97,7 +107,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     activeZone.grid = next
     world.grid = next
     world.mapId = mapId
-    worldState.player.position.set(x, 0, z)
+    // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
+    // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
+    worldState.player.position.set(x, next.heightAtWorld(x, z, 0) ?? 0, z)
     worldState.player.prevPosition.copy(worldState.player.position)
     worldState.player.velocity.set(0, 0, 0)
     setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
@@ -130,11 +142,18 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
   }, [initial, spawn, enter, setZone])
 
-  // 프레임마다 도는 일은 정수 비교 둘뿐이다
+  // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
+  // 정수로 반올림해 두는 이유는 계단을 오르는 동안 매 프레임 창을 다시 세우지
+  // 않기 위해서다 — 한 번 다시 세우는 데 5×5청크 × 1024타일을 훑는다
+  const [layer, setLayer] = useState(0)
+
+  // 프레임마다 도는 일은 정수 비교 셋뿐이다
   const warping = useRef(false)
   useFrame(() => {
     const p = worldState.player.position
     const tx = Math.floor(p.x), tz = Math.floor(p.z)
+    const l = Math.round(p.y)
+    if (l !== layer) setLayer(l)
 
     if (world.pending && !warping.current) {
       const target = world.pending
@@ -166,16 +185,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
   })
 
-  const window_ = useMemo(() => buildWindow(grid, chunkIndex), [grid, chunkIndex])
+  const window_ = useMemo(() => buildWindow(grid, chunkIndex, layer), [grid, chunkIndex, layer])
   // NPC는 맵 단위다. 오버월드는 한 행렬에 존이 67개라 창 안의 것만 골라야 한다
   const npcs = useMemo(() => {
     const n = grid.chunkTiles
     const inWindow = new Set(grid.chunksAround(chunkIndex, VIEW_RADIUS).map((c) => c.i))
-    return npcsOf(mapId).filter((p) => {
-      const ci = grid.chunkIndexAt(p.x, p.z)
-      return ci >= 0 && inWindow.has(ci) && n > 0
-    })
-  }, [grid, chunkIndex, mapId])
+    // 높이도 여기서 붙인다 — 배치 효과에서 격자를 다시 묻으면 그 효과가
+    // 격자·층에 의존하게 되고, 창이 안 바뀌었는데도 다시 도는 이유가 생긴다
+    return npcsOf(mapId)
+      .filter((p) => {
+        const ci = grid.chunkIndexAt(p.x, p.z)
+        return ci >= 0 && inWindow.has(ci) && n > 0
+      })
+      .map((p) => ({ ...p, y: grid.heightAtWorld(p.x + 0.5, p.z + 0.5, layer) ?? 0 }))
+  }, [grid, chunkIndex, mapId, layer])
 
   useEffect(() => {
     const { floors, walls, buildings } = window_
@@ -183,7 +206,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (f) {
       f.count = Math.min(floors.length, capacity.tiles)
       floors.slice(0, capacity.tiles).forEach((t, i) => {
-        dummy.position.set(t.x + 0.5, 0, t.z + 0.5)
+        dummy.position.set(t.x + 0.5, t.y, t.z + 0.5)
         dummy.updateMatrix()
         f.setMatrixAt(i, dummy.matrix)
         f.setColorAt(i, t.color!)
@@ -196,7 +219,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (w) {
       w.count = Math.min(walls.length, capacity.tiles)
       walls.slice(0, capacity.tiles).forEach((t, i) => {
-        dummy.position.set(t.x + 0.5, WALL_HEIGHT / 2, t.z + 0.5)
+        dummy.position.set(t.x + 0.5, t.y + WALL_HEIGHT / 2, t.z + 0.5)
         dummy.updateMatrix()
         w.setMatrixAt(i, dummy.matrix)
       })
@@ -220,7 +243,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (p) {
       p.count = Math.min(npcs.length, capacity.npcs)
       npcs.slice(0, capacity.npcs).forEach((o, i) => {
-        dummy.position.set(o.x + 0.5, 0.55, o.z + 0.5)
+        dummy.position.set(o.x + 0.5, o.y + 0.55, o.z + 0.5)
         dummy.rotation.set(0, 0, 0)
         dummy.scale.set(1, 1, 1)
         dummy.updateMatrix()

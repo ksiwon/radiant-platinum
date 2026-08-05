@@ -5,6 +5,7 @@
 // 1.33MB다. 충돌을 청크 단위로 스트리밍하면 경계에서 아직 도착하지 않은 청크를
 // 통행 불가로 오판한다 — 그럴 이유가 없다. 스트리밍은 렌더링에만 쓴다.
 import { BEHAVIOR_MASK, IMPASSABLE, type Building, type CollisionGrid } from './zone'
+import { heightInChunk } from './height'
 
 export interface MatrixChunk {
   /** 행렬 안 선형 인덱스. buildings의 키다 */
@@ -81,6 +82,22 @@ export class MapGrid implements CollisionGrid {
     const cz = Math.floor(tz / n)
     if (cx < 0 || cz < 0 || cx >= this.meta.width || cz >= this.meta.height) return -1
     return cz * this.meta.width + cx
+  }
+
+  /**
+   * 월드 좌표의 지면 높이(타일 단위). 높이 데이터가 없거나 판이 없으면 null.
+   *
+   * `near`는 지금 높이다 — 다리와 그 밑처럼 판이 겹치는 자리에서 어느 층인지
+   * 가르는 유일한 단서다. 0을 넘기면 다리 위를 걷다가 밑으로 떨어진다
+   */
+  heightAtWorld(x: number, z: number, near = 0): number | null {
+    const i = this.chunkIndexAt(Math.floor(x), Math.floor(z))
+    if (i < 0) return null
+    const c = this.chunkByIndex.get(i)
+    if (!c) return null
+    const n = this.chunkTiles
+    // 판 좌표는 청크 원점 기준이라 청크가 놓인 자리를 빼고 묻는다
+    return heightInChunk(c.land, x - c.mx * n, z - c.my * n, near)
   }
 
   /** 맵 헤더 id. 청크가 없거나 행렬에 headers가 없으면 -1 */

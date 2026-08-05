@@ -4,6 +4,7 @@
 // 실내는 첫 워프 때 한 번만 받는다 — 269개를 이어 붙여 1.33MB이고 압축하면 20KB대라
 // 행렬마다 따로 두는 것(파일 500개 + 문 열 때마다 왕복)보다 낫다.
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
+import { heightField, type HeightData } from '../engine/map/height'
 import { world, type EventFile, type MapHeader } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
 import type { EncounterTable } from '../engine/battle/encounter'
@@ -33,6 +34,35 @@ let interiors: InteriorIndex | null = null
 let interiorBlob: ArrayBuffer | null = null
 let interiorLoad: Promise<void> | null = null
 
+/** `bdhc.json`의 모양. 좌표와 색인은 `bdhc.bin`에 따로 있다 */
+interface BdhcFile {
+  plateCount: number
+  fixedPerTile: number
+  planes: [number, number, number, number][]
+  chunks: [number, number][]
+}
+
+/**
+ * 높이 메타와 바이너리를 붙인다.
+ *
+ * `bdhc.bin`은 좌표(int32 × 4 × 판)를 먼저, 평면 색인(u16 × 판)을 뒤에 담는다.
+ * 앞이 4의 배수라 u16 뷰의 정렬이 맞는다 — 크기가 안 맞으면 둘 중 하나가
+ * 낡은 것이므로 여기서 죽는 편이 조용히 엉뚱한 높이를 내는 것보다 낫다
+ */
+function bindHeights(meta: BdhcFile, blob: ArrayBuffer): HeightData {
+  const want = meta.plateCount * 16 + meta.plateCount * 2
+  if (blob.byteLength !== want) {
+    throw new Error(`높이 데이터 크기 불일치: ${blob.byteLength}B ≠ ${want}B`)
+  }
+  return {
+    planes: meta.planes,
+    chunks: meta.chunks,
+    coords: new Int32Array(blob, 0, meta.plateCount * 4),
+    refs: new Uint16Array(blob, meta.plateCount * 16, meta.plateCount),
+    fixedPerTile: meta.fixedPerTile,
+  }
+}
+
 export interface WorldBoot {
   overworld: MapGrid
   spawn: { x: number; z: number; map: number }
@@ -42,17 +72,23 @@ export interface WorldBoot {
 
 /** 시작 데이터. world 싱글톤을 채우고 오버월드 격자를 돌려준다 */
 export async function bootWorld(): Promise<WorldBoot> {
-  const [mapsFile, eventsFile, encFile, locationNames, meta, bin] = await Promise.all([
-    json<{ maps: MapHeader[] }>('maps.json'),
-    json<{ events: Record<string, EventFile> }>('events.json'),
-    json<{ tables: EncounterTable[] }>('encounters.json'),
-    json<string[]>('names/locations.ko.json'),
-    json<MatrixMeta>('matrices/0.json'),
-    bytes('matrices/0.bin'),
-  ])
+  const [mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin] =
+    await Promise.all([
+      json<{ maps: MapHeader[] }>('maps.json'),
+      json<{ events: Record<string, EventFile> }>('events.json'),
+      json<{ tables: EncounterTable[] }>('encounters.json'),
+      json<string[]>('names/locations.ko.json'),
+      json<MatrixMeta>('matrices/0.json'),
+      bytes('matrices/0.bin'),
+      // 높이는 land_data 청크 단위라 실내에도 같은 표를 쓴다. 28.5KB(brotli)라
+      // 실내처럼 미루지 않고 처음에 받는다 — 첫 걸음부터 지면을 따라가야 한다
+      json<BdhcFile>('bdhc.json'),
+      bytes('bdhc.bin'),
+    ])
   world.maps = mapsFile.maps
   world.events = eventsFile.events
   encounters.tables = encFile.tables
+  heightField.data = bindHeights(bdhcMeta, bdhcBin)
   const grid = new MapGrid(meta, new Uint16Array(bin))
   grids.set(0, grid)
   if (!meta.spawn) throw new Error('오버월드 메타에 스폰이 없다')

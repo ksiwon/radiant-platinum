@@ -74,6 +74,55 @@ maybe('지면 높이', () => {
     expect(flipped, '뒤집힌 법선 개수가 변했다').toBe(2)
   })
 
+  it('판이 청크 원점 기준이다 — 중심 기준이 아니다', () => {
+    // 원본 좌표는 **청크 중심** 기준이라 −16~+16으로 나온다(건물 배치와 같은 규약).
+    // 추출기가 +16타일 옮겨 0~32로 만든다. 안 옮기면 지형이 통째로 16타일 밀리는데,
+    // 화면에는 "지형이 좀 이상하다"로만 보여서 눈으로는 못 잡는다.
+    //
+    // 청크별 좌표 최소값이 0에, 최대값이 32에 몰려야 한다
+    const lows = new Map<number, number>()
+    const highs = new Map<number, number>()
+    for (const [start, count] of meta.chunks) {
+      if (!count) continue
+      let lo = Infinity, hi = -Infinity
+      for (let i = 0; i < count; i++) {
+        const p = plate(start + i)
+        lo = Math.min(lo, p.x1, p.z1, p.x2, p.z2)
+        hi = Math.max(hi, p.x1, p.z1, p.x2, p.z2)
+      }
+      lows.set(lo, (lows.get(lo) ?? 0) + 1)
+      highs.set(hi, (highs.get(hi) ?? 0) + 1)
+    }
+    expect(lows.get(0), '최소값이 0인 청크').toBeGreaterThan(400)
+    expect(highs.get(32), '최대값이 32인 청크').toBeGreaterThan(400)
+    // 중심 기준이면 여기가 몰려 있을 자리다
+    expect(lows.get(-16) ?? 0).toBe(0)
+    expect(highs.get(16) ?? 0).toBeLessThan(60)
+  })
+
+  it('원점을 옮길 때 기울어진 판의 상수도 같이 옮겼다', () => {
+    // 좌표를 +16 밀면 평면식도 밀어야 한다: d′ = d − 16(nx + nz).
+    // 평평한 판은 nx=nz=0이라 안 변하므로 이걸 빠뜨려도 8974개 중 7969개는
+    // 멀쩡해 보인다 — 계단만 조용히 어긋난다.
+    //
+    // 판 안의 점에서 잰 높이가 그 판의 높이 범위 안에 있어야 한다. 상수를
+    // 안 옮기면 기울어진 판의 높이가 자기 귀퉁이 범위 밖으로 크게 튄다
+    let checked = 0
+    for (let i = 0; i < meta.plateCount; i++) {
+      const p = plate(i)
+      if (p.plane[0] === 0 && p.plane[2] === 0) continue
+      const corners = [heightAt(p, p.x1, p.z1), heightAt(p, p.x2, p.z2)]
+      const mid = heightAt(p, (p.x1 + p.x2) / 2, (p.z1 + p.z2) / 2)
+      expect(mid).toBeGreaterThanOrEqual(Math.min(...corners) - 1e-6)
+      expect(mid).toBeLessThanOrEqual(Math.max(...corners) + 1e-6)
+      // 기울어진 판도 신오 안에 있어야 한다. 상수를 안 옮기면 여기가 크게 벗어난다
+      expect(Math.min(...corners)).toBeGreaterThan(-10)
+      expect(Math.max(...corners)).toBeLessThan(40)
+      checked++
+    }
+    expect(checked, '기울어진 판이 없다').toBeGreaterThan(500)
+  })
+
   it('높이가 신오의 범위 안이다', () => {
     // 천관산 꼭대기가 30타일, 동굴 바닥이 −6타일이다. 이 밖으로 나가면
     // 척도를 잘못 잡은 것이다 — d를 유닛 그대로 두면 16배가 되어 여기서 걸린다
