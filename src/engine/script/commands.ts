@@ -8,7 +8,9 @@
 // 구현한 것만 그 위에 덮어쓴다. 새 명령을 구현하는 일이 "표에 이름 하나 추가"가
 // 된다.
 import type { ScriptCommand } from '../../data/schema'
-import { compare, conditionHolds, type CommandFn, type ScriptContext } from './context'
+import {
+  compare, conditionHolds, type CommandFn, type ResumeFn, type ScriptContext,
+} from './context'
 
 /**
  * 이름으로 등록한다.
@@ -135,6 +137,118 @@ on('SetFlagFromVar', (ctx) => {
 on('CheckFlagFromVar', (ctx) => {
   ctx.comparisonResult = ctx.host.vars.checkFlag(ctx.readVar()) ? 1 : 0
   return false
+})
+
+// ── 대사창 ───────────────────────────────────────────────────────────────────
+//
+// 여기부터가 **바깥 세계를 만지는** 명령이다. 위의 흐름·변수 명령과 달리 한
+// 프레임에 끝나지 않으므로 `pause`로 자리를 잡고 다음 프레임에 다시 묻는다.
+//
+// 원작은 전부 `ScriptContext_Pause(ctx, …)` + `return TRUE` 꼴이다. 참을
+// 돌려주는 것이 중요하다 — 그래야 이번 프레임이 거기서 끝난다.
+
+/** `ScriptContext_WaitForFinishedPrinting` */
+const printed: ResumeFn = (ctx) => ctx.host.world.printed
+
+/** A나 B가 눌렸는가 (`ScriptContext_CheckABPress`) */
+const abPressed: ResumeFn = (ctx) => ctx.host.world.pressed
+
+on('Message', (ctx) => {
+  // **바이트 하나**다. `MessageVar`와 달리 변수를 안 거친다
+  ctx.host.world.showMessage(ctx.readByte())
+  ctx.pause(printed)
+  return true
+})
+
+on('MessageVar', (ctx) => {
+  ctx.host.world.showMessage(ctx.readVar() & 0xff)
+  ctx.pause(printed)
+  return true
+})
+
+on('MessageNoSkip', (ctx) => {
+  // A/B로 빨리 감지 못한다 — 놓치면 안 되는 안내에 쓴다
+  ctx.host.world.showMessage(ctx.readVar() & 0xff, false)
+  ctx.pause(printed)
+  return true
+})
+
+on('MessageInstant', (ctx) => {
+  // 유일하게 안 기다리는 글이다. 다 찍어 놓고 다음 명령으로 넘어간다
+  ctx.host.world.showInstant(ctx.readByte())
+  return false
+})
+
+on('MessageSynchronized', (ctx) => {
+  // 통신이 붙어 있으면 자동 넘김으로 바뀐다. 통신은 아직 없으므로 보통 글이다
+  ctx.host.world.showMessage(ctx.readByte())
+  ctx.pause(printed)
+  return true
+})
+
+// 대기 셋은 원작에서도 조건만 다르고 같은 모양이다. 방향키로 몸을 돌리거나
+// X로 시작 메뉴를 여는 곁가지는 그 계통을 만들 때 붙인다
+on('WaitABPress', (ctx) => {
+  ctx.pause(abPressed)
+  return true
+})
+
+on('WaitButton', (ctx) => {
+  ctx.pause(abPressed)
+  return true
+})
+
+on('WaitABPadPress', (ctx) => {
+  ctx.pause(abPressed)
+  return true
+})
+
+on('WaitABPressTime', (ctx) => {
+  // 버튼을 누르거나 시간이 다 되거나. 원작은 남은 수를 `ctx->data[0]`에 둔다
+  ctx.scratch[0] = ctx.readVar()
+  ctx.pause((c) => {
+    if (c.host.world.pressed) return true
+    c.scratch[0] -= 1
+    return c.scratch[0] === 0
+  })
+  return true
+})
+
+on('WaitTime', (ctx) => {
+  // 남은 수가 **변수에** 들어간다. 스크립트가 그동안 그 값을 볼 수 있다
+  const frames = ctx.readHalfWord()
+  const countdown = ctx.readHalfWord()
+  ctx.host.vars.set(countdown, frames)
+  ctx.scratch[0] = countdown
+  ctx.pause((c) => {
+    const left = c.host.vars.get(c.scratch[0]!) - 1
+    c.host.vars.set(c.scratch[0]!, left)
+    return left === 0
+  })
+  return true
+})
+
+on('OpenMessage', (ctx) => {
+  ctx.host.world.openBox()
+  return false
+})
+
+on('CloseMessage', (ctx) => {
+  ctx.host.world.closeBox(true)
+  return false
+})
+
+on('CloseMessageWithoutErasing', (ctx) => {
+  ctx.host.world.closeBox(false)
+  return false
+})
+
+on('ShowYesNoMenu', (ctx) => {
+  // 고른 값이 **변수로** 들어간다. 대개 VAR_RESULT고, 바로 뒤에
+  // `CompareVarToValue VAR_RESULT, 0` + `GoToIf`가 따라온다
+  ctx.host.world.openYesNo(ctx.readHalfWord())
+  ctx.pause((c) => c.host.world.menu === null)
+  return true
 })
 
 // ── 표 만들기 ────────────────────────────────────────────────────────────────

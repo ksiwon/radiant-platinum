@@ -2885,6 +2885,10 @@ E000=\n
 25BD=\f
 
 // Function codes
+//
+// 0x0200~0x0204는 디컴프의 `constants/charcode.h`가 이름을 못 박아 두었다.
+// 이 표가 원래 갖고 있던 {YESNO}·{WAIT}는 그 열거형과 어긋나서 고쳤다 —
+// 0x0200은 위 화면을 가리키는 표시자고, 0x0202는 인쇄 도중 부르는 콜백이다.
 0100={STRVAR_1}
 0300={STRVAR_3}
 0400={STRVAR_4}
@@ -2892,9 +2896,9 @@ E000=\n
 0602={UNK_602}
 0603={UNK_603}
 3400={STRVAR_34}
-0200={YESNO}
+0200={SCREEN}
 0201={PAUSE}
-0202={WAIT}
+0202={CALLBACK}
 0203={CURSOR_X}
 0204={CURSOR_Y}
 0205={ALN_CENTER}

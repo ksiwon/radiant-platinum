@@ -16,6 +16,7 @@
 // 물어보고 참이 될 때까지 그 자리에 선다.
 import type { ScriptCommand } from '../../data/schema'
 import type { VarStore } from './vars'
+import type { FieldWorld } from './world'
 
 /** 원작의 스택 크기. 넘치면 `Call`이 조용히 무시된다 */
 const STACK_SIZE = 20
@@ -30,6 +31,7 @@ export type ResumeFn = (ctx: ScriptContext) => boolean
 export interface ScriptHost {
   vars: VarStore
   /** 명령 하나가 감당할 수 없는 일을 바깥에 맡긴다 (대화창·이동·배틀) */
+  readonly world: FieldWorld
   readonly commands: ReadonlyMap<number, CommandFn>
 }
 
@@ -67,8 +69,13 @@ export class ScriptContext {
   state: ScriptState = 'stopped'
   /** `compare`의 결과. 조건 분기가 이걸 본다 */
   comparisonResult: 0 | 1 | 2 = 1
-  /** 명령이 다음 프레임으로 값을 넘길 때 쓰는 칸 (원작의 `ctx->data[4]`) */
-  readonly scratch = new Int32Array(4)
+  /**
+   * 명령이 다음 프레임으로 값을 넘길 때 쓰는 칸 (원작의 `u32 data[4]`).
+   *
+   * 부호 없는 32비트여야 한다 — 남은 프레임을 여기서 깎는 명령이 있는데,
+   * 0에서 한 번 더 깎으면 원작은 42억이 되지 뭉개져서 음수가 되지 않는다
+   */
+  readonly scratch = new Uint32Array(4)
 
   /** 지금 도는 스크립트 파일 전체 */
   private view: DataView
