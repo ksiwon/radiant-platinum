@@ -25,7 +25,7 @@
 | 기술 데이터 | `poketool/waza/pl_waza_tbl.narc` | ✅ 471개 × 16B |
 | 트레이너 | `poketool/trainer/trdata` + `trpoke` | ✅ 928명 × (20B + 가변), AI 플래그 포함 |
 | 이벤트 스크립트 | `fielddata/script/scr_seq.narc` | ✅ **포맷 확정** — 1124개를 디컴프 원본과 바이트 대조 (§2.10) |
-| 대사 | `msgdata/pl_msg.narc` | ✅ 뱅크 431개 — 미국 685개가 디컴프 원문과 완전 일치 (§2.11) |
+| 대사 | `msgdata/pl_msg.narc` | ✅ 뱅크 432개 — 미국 685개가 디컴프 원문과 완전 일치 (§2.11) |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 게임에는 아직 안 붙였다 |
 | BGM | `data/sound/pl_sound_data.sdat` | ✅ 구조 파싱 / 재생 미검증 |
 | 캐릭터 모델·애니메이션 | BDSP 덤프 (롬 아님) | ✅ 추출 (PLAN §4.3.1) |
@@ -512,16 +512,61 @@ VM이 원본 바이트를 그대로 돌면 DS와 같은 것을 한다.
 피연산자 폭, scriptID 라우팅 표 30개. 폭이 있으면 **아직 구현 안 한 명령도 정확한
 길이로 건너뛸 수 있다**. 그게 중요하다.
 
+#### 이동은 또 다른 언어다
+
+`ApplyMovement`가 가리키는 것은 스크립트 바이트코드가 아니다. `{u16 동작, u16 횟수}`가
+이어지다 `MOVEMENT_ACTION_END`(254)로 끝나는 목록이고, 동작 번호가 157개다.
+
+이 표도 손으로 안 옮긴다. 세 파일을 이어 읽어 기계로 뽑는다
+(`tools/extract/movement-table.js` → `scripts.json`의 `movements`):
+
+```
+generated/movement_actions.txt   이름 → 번호
+src/unk_020EDBAC.c               번호 → 함수 배열
+src/unk_020655F4.c               함수 배열 → 첫 단계 → MovementAction_Init* 호출
+```
+
+`InitWalk(방향, 프레임당 거리, 프레임 수)`가 실제 값이다. 한 타일이 16단위라
+**거리 × 프레임 = 16**이 걸음 하나고, 뽑아 보면 걸음 40개가 전부 정확히 한 칸이다:
+느림 1×16 · 보통 2×8 · 빠름 4×4. 이 규칙성이 표를 제대로 읽었다는 증거다.
+
+155~253번은 이름조차 없다(끝 표시가 254라 그 사이가 빈다). 자리를 메우면 번호가
+밀리므로 구멍을 구멍으로 둔다.
+
+#### 트레이너전이 걸리는 방식
+
+NPC의 `script`가 트레이너 이름이면 빌드가 **3000 + 번호 − 1**로 바꾼다(더블은 5000).
+그 번호는 `SCRIPT_RANGE_TABLE`의 배틀 구역에 걸려서 공용 파일 `scripts_battles`의
+진입점이 되고, 거기 있는 흐름이 돈다:
+
+```
+GetTrainerID VAR_0x8004        scriptID에서 번호를 되뽑는다
+GoToIfDefeated VAR_0x8004, …   이미 이겼으면 다른 대사로
+PrintTrainerDialogue …         싸움 전 대사
+StartTrainerBattle VAR_0x8004
+CheckWonBattle VAR_RESULT
+SetTrainerFlag VAR_0x8004      플래그 = TRAINER_DEFEATED_FLAGS_START(1360) + 번호
+```
+
+대사는 `poketool/trmsg`에 있다. `trtbl` 멤버 0이 `{u16 트레이너, u16 종류}` 쌍
+2497개고 `trtblofs` 멤버 0이 트레이너마다 그 표에서 시작하는 바이트 위치인데,
+**쌍의 번호(offset/4)가 곧 `TEXT_BANK_NPC_TRAINER_MESSAGES`의 항목 번호**다.
+836명이 대사를 갖고 있고 쌍 2497개가 빠짐없이 들어간다(추출기가 그 합을 검사한다).
+
 #### VM 검증 — 진입점 4079개 전량 실행
 
 명령을 다 만들지 않고도 전량 검증이 된다. 안 만든 명령을 표의 폭으로 건너뛰므로
 진입점 하나를 `End`까지 돌릴 수 있고, 폭이 하나라도 틀리면 그 자리에서 모르는
 opcode나 파일 밖 접근으로 터진다. 4079개 전부 **해독 오류 0**이다.
 
-끝까지 못 가고 되돌아 도는 진입점은 세어서 못 박아 둔다 — 목록 메뉴·통신·이동처럼
-바깥 세계의 답을 기다리는 명령을 아직 건너뛰어서 값이 안 바뀌기 때문이다. 예/아니오에
-"아니오"로 답하면 36개, "예"로 답하면 40개. **명령을 만들 때마다 줄어야 하는 숫자다.**
-양쪽 답을 다 훑는 이유는 한쪽만 보면 반대편 가지를 한 번도 안 밟기 때문이다.
+끝까지 못 가는 진입점은 세어서 못 박아 둔다 — 목록 메뉴·통신처럼 바깥 세계의 답을
+기다리는 명령을 아직 건너뛰어서 조건이 영영 안 바뀌는 자리들이다. 예/아니오에
+"아니오"로 답하면 38개, "예"로 답하면 41개. 양쪽 답을 다 훑는 이유는 한쪽만 보면
+반대편 가지를 한 번도 안 밟기 때문이다.
+
+**이 숫자가 늘 줄기만 하는 것은 아니다.** 명령을 만들면 스크립트가 전에는 못 가던
+가지로 더 깊이 들어가고 거기서 또 다른 미구현 명령을 만나기도 한다. 중요한 것은
+해독 오류가 0이라는 쪽이고, 이 숫자는 **얼마나 멀리 가는가**의 눈금이다.
 
 ---
 
@@ -610,9 +655,9 @@ STRVAR 계열은 명령 코드의 **아래 바이트가 첫 인자**다(`0x0103`
 
 #### 싣는 형태
 
-맵이 쓰는 404개 + 공용 스크립트가 쓰는 것 + 이름 짓기 표, 합쳐 **431개 뱅크**를
+맵이 쓰는 404개 + 공용 스크립트가 쓰는 것 + 이름 짓기 표 + 트레이너 대사, 합쳐 **432개 뱅크**를
 `dialogue/{로케일}/{미국번호}.json`에 하나씩 둔다. 맵 하나가 쓰는 것은 몇 KB뿐이라
-필요할 때 받는다(PLAN §11). 전부 합치면 한국어 141KB(brotli)인데 첫 대화 한 번에
+필요할 때 받는다(PLAN §11). 전부 합치면 한국어 186KB(brotli)인데 첫 대화 한 번에
 그걸 다 받을 이유가 없다.
 
 번호를 **미국 기준**으로 쓴다 — 맵 헤더가 그 번호이고, 로케일이 바뀌어도 같은
@@ -641,7 +686,7 @@ tools/
     scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
     scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
     message.js      메시지 디코더 (제어 코드까지 살린다)
-    dialogue.js     대사 뱅크 431개 → dialogue/{로케일}/{번호}.json
+    dialogue.js     대사 뱅크 432개 → dialogue/{로케일}/{번호}.json
     dialogue-verify.js  디컴프 원문·한국어 헤더와 대조 (pnpm verify:dialogue)
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
@@ -663,11 +708,11 @@ tools/
 | `matrices/0.json` + `0.bin` (오버월드) | 1859KB | 20.5KB |
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
 | `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
-| `scripts.json` + `scripts.bin` (스크립트 1124개) | 425KB | 86KB |
-| `dialogue/ko/*.json` (뱅크 431개, 지연 로딩) | 702KB | 141KB |
+| `scripts.json` + `scripts.bin` (스크립트 1124개 + 이동 동작 표) | 435KB | 87KB |
+| `dialogue/ko/*.json` (뱅크 432개, 지연 로딩) | 854KB | 186KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
-| `trainers.json` | 154KB | 11.5KB |
+| `trainers.json` (대사 색인 포함) | 183KB | 16KB |
 | `names/*.json` (3로케일) | 93KB | 26KB |
 
 **신오 전체가 압축 후 210KB 남짓이다.** 전부 정적 JSON·바이너리이고 런타임에 롬을 파싱하지 않는다.

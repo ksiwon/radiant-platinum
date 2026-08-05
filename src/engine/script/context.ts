@@ -84,7 +84,7 @@ export class ScriptContext {
   private readonly stack: number[] = []
   private resume: ResumeFn | null = null
 
-  constructor(readonly host: ScriptHost, bytes: Uint8Array, readonly file: number) {
+  constructor(readonly host: ScriptHost, readonly bytes: Uint8Array, readonly file: number) {
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   }
 

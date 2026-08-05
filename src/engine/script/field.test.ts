@@ -13,7 +13,7 @@ import { worldState } from '../../state/worldState'
 import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
 import {
-  fieldScripts, makeWorld, npcAt, resetTriggerTile, scriptBusy, scriptSystem, signAt,
+  enterMap, fieldScripts, makeWorld, npcAt, resetTriggerTile, scriptBusy, scriptSystem, signAt,
   tileInFront, triggerAt,
 } from './field'
 import { printedText } from './printer'
@@ -52,6 +52,107 @@ describe('앞 타일 고르기', () => {
   it('타일 안 어디에 서 있든 같은 칸을 본다', () => {
     expect(tileInFront(10.01, 20.99, 0)).toEqual({ x: 10, z: 21 })
     expect(tileInFront(10.99, 20.01, 0)).toEqual({ x: 10, z: 21 })
+  })
+})
+
+/** 운하시티 체육관. 트레이너 NPC가 여섯 있는 가장 이른 자리다 */
+const GYM_MAP = 35
+/** 그중 하나 — 스크립트 3231 = 트레이너 232(현승) */
+const GYM_TRAINER_LOCAL_ID = 0
+const GYM_TRAINER_ID = 232
+const GYM_TRAINER_LINE = '그렇다면-!!\n제대로 한 방을 날려주마!\r'
+/** `generated/vars_flags.txt`의 `TRAINER_DEFEATED_FLAGS_START` */
+const TRAINER_DEFEATED_FLAGS_START = 1360
+
+maybe('트레이너전', () => {
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+
+  /** 배틀 화면 대신 이 자리에서 결과를 정한다 */
+  const started: number[] = []
+  let result: 'win' | 'loss' | null = null
+
+  beforeEach(() => {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = GYM_MAP
+    started.length = 0
+    result = null
+
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.services = {
+      startTrainerBattle: (id) => { started.push(id) },
+      battleResult: () => result,
+      trainer: (id) => (id === GYM_TRAINER_ID ? { double: false, msg: { '0': 1164, '1': 1165, '2': 1166 } } : null),
+      trainerMessage: (index) => (index === 1164 ? GYM_TRAINER_LINE : `#${index}`),
+      aliveMons: () => 3,
+    }
+    fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    enterMap(GYM_MAP)
+    worldState.input.interact = false
+    worldState.input.cancel = false
+    worldState.input.move.set(0, 0)
+  })
+
+  const frames = (n: number, a = false): void => {
+    for (let i = 0; i < n; i++) {
+      worldState.input.interact = a
+      scriptSystem.fixedUpdate()
+    }
+  }
+
+  /** 그 트레이너 바로 남쪽에 서서 그를 본다 */
+  const faceTrainer = (): void => {
+    const npc = npcsOf(GYM_MAP).find((n) => n.localID === GYM_TRAINER_LOCAL_ID)!
+    worldState.player.position.set(npc.x + 0.5, 0, npc.z - 0.5)
+    worldState.player.facing = 0
+  }
+
+  it('말을 걸면 싸움 전 대사가 나오고 배틀이 열린다', () => {
+    faceTrainer()
+    frames(1, true)
+    expect(scriptBusy()).toBe(true)
+
+    // 대사가 다 찍힐 때까지 — 그 사이에 배틀은 안 열려야 한다
+    frames(300)
+    expect(printedText(fieldScripts.world!.printer!)).toContain('제대로 한 방을 날려주마')
+    expect(started).toEqual([])
+
+    // 넘기면 대사창을 닫고 배틀로 넘어간다
+    frames(1, true)
+    frames(20)
+    expect(started).toEqual([GYM_TRAINER_ID])
+    // 결과가 날 때까지 스크립트는 그 자리에 선다
+    frames(10)
+    expect(scriptBusy()).toBe(true)
+  })
+
+  it('이기면 그 트레이너 플래그가 선다', () => {
+    faceTrainer()
+    frames(1, true)
+    frames(300)
+    frames(1, true)
+    frames(20)
+    expect(started).toEqual([GYM_TRAINER_ID])
+    result = 'win'
+    frames(20)
+    expect(fieldScripts.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + GYM_TRAINER_ID)).toBe(true)
+    expect(scriptBusy()).toBe(false)
+    expect(fieldScripts.lastError).toBeNull()
+  })
+
+  it('이긴 트레이너에게 다시 말을 걸면 안 싸운다', () => {
+    fieldScripts.vars.setFlag(TRAINER_DEFEATED_FLAGS_START + GYM_TRAINER_ID)
+    faceTrainer()
+    frames(1, true)
+    frames(300)
+    // 싸움 뒤 대사로 간다 (`GoToIfDefeated` → `PrintTrainerDialogue …, 2`)
+    expect(printedText(fieldScripts.world!.printer!)).toContain('#1166')
+    expect(started).toEqual([])
   })
 })
 

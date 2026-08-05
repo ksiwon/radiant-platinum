@@ -29,7 +29,8 @@ maybe('대사', () => {
     JSON.parse(readFileSync(resolve(DATA, locale, `${at}.json`), 'utf8'))
 
   it('맵이 쓰는 뱅크 404개 + 공용을 담는다', () => {
-    expect(index.banks.length).toBe(431)
+    // 맵이 안 가리키는 것 둘을 따로 싣는다 — 이름 짓기 표와 트레이너 대사
+    expect(index.banks.length).toBe(432)
     expect(index.locales).toEqual(['en', 'ko'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)

@@ -18,6 +18,7 @@
 const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
+const { movementTable } = require('./movement-table')
 const { buildTable } = require('./scrcmd-table')
 
 const NARC = '/fielddata/script/scr_seq.narc'
@@ -165,6 +166,18 @@ function main() {
       bank: r.bank,
     })),
     commands: packCommands(),
+    /**
+     * `ApplyMovement`가 가리키는 이동 동작 표.
+     *
+     * 스크립트 바이트코드와 다른 언어이지만 소비자가 같은 VM이라 한 파일에 둔다
+     */
+    movements: movementTable().map((m) => ({
+      name: m.name,
+      kind: m.kind,
+      ...(m.dir === null || m.dir === undefined ? {} : { dir: m.dir }),
+      ...(m.tiles ? { tiles: m.tiles } : {}),
+      ...(m.frames ? { frames: m.frames } : {}),
+    })),
   })
 
   const counts = kinds.reduce((acc, k) => ({ ...acc, [k]: (acc[k] ?? 0) + 1 }), {})
@@ -172,6 +185,7 @@ function main() {
   console.log(`  scripts.bin ${(bin.length / 1024).toFixed(1)}KB`)
   console.log(`  진입점 합계 ${index.reduce((s, f) => s + f.entries, 0)}`)
   console.log(`  공용 구역 ${ranges.length}개`)
+  console.log(`  이동 동작 ${movementTable().filter(Boolean).length}개`)
 }
 
 if (require.main === module) main()

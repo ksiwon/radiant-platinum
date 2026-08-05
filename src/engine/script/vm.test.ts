@@ -67,7 +67,14 @@ maybe('스크립트 VM', () => {
   const run = (file: number, entry: number, opts: RunOptions = {}): FieldWorld => {
     const vars = opts.vars ?? new VarStore()
     const world = new FieldWorld({
-      vars, messages: opts.messages, options: SWEEP, input: ALWAYS_PRESSED,
+      vars,
+      messages: opts.messages,
+      options: SWEEP,
+      input: ALWAYS_PRESSED,
+      movements: meta.movements,
+      // 배틀은 늘 이긴 것으로 친다. 지는 쪽만 훑으면 이긴 뒤 가지(플래그를
+      // 세우고 대사를 바꾸는 부분)를 한 번도 안 밟는다
+      services: { battleResult: () => 'win' },
     })
     const commands = opts.commands ?? map
     const ctx = new ScriptContext({ vars, world, commands }, fileBytes(data, file), file)
@@ -125,7 +132,6 @@ maybe('스크립트 VM', () => {
     const { ran, looping, errors } = sweep()
     expect(errors.slice(0, 10)).toEqual([])
     expect(ran + looping.length).toBe(4079)
-    // 대기 명령을 만들 때마다 줄어야 하는 숫자다
     expect(looping).toHaveLength(LOOPING_ENTRIES)
   })
 
@@ -230,14 +236,19 @@ maybe('스크립트 VM', () => {
 const FLAG_HAS_POKEDEX = 144
 
 /**
- * 대기 명령이 없어서 되돌아 도는 진입점 수.
+ * 아직 끝까지 못 가는 진입점 수.
  *
- * 목록 메뉴·이동 대기·배틀처럼 **바깥 세계의 답**을 기다리는 명령을 아직 안
- * 만들어서다. 그 명령을 하나씩 만들 때마다 이 숫자가 줄어야 한다
+ * 목록 메뉴·통신처럼 **바깥 세계의 답**을 기다리는 명령을 아직 안 만들어서
+ * 조건이 영영 안 바뀌는 자리들이다.
+ *
+ * **이 숫자가 늘 줄기만 하는 것은 아니다.** 명령을 만들면 스크립트가 전에는
+ * 못 가던 가지로 더 깊이 들어가고, 거기서 또 다른 미구현 명령을 만나기도 한다.
+ * 중요한 것은 해독 오류가 0이라는 쪽이고, 이 숫자는 **얼마나 멀리 가는가**의
+ * 눈금이라 값이 바뀌면 왜 바뀌었는지 설명이 되어야 한다
  */
-const LOOPING_ENTRIES = 36
+const LOOPING_ENTRIES = 38
 /** 예/아니오에 "예"로 답했을 때. 갈라지는 가지가 달라서 수도 다르다 */
-const LOOPING_ENTRIES_YES = 40
+const LOOPING_ENTRIES_YES = 41
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -245,7 +256,12 @@ const LOOPING_ENTRIES_YES = 40
  * 안 쓰이는 것을 구현해 두는 것 자체는 문제가 아니지만, **검증이 안 된 채로
  * 남는다**는 뜻이라 목록으로 못 박아 둔다
  */
-const IDLE_COMMANDS = ['Dummy', 'CheckFlagFromVar', 'MessageNoSkip', 'MessageSynchronized']
+const IDLE_COMMANDS = [
+  'Dummy', 'CheckFlagFromVar', 'MessageNoSkip', 'MessageSynchronized',
+  // 이 셋은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
+  // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
+  'GetRematchTrainerID', 'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
+]
 
 /**
  * 떡잎마을 대사 뱅크(554번)에서 필요한 만큼.

@@ -14,6 +14,7 @@
 import {
   DEFAULT_OPTIONS, MessagePrinter, type PrinterInput, type PrinterOptions,
 } from './printer'
+import { MovementRunner, type Movable, type MovementStep, type MovementTable } from './movement'
 import { MessageSlots } from './text'
 import type { VarStore } from './vars'
 
@@ -47,6 +48,25 @@ const UNNAMED: NameSource = {
   counterpart: () => '',
 }
 
+/**
+ * 세계가 혼자 못 하는 일. 배틀 화면·저장된 파티처럼 **엔진 바깥**에 있는 것들이다.
+ *
+ * 전부 선택이다 — 안 붙으면 그 명령이 조용히 아무 일도 안 하는 것이 아니라,
+ * `unsupported`에 이름이 쌓여서 무엇이 빠졌는지 보인다
+ */
+export interface FieldServices {
+  /** 트레이너전을 연다 */
+  startTrainerBattle?: (trainerID: number) => void
+  /** 배틀이 끝났으면 결과, 아직이면 `null` */
+  battleResult?: () => 'win' | 'loss' | null
+  /** 트레이너 자료 (더블 여부·대사 색인) */
+  trainer?: (id: number) => { double: boolean, msg: Record<string, number> } | null
+  /** `TEXT_BANK_NPC_TRAINER_MESSAGES`의 글 하나 */
+  trainerMessage?: (index: number) => string
+  /** 싸울 수 있는 포켓몬 수 */
+  aliveMons?: () => number
+}
+
 export interface WorldInit {
   vars: VarStore
   /** 지금 스크립트가 읽는 뱅크. 없는 번호는 빈 글로 나온다 */
@@ -55,6 +75,11 @@ export interface WorldInit {
   /** 이번 프레임의 A/B. 대사창이 이걸로 넘어간다 */
   input?: () => PrinterInput
   names?: NameSource
+  /** 이동 동작 표 (`scripts.json`의 `movements`) */
+  movements?: MovementTable
+  /** 번호로 움직일 것을 찾는다. NPC는 맵마다 갈리므로 함수로 받는다 */
+  objects?: (localID: number) => Movable | null
+  services?: FieldServices
 }
 
 const NO_INPUT = (): PrinterInput => ({ pressed: false, held: false })
@@ -80,6 +105,34 @@ export class FieldWorld {
 
   readonly names: NameSource
 
+  /**
+   * 지금 말을 걸고 있는 상대 (`SCRIPT_MANAGER_TARGET_OBJECT`).
+   *
+   * `FacePlayer`가 이 사람을 돌려세운다
+   */
+  target: Movable | null = null
+
+  /** 주인공. `FacePlayer`가 어느 쪽인지 알려면 필요하다 */
+  player: Movable | null = null
+
+  /**
+   * 지금 도는 스크립트의 scriptID (`SCRIPT_MANAGER_SCRIPT_ID`).
+   *
+   * 트레이너전이 이걸 쓴다 — 3000번대 번호에서 1을 빼면 트레이너 번호다
+   */
+  scriptID = 0
+
+  /** 바깥이 붙여 주는 것들. 안 붙으면 그 명령은 아무 일도 안 한다 */
+  services: FieldServices = {}
+
+  /**
+   * 도는 중인 이동 (`SCRIPT_MANAGER_MOVEMENT_COUNT`).
+   *
+   * `WaitMovement`는 이게 0이 될 때까지 선다. 여럿을 동시에 걷게 하고 한 번에
+   * 기다리는 스크립트가 많아서 개수로 센다
+   */
+  private readonly runners: MovementRunner[] = []
+
   private messages: readonly string[]
   private readonly options: PrinterOptions
   private readonly input: () => PrinterInput
@@ -90,6 +143,25 @@ export class FieldWorld {
     this.options = init.options ?? DEFAULT_OPTIONS
     this.input = init.input ?? NO_INPUT
     this.names = init.names ?? UNNAMED
+    this.movements = init.movements ?? []
+    this.objects = init.objects ?? (() => null)
+    this.services = init.services ?? {}
+  }
+
+  readonly movements: MovementTable
+  readonly objects: (localID: number) => Movable | null
+
+  /** `ApplyMovement` — 그 번호의 대상에게 목록을 건다 */
+  applyMovement(localID: number, steps: readonly MovementStep[]): boolean {
+    const target = this.objects(localID)
+    if (target === null) return false
+    this.runners.push(new MovementRunner(target, steps, this.movements))
+    return true
+  }
+
+  /** 아직 걷고 있는 것이 있는가 */
+  get moving(): boolean {
+    return this.runners.length > 0
   }
 
   /** 맵이 바뀌면 읽을 뱅크도 바뀐다 */
@@ -109,6 +181,12 @@ export class FieldWorld {
     this.printer = new MessagePrinter(this.messages[id] ?? '', this.slots, {
       ...this.options, canSkip,
     })
+  }
+
+  /** 트레이너 대사처럼 뱅크가 아니라 다른 데서 온 글을 올린다 */
+  showText(text: string): void {
+    this.boxOpen = true
+    this.printer = new MessagePrinter(text, this.slots, this.options)
   }
 
   /** `MessageInstant` — 한 프레임에 다 찍는다 */
@@ -149,8 +227,20 @@ export class FieldWorld {
     return this.input().pressed
   }
 
-  /** 한 프레임. 인쇄기를 돌린다 */
+  /** 한 프레임. 인쇄기와 걷는 것들을 돌린다 */
   tick(): void {
     this.printer?.tick(this.input())
+    for (let i = this.runners.length - 1; i >= 0; i--) {
+      const runner = this.runners[i]!
+      runner.tick()
+      if (runner.done) this.runners.splice(i, 1)
+    }
+  }
+
+  /** 스크립트 한 판이 끝났다. 걷다 만 것은 남기지 않는다 */
+  reset(): void {
+    this.runners.length = 0
+    this.target = null
+    this.slots.clear()
   }
 }

@@ -126,6 +126,13 @@ export const trainerSchema = z.object({
   /** 배틀 중에 쓰는 가방 도구 */
   items: z.array(z.number().int().min(1)).max(4),
   double: z.boolean(),
+  /**
+   * 대사 종류 → `TEXT_BANK_NPC_TRAINER_MESSAGES`의 항목 번호.
+   *
+   * 종류 번호는 `generated/trainer_message_types.txt`다 — 0 싸움 전 · 1 마지막
+   * 한 마리 · 2 진 뒤. 대사가 없는 트레이너는 빈 객체다
+   */
+  msg: z.record(z.string(), z.number().int().nonnegative()),
   party: z.array(trainerMonSchema).max(6),
 })
 
@@ -207,6 +214,20 @@ export const scriptFileSchema = z.object({
       args: scriptArgsSchema,
     })).optional(),
   })).nonempty(),
+  /**
+   * 이동 동작 표 (`ApplyMovement`가 가리키는 별개 언어).
+   *
+   * `dir`은 원작의 0 북 · 1 남 · 2 서 · 3 동이다. `tiles`가 0이면 제자리다
+   */
+  movements: z.array(z.object({
+    name: z.string(),
+    kind: z.enum(['face', 'walk', 'walkOnSpot', 'jump', 'delay', 'other']),
+    dir: z.number().int().min(0).max(3).optional(),
+    tiles: z.number().nonnegative().optional(),
+    frames: z.number().int().positive().optional(),
+  // 155~253번은 이름조차 없다. 끝 표시가 254라 그 사이가 비어 있는 것이고,
+  // 자리를 메우면 번호가 밀리므로 구멍을 구멍으로 둔다
+  }).nullable()).nonempty(),
 })
 
 /**

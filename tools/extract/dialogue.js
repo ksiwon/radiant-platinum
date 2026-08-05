@@ -85,9 +85,12 @@ function commonBanks(names) {
  *
  * `TEXT_BANK_GENERIC_NAMES`는 이름 짓기 화면이 제안하는 90개다 — 주인공
  * 남자 18 · 여자 18 …  라이벌 2. 그 자리에서 무작위로 하나를 고르는 것이
- * 기본 이름이라, 우리도 같은 표를 갖고 있어야 한다
+ * 기본 이름이라, 우리도 같은 표를 갖고 있어야 한다.
+ *
+ * `TEXT_BANK_NPC_TRAINER_MESSAGES`는 트레이너 928명의 싸움 전후 대사다.
+ * 어느 항목이 누구 것인지는 `trainers.json`의 `msg`가 가리킨다
  */
-const EXTRA_BANKS = ['TEXT_BANK_GENERIC_NAMES']
+const EXTRA_BANKS = ['TEXT_BANK_GENERIC_NAMES', 'TEXT_BANK_NPC_TRAINER_MESSAGES']
 
 function main() {
   const charmap = loadCharmap(CHARMAP)

@@ -11,6 +11,8 @@ import type { ScriptCommand } from '../../data/schema'
 import {
   compare, conditionHolds, type CommandFn, type ResumeFn, type ScriptContext,
 } from './context'
+import { DIR, parseMovements } from './movement'
+import { VAR_LAST_TALKED } from './vars'
 
 /**
  * 이름으로 등록한다.
@@ -251,6 +253,40 @@ on('ShowYesNoMenu', (ctx) => {
   return true
 })
 
+// ── 이동 ─────────────────────────────────────────────────────────────────────
+//
+// `ApplyMovement`는 **또 다른 언어**를 가리킨다 — `{동작, 횟수}` 목록이다
+// (`movement.ts`). 여기서는 그 목록을 읽어 세계에 넘기기만 한다.
+
+on('ApplyMovement', (ctx) => {
+  const localID = ctx.readVar()
+  const at = ctx.readTarget()
+  ctx.host.world.applyMovement(localID, parseMovements(ctx.bytes, at))
+  return false
+})
+
+on('WaitMovement', (ctx) => {
+  ctx.pause((c) => !c.host.world.moving)
+  return true
+})
+
+on('FacePlayer', (ctx) => {
+  // 말을 건 상대가 이쪽으로 돌아선다. 이게 없으면 등을 보고 대화한다
+  const world = ctx.host.world
+  if (world.target !== null && world.player !== null) {
+    world.target.dir = dirToward(world.target, world.player)
+  }
+  return false
+})
+
+/** `from`이 `to`를 보려면 어느 쪽인가. 더 많이 벌어진 축을 고른다 */
+function dirToward(from: { x: number, z: number }, to: { x: number, z: number }): number {
+  const dx = to.x - from.x
+  const dz = to.z - from.z
+  if (Math.abs(dx) > Math.abs(dz)) return dx > 0 ? DIR.east : DIR.west
+  return dz > 0 ? DIR.south : DIR.north
+}
+
 // ── 칸 채우기 ────────────────────────────────────────────────────────────────
 //
 // `{STRVAR_1 …, 칸, 조사}` 자리를 채우는 명령들이다. 이걸 안 만들면 대사에
@@ -279,6 +315,155 @@ on('BufferNumber', (ctx) => {
   // `GetNumberDigitCount(number)`로 그 수 자신에게서 얻으므로 채울 것이 없다
   const slot = ctx.readByte()
   ctx.host.world.slots.set(slot, String(ctx.readVar()))
+  return false
+})
+
+// ── 트레이너전 ───────────────────────────────────────────────────────────────
+//
+// 트레이너에게 말을 걸면 그 NPC의 scriptID(3000 + 번호 − 1)가 공용 파일
+// `scripts_battles`의 진입점으로 풀리고, 거기 있는 이 흐름이 돈다:
+//
+//   GetTrainerID VAR_0x8004        scriptID에서 번호를 되뽑는다
+//   GoToIfDefeated VAR_0x8004, …   이미 이겼으면 다른 대사로
+//   PrintTrainerDialogue …         싸움 전 대사
+//   StartTrainerBattle VAR_0x8004
+//   CheckWonBattle VAR_RESULT
+//   SetTrainerFlag VAR_0x8004      이겼다고 표시한다
+//
+// 그래서 이 여덟 개만 있으면 오버월드에서 배틀까지 이어진다.
+
+/** `include/constants/scripts.h` */
+const SCRIPT_ID_OFFSET_SINGLE_BATTLES = 3000
+const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
+/** `generated/vars_flags.txt` — 이 뒤로 트레이너 번호만큼 떨어진 자리가 그 사람 플래그다 */
+const TRAINER_DEFEATED_FLAGS_START = 1360
+
+/** `Script_GetTrainerID` — scriptID에서 트레이너 번호를 되뽑는다 */
+export function trainerIdOf(scriptID: number): number {
+  const base = scriptID < SCRIPT_ID_OFFSET_DOUBLE_BATTLES
+    ? SCRIPT_ID_OFFSET_SINGLE_BATTLES
+    : SCRIPT_ID_OFFSET_DOUBLE_BATTLES
+  return scriptID - base + 1
+}
+
+on('GetTrainerID', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), trainerIdOf(ctx.host.world.scriptID))
+  return false
+})
+
+on('SetTrainerFlag', (ctx) => {
+  ctx.host.vars.setFlag(TRAINER_DEFEATED_FLAGS_START + ctx.readVar())
+  return false
+})
+
+on('ClearTrainerFlag', (ctx) => {
+  ctx.host.vars.clearFlag(TRAINER_DEFEATED_FLAGS_START + ctx.readVar())
+  return false
+})
+
+on('CheckTrainerFlag', (ctx) => {
+  ctx.comparisonResult = ctx.host.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + ctx.readVar()) ? 1 : 0
+  return false
+})
+
+on('CheckIsTrainerDoubleBattle', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const trainer = ctx.host.world.services.trainer?.(trainerIdOf(ctx.host.world.scriptID))
+  ctx.host.vars.set(dest, trainer?.double === true ? 1 : 0)
+  return false
+})
+
+on('CheckHasTwoAliveMons', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), (ctx.host.world.services.aliveMons?.() ?? 0) >= 2 ? 1 : 0)
+  return false
+})
+
+on('GetTrainerMessageTypes', (ctx) => {
+  // 싱글이면 0(싸움 전) · 2(싸움 뒤)다. 더블은 앞뒤 번호가 따로 있는데
+  // 어느 쪽 트레이너인지가 scriptID에 들어 있다
+  const before = ctx.readHalfWord()
+  const after = ctx.readHalfWord()
+  const notEnough = ctx.readHalfWord()
+  const world = ctx.host.world
+  const double = world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true
+  const second = world.scriptID >= SCRIPT_ID_OFFSET_DOUBLE_BATTLES
+    && trainerIdOf(world.scriptID) % 2 === 0
+  ctx.host.vars.set(before, double ? (second ? TRMSG.preDouble2 : TRMSG.preDouble1) : TRMSG.pre)
+  ctx.host.vars.set(after, double ? (second ? TRMSG.postDouble2 : TRMSG.postDouble1) : TRMSG.post)
+  ctx.host.vars.set(notEnough, double
+    ? (second ? TRMSG.notEnough2 : TRMSG.notEnough1)
+    : 0)
+  return false
+})
+
+/** `generated/trainer_message_types.txt`의 줄 번호 */
+const TRMSG = {
+  pre: 0, defeat: 1, post: 2,
+  preDouble1: 3, postDouble1: 5, notEnough1: 6,
+  preDouble2: 7, postDouble2: 9, notEnough2: 10,
+  rematch: 17,
+}
+
+on('PrintTrainerDialogue', (ctx) => {
+  const trainerID = ctx.readVar()
+  const type = ctx.readVar()
+  const world = ctx.host.world
+  const at = world.services.trainer?.(trainerID)?.msg[String(type)]
+  world.showText(at === undefined ? '' : world.services.trainerMessage?.(at) ?? '')
+  ctx.pause(printed)
+  return true
+})
+
+on('StartTrainerBattle', (ctx) => {
+  const trainerID = ctx.readVar()
+  ctx.readVar() // 두 번째 상대. 더블 배틀에서만 쓴다
+  ctx.host.world.services.startTrainerBattle?.(trainerID)
+  // 화면이 배틀로 넘어간다. 돌아올 때까지 이 자리에 선다
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+on('CheckWonBattle', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleResult?.() === 'win' ? 1 : 0)
+  return true
+})
+
+on('CheckLostBattle', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleResult?.() === 'loss' ? 1 : 0)
+  return true
+})
+
+on('SetTargetTrainerDefeated', (ctx) => {
+  // 트레이너 번호가 아니라 **맵 안 번호**로 표시한다. 원작이 그렇다 —
+  // `Script_SetTrainerDefeated(…, MapObject_GetLocalID(*mapObj))`
+  const id = ctx.host.vars.get(VAR_LAST_TALKED)
+  ctx.host.vars.setFlag(TRAINER_DEFEATED_FLAGS_START + id)
+  return false
+})
+
+on('GoToIfTargetTrainerDefeated', (ctx) => {
+  const target = ctx.readTarget()
+  const id = ctx.host.vars.get(VAR_LAST_TALKED)
+  if (ctx.host.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + id)) ctx.jump(target)
+  return false
+})
+
+on('GetMovementType', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const localID = ctx.readVar()
+  const object = ctx.host.world.objects(localID)
+  ctx.host.vars.set(dest, object?.movementType ?? MOVEMENT_TYPE_NONE)
+  return false
+})
+
+/** `generated/movement_types.txt`의 마지막 값. 대상이 없을 때 쓴다 */
+const MOVEMENT_TYPE_NONE = 0xff
+
+on('GetRematchTrainerID', (ctx) => {
+  // 재대결은 VS시커가 있어야 성립한다. 없으면 `TRAINER_NONE`이고,
+  // 스크립트는 그걸 보고 "이미 이긴 사람" 대사로 간다
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
   return false
 })
 

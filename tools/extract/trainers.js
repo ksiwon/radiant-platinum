@@ -101,9 +101,39 @@ function extractPrizeMul(rom) {
   return [...table]
 }
 
+/**
+ * 트레이너 대사 색인 (`Trainer_LoadMessage`).
+ *
+ * `trtbl`의 멤버 0이 `{u16 트레이너, u16 종류}` 쌍 2497개고, `trtblofs`의 멤버 0이
+ * 트레이너마다 그 표에서 시작하는 바이트 위치다. **쌍의 번호(offset/4)가 곧
+ * 대사 뱅크의 항목 번호**다 — 그래서 표를 훑는 것만으로 글을 찾는다.
+ *
+ * 836명이 대사를 갖고 있고 쌍 2497개가 빠짐없이 그 안에 들어간다.
+ */
+function trainerMessages(rom) {
+  const offsets = rom.narc('/poketool/trmsg/trtblofs.narc')[0]
+  const table = rom.narc('/poketool/trmsg/trtbl.narc')[0]
+  const out = []
+  let used = 0
+  for (let id = 0; id < COUNT; id++) {
+    const messages = {}
+    for (let at = offsets.readUInt16LE(id * 2); at + 4 <= table.length; at += 4) {
+      if (table.readUInt16LE(at) !== id) break
+      messages[table.readUInt16LE(at + 2)] = at / 4
+      used++
+    }
+    out.push(messages)
+  }
+  if (used !== table.length / 4) {
+    throw new Error(`대사 쌍 ${used} ≠ 표 ${table.length / 4} — 시작 위치 해석이 틀렸다`)
+  }
+  return out
+}
+
 function extractTrainers(rom, text) {
   const trdata = rom.narc('/poketool/trainer/trdata.narc')
   const trpoke = rom.narc('/poketool/trainer/trpoke.narc')
+  const messages = trainerMessages(rom)
   if (trdata.length !== COUNT || trpoke.length !== COUNT) {
     throw new Error(`트레이너 개수 ${trdata.length}/${trpoke.length} ≠ ${COUNT}`)
   }
@@ -138,6 +168,8 @@ function extractTrainers(rom, text) {
       /** 트레이너가 배틀 중에 쓰는 가방 도구 4칸 */
       items: [0, 2, 4, 6].map((o) => d.readUInt16LE(4 + o)).filter((v) => v !== 0),
       double: d.readUInt32LE(0x10) !== 0,
+      /** 대사 종류 → `TEXT_BANK_NPC_TRAINER_MESSAGES`의 항목 번호 */
+      msg: messages[id],
       party: parseParty(trpoke[id], type, count),
     })
   }

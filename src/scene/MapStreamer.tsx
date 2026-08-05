@@ -14,10 +14,10 @@ import {
 } from 'three'
 import { activeZone, Behavior, BEHAVIOR_MASK, IMPASSABLE, isWater } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { mapById, npcsOf, world } from '../engine/map/world'
-import {
-  fieldScripts, initFieldScripts, loadMapDialogue, loadVars, resetTriggerTile,
-} from '../engine/script/field'
+import { mapById, world } from '../engine/map/world'
+import { enterMap, fieldScripts, initFieldScripts, loadVars } from '../engine/script/field'
+import { installFieldServices } from './fieldServices'
+import { npcActors } from '../engine/actor/npcs'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
@@ -37,6 +37,11 @@ const GRASS_HEIGHT = 0.42
 /** 물이 바닥에서 뜨는 높이. 같은 면에 두면 z-파이팅이 난다 */
 const WATER_RISE = 0.055
 const dummy = new Object3D()
+
+/** NPC를 그리는 거리(타일). 청크 창보다 조금 넉넉하게 둔다 */
+const NPC_DRAW_RANGE = 48
+/** 원작 방향(0 북 · 1 남 · 2 서 · 3 동) → 모델 y 회전 */
+const NPC_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
 
 interface Cell { x: number; z: number; y: number; color?: Color }
 
@@ -155,7 +160,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setMapId(mapId)
     // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
     resetEncounterTile()
-    resetTriggerTile()
+    // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
+    // 같은 프레임에 그릴 수 있다
+    enterMap(mapId)
   }, [setZone, displayName])
 
   // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —
@@ -206,7 +213,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       useSaveStore.getState().commitScriptState(vars.saved, vars.flags)
     }
     void initFieldScripts('ko')
-    return () => { fieldScripts.onScriptEnd = null }
+    const uninstall = installFieldServices('ko')
+    return () => {
+      uninstall()
+      fieldScripts.onScriptEnd = null
+    }
   }, [generic])
 
   useEffect(() => {
@@ -221,7 +232,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     loadVars(save.vars, save.flags)
   }, [hydrated])
 
-  useEffect(() => { void loadMapDialogue(mapId) }, [mapId])
+  // 존만 바뀌는 경우(마을 → 도로)도 맵이 바뀐 것이다
+  useEffect(() => { enterMap(mapId) }, [mapId])
 
   // 하늘 텍스처는 한 번만 만든다
   const sky = useMemo(() => makeSkyTexture(DAY), [])
@@ -264,6 +276,29 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 돔 밖으로 걸어 나가 하늘이 사라진다
     if (skyRef.current) skyRef.current.position.set(p.x, 0, p.z)
 
+    // NPC. 스크립트가 걷게 만들면 좌표가 프레임마다 바뀌므로 여기서 다시 쓴다.
+    // 맵 하나의 NPC는 많아야 수십 명이라 전수를 훑어도 부담이 없다
+    const npcMesh = npcRef.current
+    if (npcMesh) {
+      let n = 0
+      for (const actor of npcActors.list) {
+        if (n >= capacity.npcs) break
+        if (!actor.visible) continue
+        // 창 밖은 안 그린다 — 오버월드는 한 행렬에 존이 67개다
+        if (Math.abs(actor.x - p.x) > NPC_DRAW_RANGE) continue
+        if (Math.abs(actor.z - p.z) > NPC_DRAW_RANGE) continue
+        const y = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, layer) ?? 0
+        dummy.position.set(actor.x + 0.5, y + 0.55, actor.z + 0.5)
+        dummy.rotation.set(0, NPC_FACING[actor.dir] ?? 0, 0)
+        dummy.scale.set(1, 1, 1)
+        dummy.updateMatrix()
+        npcMesh.setMatrixAt(n++, dummy.matrix)
+      }
+      npcMesh.count = n
+      npcMesh.instanceMatrix.needsUpdate = true
+      npcMesh.computeBoundingSphere()
+    }
+
     // 물결. 인스턴스를 하나씩 흔들면 타일 수만큼 행렬을 다시 쓰게 되므로
     // 메시 전체를 아주 조금 띄웠다 내린다 — 멀리서는 구분이 안 간다
     if (waterRef.current) {
@@ -280,19 +315,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   })
 
   const window_ = useMemo(() => buildWindow(grid, chunkIndex, layer), [grid, chunkIndex, layer])
-  // NPC는 맵 단위다. 오버월드는 한 행렬에 존이 67개라 창 안의 것만 골라야 한다
-  const npcs = useMemo(() => {
-    const n = grid.chunkTiles
-    const inWindow = new Set(grid.chunksAround(chunkIndex, VIEW_RADIUS).map((c) => c.i))
-    // 높이도 여기서 붙인다 — 배치 효과에서 격자를 다시 묻으면 그 효과가
-    // 격자·층에 의존하게 되고, 창이 안 바뀌었는데도 다시 도는 이유가 생긴다
-    return npcsOf(mapId)
-      .filter((p) => {
-        const ci = grid.chunkIndexAt(p.x, p.z)
-        return ci >= 0 && inWindow.has(ci) && n > 0
-      })
-      .map((p) => ({ ...p, y: grid.heightAtWorld(p.x + 0.5, p.z + 0.5, layer) ?? 0 }))
-  }, [grid, chunkIndex, mapId, layer])
+  // NPC 배치는 **매 프레임** 다시 쓴다. 스크립트가 걷게 만들면 좌표가 바뀌는데
+  // 한 번 세우고 끝내면 그 자리에 얼어붙는다 (아래 useFrame)
 
   useEffect(() => {
     const { floors, walls, grass, water, buildings } = window_
@@ -364,20 +388,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       b.instanceMatrix.needsUpdate = true
       b.computeBoundingSphere()
     }
-    const p = npcRef.current
-    if (p) {
-      p.count = Math.min(npcs.length, capacity.npcs)
-      npcs.slice(0, capacity.npcs).forEach((o, i) => {
-        dummy.position.set(o.x + 0.5, o.y + 0.55, o.z + 0.5)
-        dummy.rotation.set(0, 0, 0)
-        dummy.scale.set(1, 1, 1)
-        dummy.updateMatrix()
-        p.setMatrixAt(i, dummy.matrix)
-      })
-      p.instanceMatrix.needsUpdate = true
-      p.computeBoundingSphere()
-    }
-  }, [window_, npcs, capacity])
+  }, [window_, capacity])
 
   return (
     <group>

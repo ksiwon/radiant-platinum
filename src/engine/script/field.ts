@@ -14,9 +14,11 @@ import { worldState } from '../../state/worldState'
 import { buildCommands, type CommandTable } from './commands'
 import { ScriptContext, ScriptError } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
+import { npcActors, spawnNpcs } from '../actor/npcs'
+import { DIR, type Movable, type MovementTable } from './movement'
 import { TEXT_SPEED, type PrinterInput } from './printer'
 import { VarStore, VAR_LAST_TALKED } from './vars'
-import { FieldWorld, MENU_NO, MENU_YES, type NameSource } from './world'
+import { FieldWorld, MENU_NO, MENU_YES, type FieldServices, type NameSource } from './world'
 
 /**
  * 한 프레임에 이만큼 넘게 명령을 밟으면 스크립트가 되돌아 도는 것이다.
@@ -57,6 +59,8 @@ export const fieldScripts = {
    * IndexedDB에 쓰면 대사 한 번에 수십 번 저장이 나간다
    */
   onScriptEnd: null as ((vars: VarStore) => void) | null,
+  /** 바깥 세계에 부탁하는 것들. 씬이 붙인다 (`scene/fieldServices.ts`) */
+  services: {} as FieldServices,
 }
 
 /**
@@ -96,10 +100,14 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
  * 세계 하나. 버튼을 이 모듈이 읽는 프레임 입력에 묶는다 —
  * 그 배선이 어긋나면 대사창이 영영 안 넘어간다
  */
-export function makeWorld(vars: VarStore, messages?: readonly string[]): FieldWorld {
-  return new FieldWorld({
+export function makeWorld(
+  vars: VarStore, messages?: readonly string[], movements?: MovementTable,
+): FieldWorld {
+  const world = new FieldWorld({
     vars,
     messages,
+    movements: movements ?? fieldScripts.data?.meta.movements,
+    objects: (localID) => (localID === LOCALID_PLAYER ? playerMovable : npcActors.byLocalID.get(localID) ?? null),
     options: { speed: TEXT_SPEED.normal, canSkip: true, autoScroll: false },
     input: () => frameInput,
     // 이름은 세이브가 복원되면 바뀌므로 그때그때 물어본다. 여기서 값을
@@ -109,17 +117,55 @@ export function makeWorld(vars: VarStore, messages?: readonly string[]): FieldWo
       rival: () => fieldScripts.names.rival(),
       counterpart: () => fieldScripts.names.counterpart(),
     },
+    services: fieldScripts.services,
   })
+  world.player = playerMovable
+  return world
 }
 
-/** 맵이 바뀌면 읽을 뱅크도 바뀐다. 실패해도 게임은 계속 돈다 — 글만 빈다 */
-export async function loadMapDialogue(mapId: number): Promise<void> {
+/** `constants/scrcmd.h` — 이동 명령이 주인공을 가리키는 번호 */
+const LOCALID_PLAYER = 0xff
+
+/**
+ * 주인공을 이동 명령이 만질 수 있는 모양으로 감싼다.
+ *
+ * 좌표계가 다르다 — NPC는 타일 번호로 서 있고 주인공은 타일 **가운데**에 있다.
+ * 그래서 0.5를 빼고 더한다. 방향도 다르다: 우리는 라디안이고 원작은 0 북 · 1 남 ·
+ * 2 서 · 3 동이다
+ */
+const playerMovable: Movable = {
+  get x() { return worldState.player.position.x - 0.5 },
+  set x(v: number) { worldState.player.position.x = v + 0.5 },
+  get z() { return worldState.player.position.z - 0.5 },
+  set z(v: number) { worldState.player.position.z = v + 0.5 },
+  get dir() { return QUARTER_TO_DIR[quarterOf(worldState.player.facing)]! },
+  set dir(v: number) { worldState.player.facing = DIR_TO_FACING[v] ?? 0 },
+  visible: true,
+}
+
+/** 사분면(0 +z · 1 +x · 2 −z · 3 −x) → 원작 방향 */
+const QUARTER_TO_DIR = [DIR.south, DIR.east, DIR.north, DIR.west]
+/** 원작 방향 → `facing` 라디안. `atan2(vx, vz)`라 0이 +z(남쪽)다 */
+const DIR_TO_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
+
+/**
+ * 맵에 들어섰다. NPC를 세우고 그 맵의 대사 뱅크를 받는다.
+ *
+ * NPC 세우기는 **동기**여야 한다 — 화면이 같은 프레임에 그 목록을 그린다.
+ * 대사는 늦어도 되고, 실패해도 게임은 계속 돈다(글만 빈다)
+ */
+export function enterMap(mapId: number): void {
+  spawnNpcs(mapId, fieldScripts.vars)
+  resetTriggerTile()
   const header = mapById(mapId)
   if (!header || header.msg === fieldScripts.bank) return
   fieldScripts.bank = header.msg
-  const bank = await loadDialogueBank(locale, header.msg)
-  // 받는 사이에 맵이 또 바뀌었으면 늦게 온 것을 버린다
-  if (fieldScripts.bank === header.msg) fieldScripts.world?.setMessages(bank)
+  loadDialogueBank(locale, header.msg)
+    .then((bank) => {
+      // 받는 사이에 맵이 또 바뀌었으면 늦게 온 것을 버린다
+      if (fieldScripts.bank === header.msg) fieldScripts.world?.setMessages(bank)
+    })
+    .catch(() => { /* 글이 비는 것으로 끝난다 */ })
 }
 
 // ── 한 프레임 ────────────────────────────────────────────────────────────────
@@ -198,7 +244,7 @@ function step(ctx: ScriptContext, world: FieldWorld): void {
 function finish(): void {
   fieldScripts.ctx = null
   fieldScripts.world?.closeBox(true)
-  fieldScripts.world?.slots.clear()
+  fieldScripts.world?.reset()
   fieldScripts.vars.resetLocals()
   fieldScripts.onScriptEnd?.(fieldScripts.vars)
 }
@@ -387,8 +433,11 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
 
   vars.resetLocals()
   vars.set(VAR_LAST_TALKED, localID)
-  world.slots.clear()
+  world.reset()
+  world.target = npcActors.byLocalID.get(localID) ?? null
   world.lastMessage = null
+  world.scriptID = scriptID
+  world.services = fieldScripts.services
 
   const ctx = new ScriptContext(
     { vars, world, commands: commands.map }, fileBytes(data, target.file), target.file,
