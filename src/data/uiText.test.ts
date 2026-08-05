@@ -27,6 +27,8 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   saveInfo: 'save_info_window',
   mainMenu: 'main_menu_options',
   common: 'common_strings',
+  intro: 'rowan_intro',
+  naming: 'naming_screen',
 }
 
 describe('메뉴 글', () => {

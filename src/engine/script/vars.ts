@@ -88,4 +88,11 @@ export class VarStore {
   resetLocals(): void {
     this.local.fill(0)
   }
+
+  /** 새 게임. 세 벌을 다 비운다 — 이전 판의 플래그가 한 칸이라도 남으면 안 된다 */
+  reset(): void {
+    this.saved.fill(0)
+    this.flags.fill(0)
+    this.local.fill(0)
+  }
 }

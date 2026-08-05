@@ -61,6 +61,8 @@ export const TEXT_BANK_NAMES = [
   'save_info_window',
   'main_menu_options',
   'common_strings',
+  'rowan_intro',
+  'naming_screen',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

@@ -48,10 +48,14 @@ export function TitleScreen() {
 
   const at = (i: number, fallback: string): string => text[i] ?? fallback
 
+  /** 이어하기는 바로 필드로, 새 모험은 인트로를 거친다 */
   const go = (fresh: boolean): void => {
     const save = useSaveStore.getState()
-    const done = fresh ? save.resetSave() : save.loadReport()
-    void done.then(() => { navigate('/play') })
+    if (fresh) {
+      void save.resetSave().then(() => { navigate('/intro') })
+      return
+    }
+    void save.loadReport().then(() => { navigate('/play') })
   }
 
   return (

@@ -15,6 +15,10 @@ import { useSessionStore } from '../state/sessionStore'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
 const PlayRoute = lazy(() => import('./PlayRoute').then((m) => ({ default: m.PlayRoute })))
+// 인트로는 three를 안 쓴다. 그래도 타이틀 청크에 안 넣는 이유는 대사 인쇄기와
+// 뱅크 로더를 끌고 오기 때문이다 — "이어하기"로 들어오면 한 번도 안 쓴다
+const IntroRoute = lazy(() =>
+  import('../ui/intro/IntroScreen').then((m) => ({ default: m.IntroScreen })))
 
 let bootstrapped = false
 
@@ -45,6 +49,14 @@ export function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<TitleScreen />} />
+          <Route
+            path="/intro"
+            element={
+              <Suspense fallback={null}>
+                <IntroRoute />
+              </Suspense>
+            }
+          />
           <Route
             path="/play"
             element={

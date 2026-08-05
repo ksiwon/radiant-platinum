@@ -38,6 +38,10 @@ export const UI_BANK = {
   mainMenu: 550,
   /** `TEXT_BANK_COMMON_STRINGS` — 리포트 작성 흐름의 물음과 대답 */
   common: 213,
+  /** `TEXT_BANK_ROWAN_INTRO` — 인트로 45줄. 마박사의 말부터 라이벌 이름 후보까지 */
+  intro: 389,
+  /** `TEXT_BANK_NAMING_SCREEN` — "당신의 이름은?" */
+  naming: 422,
 } as const
 
 export type UiBank = keyof typeof UI_BANK
@@ -102,6 +106,50 @@ export const OPTIONS_TEXT = {
 
 /** 타이틀 화면 (`main_menu_options`) */
 export const MAIN_MENU = { continue_: 0, newGame: 1, player: 12, playtime: 13, dex: 14, badges: 15 } as const
+
+/**
+ * 인트로 (`rowan_intro`). 자리는 디컴프 `res/text/rowan_intro.json`의 줄 순서다.
+ *
+ * 2~5번(조작 설명)은 **DS 하드웨어 이야기다** — 십자키·터치스크린·X/Y 아이콘.
+ * 그중 2·3번은 우리에게도 맞는 말이라 쓰고, 4·5번(터치스크린)은 안 쓴다.
+ * 원작 글을 고쳐 쓰지는 않는다 — 안 맞는 것을 빼기만 한다.
+ */
+export const INTRO_TEXT = {
+  hello: 0,
+  myName: 1,
+  controls: [2, 3],
+  /** 4·5번은 터치스크린 설명이라 뺐다 */
+  controlsSkipped: [4, 5],
+  understood: 7,
+  anythingElse: 9,
+  adventure: [10, 11, 12, 13, 14, 15],
+  widelyInhabited: 16,
+  havePokeBall: 17,
+  wrongButton: 18,
+  liveAlongside: 19,
+  aboutYourself: 20,
+  genderAsk: 21,
+  confirmBoy: 22,
+  confirmGirl: 23,
+  nameAsk: 24,
+  confirmNameMale: 25,
+  confirmNameFemale: 26,
+  soYoure: 27,
+  rivalNameAsk: 28,
+  confirmRivalName: 29,
+  end: 30,
+  choiceControls: 31,
+  choiceAdventure: 32,
+  choiceNoInfo: 33,
+  yes: 34,
+  no: 35,
+  /** 36 = "스스로 결정한다!", 37~44 = 후보 여덟 */
+  rivalChoiceOwn: 36,
+  rivalChoices: [37, 38, 39, 40, 41, 42, 43, 44],
+} as const
+
+/** 이름 짓기 화면 (`naming_screen`) */
+export const NAMING_TEXT = { player: 0, rival: 3 } as const
 
 /** 가방 뱅크가 상점 글까지 갖고 있다 (`TEXT_BANK_BAG`) */
 export const SHOP_TEXT = {

@@ -105,7 +105,8 @@ export function OptionsScreen() {
   }, !confirming)
 
   if (confirming) return <ResetConfirm text={text} onNo={() => { setConfirming(false) }} onYes={() => {
-    void resetSave().then(() => { closeAll(); location.reload() })
+    // 리포트를 지우고 타이틀로 나간다. 처음부터면 인트로부터 다시 봐야 한다
+    void resetSave().then(() => { closeAll(); location.assign(import.meta.env.BASE_URL) })
   }} />
 
   return (

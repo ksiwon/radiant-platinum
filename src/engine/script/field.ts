@@ -76,6 +76,35 @@ export const fieldScripts = {
  * 새 `VarStore`로 갈아 끼우지 않고 **내용만 덮어쓴다** — 이미 만들어진 세계와
  * 실행 문맥이 같은 객체를 들고 있기 때문이다
  */
+/**
+ * 새 게임의 플래그·변수를 세운다 (`FieldSystem_InitNewGameState`).
+ *
+ * 원작은 `SCRIPT_ID(INIT_NEW_GAME, 0)`을 **끝까지 한 번에** 돌린다
+ * (`ScriptContext_Run`을 while로 감는다). 그 스크립트가 하는 일은 아직 안 나온
+ * NPC 130여 명을 숨기는 플래그를 세우는 것이다 — 안 돌리면 마박사도 라이벌도
+ * 처음부터 길에 서 있다.
+ *
+ * **표를 손으로 옮기지 않는다.** 우리가 이미 그 바이트코드를 싣고 있다.
+ *
+ * @returns 돌렸으면 true. 스크립트를 아직 못 받았으면 false
+ */
+export function initNewGame(): boolean {
+  const { data, commands, vars } = fieldScripts
+  if (data === null || commands === null) return false
+  const file = data.meta.files.findIndex((f) => f.name === 'scripts_init_new_game')
+  if (file < 0) return false
+
+  vars.reset()
+  const world = makeWorld(vars)
+  const ctx = new ScriptContext(
+    { vars, world, commands: commands.map }, fileBytes(data, file), file,
+  )
+  ctx.start(entryOffset(data, file, 0))
+  // 대사도 이동도 없는 스크립트라 한 번에 끝난다. 상한은 되돌아 도는 것을 막는 자리다
+  ctx.step(STEP_CAP)
+  return true
+}
+
 export function loadVars(saved: Uint16Array, flags: Uint8Array): void {
   const target = fieldScripts.vars
   target.saved.set(saved.subarray(0, target.saved.length))

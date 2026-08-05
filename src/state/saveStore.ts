@@ -64,11 +64,10 @@ export interface SaveData {
   /** 스크립트 변수 288칸 */
   vars: SaveVars
   /**
-   * 리포트를 쓴 자리.
+   * 지금 서 있는 자리. 리포트를 쓸 때 여기 값이 남는다.
    *
    * 엔진과 **같은 번호 체계**다 — `map`은 맵 헤더 번호, `matrix`는 그 맵이 선
-   * 격자 번호다. 워프가 쓰는 것과 같은 짝이라 되돌아갈 때 그대로 넘겨주면 된다.
-   * `map`이 음수면 아직 리포트를 안 쓴 새 판이고, 그때는 기본 스폰으로 간다
+   * 격자 번호다. 워프가 쓰는 것과 같은 짝이라 되돌아갈 때 그대로 넘겨주면 된다
    */
   position: { map: number; matrix: number; x: number; z: number; facing: number }
   money: number
@@ -80,21 +79,13 @@ export const SAVE_VERSION = 4
 export const MAX_MONEY = 999999
 
 /**
- * 새 세이브의 가방.
+ * 새 게임이 시작되는 자리 (`src/location.c`의 `sPlayerStartLocation`).
  *
- * ⚠️ **원작은 빈 가방으로 시작한다.** 몬스터볼 5개는 예진호수에서 마박사가
- * 주는 것이고, 그 장면은 인트로 스크립트에 있는데 인트로가 아직 없다. 지금
- * 빈 가방으로 두면 야생 포켓몬을 아예 못 잡으므로 그 자리를 임시로 채운다 —
- * 인트로가 붙으면 이 함수는 `emptyBag()`으로 되돌려야 한다
+ * 떡잎마을 주인공 집 2층. 맵 번호는 디컴프의 `map_headers.txt` 줄 순서와 우리
+ * 표가 411~418에서 그대로 겹쳐서 확정된다 (411 T01 = TWINLEAF_TOWN,
+ * 415 T01R0202 = TWINLEAF_TOWN_PLAYER_HOUSE_2F).
  */
-function startingBag(): Pockets {
-  const POKE_BALL = 4
-  const POTION = 17
-  return addItem(addItem(emptyBag(), POCKET_BALLS, POKE_BALL, 5)!, POCKET_MEDICINE, POTION, 5)!
-}
-
-const POCKET_BALLS = 2
-const POCKET_MEDICINE = 1
+export const START_LOCATION = { map: 415, matrix: 129, x: 4, z: 6, facing: 0 } as const
 
 export function createNewSave(): SaveData {
   return {
@@ -115,12 +106,13 @@ export function createNewSave(): SaveData {
     rivalName: '',
     party: [],
     boxes: [],
-    bag: startingBag(),
+    // 원작도 빈 가방으로 시작한다. 몬스터볼은 예진호수에서 마박사가 준다
+    bag: emptyBag(),
     badges: 0,
     pokedex: { seen: new Uint8Array(DEX_BYTES), caught: new Uint8Array(DEX_BYTES) },
     flags: new Uint8Array(FLAG_BYTES),
     vars: new Uint16Array(SAVED_VAR_COUNT),
-    position: { map: -1, matrix: 0, x: 0, z: 0, facing: 0 },
+    position: { ...START_LOCATION },
     money: 3000,
   }
 }
@@ -146,6 +138,13 @@ interface SaveStore extends SaveData {
   hydrated: boolean
   /** 이 판이 리포트에서 이어 온 것인가. 타이틀이 "이어하기"를 띄울지 정한다 */
   loaded: boolean
+  /**
+   * 필드가 뜨면 `scripts_init_new_game`을 돌려야 한다.
+   *
+   * 인트로가 세우고 `MapStreamer`가 내린다. 스크립트 자료는 필드가 뜰 때 오므로
+   * 인트로 화면에서는 아직 못 돌린다
+   */
+  pendingInit: boolean
   markSeen: (dexNo: number) => void
   markCaught: (dexNo: number) => void
   /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
@@ -168,6 +167,28 @@ interface SaveStore extends SaveData {
   loadReport: () => Promise<boolean>
   /** 처음부터. 리포트도 같이 지운다 — 안 지우면 다음에 켤 때 옛 판이 되살아난다 */
   resetSave: () => Promise<void>
+}
+
+/**
+ * 인트로가 끝났다. 이름·성별·라이벌 이름을 적고 판을 연다.
+ *
+ * 플래그는 **여기서 안 세운다** — 필드가 뜰 때 `scripts_init_new_game`이 돈다
+ * (`MapStreamer`). 그 표를 손으로 옮기면 130여 줄을 베끼는 것이고, 우리는 이미
+ * 그 바이트코드를 싣고 있다
+ */
+export function startNewGame(
+  who: { name: string; gender: TrainerInfo['gender']; rivalName: string },
+): void {
+  const fresh = createNewSave()
+  useSaveStore.setState({
+    ...fresh,
+    trainer: { ...fresh.trainer, name: who.name, gender: who.gender },
+    rivalName: who.rivalName,
+    hydrated: true,
+    loaded: false,
+    /** 필드가 뜨면 새 게임 초기화를 돌려야 한다 */
+    pendingInit: true,
+  })
 }
 
 /** 상태 필드만. 액션은 저장하지 않는다 */
@@ -193,6 +214,7 @@ export const useSaveStore = create<SaveStore>()(
       ...createNewSave(),
       hydrated: false,
       loaded: false,
+      pendingInit: false,
 
       markSeen: (dexNo) =>
         set((s) => ({ pokedex: { ...s.pokedex, seen: dexSet(s.pokedex.seen, dexNo) } })),

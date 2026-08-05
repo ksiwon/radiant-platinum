@@ -224,6 +224,28 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
+  it('새 게임 초기화가 원작 표를 그대로 세운다', () => {
+    // `FieldSystem_InitNewGameState`가 도는 스크립트다. 하는 일은 아직 안 나온
+    // NPC를 숨기는 플래그를 세우는 것이고, 안 돌리면 마박사도 라이벌도 처음부터
+    // 길에 서 있다.
+    //
+    // **개수로 확인한다.** 원본(`scripts_init_new_game.s`)에 `SetFlag`가 112줄,
+    // `SetVar`가 3줄이고 `ClearFlag`는 없다. 그 112개가 그대로 서야 한다 —
+    // 플래그 번호를 하나씩 적어 두면 그것대로 베끼는 것이 된다
+    const file = meta.files.findIndex((f) => f.name === 'scripts_init_new_game')
+    expect(file).toBeGreaterThanOrEqual(0)
+    const vars = new VarStore()
+    run(file, 0, { vars })
+
+    let set = 0
+    for (let i = 0; i < vars.flags.length * 8; i++) if (vars.checkFlag(i)) set++
+    expect(set).toBe(112)
+
+    // 변수 셋: 기타리스트·오르burgh 게이트 등산가·연승 보너스
+    const nonZero = [...vars.saved].filter((v) => v !== 0)
+    expect(nonZero).toHaveLength(3)
+  })
+
   it('떡잎마을 기타리스트가 플래그에 따라 다른 대사로 간다', () => {
     // 스크립트 → 진입점 → 분기 → 대사창까지 한 줄로 이어지는지 보는 기준점.
     // 원본(scripts_twinleaf_town.s)에서 이 루틴은 이렇게 시작한다:

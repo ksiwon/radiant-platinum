@@ -13,7 +13,9 @@ import { BackSide, DirectionalLight, InstancedMesh, Mesh, Object3D } from 'three
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, world } from '../engine/map/world'
-import { enterMap, fieldScripts, initFieldScripts, loadVars } from '../engine/script/field'
+import {
+  enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars,
+} from '../engine/script/field'
 import { installFieldServices } from './fieldServices'
 import { npcActors } from '../engine/actor/npcs'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
@@ -117,19 +119,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setGameActive(!inBattle)
   }, [battlePhase])
 
-  // 리포트가 있으면 그 자리에서 시작한다. 실내면 그 격자를 받아야 하므로
-  // 오버월드로 한 번 세운 뒤 갈아 끼운다 — 첫 프레임에 빈 화면을 안 보이려고
+  // 세이브가 적어 둔 자리에서 시작한다. 새 판이면 그것이 주인공 방이고
+  // (`START_LOCATION`) 이어하기면 리포트를 쓴 자리다.
+  //
+  // 실내는 그 격자를 따로 받아야 해서 오버월드로 한 번 세운 뒤 갈아 끼운다 —
+  // 첫 프레임에 빈 화면을 안 보이려고
   useEffect(() => {
     enter(initial, spawn.map, spawn.x, spawn.z, 0)
     const at = useSaveStore.getState().position
-    if (at.map >= 0) {
-      worldState.player.facing = at.facing
-      if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
-      else {
-        void gridFor(at.matrix)
-          .then((next) => { enter(next, at.map, at.x, at.z, at.matrix) })
-          .catch(() => { /* 못 받으면 기본 스폰에 그대로 선다 */ })
-      }
+    worldState.player.facing = at.facing
+    if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
+    else {
+      void gridFor(at.matrix)
+        .then((next) => { enter(next, at.map, at.x, at.z, at.matrix) })
+        .catch(() => { /* 못 받으면 기본 스폰에 그대로 선다 */ })
     }
     return () => {
       activeZone.grid = null
@@ -167,7 +170,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     fieldScripts.onScriptEnd = (vars) => {
       useSaveStore.getState().commitScriptState(vars.saved, vars.flags)
     }
-    void initFieldScripts('ko')
+    void initFieldScripts('ko').then(() => { setScriptsReady(true) })
     const uninstall = installFieldServices('ko')
     return () => {
       uninstall()
@@ -176,31 +179,29 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [generic])
 
   useEffect(() => {
-    loadGenericNames('ko').then((list) => {
-      setGeneric(list)
-      // 이름 짓기 화면이 아직 없다. 그동안은 **원작이 제안하는 표의 첫 이름**을
-      // 세이브에도 박아 둔다 — 대사만 대체 이름을 쓰고 메뉴·리포트는 빈칸이면
-      // 같은 사람이 두 이름으로 보인다. 인트로가 붙으면 이 블록은 사라진다
-      const save = useSaveStore.getState()
-      if (save.trainer.name === '') {
-        useSaveStore.setState({
-          trainer: {
-            ...save.trainer,
-            name: pickName(list, save.trainer.gender === 'girl' ? 'playerFemale' : 'playerMale', 0),
-          },
-          rivalName: save.rivalName || pickName(list, 'rival', 0),
-        })
-      }
-    }).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
+    loadGenericNames('ko').then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
   }, [])
 
-  // 세이브가 복원되면 그 플래그·변수를 붓는다. 비동기라 첫 프레임에는 아직 없다
+  // 플래그·변수를 붓는다. 새 판이면 원작의 초기화 스크립트를 **돌려서** 세운다 —
+  // 그 표는 NPC 130여 명을 숨기는 플래그고, 손으로 옮기면 베끼는 것이 된다.
+  //
+  // 스크립트 자료가 온 뒤여야 한다(`scriptsReady`). 그리고 세우고 나면 **NPC를
+  // 다시 세운다** — 숨김 플래그가 등장 조건이라, 먼저 세워 두면 아직 안 나올
+  // 사람이 방 안에 서 있다
   const hydrated = useSaveStore((s) => s.hydrated)
+  const [scriptsReady, setScriptsReady] = useState(false)
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !scriptsReady) return
     const save = useSaveStore.getState()
-    loadVars(save.vars, save.flags)
-  }, [hydrated])
+    if (save.pendingInit) {
+      if (!initNewGame()) return
+      useSaveStore.setState({ pendingInit: false })
+      save.commitScriptState(fieldScripts.vars.saved, fieldScripts.vars.flags)
+    } else {
+      loadVars(save.vars, save.flags)
+    }
+    if (world.mapId >= 0) enterMap(world.mapId)
+  }, [hydrated, scriptsReady])
 
   // 존만 바뀌는 경우(마을 → 도로)도 맵이 바뀐 것이다
   useEffect(() => { enterMap(mapId) }, [mapId])

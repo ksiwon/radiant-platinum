@@ -135,6 +135,10 @@ const EXTRA_BANKS = [
   // 설정·리포트 화면. 상점은 따로 뱅크가 없고 가방 뱅크(TEXT_BANK_BAG)를 쓴다 —
   // "몇 개 파시겠습니까?"·"용돈"·"예/아니오"가 전부 거기 있다
   'TEXT_BANK_OPTIONS_MENU', 'TEXT_BANK_SAVE_INFO_WINDOW', 'TEXT_BANK_MAIN_MENU_OPTIONS',
+  // 인트로. 마박사의 말과 이름 짓기 화면은 필드 스크립트가 아니라 따로 도는
+  // 응용 프로그램이라(`applications/rowan_intro`, `naming_screen`) 스크립트가
+  // 이 뱅크를 안 가리킨다
+  'TEXT_BANK_ROWAN_INTRO', 'TEXT_BANK_NAMING_SCREEN',
 ]
 
 function main() {
