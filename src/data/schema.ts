@@ -166,6 +166,49 @@ export const bdhcFileSchema = z.object({
   chunks: z.array(z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])),
 })
 
+/**
+ * 이벤트 스크립트 (DATA.md §2.10).
+ *
+ * 바이트코드는 `scripts.bin`에 롬 그대로 들어 있고, 여기 있는 것은 그것을
+ * 읽는 데 필요한 것뿐이다 — 파일 경계, 명령별 피연산자 폭, scriptID 라우팅.
+ */
+const scriptArgsSchema = z.string().regex(/^(\d\*?( \d\*?)*)?$/)
+
+export const scriptFileSchema = z.object({
+  count: z.number().int().positive(),
+  bytes: z.number().int().positive(),
+  files: z.array(z.object({
+    name: z.string(),
+    /** `init`은 코드가 아니라 맵 진입·매 프레임에 돌 것을 고르는 작은 표다 */
+    kind: z.enum(['code', 'init']),
+    at: z.number().int().nonnegative(),
+    size: z.number().int().nonnegative(),
+    entries: z.number().int().nonnegative(),
+  })).nonempty(),
+  /** 큰 값부터 내려오며 처음 걸리는 구역이 답이다 (script_manager.c) */
+  ranges: z.array(z.object({
+    from: z.number().int().positive(),
+    file: z.number().int().nonnegative().nullable(),
+    bank: z.string(),
+  })).nonempty(),
+  /**
+   * opcode로 색인한다. `args`는 피연산자 폭을 띄어쓰기로 나열한 것이고
+   * `*`는 상대 오프셋 — 그 필드 **바로 뒤** 주소에 더해야 목적지가 나온다.
+   *
+   * 여섯 명령은 길이가 첫 피연산자 값에 달렸다. `on`이 그 자리를 가리키고
+   * `cases`가 값별로 뒤에 붙는 것을 준다.
+   */
+  commands: z.array(z.object({
+    name: z.string(),
+    args: scriptArgsSchema,
+    on: z.number().int().nonnegative().optional(),
+    cases: z.array(z.object({
+      v: z.array(z.number().int()).nonempty(),
+      args: scriptArgsSchema,
+    })).optional(),
+  })).nonempty(),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -181,3 +224,4 @@ export type Labels = z.infer<typeof labelsSchema>
 export type TrainerMon = z.infer<typeof trainerMonSchema>
 export type Trainer = z.infer<typeof trainerSchema>
 export type BdhcFile = z.infer<typeof bdhcFileSchema>
+export type ScriptFile = z.infer<typeof scriptFileSchema>

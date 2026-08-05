@@ -24,7 +24,7 @@
 | 레벨업 기술 | `poketool/personal/wotbl.narc` | ✅ 508개, 6753항목 |
 | 기술 데이터 | `poketool/waza/pl_waza_tbl.narc` | ✅ 471개 × 16B |
 | 트레이너 | `poketool/trainer/trdata` + `trpoke` | ✅ 928명 × (20B + 가변), AI 플래그 포함 |
-| 이벤트 스크립트 | `fielddata/script/scr_seq.narc` | ❌ **최대 미지** (1124개) |
+| 이벤트 스크립트 | `fielddata/script/scr_seq.narc` | ✅ **포맷 확정** — 1124개를 디컴프 원본과 바이트 대조 (§2.10) |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 게임에는 아직 안 붙였다 |
 | BGM | `data/sound/pl_sound_data.sdat` | ✅ 구조 파싱 / 재생 미검증 |
 | 캐릭터 모델·애니메이션 | BDSP 덤프 (롬 아님) | ✅ 추출 (PLAN §4.3.1) |
@@ -368,6 +368,101 @@ trpoke (개체당 8~18B, NARC가 4B 경계로 패딩)
 
 ---
 
+### 2.10 scr_seq — 이벤트 스크립트 (1124개)
+
+NPC 대화, 트레이너전 진입, 스타터 이벤트, 체육관, 상점 — 필드에서 벌어지는 일은
+전부 여기 있다. **바이트코드**이고, 명령이 840개다.
+
+**포맷을 추측으로 뚫지 않았다.** [pokeplatinum 디컴프](https://github.com/pret/pokeplatinum)가
+스크립트 1124개를 전부 어셈블러 원본으로 갖고 있고, 명령 표(`asm/macros/scrcmd.inc`)도
+기계가 읽을 수 있는 형태다:
+
+```
+.macro Message messageID       →  opcode 0x2C 뒤에 u8 하나
+.short SCRCMD_MESSAGE
+.byte \messageID
+.endm
+```
+
+그래서 표를 손으로 옮기지 않고 매크로 파일에서 뽑는다(`tools/extract/scrcmd-table.js`,
+840/840). 손으로 옮기면 반드시 틀리고, 틀려도 티가 안 난다 — 폭이 하나 어긋나면
+그 뒤가 전부 밀리는데 대개 다음 바이트가 우연히 유효한 명령으로 읽힌다.
+
+#### 파일 구조
+
+```
++0   s32  진입점 0        목적지 = (이 필드 주소 + 4) + 값
++4   s32  진입점 1
+...
+     u16  0xFD13          표 끝 (ScriptEntryEnd)
+     ...  코드            u16 opcode + 피연산자
+```
+
+실행도 같다 (`src/script_manager.c`):
+
+```c
+scriptPtr  = base + offsetID * 4;
+scriptPtr += ScriptContext_ReadWord(ctx);   // 읽고 나면 포인터는 이미 4 지나 있다
+```
+
+맵 이벤트가 들고 있는 `script` 번호에서 **1을 빼면** 진입점 번호다. 2000 이상은
+맵이 아니라 공용 스크립트 구역이고(`SCRIPT_RANGE_TABLE`, 30개), 큰 값부터 내려오며
+처음 걸리는 구역이 답이다.
+
+#### 조심할 것 셋
+
+**① 1124개 중 549개는 코드가 아니다.** 맵에 들어올 때·재개할 때·매 프레임 돌 것을
+고르는 작은 표(`InitScriptEntry`)다. 구조가 전혀 다른데 **코드로 읽어도 예외 없이
+통과한다** — 실제로 그렇게 읽고 "1124개 전부 해독 성공"이라는 결과를 받았었다.
+디컴프 원본이 `InitScriptEntry`를 쓰는지로 가른다.
+
+**② 명령 여섯 개는 길이가 고정이 아니다.** 첫 피연산자 값에 따라 뒤에 붙는 것이
+달라진다(비밀의 힘·플래시·안개제거의 필드기술 함수, 유니온룸, TV, 신비한 선물).
+이걸 빠뜨리면 그 명령을 만나는 순간 그 뒤 전체가 밀린다.
+
+**③ 끝 표시(`0xFD13`)에 기대면 안 된다.** 원본이 `ScriptEntryEnd`를 빠뜨린 파일이
+셋 있다. 게임은 `base + offsetID * 4`로 곧장 들어가니 없어도 돌아간다. 표의 끝은
+**가장 앞선 목적지**로 정한다 — 코드가 시작되는 자리보다 뒤에 진입점은 없다.
+
+#### 검증 — 1124/1124 바이트 일치
+
+"디스어셈블이 오류 없이 끝났다"는 증거가 되지 못한다(①이 그 반례다). 그래서
+반대로 했다: **디컴프 원본을 조립해서 롬에서 꺼낸 바이트와 맞춰 본다**
+(`tools/extract/scrasm.js` + `pnpm verify:scripts`). 폭이 하나만 틀려도 그 지점부터
+전부 어긋나므로, 1124개가 전부 일치하면 표에 구멍이 없다는 뜻이다.
+
+GNU as 전체가 아니라 이 파일들이 실제로 쓰는 것만 구현한다. 그 과정에서 드러난
+문법이 다섯 가지 있다:
+
+| 문법 | 왜 필요했나 |
+|---|---|
+| 공백으로 나뉘는 인자·매개변수 | `DrawSignpostInstantMessage \messageID SIGNPOST_TYPE_MAP` — 쉼표가 없다 |
+| `&&`·`\|\|`·비교·비트 연산 | `SetVar`가 두 번째 인자가 변수 ID 범위인지 보고 다른 명령이 된다 |
+| 인자 있는 `#define` | `RGB(0, 0, 0)` |
+| C 열거형 | `PADDING_MODE_ZEROES`가 `#define`이 아니라 `enum` 안에 있다 |
+| `.ifnb` | 안 넘긴 인자를 보는 조건 (TV 방송) |
+
+값 쪽에서도 하나 걸렸다. `generated/*.txt` 열거형은 보통 줄 번호가 값인데 **넷은
+비트마스크**다(`generated/meson.build`의 `'type': 'mask'`). 이걸 모르면
+`SetPlayerState`에 8이 들어갈 자리에 3이 들어간다 — **길이가 같아서 조립은 통과하고
+동작만 틀린다.** 롬과 바이트로 맞춰 보지 않았으면 못 잡았을 종류의 오류다.
+
+마지막 하나는 정렬이다. 원본 파일 하나가 `.balign 0`으로 끝나는데(무시된다),
+롬 쪽은 1바이트가 더 길다. NARC가 **멤버를 4바이트에 맞춰 채우기** 때문이다 —
+1124개 전부 4의 배수다.
+
+#### 싣는 형태
+
+**바이트코드를 그대로 싣는다.** 전부 288KB, brotli 71KB다. 우리 쪽 표현으로 옮기면
+반드시 뭔가 흘리는데(조건부 길이, 도달 불가 코드, 정렬) 그럴 만큼 얻는 것이 없다.
+VM이 원본 바이트를 그대로 돌면 DS와 같은 것을 한다.
+
+`scripts.json`에는 그것을 읽는 데 필요한 것만 담는다 — 파일 경계, 명령 840개의
+피연산자 폭, scriptID 라우팅 표 30개. 폭이 있으면 **아직 구현 안 한 명령도 정확한
+길이로 건너뛸 수 있다**. 그게 중요하다.
+
+---
+
 ## 3. 추출 파이프라인
 
 ```
@@ -380,6 +475,10 @@ tools/
     matrices.js     행렬별 충돌 격자 → 0.bin / interiors.bin
     bdhc.js         지면 높이 → bdhc.json + bdhc.bin
     events.js       워프·NPC → events.json
+    scrcmd-table.js 스크립트 명령 840개의 피연산자 폭 (디컴프 매크로에서)
+    scrasm.js       디컴프 .s를 조립 — 롬과 대조해 명령표를 검증한다
+    scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
+    scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
     moves.js        waza_tbl → moves.json
@@ -388,7 +487,7 @@ tools/
 
 `spike/`와 `extract/`를 나누는 이유: 스파이크 코드는 **틀린 가설을 담고 있을 수 있다**. 실제로 charmap·BDSP 채널 매핑·풀숲 타일이 그랬다. NDS 파일시스템과 NARC 파서만 예외로 spike에서 그대로 쓴다 — 크기 합 검증을 666/666, 534/534로 통과한 실측 확정이라 가설이 아니다.
 
-`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → bdhc → events → encounters → species → moves → trainers). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
+`pnpm extract`가 순서대로 전부 돌린다 (headers → matrices → bdhc → events → scripts → encounters → species → moves → trainers). 앞의 산출물을 뒤가 참조하므로 순서가 있다.
 
 ### 3.1 산출물
 
@@ -400,6 +499,7 @@ tools/
 | `matrices/0.json` + `0.bin` (오버월드) | 1859KB | 20.5KB |
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
 | `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
+| `scripts.json` + `scripts.bin` (스크립트 1124개) | 425KB | 86KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
 | `trainers.json` | 154KB | 11.5KB |
@@ -454,10 +554,9 @@ tools/
 
 | 항목 | 크기 | 왜 미뤘나 |
 |---|---|---|
-| **`scr_seq` 오퍼레이션** | 1124 파일 | 최대 미지. 바이트코드 VM이 필요하다. 대사·이벤트가 없어도 걸어다니고 조우하고 싸울 수 있다 |
 | 영어 트레이너 이름 | 928 | 미국 롬 뱅크가 43칸만 차 있다. 목표 로케일이 한국어라 급하지 않다 |
 | 도구 데이터 | 468 | 이름만 있고 효과·가격이 없다. 트레이너가 든 나무열매가 아직 sim에 안 들어간다 |
-| 간판(20B)·트리거(16B) | 682 / 186 | 스크립트 없이는 밟아도 할 일이 없다 |
+| 간판(20B)·트리거(16B) | 682 / 186 | 포맷은 뚫었다(§2.3). 스크립트 VM이 붙을 때 함께 |
 | NPC 필드 확정 | — | 좌표만으로 배치는 된다. 나머지는 모델·스크립트가 붙을 때 |
 | **BDHC(높이)** | 666 청크 | 트윈리프·201·202가 전부 평지다. 언덕이 있는 존에 도달할 때 |
 | NSBMD 지오메트리 | 666 청크 | 아트는 자체 제작이다(PLAN §4.2). 블록아웃 레퍼런스가 필요한 시점까지 |
