@@ -96,8 +96,8 @@ export function installDevConsole(): void {
     give,
     heal,
     party: show,
-    /** 세이브를 지운다. 새로 시작하고 싶을 때 */
-    reset: () => { useSaveStore.getState().resetSave() },
+    /** 리포트를 지우고 새 판으로. 설정의 "처음부터"와 같은 것이다 */
+    reset: () => { void useSaveStore.getState().resetSave() },
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt
   console.log(

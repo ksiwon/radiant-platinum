@@ -24,3 +24,7 @@ raw/models/*/baked/
 
 # tsc -b 캐시. 빌드 산출물이라 추적하지 않는다
 tsconfig.tsbuildinfo
+
+# 오프라인 렌더러가 굽는 확인용 그림. 산출물이 아니라 눈으로 보려고 만드는 것이다
+chunk-*.png
+town-*.png

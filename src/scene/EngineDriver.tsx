@@ -64,6 +64,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       interpolated.copy(p.prevPosition).lerp(p.position, gameLoop.alpha)
       sceneRefs.player.position.copy(interpolated)
       sceneRefs.player.rotation.y = p.facing
+      // 1인칭에서는 자기 몸이 화면을 가린다. 눈이 머리 안쪽에 있어서
+      // 안 끄면 얼굴 텍스처가 통째로 보인다
+      sceneRefs.player.visible = worldState.camera.mode !== 'first'
     }
 
     // 보행 포즈. 시뮬레이션이 아니라 표현이라 고정 스텝이 아닌 렌더 델타로 돈다 —

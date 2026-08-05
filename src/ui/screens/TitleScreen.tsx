@@ -1,5 +1,16 @@
-import { useEffect } from 'react'
+// 타이틀 — 이어할지 새로 시작할지.
+//
+// 두 갈래의 글은 원작 `main_menu_options` 뱅크에서 온다. 리포트가 있으면
+// "모험을 계속한다"가 위에 뜨고 그 아래 요약(주인공·플레이 시간·도감·배지)이
+// 붙는다 — 원작 메인 메뉴가 그렇게 생겼다.
+//
+// **리포트가 없으면 "계속한다"를 아예 안 보여준다.** 흐리게 두면 눌러 보고
+// 나서야 없다는 걸 알게 된다.
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { loadUiText, MAIN_MENU } from '../../data/uiText'
+import { readReport } from '../../state/report'
+import { dexHas, SAVE_VERSION, useSaveStore, type SaveData } from '../../state/saveStore'
 import * as css from './titleScreen.css'
 
 /** 게임 청크를 미리 받아둔다 — 클릭 시점의 대기를 없앤다 (PLAN §10.4) */
@@ -8,8 +19,12 @@ function prefetchGameChunk() {
   void import('../../app/PlayRoute')
 }
 
+const DEX_MAX = 493
+
 export function TitleScreen() {
   const navigate = useNavigate()
+  const [text, setText] = useState<string[]>([])
+  const [report, setReport] = useState<SaveData | null | undefined>(undefined)
 
   useEffect(() => {
     // 초기 렌더를 방해하지 않도록 유휴 시점에. Safari에는 requestIdleCallback이 없다
@@ -22,17 +37,82 @@ export function TitleScreen() {
     return () => window.clearTimeout(t)
   }, [])
 
+  useEffect(() => {
+    let alive = true
+    void readReport(SAVE_VERSION).then((data) => { if (alive) setReport(data) })
+      .catch(() => { if (alive) setReport(null) })
+    void loadUiText('mainMenu').then((bank) => { if (alive) setText(bank) })
+      .catch(() => { /* 우리 글로 떨어진다 */ })
+    return () => { alive = false }
+  }, [])
+
+  const at = (i: number, fallback: string): string => text[i] ?? fallback
+
+  const go = (fresh: boolean): void => {
+    const save = useSaveStore.getState()
+    const done = fresh ? save.resetSave() : save.loadReport()
+    void done.then(() => { navigate('/play') })
+  }
+
   return (
     <div className={css.wrap}>
       <h1 className={css.title}>pt-3d</h1>
+
+      {report && (
+        <>
+          <button
+            className={css.button}
+            onClick={() => { go(false) }}
+            onPointerEnter={prefetchGameChunk}
+            autoFocus
+          >
+            {at(MAIN_MENU.continue_, '모험을 계속한다')}
+          </button>
+          <dl className={css.summary}>
+            <dt>{at(MAIN_MENU.player, '주인공')}</dt>
+            <dd>{report.trainer.name || '이름 없음'}</dd>
+            <dt>{at(MAIN_MENU.playtime, '플레이 시간')}</dt>
+            <dd>{clock(report.trainer.playtimeMs)}</dd>
+            <dt>{at(MAIN_MENU.dex, '포켓몬 도감')}</dt>
+            <dd>{countDex(report.pokedex.caught)}마리</dd>
+            <dt>{at(MAIN_MENU.badges, '가지고 있는 배지')}</dt>
+            <dd>{countBadges(report.badges)}개</dd>
+          </dl>
+        </>
+      )}
+
       <button
         className={css.button}
-        onClick={() => navigate('/play')}
+        onClick={() => { go(true) }}
         onPointerEnter={prefetchGameChunk}
+        autoFocus={!report}
       >
-        게임 시작
+        {at(MAIN_MENU.newGame, '새로운 모험을 시작한다')}
       </button>
-      <p className={css.hint}>WASD/방향키 이동 · Shift 달리기 · 라우트 왕복 시 씬 유지 검증용</p>
+      {report && (
+        <p className={css.hint}>새로 시작하면 위 리포트는 지워집니다</p>
+      )}
+      <p className={css.hint}>
+        WASD·방향키 이동 · Shift 달리기 · X 메뉴 · V 시점 · Z 말 걸기
+      </p>
     </div>
   )
+}
+
+/** `HH:MM`. 원작 요약창도 시·분까지만 보여준다 */
+function clock(ms: number): string {
+  const minutes = Math.floor(ms / 60000)
+  return `${String(Math.floor(minutes / 60))}:${String(minutes % 60).padStart(2, '0')}`
+}
+
+function countDex(field: Uint8Array): number {
+  let n = 0
+  for (let i = 1; i <= DEX_MAX; i++) if (dexHas(field, i)) n++
+  return n
+}
+
+function countBadges(mask: number): number {
+  let n = 0
+  for (let i = 0; i < 8; i++) if (mask & (1 << i)) n++
+  return n
 }

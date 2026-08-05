@@ -9,14 +9,24 @@
 import { create } from 'zustand'
 import { setUiCapture } from '../engine/input/keyboard'
 
-export type MenuScreen = 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard'
+export type MenuScreen =
+  | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
 
 interface MenuStore {
   stack: MenuScreen[]
   /** 맨 위 화면. 없으면 null */
   top: MenuScreen | null
+  /**
+   * 상점이 팔 물건. 스크립트가 상점을 열 때 같이 준다.
+   *
+   * 화면 상태가 아니라 **그 화면을 여는 인자**라 여기 둔다 — 컴포넌트에 두면
+   * 스크립트가 값을 건넬 길이 없다
+   */
+  shopStock: number[]
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
+  /** 상점을 연다. 재고를 같이 받는다 */
+  openShop: (items: readonly number[]) => void
   back: () => void
   closeAll: () => void
 }
@@ -29,6 +39,13 @@ function capture(stack: MenuScreen[]): void {
 export const useMenuStore = create<MenuStore>()((set) => ({
   stack: [],
   top: null,
+  shopStock: [],
+
+  openShop: (items) => set(() => {
+    const stack: MenuScreen[] = ['shop']
+    capture(stack)
+    return { stack, top: 'shop' as const, shopStock: [...items] }
+  }),
 
   open: (screen) => set(() => {
     const stack = [screen]

@@ -6,15 +6,16 @@
 // 배틀 결과를 붙잡는 방식이 조금 특이하다. 배틀 스토어는 화면을 닫을 때
 // `outcome`을 지우는데, 스크립트는 **닫힌 뒤에** 결과를 묻는다. 그래서 결과가
 // 정해지는 순간 여기서 따로 받아 둔다.
-import { loadDialogueBank, loadItemNames, loadItems, loadTrainers } from '../data/gameData'
+import { loadDialogueBank, loadItemNames, loadItems, loadMarts, loadTrainers } from '../data/gameData'
 import { canFit, quantity } from '../engine/bag/bag'
+import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useSaveStore } from '../state/saveStore'
 import type { ItemTable } from '../data/gameData'
 import type { FieldServices } from '../engine/script/world'
-import type { Trainer } from '../data/schema'
+import type { MartTable, Trainer } from '../data/schema'
 
 /** `TEXT_BANK_NPC_TRAINER_MESSAGES` — 트레이너 928명의 싸움 전후 대사 */
 const TRAINER_MESSAGE_BANK = 617
@@ -28,6 +29,7 @@ let trainers: { get(id: number): Trainer } | null = null
 let trainerMessages: string[] = []
 let items: ItemTable | null = null
 let itemNames: string[] = []
+let marts: MartTable | null = null
 
 /** 자료가 아직 안 왔으면 도구 주머니로 본다 — 번호 0이 그 자리다 */
 const pocketOf = (item: number): number => items?.all[item]?.pocket ?? 0
@@ -57,6 +59,7 @@ export function installFieldServices(locale: 'en' | 'ko' | 'ja' = 'ko'): () => v
     .catch(() => { /* 대사만 빈다 */ })
   void loadItems().then((table) => { items = table }).catch(() => { /* 주머니가 0으로 뭉친다 */ })
   void loadItemNames(locale).then((names) => { itemNames = names }).catch(() => { /* 이름만 빈다 */ })
+  void loadMarts().then((table) => { marts = table }).catch(() => { /* 상점이 빈 채로 뜬다 */ })
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
@@ -108,6 +111,14 @@ const services: FieldServices = {
 
   openStartMenu: () => { useMenuStore.getState().open('start') },
   menuOpen: () => useMenuStore.getState().stack.length > 0,
+
+  openShop: (stock) => { useMenuStore.getState().openShop(stock) },
+
+  martStock: {
+    // 재고표를 아직 못 받았으면 빈 상점이 뜬다. 물건을 지어내지 않는다
+    common: () => (marts ? commonStock(marts, useSaveStore.getState().badges) : []),
+    specialties: (martID) => (marts ? specialtyStock(marts, martID) : []),
+  },
 
   money: {
     get: () => useSaveStore.getState().money,

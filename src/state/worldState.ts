@@ -15,6 +15,13 @@ export const worldState = {
     yaw: 0,
     distance: 8,
     height: 4,
+    /**
+     * 3인칭인가 1인칭인가.
+     *
+     * 조작은 둘이 같다 — 원작처럼 방향키가 **월드 축**을 가리키고 캐릭터가 그쪽을
+     * 본다. 1인칭은 그 시선 위에 눈을 얹은 것이라 이동 코드가 안 갈린다
+     */
+    mode: 'third' as 'third' | 'first',
   },
   time: { elapsed: 0, gameHour: 12 },
   // `interact`가 원작의 A, `cancel`이 B다. 대사창은 둘 다로 넘어가고

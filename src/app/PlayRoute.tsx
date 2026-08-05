@@ -5,6 +5,8 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { setGameActive } from '../engine/input/keyboard'
+import { useOptionsStore } from '../state/optionsStore'
+import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { MessageBox } from '../ui/field/MessageBox'
 import { MenuLayer } from '../ui/menu/MenuLayer'
@@ -13,6 +15,22 @@ export function PlayRoute() {
   const navigate = useNavigate()
   const setPhase = useSessionStore((s) => s.setPhase)
   const mountStage = useSessionStore((s) => s.mountStage)
+
+  // 타이틀을 안 거치고 /play로 바로 들어올 수 있다. 그때도 리포트는 봐야 한다
+  useEffect(() => {
+    if (!useSaveStore.getState().hydrated) void useSaveStore.getState().loadReport()
+  }, [])
+
+  // V로 시점을 바꾼다. 설정 화면에도 같은 항목이 있고 값은 한 곳에만 있다
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.code !== 'KeyV' || e.repeat) return
+      const options = useOptionsStore.getState()
+      options.set('view', options.view === 0 ? 1 : 0)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [])
 
   useEffect(() => {
     mountStage() // 멱등 — 이미 켜져 있으면 그대로 둔다

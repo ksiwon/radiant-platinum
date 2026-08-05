@@ -132,6 +132,9 @@ const EXTRA_BANKS = [
   // 다이아 판과 펄 판의 설명문이 종마다 달라서, Pt는 다이아 쪽을 쓴다
   'TEXT_BANK_SPECIES_CATEGORY', 'TEXT_BANK_SPECIES_POKEDEX_ENTRY_DIAMOND',
   'TEXT_BANK_SPECIES_HEIGHT', 'TEXT_BANK_SPECIES_WEIGHT',
+  // 설정·리포트 화면. 상점은 따로 뱅크가 없고 가방 뱅크(TEXT_BANK_BAG)를 쓴다 —
+  // "몇 개 파시겠습니까?"·"용돈"·"예/아니오"가 전부 거기 있다
+  'TEXT_BANK_OPTIONS_MENU', 'TEXT_BANK_SAVE_INFO_WINDOW', 'TEXT_BANK_MAIN_MENU_OPTIONS',
 ]
 
 function main() {

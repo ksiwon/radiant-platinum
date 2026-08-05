@@ -303,6 +303,17 @@ export const itemIconsSchema = z.object({
   count: z.number().int().positive(),
 })
 
+/**
+ * 상점 재고 (`include/data/mart_items.h`).
+ *
+ * `tier`는 뱃지 개수가 아니라 계단 번호다 — 뱃지 수를 계단으로 옮기는 사다리는
+ * `engine/bag/mart.ts`에 있다
+ */
+export const martTableSchema = z.object({
+  common: z.array(z.object({ item: z.number().int(), tier: z.number().int() })),
+  specialties: z.array(z.array(z.number().int())),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -323,3 +334,4 @@ export type ScriptCommand = ScriptFile['commands'][number]
 export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
 export type Item = z.infer<typeof itemSchema>
 export type ItemIcons = z.infer<typeof itemIconsSchema>
+export type MartTable = z.infer<typeof martTableSchema>

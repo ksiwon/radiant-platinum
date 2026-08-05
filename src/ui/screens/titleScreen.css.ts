@@ -1,4 +1,4 @@
-import { style } from '@vanilla-extract/css'
+import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 export const wrap = style({
@@ -36,4 +36,25 @@ export const button = style({
 export const hint = style({
   fontSize: 13,
   opacity: 0.7,
+})
+
+/** 리포트 요약. 원작 메인 메뉴도 이 넷을 보여준다 */
+export const summary = style({
+  display: 'grid',
+  gridTemplateColumns: 'auto auto',
+  columnGap: 32,
+  rowGap: 6,
+  margin: 0,
+  padding: '14px 24px',
+  fontSize: 15,
+  background: vars.panel.bg,
+  border: `1px solid ${vars.panel.border}`,
+  borderRadius: 10,
+})
+
+globalStyle(`${summary} dt`, { opacity: 0.65 })
+globalStyle(`${summary} dd`, {
+  margin: 0,
+  textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
 })

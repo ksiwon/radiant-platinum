@@ -90,13 +90,11 @@ function build(buffer: ArrayBuffer, fmt: ChunkFormat): ChunkMesh {
   const stride = fmt.vertexBytes
   const position = new Float32Array(n * 3)
   const uv = new Float32Array(n * 2)
-  const normal = new Float32Array(n * 3)
   const color = new Float32Array(n * 3)
   for (let i = 0; i < n; i++) {
     const o = head + i * stride
     for (let a = 0; a < 3; a++) position[i * 3 + a] = view.getInt16(o + a * 2, true) / fmt.posScale
     for (let a = 0; a < 2; a++) uv[i * 2 + a] = view.getFloat32(o + 8 + a * 4, true)
-    for (let a = 0; a < 3; a++) normal[i * 3 + a] = view.getInt8(o + 16 + a) / 127
     for (let a = 0; a < 3; a++) color[i * 3 + a] = view.getUint8(o + 20 + a) / 255
   }
   const indices = new Uint16Array(buffer, head + n * stride, meta.indices)
@@ -104,9 +102,18 @@ function build(buffer: ArrayBuffer, fmt: ChunkFormat): ChunkMesh {
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(position, 3))
   geometry.setAttribute('uv', new BufferAttribute(uv, 2))
-  geometry.setAttribute('normal', new BufferAttribute(normal, 3))
   geometry.setAttribute('color', new BufferAttribute(color, 3))
   geometry.setIndex(new BufferAttribute(new Uint16Array(indices), 1))
+  // ⚠️ **롬 법선은 안 쓴다.** 파일에는 들어 있지만 라이팅에 못 쓸 값이다 —
+  // 청크 0의 나무 600삼각형이 쓰는 법선이 (0,104,73)과 (0,127,0) 둘뿐이고
+  // 둘 다 위를 본다. 원작 필드는 조명을 안 걸고 그리니까 그래도 됐지만, 우리는
+  // 빛을 걸어서 나무 네 면이 전부 같은 밝기가 되고 결국 납작한 마름모로 보인다.
+  //
+  // 지오메트리에서 다시 계산하면 면마다 제 방향이 나온다. **평면 법선이 그대로
+  // 나온다** — 이 모델은 사각형마다 정점 4개를 따로 갖고 있어서(정점 3226개 ÷
+  // 삼각형 1628개 = 1.98) 이웃 면과 공유하는 정점이 없다. 부드럽게 뭉개질 자리가
+  // 없으니 비인덱스로 펼 필요도 없다
+  geometry.computeVertexNormals()
   // 서브메시마다 재질이 다르다. three는 그룹 순서대로 재질 배열을 쓴다
   meta.submeshes.forEach(([, start, count], i) => { geometry.addGroup(start, count, i) })
   geometry.computeBoundingSphere()

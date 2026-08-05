@@ -5,11 +5,16 @@
 // zone_event 534개가 전부 크기 합 검증을 통과했으므로 가설이 아니라 실측 확정이다.
 // 반대로 charmap과 뱅크 매핑은 실제로 틀린 적이 있어서, 검증된 결과물
 // (src/data/textBanks.json + 테스트로 고정된 charmap)만 여기서 소비한다.
+//
+// ⚠️ **글 디코더는 `./message`만 쓴다.** `spike/gen4text.js`에도 하나 있지만 그것은
+// 이름표용이라 charmap의 `\n`을 **글자 두 개 그대로** 둔다 — 이름에는 줄 바꿈이
+// 없어서 안 걸렸고, 아이템 설명이 화면에 `상처약.\n포켓몬`으로 뜨고 나서야 보였다.
 'use strict'
 const fs = require('fs')
 const path = require('path')
 const { readRom } = require('../spike/nds')
-const { parseNarc, decodeBank, loadCharmap, codesToString } = require('../spike/gen4text')
+const { parseNarc } = require('../spike/gen4text')
+const { loadCharmap, decodeBank, toString: codesToString } = require('./message')
 
 const ROOT = path.resolve(__dirname, '../..')
 const DEFAULT_ROM = path.join(ROOT, 'raw/roms/Pokemon Platinum (US).nds')

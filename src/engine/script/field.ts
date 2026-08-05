@@ -53,6 +53,13 @@ export const fieldScripts = {
     counterpart: () => '',
   } as NameSource,
   /**
+   * 설정의 글자 속도(글자당 프레임). 설정 화면이 갈아 끼운다.
+   *
+   * 함수인 이유는 이름과 같다 — 세계가 만들어진 뒤에 설정이 바뀌어도 다음
+   * 대사부터 바로 먹어야 한다
+   */
+  textSpeed: (() => TEXT_SPEED.normal) as () => number,
+  /**
    * 스크립트 한 판이 끝날 때 불린다. 세이브에 밀어 넣는 자리다.
    *
    * 매 프레임이 아니라 **판이 끝날 때**만 부른다 — 플래그 하나 세울 때마다
@@ -126,6 +133,7 @@ export function makeWorld(
     },
     services: fieldScripts.services,
   })
+  world.speed = () => fieldScripts.textSpeed()
   world.player = playerMovable
   return world
 }

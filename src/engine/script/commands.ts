@@ -322,6 +322,30 @@ on('ShowStartMenu', (ctx) => {
   return true
 })
 
+// ── 상점 ─────────────────────────────────────────────────────────────────────
+//
+// 재고는 스크립트가 안 준다. 일반 상점은 **뱃지 수**로 늘어나고(`ScrCmd_PokeMartCommon`)
+// 지역 상점은 번호로 목록을 고른다. 두 경우 다 실제 목록은 코드에 박힌 표라,
+// 여기서는 무엇을 열지만 정하고 표는 붙이는 쪽(`scene/fieldServices.ts`)이 푼다.
+const openShop = (stock: (ctx: ScriptContext) => readonly number[]): CommandFn => (ctx) => {
+  // ⚠️ 인자를 **먼저** 읽는다. 서비스가 안 붙어 있어도 바이트는 지나가야 한다
+  const items = stock(ctx)
+  ctx.host.world.services.openShop?.(items)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+}
+
+on('PokeMartCommon', openShop((ctx) => {
+  // 인자는 안 쓰인다 (`u16 unused = ScriptContext_GetVar(ctx)`). 그래도 읽는다
+  ctx.readVar()
+  return ctx.host.world.services.martStock?.common() ?? []
+}))
+
+on('PokeMartSpecialties', openShop((ctx) => {
+  const martID = ctx.readVar()
+  return ctx.host.world.services.martStock?.specialties(martID) ?? []
+}))
+
 on('ShowMenu', showMenu(() => 1))
 on('ShowListMenu', showMenu(() => 1))
 on('ShowMenuMultiColumn', showMenu((ctx) => Math.max(1, ctx.readByte())))

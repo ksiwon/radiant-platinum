@@ -21,7 +21,7 @@
     "extract:matrices": "node tools/extract/matrices.js",
     "extract:events": "node tools/extract/events.js",
     "verify:events": "node tools/extract/events-verify.js",
-    "extract": "pnpm extract:textbanks && pnpm extract:headers && pnpm extract:matrices && pnpm extract:bdhc && pnpm extract:events && pnpm extract:scripts && pnpm extract:dialogue && pnpm extract:encounters && pnpm extract:species && pnpm extract:moves && pnpm extract:trainers && pnpm extract:items && pnpm extract:itemIcons && pnpm extract:chunks && pnpm extract:props && pnpm extract:mapTextures",
+    "extract": "pnpm extract:textbanks && pnpm extract:headers && pnpm extract:matrices && pnpm extract:bdhc && pnpm extract:events && pnpm extract:scripts && pnpm extract:dialogue && pnpm extract:encounters && pnpm extract:species && pnpm extract:moves && pnpm extract:trainers && pnpm extract:items && pnpm extract:marts && pnpm extract:itemIcons && pnpm extract:chunks && pnpm extract:props && pnpm extract:mapTextures",
     "extract:encounters": "node tools/extract/encounters.js",
     "extract:trainers": "node tools/extract/trainers.js",
     "extract:bdhc": "node tools/extract/bdhc.js",
@@ -34,7 +34,8 @@
     "extract:itemIcons": "node tools/extract/itemIcons.js",
     "extract:chunks": "node tools/extract/chunks.js",
     "extract:mapTextures": "node tools/extract/mapTextures.js",
-    "extract:props": "node tools/extract/props.js"
+    "extract:props": "node tools/extract/props.js",
+    "extract:marts": "node tools/extract/marts.js"
   },
   "dependencies": {
     "@pkmn/data": "^0.10.11",

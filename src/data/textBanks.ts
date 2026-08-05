@@ -57,6 +57,10 @@ export const TEXT_BANK_NAMES = [
   'bag_pocket_names',
   'party_menu',
   'pokedex',
+  'options_menu',
+  'save_info_window',
+  'main_menu_options',
+  'common_strings',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

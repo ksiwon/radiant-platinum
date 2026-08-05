@@ -7,7 +7,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { getBank, type TextBankName } from './textBanks'
-import { POKEDEX_TEXT, START_MENU, UI_BANK } from './uiText'
+import {
+  fillMenuText, MAIN_MENU, OPTIONS_TEXT, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK,
+} from './uiText'
 
 /** uiText의 키 → textBanks의 이름 */
 const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
@@ -21,6 +23,10 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   dexEntry: 'species_pokedex_entry_diamond',
   speciesHeight: 'species_height',
   speciesWeight: 'species_weight',
+  options: 'options_menu',
+  saveInfo: 'save_info_window',
+  mainMenu: 'main_menu_options',
+  common: 'common_strings',
 }
 
 describe('메뉴 글', () => {
@@ -75,6 +81,30 @@ maybe('한국어 글이 제자리에 있다', () => {
     expect(dex[POKEDEX_TEXT.caught]).toBe('잡은 수')
     expect(dex[POKEDEX_TEXT.height]).toBe('키')
     expect(dex[POKEDEX_TEXT.weight]).toBe('몸무게')
+  })
+
+  it('설정 항목과 고를 값이 원작 자리에 있다', () => {
+    const opt = bank(UI_BANK.options)
+    expect(opt[OPTIONS_TEXT.labels.speed]).toBe('이야기의 속도')
+    expect(OPTIONS_TEXT.speed.map((i) => opt[i])).toEqual(['느리게', '보통', '빠르게'])
+    expect(OPTIONS_TEXT.battleScene.map((i) => opt[i])).toEqual(['본다', '보지 않는다'])
+    expect(OPTIONS_TEXT.sound.map((i) => opt[i])).toEqual(['스테레오', '모노'])
+    expect(opt[OPTIONS_TEXT.help.speed]).toContain('메시지의 속도')
+  })
+
+  it('리포트 흐름의 물음과 대답이 제자리다', () => {
+    const common = bank(UI_BANK.common)
+    expect(common[SAVE_TEXT.ask]).toContain('리포트로 작성할까요?')
+    expect(common[SAVE_TEXT.overwrite]).toContain('덮어써도')
+    // 16번은 이름 자리가 있는 글이다. 안 채우면 부호가 그대로 화면에 뜬다
+    expect(common[SAVE_TEXT.done]).toMatch(/^\{STRVAR_1 /)
+    expect(fillMenuText(common[SAVE_TEXT.done]!, ['빛나'])).toBe('빛나는\n리포트를 꼼꼼히 기록했다!')
+  })
+
+  it('타이틀의 두 갈래가 원작 글이다', () => {
+    const menu = bank(UI_BANK.mainMenu)
+    expect(menu[MAIN_MENU.continue_]).toBe('모험을 계속한다')
+    expect(menu[MAIN_MENU.newGame]).toBe('새로운 모험을 시작한다')
   })
 
   it('모부기의 도감 자료가 종족 번호로 색인된다', () => {

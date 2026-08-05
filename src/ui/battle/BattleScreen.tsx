@@ -5,11 +5,13 @@
 // 나는 오른쪽 아래에 두는 것은 원작 배치다 — 포켓몬이 서는 자리의 반대편이라
 // 서로 가리지 않는다.
 //
-// 기술 연출과 카메라 컷(PLAN §7.3·§7.4)은 아직 없다. 사건은 전부 0ms에 도착하고
-// 여기서 곧바로 글로 나간다 — 그것을 시간축에 펴는 Director가 다음 계층이다.
+// 사건을 시간축에 펴는 것은 `engine/battle/playback.ts`다. 이 화면은 그 재생기가
+// 지금까지 접은 뷰만 그린다 — sim의 최종 상태를 직접 보지 않는다. 기술 연출과
+// 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
 import { useEffect, useMemo, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { Actor } from '../../engine/battle/events'
+import { buildBeats } from '../../engine/battle/playback'
 import type { ViewMon } from '../../engine/battle/view'
 import { loadLabels, loadMoveNames, loadMoves, loadSpeciesNames } from '../../data/gameData'
 import type { Move } from '../../data/schema'
@@ -20,7 +22,7 @@ import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { BattleBag } from './BattleBag'
 import { battleText, type BattleNames } from './messages'
 import { typeColor } from './typeColor'
-import { useBattleText } from './useBattleText'
+import { useBattlePlayback } from './useBattlePlayback'
 import * as css from './battleScreen.css'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -69,6 +71,7 @@ export function BattleScreen() {
   const throwBall = useBattleStore((s) => s.throwBall)
   const run = useBattleStore((s) => s.run)
   const close = useBattleStore((s) => s.close)
+  const playEvents = useBattleStore((s) => s.playEvents)
   const { names, extras } = useNames()
   const [page, setPage] = useState<MenuPage>('root')
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
@@ -99,28 +102,25 @@ export function BattleScreen() {
     return kind === 'wild' ? `야생의 ${base}` : `상대 ${base}`
   }, [roster, names, kind])
 
-  const lines = useMemo(() => {
+  const beats = useMemo(() => {
     if (!names) return []
-    const out: string[] = []
-    // 트레이너전은 누가 걸어왔는지부터 말한다
-    if (kind === 'trainer' && foeName) out.push(`${withSubject(foeName)} 승부를 걸어왔다!`)
-    for (const e of events) {
-      const text = battleText(e, { names, label })
-      // 같은 줄이 연달아 나오면(연타 데미지) 한 번만 보인다
-      if (text && text !== out[out.length - 1]) out.push(text)
+    const out = buildBeats(events, (e) => battleText(e, { names, label }))
+    // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다
+    if (kind === 'trainer' && foeName) {
+      out.unshift({ text: `${withSubject(foeName)} 승부를 걸어왔다!`, events: [], hold: 30 })
     }
-    if (outcome === 'win') {
-      out.push(kind === 'trainer' && foeName ? `${withObject(foeName)} 이겼다!` : '배틀에서 이겼다!')
-    }
-    if (outcome === 'loss') out.push('눈앞이 캄캄해졌다…')
+    const end = outcome === 'win'
+      ? (kind === 'trainer' && foeName ? `${withObject(foeName)} 이겼다!` : '배틀에서 이겼다!')
+      : outcome === 'loss' ? '눈앞이 캄캄해졌다…' : null
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
+    if (end !== null) out.push({ text: end, events: [], hold: 30 })
     return out
   }, [events, names, label, outcome, kind, foeName])
 
-  // 글을 한 줄씩 흘린다. 다 읽기 전에는 명령이 안 뜬다 — 원작의 박자다
-  const script = useBattleText(lines)
-  // 아직 읽을 글이 남았으면 A가 그것부터 넘긴다. 메뉴 키와 겹치면 안 된다
-  const reading = !script.done || script.pending
+  // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
+  const script = useBattlePlayback(beats, playEvents)
+  // 아직 재생 중이면 A가 빨리 감기다. 메뉴 키와 겹치면 안 된다
+  const reading = !script.caughtUp
   useMenuKeys({ confirm: script.advance, cancel: script.advance }, phase !== 'off' && reading)
 
   const shell = staged ? css.screen : `${css.screen} ${css.fallback}`
@@ -139,9 +139,16 @@ export function BattleScreen() {
       <div className={css.field}>
         <div className={css.foeSlot}>
           {foeName && <div className={css.foeTrainer}>{foeName}</div>}
-          {foe && <MonCard mon={foe} names={names} prefix={kind === 'wild' ? '야생의 ' : '상대 '} />}
+          {foe && (
+            <MonCard
+              mon={foe} names={names} drainMs={script.holdMs}
+              prefix={kind === 'wild' ? '야생의 ' : '상대 '}
+            />
+          )}
         </div>
-        <div className={css.mineSlot}>{mine && <MonCard mon={mine} names={names} showHp />}</div>
+        <div className={css.mineSlot}>
+          {mine && <MonCard mon={mine} names={names} drainMs={script.holdMs} showHp />}
+        </div>
       </div>
 
       <div className={css.console_}>
@@ -209,8 +216,8 @@ function useGridCursor(count: number, columns: number, onPick: (i: number) => vo
 }
 
 function MonCard(
-  { mon, names, prefix = '', showHp = false }:
-  { mon: ViewMon; names: BattleNames | null; prefix?: string; showHp?: boolean },
+  { mon, names, drainMs, prefix = '', showHp = false }:
+  { mon: ViewMon; names: BattleNames | null; drainMs: number; prefix?: string; showHp?: boolean },
 ) {
   const name = (mon.species !== null ? names?.species[mon.species] : null) ?? mon.speciesName
   const ratio = mon.maxHp > 0 ? Math.max(0, mon.hp) / mon.maxHp : 0
@@ -227,7 +234,10 @@ function MonCard(
         <span className={css.monLevel}>Lv.{mon.level}</span>
       </div>
       <div className={css.barTrack}>
-        <div className={`${css.barFill} ${fill}`} style={{ width: `${ratio * 100}%` }} />
+        <div
+          className={`${css.barFill} ${fill}`}
+          style={{ width: `${ratio * 100}%`, ['--drain' as string]: `${drainMs}ms` }}
+        />
       </div>
       {/* 상대 HP 숫자는 원작도 안 보여준다 — 바만 보인다 */}
       {showHp && <div className={css.hpText}>{Math.max(0, mon.hp)} / {mon.maxHp}</div>}

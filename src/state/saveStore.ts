@@ -1,8 +1,12 @@
-// 세이브 상태 (PLAN §3.2 ①) — 영속. React 리렌더는 저빈도라 zustand로 충분하다.
+// 세이브 상태 (PLAN §3.2 ①). React 리렌더는 저빈도라 zustand로 충분하다.
 // 프레임 단위 값(좌표 등)은 절대 여기 넣지 않는다. worldState가 담당한다.
+//
+// ⚠️ **저절로 저장되지 않는다.** 예전에는 zustand persist가 값이 바뀔 때마다
+// IndexedDB에 썼는데, 그러면 "리포트"라는 것이 의미가 없다 — 리포트를 안 쓰고
+// 꺼도 다음에 켜면 걸어 둔 자리에 그대로 서 있다. 원작은 리포트를 쓴 그 순간만
+// 남긴다. 디스크로 나가는 문은 `report()` 하나뿐이다 (`state/report.ts`).
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
-import { idbStorage } from './idbStorage'
+import { clearReport, readReport, writeReport } from './report'
 
 /** 전국도감 493종을 담는 비트필드 크기 (ceil(493/8) = 62, 여유 두어 64) */
 export const DEX_BYTES = 64
@@ -59,11 +63,18 @@ export interface SaveData {
   flags: SaveFlags
   /** 스크립트 변수 288칸 */
   vars: SaveVars
-  position: { mapId: string; x: number; y: number; z: number; facing: number }
+  /**
+   * 리포트를 쓴 자리.
+   *
+   * 엔진과 **같은 번호 체계**다 — `map`은 맵 헤더 번호, `matrix`는 그 맵이 선
+   * 격자 번호다. 워프가 쓰는 것과 같은 짝이라 되돌아갈 때 그대로 넘겨주면 된다.
+   * `map`이 음수면 아직 리포트를 안 쓴 새 판이고, 그때는 기본 스폰으로 간다
+   */
+  position: { map: number; matrix: number; x: number; z: number; facing: number }
   money: number
 }
 
-export const SAVE_VERSION = 3
+export const SAVE_VERSION = 4
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -88,7 +99,19 @@ const POCKET_MEDICINE = 1
 export function createNewSave(): SaveData {
   return {
     version: SAVE_VERSION,
-    trainer: { name: '', gender: 'girl', id: 0, secretId: 0, playtimeMs: 0 },
+    // 이름은 비워 둔다. 원작은 인트로에서 짓게 하고, 그 화면이 붙기 전까지는
+    // 씬이 롬의 제안 이름 첫 줄을 넣어 준다 (`MapStreamer`) — 우리가 이름을
+    // 지어내지 않으려는 것이다.
+    //
+    // 트레이너 번호는 진짜 난수여야 한다. 0으로 두면 잡은 포켓몬이 전부 "다른
+    // 사람이 잡은 것"이 아니라 같은 번호를 갖게 되고, 이로치 판정도 한쪽으로 쏠린다
+    trainer: {
+      name: '',
+      gender: 'girl',
+      id: Math.floor(Math.random() * 0x10000),
+      secretId: Math.floor(Math.random() * 0x10000),
+      playtimeMs: 0,
+    },
     rivalName: '',
     party: [],
     boxes: [],
@@ -97,7 +120,7 @@ export function createNewSave(): SaveData {
     pokedex: { seen: new Uint8Array(DEX_BYTES), caught: new Uint8Array(DEX_BYTES) },
     flags: new Uint8Array(FLAG_BYTES),
     vars: new Uint16Array(SAVED_VAR_COUNT),
-    position: { mapId: 'twinleaf', x: 0, y: 0, z: 0, facing: 0 },
+    position: { map: -1, matrix: 0, x: 0, z: 0, facing: 0 },
     money: 3000,
   }
 }
@@ -119,8 +142,10 @@ export function dexSet(field: Uint8Array, dexNo: number): DexField {
 }
 
 interface SaveStore extends SaveData {
-  /** 비동기 스토리지라 첫 프레임에는 아직 복원 전일 수 있다 */
+  /** 리포트를 한 번 찾아봤는가. IndexedDB가 비동기라 첫 프레임에는 아직이다 */
   hydrated: boolean
+  /** 이 판이 리포트에서 이어 온 것인가. 타이틀이 "이어하기"를 띄울지 정한다 */
+  loaded: boolean
   markSeen: (dexNo: number) => void
   markCaught: (dexNo: number) => void
   /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
@@ -132,27 +157,42 @@ interface SaveStore extends SaveData {
   addMoney: (amount: number) => void
   /** 낸다. 모자라면 false */
   spendMoney: (amount: number) => boolean
-  resetSave: () => void
+  /**
+   * 리포트를 쓴다. **디스크로 나가는 유일한 문이다.**
+   *
+   * 자리는 인자로 받는다 — 좌표는 프레임 상태(`worldState`)에 있고 이 스토어가
+   * 그것을 알면 저빈도/고빈도 경계가 무너진다
+   */
+  report: (position: SaveData['position']) => Promise<void>
+  /** 리포트를 읽어 그 자리에서 이어한다. 없으면 false */
+  loadReport: () => Promise<boolean>
+  /** 처음부터. 리포트도 같이 지운다 — 안 지우면 다음에 켤 때 옛 판이 되살아난다 */
+  resetSave: () => Promise<void>
 }
 
-/** 마이그레이션 체인 — 버전을 올릴 때마다 케이스를 덧붙인다 */
-function migrate(persisted: unknown, from: number): SaveData {
-  let s = persisted as SaveData
-  if (from < 1) s = { ...createNewSave(), ...s, version: 1 }
-  // 2에서 `flags`가 이름표 묶음에서 원작의 번호 공간으로 바뀌었다. 옛 값은
-  // 옮길 곳이 없다 — 그 시절 플래그를 쓰는 코드가 하나도 없었다
-  if (from < 2) s = { ...s, ...createNewSave(), version: 2, party: s.party, boxes: s.boxes }
-  // 3에서 가방이 {이름: 개수} 사전에서 원작의 주머니 8개로 바뀌었다. 옛 값은
-  // 아이템 번호가 아니라 우리가 지은 문자열이라 옮길 수 없다
-  if (from < 3) s = { ...s, version: 3, bag: emptyBag() }
-  return s
+/** 상태 필드만. 액션은 저장하지 않는다 */
+function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
+  return {
+    version: SAVE_VERSION,
+    trainer: s.trainer,
+    rivalName: s.rivalName,
+    party: s.party,
+    boxes: s.boxes,
+    bag: s.bag,
+    badges: s.badges,
+    pokedex: s.pokedex,
+    flags: s.flags,
+    vars: s.vars,
+    position,
+    money: s.money,
+  }
 }
 
 export const useSaveStore = create<SaveStore>()(
-  persist(
     (set) => ({
       ...createNewSave(),
       hydrated: false,
+      loaded: false,
 
       markSeen: (dexNo) =>
         set((s) => ({ pokedex: { ...s.pokedex, seen: dexSet(s.pokedex.seen, dexNo) } })),
@@ -197,34 +237,22 @@ export const useSaveStore = create<SaveStore>()(
         return true
       },
 
-      resetSave: () => set(createNewSave()),
-    }),
-    {
-      name: 'save',
-      storage: idbStorage<SaveStore>(),
-      version: SAVE_VERSION,
-      migrate: migrate as (p: unknown, v: number) => SaveStore,
-      // 액션은 저장하지 않는다 — 상태만
-      partialize: (s) =>
-        ({
-          version: s.version,
-          trainer: s.trainer,
-          party: s.party,
-          boxes: s.boxes,
-          bag: s.bag,
-          badges: s.badges,
-          pokedex: s.pokedex,
-          flags: s.flags,
-          vars: s.vars,
-          rivalName: s.rivalName,
-          position: s.position,
-          money: s.money,
-        }) as SaveStore,
-      // IndexedDB는 비동기라 복원 완료 시점을 UI가 알아야 한다.
-      // 이 시점 이전에 저장하면 빈 세이브가 실제 세이브를 덮어쓴다.
-      onRehydrateStorage: () => () => {
-        useSaveStore.setState({ hydrated: true })
+      report: async (position) => {
+        await writeReport(snapshot(useSaveStore.getState(), position))
+        set({ position, loaded: true })
       },
-    },
-  ),
+
+      loadReport: async () => {
+        const data = await readReport(SAVE_VERSION)
+        set({ hydrated: true })
+        if (!data) return false
+        set({ ...data, loaded: true })
+        return true
+      },
+
+      resetSave: async () => {
+        await clearReport()
+        set({ ...createNewSave(), hydrated: true, loaded: false })
+      },
+    }),
 )

@@ -120,12 +120,18 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
 
   return (
     <group>
+      {/*
+        땅도 그림자를 던진다 — 나무·절벽이 청크 모델 안에 들어 있어서 여기서
+        안 던지면 숲이 통째로 그림자를 안 만든다
+      */}
       {placed.map((p) => (
         <mesh
           key={p.key}
           position={[p.x, 0, p.z]}
           geometry={p.mesh.geometry}
           material={p.materials}
+          castShadow
+          receiveShadow
         />
       ))}
       {/*
@@ -141,6 +147,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           scale={p.scale}
           geometry={p.mesh.geometry}
           material={p.materials}
+          castShadow
+          receiveShadow
         />
       ))}
     </group>

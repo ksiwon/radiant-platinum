@@ -66,7 +66,7 @@ describe('배틀 스토어', () => {
     // 지급된 개체가 세이브에 남아야 한다. 안 남으면 배틀마다 새 포켓몬이 생긴다
     expect(useSaveStore.getState().party).toHaveLength(1)
 
-    const view = useBattleStore.getState().view!
+    const view = useBattleStore.getState().truth!
     expect(view.active.p1, '우리 쪽이 안 나왔다').not.toBeNull()
     expect(view.active.p2!.species).toBe(STARLY)
     expect(view.active.p2!.level).toBe(3)
@@ -75,7 +75,7 @@ describe('배틀 스토어', () => {
 
   it('키가 파티 순서와 이어져 있다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
-    const { roster, view } = useBattleStore.getState()
+    const { roster, truth: view } = useBattleStore.getState()
     const key = view!.active.p1!.key
     expect(roster[key], `${key}가 명부에 없다`).toBeDefined()
     expect(roster[key]!.species).toBe(useSaveStore.getState().party[0]!.species)
@@ -89,7 +89,7 @@ describe('배틀 스토어', () => {
     expect(steps, '한 수도 안 뒀다').toBeGreaterThan(0)
     expect(useBattleStore.getState().phase, '승부가 안 났다').toBe('over')
     expect(useBattleStore.getState().outcome).toBe('win')
-    expect(useBattleStore.getState().view!.ended).toBe(true)
+    expect(useBattleStore.getState().truth!.ended).toBe(true)
   }, 30_000)
 
   it('배틀에서 깎인 HP가 세이브로 돌아온다', async () => {
@@ -102,7 +102,7 @@ describe('배틀 스토어', () => {
     expect(before.hp, '시작부터 만피가 아니다').toBe(full)
 
     await playToEnd()
-    const inBattle = useBattleStore.getState().view!.active.p1!
+    const inBattle = useBattleStore.getState().truth!.active.p1!
     expect(inBattle.hp, 'HP가 하나도 안 깎였다 — 이 판으로는 검증이 안 된다')
       .toBeLessThan(full)
     useBattleStore.getState().close()
@@ -131,9 +131,9 @@ describe('배틀 스토어', () => {
 
   it('이미 배틀 중이면 두 번째 조우가 안 겹친다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
-    const view = useBattleStore.getState().view
+    const view = useBattleStore.getState().truth
     await useBattleStore.getState().startWild({ species: 19, level: 40 })
-    expect(useBattleStore.getState().view).toBe(view)
+    expect(useBattleStore.getState().truth).toBe(view)
   }, 30_000)
 })
 
@@ -277,7 +277,7 @@ describe('트레이너전', () => {
     expect(useBattleStore.getState().foeName).toBe('체육관 관장 동관')
 
     // 자철석 L37이 먼저 나온다 — 파티 순서가 그대로여야 한다
-    const foe = useBattleStore.getState().view!.active.p2!
+    const foe = useBattleStore.getState().truth!.active.p2!
     expect(foe.species).toBe(82)
     expect(foe.level).toBe(37)
     // 명부에 세 마리가 다 있어야 교체할 때 이름을 찾을 수 있다

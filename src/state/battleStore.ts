@@ -18,7 +18,7 @@ import { Ball } from '../engine/battle/meta/capture'
 import { applyReward, expGain, learnMoves } from '../engine/battle/meta/reward'
 import { MAX_MONEY, prizeFor } from '../engine/battle/meta/prize'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
-import type { BattleView } from '../engine/battle/view'
+import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import { createWild, fillPp, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
@@ -65,7 +65,21 @@ interface BattleState {
    * 그 사이에 트레이너 번호를 들고 있어야 한다
    */
   prize: number
+  /**
+   * **화면에 보이는** 뷰. sim이 내놓은 최종 상태가 아니라 재생기가 여기까지
+   * 접은 것이다 (`engine/battle/playback.ts`).
+   *
+   * 이 둘을 안 나누면 한 턴의 결과가 통째로 0ms에 반영된다 — 체력이 동시에
+   * 깎이고 "몸통박치기!"보다 게이지가 먼저 움직인다. 정본은 `finalView`다
+   */
   view: BattleView | null
+  /**
+   * sim이 내놓은 **정본**. 화면(`view`)보다 늘 앞서 있다.
+   *
+   * 세이브로 옮길 값이나 규칙 판단은 이쪽을 본다 — 재생이 어디까지 갔든
+   * 계산 결과는 이미 나와 있다
+   */
+  truth: BattleView | null
   actions: BattleAction[]
   /** 배틀 내내 쌓인 사건. 텍스트 박스와 연출이 같은 줄기를 본다 */
   events: BattleEvent[]
@@ -80,6 +94,8 @@ interface BattleState {
   throwBall: (ball?: BallId) => Promise<void>
   /** 도망친다. 실패하면 마찬가지로 턴을 버린 것이다 */
   run: () => Promise<void>
+  /** 재생기가 박자 하나분을 화면에 접는다. 이것 말고는 `view`를 건드리는 곳이 없다 */
+  playEvents: (events: readonly BattleEvent[]) => void
   /** 화면을 닫는다. 결과는 이 시점에 세이브로 넘어간다 */
   close: () => void
 }
@@ -146,6 +162,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   foeName: null,
   prize: 0,
   view: null,
+  truth: null,
   actions: [],
   events: [],
   roster: {},
@@ -208,6 +225,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     await advance(set, get, (c) => c.run())
   },
 
+  playEvents: (events) => {
+    if (!events.length) return
+    set({ view: applyEvents(get().view ?? emptyView(), events) })
+  },
+
   close: () => {
     const controller = current
     if (controller) {
@@ -220,7 +242,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
       const caught = controller.captured
       if (caught) {
-        const seen = get().view?.active.p2
+        // 화면(`view`)이 아니라 정본을 본다 — 재생이 아직 못 따라왔을 수 있다
+        const seen = get().truth?.active.p2
         const mon: PokemonInstance = {
           ...caught.mon,
           hp: seen?.hp ?? caught.mon.hp,
@@ -244,7 +267,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     participants = new Set()
     set({
       phase: 'off', kind: 'wild', foeName: null, prize: 0,
-      view: null, actions: [], events: [], roster: {}, outcome: null,
+      view: null, truth: null, actions: [], events: [], roster: {}, outcome: null,
     })
   },
 }))
@@ -283,8 +306,9 @@ async function advance(
   // 상금은 이긴 그 순간 한 번만. `phase`가 'over'로 바뀌므로 두 번 올 수 없다
   if (ended && controller.finish === 'win') events.push(...grantPrize(get()))
 
+  // ⚠️ `view`는 여기서 안 건드린다. 화면은 재생기가 박자마다 밀어 준다
   set({
-    view: result.view,
+    truth: result.view,
     events: [...get().events, ...events],
     actions: controller.actions,
     phase: ended ? 'over' : 'running',
@@ -376,7 +400,7 @@ async function open(
   if (get().phase !== 'off') return
   set({
     phase: 'loading', kind, foeName, prize,
-    view: null, actions: [], events: [], roster: {}, outcome: null, error: null,
+    view: null, truth: null, actions: [], events: [], roster: {}, outcome: null, error: null,
   })
 
   try {
@@ -418,7 +442,9 @@ async function open(
     trackParticipants(step.events)
     set({
       phase: 'running',
-      view: step.view,
+      truth: step.view,
+      // 빈 무대에서 시작한다. 등판도 재생기가 한 박자씩 올린다
+      view: emptyView(),
       events: step.events,
       actions: controller.actions,
       roster,

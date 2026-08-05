@@ -133,6 +133,13 @@ export const world = {
   grid: null as MapGrid | null,
   /** 현재 서 있는 맵 헤더 id */
   mapId: -1,
+  /**
+   * 지금 선 격자의 행렬 번호. 오버월드가 0이고 실내는 저마다 다르다.
+   *
+   * 리포트가 이것까지 적어 둬야 실내에서 저장하고 껐을 때 그 방으로 돌아온다 —
+   * 맵 번호만으로는 어느 격자를 받아야 하는지 알 수 없다
+   */
+  matrix: 0,
   /** 씬이 처리해야 할 전이. 처리 후 씬이 null로 되돌린다 */
   pending: null as PendingWarp | null,
   /**

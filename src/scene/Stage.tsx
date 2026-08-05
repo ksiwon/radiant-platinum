@@ -1,7 +1,7 @@
 // 영속 Canvas (PLAN §3.3) — 라우트 트리 위에 있어 절대 언마운트되지 않는다
 import { Suspense, useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { NeutralToneMapping } from 'three'
+import { NeutralToneMapping, PCFSoftShadowMap } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { EngineDriver } from './EngineDriver'
 import { PlayerCapsule } from './GreyBox'
@@ -46,6 +46,11 @@ export function Stage() {
           // Neutral은 ACES보다 색이 덜 빠져서 파스텔 팔레트에 맞는다
           renderer.toneMapping = NeutralToneMapping
           renderer.toneMappingExposure = 1.05
+          // 그림자. 나무가 땅에 그림자를 안 떨어뜨리면 아무리 면을 나눠 칠해도
+          // 서 있는 것으로 안 보인다 — 원작 나무는 법선이 전부 위를 봐서
+          // 라이팅만으로는 입체가 안 난다 (`scene/chunkMesh.ts`)
+          renderer.shadowMap.enabled = true
+          renderer.shadowMap.type = PCFSoftShadowMap
           await renderer.init()
           return renderer
         }}

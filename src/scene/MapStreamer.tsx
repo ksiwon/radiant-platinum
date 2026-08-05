@@ -9,7 +9,7 @@
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BackSide, InstancedMesh, Mesh, Object3D } from 'three'
+import { BackSide, DirectionalLight, InstancedMesh, Mesh, Object3D } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, world } from '../engine/map/world'
@@ -18,6 +18,7 @@ import { installFieldServices } from './fieldServices'
 import { npcActors } from '../engine/actor/npcs'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
+import { textSpeedFrames, useOptionsStore } from '../state/optionsStore'
 import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
 import { useBattleStore } from '../state/battleStore'
@@ -33,6 +34,18 @@ const dummy = new Object3D()
 
 /** NPC를 그리는 거리(타일). 청크 창보다 조금 넉넉하게 둔다 */
 const NPC_DRAW_RANGE = 48
+
+/**
+ * 그림자 맵 한 변.
+ *
+ * 절두체가 ±30타일이라 2048이면 타일 하나에 34픽셀이다. 원작 타일 그림이
+ * 16×16이므로 그림자가 텍스처보다 곱게 나온다 — 더 키워도 눈에 안 보인다
+ */
+const SHADOW_MAP = 2048
+/** 그림자 절두체 반경(타일). 렌더 창(±80)보다 좁다 — 가까운 것만 그림자를 진다 */
+const SHADOW_SPAN = 30
+/** 태양이 플레이어보다 얼마나 위·옆에 서는가. 방향은 아래 `directionalLight`와 같다 */
+const SUN_OFFSET: readonly [number, number, number] = [24, 42, 18]
 /** 원작 방향(0 북 · 1 남 · 2 서 · 3 동) → 모델 y 회전 */
 const NPC_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
 
@@ -52,6 +65,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   const skyRef = useRef<Mesh>(null)
   const npcRef = useRef<InstancedMesh>(null)
+  const sunRef = useRef<DirectionalLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
 
   // 오버월드 창이 가장 크다. 실내로 바뀌어도 이 용량 안에 들어온다
@@ -71,11 +85,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [locationNames])
 
   /** 맵을 갈아 끼운다. 격자·플레이어 위치·존 이름을 한 번에 맞춘다 */
-  const enter = useCallback((next: MapGrid, mapId: number, x: number, z: number) => {
+  const enter = useCallback((next: MapGrid, mapId: number, x: number, z: number, matrix: number) => {
     setGrid(next)
     activeZone.grid = next
     world.grid = next
     world.mapId = mapId
+    world.matrix = matrix
     // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
     // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
     worldState.player.position.set(x, next.heightAtWorld(x, z, 0) ?? 0, z)
@@ -102,8 +117,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setGameActive(!inBattle)
   }, [battlePhase])
 
+  // 리포트가 있으면 그 자리에서 시작한다. 실내면 그 격자를 받아야 하므로
+  // 오버월드로 한 번 세운 뒤 갈아 끼운다 — 첫 프레임에 빈 화면을 안 보이려고
   useEffect(() => {
-    enter(initial, spawn.map, spawn.x, spawn.z)
+    enter(initial, spawn.map, spawn.x, spawn.z, 0)
+    const at = useSaveStore.getState().position
+    if (at.map >= 0) {
+      worldState.player.facing = at.facing
+      if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
+      else {
+        void gridFor(at.matrix)
+          .then((next) => { enter(next, at.map, at.x, at.z, at.matrix) })
+          .catch(() => { /* 못 받으면 기본 스폰에 그대로 선다 */ })
+      }
+    }
     return () => {
       activeZone.grid = null
       world.grid = null
@@ -133,6 +160,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       counterpart: () =>
         fallback(useSaveStore.getState().trainer.gender === 'girl' ? 'playerMale' : 'playerFemale'),
     }
+    // 설정의 글자 속도. 여기서 붙여야 엔진이 상태 계층을 안 import 한다
+    fieldScripts.textSpeed = textSpeedFrames
     // 플래그 하나가 NPC의 등장 조건이라, 저장이 안 되면 다음에 켤 때
     // 이야기가 통째로 되감긴다
     fieldScripts.onScriptEnd = (vars) => {
@@ -147,7 +176,22 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [generic])
 
   useEffect(() => {
-    loadGenericNames('ko').then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
+    loadGenericNames('ko').then((list) => {
+      setGeneric(list)
+      // 이름 짓기 화면이 아직 없다. 그동안은 **원작이 제안하는 표의 첫 이름**을
+      // 세이브에도 박아 둔다 — 대사만 대체 이름을 쓰고 메뉴·리포트는 빈칸이면
+      // 같은 사람이 두 이름으로 보인다. 인트로가 붙으면 이 블록은 사라진다
+      const save = useSaveStore.getState()
+      if (save.trainer.name === '') {
+        useSaveStore.setState({
+          trainer: {
+            ...save.trainer,
+            name: pickName(list, save.trainer.gender === 'girl' ? 'playerFemale' : 'playerMale', 0),
+          },
+          rivalName: save.rivalName || pickName(list, 'rival', 0),
+        })
+      }
+    }).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
   }, [])
 
   // 세이브가 복원되면 그 플래그·변수를 붓는다. 비동기라 첫 프레임에는 아직 없다
@@ -160,6 +204,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   // 존만 바뀌는 경우(마을 → 도로)도 맵이 바뀐 것이다
   useEffect(() => { enterMap(mapId) }, [mapId])
+
+  // 시점은 설정에 있고 카메라는 프레임 상태를 본다. 그 사이를 여기서 잇는다 —
+  // 카메라 시스템이 zustand를 구독하면 프레임마다 스토어를 읽게 된다
+  const viewMode = useOptionsStore((s) => s.view)
+  useEffect(() => { worldState.camera.mode = viewMode === 1 ? 'first' : 'third' }, [viewMode])
 
   // 하늘 텍스처는 한 번만 만든다
   const sky = useMemo(() => makeSkyTexture(DAY), [])
@@ -177,11 +226,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     const l = Math.round(p.y)
     if (l !== layer) setLayer(l)
 
+    // 그림자 절두체를 플레이어 위로 옮긴다. 원점에 고정해 두면 마을을 벗어나는
+    // 순간 그림자가 통째로 사라진다 — 신오가 960타일이라 한 판에 안 들어온다
+    const sun = sunRef.current
+    if (sun) {
+      sun.position.set(p.x + SUN_OFFSET[0], p.y + SUN_OFFSET[1], p.z + SUN_OFFSET[2])
+      sun.target.position.set(p.x, p.y, p.z)
+      sun.target.updateMatrixWorld()
+    }
+
     if (world.pending && !warping.current) {
       const target = world.pending
       warping.current = true
       gridFor(target.matrix)
-        .then((next) => { enter(next, target.to, target.x, target.z) })
+        .then((next) => { enter(next, target.to, target.x, target.z, target.matrix) })
         .catch((e) => { console.error('워프 실패', e) })
         .finally(() => { world.pending = null; warping.current = false })
       return
@@ -258,7 +316,28 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         튀는 빛이라 생각하고 흙 계열로 밝게 잡는다
       */}
       <hemisphereLight args={['#d4e9f7', '#8d8468', 0.85]} />
-      <directionalLight position={[24, 42, 18]} intensity={1.05} color="#fff4e0" />
+      {/*
+        태양. 그림자를 던지는 것은 이 하나뿐이다 — 나무가 땅에 그림자를 안
+        떨어뜨리면 아무리 면을 나눠 칠해도 서 있는 것으로 안 보인다.
+        절두체는 플레이어를 따라다닌다 (`useFrame` 안 `sun.current`)
+      */}
+      <directionalLight
+        ref={sunRef}
+        position={[24, 42, 18]}
+        intensity={1.05}
+        color="#fff4e0"
+        castShadow
+        shadow-mapSize={[SHADOW_MAP, SHADOW_MAP]}
+        shadow-camera-left={-SHADOW_SPAN}
+        shadow-camera-right={SHADOW_SPAN}
+        shadow-camera-top={SHADOW_SPAN}
+        shadow-camera-bottom={-SHADOW_SPAN}
+        shadow-camera-near={1}
+        shadow-camera-far={140}
+        // 나뭇잎은 알파로 오려 낸 판이라 자기 그림자가 얼룩진다. 살짝 밀어 둔다
+        shadow-bias={-0.0012}
+        shadow-normalBias={0.03}
+      />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
       <directionalLight position={[-14, 12, 26]} intensity={0.38} color="#cfe0f0" />
 

@@ -25,7 +25,10 @@
 | 기술 데이터 | `poketool/waza/pl_waza_tbl.narc` | ✅ 471개 × 16B |
 | 트레이너 | `poketool/trainer/trdata` + `trpoke` | ✅ 928명 × (20B + 가변), AI 플래그 포함 |
 | 이벤트 스크립트 | `fielddata/script/scr_seq.narc` | ✅ **포맷 확정** — 1124개를 디컴프 원본과 바이트 대조 (§2.10) |
-| 대사 | `msgdata/pl_msg.narc` | ✅ 뱅크 432개 — 미국 685개가 디컴프 원문과 완전 일치 (§2.11) |
+| 대사 | `msgdata/pl_msg.narc` | ✅ 뱅크 444개 — 미국 685개가 디컴프 원문과 완전 일치 (§2.11) |
+| 아이템 | `itemtool/itemdata/pl_item_data.narc` | ✅ 468종 — 디컴프 446개와 필드 대조, 불일치 0 (§2.12) |
+| 상점 재고 | 디컴프 `include/data/mart_items.h` | ✅ 롬이 아니라 코드에 있다 (§2.13) |
+| **오버월드 NPC 스프라이트** | `data/mmodel/mmodel.narc` | ⚠️ 그림 421벌은 읽힌다. **스프라이트 번호 → 파일 번호 표를 못 찾았다** (§5) |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 게임에는 아직 안 붙였다 |
 | BGM | `data/sound/pl_sound_data.sdat` | ✅ 구조 파싱 / 재생 미검증 |
 | 캐릭터 모델·애니메이션 | BDSP 덤프 (롬 아님) | ✅ 추출 (PLAN §4.3.1) |
@@ -839,6 +842,71 @@ ItemPartyParam partyUseParam;   // 20바이트
 468칸을 24×20 격자로 굽고(768×640, **88.6KB**) 자료 없는 22칸은 `none` 아이콘으로
 채운다. 빈칸을 남기면 잘못 그렸을 때 "원래 빈 칸"과 구분이 안 된다.
 
+### 2.13 상점 재고 — 롬이 아니라 코드에 있다
+
+상점만은 롬 데이터가 아니다. `Shop_Start(…, shopItems, …)`에 넘기는 배열이
+`include/data/mart_items.h`에 **상수로 박혀 있다.** 그래서 `tools/extract/marts.js`는
+롬이 아니라 디컴프 헤더를 읽는다.
+
+포켓몬센터 옆 상점(`PokeMartCommon`)은 재고가 뱃지 수로 늘어난다. 표에 적힌
+`requiredBadges`는 **뱃지 개수가 아니라 계단 번호**고, 그 계단은
+`ScrCmd_PokeMartCommon`이 뱃지 수에서 만든다:
+
+```
+뱃지 0개 → 1 · 1~2 → 2 · 3~4 → 3 · 5~6 → 4 · 7 → 5 · 8 → 6
+```
+
+이 사다리를 잘못 옮기면 첫 상점에 회복약이 다 깔리는데, 화면은 멀쩡해 보이고
+어떤 계산도 안 틀린다. 확인되는 지점은 하나다 — **뱃지 0개면 파는 것이 딱 네
+가지**(몬스터볼·상처약·해독제·마비회복)이고 원작 첫 상점이 그렇다. 슈퍼볼은
+뱃지 셋, 하이퍼볼은 다섯부터다.
+
+백화점처럼 물건이 고정인 상점(`PokeMartSpecialties`)은 20곳이 저마다 목록을 갖고,
+번호는 `generated/mart_specialties_id.txt`의 줄 순서다.
+
+상점 UI 글은 따로 뱅크가 없다 — `TEXT_BANK_BAG`(us#7)이 갖고 있다.
+"몇 개 파시겠습니까?"·"용돈"·"예/아니오"가 전부 거기 있다.
+
+### 2.14 배틀 연출 — 순서와 길이가 스크립트에 적혀 있다
+
+sim은 한 턴을 통째로 계산해 사건을 0ms에 전부 내놓는다. 그대로 화면에 접으면
+두 마리의 체력이 동시에 깎이고 "몸통박치기!"보다 게이지가 먼저 움직인다.
+원작의 순서는 배틀 스크립트가 그대로 적어 두고 있다
+(`res/battle/scripts/subscripts/subscript_pursuit.s`):
+
+```
+Call BATTLE_SUBSCRIPT_UPDATE_HP              ← 게이지가 먼저 움직이고
+Call BATTLE_SUBSCRIPT_CRITICAL_HIT           ← "급소에 맞았다!"는 그 뒤
+Call BATTLE_SUBSCRIPT_MOVE_FOLLOWUP_MESSAGE  ← "효과가 굉장했다!"도 뒤
+```
+
+쇼다운은 `|-crit|`·`|-supereffective|`를 `|-damage|`보다 **먼저** 보내므로 그 둘만
+붙잡아 뒀다가 데미지 뒤로 민다 (`engine/battle/playback.ts`).
+
+기다리는 길이도 자료가 준다:
+
+| 값 | 근거 |
+|---|---|
+| 글 하나 30프레임 | `PrintMessage / Wait / WaitButtonABTime 30` |
+| 체력바 빠지기 7프레임 | `HEALTHBOX_SCROLL_OUT_OFFSET 160 / HEALTHBOX_SCROLL_SPEED 24` |
+| 게이지 속도 | 아래 |
+
+게이지는 `Task_UpdateHPGauge`가 프레임마다 한 번씩 `UpdateGauge`를 부른다. 칸이
+`HEALTHBOX_HP_CELL_COUNT(6) × HEALTHBOX_NAME_BLOCK_COUNT_X(8)` = **48**이고:
+
+- 최대 HP ≥ 48 → `*temp -= fillOffset` — 프레임당 1
+- 최대 HP < 48 → `*temp -= max × 256 / 48` — 프레임당 max/48
+
+그래서 최대 HP가 48 미만이면 게이지 전체가 **늘 48프레임**이고, 48 이상이면 깎인
+HP 수만큼 프레임이 걸린다. 한 줄로 `|Δ| × 48 / min(maxHP, 48)`이 둘 다 맞는다.
+
+⚠️ **기술 연출은 아직 없다.** 원작은 글을 찍은 뒤 `PlayMoveAnimation`이 도는 동안
+게이지가 기다린다. 우리는 그 자리가 비어 있어서 기술 이름을 띄운 채로 곧장
+게이지로 넘어간다 — 순서는 같고 그 사이의 시간만 없다.
+
+`WaitButtonABTime`이라 **A를 안 눌러도 스스로 넘어간다.** 배틀이 저 혼자 흘러가고
+A는 빨리 감기일 뿐이다.
+
 ---
 
 ## 3. 추출 파이프라인
@@ -860,7 +928,7 @@ tools/
     scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
     scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
     message.js      메시지 디코더 (제어 코드까지 살린다)
-    dialogue.js     대사 뱅크 441개 → dialogue/{로케일}/{번호}.json
+    dialogue.js     대사 뱅크 444개 → dialogue/{로케일}/{번호}.json
     dialogue-verify.js  디컴프 원문·한국어 헤더와 대조 (pnpm verify:dialogue)
     encounters.js   야생 표 → encounters.json
     species.js      personal/evo/wotbl → species.json
@@ -871,8 +939,16 @@ tools/
     mapTextures.js  BTX0 74벌 → tex/<묶음>.png
     items.js        pl_item_data → items.json (디컴프 446개와 필드 대조)
     itemIcons.js    NCGR/NCLR → itemIcons.png 아틀라스
+    marts.js        디컴프 헤더의 상점 재고표 → marts.json
     png.js          최소 PNG 인코더 (zlib만 쓴다)
 ```
+
+⚠️ **글 디코더는 `extract/message.js` 하나만 쓴다.** `spike/gen4text.js`에도 하나
+있는데 그것은 이름표용이라 charmap의 `
+`을 **글자 두 개 그대로** 둔다. `rom.js`의
+`openText()`가 한동안 그쪽을 쓰고 있었고, 이름에는 줄 바꿈이 없어서 아무 검증에도
+안 걸리다가 아이템 설명이 화면에 `상처약.
+포켓몬`으로 뜨고 나서야 보였다.
 
 `spike/`와 `extract/`를 나누는 이유: 스파이크 코드는 **틀린 가설을 담고 있을 수 있다**. 실제로 charmap·BDSP 채널 매핑·풀숲 타일이 그랬다. NDS 파일시스템과 NARC 파서만 예외로 spike에서 그대로 쓴다 — 크기 합 검증을 666/666, 534/534로 통과한 실측 확정이라 가설이 아니다.
 
@@ -889,12 +965,13 @@ tools/
 | `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
 | `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
 | `scripts.json` + `scripts.bin` (스크립트 1124개 + 이동 동작 표) | 435KB | 87KB |
-| `dialogue/ko/*.json` (뱅크 441개, 지연 로딩) | 945KB | 199KB |
+| `dialogue/ko/*.json` (뱅크 444개, 지연 로딩) | 947KB | 199KB |
 | `species.json` | 355KB | 28KB |
 | `moves.json` | 89KB | 4.3KB |
 | `trainers.json` (대사 색인 포함) | 183KB | 16KB |
 | `items.json` (468종) | 155KB | 7.9KB |
 | `itemIcons.png` (468칸 아틀라스, 768×640) | 88.6KB | — |
+| `marts.json` (상점 재고) | 0.8KB | — |
 | `names/*.json` (3로케일, 아이템 이름·설명 포함) | 264KB | 59KB |
 
 **신오 전체가 압축 후 210KB 남짓이다.** 전부 정적 JSON·바이너리이고 런타임에 롬을 파싱하지 않는다.
@@ -947,10 +1024,26 @@ tools/
 | 항목 | 크기 | 왜 미뤘나 |
 |---|---|---|
 | 영어 트레이너 이름 | 928 | 미국 롬 뱅크가 43칸만 차 있다. 목표 로케일이 한국어라 급하지 않다 |
-| 도구 데이터 | 468 | 이름만 있고 효과·가격이 없다. 트레이너가 든 나무열매가 아직 sim에 안 들어간다 |
-| 간판(20B)·트리거(16B) | 682 / 186 | 포맷은 뚫었다(§2.3). 스크립트 VM이 붙을 때 함께 |
-| **BDHC(높이)** | 666 청크 | 트윈리프·201·202가 전부 평지다. 언덕이 있는 존에 도달할 때 |
-| NSBMD 지오메트리 | 666 청크 | 아트는 자체 제작이다(PLAN §4.2). 블록아웃 레퍼런스가 필요한 시점까지 |
+| **오버월드 NPC 그림** | 421벌 | 아래 참조 |
+| 트레이너가 든 도구 | 928 | 도구 데이터는 다 있는데 sim에 아직 안 물렸다 |
 | 타일 거동 33종 | — | 원시값으로 보존 중. 의미는 필요해질 때 교차검증으로 |
+
+#### NPC 스프라이트 — 표를 못 찾아서 안 붙였다
+
+`data/mmodel/mmodel.narc`에 BTX0 421벌이 있고 전부 읽힌다. 걸어 다니는 사람은
+**32×32 16프레임**짜리 177벌이고 나머지는 나무·돌·지하 아이템이다. 그림 자체는
+이름까지 나온다(`reporter`, `pcwoman1`, `girl1`).
+
+막힌 것은 **NPC 배치의 `sprite` 번호를 이 파일 번호로 옮기는 표**다.
+`generated/object_events_gfx.txt`가 278줄이라 번호 공간은 그것이 맞는데, 그 표는
+디컴프가 아직 안 짚은 오버레이 안에 있다. 롬 전체를 훑어 봤지만 확정이 안 됐다:
+
+- 이름이 그대로 같은 쌍 16개를 뽑아 봤다 (`REPORTER`→`reporter`, `CAMERAMAN`→`cameraman` …)
+- 그중 14개가 `mmodel = gfx − 2`를 만족한다. 그럴듯해 보였다
+- 그런데 그 규칙을 **실제 배치 3555건**에 걸어 보니 절반(1763건)이 `seed17_b` 같은
+  지하 아이템 그림으로 떨어진다. 규칙이 틀렸다
+
+그래서 NPC는 여전히 캡슐이다. **그럴듯한 표를 지어서 붙이지 않는다** — 절반이
+엉뚱한 그림인 채로 돌아가면 틀렸다는 것조차 안 보인다.
 
 **교훈 하나만 남긴다.** 이 문서에서 확정된 것은 전부 두 가지 방법 중 하나로 확정됐다 — **크기 합이 유일하게 떨어지는가**(zone_event 구역, 인카운터 424B), **독립된 두 자료가 오탐·누락 0으로 맞아떨어지는가**(풀숲 타일, 헤더 표, 워프 좌표). 빈도·분포 모양·"그럴듯함"으로 확정한 것은 세 번 다 틀렸다.

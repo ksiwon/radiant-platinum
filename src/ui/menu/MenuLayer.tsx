@@ -6,8 +6,11 @@ import { useEffect } from 'react'
 import { fieldScripts } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
 import { BagScreen } from './BagScreen'
+import { OptionsScreen } from './OptionsScreen'
 import { PartyScreen } from './PartyScreen'
 import { PokedexScreen } from './PokedexScreen'
+import { SaveScreen } from './SaveScreen'
+import { ShopScreen } from './ShopScreen'
 import { StartMenu } from './StartMenu'
 import { TrainerCard } from './TrainerCard'
 
@@ -38,6 +41,9 @@ export function MenuLayer() {
     case 'party': return <PartyScreen />
     case 'pokedex': return <PokedexScreen />
     case 'trainerCard': return <TrainerCard />
+    case 'save': return <SaveScreen />
+    case 'options': return <OptionsScreen />
+    case 'shop': return <ShopScreen />
     default: return null
   }
 }

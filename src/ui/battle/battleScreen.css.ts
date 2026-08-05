@@ -91,8 +91,10 @@ export const barFill = style({
   height: '100%',
   borderRadius: 4,
   background: `linear-gradient(180deg, color-mix(in srgb, ${vars.hud.accent} 78%, white), ${vars.hud.accent})`,
-  // 깎이는 게 보여야 한다. 즉시 줄면 얼마나 맞았는지 알 수 없다
-  transition: 'width 420ms cubic-bezier(0.22, 0.8, 0.3, 1), background 200ms linear',
+  // 줄어드는 **시간**은 재생기가 정한다. 원작 게이지는 프레임당 한 칸씩 움직여서
+  // 많이 맞을수록 오래 걸린다 (`playback.drainFrames`). 여기서는 기울기만 정하고
+  // 길이는 `--drain`으로 받는다 — 고정 길이로 두면 큰 데미지가 순식간에 지나간다
+  transition: 'width var(--drain, 420ms) linear, background 200ms linear',
 })
 
 /** HP가 낮을 때. 원작처럼 색으로 먼저 알린다 */

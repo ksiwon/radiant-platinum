@@ -123,6 +123,19 @@ export interface FieldServices {
   openStartMenu?: () => void
   /** 메뉴가 아직 떠 있는가 */
   menuOpen?: () => boolean
+  /**
+   * 상점을 연다 (`Shop_Start`). `items`는 파는 물건의 아이템 번호다.
+   *
+   * 재고를 스크립트가 안 준다 — 명령이 뱃지 수나 상점 번호만 주고 실제 목록은
+   * 코드에 박혀 있다 (`include/data/mart_items.h`). 그 표를 푸는 것은 붙이는
+   * 쪽 일이다
+   */
+  openShop?: (items: readonly number[]) => void
+  /** 상점 재고표 (`include/data/mart_items.h`). 일반 상점은 뱃지 수로 늘어난다 */
+  martStock?: {
+    common: () => number[]
+    specialties: (martID: number) => number[]
+  }
 }
 
 export interface WorldInit {
@@ -192,7 +205,13 @@ export class FieldWorld {
   private readonly runners: MovementRunner[] = []
 
   private messages: readonly string[]
+  /**
+   * 인쇄기 기본값. **글자 속도는 여기 안 굳는다** — 설정에서 바꾼 값이 다음
+   * 대사부터 바로 먹어야 하므로 창을 열 때마다 `speed()`에 물어본다
+   */
   private readonly options: PrinterOptions
+  /** 지금 설정의 글자당 프레임. 설정 화면이 이걸 갈아 끼운다 */
+  speed: () => number = () => this.options.speed
   private readonly input: () => PrinterInput
 
   constructor(init: WorldInit) {
@@ -237,14 +256,14 @@ export class FieldWorld {
     this.boxOpen = true
     this.lastMessage = id
     this.printer = new MessagePrinter(this.messages[id] ?? '', this.slots, {
-      ...this.options, canSkip,
+      ...this.options, speed: this.speed(), canSkip,
     })
   }
 
   /** 트레이너 대사처럼 뱅크가 아니라 다른 데서 온 글을 올린다 */
   showText(text: string): void {
     this.boxOpen = true
-    this.printer = new MessagePrinter(text, this.slots, this.options)
+    this.printer = new MessagePrinter(text, this.slots, { ...this.options, speed: this.speed() })
   }
 
   /** `MessageInstant` — 한 프레임에 다 찍는다 */
