@@ -7,6 +7,9 @@ import { idbStorage } from './idbStorage'
 /** 전국도감 493종을 담는 비트필드 크기 (ceil(493/8) = 62, 여유 두어 64) */
 export const DEX_BYTES = 64
 
+/** 스크립트 플래그 4106개를 담는 바이트 수 */
+export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
+
 /**
  * 도감 비트필드. `Uint8Array`는 기본이 `ArrayBufferLike`라 SharedArrayBuffer 뷰까지 허용하는데,
  * 세이브 데이터는 structured clone으로 오가는 독립 버퍼여야 하므로 `ArrayBuffer`로 좁힌다.
@@ -24,36 +27,54 @@ export interface TrainerInfo {
 // 개체 모델은 엔진이 갖는다 — 능력치·경험치 계산이 붙어 있고 배틀에서도 같은 것을
 // 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
 import type { PokemonInstance } from '../engine/pokemon/instance'
+import { FLAG_COUNT, SAVED_VAR_COUNT } from '../engine/script/vars'
 
 export type { PokemonInstance }
 
 export type ItemId = string
 
+/**
+ * 스크립트 플래그·변수 (DATA.md §2.10).
+ *
+ * 이름표 붙은 불리언 묶음이 아니라 **원작과 같은 번호 공간**이다. 스크립트가
+ * `SetFlag 342`처럼 번호로 쓰고, 그 번호가 NPC의 등장 조건이기도 하다 —
+ * 우리가 이름을 새로 지으면 그 고리가 끊긴다.
+ */
+export type SaveFlags = Uint8Array<ArrayBuffer>
+export type SaveVars = Uint16Array<ArrayBuffer>
+
 export interface SaveData {
   version: number
   trainer: TrainerInfo
+  /** 라이벌 이름. 대사에 끼워 넣는다 (`BufferRivalName`) */
+  rivalName: string
   party: PokemonInstance[]
   boxes: PokemonInstance[][]
   bag: Record<ItemId, number>
   badges: number // 비트마스크
   pokedex: { seen: DexField; caught: DexField }
-  flags: Record<string, boolean | number>
+  /** 스크립트 플래그 4106개 */
+  flags: SaveFlags
+  /** 스크립트 변수 288칸 */
+  vars: SaveVars
   position: { mapId: string; x: number; y: number; z: number; facing: number }
   money: number
 }
 
-export const SAVE_VERSION = 1
+export const SAVE_VERSION = 2
 
 export function createNewSave(): SaveData {
   return {
     version: SAVE_VERSION,
     trainer: { name: '', gender: 'girl', id: 0, secretId: 0, playtimeMs: 0 },
+    rivalName: '',
     party: [],
     boxes: [],
     bag: {},
     badges: 0,
     pokedex: { seen: new Uint8Array(DEX_BYTES), caught: new Uint8Array(DEX_BYTES) },
-    flags: {},
+    flags: new Uint8Array(FLAG_BYTES),
+    vars: new Uint16Array(SAVED_VAR_COUNT),
     position: { mapId: 'twinleaf', x: 0, y: 0, z: 0, facing: 0 },
     money: 3000,
   }
@@ -80,7 +101,8 @@ interface SaveStore extends SaveData {
   hydrated: boolean
   markSeen: (dexNo: number) => void
   markCaught: (dexNo: number) => void
-  setFlag: (key: string, value: boolean | number) => void
+  /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
+  commitScriptState: (vars: ArrayLike<number>, flags: ArrayLike<number>) => void
   addPlaytime: (ms: number) => void
   resetSave: () => void
 }
@@ -89,6 +111,9 @@ interface SaveStore extends SaveData {
 function migrate(persisted: unknown, from: number): SaveData {
   let s = persisted as SaveData
   if (from < 1) s = { ...createNewSave(), ...s, version: 1 }
+  // 2에서 `flags`가 이름표 묶음에서 원작의 번호 공간으로 바뀌었다. 옛 값은
+  // 옮길 곳이 없다 — 그 시절 플래그를 쓰는 코드가 하나도 없었다
+  if (from < 2) s = { ...s, ...createNewSave(), version: 2, party: s.party, boxes: s.boxes }
   return s
 }
 
@@ -109,7 +134,10 @@ export const useSaveStore = create<SaveStore>()(
           },
         })),
 
-      setFlag: (key, value) => set((s) => ({ flags: { ...s.flags, [key]: value } })),
+      // 복사해서 넣는다 — 엔진 쪽 배열은 프레임마다 제자리에서 바뀌므로
+      // 그대로 두면 스토어가 변화를 못 보고 저장도 안 된다
+      commitScriptState: (vars, flags) =>
+        set({ vars: Uint16Array.from(vars), flags: Uint8Array.from(flags) }),
 
       addPlaytime: (ms) =>
         set((s) => ({ trainer: { ...s.trainer, playtimeMs: s.trainer.playtimeMs + ms } })),
@@ -132,6 +160,8 @@ export const useSaveStore = create<SaveStore>()(
           badges: s.badges,
           pokedex: s.pokedex,
           flags: s.flags,
+          vars: s.vars,
+          rivalName: s.rivalName,
           position: s.position,
           money: s.money,
         }) as SaveStore,

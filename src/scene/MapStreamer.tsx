@@ -15,6 +15,9 @@ import {
 import { activeZone, Behavior, BEHAVIOR_MASK, IMPASSABLE, isWater } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, world } from '../engine/map/world'
+import { fieldScripts, initFieldScripts, loadMapDialogue, loadVars } from '../engine/script/field'
+import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
+import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
 import { useBattleStore } from '../state/battleStore'
@@ -174,6 +177,48 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       setZone(null)
     }
   }, [initial, spawn, enter, setZone])
+
+  // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
+  // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다
+  const [generic, setGeneric] = useState<string[]>([])
+  useEffect(() => {
+    // 이름 짓기 화면이 아직 없다. 그동안은 원작이 제안하는 표의 첫 이름을
+    // 쓴다 — 우리가 지어낸 이름을 화면에 내보내지 않기 위해서다
+    const fallback = (kind: NameKind): string =>
+      generic.length === 0 ? '' : pickName(generic, kind, 0)
+    fieldScripts.names = {
+      player: () => {
+        const save = useSaveStore.getState()
+        return save.trainer.name
+          || fallback(save.trainer.gender === 'girl' ? 'playerFemale' : 'playerMale')
+      },
+      rival: () => useSaveStore.getState().rivalName || fallback('rival'),
+      // 주인공의 반대 성별 주인공
+      counterpart: () =>
+        fallback(useSaveStore.getState().trainer.gender === 'girl' ? 'playerMale' : 'playerFemale'),
+    }
+    // 플래그 하나가 NPC의 등장 조건이라, 저장이 안 되면 다음에 켤 때
+    // 이야기가 통째로 되감긴다
+    fieldScripts.onScriptEnd = (vars) => {
+      useSaveStore.getState().commitScriptState(vars.saved, vars.flags)
+    }
+    void initFieldScripts('ko')
+    return () => { fieldScripts.onScriptEnd = null }
+  }, [generic])
+
+  useEffect(() => {
+    loadGenericNames('ko').then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
+  }, [])
+
+  // 세이브가 복원되면 그 플래그·변수를 붓는다. 비동기라 첫 프레임에는 아직 없다
+  const hydrated = useSaveStore((s) => s.hydrated)
+  useEffect(() => {
+    if (!hydrated) return
+    const save = useSaveStore.getState()
+    loadVars(save.vars, save.flags)
+  }, [hydrated])
+
+  useEffect(() => { void loadMapDialogue(mapId) }, [mapId])
 
   // 하늘 텍스처는 한 번만 만든다
   const sky = useMemo(() => makeSkyTexture(DAY), [])

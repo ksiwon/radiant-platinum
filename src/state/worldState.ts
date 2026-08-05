@@ -17,7 +17,9 @@ export const worldState = {
     height: 4,
   },
   time: { elapsed: 0, gameHour: 12 },
-  input: { move: new Vector2(), run: false, interact: false },
+  // `interact`가 원작의 A, `cancel`이 B다. 대사창은 둘 다로 넘어가고
+  // (`ScriptContext_CheckABPress`) 예/아니오는 B가 "아니오"로 간다
+  input: { move: new Vector2(), run: false, interact: false, cancel: false },
 }
 
 export type WorldState = typeof worldState

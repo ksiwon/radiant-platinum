@@ -29,6 +29,24 @@ export interface PendingMenu {
   dest: number
 }
 
+/**
+ * 대사에 끼워 넣을 이름.
+ *
+ * 함수로 받는 이유: 주인공 이름은 세이브가 로드된 뒤에 정해지는데, 세계는
+ * 그보다 먼저 만들어진다
+ */
+export interface NameSource {
+  player(): string
+  rival(): string
+  counterpart(): string
+}
+
+const UNNAMED: NameSource = {
+  player: () => '',
+  rival: () => '',
+  counterpart: () => '',
+}
+
 export interface WorldInit {
   vars: VarStore
   /** 지금 스크립트가 읽는 뱅크. 없는 번호는 빈 글로 나온다 */
@@ -36,6 +54,7 @@ export interface WorldInit {
   options?: PrinterOptions
   /** 이번 프레임의 A/B. 대사창이 이걸로 넘어간다 */
   input?: () => PrinterInput
+  names?: NameSource
 }
 
 const NO_INPUT = (): PrinterInput => ({ pressed: false, held: false })
@@ -56,6 +75,10 @@ export class FieldWorld {
    */
   lastMessage: number | null = null
   menu: PendingMenu | null = null
+  /** 예/아니오에서 지금 가리키는 칸. 원작도 "예"에서 시작한다 */
+  menuCursor = MENU_YES
+
+  readonly names: NameSource
 
   private messages: readonly string[]
   private readonly options: PrinterOptions
@@ -66,6 +89,7 @@ export class FieldWorld {
     this.messages = init.messages ?? []
     this.options = init.options ?? DEFAULT_OPTIONS
     this.input = init.input ?? NO_INPUT
+    this.names = init.names ?? UNNAMED
   }
 
   /** 맵이 바뀌면 읽을 뱅크도 바뀐다 */
@@ -110,6 +134,7 @@ export class FieldWorld {
 
   openYesNo(dest: number): void {
     this.menu = { kind: 'yesno', dest }
+    this.menuCursor = MENU_YES
   }
 
   /** 메뉴에 답한다. 화면이 부르기도 하고 시험이 부르기도 한다 */

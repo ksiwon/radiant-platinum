@@ -9,7 +9,12 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
-import { world, warpsOf, npcsOf, resolveWarp, mapById, type EventFile, type MapHeader } from './world'
+import {
+  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT,
+  type EventFile, type MapHeader,
+} from './world'
+import { resolveScript } from '../script/data'
+import type { ScriptFile } from '../../data/schema'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'matrices/0.bin'))
@@ -100,6 +105,32 @@ maybe('워프 그래프', () => {
       expect(n.facing).toBeLessThanOrEqual(3)
       expect(n.raw).toHaveLength(16)
     }
+    // 말을 거는 사람이 6명이다. 이 자리를 hiddenFlag로 잘못 읽으면 1명이 된다
+    expect(npcs.map((n) => n.script).filter((s) => s !== 0 && s !== NO_SCRIPT).sort((a, b) => a - b))
+      .toEqual([3, 5, 6, 7, 8, 9])
+  })
+
+  it('NPC 3555명의 script가 전부 실재하는 진입점이다', () => {
+    // **필드 배치를 가르는 시험이다.** script(+10)와 hiddenFlag(+8)는 값 범위가
+    // 겹쳐서 눈으로는 안 갈린다. 하지만 script로 읽은 값은 반드시 그 맵 스크립트
+    // 파일의 진입점 번호여야 하고, 아니면 실행이 파일 밖으로 나간다.
+    //
+    //   구조체대로(+10)   범위 안 3306 · 범위 밖 0
+    //   바꿔 읽으면(+8)   범위 안    1 · 범위 밖 1612
+    const meta = read('scripts.json') as ScriptFile
+    let ok = 0, over = 0, silent = 0
+    for (const m of world.maps!) {
+      for (const npc of npcsOf(m.id)) {
+        if (npc.script === 0 || npc.script === NO_SCRIPT) { silent++; continue }
+        const target = resolveScript(meta, npc.script, m.scripts)
+        const file = target && meta.files[target.file]
+        if (!file || target.entry >= file.entries) over++
+        else ok++
+      }
+    }
+    expect(over).toBe(0)
+    expect(ok).toBe(3306)
+    expect(ok + over + silent).toBe(3555)
   })
 
   it('전체 1213개 중 목적지가 없는 것은 6개뿐이다', () => {

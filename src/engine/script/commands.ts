@@ -251,6 +251,37 @@ on('ShowYesNoMenu', (ctx) => {
   return true
 })
 
+// ── 칸 채우기 ────────────────────────────────────────────────────────────────
+//
+// `{STRVAR_1 …, 칸, 조사}` 자리를 채우는 명령들이다. 이걸 안 만들면 대사에
+// 이름이 빈칸으로 나온다 — 떡잎마을 첫 대사부터 "오오!  아닌가"가 된다.
+//
+// 칸 번호는 **바이트 하나**다(`ScriptContext_ReadByte`).
+
+on('BufferPlayerName', (ctx) => {
+  ctx.host.world.slots.set(ctx.readByte(), ctx.host.world.names.player())
+  return false
+})
+
+on('BufferRivalName', (ctx) => {
+  ctx.host.world.slots.set(ctx.readByte(), ctx.host.world.names.rival())
+  return false
+})
+
+on('BufferCounterpartName', (ctx) => {
+  // 주인공의 반대 성별 주인공. 콘테스트·통신 안내에 나온다
+  ctx.host.world.slots.set(ctx.readByte(), ctx.host.world.names.counterpart())
+  return false
+})
+
+on('BufferNumber', (ctx) => {
+  // 원작은 자릿수를 맞춰 공백으로 채우는데(`PADDING_MODE_SPACES`), 자릿수를
+  // `GetNumberDigitCount(number)`로 그 수 자신에게서 얻으므로 채울 것이 없다
+  const slot = ctx.readByte()
+  ctx.host.world.slots.set(slot, String(ctx.readVar()))
+  return false
+})
+
 // ── 표 만들기 ────────────────────────────────────────────────────────────────
 
 /**

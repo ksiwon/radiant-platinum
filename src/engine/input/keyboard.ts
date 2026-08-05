@@ -5,7 +5,7 @@ const pressed = new Set<string>()
 
 // 게임 활성 시에만 기본 동작을 막는다 (PLAN §11.3)
 const GAME_KEYS = new Set([
-  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab',
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab', 'Backspace',
 ])
 
 const BINDINGS = {
@@ -14,7 +14,9 @@ const BINDINGS = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   run: ['ShiftLeft', 'ShiftRight'],
+  // 원작의 A와 B. 대사창은 둘 다로 넘어가고 예/아니오는 B가 "아니오"로 간다
   interact: ['Space', 'KeyZ'],
+  cancel: ['KeyX', 'Backspace'],
 }
 
 let gameActive = false
@@ -47,5 +49,6 @@ export const inputSystem = {
     if (worldState.input.move.lengthSq() > 1) worldState.input.move.normalize()
     worldState.input.run = some(BINDINGS.run)
     worldState.input.interact = some(BINDINGS.interact)
+    worldState.input.cancel = some(BINDINGS.cancel)
   },
 }

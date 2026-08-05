@@ -12,6 +12,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { dialogueIndexSchema } from './schema'
+import { GENERIC_NAMES_BANK, namesOf, pickName } from './genericNames'
 
 const DATA = resolve(__dirname, '../../public/data/dialogue')
 const present = existsSync(resolve(DATA, 'index.json'))
@@ -28,7 +29,7 @@ maybe('대사', () => {
     JSON.parse(readFileSync(resolve(DATA, locale, `${at}.json`), 'utf8'))
 
   it('맵이 쓰는 뱅크 404개 + 공용을 담는다', () => {
-    expect(index.banks.length).toBe(430)
+    expect(index.banks.length).toBe(431)
     expect(index.locales).toEqual(['en', 'ko'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -77,6 +78,18 @@ maybe('대사', () => {
     expect(ko[1]).toMatch(/\{STRVAR_1 3, 1, [1-9]\d*\}/)
     expect(en[1]).toContain('Prof. Rowan')
     expect(ko[1]).toContain('마박사')
+  })
+
+  it('이름 짓기 표에서 라이벌 기본 이름이 나온다', () => {
+    // 원작이 제안하는 이름 표다. 우리가 이름을 지어내지 않으려고 싣는다 —
+    // 구간 경계는 디컴프의 `res/text/generic_names.json`이 붙인 이름표에서 왔다
+    const ko = bank('ko', GENERIC_NAMES_BANK)
+    expect(ko).toHaveLength(90)
+    expect(namesOf(ko, 'rival')).toEqual(['펄', '다이아몬드'])
+    expect(namesOf(bank('en', GENERIC_NAMES_BANK), 'rival')).toEqual(['Pearl', 'Diamond'])
+    expect(namesOf(ko, 'playerMale')).toHaveLength(18)
+    expect(namesOf(ko, 'playerFemale')).toHaveLength(18)
+    expect(pickName(ko, 'playerFemale', 0)).toBe('플래티넘')
   })
 
   it('줄바꿈·스크롤·새 쪽이 서로 다른 문자로 남는다', () => {

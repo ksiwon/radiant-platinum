@@ -9,6 +9,7 @@ import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
+import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { worldState } from '../state/worldState'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
@@ -24,8 +25,13 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
 
   useEffect(() => {
     if (!systemsRegistered) {
-      // 시스템 실행 순서 고정 (PLAN §3.4): Input → Movement → Warp → Encounter → Camera
+      // 시스템 실행 순서 고정 (PLAN §3.4):
+      // Input → Script → Movement → Warp → Encounter → Camera
+      //
+      // Script가 Movement보다 **먼저**여야 한다. 스크립트가 도는 동안 입력을
+      // 지워서 발을 묶는데, 뒤에 두면 이미 그 프레임만큼 걸어간 뒤가 된다
       gameLoop.register(inputSystem)
+      gameLoop.register(scriptSystem)
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)
       gameLoop.register(encounterSystem)

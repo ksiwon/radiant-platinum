@@ -6,8 +6,9 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  labelsSchema, moveFileSchema, nameListSchema, speciesFileSchema, trainerFileSchema,
-  type Labels, type Move, type Species, type Trainer,
+  dialogueIndexSchema, labelsSchema, moveFileSchema, nameListSchema, scriptFileSchema,
+  speciesFileSchema, trainerFileSchema,
+  type DialogueIndex, type Labels, type Move, type ScriptFile, type Species, type Trainer,
 } from './schema'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
@@ -121,6 +122,50 @@ export function loadTrainerClasses(locale: DataLocale): Promise<string[]> {
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {
   return fetchJson(`names/labels.${locale}.json`, (v) => labelsSchema.parse(v))
+}
+
+// ── 스크립트·대사 (DATA.md §2.10, §2.11) ──────────────────────────────────────
+
+/** 바이트코드 1124개를 읽는 데 필요한 것 — 파일 경계, 명령 폭, scriptID 표 */
+export function loadScriptMeta(): Promise<ScriptFile> {
+  return fetchJson('scripts.json', (v) => scriptFileSchema.parse(v))
+}
+
+/**
+ * 바이트코드 자체. 288KB이고 롬에서 꺼낸 그대로다.
+ *
+ * 스키마로 검증할 것이 없다 — 검증은 `scripts.json`의 파일 경계가 하고, 그
+ * 경계는 추출기가 롬 바이트와 맞춰 본 것이다
+ */
+export function loadScriptBytes(): Promise<Uint8Array> {
+  const hit = cache.get('scripts.bin')
+  if (hit) return hit as Promise<Uint8Array>
+  const promise = fetch(`${import.meta.env.BASE_URL}data/scripts.bin`)
+    .then((r) => {
+      if (!r.ok) throw new Error(`scripts.bin 로드 실패: HTTP ${r.status}`)
+      return r.arrayBuffer()
+    })
+    .then((b) => new Uint8Array(b))
+    .catch((e: unknown) => {
+      cache.delete('scripts.bin')
+      throw e
+    })
+  cache.set('scripts.bin', promise)
+  return promise
+}
+
+export function loadDialogueIndex(): Promise<DialogueIndex> {
+  return fetchJson('dialogue/index.json', (v) => dialogueIndexSchema.parse(v))
+}
+
+/**
+ * 뱅크 하나. **번호는 미국 롬 기준**이고 맵 헤더의 `msg`가 그 번호다.
+ *
+ * 맵 하나가 쓰는 것은 몇 KB뿐이라 필요할 때 받는다 — 430개를 다 받으면
+ * 첫 대화 한 번에 141KB가 나간다
+ */
+export function loadDialogueBank(locale: DataLocale, bank: number): Promise<string[]> {
+  return fetchJson(`dialogue/${locale}/${bank}.json`, (v) => nameListSchema.parse(v))
 }
 
 /** 성비 바이트를 암컷 확률로. 무성이면 null */

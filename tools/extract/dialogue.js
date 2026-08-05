@@ -80,6 +80,15 @@ function commonBanks(names) {
   return used
 }
 
+/**
+ * 맵이 안 가리키지만 필드가 쓰는 뱅크.
+ *
+ * `TEXT_BANK_GENERIC_NAMES`는 이름 짓기 화면이 제안하는 90개다 — 주인공
+ * 남자 18 · 여자 18 …  라이벌 2. 그 자리에서 무작위로 하나를 고르는 것이
+ * 기본 이름이라, 우리도 같은 표를 갖고 있어야 한다
+ */
+const EXTRA_BANKS = ['TEXT_BANK_GENERIC_NAMES']
+
 function main() {
   const charmap = loadCharmap(CHARMAP)
   const names = readBankNames()
@@ -90,7 +99,12 @@ function main() {
 
   // 맵이 쓰는 것 + 공용 스크립트가 쓰는 것. 나머지(배틀 UI·프런티어 등)는
   // 스크립트가 가리키지 않으므로 싣지 않는다
-  const wanted = [...new Set([...mapBanks(), ...commonBanks(names)])].sort((a, b) => a - b)
+  const extra = EXTRA_BANKS.map((name) => {
+    const at = names.indexOf(name)
+    if (at < 0) throw new Error(`뱅크 이름 표에 ${name}이 없다`)
+    return at
+  })
+  const wanted = [...new Set([...mapBanks(), ...commonBanks(names), ...extra])].sort((a, b) => a - b)
 
   const written = {}
   for (const [locale, info] of Object.entries(ROMS)) {

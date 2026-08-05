@@ -9,9 +9,9 @@
 //   목적지 필드(f2)는 412/414/416/417이었고 mapname.bin에서 #412가 "T01R0101" —
 //   트윈리프의 집 내부다. 좌표와 목적지가 동시에 맞아떨어지는 배치는 이것뿐이다.
 //
-// NPC(32B)도 같은 방법으로 좌표를 찾았다: (x, z)를 +24/+26으로 읽으면 오버월드
-// NPC 1184명 중 1143명(96.5%)이 자기 존의 타일 상자 안에 떨어진다. 차점 후보가
-// 3.7%라 비교가 되지 않는다. 나머지 필드는 값 분포로만 이름을 붙였으므로 추정이다.
+// NPC(32B)는 디컴프에 구조체가 그대로 있다(`ObjectEvent`). 좌표는 그 전에 값으로
+// 먼저 확정했었고(+24/+26으로 읽으면 오버월드 1184명 중 1143명이 자기 존 상자 안,
+// 차점 후보는 3.7%) 구조체와 일치한다.
 // 트리거(16B)·A구역(20B)은 아직 필드 배치를 모른다. 개수만 실어 둔다.
 'use strict'
 const { openRom, writeJson } = require('./rom')
@@ -56,25 +56,33 @@ function parseWarps(section) {
 }
 
 /**
- * NPC 32B. 확정된 것은 좌표(+24/+26)뿐이고 나머지는 값 분포로 붙인 추정 이름이다:
- *   sprite  1~262   /data/mmodel 아카이브(470개) 범위 안
- *   move    0~54    이동 유형
- *   facing  0~3     4방향
- *   script  0~1339  맵 스크립트 안의 항목 번호(파일 번호가 아니다)
- *   height  0~30    BDHC 높이 층
- * 확정 전까지 원시값 raw를 함께 실어 둔다 — 이름이 틀려도 데이터는 잃지 않는다.
+ * NPC 32B — 디컴프의 `ObjectEvent`(`include/map_header_data.h`) 그대로다.
+ *
+ * ```c
+ * u16 localID, graphicsID, movementType, trainerType, hiddenFlag, script;
+ * s16 dir; u16 data[3]; s16 movementRangeX, movementRangeZ;
+ * u16 x, z; fx32 y;
+ * ```
+ *
+ * 이걸 찾기 전에는 값 분포로 이름을 붙였고 **script와 hiddenFlag가 서로
+ * 바뀌어 있었다.** 떡잎마을 8명으로 갈린다 — 구조체대로면 말을 거는 NPC가
+ * 6명(3·5·6·7·8·9)이고, 바꿔 읽으면 1명뿐이다.
+ *
+ * `y`는 fx32(20.12)인데 한 타일이 16단위라 **위쪽 16비트가 곧 타일 높이**다.
  */
 function parseNpcs(section) {
   const out = []
   for (let i = 0; i < section.count; i++) {
     const o = i * section.size
     const u = (f) => section.data.readUInt16LE(o + f * 2)
-    const flag = u(5)
+    const s = (f) => section.data.readInt16LE(o + f * 2)
+    const flag = u(4)
     out.push({
       x: u(12), z: u(13), height: u(15),
-      sprite: u(1), move: u(2), facing: u(6),
-      script: u(4),
+      localID: u(0), sprite: u(1), move: u(2), trainerType: u(3), facing: s(6),
+      script: u(5),
       flag: flag === NO_FLAG ? null : flag,
+      range: [s(10), s(11)],
       raw: Array.from({ length: 16 }, (_, f) => u(f)),
     })
   }
@@ -129,7 +137,7 @@ function main() {
   }
   console.log(`  검증 T01 NPC ${e.npcs.length}명:`)
   for (const n of e.npcs) {
-    console.log(`    (${n.x}, ${n.z}) 모델 ${n.sprite} 이동 ${n.move} 방향 ${n.facing} 스크립트 ${n.script}`)
+    console.log(`    (${n.x}, ${n.z}) 모델 ${n.sprite} 이동 ${n.move} 방향 ${n.facing} 스크립트 ${n.script} 플래그 ${n.flag ?? '-'}`)
   }
 }
 

@@ -34,21 +34,31 @@ export interface Warp {
 }
 
 /**
- * NPC 배치. 확정된 것은 좌표뿐이고 나머지 이름은 값 분포로 붙인 추정이다
- * (DATA.md §2.3). raw에 원시 16워드가 그대로 있으니 이름이 틀려도 잃는 건 없다.
+ * NPC 배치. 디컴프의 `ObjectEvent` 그대로다 (DATA.md §2.3).
+ * raw에 원시 16워드가 그대로 있으니 필드를 잘못 읽어도 자료는 잃지 않는다.
  */
 export interface Npc {
   x: number
   z: number
   height: number
+  /** 이 맵 안에서의 번호. 스크립트가 `VAR_LAST_TALKED`로 읽는다 */
+  localID: number
   sprite: number
   move: number
+  /** 트레이너전 대사 종류. 0이면 트레이너가 아니다 */
+  trainerType: number
   facing: number
+  /** 맵 이벤트의 scriptID. `NO_SCRIPT`(0xFFFF)면 말을 걸 수 없다 */
   script: number
-  /** 등장 조건 플래그. 조건이 없으면 null */
+  /** 등장 조건 플래그. **서 있으면 숨은 것**이다. 조건이 없으면 null */
   flag: number | null
+  /** 돌아다니는 범위 (x, z) */
+  range: [number, number]
   raw: number[]
 }
+
+/** `ObjectEvent_HasNoScript` — 말을 걸어도 아무 일이 없다 */
+export const NO_SCRIPT = 0xffff
 
 export interface EventFile {
   warps: Warp[]
