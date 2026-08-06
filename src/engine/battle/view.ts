@@ -62,6 +62,13 @@ export interface BattleView {
   ended: boolean
   /** 이긴 쪽 이름. 무승부면 null인 채로 `ended`만 선다 */
   winner: string | null
+  /**
+   * 지금 화면에서 도는 기술. 무대의 연출이 이걸 보고 한 번 돈다.
+   *
+   * `seq`가 있는 이유는 **같은 기술이 이어서 나오기 때문**이다 — 몸통박치기를
+   * 두 턴 연속 쓰면 나머지 값이 전부 같아서, 번호가 없으면 두 번째가 안 돈다
+   */
+  lastMove: { by: SideId; to: SideId | null; move: number | null; seq: number } | null
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
@@ -69,6 +76,7 @@ const EMPTY_MAP: ReadonlyMap<string, number> = new Map()
 
 export function emptyView(): BattleView {
   return {
+    lastMove: null,
     turn: 0,
     active: { p1: null, p2: null },
     weather: null,
@@ -133,6 +141,19 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
   switch (e.kind) {
     case 'turn':
       return { ...view, turn: e.turn }
+
+    case 'move':
+      // 화면에는 아무 변화가 없지만 **연출은 여기서 시작한다.** 박자가 이
+      // 사건에 `MOVE_FRAMES`만큼 쉬는 자리를 내 준다 (`playback`)
+      return {
+        ...view,
+        lastMove: {
+          by: e.actor.side,
+          to: e.target?.side ?? null,
+          move: e.move,
+          seq: (view.lastMove?.seq ?? 0) + 1,
+        },
+      }
 
     case 'switch': {
       const mon: ViewMon = {

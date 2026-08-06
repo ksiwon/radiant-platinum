@@ -18,10 +18,11 @@
 // 글을 다 찍고 30프레임을 쉬거나 A·B를 누르면 넘어간다. 게이지가 줄어드는 속도는
 // `battle/healthbox.c`의 `UpdateGauge`가 정한다 (`drainFrames` 참조).
 //
-// ⚠️ **기술 연출은 아직 없다.** 원작은 글을 찍은 뒤 `PlayMoveAnimation`이 도는
-// 동안 게이지가 기다린다. 우리는 그 자리가 비어 있어서 기술 이름을 띄운 채로 곧장
-// 게이지로 넘어간다 — 순서는 원작과 같고 그 사이의 시간만 없다.
+// **기술 연출이 여기서 자리를 받는다.** 원작은 글을 찍은 뒤 `PlayMoveAnimation`이
+// 도는 동안 게이지가 기다린다. 그 자리를 박자 하나로 낸다(`hold`) — 그동안
+// 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
 import type { BattleEvent } from './events'
+import { MOVE_FRAMES } from './vfx'
 import { applyEvents, emptyView, type BattleView } from './view'
 
 /**
@@ -41,6 +42,8 @@ export interface Beat {
 
 /** `WaitButtonABTime 30` — 글 하나를 읽히는 시간 */
 const HOLD_MESSAGE = 30
+
+
 /**
  * 체력바가 화면 밖으로 빠지는 시간.
  * `HEALTHBOX_SCROLL_OUT_OFFSET 160 / HEALTHBOX_SCROLL_SPEED 24` = 7프레임.
@@ -151,7 +154,9 @@ export function buildBeats(
         // 뷰는 안 바뀌지만 사건은 그래도 실어 보낸다 — 줄기에서 조용히 빠지면
         // 무엇이 지나갔는지 아무도 못 센다
         say(text(e), 0)
-        show([e], 0)
+        // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
+        // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다
+        show([e], MOVE_FRAMES)
         break
 
       default:

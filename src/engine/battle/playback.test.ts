@@ -5,6 +5,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Actor, BattleEvent } from './events'
 import { buildBeats, drainFrames } from './playback'
+import { MOVE_FRAMES } from './vfx'
+import { applyEvents, emptyView } from './view'
 
 const p1: Actor = { slot: 'p1a', side: 'p1', name: 'party-0' }
 const p2: Actor = { slot: 'p2a', side: 'p2', name: 'foe-0' }
@@ -171,5 +173,26 @@ describe('박자 순서', () => {
       '모부기는 경험치를 24 얻었다!',
       '모부기의 레벨이 올랐다! (Lv.6)',
     ])
+  })
+})
+
+describe('기술 연출 자리', () => {
+  it('기술 사건이 연출만큼 쉰다 — 무대와 같은 상수를 본다', () => {
+    // 이 자리가 0이면 기술 이름이 뜨자마자 게이지가 닳아서, 무엇이 무엇을
+    // 때렸는지가 화면에서 안 이어진다
+    const beats = buildBeats([move(p1, '몸통박치기'), hit(p2, 8, 20)], say)
+    const at = beats.findIndex((b) => b.events.some((e) => e.kind === 'move'))
+    expect(at, '기술 박자가 없다').toBeGreaterThanOrEqual(0)
+    expect(beats[at]!.hold).toBe(MOVE_FRAMES)
+    // 그리고 그 뒤에 게이지가 온다. 순서가 뒤집히면 안 된다
+    expect(beats.slice(at + 1).some((b) => b.events.some((e) => e.kind === 'damage'))).toBe(true)
+  })
+
+  it('뷰가 기술을 내밀고, 같은 기술이 이어져도 순번이 는다', () => {
+    // 순번이 없으면 몸통박치기를 두 턴 연속 쓸 때 두 번째 연출이 안 돈다
+    const one = applyEvents(emptyView(), [move(p1, '몸통박치기')])
+    expect(one.lastMove).toEqual({ by: 'p1', to: null, move: 33, seq: 1 })
+    const two = applyEvents(one, [move(p1, '몸통박치기')])
+    expect(two.lastMove?.seq).toBe(2)
   })
 })

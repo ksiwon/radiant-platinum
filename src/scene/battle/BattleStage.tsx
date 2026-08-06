@@ -17,6 +17,7 @@ import type { ViewMon } from '../../engine/battle/view'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
+import { MoveVfx } from './MoveVfx'
 import { DAY, makeBlobShadow, makeSkyTexture } from '../fx/sky'
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
@@ -216,6 +217,11 @@ export function BattleStage() {
         mon={view?.active.p1 ?? null} look={look(view?.active.p1 ?? null, 'p1-0')}
         spot={MINE} mine shadow={shadow}
       />
+      {/*
+        기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —
+        틀은 롬의 기술 데이터가, 색은 타입이 정한다 (`engine/battle/vfx`)
+      */}
+      <MoveVfx mine={[MINE.x, MINE.z]} foe={[FOE.x, FOE.z]} />
     </group>
   )
 }
