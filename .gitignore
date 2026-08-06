@@ -12,6 +12,11 @@ public/models/
 public/data/chunks/
 public/data/props/
 public/data/tex/
+# 소리 7.5MB — 악보 1013 · 악기표 521 · 파형 창고 521.
+# `pnpm extract:sound`로 만든다. index.json은 작아서 추적한다
+public/data/sound/seq/
+public/data/sound/bnk/
+public/data/sound/war/
 *.nds
 *.sdat
 *.local

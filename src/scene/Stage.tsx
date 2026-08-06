@@ -13,6 +13,7 @@ import { attachKeyboard } from '../engine/input/keyboard'
 import { attachMouse } from '../engine/input/mouse'
 import { useBattleStore } from '../state/battleStore'
 import { useOptionsStore } from '../state/optionsStore'
+import { MusicDirector } from './MusicDirector'
 
 let keyboardAttached = false
 
@@ -85,6 +86,7 @@ export function Stage() {
         </Suspense>
         {inBattle && <BattleStage />}
         <EngineDriver />
+        <MusicDirector />
       </Canvas>
     </div>
   )

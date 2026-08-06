@@ -173,15 +173,53 @@ function main() {
     console.log('  ' + [...unknown].map(([op, n]) => `0x${op.toString(16)}×${n}`).join(' '))
   }
 
+  // ── 웹이 받을 것 ──
+  //
+  // **뜯지 않고 그대로 옮긴다.** SSEQ·SBNK·SWAR을 파싱해서 JSON으로 펴는 대신
+  // 원본 바이트를 그대로 내놓고 엔진이 읽는다. 그래야 파서가 한 벌뿐이고
+  // 시험이 그 한 벌을 못 박을 수 있다 — 추출기와 엔진에 파서를 각각 두면
+  // 한쪽만 고쳐도 아무 데도 안 걸린다.
+  const banks = sdat.records(2)
+  const arcs = sdat.records(3)
+  const copy = (dir, i, data) => {
+    fs.mkdirSync(path.join(OUT_DIR, dir), { recursive: true })
+    fs.writeFileSync(path.join(OUT_DIR, dir, `${String(i)}.bin`), data)
+  }
+  let bytes = 0
+  for (let i = 0; i < seqs.length; i++) {
+    if (!seqs[i]) continue
+    const d = sdat.file(sdat.buf.readUInt16LE(seqs[i]))
+    copy('seq', i, d); bytes += d.length
+  }
+  for (let i = 0; i < banks.length; i++) {
+    if (!banks[i]) continue
+    const d = sdat.file(sdat.buf.readUInt16LE(banks[i]))
+    copy('bnk', i, d); bytes += d.length
+  }
+  for (let i = 0; i < arcs.length; i++) {
+    if (!arcs[i]) continue
+    const d = sdat.file(sdat.buf.readUInt16LE(arcs[i]))
+    copy('war', i, d); bytes += d.length
+  }
+
   fs.mkdirSync(OUT_DIR, { recursive: true })
-  writeJson('sound/index.json', {
+  const out = writeJson('sound/index.json', {
     songs: seqs.map((rec, i) => rec === null ? null : {
       name: sdat.names.SEQ?.[i] ?? null,
       bank: sdat.buf.readUInt16LE(rec + 4),
       volume: sdat.buf[rec + 6],
     }),
+    // 악기표가 고를 수 있는 파형 창고 넷. `0xffff`는 안 씀
+    banks: banks.map((rec) => rec === null ? null : {
+      wars: [0, 1, 2, 3].map((k) => {
+        const n = sdat.buf.readUInt16LE(rec + 4 + k * 2)
+        return n === 0xffff ? null : n
+      }),
+    }),
   })
-  console.log(`곡 목록을 public/data/sound/index.json에 적었다`)
+  console.log(`악보 ${seqs.filter(Boolean).length} · 악기표 ${banks.filter(Boolean).length}` +
+    ` · 파형 창고 ${arcs.filter(Boolean).length} → ${(bytes / 1024 / 1024).toFixed(1)}MB`)
+  console.log(`목록 ${out.rel} (${out.kb}KB)`)
 }
 
 main()

@@ -75,7 +75,7 @@ export function OptionsScreen() {
     {
       key: 'sound', label: at(OPTIONS_TEXT.labels.sound),
       values: pick(OPTIONS_TEXT.sound), at: options.sound,
-      help: at(OPTIONS_TEXT.help.sound), inert: true,
+      help: at(OPTIONS_TEXT.help.sound),
     },
     {
       key: 'battlePace', label: '배틀 진행',

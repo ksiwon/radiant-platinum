@@ -22,8 +22,18 @@ export type Width =
   | 'track'
   /** 주소(u24) */
   | 'u24'
-  /** 다음 명령을 꾸미는 접두사 (무작위 · 변수에서 · 조건) */
-  | 'prefix'
+  /**
+   * 다음 명령의 값을 범위에서 무작위로 뽑는다. `A0 <명령> <s16 최소> <s16 최대>`.
+   *
+   * ⚠️ 한동안 이것을 3바이트로 알고 있었다. 전곡에 두 번밖에 안 나오는데,
+   * 하필 뒤에 오는 바이트가 0x80 미만이라 **음표로 읽혀서 아무 데도 안 걸렸다** —
+   * `A0 C0 0A 00 78 00`을 실제로 들여다보고서야 6바이트인 것을 알았다
+   */
+  | 'random'
+  /** 다음 명령의 값을 변수에서 가져온다. `A1 <명령> <변수 번호>` */
+  | 'fromVar'
+  /** 앞선 비교가 참일 때만 다음 명령을 실행한다. `A2 <명령…>` */
+  | 'if'
   /** 고정 바이트 수 */
   | number
 
@@ -34,7 +44,9 @@ export function commandWidth(op: number): Width | null {
     case 0x80: case 0x81: return 'var'
     case 0x93: return 'track'
     case 0x94: case 0x95: return 'u24'
-    case 0xa0: case 0xa1: case 0xa2: return 'prefix'
+    case 0xa0: return 'random'
+    case 0xa1: return 'fromVar'
+    case 0xa2: return 'if'
     // 팬·볼륨·조옮김·벤드·우선순위·타이·포르타멘토·모듈레이션·ADSR·반복 시작
     case 0xc0: case 0xc1: case 0xc2: case 0xc3: case 0xc4: case 0xc5:
     case 0xc6: case 0xc7: case 0xc8: case 0xc9: case 0xca: case 0xcb:

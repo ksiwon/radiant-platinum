@@ -1,0 +1,372 @@
+// 악보를 소리로 (DATA.md §2.18)
+//
+// 실시간 스케줄러를 두지 않고 **한 번에 렌더한다.** Web Audio 노드를 음표마다
+// 만들면 곡 하나에 수천 개가 되고, 포락선을 `GainNode`로 흉내 내면 원작 곡선이
+// 아니라 대충 비슷한 곡선이 된다. 여기서는 드라이버가 하던 것을 그대로 한다 —
+// 1/192초마다 트랙을 밟고 포락선을 한 칸 굴리고, 그 사이를 채운다.
+//
+// 시간 단위 둘이 다르다:
+//   · 드라이버 프레임 192Hz — 포락선이 여기서 움직인다
+//   · 악보 틱 = `템포 × 48 / 60` Hz — 4분음표가 48틱이다
+//
+// **48틱이라는 것은 실측이다.** 곡 1013개의 음표 길이를 세면 11·23·47·95가
+// 1·2·3·5위인데 전부 12·24·48·96에서 하나 뺀 값이다(음이 서로 안 붙게 한 틱
+// 짧게 쓴다). 점음표 71·35와 셋잇단 31·15도 같은 자리에 선다. 그리고 드라이버가
+// 틱 카운터를 240과 비교하므로(ARM7 0x2385360) 프레임률은 `240 × 48/60 = 192`다.
+import { parseSbnk, noteFor, type Bank, type NoteDef } from './sbnk'
+import { parseSwar, type Swav } from './swar'
+import { commandWidth } from './sseq'
+import {
+  ENV_FLOOR, envDone, gainOf, knobDecibel, releaseEnv, startEnv, stepEnv, type Env,
+} from './envelope'
+
+/** 드라이버가 도는 빠르기 (Hz) */
+export const FRAME_RATE = 192
+/** 드라이버가 틱 카운터를 견주는 값 (ARM7 0x2385360) */
+export const TICK_DIVISOR = 240
+/** 4분음표 한 개의 틱 수 */
+export const TICKS_PER_BEAT = 48
+/** 악보가 시작하는 자리 */
+const SEQ_BASE = 0x1c
+/** 하드웨어 채널 수. 넘으면 제일 오래된 것을 뺏는다 */
+const CHANNELS = 16
+/** 트랙 수 */
+const TRACKS = 16
+
+interface Track {
+  /** 악보 안 자리. `null`이면 끝난 트랙 */
+  at: number | null
+  /** 이 트랙이 도돌이표를 밟은 횟수 */
+  loops: number
+  /** 부르기가 쌓이는 곳 */
+  stack: number[]
+  /** 쉬는 동안 남은 틱 */
+  wait: number
+  program: number
+  volume: number
+  expression: number
+  pan: number
+  transpose: number
+  /** 반음 단위 벤드 폭 */
+  bendRange: number
+  /** −128~127 */
+  bend: number
+  /** 음표가 길이만큼 기다리는가 (0xc7). 기본은 기다린다 */
+  noteWait: boolean
+  /** 악기표가 준 값을 덮어쓴 ADSR. `-1`이면 안 덮었다 */
+  attack: number
+  decay: number
+  sustain: number
+  release: number
+}
+
+interface Voice {
+  env: Env
+  def: NoteDef
+  swav: Swav | null
+  key: number
+  velocity: number
+  track: Track
+  /** 표본 안 자리 (소수) */
+  phase: number
+  /** 남은 게이트 틱. 0이 되면 놓는다 */
+  gate: number
+  /** 뺏을 때 쓰는 나이 */
+  born: number
+  /** PSG 사각파 위상 */
+  psg: number
+  /** 잡음 LFSR */
+  lfsr: number
+}
+
+function newTrack(): Track {
+  return {
+    at: null, loops: 0, stack: [], wait: 0, program: 0,
+    volume: 127, expression: 127, pan: 64, transpose: 0,
+    bendRange: 2, bend: 0, noteWait: true,
+    attack: -1, decay: -1, sustain: -1, release: -1,
+  }
+}
+
+/** 가변 길이 정수 */
+function varLen(d: Uint8Array, at: number): [number, number] {
+  let v = 0, n = 0
+  for (;;) {
+    const b = d[at + n]!
+    n++
+    v = (v << 7) | (b & 0x7f)
+    if (!(b & 0x80) || n >= 4) break
+  }
+  return [v, n]
+}
+
+export interface RenderOptions {
+  sampleRate: number
+  /** 최대 길이 (초). 곡이 도돌이표로 돌아 무한하므로 잘라야 한다 */
+  maxSeconds: number
+  /** 곡 전체 음량 (0~127) */
+  volume?: number
+}
+
+export interface Rendered {
+  left: Float32Array
+  right: Float32Array
+  sampleRate: number
+  /** 돌아갈 자리 (표본 수). 뛰기를 만나지 않았으면 `null` */
+  loopStart: number | null
+  /**
+   * 한 바퀴가 끝나는 자리.
+   *
+   * 같은 트랙이 **두 번째로** 뛰는 순간이다. `loopStart`~`loopEnd`가 곡의 한
+   * 바퀴이므로 그 구간을 반복하면 이어 붙은 자리가 안 들린다
+   */
+  loopEnd: number | null
+  /** 채널이 모자라 뺏은 횟수. 0이 아니면 원작보다 소리가 준 것이다 */
+  stolen: number
+}
+
+/**
+ * 곡 하나를 통째로 편다.
+ *
+ * `wars`는 악기표가 고를 수 있는 파형 창고 넷이다 — 정의의 `war` 칸이 그중
+ * 몇 번째인지를 가리킨다
+ */
+export function renderSong(
+  seq: ArrayBuffer, bnk: ArrayBuffer, wars: (ArrayBuffer | null)[], opts: RenderOptions,
+): Rendered {
+  const bank: Bank = parseSbnk(bnk)
+  const banks = wars.map((w) => (w ? parseSwar(w) : null))
+  const data = new Uint8Array(seq)
+  const rate = opts.sampleRate
+  const masterDb = knobDecibel(opts.volume ?? 127)
+
+  const total = Math.ceil(opts.maxSeconds * rate)
+  const left = new Float32Array(total)
+  const right = new Float32Array(total)
+
+  const tracks: Track[] = Array.from({ length: TRACKS }, newTrack)
+  const voices: Voice[] = []
+  let stolen = 0
+  let born = 0
+
+  // 첫 트랙 자리. 0xfe로 시작하면 여러 트랙이고 뒤따르는 0x93이 자리를 준다
+  let head = SEQ_BASE
+  if (data[head] === 0xfe) {
+    head += 3
+    while (data[head] === 0x93) {
+      const n = data[head + 1]!
+      tracks[n]!.at = SEQ_BASE + (data[head + 2]! | (data[head + 3]! << 8) | (data[head + 4]! << 16))
+      head += 5
+    }
+  }
+  tracks[0]!.at = head
+
+  let tempo = 120
+  let counter = 0
+  let loopStart: number | null = null
+  let loopEnd: number | null = null
+  /** 도돌이표를 처음 밟은 트랙. 한 바퀴는 그 트랙을 기준으로 잰다 */
+  let loopTrack: Track | null = null
+  let written = 0
+  /** 프레임 하나가 내는 표본 수. 정수가 아니라 모아서 쓴다 */
+  const perFrame = rate / FRAME_RATE
+  let carry = 0
+
+  const swavFor = (def: NoteDef): Swav | null => {
+    if (def.kind !== 1) return null
+    return banks[def.war]?.[def.wave] ?? null
+  }
+
+  /** 음 하나를 올린다 */
+  const noteOn = (t: Track, key: number, velocity: number, gate: number) => {
+    const def = noteFor(bank.programs[t.program] ?? null, key)
+    if (!def) return
+    if (voices.length >= CHANNELS) {
+      // 놓인 것부터, 없으면 제일 오래된 것부터 뺏는다
+      let worst = 0
+      for (let i = 1; i < voices.length; i++) {
+        const a = voices[i]!, b = voices[worst]!
+        const aFree = a.gate <= 0 ? 1 : 0, bFree = b.gate <= 0 ? 1 : 0
+        if (aFree > bFree || (aFree === bFree && a.born < b.born)) worst = i
+      }
+      voices.splice(worst, 1)
+      stolen++
+    }
+    voices.push({
+      env: startEnv(
+        t.attack < 0 ? def.attack : t.attack,
+        t.decay < 0 ? def.decay : t.decay,
+        t.sustain < 0 ? def.sustain : t.sustain,
+        t.release < 0 ? def.release : t.release,
+      ),
+      def, swav: swavFor(def), key, velocity, track: t,
+      phase: 0, gate, born: born++, psg: 0, lfsr: 0x7fff,
+    })
+  }
+
+  /** 트랙 하나를 한 틱 밟는다 */
+  const stepTrack = (t: Track) => {
+    if (t.at === null) return
+    if (t.wait > 0) { t.wait--; return }
+    for (let guard = 0; guard < 4096; guard++) {
+      if (t.at === null || t.at >= data.length) { t.at = null; return }
+      const op = data[t.at]!
+      const w = commandWidth(op)
+      if (w === null) { t.at = null; return }
+
+      if (w === 'note') {
+        const velocity = data[t.at + 1]!
+        const [dur, n] = varLen(data, t.at + 2)
+        t.at += 2 + n
+        noteOn(t, op + t.transpose, velocity, dur)
+        if (t.noteWait) { t.wait = dur; return }
+        continue
+      }
+      if (w === 'var') {
+        const [v, n] = varLen(data, t.at + 1)
+        t.at += 1 + n
+        if (op === 0x80) { t.wait = v; return }
+        t.program = v & 0x7f
+        continue
+      }
+      if (w === 'track') { t.at += 5; continue }
+      if (w === 'u24') {
+        // 형을 적어 준다 — `t.at`에 다시 넣으므로 추론이 자기를 참조한다
+        const to: number = SEQ_BASE
+          + (data[t.at + 1]! | (data[t.at + 2]! << 8) | (data[t.at + 3]! << 16))
+        if (op === 0x95) { t.stack.push(t.at + 4); t.at = to; continue }
+        // 뛰기. 여기가 곡이 도는 자리다
+        t.loops++
+        if (loopStart === null) { loopStart = written; loopTrack = t }
+        else if (t === loopTrack && loopEnd === null) loopEnd = written
+        t.at = to
+        continue
+      }
+      // 값을 다른 데서 가져오는 접두사들. 전곡에 다섯 번뿐이라 값은 최솟값으로
+      // 고정한다 — 렌더가 결정적이어야 시험이 붙든다
+      if (w === 'random') { t.at += 6; continue }
+      if (w === 'fromVar') { t.at += 3; continue }
+      if (w === 'if') { t.at += 1; continue }
+
+      const v = w === 0 ? 0 : data[t.at + 1]!
+      switch (op) {
+        case 0xc0: t.pan = v; break
+        case 0xc1: t.volume = v; break
+        case 0xc3: t.transpose = (v << 24) >> 24; break
+        case 0xc4: t.bend = (v << 24) >> 24; break
+        case 0xc5: t.bendRange = v; break
+        case 0xc7: t.noteWait = v !== 0; break
+        case 0xd0: t.attack = v; break
+        case 0xd1: t.decay = v; break
+        case 0xd2: t.sustain = v; break
+        case 0xd3: t.release = v; break
+        case 0xd5: t.expression = v; break
+        case 0xe1: tempo = data[t.at + 1]! | (data[t.at + 2]! << 8); break
+        case 0xfd: t.at = t.stack.pop() ?? null; continue
+        case 0xff: t.at = null; return
+        default: break
+      }
+      if (typeof w === 'number') t.at += 1 + w
+      else { t.at = null; return }
+    }
+  }
+
+  while (written < total && loopEnd === null) {
+    // ── 악보를 밟는다 ──
+    counter += tempo
+    while (counter >= TICK_DIVISOR) {
+      counter -= TICK_DIVISOR
+      for (const t of tracks) stepTrack(t)
+      for (const v of voices) {
+        if (v.gate > 0 && --v.gate === 0) releaseEnv(v.env)
+      }
+    }
+
+    // ── 포락선 한 칸 ──
+    for (let i = voices.length - 1; i >= 0; i--) {
+      const v = voices[i]!
+      stepEnv(v.env)
+      if (envDone(v.env)) voices.splice(i, 1)
+    }
+    if (voices.length === 0 && tracks.every((t) => t.at === null)) break
+
+    // ── 그 사이를 채운다 ──
+    carry += perFrame
+    const n = Math.min(Math.floor(carry), total - written)
+    carry -= n
+    for (const v of voices) {
+      const db = v.env.value >> 7
+      const gain = gainOf(
+        db + knobDecibel(v.velocity) + knobDecibel(v.track.volume)
+        + knobDecibel(v.track.expression) + masterDb,
+      )
+      if (gain <= 0) continue
+      const pan = Math.max(0, Math.min(127, v.track.pan))
+      const gl = gain * ((128 - pan) / 128)
+      const gr = gain * (pan / 128)
+      const semis = v.key - v.def.baseNote + (v.track.bend * v.track.bendRange) / 128
+      const ratio = 2 ** (semis / 12)
+
+      if (v.swav) {
+        const step = (v.swav.sampleRate * ratio) / rate
+        const src = v.swav.data
+        const end = src.length
+        for (let i = 0; i < n; i++) {
+          let p = v.phase
+          if (p >= end) {
+            if (!v.swav.loops) break
+            const span = end - v.swav.loopStart
+            p = v.swav.loopStart + ((p - v.swav.loopStart) % span)
+            v.phase = p
+          }
+          const i0 = p | 0
+          const frac = p - i0
+          const a = src[i0] ?? 0
+          const b = src[i0 + 1] ?? (v.swav.loops ? src[v.swav.loopStart] ?? 0 : 0)
+          const s = a + (b - a) * frac
+          left[written + i]! += s * gl
+          right[written + i]! += s * gr
+          v.phase = p + step
+        }
+      } else if (v.def.kind === 2) {
+        // PSG 사각파. 듀티는 정의의 `wave` 칸이 준다 (0~7)
+        const freq = 440 * 2 ** ((v.key + (v.track.bend * v.track.bendRange) / 128 - 69) / 12)
+        const step = freq / rate
+        const duty = (v.def.wave + 1) / 8
+        for (let i = 0; i < n; i++) {
+          v.psg += step
+          if (v.psg >= 1) v.psg -= 1
+          const s = v.psg < duty ? -0.5 : 0.5
+          left[written + i]! += s * gl
+          right[written + i]! += s * gr
+        }
+      } else if (v.def.kind === 3) {
+        // 잡음. 15비트 LFSR을 음 높이만큼 빠르게 돌린다
+        const freq = 440 * 2 ** ((v.key - 69) / 12) * 8
+        const step = freq / rate
+        for (let i = 0; i < n; i++) {
+          v.psg += step
+          while (v.psg >= 1) {
+            v.psg -= 1
+            const bit = v.lfsr & 1
+            v.lfsr >>= 1
+            if (bit) v.lfsr ^= 0x6000
+          }
+          const s = (v.lfsr & 1) ? 0.4 : -0.4
+          left[written + i]! += s * gl
+          right[written + i]! += s * gr
+        }
+      }
+    }
+    written += n
+    if (n === 0 && carry < 1) carry += perFrame
+  }
+
+  return {
+    left: left.subarray(0, written), right: right.subarray(0, written),
+    sampleRate: rate, loopStart, loopEnd, stolen,
+  }
+}
+
+/** 포락선 바닥. 시험이 쓴다 */
+export { ENV_FLOOR }
