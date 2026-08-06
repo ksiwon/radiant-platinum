@@ -247,7 +247,7 @@ export function sliceTexture(sheet: TexSheet, item: SheetItem, rep: number): Tex
  * 끄지 않으면 뒤에 있는 것이 통째로 사라진다
  */
 export function makeMaterial(
-  spec: ChunkMeta['materials'][number], texture: Texture | null,
+  spec: ChunkMeta['materials'][number], texture: Texture | null, doubleSided = false,
 ): Material {
   const translucent = spec.a < 31
   return new MeshLambertMaterial({
@@ -259,6 +259,11 @@ export function makeMaterial(
     transparent: translucent,
     opacity: translucent ? spec.a / 31 : 1,
     depthWrite: !translucent,
-    side: spec.f === 3 ? DoubleSide : FrontSide,
+    // 원작은 카메라가 한쪽에서만 보므로 **뒷면을 안 만든다.** 집은 앞·좌·우·지붕만
+    // 있고 뒷벽이 없고(주인공 집 219삼각형에 `0,0,-1` 법선이 0개), 풀·울타리는
+    // 판 한 장이다. 1인칭으로 돌아가면 그게 통째로 사라져 구멍이 뚫린다.
+    // 양면으로 그리면 뒤에서 봐도 막힌 것으로 보인다 — three가 뒷면의 법선을
+    // 뒤집어 주므로 빛도 제대로 받는다
+    side: spec.f === 3 || doubleSided ? DoubleSide : FrontSide,
   })
 }
