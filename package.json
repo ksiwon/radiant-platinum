@@ -23,6 +23,7 @@
     "verify:events": "node tools/extract/events-verify.js",
     "extract": "pnpm extract:textbanks && pnpm extract:headers && pnpm extract:matrices && pnpm extract:bdhc && pnpm extract:events && pnpm extract:scripts && pnpm extract:dialogue && pnpm extract:encounters && pnpm extract:species && pnpm extract:moves && pnpm extract:trainers && pnpm extract:items && pnpm extract:marts && pnpm extract:itemIcons && pnpm extract:chunks && pnpm extract:props && pnpm extract:mapTextures && pnpm extract:pokegra",
     "extract:pokegra": "node tools/extract/pokegra.js",
+    "extract:sound": "node tools/extract/sound.js",
     "extract:encounters": "node tools/extract/encounters.js",
     "extract:trainers": "node tools/extract/trainers.js",
     "extract:bdhc": "node tools/extract/bdhc.js",
