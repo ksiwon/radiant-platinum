@@ -80,24 +80,24 @@ export const TIME_LOOKS: readonly TimeLook[] = [
     skyColor: '#e0a882', groundColor: '#6e5a44', fill: 0.26,
   },
   {
-    stops: [[0, '#0e1730'], [0.42, '#1c2a4c'], [0.72, '#33456c'], [0.9, '#4a5a7c'], [1, '#3b4450']],
-    fog: '#37456a', fogNear: 22, fogFar: 88,
-    sun: 0.26, sunColor: '#9fb6e0', ambient: 0.42,
-    skyColor: '#4a6294', groundColor: '#2a2c36', fill: 0.16,
+    stops: [[0, '#16213f'], [0.42, '#26365c'], [0.72, '#3e527d'], [0.9, '#57688c'], [1, '#4a5563']],
+    fog: '#42517a', fogNear: 22, fogFar: 88,
+    sun: 0.34, sunColor: '#9fb6e0', ambient: 0.54,
+    skyColor: '#5b74a8', groundColor: '#3a3d4a', fill: 0.22,
   },
   {
-    stops: [[0, '#070c1c'], [0.42, '#101a35'], [0.72, '#1e2b4c'], [0.9, '#2c3a5c'], [1, '#262c38']],
-    fog: '#222e4c', fogNear: 18, fogFar: 76,
-    sun: 0.18, sunColor: '#8ea6d6', ambient: 0.34,
-    skyColor: '#38507e', groundColor: '#1e2029', fill: 0.12,
+    stops: [[0, '#0d1428'], [0.42, '#182444'], [0.72, '#28375c'], [0.9, '#38476d'], [1, '#333a48']],
+    fog: '#2c3a5c', fogNear: 18, fogFar: 76,
+    sun: 0.24, sunColor: '#8ea6d6', ambient: 0.44,
+    skyColor: '#48608f', groundColor: '#2c2f3a', fill: 0.17,
   },
 ]
 
 /**
  * 인물 키 라이트 (플레이어 발밑 기준, 미터).
  *
- * **밤에 빛을 줄이면 사람도 같이 사라진다.** 심야의 몸빛은 낮의 26%까지 내려가서
- * 실루엣이 배경에 묻힌다(아래 `bodyLight`로 잰 값이다). 실제 게임들이 밤을
+ * **밤에 빛을 줄이면 사람도 같이 사라진다.** 심야의 몸빛은 낮의 35%라 실루엣이
+ * 배경에 묻힌다(아래 `bodyLight`로 잰 값이다). 실제 게임들이 밤을
  * "그냥 어둡게"가 아니라 **인물만 따로 세우는 빛**으로 다루는 이유가 그거다.
  *
  * ⚠️ 빛을 대상별로 가릴 수는 없다 — three는 광원을 **카메라 레이어**로만 거른다

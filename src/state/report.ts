@@ -11,11 +11,33 @@
 import { get, set, del, createStore } from 'idb-keyval'
 import type { SaveData } from './saveStore'
 
-// ⚠️ 이름을 바꾸면 **이미 저장된 리포트를 못 찾는다.** 화면에 뜨는 제목이 아니라
-// IndexedDB 데이터베이스 이름이라, 게임 이름이 바뀌어도 이건 그대로 둔다
-const dbStore = createStore('pt-3d', 'save')
+const dbStore = createStore('radiant-platinum', 'save')
 /** 슬롯 하나. 원작도 세이브가 한 벌이다 */
 const SLOT = 'report'
+
+/**
+ * 이름을 바꾸기 전에 쓰던 데이터베이스.
+ *
+ * ⚠️ **이름만 바꾸면 이미 저장된 리포트를 못 찾는다.** IndexedDB는 데이터베이스
+ * 이름이 곧 주소라, 새 이름으로 열면 빈 창고가 하나 더 생길 뿐이고 옛 리포트는
+ * 그대로 남아 영영 안 읽힌다. 그래서 처음 읽을 때 한 번 옮긴다
+ */
+const OLD_DB = 'pt-3d'
+let migrated = false
+
+async function migrate(): Promise<void> {
+  if (migrated) return
+  migrated = true
+  try {
+    // 새 자리에 이미 있으면 옮길 것이 없다. 덮어쓰면 최신 리포트를 잃는다
+    if (await get<SaveData>(SLOT, dbStore) !== undefined) return
+    const old = createStore(OLD_DB, 'save')
+    const data = await get<SaveData>(SLOT, old)
+    if (data === undefined) return
+    await set(SLOT, data, dbStore)
+    await del(SLOT, old)
+  } catch { /* 옛 창고가 없거나 못 열면 옮길 것도 없다 */ }
+}
 
 /**
  * 리포트를 읽는다. 없거나 판이 안 맞으면 null.
@@ -24,6 +46,7 @@ const SLOT = 'report'
  * 어긋난 자료가 게임 안까지 흘러든다 — 없는 것으로 치고 새로 시작하는 편이 낫다
  */
 export async function readReport(expectVersion: number): Promise<SaveData | null> {
+  await migrate()
   const data = await get<SaveData>(SLOT, dbStore)
   if (!data || data.version !== expectVersion) return null
   return data

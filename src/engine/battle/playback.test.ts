@@ -151,7 +151,11 @@ describe('박자 순서', () => {
     const played = buildBeats(events, say).flatMap((b) => b.events)
     // 순서는 바뀔 수 있어도(급소가 뒤로 밀린다) 빠지는 것은 없어야 한다
     expect(played).toHaveLength(events.length)
-    expect(new Set(played)).toEqual(new Set(events))
+    // 기술에 맞은 데미지에는 `hit`이 붙는다 — 그것만 벗기면 들어온 것과 같아야 한다
+    const bare = played.map((e) => (e.kind === 'damage' ? { ...e, hit: undefined } : e))
+    expect(new Set(bare)).toEqual(new Set(events.map(
+      (e) => (e.kind === 'damage' ? { ...e, hit: undefined } : e),
+    )))
   })
 
   it('같은 줄이 연달아 나오면 다시 안 찍는다', () => {
@@ -194,5 +198,68 @@ describe('기술 연출 자리', () => {
     expect(one.lastMove).toEqual({ by: 'p1', to: null, move: 33, seq: 1 })
     const two = applyEvents(one, [move(p1, '몸통박치기')])
     expect(two.lastMove?.seq).toBe(2)
+  })
+})
+
+describe('타격 정보 — 소리가 이걸 보고 난다', () => {
+  /** 박자에 실린 데미지 사건에서 `hit`만 뽑는다 */
+  const hits = (events: BattleEvent[]) =>
+    buildBeats(events, say)
+      .flatMap((b) => b.events)
+      .filter((e) => e.kind === 'damage')
+      .map((e) => e.hit)
+
+  it('효과 줄이 없으면 보통이다 — 쇼다론은 보통일 때 아무 줄도 안 보낸다', () => {
+    // 이게 안 되면 **대부분의 타격이 조용해진다.** 가장 흔한 경우가 보통이다
+    expect(hits([enter(p2, 40), move(p1, '몸통박치기'), hit(p2, 30, 40)]))
+      .toEqual([{ level: 'normal', crit: false }])
+  })
+
+  it('데미지보다 먼저 온 효과·급소를 얹는다', () => {
+    const events: BattleEvent[] = [
+      enter(p2, 40), move(p1, '불꽃세례'),
+      { kind: 'effectiveness', actor: p2, level: 'super' },
+      { kind: 'crit', actor: p2 },
+      hit(p2, 10, 40),
+    ]
+    expect(hits(events)).toEqual([{ level: 'super', crit: true }])
+  })
+
+  it('연타는 맞을 때마다 소리가 난다', () => {
+    const events: BattleEvent[] = [
+      enter(p2, 40), move(p1, '연속자르기'),
+      hit(p2, 34, 40), hit(p2, 28, 40), hit(p2, 22, 40),
+    ]
+    expect(hits(events)).toHaveLength(3)
+    expect(hits(events).every((h) => h?.level === 'normal')).toBe(true)
+  })
+
+  it('독·모래바람은 타격이 아니다 — `from`이 차 있다', () => {
+    const poison: BattleEvent = {
+      kind: 'damage', actor: p2, condition: { hp: 20, maxHp: 40, status: 'psn' },
+      from: { kind: 'status', id: null, name: 'psn' },
+    }
+    expect(hits([enter(p2, 40), move(p1, '독가루'), poison])).toEqual([undefined])
+  })
+
+  it('기술 없이 온 데미지도 타격이 아니다', () => {
+    // 턴 시작의 잔류 데미지가 그렇다. 기술이 돌지 않았는데 맞는 소리가 나면 안 된다
+    expect(hits([enter(p2, 40), { kind: 'turn', turn: 2 }, hit(p2, 30, 40)]))
+      .toEqual([undefined])
+  })
+
+  it('뷰가 그것을 받아 번호를 매긴다 — 같은 타격이 두 번 울리지 않는다', () => {
+    const beats = buildBeats(
+      [enter(p2, 40), move(p1, '연속자르기'), hit(p2, 34, 40), hit(p2, 28, 40)],
+      say,
+    )
+    let view = emptyView()
+    const seqs: number[] = []
+    for (const beat of beats) {
+      view = applyEvents(view, beat.events)
+      if (view.lastHit) seqs.push(view.lastHit.seq)
+    }
+    // 두 번 맞았으니 번호가 두 번 바뀐다
+    expect(new Set(seqs).size).toBe(2)
   })
 })

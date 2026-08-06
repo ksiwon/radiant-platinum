@@ -39,8 +39,11 @@ export function BattleSound() {
       if (!mon) { seen.current[side] = { key: null, fainted: false }; continue }
 
       if (mon.key !== was.key) {
-        // 새로 나왔다. 상대는 던지는 소리 없이 나타나고, 우리 쪽은 공을 던진다
+        // 새로 나왔다. 상대는 던지는 소리 없이 나타나고, 우리 쪽은 공을 던진다.
+        // 공에서 나오는 소리는 양쪽 다 난다 — `battle_display.c` 2058줄이
+        // 앞을 보든 뒤를 보든 `BOWA2`를 내고 좌우만 갈라 준다
         if (side === 'p1') void music.playEffect(SFX.THROW)
+        void music.playEffect(SFX.SEND_OUT)
         if (mon.species !== null) void music.playCry(mon.species)
         seen.current[side] = { key: mon.key, fainted: mon.fainted }
         continue
@@ -58,5 +61,35 @@ export function BattleSound() {
     }
   }, [view])
 
+  /**
+   * 맞는 소리.
+   *
+   * ⚠️ **효과마다 다른 소리다.** 하나로 두면 굉장했는지 별로였는지가 귀로 안
+   * 들린다 — 원작은 `effectiveness`로 갈라 세 소리를 쓴다
+   * (`BattleDisplay_FlyMoveHitSoundEffect`)
+   */
+  // 잡았을 때와 도망쳤을 때. 배틀이 끝나는 방식마다 소리가 다르다
+  const outcome = useBattleStore((s) => s.outcome)
+  useEffect(() => {
+    if (outcome === 'caught') void music.playEffect(SFX.CAUGHT)
+    if (outcome === 'fled') void music.playEffect(SFX.FLEE)
+  }, [outcome])
+
+  const hit = view?.lastHit ?? null
+  const lastHitSeq = useRef(0)
+  useEffect(() => {
+    if (!hit || hit.seq === lastHitSeq.current) return
+    lastHitSeq.current = hit.seq
+    void music.playEffect(HIT_SOUND[hit.level])
+  }, [hit])
+
   return null
 }
+
+const HIT_SOUND = {
+  super: SFX.HIT_SUPER,
+  resisted: SFX.HIT_WEAK,
+  // 무효는 데미지가 없어서 여기까지 안 온다. 표를 다 채워 두는 것뿐이다
+  immune: SFX.HIT_WEAK,
+  normal: SFX.HIT_NORMAL,
+} as const

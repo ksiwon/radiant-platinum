@@ -34,6 +34,27 @@ export const SFX = {
   HEAL: 1516,
   /** `SEQ_SE_DP_SAVE`. 저장 (`clear_game.c` 136줄) */
   SAVE: 1563,
+
+  /**
+   * 기술이 맞는 소리 셋. **효과에 따라 다른 소리다** —
+   * `BattleDisplay_FlyMoveHitSoundEffect`(`battle_display.c` 1694줄)가
+   * `effectiveness`로 갈라 `Sound_PlayPannedEffect`를 부른다:
+   * 0(보통) → `KOUKA_M` · 1(별로) → `KOUKA_L` · 2(굉장) → `KOUKA_H`.
+   *
+   * ⚠️ 쇼다운은 **보통일 때 아무 줄도 안 보낸다.** `-supereffective`/`-resisted`가
+   * 없다는 것이 곧 보통이므로, 없을 때 `KOUKA_M`을 내야 대부분의 타격에 소리가 난다
+   */
+  HIT_SUPER: 1788,
+  HIT_WEAK: 1789,
+  HIT_NORMAL: 1790,
+  /** `SEQ_SE_DP_BOWA2`. 공에서 나올 때 (`battle_display.c` 2058줄) */
+  SEND_OUT: 1798,
+  /** `SEQ_SE_DP_NIGERU`. 도망 */
+  FLEE: 1792,
+  /** `SEQ_SE_DP_GETTING`. 잡았다 (`battle_script.c` 10482줄) */
+  CAUGHT: 1801,
+  /** `SEQ_SE_DP_KON`. 공이 흔들릴 때 (`battle_script.c` 10420줄) */
+  BALL_SHAKE: 1510,
 } as const
 
 export type SfxName = keyof typeof SFX

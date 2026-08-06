@@ -33,7 +33,7 @@ describe('도감 비트필드', () => {
 
 describe('IndexedDB 영속화', () => {
   it('structured clone이 Uint8Array를 원형 그대로 보존한다', async () => {
-    const store = createStore('pt-3d-test', 'save')
+    const store = createStore('radiant-platinum-test', 'save')
     const save = createNewSave()
     save.pokedex.seen = dexSet(save.pokedex.seen, 387)
     save.pokedex.caught = dexSet(save.pokedex.caught, 387)

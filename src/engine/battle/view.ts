@@ -6,7 +6,7 @@
 //
 // sim을 import 하지 않으므로 UI가 마음대로 가져다 써도 지연 로딩 경계가 안 깨진다.
 import type { Gender, Status } from '../pokemon/instance'
-import type { BattleEvent, BoostStat, Condition, SideId } from './events'
+import type { BattleEvent, BoostStat, Condition, Effectiveness, SideId } from './events'
 
 export const BOOST_STATS: readonly BoostStat[] = [
   'atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion',
@@ -69,6 +69,13 @@ export interface BattleView {
    * 두 턴 연속 쓰면 나머지 값이 전부 같아서, 번호가 없으면 두 번째가 안 돈다
    */
   lastMove: { by: SideId; to: SideId | null; move: number | null; seq: number } | null
+  /**
+   * 방금 맞은 타격. 소리가 이걸 보고 난다 (`ui/battle/BattleSound`).
+   *
+   * `seq`가 필요한 이유는 `lastMove`와 같다 — 연타 기술은 같은 값이 이어서 오고,
+   * 번호가 없으면 두 번째 타격이 조용하다
+   */
+  lastHit: { side: SideId; level: Effectiveness | 'normal'; crit: boolean; seq: number } | null
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
@@ -77,6 +84,7 @@ const EMPTY_MAP: ReadonlyMap<string, number> = new Map()
 export function emptyView(): BattleView {
   return {
     lastMove: null,
+    lastHit: null,
     turn: 0,
     active: { p1: null, p2: null },
     weather: null,
@@ -176,7 +184,15 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       return { ...view, active: { ...view.active, [e.actor.side]: mon } }
     }
 
-    case 'damage':
+    case 'damage': {
+      const hurt = patch(view, e.actor.side, (m) => withCondition(m, e.condition))
+      if (e.hit === undefined) return hurt
+      return {
+        ...hurt,
+        lastHit: { side: e.actor.side, ...e.hit, seq: (view.lastHit?.seq ?? 0) + 1 },
+      }
+    }
+
     case 'heal':
       return patch(view, e.actor.side, (m) => withCondition(m, e.condition))
 

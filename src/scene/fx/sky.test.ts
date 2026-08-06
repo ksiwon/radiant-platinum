@@ -10,9 +10,11 @@ const MORNING = TIME_LOOKS[0]!, DAY = TIME_LOOKS[1]!, DUSK = TIME_LOOKS[2]!
 const NIGHT = TIME_LOOKS[3]!, LATE = TIME_LOOKS[4]!
 
 describe('몸빛', () => {
-  it('심야가 낮보다 훨씬 어둡다 — 키 라이트가 필요한 이유다', () => {
-    // 이 비가 0.3 언저리라는 것이 "밤에 사람이 안 보인다"의 실체다
-    expect(bodyLight(LATE) / bodyLight(DAY)).toBeLessThan(0.3)
+  it('밤은 키 라이트가 필요할 만큼 어둡다', () => {
+    // 문턱은 `NIGHT_FLOOR`(낮의 6할)다. 밤 프리셋을 밝게 손봐도 이 아래에
+    // 있는 한 키 라이트가 켜진다 — 숫자를 눈으로 고르지 않으려고 이렇게 쓴다
+    expect(bodyLight(LATE)).toBeLessThan(0.6 * bodyLight(DAY))
+    expect(bodyLight(NIGHT)).toBeLessThan(0.6 * bodyLight(DAY))
   })
 
   it('시간이 갈수록 어두워진다', () => {
@@ -76,10 +78,19 @@ describe('시간대 섞기', () => {
     expect(blendLooks(NIGHT, LATE, 1)).toBe(LATE)
   })
 
-  it('중간은 두 끝 사이다 — 경계에서 키 라이트가 툭 켜지지 않는다', () => {
-    const mid = blendLooks(DUSK, NIGHT, 0.5)
-    expect(characterKey(mid)).toBeGreaterThan(characterKey(DUSK))
-    expect(characterKey(mid)).toBeLessThan(characterKey(NIGHT))
+  it('키 라이트가 툭 켜지지 않는다 — 계단이 아니라 경사다', () => {
+    const STEPS = 40
+    let prev = 0
+    let jump = 0
+    for (let i = 0; i <= STEPS; i++) {
+      const now = characterKey(blendLooks(DUSK, NIGHT, i / STEPS))
+      expect(now).toBeGreaterThanOrEqual(prev)
+      jump = Math.max(jump, now - prev)
+      prev = now
+    }
+    expect(prev).toBeCloseTo(characterKey(NIGHT), 10)
+    // 한 칸 사이 변화가 끝값의 1/8을 안 넘는다. 켜지는 순간에도 계단이 없다
+    expect(jump).toBeLessThan(characterKey(NIGHT) / 8)
   })
 
   it('색도 섞는다', () => {

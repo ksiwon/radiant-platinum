@@ -18,6 +18,7 @@ import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { MoveVfx } from './MoveVfx'
+import { MOVE_FRAMES } from '../../engine/battle/vfx'
 import { DAY, makeBlobShadow, makeSkyTexture } from '../fx/sky'
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
@@ -39,6 +40,18 @@ const CAMERA_TARGET = [0.9, 1.0, -1.6] as const
 /** 등판·기절이 딱 끊기지 않게 하는 시간(초) */
 const FADE = 0.35
 
+/**
+ * 때리러 나갔다 돌아오는 시간(초).
+ *
+ * 박자가 기술에 내주는 쉼과 같은 상수를 쓴다(`MOVE_FRAMES`) — 다르게 잡으면
+ * 연출이 끝나기도 전에 다음 글이 뜨거나, 다 끝나고도 화면이 멈춰 있다
+ */
+const LUNGE = MOVE_FRAMES / 60
+/** 맞고 움찔하는 시간(초). 원작은 스프라이트가 흔들리며 깜빡인다 */
+const FLINCH = 0.34
+/** 깜빡이는 횟수. 이보다 잦으면 화면이 지저분해지고 뜸하면 안 보인다 */
+const FLINCH_BLINKS = 5
+
 interface SpeciesLook {
   color: string
 }
@@ -58,10 +71,12 @@ const MON_TALL = 2.8
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
 function Slot(
-  { mon, look, spot, mine, shadow }: {
+  { mon, look, spot, other, mine, shadow }: {
     mon: ViewMon | null
     look: SpeciesLook | null
     spot: typeof MINE
+    /** 상대가 선 자리. 때리러 나가는 방향을 여기서 뽑는다 */
+    other: typeof MINE
     mine: boolean
     shadow: CanvasTexture | null
   },
@@ -88,16 +103,48 @@ function Slot(
   // 표현이므로 시뮬레이션 스텝이 아니라 렌더 델타로 민다
   const shown = useRef(0)
 
+  /**
+   * 때리는 쪽과 맞는 쪽의 움직임.
+   *
+   * **도형만 날아다니고 포켓몬은 가만히 있으면 누가 때렸는지가 안 보인다.**
+   * 원작도 스프라이트가 앞으로 나갔다 오고, 맞은 쪽은 흔들리며 깜빡인다.
+   *
+   * 값은 프레임마다 줄어드는 타이머 둘이다. `useState`로 두면 배틀 내내 React가
+   * 다시 그린다 — 뷰가 바뀌는 순간에만 1로 채우고 나머지는 `useFrame`이 민다
+   */
+  const lunge = useRef(0)
+  const flinch = useRef(0)
+  const side = mine ? 'p1' : 'p2'
+  const cast = useBattleStore((s) => s.view?.lastMove ?? null)
+  const struck = useBattleStore((s) => s.view?.lastHit ?? null)
+  useEffect(() => { if (cast?.by === side) lunge.current = 1 }, [cast, side])
+  useEffect(() => { if (struck?.side === side) flinch.current = 1 }, [struck, side])
+
   useFrame((_, delta) => {
     const g = body.current
     if (!g) return
     const want = mon && !fainted ? 1 : 0
     shown.current += Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     const t = shown.current
-    g.visible = t > 0.01
     g.scale.setScalar(spot.scale * (0.6 + 0.4 * t))
     // 살짝 위아래로 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다
     const bob = Math.sin(performance.now() / 620 + spot.x) * 0.045
+
+    // 때리러 나간다. 앞의 반은 가고 뒤의 반은 온다 — 갔다가 순간이동으로
+    // 돌아오면 뒷걸음질이 아니라 깜빡임으로 보인다
+    lunge.current = Math.max(0, lunge.current - delta / LUNGE)
+    const k = 1 - lunge.current
+    const reach = lunge.current > 0 ? Math.sin(k * Math.PI) * 0.42 : 0
+
+    // 맞으면 흔들리며 깜빡인다
+    flinch.current = Math.max(0, flinch.current - delta / FLINCH)
+    const hurt = flinch.current
+    const shake = hurt > 0 ? Math.sin(hurt * Math.PI * 8) * 0.22 * hurt : 0
+    const blink = hurt > 0 && Math.floor((1 - hurt) * FLINCH_BLINKS * 2) % 2 === 1
+    g.visible = t > 0.01 && !blink
+
+    g.position.x = (other.x - spot.x) * reach + shake
+    g.position.z = (other.z - spot.z) * reach
     g.position.y = spot.scale * 0.72 * t + bob * t - (1 - t) * 0.5
   })
 
@@ -211,11 +258,11 @@ export function BattleStage() {
 
       <Slot
         mon={view?.active.p2 ?? null} look={look(view?.active.p2 ?? null, 'p2-0')}
-        spot={FOE} mine={false} shadow={shadow}
+        spot={FOE} other={MINE} mine={false} shadow={shadow}
       />
       <Slot
         mon={view?.active.p1 ?? null} look={look(view?.active.p1 ?? null, 'p1-0')}
-        spot={MINE} mine shadow={shadow}
+        spot={MINE} other={FOE} mine shadow={shadow}
       />
       {/*
         기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —

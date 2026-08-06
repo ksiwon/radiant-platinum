@@ -136,7 +136,23 @@ export type BattleEvent =
       /** `[from] ability: Magic Bounce` 같은 유래 */
       from: Cause | null
     }
-  | { kind: 'damage'; actor: Actor; condition: Condition; from: Cause | null }
+  /**
+   * `hit`은 프로토콜에 없다 — **박자를 만들 때 붙인다**(`playback.ts`).
+   *
+   * 원작은 기술 연출 도중에 효과에 따라 다른 타격음을 낸다
+   * (`BattleDisplay_FlyMoveHitSoundEffect`). 그런데 쇼다운은 `-supereffective`를
+   * 데미지보다 **먼저** 보내고 **보통일 때는 아무 줄도 안 보낸다.** 그래서 그때까지
+   * 모인 것을 데미지에 얹어 준다 — 없으면 보통이다.
+   *
+   * 기술에 맞은 것만 붙는다. 독·모래바람은 `from`이 차 있어서 안 붙는다
+   */
+  | {
+      kind: 'damage'
+      actor: Actor
+      condition: Condition
+      from: Cause | null
+      hit?: { level: Effectiveness | 'normal'; crit: boolean }
+    }
   | { kind: 'heal'; actor: Actor; condition: Condition; from: Cause | null }
   | { kind: 'faint'; actor: Actor }
   | { kind: 'status'; actor: Actor; status: Status }

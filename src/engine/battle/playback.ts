@@ -130,18 +130,39 @@ export function buildBeats(
     held = []
   }
 
+  /**
+   * 지금 기술이 도는 중인가.
+   *
+   * 타격음은 **기술에 맞았을 때만** 난다. 연타 기술은 데미지가 여러 번 오고
+   * 원작도 그때마다 소리를 내므로 데미지 하나로 끄지 않는다 — 턴이 넘어가거나
+   * 누가 쓰러지거나 교체될 때 꺼진다
+   */
+  let inMove = false
+
+  /** 데미지에 얹을 타격 정보. 쌓아 둔 것에서 읽는다 — 없으면 보통이다 */
+  const hitOf = () => ({
+    level: held.find((h) => h.kind === 'effectiveness')?.level ?? 'normal' as const,
+    crit: held.some((h) => h.kind === 'crit'),
+  })
+
   for (const e of events) {
     if (e.kind === 'crit' || e.kind === 'effectiveness') { held.push(e); continue }
     if (e.kind !== 'damage') flush()
+    if (e.kind === 'turn' || e.kind === 'switch' || e.kind === 'faint') inMove = false
 
     switch (e.kind) {
       case 'damage':
-      case 'heal':
+      case 'heal': {
         // 기술에 맞은 데미지는 글이 없다(앞에 기술 줄이 이미 있다). 독·화상·모래바람은
         // 글이 먼저 뜨고 나서 게이지가 움직인다 — `subscript_burn_damage.s`가 그렇다
         say(text(e), HOLD_MESSAGE)
-        show([e], drainFor(e))
+        // 맞은 소리는 효과에 따라 다르다. 그것을 아는 자리가 여기뿐이다
+        const marked = e.kind === 'damage' && inMove && e.from === null
+          ? { ...e, hit: hitOf() }
+          : e
+        show([marked], drainFor(e))
         break
+      }
 
       case 'faint':
         // `PlayFaintAnimation / HealthBoxSlideOut / PrintMessage` — 먼저 쓰러지고 그 다음에 말한다
@@ -150,6 +171,7 @@ export function buildBeats(
         break
 
       case 'move':
+        inMove = true
         // 기술 이름은 띄운 채로 다음 박자가 이어진다. 원작도 이 글 위에서 연출이 돈다.
         // 뷰는 안 바뀌지만 사건은 그래도 실어 보낸다 — 줄기에서 조용히 빠지면
         // 무엇이 지나갔는지 아무도 못 센다

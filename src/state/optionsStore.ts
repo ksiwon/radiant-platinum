@@ -67,12 +67,19 @@ const DEFAULTS: Options = {
   speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1,
 }
 
-// ⚠️ localStorage 키다. 바꾸면 이미 맞춰 둔 설정이 통째로 기본값으로 돌아간다
-const KEY = 'pt3d.options'
+const KEY = 'radiant-platinum.options'
+/**
+ * 이름을 바꾸기 전 키.
+ *
+ * ⚠️ **키만 갈면 이미 맞춰 둔 설정이 통째로 기본값으로 돌아간다.** 글자 속도나
+ * 시점처럼 한 번 맞추고 잊는 것들이라 되돌아간 것을 눈치채기도 어렵다.
+ * 처음 읽을 때 옛 키를 한 번 본다
+ */
+const OLD_KEY = 'pt3d.options'
 
 function load(): Options {
   try {
-    const raw = localStorage.getItem(KEY)
+    const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY)
     if (!raw) return DEFAULTS
     // 모르는 항목은 기본값으로 둔다. 옛 설정이 남아 있어도 화면이 안 깨진다
     return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Options>) }
@@ -106,6 +113,8 @@ function save(o: Options): void {
     localStorage.setItem(KEY, JSON.stringify({
       speed, battleScene, battleRule, sound, view, battlePace,
     }))
+    // 새 키로 한 번 쓰고 나면 옛 키는 헷갈리게만 한다
+    localStorage.removeItem(OLD_KEY)
   } catch { /* 사생활 보호 모드면 못 쓴다. 이번 판만 유지된다 */ }
 }
 

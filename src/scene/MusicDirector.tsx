@@ -13,7 +13,7 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
-import { TRAINER_BATTLE, WILD_BATTLE, songForMap } from '../engine/audio/songs'
+import { TRAINER_BATTLE, songForMap, wildSongFor } from '../engine/audio/songs'
 import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { useOptionsStore } from '../state/optionsStore'
@@ -24,6 +24,8 @@ const CHECK_SECONDS = 1
 export function MusicDirector() {
   const phase = useBattleStore((s) => s.phase)
   const kind = useBattleStore((s) => s.kind)
+  // 야생은 **누가 나왔는지**가 곡을 정한다. 기라티나는 전용 곡이다 (`songs.ts`)
+  const foeSpecies = useBattleStore((s) => s.view?.active.p2?.species ?? null)
   const sound = useOptionsStore((s) => s.sound)
   const since = useRef(0)
   const last = useRef<number | null>(null)
@@ -41,7 +43,8 @@ export function MusicDirector() {
 
     const want = phase === 'off'
       ? songForMap(world.mapId, new Date().getHours())
-      : (kind === 'trainer' ? TRAINER_BATTLE : WILD_BATTLE)
+      : kind === 'trainer' ? TRAINER_BATTLE
+        : wildSongFor(foeSpecies ?? 0, world.mapId)
 
     if (want === last.current) return
     last.current = want
