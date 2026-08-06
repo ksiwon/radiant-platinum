@@ -26,8 +26,8 @@ export const screen = style({
   // 무대가 보여야 하므로 배경이 없다. 대신 위아래에만 옅은 그늘을 둬서
   // 흰 하늘 위에서도 HP 판과 텍스트가 뜬다
   background:
-    'linear-gradient(180deg, rgba(6,10,18,0.34) 0%, rgba(6,10,18,0) 26%,' +
-    ' rgba(6,10,18,0) 52%, rgba(6,10,18,0.5) 100%)',
+    'linear-gradient(180deg, rgba(6,10,18,0.30) 0%, rgba(6,10,18,0) 24%,' +
+    ' rgba(6,10,18,0) 56%, rgba(6,10,18,0.42) 100%)',
 })
 
 /** 3D 무대가 없을 때만 깔리는 임시 배경 */
@@ -59,85 +59,197 @@ export const foeTrainer = style({
   textShadow: '0 1px 3px rgba(0,0,0,0.8)',
 })
 
+/**
+ * 체력판.
+ *
+ * 원작 healthbox는 판이 **한쪽으로 비스듬하다.** 상대 것은 오른쪽 아래가,
+ * 내 것은 왼쪽 아래가 잘려서 서로 화면 안쪽을 향한다. 그 각이 없으면
+ * 그냥 둥근 상자가 되어서 어느 게임이든 될 수 있는 모양이 된다.
+ */
 export const card = style({
   ...glass,
-  minWidth: 270,
-  padding: '9px 14px 11px',
-  borderRadius: 12,
+  position: 'relative',
+  minWidth: 268,
+  padding: '8px 16px 10px',
+  borderRadius: 10,
+  // 비스듬한 모서리. 테두리가 clip에 잘리므로 안쪽에 선을 하나 더 둔다
+  border: 'none',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+})
+
+/** 잘린 자리에도 테두리가 보이게 하는 안쪽 선 */
+const rim = {
+  content: '""',
+  position: 'absolute',
+  inset: 0,
+  borderRadius: 10,
+  border: '1px solid rgba(255,255,255,0.18)',
+  pointerEvents: 'none',
+} as const
+
+export const cardFoe = style({
+  clipPath: 'polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%)',
+  paddingRight: 30,
+  '::after': { ...rim, clipPath: 'polygon(0 0, 100% 0, calc(100% - 18px) 100%, 0 100%)' },
+})
+
+export const cardMine = style({
+  clipPath: 'polygon(18px 0, 100% 0, 100% 100%, 0 100%)',
+  paddingLeft: 30,
+  '::after': { ...rim, clipPath: 'polygon(18px 0, 100% 0, 100% 100%, 0 100%)' },
 })
 
 export const cardHead = style({
   display: 'flex',
   alignItems: 'baseline',
-  justifyContent: 'space-between',
-  gap: 10,
-  marginBottom: 7,
+  gap: 6,
+  marginBottom: 6,
 })
 
-export const monName = style({ fontSize: 16, fontWeight: 600, letterSpacing: '0.01em' })
-export const monLevel = style({ fontSize: 13, opacity: 0.75, fontFamily: vars.font.mono })
+export const monName = style({
+  fontSize: 16,
+  fontWeight: 700,
+  letterSpacing: '0.01em',
+  textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+})
+
+/** 성별 기호. 원작 체력판에도 이름 옆에 붙는다 */
+export const genderMark = style({
+  fontSize: 14,
+  fontWeight: 700,
+  lineHeight: 1,
+})
+export const male = style({ color: '#6db3f2' })
+export const female = style({ color: '#f28ab2' })
+
+export const monLevel = style({
+  marginLeft: 'auto',
+  fontSize: 13,
+  fontFamily: vars.font.mono,
+  opacity: 0.8,
+})
+
+/** `HP` 딱지 + 게이지가 한 줄이다 */
+export const barRow = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+})
+
+/** 원작 체력판의 노란 `HP` 글자 */
+export const hpTag = style({
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: '0.08em',
+  fontStyle: 'italic',
+  color: '#f5cf5a',
+  textShadow: '0 1px 0 rgba(0,0,0,0.7)',
+})
 
 /** HP 바. 원작처럼 얇고 길다 — 두꺼우면 게이지가 아니라 진행 표시처럼 보인다 */
 export const barTrack = style({
   position: 'relative',
-  height: 7,
-  borderRadius: 4,
-  background: 'rgba(0, 0, 0, 0.55)',
-  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.6)',
+  flex: 1,
+  height: 8,
+  borderRadius: 5,
+  background: 'rgba(0, 0, 0, 0.62)',
+  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.08)',
   overflow: 'hidden',
 })
 
 export const barFill = style({
   height: '100%',
-  borderRadius: 4,
-  background: `linear-gradient(180deg, color-mix(in srgb, ${vars.hud.accent} 78%, white), ${vars.hud.accent})`,
+  borderRadius: 5,
+  // 위쪽에 밝은 선을 하나 넣어 게이지가 납작한 띠가 아니라 **덩어리**로 보이게 한다
+  backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0 40%, rgba(0,0,0,0.12) 100%)',
+  backgroundColor: '#5fd35f',
   // 줄어드는 **시간**은 재생기가 정한다. 원작 게이지는 프레임당 한 칸씩 움직여서
   // 많이 맞을수록 오래 걸린다 (`playback.drainFrames`). 여기서는 기울기만 정하고
   // 길이는 `--drain`으로 받는다 — 고정 길이로 두면 큰 데미지가 순식간에 지나간다
-  transition: 'width var(--drain, 420ms) linear, background 200ms linear',
+  transition: 'width var(--drain, 420ms) linear, background-color 200ms linear',
 })
 
-/** HP가 낮을 때. 원작처럼 색으로 먼저 알린다 */
-export const barLow = style({
-  background: 'linear-gradient(180deg, #ffe08a, #f5bf3a)',
-})
-export const barCritical = style({
-  background: `linear-gradient(180deg, color-mix(in srgb, ${vars.hud.warn} 70%, white), ${vars.hud.warn})`,
-})
+/**
+ * 색 셋. **경계는 `engine/battle/healthbar`가 정한다** — 비율이 아니라
+ * 픽셀 수로 가른다(원작 `App_BarColor`)
+ */
+export const barGreen = style({ backgroundColor: '#5fd35f' })
+export const barYellow = style({ backgroundColor: '#f5c542' })
+export const barRed = style({ backgroundColor: '#ef5350' })
 
 export const hpText = style({
-  marginTop: 5,
+  marginTop: 4,
   fontSize: 12,
   fontFamily: vars.font.mono,
-  opacity: 0.85,
   textAlign: 'right',
+  letterSpacing: '0.02em',
+  opacity: 0.9,
 })
 
-export const statusTag = style({
-  marginLeft: 6,
-  padding: '1px 6px',
-  borderRadius: 4,
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: '0.04em',
-  background: 'rgba(255, 255, 255, 0.18)',
-  border: '1px solid rgba(255,255,255,0.2)',
-  verticalAlign: '2px',
+/** 남은 체력 숫자만 진하게 — 눈이 먼저 가야 하는 쪽이다 */
+export const hpNow = style({ fontWeight: 700, opacity: 1 })
+
+/**
+ * 이미 잡아 본 종이면 뜨는 공 표시.
+ *
+ * 원작 `HealthBox_DrawCaughtIcon`이 상대 체력판에만 그린다 — 도감에 등록된
+ * 종인지 한눈에 알려 주는 자리다
+ */
+export const caughtMark = style({
+  width: 11,
+  height: 11,
+  borderRadius: '50%',
+  alignSelf: 'center',
+  // 몬스터볼. 위 빨강 · 아래 흰색 · 가운데 검은 띠
+  background:
+    'linear-gradient(180deg, #e8554e 0 42%, #1b1f27 42% 58%, #f4f6fa 58% 100%)',
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.5)',
+  flex: '0 0 auto',
 })
+
+/** 상태 이상 딱지. 원작도 체력판 안에 색 딱지로 붙인다 */
+export const statusTag = style({
+  padding: '1px 6px',
+  borderRadius: 3,
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: '0.06em',
+  color: '#fff',
+  textShadow: '0 1px 1px rgba(0,0,0,0.45)',
+  background: '#6b7280',
+})
+
+/** 상태마다 색이 다르다 — 글자를 안 읽어도 무엇에 걸렸는지 보인다 */
+export const statusColor: Record<string, string> = {
+  psn: '#a25bc4', tox: '#8b3fae', brn: '#e8763a',
+  par: '#d8b12a', slp: '#7b8794', frz: '#4aa8d8',
+}
 
 /** 아래쪽 텍스트 + 명령 */
 export const console_ = style({
   display: 'grid',
-  gridTemplateColumns: '1fr 340px',
-  gap: 12,
-  padding: '0 16px 16px',
-  minHeight: 172,
+  // 명령 칸에 자리를 더 준다. 340px면 "도망친다"가 한 줄에 겨우 들어가서
+  // 칸이 글자에 끼인 것처럼 보인다
+  gridTemplateColumns: 'minmax(0, 1fr) 384px',
+  gap: 14,
+  padding: '0 20px 20px',
+  minHeight: 150,
 })
 
 export const textBox = style({
   ...glass,
-  padding: '14px 20px',
+  position: 'relative',
+  padding: '16px 22px',
   borderRadius: 12,
+  // 원작 대화창은 안쪽에 선이 한 겹 더 있다. 그 두 겹이 "창"으로 읽히게 한다
+  '::before': {
+    content: '""',
+    position: 'absolute',
+    inset: 4,
+    borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.09)',
+    pointerEvents: 'none',
+  },
   fontSize: 15,
   lineHeight: 1.7,
   display: 'flex',
@@ -154,9 +266,11 @@ export const textLast = style({ opacity: 1, whiteSpace: 'pre-line' })
 /** 지금 찍는 중인 글. 한 번에 한 문장만 있는다 — 원작의 박자다 */
 export const textNow = style({
   whiteSpace: 'pre-line',
-  fontSize: 17,
-  lineHeight: 1.65,
-  minHeight: '3.3em',
+  fontSize: 18,
+  lineHeight: 1.6,
+  // 두 줄치를 비워 둔다. 세 줄이면 짧은 문장일 때 위가 뻥 뚫려 보인다
+  minHeight: '2.4em',
+  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
 })
 
 const blink = keyframes({
@@ -172,10 +286,20 @@ export const nextArrow = style({
   animation: `${blink} 0.7s steps(1, end) infinite`,
 })
 
-/** 키보드 커서가 올라간 칸. 마우스 hover와 겹쳐도 되게 테두리로만 표시한다 */
+/**
+ * 키보드 커서가 올라간 칸.
+ *
+ * 마우스 hover와 겹쳐도 되게 테두리로 표시하고, 왼쪽 색 띠를 넓혀서 **어느 칸에
+ * 있는지가 색으로도** 보이게 한다
+ */
 export const buttonOn = style({
   borderColor: 'rgba(255,255,255,0.72)',
   boxShadow: '0 8px 26px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.3)',
+  background:
+    'linear-gradient(180deg, rgba(38, 48, 70, 0.92), rgba(24, 32, 48, 0.94))',
+  selectors: {
+    '&::before': { width: 9 },
+  },
 })
 
 /** 배틀 가방의 갈래 줄 */
@@ -219,27 +343,37 @@ export const itemRow = style({
 export const menu = style({
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gridAutoRows: 'minmax(46px, auto)',
-  gap: 8,
+  gridAutoRows: 'minmax(52px, auto)',
+  gap: 9,
   alignContent: 'end',
 })
 
 export const button = style({
   ...glass,
+  position: 'relative',
   appearance: 'none',
   borderRadius: 10,
   color: vars.panel.text,
   font: 'inherit',
-  fontSize: 14,
-  fontWeight: 600,
-  padding: '7px 12px',
+  fontSize: 15,
+  fontWeight: 700,
+  padding: '7px 12px 7px 18px',
   cursor: 'pointer',
   textAlign: 'left',
   display: 'grid',
   alignContent: 'center',
   gap: 3,
+  overflow: 'hidden',
   transition: 'border-color 120ms linear, transform 80ms ease-out, box-shadow 120ms linear',
   selectors: {
+    // 왼쪽 색 띠. 칸마다 `--tint`로 다른 색을 받는다
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      left: 0, top: 0, bottom: 0,
+      width: 5,
+      background: 'var(--tint, transparent)',
+    },
     '&:hover:enabled, &:focus-visible:enabled': {
       borderColor: 'rgba(255,255,255,0.5)',
       boxShadow: '0 8px 26px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)',
@@ -249,6 +383,19 @@ export const button = style({
     '&:disabled': { opacity: 0.35, cursor: 'default' },
   },
 })
+
+/**
+ * 명령 넷의 색.
+ *
+ * 원작 배틀 메뉴는 칸마다 색이 다르다 — 싸운다는 붉고, 가방은 노랗고, 포켓몬은
+ * 푸르고, 도망친다는 하늘색이다. 글자를 안 읽어도 손이 먼저 간다
+ */
+export const TINT = {
+  fight: '#e2574c',
+  bag: '#e0a83a',
+  party: '#4fa96b',
+  run: '#4a8fd0',
+} as const
 
 export const buttonWide = style({ gridColumn: '1 / -1' })
 export const buttonSub = style({ fontSize: 11, opacity: 0.7, fontFamily: vars.font.mono, fontWeight: 400 })

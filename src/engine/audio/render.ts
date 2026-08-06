@@ -17,7 +17,7 @@ import { parseSbnk, noteFor, type Bank, type NoteDef } from './sbnk'
 import { parseSwar, type Swav } from './swar'
 import { commandWidth } from './sseq'
 import {
-  ENV_FLOOR, envDone, gainOf, knobDecibel, releaseEnv, startEnv, stepEnv, type Env,
+  ENV_FLOOR, RELEASE, envDone, gainOf, knobDecibel, releaseEnv, startEnv, stepEnv, type Env,
 } from './envelope'
 
 /** 드라이버가 도는 빠르기 (Hz) */
@@ -38,6 +38,8 @@ interface Track {
   at: number | null
   /** 이 트랙이 도돌이표를 밟은 횟수 */
   loops: number
+  /** 처음 도돌이표를 밟은 자리 (표본 수) */
+  loopAt: number | null
   /** 부르기가 쌓이는 곳 */
   stack: number[]
   /** 쉬는 동안 남은 틱 */
@@ -89,7 +91,7 @@ interface Voice {
 
 function newTrack(): Track {
   return {
-    at: null, loops: 0, stack: [], wait: 0, program: 0,
+    at: null, loops: 0, loopAt: null, stack: [], wait: 0, program: 0,
     volume: 127, expression: 127, pan: 64, transpose: 0,
     bendRange: 2, bend: 0, noteWait: true,
     attack: -1, decay: -1, sustain: -1, release: -1,
@@ -136,8 +138,15 @@ export interface Rendered {
    * 바퀴이므로 그 구간을 반복하면 이어 붙은 자리가 안 들린다
    */
   loopEnd: number | null
-  /** 채널이 모자라 뺏은 횟수. 0이 아니면 원작보다 소리가 준 것이다 */
+  /** 채널이 모자라 뺏은 횟수 */
   stolen: number
+  /**
+   * 트랙마다 **처음 도돌이표를 밟은 자리** (표본 수). 안 밟았으면 `null`.
+   *
+   * 곡은 트랙 전체가 같이 돈다. 그래서 이 값들이 서로 다르면 **악기끼리
+   * 어긋나고 있다는 뜻**이고, 그것이 곧 귀에 들린다
+   */
+  trackLoopAt: (number | null)[]
 }
 
 /**
@@ -198,12 +207,16 @@ export function renderSong(
     const def = noteFor(bank.programs[t.program] ?? null, key)
     if (!def) return
     if (voices.length >= CHANNELS) {
-      // 놓인 것부터, 없으면 제일 오래된 것부터 뺏는다
-      let worst = 0
-      for (let i = 1; i < voices.length; i++) {
-        const a = voices[i]!, b = voices[worst]!
-        const aFree = a.gate <= 0 ? 1 : 0, bFree = b.gate <= 0 ? 1 : 0
-        if (aFree > bFree || (aFree === bFree && a.born < b.born)) worst = i
+      // **제일 조용한 것을 뺏는다.** 제일 오래된 것을 뺏으면 길게 끄는 저음이
+      // 먼저 잘려서 제일 잘 들린다 — 하드웨어도 놓인 채널과 작은 소리를 먼저 고른다.
+      // 16채널이 모자라는 것 자체는 정상이다: 트랙 여덟이 초당 서른 몇 음을
+      // 내는데 릴리스 꼬리가 0.6초쯤이라 겹치는 수가 열아홉쯤 된다
+      let worst = 0, worstScore = Infinity
+      for (let i = 0; i < voices.length; i++) {
+        const v = voices[i]!
+        const loud = v.env.value + (knobDecibel(v.velocity) + knobDecibel(v.track.volume)) * 128
+        const score = (v.env.state === RELEASE ? 0 : 1 << 24) + loud
+        if (score < worstScore) { worstScore = score; worst = i }
       }
       voices.splice(worst, 1)
       stolen++
@@ -220,7 +233,15 @@ export function renderSong(
     })
   }
 
-  /** 트랙 하나를 한 틱 밟는다 */
+  /**
+   * 트랙 하나를 한 틱 밟는다.
+   *
+   * ⚠️ **쉼표 N은 정확히 N틱이다.** 명령을 읽는 것 자체는 시간을 안 먹는다.
+   * 예전에는 `wait = N`을 놓고 그대로 이 틱을 끝내서 N+1틱이 됐는데, 쉼표가
+   * 잦은 트랙일수록 더 밀리므로 **악기끼리 서로 어긋났다.** 떡잎마을 곡에서
+   * 트랙 여덟이 한 바퀴에 4830~5085틱으로 갈라졌다(255틱 = 4분음표 5개).
+   * 기다림을 놓자마자 이 틱을 소비하면 여덟이 전부 4800틱으로 모인다
+   */
   const stepTrack = (t: Track) => {
     if (t.at === null) return
     if (t.wait > 0) { t.wait--; return }
@@ -235,13 +256,18 @@ export function renderSong(
         const [dur, n] = varLen(data, t.at + 2)
         t.at += 2 + n
         noteOn(t, op + t.transpose, velocity, dur)
-        if (t.noteWait) { t.wait = dur; return }
+        // 길이 0은 기다릴 것이 없다 — 다음 명령을 같은 틱에 이어서 읽는다
+        if (t.noteWait && dur > 0) { t.wait = dur - 1; return }
         continue
       }
       if (w === 'var') {
         const [v, n] = varLen(data, t.at + 1)
         t.at += 1 + n
-        if (op === 0x80) { t.wait = v; return }
+        if (op === 0x80) {
+          // 이 틱이 곧 기다림의 첫 틱이다. 그래서 하나 뺀다
+          if (v > 0) { t.wait = v - 1; return }
+          continue
+        }
         t.program = v & 0x7f
         continue
       }
@@ -253,6 +279,7 @@ export function renderSong(
         if (op === 0x95) { t.stack.push(t.at + 4); t.at = to; continue }
         // 뛰기. 여기가 곡이 도는 자리다
         t.loops++
+        if (t.loopAt === null) t.loopAt = written
         if (loopStart === null) { loopStart = written; loopTrack = t }
         else if (t === loopTrack && loopEnd === null) loopEnd = written
         t.at = to
@@ -382,6 +409,7 @@ export function renderSong(
   return {
     left: left.subarray(0, written), right: right.subarray(0, written),
     sampleRate: rate, loopStart, loopEnd, stolen,
+    trackLoopAt: tracks.map((t) => t.loopAt),
   }
 }
 

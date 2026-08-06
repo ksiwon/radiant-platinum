@@ -98,6 +98,39 @@ function oneNote(program: number, key: number): ArrayBuffer {
   return buf.buffer
 }
 
+/**
+ * 음표가 스스로 기다리는 악보를 짓는다.
+ *
+ * 실제 곡은 거의 전부 `0xC7 0`을 켜고 쉼표로 시간을 재서 이쪽 길이 안 밟힌다.
+ * 그래서 여기서 따로 만든다 — 쉼표와 똑같이 "길이 N은 정확히 N틱"이어야 한다
+ */
+function twoNotesThenLoop(program: number): ArrayBuffer {
+  const body = [
+    0xc7, 1,             // 음표가 길이만큼 기다린다
+    0x81, program,
+    60, 127, 0x60,       // 96틱
+    60, 127, 0x60,       // 96틱
+    0x94, 0x00, 0x00, 0x00, // 처음으로 되돌아간다
+  ]
+  const buf = new Uint8Array(0x1c + body.length)
+  buf.set(body, 0x1c)
+  return buf.buffer
+}
+
+maybe('음표가 스스로 기다릴 때도 길이가 정확하다', () => {
+  const { bnk, wars } = load(1004)
+
+  it('96틱짜리 음 둘이 정확히 192틱이다', () => {
+    // 기본 템포 120에서 틱은 초당 `120 × 48 / 60 = 96`개다. 192틱 = 정확히 2초
+    const out = renderSong(twoNotesThenLoop(0), bnk, wars, {
+      sampleRate: 24000, maxSeconds: 20,
+    })
+    expect(out.loopStart).not.toBeNull()
+    const frame = Math.ceil(24000 / 192)
+    expect(Math.abs((out.loopStart ?? 0) - 2 * 24000)).toBeLessThanOrEqual(frame)
+  })
+})
+
 maybe('음정 — 옥타브가 정확히 두 배인가', () => {
   const { bnk, wars } = load(1004)
   const bank = parseSbnk(bnk)
@@ -171,9 +204,26 @@ maybe('떡잎마을 낮 (SEQ_TOWN01_D)', () => {
     expect(spread).toBeGreaterThan(mean * 0.1)
   })
 
-  it('채널 16개로 모자라지 않는다', () => {
-    // 원작이 16채널로 만든 곡이므로 뺏김이 잦으면 우리 배분이 틀린 것이다
-    expect(out.stolen).toBe(0)
+  it('악기끼리 안 어긋난다 — 트랙 여덟이 같은 자리에서 돈다', () => {
+    // ⚠️ 이게 깨졌을 때 귀에 들린 증상이 "악기 타이밍이 조금씩 어긋난다"였다.
+    //
+    // 원인은 쉼표를 N+1틱으로 센 것이다. 명령을 읽는 것 자체는 시간을 안 먹는데
+    // `wait = N`을 놓고 그 틱을 끝내 버렸다. 쉼표가 잦은 트랙일수록 더 밀리므로
+    // 트랙끼리 벌어졌다 — 이 곡에서 한 바퀴가 4830~5085틱으로 갈라졌다.
+    const long = renderSong(seq, bnk, wars, { sampleRate: 24000, maxSeconds: 200 })
+    const at = long.trackLoopAt.filter((v): v is number => v !== null)
+    expect(at.length).toBe(8)
+    // 근사가 아니라 **똑같아야** 한다. 여덟이 우연히 한 표본에 모일 수는 없다
+    expect(new Set(at).size).toBe(1)
+  })
+
+  it('한 바퀴가 정확히 75초 — 템포 80에서 4800틱이다', () => {
+    // 4800틱 = 4분음표 100개. `4800 × 60 / (80 × 48) = 75`초다.
+    // 쉼표를 N+1틱으로 세던 때는 트랙마다 4830~5085틱으로 갈라져서
+    // 이 숫자가 아예 안 나왔다
+    const long = renderSong(seq, bnk, wars, { sampleRate: 24000, maxSeconds: 200 })
+    const loop = (long.loopEnd ?? 0) - (long.loopStart ?? 0)
+    expect(loop).toBe(75 * 24000)
   })
 
   it('끝까지 가면 도돌이표를 만난다', () => {

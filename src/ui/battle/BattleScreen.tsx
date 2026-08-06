@@ -25,6 +25,8 @@ import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import * as css from './battleScreen.css'
 import { BattleSound } from './BattleSound'
+import { hpColor } from '../../engine/battle/healthbar'
+import { dexHas, useSaveStore } from '../../state/saveStore'
 
 const STATUS_LABEL: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
@@ -61,6 +63,8 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
 
 export function BattleScreen() {
   const phase = useBattleStore((s) => s.phase)
+  // 이미 잡아 본 종이면 상대 판에 공 표시가 뜬다 (원작 `HealthBox_DrawCaughtIcon`)
+  const caughtDex = useSaveStore((s) => s.pokedex.caught)
   const kind = useBattleStore((s) => s.kind)
   const foeName = useBattleStore((s) => s.foeName)
   const view = useBattleStore((s) => s.view)
@@ -145,6 +149,7 @@ export function BattleScreen() {
             <MonCard
               mon={foe} names={names} drainMs={script.holdMs}
               prefix={kind === 'wild' ? '야생의 ' : '상대 '}
+              caught={foe.species !== null && dexHas(caughtDex, foe.species)}
             />
           )}
         </div>
@@ -217,32 +222,63 @@ function useGridCursor(count: number, columns: number, onPick: (i: number) => vo
   return cursor
 }
 
+const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
+  male: { mark: '♂', cls: css.male },
+  female: { mark: '♀', cls: css.female },
+}
+
+/**
+ * 체력판.
+ *
+ * ⚠️ **색은 비율이 아니라 픽셀 수가 정한다** (`engine/battle/healthbar`).
+ * 원작은 게이지를 48픽셀로 먼저 줄이고 그 픽셀 수로 색을 고른다 — 79 중 16은
+ * 비율로는 0.2025라 노랑이 되지만 픽셀로는 9라서 빨강이다.
+ *
+ * 상대 판에는 체력 숫자도 경험치 줄도 없다. 원작이 그렇게 정해 뒀다 —
+ * `HEALTHBOX_INFO_NOT_ON_ENEMY = CURRENT_HP | MAX_HP | EXP_GAUGE`.
+ */
 function MonCard(
-  { mon, names, drainMs, prefix = '', showHp = false }:
-  { mon: ViewMon; names: BattleNames | null; drainMs: number; prefix?: string; showHp?: boolean },
+  { mon, names, drainMs, prefix = '', showHp = false, caught = false }:
+  {
+    mon: ViewMon; names: BattleNames | null; drainMs: number
+    prefix?: string; showHp?: boolean; caught?: boolean
+  },
 ) {
   const name = (mon.species !== null ? names?.species[mon.species] : null) ?? mon.speciesName
-  const ratio = mon.maxHp > 0 ? Math.max(0, mon.hp) / mon.maxHp : 0
-  const fill = ratio <= 0.2 ? css.barCritical : ratio <= 0.5 ? css.barLow : ''
+  const ratio = mon.maxHp > 0 ? Math.max(0, Math.min(mon.hp, mon.maxHp)) / mon.maxHp : 0
+  const color = hpColor(mon.hp, mon.maxHp)
+  const fill = color === 'green' ? css.barGreen : color === 'yellow' ? css.barYellow : css.barRed
+  const gender = GENDER_MARK[mon.gender]
   return (
-    <div className={css.card}>
+    <div className={`${css.card} ${showHp ? css.cardMine : css.cardFoe}`}>
       <div className={css.cardHead}>
-        <span className={css.monName}>
-          {prefix}{name}
-          {mon.status !== 'ok' && (
-            <span className={css.statusTag}>{STATUS_LABEL[mon.status] ?? mon.status}</span>
-          )}
-        </span>
-        <span className={css.monLevel}>Lv.{mon.level}</span>
+        <span className={css.monName}>{prefix}{name}</span>
+        {gender && <span className={`${css.genderMark} ${gender.cls}`}>{gender.mark}</span>}
+        {caught && <span className={css.caughtMark} title="도감에 등록된 포켓몬" />}
+        {mon.status !== 'ok' && (
+          <span
+            className={css.statusTag}
+            style={{ background: css.statusColor[mon.status] }}
+          >
+            {STATUS_LABEL[mon.status] ?? mon.status}
+          </span>
+        )}
+        <span className={css.monLevel}>Lv{mon.level}</span>
       </div>
-      <div className={css.barTrack}>
-        <div
-          className={`${css.barFill} ${fill}`}
-          style={{ width: `${ratio * 100}%`, ['--drain' as string]: `${drainMs}ms` }}
-        />
+      <div className={css.barRow}>
+        <span className={css.hpTag}>HP</span>
+        <div className={css.barTrack}>
+          <div
+            className={`${css.barFill} ${fill}`}
+            style={{ width: `${ratio * 100}%`, ['--drain' as string]: `${drainMs}ms` }}
+          />
+        </div>
       </div>
-      {/* 상대 HP 숫자는 원작도 안 보여준다 — 바만 보인다 */}
-      {showHp && <div className={css.hpText}>{Math.max(0, mon.hp)} / {mon.maxHp}</div>}
+      {showHp && (
+        <div className={css.hpText}>
+          <span className={css.hpNow}>{Math.max(0, mon.hp)}</span> / {mon.maxHp}
+        </div>
+      )}
     </div>
   )
 }
@@ -258,10 +294,10 @@ function RootMenu(
   },
 ) {
   const entries = [
-    { label: '싸운다', sub: null, on: canFight, go: () => { onPick('fight') } },
-    { label: '가방', sub: null, on: true, go: () => { onPick('bag') } },
-    { label: '포켓몬', sub: '교체', on: canSwitch, go: () => { onPick('party') } },
-    { label: '도망친다', sub: wild ? null : '도망칠 수 없다', on: wild, go: onRun },
+    { label: '싸운다', sub: null, tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') } },
+    { label: '가방', sub: null, tint: css.TINT.bag, on: true, go: () => { onPick('bag') } },
+    { label: '포켓몬', sub: '교체', tint: css.TINT.party, on: canSwitch, go: () => { onPick('party') } },
+    { label: '도망친다', sub: wild ? null : '도망칠 수 없다', tint: css.TINT.run, on: wild, go: onRun },
   ]
   const cursor = useGridCursor(entries.length, 2, (i) => { if (entries[i]?.on) entries[i].go() })
   return (
@@ -270,6 +306,7 @@ function RootMenu(
         <button
           key={entry.label}
           className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+          style={{ ['--tint' as string]: entry.tint }}
           onClick={entry.go}
           disabled={!entry.on}
         >
