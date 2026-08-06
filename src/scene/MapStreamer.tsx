@@ -12,7 +12,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { BackSide, Color, DirectionalLight, Fog, Mesh } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { mapById, walkOutOfDoor, world } from '../engine/map/world'
+import { TILE_BEHAVIOR_DOOR, mapById, walkOutOfDoor, world } from '../engine/map/world'
+import { music } from '../engine/audio/music'
+import { SFX } from '../engine/audio/sfx'
 import {
   enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars,
 } from '../engine/script/field'
@@ -280,6 +282,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (world.pending && !warping.current) {
       const target = world.pending
       warping.current = true
+      // 문이냐 계단이냐는 **밟고 선 타일이 정한다.** 원작도 그렇게 갈린다 —
+      // `field_map_change.c`가 계단에 `SEQ_SE_DP_KAIDAN2`를 쓰고, 문 연출은
+      // `ov5_021D431C.c`가 `SEQ_SE_DP_DOOR_OPEN`을 쓴다
+      const here = world.grid?.behavior(tx, tz)
+      void music.playEffect(here === TILE_BEHAVIOR_DOOR ? SFX.DOOR : SFX.STAIRS)
       gridFor(target.matrix)
         .then((next) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는

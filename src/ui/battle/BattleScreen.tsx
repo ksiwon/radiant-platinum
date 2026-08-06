@@ -24,6 +24,7 @@ import { battleText, type BattleNames } from './messages'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import * as css from './battleScreen.css'
+import { BattleSound } from './BattleSound'
 
 const STATUS_LABEL: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
@@ -134,6 +135,7 @@ export function BattleScreen() {
   // 서로 다른 return으로 나누면 그때마다 다시 마운트되어 두 번 깜빡인다
   return (
     <div className={shell}>
+      <BattleSound />
       <div className={css.wipe} />
       {phase === 'loading' ? <div className={css.waiting}>배틀 준비 중…</div> : <>
       <div className={css.field}>

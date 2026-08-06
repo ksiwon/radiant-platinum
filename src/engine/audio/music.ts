@@ -11,10 +11,40 @@ import type { RenderReply, RenderRequest } from './renderWorker'
 
 /** 곡 하나를 얼마나 길게 펴 볼 것인가 (초). 도돌이표를 만나면 거기서 멈춘다 */
 const MAX_SECONDS = 240
+/** 효과음·울음소리는 짧다. 도돌이표가 없으니 표본이 떨어지면 거기서 끝난다 */
+const SHORT_SECONDS = 8
+
+/**
+ * 울음소리는 곡 하나를 **파형 창고만 갈아 끼워** 낸다.
+ *
+ * `Sound_PlayPokemonCry`가 `NNS_SndArcPlayerStartSeqEx(…, waveID, …, SEQ_PV)`를
+ * 부른다 — 악보는 늘 `SEQ_PV`(곡 2)이고 창고 번호에 **종족 번호를 그대로** 넣는다.
+ * 실제로 SDAT의 `WAVE_ARC_PV001`이 색인 1이고, 창고 1~494가 전부 표본 하나짜리다.
+ *
+ * 악보는 음 하나뿐이다: 템포 100 · 악기 0 · 볼륨 127 · 팬 64 · **음 60, 길이 0**.
+ * 길이 0은 "표본이 끝날 때까지"라는 뜻이라 게이트로 끊지 않는다
+ */
+const CRY_SEQ = 2
+const CRY_BANK = 1
+/** 종족 번호가 이 위로 가면 창고가 없다 */
+export const MAX_CRY_SPECIES = 494
+/**
+ * 기절할 때 낮추는 반음 수.
+ *
+ * `sound_playback.c`의 `POKECRY_FAINT`가 `SOUND_SEMITONES(-3.5)`를 건다
+ */
+export const FAINT_SEMITONES = -3.5
 /** 곡을 바꿀 때 겹치는 시간 (초) */
 const FADE = 0.6
-/** 받아 둔 곡을 몇 개까지 들고 있나. 한 곡이 20MB까지 간다 */
-const CACHE = 4
+/**
+ * 받아 둔 것을 몇 개까지 들고 있나.
+ *
+ * BGM과 짧은 소리를 따로 세는 이유: BGM 하나가 2분이면 20MB인데 효과음·울음소리는
+ * 한 개에 수십~수백 KB다. 한 통에 넣고 4개로 끊으면 **메뉴 소리가 곡 하나에
+ * 밀려 나가서** 누를 때마다 452KB짜리 창고를 다시 받는다
+ */
+const CACHE = 3
+const SHORT_CACHE = 32
 
 export interface SoundIndex {
   songs: ({ name: string | null; bank: number; volume: number } | null)[]
@@ -38,13 +68,15 @@ export class Music {
   private worker: Worker | null = null
   private index: Promise<SoundIndex> | null = null
   private files = new Map<string, Promise<ArrayBuffer>>()
-  private buffers = new Map<number, AudioBuffer & { loop?: [number, number] }>()
-  private order: number[] = []
+  private buffers = new Map<string, AudioBuffer & { loop?: [number, number] }>()
+  private order: string[] = []
   private pending = new Map<number, (r: RenderReply) => void>()
   private seq = 0
   private now: Playing | null = null
   /** 마지막으로 요청된 곡. 렌더가 늦게 끝나도 이 곡이 아니면 버린다 */
   private want: number | null = null
+  /** 깨어나기 전에 들어온 미리 펴기 요청 */
+  private warmQueue = new Set<number>()
   private volume = 0.7
 
   /**
@@ -62,6 +94,11 @@ export class Music {
     this.master.connect(this.ctx.destination)
     this.bus = this.ctx.createGain()
     this.route()
+    if (this.warmQueue.size > 0) {
+      const queued = [...this.warmQueue]
+      this.warmQueue.clear()
+      void this.prewarm(queued)
+    }
     if (this.want !== null) void this.play(this.want)
   }
 
@@ -133,9 +170,17 @@ export class Music {
     return this.worker
   }
 
-  /** 곡 하나를 펴서 재생 버퍼로 */
-  private async render(song: number): Promise<(AudioBuffer & { loop?: [number, number] }) | null> {
-    const cached = this.buffers.get(song)
+  /**
+   * 곡 하나를 펴서 재생 버퍼로.
+   *
+   * `warOverride`가 있으면 악기표가 가리키는 창고 대신 그것을 쓴다 —
+   * 울음소리가 이 길로 간다
+   */
+  private async render(
+    key: string, song: number,
+    extra?: { warOverride?: number; maxSeconds?: number; transpose?: number },
+  ): Promise<(AudioBuffer & { loop?: [number, number] }) | null> {
+    const cached = this.buffers.get(key)
     if (cached) return cached
     const ctx = this.ctx
     if (!ctx) return null
@@ -145,11 +190,14 @@ export class Music {
     if (!meta) return null
     const bank = index.banks[meta.bank]
     if (!bank) return null
+    const wars = extra?.warOverride === undefined
+      ? bank.wars
+      : [extra.warOverride, null, null, null]
 
-    const [seq, bnk, ...wars] = await Promise.all([
+    const [seq, bnk, ...war] = await Promise.all([
       this.file(`seq/${String(song)}.bin`),
       this.file(`bnk/${String(meta.bank)}.bin`),
-      ...bank.wars.map((w) => (w === null ? Promise.resolve(null) : this.file(`war/${String(w)}.bin`))),
+      ...wars.map((w) => (w === null ? Promise.resolve(null) : this.file(`war/${String(w)}.bin`))),
     ])
 
     const id = ++this.seq
@@ -158,8 +206,13 @@ export class Music {
       const req: RenderRequest = {
         // 워커가 버퍼를 가져가 버리면 캐시가 비므로 복사해서 보낸다
         id, seq: seq.slice(0), bnk: bnk.slice(0),
-        wars: wars.map((w) => (w ? w.slice(0) : null)),
-        opts: { sampleRate: ctx.sampleRate, maxSeconds: MAX_SECONDS, volume: meta.volume },
+        wars: war.map((w) => (w ? w.slice(0) : null)),
+        opts: {
+          sampleRate: ctx.sampleRate,
+          maxSeconds: extra?.maxSeconds ?? MAX_SECONDS,
+          volume: meta.volume,
+          transpose: extra?.transpose,
+        },
       }
       this.getWorker().postMessage(req)
     })
@@ -174,13 +227,23 @@ export class Music {
       buf.loop = [reply.loopStart / reply.sampleRate, reply.loopEnd / reply.sampleRate]
     }
 
-    this.buffers.set(song, buf)
-    this.order.push(song)
-    while (this.order.length > CACHE) {
-      const drop = this.order.shift()
-      if (drop !== undefined && drop !== song) this.buffers.delete(drop)
-    }
+    this.buffers.set(key, buf)
+    this.order.push(key)
+    this.evict(key)
     return buf
+  }
+
+  /** 종류별로 따로 센다 */
+  private evict(keep: string): void {
+    for (const [prefix, limit] of [['bgm:', CACHE], ['se:', SHORT_CACHE], ['cry:', SHORT_CACHE]] as const) {
+      const mine = this.order.filter((k) => k.startsWith(prefix))
+      for (let i = 0; i < mine.length - limit; i++) {
+        const drop = mine[i]!
+        if (drop === keep) continue
+        this.buffers.delete(drop)
+        this.order.splice(this.order.indexOf(drop), 1)
+      }
+    }
   }
 
   /** 곡을 튼다. 이미 그 곡이면 아무것도 안 한다 */
@@ -189,7 +252,7 @@ export class Music {
     if (!this.ctx || !this.bus) return
     if (this.now?.song === song) return
 
-    const buf = await this.render(song)
+    const buf = await this.render(`bgm:${String(song)}`, song)
     // 펴는 동안 다른 곡을 요청받았으면 버린다
     if (!buf || this.want !== song || !this.ctx || !this.bus) return
     if (this.now?.song === song) return
@@ -228,7 +291,71 @@ export class Music {
     this.want = null
     this.stopNow(FADE)
   }
+
+  /**
+   * 한 번 울리고 마는 소리. BGM 위에 겹쳐 난다.
+   *
+   * 여러 개가 동시에 나도 되므로 붙였다 끝나면 떼기만 한다 — BGM처럼 하나만
+   * 살아 있을 이유가 없다
+   */
+  private oneShot(buf: AudioBuffer, gain: number): void {
+    const ctx = this.ctx, bus = this.bus
+    if (!ctx || !bus) return
+    const g = ctx.createGain()
+    g.gain.value = gain
+    g.connect(bus)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(g)
+    src.onended = () => { g.disconnect() }
+    src.start()
+  }
+
+  /**
+   * 나중에 쓸 소리를 미리 펴 둔다.
+   *
+   * 메뉴 소리가 뱅크 700을 쓰는데 그 창고가 452KB다 — 처음 커서를 움직일 때
+   * 받기 시작하면 **첫 소리를 놓친다.** 나머지 여덟은 창고를 나눠 써서 4KB씩이다
+   */
+  async prewarm(songs: readonly number[]): Promise<void> {
+    // 아직 안 깨어났으면 적어 뒀다가 깨울 때 한다 — 타이틀에서 미리 부를 수 있다
+    if (!this.ctx) { for (const s of songs) this.warmQueue.add(s); return }
+    for (const song of songs) {
+      await this.render(`se:${String(song)}`, song, { maxSeconds: SHORT_SECONDS })
+    }
+  }
+
+  /** 효과음 하나 */
+  async playEffect(song: number, gain = 1): Promise<void> {
+    if (!this.ctx) return
+    const buf = await this.render(`se:${String(song)}`, song, { maxSeconds: SHORT_SECONDS })
+    if (buf) this.oneShot(buf, gain)
+  }
+
+  /**
+   * 울음소리 하나.
+   *
+   * `SEQ_PV`에 창고만 종족 것으로 갈아 끼운다. 기절할 때는 원작대로 3.5반음
+   * 내린다
+   */
+  async playCry(species: number, opts?: { faint?: boolean }): Promise<void> {
+    if (!this.ctx) return
+    if (species < 1 || species > MAX_CRY_SPECIES) return
+    const faint = opts?.faint === true
+    const buf = await this.render(
+      `cry:${String(species)}${faint ? ':faint' : ''}`, CRY_SEQ,
+      {
+        warOverride: species,
+        maxSeconds: SHORT_SECONDS,
+        transpose: faint ? FAINT_SEMITONES : undefined,
+      },
+    )
+    if (buf) this.oneShot(buf, 1)
+  }
 }
+
+/** 울음소리가 쓰는 악보와 악기표. 시험이 본다 */
+export const CRY_SOURCE = { seq: CRY_SEQ, bank: CRY_BANK }
 
 /** 게임에 하나뿐이다 */
 export const music = new Music()

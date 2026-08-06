@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { music } from '../engine/audio/music'
+import { SFX } from '../engine/audio/sfx'
 import { TRAINER_BATTLE, WILD_BATTLE, songForMap } from '../engine/audio/songs'
 import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
@@ -29,6 +30,9 @@ export function MusicDirector() {
 
   // 원작 옵션 17·18번 (스테레오 · 모노)
   useEffect(() => { music.setMono(sound === 1) }, [sound])
+
+  // 메뉴 소리는 미리 펴 둔다. 안 그러면 첫 커서 이동에서 452KB를 받느라 소리가 늦다
+  useEffect(() => { void music.prewarm([SFX.MENU]) }, [])
 
   useFrame((_, delta) => {
     since.current += delta

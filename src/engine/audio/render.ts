@@ -77,6 +77,14 @@ interface Voice {
   psg: number
   /** 잡음 LFSR */
   lfsr: number
+  /**
+   * 표본이 다 떨어졌다.
+   *
+   * 도돌이표가 없는 표본은 하드웨어가 끝에서 채널을 **스스로 놓는다.** 이걸
+   * 안 하면 게이트가 0인 음(울음소리가 그렇다)이 영영 채널을 붙들고 있어서
+   * 16칸이 말라붙는다
+   */
+  dead: boolean
 }
 
 function newTrack(): Track {
@@ -106,6 +114,13 @@ export interface RenderOptions {
   maxSeconds: number
   /** 곡 전체 음량 (0~127) */
   volume?: number
+  /**
+   * 반음 단위로 통째로 옮긴다.
+   *
+   * 울음소리가 이걸 쓴다 — 원작은 기절할 때 `SOUND_SEMITONES(-3.5)`를 건다
+   * (`sound_playback.c`의 `POKECRY_FAINT`)
+   */
+  transpose?: number
 }
 
 export interface Rendered {
@@ -139,6 +154,7 @@ export function renderSong(
   const data = new Uint8Array(seq)
   const rate = opts.sampleRate
   const masterDb = knobDecibel(opts.volume ?? 127)
+  const transpose = opts.transpose ?? 0
 
   const total = Math.ceil(opts.maxSeconds * rate)
   const left = new Float32Array(total)
@@ -200,7 +216,7 @@ export function renderSong(
         t.release < 0 ? def.release : t.release,
       ),
       def, swav: swavFor(def), key, velocity, track: t,
-      phase: 0, gate, born: born++, psg: 0, lfsr: 0x7fff,
+      phase: 0, gate, born: born++, psg: 0, lfsr: 0x7fff, dead: false,
     })
   }
 
@@ -286,7 +302,7 @@ export function renderSong(
     for (let i = voices.length - 1; i >= 0; i--) {
       const v = voices[i]!
       stepEnv(v.env)
-      if (envDone(v.env)) voices.splice(i, 1)
+      if (v.dead || envDone(v.env)) voices.splice(i, 1)
     }
     if (voices.length === 0 && tracks.every((t) => t.at === null)) break
 
@@ -304,7 +320,7 @@ export function renderSong(
       const pan = Math.max(0, Math.min(127, v.track.pan))
       const gl = gain * ((128 - pan) / 128)
       const gr = gain * (pan / 128)
-      const semis = v.key - v.def.baseNote + (v.track.bend * v.track.bendRange) / 128
+      const semis = v.key - v.def.baseNote + (v.track.bend * v.track.bendRange) / 128 + transpose
       const ratio = 2 ** (semis / 12)
 
       if (v.swav) {
@@ -314,7 +330,8 @@ export function renderSong(
         for (let i = 0; i < n; i++) {
           let p = v.phase
           if (p >= end) {
-            if (!v.swav.loops) break
+            // 도돌이표가 없으면 여기서 끝이다. 하드웨어도 채널을 놓는다
+            if (!v.swav.loops) { v.dead = true; break }
             const span = end - v.swav.loopStart
             p = v.swav.loopStart + ((p - v.swav.loopStart) % span)
             v.phase = p
@@ -330,7 +347,7 @@ export function renderSong(
         }
       } else if (v.def.kind === 2) {
         // PSG 사각파. 듀티는 정의의 `wave` 칸이 준다 (0~7)
-        const freq = 440 * 2 ** ((v.key + (v.track.bend * v.track.bendRange) / 128 - 69) / 12)
+        const freq = 440 * 2 ** ((v.key + (v.track.bend * v.track.bendRange) / 128 + transpose - 69) / 12)
         const step = freq / rate
         const duty = (v.def.wave + 1) / 8
         for (let i = 0; i < n; i++) {
@@ -342,7 +359,7 @@ export function renderSong(
         }
       } else if (v.def.kind === 3) {
         // 잡음. 15비트 LFSR을 음 높이만큼 빠르게 돌린다
-        const freq = 440 * 2 ** ((v.key - 69) / 12) * 8
+        const freq = 440 * 2 ** ((v.key + transpose - 69) / 12) * 8
         const step = freq / rate
         for (let i = 0; i < n; i++) {
           v.psg += step

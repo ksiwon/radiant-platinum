@@ -1,0 +1,39 @@
+// 효과음 번호 (DATA.md §2.18)
+//
+// **어느 소리를 언제 내는지는 디컴프가 정한다.** 이름만 보고 고르면 그럴듯한
+// 다른 소리를 집게 된다 — BGM에서 이미 한 번 그랬다(야생 배틀 곡 자리에
+// 아카기 곡을 적었다).
+//
+// 이름 → 번호는 `generated/sdat.txt`가 준다. 그 파일은 `이름 = 숫자` 닻을 두고
+// 그 뒤로 하나씩 올라가는 목록이라 **줄 번호에 상수를 더하는 방식으로는 안 된다** —
+// SE 구간에서 어긋난다. 닻을 읽어 세면 SEQ 이름 1013개 중 982개가 SDAT의 `SYMB`와
+// 글자까지 같고, 다른 31개는 디컴프가 일부러 고쳐 붙인 이름이다.
+//
+// ⚠️ `SEQ_SE_CONFIRM`이 그 31개 중 하나다. SDAT는 같은 번호를 `SEQ_SE_DP_SELECT`라
+// 부른다 — 이름으로 찾으면 못 찾는다.
+
+export const SFX = {
+  /**
+   * 메뉴. `Menu_ProcessInput`이 **A·B·상하좌우 전부** 이 하나를 쓴다
+   * (`menu.c` 71~110줄). 고르는 소리와 움직이는 소리가 따로가 아니다
+   */
+  MENU: 1500,
+  /** `SEQ_SE_DP_DECIDE`. 배틀 화면이 고를 때 쓴다 (`battle_display.c`) */
+  DECIDE: 1501,
+  /** `SEQ_SE_DP_DOOR_OPEN`. 문 (`ov5_021D431C.c`) */
+  DOOR: 1541,
+  /** `SEQ_SE_DP_KAIDAN2`. 계단·동굴 (`field_map_change.c` 631·1516줄) */
+  STAIRS: 1539,
+  /** `SEQ_SE_DP_NAGERU`. 공 던지기 (`battle_script.c` 10398줄) */
+  THROW: 1802,
+  /** `SEQ_SE_DP_POKE_DEAD3`. 쓰러질 때 */
+  FAINT: 1795,
+  /** `SEQ_SE_DP_HINSI`. 체력이 바닥일 때 (`battle_main.c` 1564줄) */
+  LOW_HP: 1796,
+  /** `SEQ_SE_DP_KAIFUKU`. 회복 */
+  HEAL: 1516,
+  /** `SEQ_SE_DP_SAVE`. 저장 (`clear_game.c` 136줄) */
+  SAVE: 1563,
+} as const
+
+export type SfxName = keyof typeof SFX

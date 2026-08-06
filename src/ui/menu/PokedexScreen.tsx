@@ -14,6 +14,7 @@ import { dexHas, useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as css from './menuChrome.css'
 import * as own from './pokedexScreen.css'
+import { music } from '../../engine/audio/music'
 
 const PAGE = 8
 
@@ -59,6 +60,9 @@ export function PokedexScreen() {
     down: () => { setCursor((c) => clampCursor(c, 1, order.length)) },
     pageUp: () => { setCursor((c) => clampCursor(c, -PAGE, order.length)) },
     pageDown: () => { setCursor((c) => clampCursor(c, PAGE, order.length)) },
+    // 원작 도감은 A를 누르면 운다 (`pokedex/infomain.c`의 `POKECRY_POKEDEX`).
+    // 본 적 없는 칸은 이름도 `?????`라 울리지 않는다
+    confirm: () => { if (seen) void music.playCry(species) },
     cancel: back,
   })
 
