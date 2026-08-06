@@ -102,6 +102,22 @@ const AMP = {
   breath: 0.020,
 }
 
+/**
+ * 도약 자세의 크기값.
+ *
+ * `crouch`와 `land`는 도약 전체에서 준비와 받아 냄이 차지하는 비율이다. 0.4초
+ * 도약(`actor/ledge`의 `HOP_TIME`)에서 각각 0.06초·0.09초라 눈에 한 박자로 든다
+ */
+const HOP = {
+  crouch: 0.15, land: 0.22,
+  kneeCrouch: 0.55, kneeAir: 1.15, kneeLand: 0.75,
+  thighAir: 0.62, thighCrouch: 0.30,
+  footAir: 0.45, footLand: 0.30,
+  armAir: 0.85, armCrouch: 0.35, forearm: 0.30,
+  leanCrouch: 0.22, leanAir: 0.10, leanLand: 0.26,
+  bob: 0.075, armBias: 0.25,
+}
+
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v)
 
 /**
@@ -208,6 +224,49 @@ export function sampleGait(phase: number, moving: number, run: number): Gait {
     armDrop: AMP.armDrop + AMP.armDropRun * r,
     // 서 있는 자세는 서 있을 때만. 걷기 시작하면 중심이 몸통 평면으로 오고 뒤로 넘어간다
     armBias: AMP.armForward * (1 - m) - (AMP.armBack + AMP.armBackRun * r) * m,
+  }
+}
+
+/**
+ * 턱을 뛰어넘는 자세 (`actor/ledge`).
+ *
+ * 원작은 도트 한 장이 포물선을 그리는 것이지만, 여기는 뼈가 166개 있는 몸이라
+ * 걷는 자세 그대로 미끄러지면 얼음판을 타는 것으로 보인다. 한 번의 도약을
+ * 셋으로 나눈다 — **웅크리고 · 접어 넣고 · 받아 낸다.**
+ *
+ * `t`는 0에서 1까지 가는 도약 진행이고 `player.ts`의 `hop.t`와 같은 값이다.
+ * 그래서 몸이 제일 접히는 순간이 포물선의 꼭대기와 맞는다
+ */
+export function hopGait(t: number): Gait {
+  const k = clamp01(t)
+  // 웅크림 → 공중 → 착지. 앞뒤 짧은 구간이 준비와 받아 냄이다
+  const crouch = k < HOP.crouch ? 1 - k / HOP.crouch : 0
+  const land = k > 1 - HOP.land ? (k - (1 - HOP.land)) / HOP.land : 0
+  // 공중에 있는 정도. 가운데서 1이고 양 끝에서 0이다
+  const air = Math.sin(clamp01((k - HOP.crouch) / (1 - HOP.crouch - HOP.land)) * Math.PI)
+  // 무릎은 웅크릴 때도 접히고 공중에서도 접힌다. 받아 낼 때 제일 깊다
+  const knee = AMP.kneeBase + HOP.kneeCrouch * crouch + HOP.kneeAir * air + HOP.kneeLand * land
+  return {
+    // 두 다리가 같이 움직인다 — 뛰는 동안 좌우가 갈리면 걷는 것으로 보인다
+    thighL: HOP.thighAir * air + HOP.thighCrouch * (crouch + land),
+    thighR: HOP.thighAir * air + HOP.thighCrouch * (crouch + land),
+    kneeL: knee,
+    kneeR: knee,
+    // 공중에서는 발끝을 아래로 뻗고, 받아 낼 때 든다
+    footL: -HOP.footAir * air + HOP.footLand * land,
+    footR: -HOP.footAir * air + HOP.footLand * land,
+    // 팔은 도약에서 앞위로 뻗었다가 착지에서 내려온다
+    armL: HOP.armAir * air - HOP.armCrouch * crouch,
+    armR: HOP.armAir * air - HOP.armCrouch * crouch,
+    forearmL: AMP.forearmRest + HOP.forearm * (crouch + land),
+    forearmR: AMP.forearmRest + HOP.forearm * (crouch + land),
+    torsoYaw: 0,
+    lean: HOP.leanCrouch * crouch + HOP.leanAir * air + HOP.leanLand * land,
+    // 몸통 상하는 `player.ts`의 포물선이 이미 낸다. 여기서는 웅크림과
+    // 받아 냄만 더한다 — 둘 다 더하면 두 배로 튄다
+    bob: -HOP.bob * (crouch + land),
+    armDrop: AMP.armDrop * (1 - air * 0.6),
+    armBias: HOP.armBias * air,
   }
 }
 

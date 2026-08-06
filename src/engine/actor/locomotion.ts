@@ -16,7 +16,7 @@
 // 같지만 **두 축을 겹치는 순간 깨진다** — 팔을 내린(roll) 뒤 스윙(pitch)하면
 // 스윙 축이 내린 각만큼 함께 돌아가 앞뒤가 아니라 좌우로 흔들린다.
 import { Object3D, Quaternion, Vector3 } from 'three'
-import { idleBreath, phaseRate, sampleGait } from './gait'
+import { hopGait, idleBreath, phaseRate, sampleGait } from './gait'
 
 /** 캐릭터는 +Z를 본다. 앞뒤 스윙은 월드 X축, 좌우 벌림은 Z축, 비틀림은 Y축이다 */
 const AXIS_PITCH = new Vector3(1, 0, 0)
@@ -240,6 +240,7 @@ const SHOULDER_SHARE = 0.15
  */
 export function updateLocomotion(
   rig: Rig, dt: number, speed: number, walkSpeed: number, runSpeed: number,
+  hop: number | null = null,
 ) {
   rig.elapsed += dt
   // 아주 느린 속도까지 걷게 하면 제자리에서 발을 떠는 것처럼 보인다
@@ -248,7 +249,9 @@ export function updateLocomotion(
   // 보폭이 달리기에서 늘어나므로 run을 먼저 구해야 위상 속도를 정할 수 있다
   rig.phase = (rig.phase + phaseRate(speed, run) * dt) % (Math.PI * 2)
 
-  const g = sampleGait(rig.phase, moving, run)
+  // 턱을 넘는 동안은 걷기를 멈추고 도약 자세를 쓴다. 걷는 자세로 포물선을
+  // 그리면 얼음판을 타는 것으로 보인다 (`actor/ledge`)
+  const g = hop === null ? sampleGait(rig.phase, moving, run) : hopGait(hop)
   const j = rig.joints
 
   // 다리는 사슬 전체가 월드 X축 하나만 쓰고 바인드에서도 아래로 뻗어 있다.

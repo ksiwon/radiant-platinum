@@ -4,7 +4,7 @@
 // 숫자로 잡힌다: 양다리가 같은 위상이면 깡충거리고, 무릎이 반대로 꺾이면
 // 관절이 뒤집히고, 위상 속도가 속도에 안 묶이면 발이 미끄러진다.
 import { describe, it, expect } from 'vitest'
-import { phaseRate, sampleGait, idleBreath, strideLength, STRIDE_LENGTH } from './gait'
+import { phaseRate, sampleGait, idleBreath, strideLength, STRIDE_LENGTH, hopGait } from './gait'
 
 const TWO_PI = Math.PI * 2
 
@@ -199,5 +199,45 @@ describe('정지 호흡', () => {
     }
     expect(movingMax).toBeCloseTo(0, 10)
     expect(idleMax).toBeGreaterThan(0.01)
+  })
+})
+
+describe('턱 넘는 자세', () => {
+  it('두 다리가 같이 움직인다 — 갈리면 걷는 것으로 보인다', () => {
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const g = hopGait(t)
+      expect(g.thighL, `t=${String(t)}`).toBe(g.thighR)
+      expect(g.kneeL).toBe(g.kneeR)
+      expect(g.footL).toBe(g.footR)
+      expect(g.armL).toBe(g.armR)
+    }
+  })
+
+  it('가운데서 제일 접힌다 — 포물선 꼭대기와 맞는다', () => {
+    // `player.ts`가 4k(1−k)로 띄우므로 꼭대기가 t=0.5다. 몸이 그때 제일
+    // 접혀 있어야 뛰는 것으로 보인다
+    const mid = hopGait(0.5)
+    for (const t of [0.02, 0.98]) {
+      expect(hopGait(t).kneeL, `t=${String(t)}`).toBeLessThan(mid.kneeL)
+      expect(hopGait(t).thighL).toBeLessThan(mid.thighL)
+    }
+    // 팔도 가운데서 제일 위다
+    expect(mid.armL).toBeGreaterThan(hopGait(0.02).armL)
+  })
+
+  it('무릎이 늘 굽어 있다 — 완전히 펴면 죽마가 된다', () => {
+    for (let t = 0; t <= 1; t += 0.05) expect(hopGait(t).kneeL).toBeGreaterThan(0)
+  })
+
+  it('받아 낼 때 무릎이 다시 깊어진다', () => {
+    // 착지 구간(뒤 22%)에서 무릎이 공중보다 덜 접히되 끝에서 다시 깊어진다 —
+    // 곧게 편 채로 떨어지면 충격이 안 읽힌다
+    expect(hopGait(0.97).kneeL).toBeGreaterThan(hopGait(0.80).kneeL)
+  })
+
+  it('걷기와 섞이지 않는다 — 몸통 비틀림이 0이다', () => {
+    // 걷기는 팔과 반대로 상체를 비트는데, 도약에서 그것이 남으면 뛰면서
+    // 걷는 것처럼 보인다
+    for (const t of [0, 0.3, 0.6, 1]) expect(hopGait(t).torsoYaw).toBe(0)
   })
 })

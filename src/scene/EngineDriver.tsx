@@ -73,7 +73,12 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     // 60fps가 아니어도 위상 속도가 속도에 묶여 있어 발이 미끄러지지 않는다
     if (sceneRefs.playerRig) {
       const speed = Math.hypot(p.velocity.x, p.velocity.z)
-      updateLocomotion(sceneRefs.playerRig, delta, speed, WALK_SPEED, RUN_SPEED)
+      // 턱을 넘는 중이면 그 진행을 넘긴다 — 걷기 대신 도약 자세가 나간다
+      const hop = worldState.player.hop
+      updateLocomotion(
+        sceneRefs.playerRig, delta, speed, WALK_SPEED, RUN_SPEED,
+        hop.active ? hop.t : null,
+      )
     }
     // 배틀 중에는 무대가 카메라를 갖는다. 오버월드 카메라 시스템은 계속 돌지만
     // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다
