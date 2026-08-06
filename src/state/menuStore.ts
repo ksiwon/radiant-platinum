@@ -7,7 +7,9 @@
 // 프레임 값은 여기 안 넣는다. 커서 자리처럼 화면이 혼자 쓰는 것은 컴포넌트가
 // 갖고, 이 스토어는 **어느 화면이 떠 있는가**만 안다.
 import { create } from 'zustand'
-import { setUiCapture } from '../engine/input/keyboard'
+// ⚠️ `keyboard`가 아니라 `keys`다. 그쪽은 worldState → three를 끌고 오는데
+// 타이틀 화면이 이 스토어를 잡으므로 초기 청크에 three가 실린다 (§10.4)
+import { setUiCapture } from '../engine/input/keys'
 
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
