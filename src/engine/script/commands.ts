@@ -521,10 +521,10 @@ on('BufferNumber', (ctx) => {
 // 그래서 이 여덟 개만 있으면 오버월드에서 배틀까지 이어진다.
 
 /** `include/constants/scripts.h` */
-const SCRIPT_ID_OFFSET_SINGLE_BATTLES = 3000
+export const SCRIPT_ID_OFFSET_SINGLE_BATTLES = 3000
 const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
 /** `generated/vars_flags.txt` — 이 뒤로 트레이너 번호만큼 떨어진 자리가 그 사람 플래그다 */
-const TRAINER_DEFEATED_FLAGS_START = 1360
+export const TRAINER_DEFEATED_FLAGS_START = 1360
 
 /** `Script_GetTrainerID` — scriptID에서 트레이너 번호를 되뽑는다 */
 export function trainerIdOf(scriptID: number): number {

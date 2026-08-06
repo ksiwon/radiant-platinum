@@ -25,6 +25,13 @@ export const npcActors = {
   /** 지금 맵의 NPC. 맵이 바뀌면 통째로 갈린다 */
   list: [] as NpcActor[],
   byLocalID: new Map<number, NpcActor>(),
+  /**
+   * 이 목록이 **어느 맵의 것인가.** −1이면 아직 안 세웠다.
+   *
+   * 목록만 보고는 알 수 없다 — 맵을 옮겼는데 아직 안 세운 사이에는 앞 맵의
+   * 사람들이 그대로 들어 있고, 그때 좌표로 사람을 찾으면 엉뚱한 자리에서 걸린다
+   */
+  mapId: -1,
 }
 
 /**
@@ -36,6 +43,7 @@ export const npcActors = {
 export function spawnNpcs(mapId: number, vars: VarStore): void {
   npcActors.list = []
   npcActors.byLocalID.clear()
+  npcActors.mapId = mapId
   for (const info of npcsOf(mapId)) {
     if (info.flag !== null && vars.checkFlag(info.flag)) continue
     const actor: NpcActor = {
@@ -57,4 +65,5 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
 export function clearNpcs(): void {
   npcActors.list = []
   npcActors.byLocalID.clear()
+  npcActors.mapId = -1
 }

@@ -7,14 +7,18 @@
 // 이 모듈은 React를 모른다. 화면은 `world`를 들여다보기만 한다.
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
 import {
-  BG_EVENT_DIR, BG_EVENT_TYPE, mapById, npcsOf, NO_SCRIPT, signsOf, triggersOf,
-  world as mapWorld, type Npc, type Sign,
+  BG_EVENT_DIR, BG_EVENT_TYPE, mapById, npcsOf, NO_SCRIPT, signsOf, talkTile,
+  triggersOf, world as mapWorld, type Npc, type Sign,
 } from '../map/world'
 import { worldState } from '../../state/worldState'
-import { buildCommands, type CommandTable } from './commands'
+import {
+  buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, TRAINER_DEFEATED_FLAGS_START, trainerIdOf,
+  type CommandTable,
+} from './commands'
 import { ScriptContext, ScriptError } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { npcActors, spawnNpcs } from '../actor/npcs'
+import { trainerInSight } from '../actor/sight'
 import { DIR, type Movable, type MovementTable } from './movement'
 import { TEXT_SPEED, type PrinterInput } from './printer'
 import { VarStore, VAR_LAST_TALKED } from './vars'
@@ -201,6 +205,9 @@ const DIR_TO_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
 export function enterMap(mapId: number): void {
   spawnNpcs(mapId, fieldScripts.vars)
   resetTriggerTile()
+  // 맵에 들어선 그 칸에서 곧바로 눈이 마주치면 안 된다 — 문에서 나오자마자
+  // 배틀이 시작되면 어디서 걸린 것인지 화면에서 안 보인다
+  resetSightTile()
   const header = mapById(mapId)
   if (!header || header.msg === fieldScripts.bank) return
   fieldScripts.bank = header.msg
@@ -259,6 +266,8 @@ export const scriptSystem = {
     }
     // 밟아서 걸리는 것이 먼저다. 원작도 이동이 끝난 자리에서 좌표를 먼저 본다
     tryTrigger()
+    // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
+    if (fieldScripts.ctx === null) trySight()
     if (fieldScripts.ctx === null && edges.a) tryTalk()
   },
 }
@@ -323,10 +332,26 @@ export function tileInFront(x: number, z: number, facing: number): { x: number, 
 /**
  * 그 자리에 서 있는 NPC.
  *
- * 플래그가 **서 있으면 숨은 것**이다 — 원작이 `if (!FieldSystem_CheckFlag(…))`
- * 일 때만 객체를 만든다. 반대로 읽으면 이야기가 끝난 NPC에게 계속 말을 걸게 된다
+ * ⚠️ **배치표가 아니라 지금 서 있는 자리를 본다.** 원작도 그렇다 —
+ * `sub_0203C9D4`가 `mapObjMan`(살아 있는 객체 관리자)에 좌표를 묻는다. 배치표를
+ * 보면 스크립트가 걸어 옮긴 사람에게는 원래 자리에서만 말이 걸리고, 정작 지금
+ * 서 있는 자리에서는 안 걸린다.
+ *
+ * ⚠️ 층 비교(`sub_0203C9B0`)는 **아직 못 옮겼다.** 배치표의 `height`는 층 번호가
+ * 아니라 타일 높이라(실측: 같은 체육관에서 0·10·20이 섞여 나온다) 주인공의
+ * 층과 곧바로 견줄 수가 없다. 겹친 판에서 아래층 사람에게 말이 걸릴 수 있다.
+ *
+ * 플래그가 **서 있으면 숨은 것**이라는 규칙은 `spawnNpcs`가 이미 적용했다.
  */
 export function npcAt(mapId: number, x: number, z: number, vars: VarStore): Npc | null {
+  // 세워 둔 것이 **이 맵의 것일 때만** 쓴다. 아직 안 세웠으면 배치표로 떨어진다
+  if (npcActors.mapId === mapId) {
+    for (const actor of npcActors.list) {
+      if (!actor.visible) continue
+      if (Math.round(actor.x) === x && Math.round(actor.z) === z) return actor.info
+    }
+    return null
+  }
   for (const npc of npcsOf(mapId)) {
     if (npc.x !== x || npc.z !== z) continue
     if (npc.flag !== null && vars.checkFlag(npc.flag)) continue
@@ -350,7 +375,13 @@ function tryTalk(): void {
   const p = worldState.player
   const front = tileInFront(p.position.x, p.position.z, p.facing)
 
-  const npc = npcAt(mapWorld.mapId, front.x, front.z, vars)
+  // ⚠️ **카운터 너머로 말을 건다** (`map/world`의 `talkTile`)
+  const grid = mapWorld.grid
+  const reach = grid
+    ? talkTile(grid, front, FACING_STEP[quarterOf(p.facing)]!)
+    : front
+
+  const npc = npcAt(mapWorld.mapId, reach.x, reach.z, vars)
   if (npc && npc.script !== NO_SCRIPT) {
     const id = npc.trainerType === TRAINER_TYPE_NO_TALK ? 0 : npc.script
     start(id, header.scripts, npc.localID)
@@ -467,6 +498,48 @@ function tryTrigger(): void {
   lastTile = { x, z }
   const script = triggerAt(mapWorld.mapId, x, z, fieldScripts.vars)
   if (script !== null) start(script, header.scripts)
+}
+
+/**
+ * 눈이 마주쳤는가.
+ *
+ * ⚠️ **지금까지 트레이너는 내가 먼저 말을 걸어야만 싸웠다.** 원작은 반대라
+ * 길에 서 있는 사람이 시야에 들어오면 저쪽이 다가온다 — 그 긴장이 4세대 필드의
+ * 절반이다. 규칙은 `engine/actor/sight`가 들고 있고 여기서는 밟은 칸이 바뀔
+ * 때마다 한 번 묻는다.
+ *
+ * 다가오는 연출(`ScrCmd_StartApproachingTrainerTask`)은 아직 없다. 지금은 눈이
+ * 마주친 자리에서 그 트레이너의 스크립트가 곧바로 돈다 — 대사와 배틀은 원작
+ * 바이트코드가 그대로 낸다.
+ */
+function trySight(): void {
+  const header = mapById(mapWorld.mapId)
+  const grid = mapWorld.grid
+  if (!header || !grid) return
+  const p = worldState.player.position
+  const x = Math.floor(p.x), z = Math.floor(p.z)
+  if (x === lastSightTile.x && z === lastSightTile.z) return
+  lastSightTile = { x, z }
+
+  const seen = trainerInSight(
+    npcActors.list.map((a) => ({ npc: a.info, facing: a.dir })),
+    x, z,
+    { blocked: (bx, bz) => grid.isBlocked(bx, bz) },
+    // ⚠️ **이미 이긴 트레이너는 안 덤빈다.** 원작이 `Script_IsTrainerDefeated`로
+    // 거른다 — 이게 없으면 이긴 사람 앞을 지날 때마다 다시 싸우게 된다.
+    // 배틀 스크립트가 아닌 사람(3000 미만)은 애초에 트레이너가 아니다
+    (npc) => npc.script === NO_SCRIPT
+      || npc.script < SCRIPT_ID_OFFSET_SINGLE_BATTLES
+      || fieldScripts.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + trainerIdOf(npc.script)),
+  )
+  if (!seen) return
+  start(seen.npc.script, header.scripts, seen.npc.localID)
+}
+
+let lastSightTile = { x: Number.NaN, z: Number.NaN }
+
+export function resetSightTile(): void {
+  lastSightTile = { x: Number.NaN, z: Number.NaN }
 }
 
 /**

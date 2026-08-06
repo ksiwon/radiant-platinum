@@ -188,6 +188,32 @@ export function resolveWarp(w: Warp): PendingWarp | null {
 export const TILE_BEHAVIOR_DOOR = 0x69
 
 /**
+ * `TILE_BEHAVIOR_TABLE`. 계산대·탁자.
+ *
+ * 값은 앞뒤 이름이 가둔다 — `UNUSED_x7F` **다음**이고 `UNUSED_x81` **앞**이라
+ * 0x80 말고는 될 수가 없다. 이 칸을 앞에 두고 말을 걸면 원작은 **한 칸 더**
+ * 본다(`sub_0203C9D4`). 간호사와 점원이 전부 이 너머에 선다
+ */
+export const TILE_BEHAVIOR_TABLE = 0x80
+
+/**
+ * 말을 걸 칸.
+ *
+ * 앞 칸이 계산대면 **한 칸 더** 본다 (`sub_0203C9D4`). 이게 없으면 계산대 뒤에
+ * 선 사람에게 영영 못 닿는다 — 포켓몬센터 간호사와 마트 점원이 전부 그 자리다.
+ *
+ * 한 번만 뛴다. 원작도 한 번이라, 탁자 두 칸이 이어지면 그 너머는 못 닿는다
+ */
+export function talkTile(
+  grid: { behavior(tx: number, tz: number): number },
+  front: { x: number; z: number },
+  step: { x: number; z: number },
+): { x: number; z: number } {
+  if (grid.behavior(front.x, front.z) !== TILE_BEHAVIOR_TABLE) return front
+  return { x: front.x + step.x, z: front.z + step.z }
+}
+
+/**
  * 문에서 나온 자리를 한 칸 아래로 옮긴다.
  *
  * 원작은 도착 좌표가 **워프 타일 그 자체**다(`FieldMapChange`가

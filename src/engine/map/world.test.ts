@@ -10,7 +10,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import {
-  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, TILE_BEHAVIOR_DOOR, walkOutOfDoor,
+  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR,
+  walkOutOfDoor,
   type EventFile, type MapHeader,
 } from './world'
 import { resolveScript } from '../script/data'
@@ -310,5 +311,26 @@ maybe('실내 격자', () => {
       for (let x = 0; x < grid.tileWidth; x++) if (!grid.isBlocked(x, z)) walkable++
     }
     expect(walkable).toBeGreaterThan(10)
+  })
+})
+
+describe('계산대 너머로 말 걸기', () => {
+  const TABLE = 0x80
+  /** (5,4)만 계산대인 격자 */
+  const grid = { behavior: (x: number, z: number) => (x === 5 && z === 4 ? TABLE : 0) }
+  const north = { x: 0, z: -1 }
+
+  it('앞이 계산대면 한 칸 더 본다 — 간호사와 점원이 그 너머에 선다', () => {
+    expect(talkTile(grid, { x: 5, z: 4 }, north)).toEqual({ x: 5, z: 3 })
+  })
+
+  it('계산대가 아니면 그대로다', () => {
+    expect(talkTile(grid, { x: 5, z: 6 }, north)).toEqual({ x: 5, z: 6 })
+  })
+
+  it('한 번만 뛴다 — 원작도 한 번이다', () => {
+    // 계산대가 두 칸 이어져 있으면 그 너머는 못 닿는다
+    const wide = { behavior: () => TABLE }
+    expect(talkTile(wide, { x: 5, z: 4 }, north)).toEqual({ x: 5, z: 3 })
   })
 })
