@@ -17,8 +17,8 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, Color, IcosahedronGeometry,
-  InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Vector3,
+  BufferAttribute, BufferGeometry, Color, Frustum, IcosahedronGeometry,
+  InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Sphere, Vector3,
 } from 'three'
 import { worldState } from '../state/worldState'
 import { cellX, cellZ, type Cell } from './plates'
@@ -240,22 +240,24 @@ export function merge(parts: readonly BufferGeometry[]): BufferGeometry {
  *
  * 색인 없이 삼각형을 바로 쌓는다 — 조각을 합칠 때 색인을 잃을 여지를 안 만든다
  */
-function trunkGeometry(rgb: number): BufferGeometry {
+function trunkGeometry(rgb: number, far = false): BufferGeometry {
+  const sides = far ? 3 : TRUNK_SIDES
+  const rungs = far ? [TRUNK[0]!, TRUNK[TRUNK.length - 1]!] : TRUNK
   const base = new Color(rgb)
   const top = TRUNK[TRUNK.length - 1]![0]
   const shade = (h: number): Color =>
     new Color().copy(base).multiplyScalar(TRUNK_SHADE + (1 - TRUNK_SHADE) * Math.min(1, h / top))
   const ring = (m: readonly [number, number, number], k: number): [number, number, number] => {
-    const a = (k / TRUNK_SIDES) * Math.PI * 2
+    const a = (k / sides) * Math.PI * 2
     return [m[2] + Math.cos(a) * m[1], m[0], Math.sin(a) * m[1]]
   }
 
   const position: number[] = []
   const color: number[] = []
-  for (let s = 0; s + 1 < TRUNK.length; s++) {
-    const lo = TRUNK[s]!, hi = TRUNK[s + 1]!
+  for (let s = 0; s + 1 < rungs.length; s++) {
+    const lo = rungs[s]!, hi = rungs[s + 1]!
     const cLo = shade(lo[0]), cHi = shade(hi[0])
-    for (let k = 0; k < TRUNK_SIDES; k++) {
+    for (let k = 0; k < sides; k++) {
       const a0 = ring(lo, k), a1 = ring(lo, k + 1)
       const b0 = ring(hi, k), b1 = ring(hi, k + 1)
       // 밖에서 봤을 때 반시계로 감는다. 뒤집으면 재질이 앞면만 그려서 통째로 사라진다
@@ -275,11 +277,22 @@ function trunkGeometry(rgb: number): BufferGeometry {
   return geo
 }
 
-/** 한 그루의 모양. 줄기 하나 + 잎 덩이 셋 = 삼각형 156개 */
-export function treeGeometry(leaf: number[], trunk: number): BufferGeometry {
-  const parts: BufferGeometry[] = [trunkGeometry(trunk)]
+/**
+ * 한 그루의 모양. 가까운 것은 삼각형 156개(줄기 36 + 잎 120), 먼 것은 66개다.
+ *
+ * ⚠️ **먼 것도 잎 덩이 셋을 그대로 둔다.** 큰 덩이 하나로 줄이면 삼각형은 26개가
+ * 되지만 **실루엣이 바뀐다** — 30타일이면 나무 하나가 화면에서 180픽셀이라
+ * 윤곽이 달라지는 것이 보인다. 줄이는 것은 세분(80면→20면)과 줄기 단면(6각→3각)
+ * 쪽이다. 그건 그 거리에서 안 읽힌다.
+ *
+ * 짙은 숲이 창 하나에 4,628그루까지 서는데(떡잎마을 일대 실측) 그루당 156이면
+ * 72만이다. 다만 **줄이는 것의 대부분은 LOD가 아니라 프러스텀 컬링**이다 —
+ * 카메라가 한 방향만 보므로 실제로 화면에 드는 것은 15~30%다
+ */
+export function treeGeometry(leaf: number[], trunk: number, far = false): BufferGeometry {
+  const parts: BufferGeometry[] = [trunkGeometry(trunk, far)]
   BLOBS.forEach(([x, y, z, r], i) => {
-    const geo = new IcosahedronGeometry(r, BLOB_DETAIL[i] ?? 0)
+    const geo = new IcosahedronGeometry(r, far ? 0 : (BLOB_DETAIL[i] ?? 0))
     lumpy(geo, r)
     geo.scale(1, CROWN_SQUASH, 1)
     geo.translate(x, CROWN_Y + y, z)
@@ -317,6 +330,26 @@ export function treeAt(key: number, cell: Cell): Matrix4 | null {
   )
 }
 
+/**
+ * 이 거리부터 값싼 모양으로 바꾼다 (타일).
+ *
+ * 30타일이면 나무 하나가 화면에서 180픽셀쯤이다. 그 크기에서 잎 덩이의 세분
+ * (80면과 20면)과 줄기 단면(6각과 3각)은 구별이 안 된다 — 실루엣만 지키면 된다.
+ * 그보다 가까우면 1인칭으로 밑동까지 걸어가므로 온전한 모양이 필요하다
+ */
+const LOD_DISTANCE = 30
+/** 나무를 감싸는 공의 반지름 (반지름 배수). 프러스텀 판정에 쓴다 */
+const TREE_SPHERE = 1.35
+/**
+ * 화면 밖이어도 이만큼은 남긴다 (타일).
+ *
+ * **그림자 때문이다.** 화면 밖 나무도 그림자는 화면 안에 질 수 있다. 태양이
+ * (24, 42, 18)이라 수평 30·수직 42 — 고도 54.5°다. 나무가 제일 클 때 3.8타일
+ * (`TREE_TOP` × `RADIUS_MAX`)이므로 그림자는 3.8/tan54.5° = 2.7타일 뻗는다.
+ * 4타일이면 그 위로 남는다
+ */
+export const CULL_MARGIN = 4
+
 /** 그림이 같으면 모양도 같다. 청크를 넘을 때마다 다시 만들 이유가 없다 */
 const shapes = new Map<string, BufferGeometry>()
 /** 색은 지오메트리의 정점 색이 나르므로 재질은 한 벌이면 된다 */
@@ -325,6 +358,19 @@ const leafMaterial = new MeshLambertMaterial({ vertexColors: true })
 const offset = new Matrix4()
 const scaled = new Matrix4()
 const shrink = new Vector3()
+const viewProj = new Matrix4()
+const frustum = new Frustum()
+const sphere = new Sphere()
+
+function shapeOf(key: string, leaf: number[], trunk: number, far: boolean): BufferGeometry {
+  const id = far ? `${key}/far` : key
+  let geo = shapes.get(id)
+  if (!geo) {
+    geo = treeGeometry(leaf, trunk, far)
+    shapes.set(id, geo)
+  }
+  return geo
+}
 
 export function Foliage({ groups }: { groups: FoliageGroup[] }) {
   const camera = useThree((s) => s.camera)
@@ -338,54 +384,81 @@ export function Foliage({ groups }: { groups: FoliageGroup[] }) {
       // 높이는 청크가 이미 갖고 있어서 안 더한다 — 밑동이 곧 월드 높이다
       matrices.push(m.premultiply(offset.makeTranslation(originX, 0, originZ)))
     }
-    let geometry = shapes.get(g.key)
-    if (!geometry) {
-      geometry = treeGeometry(g.leaf, g.trunk)
-      shapes.set(g.key, geometry)
+    // 가까운 것과 먼 것을 **따로 그린다.** 인스턴스 하나가 지오메트리를 바꿔
+    // 달 수는 없으므로 메시를 둘 두고 프레임마다 나눠 담는다
+    const make = (far: boolean) => {
+      const mesh = new InstancedMesh(
+        shapeOf(g.key, g.leaf, g.trunk, far), leafMaterial, matrices.length)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      // 인스턴스가 청크를 가로질러 흩어져 있어서 메시 단위 절두체가 뜻이 없다 —
+      // 대신 그루마다 직접 판정해 **보이는 것만 앞에서부터 채운다**
+      mesh.frustumCulled = false
+      mesh.count = 0
+      return mesh
     }
-    const mesh = new InstancedMesh(geometry, leafMaterial, matrices.length)
-    matrices.forEach((m, i) => { mesh.setMatrixAt(i, m) })
-    mesh.instanceMatrix.needsUpdate = true
-    mesh.castShadow = true
-    mesh.receiveShadow = true
-    mesh.frustumCulled = false // 인스턴스가 청크를 가로질러 흩어져 있다
     // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
     // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
     const spots = matrices.map((m) => {
       const p = new Vector3().setFromMatrixPosition(m)
       return p.setY(p.y + CROWN_Y * new Vector3().setFromMatrixScale(m).x)
     })
-    return { key: g.key, mesh, matrices, spots, scale: new Float32Array(matrices.length).fill(1) }
+    const radius = matrices.map((m) => TREE_SPHERE * new Vector3().setFromMatrixScale(m).x)
+    return { key: g.key, near: make(false), far: make(true), matrices, spots, radius }
   }), [groups])
 
-  // 카메라 앞을 비운다. 인스턴스 행렬을 고쳐 쓰는 것이라 백엔드를 안 탄다 —
-  // 셰이더로 지우면 WebGPU 노드 재질과 WebGL2 폴백을 따로 봐야 한다
+  /**
+   * 프레임마다 그루를 셋으로 가른다: 화면 밖 · 가까운 것 · 먼 것.
+   *
+   * 화면 밖은 아예 안 담는다 — `count`를 줄이면 그만큼 GPU에 안 올라간다.
+   * 짙은 숲은 창 하나에 4,628그루가 서는데(실측) 카메라가 한 방향만 보므로
+   * 대부분이 뒤에 있다.
+   *
+   * 인스턴스 행렬을 고쳐 쓰는 것이라 백엔드를 안 탄다 — 셰이더로 지우면
+   * WebGPU 노드 재질과 WebGL2 폴백을 따로 봐야 한다
+   */
   useFrame(() => {
     const active = worldState.camera.mode !== 'first'
+    viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+    frustum.setFromProjectionMatrix(viewProj)
     for (const g of meshes) {
-      let dirty = false
+      let n = 0, f = 0
       for (let i = 0; i < g.spots.length; i++) {
-        const k = nearScale(g.spots[i]!.distanceTo(camera.position), active)
-        if (Math.abs(k - g.scale[i]!) < 0.004) continue
-        g.scale[i] = k
+        const spot = g.spots[i]!
+        sphere.set(spot, g.radius[i]! + CULL_MARGIN)
+        if (!frustum.intersectsSphere(sphere)) continue
+        const distance = spot.distanceTo(camera.position)
+        const k = nearScale(distance, active)
+        if (k <= 0) continue // 코앞이라 지운 것
         // 행렬의 자리값이 곧 밑동이고 `scale`은 자리값을 안 건드린다. 그래서
         // 줄어드는 나무는 저절로 땅에 붙은 채 작아진다
-        scaled.copy(g.matrices[i]!).scale(shrink.setScalar(k))
-        g.mesh.setMatrixAt(i, scaled)
-        dirty = true
+        scaled.copy(g.matrices[i]!)
+        if (k < 1) scaled.scale(shrink.setScalar(k))
+        if (distance < LOD_DISTANCE) g.near.setMatrixAt(n++, scaled)
+        else g.far.setMatrixAt(f++, scaled)
       }
-      if (dirty) g.mesh.instanceMatrix.needsUpdate = true
+      g.near.count = n
+      g.far.count = f
+      g.near.instanceMatrix.needsUpdate = true
+      g.far.instanceMatrix.needsUpdate = true
     }
   })
 
   // 창이 옮겨 가면 앞의 인스턴스 메시는 버린다. `<primitive>`는 알아서 안 치워
   // 주므로 두면 청크를 넘을 때마다 GPU 버퍼가 쌓인다. 지오메트리와 재질은
   // 공유하는 것이라 여기서 안 지운다
-  useEffect(() => () => { for (const { mesh } of meshes) mesh.dispose() }, [meshes])
+  useEffect(() => () => {
+    for (const g of meshes) { g.near.dispose(); g.far.dispose() }
+  }, [meshes])
 
   return (
     <group>
-      {meshes.map(({ key, mesh }) => <primitive key={key} object={mesh} />)}
+      {meshes.map(({ key, near, far }) => (
+        <group key={key}>
+          <primitive object={near} />
+          <primitive object={far} />
+        </group>
+      ))}
     </group>
   )
 }

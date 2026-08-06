@@ -11,7 +11,8 @@ import {
   cellKey, cellX, cellZ, cutoutGroups, isFoliage, plateColors, splitFoliage,
 } from './plates'
 import {
-  BARE, RADIUS_MIN, TREE_TOP, TRUNK, merge, nearScale, paint, treeAt, treeGeometry,
+  BARE, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
+  merge, nearScale, paint, treeAt, treeGeometry,
 } from './Foliage'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 
@@ -290,6 +291,41 @@ maybe('잎 걷어내기', () => {
     // 가리던 곳이 뚫려 보인다
     expect(lone.top).toBeGreaterThan(2.14 - 0.2)
     expect(wall.top).toBeGreaterThan(3.64 - 0.2)
+  })
+
+  it('먼 나무는 값싼 모양으로 선다 — 다만 실루엣은 안 바꾼다', () => {
+    // 그루당 156이면 짙은 숲에서 72만 삼각형이다(떡잎마을 일대 4,628그루 실측).
+    // 30타일 밖에서는 세분과 줄기 단면이 안 읽히지만 **윤곽은 읽힌다** —
+    // 덩이를 빼면 그 거리에서도 모양이 달라지는 것이 보인다
+    const near = treeGeometry([0x60a050], 0x6b4a2a, false)
+    const far = treeGeometry([0x60a050], 0x6b4a2a, true)
+    expect(near.getAttribute('position').count / 3).toBe(156)
+    expect(far.getAttribute('position').count / 3).toBe(66)
+    // 값싼 것도 **폭과 높이는 같아야** 한다 — 다르면 LOD가 바뀌는 순간 튄다
+    const span = (g: BufferGeometry) => {
+      const p = g.getAttribute('position') as BufferAttribute
+      let lo = Infinity, hi = -Infinity, wide = 0
+      for (let i = 0; i < p.count; i++) {
+        lo = Math.min(lo, p.getY(i)); hi = Math.max(hi, p.getY(i))
+        wide = Math.max(wide, Math.hypot(p.getX(i), p.getZ(i)))
+      }
+      return { lo, hi, wide }
+    }
+    // 덩이 셋을 그대로 두므로 폭과 높이가 거의 같다 — 바뀌는 순간이 안 보인다
+    const a = span(near), b = span(far)
+    expect(Math.abs(b.hi - a.hi) / a.hi).toBeLessThan(0.03)
+    expect(Math.abs(b.lo - a.lo)).toBeLessThan(0.03)
+    expect(b.wide).toBeGreaterThan(a.wide * 0.95)
+  })
+
+  it('그림자가 지는 만큼은 화면 밖 나무도 남긴다', () => {
+    // 태양 (24, 42, 18) → 수평 30 · 수직 42 → 고도 54.5°.
+    // 제일 큰 나무가 TREE_TOP × RADIUS_MAX 높이이므로 그림자는 그 / tan(54.5°)다.
+    // 컬링 여유가 그보다 짧으면 화면 가장자리에서 그림자가 툭툭 끊긴다
+    const elevation = Math.atan2(42, Math.hypot(24, 18))
+    const tallest = TREE_TOP * 1.52 // RADIUS_MAX + 흔들림
+    const shadow = tallest / Math.tan(elevation)
+    expect(shadow).toBeLessThan(CULL_MARGIN)
   })
 
   it('3인칭에서 카메라 코앞의 나무만 지운다', () => {
