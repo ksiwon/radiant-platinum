@@ -127,6 +127,8 @@ export function BattleScreen() {
   // 아직 재생 중이면 A가 빨리 감기다. 메뉴 키와 겹치면 안 된다
   const reading = !script.caughtUp
   useMenuKeys({ confirm: script.advance, cancel: script.advance }, phase !== 'off' && reading)
+  // 배틀이 끝난 뒤의 "계속". 여기만 키 처리가 비어 있어서 마우스로만 닫혔다
+  useMenuKeys({ confirm: close, cancel: close }, phase === 'over' && !reading)
 
   const shell = staged ? css.screen : `${css.screen} ${css.fallback}`
 
@@ -195,6 +197,9 @@ export function BattleScreen() {
               onRun={() => void run()}
             />
           )}
+          <div className={css.keyHint}>
+            {reading ? 'Z 넘기기' : '↑↓←→ 고르기 · Z 결정 · X 뒤로'}
+          </div>
         </div>
       </div>
       </>}

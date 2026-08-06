@@ -90,13 +90,27 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
         </div>
         <div className={css.panel}>
           <div className={css.detail}>
-            {cp?.check}
-            {cp && <div className={own.setup}>{describe(cp)}</div>}
+            {cp && (
+              <>
+                <div className={own.env}>{cp.env}</div>
+                <div className={own.sectionTitle}>해 볼 것</div>
+                <ul className={own.tryList}>
+                  {cp.try.map((line) => (
+                    <li key={line} className={own.tryItem}>
+                      <span className={own.tryMark} aria-hidden>●</span>
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className={own.setup}>{describe(cp)}</div>
+              </>
+            )}
           </div>
         </div>
       </div>
       <div className={css.footer}>
         ↑↓ 고르기 · Z 뛰어들기 · X 닫기 · ` 로 언제든 다시 연다
+        {!inPlay && ' — 타이틀에서 열면 인트로를 건너뛰고 새 판으로 간다'}
         {busy && ' — 가는 중…'}
       </div>
     </div>

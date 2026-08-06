@@ -484,3 +484,19 @@ export const waiting = style({
   fontSize: 13,
   animation: `${pulse} 1.1s ease-in-out infinite`,
 })
+
+/**
+ * 명령 칸 아래 조작 안내.
+ *
+ * 키보드로 고를 수 있다는 것을 화면이 말해 주지 않으면 마우스로만 쓰게 된다 —
+ * 원작에는 마우스가 없었으니 키가 주인공이어야 한다
+ */
+export const keyHint = style({
+  gridColumn: '1 / -1',
+  marginTop: 2,
+  fontSize: 11,
+  letterSpacing: '0.02em',
+  opacity: 0.5,
+  textAlign: 'right',
+  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+})

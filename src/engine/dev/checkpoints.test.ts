@@ -70,6 +70,15 @@ maybe('확인 지점', () => {
     if (maps[c.map]!.matrix === 0) expect(grid!.zoneAt(tx, tz), '다른 맵에 섰다').toBe(c.map)
   })
 
+  it('어디로 가는지와 무엇을 볼지가 전부 적혀 있다', () => {
+    // 화면 오른쪽이 이 둘로 채워진다. 비어 있으면 지점을 골라도 왜 가는지 모른다
+    for (const c of CHECKPOINTS) {
+      expect(c.env.trim().length, c.id).toBeGreaterThan(4)
+      expect(c.try.length, c.id).toBeGreaterThan(0)
+      for (const line of c.try) expect(line.trim().length, c.id).toBeGreaterThan(4)
+    }
+  })
+
   it('풀숲 지점은 정말 풀숲이다', () => {
     const grass = CHECKPOINTS.filter((c) => c.spot.kind === 'grass')
     expect(grass.length).toBeGreaterThan(0)

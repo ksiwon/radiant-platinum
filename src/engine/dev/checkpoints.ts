@@ -38,8 +38,16 @@ export type DevBattle =
 export interface Checkpoint {
   id: string
   label: string
-  /** 여기서 무엇을 확인하는가. 화면 오른쪽에 그대로 뜬다 */
-  check: string
+  /**
+   * **어떤 환경인가.** 실내인지 야외인지, 밝은지 어두운지, 넓은지 좁은지.
+   *
+   * 확인할 것(`try`)과 따로 두는 이유: 같은 야외라도 작은 마을과 큰 도시는
+   * 프레임도 스트리밍도 다르게 나온다. 무엇을 볼지 고르기 전에 **어디로
+   * 가는지**부터 알아야 한다
+   */
+  env: string
+  /** 여기서 해 볼 만한 것들. 화면 오른쪽에 줄 단위로 뜬다 */
+  try: readonly string[]
   /** 맵 헤더 번호 */
   map: number
   spot: Spot
@@ -72,28 +80,49 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   {
     id: 'room',
     label: '주인공 방 · 계단 앞',
-    check: '실내 2층 · 계단으로 내려가기\nTV·게임기 간판을 읽어 본다',
+    env: '실내 · 2층 방 (좁고 밝다)',
+    try: [
+      '계단으로 1층에 내려가 본다',
+      'TV·게임기 간판을 읽는다',
+      '좁은 방에서 3인칭 카메라가 벽을 뚫는지 본다',
+    ],
     map: 415,
     spot: { kind: 'atWarp', index: 0 },
   },
   {
     id: 'door',
     label: '집 1층 · 현관 앞',
-    check: '**문으로 나가기.** 문 타일이 통행 불가라 갇히던 자리다\n엄마에게 말도 걸어 본다',
+    env: '실내 · 1층 거실 (밖으로 나가는 문이 있다)',
+    try: [
+      '문으로 나간다 — 문 타일이 통행 불가라 갇히던 자리다',
+      '엄마에게 말을 건다',
+      '나가자마자 야외 청크가 제때 따라붙는지 본다',
+    ],
     map: 414,
     spot: { kind: 'atWarp', index: 0 },
   },
   {
     id: 'twinleaf',
     label: '떡잎마을',
-    check: '야외 · 원작 지형 모델 · NPC 판때기 8명\n1인칭(V·휠)으로 둘러보고 걷는다',
+    env: '야외 · 작은 마을 (원작 지형 모델 · NPC 8명)',
+    try: [
+      '1인칭(V·휠)으로 둘러보고 보는 쪽으로 걷는다',
+      'NPC 판때기가 카메라를 따라 도는지 본다',
+      '집 뒷면과 나무 줄기가 뚫려 보이지 않는지 본다',
+      '낮·밤에 따라 하늘색과 BGM이 갈리는지 본다',
+    ],
     map: 411,
     spot: { kind: 'atWarp', index: 1 },
   },
   {
     id: 'grass',
     label: '201번도로 풀숲',
-    check: '한 칸 걸으면 야생이 나온다\n도망·포획·경험치까지 한 바퀴 돈다',
+    env: '야외 · 도로 풀숲 (인카운터가 도는 자리)',
+    try: [
+      '한 칸 걸으면 야생이 나온다',
+      '도망·포획·경험치까지 한 바퀴 돈다',
+      '풀이 빽빽한 자리에서 프레임을 함께 본다',
+    ],
     map: 342,
     spot: { kind: 'grass' },
     party: [{ species: TURTWIG, level: 5 }],
@@ -102,7 +131,14 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   {
     id: 'wild',
     label: '야생전 바로',
-    check: '배틀 화면이 곧바로 뜬다\n설정의 "배틀 진행"·"이야기 속도"를 여기서 잰다',
+    env: '배틀 · 야생전 (들어가자마자 열린다)',
+    try: [
+      '체력판·게이지 색·명령 넷을 본다',
+      '설정의 배틀 진행·이야기 속도를 여기서 잰다',
+      '기술 연출 다섯 틀과 타입 색을 본다',
+      '등판과 기절에서 울음소리가 나는지 듣는다',
+      '메뉴를 키보드(↑↓←→·Z·X)로만 끝까지 돌려 본다',
+    ],
     map: 342,
     spot: { kind: 'grass' },
     party: [{ species: TURTWIG, level: 8 }],
@@ -112,7 +148,12 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   {
     id: 'rival',
     label: '라이벌전 (펄 · 찌르꼬 L7 · 모부기 L9)',
-    check: '트레이너전 — AI·2마리 교체·상금·기술 습득\n원작 첫 라이벌전과 같은 편성이다',
+    env: '배틀 · 트레이너전 (원작 첫 라이벌전과 같은 편성)',
+    try: [
+      'AI가 무엇을 고르는지 본다',
+      '2마리 교체와 상금·기술 습득까지 간다',
+      '야생 곡이 아니라 트레이너 곡으로 바뀌는지 듣는다',
+    ],
     map: 411,
     spot: { kind: 'atWarp', index: 1 },
     party: [{ species: TURTWIG, level: 9 }],
@@ -122,14 +163,23 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   {
     id: 'sandgem',
     label: '잔모래마을',
-    check: 'NPC 15명이 선 마을 · 간판 읽기\n포켓몬센터·프렌들리숍 문으로 드나든다',
+    env: '야외 · 마을 (건물과 NPC 15명)',
+    try: [
+      'NPC 사이에서 간판을 읽는다',
+      '포켓몬센터·프렌들리숍 문으로 드나든다',
+      '문마다 소리가 나는지 듣는다',
+    ],
     map: 418,
     spot: { kind: 'atWarp', index: 1 },
   },
   {
     id: 'mart',
     label: '프렌들리숍 안',
-    check: '상점 화면 — 사기·팔기·소지금',
+    env: '실내 · 상점 (소지금 2만엔)',
+    try: [
+      '사기·팔기·소지금이 맞는지 본다',
+      '메뉴를 키보드로만 끝까지 돌려 본다',
+    ],
     map: 419,
     spot: { kind: 'warp', index: 0 },
     money: 20000,
@@ -139,7 +189,12 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   {
     id: 'center',
     label: '포켓몬센터 안 (파티가 다쳐 있다)',
-    check: '회복 · 실내 NPC 5명\nHP가 실제로 차오르는지 본다',
+    env: '실내 · 포켓몬센터 (파티가 다쳐 있다)',
+    try: [
+      '회복으로 HP가 실제로 차오르는지 본다',
+      '실내 NPC 5명에게 말을 건다',
+      '회복 소리가 나는지 듣는다',
+    ],
     map: 420,
     spot: { kind: 'warp', index: 0 },
     party: [{ species: TURTWIG, level: 12 }, { species: 403, level: 10 }],
@@ -148,14 +203,24 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
   {
     id: 'oreburgh',
     label: '무쇠시티',
-    check: '큰 도시 · NPC 28명 · 워프 16개\n건물이 많은 자리에서 렌더 창과 프레임을 본다',
+    env: '야외 · 큰 도시 (NPC 28명 · 워프 16개 — 제일 무거운 자리)',
+    try: [
+      '건물이 많은 자리에서 프레임과 드로우콜을 본다',
+      '워프를 오가며 스트리밍이 끊기는지 본다',
+      '여기서 안 버티면 다른 데도 안 버틴다',
+    ],
     map: 45,
     spot: { kind: 'atWarp', index: 0 },
   },
   {
     id: 'mine',
     label: '무쇠탄갱 (작업원 원사와 배틀)',
-    check: '어두운 실내 · 높이 · 트레이너전 2마리',
+    env: '실내 · 동굴 (어둡고 높이가 진다)',
+    try: [
+      '어두운 실내의 조명과 층 높이를 본다',
+      '트레이너전 2마리를 치른다',
+      '동굴 곡으로 바뀌는지 듣는다',
+    ],
     map: 198,
     spot: { kind: 'atWarp', index: 0 },
     party: [{ species: TURTWIG, level: 12 }, { species: 403, level: 10 }],
