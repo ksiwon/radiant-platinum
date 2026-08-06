@@ -1,16 +1,19 @@
-// 소품 뒷면 검증 (DATA.md §2.2)
+// 소품 빠진 면 검증 (DATA.md §2.2)
 //
 // ⚠️ **넓이로 재면 속는다.** 한 번 그렇게 했다가 틀렸다 — 경계 고리를 부채꼴로
-// 덮으면 면적 벡터가 0에 수렴하는데, 문틀·창틀을 덮고 정작 뒤는 뚫린 채로도
-// 합이 맞는다. 렌더해 보고서야 알았다.
+// 덮으면 면적 벡터가 0에 수렴하는데, 문틀·창틀을 덮고 정작 뚫린 쪽은 그대로
+// 두고도 합이 맞는다. 렌더해 보고서야 알았다.
 //
-// 그래서 여기서는 **뒤에서 본 실루엣을 실제로 래스터라이즈한다.** 앞에서 보이는
-// 칸은 뒤에서도 무언가로 막혀 있어야 한다. 이 잣대는 문틀을 덮는 것으로 못 속인다.
+// 그래서 여기서는 **그 방향에서 본 실루엣을 실제로 래스터라이즈한다.** 그 방향에서
+// 보이는 칸은 그 방향을 보는 면으로 다 막혀 있어야 한다. 이 잣대는 문틀을 덮는
+// 것으로 못 속인다.
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
-import { backPlate, shellColors } from './shell'
+import {
+  FILLABLE, FLAT, GRID, facePlate, openDirections, shellColors, shellPlates,
+} from './shell'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 
 const DATA = resolve(__dirname, '../../public/data')
@@ -18,6 +21,7 @@ const present = existsSync(resolve(DATA, 'props/23.bin'))
 const maybe = present ? describe : describe.skip
 
 interface Fmt { posScale: number; vertexBytes: number }
+type P3 = [number, number, number]
 
 /** 소품 파일 하나를 `ChunkMesh` 모양으로 읽는다 */
 function readProp(index: number, fmt: Fmt): ChunkMesh {
@@ -47,184 +51,239 @@ function readProp(index: number, fmt: Fmt): ChunkMesh {
   }
 }
 
-interface Tri { p: [number, number, number][]; nz: number }
-
-function triangles(geo: BufferGeometry): Tri[] {
+function triangles(geo: BufferGeometry): P3[][] {
   const pos = geo.getAttribute('position') as BufferAttribute
   const idx = geo.getIndex()
   const n = idx ? idx.count : pos.count
   const at = (k: number) => (idx ? idx.getX(k) : k)
-  const out: Tri[] = []
+  const out: P3[][] = []
   for (let t = 0; t + 2 < n; t += 3) {
-    const p = [0, 1, 2].map((j) => {
+    out.push([0, 1, 2].map((j) => {
       const i = at(t + j)
-      return [pos.getX(i), pos.getY(i), pos.getZ(i)] as [number, number, number]
-    })
-    // 화면 법선의 z 성분. 음수면 −Z를 본다 = 뒤에서 보인다
-    const nz = (p[1]![0] - p[0]![0]) * (p[2]![1] - p[0]![1])
-      - (p[2]![0] - p[0]![0]) * (p[1]![1] - p[0]![1])
-    out.push({ p, nz })
+      return [pos.getX(i), pos.getY(i), pos.getZ(i)] as P3
+    }))
   }
   return out
 }
 
+/** 그 축을 향한 부호 있는 넓이. 부호가 곧 앞뒤고, 0에 가까우면 모로 선 면이다 */
+function signedArea(p: P3[], axis: number): number {
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  return (p[1]![u] - p[0]![u]) * (p[2]![v] - p[0]![v])
+    - (p[2]![u] - p[0]![u]) * (p[1]![v] - p[0]![v])
+}
+
 /**
- * XY 격자를 칠한다. `rear`면 −Z를 보는 면만 센다 — 뒤에서 실제로 보이는 것이다.
+ * 그 축에 수직인 격자를 칠한다.
  *
- * 격자 48×48은 주인공 집(5.76×5.67타일)에서 한 칸이 0.12타일이라 창틀 하나도
- * 여러 칸에 걸린다
+ * `sign`이 0이면 실루엣(어느 쪽을 보든), ±1이면 **그쪽을 보는 면만** 센다.
+ * 후자가 그 방향에서 실제로 눈에 들어오는 것이다.
+ *
+ * 문턱은 `shell.ts`에서 가져온다 — 따로 적으면 어긋나고, 어긋나면 버그가 아니라
+ * 표본 차이로 결과가 갈린다
  */
-function cover(tris: Tri[], box: number[][], N: number, rear: boolean): Set<number> {
+function cover(
+  tris: P3[][], box: number[][], N: number, axis: number, sign: number,
+): Set<number> {
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  const [[u0, u1], [v0, v1]] = box as [[number, number], [number, number]]
   const hit = new Set<number>()
-  const [[x0, x1], [y0, y1]] = box as [[number, number], [number, number]]
-  for (const { p, nz } of tris) {
-    // `backPlate`가 버리는 문턱과 같은 자리다 — 다르면 "덮을 것이 없다"와
-    // "안 덮었다"가 갈리는 데서 어긋난다
-    if (Math.abs(nz) < 2e-4) continue
-    if (rear && nz > 0) continue
-    const area = nz
+  for (const p of tris) {
+    const area = signedArea(p, axis)
+    if (Math.abs(area) < FLAT) continue
+    if (sign !== 0 && area * sign <= 0) continue
     const lo = (a: number) => Math.min(p[0]![a], p[1]![a], p[2]![a])
     const hi = (a: number) => Math.max(p[0]![a], p[1]![a], p[2]![a])
-    const cx0 = Math.max(0, Math.floor(((lo(0) - x0) / (x1 - x0)) * N))
-    const cx1 = Math.min(N - 1, Math.ceil(((hi(0) - x0) / (x1 - x0)) * N))
-    const cy0 = Math.max(0, Math.floor(((lo(1) - y0) / (y1 - y0)) * N))
-    const cy1 = Math.min(N - 1, Math.ceil(((hi(1) - y0) / (y1 - y0)) * N))
-    for (let cy = cy0; cy <= cy1; cy++) {
-      for (let cx = cx0; cx <= cx1; cx++) {
-        const x = x0 + ((cx + 0.5) / N) * (x1 - x0)
-        const y = y0 + ((cy + 0.5) / N) * (y1 - y0)
-        const w1 = ((x - p[0]![0]) * (p[2]![1] - p[0]![1])
-          - (p[2]![0] - p[0]![0]) * (y - p[0]![1])) / area
-        const w2 = ((p[1]![0] - p[0]![0]) * (y - p[0]![1])
-          - (x - p[0]![0]) * (p[1]![1] - p[0]![1])) / area
+    const cu0 = Math.max(0, Math.floor(((lo(u) - u0) / (u1 - u0)) * N))
+    const cu1 = Math.min(N - 1, Math.ceil(((hi(u) - u0) / (u1 - u0)) * N))
+    const cv0 = Math.max(0, Math.floor(((lo(v) - v0) / (v1 - v0)) * N))
+    const cv1 = Math.min(N - 1, Math.ceil(((hi(v) - v0) / (v1 - v0)) * N))
+    for (let cv = cv0; cv <= cv1; cv++) {
+      for (let cu = cu0; cu <= cu1; cu++) {
+        const x = u0 + ((cu + 0.5) / N) * (u1 - u0)
+        const y = v0 + ((cv + 0.5) / N) * (v1 - v0)
+        const w1 = ((x - p[0]![u]) * (p[2]![v] - p[0]![v])
+          - (p[2]![u] - p[0]![u]) * (y - p[0]![v])) / area
+        const w2 = ((p[1]![u] - p[0]![u]) * (y - p[0]![v])
+          - (x - p[0]![u]) * (p[1]![v] - p[0]![v])) / area
         if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
-        hit.add(cy * N + cx)
+        hit.add(cv * N + cu)
       }
     }
   }
   return hit
 }
 
-function boxOf(tris: Tri[]): number[][] {
-  return [0, 1].map((a) => [
-    Math.min(...tris.flatMap((t) => t.p.map((q) => q[a]))),
-    Math.max(...tris.flatMap((t) => t.p.map((q) => q[a]))),
+/** 그 축에 수직인 두 축의 경계 상자 */
+function boxOf(tris: P3[][], axis: number): number[][] {
+  return [(axis + 1) % 3, (axis + 2) % 3].map((a) => [
+    Math.min(...tris.flatMap((t) => t.map((q) => q[a]))),
+    Math.max(...tris.flatMap((t) => t.map((q) => q[a]))),
   ])
 }
 
-maybe('소품 뒷면', () => {
+const NAME = ['X', 'Y', 'Z']
+const dirName = ([a, s]: readonly [number, number]) => `${s > 0 ? '+' : '−'}${NAME[a]!}`
+
+maybe('소품 빠진 면', () => {
   const fmt = JSON.parse(readFileSync(resolve(DATA, 'chunks/index.json'), 'utf8')) as Fmt
-  const N = 48
+  /**
+   * 눈금은 `shell.ts`에서 가져온다.
+   *
+   * 여기 래스터라이저는 구현과 따로 짠 것이지만, 해상도와 문턱까지 다르게 두면
+   * 칸 한가운데를 찍는 자리가 어긋나서 **버그가 아닌 표본 차이로** 결과가 갈린다.
+   * 실제로 48 대 64에서 446칸(0.011%)이, 문턱 2e-4 대 1e-4에서 몇 칸이 그렇게
+   * 어긋났다. 눈금은 재는 자이지 검증 대상이 아니다 — 자를 맞추고 **판이 실제로
+   * 덮는가**를 본다
+   */
+  const N = GRID
   /** 텍스처를 안 읽으므로 색만 손으로 준다. 모양을 재는 시험이지 색을 재는 것이 아니다 */
   const paint = (mesh: ChunkMesh) => mesh.materials.map(() => 0x8a7f6a)
 
-  it('원작 소품은 뒤를 보는 면이 하나도 없다', () => {
-    // 이 시험이 있어야 아래 시험에 뜻이 있다 — 원래 뒤가 막혀 있었다면
-    // 뒤판을 붙여도 통과할 테니까
-    for (const id of [22, 23, 236]) {
-      const tris = triangles(readProp(id, fmt).geometry)
-      expect(tris.filter((t) => t.nz < 0), `소품 ${String(id)}`).toHaveLength(0)
-    }
-  })
+  /**
+   * 그 방향이 뚫려 있는가 — 시험이 제 눈으로 다시 잰다.
+   *
+   * 실루엣은 **원본**에서 재고 덮개는 채운 것에서 잰다. 격자도 원본의 경계
+   * 상자로 잡는다 — 채운 것으로 잡으면 판 두께 0.02만큼 상자가 커져서 격자가
+   * 밀리고, 버그가 아닌 표본 차이로 한두 칸이 갈린다
+   */
+  function openIn(src: P3[][], filled: P3[][], dir: readonly [number, number]): number {
+    const [axis, sign] = dir
+    const box = boxOf(src, axis)
+    const seen = cover(src, box, N, axis, 0)
+    const face = cover(filled, box, N, axis, sign)
+    return [...seen].filter((c) => !face.has(c)).length
+  }
 
-  it('뒤판을 붙이면 앞에서 보이는 자리가 뒤에서도 다 막힌다', () => {
+  it('원작 집은 뒤·좌우가 뚫려 있다', () => {
+    // 이 시험이 있어야 아래 시험에 뜻이 있다 — 원래 막혀 있었다면
+    // 판을 붙여도 통과할 테니까. 바닥(−Y)은 채울 대상이 아니라 안 센다
+    expect(FILLABLE.map(dirName)).toEqual(['−X', '+X', '+Y', '−Z', '+Z'])
+    for (const id of [22, 23]) {
+      const tris = triangles(readProp(id, fmt).geometry)
+      const open = FILLABLE.filter((d) => openIn(tris, tris, d) > 0).map(dirName)
+      expect(open, `소품 ${String(id)}`).toContain('−Z')
+    }
+    // 구현이 고른 방향과 시험이 잰 방향이 같아야 한다 — 다르면 한쪽이 틀렸다
     for (const id of [22, 23, 236]) {
       const mesh = readProp(id, fmt)
-      const front = triangles(mesh.geometry)
-      const plate = backPlate(mesh, paint(mesh))
-      expect(plate, `소품 ${String(id)} 뒤판`).not.toBeNull()
-      const box = boxOf(front)
-
-      const seen = cover(front, box, N, false)
-      const rear = cover(triangles(plate!), box, N, true)
-      const open = [...seen].filter((c) => !rear.has(c))
-      // 뚫린 칸이 하나도 없어야 한다. 문틀만 덮고 뒤를 놔둔 예전 방식은
-      // 여기서 실루엣의 대부분이 뚫린 채로 걸린다
-      expect(open.length, `소품 ${String(id)}에 뒤가 뚫린 칸 ${String(open.length)}/${String(seen.size)}`).toBe(0)
-      expect(seen.size).toBeGreaterThan(N * N * 0.3)
+      const tris = triangles(mesh.geometry)
+      expect(openDirections(mesh).map(dirName).sort(),
+        `소품 ${String(id)}`).toEqual(FILLABLE.filter((d) => openIn(tris, tris, d) > 0).map(dirName).sort())
     }
   })
 
-  it('소품 590개 전부에서 뒤가 막힌다', () => {
+  it('채우면 그 방향에서 보이는 자리가 다 막힌다', () => {
+    for (const id of [22, 23, 236]) {
+      const mesh = readProp(id, fmt)
+      const src = triangles(mesh.geometry)
+      const plate = shellPlates(mesh, paint(mesh))
+      expect(plate, `소품 ${String(id)} 판`).not.toBeNull()
+      const filled = [...src, ...triangles(plate!)]
+      // **채운 방향만 보지 않는다.** 다섯 방향 전부 막혀야 한다
+      for (const dir of FILLABLE) {
+        expect(openIn(src, filled, dir), `소품 ${String(id)} ${dirName(dir)}`).toBe(0)
+      }
+    }
+  })
+
+  it('소품 590개 전부에서 빠진 면이 다 막힌다', () => {
     // 집 몇 채만 보고 넘어가면 안 된다. 지난번에 접은 방식도 130종 중 75종에서는
     // 수치가 맞았다 — 전수로 재야 "대체로 된다"에 속지 않는다
-    let props = 0, empty = 0, seen = 0, open = 0
-    const worst: [number, number][] = []
+    let props = 0, filled = 0, dirs = 0, seenAll = 0, open = 0, sheets = 0
+    const bad: string[] = []
+    const byDir = new Map<string, number>()
     for (let id = 0; id < 600; id++) {
       if (!existsSync(resolve(DATA, `props/${String(id)}.bin`))) continue
       props++
       const mesh = readProp(id, fmt)
-      const front = triangles(mesh.geometry)
-      const plate = backPlate(mesh, paint(mesh))
-      const box = boxOf(front)
-      if (!plate) {
-        // 뒤판을 안 만들어도 되는 사유는 **딱 둘**이고, 둘 다 "한 장짜리라
-        // 만들 뒤가 없다"는 말이다. 그 밖의 이유로 비면 그건 못 덮은 것이다:
-        //   ① 깊이 0 — 간판·그림자처럼 정면 한 장 (양면으로 그린다)
-        //   ② 뒤에서 봐서 넓이 0 — 울타리처럼 옆을 보고 선 한 장
-        const pos = mesh.geometry.getAttribute('position') as BufferAttribute
+      const src = triangles(mesh.geometry)
+      const plate = shellPlates(mesh, paint(mesh))
+      const all = plate ? [...src, ...triangles(plate)] : src
+      if (plate) filled++
+      // **다섯 방향 전부** 본다. 구현이 고른 것만 보면 못 고른 것을 못 잡는다
+      const pos = mesh.geometry.getAttribute('position') as BufferAttribute
+      for (const dir of FILLABLE) {
+        // 그 축으로 두께가 0이면 한 장짜리다 — 붙일 뒤가 없고 양면으로 그리면
+        // 그것이 곧 뒷면이다. 소품 590종 중 24종이 여기 해당한다
         let lo = Infinity, hi = -Infinity
         for (let i = 0; i < pos.count; i++) {
-          lo = Math.min(lo, pos.getZ(i)); hi = Math.max(hi, pos.getZ(i))
+          const c = [pos.getX(i), pos.getY(i), pos.getZ(i)][dir[0]]!
+          lo = Math.min(lo, c); hi = Math.max(hi, c)
         }
-        const flat = hi - lo === 0
-        const sideOn = cover(front, box, 32, false).size === 0
-        expect(flat || sideOn, `소품 ${String(id)}는 뒤에서 보이는데 뒤판이 없다`).toBe(true)
-        empty++
-        continue
+        if (hi - lo === 0) { sheets++; continue }
+        if (openIn(src, src, dir) > 0) {
+          dirs++
+          byDir.set(dirName(dir), (byDir.get(dirName(dir)) ?? 0) + 1)
+        }
+        const miss = openIn(src, all, dir)
+        seenAll += cover(src, boxOf(src, dir[0]), N, dir[0], 0).size
+        open += miss
+        if (miss > 0) {
+          bad.push(`${String(id)}${dirName(dir)}:${String(miss)}`)
+        }
       }
-      const f = cover(front, box, 32, false)
-      const r = cover(triangles(plate), box, 32, true)
-      const miss = [...f].filter((c) => !r.has(c)).length
-      seen += f.size; open += miss
-      if (miss > 0) worst.push([id, miss])
     }
     expect(props).toBe(590)
-    // 뒤판이 안 나오는 것은 뒤에서 봐서 넓이가 0인 한 장짜리다 (위에서 확인한다)
-    expect(empty).toBe(98)
-    expect(open, `뚫린 칸 ${String(open)}/${String(seen)} · 소품 ${String(worst.length)}개: ${JSON.stringify(worst.slice(0, 10))}`).toBe(0)
+    // 실측 465건. 이 수가 곧 "화면에서 뚫려 보이던 자리"의 크기다.
+    //
+    // ⚠️ 면 방향을 세는 방식(그쪽을 보는 삼각형이 0개냐)으로는 769건이 나오는데
+    // **그 수는 틀렸다.** 지붕처럼 비스듬한 면도 옆에서 보면 넓이를 보태므로
+    // 개수로는 "있다"인데 실루엣의 절반만 덮는 경우가 있고, 반대로 개수로는
+    // "없다"인데 실제로는 안 뚫린 경우도 있다. 덮어 보고 세야 맞다
+    expect([...byDir].sort().map(([d, n]) => `${d}${String(n)}`).join(' '))
+      .toBe('+X40 +Y7 +Z17 −X45 −Z335')
+    expect(dirs).toBe(444)
+    expect(open,
+      `뚫린 칸 ${String(open)}/${String(seenAll)} · ${String(bad.length)}건: ${bad.slice(0, 8).join(' ')}`,
+    ).toBe(0)
+    expect(filled).toBeGreaterThan(300)
+    // 한 장짜리라 건너뛴 방향
+    expect(sheets).toBe(111)
   })
 
-  it('뒤판은 본체 뒤에 얇게 붙는다 — 집이 두꺼워지지 않는다', () => {
+  it('판은 본체 바깥에 얇게 붙는다 — 소품이 두꺼워지지 않는다', () => {
     const mesh = readProp(23, fmt)
     const src = mesh.geometry.getAttribute('position') as BufferAttribute
-    let minZ = Infinity
-    for (let i = 0; i < src.count; i++) minZ = Math.min(minZ, src.getZ(i))
-    const plate = backPlate(mesh, paint(mesh))!
-    const pos = plate.getAttribute('position') as BufferAttribute
-    let lo = Infinity, hi = -Infinity
-    for (let i = 0; i < pos.count; i++) {
-      lo = Math.min(lo, pos.getZ(i)); hi = Math.max(hi, pos.getZ(i))
+    for (const dir of FILLABLE) {
+      const [axis, sign] = dir
+      const plate = facePlate(mesh, paint(mesh), axis, sign)
+      if (!plate) continue
+      let lo = Infinity, hi = -Infinity
+      for (let i = 0; i < src.count; i++) {
+        const c = [src.getX(i), src.getY(i), src.getZ(i)][axis]!
+        lo = Math.min(lo, c); hi = Math.max(hi, c)
+      }
+      const pos = plate.getAttribute('position') as BufferAttribute
+      let plo = Infinity, phi = -Infinity
+      for (let i = 0; i < pos.count; i++) {
+        const c = [pos.getX(i), pos.getY(i), pos.getZ(i)][axis]!
+        plo = Math.min(plo, c); phi = Math.max(phi, c)
+      }
+      // 판 전체가 본체 끝에서 0.02타일 안에 들어간다. 거울로 뒤집거나 통째로
+      // 밀어 붙이면 소품이 두 배로 커져 길을 막는다
+      const label = `${dirName(dir)} 판`
+      expect(phi, label).toBeLessThanOrEqual(hi + 0.021)
+      expect(plo, label).toBeGreaterThanOrEqual(lo - 0.021)
     }
-    // 뒤판 전체가 본체 뒤끝에서 0.02타일 안에 들어간다. 거울로 뒤집거나
-    // 통째로 밀어 붙이면 집이 두 배로 깊어져 뒷길을 막는다.
-    //
-    // `hi`가 `minZ`에 딱 닿지는 않는다 — 제일 뒤에 있는 정점은 옆벽 것인데
-    // 옆벽은 모로 서 있어서 뒤판에 안 들어간다
-    expect(hi).toBeLessThanOrEqual(minZ)
-    expect(hi).toBeGreaterThan(minZ - 0.02)
-    expect(lo).toBeGreaterThanOrEqual(minZ - 0.02)
   })
 
-  it('모로 선 면은 뒤판에 안 들어간다', () => {
+  it('모로 선 면은 판에 안 들어간다', () => {
     // 옆벽은 뒤에서 보면 선이라 실루엣에 아무것도 안 보탠다. 주인공 집은
     // 219개 중 109개가 그렇다 — 넣으면 삼각형만 버린다
     const mesh = readProp(23, fmt)
-    const plate = backPlate(mesh, paint(mesh))!
-    const all = triangles(mesh.geometry).length
-    const kept = plate.getAttribute('position').count / 3
-    expect(all).toBe(219)
-    expect(kept).toBe(110)
+    const plate = facePlate(mesh, paint(mesh), 2, -1)!
+    expect(triangles(mesh.geometry)).toHaveLength(219)
+    expect(plate.getAttribute('position').count / 3).toBe(110)
   })
 
-  it('오려 낸 그림은 뒤판을 안 만든다', () => {
+  it('오려 낸 그림은 판을 안 만든다', () => {
     // 판 한 장짜리 울타리·간판을 눌러 붙이면 없던 널판이 생긴다.
     // **그림이 있는데도** 안 만들어야 뜻이 있다 — 그림이 없으면 어차피 안 만든다
     const items = [{ tex: 'w', pal: '', x: 0, y: 0, w: 2, h: 2 }]
     const pixels = new Uint8ClampedArray(2 * 2 * 4).fill(200)
     const sheet: TexSheet = { width: 2, height: 2, items, pixels }
     const geometry = new BufferGeometry()
-    // 깊이가 있고 뒤에서 봐서 넓이도 있는 삼각형 하나
     geometry.setAttribute('position', new BufferAttribute(new Float32Array([
       0, 0, 0, 2, 0, 0, 0, 2, 1,
     ]), 3))
@@ -235,10 +294,10 @@ maybe('소품 뒷면', () => {
       groups: [[0, 0, 3]],
     }
     expect(shellColors(mesh, sheet, [false])[0]).not.toBeNull()
-    expect(backPlate(mesh, shellColors(mesh, sheet, [false]))).not.toBeNull()
+    expect(shellPlates(mesh, shellColors(mesh, sheet, [false]))).not.toBeNull()
     // 같은 그림, 같은 모양 — 오려 낸 것으로 표시된 것만 다르다
     expect(shellColors(mesh, sheet, [true])[0]).toBeNull()
-    expect(backPlate(mesh, shellColors(mesh, sheet, [true]))).toBeNull()
+    expect(shellPlates(mesh, shellColors(mesh, sheet, [true]))).toBeNull()
   })
 
   it('색은 그림의 평균이다 — 최빈값은 윤곽선을 집는다', () => {

@@ -18,7 +18,7 @@ import {
 import { cachedSplit, cutoutGroups, grassColors, plateColors } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
-import { backPlate, shellColors } from './shell'
+import { shellColors, shellPlates } from './shell'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -41,11 +41,11 @@ interface Prop extends Placed {
   y: number
   rot: [number, number, number]
   scale: [number, number, number]
-  /** 뒤판. 원작 집은 뒤가 통째로 없다 (`shell.ts`) */
+  /** 빠진 면을 채운 판. 원작 소품은 면이 통째로 없다 (`shell.ts`) */
   back: BufferGeometry | null
 }
 
-/** 뒤판은 색을 정점이 나른다. 재질은 한 벌이면 된다 */
+/** 채운 면은 색을 정점이 나른다. 재질은 한 벌이면 된다 */
 const BACK = new MeshLambertMaterial({ vertexColors: true })
 
 /**
@@ -73,7 +73,7 @@ function materialsFor(
 }
 
 /**
- * 소품 뒤판 보관함. 한 소품은 늘 같은 뒤판을 내므로 한 번만 만든다 —
+ * 소품 판 보관함. 한 소품은 늘 같은 판을 내므로 한 번만 만든다 —
  * 청크를 넘을 때마다 다시 만들면 그 순간 끊긴다
  */
 const backCache = new Map<number, BufferGeometry | null>()
@@ -81,7 +81,7 @@ const backCache = new Map<number, BufferGeometry | null>()
 function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): BufferGeometry | null {
   const hit = backCache.get(id)
   if (hit !== undefined) return hit
-  const made = backPlate(mesh, shellColors(mesh, sheet, cutoutGroups(mesh, sheet)))
+  const made = shellPlates(mesh, shellColors(mesh, sheet, cutoutGroups(mesh, sheet)))
   backCache.set(id, made)
   return made
 }
@@ -225,8 +225,9 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         <group key={p.key} position={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>
           <mesh geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
           {/*
-            뒷면. 원작 집은 뒤가 통째로 없어서(주인공 집 219삼각형 중 −Z를 보는
-            면이 0개) 뒤로 돌아가면 앞벽의 **안쪽**이 보인다 (`shell.ts`)
+            빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준 −Z가 64% ·
+            −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면 반대편 벽의
+            **안쪽**이 보인다 (`shell.ts`)
           */}
           {p.back && <mesh geometry={p.back} material={BACK} castShadow receiveShadow />}
         </group>

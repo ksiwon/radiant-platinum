@@ -148,28 +148,77 @@ function mainColor(ps, it) {
   return (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n)
 }
 
-/** 뒤판 삼각형 (모델 좌표). 없으면 null */
-function backPlate(m, ps) {
-  const V = m.meta.verts, P = (i, a) => m.pos[i * 3 + a]
-  let minZ = 1e9, maxZ = -1e9
-  for (let i = 0; i < V; i++) { minZ = Math.min(minZ, P(i, 2)); maxZ = Math.max(maxZ, P(i, 2)) }
-  const depth = maxZ - minZ
-  if (!(depth > 0)) return null
-  const flat = (z) => minZ - SLAB * ((z - minZ) / depth)
+/**
+ * 빠진 면을 채운 삼각형 (모델 좌표). `scene/shell.ts`와 같은 규칙이다.
+ *
+ * 어느 방향이 뚫렸는지는 **덮어 보고** 정한다 — 그쪽을 보는 면이 몇 개냐로는
+ * 못 가린다
+ */
+const FILLABLE = [[0, -1], [0, 1], [1, 1], [2, -1], [2, 1]]
+const GRID = 64, FLAT = 1e-4
+
+function coverSet(m, axis, sign, box) {
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  const P = (i, a) => m.pos[i * 3 + a]
+  const hit = new Set()
+  for (let t = 0; t + 2 < m.idx.length; t += 3) {
+    const [i0, i1, i2] = [m.idx[t], m.idx[t + 1], m.idx[t + 2]]
+    const area = (P(i1, u) - P(i0, u)) * (P(i2, v) - P(i0, v)) - (P(i2, u) - P(i0, u)) * (P(i1, v) - P(i0, v))
+    if (Math.abs(area) < FLAT) continue
+    if (sign !== 0 && area * sign <= 0) continue
+    const lo = (w) => Math.min(P(i0, w), P(i1, w), P(i2, w))
+    const hi = (w) => Math.max(P(i0, w), P(i1, w), P(i2, w))
+    const cu0 = Math.max(0, Math.floor(((lo(u) - box[0][0]) / (box[0][1] - box[0][0])) * GRID))
+    const cu1 = Math.min(GRID - 1, Math.ceil(((hi(u) - box[0][0]) / (box[0][1] - box[0][0])) * GRID))
+    const cv0 = Math.max(0, Math.floor(((lo(v) - box[1][0]) / (box[1][1] - box[1][0])) * GRID))
+    const cv1 = Math.min(GRID - 1, Math.ceil(((hi(v) - box[1][0]) / (box[1][1] - box[1][0])) * GRID))
+    for (let cv = cv0; cv <= cv1; cv++) for (let cu = cu0; cu <= cu1; cu++) {
+      const x = box[0][0] + ((cu + 0.5) / GRID) * (box[0][1] - box[0][0])
+      const y = box[1][0] + ((cv + 0.5) / GRID) * (box[1][1] - box[1][0])
+      const w1 = ((x - P(i0, u)) * (P(i2, v) - P(i0, v)) - (P(i2, u) - P(i0, u)) * (y - P(i0, v))) / area
+      const w2 = ((P(i1, u) - P(i0, u)) * (y - P(i0, v)) - (x - P(i0, u)) * (P(i1, v) - P(i0, v))) / area
+      if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
+      hit.add(cv * GRID + cu)
+    }
+  }
+  return hit
+}
+const spanOf = (m, a) => {
+  let lo = 1e9, hi = -1e9
+  for (let i = 0; i < m.meta.verts; i++) { const c = m.pos[i * 3 + a]; lo = Math.min(lo, c); hi = Math.max(hi, c) }
+  return [lo, hi]
+}
+
+function shellPlates(m, ps) {
   const out = []
-  for (const [mat, start, count] of m.meta.submeshes) {
-    const spec = m.meta.materials[mat]
-    const it = ps?.items.find(([tex, pal]) => tex === spec.tex && pal === (spec.pal ?? ''))
-    const col = mainColor(ps, it)
-    if (col === null) continue
-    for (let t = 0; t < count; t += 3) {
-      const ids = [m.idx[start + t], m.idx[start + t + 1], m.idx[start + t + 2]]
-      const p = ids.map((i) => [P(i, 0), P(i, 1), P(i, 2)])
-      const area = ((p[1][0] - p[0][0]) * (p[2][1] - p[0][1]) - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1])) / 2
-      if (Math.abs(area) < 1e-4) continue
-      // −Z를 보게 감는다. 원작 감는 방향을 물려받으면 뒤에서 하나도 안 보인다
-      const w = area > 0 ? [p[0], p[2], p[1]] : p
-      out.push([w.map((q) => [q[0], q[1], flat(q[2])]), col])
+  for (const [axis, sign] of FILLABLE) {
+    const [lo, hi] = spanOf(m, axis)
+    if (!(hi - lo > 0)) continue
+    const box = [spanOf(m, (axis + 1) % 3), spanOf(m, (axis + 2) % 3)]
+    if (!(box[0][1] > box[0][0]) || !(box[1][1] > box[1][0])) continue
+    const seen = coverSet(m, axis, 0, box)
+    if (!seen.size) continue
+    const face = coverSet(m, axis, sign, box)
+    let open = false
+    for (const c of seen) if (!face.has(c)) { open = true; break }
+    if (!open) continue
+
+    const depth = hi - lo
+    const flat = (c) => (sign > 0 ? hi : lo) + sign * 0.02 * ((c - lo) / depth)
+    const u = (axis + 1) % 3, v = (axis + 2) % 3
+    for (const [mat, start, count] of m.meta.submeshes) {
+      const spec = m.meta.materials[mat]
+      const it = ps?.items.find(([tex, pal]) => tex === spec.tex && pal === (spec.pal ?? ''))
+      const col = mainColor(ps, it)
+      if (col === null) continue
+      for (let t = 0; t < count; t += 3) {
+        const ids = [m.idx[start + t], m.idx[start + t + 1], m.idx[start + t + 2]]
+        const p = ids.map((i) => [m.pos[i * 3], m.pos[i * 3 + 1], m.pos[i * 3 + 2]])
+        const area = (p[1][u] - p[0][u]) * (p[2][v] - p[0][v]) - (p[2][u] - p[0][u]) * (p[1][v] - p[0][v])
+        if (Math.abs(area) < FLAT) continue
+        const w = area * sign > 0 ? p : [p[0], p[2], p[1]]
+        out.push([w.map((q) => { const o = [q[0], q[1], q[2]]; o[axis] = flat(q[axis]); return o }), col])
+      }
     }
   }
   return out.length ? out : null
@@ -232,7 +281,7 @@ for (const c of matrix.chunks) {
         ])
       }
     }
-    for (const [p, col] of backPlate(got, ps) ?? []) {
+    for (const [p, col] of shellPlates(got, ps) ?? []) {
       tris.push([p.map((q) => [b.x + q[0], b.y + q[1], b.z + q[2]]), null, null, col])
     }
   }
