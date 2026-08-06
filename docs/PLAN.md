@@ -1683,9 +1683,13 @@ WebGL2 폴백을 따로 봐야 하는데, 창 하나에 드는 물이 최대 864
 | | 상태 |
 |---|---|
 | Blender 4.2 | **있다** (`C:\Program Files\Blender Foundation\Blender 4.2`, PATH에는 없음) |
+| BDSP nsp | **있다** — `raw/roms/`에 4.3GB, `prod.keys`·`title.keys`까지 |
 | nstool | 없다 |
 | UnityPy | 없다 |
-| `raw/bdsp` | **없다** — nsp도 romfs도 아예 없다 |
+
+⚠️ 앞서 "nsp도 romfs도 아예 없다"고 적었는데 **틀렸다.** `raw/bdsp`만 보고
+판단했고 실제로는 `raw/roms/`에 있다. 막힌 것은 자료가 아니라 **도구 둘**이다 —
+nstool로 nsp를 풀고 UnityPy로 번들을 열면 된다.
 
 `walk_b`·`run_b`·`wait_b`를 가져오려면 NSP 재확보부터다. 그 전에는 절차적 보행이
 계속 자리를 지킨다 — 그리고 그것이 나쁜 자리는 아니다. 지금 부족한 것은 클립이
