@@ -5,17 +5,18 @@
 // (`STAGE_ORIGIN`) 카메라만 옮긴다. 그래서 배틀에 들어갈 때 컨텍스트 재생성도,
 // 셰이더 재컴파일도 없다.
 //
-// 포켓몬 모델은 아직 없다. 지금 세우는 것은 **무대와 카메라**다 — 4세대 배틀이
-// 3D답게 느껴지는 이유의 대부분이 거기 있고(§7.4), 모델은 나중에 이 자리에
-// 그대로 끼워 넣으면 된다.
+// 포켓몬은 **원작 도트 그림**을 세운다(DATA.md §2.17). 4세대 배틀은 3D가 아니다 —
+// 무대와 카메라만 3D고 포켓몬은 80×80 한 장이다. 여기서 3D 모델을 지어내면
+// 원작이 아니라 다른 게임이 된다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BackSide, Group, type CanvasTexture } from 'three'
+import { BackSide, Group, type CanvasTexture, type Texture } from 'three'
 import { loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
+import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { DAY, makeBlobShadow, makeSkyTexture } from '../fx/sky'
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
@@ -42,10 +43,18 @@ interface SpeciesLook {
 }
 
 /**
+ * 화면에서 제일 큰 종이 차지할 높이 (월드 단위, `spot.scale` 곱하기 전).
+ *
+ * 발판 반지름이 2.6이라 꽉 찬 종이 발판 지름의 절반쯤 된다. 종마다 원작 그림이
+ * 80×80을 다르게 채우므로 이 값 하나가 크기 차이를 그대로 옮긴다
+ */
+const MON_TALL = 2.8
+
+/**
  * 한쪽의 발판과 그 위에 선 것.
  *
- * `mine`이면 뒷모습이라는 뜻인데, 지금은 도형이라 앞뒤가 없다 — 대신 크기와
- * 카메라까지의 거리로 구분된다
+ * `mine`이면 **뒷모습**이다 — 원작 문법 그대로 내 포켓몬은 등을 보이고 상대는
+ * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
 function Slot(
   { mon, look, spot, mine, shadow }: {
@@ -58,6 +67,22 @@ function Slot(
 ) {
   const body = useRef<Group>(null)
   const fainted = mon !== null && mon.hp <= 0
+  const [art, setArt] = useState<{ map: Texture; scale: number; lift: number } | null>(null)
+
+  // 그림은 종이 바뀔 때만 받는다. 같은 종을 여럿 데리고 있어도 한 벌이면 된다
+  const species = mon?.species ?? null
+  useEffect(() => {
+    let alive = true
+    if (species === null) { setArt(null); return }
+    void Promise.all([loadSpriteIndex(), loadMonSprite(species, mine)])
+      .then(([idx, map]) => {
+        if (!alive) return
+        const box = idx.sprites[String(species)]?.[mine ? 'back' : 'front']
+        setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
+      })
+      .catch(() => { if (alive) setArt(null) })
+    return () => { alive = false }
+  }, [species, mine])
   // 등판·기절을 0/1로 끊으면 포켓몬이 순간이동한다. 눈에 보이는 값만 쓰는
   // 표현이므로 시뮬레이션 스텝이 아니라 렌더 델타로 민다
   const shown = useRef(0)
@@ -100,12 +125,25 @@ function Slot(
       )}
 
       <group ref={body} position={[0, 0.25, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.42, height, 6, 16]} />
-          <meshStandardMaterial
-            color={look?.color ?? '#8b9099'} roughness={0.62} metalness={0.02}
-          />
-        </mesh>
+        {art ? (
+          /*
+            도트 한 장. 카메라가 고정이라 빌보드로 돌릴 필요가 없다 — 원작
+            카메라도 고정이고, 돌리면 오히려 그림이 그려진 각도와 어긋난다.
+            `alphaTest`로 오려 내므로 반투명 정렬 문제가 없다
+          */
+          <mesh position={[0, art.lift, 0]} castShadow>
+            <planeGeometry args={[art.scale, art.scale]} />
+            <meshBasicMaterial map={art.map} transparent alphaTest={0.5} toneMapped={false} />
+          </mesh>
+        ) : (
+          // 그림을 못 받았을 때만 도형으로 떨어진다. 종족 색은 롬에서 온다
+          <mesh castShadow>
+            <capsuleGeometry args={[0.42, height, 6, 16]} />
+            <meshStandardMaterial
+              color={look?.color ?? '#8b9099'} roughness={0.62} metalness={0.02}
+            />
+          </mesh>
+        )}
       </group>
     </group>
   )
