@@ -8,6 +8,11 @@ export const worldState = {
     velocity: new Vector3(),
     facing: 0,
     grounded: true,
+    /**
+     * 턱을 넘는 중. `t`가 0에서 1까지 가는 동안 입력도 충돌도 안 본다 —
+     * 원작도 뛰는 동안은 조작이 안 먹는다 (`actor/ledge`)
+     */
+    hop: { active: false, t: 0, fromX: 0, fromZ: 0, toX: 0, toZ: 0 },
   },
   camera: {
     position: new Vector3(0, 6, 9),

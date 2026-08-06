@@ -2,6 +2,8 @@
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import { activeZone } from '../map/zone'
+import { MapGrid } from '../map/grid'
+import { HOP_RISE, HOP_TIME, ledgeHop } from './ledge'
 import { facingFromYaw, moveByYaw } from '../input/mouse'
 
 export const WALK_SPEED = 4.5
@@ -47,6 +49,34 @@ export const playerSystem = {
 
     // 간단한 가감속 (스파이크 수준)
     p.velocity.lerp(desired, 1 - Math.exp(-12 * dt))
+
+    // 턱을 넘는 중이면 그것만 한다. 원작도 뛰는 동안은 조작이 안 먹는다
+    if (p.hop.active) {
+      p.hop.t = Math.min(1, p.hop.t + dt / HOP_TIME)
+      const k = p.hop.t
+      p.position.x = p.hop.fromX + (p.hop.toX - p.hop.fromX) * k
+      p.position.z = p.hop.fromZ + (p.hop.toZ - p.hop.fromZ) * k
+      p.velocity.set(0, 0, 0)
+      const ground = activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
+      // 포물선으로 뜬다. 4k(1−k)는 가운데서 1이고 양 끝에서 0이다
+      p.position.y = (ground ?? p.position.y) + HOP_RISE * 4 * k * (1 - k)
+      if (p.hop.t >= 1) p.hop.active = false
+      worldState.time.elapsed += dt
+      return
+    }
+
+    const grid = activeZone.grid
+    if (grid instanceof MapGrid) {
+      const land = ledgeHop(grid, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
+      if (land) {
+        p.hop = {
+          active: true, t: 0,
+          fromX: p.position.x, fromZ: p.position.z, toX: land.x, toZ: land.z,
+        }
+        p.facing = Math.atan2(land.x - p.position.x, land.z - p.position.z)
+        return
+      }
+    }
 
     const nx = p.position.x + p.velocity.x * dt
     const nz = p.position.z + p.velocity.z * dt

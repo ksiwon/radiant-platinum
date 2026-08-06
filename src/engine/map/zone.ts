@@ -31,6 +31,16 @@ export const Behavior = {
   WATER_OPEN: 0x0015,
   /** 작은 물. 13개 존에 1114칸뿐이고 트윈리프의 연못이 여기다 */
   WATER_POND: 0x0010,
+  /**
+   * 갈색 턱. 한쪽으로만 뛰어넘을 수 있다 (`actor/ledge`).
+   *
+   * 셋 다 통행 불가로 표시돼 있으면서 **양옆이 다 걸을 수 있는** 유일한 값들이고,
+   * 셋 다 `allpeak` 그림을 쓴다. 남쪽 것이 305칸으로 압도적이다 — 원작에서
+   * 턱은 대개 아래로 뛰어내리는 것이다
+   */
+  LEDGE_SOUTH: 0x003b,
+  LEDGE_WEST: 0x0039,
+  LEDGE_EAST: 0x0038,
 } as const
 
 /**
