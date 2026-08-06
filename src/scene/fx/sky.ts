@@ -93,6 +93,66 @@ export const TIME_LOOKS: readonly TimeLook[] = [
   },
 ]
 
+/**
+ * 인물 키 라이트 (플레이어 발밑 기준, 미터).
+ *
+ * **밤에 빛을 줄이면 사람도 같이 사라진다.** 심야의 몸빛은 낮의 26%까지 내려가서
+ * 실루엣이 배경에 묻힌다(아래 `bodyLight`로 잰 값이다). 실제 게임들이 밤을
+ * "그냥 어둡게"가 아니라 **인물만 따로 세우는 빛**으로 다루는 이유가 그거다.
+ *
+ * ⚠️ 빛을 대상별로 가릴 수는 없다 — three는 광원을 **카메라 레이어**로만 거른다
+ * (`three.module.js`의 `object.isLight && object.layers.test(camera.layers)`).
+ * 그래서 감쇠가 있는 점광원을 사람에게 붙이고 거리를 짧게 끊는다. 발밑에
+ * 얕게 번지는 것은 덤이 아니라 노린 것이다 — 달빛 웅덩이로 읽힌다.
+ */
+export const CHAR_KEY_OFFSET: readonly [number, number, number] = [0.45, 1.85, 0.55]
+/** 빛이 닿는 거리. 이 너머는 0이라 웅덩이가 여기서 끝난다 */
+export const CHAR_KEY_RANGE = 4
+
+/** 몸통 중심 높이와 반지름. 빛에서 **살갗까지**의 거리를 재려고 쓴다 */
+const BODY_CENTER = 0.95
+const BODY_RADIUS = 0.22
+/** 정면광이 몸의 밝은 면에 얹히는 몫. 반구광·필은 반구 평균으로 본다 */
+const N_DOT_SUN = 0.7
+const HEMI_MEAN = 0.5
+/** 밤의 인물을 낮의 몇 할까지 끌어올릴 것인가. 1이면 밤이 아니다 */
+const NIGHT_FLOOR = 0.6
+
+/** 사람 몸이 받는 조도의 어림. 세 광원을 램버트로 더한 것이다 */
+export function bodyLight(look: TimeLook): number {
+  return look.sun * N_DOT_SUN + (look.ambient + look.fill) * HEMI_MEAN
+}
+
+/** three의 `getDistanceAttenuation` 그대로 (decay 2) */
+function attenuation(distance: number, range: number): number {
+  const falloff = 1 / Math.max(distance * distance, 0.01)
+  const cut = Math.max(0, 1 - (distance / range) ** 4)
+  return falloff * cut * cut
+}
+
+/** 세기 1의 키 라이트가 몸의 밝은 면에 얹는 조도 */
+export const CHAR_KEY_GAIN = (() => {
+  const [x, y, z] = CHAR_KEY_OFFSET
+  const reach = Math.hypot(x, y - BODY_CENTER, z) - BODY_RADIUS
+  return attenuation(reach, CHAR_KEY_RANGE) * N_DOT_SUN
+})()
+
+/**
+ * 키 라이트 세기.
+ *
+ * 고정 상수가 아니라 **모자란 만큼**이다 — 위 프리셋을 다시 손보면 이 값도 따라
+ * 움직인다. 낮·아침처럼 이미 밝은 시간대에는 0이 되어 아예 꺼진다
+ */
+export function characterKey(look: TimeLook): number {
+  const short = NIGHT_FLOOR * bodyLight(TIME_LOOKS[1]!) - bodyLight(look)
+  return short <= 0 ? 0 : short / CHAR_KEY_GAIN
+}
+
+/** 키 라이트까지 얹은 몸빛. 밤에도 낮의 `NIGHT_FLOOR` 아래로는 안 내려간다 */
+export function litBody(look: TimeLook): number {
+  return bodyLight(look) + characterKey(look) * CHAR_KEY_GAIN
+}
+
 /** 두 시간대 사이를 섞는다. 경계에서 하늘이 툭 바뀌지 않게 한다 */
 export function blendLooks(a: TimeLook, b: TimeLook, k: number): TimeLook {
   if (k <= 0) return a

@@ -90,26 +90,33 @@ export function BattleBag({ wild, onThrow, onBack }: Props) {
           <span key={c.name} className={i === tab ? css.bagTabOn : css.bagTab}>{c.name}</span>
         ))}
       </div>
-      {list.length === 0 && <div className={`${css.waiting} ${css.buttonWide}`}>아무것도 없다</div>}
+      {list.length === 0 && <div className={css.waiting}>아무것도 없다</div>}
       {list.map((slot, i) => {
         const canUse = wild && BALL_IDS.has(slot.item)
         return (
           <button
             key={slot.item}
-            className={`${css.button} ${css.buttonWide} ${i === at ? css.buttonOn : ''}`}
+            className={`${css.button} ${i === at ? css.buttonOn : ''}`}
+            style={{ ['--tint' as string]: css.TINT.bag }}
             disabled={!canUse}
             onClick={() => { if (canUse) onThrow(slot.item as BallId) }}
           >
-            <span className={css.itemRow}>
+            {i === at && <span className={css.caret} aria-hidden />}
+            <span className={css.face}>
+              {/* 도구는 색 조각이 아니라 **원작 아이콘**이 온다 */}
               <span className={css.itemIcon} style={iconStyle(slot.item)} aria-hidden />
-              <span>{names[slot.item] ?? ''}</span>
-              <span className={css.buttonSub}>×{slot.count}</span>
-            </span>
-            {!canUse && (
-              <span className={css.buttonSub}>
-                {BALL_IDS.has(slot.item) ? '트레이너의 포켓몬에게는 못 쓴다' : '아직 못 쓴다'}
+              <span className={css.labelCol}>
+                <span className={css.label}>{names[slot.item] ?? ''}</span>
+                <span className={css.subLine}>
+                  {canUse ? '던져서 잡는다'
+                    : BALL_IDS.has(slot.item) ? '트레이너의 포켓몬에게는 못 쓴다'
+                      : '아직 못 쓴다'}
+                </span>
               </span>
-            )}
+              <span className={css.pp}>
+                <span className={css.ppNow}>{slot.count}</span>
+              </span>
+            </span>
           </button>
         )
       })}

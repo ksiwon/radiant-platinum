@@ -11,6 +11,8 @@
 import { get, set, del, createStore } from 'idb-keyval'
 import type { SaveData } from './saveStore'
 
+// ⚠️ 이름을 바꾸면 **이미 저장된 리포트를 못 찾는다.** 화면에 뜨는 제목이 아니라
+// IndexedDB 데이터베이스 이름이라, 게임 이름이 바뀌어도 이건 그대로 둔다
 const dbStore = createStore('pt-3d', 'save')
 /** 슬롯 하나. 원작도 세이브가 한 벌이다 */
 const SLOT = 'report'

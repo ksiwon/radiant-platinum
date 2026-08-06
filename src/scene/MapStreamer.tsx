@@ -9,7 +9,7 @@
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { BackSide, Color, DirectionalLight, Fog, Mesh } from 'three'
+import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { TILE_BEHAVIOR_DOOR, mapById, walkOutOfDoor, world } from '../engine/map/world'
@@ -32,7 +32,10 @@ import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcSprites } from './NpcSprites'
-import { TIME_LOOKS, blendLooks, makeSkyTexture, type TimeLook } from './fx/sky'
+import {
+  CHAR_KEY_OFFSET, CHAR_KEY_RANGE, TIME_LOOKS, blendLooks, characterKey, makeSkyTexture,
+  type TimeLook,
+} from './fx/sky'
 import { timeBlend } from '../engine/map/timeOfDay'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
@@ -72,6 +75,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   const skyRef = useRef<Mesh>(null)
   const sunRef = useRef<DirectionalLight>(null)
+  const charKeyRef = useRef<PointLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
@@ -279,6 +283,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       sun.target.updateMatrixWorld()
     }
 
+    // 인물 키 라이트는 사람을 따라다닌다. 세기는 시간대가 정한다 (`fx/sky`)
+    const key = charKeyRef.current
+    if (key) {
+      key.position.set(p.x + CHAR_KEY_OFFSET[0], p.y + CHAR_KEY_OFFSET[1], p.z + CHAR_KEY_OFFSET[2])
+    }
+
     if (world.pending && !warping.current) {
       const target = world.pending
       warping.current = true
@@ -374,6 +384,23 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
       <directionalLight position={[-14, 12, 26]} intensity={look.fill} color={look.skyColor} />
+
+      {/*
+        인물 키 라이트. **밤에 사람이 배경에 묻히는 것**을 막는다 — 심야의 몸빛은
+        낮의 26%까지 내려간다(`fx/sky`의 `bodyLight`로 잰 값이다).
+
+        세기는 고정 상수가 아니라 **모자란 만큼**이라 낮에는 0이 되어 꺼진다.
+        색을 푸른 밤하늘색으로 두면 색이 세기를 다시 깎으므로 차가운 흰색을 쓴다 —
+        밝기는 `characterKey`가 이미 정했다.
+        그림자는 안 던진다: 그림자 맵을 하나 더 굽는 값에 비해 얻는 것이 없다
+      */}
+      <pointLight
+        ref={charKeyRef}
+        intensity={characterKey(look)}
+        distance={CHAR_KEY_RANGE}
+        decay={2}
+        color="#eef4ff"
+      />
 
       {/*
         땅. 색칠한 상자가 아니라 **원작 모델**이다 — 길·계단·물가·나무·건물 윤곽이

@@ -161,44 +161,61 @@ export function BattleScreen() {
       </div>
 
       <div className={css.console_}>
-        <div className={css.textBox} onClick={script.advance}>
-          <div className={css.textNow}>{script.text}</div>
-          {reading && <span className={css.nextArrow} aria-hidden>▼</span>}
+        {/* 로그는 판이 아니라 글이다. 무대를 가리지 않게 상자를 없앴다 */}
+        <div className={css.log} onClick={script.advance}>
+          <div className={css.logText}>
+            {script.text}
+            {reading && <span className={css.nextArrow} aria-hidden>▼</span>}
+          </div>
         </div>
-        <div className={css.menu}>
-          {reading ? null : phase === 'over' ? (
-            <button className={`${css.button} ${css.buttonWide}`} onClick={close} autoFocus>
-              계속
-            </button>
-          ) : actions.length === 0 ? (
-            <div className={css.waiting}>…</div>
-          ) : forced || page === 'party' ? (
-            <SwitchMenu
-              actions={switchActions} names={names} roster={roster} onPick={choose}
-              onBack={forced ? null : () => setPage('root')}
-            />
-          ) : page === 'fight' ? (
-            <MoveMenu
-              actions={moveActions} names={names} extras={extras} onPick={choose}
-              onBack={() => setPage('root')}
-            />
-          ) : page === 'bag' ? (
-            <BattleBag
-              wild={kind === 'wild'}
-              onThrow={(ball) => void throwBall(ball)}
-              onBack={() => setPage('root')}
-            />
-          ) : (
-            <RootMenu
-              canFight={moveActions.length > 0}
-              canSwitch={switchActions.length > 0}
-              wild={kind === 'wild'}
-              onPick={setPage}
-              onRun={() => void run()}
-            />
-          )}
+        <div className={css.side}>
+          <div className={css.menu}>
+            {reading ? null : phase === 'over' ? (
+              <button
+                className={`${css.button} ${css.buttonOn}`}
+                style={{ ['--tint' as string]: css.TINT.run }}
+                onClick={close}
+                autoFocus
+              >
+                <span className={css.caret} aria-hidden />
+                <span className={css.face}>
+                  <span className={css.dot} aria-hidden />
+                  <span className={css.label}>계속</span>
+                </span>
+              </button>
+            ) : actions.length === 0 ? (
+              <div className={css.waiting}>…</div>
+            ) : forced || page === 'party' ? (
+              <SwitchMenu
+                actions={switchActions} names={names} roster={roster} onPick={choose}
+                onBack={forced ? null : () => setPage('root')}
+              />
+            ) : page === 'fight' ? (
+              <MoveMenu
+                actions={moveActions} names={names} extras={extras} onPick={choose}
+                onBack={() => setPage('root')}
+              />
+            ) : page === 'bag' ? (
+              <BattleBag
+                wild={kind === 'wild'}
+                onThrow={(ball) => void throwBall(ball)}
+                onBack={() => setPage('root')}
+              />
+            ) : (
+              <RootMenu
+                canFight={moveActions.length > 0}
+                canSwitch={switchActions.length > 0}
+                wild={kind === 'wild'}
+                onPick={setPage}
+                onRun={() => void run()}
+              />
+            )}
+          </div>
+          {/* 가방만 ←→로 갈래를 넘긴다. 안 적으면 볼 말고는 못 찾는다 */}
           <div className={css.keyHint}>
-            {reading ? 'Z 넘기기' : '↑↓←→ 고르기 · Z 결정 · X 뒤로'}
+            {reading ? 'Z 넘기기'
+              : page === 'bag' ? '↑↓ 고르기 · ←→ 갈래 · Z 결정 · X 뒤로'
+                : '↑↓ 고르기 · Z 결정 · X 뒤로'}
           </div>
         </div>
       </div>
@@ -208,19 +225,21 @@ export function BattleScreen() {
 }
 
 /**
- * 명령 격자의 커서.
+ * 명령 목록의 커서.
  *
- * 원작은 십자키로 고른다. 2열 격자라 위아래가 두 칸씩 움직이고, 좌우가 한 칸씩
- * 움직인다 — 목록으로 다루면 오른쪽 칸에서 아래를 눌렀을 때 왼쪽으로 샌다
+ * 칸이 세로로 한 줄이라 위아래가 한 칸씩 움직인다. 좌우도 같이 받는 이유는
+ * 원작이 십자키 게임이어서다 — 오른쪽을 눌렀는데 아무 일도 안 일어나면 고장으로
+ * 읽힌다
  */
-function useGridCursor(count: number, columns: number, onPick: (i: number) => void, onBack?: () => void) {
+function useListCursor(count: number, onPick: (i: number) => void, onBack?: () => void) {
   const [at, setAt] = useState(0)
   const cursor = Math.min(at, Math.max(0, count - 1))
+  const step = (d: number) => () => { setAt(clampCursor(cursor, d, count)) }
   useMenuKeys({
-    up: () => { setAt(clampCursor(cursor, -columns, count)) },
-    down: () => { setAt(clampCursor(cursor, columns, count)) },
-    left: () => { setAt(clampCursor(cursor, -1, count)) },
-    right: () => { setAt(clampCursor(cursor, 1, count)) },
+    up: step(-1),
+    down: step(1),
+    left: step(-1),
+    right: step(1),
     confirm: () => { onPick(cursor) },
     cancel: onBack,
   })
@@ -288,7 +307,7 @@ function MonCard(
   )
 }
 
-/** 원작의 첫 단. 2×2로 싸운다·가방·포켓몬·도망친다 */
+/** 원작의 첫 단. 싸운다·가방·포켓몬·도망친다 */
 function RootMenu(
   { canFight, canSwitch, wild, onPick, onRun }: {
     canFight: boolean
@@ -299,12 +318,12 @@ function RootMenu(
   },
 ) {
   const entries = [
-    { label: '싸운다', sub: null, tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') } },
-    { label: '가방', sub: null, tint: css.TINT.bag, on: true, go: () => { onPick('bag') } },
-    { label: '포켓몬', sub: '교체', tint: css.TINT.party, on: canSwitch, go: () => { onPick('party') } },
-    { label: '도망친다', sub: wild ? null : '도망칠 수 없다', tint: css.TINT.run, on: wild, go: onRun },
+    { label: '싸운다', sub: '기술을 고른다', tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') } },
+    { label: '가방', sub: '도구를 쓴다', tint: css.TINT.bag, on: true, go: () => { onPick('bag') } },
+    { label: '포켓몬', sub: '교체한다', tint: css.TINT.party, on: canSwitch, go: () => { onPick('party') } },
+    { label: '도망친다', sub: wild ? '배틀을 끝낸다' : '도망칠 수 없다', tint: css.TINT.run, on: wild, go: onRun },
   ]
-  const cursor = useGridCursor(entries.length, 2, (i) => { if (entries[i]?.on) entries[i].go() })
+  const cursor = useListCursor(entries.length, (i) => { if (entries[i]?.on) entries[i].go() })
   return (
     <>
       {entries.map((entry, i) => (
@@ -315,8 +334,14 @@ function RootMenu(
           onClick={entry.go}
           disabled={!entry.on}
         >
-          <span>{entry.label}</span>
-          {entry.sub !== null && <span className={css.buttonSub}>{entry.sub}</span>}
+          {i === cursor && <span className={css.caret} aria-hidden />}
+          <span className={css.face}>
+            <span className={css.dot} aria-hidden />
+            <span className={css.labelCol}>
+              <span className={css.label}>{entry.label}</span>
+              <span className={css.subLine}>{entry.sub}</span>
+            </span>
+          </span>
         </button>
       ))}
     </>
@@ -333,7 +358,7 @@ function MoveMenu(
     onBack: () => void
   },
 ) {
-  const cursor = useGridCursor(actions.length, 2, (i) => {
+  const cursor = useListCursor(actions.length, (i) => {
     const action = actions[i]
     if (action) onPick(action)
   }, onBack)
@@ -344,7 +369,7 @@ function MoveMenu(
         const label = (action.move !== null ? names?.moves[action.move] : null) ?? action.name
         const move = action.move !== null ? extras?.move(action.move) : undefined
         const type = move ? extras?.types[move.type] : undefined
-        // PP를 못 푸는 칸이 있다 — 발버둥이 그렇다. 그때는 아랫줄을 비운다
+        // PP를 못 푸는 칸이 있다 — 발버둥이 그렇다. 그때는 오른쪽을 비운다
         const hasPp = action.pp !== undefined && action.maxPp !== undefined
         const ppClass = !hasPp ? ''
           : action.pp === 0 ? css.ppOut
@@ -353,13 +378,22 @@ function MoveMenu(
         return (
           <button key={`m${action.slot}`}
             className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+            // 기술 칸의 색은 **타입 색**이다. 색만 보고도 무엇을 고르는지 안다
+            style={move ? { ['--tint' as string]: typeColor(move.type) } : undefined}
             onClick={() => onPick(action)}>
-            <span>{label}</span>
-            <span className={css.moveFoot}>
-              {type && move
-                ? <span className={css.typeTag} style={{ background: typeColor(move.type) }}>{type}</span>
-                : <span />}
-              {hasPp && <span className={ppClass}>PP {action.pp}/{action.maxPp}</span>}
+            {i === cursor && <span className={css.caret} aria-hidden />}
+            <span className={css.face}>
+              <span className={css.dot} aria-hidden />
+              <span className={css.labelCol}>
+                <span className={css.label}>{label}</span>
+                {type !== undefined && <span className={css.subLine}>{type}</span>}
+              </span>
+              {hasPp && (
+                <span className={`${css.pp} ${ppClass}`}>
+                  <span className={css.ppNow}>{action.pp}</span>
+                  <span className={css.ppMax}>/{action.maxPp}</span>
+                </span>
+              )}
             </span>
           </button>
         )
@@ -379,7 +413,7 @@ function SwitchMenu(
     onBack: (() => void) | null
   },
 ) {
-  const cursor = useGridCursor(actions.length, 1, (i) => {
+  const cursor = useListCursor(actions.length, (i) => {
     const action = actions[i]
     if (action) onPick(action)
   }, onBack ?? undefined)
@@ -393,10 +427,17 @@ function SwitchMenu(
           ?? action.key
         return (
           <button key={`s${action.index}`}
-            className={`${css.button} ${css.buttonWide} ${i === cursor ? css.buttonOn : ''}`}
+            className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+            style={{ ['--tint' as string]: css.TINT.party }}
             onClick={() => onPick(action)}>
-            <span>{withSubject(label)} 나간다</span>
-            {entry && <span className={css.buttonSub}>Lv.{entry.level}</span>}
+            {i === cursor && <span className={css.caret} aria-hidden />}
+            <span className={css.face}>
+              <span className={css.dot} aria-hidden />
+              <span className={css.labelCol}>
+                <span className={css.label}>{withSubject(label)} 나간다</span>
+                {entry && <span className={css.subLine}>Lv.{entry.level}</span>}
+              </span>
+            </span>
           </button>
         )
       })}

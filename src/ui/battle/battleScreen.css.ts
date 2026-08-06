@@ -225,52 +225,55 @@ export const statusColor: Record<string, string> = {
   par: '#d8b12a', slp: '#7b8794', frz: '#4aa8d8',
 }
 
-/** 아래쪽 텍스트 + 명령 */
+/** 아래쪽 — 왼쪽에 배틀 로그, 오른쪽에 명령 */
 export const console_ = style({
   display: 'grid',
-  // 명령 칸에 자리를 더 준다. 340px면 "도망친다"가 한 줄에 겨우 들어가서
-  // 칸이 글자에 끼인 것처럼 보인다
-  gridTemplateColumns: 'minmax(0, 1fr) 384px',
-  gap: 14,
-  padding: '0 20px 20px',
-  minHeight: 150,
+  gridTemplateColumns: 'minmax(0, 1fr) 380px',
+  alignItems: 'end',
+  gap: 24,
+  padding: '0 34px 26px',
+  minHeight: 168,
 })
 
-export const textBox = style({
-  ...glass,
+/**
+ * 배틀 로그.
+ *
+ * **상자를 없앴다.** 원작 대화창은 화면 아래를 가로지르는 판이었지만, 그건 아래
+ * 절반이 UI였던 2D 화면의 배치다 — 3D 무대 위에 그대로 얹으면 무대를 가린다.
+ * 대신 글자만 띄우고 뒤에 **가장자리 없는** 그늘을 깔아 밝은 배경에서도 읽히게
+ * 한다. 왼쪽 세로선 하나가 여기가 글이 나오는 자리라는 표시를 대신한다.
+ */
+export const log = style({
   position: 'relative',
-  padding: '16px 22px',
-  borderRadius: 12,
-  // 원작 대화창은 안쪽에 선이 한 겹 더 있다. 그 두 겹이 "창"으로 읽히게 한다
+  isolation: 'isolate',
+  alignSelf: 'end',
+  padding: '10px 30px 12px 18px',
+  borderLeft: '3px solid rgba(255, 255, 255, 0.34)',
+  cursor: 'pointer',
+  // 상자가 아니라 **번짐**이다. 네 모서리가 없어야 판으로 안 읽힌다
   '::before': {
     content: '""',
     position: 'absolute',
-    inset: 4,
-    borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.09)',
+    inset: '-18px -80px -22px -28px',
+    zIndex: -1,
+    background:
+      'radial-gradient(58% 130% at 18% 55%, rgba(4,8,16,0.78) 0%,' +
+      ' rgba(4,8,16,0.5) 46%, rgba(4,8,16,0) 100%)',
     pointerEvents: 'none',
   },
-  fontSize: 15,
-  lineHeight: 1.7,
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'flex-end',
-  gap: 2,
-  overflow: 'hidden',
 })
 
-// 경험치·레벨업처럼 한 사건이 여러 줄인 경우가 있다. 줄바꿈을 살린다
-export const textLine = style({ opacity: 0.45, whiteSpace: 'pre-line' })
-export const textLast = style({ opacity: 1, whiteSpace: 'pre-line' })
-
 /** 지금 찍는 중인 글. 한 번에 한 문장만 있는다 — 원작의 박자다 */
-export const textNow = style({
+export const logText = style({
   whiteSpace: 'pre-line',
-  fontSize: 18,
-  lineHeight: 1.6,
-  // 두 줄치를 비워 둔다. 세 줄이면 짧은 문장일 때 위가 뻥 뚫려 보인다
-  minHeight: '2.4em',
-  textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+  fontSize: 20,
+  fontWeight: 600,
+  lineHeight: 1.55,
+  letterSpacing: '0.01em',
+  // 두 줄치를 비워 둔다. 문장이 짧아질 때마다 명령 칸이 위아래로 흔들리면 안 된다
+  minHeight: '2.2em',
+  // 판이 없으니 그늘이 글자를 붙잡는다. 두 겹인 이유는 흰 하늘 위에서도 떠야 해서다
+  textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.75)',
 })
 
 const blink = keyframes({
@@ -278,36 +281,20 @@ const blink = keyframes({
   '55%, 100%': { opacity: 0.2, transform: 'translateY(2px)' },
 })
 
-/** 다음을 기다리는 표시 */
+/** 다음을 기다리는 표시. 글 끝에 바로 붙는다 — 판이 없으니 붙일 모서리도 없다 */
 export const nextArrow = style({
-  alignSelf: 'flex-end',
+  marginLeft: 10,
   fontSize: 13,
   opacity: 0.85,
   animation: `${blink} 0.7s steps(1, end) infinite`,
 })
 
-/**
- * 키보드 커서가 올라간 칸.
- *
- * 마우스 hover와 겹쳐도 되게 테두리로 표시하고, 왼쪽 색 띠를 넓혀서 **어느 칸에
- * 있는지가 색으로도** 보이게 한다
- */
-export const buttonOn = style({
-  borderColor: 'rgba(255,255,255,0.72)',
-  boxShadow: '0 8px 26px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.3)',
-  background:
-    'linear-gradient(180deg, rgba(38, 48, 70, 0.92), rgba(24, 32, 48, 0.94))',
-  selectors: {
-    '&::before': { width: 9 },
-  },
-})
-
 /** 배틀 가방의 갈래 줄 */
 export const bagTabs = style({
-  gridColumn: '1 / -1',
   display: 'flex',
   gap: 6,
   fontSize: 12,
+  flex: '0 0 auto',
 })
 
 export const bagTab = style({
@@ -329,60 +316,148 @@ export const bagTabOn = style([bagTab, {
 export const itemIcon = style({
   width: 28,
   height: 28,
+  flex: '0 0 auto',
   imageRendering: 'pixelated',
   backgroundRepeat: 'no-repeat',
   backgroundSize: 'auto',
 })
 
-export const itemRow = style({
+/**
+ * 명령 칸.
+ *
+ * 2×2 격자를 버리고 **세로로 쌓는다.** 격자는 네 칸이 서로 같은 무게라 어디부터
+ * 읽어야 할지가 안 정해지는데, 목록은 위에서 아래로 한 방향이라 커서가 어디 있는지
+ * 눈이 바로 찾는다.
+ *
+ * 왼쪽에 26px를 비워 두는 것은 커서 화살표 자리다 — 칸 **밖에** 서야 지금 고른
+ * 것이 튀어나온 것으로 읽힌다. `overflow-y: auto`가 x축까지 잘라 버려서
+ * 칸을 넘겨 그릴 수가 없다(가방 목록은 길어서 넘침 처리가 필요하다)
+ */
+export const side = style({
   display: 'flex',
-  alignItems: 'center',
-  gap: 8,
+  flexDirection: 'column',
+  gap: 6,
+  alignSelf: 'end',
+  minWidth: 0,
 })
 
 export const menu = style({
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gridAutoRows: 'minmax(52px, auto)',
-  gap: 9,
-  alignContent: 'end',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  paddingLeft: 26,
+  // 기운 판이 오른쪽으로 4px쯤 삐져나온다. 넘침 처리가 그걸 자르지 않게 비워 둔다
+  paddingRight: 8,
+  maxHeight: '46vh',
+  overflowY: 'auto',
+  scrollbarWidth: 'thin',
 })
 
+/**
+ * 기울기.
+ *
+ * 이 하나가 화면 전체의 인상을 정한다. 반듯한 사각형이면 어느 게임이든 될 수 있는
+ * 모양이 되는데, 각이 지면 **움직이는 화면 위에 얹힌 판**으로 읽힌다
+ */
+const SKEW = 9
+
 export const button = style({
-  ...glass,
   position: 'relative',
   appearance: 'none',
-  borderRadius: 10,
+  display: 'block',
+  width: '100%',
+  minHeight: 50,
+  padding: '8px 20px 8px 14px',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  // 기운 알약. 각과 둥근 끝이 같이 있어야 딱딱해 보이지 않는다
+  borderRadius: 999,
+  background: 'linear-gradient(180deg, rgba(32, 40, 64, 0.9), rgba(15, 21, 36, 0.94))',
+  boxShadow: '0 6px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14)',
+  backdropFilter: 'blur(4px)',
   color: vars.panel.text,
   font: 'inherit',
   fontSize: 15,
   fontWeight: 700,
-  padding: '7px 12px 7px 18px',
-  cursor: 'pointer',
   textAlign: 'left',
-  display: 'grid',
-  alignContent: 'center',
-  gap: 3,
-  overflow: 'hidden',
-  transition: 'border-color 120ms linear, transform 80ms ease-out, box-shadow 120ms linear',
+  cursor: 'pointer',
+  flex: '0 0 auto',
+  transform: `skewX(-${String(SKEW)}deg)`,
+  transition:
+    'transform 130ms cubic-bezier(.2,.85,.3,1), background 140ms linear,' +
+    ' border-color 140ms linear, box-shadow 140ms linear',
   selectors: {
-    // 왼쪽 색 띠. 칸마다 `--tint`로 다른 색을 받는다
-    '&::before': {
-      content: '""',
-      position: 'absolute',
-      left: 0, top: 0, bottom: 0,
-      width: 5,
-      background: 'var(--tint, transparent)',
-    },
     '&:hover:enabled, &:focus-visible:enabled': {
-      borderColor: 'rgba(255,255,255,0.5)',
-      boxShadow: '0 8px 26px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18)',
+      transform: `skewX(-${String(SKEW)}deg) translateX(-6px)`,
       outline: 'none',
     },
-    '&:active:enabled': { transform: 'translateY(1px)' },
-    '&:disabled': { opacity: 0.35, cursor: 'default' },
+    '&:active:enabled': {
+      transform: `skewX(-${String(SKEW)}deg) translateX(-6px) scale(0.985)`,
+    },
+    '&:disabled': { opacity: 0.32, cursor: 'default' },
   },
 })
+
+/** 판이 기울었으니 되돌린다 — **글자는 반듯하게** 선다 */
+export const face = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 11,
+  transform: `skewX(${String(SKEW)}deg)`,
+})
+
+/**
+ * 왼쪽 색 조각.
+ *
+ * 아이콘을 그리지 않는다 — 없는 그림을 지어내는 것보다 색 하나가 정직하고,
+ * 색만으로도 손이 먼저 간다. 기술 칸에서는 이 색이 곧 타입 색이다
+ */
+export const dot = style({
+  width: 24,
+  height: 24,
+  borderRadius: 8,
+  flex: '0 0 auto',
+  background: 'var(--tint, rgba(255,255,255,0.32))',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 1px 3px rgba(0,0,0,0.55)',
+})
+
+/** 이름 + 그 아래 작은 줄 */
+export const labelCol = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  minWidth: 0,
+})
+
+export const label = style({
+  fontSize: 16,
+  letterSpacing: '0.01em',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  textShadow: '0 1px 2px rgba(0,0,0,0.55)',
+})
+
+/** 기술 타입·교체 레벨처럼 이름을 거드는 줄 */
+export const subLine = style({
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: '0.04em',
+  opacity: 0.75,
+})
+
+/** 오른쪽 끝의 PP. 큰 숫자 옆에 작은 분모 — 남은 값에 눈이 먼저 간다 */
+export const pp = style({
+  marginLeft: 'auto',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 1,
+  fontFamily: vars.font.mono,
+  fontStyle: 'italic',
+  flex: '0 0 auto',
+})
+
+export const ppNow = style({ fontSize: 19, fontWeight: 800, lineHeight: 1 })
+export const ppMax = style({ fontSize: 12, opacity: 0.7 })
 
 /**
  * 명령 넷의 색.
@@ -397,55 +472,73 @@ export const TINT = {
   run: '#4a8fd0',
 } as const
 
-export const buttonWide = style({ gridColumn: '1 / -1' })
-export const buttonSub = style({ fontSize: 11, opacity: 0.7, fontFamily: vars.font.mono, fontWeight: 400 })
+/**
+ * 지금 고른 칸.
+ *
+ * 색을 덧칠하는 게 아니라 **그 칸의 색으로 통째로 채운다.** 어두운 판이 줄지어
+ * 있는 가운데 하나만 밝으면 눈이 찾아갈 곳을 고민하지 않는다. 왼쪽으로 한 걸음
+ * 나오는 것까지가 한 벌이다 — 목록에서 뽑혀 나온 것으로 읽힌다.
+ *
+ * 마우스 hover와 키보드 커서는 **같은 표시**를 쓴다. 둘이 다르면 지금 눌리는
+ * 칸이 어느 쪽인지 헷갈린다
+ */
+export const buttonOn = style({
+  transform: `skewX(-${String(SKEW)}deg) translateX(-13px)`,
+  borderColor: 'rgba(255, 255, 255, 0.9)',
+  background:
+    'linear-gradient(180deg, var(--tint, #4a6ea8) 0%,' +
+    ' color-mix(in srgb, var(--tint, #4a6ea8) 70%, #05070d) 100%)',
+  boxShadow: '0 10px 28px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.4)',
+  color: '#ffffff',
+})
 
-/** 기술 칸 아랫줄 — 왼쪽에 타입, 오른쪽에 PP. 원작도 이 두 가지를 보여준다 */
-export const moveFoot = style({
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 8,
-  fontSize: 11,
-  fontFamily: vars.font.mono,
-  fontWeight: 400,
+// 채운 칸 안에서는 색 조각이 배경색과 겹쳐 안 보인다. 흰색으로 바꿔 남겨 둔다.
+// `selectors`가 아니라 `globalStyle`인 이유: vanilla-extract의 selectors는
+// 자기 자신만 겨눌 수 있고 자손은 못 겨눈다
+globalStyle(`${buttonOn} ${dot}`, {
+  background: 'rgba(255,255,255,0.92)',
+  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.25)',
 })
 
 /**
- * 타입 배지. 색은 인라인으로 온다 — 18색을 클래스로 만들면 쓰지도 않는 CSS가
- * 초기 청크에 실린다
+ * 커서 화살표.
+ *
+ * 칸 **바깥** 왼쪽에 선다. 안에 두면 글자를 밀어내서 고를 때마다 이름이 흔들린다.
+ * 판이 기울어 있으니 화살표도 같이 되돌려 세운다
  */
-export const typeTag = style({
-  padding: '1px 7px',
-  borderRadius: 999,
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: '0.03em',
-  color: '#fff',
-  textShadow: '0 1px 2px rgba(0,0,0,0.45)',
+export const caret = style({
+  position: 'absolute',
+  left: -21,
+  top: '50%',
+  width: 0,
+  height: 0,
+  borderLeft: '11px solid #ffd23f',
+  borderTop: '8px solid transparent',
+  borderBottom: '8px solid transparent',
+  transform: `translateY(-50%) skewX(${String(SKEW)}deg)`,
+  filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.75))',
 })
 
 /** 남은 PP가 적을 때. 바닥나기 전에 눈에 띄어야 한다 */
 export const ppLow = style({ color: '#ffd166', opacity: 1 })
 export const ppOut = style({ color: vars.hud.warn, opacity: 1 })
 
-/** 한 단 들어간 메뉴의 "돌아가기". 명령 격자 맨 아래를 차지한다 */
+/** 한 단 들어간 메뉴의 "돌아가기". 명령 아래에 글자로만 둔다 */
 export const backButton = style({
-  gridColumn: '1 / -1',
+  alignSelf: 'flex-end',
   appearance: 'none',
-  border: '1px solid transparent',
-  borderRadius: 8,
-  background: 'transparent',
+  border: 'none',
+  background: 'none',
   color: vars.panel.text,
   font: 'inherit',
   fontSize: 13,
-  opacity: 0.6,
-  padding: '4px 10px',
+  opacity: 0.62,
+  padding: '4px 6px',
   cursor: 'pointer',
-  textAlign: 'left',
-  textShadow: '0 1px 3px rgba(0,0,0,0.7)',
+  textShadow: '0 1px 3px rgba(0,0,0,0.85)',
+  flex: '0 0 auto',
   selectors: {
-    '&:hover': { opacity: 1, borderColor: 'rgba(255,255,255,0.22)' },
+    '&:hover': { opacity: 1 },
   },
 })
 
@@ -492,7 +585,6 @@ export const waiting = style({
  * 원작에는 마우스가 없었으니 키가 주인공이어야 한다
  */
 export const keyHint = style({
-  gridColumn: '1 / -1',
   marginTop: 2,
   fontSize: 11,
   letterSpacing: '0.02em',

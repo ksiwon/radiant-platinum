@@ -1,4 +1,4 @@
-# pt-3d — 포켓몬스터 플래티넘 3D 리메이크 기획서
+# Pokémon Radiant Platinum — 포켓몬스터 플래티넘 3D 리메이크 기획서
 
 > 작성일: 2026-08-04 · v3 (선행 사례 / 기술 호환성 / 공백 영역 — 3갈래 외부 리서치 재검증 반영)
 > 스택: React 19 + Vite 8 + TypeScript + vanilla-extract + react-router 7 + three.js(WebGPU/R3F)

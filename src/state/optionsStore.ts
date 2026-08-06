@@ -67,6 +67,7 @@ const DEFAULTS: Options = {
   speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1,
 }
 
+// ⚠️ localStorage 키다. 바꾸면 이미 맞춰 둔 설정이 통째로 기본값으로 돌아간다
 const KEY = 'pt3d.options'
 
 function load(): Options {

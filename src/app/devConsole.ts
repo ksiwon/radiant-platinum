@@ -112,7 +112,7 @@ export function installDevConsole(): void {
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt
   console.log(
-    '%cpt-3d 개발 콘솔%c\n' +
+    '%cPokémon Radiant Platinum 개발 콘솔%c\n' +
     '  pt.find("관장")      트레이너 찾기 (번호·AI·상금)\n' +
     '  pt.trainer(250)      트레이너전 시작\n' +
     '  pt.wild(403, 12)     야생전 시작\n' +
