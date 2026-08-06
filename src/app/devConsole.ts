@@ -108,7 +108,9 @@ export function installDevConsole(): void {
     '  pt.give(392, 50)     파티에 넣기 (종족번호, 레벨)\n' +
     '  pt.heal()            파티 회복\n' +
     '  pt.party()           파티 상태\n' +
-    '  pt.reset()           세이브 초기화',
+    '  pt.reset()           세이브 초기화\n' +
+    '\n' +
+    '  ` (백틱)             확인 지점 — 보고 싶은 자리로 바로 뛰어든다',
     'font-weight:bold', 'font-weight:normal',
   )
 }

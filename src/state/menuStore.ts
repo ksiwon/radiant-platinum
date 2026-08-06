@@ -11,6 +11,10 @@ import { setUiCapture } from '../engine/input/keyboard'
 
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
+  // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
+  // 스택이 비어 있지 않아야 필드 입력이 멈추고 X가 시작 메뉴를 열지 않는다.
+  // 그림은 `App`이 DEV에서만 동적으로 받아 그린다
+  | 'devWarp'
 
 interface MenuStore {
   stack: MenuScreen[]

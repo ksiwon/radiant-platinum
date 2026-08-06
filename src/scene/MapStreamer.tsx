@@ -27,6 +27,7 @@ import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { gridFor } from './worldData'
+import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcSprites } from './NpcSprites'
 import { DAY, makeSkyTexture } from './fx/sky'
@@ -111,6 +112,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setMouseActive(!inBattle)
   }, [battlePhase])
 
+  const devWarp = useDevWarp(enter)
+
   // 세이브가 적어 둔 자리에서 시작한다. 새 판이면 그것이 주인공 방이고
   // (`START_LOCATION`) 이어하기면 리포트를 쓴 자리다.
   //
@@ -118,13 +121,18 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 첫 프레임에 빈 화면을 안 보이려고
   useEffect(() => {
     enter(initial, spawn.map, spawn.x, spawn.z, 0)
-    const at = useSaveStore.getState().position
-    worldState.player.facing = at.facing
-    if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
-    else {
-      void gridFor(at.matrix)
-        .then((next) => { enter(next, at.map, at.x, at.z, at.matrix) })
-        .catch(() => { /* 못 받으면 기본 스폰에 그대로 선다 */ })
+    // 시험용 확인 지점으로 들어온 판이면 세이브 자리를 안 들른다. 잠깐이라도
+    // 주인공 방을 비추고 가면 무엇을 보고 있는지 헷갈린다 — 곧 `devWarp.tick`이
+    // 목적지로 옮긴다
+    if (!devWarp.claimed()) {
+      const at = useSaveStore.getState().position
+      worldState.player.facing = at.facing
+      if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
+      else {
+        void gridFor(at.matrix)
+          .then((next) => { enter(next, at.map, at.x, at.z, at.matrix) })
+          .catch(() => { /* 못 받으면 기본 스폰에 그대로 선다 */ })
+      }
     }
     return () => {
       activeZone.grid = null
@@ -134,7 +142,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       encounters.pending = null
       setZone(null)
     }
-  }, [initial, spawn, enter, setZone])
+  }, [initial, spawn, enter, setZone, devWarp])
 
   // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
   // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다
@@ -248,6 +256,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         .finally(() => { world.pending = null; warping.current = false })
       return
     }
+
+    // 시험용 확인 지점. 워프와 같은 길로 옮기고, 프로덕션에서는 이 함수가 비어 있다
+    devWarp.tick()
 
     // 오버월드는 한 행렬 안에 존이 여럿이다 — 마을에서 도로로 걸어 나가는 것은
     // 워프가 아니라 좌표 연속이므로 여기서 존만 갱신한다

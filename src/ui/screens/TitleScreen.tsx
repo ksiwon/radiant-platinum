@@ -125,9 +125,14 @@ export function TitleScreen() {
         이 가지가 통째로 죽고 `engine/intro/skip`은 청크로도 안 나온다
       */}
       {import.meta.env.DEV && (
-        <button className={css.devButton} onClick={skip} onPointerEnter={prefetchGameChunk}>
-          인트로 건너뛰기 (시험용)
-        </button>
+        <>
+          <button className={css.devButton} onClick={skip} onPointerEnter={prefetchGameChunk}>
+            인트로 건너뛰기 (시험용)
+          </button>
+          <p className={css.hint}>
+            ` (백틱) — 확인 지점. 보고 싶은 자리로 바로 뛰어들고 필요한 파티·가방도 채워집니다
+          </p>
+        </>
       )}
 
       <p className={css.hint}>
