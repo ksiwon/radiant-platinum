@@ -15,9 +15,10 @@ import {
   loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
-import { cachedSplit, cutoutGroups, grassColors, plateColors } from './plates'
+import { cachedSplit, cutoutGroups, grassColors, plateColors, waterColors } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
+import { Water, waterField, type WaterField } from './Water'
 import { shellColors, shellPlates } from './shell'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
@@ -98,6 +99,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   const [placed, setPlaced] = useState<Placed[]>([])
   const [foliage, setFoliage] = useState<FoliageGroup[]>([])
   const [grass, setGrass] = useState<GrassField | null>(null)
+  const [water, setWater] = useState<WaterField | null>(null)
   const [props, setProps] = useState<Prop[]>([])
 
   useEffect(() => {
@@ -150,8 +152,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         // 풀숲 자리는 격자가 준다 — 그림이 아니라 타일 거동값이다. 색만
         // 이 영역 그림에서 가져온다
         setGrass({ spots: grassSpots(grid, chunkIndex, radius), colors: grassColors(sheet) })
+        // 물도 자리는 거동값이 준다 — 색만 이 영역 그림에서 가져온다
+        setWater({ ...waterField(grid, chunkIndex, radius), colors: waterColors(sheet) })
       })
-      .catch(() => { if (alive) { setPlaced([]); setFoliage([]); setGrass(null) } })
+      .catch(() => { if (alive) { setPlaced([]); setFoliage([]); setGrass(null); setWater(null) } })
     return () => { alive = false }
   }, [grid, chunkIndex, radius, texSet])
 
@@ -216,6 +220,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)
       */}
       <Grass field={grass} />
+      {/*
+        물. 원작은 바닥 도트라 1인칭에서 파란 장판이 된다 — 거동값 `0x0015`·
+        `0x0010`인 칸 위에 실제로 출렁이는 면을 얹는다 (`Water.tsx`)
+      */}
+      <Water field={water} />
       {/*
         회전·크기는 배치 기록이 준다. 오버월드 468곳은 실측으로 전부 회전 0 ·
         크기 1이라 단위를 확인할 자리가 없다 — 0이 아닌 값이 나오는 실내·던전을

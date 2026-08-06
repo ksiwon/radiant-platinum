@@ -50,6 +50,12 @@ const FOLIAGE_NAME = /^(cont)?tree|_tree|treeg/
  */
 const GRASS_NAME = /grass|kusa|shiba/
 
+/**
+ * 물로 치는 텍스처. **자리를 고르는 데는 안 쓴다** — 어디가 물인지는 거동값
+ * `0x0015`·`0x0010`이 말한다(`Water.tsx`). 여기서는 색만 가져온다
+ */
+const WATER_NAME = /^(sea|lake|asasea|dun_sea)/
+
 /** 격자 칸 열쇠. 청크 로컬 좌표가 −48~+48이라 128을 더해 음수를 없앤다 */
 const KEY_BIAS = 128
 const KEY_SPAN = 512
@@ -228,6 +234,36 @@ export function grassColors(sheet: TexSheet | null): [number, number] {
   const dark = leaf[leaf.length - 1] ?? 0x2f6b34
   const light = leaf[0] ?? 0x69bf5c
   return [dark, light]
+}
+
+/**
+ * 물 색 두 가지 — 마루와 골.
+ *
+ * 그 영역의 물 그림에서 제일 많이 쓰인 색을 밝기로 세운다. 아무 파랑이나 칠하면
+ * 예진호수와 바다가 같은 색이 된다. 물 그림이 없는 묶음은 물도 없지만, 그래도
+ * 파랑 한 쌍은 돌려준다
+ */
+export function waterColors(sheet: TexSheet | null): [number, number] {
+  const item = sheet?.items.find((s) => WATER_NAME.test(s.tex))
+  if (!sheet || !item) return [0x6fa8d6, 0x2f5f96]
+  // ⚠️ `plateColors`를 그대로 쓰면 안 된다. 저쪽은 **줄기 색을 하나 빼는데**
+  // 물에는 줄기가 없어서, 색이 둘뿐인 그림에서 하나가 통째로 사라진다
+  const count = new Map<number, number>()
+  for (let y = 0; y < item.h; y++) {
+    const row = ((item.y + y) * sheet.width + item.x) * 4
+    for (let x = 0; x < item.w; x++) {
+      const o = row + x * 4
+      if (sheet.pixels[o + 3]! < ALPHA_CUT) continue
+      const rgb = (sheet.pixels[o]! << 16) | (sheet.pixels[o + 1]! << 8) | sheet.pixels[o + 2]!
+      count.set(rgb, (count.get(rgb) ?? 0) + 1)
+    }
+  }
+  // 많이 쓰인 넷 안에서 제일 밝은 것과 어두운 것. 넷을 넘겨 보면 물 그림에
+  // 섞인 물가 흙색까지 딸려 온다
+  const top = [...count].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([rgb]) => rgb)
+  if (top.length === 0) return [0x6fa8d6, 0x2f5f96]
+  const sorted = top.sort((a, b) => luma(b) - luma(a))
+  return [sorted[0]!, sorted[sorted.length - 1]!]
 }
 
 function luma(rgb: number): number {

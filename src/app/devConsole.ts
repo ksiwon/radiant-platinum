@@ -13,6 +13,7 @@ import {
 } from '../data/gameData'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { useBattleStore } from '../state/battleStore'
+import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 
 /** 검색 결과에서 한 번에 보여줄 줄 수. 928명이라 전부 찍으면 콘솔이 막힌다 */
@@ -98,6 +99,16 @@ export function installDevConsole(): void {
     party: show,
     /** 리포트를 지우고 새 판으로. 설정의 "처음부터"와 같은 것이다 */
     reset: () => { void useSaveStore.getState().resetSave() },
+    /**
+     * 시각을 민다. 하늘·조명·안개가 따라오고 시간대 인카운터도 같이 바뀐다.
+     *
+     * 경계는 원작 `rtc.c`가 정한다 — 0~3 심야 · 4~9 아침 · 10~16 낮 ·
+     * 17~19 해질녘 · 20~23 밤 (`map/timeOfDay`)
+     */
+    hour: (h: number) => {
+      worldState.time.gameHour = ((h % 24) + 24) % 24
+      return worldState.time.gameHour
+    },
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt
   console.log(

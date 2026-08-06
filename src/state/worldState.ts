@@ -1,6 +1,12 @@
 // 프레임 상태 — React를 절대 건드리지 않는 mutable 싱글톤 (PLAN §3.2 ③)
 import { Vector2, Vector3 } from 'three'
 
+/** 켤 때의 시각. 원작이 본체 시계를 읽는 것과 같은 자리다 */
+function startHour(): number {
+  const now = new Date()
+  return now.getHours() + now.getMinutes() / 60
+}
+
 export const worldState = {
   player: {
     position: new Vector3(0, 0, 0),
@@ -36,7 +42,14 @@ export const worldState = {
      */
     mode: 'third' as 'third' | 'first',
   },
-  time: { elapsed: 0, gameHour: 12 },
+  /**
+   * 시각. `gameHour`는 0~24 실수고 하늘·조명·인카운터가 이걸 본다.
+   *
+   * **원작은 본체 시계를 그대로 읽는다**(`rtc.c`의 `GetTimeOfDay` → `GS_RTC_GetTime`).
+   * 그래서 여기도 기본값이 실제 시각이다 — 새벽에 켜면 밤 하늘이 뜬다.
+   * 시험용으로 흐르게 하려면 `pt.hour(20)`으로 밀 수 있다 (`devConsole`)
+   */
+  time: { elapsed: 0, gameHour: startHour() },
   // `interact`가 원작의 A, `cancel`이 B다. 대사창은 둘 다로 넘어가고
   // (`ScriptContext_CheckABPress`) 예/아니오는 B가 "아니오"로 간다
   input: { move: new Vector2(), run: false, interact: false, cancel: false },

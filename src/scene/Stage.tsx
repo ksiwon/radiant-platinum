@@ -71,6 +71,10 @@ export function Stage() {
         <color attach="background" args={[DAY.stops[0]![1]]} />
         {/* 렌더 창은 5×5청크(160타일)까지다. 그 경계가 잘려 보이지 않도록
             지평선 색과 같은 안개로 녹인다 — 창을 넓히는 것보다 훨씬 싸다 */}
+        {/*
+          처음 한 벌은 낮이다. 시간대에 따라 색과 거리를 `MapStreamer`가
+          밀어 준다 — 밤에 낮 안개가 남으면 먼 지형만 훤하다
+        */}
         <fog attach="fog" args={[DAY.fog, DAY.fogNear, DAY.fogFar]} />
         {/* 신오 전체. 트윈리프에서 시작해 걸어서 이동하고, 문으로 실내에 들어간다 */}
         <Suspense fallback={null}>

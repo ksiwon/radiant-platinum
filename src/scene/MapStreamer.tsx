@@ -8,8 +8,8 @@
 // 프로젝트가 죽는다(PLAN §3.2). 인스턴스 개수는 최대치로 한 번 잡고 mesh.count만
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
-import { BackSide, DirectionalLight, Mesh } from 'three'
+import { useFrame, useThree } from '@react-three/fiber'
+import { BackSide, Color, DirectionalLight, Fog, Mesh } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import { mapById, walkOutOfDoor, world } from '../engine/map/world'
@@ -30,7 +30,8 @@ import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcSprites } from './NpcSprites'
-import { DAY, makeSkyTexture } from './fx/sky'
+import { TIME_LOOKS, blendLooks, makeSkyTexture, type TimeLook } from './fx/sky'
+import { timeBlend } from '../engine/map/timeOfDay'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
 const VIEW_RADIUS = 2
@@ -42,6 +43,12 @@ const VIEW_RADIUS = 2
  * 16×16이므로 그림자가 텍스처보다 곱게 나온다 — 더 키워도 눈에 안 보인다
  */
 const SHADOW_MAP = 2048
+/** 지금 시각의 하늘·빛 한 벌. 시간대 경계에서 섞인다 */
+function currentLook(): TimeLook {
+  const { from, to, k } = timeBlend(worldState.time.gameHour)
+  return blendLooks(TIME_LOOKS[from]!, TIME_LOOKS[to]!, k)
+}
+
 /** 그림자 절두체 반경(타일). 렌더 창(±80)보다 좁다 — 가까운 것만 그림자를 진다 */
 const SHADOW_SPAN = 30
 /** 태양이 플레이어보다 얼마나 위·옆에 서는가. 방향은 아래 `directionalLight`와 같다 */
@@ -217,8 +224,36 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (!first) exitLook()
   }, [viewMode])
 
-  // 하늘 텍스처는 한 번만 만든다
-  const sky = useMemo(() => makeSkyTexture(DAY), [])
+  /**
+   * 지금 시간대의 하늘과 빛.
+   *
+   * 경계는 원작 `rtc.c`가 정한다(`map/timeOfDay`) — 0~3시 심야 · 4~9시 아침 ·
+   * 10~16시 낮 · 17~19시 해질녘 · 20~23시 밤. 경계 앞 30분에 걸쳐 섞으므로
+   * 걸어 다니는 중에 하늘이 툭 바뀌지 않는다.
+   *
+   * 하늘 텍스처는 캔버스를 새로 그리는 것이라 매 프레임 만들 수 없다. 시간대가
+   * 실제로 바뀔 때만 다시 만든다 — 섞는 구간에서는 30분에 한 번꼴이다
+   */
+  const [look, setLook] = useState<TimeLook>(() => currentLook())
+  useFrame(() => {
+    const next = currentLook()
+    // 색 하나만 비교하면 된다. 같은 시간대 안에서는 값이 그대로다
+    if (next.fog !== look.fog || next.sun !== look.sun) setLook(next)
+  })
+  const sky = useMemo(() => makeSkyTexture(look), [look])
+
+  // 안개와 배경색도 시간대를 탄다. `Stage`가 만들어 둔 것을 여기서 밀어 준다 —
+  // 밤에 낮 안개가 남으면 먼 지형만 훤하다
+  const scene = useThree((s) => s.scene)
+  useEffect(() => {
+    const fog = scene.fog
+    if (fog instanceof Fog) {
+      fog.color.set(look.fog)
+      fog.near = look.fogNear
+      fog.far = look.fogFar
+    }
+    if (scene.background instanceof Color) scene.background.set(look.stops[0]![1])
+  }, [scene, look])
 
   // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
   // 정수로 반올림해 두는 이유는 계단을 오르는 동안 매 프레임 창을 다시 세우지
@@ -307,7 +342,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         rgb(34,30,21)까지 죽어서 단차가 검은 덩어리로 뭉친다(실측). 지면에서
         튀는 빛이라 생각하고 흙 계열로 밝게 잡는다
       */}
-      <hemisphereLight args={['#d4e9f7', '#8d8468', 0.85]} />
+      <hemisphereLight args={[look.skyColor, look.groundColor, look.ambient]} />
       {/*
         태양. 그림자를 던지는 것은 이 하나뿐이다 — 나무가 땅에 그림자를 안
         떨어뜨리면 아무리 면을 나눠 칠해도 서 있는 것으로 안 보인다.
@@ -316,8 +351,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <directionalLight
         ref={sunRef}
         position={[24, 42, 18]}
-        intensity={1.05}
-        color="#fff4e0"
+        intensity={look.sun}
+        color={look.sunColor}
         castShadow
         shadow-mapSize={[SHADOW_MAP, SHADOW_MAP]}
         shadow-camera-left={-SHADOW_SPAN}
@@ -331,7 +366,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         shadow-normalBias={0.03}
       />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
-      <directionalLight position={[-14, 12, 26]} intensity={0.38} color="#cfe0f0" />
+      <directionalLight position={[-14, 12, 26]} intensity={look.fill} color={look.skyColor} />
 
       {/*
         땅. 색칠한 상자가 아니라 **원작 모델**이다 — 길·계단·물가·나무·건물 윤곽이
