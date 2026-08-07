@@ -16,7 +16,7 @@ import {
 } from '../../engine/intro/beats'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
-import { textSpeedFrames } from '../../state/optionsStore'
+import { textSpeedFrames, useGameLocale } from '../../state/optionsStore'
 import { startNewGame } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import * as css from './intro.css'
@@ -42,6 +42,9 @@ export function IntroScreen() {
   const [bank, setBank] = useState<string[]>([])
   const [naming, setNaming] = useState<string[]>([])
   const [generic, setGeneric] = useState<string[]>([])
+  // 설정의 언어. 인트로 도중에 바꾸는 일은 없지만, 타이틀에서 바꿔 두고
+  // 새 모험을 시작하면 그 언어로 시작해야 한다
+  const locale = useGameLocale()
   const [stage, setStage] = useState<Stage>({ kind: 'say', at: 0 })
   const [player, setPlayer] = useState('')
   const [rival, setRival] = useState('')
@@ -91,9 +94,9 @@ export function IntroScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadDialogueBank('ko', UI_BANK.intro),
-      loadDialogueBank('ko', UI_BANK.naming),
-      loadGenericNames('ko'),
+      loadDialogueBank(locale, UI_BANK.intro),
+      loadDialogueBank(locale, UI_BANK.naming),
+      loadGenericNames(locale),
     ]).then(([intro, name, names]) => {
       if (!alive) return
       setBank(intro)
@@ -101,7 +104,7 @@ export function IntroScreen() {
       setGeneric(names)
     }).catch(() => { /* 글을 못 받으면 빈 화면이 뜬다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   /**
    * 뱅크 한 줄을 이름까지 채워서.

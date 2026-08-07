@@ -13,6 +13,7 @@ import { loadUiText } from '../../data/uiText'
 import type { ItemIcons } from '../../data/schema'
 import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { itemIcon } from './itemIcon'
@@ -40,6 +41,8 @@ type Tab = 'buy' | 'sell'
 
 export function ShopScreen() {
   const [data, setData] = useState<Loaded | null>(null)
+  // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
+  const locale = useGameLocale()
   const [tab, setTab] = useState<Tab>('buy')
   const [cursor, setCursor] = useState(0)
   /** 몇 개 살지. 0이면 아직 고르는 중이다 */
@@ -53,15 +56,15 @@ export function ShopScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadItems(), loadItemNames('ko'), loadItemDescriptions('ko'),
-      loadItemIcons(), loadUiText('bag'),
+      loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
+      loadItemIcons(), loadUiText('bag', locale),
     ])
       .then(([items, names, descriptions, icons, bagText]) => {
         if (alive) setData({ items, names, descriptions, icons, bag: bagText })
       })
       .catch(() => { /* 글을 못 받으면 빈 상점이 뜬다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   /** 팔 수 있는 것 — 주머니를 통째로 편다. 중요한 물건은 못 판다 */
   const sellable = bag.flatMap((slots, pocket) =>

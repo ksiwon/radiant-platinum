@@ -14,6 +14,7 @@ import {
 import { loadUiText } from '../../data/uiText'
 import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
@@ -37,6 +38,8 @@ interface Loaded {
 
 export function BagScreen() {
   const [data, setData] = useState<Loaded | null>(null)
+  // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
+  const locale = useGameLocale()
   const [pocket, setPocket] = useState(0)
   const [cursor, setCursor] = useState(0)
   const back = useMenuStore((s) => s.back)
@@ -46,15 +49,15 @@ export function BagScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadItems(), loadItemNames('ko'), loadItemDescriptions('ko'),
-      loadItemIcons(), loadUiText('bagPockets'),
+      loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
+      loadItemIcons(), loadUiText('bagPockets', locale),
     ])
       .then(([items, names, descriptions, icons, pockets]) => {
         if (alive) setData({ items, names, descriptions, icons, pockets })
       })
       .catch(() => { /* 빈 가방으로 뜬다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const slots = bag[pocket] ?? []
   const at = Math.min(cursor, Math.max(0, slots.length - 1))

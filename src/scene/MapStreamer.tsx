@@ -22,7 +22,7 @@ import {
 import { installFieldServices } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
-import { textSpeedFrames, useOptionsStore } from '../state/optionsStore'
+import { textSpeedFrames, useGameLocale, useOptionsStore } from '../state/optionsStore'
 import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
 import { useBattleStore } from '../state/battleStore'
@@ -164,6 +164,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
   // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다
   const [generic, setGeneric] = useState<string[]>([])
+  // 설정의 언어. 바뀌면 이름표도 스크립트 글도 여기서 다시 받는다
+  const locale = useGameLocale()
   useEffect(() => {
     // 이름 짓기 화면이 아직 없다. 그동안은 원작이 제안하는 표의 첫 이름을
     // 쓴다 — 우리가 지어낸 이름을 화면에 내보내지 않기 위해서다
@@ -187,17 +189,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     fieldScripts.onScriptEnd = (vars) => {
       useSaveStore.getState().commitScriptState(vars.saved, vars.flags)
     }
-    void initFieldScripts('ko').then(() => { setScriptsReady(true) })
-    const uninstall = installFieldServices('ko')
+    void initFieldScripts(locale).then(() => { setScriptsReady(true) })
+    const uninstall = installFieldServices(locale)
     return () => {
       uninstall()
       fieldScripts.onScriptEnd = null
     }
-  }, [generic])
+  }, [generic, locale])
 
   useEffect(() => {
-    loadGenericNames('ko').then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
-  }, [])
+    loadGenericNames(locale).then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
+  }, [locale])
 
   // 플래그·변수를 붓는다. 새 판이면 원작의 초기화 스크립트를 **돌려서** 세운다 —
   // 그 표는 NPC 130여 명을 숨기는 플래그고, 손으로 옮기면 베끼는 것이 된다.

@@ -7,6 +7,7 @@
 // **배포 번들에 들어가면 안 된다.** 호출부가 `import.meta.env.DEV`로 감싼
 // 동적 import 하나뿐이라, 프로덕션 빌드에서는 그 가지가 통째로 죽고 이 모듈은
 // 청크로도 나오지 않는다. 그러니 여기서 무엇을 import 하든 초기 청크는 안 는다.
+import { gameLocale } from '../state/optionsStore'
 import {
   loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames, loadTrainerClasses, loadTrainerNames,
   loadTrainers,
@@ -21,7 +22,7 @@ const MAX_ROWS = 40
 
 async function trainerLabels() {
   const [table, names, classes] = await Promise.all([
-    loadTrainers(), loadTrainerNames('ko'), loadTrainerClasses('ko'),
+    loadTrainers(), loadTrainerNames(gameLocale()), loadTrainerClasses(gameLocale()),
   ])
   return { table, label: (id: number) => [classes[table.get(id).class], names[id]].filter(Boolean).join(' ') }
 }
@@ -73,7 +74,7 @@ async function heal() {
 /** 지금 파티. HP·PP가 배틀 뒤에 제대로 남았는지 보는 자리다 */
 async function show() {
   const [table, names, moveNames] = await Promise.all([
-    loadSpecies(), loadSpeciesNames('ko'), loadMoveNames('ko'),
+    loadSpecies(), loadSpeciesNames(gameLocale()), loadMoveNames(gameLocale()),
   ])
   const save = useSaveStore.getState()
   console.table(save.party.map((m) => ({

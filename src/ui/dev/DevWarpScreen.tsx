@@ -12,6 +12,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { CHECKPOINTS, type Checkpoint } from '../../engine/dev/checkpoints'
 import { warpTo } from '../../app/devWarp'
 import { useMenuStore } from '../../state/menuStore'
+import { gameLocale } from '../../state/optionsStore'
 import { startNewGame } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { MenuScreen } from '../menu/MenuScreen'
@@ -47,7 +48,7 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
       // `resetSave`는 부르지 않는다: 그건 리포트를 디스크에서 지운다
       if (!inPlay) {
         const { introSkipChoice } = await import('../../engine/intro/skip')
-        startNewGame(await introSkipChoice())
+        startNewGame(await introSkipChoice(gameLocale()))
       }
       await warpTo(cp)
       onClose()

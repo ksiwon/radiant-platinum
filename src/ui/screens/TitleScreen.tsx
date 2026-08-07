@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
 import { readReport } from '../../state/report'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import {
   dexHas, SAVE_VERSION, useSaveStore, type SaveData,
 } from '../../state/saveStore'
@@ -44,6 +45,8 @@ export function TitleScreen() {
   // 설정은 필드 메뉴와 **같은 화면**을 쓴다. 스택에 올려 두면 그쪽의 "돌아가기"가
   // 그대로 동작하고, 스택이 비면 여기서도 닫힌다
   const menuTop = useMenuStore((s) => s.top)
+  // 설정의 언어. 타이틀에서 바꾸면 곧바로 그 언어로 다시 그린다
+  const locale = useGameLocale()
 
   useEffect(() => {
     // 초기 렌더를 방해하지 않도록 유휴 시점에. Safari에는 requestIdleCallback이 없다
@@ -64,10 +67,10 @@ export function TitleScreen() {
     let alive = true
     void readReport(SAVE_VERSION).then((data) => { if (alive) setReport(data) })
       .catch(() => { if (alive) setReport(null) })
-    void loadUiText('mainMenu').then((bank) => { if (alive) setText(bank) })
+    void loadUiText('mainMenu', locale).then((bank) => { if (alive) setText(bank) })
       .catch(() => { /* 우리 글로 떨어진다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const at = (i: number, fallback: string): string => text[i] ?? fallback
 

@@ -22,12 +22,11 @@ import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import { createWild, fillPp, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
+import { gameLocale } from './optionsStore'
 import { dexSet, useSaveStore } from './saveStore'
 
 /** 파티 최대 인원. 넘으면 박스로 간다 */
 const PARTY_MAX = 6
-/** 표시 로케일. 설정이 생기면 여기서 갈라진다 */
-const LOCALE = 'ko' as const
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
@@ -179,7 +178,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   startTrainer: async (trainerId) => {
     const [table, names, classes] = await Promise.all([
-      loadTrainers(), loadTrainerNames(LOCALE), loadTrainerClasses(LOCALE),
+      loadTrainers(), loadTrainerNames(gameLocale()), loadTrainerClasses(gameLocale()),
     ])
     const trainer = table.get(trainerId)
     // 부적금화는 도구 데이터가 아직 없어서 안 본다

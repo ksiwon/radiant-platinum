@@ -16,6 +16,7 @@ import type { ViewMon } from '../../engine/battle/view'
 import { loadLabels, loadMoveNames, loadMoves, loadSpeciesNames } from '../../data/gameData'
 import type { Move } from '../../data/schema'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { withObject, withSubject } from '../korean'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
@@ -47,9 +48,11 @@ interface Extras {
 function useNames(): { names: BattleNames | null; extras: Extras | null } {
   const [names, setNames] = useState<BattleNames | null>(null)
   const [extras, setExtras] = useState<Extras | null>(null)
+  // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
+  const locale = useGameLocale()
   useEffect(() => {
     let alive = true
-    void Promise.all([loadSpeciesNames('ko'), loadMoveNames('ko'), loadLabels('ko'), loadMoves()])
+    void Promise.all([loadSpeciesNames(locale), loadMoveNames(locale), loadLabels(locale), loadMoves()])
       .then(([species, moves, labels, table]) => {
         if (!alive) return
         setNames({ species, moves, abilities: labels.abilities })
@@ -57,7 +60,7 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
       })
       .catch(() => { /* 이름을 못 받으면 아래에서 영어 원문으로 떨어진다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
   return { names, extras }
 }
 

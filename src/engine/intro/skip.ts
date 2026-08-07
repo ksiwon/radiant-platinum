@@ -9,7 +9,7 @@
 // 라이벌은 마박사가 내미는 여덟 후보에서.
 //
 // 그래서 이 값은 판을 다시 열어도 늘 같다. 시험이 흔들리지 않는다.
-import { loadDialogueBank } from '../../data/gameData'
+import { loadDialogueBank, type DataLocale } from '../../data/gameData'
 import { loadGenericNames, pickName } from '../../data/genericNames'
 import { UI_BANK } from '../../data/uiText'
 import { RIVAL_NAME_CHOICES } from './beats'
@@ -42,10 +42,10 @@ export function chooseFrom(generic: readonly string[], intro: readonly string[])
  *
  * 뱅크 둘을 받아야 해서 비동기다. 둘 다 수 KB고 타이틀에서 한 번만 부른다
  */
-export async function introSkipChoice(): Promise<IntroChoice> {
+export async function introSkipChoice(locale: DataLocale = 'ko'): Promise<IntroChoice> {
   const [generic, intro] = await Promise.all([
-    loadGenericNames('ko'),
-    loadDialogueBank('ko', UI_BANK.intro),
+    loadGenericNames(locale),
+    loadDialogueBank(locale, UI_BANK.intro),
   ])
   return chooseFrom(generic, intro)
 }

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react'
 import { loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
 import { loadUiText, POKEDEX_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
@@ -31,6 +32,8 @@ interface Loaded {
 
 export function PokedexScreen() {
   const [data, setData] = useState<Loaded | null>(null)
+  // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
+  const locale = useGameLocale()
   const [cursor, setCursor] = useState(0)
   const back = useMenuStore((s) => s.back)
   const dex = useSaveStore((s) => s.pokedex)
@@ -38,16 +41,17 @@ export function PokedexScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadSpecies(), loadSpeciesNames('ko'),
-      loadUiText('speciesCategory'), loadUiText('dexEntry'),
-      loadUiText('speciesHeight'), loadUiText('speciesWeight'), loadUiText('pokedex'),
+      loadSpecies(), loadSpeciesNames(locale),
+      loadUiText('speciesCategory', locale), loadUiText('dexEntry', locale),
+      loadUiText('speciesHeight', locale), loadUiText('speciesWeight', locale),
+      loadUiText('pokedex', locale),
     ])
       .then(([species, names, category, entries, heights, weights, ui]) => {
         if (alive) setData({ species, names, category, entries, heights, weights, ui })
       })
       .catch(() => { /* 빈 도감 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   // 0번 칸은 비어 있다. 목록은 1번부터다
   const order = (data?.species.sinnohDex ?? []).slice(1)

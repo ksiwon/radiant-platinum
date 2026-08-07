@@ -8,6 +8,7 @@
 // 충분하다 — 타입드 배열이 없어서 JSON으로 나가도 잃는 것이 없다.
 import { create } from 'zustand'
 import { TEXT_SPEED } from '../engine/script/printer'
+import type { DataLocale } from '../data/gameData'
 
 /** `options_menu`의 10·11·12번 — 느리게 · 보통 · 빠르게 */
 export type TextSpeed = 0 | 1 | 2 | 3
@@ -21,6 +22,21 @@ export type SoundMode = 0 | 1
 export type ViewMode = 0 | 1
 /** 배틀이 흐르는 빠르기. 원작에 없는 우리 항목이다 */
 export type BattlePace = 0 | 1 | 2
+/** `LANGUAGES`의 자리. 원작에 없는 우리 항목이다 — 아래 참조 */
+export type Language = 0 | 1
+
+/**
+ * 고를 수 있는 언어.
+ *
+ * **원작에는 이 항목이 없다.** DS 롬은 언어마다 따로 찍혀 나왔고, 그래서 게임
+ * 안에서 언어를 바꿀 자리가 없었다. 우리는 롬 두 개에서 뽑은 글을 같이 싣고
+ * 있으니 바꿀 수 있다 — 지어낸 번역이 아니라 **그 나라 롬에 찍힌 글**이다.
+ *
+ * 일본어는 빠져 있다. 이름표(`names/*.ja.json`)는 있지만 대사 뱅크가 없어서
+ * (`public/data/dialogue`에 `en`·`ko`뿐이다) 고를 수 있게 두면 스크립트 글이
+ * 통째로 빈다. 일본 롬을 뜯으면 여기 한 줄만 늘리면 된다
+ */
+export const LANGUAGES: readonly DataLocale[] = ['ko', 'en']
 
 export interface Options {
   speed: TextSpeed
@@ -31,6 +47,8 @@ export interface Options {
   view: ViewMode
   /** 배틀 진행. 원작에 없다 — 아래 참조 */
   battlePace: BattlePace
+  /** 글의 언어. 원작에 없다 — `LANGUAGES` 참조 */
+  language: Language
 }
 
 /**
@@ -64,7 +82,7 @@ export const BATTLE_PACE: readonly number[] = [1, 0.5, 0.25]
 // 오래 비판받은 바로 그 값이고, 셋 다 원작이 내놓는 값이라 무엇을 기본으로 삼든
 // 지어낸 속도는 아니다. 원작대로 보고 싶으면 설정에서 한 칸 왼쪽이다
 const DEFAULTS: Options = {
-  speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1,
+  speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1, language: 0,
 }
 
 const KEY = 'radiant-platinum.options'
@@ -108,10 +126,10 @@ export const useOptionsStore = create<OptionsStore>()((set, get) => ({
 }))
 
 function save(o: Options): void {
-  const { speed, battleScene, battleRule, sound, view, battlePace } = o
+  const { speed, battleScene, battleRule, sound, view, battlePace, language } = o
   try {
     localStorage.setItem(KEY, JSON.stringify({
-      speed, battleScene, battleRule, sound, view, battlePace,
+      speed, battleScene, battleRule, sound, view, battlePace, language,
     }))
     // 새 키로 한 번 쓰고 나면 옛 키는 헷갈리게만 한다
     localStorage.removeItem(OLD_KEY)
@@ -126,4 +144,20 @@ export function textSpeedFrames(): number {
 /** 배틀 박자의 쉼에 곱할 값 */
 export function battlePaceScale(): number {
   return BATTLE_PACE[useOptionsStore.getState().battlePace] ?? 1
+}
+
+/**
+ * 지금 언어의 자료 로케일.
+ *
+ * 자료를 부르는 자리가 스무 곳 남짓인데 전부 `'ko'`를 손으로 적고 있었다.
+ * 그 자리들이 **같은 값을 봐야** 설정에서 바꾼 것이 화면 전체에 먹는다 —
+ * 한 군데만 빠뜨리면 도감만 한국어로 남는 식으로 조용히 어긋난다
+ */
+export function gameLocale(): DataLocale {
+  return LANGUAGES[useOptionsStore.getState().language] ?? 'ko'
+}
+
+/** 화면용. 언어가 바뀌면 다시 그려지고, 자료를 다시 받을 계기가 된다 */
+export function useGameLocale(): DataLocale {
+  return useOptionsStore((s) => LANGUAGES[s.language] ?? 'ko')
 }

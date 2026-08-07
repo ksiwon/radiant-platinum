@@ -12,6 +12,7 @@ import { loadDialogueBank } from '../../data/gameData'
 import { world } from '../../engine/map/world'
 import { fieldScripts } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
 import { useMenuKeys } from './useMenuKeys'
@@ -33,10 +34,12 @@ export function SaveScreen() {
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
   const save = useSaveStore()
+  // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
+  const locale = useGameLocale()
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadUiText('saveInfo'), loadDialogueBank('ko', UI_BANK.common)])
+    void Promise.all([loadUiText('saveInfo', locale), loadDialogueBank(locale, UI_BANK.common)])
       .then(([info, strings]) => {
         if (!alive) return
         setLabels(info)
@@ -46,7 +49,7 @@ export function SaveScreen() {
       })
       .catch(() => { /* 글을 못 받아도 기록은 된다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const caught = countDex(save.pokedex.caught)
   const badges = countBits(save.badges, BADGES)

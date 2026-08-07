@@ -9,6 +9,7 @@ import { fieldScripts } from '../../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
 import { whyNot } from '../../engine/script/fieldMoves'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as own from './startMenu.css'
@@ -27,12 +28,16 @@ export function StartMenu() {
   const party = useSaveStore((s) => s.party)
   const trainer = useSaveStore((s) => s.trainer)
   const badges = useSaveStore((s) => s.badges)
+  // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
+  const locale = useGameLocale()
 
   useEffect(() => {
     let alive = true
-    void loadUiText('startMenu').then((bank) => { if (alive) setTexts(bank) }).catch(() => { /* 빈 메뉴 */ })
+    void loadUiText('startMenu', locale)
+      .then((bank) => { if (alive) setTexts(bank) })
+      .catch(() => { /* 빈 메뉴 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   /**
    * 항목 글. **인쇄기를 태워서 낸다.**

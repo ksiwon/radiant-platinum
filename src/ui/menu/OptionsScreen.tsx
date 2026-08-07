@@ -8,16 +8,21 @@
 // **사운드**, **시점**. 시합 룰만 아직 걸 데가 없어서 값만 남는다 — 있는 척하지
 // 않고 "아직"이라고 적어 둔다.
 //
-// 아래 세 줄은 원작에 없다. **배틀 진행**은 원작이 느리다고 오래 비판받은 대목을
+// 아래 네 줄은 원작에 없다. **배틀 진행**은 원작이 느리다고 오래 비판받은 대목을
 // 우리가 손댈 수 있게 연 자리고(원작 길이는 `playback.ts`에 그대로 있다),
-// 시점 전환은 3D로 옮기면서 생겼고, "처음부터"는 원작이 타이틀에서
-// 위+SELECT+B로 하는 것을 여기로 옮긴 것이다.
+// 시점 전환은 3D로 옮기면서 생겼고, **언어**는 원작 롬이 언어마다 따로 찍혀 나와서
+// 있을 수 없던 항목이며, "처음부터"는 원작이 타이틀에서 위+SELECT+B로 하는 것을
+// 여기로 옮긴 것이다.
+//
+// 원작 항목의 글은 뱅크가 언어를 따라간다. 하지만 **우리가 연 항목은 뱅크에
+// 없어서** 그 넷만 여기서 두 언어로 적어 둔다 — 언어를 영어로 두고 이 화면을
+// 열었을 때 절반만 한국어로 남으면 그것 자체가 고장으로 보인다.
 import { useEffect, useState } from 'react'
 import { loadUiText, OPTIONS_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import {
-  useOptionsStore, type BattlePace, type BattleRule, type BattleScene, type Options,
-  type SoundMode, type TextSpeed, type ViewMode,
+  useGameLocale, useOptionsStore, type BattlePace, type BattleRule, type BattleScene,
+  type Language, type Options, type SoundMode, type TextSpeed, type ViewMode,
 } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
@@ -46,15 +51,22 @@ export function OptionsScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const options = useOptionsStore()
   const resetSave = useSaveStore((s) => s.resetSave)
+  const locale = useGameLocale()
 
   useEffect(() => {
     let alive = true
-    void loadUiText('options').then((bank) => { if (alive) setText(bank) }).catch(() => { /* 빈 설정 */ })
+    // 옛 글을 안 지운다. 지우면 언어를 바꾼 순간 항목 이름이 한 번 비었다가
+    // 돌아오고, 못 받으면 빈 화면으로 남는다 — 그대로 두면 옛 언어로 남는다
+    void loadUiText('options', locale)
+      .then((bank) => { if (alive) setText(bank) })
+      .catch(() => { /* 빈 설정 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const at = (i: number): string => text[i] ?? ''
   const pick = (list: readonly number[]): string[] => list.map(at)
+  /** 우리가 연 항목의 글. 원작 뱅크에 없으니 여기서 고른다 */
+  const our = <T,>(ko: T, en: T): T => (options.language === 1 ? en : ko)
 
   const rows: Row[] = [
     {
@@ -80,20 +92,42 @@ export function OptionsScreen() {
       help: at(OPTIONS_TEXT.help.sound),
     },
     {
-      key: 'battlePace', label: '배틀 진행',
-      values: ['원작대로', '빠르게', '아주 빠르게'], at: options.battlePace,
-      help: '글이 머무는 시간과 체력바 속도\n원작 후반 한 턴이 14초쯤 걸립니다', ours: true,
+      key: 'battlePace', label: our('배틀 진행', 'BATTLE PACE'),
+      values: our(['원작대로', '빠르게', '아주 빠르게'], ['AS ORIGINAL', 'FAST', 'VERY FAST']),
+      at: options.battlePace,
+      help: our(
+        '글이 머무는 시간과 체력바 속도\n원작 후반 한 턴이 14초쯤 걸립니다',
+        'How long text lingers, and gauge speed.\nA late-game turn runs about 14 seconds in the original.',
+      ), ours: true,
     },
     {
-      key: 'view', label: '시점',
-      values: ['3인칭', '1인칭'], at: options.view,
-      help: '휠과 V로도 바꿉니다\n1인칭은 마우스로 둘러보고 보는 쪽으로 걷습니다',
+      key: 'view', label: our('시점', 'CAMERA'),
+      values: our(['3인칭', '1인칭'], ['THIRD PERSON', 'FIRST PERSON']), at: options.view,
+      help: our(
+        '휠과 V로도 바꿉니다\n1인칭은 마우스로 둘러보고 보는 쪽으로 걷습니다',
+        'The wheel and V switch it too.\nIn first person the mouse looks around and you walk where you look.',
+      ),
       ours: true,
     },
     {
-      key: 'reset', label: '처음부터',
+      key: 'language', label: our('언어', 'LANGUAGE'),
+      // 우리가 옮긴 말이 아니라 그 나라 롬에 찍힌 글이다. 그래서 이름·기술·설명까지
+      // 통째로 바뀐다 — 화면 글만 갈아 끼우는 것이 아니다.
+      //
+      // 값은 두 언어에서 같다. 언어 이름은 그 언어로 적는 것이 맞다
+      values: ['한국어', 'English'], at: options.language,
+      help: our(
+        '이름도 기술도 설명도 그 나라 롬의 글로 바뀝니다\n지금 서 있는 맵의 대사까지 곧바로 바뀝니다',
+        'Names, moves and descriptions all come from that ROM.\nEven the dialogue of the map you stand on switches at once.',
+      ), ours: true,
+    },
+    {
+      key: 'reset', label: our('처음부터', 'NEW GAME'),
       values: [], at: 0,
-      help: '리포트를 지우고 새로 시작합니다\n지운 것은 되돌릴 수 없습니다', ours: true,
+      help: our(
+        '리포트를 지우고 새로 시작합니다\n지운 것은 되돌릴 수 없습니다',
+        'Erases your report and starts over.\nWhat is erased cannot be brought back.',
+      ), ours: true,
     },
   ]
 
@@ -103,7 +137,7 @@ export function OptionsScreen() {
     if (!row || row.key === 'reset' || row.values.length === 0) return
     const next = wrapCursor(row.at, delta, row.values.length)
     options.set(row.key,
-      next as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode & BattlePace)
+      next as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
   }
 
   useMenuKeys({
@@ -118,15 +152,15 @@ export function OptionsScreen() {
     cancel: () => { if (confirming) setConfirming(false); else back() },
   }, !confirming)
 
-  if (confirming) return <ResetConfirm text={text} onNo={() => { setConfirming(false) }} onYes={() => {
+  if (confirming) return <ResetConfirm text={text} english={options.language === 1} onNo={() => { setConfirming(false) }} onYes={() => {
     // 리포트를 지우고 타이틀로 나간다. 처음부터면 인트로부터 다시 봐야 한다
     void resetSave().then(() => { closeAll(); location.assign(import.meta.env.BASE_URL) })
   }} />
 
   return (
     <MenuScreen
-      title={at(OPTIONS_TEXT.title) || '설정'}
-      foot="↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기"
+      title={at(OPTIONS_TEXT.title) || our('설정', 'OPTIONS')}
+      foot={our('↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기', '↑↓ Item · ←→ Value · Z Set · X Back')}
     >
       <div className={own.center}>
         <div className={own.rows}>
@@ -136,12 +170,21 @@ export function OptionsScreen() {
               <span className={css.face}>
                 <span className={own.rowLabel}>
                   {r.label}
-                  {r.ours && <span className={own.ours}>추가</span>}
-                  {r.inert && <span className={own.ours}>아직</span>}
+                  {r.ours && <span className={own.ours}>{our('추가', 'ADDED')}</span>}
+                  {r.inert && <span className={own.ours}>{our('아직', 'NOT YET')}</span>}
                 </span>
                 <span className={own.values}>
                   {r.values.map((v, k) => (
-                    <span key={v} className={k === r.at ? own.valueOn : own.value}>{v}</span>
+                    // ⚠️ **자리(k)로 묶는다. 글(v)로 묶으면 안 된다.**
+                    //
+                    // 뱅크가 오기 전 첫 그림에서 값은 전부 빈 글이다. 그때 글로
+                    // 묶으면 한 줄의 두 칸이 **같은 열쇠**를 갖는데, React는 옛
+                    // 자식을 열쇠로 색인한 Map에 담고(`mapRemainingChildren`)
+                    // 남은 것만 지운다. 겹친 열쇠는 Map에서 덮여 사라지므로
+                    // **지워지지 않고 DOM에 남는다.** 그렇게 남은 빈 칸이 고른
+                    // 값 자리였으면 초록 판으로 보인다 — 글자 없는 초록 블럭이
+                    // 그것이었다. 값은 자리가 곧 뜻이라 처음부터 k가 맞다
+                    <span key={k} className={k === r.at ? own.valueOn : own.value}>{v}</span>
                   ))}
                 </span>
               </span>
@@ -156,7 +199,8 @@ export function OptionsScreen() {
 
 /** 되돌릴 수 없는 것은 한 번 더 묻는다 */
 function ResetConfirm(
-  { text, onYes, onNo }: { text: string[]; onYes: () => void; onNo: () => void },
+  { text, english, onYes, onNo }:
+  { text: string[]; english: boolean; onYes: () => void; onNo: () => void },
 ) {
   const [yes, setYes] = useState(false)
   useMenuKeys({
@@ -169,14 +213,18 @@ function ResetConfirm(
     <div className={css.overlay}>
       <div className={own.center}>
         <div className={own.prompt}>
-          {'리포트를 지우고 처음부터 시작합니다\n정말로 괜찮겠습니까?'}
+          {english
+            ? 'Your report will be erased and the game starts over.\nIs that really all right?'
+            : '리포트를 지우고 처음부터 시작합니다\n정말로 괜찮겠습니까?'}
         </div>
         <div className={own.choices}>
           <span className={yes ? own.choiceOn : own.choice}>{text[OPTIONS_TEXT.yes] ?? '예'}</span>
           <span className={yes ? own.choice : own.choiceOn}>{text[OPTIONS_TEXT.no] ?? '아니오'}</span>
         </div>
       </div>
-      <div className={css.hint}>←→ 고르기 · Z 결정 · X 그만둔다</div>
+      <div className={css.hint}>
+        {english ? '←→ Choose · Z Set · X Cancel' : '←→ 고르기 · Z 결정 · X 그만둔다'}
+      </div>
     </div>
   )
 }

@@ -8,6 +8,7 @@
 // 어긋나지 않는지는 `uiText.test.ts`가 지킨다 — 표 자체(111KB)를 앱에 싣지
 // 않으려고 필요한 번호만 여기 적는다.
 import { formatMessage, MessageSlots } from '../engine/script/text'
+import { gameLocale } from '../state/optionsStore'
 import { loadDialogueBank, type DataLocale } from './gameData'
 
 export const UI_BANK = {
@@ -48,8 +49,13 @@ export const UI_BANK = {
 
 export type UiBank = keyof typeof UI_BANK
 
-/** 뱅크 하나를 받는다. 이름으로 부르므로 번호를 틀릴 자리가 없다 */
-export function loadUiText(bank: UiBank, locale: DataLocale = 'ko'): Promise<string[]> {
+/**
+ * 뱅크 하나를 받는다. 이름으로 부르므로 번호를 틀릴 자리가 없다.
+ *
+ * 언어를 안 적으면 **설정에 있는 언어**다. 화면마다 손으로 적게 두면 한 곳만
+ * 빠뜨려도 그 화면만 옛 언어로 남는다
+ */
+export function loadUiText(bank: UiBank, locale: DataLocale = gameLocale()): Promise<string[]> {
   return loadDialogueBank(locale, UI_BANK[bank])
 }
 

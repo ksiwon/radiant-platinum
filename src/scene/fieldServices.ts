@@ -7,6 +7,7 @@
 // `outcome`을 지우는데, 스크립트는 **닫힌 뒤에** 결과를 묻는다. 그래서 결과가
 // 정해지는 순간 여기서 따로 받아 둔다.
 import { loadDialogueBank, loadItemNames, loadItems, loadMarts, loadTrainers } from '../data/gameData'
+import type { DataLocale } from '../data/gameData'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
@@ -54,7 +55,7 @@ function watchBattle(): () => void {
 }
 
 /** 스크립트가 쓰는 바깥 세계를 붙인다. 정리 함수를 돌려준다 */
-export function installFieldServices(locale: 'en' | 'ko' | 'ja' = 'ko'): () => void {
+export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadTrainers().then((table) => { trainers = table }).catch(() => { /* 이름만 빈다 */ })
   void loadDialogueBank(locale, TRAINER_MESSAGE_BANK)
     .then((bank) => { trainerMessages = bank })

@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react'
 import { loadItemIcons, loadItemNames, loadItems, type ItemTable } from '../../data/gameData'
 import { Ball, type BallId } from '../../engine/battle/meta/capture'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from '../menu/useMenuKeys'
@@ -43,17 +44,19 @@ export function BattleBag({ wild, onThrow, onBack }: Props) {
   const [tab, setTab] = useState(2) // 볼부터 — 배틀에서 실제로 쓰는 것이다
   const [cursor, setCursor] = useState(0)
   const bag = useSaveStore((s) => s.bag)
+  // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
+  const locale = useGameLocale()
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadItems(), loadItemNames('ko'), loadItemIcons()])
+    void Promise.all([loadItems(), loadItemNames(locale), loadItemIcons()])
       .then(([table, list, atlas]) => {
         if (!alive) return
         setItems(table); setNames(list); setIcons(atlas)
       })
       .catch(() => { /* 빈 목록 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   // 갈래는 주머니가 아니라 비트마스크다. 가방 전체를 훑어 걸리는 것만 모은다
   const mask = CATEGORY[tab]?.mask ?? 0

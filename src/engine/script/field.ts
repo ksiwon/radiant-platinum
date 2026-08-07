@@ -133,7 +133,8 @@ let locale: DataLocale = 'ko'
  * 대사 뱅크는 여기서 안 받는다 — 맵마다 다르고 맵이 정해진 뒤에야 알 수 있다
  */
 export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> {
-  if (fieldScripts.data !== null) return
+  // 자료는 한 번만 받으면 되지만, 언어는 그 사이에 바뀌었을 수 있다
+  if (fieldScripts.data !== null) { setFieldLocale(which); return }
   locale = which
   const [meta, bytes] = await Promise.all([loadScriptMeta(), loadScriptBytes()])
   fieldScripts.data = { meta, bytes }
@@ -147,6 +148,27 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
 
 /** `TEXT_BANK_MENU_ENTRIES` — 전역 메뉴가 쓰는 항목 글 280개 (미국 번호) */
 export const MENU_ENTRIES_BANK = 361
+
+/**
+ * 언어가 바뀌었다.
+ *
+ * `initFieldScripts`는 두 번째부터 곧바로 돌아오므로(자료는 한 번만 받으면
+ * 된다) 그쪽으로는 언어를 못 바꾼다. **지금 서 있는 맵의 글**을 다시 받는 것이
+ * 여기서 할 일이다 — 안 그러면 설정에서 바꾼 뒤에도 말을 걸 때까지 옛 언어가
+ * 남아 있다가, 맵을 옮기는 순간 갑자기 바뀐다
+ */
+export function setFieldLocale(which: DataLocale): void {
+  if (which === locale) return
+  locale = which
+  loadDialogueBank(which, MENU_ENTRIES_BANK)
+    .then((bank) => { if (fieldScripts.world) fieldScripts.world.menuEntryTexts = bank })
+    .catch(() => { /* 전역 메뉴 글만 옛 언어로 남는다 */ })
+  const bank = fieldScripts.bank
+  if (bank < 0) return
+  loadDialogueBank(which, bank)
+    .then((messages) => { if (fieldScripts.bank === bank) fieldScripts.world?.setMessages(messages) })
+    .catch(() => { /* 맵 글만 옛 언어로 남는다 */ })
+}
 
 /**
  * 세계 하나. 버튼을 이 모듈이 읽는 프레임 입력에 묶는다 —

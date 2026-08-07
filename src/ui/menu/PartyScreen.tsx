@@ -19,6 +19,7 @@ import { hpColor } from '../../engine/battle/healthbar'
 import { FIELD_MOVES, type FieldMoveId } from '../../engine/script/fieldMoves'
 import { fieldMoveFromMenu } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
@@ -52,6 +53,8 @@ const DENIAL: Record<string, string> = {
 
 export function PartyScreen() {
   const [species, setSpecies] = useState<SpeciesTable | null>(null)
+  // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
+  const locale = useGameLocale()
   const [names, setNames] = useState<string[]>([])
   const [moveNames, setMoveNames] = useState<string[]>([])
   const [moveTexts, setMoveTexts] = useState<string[]>([])
@@ -72,7 +75,8 @@ export function PartyScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadSpecies(), loadSpeciesNames('ko'), loadMoveNames('ko'), loadUiText('moveDescriptions'),
+      loadSpecies(), loadSpeciesNames(locale), loadMoveNames(locale),
+      loadUiText('moveDescriptions', locale),
     ])
       .then(([table, list, moves, texts]) => {
         if (!alive) return
@@ -80,7 +84,7 @@ export function PartyScreen() {
       })
       .catch(() => { /* 이름만 빈다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const at = Math.min(cursor, Math.max(0, party.length - 1))
   const selected = party[at]

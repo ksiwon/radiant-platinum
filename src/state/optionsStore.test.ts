@@ -3,10 +3,13 @@
 // 여기 값은 두 종류다. **원작이 정한 것**(글자 속도 프레임)과 **우리가 연
 // 것**(배틀 진행). 앞엣것이 원작과 어긋나면 그건 버그고, 뒤엣것은 우리 판단이라
 // 바뀔 수 있다 — 그래서 어느 쪽인지 시험이 구분해 둔다.
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { TEXT_SPEED } from '../engine/script/printer'
 import {
-  BATTLE_PACE, battlePaceScale, SPEED_FRAMES, textSpeedFrames, useOptionsStore,
+  BATTLE_PACE, battlePaceScale, gameLocale, LANGUAGES, SPEED_FRAMES, textSpeedFrames,
+  useOptionsStore,
 } from './optionsStore'
 
 beforeEach(() => { useOptionsStore.getState().reset() })
@@ -50,9 +53,55 @@ describe('배틀 진행 — 우리가 연 자리', () => {
   })
 })
 
+describe('언어 — 우리가 연 자리', () => {
+  it('설정을 바꾸면 자료를 부르는 로케일이 바뀐다', () => {
+    for (let i = 0; i < LANGUAGES.length; i++) {
+      useOptionsStore.getState().set('language', i as 0 | 1)
+      expect(gameLocale()).toBe(LANGUAGES[i])
+    }
+  })
+
+  it('모르는 값이 남아 있어도 한국어로 떨어진다', () => {
+    // 옛 설정이 localStorage에 남아 있거나 목록이 줄어든 경우다. 여기서
+    // undefined가 새면 `dialogue/undefined/220.json`을 부른다
+    useOptionsStore.setState({ language: 99 as 0 })
+    expect(gameLocale()).toBe('ko')
+  })
+
+  it('고를 수 있는 언어는 대사 뱅크가 다 있는 언어뿐이다', () => {
+    // ⚠️ **이 시험이 목록을 지킨다.** 이름표(`names/*.ja.json`)는 세 언어가
+    // 다 있어서 `LANGUAGES`에 'ja'를 한 줄 더 적고 싶어지는데, 대사 뱅크가
+    // 없으면 고른 순간 스크립트 글이 통째로 빈다 — 화면은 뜨므로 눈으로는
+    // 한참 뒤에야 안다
+    const dir = resolve(__dirname, '../../public/data/dialogue')
+    if (!existsSync(dir)) return
+    const shipped = (JSON.parse(readFileSync(resolve(dir, 'index.json'), 'utf8')) as
+      { locales: string[] }).locales
+    for (const locale of LANGUAGES) expect(shipped, locale).toContain(locale)
+  })
+
+  it('설정 화면의 글자리가 언어마다 같다', () => {
+    // 뱅크 **번호**는 언어마다 다르고 그건 추출 때 이미 옮겨 뒀다. 뱅크 **안의
+    // 자리**까지 어긋나면 "본다" 자리에 엉뚱한 낱말이 뜬다
+    const dir = resolve(__dirname, '../../public/data/dialogue')
+    if (!existsSync(resolve(dir, 'ko/220.json'))) return
+    const banks = LANGUAGES.map((l) =>
+      JSON.parse(readFileSync(resolve(dir, l, '220.json'), 'utf8')) as string[])
+    // 3~8 항목 이름 · 10~18 고를 값 · 43~46 설명
+    for (const at of [3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 18, 43, 44, 45, 46]) {
+      for (const bank of banks) expect(bank[at], `${String(at)}`).toBeTruthy()
+    }
+    // 그리고 실제로 서로 다른 언어여야 한다 — 같은 파일을 두 번 읽은 것이 아니다
+    expect(banks[0]?.[13]).toBe('본다')
+    expect(banks[1]?.[13]).toBe('ON')
+  })
+})
+
 describe('기본값', () => {
-  it('글자는 "빠름", 배틀은 "빠르게"로 시작한다', () => {
+  it('글자는 "빠름", 배틀은 "빠르게", 언어는 한국어로 시작한다', () => {
     const o = useOptionsStore.getState()
+    expect(o.language).toBe(0)
+    expect(gameLocale()).toBe('ko')
     // 원작 기본은 보통·원작대로다. 느리다고 오래 비판받은 값이라 우리는 한 칸씩
     // 당겨 두고, 원작대로 보고 싶으면 설정에서 되돌릴 수 있게 남긴다
     expect(o.speed).toBe(2)
