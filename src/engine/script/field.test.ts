@@ -17,7 +17,7 @@ import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
 import {
   enterMap, fieldScripts, makeWorld, npcAt, resetTriggerTile, scriptBusy, scriptSystem, signAt,
-  tileInFront, triggerAt,
+  start, tileInFront, triggerAt,
 } from './field'
 import { printedText } from './printer'
 import { VarStore } from './vars'
@@ -506,5 +506,67 @@ maybe('포켓몬센터 간호사', () => {
     world.showMessage(0)
     world.printer!.finish()
     expect(printedText(world.printer!)).toBe('맵 뱅크 0번')
+  })
+})
+
+/**
+ * 간판 판 (`Signpost`).
+ *
+ * ⚠️ **간판 절반이 대사창이 아니다.** 마을 이름표·우편함·도로 표지판은
+ * `ShowMapSign` 같은 매크로로 뜨는데, 그 다섯 명령을 안 만들고 있어서 읽어도
+ * 아무 일이 안 났다. 여기서는 떡잎마을 이름표를 실제로 밟아 본다.
+ */
+maybe('간판 판', () => {
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+  const bank = read(`dialogue/ko/${TWINLEAF_BANK}.json`) as string[]
+  /** `scripts_twinleaf_town`의 마을 이름표 진입점 (`TwinleafTown_MapSignpost`) */
+  const MAP_SIGN_ENTRY = 6
+  const TWINLEAF_SCRIPTS = 1052
+  /** 맵 스크립트 번호는 **진입점 + 1**이다 (`resolveScript`) */
+  const SCRIPT_ENTRY_BASE = 1
+
+  beforeEach(() => {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = TWINLEAF_MAP
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.world = makeWorld(fieldScripts.vars, bank)
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    worldState.input.interact = false
+  })
+
+  const run = (n: number, a = false): void => {
+    for (let i = 0; i < n; i++) {
+      worldState.input.interact = a
+      scriptSystem.fixedUpdate()
+    }
+  }
+
+  it('마을 이름표를 읽으면 판이 뜨고 원작 글이 그대로 나온다', () => {
+    // 진입점 번호로 바로 건다 — 이 간판은 타일 거동으로 열리는 것이 아니라
+    // 맵 스크립트라 자리를 잡고 서는 것까지 흉내 낼 이유가 없다
+    expect(start(SCRIPT_ENTRY_BASE + MAP_SIGN_ENTRY, TWINLEAF_SCRIPTS)).toBe(true)
+    run(1)
+    const world = fieldScripts.world!
+    // ⚠️ 대사창이 아니라 **간판 판**이다. `signpost`가 null이면 같은 글이
+    // 아래쪽 대사창에 떠서 "누가 말을 걸었나" 싶게 읽힌다
+    expect(world.signpost).toBe(0) // SIGNPOST_TYPE_MAP
+    expect(printedText(world.printer!)).toBe('여기는 떡잎마을\n어린잎이 숨 쉬는 장소')
+    expect(fieldScripts.lastError).toBeNull()
+  })
+
+  it('버튼을 누르면 판이 걷히고 스크립트가 끝난다', () => {
+    start(SCRIPT_ENTRY_BASE + MAP_SIGN_ENTRY, TWINLEAF_SCRIPTS)
+    run(1)
+    expect(fieldScripts.world!.signpost).toBe(0)
+    run(3, true)
+    run(30)
+    expect(fieldScripts.world!.signpost).toBeNull()
+    expect(scriptBusy()).toBe(false)
+    expect(fieldScripts.lastError).toBeNull()
   })
 })

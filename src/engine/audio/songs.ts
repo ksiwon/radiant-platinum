@@ -83,7 +83,21 @@ export function wildSongFor(species: number, mapId: number): number {
  * 밤과 심야가 밤 곡을 함께 쓰고 해질녘은 낮 곡이다. 헤더에 칸이 둘뿐이라
  * 그 이상 나눌 근거가 없다
  */
+/**
+ * 스크립트가 곡을 가로챈 상태 (`FieldBGM_SetOverride`).
+ *
+ * ⚠️ 이게 없으면 `PlayMusic`이 소용없다 — 곡을 고르는 쪽(`MusicDirector`)이
+ * 1초마다 맵 헤더의 곡으로 되돌려 놓기 때문이다. `'stop'`은 `StopMusic`이다.
+ * `PlayDefaultMusic`이 이 자리를 비우고, 맵이 바뀔 때도 비운다
+ */
+export const fieldBgm = {
+  override: null as number | 'stop' | null,
+}
+
 export function songForMap(mapId: number, hour: number): number | null {
+  if (fieldBgm.override !== null) {
+    return fieldBgm.override === 'stop' ? null : fieldBgm.override
+  }
   const header = mapById(mapId)
   if (!header) return null
   const t = timeOfDayForHour(hour)

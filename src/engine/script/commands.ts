@@ -11,6 +11,9 @@ import type { ScriptCommand } from '../../data/schema'
 import {
   compare, conditionHolds, type CommandFn, type ResumeFn, type ScriptContext,
 } from './context'
+import { addNpc, npcActors, removeNpc, setNpcPlacement } from '../actor/npcs'
+import { mapById, world as mapWorld } from '../map/world'
+import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
 import { VAR_LAST_TALKED } from './vars'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
@@ -166,8 +169,21 @@ on('SetFlagFromVar', (ctx) => {
   return false
 })
 
+/**
+ * ⚠️ **`CheckFlag`와 모양이 다르다.** 이쪽은 인자가 둘이고 답이
+ * `comparisonResult`가 아니라 **변수로** 들어간다 (`ScrCmd_CheckFlagFromVar`가
+ * `GetVarPointer`를 두 번 부른다):
+ *
+ *   CheckFlagFromVar 플래그번호가든변수, 답을받을변수
+ *
+ * 인자를 하나만 읽고 있었다 — 그러면 그 뒤가 통째로 두 바이트 밀린다.
+ * 훑기가 이 명령에 못 닿아서(`vm.test`의 `IDLE_COMMANDS`) 오래 안 걸렸고,
+ * 폭을 재는 시험(`argWidth.test`)이 잡았다
+ */
 on('CheckFlagFromVar', (ctx) => {
-  ctx.comparisonResult = ctx.host.vars.checkFlag(ctx.readVar()) ? 1 : 0
+  const flag = ctx.host.vars.get(ctx.readHalfWord())
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.vars.checkFlag(flag) ? 1 : 0)
   return false
 })
 
@@ -509,6 +525,87 @@ on('WaitMovement', (ctx) => {
   return true
 })
 
+// ── 사람 세우기·지우기·묶어 두기 ─────────────────────────────────────────────
+//
+// 컷신의 절반이 이 넷이다. `AddObject`로 사람이 나타나고 `RemoveObject`로
+// 사라지는데, 안 만들면 **그 사람이 아예 없는 것으로** 이야기가 지나간다.
+
+on('LockAll', () => {
+  npcActors.paused = true
+  // 원작은 말을 건 상대가 있으면 그쪽만 따로 묶는다 (`ScrCmd_LockLastTalked`).
+  // 우리는 배회가 없어서 결과가 같다 — 둘 다 걸음을 멈추는 것뿐이다
+  return false
+})
+
+on('ReleaseAll', () => {
+  npcActors.paused = false
+  return false
+})
+
+on('LockObject', (ctx) => {
+  ctx.readHalfWord()
+  npcActors.paused = true
+  return false
+})
+
+on('ReleaseObject', (ctx) => {
+  ctx.readHalfWord()
+  npcActors.paused = false
+  return false
+})
+
+on('AddObject', (ctx) => {
+  addNpc(ctx.readVar())
+  return false
+})
+
+on('RemoveObject', (ctx) => {
+  // ⚠️ **숨김 플래그를 함께 세운다** (`MapObject_SetFlagAndDeleteObject`).
+  // 안 세우면 문을 한 번 여닫는 것으로 사라진 사람이 되살아난다
+  const flag = removeNpc(ctx.readVar())
+  if (flag !== null) ctx.host.vars.setFlag(flag)
+  return false
+})
+
+/** 배치표를 고친다. 지금 서 있는 사람이 아니라 **다음에 세울 사람**에게 먹는다 */
+on('SetObjectEventPos', (ctx) => {
+  const localID = ctx.readVar()
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  setNpcPlacement(localID, { x, z })
+  return false
+})
+
+on('SetObjectEventDir', (ctx) => {
+  const localID = ctx.readVar()
+  setNpcPlacement(localID, { dir: ctx.readVar() })
+  return false
+})
+
+on('SetObjectEventMovementType', (ctx) => {
+  const localID = ctx.readVar()
+  setNpcPlacement(localID, { move: ctx.readVar() })
+  return false
+})
+
+/** 이쪽은 **지금 서 있는 사람**을 옮긴다 (`MapObject_SetPosDirFromCoords`) */
+on('SetPosition', (ctx) => {
+  const localID = ctx.readVar()
+  const x = ctx.readVar()
+  ctx.readVar() // y. 높이는 격자가 정한다
+  const z = ctx.readVar()
+  const dir = ctx.readVar()
+  const target = ctx.host.world.objects(localID)
+  if (target) { target.x = x; target.z = z; target.dir = dir }
+  return false
+})
+
+on('SetMovementType', (ctx) => {
+  const localID = ctx.readVar()
+  setNpcPlacement(localID, { move: ctx.readHalfWord() })
+  return false
+})
+
 on('FacePlayer', (ctx) => {
   // 말을 건 상대가 이쪽으로 돌아선다. 이게 없으면 등을 보고 대화한다
   const world = ctx.host.world
@@ -554,6 +651,141 @@ on('BufferNumber', (ctx) => {
   // `GetNumberDigitCount(number)`로 그 수 자신에게서 얻으므로 채울 것이 없다
   const slot = ctx.readByte()
   ctx.host.world.slots.set(slot, String(ctx.readVar()))
+  return false
+})
+
+on('BufferPartyMonNickname', (ctx) => {
+  const slot = ctx.readByte()
+  const at = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.party?.nickname(at) ?? '')
+  return false
+})
+
+on('BufferPartyMonSpecies', (ctx) => {
+  const slot = ctx.readByte()
+  const at = ctx.readVar()
+  const species = ctx.host.world.services.party?.species(at) ?? 0
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.species(species) ?? '')
+  return false
+})
+
+on('BufferMoveName', (ctx) => {
+  const slot = ctx.readByte()
+  const move = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.move(move) ?? '')
+  return false
+})
+
+on('BufferPocketName', (ctx) => {
+  const slot = ctx.readByte()
+  const pocket = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.pocket(pocket) ?? '')
+  return false
+})
+
+on('BufferValuePaddingDigits', (ctx) => {
+  // 인자는 **칸 · 값(4바이트) · 채우기 방식 · 자릿수** 순서다
+  // (`.macro BufferValuePaddingDigits templateArg, value, paddingMode, maxDigits`).
+  // 0 안 채움 · 1 공백 · 2 영 (`constants/string.h`). 실측으로 필드 스크립트가
+  // 쓰는 것은 전부 공백 6자리다 — 지하 상점의 값을 자리 맞춰 적는 자리다
+  const slot = ctx.readByte()
+  const value = ctx.readWord()
+  const mode = ctx.readByte()
+  const digits = ctx.readByte()
+  const text = String(value)
+  ctx.host.world.slots.set(
+    slot,
+    mode === 0 ? text : text.padStart(digits, mode === 2 ? '0' : ' '),
+  )
+  return false
+})
+
+// ── 값 읽기 ──────────────────────────────────────────────────────────────────
+//
+// 하는 일이 없어 보이지만 **스크립트가 이 값으로 갈라진다.** 안 만들면 답이
+// 늘 앞서 남아 있던 값이라 한쪽 가지만 돌고, 그쪽이 맞는 가지라는 보장이 없다.
+
+on('GetPlayerMapPos', (ctx) => {
+  const destX = ctx.readHalfWord()
+  const destZ = ctx.readHalfWord()
+  const player = ctx.host.world.player
+  ctx.host.vars.set(destX, Math.floor(player?.x ?? 0))
+  ctx.host.vars.set(destZ, Math.floor(player?.z ?? 0))
+  return false
+})
+
+on('GetPlayerDir', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.player?.dir ?? DIR.south)
+  return false
+})
+
+on('GetCurrentMapID', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), Math.max(0, mapWorld.mapId))
+  return false
+})
+
+on('GetPlayerGender', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.trainerInfo?.gender() ?? 0)
+  return false
+})
+
+on('GetRandom', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const bound = ctx.readVar()
+  // 원작은 `LCRNG_Next() % upperBound`다. 상한이 0이면 나눗셈이 터지므로 막는다
+  ctx.host.vars.set(dest, bound > 0 ? Math.floor(Math.random() * bound) : 0)
+  return false
+})
+
+on('GetPartyCount', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.party?.count() ?? 0)
+  return false
+})
+
+on('GetPartyMonSpecies', (ctx) => {
+  // ⚠️ **자리 번호도 변수 포인터로 읽는다** — 원작이 `GetVarPointer`를 두 번
+  // 부르고 앞의 것을 값으로 쓴다. 폭은 같지만 읽는 뜻이 다르다
+  const slotVar = ctx.readHalfWord()
+  const dest = ctx.readHalfWord()
+  const slot = ctx.host.vars.get(slotVar)
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.species(slot) ?? 0)
+  return false
+})
+
+on('CheckPartyHasSpecies', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const species = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.hasSpecies(species) === true ? 1 : 0)
+  return false
+})
+
+on('CountAliveMonsExcept', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const except = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.aliveExcept(except) ?? 0)
+  return false
+})
+
+on('CheckBadgeAcquired', (ctx) => {
+  const badge = ctx.readVar()
+  ctx.host.vars.set(
+    ctx.readHalfWord(),
+    ctx.host.world.services.trainerInfo?.hasBadge(badge) === true ? 1 : 0,
+  )
+  return false
+})
+
+on('GetPlayerStarterSpecies', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.trainerInfo?.starter() ?? 0)
+  return false
+})
+
+on('GetSetNationalDexEnabled', (ctx) => {
+  // 1이면 켜고(답은 0), 2면 묻는다
+  const which = ctx.readByte()
+  const dest = ctx.readHalfWord()
+  const on = ctx.host.world.services.trainerInfo?.nationalDex(which === 1) === true
+  ctx.host.vars.set(dest, which === 2 && on ? 1 : 0)
   return false
 })
 
@@ -612,6 +844,240 @@ on('CheckIsTrainerDoubleBattle', (ctx) => {
   return false
 })
 
+// ── 간판 판 ──────────────────────────────────────────────────────────────────
+//
+// ⚠️ **간판 절반이 여기로 뜬다.** 책장·쓰레기통 같은 공용 간판은 `Message`로
+// 뜨지만, 마을 이름표·우편함·도로 표지판은 `Signpost`라는 **다른 창**을 쓴다.
+// 그 다섯 명령을 안 만들고 있어서, 떡잎마을 표지판을 읽으면 아무 일도 안 났다.
+//
+// 매크로 하나가 다섯 명령으로 펴진다 (`ShowMapSign` 등):
+//
+//   DrawSignpostInstantMessage 글, 종류   판을 만들고 글을 찍는다
+//   SetSignpostCommand SCROLL_IN         밀어 넣는다
+//   WaitForSignpostDone                  다 밀릴 때까지
+//   GetSignpostInput VAR_RESULT          버튼을 기다린다
+//   Common_HandleSignpostInput           답에 따라 닫는다
+//
+// 우리 판은 미끄러져 들어오지 않고 바로 뜬다. 그래서 `WaitForSignpostDone`은
+// 늘 끝나 있다 — 원작도 다 됐으면 안 서고 지나간다
+
+/** `generated/signpost_commands.txt` — 0 아무것도 · 1 그린다 · 2 나간다 · 3 든다 · 4 지운다 */
+const SIGNPOST_SCROLL_IN = 3
+
+on('DrawSignpostInstantMessage', (ctx) => {
+  const messageID = ctx.readByte()
+  const type = ctx.readByte()
+  ctx.readHalfWord() // NARC 안 그림 번호. 지도 그림은 아직 안 싣는다
+  ctx.readHalfWord() // 원작도 안 쓴다
+  ctx.host.world.signpost = type
+  // 원작도 `TEXT_SPEED_INSTANT`로 찍는다 — 간판은 한 자씩 나오지 않는다
+  ctx.host.world.showInstant(messageID)
+  return false
+})
+
+on('DrawSignpostTextBox', (ctx) => {
+  ctx.host.world.signpost = ctx.readByte()
+  ctx.readHalfWord()
+  ctx.host.world.openBox()
+  return false
+})
+
+on('DrawSignpostScrollingMessage', (ctx) => {
+  const messageID = ctx.readByte()
+  const dest = ctx.readHalfWord()
+  ctx.host.world.showMessage(messageID)
+  ctx.scratch[0] = dest
+  // 다 찍고 버튼을 받을 때까지 선다. 답은 늘 0이다(A·B·방향키가 다 0을 넣는다)
+  ctx.pause((c) => {
+    if (!c.host.world.printed || !c.host.world.pressed) return false
+    c.host.vars.set(c.scratch[0]!, 0)
+    return true
+  })
+  return true
+})
+
+on('SetSignpostCommand', (ctx) => {
+  const cmd = ctx.readByte()
+  if (cmd === SIGNPOST_SCROLL_IN) { ctx.host.world.openBox(); return false }
+  // 나가기(2)·지우기(4)는 둘 다 판을 걷는 것이다
+  ctx.host.world.closeBox(true)
+  ctx.host.world.signpost = null
+  return false
+})
+
+on('WaitForSignpostDone', () => false)
+
+on('GetSignpostInput', (ctx) => {
+  ctx.scratch[0] = ctx.readHalfWord()
+  // 원작은 A·B·방향키에 0, X에 1을 넣는다 (`HandleSignpostInput`). X는 시작
+  // 메뉴를 여는 자리인데 스크립트가 도는 동안 우리 X는 메뉴를 안 여므로 0뿐이다
+  ctx.pause((c) => {
+    if (!c.host.world.pressed) return false
+    c.host.vars.set(c.scratch[0]!, 0)
+    return true
+  })
+  return true
+})
+
+/** 메뉴가 화면 어느 쪽에 붙는가. 우리 메뉴는 자리를 스스로 잡는다 */
+on('SetMenuXOriginSide', (ctx) => {
+  ctx.readByte()
+  return false
+})
+
+// ── 스크립트가 옮기는 이동 ───────────────────────────────────────────────────
+//
+// 문으로 걸어 들어가는 것 말고, **이야기가 데려가는** 이동이다. 없으면 68곳에서
+// 화면이 그대로 멈춘 채 이야기만 흘러간다 — 거기서 판이 어긋난다.
+
+on('Warp', (ctx) => {
+  const to = ctx.readVar()
+  ctx.readHalfWord() // 원작도 안 쓴다 (`s16 unused`)
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  const facing = ctx.readVar()
+  const dest = mapById(to)
+  if (!dest) return false
+  // 워프 타일과 같은 길로 보낸다 — 씬이 `pending`을 보고 격자를 갈아 끼운다.
+  // 칸 가운데에 세운다(격자 좌표는 칸의 왼쪽 위 모서리다)
+  mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
+  return false
+})
+
+/**
+ * 따로 도는 화면에서 필드로 돌아온다 (`FieldTransition_StartMap`).
+ *
+ * 원작은 박스·상점 같은 응용 프로그램이 화면을 통째로 가져간 뒤 이 명령으로
+ * 필드를 다시 세운다. 우리 화면은 필드 위에 겹쳐 뜨고 자기가 닫으므로 되세울
+ * 것이 없다 — 다만 **자리는 지나가야 한다**
+ */
+on('ReturnToField', () => false)
+
+// ── 화면 페이드 ──────────────────────────────────────────────────────────────
+//
+// 장면을 끊는 자리다. 안 만들면 "어두워졌다 밝아지면 사람이 사라져 있다"는
+// 연출이 통째로 안 보인다 — 실제로 사람이 그 자리에서 툭 사라진다.
+
+on('FadeScreen', (ctx) => {
+  const steps = ctx.readHalfWord()
+  const frames = ctx.readHalfWord()
+  const type = ctx.readHalfWord()
+  const color = ctx.readHalfWord()
+  startFade(steps, frames, type, color)
+  return false
+})
+
+on('WaitFadeScreen', (ctx) => {
+  ctx.pause(() => fadeDone())
+  return true
+})
+
+// ── 소리 ─────────────────────────────────────────────────────────────────────
+//
+// 필드 스크립트에서 제일 많이 쓰이는 것이 소리다. 안 붙이고 건너뛰면 문과 계단
+// 말고는 아무 소리가 안 난다 — 물건을 주울 때도, 배지를 받을 때도 조용하다.
+//
+// ⚠️ **기다리는 명령이 셋 다 다른 것을 본다** (`scrcmd_sound.c`):
+// `WaitSE`는 인자로 받은 그 소리를, `WaitCry`는 울음소리를, `WaitFanfare`는
+// 팡파르를 본다. 하나로 묶으면 곡이 도는 내내 스크립트가 멎는다.
+
+const soundOf = (ctx: ScriptContext) => ctx.host.world.services.sound
+
+on('PlaySE', (ctx) => {
+  // ⚠️ **인자를 먼저 읽는다.** `sound?.playEffect(ctx.readVar())`로 쓰면 소리가
+  // 안 붙어 있을 때 `?.`가 통째로 건너뛰어 **읽기 위치가 안 움직인다** —
+  // 그다음 옵코드 자리에 인자(1500)가 와서 스크립트가 거기서 터진다
+  const seq = ctx.readVar()
+  soundOf(ctx)?.playEffect(seq)
+  return false
+})
+
+on('StopSE', (ctx) => {
+  const seq = ctx.readVar()
+  soundOf(ctx)?.stopEffect(seq)
+  return false
+})
+
+on('WaitSE', (ctx) => {
+  const seq = ctx.readVar()
+  ctx.scratch[0] = seq
+  // 소리가 안 붙어 있으면 기다릴 것도 없다 — 여기서 서면 영영 안 깬다
+  if (soundOf(ctx) === undefined) return false
+  ctx.pause((c) => soundOf(c)?.effectPlaying(c.scratch[0]!) !== true)
+  return true
+})
+
+on('PlayCry', (ctx) => {
+  const species = ctx.readVar()
+  ctx.readVar() // 원작도 안 쓴다 (`u16 unused`)
+  soundOf(ctx)?.playCry(species)
+  return false
+})
+
+on('WaitCry', (ctx) => {
+  if (soundOf(ctx) === undefined) return false
+  ctx.pause((c) => soundOf(c)?.cryPlaying() !== true)
+  return true
+})
+
+on('PlayFanfare', (ctx) => {
+  const seq = ctx.readHalfWord()
+  soundOf(ctx)?.playFanfare(seq)
+  return false
+})
+
+on('WaitFanfare', (ctx) => {
+  if (soundOf(ctx) === undefined) return false
+  ctx.pause((c) => soundOf(c)?.fanfarePlaying() !== true)
+  return true
+})
+
+const setMusic: CommandFn = (ctx) => {
+  const seq = ctx.readHalfWord()
+  soundOf(ctx)?.setMusic(seq)
+  return false
+}
+on('PlayMusic', setMusic)
+on('SetBGM', setMusic)
+on('SetSpecialBGM', setMusic)
+
+on('StopMusic', (ctx) => {
+  ctx.readHalfWord() // 원작도 안 쓴다 — 지금 곡을 끈다
+  soundOf(ctx)?.setMusic('stop')
+  return false
+})
+
+on('PlayDefaultMusic', (ctx) => {
+  // 가로챈 것을 놓는다. 그러면 맵 헤더의 곡으로 되돌아간다
+  soundOf(ctx)?.setMusic(null)
+  return false
+})
+
+on('IsSequencePlaying', (ctx) => {
+  const seq = ctx.readHalfWord()
+  ctx.host.vars.set(ctx.readHalfWord(), soundOf(ctx)?.sequencePlaying(seq) === true ? 1 : 0)
+  return false
+})
+
+// 곡을 갈지 않고 **소리만** 줄였다 키운다. 컷신이 "곡이 잦아들었다가
+// 되살아난다"를 만드는 자리라, 도중에 곡을 다시 시작하면 안 된다.
+//
+// 원작은 페이드가 끝날 때까지 선다(`ScriptContext_IsSoundFadeFinished`). 우리
+// 페이드는 오디오 그래프가 알아서 하는 것이라 물어볼 자리가 없어서 안 선다 —
+// 프레임 몇 개 일찍 다음 명령이 도는 것이지 소리는 그대로 잦아든다
+on('FadeOutBGM', (ctx) => {
+  const volume = ctx.readHalfWord()
+  const frames = ctx.readHalfWord()
+  soundOf(ctx)?.fadeVolume(volume, frames)
+  return false
+})
+
+on('FadeInBGM', (ctx) => {
+  const frames = ctx.readHalfWord()
+  soundOf(ctx)?.fadeVolume(127, frames)
+  return false
+})
+
 // ── 포켓몬센터 · 전멸 ────────────────────────────────────────────────────────
 //
 // 원작은 부활 지점을 **맵을 갈아 끼울 때** 정한다(`FieldMapChange_UpdateGameData`가
@@ -624,8 +1090,10 @@ on('HealParty', (ctx) => {
 })
 
 on('SetBlackOutWarpId', (ctx) => {
-  // 인자는 **1부터 센 번호**다 (`MapSpawnIdToIndex`가 하나를 뺀다)
-  ctx.host.world.services.setHealSpot?.(ctx.readHalfWord() - 1)
+  // 인자는 **1부터 센 번호**다 (`MapSpawnIdToIndex`가 하나를 뺀다).
+  // ⚠️ 여기도 **먼저 읽는다** — `?.`는 왼쪽이 없으면 오른쪽을 아예 안 계산한다
+  const spawn = ctx.readHalfWord()
+  ctx.host.world.services.setHealSpot?.(spawn - 1)
   return false
 })
 

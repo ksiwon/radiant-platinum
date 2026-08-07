@@ -32,6 +32,18 @@ export const npcActors = {
    * 사람들이 그대로 들어 있고, 그때 좌표로 사람을 찾으면 엉뚱한 자리에서 걸린다
    */
   mapId: -1,
+  /**
+   * 모두 멈춰 있는가 (`MapObjectMan_PauseAllMovement`).
+   *
+   * 스크립트가 `LockAll`로 세우고 `ReleaseAll`로 놓는다. 실측으로 필드 스크립트가
+   * 이 둘을 4,334번 쓴다 — 대화·컷신이 시작할 때마다 한 번씩이다.
+   *
+   * ⚠️ **지금은 세울 것이 스크립트가 걸어 둔 걸음뿐이다.** 배치표의 이동 유형
+   * (`MOVEMENT_TYPE_WANDER_*`)을 아직 안 돌리므로 평소에 돌아다니는 사람이 없다.
+   * 그래도 깃발은 세워 둔다 — 걸어가던 사람이 대화 중에 계속 걷는 것을 막는 것이
+   * 이 명령의 절반이고, 나머지 절반은 배회를 붙일 때 이 자리로 온다
+   */
+  paused: false,
 }
 
 /**
@@ -40,10 +52,30 @@ export const npcActors = {
  * 숨김 플래그가 서 있는 NPC는 **아예 안 만든다** — 원작도 그 조건일 때만
  * 객체를 만든다(`MapObjectMan_AddMapObjectFromHeader`)
  */
+/**
+ * 이번 맵 방문 동안만 사는 배치표 수정 (`MapHeaderData_SetObjectEvent*`).
+ *
+ * ⚠️ 배치표 자체(`events.json`)를 고치면 안 된다 — 그건 롬에서 뽑은 자료고 온
+ * 신오가 함께 읽는다. 원작도 **불러 둔 맵 헤더**만 고치므로 맵을 다시 들어오면
+ * 원래 자리로 돌아간다.
+ *
+ * 이게 쓰이는 자리는 정해져 있다: `SetObjectEventPos`로 자리를 적어 두고
+ * `AddObject`로 그 사람을 세운다. 그래서 세울 때 여기를 본다
+ */
+const placement = new Map<number, { x?: number; z?: number; dir?: number; move?: number }>()
+
+export function setNpcPlacement(
+  localID: number, patch: { x?: number; z?: number; dir?: number; move?: number },
+): void {
+  placement.set(localID, { ...placement.get(localID), ...patch })
+}
+
 export function spawnNpcs(mapId: number, vars: VarStore): void {
   npcActors.list = []
   npcActors.byLocalID.clear()
   npcActors.mapId = mapId
+  npcActors.paused = false
+  placement.clear()
   for (const info of npcsOf(mapId)) {
     if (info.flag !== null && vars.checkFlag(info.flag)) continue
     const actor: NpcActor = {
@@ -66,4 +98,52 @@ export function clearNpcs(): void {
   npcActors.list = []
   npcActors.byLocalID.clear()
   npcActors.mapId = -1
+  npcActors.paused = false
+}
+
+/**
+ * 배치표에서 한 명을 **새로 세운다** (`ScrCmd_AddObject`).
+ *
+ * 숨김 플래그 때문에 안 세워진 사람이다 — 컷신에서 갑자기 나타나는 사람이 전부
+ * 이 길로 온다. 이미 서 있으면 아무 일도 안 한다
+ *
+ * @returns 세웠으면 true. 배치표에 그 번호가 없으면 false
+ */
+export function addNpc(localID: number): boolean {
+  if (npcActors.byLocalID.has(localID)) return true
+  const info = npcsOf(npcActors.mapId).find((n) => n.localID === localID)
+  if (!info) return false
+  const fix = placement.get(localID) ?? {}
+  const actor: NpcActor = {
+    localID,
+    info,
+    x: fix.x ?? info.x,
+    z: fix.z ?? info.z,
+    y: info.height,
+    dir: fix.dir ?? info.facing,
+    visible: true,
+    movementType: fix.move ?? info.move,
+  }
+  npcActors.list.push(actor)
+  npcActors.byLocalID.set(localID, actor)
+  return true
+}
+
+/**
+ * 한 명을 지운다 (`ScrCmd_RemoveObject`).
+ *
+ * ⚠️ 원작은 **숨김 플래그도 함께 세운다** (`MapObject_SetFlagAndDeleteObject`).
+ * 그래서 맵을 다시 들어와도 안 나타난다 — 플래그를 안 세우면 문 한 번 여닫는
+ * 것으로 사라진 사람이 되살아난다. 플래그는 부르는 쪽이 세운다(스크립트 변수는
+ * 이 모듈이 안 들고 있다)
+ *
+ * @returns 그 사람의 숨김 플래그. 없으면 null
+ */
+export function removeNpc(localID: number): number | null {
+  const actor = npcActors.byLocalID.get(localID)
+  if (!actor) return null
+  npcActors.byLocalID.delete(localID)
+  const at = npcActors.list.indexOf(actor)
+  if (at >= 0) npcActors.list.splice(at, 1)
+  return actor.info.flag
 }

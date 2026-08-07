@@ -119,6 +119,12 @@ export interface PendingWarp {
   x: number
   z: number
   /**
+   * 도착해서 바라볼 방향 (원작 방향 번호). 워프 타일로 갈 때는 없다 —
+   * 문·계단은 들어간 방향 그대로 나오는 것이 맞고, **스크립트 워프만** 방향을
+   * 함께 준다 (`ScrCmd_Warp`)
+   */
+  facing?: number
+  /**
    * 문으로 드나든 것인가. 계단이면 false다.
    *
    * 소리가 갈린다 — `field_map_change.c`가 계단에 `SEQ_SE_DP_KAIDAN2`를 쓰고

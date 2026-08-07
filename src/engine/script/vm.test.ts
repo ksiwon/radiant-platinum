@@ -365,6 +365,9 @@ const IDLE_COMMANDS = [
   // 시작 메뉴를 스크립트가 여는 자리는 초반 안내뿐이고, 그 앞이 통신·이름
   // 짓기라 훑기가 못 닿는다
   'ShowStartMenu',
+  // 이 둘은 필드 스크립트에 **한 번도 안 나온다**(도달 가능한 자리 55,421개
+  // 중 0회). 프런티어 쪽 것이라 우리 훑기가 닿을 자리가 없다
+  'SetSpecialBGM',
   // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
   'GiveMoney',
   // 이 셋은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
@@ -377,6 +380,8 @@ const IDLE_COMMANDS = [
   // 물은 뒤에 세고(`DayCareCommon_TryRaisePokemon`), 사파리 게이트도 값을 내겠냐고
   // 물은 뒤에 남은 자리를 본다. 훑기는 메뉴에 답을 안 하므로 그 가지에 못 들어간다
   'CountAliveMonsAndBoxMons', 'GetPCBoxesFreeSlotCount',
+  // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
+  'IsSequencePlaying',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다
   'GetItemQuantity',
 ]

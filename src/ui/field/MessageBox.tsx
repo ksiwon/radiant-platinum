@@ -21,6 +21,13 @@ interface View {
   /** 대사창이 떠 있을 때만 있다. 목록 메뉴는 창 없이 뜨기도 한다 */
   text: { lines: Line[], waiting: boolean } | null
   menu: MenuView | null
+  /**
+   * 간판 판이면 그 종류 (`generated/signpost_types.txt`).
+   *
+   * 같은 글이라도 원작은 **다른 창**에 띄운다 — 마을 이름표는 명패, 도로
+   * 표지판은 화살표다. 대사창과 같은 틀로 그리면 그 구분이 사라진다
+   */
+  signpost: number | null
 }
 
 /** 지금 화면을 이 문자열로 요약해 바뀐 프레임만 고른다 */
@@ -32,7 +39,7 @@ function digest(view: View | null): string {
   const menu = view.menu === null
     ? ''
     : `${view.menu.kind}/${String(view.menu.cursor)}/${view.menu.entries.map((e) => e.text).join(',')}`
-  return `${lines}#${String(view.text?.waiting)}#${menu}`
+  return `${lines}#${String(view.text?.waiting)}#${menu}#${String(view.signpost)}`
 }
 
 function snapshot(): View | null {
@@ -48,6 +55,7 @@ function snapshot(): View | null {
     menu: menu === null
       ? null
       : { kind: menu.kind, entries: menu.entries, cursor: world.menuCursor, columns: menu.columns },
+    signpost: world.signpost,
   }
 }
 
@@ -77,9 +85,9 @@ export function MessageBox() {
   if (view === null) return null
   const alt = view.menu?.entries[view.menu.cursor]?.alt ?? null
   return (
-    <div className={css.frame}>
+    <div className={view.signpost === null ? css.frame : css.signFrame}>
       {view.text !== null && (
-        <div className={css.box}>
+        <div className={view.signpost === null ? css.box : css.signBox}>
           {view.text.lines.map((line, i) => (
             <div key={i} className={css.line} style={{ paddingLeft: line.indent }}>
               {line.runs.map((run, j) => (

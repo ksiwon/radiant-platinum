@@ -76,6 +76,13 @@ export interface SaveData {
   bag: Pockets
   badges: number // 비트마스크
   pokedex: { seen: DexField; caught: DexField }
+  /**
+   * 전국도감을 켰는가 (`Pokedex_IsNationalDexObtained`).
+   *
+   * 스크립트가 `GetSetNationalDexEnabled`로 켜고 묻는다 — 마박사의 PC가 뭘로
+   * 뜨는지, 파크에 들어갈 수 있는지가 이 값으로 갈린다
+   */
+  nationalDex: boolean
   /** 스크립트 플래그 4106개 */
   flags: SaveFlags
   /** 스크립트 변수 288칸 */
@@ -99,7 +106,7 @@ export interface SaveData {
   flySpots: number
 }
 
-export const SAVE_VERSION = 5
+export const SAVE_VERSION = 6
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -138,6 +145,7 @@ export function createNewSave(): SaveData {
     bag: emptyBag(),
     badges: 0,
     pokedex: { seen: new Uint8Array(DEX_BYTES), caught: new Uint8Array(DEX_BYTES) },
+    nationalDex: false,
     flags: new Uint8Array(FLAG_BYTES),
     vars: new Uint16Array(SAVED_VAR_COUNT),
     position: { ...START_LOCATION },
@@ -178,6 +186,8 @@ interface SaveStore extends SaveData {
   pendingInit: boolean
   markSeen: (dexNo: number) => void
   markCaught: (dexNo: number) => void
+  /** 전국도감을 켠다 (`Pokedex_ObtainNationalDex`) */
+  obtainNationalDex: () => void
   /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
   commitScriptState: (vars: ArrayLike<number>, flags: ArrayLike<number>) => void
   addPlaytime: (ms: number) => void
@@ -279,6 +289,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     bag: s.bag,
     badges: s.badges,
     pokedex: s.pokedex,
+    nationalDex: s.nationalDex,
     flags: s.flags,
     vars: s.vars,
     position,
@@ -297,6 +308,8 @@ export const useSaveStore = create<SaveStore>()(
 
       markSeen: (dexNo) =>
         set((s) => ({ pokedex: { ...s.pokedex, seen: dexSet(s.pokedex.seen, dexNo) } })),
+
+      obtainNationalDex: () => { set({ nationalDex: true }) },
 
       markCaught: (dexNo) =>
         set((s) => ({

@@ -78,6 +78,16 @@ export class Music {
   /** 깨어나기 전에 들어온 미리 펴기 요청 */
   private warmQueue = new Set<number>()
   private volume = 0.7
+  /**
+   * 지금 울리고 있는 한 번짜리 소리들.
+   *
+   * 스크립트가 `WaitSE`로 **소리가 끝날 때까지 선다**(`Sound_IsEffectPlaying`).
+   * 그 물음에 답하려면 무엇이 울리는 중인지 알아야 한다. 같은 번호가 겹쳐 날 수
+   * 있으므로 수를 센다 — 두 번 낸 소리 하나가 끝났다고 "끝났다"고 하면 안 된다
+   */
+  private ringing = new Map<number, number>()
+  /** 울음소리가 울리는 중인가 (`Sound_IsPokemonCryPlaying`) */
+  private crying = 0
 
   /**
    * 소리를 낼 수 있게 만든다.
@@ -298,17 +308,61 @@ export class Music {
    * 여러 개가 동시에 나도 되므로 붙였다 끝나면 떼기만 한다 — BGM처럼 하나만
    * 살아 있을 이유가 없다
    */
-  private oneShot(buf: AudioBuffer, gain: number): void {
+  private oneShot(buf: AudioBuffer, gain: number, tag?: () => void): void {
     const ctx = this.ctx, bus = this.bus
-    if (!ctx || !bus) return
+    if (!ctx || !bus) { tag?.(); return }
     const g = ctx.createGain()
     g.gain.value = gain
     g.connect(bus)
     const src = ctx.createBufferSource()
     src.buffer = buf
     src.connect(g)
-    src.onended = () => { g.disconnect() }
+    src.onended = () => { g.disconnect(); tag?.() }
     src.start()
+  }
+
+  /** 울리는 중인 소리를 하나 센다. 끝나면 되돌린다 */
+  private ring(song: number): () => void {
+    this.ringing.set(song, (this.ringing.get(song) ?? 0) + 1)
+    return () => {
+      const left = (this.ringing.get(song) ?? 1) - 1
+      if (left <= 0) this.ringing.delete(song)
+      else this.ringing.set(song, left)
+    }
+  }
+
+  /** 이 소리가 아직 울리는가 (`Sound_IsEffectPlaying`) */
+  isEffectPlaying(song: number): boolean {
+    return this.ringing.has(song)
+  }
+
+  /** 울음소리가 아직 울리는가 (`Sound_IsPokemonCryPlaying`) */
+  isCryPlaying(): boolean {
+    return this.crying > 0
+  }
+
+  /** 지금 트는 곡. 없으면 null */
+  get playing(): number | null {
+    return this.now?.song ?? null
+  }
+
+  /**
+   * 지금 곡의 소리만 줄였다 키운다 (`Sound_FadeOutBGM` · `Sound_FadeInBGM`).
+   *
+   * 곡을 갈지 않는다 — 컷신이 "곡이 잦아들었다가 되살아난다"를 만드는 자리라
+   * 도중에 다시 시작하면 안 된다. 원작 음량은 0~127이다
+   *
+   * @param volume 0~127
+   * @param frames 60분의 1초 단위
+   */
+  fadeVolume(volume: number, frames: number): void {
+    const ctx = this.ctx
+    if (!ctx || !this.now) return
+    const seconds = Math.max(1, frames) / 60
+    // `setTargetAtTime`은 지수라 시상수의 세 배쯤에서 거의 다 간다
+    this.now.gain.gain.setTargetAtTime(
+      Math.max(0, Math.min(1, volume / 127)), ctx.currentTime, seconds / 3,
+    )
   }
 
   /**
@@ -328,8 +382,16 @@ export class Music {
   /** 효과음 하나 */
   async playEffect(song: number, gain = 1): Promise<void> {
     if (!this.ctx) return
+    const done = this.ring(song)
     const buf = await this.render(`se:${String(song)}`, song, { maxSeconds: SHORT_SECONDS })
-    if (buf) this.oneShot(buf, gain)
+    if (!buf) { done(); return }
+    this.oneShot(buf, gain, done)
+  }
+
+  /** 나는 중인 소리를 끊는다 (`Sound_StopEffect`) */
+  stopEffect(song: number): void {
+    // 이미 붙은 소스를 되찾을 길이 없다. 끝난 것으로만 표시해 `WaitSE`가 안 멎게 한다
+    this.ringing.delete(song)
   }
 
   /**
@@ -342,6 +404,7 @@ export class Music {
     if (!this.ctx) return
     if (species < 1 || species > MAX_CRY_SPECIES) return
     const faint = opts?.faint === true
+    this.crying++
     const buf = await this.render(
       `cry:${String(species)}${faint ? ':faint' : ''}`, CRY_SEQ,
       {
@@ -350,7 +413,8 @@ export class Music {
         transpose: faint ? FAINT_SEMITONES : undefined,
       },
     )
-    if (buf) this.oneShot(buf, 1)
+    if (!buf) { this.crying--; return }
+    this.oneShot(buf, 1, () => { this.crying-- })
   }
 }
 

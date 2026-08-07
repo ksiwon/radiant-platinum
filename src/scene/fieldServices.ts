@@ -6,12 +6,17 @@
 // 배틀 결과를 붙잡는 방식이 조금 특이하다. 배틀 스토어는 화면을 닫을 때
 // `outcome`을 지우는데, 스크립트는 **닫힌 뒤에** 결과를 묻는다. 그래서 결과가
 // 정해지는 순간 여기서 따로 받아 둔다.
-import { loadDialogueBank, loadItemNames, loadItems, loadMarts, loadTrainers } from '../data/gameData'
+import {
+  loadDialogueBank, loadItemNames, loadItems, loadMarts, loadMoveNames, loadSpeciesNames,
+  loadTrainers,
+} from '../data/gameData'
 import type { DataLocale } from '../data/gameData'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
+import { music } from '../engine/audio/music'
+import { fieldBgm } from '../engine/audio/songs'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
@@ -22,10 +27,14 @@ import type { MartTable, Trainer } from '../data/schema'
 
 /** `TEXT_BANK_NPC_TRAINER_MESSAGES` — 트레이너 928명의 싸움 전후 대사 */
 const TRAINER_MESSAGE_BANK = 617
+/** `TEXT_BANK_BAG_POCKET_NAMES` — 주머니 8개 이름 */
+const POCKET_NAME_BANK = 395
 
 
 /** 지금 배틀의 결과. 스크립트가 물어볼 때까지 들고 있는다 */
 let battleResult: 'win' | 'loss' | null = null
+/** 마지막으로 튼 팡파르. `WaitFanfare`가 이것이 끝나기를 기다린다 */
+let fanfare: number | null = null
 /** 배틀을 스크립트가 열었는가. 야생 조우까지 여기 걸리면 안 된다 */
 let waiting = false
 
@@ -33,6 +42,10 @@ let trainers: { get(id: number): Trainer } | null = null
 let trainerMessages: string[] = []
 let items: ItemTable | null = null
 let itemNames: string[] = []
+let speciesNames: string[] = []
+let moveNames: string[] = []
+/** 주머니 이름 8개 (`TEXT_BANK_BAG_POCKET_NAMES`) */
+let pocketNames: string[] = []
 let marts: MartTable | null = null
 
 /** 자료가 아직 안 왔으면 도구 주머니로 본다 — 번호 0이 그 자리다 */
@@ -64,6 +77,12 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadItems().then((table) => { items = table }).catch(() => { /* 주머니가 0으로 뭉친다 */ })
   void loadItemNames(locale).then((names) => { itemNames = names }).catch(() => { /* 이름만 빈다 */ })
   void loadMarts().then((table) => { marts = table }).catch(() => { /* 상점이 빈 채로 뜬다 */ })
+  // 글 칸을 채우는 이름표들. 없으면 대사에 빈칸이 남는다
+  void loadSpeciesNames(locale).then((names) => { speciesNames = names }).catch(() => { /* 이름만 빈다 */ })
+  void loadMoveNames(locale).then((names) => { moveNames = names }).catch(() => { /* 이름만 빈다 */ })
+  void loadDialogueBank(locale, POCKET_NAME_BANK)
+    .then((bank) => { pocketNames = [...bank] })
+    .catch(() => { /* 주머니 이름만 빈다 */ })
   // 회복량은 종족값 표가 있어야 나온다. 전멸은 첫 배틀부터 날 수 있으므로 미리 받는다
   loadHealTables()
 
@@ -108,6 +127,44 @@ const services: FieldServices = {
   },
 
   /**
+   * 파티 조회 (`scrcmd_party.c`).
+   *
+   * ⚠️ **알은 안 센다.** 원작이 종을 물을 때마다 `MON_DATA_IS_EGG`를 함께 보고
+   * 알이면 0을 돌려준다. 우리 개체에 알 표시가 아직 없어서 그 갈래는 늘 거짓이다 —
+   * 알을 실을 때 이 세 곳(`species`·`hasSpecies`·`aliveExcept`)에 조건이 붙는다
+   */
+  party: {
+    count: () => useSaveStore.getState().party.length,
+    species: (slot) => useSaveStore.getState().party[slot]?.species ?? 0,
+    nickname: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      return mon?.nickname ?? speciesNames[mon?.species ?? 0] ?? ''
+    },
+    hasSpecies: (species) => useSaveStore.getState().party.some((m) => m.species === species),
+    aliveExcept: (slot) =>
+      useSaveStore.getState().party.filter((m, i) => i !== slot && m.hp > 0).length,
+  },
+
+  trainerInfo: {
+    // 원작 번호는 남 0 · 여 1이다 (`TrainerInfo_Gender`)
+    gender: () => (useSaveStore.getState().trainer.gender === 'girl' ? 1 : 0),
+    hasBadge: (badge) => (useSaveStore.getState().badges & (1 << badge)) !== 0,
+    // ⚠️ 처음 고른 파트너를 아직 저장에 안 적는다 (`SystemVars_GetPlayerStarter`).
+    // 파티 첫 마리로 대신하지 않는다 — 그건 다른 값이다
+    starter: () => 0,
+    nationalDex: (set) => {
+      if (set) useSaveStore.getState().obtainNationalDex()
+      return useSaveStore.getState().nationalDex
+    },
+  },
+
+  labels: {
+    move: (move) => moveNames[move] ?? '',
+    pocket: (pocket) => pocketNames[pocket] ?? '',
+    species: (species) => speciesNames[species] ?? '',
+  },
+
+  /**
    * 비전머신 자격 (`FieldMoves_Check*`).
    *
    * 어느 뱃지에 어느 기술인지는 엔진의 표가 안다 (`engine/script/fieldMoves`).
@@ -148,6 +205,26 @@ const services: FieldServices = {
   openStorage: (mode) => {
     if (mode > BOX_MODE.move) return
     useMenuStore.getState().openBox(mode)
+  },
+
+  /**
+   * 소리 (`scrcmd_sound.c`).
+   *
+   * ⚠️ **팡파르를 따로 기억해 둔다.** 원작은 "팡파르 때문에 곡이 멎어 있는가"를
+   * 보는데(`Sound_IsBGMPausedByFanfare`) 우리는 곡을 멈추지 않으므로, 마지막에
+   * 튼 팡파르가 아직 울리는지로 대신한다
+   */
+  sound: {
+    playEffect: (seq) => { void music.playEffect(seq) },
+    stopEffect: (seq) => { music.stopEffect(seq) },
+    effectPlaying: (seq) => music.isEffectPlaying(seq),
+    playCry: (species) => { void music.playCry(species) },
+    cryPlaying: () => music.isCryPlaying(),
+    playFanfare: (seq) => { fanfare = seq; void music.playEffect(seq) },
+    fanfarePlaying: () => fanfare !== null && music.isEffectPlaying(fanfare),
+    setMusic: (seq) => { fieldBgm.override = seq },
+    sequencePlaying: (seq) => music.playing === seq || music.isEffectPlaying(seq),
+    fadeVolume: (volume, frames) => { music.fadeVolume(volume, frames) },
   },
 
   boxFreeSlots: () => freeSlots(useSaveStore.getState().boxes),

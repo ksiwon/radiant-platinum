@@ -46,6 +46,13 @@ import { timeBlend } from '../engine/map/timeOfDay'
 const VIEW_RADIUS = 2
 
 /**
+ * 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → `facing` 라디안.
+ *
+ * `atan2(vx, vz)`라 0이 +z(남쪽)다. 스크립트 워프가 도착 방향을 이 번호로 준다
+ */
+const FACING_OF = [-Math.PI / 2, Math.PI, Math.PI / 2, 0]
+
+/**
  * 그림자 맵 한 변.
  *
  * 절두체가 ±30타일이라 2048이면 타일 하나에 34픽셀이다. 원작 타일 그림이
@@ -326,6 +333,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
           // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
           const at = walkOutOfDoor(next, target.x, target.z)
           enter(next, target.to, at.x, at.z, target.matrix)
+          // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간
+          // 방향 그대로 나오는 것이 맞아서 안 건드린다
+          if (target.facing !== undefined) worldState.player.facing = FACING_OF[target.facing] ?? 0
         })
         .catch((e) => { console.error('워프 실패', e) })
         .finally(() => { world.pending = null; warping.current = false })

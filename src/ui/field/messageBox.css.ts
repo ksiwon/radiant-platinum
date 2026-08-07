@@ -121,3 +121,39 @@ export const menuItemOn = style([menuItem, {
     },
   },
 }])
+
+/**
+ * 간판 판 (`Signpost`).
+ *
+ * ⚠️ **대사창과 다른 창이다.** 원작에서 마을 이름표·우편함·도로 표지판은
+ * 아래에 붙는 대사창이 아니라 **화면 가운데로 밀려 들어오는 나무 판**에 뜬다.
+ * 같은 틀로 그리면 "누가 말을 걸었나" 싶게 읽힌다.
+ *
+ * 판의 도트 그림(`res/graphics/signposts`)은 아직 안 뽑았다 — 지금은 나무색
+ * 판으로 자리를 잡고, 그림이 들어오면 배경만 갈아 끼우면 된다
+ */
+export const signFrame = style({
+  position: 'fixed',
+  left: '50%',
+  top: '38%',
+  transform: 'translate(-50%, -50%)',
+  width: 'min(calc(100vw - 48px), 560px)',
+  zIndex: 200,
+  fontFamily: vars.font.ui,
+  userSelect: 'none',
+  pointerEvents: 'none',
+})
+
+export const signBox = style({
+  position: 'relative',
+  background: 'linear-gradient(180deg, #d8b483 0%, #c39a66 55%, #b08a58 100%)',
+  border: '3px solid #6b4a29',
+  borderRadius: 6,
+  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 2px rgba(255, 236, 200, 0.55)',
+  color: '#33210f',
+  padding: '16px 22px',
+  fontSize: 19,
+  lineHeight: '30px',
+  textAlign: 'center',
+  minHeight: 60,
+})

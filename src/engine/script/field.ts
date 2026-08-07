@@ -17,7 +17,9 @@ import {
 } from './commands'
 import { ScriptContext, ScriptError, type CommonScripts } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
+import { resetFade } from './fade'
 import { npcActors, spawnNpcs } from '../actor/npcs'
+import { fieldBgm } from '../audio/songs'
 import { obstacleAt } from '../actor/obstacles'
 import {
   FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
@@ -313,6 +315,11 @@ export function enterMap(mapId: number): void {
   bankPending = false
   activeBank = null
   spawnNpcs(mapId, fieldScripts.vars)
+  // 스크립트가 가로챈 곡을 놓는다. 안 놓으면 그 방에서 튼 곡이 신오 전역을 따라온다
+  fieldBgm.override = null
+  // ⚠️ 덮개도 걷는다. 아웃만 걸고 워프하는 스크립트가 있어서, 안 걷으면 도착한
+  // 맵이 검은 화면 그대로 남는다
+  resetFade()
   // 괴력은 맵마다 다시 쓴다 — 원작도 맵을 옮기면 풀린다
   worldState.player.strength = false
   resetTriggerTile()

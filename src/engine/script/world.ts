@@ -15,6 +15,7 @@ import {
   DEFAULT_OPTIONS, MessagePrinter, type PrinterInput, type PrinterOptions,
 } from './printer'
 import { MovementRunner, type Movable, type MovementStep, type MovementTable } from './movement'
+import { tickFade } from './fade'
 import { MessageSlots } from './text'
 import type { VarStore } from './vars'
 
@@ -104,6 +105,37 @@ export interface FieldServices {
   trainerMessage?: (index: number) => string
   /** 싸울 수 있는 포켓몬 수 */
   aliveMons?: () => number
+  /**
+   * 파티 조회 (`scrcmd_party.c`).
+   *
+   * 스크립트가 여기서 얻은 값으로 **갈라진다** — 몇 마리인지, 그 종이 있는지.
+   * 안 붙어 있으면 늘 0이라 한쪽 가지만 돈다
+   */
+  party?: {
+    count: () => number
+    /** 그 자리의 종족 번호. 빈 자리면 0 */
+    species: (slot: number) => number
+    nickname: (slot: number) => string
+    hasSpecies: (species: number) => boolean
+    /** 그 자리를 빼고 싸울 수 있는 수 (`CountAliveMonsExcept`) */
+    aliveExcept: (slot: number) => number
+  }
+  /** 트레이너 정보 · 도감 (`scrcmd_system_flags.c`) */
+  trainerInfo?: {
+    /** 0 남 · 1 여 (`TrainerInfo_Gender`) */
+    gender: () => number
+    hasBadge: (badge: number) => boolean
+    /** 처음 고른 파트너 (`SystemVars_GetPlayerStarter`) */
+    starter: () => number
+    /** 전국도감을 켰는가. `set`이면 켜고 답은 0이다 */
+    nationalDex: (set: boolean) => boolean
+  }
+  /** 이름표 — 글 칸을 채우는 데 쓴다 (`BufferMoveName` 등) */
+  labels?: {
+    move: (move: number) => string
+    pocket: (pocket: number) => string
+    species: (species: number) => string
+  }
   /** 가방. 주머니 번호는 아이템 자료가 정하므로 여기서 물어본다 */
   bag?: {
     pocketOf: (item: number) => number
@@ -159,6 +191,28 @@ export interface FieldServices {
     /** 이 기술을 아는 파티원이 있는가 */
     knows: (move: number) => boolean
   }
+  /**
+   * 소리 (`scrcmd_sound.c`).
+   *
+   * 번호는 스크립트가 직접 준다 — SDAT의 SEQ 번호라 이름표를 거칠 것이 없다.
+   * `playing`류가 있어야 `WaitSE`·`WaitCry`가 설 수 있다
+   */
+  sound?: {
+    playEffect: (seq: number) => void
+    stopEffect: (seq: number) => void
+    effectPlaying: (seq: number) => boolean
+    playCry: (species: number) => void
+    cryPlaying: () => boolean
+    /** 팡파르. 끝날 때까지 `WaitFanfare`가 선다 */
+    playFanfare: (seq: number) => void
+    fanfarePlaying: () => boolean
+    /** 필드 곡을 가로챈다. null이면 맵 헤더의 곡으로 되돌린다 */
+    setMusic: (seq: number | 'stop' | null) => void
+    /** 이 곡이 지금 울리는가 (`IsSequencePlaying`) */
+    sequencePlaying: (seq: number) => boolean
+    /** 곡을 갈지 않고 소리만 줄였다 키운다. 음량은 원작대로 0~127 */
+    fadeVolume: (volume: number, frames: number) => void
+  }
   /** 파티 전원 회복 (`ScrCmd_HealParty`). 종족값 표가 필요해서 바깥 일이다 */
   healParty?: () => void
   /** 부활 지점을 옮긴다 (`ScrCmd_SetBlackOutWarpId`). `spawns.json`의 번호다 */
@@ -190,6 +244,13 @@ export class FieldWorld {
 
   /** 창이 떠 있는가 (`isMsgBoxOpen`). 닫는 명령까지 계속 떠 있는다 */
   boxOpen = false
+  /**
+   * 지금 글이 **간판 판**에 떠 있는가 (`Signpost`). null이면 보통 대사창이다.
+   *
+   * 값은 `generated/signpost_types.txt`의 줄 번호다 — 0 지도 · 1 화살표 ·
+   * 2 명패 · 3 흘림. 마을 이름표와 우편함이 전부 이 길로 뜬다
+   */
+  signpost: number | null = null
   /** 지금 찍는 글. 다 찍어도 창을 닫기 전까지 남아 있다 */
   printer: MessagePrinter | null = null
   /**
@@ -415,6 +476,8 @@ export class FieldWorld {
 
   /** 한 프레임. 인쇄기와 걷는 것들을 돌린다 */
   tick(): void {
+    // 페이드도 세계와 같은 시계를 쓴다 — 원작 인자가 프레임 수다
+    tickFade()
     this.printer?.tick(this.input())
     for (let i = this.runners.length - 1; i >= 0; i--) {
       const runner = this.runners[i]!
@@ -430,5 +493,6 @@ export class FieldWorld {
     this.slots.clear()
     this.menu = null
     this.builder = null
+    this.signpost = null
   }
 }
