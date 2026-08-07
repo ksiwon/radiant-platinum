@@ -12,8 +12,8 @@ import {
   treeSites,
 } from './plates'
 import {
-  BARE, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
-  merge, nearScale, paint, treeAt, treeGeometry,
+  BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
+  contactGeometry, contactTexture, merge, nearScale, paint, treeAt, treeGeometry,
 } from './Foliage'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import { heightField, heightInChunk, type HeightData } from '../engine/map/height'
@@ -227,8 +227,8 @@ maybe('잎 걷어내기', () => {
     // 알 수 있어서 여기서 면의 개수와 방향을 직접 센다
     const geo = treeGeometry([0x60a050], 0x6b4a2a)
     const pos = geo.getAttribute('position') as BufferAttribute
-    // 잎 80+20+20 · 줄기 6각 × 마디 3 × 2 = 36
-    expect(pos.count / 3).toBe(156)
+    // 잎 80+20+20 · 줄기 6각 × 마디 4 × 2 = 48
+    expect(pos.count / 3).toBe(168)
 
     // 줄기 축은 곧지 않고 조금씩 휘어 있다. 바깥쪽을 재려면 그 높이의 축을 알아야 한다
     const axis = (h: number): number => {
@@ -258,11 +258,11 @@ maybe('잎 걷어내기', () => {
       mid.addVectors(a, b).add(c).multiplyScalar(1 / 3)
       if (n.x * (mid.x - axis(mid.y)) + n.z * mid.z > 0) outward++
     }
-    expect(trunk).toBe(36)
-    expect(upright).toBe(36)
+    expect(trunk).toBe(48)
+    expect(upright).toBe(48)
     // 그리고 **바깥을 봐야** 한다. 재질이 앞면만 그리므로 감는 방향이 뒤집히면
     // 면은 다 있는데 화면에는 통째로 없다 — 개수로는 안 걸리는 자리다
-    expect(outward).toBe(36)
+    expect(outward).toBe(48)
     // 넓이도 봐야 한다 — 면이 찌부러져 있으면 개수만으로는 안 걸린다.
     // 둘레 2π×0.16 × 높이 1.55 ≈ 1.5가 대충 맞는 자리다
     expect(area).toBeGreaterThan(0.8)
@@ -311,12 +311,12 @@ maybe('잎 걷어내기', () => {
   })
 
   it('먼 나무는 값싼 모양으로 선다 — 다만 실루엣은 안 바꾼다', () => {
-    // 그루당 156이면 짙은 숲에서 72만 삼각형이다(떡잎마을 일대 4,628그루 실측).
+    // 그루당 168이면 짙은 숲에서 78만 삼각형이다(떡잎마을 일대 4,628그루 실측).
     // 30타일 밖에서는 세분과 줄기 단면이 안 읽히지만 **윤곽은 읽힌다** —
     // 덩이를 빼면 그 거리에서도 모양이 달라지는 것이 보인다
     const near = treeGeometry([0x60a050], 0x6b4a2a, false)
     const far = treeGeometry([0x60a050], 0x6b4a2a, true)
-    expect(near.getAttribute('position').count / 3).toBe(156)
+    expect(near.getAttribute('position').count / 3).toBe(168)
     expect(far.getAttribute('position').count / 3).toBe(66)
     // 값싼 것도 **폭과 높이는 같아야** 한다 — 다르면 LOD가 바뀌는 순간 튄다
     const span = (g: BufferGeometry) => {
@@ -343,6 +343,37 @@ maybe('잎 걷어내기', () => {
     const tallest = TREE_TOP * 1.52 // RADIUS_MAX + 흔들림
     const shadow = tallest / Math.tan(elevation)
     expect(shadow).toBeLessThan(CULL_MARGIN)
+  })
+
+  it('밑동의 접지 그림자가 사각형으로 안 보인다', () => {
+    // 태양이 고도 54.5°라 우듬지 그림자는 밑동에서 1.6r **옆에** 진다 — 그림자
+    // 맵으로는 발밑이 절대 안 어두워진다. 그 자리를 채우는 것이 이 판인데,
+    // 곱하기로 섞으므로 **가장자리 값이 정확히 1이 아니면 사각형이 드러난다**
+    const tex = contactTexture()
+    const px = tex.image.data as Uint8Array
+    const N = tex.image.width
+    const at = (x: number, y: number) => px[(y * N + x) * 4]!
+    // 네 귀퉁이는 원 밖이라 그대로여야 한다
+    for (const [x, y] of [[0, 0], [N - 1, 0], [0, N - 1], [N - 1, N - 1]]) {
+      expect(at(x!, y!)).toBe(255)
+    }
+    // 변의 한가운데도 원의 접점이라 그대로다
+    expect(at(N / 2, 0)).toBe(255)
+    // 한가운데가 제일 어둡고 `CONTACT_DARK`만큼 깎인다. 딱 그 값은 아니다 —
+    // 칸 한가운데를 찍으므로 원점에서 반 텍셀 벗어나 있다
+    const dark = Math.round(255 * (1 - CONTACT_DARK))
+    expect(at(N / 2, N / 2)).toBe(Math.min(...px.filter((_, i) => i % 4 === 0)))
+    expect(at(N / 2, N / 2) - dark).toBeLessThan(6)
+    // 그리고 가운데에서 밖으로 **단조롭게** 풀린다 — 안 그러면 테가 생긴다
+    for (let x = N / 2; x + 1 < N; x++) expect(at(x + 1, N / 2)).toBeGreaterThanOrEqual(at(x, N / 2))
+
+    // 판 자체는 삼각형 둘이다. 그루당 168에 둘을 더하는 값이라 여기서 못 늘린다
+    const geo = contactGeometry()
+    expect(geo.getAttribute('position').count / 3).toBe(2)
+    // 그리고 **땅 위로 조금 떠야** 한다 — 같은 높이면 지형과 깊이가 겹쳐 얼룩진다
+    const y = (geo.getAttribute('position') as BufferAttribute).getY(0)
+    expect(y).toBeGreaterThan(0)
+    expect(y).toBeLessThan(0.05)
   })
 
   it('3인칭에서 카메라 코앞의 나무만 지운다', () => {
@@ -394,6 +425,11 @@ maybe('잎 걷어내기', () => {
  *
  * 여기서 세는 것은 오버월드 전체다 — 청크 하나를 골라 보면 우연히 맞는 자리를
  * 고를 수 있다.
+ *
+ * ⚠️ 다만 높이를 **청크 하나 안에서만** 묻는다. 그래서 "자료 없음"이 런타임보다
+ * 많이 나온다(2,931 대 360) — 청크 경계에 선 나무는 옆 청크의 판이 답이고,
+ * 런타임은 월드 좌표로 물어 그쪽까지 본다. 여기서 재는 것은 "잎 아래끝에 세우면
+ * 뜨는가"이지 자료가 몇 개 비어 있는가가 아니다.
  */
 maybe('나무가 땅에 선다', () => {
   const fmt = read('chunks/index.json') as Fmt

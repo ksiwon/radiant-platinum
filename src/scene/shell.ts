@@ -103,78 +103,126 @@ function coverage(
 }
 
 /**
- * 그 방향에서 봤을 때 이 자리의 **제일 바깥면**이 어디 있는가. 없으면 `NaN`.
- *
- * ⚠️ **이게 없으면 판이 건물에서 떨어져 선다.** 예전엔 삼각형을 전부 바운딩
- * 박스의 끝면에 눌러 붙였는데, 처마가 벽보다 튀어나온 만큼 벽 자리의 판이
- * 허공에 뜬다. 실루엣 칸 132만 개를 재면 **51.4%가 진짜 바깥면에서 0.25타일
- * (4도트) 넘게** 떨어졌고 p90이 1.93타일 · 최대 36타일이었다 — 건물 옆에
- * 판때기가 따로 서 있는 것으로 보인다.
- *
- * ⚠️ **격자로 재면 안 된다.** 한 번 64칸 깊이 지도로 했다가 여전히 10.8%가
- * 떴다. 칸 안에 튀어나온 면과 들어간 면이 같이 들면 칸 값이 튀어나온 쪽이 되어,
- * **바깥면이 반 칸만큼 부푼다.** 꼭짓점 하나하나에 대고 정확히 찾아야 한다
+ * 축마다 `[최소, 최대]`.
  */
-function outerDepth(
-  tri: Triangles, sign: number, pu: number, pv: number,
-): number {
-  let best = NaN
-  for (let i = 0; i < tri.count; i++) {
-    if (pu < tri.u0[i]! || pu > tri.u1[i]! || pv < tri.v0[i]! || pv > tri.v1[i]!) continue
-    const au = tri.au[i]!, av = tri.av[i]!, area = tri.area[i]!
-    const w1 = ((pu - au) * tri.cv[i]! - tri.cu[i]! * (pv - av)) / area
-    const w2 = (tri.bu[i]! * (pv - av) - (pu - au) * tri.bv[i]!) / area
-    if (w1 < -1e-6 || w2 < -1e-6 || w1 + w2 > 1 + 1e-6) continue
-    const d = tri.a[i]! + w1 * tri.b[i]! + w2 * tri.c[i]!
-    if (Number.isNaN(best)) best = d
-    else best = sign > 0 ? Math.max(best, d) : Math.min(best, d)
+function bounds(pos: ArrayLike<number>): [number, number][] {
+  const out: [number, number][] = [
+    [Infinity, -Infinity], [Infinity, -Infinity], [Infinity, -Infinity],
+  ]
+  for (let i = 0; i + 2 < pos.length; i += 3) {
+    for (let a = 0; a < 3; a++) {
+      const c = pos[i + a]!
+      const b = out[a]!
+      if (c < b[0]) b[0] = c
+      if (c > b[1]) b[1] = c
+    }
   }
-  return best
+  return out
 }
 
-/** 한 방향에서 볼 때 필요한 것만 편 삼각형 목록. 꼭짓점마다 다시 세지 않으려고 */
-interface Triangles {
-  count: number
-  au: Float64Array; av: Float64Array
-  bu: Float64Array; bv: Float64Array
-  cu: Float64Array; cv: Float64Array
-  area: Float64Array
-  a: Float64Array; b: Float64Array; c: Float64Array
-  u0: Float64Array; u1: Float64Array; v0: Float64Array; v1: Float64Array
-}
-
-function flatten(
-  pos: ArrayLike<number>, index: ArrayLike<number>, axis: number,
-): Triangles {
+/**
+ * 그 축으로 내려다본 실루엣. 칸 색인은 `[c_u × GRID + c_v]`다.
+ *
+ * 앞뒤를 안 가린다 — 그 축에 수직인 면이 하나라도 그 칸을 덮으면 1이다
+ */
+function silhouette(
+  pos: ArrayLike<number>, index: ArrayLike<number>,
+  bb: readonly [number, number][], axis: number,
+): Uint8Array {
   const u = (axis + 1) % 3, v = (axis + 2) % 3
-  const n = Math.floor(index.length / 3)
-  const f = () => new Float64Array(n)
-  const t: Triangles = {
-    count: 0,
-    au: f(), av: f(), bu: f(), bv: f(), cu: f(), cv: f(),
-    area: f(), a: f(), b: f(), c: f(), u0: f(), u1: f(), v0: f(), v1: f(),
-  }
-  for (let k = 0; k + 2 < index.length; k += 3) {
-    const ia = index[k]! * 3, ib = index[k + 1]! * 3, ic = index[k + 2]! * 3
-    const au = pos[ia + u]!, av = pos[ia + v]!
-    const bu = pos[ib + u]! - au, bv = pos[ib + v]! - av
-    const cu = pos[ic + u]! - au, cv = pos[ic + v]! - av
-    const area = bu * cv - cu * bv
+  const [u0, u1] = bb[u]!, [v0, v1] = bb[v]!
+  const hit = new Uint8Array(GRID * GRID)
+  if (!(u1 > u0) || !(v1 > v0)) return hit
+  for (let t = 0; t + 2 < index.length; t += 3) {
+    const a = index[t]! * 3, b = index[t + 1]! * 3, c = index[t + 2]! * 3
+    const area = (pos[b + u]! - pos[a + u]!) * (pos[c + v]! - pos[a + v]!)
+      - (pos[c + u]! - pos[a + u]!) * (pos[b + v]! - pos[a + v]!)
     if (Math.abs(area) < FLAT) continue
-    const i = t.count++
-    t.au[i] = au; t.av[i] = av
-    t.bu[i] = bu; t.bv[i] = bv; t.cu[i] = cu; t.cv[i] = cv
-    t.area[i] = area
-    // 축 좌표를 무게중심 좌표로 바로 섞을 수 있게 차이로 들고 있는다
-    t.a[i] = pos[ia + axis]!
-    t.b[i] = pos[ib + axis]! - pos[ia + axis]!
-    t.c[i] = pos[ic + axis]! - pos[ia + axis]!
-    t.u0[i] = Math.min(au, au + bu, au + cu)
-    t.u1[i] = Math.max(au, au + bu, au + cu)
-    t.v0[i] = Math.min(av, av + bv, av + cv)
-    t.v1[i] = Math.max(av, av + bv, av + cv)
+    const lo = (w: number) => Math.min(pos[a + w]!, pos[b + w]!, pos[c + w]!)
+    const hi = (w: number) => Math.max(pos[a + w]!, pos[b + w]!, pos[c + w]!)
+    const cu0 = Math.max(0, Math.floor(((lo(u) - u0) / (u1 - u0)) * GRID))
+    const cu1 = Math.min(GRID - 1, Math.ceil(((hi(u) - u0) / (u1 - u0)) * GRID))
+    const cv0 = Math.max(0, Math.floor(((lo(v) - v0) / (v1 - v0)) * GRID))
+    const cv1 = Math.min(GRID - 1, Math.ceil(((hi(v) - v0) / (v1 - v0)) * GRID))
+    for (let cv = cv0; cv <= cv1; cv++) {
+      for (let cu = cu0; cu <= cu1; cu++) {
+        const x = u0 + ((cu + 0.5) / GRID) * (u1 - u0)
+        const y = v0 + ((cv + 0.5) / GRID) * (v1 - v0)
+        const w1 = ((x - pos[a + u]!) * (pos[c + v]! - pos[a + v]!)
+          - (pos[c + u]! - pos[a + u]!) * (y - pos[a + v]!)) / area
+        const w2 = ((pos[b + u]! - pos[a + u]!) * (y - pos[a + v]!)
+          - (x - pos[a + u]!) * (pos[b + v]! - pos[a + v]!)) / area
+        if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
+        hit[cu * GRID + cv] = 1
+      }
+    }
   }
-  return t
+  return hit
+}
+
+/**
+ * 판을 붙일 깊이. `(u, v)`마다 **없는 벽이 있었을 자리**를 돌려준다.
+ *
+ * ⚠️ **여기가 두 번 틀렸던 자리다.**
+ *
+ * ① 삼각형을 바운딩 박스의 끝면에 눌러 붙였다. 처마가 벽보다 튀어나온 만큼
+ *    벽 자리의 판이 뒤로 물러나 허공에 뜬다.
+ *
+ * ② 그 자리의 **제일 바깥면**을 찾아 붙였다. 이게 더 나빴다 — 뒤가 통째로
+ *    없는 집은 그 자리에 아무 면도 없어서 **반대편 앞벽**이 잡힌다. 판 꼭짓점
+ *    89,991개 중 **30,349개(33.7%)가 소품 두께의 절반보다 안쪽**에 섰다.
+ *    주인공 집(22번)은 두께 2.75타일에 판이 평균 2.24타일 안쪽 — 150개가
+ *    150개 다 앞벽에 눌러 붙어, 뒤판 뒤로 옆벽만 남아 면이 따로 노는 것으로
+ *    보였다. 이때 잰 "0개"는 **잣대가 구현과 같아서** 나온 값이라 뜻이 없었다.
+ *
+ * 뒷벽 자리의 깊이는 그 자리에 없다 — **옆벽이 갖고 있다.** 옆벽은 이 방향에서
+ * 보면 선이라 실루엣에 아무것도 안 보태므로(`FLAT`에 걸려 빠진다) 아무리 찾아도
+ * 안 나온다. 그래서 다른 두 축에서 본 실루엣을 겹친다:
+ *
+ *   z 깊이(x, y) = S_x(y, z) ∧ S_y(x, z) 를 만족하는 제일 바깥 z
+ *
+ * 세 실루엣이 만드는 **비주얼 헐**이다. 벽 높이에서는 옆벽이 z 범위를 잡아 주고
+ * (→ 뒷벽 평면), 박공 높이에서는 지붕이 잡아 준다(→ 처마 끝). 헐은 늘 물체를
+ * 감싸므로 판이 본체 속으로 파고들 일이 없다
+ */
+function hullDepth(
+  pos: ArrayLike<number>, index: ArrayLike<number>,
+  bb: readonly [number, number][], axis: number, sign: number,
+): (pu: number, pv: number) => number {
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  const [a0, a1] = bb[axis]!, [u0, u1] = bb[u]!, [v0, v1] = bb[v]!
+  // `silhouette(u)`는 `[c_v × GRID + c_a]`, `silhouette(v)`는 `[c_a × GRID + c_u]`다
+  const su = silhouette(pos, index, bb, u)
+  const sv = silhouette(pos, index, bb, v)
+  const flat = a1 - a0
+  const edge = sign > 0 ? a1 : a0
+  const map = new Float64Array(GRID * GRID)
+  for (let cu = 0; cu < GRID; cu++) {
+    for (let cv = 0; cv < GRID; cv++) {
+      let found = -1
+      for (let k = 0; k < GRID; k++) {
+        const ca = sign > 0 ? GRID - 1 - k : k
+        if (su[cv * GRID + ca] === 0) continue
+        if (sv[ca * GRID + cu] === 0) continue
+        found = ca
+        break
+      }
+      // 헐이 비면 그 자리를 아무것도 안 덮은 것이다 — 상자 끝으로 물러선다
+      map[cu * GRID + cv] = found < 0 ? edge : a0 + ((found + 0.5) / GRID) * flat
+    }
+  }
+  const at = (cu: number, cv: number) =>
+    map[Math.min(GRID - 1, Math.max(0, cu)) * GRID + Math.min(GRID - 1, Math.max(0, cv))]!
+  return (pu, pv) => {
+    // 칸 한가운데 격자에서 겹선형으로 읽는다. 칸 값을 그대로 쓰면 판이 계단이
+    // 되고, 그 단차가 `SLAB`보다 커서 겹친 삼각형끼리 앞뒤가 뒤집힌다
+    const fu = u1 > u0 ? ((pu - u0) / (u1 - u0)) * GRID - 0.5 : 0
+    const fv = v1 > v0 ? ((pv - v0) / (v1 - v0)) * GRID - 0.5 : 0
+    const cu = Math.floor(fu), cv = Math.floor(fv)
+    const tu = fu - cu, tv = fv - cv
+    return (at(cu, cv) * (1 - tu) + at(cu + 1, cv) * tu) * (1 - tv)
+      + (at(cu, cv + 1) * (1 - tu) + at(cu + 1, cv + 1) * tu) * tv
+  }
 }
 
 function boxOf(pos: ArrayLike<number>, axis: number): number[][] {
@@ -344,22 +392,16 @@ export function facePlate(
   if (!(depth > 0)) return null
 
   const u = (axis + 1) % 3, v = (axis + 2) % 3
-  const facing = flatten(pos, index, axis)
+  const depthAt = hullDepth(pos, index, bounds(pos), axis, sign)
 
   /**
-   * 그 자리의 **진짜 바깥면**으로 누른다.
-   *
-   * 바운딩 박스 끝으로 누르면 처마가 튀어나온 만큼 벽 자리의 판이 허공에 뜬다.
-   * 그 자리에 아무 면도 없으면(NaN) 그때만 박스 끝으로 떨어진다.
+   * **없는 벽이 있었을 자리**로 누른다 (`hullDepth`).
    *
    * 마지막 항은 원래 깊이 순서를 `SLAB` 두께 안에 담는 것이다 — 한 평면에
    * 완전히 눕히면 겹친 삼각형끼리 깊이가 같아 깜빡인다
    */
-  const flat = (pu: number, pv: number, c: number): number => {
-    const at = outerDepth(facing, sign, pu, pv)
-    const base = Number.isNaN(at) ? (sign > 0 ? hi : lo) : at
-    return base + sign * SLAB * (1 - (c - lo) / depth)
-  }
+  const flat = (pu: number, pv: number, c: number): number =>
+    depthAt(pu, pv) + sign * SLAB * (1 - (c - lo) / depth)
   const position: number[] = []
   const color: number[] = []
   const texcoord: number[] = []

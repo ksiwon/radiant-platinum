@@ -52,28 +52,6 @@ function readProp(index: number, fmt: Fmt): ChunkMesh {
   }
 }
 
-/**
- * 그 (u, v)에서 제일 바깥에 있는 진짜 면의 축 좌표. 아무 면도 없으면 null.
- *
- * 판이 붙어야 할 자리다 — 삼각형을 실제로 훑어 찾는다
- */
-function outerAt(tris: P3[][], at: P3, axis: number, sign: number): number | null {
-  const u = (axis + 1) % 3, v = (axis + 2) % 3
-  let best: number | null = null
-  for (const t of tris) {
-    const [a, b, c] = t as [P3, P3, P3]
-    const area = (b[u] - a[u]) * (c[v] - a[v]) - (c[u] - a[u]) * (b[v] - a[v])
-    if (Math.abs(area) < FLAT) continue
-    const w1 = ((at[u] - a[u]) * (c[v] - a[v]) - (c[u] - a[u]) * (at[v] - a[v])) / area
-    const w2 = ((b[u] - a[u]) * (at[v] - a[v]) - (at[u] - a[u]) * (b[v] - a[v])) / area
-    if (w1 < -1e-6 || w2 < -1e-6 || w1 + w2 > 1 + 1e-6) continue
-    const d = (1 - w1 - w2) * a[axis] + w1 * b[axis] + w2 * c[axis]
-    if (best === null) best = d
-    else best = sign > 0 ? Math.max(best, d) : Math.min(best, d)
-  }
-  return best
-}
-
 function triangles(geo: BufferGeometry): P3[][] {
   const pos = geo.getAttribute('position') as BufferAttribute
   const idx = geo.getIndex()
@@ -297,45 +275,78 @@ maybe('소품 빠진 면', () => {
   })
 
   /**
-   * ⚠️ **판이 건물에서 떨어져 서 있었다.**
+   * ⚠️ **판이 반대편 벽에 눌러 붙어 있었다** — 그리고 그걸 **못 잡는 잣대**를
+   * 썼다. 두 번 다 여기서 갈렸다.
    *
-   * 삼각형을 전부 바운딩 박스의 끝면에 눌러 붙였더니, 처마가 벽보다 튀어나온
-   * 만큼 벽 자리의 판이 허공에 떴다. 실루엣 칸 132만 개를 재면 **51.4%가 진짜
-   * 바깥면에서 0.25타일(4도트) 넘게** 떨어졌고 p90이 1.93타일 · 최대 36타일이었다.
+   * ① 삼각형을 바운딩 박스의 끝면에 눌러 붙였다. 처마가 벽보다 튀어나온 만큼
+   *    벽 자리의 판이 뒤로 물러나 허공에 떴다.
+   * ② 고친다고 "그 자리의 **제일 바깥면**"을 찾아 붙였는데 더 나빴다. 뒤가
+   *    통째로 없는 집은 그 자리에 아무 면도 없어서 **반대편 앞벽**이 잡힌다.
    *
-   * 지금은 칸마다 그 자리의 바깥면을 찾아 거기에 붙인다. 여기서 그것을 다시
-   * 잰다 — 소품 590개 전부에 대고, 판 꼭짓점 하나하나를.
+   * ⚠️ 그런데 그때 쓴 잣대가 **구현과 같은 함수**였다("그 자리의 바깥면에서
+   * 얼마나 뜨는가"). 정의상 0이 나온다 — 0/89,991은 아무것도 증명하지 않았다.
+   *
+   * 그래서 여기서는 **구현을 안 쳐다보는 자로** 잰다: 바운딩 박스의 그 끝에서
+   * 판이 얼마나 안쪽으로 들어갔는가. 뒤가 없는 집의 뒤판이 앞벽에 붙으면 이
+   * 값이 곧 집 두께가 된다.
+   *
+   * 0을 기대할 수는 없다 — 박공은 위로 갈수록 앞뒤가 좁아지고 ㄱ자 건물은 안쪽
+   * 모서리가 실제로 들어가 있다. 그래서 **실측 앵커**로 잡는다
    */
-  it('판이 건물에서 안 뜬다 — 그 자리의 바깥면에 붙는다', () => {
-    let cells = 0, off = 0, worst = 0
+  it('판이 반대편 벽에 안 붙는다', () => {
+    /** 그 축 방향의 [최소, 최대] */
+    const span = (tris: P3[][], axis: number): [number, number] => [
+      Math.min(...tris.flatMap((t) => t.map((q) => q[axis]))),
+      Math.max(...tris.flatMap((t) => t.map((q) => q[axis]))),
+    ]
+    let verts = 0, deep = 0
+    const houses = new Map<string, { mean: number; deep: number; of: number }>()
     for (let id = 0; id < 600; id++) {
       if (!existsSync(resolve(DATA, `props/${String(id)}.bin`))) continue
       const mesh = readProp(id, fmt)
       const src = triangles(mesh.geometry)
-      for (const [axis, sign] of openDirections(mesh)) {
+      for (const dir of openDirections(mesh)) {
+        const [axis, sign] = dir
         const plate = facePlate(mesh, paint(mesh), axis, sign)
         if (!plate) continue
+        const [lo, hi] = span(src, axis)
+        const thick = hi - lo
+        if (!(thick > 0)) continue
         const pos = plate.getAttribute('position') as BufferAttribute
+        let sum = 0, bad = 0
         for (let i = 0; i < pos.count; i++) {
-          const q: P3 = [pos.getX(i), pos.getY(i), pos.getZ(i)]
-          const near = outerAt(src, q, axis, sign)
-          if (near === null) continue
-          cells++
-          // **바깥쪽으로** 뜬 것만 센다. 안으로 눌린 판은 본체에 가려 안 보이고,
-          // 화면에 떠 보이던 것은 건물 **앞에** 선 판이었다
-          const gap = sign * (near - q[axis])
-          worst = Math.max(worst, gap)
-          if (gap > 0.25) off++
+          const d = [pos.getX(i), pos.getY(i), pos.getZ(i)][axis]!
+          const inward = sign > 0 ? hi - d : d - lo
+          sum += inward
+          // 두께의 절반보다 안쪽이면 그건 이쪽 벽이 아니라 저쪽 벽이다
+          if (inward > thick * 0.5) bad++
+        }
+        verts += pos.count
+        deep += bad
+        if (id === 22 || id === 23) {
+          houses.set(`${String(id)}${dirName(dir)}`,
+            { mean: sum / pos.count, deep: bad, of: pos.count })
         }
       }
     }
-    // 재 볼 꼭짓점이 충분히 많아야 뜻이 있다
-    // 재 볼 꼭짓점이 충분히 많아야 뜻이 있다 — 소품 590개에서 이만큼 나온다
-    expect(cells).toBe(89991)
-    // **한 개도 없어야 한다.** 예전 방식은 51.4%였고, 격자 깊이 지도로는 10.8%였다
-    expect(off, `${String(off)}/${String(cells)}이 바깥으로 떴다`).toBe(0)
-    expect(worst).toBeLessThan(0.01)
-  })
+    expect(verts).toBe(89991)
+
+    // 주인공 집(23)과 이웃집(22)의 뒤판. **여기가 화면에서 보이던 자리다** —
+    // 앞벽에 붙으면 뒤판 뒤로 옆벽만 남아 면이 따로 노는 것으로 보인다
+    const a = houses.get('22−Z')!
+    const b = houses.get('23−Z')!
+    // 붙어 있던 때: 22가 평균 2.24타일 안쪽에 150/150, 23이 3.07타일에 291/330
+    expect(a.mean, `22−Z 평균 ${a.mean.toFixed(2)}타일 안쪽`).toBeLessThan(0.4)
+    expect(b.mean, `23−Z 평균 ${b.mean.toFixed(2)}타일 안쪽`).toBeLessThan(0.3)
+    expect(b.deep).toBe(0)
+    expect(a.deep).toBeLessThan(a.of * 0.1)
+
+    // 전수. 붙어 있던 때는 30,349개(33.7%)였다. 남는 것은 박공처럼 위로 갈수록
+    // 좁아지는 자리라 **판이 안쪽에 있는 것이 맞는** 경우다
+    expect(deep, `${String(deep)}/${String(verts)}이 반대편 벽에 붙었다`)
+      .toBeLessThan(verts * 0.08)
+    expect(deep).toBeGreaterThan(0)
+  }, 30_000)
 
   it('모로 선 면은 판에 안 들어간다', () => {
     // 옆벽은 뒤에서 보면 선이라 실루엣에 아무것도 안 보탠다. 주인공 집은

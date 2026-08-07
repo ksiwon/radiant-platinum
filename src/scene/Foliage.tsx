@@ -17,8 +17,9 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, Color, Frustum, IcosahedronGeometry,
-  InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Sphere, Vector3,
+  BufferAttribute, BufferGeometry, Color, DataTexture, Frustum, IcosahedronGeometry,
+  InstancedMesh, Matrix4, MeshBasicMaterial, MeshLambertMaterial, MultiplyBlending,
+  Quaternion, Sphere, Vector3,
 } from 'three'
 import { worldState } from '../state/worldState'
 import { cellX, cellZ, type Cell, type TreeSite } from './plates'
@@ -80,10 +81,19 @@ export const TREE_TOP = BARE + CROWN_H
  * 파이프가 꽂힌 것으로 보인다. 마지막 마디는 잎 속으로 들어가 잎과 줄기 사이가
  * 뚫리지 않게 한다. 조금씩 휘어 두는 것은 그루마다 Y축으로 아무렇게나 돌려
  * 세우기 때문이다 — 곧은 기둥이면 돌려도 다 같아 보인다
+ *
+ * **첫 마디가 땅 밑이다.** 밑동을 땅 높이에 딱 맞춰 끊어 두면 안 된다:
+ * 줄기는 뚜껑이 없는 통이라 한쪽이 조금만 떠도 속이 들여다보인다. 밑동 둘레의
+ * 땅이 세운 자리보다 낮은 나무가 실측 122그루(0.05타일 넘게 116 · 최대 7타일)라
+ * 드문 일이긴 하지만, 묻어 두면 그 122그루가 통째로 없어지는 대신 잃는 것이 없다.
+ *
+ * 뿌리목은 두 마디로 나눈다. 0.26에서 0.165로 한 번에 좁히면 29° 원뿔이 되어
+ * 밑동에 **깃 하나가 걸린 것**처럼 각이 선다
  */
 export const TRUNK: readonly (readonly [number, number, number])[] = [
-  [0.00, 0.260, 0.000],
-  [0.17, 0.165, 0.015],
+  [-0.10, 0.315, 0.000],
+  [0.05, 0.245, 0.004],
+  [0.22, 0.172, 0.018],
   [0.62, 0.135, 0.050],
   [1.55, 0.100, 0.110],
 ]
@@ -252,7 +262,8 @@ function trunkGeometry(rgb: number, far = false): BufferGeometry {
   const base = new Color(rgb)
   const top = TRUNK[TRUNK.length - 1]![0]
   const shade = (h: number): Color =>
-    new Color().copy(base).multiplyScalar(TRUNK_SHADE + (1 - TRUNK_SHADE) * Math.min(1, h / top))
+    new Color().copy(base).multiplyScalar(
+      TRUNK_SHADE + (1 - TRUNK_SHADE) * Math.min(1, Math.max(0, h) / top))
   const ring = (m: readonly [number, number, number], k: number): [number, number, number] => {
     const a = (k / sides) * Math.PI * 2
     return [m[2] + Math.cos(a) * m[1], m[0], Math.sin(a) * m[1]]
@@ -284,15 +295,76 @@ function trunkGeometry(rgb: number, far = false): BufferGeometry {
 }
 
 /**
- * 한 그루의 모양. 가까운 것은 삼각형 156개(줄기 36 + 잎 120), 먼 것은 66개다.
+ * 밑동에 지는 **접지 그림자**. 폭·중심의 어두운 정도 (나무 반지름 배수).
+ *
+ * ⚠️ **그림자 맵으로는 이 자리가 절대 안 어두워진다.** 태양이 (24, 42, 18)이라
+ * 고도 54.5°인데, 우듬지 한가운데가 밑동에서 2.3r 위에 있으므로 그 그림자는
+ * 밑동에서 2.3/tan54.5° = **1.6r 옆에** 진다. 발밑은 늘 훤하다 — 그래서 나무가
+ * 땅에 심긴 것이 아니라 얹혀 있는 것으로 보인다.
+ *
+ * 이건 태양 그림자가 아니라 **가려짐(앰비언트 오클루전)**이다. 잎이 하늘을
+ * 막아서 밑동 둘레에 반구광이 덜 닿는 것이고, 방향을 안 타므로 밑동에 그대로
+ * 맺힌다. 그루마다 크기가 다르고(행렬이 그대로 곱해진다) 가장자리에서 풀린다 —
+ * 원작이 깔았던 **크기 무관한 하드한 동그라미**(`tshadow`)와 다른 점이 그것이다
+ */
+export const CONTACT_R = 1.15
+export const CONTACT_DARK = 0.5
+/** 땅에서 띄우는 높이. 0이면 지형과 같은 깊이라 얼룩진다 */
+const CONTACT_Y = 0.02
+
+/**
+ * 가운데가 어둡고 가장자리에서 1(그대로)이 되는 회색 원.
+ *
+ * 곱하기로 섞으므로 1은 "안 건드림"이다. 알파를 안 쓰는 이유는 곱하기 혼합이
+ * 알파를 안 보기 때문이다 — 네 귀퉁이는 값이 1이라 사각형인 것이 안 보인다
+ */
+export function contactTexture(): DataTexture {
+  const N = 64
+  const data = new Uint8Array(N * N * 4)
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const dx = ((x + 0.5) / N) * 2 - 1, dy = ((y + 0.5) / N) * 2 - 1
+      // 제곱으로 풀어야 가장자리가 선으로 안 남는다 — 1차로 풀면 테두리가 보인다
+      const k = Math.max(0, 1 - Math.hypot(dx, dy))
+      const v = Math.round(255 * (1 - CONTACT_DARK * k * k))
+      const o = (y * N + x) * 4
+      data[o] = v; data[o + 1] = v; data[o + 2] = v; data[o + 3] = 255
+    }
+  }
+  const tex = new DataTexture(data, N, N)
+  tex.needsUpdate = true
+  return tex
+}
+
+/** 밑동에 까는 판 한 장. 그루당 삼각형 2개다 */
+export function contactGeometry(): BufferGeometry {
+  const r = CONTACT_R, y = CONTACT_Y
+  const geo = new BufferGeometry()
+  geo.setAttribute('position', new BufferAttribute(new Float32Array([
+    -r, y, -r, r, y, -r, r, y, r,
+    -r, y, -r, r, y, r, -r, y, r,
+  ]), 3))
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array([
+    0, 0, 1, 0, 1, 1,
+    0, 0, 1, 1, 0, 1,
+  ]), 2))
+  const normal = new Float32Array(18)
+  for (let i = 1; i < 18; i += 3) normal[i] = 1
+  geo.setAttribute('normal', new BufferAttribute(normal, 3))
+  geo.computeBoundingSphere()
+  return geo
+}
+
+/**
+ * 한 그루의 모양. 가까운 것은 삼각형 168개(줄기 48 + 잎 120), 먼 것은 66개다.
  *
  * ⚠️ **먼 것도 잎 덩이 셋을 그대로 둔다.** 큰 덩이 하나로 줄이면 삼각형은 26개가
  * 되지만 **실루엣이 바뀐다** — 30타일이면 나무 하나가 화면에서 180픽셀이라
  * 윤곽이 달라지는 것이 보인다. 줄이는 것은 세분(80면→20면)과 줄기 단면(6각→3각)
  * 쪽이다. 그건 그 거리에서 안 읽힌다.
  *
- * 짙은 숲이 창 하나에 4,628그루까지 서는데(떡잎마을 일대 실측) 그루당 156이면
- * 72만이다. 다만 **줄이는 것의 대부분은 LOD가 아니라 프러스텀 컬링**이다 —
+ * 짙은 숲이 창 하나에 4,628그루까지 서는데(떡잎마을 일대 실측) 그루당 168이면
+ * 78만이다. 다만 **줄이는 것의 대부분은 LOD가 아니라 프러스텀 컬링**이다 —
  * 카메라가 한 방향만 보므로 실제로 화면에 드는 것은 15~30%다
  */
 export function treeGeometry(leaf: number[], trunk: number, far = false): BufferGeometry {
@@ -390,6 +462,20 @@ export const CULL_MARGIN = 4
 const shapes = new Map<string, BufferGeometry>()
 /** 색은 지오메트리의 정점 색이 나르므로 재질은 한 벌이면 된다 */
 const leafMaterial = new MeshLambertMaterial({ vertexColors: true })
+/** 접지 그림자는 나무 종류를 안 탄다 — 지오메트리도 재질도 한 벌뿐이다 */
+let contactShape: BufferGeometry | null = null
+let contactPaint: MeshBasicMaterial | null = null
+function contact(): [BufferGeometry, MeshBasicMaterial] {
+  contactShape ??= contactGeometry()
+  contactPaint ??= new MeshBasicMaterial({
+    map: contactTexture(),
+    // **곱하기다.** 땅을 어둡게 만드는 것이지 그 위에 회색을 얹는 것이 아니다.
+    // 곱하기는 순서를 안 타므로 그루끼리 정렬할 필요도 없다.
+    // 안개는 끈다 — 안개가 이 값을 안개색 쪽으로 끌면 곱하는 수가 달라진다
+    blending: MultiplyBlending, transparent: true, depthWrite: false, fog: false,
+  })
+  return [contactShape, contactPaint]
+}
 
 const offset = new Matrix4()
 const scaled = new Matrix4()
@@ -437,6 +523,11 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
       mesh.count = 0
       return mesh
     }
+    // 밑동의 접지 그림자. LOD를 안 나눈다 — 판 한 장이라 줄일 것이 없다
+    const [shape, material] = contact()
+    const shade = new InstancedMesh(shape, material, matrices.length)
+    shade.frustumCulled = false
+    shade.count = 0
     // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
     // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
     const spots = matrices.map((m) => {
@@ -444,7 +535,7 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
       return p.setY(p.y + CROWN_Y * new Vector3().setFromMatrixScale(m).x)
     })
     const radius = matrices.map((m) => TREE_SPHERE * new Vector3().setFromMatrixScale(m).x)
-    return { key: g.key, near: make(false), far: make(true), matrices, spots, radius }
+    return { key: g.key, near: make(false), far: make(true), shade, matrices, spots, radius }
   }), [groups, ground])
 
   /**
@@ -462,7 +553,7 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
     viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     frustum.setFromProjectionMatrix(viewProj)
     for (const g of meshes) {
-      let n = 0, f = 0
+      let n = 0, f = 0, s = 0
       for (let i = 0; i < g.spots.length; i++) {
         const spot = g.spots[i]!
         sphere.set(spot, g.radius[i]! + CULL_MARGIN)
@@ -476,11 +567,14 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
         if (k < 1) scaled.scale(shrink.setScalar(k))
         if (distance < LOD_DISTANCE) g.near.setMatrixAt(n++, scaled)
         else g.far.setMatrixAt(f++, scaled)
+        g.shade.setMatrixAt(s++, scaled)
       }
       g.near.count = n
       g.far.count = f
+      g.shade.count = s
       g.near.instanceMatrix.needsUpdate = true
       g.far.instanceMatrix.needsUpdate = true
+      g.shade.instanceMatrix.needsUpdate = true
     }
   })
 
@@ -488,15 +582,16 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
   // 주므로 두면 청크를 넘을 때마다 GPU 버퍼가 쌓인다. 지오메트리와 재질은
   // 공유하는 것이라 여기서 안 지운다
   useEffect(() => () => {
-    for (const g of meshes) { g.near.dispose(); g.far.dispose() }
+    for (const g of meshes) { g.near.dispose(); g.far.dispose(); g.shade.dispose() }
   }, [meshes])
 
   return (
     <group>
-      {meshes.map(({ key, near, far }) => (
+      {meshes.map(({ key, near, far, shade }) => (
         <group key={key}>
           <primitive object={near} />
           <primitive object={far} />
+          <primitive object={shade} />
         </group>
       ))}
     </group>
