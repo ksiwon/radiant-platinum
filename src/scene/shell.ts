@@ -343,6 +343,127 @@ export interface AtlasRect {
 }
 
 /**
+ * 그 판을 **옆벽에서 베껴 온다**.
+ *
+ * ⚠️ 눌러 붙인 삼각형이 제 UV를 그대로 들고 가면 **앞벽이 뒤에 찍힌다.**
+ * 주인공 집은 뒤가 통째로 없어서 뒷판이 앞벽 삼각형으로 만들어지는데, 그 앞벽에는
+ * 문(`t1_door1` 4삼각형)과 창이 있다 — 뒤로 돌아가면 문이 하나 더 있는 집이 된다.
+ *
+ * 뒷벽 자리에 있어야 할 그림은 **옆벽이 갖고 있다.** 옆벽의 UV는 (y, z)의 함수라,
+ * 뒷면 자리(z = 뒤끝)에서 값을 그대로 읽을 수 있다. 가로로는 옆벽의 법선 방향인데
+ * 그 방향의 기울기를 0으로 두면 **모서리에서 본 그 줄무늬가 뒤로 이어진다** —
+ * 나무 벽은 나무 벽대로, 기단은 기단대로 높이가 맞는다.
+ *
+ * 지붕은 안 바꾼다. 위를 보는 삼각형은 제 UV가 곧 지붕 그림이다
+ */
+interface WallSource {
+  group: number
+  /** 기준 꼭짓점과 그 자리의 UV */
+  p: [number, number, number]
+  uv: [number, number]
+  /** UV 기울기. 그 면의 법선 방향 성분이 0이라 옆으로 이어진다 */
+  gu: [number, number, number]
+  gv: [number, number, number]
+  /** 판 평면에서의 자리. 어느 것이 가까운지 이걸로 잰다 */
+  cu: number
+  cv: number
+}
+
+/** 옆벽으로 칠 만큼 세로인가. 지붕(위를 봄)과 바닥은 여기서 빠진다 */
+const WALLISH = 0.5
+/** 그 축에 수직인가 — 뒷판에서 보면 선으로 보이는 면이 옆벽이다 */
+const PERPENDICULAR = 0.3
+
+/**
+ * **문은 벽이 아니다.**
+ *
+ * ⚠️ 세로로 선 면을 다 옆벽으로 치면 안 된다. 주인공 집(22)의 문(`t1_door1`)은
+ * 넉 장 중 **두 장이 옆을 본다** — 그러면 그 문이 뒷판의 그림 원본이 되어
+ * 뒤에도 문이 생긴다. 실제로 그렇게 여섯 꼭짓점이 문 칸에 떨어졌다.
+ *
+ * 갈라 주는 것은 **넓이**다. 서브메시별 옆벽 넓이를 재면 문과 벽 사이가 훤히
+ * 벌어진다 (제일 큰 것 대비):
+ *
+ *   22  t1_h01 100% · t1_door1 **1%**
+ *   23  t1_s01_1 100% · t1_s01_2 81%·59% · t1_door1 **2%**
+ *   8   gymb 100% · gyma 52% · (텍스처 없음) 7%
+ *   227 sindenC 100% · sindenC 18%
+ *
+ * 문은 1~2%, 진짜 벽은 18% 위다. 문턱을 10%로 둔다
+ */
+const MINOR_WALL = 0.1
+
+/** 3×3 연립방정식. 행이 `rows`, 우변이 `rhs` */
+function solve3(
+  rows: readonly (readonly [number, number, number])[], rhs: readonly [number, number, number],
+): [number, number, number] | null {
+  const [r0, r1, r2] = rows as [
+    readonly [number, number, number], readonly [number, number, number],
+    readonly [number, number, number],
+  ]
+  const det = r0[0] * (r1[1] * r2[2] - r1[2] * r2[1])
+    - r0[1] * (r1[0] * r2[2] - r1[2] * r2[0])
+    + r0[2] * (r1[0] * r2[1] - r1[1] * r2[0])
+  if (Math.abs(det) < 1e-9) return null
+  const col = (k: number): [number, number, number] => {
+    const m = [[...r0], [...r1], [...r2]] as number[][]
+    for (let i = 0; i < 3; i++) m[i]![k] = rhs[i]!
+    return [
+      m[0]![0]! * (m[1]![1]! * m[2]![2]! - m[1]![2]! * m[2]![1]!)
+      - m[0]![1]! * (m[1]![0]! * m[2]![2]! - m[1]![2]! * m[2]![0]!)
+      + m[0]![2]! * (m[1]![0]! * m[2]![1]! - m[1]![1]! * m[2]![0]!), 0, 0]
+  }
+  return [col(0)[0] / det, col(1)[0] / det, col(2)[0] / det]
+}
+
+/** 이 소품의 옆벽들. 뒷판이 여기서 그림을 베껴 온다 */
+function wallSources(
+  mesh: ChunkMesh, paint: ShellPaint, axis: number,
+  pos: ArrayLike<number>, uv: ArrayLike<number> | undefined,
+): WallSource[] {
+  if (!uv) return []
+  const index = mesh.geometry.getIndex()!.array
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  const out: WallSource[] = []
+  const area = new Map<number, number>()
+  mesh.groups.forEach(([, start, count], group) => {
+    if (paint.colors[group] === null || paint.colors[group] === undefined) return
+    for (let t = 0; t < count; t += 3) {
+      const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
+      const ap: [number, number, number] = [pos[a * 3]!, pos[a * 3 + 1]!, pos[a * 3 + 2]!]
+      const ab: [number, number, number] = [
+        pos[b * 3]! - ap[0], pos[b * 3 + 1]! - ap[1], pos[b * 3 + 2]! - ap[2]]
+      const ac: [number, number, number] = [
+        pos[c * 3]! - ap[0], pos[c * 3 + 1]! - ap[1], pos[c * 3 + 2]! - ap[2]]
+      const n: [number, number, number] = [
+        ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]]
+      const len = Math.hypot(...n)
+      if (len < 1e-9) continue
+      // 옆벽 — 이 축에 수직이고(뒤에서 보면 선이다) 세로로 서 있다
+      if (Math.abs(n[axis]!) / len >= PERPENDICULAR) continue
+      if (Math.abs(n[1]) / len >= WALLISH) continue
+      const rows = [ab, ac, n] as const
+      const gu = solve3(rows, [uv[b * 2]! - uv[a * 2]!, uv[c * 2]! - uv[a * 2]!, 0])
+      const gv = solve3(rows, [
+        uv[b * 2 + 1]! - uv[a * 2 + 1]!, uv[c * 2 + 1]! - uv[a * 2 + 1]!, 0])
+      if (!gu || !gv) continue
+      area.set(group, (area.get(group) ?? 0) + len / 2)
+      out.push({
+        group,
+        p: ap,
+        uv: [uv[a * 2]!, uv[a * 2 + 1]!],
+        gu, gv,
+        cu: ap[u]! + (ab[u]! + ac[u]!) / 3,
+        cv: ap[v]! + (ab[v]! + ac[v]!) / 3,
+      })
+    }
+  })
+  if (out.length === 0) return out
+  const most = Math.max(...area.values())
+  return out.filter((w) => (area.get(w.group) ?? 0) >= most * MINOR_WALL)
+}
+
+/**
  * 아틀라스 좌표로 고친 UV.
  *
  * 원작 UV는 **칸마다 0~1이고 반복**한다(`sliceTexture`가 `wrapS/T`로 흉내 낸다).
@@ -355,9 +476,15 @@ function atlasUv(
   uv: ArrayLike<number> | undefined, vertex: number, rect: AtlasRect | null,
 ): [number, number] {
   if (!uv || !rect) return [0, 0]
+  return atlasUvAt(uv[vertex * 2] ?? 0, uv[vertex * 2 + 1] ?? 0, rect)
+}
+
+/** 같은 일을 UV 값에서 바로. 옆벽에서 베껴 온 UV가 이쪽으로 온다 */
+function atlasUvAt(u: number, v: number, rect: AtlasRect | null): [number, number] {
+  if (!rect) return [0, 0]
   const frac = (t: number): number => t - Math.floor(t)
-  const su = frac(uv[vertex * 2] ?? 0)
-  const sv = frac(uv[vertex * 2 + 1] ?? 0)
+  const su = frac(u)
+  const sv = frac(v)
   const inset = 0.5
   return [
     (rect.x + inset + su * (rect.w - 2 * inset)) / rect.sheetW,
@@ -405,18 +532,45 @@ export function facePlate(
   const position: number[] = []
   const color: number[] = []
   const texcoord: number[] = []
+  // 눌러 붙인 앞벽이 제 UV를 들고 가면 문과 창이 뒤에 찍힌다. 옆벽에서 베껴 온다
+  const walls = wallSources(mesh, paint, axis, pos, uv)
   mesh.groups.forEach(([, start, count], group) => {
     const rect = paint.rects[group]
     const rgb = paint.colors[group]
     // 오려 낸 그림은 판을 안 만든다 — 판 한 장짜리 울타리에 없던 널판이 생긴다
     if (rgb === null || rgb === undefined) return
-    const r = ((rgb >> 16) & 255) / 255, g = ((rgb >> 8) & 255) / 255, b = (rgb & 255) / 255
     for (let t = 0; t < count; t += 3) {
       const tri = [index[start + t]!, index[start + t + 1]!, index[start + t + 2]!]
       const p = tri.map((k) => [pos[k * 3]!, pos[k * 3 + 1]!, pos[k * 3 + 2]!] as const)
       const area = (p[1]![u] - p[0]![u]) * (p[2]![v] - p[0]![v])
         - (p[2]![u] - p[0]![u]) * (p[1]![v] - p[0]![v])
       if (Math.abs(area) < FLAT) continue
+
+      // 이 삼각형이 벽이면 옆벽에서, 지붕이면 제 것 그대로. 지붕은 위에서 봐야
+      // 뜻이 있는 그림이라 옮겨 오면 오히려 틀린다
+      const nx = (p[1]![1] - p[0]![1]) * (p[2]![2] - p[0]![2])
+        - (p[1]![2] - p[0]![2]) * (p[2]![1] - p[0]![1])
+      const ny = (p[1]![2] - p[0]![2]) * (p[2]![0] - p[0]![0])
+        - (p[1]![0] - p[0]![0]) * (p[2]![2] - p[0]![2])
+      const nz = (p[1]![0] - p[0]![0]) * (p[2]![1] - p[0]![1])
+        - (p[1]![1] - p[0]![1]) * (p[2]![0] - p[0]![0])
+      const nl = Math.hypot(nx, ny, nz)
+      let from: WallSource | null = null
+      if (nl > 1e-9 && Math.abs(ny) / nl < WALLISH && walls.length > 0) {
+        const cu = (p[0]![u] + p[1]![u] + p[2]![u]) / 3
+        const cv = (p[0]![v] + p[1]![v] + p[2]![v]) / 3
+        let far = Infinity
+        for (const w of walls) {
+          const d = (w.cu - cu) ** 2 + (w.cv - cv) ** 2
+          if (d < far) { far = d; from = w }
+        }
+      }
+      const useRect = from ? paint.rects[from.group] ?? rect : rect
+      const useRgb = from ? paint.colors[from.group] ?? rgb : rgb
+      const r = ((useRgb >> 16) & 255) / 255
+      const g = ((useRgb >> 8) & 255) / 255
+      const b = (useRgb & 255) / 255
+
       // **그쪽을 보게 감는다.** 원작의 감는 방향을 그대로 물려받으면 판이 반대를
       // 보고 있어서, 면은 다 있는데 그 방향에서는 하나도 안 보인다
       const order = area * sign > 0 ? [0, 1, 2] : [0, 2, 1]
@@ -426,7 +580,15 @@ export function facePlate(
         out[axis] = flat(q[u], q[v], q[axis])
         position.push(out[0]!, out[1]!, out[2]!)
         color.push(r, g, b)
-        texcoord.push(...atlasUv(uv, tri[j]!, rect))
+        if (from) {
+          // 눌러 붙인 **그 자리**에서 옆벽의 UV를 읽는다. 법선 방향 기울기가
+          // 0이라 모서리에서 본 줄무늬가 그대로 이어진다
+          const dx = out[0]! - from.p[0], dy = out[1]! - from.p[1], dz = out[2]! - from.p[2]
+          texcoord.push(...atlasUvAt(
+            from.uv[0] + from.gu[0] * dx + from.gu[1] * dy + from.gu[2] * dz,
+            from.uv[1] + from.gv[0] * dx + from.gv[1] * dy + from.gv[2] * dz,
+            useRect))
+        } else texcoord.push(...atlasUv(uv, tri[j]!, rect))
       }
     }
   })

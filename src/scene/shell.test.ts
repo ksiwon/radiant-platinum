@@ -22,6 +22,7 @@ const present = existsSync(resolve(DATA, 'props/23.bin'))
 const maybe = present ? describe : describe.skip
 
 interface Fmt { posScale: number; vertexBytes: number }
+
 type P3 = [number, number, number]
 
 /** 소품 파일 하나를 `ChunkMesh` 모양으로 읽는다 */
@@ -38,12 +39,15 @@ function readProp(index: number, fmt: Fmt): ChunkMesh {
   const head = 8 + metaLen + ((4 - (metaLen % 4)) % 4)
   const n = meta.verts
   const position = new Float32Array(n * 3)
+  const uv = new Float32Array(n * 2)
   for (let i = 0; i < n; i++) {
     const o = head + i * fmt.vertexBytes
     for (let a = 0; a < 3; a++) position[i * 3 + a] = view.getInt16(o + a * 2, true) / fmt.posScale
+    for (let a = 0; a < 2; a++) uv[i * 2 + a] = view.getFloat32(o + 8 + a * 4, true)
   }
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(position, 3))
+  geometry.setAttribute('uv', new BufferAttribute(uv, 2))
   geometry.setIndex([...new Uint16Array(ab, head + n * fmt.vertexBytes, meta.indices)])
   return {
     geometry,
@@ -347,6 +351,82 @@ maybe('소품 빠진 면', () => {
       .toBeLessThan(verts * 0.08)
     expect(deep).toBeGreaterThan(0)
   }, 30_000)
+
+
+  /**
+   * ⚠️ **눌러 붙인 앞벽이 제 UV를 들고 가면 문이 뒤에 찍힌다.**
+   *
+   * 주인공 집(23)은 뒤가 통째로 없어서 뒷판이 앞벽 삼각형으로 만들어진다. 그
+   * 앞벽에 문(`t1_door1`, 서브메시 4)과 창이 있으니, 그대로 눌러 붙이면 뒤로
+   * 돌아갔을 때 **문이 하나 더 있는 집**이 된다.
+   *
+   * 여기서는 그림칸을 서브메시마다 따로 주고 **뒷판의 UV가 어느 칸에 떨어지는지**
+   * 센다. 문 칸에 한 점도 안 떨어져야 한다
+   */
+  it('뒷판에 앞문이 안 찍힌다 — 그림은 옆벽에서 온다', () => {
+    const SHEET = 64
+    const cell = (g: number) => ({ x: g * 8, y: 0, w: 8, h: 8, sheetW: SHEET, sheetH: 8 })
+    for (const id of [22, 23, 236]) {
+      const mesh = readProp(id, fmt)
+      const marked: ShellPaint = {
+        colors: mesh.materials.map(() => 0x8a7f6a),
+        rects: mesh.materials.map((_, g) => cell(g)),
+      }
+      const door = mesh.materials.findIndex((m) => m.tex === 't1_door1')
+      expect(door, `소품 ${String(id)}에 문이 있어야 이 시험에 뜻이 있다`).toBeGreaterThanOrEqual(0)
+
+      const plate = facePlate(mesh, marked, 2, -1)!
+      const uv = plate.getAttribute('uv') as BufferAttribute
+      const inCell = new Map<number, number>()
+      for (let i = 0; i < uv.count; i++) {
+        const g = Math.floor(uv.getX(i) * SHEET / 8)
+        inCell.set(g, (inCell.get(g) ?? 0) + 1)
+      }
+      // 문 칸은 비어 있다
+      expect(inCell.get(door), `소품 ${String(id)} 뒷판에 문 그림`).toBeUndefined()
+      // 그리고 뭔가는 들어 있어야 한다 — 전부 0이면 위 조건이 공허하다
+      expect(uv.count).toBeGreaterThan(0)
+    }
+  })
+
+  it('지붕은 제 그림을 지킨다 — 옆벽 그림을 지붕에 바르면 그게 더 틀렸다', () => {
+    // 소품 23은 서브메시 3(`t1_s01_1`)의 54%가 위를 보는 지붕이다. 그 삼각형은
+    // 눌러 붙여도 제 UV 그대로여야 한다
+    const mesh = readProp(23, fmt)
+    const SHEET = 64
+    const marked: ShellPaint = {
+      colors: mesh.materials.map(() => 0x8a7f6a),
+      rects: mesh.materials.map((_, g) => ({ x: g * 8, y: 0, w: 8, h: 8, sheetW: SHEET, sheetH: 8 })),
+    }
+    // 위(+Y)에서 본 판 — 여기 들어가는 것은 지붕이다
+    const plate = facePlate(mesh, marked, 1, 1)!
+    const uv = plate.getAttribute('uv') as BufferAttribute
+    const cells = new Set<number>()
+    for (let i = 0; i < uv.count; i++) cells.add(Math.floor(uv.getX(i) * SHEET / 8))
+    // 위를 보는 삼각형은 저마다 제 칸에 그대로 남는다 — 0(구운 그림자)·
+    // 2(`t1_s01_2`의 위쪽 16%)·3(지붕)
+    expect([...cells].sort((a, b) => a - b)).toEqual([0, 2, 3])
+  })
+
+  it('베껴 올 옆벽이 없으면 제 UV 그대로다', () => {
+    // 삼각형 하나짜리는 옆벽이 없다 — 그때는 예전 그대로 눌러 붙인다
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 1,
+    ]), 3))
+    geo.setAttribute('uv', new BufferAttribute(new Float32Array([0.25, 0.5, 1, 0, 0.5, 1]), 2))
+    geo.setIndex([0, 1, 2])
+    const mesh: ChunkMesh = {
+      geometry: geo,
+      materials: [{ tex: 'w', pal: '', rep: 0, a: 31, f: 0 }],
+      groups: [[0, 0, 3]],
+    }
+    const rect = { x: 0, y: 0, w: 8, h: 8, sheetW: 8, sheetH: 8 }
+    const plate = facePlate(mesh, { colors: [0x808080], rects: [rect] }, 2, -1)!
+    const uv = plate.getAttribute('uv') as BufferAttribute
+    // 첫 꼭짓점의 u가 0.25 그대로 (반 픽셀 안으로 당긴 값)
+    expect(uv.getX(0)).toBeCloseTo((0.5 + 0.25 * 7) / 8, 10)
+  })
 
   it('모로 선 면은 판에 안 들어간다', () => {
     // 옆벽은 뒤에서 보면 선이라 실루엣에 아무것도 안 보탠다. 주인공 집은
