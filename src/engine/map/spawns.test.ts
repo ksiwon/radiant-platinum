@@ -6,16 +6,16 @@
 //
 // 그래서 20곳을 전부 격자에 대고 재 본다. 좌표를 옮기다 하나만 어긋나도 여기서
 // 걸린다 — 눈으로는 못 보는 종류다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import { spawnAt, spawnTable, spawnWarp, flyUnlockedAt, type SpawnPoint } from './spawns'
 import { world, type MapHeader } from './world'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'spawns.json')) && existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('spawns.json', 'matrices/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 maybe('스폰 지점', () => {

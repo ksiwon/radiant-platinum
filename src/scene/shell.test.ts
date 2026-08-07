@@ -17,10 +17,10 @@ import {
   type ShellPaint,
 } from './shell'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
+import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'props/23.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('props/23.bin')
 
 interface Fmt { posScale: number; vertexBytes: number }
 

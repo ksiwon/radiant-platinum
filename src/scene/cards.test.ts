@@ -3,7 +3,7 @@
 // 겁나는 것은 **없던 것을 만드는 것**이다. 울타리 모양을 짐작해 세우면 그건
 // 우리 울타리다. 여기서 보는 것은 옆면이 **그림의 실루엣을 그대로 따라가는가**
 // 하나뿐이다 — 말뚝 사이 빈틈이 빈틈으로 남는가.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
@@ -12,10 +12,10 @@ import { cardShells, fitAffine } from './cards'
 import { cutoutGroups, splitFoliage } from './plates'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import type { MatrixMeta } from '../engine/map/grid'
+import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'chunks/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('chunks/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 interface Fmt { posScale: number; vertexBytes: number; count: number }

@@ -3,14 +3,14 @@
 // 무대의 임시 도형 색이라 "틀려도 안 죽는" 자리처럼 보이지만, 색 번호를 잘못
 // 읽으면 화면 전체가 조용히 어긋난다 — 그리고 자리표시자일수록 눈으로는
 // 안 잡힌다. 원작이 정해 둔 열 가지 색을 대조로 고정한다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { BODY_COLORS, bodyColor } from './bodyColor'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'species.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('species.json')
 
 describe('몸 색 표', () => {
   it('4세대 색 분류 열 가지다', () => {

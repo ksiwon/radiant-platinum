@@ -7,14 +7,14 @@
 // 특히 조심할 것: 이 데이터는 "그럴듯하게 틀리기" 쉽다. 초기화 스크립트 549개를
 // 코드로 잘못 읽었을 때도 아무 예외 없이 통과했었다 — 바이트 열이 우연히 유효한
 // 명령으로 읽혔을 뿐이었다. 그래서 명령 길이를 실제로 따라가 본다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { scriptFileSchema } from './schema'
+import { withData } from './romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.json')) && existsSync(resolve(DATA, 'scripts.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json', 'scripts.bin')
 
 /** `ScriptEntryEnd` — 진입점 표의 끝 (있는 파일에만 있다) */
 const ENTRY_TABLE_END = 0xfd13

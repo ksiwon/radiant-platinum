@@ -2,16 +2,16 @@
 //
 // 471개를 다섯 틀로 가른다. 지어낸 분류가 아니라 롬의 기술 데이터가 정하는
 // 것이므로, 실제 표로 갈라 보고 알려진 기술이 제 틀에 가는지 본다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { MOVE_FRAMES, TARGET_SELF, archetypeFor, type Archetype } from './vfx'
 import { TYPE_COLORS } from './typeColor'
 import type { Move } from '../../data/schema'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'moves.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('moves.json')
 
 maybe('기술 연출 틀', () => {
   const raw = JSON.parse(readFileSync(resolve(DATA, 'moves.json'), 'utf8')) as { moves: Move[] }

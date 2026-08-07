@@ -5,7 +5,7 @@
 //
 // 막는 것은 쉽지만 **막아도 될 만큼 막는가**가 어렵다. 여기서 재는 것은 그거다:
 // 막고 나서 걸어 닿는 칸이 얼마나 줄고, 그 줄어든 자리가 정말 비전머신 뒤인가.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
@@ -13,10 +13,10 @@ import { isSurfable } from '../map/zone'
 import { world, type EventFile, type MapHeader } from '../map/world'
 import { OBSTACLE_MOVE, STRENGTH_BOULDER, isObstacle, obstacleAt, pushBoulder } from './obstacles'
 import { npcActors, type NpcActor } from './npcs'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** 배치표의 NPC 하나를 살아 있는 것처럼 만든다 */

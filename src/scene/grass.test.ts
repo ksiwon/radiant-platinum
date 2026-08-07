@@ -3,17 +3,17 @@
 // 여기서 겁나는 것은 반대다. 잔디·길바닥까지 포기가 서면 온 맵이 털밭이 된다.
 // 자리를 그림이 아니라 타일 거동값에서 뽑는 이유가 그것이라, 그 값이 실제로
 // 인카운터가 도는 칸과 같은 칸인지 확인한다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField } from '../engine/map/height'
 import { isEncounterTile, isGrassTile } from '../engine/battle/encounter'
 import { grassSpots } from './Grass'
+import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** Buffer는 공유 풀에서 잘라 온 것이라 그대로 뷰를 얹으면 엉뚱한 데이터를 읽는다 */

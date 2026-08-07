@@ -13,7 +13,7 @@
 // 그래서 여기 `run`은 **프레임 고리**다 — 원작의 한 프레임과 같은 모양이다.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { parseScriptMeta, countEntries, entryOffset, fileBytes, resolveScript } from './data'
 import { buildCommands } from './commands'
 import { ScriptContext, ScriptError, type CommandFn } from './context'
@@ -22,10 +22,11 @@ import { MessageSlots } from './text'
 import { VarStore, VAR_RESULT } from './vars'
 import { FieldWorld, MENU_NO, type FieldServices } from './world'
 import { addItem, canFit, emptyBag, quantity, removeItem } from '../bag/bag'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'scripts.json')) && existsSync(resolve(DATA, 'scripts.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json', 'scripts.bin')
 const MENU_ENTRIES_FILE = resolve(DATA, 'dialogue/ko/361.json')
 const ITEMS_FILE = resolve(DATA, 'items.json')
 

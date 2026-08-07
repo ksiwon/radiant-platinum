@@ -107,4 +107,22 @@ export default tseslint.config(
       'no-restricted-imports': 'off',
     },
   },
+  {
+    // 자료가 없어서 건너뛰는 것은 `data/romData.testkit` 한 군데를 거친다.
+    // ⚠️ 손으로 `describe.skip`을 적으면 `PT_REQUIRE_DATA`가 그 파일을 못 봐서,
+    // 자료를 못 받은 것과 다 통과한 것이 화면에서 똑같이 초록이 된다
+    // (COPYRIGHT.md §5 — 시험 파일 95개 중 51개가 그 자리였다)
+    files: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[object.name='describe'][property.name='skip']",
+          message:
+            '자료 유무로 건너뛸 때는 withData/withModels/withDecomp를 쓴다 (COPYRIGHT.md §5). '
+            + '손으로 적으면 PT_REQUIRE_DATA가 그 파일을 못 본다.',
+        },
+      ],
+    },
+  },
 )

@@ -10,6 +10,7 @@ import { getBank, type TextBankName } from './textBanks'
 import {
   fillMenuText, MAIN_MENU, OPTIONS_TEXT, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK,
 } from './uiText'
+import { withData } from './romData.testkit'
 
 /** uiText의 키 → textBanks의 이름 */
 const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
@@ -54,8 +55,7 @@ describe('메뉴 글', () => {
 })
 
 const DATA = resolve(__dirname, '../../public/data/dialogue/ko')
-const present = existsSync(resolve(DATA, `${String(UI_BANK.startMenu)}.json`))
-const maybe = present ? describe : describe.skip
+const maybe = withData(`dialogue/ko/${String(UI_BANK.startMenu)}.json`)
 
 maybe('한국어 글이 제자리에 있다', () => {
   const bank = (at: number): string[] => JSON.parse(readFileSync(resolve(DATA, `${String(at)}.json`), 'utf8'))

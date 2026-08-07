@@ -12,10 +12,10 @@ import { describe, it, expect } from 'vitest'
 import {
   NPC_MODEL_ALIAS, bundlesByTag, modelFor, modelTagFor, normalize, type NpcModelTable,
 } from './npcModels'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'bdspNpc.json')) && existsSync(resolve(DATA, 'npcSprites.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('bdspNpc.json', 'npcSprites.json')
 
 const models = (): NpcModelTable =>
   JSON.parse(readFileSync(resolve(DATA, 'bdspNpc.json'), 'utf8')) as NpcModelTable

@@ -3,17 +3,17 @@
 // 배틀 곡 번호를 처음에 1120·1121로 적었다가 잡았다 — 그 둘은 아카기와
 // 디아루가·펄기아라서 야생 포켓몬이 나올 때마다 보스 곡이 흐를 뻔했다.
 // 이름을 안 보고 번호를 적으면 그런 일이 난다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { TRAINER_BATTLE, WILD_BATTLE, songForMap, wildSongFor } from './songs'
 import { SFX } from './sfx'
 import { TimeOfDay, timeOfDayForHour } from '../map/timeOfDay'
 import { world, type MapHeader } from '../map/world'
+import { withData } from '../../data/romData.testkit'
 
 const ROOT = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(ROOT, 'sound/index.json')) && existsSync(resolve(ROOT, 'maps.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('sound/index.json', 'maps.json')
 
 interface Index { songs: ({ name: string | null } | null)[] }
 const index = (): Index =>

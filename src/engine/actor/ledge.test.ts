@@ -2,16 +2,16 @@
 //
 // 방향을 틀리면 지름길이 아니라 벽을 통과하는 구멍이 된다. 그래서 자료에서
 // 턱을 다시 세어 보고, 실제 격자에서 양쪽으로 다 밀어 본다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { Behavior, IMPASSABLE } from '../map/zone'
 import { ledgeHop, ledgeJump } from './ledge'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 
 function detach(p: string): ArrayBuffer {
   const buf = readFileSync(resolve(DATA, p))

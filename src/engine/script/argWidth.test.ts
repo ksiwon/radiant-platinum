@@ -11,18 +11,18 @@
 // 그래서 여기서는 **바깥 세계를 하나도 안 붙이고** 명령을 하나씩 밟아 보고,
 // 읽기 위치가 표에 적힌 폭만큼 움직였는지만 본다. 서비스가 없을 때가 제일
 // 위험한 경우다 — `?.`가 전부 건너뛰는 상태이기 때문이다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import type { ScriptFile } from '../../data/schema'
 import { HANDLERS } from './commands'
 import { ScriptContext } from './context'
 import { VarStore } from './vars'
 import { FieldWorld } from './world'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json')
 
 /**
  * 읽기 위치를 스스로 옮기는 명령. 폭으로 잴 수 없다.

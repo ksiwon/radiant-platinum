@@ -7,7 +7,7 @@
 //     이름표는 롬에서 뽑은 것이고 표는 디컴프에서 옮긴 것이라 서로 독립이다.
 //  ② **뱃지 짝**은 눈으로 보면 뒤집힌 것처럼 보이는 자리가 있다 — 괴력이
 //     무쇠가 아니라 광산뱃지고, 바위깨기가 무쇠뱃지다. 그래서 여기 적어 둔다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
@@ -16,10 +16,10 @@ import {
   type FieldSpot,
 } from './fieldMoves'
 import { Behavior } from '../map/zone'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'names/moves.ko.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('names/moves.ko.json')
 
 maybe('기술 번호', () => {
   it('아홉 개가 롬 이름표와 맞는다', () => {

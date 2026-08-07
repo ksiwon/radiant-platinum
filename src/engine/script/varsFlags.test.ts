@@ -6,14 +6,15 @@
 //
 // ⚠️ `raw/`는 리포에 안 들어간다(§14.1 — 롬 하나가 128MB다). 그래서 표가
 // 있을 때만 돌린다. 없다고 통과시키는 게 아니라 **건너뛴다**.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { FLAG_HAS_POKEDEX, VARS_START } from './vars'
 import { TRAINER_DEFEATED_FLAGS_START } from './commands'
+import { withDecomp } from '../../data/romData.testkit'
 
 const TABLE = resolve(__dirname, '../../../raw/decomp/generated/vars_flags.txt')
-const maybe = existsSync(TABLE) ? describe : describe.skip
+const maybe = withDecomp('generated/vars_flags.txt')
 
 /**
  * `vars_flags.txt`를 C enum처럼 센다.

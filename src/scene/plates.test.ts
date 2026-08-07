@@ -3,10 +3,10 @@
 // 겁나는 것은 **지형을 지우는 것**이다. 나무와 경사로는 기울기도 크기도 겹쳐서,
 // 모양만 보고 가르면 계단과 비탈이 같이 사라진다. 그래서 잣대를 텍스처의 투명
 // 픽셀로 잡았고, 여기서 그 잣대가 실제로 갈라 주는지 확인한다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import {
   BufferAttribute, BufferGeometry, CylinderGeometry, MultiplyBlending, Vector3,
 } from 'three'
@@ -23,10 +23,10 @@ import {
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import { heightField, heightInChunk, type HeightData } from '../engine/map/height'
 import type { MatrixMeta } from '../engine/map/grid'
+import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'chunks/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('chunks/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 interface Fmt { posScale: number; vertexBytes: number; count: number }

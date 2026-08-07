@@ -7,15 +7,15 @@
 //   ② **갈래를 뒤집는다.** 종류 0이 마을 약도이고 1이 도로 화살표인데
 //      뒤집으면 마을 이름표에 도로 화살표가 붙는다. 둘 다 그림이 뜨므로
 //      원작을 옆에 놓고 보지 않는 한 안 보인다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { signpostsSchema } from '../../data/schema'
 import { signpostImage } from './signpost'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'signposts.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('signposts.json')
 
 /** `generated/signpost_types.txt` */
 const MAP = 0

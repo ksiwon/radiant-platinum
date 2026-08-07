@@ -8,18 +8,18 @@
 //   ② **배치표를 고치는 것과 사람을 옮기는 것이 다르다.** `SetObjectEventPos`는
 //      **다음에 세울 사람**에게 먹고, 지금 서 있는 사람은 안 움직인다
 //      (`MapHeaderData_SetObjectEventPos`).
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { world as mapWorld, type EventFile, type MapHeader } from '../map/world'
 import { VarStore } from '../script/vars'
 import {
   addNpc, clearNpcPlacement, clearNpcs, npcActors, removeNpc, setNpcPlacement, spawnNpcs,
 } from './npcs'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'events.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('events.json')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** 떡잎마을. 사람이 여럿이고 숨김 플래그가 걸린 사람도 있다 */

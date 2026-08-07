@@ -3,18 +3,18 @@
 // 겁나는 것은 **물이 아닌 데에 물을 까는 것**이다. 자리는 거동값이 주고 그 값은
 // 파도타기 표와의 교차검증으로 확정됐다(`map/zone`의 `isWater`) — 여기서는 그
 // 값이 실제 격자에서 어떻게 떨어지는지와, 물결이 물처럼 도는지를 본다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect, beforeAll } from 'vitest'
+import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { Behavior, isWater } from '../engine/map/zone'
 import { waterField, waveAt } from './Water'
 import { waterColors } from './plates'
 import type { TexSheet } from './chunkMesh'
+import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 
 function detach(p: string): ArrayBuffer {
   const buf = readFileSync(resolve(DATA, p))

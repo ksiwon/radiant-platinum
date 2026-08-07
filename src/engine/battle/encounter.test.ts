@@ -5,7 +5,7 @@
 //
 // 슬롯 확률은 별개다 — 롬에 없는 상수라 원작 대조가 불가능하고, 합이 100인지와
 // 가중치대로 뽑히는지만 확인할 수 있다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
@@ -13,11 +13,11 @@ import {
   rollLand, rollWater, shouldEncounter, type EncounterTable,
 } from './encounter'
 import { Behavior } from '../map/zone'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
-const present = existsSync(resolve(DATA, 'encounters.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('encounters.json')
 
 /** 정해진 값을 차례로 내놓는 가짜 RNG — 슬롯 선택을 정확히 지목한다 */
 const seq = (...values: number[]) => { let i = 0; return () => values[i++ % values.length]! }

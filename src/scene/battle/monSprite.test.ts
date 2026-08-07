@@ -2,14 +2,14 @@
 //
 // 그림이 종마다 80×80 안에서 다르게 차지한다. 상자에 맞춰 늘리면 그 차이가
 // 사라져서 잉어킹과 딱구리가 같은 덩치가 된다 — 여기서 그것을 막는다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { spriteFit, type SpriteIndex } from './monSprite'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'pokemon/index.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('pokemon/index.json')
 
 maybe('배틀 그림', () => {
   const idx = JSON.parse(

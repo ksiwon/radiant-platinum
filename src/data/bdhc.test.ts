@@ -3,14 +3,14 @@
 // 크기 합은 "포맷을 맞게 읽었다"까지만 말한다. **값이 맞는지는 별개 문제다** —
 // 청크를 한 칸 밀려 읽어도 크기는 맞는다. 그래서 여기서는 산출물을 실제로 펴서
 // 평면식이 말이 되는 높이를 내는지, 아는 장소가 아는 높이인지를 본다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { bdhcFileSchema } from './schema'
+import { withData } from './romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'bdhc.json')) && existsSync(resolve(DATA, 'bdhc.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('bdhc.json', 'bdhc.bin')
 
 maybe('지면 높이', () => {
   const meta = bdhcFileSchema.parse(JSON.parse(readFileSync(resolve(DATA, 'bdhc.json'), 'utf8')))

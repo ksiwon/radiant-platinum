@@ -5,16 +5,16 @@
 // …, SEQ_PV)`를 부르고 `waveID`에 종족 번호가 그대로 들어간다.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { renderSong } from './render'
 import { parseSwar } from './swar'
 import { parseSbnk } from './sbnk'
 import { CRY_SOURCE, FAINT_SEMITONES, MAX_CRY_SPECIES } from './music'
 import { SFX } from './sfx'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data/sound')
-const present = existsSync(resolve(DATA, 'index.json')) && existsSync(resolve(DATA, 'war/1.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('sound/index.json', 'sound/war/1.bin')
 
 interface Index {
   songs: ({ name: string | null; bank: number; volume: number } | null)[]

@@ -2,11 +2,12 @@
 //
 // 이 화면은 글이 전부다. 자리를 하나 틀리면 마박사가 엉뚱한 말을 하는데 **글자는
 // 멀쩡히 나오므로** 눈으로는 넘어가기 쉽다. 그래서 뱅크 원문과 맞대 본다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fillMenuText, INTRO_TEXT, UI_BANK } from '../../data/uiText'
 import { INFO_CHOICES, infoLines, INTRO, RIVAL_NAME_CHOICES } from './beats'
+import { withData } from '../../data/romData.testkit'
 
 describe('인트로 박자', () => {
   it('되묻는 자리와 이름 짓기가 원작 순서로 들어 있다', () => {
@@ -50,7 +51,7 @@ describe('인트로 박자', () => {
 
 const DATA = resolve(__dirname, '../../../public/data/dialogue/ko')
 const FILE = resolve(DATA, `${String(UI_BANK.intro)}.json`)
-const maybe = existsSync(FILE) ? describe : describe.skip
+const maybe = withData(`dialogue/ko/${String(UI_BANK.intro)}.json`)
 
 maybe('인트로 글이 제자리에 있다', () => {
   const bank = JSON.parse(readFileSync(FILE, 'utf8')) as string[]

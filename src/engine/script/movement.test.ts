@@ -2,7 +2,7 @@
 //
 // 방향과 프레임 수가 맞는지가 전부다. 둘 다 눈으로는 안 잡힌다 — 방향이
 // 뒤집혀도 NPC는 여전히 "걸어가고", 프레임이 두 배여도 "조금 느린" 것으로 보인다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parseScriptMeta } from './data'
@@ -10,10 +10,10 @@ import {
   DIR, DIR_STEP, MOVEMENT_END, MovementRunner, parseMovements,
   type Movable, type MovementTable,
 } from './movement'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json')
 
 const actor = (): Movable => ({ x: 10, z: 20, dir: DIR.south, visible: true })
 

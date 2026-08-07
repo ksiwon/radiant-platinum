@@ -9,18 +9,18 @@
 //      찼다" 가지가 영영 안 돌고 스크립트가 같은 말을 되풀이한다.
 //   ③ **라이벌 파트너.** 저장하는 값이 아니라 **내 것에서 계산하는 값**이다.
 //      규칙이 뒤집히면 첫 배틀 상대가 나에게 약한 쪽이 된다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import type { ScriptFile } from '../../data/schema'
 import { HANDLERS, VAR_PLAYER_STARTER } from './commands'
 import { ScriptContext } from './context'
 import { VarStore } from './vars'
 import { FieldWorld, type FieldServices } from './world'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json')
 
 /** `generated/species.txt` */
 const TURTWIG = 387, CHIMCHAR = 390, PIPLUP = 393

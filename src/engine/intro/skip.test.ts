@@ -3,18 +3,19 @@
 // 시험용 손잡이라도 **화면에 뜨는 이름은 진짜여야 한다.** 우리가 아무 글자나
 // 박으면 원작에 없는 이름이 게임 안을 돌아다니고, 나중에 그것이 어디서 왔는지
 // 아무도 모른다. 그래서 롬 뱅크에서 온 값인지 여기서 못 박는다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { GENERIC_NAMES_BANK, namesOf } from '../../data/genericNames'
 import { UI_BANK } from '../../data/uiText'
 import { RIVAL_NAME_CHOICES } from './beats'
 import { chooseFrom } from './skip'
+import { withData } from '../../data/romData.testkit'
 
 const DIR = resolve(__dirname, '../../../public/data/dialogue/ko')
-const files = [`${String(GENERIC_NAMES_BANK)}.json`, `${String(UI_BANK.intro)}.json`]
-  .map((f) => resolve(DIR, f))
-const maybe = files.every(existsSync) ? describe : describe.skip
+const names = [`${String(GENERIC_NAMES_BANK)}.json`, `${String(UI_BANK.intro)}.json`]
+const files = names.map((f) => resolve(DIR, f))
+const maybe = withData(...names.map((f) => `dialogue/ko/${f}`))
 
 maybe('건너뛰기가 고르는 값', () => {
   const [generic, intro] = files.map((f) => JSON.parse(readFileSync(f, 'utf8')) as string[])

@@ -8,7 +8,7 @@
 //  ① 목록이 맞는가 — 원작 `sTileBehaviorFlags`의 SURFABLE 16개에서 다리 셋을 뺀 열셋
 //  ② 막으면 무엇을 잃는가 — 걸어 닿는 존이 11개에서 9개로 줄고, 잃는 둘이
 //     하필 **220번 수로와 221번 도로**다. 물로만 갈 수 있는 곳이라 맞다
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
@@ -16,10 +16,10 @@ import { activeZone, isSurfable, isWater, Behavior } from './zone'
 import { playerSystem } from '../actor/player'
 import { worldState } from '../../state/worldState'
 import type { MapHeader } from './world'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 describe('파도타기 타일', () => {

@@ -5,7 +5,7 @@
 //     격자가 존별로 끊겨 있으면 도달 존이 1개로 나온다.
 //  ② 워프 왕복 — 문으로 들어가서 그 문으로 도로 나오면 제자리여야 한다.
 //     목적지 맵과 앵커 중 하나라도 잘못 읽으면 성립하지 않는다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
@@ -19,10 +19,10 @@ import {
 } from './world'
 import { resolveScript } from '../script/data'
 import type { ScriptFile } from '../../data/schema'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 function readGrid(metaPath: string, binPath: string) {

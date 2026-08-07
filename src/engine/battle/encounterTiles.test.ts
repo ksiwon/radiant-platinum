@@ -9,15 +9,18 @@
 // 견준다. 한 칸이라도 어긋나면 여기서 걸린다.
 //
 // ⚠️ `raw/`는 리포에 안 들어간다(§14.1). 표가 있을 때만 돌린다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { flatGate, isEncounterTile } from './encounter'
+import { withDecomp } from '../../data/romData.testkit'
 
 const DECOMP = resolve(__dirname, '../../../raw/decomp')
 const HEADER = resolve(DECOMP, 'include/constants/field/map_tile_behaviors.h')
 const FLAGS = resolve(DECOMP, 'src/map_tile_behavior.c')
-const maybe = existsSync(HEADER) && existsSync(FLAGS) ? describe : describe.skip
+const maybe = withDecomp(
+  'include/constants/field/map_tile_behaviors.h', 'src/map_tile_behavior.c',
+)
 
 /** `enum { A, B = 5, C }` — 이름만 있는 줄이 하나씩 올라간다 */
 function readBehaviorNumbers(): Map<string, number> {

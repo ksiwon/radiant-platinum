@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import {
   artDir, cameraQuadrant, frameOf, loadNpcSprites, npcSprite, type NpcSprite,
 } from './sprites'
+import { withData } from '../../data/romData.testkit'
 
 /** 닌자꼬마와 같은 모양의 최소 표본 — 16장, 방향마다 4장 */
 const WALKER: NpcSprite = {
@@ -90,7 +91,7 @@ describe('장 고르기', () => {
 
 // ── 뽑아 둔 진짜 자료와 맞댄다 ──────────────────────────────────────────────
 const FILE = resolve(__dirname, '../../../public/data/npcSprites.json')
-const maybe = existsSync(FILE) ? describe : describe.skip
+const maybe = withData('npcSprites.json')
 
 maybe('뽑아 둔 표', () => {
   const data = JSON.parse(readFileSync(FILE, 'utf8')) as Record<string, NpcSprite>

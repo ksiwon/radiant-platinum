@@ -6,13 +6,13 @@
 //
 // 규격이 어긋나면 화면이 조용히 이상해진다 — 정점 폭을 하나 틀리면 좌표가
 // 밀리면서 삼각형이 가시처럼 찢어지는데, 개수는 그대로 맞는다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
+import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data/chunks')
-const present = existsSync(resolve(DATA, 'index.json')) && existsSync(resolve(DATA, '0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('chunks/index.json', 'chunks/0.bin')
 
 interface ChunkMeta {
   verts: number
@@ -105,8 +105,7 @@ maybe('청크 파일', () => {
 })
 
 const TEX = resolve(__dirname, '../../public/data/tex/index.json')
-const texPresent = existsSync(TEX)
-const maybeTex = texPresent ? describe : describe.skip
+const maybeTex = withData('tex/index.json')
 
 maybeTex('맵 텍스처 시트', () => {
   const index = JSON.parse(readFileSync(TEX, 'utf8')) as {

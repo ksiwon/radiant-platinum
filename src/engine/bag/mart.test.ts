@@ -2,11 +2,12 @@
 //
 // 뱃지 사다리를 잘못 옮기면 첫 상점에 회복약이 다 깔린다 — 그래도 화면은
 // 멀쩡해 보이고 아무 계산도 안 틀린다. 그래서 원작의 첫 재고를 못박아 둔다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { MartTable } from '../../data/schema'
 import { badgeCount, commonStock, specialtyStock, stockTier } from './mart'
+import { withData } from '../../data/romData.testkit'
 
 describe('뱃지 사다리', () => {
   it('원작 `switch (badgeNum)`와 같다', () => {
@@ -29,7 +30,7 @@ describe('뱃지 사다리', () => {
 })
 
 const FILE = resolve(__dirname, '../../../public/data/marts.json')
-const maybe = existsSync(FILE) ? describe : describe.skip
+const maybe = withData('marts.json')
 
 maybe('상점 재고', () => {
   const table = JSON.parse(readFileSync(FILE, 'utf8')) as MartTable

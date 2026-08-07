@@ -11,18 +11,18 @@
 //      벽 판정이 빠지면 사람이 집 밖으로 걸어 나간다.
 //   ④ **칸 사이에 멈춘다.** 걸음이 8프레임인데 그 도중에 다음 걸음을 걸면
 //      좌표가 정수로 안 떨어지고, 그러면 말을 거는 칸 판정이 어긋난다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { parseScriptMeta } from '../script/data'
 import { worldState } from '../../state/worldState'
 import { activeZone, type CollisionGrid } from '../map/zone'
 import { clearAmbient, npcAmbient, setAmbientTables } from './ambient'
 import { npcActors, type NpcActor } from './npcs'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** `generated/movement_types.txt`의 줄 번호. 실측한 자리 그대로다 */

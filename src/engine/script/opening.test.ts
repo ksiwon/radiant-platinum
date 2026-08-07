@@ -12,9 +12,9 @@
 // `VAR_PLAYER_STARTER`가 0으로 남고, 그러면 `GivePokemon`이 0번 종을 주려다
 // 실패하고, 스크립트는 "가방이 가득 찼다" 쪽으로 흘러 대사만 이상해진다.
 // 그래서 **받은 종족 번호**까지 본다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { buildCommands, VAR_PLAYER_STARTER, type CommandTable } from './commands'
 import { entryOffset, fileBytes, parseScriptMeta, type ScriptData } from './data'
 import { ScriptContext } from './context'
@@ -22,10 +22,10 @@ import { MENU_YES, FieldWorld, type FieldServices } from './world'
 import { TEXT_SPEED } from './printer'
 import { VarStore } from './vars'
 import type { MapHeader } from '../map/world'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.bin')) && existsSync(resolve(DATA, 'maps.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.bin', 'maps.json')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** 201번도로. `map_headers.txt`의 342번 (`R201`) */

@@ -10,10 +10,10 @@ import { describe, expect, it } from 'vitest'
 import {
   fillSlots, formatMessage, MESSAGE_SLOTS, MessageSlots, parseMessage, particleFor, tokensToText,
 } from './text'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data/dialogue')
-const present = existsSync(resolve(DATA, 'index.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('dialogue/index.json')
 
 const slots = (...values: string[]): MessageSlots => {
   const s = new MessageSlots()

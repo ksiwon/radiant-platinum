@@ -6,18 +6,18 @@
 // 특히 스탯: 롬 내부 순서가 HP/공/방/**스피드**/특공/특방이라 재배열이 필요했다.
 // 모부기의 스피드 31과 특방 55가 뒤바뀌어도 "그럴듯한" 값이라 눈으로는 안 보인다.
 // 그래서 순서 착각이 실제로 잡히는 종(스탯이 서로 다른 종)으로 고정한다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { moveFileSchema, speciesFileSchema, labelsSchema, nameListSchema } from './schema'
 import { femaleChance } from './gameData'
+import { withData } from './romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 // 추출물은 롬이 있어야 만들어진다. 없는 환경에서는 스키마 테스트를 건너뛴다
-const present = existsSync(resolve(DATA, 'species.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('species.json')
 
 maybe('종족 데이터', () => {
   const parsed = speciesFileSchema.parse(read('species.json'))

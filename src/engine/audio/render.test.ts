@@ -6,16 +6,16 @@
 // 여기서 보는 것은 **곡이 실제로 소리를 내고, 그 소리가 터지지도 조용하지도
 // 않다**는 것이다. 포락선이나 음정이 틀리면 셋 중 하나가 된다 — 무음, 클리핑
 // 덩어리, 아니면 한 음만 계속 나는 것. 세 가지를 다 잰다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { renderSong, TICKS_PER_BEAT, FRAME_RATE, TICK_DIVISOR } from './render'
 import { parseSwar } from './swar'
 import { parseSbnk, noteFor } from './sbnk'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data/sound')
-const present = existsSync(resolve(DATA, 'index.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('sound/index.json')
 
 interface Index {
   songs: ({ name: string | null; bank: number; volume: number } | null)[]

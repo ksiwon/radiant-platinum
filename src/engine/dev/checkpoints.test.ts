@@ -3,17 +3,17 @@
 // 이 표는 손으로 적은 좌표가 아니라 자료를 가리키는 것이라, 자료가 바뀌면 가리킨
 // 곳도 따라 바뀐다. 그 결과가 벽 속이면 시험용 화면이 시험을 못 하게 되므로
 // 여기서 전부 풀어 보고 걸어갈 수 있는지 확인한다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { walkOutOfDoor, type EventFile, type MapHeader } from '../map/world'
 import { isEncounterTile, type EncounterTable } from '../battle/encounter'
 import { CHECKPOINTS, HM_CARRIER, HM_TEACHES, resolveSpot, seenAlongTheWay } from './checkpoints'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'matrices/0.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('matrices/0.bin')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** Buffer는 공유 풀에서 잘라 온 것이라 그대로 뷰를 얹으면 엉뚱한 데이터를 읽는다 */

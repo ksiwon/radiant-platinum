@@ -4,13 +4,13 @@
 // 한 칸씩 밀리는데, 그러면 틀린 답이 그럴듯한 크기로 나온다 — 그것이 이 형식의
 // 함정이다. 그래서 세 가지를 동시에 본다: 모르는 명령이 없고, 음표 세기가
 // 127을 안 넘고, 템포가 사람이 쓰는 범위다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { commandWidth } from './sseq'
+import { withData } from '../../data/romData.testkit'
 
-const present = existsSync(resolve(__dirname, '../../../public/data/sound/index.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('sound/index.json')
 
 maybe('악보 명령표', () => {
   it('0x00~0x7f은 음표다 — 명령 번호가 곧 음 높이다', () => {

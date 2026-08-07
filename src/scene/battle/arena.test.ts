@@ -6,13 +6,14 @@
 // 밖에 알 수 없다.
 //
 // 파일은 `public/models/`이라 리포에 안 들어간다(§14.1). 없으면 건너뛴다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { SLOT } from '../../engine/battle/shots'
+import { withModels } from '../../data/romData.testkit'
 
 const GLB = resolve(__dirname, '../../../public/models/arena/field.glb')
-const maybe = existsSync(GLB) ? describe : describe.skip
+const maybe = withModels('arena/field.glb')
 
 interface Gltf {
   accessors: { bufferView: number; componentType: number; count: number; type: string }[]

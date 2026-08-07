@@ -10,11 +10,12 @@
 //
 // 두 시험이 서로 다른 것을 본다. 앞은 손으로 푼 20바이트 하나이고, 뒤는
 // `scripts.bin`의 초기화 파일 549개 전부다.
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts } from './initScripts'
 import { scriptFileSchema } from '../../data/schema'
+import { withData } from '../../data/romData.testkit'
 
 describe('초기화 표 읽기', () => {
   /**
@@ -66,8 +67,7 @@ describe('초기화 표 읽기', () => {
 })
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.json')) && existsSync(resolve(DATA, 'scripts.bin'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.json', 'scripts.bin')
 
 maybe('신오 전체', () => {
   const meta = scriptFileSchema.parse(JSON.parse(readFileSync(resolve(DATA, 'scripts.json'), 'utf8')))

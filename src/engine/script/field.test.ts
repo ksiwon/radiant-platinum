@@ -4,7 +4,7 @@
 // 조사가 붙는다. 여기서는 **떡잎마을에 서서 A를 누르는 것부터** 끝까지 간다 —
 // 앞 타일의 NPC를 찾고, 그 script 번호를 진입점으로 풀고, 분기를 타고, 창에
 // 실제 뱅크의 글자가 찍히고, 버튼으로 닫힌다. 중간 어느 고리가 끊겨도 걸린다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MapHeader, EventFile } from '../map/world'
@@ -24,12 +24,10 @@ import { npcActors } from '../actor/npcs'
 import { printedText } from './printer'
 import { VarStore } from './vars'
 import { MENU_NO, type FieldWorld } from './world'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'scripts.bin'))
-  && existsSync(resolve(DATA, 'events.json'))
-  && existsSync(resolve(DATA, 'dialogue/ko/554.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('scripts.bin', 'events.json', 'dialogue/ko/554.json')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /** 떡잎마을. 대사 뱅크는 맵 헤더의 `msg`가 554번을 가리킨다 */

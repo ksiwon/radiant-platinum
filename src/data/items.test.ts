@@ -7,12 +7,12 @@
 // 가방이 통째로 잘못 나뉘는데, 문법상으로는 아무 문제가 없어서 눈으로는 안 잡힌다.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { itemFileSchema, itemIconsSchema, POCKET_COUNT } from './schema'
+import { withData } from './romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const present = existsSync(resolve(DATA, 'items.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('items.json')
 
 maybe('아이템', () => {
   const file = itemFileSchema.parse(JSON.parse(readFileSync(resolve(DATA, 'items.json'), 'utf8')))

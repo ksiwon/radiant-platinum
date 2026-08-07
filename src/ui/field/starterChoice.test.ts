@@ -4,15 +4,16 @@
 // 모부기를 고르고 "불꽃숭이로 하겠느냐?"가 뜨는데, 그림도 글도 다 나오므로
 // 원작을 옆에 놓고 보지 않는 한 안 걸린다. 그래서 **글 안의 이름**과
 // 종족 표의 이름을 맞춰 본다.
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { STARTER_BANK, STARTER_TEXT, STARTERS } from './starterChoice'
+import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const BANK = resolve(DATA, `dialogue/ko/${String(STARTER_BANK)}.json`)
 const NAMES = resolve(DATA, 'names/species.ko.json')
-const maybe = existsSync(BANK) && existsSync(NAMES) ? describe : describe.skip
+const maybe = withData(`dialogue/ko/${String(STARTER_BANK)}.json`, 'names/species.ko.json')
 const read = (p: string): string[] => JSON.parse(readFileSync(p, 'utf8')) as string[]
 
 maybe('파트너 고르는 화면', () => {

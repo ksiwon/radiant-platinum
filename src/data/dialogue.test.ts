@@ -10,13 +10,13 @@
 // 눈으로는 안 잡힌다.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { dialogueIndexSchema } from './schema'
 import { GENERIC_NAMES_BANK, namesOf, pickName } from './genericNames'
+import { withData } from './romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data/dialogue')
-const present = existsSync(resolve(DATA, 'index.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('dialogue/index.json')
 
 /** 떡잎마을. 스크립트·뱅크·글이 한 줄로 이어지는지 보는 기준점이다 */
 const TWINLEAF = 554

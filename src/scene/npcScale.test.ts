@@ -7,14 +7,14 @@
 //
 // 그래서 여기서는 **구운 파일을 실제로 열어 재고**, 그 배수로 섰을 때 사람 키가
 // 사람 키인지 본다. 상수만 비교하면 파일이 바뀌었을 때 조용히 통과한다.
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { BDSP_PLAYER_HEIGHT, BDSP_TO_WORLD, PLAYER_HEIGHT } from '../engine/model/normalize'
+import { withModels } from '../data/romData.testkit'
 
 const MODELS = resolve(__dirname, '../../public/models')
-const present = existsSync(resolve(MODELS, 'dawn.glb')) && existsSync(resolve(MODELS, 'npc'))
-const maybe = present ? describe : describe.skip
+const maybe = withModels('dawn.glb', 'npc')
 
 interface Gltf {
   scene?: number

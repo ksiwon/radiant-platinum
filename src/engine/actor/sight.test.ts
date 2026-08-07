@@ -1,9 +1,10 @@
 // 트레이너 시선 (`trainer_encounter.c`)
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { TRAINER_TYPE, seesPlayer, sightRange, trainerInSight } from './sight'
 import type { Npc } from '../map/world'
+import { withData } from '../../data/romData.testkit'
 
 const open = { blocked: () => false }
 const walled = { blocked: (x: number, z: number) => x === 5 && z === 3 }
@@ -117,7 +118,7 @@ describe('유형', () => {
 
 // 실제 자료에 붙여 본다. 여기서 어긋나면 자리를 잘못 짚은 것이다
 const DATA = resolve(__dirname, '../../../public/data')
-const maybe = existsSync(resolve(DATA, 'events.json')) ? describe : describe.skip
+const maybe = withData('events.json')
 
 maybe('실제 배치표', () => {
   const all: Npc[] = []

@@ -14,6 +14,7 @@ import {
   BALL_POSITION, CAMERA_CHOOSE, CAMERA_OPEN, CURSOR_SCREEN, FOV_HALF, GROUND_PLACE,
   OPEN_FRAMES, SCREEN, STARTER_MODEL, cameraPosition, projectToScreen,
 } from './starterScene'
+import { withData } from '../../data/romData.testkit'
 
 describe('파트너 고르는 장면 — 카메라', () => {
   it('볼 셋의 가로 자리가 원작 커서 좌표와 맞는다', () => {
@@ -67,8 +68,7 @@ describe('파트너 고르는 장면 — 카메라', () => {
 })
 
 const DATA = resolve(__dirname, '../../../public/data')
-const present = existsSync(resolve(DATA, 'starter/index.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('starter/index.json')
 
 maybe('파트너 고르는 장면 — 구운 모델', () => {
   const index = JSON.parse(readFileSync(resolve(DATA, 'starter/index.json'), 'utf8')) as {

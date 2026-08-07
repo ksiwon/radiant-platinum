@@ -7,13 +7,14 @@
 // 그래서 원작 대조로 고정한다. 강석·난천의 파티는 공개된 값이라 독립 출처다.
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { trainerFileSchema, type Trainer } from './schema'
+import { withData } from './romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
 const read = (p: string) => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 const present = existsSync(resolve(DATA, 'trainers.json'))
-const maybe = present ? describe : describe.skip
+const maybe = withData('trainers.json')
 
 const file = present ? trainerFileSchema.parse(read('trainers.json')) : null
 const trainers: Trainer[] = file ? file.trainers : []
