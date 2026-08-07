@@ -32,6 +32,7 @@ import UnityPy
 from UnityPy.helpers import MeshHelper
 
 from bdsp_bake_albedo import bake
+from bdspRetarget import build_rig, retarget, round_trip_error
 
 GLB_MAGIC = 0x46546C67
 JSON_CHUNK = 0x4E4F534A
@@ -296,7 +297,84 @@ def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int]) -> tuple[
     return animations, stat
 
 
-def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
+def borrowed_clips(
+    donor: Path, env, buf: "Buffer", node_of_hash: dict[int, int], only: set[str],
+) -> tuple[list, dict]:
+    """
+    다른 몸의 클립을 이 몸으로 옮겨 온다 (`bdspRetarget` 머리말).
+
+    등신 몸에는 걷는 동작이 없다 — 원작에서 이 몸은 배틀에만 선다. 치비 쪽에
+    있는 걷기를 뼈 이름으로 짝지어 옮긴다. 이름이 같은 뼈만 옮기고 나머지는
+    타깃의 쉬는 자세로 둔다: **지어내지 않는다.**
+    """
+    donor_env = UnityPy.load(str(donor))
+    source, source_hash = build_rig(donor_env, bone_name, transform_paths)
+    target, _ = build_rig(env, bone_name, transform_paths)
+    name_of_node = {}
+    for h, node in node_of_hash.items():
+        name_of_node[h] = node
+    target_hash = {
+        h: node for h, node in node_of_hash.items()
+    }
+    # 타깃 쪽은 이름 → 노드 번호가 필요하다
+    node_of_name: dict[str, int] = {}
+    _, target_hashes = build_rig(env, bone_name, transform_paths)
+    for h, n in target_hashes.items():
+        if h in target_hash:
+            node_of_name[n] = target_hash[h]
+
+    animations, stat = [], {"borrowed": 0, "borrowedBones": 0, "roundTrip": 0.0}
+    for obj in donor_env.objects:
+        if obj.type.name != "AnimationClip":
+            continue
+        clip = obj.read_typetree()
+        if only and clip["m_Name"] not in only:
+            continue
+        curves, stop = clip_curves(clip)
+        rots: dict[str, list] = {}
+        for path_hash, attr, first in bindings_by_curve(clip):
+            if attr != ROTATION:
+                continue
+            n = source_hash.get(path_hash)
+            if n is not None:
+                rots[n] = [curves.get(first + c, []) for c in range(4)]
+        times = sorted({t for parts in rots.values() for p in parts for t, _ in p})
+        if len(times) < 2:
+            continue
+        frames = [
+            {n: np.array([sample(p, t) for p in parts]) for n, parts in rots.items()}
+            for t in times
+        ]
+        moved, shared = retarget(source, target, frames)
+        stat["roundTrip"] = max(
+            stat["roundTrip"], round_trip_error(source, target, frames[:4]),
+        )
+
+        samplers, channels = [], []
+        a_time = buf.add(np.array(times, dtype=np.float32).reshape(-1, 1), "SCALAR", FLOAT)
+        for bone in shared:
+            node = node_of_name.get(bone)
+            if node is None:
+                continue
+            values = [quat_flip_x(tuple(f[bone])) for f in moved]
+            a_val = buf.add(np.array(values, dtype=np.float32), "VEC4", FLOAT)
+            samplers.append({"input": a_time, "output": a_val, "interpolation": "LINEAR"})
+            channels.append({
+                "sampler": len(samplers) - 1,
+                "target": {"node": node, "path": "rotation"},
+            })
+        if not channels:
+            continue
+        animations.append({
+            "name": clip["m_Name"], "samplers": samplers, "channels": channels,
+        })
+        stat["borrowed"] += 1
+        stat["borrowedBones"] = len(channels)
+    return animations, stat
+
+
+def export(bundle: Path, out: Path, color_index: int | None = None,
+           clips_from: Path | None = None, only: set[str] | None = None) -> dict:
     env = UnityPy.load(str(bundle))
     smrs = [o.read() for o in env.objects if o.type.name == "SkinnedMeshRenderer"]
     if not smrs:
@@ -444,6 +522,10 @@ def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
         nodes.append({"name": mesh["name"], "mesh": i, "skin": i})
 
     animations, anim_stat = build_animations(env, buf, node_of_hash)
+    if clips_from is not None:
+        extra, borrow_stat = borrowed_clips(clips_from, env, buf, node_of_hash, only or set())
+        animations += extra
+        anim_stat.update(borrow_stat)
 
     gltf = {
         "asset": {"version": "2.0", "generator": "radiant-platinum bdspGlb"},
@@ -603,8 +685,15 @@ def main() -> int:
     ap.add_argument("bundle", type=Path)
     ap.add_argument("-o", "--out", type=Path, required=True)
     ap.add_argument("-c", "--color-index", type=int, default=None)
+    ap.add_argument("--clips-from", type=Path, default=None,
+                    help="이 번들의 클립을 뼈 이름으로 옮겨 온다 (치비 → 등신)")
+    ap.add_argument("--only", default="",
+                    help="옮겨 올 클립 이름들, 쉼표로 나눈다. 비우면 전부")
     args = ap.parse_args()
-    stat = export(args.bundle, args.out, args.color_index)
+    stat = export(
+        args.bundle, args.out, args.color_index, args.clips_from,
+        {n for n in args.only.split(",") if n},
+    )
     print(f"{args.bundle.name} → {args.out}")
     for k, v in stat.items():
         print(f"  {k:<11} {v}")
