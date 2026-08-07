@@ -1,8 +1,8 @@
 // 시간대 조명과 인물 키 라이트 (PLAN §6.2)
 import { describe, it, expect } from 'vitest'
 import {
-  CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, TIME_LOOKS,
-  blendLooks, bodyLight, characterKey, litBody, mixHex,
+  CHAR_KEY_COLOR, CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, NIGHT_FLOOR, TIME_LOOKS,
+  blendLooks, bodyLight, characterKey, groundLight, litBody, luminance, mixHex,
 } from './sky'
 
 // 색인이 `TimeOfDay` 값이다 — 아침 · 낮 · 해질녘 · 밤 · 심야
@@ -11,10 +11,12 @@ const NIGHT = TIME_LOOKS[3]!, LATE = TIME_LOOKS[4]!
 
 describe('몸빛', () => {
   it('밤은 키 라이트가 필요할 만큼 어둡다', () => {
-    // 문턱은 `NIGHT_FLOOR`(낮의 6할)다. 밤 프리셋을 밝게 손봐도 이 아래에
-    // 있는 한 키 라이트가 켜진다 — 숫자를 눈으로 고르지 않으려고 이렇게 쓴다
-    expect(bodyLight(LATE)).toBeLessThan(0.6 * bodyLight(DAY))
-    expect(bodyLight(NIGHT)).toBeLessThan(0.6 * bodyLight(DAY))
+    // 문턱은 `NIGHT_FLOOR`다. 밤 프리셋을 밝게 손봐도 이 아래에 있는 한 키
+    // 라이트가 켜진다 — 숫자를 눈으로 고르지 않으려고 이렇게 쓴다
+    expect(bodyLight(LATE)).toBeLessThan(NIGHT_FLOOR * bodyLight(DAY))
+    expect(bodyLight(NIGHT)).toBeLessThan(NIGHT_FLOOR * bodyLight(DAY))
+    // 그리고 **해질녘에는 안 켜진다** — 아직 해가 있다
+    expect(bodyLight(DUSK)).toBeGreaterThan(NIGHT_FLOOR * bodyLight(DAY))
   })
 
   it('시간이 갈수록 어두워진다', () => {
@@ -37,10 +39,10 @@ describe('인물 키 라이트', () => {
     expect(characterKey(LATE)).toBeGreaterThan(characterKey(NIGHT))
   })
 
-  it('모자란 만큼만 켠다 — 밤의 몸빛이 낮의 정확히 6할이 된다', () => {
+  it(`모자란 만큼만 켠다 — 밤의 몸빛이 낮의 정확히 ${String(NIGHT_FLOOR)}배가 된다`, () => {
     // 고정 상수를 눈으로 고른 것이 아니다. 프리셋을 바꾸면 세기도 따라 움직인다
-    expect(litBody(NIGHT)).toBeCloseTo(0.6 * bodyLight(DAY), 10)
-    expect(litBody(LATE)).toBeCloseTo(0.6 * bodyLight(DAY), 10)
+    expect(litBody(NIGHT)).toBeCloseTo(NIGHT_FLOOR * bodyLight(DAY), 10)
+    expect(litBody(LATE)).toBeCloseTo(NIGHT_FLOOR * bodyLight(DAY), 10)
   })
 
   it('밝은 시간대는 그대로 둔다 — 6할까지 낮추지 않는다', () => {
@@ -69,6 +71,47 @@ describe('인물 키 라이트', () => {
   it('사거리 밖은 0이다', () => {
     expect(attenuation(CHAR_KEY_RANGE, CHAR_KEY_RANGE)).toBe(0)
     expect(attenuation(CHAR_KEY_RANGE + 1, CHAR_KEY_RANGE)).toBe(0)
+  })
+})
+
+/**
+ * **밤이 얼마나 어두운가** (PLAN §6.2).
+ *
+ * ⚠️ 세기만 보면 속는다. 예전 밤 프리셋은 세기 합이 낮의 65%였는데 화면에서는
+ * 15%였다 — 빛 **색**의 휘도가 그만큼 깎기 때문이다. 그래서 여기서 재는 것은
+ * 세기가 아니라 `groundLight`(세기 × 빛 색 휘도)다.
+ *
+ * 밤은 어두워야 하지만 **무엇이 있는지는 보여야** 한다. 밤이라는 신호는
+ * 밝기가 아니라 색이 나른다
+ */
+describe('밤의 밝기', () => {
+  const pct = (look: typeof DAY) => groundLight(look) / groundLight(DAY)
+
+  it('시간이 갈수록 어두워진다 — 사다리가 안 뒤집힌다', () => {
+    expect(pct(MORNING)).toBeLessThan(1)
+    expect(pct(DUSK)).toBeLessThan(pct(MORNING))
+    expect(pct(NIGHT)).toBeLessThan(pct(DUSK))
+    expect(pct(LATE)).toBeLessThan(pct(NIGHT))
+  })
+
+  it('밤이 낮과 확실히 갈린다 — 절반 아래다', () => {
+    expect(pct(NIGHT)).toBeLessThan(0.5)
+    expect(pct(LATE)).toBeLessThan(0.35)
+  })
+
+  it('그래도 지형이 검은 덩어리로 뭉치지는 않는다', () => {
+    // 예전 값은 밤 15.2% · 심야 8.5%였다. 그 정도면 밤인 줄은 아는데
+    // 무엇이 있는지가 안 보인다
+    expect(pct(NIGHT)).toBeGreaterThan(0.28)
+    expect(pct(LATE)).toBeGreaterThan(0.18)
+  })
+
+  it('밤은 색으로도 밤이다 — 하늘빛이 낮보다 훨씬 파랗다', () => {
+    // 파랑/빨강 비. 색까지 낮에 맞춰 버리면 밝기만 낮은 대낮이 된다
+    const blueness = (hex: string) => (parseInt(hex.slice(5, 7), 16) + 1)
+      / (parseInt(hex.slice(1, 3), 16) + 1)
+    expect(blueness(NIGHT.skyColor)).toBeGreaterThan(blueness(DAY.skyColor) * 1.2)
+    expect(blueness(LATE.skyColor)).toBeGreaterThan(blueness(NIGHT.skyColor))
   })
 })
 
@@ -109,16 +152,6 @@ function attenuation(distance: number, range: number): number {
 function groundGain(): number {
   const [x, y, z] = CHAR_KEY_OFFSET
   const d = Math.hypot(x, y, z)
-  return attenuation(d, CHAR_KEY_RANGE) * (y / d)
+  return attenuation(d, CHAR_KEY_RANGE) * (y / d) * luminance(CHAR_KEY_COLOR)
 }
 
-/** 방향광이 위를 보는 면에 얹히는 몫 = 방향의 y 성분 */
-const up = (v: readonly [number, number, number]) => v[1] / Math.hypot(...v)
-/** `MapStreamer`의 두 방향광 자리 */
-const SUN: readonly [number, number, number] = [24, 42, 18]
-const FILL: readonly [number, number, number] = [-14, 12, 26]
-
-/** 위를 보는 땅이 받는 조도. 반구광은 하늘을 통째로 보므로 세기 그대로다 */
-function groundLight(look: { sun: number; ambient: number; fill: number }): number {
-  return look.sun * up(SUN) + look.ambient + look.fill * up(FILL)
-}

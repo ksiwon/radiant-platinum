@@ -34,7 +34,8 @@ import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcSprites } from './NpcSprites'
 import {
-  CHAR_KEY_OFFSET, CHAR_KEY_RANGE, TIME_LOOKS, blendLooks, characterKey, makeSkyTexture,
+  CHAR_KEY_COLOR, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, FILL_DIR, SUN_DIR, TIME_LOOKS,
+  blendLooks, characterKey, makeSkyTexture,
   type TimeLook,
 } from './fx/sky'
 import { timeBlend } from '../engine/map/timeOfDay'
@@ -57,8 +58,6 @@ function currentLook(): TimeLook {
 
 /** 그림자 절두체 반경(타일). 렌더 창(±80)보다 좁다 — 가까운 것만 그림자를 진다 */
 const SHADOW_SPAN = 30
-/** 태양이 플레이어보다 얼마나 위·옆에 서는가. 방향은 아래 `directionalLight`와 같다 */
-const SUN_OFFSET: readonly [number, number, number] = [24, 42, 18]
 
 interface Props {
   initial: MapGrid
@@ -284,7 +283,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 순간 그림자가 통째로 사라진다 — 신오가 960타일이라 한 판에 안 들어온다
     const sun = sunRef.current
     if (sun) {
-      sun.position.set(p.x + SUN_OFFSET[0], p.y + SUN_OFFSET[1], p.z + SUN_OFFSET[2])
+      sun.position.set(p.x + SUN_DIR[0], p.y + SUN_DIR[1], p.z + SUN_DIR[2])
       sun.target.position.set(p.x, p.y, p.z)
       sun.target.updateMatrixWorld()
     }
@@ -375,7 +374,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       */}
       <directionalLight
         ref={sunRef}
-        position={[24, 42, 18]}
+        position={[...SUN_DIR]}
         intensity={look.sun}
         color={look.sunColor}
         castShadow
@@ -391,11 +390,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         shadow-normalBias={0.03}
       />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
-      <directionalLight position={[-14, 12, 26]} intensity={look.fill} color={look.skyColor} />
+      <directionalLight position={[...FILL_DIR]} intensity={look.fill} color={look.skyColor} />
 
       {/*
         인물 키 라이트. **밤에 사람이 배경에 묻히는 것**을 막는다 — 심야의 몸빛은
-        낮의 26%까지 내려간다(`fx/sky`의 `bodyLight`로 잰 값이다).
+        낮의 20.9%까지 내려간다(`fx/sky`의 `bodyLight`로 잰 값이다).
 
         세기는 고정 상수가 아니라 **모자란 만큼**이라 낮에는 0이 되어 꺼진다.
         색을 푸른 밤하늘색으로 두면 색이 세기를 다시 깎으므로 차가운 흰색을 쓴다 —
@@ -407,7 +406,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         intensity={characterKey(look)}
         distance={CHAR_KEY_RANGE}
         decay={2}
-        color="#eef4ff"
+        color={CHAR_KEY_COLOR}
       />
 
       {/*
