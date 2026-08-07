@@ -6,14 +6,17 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { BufferAttribute, BufferGeometry, CylinderGeometry, Vector3 } from 'three'
 import {
-  cellKey, cellX, cellZ, cutoutGroups, isBakedShadow, isFoliage, plateColors, splitFoliage,
-  treeSites,
+  BufferAttribute, BufferGeometry, CylinderGeometry, MultiplyBlending, Vector3,
+} from 'three'
+import {
+  cellKey, cellX, cellZ, cutoutGroups, floorPatch, isBakedShadow, isFoliage, plateColors,
+  splitFoliage, treeSites,
 } from './plates'
 import {
   BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
-  contactGeometry, contactTexture, merge, nearScale, paint, treeAt, treeGeometry,
+  contactGeometry, contactMaterial, contactTexture, merge, nearScale, paint, treeAt,
+  treeGeometry,
 } from './Foliage'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import { heightField, heightInChunk, type HeightData } from '../engine/map/height'
@@ -113,9 +116,11 @@ maybe('잎 걷어내기', () => {
   it('떡잎마을 청크에서 잎만 빠지고 땅은 남는다', () => {
     const mesh = readChunk(0, fmt)
     const split = splitFoliage(mesh, all(mesh))
-    // 실측 — 삼각형 1628개 중 잎이 832개 · 구운 그림자가 58개, 남는 땅이 738개다
+    // 실측 — 삼각형 1628개 중 잎이 832개 · 구운 그림자가 58개다. 남는 946개는
+    // 원래 지형 738개 + **평평한 잎 판 208개**다: 그 208개는 잎이 아니라
+    // 숲 바닥이라 남겨야 한다 (아래 시험이 그 잣대를 잰다)
     expect(mesh.geometry.getIndex()!.count / 3).toBe(1628)
-    expect(split.geometry.getIndex()!.count / 3).toBe(738)
+    expect(split.geometry.getIndex()!.count / 3).toBe(946)
     // 잎이 덮은 칸 606개, 그중 나무가 서는 것이 144그루다
     expect(split.cells.size).toBe(606)
     expect([...split.cells].filter(([k, c]) => treeAt(k, c) !== null)).toHaveLength(144)
@@ -144,6 +149,49 @@ maybe('잎 걷어내기', () => {
     for (const g of split.geometry.groups) {
       expect(split.groups[g.materialIndex!]![0]).toBe(g.start)
     }
+  })
+
+  it('평평한 잎 판은 잎이 아니라 숲 바닥이라 남는다', () => {
+    // ⚠️ **이걸 걷어내면 나무 밑이 통째로 뚫린다.** 원작은 숲 바닥을 잎과 같은
+    // 그림·같은 서브메시로 깔았다: 오버월드에 평평한 잎 판이 10,580개 있고
+    // **전부 BDHC 지면에서 정확히 0.06타일(1도트) 위**다 — 표본 89,178개의
+    // p05·중앙값·p95가 셋 다 0.06으로 흩어짐이 0이다. 잎 칸의 69%를 이 판만
+    // 덮고 있어서, 빼고 나면 그 자리에 아무것도 안 남는다
+    const mesh = oneQuad('tree01')
+    const pos = mesh.geometry.getAttribute('position') as BufferAttribute
+    // 완전히 평평한 판 — 바닥이다
+    pos.setXYZ(0, 0, 1, 0); pos.setXYZ(1, 2, 1, 0)
+    pos.setXYZ(2, 2, 1, 2); pos.setXYZ(3, 0, 1, 2)
+    expect(splitFoliage(mesh, [true]).geometry.getIndex()!.count).toBe(6)
+    // 자리는 그대로 센다 — 나무 크기가 판 더미 높이에서 나온다
+    expect(splitFoliage(mesh, [true]).cells.size).toBe(4)
+
+    // 35° 누운 판 — 서 있는 나무 그림이라 빠진다
+    pos.setXYZ(2, 2, 2, 2); pos.setXYZ(3, 0, 2, 2)
+    expect(splitFoliage(mesh, [true]).geometry.getIndex()!.count).toBe(0)
+  })
+
+  it('덮이지 않고 남은 숲 바닥 칸만 메운다', () => {
+    // 원작 바닥 판으로도 잎 칸의 15.6%(10,095칸)가 안 덮인다 — 서 있는 잎 판이
+    // 제 바닥 판보다 옆으로 더 나가 있어서다. 덮인 칸을 실제로 세어 보고
+    // **남는 칸에만** 깐다: 덮인 데까지 깔면 원작 바닥과 겹쳐 깜빡인다
+    const mesh = oneQuad('tree01')
+    const pos = mesh.geometry.getAttribute('position') as BufferAttribute
+    // 칸 (0,0)만 덮는 평평한 판. 잎 칸은 (0,0)과 (1,0) 둘이 되게 넓게 잡는다
+    pos.setXYZ(0, 0, 1, 0); pos.setXYZ(1, 1, 1, 0)
+    pos.setXYZ(2, 1, 1, 1); pos.setXYZ(3, 0, 1, 1)
+    const split = splitFoliage(mesh, [true])
+    split.cells.set(cellKey(1, 0), { minY: 1, maxY: 2, group: 0 })
+    const patch = floorPatch(split, () => 3, () => 0x203010)!
+    // 남는 칸 하나 → 삼각형 둘
+    expect(patch.getAttribute('position').count / 3).toBe(2)
+    const p = patch.getAttribute('position') as BufferAttribute
+    // 지면 +0.05. 원작 바닥 판(+0.06)보다 살짝 낮아야 맞닿는 자리에서 안 깜빡인다
+    expect(p.getY(0)).toBeCloseTo(3.05, 6)
+    // 그리고 그 남는 칸 자리다
+    expect(p.getX(0)).toBeCloseTo(1 - 0.01, 6)
+    // 높이를 모르는 칸은 안 깐다 — 아무 데나 깔면 허공에 판이 뜬다
+    expect(floorPatch(split, () => null, () => 0)).toBeNull()
   })
 
   it('잎이 아닌 오려 낸 판은 안 뺀다 — 울타리는 그 자리에 남는다', () => {
@@ -366,6 +414,15 @@ maybe('잎 걷어내기', () => {
     expect(at(N / 2, N / 2) - dark).toBeLessThan(6)
     // 그리고 가운데에서 밖으로 **단조롭게** 풀린다 — 안 그러면 테가 생긴다
     for (let x = N / 2; x + 1 < N; x++) expect(at(x + 1, N / 2)).toBeGreaterThanOrEqual(at(x, N / 2))
+
+    // ⚠️ **곱하기 혼합은 프리멀티플라이드여야 한다.** 아니면 three의 WebGPU
+    // 파이프라인이 "Invalid blending"으로 떨어뜨려서, 판은 그려지는데 화면에는
+    // 아무 변화가 없다(`WebGPUPipelineUtils` 574줄). 실제로 그렇게 한 판 날렸다
+    const mat = contactMaterial()
+    expect(mat.blending).toBe(MultiplyBlending)
+    expect(mat.premultipliedAlpha).toBe(true)
+    // 깊이는 안 쓴다 — 쓰면 그 뒤의 나무가 이 판에 가려 사라진다
+    expect(mat.depthWrite).toBe(false)
 
     // 판 자체는 삼각형 둘이다. 그루당 168에 둘을 더하는 값이라 여기서 못 늘린다
     const geo = contactGeometry()

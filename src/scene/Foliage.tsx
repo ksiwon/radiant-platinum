@@ -465,15 +465,30 @@ const leafMaterial = new MeshLambertMaterial({ vertexColors: true })
 /** 접지 그림자는 나무 종류를 안 탄다 — 지오메트리도 재질도 한 벌뿐이다 */
 let contactShape: BufferGeometry | null = null
 let contactPaint: MeshBasicMaterial | null = null
+/**
+ * 접지 그림자의 재질.
+ *
+ * **곱하기로 섞는다** — 땅을 어둡게 만드는 것이지 그 위에 회색을 얹는 것이
+ * 아니다. 곱하기는 순서를 안 타므로 그루끼리 정렬할 필요도 없다. 안개는 끈다:
+ * 안개가 이 값을 안개색 쪽으로 끌면 곱하는 수가 달라진다.
+ *
+ * ⚠️ **`premultipliedAlpha`가 없으면 WebGPU에서 통째로 안 섞인다.** three의
+ * WebGPU 파이프라인은 곱하기 혼합을 프리멀티플라이드일 때만 만들고, 아니면
+ * "Invalid blending"으로 떨어뜨린다(`WebGPUPipelineUtils` 574줄). 판은
+ * 그려지는데(드로우콜에도 잡힌다) 화면에는 아무 변화가 없었다 — 나무 밑이
+ * 그대로 텅 비어 있었고, 눈으로는 "안 만들었나 보다"까지밖에 알 수 없었다
+ */
+export function contactMaterial(): MeshBasicMaterial {
+  return new MeshBasicMaterial({
+    map: contactTexture(),
+    blending: MultiplyBlending, premultipliedAlpha: true,
+    transparent: true, depthWrite: false, fog: false,
+  })
+}
+
 function contact(): [BufferGeometry, MeshBasicMaterial] {
   contactShape ??= contactGeometry()
-  contactPaint ??= new MeshBasicMaterial({
-    map: contactTexture(),
-    // **곱하기다.** 땅을 어둡게 만드는 것이지 그 위에 회색을 얹는 것이 아니다.
-    // 곱하기는 순서를 안 타므로 그루끼리 정렬할 필요도 없다.
-    // 안개는 끈다 — 안개가 이 값을 안개색 쪽으로 끌면 곱하는 수가 달라진다
-    blending: MultiplyBlending, transparent: true, depthWrite: false, fog: false,
-  })
+  contactPaint ??= contactMaterial()
   return [contactShape, contactPaint]
 }
 

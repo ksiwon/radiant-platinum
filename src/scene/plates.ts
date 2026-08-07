@@ -25,7 +25,7 @@
 //   지형 (`c3_slope1` · `gate_step1` · `criffp` · `hamabe`)             전부 0.0%
 //
 // 겹치는 값이 하나도 없다.
-import { BufferGeometry, type BufferAttribute } from 'three'
+import { BufferAttribute, BufferGeometry } from 'three'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 
 /** 이 값을 넘게 투명하면 오려 낸 그림이다. 지형은 전부 0%라 경계에 여유가 크다 */
@@ -165,6 +165,11 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
     for (let t = 0; t < count; t += 3) {
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       if (!foliage) { kept.push(a, b, c); continue }
+      // **평평한 잎 판은 잎이 아니라 숲 바닥이다.** 오버월드에 10,580개 있고
+      // 전부 BDHC 지면에서 **정확히 0.06타일(1도트)** 위다 — 표본 89,178개의
+      // p05·중앙값·p95가 셋 다 0.06이다. 흩어짐이 없으니 우연이 아니라 규칙이다.
+      // 걷어내면 숲 바닥이 통째로 뚫린다(잎 칸의 69%가 이 판만 덮고 있다)
+      if (isLevel(position, a, b, c)) kept.push(a, b, c)
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
       let z0 = Infinity, z1 = -Infinity
       for (const i of [a, b, c]) {
@@ -203,6 +208,100 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
   }
   geometry.boundingSphere = src.boundingSphere
   return { cells, shadows, geometry, groups }
+}
+
+/**
+ * 삼각형이 수평인가. 법선의 y 성분이 거의 전부면 그렇다.
+ *
+ * 잎 판은 서 있거나 35° 누워 있고, 바닥 판만 완전히 평평하다 — 0.99는 그 둘
+ * 사이에 넓게 걸린 문턱이다
+ */
+function isLevel(pos: Float32Array, a: number, b: number, c: number): boolean {
+  const ax = pos[a * 3]!, ay = pos[a * 3 + 1]!, az = pos[a * 3 + 2]!
+  const ux = pos[b * 3]! - ax, uy = pos[b * 3 + 1]! - ay, uz = pos[b * 3 + 2]! - az
+  const vx = pos[c * 3]! - ax, vy = pos[c * 3 + 1]! - ay, vz = pos[c * 3 + 2]! - az
+  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+  const len = Math.hypot(nx, ny, nz)
+  return len > 0 && Math.abs(ny) / len > 0.99
+}
+
+/**
+ * 숲 바닥에 남은 구멍을 메운다. 없으면 `null`.
+ *
+ * 원작 숲 바닥은 위의 평평한 판이지만 그것도 잎 칸의 69%뿐이고, 진짜 지형
+ * 삼각형까지 세도 **15.6%(10,095칸)**가 아무것도 안 덮인 채 남는다 — 서 있는
+ * 잎 판이 제 바닥 판보다 옆으로 더 나가 있어서다. 그 칸은 발밑이 뻥 뚫린다.
+ *
+ * 그래서 덮인 칸을 실제로 세어 보고(판이든 지형이든) 남는 칸에만 판을 깐다.
+ * 높이는 BDHC가, 색은 그 칸을 덮던 원작 잎 그림이 준다 — 우리가 고르는 것은
+ * 아무것도 없다. 창 하나에 400칸 남짓이라 삼각형 800개 안쪽이다
+ */
+export function floorPatch(
+  split: Split,
+  ground: (x: number, z: number, near: number) => number | null,
+  colorOf: (group: number) => number,
+): BufferGeometry | null {
+  const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
+  const index = split.geometry.getIndex()!.array
+  const covered = new Set<number>()
+  for (let t = 0; t + 2 < index.length; t += 3) {
+    const a = index[t]! * 3, b = index[t + 1]! * 3, c = index[t + 2]! * 3
+    const ax = pos[a]!, az = pos[a + 2]!
+    const bu = pos[b]! - ax, bv = pos[b + 2]! - az
+    const cu = pos[c]! - ax, cv = pos[c + 2]! - az
+    const area = bu * cv - cu * bv
+    if (Math.abs(area) < 1e-9) continue
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+    for (const i of [a, b, c]) {
+      x0 = Math.min(x0, pos[i]!); x1 = Math.max(x1, pos[i]!)
+      z0 = Math.min(z0, pos[i + 2]!); z1 = Math.max(z1, pos[i + 2]!)
+    }
+    for (let tz = Math.floor(z0); tz <= Math.floor(z1); tz++) {
+      for (let tx = Math.floor(x0); tx <= Math.floor(x1); tx++) {
+        // 칸 한가운데가 삼각형 안에 드는지 본다. 경계 상자로 세면 덜 덮인 칸을
+        // 덮었다고 치고 넘어가 구멍이 남는다
+        const px = tx + 0.5 - ax, pz = tz + 0.5 - az
+        const w1 = (px * cv - cu * pz) / area
+        const w2 = (bu * pz - px * bv) / area
+        if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
+        covered.add(cellKey(tx, tz))
+      }
+    }
+  }
+
+  const position: number[] = []
+  const color: number[] = []
+  for (const [key, cell] of split.cells) {
+    if (covered.has(key)) continue
+    const tx = cellX(key), tz = cellZ(key)
+    const y = ground(tx + 0.5, tz + 0.5, cell.minY)
+    if (y === null) continue
+    // 원작 바닥 판과 같은 면에 놓는다(지면 +0.06). 0.01 낮춰 두면 맞닿는
+    // 자리에서 원작 판이 이긴다 — 같은 높이면 둘이 깜빡인다
+    const h = y + 0.05
+    const rgb = colorOf(cell.group)
+    const r = ((rgb >> 16) & 255) / 255, g = ((rgb >> 8) & 255) / 255, b = (rgb & 255) / 255
+    // 칸 하나를 살짝 넘겨 깐다 — 딱 맞추면 이웃 칸과의 사이에 실금이 보인다
+    const e = 0.01
+    const quad: [number, number][] = [
+      [tx - e, tz - e], [tx + 1 + e, tz - e], [tx + 1 + e, tz + 1 + e],
+      [tx - e, tz - e], [tx + 1 + e, tz + 1 + e], [tx - e, tz + 1 + e],
+    ]
+    for (const [x, z] of quad) {
+      position.push(x, h, z)
+      color.push(r, g, b)
+    }
+  }
+  if (position.length === 0) return null
+
+  const geo = new BufferGeometry()
+  geo.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
+  geo.setAttribute('color', new BufferAttribute(new Float32Array(color), 3))
+  const normal = new Float32Array(position.length)
+  for (let i = 1; i < normal.length; i += 3) normal[i] = 1
+  geo.setAttribute('normal', new BufferAttribute(normal, 3))
+  geo.computeBoundingSphere()
+  return geo
 }
 
 /**
