@@ -23,7 +23,7 @@ export type ViewMode = 0 | 1
 /** 배틀이 흐르는 빠르기. 원작에 없는 우리 항목이다 */
 export type BattlePace = 0 | 1 | 2
 /** `LANGUAGES`의 자리. 원작에 없는 우리 항목이다 — 아래 참조 */
-export type Language = 0 | 1
+export type Language = 0 | 1 | 2
 
 /**
  * 고를 수 있는 언어.
@@ -32,11 +32,11 @@ export type Language = 0 | 1
  * 안에서 언어를 바꿀 자리가 없었다. 우리는 롬 두 개에서 뽑은 글을 같이 싣고
  * 있으니 바꿀 수 있다 — 지어낸 번역이 아니라 **그 나라 롬에 찍힌 글**이다.
  *
- * 일본어는 빠져 있다. 이름표(`names/*.ja.json`)는 있지만 대사 뱅크가 없어서
- * (`public/data/dialogue`에 `en`·`ko`뿐이다) 고를 수 있게 두면 스크립트 글이
- * 통째로 빈다. 일본 롬을 뜯으면 여기 한 줄만 늘리면 된다
+ * 셋 다 뱅크가 실려 있다(`public/data/dialogue`). 일본어는 뱅크 447개 중
+ * `game_corner` 하나가 일본 롬에 아예 없어서 그 맵만 글이 빈다 — 열쇠 표와
+ * 항목 수 정렬이 **둘 다 없다고** 말하는 자리라 우리 실수가 아니다
  */
-export const LANGUAGES: readonly DataLocale[] = ['ko', 'en']
+export const LANGUAGES: readonly DataLocale[] = ['ko', 'en', 'ja']
 
 export interface Options {
   speed: TextSpeed

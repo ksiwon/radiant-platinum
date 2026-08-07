@@ -56,7 +56,7 @@ describe('배틀 진행 — 우리가 연 자리', () => {
 describe('언어 — 우리가 연 자리', () => {
   it('설정을 바꾸면 자료를 부르는 로케일이 바뀐다', () => {
     for (let i = 0; i < LANGUAGES.length; i++) {
-      useOptionsStore.getState().set('language', i as 0 | 1)
+      useOptionsStore.getState().set('language', i as 0 | 1 | 2)
       expect(gameLocale()).toBe(LANGUAGES[i])
     }
   })
@@ -69,15 +69,28 @@ describe('언어 — 우리가 연 자리', () => {
   })
 
   it('고를 수 있는 언어는 대사 뱅크가 다 있는 언어뿐이다', () => {
-    // ⚠️ **이 시험이 목록을 지킨다.** 이름표(`names/*.ja.json`)는 세 언어가
-    // 다 있어서 `LANGUAGES`에 'ja'를 한 줄 더 적고 싶어지는데, 대사 뱅크가
-    // 없으면 고른 순간 스크립트 글이 통째로 빈다 — 화면은 뜨므로 눈으로는
-    // 한참 뒤에야 안다
+    // ⚠️ **이 시험이 목록을 지킨다.** 이름표만 있고 대사 뱅크가 없는 언어를
+    // 목록에 적으면 고른 순간 스크립트 글이 통째로 빈다 — 화면은 뜨므로
+    // 눈으로는 한참 뒤에야 안다
     const dir = resolve(__dirname, '../../public/data/dialogue')
     if (!existsSync(dir)) return
     const shipped = (JSON.parse(readFileSync(resolve(dir, 'index.json'), 'utf8')) as
       { locales: string[] }).locales
     for (const locale of LANGUAGES) expect(shipped, locale).toContain(locale)
+  })
+
+  it('세 언어가 뱅크를 거의 다 갖고 있다', () => {
+    // 일본 롬에 없는 뱅크가 하나 있다(`game_corner`). 열쇠 표와 항목 수 정렬이
+    // **둘 다 없다**고 말하는 자리라 우리 실수가 아니고, 그 맵만 글이 빈다.
+    // 이 수가 늘면 추출이 어긋난 것이다
+    const dir = resolve(__dirname, '../../public/data/dialogue')
+    if (!existsSync(dir)) return
+    const banks = (JSON.parse(readFileSync(resolve(dir, 'index.json'), 'utf8')) as
+      { banks: { index: number }[] }).banks
+    for (const locale of LANGUAGES) {
+      const missing = banks.filter((b) => !existsSync(resolve(dir, locale, `${String(b.index)}.json`)))
+      expect(missing.map((b) => b.index), locale).toEqual(locale === 'ja' ? [147] : [])
+    }
   })
 
   it('설정 화면의 글자리가 언어마다 같다', () => {
@@ -91,9 +104,10 @@ describe('언어 — 우리가 연 자리', () => {
     for (const at of [3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 18, 43, 44, 45, 46]) {
       for (const bank of banks) expect(bank[at], `${String(at)}`).toBeTruthy()
     }
-    // 그리고 실제로 서로 다른 언어여야 한다 — 같은 파일을 두 번 읽은 것이 아니다
+    // 그리고 실제로 서로 다른 언어여야 한다 — 같은 파일을 세 번 읽은 것이 아니다
     expect(banks[0]?.[13]).toBe('본다')
     expect(banks[1]?.[13]).toBe('ON')
+    expect(banks[2]?.[13]).toBe('みる')
   })
 })
 

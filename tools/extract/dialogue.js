@@ -35,12 +35,15 @@ const NO_BANK = 0xffff
  * 자리는 미국 표에서 msg 열만 뺀 13046바이트를 롬 전체에서 찾아 확정했다 —
  * 후보가 하나뿐이었다.
  *
- * 일본어는 아직 안 찾았다. 목표 로케일이 아니고, 미국 표로 뽑은 뱅크 번호를
- * 정렬로 옮기면 되므로 급하지 않다.
+ * ⚠️ **일본어 롬의 맵 헤더 표 자리는 안 찾았고 찾을 필요도 없다.** 맵이 어느
+ * 뱅크를 쓰는지는 **미국 번호**로 적고(산출물의 이름이 그것이다) 로케일 번호로
+ * 바꿔 읽는 것은 `textBanks.json`이 한다. 헤더 주소는 그 표를 만들 때 쓴 것이지
+ * 뽑을 때 쓰는 것이 아니다
  */
 const ROMS = {
   en: { file: 'Pokemon Platinum (US).nds', extracted: 'us', headers: 0xea01c },
   ko: { file: 'Pokemon Platinum (KO).nds', extracted: 'ko', headers: 0xeaaa4 },
+  ja: { file: 'Pokemon Platinum (JA).nds', extracted: 'ja', headers: null },
 }
 
 /**
@@ -52,7 +55,35 @@ const ROMS = {
  * `greetings_es`는 한국어 롬이 인사말을 하나 더 끼워 넣어(ko#657) 한 칸 밀린다.
  * 정렬은 그 끼어든 뱅크를 짝지었다. 셋 다 3칸이라 수로는 못 가른다.
  */
-const LCS_WRONG = { us: {}, ko: { 611: 'ability_names_uppercase', 668: 'greetings_es' } }
+const LCS_WRONG = {
+  us: {},
+  ko: { 611: 'ability_names_uppercase', 668: 'greetings_es' },
+  /**
+   * 일본어는 **꼬리가 통째로 밀린다.** 611번(`ability_names_uppercase`)이 일본어
+   * 롬에 없어서 뒤가 한 칸씩 당겨지는데, 701~723은 전부 종별 표(도감 설명·분류·
+   * 키·몸무게)라 **항목 수가 494로 다 같다.** 수로는 어느 것이 어느 것인지
+   * 가를 수가 없어 정렬이 그대로 밀린 채 붙는다.
+   *
+   * 키 표가 맞다는 것은 글을 열어 확인했다:
+   *   `species_category` 키 698 → "たねポケモン" · 정렬 696 → "　　０．７ｍ"
+   *   `species_pokedex_entry_fr` 키 689 → "Au matin de sa vie…" · 정렬 686 → 일본어
+   * 그리고 키 표가 적어 둔 일본어 항목 수가 708/708 실제와 맞는다
+   */
+  ja: {
+    611: 'ability_names_uppercase',
+    701: 'species_pokedex_entry_fr', 702: 'species_pokedex_entry_de',
+    703: 'species_pokedex_entry_it', 704: 'species_pokedex_entry_es',
+    705: 'species_pokedex_entry_jp', 706: 'species_pokedex_entry_en',
+    707: 'species_weight', 708: 'species_weight_gira',
+    709: 'species_height', 710: 'species_height_gira',
+    711: 'species_category',
+    712: 'species_name_with_natdex_number_en', 713: 'species_name_with_natdex_number_fr',
+    714: 'species_name_with_natdex_number_de', 715: 'species_name_with_natdex_number_it',
+    716: 'species_name_with_natdex_number_es', 717: 'species_name_with_natdex_number_jp',
+    718: 'species_category_en', 719: 'species_category_fr', 720: 'species_category_de',
+    721: 'species_category_it', 722: 'species_category_es', 723: 'species_category_jp',
+  },
+}
 
 /**
  * 미국 뱅크 번호로 색인한 로케일 뱅크 번호.

@@ -65,8 +65,12 @@ export function OptionsScreen() {
 
   const at = (i: number): string => text[i] ?? ''
   const pick = (list: readonly number[]): string[] => list.map(at)
-  /** 우리가 연 항목의 글. 원작 뱅크에 없으니 여기서 고른다 */
-  const our = <T,>(ko: T, en: T): T => (options.language === 1 ? en : ko)
+  /**
+   * 우리가 연 항목의 글. 원작 뱅크에 없으니 여기서 고른다.
+   *
+   * 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어
+   */
+  const our = <T,>(ko: T, en: T, ja: T): T => [ko, en, ja][options.language] ?? ko
 
   const rows: Row[] = [
     {
@@ -92,41 +96,50 @@ export function OptionsScreen() {
       help: at(OPTIONS_TEXT.help.sound),
     },
     {
-      key: 'battlePace', label: our('배틀 진행', 'BATTLE PACE'),
-      values: our(['원작대로', '빠르게', '아주 빠르게'], ['AS ORIGINAL', 'FAST', 'VERY FAST']),
+      key: 'battlePace', label: our('배틀 진행', 'BATTLE PACE', 'バトルの速さ'),
+      values: our(
+        ['원작대로', '빠르게', '아주 빠르게'],
+        ['AS ORIGINAL', 'FAST', 'VERY FAST'],
+        ['原作どおり', 'はやい', 'とてもはやい'],
+      ),
       at: options.battlePace,
       help: our(
         '글이 머무는 시간과 체력바 속도\n원작 후반 한 턴이 14초쯤 걸립니다',
         'How long text lingers, and gauge speed.\nA late-game turn runs about 14 seconds in the original.',
+        'メッセージが残る時間とHPゲージの速さ\n原作では終盤の1ターンに14秒ほどかかります',
       ), ours: true,
     },
     {
-      key: 'view', label: our('시점', 'CAMERA'),
-      values: our(['3인칭', '1인칭'], ['THIRD PERSON', 'FIRST PERSON']), at: options.view,
+      key: 'view', label: our('시점', 'CAMERA', 'カメラ'),
+      values: our(['3인칭', '1인칭'], ['THIRD PERSON', 'FIRST PERSON'], ['三人称', '一人称']),
+      at: options.view,
       help: our(
         '휠과 V로도 바꿉니다\n1인칭은 마우스로 둘러보고 보는 쪽으로 걷습니다',
         'The wheel and V switch it too.\nIn first person the mouse looks around and you walk where you look.',
+        'ホイールとVでも切り替えられます\n一人称ではマウスで見回し、向いた方へ歩きます',
       ),
       ours: true,
     },
     {
-      key: 'language', label: our('언어', 'LANGUAGE'),
+      key: 'language', label: our('언어', 'LANGUAGE', '言語'),
       // 우리가 옮긴 말이 아니라 그 나라 롬에 찍힌 글이다. 그래서 이름·기술·설명까지
       // 통째로 바뀐다 — 화면 글만 갈아 끼우는 것이 아니다.
       //
-      // 값은 두 언어에서 같다. 언어 이름은 그 언어로 적는 것이 맞다
-      values: ['한국어', 'English'], at: options.language,
+      // 값은 어느 언어에서나 같다. 언어 이름은 그 언어로 적는 것이 맞다
+      values: ['한국어', 'English', '日本語'], at: options.language,
       help: our(
         '이름도 기술도 설명도 그 나라 롬의 글로 바뀝니다\n지금 서 있는 맵의 대사까지 곧바로 바뀝니다',
         'Names, moves and descriptions all come from that ROM.\nEven the dialogue of the map you stand on switches at once.',
+        '名前も技も説明も、その国のROMの文字になります\n今いるマップのセリフもすぐに切り替わります',
       ), ours: true,
     },
     {
-      key: 'reset', label: our('처음부터', 'NEW GAME'),
+      key: 'reset', label: our('처음부터', 'NEW GAME', 'はじめから'),
       values: [], at: 0,
       help: our(
         '리포트를 지우고 새로 시작합니다\n지운 것은 되돌릴 수 없습니다',
         'Erases your report and starts over.\nWhat is erased cannot be brought back.',
+        'レポートを消して最初から始めます\n消したものは元に戻せません',
       ), ours: true,
     },
   ]
@@ -152,15 +165,19 @@ export function OptionsScreen() {
     cancel: () => { if (confirming) setConfirming(false); else back() },
   }, !confirming)
 
-  if (confirming) return <ResetConfirm text={text} english={options.language === 1} onNo={() => { setConfirming(false) }} onYes={() => {
+  if (confirming) return <ResetConfirm text={text} language={options.language} onNo={() => { setConfirming(false) }} onYes={() => {
     // 리포트를 지우고 타이틀로 나간다. 처음부터면 인트로부터 다시 봐야 한다
     void resetSave().then(() => { closeAll(); location.assign(import.meta.env.BASE_URL) })
   }} />
 
   return (
     <MenuScreen
-      title={at(OPTIONS_TEXT.title) || our('설정', 'OPTIONS')}
-      foot={our('↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기', '↑↓ Item · ←→ Value · Z Set · X Back')}
+      title={at(OPTIONS_TEXT.title) || our('설정', 'OPTIONS', '設定')}
+      foot={our(
+        '↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기',
+        '↑↓ Item · ←→ Value · Z Set · X Back',
+        '↑↓ 項目 · ←→ 値 · Z 決定 · X もどる',
+      )}
     >
       <div className={own.center}>
         <div className={own.rows}>
@@ -170,8 +187,8 @@ export function OptionsScreen() {
               <span className={css.face}>
                 <span className={own.rowLabel}>
                   {r.label}
-                  {r.ours && <span className={own.ours}>{our('추가', 'ADDED')}</span>}
-                  {r.inert && <span className={own.ours}>{our('아직', 'NOT YET')}</span>}
+                  {r.ours && <span className={own.ours}>{our('추가', 'ADDED', '追加')}</span>}
+                  {r.inert && <span className={own.ours}>{our('아직', 'NOT YET', 'まだ')}</span>}
                 </span>
                 <span className={own.values}>
                   {r.values.map((v, k) => (
@@ -199,9 +216,11 @@ export function OptionsScreen() {
 
 /** 되돌릴 수 없는 것은 한 번 더 묻는다 */
 function ResetConfirm(
-  { text, english, onYes, onNo }:
-  { text: string[]; english: boolean; onYes: () => void; onNo: () => void },
+  { text, language, onYes, onNo }:
+  { text: string[]; language: Language; onYes: () => void; onNo: () => void },
 ) {
+  /** 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어 */
+  const our = (ko: string, en: string, ja: string): string => [ko, en, ja][language] ?? ko
   const [yes, setYes] = useState(false)
   useMenuKeys({
     left: () => { setYes(true) },
@@ -213,9 +232,11 @@ function ResetConfirm(
     <div className={css.overlay}>
       <div className={own.center}>
         <div className={own.prompt}>
-          {english
-            ? 'Your report will be erased and the game starts over.\nIs that really all right?'
-            : '리포트를 지우고 처음부터 시작합니다\n정말로 괜찮겠습니까?'}
+          {our(
+            '리포트를 지우고 처음부터 시작합니다\n정말로 괜찮겠습니까?',
+            'Your report will be erased and the game starts over.\nIs that really all right?',
+            'レポートを消して最初から始めます\n本当によろしいですか？',
+          )}
         </div>
         <div className={own.choices}>
           <span className={yes ? own.choiceOn : own.choice}>{text[OPTIONS_TEXT.yes] ?? '예'}</span>
@@ -223,7 +244,7 @@ function ResetConfirm(
         </div>
       </div>
       <div className={css.hint}>
-        {english ? '←→ Choose · Z Set · X Cancel' : '←→ 고르기 · Z 결정 · X 그만둔다'}
+        {our('←→ 고르기 · Z 결정 · X 그만둔다', '←→ Choose · Z Set · X Cancel', '←→ 選ぶ · Z 決定 · X やめる')}
       </div>
     </div>
   )
