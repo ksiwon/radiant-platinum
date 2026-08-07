@@ -39,6 +39,16 @@ export type BattlePhase = 'off' | 'loading' | 'running' | 'over'
  */
 export type BattleKind = 'wild' | 'trainer'
 
+/**
+ * 이 판에만 붙는 규칙 (`FieldBattleDTO.battleStatusMask`).
+ *
+ * 지금은 하나뿐이다 — 라이벌과의 **첫 배틀**은 급소가 안 난다
+ * (`BATTLE_STATUS_FIRST_BATTLE` → `BtlCmd_CalcCrit`)
+ */
+export interface BattleRules {
+  noCrit?: boolean
+}
+
 /** 키로 찾는 개체 정보. 화면이 이름·모델을 고르는 데 쓴다 */
 export interface RosterEntry {
   side: SideId
@@ -87,7 +97,7 @@ interface BattleState {
   error: string | null
   startWild: (wild: WildStart) => Promise<void>
   /** 트레이너전을 연다. `trainerId`는 trdata 번호다 */
-  startTrainer: (trainerId: number) => Promise<void>
+  startTrainer: (trainerId: number, options?: BattleRules) => Promise<void>
   choose: (action: BattleAction) => Promise<void>
   /** 볼을 던진다. 우리 턴을 쓴다 — 실패하면 야생이 반격한다 */
   throwBall: (ball?: BallId) => Promise<void>
@@ -176,7 +186,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     })
   },
 
-  startTrainer: async (trainerId) => {
+  startTrainer: async (trainerId, options) => {
     const [table, names, classes] = await Promise.all([
       loadTrainers(), loadTrainerNames(gameLocale()), loadTrainerClasses(gameLocale()),
     ])
@@ -198,7 +208,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         mon.hp = statsOf(mon, sp).hp
         return ready(fillPp(mon, pp), sp, foeKey(i))
       }),
-    }), trainer.ai)
+    }), trainer.ai, options)
   },
 
   choose: async (action) => {
@@ -394,6 +404,7 @@ async function open(
   buildFoe: BuildFoe,
   /** 트레이너 AI 비트. 안 주면 상대는 무작위로 둔다 — 야생이 그렇다 */
   aiFlags?: number,
+  rules?: BattleRules,
 ): Promise<void> {
   if (get().phase !== 'off') return
   set({
@@ -434,6 +445,7 @@ async function open(
       basePp: pp,
       // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
+      ...(rules?.noCrit === true ? { noCrit: true } : {}),
     })
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다

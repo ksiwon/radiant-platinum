@@ -1326,6 +1326,203 @@ on('GetRematchTrainerID', (ctx) => {
   return false
 })
 
+// ── 세이브에 켜지는 스위치 ───────────────────────────────────────────────────
+//
+// 원작이 `SystemFlag_*`로 감싸 두었지만 **속은 보통 플래그다**
+// (`src/system_flags.c` — 전부 `VarsFlags_SetFlag` 한 줄이다). 그래서 여기서도
+// 새 세이브 칸을 안 만들고 우리 `VarStore`의 같은 비트를 쓴다.
+//
+// 번호는 `generated/vars_flags.txt`를 C enum처럼 세어 나온다. 그 셈이 맞다는
+// 것은 이미 확정된 값 넷이 동시에 떨어지는 것으로 확인한다 —
+// `FLAG_HAS_POKEDEX`가 144, `FLAG_UNUSED_0x054E`가 0x54E,
+// `TRAINER_DEFEATED_FLAGS_START`가 1360, `VARS_START`가 0x4000이다.
+
+/** `generated/vars_flags.txt` */
+export const SYSTEM_FLAG = {
+  /** 가방을 받았는가. 시작 메뉴의 "가방" 줄이 이 비트로 있고 없다 */
+  bagAcquired: 2400,
+  /** 누가 따라다니는가 (`FLAG_HAS_PARTNER`) */
+  hasPartner: 2401,
+  /** 모험노트를 받았는가 */
+  journalAcquired: 2403,
+  /**
+   * 마지막으로 세운 뒤 **한 칸도 안 움직였는가** (`FLAG_STEP`).
+   *
+   * 세우는 것은 스크립트뿐이고 지우는 것은 필드다 (`FieldInput_Process`가
+   * 걸음마다 `SystemFlag_ClearStep`을 부른다)
+   */
+  step: 2405,
+} as const
+
+/** 플래그 하나를 세우고/지우고/묻는 명령 셋을 한 번에 등록한다 */
+function systemFlag(flag: number, names: { set?: string, clear?: string, check?: string }): void {
+  if (names.set !== undefined) on(names.set, (ctx) => { ctx.host.vars.setFlag(flag); return false })
+  if (names.clear !== undefined) on(names.clear, (ctx) => { ctx.host.vars.clearFlag(flag); return false })
+  if (names.check !== undefined) {
+    on(names.check, (ctx) => {
+      ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.checkFlag(flag) ? 1 : 0)
+      return false
+    })
+  }
+}
+
+systemFlag(SYSTEM_FLAG.bagAcquired, { set: 'GiveBag', check: 'CheckBagAcquired' })
+systemFlag(SYSTEM_FLAG.hasPartner, {
+  set: 'SetHasPartner', clear: 'ClearHasPartner', check: 'CheckHasPartner',
+})
+systemFlag(SYSTEM_FLAG.step, {
+  set: 'SetStepFlag', clear: 'ClearStepFlag', check: 'CheckStepFlag',
+})
+
+/**
+ * 모험노트를 받았다 (`ScrCmd_GiveJournal`).
+ *
+ * ⚠️ 원작은 플래그를 세우고 **첫 쪽도 펼친다**(`Journal_GetSavedPage`). 우리는
+ * 노트 화면이 아직 없어서 플래그만 세운다 — 스크립트의 갈래는 이 비트로만
+ * 갈리므로 이야기는 그대로 흐른다
+ */
+systemFlag(SYSTEM_FLAG.journalAcquired, { set: 'GiveJournal' })
+
+on('GiveRunningShoes', (ctx) => {
+  ctx.host.world.services.gear?.giveRunningShoes()
+  return false
+})
+
+on('CheckRunningShoesAcquired', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.gear?.hasRunningShoes() === true ? 1 : 0)
+  return false
+})
+
+on('GetTimeOfDay', (ctx) => {
+  const dest = ctx.readHalfWord()
+  // 시계가 없으면 낮이다. 시간대로 갈리는 대사가 한쪽으로 쏠릴 뿐이라 안전하다
+  ctx.host.vars.set(dest, ctx.host.world.services.timeOfDay?.() ?? TIMEOFDAY_DAY)
+  return false
+})
+
+/** `generated/time_of_day.txt` */
+const TIMEOFDAY_DAY = 1
+
+/**
+ * 그 곡을 이 음량으로 시작한다 (`ScrCmd_SetInitialVolumeForSequence`).
+ *
+ * TV가 켜져 있는 방이 이걸 쓴다 — 방송 곡을 절반 음량으로 깔아 둔다
+ */
+on('SetInitialVolumeForSequence', (ctx) => {
+  ctx.readVar() // 곡 번호
+  ctx.readVar() // 음량 (0~127)
+  // ⚠️ 아직 못 한다. 우리 소리 계층은 곡마다 초기 음량을 못 정한다 —
+  // 곡이 **제 음량으로** 흐르는 것이 다르고, 곡 자체는 맞다
+  return false
+})
+
+/**
+ * 그 사람이 사라져도 플래그가 남는가 (`MapObject_SetFlagIsPersistent`).
+ *
+ * ⚠️ **우리에게는 걸 자리가 없다.** 원작의 객체는 맵을 옮길 때 지워지는데,
+ * 이 비트가 서 있으면 따라다니는 사람처럼 **맵을 건너 살아남는다**. 우리
+ * `npcActors`는 맵마다 통째로 다시 세우므로 옮길 대상이 아직 없다 — 이 비트가
+ * 실제로 쓰이는 자리는 라이벌이 따라다니는 구간 하나뿐이고, 그건 도감을 받은
+ * 뒤의 이야기다
+ */
+on('SetObjectFlagIsPersistent', (ctx) => {
+  ctx.readVar() // 맵 안 번호
+  ctx.readByte() // 켜는가 끄는가
+  return false
+})
+
+on('SetWarpEventPos', (ctx) => {
+  const index = ctx.readVar()
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  ctx.host.world.services.warpEvents?.setPos(index, x, z)
+  return false
+})
+
+// ── 문 여닫는 그림 ───────────────────────────────────────────────────────────
+//
+// 문은 새 계통이 아니라 **맵 소품**이다. 좌표로 그 소품을 찾아 한 번짜리
+// 애니메이션을 걸고, 문 종류마다 다른 소리를 낸다 (`DoorAnimation_*`).
+//
+// ⚠️ **그림은 아직 안 움직인다.** 소품 590종을 기하와 텍스처로 뽑아 두었지만
+// 애니메이션(NSBCA)은 아직 안 뽑았다. 그래서 붙이는 쪽이 소리와 시간만 낸다 —
+// 문이 안 열리는 것이 아니라 열리는 **모습**이 없는 것이다.
+
+on('LoadDoorAnimation', (ctx) => {
+  // ⚠️ 앞 둘은 **변수가 아니라 생값**이다 (`ScriptContext_ReadHalfWord`).
+  // 매트릭스 칸 번호라 값이 작아서, 변수로 읽으면 그 수가 그대로 나와
+  // 눈에 안 띈 채 좌표가 어긋난다
+  const mapX = ctx.readHalfWord()
+  const mapZ = ctx.readHalfWord()
+  const tileX = ctx.readVar()
+  const tileZ = ctx.readVar()
+  const tag = ctx.readByte()
+  // `MAP_TILES_COUNT_X`·`_Z` — 매트릭스 한 칸이 32×32 타일이다
+  ctx.host.world.services.door?.load(mapX * 32 + tileX, mapZ * 32 + tileZ, tag)
+  return false
+})
+
+// ⚠️ 셋 다 **먼저 읽고** 넘긴다. `?.`가 짧게 끊기면 인자를 안 읽은 채 지나가고,
+// 그러면 그 뒤 바이트가 통째로 밀린다 (`argWidth.test.ts`가 이 종류를 잡는다)
+on('PlayDoorOpenAnimation', (ctx) => {
+  const tag = ctx.readByte()
+  ctx.host.world.services.door?.open(tag)
+  return false
+})
+
+on('PlayDoorCloseAnimation', (ctx) => {
+  const tag = ctx.readByte()
+  ctx.host.world.services.door?.close(tag)
+  return false
+})
+
+on('WaitForAnimation', (ctx) => {
+  const tag = ctx.readByte()
+  ctx.pause((c) => c.host.world.services.door?.busy(tag) !== true)
+  return true
+})
+
+on('UnloadAnimation', (ctx) => {
+  const tag = ctx.readByte()
+  ctx.host.world.services.door?.unload(tag)
+  return false
+})
+
+// ── 처음 만나는 파트너 ───────────────────────────────────────────────────────
+
+/**
+ * 가방이 열리고 몬스터볼 셋이 뜬다 (`ScrCmd_StartChooseStarterScene`).
+ *
+ * 스크립트가 아니라 **따로 도는 화면**이라 바이트코드가 없다
+ * (`choose_starter/choose_starter_app.c`). 여기서는 화면을 열고 그것이 끝날
+ * 때까지 선다 — 원작도 `ScriptContext_WaitForApplicationExit`로 선다
+ */
+on('StartChooseStarterScene', (ctx) => {
+  ctx.host.world.services.chooseStarter?.open()
+  ctx.pause((c) => c.host.world.services.chooseStarter?.chosen() != null)
+  return true
+})
+
+/**
+ * 고른 것을 적어 둔다 (`SystemVars_SetPlayerStarter`).
+ *
+ * 세이브에 새 칸이 없다 — 스크립트 변수 하나다. 라이벌과 반대 성별 주인공의
+ * 파트너는 여기서 **계산**된다 (`rivalStarter`·`counterpartStarter`)
+ */
+on('SaveChosenStarter', (ctx) => {
+  const species = ctx.host.world.services.chooseStarter?.chosen()
+  if (species != null) ctx.host.vars.set(VAR_PLAYER_STARTER, species)
+  return false
+})
+
+on('StartFirstBattle', (ctx) => {
+  const trainerID = ctx.readVar()
+  ctx.host.world.services.startFirstBattle?.(trainerID)
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
 // ── 표 만들기 ────────────────────────────────────────────────────────────────
 
 /**

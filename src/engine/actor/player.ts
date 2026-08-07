@@ -60,7 +60,9 @@ export const playerSystem = {
 
     p.prevPosition.copy(p.position)
 
-    const speed = input.run ? RUN_SPEED : WALK_SPEED
+    // ⚠️ **신발이 있어야 뛴다** (`PlayerAvatar`가 `PlayerData_HasRunningShoes`를
+    // 본다). 엄마가 주기 전에는 달리기 키를 눌러도 걷는 속도 그대로다
+    const speed = input.run && p.runningShoes ? RUN_SPEED : WALK_SPEED
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
     const dir = pushDirection()

@@ -30,8 +30,9 @@ maybe('대사', () => {
 
   it('맵이 쓰는 뱅크 404개 + 공용을 담는다', () => {
     // 맵이 안 가리키는 것을 따로 싣는다 — 이름 짓기 표, 트레이너 대사,
-    // 그리고 메뉴 화면들의 글(시작 메뉴·가방·주머니 이름·포켓몬·도감)
-    expect(index.banks.length).toBe(449)
+    // 메뉴 화면들의 글(시작 메뉴·가방·주머니 이름·포켓몬·도감), 그리고
+    // 파트너를 고르는 화면(360번)
+    expect(index.banks.length).toBe(450)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -103,7 +104,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 2664, ko: 2656, ja: 2857 })
+    expect(counted).toEqual({ en: 2672, ko: 2662, ja: 2875 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

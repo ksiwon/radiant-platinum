@@ -69,8 +69,9 @@ export const npcActors = {
  * 신오가 함께 읽는다. 원작도 **불러 둔 맵 헤더**만 고치므로 맵을 다시 들어오면
  * 원래 자리로 돌아간다.
  *
- * 이게 쓰이는 자리는 정해져 있다: `SetObjectEventPos`로 자리를 적어 두고
- * `AddObject`로 그 사람을 세운다. 그래서 세울 때 여기를 본다
+ * 이게 쓰이는 자리는 둘이다. `AddObject`로 나중에 세우는 사람이 하나고,
+ * 다른 하나가 **맵 초기화 스크립트**다(`OnTransition`) — 그쪽은 사람을 세우기
+ * 전에 돌아서 시작 자리를 바꿔 놓는다. 그래서 `spawnNpcs`도 여기를 본다
  */
 const placement = new Map<number, { x?: number; z?: number; dir?: number; move?: number }>()
 
@@ -78,6 +79,14 @@ export function setNpcPlacement(
   localID: number, patch: { x?: number; z?: number; dir?: number; move?: number },
 ): void {
   placement.set(localID, { ...placement.get(localID), ...patch })
+}
+
+/**
+ * 배치표 수정을 버린다. **맵을 옮길 때 초기화 스크립트보다 먼저** 불러야 한다 —
+ * `spawnNpcs`가 지우면 그 앞에 돈 `OnTransition`의 자리 지정이 함께 날아간다
+ */
+export function clearNpcPlacement(): void {
+  placement.clear()
 }
 
 /**
@@ -96,18 +105,20 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
   npcActors.byLocalID.clear()
   npcActors.mapId = mapId
   npcActors.paused = false
-  placement.clear()
   for (const info of npcsOf(mapId)) {
     if (info.flag !== null && vars.checkFlag(info.flag)) continue
+    // 초기화 스크립트가 자리를 바꿔 놨을 수 있다. 예진호수의 마박사가 그렇다 —
+    // 이야기 단계에 따라 세 자리 중 하나에 선다
+    const fix = placement.get(info.localID) ?? {}
     const actor: NpcActor = {
       localID: info.localID,
       info,
-      x: info.x,
-      z: info.z,
+      x: fix.x ?? info.x,
+      z: fix.z ?? info.z,
       y: info.height,
-      dir: info.facing,
+      dir: fix.dir ?? info.facing,
       visible: true,
-      movementType: info.move,
+      movementType: fix.move ?? info.move,
       params: paramsOf(info),
       ambient: null,
     }
@@ -122,6 +133,7 @@ export function clearNpcs(): void {
   npcActors.byLocalID.clear()
   npcActors.mapId = -1
   npcActors.paused = false
+  placement.clear()
 }
 
 /**

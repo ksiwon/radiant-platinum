@@ -109,9 +109,16 @@ export interface SaveData {
   healSpot: number
   /** 열린 공중날기 자리들. `spawns.json`의 번호를 비트로 든다 */
   flySpots: number
+  /**
+   * 러닝슈즈를 받았는가 (`PlayerData_HasRunningShoes`).
+   *
+   * ⚠️ **플래그가 아니다.** 이것만 `PlayerData`의 칸이라 스크립트 플래그 배열에
+   * 없다. 엄마가 201번도로에서 돌아온 뒤에 준다 — 그전에는 못 뛴다
+   */
+  runningShoes: boolean
 }
 
-export const SAVE_VERSION = 6
+export const SAVE_VERSION = 7
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -122,8 +129,18 @@ export const MAX_MONEY = 999999
  * 떡잎마을 주인공 집 2층. 맵 번호는 디컴프의 `map_headers.txt` 줄 순서와 우리
  * 표가 411~418에서 그대로 겹쳐서 확정된다 (411 T01 = TWINLEAF_TOWN,
  * 415 T01R0202 = TWINLEAF_TOWN_PLAYER_HOUSE_2F).
+ *
+ * ⚠️ 좌표와 방향은 **우리 단위로 옮긴 값이다.** 원작은 `x = 4, z = 6,
+ * faceDirection = FACE_UP`인데,
+ *
+ *   · 우리 좌표는 칸의 **가운데**를 가리킨다 — 워프도 `x + 0.5`로 세운다
+ *   · 우리 `facing`은 라디안이고 `atan2(vx, vz)`라 0이 남쪽이다. 북쪽이 π다
+ *
+ * 그대로 두면 주인공이 칸 모서리에 서서 **문 쪽(남쪽)을 보고** 시작한다
  */
-export const START_LOCATION = { map: 415, matrix: 129, x: 4, z: 6, facing: 0 } as const
+export const START_LOCATION = {
+  map: 415, matrix: 129, x: 4.5, z: 6.5, facing: Math.PI,
+} as const
 
 export function createNewSave(): SaveData {
   return {
@@ -158,6 +175,8 @@ export function createNewSave(): SaveData {
     // 0번이 떡잎마을 주인공 집이다 — 원작도 센터에 가기 전엔 집에서 깨어난다
     healSpot: 0,
     flySpots: 0,
+    // 러닝슈즈는 201번도로에서 돌아온 뒤 엄마가 준다 (`GiveRunningShoes`)
+    runningShoes: false,
   }
 }
 
@@ -312,6 +331,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     money: s.money,
     healSpot: s.healSpot,
     flySpots: s.flySpots,
+    runningShoes: s.runningShoes,
   }
 }
 

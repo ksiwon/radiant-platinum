@@ -24,6 +24,13 @@ export interface MapHeader {
   bgmDay: number
   bgmNight: number
   scripts: number
+  /**
+   * 맵 초기화 표의 파일 번호 (`engine/script/initScripts`).
+   *
+   * 스크립트와 **같은 NARC**이고 파일만 다르다. 이 표가 맵에 들어설 때·매
+   * 프레임 무엇을 돌릴지를 정한다
+   */
+  initScripts: number
   msg: number
 }
 
@@ -168,8 +175,35 @@ export function mapById(id: number): MapHeader | null {
   return world.maps?.[id] ?? null
 }
 
+/**
+ * 이번 맵 방문 동안만 사는 워프 자리 수정 (`MapHeaderData_SetWarpEventPos`).
+ *
+ * ⚠️ **워프를 지우는 데 쓴다.** 예진호수 입구가 그렇다 — 물이 마른 호수로 가는
+ * 문과 아닌 쪽 문이 **같은 자리에 둘 다** 놓여 있고, 맵이 올라올 때
+ * (`VerityLakefront_OnLoad`) 안 쓸 쪽을 맵 바깥 좌표(80, 840)로 밀어 버린다.
+ * 이걸 안 하면 한 문에서 목적지 둘이 겹쳐 앞엣것이 늘 이긴다.
+ *
+ * `events.json`을 고치면 안 된다 — 온 신오가 같은 배열을 읽는다
+ */
+const warpMoved = new Map<number, { x: number, z: number }>()
+
+export function setWarpEventPos(index: number, x: number, z: number): void {
+  warpMoved.set(index, { x, z })
+}
+
+/** 맵을 옮길 때 버린다. 초기화 스크립트가 돌기 **전**이어야 한다 */
+export function clearWarpOverrides(): void {
+  warpMoved.clear()
+}
+
 export function warpsOf(mapId: number): Warp[] {
-  return eventsOf(mapId)?.warps ?? []
+  const list = eventsOf(mapId)?.warps ?? []
+  // 수정은 **지금 서 있는 맵**에만 걸린다. 원작도 불러 둔 맵 헤더만 고친다
+  if (warpMoved.size === 0 || mapId !== world.mapId) return list
+  return list.map((w, i) => {
+    const at = warpMoved.get(i)
+    return at === undefined ? w : { ...w, x: at.x, z: at.z }
+  })
 }
 
 export function npcsOf(mapId: number): Npc[] {

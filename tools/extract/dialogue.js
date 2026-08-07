@@ -177,6 +177,10 @@ const EXTRA_BANKS = [
   // 말("박스가 가득 찼다")은 뒤쪽 뱅크다. 박스 화면도 따로 도는 응용 프로그램이라
   // (`applications/pc_boxes`) 스크립트가 이 둘을 안 가리킨다
   'TEXT_BANK_POKEMON_STORAGE_SYSTEM', 'TEXT_BANK_BOX_MESSAGES',
+  // 파트너를 고르는 화면. 디컴프도 이름을 못 붙인 뱅크라 번호로 부른다 —
+  // `choose_starter_app.c`가 뱅크 360의 0·1~3·4~6·7번을 읽는다
+  // (0 "이것은 몬스터볼" · 1~3 고른 볼의 설명 · 4~6 이름표 · 7 "골라라")
+  'TEXT_BANK_UNK_0360',
 ]
 
 function main() {

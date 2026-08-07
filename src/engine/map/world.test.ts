@@ -11,7 +11,9 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import {
   world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR, TILE_BEHAVIOR_PC,
+  clearWarpOverrides,
   doorEntry,
+  setWarpEventPos,
   walkOutOfDoor,
   type EventFile, type MapHeader, type Warp,
 } from './world'
@@ -481,5 +483,50 @@ maybe('PC 칸', () => {
     }
     expect(feet).toBe(16)
     expect(blocked).toEqual([])
+  })
+})
+
+// ── 워프 자리 옮기기 ─────────────────────────────────────────────────────────
+//
+// ⚠️ **워프를 지우는 데 쓴다** (`MapHeaderData_SetWarpEventPos`). 예진호수
+// 입구가 그렇다 — 물이 마른 호수로 가는 문과 아닌 쪽 문이 **같은 칸에 둘 다**
+// 놓여 있고, 맵이 올라올 때(`VerityLakefront_OnLoad`) 안 쓸 쪽을 맵 바깥
+// 좌표(80, 840)로 밀어 버린다.
+//
+// 안 옮기면 예외도 안 나고 문도 열린다 — 다만 **늘 앞엣것으로 간다.**
+
+/** 예진호수 입구. `map_headers.txt`의 334번 (`L01`) */
+const VERITY_LAKEFRONT = 334
+
+maybe('워프 자리 옮기기', () => {
+  beforeAll(() => {
+    world.maps = read('maps.json').maps as MapHeader[]
+    world.events = read('events.json').events as Record<string, EventFile>
+  })
+
+  it('지금 서 있는 맵에만 걸리고, 맵을 옮기면 사라진다', () => {
+    world.mapId = VERITY_LAKEFRONT
+    clearWarpOverrides()
+    const before = warpsOf(VERITY_LAKEFRONT)
+    expect(before.length).toBeGreaterThan(2)
+
+    // 원작이 실제로 쓰는 값이다 (`VerityLakefront_RemoveWarpsLakeVerityNormal`)
+    setWarpEventPos(2, 80, 840)
+    setWarpEventPos(3, 81, 840)
+    const moved = warpsOf(VERITY_LAKEFRONT)
+    expect({ x: moved[2]!.x, z: moved[2]!.z }).toEqual({ x: 80, z: 840 })
+    expect({ x: moved[3]!.x, z: moved[3]!.z }).toEqual({ x: 81, z: 840 })
+    // 나머지는 그대로다 — 표를 통째로 갈아 끼우는 것이 아니다
+    expect(moved[0]).toEqual(before[0])
+    // ⚠️ 원본 배열은 안 건드린다. 온 신오가 같은 배열을 읽는다
+    expect(before[2]).not.toEqual(moved[2])
+
+    // 다른 맵에는 안 걸린다
+    world.mapId = 0
+    expect(warpsOf(VERITY_LAKEFRONT)[2]).toEqual(before[2])
+
+    clearWarpOverrides()
+    world.mapId = VERITY_LAKEFRONT
+    expect(warpsOf(VERITY_LAKEFRONT)[2]).toEqual(before[2])
   })
 })

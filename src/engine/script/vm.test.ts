@@ -104,8 +104,39 @@ maybe('스크립트 VM', () => {
           return true
         },
       },
+      ...SWEEP_SERVICES,
     }
   }
+
+  /**
+   * 답만 돌려주는 바깥 세계.
+   *
+   * ⚠️ **선 채로 기다리는 명령은 반드시 여기 답이 있어야 한다.** 파트너를
+   * 고르는 화면이 그렇다 — 안 붙이면 201번도로의 서류가방 스크립트가 그
+   * 자리에서 영영 서고, 그 뒤의 `GivePokemon`·`StartFirstBattle`이 한 번도
+   * 안 밟힌다. 훑기가 "멀리 가는가"를 재는 시험이라 이게 곧 눈금이다
+   */
+  const SWEEP_SERVICES: FieldServices = {
+    // 나무 파트너로 고정한다. 값이 무엇이든 지나가는 자리는 같고, 고른 뒤
+    // 갈라지는 세 가지(TURTWIG·CHIMCHAR·PIPLUP) 중 하나는 밟혀야 한다
+    chooseStarter: { open: () => { /* 곧바로 끝난다 */ }, chosen: () => SPECIES_TURTWIG },
+    startFirstBattle: () => { /* 결과는 `battleResult`가 이긴 것으로 준다 */ },
+    // 러닝슈즈는 **아직 없는** 쪽으로 답한다. 그래야 주는 가지를 밟는다
+    gear: { giveRunningShoes: () => { /* 받는 자리만 지나간다 */ }, hasRunningShoes: () => false },
+    timeOfDay: () => 1,
+    warpEvents: { setPos: () => { /* 워프 표는 훑기에 없다 */ } },
+    door: {
+      load: () => { /* 소품이 없다 */ },
+      open: () => { /* 소품이 없다 */ },
+      close: () => { /* 소품이 없다 */ },
+      // 곧바로 끝난 것으로 답한다. 참으로 두면 `WaitForAnimation`이 영영 선다
+      busy: () => false,
+      unload: () => { /* 소품이 없다 */ },
+    },
+  }
+
+  /** `generated/species.txt` */
+  const SPECIES_TURTWIG = 387
 
   /**
    * 진입점 하나를 끝까지 돌린다.
@@ -203,14 +234,19 @@ maybe('스크립트 VM', () => {
     const spy = new Map(
       [...map].map(([op, fn]) => [op, (ctx: ScriptContext) => { seen.add(op); return fn(ctx) }]),
     )
-    const vars = new VarStore()
-    for (const [i, info] of meta.files.entries()) {
-      if (info.kind !== 'code') continue
-      for (let e = 0; e < info.entries; e++) {
-        try {
-          run(i, e, { commands: spy, vars })
-        } catch {
-          // 되돌아 도는 진입점은 위 시험이 따로 센다
+    // ⚠️ **두 답 모두 훑는다.** 한쪽으로만 돌면 반대편 가지의 명령이 영영
+    // 안 밟힌다 — 첫 배틀이 그렇다. "한판 붙자!"에 아니오로 답하면 되물어
+    // 오는 자리라, 예로 답한 훑기가 없으면 `StartFirstBattle`이 안 나온다
+    for (const answer of [MENU_NO, 0]) {
+      const vars = new VarStore()
+      for (const [i, info] of meta.files.entries()) {
+        if (info.kind !== 'code') continue
+        for (let e = 0; e < info.entries; e++) {
+          try {
+            run(i, e, { commands: spy, vars, answer })
+          } catch {
+            // 되돌아 도는 진입점은 위 시험이 따로 센다
+          }
         }
       }
     }
@@ -362,41 +398,51 @@ const IDLE_COMMANDS = [
   // 0번 opcode다. 어셈블러가 실제로 안 내보낸다
   'Noop',
   'Dummy', 'CheckFlagFromVar',
-  // ⚠️ **파티를 묻는 명령을 만들면서 여기 들어왔다** (자리는 39곳 있다).
-  // 훑기는 세이브를 안 붙이므로 파티 조회가 전부 0으로 답하고, 그러면
-  // 스크립트가 "가진 게 없다" 쪽으로 갈라져 이 뺄셈까지 못 온다. 전에는 그
-  // 명령들을 **건너뛰어서** 답 변수에 앞 값이 남았고, 그 남은 값이 우연히
-  // 반대쪽 가지를 열어 주고 있었다 — 지금이 더 정직한 상태다
-  'SubVar',
   'MessageNoSkip',
   // 시작 메뉴를 스크립트가 여는 자리는 초반 안내뿐이고, 그 앞이 통신·이름
   // 짓기라 훑기가 못 닿는다
   'ShowStartMenu',
-  // 이 둘은 필드 스크립트에 **한 번도 안 나온다**(도달 가능한 자리 55,421개
-  // 중 0회). 프런티어 쪽 것이라 우리 훑기가 닿을 자리가 없다
+  // 필드 스크립트에 **한 번도 안 나온다**. 프런티어 쪽 것이라 닿을 자리가 없다
   'SetSpecialBGM',
   // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
   'GiveMoney',
-  // 기술을 가졌는지 묻는 자리(14곳)는 전부 **파티가 있어야** 닿는다 — `SubVar`와 같은 이유다
+  // 기술을 가졌는지 묻는 자리(14곳)는 전부 **파티가 있어야** 닿는다. 훑기는
+  // 세이브를 안 붙이므로 파티 조회가 0으로 답하고 "가진 게 없다" 쪽으로 갈라진다
   'CheckPartyMonHasMove',
-  // 이 셋은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
+  // 재대결은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
   // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
   'GetRematchTrainerID',
-  // 처음 고른 파트너 이름을 찍는 자리는 딱 한 곳(고르는 장면 바로 뒤)이고,
-  // 그 앞에 아직 못 만든 고르는 화면이 있어 훑기가 못 지나간다.
-  // 반대 성별 주인공의 파트너는 **필드 스크립트에 0회**다 — 만들어 두기만 한 것이다
+  // ⚠️ **원본이 안 쓰는 자리에만 있다.** 처음 고른 파트너 이름을 찍는 곳은
+  // 201번도로에 딱 한 번 나오는데 그것이 `Route201_…_Unused` 안이라 어느
+  // 진입점에서도 안 닿는다. 반대 성별 주인공 쪽은 필드 스크립트에 0회다
   'BufferPlayerStarterSpeciesName', 'BufferPlayerCounterpartStarterSpeciesName',
   'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
   'BlackOutFromBattle2',
-  // 박스를 세는 둘은 **예/아니오 너머**에 있다. 육아방은 "맡기시겠습니까?"를
-  // 물은 뒤에 세고(`DayCareCommon_TryRaisePokemon`), 사파리 게이트도 값을 내겠냐고
-  // 물은 뒤에 남은 자리를 본다. 훑기는 메뉴에 답을 안 하므로 그 가지에 못 들어간다
-  'CountAliveMonsAndBoxMons',
+  // ⚠️ **이 넷은 필드 스크립트에 0회다.** 러닝슈즈·가방·발자국을 *묻는* 쪽은
+  // 스크립트가 아니라 엔진이 본다 — 가방 아이콘을 띄울지, 뛸 수 있는지 같은
+  // 판단이라 코드 쪽에 있다
+  // (opcode 순서대로 늘어놓는다 — `GiveBag`과 `SetStepFlag`가 사이에 끼어 있다)
+  'CheckRunningShoesAcquired', 'CheckBagAcquired',
+  // ⚠️ **가방은 스크립트가 주는 것이 아니다.** `GiveBag`이 나오는 자리는
+  // 떡잎마을 집 1층의 `…_Unused2` 하나뿐이고, 진짜로 켜는 것은 새 게임
+  // 초기화다 (`game_start.c`의 `StartNewSave`). 우리도 거기서 켠다
+  'GiveBag',
+  'CheckStepFlag',
+  // 라이벌이 따라붙는 자리에서 세운다. 그 앞이 `GetPlayerMapPos`로 x가
+  // 110~113인지 보는 갈래라, 주인공을 안 세운 훑기는 못 지나간다
+  'SetStepFlag',
+  'ClearStepFlag',
   // 친밀도를 올리고 기술칸을 읽는 자리도 파티 너머다
   'IncreasePartyMonFriendship', 'GetPartyMonMove',
-  'GetPCBoxesFreeSlotCount',
+  // 모험노트는 **도감을 받은 뒤**라야 준다(`GoToIfSet FLAG_HAS_POKEDEX`).
+  // 도감을 주는 명령을 아직 안 만들어서 그 플래그가 안 선다
+  'GiveJournal',
+  // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
+  // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
+  // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
+  'SetInitialVolumeForSequence',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다

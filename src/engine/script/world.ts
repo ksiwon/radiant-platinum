@@ -237,6 +237,65 @@ export interface FieldServices {
   setHealSpot?: (index: number) => void
   /** 전멸 — 회복하고 부활 지점으로 옮긴다 (`ScrCmd_BlackOutFromBattle`) */
   blackOut?: () => void
+  /**
+   * 지금 시간대 (`FieldSystem_GetTimeOfDay`).
+   *
+   * 0 아침 · 1 낮 · 2 해질녘 · 3 밤 · 4 심야 (`generated/time_of_day.txt`)
+   */
+  timeOfDay?: () => number
+  /**
+   * 세이브에 붙는 장비 (`scrcmd_system_flags.c`).
+   *
+   * 가방·모험노트는 플래그 하나라 여기 안 온다 — 그건 `VarStore`가 든다.
+   * 러닝슈즈만 `PlayerData`의 칸이라 바깥에 있다
+   */
+  gear?: {
+    giveRunningShoes: () => void
+    hasRunningShoes: () => boolean
+  }
+  /**
+   * 워프 자리를 옮긴다 (`MapHeaderData_SetWarpEventPos`).
+   *
+   * ⚠️ **워프를 지우는 데 쓴다.** 예진호수 입구가 그렇다 — 물이 마른 호수와
+   * 아닌 호수로 가는 문이 둘 다 놓여 있고, 안 쓸 쪽을 맵 바깥 좌표(80, 840)로
+   * 밀어 버린다. 이걸 안 하면 **한 문에서 두 목적지가 겹친다**
+   */
+  warpEvents?: {
+    setPos: (index: number, x: number, z: number) => void
+  }
+  /**
+   * 문 여닫는 그림 (`ov5_021D431C.c`).
+   *
+   * `tag`는 스크립트가 정하는 이름표고, 같은 맵에서 문 여럿을 구분한다
+   */
+  door?: {
+    /** 그 칸의 문 모델을 찾아 둔다 (`DoorAnimation_FindDoorAndLoad`) */
+    load: (x: number, z: number, tag: number) => void
+    open: (tag: number) => void
+    close: (tag: number) => void
+    /** 아직 도는 중인가. `WaitForAnimation`이 이걸 본다 */
+    busy: (tag: number) => boolean
+    unload: (tag: number) => void
+  }
+  /**
+   * 파트너를 고르는 장면 (`FieldSystem_LaunchChooseStarterApp`).
+   *
+   * 스크립트가 아니라 **따로 도는 화면**이다. 열어 두고 `open()`이 끝날 때까지
+   * 스크립트가 선다 — 고른 결과는 `chosen()`이 준다
+   */
+  chooseStarter?: {
+    open: () => void
+    /** 고른 종족 번호. 아직 안 골랐으면 null */
+    chosen: () => number | null
+  }
+  /**
+   * 첫 배틀 (`Encounter_NewVsFirstBattle`).
+   *
+   * 보통 트레이너전과 **한 가지만 다르다** — `BATTLE_STATUS_FIRST_BATTLE`가
+   * 급소를 막는다(`BtlCmd_CalcCrit`가 `criticalMul = 1`로 고정한다). 이길 수도
+   * 질 수도 있는 진짜 배틀이다
+   */
+  startFirstBattle?: (trainerID: number) => void
 }
 
 export interface WorldInit {

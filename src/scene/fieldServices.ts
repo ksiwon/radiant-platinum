@@ -19,7 +19,11 @@ import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { music } from '../engine/audio/music'
+import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
+import { timeOfDayForHour } from '../engine/map/timeOfDay'
+import { setWarpEventPos } from '../engine/map/world'
+import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
@@ -302,4 +306,91 @@ const services: FieldServices = {
     add: (amount) => { useSaveStore.getState().addMoney(amount) },
     spend: (amount) => useSaveStore.getState().spendMoney(amount),
   },
+
+  timeOfDay: () => timeOfDayForHour(worldState.time.gameHour),
+
+  gear: {
+    giveRunningShoes: () => { useSaveStore.setState({ runningShoes: true }) },
+    hasRunningShoes: () => useSaveStore.getState().runningShoes,
+  },
+
+  warpEvents: { setPos: setWarpEventPos },
+
+  door: {
+    load: (x, z, tag) => { door.load(x, z, tag) },
+    open: (tag) => { door.open(tag) },
+    close: (tag) => { door.close(tag) },
+    busy: (tag) => door.busy(tag),
+    unload: (tag) => { door.unload(tag) },
+  },
+
+  chooseStarter: {
+    open: () => {
+      starterChoice = null
+      useMenuStore.getState().open('chooseStarter')
+    },
+    chosen: () => starterChoice,
+  },
+
+  startFirstBattle: (trainerID) => {
+    battleResult = null
+    waiting = true
+    // ⚠️ 보통 트레이너전과 딱 하나 다르다 — **급소가 안 난다**
+    // (`BATTLE_STATUS_FIRST_BATTLE` → `BtlCmd_CalcCrit`이 `criticalMul = 1`)
+    void useBattleStore.getState().startTrainer(trainerID, { noCrit: true }).catch(() => {
+      battleResult = 'loss'
+      waiting = false
+    })
+  },
+}
+
+/** 파트너 고르는 화면이 고른 것. 화면이 닫히기 전에 여기 적는다 */
+let starterChoice: number | null = null
+
+/** 화면이 부른다. 스크립트는 `chooseStarter.chosen()`으로 이 값을 본다 */
+export function setStarterChoice(species: number): void {
+  starterChoice = species
+}
+
+/**
+ * 문 여닫는 그림 (`ov5_021D431C.c`).
+ *
+ * ⚠️ **아직 그림이 없다.** 소품 590종을 기하와 텍스처로 뽑아 두었지만
+ * 애니메이션(NSBCA)은 안 뽑았다. 그래서 여기서 하는 일은 **소리와 시간**뿐이다 —
+ * 문이 열릴 때 나는 소리는 원작 그대로고, `WaitForAnimation`이 서는 길이도
+ * 원작의 한 바퀴(`MapPropOneShotAnimationManager_IsAnimationLoopFinished`)와
+ * 같은 자리에 있다. 문짝이 **움직이는 모습**만 없다.
+ *
+ * 소리는 문 종류가 정한다 (`DoorAnimation_GetSoundEffectType`):
+ * 미닫이는 열 때 `SEQ_SE_DP_DOOR10`·닫을 때 소리 없음, 나머지는
+ * `SEQ_SE_DP_DOOR_OPEN`과 `SEQ_SE_DP_DOOR_CLOSE2`다. 어느 쪽인지는 **문 모델
+ * 번호**로 갈리는데 그 표를 아직 안 옮겼으므로 여닫이 소리를 쓴다
+ */
+/** `generated/sdat.txt`. 디컴프가 닫는 소리를 생값 1543으로 적어 둔 것과 맞는다 */
+const DOOR_OPEN_SE = SFX.DOOR
+const DOOR_CLOSE_SE = 1543
+
+/**
+ * 문이 한 바퀴 도는 시간(ms).
+ *
+ * ⚠️ 원작은 NSBCA 한 바퀴가 끝나기를 기다리는데 그 길이를 우리가 못 읽는다.
+ * 열고 닫는 사이가 **눈에 띄게 끊기는** 정도면 되는 자리라 짧게 잡았다
+ */
+const DOOR_MS = 200
+
+/** 태그 → 이 시각까지 도는 중 */
+const doorUntil = new Map<number, number>()
+
+const door = {
+  load: (_x: number, _z: number, tag: number): void => { doorUntil.delete(tag) },
+  open: (tag: number): void => {
+    doorUntil.set(tag, performance.now() + DOOR_MS)
+    void music.playEffect(DOOR_OPEN_SE)
+  },
+  close: (tag: number): void => {
+    doorUntil.set(tag, performance.now() + DOOR_MS)
+    void music.playEffect(DOOR_CLOSE_SE)
+  },
+  busy: (tag: number): boolean => performance.now() < (doorUntil.get(tag) ?? 0),
+  unload: (tag: number): void => { doorUntil.delete(tag) },
 }

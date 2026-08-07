@@ -107,6 +107,14 @@ export interface BattleOptions {
    * 안 주면 sim이 정한 최대치로 싸운다 — 규칙은 맞지만 PP가 늘 가득이다
    */
   basePp?: (move: number) => number
+  /**
+   * 급소가 안 난다 (`BATTLE_STATUS_FIRST_BATTLE`).
+   *
+   * 라이벌과의 **첫 배틀**에만 붙는다. 원작은 `BtlCmd_CalcCrit`에서 이 비트를
+   * 보고 `criticalMul`을 1로 고정한다 — 처음 잡아 보는 배틀에서 운으로 지지
+   * 않게 하는 장치다. 잡기 튜토리얼도 같은 자리에 걸린다
+   */
+  noCrit?: boolean
 }
 
 /** 한 번 정산에서 각 쪽이 받은 줄 */
@@ -161,6 +169,24 @@ export class BattleSession {
       name: options.foe.name, team: Teams.pack(options.foe.team.map((m) => toSet(m, false))),
     })}`)
     if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
+    if (options.noCrit) this.blockCrits()
+  }
+
+  /**
+   * 이 배틀에서는 급소가 안 난다.
+   *
+   * sim은 급소가 났을 때 `CriticalHit` 사건을 한 번 돌리고(`battle-actions.js`의
+   * `moveHit.crit = this.battle.runEvent('CriticalHit', ...)`) 그 답이 거짓이면
+   * 취소한다 — 특성 '전투무장'이 쓰는 길과 같다. 그래서 **이 배틀 객체에만**
+   * 손잡이를 하나 걸어 두면 된다(`battle.events`는 배틀마다 따로다).
+   *
+   * ⚠️ 난수를 건드리지 않는다. `randomChance`를 가로채면 부가효과·명중까지
+   * 같이 바뀐다
+   */
+  private blockCrits(): void {
+    const battle = this.raw.battle
+    if (!battle) return
+    battle.onEvent('CriticalHit', battle.format, () => false)
   }
 
   /**

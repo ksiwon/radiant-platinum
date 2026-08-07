@@ -230,6 +230,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (world.mapId >= 0) enterMap(world.mapId)
   }, [hydrated, scriptsReady])
 
+  // 러닝슈즈는 세이브에 있고 이동 시스템은 프레임 상태만 본다. 그 사이를
+  // 여기서 잇는다 — 엄마가 주는 순간 다음 프레임부터 뛸 수 있어야 한다
+  const runningShoes = useSaveStore((s) => s.runningShoes)
+  useEffect(() => { worldState.player.runningShoes = runningShoes }, [runningShoes])
+
   // 존만 바뀌는 경우(마을 → 도로)도 맵이 바뀐 것이다
   useEffect(() => { enterMap(mapId) }, [mapId])
 

@@ -13,7 +13,9 @@ import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { world as mapWorld, type EventFile, type MapHeader } from '../map/world'
 import { VarStore } from '../script/vars'
-import { addNpc, clearNpcs, npcActors, removeNpc, setNpcPlacement, spawnNpcs } from './npcs'
+import {
+  addNpc, clearNpcPlacement, clearNpcs, npcActors, removeNpc, setNpcPlacement, spawnNpcs,
+} from './npcs'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'events.json'))
@@ -96,13 +98,32 @@ maybe('살아 있는 NPC', () => {
     expect({ x: back.x, z: back.z, dir: back.dir }).toEqual({ x: 40, z: 41, dir: 3 })
   })
 
-  it('맵을 다시 들어오면 고친 배치표가 사라진다', () => {
+  /**
+   * ⚠️ **세울 때도 배치표 수정을 본다.**
+   *
+   * 맵 초기화 스크립트(`OnTransition`)가 사람을 세우기 **전에** 돌면서 자리를
+   * 바꿔 놓는다 — 예진호수의 마박사가 이야기 단계에 따라 세 자리 중 하나에
+   * 선다. 그래서 `spawnNpcs`가 수정을 지우면 안 되고, 지우는 것은 맵을 옮기는
+   * 쪽이다(`clearNpcPlacement`)
+   */
+  it('초기화 스크립트가 적어 둔 자리에 세워진다', () => {
+    spawnNpcs(TWINLEAF, vars)
+    const localID = npcActors.list[0]!.localID
+    clearNpcPlacement()
+    setNpcPlacement(localID, { x: 40, z: 41 })
+    spawnNpcs(TWINLEAF, vars)
+    const moved = npcActors.byLocalID.get(localID)!
+    expect({ x: moved.x, z: moved.z }).toEqual({ x: 40, z: 41 })
+  })
+
+  it('맵을 옮기면 고친 배치표가 사라진다', () => {
     spawnNpcs(TWINLEAF, vars)
     const localID = npcActors.list[0]!.localID
     const home = { x: npcActors.list[0]!.x, z: npcActors.list[0]!.z }
     setNpcPlacement(localID, { x: 40, z: 41 })
 
-    // 원작도 **불러 둔 맵 헤더**만 고친다. 다시 들어오면 롬의 자리다
+    // 원작도 **불러 둔 맵 헤더**만 고친다. 맵을 옮기면 롬의 자리다
+    clearNpcPlacement()
     spawnNpcs(TWINLEAF, vars)
     removeNpc(localID)
     addNpc(localID)

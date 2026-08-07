@@ -7,19 +7,20 @@
 // 이 모듈은 React를 모른다. 화면은 `world`를 들여다보기만 한다.
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
 import {
-  BG_EVENT_DIR, BG_EVENT_TYPE, mapById, npcsOf, NO_SCRIPT, signsOf, talkTile,
-  TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
+  BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, mapById, npcsOf, NO_SCRIPT, signsOf,
+  talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
 } from '../map/world'
 import { worldState } from '../../state/worldState'
 import {
-  buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, TRAINER_DEFEATED_FLAGS_START, trainerIdOf,
-  type CommandTable,
+  buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG,
+  TRAINER_DEFEATED_FLAGS_START, trainerIdOf, type CommandTable,
 } from './commands'
 import { ScriptContext, ScriptError, type CommonScripts } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { resetFade } from './fade'
-import { npcActors, spawnNpcs } from '../actor/npcs'
+import { clearNpcPlacement, npcActors, spawnNpcs } from '../actor/npcs'
 import { setAmbientTables } from '../actor/ambient'
+import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
 import { obstacleAt } from '../actor/obstacles'
 import {
@@ -187,6 +188,11 @@ export function initNewGame(): boolean {
   ctx.start(entryOffset(data, file, 0))
   // 대사도 이동도 없는 스크립트라 한 번에 끝난다. 상한은 되돌아 도는 것을 막는 자리다
   ctx.step(STEP_CAP)
+  // ⚠️ **가방은 스크립트가 안 준다.** 새 판을 여는 코드가 직접 켠다
+  // (`game_start.c`의 `StartNewSave`). 스크립트에도 `GiveBag`이 있기는 한데
+  // 그 자리는 원본이 안 쓰는 `…_Unused2` 안이라 어디서도 안 불린다 — 이 줄이
+  // 없으면 시작 메뉴에 가방이 영영 안 뜬다
+  vars.setFlag(SYSTEM_FLAG.bagAcquired)
   return true
 }
 
@@ -318,7 +324,15 @@ export function enterMap(mapId: number): void {
   endCommon()
   bankPending = false
   activeBank = null
+  // ⚠️ **순서가 뜻을 가진다.** 앞 맵의 배치표 수정을 버리고 → 이 맵의
+  // `OnTransition`을 돌려 배치표를 고치고 → 그 결과로 사람을 세운다. 원작도
+  // 이 순서다 (`field_map_change.c`가 맵을 올리기 전에 `ON_TRANSITION`을 돈다)
+  clearNpcPlacement()
+  clearWarpOverrides()
+  runFixedInit(mapId, INIT_SCRIPT.onTransition)
   spawnNpcs(mapId, fieldScripts.vars)
+  // 맵이 다 올라온 뒤 도는 것. 워프 자리를 옮기는 자리가 여기다
+  runFixedInit(mapId, INIT_SCRIPT.onLoad)
   // 스크립트가 가로챈 곡을 놓는다. 안 놓으면 그 방에서 튼 곡이 신오 전역을 따라온다
   fieldBgm.override = null
   // ⚠️ 덮개도 걷는다. 아웃만 걸고 워프하는 스크립트가 있어서, 안 걷으면 도착한
@@ -333,6 +347,11 @@ export function enterMap(mapId: number): void {
   const header = mapById(mapId)
   if (!header || header.msg === fieldScripts.bank) return
   fieldScripts.bank = header.msg
+  // ⚠️ **글이 오기 전에는 맵이 스스로 거는 스크립트를 안 돌린다.** 매 프레임
+  // 표는 들어선 **첫 프레임**에 걸리는데(§2.10) 뱅크는 fetch로 오므로, 안 막으면
+  // 처음 가는 맵마다 첫 대사가 빈 창으로 지나간다. 좌표 트리거는 몇 프레임 뒤에
+  // 밟히므로 이 문제가 거의 안 나던 자리다
+  mapBankPending = true
   loadDialogueBank(locale, header.msg)
     .then((bank) => {
       // 받는 사이에 맵이 또 바뀌었으면 늦게 온 것을 버린다
@@ -340,6 +359,84 @@ export function enterMap(mapId: number): void {
       fieldScripts.world?.setMessages(bank)
     })
     .catch(() => { /* 글이 비는 것으로 끝난다 */ })
+    .finally(() => {
+      if (fieldScripts.bank === header.msg) mapBankPending = false
+    })
+}
+
+/** 이 맵의 대사 뱅크가 아직 오는 중인가 */
+let mapBankPending = false
+
+// ── 맵 초기화 스크립트 ───────────────────────────────────────────────────────
+
+/** 파일 번호 → 읽어 둔 표. 바이트는 안 바뀌므로 한 번만 읽는다 */
+const initCache = new Map<number, InitScripts>()
+
+/** 이 맵의 초기화 표. 맵 헤더의 `initScripts`가 가리키는 파일이다 */
+export function initScriptsOf(mapId: number): InitScripts | null {
+  const { data } = fieldScripts
+  const header = mapById(mapId)
+  if (data === null || !header) return null
+  const file = header.initScripts
+  const hit = initCache.get(file)
+  if (hit) return hit
+  const info = data.meta.files[file]
+  if (!info) return null
+  const parsed = parseInitScripts(fileBytes(data, file))
+  initCache.set(file, parsed)
+  return parsed
+}
+
+/**
+ * 한 번에 끝나는 초기화 스크립트를 돌린다 (`FieldSystem_RunScript`).
+ *
+ * 원작도 **한 프레임 안에 끝까지** 돌린다 — 대사도 이동도 없는 스크립트라야
+ * 한다는 뜻이다. 그렇지 않은 것이 들어오면 상한에 걸려 예외가 나는데, 그때도
+ * 맵에는 들어가야 하므로 여기서 삼키고 오류만 남긴다
+ */
+function runFixedInit(mapId: number, type: number): void {
+  const { data, commands, world, vars } = fieldScripts
+  if (data === null || commands === null || world === null) return
+  const scriptID = initScriptsOf(mapId)?.fixed.get(type)
+  if (scriptID === undefined) return
+  const header = mapById(mapId)
+  if (!header) return
+  const target = resolveScript(data.meta, scriptID, header.scripts)
+  if (!target) return
+  const info = data.meta.files[target.file]
+  if (!info || target.entry >= info.entries) return
+
+  vars.resetLocals()
+  const ctx = new ScriptContext(
+    { vars, world, commands: commands.map, common: commonScripts },
+    fileBytes(data, target.file), target.file,
+  )
+  ctx.start(entryOffset(data, target.file, target.entry))
+  try {
+    ctx.step(STEP_CAP)
+  } catch (e) {
+    fieldScripts.lastError = e instanceof ScriptError ? e.message : String(e)
+  }
+  vars.resetLocals()
+}
+
+/**
+ * 매 프레임 표를 본다 (`INIT_SCRIPT_ON_FRAME_TABLE`).
+ *
+ * ⚠️ **좌표 트리거가 아니다.** 조건은 변수 하나뿐이고 어디에 서 있든 걸린다 —
+ * 방에서 일어나 라이벌이 뛰어드는 장면, 예진호수에서 마박사가 돌아보는 장면이
+ * 전부 이 길로 온다. 걸린 스크립트가 **스스로 그 변수를 바꾸므로** 한 번만 돈다.
+ *
+ * 원작도 이것을 다른 무엇보다 먼저 본다 (`FieldInput_Process`의 첫 줄)
+ */
+function tryFrameTable(): void {
+  // 글이 오기 전에 걸면 첫 대사가 빈 창으로 지나간다
+  if (mapBankPending) return
+  const header = mapById(mapWorld.mapId)
+  const init = initScriptsOf(mapWorld.mapId)
+  if (!header || init === null || init.frame.length === 0) return
+  const script = frameTableScript(init, (id) => fieldScripts.vars.get(id))
+  if (script !== null) start(script, header.scripts)
 }
 
 // ── 한 프레임 ────────────────────────────────────────────────────────────────
@@ -387,8 +484,10 @@ export const scriptSystem = {
       step(ctx, world)
       return
     }
-    // 밟아서 걸리는 것이 먼저다. 원작도 이동이 끝난 자리에서 좌표를 먼저 본다
-    tryTrigger()
+    // 맵이 스스로 거는 것이 제일 먼저다 (`FieldInput_Process`)
+    tryFrameTable()
+    // 그 다음이 밟아서 걸리는 것. 원작도 이동이 끝난 자리에서 좌표를 본다
+    if (fieldScripts.ctx === null) tryTrigger()
     // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
     if (fieldScripts.ctx === null) trySight()
     if (fieldScripts.ctx === null && edges.a) tryTalk()
@@ -793,6 +892,9 @@ function tryTrigger(): void {
   const x = Math.floor(p.x), z = Math.floor(p.z)
   if (x === lastTile.x && z === lastTile.z) return
   lastTile = { x, z }
+  // 한 칸 움직였으면 "그 자리에 서 있다" 표시를 지운다
+  // (`FieldInput_Process`가 걸음마다 `SystemFlag_ClearStep`을 부른다)
+  fieldScripts.vars.clearFlag(SYSTEM_FLAG.step)
   const script = triggerAt(mapWorld.mapId, x, z, fieldScripts.vars)
   if (script !== null) start(script, header.scripts)
 }

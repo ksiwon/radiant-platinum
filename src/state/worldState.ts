@@ -32,6 +32,14 @@ export const worldState = {
      * 맵을 옮기면 풀린다 — 원작도 맵마다 다시 써야 한다
      */
     strength: false,
+    /**
+     * 러닝슈즈를 받았는가 (`PlayerData_HasRunningShoes`).
+     *
+     * ⚠️ **이게 없으면 못 뛴다.** 원작도 신발을 받기 전에는 B를 눌러도 걷는다 —
+     * 201번도로에서 돌아와 엄마가 줄 때까지다. 세이브의 값을 씬이 여기로 밀어
+     * 준다(`MapStreamer`) — 이동 시스템은 세이브를 안 본다
+     */
+    runningShoes: false,
   },
   camera: {
     position: new Vector3(0, 6, 9),

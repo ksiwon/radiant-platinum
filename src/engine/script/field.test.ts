@@ -16,9 +16,11 @@ import { worldState } from '../../state/worldState'
 import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
 import {
-  enterMap, fieldScripts, makeWorld, npcAt, resetTriggerTile, scriptBusy, scriptSystem, signAt,
-  start, tileInFront, triggerAt,
+  enterMap, fieldScripts, initScriptsOf, makeWorld, npcAt, resetTriggerTile, scriptBusy,
+  scriptSystem, signAt, start, tileInFront, triggerAt,
 } from './field'
+import { frameTableScript } from './initScripts'
+import { npcActors } from '../actor/npcs'
 import { printedText } from './printer'
 import { VarStore } from './vars'
 import { MENU_NO, type FieldWorld } from './world'
@@ -577,5 +579,80 @@ maybe('간판 판', () => {
     expect(fieldScripts.world!.signpost).toBeNull()
     expect(scriptBusy()).toBe(false)
     expect(fieldScripts.lastError).toBeNull()
+  })
+})
+
+// ── 맵 초기화 스크립트 ───────────────────────────────────────────────────────
+//
+// 맵에 들어서면 그 맵의 `OnTransition`이 **사람을 세우기 전에** 돌면서 배치표를
+// 고친다. 예진호수의 마박사가 그 예다 — 이야기가 어디까지 왔는지에 따라 세
+// 자리 중 하나에 선다.
+//
+// ⚠️ **이 고리가 끊겨도 화면은 멀쩡하다.** 마박사가 롬의 기본 자리(53, 39)에
+// 그냥 서 있을 뿐이라, 원작을 옆에 놓고 보지 않는 한 안 보인다. 그리고 그
+// 자리는 이야기가 시작되는 칸이 아니라서 **오프닝이 한 걸음도 안 나간다.**
+
+/** 예진호수. `map_headers.txt`의 312번 (`D27R0102`) */
+const LAKE_VERITY = 312
+/** `events_lake_verity.json`의 여섯 번째 객체 */
+const LOCALID_PROF_ROWAN = 5
+const LOCALID_COUNTERPART = 6
+/** `generated/vars_flags.txt` */
+const VAR_LAKE_VERITY_PROF_ROWAN_STATE = 0x4097
+const FLAG_TEAM_GALACTIC_LEFT_LAKE_VERITY = 186
+/** `LakeVerity_OnFrame_ProfRowanNoticePlayer` — 진입점 표의 다섯 번째 */
+const LAKE_VERITY_ON_FRAME = 5
+
+maybe('맵 초기화 스크립트', () => {
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+
+  beforeEach(() => {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = LAKE_VERITY
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.services = {}
+    fieldScripts.world = makeWorld(fieldScripts.vars, [])
+    fieldScripts.ctx = null
+  })
+
+  const rowan = () => npcActors.byLocalID.get(LOCALID_PROF_ROWAN)!
+
+  it('배치표의 자리가 아니라 이야기가 정한 자리에 선다', () => {
+    // 롬의 기본 자리는 (53, 39)다. 그대로면 초기화 스크립트가 안 돈 것이다
+    expect(npcsOf(LAKE_VERITY).find((n) => n.localID === LOCALID_PROF_ROWAN))
+      .toMatchObject({ x: 53, z: 39 })
+
+    enterMap(LAKE_VERITY)
+    // `LakeVerity_SetPositionsDuringTeamGalactic`이 (46, 51)에 세우고, 곧이어
+    // `LakeVerity_SetProfRowanStartPosition`이 (46, 50)으로 한 칸 올린다 —
+    // **두 번째 것이 이긴다.** 순서를 뒤집으면 한 칸 아래에 서고, 그러면
+    // 좌표 트리거가 안 걸린다
+    expect({ x: rowan().x, z: rowan().z, dir: rowan().dir }).toEqual({ x: 46, z: 50, dir: 0 })
+  })
+
+  it('이야기가 지나가면 다른 자리에 선다', () => {
+    fieldScripts.vars.setFlag(FLAG_TEAM_GALACTIC_LEFT_LAKE_VERITY)
+    fieldScripts.vars.set(VAR_LAKE_VERITY_PROF_ROWAN_STATE, 1)
+    enterMap(LAKE_VERITY)
+    // `LakeVerity_SetPositionsAfterTeamGalactic` — 둘이 나란히 서쪽을 본다
+    expect({ x: rowan().x, z: rowan().z, dir: rowan().dir }).toEqual({ x: 50, z: 37, dir: 2 })
+    const other = npcActors.byLocalID.get(LOCALID_COUNTERPART)!
+    expect({ x: other.x, z: other.z, dir: other.dir }).toEqual({ x: 50, z: 39, dir: 2 })
+  })
+
+  it('매 프레임 표가 조건이 맞을 때만 스크립트를 건다', () => {
+    const init = initScriptsOf(LAKE_VERITY)!
+    expect(init.frame).toEqual([
+      { left: VAR_LAKE_VERITY_PROF_ROWAN_STATE, right: 0, script: LAKE_VERITY_ON_FRAME },
+    ])
+    const vars = fieldScripts.vars
+    expect(frameTableScript(init, (id) => vars.get(id))).toBe(LAKE_VERITY_ON_FRAME)
+    // 걸린 스크립트가 **스스로** 이 변수를 1로 바꾼다. 그래서 한 번만 돈다
+    vars.set(VAR_LAKE_VERITY_PROF_ROWAN_STATE, 1)
+    expect(frameTableScript(init, (id) => vars.get(id))).toBeNull()
   })
 })
