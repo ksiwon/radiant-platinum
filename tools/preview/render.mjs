@@ -211,13 +211,19 @@ function shellPlates(m, ps) {
       const it = ps?.items.find(([tex, pal]) => tex === spec.tex && pal === (spec.pal ?? ''))
       const col = mainColor(ps, it)
       if (col === null) continue
+      // 판에 **원작 그림을 그대로 입힌다.** 색 하나로 칠하면 회색 슬래브가 된다
+      const item = it ? { x: it[2], y: it[3], w: it[4], h: it[5], sheet: ps } : null
       for (let t = 0; t < count; t += 3) {
         const ids = [m.idx[start + t], m.idx[start + t + 1], m.idx[start + t + 2]]
         const p = ids.map((i) => [m.pos[i * 3], m.pos[i * 3 + 1], m.pos[i * 3 + 2]])
         const area = (p[1][u] - p[0][u]) * (p[2][v] - p[0][v]) - (p[2][u] - p[0][u]) * (p[1][v] - p[0][v])
         if (Math.abs(area) < FLAT) continue
-        const w = area * sign > 0 ? p : [p[0], p[2], p[1]]
-        out.push([w.map((q) => { const o = [q[0], q[1], q[2]]; o[axis] = flat(q[axis]); return o }), col])
+        const order = area * sign > 0 ? [0, 1, 2] : [0, 2, 1]
+        out.push([
+          order.map((j) => { const q = p[j]; const o = [q[0], q[1], q[2]]; o[axis] = flat(q[axis]); return o }),
+          order.map((j) => [m.uv[ids[j] * 2], m.uv[ids[j] * 2 + 1]]),
+          item, col,
+        ])
       }
     }
   }
@@ -272,17 +278,21 @@ for (const c of matrix.chunks) {
       const spec = got.meta.materials[mat]
       const it = ps?.items.find(([tex, pal]) => tex === spec.tex && pal === (spec.pal ?? ''))
       const item = it ? { x: it[2], y: it[3], w: it[4], h: it[5], sheet: ps } : null
+      // ⚠️ **알파를 안 보면 그림자 데칼이 순검정 판으로 찍힌다.** `h_kage`는
+      // a=9(31분의 9)라 게임에서는 옅은 그늘인데, 여기서 불투명하게 그리면
+      // 집 밑에 검은 얼룩이 생겨 **없는 버그를 쫓게 된다** (`makeMaterial`)
+      const alpha = (spec.a ?? 31) / 31
       for (let t = 0; t < count; t += 3) {
         const ids = [got.idx[start + t], got.idx[start + t + 1], got.idx[start + t + 2]]
         tris.push([
           ids.map((i) => [b.x + got.pos[i * 3], b.y + got.pos[i * 3 + 1], b.z + got.pos[i * 3 + 2]]),
           ids.map((i) => [got.uv[i * 2], got.uv[i * 2 + 1]]),
-          item, null,
+          item, null, alpha,
         ])
       }
     }
-    for (const [p, col] of shellPlates(got, ps) ?? []) {
-      tris.push([p.map((q) => [b.x + q[0], b.y + q[1], b.z + q[2]]), null, null, col])
+    for (const [p, puv, pitem, col] of shellPlates(got, ps) ?? []) {
+      tris.push([p.map((q) => [b.x + q[0], b.y + q[1], b.z + q[2]]), puv, pitem, pitem ? null : col])
     }
   }
 }
@@ -346,7 +356,7 @@ const SPREAD = 0.9
 const CROWN_H = 1.52, CROWN_TOP = 0.81
 // 밑동이 원점이고 단위는 나무 반지름 배수다 (`Foliage.tsx`와 같은 규칙)
 const BARE = 1.0, CROWN_Y = BARE + (CROWN_H - CROWN_TOP)
-const RADIUS_MIN = 0.95, RADIUS_MAX = 1.40, RADIUS_JITTER = 0.12
+const RADIUS_MIN = 0.95, RADIUS_MAX = 1.40, RADIUS_JITTER = 0.12, HEIGHT_JITTER = 0.22
 /** 줄기 마디 [높이, 반지름, 휜 만큼] */
 const TRUNK = [[0, 0.260, 0], [0.17, 0.165, 0.015], [0.62, 0.135, 0.050], [1.55, 0.100, 0.110]]
 const TRUNK_SIDES = 6, TRUNK_SHADE = 0.62
@@ -354,10 +364,11 @@ const dim = (rgb, k) => (Math.round(((rgb >> 16) & 255) * k) << 16)
   | (Math.round(((rgb >> 8) & 255) * k) << 8) | Math.round((rgb & 255) * k)
 
 let treeCount = 0
-function putTree(x, y, z, r, spin, col) {
+function putTree(x, y, z, r, h, spin, col) {
   treeCount++
   const cs = Math.cos(spin), sn = Math.sin(spin)
-  const rot = (p) => [x + (p[0] * cs - p[2] * sn) * r, y + p[1] * r, z + (p[0] * sn + p[2] * cs) * r]
+  // 키는 반지름과 따로 흔든다 (`Foliage.tsx`의 HEIGHT_JITTER와 같은 규칙)
+  const rot = (p) => [x + (p[0] * cs - p[2] * sn) * r, y + p[1] * h, z + (p[0] * sn + p[2] * cs) * r]
   BLOBS.forEach(([bx, by, bz, br], i) => {
     for (const tri of icosa(br, BLOB_DETAIL[i] ?? 0)) {
       tris.push([tri.map((p) => rot([p[0] + bx, CROWN_Y + p[1] * CROWN_SQUASH + by, p[2] + bz])), null, null, col.leaf[i % col.leaf.length]])
@@ -403,6 +414,7 @@ for (const [key, cell] of cover) {
     cell.minY,
     z + (hash(tx, tz, 8) - 0.5) * SPREAD * 2,
     r,
+    r * (1 + (hash(tx, tz, 11) - 0.5) * 2 * HEIGHT_JITTER),
     hash(tx, tz, 10) * Math.PI * 2, col,
   )
 }
@@ -485,7 +497,7 @@ const depth = new Float32Array(W * H).fill(1e9)
 const px = new Uint8Array(W * H * 3)
 for (let i = 0; i < W * H; i++) { px[i * 3] = 150; px[i * 3 + 1] = 180; px[i * 3 + 2] = 215 }
 
-for (const [P, UV, item, flat] of tris) {
+for (const [P, UV, item, flat, alpha = 1] of tris) {
   const n3 = norm(cross(sub(P[1], P[0]), sub(P[2], P[0])))
   const lam = Math.max(0.42, Math.abs(dot(n3, light)))
   const S = P.map((p) => {
@@ -525,8 +537,14 @@ for (const [P, UV, item, flat] of tris) {
     } else {
       r = (flat >> 16) & 255; g = (flat >> 8) & 255; b = flat & 255
     }
-    depth[o] = z
-    px[o * 3] = Math.min(255, r * lam); px[o * 3 + 1] = Math.min(255, g * lam); px[o * 3 + 2] = Math.min(255, b * lam)
+    const lit = [Math.min(255, r * lam), Math.min(255, g * lam), Math.min(255, b * lam)]
+    if (alpha >= 1) {
+      depth[o] = z
+      px[o * 3] = lit[0]; px[o * 3 + 1] = lit[1]; px[o * 3 + 2] = lit[2]
+    } else {
+      // 반투명은 깊이를 안 쓴다 — 뒤에 있는 것이 통째로 사라지면 안 된다
+      for (let c = 0; c < 3; c++) px[o * 3 + c] = px[o * 3 + c] * (1 - alpha) + lit[c] * alpha
+    }
   }
 }
 writeFileSync(`${outDir}/scene.ppm`, Buffer.concat([Buffer.from(`P6\n${W} ${H}\n255\n`), Buffer.from(px)]))

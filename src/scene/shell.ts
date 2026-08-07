@@ -155,6 +155,20 @@ export function openDirections(mesh: ChunkMesh): (readonly [number, number])[] {
  * 오려 낸 그림(`cutout`)은 판을 만들면 안 된다. 판 한 장짜리 울타리·간판이라
  * 눌러 붙이면 없던 널판이 생긴다
  */
+export function shellPaint(
+  mesh: ChunkMesh, sheet: TexSheet | null, cutout: readonly boolean[],
+): ShellPaint {
+  return {
+    colors: shellColors(mesh, sheet, cutout),
+    rects: mesh.materials.map((spec, i) => {
+      if (cutout[i] === true || !sheet) return null
+      const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
+      if (!item) return null
+      return { ...item, sheetW: sheet.width, sheetH: sheet.height }
+    }),
+  }
+}
+
 export function shellColors(
   mesh: ChunkMesh, sheet: TexSheet | null, cutout: readonly boolean[],
 ): (number | null)[] {
@@ -177,6 +191,58 @@ export function shellColors(
 }
 
 /**
+ * 판이 무엇으로 칠해지는가.
+ *
+ * ⚠️ **평균색 하나로 칠하면 뒷면이 회색 슬래브가 된다.** 실제로 그랬다 —
+ * 주인공 집은 나무벽 + 파란 기단 + 회색 문인데 그 평균이 흙탕 회색이라, 뒤로
+ * 돌아가면 창문 자리에 실선만 남은 판때기가 서 있었다.
+ *
+ * 그래서 **원작 그림을 그대로 입힌다.** 재질마다 판을 따로 그리면 드로우콜이
+ * 소품 하나에 중앙값 2개·최대 13개씩 늘어나므로, UV를 아틀라스 좌표로 고쳐 쓰고
+ * 시트 한 장을 물린다 — 판 전체가 드로우콜 하나다.
+ *
+ * `colors`는 그대로 남는다. 시트를 못 받았을 때 떨어질 자리이자, 어느 그룹이
+ * 오려 낸 그림이라 판을 만들면 안 되는지(`null`)를 나르는 표다
+ */
+export interface ShellPaint {
+  colors: readonly (number | null)[]
+  /** 그룹이 아틀라스에서 차지한 칸. 없으면 UV를 못 고친다 */
+  rects: readonly (AtlasRect | null)[]
+}
+
+export interface AtlasRect {
+  x: number
+  y: number
+  w: number
+  h: number
+  sheetW: number
+  sheetH: number
+}
+
+/**
+ * 아틀라스 좌표로 고친 UV.
+ *
+ * 원작 UV는 **칸마다 0~1이고 반복**한다(`sliceTexture`가 `wrapS/T`로 흉내 낸다).
+ * 아틀라스 한 장에 물리면 반복을 못 하므로 소수부만 남긴다 — 뒷판은 그림을
+ * 여러 번 되풀이할 자리가 아니라 실루엣을 채우는 자리라 이 손해가 안 보인다.
+ *
+ * 가장자리에서 반 픽셀 안으로 당긴다. 안 그러면 이웃 그림이 한 줄 새어 들어온다
+ */
+function atlasUv(
+  uv: ArrayLike<number> | undefined, vertex: number, rect: AtlasRect | null,
+): [number, number] {
+  if (!uv || !rect) return [0, 0]
+  const frac = (t: number): number => t - Math.floor(t)
+  const su = frac(uv[vertex * 2] ?? 0)
+  const sv = frac(uv[vertex * 2 + 1] ?? 0)
+  const inset = 0.5
+  return [
+    (rect.x + inset + su * (rect.w - 2 * inset)) / rect.sheetW,
+    (rect.y + inset + sv * (rect.h - 2 * inset)) / rect.sheetH,
+  ]
+}
+
+/**
  * 한 방향의 판. 없으면 `null`.
  *
  * 그 방향에서 봐서 넓이가 0인 삼각형(모로 선 것)은 실루엣에 아무것도 안 보태므로
@@ -186,10 +252,12 @@ export function shellColors(
  * 그대로 두면 한 벽이 얼룩덜룩해진다
  */
 export function facePlate(
-  mesh: ChunkMesh, colors: readonly (number | null)[], axis: number, sign: number,
+  mesh: ChunkMesh, paint: ShellPaint, axis: number, sign: number,
 ): BufferGeometry | null {
   const src = mesh.geometry
   const pos = (src.getAttribute('position') as BufferAttribute).array as ArrayLike<number>
+  const uv = (src.getAttribute('uv') as BufferAttribute | undefined)?.array as
+    ArrayLike<number> | undefined
   const index = src.getIndex()!.array
   let lo = Infinity, hi = -Infinity
   for (let i = axis; i < pos.length; i += 3) {
@@ -208,8 +276,11 @@ export function facePlate(
   const u = (axis + 1) % 3, v = (axis + 2) % 3
   const position: number[] = []
   const color: number[] = []
+  const texcoord: number[] = []
   mesh.groups.forEach(([, start, count], group) => {
-    const rgb = colors[group]
+    const rect = paint.rects[group]
+    const rgb = paint.colors[group]
+    // 오려 낸 그림은 판을 안 만든다 — 판 한 장짜리 울타리에 없던 널판이 생긴다
     if (rgb === null || rgb === undefined) return
     const r = ((rgb >> 16) & 255) / 255, g = ((rgb >> 8) & 255) / 255, b = (rgb & 255) / 255
     for (let t = 0; t < count; t += 3) {
@@ -220,12 +291,14 @@ export function facePlate(
       if (Math.abs(area) < FLAT) continue
       // **그쪽을 보게 감는다.** 원작의 감는 방향을 그대로 물려받으면 판이 반대를
       // 보고 있어서, 면은 다 있는데 그 방향에서는 하나도 안 보인다
-      const wound = area * sign > 0 ? p : [p[0]!, p[2]!, p[1]!]
-      for (const q of wound) {
+      const order = area * sign > 0 ? [0, 1, 2] : [0, 2, 1]
+      for (const j of order) {
+        const q = p[j]!
         const out = [q[0], q[1], q[2]]
         out[axis] = flat(q[axis])
         position.push(out[0]!, out[1]!, out[2]!)
         color.push(r, g, b)
+        texcoord.push(...atlasUv(uv, tri[j]!, rect))
       }
     }
   })
@@ -234,6 +307,7 @@ export function facePlate(
   const geo = new BufferGeometry()
   geo.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
   geo.setAttribute('color', new BufferAttribute(new Float32Array(color), 3))
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array(texcoord), 2))
   const normal = new Float32Array(position.length)
   for (let i = 0; i < normal.length; i += 3) normal[i + axis] = sign
   geo.setAttribute('normal', new BufferAttribute(normal, 3))
@@ -248,11 +322,11 @@ export function facePlate(
  * 재질이 한 벌이라 합칠 수 있다
  */
 export function shellPlates(
-  mesh: ChunkMesh, colors: readonly (number | null)[],
+  mesh: ChunkMesh, paint: ShellPaint,
 ): BufferGeometry | null {
   const parts: BufferGeometry[] = []
   for (const [axis, sign] of openDirections(mesh)) {
-    const p = facePlate(mesh, colors, axis, sign)
+    const p = facePlate(mesh, paint, axis, sign)
     if (p) parts.push(p)
   }
   if (parts.length === 0) return null

@@ -267,3 +267,27 @@ export function makeMaterial(
     side: spec.f === 3 || doubleSided ? DoubleSide : FrontSide,
   })
 }
+
+/**
+ * 시트 한 장을 통째로 텍스처로.
+ *
+ * 빠진 면을 채운 판(`shell.ts`)이 쓴다. 소품 하나에 재질이 중앙값 2개·최대 13개라
+ * 재질마다 판을 따로 그리면 드로우콜이 그만큼 늘어난다. 대신 판의 UV를 **아틀라스
+ * 좌표로 고쳐 쓰고** 시트 한 장을 물리면 판 전체가 드로우콜 하나다.
+ *
+ * `ClampToEdgeWrapping`이어야 한다 — 반복으로 두면 이웃 그림이 새어 들어온다.
+ * 필터도 최근접이다. 선형이면 아틀라스 경계에서 옆 그림 색이 번진다
+ */
+export function sheetTexture(sheet: TexSheet): Texture {
+  const texture = new DataTexture(
+    new Uint8Array(sheet.pixels.buffer.slice(0)), sheet.width, sheet.height,
+  )
+  texture.colorSpace = SRGBColorSpace
+  texture.wrapS = ClampToEdgeWrapping
+  texture.wrapT = ClampToEdgeWrapping
+  texture.magFilter = NearestFilter
+  texture.minFilter = NearestFilter
+  texture.generateMipmaps = false
+  texture.needsUpdate = true
+  return texture
+}

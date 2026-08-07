@@ -12,7 +12,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
 import {
-  FILLABLE, FLAT, GRID, facePlate, openDirections, shellColors, shellPlates,
+  FILLABLE, FLAT, GRID, facePlate, openDirections, shellColors, shellPaint, shellPlates,
+  type ShellPaint,
 } from './shell'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 
@@ -138,7 +139,11 @@ maybe('소품 빠진 면', () => {
    */
   const N = GRID
   /** 텍스처를 안 읽으므로 색만 손으로 준다. 모양을 재는 시험이지 색을 재는 것이 아니다 */
-  const paint = (mesh: ChunkMesh) => mesh.materials.map(() => 0x8a7f6a)
+  /** 색만 있고 그림은 없는 칠 — 판이 서는지만 보는 자리다 */
+  const paint = (mesh: ChunkMesh): ShellPaint => ({
+    colors: mesh.materials.map(() => 0x8a7f6a),
+    rects: mesh.materials.map(() => null),
+  })
 
   /**
    * 그 방향이 뚫려 있는가 — 시험이 제 눈으로 다시 잰다.
@@ -240,7 +245,8 @@ maybe('소품 빠진 면', () => {
     expect(filled).toBeGreaterThan(300)
     // 한 장짜리라 건너뛴 방향
     expect(sheets).toBe(111)
-  })
+  // 590종을 방향 다섯으로 64×64 래스터라이즈한다. 5초 기본값으로는 모자란다
+  }, 30_000)
 
   it('판은 본체 바깥에 얇게 붙는다 — 소품이 두꺼워지지 않는다', () => {
     const mesh = readProp(23, fmt)
@@ -294,10 +300,10 @@ maybe('소품 빠진 면', () => {
       groups: [[0, 0, 3]],
     }
     expect(shellColors(mesh, sheet, [false])[0]).not.toBeNull()
-    expect(shellPlates(mesh, shellColors(mesh, sheet, [false]))).not.toBeNull()
+    expect(shellPlates(mesh, shellPaint(mesh, sheet, [false]))).not.toBeNull()
     // 같은 그림, 같은 모양 — 오려 낸 것으로 표시된 것만 다르다
     expect(shellColors(mesh, sheet, [true])[0]).toBeNull()
-    expect(shellPlates(mesh, shellColors(mesh, sheet, [true]))).toBeNull()
+    expect(shellPlates(mesh, shellPaint(mesh, sheet, [true]))).toBeNull()
   })
 
   it('색은 그림의 평균이다 — 최빈값은 윤곽선을 집는다', () => {
@@ -318,5 +324,63 @@ maybe('소품 빠진 면', () => {
     // 끌어내린 (140,128,115)이다 — 이 시험이 둘을 가른다
     expect(shellColors(mesh, sheet, [false])[0])
       .toBe((140 << 16) | (128 << 8) | 115)
+  })
+})
+
+describe('판에 입히는 그림', () => {
+  /** 4×4 그림이 시트 (10,20)에 놓인 경우 */
+  const rect = { x: 10, y: 20, w: 4, h: 4, sheetW: 64, sheetH: 32 }
+
+  /** z가 0과 1인 삼각형 하나. UV는 넘겨받은 대로 */
+  const oneTri = (uv: number[]): ChunkMesh => {
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new BufferAttribute(new Float32Array([
+      0, 0, 0, 1, 0, 0, 0, 1, 1,
+    ]), 3))
+    geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
+    geo.setIndex([0, 1, 2])
+    return {
+      geometry: geo,
+      materials: [{ tex: 'w', pal: '', rep: 0, a: 31, f: 0 }],
+      groups: [[0, 0, 3]],
+    }
+  }
+
+  const uvOf = (mesh: ChunkMesh) => {
+    const plate = facePlate(mesh, { colors: [0x808080], rects: [rect] }, 2, -1)!
+    return Array.from((plate.getAttribute('uv') as BufferAttribute).array)
+  }
+
+  it('UV가 그 그림이 차지한 칸 안으로 들어간다', () => {
+    // ⚠️ 아틀라스 한 장을 물리므로 칸 밖으로 새면 **이웃 그림이 벽에 나타난다**
+    const out = uvOf(oneTri([0, 0, 1, 0, 0.5, 1]))
+    expect(out).toHaveLength(6)
+    for (let i = 0; i < out.length; i += 2) {
+      expect(out[i]!).toBeGreaterThanOrEqual(rect.x / rect.sheetW)
+      expect(out[i]!).toBeLessThanOrEqual((rect.x + rect.w) / rect.sheetW)
+      expect(out[i + 1]!).toBeGreaterThanOrEqual(rect.y / rect.sheetH)
+      expect(out[i + 1]!).toBeLessThanOrEqual((rect.y + rect.h) / rect.sheetH)
+    }
+  })
+
+  it('가장자리에서 반 픽셀 안으로 당긴다 — 안 그러면 옆 그림이 한 줄 샌다', () => {
+    const out = uvOf(oneTri([0, 0, 1, 0, 0.5, 1]))
+    // u=0은 칸 왼쪽 끝이 아니라 반 픽셀 안쪽이다
+    expect(out[0]!).toBeCloseTo((rect.x + 0.5) / rect.sheetW, 10)
+  })
+
+  it('반복하는 UV는 소수부만 남긴다 — 아틀라스에서는 되풀이를 못 한다', () => {
+    const once = uvOf(oneTri([0.25, 0, 1, 0, 0.5, 1]))
+    const thrice = uvOf(oneTri([3.25, 0, 1, 0, 0.5, 1]))
+    expect(thrice[0]).toBeCloseTo(once[0]!, 10)
+  })
+
+  it('그림을 못 찾으면 UV가 0이다 — 평균색으로 떨어지는 자리다', () => {
+    const plate = facePlate(oneTri([0.3, 0.7, 1, 0, 0.5, 1]), {
+      colors: [0x808080], rects: [null],
+    }, 2, -1)!
+    expect(Array.from((plate.getAttribute('uv') as BufferAttribute).array)).toEqual(
+      [0, 0, 0, 0, 0, 0],
+    )
   })
 })

@@ -104,6 +104,19 @@ export const RADIUS_MIN = 0.95
 const RADIUS_MAX = 1.40
 /** 그루마다 흔드는 폭 */
 const RADIUS_JITTER = 0.12
+
+/**
+ * 키를 반지름과 **따로** 흔드는 폭.
+ *
+ * ⚠️ **이게 없으면 숲이 카펫이 된다.** 크기를 균등 배율 하나로만 주면 짙은 숲에서
+ * `want`가 다 같아서(판이 넉 장 쌓인 칸이 이어진다) 반지름 흔들림 ±0.12 안에서만
+ * 갈리고, 우듬지가 한 높이에 늘어선다. 위에서 내려다보면 나무 하나하나가 아니라
+ * 초록 덩어리 한 장으로 읽힌다 — 실제로 그렇게 찍혔다.
+ *
+ * ±22%면 두 칸 간격에서 이웃과 확실히 어긋나면서도, 원작 판 더미가 정한
+ * 큰 크기 차이(숲 벽 대 길가 나무)는 안 지운다
+ */
+const HEIGHT_JITTER = 0.22
 /**
  * 칸 한가운데에서 흩는 폭(타일).
  *
@@ -319,6 +332,8 @@ export function treeAt(key: number, cell: Cell): Matrix4 | null {
   const want = (cell.maxY - cell.minY) / CROWN_H
   const jitter = (hash(tx, tz, 9) - 0.5) * 2 * RADIUS_JITTER
   const r = Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, want)) + jitter
+  // 키는 따로 흔든다. 균등 배율만 주면 우듬지가 한 높이에 늘어서 카펫이 된다
+  const h = r * (1 + (hash(tx, tz, 11) - 0.5) * 2 * HEIGHT_JITTER)
   return new Matrix4().compose(
     new Vector3(
       tx + STRIDE / 2 + (hash(tx, tz, 7) - 0.5) * SPREAD * 2,
@@ -326,7 +341,7 @@ export function treeAt(key: number, cell: Cell): Matrix4 | null {
       tz + STRIDE / 2 + (hash(tx, tz, 8) - 0.5) * SPREAD * 2,
     ),
     new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), hash(tx, tz, 10) * Math.PI * 2),
-    new Vector3(r, r, r),
+    new Vector3(r, h, r),
   )
 }
 

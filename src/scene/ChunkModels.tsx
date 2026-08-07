@@ -12,14 +12,15 @@ import {
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import {
-  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sliceTexture,
+  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sheetTexture,
+  sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import { cachedSplit, cutoutGroups, grassColors, plateColors, waterColors } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
-import { shellColors, shellPlates } from './shell'
+import { shellPaint, shellPlates } from './shell'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -44,10 +45,30 @@ interface Prop extends Placed {
   scale: [number, number, number]
   /** 빠진 면을 채운 판. 원작 소품은 면이 통째로 없다 (`shell.ts`) */
   back: BufferGeometry | null
+  /** 그 판에 입힐 재질. 소품마다 제 그림 묶음을 쓴다 */
+  backMaterial: Material
 }
 
-/** 채운 면은 색을 정점이 나른다. 재질은 한 벌이면 된다 */
-const BACK = new MeshLambertMaterial({ vertexColors: true })
+/**
+ * 채운 면의 재질.
+ *
+ * **원작 그림을 그대로 입힌다.** 판의 UV가 아틀라스 좌표로 고쳐져 있어서
+ * (`shell.ts`의 `atlasUv`) 시트 한 장이면 소품 하나의 판 전체가 드로우콜 하나다.
+ * 정점 색은 그대로 곱해진다 — 시트를 못 받았을 때 평균색으로 떨어지는 자리다.
+ *
+ * 묶음마다 한 벌이면 되므로 텍스처 번호로 담아 둔다
+ */
+const backMaterials = new Map<number, Material>()
+function backMaterial(propId: number, sheet: TexSheet | null): Material {
+  const hit = backMaterials.get(propId)
+  if (hit) return hit
+  const made = new MeshLambertMaterial({
+    vertexColors: true,
+    map: sheet ? sheetTexture(sheet) : null,
+  })
+  backMaterials.set(propId, made)
+  return made
+}
 
 /**
  * 재질 명세 + 시트 → three 재질. 같은 조합은 한 번만 만든다.
@@ -82,7 +103,7 @@ const backCache = new Map<number, BufferGeometry | null>()
 function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): BufferGeometry | null {
   const hit = backCache.get(id)
   if (hit !== undefined) return hit
-  const made = shellPlates(mesh, shellColors(mesh, sheet, cutoutGroups(mesh, sheet)))
+  const made = shellPlates(mesh, shellPaint(mesh, sheet, cutoutGroups(mesh, sheet)))
   backCache.set(id, made)
   return made
 }
@@ -187,6 +208,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 98개나 되고, 그것들은 단면으로 두면 뒤에서 사라진다
             materials: materialsFor(got.mesh, got.sheet, cache, got.mesh.materials.map(() => true)),
             back: cachedBack(got.mesh, got.sheet, got.id),
+            backMaterial: backMaterial(got.id, got.sheet),
           }]
         }))
       })
@@ -238,7 +260,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면 반대편 벽의
             **안쪽**이 보인다 (`shell.ts`)
           */}
-          {p.back && <mesh geometry={p.back} material={BACK} castShadow receiveShadow />}
+          {p.back && <mesh geometry={p.back} material={p.backMaterial} castShadow receiveShadow />}
         </group>
       ))}
     </group>
