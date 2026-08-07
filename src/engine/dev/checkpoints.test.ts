@@ -8,8 +8,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { walkOutOfDoor, type EventFile, type MapHeader } from '../map/world'
-import { isEncounterTile } from '../battle/encounter'
-import { CHECKPOINTS, resolveSpot } from './checkpoints'
+import { isEncounterTile, type EncounterTable } from '../battle/encounter'
+import { CHECKPOINTS, resolveSpot, seenAlongTheWay } from './checkpoints'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'matrices/0.bin'))
@@ -110,5 +110,95 @@ maybe('확인 지점', () => {
       if (!c.battle) continue
       expect(c.party?.length ?? 0, c.label).toBeGreaterThan(0)
     }
+  })
+})
+
+/**
+ * 진행도가 앞으로만 가는가.
+ *
+ * ⚠️ 지점마다 파티·가방·배지를 따로 적으면 "5배지인데 몬스터볼 10개"처럼
+ * 조용히 어긋난다. 표가 이야기 순서라는 것 하나로 여기서 전부 잡는다 —
+ * 자료 파일이 없어도 도는 시험이라 `maybe`가 아니다.
+ */
+describe('확인 지점의 진행도', () => {
+  const badgeCount = (mask: number): number => mask.toString(2).replace(/0/g, '').length
+
+  it('배지는 줄지 않는다', () => {
+    let most = 0
+    for (const c of CHECKPOINTS) {
+      const n = badgeCount(c.badges ?? 0)
+      expect(n, `${c.id}에서 배지가 줄었다`).toBeGreaterThanOrEqual(most)
+      most = n
+    }
+    // 끝까지 가면 여덟 개가 다 찬다
+    expect(most).toBe(8)
+  })
+
+  it('배지는 아래에서부터 차례로 찬다 — 구멍이 나면 안 된다', () => {
+    for (const c of CHECKPOINTS) {
+      const mask = c.badges ?? 0
+      const n = badgeCount(mask)
+      expect(mask, c.id).toBe((1 << n) - 1)
+    }
+  })
+
+  it('도감은 한 번 받으면 안 사라진다', () => {
+    let had = false
+    for (const c of CHECKPOINTS) {
+      if (had) expect(c.dex, `${c.id}에서 도감이 사라졌다`).toBe(true)
+      had = had || c.dex === true
+    }
+    expect(had).toBe(true)
+  })
+
+  it('배지를 받은 판에는 도감이 있다 — 순서가 그렇다', () => {
+    for (const c of CHECKPOINTS) {
+      if ((c.badges ?? 0) === 0) continue
+      expect(c.dex, c.id).toBe(true)
+    }
+  })
+
+  it('파티 레벨도 앞으로만 간다', () => {
+    let most = 0
+    for (const c of CHECKPOINTS) {
+      const top = Math.max(0, ...(c.party ?? []).map((p) => p.level))
+      if (top === 0) continue
+      expect(top, `${c.id}에서 레벨이 내려갔다`).toBeGreaterThanOrEqual(most)
+      most = top
+    }
+  })
+
+  it('소지금도 앞으로만 간다 — 상점 자리만 빼고', () => {
+    // 프렌들리숍은 살 것을 확인하려고 일부러 2만을 쥐여 준다
+    let most = 0
+    for (const c of CHECKPOINTS) {
+      if (c.id === 'mart') continue
+      const money = c.money ?? 0
+      expect(money, `${c.id}에서 소지금이 줄었다`).toBeGreaterThanOrEqual(most)
+      most = money
+    }
+  })
+
+  it('지나온 자리의 야생이 뒤로 갈수록 늘기만 한다', () => {
+    // 인카운터 표는 여기서 지어낸다 — 이 시험이 보는 것은 **누적되는가**다
+    const table = (map: number): EncounterTable | null => ({
+      landRate: 10,
+      land: [{ level: 3, species: map }],
+      swarm: [], day: [], night: [], radar: [],
+      surf: { rate: 0, slots: [] }, oldRod: { rate: 0, slots: [] },
+      goodRod: { rate: 0, slots: [] }, superRod: { rate: 0, slots: [] },
+    })
+    // ⚠️ "줄지 않는다"만 보면 **자기 자리만 보는 코드도 통과한다** — 표가 늘
+    // 한 종씩만 주니까 길이가 1로 붙박이여도 부등호가 성립한다. 그래서 지나온
+    // **서로 다른 맵의 수**와 정확히 같은지를 본다
+    const passed = new Set<number>()
+    for (const c of CHECKPOINTS) {
+      passed.add(c.map)
+      const seen = seenAlongTheWay(c.id, table)
+      expect(new Set(seen).size, c.id).toBe(passed.size)
+      expect(seen, c.id).toContain(c.map)
+    }
+    // 표에 없는 id를 물으면 빈손이다
+    expect(seenAlongTheWay('없는지점', table)).toEqual([])
   })
 })

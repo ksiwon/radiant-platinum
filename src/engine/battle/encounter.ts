@@ -129,7 +129,40 @@ export function rollWater(t: WaterTable, rng: Rng): WildEncounter | null {
   return { species: s.species, level, slot }
 }
 
+/**
+ * 야생이 나오는 타일 거동 13개.
+ *
+ * ⚠️ **풀숲 하나만 보고 있었다.** 그래서 동굴(무쇠탄갱·천관산·챔피언로드)과
+ * 대습초원에서는 아무리 걸어도 야생이 안 나왔다 — 대습초원 풀은 `TALL_GRASS`가
+ * 아니라 `MUD_WITH_GRASS`(0xA6)다.
+ *
+ * 목록을 눈으로 고르지 않는다. 원작이 `map_tile_behavior.c`에 거동마다 표식을
+ * 붙여 두었고(`TILE_BEHAVIOR_FLAG_ENCOUNTER`), 그 표식이 붙은 것이 정확히 이
+ * 열셋이다. 자전거 다리 둘이 여기 드는 것이 특히 중요한데, 다리 **아래**가
+ * 인카운터 구역이라 다리 위에서도 나온다는 뜻이라 손으로는 못 고를 값이다.
+ */
+const ENCOUNTER_BEHAVIORS: ReadonlySet<number> = new Set([
+  0x02, // TALL_GRASS
+  0x03, // VERY_TALL_GRASS
+  0x05, // UNUSED_x05
+  0x06, // UNUSED_x06
+  0x08, // CAVE_FLOOR
+  0x0b, // OLD_CHATEAU_FLOOR
+  0x24, // UNUSED_x24
+  0x25, // UNUSED_x25
+  0x72, // BRIDGE_OVER_CAVE
+  0x77, // BIKE_BRIDGE_N_S_OVER_ENCS
+  0x7b, // BIKE_BRIDGE_E_W_OVER_ENCS
+  0xa6, // MUD_WITH_GRASS — 대습초원
+  0xa7, // MUD_DEEP_WITH_GRASS — 대습초원 깊은 곳
+])
+
 /** 이 타일에서 야생이 나올 수 있는가. 물 위는 파도타기가 들어올 때 함께 다룬다 */
 export function isEncounterTile(behavior: number): boolean {
-  return behavior === Behavior.TALL_GRASS
+  return ENCOUNTER_BEHAVIORS.has(behavior)
+}
+
+/** 풀숲인가 — 흔들리는 풀 연출과 발소리가 이걸 본다. 동굴 바닥은 아니다 */
+export function isGrassTile(behavior: number): boolean {
+  return behavior === Behavior.TALL_GRASS || behavior === Behavior.VERY_TALL_GRASS
 }

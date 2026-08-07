@@ -99,7 +99,7 @@ export function BagScreen() {
                 {/* 중요한 물건은 개수를 안 붙인다 — 원작도 한 개뿐이라 안 센다 */}
                 {data?.items.get(slot.item).preventToss === 1
                   ? null
-                  : <span className={css.count}>×{slot.count}</span>}
+                  : <span className={css.countNear}>×{slot.count}</span>}
               </span>
             </div>
           ))}

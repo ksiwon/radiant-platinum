@@ -8,6 +8,7 @@
 // Legends 계열)이 전부 파스텔 쪽이라서다 — 원색으로 칠하면 장난감처럼 보인다.
 import { Color } from 'three'
 import { Behavior, isWater } from '../../engine/map/zone'
+import { isGrassTile } from '../../engine/battle/encounter'
 
 /** 워프 칸 무리. 유력하지만 미확정이라 색만 따로 준다 (DATA.md §2.2) */
 const WARP_LO = 0x5e
@@ -32,7 +33,7 @@ export function tileColor(behavior: number): Color {
   if (hit) return hit
   let hex: string = COLORS.unknown
   if (behavior === Behavior.NORMAL) hex = COLORS.plain
-  else if (behavior === Behavior.TALL_GRASS) hex = COLORS.grass
+  else if (isGrassTile(behavior)) hex = COLORS.grass
   else if (isWater(behavior)) hex = COLORS.water
   else if (behavior >= WARP_LO && behavior <= WARP_HI) hex = COLORS.warp
   const color = new Color(hex)

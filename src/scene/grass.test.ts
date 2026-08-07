@@ -8,8 +8,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField } from '../engine/map/height'
-import { Behavior } from '../engine/map/zone'
-import { isEncounterTile } from '../engine/battle/encounter'
+import { isEncounterTile, isGrassTile } from '../engine/battle/encounter'
 import { grassSpots } from './Grass'
 
 const DATA = resolve(__dirname, '../../public/data')
@@ -56,7 +55,7 @@ maybe('서 있는 풀숲', () => {
     for (let i = 0; i < spots.length; i += 3) {
       const tx = Math.floor(spots[i]!), tz = Math.floor(spots[i + 2]!)
       const behavior = grid.behavior(tx, tz)
-      expect(behavior).toBe(Behavior.TALL_GRASS)
+      expect(isGrassTile(behavior), `(${String(tx)},${String(tz)})`).toBe(true)
       // 같은 칸을 인카운터 판정도 풀숲으로 봐야 한다. 두 코드가 따로 있어서
       // 한쪽만 고치면 눈에 보이는 풀과 실제로 튀어나오는 자리가 어긋난다
       expect(isEncounterTile(behavior)).toBe(true)

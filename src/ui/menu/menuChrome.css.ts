@@ -201,13 +201,28 @@ export const label = style({
   whiteSpace: 'nowrap',
 })
 
-/** 줄 오른쪽 끝의 숫자 */
+/** 줄 오른쪽 끝의 숫자 — 값처럼 자리가 맞아야 하는 것 */
 export const count = style({
   marginLeft: 'auto',
   flex: '0 0 auto',
   fontVariantNumeric: 'tabular-nums',
   fontFamily: vars.font.mono,
   fontSize: 14,
+})
+
+/**
+ * 이름 **바로 옆**에 붙는 숫자.
+ *
+ * 개수는 이름의 일부처럼 읽힌다("상처약 ×5"). 줄 끝으로 밀어 놓으면 이름과
+ * 숫자 사이가 텅 비어서 둘을 눈으로 이어 붙여야 한다
+ */
+export const countNear = style({
+  flex: '0 0 auto',
+  marginLeft: -3,
+  fontVariantNumeric: 'tabular-nums',
+  fontFamily: vars.font.mono,
+  fontSize: 14,
+  opacity: 0.75,
 })
 
 /** 오른쪽 칸. 판이 아니라 세로선 하나로 갈린다 */

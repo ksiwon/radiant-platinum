@@ -27,6 +27,8 @@ export const BEHAVIOR_MASK = 0x7fff
 export const Behavior = {
   NORMAL: 0x0000,
   TALL_GRASS: 0x0002,
+  /** 더 긴 풀. 원작에도 조우 표식이 붙어 있다 (`map_tile_behavior.c`) */
+  VERY_TALL_GRASS: 0x0003,
   /** 넓은 수면. 수로(W) 존을 채운다 — W231에만 6912칸 */
   WATER_OPEN: 0x0015,
   /** 작은 물. 13개 존에 1114칸뿐이고 트윈리프의 연못이 여기다 */

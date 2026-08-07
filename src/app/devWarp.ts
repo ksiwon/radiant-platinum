@@ -12,6 +12,8 @@ import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { fieldScripts } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
+import { seenAlongTheWay } from '../engine/dev/checkpoints'
+import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
 
 export const devWarp = {
@@ -69,7 +71,38 @@ async function applySetup(cp: Checkpoint): Promise<void> {
   if (cp.money !== undefined) useSaveStore.setState({ money: cp.money })
   if (cp.badges !== undefined) useSaveStore.setState({ badges: cp.badges })
 
-  if (cp.dex) giveDex()
+  if (cp.dex) {
+    giveDex()
+    await markSeenAlongTheWay(cp)
+  }
+}
+
+/**
+ * 지나온 자리의 야생을 도감에 "본 적 있음"으로 찍는다.
+ *
+ * ⚠️ **`world`를 안 본다.** 타이틀에서 뛰어들면 아직 세계가 안 떠 있어서
+ * `world.maps`가 비어 있다. 그래서 두 파일을 직접 받는다 — 어차피 `bootWorld`가
+ * 곧 같은 주소를 받으므로 브라우저 캐시에서 나온다. 시험용 코드라 실패하면
+ * 도감이 party만 든 채로 뜨는 것이 전부다
+ */
+async function markSeenAlongTheWay(cp: Checkpoint): Promise<void> {
+  const base = import.meta.env.BASE_URL
+  const get = async <T,>(name: string): Promise<T> =>
+    await (await fetch(`${base}data/${name}`)).json() as T
+  try {
+    const [mapsFile, encFile] = await Promise.all([
+      get<{ maps: { encounters: number | null }[] }>('maps.json'),
+      get<{ tables: EncounterTable[] }>('encounters.json'),
+    ])
+    const tableOf = (mapId: number): EncounterTable | null => {
+      const at = mapsFile.maps[mapId]?.encounters
+      return at === null || at === undefined ? null : encFile.tables[at] ?? null
+    }
+    const save = useSaveStore.getState()
+    for (const species of seenAlongTheWay(cp.id, tableOf)) save.markSeen(species)
+  } catch {
+    // 도감의 "본 적 있음"만 빈다. 뛰어드는 것 자체는 막지 않는다
+  }
 }
 
 /**

@@ -7,6 +7,11 @@
 // 인카운터 표와의 교차검증으로 확정된 값이다(`map/zone`의 `Behavior.TALL_GRASS`) —
 // 오탐·누락 0. 텍스처 이름으로 고르면 잔디(`lgreen`)까지 딸려 온다.
 //
+// ⚠️ 더 긴 풀(`0x0003`)도 함께 세운다. 오버월드에 1,066칸 있고(210번도로 724 ·
+// 229번도로 241 · 214번도로 101) 전부 야생이 나오는 칸인데, 여기를 빼 두면
+// **아무것도 안 자란 땅에서 야생이 튀어나온다.** 다만 지금은 같은 포기를 쓴다 —
+// 원작에서 이 풀은 더 길고, 그 차이는 아직 안 옮겼다.
+//
 // 포기는 우리가 만든 모양이다. 원작에는 3D 풀이 없다. 대신 색은 원작 그림에서
 // 가장 많이 쓰인 초록을 그대로 쓴다.
 import { useEffect, useMemo } from 'react'
@@ -15,7 +20,7 @@ import {
   MeshLambertMaterial, Quaternion, Vector3,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
-import { Behavior } from '../engine/map/zone'
+import { isGrassTile } from '../engine/battle/encounter'
 
 /** 포기 하나에 잎 몇 장. 넷 아래로 내리면 옆에서 볼 때 성글다 */
 const BLADES = 5
@@ -58,7 +63,7 @@ export function grassSpots(grid: MapGrid, chunkIndex: number, radius: number): F
   for (const c of grid.chunksAround(chunkIndex, radius)) {
     for (let z = c.my * n; z < (c.my + 1) * n; z++) {
       for (let x = c.mx * n; x < (c.mx + 1) * n; x++) {
-        if (grid.behavior(x, z) !== Behavior.TALL_GRASS) continue
+        if (!isGrassTile(grid.behavior(x, z))) continue
         for (let t = 0; t < TUFTS; t++) {
           const px = x + 0.2 + hash(x, z, t) * 0.6
           const pz = z + 0.2 + hash(x, z, t + 8) * 0.6
