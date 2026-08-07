@@ -109,7 +109,7 @@ export function SaveScreen() {
           </div>
         )}
       </div>
-      <div className={css.foot}>←→ 고르기 · Z 결정 · X 그만둔다</div>
+      <div className={css.hint}>←→ 고르기 · Z 결정 · X 그만둔다</div>
     </div>
   )
 }

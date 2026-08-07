@@ -5,6 +5,7 @@
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useMenuKeys } from './useMenuKeys'
+import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './trainerCard.css'
 
@@ -24,16 +25,12 @@ export function TrainerCard() {
   const caught = [...pokedex.caught].reduce((n, byte) => n + popcount(byte), 0)
 
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span className={css.crest}><span className={css.crestText}>트레이너 카드</span></span>
-      </div>
-
+    <MenuScreen title="트레이너 카드" foot="X 닫기">
       <div className={css.stageWide}>
         <div className={own.card}>
           <div className={own.top}>
             <div>
-              <div className={own.title}>TRAINER</div>
+              <div className={own.title}>트레이너</div>
               <div className={own.name}>{trainer.name || '이름 없음'}</div>
             </div>
             <div className={own.idNo}>
@@ -48,7 +45,7 @@ export function TrainerCard() {
             <dt>플레이 시간</dt><dd>{playtime(trainer.playtimeMs)}</dd>
           </dl>
 
-          <div className={own.badgeHead}>BADGES</div>
+          <div className={own.badgeHead}>배지</div>
           <div className={own.badges}>
             {Array.from({ length: BADGES }, (_, i) => (
               <span key={i} className={own.badge} data-on={(badges & (1 << i)) !== 0 ? 'yes' : 'no'} />
@@ -56,9 +53,7 @@ export function TrainerCard() {
           </div>
         </div>
       </div>
-
-      <div className={css.foot}>X 닫기</div>
-    </div>
+    </MenuScreen>
   )
 }
 

@@ -15,10 +15,15 @@ import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { itemIcon } from './itemIcon'
+import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
+import * as hero from './bagScreen.css'
 import * as own from './dialog.css'
 
-const ATLAS = `${import.meta.env.BASE_URL}data/itemIcons.png`
+/** 가방과 같은 크기를 쓴다 — 같은 물건이 화면마다 다른 크기면 안 된다 */
+const LIST_ICON = 28
+const BIG_ICON = 96
 
 /** `Item_SellPrice` — 사는 값의 절반으로 쳐 준다 */
 export const sellPrice = (price: number): number => Math.floor(price / 2)
@@ -119,25 +124,17 @@ export function ShopScreen() {
     cancel: () => { if (count > 0) reset(); else closeAll() },
   })
 
-  const iconStyle = (id: number): React.CSSProperties | undefined => {
-    if (!data) return undefined
-    const { size, cols } = data.icons
-    return {
-      backgroundImage: `url(${ATLAS})`,
-      backgroundPosition: `-${String((id % cols) * size)}px -${String(Math.floor(id / cols) * size)}px`,
-    }
-  }
-
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span>{tab === 'buy' ? '산다' : '판다'}</span>
-        <span className={css.headNote}>{data?.bag[78] ?? '용돈'} {money.toLocaleString('ko-KR')}원</span>
-      </div>
-
+    <MenuScreen
+      title={tab === 'buy' ? '산다' : '판다'}
+      note={`${data?.bag[78] ?? '용돈'} ${money.toLocaleString('ko-KR')}원`}
+      foot={count > 0
+        ? `↑↓ 개수 (최대 ${String(max)}) · Z 결정 · X 그만둔다`
+        : `←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 나간다 · ${String(rows.length)}종`}
+    >
       <div className={css.tabs}>
-        <span className={tab === 'buy' ? css.tab.on : css.tab.off}><span>산다</span></span>
-        <span className={tab === 'sell' ? css.tab.on : css.tab.off}><span>판다</span></span>
+        <span className={tab === 'buy' ? css.tab.on : css.tab.off}>산다</span>
+        <span className={tab === 'sell' ? css.tab.on : css.tab.off}>판다</span>
       </div>
 
       <div className={css.stage}>
@@ -147,7 +144,7 @@ export function ShopScreen() {
             <div key={`${r.item}-${String(i)}`} className={i === at ? css.rowOn : css.row}>
               {i === at && <span className={css.caret} aria-hidden />}
               <span className={css.face}>
-                <span className={css.icon} style={iconStyle(r.item)} aria-hidden />
+                <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />
                 <span className={css.label}>{data?.names[r.item] ?? ''}</span>
                 <span className={css.count}>
                   {r.have > 0 && <span style={{ opacity: 0.6, marginRight: 10 }}>×{r.have}</span>}
@@ -161,7 +158,13 @@ export function ShopScreen() {
         <div className={css.detail}>
           {row && (
             <>
-              <div className={css.detailTitle}>{data?.names[row.item] ?? ''}</div>
+              <div className={hero.hero}>
+                <span className={hero.heroIcon} style={itemIcon(data?.icons, row.item, BIG_ICON)} aria-hidden />
+                <span className={hero.heroText}>
+                  <span className={hero.heroName}>{data?.names[row.item] ?? ''}</span>
+                  <span className={hero.heroSub}>{unit.toLocaleString('ko-KR')}원</span>
+                </span>
+              </div>
               <div className={css.detailText}>{data?.descriptions[row.item] ?? ''}</div>
             </>
           )}
@@ -175,13 +178,7 @@ export function ShopScreen() {
           {note !== null && <div className={own.help}>{note}</div>}
         </div>
       </div>
-
-      <div className={css.foot}>
-        {count > 0
-          ? `↑↓ 개수 (최대 ${String(max)}) · Z 결정 · X 그만둔다`
-          : `←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 나간다 · ${String(rows.length)}종`}
-      </div>
-    </div>
+    </MenuScreen>
   )
 }
 

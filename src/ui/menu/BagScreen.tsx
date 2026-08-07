@@ -4,8 +4,8 @@
 // 순서다 (`engine/bag/bag.ts`). 그 차이가 여기서 눈에 보이므로 정렬을 다시
 // 하지 않고 저장된 순서를 그대로 그린다.
 //
-// 아이콘은 468칸짜리 아틀라스 한 장을 배경 위치로 잘라 쓴다. 파일 468개를
-// 받는 것보다 훨씬 싸고, 스크롤할 때 새로 뜨는 칸이 없다.
+// ⚠️ 설명칸에 **아이콘을 크게** 세운다. 목록의 28픽셀짜리로는 무엇을 고르고
+// 있는지가 안 보인다 — 원작도 위 화면에 고른 물건을 크게 띄운다.
 import { useEffect, useState } from 'react'
 import {
   loadItemDescriptions, loadItemIcons, loadItemNames, loadItems,
@@ -17,9 +17,15 @@ import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { itemIcon } from './itemIcon'
+import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
+import * as own from './bagScreen.css'
 
-const ATLAS = `${import.meta.env.BASE_URL}data/itemIcons.png`
+/** 목록의 아이콘. 줄 높이(32)를 넘지 않는다 */
+const LIST_ICON = 28
+/** 설명칸의 아이콘. 이 화면에서 제일 큰 그림이어야 한다 */
+const BIG_ICON = 96
 
 interface Loaded {
   items: ItemTable
@@ -62,25 +68,21 @@ export function BagScreen() {
     cancel: back,
   })
 
-  const iconStyle = (id: number): React.CSSProperties | undefined => {
-    if (!data) return undefined
-    const { size, cols } = data.icons
-    return {
-      backgroundImage: `url(${ATLAS})`,
-      backgroundPosition: `-${String((id % cols) * size)}px -${String(Math.floor(id / cols) * size)}px`,
-    }
-  }
-
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span className={css.crest}><span className={css.crestText}>가방</span></span>
-        <span className={css.headNote}>{money.toLocaleString('ko-KR')}원</span>
-      </div>
-
+    <MenuScreen
+      title="가방"
+      note={`${money.toLocaleString('ko-KR')}원`}
+      foot={`←→ 주머니 · ↑↓ 고르기 · X 닫기 · ${String(slots.length)}/${String(POCKET_SIZE[pocket] ?? 0)}칸`}
+    >
       <div className={css.tabs}>
         {(data?.pockets ?? []).map((name, i) => (
-          <span key={name} className={i === pocket ? css.tab.on : css.tab.off}><span>{name}</span></span>
+          <span
+            key={name}
+            className={i === pocket ? css.tab.on : css.tab.off}
+            onPointerDown={() => { setPocket(i); setCursor(0) }}
+          >
+            {name}
+          </span>
         ))}
       </div>
 
@@ -92,7 +94,7 @@ export function BagScreen() {
               onPointerEnter={() => { setCursor(i) }}>
               {i === at && <span className={css.caret} aria-hidden />}
               <span className={css.face}>
-                <span className={css.icon} style={iconStyle(slot.item)} aria-hidden />
+                <span className={css.icon} style={itemIcon(data?.icons, slot.item, LIST_ICON)} aria-hidden />
                 <span className={css.label}>{data?.names[slot.item] ?? ''}</span>
                 {/* 중요한 물건은 개수를 안 붙인다 — 원작도 한 개뿐이라 안 센다 */}
                 {data?.items.get(slot.item).preventToss === 1
@@ -106,19 +108,25 @@ export function BagScreen() {
         <div className={css.detail}>
           {selected && (
             <>
-              <div className={css.detailTitle}>
-                {data?.names[selected.item] ?? ''}
-                <span className={css.detailSub}>{data?.pockets[pocket] ?? ''}</span>
+              <div className={own.hero}>
+                <span
+                  className={own.heroIcon}
+                  style={itemIcon(data?.icons, selected.item, BIG_ICON)}
+                  aria-hidden
+                />
+                <span className={own.heroText}>
+                  <span className={own.heroName}>{data?.names[selected.item] ?? ''}</span>
+                  <span className={own.heroSub}>
+                    {data?.pockets[pocket] ?? ''}
+                    {data?.items.get(selected.item).preventToss === 1 ? '' : ` · ${String(selected.count)}개`}
+                  </span>
+                </span>
               </div>
               <div className={css.detailText}>{data?.descriptions[selected.item] ?? ''}</div>
             </>
           )}
         </div>
       </div>
-
-      <div className={css.foot}>
-        ←→ 주머니 · ↑↓ 고르기 · X 닫기 · {slots.length}/{POCKET_SIZE[pocket] ?? 0}칸
-      </div>
-    </div>
+    </MenuScreen>
   )
 }

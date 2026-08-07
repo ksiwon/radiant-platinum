@@ -10,6 +10,8 @@ import { loadItems, loadMoves, loadSpecies } from '../data/gameData'
 import { useSaveStore, type PokemonInstance } from '../state/saveStore'
 import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
+import { fieldScripts } from '../engine/script/field'
+import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
 
 export const devWarp = {
@@ -41,7 +43,15 @@ async function applySetup(cp: Checkpoint): Promise<void> {
       const max = statsOf(mon, sp).hp
       return { ...mon, hp: cp.hurt ? Math.max(1, Math.floor(max * HURT_FRACTION)) : max }
     }
-    useSaveStore.setState({ party: cp.party.slice(0, 6).map(make) })
+    const party = cp.party.slice(0, 6).map(make)
+    useSaveStore.setState({ party })
+    // 데리고 있는 것은 이미 잡은 것이다. 이걸 안 채우면 도감이 통째로 비어서,
+    // 도감 화면을 열어 봐야 210줄이 전부 `----------`이다
+    const save2 = useSaveStore.getState()
+    for (const mon of party) {
+      save2.markSeen(mon.species)
+      save2.markCaught(mon.species)
+    }
   }
 
   if (cp.items) {
@@ -58,6 +68,22 @@ async function applySetup(cp: Checkpoint): Promise<void> {
 
   if (cp.money !== undefined) useSaveStore.setState({ money: cp.money })
   if (cp.badges !== undefined) useSaveStore.setState({ badges: cp.badges })
+
+  if (cp.dex) giveDex()
+}
+
+/**
+ * 도감을 켠다.
+ *
+ * **두 군데에 세워야 한다.** 스크립트 VM은 자기 플래그 배열을 들고 있고
+ * (`fieldScripts.vars`), 세이브는 따로 들고 있다가 맵이 뜰 때 `loadVars`로
+ * VM에 부어 준다. 한쪽만 세우면 맵을 한 번 갈아탄 뒤에 도감이 사라진다
+ */
+function giveDex(): void {
+  const flags = Uint8Array.from(useSaveStore.getState().flags)
+  flags[FLAG_HAS_POKEDEX >> 3]! |= 1 << (FLAG_HAS_POKEDEX & 7)
+  useSaveStore.setState({ flags })
+  fieldScripts.vars.setFlag(FLAG_HAS_POKEDEX)
 }
 
 /**

@@ -20,6 +20,7 @@ import {
 } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './dialog.css'
 
@@ -122,36 +123,33 @@ export function OptionsScreen() {
   }} />
 
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span className={css.crest}>
-          <span className={css.crestText}>{at(OPTIONS_TEXT.title) || '설정'}</span>
-        </span>
-      </div>
+    <MenuScreen
+      title={at(OPTIONS_TEXT.title) || '설정'}
+      foot="↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기"
+    >
       <div className={own.center}>
         <div className={own.rows}>
           {rows.map((r, i) => (
-            <div key={r.key} className={i === cursor ? css.rowOn : css.row}>
+            <div key={r.key} className={i === cursor ? own.optionRowOn : own.optionRow}>
               {i === cursor && <span className={css.caret} aria-hidden />}
               <span className={css.face}>
-              <span className={own.rowLabel}>
-                {r.label}
-                {r.ours && <span className={own.ours}>추가</span>}
-                {r.inert && <span className={own.ours}>아직</span>}
-              </span>
-              <span className={own.values}>
-                {r.values.map((v, k) => (
-                  <span key={v} className={k === r.at ? own.valueOn : own.value}>{v}</span>
-                ))}
-              </span>
+                <span className={own.rowLabel}>
+                  {r.label}
+                  {r.ours && <span className={own.ours}>추가</span>}
+                  {r.inert && <span className={own.ours}>아직</span>}
+                </span>
+                <span className={own.values}>
+                  {r.values.map((v, k) => (
+                    <span key={v} className={k === r.at ? own.valueOn : own.value}>{v}</span>
+                  ))}
+                </span>
               </span>
             </div>
           ))}
         </div>
         <div className={own.help}>{row?.help}</div>
       </div>
-      <div className={css.foot}>↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기</div>
-    </div>
+    </MenuScreen>
   )
 }
 
@@ -177,7 +175,7 @@ function ResetConfirm(
           <span className={yes ? own.choice : own.choiceOn}>{text[OPTIONS_TEXT.no] ?? '아니오'}</span>
         </div>
       </div>
-      <div className={css.foot}>←→ 고르기 · Z 결정 · X 그만둔다</div>
+      <div className={css.hint}>←→ 고르기 · Z 결정 · X 그만둔다</div>
     </div>
   )
 }

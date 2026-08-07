@@ -14,6 +14,7 @@ import { warpTo } from '../../app/devWarp'
 import { useMenuStore } from '../../state/menuStore'
 import { startNewGame } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
+import { MenuScreen } from '../menu/MenuScreen'
 import * as css from '../menu/menuChrome.css'
 import * as own from './devWarpScreen.css'
 
@@ -67,14 +68,16 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
   })
 
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span className={css.crest}>
-          <span className={css.crestText}>확인 지점</span>
-          <span className={own.badge}>시험용</span>
-        </span>
-        <span className={css.headNote}>{inPlay ? '이 판 위에서 옮긴다' : '새 판을 열고 간다'}</span>
-      </div>
+    <MenuScreen
+      title="확인 지점"
+      tag={<span className={own.badge}>시험용</span>}
+      note={inPlay ? '이 판 위에서 옮긴다' : '새 판을 열고 간다'}
+      foot={<>
+        ↑↓ 고르기 · Z 뛰어들기 · X 닫기 · ` 로 언제든 다시 연다
+        {!inPlay && ' — 타이틀에서 열면 인트로를 건너뛰고 새 판으로 간다'}
+        {busy && ' — 가는 중…'}
+      </>}
+    >
       <div className={css.stage}>
         <div className={css.list}>
           {CHECKPOINTS.map((c, i) => (
@@ -110,13 +113,7 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
-
-      <div className={css.foot}>
-        ↑↓ 고르기 · Z 뛰어들기 · X 닫기 · ` 로 언제든 다시 연다
-        {!inPlay && ' — 타이틀에서 열면 인트로를 건너뛰고 새 판으로 간다'}
-        {busy && ' — 가는 중…'}
-      </div>
-    </div>
+    </MenuScreen>
   )
 }
 
@@ -130,6 +127,7 @@ function describe(cp: Checkpoint) {
   if (cp.items) lines.push(['가방', cp.items.map(([i, n]) => `#${i}×${n}`).join(', ')])
   if (cp.money !== undefined) lines.push(['소지금', `${cp.money}엔`])
   if (cp.badges !== undefined) lines.push(['배지', `0b${cp.badges.toString(2)}`])
+  if (cp.dex) lines.push(['도감', '받은 뒤의 판 — 시작 메뉴에 도감이 뜬다'])
   if (cp.battle) {
     lines.push(['배틀', cp.battle.kind === 'trainer'
       ? `트레이너 ${cp.battle.id}`

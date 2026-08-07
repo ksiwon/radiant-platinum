@@ -1,106 +1,127 @@
 // 메뉴 화면 공통 껍데기.
 //
-// 원작은 두 화면(위·아래)에 나눠 그리지만 우리는 한 화면이다. "위 화면에 보여
-// 주던 설명"은 오른쪽으로 옮긴다 — 정보의 관계는 그대로 두고 배치만 편다.
+// ⚠️ 두 번 갈아엎었다. 처음엔 둥근 상자 둘을 나란히, 다음엔 9° 기운 알약.
+// 둘 다 "웹페이지"로 읽혔다 — 2880픽셀 모니터에서 메뉴가 2880픽셀로 퍼지고,
+// 줄마다 테두리·그림자·그러데이션이 붙고, 정작 봐야 할 그림은 작았다.
 //
-// ⚠️ **판을 늘어놓지 않는다.** 전에는 둥근 상자 둘을 나란히 놓고 그 안에 줄을
-// 채웠는데, 그러면 화면마다 "상자 안의 목록"이 되어 무엇을 보는 화면인지가
-// 배치로 안 읽힌다. 배틀 화면에서 이미 같은 지적을 받았다.
+// 지금 지키는 규칙 셋:
 //
-// 대신 배틀 화면과 **같은 말투**를 쓴다: 9° 기운 알약, 고른 칸을 색으로 채우기,
-// 칸 바깥의 커서 화살표, 판 없는 설명글. 두 화면이 한 게임으로 읽혀야 한다.
-import { globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
+//   ① **창은 화면이 아니다.** 원작은 256×192 안에 전부 담는다. 우리도 가운데
+//      정해진 크기의 창 하나를 두고 그 안에서만 논다. 화면이 넓어지면 창이
+//      커지는 게 아니라 **여백이 커진다**.
+//   ② **안 고른 줄은 아무것도 아니다.** 원작 목록은 글자만 있고 고른 줄
+//      하나에만 밝은 띠가 깔린다. 줄마다 판을 깔면 목록이 아니라 카드 더미다.
+//   ③ **기울이지 않는다.** 배틀 명령 칸의 각을 메뉴까지 끌고 왔더니 쓸데없이
+//      기운 것이 됐다. 배틀은 네 칸을 한눈에 가르려고 기운 것이고, 세로로
+//      늘어선 목록은 그럴 이유가 없다.
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 export const OVERLAY_Z = 400
 
-/** 배틀 명령 칸과 같은 각. 다르면 두 화면이 다른 게임처럼 보인다 */
-export const SKEW = 9
+/** 창 테두리·구분선. 한 값으로 묶어야 선이 제각각으로 안 논다 */
+const EDGE = 'rgba(150, 176, 224, 0.34)'
+/** 고른 줄의 띠. 원작도 밝은 띠에 어두운 글자다 */
+const PICK_BG = 'linear-gradient(180deg, #eef3ff 0%, #cddaf4 100%)'
+const PICK_TEXT = '#111726'
 
 const fadeIn = keyframes({
-  from: { opacity: 0, transform: 'translateY(6px)' },
-  to: { opacity: 1, transform: 'none' },
+  from: { opacity: 0 },
+  to: { opacity: 1 },
 })
 
 /**
  * 화면 전체를 덮는다. 뒤의 3D는 계속 돌지만 흐려진다.
  *
- * 위에서 아래로 훑는 빗금 한 겹을 얹는다 — 단색 어둠은 "로딩 중"으로 읽히고,
- * 아주 옅은 무늬가 있으면 화면이 하나의 판으로 선다
+ * `colorScheme`이 여기 있는 이유: 안 주면 넘치는 칸에 **흰 스크롤막대**가
+ * 뜬다. 어두운 창 안에 밝은 회색 막대가 서 있는 것이 실제로 화면에 보였다
  */
 export const overlay = style({
   position: 'fixed',
   inset: 0,
   zIndex: OVERLAY_Z,
   display: 'grid',
-  gridTemplateRows: 'auto 1fr auto',
-  background:
-    'radial-gradient(120% 90% at 12% 0%, rgba(34, 46, 78, 0.95), rgba(8, 12, 22, 0.975)),'
-    + ' repeating-linear-gradient(115deg, rgba(255,255,255,0.022) 0 2px, transparent 2px 9px)',
-  backdropFilter: 'blur(4px)',
+  placeItems: 'center',
+  padding: 18,
+  background: 'rgba(6, 9, 17, 0.6)',
+  backdropFilter: 'blur(3px)',
+  colorScheme: 'dark',
   color: vars.panel.text,
   fontFamily: vars.font.ui,
   userSelect: 'none',
-  animation: `${fadeIn} 0.14s cubic-bezier(.2,.85,.3,1)`,
+  animation: `${fadeIn} 0.11s ease-out`,
 })
 
 /**
- * 화면 이름.
+ * 창 하나.
  *
- * 상자가 아니라 **기운 띠**다. 왼쪽 위 모서리에 걸쳐 두면 화면 이름을 읽으려고
- * 눈이 가운데로 갈 일이 없다 — 목록은 그 아래에서 바로 시작한다
+ * 세로 flex라 자식이 셋이든 넷이든 **본문만 남는 높이를 먹는다**. 전에는
+ * `grid-template-rows: auto 1fr auto`였는데 가방처럼 자식이 넷인 화면에서
+ * 1fr이 주머니 줄에 걸려, 주머니 이름표가 창 높이의 3분의 2를 차지했다
  */
+export const screen = style({
+  position: 'relative',
+  width: 'min(1040px, 100%)',
+  height: 'min(648px, 100%)',
+  display: 'flex',
+  flexDirection: 'column',
+  overflow: 'hidden',
+  borderRadius: 10,
+  border: `1px solid ${EDGE}`,
+  background: 'linear-gradient(180deg, #1a2138 0%, #101629 62%, #0d1222 100%)',
+  boxShadow: '0 0 0 2px rgba(6, 9, 17, 0.85), 0 22px 56px rgba(0, 0, 0, 0.62)',
+})
+
 export const head = style({
+  flex: '0 0 auto',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  gap: 20,
-  padding: '22px 42px 14px',
+  gap: 16,
+  height: 44,
+  padding: '0 16px',
+  borderBottom: `1px solid ${EDGE}`,
+  background: 'rgba(255, 255, 255, 0.032)',
 })
 
+/** 화면 이름. 상자도 띠도 아니고 **금색 막대 하나**가 붙든다 */
 export const crest = style({
-  position: 'relative',
   display: 'inline-flex',
-  alignItems: 'baseline',
-  gap: 12,
-  padding: '7px 26px 7px 20px',
-  transform: `skewX(-${String(SKEW)}deg)`,
-  background: 'linear-gradient(100deg, rgba(247, 224, 138, 0.92), rgba(226, 179, 74, 0.86))',
-  borderRadius: 4,
-  boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
+  alignItems: 'center',
+  gap: 9,
+  minWidth: 0,
+  paddingLeft: 10,
+  borderLeft: `4px solid ${vars.hud.warn}`,
 })
 
 export const crestText = style({
-  transform: `skewX(${String(SKEW)}deg)`,
-  fontSize: 21,
-  fontWeight: 800,
-  letterSpacing: '0.04em',
-  color: '#191203',
+  fontSize: 18,
+  fontWeight: 700,
 })
 
 /** 오른쪽 보조 정보 — 소지금·마릿수 */
 export const headNote = style({
-  fontSize: 17,
-  fontWeight: 600,
-  opacity: 0.9,
+  fontSize: 14,
+  opacity: 0.78,
   fontVariantNumeric: 'tabular-nums',
-  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+  whiteSpace: 'nowrap',
 })
 
 /**
  * 본문.
  *
- * 왼쪽이 고르는 것, 오른쪽이 그것에 대한 것. **가르는 것은 상자가 아니라 여백과
- * 실선 하나**다
+ * 왼쪽이 고르는 것, 오른쪽이 그것에 대한 것. 가르는 것은 판이 아니라
+ * **세로선 하나**다
  */
 export const stage = style({
+  flex: '1 1 auto',
   minHeight: 0,
   display: 'grid',
-  gridTemplateColumns: 'minmax(360px, 1.05fr) minmax(300px, 0.95fr)',
-  gap: 34,
-  padding: '0 42px 8px',
+  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 0.86fr)',
+  gap: 14,
+  padding: '10px 14px',
   '@media': {
-    '(max-width: 900px)': { gridTemplateColumns: '1fr', gap: 18 },
+    '(max-width: 760px)': { gridTemplateColumns: '1fr' },
   },
 })
 
@@ -113,81 +134,63 @@ export const list = style({
   overflowX: 'hidden',
   display: 'flex',
   flexDirection: 'column',
-  gap: 7,
-  // 커서 화살표가 칸 **바깥**에 선다. 안에 두면 고를 때마다 글자가 밀린다
-  paddingLeft: 26,
-  paddingRight: 10,
-  paddingBottom: 12,
+  gap: 1,
+  paddingRight: 6,
   scrollbarWidth: 'thin',
 })
 
 /**
- * 고를 수 있는 한 줄. 배틀 명령 칸과 같은 알약이다.
+ * 고를 수 있는 한 줄.
  *
+ * 테두리도 배경도 그림자도 없다 — 목록은 글자가 늘어선 것이지 판이 쌓인 게
+ * 아니다. 왼쪽 22px은 커서 자리라 고를 때 글자가 안 밀린다.
  * `div`에도 쓰이므로 `button` 전용 속성은 안 넣는다
  */
 export const row = style({
   position: 'relative',
   display: 'block',
   width: '100%',
-  minHeight: 46,
-  padding: '7px 20px 7px 14px',
-  border: '1px solid rgba(255, 255, 255, 0.16)',
-  borderRadius: 999,
-  background: 'linear-gradient(180deg, rgba(30, 38, 62, 0.86), rgba(14, 20, 34, 0.9))',
-  boxShadow: '0 5px 16px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12)',
-  color: vars.panel.text,
-  font: 'inherit',
-  fontSize: 16,
-  fontWeight: 600,
-  textAlign: 'left',
+  height: 32,
   flex: '0 0 auto',
-  transform: `skewX(-${String(SKEW)}deg)`,
-  transition:
-    'transform 130ms cubic-bezier(.2,.85,.3,1), background 140ms linear,'
-    + ' border-color 140ms linear, box-shadow 140ms linear',
+  padding: '0 10px 0 22px',
+  border: 'none',
+  borderRadius: 6,
+  background: 'transparent',
+  color: 'inherit',
+  font: 'inherit',
+  fontSize: 15,
+  textAlign: 'left',
 })
 
-/** 기운 판을 되돌려 **글자는 반듯하게** 세운다 */
+/** 줄 안쪽. 아이콘·이름·숫자를 한 줄로 세운다 */
 export const face = style({
   display: 'flex',
   alignItems: 'center',
-  gap: 11,
-  transform: `skewX(${String(SKEW)}deg)`,
+  gap: 9,
+  height: '100%',
 })
 
-/**
- * 고른 줄.
- *
- * 색을 덧칠하는 게 아니라 그 줄의 색으로 **통째로 채우고** 한 걸음 나온다.
- * `--tint`를 안 주면 밝은 남색이다
- */
+/** 고른 줄 — 밝은 띠에 어두운 글자 */
 export const rowOn = style([row, {
-  transform: `skewX(-${String(SKEW)}deg) translateX(-13px)`,
-  borderColor: 'rgba(255,255,255,0.9)',
-  background:
-    'linear-gradient(180deg, var(--tint, #4a6ea8) 0%,'
-    + ' color-mix(in srgb, var(--tint, #4a6ea8) 70%, #05070d) 100%)',
-  boxShadow: '0 9px 26px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.4)',
-  color: '#ffffff',
+  background: PICK_BG,
+  color: PICK_TEXT,
   fontWeight: 700,
 }])
 
 /** 못 쓰는 항목·아직 안 본 포켓몬 */
-export const rowDim = style([row, { opacity: 0.38 }])
+export const rowDim = style([row, { opacity: 0.36 }])
 
-/** 칸 바깥 왼쪽의 커서 */
+/** 커서. 띠 **안**에 있어서 색을 글자에서 물려받는다 */
 export const caret = style({
   position: 'absolute',
-  left: -21,
+  left: 8,
   top: '50%',
   width: 0,
   height: 0,
-  borderLeft: '11px solid #ffd23f',
-  borderTop: '8px solid transparent',
-  borderBottom: '8px solid transparent',
-  transform: `translateY(-50%) skewX(${String(SKEW)}deg)`,
-  filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.75))',
+  borderLeft: '7px solid currentColor',
+  borderTop: '5px solid transparent',
+  borderBottom: '5px solid transparent',
+  transform: 'translateY(-50%)',
 })
 
 /** 이름 — 길면 잘린다. 목록이 흔들리지 않게 */
@@ -201,85 +204,84 @@ export const label = style({
 /** 줄 오른쪽 끝의 숫자 */
 export const count = style({
   marginLeft: 'auto',
+  flex: '0 0 auto',
   fontVariantNumeric: 'tabular-nums',
   fontFamily: vars.font.mono,
-  flex: '0 0 auto',
+  fontSize: 14,
 })
 
-/**
- * 오른쪽 칸.
- *
- * **판이 아니다.** 왼쪽 세로선 하나가 "여기가 설명"이라는 표시를 대신하고,
- * 뒤에는 모서리 없는 번짐만 깐다 — 배틀 로그와 같은 규칙이다
- */
+/** 오른쪽 칸. 판이 아니라 세로선 하나로 갈린다 */
 export const detail = style({
-  position: 'relative',
-  isolation: 'isolate',
   minHeight: 0,
   overflowY: 'auto',
-  padding: '4px 8px 16px 20px',
-  borderLeft: '3px solid rgba(255, 255, 255, 0.28)',
+  // ⚠️ `overflow-x: hidden`이 꼭 있어야 한다. 전에는 여기에 바깥으로 삐져나온
+  // `::before` 번짐을 깔아서, 가로 스크롤막대가 설명칸 아래에 늘 떠 있었다
+  overflowX: 'hidden',
+  padding: '2px 4px 8px 16px',
+  borderLeft: `1px solid ${EDGE}`,
   scrollbarWidth: 'thin',
-  '::before': {
-    content: '""',
-    position: 'absolute',
-    inset: '-10px -30px -10px -26px',
-    zIndex: -1,
-    background:
-      'radial-gradient(60% 70% at 25% 30%, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)',
-    pointerEvents: 'none',
-  },
 })
 
 export const detailTitle = style({
   display: 'flex',
   alignItems: 'baseline',
-  gap: 10,
-  fontSize: 22,
-  fontWeight: 800,
-  letterSpacing: '0.01em',
-  marginBottom: 4,
-  textShadow: '0 2px 4px rgba(0,0,0,0.6)',
+  gap: 9,
+  fontSize: 19,
+  fontWeight: 700,
+  marginBottom: 3,
 })
 
 export const detailSub = style({
-  fontSize: 13,
-  opacity: 0.62,
-  fontVariantNumeric: 'tabular-nums',
+  fontSize: 12,
+  opacity: 0.6,
   fontWeight: 500,
+  fontVariantNumeric: 'tabular-nums',
 })
 
 export const detailText = style({
-  fontSize: 16,
-  lineHeight: 1.7,
+  fontSize: 15,
+  lineHeight: 1.62,
   whiteSpace: 'pre-line',
-  opacity: 0.92,
+  opacity: 0.9,
 })
 
-/** 설명 안의 작은 제목 — "능력", "기술" */
+/**
+ * 설명 안의 작은 제목 — "능력", "기술".
+ *
+ * 자간을 벌린 영문 대문자표는 안 쓴다. 남은 폭을 실선으로 채우는 쪽이
+ * 게임 창에 가깝고, 그 선이 아래 내용의 범위를 알려 준다
+ */
 export const detailHead = style({
-  marginTop: 18,
-  marginBottom: 7,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  margin: '14px 0 6px',
   fontSize: 12,
   fontWeight: 700,
-  letterSpacing: '0.16em',
-  opacity: 0.5,
+  opacity: 0.52,
+  '::after': {
+    content: '""',
+    flex: 1,
+    height: 1,
+    background: 'currentColor',
+    opacity: 0.34,
+  },
 })
 
 export const foot = style({
+  flex: '0 0 auto',
   display: 'flex',
+  alignItems: 'center',
   justifyContent: 'flex-end',
-  padding: '0 42px 20px',
+  height: 28,
+  padding: '0 16px',
+  borderTop: `1px solid ${EDGE}`,
   fontSize: 12,
-  letterSpacing: '0.02em',
-  opacity: 0.5,
-  textShadow: '0 1px 3px rgba(0,0,0,0.85)',
+  opacity: 0.52,
 })
 
-/** 32×32 아이콘 한 칸. 아틀라스를 배경으로 잘라 쓴다 */
+/** 아이콘 한 칸. 크기는 `itemIcon()`이 인라인으로 준다 */
 export const icon = style({
-  width: 32,
-  height: 32,
   flex: '0 0 auto',
   imageRendering: 'pixelated',
   backgroundRepeat: 'no-repeat',
@@ -287,54 +289,61 @@ export const icon = style({
 
 /** 왼쪽 색 조각. 아이콘이 없는 목록에서 색이 갈래를 나른다 */
 export const dot = style({
-  width: 22,
-  height: 22,
-  borderRadius: 7,
+  width: 10,
+  height: 10,
+  borderRadius: 3,
   flex: '0 0 auto',
-  background: 'var(--tint, rgba(255,255,255,0.3))',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 1px 3px rgba(0,0,0,0.55)',
+  background: 'currentColor',
+  opacity: 0.55,
 })
 
-globalStyle(`${rowOn} .${dot}`, {
-  background: 'rgba(255,255,255,0.92)',
-  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.25)',
-})
-
-/** 갈래 줄 — 가방 주머니, 도감 정렬 */
+/**
+ * 갈래 줄 — 가방 주머니.
+ *
+ * 창 위쪽에 붙는 **탭**이다. 고른 것만 띠 색으로 차고 아래 본문과 이어진다
+ */
 export const tabs = style({
+  flex: '0 0 auto',
   display: 'flex',
-  gap: 7,
-  padding: '0 42px 14px',
-  flexWrap: 'wrap',
+  gap: 2,
+  padding: '7px 14px 0',
+  borderBottom: `1px solid ${EDGE}`,
 })
 
 const tabBase = style({
-  padding: '5px 16px',
-  fontSize: 14,
+  padding: '4px 13px 6px',
+  fontSize: 13,
   fontWeight: 600,
-  borderRadius: 3,
-  border: '1px solid rgba(255,255,255,0.16)',
-  background: 'rgba(16, 22, 38, 0.66)',
-  transform: `skewX(-${String(SKEW)}deg)`,
+  whiteSpace: 'nowrap',
+  borderRadius: '5px 5px 0 0',
+  marginBottom: -1,
 })
 
 export const tab = styleVariants({
-  off: [tabBase, { opacity: 0.55 }],
+  off: [tabBase, { opacity: 0.48 }],
   on: [tabBase, {
-    background: 'linear-gradient(180deg, #f7e08a, #e2b34a)',
-    borderColor: 'transparent',
-    color: '#191203',
-    fontWeight: 800,
-    boxShadow: '0 5px 16px rgba(0,0,0,0.45)',
+    background: PICK_BG,
+    color: PICK_TEXT,
+    fontWeight: 700,
   }],
 })
 
-/** 갈래 이름도 반듯하게 세운다 */
-globalStyle(`${tabBase} > span`, { display: 'inline-block', transform: `skewX(${String(SKEW)}deg)` })
+/**
+ * 창 없이 뜨는 화면(리포트·되돌릴 수 없는 물음)의 조작 안내.
+ *
+ * `foot`은 창 바닥에 붙는 띠라 테두리가 있다. 창이 없는 자리에 그걸 쓰면
+ * 짧은 선 하나가 허공에 떠 있게 된다
+ */
+export const hint = style({
+  fontSize: 12,
+  opacity: 0.52,
+  textAlign: 'center',
+  paddingBottom: 4,
+})
 
 /** 목록이 비었을 때 */
 export const empty = style({
-  padding: '18px 20px',
-  fontSize: 15,
-  opacity: 0.45,
+  padding: '14px 4px',
+  fontSize: 14,
+  opacity: 0.42,
 })

@@ -12,6 +12,7 @@ import { loadUiText, POKEDEX_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './pokedexScreen.css'
 import { music } from '../../engine/audio/music'
@@ -76,14 +77,11 @@ export function PokedexScreen() {
   const label = (i: number): string => data?.ui[i] ?? ''
 
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span className={css.crest}><span className={css.crestText}>도감</span></span>
-        <span className={css.headNote}>
-          {label(POKEDEX_TEXT.seen)} {counts.seen} · {label(POKEDEX_TEXT.caught)} {counts.caught}
-        </span>
-      </div>
-
+    <MenuScreen
+      title="도감"
+      note={`${label(POKEDEX_TEXT.seen)} ${String(counts.seen)} · ${label(POKEDEX_TEXT.caught)} ${String(counts.caught)}`}
+      foot="↑↓ 고르기 · Q/E 한 쪽씩 · Z 울음소리 · X 닫기"
+    >
       <div className={css.stage}>
         <div className={css.list}>
           {order.map((id, i) => {
@@ -122,10 +120,14 @@ export function PokedexScreen() {
                 <span className={own.category}>{data?.category[species] ?? ''}</span>
               </div>
               <div className={own.measures}>
-                <span>{label(POKEDEX_TEXT.height)}</span>
-                <span className={own.measureValue}>{(data?.heights[species] ?? '').trim()}</span>
-                <span>{label(POKEDEX_TEXT.weight)}</span>
-                <span className={own.measureValue}>{(data?.weights[species] ?? '').trim()}</span>
+                <span>
+                  {label(POKEDEX_TEXT.height)}
+                  <span className={own.measureValue}>{(data?.heights[species] ?? '').trim()}</span>
+                </span>
+                <span>
+                  {label(POKEDEX_TEXT.weight)}
+                  <span className={own.measureValue}>{(data?.weights[species] ?? '').trim()}</span>
+                </span>
               </div>
               {/* 설명문은 잡아야 열린다. 본 것만으로는 키·몸무게까지다 */}
               <div className={own.entry}>
@@ -135,9 +137,7 @@ export function PokedexScreen() {
           ) : null}
         </div>
       </div>
-
-      <div className={css.foot}>↑↓ 고르기 · Q/E 한 쪽씩 · X 닫기</div>
-    </div>
+    </MenuScreen>
   )
 }
 

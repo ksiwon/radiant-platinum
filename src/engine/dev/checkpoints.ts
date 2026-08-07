@@ -59,6 +59,18 @@ export interface Checkpoint {
   money?: number
   /** 비트마스크. 배지 수로 갈리는 화면을 볼 때 쓴다 */
   badges?: number
+  /**
+   * 도감을 이미 받은 판인가.
+   *
+   * ⚠️ 시작 메뉴의 첫 줄은 `FLAG_HAS_POKEDEX` 하나로 있고 없다. 순간이동은
+   * 플래그를 안 건드리므로 **어디로 뛰어들어도 도감이 없었다** — 만들어 둔
+   * 화면인데 열 길이 없는 상태였다. 배지와 같은 갈래다: 이야기를 꾸며 내는
+   * 것이 아니라 **그 화면을 볼 조건**을 채우는 것이다.
+   *
+   * 원작은 잔모래마을에서 받는다. 그 앞자리(주인공 방·떡잎마을·첫 라이벌전)에는
+   * 안 준다 — 거기서 도감이 뜨면 그건 원작에 없는 판이다
+   */
+  dex?: boolean
   battle?: DevBattle
 }
 
@@ -72,9 +84,13 @@ const POTION = 17
  * 확인 지점 표.
  *
  * 고른 기준은 하나다 — **지금 만들어 둔 것 중 눈으로 봐야 하는 것.** 배틀·상점처럼
- * 조건이 필요한 자리는 그 조건도 같이 채워 준다. 다만 **이야기 플래그는 안 건드린다**:
- * 순간이동은 길을 막은 사람을 그냥 지나치는 것이라 진행도를 꾸며 낼 이유가 없고,
- * 꾸며 내면 "여기까지 온 판"이 진짜와 달라진다.
+ * 조건이 필요한 자리는 그 조건도 같이 채워 준다. 다만 **진행도를 꾸며 내지는
+ * 않는다**: 순간이동은 길을 막은 사람을 그냥 지나치는 것이라, 여기서 이야기를
+ * 앞질러 놓으면 "여기까지 온 판"이 진짜와 달라진다.
+ *
+ * 채워 주는 것과 꾸며 내는 것의 경계는 **그 화면을 볼 수 있는가**다. 파티·가방·
+ * 소지금·배지, 그리고 도감(`dex`)이 여기 든다 — 없으면 만들어 둔 화면을 열 길이
+ * 아예 없다. 반대로 "누구를 이겼다"류 플래그는 안 세운다.
  */
 export const CHECKPOINTS: readonly Checkpoint[] = [
   {
@@ -127,6 +143,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     spot: { kind: 'grass' },
     party: [{ species: TURTWIG, level: 5 }],
     items: [[POKE_BALL, 10], [POTION, 5]],
+    dex: true,
   },
   {
     id: 'wild',
@@ -143,6 +160,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     spot: { kind: 'grass' },
     party: [{ species: TURTWIG, level: 8 }],
     items: [[POKE_BALL, 10], [POTION, 5]],
+    dex: true,
     battle: { kind: 'wild', species: 403, level: 7 },
   },
   {
@@ -171,6 +189,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 418,
     spot: { kind: 'atWarp', index: 1 },
+    dex: true,
   },
   {
     id: 'mart',
@@ -185,6 +204,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     money: 20000,
     party: [{ species: TURTWIG, level: 5 }],
     items: [[POTION, 3]],
+    dex: true,
   },
   {
     id: 'center',
@@ -199,6 +219,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     spot: { kind: 'warp', index: 0 },
     party: [{ species: TURTWIG, level: 12 }, { species: 403, level: 10 }],
     hurt: true,
+    dex: true,
   },
   {
     id: 'oreburgh',
@@ -211,6 +232,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 45,
     spot: { kind: 'atWarp', index: 0 },
+    dex: true,
   },
   {
     id: 'mine',
@@ -225,6 +247,7 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     spot: { kind: 'atWarp', index: 0 },
     party: [{ species: TURTWIG, level: 12 }, { species: 403, level: 10 }],
     items: [[POTION, 5]],
+    dex: true,
     battle: { kind: 'trainer', id: 195 },
   },
 ]

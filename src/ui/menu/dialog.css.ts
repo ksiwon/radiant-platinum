@@ -4,6 +4,7 @@
 // 하나에 예/아니오만 붙는다.
 import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { row, rowOn } from './menuChrome.css'
 
 export const center = style({
   flex: 1,
@@ -82,36 +83,40 @@ export const choiceOn = style([choiceBase, {
 
 /** 설정 — 왼쪽 항목 이름, 오른쪽 고른 값 */
 export const rows = style({
-  width: 'min(680px, 92vw)',
+  width: 'min(660px, 100%)',
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
+  gap: 2,
 })
+
+/** 값 후보가 들어가야 해서 목록 줄(32)보다 한 뼘 높다 */
+export const optionRow = style([row, { height: 38 }])
+export const optionRowOn = style([rowOn, { height: 38 }])
 
 export const rowLabel = style({
-  flex: '0 0 190px',
+  flex: '0 0 170px',
   opacity: 0.85,
+  fontSize: 15,
 })
 
-/** 값 후보를 가로로 늘어놓는다. 고른 것만 알약이 된다 */
+/** 값 후보를 오른쪽에 늘어놓는다. 고른 것에만 색이 찬다 */
 export const values = style({
   display: 'flex',
-  gap: 8,
-  flexWrap: 'wrap',
+  gap: 4,
+  marginLeft: 'auto',
 })
 
 const valueBase = style({
-  padding: '5px 14px',
-  borderRadius: 999,
-  fontSize: 16,
-  border: `1px solid ${vars.panel.border}`,
+  padding: '3px 11px',
+  borderRadius: 5,
+  fontSize: 14,
+  whiteSpace: 'nowrap',
 })
 
-export const value = style([valueBase, { opacity: 0.55 }])
+export const value = style([valueBase, { opacity: 0.5 }])
 
 export const valueOn = style([valueBase, {
   background: vars.hud.accent,
-  borderColor: 'transparent',
   color: '#0c1220',
   fontWeight: 700,
 }])

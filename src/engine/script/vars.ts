@@ -24,6 +24,16 @@ export const LOCAL_VAR_COUNT = 14
 /** 세이브에 남는 플래그 개수. `vars_flags.txt`에서 VARS_START 앞까지가 플래그다 */
 export const FLAG_COUNT = 4106
 
+/**
+ * 도감을 받았는가. 시작 메뉴의 첫 줄이 이 비트 하나로 있고 없다.
+ *
+ * 번호는 `vars_flags.txt`를 C enum처럼 세어서 나온 값이다(`=` 줄은 세지 않고
+ * 이름만 있는 줄이 하나씩 올라간다). 셋이 맞아떨어져야 믿는다 —
+ * `FLAG_UNUSED_0x054E`가 0x54E로, `TRAINER_DEFEATED_FLAGS_START`가
+ * `commands.ts`의 1360으로, `VARS_START`가 0x4000으로 떨어진다
+ */
+export const FLAG_HAS_POKEDEX = 144
+
 /** 명령 결과가 들어오는 자리. `GoToIfEq VAR_RESULT, ...`가 이걸 본다 */
 export const VAR_RESULT = 0x800c
 /** 방금 말을 건 상대의 local ID */

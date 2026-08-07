@@ -52,7 +52,7 @@ export const top = style({
 export const title = style({
   fontSize: 12,
   fontWeight: 700,
-  letterSpacing: '0.24em',
+  letterSpacing: '0.08em',
   opacity: 0.7,
 })
 
@@ -77,7 +77,7 @@ export const idNo = style({
 export const idLabel = style({
   display: 'block',
   fontSize: 11,
-  letterSpacing: '0.2em',
+  letterSpacing: '0.06em',
   opacity: 0.6,
   fontWeight: 700,
 })
@@ -103,7 +103,7 @@ globalStyle(`${rows} dd`, {
 export const badgeHead = style({
   fontSize: 11,
   fontWeight: 700,
-  letterSpacing: '0.2em',
+  letterSpacing: '0.06em',
   opacity: 0.6,
   marginTop: 4,
 })

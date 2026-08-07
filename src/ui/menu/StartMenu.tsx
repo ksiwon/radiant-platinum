@@ -6,13 +6,11 @@
 import { useEffect, useState } from 'react'
 import { fillMenuText, loadUiText, START_MENU } from '../../data/uiText'
 import { fieldScripts } from '../../engine/script/field'
+import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as own from './startMenu.css'
-
-/** `generated/vars_flags.txt` — 도감을 받았는가 */
-const FLAG_HAS_POKEDEX = 144
 
 interface Entry {
   key: string

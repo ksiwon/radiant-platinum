@@ -23,34 +23,38 @@ export const frame = style({
   userSelect: 'none',
 })
 
+/**
+ * 창.
+ *
+ * 전체 화면 메뉴와 **같은 테두리·같은 띠**를 쓴다. 여기만 다른 값을 쓰면
+ * 시작 메뉴에서 가방으로 들어갈 때 다른 게임으로 넘어간 것처럼 보인다
+ */
 export const card = style({
-  minWidth: 200,
-  padding: 8,
+  minWidth: 176,
+  padding: 6,
   display: 'flex',
   flexDirection: 'column',
-  gap: 2,
-  background: 'linear-gradient(180deg, rgba(26, 35, 60, 0.96), rgba(13, 18, 33, 0.96))',
-  // 원작 창은 테두리가 두 겹이다 — 바깥이 짙고 안쪽이 밝다
-  border: '2px solid rgba(150, 176, 224, 0.55)',
-  outline: '2px solid rgba(8, 12, 22, 0.75)',
-  borderRadius: 12,
-  boxShadow: '0 16px 38px rgba(0, 0, 0, 0.55)',
+  gap: 1,
+  background: 'linear-gradient(180deg, #1a2138 0%, #101629 100%)',
+  border: '1px solid rgba(150, 176, 224, 0.34)',
+  borderRadius: 10,
+  boxShadow: '0 0 0 2px rgba(6, 9, 17, 0.85), 0 16px 38px rgba(0, 0, 0, 0.55)',
 })
 
 export const row = style({
   display: 'flex',
   alignItems: 'center',
-  gap: 4,
-  padding: '7px 12px 7px 4px',
-  borderRadius: 8,
-  fontSize: 18,
-  lineHeight: '24px',
+  gap: 2,
+  height: 32,
+  padding: '0 12px 0 2px',
+  borderRadius: 6,
+  fontSize: 16,
   whiteSpace: 'nowrap',
 })
 
 export const rowOn = style([row, {
-  background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(222, 232, 252, 0.9))',
-  color: '#131a2c',
+  background: 'linear-gradient(180deg, #eef3ff 0%, #cddaf4 100%)',
+  color: '#111726',
   fontWeight: 700,
 }])
 
@@ -59,5 +63,5 @@ export const cursor = style({
   display: 'inline-block',
   width: 18,
   textAlign: 'center',
-  fontSize: 13,
+  fontSize: 11,
 })

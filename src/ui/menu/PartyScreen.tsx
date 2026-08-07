@@ -16,6 +16,7 @@ import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
 
@@ -25,14 +26,6 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 const STAT_LABEL = { hp: 'HP', atk: '공격', def: '방어', spa: '특공', spd: '특방', spe: '스피드' } as const
-
-/**
- * 능력 막대를 꽉 채우는 값.
- *
- * 절대 기준이 아니라 **견주는 자**다. 4세대 100레벨 실전에서 노력치를 몰아 준
- * 능력이 대략 이 언저리라, 그보다 낮은 것은 짧게 나온다
- */
-const STAT_FULL = 400
 
 /** 배틀 게이지와 같은 색. 두 화면에서 같은 체력이 같은 색이어야 한다 */
 const BAR_COLOR = { green: '#5fd35f', yellow: '#f5c542', red: '#ef5350', empty: '#3a3f4a' }
@@ -70,14 +63,11 @@ export function PartyScreen() {
   const alive = party.filter((m) => m.hp > 0).length
 
   return (
-    <div className={css.overlay}>
-      <div className={css.head}>
-        <span className={css.crest}><span className={css.crestText}>포켓몬</span></span>
-        <span className={css.headNote}>
-          {alive}마리 싸울 수 있다 · {party.length}/6
-        </span>
-      </div>
-
+    <MenuScreen
+      title="포켓몬"
+      note={`싸울 수 있다 ${String(alive)} · 데리고 있다 ${String(party.length)}/6`}
+      foot="↑↓←→ 고르기 · X 닫기"
+    >
       <div className={css.stage}>
         <div className={own.grid}>
           {party.length === 0 && <div className={css.empty}>데리고 있는 포켓몬이 없다</div>}
@@ -107,41 +97,28 @@ export function PartyScreen() {
 
               <div className={css.detailHead}>능력</div>
               <div className={own.stats}>
-                {(Object.keys(STAT_LABEL) as (keyof typeof STAT_LABEL)[]).map((key) => {
-                  const value = statsOf(selected, info)[key]
-                  return (
-                    <div key={key} className={own.statRow}>
-                      <span className={own.statName} data-nature={natureMark(selected, key)}>
-                        {STAT_LABEL[key]}
-                      </span>
-                      <span className={own.statBar}>
-                        <span
-                          className={own.statFill}
-                          style={{ width: `${String(Math.min(100, (value / STAT_FULL) * 100))}%` }}
-                        />
-                      </span>
-                      <span className={own.statValue}>{value}</span>
-                    </div>
-                  )
-                })}
+                {(Object.keys(STAT_LABEL) as (keyof typeof STAT_LABEL)[]).map((key) => (
+                  <div key={key} className={own.statRow}>
+                    <span className={own.statName} data-nature={natureMark(selected, key)}>
+                      {STAT_LABEL[key]}
+                    </span>
+                    <span className={own.statValue}>{statsOf(selected, info)[key]}</span>
+                  </div>
+                ))}
               </div>
 
               <div className={css.detailHead}>기술</div>
               {selected.moves.map((slot, i) => (
                 <div key={`${String(slot.move)}/${String(i)}`} className={own.moveRow}>
-                  <span className={own.moveFace}>
-                    <span className={css.label}>{moveNames[slot.move] ?? ''}</span>
-                    <span className={own.movePp}>PP {slot.pp}</span>
-                  </span>
+                  <span className={css.label}>{moveNames[slot.move] ?? ''}</span>
+                  <span className={own.movePp}>PP {slot.pp}</span>
                 </div>
               ))}
             </>
           ) : null}
         </div>
       </div>
-
-      <div className={css.foot}>↑↓←→ 고르기 · X 닫기</div>
-    </div>
+    </MenuScreen>
   )
 }
 
@@ -184,7 +161,6 @@ function Card(
 
   return (
     <div className={shell} onPointerEnter={onPick}>
-      {on && <span className={own.caret} aria-hidden />}
       <img
         className={lead ? own.portraitLead : own.portrait}
         src={`${SPRITE}/${String(mon.species)}_front.png`}
@@ -221,7 +197,7 @@ function Card(
   )
 }
 
-/** 성격이 올리는 능력에 ▲, 내리는 쪽에 ▼. HP는 성격을 안 탄다 */
+/** 성격이 올리는 능력에 빨강, 내리는 쪽에 파랑. HP는 성격을 안 탄다 */
 function natureMark(mon: PokemonInstance, stat: string): '' | 'up' | 'down' {
   if (stat === 'hp') return ''
   const effect = natureEffect(natureOf(mon.pid))
