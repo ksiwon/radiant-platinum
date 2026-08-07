@@ -10,6 +10,7 @@ import { loadDialogueBank, loadItemNames, loadItems, loadMarts, loadTrainers } f
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
+import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useSaveStore } from '../state/saveStore'
@@ -19,6 +20,7 @@ import type { MartTable, Trainer } from '../data/schema'
 
 /** `TEXT_BANK_NPC_TRAINER_MESSAGES` — 트레이너 928명의 싸움 전후 대사 */
 const TRAINER_MESSAGE_BANK = 617
+
 
 /** 지금 배틀의 결과. 스크립트가 물어볼 때까지 들고 있는다 */
 let battleResult: 'win' | 'loss' | null = null
@@ -60,13 +62,17 @@ export function installFieldServices(locale: 'en' | 'ko' | 'ja' = 'ko'): () => v
   void loadItems().then((table) => { items = table }).catch(() => { /* 주머니가 0으로 뭉친다 */ })
   void loadItemNames(locale).then((names) => { itemNames = names }).catch(() => { /* 이름만 빈다 */ })
   void loadMarts().then((table) => { marts = table }).catch(() => { /* 상점이 빈 채로 뜬다 */ })
+  // 회복량은 종족값 표가 있어야 나온다. 전멸은 첫 배틀부터 날 수 있으므로 미리 받는다
+  loadHealTables()
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
   fieldScripts.services = services
   const stop = watchBattle()
+  const stopBlackOut = watchBlackOut()
   return () => {
     stop()
+    stopBlackOut()
     fieldScripts.services = {}
   }
 }
@@ -98,6 +104,22 @@ const services: FieldServices = {
   aliveMons(): number {
     return useSaveStore.getState().party.filter((mon) => mon.hp > 0).length
   },
+
+  /**
+   * 비전머신 자격 (`FieldMoves_Check*`).
+   *
+   * 어느 뱃지에 어느 기술인지는 엔진의 표가 안다 (`engine/script/fieldMoves`).
+   * 여기서는 세이브를 읽어 주기만 한다
+   */
+  fieldMoves: {
+    badges: () => useSaveStore.getState().badges,
+    knows: (move: number) =>
+      useSaveStore.getState().party.some((mon) => mon.moves.some((s) => s.move === move)),
+  },
+
+  healParty: () => { healParty() },
+  setHealSpot: (index) => { useSaveStore.getState().setHealSpot(index) },
+  blackOut: () => { blackOut() },
 
   bag: {
     pocketOf,

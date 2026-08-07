@@ -5,7 +5,7 @@
 //
 // 청크 좌표계: 모델이 −16~+16 타일로 **가운데 정렬**돼 있으므로 행렬 칸의
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   DoubleSide, MeshBasicMaterial, MeshLambertMaterial,
   type BufferGeometry, type Material,
@@ -117,6 +117,10 @@ interface Props {
 }
 
 export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
+  // 나무가 설 땅. 플레이어가 밟는 것과 **같은 자료**라 밑동이 발밑과 어긋나지
+  // 않는다 — 잎 아래끝에 세우면 48,525그루 중 48,331그루가 뜬다 (`Foliage`)
+  const groundAt = useCallback(
+    (x: number, z: number, near: number) => grid.heightAtWorld(x, z, near), [grid])
   const [placed, setPlaced] = useState<Placed[]>([])
   const [foliage, setFoliage] = useState<FoliageGroup[]>([])
   const [grass, setGrass] = useState<GrassField | null>(null)
@@ -236,7 +240,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         나무. 원작은 판때기 한 장이라 옆·뒤에서 종잇장이 된다 — 자리와 폭과
         색만 가져와 입체로 세운다 (`plates.ts`)
       */}
-      <Foliage groups={foliage} />
+      <Foliage groups={foliage} ground={groundAt} />
       {/*
         긴 풀. 원작은 바닥 그림이라 1인칭에서 초록 장판이 된다 — 거동값
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)

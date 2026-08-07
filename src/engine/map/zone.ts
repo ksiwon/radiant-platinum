@@ -60,6 +60,49 @@ export function isWater(behavior: number): boolean {
 }
 
 /**
+ * 파도타기로만 지나가는 거동 13개.
+ *
+ * 목록을 눈으로 고르지 않는다. 원작이 `map_tile_behavior.c`에 거동마다
+ * `TILE_BEHAVIOR_FLAG_SURFABLE`을 붙여 두었고 그 표식이 붙은 것이 16개다.
+ * 그중 **다리 셋**(0x73 · 0x78 · 0x7c)은 물 *위를 걷는* 자리라 뺐다 — 원작은
+ * 다리 위인지 아래인지를 `MapObject_IsStatusOnElevatedBridge`로 가르는데
+ * 우리는 그 상태가 없다. 빼면 다리 밑을 못 지나갈 뿐, 걸어야 할 다리는 걸어진다.
+ *
+ * 값이 확정되는 이유: 이름이 16진수를 담은 것이 열 개(`UNUSED_x11`·`x12`·`x14`·
+ * `x19`·`x22`·`x2A`·`x50`~`x53`)고 열 개가 다 제 자리에 떨어진다.
+ */
+const SURFABLE: ReadonlySet<number> = new Set([
+  0x10, // WATER_RIVER — 트윈리프 연못이 여기다
+  0x11, 0x12, // UNUSED_x11 · x12
+  0x13, // WATERFALL
+  0x14, // UNUSED_x14
+  0x15, // WATER_SEA
+  0x19, 0x22, 0x2a, 0x50, 0x51, 0x52, 0x53,
+])
+
+/**
+ * 파도타기 없이는 못 들어가는 칸인가.
+ *
+ * ⚠️ **물 타일은 통행 불가로 안 찍혀 있다.** 실외 물 25,524칸 중 25,469칸이
+ * 열려 있어서, 격자만 보면 바다 위를 걸어 다닐 수 있다 — 실제로 걸어 다녔다.
+ * 원작은 격자가 아니라 **상태**로 가른다:
+ *
+ * ```c
+ * if (collision == PLAYER_COLLISION_NONE) return TRUE;
+ * if (collision == PLAYER_COLLISION_WATER
+ *     && PlayerAvatar_GetPlayerState(playerAvatar) == PLAYER_AVATAR_SURFING) return TRUE;
+ * return FALSE;
+ * ```
+ *
+ * 실측: 스폰에서 걸어 닿는 7,641칸 중 1,708칸이 물이고, **220번 수로와 221번
+ * 도로는 물을 밟아야만 닿는다.** 막으면 5,094칸 · 9개 존이 남고 원작 초반 경로
+ * (떡잎 → 201 → 마사고 → 202 → 축복 → 203)는 그대로 이어진다.
+ */
+export function isSurfable(behavior: number): boolean {
+  return SURFABLE.has(behavior)
+}
+
+/**
  * 이동 시스템이 필요로 하는 것의 전부. 존 격자든 오버월드 전역 격자든
  * 이것만 만족하면 갈아 끼울 수 있다 — 실내(존)와 실외(오버월드)는 격자의
  * 크기와 출처가 다를 뿐 이동 코드에는 같은 것이다.
@@ -67,6 +110,8 @@ export function isWater(behavior: number): boolean {
 export interface CollisionGrid {
   /** 월드 좌표(1타일 = 1유닛) 기준 */
   isBlockedAtWorld(x: number, z: number): boolean
+  /** 그 자리의 타일 거동. 물처럼 격자가 아니라 **상태**로 막는 것이 있다 */
+  behaviorAtWorld(x: number, z: number): number
   /**
    * 그 자리의 지면 높이(타일 단위). 높이 데이터가 없으면 null.
    *

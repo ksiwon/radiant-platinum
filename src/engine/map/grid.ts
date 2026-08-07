@@ -76,6 +76,10 @@ export class MapGrid implements CollisionGrid {
     return this.isBlocked(Math.floor(x), Math.floor(z))
   }
 
+  behaviorAtWorld(x: number, z: number): number {
+    return this.behavior(Math.floor(x), Math.floor(z))
+  }
+
   chunkIndexAt(tx: number, tz: number): number {
     const n = this.chunkTiles
     const cx = Math.floor(tx / n)

@@ -125,8 +125,11 @@ function ready(mon: PokemonInstance, species: Species, key: string): SideMon {
 /**
  * 싸울 수 있는 파티를 확보한다.
  *
- * 아직 나로 이벤트가 없어서 파티가 비어 있을 수 있고, 포켓몬센터도 없어서 전멸한
- * 채로 남을 수 있다. 둘 다 임시로 여기서 메운다 — 진짜 이벤트가 생기면 지운다
+ * 아직 나로 이벤트가 없어서 파티가 비어 있을 수 있다. 그것만 여기서 메운다.
+ *
+ * ⚠️ **전멸한 파티는 여기서 안 고친다.** 예전엔 "전부 쓰러졌으면 채운다"를
+ * 여기 뒀는데, 그러면 져도 다음 배틀에서 저절로 멀쩡해져서 진 것이 아무 일도
+ * 아니게 된다. 회복은 포켓몬센터가 한다 (`scene/pokecenter`)
  */
 function ensureParty(
   table: { get(id: number): Species },
@@ -135,7 +138,8 @@ function ensureParty(
   const save = useSaveStore.getState()
   let party = save.party
 
-  if (party.length === 0) {
+  if (party.length > 0) return party
+  {
     const species = table.get(STARTER)
     const mon = createWild({
       species, level: 5, rng: Math.random,
@@ -143,13 +147,6 @@ function ensureParty(
     })
     mon.hp = statsOf(mon, species).hp
     party = [fillPp(mon, pp)]
-  } else if (party.every((m) => m.hp <= 0)) {
-    // 전멸 회복은 포켓몬센터를 대신하는 자리다. 센터는 PP도 채워 준다
-    party = party.map((m) => fillPp(
-      { ...m, hp: statsOf(m, table.get(m.species)).hp, status: 'ok' as const }, pp,
-    ))
-  } else {
-    return party
   }
 
   useSaveStore.setState({ party })

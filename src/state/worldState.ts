@@ -19,6 +19,19 @@ export const worldState = {
      * 원작도 뛰는 동안은 조작이 안 먹는다 (`actor/ledge`)
      */
     hop: { active: false, t: 0, fromX: 0, fromZ: 0, toX: 0, toZ: 0 },
+    /**
+     * 파도타기 중인가 (`PLAYER_AVATAR_SURFING`).
+     *
+     * 물은 이게 서 있을 때만 지나간다 — 원작이 통행 판정에서 그 한 줄로 가른다
+     * (`player_move.c` 248줄). 물 타일 자체는 **안 막혀 있다**
+     */
+    surfing: false,
+    /**
+     * 괴력을 쓴 상태. 이게 서 있어야 바위가 밀린다 (`FieldMoves_SetStrengthTask`).
+     *
+     * 맵을 옮기면 풀린다 — 원작도 맵마다 다시 써야 한다
+     */
+    strength: false,
   },
   camera: {
     position: new Vector3(0, 6, 9),

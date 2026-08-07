@@ -71,6 +71,15 @@ export interface SaveData {
    */
   position: { map: number; matrix: number; x: number; z: number; facing: number }
   money: number
+  /**
+   * 전멸했을 때 깨어날 자리 (`FieldOverworldState_SetBlackOutWarpId`).
+   *
+   * `spawns.json`의 번호다. 포켓몬센터에 **들어서면** 여기가 갈린다 —
+   * 간호사에게 말을 걸 필요가 없다(`FieldMapChange_UpdateGameData`)
+   */
+  healSpot: number
+  /** 열린 공중날기 자리들. `spawns.json`의 번호를 비트로 든다 */
+  flySpots: number
 }
 
 export const SAVE_VERSION = 4
@@ -114,6 +123,9 @@ export function createNewSave(): SaveData {
     vars: new Uint16Array(SAVED_VAR_COUNT),
     position: { ...START_LOCATION },
     money: 3000,
+    // 0번이 떡잎마을 주인공 집이다 — 원작도 센터에 가기 전엔 집에서 깨어난다
+    healSpot: 0,
+    flySpots: 0,
   }
 }
 
@@ -156,6 +168,17 @@ interface SaveStore extends SaveData {
   addMoney: (amount: number) => void
   /** 낸다. 모자라면 false */
   spendMoney: (amount: number) => boolean
+  /** 부활 지점을 옮긴다. 포켓몬센터에 들어서면 씬이 부른다 */
+  setHealSpot: (index: number) => void
+  /** 공중날기 자리를 연다 */
+  unlockFly: (index: number) => void
+  /**
+   * 파티 전원을 회복한다 — 포켓몬센터가 하는 일이다.
+   *
+   * HP 최댓값은 종족값 표가 있어야 나오고 그 표는 비동기로 온다. 그래서
+   * **계산은 바깥이 하고** 여기서는 받은 값을 넣기만 한다
+   */
+  healParty: (full: (mon: PokemonInstance) => { hp: number; pp: number[] }) => void
   /**
    * 리포트를 쓴다. **디스크로 나가는 유일한 문이다.**
    *
@@ -206,6 +229,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     vars: s.vars,
     position,
     money: s.money,
+    healSpot: s.healSpot,
+    flySpots: s.flySpots,
   }
 }
 
@@ -251,6 +276,24 @@ export const useSaveStore = create<SaveStore>()(
 
       addMoney: (amount) =>
         set((s) => ({ money: Math.min(MAX_MONEY, s.money + amount) })),
+
+      setHealSpot: (index) => { set({ healSpot: index }) },
+
+      unlockFly: (index) =>
+        set((st) => ({ flySpots: st.flySpots | (1 << index) })),
+
+      healParty: (full) =>
+        set((st) => ({
+          party: st.party.map((mon) => {
+            const { hp, pp } = full(mon)
+            return {
+              ...mon,
+              hp,
+              status: 'ok' as const,
+              moves: mon.moves.map((slot, i) => ({ ...slot, pp: pp[i] ?? slot.pp })),
+            }
+          }),
+        })),
 
       spendMoney: (amount) => {
         const { money } = useSaveStore.getState()

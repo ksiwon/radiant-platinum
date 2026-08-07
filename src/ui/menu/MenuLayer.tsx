@@ -10,6 +10,7 @@ import { BagScreen } from './BagScreen'
 import { OptionsScreen } from './OptionsScreen'
 import { PartyScreen } from './PartyScreen'
 import { PokedexScreen } from './PokedexScreen'
+import { FlyScreen } from './FlyScreen'
 import { SaveScreen } from './SaveScreen'
 import { ShopScreen } from './ShopScreen'
 import { StartMenu } from './StartMenu'
@@ -45,6 +46,7 @@ export function MenuLayer() {
     case 'bag': return <BagScreen />
     case 'party': return <PartyScreen />
     case 'pokedex': return <PokedexScreen />
+    case 'fly': return <FlyScreen />
     case 'trainerCard': return <TrainerCard />
     case 'save': return <SaveScreen />
     case 'options': return <OptionsScreen />

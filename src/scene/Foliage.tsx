@@ -315,13 +315,31 @@ export function treeGeometry(leaf: number[], trunk: number, far = false): Buffer
 }
 
 /**
+ * 지면 높이를 묻는다. 판이 없으면 null.
+ *
+ * `near`는 잎 아래끝이다 — 다리 위·절벽 위처럼 한 자리를 판이 여럿 덮을 때
+ * **잎에 제일 가까운 판**이 그 나무가 자란 땅이다. 플레이어가 층을 가르는 규칙과
+ * 같은 것을 쓴다 (`map/height`)
+ */
+export type GroundAt = (x: number, z: number, near: number) => number | null
+
+/**
  * 칸 하나에 나무를 세울 자리. 자리는 **밑동**이다.
  *
  * `STRIDE` 간격의 칸만 대표로 세운다. 이러면 원작 판이 몇 겹이든, 눕든 서든,
  * **덮은 넓이에 비례해** 나무가 선다 — 숲 벽 한 자리에 판이 넉 장 겹쳐 있어서
  * 판마다 세우면 브로콜리가 된다
+ *
+ * ⚠️ **밑동 높이는 잎이 아니라 땅이 정한다.** 잎 아래끝(`cell.minY`)에 세우면
+ * 나무가 뜬다 — 원작 판은 나무를 *위에서 본 그림*이라 땅보다 위에 걸려 있다.
+ * 오버월드 48,525그루를 재 보면 **48,331그루가 땅 위에 떠 있고**(0.1타일 넘게
+ * 8,890 · 0.5타일 넘게 671 · 2타일 넘게 265) 191그루는 땅에 파묻혀 있다.
+ *
+ * 뜬 만큼은 그림자가 어긋난 거리이기도 하다. 태양이 (24, 42, 18)이라 수평 30 ·
+ * 수직 42고, 그림자는 뜬 높이의 30/42 = 0.71배만큼 옆으로 밀린다 — 2타일 뜬
+ * 나무는 그림자가 1.4타일 떨어진 데 진다.
  */
-export function treeAt(key: number, cell: Cell): Matrix4 | null {
+export function treeAt(key: number, cell: Cell, ground?: GroundAt): Matrix4 | null {
   const tx = cellX(key), tz = cellZ(key)
   if (((tx % STRIDE) + STRIDE) % STRIDE !== 0) return null
   if (((tz % STRIDE) + STRIDE) % STRIDE !== 0) return null
@@ -334,12 +352,12 @@ export function treeAt(key: number, cell: Cell): Matrix4 | null {
   const r = Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, want)) + jitter
   // 키는 따로 흔든다. 균등 배율만 주면 우듬지가 한 높이에 늘어서 카펫이 된다
   const h = r * (1 + (hash(tx, tz, 11) - 0.5) * 2 * HEIGHT_JITTER)
+  const x = tx + STRIDE / 2 + (hash(tx, tz, 7) - 0.5) * SPREAD * 2
+  const z = tz + STRIDE / 2 + (hash(tx, tz, 8) - 0.5) * SPREAD * 2
+  // 높이 자료가 없는 칸이 6%다(48,525 중 2,970). 그때만 잎 아래끝으로 물러선다
+  const foot = ground?.(x, z, cell.minY) ?? cell.minY
   return new Matrix4().compose(
-    new Vector3(
-      tx + STRIDE / 2 + (hash(tx, tz, 7) - 0.5) * SPREAD * 2,
-      cell.minY,
-      tz + STRIDE / 2 + (hash(tx, tz, 8) - 0.5) * SPREAD * 2,
-    ),
+    new Vector3(x, foot, z),
     new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), hash(tx, tz, 10) * Math.PI * 2),
     new Vector3(r, h, r),
   )
@@ -387,13 +405,17 @@ function shapeOf(key: string, leaf: number[], trunk: number, far: boolean): Buff
   return geo
 }
 
-export function Foliage({ groups }: { groups: FoliageGroup[] }) {
+export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: GroundAt }) {
   const camera = useThree((s) => s.camera)
 
   const meshes = useMemo(() => groups.map((g) => {
     const matrices: Matrix4[] = []
     for (const [key, cell, originX, originZ] of g.items) {
-      const m = treeAt(key, cell)
+      // 지면은 **월드 좌표로** 묻는다. 흩어 놓은 자리가 청크 경계를 넘을 수 있고,
+      // 그때는 옆 청크의 판이 답이다
+      const m = treeAt(key, cell, ground
+        ? (x, z, near) => ground(x + originX, z + originZ, near)
+        : undefined)
       if (!m) continue
       // 판 좌표가 청크 로컬이라 청크가 놓인 자리를 더해야 월드가 된다.
       // 높이는 청크가 이미 갖고 있어서 안 더한다 — 밑동이 곧 월드 높이다
@@ -420,7 +442,7 @@ export function Foliage({ groups }: { groups: FoliageGroup[] }) {
     })
     const radius = matrices.map((m) => TREE_SPHERE * new Vector3().setFromMatrixScale(m).x)
     return { key: g.key, near: make(false), far: make(true), matrices, spots, radius }
-  }), [groups])
+  }), [groups, ground])
 
   /**
    * 프레임마다 그루를 셋으로 가른다: 화면 밖 · 가까운 것 · 먼 것.

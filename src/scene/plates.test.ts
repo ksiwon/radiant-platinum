@@ -15,6 +15,8 @@ import {
   merge, nearScale, paint, treeAt, treeGeometry,
 } from './Foliage'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
+import { heightField, heightInChunk, type HeightData } from '../engine/map/height'
+import type { MatrixMeta } from '../engine/map/grid'
 
 const DATA = resolve(__dirname, '../../public/data')
 const present = existsSync(resolve(DATA, 'chunks/0.bin'))
@@ -364,5 +366,107 @@ maybe('잎 걷어내기', () => {
     expect(trunk).toBe((120 << 16) | (80 << 8) | 40)
     expect(leaf[0]).toBe((60 << 16) | (150 << 8) | 70)
     expect(leaf[1]).toBe((30 << 16) | (80 << 8) | 40)
+  })
+})
+
+/**
+ * 나무가 땅에 서는가 (DATA.md §2.2).
+ *
+ * 원작 판은 나무를 **위에서 본 그림**이라 땅보다 위에 걸려 있다. 잎 아래끝에
+ * 세우면 나무가 뜬다 — 그리고 뜬 나무는 그림자가 제 밑동에서 벗어난 데 진다.
+ * 태양이 (24, 42, 18)이라 수평 30 · 수직 42고, 어긋나는 거리는 뜬 높이의
+ * 30/42 = 0.71배다.
+ *
+ * 여기서 세는 것은 오버월드 전체다 — 청크 하나를 골라 보면 우연히 맞는 자리를
+ * 고를 수 있다.
+ */
+maybe('나무가 땅에 선다', () => {
+  const fmt = read('chunks/index.json') as Fmt
+
+  /** `bdhc.json` + `bdhc.bin`. 좌표는 int32×4가 먼저, 평면 색인 u16이 뒤다 */
+  function loadHeight(): HeightData {
+    const json = read('bdhc.json') as {
+      plateCount: number
+      planes: [number, number, number, number][]
+      chunks: [number, number][]
+      fixedPerTile: number
+    }
+    const buf = readFileSync(resolve(DATA, 'bdhc.bin'))
+    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+    return {
+      planes: json.planes,
+      chunks: json.chunks,
+      coords: new Int32Array(ab, 0, json.plateCount * 4),
+      refs: new Uint16Array(ab, json.plateCount * 16, json.plateCount),
+      fixedPerTile: json.fixedPerTile,
+    }
+  }
+
+  /** 잎 텍스처 이름. 여기서는 알파를 안 재므로 이름만 본다 — `isFoliage`의 절반이다 */
+  const FOLIAGE_NAME = /^(cont)?tree|_tree|treeg/
+
+  interface Stood { gap: number; grounded: number }
+
+  /** 오버월드 전체를 훑어 그루마다 (밑동−지면)을 잰다 */
+  function everyTree(): { off: Stood[]; noGround: number } {
+    heightField.data = loadHeight()
+    const meta = read('matrices/0.json') as MatrixMeta
+    const off: Stood[] = []
+    let noGround = 0
+    for (const c of meta.chunks) {
+      let mesh: ChunkMesh
+      try { mesh = readChunk(c.land, fmt) } catch { continue }
+      const cutout = mesh.materials.map((m) => FOLIAGE_NAME.test(m.tex ?? ''))
+      if (!cutout.some(Boolean)) continue
+      // 메시 로컬은 청크 **한가운데** 기준(−16~+16)이고 높이 자료는 **원점**
+      // 기준(0~32)이다. 16을 안 더하면 74%가 "판이 없다"로 나온다
+      const ground = (x: number, z: number, near: number) =>
+        heightInChunk(c.land, x + 16, z + 16, near)
+      for (const [key, cell] of splitFoliage(mesh, cutout).cells) {
+        const bare = treeAt(key, cell)
+        if (!bare) continue
+        const y = new Vector3().setFromMatrixPosition(bare).y
+        const p = new Vector3().setFromMatrixPosition(treeAt(key, cell, ground)!)
+        const g = ground(p.x, p.z, cell.minY)
+        if (g === null) { noGround++; continue }
+        off.push({ gap: y - g, grounded: p.y - g })
+      }
+    }
+    return { off, noGround }
+  }
+
+  it('잎 아래끝에 세우면 48,331그루가 뜬다 — 지면에 세우면 0그루다', () => {
+    const { off, noGround } = everyTree()
+    // 실측 앵커. 높이 자료가 없는 칸이 2,970개고 거기서는 잎 아래끝으로 물러선다
+    expect(off.length).toBe(48525)
+    expect(noGround).toBe(2970)
+
+    const floating = (xs: Stood[], k: (s: Stood) => number, t: number) =>
+      xs.filter((s) => k(s) > t).length
+    // 잎에 세운 것 — 거의 전부가 뜬다. 0.71배가 그림자가 어긋나는 거리다
+    expect(floating(off, (s) => s.gap, 0.05)).toBe(48331)
+    expect(floating(off, (s) => s.gap, 0.1)).toBe(8890)
+    expect(floating(off, (s) => s.gap, 0.5)).toBe(671)
+    expect(floating(off, (s) => s.gap, 2)).toBe(265)
+    // 파묻힌 것도 있다 — 잎이 땅보다 **아래**인 칸이다
+    expect(off.filter((s) => s.gap < -0.1)).toHaveLength(191)
+
+    // 지면에 세운 것 — 한 그루도 안 뜨고 한 그루도 안 묻힌다
+    for (const s of off) expect(s.grounded).toBeCloseTo(0, 9)
+  })
+
+  it('겹친 판 중 잎에 가까운 것을 고른다 — 다리 위 나무가 밑으로 안 떨어진다', () => {
+    // 한 자리를 판이 둘 덮으면(다리와 그 밑) 아무거나 고르면 안 된다.
+    // `near`로 잎 아래끝을 넘기므로 **위 판**이 뽑혀야 한다
+    const cell = { minY: 4.0, maxY: 5.5, group: 0 }
+    const two = (_x: number, _z: number, near: number) =>
+      [0.0, 4.2].reduce<number | null>(
+        (best, y) => (best === null || Math.abs(y - near) < Math.abs(best - near) ? y : best),
+        null)
+    const m = treeAt(cellKey(6, 8), cell, two)!
+    expect(new Vector3().setFromMatrixPosition(m).y).toBe(4.2)
+    // 잎이 낮으면 아래 판이 답이다 — 규칙이 방향을 안 탄다
+    const low = treeAt(cellKey(6, 8), { minY: 0.3, maxY: 1.4, group: 0 }, two)!
+    expect(new Vector3().setFromMatrixPosition(low).y).toBe(0.0)
   })
 })

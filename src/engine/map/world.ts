@@ -8,6 +8,7 @@
 // 교체(비동기 fetch가 필요하다)는 씬이 가져간다.
 import type { MapGrid } from './grid'
 import { worldState } from '../../state/worldState'
+import { pushDirection } from '../input/move'
 
 export interface MapHeader {
   id: number
@@ -117,6 +118,14 @@ export interface PendingWarp {
   /** 목적지 행렬 안의 타일 좌표 */
   x: number
   z: number
+  /**
+   * 문으로 드나든 것인가. 계단이면 false다.
+   *
+   * 소리가 갈린다 — `field_map_change.c`가 계단에 `SEQ_SE_DP_KAIDAN2`를 쓰고
+   * 문은 `ov5_021D431C.c`가 `SEQ_SE_DP_DOOR_OPEN`을 쓴다. 밟고 선 칸으로는 못
+   * 가린다: 문은 **앞 칸**이라 발밑이 그냥 길이다
+   */
+  viaDoor: boolean
 }
 
 /** `area_data.narc` — 영역이 어느 텍스처·소품 묶음을 쓰는가 */
@@ -176,12 +185,12 @@ function eventsOf(mapId: number): EventFile | null {
 }
 
 /** 목적지 워프가 가리키는 도착 지점. 목적지가 실재하지 않으면 null */
-export function resolveWarp(w: Warp): PendingWarp | null {
+export function resolveWarp(w: Warp, viaDoor = false): PendingWarp | null {
   const dest = mapById(w.to)
   if (!dest) return null
   const back = warpsOf(w.to)[w.anchor]
   if (!back) return null
-  return { to: w.to, matrix: dest.matrix, x: back.x + 0.5, z: back.z + 0.5 }
+  return { to: w.to, matrix: dest.matrix, x: back.x + 0.5, z: back.z + 0.5, viaDoor }
 }
 
 /** `TILE_BEHAVIOR_DOOR`. 이름이 16진수를 담고 있어 값이 확정된다 (`UNUSED_x68` 다음) */
@@ -238,8 +247,59 @@ export function walkOutOfDoor(
   return { x, z: z + 1 }
 }
 
+/** 바라보는 방향의 단위 벡터. `facing`은 `atan2(vx, vz)`라 0이 +z다 */
+const FACING_STEP = [
+  { x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 },
+] as const
+
+export function quarterOf(facing: number): number {
+  return ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
+}
+
+/**
+ * 문으로 들어간다.
+ *
+ * ⚠️ **문 타일은 밟을 수 없다.** 실외 문 141개가 141개 다 통행 불가로 찍혀 있다 —
+ * 밟고 서기를 기다리면 건물에 영영 못 들어간다. 실제로 못 들어갔다.
+ *
+ * 원작은 밟는 게 아니라 **밀고 들어간다.** `Field_CheckMapTransition`이
+ * 그대로 이 순서다:
+ *
+ * ```c
+ * Field_Step(fieldSystem, &playerX, &playerZ);              // 앞 칸
+ * if (TerrainCollisionManager_CheckCollision(...) == FALSE)  // 막혀 있어야 한다
+ *     return FALSE;
+ * if (Field_MapConnection(...) && input->transitionDir != DIR_NONE) {
+ *     if (TileBehavior_IsDoor(tileBehavior)) { ... }
+ * }
+ * ```
+ *
+ * 막혀 있어야 한다는 조건이 뒤집혀 있는 게 아니다 — **막힌 것이 곧 문을 가르는
+ * 잣대다.** 걸어 들어갈 수 있는 칸이면 그건 문이 아니라 그냥 길이다.
+ *
+ * `transitionDir`은 **보는 쪽과 미는 쪽이 같을 때만** 선다(`FieldInput` 166줄:
+ * `playerDir == DIR_NORTH && heldKeys & PAD_KEY_UP` …). 옆으로 스치면 안 열린다.
+ */
+export function doorEntry(
+  grid: { behavior(tx: number, tz: number): number; isBlocked(tx: number, tz: number): boolean },
+  warps: readonly Warp[],
+  at: { x: number; z: number; facing: number },
+  push: { x: number; z: number },
+): Warp | null {
+  if (Math.hypot(push.x, push.z) < 0.1) return null
+  if (quarterOf(Math.atan2(push.x, push.z)) !== quarterOf(at.facing)) return null
+  const step = FACING_STEP[quarterOf(at.facing)]!
+  const fx = Math.floor(at.x) + step.x, fz = Math.floor(at.z) + step.z
+  if (!grid.isBlocked(fx, fz)) return null
+  if (grid.behavior(fx, fz) !== TILE_BEHAVIOR_DOOR) return null
+  return warps.find((w) => w.x === fx && w.z === fz) ?? null
+}
+
 /**
  * 워프 감지. 씬은 pending을 보고 격자를 갈아 끼운다.
+ *
+ * 두 갈래다 — **밟고 선 칸**(계단·워프판)과 **밀고 들어간 앞 칸**(문). 원작도
+ * 둘로 갈라 놓았다(`Field_CheckMapTransition`).
  *
  * 도착 지점은 상대편 워프 타일 자체다 — 원작도 그렇다. 다만 그 칸이 문이면
  * 통행 불가라서 씬이 `walkOutOfDoor`로 한 칸 내려 세운다.
@@ -247,12 +307,25 @@ export function walkOutOfDoor(
 export const warpSystem = {
   fixedUpdate() {
     if (world.mapId < 0 || world.pending) return
-    const p = worldState.player.position
-    const tx = Math.floor(p.x), tz = Math.floor(p.z)
-    const here = warpsOf(world.mapId).find((w) => w.x === tx && w.z === tz)
-    if (!here) { world.armed = true; return }
+    const p = worldState.player
+    const tx = Math.floor(p.position.x), tz = Math.floor(p.position.z)
+    const warps = warpsOf(world.mapId)
+
+    // ① 앞 칸이 문이다. 밟을 수 없는 칸이라 밟기를 기다리면 안 열린다
+    const door = world.grid
+      ? doorEntry(world.grid, warps, { x: p.position.x, z: p.position.z, facing: p.facing },
+        pushDirection())
+      : null
+    // ② 밟고 선 칸이다 — 계단·워프판이 그렇다
+    const here = warps.find((w) => w.x === tx && w.z === tz)
+
+    // 워프에서 손을 떼야 다시 걸린다. 북쪽 문으로 들어가면 도착하자마자 **그 문을
+    // 다시 마주 보고 서게 되므로**, 이게 없으면 안팎을 무한히 오간다
+    if (!door && !here) { world.armed = true; return }
     if (!world.armed) return
-    const target = resolveWarp(here)
+    const target = door
+      ? resolveWarp(door, true)
+      : resolveWarp(here!, world.grid?.behavior(tx, tz) === TILE_BEHAVIOR_DOOR)
     // 목적지가 없는 워프가 6개 있다(더미). 밟아도 아무 일도 일어나지 않는 게 맞다
     if (!target) return
     world.armed = false

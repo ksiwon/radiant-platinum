@@ -1,10 +1,12 @@
 // 플레이어 이동 — fixedUpdate에서 적분, 렌더는 prev/current 보간
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
-import { activeZone } from '../map/zone'
+import { activeZone, isSurfable } from '../map/zone'
 import { MapGrid } from '../map/grid'
 import { HOP_RISE, HOP_TIME, ledgeHop } from './ledge'
-import { facingFromYaw, moveByYaw } from '../input/mouse'
+import { facingFromYaw } from '../input/mouse'
+import { pushDirection } from '../input/move'
+import { obstacleAt, pushBoulder, STRENGTH_BOULDER } from './obstacles'
 
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
@@ -17,18 +19,37 @@ const CLIMB_RATE = 18
 /** 이보다 크게 벌어지면 따라붙이지 않고 즉시 맞춘다 — 워프가 그렇다 */
 const CLIMB_SNAP = 1.5
 
+/** 바라보는 방향의 단위 벡터. `facing`은 `atan2(vx, vz)`라 0이 +z다 */
+const FACING_STEP = [
+  { x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 },
+] as const
+const quarterOf = (facing: number): number =>
+  ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
+
 const desired = new Vector3()
 
-/** 한 축씩 나눠 판정한다 — 벽을 따라 미끄러지게 하려면 축을 합쳐 판정하면 안 된다 */
+/**
+ * 한 축씩 나눠 판정한다 — 벽을 따라 미끄러지게 하려면 축을 합쳐 판정하면 안 된다.
+ *
+ * ⚠️ 격자만 봐서는 **바다 위를 걸어 다닌다.** 물 25,469칸이 통행 가능으로 찍혀
+ * 있어서다. 물은 격자가 아니라 **파도타기 상태**가 가른다 (`map/zone`의
+ * `isSurfable`) — 원작 `player_move.c` 248줄이 그 한 줄이다
+ */
 function blocked(x: number, z: number): boolean {
   const grid = activeZone.grid
   if (!grid) return false
+  const surfing = worldState.player.surfing
+  const shut = (cx: number, cz: number) =>
+    grid.isBlockedAtWorld(cx, cz)
+    || (!surfing && isSurfable(grid.behaviorAtWorld(cx, cz)))
+    // 벨 나무·깰 바위·밀 바위는 지형이 아니라 객체다 (`actor/obstacles`)
+    || obstacleAt(Math.floor(cx), Math.floor(cz)) !== null
   // 캐릭터를 점이 아니라 반지름 있는 원으로 본다
   return (
-    grid.isBlockedAtWorld(x - RADIUS, z - RADIUS) ||
-    grid.isBlockedAtWorld(x + RADIUS, z - RADIUS) ||
-    grid.isBlockedAtWorld(x - RADIUS, z + RADIUS) ||
-    grid.isBlockedAtWorld(x + RADIUS, z + RADIUS)
+    shut(x - RADIUS, z - RADIUS) ||
+    shut(x + RADIUS, z - RADIUS) ||
+    shut(x - RADIUS, z + RADIUS) ||
+    shut(x + RADIUS, z + RADIUS)
   )
 }
 
@@ -42,9 +63,7 @@ export const playerSystem = {
     const speed = input.run ? RUN_SPEED : WALK_SPEED
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
-    const dir = worldState.camera.mode === 'first'
-      ? moveByYaw(input.move.x, input.move.y, worldState.camera.yaw)
-      : { x: input.move.x, z: input.move.y }
+    const dir = pushDirection()
     desired.set(dir.x, 0, dir.z).multiplyScalar(speed)
 
     // 간단한 가감속 (스파이크 수준)
@@ -80,6 +99,16 @@ export const playerSystem = {
 
     const nx = p.position.x + p.velocity.x * dt
     const nz = p.position.z + p.velocity.z * dt
+
+    // 괴력 바위를 민다. 미는 것은 기술이 아니라 **걸음**이라 여기서 한다 —
+    // 원작도 기술은 허락만 하고 실제로는 `MOVEMENT_ACTION_PUSH_*`가 옮긴다
+    if (p.strength && activeZone.grid && blocked(nx, nz)) {
+      const step = FACING_STEP[quarterOf(p.facing)]!
+      const front = obstacleAt(Math.floor(p.position.x) + step.x, Math.floor(p.position.z) + step.z)
+      if (front && front.info.sprite === STRENGTH_BOULDER) {
+        pushBoulder(activeZone.grid, front, step)
+      }
+    }
 
     if (activeZone.grid) {
       // 이미 막힌 칸 안에 서 있으면 판정을 건너뛴다.
@@ -119,6 +148,13 @@ export const playerSystem = {
       p.facing = facingFromYaw(worldState.camera.yaw)
     } else if (p.velocity.lengthSq() > 0.01) {
       p.facing = Math.atan2(p.velocity.x, p.velocity.z)
+    }
+
+    // 뭍에 올라서면 내린다. 원작도 물 밖으로 나가는 순간 상태가 풀린다 —
+    // 타는 것은 A를 눌러야 하지만 내리는 것은 걸어 나오면 된다
+    if (p.surfing && activeZone.grid
+      && !isSurfable(activeZone.grid.behaviorAtWorld(p.position.x, p.position.z))) {
+      p.surfing = false
     }
     worldState.time.elapsed += dt
   },

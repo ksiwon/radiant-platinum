@@ -99,8 +99,22 @@ const POTION = 17, SUPER_POTION = 26, HYPER_POTION = 25, FULL_RESTORE = 24
 const REVIVE = 28
 /** 영원시티 사이클숍 */
 const BICYCLE = 450
-/** 비전머신 01·02·03·04 — 거합베기 · 공중날기 · 파도타기 · 괴력 */
+/** 비전머신 01·02·03·04 — 풀베기 · 공중날기 · 파도타기 · 괴력 */
 const HM_CUT = 420, HM_FLY = 421, HM_SURF = 422, HM_STRENGTH = 423
+
+/**
+ * 비전머신 도구 → 그 안에 든 기술.
+ *
+ * ⚠️ **도구만 줘서는 아무것도 안 열린다.** 물을 가르는 것은 가방이 아니라
+ * 파티가 그 기술을 아는가다(`Party_HasMonWithMove`). 확인 지점이 도구를 주면
+ * 파티에도 가르쳐 놓아야 그 자리에서 실제로 써 볼 수 있다
+ */
+export const HM_TEACHES: Readonly<Record<number, number>> = {
+  [HM_CUT]: 15,
+  [HM_FLY]: 19,
+  [HM_SURF]: 57,
+  [HM_STRENGTH]: 70,
+}
 
 /**
  * 체육관을 이기면 받는 기술머신.

@@ -370,6 +370,9 @@ const IDLE_COMMANDS = [
   // 이 셋은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
   // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
   'GetRematchTrainerID', 'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
+  // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
+  // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
+  'BlackOutFromBattle2',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다
   'GetItemQuantity',
 ]

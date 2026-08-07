@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { fillMenuText, loadUiText, START_MENU } from '../../data/uiText'
 import { fieldScripts } from '../../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
+import { whyNot } from '../../engine/script/fieldMoves'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
@@ -25,6 +26,7 @@ export function StartMenu() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const party = useSaveStore((s) => s.party)
   const trainer = useSaveStore((s) => s.trainer)
+  const badges = useSaveStore((s) => s.badges)
 
   useEffect(() => {
     let alive = true
@@ -42,9 +44,22 @@ export function StartMenu() {
   const label = (at: number): string => fillMenuText(texts[at] ?? '', [trainer.name])
   const hasDex = fieldScripts.vars.checkFlag(FLAG_HAS_POKEDEX)
 
+  /**
+   * 공중날기를 쓸 수 있는가 (`FieldMoves_CheckFly`).
+   *
+   * 원작은 이 항목이 시작 메뉴가 아니라 **포켓몬 화면**에 붙는다. 그 자리를
+   * 아직 안 만들어서 여기 둔다 — 조건은 원작 그대로다: 자갈뱃지와, 공중날기를
+   * 아는 파티원 하나
+   */
+  const canFly = whyNot('fly', {
+    badges,
+    knows: (move) => party.some((mon) => mon.moves.some((slot) => slot.move === move)),
+  }) === null
+
   const entries: Entry[] = []
   if (hasDex) entries.push({ key: 'pokedex', label: label(START_MENU.pokedex), go: () => { push('pokedex') } })
   if (party.length > 0) entries.push({ key: 'party', label: label(START_MENU.party), go: () => { push('party') } })
+  if (canFly) entries.push({ key: 'fly', label: '공중날기', go: () => { push('fly') } })
   entries.push({ key: 'bag', label: label(START_MENU.bag), go: () => { push('bag') } })
   entries.push({ key: 'trainerCard', label: label(START_MENU.trainerCard), go: () => { push('trainerCard') } })
   entries.push({ key: 'save', label: label(START_MENU.save), go: () => { push('save') } })

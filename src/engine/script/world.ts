@@ -136,6 +136,24 @@ export interface FieldServices {
     common: () => number[]
     specialties: (martID: number) => number[]
   }
+  /**
+   * 비전머신 자격 (`FieldMoves_Check*`).
+   *
+   * 원작이 보는 것이 정확히 둘이다 — `PlayerHasRequiredBadge`와
+   * `Party_HasMonWithMove`. 둘 다 세이브에 있어서 여기로 받는다
+   */
+  fieldMoves?: {
+    /** 뱃지 비트마스크 */
+    badges: () => number
+    /** 이 기술을 아는 파티원이 있는가 */
+    knows: (move: number) => boolean
+  }
+  /** 파티 전원 회복 (`ScrCmd_HealParty`). 종족값 표가 필요해서 바깥 일이다 */
+  healParty?: () => void
+  /** 부활 지점을 옮긴다 (`ScrCmd_SetBlackOutWarpId`). `spawns.json`의 번호다 */
+  setHealSpot?: (index: number) => void
+  /** 전멸 — 회복하고 부활 지점으로 옮긴다 (`ScrCmd_BlackOutFromBattle`) */
+  blackOut?: () => void
 }
 
 export interface WorldInit {

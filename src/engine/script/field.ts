@@ -18,6 +18,8 @@ import {
 import { ScriptContext, ScriptError } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { npcActors, spawnNpcs } from '../actor/npcs'
+import { obstacleAt } from '../actor/obstacles'
+import { fieldMoveHere } from './fieldMoves'
 import { trainerInSight } from '../actor/sight'
 import { DIR, type Movable, type MovementTable } from './movement'
 import { TEXT_SPEED, type PrinterInput } from './printer'
@@ -204,6 +206,8 @@ const DIR_TO_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
  */
 export function enterMap(mapId: number): void {
   spawnNpcs(mapId, fieldScripts.vars)
+  // 괴력은 맵마다 다시 쓴다 — 원작도 맵을 옮기면 풀린다
+  worldState.player.strength = false
   resetTriggerTile()
   // 맵에 들어선 그 칸에서 곧바로 눈이 마주치면 안 된다 — 문에서 나오자마자
   // 배틀이 시작되면 어디서 걸린 것인지 화면에서 안 보인다
@@ -390,7 +394,82 @@ function tryTalk(): void {
 
   // 사람이 없으면 간판이다. 원작도 이 순서다 (`field_control.c`)
   const sign = signAt(mapWorld.mapId, front.x, front.z, quarterOf(p.facing), vars)
-  if (sign) start(sign.script, header.scripts)
+  if (sign) { start(sign.script, header.scripts); return }
+
+  // 그래도 없으면 타일이 하는 말을 본다 (`Field_TileBehaviorToScript`)
+  tryFieldMove(front)
+}
+
+/**
+ * 앞에 대고 A를 누르면 비전머신이 나간다 (`Field_TileBehaviorToScript`).
+ *
+ * 원작은 자격을 두 겹으로 본다 — 뱃지 하나와 `Party_HasMonWithMove` 하나다.
+ * 둘 다 `engine/script/fieldMoves`에 표로 있고 여기서는 **결과만** 쓴다.
+ *
+ * ⚠️ 원작이 여는 `FIELD_MOVES` 스크립트(“○○의 파도타기!” 같은 대사와 컷인)는
+ * 아직 안 돌린다. 하는 일만 한다 — 대사와 연출이 빠진 것이지 조건이 다른 것은
+ * 아니다.
+ *
+ * ⚠️ **안개제거와 플래시는 걸릴 자리가 없다.** 오버월드 날씨(`OVERWORLD_WEATHER_FOG`
+ * · `DARK_FLASH`)를 아직 안 뽑았다 — 맵 헤더의 그 칸이 우리 `maps.json`에 없다.
+ * 표에는 있으니 날씨가 들어오면 `FieldSpot`에 `fog`·`dark`를 채우면 된다
+ */
+function tryFieldMove(front: { x: number; z: number }): void {
+  const p = worldState.player
+  if (p.hop.active) return
+  const grid = mapWorld.grid
+  if (!grid) return
+  const badges = fieldScripts.services?.fieldMoves?.badges()
+  if (badges === undefined) return
+
+  const actor = obstacleAt(front.x, front.z)
+  const id = fieldMoveHere({
+    frontBehavior: grid.behavior(front.x, front.z),
+    frontSprite: actor?.info.sprite ?? null,
+    quarter: quarterOf(p.facing),
+    surfing: p.surfing,
+  }, {
+    badges,
+    knows: (move) => fieldScripts.services?.fieldMoves?.knows(move) === true,
+  })
+  if (id === null) return
+
+  const step = FACING_STEP[quarterOf(p.facing)]!
+  switch (id) {
+    case 'cut':
+    case 'rockSmash':
+      // `RemoveObject VAR_LAST_TALKED`. 맵을 다시 들어오면 되살아난다 —
+      // 원작도 플래그로 지우지 않는다
+      if (actor) actor.visible = false
+      return
+    case 'strength':
+      // 원작은 여기서 미는 것을 **허락만** 한다. 실제로 미는 것은 걸어가서 하는
+      // 일이라 이동 시스템이 가져간다 (`actor/player`)
+      p.strength = true
+      return
+    case 'surf':
+      p.surfing = true
+      hopTo(front.x + 0.5, front.z + 0.5)
+      return
+    case 'waterfall':
+    case 'rockClimb': {
+      // 같은 거동이 이어지는 만큼 올라간다. 그 너머가 막혔으면 안 오른다
+      const behavior = grid.behavior(front.x, front.z)
+      let x = front.x, z = front.z
+      while (grid.behavior(x + step.x, z + step.z) === behavior) { x += step.x; z += step.z }
+      const landX = x + step.x, landZ = z + step.z
+      if (grid.isBlocked(landX, landZ)) return
+      hopTo(landX + 0.5, landZ + 0.5)
+      return
+    }
+    default:
+      return
+  }
+}
+
+function hopTo(x: number, z: number): void {
+  const p = worldState.player
+  p.hop = { active: true, t: 0, fromX: p.position.x, fromZ: p.position.z, toX: x, toZ: z }
 }
 
 /**

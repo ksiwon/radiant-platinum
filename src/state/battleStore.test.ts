@@ -113,21 +113,33 @@ describe('배틀 스토어', () => {
     expect(useBattleStore.getState().phase).toBe('off')
   }, 30_000)
 
-  it('전멸한 파티는 다음 배틀 전에 회복된다', async () => {
-    // 포켓몬센터가 생기기 전까지의 임시 규칙. 이게 없으면 한 번 지고 나면
-    // 영영 배틀을 못 연다
-    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
-    await playToEnd()
+  it('전멸한 파티는 저절로 안 낫는다 — 회복은 포켓몬센터가 한다', async () => {
+    // ⚠️ 예전엔 `ensureParty`가 "전부 쓰러졌으면 채운다"를 했다. 그러면 져도
+    // 다음 배틀에서 멀쩡해져서 **진 것이 아무 일도 아니게 된다.** 지금은
+    // `scene/pokecenter`가 전멸을 받아 부활 지점으로 옮기고 거기서 낫는다
+    // 쓰러진 파티 하나를 만든다
+    const species = await loadSpecies()
+    const moves = await loadMoves()
+    const starly = species.get(STARLY)
+    const mon = fillPp(
+      createWild({ species: starly, level: 5, rng: () => 0.5, otId: 1, otSecretId: 1 }),
+      (id) => moves.byId.get(id)?.pp ?? 5,
+    )
+    useSaveStore.setState({ party: [{ ...mon, hp: 0, status: 'psn' as const }] })
+
+    // 배틀을 열어도 안 낫는다 — 예전엔 여기서 저절로 멀쩡해졌다
+    await useBattleStore.getState().startWild({ species: RATTATA, level: 3 })
+    expect(useSaveStore.getState().party[0]!.hp).toBe(0)
     useBattleStore.getState().close()
 
-    const party = useSaveStore.getState().party.map((m) => ({ ...m, hp: 0 }))
-    useSaveStore.setState({ party })
-
-    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
-    expect(useBattleStore.getState().phase).toBe('running')
-    expect(useSaveStore.getState().party[0]!.hp).toBeGreaterThan(0)
-    useBattleStore.getState().close()
-  }, 30_000)
+    // 낫는 길 자체는 살아 있다 — 센터가 부르는 그 함수를 직접 걸어 본다
+    useSaveStore.getState().healParty((mon) => ({ hp: 20, pp: mon.moves.map(() => 10) }))
+    const healed = useSaveStore.getState().party
+    expect(healed.length).toBeGreaterThan(0)
+    expect(healed.every((m) => m.hp === 20)).toBe(true)
+    expect(healed.every((m) => m.status === 'ok')).toBe(true)
+    expect(healed.every((m) => m.moves.every((slot) => slot.pp === 10))).toBe(true)
+  })
 
   it('이미 배틀 중이면 두 번째 조우가 안 겹친다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 3 })

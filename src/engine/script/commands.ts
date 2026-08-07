@@ -561,6 +561,30 @@ on('CheckIsTrainerDoubleBattle', (ctx) => {
   return false
 })
 
+// ── 포켓몬센터 · 전멸 ────────────────────────────────────────────────────────
+//
+// 원작은 부활 지점을 **맵을 갈아 끼울 때** 정한다(`FieldMapChange_UpdateGameData`가
+// `GetMapBlackOutWarpId`를 돌린다). 그래서 간호사 스크립트에는 회복만 있고
+// `SetBlackOutWarpId`는 자전거 가게 한 곳에서만 쓰인다 — 그 한 곳을 위해 남긴다.
+
+on('HealParty', (ctx) => {
+  ctx.host.world.services.healParty?.()
+  return false
+})
+
+on('SetBlackOutWarpId', (ctx) => {
+  // 인자는 **1부터 센 번호**다 (`MapSpawnIdToIndex`가 하나를 뺀다)
+  ctx.host.world.services.setHealSpot?.(ctx.readHalfWord() - 1)
+  return false
+})
+
+const blackOut: CommandFn = (ctx) => {
+  ctx.host.world.services.blackOut?.()
+  return true
+}
+on('BlackOutFromBattle', blackOut)
+on('BlackOutFromBattle2', blackOut)
+
 on('CheckHasTwoAliveMons', (ctx) => {
   ctx.host.vars.set(ctx.readHalfWord(), (ctx.host.world.services.aliveMons?.() ?? 0) >= 2 ? 1 : 0)
   return false

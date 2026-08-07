@@ -11,8 +11,9 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import {
   world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR,
+  doorEntry,
   walkOutOfDoor,
-  type EventFile, type MapHeader,
+  type EventFile, type MapHeader, type Warp,
 } from './world'
 import { resolveScript } from '../script/data'
 import type { ScriptFile } from '../../data/schema'
@@ -174,6 +175,76 @@ maybe('워프 그래프', () => {
       }
       // 아무것도 아닌 빈 칸도 그대로
       expect(walkOutOfDoor(grid, 116.5, 886.5)).toEqual({ x: 116.5, z: 886.5 })
+    })
+  })
+
+  /**
+   * 들어가는 쪽 (`Field_CheckMapTransition`).
+   *
+   * ⚠️ 밟고 선 칸만 보면 **건물에 영영 못 들어간다.** 실외 문 141개가 141개 다
+   * 통행 불가라 그 칸에 설 수가 없기 때문이다. 실제로 못 들어갔다.
+   */
+  describe('문으로 들어간다', () => {
+    const grid = readGrid('matrices/0.json', 'matrices/0.bin')
+    const NORTH = Math.PI
+    const push = { north: { x: 0, z: -1 }, south: { x: 0, z: 1 }, east: { x: 1, z: 0 } }
+
+    /** 실외 문 전부. 문은 남쪽에서만 열려 있으므로 한 칸 아래에 서서 북쪽을 본다 */
+    function everyDoor() {
+      const out: { map: number; w: Warp }[] = []
+      for (const m of (world.maps ?? [])) {
+        if (m.matrix !== 0) continue
+        for (const w of warpsOf(m.id)) {
+          if (grid.behavior(w.x, w.z) === TILE_BEHAVIOR_DOOR) out.push({ map: m.id, w })
+        }
+      }
+      return out
+    }
+
+    it('문 141개 전부를 남쪽에서 밀고 들어간다', () => {
+      const doors = everyDoor()
+      expect(doors).toHaveLength(141)
+      for (const { map, w } of doors) {
+        const at = { x: w.x + 0.5, z: w.z + 1.5, facing: NORTH }
+        const got = doorEntry(grid, warpsOf(map), at, push.north)
+        expect(got, `문 ${String(map)}(${String(w.x)},${String(w.z)})`).toBe(w)
+      }
+    })
+
+    it('밀지 않으면 안 열린다 — 앞에 서 있기만 해서는 안 들어간다', () => {
+      const { map, w } = everyDoor()[0]!
+      const at = { x: w.x + 0.5, z: w.z + 1.5, facing: NORTH }
+      expect(doorEntry(grid, warpsOf(map), at, { x: 0, z: 0 })).toBeNull()
+      // 보는 쪽과 미는 쪽이 달라도 안 열린다 (`transitionDir`이 DIR_NONE이 된다)
+      expect(doorEntry(grid, warpsOf(map), at, push.south)).toBeNull()
+      expect(doorEntry(grid, warpsOf(map), at, push.east)).toBeNull()
+      // 문을 등지고 밀어도 안 열린다
+      expect(doorEntry(grid, warpsOf(map), { ...at, facing: 0 }, push.south)).toBeNull()
+    })
+
+    it('막힌 칸이어야 문이다 — 걸어 들어가지는 칸은 그냥 길이다', () => {
+      // 원작의 `TerrainCollisionManager_CheckCollision(...) == FALSE → return FALSE`.
+      // 자료에는 안 막힌 문이 하나도 없어서 손으로 만들어야 재 볼 수 있다
+      const warp: Warp = { x: 5, z: 5, to: 1, anchor: 0 }
+      const at = { x: 5.5, z: 6.5, facing: NORTH }
+      const door = (blocked: boolean, behavior: number) => doorEntry(
+        { behavior: () => behavior, isBlocked: () => blocked }, [warp], at, push.north)
+      expect(door(true, TILE_BEHAVIOR_DOOR)).toBe(warp)
+      expect(door(false, TILE_BEHAVIOR_DOOR)).toBeNull()
+      // 막혀 있어도 문이 아니면 안 열린다 — 벽에 부딪힐 때마다 워프가 걸리면 안 된다
+      expect(door(true, 0)).toBeNull()
+      // 문인데 워프가 없으면 갈 데가 없다
+      expect(doorEntry(
+        { behavior: () => TILE_BEHAVIOR_DOOR, isBlocked: () => true }, [], at, push.north,
+      )).toBeNull()
+    })
+
+    it('워프 없는 벽을 밀어도 아무 일도 안 난다', () => {
+      // 떡잎마을 워프 4개는 전부 문이다. 그 옆 벽칸을 밀어 본다
+      const walls = warpsOf(411).map((w) => ({ x: w.x + 1.5, z: w.z + 1.5, facing: NORTH }))
+      for (const at of walls) {
+        expect(doorEntry(grid, warpsOf(411), at, push.north)).toBeNull()
+      }
     })
   })
 

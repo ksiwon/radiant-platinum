@@ -12,7 +12,7 @@ import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { fieldScripts } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
-import { seenAlongTheWay } from '../engine/dev/checkpoints'
+import { HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
 import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
 
@@ -30,6 +30,28 @@ const HURT_FRACTION = 1 / 3
  * 파티는 야생 개체를 만드는 길을 그대로 쓴다 — 기술도 PP도 종족 표가 정하는
  * 대로 붙는다. 우리가 손으로 기술을 골라 넣으면 그건 원작에 없는 편성이다
  */
+/**
+ * 가진 비전머신을 첫 마리에게 가르친다.
+ *
+ * 확인 지점은 도구를 주는데, **도구만으로는 아무것도 안 열린다** — 원작이 보는
+ * 것은 `Party_HasMonWithMove`다. 뒤 칸부터 덮어써서 자연 습득기를 다 지우지 않는다
+ */
+function teachHms(
+  party: PokemonInstance[], items: readonly (readonly [number, number])[],
+  pp: (move: number) => number,
+): PokemonInstance[] {
+  const learn = items.map(([item]) => HM_TEACHES[item]).filter((m) => m !== undefined)
+  const first = party[0]
+  if (learn.length === 0 || !first) return party
+  const moves = first.moves.map((slot) => ({ ...slot }))
+  learn.forEach((move, i) => {
+    const at = moves.length - 1 - i
+    if (at < 0) return
+    moves[at] = { move, pp: pp(move), ppUps: 0 }
+  })
+  return [fillPp({ ...first, moves }, pp), ...party.slice(1)]
+}
+
 async function applySetup(cp: Checkpoint): Promise<void> {
   const save = useSaveStore.getState()
 
@@ -45,7 +67,7 @@ async function applySetup(cp: Checkpoint): Promise<void> {
       const max = statsOf(mon, sp).hp
       return { ...mon, hp: cp.hurt ? Math.max(1, Math.floor(max * HURT_FRACTION)) : max }
     }
-    const party = cp.party.slice(0, 6).map(make)
+    const party = teachHms(cp.party.slice(0, 6).map(make), cp.items ?? [], pp)
     useSaveStore.setState({ party })
     // 데리고 있는 것은 이미 잡은 것이다. 이걸 안 채우면 도감이 통째로 비어서,
     // 도감 화면을 열어 봐야 210줄이 전부 `----------`이다

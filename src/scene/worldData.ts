@@ -4,6 +4,7 @@
 // 실내는 첫 워프 때 한 번만 받는다 — 269개를 이어 붙여 1.33MB이고 압축하면 20KB대라
 // 행렬마다 따로 두는 것(파일 500개 + 문 열 때마다 왕복)보다 낫다.
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
+import { spawnTable, type SpawnPoint } from '../engine/map/spawns'
 import { heightField, type HeightData } from '../engine/map/height'
 import { world, type AreaData, type EventFile, type MapHeader } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
@@ -73,7 +74,9 @@ export interface WorldBoot {
 
 /** 시작 데이터. world 싱글톤을 채우고 오버월드 격자를 돌려준다 */
 export async function bootWorld(): Promise<WorldBoot> {
-  const [mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin, sprites] =
+  const [
+    mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin, sprites, spawnFile,
+  ] =
     await Promise.all([
       json<{ maps: MapHeader[], areas: AreaData[] }>('maps.json'),
       json<{ events: Record<string, EventFile> }>('events.json'),
@@ -88,6 +91,8 @@ export async function bootWorld(): Promise<WorldBoot> {
       // NPC 그림표. 33KB고 사람이 서 있어야 첫 화면이 완성되므로 미루지 않는다.
       // 그림(PNG)은 서 있는 사람 것만 그때그때 받는다
       json<Record<string, NpcSprite>>('npcSprites.json'),
+      // 부활 지점·공중날기 자리 20개. 1KB도 안 되고 전멸은 첫 배틀부터 날 수 있다
+      json<{ spawns: SpawnPoint[] }>('spawns.json'),
     ])
   world.maps = mapsFile.maps
   world.areas = mapsFile.areas
@@ -95,6 +100,7 @@ export async function bootWorld(): Promise<WorldBoot> {
   encounters.tables = encFile.tables
   heightField.data = bindHeights(bdhcMeta, bdhcBin)
   loadNpcSprites(sprites)
+  spawnTable.list = spawnFile.spawns
   const grid = new MapGrid(meta, new Uint16Array(bin))
   grids.set(0, grid)
   if (!meta.spawn) throw new Error('오버월드 메타에 스폰이 없다')

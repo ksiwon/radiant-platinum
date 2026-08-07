@@ -12,7 +12,8 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { TILE_BEHAVIOR_DOOR, mapById, walkOutOfDoor, world } from '../engine/map/world'
+import { mapById, walkOutOfDoor, world } from '../engine/map/world'
+import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import {
@@ -110,6 +111,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
     // 같은 프레임에 그릴 수 있다
     enterMap(mapId)
+    // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
+    // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
+    arriveAt(mapId)
   }, [setZone, displayName])
 
   // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —
@@ -292,11 +296,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (world.pending && !warping.current) {
       const target = world.pending
       warping.current = true
-      // 문이냐 계단이냐는 **밟고 선 타일이 정한다.** 원작도 그렇게 갈린다 —
-      // `field_map_change.c`가 계단에 `SEQ_SE_DP_KAIDAN2`를 쓰고, 문 연출은
-      // `ov5_021D431C.c`가 `SEQ_SE_DP_DOOR_OPEN`을 쓴다
-      const here = world.grid?.behavior(tx, tz)
-      void music.playEffect(here === TILE_BEHAVIOR_DOOR ? SFX.DOOR : SFX.STAIRS)
+      // 문이냐 계단이냐는 워프를 잡을 때 이미 갈렸다 (`warpSystem`). 문은
+      // **앞 칸**이라 발밑을 봐서는 못 가린다 — 원작도 소리가 갈린다:
+      // 계단은 `SEQ_SE_DP_KAIDAN2`, 문은 `SEQ_SE_DP_DOOR_OPEN`
+      void music.playEffect(target.viaDoor ? SFX.DOOR : SFX.STAIRS)
       gridFor(target.matrix)
         .then((next) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
@@ -319,6 +322,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       world.mapId = zone
       setZone(displayName(zone))
       setMapId(zone)
+      // 마을은 워프가 아니라 **걸어서** 들어간다. 공중날기 자리가 열리는 것은
+      // 대개 이쪽이다 — 워프만 보면 마을 열일곱 곳이 영영 안 열린다
+      arriveAt(zone)
     }
     const i = grid.chunkIndexAt(tx, tz)
     if (i >= 0) setChunkIndex((prev) => (prev === i ? prev : i))
