@@ -8,10 +8,12 @@ import { PlayerCapsule } from './GreyBox'
 import { PlayerModel } from './PlayerModel'
 import { WorldLoader } from './WorldLoader'
 import { BattleStage } from './battle/BattleStage'
+import { StarterStage } from './field/StarterStage'
 import { DAY } from './fx/sky'
 import { attachKeyboard } from '../engine/input/keyboard'
 import { attachMouse } from '../engine/input/mouse'
 import { useBattleStore } from '../state/battleStore'
+import { useMenuStore } from '../state/menuStore'
 import { useOptionsStore } from '../state/optionsStore'
 import { MusicDirector } from './MusicDirector'
 
@@ -21,6 +23,9 @@ export function Stage() {
   // 배틀 무대는 배틀이 열려 있는 동안만 씬에 있다. 오버월드를 언마운트하지는
   // 않는다 — 배틀이 끝나면 걷던 자리 그대로 돌아와야 한다
   const inBattle = useBattleStore((s) => s.phase !== 'off')
+  // 파트너 고르는 무대도 같은 Canvas에 선다 (`field/StarterStage`) — 화면이
+  // 열려 있는 동안만이다
+  const choosing = useMenuStore((s) => s.top === 'chooseStarter')
   // 입력 리스너는 게임 청크에 속한다 — 초기 청크가 worldState(three 의존)를 끌어오지 않게 한다
   useEffect(() => {
     if (keyboardAttached) return
@@ -85,6 +90,7 @@ export function Stage() {
           <PlayerModel />
         </Suspense>
         {inBattle && <BattleStage />}
+        {choosing && <StarterStage />}
         <EngineDriver />
         <MusicDirector />
       </Canvas>

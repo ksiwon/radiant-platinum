@@ -55,6 +55,11 @@ export const SFX = {
   CAUGHT: 1801,
   /** `SEQ_SE_DP_KON`. 공이 흔들릴 때 (`battle_script.c` 10420줄) */
   BALL_SHAKE: 1510,
+  /**
+   * `SEQ_SE_DP_BAG_030`. 서류가방이 열릴 때
+   * (`choose_starter_app.c`의 `CHOICE_STEP_PLAY_BAG_NOISE`)
+   */
+  BAG_OPEN: 1738,
 } as const
 
 export type SfxName = keyof typeof SFX

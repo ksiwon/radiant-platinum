@@ -4,12 +4,9 @@ import { useEffect, useRef } from 'react'
 import { useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Mesh, type MeshStandardMaterial, type Group } from 'three'
-import { normalizeModel } from '../engine/model/normalize'
+import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
 import { sceneRefs } from './sceneRefs'
-
-/** 빛나의 목표 신장 (게임 단위 = 미터) */
-const PLAYER_HEIGHT = 1.5
 
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
 const ALT_OUTFIT = ['hair2', 'shoes2']
@@ -40,8 +37,6 @@ export function PlayerModel() {
   useEffect(() => {
     if (!normRef.current) return
     const r = normalizeModel(normRef.current, gltf.scene, PLAYER_HEIGHT)
-    // NPC 모델이 같은 배수를 쓴다 (`sceneRefs.playerScale`)
-    sceneRefs.playerScale = r.scale
     if (import.meta.env.DEV) {
       console.info(
         `[model] dawn.glb 원본 ${r.nativeHeight.toFixed(3)} → ${PLAYER_HEIGHT}m (×${r.scale.toFixed(4)})`,

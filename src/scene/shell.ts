@@ -275,16 +275,21 @@ export function openDirections(mesh: ChunkMesh): (readonly [number, number])[] {
  * 그늘로 따로 깎지 않는다. 채우는 면은 대개 태양(24, 42, 18)도 필(−14, 12, 26)도
  * 못 받아 반구광만 닿는다 — 이미 그늘이다. 여기서 또 깎으면 이중이 된다.
  *
- * 오려 낸 그림(`cutout`)은 판을 만들면 안 된다. 판 한 장짜리 울타리·간판이라
- * 눌러 붙이면 없던 널판이 생긴다
+ * ⚠️ **오려 낸 그림이라고 빼면 안 된다.** 한동안 그랬다 — "판 한 장짜리
+ * 울타리·간판을 눌러 붙이면 없던 널판이 생긴다"는 이유였다. 그런데 그 잣대는
+ * **투명한 픽셀이 5%만 있어도** 선다. 창이 뚫린 벽, 여백이 남은 그림이 다 걸려서
+ * 소품 590종 중 **189종이 뚫린 채로 남았다**(실루엣 칸 1,368,413개 중 469,175개).
+ * 빼지 않으면 남는 것이 1종 6칸이다.
+ *
+ * 널판 걱정은 실제로는 안 일어난다. 판 한 장짜리는 어느 축으로 봐도 경계 상자가
+ * 납작해서 `openDirections`가 아예 안 고른다 — 잣대를 지우기 전후로 판을 만드는
+ * 소품이 350개로 같다. 달라지는 것은 **이미 만들던 판이 얼마나 덮느냐**뿐이다
  */
-export function shellPaint(
-  mesh: ChunkMesh, sheet: TexSheet | null, cutout: readonly boolean[],
-): ShellPaint {
+export function shellPaint(mesh: ChunkMesh, sheet: TexSheet | null): ShellPaint {
   return {
-    colors: shellColors(mesh, sheet, cutout),
-    rects: mesh.materials.map((spec, i) => {
-      if (cutout[i] === true || !sheet) return null
+    colors: shellColors(mesh, sheet),
+    rects: mesh.materials.map((spec) => {
+      if (!sheet) return null
       const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
       if (!item) return null
       return { ...item, sheetW: sheet.width, sheetH: sheet.height }
@@ -292,11 +297,8 @@ export function shellPaint(
   }
 }
 
-export function shellColors(
-  mesh: ChunkMesh, sheet: TexSheet | null, cutout: readonly boolean[],
-): (number | null)[] {
-  return mesh.materials.map((spec, i) => {
-    if (cutout[i] === true) return null
+export function shellColors(mesh: ChunkMesh, sheet: TexSheet | null): (number | null)[] {
+  return mesh.materials.map((spec) => {
     const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
     if (!sheet || !item) return null
     let r = 0, g = 0, b = 0, n = 0
@@ -537,7 +539,7 @@ export function facePlate(
   mesh.groups.forEach(([, start, count], group) => {
     const rect = paint.rects[group]
     const rgb = paint.colors[group]
-    // 오려 낸 그림은 판을 안 만든다 — 판 한 장짜리 울타리에 없던 널판이 생긴다
+    // 그림을 못 찾은 서브메시는 칠할 것이 없다
     if (rgb === null || rgb === undefined) return
     for (let t = 0; t < count; t += 3) {
       const tri = [index[start + t]!, index[start + t + 1]!, index[start + t + 2]!]
@@ -627,11 +629,16 @@ export function shellPlates(
   const position = new Float32Array(n * 3)
   const normal = new Float32Array(n * 3)
   const color = new Float32Array(n * 3)
+  // ⚠️ **UV를 안 옮기면 판이 통짜 색이 된다.** 방향 하나만 뚫린 소품은 위에서
+  // 그대로 돌아가니까 멀쩡한데, 둘 이상 뚫린 **69종**은 여기를 지나면서 UV를
+  // 잃고 아틀라스 (0,0) 한 픽셀로 칠해진다 — 원작 그림을 다 만들어 놓고 버렸다
+  const texcoord = new Float32Array(n * 2)
   let at = 0
   for (const p of parts) {
     position.set((p.getAttribute('position') as BufferAttribute).array as Float32Array, at * 3)
     normal.set((p.getAttribute('normal') as BufferAttribute).array as Float32Array, at * 3)
     color.set((p.getAttribute('color') as BufferAttribute).array as Float32Array, at * 3)
+    texcoord.set((p.getAttribute('uv') as BufferAttribute).array as Float32Array, at * 2)
     at += p.getAttribute('position').count
     p.dispose()
   }
@@ -639,6 +646,7 @@ export function shellPlates(
   geo.setAttribute('position', new BufferAttribute(position, 3))
   geo.setAttribute('normal', new BufferAttribute(normal, 3))
   geo.setAttribute('color', new BufferAttribute(color, 3))
+  geo.setAttribute('uv', new BufferAttribute(texcoord, 2))
   geo.computeBoundingSphere()
   return geo
 }

@@ -7,18 +7,9 @@ export const sceneRefs: {
   player: Object3D | null
   /** 절차적 보행용 리그. 모델이 로드되면 PlayerModel이 채운다 */
   playerRig: Rig | null
-  /**
-   * 주인공 모델이 원본 키에서 줄어든 배수.
-   *
-   * NPC 모델이 이 값을 그대로 쓴다 — **사람 키를 우리가 정하지 않기 위해서다.**
-   * 사람마다 같은 키로 맞추면 어린아이가 어른과 같아진다. 배수 하나만 공유하면
-   * 사람 사이 크기 차이는 BDSP 원본 그대로 남는다
-   */
-  playerScale: number | null
 } = {
   player: null,
   playerRig: null,
-  playerScale: null,
 }
 
 // 성능 계측 스냅샷 (PerfOverlay가 폴링)

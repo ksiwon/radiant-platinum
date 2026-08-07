@@ -1,7 +1,7 @@
 // useFrame → 게임 루프 → 씬 동기화 → 렌더 (priority 1: 렌더를 우리가 소유)
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { Vector3 } from 'three'
+import { Vector3, type PerspectiveCamera } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { inputSystem } from '../engine/input/keyboard'
@@ -14,7 +14,7 @@ import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { worldState } from '../state/worldState'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
-import { battleStage } from './battle/stageRefs'
+import { battleStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
 
 let systemsRegistered = false
@@ -23,6 +23,9 @@ const interpolated = new Vector3()
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   const { gl, scene, camera } = useThree()
   const postRef = useRef<PostChain | null>(null)
+  // 필드 화각. 다른 장면이 화각을 가져갔다가 돌려줄 때 여기로 돌아온다 —
+  // 상수로 적어 두면 `Stage`의 값과 조용히 갈린다
+  const fieldFov = useRef((camera as PerspectiveCamera).fov)
 
   useEffect(() => {
     if (!systemsRegistered) {
@@ -86,10 +89,18 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       )
     }
     // 배틀 중에는 무대가 카메라를 갖는다. 오버월드 카메라 시스템은 계속 돌지만
-    // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다
-    const shot = battleStage.active ? battleStage : worldState.camera
+    // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다.
+    // 파트너 고르는 장면도 같은 방식인데 **화각까지** 가져간다
+    const shot = starterStage.active ? starterStage
+      : battleStage.active ? battleStage : worldState.camera
     state.camera.position.copy(shot.position)
     state.camera.lookAt(shot.target)
+    const lens = state.camera as PerspectiveCamera
+    const fov = starterStage.active ? starterStage.fov : fieldFov.current
+    if (lens.isPerspectiveCamera && lens.fov !== fov) {
+      lens.fov = fov
+      lens.updateProjectionMatrix()
+    }
 
     // 렌더 (post 실패 시 기본 렌더 폴백)
     if (postRef.current) postRef.current.render()

@@ -49,6 +49,8 @@ const chunkCache = new Map<number, Promise<ChunkMesh>>()
 const propCache = new Map<number, Promise<ChunkMesh>>()
 const sheetCache = new Map<number, Promise<TexSheet>>()
 const propSheetCache = new Map<number, Promise<TexSheet | null>>()
+const starterCache = new Map<number, Promise<ChunkMesh>>()
+const starterSheetCache = new Map<number, Promise<TexSheet | null>>()
 let format: Promise<ChunkFormat> | null = null
 
 export function loadChunkFormat(): Promise<ChunkFormat> {
@@ -159,6 +161,45 @@ export function loadPropSheet(index: number): Promise<TexSheet | null> {
     })
     .catch((e: unknown) => { propSheetCache.delete(index); throw e })
   propSheetCache.set(index, promise)
+  return promise
+}
+
+/**
+ * 파트너 고르는 장면의 모델 하나 (`graphic/ev_pokeselect.narc`).
+ *
+ * 소품·청크와 파일 형식이 같다. 번호는 원작 NARC 칸 번호 그대로다 —
+ * 1 덮인 가방 · 8 열린 가방 · 3·5·7 몬스터볼 · 9 바닥
+ */
+export function loadStarterMesh(index: number): Promise<ChunkMesh> {
+  const hit = starterCache.get(index)
+  if (hit) return hit
+  const promise = Promise.all([
+    loadChunkFormat(),
+    fetch(`${BASE}data/starter/${String(index)}.bin`).then((r) => {
+      if (!r.ok) throw new Error(`고르는 장면 모델 ${index} 로드 실패: HTTP ${r.status}`)
+      return r.arrayBuffer()
+    }),
+  ]).then(([fmt, buffer]) => build(buffer, fmt))
+    .catch((e: unknown) => { starterCache.delete(index); throw e })
+  starterCache.set(index, promise)
+  return promise
+}
+
+/** 그 모델의 텍스처. 여섯 개가 다 자기 것을 갖고 있다 */
+export function loadStarterSheet(index: number): Promise<TexSheet | null> {
+  const hit = starterSheetCache.get(index)
+  if (hit) return hit
+  const promise = fetch(`${BASE}data/starter/index.json`)
+    .then((r) => r.json() as Promise<{
+      sheets: Record<string, { w: number, h: number, items: [string, string, number, number, number, number][] } | null>
+    }>)
+    .then(async (idx) => {
+      const info = idx.sheets[String(index)]
+      if (!info) return null
+      return sheetFrom(`${BASE}data/starter/${String(index)}.png`, info)
+    })
+    .catch((e: unknown) => { starterSheetCache.delete(index); throw e })
+  starterSheetCache.set(index, promise)
   return promise
 }
 

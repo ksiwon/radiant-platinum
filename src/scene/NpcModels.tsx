@@ -23,9 +23,8 @@ import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
-import { normalizeModel } from '../engine/model/normalize'
+import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { worldState } from '../state/worldState'
-import { sceneRefs } from './sceneRefs'
 
 /**
  * 동시에 세우는 모델 수의 상한.
@@ -80,16 +79,6 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
   useFrame((_, delta) => {
     const group = groupRef.current
     if (group === null || table === null) return
-    /**
-     * 주인공에 맞춘 배율.
-     *
-     * **키를 우리가 정하지 않는다.** 사람마다 1.5m로 맞추면 어린아이가 어른과
-     * 같은 키가 된다. 주인공이 원본 키에서 얼마나 줄었는지 그 배수 하나를
-     * BDSP 원본 키에 곱하면, 사람 사이 크기 차이는 원작 그대로 남는다.
-     * 주인공 모델이 아직 안 왔으면 이번 프레임은 아무도 안 세운다
-     */
-    const k = sceneRefs.playerScale
-    if (k === null) return
 
     const p = worldState.player.position
     const seen = new Set<NpcActor>()
@@ -106,7 +95,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       if (!slot) {
         const scene = scenes.get(tag)
         if (!scene) { fetchModel(tag, () => { bump((v) => v + 1) }); continue }
-        slot = build(scene, k)
+        slot = build(scene)
         group.add(slot.outer)
         slots.set(actor, slot)
       }
@@ -156,7 +145,7 @@ function fetchModel(tag: string, done: () => void): void {
 }
 
 /** 모델 하나를 복제해 한 칸으로 만든다 */
-function build(scene: Object3D, k: number): Slot {
+function build(scene: Object3D): Slot {
   const outer = new Group()
   const inner = new Group()
   outer.add(inner)
@@ -166,10 +155,10 @@ function build(scene: Object3D, k: number): Slot {
   const body = cloneSkinned(scene)
   body.traverse((o) => { o.castShadow = true })
   inner.add(body)
-  // 원본 키를 먼저 재고(목표 1이면 배수가 곧 1/원본키다) 거기에 주인공 배수를
-  // 곱한 키로 다시 맞춘다. 발밑도 이때 원점에 온다
+  // 원본 키를 먼저 재고, 거기에 BDSP 단위 배수를 곱한 키로 다시 맞춘다.
+  // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다
   const { nativeHeight } = normalizeModel(inner, body, 1)
-  normalizeModel(inner, body, nativeHeight * k)
+  normalizeModel(inner, body, nativeHeight * BDSP_TO_WORLD)
   // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
   // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
   const rig = createRig(body, inner)

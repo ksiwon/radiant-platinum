@@ -229,6 +229,45 @@ maybe('잎 걷어내기', () => {
     expect((noHeight.geometry.getAttribute('position') as BufferAttribute).getY(0)).toBeCloseTo(1, 6)
   })
 
+  it('메운 판이 위를 보게 감긴다 — 아니면 위에서 볼 때 통째로 사라진다', () => {
+    // ⚠️ **법선 배열만 +Y로 채워 놓고 감는 방향은 아래였다.** three는 재질이
+    // 단면(`FrontSide`)일 때 **감는 방향으로** 앞뒤를 가리므로, 지형 재질을
+    // 그대로 쓰는 이 판이 위에서 볼 때 전부 컬링됐다 — 숲 바닥이 뻥 뚫려
+    // 하늘이 보이던 것이 이것이다. 법선 배열은 빛에만 쓰여서 눈치채기 어려웠다.
+    //
+    // 잣대는 우리가 정하지 않는다. 원작 바닥 삼각형 123,733개 중 **123,531개가
+    // 법선이 위**다(아래는 202개). 그쪽에 맞춘다
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([
+      1, 2, 0, 2, 2, 0, 2, 3, 1, 1, 3, 1,
+      0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1,
+    ]), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array([
+      0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1,
+    ]), 2))
+    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [
+        { tex: 'tree01', pal: '', rep: 0, a: 31, f: 0 },
+        { tex: 'ngrass', pal: '', rep: 0, a: 31, f: 0 },
+      ],
+      groups: [[0, 0, 6], [1, 6, 6]],
+    }
+    const patch = floorPatch(splitFoliage(mesh, [true, false]), () => 1)!
+    const p = patch.geometry.getAttribute('position') as BufferAttribute
+    expect(p.count / 3).toBe(2)
+    for (let t = 0; t < p.count; t += 3) {
+      const ux = p.getX(t + 1) - p.getX(t), uz = p.getZ(t + 1) - p.getZ(t)
+      const vx = p.getX(t + 2) - p.getX(t), vz = p.getZ(t + 2) - p.getZ(t)
+      // 법선의 y 성분. 오른손 좌표계에서 (u × v)_y = u_z·v_x − u_x·v_z 다
+      expect(uz * vx - ux * vz, `삼각형 ${String(t / 3)}이 아래를 본다`).toBeGreaterThan(0)
+    }
+    // 빛에 쓰는 법선도 같은 쪽이어야 한다 — 둘이 어긋나면 앞뒤가 따로 논다
+    const n = patch.geometry.getAttribute('normal') as BufferAttribute
+    for (let i = 0; i < n.count; i++) expect(n.getY(i)).toBe(1)
+  })
+
   it('덮인 칸에는 안 깐다 — 원작 지형과 겹치면 깜빡인다', () => {
     const mesh = oneQuad('tree01')
     const pos = mesh.geometry.getAttribute('position') as BufferAttribute

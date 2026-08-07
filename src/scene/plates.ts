@@ -549,9 +549,13 @@ export function floorPatch(
     if (!into) { into = { position: [], uv: [] }; bucket.set(best.group, into) }
     // 칸 하나를 살짝 넘겨 깐다 — 딱 맞추면 이웃 칸과의 사이에 실금이 보인다
     const e = 0.01
+    // ⚠️ **위를 보게 감는다.** 법선 배열만 +Y로 채우고 감는 방향을 안 맞추면
+    // three가 **감는 방향으로** 앞뒤를 가리므로, 지형 재질(단면)에서 이 판이
+    // 위에서 볼 때 통째로 사라진다 — 나무 밑이 뻥 뚫려 하늘이 보이던 것이 이것이다.
+    // 원작 바닥 삼각형 123,733개 중 123,531개가 법선이 위다. 그쪽에 맞춘다
     const quad: [number, number][] = [
-      [tx - e, tz - e], [tx + 1 + e, tz - e], [tx + 1 + e, tz + 1 + e],
-      [tx - e, tz - e], [tx + 1 + e, tz + 1 + e], [tx - e, tz + 1 + e],
+      [tx - e, tz - e], [tx + 1 + e, tz + 1 + e], [tx + 1 + e, tz - e],
+      [tx - e, tz - e], [tx - e, tz + 1 + e], [tx + 1 + e, tz + 1 + e],
     ]
     for (const [x, z] of quad) {
       into.position.push(x, y, z)

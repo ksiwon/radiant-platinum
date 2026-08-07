@@ -20,3 +20,21 @@ export const battleStage = {
  * 신오의 지형이 비친다. 신오는 y=0 평면이므로 아래로 크게 내리면 겹칠 일이 없다
  */
 export const STAGE_ORIGIN = new Vector3(0, -500, 0)
+
+/**
+ * 파트너 고르는 장면도 같은 방식으로 카메라를 가져간다.
+ *
+ * 배틀과 다른 점 하나 — **화각을 같이 가져간다.** 원작이 그 장면만 세로 반각
+ * 22°(전각 44°)로 잡아 두었고, 필드(55°) 그대로 두면 볼 셋이 훨씬 넓게 벌어진다
+ * (`ui/field/starterScene`)
+ */
+export const starterStage = {
+  active: false,
+  position: new Vector3(),
+  target: new Vector3(),
+  /** 세로 전각(도) */
+  fov: 44,
+}
+
+/** 그 장면이 서는 자리. 배틀과 반대쪽으로 올려 둔다 */
+export const STARTER_ORIGIN = new Vector3(0, 500, 0)

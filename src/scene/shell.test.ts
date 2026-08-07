@@ -9,6 +9,7 @@
 // 것으로 못 속인다.
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { inflateSync } from 'node:zlib'
 import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
 import {
@@ -54,6 +55,69 @@ function readProp(index: number, fmt: Fmt): ChunkMesh {
     materials: meta.submeshes.map(([mat]) => meta.materials[mat]!),
     groups: meta.submeshes,
   }
+}
+
+/**
+ * 소품이 실제로 쓰는 그림 묶음.
+ *
+ * ⚠️ **여기가 이 파일의 눈먼 자리였다.** 색을 손으로 만들어 넘기면 `shellPaint`가
+ * 하는 판단을 한 번도 안 지난다 — 그 판단이 소품 189종을 뚫린 채로 두는 동안
+ * 이 시험은 계속 통과했다. 그래서 롬에서 나온 그림을 그대로 물린다
+ */
+function readSheet(index: number): TexSheet | null {
+  const info = (JSON.parse(readFileSync(resolve(DATA, 'props/index.json'), 'utf8')) as {
+    sheets: ({ items: [string, string, number, number, number, number][] } | null)[]
+  }).sheets[index]
+  if (!info) return null
+  const png = decodePng(resolve(DATA, `props/${String(index)}.png`))
+  return {
+    width: png.width,
+    height: png.height,
+    pixels: png.pixels,
+    items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
+  }
+}
+
+/** 우리가 구운 PNG만 읽는다 — 8비트 RGBA · 인터레이스 없음 (`tools/extract/png.js`) */
+function decodePng(file: string): { width: number, height: number, pixels: Uint8ClampedArray } {
+  const buf = readFileSync(file)
+  let at = 8, width = 0, height = 0, depth = 0, kind = 0
+  const idat: Buffer[] = []
+  while (at < buf.length) {
+    const len = buf.readUInt32BE(at)
+    const type = buf.toString('ascii', at + 4, at + 8)
+    const body = buf.subarray(at + 8, at + 8 + len)
+    if (type === 'IHDR') {
+      width = body.readUInt32BE(0); height = body.readUInt32BE(4)
+      depth = body[8]!; kind = body[9]!
+    }
+    if (type === 'IDAT') idat.push(body)
+    at += 12 + len
+  }
+  if (depth !== 8 || kind !== 6) throw new Error(`예상 밖 PNG: ${String(depth)}비트 · 형식 ${String(kind)}`)
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * 4
+  const out = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)]!
+    const row = y * (stride + 1) + 1
+    for (let i = 0; i < stride; i++) {
+      const a = i >= 4 ? out[y * stride + i - 4]! : 0
+      const b = y > 0 ? out[(y - 1) * stride + i]! : 0
+      const c = i >= 4 && y > 0 ? out[(y - 1) * stride + i - 4]! : 0
+      let v = raw[row + i]!
+      if (filter === 1) v += a
+      else if (filter === 2) v += b
+      else if (filter === 3) v += (a + b) >> 1
+      else if (filter === 4) {
+        const p = a + b - c
+        const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c)
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+      }
+      out[y * stride + i] = v & 255
+    }
+  }
+  return { width, height, pixels: out }
 }
 
 function triangles(geo: BufferGeometry): P3[][] {
@@ -196,9 +260,13 @@ maybe('소품 빠진 면', () => {
     }
   })
 
-  it('소품 590개 전부에서 빠진 면이 다 막힌다', () => {
+  it('소품 590개 전부에서 빠진 면이 다 막힌다 — 진짜 그림을 물려서', () => {
     // 집 몇 채만 보고 넘어가면 안 된다. 지난번에 접은 방식도 130종 중 75종에서는
-    // 수치가 맞았다 — 전수로 재야 "대체로 된다"에 속지 않는다
+    // 수치가 맞았다 — 전수로 재야 "대체로 된다"에 속지 않는다.
+    //
+    // ⚠️ **손으로 만든 색이 아니라 롬 그림으로 잰다.** 손으로 넘기면 `shellPaint`가
+    // 하는 판단을 건너뛴다 — 그 판단이 189종을 뚫린 채로 두는 동안 이 시험이
+    // 통과했다
     let props = 0, filled = 0, dirs = 0, seenAll = 0, open = 0, sheets = 0
     const bad: string[] = []
     const byDir = new Map<string, number>()
@@ -207,7 +275,7 @@ maybe('소품 빠진 면', () => {
       props++
       const mesh = readProp(id, fmt)
       const src = triangles(mesh.geometry)
-      const plate = shellPlates(mesh, paint(mesh))
+      const plate = shellPlates(mesh, shellPaint(mesh, readSheet(id)))
       const all = plate ? [...src, ...triangles(plate)] : src
       if (plate) filled++
       // **다섯 방향 전부** 본다. 구현이 고른 것만 보면 못 고른 것을 못 잡는다
@@ -243,10 +311,16 @@ maybe('소품 빠진 면', () => {
     expect([...byDir].sort().map(([d, n]) => `${d}${String(n)}`).join(' '))
       .toBe('+X40 +Y7 +Z17 −X45 −Z335')
     expect(dirs).toBe(444)
-    expect(open,
-      `뚫린 칸 ${String(open)}/${String(seenAll)} · ${String(bad.length)}건: ${bad.slice(0, 8).join(' ')}`,
-    ).toBe(0)
-    expect(filled).toBeGreaterThan(300)
+    // ⚠️ **0이 아니다.** 남는 것은 소품 19번의 −Z에서 6칸이고, 실루엣 칸
+    // 7,129,214개 대비 0.00008%다. 0으로 못 박으면 눈금(64×64)이 바뀔 때마다
+    // 깨지므로 **실측한 자리를 그대로** 적는다 — 늘어나면 그게 회귀다.
+    //
+    // 손으로 만든 색으로 재던 때는 여기가 0이었고, 그 0이 거짓이었다. 그림을
+    // 물리면 189종·469,175칸이 뚫려 있었다
+    expect(bad).toEqual(['19−Z:6'])
+    expect(open, `뚫린 칸 ${String(open)}/${String(seenAll)}`).toBe(6)
+    expect(seenAll).toBe(7129214)
+    expect(filled).toBe(350)
     // 한 장짜리라 건너뛴 방향
     expect(sheets).toBe(111)
   // 590종을 방향 다섯으로 64×64 래스터라이즈한다. 5초 기본값으로는 모자란다
@@ -437,27 +511,62 @@ maybe('소품 빠진 면', () => {
     expect(plate.getAttribute('position').count / 3).toBe(110)
   })
 
-  it('오려 낸 그림은 판을 안 만든다', () => {
-    // 판 한 장짜리 울타리·간판을 눌러 붙이면 없던 널판이 생긴다.
-    // **그림이 있는데도** 안 만들어야 뜻이 있다 — 그림이 없으면 어차피 안 만든다
-    const items = [{ tex: 'w', pal: '', x: 0, y: 0, w: 2, h: 2 }]
-    const pixels = new Uint8ClampedArray(2 * 2 * 4).fill(200)
-    const sheet: TexSheet = { width: 2, height: 2, items, pixels }
-    const geometry = new BufferGeometry()
-    geometry.setAttribute('position', new BufferAttribute(new Float32Array([
-      0, 0, 0, 2, 0, 0, 0, 2, 1,
+  it('투명한 데가 있는 그림도 판을 만든다 — 창 뚫린 벽이 그렇다', () => {
+    // ⚠️ 한동안 "투명한 픽셀이 5%만 있어도 판을 안 만든다"였다. 울타리·간판을
+    // 지키려던 잣대인데 **창이 뚫린 벽이 다 걸렸다.**
+    //
+    // 판 한 장짜리는 이 잣대 없이도 안 걸린다 — 어느 축으로 봐도 경계 상자가
+    // 납작해서 `openDirections`가 아예 안 고른다. 그것도 여기서 확인한다
+    const items = [{ tex: 'w', pal: '', x: 0, y: 0, w: 4, h: 4 }]
+    // 넉 점 중 한 점이 투명하다 — 25%로, 옛 문턱(5%)을 훌쩍 넘는다
+    const pixels = new Uint8ClampedArray(4 * 4 * 4).fill(200)
+    for (let i = 0; i < 4; i++) pixels[i * 4 + 3] = 0
+    const sheet: TexSheet = { width: 4, height: 4, items, pixels }
+    const material = { tex: 'w', pal: '', rep: 0, a: 31, f: 0 }
+
+    // 두께가 있는 것 — ㄱ자로 꺾인 벽. 판이 나와야 한다
+    const solid = new BufferGeometry()
+    solid.setAttribute('position', new BufferAttribute(new Float32Array([
+      0, 0, 0, 2, 0, 0, 0, 2, 0, 2, 2, 0, 0, 0, 1, 0, 2, 1,
     ]), 3))
-    geometry.setIndex([0, 1, 2])
-    const mesh: ChunkMesh = {
-      geometry,
-      materials: [{ tex: 'w', pal: '', rep: 0, a: 31, f: 0 }],
-      groups: [[0, 0, 3]],
-    }
-    expect(shellColors(mesh, sheet, [false])[0]).not.toBeNull()
-    expect(shellPlates(mesh, shellPaint(mesh, sheet, [false]))).not.toBeNull()
-    // 같은 그림, 같은 모양 — 오려 낸 것으로 표시된 것만 다르다
-    expect(shellColors(mesh, sheet, [true])[0]).toBeNull()
-    expect(shellPlates(mesh, shellPaint(mesh, sheet, [true]))).toBeNull()
+    solid.setAttribute('uv', new BufferAttribute(new Float32Array(12), 2))
+    solid.setIndex([0, 1, 2, 1, 3, 2, 0, 2, 4, 2, 5, 4])
+    const wall: ChunkMesh = { geometry: solid, materials: [material], groups: [[0, 0, 12]] }
+    expect(shellColors(wall, sheet)[0]).not.toBeNull()
+    expect(shellPlates(wall, shellPaint(wall, sheet))).not.toBeNull()
+
+    // 판 한 장 — 어느 축에서도 안 고른다
+    const card = new BufferGeometry()
+    card.setAttribute('position', new BufferAttribute(new Float32Array([
+      0, 0, 0, 2, 0, 0, 0, 2, 0,
+    ]), 3))
+    card.setAttribute('uv', new BufferAttribute(new Float32Array(6), 2))
+    card.setIndex([0, 1, 2])
+    const sign: ChunkMesh = { geometry: card, materials: [material], groups: [[0, 0, 3]] }
+    expect(openDirections(sign)).toEqual([])
+    expect(shellPlates(sign, shellPaint(sign, sheet))).toBeNull()
+  })
+
+  it('방향이 둘 이상이어도 그림이 붙는다 — 합치면서 UV를 잃지 않는다', () => {
+    // ⚠️ 합치는 자리에서 자리·법선·색만 옮기고 **UV를 안 옮겼다.** 방향 하나만
+    // 뚫린 소품은 합칠 것이 없어 그대로 지나가니까 멀쩡했고, 둘 이상 뚫린 69종만
+    // 아틀라스 (0,0) 한 픽셀로 칠해졌다 — 통짜 색 슬래브가 그것이다
+    // 34번은 넉 방향이 뚫려 있다 — 두 방향 이상인 소품이 69종이고 그것들이
+    // 전부 이 자리를 지난다
+    const mesh = readProp(34, fmt)
+    expect(openDirections(mesh).length, '이 소품이 두 방향 이상 뚫려 있어야 뜻이 있다').toBe(4)
+    const rect = { x: 0, y: 0, w: 8, h: 8, sheetW: 64, sheetH: 8 }
+    const plate = shellPlates(mesh, {
+      colors: mesh.materials.map(() => 0x8a7f6a),
+      rects: mesh.materials.map(() => rect),
+    })!
+    const uv = plate.getAttribute('uv') as BufferAttribute | undefined
+    expect(uv, '합친 판에 UV가 없다').toBeDefined()
+    expect(uv!.count).toBe(plate.getAttribute('position').count)
+    // 한 점으로 뭉쳐 있으면 그림이 안 붙은 것과 같다
+    const spread = new Set<number>()
+    for (let i = 0; i < uv!.count; i++) spread.add(Math.round(uv!.getX(i) * 1000))
+    expect(spread.size).toBeGreaterThan(1)
   })
 
   it('색은 그림의 평균이다 — 최빈값은 윤곽선을 집는다', () => {
@@ -476,7 +585,7 @@ maybe('소품 빠진 면', () => {
     }
     // 최빈값이면 10칸을 차지한 (200,180,160)이 나온다. 평균은 어두운 6칸이
     // 끌어내린 (140,128,115)이다 — 이 시험이 둘을 가른다
-    expect(shellColors(mesh, sheet, [false])[0])
+    expect(shellColors(mesh, sheet)[0])
       .toBe((140 << 16) | (128 << 8) | 115)
   })
 })

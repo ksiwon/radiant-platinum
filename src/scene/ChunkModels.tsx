@@ -212,7 +212,7 @@ const backCache = new Map<number, BufferGeometry | null>()
 function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): BufferGeometry | null {
   const hit = backCache.get(id)
   if (hit !== undefined) return hit
-  const made = shellPlates(mesh, shellPaint(mesh, sheet, cutoutGroups(mesh, sheet)))
+  const made = shellPlates(mesh, shellPaint(mesh, sheet))
   backCache.set(id, made)
   return made
 }
