@@ -128,3 +128,62 @@ describe('박스에 맡기고 꺼내기', () => {
     expect(useSaveStore.getState().withdrawMon({ box: 3, slot: 12 })).toBe(false)
   })
 })
+
+// 스크립트가 세이브에 무언가를 얹는 자리 (`GivePokemon` · `GiveBadge` ·
+// `IncreasePartyMonFriendship`). 셋 다 조용히 틀릴 구석이 있다:
+// 파티가 가득 찼는데 일곱 마리가 되거나, 뱃지를 덮어써서 앞의 것이 사라지거나,
+// 친밀도가 255를 넘어가거나.
+describe('스크립트가 주는 것', () => {
+  const mon = (species: number, friendship = 70, ball = 0): PokemonInstance => ({
+    species, pid: species, nickname: null, exp: 0, level: 5,
+    ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    moves: [], hp: 20, status: 'ok', statusTurns: 0, heldItem: 0,
+    friendship, otId: 0, otSecretId: 0, ball,
+  })
+
+  const reset = (party: PokemonInstance[]): void => {
+    useSaveStore.setState({ ...createNewSave(), party })
+  }
+
+  it('파티가 가득 차면 안 들어간다', () => {
+    reset(Array.from({ length: 6 }, (_, i) => mon(400 + i)))
+    useSaveStore.getState().addToParty(mon(387))
+    expect(useSaveStore.getState().party).toHaveLength(6)
+    // 한 자리 비면 들어온다
+    useSaveStore.setState({ party: useSaveStore.getState().party.slice(0, 5) })
+    useSaveStore.getState().addToParty(mon(387))
+    expect(useSaveStore.getState().party.at(-1)?.species).toBe(387)
+  })
+
+  it('뱃지는 쌓인다 — 앞의 것을 안 지운다', () => {
+    reset([mon(387)])
+    useSaveStore.getState().giveBadge(0)
+    useSaveStore.getState().giveBadge(3)
+    expect(useSaveStore.getState().badges).toBe(0b1001)
+    // 같은 것을 두 번 줘도 그대로다
+    useSaveStore.getState().giveBadge(3)
+    expect(useSaveStore.getState().badges).toBe(0b1001)
+  })
+
+  it('친밀도는 255에서 멈춘다', () => {
+    reset([mon(387, 250)])
+    useSaveStore.getState().addFriendship(0, 20)
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(255)
+  })
+
+  /** `ITEM_LUXURY_BALL`(11)이면 원작이 한 칸 더 얹는다 */
+  it('럭셔리볼에 든 아이는 한 칸 더 오른다', () => {
+    reset([mon(387, 70), mon(390, 70, 11)])
+    useSaveStore.getState().addFriendship(0, 10)
+    useSaveStore.getState().addFriendship(1, 10)
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(80)
+    expect(useSaveStore.getState().party[1]?.friendship).toBe(81)
+  })
+
+  it('내리는 값에는 럭셔리볼이 안 붙는다', () => {
+    reset([mon(387, 70, 11)])
+    useSaveStore.getState().addFriendship(0, -10)
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(60)
+  })
+})

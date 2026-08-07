@@ -119,14 +119,32 @@ export interface FieldServices {
     hasSpecies: (species: number) => boolean
     /** 그 자리를 빼고 싸울 수 있는 수 (`CountAliveMonsExcept`) */
     aliveExcept: (slot: number) => number
+    /**
+     * 한 마리를 준다 (`Pokemon_GiveMonFromScript`).
+     *
+     * ⚠️ **가득 차면 못 준다.** 원작도 `Party_AddPokemon`이 실패하고 0을
+     * 돌려준다 — 박스로 안 넘긴다. 스크립트가 그 0을 보고 "가방이 가득 찼다"
+     * 쪽으로 갈라진다
+     *
+     * @returns 넣었으면 true
+     */
+    give: (species: number, level: number, heldItem: number) => boolean
+    level: (slot: number) => number
+    /** 성격 번호 (`Pokemon_GetNature`). 자리가 비었으면 0(노력) */
+    nature: (slot: number) => number
+    friendship: (slot: number) => number
+    addFriendship: (slot: number, amount: number) => void
+    hasMove: (slot: number, move: number) => boolean
+    /** 그 기술칸의 번호. 빈 칸이면 0 */
+    move: (slot: number, moveSlot: number) => number
   }
   /** 트레이너 정보 · 도감 (`scrcmd_system_flags.c`) */
   trainerInfo?: {
     /** 0 남 · 1 여 (`TrainerInfo_Gender`) */
     gender: () => number
     hasBadge: (badge: number) => boolean
-    /** 처음 고른 파트너 (`SystemVars_GetPlayerStarter`) */
-    starter: () => number
+    /** 뱃지 하나를 준다 (`TrainerInfo_SetBadge`) */
+    giveBadge: (badge: number) => void
     /** 전국도감을 켰는가. `set`이면 켜고 답은 0이다 */
     nationalDex: (set: boolean) => boolean
   }
@@ -247,10 +265,14 @@ export class FieldWorld {
   /**
    * 지금 글이 **간판 판**에 떠 있는가 (`Signpost`). null이면 보통 대사창이다.
    *
-   * 값은 `generated/signpost_types.txt`의 줄 번호다 — 0 지도 · 1 화살표 ·
-   * 2 명패 · 3 흘림. 마을 이름표와 우편함이 전부 이 길로 뜬다
+   * `type`은 `generated/signpost_types.txt`의 줄 번호다 — 0 지도 · 1 화살표 ·
+   * 2 명패 · 3 흘림. 마을 이름표와 우편함이 전부 이 길로 뜬다.
+   *
+   * ⚠️ **넷이 다 나무 판인 것이 아니다.** 원작은 0·1만 판 테두리를 그리고
+   * 2·3은 **보통 대사창 테두리**를 쓴다 (`Window_DrawSignpost`가 그 자리에서
+   * 갈린다). 실측으로 2번이 77곳 · 3번이 26곳이라 절반이 넘는다
    */
-  signpost: number | null = null
+  signpost: { type: number, picture: number } | null = null
   /** 지금 찍는 글. 다 찍어도 창을 닫기 전까지 남아 있다 */
   printer: MessagePrinter | null = null
   /**

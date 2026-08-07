@@ -71,6 +71,14 @@ export interface Movable {
   visible: boolean
   /** `generated/movement_types.txt`의 번호. 주인공은 없다 */
   readonly movementType?: number
+  /**
+   * 배치표의 `ObjectEvent.data[3]`.
+   *
+   * 객체마다 뜻이 다른 인자 셋이다 — 간판이면 `data[0]`이 판에 붙는 그림
+   * 번호고(`ScrCmd_DrawSignpostInstantMessage`), 트레이너면 눈이 닿는 칸 수다.
+   * 주인공은 없다
+   */
+  readonly params?: readonly number[]
 }
 
 /**

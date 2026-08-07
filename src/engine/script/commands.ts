@@ -669,6 +669,47 @@ on('BufferPartyMonSpecies', (ctx) => {
   return false
 })
 
+// ── 처음 고른 파트너 ─────────────────────────────────────────────────────────
+//
+// **세이브에 새 칸을 만들 필요가 없었다.** 원작이 이것을 그냥 스크립트 변수
+// 하나에 넣어 둔다 (`SystemVars_SetPlayerStarter` → `VAR_PLAYER_STARTER`).
+// 우리 `VarStore`는 그 구간을 이미 세이브에 싣고 있으므로 읽고 쓰기만 하면 된다.
+//
+// 라이벌과 반대 성별 주인공의 파트너는 **저장하지 않는다** — 내 것에서 계산한다.
+
+/** `generated/vars_flags.txt`의 `VAR_PLAYER_STARTER`. 바로 뒤가 `VAR_UNUSED_0x4031`이라 자리가 확정된다 */
+export const VAR_PLAYER_STARTER = 0x4030
+
+/** `generated/species.txt` — 신오 스타팅 셋 */
+const STARTER = { turtwig: 387, chimchar: 390, piplup: 393 } as const
+
+/** `SystemVars_GetRivalStarter` — 라이벌은 내 것에 **강한** 쪽을 든다 */
+function rivalStarter(mine: number): number {
+  if (mine === STARTER.turtwig) return STARTER.chimchar
+  if (mine === STARTER.chimchar) return STARTER.piplup
+  return STARTER.turtwig
+}
+
+/** `SystemVars_GetPlayerCounterpartStarter` — 남은 하나다 */
+function counterpartStarter(mine: number): number {
+  if (mine === STARTER.turtwig) return STARTER.piplup
+  if (mine === STARTER.chimchar) return STARTER.turtwig
+  return STARTER.chimchar
+}
+
+for (const [name, pick] of [
+  ['BufferPlayerStarterSpeciesName', (mine: number) => mine],
+  ['BufferRivalStarterSpeciesName', rivalStarter],
+  ['BufferPlayerCounterpartStarterSpeciesName', counterpartStarter],
+] as const) {
+  on(name, (ctx) => {
+    const slot = ctx.readByte()
+    const species = pick(ctx.host.vars.get(VAR_PLAYER_STARTER))
+    ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.species(species) ?? '')
+    return false
+  })
+}
+
 on('BufferMoveName', (ctx) => {
   const slot = ctx.readByte()
   const move = ctx.readVar()
@@ -752,6 +793,79 @@ on('GetPartyMonSpecies', (ctx) => {
   return false
 })
 
+// ── 파티에 무언가가 들어온다 ─────────────────────────────────────────────────
+//
+// ⚠️ **여기가 비어 있으면 포켓몬을 한 마리도 못 받는다.** 스크립트가 주는 길이
+// `GivePokemon` 하나뿐인데 안 만들어져 있었다 — 처음 파트너도, 도로에서 주는
+// 포켓몬도, 화석도 전부 이 명령을 거친다.
+
+on('GivePokemon', (ctx) => {
+  const species = ctx.readVar()
+  const level = ctx.readVar()
+  const heldItem = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const given = ctx.host.world.services.party?.give(species, level, heldItem) ?? false
+  // ⚠️ **가득 차면 0이고 그것으로 끝난다.** 박스로 안 넘긴다 —
+  // `Party_AddPokemon`이 실패를 그대로 돌려주고 스크립트가 그 값으로 갈라진다
+  ctx.host.vars.set(dest, given ? 1 : 0)
+  return false
+})
+
+on('GiveBadge', (ctx) => {
+  // ⚠️ **인자를 먼저 읽는다.** `trainerInfo?.giveBadge(ctx.readVar())`로 쓰면
+  // 세이브가 안 붙었을 때 `?.`가 오른쪽을 아예 계산하지 않아 읽기 위치가 안 움직인다
+  const badge = ctx.readVar()
+  ctx.host.world.services.trainerInfo?.giveBadge(badge)
+  return false
+})
+
+on('GetPartyMonLevel', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.level(slot) ?? 0)
+  return false
+})
+
+on('GetPartyMonNature', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  // 자리가 비었으면 원작이 `NATURE_HARDY`(0)를 준다 — 서비스가 그 자리를 맡는다
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.nature(slot) ?? 0)
+  return false
+})
+
+on('GetPartyMonFriendship', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.friendship(slot) ?? 0)
+  return false
+})
+
+on('IncreasePartyMonFriendship', (ctx) => {
+  // ⚠️ 인자가 **값 먼저, 자리 나중**이다 (`ScrCmd_IncreasePartyMonFriendship`)
+  const amount = ctx.readVar()
+  const slot = ctx.readVar()
+  ctx.host.world.services.party?.addFriendship(slot, amount)
+  return false
+})
+
+on('CheckPartyMonHasMove', (ctx) => {
+  // 인자 차례가 **답 · 기술 · 자리**다. 기술과 자리를 바꿔 읽으면 조용히 늘 거짓이 된다
+  const dest = ctx.readHalfWord()
+  const move = ctx.readVar()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.hasMove(slot, move) === true ? 1 : 0)
+  return false
+})
+
+on('GetPartyMonMove', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  const moveSlot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.move(slot, moveSlot) ?? 0)
+  return false
+})
+
 on('CheckPartyHasSpecies', (ctx) => {
   const dest = ctx.readHalfWord()
   const species = ctx.readVar()
@@ -776,7 +890,7 @@ on('CheckBadgeAcquired', (ctx) => {
 })
 
 on('GetPlayerStarterSpecies', (ctx) => {
-  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.trainerInfo?.starter() ?? 0)
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_PLAYER_STARTER))
   return false
 })
 
@@ -864,20 +978,34 @@ on('CheckIsTrainerDoubleBattle', (ctx) => {
 /** `generated/signpost_commands.txt` — 0 아무것도 · 1 그린다 · 2 나간다 · 3 든다 · 4 지운다 */
 const SIGNPOST_SCROLL_IN = 3
 
+/**
+ * 판에 붙는 그림 번호.
+ *
+ * ⚠️ **스크립트가 거의 안 준다.** 매크로(`ShowMapSign` 등)가 인자를 0으로 두고
+ * 넘기며, 원작은 그때 **말을 건 객체의 `data[0]`**을 대신 쓴다
+ * (`ScrCmd_DrawSignpostInstantMessage`). 그래서 그림 번호는 스크립트가 아니라
+ * 배치표에서 온다 — `raw[7]`이 `ObjectEvent.data[0]` 자리다
+ */
+function signPicture(ctx: ScriptContext, given: number): number {
+  if (given !== 0) return given
+  return ctx.host.world.target?.params?.[0] ?? 0
+}
+
 on('DrawSignpostInstantMessage', (ctx) => {
   const messageID = ctx.readByte()
   const type = ctx.readByte()
-  ctx.readHalfWord() // NARC 안 그림 번호. 지도 그림은 아직 안 싣는다
+  const picture = ctx.readHalfWord()
   ctx.readHalfWord() // 원작도 안 쓴다
-  ctx.host.world.signpost = type
+  ctx.host.world.signpost = { type, picture: signPicture(ctx, picture) }
   // 원작도 `TEXT_SPEED_INSTANT`로 찍는다 — 간판은 한 자씩 나오지 않는다
   ctx.host.world.showInstant(messageID)
   return false
 })
 
 on('DrawSignpostTextBox', (ctx) => {
-  ctx.host.world.signpost = ctx.readByte()
-  ctx.readHalfWord()
+  const type = ctx.readByte()
+  const picture = ctx.readHalfWord()
+  ctx.host.world.signpost = { type, picture: signPicture(ctx, picture) }
   ctx.host.world.openBox()
   return false
 })

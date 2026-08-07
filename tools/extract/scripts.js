@@ -18,7 +18,7 @@
 const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
-const { movementTable } = require('./movement-table')
+const { movementTable, movementTypeTable } = require('./movement-table')
 const { buildTable } = require('./scrcmd-table')
 
 const NARC = '/fielddata/script/scr_seq.narc'
@@ -168,6 +168,7 @@ function main() {
   const binPath = path.join(ROOT, 'public/data/scripts.bin')
   fs.writeFileSync(binPath, bin)
 
+  const { types, delays, rotateFrames } = movementTypeTable()
   const ranges = readRangeTable()
   const byName = new Map(order.map((n, i) => [n, i]))
   const banks = bankNumbers()
@@ -199,6 +200,17 @@ function main() {
       ...(m.tiles ? { tiles: m.tiles } : {}),
       ...(m.frames ? { frames: m.frames } : {}),
     })),
+    /**
+     * 배치표의 이동 유형 — 말을 안 걸어도 혼자 하는 짓이다.
+     *
+     * 이동 동작과 표가 다르다. 여기 있는 것이 "평소에 두리번거린다"이고, 그
+     * 결과로 한 걸음 걷는 것이 위의 `movements`다
+     */
+    movementTypes: types,
+    /** 유형이 다음 짓을 하기까지 기다리는 프레임. 이 중 하나를 뽑는다 */
+    movementDelays: delays,
+    /** 회전 유형이 한 칸 도는 데 걸리는 프레임 */
+    rotateFrames,
   })
 
   const counts = kinds.reduce((acc, k) => ({ ...acc, [k]: (acc[k] ?? 0) + 1 }), {})
@@ -207,6 +219,8 @@ function main() {
   console.log(`  진입점 합계 ${index.reduce((s, f) => s + f.entries, 0)}`)
   console.log(`  공용 구역 ${ranges.length}개`)
   console.log(`  이동 동작 ${movementTable().filter(Boolean).length}개`)
+  const moving = types.filter((t) => t.kind !== 'other' && t.kind !== 'face').length
+  console.log(`  이동 유형 ${types.length}개 — 혼자 움직이는 것이 ${moving}개`)
 }
 
 if (require.main === module) main()

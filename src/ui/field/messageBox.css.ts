@@ -125,12 +125,17 @@ export const menuItemOn = style([menuItem, {
 /**
  * 간판 판 (`Signpost`).
  *
- * ⚠️ **대사창과 다른 창이다.** 원작에서 마을 이름표·우편함·도로 표지판은
- * 아래에 붙는 대사창이 아니라 **화면 가운데로 밀려 들어오는 나무 판**에 뜬다.
- * 같은 틀로 그리면 "누가 말을 걸었나" 싶게 읽힌다.
+ * ⚠️ **대사창과 다른 창이다.** 원작에서 마을 이름표·도로 표지판은 아래에 붙는
+ * 대사창이 아니라 **화면 가운데로 밀려 들어오는 나무 판**에 뜬다.
  *
- * 판의 도트 그림(`res/graphics/signposts`)은 아직 안 뽑았다 — 지금은 나무색
- * 판으로 자리를 잡고, 그림이 들어오면 배경만 갈아 끼우면 된다
+ * ⚠️ 다만 **네 종류가 다 그런 것은 아니다.** 원작이 판 테두리를 그리는 것은
+ * 0(지도)·1(화살표)뿐이고 2(명패)·3(흘림)은 보통 대사창 테두리를 쓴다
+ * (`Window_DrawSignpost`가 거기서 갈린다). 실측으로 2번 77곳 · 3번 26곳이라
+ * 간판의 절반이 넘는다 — 넷을 다 나무 판으로 그리면 그만큼 틀린다.
+ *
+ * 테두리 자체는 CSS다. 원작은 48×24짜리 타일로 9칸 테두리를 채우는데
+ * (`DrawSignpostFrame`) 우리 판은 DOM이라 그 절차를 옮길 자리가 없다 —
+ * **안에 붙는 그림만** 원작 것을 쓴다
  */
 export const signFrame = style({
   position: 'fixed',
@@ -146,6 +151,9 @@ export const signFrame = style({
 
 export const signBox = style({
   position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 18,
   background: 'linear-gradient(180deg, #d8b483 0%, #c39a66 55%, #b08a58 100%)',
   border: '3px solid #6b4a29',
   borderRadius: 6,
@@ -156,4 +164,23 @@ export const signBox = style({
   lineHeight: '30px',
   textAlign: 'center',
   minHeight: 60,
+})
+
+/**
+ * 판 왼쪽에 붙는 48×32 그림 (`data/signposts.png`).
+ *
+ * 마을이면 그 마을의 약도, 도로면 갈래를 그린 화살표다. 도트를 키우는 것이라
+ * 보간을 끈다 — 안 끄면 8×8 타일이 뭉개져서 화살표가 안 읽힌다
+ */
+export const signPicture = style({
+  flex: '0 0 auto',
+  imageRendering: 'pixelated',
+  borderRadius: 3,
+  boxShadow: 'inset 0 0 0 2px rgba(107, 74, 41, 0.6)',
+})
+
+/** 그림을 붙였을 때 글이 왼쪽으로 붙는다 — 가운데 정렬이면 그림과 겹쳐 보인다 */
+export const signText = style({
+  flex: '1 1 auto',
+  textAlign: 'center',
 })

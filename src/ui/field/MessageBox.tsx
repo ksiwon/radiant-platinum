@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { fieldScripts } from '../../engine/script/field'
 import type { Line } from '../../engine/script/printer'
 import type { MenuEntry } from '../../engine/script/world'
+import { loadSignpostAtlas, signpostAtlas, signpostImage } from './signpost'
 import * as css from './messageBox.css'
 
 interface MenuView {
@@ -22,13 +23,16 @@ interface View {
   text: { lines: Line[], waiting: boolean } | null
   menu: MenuView | null
   /**
-   * 간판 판이면 그 종류 (`generated/signpost_types.txt`).
+   * 간판 판이면 그 종류와 그림 번호 (`generated/signpost_types.txt`).
    *
-   * 같은 글이라도 원작은 **다른 창**에 띄운다 — 마을 이름표는 명패, 도로
-   * 표지판은 화살표다. 대사창과 같은 틀로 그리면 그 구분이 사라진다
+   * ⚠️ 종류 0(지도)·1(화살표)만 나무 판이다. 2(명패)·3(흘림)은 원작도 **보통
+   * 대사창 테두리**를 쓴다 (`Window_DrawSignpost`)
    */
-  signpost: number | null
+  signpost: { type: number, picture: number } | null
 }
+
+/** 나무 판으로 그리는 종류. `generated/signpost_types.txt`의 0과 1 */
+const BOARD_TYPES = new Set([0, 1])
 
 /** 지금 화면을 이 문자열로 요약해 바뀐 프레임만 고른다 */
 function digest(view: View | null): string {
@@ -39,7 +43,10 @@ function digest(view: View | null): string {
   const menu = view.menu === null
     ? ''
     : `${view.menu.kind}/${String(view.menu.cursor)}/${view.menu.entries.map((e) => e.text).join(',')}`
-  return `${lines}#${String(view.text?.waiting)}#${menu}#${String(view.signpost)}`
+  const sign = view.signpost === null
+    ? ''
+    : `${String(view.signpost.type)}/${String(view.signpost.picture)}`
+  return `${lines}#${String(view.text?.waiting)}#${menu}#${sign}`
 }
 
 function snapshot(): View | null {
@@ -63,6 +70,9 @@ export function MessageBox() {
   const [view, setView] = useState<View | null>(null)
 
   useEffect(() => {
+    // 간판 그림은 판이 처음 뜰 때가 아니라 미리 받아 둔다 — 판이 뜨는 순간에
+    // 받으면 첫 간판만 그림 없이 지나간다
+    loadSignpostAtlas()
     let raf = 0
     let last = ''
     const poll = (): void => {
@@ -84,24 +94,36 @@ export function MessageBox() {
 
   if (view === null) return null
   const alt = view.menu?.entries[view.menu.cursor]?.alt ?? null
-  return (
-    <div className={view.signpost === null ? css.frame : css.signFrame}>
-      {view.text !== null && (
-        <div className={view.signpost === null ? css.box : css.signBox}>
-          {view.text.lines.map((line, i) => (
-            <div key={i} className={css.line} style={{ paddingLeft: line.indent }}>
-              {line.runs.map((run, j) => (
-                <span
-                  key={j}
-                  className={css.run}
-                  style={{ color: COLORS[run.color] ?? undefined, fontSize: run.size === 100 ? undefined : `${run.size}%` }}
-                >
-                  {run.text}
-                </span>
-              ))}
-            </div>
+  // 나무 판은 종류 0·1뿐이다. 나머지 둘은 원작도 보통 대사창을 쓴다
+  const board = view.signpost !== null && BOARD_TYPES.has(view.signpost.type)
+  const atlas = signpostAtlas()
+  const picture = board && atlas !== null
+    ? signpostImage(atlas, view.signpost!.type, view.signpost!.picture)
+    : null
+  const lines = view.text === null ? null : (
+    <>
+      {view.text.lines.map((line, i) => (
+        <div key={i} className={css.line} style={{ paddingLeft: line.indent }}>
+          {line.runs.map((run, j) => (
+            <span
+              key={j}
+              className={css.run}
+              style={{ color: COLORS[run.color] ?? undefined, fontSize: run.size === 100 ? undefined : `${run.size}%` }}
+            >
+              {run.text}
+            </span>
           ))}
-          {view.text.waiting && <span className={css.arrow} aria-hidden>▼</span>}
+        </div>
+      ))}
+      {view.text.waiting && <span className={css.arrow} aria-hidden>▼</span>}
+    </>
+  )
+  return (
+    <div className={board ? css.signFrame : css.frame}>
+      {lines !== null && (
+        <div className={board ? css.signBox : css.box}>
+          {picture !== null && <div className={css.signPicture} style={picture} aria-hidden />}
+          {board ? <div className={css.signText}>{lines}</div> : lines}
         </div>
       )}
       {view.menu !== null && view.menu.entries.length > 0 && (

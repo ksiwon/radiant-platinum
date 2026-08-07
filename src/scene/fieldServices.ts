@@ -7,10 +7,13 @@
 // `outcome`을 지우는데, 스크립트는 **닫힌 뒤에** 결과를 묻는다. 그래서 결과가
 // 정해지는 순간 여기서 따로 받아 둔다.
 import {
-  loadDialogueBank, loadItemNames, loadItems, loadMarts, loadMoveNames, loadSpeciesNames,
-  loadTrainers,
+  loadDialogueBank, loadItemNames, loadItems, loadMarts, loadMoveNames, loadSpecies,
+  loadSpeciesNames, loadMoves, loadTrainers,
 } from '../data/gameData'
 import type { DataLocale } from '../data/gameData'
+import {
+  createWild, fillPp, natureOf, PARTY_MAX, statsOf,
+} from '../engine/pokemon/instance'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
@@ -51,6 +54,45 @@ let marts: MartTable | null = null
 /** 자료가 아직 안 왔으면 도구 주머니로 본다 — 번호 0이 그 자리다 */
 const pocketOf = (item: number): number => items?.all[item]?.pocket ?? 0
 
+/** 종족값·기술 표. 개체를 만들려면 둘 다 있어야 한다 */
+let speciesTable: Awaited<ReturnType<typeof loadSpecies>> | null = null
+let moveTable: Awaited<ReturnType<typeof loadMoves>> | null = null
+
+/**
+ * 스크립트가 주는 한 마리 (`Pokemon_GiveMonFromScript`).
+ *
+ * ⚠️ **표가 안 왔으면 안 준다.** 반쯤 만들어진 개체를 파티에 넣느니 실패를
+ * 돌려주는 편이 낫다 — 스크립트는 그것을 "자리가 없다"로 읽고 다시 말을 건다.
+ *
+ * 원작은 개체값을 굴리고(`INIT_IVS_RANDOM`) 몬스터볼로 잡은 것으로 적는다.
+ * 우리 `createWild`가 같은 일을 하는데 **가진 도구까지 굴린다** — 그건 야생
+ * 규칙이라 스크립트가 준 것으로 덮어쓴다
+ */
+function giveMon(species: number, level: number, heldItem: number): boolean {
+  const table = speciesTable
+  const moves = moveTable
+  if (!table || !moves) return false
+  const save = useSaveStore.getState()
+  if (save.party.length >= PARTY_MAX) return false
+
+  const info = table.get(species)
+  const mon = fillPp(createWild({
+    species: info, level, rng: Math.random,
+    otId: save.trainer.id, otSecretId: save.trainer.secretId,
+  }), (id) => moves.byId.get(id)?.pp ?? 5)
+  save.addToParty({
+    ...mon,
+    heldItem,
+    // `Pokemon_SetCatchData(..., ITEM_POKE_BALL, ...)` — 받은 것은 몬스터볼이다
+    ball: ITEM_POKE_BALL,
+    hp: statsOf(mon, info).hp,
+  })
+  return true
+}
+
+/** `generated/items.txt` — 스크립트가 준 포켓몬이 들어 있는 볼 */
+const ITEM_POKE_BALL = 4
+
 /**
  * 배틀 스토어를 지켜본다.
  *
@@ -85,6 +127,10 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
     .catch(() => { /* 주머니 이름만 빈다 */ })
   // 회복량은 종족값 표가 있어야 나온다. 전멸은 첫 배틀부터 날 수 있으므로 미리 받는다
   loadHealTables()
+  // 스크립트가 주는 포켓몬도 같은 표로 만든다. 못 받으면 `GivePokemon`이
+  // 실패를 돌려준다 — 반쯤 만들어진 개체를 파티에 넣지 않는다
+  void loadSpecies().then((table) => { speciesTable = table }).catch(() => { /* 못 준다 */ })
+  void loadMoves().then((table) => { moveTable = table }).catch(() => { /* 못 준다 */ })
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
@@ -143,15 +189,26 @@ const services: FieldServices = {
     hasSpecies: (species) => useSaveStore.getState().party.some((m) => m.species === species),
     aliveExcept: (slot) =>
       useSaveStore.getState().party.filter((m, i) => i !== slot && m.hp > 0).length,
+    give: giveMon,
+    level: (slot) => useSaveStore.getState().party[slot]?.level ?? 0,
+    // 성격은 개체값에서 나온다 (`Pokemon_GetNature` = PID % 25). 빈 자리는
+    // 원작이 `NATURE_HARDY`(0)를 준다
+    nature: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      return mon === undefined ? 0 : natureOf(mon.pid)
+    },
+    friendship: (slot) => useSaveStore.getState().party[slot]?.friendship ?? 0,
+    addFriendship: (slot, amount) => { useSaveStore.getState().addFriendship(slot, amount) },
+    hasMove: (slot, move) =>
+      useSaveStore.getState().party[slot]?.moves.some((s) => s.move === move) === true,
+    move: (slot, moveSlot) => useSaveStore.getState().party[slot]?.moves[moveSlot]?.move ?? 0,
   },
 
   trainerInfo: {
     // 원작 번호는 남 0 · 여 1이다 (`TrainerInfo_Gender`)
     gender: () => (useSaveStore.getState().trainer.gender === 'girl' ? 1 : 0),
     hasBadge: (badge) => (useSaveStore.getState().badges & (1 << badge)) !== 0,
-    // ⚠️ 처음 고른 파트너를 아직 저장에 안 적는다 (`SystemVars_GetPlayerStarter`).
-    // 파티 첫 마리로 대신하지 않는다 — 그건 다른 값이다
-    starter: () => 0,
+    giveBadge: (badge) => { useSaveStore.getState().giveBadge(badge) },
     nationalDex: (set) => {
       if (set) useSaveStore.getState().obtainNationalDex()
       return useSaveStore.getState().nationalDex

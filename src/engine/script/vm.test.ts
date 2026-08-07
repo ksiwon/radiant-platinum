@@ -361,7 +361,14 @@ const LOOPING_ENTRIES_YES = 40
 const IDLE_COMMANDS = [
   // 0번 opcode다. 어셈블러가 실제로 안 내보낸다
   'Noop',
-  'Dummy', 'CheckFlagFromVar', 'MessageNoSkip',
+  'Dummy', 'CheckFlagFromVar',
+  // ⚠️ **파티를 묻는 명령을 만들면서 여기 들어왔다** (자리는 39곳 있다).
+  // 훑기는 세이브를 안 붙이므로 파티 조회가 전부 0으로 답하고, 그러면
+  // 스크립트가 "가진 게 없다" 쪽으로 갈라져 이 뺄셈까지 못 온다. 전에는 그
+  // 명령들을 **건너뛰어서** 답 변수에 앞 값이 남았고, 그 남은 값이 우연히
+  // 반대쪽 가지를 열어 주고 있었다 — 지금이 더 정직한 상태다
+  'SubVar',
+  'MessageNoSkip',
   // 시작 메뉴를 스크립트가 여는 자리는 초반 안내뿐이고, 그 앞이 통신·이름
   // 짓기라 훑기가 못 닿는다
   'ShowStartMenu',
@@ -370,16 +377,26 @@ const IDLE_COMMANDS = [
   'SetSpecialBGM',
   // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
   'GiveMoney',
+  // 기술을 가졌는지 묻는 자리(14곳)는 전부 **파티가 있어야** 닿는다 — `SubVar`와 같은 이유다
+  'CheckPartyMonHasMove',
   // 이 셋은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
   // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
-  'GetRematchTrainerID', 'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
+  'GetRematchTrainerID',
+  // 처음 고른 파트너 이름을 찍는 자리는 딱 한 곳(고르는 장면 바로 뒤)이고,
+  // 그 앞에 아직 못 만든 고르는 화면이 있어 훑기가 못 지나간다.
+  // 반대 성별 주인공의 파트너는 **필드 스크립트에 0회**다 — 만들어 두기만 한 것이다
+  'BufferPlayerStarterSpeciesName', 'BufferPlayerCounterpartStarterSpeciesName',
+  'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
   'BlackOutFromBattle2',
   // 박스를 세는 둘은 **예/아니오 너머**에 있다. 육아방은 "맡기시겠습니까?"를
   // 물은 뒤에 세고(`DayCareCommon_TryRaisePokemon`), 사파리 게이트도 값을 내겠냐고
   // 물은 뒤에 남은 자리를 본다. 훑기는 메뉴에 답을 안 하므로 그 가지에 못 들어간다
-  'CountAliveMonsAndBoxMons', 'GetPCBoxesFreeSlotCount',
+  'CountAliveMonsAndBoxMons',
+  // 친밀도를 올리고 기술칸을 읽는 자리도 파티 너머다
+  'IncreasePartyMonFriendship', 'GetPartyMonMove',
+  'GetPCBoxesFreeSlotCount',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다

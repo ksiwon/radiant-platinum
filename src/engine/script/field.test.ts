@@ -525,6 +525,13 @@ maybe('간판 판', () => {
   const TWINLEAF_SCRIPTS = 1052
   /** 맵 스크립트 번호는 **진입점 + 1**이다 (`resolveScript`) */
   const SCRIPT_ENTRY_BASE = 1
+  /**
+   * 떡잎마을 이름표가 보여 줄 약도 번호.
+   *
+   * 스크립트가 안 주므로 배치표에서 와야 하는데, 이 간판은 맵 스크립트로 직접
+   * 걸어서 말을 건 상대가 없다 — 그때는 0(빈 판)이다
+   */
+  const TWINLEAF_SIGN_PICTURE = 0
 
   beforeEach(() => {
     mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
@@ -554,7 +561,9 @@ maybe('간판 판', () => {
     const world = fieldScripts.world!
     // ⚠️ 대사창이 아니라 **간판 판**이다. `signpost`가 null이면 같은 글이
     // 아래쪽 대사창에 떠서 "누가 말을 걸었나" 싶게 읽힌다
-    expect(world.signpost).toBe(0) // SIGNPOST_TYPE_MAP
+    // 종류 0(지도)이라 나무 판이다. 그림 번호는 **배치표의 `data[0]`**에서 온다 —
+    // 매크로가 인자를 0으로 두므로 스크립트만 봐서는 알 수 없다
+    expect(world.signpost).toEqual({ type: 0, picture: TWINLEAF_SIGN_PICTURE })
     expect(printedText(world.printer!)).toBe('여기는 떡잎마을\n어린잎이 숨 쉬는 장소')
     expect(fieldScripts.lastError).toBeNull()
   })
@@ -562,7 +571,7 @@ maybe('간판 판', () => {
   it('버튼을 누르면 판이 걷히고 스크립트가 끝난다', () => {
     start(SCRIPT_ENTRY_BASE + MAP_SIGN_ENTRY, TWINLEAF_SCRIPTS)
     run(1)
-    expect(fieldScripts.world!.signpost).toBe(0)
+    expect(fieldScripts.world!.signpost?.type).toBe(0)
     run(3, true)
     run(30)
     expect(fieldScripts.world!.signpost).toBeNull()

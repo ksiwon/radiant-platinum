@@ -84,7 +84,7 @@ describe('기술 창에서 쓴다', () => {
     const tree: NpcActor = {
       localID: 0,
       info: { sprite: 86 } as NpcActor['info'],
-      x: 0, z: 1, y: 0, dir: 0, visible: true, movementType: 0,
+      x: 0, z: 1, y: 0, dir: 0, visible: true, movementType: 0, params: [], ambient: null,
     }
     npcActors.list = [tree]
     trainer(1 << BADGE.forest, [CUT])

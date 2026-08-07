@@ -237,6 +237,26 @@ export const scriptFileSchema = z.object({
   // 155~253번은 이름조차 없다. 끝 표시가 254라 그 사이가 비어 있는 것이고,
   // 자리를 메우면 번호가 밀리므로 구멍을 구멍으로 둔다
   }).nullable()).nonempty(),
+  /**
+   * 배치표의 이동 유형 (`events.json`의 `move`가 이 표의 번호다).
+   *
+   * `kind`가 갈래다 — `look` 두리번거린다 · `wander` 아무 데나 한 칸 · `face`
+   * 한 쪽만 본다 · `rotate` 시계/반시계로 돈다 · `pace` 왔다 갔다 ·
+   * `route` 네 방향을 차례로 · `other` 아직 안 옮겼다.
+   *
+   * `dirs`의 뜻이 갈래마다 다르다. `look`·`wander`는 **고를 수 있는 방향들**,
+   * `rotate`·`route`는 **도는 차례**, `face`는 볼 방향 하나다
+   */
+  movementTypes: z.array(z.object({
+    name: z.string(),
+    kind: z.enum(['look', 'wander', 'face', 'rotate', 'pace', 'route', 'other']),
+    dirs: z.array(z.number().int().min(0).max(3)).optional(),
+    /** `route`만 쓴다. 한 바퀴를 셀 때 0이면 x, 1이면 z를 본다 */
+    axis: z.number().int().min(0).max(1).optional(),
+  })).nonempty(),
+  /** 다음 짓까지 기다리는 프레임 후보. 실측 16·32·48·64 */
+  movementDelays: z.array(z.number().int().positive()).nonempty(),
+  rotateFrames: z.number().int().positive(),
 })
 
 /**
@@ -318,6 +338,22 @@ export const boxWallpapersSchema = z.object({
 })
 
 /**
+ * 간판 판에 붙는 작은 그림 (DATA.md §2.21).
+ *
+ * 도로 화살표 31장이 앞, 마을 약도 19장이 뒤다. 두 갈래 모두 **0번이 빈 판**이라
+ * 그림 번호가 안 붙은 간판은 자연스럽게 빈 판으로 떨어진다
+ */
+export const signpostsSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  cols: z.number().int().positive(),
+  routeFirst: z.number().int().nonnegative(),
+  cityFirst: z.number().int().nonnegative(),
+  routeCount: z.number().int().positive(),
+  cityCount: z.number().int().positive(),
+})
+
+/**
  * 상점 재고 (`include/data/mart_items.h`).
  *
  * `tier`는 뱃지 개수가 아니라 계단 번호다 — 뱃지 수를 계단으로 옮기는 사다리는
@@ -350,4 +386,5 @@ export type Item = z.infer<typeof itemSchema>
 export type ItemIcons = z.infer<typeof itemIconsSchema>
 export type PokeIcons = z.infer<typeof pokeIconsSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
+export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>

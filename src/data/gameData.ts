@@ -6,10 +6,10 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  boxWallpapersSchema, dialogueIndexSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   martTableSchema, moveFileSchema, nameListSchema, pokeIconsSchema, scriptFileSchema,
   speciesFileSchema, trainerFileSchema,
-  type BoxWallpapers, type DialogueIndex, type Item, type ItemIcons, type Labels,
+  type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type Move, type PokeIcons, type ScriptFile, type Species, type Trainer,
 } from './schema'
 
@@ -179,6 +179,11 @@ export function loadPokeIcons(): Promise<PokeIcons> {
 /** 박스 벽지 아틀라스. 그림은 `data/boxWallpapers.png`다 */
 export function loadBoxWallpapers(): Promise<BoxWallpapers> {
   return fetchJson('boxWallpapers.json', (v) => boxWallpapersSchema.parse(v))
+}
+
+/** 간판 판 그림 아틀라스. 그림은 `data/signposts.png`다 */
+export function loadSignposts(): Promise<Signposts> {
+  return fetchJson('signposts.json', (v) => signpostsSchema.parse(v))
 }
 
 /** 상점 재고표. 롬이 아니라 디컴프 헤더에서 나온 것이다 (`tools/extract/marts.js`) */

@@ -6,6 +6,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
+import { npcSystem } from '../engine/actor/ambient'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
@@ -26,12 +27,16 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   useEffect(() => {
     if (!systemsRegistered) {
       // 시스템 실행 순서 고정 (PLAN §3.4):
-      // Input → Script → Movement → Warp → Encounter → Camera
+      // Input → Script → NPC → Movement → Warp → Encounter → Camera
       //
       // Script가 Movement보다 **먼저**여야 한다. 스크립트가 도는 동안 입력을
-      // 지워서 발을 묶는데, 뒤에 두면 이미 그 프레임만큼 걸어간 뒤가 된다
+      // 지워서 발을 묶는데, 뒤에 두면 이미 그 프레임만큼 걸어간 뒤가 된다.
+      //
+      // NPC도 Script 뒤다. `LockAll`이 이번 프레임에 세운 것이 이번 프레임부터
+      // 먹어야 한다 — 앞에 두면 멈추라는 말을 듣기 전에 한 걸음 더 간다
       gameLoop.register(inputSystem)
       gameLoop.register(scriptSystem)
+      gameLoop.register(npcSystem)
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)
       gameLoop.register(encounterSystem)

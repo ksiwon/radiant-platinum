@@ -31,6 +31,11 @@ export interface TrainerInfo {
 // 개체 모델은 엔진이 갖는다 — 능력치·경험치 계산이 붙어 있고 배틀에서도 같은 것을
 // 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
 import { PARTY_MAX, type PokemonInstance } from '../engine/pokemon/instance'
+
+/** `constants/pokemon.h`의 `MAX_FRIENDSHIP_VALUE` */
+const MAX_FRIENDSHIP = 255
+/** `generated/items.txt` — 이 볼에 든 아이는 친밀도가 한 칸 더 오른다 */
+const ITEM_LUXURY_BALL = 11
 import { FLAG_COUNT, SAVED_VAR_COUNT } from '../engine/script/vars'
 
 export type { PokemonInstance }
@@ -204,6 +209,17 @@ interface SaveStore extends SaveData {
    * 기준이라, 순서는 화면 장식이 아니다
    */
   swapParty: (a: number, b: number) => void
+  /**
+   * 파티 뒤에 한 마리를 붙인다 (`Party_AddPokemon`).
+   *
+   * ⚠️ **가득 차 있으면 부르는 쪽이 먼저 막아야 한다.** 원작도 여기서 실패를
+   * 돌려주고 스크립트가 그 값으로 갈라진다 — 박스로 넘기지 않는다
+   */
+  addToParty: (mon: PokemonInstance) => void
+  /** 친밀도를 올린다. 255에서 멈춘다 (`MAX_FRIENDSHIP_VALUE`) */
+  addFriendship: (slot: number, amount: number) => void
+  /** 뱃지 하나 (`TrainerInfo_SetBadge`). 비전머신 자격이 여기 걸려 있다 */
+  giveBadge: (badge: number) => void
   /** 박스를 넘긴다. 잡은 포켓몬이 이 박스부터 자리를 찾는다 */
   setCurrentBox: (box: number) => void
   /**
@@ -379,6 +395,26 @@ export const useSaveStore = create<SaveStore>()(
       swapBoxSlots: (a, b) => {
         set((st) => ({ boxes: swapSlots(st.boxes, a, b) }))
       },
+
+      addToParty: (mon) => {
+        set((st) => (st.party.length >= PARTY_MAX ? st : { party: [...st.party, mon] }))
+      },
+
+      addFriendship: (slot, amount) => {
+        set((st) => ({
+          party: st.party.map((mon, i) => (
+            i === slot
+              // ⚠️ 럭셔리볼은 +1 (`ITEM_LUXURY_BALL`). 원작은 여기에 둘을 더
+              // 얹는다 — 도구의 `HOLD_EFFECT_FRIENDSHIP_UP`이 1.5배, 알을 받은
+              // 곳에서 올리면 +1. 도구의 효과 표가 아직 없어서 그 둘은 안 붙었다
+              ? { ...mon, friendship: Math.min(MAX_FRIENDSHIP, mon.friendship + amount
+                + (amount > 0 && mon.ball === ITEM_LUXURY_BALL ? 1 : 0)) }
+              : mon
+          )),
+        }))
+      },
+
+      giveBadge: (badge) => { set((st) => ({ badges: st.badges | (1 << badge) })) },
 
       setHealSpot: (index) => { set({ healSpot: index }) },
 

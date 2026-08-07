@@ -9,6 +9,7 @@
 import { npcsOf, type Npc } from '../map/world'
 import type { Movable } from '../script/movement'
 import type { VarStore } from '../script/vars'
+import type { AmbientState } from './ambient'
 
 export interface NpcActor extends Movable {
   /** 맵 안 번호. 스크립트가 이걸로 찾는다 */
@@ -19,6 +20,16 @@ export interface NpcActor extends Movable {
   y: number
   /** 배치표의 이동 유형. 변장한 트레이너를 가려내는 데 쓴다 */
   readonly movementType: number
+  /** 배치표의 `data[3]`. `events.json`의 `raw[7..9]` 자리다 */
+  readonly params: readonly number[]
+  /**
+   * 혼자 하는 짓의 진행 상태 (`actor/ambient`). 처음 굴릴 때 만든다.
+   *
+   * 자리를 여기 두는 이유: 이 사람이 **어디서 시작했는가**를 기억해야 하는
+   * 갈래가 있다. 왔다 갔다 하는 사람은 시작 칸으로 돌아오는 것으로 방향을
+   * 바꾸므로, 상태가 사람과 함께 나고 함께 사라져야 맞는다
+   */
+  ambient: AmbientState | null
 }
 
 export const npcActors = {
@@ -38,10 +49,9 @@ export const npcActors = {
    * 스크립트가 `LockAll`로 세우고 `ReleaseAll`로 놓는다. 실측으로 필드 스크립트가
    * 이 둘을 4,334번 쓴다 — 대화·컷신이 시작할 때마다 한 번씩이다.
    *
-   * ⚠️ **지금은 세울 것이 스크립트가 걸어 둔 걸음뿐이다.** 배치표의 이동 유형
-   * (`MOVEMENT_TYPE_WANDER_*`)을 아직 안 돌리므로 평소에 돌아다니는 사람이 없다.
-   * 그래도 깃발은 세워 둔다 — 걸어가던 사람이 대화 중에 계속 걷는 것을 막는 것이
-   * 이 명령의 절반이고, 나머지 절반은 배회를 붙일 때 이 자리로 온다
+   * 세우는 대상은 **혼자 하는 짓**이다 (`actor/ambient`). 배회하던 사람이
+   * 대화 중에 걸어 나가면 말을 걸던 칸이 비므로, 이 깃발이 없으면 대화가
+   * 상대 없이 이어진다
    */
   paused: false,
 }
@@ -70,6 +80,17 @@ export function setNpcPlacement(
   placement.set(localID, { ...placement.get(localID), ...patch })
 }
 
+/**
+ * 배치표의 `ObjectEvent.data[3]`.
+ *
+ * 구조체가 `… u16 script; s16 dir; u16 data[3]; …`이라 `raw`의 7·8·9번이다
+ * (`tools/extract/events.js`). 뜻은 객체마다 다르다 — 간판이면 `data[0]`이
+ * 판에 붙는 그림 번호다
+ */
+function paramsOf(info: Npc): readonly number[] {
+  return [info.raw[7] ?? 0, info.raw[8] ?? 0, info.raw[9] ?? 0]
+}
+
 export function spawnNpcs(mapId: number, vars: VarStore): void {
   npcActors.list = []
   npcActors.byLocalID.clear()
@@ -87,6 +108,8 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
       dir: info.facing,
       visible: true,
       movementType: info.move,
+      params: paramsOf(info),
+      ambient: null,
     }
     npcActors.list.push(actor)
     // 같은 번호가 둘이면 먼저 것이 이긴다 — 원작의 조회도 앞에서부터 찾는다
@@ -123,6 +146,8 @@ export function addNpc(localID: number): boolean {
     dir: fix.dir ?? info.facing,
     visible: true,
     movementType: fix.move ?? info.move,
+    params: paramsOf(info),
+    ambient: null,
   }
   npcActors.list.push(actor)
   npcActors.byLocalID.set(localID, actor)

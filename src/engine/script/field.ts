@@ -19,6 +19,7 @@ import { ScriptContext, ScriptError, type CommonScripts } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { resetFade } from './fade'
 import { npcActors, spawnNpcs } from '../actor/npcs'
+import { setAmbientTables } from '../actor/ambient'
 import { fieldBgm } from '../audio/songs'
 import { obstacleAt } from '../actor/obstacles'
 import {
@@ -214,6 +215,9 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
   const [meta, bytes] = await Promise.all([loadScriptMeta(), loadScriptBytes()])
   fieldScripts.data = { meta, bytes }
   fieldScripts.commands = buildCommands(meta.commands)
+  // 사람이 혼자 하는 짓도 같은 파일에서 온다. 안 붙이면 온 신오가 마네킹이고
+  // `LockAll`이 멈출 것을 못 찾는다
+  setAmbientTables(meta)
   fieldScripts.world = makeWorld(fieldScripts.vars)
   // 전역 메뉴가 항목 글을 여기서 읽는다. 맵과 무관하므로 한 번만 받는다
   loadDialogueBank(which, MENU_ENTRIES_BANK)
