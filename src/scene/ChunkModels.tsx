@@ -17,8 +17,9 @@ import {
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import {
-  cachedSplit, cutoutGroups, floorPatch, grassColors, plateColors, treeSites, waterColors,
-  type FloorPatch,
+  cachedSplit, cutoutGroups, floorPatch, floorSource, grassColors, plateColors, shiftFloors,
+  treeSites, waterColors,
+  type FloorPatch, type FloorSource, type FloorTri,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
@@ -103,6 +104,83 @@ function materialsFor(
   })
 }
 
+/** 재질 명세 하나의 열쇠. `materialsFor`와 같은 꼴이라 보관함을 함께 쓴다 */
+function materialKey(spec: ChunkMesh['materials'][number], twoSided: boolean): string {
+  return `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}/${String(twoSided)}`
+}
+
+/**
+ * 바닥 삼각형 보관함. 쪼갠 결과와 마찬가지로 청크마다 늘 같으므로 한 번만 센다
+ */
+const floorCache = new Map<string, FloorSource>()
+
+function cachedFloors(key: string, split: ReturnType<typeof cachedSplit>): FloorSource {
+  const hit = floorCache.get(key)
+  if (hit) return hit
+  const made = floorSource(split)
+  floorCache.set(key, made)
+  return made
+}
+
+/**
+ * 청크 하나 몫의 재료. 빌려 오기가 이웃의 재질까지 봐야 해서 한 번에 들고 있는다
+ */
+interface Piece {
+  c: { mx: number, my: number, land: number }
+  mesh: ChunkMesh
+  cutout: readonly boolean[]
+  split: ReturnType<typeof cachedSplit>
+  source: FloorSource
+  originX: number
+  originZ: number
+}
+
+/**
+ * 이웃 청크에서 바닥을 빌려 온다.
+ *
+ * 오버월드 배치 468개 중 46개가 이어 쓸 바닥 삼각형이 청크에 하나도 없다 —
+ * 숲만 든 173번이 대부분이고, 그 46개가 잎 칸의 46.6%를 갖고 있다. 그대로 두면
+ * 그 자리는 발밑이 통째로 뚫린다.
+ *
+ * 46개가 46개 다 **바로 옆 청크에 바닥이 있다**(실측). 그래도 고리를 넓혀 가며
+ * 찾는 것은 창 가장자리에서 이웃이 안 실려 있을 수 있어서다.
+ *
+ * 빌려 온 삼각형의 재질은 이 청크 배열에 없다. **뒤에 덧붙이고** 그 번호를
+ * 준다 — 땅 메시는 그 번호를 안 쓰므로 서로 간섭하지 않는다
+ */
+function borrowFloors(
+  self: Piece, all: readonly Piece[], sheet: TexSheet,
+  materials: Material[], cache: Map<string, Material>,
+): FloorTri[] {
+  for (let ring = 1; ring <= 4; ring++) {
+    const near = all.filter((p) =>
+      p !== self && p.source.floors.length > 0
+      && Math.max(Math.abs(p.c.mx - self.c.mx), Math.abs(p.c.my - self.c.my)) === ring)
+    if (near.length === 0) continue
+    const added = new Map<string, number>()
+    return near.flatMap((p) => shiftFloors(
+      p.source.floors, p.originX - self.originX, p.originZ - self.originZ,
+      (from) => {
+        const spec = p.mesh.materials[from]!
+        const key = materialKey(spec, false)
+        const had = added.get(key)
+        if (had !== undefined) return had
+        const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
+        let made = cache.get(key)
+        if (!made) {
+          made = item ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep)) : MISSING
+          cache.set(key, made)
+        }
+        const at = materials.length
+        materials.push(made)
+        added.set(key, at)
+        return at
+      },
+    ))
+  }
+  return []
+}
+
 /**
  * 소품 판 보관함. 한 소품은 늘 같은 판을 내므로 한 번만 만든다 —
  * 청크를 넘을 때마다 다시 만들면 그 순간 끊긴다
@@ -151,11 +229,20 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         // 그림이 같은 나무는 청크를 넘어 한 덩어리로 모은다. 창 안에 2천 그루가
         // 서므로 청크마다 따로 그리면 드로우콜이 수십 개가 된다
         const byTexture = new Map<string, FoliageGroup>()
-        const next = loaded.map(({ c, mesh }) => {
+        // 빌려 오기가 이웃의 바닥과 재질을 봐야 해서 두 걸음으로 나눈다
+        const pieces: Piece[] = loaded.map(({ c, mesh }) => {
           const cutout = cutoutGroups(mesh, sheet)
-          const split = cachedSplit(`${String(c.land)}/${String(texSet)}`, mesh, cutout)
-          const originX = c.mx * CHUNK_TILES + CHUNK_TILES / 2
-          const originZ = c.my * CHUNK_TILES + CHUNK_TILES / 2
+          const key = `${String(c.land)}/${String(texSet)}`
+          const split = cachedSplit(key, mesh, cutout)
+          return {
+            c, mesh, cutout, split,
+            source: cachedFloors(key, split),
+            originX: c.mx * CHUNK_TILES + CHUNK_TILES / 2,
+            originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
+          }
+        })
+        const next = pieces.map((p) => {
+          const { c, mesh, split, originX, originZ } = p
           for (const site of treeSites(split)) {
             const spec = mesh.materials[site.cell.group]
             const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
@@ -171,6 +258,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             }
             group.items.push([site, originX, originZ])
           }
+          const materials = materialsFor(mesh, sheet, cache, p.cutout)
+          // 바닥이 아예 없는 청크는 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다
+          const borrowed = p.source.floors.length > 0
+            ? []
+            : borrowFloors(p, pieces, sheet, materials, cache)
           return {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,
             index: c.land,
@@ -178,11 +270,12 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             z: originZ,
             mesh,
             geometry: split.geometry,
-            materials: materialsFor(mesh, sheet, cache, cutout),
+            materials,
             // 원작 숲에는 바닥이 없다 — 잎에 가려 보일 일이 없어서 안 만든 것이다.
             // 칸마다 제일 가까운 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓴다
             floor: floorPatch(
-              split, (x, z, near) => groundAt(x + originX, z + originZ, near)),
+              split, (x, z, near) => groundAt(x + originX, z + originZ, near),
+              borrowed, p.source),
           }
         })
         setPlaced(next)

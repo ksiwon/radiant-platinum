@@ -4,14 +4,16 @@
 // 모양만 보고 가르면 계단과 비탈이 같이 사라진다. 그래서 잣대를 텍스처의 투명
 // 픽셀로 잡았고, 여기서 그 잣대가 실제로 갈라 주는지 확인한다.
 import { readFileSync, existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   BufferAttribute, BufferGeometry, CylinderGeometry, MultiplyBlending, Vector3,
 } from 'three'
 import {
-  cellKey, cellX, cellZ, cutoutGroups, floorPatch, isBakedShadow, isFoliage, plateColors,
-  splitFoliage, treeSites,
+  cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, isBakedShadow, isFoliage,
+  plateColors, shiftFloors, splitFoliage, treeSites,
+  type FloorSource, type FloorTri, type Split,
 } from './plates'
 import {
   BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
@@ -43,12 +45,15 @@ function readChunk(index: number, fmt: Fmt): ChunkMesh {
   const head = 8 + metaLen + ((4 - (metaLen % 4)) % 4)
   const n = meta.verts
   const position = new Float32Array(n * 3)
+  const uv = new Float32Array(n * 2)
   for (let i = 0; i < n; i++) {
     const o = head + i * fmt.vertexBytes
     for (let a = 0; a < 3; a++) position[i * 3 + a] = view.getInt16(o + a * 2, true) / fmt.posScale
+    for (let a = 0; a < 2; a++) uv[i * 2 + a] = view.getFloat32(o + 8 + a * 4, true)
   }
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(position, 3))
+  geometry.setAttribute('uv', new BufferAttribute(uv, 2))
   geometry.setIndex([...new Uint16Array(ab, head + n * fmt.vertexBytes, meta.indices)])
   return {
     geometry,
@@ -84,6 +89,25 @@ function oneQuad(tex: string): ChunkMesh {
     geometry,
     materials: [{ tex, pal: '', rep: 0, a: 31, f: 0 }],
     groups: [[0, 0, 6]],
+  }
+}
+
+/** `bdhc.json` + `bdhc.bin`. 좌표는 int32×4가 먼저, 평면 색인 u16이 뒤다 */
+function loadHeight(): HeightData {
+  const json = read('bdhc.json') as {
+    plateCount: number
+    planes: [number, number, number, number][]
+    chunks: [number, number][]
+    fixedPerTile: number
+  }
+  const buf = readFileSync(resolve(DATA, 'bdhc.bin'))
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
+  return {
+    planes: json.planes,
+    chunks: json.chunks,
+    coords: new Int32Array(ab, 0, json.plateCount * 4),
+    refs: new Uint16Array(ab, json.plateCount * 16, json.plateCount),
+    fixedPerTile: json.fixedPerTile,
   }
 }
 
@@ -196,9 +220,13 @@ maybe('잎 걷어내기', () => {
       expect(u.getX(i)).toBeCloseTo(p.getX(i), 5)
       expect(u.getY(i)).toBeCloseTo(p.getZ(i), 5)
     }
-    // 높이는 지면이 정한다. 모르는 칸은 안 깐다 — 아무 데나 깔면 허공에 판이 뜬다
+    // 높이는 지면이 정한다
     expect(p.getY(0)).toBeCloseTo(1, 6)
-    expect(floorPatch(split, () => null)).toBeNull()
+    // 높이 자료가 없는 칸도 **비워 두지 않는다** — 베껴 온 타일이 서 있는
+    // 높이로 깐다. 오버월드에 그런 칸이 943개 있고, 건너뛰면 그대로 뚫린다
+    const noHeight = floorPatch(split, () => null)!
+    expect(noHeight.geometry.getAttribute('position').count / 3).toBe(2)
+    expect((noHeight.geometry.getAttribute('position') as BufferAttribute).getY(0)).toBeCloseTo(1, 6)
   })
 
   it('덮인 칸에는 안 깐다 — 원작 지형과 겹치면 깜빡인다', () => {
@@ -553,24 +581,6 @@ maybe('잎 걷어내기', () => {
 maybe('나무가 땅에 선다', () => {
   const fmt = read('chunks/index.json') as Fmt
 
-  /** `bdhc.json` + `bdhc.bin`. 좌표는 int32×4가 먼저, 평면 색인 u16이 뒤다 */
-  function loadHeight(): HeightData {
-    const json = read('bdhc.json') as {
-      plateCount: number
-      planes: [number, number, number, number][]
-      chunks: [number, number][]
-      fixedPerTile: number
-    }
-    const buf = readFileSync(resolve(DATA, 'bdhc.bin'))
-    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
-    return {
-      planes: json.planes,
-      chunks: json.chunks,
-      coords: new Int32Array(ab, 0, json.plateCount * 4),
-      refs: new Uint16Array(ab, json.plateCount * 16, json.plateCount),
-      fixedPerTile: json.fixedPerTile,
-    }
-  }
 
   /** 잎 텍스처 이름. 여기서는 알파를 안 재므로 이름만 본다 — `isFoliage`의 절반이다 */
   const FOLIAGE_NAME = /^(cont)?tree|_tree|treeg/
@@ -709,4 +719,132 @@ maybe('나무가 원작 자리에 선다', () => {
     // 그루 수가 통째로 무너지지도 늘지도 않는다
     expect(t.trees).toBeGreaterThan(40_000)
   })
+})
+
+/**
+ * **발밑이 뚫린 자리가 하나도 없는가** (DATA.md §2.2).
+ *
+ * 잎을 걷어낸 자리를 청크 **안**의 바닥 삼각형으로만 메우면 절반이 그대로
+ * 뚫린다 — 오버월드 배치 468개 중 46개가 바닥 삼각형이 하나도 없는 청크고
+ * (숲만 든 173번이 대부분), 잎 칸의 46.6%가 거기에 있다.
+ *
+ * 여기서 오버월드 전체를 실제 그림 묶음·실제 높이 자료로 훑어 **0칸**을 잰다.
+ * 이 수가 0이 아니면 어딘가에서 하늘이 내다보인다.
+ */
+maybe('숲 바닥에 빈 칸이 없다', () => {
+  const CHUNK = 32
+  /** 그림 묶음 한 장을 진짜 PNG에서 읽는다 — 투명 비율이 잣대라 흉내로는 못 잰다 */
+  const sheets = new Map<number, TexSheet>()
+  function sheetFor(set: number): TexSheet {
+    const hit = sheets.get(set)
+    if (hit) return hit
+    const { decodePng } = createRequire(import.meta.url)('../../tools/spike/png-decode.js') as {
+      decodePng: (f: string) => { width: number; height: number; pixels: Uint8Array }
+    }
+    const png = decodePng(resolve(DATA, `tex/${String(set)}.png`))
+    const info = (read('tex/index.json') as {
+      sets: { items: [string, string, number, number, number, number][] }[]
+    }).sets[set]!
+    const made: TexSheet = {
+      width: png.width,
+      height: png.height,
+      items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
+      pixels: new Uint8ClampedArray(png.pixels.buffer, png.pixels.byteOffset, png.pixels.length),
+    }
+    sheets.set(set, made)
+    return made
+  }
+
+  interface Tally { cells: number; covered: number; filled: number; borrowed: number; bare: number }
+
+  function sweep(): Tally {
+    heightField.data = loadHeight()
+    const fmt = read('chunks/index.json') as Fmt
+    const maps = read('maps.json') as {
+      maps: { area: number }[]
+      areas: { tex: number }[]
+    }
+    const meta = read('matrices/0.json') as MatrixMeta
+    const texOf = (zone: number) => maps.areas[maps.maps[zone]?.area ?? 0]?.tex ?? 0
+    const at = new Map(meta.chunks.map((c) => [`${String(c.mx)},${String(c.my)}`, c]))
+    // `MapGrid.heightAtWorld`와 같은 길 — 청크를 찾아 그 안 좌표로 묻는다
+    const groundAt = (x: number, z: number, near: number) => {
+      const c = at.get(`${String(Math.floor(x / CHUNK))},${String(Math.floor(z / CHUNK))}`)
+      return c ? heightInChunk(c.land, x - c.mx * CHUNK, z - c.my * CHUNK, near) : null
+    }
+
+    const meshes = new Map<number, ChunkMesh>()
+    const meshOf = (land: number) => {
+      let m = meshes.get(land)
+      if (!m) { m = readChunk(land, fmt); meshes.set(land, m) }
+      return m
+    }
+    const parts = new Map<string, { split: Split; source: FloorSource }>()
+    const partOf = (c: { land: number; zone: number }) => {
+      const key = `${String(c.land)}/${String(texOf(c.zone))}`
+      let hit = parts.get(key)
+      if (!hit) {
+        const mesh = meshOf(c.land)
+        const split = splitFoliage(mesh, cutoutGroups(mesh, sheetFor(texOf(c.zone))))
+        hit = { split, source: floorSource(split) }
+        parts.set(key, hit)
+      }
+      return hit
+    }
+
+    const t: Tally = { cells: 0, covered: 0, filled: 0, borrowed: 0, bare: 0 }
+    for (const c of meta.chunks) {
+      const { split, source } = partOf(c)
+      const originX = c.mx * CHUNK + CHUNK / 2
+      const originZ = c.my * CHUNK + CHUNK / 2
+
+      // 바닥이 아예 없으면 이웃에서 빌려 온다. 고리는 렌더 창(반경 2)까지다
+      let borrowed: FloorTri[] = []
+      if (source.floors.length === 0) {
+        for (let ring = 1; ring <= 2 && borrowed.length === 0; ring++) {
+          for (let dz = -ring; dz <= ring; dz++) {
+            for (let dx = -ring; dx <= ring; dx++) {
+              if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue
+              const n = at.get(`${String(c.mx + dx)},${String(c.my + dz)}`)
+              if (!n) continue
+              const near = partOf(n)
+              if (near.source.floors.length === 0) continue
+              borrowed = borrowed.concat(
+                shiftFloors(near.source.floors, dx * CHUNK, dz * CHUNK, (g) => g))
+            }
+          }
+        }
+      }
+
+      const patch = floorPatch(
+        split, (x, z, near) => groundAt(x + originX, z + originZ, near), borrowed, source)
+      const done = new Set<number>()
+      if (patch) {
+        const pos = patch.geometry.getAttribute('position') as BufferAttribute
+        // 칸 하나가 삼각형 둘 = 정점 여섯이고, 첫 정점이 그 칸의 왼쪽 위다
+        for (let i = 0; i < pos.count; i += 6) {
+          done.add(cellKey(Math.round(pos.getX(i)), Math.round(pos.getZ(i))))
+        }
+      }
+      for (const key of split.cells.keys()) {
+        t.cells++
+        if (source.covered.has(key)) t.covered++
+        else if (done.has(key)) { t.filled++; if (borrowed.length > 0) t.borrowed++ }
+        else t.bare++
+      }
+    }
+    return t
+  }
+
+  it('오버월드 잎 칸 110,703개가 한 칸도 안 남는다', () => {
+    const t = sweep()
+    expect(t.cells).toBe(110_703)
+    // 원작 지형이 이미 덮은 칸 — 나머지를 우리가 메운다
+    expect(t.covered).toBe(12_463)
+    expect(t.filled).toBe(98_240)
+    // **절반이 이웃에서 온다.** 청크 안만 보면 이만큼이 그대로 뚫린다
+    expect(t.borrowed).toBe(51_546)
+    // 여기가 이 시험의 전부다
+    expect(t.bare).toBe(0)
+  }, 600_000)
 })

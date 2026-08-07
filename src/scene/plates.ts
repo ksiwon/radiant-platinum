@@ -338,7 +338,13 @@ export function standCutouts(
  * 깔렸다. 메울 것은 **둘레 지형의 그 타일**이다.
  *
  * 그래서 칸마다 제일 가까운 **바닥 삼각형**을 찾아 그것의 서브메시와 UV 평면을
- * 그대로 이어 쓴다. 색도 그림도 우리가 고르지 않는다 — 옆 타일이 정한다
+ * 그대로 이어 쓴다. 색도 그림도 우리가 고르지 않는다 — 옆 타일이 정한다.
+ *
+ * ⚠️ **청크 안에서만 찾으면 절반이 안 메워진다.** 오버월드 배치 468개 중 46개가
+ * 이어 쓸 바닥 삼각형이 **청크에 하나도 없는** 것이고(대부분 숲만 든 173번),
+ * 잎 칸 110,703개 중 51,546개(46.6%)가 거기 있다. 그 46개는 전부 **바로 옆
+ * 청크에 바닥이 있다**(고리 1). 그래서 없으면 이웃에서 빌려 온다 —
+ * `shiftFloors`가 삼각형을 이쪽 좌표계로 밀고, UV는 좌표의 아핀 함수라 따라온다
  */
 export interface FloorPatch {
   geometry: BufferGeometry
@@ -349,22 +355,47 @@ export interface FloorPatch {
 /** 바닥으로 칠 만큼 누워 있는가. 절벽면·울타리를 이어 쓰면 벽 그림이 땅에 깔린다 */
 const FLOOR_NORMAL = 0.7
 
-export function floorPatch(
-  split: Split,
-  ground: (x: number, z: number, near: number) => number | null,
-): FloorPatch | null {
+/**
+ * 바닥 삼각형 하나를 **평면 계수까지 펴 둔 것**.
+ *
+ * 정점 색인이 아니라 값으로 갖는 이유는 **옆 청크에서 빌려 오기 위해서**다.
+ * `x`·`z`에 청크 사이 거리를 더하면 그대로 이쪽 좌표계의 삼각형이 된다 —
+ * UV는 좌표의 아핀 함수라 평행이동에 따라오고, 이어 붙은 땅이 그대로 이어진다
+ */
+export interface FloorTri {
+  /** 재질 색인. 빌려 온 것은 부른 쪽이 재질 배열에 덧붙이고 그 번호를 준다 */
+  group: number
+  ax: number; az: number; au: number; av: number
+  ux: number; uz: number; du: number; dv: number
+  vx: number; vz: number; eu: number; ev: number
+  /** 무게중심. 어느 것이 가까운지 이걸로 잰다 */
+  cx: number; cz: number
+  /**
+   * 그 삼각형의 높이.
+   *
+   * 높이 자료(BDHC)가 없는 칸에서 쓴다 — 잎 칸 110,703개 중 943개가 그렇다.
+   * 판을 안 깔면 그 자리는 그대로 뚫리므로, **베껴 온 그 타일의 높이**로 깐다.
+   * 우리가 정한 값이 아니라 옆 타일이 실제로 서 있는 높이다
+   */
+  cy: number
+}
+
+/** 이 청크의 바닥 삼각형과, 원작 지형이 이미 덮은 칸 */
+export interface FloorSource {
+  floors: FloorTri[]
+  covered: Set<number>
+}
+
+/**
+ * 바닥 삼각형을 모은다. 청크마다 한 번만 하면 되므로 따로 뺐다 —
+ * 이웃이 빌려 갈 때도 이 결과를 그대로 쓴다
+ */
+export function floorSource(split: Split): FloorSource {
   const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
   const uvAttr = split.geometry.getAttribute('uv') as BufferAttribute | undefined
   const uv = uvAttr?.array as Float32Array | undefined
   const index = split.geometry.getIndex()!.array
-
-  /** 바닥 삼각형. 가까운 것을 찾고 그 UV 평면을 이어 쓰려고 미리 편다 */
-  interface Floor {
-    group: number
-    a: number; b: number; c: number
-    cx: number; cz: number
-  }
-  const floors: Floor[] = []
+  const floors: FloorTri[] = []
   const covered = new Set<number>()
   for (const [start, count, group] of split.groups) {
     for (let t = 0; t < count; t += 3) {
@@ -391,37 +422,123 @@ export function floorPatch(
         }
       }
       if (Math.abs(ny) / len < FLOOR_NORMAL) continue
-      floors.push({ group, a, b, c, cx: ax + (ux + vx) / 3, cz: az + (uz + vz) / 3 })
+      const au = uv ? uv[a * 2]! : 0, av = uv ? uv[a * 2 + 1]! : 0
+      floors.push({
+        group,
+        ax, az, au, av,
+        ux, uz, du: uv ? uv[b * 2]! - au : 0, dv: uv ? uv[b * 2 + 1]! - av : 0,
+        vx, vz, eu: uv ? uv[c * 2]! - au : 0, ev: uv ? uv[c * 2 + 1]! - av : 0,
+        cx: ax + (ux + vx) / 3, cz: az + (uz + vz) / 3, cy: ay + (uy + vy) / 3,
+      })
     }
   }
+  return { floors, covered }
+}
+
+/**
+ * 빌려 온 바닥을 이 청크 좌표계로 옮긴다.
+ *
+ * UV는 좌표의 아핀 함수라 꼭짓점만 밀면 따라온다 — 그래서 옆 청크의 흙길이
+ * 경계를 넘어 그대로 이어진다. 재질은 이쪽 배열에 없으므로 번호를 갈아 끼운다
+ */
+export function shiftFloors(
+  floors: readonly FloorTri[], dx: number, dz: number, group: (from: number) => number,
+): FloorTri[] {
+  return floors.map((f) => ({
+    ...f,
+    group: group(f.group),
+    ax: f.ax + dx, az: f.az + dz,
+    cx: f.cx + dx, cz: f.cz + dz,
+  }))
+}
+
+/**
+ * 칸마다 제일 가까운 바닥 삼각형.
+ *
+ * ⚠️ 칸마다 삼각형을 전부 훑으면 안 되는 자리가 있다. 숲만 든 청크(173번)는
+ * 잎 칸이 1,122개인데 빌려 올 삼각형이 이웃 여덟에서 수천 개 온다 — 곱하면
+ * 한 청크에 수백만 번이고, 창을 다시 세울 때마다 그만큼 멈춘다.
+ *
+ * 그래서 삼각형을 **타일 격자에 찍고** 거기서 너비 우선으로 번진다. 칸 하나에
+ * 드는 값이 개수와 무관해진다
+ */
+function nearestFloors(
+  cells: Iterable<number>, floors: readonly FloorTri[],
+): Map<number, FloorTri> {
+  const seed = new Map<number, number>()
+  floors.forEach((f, i) => {
+    const x0 = Math.floor(Math.min(f.ax, f.ax + f.ux, f.ax + f.vx))
+    const x1 = Math.floor(Math.max(f.ax, f.ax + f.ux, f.ax + f.vx))
+    const z0 = Math.floor(Math.min(f.az, f.az + f.uz, f.az + f.vz))
+    const z1 = Math.floor(Math.max(f.az, f.az + f.uz, f.az + f.vz))
+    for (let tz = z0; tz <= z1; tz++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const k = cellKey(tx, tz)
+        if (!seed.has(k)) seed.set(k, i)
+      }
+    }
+  })
+  const want = new Set(cells)
+  const out = new Map<number, FloorTri>()
+  let front = [...seed.keys()]
+  const from = new Map(seed)
+  // 청크가 ±16타일이고 이웃까지 ±48이다. 그 밖으로 번질 이유가 없다
+  const LIMIT = 56
+  for (let step = 0; front.length > 0 && out.size < want.size && step <= LIMIT * 2; step++) {
+    const next: number[] = []
+    for (const k of front) {
+      const i = from.get(k)!
+      if (want.has(k) && !out.has(k)) out.set(k, floors[i]!)
+      const tx = cellX(k), tz = cellZ(k)
+      for (const [dx, dz] of NEIGHBORS) {
+        const nx = tx + dx, nz = tz + dz
+        if (nx < -LIMIT || nx >= LIMIT || nz < -LIMIT || nz >= LIMIT) continue
+        const nk = cellKey(nx, nz)
+        if (from.has(nk)) continue
+        from.set(nk, i)
+        next.push(nk)
+      }
+    }
+    front = next
+  }
+  return out
+}
+
+const NEIGHBORS: readonly (readonly [number, number])[] = [
+  [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
+]
+
+export function floorPatch(
+  split: Split,
+  ground: (x: number, z: number, near: number) => number | null,
+  borrowed: readonly FloorTri[] = [],
+  source?: FloorSource,
+): FloorPatch | null {
+  const { floors: own, covered } = source ?? floorSource(split)
+  const floors = borrowed.length > 0 ? [...own, ...borrowed] : own
   if (floors.length === 0) return null
+
+  const bare: number[] = []
+  for (const key of split.cells.keys()) if (!covered.has(key)) bare.push(key)
+  const nearest = nearestFloors(bare, floors)
 
   /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */
   const bucket = new Map<number, { position: number[]; uv: number[] }>()
-  for (const [key, cell] of split.cells) {
-    if (covered.has(key)) continue
+  for (const key of bare) {
+    const cell = split.cells.get(key)!
     const tx = cellX(key), tz = cellZ(key)
     const cx = tx + 0.5, cz = tz + 0.5
-    let best: Floor | null = null
-    let far = Infinity
-    for (const f of floors) {
-      const d = (f.cx - cx) ** 2 + (f.cz - cz) ** 2
-      if (d < far) { far = d; best = f }
-    }
+    const best = nearest.get(key)
     if (!best) continue
-    const y = ground(cx, cz, cell.minY)
-    if (y === null) continue
+    // 높이 자료가 없으면 **베껴 온 타일이 서 있는 높이**로 깐다. 예전엔 그런
+    // 칸을 건너뛰었는데, 그러면 943칸이 그대로 뚫린 채 남는다
+    const y = ground(cx, cz, cell.minY) ?? best.cy
 
     // 그 삼각형의 평면을 그대로 늘린다 — 무게중심 좌표는 삼각형 밖에서도 산다
-    const ax = pos[best.a * 3]!, az = pos[best.a * 3 + 2]!
-    const ux = pos[best.b * 3]! - ax, uz = pos[best.b * 3 + 2]! - az
-    const vx = pos[best.c * 3]! - ax, vz = pos[best.c * 3 + 2]! - az
+    const { ax, az, ux, uz, vx, vz, au, av, du, dv, eu, ev } = best
     const area = ux * vz - vx * uz
-    const au = uv ? uv[best.a * 2]! : 0, av = uv ? uv[best.a * 2 + 1]! : 0
-    const du = uv ? uv[best.b * 2]! - au : 0, dv = uv ? uv[best.b * 2 + 1]! - av : 0
-    const eu = uv ? uv[best.c * 2]! - au : 0, ev = uv ? uv[best.c * 2 + 1]! - av : 0
     const at = (x: number, z: number): [number, number] => {
-      if (!uv || Math.abs(area) < 1e-9) return [0, 0]
+      if (Math.abs(area) < 1e-9) return [0, 0]
       const px = x - ax, pz = z - az
       const w1 = (px * vz - vx * pz) / area
       const w2 = (ux * pz - px * uz) / area
