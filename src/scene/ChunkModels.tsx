@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   DoubleSide, MeshBasicMaterial, MeshLambertMaterial,
-  type BufferGeometry, type Material,
+  type BufferAttribute, type BufferGeometry, type Material,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import {
@@ -25,6 +25,7 @@ import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates } from './shell'
+import { cardShells, type CardShells } from './cards'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -47,6 +48,8 @@ interface Placed {
 interface Land extends Placed {
   /** 원작이 땅을 안 만든 숲 바닥. 둘레 지형의 타일로 메운다 (`plates.floorPatch`) */
   floor: FloorPatch | null
+  /** 울타리·표지판의 옆면. 원작은 판 한 장이라 옆에서 사라진다 (`cards.ts`) */
+  shells: CardShells | null
 }
 
 interface Prop extends Placed {
@@ -113,6 +116,25 @@ function materialKey(spec: ChunkMesh['materials'][number], twoSided: boolean): s
  * 바닥 삼각형 보관함. 쪼갠 결과와 마찬가지로 청크마다 늘 같으므로 한 번만 센다
  */
 const floorCache = new Map<string, FloorSource>()
+
+/**
+ * 오려 낸 판의 옆면 보관함. 쪼갠 결과와 마찬가지로 청크마다 늘 같다 —
+ * 청크를 넘을 때마다 실루엣을 다시 훑으면 그 순간 끊긴다
+ */
+const shellCache = new Map<string, CardShells | null>()
+
+function cachedShells(
+  key: string, mesh: ChunkMesh, cutout: readonly boolean[],
+  split: ReturnType<typeof cachedSplit>, sheet: TexSheet,
+): CardShells | null {
+  const hit = shellCache.get(key)
+  if (hit !== undefined) return hit
+  const made = cardShells(
+    mesh, cutout,
+    (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array, sheet)
+  shellCache.set(key, made)
+  return made
+}
 
 function cachedFloors(key: string, split: ReturnType<typeof cachedSplit>): FloorSource {
   const hit = floorCache.get(key)
@@ -276,6 +298,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             floor: floorPatch(
               split, (x, z, near) => groundAt(x + originX, z + originZ, near),
               borrowed, p.source),
+            shells: cachedShells(
+              `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet),
           }
         })
         setPlaced(next)
@@ -341,6 +365,13 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           */}
           {p.floor && (
             <mesh geometry={p.floor.geometry} material={p.materials} receiveShadow />
+          )}
+          {/*
+            울타리·표지판의 옆면. 원작 판 한 장을 세워 놔도 옆에서 보면 선
+            하나로 사라진다 — 그림의 실루엣을 그대로 밀어내 두께를 준다
+          */}
+          {p.shells && (
+            <mesh geometry={p.shells.geometry} material={p.materials} castShadow receiveShadow />
           )}
         </group>
       ))}
