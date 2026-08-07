@@ -18,6 +18,7 @@ import {
 } from './chunkMesh'
 import {
   cachedSplit, cutoutGroups, floorPatch, grassColors, plateColors, treeSites, waterColors,
+  type FloorPatch,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
@@ -43,8 +44,8 @@ interface Placed {
 
 /** 청크 지형. 소품과 달리 숲 바닥을 메울 판을 하나 더 갖는다 */
 interface Land extends Placed {
-  /** 숲 바닥에 남은 구멍을 메운 판. 없으면 null (`plates.floorPatch`) */
-  floor: BufferGeometry | null
+  /** 원작이 땅을 안 만든 숲 바닥. 둘레 지형의 타일로 메운다 (`plates.floorPatch`) */
+  floor: FloorPatch | null
 }
 
 interface Prop extends Placed {
@@ -116,23 +117,6 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Buffer
   return made
 }
 
-/**
- * 메운 바닥의 색. 그 칸을 덮던 원작 잎 그림에서 **제일 어두운 잎 색**을 쓴다.
- *
- * 숲 바닥은 잎에 덮여 그늘진 자리다. 밝은 잎 색을 쓰면 바닥이 우듬지처럼
- * 빛나고, 우리가 아무 갈색이나 고르면 지역마다 다른 원작 색조가 사라진다
- */
-function floorColor(mesh: ChunkMesh, sheet: TexSheet | null, group: number): number {
-  const spec = mesh.materials[group]
-  const item = sheet?.items.find((s) => s.tex === spec?.tex && s.pal === (spec.pal ?? ''))
-  if (!sheet || !item) return 0x2f4a2c
-  const { leaf } = plateColors(sheet, item)
-  return leaf[leaf.length - 1] ?? 0x2f4a2c
-}
-
-/** 메운 바닥은 색을 정점이 나르므로 재질이 한 벌이면 된다 */
-const floorMaterial = new MeshLambertMaterial({ vertexColors: true })
-
 interface Props {
   grid: MapGrid
   chunkIndex: number
@@ -195,12 +179,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             mesh,
             geometry: split.geometry,
             materials: materialsFor(mesh, sheet, cache, cutout),
-            // 원작이 깔아 둔 평평한 바닥 판으로도 15.6%가 안 덮인다. 남는 칸에만
-            // 판을 깐다 — 높이는 BDHC가, 색은 그 칸을 덮던 원작 잎 그림이 준다
+            // 원작 숲에는 바닥이 없다 — 잎에 가려 보일 일이 없어서 안 만든 것이다.
+            // 칸마다 제일 가까운 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓴다
             floor: floorPatch(
-              split,
-              (x, z, near) => groundAt(x + originX, z + originZ, near),
-              (group) => floorColor(mesh, sheet, group)),
+              split, (x, z, near) => groundAt(x + originX, z + originZ, near)),
           }
         })
         setPlaced(next)
@@ -264,7 +246,9 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             숲 바닥의 구멍. 원작은 서 있는 잎 판이 제 바닥 판보다 옆으로 더
             나가 있어서, 걷어내고 나면 잎 칸의 15.6%가 발밑이 뚫린다
           */}
-          {p.floor && <mesh geometry={p.floor} material={floorMaterial} receiveShadow />}
+          {p.floor && (
+            <mesh geometry={p.floor.geometry} material={p.materials} receiveShadow />
+          )}
         </group>
       ))}
       {/*

@@ -34,40 +34,40 @@ export const wrap = style({
  */
 export const sky = style({
   position: 'absolute',
-  inset: '-6%',
-  zIndex: -1,
-  background:
-    'radial-gradient(120% 80% at 50% 8%, #cfe4f7 0%, #8fb8dd 26%, #4d7fae 52%, #1d3350 78%, #0a1120 100%)',
+  inset: 0,
+  zIndex: -2,
+  backgroundImage: "url('/assets/radiant-platinum-intro.png')",
+  backgroundPosition: 'center',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
   animation: `${drift} 26s ease-in-out infinite`,
 })
 
 /** 아래쪽 땅. 지평선이 있으면 하늘이 하늘로 읽힌다 */
 export const ground = style({
   position: 'absolute',
-  left: '-10%',
-  right: '-10%',
-  bottom: '-42%',
-  height: '78%',
+  inset: 0,
   zIndex: -1,
-  borderRadius: '50% 50% 0 0',
-  background: 'linear-gradient(180deg, #4a7a45 0%, #2c5230 40%, #14251a 100%)',
-  boxShadow: '0 -18px 60px rgba(6, 12, 22, 0.55)',
+  background:
+    'linear-gradient(180deg, transparent 58%, rgba(2, 3, 6, 0.2) 72%, rgba(2, 3, 6, 0.82) 100%)',
+  pointerEvents: 'none',
 })
 
 export const head = style({
-  gridRow: 2,
+  position: 'absolute',
+  left: '50%',
+  bottom: 'clamp(20px, 3.5vh, 42px)',
+  zIndex: 1,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
-  gap: 26,
-  paddingBottom: 8,
+  gap: 10,
+  width: 'min(560px, calc(100vw - 32px))',
+  transform: 'translateX(-50%)',
 })
 
 export const crest = style({
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 2,
+  display: 'none',
 })
 
 /** 위에 작게 얹히는 줄 */
@@ -112,14 +112,15 @@ export const sub = style({
 
 export const menu = style({
   display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'stretch',
+  flexDirection: 'row',
+  alignItems: 'center',
   gap: 10,
-  width: 'min(360px, 76vw)',
+  width: '100%',
 })
 
 export const button = style({
   position: 'relative',
+  flex: 1,
   appearance: 'none',
   padding: '13px 22px',
   fontSize: 17,
@@ -169,14 +170,7 @@ export const hint = style({
 
 /** 화면 아래에 붙는 조작 안내 */
 export const foot = style({
-  gridRow: 3,
-  alignSelf: 'end',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 3,
-  paddingBottom: 18,
-  textAlign: 'center',
+  display: 'none',
 })
 
 /** 리포트 요약. 원작 메인 메뉴도 이 넷을 보여준다 */
@@ -192,6 +186,7 @@ export const summary = style({
   border: '1px solid rgba(255,255,255,0.14)',
   borderRadius: 10,
   backdropFilter: 'blur(3px)',
+  boxShadow: '0 10px 32px rgba(0, 0, 0, 0.45)',
 })
 
 globalStyle(`${summary} dt`, { opacity: 0.62 })

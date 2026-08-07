@@ -148,7 +148,10 @@ export function isBakedShadow(mesh: ChunkMesh, group: number): boolean {
  */
 export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split {
   const src = mesh.geometry
-  const position = (src.getAttribute('position') as BufferAttribute).array as Float32Array
+  const source = (src.getAttribute('position') as BufferAttribute).array as Float32Array
+  // 누워 있는 오려 낸 판(울타리·표지판)을 세운다. 원본은 안 건드린다 —
+  // 청크는 캐시돼 있고 텍스처 묶음이 다르면 오려 낸 판도 달라진다
+  const position = standCutouts(mesh, cutout, source)
   const index = src.getIndex()!.array
   const cells = new Map<number, Cell>()
   const shadows = new Set<number>()
@@ -165,11 +168,11 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
     for (let t = 0; t < count; t += 3) {
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       if (!foliage) { kept.push(a, b, c); continue }
-      // **평평한 잎 판은 잎이 아니라 숲 바닥이다.** 오버월드에 10,580개 있고
-      // 전부 BDHC 지면에서 **정확히 0.06타일(1도트)** 위다 — 표본 89,178개의
-      // p05·중앙값·p95가 셋 다 0.06이다. 흩어짐이 없으니 우연이 아니라 규칙이다.
-      // 걷어내면 숲 바닥이 통째로 뚫린다(잎 칸의 69%가 이 판만 덮고 있다)
-      if (isLevel(position, a, b, c)) kept.push(a, b, c)
+      // ⚠️ **평평한 잎 판은 숲 바닥이 아니다.** 한 번 그렇게 읽고 남겨 뒀다가
+      // 틀렸다: 지면에서 정확히 0.06타일(1도트) 위라는 것은 **어디 놓였는지**를
+      // 말할 뿐 무엇을 그린 것인지는 말하지 않는다. 남겨 보니 나무마다 밑에
+      // 검푸른 원반이 깔렸다 — 저건 바닥이 아니라 *위에서 내려다본 우듬지*다.
+      // 바닥은 `floorPatch`가 **둘레 지형의 타일**로 메운다
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
       let z0 = Infinity, z1 = -Infinity
       for (const i of [a, b, c]) {
@@ -198,10 +201,13 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
   })
 
   const geometry = new BufferGeometry()
-  for (const name of ['position', 'uv', 'color', 'normal']) {
+  for (const name of ['uv', 'color', 'normal']) {
     const attr = src.getAttribute(name)
     if (attr) geometry.setAttribute(name, attr)
   }
+  geometry.setAttribute('position', position === source
+    ? src.getAttribute('position')
+    : new BufferAttribute(position, 3))
   geometry.setIndex(kept)
   for (const [start, count, group] of groups) {
     if (count > 0) geometry.addGroup(start, count, group)
@@ -211,76 +217,219 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
 }
 
 /**
- * 삼각형이 수평인가. 법선의 y 성분이 거의 전부면 그렇다.
+ * 누워 있는 오려 낸 판을 **세운다** (울타리·표지판·덤불).
  *
- * 잎 판은 서 있거나 35° 누워 있고, 바닥 판만 완전히 평평하다 — 0.99는 그 둘
- * 사이에 넓게 걸린 문턱이다
+ * ⚠️ 나무만 판때기인 것이 아니다. 원작은 고정 3/4 카메라를 보고 그린 것이라
+ * 울타리도 **45°로 눕혀 놓았다** — 그 각도에서 보면 서 있는 것으로 읽힌다.
+ * 우리 카메라로 보면 널판이 비스듬히 쓰러져 있다.
+ *
+ * 각도가 우연이 아니다: 오버월드 `imped`(흰 울타리) 삼각형 2,854개의 눕은 각이
+ * p05·중앙값 **둘 다 정확히 45.0°**다. `area07_hei_h`도 45.0°, `h3`는 63.4°
+ * (=atan 2)다. 이미 서 있는 것(0°)과 땅에 깔린 것(90°)은 안 건드린다.
+ *
+ * 세우는 방법은 **아래 모서리를 축으로 돌리는 것**이다. 판이 평면이라 그 평면의
+ * 수평 방향(경첩)과 오르막 방향을 뽑아, 오르막 성분만 수직으로 옮기면 된다.
+ * 그래서 45° 1타일짜리 울타리는 1.41타일 높이로 선다 — 원작 카메라에서 보이던
+ * 크기가 그것이다
  */
-function isLevel(pos: Float32Array, a: number, b: number, c: number): boolean {
-  const ax = pos[a * 3]!, ay = pos[a * 3 + 1]!, az = pos[a * 3 + 2]!
-  const ux = pos[b * 3]! - ax, uy = pos[b * 3 + 1]! - ay, uz = pos[b * 3 + 2]! - az
-  const vx = pos[c * 3]! - ax, vy = pos[c * 3 + 1]! - ay, vz = pos[c * 3 + 2]! - az
-  const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
-  const len = Math.hypot(nx, ny, nz)
-  return len > 0 && Math.abs(ny) / len > 0.99
+const STAND_MIN = 0.20
+const STAND_MAX = 0.97
+
+/** 판 하나를 세운다. 정점 자리를 제자리에서 고친다 */
+function standCard(pos: Float32Array, verts: number[], n: [number, number, number]): void {
+  // 경첩은 판 평면의 수평 방향이다. 판이 수평이면 경첩이 없다
+  const hx = n[2], hz = -n[0]
+  const hl = Math.hypot(hx, hz)
+  if (hl < 1e-6) return
+  const ux = hx / hl, uz = hz / hl
+  // 오르막은 판 안에서 제일 위를 보는 방향 — 경첩과 법선에 둘 다 수직이다
+  let sx = n[1] * uz, sy = n[2] * ux - n[0] * uz, sz = -n[1] * ux
+  const sl = Math.hypot(sx, sy, sz)
+  if (sl < 1e-6) return
+  sx /= sl; sy /= sl; sz /= sl
+  if (sy < 0) { sx = -sx; sy = -sy; sz = -sz }
+
+  let low = verts[0]!
+  for (const i of verts) if (pos[i * 3 + 1]! < pos[low * 3 + 1]!) low = i
+  const ox = pos[low * 3]!, oy = pos[low * 3 + 1]!, oz = pos[low * 3 + 2]!
+  for (const i of verts) {
+    const dx = pos[i * 3]! - ox, dy = pos[i * 3 + 1]! - oy, dz = pos[i * 3 + 2]! - oz
+    const along = dx * ux + dz * uz
+    const up = dx * sx + dy * sy + dz * sz
+    pos[i * 3] = ox + along * ux
+    pos[i * 3 + 1] = oy + up
+    pos[i * 3 + 2] = oz + along * uz
+  }
 }
 
 /**
- * 숲 바닥에 남은 구멍을 메운다. 없으면 `null`.
+ * 누운 판을 전부 세운 자리 배열. 세울 것이 없으면 원본을 그대로 돌려준다.
  *
- * 원작 숲 바닥은 위의 평평한 판이지만 그것도 잎 칸의 69%뿐이고, 진짜 지형
- * 삼각형까지 세도 **15.6%(10,095칸)**가 아무것도 안 덮인 채 남는다 — 서 있는
- * 잎 판이 제 바닥 판보다 옆으로 더 나가 있어서다. 그 칸은 발밑이 뻥 뚫린다.
- *
- * 그래서 덮인 칸을 실제로 세어 보고(판이든 지형이든) 남는 칸에만 판을 깐다.
- * 높이는 BDHC가, 색은 그 칸을 덮던 원작 잎 그림이 준다 — 우리가 고르는 것은
- * 아무것도 없다. 창 하나에 400칸 남짓이라 삼각형 800개 안쪽이다
+ * 판마다 따로 세워야 한다 — 울타리 한 줄이 한 서브메시에 다 들어 있고, 판이
+ * 저마다 다른 자리에서 시작한다. 그래서 정점을 함께 쓰는 삼각형끼리 묶는다
  */
+export function standCutouts(
+  mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array,
+): Float32Array {
+  const index = mesh.geometry.getIndex()!.array
+  let out: Float32Array | null = null
+  mesh.groups.forEach(([, start, count], group) => {
+    if (cutout[group] !== true) return
+    if (isFoliage(mesh, group, cutout) || isBakedShadow(mesh, group)) return
+
+    // 정점을 함께 쓰는 삼각형끼리 묶는다 (유니온-파인드)
+    const parent = new Map<number, number>()
+    const find = (x: number): number => {
+      let r = x
+      while (parent.get(r) !== r) r = parent.get(r) ?? r
+      return r
+    }
+    const join = (a: number, b: number) => {
+      const ra = find(a), rb = find(b)
+      if (ra !== rb) parent.set(ra, rb)
+    }
+    for (let t = 0; t < count; t += 3) {
+      for (const k of [0, 1, 2]) {
+        const i = index[start + t + k]!
+        if (!parent.has(i)) parent.set(i, i)
+      }
+      join(index[start + t]!, index[start + t + 1]!)
+      join(index[start + t]!, index[start + t + 2]!)
+    }
+
+    /** 덩이마다 면적 가중 법선과 정점 목록 */
+    const parts = new Map<number, { n: [number, number, number]; verts: Set<number> }>()
+    for (let t = 0; t < count; t += 3) {
+      const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
+      const root = find(a)
+      let part = parts.get(root)
+      if (!part) { part = { n: [0, 0, 0], verts: new Set() }; parts.set(root, part) }
+      const ax = position[a * 3]!, ay = position[a * 3 + 1]!, az = position[a * 3 + 2]!
+      const ux = position[b * 3]! - ax, uy = position[b * 3 + 1]! - ay, uz = position[b * 3 + 2]! - az
+      const vx = position[c * 3]! - ax, vy = position[c * 3 + 1]! - ay, vz = position[c * 3 + 2]! - az
+      part.n[0] += uy * vz - uz * vy
+      part.n[1] += uz * vx - ux * vz
+      part.n[2] += ux * vy - uy * vx
+      part.verts.add(a); part.verts.add(b); part.verts.add(c)
+    }
+
+    for (const part of parts.values()) {
+      const len = Math.hypot(...part.n)
+      if (len < 1e-9) continue
+      const lean = Math.abs(part.n[1]) / len
+      // 이미 선 것(0)과 땅에 깔린 것(1)은 그대로 둔다
+      if (lean < STAND_MIN || lean > STAND_MAX) continue
+      out ??= position.slice()
+      standCard(out, [...part.verts], [part.n[0] / len, part.n[1] / len, part.n[2] / len])
+    }
+  })
+  return out ?? position
+}
+
+/**
+ * 숲 바닥. 원작이 잎 판으로 가려 두고 **땅을 안 만든 자리**를 메운다.
+ *
+ * ⚠️ **원작 숲에는 바닥이 없다.** 떡잎마을 청크에서 나무 144그루 중 밑에 지형
+ * 삼각형이 있는 것이 33그루뿐이다 — 고정 카메라에서 잎에 가려 보일 일이 없어서
+ * 안 만든 것이다. 판때기를 걷어내면 그 자리가 그대로 뚫린다.
+ *
+ * ⚠️ **잎 그림으로 메우면 안 된다.** 한 번 원작의 평평한 잎 판을 남겨 봤는데,
+ * 그건 바닥이 아니라 *위에서 내려다본 우듬지*라 나무마다 밑에 검푸른 원반이
+ * 깔렸다. 메울 것은 **둘레 지형의 그 타일**이다.
+ *
+ * 그래서 칸마다 제일 가까운 **바닥 삼각형**을 찾아 그것의 서브메시와 UV 평면을
+ * 그대로 이어 쓴다. 색도 그림도 우리가 고르지 않는다 — 옆 타일이 정한다
+ */
+export interface FloorPatch {
+  geometry: BufferGeometry
+  /** `[시작, 개수, 서브메시]`. 청크 재질 배열을 그대로 쓴다 */
+  groups: [number, number, number][]
+}
+
+/** 바닥으로 칠 만큼 누워 있는가. 절벽면·울타리를 이어 쓰면 벽 그림이 땅에 깔린다 */
+const FLOOR_NORMAL = 0.7
+
 export function floorPatch(
   split: Split,
   ground: (x: number, z: number, near: number) => number | null,
-  colorOf: (group: number) => number,
-): BufferGeometry | null {
+): FloorPatch | null {
   const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
+  const uvAttr = split.geometry.getAttribute('uv') as BufferAttribute | undefined
+  const uv = uvAttr?.array as Float32Array | undefined
   const index = split.geometry.getIndex()!.array
+
+  /** 바닥 삼각형. 가까운 것을 찾고 그 UV 평면을 이어 쓰려고 미리 편다 */
+  interface Floor {
+    group: number
+    a: number; b: number; c: number
+    cx: number; cz: number
+  }
+  const floors: Floor[] = []
   const covered = new Set<number>()
-  for (let t = 0; t + 2 < index.length; t += 3) {
-    const a = index[t]! * 3, b = index[t + 1]! * 3, c = index[t + 2]! * 3
-    const ax = pos[a]!, az = pos[a + 2]!
-    const bu = pos[b]! - ax, bv = pos[b + 2]! - az
-    const cu = pos[c]! - ax, cv = pos[c + 2]! - az
-    const area = bu * cv - cu * bv
-    if (Math.abs(area) < 1e-9) continue
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
-    for (const i of [a, b, c]) {
-      x0 = Math.min(x0, pos[i]!); x1 = Math.max(x1, pos[i]!)
-      z0 = Math.min(z0, pos[i + 2]!); z1 = Math.max(z1, pos[i + 2]!)
-    }
-    for (let tz = Math.floor(z0); tz <= Math.floor(z1); tz++) {
-      for (let tx = Math.floor(x0); tx <= Math.floor(x1); tx++) {
-        // 칸 한가운데가 삼각형 안에 드는지 본다. 경계 상자로 세면 덜 덮인 칸을
-        // 덮었다고 치고 넘어가 구멍이 남는다
-        const px = tx + 0.5 - ax, pz = tz + 0.5 - az
-        const w1 = (px * cv - cu * pz) / area
-        const w2 = (bu * pz - px * bv) / area
-        if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
-        covered.add(cellKey(tx, tz))
+  for (const [start, count, group] of split.groups) {
+    for (let t = 0; t < count; t += 3) {
+      const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
+      const ax = pos[a * 3]!, ay = pos[a * 3 + 1]!, az = pos[a * 3 + 2]!
+      const ux = pos[b * 3]! - ax, uy = pos[b * 3 + 1]! - ay, uz = pos[b * 3 + 2]! - az
+      const vx = pos[c * 3]! - ax, vy = pos[c * 3 + 1]! - ay, vz = pos[c * 3 + 2]! - az
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+      const len = Math.hypot(nx, ny, nz)
+      if (len < 1e-9) continue
+      // 덮인 칸은 **어떤 면이든** 덮은 것으로 친다 — 절벽 밑에 판을 깔면 안 된다
+      const bx0 = Math.min(ax, ax + ux, ax + vx), bx1 = Math.max(ax, ax + ux, ax + vx)
+      const bz0 = Math.min(az, az + uz, az + vz), bz1 = Math.max(az, az + uz, az + vz)
+      const area = ux * vz - vx * uz
+      if (Math.abs(area) > 1e-9) {
+        for (let tz = Math.floor(bz0); tz <= Math.floor(bz1); tz++) {
+          for (let tx = Math.floor(bx0); tx <= Math.floor(bx1); tx++) {
+            const px = tx + 0.5 - ax, pz = tz + 0.5 - az
+            const w1 = (px * vz - vx * pz) / area
+            const w2 = (ux * pz - px * uz) / area
+            if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
+            covered.add(cellKey(tx, tz))
+          }
+        }
       }
+      if (Math.abs(ny) / len < FLOOR_NORMAL) continue
+      floors.push({ group, a, b, c, cx: ax + (ux + vx) / 3, cz: az + (uz + vz) / 3 })
     }
   }
+  if (floors.length === 0) return null
 
-  const position: number[] = []
-  const color: number[] = []
+  /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */
+  const bucket = new Map<number, { position: number[]; uv: number[] }>()
   for (const [key, cell] of split.cells) {
     if (covered.has(key)) continue
     const tx = cellX(key), tz = cellZ(key)
-    const y = ground(tx + 0.5, tz + 0.5, cell.minY)
+    const cx = tx + 0.5, cz = tz + 0.5
+    let best: Floor | null = null
+    let far = Infinity
+    for (const f of floors) {
+      const d = (f.cx - cx) ** 2 + (f.cz - cz) ** 2
+      if (d < far) { far = d; best = f }
+    }
+    if (!best) continue
+    const y = ground(cx, cz, cell.minY)
     if (y === null) continue
-    // 원작 바닥 판과 같은 면에 놓는다(지면 +0.06). 0.01 낮춰 두면 맞닿는
-    // 자리에서 원작 판이 이긴다 — 같은 높이면 둘이 깜빡인다
-    const h = y + 0.05
-    const rgb = colorOf(cell.group)
-    const r = ((rgb >> 16) & 255) / 255, g = ((rgb >> 8) & 255) / 255, b = (rgb & 255) / 255
+
+    // 그 삼각형의 평면을 그대로 늘린다 — 무게중심 좌표는 삼각형 밖에서도 산다
+    const ax = pos[best.a * 3]!, az = pos[best.a * 3 + 2]!
+    const ux = pos[best.b * 3]! - ax, uz = pos[best.b * 3 + 2]! - az
+    const vx = pos[best.c * 3]! - ax, vz = pos[best.c * 3 + 2]! - az
+    const area = ux * vz - vx * uz
+    const au = uv ? uv[best.a * 2]! : 0, av = uv ? uv[best.a * 2 + 1]! : 0
+    const du = uv ? uv[best.b * 2]! - au : 0, dv = uv ? uv[best.b * 2 + 1]! - av : 0
+    const eu = uv ? uv[best.c * 2]! - au : 0, ev = uv ? uv[best.c * 2 + 1]! - av : 0
+    const at = (x: number, z: number): [number, number] => {
+      if (!uv || Math.abs(area) < 1e-9) return [0, 0]
+      const px = x - ax, pz = z - az
+      const w1 = (px * vz - vx * pz) / area
+      const w2 = (ux * pz - px * uz) / area
+      return [au + w1 * du + w2 * eu, av + w1 * dv + w2 * ev]
+    }
+
+    let into = bucket.get(best.group)
+    if (!into) { into = { position: [], uv: [] }; bucket.set(best.group, into) }
     // 칸 하나를 살짝 넘겨 깐다 — 딱 맞추면 이웃 칸과의 사이에 실금이 보인다
     const e = 0.01
     const quad: [number, number][] = [
@@ -288,20 +437,29 @@ export function floorPatch(
       [tx - e, tz - e], [tx + 1 + e, tz + 1 + e], [tx - e, tz + 1 + e],
     ]
     for (const [x, z] of quad) {
-      position.push(x, h, z)
-      color.push(r, g, b)
+      into.position.push(x, y, z)
+      into.uv.push(...at(x, z))
     }
   }
-  if (position.length === 0) return null
+  if (bucket.size === 0) return null
 
-  const geo = new BufferGeometry()
-  geo.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
-  geo.setAttribute('color', new BufferAttribute(new Float32Array(color), 3))
+  const position: number[] = []
+  const texcoord: number[] = []
+  const groups: [number, number, number][] = []
+  for (const [group, part] of bucket) {
+    groups.push([position.length / 3, part.position.length / 3, group])
+    position.push(...part.position)
+    texcoord.push(...part.uv)
+  }
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(texcoord), 2))
   const normal = new Float32Array(position.length)
   for (let i = 1; i < normal.length; i += 3) normal[i] = 1
-  geo.setAttribute('normal', new BufferAttribute(normal, 3))
-  geo.computeBoundingSphere()
-  return geo
+  geometry.setAttribute('normal', new BufferAttribute(normal, 3))
+  for (const [start, count, group] of groups) geometry.addGroup(start, count, group)
+  geometry.computeBoundingSphere()
+  return { geometry, groups }
 }
 
 /**

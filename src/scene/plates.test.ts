@@ -116,11 +116,9 @@ maybe('잎 걷어내기', () => {
   it('떡잎마을 청크에서 잎만 빠지고 땅은 남는다', () => {
     const mesh = readChunk(0, fmt)
     const split = splitFoliage(mesh, all(mesh))
-    // 실측 — 삼각형 1628개 중 잎이 832개 · 구운 그림자가 58개다. 남는 946개는
-    // 원래 지형 738개 + **평평한 잎 판 208개**다: 그 208개는 잎이 아니라
-    // 숲 바닥이라 남겨야 한다 (아래 시험이 그 잣대를 잰다)
+    // 실측 — 삼각형 1628개 중 잎이 832개 · 구운 그림자가 58개, 남는 땅이 738개다
     expect(mesh.geometry.getIndex()!.count / 3).toBe(1628)
-    expect(split.geometry.getIndex()!.count / 3).toBe(946)
+    expect(split.geometry.getIndex()!.count / 3).toBe(738)
     // 잎이 덮은 칸 606개, 그중 나무가 서는 것이 144그루다
     expect(split.cells.size).toBe(606)
     expect([...split.cells].filter(([k, c]) => treeAt(k, c) !== null)).toHaveLength(144)
@@ -151,47 +149,111 @@ maybe('잎 걷어내기', () => {
     }
   })
 
-  it('평평한 잎 판은 잎이 아니라 숲 바닥이라 남는다', () => {
-    // ⚠️ **이걸 걷어내면 나무 밑이 통째로 뚫린다.** 원작은 숲 바닥을 잎과 같은
-    // 그림·같은 서브메시로 깔았다: 오버월드에 평평한 잎 판이 10,580개 있고
-    // **전부 BDHC 지면에서 정확히 0.06타일(1도트) 위**다 — 표본 89,178개의
-    // p05·중앙값·p95가 셋 다 0.06으로 흩어짐이 0이다. 잎 칸의 69%를 이 판만
-    // 덮고 있어서, 빼고 나면 그 자리에 아무것도 안 남는다
-    const mesh = oneQuad('tree01')
-    const pos = mesh.geometry.getAttribute('position') as BufferAttribute
-    // 완전히 평평한 판 — 바닥이다
-    pos.setXYZ(0, 0, 1, 0); pos.setXYZ(1, 2, 1, 0)
-    pos.setXYZ(2, 2, 1, 2); pos.setXYZ(3, 0, 1, 2)
-    expect(splitFoliage(mesh, [true]).geometry.getIndex()!.count).toBe(6)
-    // 자리는 그대로 센다 — 나무 크기가 판 더미 높이에서 나온다
-    expect(splitFoliage(mesh, [true]).cells.size).toBe(4)
+  it('원작이 땅을 안 만든 숲 바닥을 둘레 지형의 타일로 메운다', () => {
+    // ⚠️ **원작 숲에는 바닥이 없다.** 떡잎마을 청크에서 나무 144그루 중 밑에
+    // 지형 삼각형이 있는 것이 33그루뿐이다 — 고정 카메라에서 잎에 가려 보일
+    // 일이 없어 안 만든 것이다. 판때기를 걷어내면 그 자리가 그대로 뚫린다.
+    //
+    // ⚠️ **잎 그림으로 메우면 안 된다.** 원작의 평평한 잎 판을 남겨 봤더니 그건
+    // 바닥이 아니라 위에서 내려다본 우듬지라, 나무마다 밑에 검푸른 원반이 깔렸다.
+    // 메울 것은 **옆 타일**이고, 그래서 서브메시와 UV 평면을 그대로 이어 쓴다
+    const geometry = new BufferGeometry()
+    // 칸 (0,0)에 지형 한 장(서브메시 1), 칸 (1,0)에는 잎만
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([
+      // 잎 판 — 칸 (1,0)을 덮는다
+      1, 2, 0, 2, 2, 0, 2, 3, 1, 1, 3, 1,
+      // 지형 — 칸 (0,0)
+      0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1,
+    ]), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array([
+      0, 0, 1, 0, 1, 1, 0, 1,
+      // 지형 UV는 좌표를 그대로 따른다 — 메운 판이 이 평면을 이어야 한다
+      0, 0, 1, 0, 1, 1, 0, 1,
+    ]), 2))
+    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [
+        { tex: 'tree01', pal: '', rep: 0, a: 31, f: 0 },
+        { tex: 'ngrass', pal: '', rep: 0, a: 31, f: 0 },
+      ],
+      groups: [[0, 0, 6], [1, 6, 6]],
+    }
+    const split = splitFoliage(mesh, [true, false])
+    // 잎이 덮은 칸은 (1,0) 하나고 지형은 (0,0)에만 있다
+    expect([...split.cells.keys()]).toEqual([cellKey(1, 0)])
 
-    // 35° 누운 판 — 서 있는 나무 그림이라 빠진다
-    pos.setXYZ(2, 2, 2, 2); pos.setXYZ(3, 0, 2, 2)
-    expect(splitFoliage(mesh, [true]).geometry.getIndex()!.count).toBe(0)
+    const patch = floorPatch(split, () => 1)!
+    // 삼각형 둘 — 안 덮인 칸 하나
+    expect(patch.geometry.getAttribute('position').count / 3).toBe(2)
+    // **지형 서브메시로** 들어가야 한다. 잎 서브메시로 넣으면 나무 그림이 깔린다
+    expect(patch.groups.map(([, , g]) => g)).toEqual([1])
+
+    // 그리고 UV가 옆 타일의 평면을 그대로 잇는다 — 여기서는 좌표와 같다
+    const p = patch.geometry.getAttribute('position') as BufferAttribute
+    const u = patch.geometry.getAttribute('uv') as BufferAttribute
+    for (let i = 0; i < p.count; i++) {
+      expect(u.getX(i)).toBeCloseTo(p.getX(i), 5)
+      expect(u.getY(i)).toBeCloseTo(p.getZ(i), 5)
+    }
+    // 높이는 지면이 정한다. 모르는 칸은 안 깐다 — 아무 데나 깔면 허공에 판이 뜬다
+    expect(p.getY(0)).toBeCloseTo(1, 6)
+    expect(floorPatch(split, () => null)).toBeNull()
   })
 
-  it('덮이지 않고 남은 숲 바닥 칸만 메운다', () => {
-    // 원작 바닥 판으로도 잎 칸의 15.6%(10,095칸)가 안 덮인다 — 서 있는 잎 판이
-    // 제 바닥 판보다 옆으로 더 나가 있어서다. 덮인 칸을 실제로 세어 보고
-    // **남는 칸에만** 깐다: 덮인 데까지 깔면 원작 바닥과 겹쳐 깜빡인다
+  it('덮인 칸에는 안 깐다 — 원작 지형과 겹치면 깜빡인다', () => {
     const mesh = oneQuad('tree01')
     const pos = mesh.geometry.getAttribute('position') as BufferAttribute
-    // 칸 (0,0)만 덮는 평평한 판. 잎 칸은 (0,0)과 (1,0) 둘이 되게 넓게 잡는다
+    // 평평한 잎 판이 칸 (0,0)만 덮는다. 지형 삼각형은 하나도 없다
     pos.setXYZ(0, 0, 1, 0); pos.setXYZ(1, 1, 1, 0)
     pos.setXYZ(2, 1, 1, 1); pos.setXYZ(3, 0, 1, 1)
-    const split = splitFoliage(mesh, [true])
-    split.cells.set(cellKey(1, 0), { minY: 1, maxY: 2, group: 0 })
-    const patch = floorPatch(split, () => 3, () => 0x203010)!
-    // 남는 칸 하나 → 삼각형 둘
-    expect(patch.getAttribute('position').count / 3).toBe(2)
-    const p = patch.getAttribute('position') as BufferAttribute
-    // 지면 +0.05. 원작 바닥 판(+0.06)보다 살짝 낮아야 맞닿는 자리에서 안 깜빡인다
-    expect(p.getY(0)).toBeCloseTo(3.05, 6)
-    // 그리고 그 남는 칸 자리다
-    expect(p.getX(0)).toBeCloseTo(1 - 0.01, 6)
-    // 높이를 모르는 칸은 안 깐다 — 아무 데나 깔면 허공에 판이 뜬다
-    expect(floorPatch(split, () => null, () => 0)).toBeNull()
+    // 바닥 삼각형이 아예 없으면 이어 쓸 타일이 없다 — 아무것도 안 깐다
+    expect(floorPatch(splitFoliage(mesh, [true]), () => 1)).toBeNull()
+  })
+
+  it('누워 있는 울타리를 세운다 — 나무만 판때기인 것이 아니다', () => {
+    // ⚠️ 원작은 고정 3/4 카메라를 보고 그린 것이라 울타리도 **45°로 눕혀**
+    // 놓았다. 오버월드 `imped` 삼각형 2,854개의 눕은 각이 p05·중앙값 둘 다
+    // 정확히 45.0°다 — 우연이 아니라 규칙이고, 우리 카메라로 보면 널판이
+    // 비스듬히 쓰러져 있다.
+    const mesh = oneQuad('imped')
+    const pos = mesh.geometry.getAttribute('position') as BufferAttribute
+    // z 0→1로 1타일 나가면서 y 1→2로 1타일 오르는 45° 판
+    pos.setXYZ(0, 0, 1, 0); pos.setXYZ(1, 1, 1, 0)
+    pos.setXYZ(2, 1, 2, 1); pos.setXYZ(3, 0, 2, 1)
+
+    const out = splitFoliage(mesh, [true]).geometry.getAttribute('position') as BufferAttribute
+    // 아래 모서리는 제자리다 — 축이 거기다
+    expect([out.getX(0), out.getY(0), out.getZ(0)]).toEqual([0, 1, 0])
+    // 윗변이 아래 모서리 바로 위로 온다. z가 안 나가고, 높이는 판 길이 √2다
+    for (const i of [2, 3]) {
+      expect(out.getZ(i), `정점 ${String(i)} z`).toBeCloseTo(0, 6)
+      expect(out.getY(i), `정점 ${String(i)} y`).toBeCloseTo(1 + Math.SQRT2, 6)
+    }
+    // 가로 폭은 그대로다 — 축을 따라서는 안 움직인다
+    expect(out.getX(2)).toBeCloseTo(1, 6)
+
+    // 오려 낸 그림이 아니면 안 건드린다. 45° 비탈은 지형이지 판때기가 아니다
+    const slope = splitFoliage(mesh, [false]).geometry.getAttribute('position') as BufferAttribute
+    expect(slope.getZ(2)).toBe(1)
+    expect(slope.getY(2)).toBe(2)
+  })
+
+  it('이미 선 판과 땅에 깔린 판은 안 건드린다', () => {
+    // 원작에는 세 가지가 다 있다: 선 것(0°) · 누운 것(45°·63.4°) · 깔린 것(90°)
+    const upright = oneQuad('imped')
+    const u = upright.geometry.getAttribute('position') as BufferAttribute
+    u.setXYZ(0, 0, 1, 0); u.setXYZ(1, 1, 1, 0)
+    u.setXYZ(2, 1, 2, 0); u.setXYZ(3, 0, 2, 0)
+    const a = splitFoliage(upright, [true]).geometry.getAttribute('position') as BufferAttribute
+    expect([a.getY(2), a.getZ(2)]).toEqual([2, 0])
+
+    const flat = oneQuad('imped')
+    const f = flat.geometry.getAttribute('position') as BufferAttribute
+    f.setXYZ(0, 0, 1, 0); f.setXYZ(1, 1, 1, 0)
+    f.setXYZ(2, 1, 1, 1); f.setXYZ(3, 0, 1, 1)
+    const b = splitFoliage(flat, [true]).geometry.getAttribute('position') as BufferAttribute
+    expect([b.getY(2), b.getZ(2)]).toEqual([1, 1])
   })
 
   it('잎이 아닌 오려 낸 판은 안 뺀다 — 울타리는 그 자리에 남는다', () => {
