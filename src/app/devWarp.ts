@@ -12,7 +12,7 @@ import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { fieldScripts } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
-import { HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
+import { HM_CARRIER, HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
 import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
 
@@ -31,25 +31,27 @@ const HURT_FRACTION = 1 / 3
  * 대로 붙는다. 우리가 손으로 기술을 골라 넣으면 그건 원작에 없는 편성이다
  */
 /**
- * 가진 비전머신을 첫 마리에게 가르친다.
+ * 그 시점에 가진 비전머신을 **뮤 한 마리에게** 들려 보낸다.
  *
  * 확인 지점은 도구를 주는데, **도구만으로는 아무것도 안 열린다** — 원작이 보는
- * 것은 `Party_HasMonWithMove`다. 뒤 칸부터 덮어써서 자연 습득기를 다 지우지 않는다
+ * 것은 `Party_HasMonWithMove`다. 그렇다고 자연 습득기를 덮어쓰면 그 마리로
+ * 배틀을 확인할 수가 없어서, 짐꾼을 따로 한 마리 붙인다.
+ *
+ * 뮤인 이유는 원작에서 **모든 기술을 배우기** 때문이다 (`checkpoints`의 `HM_CARRIER`).
+ * 자리는 맨 끝이다 — 선두가 바뀌면 배틀에 엉뚱한 것이 먼저 나간다
  */
-function teachHms(
+function withHmCarrier(
   party: PokemonInstance[], items: readonly (readonly [number, number])[],
-  pp: (move: number) => number,
+  make: (spec: PartySpec) => PokemonInstance, pp: (move: number) => number,
 ): PokemonInstance[] {
-  const learn = items.map(([item]) => HM_TEACHES[item]).filter((m) => m !== undefined)
-  const first = party[0]
-  if (learn.length === 0 || !first) return party
-  const moves = first.moves.map((slot) => ({ ...slot }))
-  learn.forEach((move, i) => {
-    const at = moves.length - 1 - i
-    if (at < 0) return
-    moves[at] = { move, pp: pp(move), ppUps: 0 }
-  })
-  return [fillPp({ ...first, moves }, pp), ...party.slice(1)]
+  const learn = [...new Set(items.map(([item]) => HM_TEACHES[item]).filter((m) => m !== undefined))]
+  if (learn.length === 0) return party
+  // 레벨은 파티에 맞춘다. 5레벨 뮤가 끼면 그 판의 세기가 통째로 어긋나 보인다
+  const level = Math.max(5, ...party.map((m) => m.level))
+  const mew = make({ species: HM_CARRIER, level })
+  // 기술 넉 칸이라 비전머신도 넷까지다. 다섯 번째가 생기면 여기서 잘린다
+  const moves = learn.slice(0, 4).map((move) => ({ move, pp: pp(move), ppUps: 0 }))
+  return [...party.slice(0, 5), fillPp({ ...mew, moves }, pp)]
 }
 
 async function applySetup(cp: Checkpoint): Promise<void> {
@@ -67,7 +69,7 @@ async function applySetup(cp: Checkpoint): Promise<void> {
       const max = statsOf(mon, sp).hp
       return { ...mon, hp: cp.hurt ? Math.max(1, Math.floor(max * HURT_FRACTION)) : max }
     }
-    const party = teachHms(cp.party.slice(0, 6).map(make), cp.items ?? [], pp)
+    const party = withHmCarrier(cp.party.slice(0, 6).map(make), cp.items ?? [], make, pp)
     useSaveStore.setState({ party })
     // 데리고 있는 것은 이미 잡은 것이다. 이걸 안 채우면 도감이 통째로 비어서,
     // 도감 화면을 열어 봐야 210줄이 전부 `----------`이다

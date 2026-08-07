@@ -139,6 +139,9 @@ const EXTRA_BANKS = [
   // 응용 프로그램이라(`applications/rowan_intro`, `naming_screen`) 스크립트가
   // 이 뱅크를 안 가리킨다
   'TEXT_BANK_ROWAN_INTRO', 'TEXT_BANK_NAMING_SCREEN',
+  // 기술 설명 468줄. 파티 화면에서 기술에 커서를 올리면 이게 뜬다 —
+  // 스크립트가 안 가리키므로 여기 적어야 실린다
+  'TEXT_BANK_MOVE_DESCRIPTIONS',
 ]
 
 function main() {

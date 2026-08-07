@@ -19,6 +19,8 @@ export interface MenuKeys {
   /** 페이지 단위 이동 (Q/E). 목록이 길 때 쓴다 */
   pageUp?: () => void
   pageDown?: () => void
+  /** 칸 옮기기 (Tab). 한 화면 안에 목록이 둘일 때 쓴다 */
+  tab?: () => void
 }
 
 const CODES: Record<string, keyof MenuKeys> = {
@@ -29,6 +31,7 @@ const CODES: Record<string, keyof MenuKeys> = {
   Space: 'confirm', KeyZ: 'confirm', Enter: 'confirm',
   KeyX: 'cancel', Backspace: 'cancel', Escape: 'cancel',
   KeyQ: 'pageUp', KeyE: 'pageDown',
+  Tab: 'tab',
 }
 
 /**

@@ -42,6 +42,8 @@ export const UI_BANK = {
   intro: 389,
   /** `TEXT_BANK_NAMING_SCREEN` — "당신의 이름은?" */
   naming: 422,
+  /** `TEXT_BANK_MOVE_DESCRIPTIONS` — 기술 468개의 설명. 줄 바꿈까지 원작 것이다 */
+  moveDescriptions: 646,
 } as const
 
 export type UiBank = keyof typeof UI_BANK

@@ -113,6 +113,26 @@ describe('배틀 스토어', () => {
     expect(useBattleStore.getState().phase).toBe('off')
   }, 30_000)
 
+  it('파티 순서를 바꾼다 — 맨 앞이 선두다', async () => {
+    const species = await loadSpecies()
+    const moves = await loadMoves()
+    const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
+    const mon = (id: number, level: number) => fillPp(createWild({
+      species: species.get(id), level, rng: () => 0.5, otId: 1, otSecretId: 1,
+    }), pp)
+    useSaveStore.setState({ party: [mon(STARLY, 5), mon(RATTATA, 6), mon(STARLY, 7)] })
+
+    useSaveStore.getState().swapParty(0, 2)
+    expect(useSaveStore.getState().party.map((m) => m.level)).toEqual([7, 6, 5])
+
+    // 제자리로 바꾸는 것과 없는 칸은 아무 일도 아니다 — 눌러도 파티가 안 망가진다
+    const before = useSaveStore.getState().party
+    useSaveStore.getState().swapParty(1, 1)
+    useSaveStore.getState().swapParty(0, 9)
+    useSaveStore.getState().swapParty(-1, 0)
+    expect(useSaveStore.getState().party).toBe(before)
+  })
+
   it('전멸한 파티는 저절로 안 낫는다 — 회복은 포켓몬센터가 한다', async () => {
     // ⚠️ 예전엔 `ensureParty`가 "전부 쓰러졌으면 채운다"를 했다. 그러면 져도
     // 다음 배틀에서 멀쩡해져서 **진 것이 아무 일도 아니게 된다.** 지금은

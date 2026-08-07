@@ -142,6 +142,7 @@ export const hpTag = style({
 
 export const hpTrack = style({
   position: 'relative',
+  display: 'block',
   flex: 1,
   height: 7,
   borderRadius: 4,
@@ -149,7 +150,15 @@ export const hpTrack = style({
   overflow: 'hidden',
 })
 
+/**
+ * ⚠️ `display: block`이 **꼭 있어야 한다.**
+ *
+ * `<span>`은 인라인이라 `width`도 `height`도 안 먹는다. 그래서 색을 제대로
+ * 골라 넣고도 화면에는 게이지가 통째로 검게 떴다 — 홈이 보이고 채움이 없었다.
+ * 스타일만 보면 멀쩡해서 눈으로는 원인이 안 보이는 자리다
+ */
 export const hpFill = style({
+  display: 'block',
   height: '100%',
   transition: 'width 220ms linear, background-color 200ms linear',
 })
@@ -211,6 +220,50 @@ export const moveRow = style({
   borderRadius: 5,
   background: 'rgba(255, 255, 255, 0.045)',
   fontSize: 14,
+})
+
+/** 커서가 올라간 기술. 설명이 아래에 뜬다 */
+export const moveRowOn = style([moveRow, {
+  background: 'linear-gradient(180deg, #eef3ff 0%, #cddaf4 100%)',
+  color: '#111726',
+}])
+
+/** 비전머신처럼 **밖에서 쓰는** 기술. 이름 옆에 그 표시가 붙는다 */
+export const fieldTag = style({
+  flex: '0 0 auto',
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: '0.06em',
+  padding: '1px 6px',
+  borderRadius: 999,
+  background: 'rgba(120, 200, 140, 0.22)',
+  color: '#9fe6b4',
+  selectors: {
+    [`${moveRowOn} &`]: { background: 'rgba(20, 90, 45, 0.18)', color: '#1c6b38' },
+  },
+})
+
+/**
+ * 기술 설명. 롬의 글이 줄 바꿈까지 들고 있어서 그대로 살린다 —
+ * `
+`을 지우면 원작이 나눠 놓은 자리가 사라진다
+ */
+export const moveText = style({
+  marginTop: 8,
+  padding: '8px 10px',
+  borderRadius: 5,
+  minHeight: 76,
+  background: 'rgba(0, 0, 0, 0.22)',
+  fontSize: 13,
+  lineHeight: 1.5,
+  opacity: 0.9,
+  whiteSpace: 'pre-line',
+})
+
+/** 자리를 바꾸려고 집어 든 카드 */
+export const cardHeld = style({
+  outline: '2px dashed #f5c542',
+  outlineOffset: -2,
 })
 
 export const movePp = style({

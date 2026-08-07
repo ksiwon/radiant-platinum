@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { walkOutOfDoor, type EventFile, type MapHeader } from '../map/world'
 import { isEncounterTile, type EncounterTable } from '../battle/encounter'
-import { CHECKPOINTS, resolveSpot, seenAlongTheWay } from './checkpoints'
+import { CHECKPOINTS, HM_CARRIER, HM_TEACHES, resolveSpot, seenAlongTheWay } from './checkpoints'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'matrices/0.bin'))
@@ -21,6 +21,29 @@ function detach(p: string): ArrayBuffer {
   const buf = readFileSync(resolve(DATA, p))
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer
 }
+
+/**
+ * 비전머신을 들고 다닐 몸을 뮤로 고른 근거.
+ *
+ * 종족표의 `tm`은 TM01~92 · HM01~08 백 칸짜리 비트마스크다. 뮤는 **백 칸이
+ * 전부 켜져 있다** — 그래서 어느 시점의 비전머신이든 원작에 있는 개체로 들려
+ * 보낼 수 있다. 다른 종을 쓰면 배울 수 없는 기술을 억지로 넣게 된다
+ */
+maybe('비전머신 짐꾼', () => {
+  it('뮤는 TM·HM 백 개를 다 배운다', () => {
+    const list = (read('species.json') as { species: { id: number; tm: string }[] }).species
+    const mew = list.find((sp) => sp.id === HM_CARRIER)
+    expect(mew, '뮤가 종족표에 없다').toBeDefined()
+
+    const bits = [...mew!.tm].reduce((n, c) => n + (parseInt(c, 16).toString(2).match(/1/g)?.length ?? 0), 0)
+    expect(bits, '뮤가 못 배우는 기술이 있다').toBe(100)
+
+    // 견줄 자리 하나 — 모래두지는 백 개를 다 못 배운다. 100이 그냥 나오는 수가 아니다
+    const turtwig = list.find((sp) => sp.id === 387)!
+    const some = [...turtwig.tm].reduce((n, c) => n + (parseInt(c, 16).toString(2).match(/1/g)?.length ?? 0), 0)
+    expect(some).toBeLessThan(100)
+  })
+})
 
 maybe('확인 지점', () => {
   let maps: MapHeader[]
@@ -177,6 +200,23 @@ describe('확인 지점의 진행도', () => {
       expect(money, `${c.id}에서 소지금이 줄었다`).toBeGreaterThanOrEqual(most)
       most = money
     }
+  })
+
+  it('비전머신을 준 지점에는 그걸 쓸 몸이 같이 간다', () => {
+    // ⚠️ 도구만 줘서는 아무것도 안 열린다 — 원작이 보는 것은
+    // `Party_HasMonWithMove`다. 그래서 `devWarp`가 뮤를 한 마리 붙인다
+    let carrying = 0
+    for (const cp of CHECKPOINTS) {
+      const hms = (cp.items ?? []).map(([item]) => HM_TEACHES[item]).filter((m) => m !== undefined)
+      if (hms.length === 0) continue
+      // 기술 넉 칸이라 다섯 번째 비전머신이 생기면 여기서 걸린다
+      expect(new Set(hms).size, `${cp.id}: 비전머신이 넉 칸을 넘는다`).toBeLessThanOrEqual(4)
+      // 짐꾼이 들어갈 자리가 있어야 한다 — 파티 여섯이 꽉 차면 마지막을 밀어낸다
+      expect(cp.party?.length ?? 0, `${cp.id}: 파티가 여섯을 넘는다`).toBeLessThanOrEqual(6)
+      carrying++
+    }
+    // 36개 지점 중 비전머신을 가진 판이 이만큼이다. 0이면 이 시험에 뜻이 없다
+    expect(carrying).toBeGreaterThan(10)
   })
 
   it('지나온 자리의 야생이 뒤로 갈수록 늘기만 한다', () => {

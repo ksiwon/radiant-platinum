@@ -107,7 +107,7 @@ const HM_CUT = 420, HM_FLY = 421, HM_SURF = 422, HM_STRENGTH = 423
  *
  * ⚠️ **도구만 줘서는 아무것도 안 열린다.** 물을 가르는 것은 가방이 아니라
  * 파티가 그 기술을 아는가다(`Party_HasMonWithMove`). 확인 지점이 도구를 주면
- * 파티에도 가르쳐 놓아야 그 자리에서 실제로 써 볼 수 있다
+ * 파티에도 그 기술이 있어야 그 자리에서 실제로 써 볼 수 있다
  */
 export const HM_TEACHES: Readonly<Record<number, number>> = {
   [HM_CUT]: 15,
@@ -115,6 +115,18 @@ export const HM_TEACHES: Readonly<Record<number, number>> = {
   [HM_SURF]: 57,
   [HM_STRENGTH]: 70,
 }
+
+/**
+ * 비전머신을 들고 다닐 몸.
+ *
+ * 뮤는 원작에서 **모든 기술을 배운다**(`personal`의 배울 수 있는 기술 표가
+ * 전부 켜져 있다). 그래서 확인 지점마다 "지금 있는 비전머신을 다 아는 한 마리"를
+ * 세우는 데 이보다 나은 종이 없다 — 다른 종을 쓰면 배울 수 없는 기술을 억지로
+ * 넣게 되고, 그건 원작에 없는 개체다.
+ *
+ * ⚠️ 이건 **시험용 판에만** 선다. 실제 진행에서는 나오지 않는다
+ */
+export const HM_CARRIER = 151
 
 /**
  * 체육관을 이기면 받는 기술머신.

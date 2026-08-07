@@ -19,7 +19,10 @@ import { ScriptContext, ScriptError } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { npcActors, spawnNpcs } from '../actor/npcs'
 import { obstacleAt } from '../actor/obstacles'
-import { fieldMoveHere } from './fieldMoves'
+import {
+  FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
+  type FieldMoveId, type FieldSpot, type Trainer,
+} from './fieldMoves'
 import { trainerInSight } from '../actor/sight'
 import { DIR, type Movable, type MovementTable } from './movement'
 import { TEXT_SPEED, type PrinterInput } from './printer'
@@ -415,42 +418,70 @@ function tryTalk(): void {
  * 표에는 있으니 날씨가 들어오면 `FieldSpot`에 `fog`·`dark`를 채우면 된다
  */
 function tryFieldMove(front: { x: number; z: number }): void {
-  const p = worldState.player
-  if (p.hop.active) return
-  const grid = mapWorld.grid
-  if (!grid) return
-  const badges = fieldScripts.services?.fieldMoves?.badges()
-  if (badges === undefined) return
+  const spot = spotAt(front)
+  if (spot === null) return
+  const id = fieldMoveHere(spot, trainerNow())
+  if (id !== null) runFieldMove(id, front)
+}
 
-  const actor = obstacleAt(front.x, front.z)
-  const id = fieldMoveHere({
+/** 지금 앞에 무엇이 있는가. 격자가 없거나 뛰는 중이면 null */
+function spotAt(front: { x: number; z: number }): FieldSpot | null {
+  const p = worldState.player
+  if (p.hop.active) return null
+  const grid = mapWorld.grid
+  if (!grid) return null
+  return {
     frontBehavior: grid.behavior(front.x, front.z),
-    frontSprite: actor?.info.sprite ?? null,
+    frontSprite: obstacleAt(front.x, front.z)?.info.sprite ?? null,
     quarter: quarterOf(p.facing),
     surfing: p.surfing,
-  }, {
-    badges,
-    knows: (move) => fieldScripts.services?.fieldMoves?.knows(move) === true,
-  })
-  if (id === null) return
+  }
+}
 
+/** 뱃지와 파티. 세이브에 있는 것이라 서비스로 받는다 */
+function trainerNow(): Trainer {
+  return {
+    badges: fieldScripts.services?.fieldMoves?.badges() ?? 0,
+    knows: (move) => fieldScripts.services?.fieldMoves?.knows(move) === true,
+  }
+}
+
+/** 지금 서 있는 자리에서 앞 칸 */
+export function frontTile(): { x: number; z: number } {
+  const p = worldState.player
+  return tileInFront(p.position.x, p.position.z, p.facing)
+}
+
+/**
+ * 기술 하나를 실제로 쓴다.
+ *
+ * ⚠️ 원작이 여는 `FIELD_MOVES` 스크립트(컷인과 대사)는 아직 안 돌린다. 하는
+ * 일만 한다 — 연출이 빠진 것이지 조건이 다른 것은 아니다
+ */
+export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): boolean {
+  const p = worldState.player
+  const grid = mapWorld.grid
+  if (!grid) return false
   const step = FACING_STEP[quarterOf(p.facing)]!
   switch (id) {
     case 'cut':
-    case 'rockSmash':
+    case 'rockSmash': {
       // `RemoveObject VAR_LAST_TALKED`. 맵을 다시 들어오면 되살아난다 —
       // 원작도 플래그로 지우지 않는다
-      if (actor) actor.visible = false
-      return
+      const actor = obstacleAt(front.x, front.z)
+      if (!actor) return false
+      actor.visible = false
+      return true
+    }
     case 'strength':
       // 원작은 여기서 미는 것을 **허락만** 한다. 실제로 미는 것은 걸어가서 하는
       // 일이라 이동 시스템이 가져간다 (`actor/player`)
       p.strength = true
-      return
+      return true
     case 'surf':
       p.surfing = true
       hopTo(front.x + 0.5, front.z + 0.5)
-      return
+      return true
     case 'waterfall':
     case 'rockClimb': {
       // 같은 거동이 이어지는 만큼 올라간다. 그 너머가 막혔으면 안 오른다
@@ -458,13 +489,38 @@ function tryFieldMove(front: { x: number; z: number }): void {
       let x = front.x, z = front.z
       while (grid.behavior(x + step.x, z + step.z) === behavior) { x += step.x; z += step.z }
       const landX = x + step.x, landZ = z + step.z
-      if (grid.isBlocked(landX, landZ)) return
+      if (grid.isBlocked(landX, landZ)) return false
       hopTo(landX + 0.5, landZ + 0.5)
-      return
+      return true
     }
     default:
-      return
+      // 안개제거·플래시는 지울 날씨가 없고, 공중날기는 목적지를 화면이 고른다
+      return false
   }
+}
+
+/** 기술 창에서 골랐을 때 어떻게 되는가 */
+export type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere'
+
+/**
+ * 파티 화면의 기술 칸에서 쓴다 (`FieldMoves_Set*Task`).
+ *
+ * 앞에 대고 A를 누르는 길(`Field_TileBehaviorToScript`)과 **조건이 같다** —
+ * 원작도 두 길이 같은 `FieldMoves_Check*`를 지난다. 다른 것은 여기서는
+ * "왜 안 되는지"를 돌려준다는 것뿐이다.
+ *
+ * 공중날기만 여기서 안 끝난다 — 어디로 갈지는 화면이 고른다
+ */
+export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
+  const id = (Object.keys(FIELD_MOVES) as FieldMoveId[]).find((k) => FIELD_MOVES[k].move === move)
+  if (id === undefined) return null
+  const denial = whyNot(id, trainerNow())
+  if (denial !== null) return denial
+  if (id === 'fly') return 'fly'
+  const front = frontTile()
+  const spot = spotAt(front)
+  if (spot === null || !movesUsableHere(spot).includes(id)) return 'notHere'
+  return runFieldMove(id, front) ? 'used' : 'notHere'
 }
 
 function hopTo(x: number, z: number): void {

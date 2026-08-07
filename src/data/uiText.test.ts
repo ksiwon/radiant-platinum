@@ -29,6 +29,7 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   common: 'common_strings',
   intro: 'rowan_intro',
   naming: 'naming_screen',
+  moveDescriptions: 'move_descriptions',
 }
 
 describe('메뉴 글', () => {

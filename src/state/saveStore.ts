@@ -168,6 +168,13 @@ interface SaveStore extends SaveData {
   addMoney: (amount: number) => void
   /** 낸다. 모자라면 false */
   spendMoney: (amount: number) => boolean
+  /**
+   * 파티 두 마리의 자리를 바꾼다.
+   *
+   * 맨 앞이 **선두**다 — 배틀에 먼저 나가고 야생 조우의 레벨 판정도 그 마리가
+   * 기준이라, 순서는 화면 장식이 아니다
+   */
+  swapParty: (a: number, b: number) => void
   /** 부활 지점을 옮긴다. 포켓몬센터에 들어서면 씬이 부른다 */
   setHealSpot: (index: number) => void
   /** 공중날기 자리를 연다 */
@@ -276,6 +283,16 @@ export const useSaveStore = create<SaveStore>()(
 
       addMoney: (amount) =>
         set((s) => ({ money: Math.min(MAX_MONEY, s.money + amount) })),
+
+      swapParty: (a, b) =>
+        set((st) => {
+          if (a === b || a < 0 || b < 0 || a >= st.party.length || b >= st.party.length) return st
+          const party = [...st.party]
+          const held = party[a]!
+          party[a] = party[b]!
+          party[b] = held
+          return { party }
+        }),
 
       setHealSpot: (index) => { set({ healSpot: index }) },
 

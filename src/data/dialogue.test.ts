@@ -31,7 +31,7 @@ maybe('대사', () => {
   it('맵이 쓰는 뱅크 404개 + 공용을 담는다', () => {
     // 맵이 안 가리키는 것을 따로 싣는다 — 이름 짓기 표, 트레이너 대사,
     // 그리고 메뉴 화면들의 글(시작 메뉴·가방·주머니 이름·포켓몬·도감)
-    expect(index.banks.length).toBe(446)
+    expect(index.banks.length).toBe(447)
     expect(index.locales).toEqual(['en', 'ko'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
