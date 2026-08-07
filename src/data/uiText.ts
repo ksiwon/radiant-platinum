@@ -45,6 +45,10 @@ export const UI_BANK = {
   naming: 422,
   /** `TEXT_BANK_MOVE_DESCRIPTIONS` — 기술 468개의 설명. 줄 바꿈까지 원작 것이다 */
   moveDescriptions: 646,
+  /** `TEXT_BANK_POKEMON_STORAGE_SYSTEM` — 박스 이름 18개와 벽지 이름 32개 */
+  storageSystem: 18,
+  /** `TEXT_BANK_BOX_MESSAGES` — 박스 화면이 띄우는 말과 능력 이름표 */
+  boxMessages: 19,
 } as const
 
 export type UiBank = keyof typeof UI_BANK
@@ -158,6 +162,26 @@ export const INTRO_TEXT = {
 
 /** 이름 짓기 화면 (`naming_screen`) */
 export const NAMING_TEXT = { player: 0, rival: 3 } as const
+
+/**
+ * 보관 시스템의 글 자리.
+ *
+ * `boxName`은 **첫 박스의 자리**다 — 앞 여섯 칸은 빈 글과 `{STRVAR_1 11}`이고
+ * 원작도 `PokemonStorageSystem_Text_Box1 + boxID`로 센다
+ */
+export const BOX_TEXT = {
+  /** `pokemon_storage_system` 뱅크 */
+  boxName: 6,
+  wallpaperName: 28,
+  /** `box_messages` 뱅크 */
+  partyFull: 5,
+  lastMon: 6,
+  boxFull: 13,
+  noItem: 20,
+} as const
+
+/** PC 메뉴의 항목 (`menu_entries`). 65 + 갈래 번호가 보관 시스템의 다섯 갈래다 */
+export const PC_MENU = { storageModes: 65 } as const
 
 /** 가방 뱅크가 상점 글까지 갖고 있다 (`TEXT_BANK_BAG`) */
 export const SHOP_TEXT = {

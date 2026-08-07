@@ -30,6 +30,8 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   intro: 'rowan_intro',
   naming: 'naming_screen',
   moveDescriptions: 'move_descriptions',
+  storageSystem: 'pokemon_storage_system',
+  boxMessages: 'box_messages',
 }
 
 describe('메뉴 글', () => {

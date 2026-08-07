@@ -6,10 +6,11 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  dialogueIndexSchema, itemFileSchema, itemIconsSchema, labelsSchema, martTableSchema,
-  moveFileSchema, nameListSchema, scriptFileSchema, speciesFileSchema, trainerFileSchema,
-  type DialogueIndex, type Item, type ItemIcons, type Labels, type MartTable, type Move,
-  type ScriptFile, type Species, type Trainer,
+  boxWallpapersSchema, dialogueIndexSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  martTableSchema, moveFileSchema, nameListSchema, pokeIconsSchema, scriptFileSchema,
+  speciesFileSchema, trainerFileSchema,
+  type BoxWallpapers, type DialogueIndex, type Item, type ItemIcons, type Labels,
+  type MartTable, type Move, type PokeIcons, type ScriptFile, type Species, type Trainer,
 } from './schema'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
@@ -168,6 +169,16 @@ export function loadItemDescriptions(locale: DataLocale): Promise<string[]> {
 /** 아이콘 아틀라스의 칸 크기. 그림 자체는 `data/itemIcons.png`다 */
 export function loadItemIcons(): Promise<ItemIcons> {
   return fetchJson('itemIcons.json', (v) => itemIconsSchema.parse(v))
+}
+
+/** 포켓몬 아이콘 아틀라스의 칸 크기. 그림은 `data/pokeIcons.png`다 */
+export function loadPokeIcons(): Promise<PokeIcons> {
+  return fetchJson('pokeIcons.json', (v) => pokeIconsSchema.parse(v))
+}
+
+/** 박스 벽지 아틀라스. 그림은 `data/boxWallpapers.png`다 */
+export function loadBoxWallpapers(): Promise<BoxWallpapers> {
+  return fetchJson('boxWallpapers.json', (v) => boxWallpapersSchema.parse(v))
 }
 
 /** 상점 재고표. 롬이 아니라 디컴프 헤더에서 나온 것이다 (`tools/extract/marts.js`) */

@@ -63,6 +63,8 @@ export const TEXT_BANK_NAMES = [
   'common_strings',
   'rowan_intro',
   'naming_screen',
+  'pokemon_storage_system',
+  'box_messages',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

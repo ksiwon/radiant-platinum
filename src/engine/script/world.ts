@@ -131,6 +131,17 @@ export interface FieldServices {
    * 쪽 일이다
    */
   openShop?: (items: readonly number[]) => void
+  /**
+   * 보관 시스템을 연다 (`ScrCmd_OpenPokemonStorage`).
+   *
+   * 갈래는 원작의 인자 그대로다 — 0 맡긴다 · 1 꺼낸다 · 2 옮긴다 · 3 도구 옮긴다
+   * · 4 비교한다. 어느 갈래로 들어왔는지가 화면의 첫 손짓을 정한다
+   */
+  openStorage?: (mode: number) => void
+  /** 박스에 남은 자리 수 (`GetPCBoxesFreeSlotCount`) */
+  boxFreeSlots?: () => number
+  /** 파티에서 싸울 수 있는 수 + 박스에 든 수 (`CountAliveMonsAndBoxMons`) */
+  aliveAndBoxMons?: () => number
   /** 상점 재고표 (`include/data/mart_items.h`). 일반 상점은 뱃지 수로 늘어난다 */
   martStock?: {
     common: () => number[]

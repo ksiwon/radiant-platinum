@@ -21,12 +21,12 @@ import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
 import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
-import { createWild, fillPp, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
+import {
+  createWild, fillPp, PARTY_MAX, statsOf, type PokemonInstance,
+} from '../engine/pokemon/instance'
+import { store as storeInBox } from '../engine/pokemon/boxes'
 import { gameLocale } from './optionsStore'
 import { dexSet, useSaveStore } from './saveStore'
-
-/** 파티 최대 인원. 넘으면 박스로 간다 */
-const PARTY_MAX = 6
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
@@ -248,9 +248,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           otSecretId: save.trainer.secretId,
           ball: Ball.POKE,
         }
-        // 파티가 차 있으면 박스로 간다. 원작과 같다
+        // 파티가 차 있으면 박스로 간다 (`PCBoxes_TryStoreBoxMon`). **지금 열려
+        // 있는 박스**부터 자리를 찾고 차 있으면 다음 박스로 넘어간다 — 마지막
+        // 박스에 쌓는 것이 아니다. 540칸이 다 차면 그 마리는 잃는다
         if (party.length < PARTY_MAX) party = [...party, mon]
-        else boxes = [...boxes.slice(0, -1), [...(boxes[boxes.length - 1] ?? []), mon]]
+        else boxes = storeInBox(boxes, save.currentBox, mon)?.boxes ?? boxes
         pokedex = {
           seen: dexSet(pokedex.seen, mon.species),
           caught: dexSet(pokedex.caught, mon.species),

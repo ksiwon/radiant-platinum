@@ -373,6 +373,10 @@ const IDLE_COMMANDS = [
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
   'BlackOutFromBattle2',
+  // 박스를 세는 둘은 **예/아니오 너머**에 있다. 육아방은 "맡기시겠습니까?"를
+  // 물은 뒤에 세고(`DayCareCommon_TryRaisePokemon`), 사파리 게이트도 값을 내겠냐고
+  // 물은 뒤에 남은 자리를 본다. 훑기는 메뉴에 답을 안 하므로 그 가지에 못 들어간다
+  'CountAliveMonsAndBoxMons', 'GetPCBoxesFreeSlotCount',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다
   'GetItemQuantity',
 ]

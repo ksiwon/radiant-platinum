@@ -375,6 +375,28 @@ on('PokeMartSpecialties', openShop((ctx) => {
   return ctx.host.world.services.martStock?.specialties(martID) ?? []
 }))
 
+// ── 보관 시스템 ──────────────────────────────────────────────────────────────
+//
+// PC 앞에서 "포켓몬을 맡긴다"를 고르면 이 명령이 돈다. 화면이 닫힐 때까지 서고,
+// 돌아오면 스크립트가 다시 PC 메뉴를 띄운다 (`CommonScript_PCFadeInAccessWhichPC`).
+on('OpenPokemonStorage', (ctx) => {
+  // ⚠️ 인자를 **먼저** 읽는다. 화면이 안 붙어 있어도 바이트는 지나가야 한다
+  const mode = ctx.readByte()
+  ctx.host.world.services.openStorage?.(mode)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+on('GetPCBoxesFreeSlotCount', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.boxFreeSlots?.() ?? 0)
+  return false
+})
+
+on('CountAliveMonsAndBoxMons', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.aliveAndBoxMons?.() ?? 0)
+  return false
+})
+
 on('ShowMenu', showMenu(() => 1))
 on('ShowListMenu', showMenu(() => 1))
 on('ShowMenuMultiColumn', showMenu((ctx) => Math.max(1, ctx.readByte())))

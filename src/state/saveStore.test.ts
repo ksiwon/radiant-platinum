@@ -3,7 +3,8 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect } from 'vitest'
 import { get, set, createStore } from 'idb-keyval'
-import { DEX_BYTES, createNewSave, dexHas, dexSet } from './saveStore'
+import { DEX_BYTES, createNewSave, dexHas, dexSet, useSaveStore } from './saveStore'
+import type { PokemonInstance } from '../engine/pokemon/instance'
 
 describe('도감 비트필드', () => {
   it('세트한 번호만 켜진다', () => {
@@ -64,5 +65,66 @@ describe('IndexedDB 영속화', () => {
     const afterWrite = dexSet(viaJson.pokedex.seen, 25)
     expect(afterWrite.length).toBe(0)
     expect(dexHas(afterWrite, 387)).toBe(false) // 387번 기록 소실
+  })
+})
+
+/**
+ * 맡기기·꺼내기의 두 제한.
+ *
+ * 원작이 막는 자리가 정확히 둘이고, 둘 다 **마릿수가 아니라 살아 있는 수**로
+ * 판단한다 (`BoxAppMan_OnLastAliveMon`). 마릿수로 세면 다섯이 기절한 파티에서
+ * 남은 하나를 맡길 수 있게 되고, 그 판은 필드에 나가는 순간 끝난다
+ */
+describe('박스에 맡기고 꺼내기', () => {
+  const mon = (species: number, hp = 20): PokemonInstance => ({
+    species, pid: species, nickname: null, exp: 0, level: 5,
+    ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+    moves: [], hp, status: 'ok', statusTurns: 0, heldItem: 0,
+    friendship: 70, otId: 0, otSecretId: 0, ball: 0,
+  })
+
+  const reset = (party: PokemonInstance[], currentBox = 0): void => {
+    useSaveStore.setState({ ...createNewSave(), party, currentBox })
+  }
+
+  it('싸울 수 있는 마지막 한 마리는 못 맡긴다', () => {
+    reset([mon(387)])
+    expect(useSaveStore.getState().depositMon(0)).toBeNull()
+    expect(useSaveStore.getState().party).toHaveLength(1)
+  })
+
+  it('다섯이 기절해 있으면 남은 하나도 못 맡긴다', () => {
+    reset([mon(387), mon(390, 0), mon(393, 0), mon(396, 0), mon(399, 0), mon(400, 0)])
+    expect(useSaveStore.getState().depositMon(0)).toBeNull()
+    // 기절한 마리는 하나뿐이어도 맡길 수 있다 — 원작이 옮기려는 마리의 HP까지 본다
+    expect(useSaveStore.getState().depositMon(1)).toEqual({ box: 0, slot: 0 })
+    expect(useSaveStore.getState().party).toHaveLength(5)
+  })
+
+  it('맡긴 것은 지금 열려 있는 박스로 간다', () => {
+    reset([mon(387), mon(390)], 7)
+    expect(useSaveStore.getState().depositMon(1)).toEqual({ box: 7, slot: 0 })
+    expect(useSaveStore.getState().boxes[7]![0]?.species).toBe(390)
+    expect(useSaveStore.getState().boxes[0]![0]).toBeNull()
+  })
+
+  it('파티가 여섯이면 못 꺼낸다', () => {
+    reset(Array.from({ length: 6 }, (_, i) => mon(400 + i)))
+    useSaveStore.setState({
+      boxes: useSaveStore.getState().boxes.map((box, i) =>
+        (i === 0 ? [mon(387), ...box.slice(1)] : box)),
+    })
+    expect(useSaveStore.getState().withdrawMon({ box: 0, slot: 0 })).toBe(false)
+    // 한 자리 비우면 들어온다
+    useSaveStore.setState({ party: useSaveStore.getState().party.slice(0, 5) })
+    expect(useSaveStore.getState().withdrawMon({ box: 0, slot: 0 })).toBe(true)
+    expect(useSaveStore.getState().party.at(-1)?.species).toBe(387)
+    expect(useSaveStore.getState().boxes[0]![0]).toBeNull()
+  })
+
+  it('빈 칸은 못 꺼낸다', () => {
+    reset([mon(387)])
+    expect(useSaveStore.getState().withdrawMon({ box: 3, slot: 12 })).toBe(false)
   })
 })

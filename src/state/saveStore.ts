@@ -30,7 +30,7 @@ export interface TrainerInfo {
 
 // 개체 모델은 엔진이 갖는다 — 능력치·경험치 계산이 붙어 있고 배틀에서도 같은 것을
 // 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
-import type { PokemonInstance } from '../engine/pokemon/instance'
+import { PARTY_MAX, type PokemonInstance } from '../engine/pokemon/instance'
 import { FLAG_COUNT, SAVED_VAR_COUNT } from '../engine/script/vars'
 
 export type { PokemonInstance }
@@ -38,6 +38,13 @@ export type { PokemonInstance }
 // 가방은 사전이 아니라 **주머니 8개 × 칸**이다. 원작이 그렇고, 그 모양이
 // 화면에도 그대로 드러난다 (칸 수 상한·번호순 정렬)
 import { addItem, emptyBag, removeItem, type Pockets } from '../engine/bag/bag'
+
+// 보관 시스템도 엔진이 갖는다 — 18 × 30이라는 모양과 "지금 박스에서 시작해
+// 한 바퀴"라는 규칙이 원작 코드에서 나온 것이라, 스토어가 다시 적으면 두 벌이 된다
+import {
+  BOX_COUNT, defaultWallpaper, emptyBoxes, store as storeInBox, swapSlots, withSlot,
+  type Boxes, type BoxSpot,
+} from '../engine/pokemon/boxes'
 
 /**
  * 스크립트 플래그·변수 (DATA.md §2.10).
@@ -55,7 +62,17 @@ export interface SaveData {
   /** 라이벌 이름. 대사에 끼워 넣는다 (`BufferRivalName`) */
   rivalName: string
   party: PokemonInstance[]
-  boxes: PokemonInstance[][]
+  /** 보관 시스템 18박스 × 30칸. 빈 자리는 null이다 (`engine/pokemon/boxes`) */
+  boxes: Boxes
+  /**
+   * 지금 열려 있는 박스 (`PCBoxes.currentBoxID`).
+   *
+   * 장식이 아니다 — 잡은 포켓몬이 **여기부터** 자리를 찾는다. 박스를 옮겨 두면
+   * 잡히는 자리도 따라 옮겨진다
+   */
+  currentBox: number
+  /** 박스마다의 벽지 번호 (`PCBoxes.wallpapers`) */
+  wallpapers: number[]
   bag: Pockets
   badges: number // 비트마스크
   pokedex: { seen: DexField; caught: DexField }
@@ -82,7 +99,7 @@ export interface SaveData {
   flySpots: number
 }
 
-export const SAVE_VERSION = 4
+export const SAVE_VERSION = 5
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -114,7 +131,9 @@ export function createNewSave(): SaveData {
     },
     rivalName: '',
     party: [],
-    boxes: [],
+    boxes: emptyBoxes(),
+    currentBox: 0,
+    wallpapers: Array.from({ length: BOX_COUNT }, (_, i) => defaultWallpaper(i)),
     // 원작도 빈 가방으로 시작한다. 몬스터볼은 예진호수에서 마박사가 준다
     bag: emptyBag(),
     badges: 0,
@@ -175,6 +194,20 @@ interface SaveStore extends SaveData {
    * 기준이라, 순서는 화면 장식이 아니다
    */
   swapParty: (a: number, b: number) => void
+  /** 박스를 넘긴다. 잡은 포켓몬이 이 박스부터 자리를 찾는다 */
+  setCurrentBox: (box: number) => void
+  /**
+   * 파티 한 마리를 박스로 보낸다 (`CommonScript_DepositPokemon`).
+   *
+   * ⚠️ **마지막 한 마리는 못 맡긴다.** 파티가 비면 야생과 마주쳤을 때 내보낼
+   * 것이 없다 — 원작이 "싸울 포켓몬이 없어집니다!"로 막는 자리다.
+   * 자리가 없거나 그 한 마리면 null
+   */
+  depositMon: (index: number) => BoxSpot | null
+  /** 박스 한 마리를 파티로 꺼낸다. 파티가 6마리면 false */
+  withdrawMon: (at: BoxSpot) => boolean
+  /** 박스 안에서, 또는 박스끼리 자리를 바꾼다 */
+  swapBoxSlots: (a: BoxSpot, b: BoxSpot) => void
   /** 부활 지점을 옮긴다. 포켓몬센터에 들어서면 씬이 부른다 */
   setHealSpot: (index: number) => void
   /** 공중날기 자리를 연다 */
@@ -221,6 +254,18 @@ export function startNewGame(
   })
 }
 
+/**
+ * 이 한 마리를 빼면 싸울 것이 없어지는가 (`BoxAppMan_OnLastAliveMon`).
+ *
+ * ⚠️ **마릿수가 아니라 살아 있는 수를 센다.** "여섯 마리 중 다섯이 기절"이면
+ * 남은 하나를 못 맡긴다. 거꾸로 **기절한 마리는 하나뿐이어도 맡길 수 있다** —
+ * 원작이 옮기려는 그 마리의 HP까지 함께 보기 때문이다
+ */
+function lastAliveMon(party: readonly PokemonInstance[], index: number): boolean {
+  if ((party[index]?.hp ?? 0) <= 0) return false
+  return party.filter((mon) => mon.hp > 0).length < 2
+}
+
 /** 상태 필드만. 액션은 저장하지 않는다 */
 function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
   return {
@@ -229,6 +274,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     rivalName: s.rivalName,
     party: s.party,
     boxes: s.boxes,
+    currentBox: s.currentBox,
+    wallpapers: s.wallpapers,
     bag: s.bag,
     badges: s.badges,
     pokedex: s.pokedex,
@@ -293,6 +340,32 @@ export const useSaveStore = create<SaveStore>()(
           party[b] = held
           return { party }
         }),
+
+      setCurrentBox: (box) => {
+        set({ currentBox: ((box % BOX_COUNT) + BOX_COUNT) % BOX_COUNT })
+      },
+
+      depositMon: (index) => {
+        const st = useSaveStore.getState()
+        const mon = st.party[index]
+        if (!mon || lastAliveMon(st.party, index)) return null
+        const put = storeInBox(st.boxes, st.currentBox, mon)
+        if (put === null) return null
+        set({ boxes: put.boxes, party: st.party.filter((_, i) => i !== index) })
+        return put.at
+      },
+
+      withdrawMon: (at) => {
+        const st = useSaveStore.getState()
+        const mon = st.boxes[at.box]?.[at.slot]
+        if (!mon || st.party.length >= PARTY_MAX) return false
+        set({ boxes: withSlot(st.boxes, at, null), party: [...st.party, mon] })
+        return true
+      },
+
+      swapBoxSlots: (a, b) => {
+        set((st) => ({ boxes: swapSlots(st.boxes, a, b) }))
+      },
 
       setHealSpot: (index) => { set({ healSpot: index }) },
 

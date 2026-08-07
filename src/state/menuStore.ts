@@ -13,7 +13,7 @@ import { setUiCapture } from '../engine/input/keys'
 
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
-  | 'fly'
+  | 'fly' | 'box'
   // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
   // 스택이 비어 있지 않아야 필드 입력이 멈추고 X가 시작 메뉴를 열지 않는다.
   // 그림은 `App`이 DEV에서만 동적으로 받아 그린다
@@ -30,10 +30,19 @@ interface MenuStore {
    * 스크립트가 값을 건넬 길이 없다
    */
   shopStock: number[]
+  /**
+   * 보관 시스템을 어느 갈래로 열었는가 (`OpenPokemonStorage`의 인자).
+   *
+   * 0 맡긴다 · 1 꺼낸다 · 2 옮긴다. 상점 재고와 같은 이유로 여기 있다 —
+   * 화면을 여는 인자라 컴포넌트가 못 받는다
+   */
+  boxMode: number
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고를 같이 받는다 */
   openShop: (items: readonly number[]) => void
+  /** 보관 시스템을 연다 */
+  openBox: (mode: number) => void
   back: () => void
   closeAll: () => void
 }
@@ -47,11 +56,18 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   stack: [],
   top: null,
   shopStock: [],
+  boxMode: 0,
 
   openShop: (items) => set(() => {
     const stack: MenuScreen[] = ['shop']
     capture(stack)
     return { stack, top: 'shop' as const, shopStock: [...items] }
+  }),
+
+  openBox: (mode) => set(() => {
+    const stack: MenuScreen[] = ['box']
+    capture(stack)
+    return { stack, top: 'box' as const, boxMode: mode }
   }),
 
   open: (screen) => set(() => {

@@ -49,6 +49,9 @@ export interface PokemonInstance {
   ball: number
 }
 
+/** 데리고 다닐 수 있는 수 (`MAX_PARTY_SIZE`). 넘치면 박스로 간다 */
+export const PARTY_MAX = 6
+
 export type Rng = () => number
 
 const U32 = 0x100000000

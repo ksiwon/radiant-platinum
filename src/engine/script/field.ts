@@ -8,7 +8,7 @@
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, mapById, npcsOf, NO_SCRIPT, signsOf, talkTile,
-  triggersOf, world as mapWorld, type Npc, type Sign,
+  TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
 } from '../map/world'
 import { worldState } from '../../state/worldState'
 import {
@@ -529,7 +529,29 @@ function tryTalk(): void {
   if (sign) { start(sign.script, header.scripts); return }
 
   // 그래도 없으면 타일이 하는 말을 본다 (`Field_TileBehaviorToScript`)
+  if (tryPC(front, header.scripts)) return
   tryFieldMove(front)
+}
+
+/** `SCRIPT_ID(COMMON_SCRIPTS, 18)` — 공용 스크립트 표의 `CommonScript_PC` */
+export const COMMON_SCRIPT_PC = 2018
+
+/**
+ * PC 앞에서 A를 누르면 보관 시스템이 열린다 (`Field_TileBehaviorToScript`).
+ *
+ * ⚠️ **북쪽을 볼 때만 열린다.** 원작이 `playerDir == DIR_NORTH`를 함께 본다 —
+ * PC는 벽에 붙어 있어서 옆이나 아래에서는 화면이 안 보인다. 이 조건이 없으면
+ * 책상 옆을 지나다 A를 눌러도 PC가 켜진다.
+ *
+ * 여는 것은 우리 화면이 아니라 **원작 스크립트**다. 그래야 "어느 PC를
+ * 사용하겠습니까?"부터 항목 다섯까지가 롬의 글 그대로 나온다
+ */
+function tryPC(front: { x: number; z: number }, mapFile: number): boolean {
+  const grid = mapWorld.grid
+  if (!grid) return false
+  if (grid.behavior(front.x, front.z) !== TILE_BEHAVIOR_PC) return false
+  if (QUARTER_TO_DIR[quarterOf(worldState.player.facing)] !== DIR.north) return false
+  return start(COMMON_SCRIPT_PC, mapFile)
 }
 
 /**

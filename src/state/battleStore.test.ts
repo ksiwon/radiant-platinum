@@ -201,7 +201,9 @@ describe('포획', () => {
     useBattleStore.getState().close()
 
     expect(useSaveStore.getState().party).toHaveLength(6)
-    expect(useSaveStore.getState().boxes.flat().map((m) => m.species)).toContain(RATTATA)
+    // 지금 열려 있는 박스(0번)의 **첫 빈 자리**로 간다. 마지막 박스에 쌓는 것이
+    // 아니다 — 원작의 `PCBoxes_TryStoreBoxMon`이 현재 박스부터 훑는다
+    expect(useSaveStore.getState().boxes[0]![0]?.species).toBe(RATTATA)
   }, 30_000)
 })
 

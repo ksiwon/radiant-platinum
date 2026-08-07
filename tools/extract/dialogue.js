@@ -173,6 +173,10 @@ const EXTRA_BANKS = [
   // 기술 설명 468줄. 파티 화면에서 기술에 커서를 올리면 이게 뜬다 —
   // 스크립트가 안 가리키므로 여기 적어야 실린다
   'TEXT_BANK_MOVE_DESCRIPTIONS',
+  // 보관 시스템. 박스 이름 18개와 벽지 이름이 앞쪽 뱅크에 있고, 화면이 띄우는
+  // 말("박스가 가득 찼다")은 뒤쪽 뱅크다. 박스 화면도 따로 도는 응용 프로그램이라
+  // (`applications/pc_boxes`) 스크립트가 이 둘을 안 가리킨다
+  'TEXT_BANK_POKEMON_STORAGE_SYSTEM', 'TEXT_BANK_BOX_MESSAGES',
 ]
 
 function main() {

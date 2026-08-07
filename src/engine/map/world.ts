@@ -206,6 +206,18 @@ export const TILE_BEHAVIOR_DOOR = 0x69
 export const TILE_BEHAVIOR_TABLE = 0x80
 
 /**
+ * `TILE_BEHAVIOR_PC`. 보관 시스템을 여는 칸.
+ *
+ * 값은 앞뒤 이름이 가둔다 — `UNUSED_x82` 다음, `UNUSED_x84` 앞이다. 실내
+ * 격자에 **30칸** 있고 바깥 격자에는 하나도 없다.
+ *
+ * ⚠️ 30칸이 PC 30대가 아니다 — **세로 두 칸이 한 대**다(책상과 그 위 화면).
+ * 기둥 16개 중 14개가 두 칸짜리다. 말이 걸리는 것은 밑동뿐이라, 칸 수로 PC를
+ * 세면 두 배로 샌다
+ */
+export const TILE_BEHAVIOR_PC = 0x83
+
+/**
  * 말을 걸 칸.
  *
  * 앞 칸이 계산대면 **한 칸 더** 본다 (`sub_0203C9D4`). 이게 없으면 계산대 뒤에

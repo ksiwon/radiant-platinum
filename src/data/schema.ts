@@ -305,6 +305,18 @@ export const itemIconsSchema = z.object({
   count: z.number().int().positive(),
 })
 
+/** 포켓몬 아이콘 아틀라스. 칸 하나가 32×32고 색인이 종족 번호다 */
+export const pokeIconsSchema = itemIconsSchema
+
+/** 박스 벽지 아틀라스. 한 장이 168×160이라 칸이 네모가 아니다 */
+export const boxWallpapersSchema = z.object({
+  count: z.number().int().positive(),
+  cols: z.number().int().positive(),
+  rows: z.number().int().positive(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+})
+
 /**
  * 상점 재고 (`include/data/mart_items.h`).
  *
@@ -336,4 +348,6 @@ export type ScriptCommand = ScriptFile['commands'][number]
 export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
 export type Item = z.infer<typeof itemSchema>
 export type ItemIcons = z.infer<typeof itemIconsSchema>
+export type PokeIcons = z.infer<typeof pokeIconsSchema>
+export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type MartTable = z.infer<typeof martTableSchema>

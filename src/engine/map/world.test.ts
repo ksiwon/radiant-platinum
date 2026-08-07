@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
 import {
-  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR,
+  world, warpsOf, npcsOf, resolveWarp, mapById, NO_SCRIPT, talkTile, TILE_BEHAVIOR_DOOR, TILE_BEHAVIOR_PC,
   doorEntry,
   walkOutOfDoor,
   type EventFile, type MapHeader, type Warp,
@@ -403,5 +403,83 @@ describe('계산대 너머로 말 걸기', () => {
     // 계산대가 두 칸 이어져 있으면 그 너머는 못 닿는다
     const wide = { behavior: () => TABLE }
     expect(talkTile(wide, { x: 5, z: 4 }, north)).toEqual({ x: 5, z: 3 })
+  })
+})
+
+/**
+ * PC 칸 (`TILE_BEHAVIOR_PC`).
+ *
+ * 여기가 보관 시스템으로 들어가는 유일한 문이다 — 원작에 PC를 여는 간판도
+ * NPC도 없고, 오직 이 거동의 칸 앞에서 **북쪽을 볼 때만** 열린다
+ * (`Field_TileBehaviorToScript`).
+ */
+maybe('PC 칸', () => {
+  beforeAll(() => {
+    world.maps = read('maps.json').maps
+  })
+
+  /** 실내 행렬 269개는 한 덩어리로 붙어 있다 — 맵마다 잘라 봐야 한다 */
+  const interiors = (): { meta: MatrixMeta; grid: MapGrid; map: number }[] => {
+    const index = read('matrices/interiors.json') as {
+      matrices: Record<string, MatrixMeta & { byteOffset: number }>
+    }
+    const buf = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+    const seen = new Set<number>()
+    const out = []
+    for (const m of (world.maps ?? [])) {
+      if (m.matrix === 0 || seen.has(m.matrix)) continue
+      const meta = index.matrices[String(m.matrix)]
+      if (!meta) continue
+      seen.add(m.matrix)
+      const tiles = new Uint16Array(
+        buf.buffer, buf.byteOffset + meta.byteOffset, meta.tileWidth * meta.tileHeight,
+      )
+      out.push({ meta, grid: new MapGrid(meta, tiles), map: m.id })
+    }
+    return out
+  }
+
+  it('실내에만 30칸 있다 — 바깥에는 하나도 없다', () => {
+    let inside = 0
+    for (const { meta, grid } of interiors()) {
+      for (let z = 0; z < meta.tileHeight; z++) {
+        for (let x = 0; x < meta.tileWidth; x++) {
+          if (grid.behavior(x, z) === TILE_BEHAVIOR_PC) inside++
+        }
+      }
+    }
+    expect(inside).toBe(30)
+
+    const outside = readGrid('matrices/0.json', 'matrices/0.bin')
+    let out = 0
+    for (let z = 0; z < outside.tileHeight; z++) {
+      for (let x = 0; x < outside.tileWidth; x++) {
+        if (outside.behavior(x, z) === TILE_BEHAVIOR_PC) out++
+      }
+    }
+    expect(out).toBe(0)
+  })
+
+  /**
+   * ⚠️ **PC는 한 칸이 아니라 세로 두 칸이다.** 책상과 그 위 화면이 각각 한 칸을
+   * 쓴다 — 30칸이 기둥 16개고 그중 14개가 두 칸짜리다. 그래서 "PC 칸 남쪽이
+   * 걸을 수 있는가"로 세면 위 칸이 전부 걸린다. 봐야 할 것은 **기둥의 밑동**이다
+   */
+  it('모든 PC 기둥의 밑동 앞에 설 수 있다 — 북쪽을 봐야 열리기 때문이다', () => {
+    const blocked: string[] = []
+    let feet = 0
+    for (const { meta, grid, map } of interiors()) {
+      for (let z = 0; z < meta.tileHeight; z++) {
+        for (let x = 0; x < meta.tileWidth; x++) {
+          if (grid.behavior(x, z) !== TILE_BEHAVIOR_PC) continue
+          // 밑동만 본다. 위 칸의 남쪽은 같은 PC라 막혀 있는 것이 당연하다
+          if (grid.behavior(x, z + 1) === TILE_BEHAVIOR_PC) continue
+          feet++
+          if (grid.isBlocked(x, z + 1)) blocked.push(`${String(map)}:${String(x)},${String(z)}`)
+        }
+      }
+    }
+    expect(feet).toBe(16)
+    expect(blocked).toEqual([])
   })
 })

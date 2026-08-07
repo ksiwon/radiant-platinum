@@ -11,6 +11,7 @@ import type { DataLocale } from '../data/gameData'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
+import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
@@ -136,6 +137,25 @@ const services: FieldServices = {
   menuOpen: () => useMenuStore.getState().stack.length > 0,
 
   openShop: (stock) => { useMenuStore.getState().openShop(stock) },
+
+  /**
+   * 보관 시스템 (`OpenPokemonStorage`).
+   *
+   * ⚠️ **다섯 갈래 중 셋만 연다.** 3(도구 옮긴다)과 4(비교한다)는 아직 화면이
+   * 없다 — 여는 시늉을 하고 아무것도 못 하는 것보다 안 여는 편이 낫다.
+   * 스크립트는 화면이 안 뜬 것으로 보고 바로 PC 메뉴로 돌아간다
+   */
+  openStorage: (mode) => {
+    if (mode > BOX_MODE.move) return
+    useMenuStore.getState().openBox(mode)
+  },
+
+  boxFreeSlots: () => freeSlots(useSaveStore.getState().boxes),
+
+  aliveAndBoxMons: () => {
+    const save = useSaveStore.getState()
+    return save.party.filter((mon) => mon.hp > 0).length + countAll(save.boxes)
+  },
 
   martStock: {
     // 재고표를 아직 못 받았으면 빈 상점이 뜬다. 물건을 지어내지 않는다
