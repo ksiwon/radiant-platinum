@@ -29,8 +29,11 @@ import sys
 
 import UnityPy
 
-# `fc1006_00_bugcatcher_body_col` — 번호 · 판번호 · **갈래** · 부위 · 쓰임
-NAME = re.compile(r'^(fc\d+)_(\d+)_([A-Za-z][A-Za-z0-9]*)_')
+# `tr0001_00_champion_body_col` — 번호 · 판번호 · **갈래** · 부위 · 쓰임
+#
+# 앞 두 글자가 어느 뭉치인지를 말한다: `tr`은 배틀용 등신, `fc`는 오버월드
+# 치비, `pc`는 주인공 둘. 우리는 등신을 쓴다 (PLAN §4.3)
+NAME = re.compile(r'^((?:tr|fc|pc)\d+)_(\d+)_([A-Za-z][A-Za-z0-9]*)_')
 
 # 갈래가 아니라 부위·재질을 가리키는 낱말. 이름표로 세면 안 된다
 NOT_A_ROLE = {'body', 'face', 'hair', 'wear', 'bag'}

@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { isEncounterTile } from './encounter'
+import { flatGate, isEncounterTile } from './encounter'
 
 const DECOMP = resolve(__dirname, '../../../raw/decomp')
 const HEADER = resolve(DECOMP, 'include/constants/field/map_tile_behaviors.h')
@@ -47,6 +47,27 @@ function readEncounterNames(): string[] {
   const found = [...table.matchAll(/\[(TILE_BEHAVIOR_\w+)\]\s*=\s*([^,\n]+),/g)]
   return found.filter(([, , flags]) => flags?.includes('FLAG_ENCOUNTER')).map((m) => m[1]!)
 }
+
+/**
+ * 평평한 관문의 높이. 원작 `ShouldGetRandomEncounter`가 이 세 줄이다:
+ *
+ *     u8 flatEncounterRate = 40;
+ *     if (TileBehavior_IsVeryTallGrass(...)) flatEncounterRate += 30;
+ *     else if (... == PLAYER_AVATAR_CYCLING) flatEncounterRate += 30;
+ *
+ * ⚠️ `else if`라는 것이 이 시험의 요지다. 둘 다면 100이 아니라 70이다
+ */
+describe('평평한 관문', () => {
+  it('맨땅은 40, 긴 풀은 70, 자전거도 70', () => {
+    expect(flatGate({})).toBe(40)
+    expect(flatGate({ veryTallGrass: true })).toBe(70)
+    expect(flatGate({ cycling: true })).toBe(70)
+  })
+
+  it('긴 풀 위에서 자전거를 타도 70이다 — 더해지지 않는다', () => {
+    expect(flatGate({ veryTallGrass: true, cycling: true })).toBe(70)
+  })
+})
 
 maybe('야생이 나오는 타일', () => {
   const numbers = readBehaviorNumbers()

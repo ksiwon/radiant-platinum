@@ -80,10 +80,12 @@ export function graceSteps(rate: number): number {
 /**
  * 걸음마다 하는 평평한 관문. **여기를 60%가 그냥 떨어진다.**
  *
- * 긴 풀숲이나 자전거면 70%로 올라가는데, 둘 다 아직 없다 — 긴 풀숲은 타일
- * 행동값을 아직 못 갈랐고(DATA.md §2.7의 미확정 30종), 자전거도 없다
+ * 긴 풀(`VERY_TALL_GRASS`)이나 자전거면 30이 더 붙어 70%가 된다. ⚠️ **둘은
+ * 겹치지 않는다** — 원작이 `else if`라 긴 풀 위에서 자전거를 타도 70이다
+ * (`wild_encounters.c`의 `ShouldGetRandomEncounter`)
  */
 const FLAT_GATE = 40
+const FLAT_GATE_BONUS = 30
 
 /**
  * 한 걸음에 조우가 일어나는가. **관문이 셋이다** (원작 `ShouldGetRandomEncounter`).
@@ -98,7 +100,9 @@ const FLAT_GATE = 40
  *
  * ⚠️ `state.attempts`를 **고친다**. 유예 구간이 걸음을 세야 끝나기 때문이다
  */
-export function shouldEncounter(rate: number, state: EncounterState, rng: Rng): boolean {
+export function shouldEncounter(
+  rate: number, state: EncounterState, rng: Rng, where: Footing = {},
+): boolean {
   if (rate <= 0) return false
 
   if (state.attempts < graceSteps(rate)) {
@@ -106,8 +110,22 @@ export function shouldEncounter(rate: number, state: EncounterState, rng: Rng): 
     if (rng() * 100 >= 5) return false
   }
 
-  if (rng() * 100 >= FLAT_GATE) return false
+  if (rng() * 100 >= flatGate(where)) return false
   return rng() * 100 < rate
+}
+
+/** 지금 무엇을 밟고 있고 무엇을 타고 있는가. 관문의 높이가 여기서 갈린다 */
+export interface Footing {
+  /** 긴 풀(0x03) 위인가 */
+  veryTallGrass?: boolean
+  /** 자전거를 타고 있는가. ⚠️ 아직 아무 데서도 안 켠다 — 자전거가 없다 */
+  cycling?: boolean
+}
+
+export function flatGate(where: Footing): number {
+  // 원작이 `else if`다. 긴 풀 위에서 자전거를 타도 100이 아니라 70이다
+  const bonus = where.veryTallGrass || where.cycling ? FLAT_GATE_BONUS : 0
+  return Math.min(100, FLAT_GATE + bonus)
 }
 
 /** 육상 조우 하나를 굴린다. 표가 비었으면 null */
