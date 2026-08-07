@@ -102,6 +102,81 @@ function coverage(
   return hit
 }
 
+/**
+ * 그 방향에서 봤을 때 이 자리의 **제일 바깥면**이 어디 있는가. 없으면 `NaN`.
+ *
+ * ⚠️ **이게 없으면 판이 건물에서 떨어져 선다.** 예전엔 삼각형을 전부 바운딩
+ * 박스의 끝면에 눌러 붙였는데, 처마가 벽보다 튀어나온 만큼 벽 자리의 판이
+ * 허공에 뜬다. 실루엣 칸 132만 개를 재면 **51.4%가 진짜 바깥면에서 0.25타일
+ * (4도트) 넘게** 떨어졌고 p90이 1.93타일 · 최대 36타일이었다 — 건물 옆에
+ * 판때기가 따로 서 있는 것으로 보인다.
+ *
+ * ⚠️ **격자로 재면 안 된다.** 한 번 64칸 깊이 지도로 했다가 여전히 10.8%가
+ * 떴다. 칸 안에 튀어나온 면과 들어간 면이 같이 들면 칸 값이 튀어나온 쪽이 되어,
+ * **바깥면이 반 칸만큼 부푼다.** 꼭짓점 하나하나에 대고 정확히 찾아야 한다
+ */
+function outerDepth(
+  tri: Triangles, sign: number, pu: number, pv: number,
+): number {
+  let best = NaN
+  for (let i = 0; i < tri.count; i++) {
+    if (pu < tri.u0[i]! || pu > tri.u1[i]! || pv < tri.v0[i]! || pv > tri.v1[i]!) continue
+    const au = tri.au[i]!, av = tri.av[i]!, area = tri.area[i]!
+    const w1 = ((pu - au) * tri.cv[i]! - tri.cu[i]! * (pv - av)) / area
+    const w2 = (tri.bu[i]! * (pv - av) - (pu - au) * tri.bv[i]!) / area
+    if (w1 < -1e-6 || w2 < -1e-6 || w1 + w2 > 1 + 1e-6) continue
+    const d = tri.a[i]! + w1 * tri.b[i]! + w2 * tri.c[i]!
+    if (Number.isNaN(best)) best = d
+    else best = sign > 0 ? Math.max(best, d) : Math.min(best, d)
+  }
+  return best
+}
+
+/** 한 방향에서 볼 때 필요한 것만 편 삼각형 목록. 꼭짓점마다 다시 세지 않으려고 */
+interface Triangles {
+  count: number
+  au: Float64Array; av: Float64Array
+  bu: Float64Array; bv: Float64Array
+  cu: Float64Array; cv: Float64Array
+  area: Float64Array
+  a: Float64Array; b: Float64Array; c: Float64Array
+  u0: Float64Array; u1: Float64Array; v0: Float64Array; v1: Float64Array
+}
+
+function flatten(
+  pos: ArrayLike<number>, index: ArrayLike<number>, axis: number,
+): Triangles {
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  const n = Math.floor(index.length / 3)
+  const f = () => new Float64Array(n)
+  const t: Triangles = {
+    count: 0,
+    au: f(), av: f(), bu: f(), bv: f(), cu: f(), cv: f(),
+    area: f(), a: f(), b: f(), c: f(), u0: f(), u1: f(), v0: f(), v1: f(),
+  }
+  for (let k = 0; k + 2 < index.length; k += 3) {
+    const ia = index[k]! * 3, ib = index[k + 1]! * 3, ic = index[k + 2]! * 3
+    const au = pos[ia + u]!, av = pos[ia + v]!
+    const bu = pos[ib + u]! - au, bv = pos[ib + v]! - av
+    const cu = pos[ic + u]! - au, cv = pos[ic + v]! - av
+    const area = bu * cv - cu * bv
+    if (Math.abs(area) < FLAT) continue
+    const i = t.count++
+    t.au[i] = au; t.av[i] = av
+    t.bu[i] = bu; t.bv[i] = bv; t.cu[i] = cu; t.cv[i] = cv
+    t.area[i] = area
+    // 축 좌표를 무게중심 좌표로 바로 섞을 수 있게 차이로 들고 있는다
+    t.a[i] = pos[ia + axis]!
+    t.b[i] = pos[ib + axis]! - pos[ia + axis]!
+    t.c[i] = pos[ic + axis]! - pos[ia + axis]!
+    t.u0[i] = Math.min(au, au + bu, au + cu)
+    t.u1[i] = Math.max(au, au + bu, au + cu)
+    t.v0[i] = Math.min(av, av + bv, av + cv)
+    t.v1[i] = Math.max(av, av + bv, av + cv)
+  }
+  return t
+}
+
 function boxOf(pos: ArrayLike<number>, axis: number): number[][] {
   return [(axis + 1) % 3, (axis + 2) % 3].map((a) => {
     let lo = Infinity, hi = -Infinity
@@ -268,12 +343,23 @@ export function facePlate(
   const depth = hi - lo
   if (!(depth > 0)) return null
 
-  // 바깥 끝에서 시작해 안쪽으로 `SLAB`만큼 들어간다. 원작의 제일 바깥면이
-  // 그 방향에서 볼 때 제일 앞에 온다
-  const flat = (c: number): number =>
-    (sign > 0 ? hi : lo) + sign * SLAB * ((c - lo) / depth)
-
   const u = (axis + 1) % 3, v = (axis + 2) % 3
+  const facing = flatten(pos, index, axis)
+
+  /**
+   * 그 자리의 **진짜 바깥면**으로 누른다.
+   *
+   * 바운딩 박스 끝으로 누르면 처마가 튀어나온 만큼 벽 자리의 판이 허공에 뜬다.
+   * 그 자리에 아무 면도 없으면(NaN) 그때만 박스 끝으로 떨어진다.
+   *
+   * 마지막 항은 원래 깊이 순서를 `SLAB` 두께 안에 담는 것이다 — 한 평면에
+   * 완전히 눕히면 겹친 삼각형끼리 깊이가 같아 깜빡인다
+   */
+  const flat = (pu: number, pv: number, c: number): number => {
+    const at = outerDepth(facing, sign, pu, pv)
+    const base = Number.isNaN(at) ? (sign > 0 ? hi : lo) : at
+    return base + sign * SLAB * (1 - (c - lo) / depth)
+  }
   const position: number[] = []
   const color: number[] = []
   const texcoord: number[] = []
@@ -295,7 +381,7 @@ export function facePlate(
       for (const j of order) {
         const q = p[j]!
         const out = [q[0], q[1], q[2]]
-        out[axis] = flat(q[axis])
+        out[axis] = flat(q[u], q[v], q[axis])
         position.push(out[0]!, out[1]!, out[2]!)
         color.push(r, g, b)
         texcoord.push(...atlasUv(uv, tri[j]!, rect))

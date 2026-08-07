@@ -21,7 +21,7 @@ import {
   InstancedMesh, Matrix4, MeshLambertMaterial, Quaternion, Sphere, Vector3,
 } from 'three'
 import { worldState } from '../state/worldState'
-import { cellX, cellZ, type Cell } from './plates'
+import { cellX, cellZ, type Cell, type TreeSite } from './plates'
 
 /** 잎 덩이의 세로 눌림. 1이면 완전한 공이라 버섯처럼 보인다 */
 const CROWN_SQUASH = 0.8
@@ -117,13 +117,6 @@ const RADIUS_JITTER = 0.12
  * 큰 크기 차이(숲 벽 대 길가 나무)는 안 지운다
  */
 const HEIGHT_JITTER = 0.22
-/**
- * 칸 한가운데에서 흩는 폭(타일).
- *
- * 0.5로 두면 줄기가 두 칸 격자에 맞춰 줄지어 서서 조림지처럼 보인다. 칸이
- * 두 타일이라 0.9까지는 제 칸을 안 벗어난다
- */
-const SPREAD = 0.9
 
 /**
  * 3인칭에서 카메라가 이만큼 가까운 나무는 지운다 (타일).
@@ -153,8 +146,8 @@ export interface FoliageGroup {
   key: string
   leaf: number[]
   trunk: number
-  /** [칸 열쇠, 칸, 청크 원점 x, 청크 원점 z] */
-  items: [number, Cell, number, number][]
+  /** [세울 자리, 청크 원점 x, 청크 원점 z] */
+  items: [TreeSite, number, number][]
 }
 
 /**
@@ -339,10 +332,14 @@ export type GroundAt = (x: number, z: number, near: number) => number | null
  * 수직 42고, 그림자는 뜬 높이의 30/42 = 0.71배만큼 옆으로 밀린다 — 2타일 뜬
  * 나무는 그림자가 1.4타일 떨어진 데 진다.
  */
-export function treeAt(key: number, cell: Cell, ground?: GroundAt): Matrix4 | null {
+export function treeAt(
+  key: number, cell: Cell, ground?: GroundAt, site?: { x: number; z: number },
+): Matrix4 | null {
   const tx = cellX(key), tz = cellZ(key)
-  if (((tx % STRIDE) + STRIDE) % STRIDE !== 0) return null
-  if (((tz % STRIDE) + STRIDE) % STRIDE !== 0) return null
+  if (!site) {
+    if (((tx % STRIDE) + STRIDE) % STRIDE !== 0) return null
+    if (((tz % STRIDE) + STRIDE) % STRIDE !== 0) return null
+  }
 
   // **크기를 원작 판 더미의 높이가 정한다.** 숲 벽은 판이 넉 장 쌓여 2.6타일을
   // 채우고 홀로 선 나무는 한 장에 1.1타일이다. 그 차이를 반지름으로 옮기면
@@ -352,8 +349,14 @@ export function treeAt(key: number, cell: Cell, ground?: GroundAt): Matrix4 | nu
   const r = Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, want)) + jitter
   // 키는 따로 흔든다. 균등 배율만 주면 우듬지가 한 높이에 늘어서 카펫이 된다
   const h = r * (1 + (hash(tx, tz, 11) - 0.5) * 2 * HEIGHT_JITTER)
-  const x = tx + STRIDE / 2 + (hash(tx, tz, 7) - 0.5) * SPREAD * 2
-  const z = tz + STRIDE / 2 + (hash(tx, tz, 8) - 0.5) * SPREAD * 2
+  // ⚠️ **흩지 않는다.** 예전엔 칸 한가운데에서 ±0.9타일 흩었는데, 그러면
+  // 원작이 나무 밑에 깔아 둔 그림자 판(`tshadow`)에서 나무가 벗어난다 — 홀로
+  // 선 나무 1,022그루가 **1,022그루 다** 그 동그라미 밖에 있었고 중앙값이
+  // 1.20타일이었다. 흩는 것은 반지름·키·회전이 한다.
+  //
+  // 자리는 `treeSites`가 정한다 — 그림자 판이 있으면 그 한가운데, 없으면 격자
+  const x = site ? site.x : tx + STRIDE / 2
+  const z = site ? site.z : tz + STRIDE / 2
   // 높이 자료가 없는 칸이 6%다(48,525 중 2,970). 그때만 잎 아래끝으로 물러선다
   const foot = ground?.(x, z, cell.minY) ?? cell.minY
   return new Matrix4().compose(
@@ -410,12 +413,12 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
 
   const meshes = useMemo(() => groups.map((g) => {
     const matrices: Matrix4[] = []
-    for (const [key, cell, originX, originZ] of g.items) {
-      // 지면은 **월드 좌표로** 묻는다. 흩어 놓은 자리가 청크 경계를 넘을 수 있고,
-      // 그때는 옆 청크의 판이 답이다
-      const m = treeAt(key, cell, ground
+    for (const [site, originX, originZ] of g.items) {
+      // 지면은 **월드 좌표로** 묻는다. 그림자 판에 붙은 자리가 청크 경계를 넘을 수
+      // 있고, 그때는 옆 청크의 판이 답이다
+      const m = treeAt(site.key, site.cell, ground
         ? (x, z, near) => ground(x + originX, z + originZ, near)
-        : undefined)
+        : undefined, site)
       if (!m) continue
       // 판 좌표가 청크 로컬이라 청크가 놓인 자리를 더해야 월드가 된다.
       // 높이는 청크가 이미 갖고 있어서 안 더한다 — 밑동이 곧 월드 높이다

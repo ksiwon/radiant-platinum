@@ -16,7 +16,9 @@ import {
   sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
-import { cachedSplit, cutoutGroups, grassColors, plateColors, waterColors } from './plates'
+import {
+  cachedSplit, cutoutGroups, grassColors, plateColors, treeSites, waterColors,
+} from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
@@ -147,8 +149,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           const split = cachedSplit(`${String(c.land)}/${String(texSet)}`, mesh, cutout)
           const originX = c.mx * CHUNK_TILES + CHUNK_TILES / 2
           const originZ = c.my * CHUNK_TILES + CHUNK_TILES / 2
-          for (const [cellId, cell] of split.cells) {
-            const spec = mesh.materials[cell.group]
+          for (const site of treeSites(split)) {
+            const spec = mesh.materials[site.cell.group]
             const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
             let group = byTexture.get(key)
             if (!group) {
@@ -160,7 +162,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               group = { key, ...colors, items: [] }
               byTexture.set(key, group)
             }
-            group.items.push([cellId, cell, originX, originZ])
+            group.items.push([site, originX, originZ])
           }
           return {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,

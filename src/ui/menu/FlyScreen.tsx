@@ -47,17 +47,19 @@ export function FlyScreen() {
 
   const at = Math.min(cursor, Math.max(0, spots.length - 1))
 
+  const flyTo = (i: number): void => {
+    const pick = spots[i]
+    if (!pick) return
+    const target = spawnWarp(pick.index, 'fly')
+    if (!target) return
+    world.pending = target
+    closeAll()
+  }
+
   useMenuKeys({
     up: () => { setCursor((c) => clampCursor(c, -1, spots.length)) },
     down: () => { setCursor((c) => clampCursor(c, 1, spots.length)) },
-    confirm: () => {
-      const pick = spots[at]
-      if (!pick) return
-      const target = spawnWarp(pick.index, 'fly')
-      if (!target) return
-      world.pending = target
-      closeAll()
-    },
+    confirm: () => { flyTo(at) },
     cancel: back,
   })
 
@@ -69,13 +71,20 @@ export function FlyScreen() {
     >
       <div className={css.stageWide}>
         <div className={css.list}>
-          {spots.length === 0 && (
-            <div className={css.hint}>아직 가 본 마을이 없다.</div>
-          )}
+          {spots.length === 0 && <div className={css.empty}>아직 가 본 마을이 없다</div>}
           {spots.map((s, i) => (
-            <div key={s.index} className={i === at ? css.rowOn : css.row}>
-              <span className={css.caret} aria-hidden>{i === at ? '▶' : ''}</span>
-              <span>{s.label}</span>
+            <div
+              key={s.index}
+              className={i === at ? css.rowOn : css.row}
+              onPointerEnter={() => { setCursor(i) }}
+              onClick={() => { flyTo(i) }}
+            >
+              {/* ⚠️ `caret`은 테두리로 그린 삼각형이다 — 0×0이라 안에 글자를
+                  넣으면 그 글자가 밖으로 삐져나온다. 실제로 화살표가 둘로 보였다 */}
+              {i === at && <span className={css.caret} aria-hidden />}
+              <span className={css.face}>
+                <span className={css.label}>{s.label}</span>
+              </span>
             </div>
           ))}
         </div>

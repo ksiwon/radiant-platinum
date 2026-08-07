@@ -75,6 +75,14 @@ export interface Cell {
 export interface Split {
   /** 잎이 덮은 칸. 여기에 나무를 세운다 */
   cells: Map<number, Cell>
+  /**
+   * 홀로 선 나무의 그림자 판(2×2)이 놓인 **왼쪽 위 칸**.
+   *
+   * 원작이 나무 밑에 깐 동그라미라, 그 한가운데가 곧 그 나무의 자리다.
+   * 4×8타일짜리는 안 담는다 — 숲 한 덩어리를 한 장으로 덮은 것이라
+   * 한가운데가 어느 한 그루의 자리가 아니다
+   */
+  shadows: Set<number>
   /** 잎을 뺀 나머지. 그대로 그리면 된다 */
   geometry: BufferGeometry
   /**
@@ -114,6 +122,25 @@ export function isFoliage(mesh: ChunkMesh, group: number, cutout: readonly boole
 }
 
 /**
+ * 원작이 나무 밑에 깔아 둔 **그림자 판**.
+ *
+ * 오버월드에 2,525장 있고 전부 완전히 평평하다. 폭은 2·4·8타일이고 2,254장
+ * (89.3%)이 짝수 타일에서 시작한다 — 두 칸 격자에 맞춰 깐 것이다.
+ *
+ * ⚠️ **걷어낸다.** 원작은 나무가 판때기라 그림자를 그릴 수가 없어서 땅에 동그란
+ * 그림을 깔았다. 우리는 입체 나무가 진짜 그림자를 던지므로, 이걸 남겨 두면
+ * 나무 크기와 상관없는 **똑같은 동그라미**가 그 위에 하나 더 깔린다.
+ *
+ * 자리는 버리지 않는다 — 이 판이 짝수 격자에 놓여 있다는 것이 곧 나무를
+ * 어디에 세워야 하는지의 근거다 (`Foliage`의 `treeAt`)
+ */
+const BAKED_SHADOW = /^tshadow$/
+
+export function isBakedShadow(mesh: ChunkMesh, group: number): boolean {
+  return BAKED_SHADOW.test(mesh.materials[group]?.tex ?? '')
+}
+
+/**
  * 잎을 걷어내고 덮은 칸을 돌려준다.
  *
  * 원본 지오메트리는 손대지 않는다 — 청크는 캐시돼 있고 텍스처 묶음이 다르면
@@ -124,12 +151,17 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
   const position = (src.getAttribute('position') as BufferAttribute).array as Float32Array
   const index = src.getIndex()!.array
   const cells = new Map<number, Cell>()
+  const shadows = new Set<number>()
   const kept: number[] = []
   const groups: [number, number, number][] = []
 
   mesh.groups.forEach(([, start, count], group) => {
     const begin = kept.length
     const foliage = isFoliage(mesh, group, cutout)
+    // 구운 그림자는 그리지 않는다 — 입체 나무가 진짜 그림자를 던진다.
+    // 대신 **어디 있었는지는 적어 둔다**: 그 자리가 원작 나무의 자리다
+    const shadow = isBakedShadow(mesh, group)
+    if (shadow) { soloShadows(position, index, start, count, shadows); groups.push([begin, 0, group]); return }
     for (let t = 0; t < count; t += 3) {
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       if (!foliage) { kept.push(a, b, c); continue }
@@ -170,7 +202,92 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
     if (count > 0) geometry.addGroup(start, count, group)
   }
   geometry.boundingSphere = src.boundingSphere
-  return { cells, geometry, groups }
+  return { cells, shadows, geometry, groups }
+}
+
+/**
+ * 그림자 판 중 **2×2짜리**의 왼쪽 위 칸을 모은다.
+ *
+ * 삼각형 둘이 사각형 하나다 — 원작 판은 전부 그렇게 나온다. 2×2가 아닌 것
+ * (4×4 · 8×8 · 8×2 …)은 숲 한 덩어리를 한 장으로 덮은 것이라 뺀다
+ */
+function soloShadows(
+  position: Float32Array, index: ArrayLike<number>,
+  start: number, count: number, out: Set<number>,
+): void {
+  for (let t = 0; t + 6 <= count; t += 6) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+    for (let k = 0; k < 6; k++) {
+      const i = index[start + t + k]!
+      const x = position[i * 3]!, z = position[i * 3 + 2]!
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (z < z0) z0 = z
+      if (z > z1) z1 = z
+    }
+    if (Math.abs(x1 - x0 - 2) > 0.01 || Math.abs(z1 - z0 - 2) > 0.01) continue
+    out.add(cellKey(Math.round(x0), Math.round(z0)))
+  }
+}
+
+export interface TreeSite {
+  /** 크기·색을 정하는 잎 칸 */
+  key: number
+  cell: Cell
+  /** 밑동 자리 (청크 로컬 타일) */
+  x: number
+  z: number
+}
+
+/** 몇 타일마다 한 그루. 원작 개별 나무가 폭 2.06타일이라 그것이 원작 밀도다 */
+export const TREE_STRIDE = 2
+
+/**
+ * 나무를 세울 자리들.
+ *
+ * ⚠️ **격자가 아니라 원작 그림자 판이 자리를 정한다.** 원작은 나무 밑에 동그란
+ * 판(`tshadow`)을 깔아 두었고 그것이 곧 그 나무가 서 있던 자리다. 두 칸 격자로만
+ * 세우면 판 2,525장 중 271장이 **홀수 타일에서 시작**해서, 홀로 선 나무의
+ * 15.4%가 제 동그라미에서 한 타일 벗어난다.
+ *
+ * 그래서 순서가 둘이다:
+ *  ① 홀로 선 나무의 판(2×2)마다 그 한가운데에 한 그루. 판이 덮은 칸 넷은
+ *     **가져간 것으로 표시**해서 격자가 같은 자리에 또 세우지 않게 한다
+ *  ② 판이 없는 자리는 두 칸 격자. 숲 벽은 판이 4×4·8×8로 뭉쳐 있어서 한 그루를
+ *     집어낼 수가 없고, 격자 간격이 곧 원작 나무 폭(2.06타일)이다
+ */
+export function treeSites(split: Split): TreeSite[] {
+  const out: TreeSite[] = []
+  const taken = new Set<number>()
+  for (const q of split.shadows) {
+    const qx = cellX(q), qz = cellZ(q)
+    let key = -1
+    let minY = Infinity, maxY = -Infinity, group = -1
+    for (let dz = 0; dz < 2; dz++) {
+      for (let dx = 0; dx < 2; dx++) {
+        const k = cellKey(qx + dx, qz + dz)
+        const cell = split.cells.get(k)
+        if (!cell) continue
+        // 판이 덮은 잎 칸을 다 합쳐야 크기가 그 자리 판 더미를 그대로 따른다
+        if (key < 0) { key = k; group = cell.group }
+        minY = Math.min(minY, cell.minY)
+        maxY = Math.max(maxY, cell.maxY)
+      }
+    }
+    if (key < 0) continue
+    for (let dz = 0; dz < 2; dz++) {
+      for (let dx = 0; dx < 2; dx++) taken.add(cellKey(qx + dx, qz + dz))
+    }
+    out.push({ key, cell: { minY, maxY, group }, x: qx + 1, z: qz + 1 })
+  }
+  for (const [key, cell] of split.cells) {
+    if (taken.has(key)) continue
+    const tx = cellX(key), tz = cellZ(key)
+    if (((tx % TREE_STRIDE) + TREE_STRIDE) % TREE_STRIDE !== 0) continue
+    if (((tz % TREE_STRIDE) + TREE_STRIDE) % TREE_STRIDE !== 0) continue
+    out.push({ key, cell, x: tx + TREE_STRIDE / 2, z: tz + TREE_STRIDE / 2 })
+  }
+  return out
 }
 
 /**

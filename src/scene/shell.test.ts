@@ -52,6 +52,28 @@ function readProp(index: number, fmt: Fmt): ChunkMesh {
   }
 }
 
+/**
+ * 그 (u, v)에서 제일 바깥에 있는 진짜 면의 축 좌표. 아무 면도 없으면 null.
+ *
+ * 판이 붙어야 할 자리다 — 삼각형을 실제로 훑어 찾는다
+ */
+function outerAt(tris: P3[][], at: P3, axis: number, sign: number): number | null {
+  const u = (axis + 1) % 3, v = (axis + 2) % 3
+  let best: number | null = null
+  for (const t of tris) {
+    const [a, b, c] = t as [P3, P3, P3]
+    const area = (b[u] - a[u]) * (c[v] - a[v]) - (c[u] - a[u]) * (b[v] - a[v])
+    if (Math.abs(area) < FLAT) continue
+    const w1 = ((at[u] - a[u]) * (c[v] - a[v]) - (c[u] - a[u]) * (at[v] - a[v])) / area
+    const w2 = ((b[u] - a[u]) * (at[v] - a[v]) - (at[u] - a[u]) * (b[v] - a[v])) / area
+    if (w1 < -1e-6 || w2 < -1e-6 || w1 + w2 > 1 + 1e-6) continue
+    const d = (1 - w1 - w2) * a[axis] + w1 * b[axis] + w2 * c[axis]
+    if (best === null) best = d
+    else best = sign > 0 ? Math.max(best, d) : Math.min(best, d)
+  }
+  return best
+}
+
 function triangles(geo: BufferGeometry): P3[][] {
   const pos = geo.getAttribute('position') as BufferAttribute
   const idx = geo.getIndex()
@@ -272,6 +294,47 @@ maybe('소품 빠진 면', () => {
       expect(phi, label).toBeLessThanOrEqual(hi + 0.021)
       expect(plo, label).toBeGreaterThanOrEqual(lo - 0.021)
     }
+  })
+
+  /**
+   * ⚠️ **판이 건물에서 떨어져 서 있었다.**
+   *
+   * 삼각형을 전부 바운딩 박스의 끝면에 눌러 붙였더니, 처마가 벽보다 튀어나온
+   * 만큼 벽 자리의 판이 허공에 떴다. 실루엣 칸 132만 개를 재면 **51.4%가 진짜
+   * 바깥면에서 0.25타일(4도트) 넘게** 떨어졌고 p90이 1.93타일 · 최대 36타일이었다.
+   *
+   * 지금은 칸마다 그 자리의 바깥면을 찾아 거기에 붙인다. 여기서 그것을 다시
+   * 잰다 — 소품 590개 전부에 대고, 판 꼭짓점 하나하나를.
+   */
+  it('판이 건물에서 안 뜬다 — 그 자리의 바깥면에 붙는다', () => {
+    let cells = 0, off = 0, worst = 0
+    for (let id = 0; id < 600; id++) {
+      if (!existsSync(resolve(DATA, `props/${String(id)}.bin`))) continue
+      const mesh = readProp(id, fmt)
+      const src = triangles(mesh.geometry)
+      for (const [axis, sign] of openDirections(mesh)) {
+        const plate = facePlate(mesh, paint(mesh), axis, sign)
+        if (!plate) continue
+        const pos = plate.getAttribute('position') as BufferAttribute
+        for (let i = 0; i < pos.count; i++) {
+          const q: P3 = [pos.getX(i), pos.getY(i), pos.getZ(i)]
+          const near = outerAt(src, q, axis, sign)
+          if (near === null) continue
+          cells++
+          // **바깥쪽으로** 뜬 것만 센다. 안으로 눌린 판은 본체에 가려 안 보이고,
+          // 화면에 떠 보이던 것은 건물 **앞에** 선 판이었다
+          const gap = sign * (near - q[axis])
+          worst = Math.max(worst, gap)
+          if (gap > 0.25) off++
+        }
+      }
+    }
+    // 재 볼 꼭짓점이 충분히 많아야 뜻이 있다
+    // 재 볼 꼭짓점이 충분히 많아야 뜻이 있다 — 소품 590개에서 이만큼 나온다
+    expect(cells).toBe(89991)
+    // **한 개도 없어야 한다.** 예전 방식은 51.4%였고, 격자 깊이 지도로는 10.8%였다
+    expect(off, `${String(off)}/${String(cells)}이 바깥으로 떴다`).toBe(0)
+    expect(worst).toBeLessThan(0.01)
   })
 
   it('모로 선 면은 판에 안 들어간다', () => {

@@ -8,7 +8,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry, CylinderGeometry, Vector3 } from 'three'
 import {
-  cellKey, cellX, cellZ, cutoutGroups, isFoliage, plateColors, splitFoliage,
+  cellKey, cellX, cellZ, cutoutGroups, isBakedShadow, isFoliage, plateColors, splitFoliage,
+  treeSites,
 } from './plates'
 import {
   BARE, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
@@ -87,20 +88,34 @@ maybe('잎 걷어내기', () => {
   const fmt = read('chunks/index.json') as Fmt
   const all = (mesh: ChunkMesh) => mesh.materials.map(() => true)
 
-  it('오려 낸 그림이 아니면 아무것도 안 뺀다', () => {
+  it('오려 낸 그림이 아니면 잎도 자리도 안 뺀다 — 구운 그림자만 빠진다', () => {
     const mesh = readChunk(0, fmt)
     const before = mesh.geometry.getIndex()!.count
     const split = splitFoliage(mesh, mesh.materials.map(() => false))
     expect(split.cells.size).toBe(0)
-    expect(split.geometry.getIndex()!.count).toBe(before)
+    // 청크 0의 `tshadow` 삼각형 58개는 오려 낸 그림 여부와 상관없이 빠진다
+    expect(before - split.geometry.getIndex()!.count).toBe(58 * 3)
+  })
+
+  it('원작이 구워 둔 나무 그림자를 걷어낸다', () => {
+    // 원작은 나무가 판때기라 그림자를 못 그려서 땅에 동그란 그림을 깔았다.
+    // 우리 입체 나무는 진짜 그림자를 던지므로, 남겨 두면 나무 크기와 상관없는
+    // **똑같은 동그라미**가 하나 더 깔린다
+    const shadow = oneQuad('tshadow')
+    expect(isBakedShadow(shadow, 0)).toBe(true)
+    expect(splitFoliage(shadow, [true]).geometry.getIndex()!.count).toBe(0)
+    // 자리는 안 센다 — 여기 나무를 세우는 것이 아니다
+    expect(splitFoliage(shadow, [true]).cells.size).toBe(0)
+    // 이름이 비슷한 다른 그림자는 안 건드린다
+    expect(isBakedShadow(oneQuad('shadowchip'), 0)).toBe(false)
   })
 
   it('떡잎마을 청크에서 잎만 빠지고 땅은 남는다', () => {
     const mesh = readChunk(0, fmt)
     const split = splitFoliage(mesh, all(mesh))
-    // 실측 — 삼각형 1628개 중 잎이 832개, 남는 땅이 796개다
+    // 실측 — 삼각형 1628개 중 잎이 832개 · 구운 그림자가 58개, 남는 땅이 738개다
     expect(mesh.geometry.getIndex()!.count / 3).toBe(1628)
-    expect(split.geometry.getIndex()!.count / 3).toBe(796)
+    expect(split.geometry.getIndex()!.count / 3).toBe(738)
     // 잎이 덮은 칸 606개, 그중 나무가 서는 것이 144그루다
     expect(split.cells.size).toBe(606)
     expect([...split.cells].filter(([k, c]) => treeAt(k, c) !== null)).toHaveLength(144)
@@ -435,21 +450,21 @@ maybe('나무가 땅에 선다', () => {
     return { off, noGround }
   }
 
-  it('잎 아래끝에 세우면 48,331그루가 뜬다 — 지면에 세우면 0그루다', () => {
+  it('잎 아래끝에 세우면 48,404그루가 뜬다 — 지면에 세우면 0그루다', () => {
     const { off, noGround } = everyTree()
     // 실측 앵커. 높이 자료가 없는 칸이 2,970개고 거기서는 잎 아래끝으로 물러선다
-    expect(off.length).toBe(48525)
-    expect(noGround).toBe(2970)
+    expect(off.length).toBe(48564)
+    expect(noGround).toBe(2931)
 
     const floating = (xs: Stood[], k: (s: Stood) => number, t: number) =>
       xs.filter((s) => k(s) > t).length
     // 잎에 세운 것 — 거의 전부가 뜬다. 0.71배가 그림자가 어긋나는 거리다
-    expect(floating(off, (s) => s.gap, 0.05)).toBe(48331)
-    expect(floating(off, (s) => s.gap, 0.1)).toBe(8890)
-    expect(floating(off, (s) => s.gap, 0.5)).toBe(671)
-    expect(floating(off, (s) => s.gap, 2)).toBe(265)
+    expect(floating(off, (s) => s.gap, 0.05)).toBe(48404)
+    expect(floating(off, (s) => s.gap, 0.1)).toBe(8914)
+    expect(floating(off, (s) => s.gap, 0.5)).toBe(634)
+    expect(floating(off, (s) => s.gap, 2)).toBe(255)
     // 파묻힌 것도 있다 — 잎이 땅보다 **아래**인 칸이다
-    expect(off.filter((s) => s.gap < -0.1)).toHaveLength(191)
+    expect(off.filter((s) => s.gap < -0.1)).toHaveLength(160)
 
     // 지면에 세운 것 — 한 그루도 안 뜨고 한 그루도 안 묻힌다
     for (const s of off) expect(s.grounded).toBeCloseTo(0, 9)
@@ -468,5 +483,75 @@ maybe('나무가 땅에 선다', () => {
     // 잎이 낮으면 아래 판이 답이다 — 규칙이 방향을 안 탄다
     const low = treeAt(cellKey(6, 8), { minY: 0.3, maxY: 1.4, group: 0 }, two)!
     expect(new Vector3().setFromMatrixPosition(low).y).toBe(0.0)
+  })
+})
+
+/**
+ * 나무가 **원작 나무 자리에** 서는가 (DATA.md §2.2).
+ *
+ * 원작은 나무 밑에 동그란 그림자 판(`tshadow`)을 깔아 두었다. 그 판이 곧 그
+ * 나무가 서 있던 자리라, 우리 입체 나무가 그 위에 서면 원작과 겹치는 것이다.
+ *
+ * ⚠️ 예전엔 칸 한가운데에서 ±0.9타일 흩었다. 홀로 선 나무 1,022그루가
+ * **1,022그루 다** 동그라미를 벗어나 있었고 중앙값이 1.20타일이었다.
+ */
+maybe('나무가 원작 자리에 선다', () => {
+  const fmt = read('chunks/index.json') as Fmt
+  const FOLIAGE_NAME = /^(cont)?tree|_tree|treeg/
+
+  interface Tally {
+    /** 잎이 있는 2×2 그림자 판 */
+    quads: number
+    /** 그 한가운데에 나무가 정확히 선 판 */
+    onCentre: number
+    /** 판 안에 선 나무 (하나여야 한다) */
+    inside: number
+    /** 나무 전체 */
+    trees: number
+  }
+
+  function sweep(): Tally {
+    const meta = read('matrices/0.json') as MatrixMeta
+    const t: Tally = { quads: 0, onCentre: 0, inside: 0, trees: 0 }
+    for (const c of meta.chunks) {
+      let mesh: ChunkMesh
+      try { mesh = readChunk(c.land, fmt) } catch { continue }
+      const cutout = mesh.materials.map((m) => FOLIAGE_NAME.test(m.tex ?? ''))
+      const split = splitFoliage(mesh, cutout)
+      const sites = treeSites(split)
+      t.trees += sites.length
+      if (split.shadows.size === 0) continue
+      const spots = sites.map((site) => {
+        const p = new Vector3().setFromMatrixPosition(treeAt(site.key, site.cell, undefined, site)!)
+        return [p.x, p.z] as const
+      })
+      for (const q of split.shadows) {
+        const qx = cellX(q), qz = cellZ(q)
+        // 잎이 하나도 안 걸친 판은 나무 자리가 아니다 — 원작에도 그 자리엔 없다
+        let leafy = false
+        for (let dz = 0; dz < 2; dz++) {
+          for (let dx = 0; dx < 2; dx++) if (split.cells.has(cellKey(qx + dx, qz + dz))) leafy = true
+        }
+        if (!leafy) continue
+        t.quads++
+        // 경계는 이웃 판과 나눠 쓰는 자리라 **안쪽만** 센다
+        const inside = spots.filter(([x, z]) => x > qx && x < qx + 2 && z > qz && z < qz + 2)
+        if (inside.length === 1) t.inside++
+        if (inside.some(([x, z]) => x === qx + 1 && z === qz + 1)) t.onCentre++
+      }
+    }
+    return t
+  }
+
+  it('홀로 선 나무는 판 한가운데에 딱 한 그루씩 선다', () => {
+    const t = sweep()
+    // 잎이 걸친 2×2 판이 이만큼 있다 — 0이면 이 시험에 뜻이 없다
+    expect(t.quads).toBeGreaterThan(400)
+    // **판마다 한가운데에 정확히 선다.** ±0.9타일 흩던 때는 한 그루도 안 맞았다
+    expect(t.onCentre, `${String(t.onCentre)}/${String(t.quads)}만 한가운데다`).toBe(t.quads)
+    // 그리고 **한 그루뿐이다.** 격자가 같은 자리에 또 세우면 두 그루가 겹친다
+    expect(t.inside, `${String(t.inside)}/${String(t.quads)}만 한 그루다`).toBe(t.quads)
+    // 그루 수가 통째로 무너지지도 늘지도 않는다
+    expect(t.trees).toBeGreaterThan(40_000)
   })
 })
