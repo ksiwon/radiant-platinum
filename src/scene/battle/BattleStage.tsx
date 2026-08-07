@@ -8,9 +8,15 @@
 // 포켓몬은 **원작 도트 그림**을 세운다(DATA.md §2.17). 4세대 배틀은 3D가 아니다 —
 // 무대와 카메라만 3D고 포켓몬은 80×80 한 장이다. 여기서 3D 모델을 지어내면
 // 원작이 아니라 다른 게임이 된다.
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
-import { BackSide, Group, type CanvasTexture, type Texture } from 'three'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useFrame, useLoader } from '@react-three/fiber'
+import {
+  BackSide, Color, Group, Mesh, MeshStandardMaterial,
+  type CanvasTexture, type Texture,
+} from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { worldState } from '../../state/worldState'
+import { timeBlend } from '../../engine/map/timeOfDay'
 import { loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
@@ -23,7 +29,17 @@ import {
   ShotDirector, SLOT, sampleShot, shotFor, type ShotName, type Side,
 } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
-import { DAY, makeBlobShadow, makeSkyTexture } from '../fx/sky'
+import {
+  TIME_LOOKS, blendLooks, makeBlobShadow, makeSkyTexture, type TimeLook,
+} from '../fx/sky'
+
+/**
+ * 무대 바닥의 높이 (`field.glb` 실측).
+ *
+ * BDSP 무대는 y=0.001에 평평하게 깔려 있다 — 우리가 정한 값이 아니라 그 모델의
+ * 지면이다. 대체 지면(`Flat`)도 같은 높이에 둔다
+ */
+const GROUND = 0.001
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
 // 원작의 문법 그대로다: **내 포켓몬은 앞쪽 왼쪽에 뒷모습으로, 상대는 뒤쪽 오른쪽에
@@ -124,8 +140,9 @@ function Slot(
     shown.current += Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     const t = shown.current
     g.scale.setScalar(spot.scale * (0.6 + 0.4 * t))
-    // 살짝 위아래로 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다
-    const bob = Math.sin(performance.now() / 620 + spot.x) * 0.045
+    // 살짝 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다.
+    // **위로만 뜬다** — 아래로 내려가면 발이 땅에 파묻힌다
+    const bob = (Math.sin(performance.now() / 620 + spot.x) * 0.5 + 0.5) * 0.05
 
     // 때리러 나간다. 앞의 반은 가고 뒤의 반은 온다 — 갔다가 순간이동으로
     // 돌아오면 뒷걸음질이 아니라 깜빡임으로 보인다
@@ -141,8 +158,11 @@ function Slot(
     g.visible = t > 0.01 && !blink
 
     g.position.x = (other.x - spot.x) * reach + shake
+    // ⚠️ **발이 땅에 닿아야 한다.** 예전엔 여기에 `spot.scale * 0.72`를 더해
+    // 놓아서 포켓몬이 제 발판에서 1m 가까이 떠 있었다. `spriteFit`이 이미
+    // 판을 맞춰 놓는다 — 칠해진 그림의 아래끝이 이 그룹의 원점이다
     g.position.z = (other.z - spot.z) * reach
-    g.position.y = spot.scale * 0.72 * t + bob * t - (1 - t) * 0.5
+    g.position.y = GROUND + bob * t - (1 - t) * 0.5
 
     // ⚠️ **카메라가 움직이면 그림판을 돌려야 한다.** 도트 한 장이라 고정
     // 카메라일 때는 돌릴 이유가 없었는데(그때 주석도 그렇게 적혀 있었다),
@@ -158,27 +178,17 @@ function Slot(
   return (
     <group position={[spot.x, 0, spot.z]}>
       {/*
-        발판. 원작에서도 양쪽이 각자의 원판 위에 선다.
-        옆면을 지면보다 **어둡게**, 윗면을 **밝게** 해서 두께가 보이게 한다 —
-        지면과 같은 계열로 칠하면 원판이 아니라 색만 다른 얼룩으로 보인다
+        발밑 그림자. **발판이 아니다** — 원작(BDSP)은 둘이 같은 땅에 서고
+        그림자만 진다. 원판을 깔면 무대가 아니라 좌대 위의 인형이 된다
       */}
-      <mesh position={[0, 0.12, 0]} receiveShadow>
-        <cylinderGeometry args={[spot.radius, spot.radius * 1.05, 0.24, 44]} />
-        <meshStandardMaterial color="#4e6538" roughness={0.95} />
-      </mesh>
-      <mesh position={[0, 0.245, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[spot.radius * 0.95, 44]} />
-        <meshStandardMaterial color="#9dbd6c" roughness={0.88} />
-      </mesh>
-
       {shadow && (
-        <mesh position={[0, 0.25, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, GROUND + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[spot.radius * 1.05, spot.radius * 1.05]} />
           <meshBasicMaterial map={shadow} transparent depthWrite={false} />
         </mesh>
       )}
 
-      <group ref={body} position={[0, 0.25, 0]}>
+      <group ref={body} position={[0, GROUND, 0]}>
         {art ? (
           /*
             도트 한 장. 위 `useFrame`이 Y축으로 카메라를 향해 돌린다(빌보드).
@@ -204,12 +214,67 @@ function Slot(
   )
 }
 
+/**
+ * 배틀 무대 (`public/models/arena/field.glb`).
+ *
+ * **원작 BDSP의 배틀 배경을 그대로 쓴다.** 우리가 지어낸 것이 아니라 롬에서
+ * 꺼낸 것이다: `Environments/bg/arenas/ground/g001`(Battle_001)을 정적 메시
+ * 158개 → 재질 6벌로 구워 냈다 (`tools/extract/bdspArena.py`). 땅은 y=0.001에
+ * 평평하게 44×45m 깔려 있고 그 둘레를 풀·바위·나무·산이 감싼다.
+ *
+ * ⚠️ **원판 두 개를 띄우던 자리다.** 발판 위에 각자 서 있으면 무대가 아니라
+ * 좌대 위의 인형으로 보인다 — 원작은 둘이 **같은 땅에** 선다.
+ *
+ * 7MB짜리라 배틀이 열리는 순간에 받는다. 받는 동안은 아래 `Flat`이 대신 선다 —
+ * 첫 프레임에 빈 화면을 보이지 않으려고
+ */
+function Arena({ look }: { look: TimeLook }) {
+  const gltf = useLoader(GLTFLoader, `${import.meta.env.BASE_URL}models/arena/field.glb`)
+  const scene = useMemo(() => {
+    const root = gltf.scene.clone(true)
+    root.traverse((o) => {
+      if (o instanceof Mesh) {
+        o.receiveShadow = true
+        o.castShadow = false
+      }
+    })
+    return root
+  }, [gltf])
+  // 무대는 낮 기준으로 구워져 있다. 밤에 그대로 두면 배경만 대낮이라, 시간대의
+  // 지면색을 곱해 톤을 맞춘다 — 오버월드에서 걸어 들어온 그 시각이어야 한다
+  useEffect(() => {
+    const tint = new Color(look.groundColor).lerp(new Color('#ffffff'), 0.45)
+    scene.traverse((o) => {
+      if (o instanceof Mesh && o.material instanceof MeshStandardMaterial) {
+        o.material.color.copy(tint)
+      }
+    })
+  }, [scene, look])
+  return <primitive object={scene} />
+}
+
+/** 무대를 아직 못 받았을 때 서는 땅. 하늘 구보다 훨씬 작아 그 경계가 지평선이 된다 */
+function Flat({ look }: { look: TimeLook }) {
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND, 0]} receiveShadow>
+      <circleGeometry args={[34, 64]} />
+      <meshStandardMaterial color={look.groundColor} roughness={1} />
+    </mesh>
+  )
+}
+
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
   // 오버월드와 **같은 하늘·같은 조명**을 쓴다. 두 화면의 톤이 어긋나면
-  // 배틀에 들어갈 때마다 다른 게임처럼 보인다
-  const sky = useMemo(() => makeSkyTexture(DAY), [])
+  // 배틀에 들어갈 때마다 다른 게임처럼 보인다 — 해질녘에 걸어 들어왔는데
+  // 배틀만 대낮이면 그 순간 다른 게임이 된다
+  const timeLook = useMemo(() => {
+    const { from, to, k } = timeBlend(worldState.time.gameHour)
+    const at = (i: number) => TIME_LOOKS[i] ?? TIME_LOOKS[1]!
+    return blendLooks(at(from), at(to), k)
+  }, [])
+  const sky = useMemo(() => makeSkyTexture(timeLook), [timeLook])
   const shadow = useMemo(() => makeBlobShadow(), [])
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
   const scene = useOptionsStore((s) => s.battleScene)
@@ -253,16 +318,17 @@ export function BattleStage() {
         </mesh>
       )}
 
-      <hemisphereLight args={['#d4e9f7', '#8d8468', 0.85]} />
-      <directionalLight position={[8, 14, 9]} intensity={1.05} color="#fff4e0" />
+      <hemisphereLight args={[timeLook.skyColor, timeLook.groundColor, timeLook.ambient]} />
+      <directionalLight position={[8, 14, 9]} intensity={timeLook.sun} color={timeLook.sunColor} />
       {/* 카메라 쪽 필. 이게 없으면 몸통의 그늘진 쪽이 배경에 묻는다 */}
-      <directionalLight position={[-7, 6, 12]} intensity={0.38} color="#cfe0f0" />
+      <directionalLight position={[-7, 6, 12]} intensity={timeLook.fill} color={timeLook.skyColor} />
 
-      {/* 지면. 하늘 구(반지름 120)보다 훨씬 작아서 그 경계가 지평선이 된다 */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[34, 64]} />
-        <meshStandardMaterial color="#7f9a5e" roughness={1} />
-      </mesh>
+      {/*
+        무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다
+      */}
+      <Suspense fallback={<Flat look={timeLook} />}>
+        <Arena look={timeLook} />
+      </Suspense>
 
       <Slot
         mon={view?.active.p2 ?? null} look={look(view?.active.p2 ?? null, 'p2-0')}
