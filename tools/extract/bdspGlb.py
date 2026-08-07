@@ -14,10 +14,9 @@
 손잡이가 뒤집히므로 삼각형 감기 순서도 함께 뒤집는다 — 안 뒤집으면 안팎이
 뒤집혀 얼굴 안쪽이 보인다.
 
-⚠️ **애니메이션은 아직 못 넣는다.** 클립이 Mecanim의 `m_MuscleClip`(스트림
-압축)이라 UnityPy가 커브를 안 펴 준다. 지금 나오는 것은 번들에 저장된 **쉬는
-자세**(A 포즈)다. 팔이 어깨에서 36° 내려와 있어서 서 있는 사람으로는 쓸 만하지만,
-숨쉬기도 걷기도 없다.
+애니메이션도 같이 굽는다. UnityPy가 Mecanim 클립을 안 펴 주므로 원시
+타입트리로 내려가 `m_StreamedClip`을 직접 읽는다 — 자세한 것은
+`read_streamed`와 `clip_curves` 머리말에 있다.
 """
 from __future__ import annotations
 
@@ -25,6 +24,7 @@ import argparse
 import json
 import struct
 import sys
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -117,6 +117,185 @@ def bone_name(t) -> str:
         return "bone"
 
 
+# ── 애니메이션 ─────────────────────────────────────────────────────────────
+# UnityPy가 Mecanim 클립을 안 펴 준다(`m_Clip`이 빈 객체로 나온다). 원시
+# 타입트리로 내려가면 스트림·조밀·상수 세 벌이 그대로 들어 있어서 직접 읽는다.
+#
+# 커브 번호는 **한 줄로 이어진다**: 스트림 → 조밀 → 상수 순서다. 바인딩 목록이
+# 그 줄을 순서대로 나눠 갖는데, 자리 옮김이 3칸·회전이 4칸·크기가 3칸이다.
+#
+# 바인딩이 가리키는 뼈는 이름이 아니라 **경로의 CRC32**다. 계층을 훑어 경로를
+# 만들고 같은 방식으로 해시하면 짝이 맞는다 — 실측으로 171 중 171이 붙었다.
+
+TRANSLATION, ROTATION, SCALE = 1, 2, 3
+CURVE_WIDTH = {TRANSLATION: 3, ROTATION: 4, SCALE: 3}
+TRANSFORM_CLASS = 4
+
+
+def as_float(word: int) -> float:
+    return struct.unpack("<f", struct.pack("<I", word & 0xFFFFFFFF))[0]
+
+
+def read_streamed(words: list[int]) -> dict[int, list[tuple[float, float]]]:
+    """
+    스트림 클립을 커브별 (시각, 값) 목록으로 편다.
+
+    한 프레임이 `시각 · 키 개수 · (커브번호 + 계수 4)×n`이다. 계수 넷 중 **마지막이
+    값**이고 셋째가 나가는 기울기다 — 우리는 값만 쓰고 glTF 쪽에서 선형으로 잇는다.
+
+    ⚠️ **앞뒤 프레임은 버린다.** Unity가 경계 처리를 위해 앞에 둘, 뒤에 하나를
+    더 넣어 두는데 시각이 음수이거나 클립 길이를 넘는다. 그대로 쓰면 애니메이션이
+    시작 전부터 튄다
+    """
+    frames: list[tuple[float, list[tuple[int, float]]]] = []
+    i, n = 0, len(words)
+    while i + 2 <= n:
+        time = as_float(words[i]); i += 1
+        count = words[i]; i += 1
+        if count < 0 or i + count * 5 > n:
+            break
+        keys = []
+        for _ in range(count):
+            index = words[i]; i += 1
+            keys.append((index, as_float(words[i + 3])))
+            i += 4
+        frames.append((time, keys))
+
+    out: dict[int, list[tuple[float, float]]] = {}
+    for time, keys in frames[2:-1] if len(frames) > 3 else frames:
+        for index, value in keys:
+            out.setdefault(index, []).append((time, value))
+    return out
+
+
+def clip_curves(clip: dict) -> tuple[dict[int, list[tuple[float, float]]], float]:
+    """클립 하나의 모든 커브. 상수 커브는 시각 0에 값 하나만 둔다."""
+    muscle = clip["m_MuscleClip"]
+    data = muscle["m_Clip"]["data"]
+    streamed = read_streamed(data["m_StreamedClip"]["data"])
+    dense = data["m_DenseClip"]
+    constant = data["m_ConstantClip"]["data"]
+
+    curves = dict(streamed)
+    base = int(data["m_StreamedClip"]["curveCount"])
+    frames, wide = int(dense["m_FrameCount"]), int(dense["m_CurveCount"])
+    rate = float(dense["m_SampleRate"]) or 60.0
+    begin = float(dense["m_BeginTime"])
+    samples = dense["m_SampleArray"]
+    for c in range(wide):
+        curves[base + c] = [
+            (begin + f / rate, float(samples[f * wide + c])) for f in range(frames)
+        ]
+    for c, value in enumerate(constant):
+        curves[base + wide + c] = [(0.0, float(value))]
+    return curves, float(muscle["m_StopTime"])
+
+
+def transform_paths(env) -> dict[int, str]:
+    """Transform PathID → 애니메이터 루트 기준 경로. CRC32의 재료다."""
+    tr = {o.path_id: o.read() for o in env.objects if o.type.name == "Transform"}
+    parent: dict[int, int] = {}
+    for pid, t in tr.items():
+        for c in t.m_Children:
+            parent[c.m_PathID] = pid
+    out = {}
+    for pid in tr:
+        parts, at = [], pid
+        while at in tr:
+            parts.append(bone_name(tr[at]))
+            at = parent.get(at)
+            if at is None:
+                break
+        # 맨 위(애니메이터가 붙은 루트)는 경로에 안 들어간다
+        out[pid] = "/".join(reversed(parts[:-1])) if len(parts) > 1 else ""
+    return out
+
+
+def bindings_by_curve(clip: dict) -> list[tuple[int, int, int]]:
+    """(경로해시, 속성, 첫 커브 번호). Transform이 아닌 바인딩은 뺀다."""
+    at = 0
+    out = []
+    for b in clip["m_ClipBindingConstant"]["genericBindings"]:
+        attr = int(b["attribute"])
+        if int(b.get("typeID") or 0) == TRANSFORM_CLASS and attr in CURVE_WIDTH:
+            out.append((int(b["path"]), attr, at))
+            at += CURVE_WIDTH[attr]
+        else:
+            at += 1
+    return out
+
+
+def sample(points: list[tuple[float, float]], t: float) -> float:
+    """커브 하나를 시각 `t`에서. 사이는 선형, 밖은 끝값으로 잡는다."""
+    if not points:
+        return 0.0
+    if t <= points[0][0]:
+        return points[0][1]
+    if t >= points[-1][0]:
+        return points[-1][1]
+    lo, hi = 0, len(points) - 1
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if points[mid][0] <= t:
+            lo = mid
+        else:
+            hi = mid
+    (t0, v0), (t1, v1) = points[lo], points[hi]
+    k = 0.0 if t1 == t0 else (t - t0) / (t1 - t0)
+    return v0 + (v1 - v0) * k
+
+
+def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int]) -> tuple[list, dict]:
+    """클립 전부를 glTF 애니메이션으로. 통계도 함께 돌려준다."""
+    animations, stat = [], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0}
+    for obj in env.objects:
+        if obj.type.name != "AnimationClip":
+            continue
+        clip = obj.read_typetree()
+        curves, stop = clip_curves(clip)
+        samplers, channels = [], []
+        for path_hash, attr, first in bindings_by_curve(clip):
+            node = node_of_hash.get(path_hash)
+            if node is None:
+                stat["unresolved"] += 1
+                continue
+            wide = CURVE_WIDTH[attr]
+            parts = [curves.get(first + c, []) for c in range(wide)]
+            times = sorted({t for p in parts for t, _ in p})
+            if not times:
+                continue
+            # 상수뿐인 채널은 키 하나면 된다 — 붙박이인데 프레임을 다 적을 이유가 없다
+            if len(times) == 1:
+                times = [0.0]
+            values = [[sample(p, t) for p in parts] for t in times]
+            if attr == TRANSLATION:
+                values = [[-v[0], v[1], v[2]] for v in values]
+            elif attr == ROTATION:
+                values = [quat_flip_x((v[0], v[1], v[2], v[3])) for v in values]
+            a_time = buf.add(np.array(times, dtype=np.float32).reshape(-1, 1), "SCALAR", FLOAT)
+            a_val = buf.add(
+                np.array(values, dtype=np.float32),
+                "VEC3" if wide == 3 else "VEC4", FLOAT,
+            )
+            samplers.append({"input": a_time, "output": a_val, "interpolation": "LINEAR"})
+            channels.append({
+                "sampler": len(samplers) - 1,
+                "target": {"node": node, "path": {
+                    TRANSLATION: "translation", ROTATION: "rotation", SCALE: "scale",
+                }[attr]},
+            })
+            stat["keys"] += len(times)
+        if not channels:
+            continue
+        animations.append({
+            "name": clip["m_Name"], "samplers": samplers, "channels": channels,
+        })
+        stat["clips"] += 1
+        stat["channels"] += len(channels)
+        stat["stop"] = round(stop, 3)
+    return animations, stat
+
+
 def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
     env = UnityPy.load(str(bundle))
     smrs = [o.read() for o in env.objects if o.type.name == "SkinnedMeshRenderer"]
@@ -130,16 +309,17 @@ def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
     buf = Buffer()
     ARRAY, ELEMENT = 34962, 34963
 
-    # 뼈대는 한 벌이다. 여러 껍데기가 같은 Transform을 나눠 쓰므로 먼저 합친다
-    seen = {}
-    for smr in smrs:
-        for b in smr.m_Bones:
-            t = b.read()
-            seen.setdefault(t.object_reader.path_id, t)
-    bones = list(seen.values())
+    # ⚠️ **뼈대를 껍데기의 본 목록에서 만들면 안 된다.** 애니메이션은 스킨에
+    # 안 들어간 Transform(`Origin` 같은 중간 마디)도 움직인다 — 그것들이 노드에
+    # 없으면 채널이 갈 곳을 잃는다. 그래서 번들의 Transform 전부로 세운다
+    bones = [o.read() for o in env.objects if o.type.name == "Transform"]
     nodes, index = bone_tree(bones)
     child = {c for n in nodes for c in n.get("children", [])}
     roots = [i for i in range(len(nodes)) if i not in child]
+    node_of_hash = {
+        zlib.crc32(p.encode()) & 0xFFFFFFFF: index[pid]
+        for pid, p in transform_paths(env).items() if pid in index
+    }
 
     # 알베도는 번들 통째로 한 번만 굽는다
     albedo = out.parent / f".{out.stem}_albedo"
@@ -167,7 +347,17 @@ def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
 
     meshes, skins, verts_all, written = [], [], [], []
     for smr in smrs:
-        mesh = smr.m_Mesh.read()
+        try:
+            mesh = smr.m_Mesh.read()
+        except FileNotFoundError as e:
+            # ⚠️ **치비 번들(`field/fc####`)은 자급자족이 아니다.** 메시가 다른
+            # 번들에 있어서 그 폴더를 통째로 열어야 풀린다(644MB). 등신 쪽
+            # (`battle/tr####`)은 번들 하나에 다 들어 있다 — 우리가 쓰는 것은
+            # 그쪽이라 지금은 여기서 끊고 무엇이 없는지만 말해 준다
+            raise SystemExit(
+                f"{bundle.name}: 메시가 다른 번들에 있다 ({e}). "
+                "치비 번들은 폴더를 통째로 열어야 한다"
+            ) from e
         handler = MeshHelper.MeshHandler(mesh)
         handler.process()
 
@@ -253,6 +443,8 @@ def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
     for i, mesh in enumerate(meshes):
         nodes.append({"name": mesh["name"], "mesh": i, "skin": i})
 
+    animations, anim_stat = build_animations(env, buf, node_of_hash)
+
     gltf = {
         "asset": {"version": "2.0", "generator": "radiant-platinum bdspGlb"},
         "scene": 0,
@@ -267,6 +459,8 @@ def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
         "bufferViews": buf.views,
         "buffers": [{"byteLength": len(buf.blob)}],
     }
+    if animations:
+        gltf["animations"] = animations
 
     write_glb(out, gltf, bytes(buf.blob))
     every = np.concatenate(verts_all)
@@ -279,6 +473,7 @@ def export(bundle: Path, out: Path, color_index: int | None = None) -> dict:
         "bytes": out.stat().st_size,
         "outward": float(np.mean([outward_ratio(v, t.reshape(-1)) for v, t in written])),
         "height": float(every[:, 1].max() - every[:, 1].min()),
+        **anim_stat,
     }
 
 
@@ -368,6 +563,23 @@ def verify(path: Path) -> list[str]:
             off = int((np.abs(w - 1.0) > 1e-3).sum())
             if off:
                 bad.append(f"메시 {m}: 가중치 합이 1이 아닌 정점 {off}개")
+
+    for a, anim in enumerate(g.get("animations", [])):
+        for ch in anim["channels"]:
+            if ch["target"]["node"] >= node_count:
+                bad.append(f"클립 {a}: 채널이 노드 밖을 가리킨다")
+            sampler = anim["samplers"][ch["sampler"]]
+            n_in = g["accessors"][sampler["input"]]["count"]
+            n_out = g["accessors"][sampler["output"]]["count"]
+            if n_in != n_out:
+                bad.append(f"클립 {a}: 키 {n_in}개에 값 {n_out}개")
+            times = read(sampler["input"])
+            if len(times) > 1 and bool((np.diff(times) <= 0).any()):
+                bad.append(f"클립 {a}: 시각이 오름차순이 아니다")
+            if ch["target"]["path"] == "rotation":
+                q = read(sampler["output"]).reshape(-1, 4)
+                if float(np.abs(np.linalg.norm(q, axis=1) - 1).max()) > 1e-3:
+                    bad.append(f"클립 {a}: 회전이 단위 사원수가 아니다")
     return bad
 
 
