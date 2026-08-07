@@ -25,22 +25,39 @@ export function TrainerCard() {
 
   return (
     <div className={css.overlay}>
-      <div className={css.header}><span>트레이너 카드</span></div>
-      <div className={own.card}>
-        <div className={own.name}>{trainer.name || '이름 없음'}</div>
-        <dl className={own.rows}>
-          <dt>ID</dt><dd>{String(trainer.id).padStart(5, '0')}</dd>
-          <dt>소지금</dt><dd>{money.toLocaleString('ko-KR')}원</dd>
-          <dt>도감</dt><dd>{caught}마리</dd>
-          <dt>플레이 시간</dt><dd>{playtime(trainer.playtimeMs)}</dd>
-        </dl>
-        <div className={own.badges}>
-          {Array.from({ length: BADGES }, (_, i) => (
-            <span key={i} className={own.badge} data-on={(badges & (1 << i)) !== 0 ? 'yes' : 'no'} />
-          ))}
+      <div className={css.head}>
+        <span className={css.crest}><span className={css.crestText}>트레이너 카드</span></span>
+      </div>
+
+      <div className={css.stageWide}>
+        <div className={own.card}>
+          <div className={own.top}>
+            <div>
+              <div className={own.title}>TRAINER</div>
+              <div className={own.name}>{trainer.name || '이름 없음'}</div>
+            </div>
+            <div className={own.idNo}>
+              <span className={own.idLabel}>ID No.</span>
+              {String(trainer.id).padStart(5, '0')}
+            </div>
+          </div>
+
+          <dl className={own.rows}>
+            <dt>소지금</dt><dd>{money.toLocaleString('ko-KR')}원</dd>
+            <dt>도감</dt><dd>{caught}마리</dd>
+            <dt>플레이 시간</dt><dd>{playtime(trainer.playtimeMs)}</dd>
+          </dl>
+
+          <div className={own.badgeHead}>BADGES</div>
+          <div className={own.badges}>
+            {Array.from({ length: BADGES }, (_, i) => (
+              <span key={i} className={own.badge} data-on={(badges & (1 << i)) !== 0 ? 'yes' : 'no'} />
+            ))}
+          </div>
         </div>
       </div>
-      <div className={css.footer}>X 닫기</div>
+
+      <div className={css.foot}>X 닫기</div>
     </div>
   )
 }

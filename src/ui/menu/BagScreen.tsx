@@ -73,42 +73,50 @@ export function BagScreen() {
 
   return (
     <div className={css.overlay}>
-      <div className={css.header}>
-        <span>{data?.pockets[pocket] ?? '가방'}</span>
-        <span className={css.headerNote}>{money.toLocaleString('ko-KR')}원</span>
+      <div className={css.head}>
+        <span className={css.crest}><span className={css.crestText}>가방</span></span>
+        <span className={css.headNote}>{money.toLocaleString('ko-KR')}원</span>
       </div>
 
       <div className={css.tabs}>
         {(data?.pockets ?? []).map((name, i) => (
-          <span key={name} className={i === pocket ? css.tab.on : css.tab.off}>{name}</span>
+          <span key={name} className={i === pocket ? css.tab.on : css.tab.off}><span>{name}</span></span>
         ))}
       </div>
 
-      <div className={css.body}>
-        <div className={css.panel}>
-          <div className={css.scroll}>
-            {slots.length === 0 && <div className={css.rowDim}>아무것도 없다</div>}
-            {slots.map((slot, i) => (
-              <div key={slot.item} className={i === at ? css.rowOn : css.row}>
+      <div className={css.stage}>
+        <div className={css.list}>
+          {slots.length === 0 && <div className={css.empty}>아무것도 없다</div>}
+          {slots.map((slot, i) => (
+            <div key={slot.item} className={i === at ? css.rowOn : css.row}
+              onPointerEnter={() => { setCursor(i) }}>
+              {i === at && <span className={css.caret} aria-hidden />}
+              <span className={css.face}>
                 <span className={css.icon} style={iconStyle(slot.item)} aria-hidden />
-                <span>{data?.names[slot.item] ?? ''}</span>
+                <span className={css.label}>{data?.names[slot.item] ?? ''}</span>
                 {/* 중요한 물건은 개수를 안 붙인다 — 원작도 한 개뿐이라 안 센다 */}
                 {data?.items.get(slot.item).preventToss === 1
                   ? null
                   : <span className={css.count}>×{slot.count}</span>}
-              </div>
-            ))}
-          </div>
+              </span>
+            </div>
+          ))}
         </div>
 
-        <div className={css.panel}>
-          <div className={css.detail}>
-            {selected ? (data?.descriptions[selected.item] ?? '') : ''}
-          </div>
+        <div className={css.detail}>
+          {selected && (
+            <>
+              <div className={css.detailTitle}>
+                {data?.names[selected.item] ?? ''}
+                <span className={css.detailSub}>{data?.pockets[pocket] ?? ''}</span>
+              </div>
+              <div className={css.detailText}>{data?.descriptions[selected.item] ?? ''}</div>
+            </>
+          )}
         </div>
       </div>
 
-      <div className={css.footer}>
+      <div className={css.foot}>
         ←→ 주머니 · ↑↓ 고르기 · X 닫기 · {slots.length}/{POCKET_SIZE[pocket] ?? 0}칸
       </div>
     </div>

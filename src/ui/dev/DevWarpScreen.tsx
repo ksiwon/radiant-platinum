@@ -68,47 +68,50 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <div className={css.overlay}>
-      <div className={css.header}>
-        <span>확인 지점 <span className={own.badge}>시험용</span></span>
-        <span className={css.headerNote}>{inPlay ? '이 판 위에서 옮긴다' : '새 판을 열고 간다'}</span>
+      <div className={css.head}>
+        <span className={css.crest}>
+          <span className={css.crestText}>확인 지점</span>
+          <span className={own.badge}>시험용</span>
+        </span>
+        <span className={css.headNote}>{inPlay ? '이 판 위에서 옮긴다' : '새 판을 열고 간다'}</span>
       </div>
-      <div className={css.body}>
-        <div className={css.panel}>
-          <div className={css.scroll}>
-            {CHECKPOINTS.map((c, i) => (
-              <div
-                key={c.id}
-                className={i === cursor ? css.rowOn : css.row}
-                onPointerEnter={() => { setCursor(i) }}
-                onClick={jump}
-              >
-                <span>{c.label}</span>
+      <div className={css.stage}>
+        <div className={css.list}>
+          {CHECKPOINTS.map((c, i) => (
+            <div
+              key={c.id}
+              className={i === cursor ? css.rowOn : css.row}
+              onPointerEnter={() => { setCursor(i) }}
+              onClick={jump}
+            >
+              {i === cursor && <span className={css.caret} aria-hidden />}
+              <span className={css.face}>
+                <span className={css.label}>{c.label}</span>
                 <span className={own.rowNote}>#{c.map}</span>
-              </div>
-            ))}
-          </div>
+              </span>
+            </div>
+          ))}
         </div>
-        <div className={css.panel}>
-          <div className={css.detail}>
-            {cp && (
-              <>
-                <div className={own.env}>{cp.env}</div>
-                <div className={own.sectionTitle}>해 볼 것</div>
-                <ul className={own.tryList}>
-                  {cp.try.map((line) => (
-                    <li key={line} className={own.tryItem}>
-                      <span className={own.tryMark} aria-hidden>●</span>
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className={own.setup}>{describe(cp)}</div>
-              </>
-            )}
-          </div>
+        <div className={css.detail}>
+          {cp && (
+            <>
+              <div className={own.env}>{cp.env}</div>
+              <div className={own.sectionTitle}>해 볼 것</div>
+              <ul className={own.tryList}>
+                {cp.try.map((line) => (
+                  <li key={line} className={own.tryItem}>
+                    <span className={own.tryMark} aria-hidden>●</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className={own.setup}>{describe(cp)}</div>
+            </>
+          )}
         </div>
       </div>
-      <div className={css.footer}>
+
+      <div className={css.foot}>
         ↑↓ 고르기 · Z 뛰어들기 · X 닫기 · ` 로 언제든 다시 연다
         {!inPlay && ' — 타이틀에서 열면 인트로를 건너뛰고 새 판으로 간다'}
         {busy && ' — 가는 중…'}

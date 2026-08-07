@@ -130,40 +130,45 @@ export function ShopScreen() {
 
   return (
     <div className={css.overlay}>
-      <div className={css.header}>
+      <div className={css.head}>
         <span>{tab === 'buy' ? '산다' : '판다'}</span>
-        <span className={css.headerNote}>{data?.bag[78] ?? '용돈'} {money.toLocaleString('ko-KR')}원</span>
+        <span className={css.headNote}>{data?.bag[78] ?? '용돈'} {money.toLocaleString('ko-KR')}원</span>
       </div>
 
       <div className={css.tabs}>
-        <span className={tab === 'buy' ? css.tab.on : css.tab.off}>산다</span>
-        <span className={tab === 'sell' ? css.tab.on : css.tab.off}>판다</span>
+        <span className={tab === 'buy' ? css.tab.on : css.tab.off}><span>산다</span></span>
+        <span className={tab === 'sell' ? css.tab.on : css.tab.off}><span>판다</span></span>
       </div>
 
-      <div className={css.body}>
-        <div className={css.panel}>
-          <div className={css.scroll}>
-            {rows.length === 0 && <div className={css.rowDim}>아무것도 없다</div>}
-            {rows.map((r, i) => (
-              <div key={`${r.item}-${String(i)}`} className={i === at ? css.rowOn : css.row}>
+      <div className={css.stage}>
+        <div className={css.list}>
+          {rows.length === 0 && <div className={css.empty}>아무것도 없다</div>}
+          {rows.map((r, i) => (
+            <div key={`${r.item}-${String(i)}`} className={i === at ? css.rowOn : css.row}>
+              {i === at && <span className={css.caret} aria-hidden />}
+              <span className={css.face}>
                 <span className={css.icon} style={iconStyle(r.item)} aria-hidden />
-                <span>{data?.names[r.item] ?? ''}</span>
+                <span className={css.label}>{data?.names[r.item] ?? ''}</span>
                 <span className={css.count}>
                   {r.have > 0 && <span style={{ opacity: 0.6, marginRight: 10 }}>×{r.have}</span>}
                   {r.price.toLocaleString('ko-KR')}원
                 </span>
-              </div>
-            ))}
-          </div>
+              </span>
+            </div>
+          ))}
         </div>
 
-        <div className={css.panel}>
-          <div className={css.detail}>
-            {row ? (data?.descriptions[row.item] ?? '') : ''}
-          </div>
+        <div className={css.detail}>
+          {row && (
+            <>
+              <div className={css.detailTitle}>{data?.names[row.item] ?? ''}</div>
+              <div className={css.detailText}>{data?.descriptions[row.item] ?? ''}</div>
+            </>
+          )}
           {count > 0 && row && (
             <div className={own.prompt}>
-              {data?.names[row.item]} {count}개{'\n'}
+              {data?.names[row.item]} {count}개
+              <br />
               {(unit * count).toLocaleString('ko-KR')}원
             </div>
           )}
@@ -171,7 +176,7 @@ export function ShopScreen() {
         </div>
       </div>
 
-      <div className={css.footer}>
+      <div className={css.foot}>
         {count > 0
           ? `↑↓ 개수 (최대 ${String(max)}) · Z 결정 · X 그만둔다`
           : `←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 나간다 · ${String(rows.length)}종`}

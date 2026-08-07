@@ -72,3 +72,21 @@ export const entry = style({
   paddingTop: 6,
   borderTop: `1px solid ${vars.panel.border}`,
 })
+
+/**
+ * 도감 그림.
+ *
+ * ⚠️ **잡은 종만 뜬다.** 본 것만으로 그림까지 주면 도감을 채우는 뜻이 없어진다 —
+ * 원작도 설명문을 잡은 뒤에야 연다. 오른쪽 위에 크게 띄운다: 이 화면의 주인공은
+ * 목록이 아니라 지금 고른 한 마리다
+ */
+export const art = style({
+  float: 'right',
+  width: 128,
+  height: 128,
+  marginLeft: 12,
+  marginBottom: 8,
+  imageRendering: 'pixelated',
+  objectFit: 'contain',
+  filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.55))',
+})

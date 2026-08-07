@@ -77,36 +77,46 @@ export function PokedexScreen() {
 
   return (
     <div className={css.overlay}>
-      <div className={css.header}>
-        <span>도감</span>
-        <span className={css.headerNote}>
+      <div className={css.head}>
+        <span className={css.crest}><span className={css.crestText}>도감</span></span>
+        <span className={css.headNote}>
           {label(POKEDEX_TEXT.seen)} {counts.seen} · {label(POKEDEX_TEXT.caught)} {counts.caught}
         </span>
       </div>
 
-      <div className={css.body}>
-        <div className={css.panel}>
-          <div className={css.scroll}>
-            {order.map((id, i) => {
-              const known = dexHas(dex.seen, id)
-              return (
-                <div
-                  key={id}
-                  className={i === at ? css.rowOn : known ? css.row : css.rowDim}
-                  ref={i === at ? scrollIntoView : undefined}
-                >
+      <div className={css.stage}>
+        <div className={css.list}>
+          {order.map((id, i) => {
+            const known = dexHas(dex.seen, id)
+            return (
+              <div
+                key={id}
+                className={i === at ? css.rowOn : known ? css.row : css.rowDim}
+                ref={i === at ? scrollIntoView : undefined}
+              >
+                {i === at && <span className={css.caret} aria-hidden />}
+                <span className={css.face}>
                   <span className={own.number}>{String(i + 1).padStart(3, '0')}</span>
                   <span className={own.ball} data-caught={dexHas(dex.caught, id) ? 'yes' : 'no'} aria-hidden />
-                  <span>{known ? data?.names[id] ?? '' : '----------'}</span>
-                </div>
-              )
-            })}
-          </div>
+                  <span className={css.label}>{known ? data?.names[id] ?? '' : '----------'}</span>
+                </span>
+              </div>
+            )
+          })}
         </div>
 
-        <div className={css.panel}>
+        <div className={css.detail}>
           {seen ? (
-            <div className={own.detail}>
+            <>
+              {/* 잡은 종만 그림이 뜬다. 본 것은 이름·키·몸무게까지다 */}
+              {caught && (
+                <img
+                  className={own.art}
+                  src={`${import.meta.env.BASE_URL}data/pokemon/${String(species)}_front.png`}
+                  alt=""
+                  onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
+                />
+              )}
               <div className={own.title}>
                 {data?.names[species] ?? ''}
                 <span className={own.category}>{data?.category[species] ?? ''}</span>
@@ -121,12 +131,12 @@ export function PokedexScreen() {
               <div className={own.entry}>
                 {caught ? data?.entries[species] ?? '' : ''}
               </div>
-            </div>
-          ) : <div className={css.detail} />}
+            </>
+          ) : null}
         </div>
       </div>
 
-      <div className={css.footer}>↑↓ 고르기 · Q/E 한 쪽씩 · X 닫기</div>
+      <div className={css.foot}>↑↓ 고르기 · Q/E 한 쪽씩 · X 닫기</div>
     </div>
   )
 }

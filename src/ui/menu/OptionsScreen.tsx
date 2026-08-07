@@ -123,11 +123,17 @@ export function OptionsScreen() {
 
   return (
     <div className={css.overlay}>
-      <div className={css.header}><span>{at(OPTIONS_TEXT.title) || '설정'}</span></div>
+      <div className={css.head}>
+        <span className={css.crest}>
+          <span className={css.crestText}>{at(OPTIONS_TEXT.title) || '설정'}</span>
+        </span>
+      </div>
       <div className={own.center}>
         <div className={own.rows}>
           {rows.map((r, i) => (
             <div key={r.key} className={i === cursor ? css.rowOn : css.row}>
+              {i === cursor && <span className={css.caret} aria-hidden />}
+              <span className={css.face}>
               <span className={own.rowLabel}>
                 {r.label}
                 {r.ours && <span className={own.ours}>추가</span>}
@@ -138,12 +144,13 @@ export function OptionsScreen() {
                   <span key={v} className={k === r.at ? own.valueOn : own.value}>{v}</span>
                 ))}
               </span>
+              </span>
             </div>
           ))}
         </div>
         <div className={own.help}>{row?.help}</div>
       </div>
-      <div className={css.footer}>↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기</div>
+      <div className={css.foot}>↑↓ 항목 · ←→ 값 · Z 결정 · X 돌아가기</div>
     </div>
   )
 }
@@ -170,7 +177,7 @@ function ResetConfirm(
           <span className={yes ? own.choice : own.choiceOn}>{text[OPTIONS_TEXT.no] ?? '아니오'}</span>
         </div>
       </div>
-      <div className={css.footer}>←→ 고르기 · Z 결정 · X 그만둔다</div>
+      <div className={css.foot}>←→ 고르기 · Z 결정 · X 그만둔다</div>
     </div>
   )
 }
