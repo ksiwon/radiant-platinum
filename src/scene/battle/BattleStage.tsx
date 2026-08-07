@@ -19,23 +19,20 @@ import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { MoveVfx } from './MoveVfx'
 import { MOVE_FRAMES } from '../../engine/battle/vfx'
+import {
+  ShotDirector, SLOT, sampleShot, shotFor, type ShotName, type Side,
+} from '../../engine/battle/shots'
+import { useOptionsStore } from '../../state/optionsStore'
 import { DAY, makeBlobShadow, makeSkyTexture } from '../fx/sky'
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
 // 원작의 문법 그대로다: **내 포켓몬은 앞쪽 왼쪽에 뒷모습으로, 상대는 뒤쪽 오른쪽에
 // 작게.** 그 거리 차이가 곧 깊이감이라, 둘을 같은 깊이에 두면 아무리 조명을 넣어도
 // 평면으로 보인다. 카메라까지의 거리가 6.1 대 11.5 — 상대가 화면에서 절반 크기다.
-const MINE = { x: -2.4, z: 1.6, radius: 2.6, scale: 1.35 }
-const FOE = { x: 2.6, z: -3.2, radius: 2.1, scale: 1.05 }
-
-/**
- * 내 포켓몬 뒤 왼쪽 위에서 상대를 내려다본다.
- *
- * 높이와 거리를 실제 화면으로 맞췄다. 낮게(y 3.3) 가까이(z 7.0) 두면 지면이
- * 화면을 다 먹고 내 포켓몬이 앞을 가린다 — 하늘이 보여야 무대에 깊이가 생긴다
- */
-const CAMERA_POS = [-2.6, 5.0, 9.6] as const
-const CAMERA_TARGET = [0.9, 1.0, -1.6] as const
+// ⚠️ **자리는 엔진이 갖고 있다**(`battle/shots`의 `SLOT`). 카메라 샷이 같은
+// 값을 봐야 하는데, 여기와 저기에 따로 적으면 샷이 빈 발판을 겨눈다
+const MINE = { ...SLOT.p1, radius: 2.6, scale: 1.35 }
+const FOE = { ...SLOT.p2, radius: 2.1, scale: 1.05 }
 
 /** 등판·기절이 딱 끊기지 않게 하는 시간(초) */
 const FADE = 0.35
@@ -146,6 +143,15 @@ function Slot(
     g.position.x = (other.x - spot.x) * reach + shake
     g.position.z = (other.z - spot.z) * reach
     g.position.y = spot.scale * 0.72 * t + bob * t - (1 - t) * 0.5
+
+    // ⚠️ **카메라가 움직이면 그림판을 돌려야 한다.** 도트 한 장이라 고정
+    // 카메라일 때는 돌릴 이유가 없었는데(그때 주석도 그렇게 적혀 있었다),
+    // 샷이 붙은 뒤로는 안 돌리면 옆에서 종잇장이 보인다. Y축으로만 돈다 —
+    // 위아래로도 돌리면 발이 지면에서 뜬다
+    g.rotation.y = Math.atan2(
+      battleStage.position.x - STAGE_ORIGIN.x - spot.x,
+      battleStage.position.z - STAGE_ORIGIN.z - spot.z,
+    )
   })
 
   const height = mine ? 1.05 : 0.95
@@ -175,8 +181,9 @@ function Slot(
       <group ref={body} position={[0, 0.25, 0]}>
         {art ? (
           /*
-            도트 한 장. 카메라가 고정이라 빌보드로 돌릴 필요가 없다 — 원작
-            카메라도 고정이고, 돌리면 오히려 그림이 그려진 각도와 어긋난다.
+            도트 한 장. 위 `useFrame`이 Y축으로 카메라를 향해 돌린다(빌보드).
+            그림이 그려진 각도와 크게 어긋나지 않게, 카메라 쪽에서도 기준
+            각도에서 40°까지만 돈다(`shots`의 `MAX_SWING`).
             `alphaTest`로 오려 내므로 반투명 정렬 문제가 없다
           */
           <mesh position={[0, art.lift, 0]} castShadow>
@@ -205,6 +212,7 @@ export function BattleStage() {
   const sky = useMemo(() => makeSkyTexture(DAY), [])
   const shadow = useMemo(() => makeBlobShadow(), [])
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
+  const scene = useOptionsStore((s) => s.battleScene)
 
   // 몸 색은 롬의 종족 데이터에 있다. 배틀 스토어가 이미 받아 둔 표라 캐시에 걸린다
   useEffect(() => {
@@ -220,10 +228,10 @@ export function BattleStage() {
   // 카메라를 가져간다. EngineDriver가 이 깃발을 보고 오버월드 카메라를 양보한다
   useEffect(() => {
     battleStage.active = true
-    battleStage.position.set(...CAMERA_POS).add(STAGE_ORIGIN)
-    battleStage.target.set(...CAMERA_TARGET).add(STAGE_ORIGIN)
     return () => { battleStage.active = false }
   }, [])
+
+  useBattleCamera()
 
   const look = (mon: ViewMon | null, key: string): SpeciesLook | null => {
     if (!mon) return null
@@ -268,7 +276,86 @@ export function BattleStage() {
         기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —
         틀은 롬의 기술 데이터가, 색은 타입이 정한다 (`engine/battle/vfx`)
       */}
-      <MoveVfx mine={[MINE.x, MINE.z]} foe={[FOE.x, FOE.z]} />
+      {/*
+        기술 연출. ⚠️ 설정에서 "배틀 애니메이션"을 끄면 통째로 안 그린다 —
+        원작의 그 항목이 하는 일이 바로 이것이고, 그래서 배틀이 빨라진다
+      */}
+      {scene === SHOW_SCENE && <MoveVfx mine={[MINE.x, MINE.z]} foe={[FOE.x, FOE.z]} />}
     </group>
   )
 }
+
+/**
+ * 카메라 연출 (PLAN §7.4).
+ *
+ * 배틀에서 일어나는 일을 보고 샷을 컷한다 — 기술을 쓰면 어깨 너머, 맞으면
+ * 클로즈업, 쓰러지면 로우앵글. 샷이 끝나면 기본 샷으로 돌아온다.
+ *
+ * ⚠️ **설정의 "배틀 애니메이션"을 여기서 본다.** 원작의 그 항목은 연출을 통째로
+ * 건너뛰어 배틀을 빠르게 만드는 것이라, 끄면 카메라도 기본 샷에 붙박이가 된다.
+ * 그동안 값만 저장되고 아무 데도 안 걸려 있던 항목이다
+ */
+function useBattleCamera(): void {
+  const director = useRef(new ShotDirector())
+  const scene = useOptionsStore((s) => s.battleScene)
+  const cast = useBattleStore((s) => s.view?.lastMove ?? null)
+  const struck = useBattleStore((s) => s.view?.lastHit ?? null)
+  const active = useBattleStore((s) => s.view?.active ?? null)
+
+  /** 두 번 같은 일로 컷하지 않게, 방금 본 것을 기억한다 */
+  const seen = useRef({ move: -1, hit: -1, out: '', down: '00' })
+
+  const cut = (name: ShotName, side: Side): void => {
+    if (scene === SHOW_SCENE) director.current.cut(name, side)
+  }
+
+  useEffect(() => {
+    if (!cast || cast.seq === seen.current.move) return
+    seen.current.move = cast.seq
+    cut('oncoming', cast.by)
+  })
+
+  useEffect(() => {
+    if (!struck || struck.seq === seen.current.hit) return
+    seen.current.hit = struck.seq
+    cut('impact', struck.side)
+  })
+
+  // 등판과 기절. 어느 쪽이 바뀌었는지는 종족 번호와 체력으로 안다
+  useEffect(() => {
+    if (!active) return
+    const out = SIDES.map((side) => String(active[side]?.species ?? '')).join('/')
+    const was = seen.current.out.split('/')
+    if (out !== seen.current.out) {
+      const changed = SIDES.filter((side, i) => String(active[side]?.species ?? '') !== was[i])
+      const first = seen.current.out === ''
+      seen.current.out = out
+      // ⚠️ 첫 등판에는 컷하지 않는다. 배틀이 열리는 순간이라 두 자리가 한꺼번에
+      // 차는데, 그때 등판 샷을 걸면 무대가 서기도 전에 카메라가 한쪽으로 붙는다
+      if (!first && changed[0]) cut('switchIn', changed[0])
+    }
+    const down = SIDES.map((side) => ((active[side]?.hp ?? 1) <= 0 ? '1' : '0')).join('')
+    if (down !== seen.current.down) {
+      const fell = SIDES.filter((_, i) => down[i] === '1' && seen.current.down[i] !== '1')
+      seen.current.down = down
+      if (fell[0]) cut('faint', fell[0])
+    }
+  })
+
+  useFrame((_, delta) => {
+    const frame = scene === SHOW_SCENE
+      ? director.current.advance(delta)
+      : sampleShot(shotFor('establish', 'p1'), 0)
+    // 흔들림은 방향을 여기서 정한다 — 엔진이 난수를 들고 있을 이유가 없다
+    const jitter = frame.shake === 0 ? 0 : Math.sin(performance.now() / 17) * frame.shake
+    battleStage.position
+      .set(frame.position[0] + jitter, frame.position[1] + jitter * 0.6, frame.position[2])
+      .add(STAGE_ORIGIN)
+    battleStage.target.set(frame.look[0], frame.look[1], frame.look[2]).add(STAGE_ORIGIN)
+  })
+}
+
+/** 설정의 "배틀 애니메이션"에서 **보는** 쪽 값 (`options_menu` 뱅크 13번) */
+const SHOW_SCENE = 0
+
+const SIDES: readonly Side[] = ['p1', 'p2']
