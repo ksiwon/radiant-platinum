@@ -130,3 +130,61 @@ maybe('실제 자료', () => {
     expect(heroine).toHaveLength(15)
   })
 })
+
+/**
+ * 구워 둔 표(`npcModels.json`)가 규칙과 어긋나지 않는가.
+ *
+ * 표는 `tools/extract/npcModels.mjs`가 **이 모듈을 그대로 불러** 만든다. 그래도
+ * 시험이 필요한 이유는 표가 파일로 남기 때문이다 — 규칙을 고치고 표를 다시
+ * 안 구우면 화면에 서는 사람과 규칙이 갈린다
+ */
+maybe('구워 둔 표', () => {
+  const TABLE = resolve(DATA, 'npcModels.json')
+  const has = existsSync(TABLE)
+  const table = (): Record<string, string> =>
+    JSON.parse(readFileSync(TABLE, 'utf8')) as Record<string, string>
+
+  it('표의 짝이 규칙이 내는 짝과 같다', () => {
+    if (!has) return
+    const rules = models()
+    const names = sprites()
+    for (const [sprite, tag] of Object.entries(table())) {
+      const name = names[sprite]?.name
+      expect(name, sprite).toBeTruthy()
+      expect(modelFor(name!, rules)?.tag, name).toBe(tag)
+    }
+  })
+
+  it('표에 있는 갈래는 glb가 실제로 있다', () => {
+    // ⚠️ 없는 glb를 가리키면 그 사람은 **판때기로도 안 선다** — 모델 쪽이
+    // 자리를 차지하고 받기에 실패하면 그 자리가 빈다.
+    //
+    // `public/models/`는 gitignore라 갓 받은 리포에는 없다. 그때는 건너뛴다 —
+    // 여기서 재는 것은 "표와 파일이 어긋나지 않는가"지 "파일이 있는가"가 아니다
+    const dir = resolve(DATA, '../models/npc')
+    if (!has || !existsSync(dir)) return
+    const missing = Object.values(table()).filter(
+      (tag) => !existsSync(resolve(dir, `${tag}.glb`)))
+    expect(missing).toEqual([])
+  })
+
+  it('붙는 배치가 오버월드의 5분의 1은 된다', () => {
+    // 이 수가 확 떨어지면 이름 짓기나 번들 목록이 어긋난 것이다
+    if (!has || !existsSync(resolve(DATA, 'events.json'))) return
+    const events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as {
+      events: Record<string, { npcs: { sprite: number }[] }>
+    }).events
+    const map = table()
+    let hit = 0, all = 0
+    for (const e of Object.values(events)) {
+      for (const n of e.npcs) {
+        all++
+        if (map[String(n.sprite)] !== undefined) hit++
+      }
+    }
+    expect(all).toBe(3555)
+    // 규칙이 붙이는 것은 760개인데 표에는 749개다 — `idol`(tr1085_00) 번들이
+    // 같은 폴더에 없는 CAB을 가리켜 못 구웠다. 그 열한 명은 판때기로 선다
+    expect(hit).toBe(749)
+  })
+})

@@ -96,9 +96,16 @@ function setFrame(slot: Slot, sprite: NpcSprite, frame: number): void {
 interface Props {
   grid: MapGrid
   layer: number
+  /**
+   * 입체 모델이 이미 세운 사람들. 여기 든 사람은 판때기를 안 세운다.
+   *
+   * "모델이 있는 그림"이 아니라 **실제로 선 사람**이어야 한다 — 모델 쪽에도
+   * 상한이 있어서, 넘친 사람은 판때기로라도 서야 한다
+   */
+  standing?: ReadonlySet<NpcActor>
 }
 
-export function NpcSprites({ grid, layer }: Props) {
+export function NpcSprites({ grid, layer, standing }: Props) {
   const groupRef = useRef<Group>(null)
   const camera = useThree((s) => s.camera)
   const slots = useMemo(() => Array.from({ length: MAX }, makeSlot), [])
@@ -129,6 +136,7 @@ export function NpcSprites({ grid, layer }: Props) {
     for (const actor of npcActors.list) {
       if (n >= MAX) break
       if (!actor.visible) continue
+      if (standing?.has(actor) === true) continue
       if (Math.abs(actor.x - p.x) > RANGE) continue
       if (Math.abs(actor.z - p.z) > RANGE) continue
       const sprite = npcSprite(actor.info.sprite)

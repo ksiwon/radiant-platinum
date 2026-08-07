@@ -38,6 +38,7 @@
     "extract:mapTextures": "node tools/extract/mapTextures.js",
     "extract:props": "node tools/extract/props.js",
     "extract:spawns": "node tools/extract/spawns.js",
+    "extract:npcModels": "node --experimental-strip-types tools/extract/npcModels.mjs",
     "extract:marts": "node tools/extract/marts.js",
     "extract:sndTables": "node tools/extract/sndTables.js"
   },

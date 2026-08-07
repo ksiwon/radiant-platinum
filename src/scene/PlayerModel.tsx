@@ -40,6 +40,8 @@ export function PlayerModel() {
   useEffect(() => {
     if (!normRef.current) return
     const r = normalizeModel(normRef.current, gltf.scene, PLAYER_HEIGHT)
+    // NPC 모델이 같은 배수를 쓴다 (`sceneRefs.playerScale`)
+    sceneRefs.playerScale = r.scale
     if (import.meta.env.DEV) {
       console.info(
         `[model] dawn.glb 원본 ${r.nativeHeight.toFixed(3)} → ${PLAYER_HEIGHT}m (×${r.scale.toFixed(4)})`,

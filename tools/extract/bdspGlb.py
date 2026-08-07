@@ -374,7 +374,8 @@ def borrowed_clips(
 
 
 def export(bundle: Path, out: Path, color_index: int | None = None,
-           clips_from: Path | None = None, only: set[str] | None = None) -> dict:
+           clips_from: Path | None = None, only: set[str] | None = None,
+           max_texture: int | None = None, keep_clips: bool = True) -> dict:
     env = UnityPy.load(str(bundle))
     smrs = [o.read() for o in env.objects if o.type.name == "SkinnedMeshRenderer"]
     if not smrs:
@@ -401,7 +402,7 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
 
     # 알베도는 번들 통째로 한 번만 굽는다
     albedo = out.parent / f".{out.stem}_albedo"
-    bake(bundle, albedo, color_index)
+    bake(bundle, albedo, color_index, max_texture)
     images, textures, materials, by_name = [], [], [], {}
     for png in sorted(albedo.glob("*_albedo.png")):
         name = png.name[: -len("_albedo.png")]
@@ -521,7 +522,13 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
     for i, mesh in enumerate(meshes):
         nodes.append({"name": mesh["name"], "mesh": i, "skin": i})
 
-    animations, anim_stat = build_animations(env, buf, node_of_hash)
+    # ⚠️ **오버월드 NPC는 클립을 안 싣는다.** 걷기는 `actor/locomotion`이 뼈를
+    # 직접 돌려서 만드는 것이라(주인공도 그렇다) 구운 클립을 쓸 자리가 없다.
+    # 벌레잡이(tr1006_00)에서 클립 아홉 개가 glb의 절반이다 — 2.58MB → 1.20MB
+    animations, anim_stat = (
+        build_animations(env, buf, node_of_hash) if keep_clips
+        else ([], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0})
+    )
     if clips_from is not None:
         extra, borrow_stat = borrowed_clips(clips_from, env, buf, node_of_hash, only or set())
         animations += extra
@@ -687,12 +694,16 @@ def main() -> int:
     ap.add_argument("-c", "--color-index", type=int, default=None)
     ap.add_argument("--clips-from", type=Path, default=None,
                     help="이 번들의 클립을 뼈 이름으로 옮겨 온다 (치비 → 등신)")
+    ap.add_argument("--no-clips", action="store_true",
+                    help="애니메이션을 안 싣는다. 걷기는 locomotion이 만든다")
+    ap.add_argument("--max-texture", type=int, default=None,
+                    help="텍스처 긴 변의 상한. 오버월드 NPC를 줄이는 데 쓴다")
     ap.add_argument("--only", default="",
                     help="옮겨 올 클립 이름들, 쉼표로 나눈다. 비우면 전부")
     args = ap.parse_args()
     stat = export(
         args.bundle, args.out, args.color_index, args.clips_from,
-        {n for n in args.only.split(",") if n},
+        {n for n in args.only.split(",") if n}, args.max_texture, not args.no_clips,
     )
     print(f"{args.bundle.name} → {args.out}")
     for k, v in stat.items():

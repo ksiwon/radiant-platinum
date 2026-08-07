@@ -33,6 +33,8 @@ import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcSprites } from './NpcSprites'
+import { NpcModels } from './NpcModels'
+import type { NpcActor } from '../engine/actor/npcs'
 import {
   CHAR_KEY_COLOR, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, FILL_DIR, SUN_DIR, TIME_LOOKS,
   blendLooks, characterKey, makeSkyTexture,
@@ -266,6 +268,23 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (scene.background instanceof Color) scene.background.set(look.stops[0]![1])
   }, [scene, look])
 
+  /**
+   * 그림 번호 → BDSP 갈래. 추출기가 **구워 낸 것만** 담아 준다
+   * (`tools/extract/npcModels.mjs`). 없으면 전부 판때기로 선다
+   */
+  const [npcModels, setNpcModels] = useState<Record<string, string> | null>(null)
+  useEffect(() => {
+    let alive = true
+    fetch(`${import.meta.env.BASE_URL}data/npcModels.json`)
+      .then((r) => (r.ok ? r.json() as Promise<Record<string, string>> : null))
+      .then((t) => { if (alive) setNpcModels(t) })
+      .catch(() => { /* 표가 없으면 판때기로 선다 */ })
+    return () => { alive = false }
+  }, [])
+
+  /** 입체로 선 사람들. 판때기는 이 사람들을 건너뛴다 */
+  const [standing, setStanding] = useState<ReadonlySet<NpcActor>>(() => new Set())
+
   // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
   // 정수로 반올림해 두는 이유는 계단을 오르는 동안 매 프레임 창을 다시 세우지
   // 않기 위해서다 — 한 번 다시 세우는 데 5×5청크 × 1024타일을 훑는다
@@ -416,8 +435,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       */}
       <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
 
-      {/* NPC. 원작 판때기 그림이다 — 방향도 걸음도 텍스처가 바뀌는 것이다 */}
-      <NpcSprites grid={grid} layer={layer} />
+      {/*
+        NPC. 붙는 사람은 BDSP 등신 모델로 서고(`NpcModels`) 나머지는 원작
+        판때기 그림 그대로다 — 지금 붙는 것이 배치의 21.4%다
+      */}
+      <NpcModels grid={grid} layer={layer} table={npcModels} onStanding={setStanding} />
+      <NpcSprites grid={grid} layer={layer} standing={standing} />
     </group>
   )
 }

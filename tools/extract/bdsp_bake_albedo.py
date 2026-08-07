@@ -100,7 +100,14 @@ def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, 
     return out
 
 
-def bake(bundle: Path, outdir: Path, color_index: int | None = None) -> int:
+def bake(bundle: Path, outdir: Path, color_index: int | None = None,
+         max_size: int | None = None) -> int:
+    """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
+
+    `max_size`를 주면 긴 변을 그만큼으로 줄인다. **오버월드 NPC 때문에 있다** —
+    번들 하나가 1024짜리 넉 장을 들고 나오면 glb가 5MB고, 마흔 몇 명을 세우면
+    그것만 200MB다. 주인공(`dawn.glb`)과 배틀 무대는 안 준다.
+    """
     env = UnityPy.load(str(bundle))
     textures = {o.path_id: o for o in env.objects if o.type.name == "Texture2D"}
     overrides = color_overrides(env, color_index)
@@ -163,10 +170,15 @@ def bake(bundle: Path, outdir: Path, color_index: int | None = None) -> int:
         out = np.concatenate([linear_to_srgb(out_lin), col[..., 3:4]], axis=2)
         img = Image.fromarray((np.clip(out, 0, 1) * 255).round().astype(np.uint8), "RGBA")
 
+        if max_size is not None and max(img.size) > max_size:
+            k = max_size / max(img.size)
+            # LANCZOS는 도트가 아니라 사진 계열 텍스처라 이쪽이 맞다
+            img = img.resize((max(1, round(img.width * k)), max(1, round(img.height * k))),
+                             Image.LANCZOS)
         path = outdir / f"{name}_albedo.png"
         img.save(path)
         made += 1
-        print(f"  {name:<12} {w}x{h} → {path.name}")
+        print(f"  {name:<12} {w}x{h} → {path.name} ({img.width}x{img.height})")
 
     return made
 
