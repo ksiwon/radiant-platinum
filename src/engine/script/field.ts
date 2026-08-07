@@ -15,7 +15,7 @@ import {
   buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, TRAINER_DEFEATED_FLAGS_START, trainerIdOf,
   type CommandTable,
 } from './commands'
-import { ScriptContext, ScriptError } from './context'
+import { ScriptContext, ScriptError, type CommonScripts } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { npcActors, spawnNpcs } from '../actor/npcs'
 import { obstacleAt } from '../actor/obstacles'
@@ -77,6 +77,79 @@ export const fieldScripts = {
   onScriptEnd: null as ((vars: VarStore) => void) | null,
   /** 바깥 세계에 부탁하는 것들. 씬이 붙인다 (`scene/fieldServices.ts`) */
   services: {} as FieldServices,
+  /**
+   * 이미 받아 둔 **구역 뱅크**(간판·공용 스크립트가 읽는 글). 맵 뱅크와 다르다.
+   *
+   * 받아 두면 두 번째부터는 프레임을 안 세운다 — 안 그러면 간판을 읽을 때마다
+   * 한 프레임씩 멎는다. 언어가 바뀌면 비운다
+   */
+  banks: new Map<number, readonly string[]>(),
+}
+
+/**
+ * 공용 스크립트 (`CallCommonScript` · `ReturnCommonScript`).
+ *
+ * ⚠️ **이 둘을 안 만들어 두고 건너뛰고 있었다.** 안 만든 명령은 길이만큼
+ * 건너뛰는데, 이 명령은 건너뛰면 **하는 일이 통째로 사라진다** — 포켓몬센터
+ * 간호사가 그렇다. 그쪽 스크립트는 `SetVar` 하나에 `CallCommonScript 2002`가
+ * 전부라, 건너뛰면 말을 걸어도 아무 일이 안 일어난다. 실측으로 NPC 스크립트
+ * 3306개 중 **770개(23.3%)**가 이 명령을 거친다.
+ *
+ * 원작은 스크립트 문맥을 **하나 더 만들어** 돌리고, 부모는 그것이 끝날 때까지
+ * 선다(`ScriptContext_WaitSubContext`). 관리자가 매 프레임 문맥 전부를 돌리지만
+ * 부모는 서 있으므로 실제로 나아가는 것은 자식 하나다 — 그래서 우리도 자식
+ * 하나만 밟는다.
+ *
+ * ⚠️ **글 뱅크도 같이 갈린다** (`ScriptContext_Load`가 파일과 뱅크를 함께 받는다).
+ * 공용 스크립트 안의 `Message 3`은 맵의 3번이 아니라 그 구역 뱅크의 3번이다.
+ */
+const common = {
+  ctx: null as ScriptContext | null,
+  /**
+   * 부르는 중인가. 뱅크를 **받는 동안에도** 참이다 — 안 그러면 부모가 먼저
+   * 깨어나서 자식이 한 마디도 못 하고 끝난 것처럼 보인다
+   */
+  busy: false,
+  /** 부모가 읽던 뱅크. 돌아올 때 이리로 되돌린다 */
+  parentBank: null as number | null,
+}
+
+/**
+ * 글 뱅크를 기다리는 중.
+ *
+ * 뱅크는 fetch로 온다. 오기 전에 `Message`를 밟으면 **빈 글이 뜨고 그대로
+ * 지나가 버리므로**, 올 때까지 스크립트를 한 프레임씩 세워 둔다. 한 번 받은
+ * 뱅크는 `gameData`가 들고 있어서 두 번째부터는 안 선다
+ */
+let bankPending = false
+
+/**
+ * 지금 창에 걸린 구역 뱅크. null이면 맵 뱅크 그대로다.
+ *
+ * **이 값이 없으면 맵 스크립트를 걸 때마다 글을 덮어쓴다** — 맵 뱅크를 아직
+ * 안 받은 자리(시험·첫 프레임)에서 멀쩡한 글이 빈 배열로 갈린다
+ */
+let activeBank: number | null = null
+
+/**
+ * 그 구역이 읽는 글로 갈아 끼운다.
+ *
+ * `msg`가 null이면 맵 뱅크다 — 맵 스크립트가 그 경우다
+ */
+function switchBank(msg: number | null): void {
+  if (msg === activeBank) return
+  activeBank = msg
+  if (msg === null) { fieldScripts.world?.useBank(null); return }
+  const hit = fieldScripts.banks.get(msg)
+  if (hit) { fieldScripts.world?.useBank(hit); return }
+  bankPending = true
+  loadDialogueBank(locale, msg)
+    .then((bank) => {
+      fieldScripts.banks.set(msg, bank)
+      if (activeBank === msg) fieldScripts.world?.useBank(bank)
+    })
+    .catch(() => { /* 글이 비는 것으로 끝난다 */ })
+    .finally(() => { bankPending = false })
 }
 
 /**
@@ -163,10 +236,15 @@ export function setFieldLocale(which: DataLocale): void {
   loadDialogueBank(which, MENU_ENTRIES_BANK)
     .then((bank) => { if (fieldScripts.world) fieldScripts.world.menuEntryTexts = bank })
     .catch(() => { /* 전역 메뉴 글만 옛 언어로 남는다 */ })
+  // 받아 둔 구역 뱅크는 옛 언어다. 비워야 다음 간판부터 새 언어로 온다
+  fieldScripts.banks.clear()
   const bank = fieldScripts.bank
   if (bank < 0) return
   loadDialogueBank(which, bank)
-    .then((messages) => { if (fieldScripts.bank === bank) fieldScripts.world?.setMessages(messages) })
+    .then((messages) => {
+      if (fieldScripts.bank !== bank) return
+      fieldScripts.world?.setMessages(messages)
+    })
     .catch(() => { /* 맵 글만 옛 언어로 남는다 */ })
 }
 
@@ -230,6 +308,10 @@ const DIR_TO_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
  * 대사는 늦어도 되고, 실패해도 게임은 계속 돈다(글만 빈다)
  */
 export function enterMap(mapId: number): void {
+  // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
+  endCommon()
+  bankPending = false
+  activeBank = null
   spawnNpcs(mapId, fieldScripts.vars)
   // 괴력은 맵마다 다시 쓴다 — 원작도 맵을 옮기면 풀린다
   worldState.player.strength = false
@@ -243,7 +325,8 @@ export function enterMap(mapId: number): void {
   loadDialogueBank(locale, header.msg)
     .then((bank) => {
       // 받는 사이에 맵이 또 바뀌었으면 늦게 온 것을 버린다
-      if (fieldScripts.bank === header.msg) fieldScripts.world?.setMessages(bank)
+      if (fieldScripts.bank !== header.msg) return
+      fieldScripts.world?.setMessages(bank)
     })
     .catch(() => { /* 글이 비는 것으로 끝난다 */ })
 }
@@ -321,6 +404,17 @@ function chooseFromMenu(world: FieldWorld): void {
 
 function step(ctx: ScriptContext, world: FieldWorld): void {
   try {
+    // 글 뱅크가 오는 중이면 아무도 안 밟는다. 창은 계속 살아 있어야 하므로
+    // `world.tick()`은 돈다
+    if (bankPending) { world.tick(); return }
+    // 공용 스크립트가 도는 동안은 그쪽이 먼저다 — 부모는 그것이 끝나기를
+    // 기다리는 중이다(`ScriptContext_WaitSubContext`)
+    const sub = common.ctx
+    if (sub !== null) {
+      if (!sub.step(STEP_CAP)) endCommon()
+      world.tick()
+      return
+    }
     if (!ctx.step(STEP_CAP)) {
       finish()
       return
@@ -333,7 +427,20 @@ function step(ctx: ScriptContext, world: FieldWorld): void {
   }
 }
 
+/**
+ * 공용 스크립트가 끝났다. 부모를 놓아준다.
+ *
+ * 글은 **부모의 뱅크**로 되돌린다 — 부모도 구역 스크립트일 수 있다
+ */
+function endCommon(): void {
+  if (common.ctx === null && !common.busy) return
+  common.ctx = null
+  common.busy = false
+  switchBank(common.parentBank)
+}
+
 function finish(): void {
+  endCommon()
   fieldScripts.ctx = null
   fieldScripts.world?.closeBox(true)
   fieldScripts.world?.reset()
@@ -723,11 +830,51 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
   world.scriptID = scriptID
   world.services = fieldScripts.services
 
+  // ⚠️ **구역마다 글 뱅크가 다르다.** 간판이 대표적이다 — 292개 중 262개가
+  // 2500번대(`TEXT_BANK_BG_EVENTS`)라, 맵 뱅크로 읽으면 같은 번호의 엉뚱한
+  // 문장이 나온다. 글자는 나오므로 눈으로는 "번역이 이상한가" 싶게 지나간다
+  switchBank(target.msg)
+
   const ctx = new ScriptContext(
-    { vars, world, commands: commands.map }, fileBytes(data, target.file), target.file,
+    { vars, world, commands: commands.map, common: commonScripts },
+    fileBytes(data, target.file), target.file,
   )
   ctx.start(entryOffset(data, target.file, target.entry))
   fieldScripts.ctx = ctx
   fieldScripts.lastError = null
   return true
+}
+
+/**
+ * `CallCommonScript`가 부르는 손잡이.
+ *
+ * 명령 표는 스크립트 자료를 모른다(`commands.ts`는 `ctx.host`만 본다). 파일을
+ * 찾고 문맥을 만드는 일은 여기서 한다
+ */
+const commonScripts: CommonScripts = {
+  call(id) {
+    const { data, commands, world, vars } = fieldScripts
+    if (data === null || commands === null || world === null) return false
+    const target = resolveScript(data.meta, id, mapWorld.mapId >= 0 ? currentMapFile() : -1)
+    if (!target) return false
+    const info = data.meta.files[target.file]
+    if (!info || target.entry >= info.entries) return false
+
+    common.busy = true
+    common.parentBank = activeBank
+    switchBank(target.msg)
+    const ctx = new ScriptContext(
+      { vars, world, commands: commands.map, common: commonScripts },
+      fileBytes(data, target.file), target.file,
+    )
+    ctx.start(entryOffset(data, target.file, target.entry))
+    common.ctx = ctx
+    return true
+  },
+  running: () => common.busy,
+}
+
+/** 지금 맵의 스크립트 파일. 공용 구역 밖 번호를 부를 때만 쓴다 */
+function currentMapFile(): number {
+  return mapById(mapWorld.mapId)?.scripts ?? -1
 }

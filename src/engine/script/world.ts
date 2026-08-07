@@ -223,6 +223,8 @@ export class FieldWorld {
   private readonly runners: MovementRunner[] = []
 
   private messages: readonly string[]
+  /** 구역 스크립트가 얹은 뱅크. null이면 맵 뱅크다 */
+  private override: readonly string[] | null = null
   /**
    * 인쇄기 기본값. **글자 속도는 여기 안 굳는다** — 설정에서 바꾼 값이 다음
    * 대사부터 바로 먹어야 하므로 창을 열 때마다 `speed()`에 물어본다
@@ -265,6 +267,24 @@ export class FieldWorld {
   }
 
   /**
+   * 잠깐 다른 뱅크를 읽는다 (`ScriptContext_Load`).
+   *
+   * ⚠️ **구역 스크립트는 글 뱅크가 맵과 다르다.** 간판은 2500번대라
+   * `bg_events`를, 공용 스크립트는 그 구역 뱅크를 읽는다 — 맵 뱅크로 읽으면
+   * 같은 번호의 **엉뚱한 문장**이 나온다. 글자는 나오므로 눈으로는 넘어간다.
+   *
+   * 맵 뱅크를 덮어쓰지 않고 위에 얹는다. `null`이면 맵 뱅크로 돌아간다
+   */
+  useBank(messages: readonly string[] | null): void {
+    this.override = messages
+  }
+
+  /** 지금 읽는 글. 구역 뱅크가 얹혀 있으면 그쪽이다 */
+  private get bank(): readonly string[] {
+    return this.override ?? this.messages
+  }
+
+  /**
    * 글 하나를 창에 올린다 (`ScriptMessage_Show`).
    *
    * 창이 닫혀 있으면 **먼저 연다** — `OpenMessage` 없이 `Message`만 쓰는
@@ -273,7 +293,7 @@ export class FieldWorld {
   showMessage(id: number, canSkip = true): void {
     this.boxOpen = true
     this.lastMessage = id
-    this.printer = new MessagePrinter(this.messages[id] ?? '', this.slots, {
+    this.printer = new MessagePrinter(this.bank[id] ?? '', this.slots, {
       ...this.options, speed: this.speed(), canSkip,
     })
   }
@@ -334,7 +354,7 @@ export class FieldWorld {
   /** `AddMenuEntry` · `AddListMenuEntry`. `alt`는 목록 메뉴에만 있다 */
   addMenuEntry(stringID: number, value: number, altID: number | null = null): void {
     if (this.builder === null) return
-    const bank = this.builder.scope === 'global' ? this.menuEntryTexts : this.messages
+    const bank = this.builder.scope === 'global' ? this.menuEntryTexts : this.bank
     this.builder.entries.push({
       text: bank[stringID] ?? '',
       value,

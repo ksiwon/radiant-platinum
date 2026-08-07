@@ -27,6 +27,21 @@ const ENTRY_TABLE_END = 0xfd13
 const DECOMP = path.join(ROOT, 'raw/decomp')
 
 /**
+ * 뱅크 상수 이름 → 미국 롬의 뱅크 번호.
+ *
+ * ⚠️ **구역마다 글 뱅크가 다르다.** `ScriptContext_Load`가 스크립트 파일과 글
+ * 뱅크를 **같이** 갈아 끼운다 — 공용 스크립트 안의 `Message 3`은 맵의 3번이
+ * 아니라 그 구역 뱅크의 3번이다. 이름만 싣고 번호를 안 실으면 앱이 111KB짜리
+ * 대응표를 통째로 들고 있어야 그 번호를 안다
+ */
+function bankNumbers() {
+  const table = JSON.parse(
+    fs.readFileSync(path.join(ROOT, 'src/data/textBanks.json'), 'utf8'),
+  )
+  return new Map(table.map((b) => [b.constant, b.bank.us]))
+}
+
+/**
  * scriptID → (스크립트 파일, 글 뱅크).
  *
  * 맵 이벤트가 들고 있는 번호는 맵의 스크립트 파일 안 번호지만, 2000 이상은
@@ -155,6 +170,10 @@ function main() {
 
   const ranges = readRangeTable()
   const byName = new Map(order.map((n, i) => [n, i]))
+  const banks = bankNumbers()
+  for (const r of ranges) {
+    if (!banks.has(r.bank)) throw new Error(`글 뱅크 상수를 못 찾았다: ${r.bank}`)
+  }
   writeJson('scripts.json', {
     count: files.length,
     bytes: bin.length,
@@ -164,6 +183,8 @@ function main() {
       from: r.from,
       file: byName.get(r.script) ?? null,
       bank: r.bank,
+      /** 미국 롬 기준 뱅크 번호. 파일 이름이 그 번호다 (DATA.md §2.11) */
+      msg: banks.get(r.bank),
     })),
     commands: packCommands(),
     /**

@@ -28,11 +28,26 @@ export type CommandFn = (ctx: ScriptContext) => boolean
 /** 참이 될 때까지 기다린다 */
 export type ResumeFn = (ctx: ScriptContext) => boolean
 
+/**
+ * 공용 스크립트를 부르는 손잡이 (`CallCommonScript`).
+ *
+ * 명령 표는 스크립트 자료를 모른다 — 어느 파일의 몇 번째인지 찾는 일은
+ * `engine/script/field`가 한다. 여기서는 부르고 끝났는지만 묻는다
+ */
+export interface CommonScripts {
+  /** 공용 스크립트 하나를 건다. 못 걸면 거짓 */
+  call(id: number): boolean
+  /** 아직 도는가. 글 뱅크를 받는 동안에도 참이다 */
+  running(): boolean
+}
+
 export interface ScriptHost {
   vars: VarStore
   /** 명령 하나가 감당할 수 없는 일을 바깥에 맡긴다 (대화창·이동·배틀) */
   readonly world: FieldWorld
   readonly commands: ReadonlyMap<number, CommandFn>
+  /** 없으면 `CallCommonScript`가 아무 일도 안 한다 (시험용 문맥이 그렇다) */
+  readonly common?: CommonScripts
 }
 
 /**

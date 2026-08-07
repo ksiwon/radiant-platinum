@@ -70,6 +70,35 @@ on('CallIf', (ctx) => {
   return false
 })
 
+/**
+ * 다른 **파일**의 스크립트를 부른다 (`ScrCmd_CallCommonScript`).
+ *
+ * `Call`과 다르다 — `Call`은 같은 파일 안에서 뛰고, 이쪽은 공용 구역의 파일을
+ * 통째로 새로 연다. 글 뱅크까지 같이 갈린다.
+ *
+ * ⚠️ 이 명령을 안 만들고 건너뛰면 **하는 일이 통째로 사라진다.** 포켓몬센터
+ * 간호사의 스크립트는 `SetVar` 하나에 `CallCommonScript 2002`가 전부다
+ */
+on('CallCommonScript', (ctx) => {
+  const id = ctx.readHalfWord()
+  if (ctx.host.common?.call(id) !== true) return false
+  ctx.pause((c) => c.host.common?.running() !== true)
+  return true
+})
+
+/**
+ * 공용 스크립트에서 돌아간다 (`ScrCmd_ReturnCommonScript`).
+ *
+ * 원작은 깃발만 내리고 **다음 명령을 계속 밟는다.** 우리는 여기서 문맥을
+ * 끝낸다 — 디컴프의 이 명령 41곳이 **전부** 바로 뒤에 `End`라, 밟을 다음
+ * 명령이 어차피 그것뿐이다. 이렇게 두면 부모와 자식이 같이 도는 상태가
+ * 생기지 않는다
+ */
+on('ReturnCommonScript', (ctx) => {
+  ctx.stop()
+  return false
+})
+
 // ── 비교 ─────────────────────────────────────────────────────────────────────
 
 on('CompareVarToValue', (ctx) => {

@@ -330,7 +330,7 @@ maybe('스크립트 VM', () => {
     expect(single?.file).not.toBe(common?.file)
     expect(single?.entry).toBe(0)
     // 2000 미만은 지금 맵의 파일이고 진입점은 번호 − 1이다
-    expect(resolveScript(meta, 6, 99)).toEqual({ file: 99, entry: 5, bank: null })
+    expect(resolveScript(meta, 6, 99)).toEqual({ file: 99, entry: 5, bank: null, msg: null })
   })
 })
 

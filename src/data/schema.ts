@@ -204,6 +204,8 @@ export const scriptFileSchema = z.object({
     from: z.number().int().positive(),
     file: z.number().int().nonnegative().nullable(),
     bank: z.string(),
+    /** 그 구역이 읽는 글 뱅크의 **미국 번호**. 파일 이름이 그 번호다 */
+    msg: z.number().int().nonnegative(),
   })).nonempty(),
   /**
    * opcode로 색인한다. `args`는 피연산자 폭을 띄어쓰기로 나열한 것이고

@@ -8,7 +8,10 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { MapHeader, EventFile } from '../map/world'
-import { BG_EVENT_DIR, signsOf, triggersOf, world as mapWorld, npcsOf } from '../map/world'
+import {
+  BG_EVENT_DIR, mapById, signsOf, TILE_BEHAVIOR_TABLE, triggersOf, world as mapWorld, npcsOf,
+} from '../map/world'
+import { MapGrid, type MatrixMeta } from '../map/grid'
 import { worldState } from '../../state/worldState'
 import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
@@ -18,6 +21,7 @@ import {
 } from './field'
 import { printedText } from './printer'
 import { VarStore } from './vars'
+import { MENU_NO, type FieldWorld } from './world'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const present = existsSync(resolve(DATA, 'scripts.bin'))
@@ -63,6 +67,8 @@ const GYM_TRAINER_ID = 232
 const GYM_TRAINER_LINE = '그렇다면-!!\n제대로 한 방을 날려주마!\r'
 /** `generated/vars_flags.txt`의 `TRAINER_DEFEATED_FLAGS_START` */
 const TRAINER_DEFEATED_FLAGS_START = 1360
+/** `TEXT_BANK_COMMON_STRINGS`. 3000번대 구역이 읽는 뱅크다 (미국 번호) */
+const COMMON_STRINGS_BANK = 213
 
 maybe('트레이너전', () => {
   const meta = parseScriptMeta(read('scripts.json'))
@@ -92,6 +98,9 @@ maybe('트레이너전', () => {
     fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
     fieldScripts.ctx = null
     fieldScripts.lastError = null
+    // 트레이너 스크립트는 3000번대라 **글 뱅크가 맵이 아니라 공용 문자열**이다.
+    // 미리 넣어 두면 fetch 없이 돈다 (`fieldScripts.banks`)
+    fieldScripts.banks = new Map([[COMMON_STRINGS_BANK, read('dialogue/ko/213.json') as string[]]])
     enterMap(GYM_MAP)
     worldState.input.interact = false
     worldState.input.cancel = false
@@ -347,5 +356,155 @@ maybe('떡잎마을에서 말 걸기', () => {
     expect(npcAt(TWINLEAF_MAP, npc.x, npc.z, vars)).toBe(npc)
     vars.setFlag(npc.flag!)
     expect(npcAt(TWINLEAF_MAP, npc.x, npc.z, vars)).toBeNull()
+  })
+})
+
+/**
+ * 포켓몬센터 간호사 — 공용 스크립트를 타고 가는 유일한 갈래.
+ *
+ * ⚠️ **이 자리가 오래 비어 있었다.** 간호사의 맵 스크립트는 `SetVar` 하나에
+ * `CallCommonScript 2002`가 전부다. 그 명령을 안 만들고 건너뛰고 있었으니
+ * 말을 걸어도 아무 일이 안 일어났다 — 창도 안 뜨므로 "말이 안 걸린다"로 보인다.
+ *
+ * 그래서 여기서는 **말을 건 결과 창에 원작 문장이 찍히는가**를 잰다. 명령을
+ * 도로 건너뛰면 창이 아예 안 뜨고, 글 뱅크를 안 갈면 같은 번호의 엉뚱한
+ * 문장이 찍힌다.
+ */
+const JUBILIFE_PC = 6
+/** 간호사가 서는 칸. 열여덟 센터가 전부 같은 자리다 */
+const NURSE = { x: 8, z: 4 }
+/** 그 앞 칸의 타일 동작 — 계산대(`TILE_BEHAVIOR_TABLE`) */
+const COUNTER = { x: 8, z: 5 }
+
+maybe('포켓몬센터 간호사', () => {
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+  const common = read('dialogue/ko/213.json') as string[]
+  const interiors = read('matrices/interiors.json') as {
+    matrices: Record<string, MatrixMeta & { byteOffset: number }>
+  }
+  const blob = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+
+  const gridFor = (matrix: number): MapGrid => {
+    const m = interiors.matrices[String(matrix)]!
+    const ab = blob.buffer.slice(blob.byteOffset, blob.byteOffset + blob.byteLength) as ArrayBuffer
+    return new MapGrid(m, new Uint16Array(ab, m.byteOffset, m.tileWidth * m.tileHeight))
+  }
+
+  let healed = 0
+
+  beforeEach(() => {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = JUBILIFE_PC
+    mapWorld.grid = gridFor(mapById(JUBILIFE_PC)!.matrix)
+    healed = 0
+
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.services = { healParty: () => { healed++ } }
+    fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    // 2000번대 구역은 `TEXT_BANK_COMMON_STRINGS`를 읽는다. 미리 넣어 두면 fetch가 없다
+    fieldScripts.banks = new Map([[COMMON_STRINGS_BANK, common]])
+    enterMap(JUBILIFE_PC)
+    worldState.input.interact = false
+    worldState.input.cancel = false
+    worldState.input.move.set(0, 0)
+    // 계산대 남쪽에 서서 북쪽(간호사 쪽)을 본다
+    worldState.player.position.set(COUNTER.x + 0.5, 0, COUNTER.z + 1.5)
+    worldState.player.facing = Math.PI
+    resetTriggerTile()
+  })
+
+  const frames = (n: number, a = false): void => {
+    for (let i = 0; i < n; i++) {
+      worldState.input.interact = a
+      scriptSystem.fixedUpdate()
+    }
+  }
+  /** A를 한 번 톡. 눌린 **순간**만 잡히므로 떼는 프레임이 있어야 한다 */
+  const tap = (): void => { frames(1, true); frames(3) }
+  const printed = (): string => {
+    const printer = fieldScripts.world!.printer
+    return printer === null ? '' : printedText(printer)
+  }
+
+  it('계산대 너머의 간호사가 말 걸 상대로 잡힌다', () => {
+    // 앞 칸은 계산대라 사람이 없다. 한 칸 더 봐야 간호사에 닿는다
+    expect(mapWorld.grid!.behavior(COUNTER.x, COUNTER.z)).toBe(TILE_BEHAVIOR_TABLE)
+    expect(npcAt(JUBILIFE_PC, COUNTER.x, COUNTER.z, fieldScripts.vars)).toBeNull()
+    const nurse = npcAt(JUBILIFE_PC, NURSE.x, NURSE.z, fieldScripts.vars)
+    expect(nurse).not.toBeNull()
+    // 간호사의 맵 스크립트는 딱 세 명령이다 — 그중 하나가 `CallCommonScript`다
+    expect(nurse!.script).toBe(1)
+  })
+
+  it('말을 걸면 공용 스크립트가 돌고 원작 인사말이 나온다', () => {
+    frames(1, true)
+    expect(scriptBusy()).toBe(true)
+    frames(200)
+    // ⚠️ 이 문장은 **맵 뱅크가 아니라 `common_strings`**에 있다. 뱅크를 안 갈면
+    // 같은 번호의 엉뚱한 문장이 찍히고, 명령을 건너뛰면 창이 아예 안 뜬다
+    expect(printed()).toBe('안녕하세요!\n포켓몬센터입니다')
+    expect(fieldScripts.world!.boxOpen).toBe(true)
+    expect(fieldScripts.lastError).toBeNull()
+  })
+
+  /** 예/아니오가 뜰 때까지 넘긴다. **누르기 전에** 물어봐야 답이 안 새어 나간다 */
+  const untilMenu = (): FieldWorld['menu'] => {
+    for (let i = 0; i < 80; i++) {
+      const menu = fieldScripts.world!.menu
+      if (menu !== null) return menu
+      tap()
+    }
+    return null
+  }
+
+  /** 스크립트가 끝날 때까지 넘긴다 */
+  const untilIdle = (): void => {
+    for (let i = 0; i < 300 && scriptBusy(); i++) tap()
+  }
+
+  it('"쉬게 해 주겠습니까?"까지 가고 예/아니오가 뜬다', () => {
+    frames(1, true)
+    const menu = untilMenu()
+    expect(printed()).toBe('당신의 포켓몬을\n쉬게 해 주겠습니까?')
+    expect(menu?.kind).toBe('yesno')
+    expect(menu?.entries.map((e) => e.text)).toEqual(['예', '아니오'])
+  })
+
+  it('"아니오"면 회복 없이 끝난다', () => {
+    frames(1, true)
+    expect(untilMenu()).not.toBeNull()
+    fieldScripts.world!.choose(MENU_NO)
+    untilIdle()
+    expect(healed).toBe(0)
+    expect(scriptBusy()).toBe(false)
+    expect(fieldScripts.lastError).toBeNull()
+  })
+
+  it('"예"면 파티가 회복된다', () => {
+    frames(1, true)
+    expect(untilMenu()).not.toBeNull()
+    fieldScripts.world!.choose(0)
+    untilIdle()
+    expect(healed).toBe(1)
+    expect(fieldScripts.lastError).toBeNull()
+  })
+
+  it('공용 스크립트가 끝나면 글이 맵 뱅크로 돌아온다', () => {
+    // 안 돌리면 다음 대사가 `common_strings`의 같은 번호로 찍힌다
+    const world = fieldScripts.world!
+    world.setMessages(['맵 뱅크 0번'])
+    frames(1, true)
+    expect(untilMenu()).not.toBeNull()
+    world.choose(MENU_NO)
+    untilIdle()
+    world.showMessage(0)
+    world.printer!.finish()
+    expect(printedText(world.printer!)).toBe('맵 뱅크 0번')
   })
 })

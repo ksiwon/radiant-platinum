@@ -24,8 +24,17 @@ export interface Resolved {
   file: number
   /** 그 파일의 몇 번째 진입점인가 */
   entry: number
-  /** 글을 어디서 읽을지. 맵 스크립트면 맵 헤더의 `msg`를 써야 한다 */
+  /** 글 뱅크 이름. 맵 스크립트면 null이고 맵 헤더의 `msg`를 써야 한다 */
   bank: string | null
+  /**
+   * 글 뱅크의 **미국 번호**. 맵 스크립트면 null이다.
+   *
+   * ⚠️ 공용 스크립트는 스크립트 파일과 글 뱅크를 **같이** 갈아 끼운다
+   * (`ScriptContext_Load`). 공용 스크립트 안의 `Message 3`은 맵의 3번이 아니라
+   * 이 뱅크의 3번이다 — 안 갈면 엉뚱한 문장이 나오는데 글자는 나오므로
+   * 눈으로는 "번역이 이상한가" 싶은 채로 넘어간다
+   */
+  msg: number | null
 }
 
 /**
@@ -37,11 +46,11 @@ export function resolveScript(meta: ScriptFile, id: number, mapFile: number): Re
   for (const range of meta.ranges) {
     if (id < range.from) continue
     if (range.file === null) return null
-    return { file: range.file, entry: id - range.from, bank: range.bank }
+    return { file: range.file, entry: id - range.from, bank: range.bank, msg: range.msg }
   }
-  if (id >= 1) return { file: mapFile, entry: id - 1, bank: null }
+  if (id >= 1) return { file: mapFile, entry: id - 1, bank: null, msg: null }
   const idle = meta.files.findIndex((f) => f.name === IDLE_FILE)
-  return idle < 0 ? null : { file: idle, entry: 0, bank: null }
+  return idle < 0 ? null : { file: idle, entry: 0, bank: null, msg: null }
 }
 
 /** `ScriptEntryEnd` — 진입점 표의 끝. 원본이 빠뜨린 파일이 셋 있다 */

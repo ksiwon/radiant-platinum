@@ -2,15 +2,11 @@
 //
 // 여기가 게임의 첫인상이라 **게임 화면처럼 보여야 한다.** 가운데 정렬한 버튼
 // 두 개가 아니라, 제목이 화면을 차지하고 그 아래에 고를 것이 놓인 모양이다.
-import { globalStyle, keyframes, style } from '@vanilla-extract/css'
+import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 /** 배경이 천천히 흐른다. 정지 화면이면 게임이 멈춘 것처럼 보인다 */
-const drift = keyframes({
-  '0%': { transform: 'translate3d(0, 0, 0) scale(1.06)' },
-  '50%': { transform: 'translate3d(-1.4%, -1%, 0) scale(1.1)' },
-  '100%': { transform: 'translate3d(0, 0, 0) scale(1.06)' },
-})
+
 
 export const wrap = style({
   position: 'fixed',
@@ -40,7 +36,7 @@ export const sky = style({
   backgroundPosition: 'center',
   backgroundRepeat: 'no-repeat',
   backgroundSize: 'cover',
-  animation: `${drift} 26s ease-in-out infinite`,
+
 })
 
 /** 아래쪽 땅. 지평선이 있으면 하늘이 하늘로 읽힌다 */
@@ -49,21 +45,15 @@ export const ground = style({
   inset: 0,
   zIndex: -1,
   background:
-    'linear-gradient(180deg, transparent 58%, rgba(2, 3, 6, 0.2) 72%, rgba(2, 3, 6, 0.82) 100%)',
+    'linear-gradient(180deg, transparent 76%, rgba(2, 3, 6, 0.12) 88%, rgba(2, 3, 6, 0.62) 100%)',
   pointerEvents: 'none',
 })
 
 export const head = style({
   position: 'absolute',
-  left: '50%',
-  bottom: 'clamp(20px, 3.5vh, 42px)',
+  inset: 0,
   zIndex: 1,
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 10,
-  width: 'min(560px, calc(100vw - 32px))',
-  transform: 'translateX(-50%)',
+  pointerEvents: 'none',
 })
 
 export const crest = style({
@@ -111,26 +101,31 @@ export const sub = style({
 })
 
 export const menu = style({
+  position: 'absolute',
+  left: '50%',
+  bottom: 'clamp(12px, 2vh, 24px)',
   display: 'flex',
   flexDirection: 'row',
   alignItems: 'center',
-  gap: 10,
-  width: '100%',
+  gap: 8,
+  width: 'min(440px, calc(100vw - 32px))',
+  transform: 'translateX(-50%)',
+  pointerEvents: 'auto',
 })
 
 export const button = style({
   position: 'relative',
   flex: 1,
   appearance: 'none',
-  padding: '13px 22px',
-  fontSize: 17,
+  padding: '10px 18px',
+  fontSize: 15,
   fontWeight: 700,
   fontFamily: vars.font.ui,
   color: '#eef3fa',
   textAlign: 'center',
-  background: 'linear-gradient(180deg, rgba(22, 32, 50, 0.86), rgba(12, 19, 32, 0.9))',
+  background: 'linear-gradient(180deg, rgba(22, 32, 50, 0.74), rgba(8, 13, 23, 0.82))',
   border: '1px solid rgba(255,255,255,0.2)',
-  borderRadius: 10,
+  borderRadius: 999,
   boxShadow: '0 8px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12)',
   backdropFilter: 'blur(3px)',
   cursor: 'pointer',
@@ -175,18 +170,28 @@ export const foot = style({
 
 /** 리포트 요약. 원작 메인 메뉴도 이 넷을 보여준다 */
 export const summary = style({
+  position: 'absolute',
+  left: 'clamp(12px, 2vw, 24px)',
+  bottom: 'clamp(12px, 2vh, 24px)',
   display: 'grid',
   gridTemplateColumns: 'auto auto',
-  columnGap: 28,
-  rowGap: 5,
+  columnGap: 18,
+  rowGap: 3,
   margin: 0,
-  padding: '12px 20px',
-  fontSize: 14,
-  background: 'linear-gradient(180deg, rgba(18, 26, 42, 0.78), rgba(11, 17, 29, 0.82))',
-  border: '1px solid rgba(255,255,255,0.14)',
-  borderRadius: 10,
-  backdropFilter: 'blur(3px)',
-  boxShadow: '0 10px 32px rgba(0, 0, 0, 0.45)',
+  padding: '9px 13px',
+  fontSize: 12,
+  background: 'linear-gradient(180deg, rgba(18, 26, 42, 0.66), rgba(8, 13, 23, 0.74))',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 9,
+  backdropFilter: 'blur(5px)',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+  pointerEvents: 'auto',
+  '@media': {
+    'screen and (max-width: 980px)': {
+      top: 12,
+      bottom: 'auto',
+    },
+  },
 })
 
 globalStyle(`${summary} dt`, { opacity: 0.62 })
@@ -198,18 +203,28 @@ globalStyle(`${summary} dd`, {
 
 /** 리포트가 있을 때만 뜨는 "처음부터". 실수로 누르면 안 되므로 글자로만 둔다 */
 export const restart = style({
+  position: 'absolute',
+  right: 'clamp(12px, 2vw, 24px)',
+  bottom: 'clamp(16px, 2.3vh, 28px)',
   appearance: 'none',
-  background: 'none',
-  border: 'none',
-  padding: '4px 8px',
+  padding: '6px 10px',
   fontFamily: vars.font.ui,
-  fontSize: 12,
+  fontSize: 11,
   color: vars.panel.text,
-  opacity: 0.5,
+  background: 'rgba(8, 13, 23, 0.54)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 999,
+  opacity: 0.68,
+  backdropFilter: 'blur(4px)',
   cursor: 'pointer',
-  textDecoration: 'underline',
-  textUnderlineOffset: 3,
+  pointerEvents: 'auto',
   selectors: {
-    '&:hover': { opacity: 0.9 },
+    '&:hover': { opacity: 1 },
+  },
+  '@media': {
+    'screen and (max-width: 980px)': {
+      top: 12,
+      bottom: 'auto',
+    },
   },
 })
