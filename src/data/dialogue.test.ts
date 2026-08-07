@@ -32,19 +32,57 @@ maybe('대사', () => {
     // 맵이 안 가리키는 것을 따로 싣는다 — 이름 짓기 표, 트레이너 대사,
     // 그리고 메뉴 화면들의 글(시작 메뉴·가방·주머니 이름·포켓몬·도감)
     expect(index.banks.length).toBe(447)
-    expect(index.locales).toEqual(['en', 'ko'])
+    expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
     expect([...nums].sort((a, b) => a - b)).toEqual(nums)
     expect(new Set(nums).size).toBe(nums.length)
   })
 
+  /**
+   * 일본 롬에 아예 없는 뱅크. 열쇠 표와 항목 수 정렬이 **둘 다 없다**고 하므로
+   * 우리 실수가 아니다 — 그 맵만 글이 빈다
+   */
+  const MISSING = { ja: [147] } as Record<string, number[] | undefined>
+
+  /**
+   * 일본 롬만 항목이 **뒤에서** 몇 개 짧은 뱅크. 앞은 한 줄씩 그대로 맞으므로
+   * 우리가 쓰는 번호가 밀리지 않는다 — 예를 들어 `berry_trees`는 0~34가
+   * 한국어판 0~34와 같은 글이고 35~37만 없다.
+   *
+   * `save_info_window`는 짧은 이유가 다르다: 일본판이 이름표와 값을 **한 줄에**
+   * 담아서(`しゅじんこう {STRVAR_1 3, 1}`) 값만 따로 있는 5~8이 없다
+   */
+  const SHORTER: Record<string, Record<number, number> | undefined> = {
+    ja: { 397: 35, 534: 5, 697: 125 },
+  }
+
   it('모든 뱅크가 로케일마다 있고 항목 수가 같다', () => {
     for (const b of index.banks) {
       for (const locale of index.locales) {
+        if (MISSING[locale]?.includes(b.index)) {
+          expect(existsSync(resolve(DATA, locale, `${String(b.index)}.json`))).toBe(false)
+          continue
+        }
         const messages = bank(locale, b.index)
-        expect(messages).toHaveLength(b.entries)
+        expect(messages, `${locale}/${String(b.index)}`)
+          .toHaveLength(SHORTER[locale]?.[b.index] ?? b.entries)
       }
+    }
+  })
+
+  it('짧은 일본어 뱅크는 앞이 그대로 맞는다 — 번호가 밀리지 않는다', () => {
+    // 밀렸다면 그 뱅크를 쓰는 화면이 통째로 엉뚱한 글을 띄운다. 글 자체는
+    // 언어가 달라 못 견주므로 **제어 부호의 얼개**로 본다 — 이름표 자리는
+    // 부호가 없고 값 자리는 `{STRVAR_1 …}`이 있다
+    const shape = (t: string) => [...t.matchAll(/\{([A-Z_0-9]+) (\d+)/g)].map((m) => `${m[1]!}:${m[2]!}`).join(' ')
+    for (const [at, short] of Object.entries(SHORTER.ja!)) {
+      const ja = bank('ja', Number(at))
+      const ko = bank('ko', Number(at))
+      expect(ja).toHaveLength(short)
+      // `save_info_window`는 일본판이 이름표와 값을 합쳐 놔서 얼개가 다르다
+      if (Number(at) === 534) continue
+      for (let i = 0; i < short; i++) expect(shape(ja[i]!), `${at}/${String(i)}`).toBe(shape(ko[i]!))
     }
   })
 
@@ -56,6 +94,7 @@ maybe('대사', () => {
     for (const locale of index.locales) {
       let controls = 0
       for (const b of index.banks) {
+        if (MISSING[locale]?.includes(b.index)) continue
         for (const text of bank(locale, b.index)) {
           expect(text).not.toMatch(/\{\?/)
           expect(text.split('{').length).toBe(text.split('}').length)
@@ -64,7 +103,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 2652, ko: 2644 })
+    expect(counted).toEqual({ en: 2652, ko: 2644, ja: 2843 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

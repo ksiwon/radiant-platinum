@@ -125,7 +125,14 @@ maybe('코퍼스 전량', () => {
         if (token.text.includes('{')) leaked.push(`${locale}/${bank}: ${token.text.slice(0, 40)}`)
       }
     }
-    expect(leaked.slice(0, 5)).toEqual([])
+    // ⚠️ **일본 롬에 인자가 모자란 부호가 하나 있다.** 유니언룸 뱅크(221)의
+    // 41번이 `{STRVAR_1 3}`으로 끝난다 — 칸 번호가 아예 없다. 원작 엔진은
+    // `CharCode_FormatArgParam(c, 0)`으로 **두 번째** 인자를 읽으므로 그 자리엔
+    // 읽을 것이 없다. 한국어·미국판은 같은 자리가 빈 글이다.
+    //
+    // 칸을 0으로 정해 주지 않는다 — 그건 우리가 지어내는 것이다. 모르는 부호는
+    // 글자로 남긴다는 규칙 그대로 두고 여기 적어 둔다
+    expect(leaked).toEqual(['ja/221: {STRVAR_1 3}の　せんたくを'])
     expect(markers).toBe(MARKER_COUNT)
   })
 
@@ -151,16 +158,20 @@ maybe('코퍼스 전량', () => {
       }
     }
     expect([...over.keys()].sort((a, b) => a - b)).toEqual(BANLIST_BANKS)
-    expect(Math.max(...[...over.values()].flatMap((s) => [...s]))).toBe(BATTLE_FRONTIER_BANLIST_SIZE)
+    // ⚠️ **일본판 금지 목록이 한 종 더 길다.** 미국·한국판은 칸 1~18에 18종을
+    // 적는데(0번 칸은 마릿수다) 일본판 304번 41번 글은 1~19에 **19종**이다.
+    // 롬이 다른 것이지 우리가 밀려 읽은 것이 아니다 — 칸이 1부터 빈틈없이
+    // 이어지고, 마릿수를 안 쓰는 글(6·24번)은 0부터 19종을 적는다
+    expect(Math.max(...[...over.values()].flatMap((s) => [...s]))).toBe(JA_BANLIST_SIZE)
     // 한국어판에만 조사가 붙는다. 미국판은 전부 0이라 0이 압도적으로 많다
     expect([...particles.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 0x12])
   })
 })
 
-/** 코퍼스 전체의 제어 부호 개수 (줄 바꿈 제외). 두 로케일 합계다 */
-const MARKER_COUNT = 5296
+/** 코퍼스 전체의 제어 부호 개수 (줄 바꿈 제외). 세 로케일 합계다 */
+const MARKER_COUNT = 8138
 
 /** 표가 19칸인 뱅크 — 타워·홀·캐슬·아케이드의 출전 금지 목록 */
 const BANLIST_BANKS = [304, 311, 312, 313]
-/** `pokemon.h`의 `BATTLE_FRONTIER_BANLIST_SIZE`. 표는 여기에 1을 더한 칸수다 */
-const BATTLE_FRONTIER_BANLIST_SIZE = 18
+/** 일본판만 한 종 더 길다. 미국·한국판은 `BATTLE_FRONTIER_BANLIST_SIZE`(18)다 */
+const JA_BANLIST_SIZE = 19
