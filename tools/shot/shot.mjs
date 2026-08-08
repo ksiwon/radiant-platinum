@@ -250,6 +250,17 @@ async function main() {
     }, cp.map, { timeout: 60_000 })
     // 여기서부터는 무대가 있어야 한다
     await page.waitForSelector('canvas', { timeout: 120_000 })
+    // ⚠️ **시각을 못 박을 수 있어야 한다.** 하늘도 조명도 실제 시계를 따라가서
+    // (`worldState.time.gameHour`), 저녁에 찍은 그림과 낮에 찍은 그림은 지형이
+    // 같아도 딴판이다 — 그러면 "어제 것보다 어두워졌다"가 고장인지 시각인지
+    // 갈리지 않는다. 안 주면 지금 시각 그대로다
+    const hour = flag('hour')
+    if (hour !== undefined) {
+      await page.evaluate(async (h) => {
+        const w = await import('/src/state/worldState.ts')
+        w.worldState.time.gameHour = h
+      }, Number(hour))
+    }
     await page.waitForTimeout(Number(flag('after', SETTLE_MS)))
     // 확인 지점이 세우는 자리 말고 **그 맵의 다른 칸**을 보고 싶을 때.
     // 컷신에만 나오는 사람들이 대개 확인 지점에서 멀리 서 있다

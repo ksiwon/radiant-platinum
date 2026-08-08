@@ -5,7 +5,7 @@
 //
 // 청크 좌표계: 모델이 −16~+16 타일로 **가운데 정렬**돼 있으므로 행렬 칸의
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   DoubleSide, MeshBasicMaterial, MeshLambertMaterial,
   type BufferAttribute, type BufferGeometry, type Material,
@@ -26,6 +26,7 @@ import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates } from './shell'
 import { cardShells, type CardShells } from './cards'
+import { PropFade } from './PropFade'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -69,18 +70,15 @@ interface Prop extends Placed {
  * (`shell.ts`의 `atlasUv`) 시트 한 장이면 소품 하나의 판 전체가 드로우콜 하나다.
  * 정점 색은 그대로 곱해진다 — 시트를 못 받았을 때 평균색으로 떨어지는 자리다.
  *
- * 묶음마다 한 벌이면 되므로 텍스처 번호로 담아 둔다
+ * ⚠️ **묶음이 아니라 배치마다 한 벌이다.** 소품은 카메라가 막히면 흐려지는데
+ * (`PropFade`) 재질을 나눠 쓰면 옆 마을의 같은 집까지 같이 흐려진다.
+ * 텍스처는 그대로 공유하므로 늘어나는 것은 재질 객체 하나뿐이다
  */
-const backMaterials = new Map<number, Material>()
-function backMaterial(propId: number, sheet: TexSheet | null): Material {
-  const hit = backMaterials.get(propId)
-  if (hit) return hit
-  const made = new MeshLambertMaterial({
+function backMaterial(sheet: TexSheet | null): Material {
+  return new MeshLambertMaterial({
     vertexColors: true,
     map: sheet ? sheetTexture(sheet) : null,
   })
-  backMaterials.set(propId, made)
-  return made
 }
 
 /**
@@ -217,6 +215,32 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Buffer
   return made
 }
 
+/**
+ * 이 자리가 **사방이 다 걸어 다닐 수 있는가**.
+ *
+ * 밑동은 타일 모서리에 선다(실측: 자리값이 전부 정수다). 그래서 한 칸만 보면
+ * 안 된다 — 모서리에 닿는 네 칸을 다 봐야 "길 한복판"인지 "길가"인지 갈린다.
+ * 길가의 나무는 그대로 둔다. 서 있어도 몸이 안 지나가기 때문이다
+ */
+function walkableSpot(grid: MapGrid, x: number, z: number): boolean {
+  for (const [dx, dz] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]] as const) {
+    if (grid.isBlockedAtWorld(x + dx, z + dz)) return false
+  }
+  return true
+}
+
+/** 배치가 저 혼자 갖고 있던 재질을 버린다. `MISSING`은 모두가 함께 쓰므로 뺀다 */
+function disposeProps(list: readonly Prop[]): void {
+  const seen = new Set<Material>()
+  for (const p of list) {
+    for (const m of [...p.materials, p.backMaterial]) {
+      if (m === MISSING || seen.has(m)) continue
+      seen.add(m)
+      m.dispose()
+    }
+  }
+}
+
 interface Props {
   grid: MapGrid
   chunkIndex: number
@@ -266,6 +290,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         const next = pieces.map((p) => {
           const { c, mesh, split, originX, originZ } = p
           for (const site of treeSites(split)) {
+            // ⚠️ **걸어 다니는 칸에는 밑동을 안 세운다.** 원작 나무는 판 한
+            // 장이라 통행 가능한 칸 위에 걸쳐 있어도 그림으로만 보였다. 그걸
+            // 그대로 입체로 세우면 **길 한복판에 나무가 서고 몸이 그 안을
+            // 지나간다.** 영원의 숲 창 하나에서 1,259그루 중 19그루가 그랬다
+            if (walkableSpot(grid, site.x + originX, site.z + originZ)) continue
             const spec = mesh.materials[site.cell.group]
             const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
             let group = byTexture.get(key)
@@ -297,7 +326,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 칸마다 제일 가까운 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓴다
             floor: floorPatch(
               split, (x, z, near) => groundAt(x + originX, z + originZ, near),
-              borrowed, p.source),
+              borrowed, p.source,
+              // 안 물리는 그림에 평면을 늘리면 아틀라스 밖으로 나가 가장자리
+              // 텍셀로 눌린다 — 그 결과가 민무늬 판이다 (`floorPatch` 참조)
+              (group) => ((mesh.materials[group]?.rep ?? 0) & 3) === 3),
             shells: cachedShells(
               `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet),
           }
@@ -326,11 +358,17 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         .catch(() => null)))
       .then((loaded) => {
         if (!alive) return
-        const cache = new Map<string, Material>()
         const byId = new Map(loaded.filter((x) => x !== null).map((x) => [x.id, x]))
         setProps(spots.flatMap((b, i) => {
           const got = byId.get(b.model)
           if (!got) return []
+          // ⚠️ 재질 보관함이 **배치마다** 새것이다. 나눠 쓰면 카메라를 막은 집
+          // 하나를 흐리게 할 때 같은 모델의 다른 집까지 같이 흐려진다 (`PropFade`)
+          const own = new Map<string, Material>()
+          const materials = materialsFor(
+            // 소품은 **전부** 양면으로 그린다. 간판·그림자처럼 한 장짜리가
+            // 98개나 되고, 그것들은 단면으로 두면 뒤에서 사라진다
+            got.mesh, got.sheet, own, got.mesh.materials.map(() => true))
           return [{
             key: `${String(b.model)}/${String(i)}/${String(b.x)}/${String(b.z)}`,
             index: b.model,
@@ -338,17 +376,28 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             rot: b.rot, scale: b.scale,
             mesh: got.mesh,
             geometry: got.mesh.geometry,
-            // 소품은 **전부** 양면으로 그린다. 간판·그림자처럼 한 장짜리가
-            // 98개나 되고, 그것들은 단면으로 두면 뒤에서 사라진다
-            materials: materialsFor(got.mesh, got.sheet, cache, got.mesh.materials.map(() => true)),
+            materials,
             back: cachedBack(got.mesh, got.sheet, got.id),
-            backMaterial: backMaterial(got.id, got.sheet),
+            backMaterial: backMaterial(got.sheet),
           }]
         }))
       })
       .catch(() => { if (alive) setProps([]) })
     return () => { alive = false }
   }, [grid, chunkIndex, radius])
+
+  // 소품 재질은 배치마다 새로 굽는다(위 참조). 창이 옮겨 가면 앞 창의 것을
+  // 버려야 GPU에 쌓인다 — 그림 자체는 공유라 같이 안 버린다.
+  //
+  // **그린 다음에** 버린다. 새 목록이 화면에 붙은 뒤라야 방금 버린 재질을
+  // 한 프레임 더 그리는 일이 없다
+  const shown = useRef<Prop[]>([])
+  useEffect(() => {
+    const old = shown.current
+    shown.current = props
+    disposeProps(old)
+  }, [props])
+  useEffect(() => () => { disposeProps(shown.current) }, [])
 
   return (
     <group>
@@ -397,13 +446,21 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       */}
       {props.map((p) => (
         <group key={p.key} position={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>
-          <mesh geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
           {/*
-            빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준 −Z가 64% ·
-            −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면 반대편 벽의
-            **안쪽**이 보인다 (`shell.ts`)
+            3인칭에서 카메라와 플레이어 사이에 든 건물은 흐려진다. 나무는 이미
+            비켜 주는데 집은 안 비켜서 화면의 절반이 지붕이 됐다 (`PropFade`)
           */}
-          {p.back && <mesh geometry={p.back} material={p.backMaterial} castShadow receiveShadow />}
+          <PropFade geometry={p.mesh.geometry} materials={[...p.materials, p.backMaterial]}>
+            <mesh geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
+            {/*
+              빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준 −Z가 64% ·
+              −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면 반대편 벽의
+              **안쪽**이 보인다 (`shell.ts`)
+            */}
+            {p.back && (
+              <mesh geometry={p.back} material={p.backMaterial} castShadow receiveShadow />
+            )}
+          </PropFade>
         </group>
       ))}
     </group>

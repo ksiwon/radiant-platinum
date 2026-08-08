@@ -513,6 +513,8 @@ export function floorPatch(
   ground: (x: number, z: number, near: number) => number | null,
   borrowed: readonly FloorTri[] = [],
   source?: FloorSource,
+  /** 그 서브메시의 그림이 물리는가(`rep`). 안 주면 다 물린다고 본다 */
+  repeats?: (group: number) => boolean,
 ): FloorPatch | null {
   const { floors: own, covered } = source ?? floorSource(split)
   const floors = borrowed.length > 0 ? [...own, ...borrowed] : own
@@ -544,6 +546,20 @@ export function floorPatch(
       const w2 = (ux * pz - px * uz) / area
       return [au + w1 * du + w2 * eu, av + w1 * dv + w2 * ev]
     }
+    // ⚠️ **안 물리는 그림이면 좌표를 그 칸으로 되접는다.**
+    //
+    // 평면을 그냥 늘리면 UV가 삼각형에서 멀어진 만큼 그대로 벗어난다. 물리는
+    // (`repeat`) 그림이면 그래도 되지만, 안 물리는 그림은 벗어난 값이 가장자리
+    // 텍셀로 눌려서 **한 색으로 칠한 널따란 판**이 깔린다 — 영원의 숲 바닥
+    // 절반이 그렇게 민무늬 초록이었다.
+    //
+    // 그럴 때는 칸 안쪽 자리만 살리고 칸 번호는 베껴 온 칸의 것을 쓴다. `at`이
+    // 아핀이라 정수 칸만큼 옮기는 것은 곧 **타일 한 장 주기로 되접는 것**이고,
+    // 한 타일짜리 그림이면 늘린 것과 결과가 같다
+    const wrapping = repeats?.(best.group) ?? true
+    const shiftX = wrapping ? 0 : Math.floor(best.cx) - tx
+    const shiftZ = wrapping ? 0 : Math.floor(best.cz) - tz
+    const tiled = (x: number, z: number): [number, number] => at(x + shiftX, z + shiftZ)
 
     let into = bucket.get(best.group)
     if (!into) { into = { position: [], uv: [] }; bucket.set(best.group, into) }
@@ -559,7 +575,7 @@ export function floorPatch(
     ]
     for (const [x, z] of quad) {
       into.position.push(x, y, z)
-      into.uv.push(...at(x, z))
+      into.uv.push(...tiled(x, z))
     }
   }
   if (bucket.size === 0) return null
