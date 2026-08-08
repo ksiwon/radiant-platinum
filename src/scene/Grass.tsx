@@ -133,6 +133,7 @@ export function Grass({ field }: { field: GrassField | null }) {
     }
     const count = field.spots.length / 3
     const made = new InstancedMesh(geometry, grassMaterial, count)
+    made.name = '풀숲'
     for (let i = 0; i < count; i++) {
       const x = field.spots[i * 3]!, y = field.spots[i * 3 + 1]!, z = field.spots[i * 3 + 2]!
       const s = 0.75 + hash(x, z, 3) * 0.5

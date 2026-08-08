@@ -15,7 +15,8 @@
 // 그래서 건너뛰기를 여기 한 군데로 모으고, **`PT_REQUIRE_DATA=1`이면 건너뛰는
 // 대신 세운다.** `pnpm check`가 그 값을 켠다 — 개발 중에 하나씩 돌릴 때는
 // 예전처럼 조용히 빠진다.
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { inflateSync } from 'node:zlib'
 import { resolve } from 'node:path'
 import { describe } from 'vitest'
 
@@ -106,4 +107,56 @@ export function withModels(...files: readonly string[]): SuiteFn {
 /** 같은 것을 `raw/decomp` 아래로 */
 export function withDecomp(...files: readonly string[]): SuiteFn {
   return gate('decomp', files)
+}
+
+/**
+ * 우리가 구운 PNG를 편다 — 8비트 RGBA · 인터레이스 없음 (`tools/extract/png.js`).
+ *
+ * 시험이 **그림의 픽셀을 직접 봐야 하는 자리**가 여럿이다: 소품의 빠진 면이
+ * 실제로 막혔는가, 빛기둥의 알파가 정말 절반도 안 차는가. 파일마다 따로 적으면
+ * 필터 다섯 가지를 푸는 코드가 그만큼 갈라진다
+ */
+export function decodePng(
+  file: string,
+): { width: number, height: number, pixels: Uint8ClampedArray } {
+  const buf = readFileSync(file)
+  let at = 8, width = 0, height = 0, depth = 0, kind = 0
+  const idat: Buffer[] = []
+  while (at < buf.length) {
+    const len = buf.readUInt32BE(at)
+    const type = buf.toString('ascii', at + 4, at + 8)
+    const body = buf.subarray(at + 8, at + 8 + len)
+    if (type === 'IHDR') {
+      width = body.readUInt32BE(0); height = body.readUInt32BE(4)
+      depth = body[8]!; kind = body[9]!
+    }
+    if (type === 'IDAT') idat.push(body)
+    at += 12 + len
+  }
+  if (depth !== 8 || kind !== 6) {
+    throw new Error(`예상 밖 PNG: ${String(depth)}비트 · 형식 ${String(kind)}`)
+  }
+  const raw = inflateSync(Buffer.concat(idat))
+  const stride = width * 4
+  const out = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * (stride + 1)]!
+    const row = y * (stride + 1) + 1
+    for (let i = 0; i < stride; i++) {
+      const a = i >= 4 ? out[y * stride + i - 4]! : 0
+      const b = y > 0 ? out[(y - 1) * stride + i]! : 0
+      const c = i >= 4 && y > 0 ? out[(y - 1) * stride + i - 4]! : 0
+      let v = raw[row + i]!
+      if (filter === 1) v += a
+      else if (filter === 2) v += b
+      else if (filter === 3) v += (a + b) >> 1
+      else if (filter === 4) {
+        const p = a + b - c
+        const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c)
+        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+      }
+      out[y * stride + i] = v & 255
+    }
+  }
+  return { width, height, pixels: out }
 }

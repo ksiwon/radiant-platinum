@@ -9,7 +9,6 @@
 // 것으로 못 속인다.
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { inflateSync } from 'node:zlib'
 import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
 import {
@@ -17,7 +16,7 @@ import {
   type ShellPaint,
 } from './shell'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
-import { withData } from '../data/romData.testkit'
+import { decodePng, withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
 const maybe = withData('props/23.bin')
@@ -76,48 +75,6 @@ function readSheet(index: number): TexSheet | null {
     pixels: png.pixels,
     items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
   }
-}
-
-/** 우리가 구운 PNG만 읽는다 — 8비트 RGBA · 인터레이스 없음 (`tools/extract/png.js`) */
-function decodePng(file: string): { width: number, height: number, pixels: Uint8ClampedArray } {
-  const buf = readFileSync(file)
-  let at = 8, width = 0, height = 0, depth = 0, kind = 0
-  const idat: Buffer[] = []
-  while (at < buf.length) {
-    const len = buf.readUInt32BE(at)
-    const type = buf.toString('ascii', at + 4, at + 8)
-    const body = buf.subarray(at + 8, at + 8 + len)
-    if (type === 'IHDR') {
-      width = body.readUInt32BE(0); height = body.readUInt32BE(4)
-      depth = body[8]!; kind = body[9]!
-    }
-    if (type === 'IDAT') idat.push(body)
-    at += 12 + len
-  }
-  if (depth !== 8 || kind !== 6) throw new Error(`예상 밖 PNG: ${String(depth)}비트 · 형식 ${String(kind)}`)
-  const raw = inflateSync(Buffer.concat(idat))
-  const stride = width * 4
-  const out = new Uint8ClampedArray(width * height * 4)
-  for (let y = 0; y < height; y++) {
-    const filter = raw[y * (stride + 1)]!
-    const row = y * (stride + 1) + 1
-    for (let i = 0; i < stride; i++) {
-      const a = i >= 4 ? out[y * stride + i - 4]! : 0
-      const b = y > 0 ? out[(y - 1) * stride + i]! : 0
-      const c = i >= 4 && y > 0 ? out[(y - 1) * stride + i - 4]! : 0
-      let v = raw[row + i]!
-      if (filter === 1) v += a
-      else if (filter === 2) v += b
-      else if (filter === 3) v += (a + b) >> 1
-      else if (filter === 4) {
-        const p = a + b - c
-        const pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c)
-        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c
-      }
-      out[y * stride + i] = v & 255
-    }
-  }
-  return { width, height, pixels: out }
 }
 
 function triangles(geo: BufferGeometry): P3[][] {

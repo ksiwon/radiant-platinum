@@ -530,6 +530,7 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
     const make = (far: boolean) => {
       const mesh = new InstancedMesh(
         shapeOf(g.key, g.leaf, g.trunk, far), leafMaterial, matrices.length)
+      mesh.name = far ? '나무(먼 것)' : '나무'
       mesh.castShadow = true
       mesh.receiveShadow = true
       // 인스턴스가 청크를 가로질러 흩어져 있어서 메시 단위 절두체가 뜻이 없다 —
@@ -541,6 +542,7 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
     // 밑동의 접지 그림자. LOD를 안 나눈다 — 판 한 장이라 줄일 것이 없다
     const [shape, material] = contact()
     const shade = new InstancedMesh(shape, material, matrices.length)
+    shade.name = '밑동 그림자'
     shade.frustumCulled = false
     shade.count = 0
     // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면

@@ -2,6 +2,8 @@
 //
 //     pnpm shot forest                 확인 지점 하나
 //     pnpm shot forest --keys=z,z,z    뛰어든 뒤 키를 더 누른다
+//     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
+//     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
 //     pnpm shot --list                 확인 지점 목록
 //
 // ⚠️ **이 프로젝트에는 여태 브라우저 자동화가 없었다.** 그래서 "수치는 맞는데
@@ -18,7 +20,7 @@
 // 그대로지만 속도는 실제와 전혀 다르다.** 성능은 여기서 재면 안 된다.
 import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { inflateSync } from 'node:zlib'
+import { deflateSync, inflateSync } from 'node:zlib'
 import { createServer } from 'node:net'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -153,6 +155,63 @@ function decodePng(buf) {
     p += stride
   }
   return { w, h, bpp, pixels: out }
+}
+
+const CRC = (() => {
+  const table = new Int32Array(256)
+  for (let n = 0; n < 256; n++) {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    table[n] = c
+  }
+  return (buf) => {
+    let c = -1
+    for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8)
+    return (c ^ -1) >>> 0
+  }
+})()
+
+/** 청크 하나. 길이 · 이름 · 내용 · CRC */
+function chunk(name, data) {
+  const head = Buffer.alloc(8)
+  head.writeUInt32BE(data.length, 0)
+  head.write(name, 4, 'latin1')
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(CRC(Buffer.concat([head.subarray(4), data])), 0)
+  return Buffer.concat([head, data, crc])
+}
+
+/**
+ * 그림의 한 조각을 **정수배로 키워** 다시 PNG로 쓴다.
+ *
+ * ⚠️ 960×640 한 장만 보고는 구석의 판때기 하나가 무엇인지 못 읽는다. 실제로
+ * 영원의 숲의 흰 판을 세 번 다른 데로 짚었고, 그때마다 광선은 엉뚱한 것을
+ * 맞혔다 — 눈으로 좌표를 어림한 것이 틀렸던 것이다. 잘라서 키우면 짚을 자리가
+ * 눈에 보인다. 늘리는 것은 **최근접**이다: 흐려 놓으면 텍셀 경계가 사라진다
+ */
+function cropPng(src, x0, y0, w, h, zoom) {
+  const out = Buffer.alloc(h * zoom * (w * zoom * 4 + 1))
+  let at = 0
+  for (let y = 0; y < h * zoom; y++) {
+    out[at++] = 0
+    const sy = Math.min(src.h - 1, y0 + Math.floor(y / zoom))
+    for (let x = 0; x < w * zoom; x++) {
+      const sx = Math.min(src.w - 1, x0 + Math.floor(x / zoom))
+      const o = (sy * src.w + sx) * src.bpp
+      out[at++] = src.pixels[o]
+      out[at++] = src.pixels[o + 1]
+      out[at++] = src.pixels[o + 2]
+      out[at++] = src.bpp === 4 ? src.pixels[o + 3] : 255
+    }
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w * zoom, 0)
+  ihdr.writeUInt32BE(h * zoom, 4)
+  ihdr[8] = 8; ihdr[9] = 6
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr), chunk('IDAT', deflateSync(out)), chunk('IEND', Buffer.alloc(0)),
+  ])
 }
 
 /**
@@ -300,6 +359,7 @@ async function main() {
         const THREE = await import('/node_modules/three/build/three.webgpu.js')
         const refs = await import('/src/scene/sceneRefs.ts')
         const w = await import('/src/state/worldState.ts')
+        const world = (await import('/src/engine/map/world.ts')).world
         let root = refs.sceneRefs.player
         while (root?.parent) root = root.parent
         if (!root) return { err: '무대가 없다' }
@@ -330,13 +390,20 @@ async function main() {
           if (o.isInstancedMesh) swarm.push(o.count)
         })
         rows.sort((a, b) => a.d - b.d)
+        const p = w.worldState.player.position
         return {
           eye: [+eye.x.toFixed(1), +eye.y.toFixed(1), +eye.z.toFixed(1)],
+          // ⚠️ **어느 맵의 어느 칸인지부터 찍는다.** 찍힌 그림이 내가 생각한
+          // 자리인지를 눈으로 가릴 수가 없다 — 확인 지점이 다른 데 세워 놓아도
+          // 화면은 멀쩡한 마을이라, 엉뚱한 자리를 두고 "고쳤다"고 하기 십상이다
+          map: world.mapId,
+          tile: [Math.floor(p.x), Math.floor(p.z)],
           meshes: rows.length, near: rows.slice(0, 12),
           swarm: swarm.filter((n) => n > 0).sort((a, b) => b - a),
         }
       })
-      console.log(`  ${id} 카메라 ${String(near.eye)} · 메시 ${String(near.meshes)}`
+      console.log(`  ${id} 맵 ${String(near.map)} 칸 ${String(near.tile)}`
+        + ` · 카메라 ${String(near.eye)} · 메시 ${String(near.meshes)}`
         + ` · 인스턴스 ${(near.swarm ?? []).join('/')}`)
       for (const r of near.near ?? []) {
         console.log(`     ${String(r.d).padStart(6)}  ${String(r.at).padEnd(22)}`
@@ -347,7 +414,95 @@ async function main() {
     // 찍기 직전에만 키운다. 세 프레임쯤 줘야 새 크기로 다시 그린다
     await page.setViewportSize(VIEWPORT)
     await page.waitForTimeout(Number(flag("grow", 3000)))
+
+    // 그림 위의 **한 점**에 광선을 쏘아 거기 무엇이 있는지 되묻는다.
+    //
+    // `--peek`은 카메라 둘레의 메시를 늘어놓을 뿐이라, 화면 한구석에 뜬 흰
+    // 판때기가 그중 무엇인지는 여전히 못 가른다. 실제로 그 판때기를 영원의 숲과
+    // 천관산 두 군데에서 보고도 **무엇인지 몰라 손을 못 댔다.** 좌표를 대면
+    // 재질 이름(=원작 그림 이름)까지 나온다.
+    //
+    // ⚠️ 좌표는 찍힌 그림(960×640) 기준이다. 그래서 **키운 뒤에** 잰다 —
+    // 몰고 다니는 크기(320×214)에서 쏘면 종횡비가 달라 다른 데를 맞힌다
     const png = await page.screenshot()
+    const hits = flag('hit')
+    if (hits) {
+      // ⚠️ **광선이 맞힌 것과 화면에 뜬 것은 다를 수 있다.** 광선은 알파 테스트를
+      // 안 본다 — 그림이 통째로 잘려 안 그려진 판도 그대로 맞힌다. 그래서 그
+      // 픽셀이 실제로 무슨 색인지 같이 찍는다. 둘이 어긋나면 그 자체가 답이다
+      const shot = decodePng(png)
+      for (const spot of hits.split(';')) {
+        const [px, py] = spot.split(',').map(Number)
+        const found = await page.evaluate(async ([sx, sy, w, h]) => {
+          const THREE = await import('/node_modules/three/build/three.webgpu.js')
+          const refs = await import('/src/scene/sceneRefs.ts')
+          const ws = await import('/src/state/worldState.ts')
+          let root = refs.sceneRefs.player
+          while (root?.parent) root = root.parent
+          if (!root) return { err: '무대가 없다' }
+          // 카메라를 씬에서 찾을 수 없으므로(R3F는 기본 카메라를 씬에 안 넣는다)
+          // 자리·겨눈 곳·화각으로 직접 세운다. 화각은 `Stage.tsx`가 정한 55다
+          const cam = new THREE.PerspectiveCamera(55, w / h, 0.1, 200)
+          cam.position.copy(ws.worldState.camera.position)
+          cam.lookAt(ws.worldState.camera.target)
+          cam.updateMatrixWorld()
+          const ray = new THREE.Raycaster()
+          ray.setFromCamera(
+            new THREE.Vector2((sx / w) * 2 - 1, -((sy / h) * 2 - 1)), cam)
+          const list = ray.intersectObject(root, true).slice(0, 4)
+          return {
+            rows: list.map((it) => {
+              const mats = Array.isArray(it.object.material)
+                ? it.object.material : [it.object.material]
+              const mat = mats[it.face?.materialIndex ?? 0] ?? mats[0]
+              return {
+                d: +it.distance.toFixed(2),
+                mesh: (it.object.name || it.object.type)
+                  + (it.object.isInstancedMesh ? `[${String(it.instanceId ?? -1)}/${String(it.object.count)}]` : ''),
+                mat: mat?.name || '(이름 없음)',
+                map: mat?.map ? '그림' : '정점색',
+                // 흰 판때기가 정말 흰지 눈이 아니라 값으로 본다
+                rgb: mat?.color ? `#${mat.color.getHexString()}` : '-',
+                op: +(mat?.opacity ?? 1).toFixed(2),
+                // 그림이 반투명인데 불투명하게 그려지고 있는가. 그림의 알파
+                // 최댓값과 재질의 알파 문턱을 나란히 놓으면 그 자리에서 갈린다
+                aT: mat?.alphaTest ?? 0,
+                tr: mat?.transparent === true,
+                maxA: (() => {
+                  const d = mat?.map?.image?.data
+                  if (!d) return -1
+                  let m = 0
+                  for (let i = 3; i < d.length; i += 4) if (d[i] > m) m = d[i]
+                  return m
+                })(),
+                at: [+it.point.x.toFixed(1), +it.point.y.toFixed(1), +it.point.z.toFixed(1)],
+              }
+            }),
+          }
+        }, [px, py, VIEWPORT.width, VIEWPORT.height])
+        const o = (py * shot.w + px) * shot.bpp
+        const pixel = `#${[0, 1, 2].map((k) => shot.pixels[o + k].toString(16).padStart(2, '0')).join('')}`
+        console.log(`  ${id} (${String(px)},${String(py)}) 화면 ${pixel} ${found.err ?? ''}`)
+        for (const r of found.rows ?? []) {
+          console.log(`     ${String(r.d).padStart(6)}  ${r.mesh.padEnd(16)}`
+            + ` ${r.mat.padEnd(18)} ${r.map} ${r.rgb} 불투명 ${String(r.op)}`
+            + ` 문턱 ${String(r.aT)}${r.tr ? '·반투명' : ''} 알파최대 ${String(r.maxA)}`
+            + ` @ ${String(r.at)}`)
+        }
+        if ((found.rows ?? []).length === 0) console.log('     맞은 것이 없다 — 하늘이다')
+      }
+    }
+
+    // 구석을 잘라 키운다. `--crop=x,y,너비,높이[,배율]`
+    const crop = flag('crop')
+    if (crop) {
+      const [cx, cy, cw, ch, zoom = 4] = crop.split(',').map(Number)
+      const file = resolve(OUT, `${id}-crop.png`)
+      writeFileSync(file, cropPng(decodePng(png), cx, cy, cw, ch, zoom))
+      console.log(`  ${id} 자른 그림 ${String(cw)}×${String(ch)} ×${String(zoom)}`
+        + `   ${file.replace(ROOT, '.')}`)
+    }
+
     const stats = statsOf(png)
     const file = resolve(OUT, `${id}.png`)
     writeFileSync(file, png)

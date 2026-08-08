@@ -95,6 +95,7 @@ export function Flowers({ field }: { field: FlowerField | null }) {
       const geometry = blossom(new Color(rgb), stem)
       const material = new MeshLambertMaterial({ vertexColors: true, side: DoubleSide })
       const mesh = new InstancedMesh(geometry, material, total)
+      mesh.name = '꽃'
       const m = new Matrix4()
       const at = new Vector3()
       const spin = new Quaternion()

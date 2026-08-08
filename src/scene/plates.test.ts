@@ -12,7 +12,7 @@ import {
 } from 'three'
 import {
   cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, isBakedShadow, isFoliage,
-  plateColors, shiftFloors, splitFoliage, treeSites,
+  leaning, LEVEL_SLACK, plateColors, shiftFloors, splitFoliage, treeSites,
   type FloorSource, type FloorTri, type Split,
 } from './plates'
 import {
@@ -282,6 +282,45 @@ maybe('잎 걷어내기', () => {
     for (let i = 0; i < n.count; i++) expect(n.getY(i)).toBe(1)
   })
 
+  it('아랫단이 지나갈 뿐인 칸은 덮인 것이 아니다 — 하늘이 비친다', () => {
+    // ⚠️ 원작 지형은 층이 겹친다. 한 칸 밑으로 아랫단 잔디(y=0)가 지나가고
+    // 걸어 다니는 층(y=1)에는 아무것도 없는 자리가 오버월드에만 2,842칸이다.
+    // "어떤 면이든 덮였으면 됐다"로 세면 그 칸이 그대로 뚫리고, 영원의 숲
+    // 길가에서 **땅 사이로 하늘이 비쳤다**
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([
+      // 잎 판 — 칸 (1,0)을 y=1 언저리에서 덮는다
+      1, 1.5, 0, 2, 1.5, 0, 2, 1.5, 1, 1, 1.5, 1,
+      // 지형 — 칸 (0,0)과 (1,0)에 걸쳐 **y=0**으로 깔린 아랫단
+      0, 0, 0, 2, 0, 0, 2, 0, 1, 0, 0, 1,
+      // 지형 — 칸 (0,0)에만 y=1로 깔린 윗단. 여기서 UV를 베껴 온다
+      0, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1,
+    ]), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array([
+      0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1,
+    ]), 2))
+    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11])
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [
+        { tex: 'tree01', pal: '', rep: 0, a: 31, f: 0 },
+        { tex: 'ngrass', pal: '', rep: 0, a: 31, f: 0 },
+        { tex: 'ngrass', pal: '', rep: 0, a: 31, f: 0 },
+      ],
+      groups: [[0, 0, 6], [1, 6, 6], [2, 12, 6]],
+    }
+    // 걸어 다니는 높이가 1이다. 칸 (1,0)에는 y=0짜리만 있으므로 메워야 한다
+    const patch = floorPatch(splitFoliage(mesh, [true, false, false]), () => 1)!
+    const p = patch.geometry.getAttribute('position') as BufferAttribute
+    expect(p.count / 3, '삼각형 둘 = 칸 하나').toBe(2)
+    expect(p.getX(0)).toBeCloseTo(1, 1)
+    expect(p.getY(0), '윗단 높이에 깐다').toBe(1)
+
+    // 그 칸에 윗단이 이미 있으면 안 깐다
+    const covered = floorPatch(splitFoliage(mesh, [true, false, false]), () => 0)
+    expect(covered, '아랫단 높이로 걸으면 아랫단이 곧 그 층이다').toBeNull()
+  })
+
   it('덮인 칸에는 안 깐다 — 원작 지형과 겹치면 깜빡인다', () => {
     const mesh = oneQuad('tree01')
     const pos = mesh.geometry.getAttribute('position') as BufferAttribute
@@ -318,6 +357,32 @@ maybe('잎 걷어내기', () => {
     const slope = splitFoliage(mesh, [false]).geometry.getAttribute('position') as BufferAttribute
     expect(slope.getZ(2)).toBe(1)
     expect(slope.getY(2)).toBe(2)
+  })
+
+  it('원작이 눕혀 둔 각이 아니면 안 세운다 — 지형까지 일으켜 세웠다', () => {
+    // ⚠️ 예전에는 기울기 0.20~0.97을 전부 세웠다. 그래서 **지형이 일어섰다**:
+    // 청크 632개 실측으로 바닷가 거품(`seaside3`) 7,450삼각형과 천장 구멍
+    // (`dun_dhole`, 48.0°)과 빛기둥(`dun_light`)이 벽처럼 섰고, 천관산에서는
+    // 그 구멍 판이 흰 판때기로 공중에 떠 있었다.
+    //
+    // 원작이 속임수로 눕혀 둔 것은 **정확히 45.0°**다 — `imped` 2,920삼각형과
+    // `dun_imped` 2,330삼각형이 전부 그 각이고, 거품에는 45°가 하나도 없다
+    expect(leaning(Math.sin((45 * Math.PI) / 180)), '45°').toBe(true)
+    expect(leaning(Math.sin(Math.atan(2))), '63.4°').toBe(true)
+    expect(leaning(Math.sin((15.9 * Math.PI) / 180)), '거품 15.9°').toBe(false)
+    expect(leaning(Math.sin((48 * Math.PI) / 180)), '천장 구멍 48°').toBe(false)
+    expect(leaning(Math.sin((80.5 * Math.PI) / 180)), '거품 80.5°').toBe(false)
+    expect(leaning(0), '이미 선 판').toBe(false)
+    expect(leaning(1), '땅에 깔린 판').toBe(false)
+
+    // 48°짜리 판은 제자리에 그대로 있어야 한다
+    const hole = oneQuad('dun_dhole')
+    const h = hole.geometry.getAttribute('position') as BufferAttribute
+    const tan48 = Math.tan(((90 - 48) * Math.PI) / 180)
+    h.setXYZ(0, 0, 1, 0); h.setXYZ(1, 1, 1, 0)
+    h.setXYZ(2, 1, 1 + tan48, 1); h.setXYZ(3, 0, 1 + tan48, 1)
+    const out = splitFoliage(hole, [true]).geometry.getAttribute('position') as BufferAttribute
+    expect(out.getZ(2), '48° 판은 안 세운다').toBeCloseTo(1, 6)
   })
 
   it('이미 선 판과 땅에 깔린 판은 안 건드린다', () => {
@@ -879,9 +944,16 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
           done.add(cellKey(Math.round(pos.getX(i)), Math.round(pos.getZ(i))))
         }
       }
-      for (const key of split.cells.keys()) {
+      for (const [key, cell] of split.cells) {
         t.cells++
-        if (source.covered.has(key)) t.covered++
+        // ⚠️ **"덮였는가"가 아니라 "그 층이 덮였는가"다.** 원작 지형은 층이
+        // 겹쳐서, 한 칸 밑으로 아랫단 잔디가 지나가고 걸어 다니는 층에는
+        // 아무것도 없을 수 있다 — 영원의 숲의 하늘 비치던 구멍이 그것이다
+        const want = groundAt(cellX(key) + originX + 0.5, cellZ(key) + originZ + 0.5, cell.minY)
+        const here = source.levels.get(key)
+        const onLevel = here !== undefined
+          && (want === null || here.some((y) => Math.abs(y - want) <= LEVEL_SLACK))
+        if (onLevel) t.covered++
         else if (done.has(key)) { t.filled++; if (borrowed.length > 0) t.borrowed++ }
         else t.bare++
       }
@@ -892,9 +964,14 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
   it('오버월드 잎 칸 110,703개가 한 칸도 안 남는다', () => {
     const t = sweep()
     expect(t.cells).toBe(110_703)
-    // 원작 지형이 이미 덮은 칸 — 나머지를 우리가 메운다
-    expect(t.covered).toBe(12_463)
-    expect(t.filled).toBe(98_240)
+    // 원작 지형이 **그 층에** 이미 깔아 둔 칸 — 나머지를 우리가 메운다.
+    //
+    // 12,463이었다. "어떤 면이든 덮였으면 됐다"로 세던 값이고, 그 안에 층이
+    // 어긋난 칸 2,842개가 숨어 있었다 — 밑으로 아랫단 잔디가 지나갈 뿐 걸어
+    // 다니는 층에는 아무것도 없는 칸이다. 영원의 숲 길가에 하늘이 비치던
+    // 구멍이 그 2,842개 중 하나다
+    expect(t.covered).toBe(9_621)
+    expect(t.filled).toBe(101_082)
     // **절반이 이웃에서 온다.** 청크 안만 보면 이만큼이 그대로 뚫린다
     expect(t.borrowed).toBe(51_546)
     // 여기가 이 시험의 전부다

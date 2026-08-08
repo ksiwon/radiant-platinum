@@ -42,7 +42,7 @@ function flowerJitter(x: number, z: number, salt: number): number {
 }
 
 /** 아직 재질을 못 만든 서브메시. 안 보이는 것보다 눈에 띄는 편이 낫다 */
-const MISSING = new MeshBasicMaterial({ color: '#ff00ff', side: DoubleSide })
+const MISSING = new MeshBasicMaterial({ name: '(못 찾은 그림)', color: '#ff00ff', side: DoubleSide })
 
 interface Placed {
   key: string
@@ -86,6 +86,7 @@ interface Prop extends Placed {
  */
 function backMaterial(sheet: TexSheet | null): Material {
   return new MeshLambertMaterial({
+    name: '채운 면',
     vertexColors: true,
     map: sheet ? sheetTexture(sheet) : null,
   })
@@ -442,20 +443,25 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       */}
       {placed.map((p) => (
         <group key={p.key} position={[p.x, 0, p.z]}>
-          <mesh geometry={p.geometry} material={p.materials} castShadow receiveShadow />
+          {/*
+            ⚠️ **이름은 장식이 아니다.** `pnpm shot --hit`이 화면의 한 점에 광선을
+            쏘아 "무엇이 거기 있느냐"를 되묻는데, 답이 `Mesh`뿐이면 지형인지
+            메운 바닥인지 옆면인지 못 가른다
+          */}
+          <mesh name="지형" geometry={p.geometry} material={p.materials} castShadow receiveShadow />
           {/*
             숲 바닥의 구멍. 원작은 서 있는 잎 판이 제 바닥 판보다 옆으로 더
             나가 있어서, 걷어내고 나면 잎 칸의 15.6%가 발밑이 뚫린다
           */}
           {p.floor && (
-            <mesh geometry={p.floor.geometry} material={p.materials} receiveShadow />
+            <mesh name="메운 바닥" geometry={p.floor.geometry} material={p.materials} receiveShadow />
           )}
           {/*
             울타리·표지판의 옆면. 원작 판 한 장을 세워 놔도 옆에서 보면 선
             하나로 사라진다 — 그림의 실루엣을 그대로 밀어내 두께를 준다
           */}
           {p.shells && (
-            <mesh geometry={p.shells.geometry} material={p.materials} castShadow receiveShadow />
+            <mesh name="판 옆면" geometry={p.shells.geometry} material={p.materials} castShadow receiveShadow />
           )}
         </group>
       ))}
@@ -491,14 +497,14 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             비켜 주는데 집은 안 비켜서 화면의 절반이 지붕이 됐다 (`PropFade`)
           */}
           <PropFade geometry={p.mesh.geometry} materials={[...p.materials, p.backMaterial]}>
-            <mesh geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
+            <mesh name="소품" geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
             {/*
               빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준 −Z가 64% ·
               −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면 반대편 벽의
               **안쪽**이 보인다 (`shell.ts`)
             */}
             {p.back && (
-              <mesh geometry={p.back} material={p.backMaterial} castShadow receiveShadow />
+              <mesh name="소품 채운 면" geometry={p.back} material={p.backMaterial} castShadow receiveShadow />
             )}
           </PropFade>
         </group>

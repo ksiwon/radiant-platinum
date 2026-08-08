@@ -232,8 +232,43 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
  * 그래서 45° 1타일짜리 울타리는 1.41타일 높이로 선다 — 원작 카메라에서 보이던
  * 크기가 그것이다
  */
-const STAND_MIN = 0.20
-const STAND_MAX = 0.97
+
+/**
+ * 원작이 **판때기를 눕혀 놓은 각**. 이 각이 아니면 안 세운다.
+ *
+ * ⚠️ **기울기 구간(0.20~0.97)으로 잡으면 안 된다.** 그렇게 잡았다가 지형을
+ * 통째로 일으켜 세웠다 — 실측으로 청크 632개에서:
+ *
+ *   울타리 `imped` 2,920삼각형          **45.0°** (나머지 700개는 90°=깔린 것)
+ *   동굴 울타리 `dun_imped` 2,330       **45.0°** (전부)
+ *   화단 `bf_ueki01` 192 · `yomawaru` 350  **45.0°** (전부)
+ *   ── 여기까지가 세워야 할 것 ──
+ *   바닷가 거품 `seaside3` 15,426       15.9° · 80.5° · 85.8° · 74.1° (45°가 0개)
+ *   빛기둥 `dun_light` 666              83.7° · 9.5° · 81.4° · 14.9° …
+ *   천장 구멍 `dun_dhole` 962           48.0° · 0° · 88.2°
+ *   동굴 조명 `c5_light` 1,620          46.1° · 41.5° · 32.5° …
+ *
+ * 원작이 **정확히 45.0°**로 그려 둔 것만 그 속임수를 쓴 것이고, 나머지는 그냥
+ * 그 각도로 놓인 지형이다. 천관산에 흰 판때기가 공중에 떠 있던 것이 이것이었다 —
+ * 48°짜리 천장 구멍 판을 울타리로 알고 세워 놓았다.
+ *
+ * 63.4°(=atan 2)도 함께 둔다. 소품 `area07_hei_h3`가 그 각이다 — 지금은 청크만
+ * 이 길을 지나지만, 각이 우연이 아니라 원작이 고른 값이라는 증거다
+ */
+const STAND_ANGLES = [45, 63.4349] as const
+/** 각을 얼마나 봐 주는가(도). 원작 값이 딱 떨어져서 넉넉할 이유가 없다 */
+const STAND_SLACK = 0.2
+
+/**
+ * 이 기울기가 원작이 눕혀 놓은 각인가.
+ *
+ * `lean`은 판 법선의 |y| 성분(0=서 있다 · 1=깔렸다)이라, 판이 수직에서 넘어간
+ * 각이 곧 `asin(lean)`이다
+ */
+export function leaning(lean: number): boolean {
+  const deg = (Math.asin(Math.min(1, lean)) * 180) / Math.PI
+  return STAND_ANGLES.some((a) => Math.abs(deg - a) <= STAND_SLACK)
+}
 
 /** 판 하나를 세운다. 정점 자리를 제자리에서 고친다 */
 function standCard(pos: Float32Array, verts: number[], n: [number, number, number]): void {
@@ -316,9 +351,8 @@ export function standCutouts(
     for (const part of parts.values()) {
       const len = Math.hypot(...part.n)
       if (len < 1e-9) continue
-      const lean = Math.abs(part.n[1]) / len
-      // 이미 선 것(0)과 땅에 깔린 것(1)은 그대로 둔다
-      if (lean < STAND_MIN || lean > STAND_MAX) continue
+      // 이미 선 것(0°)과 땅에 깔린 것(90°)은 여기서 저절로 빠진다
+      if (!leaning(Math.abs(part.n[1]) / len)) continue
       out ??= position.slice()
       standCard(out, [...part.verts], [part.n[0] / len, part.n[1] / len, part.n[2] / len])
     }
@@ -384,7 +418,26 @@ export interface FloorTri {
 export interface FloorSource {
   floors: FloorTri[]
   covered: Set<number>
+  /**
+   * 칸마다 **바닥이 실제로 있는 높이들**.
+   *
+   * ⚠️ **"덮였는가"만으로는 구멍을 못 막는다.** 원작 지형은 층이 겹친다 —
+   * 한 칸 위로 윗단의 잔디가 지나가고 그 밑에 아랫단의 잔디가 또 있다. 덮인
+   * 것으로만 세면 **어느 층이 덮였는지**를 안 보게 되고, 잎이 걸려 있던 층에
+   * 바닥이 없어도 그냥 넘어간다. 영원의 숲에서 길 바로 옆에 **하늘이 비치는
+   * 구멍**이 그렇게 남아 있었다: 그 칸을 덮은 것은 y=0의 아랫단 잔디와
+   * 기울기 0.64짜리 절벽면뿐이고, 걸어 다니는 y=1에는 아무것도 없었다
+   */
+  levels: Map<number, number[]>
 }
+
+/**
+ * 바닥이 "그 층"인지 보는 여유(타일).
+ *
+ * 4세대 지형의 단차는 한 타일이다(실측: 구멍 자리의 두 층이 y=0과 y=1).
+ * 절반이면 두 층이 확실히 갈리면서, 같은 층 안의 미세한 요철은 안 가른다
+ */
+export const LEVEL_SLACK = 0.5
 
 /**
  * 바닥 삼각형을 모은다. 청크마다 한 번만 하면 되므로 따로 뺐다 —
@@ -397,6 +450,7 @@ export function floorSource(split: Split): FloorSource {
   const index = split.geometry.getIndex()!.array
   const floors: FloorTri[] = []
   const covered = new Set<number>()
+  const levels = new Map<number, number[]>()
   for (const [start, count, group] of split.groups) {
     for (let t = 0; t < count; t += 3) {
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
@@ -406,10 +460,11 @@ export function floorSource(split: Split): FloorSource {
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
       const len = Math.hypot(nx, ny, nz)
       if (len < 1e-9) continue
-      // 덮인 칸은 **어떤 면이든** 덮은 것으로 친다 — 절벽 밑에 판을 깔면 안 된다
+      // 덮인 칸은 **어떤 면이든** 덮은 것으로 친다. 바닥인 면은 **높이까지** 적는다
       const bx0 = Math.min(ax, ax + ux, ax + vx), bx1 = Math.max(ax, ax + ux, ax + vx)
       const bz0 = Math.min(az, az + uz, az + vz), bz1 = Math.max(az, az + uz, az + vz)
       const area = ux * vz - vx * uz
+      const flat = Math.abs(ny) / len >= FLOOR_NORMAL
       if (Math.abs(area) > 1e-9) {
         for (let tz = Math.floor(bz0); tz <= Math.floor(bz1); tz++) {
           for (let tx = Math.floor(bx0); tx <= Math.floor(bx1); tx++) {
@@ -417,11 +472,17 @@ export function floorSource(split: Split): FloorSource {
             const w1 = (px * vz - vx * pz) / area
             const w2 = (ux * pz - px * uz) / area
             if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
-            covered.add(cellKey(tx, tz))
+            const key = cellKey(tx, tz)
+            covered.add(key)
+            if (!flat) continue
+            const y = ay + w1 * uy + w2 * vy
+            const here = levels.get(key)
+            if (here) here.push(y)
+            else levels.set(key, [y])
           }
         }
       }
-      if (Math.abs(ny) / len < FLOOR_NORMAL) continue
+      if (!flat) continue
       const au = uv ? uv[a * 2]! : 0, av = uv ? uv[a * 2 + 1]! : 0
       floors.push({
         group,
@@ -432,7 +493,7 @@ export function floorSource(split: Split): FloorSource {
       })
     }
   }
-  return { floors, covered }
+  return { floors, covered, levels }
 }
 
 /**
@@ -516,12 +577,20 @@ export function floorPatch(
   /** 그 서브메시의 그림이 물리는가(`rep`). 안 주면 다 물린다고 본다 */
   repeats?: (group: number) => boolean,
 ): FloorPatch | null {
-  const { floors: own, covered } = source ?? floorSource(split)
+  const { floors: own, levels } = source ?? floorSource(split)
   const floors = borrowed.length > 0 ? [...own, ...borrowed] : own
   if (floors.length === 0) return null
 
+  // ⚠️ **"덮였는가"가 아니라 "그 층에 바닥이 있는가"를 본다.** 층이 겹친 자리에서
+  // 잎이 걸린 층에 바닥이 없으면 그 칸은 그대로 뚫린다 (`FloorSource.levels`)
   const bare: number[] = []
-  for (const key of split.cells.keys()) if (!covered.has(key)) bare.push(key)
+  for (const [key, cell] of split.cells) {
+    const want = ground(cellX(key) + 0.5, cellZ(key) + 0.5, cell.minY)
+    const here = levels.get(key)
+    // 높이 자료가 없는 칸은 예전대로 "덮였으면 됐다"로 본다 — 견줄 값이 없다
+    if (here && (want === null || here.some((y) => Math.abs(y - want) <= LEVEL_SLACK))) continue
+    bare.push(key)
+  }
   const nearest = nearestFloors(bare, floors)
 
   /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */

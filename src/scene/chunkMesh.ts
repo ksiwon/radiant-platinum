@@ -281,6 +281,28 @@ export function sliceTexture(sheet: TexSheet, item: SheetItem, rep: number): Tex
 }
 
 /**
+ * 그림이 **중간 알파**를 쓰는가 — 0도 255도 아닌 값이 하나라도 있는가.
+ *
+ * ⚠️ **폴리곤 알파만 보면 안 된다.** DS는 텍스처 자체가 알파를 나르는 형식
+ * (A3I5·A5I3)을 쓰고, 그때는 폴리곤 알파가 31(불투명)이어도 하드웨어가 텍셀마다
+ * 섞는다. 우리는 폴리곤 알파만 보고 `alphaTest: 0.5`로 잘랐다 — 천관산 빛기둥
+ * (`dun_light`)은 알파 최댓값이 **123**이라 통째로 잘려 나갔고, 그 뒤의 천장
+ * 구멍 판만 흰 판때기로 남았다.
+ *
+ * 실측으로 청크 그림 2,736개 중 39개, 소품 1,102개 중 40개가 여기 걸린다.
+ * 이름을 보면 무엇인지 분명하다: `lake`·`puddle`·`dun_light`·`bf_light`·
+ * `c1_lamp01`·`kemuri`(연기)·`mag_smoke01`·`taki_top`(폭포)·`c09_ice`·
+ * `warp1b`. 전부 **섞어야 하는 것**이다
+ */
+export function softAlpha(pixels: ArrayLike<number>): boolean {
+  for (let i = 3; i < pixels.length; i += 4) {
+    const a = pixels[i]!
+    if (a !== 0 && a !== 255) return true
+  }
+  return false
+}
+
+/**
  * 재질 하나.
  *
  * 알파 31이 불투명이다. 그보다 낮으면 반투명 판(물·그림자)이고, 깊이 쓰기를
@@ -289,15 +311,21 @@ export function sliceTexture(sheet: TexSheet, item: SheetItem, rep: number): Tex
 export function makeMaterial(
   spec: ChunkMeta['materials'][number], texture: Texture | null, doubleSided = false,
 ): Material {
-  const translucent = spec.a < 31
+  const data = (texture as DataTexture | null)?.image as { data?: Uint8Array } | undefined
+  const translucent = spec.a < 31 || (data?.data !== undefined && softAlpha(data.data))
   return new MeshLambertMaterial({
+    // 화면에 뜬 판때기가 무엇인지 **씬에 직접 물어보기 위해서다**(`pnpm shot --hit`).
+    // 그림만 보고는 지형인지 소품인지 옆면인지 못 가른다 — 실제로 흰 판때기 하나를
+    // 두 맵에서 보고도 무엇인지 몰라 손을 못 댔다. three가 무시하는 표시라 값이 없다
+    name: spec.tex ?? '(그림 없음)',
     map: texture,
     vertexColors: true,
     // 4세대 텍스처는 색 0을 투명으로 쓴다. 알파 테스트로 잘라 내야 나무·풀이
-    // 사각형으로 안 보인다
+    // 사각형으로 안 보인다 — 다만 그림이 알파를 **번지게** 쓰면 자를 것이 아니라
+    // 섞을 것이다(`softAlpha`)
     alphaTest: translucent ? 0 : 0.5,
     transparent: translucent,
-    opacity: translucent ? spec.a / 31 : 1,
+    opacity: spec.a / 31,
     depthWrite: !translucent,
     // 원작은 카메라가 한쪽에서만 보므로 **뒷면을 안 만든다.** 집은 앞·좌·우·지붕만
     // 있고 뒷벽이 없고(주인공 집 219삼각형에 `0,0,-1` 법선이 0개), 풀·울타리는

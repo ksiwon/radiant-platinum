@@ -9,7 +9,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
-import { withData } from '../data/romData.testkit'
+import { softAlpha } from './chunkMesh'
+import { decodePng, withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data/chunks')
 const maybe = withData('chunks/index.json', 'chunks/0.bin')
@@ -142,5 +143,47 @@ maybeTex('맵 텍스처 시트', () => {
         seen.push([x, y, w, h])
       }
     }
+  })
+})
+
+// ── 반투명 그림 ──────────────────────────────────────────────────────────────
+// DS는 텍스처 자체가 알파를 나르는 형식(A3I5·A5I3)을 쓴다. 그때는 폴리곤 알파가
+// 31(불투명)이어도 하드웨어가 텍셀마다 섞는데, 우리는 폴리곤 알파만 보고
+// `alphaTest: 0.5`로 잘랐다 — 천관산 빛기둥이 통째로 잘려 나가고 그 뒤의 천장
+// 구멍 판만 흰 판때기로 남았다.
+maybeTex('알파가 번지는 그림', () => {
+  const index = JSON.parse(readFileSync(TEX, 'utf8')) as {
+    sets: { items: [string, string, number, number, number, number][] }[]
+  }
+
+  it('빛기둥은 알파가 절반도 안 차고, 그런 그림은 섞어 그린다', () => {
+    // ⚠️ 이 값이 128을 넘으면 이 시험이 아무것도 안 지킨다 — 문턱 0.5를
+    // 넘어서면 `alphaTest`로도 살아남으니까. 실측 최댓값이 123이다
+    const png = decodePng(resolve(__dirname, '../../public/data/tex/68.png'))
+    const item = index.sets[68]!.items.find(([tex]) => tex === 'dun_light')!
+    const [, , x, y, w, h] = item
+    let max = 0
+    let graded = 0
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const a = png.pixels[((y + j) * png.width + x + i) * 4 + 3]!
+        if (a > max) max = a
+        if (a !== 0 && a !== 255) graded++
+      }
+    }
+    expect(max, '빛기둥 알파 최댓값').toBe(123)
+    expect(graded, '중간 알파 텍셀').toBe(704)
+
+    // 그 그림이 걸리는 잣대. 걸리면 자르는 게 아니라 섞는다
+    const pixels = new Uint8Array(w * h * 4)
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        pixels[(j * w + i) * 4 + 3] = png.pixels[((y + j) * png.width + x + i) * 4 + 3]!
+      }
+    }
+    expect(softAlpha(pixels), '빛기둥').toBe(true)
+    // 4세대 팔레트 그림은 색 0만 투명이라 알파가 0 아니면 255다 — 나무·울타리가
+    // 여기 걸리면 숲이 통째로 반투명이 된다
+    expect(softAlpha(new Uint8Array([1, 2, 3, 255, 4, 5, 6, 0])), '잘라 낸 그림').toBe(false)
   })
 })
