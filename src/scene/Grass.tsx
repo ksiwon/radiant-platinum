@@ -12,6 +12,11 @@
 // **아무것도 안 자란 땅에서 야생이 튀어나온다.** 다만 지금은 같은 포기를 쓴다 —
 // 원작에서 이 풀은 더 길고, 그 차이는 아직 안 옮겼다.
 //
+// ⚠️ **대습초원의 풀은 `TALL_GRASS`가 아니다.** 진흙 위의 풀(0xA6 · 0xA7)이고
+// 실내 행렬에 3,094칸 있다. 풀숲 판정(`isGrassTile`)만 보고 있어서 대습초원은
+// 통째로 바닥 그림 그대로였다 — 3인칭으로 보면 초록 「W」를 뿌려 놓은 장판이다.
+// 포기를 세우는 칸은 `isTuftTile`이 정한다(발소리·흔들림보다 넓다).
+//
 // 포기는 우리가 만든 모양이다. 원작에는 3D 풀이 없다. 대신 색은 원작 그림에서
 // 가장 많이 쓰인 초록을 그대로 쓴다.
 import { useEffect, useMemo } from 'react'
@@ -20,7 +25,7 @@ import {
   MeshLambertMaterial, Quaternion, Vector3,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
-import { isGrassTile } from '../engine/battle/encounter'
+import { isTuftTile } from '../engine/battle/encounter'
 
 /** 포기 하나에 잎 몇 장. 넷 아래로 내리면 옆에서 볼 때 성글다 */
 const BLADES = 5
@@ -63,7 +68,7 @@ export function grassSpots(grid: MapGrid, chunkIndex: number, radius: number): F
   for (const c of grid.chunksAround(chunkIndex, radius)) {
     for (let z = c.my * n; z < (c.my + 1) * n; z++) {
       for (let x = c.mx * n; x < (c.mx + 1) * n; x++) {
-        if (!isGrassTile(grid.behavior(x, z))) continue
+        if (!isTuftTile(grid.behavior(x, z))) continue
         for (let t = 0; t < TUFTS; t++) {
           const px = x + 0.2 + hash(x, z, t) * 0.6
           const pz = z + 0.2 + hash(x, z, t + 8) * 0.6

@@ -29,6 +29,15 @@ export const Behavior = {
   TALL_GRASS: 0x0002,
   /** 더 긴 풀. 원작에도 조우 표식이 붙어 있다 (`map_tile_behavior.c`) */
   VERY_TALL_GRASS: 0x0003,
+  /**
+   * 진흙 위의 풀 — **대습초원의 풀숲이다.**
+   *
+   * 값이 확정되는 이유는 이름에 16진수를 담은 항목들이다: `UNUSED_x9F` 바로
+   * 뒤가 `BERRY_PATCH`(0xA0)이고 `UNUSED_xAA` 바로 앞이 `SNOW_WITH_SHADOWS`
+   * (0xA9)라, 그 사이 여덟 개가 한 칸씩 맞아떨어진다
+   */
+  MUD_WITH_GRASS: 0x00a6,
+  MUD_DEEP_WITH_GRASS: 0x00a7,
   /** 넓은 수면. 수로(W) 존을 채운다 — W231에만 6912칸 */
   WATER_OPEN: 0x0015,
   /** 작은 물. 13개 존에 1114칸뿐이고 트윈리프의 연못이 여기다 */

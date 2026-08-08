@@ -603,53 +603,57 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     battle: { kind: 'trainer', id: 318 },
   },
   {
+    // ⚠️ **`C06`이 들판시티(Pastoria)이고 `C07`이 장막시티(Veilstone)다.**
+    // 여기가 한동안 뒤바뀌어 있었다 — 백화점·게임코너를 보러 들어간 자리가
+    // 습지 옆 마을이었고, 화면은 멀쩡한 도시라 아무도 안 걸렸다. 근거는 롬의
+    // 이름표다: 게임코너(136)와 장막백화점(137·138)이 `C07R…`이다
     id: 'veilstone',
-    label: '들판시티',
+    label: '장막시티',
     env: '야외 · 도시 (백화점·게임코너) · 배지 3개',
     try: [
       '백화점 문으로 들어가 본다 — 층이 여럿이다',
       '도시 안 풀숲을 본다',
       '배지 3개짜리 상점 재고를 본다',
     ],
-    map: 120,
+    map: 132,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge3,
   },
   {
     id: 'gym4',
-    label: '들판 체육관 · 자두 (격투)',
+    label: '장막 체육관 · 자두 (격투)',
     env: '실내 · 체육관 (격투) · 배지 3개에서 4개로',
     try: [
       '관장전 3마리를 치른다 — 루카리오 L32가 마지막이다',
       '5마리 파티로 교체를 여러 번 해 본다',
     ],
-    map: 122,
+    map: 133,
     spot: { kind: 'warp', index: 0 },
     ...STAGE.badge3,
     battle: { kind: 'trainer', id: 317 },
   },
   {
     id: 'pastoria',
-    label: '장막시티',
+    label: '들판시티',
     env: '야외 · 습지 옆 도시 (물이 많다) · 배지 4개',
     try: [
       '물 타일의 물결과 반사를 본다',
       '대습초원 입구를 찾아 본다',
       '파도타기를 들고 물가에 서 본다',
     ],
-    map: 132,
+    map: 120,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge4,
   },
   {
     id: 'gym5',
-    label: '장막 체육관 · 맥실러 (물)',
+    label: '들판 체육관 · 맥실러 (물)',
     env: '실내 · 체육관 (물) · 배지 4개에서 5개로',
     try: [
       '관장전 3마리를 치른다 — 플로젤 L37이 마지막이다',
       '체육관 안의 물 타일 위를 걸어 본다',
     ],
-    map: 133,
+    map: 122,
     spot: { kind: 'warp', index: 0 },
     ...STAGE.badge4,
     battle: { kind: 'trainer', id: 316 },

@@ -93,6 +93,32 @@ maybe('확인 지점', () => {
     if (maps[c.map]!.matrix === 0) expect(grid!.zoneAt(tx, tz), '다른 맵에 섰다').toBe(c.map)
   })
 
+  it('이름이 그 맵의 롬 지역명과 맞다', () => {
+    // ⚠️ **여기가 눈먼 자리였다.** `veilstone`이 들판시티(C06)를 가리키고
+    // `pastoria`가 장막시티(C07)를 가리킨 채로 오래 있었는데, 뛰어들면 화면은
+    // 멀쩡한 도시라 아무도 안 걸렸다 — 백화점을 보러 갔더니 습지 옆 마을이었다.
+    // 체육관도 같이 뒤바뀌어서 자두(격투)가 들판 체육관에 서 있었다.
+    //
+    // 이름은 우리가 지어낼 것이 아니라 **롬이 그 맵에 붙여 둔 것**이다
+    const names = read('names/locations.ko.json') as string[]
+    // 마을·도시 이름의 앞머리('장막시티' → '장막'). 체육관·백화점은 이 꼴로
+    // 줄여 부르고, 헷갈리는 자리가 여기밖에 없다
+    const stems = [...new Set(names
+      .filter((n) => /(시티|마을|타운)$/.test(n))
+      .map((n) => n.replace(/(시티|마을|타운)$/, '')))]
+    for (const c of CHECKPOINTS) {
+      const here = names[maps[c.map]!.label]
+      expect(here, `맵 ${String(c.map)}`).toBeDefined()
+      const named = stems.filter((st) => c.label.includes(st))
+      // 마을 이름을 안 부르는 이름표(‘주인공 방’·‘라이벌전’)는 볼 것이 없다
+      if (named.length === 0) continue
+      expect(
+        named.some((st) => here!.includes(st)),
+        `${c.id}: '${c.label}'인데 맵 ${String(c.map)}은 '${here!}'다`,
+      ).toBe(true)
+    }
+  })
+
   it('어디로 가는지와 무엇을 볼지가 전부 적혀 있다', () => {
     // 화면 오른쪽이 이 둘로 채워진다. 비어 있으면 지점을 골라도 왜 가는지 모른다
     for (const c of CHECKPOINTS) {

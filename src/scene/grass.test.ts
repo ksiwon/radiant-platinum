@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField } from '../engine/map/height'
-import { isEncounterTile, isGrassTile } from '../engine/battle/encounter'
+import { isEncounterTile, isGrassTile, isTuftTile } from '../engine/battle/encounter'
 import { grassSpots } from './Grass'
 import { withData } from '../data/romData.testkit'
 
@@ -60,6 +60,26 @@ maybe('서 있는 풀숲', () => {
       // 한쪽만 고치면 눈에 보이는 풀과 실제로 튀어나오는 자리가 어긋난다
       expect(isEncounterTile(behavior)).toBe(true)
     }
+  })
+
+  it('대습초원의 진흙 위 풀에도 포기가 선다', () => {
+    // ⚠️ 대습초원 풀은 `TALL_GRASS`가 아니라 **진흙 위의 풀**이다. 풀숲 판정만
+    // 보고 있어서 거기만 통째로 바닥 그림이었다 — 3인칭으로 보면 초록 「W」를
+    // 뿌려 놓은 장판이고, 야생은 그 위에서 튀어나온다.
+    //
+    // 실측: 실내 행렬에 0xA6가 2,510칸 · 0xA7이 584칸이고 전부 대습초원이다
+    expect(isTuftTile(0xa6), '진흙 위의 풀').toBe(true)
+    expect(isTuftTile(0xa7), '깊은 진흙 위의 풀').toBe(true)
+    expect(isTuftTile(0x02), '긴 풀').toBe(true)
+    expect(isTuftTile(0x03), '더 긴 풀').toBe(true)
+    // 넓히다가 딸려 오면 안 되는 것들
+    expect(isTuftTile(0xa4), '맨 진흙').toBe(false)
+    expect(isTuftTile(0x08), '동굴 바닥').toBe(false)
+    expect(isTuftTile(0x00), '맨 땅').toBe(false)
+    // ⚠️ 발소리·흔들림은 안 넓힌다. 원작은 진흙에서 풀 흔들림을 안 돌린다
+    expect(isGrassTile(0xa6), '진흙 위에서는 안 스친다').toBe(false)
+    // 그래도 야생은 나온다 — 두 판정이 갈리는 자리다
+    expect(isEncounterTile(0xa6)).toBe(true)
   })
 
   it('풀숲이 없는 곳에는 하나도 안 선다', () => {

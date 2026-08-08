@@ -184,3 +184,23 @@ export function isEncounterTile(behavior: number): boolean {
 export function isGrassTile(behavior: number): boolean {
   return behavior === Behavior.TALL_GRASS || behavior === Behavior.VERY_TALL_GRASS
 }
+
+/**
+ * 풀 포기를 세울 칸인가 (`scene/Grass.tsx`).
+ *
+ * ⚠️ **`isGrassTile`보다 넓다.** 대습초원의 풀은 `TALL_GRASS`가 아니라
+ * **진흙 위의 풀**(`MUD_WITH_GRASS` 0xA6 · `MUD_DEEP_WITH_GRASS` 0xA7)이다.
+ * 실측으로 실내 행렬에 0xA6가 2,510칸 · 0xA7이 584칸 있고 전부 대습초원이다
+ * (행렬 24·240). 그 칸을 빼 두면 대습초원만 **바닥 그림 그대로** 남아서, 3인칭
+ * 으로 보면 초록 「W」를 뿌려 놓은 장판이 된다 — 실제로 그렇게 찍혔다.
+ *
+ * ⚠️ **그렇다고 `isGrassTile`을 넓히면 안 된다.** 원작은 진흙 위에서 풀이
+ * 흔들리는 연출을 안 돌린다(`sub_02063964`는 `TALL_GRASS`만 본다) — 대신
+ * 사람이 **가라앉고**(`MapObject_SinkIntoTerrain`) 그림자가 숨는다. 서 있는
+ * 것과 스치는 소리는 다른 이야기다
+ */
+export function isTuftTile(behavior: number): boolean {
+  return isGrassTile(behavior)
+    || behavior === Behavior.MUD_WITH_GRASS
+    || behavior === Behavior.MUD_DEEP_WITH_GRASS
+}
