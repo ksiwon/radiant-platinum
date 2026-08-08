@@ -10,7 +10,7 @@ import { loadItems, loadMoves, loadSpecies } from '../data/gameData'
 import { useSaveStore, type PokemonInstance } from '../state/saveStore'
 import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
-import { fieldScripts } from '../engine/script/field'
+import { abortScript, fieldScripts } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
 import { HM_CARRIER, HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
 import type { EncounterTable } from '../engine/battle/encounter'
@@ -151,5 +151,9 @@ function giveDex(): void {
  */
 export async function warpTo(cp: Checkpoint): Promise<void> {
   await applySetup(cp)
+  // ⚠️ **돌고 있는 스크립트를 먼저 끊는다.** 타이틀에서 뛰어들면 새 판을
+  // 여는데, 그 순간 주인공 방의 TV 방송이 이미 돌기 시작한 뒤다. 안 끊으면
+  // 딴 맵에서 그 대사창이 뜨고 **플레이어가 잠긴 채로 선다**
+  abortScript()
   devWarp.pending = cp
 }

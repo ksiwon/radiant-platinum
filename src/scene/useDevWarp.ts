@@ -11,6 +11,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import type { MapGrid } from '../engine/map/grid'
 import { mapById, walkOutOfDoor, warpsOf } from '../engine/map/world'
 import { worldState } from '../state/worldState'
+import { abortScript } from '../engine/script/field'
 import { useBattleStore } from '../state/battleStore'
 import { gridFor } from './worldData'
 import type { Checkpoint } from '../engine/dev/checkpoints'
@@ -72,6 +73,11 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
         const out = walkOutOfDoor(next, at.x, at.z)
         enter(next, cp.map, out.x, out.z, header.matrix)
         worldState.player.facing = at.facing
+        // ⚠️ **여기서 한 번 더 끊는다.** `warpTo`가 이미 끊었지만, 새 판을 여는
+        // 것과 맵이 실제로 뜨는 것 사이에 프레임이 있어서 그 사이에 주인공 방의
+        // TV 방송이 시작된다. 안 끊으면 딴 맵에서 그 대사창이 뜨고 플레이어가
+        // 잠긴 채로 선다 — 걸어도 안 움직이는 것을 이동 버그로 읽기 십상이다
+        abortScript()
         battle.current = cp.battle
       })
       .catch((e: unknown) => { console.error(`확인 지점 ${cp.id} 실패`, e) })
