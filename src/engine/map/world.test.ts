@@ -15,8 +15,11 @@ import {
   doorEntry,
   setWarpEventPos,
   walkOutOfDoor,
+  disarmWarp,
+  warpSystem,
   type EventFile, type MapHeader, type Warp,
 } from './world'
+import { worldState } from '../../state/worldState'
 import { resolveScript } from '../script/data'
 import type { ScriptFile } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
@@ -528,5 +531,59 @@ maybe('워프 자리 옮기기', () => {
     clearWarpOverrides()
     world.mapId = VERITY_LAKEFRONT
     expect(warpsOf(VERITY_LAKEFRONT)[2]).toEqual(before[2])
+  })
+})
+
+/**
+ * 도착 직후에는 워프가 안 걸린다 (`disarmWarp`).
+ *
+ * ⚠️ **여기가 뚫려 있었다.** 확인 지점으로 체육관 안 워프판 위에 뛰어들면
+ * 그 프레임에 워프가 걸려 도로 시내로 나갔다. 배틀은 열렸으니 화면은 그럴듯한데
+ * **서 있는 맵이 달라서** 무대가 체육관이 아니라 시내 풀밭이었다
+ */
+describe('발을 떼기 전에는 워프가 안 걸린다', () => {
+  const WARP: Warp = { x: 5, z: 7, to: 1, anchor: 0 }
+  /** 돌아오는 쪽. 이게 없으면 `resolveWarp`가 목적지를 못 푼다 */
+  const BACK: Warp = { x: 2, z: 3, to: 0, anchor: 0 }
+  const grid = {
+    behavior: () => 0,
+    isBlocked: () => false,
+  }
+
+  /** 워프판 위에 세우고 한 프레임 돌린다 */
+  function step(): typeof world.pending {
+    world.pending = null
+    worldState.player.position.set(WARP.x + 0.5, 0, WARP.z + 0.5)
+    warpSystem.fixedUpdate()
+    return world.pending
+  }
+
+  beforeAll(() => {
+    world.maps = [
+      { id: 0, events: 0, matrix: 0 } as MapHeader,
+      { id: 1, events: 1, matrix: 7 } as MapHeader,
+    ]
+    world.events = {
+      '0': { warps: [WARP], npcs: [], signs: [], triggers: [] } as unknown as EventFile,
+      '1': { warps: [BACK], npcs: [], signs: [], triggers: [] } as unknown as EventFile,
+    }
+    world.grid = grid as unknown as MapGrid
+    world.mapId = 0
+  })
+
+  it('걸려 있으면 밟는 순간 걸린다', () => {
+    world.armed = true
+    expect(step()?.to).toBe(1)
+  })
+
+  it('도착 처리를 하면 그 자리에서는 안 걸린다', () => {
+    world.armed = true
+    disarmWarp()
+    expect(step()).toBeNull()
+    // 발을 떼면 다시 걸린다 — 안 그러면 그 맵에서 영영 못 나간다
+    worldState.player.position.set(0.5, 0, 0.5)
+    warpSystem.fixedUpdate()
+    expect(world.armed).toBe(true)
+    expect(step()?.to).toBe(1)
   })
 })

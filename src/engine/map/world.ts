@@ -429,6 +429,18 @@ export function doorEntry(
  * 도착 지점은 상대편 워프 타일 자체다 — 원작도 그렇다. 다만 그 칸이 문이면
  * 통행 불가라서 씬이 `walkOutOfDoor`로 한 칸 내려 세운다.
  */
+/**
+ * 방금 도착했다 — 발을 떼기 전에는 워프가 안 걸린다.
+ *
+ * ⚠️ **맵에 들어서는 모든 길이 여기를 지나야 한다.** 워프로 들어온 경우엔
+ * `warpSystem`이 이미 풀어 두지만, **확인 지점으로 뛰어드는 길**은 안 풀고
+ * 있었다 — 체육관 안 워프판 위에 내려서자마자 도로 시내로 튕겨 나갔고, 그래서
+ * 체육관 배틀이 시내 풀밭에서 열렸다. 세이브 자리가 워프판일 때도 같은 일이 난다
+ */
+export function disarmWarp(): void {
+  world.armed = false
+}
+
 export const warpSystem = {
   fixedUpdate() {
     if (world.mapId < 0 || world.pending) return

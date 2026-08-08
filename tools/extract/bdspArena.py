@@ -1,6 +1,7 @@
 """BDSP 배틀 무대 번들 → glb (PLAN §4.3, DATA.md §7.4).
 
-    py -3.13 tools/extract/bdspArena.py <번들> -o public/models/arena/<이름>.glb
+    pnpm extract:arenas                      표에 실린 무대를 전부 굽는다
+    py -3.13 tools/extract/bdspArena.py <번들> -o <나갈 곳>.glb    한 벌만
 
 BDSP의 배틀 배경은 **진짜 3D 무대**다. `Environments/bg/arenas/ground/g001`
 하나에 정적 메시 158개와 텍스처 21장(흙·풀·나무)이 들어 있고, 그 위에 하늘
@@ -24,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import struct
 import sys
 from pathlib import Path
@@ -32,7 +34,7 @@ import numpy as np
 import UnityPy
 from UnityPy.helpers import MeshHelper
 
-from bdsp_bake_albedo import bake
+from bdsp_bake_albedo import bake, prop_pairs
 
 GLB_MAGIC = 0x46546C67
 JSON_CHUNK = 0x4E4F534A
@@ -134,6 +136,32 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
 
     buf = Buffer()
 
+    # ⚠️ **투명 여부를 짐작하지 않는다. 번들이 적어 두었다.** 재질마다
+    # `stringTagMap`에 유니티의 `RenderType`이 그대로 실려 있다:
+    #
+    #   Opaque(큐 2000)             벽·바닥·바위 — 안 비친다
+    #   TransparentCutout(큐 2450)  잎·풀 — 오려 낸다
+    #   Transparent(큐 3000)        창으로 드는 빛·물안개 — 비친다
+    #
+    # 여태 **전부 오려 내기**로 구웠다. 그래서 체육관 안 창빛이 흰 널빤지로
+    # 서 있었다 — 지난번 천관산 빛기둥과 같은 실수를 무대 쪽에서 한 번 더 한 것이다
+    kinds = {}
+    for obj in env.objects:
+        if obj.type.name != "Material":
+            continue
+        d = obj.read_typetree()
+        tags = dict(d.get("stringTagMap") or [])
+        kinds[d.get("m_Name", "?")] = tags.get("RenderType", "Opaque")
+
+    def alpha_of(name: str) -> dict:
+        kind = kinds.get(name, "Opaque")
+        if kind == "Transparent":
+            return {"alphaMode": "BLEND"}
+        # ⚠️ Opaque도 오려 낸다. BDSP 셰이더는 `RenderType`이 Opaque인 재질에도
+        # 알파 있는 그림을 물리는 자리가 있고(무대 나무·풀), 불투명으로 두면
+        # 잎 사이가 사각형으로 막힌다. 문턱은 유니티의 `_Cutoff` 기본값이다
+        return {"alphaMode": "MASK", "alphaCutoff": 0.5}
+
     # 알베도는 번들 통째로 한 번만 굽는다. BDSP 셰이더를 런타임에 재현하지 않기
     # 위해서다 (`bdsp_bake_albedo` 머리말)
     albedo = out.parent / f".{out.stem}_albedo"
@@ -152,15 +180,50 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
                 "metallicFactor": 0.0,
                 "roughnessFactor": 0.9,
             },
-            # 나무·풀은 오려 낸 그림이다. 불투명으로 두면 잎 사이가 사각형으로 막힌다
-            "alphaMode": "MASK",
-            "alphaCutoff": 0.5,
+            **alpha_of(name),
             "doubleSided": True,
         })
         by_name[name] = len(materials) - 1
         png.unlink()
     if albedo.is_dir():
         albedo.rmdir()
+
+    # ⚠️ **그림 없는 재질도 재질이다.** 무대에는 `_MainTex`가 아예 없는 재질이
+    # 섞여 있다 — g010의 **바닷물**(`_Color` 0, 0.295, 0.502)과 g006의 굴 안
+    # **불빛**(`_Color` 1, 0.548, 0.13)이 그렇다. 무늬가 없을 뿐 색은 `_Color`에
+    # 들어 있고, Unity도 이걸 불투명으로(`RenderType Opaque`, `_SrcBlend` One /
+    # `_DstBlend` Zero) 그린다.
+    #
+    # 슬롯을 안 주면 glTF 규격상 **흰색 기본 재질**이 붙는다. 바다가 하얀 판으로
+    # 깔리고 굴 안에 흰 널이 선다 — 실제로 그렇게 나왔다
+    for obj in env.objects:
+        if obj.type.name != "Material":
+            continue
+        d = obj.read_typetree()
+        name = d.get("m_Name", "?")
+        if name in by_name:
+            continue
+        props = d.get("m_SavedProperties", {})
+        colors = dict(prop_pairs(props.get("m_Colors", [])))
+        floats = dict(prop_pairs(props.get("m_Floats", [])))
+        base = colors.get("_Color") or {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}
+        mat = {
+            "name": name,
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [base["r"], base["g"], base["b"], base["a"]],
+                "metallicFactor": 0.0,
+                "roughnessFactor": 0.9,
+            },
+            **alpha_of(name),
+            "doubleSided": True,
+        }
+        # 스스로 빛나는 것 (`_EmissionColorIntensity`가 0보다 클 때만).
+        # 세기까지는 안 옮긴다 — glTF의 `emissiveFactor`는 0~1이라 4배를 실을 수 없다
+        glow = colors.get("_EmissionColor")
+        if glow and floats.get("_EmissionColorIntensity", 0.0) > 0:
+            mat["emissiveFactor"] = [glow["r"], glow["g"], glow["b"]]
+        materials.append(mat)
+        by_name[name] = len(materials) - 1
 
     cache: dict = {}
     # 재질별로 모은다 — 메시 158개를 그대로 두면 드로우콜이 158개다
@@ -309,14 +372,53 @@ def write_glb(path: Path, gltf: dict, blob: bytes) -> None:
         f.write(blob)
 
 
+ROOT = Path(__file__).resolve().parents[2]
+TABLE = ROOT / "src/engine/battle/arena.ts"
+GROUND = ROOT / "raw/bdsp/arenas/ground"
+OUTDIR = ROOT / "public/models/arena"
+
+
+def wanted() -> list[str]:
+    """구워야 할 무대 이름들.
+
+    ⚠️ **목록은 여기 안 적는다.** 어느 배경이 어느 무대를 쓰는지는
+    `src/engine/battle/arena.ts`가 유일한 임자다. 여기에 한 벌 더 적어 두면
+    표에 무대를 하나 더 붙인 날 굽는 것을 빠뜨리고, 그러면 그 배경을 쓰는
+    맵에서만 배틀이 빈 땅 위에 열린다 — 그 맵에 들어가 보기 전에는 모른다
+    """
+    text = TABLE.read_text(encoding="utf-8")
+    names = re.findall(r"file: '(g\d+)\.glb'", text)
+    if not names:
+        raise SystemExit(f"{TABLE}에서 무대 이름을 못 찾았다")
+    return sorted(set(names))
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
-    ap.add_argument("bundle", type=Path)
-    ap.add_argument("-o", "--out", type=Path, required=True)
+    ap.add_argument("bundle", type=Path, nargs="?")
+    ap.add_argument("-o", "--out", type=Path)
+    ap.add_argument("--all", action="store_true",
+                    help=f"{TABLE.name}에 실린 무대를 전부 굽는다")
     ap.add_argument("--far", type=float, default=None,
                     help="무대 한가운데에서 이보다 먼 메시는 버린다 (m)")
     args = ap.parse_args()
+
+    if args.all:
+        names = wanted()
+        print(f"무대 {len(names)}벌: {' '.join(names)}")
+        total = 0
+        for name in names:
+            out = OUTDIR / f"{name}.glb"
+            stat = export(GROUND / name, out, args.far)
+            total += stat["바이트"]
+            print(f"  {name}  삼각형 {stat['삼각형']:>7,} · 재질 {stat['재질']:>2}"
+                  f" · {stat['바이트'] / 1e6:.1f}MB")
+        print(f"모두 {total / 1e6:.1f}MB")
+        return 0
+
+    if args.bundle is None or args.out is None:
+        raise SystemExit("번들과 -o를 대거나 --all을 쓴다")
     stat = export(args.bundle, args.out, args.far)
     print(args.out)
     for k, v in stat.items():

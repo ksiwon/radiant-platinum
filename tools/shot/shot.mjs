@@ -437,14 +437,22 @@ async function main() {
           const THREE = await import('/node_modules/three/build/three.webgpu.js')
           const refs = await import('/src/scene/sceneRefs.ts')
           const ws = await import('/src/state/worldState.ts')
+          const stage = await import('/src/scene/battle/stageRefs.ts')
           let root = refs.sceneRefs.player
           while (root?.parent) root = root.parent
           if (!root) return { err: '무대가 없다' }
+          // ⚠️ **배틀 중에는 카메라가 다른 데 있다.** 오버월드 카메라로 쏘면
+          // 배틀 화면을 찍어 놓고 신오 한복판의 지형을 되돌려 준다 — 실제로
+          // 체육관 배틀 그림에 대고 쏘았더니 문과 길바닥이 나왔다
+          const eye = stage.battleStage.active
+            ? stage.battleStage : ws.worldState.camera
+          const look = stage.battleStage.active
+            ? stage.battleStage.target : ws.worldState.camera.target
           // 카메라를 씬에서 찾을 수 없으므로(R3F는 기본 카메라를 씬에 안 넣는다)
           // 자리·겨눈 곳·화각으로 직접 세운다. 화각은 `Stage.tsx`가 정한 55다
-          const cam = new THREE.PerspectiveCamera(55, w / h, 0.1, 200)
-          cam.position.copy(ws.worldState.camera.position)
-          cam.lookAt(ws.worldState.camera.target)
+          const cam = new THREE.PerspectiveCamera(55, w / h, 0.1, 400)
+          cam.position.copy(eye.position)
+          cam.lookAt(look)
           cam.updateMatrixWorld()
           const ray = new THREE.Raycaster()
           ray.setFromCamera(

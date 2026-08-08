@@ -17,6 +17,8 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
+import { mapById, world } from '../../engine/map/world'
+import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
 import { loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
@@ -35,10 +37,12 @@ import {
 import { modelUrl } from '../../data/assetBase'
 
 /**
- * 무대 바닥의 높이 (`field.glb` 실측).
+ * 무대 바닥의 높이 (실측).
  *
- * BDSP 무대는 y=0.001에 평평하게 깔려 있다 — 우리가 정한 값이 아니라 그 모델의
- * 지면이다. 대체 지면(`Flat`)도 같은 높이에 둔다
+ * 우리가 정한 값이 아니라 그 모델의 지면이다. **무대 열여덟 벌 전부** 두 포켓몬
+ * 자리 밑의 면이 y=0.000이고 `g001`만 0.001이다 (`arena.test`가 glb를 열어
+ * 잰다) — 그래서 무대마다 높이를 따로 들고 다닐 이유가 없다.
+ * 대체 지면(`Flat`)도 같은 높이에 둔다
  */
 const GROUND = 0.001
 
@@ -229,21 +233,24 @@ function Slot(
 }
 
 /**
- * 배틀 무대 (`public/models/arena/field.glb`).
+ * 배틀 무대 (`public/models/arena/g0xx.glb`).
  *
  * **원작 BDSP의 배틀 배경을 그대로 쓴다.** 우리가 지어낸 것이 아니라 롬에서
- * 꺼낸 것이다: `Environments/bg/arenas/ground/g001`(Battle_001)을 정적 메시
- * 158개 → 재질 6벌로 구워 냈다 (`tools/extract/bdspArena.py`). 땅은 y=0.001에
- * 평평하게 44×45m 깔려 있고 그 둘레를 풀·바위·나무·산이 감싼다.
+ * 꺼낸 것이다: `Environments/bg/arenas/ground/g0xx`를 정적 메시 수백 개 →
+ * 재질 대여섯 벌로 구워 냈다 (`tools/extract/bdspArena.py`).
+ *
+ * ⚠️ **어느 무대인지는 맵이 정한다.** 맵 헤더의 `battleBG`가 고르고
+ * (`battle/arena`), 파도타기 중이면 원작대로 바다가 선다. 어디서 싸우든 풀밭이
+ * 서던 시절의 흔적이 남아 있으면 동굴에서 나무가 보인다.
  *
  * ⚠️ **원판 두 개를 띄우던 자리다.** 발판 위에 각자 서 있으면 무대가 아니라
  * 좌대 위의 인형으로 보인다 — 원작은 둘이 **같은 땅에** 선다.
  *
- * 7MB짜리라 배틀이 열리는 순간에 받는다. 받는 동안은 아래 `Flat`이 대신 선다 —
- * 첫 프레임에 빈 화면을 보이지 않으려고
+ * 한 벌이 2~8MB라 배틀이 열리는 순간에 받는다. 받는 동안은 아래 `Flat`이 대신
+ * 선다 — 첫 프레임에 빈 화면을 보이지 않으려고
  */
-function Arena({ look }: { look: TimeLook }) {
-  const gltf = useLoader(GLTFLoader, modelUrl('arena/field.glb'))
+function Arena({ look, file }: { look: TimeLook; file: string }) {
+  const gltf = useLoader(GLTFLoader, modelUrl(`arena/${file}`))
   const scene = useMemo(() => {
     const root = gltf.scene.clone(true)
     root.traverse((o) => {
@@ -260,7 +267,12 @@ function Arena({ look }: { look: TimeLook }) {
     const tint = new Color(look.groundColor).lerp(new Color('#ffffff'), 0.45)
     scene.traverse((o) => {
       if (o instanceof Mesh && o.material instanceof MeshStandardMaterial) {
-        o.material.color.copy(tint)
+        // ⚠️ **덮어쓰면 안 된다. 곱해야 한다.** 무늬 있는 재질은 제 색이
+        // 흰색이라 덮으나 곱하나 같지만, **무늬 없는 재질**은 색이 전부다 —
+        // g010의 바닷물(0, 0.295, 0.502), g006의 굴 불빛(1, 0.548, 0.13).
+        // 덮어쓰면 바다가 흙색으로 물든다
+        const base = (o.userData.tone ??= o.material.color.clone()) as Color
+        o.material.color.copy(base).multiply(tint)
       }
     })
   }, [scene, look])
@@ -290,6 +302,11 @@ export function BattleStage() {
   }, [])
   const sky = useMemo(() => makeSkyTexture(timeLook), [timeLook])
   const shadow = useMemo(() => makeBlobShadow(), [])
+  // 무대는 **배틀이 열릴 때 한 번** 정한다. 싸우는 동안 걸어 나가지 않으므로
+  // 맵을 다시 볼 이유가 없고, 매 프레임 보면 `useLoader`가 계속 다시 매달린다
+  const arena = useMemo(
+    () => arenaFor(mapById(world.mapId), worldState.player.surfing), [],
+  )
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
   const scene = useOptionsStore((s) => s.battleScene)
 
@@ -310,7 +327,7 @@ export function BattleStage() {
     return () => { battleStage.active = false }
   }, [])
 
-  useBattleCamera()
+  useBattleCamera(cameraFit(arena))
 
   const look = (mon: ViewMon | null, key: string): SpeciesLook | null => {
     if (!mon) return null
@@ -325,7 +342,7 @@ export function BattleStage() {
         바뀌고 컬링은 그대로라 통째로 안 보인다(실제로 그렇게 만들었다가 배경이
         검게 나왔다). 안개도 끈다 — 오버월드 기준(45~115)이라 이 구가 다 먹힌다
       */}
-      {sky && (
+      {sky && hasSky(arena) && (
         <mesh renderOrder={-1}>
           <sphereGeometry args={[120, 32, 20]} />
           <meshBasicMaterial map={sky} side={BackSide} fog={false} depthWrite={false} />
@@ -341,7 +358,7 @@ export function BattleStage() {
         무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다
       */}
       <Suspense fallback={<Flat look={timeLook} />}>
-        <Arena look={timeLook} />
+        <Arena look={timeLook} file={arena.file} />
       </Suspense>
 
       <Slot
@@ -375,7 +392,7 @@ export function BattleStage() {
  * 건너뛰어 배틀을 빠르게 만드는 것이라, 끄면 카메라도 기본 샷에 붙박이가 된다.
  * 그동안 값만 저장되고 아무 데도 안 걸려 있던 항목이다
  */
-function useBattleCamera(): void {
+function useBattleCamera(fit: number): void {
   const director = useRef(new ShotDirector())
   const scene = useOptionsStore((s) => s.battleScene)
   const cast = useBattleStore((s) => s.view?.lastMove ?? null)
@@ -428,10 +445,18 @@ function useBattleCamera(): void {
       : sampleShot(shotFor('establish', 'p1'), 0)
     // 흔들림은 방향을 여기서 정한다 — 엔진이 난수를 들고 있을 이유가 없다
     const jitter = frame.shake === 0 ? 0 : Math.sin(performance.now() / 17) * frame.shake
+    // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 샷은 풀밭(반지름 12m) 기준으로
+    // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖
+    // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다
+    const [lx, ly, lz] = frame.look
     battleStage.position
-      .set(frame.position[0] + jitter, frame.position[1] + jitter * 0.6, frame.position[2])
+      .set(
+        lx + (frame.position[0] - lx) * fit + jitter,
+        ly + (frame.position[1] - ly) * fit + jitter * 0.6,
+        lz + (frame.position[2] - lz) * fit,
+      )
       .add(STAGE_ORIGIN)
-    battleStage.target.set(frame.look[0], frame.look[1], frame.look[2]).add(STAGE_ORIGIN)
+    battleStage.target.set(lx, ly, lz).add(STAGE_ORIGIN)
   })
 }
 

@@ -12,7 +12,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { isOutdoors, mapById, walkOutOfDoor, world } from '../engine/map/world'
+import { disarmWarp, isOutdoors, mapById, walkOutOfDoor, world } from '../engine/map/world'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -137,6 +137,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setMapId(mapId)
     // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
     resetEncounterTile()
+    // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
+    disarmWarp()
     // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
     // 같은 프레임에 그릴 수 있다
     enterMap(mapId)

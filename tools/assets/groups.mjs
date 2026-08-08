@@ -119,7 +119,7 @@ export const GROUPS = [
   },
   {
     name: 'arena',
-    make: 'py -3.13 tools/extract/bdspArena.py <번들> -o public/models/arena/<이름>.glb',
+    make: 'pnpm extract:arenas',
     match: under('models/arena/'),
   },
 ]

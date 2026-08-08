@@ -1,0 +1,76 @@
+// 무대 고르기 검증 (DATA.md §7.4)
+//
+// 여기서 지키는 것은 **어느 맵에서 싸워도 설 무대가 있다**는 것 하나다. 표에
+// 구멍이 하나 있으면 그 배경을 쓰는 맵 수십 곳에서 배틀이 빈 땅 위에 열린다 —
+// 그 맵에 실제로 들어가 보기 전에는 아무도 모른다.
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, it, expect } from 'vitest'
+import { ARENA, arenaFor, cameraFit, hasSky } from './arena'
+import type { MapHeader } from '../map/world'
+import { withData } from '../../data/romData.testkit'
+
+const header = (battleBg: number): MapHeader => ({ battleBg } as MapHeader)
+
+describe('배틀 무대 고르기', () => {
+  it('파도타기 중이면 맵을 안 보고 바다가 선다', () => {
+    // 원작 `SetBackgroundAndTerrain`이 그렇게 한다 — 물 위에서 싸우는데
+    // 굴이나 방이 깔리면 안 된다
+    for (const bg of [0, 6, 9, 17]) {
+      expect(arenaFor(header(bg), true).caption).toBe('海水')
+    }
+    expect(arenaFor(header(9), false).caption).toBe('洞窟')
+  })
+
+  it('맵이 없어도 서기는 선다', () => {
+    expect(arenaFor(null, false)).toBe(ARENA[0])
+    expect(arenaFor(header(999), false)).toBe(ARENA[0])
+  })
+
+  it('좁은 무대에서는 카메라를 당긴다', () => {
+    // 실내 방(반지름 6m)은 절반쯤으로, 넓은 들판은 그대로
+    const room = ARENA.find((a) => a.radius === 6)!
+    const field = ARENA[0]!
+    expect(cameraFit(room)).toBeCloseTo(0.5, 2)
+    expect(cameraFit(field)).toBe(1)
+    // 당긴 뒤 카메라가 무대 안에 들어와야 의미가 있다. 기본 샷이 9.95m다
+    expect(9.95 * cameraFit(room)).toBeLessThan(room.radius)
+  })
+
+  it('하늘은 야외에만 선다', () => {
+    // 굴·실내는 BDSP도 `s006`(하늘 없음)을 얹는다
+    expect(hasSky(ARENA[0]!)).toBe(true)
+    expect(hasSky(ARENA[9]!)).toBe(false)
+    expect(ARENA.filter(hasSky)).toHaveLength(7)
+  })
+})
+
+const maybe = withData('maps.json')
+
+maybe('무대 표가 롬을 다 덮는다', () => {
+  interface Maps { maps: { battleBg: number }[] }
+  const rows = (JSON.parse(
+    readFileSync(resolve(__dirname, '../../../public/data/maps.json'), 'utf8'),
+  ) as Maps).maps
+
+  it('593개 맵이 쓰는 배경 열여덟 가지가 모두 표에 있다', () => {
+    const used = new Set(rows.map((m) => m.battleBg))
+    expect(rows).toHaveLength(593)
+    expect([...used].sort((a, b) => a - b)).toEqual(
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+    )
+    for (const bg of used) {
+      expect(ARENA[bg], `배경 ${String(bg)}`).toBeDefined()
+    }
+  })
+
+  it('표가 가리키는 glb가 실제로 있다', () => {
+    // `public/models`는 리포에 안 들어가므로(§14.1) 없으면 건너뛴다.
+    // 있는데 이름이 틀렸으면 배틀이 열리다 멈춘다
+    const dir = resolve(__dirname, '../../../public/models/arena')
+    if (!existsSync(dir)) return
+    for (const a of ARENA) {
+      expect(existsSync(resolve(dir, a.file)), a.file).toBe(true)
+    }
+  })
+})
