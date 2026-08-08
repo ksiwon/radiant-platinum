@@ -29,6 +29,7 @@
 // 같다. 표를 고르고 나서 이 둘로 되짚어 봤고 어긋나는 데가 없었다.
 import type { MapHeader } from '../map/world'
 import { SHOT_REACH } from './shots'
+import { Terrain, terrainOf, type TerrainId } from './terrain'
 
 /** 무대 한 벌 */
 export interface Arena {
@@ -137,13 +138,85 @@ const FALLBACK = ARENA[0]!
 const WATER = 1
 
 /**
+ * **밟고 선 땅이 배경을 이기는 자리들** (`CalcTerrain`, `battle/terrain`).
+ *
+ * ⚠️ 원작은 배경(멀리 보이는 그림)과 땅(발밑 그림)을 따로 갖는다. 우리는 무대
+ * 하나가 둘을 겸하므로, **원작의 땅 검사가 걸리고 BDSP에 그 땅의 무대가 있을
+ * 때만** 배경보다 앞세운다. 지어낸 규칙이 아니라 BDSP 자신의 배정이다:
+ *
+ * - 진흙 → `沼地`. **대습원이 이것이다** — 원작 배경은 `FOREST`라 숲이 서는데
+ *   BDSP는 だいしつげん 여섯 존에 전부 `沼地`를 쓴다
+ * - 모래 → `砂浜`. BDSP가 219번도로·223번수로에 쓴다
+ * - 얼음 → `キッサキしんでん`. BDSP가 선단신전 여섯 층에 쓴다
+ * - 눈 → `雪原`. 배경이 `SNOW`인 맵은 어차피 같은 무대고, 눈 덮인 도로에서
+ *   눈을 밟고 싸울 때 이쪽으로 온다
+ *
+ * 풀숲·굴은 안 넣는다 — 배경이 이미 숲이나 굴을 세우고 있어서 바꿀 것이 없다
+ */
+const ARENA_OF_TERRAIN: Partial<Record<TerrainId, Arena>> = {
+  [Terrain.GREAT_MARSH]: { file: 'g020.glb', caption: '沼地', sky: 's020', radius: 24 },
+  [Terrain.SAND]: { file: 'g011.glb', caption: '砂浜', sky: 's011', radius: 24 },
+  [Terrain.ICE]: { file: 'g018.glb', caption: 'キッサキしんでん', sky: 's006', radius: 12 },
+  [Terrain.SNOW]: { file: 'g017.glb', caption: '雪原', sky: 's017', radius: 20 },
+  [Terrain.WATER]: { file: 'g010.glb', caption: '海水', sky: 's010', radius: 24 },
+}
+
+/**
+ * **그 맵만의 무대** — 롬 맵 이름으로 찾는다.
+ *
+ * ⚠️ 배경 번호로는 여기까지 못 간다. 원작 DS는 체육관 여덟 곳을 전부
+ * `INDOORS_1` 하나로 묶어 두었지만(2D 배경이라 그래도 됐다), **BDSP는 체육관마다
+ * 무대를 따로 만들어 두었다.** 우리 맵 이름이 `C03GYM0101`처럼 도시 번호를
+ * 담고 있어서 그대로 이어진다 — 롬이 붙인 지역명으로 확인했다.
+ *
+ * 로스트타워도 같다: 209번도로 안쪽 다섯 층이 `INDOORS_3`에 묶여 있는데
+ * BDSP의 `ロストタワー`가 **정확히 다섯 존**이다
+ */
+const ARENA_OF_MAP: Readonly<Record<string, Arena>> = {
+  // 체육관 여덟. BDSP는 관장전과 트레이너전을 또 가르는데(`VSトレーナー`)
+  // 우리는 아직 관장 쪽 한 벌만 쓴다
+  C03GYM: { file: 'g024.glb', caption: 'クロガネジム（VSヒョウタ）', sky: 's006', radius: 10 },
+  C04GYM: { file: 'g025.glb', caption: 'ハクタイジム（VSナタネ）', sky: 's006', radius: 24 },
+  C07GYM: { file: 'g026.glb', caption: 'トバリジム（VSスモモ）', sky: 's006', radius: 8 },
+  C06GYM: { file: 'g027.glb', caption: 'ノモセジム（VSマキシ）', sky: 's006', radius: 20 },
+  C05GYM: { file: 'g028.glb', caption: 'ヨスガジム（VSメリッサ）', sky: 's006', radius: 24 },
+  C02GYM: { file: 'g029.glb', caption: 'ミオジム（VSトウガン）', sky: 's006', radius: 24 },
+  C09GYM: { file: 'g030.glb', caption: 'キッサキジム（VSスズナ）', sky: 's006', radius: 16 },
+  C08GYM: { file: 'g031.glb', caption: 'ナギサジム（VSデンジ）', sky: 's006', radius: 24 },
+  // ⚠️ 축복시티(C01)에는 체육관이 없다. 그 자리는 트레이너 스쿨이라 BDSP에도
+  // 대응하는 무대가 없다 — 실내 기본값이 선다
+  R209R: { file: 'g022.glb', caption: 'ロストタワー', sky: 's006', radius: 14 },
+}
+
+/** 파도타기: 뭍이 바다면 `海水`, 아니면 호수·강이라 `淡水` */
+const FRESH_WATER: Arena = { file: 'g009.glb', caption: '淡水', sky: 's009', radius: 12 }
+
+/** 표가 가리키는 무대 전부. 미리 굽고, 시험이 파일이 있는지 본다 */
+export const EVERY_ARENA: readonly Arena[] = [
+  ...ARENA, ...Object.values(ARENA_OF_TERRAIN), ...Object.values(ARENA_OF_MAP),
+  FRESH_WATER,
+]
+
+/**
  * 이 배틀이 설 무대.
  *
  * ⚠️ **파도타기 중이면 맵을 안 본다.** 원작이 그렇게 한다 —
  * `SetBackgroundAndTerrain`이 `PLAYER_AVATAR_SURFING`일 때 배경을 통째로
- * `BACKGROUND_WATER`로 바꾼다. 물 위에서 싸우는데 뭍이 깔리면 안 되니까
+ * `BACKGROUND_WATER`로 바꾼다. 물 위에서 싸우는데 뭍이 깔리면 안 되니까.
+ *
+ * `behavior`는 지금 밟고 선 칸이다. 없으면(격자를 아직 못 받았다) 배경만 본다
  */
-export function arenaFor(header: MapHeader | null, surfing: boolean): Arena {
-  if (surfing) return ARENA[WATER]!
-  return ARENA[header?.battleBg ?? -1] ?? FALLBACK
+export function arenaFor(
+  header: MapHeader | null, surfing: boolean, behavior: number | null = null,
+): Arena {
+  const bg = header?.battleBg ?? -1
+  // 물 위. **바다냐 민물이냐는 그 맵이 말해 준다** — 원작이 바다 수로 여섯 곳만
+  // `BACKGROUND_WATER`로 찍어 두었고 나머지 물은 호수·강이다
+  if (surfing) return bg === WATER ? ARENA[WATER]! : FRESH_WATER
+  // 이름 앞머리로 찾는다. `C03GYM0101`·`R209R0103`처럼 뒤에 층 번호가 붙는다
+  const name = header?.name ?? ''
+  const named = Object.entries(ARENA_OF_MAP).find(([at]) => name.startsWith(at))
+  if (named) return named[1]
+  const ground = ARENA_OF_TERRAIN[terrainOf(behavior, bg)]
+  return ground ?? ARENA[bg] ?? FALLBACK
 }

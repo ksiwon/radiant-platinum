@@ -6,20 +6,22 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { ARENA, arenaFor, cameraFit, hasSky } from './arena'
+import { ARENA, EVERY_ARENA, arenaFor, cameraFit, hasSky } from './arena'
 import { SHOT_REACH } from './shots'
 import type { MapHeader } from '../map/world'
 import { withData } from '../../data/romData.testkit'
 
-const header = (battleBg: number): MapHeader => ({ battleBg } as MapHeader)
+const header = (battleBg: number, name = ''): MapHeader =>
+  ({ battleBg, name } as MapHeader)
 
 describe('배틀 무대 고르기', () => {
   it('파도타기 중이면 맵을 안 보고 바다가 선다', () => {
     // 원작 `SetBackgroundAndTerrain`이 그렇게 한다 — 물 위에서 싸우는데
     // 굴이나 방이 깔리면 안 된다
-    for (const bg of [0, 6, 9, 17]) {
-      expect(arenaFor(header(bg), true).caption).toBe('海水')
+    for (const bg of [6, 9, 17]) {
+      expect(arenaFor(header(bg), true).caption).toBe('淡水')
     }
+    expect(arenaFor(header(1), true).caption).toBe('海水')
     expect(arenaFor(header(9), false).caption).toBe('洞窟')
   })
 
@@ -38,6 +40,37 @@ describe('배틀 무대 고르기', () => {
     expect(SHOT_REACH * cameraFit(room)).toBeLessThan(room.radius)
     // 굴(10m)과 들판은 안 당기거나 거의 안 당긴다 — BDSP 리그가 5.68m라 넉넉하다
     expect(cameraFit({ ...field, radius: 10 })).toBe(1)
+  })
+
+  it('밟고 선 땅이 배경을 이긴다', () => {
+    // 원작 `CalcTerrain`이 맵보다 발밑을 먼저 본다. 대습원이 그 자리다 —
+    // 배경은 숲(3)인데 진흙(0xa6)을 밟고 싸우므로 늪이 서야 맞다
+    expect(arenaFor(header(3), false, 0xa6).caption).toBe('沼地')
+    expect(arenaFor(header(3), false, null).caption).toBe('森')
+    // 모래(0x21)와 얼음(0x20)도 BDSP에 그 땅의 무대가 있다
+    expect(arenaFor(header(0), false, 0x21).caption).toBe('砂浜')
+    expect(arenaFor(header(10), false, 0x20).caption).toBe('キッサキしんでん')
+    // 풀숲은 안 바꾼다 — 배경이 이미 그 그림을 세우고 있다
+    expect(arenaFor(header(3), false, 0x02).caption).toBe('森')
+  })
+
+  it('체육관 여덟은 저마다 다른 무대다', () => {
+    // 원작은 여덟을 `INDOORS_1` 하나로 묶었지만 BDSP는 따로 만들어 두었다
+    const gyms = ['C02GYM0101', 'C03GYM0101', 'C04GYM0101', 'C05GYM0101',
+      'C06GYM0101', 'C07GYM0101', 'C08GYM0101', 'C09GYM0101']
+    const files = gyms.map((n) => arenaFor(header(6, n), false).file)
+    expect(new Set(files).size).toBe(8)
+    expect(arenaFor(header(6, 'C03GYM0101'), false).caption).toContain('クロガネ')
+    // 축복시티에는 체육관이 없다. 그 자리는 실내 기본값이다
+    expect(arenaFor(header(6, 'C01GYM0101'), false).caption).toBe('室内_木目')
+    // 로스트타워 다섯 층
+    expect(arenaFor(header(8, 'R209R0103'), false).caption).toBe('ロストタワー')
+  })
+
+  it('물은 바다와 민물로 갈린다', () => {
+    // 원작이 바다 수로 여섯 곳만 `BACKGROUND_WATER`로 찍어 두었다
+    expect(arenaFor(header(1), true).caption).toBe('海水')
+    expect(arenaFor(header(0), true).caption).toBe('淡水')
   })
 
   it('하늘은 야외에만 선다', () => {
@@ -72,7 +105,7 @@ maybe('무대 표가 롬을 다 덮는다', () => {
     // 있는데 이름이 틀렸으면 배틀이 열리다 멈춘다
     const dir = resolve(__dirname, '../../../public/models/arena')
     if (!existsSync(dir)) return
-    for (const a of ARENA) {
+    for (const a of EVERY_ARENA) {
       expect(existsSync(resolve(dir, a.file)), a.file).toBe(true)
     }
   })

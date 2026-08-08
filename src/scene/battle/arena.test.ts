@@ -14,11 +14,11 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { SLOT } from '../../engine/battle/shots'
-import { ARENA } from '../../engine/battle/arena'
+import { EVERY_ARENA } from '../../engine/battle/arena'
 import { withModels } from '../../data/romData.testkit'
 
 /** 표에 실린 무대 파일들. 같은 파일을 두 배경이 쓰기도 한다(도시·들판) */
-const FILES = [...new Set(ARENA.map((a) => a.file))].sort()
+const FILES = [...new Set(EVERY_ARENA.map((a) => a.file))].sort()
 
 const maybe = withModels(...FILES.map((f) => `arena/${f}`))
 
@@ -117,9 +117,10 @@ maybe('배틀 무대', () => {
         // 발밑에 땅이 있어야 한다. 겹은 여럿일 수 있다 — 무늬를 얇게 덧대
         // 깔아 둔 무대가 있다(사천왕 방은 아홉 겹이다)
         expect(y.length, `${side} (${String(at.x)}, ${String(at.z)})`).toBeGreaterThan(0)
-        // ⚠️ **높이가 전부 0이라서** `BattleStage`가 `GROUND` 하나로 버틴다.
-        // 무대마다 다르면 포켓몬이 어떤 무대에서는 공중에 뜬다
-        for (const h of y) expect(h, `${file} ${side}`).toBeCloseTo(0, 2)
+        // ⚠️ **높이가 전부 0 언저리라서** `BattleStage`가 `GROUND` 하나로
+        // 버틴다. 무대마다 다르면 포켓몬이 어떤 무대에서는 공중에 뜬다.
+        // 1cm까지 봐준다 — 들판 체육관(g027)의 물가 발판이 6mm 올라와 있다
+        for (const h of y) expect(Math.abs(h), `${file} ${side}`).toBeLessThan(0.01)
       }
     }, 30_000)
 
@@ -127,7 +128,7 @@ maybe('배틀 무대', () => {
       // ⚠️ **카메라가 이 안에서 돈다.** `arena.ts`의 `radius`가 여기서 나온 값이고
       // `cameraFit`이 그걸로 카메라를 당긴다 — 실제보다 크게 적어 두면 방에서
       // 카메라가 벽을 뚫는다. 무대를 다시 구웠을 때 걸리라고 여기서 잰다
-      const r = ARENA.find((a) => a.file === file)!.radius
+      const r = EVERY_ARENA.find((a) => a.file === file)!.radius
       for (const [dx, dz] of COMPASS) {
         const at = [r * dx, r * dz] as const
         expect(
@@ -169,13 +170,12 @@ maybe('배틀 무대', () => {
     }
   })
 
-  it('야외는 넓고 실내는 방이다', () => {
-    // 하늘을 세울지가 `sky`로 갈리는데(§7.4), 그 값이 실제 무대 크기와 어긋나면
-    // 방에 하늘이 뜨거나 들판이 답답해진다. 열어 보면 하늘 있는 것은 전부
-    // 반지름 12m 이상이고, `s006`(하늘 없음)인 방 셋은 6m다
-    for (const a of ARENA) {
-      if (a.sky === 's006') expect(a.radius, a.file).toBeLessThanOrEqual(16)
-      else expect(a.radius, a.file).toBeGreaterThanOrEqual(12)
+  it('하늘이 서는 무대는 카메라가 돌 만큼 넓다', () => {
+    // ⚠️ 반대는 성립하지 않는다. 하늘 없는(`s006`) 무대 중에도 체육관처럼
+    // **넓은 방**이 있다 — 하쿠타이 체육관이 24m다. 좁은 것은 민가 세 벌뿐이다
+    for (const a of EVERY_ARENA) {
+      if (a.sky !== 's006') expect(a.radius, a.file).toBeGreaterThanOrEqual(12)
+      expect(a.radius, a.file).toBeGreaterThanOrEqual(6)
     }
   })
 })

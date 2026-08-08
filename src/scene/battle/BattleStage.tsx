@@ -358,9 +358,13 @@ export function BattleStage() {
   const shadow = useMemo(() => makeBlobShadow(), [])
   // 무대는 **배틀이 열릴 때 한 번** 정한다. 싸우는 동안 걸어 나가지 않으므로
   // 맵을 다시 볼 이유가 없고, 매 프레임 보면 `useLoader`가 계속 다시 매달린다
-  const arena = useMemo(
-    () => arenaFor(mapById(world.mapId), worldState.player.surfing), [],
-  )
+  const arena = useMemo(() => {
+    // ⚠️ **밟고 선 칸도 본다.** 원작이 그렇게 한다 (`CalcTerrain`) — 대습원은
+    // 배경이 숲인데 진흙을 밟고 싸우므로 늪이 서야 맞다
+    const p = worldState.player.position
+    const here = world.grid?.behaviorAtWorld(p.x, p.z) ?? null
+    return arenaFor(mapById(world.mapId), worldState.player.surfing, here)
+  }, [])
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
   const scene = useOptionsStore((s) => s.battleScene)
 
