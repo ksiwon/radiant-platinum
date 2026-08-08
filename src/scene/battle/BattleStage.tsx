@@ -96,6 +96,7 @@ function Slot(
   },
 ) {
   const body = useRef<Group>(null)
+  const shade = useRef<Mesh>(null)
   const fainted = mon !== null && mon.hp <= 0
   const [art, setArt] = useState<{ map: Texture; scale: number; lift: number } | null>(null)
 
@@ -173,6 +174,18 @@ function Slot(
       battleStage.position.x - STAGE_ORIGIN.x - spot.x,
       battleStage.position.z - STAGE_ORIGIN.z - spot.z,
     )
+
+    // ⚠️ **그림자는 몸을 따라간다.** 안 그러면 아무도 안 선 자리에 회색 얼룩이
+    // 깔린다 — 배틀이 열리고 "가라! 모부기!"가 뜨는 동안 상대 자리에 그림자만
+    // 먼저 놓여 있었고, 쓰러진 뒤에도 그대로 남았다.
+    //
+    // 깜빡임(`blink`)은 안 따라간다. 맞아서 몸이 깜빡이는 것은 연출이고
+    // 그림자까지 같이 깜빡이면 땅이 번쩍인다
+    const s = shade.current
+    if (s) {
+      s.visible = t > 0.01
+      s.scale.setScalar(t)
+    }
   })
 
   const height = mine ? 1.05 : 0.95
@@ -183,7 +196,7 @@ function Slot(
         그림자만 진다. 원판을 깔면 무대가 아니라 좌대 위의 인형이 된다
       */}
       {shadow && (
-        <mesh position={[0, GROUND + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh ref={shade} visible={false} position={[0, GROUND + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[spot.radius * 1.05, spot.radius * 1.05]} />
           <meshBasicMaterial map={shadow} transparent depthWrite={false} />
         </mesh>

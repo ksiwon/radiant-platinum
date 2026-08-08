@@ -12,7 +12,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { mapById, walkOutOfDoor, world } from '../engine/map/world'
+import { isOutdoors, mapById, walkOutOfDoor, world } from '../engine/map/world'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -45,6 +45,26 @@ import { timeBlend } from '../engine/map/timeOfDay'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
 const VIEW_RADIUS = 2
+
+/**
+ * 실내·동굴 맵 바깥의 색.
+ *
+ * ⚠️ **이 색은 우리가 골랐다.** 원작 DS는 고정 부감이라 맵 바깥이 화면에 든
+ * 적이 없어서 베낄 값이 없다. 검정을 쓰는 이유는 "저 너머에 아무것도 없다"를
+ * 가장 조용히 말하기 때문이다 — 회색이면 안개 낀 야외로 읽히고, 하늘색은
+ * 지금까지 그랬듯 동굴을 공중에 띄운다
+ */
+const INDOOR_VOID = '#05070a'
+/**
+ * 실내 안개 거리(타일).
+ *
+ * 야외(45~115)보다 훨씬 가깝다. 맵 가장자리가 검정으로 **녹아야** 하는데,
+ * 실내 행렬은 한 변이 32~96타일이라 야외 값으로는 끝까지 또렷하게 남는다.
+ * 24~64면 제일 큰 실내 맵(96타일)의 반대편이 완전히 묻히고, 3인칭 카메라가
+ * 보는 8.9타일 앞의 것은 손대지 않는다
+ */
+const INDOOR_FOG_NEAR = 24
+const INDOOR_FOG_FAR = 64
 
 /**
  * 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → `facing` 라디안.
@@ -260,6 +280,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 하늘 텍스처는 캔버스를 새로 그리는 것이라 매 프레임 만들 수 없다. 시간대가
    * 실제로 바뀔 때만 다시 만든다 — 섞는 구간에서는 30분에 한 번꼴이다
    */
+  /**
+   * 하늘이 보이는 맵인가. 원작이 `map_header.c`에 적어 둔 잣대 그대로다.
+   *
+   * ⚠️ **동굴에 하늘을 세우면 맵이 공중에 뜬 널판이 된다.** 원작 카메라는 고정
+   * 부감이라 맵 바깥을 볼 일이 없었지만 우리 3인칭은 가장자리 너머를 본다 —
+   * 챔피언로드가 파란 하늘 위의 판때기로 찍혔고 천관산 위에도 하늘이 걸렸다
+   */
+  const outdoors = isOutdoors(mapById(mapId))
+
   const [look, setLook] = useState<TimeLook>(() => currentLook())
   useFrame(() => {
     const next = currentLook()
@@ -273,13 +302,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const scene = useThree((s) => s.scene)
   useEffect(() => {
     const fog = scene.fog
+    // 실내·동굴은 시간대를 안 탄다. 창문 하나 없는 방이 밖에 따라 어두워지면
+    // 그게 더 이상하고, 무엇보다 **맵 밖이 안 보여야 한다**
     if (fog instanceof Fog) {
-      fog.color.set(look.fog)
-      fog.near = look.fogNear
-      fog.far = look.fogFar
+      fog.color.set(outdoors ? look.fog : INDOOR_VOID)
+      fog.near = outdoors ? look.fogNear : INDOOR_FOG_NEAR
+      fog.far = outdoors ? look.fogFar : INDOOR_FOG_FAR
     }
-    if (scene.background instanceof Color) scene.background.set(look.stops[0]![1])
-  }, [scene, look])
+    if (scene.background instanceof Color) {
+      scene.background.set(outdoors ? look.stops[0]![1] : INDOOR_VOID)
+    }
+  }, [scene, look, outdoors])
 
   /**
    * 그림 번호 → BDSP 갈래. 추출기가 **구워 낸 것만** 담아 준다
@@ -386,7 +419,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         400이면 far(200) 밖으로 나가지 않는 한 어디서 봐도 지평선이 보인다.
         안개는 끈다: 안 그러면 하늘 자체가 안개색으로 뭉개진다
       */}
-      {sky && (
+      {sky && outdoors && (
         <mesh ref={skyRef} renderOrder={-1}>
           <sphereGeometry args={[190, 32, 20]} />
           <meshBasicMaterial map={sky} side={BackSide} fog={false} depthWrite={false} />

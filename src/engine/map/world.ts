@@ -33,6 +33,15 @@ export interface MapHeader {
   initScripts: number
   msg: number
   /**
+   * 맵 갈래 (`MapHeader.mapType`, 7비트).
+   *
+   * 0 없음 · 1 마을/도시 · 2 야외 · 3 동굴 · 4 실내 · 5 포켓몬센터 · 6 지하.
+   * 실측으로 실내 334개 · 동굴 166개 · 야외 71개 · 마을 20개 · 지하 1개다.
+   *
+   * **하늘을 세울지 말지를 이 값이 정한다** (`MapHeader_IsOutdoors`)
+   */
+  mapType: number
+  /**
    * 배틀 배경 번호 (`MapHeader.battleBG`, 5비트).
    *
    * 원작 DS는 이 번호로 배틀 2D 배경을 고른다. 593개 맵이 열여덟 가지를 쓴다 —
@@ -189,6 +198,20 @@ export const world = {
 
 export function mapById(id: number): MapHeader | null {
   return world.maps?.[id] ?? null
+}
+
+/**
+ * 하늘이 보이는 맵인가 (`MapHeader_IsOutdoors`).
+ *
+ * ⚠️ **잣대를 지어내지 않는다.** 원작이 `map_header.c`에 그대로 적어 두었다 —
+ * 마을/도시(1)와 야외(2)만 실외고 동굴(3)·실내(4)·포켓몬센터(5)·지하(6)는 아니다.
+ *
+ * 이것이 필요한 이유: 원작 카메라는 고정 부감이라 맵 바깥을 볼 일이 없어서
+ * 배경이 무엇이든 상관없었다. 우리 3인칭 카메라는 **맵 가장자리 너머를 본다** —
+ * 챔피언로드가 파란 하늘에 뜬 널판으로 찍혔고 천관산 위쪽에도 하늘이 걸렸다
+ */
+export function isOutdoors(header: MapHeader | null): boolean {
+  return header?.mapType === 1 || header?.mapType === 2
 }
 
 /**
