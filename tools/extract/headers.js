@@ -49,6 +49,32 @@ function parseHeader(buf, id) {
      *  트윈리프(1=떡잎마을)와 그 집 내부가 같은 값을 갖는 것으로 확인했다 */
     label: buf[o + 18],
     labelWindow: buf[o + 19],
+    /** 날씨 (`MapHeader.weather`). 0이 없음 */
+    weather: buf[o + 20],
+    /** 카메라 종류 (`MapHeader.cameraType`) */
+    camera: buf[o + 21],
+    // +22의 u16 하나에 비트필드가 일곱 개 들어 있다:
+    //   mapType:7 · battleBG:5 · 자전거:1 · 달리기:1 · 탈출로프:1 · 하늘을날기:1
+    ...bits(buf.readUInt16LE(o + 22)),
+  }
+}
+
+/** `MapHeader` 끝의 u16 비트필드. 순서는 디컴프의 구조체 그대로다 */
+function bits(v) {
+  return {
+    /** 실내·동굴·마을 같은 갈래 (`MapHeader.mapType`) */
+    mapType: v & 0x7f,
+    /**
+     * 배틀 배경 번호 (`MapHeader.battleBG`).
+     *
+     * 원작 DS는 이 번호로 2D 배경을 고른다. 우리는 같은 번호로 BDSP의 3D 무대를
+     * 고른다 — BDSP가 같은 게임의 리메이크라 무대가 같은 자리를 그린다
+     */
+    battleBg: (v >> 7) & 0x1f,
+    bike: (v >> 12) & 1,
+    run: (v >> 13) & 1,
+    escapeRope: (v >> 14) & 1,
+    fly: (v >> 15) & 1,
   }
 }
 

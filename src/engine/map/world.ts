@@ -32,6 +32,17 @@ export interface MapHeader {
    */
   initScripts: number
   msg: number
+  /**
+   * 배틀 배경 번호 (`MapHeader.battleBG`, 5비트).
+   *
+   * 원작 DS는 이 번호로 배틀 2D 배경을 고른다. 593개 맵이 열여덟 가지를 쓴다 —
+   * 실내가 232개로 제일 많고 동굴·도시·물가가 그 뒤다.
+   *
+   * ⚠️ **아직 무대를 안 가른다.** 우리 무대는 BDSP의 `g001` 한 벌뿐이라 어디서
+   * 싸워도 같은 풀밭이다 (PLAN §16.2). 번호는 여기 실어 두고, 무대를 여러 벌
+   * 구울 때 이 값이 고르는 열쇠가 된다
+   */
+  battleBg: number
 }
 
 export interface Warp {
