@@ -35,6 +35,21 @@ import { starterScene } from './starterRefs'
  */
 const UNIT = 1 / 50
 
+/**
+ * ⚠️ **구운 모델은 타일이고 배치 상수는 DS 유닛이다.**
+ *
+ * 소품·청크와 같은 굽는 길을 쓰는데(`chunks.js`), 그쪽이 마지막에
+ * `pos / UNITS_PER_TILE`로 **타일**로 바꿔 놓는다(`chunks/index.json`의
+ * `unitsPerTile: 16`). 그런데 `ui/field/starterScene`의 자리·카메라는 원작
+ * 소스에서 그대로 옮긴 **DS 유닛**이다. 그대로 두면 무대가 16분의 1이라
+ * 화면에서 사라진다 — 실제로 그랬다.
+ *
+ * 잰 값으로 확인된다: 열린 가방이 x ±4.8 · z −1.6~7.3타일인데, 여기에 16을
+ * 곱해야(x ±76.8 · z −25.6~116.8) 볼 셋(−44·0·38, z 26~62)이 가방 **안**에
+ * 들어간다. 안 곱하면 볼이 가방 바깥 수십 배 거리에 흩어진다
+ */
+const TILE_TO_DS = 16
+
 /** 뒤를 덮는 판까지의 거리(DS 단위). 볼 중 제일 먼 것보다 뒤면 된다 */
 const BACKDROP = 260
 
@@ -168,14 +183,16 @@ export function StarterStage() {
           scale={GROUND_PLACE.scale as unknown as [number, number, number]}
           rotation={[0, GROUND_PLACE.rotationY, 0]}
         >
-          <mesh geometry={ground.geometry} material={ground.materials} />
+          <mesh geometry={ground.geometry} material={ground.materials} scale={TILE_TO_DS} />
         </group>
       )}
       <group ref={caseClosed}>
-        {closed && <mesh geometry={closed.geometry} material={closed.materials} />}
+        {closed && (
+          <mesh geometry={closed.geometry} material={closed.materials} scale={TILE_TO_DS} />
+        )}
       </group>
       <group ref={caseOpen} visible={false}>
-        {open && <mesh geometry={open.geometry} material={open.materials} />}
+        {open && <mesh geometry={open.geometry} material={open.materials} scale={TILE_TO_DS} />}
       </group>
       <group ref={balls} visible={false}>
         {STARTER_MODEL.balls.map((id, at) => {
@@ -183,7 +200,7 @@ export function StarterStage() {
           if (!ball) return null
           return (
             <group key={id} position={BALL_POSITION[at] as unknown as [number, number, number]}>
-              <mesh geometry={ball.geometry} material={ball.materials} />
+              <mesh geometry={ball.geometry} material={ball.materials} scale={TILE_TO_DS} />
               <BallCursor at={at} />
             </group>
           )

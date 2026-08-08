@@ -24,6 +24,7 @@ function actor(sprite: number, x: number, z: number): NpcActor {
   return {
     localID: 0,
     info: { sprite, x, z } as NpcActor['info'],
+    gfx: sprite,
     x, z, y: 0, dir: 0, visible: true, movementType: 0, params: [], ambient: null,
   }
 }

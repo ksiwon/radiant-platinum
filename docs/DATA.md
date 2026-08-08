@@ -1375,6 +1375,22 @@ ItemPartyParam partyUseParam;   // 20바이트
 여섯 개가 여섯 개 다 헤더 정점 수와 맞고, 소품과 같은 형식(`PT3C`)으로 굽는다 —
 138KB라 읽는 쪽이 하나면 된다(`tools/extract/starterScene.js`).
 
+⚠️ **구운 모델은 타일이고 자리 상수는 DS 유닛이다 — 16배 어긋난다.** 소품·청크와
+같은 길로 굽는데(`chunks.js`) 그쪽이 마지막에 `pos / unitsPerTile`로 타일로 바꿔
+놓는다. 반면 아래 자리·카메라는 원작 소스에서 그대로 옮긴 DS 유닛이다. 안 맞추면
+무대가 16분의 1로 서서 **화면에서 사라진다** — 실제로 그랬다. 잰 값이 근거다:
+
+| | 열린 가방 | 볼 셋 자리 |
+|---|---|---|
+| 구운 그대로 (타일) | x ±4.8 · z −1.6~7.3 | x −44 · 0 · 38 |
+| ×16 (DS 유닛) | x ±76.8 · z −25.6~116.8 | 같음 |
+
+곱해야 볼 셋이 가방 **안**에 들어간다. 화면으로도 갈린다 — 고르는 카메라에서
+볼 하나가 20.5픽셀인데, 안 곱하면 1.28픽셀로 점 하나도 안 된다.
+
+⚠️ 카메라 시험(아래)은 **상수끼리만** 견주므로 이 어긋남을 못 본다. 구운 파일을
+열어 재는 시험이 따로 있어야 잡힌다.
+
 **자리도 카메라도 우리가 안 정한다.** 볼 셋은 `MakeSelectionMatrices`가
 (−44,−4,32)·(0,−4,62)·(38,−4,26), 바닥판은 (0,−28,40)에 크기 (3.5,1,3.5) ·
 y 반 바퀴, 카메라는 `SetupCamera`가 목표 (0,0,0) · 거리 300 · 내려보기 30°로
@@ -1496,8 +1512,44 @@ mmodel.narc 파일 번호
 |---|---|---|
 | 열매밭 `BERRY_SOIL` | 118 | 자란 정도에 따라 `BerryPatchGraphics`가 고른다 (같은 표의 열매 192줄) |
 | 간판·우편함·책 7종 | 219 | 3D 프롭이다. `Unk_ov5_021FB51C`가 간판을 Z로 −2 내려 세운다 |
-| `VAR_0`…`VAR_F` | 62 | **실행 중에 변수에서 읽는다** (`MapObject_GetFieldSystemGraphicsID`) |
+| `VAR_0`…`VAR_F` | 62 | **실행 중에 변수에서 읽는다** (아래) |
 | 눈덩이·문·벽 | 28 | 저마다 전용 렌더러 |
+
+#### ⚠️ 그림 번호가 자리표시자인 사람이 있다
+
+`OBJ_EVENT_GFX_VAR_0`~`VAR_F`(101~116)에는 **그림이 없다.** 무엇이 설지는 맵
+초기화 스크립트가 변수에 넣고, 객체를 만들 때 한 번 풀린다:
+
+```c
+// map_object.c — MapObject_GetFieldSystemGraphicsID
+if (graphicsID >= OBJ_EVENT_GFX_VAR_0 && graphicsID <= OBJ_EVENT_GFX_VAR_F) {
+    graphicsID -= OBJ_EVENT_GFX_VAR_0;
+    graphicsID = FieldSystem_GetGraphicsID(fieldSystem, graphicsID);
+}
+// script_manager.c — FieldSystem_GetGraphicsID
+return FieldSystem_TryGetVar(fieldSystem, OBJ_GFX_VARS_START + graphicsVarID);
+```
+
+`OBJ_GFX_VARS_START`는 **0x4020**이다. `generated/vars_flags.txt`를
+`VARS_START = 16384`부터 세면 지역 변수 32개 뒤가 여기고, 다시 열여섯 뒤가
+`VAR_PLAYER_STARTER`인데 그 값이 따로 0x4030으로 확정되어 있어 자리가 되짚어진다.
+
+제일 눈에 띄는 자리가 **201번 도로의 광휘/빛나**다 — 파트너를 고르는 그 장면이다:
+
+```
+Route201_OnTransition:
+  GetPlayerGender …
+  SetVar VAR_OBJ_GFX_ID_0, OBJ_EVENT_GFX_PLAYER_F   (내가 남자면)
+  SetVar VAR_OBJ_GFX_ID_0, OBJ_EVENT_GFX_PLAYER_M   (내가 여자면)
+```
+
+즉 **내가 아닌 쪽 주인공**이 박사 옆에 선다. 안 풀면 `data/npc/101.png`를 받으러
+가고 그런 파일이 없으니 **사람 하나가 통째로 사라진다.** 실제로 그랬다.
+
+⚠️ **나타나는 길이 둘이다.** 맵에 들어올 때 세우는 `spawnNpcs`와 컷신 도중의
+`AddObject`인데, 광휘는 **뒤쪽으로 온다**(`ClearFlag FLAG_HIDE_ROUTE_201_COUNTERPART`
+다음이 `AddObject`다). 그래서 `addNpc`도 변수를 받아야 한다 — 한쪽만 고치면
+"맵에 들어올 때 서 있는 사람은 보이는데 컷신에서 나타나는 사람만 안 보인다"가 된다.
 
 #### 걷는 그림은 텍스처를 갈아 끼운다
 
@@ -1551,9 +1603,24 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 **모델을 새로 만들지 않는다.** BDSP는 같은 신오를 3D로 다시 만든 것이라 같은
 사람들이 들어 있고, 그림 이름(`BUG_CATCHER`)과 번들 안 텍스처 이름
 (`tr1006_00_bugcatcher_body_col`)이 **같은 낱말**을 쓰는 것만 잇는다. 그럴듯한
-짝은 안 만든다 — 붙는 것이 배치 3,555개 중 **749개(21.1%)**고 나머지는 판때기로
+짝은 안 만든다 — 붙는 것이 배치 3,555개 중 **777개(21.9%)**고 나머지는 판때기로
 남는다. 못 붙는 것 중 제일 큰 것들은 사람이 아니다(`ROCK_SMASH` 591 ·
 `POKEBALL` 331 · `CUT_TREE` 49).
+
+이름이 안 겹쳐서 손으로 적은 짝 중 하나가 **용식**이다. BDSP는 라이벌을
+`friend`라 부른다 — 배틀 쪽 `tr0001_00`=champion(난천) 다음이 `tr0002_00`=friend고,
+필드 쪽은 `fc0001`=hero · `fc0002`=heroine · `fc0003`=friend로 **오프닝의 셋**이
+나란히 있다. 번들 안 텍스처도 `tr0002_00_friend_Hair_col`처럼 이름을 달고 있고,
+두 뭉치를 통틀어 `friend`는 이 하나뿐이다.
+
+⚠️ **갈래를 둘 든 번들이 있다.** 옷만 다른 번들이 여럿일 때 이름순 첫 번째를
+쓰는데, `pc0001_12`가 `["hero","heroine"]`이라 `heroine`의 첫 번째로 뽑혔다 —
+남주 옷 번들에 여주 텍스처가 섞여 든 것이라 **구우면 터진다.** 갈래를 하나만
+든 번들(`pc0002_00`)이 그 사람 본체다.
+
+⚠️ **배치표만 보면 못 찾는 사람이 있다.** `OBJ_EVENT_GFX_VAR_*` 자리(아래)는
+`n.sprite`로 안 걸리므로, 거기 설 수 있는 주인공 둘을 굽는 쪽에서 따로 적어
+둔다. 안 적으면 컷신에서 나타나는 사람 하나만 판때기로 서서 옆 사람과 다르다.
 
 ⚠️ **그냥 구우면 못 싣는다.** 한 명이 5.07MB고 마흔둘이면 213MB다:
 
@@ -1565,7 +1632,7 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 
 절반이 클립인데 **걷기는 `actor/locomotion`이 뼈를 직접 돌려서 만든다**(주인공도
 그렇다). 그래서 안 싣는다 — 대신 **서 있는 사람도 `updateLocomotion`을 돌려야**
-한다. 안 돌리면 바인드 포즈, 즉 팔을 벌린 T 자세로 선다. 마흔한 종에 38.1MB고,
+한다. 안 돌리면 바인드 포즈, 즉 팔을 벌린 T 자세로 선다. 마흔네 종에 41.6MB고,
 한 맵이 쓰는 서로 다른 그림이 중앙값 셋이라 맵 하나에 3MB쯤이다.
 
 ⚠️ **키를 우리가 정하지 않는다.** 사람마다 같은 키로 맞추면 어린아이가 어른과

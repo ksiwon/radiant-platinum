@@ -44,6 +44,22 @@ function main() {
     for (const n of e.npcs) used.set(n.sprite, (used.get(n.sprite) ?? 0) + 1)
   }
 
+  // ⚠️ **배치표만 보면 못 찾는 사람이 있다.** `OBJ_EVENT_GFX_VAR_0`~`VAR_F`
+  // (101~116)는 자리표시자고, 무엇이 설지는 맵 초기화 스크립트가 변수에 넣는다
+  // (`actor/npcs`의 `resolveGfx`). 201번 도로가 그 자리다 — 성별을 보고
+  // 광휘나 빛나를 세운다. 정적으로는 못 푸는 값이라 **둘 다** 굽는다.
+  //
+  // 이 둘은 배치표에 한 번도 안 나오므로, 안 적으면 컷신에서 나타나는 사람만
+  // 판때기로 서서 옆에 선 사람과 눈에 띄게 다르다
+  const VAR_GFX = [101, 116]
+  const THROUGH_VARS = [0, 97] // PLAYER_M · PLAYER_F
+  const varSlots = [...used].filter(([g]) => g >= VAR_GFX[0] && g <= VAR_GFX[1])
+  if (varSlots.length > 0) {
+    const n = varSlots.reduce((a, [, c]) => a + c, 0)
+    console.log(`  변수로 정해지는 자리 ${varSlots.length}종 (배치 ${n}건) → 주인공 둘을 함께 굽는다`)
+    for (const g of THROUGH_VARS) used.set(g, (used.get(g) ?? 0) + 1)
+  }
+
   const wanted = new Map()
   /** 그림 번호 → 갈래. 화면 쪽은 이 표만 보면 된다 */
   const bySprite = new Map()
@@ -55,10 +71,18 @@ function main() {
     placed += count
     bySprite.set(sprite, model.tag)
     if (wanted.has(model.tag)) continue
-    const set = bundlesByTag(model.build === 'battle' ? table.battle : table.field)
+    const source = model.build === 'battle' ? table.battle : table.field
+    const set = bundlesByTag(source)
     // 옷만 다른 같은 사람이 여럿이면 **번호가 제일 앞선 것**을 쓴다. 우리가
-    // 고르는 것이 아니라 늘 같은 것이 나오게만 하면 된다
-    const bundle = [...(set.get(model.tag) ?? [])].sort()[0]
+    // 고르는 것이 아니라 늘 같은 것이 나오게만 하면 된다.
+    //
+    // ⚠️ **갈래를 둘 든 번들은 뒤로 민다.** `pc0001_12`가 `["hero","heroine"]`이라
+    // 이름순으로는 `heroine`의 첫 번째가 되는데, 그건 남주 옷 번들에 여주
+    // 텍스처가 섞여 든 것이라 **구우면 터진다.** 갈래를 하나만 든 번들
+    // (`pc0002_00`)이 그 사람 본체다
+    const alone = (b) => (source.bundles[b] ?? []).length === 1
+    const candidates = [...(set.get(model.tag) ?? [])].sort()
+    const bundle = candidates.find(alone) ?? candidates[0]
     if (bundle) wanted.set(model.tag, { build: model.build, bundle })
   }
 

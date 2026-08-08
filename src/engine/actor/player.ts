@@ -107,7 +107,7 @@ export const playerSystem = {
     if (p.strength && activeZone.grid && blocked(nx, nz)) {
       const step = FACING_STEP[quarterOf(p.facing)]!
       const front = obstacleAt(Math.floor(p.position.x) + step.x, Math.floor(p.position.z) + step.z)
-      if (front && front.info.sprite === STRENGTH_BOULDER) {
+      if (front && front.gfx === STRENGTH_BOULDER) {
         pushBoulder(activeZone.grid, front, step)
       }
     }

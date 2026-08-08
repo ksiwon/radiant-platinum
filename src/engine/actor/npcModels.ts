@@ -47,6 +47,14 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
   // 주인공 둘. BDSP도 제 주인공을 hero·heroine이라 부른다
   PLAYER_M: 'hero',
   PLAYER_F: 'heroine',
+  // 용식. BDSP는 라이벌을 **friend**라 부른다 — 원작에서도 옆집 친구다.
+  //
+  // 번들 번호가 그대로 근거다: 배틀 쪽이 `tr0001_00`=champion(난천) 다음
+  // `tr0002_00`=friend이고, 필드 쪽이 `fc0001`=hero · `fc0002`=heroine ·
+  // `fc0003`=friend로 **오프닝에 나오는 셋**이 나란히 있다. 번들 안 텍스처도
+  // `tr0002_00_friend_Hair_col`처럼 이름을 달고 있고, 두 뭉치를 통틀어
+  // `friend`는 이 하나뿐이라 붙을 다른 자리가 없다
+  BARRY: 'friend',
   // 같은 낱말에 성별 접사만 다르다
   POKEMON_BREEDER_M: 'breederM',
   POKEMON_BREEDER_F: 'breederF',

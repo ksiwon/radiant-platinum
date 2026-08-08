@@ -555,7 +555,7 @@ on('ReleaseObject', (ctx) => {
 })
 
 on('AddObject', (ctx) => {
-  addNpc(ctx.readVar())
+  addNpc(ctx.readVar(), ctx.host.vars)
   return false
 })
 

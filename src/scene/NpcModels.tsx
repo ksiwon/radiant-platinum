@@ -89,7 +89,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       if (n >= MAX) break
       if (!actor.visible) continue
       if (Math.abs(actor.x - p.x) > RANGE || Math.abs(actor.z - p.z) > RANGE) continue
-      const tag = table[String(actor.info.sprite)]
+      const tag = table[String(actor.gfx)]
       if (tag === undefined) continue
 
       let slot = slots.get(actor)

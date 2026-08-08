@@ -61,7 +61,7 @@ export function pushBoulder(
 export function obstacleAt(tx: number, tz: number): NpcActor | null {
   for (const actor of npcActors.list) {
     if (!actor.visible) continue
-    if (!isObstacle(actor.info.sprite)) continue
+    if (!isObstacle(actor.gfx)) continue
     if (Math.round(actor.x) === tx && Math.round(actor.z) === tz) return actor
   }
   return null

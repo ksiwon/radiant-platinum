@@ -66,7 +66,7 @@ function room(size: number): CollisionGrid {
 
 function actor(move: number, x: number, z: number, dir = 0): NpcActor {
   const npc = { sprite: 0, x, z, move, localID: 1 } as NpcActor['info']
-  return { localID: 1, info: npc, x, z, y: 0, dir, visible: true, movementType: move, params: [], ambient: null }
+  return { localID: 1, info: npc, gfx: npc.sprite, x, z, y: 0, dir, visible: true, movementType: move, params: [], ambient: null }
 }
 
 /** n 프레임 굴린다 */

@@ -68,7 +68,37 @@ describe('파트너 고르는 장면 — 카메라', () => {
 })
 
 const DATA = resolve(__dirname, '../../../public/data')
-const maybe = withData('starter/index.json')
+const maybe = withData('starter/index.json', 'chunks/index.json')
+
+/** `chunks/index.json`의 `unitsPerTile`. 굽는 쪽이 이만큼으로 나눠 놓는다 */
+const TILE_TO_DS = 16
+
+/**
+ * 구운 모델의 x·z 범위 (타일).
+ *
+ * `PT3C` 머리 뒤에 정점이 그대로 있다 — 앞 6바이트가 i16 좌표 셋이고,
+ * `posScale`로 나누면 타일이다 (`scene/chunkMesh.ts`의 `build`와 같은 셈)
+ */
+function extentOf(id: number): { x: [number, number], z: [number, number] } {
+  const fmt = JSON.parse(readFileSync(resolve(DATA, 'chunks/index.json'), 'utf8')) as {
+    posScale: number, vertexBytes: number, unitsPerTile: number
+  }
+  expect(fmt.unitsPerTile, 'unitsPerTile이 바뀌면 이 시험의 16도 바뀐다').toBe(TILE_TO_DS)
+  const buf = readFileSync(resolve(DATA, `starter/${String(id)}.bin`))
+  const metaLen = buf.readUInt32LE(4)
+  const meta = JSON.parse(buf.subarray(8, 8 + metaLen).toString('utf8')) as { verts: number }
+  const head = 8 + metaLen + ((4 - (metaLen % 4)) % 4)
+  const x: [number, number] = [Infinity, -Infinity]
+  const z: [number, number] = [Infinity, -Infinity]
+  for (let i = 0; i < meta.verts; i++) {
+    const o = head + i * fmt.vertexBytes
+    const vx = buf.readInt16LE(o) / fmt.posScale
+    const vz = buf.readInt16LE(o + 4) / fmt.posScale
+    x[0] = Math.min(x[0], vx); x[1] = Math.max(x[1], vx)
+    z[0] = Math.min(z[0], vz); z[1] = Math.max(z[1], vz)
+  }
+  return { x, z }
+}
 
 maybe('파트너 고르는 장면 — 구운 모델', () => {
   const index = JSON.parse(readFileSync(resolve(DATA, 'starter/index.json'), 'utf8')) as {
@@ -101,5 +131,43 @@ maybe('파트너 고르는 장면 — 구운 모델', () => {
     expect(GROUND_PLACE.position).toEqual([0, -28, 40])
     expect(GROUND_PLACE.scale).toEqual([3.5, 1, 3.5])
     expect(GROUND_PLACE.rotationY).toBeCloseTo(Math.PI, 10)
+  })
+
+  // ⚠️ **구운 모델과 배치 상수의 단위가 다르다.** 굽는 길이 소품·청크와 같아서
+  // 마지막에 `pos / unitsPerTile`로 **타일**이 되는데, 위 자리들은 원작 소스에서
+  // 그대로 옮긴 **DS 유닛**이다. 그래서 무대가 16분의 1로 서서 화면에서 사라졌다.
+  //
+  // 카메라 시험들은 상수끼리만 견주므로 이 어긋남을 못 본다 — 구운 파일을 열어
+  // 재야 잡힌다.
+  it('볼 셋이 열린 가방 안에 들어간다 — 16을 곱해야 맞는다', () => {
+    const open = extentOf(STARTER_MODEL.caseOpen)
+    const scaled = {
+      x: open.x.map((v) => v * TILE_TO_DS) as [number, number],
+      z: open.z.map((v) => v * TILE_TO_DS) as [number, number],
+    }
+    for (const [x, , z] of BALL_POSITION) {
+      expect(x, `볼 x ${String(x)} ⊄ ${scaled.x.join('~')}`).toBeGreaterThan(scaled.x[0])
+      expect(x).toBeLessThan(scaled.x[1])
+      expect(z, `볼 z ${String(z)} ⊄ ${scaled.z.join('~')}`).toBeGreaterThan(scaled.z[0])
+      expect(z).toBeLessThan(scaled.z[1])
+    }
+    // 그리고 **안 곱하면 깨진다** — 이게 없으면 위 조건은 "지금 값으로는 맞다"뿐이다.
+    // 가방이 x ±4.8타일이라 −44에 있는 볼이 가방 밖 아홉 배 거리에 선다
+    expect(BALL_POSITION[0]![0]).toBeLessThan(open.x[0])
+    expect(BALL_POSITION[2]![0]).toBeGreaterThan(open.x[1])
+  })
+
+  it('가방과 볼이 사람이 볼 만한 크기다 — 화면에서 몇 픽셀인가', () => {
+    // "안 보인다"를 숫자로 잡는다. 고르는 카메라에서 가방 폭이 화면의 절반쯤이고
+    // 볼 하나가 열 몇 픽셀이어야 한다. 16을 빼먹으면 볼이 1픽셀이 된다
+    const open = extentOf(STARTER_MODEL.caseOpen)
+    const wide = (half: number): number =>
+      projectToScreen([half * TILE_TO_DS, 0, 0], CAMERA_CHOOSE)[0]
+      - projectToScreen([-half * TILE_TO_DS, 0, 0], CAMERA_CHOOSE)[0]
+    expect(wide(open.x[1])).toBeGreaterThan(SCREEN.width * 0.4)
+    // 볼은 20.5픽셀. 16으로 나누면 1.28픽셀이라 **점 하나도 안 된다**
+    const ball = extentOf(STARTER_MODEL.balls[0]!)
+    expect(wide(ball.x[1])).toBeCloseTo(20.5, 0)
+    expect(wide(ball.x[1]) / TILE_TO_DS).toBeCloseTo(1.28, 1)
   })
 })

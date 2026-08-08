@@ -140,7 +140,7 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       if (standing?.has(actor) === true) continue
       if (Math.abs(actor.x - p.x) > RANGE) continue
       if (Math.abs(actor.z - p.z) > RANGE) continue
-      const sprite = npcSprite(actor.info.sprite)
+      const sprite = npcSprite(actor.gfx)
       if (sprite === null) continue
 
       const slot = slots[n]
@@ -155,10 +155,10 @@ export function NpcSprites({ grid, layer, standing }: Props) {
 
       const anim = sprite.directional ? artDir(actor.dir, quadrant) : 0
       const frame = frameOf(sprite, anim, ticks)
-      if (slot.gfx !== actor.info.sprite) {
-        slot.material.map = textureFor(actor.info.sprite)
+      if (slot.gfx !== actor.gfx) {
+        slot.material.map = textureFor(actor.gfx)
         slot.material.needsUpdate = true
-        slot.gfx = actor.info.sprite
+        slot.gfx = actor.gfx
         slot.frame = -1
       }
       if (slot.frame !== frame) {

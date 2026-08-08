@@ -8,13 +8,15 @@
 //   ② **배치표를 고치는 것과 사람을 옮기는 것이 다르다.** `SetObjectEventPos`는
 //      **다음에 세울 사람**에게 먹고, 지금 서 있는 사람은 안 움직인다
 //      (`MapHeaderData_SetObjectEventPos`).
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, expect, it } from 'vitest'
 import { world as mapWorld, type EventFile, type MapHeader } from '../map/world'
+import { VAR_PLAYER_STARTER } from '../script/commands'
 import { VarStore } from '../script/vars'
 import {
-  addNpc, clearNpcPlacement, clearNpcs, npcActors, removeNpc, setNpcPlacement, spawnNpcs,
+  addNpc, clearNpcPlacement, clearNpcs, npcActors, removeNpc, resolveGfx, setNpcPlacement,
+  spawnNpcs,
 } from './npcs'
 import { withData } from '../../data/romData.testkit'
 
@@ -61,7 +63,7 @@ maybe('살아 있는 NPC', () => {
     expect(removeNpc(localID)).toBe(someone.info.flag)
     expect(npcActors.byLocalID.has(localID)).toBe(false)
 
-    expect(addNpc(localID)).toBe(true)
+    expect(addNpc(localID, vars)).toBe(true)
     const back = npcActors.byLocalID.get(localID)
     expect(back).toBeDefined()
     // 배치표 자리로 돌아온다 — 지웠을 때의 자리가 아니다
@@ -70,13 +72,13 @@ maybe('살아 있는 NPC', () => {
 
   it('배치표에 없는 번호는 못 세운다', () => {
     spawnNpcs(TWINLEAF, vars)
-    expect(addNpc(9999)).toBe(false)
+    expect(addNpc(9999, vars)).toBe(false)
   })
 
   it('이미 서 있으면 두 번 안 세운다', () => {
     spawnNpcs(TWINLEAF, vars)
     const before = npcActors.list.length
-    expect(addNpc(npcActors.list[0]!.localID)).toBe(true)
+    expect(addNpc(npcActors.list[0]!.localID, vars)).toBe(true)
     expect(npcActors.list.length).toBe(before)
   })
 
@@ -93,7 +95,7 @@ maybe('살아 있는 NPC', () => {
 
     setNpcPlacement(localID, { x: 40, z: 41 })
     setNpcPlacement(localID, { dir: 3 })
-    addNpc(localID)
+    addNpc(localID, vars)
     const back = npcActors.byLocalID.get(localID)!
     expect({ x: back.x, z: back.z, dir: back.dir }).toEqual({ x: 40, z: 41, dir: 3 })
   })
@@ -126,7 +128,7 @@ maybe('살아 있는 NPC', () => {
     clearNpcPlacement()
     spawnNpcs(TWINLEAF, vars)
     removeNpc(localID)
-    addNpc(localID)
+    addNpc(localID, vars)
     const back = npcActors.byLocalID.get(localID)!
     expect({ x: back.x, z: back.z }).toEqual(home)
   })
@@ -136,5 +138,83 @@ maybe('살아 있는 NPC', () => {
     npcActors.paused = true
     spawnNpcs(TWINLEAF, vars)
     expect(npcActors.paused).toBe(false)
+  })
+})
+
+// ── 그림 번호가 변수로 정해지는 자리 ────────────────────────────────────────
+
+/**
+ * 201번 도로. 파트너를 고르는 그 자리다.
+ *
+ * `LOCALID_COUNTERPART`가 `OBJ_EVENT_GFX_VAR_0`으로 놓여 있고, 맵 초기화
+ * 스크립트가 성별을 보고 `VAR_OBJ_GFX_ID_0`에 광휘나 빛나를 넣는다
+ */
+const ROUTE_201 = 342
+const GFX_VAR_0 = 101
+const GFX_VAR_F = 116
+const GFX_PLAYER_M = 0
+const GFX_PLAYER_F = 97
+const VAR_OBJ_GFX_ID_0 = 0x4020
+
+maybe('그림 번호가 변수로 정해지는 사람', () => {
+  let vars: VarStore
+
+  beforeEach(() => {
+    mapWorld.maps = read('maps.json').maps as MapHeader[]
+    mapWorld.events = read('events.json').events as Record<string, EventFile>
+    vars = new VarStore()
+    clearNpcs()
+  })
+
+  it('자리를 되짚은 변수 번호가 이미 확정된 값과 이어진다', () => {
+    // `VAR_PLAYER_STARTER`(0x4030)는 이 리포가 따로 확정해 둔 값이다. 그 바로
+    // 앞 열여섯 칸이 `VAR_OBJ_GFX_ID_0`~`F`라 자리가 되짚어진다 — 짐작이 아니다
+    expect(VAR_OBJ_GFX_ID_0 + (GFX_VAR_F - GFX_VAR_0) + 1).toBe(VAR_PLAYER_STARTER)
+  })
+
+  it('보통 그림은 그대로 지나간다', () => {
+    for (const gfx of [0, 99, 100, 148, 174, 117, 200]) {
+      expect(resolveGfx(gfx, vars), String(gfx)).toBe(gfx)
+    }
+  })
+
+  it('VAR_0~F만 변수를 본다', () => {
+    vars.set(VAR_OBJ_GFX_ID_0, GFX_PLAYER_F)
+    vars.set(VAR_OBJ_GFX_ID_0 + 15, GFX_PLAYER_M)
+    expect(resolveGfx(GFX_VAR_0, vars)).toBe(GFX_PLAYER_F)
+    expect(resolveGfx(GFX_VAR_F, vars)).toBe(GFX_PLAYER_M)
+    // 한 칸 밖은 자기 번호다
+    expect(resolveGfx(GFX_VAR_0 - 1, vars)).toBe(GFX_VAR_0 - 1)
+    expect(resolveGfx(GFX_VAR_F + 1, vars)).toBe(GFX_VAR_F + 1)
+  })
+
+  it('201번 도로의 광휘가 그 자리다 — 안 풀면 그림이 없다', () => {
+    // ⚠️ 이 시험의 요점은 **그 번호로는 그릴 것이 없다**는 것이다. 판때기 쪽이
+    // `data/npc/<번호>.png`를 받으므로, 안 풀면 사람 하나가 통째로 사라진다
+    expect(existsSync(resolve(DATA, `npc/${String(GFX_VAR_0)}.png`))).toBe(false)
+    expect(existsSync(resolve(DATA, `npc/${String(GFX_PLAYER_M)}.png`))).toBe(true)
+    expect(existsSync(resolve(DATA, `npc/${String(GFX_PLAYER_F)}.png`))).toBe(true)
+
+    vars.set(VAR_OBJ_GFX_ID_0, GFX_PLAYER_M)
+    spawnNpcs(ROUTE_201, vars)
+    const placed = npcActors.list.filter((a) => a.info.sprite === GFX_VAR_0)
+    expect(placed.length, '201번 도로에 VAR_0 자리가 하나 있다').toBe(1)
+    expect(placed[0]!.gfx).toBe(GFX_PLAYER_M)
+
+    // 성별을 바꾸면 서는 사람도 바뀐다 (`Route201_SetCounterpartGraphics*`)
+    vars.set(VAR_OBJ_GFX_ID_0, GFX_PLAYER_F)
+    spawnNpcs(ROUTE_201, vars)
+    expect(npcActors.list.find((a) => a.info.sprite === GFX_VAR_0)!.gfx).toBe(GFX_PLAYER_F)
+  })
+
+  it('AddObject로 나타나는 사람도 풀린다 — 광휘가 그 길로 온다', () => {
+    // `ClearFlag FLAG_HIDE_ROUTE_201_COUNTERPART` 다음이 `AddObject`다.
+    // 여기에 변수를 안 넘기면 컷신 도중에 나타나는 사람만 그림이 없다
+    vars.set(VAR_OBJ_GFX_ID_0, GFX_PLAYER_F)
+    spawnNpcs(ROUTE_201, vars)
+    const at = npcActors.list.find((a) => a.info.sprite === GFX_VAR_0)!
+    removeNpc(at.localID)
+    expect(addNpc(at.localID, vars)).toBe(true)
+    expect(npcActors.byLocalID.get(at.localID)!.gfx).toBe(GFX_PLAYER_F)
   })
 })

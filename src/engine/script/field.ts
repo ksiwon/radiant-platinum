@@ -693,7 +693,7 @@ function spotAt(front: { x: number; z: number }): FieldSpot | null {
   if (!grid) return null
   return {
     frontBehavior: grid.behavior(front.x, front.z),
-    frontSprite: obstacleAt(front.x, front.z)?.info.sprite ?? null,
+    frontSprite: obstacleAt(front.x, front.z)?.gfx ?? null,
     quarter: quarterOf(p.facing),
     surfing: p.surfing,
   }
