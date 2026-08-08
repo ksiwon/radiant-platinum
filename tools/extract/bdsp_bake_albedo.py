@@ -100,15 +100,24 @@ def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, 
     return out
 
 
-def bake(bundle: Path, outdir: Path, color_index: int | None = None,
-         max_size: int | None = None) -> int:
+def bake(bundle, outdir: Path, color_index: int | None = None,
+         max_size: int | None = None,
+         main_props: tuple[str, ...] = ("_MainTex",)) -> int:
     """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
 
     `max_size`를 주면 긴 변을 그만큼으로 줄인다. **오버월드 NPC 때문에 있다** —
     번들 하나가 1024짜리 넉 장을 들고 나오면 glb가 5MB고, 마흔 몇 명을 세우면
     그것만 200MB다. 주인공(`dawn.glb`)과 배틀 무대는 안 준다.
+
+    `bundle`은 여러 개일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹에 머티리얼이
+    있고 메시·텍스처는 `pokemons/common` 쪽 번들 둘에 있다.
+
+    `main_props`는 알베도를 찾을 자리다. 인물·무대는 `_MainTex`지만 포켓몬
+    셰이더는 `_Col0Tex`에 색을 싣는다 — 이름만 다르고 하는 일은 같다
+    (`pm0387_00_00_Body_col`이 실제로 초록·노랑이 칠해진 그림이다).
     """
-    env = UnityPy.load(str(bundle))
+    paths = [bundle] if isinstance(bundle, (str, Path)) else list(bundle)
+    env = UnityPy.load(*[str(p) for p in paths])
     textures = {o.path_id: o for o in env.objects if o.type.name == "Texture2D"}
     overrides = color_overrides(env, color_index)
     if overrides:
@@ -135,11 +144,12 @@ def bake(bundle: Path, outdir: Path, color_index: int | None = None,
             if pid in textures:
                 slots[k] = textures[pid]
 
-        if "_MainTex" not in slots:
-            print(f"  {name}: _MainTex 없음 — 건너뜀")
+        found = next((p for p in main_props if p in slots), None)
+        if found is None:
+            print(f"  {name}: {'·'.join(main_props)} 없음 — 건너뜀")
             continue
 
-        main = slots["_MainTex"].read().image.convert("RGBA")
+        main = slots[found].read().image.convert("RGBA")
         w, h = main.size
         col = np.asarray(main, dtype=np.float32) / 255.0
         rgb_lin = srgb_to_linear(col[..., :3])

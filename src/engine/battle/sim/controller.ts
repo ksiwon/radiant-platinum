@@ -9,7 +9,9 @@
 //
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import type { BattleAction } from '../choice'
-import { chooseRandom, encodeAction, legalActions } from '../choice'
+import {
+  chooseRandom, encodeAction, legalActions, partySummary, type PartySlot,
+} from '../choice'
 import type { BattleEvent, BattleRequest, FinalMon, SideId } from '../events'
 import type { BallId, CatchContext } from '../meta/capture'
 import { throwBall } from '../meta/capture'
@@ -143,6 +145,16 @@ export class BattleController {
   get actions(): BattleAction[] {
     const actions = legalActions(this.request.p1, { moveId: romMove, hiddenSlot: this.idleSlot })
     return actions.map((a) => (a.type === 'move' ? { ...a, ...this.ppOf(a) } : a))
+  }
+
+  /**
+   * 파티 여섯 칸의 지금 상태. 교체 화면이 이걸 그린다.
+   *
+   * 기술 번호를 여기서 풀어 주는 것은 `actions`와 같은 이유다 — 프로토콜은
+   * 영어 아이디만 주고, 번호로 되돌릴 수 있는 것은 sim을 아는 이 계층뿐이다
+   */
+  get party(): PartySlot[] {
+    return partySummary(this.request.p1, { moveId: romMove, hiddenSlot: this.idleSlot })
   }
 
   /**

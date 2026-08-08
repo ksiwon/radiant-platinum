@@ -11,7 +11,7 @@ import {
 } from '../data/gameData'
 import type { Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
-import type { BattleAction } from '../engine/battle/choice'
+import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
 import { Ball } from '../engine/battle/meta/capture'
@@ -97,6 +97,8 @@ interface BattleState {
    */
   truth: BattleView | null
   actions: BattleAction[]
+  /** 파티 여섯 칸의 지금 상태. 교체 화면이 그린다 */
+  party: PartySlot[]
   /** 배틀 내내 쌓인 사건. 텍스트 박스와 연출이 같은 줄기를 본다 */
   events: BattleEvent[]
   roster: Record<string, RosterEntry>
@@ -185,6 +187,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   view: null,
   truth: null,
   actions: [],
+  party: [],
   events: [],
   roster: {},
   outcome: null,
@@ -304,7 +307,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     participants = new Set()
     set({
       phase: 'off', kind: 'wild', foeName: null, prize: 0,
-      view: null, truth: null, actions: [], events: [], roster: {}, outcome: null,
+      view: null, truth: null, actions: [], party: [], events: [], roster: {}, outcome: null,
       shiftAsk: null,
     })
   },
@@ -327,7 +330,7 @@ async function advance(
   const controller = current
   if (!controller || get().phase !== 'running') return
   // 미는 즉시 후보를 비운다 — 계산 중에 두 번 누르면 sim이 거절한다
-  set({ actions: [] })
+  set({ actions: [], party: [] })
 
   const result = await step(controller)
 
@@ -356,6 +359,7 @@ async function advance(
     truth: result.view,
     events: [...get().events, ...events],
     actions: controller.actions,
+    party: controller.party,
     phase: ended ? 'over' : 'running',
     outcome: controller.finish,
     shiftAsk: controller.shiftAsk,
@@ -448,7 +452,7 @@ async function open(
   if (get().phase !== 'off') return
   set({
     phase: 'loading', kind, foeName, prize,
-    view: null, truth: null, actions: [], events: [], roster: {}, outcome: null, error: null,
+    view: null, truth: null, actions: [], party: [], events: [], roster: {}, outcome: null, error: null,
     shiftAsk: null,
   })
 
@@ -501,6 +505,7 @@ async function open(
       view: emptyView(),
       events: step.events,
       actions: controller.actions,
+      party: controller.party,
       roster,
       shiftAsk: controller.shiftAsk,
     })

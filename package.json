@@ -13,6 +13,7 @@
     "test:strict": "node tools/requireData.mjs vitest run",
     "test:watch": "vitest",
     "extract:arenas": "py -3.13 tools/extract/bdspArena.py --all",
+    "extract:pokemon": "py -3.13 tools/extract/bdspPokemon.py",
     "assets:manifest": "node tools/assets/manifest.mjs",
     "assets:check": "node tools/assets/pull.mjs --check",
     "assets:pull": "node tools/assets/pull.mjs",

@@ -28,6 +28,7 @@
 // 같지는 않지만 — DS는 씨폭탄·바위사태, BDSP는 에너지볼·파워젬 — 갈라지는 자리는
 // 같다. 표를 고르고 나서 이 둘로 되짚어 봤고 어긋나는 데가 없었다.
 import type { MapHeader } from '../map/world'
+import { SHOT_REACH } from './shots'
 
 /** 무대 한 벌 */
 export interface Arena {
@@ -64,13 +65,6 @@ export function hasSky(arena: Arena): boolean {
   return arena.sky !== NO_SKY
 }
 
-/**
- * 기본 샷이 서는 거리 (`shots`의 `ESTABLISH`가 바라보는 자리에서 잰 값).
- *
- * 여기 적어 두는 것은 무대가 얼마나 좁아야 카메라를 당기는지가 이 값에 달려
- * 있어서다. 샷을 옮기면 이 상수도 같이 옮겨야 한다
- */
-const SHOT_REACH = 9.95
 
 /** 카메라가 벽에서 떨어져 있을 여유 (m) */
 const CLEARANCE = 1

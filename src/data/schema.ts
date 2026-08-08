@@ -368,6 +368,8 @@ export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
   abilities: z.array(z.string()).nonempty(),
+  /** 특성 설명 한 줄씩. 특성 이름과 같은 색인이다 */
+  abilityText: z.array(z.string()).nonempty(),
 })
 
 export type Stats = z.infer<typeof statsSchema>

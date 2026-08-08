@@ -3,15 +3,18 @@
 // 배틀이 "3D답게" 느껴지는 것은 대부분 카메라 덕이다. 지금까지는 한 자리에
 // 고정이라 무대만 3D고 연출은 없었다.
 //
-// ⚠️ **여기가 마음대로 돌 수 없는 이유가 있다.** 무대에 서는 것은 3D 모델이
-// 아니라 원작 도트 **한 장**이다(DATA.md §2.17). 그림이 그려진 각도가 정해져
-// 있어서, 카메라가 옆으로 크게 돌면 종잇장이 서 있는 것이 보인다. 그래서 둘을
-// 같이 지킨다:
+// ⚠️ **자리와 렌즈는 BDSP가 적어 둔 것이다.** 우리가 눈으로 맞춘 값이 아니라
+// `Battle/battle_masterdatas`의 `BattleDefaultPlacementData`에서 읽었다
+// (PLAN §4.3.1):
 //
-//   ① 무대 쪽에서 그림판을 **Y축으로만 카메라를 향해 돌린다**(빌보드). 종잇장이
-//      되는 일은 이걸로 사라진다.
-//   ② 그래도 **기준 각도에서 크게 벗어나지 않는다.** 앞모습 그림을 뒤에서 보면
-//      뒤통수가 아니라 얼굴이 따라오는 이상한 그림이 된다. `MAX_SWING`이 그 한계다.
+//   포켓몬   (0, 0, ±2.0~2.5)   크기 1·2·3에 따라 2.0 / 2.2 / 2.5
+//   트레이너 (±0.5, 0, ±5.8)
+//   카메라   (−2.7, 0.7, 5.0) · 회전 Y 150° · **화각 30** · near 0.3
+//
+// 그전에는 카메라가 9.95m 밖에 화각 55로 서 있었다. 그때는 무대에 서는 것이
+// 3D 모델이 아니라 **도트 한 장**이라 그림이 그려진 각도를 지켜야 했고, 크기도
+// 우리가 정하는 값(2.8m)이었다. 지금은 BDSP 모델이 **실측 크기**로 선다 —
+// 모부기가 0.397m다. 그 몸을 예전 렌즈로 보면 화면 높이의 4%짜리 점이 된다.
 //
 // 샷 사이는 **컷**이고 샷 안에서는 **이징**이다(§7.4). 컷이 있어야 "장면이
 // 바뀌었다"가 읽히고, 샷 안에서 천천히 밀고 들어가야 정지 화면이 안 된다.
@@ -22,24 +25,58 @@ export type Side = 'p1' | 'p2'
 export type Vec3 = readonly [number, number, number]
 
 /**
- * 양쪽이 서는 자리.
+ * 양쪽이 서는 자리 (`BattleDefaultPlacementData.PokePos`).
  *
- * 원작 문법 그대로 **내 포켓몬은 앞쪽 왼쪽, 상대는 뒤쪽 오른쪽**이다. 무대와
- * 카메라가 같은 값을 봐야 하므로 여기 한 벌만 둔다
+ * **z축 대칭**이다 — 내 쪽이 카메라에 가까운 +z, 상대가 −z. 카메라가 옆으로
+ * 비껴 서 있어서 화면에서는 원작 DS와 같은 문법이 된다: 내 것이 앞쪽 왼쪽에
+ * 크게, 상대가 뒤쪽 오른쪽에 작게.
+ *
+ * 2.2는 **중간 크기**(`Size 2`)의 값이다. BDSP는 종의 덩치에 따라 2.0·2.2·2.5로
+ * 벌리는데, 우리는 아직 한 값을 쓴다
  */
 export const SLOT: Readonly<Record<Side, { x: number; z: number }>> = {
-  p1: { x: -2.4, z: 1.6 },
-  p2: { x: 2.6, z: -3.2 },
+  p1: { x: 0, z: 2.2 },
+  p2: { x: 0, z: -2.2 },
 }
 
-/** 눈높이. 발판 위 이 높이를 본다 */
-const EYE = 1.0
+/**
+ * 눈높이. 발판 위 이 높이를 본다.
+ *
+ * 포켓몬이 실측 크기(화면에 서는 키 0.2~7.3m, 중앙값 1.17m)라 예전 값 1.0으로
+ * 보면 작은 종의 머리 위 빈 공간을 겨눈다. 0.5는 그 중앙값의 절반쯤 —
+ * 웬만한 종의 몸통이다
+ */
+const EYE = 0.5
 
-/** 기본 샷. 여기서 시작하고 여기로 돌아온다 */
+/**
+ * 배틀 화각(세로 전각, 도).
+ *
+ * BDSP의 `MainCamFov` 그대로다. 필드는 55°인데 배틀만 30°로 좁힌다 — 망원으로
+ * 당겨야 5.7m 밖에서 0.4m짜리 몸이 화면을 채운다. 파트너 고르는 장면(44°)과
+ * 같은 방식으로 `EngineDriver`가 가져간다
+ */
+export const BATTLE_FOV = 30
+
+/**
+ * 기본 샷. 여기서 시작하고 여기로 돌아온다.
+ *
+ * **거리와 렌즈는 BDSP다** — `MainCamPos` (−2.7, 0.7, 5.0)를 X 뒤집어 옮긴
+ * 자리라 무대 한가운데에서 5.68m, 화각 30°다 (모델을 X 뒤집어 굽는다,
+ * `bdspGlb` 머리말).
+ *
+ * ⚠️ **높이만 우리가 올렸다** (0.7 → 1.5, 겨누는 곳 0.4). BDSP는 눈높이에서
+ * 수평으로 보는데, 그러면 **뒤에 선 상대가 화면 한가운데(960×640에서 y 398)에
+ * 떨어져 내 체력판에 가린다** — 우리 체력판은 원작 DS 배치(상대 왼쪽 위 · 나
+ * 오른쪽 아래)라 BDSP의 배치와 다르기 때문이다. 조금 내려다보면 먼 쪽이 위로
+ * 올라가서 원작 DS의 구도가 그대로 선다: **내 것 (158, 433) · 상대 (643, 293)**
+ * 으로 둘 다 판을 안 물린다. 2.2까지 올려 보니 이번에는 하늘과 나무가 화면
+ * 밖으로 밀려서 무대가 안 보였다. 높은 카메라 자체는 BDSP도 쓴다 —
+ * 더블배틀이 (−4.0, 3.3, 7.2)다
+ */
 const ESTABLISH: Shot = {
-  from: [-2.6, 5.0, 9.6],
-  to: [-2.2, 4.6, 8.7],
-  look: [0.9, 1.0, -1.6],
+  from: [2.7, 1.5, 5.0],
+  to: [2.6, 1.47, 4.78],
+  look: [0, 0.4, 0],
   hold: 0,
   shake: 0,
 }
@@ -47,10 +84,11 @@ const ESTABLISH: Shot = {
 /**
  * 기준 각도에서 벗어날 수 있는 한계(라디안).
  *
- * 40°다. 이보다 크게 돌면 앞모습 도트를 옆·뒤에서 보게 되는데, 빌보드로 돌려
- * 놔도 "그려진 각도"와 무대의 각도가 어긋나는 것이 눈에 띈다
+ * 60°다. 도트 한 장을 세우던 시절에는 40°였다 — 앞모습 그림을 옆에서 보면
+ * 종잇장이 드러나서였다. 3D 모델은 어느 각에서 봐도 몸이라 그 제약이 사라졌고,
+ * 그래도 한계를 두는 것은 **축을 넘어가면 누가 내 편인지가 뒤집히기** 때문이다
  */
-export const MAX_SWING = (40 * Math.PI) / 180
+export const MAX_SWING = (60 * Math.PI) / 180
 
 export type ShotName =
   | 'establish'
@@ -97,6 +135,18 @@ const LAT = { x: -VIEW.z, z: VIEW.x }
 
 const ORIGIN = ESTABLISH.look
 
+/**
+ * 기준 샷이 서 있는 방위각(라디안). 모든 샷이 여기서 얼마나 벗어났는지로 잰다.
+ *
+ * ⚠️ **여기 한 벌만 둔다.** 시험이 기준 샷 좌표를 따로 적어 두고 있었는데,
+ * 샷을 BDSP 값으로 옮기고 나서도 시험만 옛 자리를 기준으로 재는 바람에
+ * 멀쩡한 샷이 79°나 돈 것으로 나왔다
+ */
+export const BASE_AZIMUTH = Math.atan2(
+  ESTABLISH.from[0] - ESTABLISH.look[0],
+  ESTABLISH.from[2] - ESTABLISH.look[2],
+)
+
 /** 기준 시선에서 얼마나 앞인가. 클수록 카메라에 가깝다 */
 function depthOf(side: Side): number {
   return (SLOT[side].x - ORIGIN[0]) * VIEW.x + (SLOT[side].z - ORIGIN[2]) * VIEW.z
@@ -128,13 +178,21 @@ const other = (side: Side): Side => (side === 'p1' ? 'p2' : 'p1')
 const SHOULDER = 0.62
 
 /**
+ * 샷의 거리·높이는 전부 이 리그 크기에서 잰 값이다 (기본 샷이 무대 한가운데에서
+ * 떨어진 거리, m). 예전 값 9.95에서 BDSP의 5.68로 줄면서 오프셋을 같은 비율로
+ * 줄였다 — 안 줄이면 어깨 너머 샷이 무대 밖으로 나간다.
+ * `battle/arena`의 `cameraFit`도 이 값을 본다
+ */
+export const SHOT_REACH = 5.68
+
+/**
  * 카메라 자리를 기준 각도 안으로 접는다.
  *
  * 무대 한가운데를 축으로 재고, `MAX_SWING`을 넘으면 그 각도로 되돌린다.
  * 거리와 높이는 그대로 둔다 — 각도만 문제이기 때문이다
  */
 export function clampSwing(position: Vec3, look: Vec3): Vec3 {
-  const base = Math.atan2(ESTABLISH.from[0] - ESTABLISH.look[0], ESTABLISH.from[2] - ESTABLISH.look[2])
+  const base = BASE_AZIMUTH
   const dx = position[0] - look[0], dz = position[2] - look[2]
   const here = Math.atan2(dx, dz)
   let off = here - base
@@ -163,8 +221,8 @@ export function shotFor(name: ShotName, side: Side): Shot {
     const behind = Math.max(depthOf(side), depthOf(foe))
     const lateral = latOf(foe) + SHOULDER * (latOf(side) - latOf(foe))
     return {
-      from: place(behind + 3.4, lateral, 2.5),
-      to: place(behind + 2.8, lateral, 2.2),
+      from: place(behind + 1.94, lateral, 1.43),
+      to: place(behind + 1.6, lateral, 1.25),
       look: eyeOf(foe),
       hold: 0.9,
       shake: 0,
@@ -179,17 +237,17 @@ export function shotFor(name: ShotName, side: Side): Shot {
     // 맞는 순간. 바짝 붙고 흔든다
     case 'impact':
       return {
-        from: place(depth + 3.2, lateral + 0.9, 1.9),
-        to: place(depth + 2.9, lateral + 0.8, 1.8),
-        look: [look[0], EYE + 0.15, look[2]],
+        from: place(depth + 1.82, lateral + 0.51, 1.08),
+        to: place(depth + 1.65, lateral + 0.46, 1.03),
+        look: [look[0], EYE + 0.09, look[2]],
         hold: 0.5,
         shake: 0.13,
       }
     // 맞고 난 뒤. 반대쪽으로 한 걸음 물러나 반응을 본다
     case 'reaction':
       return {
-        from: place(depth + 4.4, lateral - 1.0, 2.4),
-        to: place(depth + 5.0, lateral - 1.2, 2.6),
+        from: place(depth + 2.51, lateral - 0.57, 1.37),
+        to: place(depth + 2.85, lateral - 0.68, 1.48),
         look,
         hold: 0.8,
         shake: 0,
@@ -197,17 +255,17 @@ export function shotFor(name: ShotName, side: Side): Shot {
     // 쓰러진다. **아래에서 올려다본다** — 원작에 없는 각도지만 3D의 문법이다
     case 'faint':
       return {
-        from: place(depth + 3.6, lateral, 0.9),
-        to: place(depth + 4.1, lateral + 0.2, 1.2),
-        look: [look[0], EYE + 0.4, look[2]],
+        from: place(depth + 2.05, lateral, 0.51),
+        to: place(depth + 2.34, lateral + 0.11, 0.68),
+        look: [look[0], EYE + 0.23, look[2]],
         hold: 1.2,
         shake: 0,
       }
     // 등판. 옆 위에서 내려오며 들어온다
     case 'switchIn':
       return {
-        from: place(depth + 4.2, lateral + 1.8, 2.8),
-        to: place(depth + 4.2, lateral + 0.3, 1.6),
+        from: place(depth + 2.39, lateral + 1.03, 1.6),
+        to: place(depth + 2.39, lateral + 0.17, 0.91),
         look,
         hold: 0.9,
         shake: 0,

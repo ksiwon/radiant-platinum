@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { ARENA, arenaFor, cameraFit, hasSky } from './arena'
+import { SHOT_REACH } from './shots'
 import type { MapHeader } from '../map/world'
 import { withData } from '../../data/romData.testkit'
 
@@ -28,13 +29,15 @@ describe('배틀 무대 고르기', () => {
   })
 
   it('좁은 무대에서는 카메라를 당긴다', () => {
-    // 실내 방(반지름 6m)은 절반쯤으로, 넓은 들판은 그대로
+    // 실내 방(반지름 6m)은 조금 당기고, 넓은 들판은 그대로
     const room = ARENA.find((a) => a.radius === 6)!
     const field = ARENA[0]!
-    expect(cameraFit(room)).toBeCloseTo(0.5, 2)
+    expect(cameraFit(room)).toBeCloseTo(0.88, 2)
     expect(cameraFit(field)).toBe(1)
-    // 당긴 뒤 카메라가 무대 안에 들어와야 의미가 있다. 기본 샷이 9.95m다
-    expect(9.95 * cameraFit(room)).toBeLessThan(room.radius)
+    // 당긴 뒤 카메라가 무대 안에 들어와야 의미가 있다
+    expect(SHOT_REACH * cameraFit(room)).toBeLessThan(room.radius)
+    // 굴(10m)과 들판은 안 당기거나 거의 안 당긴다 — BDSP 리그가 5.68m라 넉넉하다
+    expect(cameraFit({ ...field, radius: 10 })).toBe(1)
   })
 
   it('하늘은 야외에만 선다', () => {

@@ -40,6 +40,63 @@ export interface ActionOptions {
   hiddenSlot?: number | null
 }
 
+/**
+ * 파티 한 칸의 **지금 상태**. 교체 화면이 여섯 칸을 다 그리는 데 쓴다.
+ *
+ * ⚠️ **`roster`로는 못 그린다.** 거기엔 종족·이름·레벨만 있어서, 벤치에 있는
+ * 애가 체력이 얼마고 무슨 기술을 갖고 있는지가 없다. 그 값은 요청(`|request|`)의
+ * `side.pokemon`에 다 실려 온다 — 나와 있지 않은 애들 것까지.
+ */
+export interface PartySlot {
+  /** 파티 칸 번호(1부터). `switch` 행동의 `index`와 같다 */
+  index: number
+  key: string
+  hp: number
+  maxHp: number
+  /** 프로토콜의 상태이상 약자 (`brn`·`psn`·`slp`…). 없으면 null */
+  status: string | null
+  active: boolean
+  fainted: boolean
+  /** 특성. 프로토콜 아이디(`sandstream`)라 이름은 화면이 푼다 */
+  ability: string
+  /** 기술. 프로토콜 아이디와 우리가 푼 롬 번호 */
+  moves: { id: string; move: number | null }[]
+}
+
+/**
+ * 파티 여섯 칸. 요청이 없으면 빈 목록.
+ *
+ * `condition`은 `"26/26"` · `"0 fnt"` · `"12/26 brn"` 꼴이다
+ */
+export function partySummary(
+  request: BattleRequest | null, options: ActionOptions = {},
+): PartySlot[] {
+  if (!request) return []
+  const moveId = options.moveId ?? (() => null)
+  return request.side.pokemon.map((p, i) => {
+    // ⚠️ **빈 턴 칸은 감춘다.** 볼·도망이 턴을 쓰려고 끼워 넣은 기술이라
+    // (`session.ts`의 `IDLE_MOVE`) 파티에 다섯 번째 기술로 뜨면 안 된다.
+    // 그 칸은 지금 나와 있는 한 마리에게만 붙는다
+    const hidden = p.active ? options.hiddenSlot ?? null : null
+    const [gauge, mark] = p.condition.split(' ')
+    const [now, max] = (gauge ?? '').split('/')
+    const fainted = mark === 'fnt' || Number(now) === 0
+    return {
+      index: i + 1,
+      key: p.ident.replace(/^p[1-4][a-c]?:\s*/, ''),
+      hp: Number(now) || 0,
+      maxHp: Number(max) || 0,
+      status: fainted ? null : (mark ?? null),
+      active: p.active,
+      fainted,
+      ability: p.baseAbility,
+      moves: p.moves
+        .filter((_, at) => at + 1 !== hidden)
+        .map((id) => ({ id, move: moveId(id) })),
+    }
+  })
+}
+
 /** sim이 알아듣는 명령 꼬리. `p1 ` 같은 쪽 표시는 부르는 쪽이 붙인다 */
 export function encodeAction(action: BattleAction): string {
   return action.type === 'move' ? `move ${action.slot}` : `switch ${action.index}`

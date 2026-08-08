@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 import struct
 import sys
 import zlib
@@ -92,6 +94,24 @@ def quat_flip_x(q: tuple[float, float, float, float]) -> list[float]:
     return [x, -y, -z, w]
 
 
+def euler_to_quat(deg: list[float]) -> tuple[float, float, float, float]:
+    """유니티 오일러 커브(도) → 쿼터니언.
+
+    유니티는 **ZXY** 차례로 돌린다 (`Quaternion.Euler`가 그렇다) — 차례를 바꾸면
+    같은 각도가 다른 자세가 된다
+    """
+    hx, hy, hz = (math.radians(a) * 0.5 for a in deg)
+    sx, cx = math.sin(hx), math.cos(hx)
+    sy, cy = math.sin(hy), math.cos(hy)
+    sz, cz = math.sin(hz), math.cos(hz)
+    return (
+        sx * cy * cz + cx * sy * sz,
+        cx * sy * cz - sx * cy * sz,
+        cx * cy * sz - sx * sy * cz,
+        cx * cy * cz + sx * sy * sz,
+    )
+
+
 def bone_tree(bones: list) -> tuple[list[dict], dict[int, int]]:
     """Transform 목록을 glTF 노드로. 부모가 목록 밖이면 루트다."""
     index = {b.object_reader.path_id: i for i, b in enumerate(bones)}
@@ -128,8 +148,12 @@ def bone_name(t) -> str:
 # 바인딩이 가리키는 뼈는 이름이 아니라 **경로의 CRC32**다. 계층을 훑어 경로를
 # 만들고 같은 방식으로 해시하면 짝이 맞는다 — 실측으로 171 중 171이 붙었다.
 
-TRANSLATION, ROTATION, SCALE = 1, 2, 3
-CURVE_WIDTH = {TRANSLATION: 3, ROTATION: 4, SCALE: 3}
+TRANSLATION, ROTATION, SCALE, EULER = 1, 2, 3, 4
+# ⚠️ **오일러(4)를 빼먹으면 그 클립이 통째로 어긋난다.** 커브 번호는 바인딩을
+# 훑으며 폭만큼 더해 가는 자리 번호라, 폭 3짜리를 1로 세면 **그 뒤의 모든
+# 채널이 두 칸씩 밀린다.** 포켓몬 대기 동작에서 바인딩 97개 중 여섯이 오일러고,
+# 그래서 뼈가 100m 밖으로 날아갔다 — 화면에는 아무것도 안 보였다
+CURVE_WIDTH = {TRANSLATION: 3, ROTATION: 4, SCALE: 3, EULER: 3}
 TRANSFORM_CLASS = 4
 
 
@@ -246,13 +270,22 @@ def sample(points: list[tuple[float, float]], t: float) -> float:
     return v0 + (v1 - v0) * k
 
 
-def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int]) -> tuple[list, dict]:
-    """클립 전부를 glTF 애니메이션으로. 통계도 함께 돌려준다."""
-    animations, stat = [], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0}
+def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int],
+                     keep: "re.Pattern | None" = None) -> tuple[list, dict]:
+    """클립 전부를 glTF 애니메이션으로. 통계도 함께 돌려준다.
+
+    `keep`을 주면 이름이 맞는 클립만 싣는다. **포켓몬 때문에 있다** — 종마다
+    클립 열넷이 오는데 그중 배틀에서 쓰는 것은 `ba*`뿐이고, 나머지(아미티광장에서
+    좋아하기 셋 · 싫어하기 · 포핀 먹기 · 필드 걷기)가 애니 데이터의 36%다
+    """
+    animations, stat = [], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0, "skipped": 0}
     for obj in env.objects:
         if obj.type.name != "AnimationClip":
             continue
         clip = obj.read_typetree()
+        if keep is not None and not keep.search(clip["m_Name"]):
+            stat["skipped"] += 1
+            continue
         curves, stop = clip_curves(clip)
         samplers, channels = [], []
         for path_hash, attr, first in bindings_by_curve(clip):
@@ -273,6 +306,9 @@ def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int]) -> tuple[
                 values = [[-v[0], v[1], v[2]] for v in values]
             elif attr == ROTATION:
                 values = [quat_flip_x((v[0], v[1], v[2], v[3])) for v in values]
+            elif attr == EULER:
+                values = [quat_flip_x(euler_to_quat(v)) for v in values]
+                wide = 4
             a_time = buf.add(np.array(times, dtype=np.float32).reshape(-1, 1), "SCALAR", FLOAT)
             a_val = buf.add(
                 np.array(values, dtype=np.float32),
@@ -283,6 +319,7 @@ def build_animations(env, buf: "Buffer", node_of_hash: dict[int, int]) -> tuple[
                 "sampler": len(samplers) - 1,
                 "target": {"node": node, "path": {
                     TRANSLATION: "translation", ROTATION: "rotation", SCALE: "scale",
+                    EULER: "rotation",
                 }[attr]},
             })
             stat["keys"] += len(times)
@@ -373,13 +410,19 @@ def borrowed_clips(
     return animations, stat
 
 
-def export(bundle: Path, out: Path, color_index: int | None = None,
+def export(bundle, out: Path, color_index: int | None = None,
            clips_from: Path | None = None, only: set[str] | None = None,
-           max_texture: int | None = None, keep_clips: bool = True) -> dict:
-    env = UnityPy.load(str(bundle))
+           max_texture: int | None = None, keep_clips: bool = True,
+           main_props: tuple[str, ...] = ("_MainTex",),
+           clip_filter: "re.Pattern | None" = None) -> dict:
+    # 번들이 여럿일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹(재질·뼈대·동작)과
+    # `pokemons/common`의 메시·텍스처 둘을 한 환경에 같이 올려야 풀린다
+    paths = [bundle] if isinstance(bundle, (str, Path)) else list(bundle)
+    first = Path(paths[0])
+    env = UnityPy.load(*[str(p) for p in paths])
     smrs = [o.read() for o in env.objects if o.type.name == "SkinnedMeshRenderer"]
     if not smrs:
-        raise SystemExit(f"{bundle.name}: SkinnedMeshRenderer가 없다")
+        raise SystemExit(f"{first.name}: SkinnedMeshRenderer가 없다")
 
     # 껍데기가 하나가 아니다. 트레이너(`tr####`)는 `baseSkin` 하나뿐이지만
     # 주인공(`pc####`)은 여섯이다 — 몸·머리 두 벌·신발 두 벌·손목시계.
@@ -402,7 +445,7 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
 
     # 알베도는 번들 통째로 한 번만 굽는다
     albedo = out.parent / f".{out.stem}_albedo"
-    bake(bundle, albedo, color_index, max_texture)
+    bake(paths, albedo, color_index, max_texture, main_props)
     images, textures, materials, by_name = [], [], [], {}
     for png in sorted(albedo.glob("*_albedo.png")):
         name = png.name[: -len("_albedo.png")]
@@ -425,7 +468,27 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
     albedo.rmdir()
 
     meshes, skins, verts_all, written = [], [], [], []
+    seen_mesh: set[int] = set()
+    dropped_smr = 0
     for smr in smrs:
+        # ⚠️ **껍데기가 겹쳐 들어오는 종이 있다.** 독침붕(pm0015)은 SMR이 다섯인데
+        # 날개 두 벌이 **같은 메시를 두 번** 가리키고, 그중 한 벌은 재질이 다른
+        # 번들에 있어 못 읽는다. 같은 메시를 두 번 쓰면 정점이 두 배가 되고,
+        # 못 읽는 쪽에서 터지면 그 종이 통째로 빠진다 — 둘 다 여기서 막는다
+        try:
+            pid = smr.m_Mesh.m_PathID
+        except AttributeError:
+            pid = 0
+        if pid and pid in seen_mesh:
+            dropped_smr += 1
+            continue
+        try:
+            smr.m_Materials[0].read()
+        except Exception:
+            dropped_smr += 1
+            continue
+        if pid:
+            seen_mesh.add(pid)
         try:
             mesh = smr.m_Mesh.read()
         except FileNotFoundError as e:
@@ -434,7 +497,7 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
             # (`battle/tr####`)은 번들 하나에 다 들어 있다 — 우리가 쓰는 것은
             # 그쪽이라 지금은 여기서 끊고 무엇이 없는지만 말해 준다
             raise SystemExit(
-                f"{bundle.name}: 메시가 다른 번들에 있다 ({e}). "
+                f"{first.name}: 메시가 다른 번들에 있다 ({e}). "
                 "치비 번들은 폴더를 통째로 열어야 한다"
             ) from e
         handler = MeshHelper.MeshHandler(mesh)
@@ -538,7 +601,7 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
     # 직접 돌려서 만드는 것이라(주인공도 그렇다) 구운 클립을 쓸 자리가 없다.
     # 벌레잡이(tr1006_00)에서 클립 아홉 개가 glb의 절반이다 — 2.58MB → 1.20MB
     animations, anim_stat = (
-        build_animations(env, buf, node_of_hash) if keep_clips
+        build_animations(env, buf, node_of_hash, clip_filter) if keep_clips
         else ([], {"clips": 0, "channels": 0, "unresolved": 0, "keys": 0})
     )
     if clips_from is not None:
@@ -567,6 +630,7 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
     every = np.concatenate(verts_all)
     return {
         "meshes": len(meshes),
+        "dropped": dropped_smr,
         "vertices": int(every.shape[0]),
         "triangles": int(sum(t.shape[0] for _, t in written)),
         "bones": len(bones),

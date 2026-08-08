@@ -62,7 +62,13 @@ function extractLabels(text) {
   // 타입·특성 이름은 종족/기술 양쪽이 참조한다. 한 파일로 묶어 낸다
   const out = {}
   for (const loc of LOCALES) {
-    out[loc] = { types: text.bank('pokemon_type_names', loc), abilities: text.bank('ability_names', loc) }
+    out[loc] = {
+      types: text.bank('pokemon_type_names', loc),
+      abilities: text.bank('ability_names', loc),
+      // 특성 설명. 교체 화면이 고른 포켓몬의 특성을 한 줄로 풀어 준다 —
+      // 이름만 있으면 "모래날림"이 뭘 하는지 화면에서 알 길이 없다
+      abilityText: text.bank('ability_descriptions', loc),
+    }
   }
   return out
 }
@@ -80,7 +86,8 @@ function main() {
     const n = writeJson(`names/moves.${loc}.json`, names[loc])
     const l = writeJson(`names/labels.${loc}.json`, labels[loc])
     console.log(`  이름/${loc}: 기술 ${names[loc].filter(Boolean).length}개 (${n.kb}KB) · ` +
-      `타입 ${labels[loc].types.length} 특성 ${labels[loc].abilities.length} (${l.kb}KB)`)
+      `타입 ${labels[loc].types.length} 특성 ${labels[loc].abilities.length}` +
+      ` 설명 ${labels[loc].abilityText.length} (${l.kb}KB)`)
   }
 
   for (const id of [1, 7, 63, 94, 98]) {

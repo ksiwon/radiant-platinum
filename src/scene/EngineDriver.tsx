@@ -90,13 +90,15 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     }
     // 배틀 중에는 무대가 카메라를 갖는다. 오버월드 카메라 시스템은 계속 돌지만
     // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다.
-    // 파트너 고르는 장면도 같은 방식인데 **화각까지** 가져간다
+    // ⚠️ **화각도 같이 가져간다.** 배틀은 BDSP의 30°, 파트너 고르는 장면은
+    // 원작의 44°다 — 필드(55°)로 두면 실측 크기의 포켓몬이 점이 된다
     const shot = starterStage.active ? starterStage
       : battleStage.active ? battleStage : worldState.camera
     state.camera.position.copy(shot.position)
     state.camera.lookAt(shot.target)
     const lens = state.camera as PerspectiveCamera
-    const fov = starterStage.active ? starterStage.fov : fieldFov.current
+    const fov = starterStage.active ? starterStage.fov
+      : battleStage.active ? battleStage.fov : fieldFov.current
     if (lens.isPerspectiveCamera && lens.fov !== fov) {
       lens.fov = fov
       lens.updateProjectionMatrix()

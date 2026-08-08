@@ -5,12 +5,20 @@
 // R3F는 priority 오름차순으로 콜백을 돌리고 EngineDriver가 1이기 때문이다.
 // 그래서 "지금 카메라를 누가 갖는가"를 여기 두고 EngineDriver가 물어본다.
 import { Vector3 } from 'three'
+import { BATTLE_FOV } from '../../engine/battle/shots'
 
 export const battleStage = {
   /** 배틀 무대가 카메라를 가져갔는가 */
   active: false,
   position: new Vector3(),
   target: new Vector3(),
+  /**
+   * 세로 전각(도). **BDSP가 배틀에 쓰는 30이다** (`shots`의 `BATTLE_FOV`).
+   *
+   * 필드는 55°인데, 포켓몬이 실측 크기(모부기 0.397m)로 서므로 그 렌즈로는
+   * 화면 높이의 4%짜리 점이 된다. 파트너 고르는 장면과 같은 방식이다
+   */
+  fov: BATTLE_FOV,
 }
 
 /**

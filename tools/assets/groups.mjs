@@ -122,6 +122,11 @@ export const GROUPS = [
     make: 'pnpm extract:arenas',
     match: under('models/arena/'),
   },
+  {
+    name: 'pokemon3d',
+    make: 'pnpm extract:pokemon',
+    match: under('models/pokemon/'),
+  },
 ]
 
 /** 이 파일을 만드는 것은 누구인가. 아무도 아니면 null — 부르는 쪽이 세운다 */

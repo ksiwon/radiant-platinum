@@ -5,9 +5,10 @@
 // (`STAGE_ORIGIN`) 카메라만 옮긴다. 그래서 배틀에 들어갈 때 컨텍스트 재생성도,
 // 셰이더 재컴파일도 없다.
 //
-// 포켓몬은 **원작 도트 그림**을 세운다(DATA.md §2.17). 4세대 배틀은 3D가 아니다 —
-// 무대와 카메라만 3D고 포켓몬은 80×80 한 장이다. 여기서 3D 모델을 지어내면
-// 원작이 아니라 다른 게임이 된다.
+// 포켓몬은 **BDSP의 3D 모델**로 선다(DATA.md §2.17.2). 4세대 배틀 자체는 도트
+// 한 장이었고 오래 그렇게 세워 왔는데, 무대를 BDSP의 진짜 3D로 갈아 끼우고 나니
+// 그 한 장만 화면에서 튀었다. 지어낸 것이 아니라 공식 리메이크가 같은 493마리를
+// 3D로 다시 만들어 둔 것을 가져온다. 모델을 못 받은 종은 도트로 떨어진다.
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import {
@@ -19,12 +20,13 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
-import { loadSpecies } from '../../data/gameData'
+import { loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
+import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
 import { MoveVfx } from './MoveVfx'
 import { MOVE_FRAMES } from '../../engine/battle/vfx'
 import {
@@ -47,13 +49,14 @@ import { modelUrl } from '../../data/assetBase'
 const GROUND = 0.001
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
-// 원작의 문법 그대로다: **내 포켓몬은 앞쪽 왼쪽에 뒷모습으로, 상대는 뒤쪽 오른쪽에
-// 작게.** 그 거리 차이가 곧 깊이감이라, 둘을 같은 깊이에 두면 아무리 조명을 넣어도
-// 평면으로 보인다. 카메라까지의 거리가 6.1 대 11.5 — 상대가 화면에서 절반 크기다.
+// **BDSP가 적어 둔 자리 그대로다** (`BattleDefaultPlacementData`, PLAN §4.3.1).
+// z축 대칭으로 서고 카메라가 옆으로 비껴 있어서, 화면에서는 원작 DS와 같은 문법이
+// 된다: 내 것이 앞쪽 왼쪽에 크게, 상대가 뒤쪽 오른쪽에 작게. 카메라까지의 거리가
+// 3.9 대 7.7 — 상대가 화면에서 절반 크기다.
 // ⚠️ **자리는 엔진이 갖고 있다**(`battle/shots`의 `SLOT`). 카메라 샷이 같은
 // 값을 봐야 하는데, 여기와 저기에 따로 적으면 샷이 빈 발판을 겨눈다
-const MINE = { ...SLOT.p1, radius: 2.6, scale: 1.35 }
-const FOE = { ...SLOT.p2, radius: 2.1, scale: 1.05 }
+const MINE = { ...SLOT.p1, radius: 1.5 }
+const FOE = { ...SLOT.p2, radius: 1.5 }
 
 /** 등판·기절이 딱 끊기지 않게 하는 시간(초) */
 const FADE = 0.35
@@ -75,12 +78,12 @@ interface SpeciesLook {
 }
 
 /**
- * 화면에서 제일 큰 종이 차지할 높이 (월드 단위, `spot.scale` 곱하기 전).
+ * 도트로 떨어졌을 때 그림이 차지할 높이 (월드 단위).
  *
- * 발판 반지름이 2.6이라 꽉 찬 종이 발판 지름의 절반쯤 된다. 종마다 원작 그림이
- * 80×80을 다르게 채우므로 이 값 하나가 크기 차이를 그대로 옮긴다
+ * ⚠️ **모델을 못 받은 종만 쓴다.** 3D 모델은 BDSP가 종마다 적어 둔 배율로 서고
+ * (`monModel`), 그 결과가 0.2~7.3m다. 그 한가운데쯤이라 나란히 서도 안 튄다
  */
-const MON_TALL = 2.8
+const MON_TALL = 1.2
 
 /**
  * 한쪽의 발판과 그 위에 선 것.
@@ -103,21 +106,39 @@ function Slot(
   const shade = useRef<Mesh>(null)
   const fainted = mon !== null && mon.hp <= 0
   const [art, setArt] = useState<{ map: Texture; scale: number; lift: number } | null>(null)
+  const [model, setModel] = useState<MonBody | null>(null)
 
-  // 그림은 종이 바뀔 때만 받는다. 같은 종을 여럿 데리고 있어도 한 벌이면 된다
+  // 몸은 종이 바뀔 때만 받는다. 같은 종을 여럿 데리고 있어도 한 벌이면 된다.
+  // **3D 모델이 먼저고 도트가 대신**이다 — 493종 중 모델이 없는 종만 그림으로 선다
   const species = mon?.species ?? null
   useEffect(() => {
     let alive = true
-    if (species === null) { setArt(null); return }
-    void Promise.all([loadSpriteIndex(), loadMonSprite(species, mine)])
-      .then(([idx, map]) => {
-        if (!alive) return
-        const box = idx.sprites[String(species)]?.[mine ? 'back' : 'front']
-        setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
+    setModel(null)
+    setArt(null)
+    if (species === null) return
+    void loadMonModel(species)
+      .then((loaded) => {
+        if (!alive) return null
+        if (loaded) { setModel(makeBody(loaded)); return null }
+        // 모델이 없다 — 원작 도트로 떨어진다
+        return Promise.all([loadSpriteIndex(), loadMonSprite(species, mine)])
+          .then(([idx, map]) => {
+            if (!alive) return
+            const box = idx.sprites[String(species)]?.[mine ? 'back' : 'front']
+            setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
+          })
       })
-      .catch(() => { if (alive) setArt(null) })
+      .catch(() => { /* 둘 다 못 받으면 아래에서 도형으로 떨어진다 */ })
     return () => { alive = false }
   }, [species, mine])
+
+  /**
+   * 지금 트는 동작. 뷰가 바뀌는 순간에만 갈아 끼운다.
+   *
+   * ⚠️ **대기로 돌아오는 것은 시간이 정한다.** 때리는 동작이 한 번 돌고 나면
+   * 대기로 이어야 하는데, 상태로 두면 배틀 내내 React가 다시 그린다
+   */
+  const motion = useRef<MotionName>('enter')
   // 등판·기절을 0/1로 끊으면 포켓몬이 순간이동한다. 눈에 보이는 값만 쓰는
   // 표현이므로 시뮬레이션 스텝이 아니라 렌더 델타로 민다
   const shown = useRef(0)
@@ -139,16 +160,30 @@ function Slot(
   useEffect(() => { if (cast?.by === side) lunge.current = 1 }, [cast, side])
   useEffect(() => { if (struck?.side === side) flinch.current = 1 }, [struck, side])
 
+  // 물리냐 특수냐. **BDSP 모델이 그 둘을 따로 갖고 있다**(`ba20` · `ba21`) —
+  // 롬의 기술 데이터가 정하는 값이라 여기서 짐작하지 않는다
+  const special = useRef(false)
+  useEffect(() => {
+    if (cast?.by !== side || cast.move === null) return
+    const id = cast.move
+    void loadMoves()
+      .then((table) => { special.current = table.byId.get(id)?.category === 'special' })
+      .catch(() => { special.current = false })
+  }, [cast, side])
+
   useFrame((_, delta) => {
     const g = body.current
     if (!g) return
     const want = mon && !fainted ? 1 : 0
     shown.current += Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     const t = shown.current
-    g.scale.setScalar(spot.scale * (0.6 + 0.4 * t))
+    // ⚠️ **3D 모델은 크기를 여기서 안 만진다.** 배율은 BDSP가 종마다 적어 둔
+    // 값이고(`monModel`), 등판할 때 작아졌다 커지는 것은 도트의 문법이다
+    g.scale.setScalar(model ? 1 : 0.6 + 0.4 * t)
     // 살짝 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다.
-    // **위로만 뜬다** — 아래로 내려가면 발이 땅에 파묻힌다
-    const bob = (Math.sin(performance.now() / 620 + spot.x) * 0.5 + 0.5) * 0.05
+    // **위로만 뜬다** — 아래로 내려가면 발이 땅에 파묻힌다.
+    // 모델은 대기 동작이 이미 숨을 쉬므로 안 흔든다
+    const bob = model ? 0 : (Math.sin(performance.now() / 620 + spot.x) * 0.5 + 0.5) * 0.05
 
     // 때리러 나간다. 앞의 반은 가고 뒤의 반은 온다 — 갔다가 순간이동으로
     // 돌아오면 뒷걸음질이 아니라 깜빡임으로 보인다
@@ -170,14 +205,31 @@ function Slot(
     g.position.z = (other.z - spot.z) * reach
     g.position.y = GROUND + bob * t - (1 - t) * 0.5
 
-    // ⚠️ **카메라가 움직이면 그림판을 돌려야 한다.** 도트 한 장이라 고정
-    // 카메라일 때는 돌릴 이유가 없었는데(그때 주석도 그렇게 적혀 있었다),
-    // 샷이 붙은 뒤로는 안 돌리면 옆에서 종잇장이 보인다. Y축으로만 돈다 —
-    // 위아래로도 돌리면 발이 지면에서 뜬다
-    g.rotation.y = Math.atan2(
-      battleStage.position.x - STAGE_ORIGIN.x - spot.x,
-      battleStage.position.z - STAGE_ORIGIN.z - spot.z,
-    )
+    // 어디를 보는가.
+    //
+    // **3D 모델은 상대를 본다.** 우리 규약대로 +Z가 정면이라(`bdspGlb` 머리말)
+    // 상대 쪽 각도를 그대로 넣으면 된다 — 내 것은 등을, 상대는 앞을 보인다.
+    // ⚠️ **도트는 카메라를 본다.** 한 장이라 안 돌리면 옆에서 종잇장이 보인다.
+    // Y축으로만 돈다 — 위아래로도 돌리면 발이 지면에서 뜬다
+    g.rotation.y = model
+      ? Math.atan2(other.x - spot.x, other.z - spot.z)
+      : Math.atan2(
+        battleStage.position.x - STAGE_ORIGIN.x - spot.x,
+        battleStage.position.z - STAGE_ORIGIN.z - spot.z,
+      )
+
+    // 동작을 넘긴다. 때리고 맞는 것이 우선이고 그 타이머가 다 되면 대기로 돈다
+    const now: MotionName = t < 0.99 ? 'enter'
+      : flinch.current > 0 ? 'damage'
+        : lunge.current > 0 ? (special.current ? 'special' : 'physical')
+          : 'wait'
+    if (model) {
+      if (now !== motion.current) {
+        motion.current = now
+        play(model, now)
+      }
+      model.mixer.update(delta)
+    }
 
     // ⚠️ **그림자는 몸을 따라간다.** 안 그러면 아무도 안 선 자리에 회색 얼룩이
     // 깔린다 — 배틀이 열리고 "가라! 모부기!"가 뜨는 동안 상대 자리에 그림자만
@@ -207,11 +259,13 @@ function Slot(
       )}
 
       <group ref={body} position={[0, GROUND, 0]}>
-        {art ? (
+        {model ? (
+          // BDSP 모델. 크기·자세·동작이 전부 롬에서 온다
+          <primitive object={model.root} />
+        ) : art ? (
           /*
-            도트 한 장. 위 `useFrame`이 Y축으로 카메라를 향해 돌린다(빌보드).
-            그림이 그려진 각도와 크게 어긋나지 않게, 카메라 쪽에서도 기준
-            각도에서 40°까지만 돈다(`shots`의 `MAX_SWING`).
+            모델이 없는 종만 여기로 온다 — 도트 한 장이다. 위 `useFrame`이
+            Y축으로 카메라를 향해 돌린다(빌보드).
             `alphaTest`로 오려 내므로 반투명 정렬 문제가 없다
           */
           <mesh position={[0, art.lift, 0]} castShadow>

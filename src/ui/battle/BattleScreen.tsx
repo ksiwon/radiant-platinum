@@ -23,6 +23,7 @@ import { useSessionStore } from '../../state/sessionStore'
 import { withObject, withSubject } from '../korean'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { BattleBag } from './BattleBag'
+import { SwitchScreen } from './SwitchScreen'
 import { battleText, type BattleNames } from './messages'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
@@ -44,6 +45,10 @@ type MenuPage = 'root' | 'fight' | 'bag' | 'party'
 /** 기술 칸이 타입까지 보여주려면 기술표가 필요하다. 이름만으로는 모자란다 */
 interface Extras {
   types: string[]
+  /** 특성 설명. 교체 화면이 쓴다 */
+  abilityText: string[]
+  /** 특성의 영어 이름. 프로토콜 아이디를 번호로 되돌리는 열쇠다 */
+  abilitiesEn: string[]
   move(id: number): Move | undefined
 }
 
@@ -57,11 +62,20 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
     void Promise.all([
       loadSpeciesNames(locale), loadMoveNames(locale), loadLabels(locale), loadMoves(),
       loadItemNames(locale),
+      // ⚠️ **영어 이름도 같이 받는다.** 프로토콜의 특성은 `sandstream` 같은
+      // 아이디라, 같은 차례의 영어 이름과 맞춰야 롬 번호가 나온다
+      // (`SwitchScreen`의 `abilityIndex`). 6KB짜리라 늘 받아 둔다
+      loadLabels('en'),
     ])
-      .then(([species, moves, labels, table, items]) => {
+      .then(([species, moves, labels, table, items, en]) => {
         if (!alive) return
         setNames({ species, moves, abilities: labels.abilities, items })
-        setExtras({ types: labels.types, move: (id) => table.byId.get(id) })
+        setExtras({
+          types: labels.types,
+          abilityText: labels.abilityText,
+          abilitiesEn: en.abilities,
+          move: (id) => table.byId.get(id),
+        })
       })
       .catch(() => { /* 이름을 못 받으면 아래에서 영어 원문으로 떨어진다 */ })
     return () => { alive = false }
@@ -77,6 +91,7 @@ export function BattleScreen() {
   const foeName = useBattleStore((s) => s.foeName)
   const view = useBattleStore((s) => s.view)
   const actions = useBattleStore((s) => s.actions)
+  const party = useBattleStore((s) => s.party)
   const events = useBattleStore((s) => s.events)
   const roster = useBattleStore((s) => s.roster)
   const outcome = useBattleStore((s) => s.outcome)
@@ -160,6 +175,19 @@ export function BattleScreen() {
       <BattleSound />
       <div className={css.wipe} />
       {phase === 'loading' ? <div className={css.waiting}>배틀 준비 중…</div> : <>
+      {/*
+        누구를 내보낼까. **화면 전체를 덮는다** — 파티 여섯과 고른 한 마리의
+        속사정을 나란히 놓아야 교체를 결정할 근거가 화면에 있다 (§2.5)
+      */}
+      {!reading && shiftAsk === null && phase !== 'over'
+        && (forced || page === 'party') && actions.length > 0 && (
+        <SwitchScreen
+          actions={switchActions} party={party} roster={roster}
+          names={names && extras ? { ...names, ...extras } : null}
+          onPick={choose}
+          onBack={forced ? null : () => { setPage('root') }}
+        />
+      )}
       <div className={css.field}>
         <div className={css.foeSlot}>
           {foeName && <div className={css.foeTrainer}>{foeName}</div>}
@@ -209,10 +237,9 @@ export function BattleScreen() {
             ) : actions.length === 0 ? (
               <div className={css.waiting}>…</div>
             ) : forced || page === 'party' ? (
-              <SwitchMenu
-                actions={switchActions} names={names} roster={roster} onPick={choose}
-                onBack={forced ? null : () => setPage('root')}
-              />
+              // 교체는 **화면 전체**를 쓴다 (`SwitchScreen`). 여기 칸에는 아무것도
+              // 안 남긴다 — 같은 화면에 알약과 카드가 같이 뜨면 어디를 보는지 모른다
+              null
             ) : page === 'fight' ? (
               <MoveMenu
                 actions={moveActions} names={names} extras={extras} onPick={choose}
@@ -462,45 +489,3 @@ function MoveMenu(
   )
 }
 
-/** 누구를 내보낼까. 쓰러진 직후에는 돌아갈 곳이 없어서 `onBack`이 null이다 */
-function SwitchMenu(
-  { actions, names, roster, onPick, onBack }: {
-    actions: BattleAction[]
-    names: BattleNames | null
-    roster: Record<string, RosterEntry>
-    onPick: (a: BattleAction) => void
-    onBack: (() => void) | null
-  },
-) {
-  const cursor = useListCursor(actions.length, (i) => {
-    const action = actions[i]
-    if (action) onPick(action)
-  }, onBack ?? undefined)
-  return (
-    <>
-      {actions.map((action, i) => {
-        if (action.type !== 'switch') return null
-        const entry = roster[action.key]
-        const label = entry?.nickname
-          ?? (entry ? names?.species[entry.species] : null)
-          ?? action.key
-        return (
-          <button key={`s${action.index}`}
-            className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
-            style={{ ['--tint' as string]: css.TINT.party }}
-            onClick={() => onPick(action)}>
-            {i === cursor && <span className={css.caret} aria-hidden />}
-            <span className={css.face}>
-              <span className={css.dot} aria-hidden />
-              <span className={css.labelCol}>
-                <span className={css.label}>{withSubject(label)} 나간다</span>
-                {entry && <span className={css.subLine}>Lv.{entry.level}</span>}
-              </span>
-            </span>
-          </button>
-        )
-      })}
-      {onBack && <button className={css.backButton} onClick={onBack}>← 돌아가기</button>}
-    </>
-  )
-}

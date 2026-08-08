@@ -4,6 +4,7 @@
 //     pnpm shot forest --keys=z,z,z    뛰어든 뒤 키를 더 누른다
 //     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
+//     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
 //     pnpm shot --list                 확인 지점 목록
 //
 // ⚠️ **이 프로젝트에는 여태 브라우저 자동화가 없었다.** 그래서 "수치는 맞는데
@@ -260,7 +261,10 @@ async function main() {
   })
   const page = await browser.newPage({ viewport: DRIVE, deviceScaleFactor: 1 })
   const noise = []
-  page.on('console', (m) => { if (m.type() === 'error') noise.push(m.text()) })
+  // 경고도 줍는다 — three는 스켈레톤이 깨져도 `console.warn`으로만 말한다
+  page.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning') noise.push(`${m.type()}: ${m.text()}`)
+  })
   page.on('pageerror', (e) => { noise.push(`pageerror: ${e.message}`) })
 
   await page.goto(url, { waitUntil: 'load' })
@@ -498,6 +502,70 @@ async function main() {
             + ` @ ${String(r.at)}`)
         }
         if ((found.rows ?? []).length === 0) console.log('     맞은 것이 없다 — 하늘이다')
+      }
+    }
+
+    // 배틀 무대 아래에 실제로 무엇이 서 있는지 늘어놓는다.
+    //
+    // ⚠️ **광선으로는 "없는 것"을 못 가린다.** 포켓몬 모델을 처음 세운 날
+    // 화면에 아무것도 없었는데, 어디에 쏴도 무대만 맞으니 **안 붙은 것인지
+    // 딴 데 선 것인지**를 알 수가 없었다. 이건 씬을 직접 훑는다
+    if (args.includes('--tree')) {
+      const rows = await page.evaluate(async () => {
+        const THREE = await import('/node_modules/three/build/three.webgpu.js')
+        const refs = await import('/src/scene/sceneRefs.ts')
+        const stage = await import('/src/scene/battle/stageRefs.ts')
+        let root = refs.sceneRefs.player
+        while (root?.parent) root = root.parent
+        if (!root) return []
+        const origin = stage.battleStage.active ? stage.STAGE_ORIGIN : new THREE.Vector3()
+        const out = []
+        const at = new THREE.Vector3()
+        const scale = new THREE.Vector3()
+        root.traverse((o) => {
+          if (!o.isMesh && !o.isSkinnedMesh) return
+          o.getWorldPosition(at)
+          if (at.distanceTo(origin) > 60) return
+          o.getWorldScale(scale)
+          const g = o.geometry
+          const tris = g?.index ? g.index.count / 3 : (g?.attributes?.position?.count ?? 0) / 3
+          let vis = o.visible
+          for (let p = o.parent; p && vis; p = p.parent) vis = p.visible
+          // ⚠️ **실제로 어디에 그려지는가**를 정점 하나로 되묻는다. 스킨 메시는
+          // 뼈가 정점을 옮기므로 노드 자리와 그려지는 자리가 다를 수 있다 —
+          // `getVertexPosition`이 셰이더와 같은 셈을 CPU에서 한다
+          const tip = new THREE.Vector3()
+          try {
+            o.getVertexPosition(0, tip)
+            o.localToWorld(tip)
+          } catch { tip.set(NaN, NaN, NaN) }
+          const sph = { center: tip.clone().sub(origin), radius: 0 }
+          const mats = Array.isArray(o.material) ? o.material : [o.material]
+          out.push({
+            name: o.name || o.type,
+            skin: o.isSkinnedMesh === true,
+            vis,
+            tris: Math.round(tris),
+            at: [+(at.x - origin.x).toFixed(2), +(at.y - origin.y).toFixed(2), +(at.z - origin.z).toFixed(2)],
+            s: +scale.x.toFixed(2),
+            cull: o.frustumCulled,
+            ball: [+sph.center.x.toFixed(2), +sph.center.y.toFixed(2), +sph.center.z.toFixed(2)],
+            mat: mats[0]?.name || mats[0]?.type || '?',
+            op: +(mats[0]?.opacity ?? 1).toFixed(2),
+            tr: mats[0]?.transparent === true,
+            aT: mats[0]?.alphaTest ?? 0,
+          })
+        })
+        return out
+      })
+      console.log(`  ${id} 무대 위 메시 ${String(rows.length)}개`)
+      for (const r of rows.slice(0, 30)) {
+        console.log(`     ${r.vis ? ' ' : '×'} ${r.name.slice(0, 24).padEnd(24)}`
+          + ` ${r.skin ? '뼈' : '  '} 삼각형 ${String(r.tris).padStart(7)}`
+          + ` 배율 ${String(r.s).padStart(5)} @ ${String(r.at)}`
+          + ` 첫정점 ${String(r.ball).slice(0, 24)} ${r.mat.slice(0, 18)}`
+          + ` 불투명 ${String(r.op)}${r.tr ? '·반투명' : ''} 문턱 ${String(r.aT)}`
+          + `${r.cull ? '' : ' (컬링끔)'}`)
       }
     }
 

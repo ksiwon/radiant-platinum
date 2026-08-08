@@ -5,7 +5,7 @@
 // 돌려 놔도 어색해진다. 그래서 시험의 절반이 "얼마나 도는가"를 잰다.
 import { describe, it, expect } from 'vitest'
 import {
-  MAX_SWING, SLOT, ShotDirector, clampSwing, ease, sampleShot, shotFor,
+  BASE_AZIMUTH, MAX_SWING, SLOT, ShotDirector, clampSwing, ease, sampleShot, shotFor,
   type ShotName, type Side, type Vec3,
 } from './shots'
 
@@ -17,7 +17,9 @@ function azimuth(position: Vec3, look: Vec3): number {
   return Math.atan2(position[0] - look[0], position[2] - look[2])
 }
 
-const BASE = azimuth([-2.6, 5.0, 9.6], [0.9, 1.0, -1.6])
+// ⚠️ 기준 샷 좌표를 여기 다시 적지 않는다. 예전에 그렇게 두었다가
+// 샷을 BDSP 값으로 옮겼을 때 시험만 옛 자리를 기준으로 쟀다
+const BASE = BASE_AZIMUTH
 
 function offBase(position: Vec3, look: Vec3): number {
   let off = azimuth(position, look) - BASE
@@ -55,10 +57,10 @@ describe('샷', () => {
   })
 
   /**
-   * ⚠️ 여기가 이 파일의 요지다. 카메라가 기준 각도에서 40°를 넘게 돌면
-   * 앞모습 도트를 옆에서 보게 된다
+   * ⚠️ 여기가 이 파일의 요지다. 카메라가 기준 각도에서 `MAX_SWING`을 넘게 돌면
+   * 축을 넘어가 누가 내 편인지가 뒤집힌다
    */
-  it('어느 샷도 기준 각도에서 40°를 안 넘는다', () => {
+  it('어느 샷도 기준 각도에서 60°를 안 넘는다', () => {
     for (const name of ALL) {
       for (const side of SIDES) {
         const shot = shotFor(name, side)
@@ -76,7 +78,7 @@ describe('샷', () => {
    *
    * 위 시험만으로는 부족하다 — `sampleShot`이 접고 나서 재기 때문에, 샷을
    * 아무렇게나 적어도 통과한다. 실제로 처음 만든 판이 그랬다: 상대가 때릴 때
-   * 카메라가 무대 반대편으로 넘어가 148~180°였는데, 접는 코드가 전부 40°로
+   * 카메라가 무대 반대편으로 넘어가 148~180°였는데, 접는 코드가 전부 한계각으로
    * 되감아서 다섯 샷이 다 같은 자리가 됐다. 시험은 통과하고 연출은 없었다.
    *
    * 그래서 여기서는 **날것의 `from`·`to`를 잰다.** 접는 코드는 안전망이지
