@@ -30,6 +30,11 @@ export interface MonEntry {
 
 export interface MonIndex { pokemon: Record<string, MonEntry> }
 
+/** 화면에 실제로 서는 키(m). 배율까지 먹인 값이다 */
+export function posedHeight(entry: MonEntry): number {
+  return entry.height * entry.scale
+}
+
 let index: Promise<MonIndex> | null = null
 
 export function loadMonIndex(): Promise<MonIndex> {
@@ -65,7 +70,7 @@ export function clipFor(clips: readonly AnimationClip[], want: MotionName): Anim
     ?? null
 }
 
-interface Loaded { scene: Group; clips: AnimationClip[]; entry: MonEntry }
+export interface Loaded { scene: Group; clips: AnimationClip[]; entry: MonEntry }
 
 const loader = new GLTFLoader(new LoadingManager())
 const cache = new Map<number, Promise<Loaded | null>>()
@@ -101,6 +106,8 @@ export function loadMonModel(species: number): Promise<Loaded | null> {
  */
 export interface MonBody {
   root: Group
+  /** 화면에 서는 키(m). 카메라가 이걸 보고 물러난다 */
+  tall: number
   mixer: AnimationMixer
   clips: readonly AnimationClip[]
   /** 지금 도는 동작. 갈아 끼울 때 여기서 섞어 나간다 */
@@ -119,7 +126,10 @@ export function makeBody(loaded: Loaded): MonBody {
     // 컬링을 끄는 값이 컬링으로 아끼는 값보다 크다
     o.frustumCulled = false
   })
-  return { root, mixer: new AnimationMixer(root), clips: loaded.clips, action: null }
+  return {
+    root, tall: posedHeight(loaded.entry),
+    mixer: new AnimationMixer(root), clips: loaded.clips, action: null,
+  }
 }
 
 /** 이 동작만 되풀이한다. 나머지는 한 번 돌고 그 자세로 멈춘다 */

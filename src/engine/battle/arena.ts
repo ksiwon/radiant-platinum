@@ -71,14 +71,39 @@ export function hasSky(arena: Arena): boolean {
 const CLEARANCE = 1
 
 /**
- * 카메라를 무대 크기에 맞춰 당기는 비율.
+ * 이 키까지는 기본 샷이 담는다 (m, 화면에 서는 키).
  *
- * 1이면 샷이 적힌 그대로다. 좁은 무대에서는 **바라보는 자리는 그대로 두고
- * 거리만 줄인다** — 방이 좁으면 화면도 좁아야 맞고, 무엇보다 벽 밖으로
- * 나가지 않는다
+ * 493종의 **중앙값이 1.17**이고 상위 10%가 1.86이다 (`models/pokemon/index.json`).
+ * 1.2를 넘으면 그만큼 물러난다
  */
-export function cameraFit(arena: Arena): number {
-  return Math.min(1, (arena.radius - CLEARANCE) / SHOT_REACH)
+const FRAMED_TALL = 1.2
+
+/**
+ * 큰 종 앞에서 물러나는 한계.
+ *
+ * ⚠️ **BDSP의 두 번째 리그다.** `DefaultCameraPlacementData`가 큰 포켓몬일 때
+ * 카메라를 (−4.6, 0.8, 7.3)으로 옮기는데, 무대 한가운데에서 8.63m라 기본
+ * 리그(5.68m)의 **1.52배**다. 우리도 거기까지만 물러난다
+ */
+const FAR_RIG = 8.63 / SHOT_REACH
+
+/**
+ * 카메라를 무대와 몸집에 맞춰 옮기는 비율.
+ *
+ * 두 가지가 당기고 민다:
+ *
+ * - **무대가 좁으면 당긴다.** 실내는 12×18m짜리 방이라 기본 샷(5.68m)이 벽
+ *   밖으로 나간다. 바라보는 자리는 그대로 두고 거리만 줄인다
+ * - **몸이 크면 물러난다.** 실측 크기로 서기 때문에 토대부기(화면 키 1.89m)가
+ *   기본 샷에서 화면을 넘긴다. BDSP도 큰 종 앞에서는 리그를 바꾼다
+ *
+ * 좁은 방에서 큰 종을 만나면 **벽이 이긴다** — 물러날 데가 없으면 잘리는 편이
+ * 벽을 뚫는 것보다 낫다
+ */
+export function cameraFit(arena: Arena, tall = 0): number {
+  const room = (arena.radius - CLEARANCE) / SHOT_REACH
+  const want = Math.min(FAR_RIG, Math.max(1, tall / FRAMED_TALL))
+  return Math.min(want, room)
 }
 
 /**

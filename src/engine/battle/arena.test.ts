@@ -42,6 +42,21 @@ describe('배틀 무대 고르기', () => {
     expect(cameraFit({ ...field, radius: 10 })).toBe(1)
   })
 
+  it('큰 종 앞에서는 물러난다 — 벽이 없을 때만', () => {
+    const field = ARENA[0]!
+    const room = ARENA.find((a) => a.radius === 6)!
+    // 화면에 서는 키의 중앙값이 1.17이다. 1.2까지는 기본 샷이 담는다
+    expect(cameraFit(field, 0.79)).toBe(1)   // 모부기
+    expect(cameraFit(field, 1.5)).toBeCloseTo(1.25, 3)   // 잉어킹쯤
+    // 토대부기(1.89)는 이미 한계에 닿는다
+    // ⚠️ BDSP의 두 번째 리그(8.63m = 1.52배)까지만 물러난다
+    for (const tall of [1.89, 7.31]) {
+      expect(cameraFit({ ...field, radius: 24 }, tall)).toBeCloseTo(8.63 / SHOT_REACH, 5)
+    }
+    // 방에서는 벽이 이긴다 — 물러날 데가 없으면 잘리는 편이 벽을 뚫는 것보다 낫다
+    expect(cameraFit(room, 7.31)).toBeCloseTo(0.88, 2)
+  })
+
   it('밟고 선 땅이 배경을 이긴다', () => {
     // 원작 `CalcTerrain`이 맵보다 발밑을 먼저 본다. 대습원이 그 자리다 —
     // 배경은 숲(3)인데 진흙(0xa6)을 밟고 싸우므로 늪이 서야 맞다

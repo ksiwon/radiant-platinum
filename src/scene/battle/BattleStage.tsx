@@ -92,7 +92,7 @@ const MON_TALL = 1.2
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
 function Slot(
-  { mon, look, spot, other, mine, shadow }: {
+  { mon, look, spot, other, mine, shadow, onBody }: {
     mon: ViewMon | null
     look: SpeciesLook | null
     spot: typeof MINE
@@ -100,6 +100,8 @@ function Slot(
     other: typeof MINE
     mine: boolean
     shadow: CanvasTexture | null
+    /** 몸이 바뀌면 알려 준다. 카메라가 큰 종 앞에서 물러나야 한다 */
+    onBody: (tall: number) => void
   },
 ) {
   const body = useRef<Group>(null)
@@ -119,7 +121,13 @@ function Slot(
     void loadMonModel(species)
       .then((loaded) => {
         if (!alive) return null
-        if (loaded) { setModel(makeBody(loaded)); return null }
+        if (loaded) {
+          const body = makeBody(loaded)
+          setModel(body)
+          onBody(body.tall)
+          return null
+        }
+        onBody(0)
         // 모델이 없다 — 원작 도트로 떨어진다
         return Promise.all([loadSpriteIndex(), loadMonSprite(species, mine)])
           .then(([idx, map]) => {
@@ -130,6 +138,7 @@ function Slot(
       })
       .catch(() => { /* 둘 다 못 받으면 아래에서 도형으로 떨어진다 */ })
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [species, mine])
 
   /**
@@ -385,7 +394,9 @@ export function BattleStage() {
     return () => { battleStage.active = false }
   }, [])
 
-  useBattleCamera(cameraFit(arena))
+  // 큰 종 앞에서는 카메라가 물러난다. 둘 중 큰 쪽이 화면을 정한다
+  const [tall, setTall] = useState({ p1: 0, p2: 0 })
+  useBattleCamera(cameraFit(arena, Math.max(tall.p1, tall.p2)))
 
   const look = (mon: ViewMon | null, key: string): SpeciesLook | null => {
     if (!mon) return null
@@ -422,10 +433,12 @@ export function BattleStage() {
       <Slot
         mon={view?.active.p2 ?? null} look={look(view?.active.p2 ?? null, 'p2-0')}
         spot={FOE} other={MINE} mine={false} shadow={shadow}
+        onBody={(t) => { setTall((was) => (was.p2 === t ? was : { ...was, p2: t })) }}
       />
       <Slot
         mon={view?.active.p1 ?? null} look={look(view?.active.p1 ?? null, 'p1-0')}
         spot={MINE} other={FOE} mine shadow={shadow}
+        onBody={(t) => { setTall((was) => (was.p1 === t ? was : { ...was, p1: t })) }}
       />
       {/*
         기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —
