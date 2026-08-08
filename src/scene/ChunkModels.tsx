@@ -107,9 +107,13 @@ function materialsFor(
     const hit = cache.get(key)
     if (hit) return hit
     const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
+    // ⚠️ **그림이 없는 서브메시는 고장이 아니다.** 원작 DS는 텍스처 없이
+    // 정점 색만으로 그리는 폴리곤을 쓴다 — 오버월드 소품 서브메시 442개 중
+    // 두 개가 `tex: null`이다. 이걸 "못 만든 것"으로 돌리면 무쇠시티 프렌들리숍
+    // 문틀에 **자홍색 선**이 그어진다. 실제로 그렇게 나와 있었다
     const made = item && sheet
       ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep), twoSided)
-      : MISSING
+      : spec.tex === null ? makeMaterial(spec, null, twoSided) : MISSING
     cache.set(key, made)
     return made
   })
