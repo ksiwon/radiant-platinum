@@ -7,6 +7,7 @@ import { HOP_RISE, HOP_TIME, ledgeHop } from './ledge'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, STRENGTH_BOULDER } from './obstacles'
+import { bikeSpeedAt } from './bike'
 
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
@@ -61,8 +62,14 @@ export const playerSystem = {
     p.prevPosition.copy(p.position)
 
     // ⚠️ **신발이 있어야 뛴다** (`PlayerAvatar`가 `PlayerData_HasRunningShoes`를
-    // 본다). 엄마가 주기 전에는 달리기 키를 눌러도 걷는 속도 그대로다
-    const speed = input.run && p.runningShoes ? RUN_SPEED : WALK_SPEED
+    // 본다). 엄마가 주기 전에는 달리기 키를 눌러도 걷는 속도 그대로다.
+    //
+    // 자전거는 그보다 빠르고 **밟을수록 빨라진다** — 원작이 페달마다 한 단씩
+    // 올린다 (`actor/bike`의 실측 배수 2 · 2.67 · 4). 멈추면 처음으로 돌아간다
+    const moving = worldState.input.move.lengthSq() > 0.0001
+    p.pedalling = p.cycling && moving ? p.pedalling + dt : 0
+    const speed = p.cycling ? WALK_SPEED * bikeSpeedAt(p.pedalling)
+      : input.run && p.runningShoes ? RUN_SPEED : WALK_SPEED
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
     const dir = pushDirection()

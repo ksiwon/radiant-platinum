@@ -18,6 +18,9 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { BIKE_ITEM, BIKE_WHY, bikeBlock } from '../../engine/actor/bike'
+import { mapById, world } from '../../engine/map/world'
+import { worldState } from '../../state/worldState'
 import { itemIcon } from './itemIcon'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -42,6 +45,8 @@ export function BagScreen() {
   const locale = useGameLocale()
   const [pocket, setPocket] = useState(0)
   const [cursor, setCursor] = useState(0)
+  /** 못 쓰는 이유. 원작도 한 줄 띄우고 만다 */
+  const [denied, setDenied] = useState<string | null>(null)
   const back = useMenuStore((s) => s.back)
   const bag = useSaveStore((s) => s.bag)
   const money = useSaveStore((s) => s.money)
@@ -63,11 +68,29 @@ export function BagScreen() {
   const at = Math.min(cursor, Math.max(0, slots.length - 1))
   const selected = slots[at]
 
+  /**
+   * 고른 물건을 쓴다. **지금은 자전거 하나뿐이다** — 원작의 `sItemUseFuncs`가
+   * 물건마다 다른 함수를 물려 두었고 (`item_use_functions.c`) 그중 필드에서
+   * 바로 효과가 나는 것이 자전거다. 나머지는 아직 쓰는 길이 없다
+   */
+  const use = (): void => {
+    if (selected?.item !== BIKE_ITEM) return
+    const p = worldState.player
+    const grid = world.grid
+    const here = grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
+    const why = bikeBlock(mapById(world.mapId), here, p.surfing, p.cycling)
+    if (why !== null) { setDenied(BIKE_WHY[why]); return }
+    p.cycling = !p.cycling
+    p.pedalling = 0
+    back()
+  }
+
   useMenuKeys({
     up: () => { setCursor((c) => clampCursor(c, -1, slots.length)) },
     down: () => { setCursor((c) => clampCursor(c, 1, slots.length)) },
     left: () => { setPocket((p) => wrapCursor(p, -1, POCKET_SIZE.length)); setCursor(0) },
     right: () => { setPocket((p) => wrapCursor(p, 1, POCKET_SIZE.length)); setCursor(0) },
+    confirm: use,
     cancel: back,
   })
 
@@ -75,7 +98,10 @@ export function BagScreen() {
     <MenuScreen
       title="가방"
       note={`${money.toLocaleString('ko-KR')}원`}
-      foot={`←→ 주머니 · ↑↓ 고르기 · X 닫기 · ${String(slots.length)}/${String(POCKET_SIZE[pocket] ?? 0)}칸`}
+      foot={denied
+        ?? `←→ 주머니 · ↑↓ 고르기 · ${selected?.item === BIKE_ITEM
+          ? (worldState.player.cycling ? 'Z 내린다' : 'Z 탄다') : 'X 닫기'}`
+        + ` · ${String(slots.length)}/${String(POCKET_SIZE[pocket] ?? 0)}칸`}
     >
       <div className={css.tabs}>
         {(data?.pockets ?? []).map((name, i) => (

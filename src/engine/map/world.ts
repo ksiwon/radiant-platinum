@@ -51,6 +51,12 @@ export interface MapHeader {
    * BDSP 무대 열여덟 벌로 이어진다 — 그 이음은 BDSP 롬이 적어 둔 것이다
    */
   battleBg: number
+  /**
+   * 이 맵에서 자전거를 탈 수 있는가 (`MapHeader_IsBikeAllowed`, 1비트).
+   *
+   * 593개 맵 중 실내·굴이 대부분 0이다 — 원작이 그렇게 찍어 두었다
+   */
+  bike: number
 }
 
 export interface Warp {

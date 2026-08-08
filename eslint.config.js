@@ -85,6 +85,12 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // 서비스 워커는 브라우저도 노드도 아닌 제3의 자리에서 돈다 —
+    // `self`·`caches`·`clients`가 거기 산다 (`public/sw.js`)
+    files: ['public/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker, ...globals.browser } },
+  },
+  {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
       globals: globals.browser,

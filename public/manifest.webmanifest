@@ -1,0 +1,26 @@
+{
+  "name": "Pokémon Radiant Platinum",
+  "short_name": "Radiant",
+  "description": "웹으로 다시 지은 3D 신오. 팬이 만든 것이고 팔지 않는다.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#0f1420",
+  "theme_color": "#0f1420",
+  "icons": [
+    {
+      "src": "assets/radiant-platinum-icon.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/radiant-platinum-favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    }
+  ]
+}

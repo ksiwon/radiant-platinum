@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="icon" type="image/png" sizes="64x64" href="/assets/radiant-platinum-favicon.png" />
+    <!-- 홈 화면에 설치하면 전체화면으로 열린다. iOS Safari가 캔버스 전체화면을
+         안 주는데(§12.2) 그 우회로이자, 7일 미사용 삭제의 면제 조건이다 (§4.6) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0f1420" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" href="/assets/radiant-platinum-icon.png" />
     <title>Pokémon Radiant Platinum</title>
     <style>
       html, body, #root { margin: 0; height: 100%; overflow: hidden; }

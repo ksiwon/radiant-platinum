@@ -47,7 +47,10 @@ export const encounterSystem = {
     const table = tableForCurrentMap()
     // 긴 풀 위에서는 관문이 40에서 70으로 올라간다 — 원작이 그렇게 만든 자리라
     // 210번도로가 다른 도로보다 훨씬 자주 나온다
-    const where = { veryTallGrass: behavior === Behavior.VERY_TALL_GRASS }
+    const where = {
+      veryTallGrass: behavior === Behavior.VERY_TALL_GRASS,
+      cycling: worldState.player.cycling,
+    }
     if (!table || !shouldEncounter(table.landRate, state, encounters.rng, where)) return
     // 나왔으면 유예 구간을 다시 연다. 배틀을 끝내고 나오자마자 또 튀어나오면
     // 풀숲을 건널 수가 없다 — 원작도 여기서 카운터를 0으로 되돌린다

@@ -27,6 +27,15 @@ export const worldState = {
      */
     surfing: false,
     /**
+     * 자전거를 타고 있는가 (`PLAYER_AVATAR_CYCLING`).
+     *
+     * 조우 관문이 40에서 70으로 오르고(§7.1) 속도가 걷기의 2~4배가 된다.
+     * ⚠️ **자전거는 아직 안 그려진다** — 몸만 빨라진다 (`actor/bike`)
+     */
+    cycling: false,
+    /** 페달을 밟기 시작한 뒤 흐른 시간(초). 단이 여기서 오른다 */
+    pedalling: 0,
+    /**
      * 괴력을 쓴 상태. 이게 서 있어야 바위가 밀린다 (`FieldMoves_SetStrengthTask`).
      *
      * 맵을 옮기면 풀린다 — 원작도 맵마다 다시 써야 한다
