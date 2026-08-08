@@ -3,17 +3,31 @@
 // 여기서 확인하는 것은 "우리가 고를 차례가 정확히 우리가 고를 수 있을 때만 온다"는
 // 것이다. 상대가 쓰러져 그쪽만 교체하는 턴처럼 우리 요청이 `wait`인 구간을 컨트롤러가
 // 삼키지 못하면, UI에 "아무것도 못 누르는 화면"이 그대로 새어 나온다.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import type { BattleAction } from '../choice'
+import type { BattleEvent } from '../events'
 import { applyEvents, emptyView } from '../view'
 import { Ball } from '../meta/capture'
+import { TrainerItems } from '../meta/trainerItems'
+import type { Item } from '../../../data/schema'
 import { BattleController } from './controller'
-import { rng, spawn } from './fixtures.testkit'
+import { movesById, rng, spawn } from './fixtures.testkit'
 
 const TURTWIG = 387
 const STARLY = 396
 const LUXRAY = 405
 const RATTATA = 19
+const BLISSEY = 242
+const ARCEUS = 493
+/** 빈 턴 칸이 쓰는 물장구의 롬 번호 */
+const SPLASH = 150
+
+const itemList = (JSON.parse(readFileSync(
+  resolve(__dirname, '../../../../public/data/items.json'), 'utf8')) as { items: Item[] }).items
+const itemTable = { get: (id: number) => itemList[id]! }
+const FULL_RESTORE = itemList.findIndex((i) => i.name === 'full_restore')
 
 /** 파티가 다 쓰러질 때까지 무작위로 두는 한 판 */
 async function play(seed: number, playerTeam: number[], foeTeam: number[]) {
@@ -207,6 +221,160 @@ describe('볼과 도망', () => {
     expect(again.events).toHaveLength(0)
     const fled = await controller.run()
     expect(fled.events).toHaveLength(0)
+    controller.destroy()
+  }, 30_000)
+})
+
+describe('시합규칙 「교체」', () => {
+  /** 상대가 둘, 우리도 둘. 첫 마리를 쓰러뜨리면 물어볼 자리가 생긴다 */
+  const two = (shift: boolean) => BattleController.start({
+    player: {
+      name: '빛나',
+      team: [spawn(LUXRAY, 60, 201, 'p1-0'), spawn(TURTWIG, 60, 202, 'p1-1')],
+    },
+    foe: { name: '상대', team: [spawn(STARLY, 5, 203, 'p2-0'), spawn(RATTATA, 5, 204, 'p2-1')] },
+    seed: [21, 22, 23, 24],
+    random: rng(21),
+    ai: { flags: 7, moves: { byId: movesById } },
+    ...(shift ? { shift: true } : {}),
+  })
+
+  /** 쓰러질 때까지 가장 센 것으로 때린다. 물어보는 자리에서 멈춘다 */
+  async function hitUntilAsked(controller: BattleController) {
+    const all: BattleEvent[] = []
+    for (let i = 0; i < 20 && !controller.ended && controller.shiftAsk === null; i++) {
+      const moves = controller.actions.filter((a) => a.type === 'move')
+      if (!moves.length) break
+      const best = [...moves].sort((a, b) =>
+        (movesById.get(b.move ?? 0)?.power ?? 0) - (movesById.get(a.move ?? 0)?.power ?? 0))[0]!
+      all.push(...(await controller.choose(best)).events)
+    }
+    return all
+  }
+
+  it('상대가 다음 마리를 내보내기 전에 묻는다', async () => {
+    const { controller } = await two(true)
+    const all = await hitUntilAsked(controller)
+    expect(controller.shiftAsk, '안 물어봤다').toBe('p2-1')
+
+    // 물어보는 시점에는 **아직 새 마리가 안 나와 있어야** 한다. 나온 뒤에 묻는
+    // 것은 원작과 순서가 반대고, 무엇을 보고 고르는지가 달라진다
+    expect(all.some((e) => e.kind === 'switch' && e.actor.name === 'p2-1'),
+      '묻기 전에 이미 나왔다').toBe(false)
+    expect(all.some((e) => e.kind === 'shift'), '물음 사건이 안 왔다').toBe(true)
+    controller.destroy()
+  }, 30_000)
+
+  it('바꾸겠다고 하면 턴을 안 쓰고 바뀐다', async () => {
+    const { controller } = await two(true)
+    await hitUntilAsked(controller)
+    const before = controller.state.turn
+
+    const answered = await controller.answerShift(true)
+    // 답한 다음에 오는 것은 "누구를 내보낼까"다 — 강제 교체와 같은 목록이다
+    const options = controller.actions
+    expect(options.length, '고를 게 안 왔다').toBeGreaterThan(0)
+    expect(options.every((a) => a.type === 'switch'), '교체 말고 다른 게 보인다').toBe(true)
+
+    const step = await controller.choose(options[0]!)
+    const between = [...answered.events, ...step.events]
+    // **공짜라는 것이 이 단언이다.** 두 교체 사이에 상대가 기술을 쓰면 턴을 쓴 것이다
+    expect(between.some((e) => e.kind === 'move'), '교체 사이에 기술이 나갔다').toBe(false)
+    expect(between.filter((e) => e.kind === 'switch').map((e) => e.actor.name).sort())
+      .toEqual(['p1-1', 'p2-1'])
+    expect(controller.state.turn, '턴이 두 번 넘어갔다').toBe(before + 1)
+    expect(controller.state.active.p1?.key).toBe('p1-1')
+    controller.destroy()
+  }, 30_000)
+
+  it('안 바꾸겠다고 하면 그대로 잇는다', async () => {
+    const { controller } = await two(true)
+    await hitUntilAsked(controller)
+    const step = await controller.answerShift(false)
+    expect(controller.shiftAsk).toBeNull()
+    expect(step.events.some((e) => e.kind === 'switch' && e.actor.name === 'p2-1'),
+      '상대가 안 나왔다').toBe(true)
+    expect(controller.state.active.p1?.key, '우리 쪽이 바뀌었다').toBe('p1-0')
+    controller.destroy()
+  }, 30_000)
+
+  it('「토너먼트」면 안 묻는다', async () => {
+    const { controller } = await two(false)
+    const all = await hitUntilAsked(controller)
+    expect(controller.shiftAsk).toBeNull()
+    expect(all.some((e) => e.kind === 'shift')).toBe(false)
+    expect(all.some((e) => e.kind === 'switch' && e.actor.name === 'p2-1'),
+      '다음 마리가 안 나왔다').toBe(true)
+    controller.destroy()
+  }, 30_000)
+})
+
+describe('트레이너의 도구', () => {
+  it('체력이 ¼ 아래로 떨어지면 회복약을 쓰고, 그 턴에는 기술을 안 쓴다', async () => {
+    // 해피너스(HP 651)를 제일 약한 기술로 천천히 깎는다. 세게 때리면 ¼ 아래로
+    // 내려가기 전에 쓰러져서 도구를 쓸 자리가 아예 안 생긴다
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [spawn(ARCEUS, 100, 301, 'p1-0')] },
+      foe: { name: '상대', team: [spawn(BLISSEY, 100, 302, 'p2-0')] },
+      seed: [1, 2, 3, 4],
+      random: rng(7),
+      ai: { flags: 7, moves: { byId: movesById } },
+      items: {
+        bag: new TrainerItems([FULL_RESTORE, FULL_RESTORE], itemTable),
+        item: (id) => itemTable.get(id),
+      },
+    })
+
+    const all: BattleEvent[] = []
+    for (let i = 0; i < 40 && !controller.ended; i++) {
+      const moves = controller.actions.filter((a) => a.type === 'move')
+      if (!moves.length) break
+      const hurts = moves.filter((a) => (movesById.get(a.move ?? 0)?.power ?? 0) > 0)
+      const weakest = [...(hurts.length ? hurts : moves)].sort((a, b) =>
+        (movesById.get(a.move ?? 0)?.power ?? 0) - (movesById.get(b.move ?? 0)?.power ?? 0))[0]!
+      all.push(...(await controller.choose(weakest)).events)
+    }
+
+    const at = all.findIndex((e) => e.kind === 'trainerItem')
+    expect(at, '도구를 한 번도 안 썼다').toBeGreaterThanOrEqual(0)
+    const used = all[at]!
+    expect(used.kind === 'trainerItem' && used.item).toBe(FULL_RESTORE)
+
+    // 실제로 차야 한다. 사건만 뜨고 체력이 그대로면 아무 일도 안 한 것이다
+    const healed = all.slice(at).find((e) => e.kind === 'heal' && e.actor.side === 'p2')
+    expect(healed, '회복 사건이 안 왔다').toBeDefined()
+
+    // 도구를 쓴 턴에는 기술이 안 나가야 한다 — 원작도 도구가 그 턴을 쓴다.
+    // 물장구가 새어 나오면 화면에 "해피너스의 물장구!"가 뜬다
+    const nextTurn = all.findIndex((e, i) => i > at && e.kind === 'turn')
+    const sameTurn = all.slice(at, nextTurn < 0 ? all.length : nextTurn)
+    expect(sameTurn.some((e) => e.kind === 'move' && e.actor.side === 'p2'),
+      '도구를 쓰고도 기술을 썼다').toBe(false)
+    // 빈 턴 칸이 로그에 새어 나오면 안 된다 — "해피너스의 물장구!"가 뜬다
+    expect(all.some((e) => e.kind === 'move' && e.move === SPLASH), '물장구가 보인다').toBe(false)
+    controller.destroy()
+  }, 60_000)
+
+  it('AI는 빈 턴 칸을 안 고른다', async () => {
+    // 상대에게도 물장구 칸이 붙어 있다. AI가 그걸 고르면 그냥 한 턴을 버린다
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [spawn(TURTWIG, 30, 311, 'p1-0')] },
+      foe: { name: '상대', team: [spawn(LUXRAY, 30, 312, 'p2-0')] },
+      seed: [5, 6, 7, 8],
+      random: rng(11),
+      ai: { flags: 7, moves: { byId: movesById } },
+      items: { bag: new TrainerItems([], itemTable), item: (id) => itemTable.get(id) },
+    })
+    const all: BattleEvent[] = []
+    for (let i = 0; i < 12 && !controller.ended; i++) {
+      const moves = controller.actions.filter((a) => a.type === 'move')
+      if (!moves.length) break
+      all.push(...(await controller.choose(moves[0]!)).events)
+    }
+    const theirs = all.filter((e) => e.kind === 'move' && e.actor.side === 'p2')
+    expect(theirs.length, '상대가 한 번도 안 움직였다').toBeGreaterThan(0)
+    expect(theirs.some((e) => e.kind === 'move' && e.move === SPLASH), 'AI가 물장구를 골랐다')
+      .toBe(false)
     controller.destroy()
   }, 30_000)
 })

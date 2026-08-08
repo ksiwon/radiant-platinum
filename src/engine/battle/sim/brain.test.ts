@@ -4,13 +4,14 @@
 // 배선이 어긋나 있으면 AI는 아무 일도 안 한다 — 그러면 배틀은 멀쩡히 돌아가고
 // 아무도 눈치 못 챈다.
 //
-// 그래서 여기서는 **같은 파티로 붙여서 승률을 잰다.** 플래그를 켠 쪽이 끈 쪽보다
-// 유의미하게 이기지 못하면, 이 AI는 아무것도 안 하고 있는 것이다.
+// 그래서 여기서는 **같은 파티로 붙여서 승률을 잰다.** AI를 꽂은 쪽이 무작위로 두는
+// 쪽보다 유의미하게 이기지 못하면, 이 AI는 아무것도 안 하고 있는 것이다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { moveFileSchema, trainerFileSchema, type Move } from '../../../data/schema'
-import { AI_FLAG } from '../ai/score'
+import { AI_FLAG, CHAMPION_FLAGS } from '../ai/score'
+import { chooseRandom } from '../choice'
 import { EXPERT_HANDLED } from '../ai/expert'
 import type { BattleAction } from '../choice'
 import { BattleController } from './controller'
@@ -46,8 +47,14 @@ function randomMove(actions: BattleAction[], random: () => number): BattleAction
   return pool[Math.floor(random() * pool.length)] ?? pool[0]!
 }
 
-/** 한 판. p2가 AI, p1이 무작위다. p2가 이겼으면 true */
-async function battle(seed: number, flags: number): Promise<boolean | null> {
+/**
+ * 한 판. p2가 AI, p1이 무작위다. p2가 이겼으면 true.
+ *
+ * `smart`가 거짓이면 p2도 무작위다 — 그게 기준선이다. 플래그를 0으로 주는 것으로는
+ * 기준선이 안 된다. `TrainerBrain`이 챔피언의 비트를 바닥으로 깔기 때문이다
+ * (`CHAMPION_FLAGS`)
+ */
+async function battle(seed: number, smart: boolean): Promise<boolean | null> {
   const random = rng(seed)
   const controller = await BattleController.start({
     player: { name: '무작위', team: team('p1', seed) },
@@ -55,7 +62,8 @@ async function battle(seed: number, flags: number): Promise<boolean | null> {
     // 못 가른다. 키만 다르다
     foe: { name: 'AI', team: team('p2', seed) },
     random,
-    ai: { flags, moves: moveTable },
+    ai: { flags: AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT, moves: moveTable },
+    ...(smart ? {} : { foePolicy: (r) => chooseRandom(r, random) }),
   }).then((r) => r.controller)
 
   try {
@@ -72,12 +80,12 @@ async function battle(seed: number, flags: number): Promise<boolean | null> {
   }
 }
 
-/** 여러 판을 돌려 p2(AI)의 승수를 센다 */
-async function winRate(flags: number, rounds: number): Promise<{ wins: number; played: number }> {
+/** 여러 판을 돌려 p2의 승수를 센다 */
+async function winRate(smart: boolean, rounds: number): Promise<{ wins: number; played: number }> {
   let wins = 0
   let played = 0
   for (let i = 0; i < rounds; i++) {
-    const won = await battle(9000 + i * 31, flags)
+    const won = await battle(9000 + i * 31, smart)
     if (won === null) continue
     played++
     if (won) wins++
@@ -87,27 +95,45 @@ async function winRate(flags: number, rounds: number): Promise<{ wins: number; p
 
 const ROUNDS = 40
 
-describe('플래그가 실제로 이긴다', () => {
-  it('BASIC+EVAL_ATTACK+EXPERT가 플래그 없는 쪽보다 잘 싸운다', async () => {
-    // 같은 파티, 같은 씨앗, 같은 상대(무작위). 다른 것은 AI 비트뿐이다.
-    // 0x00은 모든 기술이 100점이라 동점 → 무작위와 같은 수를 둔다
-    const off = await winRate(0, ROUNDS)
-    const on = await winRate(AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT, ROUNDS)
+describe('AI가 실제로 이긴다', () => {
+  it('트레이너 AI가 무작위로 두는 쪽보다 잘 싸운다', async () => {
+    // 같은 파티, 같은 씨앗, 같은 상대(무작위). 다른 것은 p2가 AI냐 무작위냐뿐이다
+    const off = await winRate(false, ROUNDS)
+    const on = await winRate(true, ROUNDS)
 
-    expect(off.played, '플래그 끈 쪽 배틀이 안 끝났다').toBeGreaterThan(ROUNDS - 5)
-    expect(on.played, '플래그 켠 쪽 배틀이 안 끝났다').toBeGreaterThan(ROUNDS - 5)
+    expect(off.played, '기준선 배틀이 안 끝났다').toBeGreaterThan(ROUNDS - 5)
+    expect(on.played, 'AI 배틀이 안 끝났다').toBeGreaterThan(ROUNDS - 5)
 
     const offRate = off.wins / off.played
     const onRate = on.wins / on.played
-    // 실측은 5할 대 7할이다. 문턱을 10%p로 둔 것은 sim 내부 난수를 우리가 못 잡아서다
+    // 실측은 5할 대 8할이다. 문턱을 10%p로 둔 것은 sim 내부 난수를 우리가 못 잡아서다
     // — 판마다 흔들리므로 "확실히 벌어진다"만 요구한다
-    expect(onRate, `플래그 끔 ${off.wins}/${off.played} · 켬 ${on.wins}/${on.played}`)
+    expect(onRate, `무작위 ${off.wins}/${off.played} · AI ${on.wins}/${on.played}`)
       .toBeGreaterThan(offRate + 0.1)
     // 기준선이 5할 언저리여야 위 비교가 의미가 있다. 여기가 8할이면 파티가 이미
     // 한쪽으로 기운 것이고, 그러면 AI가 아니라 파티를 재고 있는 것이다
     expect(offRate, `기준선 ${off.wins}/${off.played}`).toBeGreaterThan(0.3)
     expect(offRate, `기준선 ${off.wins}/${off.played}`).toBeLessThan(0.7)
   }, 120_000)
+})
+
+describe('바닥 플래그', () => {
+  it('우리가 까는 바닥이 곧 난천의 것이다', () => {
+    // "일반 트레이너라고 AI가 쉬울 필요는 없다"는 이 프로젝트의 선택이다. 그
+    // 기준을 지어내지 않고 **챔피언이 실제로 켜고 나오는 값**을 그대로 쓴다
+    const trainers = trainerFileSchema.parse(read('trainers.json')).trainers
+    expect(trainers[267]!.ai).toBe(CHAMPION_FLAGS)
+  })
+
+  it('롬 그대로면 638명이 헛수만 거른다 — 그래서 바닥을 깐다', () => {
+    const trainers = trainerFileSchema.parse(read('trainers.json')).trainers
+    const fighting = trainers.filter((t) => t.party.length > 0)
+    expect(fighting).toHaveLength(927)
+    const dumb = fighting.filter((t) => (t.ai & AI_FLAG.EXPERT) === 0)
+    expect(dumb.length).toBe(638)
+    // 바닥을 깔면 하나도 안 남는다
+    expect(fighting.filter((t) => ((t.ai | CHAMPION_FLAGS) & AI_FLAG.EXPERT) === 0)).toHaveLength(0)
+  })
 })
 
 describe('EXPERT 적용 범위', () => {

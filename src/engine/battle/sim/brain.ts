@@ -18,10 +18,12 @@ import type { BattleAction } from '../choice'
 import { legalActions } from '../choice'
 import type { BattleEvent, BattleRequest, SideId } from '../events'
 import { trainerPolicy } from '../ai/policy'
+import { CHAMPION_FLAGS } from '../ai/score'
+import { postKoSwitchIn, shouldSwitch, type BenchMon } from '../ai/switching'
 import { abilitySlotOf, genderOf, statsOf } from '../../pokemon/instance'
 import type { BattleView, ViewMon } from '../view'
 import { romMove } from './bridge'
-import type { SideMon } from './session'
+import { idleSlotOf, type SideMon } from './session'
 
 /** `loadMoves()`가 주는 표에서 AI가 쓰는 부분만 */
 export interface MoveTable {
@@ -55,8 +57,17 @@ export class TrainerBrain {
   private readonly entered = new Map<string, number>()
   private turn = 0
 
+  /**
+   * 실제로 쓰는 AI 비트. 자료 값에 챔피언의 것을 깐다 (`CHAMPION_FLAGS`).
+   *
+   * 롬 그대로면 928명 중 639명이 헛수만 거르는 수준이라, 길에서 만나는
+   * 만나는 트레이너가 반감되는 기술을 그대로 내지른다
+   */
+  private readonly flags: number
+
   constructor(options: BrainOptions) {
     this.options = options
+    this.flags = options.flags | CHAMPION_FLAGS
   }
 
   /** 상대편(우리) 쪽 표시 */
@@ -185,7 +196,7 @@ export class TrainerBrain {
     const foe = this.options.foeTeam.find((m) => m.key === foeSeen.key)
     if (!me || !foe) return null
 
-    const moves = this.toAiMoves(legalActions(request))
+    const moves = this.toAiMoves(this.choices(request))
     if (!moves || !moves.length) return null
 
     return {
@@ -202,12 +213,110 @@ export class TrainerBrain {
     }
   }
 
+  /**
+   * AI가 고를 수 있는 것.
+   *
+   * **빈 턴 칸을 뺀다.** 상대 팀에도 맨 뒤에 물장구가 한 칸 붙어 있는데
+   * (`session.ts`의 `IDLE_MOVE`) 그건 트레이너가 **도구를 쓰는 턴**에 기술을
+   * 안 쓰게 하려고 우리가 붙인 칸이다. AI가 그걸 고르면 그냥 한 턴을 버린다
+   */
+  private choices(request: BattleRequest): BattleAction[] {
+    return legalActions(request, { hiddenSlot: idleSlotOf(request) })
+  }
+
+  /**
+   * 벤치에 앉은 후보. 교체 판단이 쓴다.
+   *
+   * ⚠️ **HP는 시작값이다.** 벤치의 실제 남은 체력은 우리 쪽 개체 사본이 안 갖고
+   * 있다. 교체 판단은 타입·능력치·기술만 보므로 지금은 걸리는 데가 없지만,
+   * 체력을 보는 갈래를 나중에 붙일 때는 여기부터 고쳐야 한다
+   */
+  private benchOf(options: readonly BattleAction[]): BenchMon[] {
+    const out: BenchMon[] = []
+    for (const a of options) {
+      if (a.type !== 'switch') continue
+      const side = this.options.team.find((m) => m.key === a.key)
+      if (!side) continue
+      const moves: AiMove[] = []
+      side.mon.moves.forEach((slot, i) => {
+        const data = this.options.moves.byId.get(slot.move)
+        if (!data || slot.move === 0) return
+        moves.push({
+          slot: i + 1,
+          id: slot.move,
+          effect: data.effect,
+          power: data.power,
+          type: data.type,
+          category: data.category,
+          accuracy: data.accuracy,
+          priority: data.priority,
+        })
+      })
+      out.push({
+        index: a.index,
+        key: a.key,
+        moves,
+        mon: {
+          species: side.species.id,
+          types: side.species.types,
+          level: side.mon.level,
+          hp: side.mon.hp,
+          maxHp: side.mon.hp,
+          status: side.mon.status,
+          boosts: { atk: 0, def: 0, spa: 0, spd: 0, spe: 0, accuracy: 0, evasion: 0 },
+          ability: this.abilityOf(side, true),
+          stats: statsOf(side.mon, side.species),
+          heldItem: side.mon.heldItem,
+          gender: genderOf(side.mon.pid, side.species.genderRatio),
+          bench: 0,
+          volatiles: new Set<string>(),
+          side: new Map<string, number>(),
+        },
+      })
+    }
+    return out
+  }
+
+  /** 쓰러지기 전에 스스로 바꿀 것인가 (`TrainerAI_ShouldSwitch`) */
+  private wantsSwitch(request: BattleRequest, view: BattleView): boolean {
+    const turn = this.buildTurn(request, view)
+    if (!turn) return false
+    return shouldSwitch({
+      self: turn.self,
+      foe: turn.foe,
+      moves: turn.moves,
+      bench: this.benchOf(this.choices(request)),
+      weather: turn.weather,
+      random: this.options.random,
+    })
+  }
+
+  /**
+   * 누구를 내보낼까 (`BattleAI_PostKOSwitchIn`).
+   *
+   * **여기가 비어 있으면 챔피언이 아무나 내보낸다.** 실제로 그랬다 — 정책의
+   * 기본값이 무작위였다
+   */
+  private pickSwitch(options: BattleAction[], view: BattleView): BattleAction {
+    const fallback = options[Math.floor(this.options.random() * options.length)] ?? options[0]!
+    const foeSeen = view.active[this.foeSide]
+    const foeMon = foeSeen && this.options.foeTeam.find((m) => m.key === foeSeen.key)
+    if (!foeSeen || !foeMon) return fallback
+    const foe = this.toAiMon(foeMon, foeSeen, view, false)
+    const picked = postKoSwitchIn(this.benchOf(options), foe, view.weather)
+    if (!picked) return fallback
+    return options.find((a) => a.type === 'switch' && a.key === picked.key) ?? fallback
+  }
+
   /** 컨트롤러에 꽂을 정책. 뷰는 매번 바뀌므로 함수로 받는다 */
   policy(view: () => BattleView) {
     return trainerPolicy({
-      flags: this.options.flags,
+      flags: this.flags,
       random: this.options.random,
       build: (request) => this.buildTurn(request, view()),
+      list: (request) => this.choices(request),
+      wantsSwitch: (request) => this.wantsSwitch(request, view()),
+      chooseSwitch: (options) => this.pickSwitch(options, view()),
     })
   }
 }

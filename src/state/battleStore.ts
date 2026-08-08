@@ -6,7 +6,7 @@
 // 초기 청크에 715 kB가 실린다.
 import { create } from 'zustand'
 import {
-  loadMoves, loadSpecies, loadTrainerClasses, loadTrainerNames, loadTrainers,
+  loadItems, loadMoves, loadSpecies, loadTrainerClasses, loadTrainerNames, loadTrainers,
   type SpeciesTable,
 } from '../data/gameData'
 import type { Species } from '../data/schema'
@@ -18,6 +18,7 @@ import { Ball } from '../engine/battle/meta/capture'
 import { applyReward, expGain, learnMoves } from '../engine/battle/meta/reward'
 import { MAX_MONEY, prizeFor } from '../engine/battle/meta/prize'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
+import { TrainerItems } from '../engine/battle/meta/trainerItems'
 import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
@@ -25,8 +26,14 @@ import {
   createWild, fillPp, PARTY_MAX, statsOf, type PokemonInstance,
 } from '../engine/pokemon/instance'
 import { store as storeInBox } from '../engine/pokemon/boxes'
-import { gameLocale } from './optionsStore'
+import { gameLocale, useOptionsStore } from './optionsStore'
 import { dexSet, useSaveStore } from './saveStore'
+
+/** 컨트롤러에 넘길 트레이너 도구 묶음 */
+type ControllerItems = NonNullable<
+  Parameters<typeof BattleController['start']>[0]['items']
+>
+
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
@@ -105,6 +112,14 @@ interface BattleState {
   run: () => Promise<void>
   /** 재생기가 박자 하나분을 화면에 접는다. 이것 말고는 `view`를 건드리는 곳이 없다 */
   playEvents: (events: readonly BattleEvent[]) => void
+  /**
+   * 시합규칙 「교체」에서 물어볼 것이 남아 있으면 상대가 내보내려는 마리의 키.
+   *
+   * 이게 있는 동안 화면은 "포켓몬을 교체하겠습니까?"를 띄운다
+   */
+  shiftAsk: string | null
+  /** 그 물음에 답한다. `true`면 우리도 한 마리 바꾼다 — 턴을 안 쓴다 */
+  answerShift: (change: boolean) => Promise<void>
   /** 화면을 닫는다. 결과는 이 시점에 세이브로 넘어간다 */
   close: () => void
 }
@@ -174,6 +189,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   roster: {},
   outcome: null,
   error: null,
+  shiftAsk: null,
 
   startWild: async (wild) => {
     await open(set, get, 'wild', null, 0, ({ species, pp }) => {
@@ -200,6 +216,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
     const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
 
+    // 트레이너가 들고 나오는 회복 도구. 개수도 종류도 롬 기록 그대로다 —
+    // 라이벌은 상처약, 관장은 좋은상처약, 사천왕·챔피언은 회복약이다
+    let items: ControllerItems | undefined
+    if (trainer.items.length > 0) {
+      const bank = await loadItems()
+      items = { bag: new TrainerItems(trainer.items, bank), item: (id) => bank.get(id) }
+    }
+
     await open(set, get, 'trainer', label, prize, ({ species, pp }) => ({
       name: label || '상대',
       team: trainer.party.map((entry, i) => {
@@ -208,7 +232,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         mon.hp = statsOf(mon, sp).hp
         return ready(fillPp(mon, pp), sp, foeKey(i))
       }),
-    }), trainer.ai, options)
+    }), trainer.ai, options, items)
+  },
+
+  answerShift: async (change) => {
+    if (!current?.shiftAsk) return
+    await advance(set, get, (c) => c.answerShift(change))
   },
 
   choose: async (action) => {
@@ -276,6 +305,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     set({
       phase: 'off', kind: 'wild', foeName: null, prize: 0,
       view: null, truth: null, actions: [], events: [], roster: {}, outcome: null,
+      shiftAsk: null,
     })
   },
 }))
@@ -300,11 +330,18 @@ async function advance(
   set({ actions: [] })
 
   const result = await step(controller)
-  const events = [...result.events]
 
-  trackParticipants(events)
-  // 쓰러뜨린 만큼 보상을 준다. 여러 마리가 한 턴에 쓰러질 수 있다
+  trackParticipants(result.events)
+  // 쓰러뜨린 만큼 보상을 준다. 여러 마리가 한 턴에 쓰러질 수 있다.
+  //
+  // ⚠️ **쓰러진 그 자리에 끼워 넣는다.** 뒤에 몰아 붙이면 상대의 다음 마리가
+  // 이미 나온 뒤에 "경험치를 얻었다"가 뜬다 — `controller.advance`가 상대의
+  // 교체까지 삼키고 오기 때문에 `result.events`에는 등장 사건이 이미 들어 있다.
+  // 원작은 쓰러뜨린 뒤 경험치·레벨업·기술 습득을 다 보여주고 나서 다음 마리를
+  // 내보낸다 (`BattleController_CheckExpPayout` → `BattleScript_SwitchIn`)
+  const events: BattleEvent[] = []
   for (const e of result.events) {
+    events.push(e)
     if (e.kind === 'faint' && e.actor.side === 'p2') {
       events.push(...grantRewards(get(), e.actor.name, controller))
     }
@@ -321,6 +358,7 @@ async function advance(
     actions: controller.actions,
     phase: ended ? 'over' : 'running',
     outcome: controller.finish,
+    shiftAsk: controller.shiftAsk,
   })
 }
 
@@ -405,11 +443,13 @@ async function open(
   /** 트레이너 AI 비트. 안 주면 상대는 무작위로 둔다 — 야생이 그렇다 */
   aiFlags?: number,
   rules?: BattleRules,
+  items?: ControllerItems,
 ): Promise<void> {
   if (get().phase !== 'off') return
   set({
     phase: 'loading', kind, foeName, prize,
     view: null, truth: null, actions: [], events: [], roster: {}, outcome: null, error: null,
+    shiftAsk: null,
   })
 
   try {
@@ -446,6 +486,10 @@ async function open(
       // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
       ...(rules?.noCrit === true ? { noCrit: true } : {}),
+      ...(items ? { items } : {}),
+      // 시합규칙 「교체」는 트레이너전에만 뜻이 있다 — 야생은 다음 마리가 없다
+      ...(kind === 'trainer' && useOptionsStore.getState().battleRule === 0
+        ? { shift: true } : {}),
     })
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
@@ -458,6 +502,7 @@ async function open(
       events: step.events,
       actions: controller.actions,
       roster,
+      shiftAsk: controller.shiftAsk,
     })
   } catch (e) {
     // 배틀 청크를 못 받은 경우(오프라인, 캐시 실패)를 화면이 알아야 한다

@@ -41,11 +41,18 @@ beforeEach(() => {
  * ⚠️ "첫 기술"을 고르면 안 된다 — 그 칸이 광합성이면 아무리 때려도 상대가 안
  * 쓰러진다. 이 프로젝트에서 이미 한 번 그렇게 틀렸다
  */
-async function playToEnd(limit = 60): Promise<number> {
+async function playToEnd(limit = 60, shift = false): Promise<number> {
   const moves = await loadMoves()
   const power = (id: number | null) => (id === null ? 0 : moves.byId.get(id)?.power ?? 0)
   let steps = 0
   while (useBattleStore.getState().phase === 'running' && steps < limit) {
+    // 시합규칙 「교체」는 상대가 다음 마리를 내보내기 전에 묻는다. 답하지 않으면
+    // 고를 것이 안 오므로 여기서 막힌다
+    if (useBattleStore.getState().shiftAsk !== null) {
+      await useBattleStore.getState().answerShift(shift)
+      steps++
+      continue
+    }
     const actions = useBattleStore.getState().actions
     if (!actions.length) break
     const attacks = actions.filter((a) => a.type === 'move')
@@ -350,6 +357,34 @@ describe('트레이너전', () => {
       .filter((e) => e.kind === 'switch' && e.actor.side === 'p2')
       .map((e) => (e.kind === 'switch' ? e.actor.name : '')))
     expect(sent.size, '상대가 한 마리도 안 바뀌었다').toBe(6)
+    useBattleStore.getState().close()
+  }, 60_000)
+
+  it('경험치가 다음 마리가 나오기 전에 들어온다', async () => {
+    // 원작은 쓰러뜨린 자리에서 경험치·레벨업·기술 습득을 다 보여주고 나서 다음
+    // 마리를 내보낸다. 컨트롤러는 상대의 교체까지 삼키고 오므로, 보상을 사건
+    // 목록 **뒤에** 붙이면 새 상대가 이미 선 뒤에 "경험치를 얻었다"가 뜬다
+    await giveStrongParty()
+    await useBattleStore.getState().startTrainer(CYNTHIA)
+    await playToEnd(120)
+    expect(useBattleStore.getState().outcome).toBe('win')
+
+    const events = useBattleStore.getState().events
+    let checked = 0
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i]!
+      if (e.kind !== 'faint' || e.actor.side !== 'p2') continue
+      // 이 자리 다음에 상대가 새로 서기 전까지의 구간
+      let until = events.length
+      for (let j = i + 1; j < events.length; j++) {
+        const n = events[j]!
+        if (n.kind === 'switch' && n.actor.side === 'p2') { until = j; break }
+      }
+      const gave = events.slice(i + 1, until).some((n) => n.kind === 'reward')
+      expect(gave, `${String(i)}번째 쓰러짐 뒤에 경험치가 없다`).toBe(true)
+      checked++
+    }
+    expect(checked, '상대가 한 마리도 안 쓰러졌다').toBe(6)
     useBattleStore.getState().close()
   }, 60_000)
 

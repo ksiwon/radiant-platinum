@@ -16,12 +16,23 @@ export interface BattleNames {
   moves: string[]
   /** 특성 번호로 색인 */
   abilities: string[]
+  /** 도구 번호로 색인. 트레이너가 도구를 쓸 때만 본다 */
+  items: string[]
 }
 
 export interface TextContext {
   names: BattleNames
   /** 자리 → 화면에 쓸 이름. "모부기" / "야생의 찌르꼬" / "상대 찌르꼬" */
   label: (actor: Actor) => string
+  /** 상대 트레이너 이름("체육관 관장 동관"). 야생이면 null */
+  foeName?: string | null
+  /**
+   * 자리 표시 없는 이름. "상대 자철석"이 아니라 그냥 "자철석"이다.
+   *
+   * 아직 안 나온 마리를 가리킬 때 쓴다 — 「교체」의 "○○를 내보내려고 한다"가
+   * 그렇다. 그 자리에 "상대"를 또 붙이면 트레이너 이름과 겹쳐 읽힌다
+   */
+  bare?: (key: string) => string
 }
 
 /** 상태이상의 이름씨. "마비가 나았다"처럼 명사로 쓰이는 자리 */
@@ -191,6 +202,18 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
 
     case 'prize':
       return `상금으로 ${e.money}엔을 받았다!`
+
+    case 'shift': {
+      const who = ctx.bare?.(e.key) ?? ctx.label({ slot: '', side: 'p2', name: e.key })
+      const trainer = ctx.foeName ?? '상대'
+      return `${withTopic(trainer)} ${withObject(who)} 내보내려고 한다.`
+    }
+
+    case 'trainerItem': {
+      const trainer = ctx.foeName ?? '상대'
+      const item = names.items[e.item] ?? `#${e.item}`
+      return `${withTopic(trainer)} ${withObject(item)} 썼다!`
+    }
 
     case 'tie':
       return '무승부다!'

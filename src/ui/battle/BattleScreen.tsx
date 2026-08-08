@@ -13,7 +13,9 @@ import type { BattleAction } from '../../engine/battle/choice'
 import type { Actor } from '../../engine/battle/events'
 import { buildBeats } from '../../engine/battle/playback'
 import type { ViewMon } from '../../engine/battle/view'
-import { loadLabels, loadMoveNames, loadMoves, loadSpeciesNames } from '../../data/gameData'
+import {
+  loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpeciesNames,
+} from '../../data/gameData'
 import type { Move } from '../../data/schema'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
@@ -52,10 +54,13 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
   const locale = useGameLocale()
   useEffect(() => {
     let alive = true
-    void Promise.all([loadSpeciesNames(locale), loadMoveNames(locale), loadLabels(locale), loadMoves()])
-      .then(([species, moves, labels, table]) => {
+    void Promise.all([
+      loadSpeciesNames(locale), loadMoveNames(locale), loadLabels(locale), loadMoves(),
+      loadItemNames(locale),
+    ])
+      .then(([species, moves, labels, table, items]) => {
         if (!alive) return
-        setNames({ species, moves, abilities: labels.abilities })
+        setNames({ species, moves, abilities: labels.abilities, items })
         setExtras({ types: labels.types, move: (id) => table.byId.get(id) })
       })
       .catch(() => { /* 이름을 못 받으면 아래에서 영어 원문으로 떨어진다 */ })
@@ -80,6 +85,8 @@ export function BattleScreen() {
   const run = useBattleStore((s) => s.run)
   const close = useBattleStore((s) => s.close)
   const playEvents = useBattleStore((s) => s.playEvents)
+  const shiftAsk = useBattleStore((s) => s.shiftAsk)
+  const answerShift = useBattleStore((s) => s.answerShift)
   const { names, extras } = useNames()
   const [page, setPage] = useState<MenuPage>('root')
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
@@ -110,9 +117,15 @@ export function BattleScreen() {
     return kind === 'wild' ? `야생의 ${base}` : `상대 ${base}`
   }, [roster, names, kind])
 
+  /** 자리 표시 없는 이름. 아직 안 나온 마리를 부를 때 쓴다 */
+  const bare = useMemo(() => (key: string) => {
+    const entry: RosterEntry | undefined = roster[key]
+    return entry?.nickname ?? names?.species[entry?.species ?? -1] ?? key
+  }, [roster, names])
+
   const beats = useMemo(() => {
     if (!names) return []
-    const out = buildBeats(events, (e) => battleText(e, { names, label }))
+    const out = buildBeats(events, (e) => battleText(e, { names, label, foeName, bare }))
     // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다
     if (kind === 'trainer' && foeName) {
       out.unshift({ text: `${withSubject(foeName)} 승부를 걸어왔다!`, events: [], hold: 30 })
@@ -123,7 +136,7 @@ export function BattleScreen() {
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
     if (end !== null) out.push({ text: end, events: [], hold: 30 })
     return out
-  }, [events, names, label, outcome, kind, foeName])
+  }, [events, names, label, bare, outcome, kind, foeName])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
   const script = useBattlePlayback(beats, playEvents)
@@ -186,6 +199,13 @@ export function BattleScreen() {
                   <span className={css.label}>계속</span>
                 </span>
               </button>
+            ) : shiftAsk !== null ? (
+              // 시합규칙 「교체」 — 상대가 다음 마리를 내보내기 전에 묻는다.
+              // 여기서 바꾸면 턴을 안 쓴다
+              <YesNo
+                question={`포켓몬을 교체하겠습니까?`}
+                onPick={(yes) => void answerShift(yes)}
+              />
             ) : actions.length === 0 ? (
               <div className={css.waiting}>…</div>
             ) : forced || page === 'party' ? (
@@ -336,6 +356,42 @@ function RootMenu(
           style={{ ['--tint' as string]: entry.tint }}
           onClick={entry.go}
           disabled={!entry.on}
+        >
+          {i === cursor && <span className={css.caret} aria-hidden />}
+          <span className={css.face}>
+            <span className={css.dot} aria-hidden />
+            <span className={css.labelCol}>
+              <span className={css.label}>{entry.label}</span>
+              <span className={css.subLine}>{entry.sub}</span>
+            </span>
+          </span>
+        </button>
+      ))}
+    </>
+  )
+}
+
+/**
+ * 예·아니오 두 칸. 시합규칙 「교체」가 쓴다.
+ *
+ * 커서를 **"아니오"에 두고 시작한다** — 원작이 그렇다. 빨리 넘기려고 Z를
+ * 연타하는 사람이 뜻하지 않게 교체 화면으로 끌려가지 않는다
+ */
+function YesNo({ question, onPick }: { question: string; onPick: (yes: boolean) => void }) {
+  const entries = [
+    { label: '아니오', sub: '그대로 싸운다', tint: css.TINT.run, yes: false },
+    { label: '예', sub: '포켓몬을 고른다', tint: css.TINT.party, yes: true },
+  ]
+  const cursor = useListCursor(entries.length, (i) => { onPick(entries[i]!.yes) })
+  return (
+    <>
+      <div className={css.waiting}>{question}</div>
+      {entries.map((entry, i) => (
+        <button
+          key={entry.label}
+          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+          style={{ ['--tint' as string]: entry.tint }}
+          onClick={() => { onPick(entry.yes) }}
         >
           {i === cursor && <span className={css.caret} aria-hidden />}
           <span className={css.face}>

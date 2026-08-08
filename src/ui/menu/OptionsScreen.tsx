@@ -3,10 +3,10 @@
 // 항목도 값도 `options_menu` 뱅크(us#220)에서 그대로 온다. 우리가 이름을 새로
 // 짓지 않는다.
 //
-// 실제로 먹는 것: **이야기의 속도**(대사창 인쇄기), **배틀 애니메이션**(기술
-// 연출과 카메라 샷을 통째로 끈다 — 원작의 그 항목이 하는 일이다), **배틀 진행**,
-// **사운드**, **시점**. 시합 룰만 아직 걸 데가 없어서 값만 남는다 — 있는 척하지
-// 않고 "아직"이라고 적어 둔다.
+// 여섯 항목이 다 먹는다: **이야기의 속도**(대사창 인쇄기), **배틀 애니메이션**
+// (기술 연출과 카메라 샷을 통째로 끈다 — 원작의 그 항목이 하는 일이다),
+// **시합규칙**(「교체」면 상대가 다음 마리를 내보내기 전에 우리도 바꿀지 묻는다),
+// **사운드**, 그리고 우리가 연 **배틀 진행**·**시점**.
 //
 // 아래 네 줄은 원작에 없다. **배틀 진행**은 원작이 느리다고 오래 비판받은 대목을
 // 우리가 손댈 수 있게 연 자리고(원작 길이는 `playback.ts`에 그대로 있다),
@@ -38,8 +38,6 @@ interface Row {
   values: string[]
   at: number
   help: string
-  /** 값은 남지만 아직 아무 데도 안 걸린 항목 */
-  inert?: boolean
   /** 원작에 없는 항목 */
   ours?: boolean
 }
@@ -89,7 +87,7 @@ export function OptionsScreen() {
     {
       key: 'battleRule', label: at(OPTIONS_TEXT.labels.battleRule),
       values: pick(OPTIONS_TEXT.battleRule), at: options.battleRule,
-      help: at(OPTIONS_TEXT.help.battleRule), inert: true,
+      help: at(OPTIONS_TEXT.help.battleRule),
     },
     {
       key: 'sound', label: at(OPTIONS_TEXT.labels.sound),
@@ -190,7 +188,6 @@ export function OptionsScreen() {
                 <span className={own.rowLabel}>
                   {r.label}
                   {r.ours && <span className={own.ours}>{our('추가', 'ADDED', '追加')}</span>}
-                  {r.inert && <span className={own.ours}>{our('아직', 'NOT YET', 'まだ')}</span>}
                 </span>
                 <span className={own.values}>
                   {r.values.map((v, k) => (

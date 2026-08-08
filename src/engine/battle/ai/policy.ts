@@ -32,6 +32,19 @@ export interface PolicyOptions {
   build: TurnBuilder
   random: () => number
   chooseSwitch?: SwitchChooser
+  /**
+   * 후보를 뽑는 함수. 안 주면 `legalActions` 그대로.
+   *
+   * 상대 팀에도 **빈 턴 칸**이 붙어 있다(도구를 쓰는 턴에 기술을 안 쓰려고).
+   * AI가 그 칸을 고르면 물장구만 치므로 부르는 쪽이 빼고 넘긴다
+   */
+  list?: (request: BattleRequest) => BattleAction[]
+  /**
+   * 쓰러지기 전에 스스로 바꿀 것인가 (`TrainerAI_ShouldSwitch`).
+   *
+   * 안 주면 안 바꾼다 — 쓰러질 때까지 버틴다
+   */
+  wantsSwitch?: (request: BattleRequest) => boolean
 }
 
 /**
@@ -45,14 +58,22 @@ export function trainerPolicy(options: PolicyOptions) {
   const { flags, build, random } = options
   const chooseSwitch = options.chooseSwitch
     ?? ((opts: BattleAction[]) => opts[Math.floor(random() * opts.length)] ?? opts[0]!)
+  const list = options.list ?? ((r: BattleRequest) => legalActions(r))
 
   return (request: BattleRequest): BattleAction | null => {
-    const actions = legalActions(request)
+    const actions = list(request)
     if (!actions.length) return null
 
     const moves = actions.filter((a): a is Extract<BattleAction, { type: 'move' }> =>
       a.type === 'move')
     if (!moves.length) return chooseSwitch(actions, request)
+
+    // 쓰러지기 전에 물러설 것인가. 원작은 기술 점수를 매기기 **전에** 이걸 묻는다
+    // (`TrainerAI_PickCommand`가 `ShouldSwitch`를 맨 앞에 둔다)
+    const bench = actions.filter((a) => a.type === 'switch')
+    if (bench.length > 0 && options.wantsSwitch?.(request) === true) {
+      return chooseSwitch(bench, request)
+    }
 
     const turn = build(request)
     if (!turn || turn.moves.length !== moves.length) {

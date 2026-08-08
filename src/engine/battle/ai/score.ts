@@ -34,6 +34,18 @@ export const AI_FLAG = {
   PRIORITIZE_EXTREMES: 1 << 5,
 } as const
 
+/**
+ * 챔피언이 켜고 나오는 것. `trainers.json`에서 난천(#267)의 `ai`가 정확히 7이다.
+ *
+ * ⚠️ **이 값을 모든 트레이너의 바닥으로 깐다** (`TrainerBrain`). 파티를 가진
+ * 927명 중 289명만 EXPERT를 갖고 638명은 헛수만 거른다 — 그래서 잡트레이너는 반감되는
+ * 기술을 그대로 내지른다. 잡트레이너라고 쉬울 이유가 없다는 것이 이 프로젝트의
+ * 선택이고, 롬 값을 덮는 곳은 여기 하나뿐이다.
+ *
+ * 자료에 더 켜져 있으면 그쪽을 남긴다 — 오엽(#264)의 `SETUP_FIRST_TURN`이 그렇다
+ */
+export const CHAMPION_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT
+
 /** 원작에 있지만 플래티넘 트레이너 데이터에서 한 번도 안 켜지는 플래그 */
 export const UNUSED_FLAGS = {
   BATON_PASS: 1 << 6,

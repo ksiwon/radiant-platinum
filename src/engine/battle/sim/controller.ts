@@ -14,12 +14,16 @@ import type { BattleEvent, BattleRequest, FinalMon, SideId } from '../events'
 import type { BallId, CatchContext } from '../meta/capture'
 import { throwBall } from '../meta/capture'
 import { tryEscape } from '../meta/escape'
+import { healAmount, type TrainerItems } from '../meta/trainerItems'
+import type { Item } from '../../../data/schema'
 import { statsOf } from '../../pokemon/instance'
 import { applyEvent, emptyView, type BattleView } from '../view'
 import { parseLines } from './protocol'
 import { romMove } from './bridge'
 import { TrainerBrain, type MoveTable } from './brain'
-import { BattleSession, IDLE_MOVE_ID, type BattleOptions, type SideMon } from './session'
+import {
+  BattleSession, IDLE_MOVE, idleSlotOf, type BattleOptions, type SideMon,
+} from './session'
 
 /** 배틀이 어떻게 끝났는가. 승패 말고도 포획·도망이 있다 */
 export type BattleFinish = 'win' | 'loss' | 'caught' | 'fled' | null
@@ -46,10 +50,27 @@ export interface ControllerOptions extends BattleOptions {
    * 그쪽이 이긴다 — 테스트가 정책만 바꿔 끼울 수 있어야 해서다
    */
   ai?: { flags: number; moves: MoveTable }
+  /**
+   * 시합규칙 「교체」. 상대가 다음 마리를 내보내기 전에 우리도 바꿀지 묻는다.
+   *
+   * 안 주면 「토너먼트」다 — 안 묻고 그대로 잇는다
+   */
+  shift?: boolean
+  /**
+   * 트레이너가 쓰는 도구 (`trainers.json`의 `items`). 야생에는 없다.
+   *
+   * `bag`이 개수를 들고 있고, `item`은 회복량을 읽는 데 쓴다
+   */
+  items?: { bag: TrainerItems; item: (id: number) => Item }
 }
 
 /** 한 걸음 안에서 sim과 주고받는 횟수의 상한. 넘으면 정책이 못 고르고 있는 것이다 */
 const MAX_EXCHANGES = 64
+
+/** 빈 턴 칸이 쓰는 기술의 롬 번호 (`IDLE_MOVE` = 물장구) */
+const IDLE_ROM_MOVE = romMove(IDLE_MOVE)
+/** 물장구가 그 뒤에 내는 "아무 일도 일어나지 않았다" 줄 */
+const IDLE_ACTIVATE = `move: ${IDLE_MOVE}`
 
 export class BattleController {
   private readonly session: BattleSession
@@ -65,12 +86,30 @@ export class BattleController {
   private escapeAttempts = 0
   /** 트레이너 AI. 없으면(야생) null이고 상대는 무작위로 둔다 */
   private readonly brain: TrainerBrain | null
+  /** 시합규칙 「교체」인가 */
+  private readonly shift: boolean
+  private readonly items: ControllerOptions['items']
+  /**
+   * 「교체」 규칙에서 답을 기다리는 중. 상대가 내보내려고 골라 둔 명령이다.
+   *
+   * 명령을 **미리 받아 두는** 이유는 원작이 "상대는 ○○를 내보내려고 한다"까지
+   * 말해 주고 묻기 때문이다 — 무엇이 나올지 모르면 바꿀지 말지 정할 수가 없다
+   */
+  private asking: { action: BattleAction; key: string } | null = null
+  /**
+   * 우리가 일부러 비운 턴. 그쪽에서 오는 물장구 한 번을 삼킨다 (`hushIdle`)
+   */
+  private readonly spent: Record<SideId, boolean> = { p1: false, p2: false }
 
   private constructor(options: ControllerOptions) {
-    this.session = new BattleSession(options)
+    // 상대의 빈 턴 칸은 **도구를 들었을 때만** 붙인다. 야생에 붙이면 무작위로
+    // 두는 상대가 다섯 칸 중 하나로 물장구를 친다
+    this.session = new BattleSession({ ...options, foeIdle: options.items !== undefined })
     this.playerTeam = options.player.team
     this.foeTeam = options.foe.team
     this.random = options.random ?? Math.random
+    this.shift = options.shift === true
+    this.items = options.items
     this.brain = options.ai
       ? new TrainerBrain({
         flags: options.ai.flags,
@@ -82,7 +121,8 @@ export class BattleController {
       })
       : null
     const fromBrain = this.brain?.policy(() => this.view)
-    this.foePolicy = options.foePolicy ?? fromBrain ?? ((r) => chooseRandom(r, this.random))
+    this.foePolicy = options.foePolicy ?? fromBrain
+      ?? ((r) => chooseRandom(r, this.random, { hiddenSlot: idleSlotOf(r) }))
   }
 
   /** 배틀을 열고 첫 등판까지 진행한다 */
@@ -123,18 +163,46 @@ export class BattleController {
    * 발버둥만 남으면 목록이 한 칸으로 줄어 이 칸이 사라진다 — 그때는 null이다
    */
   private get idleSlot(): number | null {
-    const moves = this.request.p1?.active?.[0]?.moves
-    if (!moves || moves.length < 2) return null
-    return moves[moves.length - 1]!.id === IDLE_MOVE_ID ? moves.length : null
+    return idleSlotOf(this.request.p1)
   }
 
   /** 볼·도망으로 우리 턴을 비운다. 비울 수 없으면 false */
   private spendTurn(): boolean {
     const slot = this.idleSlot
     if (slot === null) return false
-    this.session.send(`p1 move ${slot}`)
+    this.session.send(`p1 move ${String(slot)}`)
+    this.spent.p1 = true
     this.request.p1 = null
     return true
+  }
+
+  /**
+   * 우리가 일부러 버린 턴을 사건 줄기에서 지운다.
+   *
+   * 빈 턴 칸은 물장구다(`session.ts`의 `IDLE_MOVE`). 볼을 던지거나 트레이너가
+   * 도구를 쓰면 그 칸으로 턴을 비우는데, 그대로 두면 화면에 "모부기의 물장구!"와
+   * "하지만 아무 일도 일어나지 않았다!"가 뜬다 — 우리가 만든 칸이지 누가 고른
+   * 수가 아니다.
+   *
+   * **진짜 물장구는 안 지운다.** 우리가 보낸 쪽의 것만, 보낸 만큼만 지운다
+   */
+  private hushIdle(events: readonly BattleEvent[]): BattleEvent[] {
+    const out: BattleEvent[] = []
+    let tail = false
+    for (const e of events) {
+      if (e.kind === 'move' && e.move === IDLE_ROM_MOVE && this.spent[e.actor.side]) {
+        this.spent[e.actor.side] = false
+        tail = true
+        continue
+      }
+      if (tail && e.kind === 'other' && e.cmd === '-activate' && e.args.includes(IDLE_ACTIVATE)) {
+        tail = false
+        continue
+      }
+      tail = false
+      out.push(e)
+    }
+    return out
   }
 
   /** 쓰러져서 교체만 골라야 하는 턴인가. UI가 "도망" 버튼을 막는 데 쓴다 */
@@ -262,7 +330,7 @@ export class BattleController {
     for (let i = 0; i < MAX_EXCHANGES; i++) {
       const lines = await this.session.settle()
 
-      const seen = parseLines(lines.p1)
+      const seen = this.hushIdle(parseLines(lines.p1))
       for (const e of seen) {
         if (e.kind === 'request') this.request.p1 = e.request
         else events.push(e)
@@ -280,17 +348,98 @@ export class BattleController {
       if (legalActions(this.request.p1).length > 0) break
 
       const foe = this.request.p2
+      // 트레이너가 도구를 쓰는 자리. 기술을 고를 수 있는 턴에만 열린다 —
+      // 원작도 쓰러져서 갈아타는 턴에는 도구를 안 쓴다
+      if (foe && foe.forceSwitch?.[0] !== true) {
+        const used = this.useItem(foe)
+        if (used) { events.push(used); this.request.p2 = null; continue }
+      }
       const action = foe ? this.foePolicy(foe) : null
       if (!action) {
         // 양쪽 다 고를 게 없다. 정산이 아직 안 끝났을 수 있으니 한 틱 더 준다
         if (lines.p1.length === 0 && lines.p2.length === 0) break
         continue
       }
+      // 시합규칙 「교체」 — 상대가 새로 내보내려는 참이면 우리도 바꿀지 묻는다
+      if (this.shift && action.type === 'switch'
+        && foe?.forceSwitch?.[0] === true && this.canShift()) {
+        this.asking = { action, key: action.key }
+        events.push({ kind: 'shift', key: action.key })
+        break
+      }
       this.session.send(`p2 ${encodeAction(action)}`)
       this.request.p2 = null
     }
 
     return { events, view: this.view }
+  }
+
+  /**
+   * 「교체」에 답할 것이 남아 있는가. 있으면 상대가 내보내려는 마리의 키다.
+   *
+   * 화면은 이게 null이 아닌 동안 "포켓몬을 교체하겠습니까?"를 띄운다
+   */
+  get shiftAsk(): string | null {
+    return this.asking?.key ?? null
+  }
+
+  /**
+   * 「교체」에 답한다. `true`면 우리도 한 마리 바꾼다 — **턴을 안 쓴다**.
+   *
+   * 바꾸겠다고 하면 그 다음에 오는 것은 "누구를 내보낼까"다. 양쪽이 같은 묶음에서
+   * 고르므로, 답한 뒤 화면에는 강제 교체와 같은 목록이 뜬다
+   */
+  async answerShift(change: boolean): Promise<BattleStep> {
+    const ask = this.asking
+    if (!ask) return { events: [], view: this.view }
+    this.asking = null
+    if (change) this.session.freeSwitch('p1')
+    this.session.send(`p2 ${encodeAction(ask.action)}`)
+    this.request.p2 = null
+    return this.advance()
+  }
+
+  /** 우리 쪽이 지금 공짜로 바꿀 수 있는가 — 서 있는 애가 멀쩡하고 벤치가 남았을 때 */
+  private canShift(): boolean {
+    const key = this.view.active.p1?.key
+    if (key === undefined) return false
+    const mine = this.session.results('p1')
+    const active = mine.find((r) => r.key === key)
+    if (!active || active.fainted) return false
+    return mine.some((r) => r.key !== key && !r.fainted)
+  }
+
+  /**
+   * 트레이너가 도구를 쓴다. 썼으면 사건을 돌려주고 그쪽 턴을 비운다.
+   *
+   * 체력은 **sim의 실제 값**을 본다. `view`의 상대 체력은 백분율이라(프로토콜이
+   * 그렇게 준다) "상처약 20칸"과 비교할 수 있는 눈금이 아니다
+   */
+  private useItem(request: BattleRequest): BattleEvent | null {
+    const kit = this.items
+    const seen = this.view.active.p2
+    if (!kit || kit.bag.left === 0 || !seen) return null
+    // 턴을 비울 칸이 없으면 도구도 못 쓴다. PP가 다 떨어져 발버둥만 남은 때다
+    const slot = idleSlotOf(request)
+    if (slot === null) return null
+
+    const team = this.session.results('p2')
+    const real = team.find((r) => r.key === seen.key)
+    if (!real || real.fainted) return null
+    const target = {
+      hp: real.hp,
+      maxHp: real.maxHp,
+      status: real.status,
+      confused: seen.volatiles.has('confusion'),
+    }
+    const use = kit.bag.decide(target, team.filter((r) => !r.fainted).length)
+    if (!use) return null
+
+    const item = kit.item(use.item)
+    this.session.applyItem('p2', healAmount(use, target, item), use.kind !== 'hp')
+    this.session.send(`p2 move ${String(slot)}`)
+    this.spent.p2 = true
+    return { kind: 'trainerItem', key: seen.key, item: use.item }
   }
 
   destroy(): void {

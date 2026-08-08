@@ -205,6 +205,14 @@ export type BattleEvent =
     }
   /** 트레이너전에서 상금을 받았다 */
   | { kind: 'prize'; money: number }
+  /**
+   * 시합규칙 「교체」 — 상대가 다음 마리를 내보내려 한다. 우리도 바꿀지 묻는다.
+   *
+   * `key`는 상대가 **내보내려는** 마리다. 아직 안 나왔으므로 화면의 자리에는 없다
+   */
+  | { kind: 'shift'; key: string }
+  /** 트레이너가 도구를 썼다. `item`은 도구 번호, `key`는 먹인 마리 */
+  | { kind: 'trainerItem'; key: string; item: number }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {

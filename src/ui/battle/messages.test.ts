@@ -12,6 +12,7 @@ const names: BattleNames = {
   species: [], // 이름은 label이 이미 풀어 준다
   moves: (() => { const m: string[] = []; m[33] = '몸통박치기'; m[73] = '씨뿌리기'; return m })(),
   abilities: (() => { const a: string[] = []; a[22] = '위협'; return a })(),
+  items: (() => { const i: string[] = []; i[23] = '회복약'; i[26] = '좋은상처약'; return i })(),
 }
 
 /** 받침이 있는 이름(팬텀)과 없는 이름(모부기)을 일부러 섞는다 */

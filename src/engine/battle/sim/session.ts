@@ -7,7 +7,7 @@
 // ⚠️ 이 폴더는 지연 로딩 경계다 (bridge.ts 주석 참고). 오버월드에서 정적 import 금지.
 import { BattleStreams, Teams } from '@pkmn/sim'
 import type { Species } from '../../../data/schema'
-import type { FinalMon, SideId } from '../events'
+import type { BattleRequest, FinalMon, SideId } from '../events'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simMove, simSpecies } from './bridge'
@@ -47,6 +47,18 @@ export interface SideMon {
  */
 export const IDLE_MOVE = 'Splash'
 export const IDLE_MOVE_ID = 'splash'
+
+/**
+ * 요청에 붙어 있는 빈 턴 칸(1부터). 없으면 null.
+ *
+ * 화면도(플레이어가 못 고르게) AI도(후보에서 빼게) 같은 자리를 봐야 해서
+ * 여기 한 번만 적는다. PP가 다 떨어져 발버둥만 남으면 칸이 하나라 null이다
+ */
+export function idleSlotOf(request: BattleRequest | null): number | null {
+  const moves = request?.active?.[0]?.moves
+  if (!moves || moves.length < 2) return null
+  return moves[moves.length - 1]!.id === IDLE_MOVE_ID ? moves.length : null
+}
 
 /**
  * 우리 개체를 sim의 팀 항목으로.
@@ -115,6 +127,13 @@ export interface BattleOptions {
    * 않게 하는 장치다. 잡기 튜토리얼도 같은 자리에 걸린다
    */
   noCrit?: boolean
+  /**
+   * 상대에게도 맨 뒤에 빈 턴 칸을 붙인다 (`IDLE_MOVE`).
+   *
+   * **도구를 든 트레이너에게만 붙인다.** 도구를 쓰는 턴에 기술을 안 쓰게 하는
+   * 자리인데, 야생에 붙이면 무작위로 두는 상대가 다섯 칸 중 하나로 물장구를 친다
+   */
+  foeIdle?: boolean
 }
 
 /** 한 번 정산에서 각 쪽이 받은 줄 */
@@ -159,14 +178,17 @@ export class BattleSession {
     this.write(`>start ${JSON.stringify(spec)}`)
     this.write(`>player p1 ${JSON.stringify({
       name: options.player.name,
-      // 우리만 빈 턴이 필요하다. 상대는 볼을 던지지도 도망치지도 않는다
       team: Teams.pack(options.player.team.map((m) => toSet(m, true))),
     })}`)
     // p2가 들어오는 순간 배틀이 시작되고 첫 `|request|`가 나간다. PP는 그 전에
     // 맞춰야 요청에 실린 숫자부터 우리 값이다 (실측으로 확인했다)
     if (options.basePp) this.syncPp(0, options.player.team, options.basePp)
+    // 도구를 든 트레이너에게도 빈 턴 칸이 필요하다 — **도구를 쓰는 턴**에
+    // 기술을 안 쓴다. AI는 이 칸을 못 본다(`idleSlotOf`로 후보에서 뺀다)
+    const foeIdle = options.foeIdle === true
     this.write(`>player p2 ${JSON.stringify({
-      name: options.foe.name, team: Teams.pack(options.foe.team.map((m) => toSet(m, false))),
+      name: options.foe.name,
+      team: Teams.pack(options.foe.team.map((m) => toSet(m, foeIdle))),
     })}`)
     if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
     if (options.noCrit) this.blockCrits()
@@ -227,6 +249,49 @@ export class BattleSession {
       const idle = p.moveSlots[kept.length]
       if (idle && kept.length > 0 && kept.every((s) => s.pp <= 0)) idle.pp = 0
     }
+  }
+
+  /**
+   * 쓰러지지도 않은 쪽에 **공짜 교체 한 번**을 준다. 시합규칙 「교체」가 쓴다.
+   *
+   * 원작은 상대 트레이너가 다음 마리를 내보낼 때 우리도 같이 바꿀 기회를 준다.
+   * 그 교체는 턴을 안 쓴다 — sim에는 그런 명령이 없다.
+   *
+   * 그래도 지어내지 않는다. sim에는 이미 같은 것이 있다: `switchFlag`다. 유턴·
+   * 울부짖기가 "이 애를 지금 바꿔라"를 그 한 칸으로 알린다. 그 칸을 세우고
+   * 요청을 다시 내면, 양쪽이 **같은 묶음에서** 교체를 고르게 된다 —
+   * 등장 특성도 압정도 sim이 알아서 제 순서에 돌린다.
+   *
+   * ⚠️ `makeRequest`는 요청 객체만 다시 만들고 보내지는 않는다. 턴이 도는 중이
+   * 아니라 `sendUpdates`가 안 불리므로(로그가 안 늘었다) 여기서 직접 내보낸다
+   */
+  freeSwitch(side: SideId): boolean {
+    const battle = this.raw.battle
+    const mine = battle?.sides[side === 'p1' ? 0 : 1]
+    const active = mine?.active[0]
+    if (!battle || !active || active.fainted) return false
+    active.switchFlag = true
+    battle.makeRequest('switch')
+    for (const one of battle.sides) one.emitRequest()
+    battle.sentRequests = true
+    return true
+  }
+
+  /**
+   * 트레이너가 도구를 먹인다. 나와 있는 한 마리에게만.
+   *
+   * sim은 트레이너전의 도구를 모른다 — 대전 규칙 밖의 일이라 없는 게 맞다.
+   * 그래서 개체를 직접 고치고 **프로토콜 줄만 sim이 내게 한다**(`battle.add`).
+   * 그래야 화면·연출·배틀 뒤 세이브가 전부 같은 한 줄기를 본다
+   */
+  applyItem(side: SideId, heal: number, cure: boolean): void {
+    const battle = this.raw.battle
+    const mon = battle?.sides[side === 'p1' ? 0 : 1]?.active[0]
+    if (!battle || !mon || !mon.hp) return
+    if (heal > 0 && mon.heal(heal) !== false) battle.add('-heal', mon, mon.getHealth)
+    if (!cure) return
+    if (mon.status) mon.cureStatus()
+    mon.removeVolatile('confusion')
   }
 
   private write(line: string): void {

@@ -104,9 +104,10 @@ export function legalActions(
 export function chooseRandom(
   request: BattleRequest | null,
   random: () => number,
+  hide: ActionOptions = {},
 ): BattleAction | null {
   // 상대 행동은 이름을 화면에 안 쓰므로 번호를 풀 필요가 없다
-  const options = legalActions(request)
+  const options = legalActions(request, hide)
   if (!options.length) return null
   return options[Math.floor(random() * options.length)] ?? options[0]!
 }
