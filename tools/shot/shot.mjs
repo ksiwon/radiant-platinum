@@ -60,7 +60,7 @@ const listing = args.includes('--list')
 async function checkpointsOf(page) {
   return page.evaluate(async () => {
     const m = await import('/src/engine/dev/checkpoints.ts')
-    return m.CHECKPOINTS.map((c) => ({ id: c.id, title: c.title ?? '' }))
+    return m.CHECKPOINTS.map((c) => ({ id: c.id, title: c.label, map: c.map }))
   })
 }
 
@@ -228,16 +228,26 @@ async function main() {
   mkdirSync(OUT, { recursive: true })
   let bad = 0
   for (const id of targets) {
-    const at = checkpoints.findIndex((c) => c.id === id)
+    const cp = checkpoints.find((c) => c.id === id)
     await page.setViewportSize(DRIVE)
     await page.goto(url, { waitUntil: 'load' })
     // 타이틀이 뜰 때까지. 여기서 백틱을 눌러야 새 판을 열고 간다
     await page.waitForFunction(() => document.body.innerText.trim().length > 0, null, { timeout: 60_000 })
     await page.keyboard.press('Backquote')
     await page.getByText('확인 지점').first().waitFor({ timeout: 30_000 })
-    for (let i = 0; i < at; i++) await page.keyboard.press('ArrowDown')
-    await page.keyboard.press('KeyZ')
+    // ⚠️ **↓를 세어서 고르지 않는다.** 목록이 뜬 직후에는 키가 몇 개 흘러서
+    // 엉뚱한 줄에서 뛰어드는데, 그래도 화면은 멀쩡히 나오므로 다른 맵을 찍어
+    // 놓고 맞다고 하기 십상이다. 실제로 그렇게 두 번 헛돌았다 — 줄을 직접
+    // 누르고, 뛰어든 뒤에 **맵 번호를 확인한다**
+    const row = page.getByText(cp.title, { exact: true }).first()
+    await row.hover()
+    await page.waitForTimeout(200)
+    await row.click()
     await page.waitForURL('**/play', { timeout: 60_000 })
+    await page.waitForFunction(async (want) => {
+      const m = await import('/src/engine/map/world.ts')
+      return m.world.mapId === want
+    }, cp.map, { timeout: 60_000 })
     // 여기서부터는 무대가 있어야 한다
     await page.waitForSelector('canvas', { timeout: 120_000 })
     await page.waitForTimeout(Number(flag('after', SETTLE_MS)))

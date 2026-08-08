@@ -60,7 +60,12 @@ export interface Npc {
   facing: number
   /** 맵 이벤트의 scriptID. `NO_SCRIPT`(0xFFFF)면 말을 걸 수 없다 */
   script: number
-  /** 등장 조건 플래그. **서 있으면 숨은 것**이다. 조건이 없으면 null */
+  /**
+   * 등장 조건 플래그. **서 있으면 숨은 것**이다. 조건이 없으면 null.
+   *
+   * ⚠️ **베껴 온 사람(`isCloneNpc`)은 여기가 플래그가 아니다.** 그 자리에
+   * 원본이 있는 맵의 헤더 번호가 들어 있다 — 반드시 `hideFlagOf`로 읽는다
+   */
   flag: number | null
   /** 돌아다니는 범위 (x, z) */
   range: [number, number]
@@ -208,6 +213,40 @@ export function warpsOf(mapId: number): Warp[] {
 
 export function npcsOf(mapId: number): Npc[] {
   return eventsOf(mapId)?.npcs ?? []
+}
+
+/**
+ * **옆 맵에서 베껴 온 사람인가** (`ObjectEvent_HasNoScript`).
+ *
+ * 경계에 걸친 맵은 옆 맵의 사람이 시야에 들어온다. 원작은 그 사람을 이쪽
+ * 배치표에도 한 줄 넣어 두는데, 그 줄은 **원본이 아니라 사본**이라 두 자리가
+ * 다른 뜻으로 쓰인다:
+ *
+ * · `script`가 `NO_SCRIPT` — 이게 사본이라는 표시다. 말을 걸 수 없다
+ * · `flag`에는 **원본이 있는 맵의 헤더 번호**가 들어 있다 (숨김 플래그가 아니다)
+ * · `localID`에는 **저쪽 맵에서의 번호**가 들어 있다 (이 맵의 번호가 아니다)
+ *
+ * ⚠️ 마지막 줄이 조용한 함정이다. 201번 도로에는 잔모래마을 간판이 사본으로
+ * 있는데 그 번호가 5고, 이 맵의 5번은 **마박사**다. 번호로 사람을 찾을 때
+ * 사본을 안 걸러 내면 `AddObject LOCALID_PROF_ROWAN`이 간판을 보고 "이미
+ * 서 있다"며 그냥 돌아간다 — 컷신에서 박사가 끝까지 안 나타난다.
+ * 원작도 그래서 조회에서 사본을 건너뛴다 (`sub_020631A4`)
+ */
+export function isCloneNpc(npc: Npc): boolean {
+  return npc.script === NO_SCRIPT
+}
+
+/**
+ * 실제 숨김 플래그. 사본이면 null이다 — 원작도 사본은 플래그를 안 보고
+ * 무조건 세운다 (`sub_020620C4`: `HasNoScript || !CheckFlag`)
+ */
+export function hideFlagOf(npc: Npc): number | null {
+  return isCloneNpc(npc) ? null : npc.flag
+}
+
+/** 번호로 사람 찾기 (`sub_020631A4`). 사본은 건너뛴다 */
+export function npcByLocalID(mapId: number, localID: number): Npc | null {
+  return npcsOf(mapId).find((n) => !isCloneNpc(n) && n.localID === localID) ?? null
 }
 
 export function signsOf(mapId: number): Sign[] {

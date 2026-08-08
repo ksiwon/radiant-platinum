@@ -6,7 +6,7 @@
 //
 // 좌표는 타일 단위인데 정수가 아닐 수 있다 — 걸어가는 도중이라는 뜻이다.
 // 씬은 매 프레임 이 목록을 읽어 인스턴스 행렬만 갈아 끼운다.
-import { npcsOf, type Npc } from '../map/world'
+import { hideFlagOf, isCloneNpc, npcByLocalID, npcsOf, type Npc } from '../map/world'
 import type { Movable } from '../script/movement'
 import type { VarStore } from '../script/vars'
 import type { AmbientState } from './ambient'
@@ -151,10 +151,14 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
   npcActors.mapId = mapId
   npcActors.paused = false
   for (const info of npcsOf(mapId)) {
-    if (info.flag !== null && vars.checkFlag(info.flag)) continue
+    const hide = hideFlagOf(info)
+    if (hide !== null && vars.checkFlag(hide)) continue
     // 초기화 스크립트가 자리를 바꿔 놨을 수 있다. 예진호수의 마박사가 그렇다 —
-    // 이야기 단계에 따라 세 자리 중 하나에 선다
-    const fix = placement.get(info.localID) ?? {}
+    // 이야기 단계에 따라 세 자리 중 하나에 선다.
+    //
+    // 사본은 안 본다 — 그 번호는 저쪽 맵의 것이라, 이 맵의 같은 번호에 걸린
+    // 자리 지정이 엉뚱한 사람을 옮긴다 (`isCloneNpc`)
+    const fix = isCloneNpc(info) ? {} : placement.get(info.localID) ?? {}
     const actor: NpcActor = {
       localID: info.localID,
       info,
@@ -169,6 +173,9 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
       ambient: null,
     }
     npcActors.list.push(actor)
+    // 베껴 온 사람은 번호표에 안 올린다 — 그 번호는 **저쪽 맵의 번호**라
+    // 이 맵의 같은 번호를 가로챈다 (`isCloneNpc`)
+    if (isCloneNpc(info)) continue
     // 같은 번호가 둘이면 먼저 것이 이긴다 — 원작의 조회도 앞에서부터 찾는다
     if (!npcActors.byLocalID.has(actor.localID)) npcActors.byLocalID.set(actor.localID, actor)
   }
@@ -195,7 +202,7 @@ export function clearNpcs(): void {
  */
 export function addNpc(localID: number, vars: VarStore): boolean {
   if (npcActors.byLocalID.has(localID)) return true
-  const info = npcsOf(npcActors.mapId).find((n) => n.localID === localID)
+  const info = npcByLocalID(npcActors.mapId, localID)
   if (!info) return false
   const fix = placement.get(localID) ?? {}
   const actor: NpcActor = {
@@ -232,5 +239,5 @@ export function removeNpc(localID: number): number | null {
   npcActors.byLocalID.delete(localID)
   const at = npcActors.list.indexOf(actor)
   if (at >= 0) npcActors.list.splice(at, 1)
-  return actor.info.flag
+  return hideFlagOf(actor.info)
 }

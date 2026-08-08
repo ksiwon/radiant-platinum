@@ -63,12 +63,10 @@ function main() {
   const wanted = new Map()
   /** 그림 번호 → 갈래. 화면 쪽은 이 표만 보면 된다 */
   const bySprite = new Map()
-  let placed = 0, bare = 0
-  for (const [sprite, count] of used) {
+  for (const [sprite] of used) {
     const name = sprites[String(sprite)]?.name
     const model = name ? modelFor(name, table) : null
-    if (!model) { bare += count; continue }
-    placed += count
+    if (!model) continue
     bySprite.set(sprite, model.tag)
     if (wanted.has(model.tag)) continue
     const source = model.build === 'battle' ? table.battle : table.field
@@ -80,33 +78,49 @@ function main() {
     // 이름순으로는 `heroine`의 첫 번째가 되는데, 그건 남주 옷 번들에 여주
     // 텍스처가 섞여 든 것이라 **구우면 터진다.** 갈래를 하나만 든 번들
     // (`pc0002_00`)이 그 사람 본체다
+    //
+    // 그래도 **한 번들에 걸지 않는다.** 어떤 번들은 같은 폴더에 없는 CAB을
+    // 가리켜서 열다가 끊긴다(`tr1026_00`의 재질). 순서대로 두고 굽다가
+    // 실패하면 다음 것으로 넘어간다 — 안 그러면 그 사람만 통째로 사라진다
     const alone = (b) => (source.bundles[b] ?? []).length === 1
-    const candidates = [...(set.get(model.tag) ?? [])].sort()
-    const bundle = candidates.find(alone) ?? candidates[0]
-    if (bundle) wanted.set(model.tag, { build: model.build, bundle })
+    const all = [...(set.get(model.tag) ?? [])].sort()
+    const order = [...all.filter(alone), ...all.filter((b) => !alone(b))]
+    if (order.length > 0) wanted.set(model.tag, { build: model.build, order })
   }
 
   mkdirSync(OUT, { recursive: true })
+  const BAKER = resolve(ROOT, 'tools/extract/bdspGlb.py')
+  // ⚠️ **굽는 쪽이 바뀌면 다시 굽는다.** 번들 날짜만 보면 굽는 규칙을 고쳐도
+  // 전부 "그대로 둔 것"이 되어 낡은 glb가 남는다 — 실제로 스킨 폭을 고친 뒤에
+  // 0개가 다시 구워졌다
+  const bakerAt = statSync(BAKER).mtimeMs
   let made = 0, skipped = 0, bytes = 0
   const failed = []
-  for (const [tag, { build, bundle }] of [...wanted].sort()) {
-    const src = resolve(PERSONS, build, bundle)
+  for (const [tag, { build, order }] of [...wanted].sort()) {
     const out = resolve(OUT, `${tag}.glb`)
-    if (!existsSync(src)) { console.warn(`  ⚠ 번들이 없다: ${src}`); continue }
-    if (existsSync(out) && statSync(out).mtimeMs > statSync(src).mtimeMs) {
+    const here = order.filter((b) => existsSync(resolve(PERSONS, build, b)))
+    if (here.length === 0) { console.warn(`  ⚠ 번들이 없다: ${tag} (${order.join(' ')})`); continue }
+    const fresh = Math.max(...here.map((b) => statSync(resolve(PERSONS, build, b)).mtimeMs), bakerAt)
+    if (existsSync(out) && statSync(out).mtimeMs > fresh) {
       skipped++
       bytes += statSync(out).size
       continue
     }
-    try {
-      execFileSync('py', [
-        '-3.13', resolve(ROOT, 'tools/extract/bdspGlb.py'), src,
-        '-o', out, '--max-texture', String(MAX_TEXTURE), '--no-clips',
-      ], { stdio: ['ignore', 'ignore', 'pipe'] })
-    } catch (e) {
-      // 번들 몇 개는 같은 폴더에 없는 CAB을 가리킨다 (`tr1085_00`). 한 명을
-      // 못 구웠다고 마흔 명을 멈추지 않는다 — 그 그림은 판때기로 남는다
-      failed.push(`${tag}(${bundle})`)
+    let bundle = null
+    for (const b of here) {
+      try {
+        execFileSync('py', [
+          '-3.13', BAKER, resolve(PERSONS, build, b),
+          '-o', out, '--max-texture', String(MAX_TEXTURE), '--no-clips',
+        ], { stdio: ['ignore', 'ignore', 'pipe'] })
+        bundle = b
+        break
+      } catch { /* 다음 번들로 */ }
+    }
+    if (bundle === null) {
+      // 갈래 하나가 든 번들이 전부 끊겼다. 한 명을 못 구웠다고 마흔 명을
+      // 멈추지 않는다 — 그 그림은 판때기로 남는다
+      failed.push(`${tag}(${here.join(' ')})`)
       continue
     }
     made++
@@ -124,7 +138,14 @@ function main() {
   console.log(`NPC 모델 ${wanted.size}종 — 새로 구운 것 ${made} · 그대로 둔 것 ${skipped}`)
   if (failed.length) console.warn(`  ⚠ 못 구운 번들 ${failed.length}개: ${failed.join(' ')}`)
   console.log(`  합계 ${(bytes / 1024 / 1024).toFixed(1)}MB`)
-  console.log(`  배치 ${placed + bare}개 중 모델이 서는 것 ${placed}개 (${(placed / (placed + bare) * 100).toFixed(1)}%)`)
+  // ⚠️ **짝이 맞은 것이 아니라 실제로 구워진 것을 센다.** 못 구운 번들이 있으면
+  // 그 그림은 판때기로 서는데(`table_out`에서 빠진다), 짝 기준으로 세면 안 선
+  // 사람까지 "선다"로 잡힌다 — `idol` 11건이 그렇게 끼어 21.9%가 22.2%로 보였다.
+  // 그리고 변수 자리로 넣은 주인공 둘은 배치가 0이라 분모에서도 뺀다
+  const real = [...used].filter(([g]) => !THROUGH_VARS.includes(g))
+  const total = real.reduce((a, [, c]) => a + c, 0)
+  const shown = real.filter(([g]) => table_out[g] !== undefined).reduce((a, [, c]) => a + c, 0)
+  console.log(`  배치 ${total}개 중 모델이 서는 것 ${shown}개 (${(shown / total * 100).toFixed(1)}%)`)
 }
 
 main()

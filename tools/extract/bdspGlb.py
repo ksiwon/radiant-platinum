@@ -450,15 +450,27 @@ def export(bundle: Path, out: Path, color_index: int | None = None,
         # 그런 것은 0번 뼈에 100%로 묶는다 — 그 뼈를 따라 통째로 움직인다
         rigid = handler.m_BoneWeights is None or handler.m_BoneIndices is None
         count = len(handler.m_Vertices)
+        joints = np.zeros((count, 4), dtype=np.uint16)
+        weights = np.zeros((count, 4), dtype=np.float32)
         if rigid:
-            joints = np.zeros((count, 4), dtype=np.uint16)
-            weights = np.zeros((count, 4), dtype=np.float32)
             weights[:, 0] = 1.0
         else:
-            joints = np.array(handler.m_BoneIndices, dtype=np.uint16).reshape(-1, 4)
-            weights = np.array(handler.m_BoneWeights, dtype=np.float32).reshape(-1, 4)
-        # 합이 1이 아닌 정점이 섞여 있다(손목시계에서 89개 나왔다). glTF는 합이
-        # 1이어야 하고, 안 맞으면 그 정점만 쪼그라든다
+            # ⚠️ **정점 하나에 뼈가 넷이라고 두면 안 된다.** 메시마다 다르다 —
+            # 주인공의 손목시계는 **둘**이고 나머지는 넷이다. `reshape(-1, 4)`로
+            # 접으면 정점 둘이 한 줄로 겹쳐서 JOINTS_0이 정점 수의 절반(178→89)이
+            # 되고, three가 없는 번호의 뼈를 집어 **매 프레임 터진다**
+            # (`Box3.setFromObject` → `applyBoneTransform`). 그러면 그 사람만
+            # 안 서는 것이 아니라 NPC 모델 회전 전체가 프레임마다 끊긴다.
+            # 이걸 "가중치 합이 1이 아닌 정점 89개"로 잘못 읽고 지나쳤던 자리다
+            bi = np.asarray(handler.m_BoneIndices)
+            bw = np.asarray(handler.m_BoneWeights, dtype=np.float32)
+            if bi.ndim == 1:
+                bi = bi.reshape(count, -1)
+                bw = bw.reshape(count, -1)
+            wide = min(bi.shape[1], 4)
+            joints[:, :wide] = bi[:, :wide].astype(np.uint16)
+            weights[:, :wide] = bw[:, :wide]
+        # glTF는 가중치 합이 1이어야 한다. 안 맞으면 그 정점만 쪼그라든다
         total = weights.sum(axis=1, keepdims=True)
         weights = np.where(total > 0, weights / np.maximum(total, 1e-8), weights)
         weights[total[:, 0] == 0, 0] = 1.0
@@ -641,6 +653,13 @@ def verify(path: Path) -> list[str]:
             bad.append(f"스킨 {m}: 역바인드 행렬 수가 관절 수와 다르다")
         for prim in mesh["primitives"]:
             verts = g["accessors"][prim["attributes"]["POSITION"]]["count"]
+            # ⚠️ 속성 길이가 서로 달라도 파일은 열린다. 짧은 쪽을 넘어가는
+            # 정점에서 three가 없는 뼈를 집어 매 프레임 터진다 — 주인공
+            # 손목시계가 그렇게 178 대 89로 어긋나 있었다
+            for name, acc_index in prim["attributes"].items():
+                n = g["accessors"][acc_index]["count"]
+                if n != verts:
+                    bad.append(f"메시 {m}: {name}이 {n}개인데 정점은 {verts}개다")
             idx = read(prim["indices"])
             if idx.max(initial=0) >= verts:
                 bad.append(f"메시 {m}: 인덱스가 정점 수({verts})를 넘는다")

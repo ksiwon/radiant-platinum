@@ -7,8 +7,8 @@
 // 이 모듈은 React를 모른다. 화면은 `world`를 들여다보기만 한다.
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
 import {
-  BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, mapById, npcsOf, NO_SCRIPT, signsOf,
-  talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
+  BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
+  signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
 } from '../map/world'
 import { worldState } from '../../state/worldState'
 import {
@@ -600,7 +600,8 @@ export function npcAt(mapId: number, x: number, z: number, vars: VarStore): Npc 
   }
   for (const npc of npcsOf(mapId)) {
     if (npc.x !== x || npc.z !== z) continue
-    if (npc.flag !== null && vars.checkFlag(npc.flag)) continue
+    const hide = hideFlagOf(npc)
+    if (hide !== null && vars.checkFlag(hide)) continue
     return npc
   }
   return null

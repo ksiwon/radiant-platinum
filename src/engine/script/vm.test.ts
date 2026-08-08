@@ -261,6 +261,52 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
+  it('닿는 자리의 95.9%가 돈다 — DATA.md §2.10의 그 수', () => {
+    // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.
+    // 쓰는 눈금은 스크립트가 **실제로 밟는 자리**고, 문서가 그 수를 적고
+    // 있으므로 여기서 같은 방법으로 세어 못 박는다 — 안 그러면 문서만 낡는다.
+    //
+    // 세는 법: 진입점에서 출발해 제어 흐름을 따라간다. 분기 대상까지 따라
+    // 들어가고 이미 밟은 자리는 다시 안 센다. 아무 데서나 바이트를 읽으면
+    // 자료 구간을 명령으로 잘못 읽는데, 진입점에서 출발하면 그럴 여지가 없다
+    let reached = 0
+    let ran = 0
+    for (const [i, info] of meta.files.entries()) {
+      if (info.kind !== 'code') continue
+      const bytes = fileBytes(data, i)
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      const stack: number[] = []
+      for (let e = 0; e < info.entries; e++) stack.push(entryOffset(data, i, e))
+      const seen = new Set<number>()
+      while (stack.length > 0) {
+        let at = stack.pop()!
+        while (at >= 0 && at + 2 <= bytes.length && !seen.has(at)) {
+          seen.add(at)
+          const op = view.getUint16(at, true)
+          const cmd = meta.commands[op]
+          if (!cmd) break
+          reached++
+          if (!unhandled.has(op)) ran++
+          const width = argWidth(cmd.args)
+          // 분기는 마지막 인자가 PC 상대 오프셋이다
+          if (/^(GoTo|Call)/.test(cmd.name) && width >= 4) {
+            stack.push(at + 2 + width + view.getInt32(at + 2 + width - 4, true))
+          }
+          if (cmd.name === 'End' || cmd.name === 'Return' || cmd.name === 'GoTo') break
+          at += 2 + width
+        }
+      }
+    }
+    expect(reached).toBe(REACHED_SITES)
+    expect(ran).toBe(RUNNING_SITES)
+    expect(meta.commands.length - unhandled.size).toBe(IMPLEMENTED_COMMANDS)
+  })
+
+/** `"1 2 4*"` → 7. 가변 길이 명령은 첫 피연산자만큼만 센다 */
+function argWidth(spec: string): number {
+  return spec === '' ? 0 : spec.split(' ').reduce((n, s) => n + Number(s[0]), 0)
+}
+
   it('새 게임 초기화가 원작 표를 그대로 세운다', () => {
     // `FieldSystem_InitNewGameState`가 도는 스크립트다. 하는 일은 아직 안 나온
     // NPC를 숨기는 플래그를 세우는 것이고, 안 돌리면 마박사도 라이벌도 처음부터
@@ -388,6 +434,18 @@ const FLAG_HAS_POKEDEX = 144
 const LOOPING_ENTRIES = 37
 /** 예/아니오에 "예"로 답했을 때. 갈라지는 가지가 달라서 수도 다르다 */
 const LOOPING_ENTRIES_YES = 40
+
+/**
+ * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
+ *
+ * DATA.md §2.10이 이 둘의 비를 적는다(95.9%). 문서에만 적어 두면 명령을 붙일
+ * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
+ * 설명하고 문서를 같이 고친다
+ */
+const REACHED_SITES = 55_463
+const RUNNING_SITES = 53_240
+/** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
+const IMPLEMENTED_COMMANDS = 178
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.

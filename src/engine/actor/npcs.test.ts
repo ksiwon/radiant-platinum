@@ -11,7 +11,9 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, expect, it } from 'vitest'
-import { world as mapWorld, type EventFile, type MapHeader } from '../map/world'
+import {
+  hideFlagOf, isCloneNpc, npcsOf, world as mapWorld, type EventFile, type MapHeader,
+} from '../map/world'
 import { VAR_PLAYER_STARTER } from '../script/commands'
 import { VarStore } from '../script/vars'
 import {
@@ -216,5 +218,73 @@ maybe('그림 번호가 변수로 정해지는 사람', () => {
     removeNpc(at.localID)
     expect(addNpc(at.localID, vars)).toBe(true)
     expect(npcActors.byLocalID.get(at.localID)!.gfx).toBe(GFX_PLAYER_F)
+  })
+})
+
+/**
+ * 옆 맵에서 베껴 온 사람 (`isCloneNpc`).
+ *
+ * ⚠️ **번호가 겹친다.** 사본의 `localID`는 저쪽 맵에서의 번호라, 이 맵의 같은
+ * 번호와 아무 상관이 없다. 201번 도로의 5번은 **마박사**인데 잔모래마을에서
+ * 베껴 온 간판도 5번이라, 안 걸러 내면 `AddObject LOCALID_PROF_ROWAN`이
+ * 간판을 보고 "이미 서 있다"며 그냥 돌아간다.
+ *
+ * 실제로 그랬다. 컷신을 8분 몰아 대사 예순 줄을 다 지나가도 **박사가 끝까지
+ * 안 나타났고**, 시험은 전부 초록이었다. 원작은 조회에서 사본을 건너뛴다
+ * (`sub_020631A4`: `HasNoScript == FALSE && GetLocalID == localID`).
+ */
+const PROF_ROWAN = 5
+const GFX_PROF_ROWAN = 99
+
+maybe('베껴 온 사람이 번호를 가로채지 않는다', () => {
+  let vars: VarStore
+
+  beforeEach(() => {
+    mapWorld.maps = read('maps.json').maps as MapHeader[]
+    mapWorld.events = read('events.json').events as Record<string, EventFile>
+    vars = new VarStore()
+    clearNpcs()
+  })
+
+  it('201번 도로에 번호가 겹치는 사본이 실제로 있다 — 이 시험이 성립하는 근거다', () => {
+    const table = npcsOf(ROUTE_201)
+    const clones = table.filter(isCloneNpc)
+    expect(clones.length, '사본이 없으면 아래 시험이 아무것도 안 지킨다').toBeGreaterThan(0)
+    const clash = clones.filter((c) => table.some((n) => !isCloneNpc(n) && n.localID === c.localID))
+    expect(clash.length).toBeGreaterThan(0)
+    // 그 겹치는 번호 하나가 마박사다
+    expect(clash.some((c) => c.localID === PROF_ROWAN)).toBe(true)
+  })
+
+  it('사본은 플래그를 안 본다 — 그 자리는 원본이 있는 맵 번호다', () => {
+    const clone = npcsOf(ROUTE_201).find(isCloneNpc)!
+    expect(clone.flag).not.toBeNull()
+    expect(hideFlagOf(clone)).toBeNull()
+    // 그 번호를 플래그로 읽고 세워 두면, 사본이 통째로 사라진다
+    vars.setFlag(clone.flag!)
+    spawnNpcs(ROUTE_201, vars)
+    expect(npcActors.list.some((a) => a.info === clone)).toBe(true)
+  })
+
+  it('번호표는 원본이 가진다 — 사본이 먼저 나와도', () => {
+    spawnNpcs(ROUTE_201, vars)
+    for (const clone of npcsOf(ROUTE_201).filter(isCloneNpc)) {
+      const held = npcActors.byLocalID.get(clone.localID)
+      expect(held?.info, `${String(clone.localID)}번`).not.toBe(clone)
+    }
+  })
+
+  it('AddObject가 사본을 지나쳐 마박사를 세운다', () => {
+    // 새 판은 이 플래그를 세워 둔다(`scripts_init_new_game.s`). 컷신이 지우고
+    // `AddObject`로 부르는 것이 바로 이 사람이다
+    const rowanInfo = npcsOf(ROUTE_201).find((n) => n.sprite === GFX_PROF_ROWAN)!
+    expect(rowanInfo.localID).toBe(PROF_ROWAN)
+    vars.setFlag(rowanInfo.flag!)
+    spawnNpcs(ROUTE_201, vars)
+    expect(npcActors.list.some((a) => a.gfx === GFX_PROF_ROWAN)).toBe(false)
+    expect(addNpc(PROF_ROWAN, vars)).toBe(true)
+    const rowan = npcActors.list.filter((a) => a.gfx === GFX_PROF_ROWAN)
+    expect(rowan.length, '박사가 하나 서야 한다').toBe(1)
+    expect(rowan[0]!.localID).toBe(PROF_ROWAN)
   })
 })
