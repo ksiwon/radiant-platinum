@@ -1995,6 +1995,7 @@ tools/
     marts.js        디컴프 헤더의 상점 재고표 → marts.json
     spawns.js       부활 지점·공중날기 자리 20곳 → spawns.json (디컴프 표에서)
     png.js          최소 PNG 인코더 (zlib만 쓴다)
+  shot/           화면을 열고 확인 지점으로 뛰어들어 그림을 찍는다 (PLAN §15.2)
   assets/         산출물이 있어야 할 자리를 아는 쪽 (§3.3)
     groups.mjs      파일 → 그것을 만드는 명령. 추출기 소스에서 뽑은 짝 28개
     manifest.mjs    디스크를 훑어 assets-manifest.json을 굽는다
