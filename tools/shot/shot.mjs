@@ -290,6 +290,60 @@ async function main() {
       await page.waitForTimeout(600)
     }
 
+    // 무엇이 화면을 막고 있는지 씬에 직접 묻는다.
+    //
+    // 그림만 보고는 "저 판때기가 무엇이냐"를 못 가른다 — 소품인지 지형인지,
+    // 흐려진 것인지 원래 저런 것인지. 카메라에서 가까운 순으로 상자와
+    // 불투명도를 찍어 주면 그 자리에서 갈린다
+    if (args.includes('--peek')) {
+      const near = await page.evaluate(async () => {
+        const THREE = await import('/node_modules/three/build/three.webgpu.js')
+        const refs = await import('/src/scene/sceneRefs.ts')
+        const w = await import('/src/state/worldState.ts')
+        let root = refs.sceneRefs.player
+        while (root?.parent) root = root.parent
+        if (!root) return { err: '무대가 없다' }
+        const eye = w.worldState.camera.position
+        const box = new THREE.Box3()
+        const rows = []
+        root.traverse((o) => {
+          // 인스턴스 메시(나무·풀)는 상자를 재는 값이 비싸고 궁금한 것도 아니다
+          if (!o.isMesh || o.isInstancedMesh || !o.geometry) return
+          if (!o.geometry.boundingBox) o.geometry.computeBoundingBox()
+          if (!o.geometry.boundingBox) return
+          box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld)
+          const s = box.getSize(new THREE.Vector3())
+          const mid = box.getCenter(new THREE.Vector3())
+          const mats = Array.isArray(o.material) ? o.material : [o.material]
+          rows.push({
+            d: +box.distanceToPoint(eye).toFixed(2),
+            at: [+mid.x.toFixed(1), +mid.y.toFixed(1), +mid.z.toFixed(1)],
+            size: [+s.x.toFixed(1), +s.y.toFixed(1), +s.z.toFixed(1)],
+            op: +(mats[0]?.opacity ?? 1).toFixed(2),
+            vis: o.visible,
+          })
+        })
+        // 인스턴스로 서는 것(나무·풀·꽃)은 상자가 아니라 **몇 개나 섰는지**가
+        // 궁금하다. 0이면 그 계층이 통째로 안 도는 것이다
+        const swarm = []
+        root.traverse((o) => {
+          if (o.isInstancedMesh) swarm.push(o.count)
+        })
+        rows.sort((a, b) => a.d - b.d)
+        return {
+          eye: [+eye.x.toFixed(1), +eye.y.toFixed(1), +eye.z.toFixed(1)],
+          meshes: rows.length, near: rows.slice(0, 12),
+          swarm: swarm.filter((n) => n > 0).sort((a, b) => b - a),
+        }
+      })
+      console.log(`  ${id} 카메라 ${String(near.eye)} · 메시 ${String(near.meshes)}`
+        + ` · 인스턴스 ${(near.swarm ?? []).join('/')}`)
+      for (const r of near.near ?? []) {
+        console.log(`     ${String(r.d).padStart(6)}  ${String(r.at).padEnd(22)}`
+          + ` 크기 ${String(r.size).padEnd(18)} 불투명 ${r.op}${r.vis ? '' : ' (안 그림)'}`)
+      }
+    }
+
     // 찍기 직전에만 키운다. 세 프레임쯤 줘야 새 크기로 다시 그린다
     await page.setViewportSize(VIEWPORT)
     await page.waitForTimeout(Number(flag("grow", 3000)))

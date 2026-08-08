@@ -785,3 +785,90 @@ function brownish(rgb: number): boolean {
   const r = (rgb >> 16) & 255, g = (rgb >> 8) & 255, b = rgb & 255
   return r > b + 16 && r >= g && r < 200
 }
+
+/**
+ * 화단·꽃밭 그림.
+ *
+ * 이름은 롬이 붙인 것이다 — `nhana`·`shana`·`rhana`(はな = 꽃)와 연고시티
+ * 화단 `t3_fl_*`. 오버월드 청크 176개에서 서브메시 126개가 여기 걸린다
+ */
+const FLOWER_NAME = /^[nsr]hana$|_fl_[a-z]/
+
+/** 꽃이 깔린 자리. 청크 로컬 타일 좌표와 그 판의 높이 */
+export interface FlowerSite {
+  x: number
+  z: number
+  y: number
+  /** 색을 가져올 서브메시 */
+  group: number
+}
+
+/**
+ * 바닥에 깔린 꽃 그림의 자리.
+ *
+ * 원작의 화단은 **바닥 타일 그림**이다. 고정 부감에서는 그것으로 꽃밭처럼
+ * 보였지만, 3인칭으로 낮게 보면 잔디 위에 색종이를 뿌려 놓은 것이 된다.
+ *
+ * ⚠️ **원래 그림은 그대로 둔다.** 걷어내면 화단의 흙까지 사라진다 — 그림은
+ * 바닥에 남기고 그 위에 꽃송이를 세운다 (`Flowers`)
+ */
+export function flowerSites(mesh: ChunkMesh, split: Split): FlowerSite[] {
+  const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
+  const index = split.geometry.getIndex()
+  if (!index) return []
+  const idx = index.array
+  const out = new Map<number, FlowerSite>()
+
+  for (const [start, count, group] of split.groups) {
+    if (count === 0) continue
+    if (!FLOWER_NAME.test(mesh.materials[group]?.tex ?? '')) continue
+    for (let t = 0; t < count; t += 3) {
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, y = 0
+      for (let k = 0; k < 3; k++) {
+        const i = idx[start + t + k]!
+        const x = pos[i * 3]!, z = pos[i * 3 + 2]!
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (z < z0) z0 = z
+        if (z > z1) z1 = z
+        y += pos[i * 3 + 1]! / 3
+      }
+      // 서 있는 판은 화단이 아니다. 바닥에 깔린 것만 본다
+      if (x1 - x0 < 1e-6 || z1 - z0 < 1e-6) continue
+      for (let tz = Math.floor(z0); tz <= Math.floor(z1 - 0.01); tz++) {
+        for (let tx = Math.floor(x0); tx <= Math.floor(x1 - 0.01); tx++) {
+          const key = cellKey(tx, tz)
+          if (!out.has(key)) out.set(key, { x: tx, z: tz, y, group })
+        }
+      }
+    }
+  }
+  return [...out.values()]
+}
+
+/**
+ * 꽃송이 색. 그 그림에서 **잔디가 아닌** 색 셋을 뽑는다.
+ *
+ * 화단 그림은 절반이 흙과 잔디라, 제일 많이 쓰인 색을 그냥 집으면 갈색이 나온다.
+ * 초록과 갈색 계열을 뺀 나머지 중 밝은 순이 곧 꽃잎이다
+ */
+export function flowerColors(sheet: TexSheet | null, mesh: ChunkMesh, group: number): number[] {
+  const spec = mesh.materials[group]
+  const item = sheet?.items.find((s) => s.tex === spec?.tex && s.pal === (spec.pal ?? ''))
+  if (!sheet || !item) return [0xf2d05a]
+  const count = new Map<number, number>()
+  for (let y = 0; y < item.h; y++) {
+    const row = ((item.y + y) * sheet.width + item.x) * 4
+    for (let x = 0; x < item.w; x++) {
+      const o = row + x * 4
+      if (sheet.pixels[o + 3]! < ALPHA_CUT) continue
+      const r = sheet.pixels[o]!, g = sheet.pixels[o + 1]!, b = sheet.pixels[o + 2]!
+      // 잔디(초록이 제일 세다)와 흙(붉고 어둡다)은 꽃잎이 아니다
+      if (g > r && g > b) continue
+      if (r > g && g > b && r < 170) continue
+      count.set((r << 16) | (g << 8) | b, (count.get((r << 16) | (g << 8) | b) ?? 0) + 1)
+    }
+  }
+  const ranked = [...count].sort((a, b) => b[1] - a[1]).map(([rgb]) => rgb)
+  return ranked.length > 0 ? ranked.slice(0, 3) : [0xf2d05a]
+}

@@ -45,6 +45,8 @@ const STEPS = 16
 /** 플레이어의 어느 높이를 겨누는가. 발밑을 겨누면 머리를 가린 지붕이 안 걸린다 */
 const AIM_HEIGHT = 1.2
 
+
+
 /** 가리는 선까지의 거리 → 불투명도. 1이면 손대지 않은 것이다 */
 export function fadeFor(distance: number): number {
   return Math.min(1, Math.max(0, (distance - BLOCK_R) / FADE_SPAN))
@@ -95,14 +97,23 @@ export function PropFade({ geometry, materials, children }: Props) {
       const world = box.current.copy(local).applyMatrix4(node.matrixWorld)
       const p = worldState.player.position
       aim.set(p.x, p.y + AIM_HEIGHT, p.z)
-      let closest = Infinity
-      for (let i = 0; i <= STEPS; i++) {
-        probe.lerpVectors(camera.position, aim, i / STEPS)
-        const d = world.distanceToPoint(probe)
-        if (d < closest) closest = d
-        if (closest === 0) break
+      // ⚠️ **플레이어보다 멀리 있는 것은 안 건드린다.**
+      //
+      // 이게 없으면 플레이어가 마주 보고 선 집이 반쯤 비친다 — 집은 겨눈 자리
+      // 바로 너머에 있는데 흐려짐 구간이 거기까지 닿아서, 떡잎마을 주인공 집이
+      // 42%로 비치고 문짝만 또렷하게 남았다. 카메라에서 그 상자까지가 카메라에서
+      // 플레이어까지보다 멀면 가릴 수가 없다
+      const reach = camera.position.distanceTo(aim) - BLOCK_R
+      if (world.distanceToPoint(camera.position) < reach) {
+        let closest = Infinity
+        for (let i = 0; i <= STEPS; i++) {
+          probe.lerpVectors(camera.position, aim, i / STEPS)
+          const d = world.distanceToPoint(probe)
+          if (d < closest) closest = d
+          if (closest === 0) break
+        }
+        want = fadeFor(closest)
       }
-      want = fadeFor(closest)
     }
 
     const next = at.current + (want - at.current) * EASE

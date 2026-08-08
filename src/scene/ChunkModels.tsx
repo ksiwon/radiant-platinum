@@ -17,11 +17,12 @@ import {
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import {
-  cachedSplit, cutoutGroups, floorPatch, floorSource, grassColors, plateColors, shiftFloors,
-  treeSites, waterColors,
+  cachedSplit, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites, grassColors,
+  plateColors, shiftFloors, treeSites, waterColors,
   type FloorPatch, type FloorSource, type FloorTri,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
+import { Flowers, type FlowerField } from './Flowers'
 import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates } from './shell'
@@ -30,6 +31,15 @@ import { PropFade } from './PropFade'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
+
+/** 화단 한 칸에 몇 송이. 원작 도트 화단 한 칸에 꽃이 네다섯 개다 */
+const FLOWERS_PER_TILE = 4
+
+/** 칸 안에서 송이를 흩는다. 자리가 정하므로 프레임마다 안 흔들린다 */
+function flowerJitter(x: number, z: number, salt: number): number {
+  const s = Math.sin(x * 127.1 + z * 311.7 + salt * 51.3) * 43758.5453
+  return 0.15 + (s - Math.floor(s)) * 0.7
+}
 
 /** 아직 재질을 못 만든 서브메시. 안 보이는 것보다 눈에 띄는 편이 낫다 */
 const MISSING = new MeshBasicMaterial({ color: '#ff00ff', side: DoubleSide })
@@ -257,6 +267,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   const [placed, setPlaced] = useState<Land[]>([])
   const [foliage, setFoliage] = useState<FoliageGroup[]>([])
   const [grass, setGrass] = useState<GrassField | null>(null)
+  const [flowers, setFlowers] = useState<FlowerField | null>(null)
   const [water, setWater] = useState<WaterField | null>(null)
   const [props, setProps] = useState<Prop[]>([])
 
@@ -275,6 +286,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         // 그림이 같은 나무는 청크를 넘어 한 덩어리로 모은다. 창 안에 2천 그루가
         // 서므로 청크마다 따로 그리면 드로우콜이 수십 개가 된다
         const byTexture = new Map<string, FoliageGroup>()
+        // 화단 자리와 꽃잎 색. 청크를 넘어 한 덩어리로 모은다 — 창 하나에
+        // 수백 칸이라 청크마다 따로 그리면 드로우콜만 늘어난다
+        const petals: number[] = []
+        const tints = new Set<number>()
         // 빌려 오기가 이웃의 바닥과 재질을 봐야 해서 두 걸음으로 나눈다
         const pieces: Piece[] = loaded.map(({ c, mesh }) => {
           const cutout = cutoutGroups(mesh, sheet)
@@ -309,6 +324,15 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             }
             group.items.push([site, originX, originZ])
           }
+          // 바닥에 깔린 꽃 그림 위에 실제로 서는 송이를 얹는다 (`Flowers`)
+          for (const site of flowerSites(mesh, split)) {
+            for (const c of flowerColors(sheet, mesh, site.group)) tints.add(c)
+            for (let k = 0; k < FLOWERS_PER_TILE; k++) {
+              const jx = flowerJitter(site.x, site.z, k * 2)
+              const jz = flowerJitter(site.x, site.z, k * 2 + 1)
+              petals.push(site.x + originX + jx, site.y + 0.02, site.z + originZ + jz)
+            }
+          }
           const materials = materialsFor(mesh, sheet, cache, p.cutout)
           // 바닥이 아예 없는 청크는 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다
           const borrowed = p.source.floors.length > 0
@@ -339,10 +363,17 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         // 풀숲 자리는 격자가 준다 — 그림이 아니라 타일 거동값이다. 색만
         // 이 영역 그림에서 가져온다
         setGrass({ spots: grassSpots(grid, chunkIndex, radius), colors: grassColors(sheet) })
+        setFlowers(petals.length === 0 ? null : {
+          spots: new Float32Array(petals),
+          colors: [...tints].slice(0, 4),
+          stem: 0x3f7a3a,
+        })
         // 물도 자리는 거동값이 준다 — 색만 이 영역 그림에서 가져온다
         setWater({ ...waterField(grid, chunkIndex, radius), colors: waterColors(sheet) })
       })
-      .catch(() => { if (alive) { setPlaced([]); setFoliage([]); setGrass(null); setWater(null) } })
+      .catch(() => {
+        if (alive) { setPlaced([]); setFoliage([]); setGrass(null); setWater(null); setFlowers(null) }
+      })
     return () => { alive = false }
   }, [grid, chunkIndex, radius, texSet, groundAt])
 
@@ -434,6 +465,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)
       */}
       <Grass field={grass} />
+      {/*
+        화단. 원작은 바닥 그림이라 3인칭에서 잔디 위에 뿌린 색종이가 된다 —
+        그 칸에 실제로 서는 꽃송이를 얹는다 (`Flowers.tsx`)
+      */}
+      <Flowers field={flowers} />
       {/*
         물. 원작은 바닥 도트라 1인칭에서 파란 장판이 된다 — 거동값 `0x0015`·
         `0x0010`인 칸 위에 실제로 출렁이는 면을 얹는다 (`Water.tsx`)
