@@ -50,6 +50,36 @@ const ENGINE_FORBIDDEN = {
   ],
 }
 
+/**
+ * 에셋 주소를 만드는 곳은 `data/assetBase` 하나다 (COPYRIGHT.md §6).
+ *
+ * ⚠️ 앱 셸을 Pages, 에셋을 R2에 두는 순간 `${BASE_URL}data/…`는 전부 404가 된다.
+ * 지금은 두 오리진이 같아서 **틀려도 안 깨지고**, 그래서 새로 쓰는 자리마다
+ * 도로 늘어난다. 갈리는 날 스무 군데를 다시 찾는 대신 여기서 막는다
+ */
+const BASE_URL_FORBIDDEN = {
+  selector:
+    "MemberExpression[object.object.type='MetaProperty']"
+    + "[object.property.name='env'][property.name='BASE_URL']",
+  message:
+    '에셋 주소는 data/assetBase의 dataUrl·modelUrl로 만든다 (COPYRIGHT.md §6). '
+    + '앱 셸로 돌아가는 것뿐이라면 같은 모듈의 APP_ROOT다.',
+}
+
+/**
+ * 자료가 없어서 건너뛰는 것은 `data/romData.testkit` 한 군데를 거친다.
+ *
+ * ⚠️ 손으로 `describe.skip`을 적으면 `PT_REQUIRE_DATA`가 그 파일을 못 봐서,
+ * 자료를 못 받은 것과 다 통과한 것이 화면에서 똑같이 초록이 된다
+ * (COPYRIGHT.md §5 — 시험 파일 95개 중 51개가 그 자리였다)
+ */
+const DESCRIBE_SKIP_FORBIDDEN = {
+  selector: "MemberExpression[object.name='describe'][property.name='skip']",
+  message:
+    '자료 유무로 건너뛸 때는 withData/withModels/withDecomp를 쓴다 (COPYRIGHT.md §5). '
+    + '손으로 적으면 PT_REQUIRE_DATA가 그 파일을 못 본다.',
+}
+
 export default tseslint.config(
   { ignores: ['dist/**', 'raw/**', 'tools/**', 'node_modules/**'] },
   js.configs.recommended,
@@ -66,7 +96,13 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'no-restricted-imports': ['error', { patterns: [...NODE_FORBIDDEN] }],
+      'no-restricted-syntax': ['error', BASE_URL_FORBIDDEN],
     },
+  },
+  {
+    // 그 하나. 여기서만 `import.meta.env.BASE_URL`을 읽는다
+    files: ['src/data/assetBase.ts'],
+    rules: { 'no-restricted-syntax': 'off' },
   },
   {
     // 상태 3분할 경계 강제 — 엔진과 프레임 상태는 React를 몰라야 한다
@@ -108,21 +144,11 @@ export default tseslint.config(
     },
   },
   {
-    // 자료가 없어서 건너뛰는 것은 `data/romData.testkit` 한 군데를 거친다.
-    // ⚠️ 손으로 `describe.skip`을 적으면 `PT_REQUIRE_DATA`가 그 파일을 못 봐서,
-    // 자료를 못 받은 것과 다 통과한 것이 화면에서 똑같이 초록이 된다
-    // (COPYRIGHT.md §5 — 시험 파일 95개 중 51개가 그 자리였다)
+    // ⚠️ 시험 파일도 `src/**`에 걸리므로 위 블록의 `no-restricted-syntax`를 덮는다.
+    // 조각을 **둘 다** 넣지 않으면 시험에서만 BASE_URL 금지가 조용히 죽는다
     files: ['**/*.test.ts', '**/*.test.tsx'],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "MemberExpression[object.name='describe'][property.name='skip']",
-          message:
-            '자료 유무로 건너뛸 때는 withData/withModels/withDecomp를 쓴다 (COPYRIGHT.md §5). '
-            + '손으로 적으면 PT_REQUIRE_DATA가 그 파일을 못 본다.',
-        },
-      ],
+      'no-restricted-syntax': ['error', BASE_URL_FORBIDDEN, DESCRIBE_SKIP_FORBIDDEN],
     },
   },
 )

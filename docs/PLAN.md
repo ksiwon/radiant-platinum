@@ -1531,8 +1531,13 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 여기에는 저장소가 무엇을 막고 있는지만 적어 둔다.
 
 `.gitignore`가 지금 막는 것: `raw/`, `dist-assets/`, `*.nds`, `*.sdat`,
-`public/models/`, `public/data/{chunks,props,tex}`,
-`public/data/sound/{seq,bnk,war}`
+**`public/models/`, `public/data/`** — 롬에서 나온 것은 폴더째다.
+
+목차만 남기는 예외를 두려고 로더가 첫 왕복에 읽는 것을 재 봤더니 16개 2.6MB였고,
+그 안에 `matrices/0.bin`(1.8MB, 신오 전체 배치)과 `encounters.json`(254KB)이 있었다.
+빼려던 바로 그것이라 예외가 성립하지 않는다 — 목차 노릇은 `assets-manifest.json`
+(경로·크기·짧은 해시 6,558줄, 325KB)이 대신한다. 없을 때 무엇을 돌리면 되는지는
+`pnpm assets:check`가 그룹 28개로 나눠 찍는다 (DATA.md §3.3).
 
 ---
 
@@ -1548,10 +1553,12 @@ pt-3d/
 │  └─ DATA.md                 # 원본이 어떻게 생겼는가 (실측 스펙)
 ├─ tools/                     # Node/Python CLI — 앱과 완전 분리
 │  ├─ extract/                # 롬 → public/data. `pnpm extract`가 여기를 돈다
+│  ├─ assets/                 # 산출물 목차 + 받기 (DATA.md §3.3)
 │  ├─ spike/                  # 포맷을 뚫을 때 쓴 일회성 디코더 (§16의 근거)
 │  └─ preview/                # 오프라인 소프트웨어 래스터라이저 (아래 ⚠️)
+├─ assets-manifest.json       # 있어야 할 에셋 6,558개의 경로·크기·짧은 해시
 ├─ raw/                       # .gitignore — 롬·덤프·중간 산출물 (§14.1)
-├─ public/
+├─ public/                    # .gitignore — 롬에서 나온 것은 폴더째다 (§14.1)
 │  ├─ data/                   # 추출 결과: chunks · props · tex · npc · dialogue …
 │  │  └─ sound/               # 악보 1013 · 악기표 521 · 파형 창고 521 (§4.5)
 │  └─ models/                 # dawn.glb
@@ -1572,7 +1579,7 @@ pt-3d/
 │  │  ├─ intro/ · input/ · model/ · audio/
 │  │  └─ dev/                 # 확인 지점 표 — DEV 빌드에만 (§15.1)
 │  ├─ state/                  # saveStore(영속) · sessionStore(UI) · worldState(프레임)
-│  └─ data/                   # 로더 + zod 스키마
+│  └─ data/                   # 로더 + zod 스키마 + `assetBase`(에셋 주소를 만드는 유일한 곳)
 └─ vite.config.ts
 ```
 
@@ -1590,7 +1597,8 @@ pt-3d/
 | | 언제 |
 |---|---|
 | `public/basis/` · KTX2 트랜스코더 | 텍스처를 KTX2로 바꿀 때 (§16.4) |
-| `assets-manifest.json` · `dist-assets/` | 다른 기기에서 롬 없이 재현할 때 (§4.1) |
+| `dist-assets/` (gltf-transform 최적화 산출) | 모델을 줄여야 할 때 (§4.1) |
+| R2 버킷 — `pnpm assets:pull`은 이미 있고 주소만 없다 | 배포할 때 (§4.6) |
 | `tools/optimize/` (gltf-transform) | 포켓몬·NPC 모델이 들어올 때 (§16.6) |
 | `docs/adr/` | 되돌리기 어려운 결정이 쌓일 때 |
 
@@ -1637,12 +1645,12 @@ Phase 0~2는 지났다. 걸어서 이어진 신오를 돌아다니고, 건물에
 
 | | 실측 |
 |---|---|
-| 코드 | 50,405줄 · 파일 282개 · 시험 파일 95개 / 시험 1,031개 |
+| 코드 | 49,854줄 · 파일 286개 · 시험 파일 98개 / 시험 1,049개 (`src/**/*.ts{,x}`) |
 | 화면 | 175.4k 삼각형 · 드로우콜 52~61 · 60fps (WebGPUBackend) |
 | 지형 | 청크 176종, 삼각형 중앙값 1,228 · 최대 2,686 → 창 5×5에 약 30,700 |
 | 나무 | 창 5×5에 3,583~4,003그루 × 156삼각형 |
 | 소품 | 590종 / 오버월드 배치 501개 |
-| 자산 | 청크 30MB · 소품 4.8MB · 모델 4.9MB · 텍스처 824KB · 고르는 장면 138KB (전부 PNG, KTX2 0개) |
+| 자산 | 파일 6,558개 · 99.9MB — NPC 모델 38.1 · 청크 28.4 · 소리 7.5 · 배틀 무대 6.6 · 주인공 4.8 · 행렬 3.4 · 대사 3.3 · 소품 2.8MB (전부 PNG, KTX2 0개) |
 
 ### 16.2 ① 미구현 — 큰 것부터
 

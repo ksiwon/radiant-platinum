@@ -12,6 +12,7 @@ import {
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type Move, type PokeIcons, type ScriptFile, type Species, type Trainer,
 } from './schema'
+import { dataUrl } from './assetBase'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
 
@@ -21,7 +22,7 @@ const cache = new Map<string, Promise<unknown>>()
 async function fetchJson<T>(path: string, parse: (v: unknown) => T): Promise<T> {
   const hit = cache.get(path)
   if (hit) return hit as Promise<T>
-  const promise = fetch(`${import.meta.env.BASE_URL}data/${path}`)
+  const promise = fetch(dataUrl(`${path}`))
     .then((r) => {
       if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
       return r.json()
@@ -211,7 +212,7 @@ export function loadScriptMeta(): Promise<ScriptFile> {
 export function loadScriptBytes(): Promise<Uint8Array> {
   const hit = cache.get('scripts.bin')
   if (hit) return hit as Promise<Uint8Array>
-  const promise = fetch(`${import.meta.env.BASE_URL}data/scripts.bin`)
+  const promise = fetch(dataUrl('scripts.bin'))
     .then((r) => {
       if (!r.ok) throw new Error(`scripts.bin 로드 실패: HTTP ${r.status}`)
       return r.arrayBuffer()

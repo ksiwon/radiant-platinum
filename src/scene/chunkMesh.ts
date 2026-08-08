@@ -11,8 +11,7 @@ import {
   FrontSide, LinearMipmapLinearFilter, MeshLambertMaterial, MirroredRepeatWrapping,
   NearestFilter, RepeatWrapping, SRGBColorSpace, type Material, type Texture,
 } from 'three'
-
-const BASE = import.meta.env.BASE_URL
+import { dataUrl } from '../data/assetBase'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
 export interface ChunkFormat {
@@ -54,7 +53,7 @@ const starterSheetCache = new Map<number, Promise<TexSheet | null>>()
 let format: Promise<ChunkFormat> | null = null
 
 export function loadChunkFormat(): Promise<ChunkFormat> {
-  format ??= fetch(`${BASE}data/chunks/index.json`).then((r) => r.json() as Promise<ChunkFormat>)
+  format ??= fetch(dataUrl('chunks/index.json')).then((r) => r.json() as Promise<ChunkFormat>)
   return format
 }
 
@@ -70,7 +69,7 @@ export function loadChunkMesh(index: number): Promise<ChunkMesh> {
   if (hit) return hit
   const promise = Promise.all([
     loadChunkFormat(),
-    fetch(`${BASE}data/chunks/${String(index)}.bin`).then((r) => {
+    fetch(dataUrl(`chunks/${String(index)}.bin`)).then((r) => {
       if (!r.ok) throw new Error(`청크 ${index} 로드 실패: HTTP ${r.status}`)
       return r.arrayBuffer()
     }),
@@ -138,7 +137,7 @@ export function loadPropMesh(index: number): Promise<ChunkMesh> {
   if (hit) return hit
   const promise = Promise.all([
     loadChunkFormat(),
-    fetch(`${BASE}data/props/${String(index)}.bin`).then((r) => {
+    fetch(dataUrl(`props/${String(index)}.bin`)).then((r) => {
       if (!r.ok) throw new Error(`소품 ${index} 로드 실패: HTTP ${r.status}`)
       return r.arrayBuffer()
     }),
@@ -152,12 +151,12 @@ export function loadPropMesh(index: number): Promise<ChunkMesh> {
 export function loadPropSheet(index: number): Promise<TexSheet | null> {
   const hit = propSheetCache.get(index)
   if (hit) return hit
-  const promise = fetch(`${BASE}data/props/index.json`)
+  const promise = fetch(dataUrl('props/index.json'))
     .then((r) => r.json() as Promise<{ sheets: ({ w: number, h: number, items: [string, string, number, number, number, number][] } | null)[] }>)
     .then(async (idx) => {
       const info = idx.sheets[index]
       if (!info) return null
-      return sheetFrom(`${BASE}data/props/${String(index)}.png`, info)
+      return sheetFrom(dataUrl(`props/${String(index)}.png`), info)
     })
     .catch((e: unknown) => { propSheetCache.delete(index); throw e })
   propSheetCache.set(index, promise)
@@ -175,7 +174,7 @@ export function loadStarterMesh(index: number): Promise<ChunkMesh> {
   if (hit) return hit
   const promise = Promise.all([
     loadChunkFormat(),
-    fetch(`${BASE}data/starter/${String(index)}.bin`).then((r) => {
+    fetch(dataUrl(`starter/${String(index)}.bin`)).then((r) => {
       if (!r.ok) throw new Error(`고르는 장면 모델 ${index} 로드 실패: HTTP ${r.status}`)
       return r.arrayBuffer()
     }),
@@ -189,14 +188,14 @@ export function loadStarterMesh(index: number): Promise<ChunkMesh> {
 export function loadStarterSheet(index: number): Promise<TexSheet | null> {
   const hit = starterSheetCache.get(index)
   if (hit) return hit
-  const promise = fetch(`${BASE}data/starter/index.json`)
+  const promise = fetch(dataUrl('starter/index.json'))
     .then((r) => r.json() as Promise<{
       sheets: Record<string, { w: number, h: number, items: [string, string, number, number, number, number][] } | null>
     }>)
     .then(async (idx) => {
       const info = idx.sheets[String(index)]
       if (!info) return null
-      return sheetFrom(`${BASE}data/starter/${String(index)}.png`, info)
+      return sheetFrom(dataUrl(`starter/${String(index)}.png`), info)
     })
     .catch((e: unknown) => { starterSheetCache.delete(index); throw e })
   starterSheetCache.set(index, promise)
@@ -226,10 +225,10 @@ export function loadTexSheet(set: number): Promise<TexSheet> {
   const hit = sheetCache.get(set)
   if (hit) return hit
   const promise = Promise.all([
-    fetch(`${BASE}data/tex/index.json`).then((r) => r.json() as Promise<{
+    fetch(dataUrl('tex/index.json')).then((r) => r.json() as Promise<{
       sets: { w: number, h: number, items: [string, string, number, number, number, number][] }[]
     }>),
-    fetch(`${BASE}data/tex/${String(set)}.png`)
+    fetch(dataUrl(`tex/${String(set)}.png`))
       .then((r) => r.blob())
       .then((b) => createImageBitmap(b)),
   ]).then(([index, bitmap]) => {

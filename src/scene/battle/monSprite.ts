@@ -12,8 +12,7 @@
 import {
   ClampToEdgeWrapping, NearestFilter, SRGBColorSpace, TextureLoader, type Texture,
 } from 'three'
-
-const BASE = import.meta.env.BASE_URL
+import { dataUrl } from '../../data/assetBase'
 
 /** 그림에서 실제로 칠해진 자리. 이것이 없으면 발밑이 안 맞는다 */
 export interface SpriteBox { x: number; y: number; w: number; h: number }
@@ -26,7 +25,7 @@ export interface SpriteIndex {
 let index: Promise<SpriteIndex> | null = null
 
 export function loadSpriteIndex(): Promise<SpriteIndex> {
-  index ??= fetch(`${BASE}data/pokemon/index.json`)
+  index ??= fetch(dataUrl('pokemon/index.json'))
     .then((r) => r.json() as Promise<SpriteIndex>)
   return index
 }
@@ -46,7 +45,7 @@ export function loadMonSprite(species: number, back: boolean): Promise<Texture> 
   if (!got) {
     got = new Promise<Texture>((resolve, reject) => {
       loader.load(
-        `${BASE}data/pokemon/${key.replace('/', '_')}.png`,
+        dataUrl(`pokemon/${key.replace('/', '_')}.png`),
         (tex) => {
           // 도트는 보간하면 안 된다. 밉맵도 안 만든다 — 한 장을 화면에 크게
           // 띄우는 것이라 축소가 없다

@@ -15,8 +15,9 @@ import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from '../menu/useMenuKeys'
 import * as css from './battleScreen.css'
+import { dataUrl } from '../../data/assetBase'
 
-const ATLAS = `${import.meta.env.BASE_URL}data/itemIcons.png`
+const ATLAS = dataUrl('itemIcons.png')
 
 /** `constants/items.h`의 `BATTLE_POCKET_MASK_*` */
 const CATEGORY = [

@@ -18,6 +18,7 @@ import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import {
   artDir, cameraQuadrant, frameOf, npcSprite, TEXELS_PER_TILE, type NpcSprite,
 } from '../engine/actor/sprites'
+import { dataUrl } from '../data/assetBase'
 import { worldState } from '../state/worldState'
 
 /** 한 맵에 동시에 세우는 최대 인원. 넘치는 사람은 안 그린다 */
@@ -40,7 +41,7 @@ const textures = new Map<number, Texture>()
 function textureFor(gfx: number): Texture {
   const had = textures.get(gfx)
   if (had !== undefined) return had
-  const tex = loader.load(`${import.meta.env.BASE_URL}data/npc/${String(gfx)}.png`)
+  const tex = loader.load(dataUrl(`npc/${String(gfx)}.png`))
   // 도트를 뭉개지 않는다. 원작이 16텍셀 격자라 보간하면 윤곽이 흐려진다
   tex.magFilter = NearestFilter
   tex.minFilter = NearestFilter

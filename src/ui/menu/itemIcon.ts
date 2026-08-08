@@ -8,8 +8,9 @@
 // 설명칸에서는 크게 같은 그림을 쓴다.
 import type { CSSProperties } from 'react'
 import type { ItemIcons } from '../../data/schema'
+import { dataUrl } from '../../data/assetBase'
 
-const ATLAS = `${import.meta.env.BASE_URL}data/itemIcons.png`
+const ATLAS = dataUrl('itemIcons.png')
 
 /** 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
 export function itemIcon(

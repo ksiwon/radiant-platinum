@@ -7,6 +7,7 @@ import { Mesh, type MeshStandardMaterial, type Group } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
 import { sceneRefs } from './sceneRefs'
+import { modelUrl } from '../data/assetBase'
 
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
 const ALT_OUTFIT = ['hair2', 'shoes2']
@@ -14,7 +15,7 @@ const ALT_OUTFIT = ['hair2', 'shoes2']
 export function PlayerModel() {
   const groupRef = useRef<Group>(null)
   const normRef = useRef<Group>(null)
-  const gltf = useLoader(GLTFLoader, `${import.meta.env.BASE_URL}models/dawn.glb`)
+  const gltf = useLoader(GLTFLoader, modelUrl('dawn.glb'))
 
   useEffect(() => {
     gltf.scene.traverse((o) => {

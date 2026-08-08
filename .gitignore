@@ -5,18 +5,16 @@ dist-assets/
 # 원본 ROM·추출물. 리포에 절대 들어가면 안 된다 (§14.1) — 롬 1개가 128MB다
 raw/
 
-# raw/ + tools/ 파이프라인으로 재생성되는 산출물. 최종적으로는 R2에서 서빙한다 (§4.6)
+# raw/ + tools/ 파이프라인으로 재생성되는 산출물. R2에서 서빙한다 (§4.6, COPYRIGHT.md §5)
+#
+# ⚠️ **폴더째다. 목차만 남기는 예외를 안 둔다.** 두려고 로더가 첫 왕복에 읽는 것을
+# 재 봤더니 16개 2.6MB였고, 그 안에 `matrices/0.bin`(1.8MB, 신오 전체 배치)과
+# `encounters.json`(254KB)이 있었다 — 저작권 축에서 빼려던 바로 그것이라 예외가
+# 성립하지 않는다. 목차 노릇은 `assets-manifest.json`이 대신한다.
+#
+# 없을 때 무엇을 돌려야 하는지는 `pnpm assets:check`가 그룹별로 찍어 준다.
 public/models/
-# 청크 모델 28MB + 소품 2.5MB + 맵 텍스처 0.6MB.
-# `pnpm extract:chunks && pnpm extract:props && pnpm extract:mapTextures`로 만든다
-public/data/chunks/
-public/data/props/
-public/data/tex/
-# 소리 7.5MB — 악보 1013 · 악기표 521 · 파형 창고 521.
-# `pnpm extract:sound`로 만든다. index.json은 작아서 추적한다
-public/data/sound/seq/
-public/data/sound/bnk/
-public/data/sound/war/
+public/data/
 *.nds
 *.sdat
 *.local

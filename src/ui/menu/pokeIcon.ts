@@ -7,9 +7,10 @@
 // 롬의 `pl_poke_icon.narc`가 종족 순서로 놓여 있다.
 import type { CSSProperties } from 'react'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
+import { dataUrl } from '../../data/assetBase'
 
-const ICONS = `${import.meta.env.BASE_URL}data/pokeIcons.png`
-const WALLS = `${import.meta.env.BASE_URL}data/boxWallpapers.png`
+const ICONS = dataUrl('pokeIcons.png')
+const WALLS = dataUrl('boxWallpapers.png')
 
 /** 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
 export function pokeIcon(

@@ -1928,6 +1928,10 @@ tools/
     marts.js        디컴프 헤더의 상점 재고표 → marts.json
     spawns.js       부활 지점·공중날기 자리 20곳 → spawns.json (디컴프 표에서)
     png.js          최소 PNG 인코더 (zlib만 쓴다)
+  assets/         산출물이 있어야 할 자리를 아는 쪽 (§3.3)
+    groups.mjs      파일 → 그것을 만드는 명령. 추출기 소스에서 뽑은 짝 28개
+    manifest.mjs    디스크를 훑어 assets-manifest.json을 굽는다
+    pull.mjs        없는 것을 세고, 버킷이 있으면 받는다
 ```
 
 ⚠️ **글 디코더는 `extract/message.js` 하나만 쓴다.** `spike/gen4text.js`에도 하나
@@ -1980,6 +1984,55 @@ tools/
 `src/data/schema.ts`가 zod로 런타임 검증 + 타입 생성. 추출기가 롬을 잘못 읽으면 **그럴듯한 쓰레기**가 나오므로, 스키마는 그게 게임 코드까지 조용히 흘러드는 것을 막는 마지막 방어선이다. 범위까지 좁게 잡는다(우선도 -7~+5, EV 0~3, 성장곡선 0~5).
 
 검증된 값은 테스트로 고정한다. 4세대 데이터는 이제 변하지 않으므로, 이 숫자가 흔들리면 그건 개선이 아니라 회귀다.
+
+### 3.3 자료가 없는 기계에서
+
+**`public/data`와 `public/models`는 리포에 안 들어간다** (COPYRIGHT.md §5).
+파일 6,558개 · 99.9MB이고 전부 롬에서 나온 것이다. 그래서 새로 클론하면
+**아무것도 없는 상태로 시작한다.**
+
+그러면 무엇이 있어야 하는지를 아는 것이 필요하다. 그것이 `assets-manifest.json`이다 —
+경로 · 크기 · sha256 앞 8바이트, 6,558줄에 325KB. 롬 바이트가 아니라 **롬 바이트의
+목차**라 이것만 커밋한다.
+
+```
+pnpm assets:check      무엇이 없는지 그룹별로 센다 (없으면 종료 코드 1)
+pnpm assets:pull       버킷에서 받는다
+pnpm assets:manifest   지금 디스크로 매니페스트를 다시 굽는다
+```
+
+`assets:check`의 출력은 이렇게 생겼다 — **없는 것과 그것을 만드는 명령이 한 줄에 있다.**
+
+```
+starterScene     없음     1   pnpm extract:starterScene
+headers          없음     2   pnpm extract:headers
+— 모두 3개
+```
+
+⚠️ **버킷 주소는 코드에 없다.** `PT_ASSET_ORIGIN` 또는 `--from=`으로만 들어온다
+(COPYRIGHT.md §6 — 채널은 언젠가 죽는다는 전제다). 주소가 없으면 받지 않고,
+대신 위 목록을 찍고 선다. 버킷이 아직 없어도 이 도구가 쓸모 있어야 하기 때문이다.
+
+⚠️ **크기만으로는 모자라서 짧은 해시를 같이 담는다.** 추출기를 고치면 크기가 같은
+채로 내용만 바뀌는 일이 실제로 잦다. sha256 전부를 넣으면 6,558줄 × 64자로
+매니페스트가 자료보다 자주 바뀌는 덩치가 되므로 앞 8바이트만 쓴다 — 무결성 증명이
+아니라 **바뀐 것을 알아채는 장치**다.
+
+#### 누가 무엇을 만드는가
+
+`tools/assets/groups.mjs`가 파일 경로와 그것을 만드는 명령을 짝지어 28개 그룹으로
+나눈다. 짝은 손으로 적은 것이 아니라 추출기 소스에서 뽑았다 —
+`writeJson('species.json', …)` · `OUT_DIR = 'public/data/npc'` 같은 자리를 훑었다.
+그리고 **`manifest.mjs`가 임자 없는 파일을 하나라도 만나면 선다.** 추출기가 새 파일을
+뱉기 시작하면 조용히 빠지지 않는다.
+
+⚠️ **`pnpm extract` 체인이 전부가 아니다.** 세 갈래가 밖에 있다:
+
+| 그룹 | 만드는 법 | 왜 밖인가 |
+|---|---|---|
+| `npcSprites` | `node tools/extract/npcSprites.js` | pnpm 스크립트 자체가 없다 |
+| `player` · `arena` · `bdspNpcTable` | `py -3.13 tools/extract/{dawn_to_glb,bdspArena,bdspNpc}.py` | 파이썬 + BDSP 번들이 필요하다 (PLAN §4.3) |
+| `npcModels` | `pnpm extract:npcModels` | 스크립트는 있는데 `extract` 체인에 안 들어 있다 |
 
 ---
 

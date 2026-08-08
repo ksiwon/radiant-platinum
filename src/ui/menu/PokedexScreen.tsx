@@ -17,6 +17,7 @@ import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './pokedexScreen.css'
 import { music } from '../../engine/audio/music'
+import { dataUrl } from '../../data/assetBase'
 
 const PAGE = 8
 
@@ -114,7 +115,7 @@ export function PokedexScreen() {
               {caught && (
                 <img
                   className={own.art}
-                  src={`${import.meta.env.BASE_URL}data/pokemon/${String(species)}_front.png`}
+                  src={dataUrl(`pokemon/${String(species)}_front.png`)}
                   alt=""
                   onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
                 />

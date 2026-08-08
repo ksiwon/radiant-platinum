@@ -9,18 +9,17 @@ import { heightField, type HeightData } from '../engine/map/height'
 import { world, type AreaData, type EventFile, type MapHeader } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadNpcSprites, type NpcSprite } from '../engine/actor/sprites'
+import { dataUrl } from '../data/assetBase'
 import type { EncounterTable } from '../engine/battle/encounter'
 
-const base = () => `${import.meta.env.BASE_URL}data/`
-
 async function json<T>(path: string): Promise<T> {
-  const r = await fetch(base() + path)
+  const r = await fetch(dataUrl(path))
   if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
   return r.json() as Promise<T>
 }
 
 async function bytes(path: string): Promise<ArrayBuffer> {
-  const r = await fetch(base() + path)
+  const r = await fetch(dataUrl(path))
   if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
   return r.arrayBuffer()
 }

@@ -12,6 +12,7 @@
 import type { CSSProperties } from 'react'
 import { loadSignposts } from '../../data/gameData'
 import type { Signposts } from '../../data/schema'
+import { dataUrl } from '../../data/assetBase'
 
 /** `generated/signpost_types.txt` */
 const SIGNPOST_TYPE_MAP = 0
@@ -56,7 +57,7 @@ export function signpostImage(a: Signposts, type: number, picture: number): CSSP
   return {
     width: a.width * SCALE,
     height: a.height * SCALE,
-    backgroundImage: `url(${import.meta.env.BASE_URL}data/signposts.png)`,
+    backgroundImage: `url(${dataUrl('signposts.png')})`,
     // 아틀라스 전체를 배율만큼 키우고 그 안에서 칸 하나를 창으로 낸다
     backgroundSize: `${a.cols * a.width * SCALE}px auto`,
     backgroundPosition: `-${col * a.width * SCALE}px -${row * a.height * SCALE}px`,

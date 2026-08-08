@@ -24,6 +24,7 @@ import {
   useGameLocale, useOptionsStore, type BattlePace, type BattleRule, type BattleScene,
   type Language, type Options, type SoundMode, type TextSpeed, type ViewMode,
 } from '../../state/optionsStore'
+import { APP_ROOT } from '../../data/assetBase'
 import { useSaveStore } from '../../state/saveStore'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
@@ -167,7 +168,8 @@ export function OptionsScreen() {
 
   if (confirming) return <ResetConfirm text={text} language={options.language} onNo={() => { setConfirming(false) }} onYes={() => {
     // 리포트를 지우고 타이틀로 나간다. 처음부터면 인트로부터 다시 봐야 한다
-    void resetSave().then(() => { closeAll(); location.assign(import.meta.env.BASE_URL) })
+    // 에셋이 아니라 **앱 셸**로 돌아가는 것이다. CDN 주소를 쓰면 안 된다
+    void resetSave().then(() => { closeAll(); location.assign(APP_ROOT) })
   }} />
 
   return (

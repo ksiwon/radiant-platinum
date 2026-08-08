@@ -36,6 +36,7 @@ import {
   BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES,
 } from './starterScene'
 import * as css from './chooseStarter.css'
+import { dataUrl } from '../../data/assetBase'
 
 /** `Menu_MakeYesNoChoice` — 위가 "예"다 */
 const MENU_YES = 0
@@ -228,7 +229,7 @@ export function ChooseStarter() {
         <div
           className={css.preview}
           style={{
-            backgroundImage: `url(${import.meta.env.BASE_URL}data/pokemon/${String(STARTERS[pick])}_front.png)`,
+            backgroundImage: `url(${dataUrl(`pokemon/${String(STARTERS[pick])}_front.png`)})`,
           }}
           aria-hidden
         />

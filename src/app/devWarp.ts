@@ -15,6 +15,7 @@ import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
 import { HM_CARRIER, HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
 import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
+import { dataUrl } from '../data/assetBase'
 
 export const devWarp = {
   /** 씬이 처리해야 할 확인 지점. 처리하고 나면 씬이 null로 되돌린다 */
@@ -110,9 +111,8 @@ async function applySetup(cp: Checkpoint): Promise<void> {
  * 도감이 party만 든 채로 뜨는 것이 전부다
  */
 async function markSeenAlongTheWay(cp: Checkpoint): Promise<void> {
-  const base = import.meta.env.BASE_URL
   const get = async <T,>(name: string): Promise<T> =>
-    await (await fetch(`${base}data/${name}`)).json() as T
+    await (await fetch(dataUrl(name))).json() as T
   try {
     const [mapsFile, encFile] = await Promise.all([
       get<{ maps: { encounters: number | null }[] }>('maps.json'),

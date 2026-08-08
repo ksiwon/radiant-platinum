@@ -25,6 +25,7 @@ import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { worldState } from '../state/worldState'
+import { modelUrl } from '../data/assetBase'
 
 /**
  * 동시에 세우는 모델 수의 상한.
@@ -138,7 +139,7 @@ function fetchModel(tag: string, done: () => void): void {
   if (loading.has(tag)) return
   loading.add(tag)
   loader
-    .loadAsync(`${import.meta.env.BASE_URL}models/npc/${tag}.glb`)
+    .loadAsync(modelUrl(`npc/${tag}.glb`))
     .then((gltf) => { scenes.set(tag, gltf.scene); done() })
     .catch(() => { /* 못 받으면 그 사람은 판때기로 남는다 */ })
     .finally(() => { loading.delete(tag) })
