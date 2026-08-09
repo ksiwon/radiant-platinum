@@ -563,6 +563,11 @@ async function main() {
             o.getVertexPosition(0, tip)
             o.localToWorld(tip)
           } catch { tip.set(NaN, NaN, NaN) }
+          // **자세를 먹인 뒤 얼마나 높은가.** 바인드 포즈의 상자로는 못 잰다 —
+          // 대기 동작이 몸을 세우는 종(갸라도스)은 실제로 훨씬 위까지 올라간다.
+          // `precise`가 `getVertexPosition`으로 뼈까지 셈에 넣는다
+          let high = NaN
+          try { high = new THREE.Box3().setFromObject(o, true).max.y - origin.y } catch { /* 못 잰다 */ }
           const sph = { center: tip.clone().sub(origin), radius: 0 }
           const mats = Array.isArray(o.material) ? o.material : [o.material]
           out.push({
@@ -571,6 +576,7 @@ async function main() {
             vis,
             tris: Math.round(tris),
             at: [+(at.x - origin.x).toFixed(2), +(at.y - origin.y).toFixed(2), +(at.z - origin.z).toFixed(2)],
+            high: +high.toFixed(2),
             s: +scale.x.toFixed(2),
             cull: o.frustumCulled,
             ball: [+sph.center.x.toFixed(2), +sph.center.y.toFixed(2), +sph.center.z.toFixed(2)],
@@ -582,11 +588,17 @@ async function main() {
         })
         return out
       })
-      console.log(`  ${id} 무대 위 메시 ${String(rows.length)}개`)
+      const cam = await page.evaluate(async () => {
+        const stage = await import('/src/scene/battle/stageRefs.ts')
+        const p = stage.battleStage.position, o = stage.STAGE_ORIGIN
+        return [+(p.x - o.x).toFixed(2), +(p.y - o.y).toFixed(2), +(p.z - o.z).toFixed(2),
+          +Math.hypot(p.x - o.x, p.y - o.y, p.z - o.z).toFixed(2)]
+      })
+      console.log(`  ${id} 무대 위 메시 ${String(rows.length)}개 · 카메라 ${String(cam.slice(0, 3))} 거리 ${String(cam[3])}`)
       for (const r of rows.slice(0, 30)) {
         console.log(`     ${r.vis ? ' ' : '×'} ${r.name.slice(0, 24).padEnd(24)}`
           + ` ${r.skin ? '뼈' : '  '} 삼각형 ${String(r.tris).padStart(7)}`
-          + ` 배율 ${String(r.s).padStart(5)} @ ${String(r.at)}`
+          + ` 배율 ${String(r.s).padStart(5)} 꼭대기 ${String(r.high).padStart(5)} @ ${String(r.at)}`
           + ` 첫정점 ${String(r.ball).slice(0, 24)} ${r.mat.slice(0, 18)}`
           + ` 불투명 ${String(r.op)}${r.tr ? '·반투명' : ''} 문턱 ${String(r.aT)}`
           + `${r.cull ? '' : ' (컬링끔)'}`)

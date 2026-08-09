@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { ARENA, EVERY_ARENA, arenaFor, cameraFit, hasSky } from './arena'
+import { ARENA, EVERY_ARENA, FAR_RIG, arenaFor, cameraFit, hasSky } from './arena'
 import { SHOT_REACH } from './shots'
 import type { MapHeader } from '../map/world'
 import { withData } from '../../data/romData.testkit'
@@ -48,11 +48,15 @@ describe('배틀 무대 고르기', () => {
     // 화면에 서는 키의 중앙값이 1.17이다. 1.2까지는 기본 샷이 담는다
     expect(cameraFit(field, 0.79)).toBe(1)   // 모부기
     expect(cameraFit(field, 1.5)).toBeCloseTo(1.25, 3)   // 잉어킹쯤
-    // 토대부기(1.89)는 이미 한계에 닿는다
-    // ⚠️ BDSP의 두 번째 리그(8.63m = 1.52배)까지만 물러난다
-    for (const tall of [1.89, 7.31]) {
-      expect(cameraFit({ ...field, radius: 24 }, tall)).toBeCloseTo(8.63 / SHOT_REACH, 5)
-    }
+    // 키에 비례해서 계속 물러난다.
+    //
+    // ⚠️ **BDSP의 두 번째 리그에서 끊으면 안 된다.** 한동안 그 1.52배를 상한으로
+    // 뒀는데, 갸라도스가 대기 동작으로 3.54m까지 서서 그 자리에서 머리가 잘렸다.
+    // 상한은 리그가 아니라 무대 벽이다
+    expect(cameraFit({ ...field, radius: 24 }, 3.54)).toBeCloseTo(3.54 / 1.2, 5)
+    // 그래도 원작과 어긋나지는 않았다 — BDSP가 리그를 바꾸는 그 자리에 우리
+    // 셈으로 키 1.82m짜리가 온다. 화면 키 상위 10%가 1.86이니 같은 무리다
+    expect(FAR_RIG * 1.2).toBeCloseTo(1.82, 2)
     // 방에서는 벽이 이긴다 — 물러날 데가 없으면 잘리는 편이 벽을 뚫는 것보다 낫다
     expect(cameraFit(room, 7.31)).toBeCloseTo(0.88, 2)
   })

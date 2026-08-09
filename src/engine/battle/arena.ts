@@ -79,13 +79,14 @@ const CLEARANCE = 1
 const FRAMED_TALL = 1.2
 
 /**
- * 큰 종 앞에서 물러나는 한계.
+ * BDSP가 큰 포켓몬 앞에서 옮기는 두 번째 리그.
  *
- * ⚠️ **BDSP의 두 번째 리그다.** `DefaultCameraPlacementData`가 큰 포켓몬일 때
- * 카메라를 (−4.6, 0.8, 7.3)으로 옮기는데, 무대 한가운데에서 8.63m라 기본
- * 리그(5.68m)의 **1.52배**다. 우리도 거기까지만 물러난다
+ * `DefaultCameraPlacementData`가 카메라를 (−4.6, 0.8, 7.3)으로 옮기는데, 무대
+ * 한가운데에서 8.63m라 기본 리그(5.68m)의 **1.52배**다. 우리 셈으로는 키
+ * 1.82m짜리가 그 자리에 온다 — 값을 정하는 데 쓰지는 않고, 우리 규칙이 원작과
+ * 어긋나지 않았는지 견주는 자리다 (`arena.test`)
  */
-const FAR_RIG = 8.63 / SHOT_REACH
+export const FAR_RIG = 8.63 / SHOT_REACH
 
 /**
  * 카메라를 무대와 몸집에 맞춰 옮기는 비율.
@@ -98,12 +99,16 @@ const FAR_RIG = 8.63 / SHOT_REACH
  *   기본 샷에서 화면을 넘긴다. BDSP도 큰 종 앞에서는 리그를 바꾼다
  *
  * 좁은 방에서 큰 종을 만나면 **벽이 이긴다** — 물러날 데가 없으면 잘리는 편이
- * 벽을 뚫는 것보다 낫다
+ * 벽을 뚫는 것보다 낫다.
+ *
+ * ⚠️ **물러나기에 따로 상한을 두면 안 된다.** 한동안 BDSP의 두 번째 리그
+ * (`FAR_RIG`, 1.52배)에서 끊었는데, 갸라도스가 대기 동작으로 3.54m까지 서는
+ * 바람에 그 자리에서 머리가 화면 위로 잘렸다. 한계는 무대 벽이지 리그가 아니다 —
+ * 노모세 체육관은 반지름 20m라 3.35배까지 물러날 데가 있었다
  */
 export function cameraFit(arena: Arena, tall = 0): number {
   const room = (arena.radius - CLEARANCE) / SHOT_REACH
-  const want = Math.min(FAR_RIG, Math.max(1, tall / FRAMED_TALL))
-  return Math.min(want, room)
+  return Math.min(Math.max(1, tall / FRAMED_TALL), room)
 }
 
 /**

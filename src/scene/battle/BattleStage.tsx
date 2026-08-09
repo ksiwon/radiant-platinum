@@ -12,7 +12,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import {
-  BackSide, Color, Group, Mesh, MeshStandardMaterial,
+  BackSide, Box3, Color, Group, Mesh, MeshStandardMaterial,
   type CanvasTexture, type Texture,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
@@ -47,6 +47,25 @@ import { modelUrl } from '../../data/assetBase'
  * 대체 지면(`Flat`)도 같은 높이에 둔다
  */
 const GROUND = 0.001
+
+/**
+ * **자세를 먹인 뒤 얼마나 높은가**를 이 간격으로 다시 잰다 (초).
+ *
+ * ⚠️ 바인드 포즈의 키(`posedHeight`)로는 못 잰다. 갸라도스는 모델이 2.09m인데
+ * 대기 동작이 몸을 세워서 실제로는 **3.54m**까지 올라간다(`pnpm shot --tree`로
+ * 잰 값이다) — 카메라가 2.09m인 줄 알고 물러나서 머리가 화면 위로 잘려 있었다.
+ *
+ * ⚠️ **몇 초만 보고 끝내면 안 된다.** 처음엔 등판 뒤 3초만 봤는데, 그 사이에는
+ * 아직 등판 동작이라 대기 자세의 꼭대기를 못 본다. **대기 동작일 때만** 재고
+ * 배틀 내내 계속 본다 — 커진 값만 올리므로 결국 한 값에 붙는다.
+ *
+ * 값이 싼 일은 아니다 — `precise` 상자가 정점을 다 도느라 그 프레임이 5ms
+ * 늘어난다(체육관 배틀 실측). 그래서 반 초에 한 번만 재고, 대기 동작이 여러
+ * 바퀴 돌 만큼 보고 나면 **그만둔다**
+ */
+const WATCH_EVERY = 0.5
+/** 대기 동작을 이만큼 보고 나면 더 안 잰다 (초). 대기 한 바퀴가 2~3초다 */
+const WATCH_UNTIL = 9
 
 // ── 배치 ─────────────────────────────────────────────────────────────────────
 // **BDSP가 적어 둔 자리 그대로다** (`BattleDefaultPlacementData`, PLAN §4.3.1).
@@ -106,6 +125,9 @@ function Slot(
 ) {
   const body = useRef<Group>(null)
   const shade = useRef<Mesh>(null)
+  /** 지금까지 본 제일 높은 자리와, 다음에 잴 시각 */
+  const grown = useRef(0)
+  const watch = useRef(0)
   const fainted = mon !== null && mon.hp <= 0
   const [art, setArt] = useState<{ map: Texture; scale: number; lift: number } | null>(null)
   const [model, setModel] = useState<MonBody | null>(null)
@@ -117,6 +139,8 @@ function Slot(
     let alive = true
     setModel(null)
     setArt(null)
+    grown.current = 0
+    watch.current = 0
     if (species === null) return
     void loadMonModel(species)
       .then((loaded) => {
@@ -238,6 +262,20 @@ function Slot(
         play(model, now)
       }
       model.mixer.update(delta)
+      // 자세를 먹인 키를 지켜본다. **대기 동작일 때만** 재고 **커진 만큼만**
+      // 알린다 — 때리는 동작은 몸을 크게 뻗으므로 그것까지 담으면 카메라가
+      // 기술 한 번마다 물러나고, 매 프레임 보내면 숨결에 맞춰 출렁인다
+      if (now === 'wait' && watch.current < WATCH_UNTIL) {
+        const was = Math.floor(watch.current / WATCH_EVERY)
+        watch.current += delta
+        if (Math.floor(watch.current / WATCH_EVERY) !== was) {
+          // ⚠️ **상자는 월드 좌표다.** 무대가 `STAGE_ORIGIN`(0, −500, 0)에
+          // 서 있어서 그대로 쓰면 −496이 나오고, 그러면 "더 커졌나"가 영영
+          // 거짓이라 카메라가 한 번도 안 물러난다 — 실제로 그랬다
+          const top = new Box3().setFromObject(model.root, true).max.y - STAGE_ORIGIN.y - GROUND
+          if (top > grown.current + 0.02) { grown.current = top; onBody(top) }
+        }
+      }
     }
 
     // ⚠️ **그림자는 몸을 따라간다.** 안 그러면 아무도 안 선 자리에 회색 얼룩이
