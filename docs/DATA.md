@@ -2,8 +2,13 @@
 
 > **배포 경계 (2026-08-10):** 이 문서의 포맷 실측은 유지하지만, 공개판은 아래
 > 데이터를 서버에서 받지 않는다. 사용자가 선택한 Platinum `.nds`와 이미 추출된
-> BDSP `AssetAssistant/`를 브라우저 Worker가 변환해 OPFS에 설치한다. 현재
-> Node/Python 추출기는 기존 `raw/`를 쓰는 개발 정본으로 유지한다.
+> BDSP `AssetAssistant/`를 브라우저가 변환해 OPFS에 설치한다. Node/Python
+> 추출기는 기존 `raw/`를 쓰는 **개발 정본**으로 유지한다.
+>
+> ⚠️ 두 경로가 같은 것을 내야 한다. 지금 그것을 바이트로 확인한 그룹은
+> `moves` 하나다 (`src/import/platinum/convert.test.ts`) — 나머지는 아직
+> 노드 쪽만 있다. 무엇이 왜 안 옮겨졌는지는 `convert.ts`의 `GROUPS` 표에 있다.
+>
 > 사용자 단계는 [IMPORT.md](IMPORT.md), 정책은 [COPYRIGHT.md](COPYRIGHT.md),
 > 구현 우선순위는 [PLAN.md](PLAN.md)를 따른다.
 

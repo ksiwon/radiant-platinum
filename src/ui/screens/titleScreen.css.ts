@@ -208,11 +208,27 @@ globalStyle(`${summary} dd`, {
  * 사람에게는 이것이 유일한 입구인데, "리포트가 있을 때만"으로 두면 그 사람에게는
  * 아무 데도 없다
  */
+export const filesArea = style({
+  // ⚠️ `head`가 `position: absolute; inset: 0`이라 **보통 흐름에 두면 왼쪽 위로
+  // 올라간다.** 실제로 파일 줄이 제목 위에 겹쳐 잘려 있었다 — 형제인 `menu`처럼
+  // 자리를 직접 잡는다
+  position: 'absolute',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  bottom: 'calc(clamp(12px, 2vh, 24px) + 54px)',
+  width: 'min(560px, calc(100vw - 32px))',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 8,
+  pointerEvents: 'none',
+})
+
 export const files = style({
   display: 'flex',
   gap: 10,
-  marginTop: 14,
   flexWrap: 'wrap',
+  justifyContent: 'center',
 })
 
 export const fileButton = style({
@@ -233,9 +249,8 @@ export const fileButton = style({
 
 /** 파일을 열어 보고 나서 확인받는 자리, 그리고 실패 이유 */
 export const notice = style({
-  marginTop: 12,
   padding: '10px 12px',
-  maxWidth: 460,
+  maxWidth: 520,
   fontFamily: vars.font.ui,
   fontSize: 12,
   lineHeight: 1.6,

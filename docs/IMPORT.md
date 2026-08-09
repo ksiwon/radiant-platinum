@@ -1,10 +1,14 @@
 # 로컬 Import·설치·세이브 안내와 구현 계약
 
-> 상태: **설계 확정, 구현 전** (2026-08-10).
-> 현재 앱은 아직 `public/data/`·`public/models/`를 HTTP로 읽는다. 이 문서는 공개
-> 배포판이 도달해야 할 계약이며, 완료 조건을 통과하기 전 현재 빌드를 공개판으로
-> 간주하지 않는다. 정책 경계는 [COPYRIGHT.md](COPYRIGHT.md), 포맷은
-> [DATA.md](DATA.md), 작업 순서는 [PLAN.md](PLAN.md)를 따른다.
+> 상태: **일부 구현** (2026-08-10). 이 문서는 공개 배포판이 도달해야 할 계약이며,
+> §14 완료 조건을 통과하기 전 현재 빌드를 공개판으로 간주하지 않는다.
+>
+> ⚠️ **지금 막혀 있는 것은 변환이다.** 경계·리포트·Provider·설치 골격은 섰지만
+> Platinum 변환은 그룹 아홉 중 하나만 옮겨졌고 BDSP 변환은 스파이크조차 없다.
+> 무엇이 왜 막혔는지는 `src/import/platinum/convert.ts`의 `GROUPS` 표에 있다.
+>
+> 정책 경계는 [COPYRIGHT.md](COPYRIGHT.md), 포맷은 [DATA.md](DATA.md),
+> 작업 순서는 [PLAN.md](PLAN.md)를 따른다.
 
 ---
 
@@ -402,38 +406,41 @@ checksum은 우발적 손상을 찾는 장치이지 보안 서명이 아니다. 
 
 | 문제 | 현재 사실 | 해결 게이트 |
 |---|---|---|
-| Vite 공개 폴더 혼입 | `public/data` 약 50MB, `public/models` 약 580MB가 기존 `dist`로 복사됨 | 프로덕션 사전 검사 + 로컬 산출물 위치 이전 |
-| URL 직접 의존 | fetch·CSS·GLTFLoader 호출부 약 20개 | AssetProvider 전환과 import graph 테스트 |
-| Python BDSP 변환 | UnityPy·NumPy·Pillow·일부 Blender 의존 | 브라우저 TS/WASM 동등 변환과 parity test |
-| decomp 의존 추출 | 상점·스크립트 폭·스폰 등 일부 도구가 `raw/decomp`를 읽음 | ROM 자체 파싱 또는 배포 가능한 최소 호환성 메타데이터의 법적·기술적 분리 |
-| 3개 언어 가정 | 개발 데이터는 KO·EN·JA가 모두 있고 UI가 고정 배열을 사용 | 설치 manifest 기반 availableLocales |
-| 세이브 버전 | 버전 불일치는 조용히 null | SaveSchema + migration + 원본 반환 |
-| 단일 삭제 경로 | 새 게임·설정 reset이 IndexedDB 리포트를 즉시 삭제 | 삭제 전 portable backup |
-| SW 캐시 모델 | 현재 `/data`·`/models`를 HTTP runtime cache | 앱 셸 전용 SW로 교체 |
-| 대용량 메모리 | 기존 Node 도구는 파일 전체 Buffer 읽기가 많음 | File.slice·stream·Worker·그룹별 해제 |
-| 중단 복구 | 현재 설치 개념이 없음 | journal·임시 파일·원자적 commit |
+| Vite 공개 폴더 혼입 | ✅ `copyPublicDir: false` + 허용 목록. 실측 `dist` 642.0MB → 11.9MB | 남은 것은 개발 산출물을 `public/` 밖으로 옮기는 일 |
+| URL 직접 의존 | ✅ 소비자 열아홉 곳을 Provider로. `dataUrl`을 부르는 파일이 하나뿐인 것을 시험이 붙든다 | — |
+| SW 캐시 모델 | ✅ 앱 셸만. 옛 판이 만든 에셋 캐시도 활성화 때 지운다 | — |
+| 세이브 버전 | ✅ SaveSchema + 순차 migration. 못 읽는 것은 **원본 파일로 돌려준다** | — |
+| 단일 삭제 경로 | ✅ 지우기 전에 `.rpsave`와 IndexedDB 백업 슬롯 둘 다 | — |
+| 대용량 메모리 | ✅ `Blob.slice()`. 크기로 걸러지는 파일은 **한 조각도 안 읽는다** | 변환 그룹이 늘면 그룹별 해제를 다시 잰다 |
+| 중단 복구 | ✅ 저널 + 임시 파일 + 검증 후 commit + 재개. **저널만 믿지 않고 실제 파일과 대조한다** | — |
+| 3개 언어 가정 | ⚠️ 설치 manifest는 `availableLocales`를 하나만 담는다. 게임 UI는 아직 고정 배열이다 | 화면이 manifest를 읽게 한다 |
+| **Python BDSP 변환** | ❌ UnityPy·NumPy·Pillow·일부 Blender 의존. **대체가 없다** | 브라우저 TS/WASM 동등 변환과 parity test |
+| **Platinum 변환 이식** | ⚠️ 그룹 아홉 중 하나(`moves`)만. 노드 산출물과 바이트로 같다 | 나머지 여덟. 표가 곧 남은 일이다 |
+| **decomp 의존 추출** | ❌ `scripts`는 명령 폭·scriptID 표를, `marts`는 재고 전체를 `raw/decomp`에서 읽는다 — 상점 재고는 **롬에 없다** | ROM 자체 파싱 또는 배포 가능한 최소 호환성 메타데이터의 법적·기술적 분리 |
+| 무전송 검증 | ❌ Network 패널 검사와 새 프로필 왕복 E2E가 없다 | §14 완료 조건 |
 
 ---
 
 ## 13. 구현 순서
 
-1. **경계 게이트부터**: 프로덕션 빌드가 `public/data`, `public/models`, ROM,
-   런타임 팩을 포함하면 실패하게 한다.
-2. **리포트 휴대성**: SaveSchema, codec, migration, 매 리포트 다운로드, 가져오기,
-   삭제 전 백업을 먼저 완성한다. 에셋 전환 중에도 진행을 잃지 않게 하기 위해서다.
-3. **AssetProvider**: 현재 URL 소비자를 bytes/blob/objectUrl 계약으로 옮기고
-   DevAssetProvider로 기존 게임의 동작을 보존한다.
-4. **raw source adapter**: 현재 경로를 설정으로 매핑하고 출력은 `public/` 밖으로
-   옮긴다. 기존 raw 파일은 보존한다.
-5. **Platinum Worker**: NDS/NARC/텍스트/맵/스크립트/오디오를 브라우저로 포팅하고
-   단일 설치 언어를 지원한다.
-6. **BDSP 디렉터리 스캐너**: 상위 폴더 자동 탐색, 그룹 검증, 누락 진단을 만든다.
-7. **BDSP 브라우저 변환**: 캐릭터 → 대표 포켓몬 → 무대 → 전량 순으로 TS/WASM
-   변환기를 늘리고 Python 결과와 비교한다.
-8. **OPFS installer**: quota, persist, journal, 원자적 commit, 재개, 삭제 분리를 붙인다.
-9. **Import Wizard**: 위 기능을 단계 UI와 접근성 있는 오류 안내로 묶는다.
-10. **PWA·개인정보 검증**: 앱 셸만 offline, 네트워크 무전송, 지원 브라우저 E2E,
-    새 설치·중단 재개·업데이트·세이브 왕복을 검증한다.
+1. ✅ **경계 게이트부터**: 프로덕션 빌드가 `public/data`, `public/models`, ROM,
+   런타임 팩을 포함하면 실패한다.
+2. ✅ **리포트 휴대성**: SaveSchema, codec, migration, 매 리포트 다운로드, 가져오기,
+   삭제 전 백업. 에셋 전환 중에도 진행을 잃지 않게 하려던 것이고, 그 목적을 지켰다.
+3. ✅ **AssetProvider**: URL 소비자를 bytes/blob/objectUrl 계약으로 옮겼다.
+   DevAssetProvider가 기존 게임의 동작을 그대로 보존한다.
+4. ⚠️ **raw source adapter**: 경로 매핑은 끝났다. **출력은 아직 `public/` 안이다** —
+   배포물로는 안 나가지만 목표는 `raw/dev-assets`다. 기존 raw 파일은 한 개도 안 옮겼다.
+5. ⚠️ **Platinum 변환**: 입력 검증과 단일 설치 언어는 끝났고, 변환은 `moves` 하나가
+   노드 산출물과 바이트로 같다. 나머지 여덟이 남았다.
+6. ✅ **BDSP 디렉터리 스캐너**: 상위 폴더 자동 탐색, 그룹 다섯 검증, 표본 종, 누락 진단.
+7. ❌ **BDSP 브라우저 변환**: 캐릭터 → 대표 포켓몬 → 무대 → 전량 순으로 TS/WASM
+   변환기를 늘리고 Python 결과와 비교한다. **최우선 기술 게이트다.**
+8. ✅ **OPFS installer**: quota, persist, journal, 원자적 commit, 재개, 삭제 분리.
+9. ⚠️ **Import Wizard**: 단계 UI는 돈다. 변환이 하나뿐이라 화면 첫 줄에
+   "구현 전"이라고 적어 둔다.
+10. ❌ **PWA·개인정보 검증**: 앱 셸만 offline, 네트워크 무전송, 지원 브라우저 E2E,
+    새 설치·중단 재개·업데이트·세이브 왕복.
 
 2~4가 끝나기 전에 브라우저 추출 UI부터 만들지 않는다. 저장·로더 경계가 없으면
 Importer가 만든 결과를 기존 게임이 소비할 수 없고, 실패 중 리포트를 잃을 수 있다.

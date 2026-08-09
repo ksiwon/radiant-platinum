@@ -38,6 +38,15 @@ function prefetchGameChunk() {
 const OptionsScreen = lazy(() =>
   import('../menu/OptionsScreen').then((m) => ({ default: m.OptionsScreen })))
 
+/**
+ * 에셋 설치 화면 (IMPORT.md §4).
+ *
+ * ⚠️ **지연 로드다.** 여기서 정적으로 끌어오면 NDS 리더·BDSP 스캐너·설치기가
+ * 타이틀 청크에 실린다 — 타이틀은 그 코드를 한 줄도 안 쓴다
+ */
+const ImportWizard = lazy(() =>
+  import('../../import/ui/ImportWizard').then((m) => ({ default: m.ImportWizard })))
+
 const DEX_MAX = 493
 
 export function TitleScreen() {
@@ -48,6 +57,8 @@ export function TitleScreen() {
   const [unreadable, setUnreadable] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pending, setPending] = useState<(ImportPreview & { ok: true }) | null>(null)
+  /** 에셋 설치 화면이 떠 있는가 */
+  const [importing, setImporting] = useState(false)
   const filePicker = useRef<HTMLInputElement>(null)
   // 설정은 필드 메뉴와 **같은 화면**을 쓴다. 스택에 올려 두면 그쪽의 "돌아가기"가
   // 그대로 동작하고, 스택이 비면 여기서도 닫힌다
@@ -145,6 +156,9 @@ export function TitleScreen() {
       ? { key: 'continue', label: at(MAIN_MENU.continue_, '모험 계속하기'), go: () => { go(false) } }
       : { key: 'new', label: '새로운 모험 시작하기', go: () => { go(true) } },
     { key: 'options', label: '설정', go: () => { useMenuStore.getState().open('options') } },
+    // ⚠️ **아직 완성되지 않은 것을 완성된 것처럼 두지 않는다.** 변환 그룹이
+    // 하나만 옮겨져 있어서, 여기서 설치를 끝내도 게임은 시작되지 않는다
+    { key: 'import', label: '에셋 설치 (구현 전)', go: () => { setImporting(true) } },
   ]
 
   const [cursor, setCursor] = useState(0)
@@ -210,52 +224,54 @@ export function TitleScreen() {
           사람에게는 이것이 유일한 입구인데, "리포트가 있을 때만"으로 두면
           그 사람에게는 아무 데도 없다 (IMPORT.md §11)
         */}
-        <div className={css.files}>
-          <button className={css.fileButton} onClick={backup}>리포트 백업 받기</button>
-          <button
-            className={css.fileButton}
-            onClick={() => { filePicker.current?.click() }}
-          >
-            리포트 파일 불러오기
-          </button>
-          <input
-            ref={filePicker}
-            type="file"
-            accept={PORTABLE_EXT}
-            hidden
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
-              // change 이벤트가 아예 안 온다
-              e.target.value = ''
-              if (file) pickFile(file)
-            }}
-          />
-        </div>
-
-        {unreadable !== null && (
-          <div className={css.notice}>
-            {`저장된 리포트를 이 판이 못 읽습니다 — ${unreadable}\n`}
-            {'"리포트 백업 받기"로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
+        <div className={css.filesArea}>
+          <div className={css.files}>
+            <button className={css.fileButton} onClick={backup}>리포트 백업 받기</button>
+            <button
+              className={css.fileButton}
+              onClick={() => { filePicker.current?.click() }}
+            >
+              리포트 파일 불러오기
+            </button>
+            <input
+              ref={filePicker}
+              type="file"
+              accept={PORTABLE_EXT}
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
+                // change 이벤트가 아예 안 온다
+                e.target.value = ''
+                if (file) pickFile(file)
+              }}
+            />
           </div>
-        )}
 
-        {pending && (
-          <div className={css.notice}>
-            {`${pending.envelope.summary.trainer || '이름 없음'} · `}
-            {`${clock(pending.envelope.summary.playtimeMs)} · `}
-            {`저장 ${stamp(pending.envelope.createdAt)}\n`}
-            {pending.migrated ? '옛 판이라 지금 판으로 옮겨서 들입니다\n' : ''}
-            {pending.contract === 'same' ? '' : '⚠️ 설치본과 콘텐츠 계약이 다릅니다\n'}
-            {'지금 리포트는 들이기 전에 파일로 먼저 받습니다.'}
-            <div className={css.files}>
-              <button className={css.fileButton} onClick={bringIn}>이 리포트로 이어하기</button>
-              <button className={css.fileButton} onClick={() => { setPending(null) }}>그만두기</button>
+          {unreadable !== null && (
+            <div className={css.notice}>
+              {`저장된 리포트를 이 판이 못 읽습니다 — ${unreadable}\n`}
+              {'"리포트 백업 받기"로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
             </div>
-          </div>
-        )}
+          )}
 
-        {notice !== null && <div className={css.notice}>{notice}</div>}
+          {pending && (
+            <div className={css.notice}>
+              {`${pending.envelope.summary.trainer || '이름 없음'} · `}
+              {`${clock(pending.envelope.summary.playtimeMs)} · `}
+              {`저장 ${stamp(pending.envelope.createdAt)}\n`}
+              {pending.migrated ? '옛 판이라 지금 판으로 옮겨서 들입니다\n' : ''}
+              {pending.contract === 'same' ? '' : '⚠️ 설치본과 콘텐츠 계약이 다릅니다\n'}
+              {'지금 리포트는 들이기 전에 파일로 먼저 받습니다.'}
+              <div className={css.files}>
+                <button className={css.fileButton} onClick={bringIn}>이 리포트로 이어하기</button>
+                <button className={css.fileButton} onClick={() => { setPending(null) }}>그만두기</button>
+              </div>
+            </div>
+          )}
+
+          {notice !== null && <div className={css.notice}>{notice}</div>}
+        </div>
 
         {/*
           리포트가 있을 때만. 버튼이 아니라 글자인 것은 **되돌릴 수 없는 일**이라서다 —
@@ -278,6 +294,12 @@ export function TitleScreen() {
       {menuTop === 'options' && (
         <Suspense fallback={null}>
           <OptionsScreen />
+        </Suspense>
+      )}
+
+      {importing && (
+        <Suspense fallback={null}>
+          <ImportWizard onClose={() => { setImporting(false) }} />
         </Suspense>
       )}
     </div>

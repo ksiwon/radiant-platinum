@@ -848,16 +848,20 @@ src/engine/audio/tables.ts      ARM7에서 뜯은 포락선 표
 - Import 라우트에 분석 SDK·원격 오류 수집 없음
 - CSP 기본값 `connect-src 'self'`; 사용자 파일 내용·이름·해시 전송 금지
 
-현재 `public/data`와 `public/models`는 각각 약 50MB·580MB이고 기존
-`dist/data`·`dist/models`에도 거의 그대로 들어가 있다. 전환 첫 구현은
-`tools/checkDistributionBoundary` 같은 사전 검사로 이 경로와 금지 확장자를
-발견하면 `vite build` 전에 실패해야 한다. 이후 개발 산출물을 `public/` 밖으로
-옮기고 Vite dev middleware에서만 노출한다.
+`public/data`(64MB)와 `public/models`(581MB)는 개발 산출물이고 **여전히 거기
+있다.** 배포물로 나가지 않는 것은 `copyPublicDir: false`와 허용 목록
+(`tools/distribution/appShell.mjs`) 덕이다 — 금지 목록이 아니라 허용 목록인 이유는
+금지 목록이 새 폴더가 생길 때마다 뚫리기 때문이다. `tools/distribution/check.mjs`가
+빌드 앞뒤로 서고, 뒤 검사는 **실제로 나온 파일 목록을 다시 훑는다.**
+
+개발 산출물을 `public/` 밖(`raw/dev-assets`)으로 옮기는 것은 남아 있다.
+raw 어댑터의 후보 목록에 그 자리가 먼저 적혀 있어서, 옮기면 설정을 안 고쳐도 잡힌다.
 
 #### Service Worker
 
-Service Worker는 앱 셸만 precache한다. 현재 `public/sw.js`의
-`/data|models|assets/` HTTP runtime cache는 제거한다.
+Service Worker는 앱 셸만 캐시한다. `/data|models` 런타임 캐시는 없앴다 —
+변환 에셋은 OPFS에 있으므로 여기 두면 같은 수 GB를 두 곳에 이중으로 들게 된다.
+활성화할 때 **옛 판이 만든 에셋 캐시도 지운다**. 주인 없이 남아 할당량을 먹는다.
 
 - 내비게이션은 네트워크 우선, 실패 시 캐시된 앱 셸
 - 해시 JS/CSS와 자체 제작 정적 자산만 앱 셸 캐시
@@ -1533,25 +1537,22 @@ function* run(script: Script): Generator<Wait, void> {
 
 ## 9. 세이브 시스템
 
-### 9.1 현재 구현 — 동작하지만 휴대성은 없다
+### 9.1 슬롯 하나 — 원작이 그렇다
 
-현재 `SAVE_VERSION`은 7이고 슬롯은 **리포트 한 벌**이다. `report()`를 부른
-시점만 `radiant-platinum/save/report` IndexedDB에 structured clone으로 저장한다.
-자동저장은 하지 않는다. 도감·플래그의 `Uint8Array`가 JSON에서 깨지는 문제를
-피한 선택이며, 기존 `pt-3d` 데이터베이스에서 새 이름으로 한 번 옮기는 코드도 있다.
+`SAVE_VERSION`은 7이고 슬롯은 **리포트 한 벌**이다. `report()`를 부른 시점만
+`radiant-platinum/save/report` IndexedDB에 structured clone으로 저장한다.
+자동저장은 하지 않는다.
 
-2026-08-10 감사에서 `saveStore.test.ts`와 `report.test.ts` 24개가 통과했다.
-확인된 것은 리포트 쓰기·읽기, TypedArray 보존, 옛 DB 이전, 게임 상태 스냅샷이다.
+⚠️ **JSON으로 안 바꾼다.** 도감·플래그가 `Uint8Array`고 JSON을 거치면 평범한
+객체가 되어 비트 연산이 조용히 망가진다 (`saveStore.test.ts`가 그 증거를 들고
+있다). structured clone은 원형을 보존한다 — **파일로 나갈 때만** 명시적 코덱을
+쓴다 (§9.3).
 
-현재 한계:
+기존 `pt-3d` 데이터베이스에서 새 이름으로 한 번 옮기는 코드가 있다. 이름만
+바꾸면 빈 창고가 하나 더 생길 뿐이고 옛 리포트는 영영 안 읽힌다.
 
-- 파일 다운로드·가져오기가 없다.
-- 저장 데이터의 Zod 스키마와 범위 검증이 없다.
-- 버전이 정확히 같지 않으면 migration 없이 `null`을 반환해 리포트가 사라진 것처럼
-  보인다.
-- 새 게임과 설정의 “처음부터”가 확인 후 IndexedDB 리포트를 즉시 지운다.
-- 저장 성공 뒤 다시 읽어 검증하거나 이전 사본을 남기지 않는다.
-- 에셋 설치와 분리된 삭제 정책이 아직 없다.
+쓰는 순서는 **임시 슬롯 → 다시 읽어 스키마·체크섬 검증 → 현재 슬롯 교체**다.
+`set` 한 번으로 두면 그 쓰기가 중간에 죽었을 때 되돌릴 자리가 없다.
 
 ### 9.2 목표 — 리포트할 때 내부 저장과 파일 백업을 함께 한다
 
@@ -1844,14 +1845,28 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 
 | | 상태 |
 |---|---|
-| 프로덕션 금지 산출물 검사 | ❌ `public/data·models`가 현재 `dist`에 복사됨 |
-| 휴대용 `.rpsave` 내보내기·가져오기·migration | ❌ |
-| `AssetProvider` + Dev 경로 보존 | ❌ |
-| Platinum 브라우저 Worker | ❌ |
-| BDSP 폴더 검증·TS/WASM 변환 | ❌ |
-| OPFS 설치·저널·재개 | ❌ |
-| Import Wizard·무전송 E2E | ❌ |
-| 앱 셸 전용 Service Worker | ❌ 현재 HTTP 에셋 runtime cache |
+| 프로덕션 금지 산출물 검사 | ✅ 빌드 앞뒤로 선다. `dist` 642.0MB → 11.9MB · 파일 7,110 → 27 |
+| 앱 셸 전용 Service Worker | ✅ `/data`·`/models` 런타임 캐시를 걷어내고 옛 캐시도 지운다 |
+| 휴대용 `.rpsave` 내보내기·가져오기·migration | ✅ 매 리포트 다운로드 · 삭제 전 백업 · 실패 시 기존 슬롯 불변 |
+| `AssetProvider` + Dev 경로 보존 | ✅ 소비자 열아홉 곳 전환 · 두 구현이 같은 계약 시험을 지난다 |
+| raw 원천 어댑터 | ✅ 파일 이름이 아니라 헤더의 게임 코드로 찾는다. **파일은 안 옮겼다** |
+| Platinum 입력 검증 | ✅ 크기·헤더·FNT/FAT 범위·지역판 지문·표본 NARC. 진짜 롬 셋으로 확인 |
+| Platinum 브라우저 변환 | ⚠️ **그룹 아홉 중 하나**(`moves`)만 옮겼다. 노드 산출물과 바이트로 같다 |
+| BDSP 폴더 검증 | ✅ `AssetAssistant` 자동 탐색 · 그룹 다섯 · 표본 종 |
+| BDSP TS/WASM 변환 | ❌ UnityPy 대체가 없다. 최우선 기술 게이트 (§14) |
+| OPFS 설치·저널·재개 | ✅ quota·persist·임시 파일·검증 후 commit·재개·에셋/리포트 분리 |
+| Import Wizard | ⚠️ 단계 UI는 돌지만 변환이 하나뿐이라 **"구현 전"으로 표시**한다 |
+| 무전송 E2E | ❌ Network 패널 검사와 새 프로필 왕복이 아직 없다 |
+
+⚠️ **변환 그룹 표가 곧 남은 일이다** (`src/import/platinum/convert.ts`의 `GROUPS`).
+막힌 그룹마다 왜 막혔는지가 그 표에 있고, 시험이 그 이유가 비어 있지 않은지 센다.
+그중 둘은 기술이 아니라 **정책** 문제다:
+
+- `scripts` — 명령 폭 표와 scriptID 표를 `raw/decomp`에서 뽑는다
+- `marts` — 상점 재고가 **롬에 없다**. 디컴프 헤더에만 있다 (DATA.md §2.13)
+
+사용자의 롬 두 입력만으로는 이 둘을 만들 수 없다. 롬 자체 파싱으로 바꾸거나
+배포 가능한 최소 호환성 메타데이터로 분리해야 한다 (§14).
 
 구현 순서는 [IMPORT.md §13](IMPORT.md#13-구현-순서)을 따른다. 특히 리포트
 휴대성과 Provider 경계를 Import UI보다 먼저 만든다.
@@ -2147,12 +2162,16 @@ PNG를 남긴다. 확인 지점 목록은 **돌고 있는 페이지에서 받는
 
 ### 16.0 배포 기반의 첫 순서
 
-1. 현재 리포트 schema·portable codec·migration을 만들고 매 리포트 다운로드를 붙인다.
-2. 프로덕션 빌드에서 `public/data·models` 혼입을 즉시 차단한다.
-3. AssetProvider를 도입해 기존 raw 개발판의 화면·테스트를 그대로 유지한다.
-4. raw 레거시 경로 어댑터를 만들고 개발 산출물을 `public/` 밖으로 옮긴다.
-5. Platinum Worker와 BDSP TS/WASM 스파이크를 대표 자산 하나씩 완성한다.
-6. OPFS journal과 Import Wizard를 붙인 뒤 전량 parity를 넓힌다.
+1. ✅ 리포트 schema·portable codec·migration과 매 리포트 다운로드.
+2. ✅ 프로덕션 빌드의 `public/data·models` 혼입 차단.
+3. ✅ AssetProvider — 기존 raw 개발판의 화면·시험이 그대로 돈다.
+4. ⚠️ raw 레거시 경로 어댑터는 붙었다. **개발 산출물은 아직 `public/` 안에 있다** —
+   `copyPublicDir: false`가 배포물로 나가는 것을 막고 있으므로 급하지 않지만,
+   목표는 `raw/dev-assets`다 (COPYRIGHT.md §5). 어댑터의 후보 목록에 그 자리가
+   먼저 적혀 있어서 옮기면 설정을 안 고쳐도 잡힌다.
+5. ⚠️ Platinum은 그룹 하나(`moves`)가 노드 산출물과 바이트로 같다.
+   **BDSP는 스파이크조차 없다** — UnityPy 대체가 최우선 기술 게이트다.
+6. ✅ OPFS journal과 Import Wizard. 전량 parity는 ⑤가 끝나야 넓힐 수 있다.
 
 완료 조건과 사용자 흐름은 [IMPORT.md §13~14](IMPORT.md#13-구현-순서)가 정본이다.
 
@@ -2161,12 +2180,13 @@ PNG를 남긴다. 확인 지점 목록은 **돌고 있는 페이지에서 받는
 
 | | 실측 |
 |---|---|
-| 코드 | 59,999줄 · 파일 319개 · 시험 파일 110개 / 시험 1,331개 (`src/**/*.ts{,x}`) |
+| 코드 | 65,162줄 · 파일 348개 · 시험 파일 118개 / 시험 1,477개 (`src/**/*.ts{,x}`) |
 | 화면 | 93.8k ~ 208.4k 삼각형 · 드로우콜 163~283 (`pnpm shot --perf`, 네 자리) |
 | 지형 | 청크 176종, 삼각형 중앙값 1,228 · 최대 2,686 → 창 5×5에 약 30,700 |
 | 나무 | 창 5×5에 3,583~4,003그루 × 252삼각형 (30타일 밖 56) |
 | 소품 | 590종 / 오버월드 배치 501개 |
 | 자산 | 파일 7,086개 · 630.1MB — **포켓몬 3D 404.4**(493종) · **배틀 무대 128.2**(30벌) · NPC 모델 41.6 · 청크 28.4 · 소리 7.5 · 주인공 4.8 · 행렬 3.4 · 대사 3.3 · 자전거 0.6MB (전부 PNG, KTX2 0개) |
+| 배포물 | `dist` 파일 27개 · 11.9MB · 초기 청크 58.1KB (three·sim 없음) |
 
 ⚠️ **삼각형과 드로우콜은 헤드리스에서 재고, 프레임률은 못 잰다.** 헤드리스
 크롬에는 WebGPU 어댑터가 없어 WebGL2 + SwiftShader(소프트웨어)로 떨어진다 —

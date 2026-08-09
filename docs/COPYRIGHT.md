@@ -126,9 +126,18 @@ Platinum 같은 패치 배포와 동일하지도 않다. 이 프로젝트는 독
 - `raw/models/`: 개발용 모델 작업물
 
 그러나 `raw/bdsp/` 안에는 공개 사용자가 선택할 원천 폴더와 개발 중간물·변환물이
-섞여 있다. **기존 파일을 자동 이동·삭제·이름 변경하지 않는다.** 먼저 새
-`RawSourceAdapter`가 현재 경로를 읽게 하고, 이후 아래 논리 구획으로 점진적으로
-정리한다.
+섞여 있다. **기존 파일을 자동 이동·삭제·이름 변경하지 않는다.** 어댑터
+(`tools/raw/sources.cjs`)가 현재 경로를 그대로 읽고, 아래 논리 구획으로
+점진적으로 정리한다.
+
+⚠️ **어댑터는 파일 이름에 기대지 않는다.** 여태 추출기 여럿이
+`raw/roms/Pokemon Platinum (US).nds`를 통째로 적어 두었는데, 그 이름은 개발자가
+자기 기계에서 붙인 것이다. 폴더의 `.nds`를 열어 **헤더의 게임 코드**로 찾는다 —
+공개 Importer가 하는 판정과 같은 것이고, 지문 표
+(`src/import/platinum/supported.json`)도 한 파일을 나눠 쓴다.
+
+덮어쓰려면 Git이 무시하는 `raw.sources.local.json`을 둔다
+(예시는 추적하는 `raw.sources.example.json`).
 
 ```text
 raw/
@@ -180,15 +189,31 @@ flowchart TB
 두 경로는 같은 논리 파일명·스키마·콘텐츠 지문을 내야 한다. 공개 변환기가 아직
 Python/UnityPy 결과와 동등하지 않으면 해당 기능은 배포 완료로 표시하지 않는다.
 
-현재 `public/data/`와 `public/models/`는 로컬 개발 산출물이지만 Vite가
-`public/`을 `dist/`로 그대로 복사한다. `.gitignore`는 이를 막지 못한다.
-따라서 전환 첫 단계에서 산출물을 `public/` 밖의 로컬 전용 위치로 옮기고,
-프로덕션 빌드 전에 다음을 검사해 하나라도 있으면 실패시킨다.
+⚠️ **`.gitignore`는 이걸 못 막는다.** Vite는 Git 추적 여부를 아예 안 보고
+`public/`을 통째로 `dist/`로 복사한다 — 리포에 한 바이트도 없는
+`public/data`(64MB)와 `public/models`(581MB)가 그렇게 나가 있었다.
+실측 `dist` 642.0MB · 파일 7,110개.
 
-- `public/data/`, `public/models/`, `dist/data/`, `dist/models/`
-- ROM·SDAT·AssetBundle·런타임 팩 확장자와 알려진 원천 디렉터리
-- 원본 유래 파일을 가리키는 외부 에셋 오리진 설정
-- `raw/` 문자열을 포함한 프로덕션 정적 자산 목록
+지금은 **허용 목록으로 뒤집었다.** `copyPublicDir: false`로 복사를 끄고
+`tools/distribution/appShell.mjs`의 목록만 손으로 옮긴다 — 금지 목록은 새 폴더가
+생길 때마다 뚫리지만 허용 목록은 안 뚫린다. 지금 `dist`는 11.9MB · 파일 27개다.
+
+`tools/distribution/check.mjs`가 빌드 **앞뒤로** 선다. 뒤 검사는 계획이 아니라
+**실제로 나온 파일 목록을 다시 훑는다**:
+
+- 뿌리의 `data/`·`models/` 나무
+- ROM·SDAT·AssetBundle·변환 결과 확장자(`.nds` `.narc` `.glb` `.ktx2` `.bin` …)
+- 경로 어디에든 든 `raw`·`romfs`·`AssetAssistant`·`decomp` 같은 이름
+- 시험 자산(`*.test-*` · `*.testkit-*`)과 프로덕션 소스의 시험 도구 import
+- 에셋을 받아 오는 바깥 오리진과 `VITE_ASSET_BASE`
+
+⚠️ 오리진 검사를 "바깥 주소가 하나라도 있으면 실패"로 짰다가 위반 10,988건이
+나왔다. 거의 전부가 라이브러리 오류 문구의 문서 링크였다(`react.dev` ·
+`jcgt.org` · `www.shadertoy.com`) — 그런 글자는 네트워크를 안 탄다. 잡아야
+하는 것은 **에셋을 받아 오는 뿌리**이므로, 주소 뒤에 곧바로 `data/`·`models/`가
+붙었거나 호스트가 오브젝트 스토리지 모양인 것만 센다.
+
+개발 산출물을 `public/` 밖(`raw/dev-assets`)으로 옮기는 것은 남아 있다.
 
 `assets-manifest.json`, `assets:pull`, `VITE_ASSET_BASE`와 R2 배포 계획은
 **레거시 개발 장치**로 분류하고 공개 배포 경로에서는 제거한다.
