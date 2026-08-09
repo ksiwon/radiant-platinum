@@ -58,6 +58,21 @@ MASK_CHANNEL_PROPS = ["_SkinColor", "_PrimaryColor", "_SecondaryColor"]
 #    이쪽은 프로퍼티 선언 순서를 그대로 따른다 (face ch0=피부톤, hair ch1=머리색).
 VARIATION_CHANNEL_PROPS = ["_PrimaryColor", "_SecondaryColor", "_SkinColor"]
 
+# 유니티 랩 모드 → glTF 샘플러 상수. `MirrorOnce`(3)는 glTF에 없어서 거울로 본다
+GLTF_WRAP = {0: 10497, 1: 33071, 2: 33648, 3: 33648}
+
+
+def wrap_of(tex) -> tuple[int, int]:
+    """텍스처가 스스로 적어 둔 U·V 반복 방식. **읽어야 한다** — 기본값으로
+    두면 포켓몬이 좌우로 갈린다 (`bdspGlb` 머리말)."""
+    s = getattr(tex, "m_TextureSettings", None)
+    u = getattr(s, "m_WrapU", None)
+    v = getattr(s, "m_WrapV", None)
+    if u is None or v is None:
+        d = tex.object_reader.read_typetree().get("m_TextureSettings", {})
+        u, v = d.get("m_WrapU", 0), d.get("m_WrapV", 0)
+    return GLTF_WRAP.get(int(u), 10497), GLTF_WRAP.get(int(v), 10497)
+
 
 def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, dict]]:
     """`ColorVariation` 컴포넌트가 지정하는 머티리얼별 채널 색을 읽는다.
@@ -102,8 +117,12 @@ def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, 
 
 def bake(bundle, outdir: Path, color_index: int | None = None,
          max_size: int | None = None,
-         main_props: tuple[str, ...] = ("_MainTex",)) -> int:
+         main_props: tuple[str, ...] = ("_MainTex",)) -> dict[str, dict]:
     """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
+
+    돌려주는 것은 **머티리얼 이름 → 그 그림을 어떻게 읽어야 하는가**다:
+    `uv`(배율·오프셋)와 `wrap`(glTF 샘플러 상수 둘). 그림만 굽고 이 둘을 버리면
+    UV가 어디에 앉는지가 달라진다.
 
     `max_size`를 주면 긴 변을 그만큼으로 줄인다. **오버월드 NPC 때문에 있다** —
     번들 하나가 1024짜리 넉 장을 들고 나오면 glb가 5MB고, 마흔 몇 명을 세우면
@@ -124,7 +143,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         print(f"  ColorVariation: 머티리얼 {len(overrides)}개에 채널 색 오버라이드 적용")
 
     outdir.mkdir(parents=True, exist_ok=True)
-    made = 0
+    spec: dict[str, dict] = {}
 
     for obj in env.objects:
         if obj.type.name != "Material":
@@ -138,18 +157,22 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         for ch, col in overrides.get(obj.path_id, {}).items():
             if 0 <= ch < len(VARIATION_CHANNEL_PROPS):
                 colors[VARIATION_CHANNEL_PROPS[ch]] = col
-        slots = {}
+        slots, uvs = {}, {}
         for k, v in prop_pairs(props.get("m_TexEnvs", [])):
             pid = v.get("m_Texture", {}).get("m_PathID", 0) if isinstance(v, dict) else 0
             if pid in textures:
                 slots[k] = textures[pid]
+                uvs[k] = (v["m_Scale"]["x"], v["m_Scale"]["y"],
+                          v["m_Offset"]["x"], v["m_Offset"]["y"])
 
         found = next((p for p in main_props if p in slots), None)
         if found is None:
             print(f"  {name}: {'·'.join(main_props)} 없음 — 건너뜀")
             continue
 
-        main = slots[found].read().image.convert("RGBA")
+        main_tex = slots[found].read()
+        spec[name] = {"uv": uvs[found], "wrap": wrap_of(main_tex)}
+        main = main_tex.image.convert("RGBA")
         w, h = main.size
         col = np.asarray(main, dtype=np.float32) / 255.0
         rgb_lin = srgb_to_linear(col[..., :3])
@@ -187,10 +210,9 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
                              Image.LANCZOS)
         path = outdir / f"{name}_albedo.png"
         img.save(path)
-        made += 1
         print(f"  {name:<12} {w}x{h} → {path.name} ({img.width}x{img.height})")
 
-    return made
+    return spec
 
 
 def main() -> int:
@@ -203,8 +225,8 @@ def main() -> int:
     )
     args = ap.parse_args()
     print(f"{args.bundle.name}:")
-    n = bake(args.bundle, args.out, args.color_index)
-    print(f"→ 알베도 {n}장 생성: {args.out}")
+    spec = bake(args.bundle, args.out, args.color_index)
+    print(f"→ 알베도 {len(spec)}장 생성: {args.out}")
     return 0
 
 

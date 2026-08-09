@@ -166,13 +166,21 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
     # 위해서다 (`bdsp_bake_albedo` 머리말)
     albedo = out.parent / f".{out.stem}_albedo"
     images, textures, materials, by_name = [], [], [], {}
-    bake(bundle, albedo, None)
+    samplers: list[dict] = []
+    # ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
+    # 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
+    spec = bake(bundle, albedo, None)
+    st_of = {}
     for png in sorted(albedo.glob("*_albedo.png")):
         name = png.name[: -len("_albedo.png")]
         images.append({
             "bufferView": buf.view(png.read_bytes()), "mimeType": "image/png", "name": name,
         })
-        textures.append({"source": len(images) - 1})
+        st_of[name] = tuple(spec.get(name, {}).get("uv", (1.0, 1.0, 0.0, 0.0)))
+        want = dict(zip(("wrapS", "wrapT"), spec.get(name, {}).get("wrap", (10497, 10497))))
+        if want not in samplers:
+            samplers.append(want)
+        textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
         materials.append({
             "name": name,
             "pbrMetallicRoughness": {
@@ -268,9 +276,7 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
         normals = (world[:3, :3] @ normals.T).T
         length = np.linalg.norm(normals, axis=1, keepdims=True)
         normals = np.where(length > 1e-9, normals / np.maximum(length, 1e-9), [0.0, 1.0, 0.0])
-        uv = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
-        # Unity는 UV 원점이 왼쪽 아래, glTF는 왼쪽 위다
-        uv = np.stack([uv[:, 0], 1.0 - uv[:, 1]], axis=1).astype(np.float32)
+        uv_raw = lanes(handler.m_UV0, n, 2, [0.0, 0.0]).astype(np.float32)
         # X 뒤집기 (머리말)
         verts[:, 0] *= -1
         normals[:, 0] *= -1
@@ -282,12 +288,18 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
             tri = indices[first: first + sub.indexCount].reshape(-1, 3)
             # X를 뒤집었으므로 감기 순서를 되돌린다
             tri = tri[:, ::-1].copy()
-            slot = -1
+            slot, st = -1, (1.0, 1.0, 0.0, 0.0)
             if i < len(mats):
                 try:
-                    slot = by_name.get(mats[i].read().m_Name, -1)
+                    mat_name = mats[i].read().m_Name
+                    slot = by_name.get(mat_name, -1)
+                    st = st_of.get(mat_name, st)
                 except Exception:
                     slot = -1
+            sx, sy, ox, oy = st
+            # Unity는 UV 원점이 왼쪽 아래, glTF는 왼쪽 위다
+            uv = np.stack([uv_raw[:, 0] * sx + ox,
+                           1.0 - (uv_raw[:, 1] * sy + oy)], axis=1).astype(np.float32)
             parts.setdefault(slot, []).append((
                 verts.astype(np.float32), normals.astype(np.float32), uv, tri,
             ))
@@ -341,6 +353,9 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
         "bufferViews": buf.views,
         "buffers": [{"byteLength": len(buf.blob)}],
     }
+    # 빈 배열은 glTF가 안 받는다
+    if samplers:
+        gltf["samplers"] = samplers
     write_glb(out, gltf, bytes(buf.blob))
 
     every = np.concatenate([c[0] for chunks in parts.values() for c in chunks])

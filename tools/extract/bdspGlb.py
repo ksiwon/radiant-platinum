@@ -445,13 +445,18 @@ def export(bundle, out: Path, color_index: int | None = None,
 
     # 알베도는 번들 통째로 한 번만 굽는다
     albedo = out.parent / f".{out.stem}_albedo"
-    bake(paths, albedo, color_index, max_texture, main_props)
+    spec = bake(paths, albedo, color_index, max_texture, main_props)
     images, textures, materials, by_name = [], [], [], {}
+    samplers: list[dict] = []
     for png in sorted(albedo.glob("*_albedo.png")):
         name = png.name[: -len("_albedo.png")]
         view = buf._view(png.read_bytes())
         images.append({"bufferView": view, "mimeType": "image/png", "name": name})
-        textures.append({"source": len(images) - 1})
+        wrap_s, wrap_t = spec.get(name, {}).get("wrap", (10497, 10497))
+        want = {"wrapS": wrap_s, "wrapT": wrap_t}
+        if want not in samplers:
+            samplers.append(want)
+        textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
         materials.append({
             "name": name,
             "pbrMetallicRoughness": {
@@ -505,9 +510,7 @@ def export(bundle, out: Path, color_index: int | None = None,
 
         verts = flip_x(np.array(handler.m_Vertices, dtype=np.float32).reshape(-1, 3))
         normals = flip_x(np.array(handler.m_Normals, dtype=np.float32).reshape(-1, 3))
-        uv = np.array(handler.m_UV0, dtype=np.float32).reshape(-1, 2)
-        # Unity는 UV 원점이 왼쪽 아래, glTF는 왼쪽 위다
-        uv = np.stack([uv[:, 0], 1.0 - uv[:, 1]], axis=1).astype(np.float32)
+        uv_raw = np.array(handler.m_UV0, dtype=np.float32).reshape(-1, 2)
         # ⚠️ **스킨 정보가 없는 껍데기가 섞여 있다**(tr0030_00에서 나왔다).
         # 뼈 하나에 통째로 매달린 딱딱한 메시라 가중치 배열이 아예 없다.
         # 그런 것은 0번 뼈에 100%로 묶는다 — 그 뼈를 따라 통째로 움직인다
@@ -549,9 +552,27 @@ def export(bundle, out: Path, color_index: int | None = None,
 
         a_pos = buf.add(verts, "VEC3", FLOAT, ARRAY, minmax=True)
         a_nrm = buf.add(normals, "VEC3", FLOAT, ARRAY)
-        a_uv = buf.add(uv, "VEC2", FLOAT, ARRAY)
         a_joint = buf.add(joints, "VEC4", USHORT, ARRAY)
         a_weight = buf.add(weights, "VEC4", FLOAT, ARRAY)
+
+        # ⚠️ **UV는 재질이 적어 둔 배율·오프셋을 먹여야 한다.** 포켓몬 셰이더는
+        # `_Col0Tex_ST`에 배율 (2, 1)을 적어 두고, 그림은 U를 **거울**로 반복하게
+        # 해 둔다 — 몸의 왼쪽이 u ∈ [0, 0.5], 오른쪽이 그 거울인 1 − u다
+        # (실측: 서브메시마다 왼쪽 최대 + 오른쪽 최소 = 1.000). 배율을 안 먹이면
+        # 좌우가 그림의 서로 다른 자리를 읽어 **몸이 한가운데를 세로로 갈라
+        # 조각보가 된다.** 인물·무대는 배율 (1, 1)에 반복이라 아무 일도 안 난다.
+        uv_of: dict[tuple, int] = {}
+
+        def uv_accessor(st: tuple) -> int:
+            got = uv_of.get(st)
+            if got is None:
+                sx, sy, ox, oy = st
+                # Unity는 UV 원점이 왼쪽 아래, glTF는 왼쪽 위다
+                got = buf.add(np.stack([
+                    uv_raw[:, 0] * sx + ox, 1.0 - (uv_raw[:, 1] * sy + oy),
+                ], axis=1).astype(np.float32), "VEC2", FLOAT, ARRAY)
+                uv_of[st] = got
+            return got
 
         mats = [m.read() for m in smr.m_Materials]
         primitives = []
@@ -563,15 +584,17 @@ def export(bundle, out: Path, color_index: int | None = None,
             # X를 뒤집었으므로 감기 순서를 되돌린다. 안 하면 안팎이 뒤집힌다
             tri = tri[:, ::-1].copy()
             written.append((verts, tri))
+            mat_name = mats[i].m_Name if i < len(mats) else ""
+            st = tuple(spec.get(mat_name, {}).get("uv", (1.0, 1.0, 0.0, 0.0)))
             prim = {
                 "attributes": {
-                    "POSITION": a_pos, "NORMAL": a_nrm, "TEXCOORD_0": a_uv,
+                    "POSITION": a_pos, "NORMAL": a_nrm, "TEXCOORD_0": uv_accessor(st),
                     "JOINTS_0": a_joint, "WEIGHTS_0": a_weight,
                 },
                 "indices": buf.add(tri.reshape(-1).astype(np.uint32), "SCALAR", UINT, ELEMENT),
                 "mode": 4,
             }
-            mat = by_name.get(mats[i].m_Name if i < len(mats) else "")
+            mat = by_name.get(mat_name)
             if mat is not None:
                 prim["material"] = mat
             primitives.append(prim)
@@ -623,6 +646,9 @@ def export(bundle, out: Path, color_index: int | None = None,
         "bufferViews": buf.views,
         "buffers": [{"byteLength": len(buf.blob)}],
     }
+    # 빈 배열은 glTF가 안 받는다 — 그림이 하나도 없는 번들이 있다
+    if samplers:
+        gltf["samplers"] = samplers
     if animations:
         gltf["animations"] = animations
 
