@@ -16,7 +16,8 @@ import {
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import {
-  cachedSplit, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites, grassColors,
+  cachedSplit, canBorrowFloor, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites,
+  grassColors,
   plateColors, shiftFloors, treeSites, waterColors,
   type FloorPatch, type FloorSource, type FloorTri,
 } from './plates'
@@ -132,10 +133,13 @@ function cachedShells(
   return made
 }
 
-function cachedFloors(key: string, split: ReturnType<typeof cachedSplit>): FloorSource {
+function cachedFloors(
+  key: string, mesh: ChunkMesh, split: ReturnType<typeof cachedSplit>,
+): FloorSource {
   const hit = floorCache.get(key)
   if (hit) return hit
-  const made = floorSource(split)
+  // 물은 베껴 오지 않는다 — 숲 밑에 웅덩이가 깔린다 (`plates.canBorrowFloor`)
+  const made = floorSource(split, (group) => canBorrowFloor(mesh, group))
   floorCache.set(key, made)
   return made
 }
@@ -285,7 +289,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           const split = cachedSplit(key, mesh, cutout)
           return {
             c, mesh, cutout, split,
-            source: cachedFloors(key, split),
+            source: cachedFloors(key, mesh, split),
             originX: c.mx * CHUNK_TILES + CHUNK_TILES / 2,
             originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
           }
@@ -338,10 +342,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 칸마다 제일 가까운 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓴다
             floor: floorPatch(
               split, (x, z, near) => groundAt(x + originX, z + originZ, near),
-              borrowed, p.source,
-              // 안 물리는 그림에 평면을 늘리면 아틀라스 밖으로 나가 가장자리
-              // 텍셀로 눌린다 — 그 결과가 민무늬 판이다 (`floorPatch` 참조)
-              (group) => ((mesh.materials[group]?.rep ?? 0) & 3) === 3),
+              borrowed, p.source),
             shells: cachedShells(
               `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet),
           }

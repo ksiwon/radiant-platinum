@@ -310,6 +310,11 @@ export function cardShells(
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(position3), 3))
   geometry.setAttribute('uv', new BufferAttribute(new Float32Array(texcoord), 2))
+  // ⚠️ **정점 색을 안 주면 안 된다.** 지형 재질이 `vertexColors`라, 속성이 없으면
+  // 백엔드가 알아서 채운 값으로 그려진다 — WebGL과 WebGPU가 서로 다르게 채운다.
+  // 옆면은 원작 판의 그늘을 물려받을 것이 없으므로 흰색이 맞는 값이다
+  const white = new Float32Array(position3.length).fill(1)
+  geometry.setAttribute('color', new BufferAttribute(white, 3))
   for (const [start, count, group] of groups) geometry.addGroup(start, count, group)
   geometry.computeVertexNormals()
   geometry.computeBoundingSphere()

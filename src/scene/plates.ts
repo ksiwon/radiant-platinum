@@ -402,6 +402,16 @@ export interface FloorTri {
   ax: number; az: number; au: number; av: number
   ux: number; uz: number; du: number; dv: number
   vx: number; vz: number; eu: number; ev: number
+  /**
+   * 그 삼각형의 **정점 색**.
+   *
+   * ⚠️ 원작은 지형에 그늘을 정점 색으로 구워 넣는다 — 청크 300은 정점 1,147개가
+   * 156·181·206·255 넉 단계다. 메운 바닥에 이걸 안 실으면 재질이
+   * `vertexColors`라 흰색으로 그려져서, 원작 땅보다 **밝은 사각형**이 된다.
+   * 영원의 숲 바닥이 밝고 어두운 타일의 바둑판이었던 것이 이것이다 (실측:
+   * 같은 `fenter`인데 원작 땅 #198a30 · 메운 바닥 #44b946)
+   */
+  r: number; g: number; b: number
   /** 무게중심. 어느 것이 가까운지 이걸로 잰다 */
   cx: number; cz: number
   /**
@@ -440,13 +450,45 @@ export interface FloorSource {
 export const LEVEL_SLACK = 0.5
 
 /**
- * 바닥 삼각형을 모은다. 청크마다 한 번만 하면 되므로 따로 뺐다 —
- * 이웃이 빌려 갈 때도 이 결과를 그대로 쓴다
+ * **물은 메울 바닥이 못 된다.**
+ *
+ * ⚠️ 잎 밑을 메우는 자리는 칸마다 제일 가까운 바닥 삼각형을 베끼는데, 물가
+ * 근처에서는 그 제일 가까운 것이 물이다. 실측으로 메운 칸 101,082개 중
+ * **6,167개가 웅덩이**(`puddlep` 4,583 · `puddle_b` 1,584)에서, 1,208개가
+ * 바다에서 왔다 — 떡잎마을 숲 사이사이에 파란 마름모가 뜬 것이 그것이다.
+ * 그 그림들은 바닥 넓이의 2~4%밖에 안 되는 장식인데 숲 안쪽까지 번진다.
+ *
+ * 이름으로 거른다. 어디가 물인지는 거동값이 말하고(`Water.tsx`), 여기서 쓰는
+ * 것은 **그 그림을 베껴 오지 말라**는 표시뿐이다
  */
-export function floorSource(split: Split): FloorSource {
+const NOT_FLOOR = /^(sea|lake|asasea|dun_sea|puddle)/
+
+/** 이 서브메시를 메울 바닥으로 베껴 와도 되는가 */
+export function canBorrowFloor(mesh: ChunkMesh, group: number): boolean {
+  return !NOT_FLOOR.test(mesh.materials[group]?.tex ?? '')
+}
+
+/**
+ * 바닥 삼각형을 모은다. 청크마다 한 번만 하면 되므로 따로 뺐다 —
+ * 이웃이 빌려 갈 때도 이 결과를 그대로 쓴다.
+ *
+ * `keep`으로 서브메시를 걸러 낼 수 있다. 거르고 나서 아무것도 안 남으면
+ * **거르지 않은 것을 돌려준다** — 물가 청크에 바닥이 물뿐일 수 있고, 그때는
+ * 물이라도 깔아야 발밑이 안 뚫린다
+ */
+export function floorSource(split: Split, keep?: (group: number) => boolean): FloorSource {
+  const all = gatherFloors(split)
+  if (!keep) return all
+  const floors = all.floors.filter((f) => keep(f.group))
+  return floors.length === 0 ? all : { ...all, floors }
+}
+
+function gatherFloors(split: Split): FloorSource {
   const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
   const uvAttr = split.geometry.getAttribute('uv') as BufferAttribute | undefined
   const uv = uvAttr?.array as Float32Array | undefined
+  const colAttr = split.geometry.getAttribute('color') as BufferAttribute | undefined
+  const col = colAttr?.array as ArrayLike<number> | undefined
   const index = split.geometry.getIndex()!.array
   const floors: FloorTri[] = []
   const covered = new Set<number>()
@@ -484,8 +526,11 @@ export function floorSource(split: Split): FloorSource {
       }
       if (!flat) continue
       const au = uv ? uv[a * 2]! : 0, av = uv ? uv[a * 2 + 1]! : 0
+      const mid = (k: number): number => (col
+        ? (col[a * 3 + k]! + col[b * 3 + k]! + col[c * 3 + k]!) / 3 : 1)
       floors.push({
         group,
+        r: mid(0), g: mid(1), b: mid(2),
         ax, az, au, av,
         ux, uz, du: uv ? uv[b * 2]! - au : 0, dv: uv ? uv[b * 2 + 1]! - av : 0,
         vx, vz, eu: uv ? uv[c * 2]! - au : 0, ev: uv ? uv[c * 2 + 1]! - av : 0,
@@ -574,8 +619,6 @@ export function floorPatch(
   ground: (x: number, z: number, near: number) => number | null,
   borrowed: readonly FloorTri[] = [],
   source?: FloorSource,
-  /** 그 서브메시의 그림이 물리는가(`rep`). 안 주면 다 물린다고 본다 */
-  repeats?: (group: number) => boolean,
 ): FloorPatch | null {
   const { floors: own, levels } = source ?? floorSource(split)
   const floors = borrowed.length > 0 ? [...own, ...borrowed] : own
@@ -594,7 +637,7 @@ export function floorPatch(
   const nearest = nearestFloors(bare, floors)
 
   /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */
-  const bucket = new Map<number, { position: number[]; uv: number[] }>()
+  const bucket = new Map<number, { position: number[]; uv: number[]; color: number[] }>()
   for (const key of bare) {
     const cell = split.cells.get(key)!
     const tx = cellX(key), tz = cellZ(key)
@@ -615,23 +658,27 @@ export function floorPatch(
       const w2 = (ux * pz - px * uz) / area
       return [au + w1 * du + w2 * eu, av + w1 * dv + w2 * ev]
     }
-    // ⚠️ **안 물리는 그림이면 좌표를 그 칸으로 되접는다.**
+    // ⚠️ **평면을 늘리지 않고 그 칸으로 되접는다.**
     //
-    // 평면을 그냥 늘리면 UV가 삼각형에서 멀어진 만큼 그대로 벗어난다. 물리는
-    // (`repeat`) 그림이면 그래도 되지만, 안 물리는 그림은 벗어난 값이 가장자리
-    // 텍셀로 눌려서 **한 색으로 칠한 널따란 판**이 깔린다 — 영원의 숲 바닥
-    // 절반이 그렇게 민무늬 초록이었다.
+    // 평면을 그냥 늘리면 UV가 삼각형에서 멀어진 만큼 그대로 벗어난다. 안 물리는
+    // 그림은 벗어난 값이 가장자리 텍셀로 눌려서 **한 색으로 칠한 널따란 판**이
+    // 깔린다 — 영원의 숲 바닥 절반이 그렇게 민무늬 초록이었다.
     //
-    // 그럴 때는 칸 안쪽 자리만 살리고 칸 번호는 베껴 온 칸의 것을 쓴다. `at`이
-    // 아핀이라 정수 칸만큼 옮기는 것은 곧 **타일 한 장 주기로 되접는 것**이고,
-    // 한 타일짜리 그림이면 늘린 것과 결과가 같다
-    const wrapping = repeats?.(best.group) ?? true
-    const shiftX = wrapping ? 0 : Math.floor(best.cx) - tx
-    const shiftZ = wrapping ? 0 : Math.floor(best.cz) - tz
+    // ⚠️ **물리는 그림이면 괜찮다고 뒀던 것이 두 번째 고장이었다.** 원작 바닥
+    // 그림 한 장은 타일 한 장이 아니라 **여러 벌을 모아 둔 한 장**이다. 늘리면
+    // 칸마다 다른 벌을 집어서, 같은 `fenter`인데 원래 땅은 #198a30이고 메운
+    // 바닥은 #44b946으로 나왔다 — 영원의 숲 바닥이 밝고 어두운 사각형이
+    // 번갈아 깔린 바둑판이 된 것이 이것이다.
+    //
+    // 그래서 늘 되접는다: 칸 안쪽 자리만 살리고 칸 번호는 **베껴 온 칸의 것**을
+    // 쓴다. `at`이 아핀이라 정수 칸만큼 옮기는 것은 곧 그 타일을 그대로 한 장
+    // 복사하는 것이고, 메운 칸이 원본 칸과 **똑같이** 보인다
+    const shiftX = Math.floor(best.cx) - tx
+    const shiftZ = Math.floor(best.cz) - tz
     const tiled = (x: number, z: number): [number, number] => at(x + shiftX, z + shiftZ)
 
     let into = bucket.get(best.group)
-    if (!into) { into = { position: [], uv: [] }; bucket.set(best.group, into) }
+    if (!into) { into = { position: [], uv: [], color: [] }; bucket.set(best.group, into) }
     // 칸 하나를 살짝 넘겨 깐다 — 딱 맞추면 이웃 칸과의 사이에 실금이 보인다
     const e = 0.01
     // ⚠️ **위를 보게 감는다.** 법선 배열만 +Y로 채우고 감는 방향을 안 맞추면
@@ -645,21 +692,26 @@ export function floorPatch(
     for (const [x, z] of quad) {
       into.position.push(x, y, z)
       into.uv.push(...tiled(x, z))
+      // 베껴 온 삼각형의 그늘을 같이 가져온다 — 안 그러면 이 칸만 하얗게 뜬다
+      into.color.push(best.r, best.g, best.b)
     }
   }
   if (bucket.size === 0) return null
 
   const position: number[] = []
   const texcoord: number[] = []
+  const color: number[] = []
   const groups: [number, number, number][] = []
   for (const [group, part] of bucket) {
     groups.push([position.length / 3, part.position.length / 3, group])
     position.push(...part.position)
     texcoord.push(...part.uv)
+    color.push(...part.color)
   }
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
   geometry.setAttribute('uv', new BufferAttribute(new Float32Array(texcoord), 2))
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(color), 3))
   const normal = new Float32Array(position.length)
   for (let i = 1; i < normal.length; i += 3) normal[i] = 1
   geometry.setAttribute('normal', new BufferAttribute(normal, 3))

@@ -11,7 +11,7 @@ import {
   BufferAttribute, BufferGeometry, CylinderGeometry, MultiplyBlending, Vector3,
 } from 'three'
 import {
-  cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, isBakedShadow, isFoliage,
+  canBorrowFloor, cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, isBakedShadow, isFoliage,
   leaning, LEVEL_SLACK, plateColors, shiftFloors, splitFoliage, treeSites,
   type FloorSource, type FloorTri, type Split,
 } from './plates'
@@ -213,12 +213,20 @@ maybe('잎 걷어내기', () => {
     // **지형 서브메시로** 들어가야 한다. 잎 서브메시로 넣으면 나무 그림이 깔린다
     expect(patch.groups.map(([, , g]) => g)).toEqual([1])
 
-    // 그리고 UV가 옆 타일의 평면을 그대로 잇는다 — 여기서는 좌표와 같다
+    // ⚠️ **평면을 늘리는 대신 그 칸으로 되접는다.**
+    //
+    // 늘린 UV는 그림 조각 밖으로 나간다. 안 물리는 그림에서는 가장자리 텍셀로
+    // 눌려 민무늬 판이 깔리고, 물리는 그림에서도 원작 바닥 그림 한 장이
+    // **여러 벌을 모아 둔 한 장**이라 칸마다 다른 벌을 집는다.
+    //
+    // 여기서는 (1,0)이 (0,0)에서 베껴 오므로 u가 한 칸 뒤로 접힌다
     const p = patch.geometry.getAttribute('position') as BufferAttribute
     const u = patch.geometry.getAttribute('uv') as BufferAttribute
     for (let i = 0; i < p.count; i++) {
-      expect(u.getX(i)).toBeCloseTo(p.getX(i), 5)
+      expect(u.getX(i)).toBeCloseTo(p.getX(i) - 1, 5)
       expect(u.getY(i)).toBeCloseTo(p.getZ(i), 5)
+      // 되접은 값은 그 타일 안에 든다. 늘린 값은 1을 넘어 있었다
+      expect(u.getX(i)).toBeLessThanOrEqual(1.02)
     }
     // 높이는 지면이 정한다
     expect(p.getY(0)).toBeCloseTo(1, 6)
@@ -227,20 +235,6 @@ maybe('잎 걷어내기', () => {
     const noHeight = floorPatch(split, () => null)!
     expect(noHeight.geometry.getAttribute('position').count / 3).toBe(2)
     expect((noHeight.geometry.getAttribute('position') as BufferAttribute).getY(0)).toBeCloseTo(1, 6)
-
-    // ⚠️ **안 물리는 그림이면 평면을 늘리는 대신 그 칸으로 되접는다.**
-    // 늘린 UV는 아틀라스 조각 밖으로 나가 가장자리 텍셀로 눌리고, 그러면
-    // 민무늬 판이 널따랗게 깔린다 — 영원의 숲 바닥이 그랬다.
-    // 여기서는 (1,0)이 (0,0)에서 베껴 오므로 u가 한 칸 뒤로 접힌다
-    const clamped = floorPatch(split, () => 1, [], undefined, () => false)!
-    const cp = clamped.geometry.getAttribute('position') as BufferAttribute
-    const cu = clamped.geometry.getAttribute('uv') as BufferAttribute
-    for (let i = 0; i < cp.count; i++) {
-      expect(cu.getX(i)).toBeCloseTo(cp.getX(i) - 1, 5)
-      expect(cu.getY(i)).toBeCloseTo(cp.getZ(i), 5)
-      // 되접은 값은 그 타일 안에 든다. 늘린 값은 1을 넘어 눌렸었다
-      expect(cu.getX(i)).toBeLessThanOrEqual(1.02)
-    }
   })
 
   it('메운 판이 위를 보게 감긴다 — 아니면 위에서 볼 때 통째로 사라진다', () => {
@@ -904,7 +898,7 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
       if (!hit) {
         const mesh = meshOf(c.land)
         const split = splitFoliage(mesh, cutoutGroups(mesh, sheetFor(texOf(c.zone))))
-        hit = { split, source: floorSource(split) }
+        hit = { split, source: floorSource(split, (g) => canBorrowFloor(mesh, g)) }
         parts.set(key, hit)
       }
       return hit
