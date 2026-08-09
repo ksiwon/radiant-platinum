@@ -1717,6 +1717,30 @@ on('ScrCmd_20D', (ctx) => {
   return false
 })
 
+/**
+ * 별명 짓는 화면 (`ScrCmd_OpenPokemonNamingScreen`).
+ *
+ * ⚠️ **답이 뒤집혀 있다.** 원작 스크립트가 `CallIfNe VAR_0x8002, 1`로 세는 것을
+ * 보면 **1이 "안 지었다"**이다 — 지었을 때만 기록을 올린다. 그래서 지으면 0이다.
+ *
+ * 화면이 없으면 1(안 지었다)로 지나간다. 잔모래마을 연구소가 그 답으로
+ * 갈라질 뿐이라 이야기는 그대로 흐른다
+ */
+on('OpenPokemonNamingScreen', (ctx) => {
+  const slot = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const naming = ctx.host.world.services.naming
+  if (!naming) { ctx.host.vars.set(dest, 1); return false }
+  naming.openForParty(slot)
+  ctx.pause((c) => {
+    const name = naming.named()
+    if (name === null) return false
+    c.host.vars.set(dest, name === '' ? 1 : 0)
+    return true
+  })
+  return true
+})
+
 /** 뒤틀린 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
 on('ScrCmd_2FB', () => false)
 

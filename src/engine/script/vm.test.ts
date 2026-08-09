@@ -261,7 +261,7 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
-  it('닿는 자리의 95.9%가 돈다 — DATA.md §2.10의 그 수', () => {
+  it('닿는 자리의 96.2%가 돈다 — DATA.md §2.10의 그 수', () => {
     // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.
     // 쓰는 눈금은 스크립트가 **실제로 밟는 자리**고, 문서가 그 수를 적고
     // 있으므로 여기서 같은 방법으로 세어 못 박는다 — 안 그러면 문서만 낡는다.
@@ -438,14 +438,14 @@ const LOOPING_ENTRIES_YES = 34
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
  *
- * DATA.md §2.10이 이 둘의 비를 적는다(95.9%). 문서에만 적어 두면 명령을 붙일
+ * DATA.md §2.10이 이 둘의 비를 적는다(96.2%). 문서에만 적어 두면 명령을 붙일
  * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_365
+const RUNNING_SITES = 53_370
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 200
+const IMPLEMENTED_COMMANDS = 201
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.

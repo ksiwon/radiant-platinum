@@ -180,3 +180,35 @@ describe('이야기 길목', () => {
     expect(r.world.playerState).toBe(4)
   })
 })
+
+describe('별명 짓기', () => {
+  it('지으면 0 · 안 지으면 1이다 — 원작이 1을 "안 지었다"로 센다', () => {
+    // `CallIfNe VAR_0x8002, 1, IncrementRecordPokemonNicknamed` — 1이 아닐 때만
+    // 기록을 올린다. 그러니 1이 "안 지었다"이고 지으면 다른 값이다
+    let answer: string | null = null
+    let asked: number | null = null
+    const naming = {
+      openForParty: (slot: number) => { asked = slot },
+      named: () => answer,
+    }
+    const r = run('OpenPokemonNamingScreen', [...u16(0), ...u16(DEST)], { naming })
+    expect(asked).toBe(0)
+    // 짓는 동안 선다
+    expect(r.tick()).toBe(true)
+    answer = '모부기짱'
+    r.tick()
+    expect(r.vars.get(DEST)).toBe(0)
+
+    answer = ''
+    const skipped = run('OpenPokemonNamingScreen', [...u16(0), ...u16(DEST)], { naming })
+    skipped.tick()
+    expect(skipped.vars.get(DEST)).toBe(1)
+  })
+
+  it('화면이 없으면 안 지은 것으로 지나간다 — 스크립트가 서면 안 된다', () => {
+    const r = run('OpenPokemonNamingScreen', [...u16(0), ...u16(DEST)])
+    expect(r.vars.get(DEST)).toBe(1)
+    // 대기를 아예 안 세운다 — 한 프레임도 안 쉬고 다음 명령으로 간다
+    expect(r.ctx.state).not.toBe('waiting')
+  })
+})

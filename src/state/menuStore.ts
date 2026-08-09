@@ -16,6 +16,8 @@ export type MenuScreen =
   | 'fly' | 'box'
   // 파트너를 고르는 화면. 스크립트가 열고, **고르기 전에는 못 닫는다**
   | 'chooseStarter'
+  // 이름 짓기. 스크립트가 열고 `naming`이 무엇의 이름인지를 든다
+  | 'naming'
   // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
   // 스택이 비어 있지 않아야 필드 입력이 멈추고 X가 시작 메뉴를 열지 않는다.
   // 그림은 `App`이 DEV에서만 동적으로 받아 그린다
@@ -39,12 +41,21 @@ interface MenuStore {
    * 화면을 여는 인자라 컴포넌트가 못 받는다
    */
   boxMode: number
+  /**
+   * 이름 짓기 화면이 무엇의 이름을 받는가 (`NAMING_SCREEN_TYPE_*`).
+   *
+   * `slot`은 파티 자리다. 상점 재고와 같은 이유로 여기 있다 — 화면을 여는
+   * 인자라 컴포넌트가 못 받는다
+   */
+  naming: { kind: 'pokemon'; slot: number; initial: string; max: number } | null
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고를 같이 받는다 */
   openShop: (items: readonly number[]) => void
   /** 보관 시스템을 연다 */
   openBox: (mode: number) => void
+  /** 이름 짓기 화면을 연다 */
+  openNaming: (what: NonNullable<MenuStore['naming']>) => void
   back: () => void
   closeAll: () => void
 }
@@ -59,6 +70,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   top: null,
   shopStock: [],
   boxMode: 0,
+  naming: null,
 
   openShop: (items) => set(() => {
     const stack: MenuScreen[] = ['shop']
@@ -70,6 +82,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     const stack: MenuScreen[] = ['box']
     capture(stack)
     return { stack, top: 'box' as const, boxMode: mode }
+  }),
+
+  openNaming: (what) => set(() => {
+    const stack: MenuScreen[] = ['naming']
+    capture(stack)
+    return { stack, top: 'naming' as const, naming: what }
   }),
 
   open: (screen) => set(() => {

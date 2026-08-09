@@ -272,6 +272,13 @@ interface SaveStore extends SaveData {
    */
   setStatus: (slot: number, status: Status) => void
   /**
+   * 별명을 바꾼다 (`OpenPokemonNamingScreen`).
+   *
+   * 빈 이름은 **안 지은 것**이다 — 원작도 이름을 비우면 종족 이름으로
+   * 되돌리므로, 우리 개체의 `nickname`을 지워 두면 화면이 종족 이름을 쓴다
+   */
+  renameMon: (slot: number, nickname: string) => void
+  /**
    * 리포트를 쓴다. **디스크로 나가는 유일한 문이다.**
    *
    * 자리는 인자로 받는다 — 좌표는 프레임 상태(`worldState`)에 있고 이 스토어가
@@ -425,6 +432,13 @@ export const useSaveStore = create<SaveStore>()(
 
       addToParty: (mon) => {
         set((st) => (st.party.length >= PARTY_MAX ? st : { party: [...st.party, mon] }))
+      },
+
+      renameMon: (slot, nickname) => {
+        set((st) => ({
+          party: st.party.map((mon, i) => (
+            i === slot ? { ...mon, nickname: nickname || null } : mon)),
+        }))
       },
 
       setStatus: (slot, status) => {

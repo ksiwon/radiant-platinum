@@ -29,6 +29,7 @@ import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useSaveStore } from '../state/saveStore'
+import { naming as namingAnswer } from '../ui/menu/namingAnswer'
 import type { ItemTable } from '../data/gameData'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
@@ -97,6 +98,9 @@ function giveMon(species: number, level: number, heldItem: number): boolean {
 
 /** `generated/items.txt` — 스크립트가 준 포켓몬이 들어 있는 볼 */
 const ITEM_POKE_BALL = 4
+
+/** `constants/string.h`의 `MON_NAME_LEN`. 우리가 정한 상한이 아니다 */
+const MON_NAME_LEN = 10
 
 /**
  * 배틀 스토어를 지켜본다.
@@ -379,6 +383,33 @@ const services: FieldServices = {
 
   /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
   seeSpecies: (species) => { useSaveStore.getState().markSeen(species) },
+
+  /**
+   * 별명 짓는 화면 (`ScrCmd_OpenPokemonNamingScreen`).
+   *
+   * 답을 화면이 `naming.answer`에 적어 두고 여기서 가져간다 — 배틀 결과와 같은
+   * 이유다. 화면이 닫히는 프레임에 스토어가 비므로 스크립트가 못 받는다
+   */
+  naming: {
+    openForParty: (slot) => {
+      namingAnswer.answer = null
+      const mon = useSaveStore.getState().party[slot]
+      useMenuStore.getState().openNaming({
+        kind: 'pokemon',
+        slot,
+        // 지금 이름 — 없으면 종족 이름이다. 창의 물음("○○의 이름은?")이 이걸 쓴다
+        initial: mon?.nickname ?? speciesNames[mon?.species ?? 0] ?? '',
+        max: MON_NAME_LEN,
+      })
+    },
+    named: () => {
+      const got = namingAnswer.answer
+      if (got === null) return null
+      // 지었으면 세이브에 넣는다. 빈 글이면 안 지은 것이라 그대로 둔다
+      if (got.name !== '') useSaveStore.getState().renameMon(got.slot, got.name)
+      return got.name
+    },
+  },
 
   /**
    * 독으로 쓰러지기 직전 1로 버틴다 (`Pokemon_TrySurvivePoison`).

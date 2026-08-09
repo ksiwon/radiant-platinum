@@ -332,6 +332,17 @@ export interface FieldServices {
   /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
   seeSpecies?: (species: number) => void
   /**
+   * 별명 짓는 화면 (`ScrCmd_OpenPokemonNamingScreen`).
+   *
+   * 파트너 고르는 장면과 같은 모양이다 — 열어 두고 답이 나올 때까지 스크립트가
+   * 선다. `named()`가 `null`이면 아직 짓는 중이다
+   */
+  naming?: {
+    openForParty: (slot: number) => void
+    /** 지었으면 이름(안 지었으면 빈 글). 아직이면 null */
+    named: () => string | null
+  }
+  /**
    * 알을 준다 (`Egg_CreateEgg`).
    *
    * `giver`는 특수 만남장소 번호를 고르는 값이다 (`SpecialMetLoc_GetId(1, …)`)

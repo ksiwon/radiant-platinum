@@ -161,7 +161,7 @@ export const INTRO_TEXT = {
 } as const
 
 /** 이름 짓기 화면 (`naming_screen`) */
-export const NAMING_TEXT = { player: 0, rival: 3 } as const
+export const NAMING_TEXT = { player: 0, pokemon: 1, box: 2, rival: 3 } as const
 
 /**
  * 보관 시스템의 글 자리.
