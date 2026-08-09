@@ -16,6 +16,7 @@
 import { parseSbnk, noteFor, type Bank, type NoteDef } from './sbnk'
 import { parseSwar, type Swav } from './swar'
 import { commandWidth } from './sseq'
+import { sinIdx } from './tables'
 import {
   ENV_FLOOR, RELEASE, envDone, gainOf, knobDecibel, releaseEnv, startEnv, stepEnv, type Env,
 } from './envelope'
@@ -60,6 +61,21 @@ interface Track {
   decay: number
   sustain: number
   release: number
+  /**
+   * 비브라토 (0xCA 깊이 · 0xCB 속도 · 0xCD 폭).
+   *
+   * ⚠️ **종류(0xCC)와 지연(0xE0)은 안 싣는다.** 전곡 1013개를 훑으면 그 둘이
+   * **한 번도 안 나온다** — 종류는 늘 0(음 높이)이고 지연은 늘 0이다. 포르타멘토
+   * (0xC9·0xCE·0xCF)도 0회라 아예 없다.
+   *
+   * ⚠️ **속도 16과 폭 1은 우리 값이다.** 드라이버가 채널을 처음 세울 때 넣는
+   * 값을 ARM7에서 못 찾았다. 깊이를 쓰는 곡 363개 중 폭을 안 정하는 곡이 161개 ·
+   * 속도를 안 정하는 곡이 143개라 이 둘이 실제로 쓰인다. 폭을 0으로 두면
+   * 깊이만 준 곡의 비브라토가 통째로 사라지므로 1이 최소값이다
+   */
+  modDepth: number
+  modSpeed: number
+  modRange: number
 }
 
 interface Voice {
@@ -80,6 +96,13 @@ interface Voice {
   /** 잡음 LFSR */
   lfsr: number
   /**
+   * 비브라토 위상 (u16). 상위 바이트가 사인표의 색인이다.
+   *
+   * **음마다 따로 돈다.** 원작도 채널 구조체가 들고 있어서, 같은 트랙의 새 음이
+   * 시작하면 0에서 다시 시작한다
+   */
+  modCounter: number
+  /**
    * 표본이 다 떨어졌다.
    *
    * 도돌이표가 없는 표본은 하드웨어가 끝에서 채널을 **스스로 놓는다.** 이걸
@@ -95,7 +118,45 @@ function newTrack(): Track {
     volume: 127, expression: 127, pan: 64, transpose: 0,
     bendRange: 2, bend: 0, noteWait: true,
     attack: -1, decay: -1, sustain: -1, release: -1,
+    modDepth: 0, modSpeed: 16, modRange: 1,
   }
+}
+
+/**
+ * 지금 이 음에 걸리는 비브라토 (1/64 반음).
+ *
+ * ARM7 두 함수를 그대로 옮긴 것이다:
+ *
+ *   `0x23851b4`  깊이가 0이면 0. 아니면 `사인(위상 >> 8) × 깊이 × 폭`
+ *   `0x23848bc`  종류 0(음 높이)이면 `(그 값 << 6) >> 14`
+ *
+ * 단위가 1/64 반음인 것은 `SND_CalcTimer`(0x238404c)가 **한 옥타브를 0x300**
+ * 으로 접는 데서 나온다 — 0x300 = 768 = 64 × 12다.
+ *
+ * ⚠️ **음량·팬 모듈레이션은 안 만든다.** 종류 명령(0xCC)이 전곡에 0회라
+ * 언제나 음 높이다. 만들어 두면 밟히지 않는 코드가 된다
+ */
+export function modPitch(counter: number, depth: number, range: number): number {
+  if (depth === 0) return 0
+  return ((sinIdx(counter >> 8) * depth * range) << 6) >> 14
+}
+
+/**
+ * 비브라토 위상을 한 프레임 민다 (ARM7 `0x2385154`).
+ *
+ * `위상 += 속도 << 6`을 하고 **상위 바이트만** 0x80으로 접는다. 그래서 한 바퀴가
+ * `0x80 × 256 ÷ (속도 × 64) = 512 ÷ 속도` 프레임이고, 192프레임/초이므로
+ * 떨림이 **속도 × 0.375Hz**다 — 제일 많이 쓰이는 속도 18이 6.75Hz다
+ */
+export function modStep(counter: number, speed: number): number {
+  const next = (counter + (speed << 6)) & 0xffff
+  let high = next >> 8
+  while (high >= 0x80) high -= 0x80
+  return (next & 0xff) | (high << 8)
+}
+
+function vibrato(v: Voice): number {
+  return modPitch(v.modCounter, v.track.modDepth, v.track.modRange)
 }
 
 /** 가변 길이 정수 */
@@ -229,7 +290,7 @@ export function renderSong(
         t.release < 0 ? def.release : t.release,
       ),
       def, swav: swavFor(def), key, velocity, track: t,
-      phase: 0, gate, born: born++, psg: 0, lfsr: 0x7fff, dead: false,
+      phase: 0, gate, born: born++, psg: 0, lfsr: 0x7fff, dead: false, modCounter: 0,
     })
   }
 
@@ -303,6 +364,9 @@ export function renderSong(
         case 0xd1: t.decay = v; break
         case 0xd2: t.sustain = v; break
         case 0xd3: t.release = v; break
+        case 0xca: t.modDepth = v; break
+        case 0xcb: t.modSpeed = v; break
+        case 0xcd: t.modRange = v; break
         case 0xd5: t.expression = v; break
         case 0xe1: tempo = data[t.at + 1]! | (data[t.at + 2]! << 8); break
         case 0xfd: t.at = t.stack.pop() ?? null; continue
@@ -329,6 +393,9 @@ export function renderSong(
     for (let i = voices.length - 1; i >= 0; i--) {
       const v = voices[i]!
       stepEnv(v.env)
+      // 비브라토 위상도 한 칸 (`0x2385154`). 상위 바이트를 0x80으로 접는다 —
+      // 사인표가 한 주기를 0~0x7f로 받기 때문이다
+      if (v.track.modDepth > 0) v.modCounter = modStep(v.modCounter, v.track.modSpeed)
       if (v.dead || envDone(v.env)) voices.splice(i, 1)
     }
     if (voices.length === 0 && tracks.every((t) => t.at === null)) break
@@ -347,7 +414,8 @@ export function renderSong(
       const pan = Math.max(0, Math.min(127, v.track.pan))
       const gl = gain * ((128 - pan) / 128)
       const gr = gain * (pan / 128)
-      const semis = v.key - v.def.baseNote + (v.track.bend * v.track.bendRange) / 128 + transpose
+      const semis = v.key - v.def.baseNote + (v.track.bend * v.track.bendRange) / 128
+        + vibrato(v) / 64 + transpose
       const ratio = 2 ** (semis / 12)
 
       if (v.swav) {
@@ -374,7 +442,8 @@ export function renderSong(
         }
       } else if (v.def.kind === 2) {
         // PSG 사각파. 듀티는 정의의 `wave` 칸이 준다 (0~7)
-        const freq = 440 * 2 ** ((v.key + (v.track.bend * v.track.bendRange) / 128 + transpose - 69) / 12)
+        const freq = 440 * 2 ** ((v.key + (v.track.bend * v.track.bendRange) / 128
+          + vibrato(v) / 64 + transpose - 69) / 12)
         const step = freq / rate
         const duty = (v.def.wave + 1) / 8
         for (let i = 0; i < n; i++) {

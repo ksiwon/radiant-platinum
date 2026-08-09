@@ -11,7 +11,9 @@ const path = require('path')
 const { ROOT, DEFAULT_ROM } = require('./rom')
 
 /** ARM7 정적 바이너리 안에서 표가 앉은 자리 */
-const AT = { dbSquare: 0xe90c, db: 0xea0c, attack: 0xeb20 }
+const AT = { sin: 0xe8e8, dbSquare: 0xe90c, db: 0xea0c, attack: 0xeb20 }
+/** 사인표는 사분주기 33칸(0~127) — 아래에서 닫힌 식과 대조한다 */
+const SIN_COUNT = 33
 /** 데시벨표는 128칸, 어택표는 19칸이다 — 아래에서 근거를 다시 잰다 */
 const DB_COUNT = 128
 const ATTACK_COUNT = 19
@@ -24,6 +26,7 @@ function main() {
   const dbSquare = s16(AT.dbSquare, DB_COUNT)
   const db = s16(AT.db, DB_COUNT)
   const attack = Array.from({ length: ATTACK_COUNT }, (_, i) => arm7[AT.attack + i])
+  const sin = Array.from({ length: SIN_COUNT }, (_, i) => arm7.readInt8(AT.sin + i))
 
   // ── 뽑은 것이 맞는지 여기서 잰다 ──
   //
@@ -37,6 +40,18 @@ function main() {
     }
     console.log(`${name}: 3~127칸 중 식과 어긋남 ${bad}`)
     if (bad > 0) throw new Error(`${name}이 식과 안 맞는다 — 자리를 잘못 짚었다`)
+  }
+  // 사인표도 닫힌 식과 대조한다. 33칸이 33칸 다 `round(127·sin(i/32·π/2))`이고,
+  // **데시벨제곱표 바로 앞(0xe8e8 + 33 = 0xe909, 3바이트 뒤가 0xe90c)**에 앉아
+  // 있다 — 이미 확정된 표와 붙어 있는 것이 자리를 짚었다는 두 번째 근거다
+  {
+    let bad = 0
+    for (let i = 0; i < SIN_COUNT; i++) {
+      if (Math.round(127 * Math.sin((i / 32) * Math.PI / 2)) !== sin[i]) bad++
+    }
+    console.log(`사인표: 33칸 중 식과 어긋남 ${bad}`)
+    if (bad > 0) throw new Error('사인표가 식과 안 맞는다 — 자리를 잘못 짚었다')
+    if (AT.sin + SIN_COUNT > AT.dbSquare) throw new Error('사인표가 데시벨표와 겹친다')
   }
   check(dbSquare, (x) => (x / 127) ** 2, '데시벨제곱표')
   check(db, (x) => x / 127, '데시벨표')
@@ -85,6 +100,29 @@ export const ATTACK_RATE: readonly number[] = [
 
 /** 볼륨 손잡이의 바닥. 이보다 낮으면 무음이다 */
 export const DECIBEL_FLOOR = -723
+
+/**
+ * 비브라토가 쓰는 사인 사분주기 33칸 (\`SNDi_SinIdxTable\`).
+ *
+ * 값이 \`round(127·sin(i/32·π/2))\`과 33칸 다 같다. 자리(ARM7+0xe8e8)는
+ * **데시벨제곱표 바로 앞**이라 이미 확정된 표가 이웃으로 붙들어 준다
+ */
+export const SIN_QUARTER: readonly number[] = [
+  ${list(sin)},
+]
+
+/**
+ * 한 주기(0~0x7f)의 사인. ARM7 0x23841f8을 그대로 옮긴 것이다:
+ *
+ *     x < 0x20 → T[x]        x < 0x40 → T[0x40 - x]
+ *     x < 0x60 → -T[x - 0x40]  그 밖 → -T[0x80 - x]
+ */
+export function sinIdx(x: number): number {
+  if (x < 0x20) return SIN_QUARTER[x]
+  if (x < 0x40) return SIN_QUARTER[0x40 - x]
+  if (x < 0x60) return -SIN_QUARTER[x - 0x40]
+  return -SIN_QUARTER[0x80 - x]
+}
 `
   const out = path.join(ROOT, 'src/engine/audio/tables.ts')
   fs.writeFileSync(out, src, 'utf8')

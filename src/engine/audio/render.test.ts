@@ -9,7 +9,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { it, expect } from 'vitest'
-import { renderSong, TICKS_PER_BEAT, FRAME_RATE, TICK_DIVISOR } from './render'
+import {
+  renderSong, modPitch, modStep, TICKS_PER_BEAT, FRAME_RATE, TICK_DIVISOR,
+} from './render'
+import { sinIdx } from './tables'
 import { parseSwar } from './swar'
 import { parseSbnk, noteFor } from './sbnk'
 import { withData } from '../../data/romData.testkit'
@@ -257,5 +260,118 @@ maybe('악기표와 파형 창고', () => {
     expect(defs).toBeGreaterThan(1000)
     expect(missing).toBe(0)
     expect(psg).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * 비브라토 (`0xCA` 깊이 · `0xCB` 속도 · `0xCD` 폭).
+ *
+ * 여기서 보는 것은 "코드가 안 터진다"가 아니라 **음이 실제로 떨리는가**와
+ * **떨림이 표가 정한 빠르기인가**다. 식은 ARM7 두 함수에서 그대로 옮겼고
+ * (`0x23851b4` LFO · `0x23848bc` 적용 · `0x2385154` 위상), 단위 1/64 반음은
+ * `SND_CalcTimer`가 한 옥타브를 0x300으로 접는 데서 나온다.
+ */
+maybe('비브라토', () => {
+  /** 비브라토를 걸어 둔 긴 음 하나 */
+  function vibratoNote(
+    program: number, key: number, depth: number, speed: number, range: number,
+  ): ArrayBuffer {
+    const body = [
+      0xc7, 0,
+      0x81, program,
+      0xcb, speed,
+      0xcd, range,
+      0xca, depth,
+      key, 127, 0x81, 0x40, // 길이 192틱
+      0x80, 0x81, 0x40,
+      0xff,
+    ]
+    const buf = new Uint8Array(0x1c + body.length)
+    buf.set(body, 0x1c)
+    return buf.buffer
+  }
+
+  it('사인표가 한 주기를 돈다 — ARM7이 접는 그대로다', () => {
+    // 0x23841f8: x<0x20 → T[x] · x<0x40 → T[0x40−x] · x<0x60 → −T[x−0x40] · 그 밖 −T[0x80−x]
+    for (let x = 0; x < 0x80; x++) {
+      // `-0`이 나오는 자리가 있다(x=0x40이 `-T[0]`이다). 값으로는 0이라 더한다
+      expect(sinIdx(x) + 0, `x=${String(x)}`)
+        .toBe(Math.round(127 * Math.sin((x / 64) * Math.PI)) + 0)
+    }
+    // 양끝과 사분점
+    expect(sinIdx(0)).toBe(0)
+    expect(sinIdx(0x20)).toBe(127)
+    // 0x40은 `-T[0]`이라 `-0`이 나온다. 값으로는 0이다
+    expect(sinIdx(0x40) + 0).toBe(0)
+    expect(sinIdx(0x60)).toBe(-127)
+  })
+
+  it('떨림이 속도 × 0.375Hz다 — 제일 흔한 속도 18이 6.75Hz', () => {
+    // ⚠️ **"위상이 0으로 돌아오는 프레임"을 세면 안 된다.** 한 프레임 전진이
+    // `속도 × 64`라 위상 0에 정확히 안 떨어진다 — 속도 18은 57프레임 만에
+    // 128까지밖에 안 돌아온다. 세는 것은 **한 바퀴 도는 데 걸린 위상**이다
+    for (const speed of [8, 18, 32, 64]) {
+      let counter = 0
+      let turns = 0
+      // ⚠️ **1초만 세면 안 된다.** 6.75바퀴에서 여섯 번밖에 안 넘어간다.
+      // 10초를 세면 반올림 오차가 10분의 1로 준다
+      const SECONDS = 10
+      for (let f = 0; f < FRAME_RATE * SECONDS; f++) {
+        const next = modStep(counter, speed)
+        if ((next >> 8) < (counter >> 8)) turns++
+        counter = next
+      }
+      expect(turns / SECONDS, `속도 ${String(speed)}`).toBeCloseTo(speed * 0.375, 0)
+    }
+  })
+
+  it('깊이가 0이면 아무것도 안 한다 — 3,318회 중 2,077회가 0이다', () => {
+    for (let c = 0; c < 0x8000; c += 0x137) expect(modPitch(c, 0, 4)).toBe(0)
+  })
+
+  it('폭은 깊이와 곱해진다 — 둘 중 하나만 커도 떨림이 커진다', () => {
+    const at = (d: number, r: number) => modPitch(0x2000, d, r)
+    expect(at(16, 3)).toBeGreaterThan(at(8, 3))
+    expect(at(16, 4)).toBeGreaterThan(at(16, 3))
+    // 실제 곡의 흔한 값(깊이 16 · 폭 3)이 반음 몇 개인지. 1/64 반음 단위다
+    expect(at(16, 3) / 64).toBeGreaterThan(0.1)
+    expect(at(16, 3) / 64).toBeLessThan(3)
+  })
+
+  it('소리가 실제로 떨린다 — 안 걸면 안 떨린다', () => {
+    const { bnk, wars } = load(1004)
+    // 표본 악기 하나를 고른다. PSG는 파형이 사각파라 영교차가 듀티만 따라간다
+    const bank = parseSbnk(bnk)
+    const program = bank.programs.findIndex((p) => noteFor(p, 60)?.kind === 1)
+    expect(program).toBeGreaterThanOrEqual(0)
+
+    /**
+     * 창마다 영교차를 센다.
+     *
+     * ⚠️ **자기상관은 여기서 못 쓴다.** 창을 짧게 잡아야 떨림이 보이는데, 짧은
+     * 창에서는 자기상관이 배음에 붙어 답이 널뛴다(안 건 음에서도 49%가 흔들렸다).
+     * 영교차는 음이 높아지면 곧바로 늘어난다
+     */
+    const crossings = (seq: ArrayBuffer): number[] => {
+      const out = renderSong(seq, bnk, wars, { sampleRate: 48000, maxSeconds: 1.2 })
+      const step = 2400
+      const list: number[] = []
+      for (let at = 9600; at + step <= 33600; at += step) {
+        let n = 0
+        for (let i = at + 1; i < at + step; i++) {
+          if ((out.left[i - 1]! < 0) !== (out.left[i]! < 0)) n++
+        }
+        list.push(n)
+      }
+      return list
+    }
+
+    const flat = crossings(vibratoNote(program, 60, 0, 18, 3))
+    const wobbly = crossings(vibratoNote(program, 60, 100, 18, 4))
+    const spread = (a: number[]) => (Math.max(...a) - Math.min(...a)) / (a[0] ?? 1)
+    // 안 걸면 창마다 같은 음이라 영교차가 거의 안 바뀐다
+    expect(spread(flat)).toBeLessThan(0.05)
+    // 걸면 창마다 갈린다 — 그것이 떨림이다
+    expect(spread(wobbly)).toBeGreaterThan(3 * spread(flat) + 0.05)
   })
 })
