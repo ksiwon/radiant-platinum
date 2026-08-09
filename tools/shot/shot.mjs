@@ -443,6 +443,24 @@ async function main() {
     await page.setViewportSize(VIEWPORT)
     await page.waitForTimeout(Number(flag("grow", 3000)))
 
+    // 화면이 실제로 몇 삼각형인가 (`--perf`).
+    //
+    // ⚠️ **fps는 여기서 재면 안 된다.** 헤드리스는 WebGPU가 없어 WebGL2 +
+    // SwiftShader(소프트웨어)로 떨어지므로 프레임 시간은 이 기계의 것이 아니다.
+    // 삼각형과 드로우콜은 다르다 — 무엇을 GPU에 올렸느냐는 백엔드와 무관하게
+    // 우리가 정한 값이라, 나무를 굵게 만들면 여기서 곧바로 보인다.
+    //
+    // 창 크기를 키운 **뒤에** 잰다. 절두체가 넓어지면 걸러지는 나무가 달라진다
+    if (args.includes('--perf')) {
+      const perf = await page.evaluate(async () => {
+        const refs = await import('/src/scene/sceneRefs.ts')
+        return { ...refs.perfSnapshot }
+      })
+      console.log(`  ${id} 삼각형 ${(perf.triangles / 1000).toFixed(1)}k`
+        + ` · 드로우콜 ${String(perf.drawCalls)} · ${perf.backend}`
+        + ` (fps ${String(perf.fps)} — 소프트웨어 렌더러라 뜻 없음)`)
+    }
+
     // 그림 위의 **한 점**에 광선을 쏘아 거기 무엇이 있는지 되묻는다.
     //
     // `--peek`은 카메라 둘레의 메시를 늘어놓을 뿐이라, 화면 한구석에 뜬 흰
