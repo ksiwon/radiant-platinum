@@ -30,7 +30,7 @@ export interface TrainerInfo {
 
 // 개체 모델은 엔진이 갖는다 — 능력치·경험치 계산이 붙어 있고 배틀에서도 같은 것을
 // 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
-import { PARTY_MAX, type PokemonInstance } from '../engine/pokemon/instance'
+import { PARTY_MAX, type PokemonInstance, type Status } from '../engine/pokemon/instance'
 
 /** `constants/pokemon.h`의 `MAX_FRIENDSHIP_VALUE` */
 const MAX_FRIENDSHIP = 255
@@ -265,6 +265,13 @@ interface SaveStore extends SaveData {
    */
   healParty: (full: (mon: PokemonInstance) => { hp: number; pp: number[] }) => void
   /**
+   * 그 자리의 상태이상만 바꾼다 (`Pokemon_SetValue(MON_DATA_STATUS)`).
+   *
+   * 필드에서 독이 풀리는 자리가 여기다 (`Pokemon_TrySurvivePoison`) —
+   * 배틀은 제 상태를 따로 들고 끝날 때 여기로 되돌려 놓는다
+   */
+  setStatus: (slot: number, status: Status) => void
+  /**
    * 리포트를 쓴다. **디스크로 나가는 유일한 문이다.**
    *
    * 자리는 인자로 받는다 — 좌표는 프레임 상태(`worldState`)에 있고 이 스토어가
@@ -418,6 +425,12 @@ export const useSaveStore = create<SaveStore>()(
 
       addToParty: (mon) => {
         set((st) => (st.party.length >= PARTY_MAX ? st : { party: [...st.party, mon] }))
+      },
+
+      setStatus: (slot, status) => {
+        set((st) => ({
+          party: st.party.map((mon, i) => (i === slot ? { ...mon, status, statusTurns: 0 } : mon)),
+        }))
       },
 
       addFriendship: (slot, amount) => {

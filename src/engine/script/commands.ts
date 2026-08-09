@@ -15,7 +15,7 @@ import { addNpc, npcActors, removeNpc, setNpcPlacement } from '../actor/npcs'
 import { mapById, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
-import { VAR_LAST_TALKED } from './vars'
+import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 
 /**
@@ -1522,6 +1522,209 @@ on('StartFirstBattle', (ctx) => {
   ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
   return true
 })
+
+/**
+ * 전설 조우 (`Encounter_NewVsSpeciesAtLevel`).
+ *
+ * 표에 없는 것을 스크립트가 직접 세운다 — 기라티나 · 디아루가 · 펄기아 ·
+ * 호수의 셋 · 아르세우스가 전부 이 길로 나온다. 곡은 `songs.wildSongFor`가
+ * 종족 번호로 고른다
+ */
+on('StartLegendaryBattle', (ctx) => {
+  const species = ctx.readVar()
+  const level = ctx.readVar()
+  ctx.host.world.services.startLegendaryBattle?.(species, level)
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+/**
+ * 태그 배틀 (`ScrCmd_StartTagBattle`).
+ *
+ * ⚠️ **인자 차례가 파트너 먼저다.** 상대 둘이 뒤에 온다 — 바꿔 읽으면
+ * 라이벌과 싸우게 된다
+ */
+on('StartTagBattle', (ctx) => {
+  const partner = ctx.readVar()
+  const enemy1 = ctx.readVar()
+  const enemy2 = ctx.readVar()
+  ctx.host.world.services.startTagBattle?.(partner, enemy1, enemy2)
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+/**
+ * 장애물이 부서지는 연출 (`ScrCmd_StartDestroyObstacleAnimation`).
+ *
+ * ⚠️ **답 칸을 0으로 두고 시작하는 것이 이 명령의 전부다.** 스크립트는
+ * 그 칸이 0인 동안 `WaitTime 1`로 되돌아 돈다(무쇠탄갱 B2F가 그렇다). 안
+ * 만들고 건너뛰면 그 칸이 영영 0이라 **무한 고리**가 되고, 실제로 그랬다.
+ *
+ * 원작은 연출이 도는 **동안에도** 스크립트가 흐르지만(10프레임 뒤 바위를
+ * 치운다) 우리는 여기서 선다. 차이는 바위가 사라지는 시점 하나다
+ */
+on('StartDestroyObstacleAnimation', (ctx) => {
+  const kind = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, 0)
+  const fx = ctx.host.world.services.breakObstacle
+  fx?.start(kind)
+  ctx.pause((c) => {
+    if (fx !== undefined && !fx.done()) return false
+    c.host.vars.set(dest, 1)
+    return true
+  })
+  return true
+})
+
+/** 비전기술 컷인 (`HMCutIn_StartTask`) — 파티 자리의 포켓몬이 나와서 쓴다 */
+on('PlayHMCutIn', (ctx) => {
+  const slot = ctx.readVar()
+  const cutIn = ctx.host.world.services.hmCutIn
+  cutIn?.start(slot)
+  ctx.pause(() => cutIn === undefined || cutIn.done())
+  return true
+})
+
+/**
+ * 도감을 받는다 (`ScrCmd_GivePokedex`).
+ *
+ * 원작은 도감 구조체의 칸이고 스크립트 플래그(`FLAG_HAS_POKEDEX`)는 따로인데,
+ * **둘이 갈리는 자리가 없다** — 전 스크립트 534벌에서 `GivePokedex`가 나오는
+ * 곳이 잔모래마을 연구소 한 군데뿐이고 바로 다음 줄이 그 플래그를 세운다.
+ * 그래서 같은 비트를 쓴다. 시작 메뉴가 도감 줄을 이 비트로 넣고 뺀다
+ */
+systemFlag(FLAG_HAS_POKEDEX, { set: 'GivePokedex', check: 'CheckPokedexAcquired' })
+
+/** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
+on('SetSpeciesSeen', (ctx) => {
+  // ⚠️ **인자를 먼저 읽는다.** `seeSpecies?.(ctx.readVar())`로 쓰면 서비스가
+  // 없을 때 `?.`가 오른쪽을 아예 계산하지 않아 읽기 위치가 안 움직인다
+  const species = ctx.readVar()
+  ctx.host.world.services.seeSpecies?.(species)
+  return false
+})
+
+/**
+ * 어느 판인가 (`ScrCmd_GetGameVersion`).
+ *
+ * `GAME_VERSION`은 빌드가 정하는 상수다. 우리는 플래티넘이다 —
+ * `generated/game_version.txt`에서 다이아 1 · 펄 2 · 플래티넘 3이다
+ */
+const VERSION_PLATINUM = 3
+
+on('GetGameVersion', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), VERSION_PLATINUM)
+  return false
+})
+
+/** 지금 서 있는 사람을 숨긴다 (`MapObject_SetHidden`). 배치표는 안 건드린다 */
+on('HideObject', (ctx) => {
+  const target = ctx.host.world.objects(ctx.readVar())
+  if (target) target.visible = false
+  return false
+})
+
+/**
+ * 그 자리에서 돌아선다 (`ov5_021ECDFC` → `MapObject_TryFace`).
+ *
+ * `SetObjectEventDir`와 다르다 — 저쪽은 **다음에 세울 때** 먹는 배치표를
+ * 고치고, 이쪽은 지금 서 있는 사람을 곧바로 돌린다
+ */
+on('ScrCmd_18C', (ctx) => {
+  const localID = ctx.readVar()
+  const dir = ctx.readVar()
+  const target = ctx.host.world.objects(localID)
+  if (target) target.dir = dir
+  return false
+})
+
+/** 독으로 쓰러지기 직전 1로 버틴다 (`Pokemon_TrySurvivePoison`) */
+on('SurvivePoison', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.survivePoison?.(slot) === true ? 1 : 0)
+  return false
+})
+
+/**
+ * 맵 전환이 끝나기를 기다린다 (`FieldTransition_FinishMap`).
+ *
+ * 독으로 쓰러져 포켓몬센터로 실려 가는 공용 스크립트가 여기서 선다. 우리는
+ * 워프가 한 프레임에 끝나므로 기다릴 것이 없다
+ */
+on('WaitForTransition', () => false)
+
+/** 알을 준다 (`ScrCmd_GiveEgg`). 파티가 가득 차면 원작도 그냥 안 준다 */
+on('GiveEgg', (ctx) => {
+  const species = ctx.readVar()
+  const giver = ctx.readVar()
+  ctx.host.world.services.giveEgg?.(species, giver)
+  return false
+})
+
+/** 기라티나의 모습 (`Party_SetGiratinaForm`). 0 어나더 · 1 오리진 */
+on('SetPartyGiratinaForm', (ctx) => {
+  const form = ctx.readVar()
+  ctx.host.world.services.setGiratinaForm?.(form)
+  return false
+})
+
+on('AddFreeCamera', (ctx) => {
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  ctx.host.world.services.camera?.free(x, z)
+  return false
+})
+
+on('RestoreCamera', (ctx) => {
+  ctx.host.world.services.camera?.restore()
+  return false
+})
+
+/**
+ * 주인공의 자세 (`PlayerAvatar_TurnOnRequestStateBit` + `RequestChangeState`).
+ *
+ * 둘이 짝이다 — `SetPlayerState`가 원하는 자세를 적어 두고
+ * `ChangePlayerState`가 그때 갈아 끼운다. 연구소에서 포켓몬을 건네줄 때
+ * 쓰는 자세(`PLAYER_TRANSITION_HEALING`)가 이것이다.
+ *
+ * ⚠️ **자세 그림이 아직 없다.** 값을 받아 두기만 한다 — 스크립트가 이 값으로
+ * 갈라지는 자리는 없어서 이야기는 그대로 흐르고, 없는 것은 손짓뿐이다
+ */
+on('SetPlayerState', (ctx) => {
+  ctx.host.world.playerState = ctx.readHalfWord()
+  return false
+})
+
+on('ChangePlayerState', () => false)
+
+// ── 아직 화면이 없는 것들 ────────────────────────────────────────────────────
+//
+// 건너뛰기와 다르다. **건너뛰면 스크립트가 영영 도는 자리**라, 끝났다고
+// 답해서 이야기를 지나가게 한다. 없는 것은 연출뿐이다.
+
+/**
+ * 창기둥이 일그러지는 연출 (`ov6_02243004`).
+ *
+ * 갈래가 둘이다 — 0이면 시작하고, 1이면 **끝났는가**를 답한다. 스크립트가
+ * 그 답이 0인 동안 되돌아 돈다(`SpearPillar_WaitThenWarpToSpearPillarDistorted`).
+ * 연출이 없으니 곧바로 끝났다고 답한다
+ */
+on('ScrCmd_20D', (ctx) => {
+  ctx.readByte()
+  ctx.host.vars.set(ctx.readHalfWord(), 1)
+  return false
+})
+
+/** 뒤틀린 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
+on('ScrCmd_2FB', () => false)
+
+/** 뒤틀린 세계 워프 (`FieldSystem_StartDWWarp`) */
+on('DoDWWarp', () => false)
+
+/** 소리 장면을 63번으로 (`Sound_SetSceneAndPlayBGM(SOUND_SCENE_SUB_63, …)`) */
+on('SetSubScene63', () => false)
 
 // ── 표 만들기 ────────────────────────────────────────────────────────────────
 

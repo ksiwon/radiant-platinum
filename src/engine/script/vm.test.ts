@@ -431,9 +431,9 @@ const FLAG_HAS_POKEDEX = 144
  * 중요한 것은 해독 오류가 0이라는 쪽이고, 이 숫자는 **얼마나 멀리 가는가**의
  * 눈금이라 값이 바뀌면 왜 바뀌었는지 설명이 되어야 한다
  */
-const LOOPING_ENTRIES = 37
+const LOOPING_ENTRIES = 31
 /** 예/아니오에 "예"로 답했을 때. 갈라지는 가지가 달라서 수도 다르다 */
-const LOOPING_ENTRIES_YES = 40
+const LOOPING_ENTRIES_YES = 34
 
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 40
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_240
+const RUNNING_SITES = 53_365
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 178
+const IMPLEMENTED_COMMANDS = 200
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -479,6 +479,9 @@ const IDLE_COMMANDS = [
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
   'BlackOutFromBattle2',
+  // 도감을 가졌는지 **묻는** 자리는 스크립트에 0회다. 주는 자리만 있다 —
+  // 갈래를 가르는 것은 `FLAG_HAS_POKEDEX` 쪽이고 그건 보통 플래그다
+  'CheckPokedexAcquired',
   // ⚠️ **이 넷은 필드 스크립트에 0회다.** 러닝슈즈·가방·발자국을 *묻는* 쪽은
   // 스크립트가 아니라 엔진이 본다 — 가방 아이콘을 띄울지, 뛸 수 있는지 같은
   // 판단이라 코드 쪽에 있다

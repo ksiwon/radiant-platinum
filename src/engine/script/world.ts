@@ -296,6 +296,65 @@ export interface FieldServices {
    * 질 수도 있는 진짜 배틀이다
    */
   startFirstBattle?: (trainerID: number) => void
+  /**
+   * 전설 조우 (`Encounter_NewVsSpeciesAtLevel`).
+   *
+   * 야생과 같은 배틀인데 **종과 레벨을 스크립트가 준다.** 인카운터 표를 안
+   * 거치므로 기라티나·디아루가처럼 표에 없는 것이 여기로 나온다
+   */
+  startLegendaryBattle?: (species: number, level: number) => void
+  /**
+   * 태그 배틀 (`Encounter_NewVsTrainer`에 파트너를 붙인 것).
+   *
+   * 창기둥에서 라이벌과 함께 마스·쥬피터를 상대한다. 파트너가 붙는 배틀은
+   * 아직 없어서, 붙는 날까지 **파트너 없이 2:2로** 연다 — 이야기는 지나가고
+   * 없는 것은 옆에 선 사람뿐이다
+   */
+  startTagBattle?: (partner: number, enemy1: number, enemy2: number) => void
+  /**
+   * 장애물이 부서지는 연출 (`ov6_0224899C`).
+   *
+   * ⚠️ **이 자리가 비어 있으면 스크립트가 영영 돈다.** 원작은 답 칸을 0으로
+   * 두고 연출이 끝날 때 채우는데, 스크립트가 `WaitTime 1` + `그 칸이 0이면
+   * 되돌아가기`로 기다린다 — 채워 주는 사람이 없으면 그대로 무한 고리다.
+   * 무쇠탄갱에서 강석이 바위를 깨는 대목이 그것이다
+   */
+  breakObstacle?: {
+    /** 0 나무 · 1 바위 · 2 큰 바위 (`ScrCmd_StartDestroyObstacleAnimation`의 갈래) */
+    start: (kind: number) => void
+    done: () => boolean
+  }
+  /** 비전기술 컷인 (`HMCutIn_StartTask`). 파티 자리의 포켓몬이 나와서 쓴다 */
+  hmCutIn?: {
+    start: (slot: number) => void
+    done: () => boolean
+  }
+  /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
+  seeSpecies?: (species: number) => void
+  /**
+   * 알을 준다 (`Egg_CreateEgg`).
+   *
+   * `giver`는 특수 만남장소 번호를 고르는 값이다 (`SpecialMetLoc_GetId(1, …)`)
+   */
+  giveEgg?: (species: number, giver: number) => void
+  /**
+   * 독으로 쓰러지기 직전 1로 버틴다 (`Pokemon_TrySurvivePoison`).
+   *
+   * @returns 버텼으면 true
+   */
+  survivePoison?: (slot: number) => boolean
+  /** 기라티나의 모습을 바꾼다 (`Party_SetGiratinaForm`). 0 어나더 · 1 오리진 */
+  setGiratinaForm?: (form: number) => void
+  /**
+   * 자유 카메라 (`AddFreeCamera`·`RestoreCamera`).
+   *
+   * 원작은 안 보이는 객체를 하나 세워 카메라가 그걸 따라가게 한다. 컷신에서
+   * 카메라가 주인공을 떠나 아카기를 비추는 대목이 이것이다
+   */
+  camera?: {
+    free: (x: number, z: number) => void
+    restore: () => void
+  }
 }
 
 export interface WorldInit {
@@ -356,6 +415,14 @@ export class FieldWorld {
 
   /** 주인공. `FacePlayer`가 어느 쪽인지 알려면 필요하다 */
   player: Movable | null = null
+
+  /**
+   * 스크립트가 요청해 둔 주인공 자세 (`PlayerAvatar_TurnOnRequestStateBit`).
+   *
+   * `generated/player_transitions.txt`의 줄 번호다. `SetPlayerState`가 적고
+   * `ChangePlayerState`가 갈아 끼운다 — 자세 그림이 붙는 날 화면이 여기를 본다
+   */
+  playerState = 0
 
   /**
    * 지금 도는 스크립트의 scriptID (`SCRIPT_MANAGER_SCRIPT_ID`).

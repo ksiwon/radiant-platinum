@@ -30,11 +30,28 @@ const LOOK_AHEAD = 6
 
 const goal = new Vector3()
 const look = new Vector3()
+const free = new Vector3()
 
 export const cameraSystem = {
+  /**
+   * 스크립트가 카메라를 주인공에게서 떼어 놓은 자리 (`AddFreeCamera`).
+   *
+   * 원작은 안 보이는 객체를 하나 세우고 `Camera_TrackTarget`을 그쪽으로 옮긴다.
+   * 우리는 따라갈 점만 갈아 끼운다 — 세울 객체가 없으니 그편이 짧다.
+   * `RestoreCamera`가 null로 되돌린다.
+   *
+   * ⚠️ **1인칭에는 안 먹인다.** 1인칭 눈은 주인공 머리에 붙어 있고 시선을
+   * 마우스가 정하는데, 그 눈을 딴 데로 옮기면 컷신 동안 제 몸이 안 보이는
+   * 자리에서 마우스만 도는 상태가 된다. 컷신은 3인칭 것이다
+   */
+  free: null as { x: number, z: number } | null,
+
   update(delta: number) {
     const cam = worldState.camera
-    const p = worldState.player.position
+    const at = cameraSystem.free
+    const p = at === null || cam.mode === 'first'
+      ? worldState.player.position
+      : free.set(at.x, worldState.player.position.y, at.z)
     const first = cam.mode === 'first'
 
     if (first) {

@@ -17,6 +17,7 @@ import {
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldScripts } from '../engine/script/field'
+import { cameraSystem } from '../engine/actor/camera'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -341,6 +342,68 @@ const services: FieldServices = {
       battleResult = 'loss'
       waiting = false
     })
+  },
+
+  /**
+   * 전설 조우 (`Encounter_NewVsSpeciesAtLevel`).
+   *
+   * 인카운터 표를 안 거치고 종과 레벨을 스크립트가 준다. 곡은 야생과 같은
+   * 길로 갈린다 — `wildSongFor`가 종족 번호를 보고 기라티나면 플래티넘
+   * 전용 곡을 고른다 (`audio/songs`)
+   */
+  startLegendaryBattle: (species, level) => {
+    battleResult = null
+    waiting = true
+    void useBattleStore.getState().startWild({ species, level }).catch(() => {
+      battleResult = 'loss'
+      waiting = false
+    })
+  },
+
+  /**
+   * 태그 배틀 (`ScrCmd_StartTagBattle`).
+   *
+   * ⚠️ **파트너가 안 붙는다.** 옆에서 같이 싸우는 사람은 배틀 쪽에 자리가
+   * 없어서(`@pkmn/sim`은 되지만 우리 컨트롤러가 2인용이다) 지금은 **앞의
+   * 상대 하나와 1:1**로 연다. 창기둥에서 마스·쥬피터를 함께 상대하는 장면이
+   * 마스 한 명이 된다 — 이야기는 그대로 지나가고 없는 것은 옆에 선 둘이다
+   */
+  startTagBattle: (_partner, enemy1) => {
+    battleResult = null
+    waiting = true
+    void useBattleStore.getState().startTrainer(enemy1).catch(() => {
+      battleResult = 'loss'
+      waiting = false
+    })
+  },
+
+  /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
+  seeSpecies: (species) => { useSaveStore.getState().markSeen(species) },
+
+  /**
+   * 독으로 쓰러지기 직전 1로 버틴다 (`Pokemon_TrySurvivePoison`).
+   *
+   * 조건이 둘이고 **둘 다** 맞아야 한다 — 독(맹독 포함)이고 체력이 정확히 1.
+   * 맞으면 상태를 지우고 참을 돌려준다. 걸어 다니다 독으로 깎이는 마지막
+   * 한 칸에서 쓰러지는 대신 독이 풀리는 4세대 규칙이 이것이다
+   */
+  survivePoison: (slot) => {
+    const mon = useSaveStore.getState().party[slot]
+    if (!mon || mon.hp !== 1) return false
+    if (mon.status !== 'psn' && mon.status !== 'tox') return false
+    useSaveStore.getState().setStatus(slot, 'ok')
+    return true
+  },
+
+  /**
+   * 자유 카메라 (`AddFreeCamera`·`RestoreCamera`).
+   *
+   * 좌표는 타일 번호라 칸 한가운데(+0.5)로 옮긴다 — 배치표의 좌표를 그대로
+   * 쓰는 다른 명령들과 같은 셈이다
+   */
+  camera: {
+    free: (x, z) => { cameraSystem.free = { x: x + 0.5, z: z + 0.5 } },
+    restore: () => { cameraSystem.free = null },
   },
 }
 
