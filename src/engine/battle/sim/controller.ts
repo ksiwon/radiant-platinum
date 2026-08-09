@@ -510,6 +510,7 @@ export class BattleController {
       attracted: out && (seen?.volatiles.has('attract') ?? false),
       boosts: out && seen ? seen.boosts : {},
       focusEnergy: out && (seen?.volatiles.has('focusenergy') ?? false),
+      embargo: out && (seen?.volatiles.has('embargo') ?? false),
       mist: (this.view.sideConditions.p1.get('mist') ?? 0) > 0,
       moves: this.session.moveSlots('p1', key),
     }, moveSlot)

@@ -23,8 +23,9 @@ import {
 } from '../../data/gameData'
 import type { ItemIcons } from '../../data/schema'
 import type { PartySlot } from '../../engine/battle/choice'
-import { BATTLE_POCKET, isEscapeItem, needsMoveSlot, needsTarget, type ItemPlan }
-  from '../../engine/battle/meta/bagItem'
+import {
+  BATTLE_POCKET, embargoBlocks, isEscapeItem, needsMoveSlot, needsTarget, type ItemPlan,
+} from '../../engine/battle/meta/bagItem'
 import { Ball, type BallId } from '../../engine/battle/meta/capture'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -115,6 +116,9 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
   const bag = useSaveStore((s) => s.bag)
   const plan = useBattleStore((s) => s.plan)
   const moveSlotsOf = useBattleStore((s) => s.moveSlotsOf)
+  // 「금제」가 걸려 있으면 도구를 못 쓴다. 이유가 "효과가 없다"와 다르므로
+  // 화면이 따로 안다 — 규칙 자체는 `embargoBlocks` 하나뿐이다
+  const embargo = useBattleStore((s) => s.truth?.active.p1?.volatiles.has('embargo') ?? false)
   // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
   const locale = useGameLocale()
 
@@ -188,6 +192,7 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
 
   const pickItem = (): void => {
     if (chosen === undefined || item === null || !pickable) return
+    if (!needsTarget(item) && embargoBlocks(item, embargo)) return
     if (isBall) { onThrow(chosen.item as BallId); return }
     // 배틀용·도망 도구는 대상을 안 묻는다. 나와 있는 한 마리에게 바로 간다
     if (!needsTarget(item)) {
@@ -240,6 +245,7 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
       }
     })
     const here = cards[target]
+    const held = embargoBlocks(item, (party[target]?.active ?? false) && embargo)
     return (
       <div className={css.sheet}>
         <PartyCards
@@ -249,8 +255,10 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
         />
         <div className={css.detail}>
           <div className={`${css.banner} ${here?.can ? css.bannerKind.ok : css.bannerKind.none}`}>
-            {/* `BattleParty_Text_ItemWontHaveAnyEffect` */}
-            {here?.can ? here.note : '이 도구로는 효과가 없을 것 같다'}
+            {/* `BattleParty_Text_EmbargoPreventsItemUse` · `..._ItemWontHaveAnyEffect` */}
+            {here?.can ? here.note
+              : held ? `금제의 효과로 ${here?.label ?? ''}에게는 도구를 쓸 수 없다!`
+                : '이 도구로는 효과가 없을 것 같다'}
           </div>
           <div className={css.hero}>
             <span
@@ -293,7 +301,10 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
   // ── 무엇을 쓸까 ───────────────────────────────────────────────────────────
   const why = !pickable
     ? (isBall ? '트레이너의 포켓몬에게는 못 쓴다' : '지금은 그럴 때가 아니다')
-    : null
+    // 배틀용은 대상 단을 안 거치므로 막힌 이유를 여기서 말해야 한다
+    : item !== null && !needsTarget(item) && embargoBlocks(item, embargo)
+      ? '금제의 효과로 도구를 쓸 수 없다!'
+      : null
   return (
     <div className={css.sheet}>
       <div className={css.left}>

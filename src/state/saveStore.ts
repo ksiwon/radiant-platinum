@@ -32,11 +32,23 @@ export interface TrainerInfo {
 // 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
 import { PARTY_MAX, type PokemonInstance, type Status } from '../engine/pokemon/instance'
 
-/** `constants/pokemon.h`의 `MAX_FRIENDSHIP_VALUE` */
-const MAX_FRIENDSHIP = 255
-/** `generated/items.txt` — 이 볼에 든 아이는 친밀도가 한 칸 더 오른다 */
-const ITEM_LUXURY_BALL = 11
+import {
+  clampFriendship, NO_EGG_LOCATION, withFriendshipBonus,
+} from '../engine/pokemon/friendship'
 import { FLAG_COUNT, SAVED_VAR_COUNT } from '../engine/script/vars'
+
+/**
+ * 친밀도가 오를 때 얹는 보정 중 **개체가 모르는 것**.
+ *
+ * 볼과 알 자리는 개체에 있지만 지금 어느 맵인지와 소지품의 홀드 효과는
+ * 세이브 스토어가 알 수 없다 — 도구표도 월드도 여기서 안 본다
+ */
+export interface FriendshipContext {
+  /** 지금 맵 헤더 번호. 알을 받은 자리와 같으면 +1 */
+  mapId?: number
+  /** 평온의방울(`HOLD_EFFECT_FRIENDSHIP_UP`)을 들고 있는가 — 1.5배 */
+  soothing?: boolean
+}
 
 export type { PokemonInstance }
 
@@ -235,8 +247,14 @@ interface SaveStore extends SaveData {
    * 돌려주고 스크립트가 그 값으로 갈라진다 — 박스로 넘기지 않는다
    */
   addToParty: (mon: PokemonInstance) => void
-  /** 친밀도를 올린다. 255에서 멈춘다 (`MAX_FRIENDSHIP_VALUE`) */
-  addFriendship: (slot: number, amount: number) => void
+  /**
+   * 친밀도를 올린다. 0~255에서 멈춘다 (`MAX_FRIENDSHIP_VALUE`).
+   *
+   * 올라갈 때는 보정 셋이 붙는다 — 럭셔리볼 · 알을 받은 자리 · 평온의방울
+   * (`pokemon/friendship`). 볼과 알 자리는 여기 개체가 알고 있지만 **지금 맵과
+   * 소지품의 홀드 효과는 모르므로** 부르는 쪽이 넘긴다 (`scene/fieldServices`)
+   */
+  addFriendship: (slot: number, amount: number, bonus?: FriendshipContext) => void
   /** 뱃지 하나 (`TrainerInfo_SetBadge`). 비전머신 자격이 여기 걸려 있다 */
   giveBadge: (badge: number) => void
   /** 박스를 넘긴다. 잡은 포켓몬이 이 박스부터 자리를 찾는다 */
@@ -447,17 +465,19 @@ export const useSaveStore = create<SaveStore>()(
         }))
       },
 
-      addFriendship: (slot, amount) => {
+      addFriendship: (slot, amount, bonus) => {
         set((st) => ({
-          party: st.party.map((mon, i) => (
-            i === slot
-              // ⚠️ 럭셔리볼은 +1 (`ITEM_LUXURY_BALL`). 원작은 여기에 둘을 더
-              // 얹는다 — 도구의 `HOLD_EFFECT_FRIENDSHIP_UP`이 1.5배, 알을 받은
-              // 곳에서 올리면 +1. 도구의 효과 표가 아직 없어서 그 둘은 안 붙었다
-              ? { ...mon, friendship: Math.min(MAX_FRIENDSHIP, mon.friendship + amount
-                + (amount > 0 && mon.ball === ITEM_LUXURY_BALL ? 1 : 0)) }
-              : mon
-          )),
+          party: st.party.map((mon, i) => {
+            if (i !== slot) return mon
+            // 보정은 `Pokemon_UpdateFriendship` 그대로다 — 올라갈 때만 붙는다
+            const delta = withFriendshipBonus(amount, {
+              ball: mon.ball,
+              eggLocation: NO_EGG_LOCATION,
+              mapId: bonus?.mapId ?? -1,
+              soothing: bonus?.soothing ?? false,
+            })
+            return { ...mon, friendship: clampFriendship(mon.friendship + delta) }
+          }),
         }))
       },
 

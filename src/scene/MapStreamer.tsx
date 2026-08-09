@@ -98,6 +98,8 @@ interface Props {
 
 export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const setZone = useSessionStore((s) => s.setZoneName)
+  // 세션에도 남긴다 — 배틀 스토어처럼 `world`를 못 보는 쪽이 읽는다
+  const publishMap = useSessionStore((s) => s.setMapId)
   const startWild = useBattleStore((s) => s.startWild)
   const [grid, setGrid] = useState(initial)
   const [chunkIndex, setChunkIndex] = useState(() =>
@@ -135,6 +137,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
     setZone(displayName(mapId))
     setMapId(mapId)
+    publishMap(mapId)
     // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
     resetEncounterTile()
     // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
@@ -145,7 +148,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
     // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
     arriveAt(mapId)
-  }, [setZone, displayName])
+  }, [setZone, publishMap, displayName])
 
   // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —
   // 안 그러면 배틀 화면 뒤에서 계속 걸어다니고 두 번째 조우가 겹쳐 들어온다.
@@ -189,8 +192,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       world.pending = null
       encounters.pending = null
       setZone(null)
+      publishMap(-1)
     }
-  }, [initial, spawn, enter, setZone, devWarp])
+  }, [initial, spawn, enter, setZone, publishMap, devWarp])
 
   // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
   // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다
@@ -393,6 +397,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       world.mapId = zone
       setZone(displayName(zone))
       setMapId(zone)
+      publishMap(zone)
       // 마을은 워프가 아니라 **걸어서** 들어간다. 공중날기 자리가 열리는 것은
       // 대개 이쪽이다 — 워프만 보면 마을 열일곱 곳이 영영 안 열린다
       arriveAt(zone)

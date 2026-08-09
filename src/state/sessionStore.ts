@@ -16,6 +16,16 @@ interface SessionState {
    */
   zoneName: string | null
   setZoneName: (name: string | null) => void
+  /**
+   * 지금 서 있는 맵 헤더 번호. 없으면 -1.
+   *
+   * ⚠️ **`engine/map/world`를 못 보는 쪽을 위한 자리다.** 거기에도 같은 값이
+   * 있지만 그 모듈은 three를 끌고 오므로, 초기 청크에 있는 스토어(배틀 등)가
+   * import 하면 타이틀에 three가 딸려 온다 (`app/initialChunk.test.ts`가 막는다).
+   * 존 이름과 같은 순간에 같이 바뀐다
+   */
+  mapId: number
+  setMapId: (id: number) => void
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -25,4 +35,6 @@ export const useSessionStore = create<SessionState>((set) => ({
   mountStage: () => set({ stageMounted: true }),
   zoneName: null,
   setZoneName: (zoneName) => set((s) => (s.zoneName === zoneName ? s : { zoneName })),
+  mapId: -1,
+  setMapId: (mapId) => set((s) => (s.mapId === mapId ? s : { mapId })),
 }))

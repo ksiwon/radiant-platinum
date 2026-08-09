@@ -13,6 +13,7 @@ import type { Item, Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
 import type { ItemPlan } from '../engine/battle/meta/bagItem'
 import { friendshipGain, isEscapeItem } from '../engine/battle/meta/bagItem'
+import { clampFriendship, NO_EGG_LOCATION } from '../engine/pokemon/friendship'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
@@ -29,6 +30,7 @@ import {
 } from '../engine/pokemon/instance'
 import { store as storeInBox } from '../engine/pokemon/boxes'
 import { gameLocale, useOptionsStore } from './optionsStore'
+import { useSessionStore } from './sessionStore'
 import { dexSet, useSaveStore } from './saveStore'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
@@ -439,10 +441,14 @@ function grantFriendship(item: Item, key: string): void {
   const index = party.findIndex((_, i) => partyKey(i) === key)
   const mon = party[index]
   if (!mon) return
-  const delta = friendshipGain(item, mon.friendship)
+  const delta = friendshipGain(item, mon.friendship, {
+    ball: mon.ball,
+    eggLocation: NO_EGG_LOCATION,
+    mapId: useSessionStore.getState().mapId,
+  })
   if (delta === 0) return
   const next = [...party]
-  next[index] = { ...mon, friendship: Math.max(0, Math.min(255, mon.friendship + delta)) }
+  next[index] = { ...mon, friendship: clampFriendship(mon.friendship + delta) }
   useSaveStore.setState({ party: next })
 }
 

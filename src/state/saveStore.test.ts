@@ -4,6 +4,7 @@ import 'fake-indexeddb/auto'
 import { describe, it, expect } from 'vitest'
 import { get, set, createStore } from 'idb-keyval'
 import { DEX_BYTES, createNewSave, dexHas, dexSet, useSaveStore } from './saveStore'
+import { NO_EGG_LOCATION } from '../engine/pokemon/friendship'
 import type { PokemonInstance } from '../engine/pokemon/instance'
 
 describe('도감 비트필드', () => {
@@ -185,5 +186,34 @@ describe('스크립트가 주는 것', () => {
     reset([mon(387, 70, 11)])
     useSaveStore.getState().addFriendship(0, -10)
     expect(useSaveStore.getState().party[0]?.friendship).toBe(60)
+  })
+
+  /**
+   * 원작이 올릴 때 얹는 나머지 둘 (`Pokemon_UpdateFriendship`).
+   *
+   * 알을 받은 자리는 `NO_EGG_LOCATION`(0)이라 0번 맵에서만 걸리는데 거기는
+   * 「수수께끼의 장소」다 — 그래서 맵 번호로 그 자리를 흉내 낸다
+   */
+  it('평온의방울은 1.5배, 알을 받은 자리에서는 한 칸 더', () => {
+    reset([mon(387, 70)])
+    useSaveStore.getState().addFriendship(0, 10, { soothing: true })
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(85)
+
+    reset([mon(387, 70)])
+    useSaveStore.getState().addFriendship(0, 10, { mapId: NO_EGG_LOCATION })
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(81)
+  })
+
+  it('보정이 겹치면 다 붙는다 — 럭셔리볼 + 알 자리 + 방울', () => {
+    reset([mon(387, 70, 11)])
+    // (10 + 1 + 1) × 1.5 = 18
+    useSaveStore.getState().addFriendship(0, 10, { mapId: NO_EGG_LOCATION, soothing: true })
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(88)
+  })
+
+  it('아무것도 안 넘기면 지금 맵을 모르는 것이다 — 알 자리 보정이 안 붙는다', () => {
+    reset([mon(387, 70)])
+    useSaveStore.getState().addFriendship(0, 10)
+    expect(useSaveStore.getState().party[0]?.friendship).toBe(80)
   })
 })

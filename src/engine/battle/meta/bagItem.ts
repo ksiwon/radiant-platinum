@@ -12,6 +12,8 @@
 //
 // sim을 import 하지 않는다 — 숫자와 상태만 본다.
 import type { Item } from '../../../data/schema'
+import type { FriendshipBonus } from '../../pokemon/friendship'
+import { isSoothing, withFriendshipBonus } from '../../pokemon/friendship'
 import type { Status } from '../../pokemon/instance'
 import type { BoostStat } from '../events'
 
@@ -79,6 +81,13 @@ export interface ItemTarget {
   boosts: Partial<Record<BoostStat, number>>
   /** 이미 급소율이 올라 있는가 (`VOLATILE_CONDITION_FOCUS_ENERGY`) */
   focusEnergy: boolean
+  /**
+   * 「금제」(엠바고)가 걸려 있는가.
+   *
+   * 나와 있는 한 마리에게만 걸린다 — 원작도 배틀러 자리만 본다
+   * (`battle_party.c`의 `embargoRemainingTurns[0..1]`)
+   */
+  embargo: boolean
   /** 우리 쪽에 흰안개가 이미 깔려 있는가 (`SIDE_CONDITION_MIST`) */
   mist: boolean
   /** 기술 칸의 남은/최대 PP. 순서는 sim의 칸 순서와 같다 */
@@ -149,6 +158,29 @@ export function isEscapeItem(item: Item): boolean {
 }
 
 /**
+ * 「금제」가 이 도구를 막는가 (`MOVE_EMBARGO`).
+ *
+ * 상대가 걸어 두면 **그 마리에게는 가방 도구를 못 쓴다**. 원작은 가방 화면과
+ * 파티 화면 두 군데에서 같은 검사를 하고, 빠져나가는 것은 둘뿐이다
+ * (`battle_bag.c`의 `TryUseItem`):
+ *
+ *   이펙트가드 — 개체가 아니라 **진영**에 흰안개를 건다
+ *   삐삐인형·에나비꼬리 — 누구에게 쓰는 도구가 아니다
+ *
+ * ⚠️ 원본은 이펙트가드를 **도구 번호로** 걸러낸다(`!= ITEM_GUARD_SPEC`).
+ * 여기서는 `guardSpec` 칸으로 가르는데, 468종 중 그 칸이 선 것이 이펙트가드
+ * 하나뿐이라 같은 집합이다.
+ *
+ * `blocked`는 "이 대상이 금제 걸린 채로 나와 있다"는 뜻이다. 규칙이 화면과
+ * 계산 두 군데에 필요해서 조건만 따로 받는다
+ */
+export function embargoBlocks(item: Item, blocked: boolean): boolean {
+  if (!blocked) return false
+  if (isEscapeItem(item)) return false
+  return num(item, 'guardSpec') === 0
+}
+
+/**
  * 채울 체력. 255·254·253은 개수가 아니라 표지다 (`RESTORE_*`).
  *
  * 절반·¼이 0이 되면 1로 올리는 것까지 원본 그대로다 — 최대 HP 3짜리에게
@@ -176,6 +208,10 @@ export function planItemUse(
   target: ItemTarget,
   moveSlot?: number,
 ): ItemPlan | null {
+  // 금제가 걸려 있으면 여기서 끝이다. 원작은 다른 글을 띄우므로 화면도
+  // `embargoBlocks`를 따로 물어 이유를 가른다
+  if (embargoBlocks(item, target.active && target.embargo)) return null
+
   const plan: ItemPlan = {
     heal: 0, revive: false, cure: [], clear: [], mist: false,
     boosts: [], focusEnergy: false, pp: [],
@@ -259,15 +295,19 @@ export function planItemUse(
  * 원본은 뭐라도 한 뒤에만 이걸 준다 (`&& result == TRUE`). 그 판단은 부르는
  * 쪽에 있다 — 계획이 null이면 애초에 여기까지 안 온다.
  *
- * 럭셔리볼·알을 받은 자리 보정과 친밀도업 소지품 배수는 안 본다. 우리는 아직
- * 배틀 중에 소지품을 안 들고 알 부화 장소도 안 적는다
+ * 올라갈 때 붙는 보정 셋(럭셔리볼 · 알을 받은 자리 · 1.5배)은 필드 쪽과 **같은
+ * 함수**가 얹는다 (`pokemon/friendship`). 1.5배가 보는 것이 소지품이 아니라
+ * **방금 쓴 도구**라는 것까지 원작 그대로다 — 거기 주석에 자세히 적었다
  */
-export function friendshipGain(item: Item, friendship: number): number {
-  if (friendship < 100) {
-    return num(item, 'giveFriendshipLow') ? num(item, 'friendshipLow') : 0
-  }
-  if (friendship < 200) {
-    return num(item, 'giveFriendshipMed') ? num(item, 'friendshipMed') : 0
-  }
-  return num(item, 'giveFriendshipHigh') ? num(item, 'friendshipHigh') : 0
+export function friendshipGain(
+  item: Item,
+  friendship: number,
+  bonus: Omit<FriendshipBonus, 'soothing'>,
+): number {
+  const base = friendship < 100
+    ? (num(item, 'giveFriendshipLow') ? num(item, 'friendshipLow') : 0)
+    : friendship < 200
+      ? (num(item, 'giveFriendshipMed') ? num(item, 'friendshipMed') : 0)
+      : (num(item, 'giveFriendshipHigh') ? num(item, 'friendshipHigh') : 0)
+  return withFriendshipBonus(base, { ...bonus, soothing: isSoothing(item) })
 }

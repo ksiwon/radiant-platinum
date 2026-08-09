@@ -23,12 +23,14 @@ import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
+import { isSoothing } from '../engine/pokemon/friendship'
 import { setWarpEventPos } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useSaveStore } from '../state/saveStore'
+import { useSessionStore } from '../state/sessionStore'
 import { naming as namingAnswer } from '../ui/menu/namingAnswer'
 import type { ItemTable } from '../data/gameData'
 import type { FieldServices } from '../engine/script/world'
@@ -207,7 +209,15 @@ const services: FieldServices = {
       return mon === undefined ? 0 : natureOf(mon.pid)
     },
     friendship: (slot) => useSaveStore.getState().party[slot]?.friendship ?? 0,
-    addFriendship: (slot, amount) => { useSaveStore.getState().addFriendship(slot, amount) },
+    // 지금 맵과 소지품의 홀드 효과는 세이브가 모른다. 여기가 둘 다 아는
+    // 자리라 얹어서 넘긴다 (`pokemon/friendship`)
+    addFriendship: (slot, amount) => {
+      const mon = useSaveStore.getState().party[slot]
+      useSaveStore.getState().addFriendship(slot, amount, {
+        mapId: useSessionStore.getState().mapId,
+        soothing: isSoothing(mon === undefined ? undefined : items?.all[mon.heldItem]),
+      })
+    },
     hasMove: (slot, move) =>
       useSaveStore.getState().party[slot]?.moves.some((s) => s.move === move) === true,
     move: (slot, moveSlot) => useSaveStore.getState().party[slot]?.moves[moveSlot]?.move ?? 0,

@@ -8,9 +8,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
-  BATTLE_POCKET, friendshipGain, isEscapeItem, needsMoveSlot, needsTarget, planItemUse,
-  type ItemTarget,
+  BATTLE_POCKET, embargoBlocks, friendshipGain, isEscapeItem, needsMoveSlot, needsTarget,
+  planItemUse, type ItemTarget,
 } from './bagItem'
+import { LUXURY_BALL, NO_EGG_LOCATION } from '../../pokemon/friendship'
 import type { Item } from '../../../data/schema'
 
 const root = resolve(__dirname, '../../../../public/data')
@@ -40,10 +41,14 @@ const ENERGY_POWDER = it_('energypowder')
 /** 나와 있고 멀쩡한 한 마리. 필요한 값만 덮어써서 쓴다 */
 const out = (over: Partial<ItemTarget> = {}): ItemTarget => ({
   hp: 100, maxHp: 100, status: 'ok', fainted: false, active: true,
-  confused: false, attracted: false, boosts: {}, focusEnergy: false, mist: false,
+  confused: false, attracted: false, boosts: {}, focusEnergy: false,
+  embargo: false, mist: false,
   moves: [{ pp: 10, maxPp: 10 }, { pp: 10, maxPp: 10 }],
   ...over,
 })
+
+/** 보정이 하나도 안 붙는 자리. 친밀도 시험이 기본으로 쓴다 */
+const plain = { ball: 0, eggLocation: NO_EGG_LOCATION, mapId: 415 }
 
 describe('회복량 칸의 255·254·253은 개수가 아니다', () => {
   it('풀회복약(255)은 전부 채운다', () => {
@@ -191,20 +196,70 @@ describe('원작 배틀 가방의 갈래', () => {
 
 describe('친밀도는 지금 값이 구간을 고른다', () => {
   it('힘의가루는 낮을수록 덜 깎는다', () => {
-    expect(friendshipGain(ENERGY_POWDER, 50)).toBe(ENERGY_POWDER.param?.friendshipLow)
-    expect(friendshipGain(ENERGY_POWDER, 150)).toBe(ENERGY_POWDER.param?.friendshipMed)
-    expect(friendshipGain(ENERGY_POWDER, 250)).toBe(ENERGY_POWDER.param?.friendshipHigh)
+    expect(friendshipGain(ENERGY_POWDER, 50, plain)).toBe(ENERGY_POWDER.param?.friendshipLow)
+    expect(friendshipGain(ENERGY_POWDER, 150, plain)).toBe(ENERGY_POWDER.param?.friendshipMed)
+    expect(friendshipGain(ENERGY_POWDER, 250, plain)).toBe(ENERGY_POWDER.param?.friendshipHigh)
     // 세 구간이 다 음수다 — 쓴 약이라 미움받는다
-    for (const f of [50, 150, 250]) expect(friendshipGain(ENERGY_POWDER, f)).toBeLessThan(0)
+    for (const f of [50, 150, 250]) expect(friendshipGain(ENERGY_POWDER, f, plain)).toBeLessThan(0)
   })
 
   it('플러스파워는 높은 구간 칸이 없어서 200부터는 안 오른다', () => {
-    expect(friendshipGain(X_ATTACK, 50)).toBeGreaterThan(0)
-    expect(friendshipGain(X_ATTACK, 250)).toBe(0)
+    expect(friendshipGain(X_ATTACK, 50, plain)).toBeGreaterThan(0)
+    expect(friendshipGain(X_ATTACK, 250, plain)).toBe(0)
   })
 
   it('상처약은 친밀도를 안 건드린다', () => {
-    expect(friendshipGain(POTION, 100)).toBe(0)
+    expect(friendshipGain(POTION, 100, plain)).toBe(0)
+  })
+
+  it('럭셔리볼에 든 아이는 한 칸 더 오른다', () => {
+    const base = friendshipGain(X_ATTACK, 50, plain)
+    expect(friendshipGain(X_ATTACK, 50, { ...plain, ball: LUXURY_BALL })).toBe(base + 1)
+  })
+
+  it('알을 받은 자리에서 쓰면 한 칸 더 오른다', () => {
+    const base = friendshipGain(X_ATTACK, 50, plain)
+    expect(friendshipGain(X_ATTACK, 50, { ...plain, eggLocation: 415 })).toBe(base + 1)
+  })
+
+  it('보정은 **올라갈 때만** 붙는다 — 힘의가루는 럭셔리볼이어도 그대로 깎는다', () => {
+    const base = friendshipGain(ENERGY_POWDER, 50, plain)
+    expect(friendshipGain(ENERGY_POWDER, 50, {
+      ...plain, ball: LUXURY_BALL, eggLocation: 415,
+    })).toBe(base)
+  })
+
+  it('둘이 겹치면 둘 다 붙고, 1.5배는 정수로 잘린다', () => {
+    // 플러스파워는 낮은 구간에서 +1이다. 럭셔리볼 +1, 알 자리 +1이면 3
+    expect(friendshipGain(X_ATTACK, 50, {
+      ball: LUXURY_BALL, eggLocation: 415, mapId: 415,
+    })).toBe(3)
+  })
+})
+
+describe('「금제」가 걸리면 도구를 못 쓴다', () => {
+  it('나와 있는 마리에게는 회복도 상태도 안 통한다', () => {
+    expect(planItemUse(POTION, out({ hp: 1, embargo: true }))).toBeNull()
+    expect(planItemUse(ANTIDOTE, out({ status: 'psn', embargo: true }))).toBeNull()
+    expect(planItemUse(X_ATTACK, out({ embargo: true }))).toBeNull()
+  })
+
+  it('이펙트가드와 도망 도구만 빠져나간다', () => {
+    // 원본이 이 둘만 검사에서 뺀다 (`battle_bag.c`의 `TryUseItem`)
+    expect(planItemUse(GUARD_SPEC, out({ embargo: true }))?.mist).toBe(true)
+    expect(embargoBlocks(POKE_DOLL, true)).toBe(false)
+    expect(embargoBlocks(GUARD_SPEC, true)).toBe(false)
+    expect(embargoBlocks(POTION, true)).toBe(true)
+  })
+
+  it('벤치는 금제에 안 걸린다 — 배틀러 자리만 본다', () => {
+    // 원본도 파티 화면에서 0·1번 칸만 검사한다
+    expect(planItemUse(POTION, out({ hp: 1, active: false, embargo: true }))?.heal)
+      .toBe(POTION.param?.hpRestored)
+  })
+
+  it('안 걸려 있으면 아무것도 안 막는다', () => {
+    expect(embargoBlocks(POTION, false)).toBe(false)
   })
 })
 

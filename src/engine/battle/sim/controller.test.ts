@@ -11,6 +11,7 @@ import type { BattleEvent } from '../events'
 import { applyEvents, emptyView } from '../view'
 import { buildBeats } from '../playback'
 import { Ball } from '../meta/capture'
+import { embargoBlocks } from '../meta/bagItem'
 import { TrainerItems } from '../meta/trainerItems'
 import type { Item } from '../../../data/schema'
 import { BattleController } from './controller'
@@ -612,4 +613,44 @@ describe('우리 가방에서 도구를 쓴다', () => {
     expect(controller.state.turn, '턴이 지나가 버렸다').toBe(turn)
     controller.destroy()
   }, 60_000)
+})
+
+describe('「금제」가 걸리면 가방이 안 열린다', () => {
+  const POTION = itemList.findIndex((i) => i.name === 'potion')
+  const X_ATTACK = itemList.findIndex((i) => i.name === 'x_attack')
+  const GUARD_SPEC = itemList.findIndex((i) => i.name === 'guard_spec')
+  const POKE_DOLL = itemList.findIndex((i) => i.name === 'poke_doll')
+  /** 금제의 롬 기술 번호 */
+  const EMBARGO = 373
+
+  it('상대가 걸면 나와 있는 마리에게 도구를 못 쓴다 — 이펙트가드와 도망 도구만 빠져나간다', async () => {
+    // 상대에게 금제 하나만 쥐여 준다. 그러면 첫 턴에 반드시 그것을 쓴다
+    const foe = spawn(LUXRAY, 40, 900, 'p2-0')
+    foe.mon.moves = [{ move: EMBARGO, pp: 15, ppUps: 0 }]
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [spawn(TURTWIG, 30, 901, 'p1-0'), spawn(STARLY, 30, 902, 'p1-1')] },
+      foe: { name: '상대', team: [foe] },
+      seed: [4, 4, 4, 4],
+      random: rng(31),
+    })
+
+    // 걸리기 전에는 플러스파워가 먹는다 — 안 그러면 아래 단언이 공허하다
+    expect(controller.planFor(itemTable.get(X_ATTACK), 'p1-0')).not.toBeNull()
+    await controller.choose(controller.actions.find((a) => a.type === 'move')!)
+    expect(controller.state.active.p1?.volatiles.has('embargo'), '금제가 안 걸렸다').toBe(true)
+
+    expect(controller.planFor(itemTable.get(X_ATTACK), 'p1-0'), '랭크가 올라갔다').toBeNull()
+    expect(controller.planFor(itemTable.get(POTION), 'p1-0'), '회복이 됐다').toBeNull()
+    // 이펙트가드는 개체가 아니라 진영에 건다. 원본도 이것만 이름으로 빼 준다
+    expect(controller.planFor(itemTable.get(GUARD_SPEC), 'p1-0')?.mist).toBe(true)
+    // 벤치는 배틀러가 아니라 애초에 금제가 안 걸린다
+    expect(controller.planFor(itemTable.get(X_ATTACK), 'p1-1'), '벤치에 랭크가 붙었다').toBeNull()
+    controller.destroy()
+  }, 60_000)
+
+  it('금제 중에도 삐삐인형으로는 도망친다', () => {
+    // 판정이 아니라 자료다 — `battleUseFunc 3`은 검사 자체를 안 거친다
+    expect(embargoBlocks(itemTable.get(POKE_DOLL), true)).toBe(false)
+    expect(embargoBlocks(itemTable.get(POTION), true)).toBe(true)
+  })
 })
