@@ -9,8 +9,8 @@
 //
 // ⚠️ 더 긴 풀(`0x0003`)도 함께 세운다. 오버월드에 1,066칸 있고(210번도로 724 ·
 // 229번도로 241 · 214번도로 101) 전부 야생이 나오는 칸인데, 여기를 빼 두면
-// **아무것도 안 자란 땅에서 야생이 튀어나온다.** 다만 지금은 같은 포기를 쓴다 —
-// 원작에서 이 풀은 더 길고, 그 차이는 아직 안 옮겼다.
+// **아무것도 안 자란 땅에서 야생이 튀어나온다.** 얼마나 더 긴지는 롬이 적어
+// 두었다 — 아래 `LONG_BLADE_LEN`.
 //
 // ⚠️ **대습초원의 풀은 `TALL_GRASS`가 아니다.** 진흙 위의 풀(0xA6 · 0xA7)이고
 // 실내 행렬에 3,094칸 있다. 풀숲 판정(`isGrassTile`)만 보고 있어서 대습초원은
@@ -26,6 +26,7 @@ import {
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { isTuftTile } from '../engine/battle/encounter'
+import { Behavior } from '../engine/map/zone'
 
 /** 포기 하나에 잎 몇 장. 넷 아래로 내리면 옆에서 볼 때 성글다 */
 const BLADES = 5
@@ -38,13 +39,22 @@ const BLADES = 5
 const TUFTS = 3
 /** 잎 길이(타일). 원작 긴 풀이 발목을 덮고 무릎에 안 닿는다 — 키 1.5의 1/3쯤 */
 const BLADE_LEN = 0.5
+/**
+ * 더 긴 풀(`0x0003`)의 잎 길이. **이건 우리가 정한 값이 아니다.**
+ *
+ * 원작은 이 칸에서 사람 앞에 판 하나를 덧그린다(`ov5_021F3844`). 그 판의 모델이
+ * `data/mmodel/fldeff.narc`의 89번이고, 정점 넷을 재면 **16 × 16 유닛에 y가
+ * 0에서 16**이다 — 한 타일이 16유닛이므로 **딱 1타일**이다. 보통 풀숲에는 그런
+ * 판이 아예 없다(바닥 그림뿐이다). 그래서 이쪽만 롬 값을 쓴다.
+ */
+const LONG_BLADE_LEN = 1.0
 /** 밑동 폭(타일). 끝으로 갈수록 좁아진다 */
 const BLADE_WIDE = 0.09
 /** 잎이 밖으로 눕는 정도. 0이면 전부 곧게 서서 솔처럼 보인다 */
 const BLADE_LEAN = 0.32
 
 export interface GrassField {
-  /** 포기 자리 `[x, y, z]`가 셋씩 이어진다 */
+  /** 포기 하나에 `[x, y, z, 잎 길이]` 넷이다 */
   spots: Float32Array
   /** 밑동 색과 끝 색 */
   colors: readonly [number, number]
@@ -68,11 +78,13 @@ export function grassSpots(grid: MapGrid, chunkIndex: number, radius: number): F
   for (const c of grid.chunksAround(chunkIndex, radius)) {
     for (let z = c.my * n; z < (c.my + 1) * n; z++) {
       for (let x = c.mx * n; x < (c.mx + 1) * n; x++) {
-        if (!isTuftTile(grid.behavior(x, z))) continue
+        const behavior = grid.behavior(x, z)
+        if (!isTuftTile(behavior)) continue
+        const len = behavior === Behavior.VERY_TALL_GRASS ? LONG_BLADE_LEN : BLADE_LEN
         for (let t = 0; t < TUFTS; t++) {
           const px = x + 0.2 + hash(x, z, t) * 0.6
           const pz = z + 0.2 + hash(x, z, t + 8) * 0.6
-          out.push(px, grid.heightAtWorld(px, pz) ?? 0, pz)
+          out.push(px, grid.heightAtWorld(px, pz) ?? 0, pz, len)
         }
       }
     }
@@ -136,16 +148,18 @@ export function Grass({ field }: { field: GrassField | null }) {
       geometry = tuftGeometry(field.colors[0], field.colors[1])
       shapes.set(key, geometry)
     }
-    const count = field.spots.length / 3
+    const count = field.spots.length / 4
     const made = new InstancedMesh(geometry, grassMaterial, count)
     made.name = '풀숲'
     for (let i = 0; i < count; i++) {
-      const x = field.spots[i * 3]!, y = field.spots[i * 3 + 1]!, z = field.spots[i * 3 + 2]!
+      const x = field.spots[i * 4]!, y = field.spots[i * 4 + 1]!, z = field.spots[i * 4 + 2]!
+      // 잎 길이는 위로만 늘린다. 가로까지 늘리면 긴 풀이 굵어져 덤불이 된다
+      const len = (field.spots[i * 4 + 3]! / BLADE_LEN)
       const s = 0.75 + hash(x, z, 3) * 0.5
       made.setMatrixAt(i, put.compose(
         at.set(x, y, z),
         spin.setFromAxisAngle(axis, hash(x, z, 4) * Math.PI * 2),
-        size.set(s, s * (0.8 + hash(x, z, 5) * 0.5), s),
+        size.set(s, s * (0.8 + hash(x, z, 5) * 0.5) * len, s),
       ))
     }
     made.instanceMatrix.needsUpdate = true

@@ -52,7 +52,7 @@ maybe('서 있는 풀숲', () => {
     const spots = grassSpots(grid, at, 2)
     expect(spots.length).toBeGreaterThan(0)
 
-    for (let i = 0; i < spots.length; i += 3) {
+    for (let i = 0; i < spots.length; i += 4) {
       const tx = Math.floor(spots[i]!), tz = Math.floor(spots[i + 2]!)
       const behavior = grid.behavior(tx, tz)
       expect(isGrassTile(behavior), `(${String(tx)},${String(tz)})`).toBe(true)
@@ -92,7 +92,7 @@ maybe('서 있는 풀숲', () => {
     const at = grid.chunkIndexAt(R201.tx, R201.tz)
     const spots = grassSpots(grid, at, 0)
     const cells = new Set<string>()
-    for (let i = 0; i < spots.length; i += 3) {
+    for (let i = 0; i < spots.length; i += 4) {
       const x = spots[i]!, y = spots[i + 1]!, z = spots[i + 2]!
       cells.add(`${String(Math.floor(x))},${String(Math.floor(z))}`)
       // 칸 가장자리에 붙으면 이웃 칸(길)으로 잎이 삐져나온다
@@ -101,7 +101,30 @@ maybe('서 있는 풀숲', () => {
       // 땅에 붙어야 한다. 격자가 주는 높이와 다르면 풀이 뜨거나 파묻힌다
       expect(y).toBe(grid.heightAtWorld(x, z))
     }
-    expect(spots.length / 3).toBe(cells.size * 3)
+    expect(spots.length / 4).toBe(cells.size * 3)
+  })
+
+  it('더 긴 풀만 잎이 1타일이다 — 롬이 덧그리는 판의 높이다', () => {
+    // 오버월드를 훑어 `VERY_TALL_GRASS`(0x03) 칸을 실제로 찾아서 본다. 자리를
+    // 손으로 적으면 격자가 바뀌었을 때 조용히 아무것도 안 재게 된다
+    let found: { tx: number, tz: number } | null = null
+    for (let tz = 0; tz < grid.tileHeight && !found; tz += 1) {
+      for (let tx = 0; tx < grid.tileWidth; tx += 1) {
+        if (grid.behavior(tx, tz) === 0x03) { found = { tx, tz }; break }
+      }
+    }
+    expect(found, '오버월드에 0x03이 1,066칸 있다').not.toBeNull()
+
+    const long = grassSpots(grid, grid.chunkIndexAt(found!.tx, found!.tz), 0)
+    const seen = new Set<number>()
+    for (let i = 3; i < long.length; i += 4) seen.add(long[i]!)
+    expect([...seen].sort(), '긴 풀 칸에는 1타일짜리가 섞인다').toContain(1)
+    for (const v of seen) expect([0.5, 1]).toContain(v)
+
+    // 201번도로는 보통 풀숲뿐이라 전부 0.5여야 한다
+    const normal = grassSpots(grid, grid.chunkIndexAt(R201.tx, R201.tz), 0)
+    expect(normal.length).toBeGreaterThan(0)
+    for (let i = 3; i < normal.length; i += 4) expect(normal[i]).toBe(0.5)
   })
 
   it('같은 자리는 늘 같은 포기다 — 청크를 다시 세워도 안 흔들린다', () => {
