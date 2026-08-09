@@ -335,22 +335,20 @@ export interface ShellPaint {
 }
 
 /**
- * 그 판을 **옆벽에서 베껴 온다**.
+ * 판이 그림을 가져올 **옆벽 하나**.
  *
  * ⚠️ 눌러 붙인 삼각형이 제 UV를 그대로 들고 가면 **앞벽이 뒤에 찍힌다.**
  * 주인공 집은 뒤가 통째로 없어서 뒷판이 앞벽 삼각형으로 만들어지는데, 그 앞벽에는
  * 문(`t1_door1` 4삼각형)과 창이 있다 — 뒤로 돌아가면 문이 하나 더 있는 집이 된다.
  *
- * 뒷벽 자리에 있어야 할 그림은 **옆벽이 갖고 있다.** 옆벽의 UV는 (y, z)의 함수라,
- * 뒷면 자리(z = 뒤끝)에서 값을 그대로 읽을 수 있다. 가로로는 옆벽의 법선 방향인데
- * 그 방향의 기울기를 0으로 두면 **모서리에서 본 그 줄무늬가 뒤로 이어진다** —
- * 나무 벽은 나무 벽대로, 기단은 기단대로 높이가 맞는다.
+ * 그래서 그림을 옆벽에서 가져온다. 필요한 것은 **높이 ↔ v 대응**과 그 벽이
+ * 쓰는 **그림 칸의 가로 범위**뿐이다 (`wallStrip`).
  *
  * 지붕은 안 바꾼다. 위를 보는 삼각형은 제 UV가 곧 지붕 그림이다
  */
-interface WallSource {
+export interface WallSource {
   group: number
-  /** 그 벽이 쓰는 **그림 칸** */
+  /** 그 벽이 쓰는 **그림 칸**의 가로 범위 */
   u0: number
   u1: number
   /** 벽 아래끝과 위끝의 v. 어느 쪽이 큰지는 원작이 정한 대로 따라간다 */
@@ -359,21 +357,10 @@ interface WallSource {
   /** 그 v를 읽은 높이 */
   yLow: number
   yHigh: number
-  /**
-   * 한 타일에 u가 얼마나 가는가 — **옆벽이 실제로 쓰는 눈금**.
-   *
-   * 0이면 못 쟀다는 뜻이고, 그때는 칸을 판 가로에 한 번 늘려 붙인다.
-   * 물리는 그림에서만 쓴다 (`repeat`)
-   */
-  uPerTile: number
-  /** 그 재질이 가로로 물리는가 (`rep` 비트0). 안 물리면 늘려 붙일 수밖에 없다 */
-  repeat: boolean
 }
 
 /** 옆벽으로 칠 만큼 세로인가. 지붕(위를 봄)과 바닥은 여기서 빠진다 */
 const WALLISH = 0.5
-/** 그 축에 수직인가 — 뒷판에서 보면 선으로 보이는 면이 옆벽이다 */
-const PERPENDICULAR = 0.3
 
 /**
  * **문은 벽이 아니다.**
@@ -395,21 +382,23 @@ const PERPENDICULAR = 0.3
 const MINOR_WALL = 0.1
 
 /**
- * 이 판이 그림을 베껴 올 **옆벽 하나**. 없으면 `null`.
+ * 이 소품에서 **제일 넓은 옆벽 하나**. 없으면 `null`.
  *
  * ⚠️ **삼각형마다 제일 가까운 옆벽을 따로 고르면 안 된다.** 한동안 그랬고,
  * 그게 뒷벽을 조각보로 만들었다 — 옆벽마다 UV의 상수항이 달라서, 이웃한 두
  * 삼각형이 서로 다른 옆벽을 베끼면 그 경계에서 그림이 툭 끊긴다. 주인공 집
  * 뒷벽에 파란 기단 줄이 허리 높이와 처마 밑에 두 번 더 그어져 있던 것이 이것이다.
  *
- * 판 하나가 **제일 넓은 옆벽 하나**를 통째로 베끼면 UV가 아핀 함수 한 벌이라
- * 끊길 자리가 없다. 가로로는 기울기가 0이라(법선 방향) 모서리에서 본 줄무늬가
- * 그대로 이어지고, 세로로는 기단이 기단 높이에, 벽이 벽 높이에 온다
+ * ⚠️ **채우는 방향을 안 본다.** 예전에는 "그 방향에서 보면 선으로 보이는 벽"만
+ * 골랐는데, 지금은 벽에서 가져오는 것이 **높이별 색**뿐이라(`wallStrip`) 어느
+ * 벽이든 같은 답을 준다. 방향마다 다른 벽을 고르면 한 집의 뒤와 옆이 서로 다른
+ * 색으로 칠해진다
  */
-function wallSource(
-  mesh: ChunkMesh, paint: ShellPaint, axis: number,
-  pos: ArrayLike<number>, uv: ArrayLike<number> | undefined,
-): WallSource | null {
+export function wallSource(mesh: ChunkMesh, paint: ShellPaint): WallSource | null {
+  const pos = (mesh.geometry.getAttribute('position') as BufferAttribute)
+    .array as ArrayLike<number>
+  const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
+    ArrayLike<number> | undefined
   if (!uv) return null
   const index = mesh.geometry.getIndex()!.array
   /** 서브메시별 옆벽 넓이. 문을 걸러내는 잣대다 */
@@ -430,23 +419,16 @@ function wallSource(
         ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]]
       const len = Math.hypot(...n)
       if (len < 1e-9) continue
-      // 옆벽 — 이 축에 수직이고(뒤에서 보면 선이다) 세로로 서 있다
-      if (Math.abs(n[axis]!) / len >= PERPENDICULAR) continue
+      // 옆벽 — 세로로 서 있는 면. 지붕과 바닥은 여기서 빠진다
       if (Math.abs(n[1]) / len >= WALLISH) continue
       area.set(group, (area.get(group) ?? 0) + len / 2)
-      // 그 서브메시가 쓰는 **그림 칸 전체**를 모은다.
-      //
-      // ⚠️ 삼각형 하나만 골라 쓰면 안 된다. 제일 넓은 것도, 세로로 제일 긴 것도
-      // 둘 다 **모서리 기둥**을 집어서 뒷벽이 통짜 검정으로 깔렸다 — 기둥은
-      // 높이가 벽과 같고 그림칸이 어두운 한 줄이다. 칸 전체를 쓰면 널판이
-      // 널판으로 깔리고, 대신 기단 칸이 세로줄 하나로 섞여 든다. 그 줄은
-      // 모서리 기둥으로 읽혀서 통짜 검정보다 훨씬 낫다
+      // 그 서브메시가 쓰는 **그림 칸 전체**를 모은다. 삼각형 하나만 골라 쓰면
+      // 모서리 기둥(높이는 벽과 같고 그림칸은 어두운 한 줄)을 집는다
       let hit = box.get(group)
       if (!hit) {
         hit = {
           group, u0: Infinity, u1: -Infinity,
           vLow: 0, vHigh: 0, yLow: Infinity, yHigh: -Infinity,
-          uPerTile: 0, repeat: (mesh.materials[group]?.rep ?? 0) % 2 === 1,
         }
         box.set(group, hit)
       }
@@ -457,18 +439,6 @@ function wallSource(
         if (tu > hit.u1) hit.u1 = tu
         if (y < hit.yLow) { hit.yLow = y; hit.vLow = tv }
         if (y > hit.yHigh) { hit.yHigh = y; hit.vHigh = tv }
-      }
-      // **눈금을 잰다.** 이 벽에서 가로로 제일 멀리 떨어진 두 점의 u 차이를
-      // 그 거리로 나눈다. 옆벽은 판의 깊이 방향으로 뻗어 있으므로 거리는
-      // 그쪽으로 잰다 (`axis`)
-      for (let i = 0; i < 3; i++) {
-        for (let j = i + 1; j < 3; j++) {
-          const ka = tri[i]!, kb = tri[j]!
-          const d = Math.abs(pos[kb * 3 + axis]! - pos[ka * 3 + axis]!)
-          if (d < 0.05) continue
-          const per = Math.abs(uv[kb * 2]! - uv[ka * 2]!) / d
-          if (per > hit.uPerTile) hit.uPerTile = per
-        }
       }
     }
   })
@@ -484,6 +454,91 @@ function wallSource(
   }
   return best
 }
+
+/**
+ * 옆벽을 **높이별 한 색으로 접은 띠**. 폭 1텍셀 × 높이 `h`텍셀.
+ *
+ * ⚠️ **여기가 세로 줄무늬를 없애는 자리다.** 그 전에는 옆벽의 그림 칸을 판
+ * 가로에 되풀이해 붙였는데, 원작 벽 그림 한 장은 **널판만 든 타일이 아니라
+ * 조각 모음**이다 — 주인공 집 `t1_h01`(64×64) 한 칸에 지붕·널판벽·창·문,
+ * 그리고 맨 아랫줄에 기단 색 견본이 죽 늘어서 있다. 그걸 되풀이하면 창도
+ * 기단도 같이 되풀이돼서, 뒷벽이 **일정 간격 세로 줄무늬**로 덮인다. 축복시티
+ * 건물이 통째로 그렇게 나와 있었다.
+ *
+ * 늘려 붙이는 것(되풀이 대신 한 번)도 답이 아니다. 널판이 벽 폭만큼 굵어지고
+ * 기단 견본 한 칸이 벽 폭짜리 띠가 되어 파랗게 번진다.
+ *
+ * 그래서 **가로를 아예 없앤다.** 그 높이에서 옆벽이 제일 많이 보여 주는 색
+ * 하나를 골라 한 줄로 세운다. 평균이 아니라 **최빈**인 것은, 평균은 원작에
+ * 없는 흙탕색을 만들지만 최빈은 늘 원작이 실제로 칠한 색이기 때문이다 —
+ * 견본 한 칸이 섞여 들어도 열 칸짜리 널판을 못 이긴다.
+ *
+ * 남는 것은 높이 방향 결이다: 기단이 아래에, 널판이 그 위에, 처마 색이 꼭대기에.
+ * 원작이 벽에 준 구성이 그것이고, 세로 줄무늬는 원작에 없던 것이다
+ */
+export interface WallStrip {
+  /** RGBA. 아래(`yLow`)에서 위로 `h`줄 */
+  pixels: Uint8Array
+  h: number
+  /** 그 옆벽 서브메시. 알파와 불투명도를 그 재질에서 가져온다 */
+  group: number
+}
+
+/** 0~1로 되접는다. 원작 UV는 칸마다 0~1이고 밖으로 넘어가면 물린다 */
+const wrap01 = (x: number): number => x - Math.floor(x)
+
+export function wallStrip(
+  mesh: ChunkMesh, sheet: TexSheet | null, wall: WallSource | null,
+): WallStrip | null {
+  if (!sheet || !wall) return null
+  const spec = mesh.materials[wall.group]
+  const item = sheet.items.find((s) => s.tex === spec?.tex && s.pal === (spec.pal ?? ''))
+  if (!item || item.w === 0 || item.h === 0) return null
+  const h = item.h
+  const pixels = new Uint8Array(h * 4)
+  // 그 벽이 실제로 쓰는 가로 범위. 못 쟀으면 칸 전체를 본다
+  const wide = wall.u1 > wall.u0
+  for (let k = 0; k < h; k++) {
+    const v = wall.vLow + ((k + 0.5) / h) * (wall.vHigh - wall.vLow)
+    const y = item.y + Math.min(h - 1, Math.floor(wrap01(v) * h))
+    const tally = new Map<number, number>()
+    for (let s = 0; s < item.w; s++) {
+      const u = wide
+        ? wall.u0 + ((s + 0.5) / item.w) * (wall.u1 - wall.u0)
+        : (s + 0.5) / item.w
+      const x = item.x + Math.min(item.w - 1, Math.floor(wrap01(u) * item.w))
+      const o = (y * sheet.width + x) * 4
+      if (sheet.pixels[o + 3]! < ALPHA_CUT) continue
+      const rgb = (sheet.pixels[o]! << 16) | (sheet.pixels[o + 1]! << 8) | sheet.pixels[o + 2]!
+      tally.set(rgb, (tally.get(rgb) ?? 0) + 1)
+    }
+    let best = -1, most = 0
+    for (const [rgb, n] of tally) if (n > most) { most = n; best = rgb }
+    // 그 줄이 통째로 투명하면 위쪽 줄을 이어 쓴다 — 벽 그림의 여백이 그렇다
+    if (best < 0) {
+      const prev = k > 0 ? (k - 1) * 4 : -1
+      if (prev >= 0) {
+        pixels[k * 4] = pixels[prev]!; pixels[k * 4 + 1] = pixels[prev + 1]!
+        pixels[k * 4 + 2] = pixels[prev + 2]!; pixels[k * 4 + 3] = 255
+        continue
+      }
+      best = 0x808080
+    }
+    pixels[k * 4] = (best >> 16) & 255
+    pixels[k * 4 + 1] = (best >> 8) & 255
+    pixels[k * 4 + 2] = best & 255
+    pixels[k * 4 + 3] = 255
+  }
+  return { pixels, h, group: wall.group }
+}
+
+/**
+ * 띠를 칠할 재질의 번호. **소품 재질 배열 뒤에 하나 덧붙인 자리**다.
+ *
+ * 소품 메시는 이 번호를 안 쓰므로 서로 간섭하지 않는다 — 바닥을 빌려 올 때
+ * 쓰는 것과 같은 수법이다 (`ChunkModels.borrowFloors`)
+ */
+export const stripGroup = (mesh: ChunkMesh): number => mesh.materials.length
 
 
 /**
@@ -532,11 +587,9 @@ export function facePlate(
   // ⚠️ **위(+Y) 판은 안 베낀다.** 그 판은 지붕이고, 지붕에 있어야 할 그림은
   // 옆벽이 아니라 제 것이다. 완만한 지붕면은 `WALLISH`(0.5)에 걸려 벽으로
   // 세어지므로, 안 막으면 지붕에 벽 그림이 발린다
-  const wall = axis === 1 ? null : wallSource(mesh, paint, axis, pos, uv)
-  /** 판의 가로 축과 그 범위. 옆벽 그림 칸을 여기에 한 번 늘려 붙인다 */
-  const across = axis === 0 ? 2 : 0
-  const [low, high] = bounds(pos)[across]!
-  const span = high - low
+  const wall = axis === 1 ? null : wallSource(mesh, paint)
+  /** 띠를 칠할 자리. 소품 재질 배열 뒤에 하나 덧붙는다 */
+  const strip = stripGroup(mesh)
   mesh.groups.forEach(([, start, count], group) => {
     const rgb = paint.colors[group]
     // 그림을 못 찾은 서브메시는 칠할 것이 없다
@@ -558,10 +611,9 @@ export function facePlate(
         - (p[1]![1] - p[0]![1]) * (p[2]![0] - p[0]![0])
       const nl = Math.hypot(nx, ny, nz)
       const from = nl > 1e-9 && Math.abs(ny) / nl < WALLISH ? wall : null
-      // **그림을 가져온 서브메시로 간다.** 그래야 그 재질의 반복·알파가 그대로
-      // 걸린다 — 옆벽에서 베껴 온 삼각형은 옆벽의 재질로 그려야 맞다
-      const paintedBy = from ? from.group : group
-      const fallback = paint.colors[paintedBy] ?? rgb
+      // 벽은 **띠 재질**로, 지붕은 제 서브메시로 간다 (`wallStrip`)
+      const paintedBy = from ? strip : group
+      const fallback = paint.colors[from ? from.group : group] ?? rgb
       let into = bucket.get(paintedBy)
       if (!into) { into = { position: [], color: [], uv: [] }; bucket.set(paintedBy, into) }
 
@@ -583,40 +635,11 @@ export function facePlate(
             ((fallback >> 16) & 255) / 255, ((fallback >> 8) & 255) / 255, (fallback & 255) / 255)
         }
         if (from) {
-          // **옆벽이 쓰는 그림 칸을 판에 통째로 늘려 붙인다.**
-          //
-          // ⚠️ 옆벽의 UV를 아핀 함수로 읽어 그 자리 좌표를 넣는 방법을 두 번
-          // 시도했고 둘 다 틀렸다. ① 법선 방향 기울기를 0으로 두면 판의 **가로가
-          // 통째로 한 값**이 된다 — 원작 벽 그림은 널판이 세로줄이라 변화가 죄다
-          // 가로에 있는데 그걸 버리는 것이다(뒷벽이 텍셀 하나짜리 통짜 갈색이
-          // 됐다). ② 가로를 옆벽의 길이 방향으로 바꿔 넣으면 이번에는 값이
-          // 그림 칸을 벗어난다 — 원작 벽 그림은 **벽 조각을 여러 개 모아 둔 한
-          // 장**이라(`t1_h01` 64×64 안에 지붕·창·널판·기단이 다 있다) 조금만
-          // 넘쳐도 벽 자리에 지붕이나 창이 찍힌다.
-          //
-          // 그림 칸을 벗어날 수 없게 하려면 **칸 안에서만 셈하면 된다.** 옆벽이
-          // 실제로 쓰는 u 범위를 판의 가로 전체에, 옆벽의 높이–v 대응을 판의
-          // 높이에 건다. 널판 한 벌이 뒷벽을 정확히 한 번 덮는다
-          //
-          // ⚠️ **다만 물리는 그림이면 늘리지 않고 되풀이한다.** 칸을 판 가로에
-          // 한 번 늘려 붙이면 널판 한 벌이 뒷벽 폭에 맞춰 **늘어난다** — 옆벽의
-          // 널판보다 굵어지고, 칸에 같이 든 기단 한 줄이 벽 폭만큼 넓은 띠가
-          // 되어 파랗게 번진다. 옆벽이 쓰는 눈금(`uPerTile`)으로 되풀이하면
-          // 널판이 네 벽에서 같은 굵기가 되고, 그 한 줄은 **일정한 간격의
-          // 모서리 기둥**으로 읽힌다.
-          //
-          // 안 물리는 그림은 되풀이할 수가 없다(가장자리 텍셀로 눌린다) —
-          // 그때만 늘려 붙인다
-          const t = span > 0 ? (out[across]! - low) / span : 0
+          // **띠에서 높이로만 읽는다.** 가로는 한가운데 고정 — 띠가 폭 1텍셀이라
+          // 어차피 한 값이고, 이것이 세로 줄무늬를 없애는 자리다 (`wallStrip`)
           const h = from.yHigh > from.yLow
             ? (out[1]! - from.yLow) / (from.yHigh - from.yLow) : 0
-          const clamp = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x)
-          const tile = from.repeat && from.uPerTile > 0
-          into.uv.push(
-            tile
-              ? from.u0 + (out[across]! - low) * from.uPerTile
-              : from.u0 + clamp(t) * (from.u1 - from.u0),
-            from.vLow + clamp(h) * (from.vHigh - from.vLow))
+          into.uv.push(0.5, h < 0 ? 0 : h > 1 ? 1 : h)
         } else into.uv.push(uv?.[tri[j]! * 2] ?? 0, uv?.[tri[j]! * 2 + 1] ?? 0)
       }
     }

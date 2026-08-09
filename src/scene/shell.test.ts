@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
 import {
   FILLABLE, FLAT, GRID, facePlate, openDirections, shellColors, shellPaint, shellPlates,
+  stripGroup, wallSource, wallStrip,
   type ShellPaint,
 } from './shell'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
@@ -406,6 +407,40 @@ maybe('소품 빠진 면', () => {
       expect(used, `소품 ${String(id)} 뒷판에 문 그림`).not.toContain(door)
       // 그리고 뭔가는 들어 있어야 한다 — 비어 있으면 위 조건이 공허하다
       expect(plate.getAttribute('position').count).toBeGreaterThan(0)
+    }
+  })
+
+  it('뒷판 벽에는 가로 변화가 없다 — 세로 줄무늬가 생길 자리 자체가 없다', () => {
+    // ⚠️ **사용자가 본 것이 이 줄무늬였다.** 옆벽의 그림 칸을 판 가로에
+    // 되풀이해 붙이던 시절, 칸에 같이 든 창·기단 견본이 함께 되풀이돼서
+    // 축복시티 건물이 통째로 세로 줄무늬가 됐다. 지금은 벽 삼각형이 폭
+    // 1텍셀짜리 띠를 읽으므로 u가 **한 값**이다 (`wallStrip`)
+    for (const id of [22, 23, 236]) {
+      const mesh = readProp(id, fmt)
+      const plate = facePlate(mesh, shellPaint(mesh, readSheet(id)), 2, -1)!
+      const uv = plate.getAttribute('uv') as BufferAttribute
+      const strip = plate.groups.find((g) => g.materialIndex === stripGroup(mesh))
+      expect(strip, `소품 ${String(id)}에 벽 판이 있어야 이 시험에 뜻이 있다`).toBeDefined()
+      const us = new Set<number>()
+      for (let i = strip!.start; i < strip!.start + strip!.count; i++) us.add(uv.getX(i))
+      expect([...us], `소품 ${String(id)} 벽 판의 u`).toEqual([0.5])
+    }
+  })
+
+  it('띠는 높이마다 색이 다르다 — 통짜 슬래브가 아니다', () => {
+    // 가로를 없앤 대신 세로는 살아 있어야 한다. 기단이 아래에, 널판이 그 위에.
+    // 색이 하나뿐이면 그건 예전의 "회색 슬래브"로 되돌아간 것이다
+    for (const id of [22, 23]) {
+      const mesh = readProp(id, fmt)
+      const sheet = readSheet(id)
+      const band = wallStrip(mesh, sheet, wallSource(mesh, shellPaint(mesh, sheet)))
+      expect(band, `소품 ${String(id)} 띠`).not.toBeNull()
+      const colors = new Set<number>()
+      for (let k = 0; k < band!.h; k++) {
+        colors.add((band!.pixels[k * 4]! << 16) | (band!.pixels[k * 4 + 1]! << 8)
+          | band!.pixels[k * 4 + 2]!)
+      }
+      expect(colors.size, `소품 ${String(id)} 띠의 색 수`).toBeGreaterThan(1)
     }
   })
 
