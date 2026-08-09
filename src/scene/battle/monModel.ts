@@ -17,7 +17,7 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
-import { assets, readJson } from '../../data/providers/assetProvider'
+import { assets, onProviderSwap, readJson } from '../../data/providers/assetProvider'
 
 /** 한 종의 모델 정보 */
 export interface MonEntry {
@@ -74,6 +74,9 @@ export interface Loaded { scene: Group; clips: AnimationClip[]; entry: MonEntry 
 const loader = new GLTFLoader(new LoadingManager())
 const cache = new Map<number, Promise<Loaded | null>>()
 
+// 갈아 끼우면 파싱해 둔 장면은 옛 설치본 것이다
+onProviderSwap(() => { cache.clear(); index = null })
+
 /**
  * 한 종의 모델.
  *
@@ -87,11 +90,18 @@ export function loadMonModel(species: number): Promise<Loaded | null> {
       .then(async (idx) => {
         const entry = idx.pokemon[String(species)]
         if (!entry) return null
-        // ⚠️ 주소를 안 거둔다 — 파싱한 장면을 `cache`가 영원히 들고 있어서
-        // 같은 종을 다시 받을 일이 없다. 갈아 끼울 때 `releaseAll()`이 정리한다
-        const url = await assets().objectUrl(`models/pokemon/${entry.file}`)
-        const gltf = await loader.loadAsync(url)
-        return { scene: gltf.scene, clips: gltf.animations, entry }
+        // ⚠️ **파싱이 끝나면 주소를 바로 놓는다.** 장면은 `cache`가 들고 있고
+        // Blob 원본 바이트는 더 안 쓴다 — 붙들면 GLB 한 벌이 통째로 남는다.
+        // 성공·실패 양쪽에서 놓아야 해서 `finally`다
+        const path = `models/pokemon/${entry.file}`
+        const provider = assets()
+        const url = await provider.objectUrl(path)
+        try {
+          const gltf = await loader.loadAsync(url)
+          return { scene: gltf.scene, clips: gltf.animations, entry }
+        } finally {
+          provider.releaseObjectUrl(path)
+        }
       })
       .catch(() => null)
     cache.set(species, got)

@@ -213,10 +213,34 @@ Python/UnityPy 결과와 동등하지 않으면 해당 기능은 배포 완료�
 하는 것은 **에셋을 받아 오는 뿌리**이므로, 주소 뒤에 곧바로 `data/`·`models/`가
 붙었거나 호스트가 오브젝트 스토리지 모양인 것만 센다.
 
-개발 산출물을 `public/` 밖(`raw/dev-assets`)으로 옮기는 것은 남아 있다.
+### 앱 셸은 파일 단위 allowlist다
 
-`assets-manifest.json`, `assets:pull`, `VITE_ASSET_BASE`와 R2 배포 계획은
-**레거시 개발 장치**로 분류하고 공개 배포 경로에서는 제거한다.
+⚠️ 한때 목록이 `{ kind: 'dir', path: 'assets' }` 한 줄이었다. 폴더는 허용
+목록처럼 보이지만 **그 아래에 대해서는 아무것도 안 거른다** — `public/assets`에
+무엇을 떨어뜨리든 심사 없이 실렸다. 지금은 파일 다섯 개를 출처와 함께 적고,
+목록에 없는 파일이 그 나무에 있으면 `boundary:pre`가 선다. 근거는
+`docs/APP_SHELL.md`.
+
+### 번들 **안**은 경로 검사가 못 본다
+
+⚠️ 위 검사는 전부 파일 이름과 자리만 본다. `dist/assets/battle-sim-*.js`는 둘 다
+통과하면서 6.55MB이고, 그 안의 8,673kB가 `@pkmn/sim`의 종족·기술·습득기술 표였다.
+MIT 패키지라는 사실과 거기 담긴 게임 데이터를 우리가 배포해도 되는지는 다른
+질문이다. 빌드가 청크별 출처를 남기고(`pnpm provenance`) 그 결과가 미해결
+release blocker로 잡힌다 — `docs/DEPLOY.md` §4.
+
+### 없앤 것
+
+- `assets-manifest.json` 추적 — 원본 유래 산출물 7,086개의 목차였다 (§9)
+- `assets:pull`과 `PT_ASSET_ORIGIN` — 서버가 원본 유래 산출물을 내려 주는 경로
+- `VITE_ASSET_BASE` — 바깥 에셋 오리진. 설정돼 있으면 `boundary:pre`가 선다
+
+`public/data`·`public/models`는 개발 기계에 그대로 둔다. 옮기는 대신 **배포물에
+안 실리는 것**을 매 빌드 검증한다 — `copyPublicDir: false` + 파일 allowlist +
+실제 `dist/` 재검사.
+
+⚠️ **`pnpm dev`는 배포 수단이 아니다.** 개발 서버는 `public/` 전체(645MB)를 준다.
+공개 주소에 띄우면 안 된다 (`docs/DEPLOY.md` §2).
 
 ---
 
@@ -269,16 +293,34 @@ TypedArray를 깨뜨리는 현재 문제를 피하기 위해 명시적 binary/ba
 ## 9. 남아 있는 저장소 조치
 
 현재 작업 트리에서 `raw/`, `public/data/`, `public/models/`는 Git 무시 대상이다.
-하지만 과거 히스토리에 원본 유래 블롭이 남아 있을 수 있고, 추적 중인
-`assets-manifest.json`에는 원본 유래 산출물의 경로·크기·짧은 해시가 있다.
+`assets-manifest.json`은 **HEAD에서 제거했다.** 원본 유래 산출물 7,086개의
+경로·크기·짧은 해시가 들어 있었다 — 목차도 목록이다. 지금은
+`raw/work/assets-manifest.local.json`에만 굽고 `.gitignore`가 두 이름을 다 막는다.
+`assets:pull`과 `PT_ASSET_ORIGIN`도 없앴다: 서버가 원본 유래 산출물을 내려 주는
+경로는 공개 모델과 정면으로 어긋난다.
 
-공개 원격을 연결하기 전에 별도 승인 아래 다음 감사를 한다.
+남은 것은 **과거 히스토리**다. `.gitignore`는 과거를 못 지운다.
 
-1. `git rev-list --objects --all`로 과거 경로와 대형 블롭 목록 생성
-2. 자체 제작물·코드와 원본 유래 산출물 분류
-3. 저장소 백업
-4. 필요한 경우 히스토리 재작성
-5. 새 복제본에서 금지 파일·빌드·테스트 재검증
+### 실측 (`pnpm audit:history`)
+
+| 경로 | 커밋 | 블롭 | 크기 |
+|---|---:|---:|---:|
+| `public/data` | 33 | 2,572 | 14.1MB |
+| `assets-manifest.json` | 11 | 11 | 3.6MB |
+| `public/models` | 0 | 0 | — |
+| `raw` | 0 | 0 | — |
+| `dist` | 0 | 0 | — |
+
+히스토리 블롭 전체는 4,244개 · 54.7MB고 그중 지워야 할 것이 2,583개 · 17.7MB다.
+**리모트는 아직 없다** — 지금이 정리하기 가장 싼 때다.
+
+### 절차 (별도 승인 아래)
+
+1. 백업 — `git bundle create ../radiant-platinum-backup.bundle --all`
+2. 작업 트리가 깨끗한지, 다른 워크트리가 없는지 확인
+3. `git filter-repo --invert-paths --path public/data --path assets-manifest.json`
+4. `pnpm audit:history`를 다시 돌려 전부 ✓ 인지 확인
+5. **그 뒤에** 처음으로 리모트를 만든다. 다시 쓰기 전에 push하면 소용없다
 
 히스토리 재작성은 모든 기존 클론을 무효화할 수 있으므로 이 문서 수정만으로
 실행하지 않는다.

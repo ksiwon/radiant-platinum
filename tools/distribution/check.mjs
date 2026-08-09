@@ -3,19 +3,29 @@
 //     node tools/distribution/check.mjs --stage=pre    빌드 전
 //     node tools/distribution/check.mjs --stage=post   빌드 후
 //     node tools/distribution/check.mjs                둘 다
+//     node tools/distribution/check.mjs --release      공개 배포 판정 (blocker도 실패)
 //
 // `pnpm build`가 앞뒤로 부른다. 하나라도 걸리면 0이 아닌 코드로 죽는다 —
 // 경고가 아니라 실패다. 경고로 두면 645MB가 그대로 또 나간다.
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+//
+// ⚠️ **위반과 release blocker는 다르다.** 위반은 지금 고칠 수 있고 고쳐야 하는
+// 것이라 빌드를 세운다. blocker는 아직 해결 못 한 것이라 세우면 개발이 멈춘다 —
+// 대신 매 빌드에 숫자를 찍고, `--release`에서만 실패로 바꾼다. 공개 배포는
+// 그 판정을 지나야 한다 (DEPLOY.md §1).
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { collectShell } from './appShell.mjs'
+import { PUBLIC_SHELL, collectShell, unlistedShellFiles } from './appShell.mjs'
+import { openBlockers } from './blockers.mjs'
+import { forbiddenIn } from './provenance.mjs'
 import { pathViolations, scanTree, originsIn } from './rules.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const stage = (process.argv.find((a) => a.startsWith('--stage=')) ?? '').slice(8) || 'both'
+const releaseMode = process.argv.includes('--release')
 
 const problems = []
 const notes = []
+const releaseBlockers = []
 const fail = (why, detail) => { problems.push({ why, detail }) }
 const mb = (n) => (n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)}MB` : `${(n / 1024).toFixed(1)}kB`)
 
@@ -48,6 +58,30 @@ function checkPre() {
   // ① 셸 목록 자체가 규칙을 어기면 안 된다. 여기 뚫리면 뒤 검사가 다 무의미하다
   for (const rel of collectShell(publicDir)) {
     for (const why of pathViolations(rel)) fail(`앱 셸 목록: ${why}`, `public/${rel}`)
+  }
+
+  // ①-b 목록에 없는 파일이 심사받은 나무에 있는가.
+  //
+  // 목록이 폴더 단위(`{ kind: 'dir', path: 'assets' }`)였을 때는 `public/assets`에
+  // 무엇을 떨어뜨리든 그대로 실려 나갔다. 지금은 파일 단위라 안 실리지만,
+  // **안 실리는 것과 실려도 되는지 심사한 것은 다르다.** 여기서 세운다
+  for (const rel of unlistedShellFiles(publicDir)) {
+    fail('앱 셸 목록에 없는 파일', `public/${rel} — appShell.mjs와 docs/APP_SHELL.md에 출처를 적는다`)
+  }
+
+  // ①-c 출처가 '자체'가 아닌 것이 목록에 있는가
+  for (const e of PUBLIC_SHELL) {
+    if (e.origin !== '자체') fail(`앱 셸 출처가 '자체'가 아니다: ${e.origin}`, `public/${e.path}`)
+  }
+
+  // ①-d 에셋 목차가 다시 추적되고 있는가 (COPYRIGHT.md §5).
+  //
+  // 뿌리의 `assets-manifest.json`에는 원본 유래 산출물 7,086개의 경로·크기·짧은
+  // 해시가 있었다. 목차도 목록이다. `.gitignore`가 막지만 `-f`로 넣을 수 있다
+  for (const name of ['assets-manifest.json', 'assets-manifest.local.json']) {
+    if (existsSync(resolve(ROOT, name))) {
+      fail('뿌리에 에셋 목차가 있다', `${name} — raw/work/ 아래에서만 굽는다 (COPYRIGHT.md §5)`)
+    }
   }
 
   // ② `public/` 안에 원본 유래 나무가 남아 있는가.
@@ -120,6 +154,22 @@ function checkPost() {
     }
     for (const host of originsIn(text)) fail(`서비스 워커에 바깥 오리진 '${host}'`, 'dist/sw.js')
   }
+
+  // 번들 **안**에 무엇이 들어갔는가 (COPYRIGHT.md §6 · DEPLOY.md §4).
+  //
+  // ⚠️ 위 `scanTree`는 파일 이름과 자리만 본다. `dist/assets/battle-sim-*.js`는
+  // 둘 다 통과하면서 6.5MB의 종족·기술 표를 싣고 있었다. 그 안을 보는 유일한
+  // 길이 빌드가 남긴 출처 보고서다
+  const at = resolve(ROOT, '.audit/bundle-provenance.json')
+  if (!existsSync(at)) {
+    fail('번들 출처 보고서가 없다', '.audit/bundle-provenance.json — vite 플러그인이 안 돌았다')
+  } else {
+    const bad = forbiddenIn(JSON.parse(readFileSync(at, 'utf8')))
+    for (const b of bad.slice(0, 3)) {
+      notes.push(`    ${b.why}: ${b.id.replace(/^.*node_modules\//, '')} (${mb(b.bytes)})`)
+    }
+    if (bad.length > 3) notes.push(`    … 외 ${bad.length - 3}개 모듈`)
+  }
   return scan
 }
 
@@ -128,8 +178,25 @@ function checkPost() {
 if (stage === 'pre' || stage === 'both') checkPre()
 const scan = stage === 'post' || stage === 'both' ? checkPost() : null
 
+// 공개 배포를 막고 있는 것. 손으로 적은 목록이 아니라 각자 직접 잰다
+for (const b of openBlockers()) releaseBlockers.push(`${b.why} — ${b.state.detail} (${b.where})`)
+
 for (const n of notes) console.log(`  · ${n}`)
 if (scan) console.log(`  · dist 파일 ${String(scan.files.length)}개 · ${mb(scan.bytes)}`)
+
+// 판정을 파일로도 남긴다 — 배포 스크립트가 사람 눈 없이 읽을 수 있어야 한다
+if (stage === 'post' || stage === 'both') {
+  mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
+  writeFileSync(resolve(ROOT, '.audit/release-blockers.json'),
+    `${JSON.stringify({ blockers: releaseBlockers, violations: problems.length }, null, 1)}\n`)
+}
+
+if (releaseBlockers.length > 0) {
+  console.error(`\n공개 배포 blocker ${String(releaseBlockers.length)}건 — 아직 못 올린다`)
+  for (const b of releaseBlockers) console.error(`  ⛔ ${b}`)
+  console.error('  근거와 다음 선택지: docs/DEPLOY.md')
+  if (releaseMode) process.exit(1)
+}
 
 if (problems.length === 0) {
   console.log(`배포 경계 통과 (${stage})`)

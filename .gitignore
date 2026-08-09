@@ -9,14 +9,23 @@ raw/
 # (예시는 추적하는 raw.sources.example.json에 있다 — COPYRIGHT.md §5)
 raw.sources.local.json
 
+# 에셋 매니페스트는 **로컬 개발 전용**이다 (COPYRIGHT.md §5).
+#
+# ⚠️ 한때 뿌리의 `assets-manifest.json`을 추적했다. 롬 바이트가 아니라 목차라고
+# 봤지만, 실제로 담긴 것은 원본 유래 산출물 7,086개의 **경로·크기·짧은 해시**였다.
+# 목차도 목록이다. 지금은 `raw/work/` 아래에서만 굽고 리포에 안 넣는다.
+assets-manifest.json
+assets-manifest.local.json
+
 # raw/ + tools/ 파이프라인으로 재생성되는 산출물. R2에서 서빙한다 (§4.6, COPYRIGHT.md §5)
 #
 # ⚠️ **폴더째다. 목차만 남기는 예외를 안 둔다.** 두려고 로더가 첫 왕복에 읽는 것을
 # 재 봤더니 16개 2.6MB였고, 그 안에 `matrices/0.bin`(1.8MB, 신오 전체 배치)과
 # `encounters.json`(254KB)이 있었다 — 저작권 축에서 빼려던 바로 그것이라 예외가
-# 성립하지 않는다. 목차 노릇은 `assets-manifest.json`이 대신한다.
+# 성립하지 않는다.
 #
-# 없을 때 무엇을 돌려야 하는지는 `pnpm assets:check`가 그룹별로 찍어 준다.
+# 없을 때 무엇이 없는지는 `pnpm assets:manifest --check`가 그룹별로 찍어 준다
+# (로컬 매니페스트를 읽는다. 어디서도 받아 오지 않는다).
 public/models/
 public/data/
 *.nds
@@ -41,3 +50,6 @@ __pycache__/
 
 # 확인용 스크린샷. 산출물이라 추적하지 않는다
 shots/
+
+# 감사 기록. 배포물이 아니라 빌드가 남기는 검사 결과다 (DEPLOY.md §4)
+.audit/

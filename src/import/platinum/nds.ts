@@ -40,6 +40,17 @@ export interface NdsHeader {
   title: string
   gameCode: string
   makerCode: string
+  /**
+   * ARM9 정적 바이너리. **파일시스템 밖이다** — FNT에도 FAT에도 안 들어 있다.
+   *
+   * 상점 재고가 여기 있다 (DATA.md §2.13). 한때 "롬에 없고 디컴프 헤더에만
+   * 있다"고 적어 뒀는데 틀렸다 — ARM9에 있고, 셋 다 실측으로 확인했다
+   */
+  arm9RomOffset: number
+  arm9Entry: number
+  /** 로드되는 RAM 주소. 코드 안의 포인터를 파일 자리로 되돌릴 때 쓴다 */
+  arm9RamAddress: number
+  arm9Size: number
   fntOffset: number
   fntSize: number
   fatOffset: number
@@ -62,6 +73,10 @@ export async function readHeader(src: ByteSource): Promise<NdsHeader | null> {
     title: latin1(head.subarray(0, 12)),
     gameCode: latin1(head.subarray(12, 16)),
     makerCode: latin1(head.subarray(16, 18)),
+    arm9RomOffset: view.getUint32(0x20, true),
+    arm9Entry: view.getUint32(0x24, true),
+    arm9RamAddress: view.getUint32(0x28, true),
+    arm9Size: view.getUint32(0x2c, true),
     fntOffset: view.getUint32(0x40, true),
     fntSize: view.getUint32(0x44, true),
     fatOffset: view.getUint32(0x48, true),
@@ -81,6 +96,20 @@ export interface NdsFileSystem {
   /** 오버레이 수. FNT에 이름이 없어서 따로 센다 */
   overlays: number
   read(path: string): Promise<Uint8Array | null>
+  /**
+   * ARM9 정적 바이너리의 한 조각. `at`은 **ARM9 시작 기준** 상대 자리다.
+   *
+   * 범위를 벗어나면 `null`. 사용자가 아무 파일이나 고를 수 있으므로 여기서
+   * 막지 않으면 잘린 롬에서 엉뚱한 바이트를 표로 읽는다
+   */
+  arm9(at: number, length: number): Promise<Uint8Array | null>
+  /**
+   * 코드 안의 RAM 포인터를 ARM9 상대 자리로 되돌린다.
+   *
+   * `at = pointer - arm9RamAddress`. 범위 밖이면 `null` — 그것이 곧
+   * "이 포인터는 ARM9 안을 안 가리킨다"는 뜻이고, 표를 잘못 짚었다는 신호다
+   */
+  arm9At(pointer: number): number | null
 }
 
 /**
@@ -157,6 +186,23 @@ export async function openNds(src: ByteSource): Promise<NdsFileSystem | null> {
       if (!at) return null
       if (at.end < at.start || at.end > src.size) return null
       return src.slice(at.start, at.end)
+    },
+
+    async arm9(at, length) {
+      const { arm9RomOffset, arm9Size } = header
+      if (at < 0 || length <= 0) return null
+      if (at + length > arm9Size) return null
+      const from = arm9RomOffset + at
+      if (from + length > src.size) return null
+      const got = await src.slice(from, from + length)
+      // `slice`가 잘라 줄 수도 있다 — 길이를 다시 본다
+      return got.byteLength === length ? got : null
+    },
+
+    arm9At(pointer) {
+      const { arm9RamAddress, arm9Size } = header
+      const at = pointer - arm9RamAddress
+      return at >= 0 && at < arm9Size ? at : null
     },
   }
 }

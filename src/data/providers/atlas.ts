@@ -13,9 +13,20 @@
 // 모듈에 있다. 아직 안 왔으면 빈 글자를 주고, 그 자리는 그림 없는 칸이 된다 —
 // 아틀라스 **크기 자료**도 같은 비동기 파도로 오므로 화면 쪽은 이미 그 상태를
 // 다룰 줄 안다.
-import { assets, type AssetPath } from './assetProvider'
+import { assets, onProviderSwap, type AssetPath, type AssetProvider } from './assetProvider'
 
-const pinned = new Map<AssetPath, string>()
+interface Pin {
+  url: string
+  /**
+   * ⚠️ **누구에게서 받았는지 기억한다.** 놓을 때 `assets()`를 다시 부르면,
+   * 그 사이에 갈아 끼워졌을 때 **새 Provider에게 옛 주소를 놓아 달라고** 하게
+   * 된다. 새 쪽은 그 경로를 모르니 조용히 아무 일도 안 하고, 옛 Blob은 문서가
+   * 닫힐 때까지 산다
+   */
+  from: AssetProvider
+}
+
+const pinned = new Map<AssetPath, Pin>()
 const asking = new Map<AssetPath, Promise<string>>()
 
 /**
@@ -35,7 +46,13 @@ const asking = new Map<AssetPath, Promise<string>>()
 export function pinAtlas(path: AssetPath): Promise<string> {
   let hit = asking.get(path)
   if (!hit) {
-    hit = assets().objectUrl(path).then((url) => { pinned.set(path, url); return url })
+    const from = assets()
+    hit = from.objectUrl(path).then((url) => {
+      // 받는 사이에 갈아 끼워졌으면 이 주소는 옛 세상 것이다. 바로 돌려준다
+      if (assets() !== from) { from.releaseObjectUrl(path); return url }
+      pinned.set(path, { url, from })
+      return url
+    })
     hit.catch(() => { asking.delete(path) }) // 실패를 캐시하면 재시도가 막힌다
     asking.set(path, hit)
   }
@@ -44,13 +61,20 @@ export function pinAtlas(path: AssetPath): Promise<string> {
 
 /** 잡아 둔 주소. 아직이면 빈 글자 — 그 자리는 그림 없는 칸이 된다 */
 export function atlasUrl(path: AssetPath): string {
-  return pinned.get(path) ?? ''
+  return pinned.get(path)?.url ?? ''
 }
 
-/** Provider를 갈아 끼울 때. 남은 주소를 전부 거둔다 */
+/** 지금 잡고 있는 수. 누수 시험이 이걸 본다 */
+export function pinnedCount(): number {
+  return pinned.size
+}
+
+/** 남은 주소를 전부 거둔다. **받은 곳에 돌려준다** */
 export function unpinAll(): void {
-  const provider = assets()
-  for (const path of pinned.keys()) provider.releaseObjectUrl(path)
+  for (const [path, pin] of pinned) pin.from.releaseObjectUrl(path)
   pinned.clear()
   asking.clear()
 }
+
+// Provider가 바뀌면 잡아 둔 것은 전부 옛 세상 것이다
+onProviderSwap(() => { unpinAll() })

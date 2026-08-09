@@ -1,0 +1,86 @@
+// 공개 배포를 막고 있는 것 (DEPLOY.md §1)
+//
+// ⚠️ **목록을 손으로 관리하지 않는다.** 손으로 지우는 목록은 일이 끝나서가 아니라
+// 잊혀서 비워진다. 여기 있는 것들은 각자 `resolved()`로 **직접 재고**, 재서
+// 풀렸으면 스스로 빠진다.
+//
+// 위반(violation)과 다르다. 위반은 지금 고칠 수 있고 고쳐야 하는 것이라 빌드를
+// 세운다. blocker는 아직 못 고친 것이라 빌드는 통과시키고 매번 숫자를 찍되,
+// `--release`에서만 실패로 바꾼다. 개발이 멈추지 않으면서 공개는 막힌다.
+import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { forbiddenIn } from './provenance.mjs'
+
+const ROOT = resolve(import.meta.dirname, '../..')
+const read = (rel) => (existsSync(resolve(ROOT, rel)) ? readFileSync(resolve(ROOT, rel), 'utf8') : null)
+
+/** 각 항목: `{ id, why, where, resolved() → true면 풀린 것 }` */
+export const BLOCKERS = [
+  {
+    id: 'bundle-data',
+    why: '번들에 제3자 정적 게임 데이터가 있다',
+    where: 'DEPLOY.md §4',
+    resolved() {
+      const at = read('.audit/bundle-provenance.json')
+      // 보고서가 없으면 잰 적이 없는 것이다. 안 잰 것을 풀렸다고 하지 않는다
+      if (!at) return { ok: false, detail: '출처 보고서가 없다 — pnpm build를 안 돌렸다' }
+      const bad = forbiddenIn(JSON.parse(at))
+      const bytes = bad.reduce((a, b) => a + b.bytes, 0)
+      return bad.length === 0
+        ? { ok: true }
+        : { ok: false, detail: `${bad.length}개 모듈 · ${(bytes / 1048576).toFixed(1)}MB` }
+    },
+  },
+  {
+    id: 'csp-header',
+    why: '실제 호스트의 CSP 응답 헤더를 잰 적이 없다',
+    where: 'DEPLOY.md §3',
+    resolved() {
+      const at = read('.audit/deploy-verified.json')
+      if (!at) return { ok: false, detail: 'pnpm verify:deploy <url>을 돌린 적이 없다' }
+      const v = JSON.parse(at)
+      return v.ok ? { ok: true } : { ok: false, detail: `${v.url}: ${v.problems?.length ?? '?'}건` }
+    },
+  },
+  {
+    id: 'bdsp-convert',
+    why: 'BDSP 변환이 없어 3D 에셋을 만들 수 없다',
+    where: 'IMPORT.md §12',
+    resolved() {
+      // spike가 무엇에 막혔는지 스스로 적어 둔다 (`unityfs.ts`의 SPIKE_BLOCKERS).
+      // 목록이 비면 풀린 것이고, 그때까지는 컨테이너까지만 된 것이다.
+      // ⚠️ 타입 선언(`{ what: string; … }`)이 아니라 **값**만 센다
+      const src = read('src/import/bdsp/unityfs.ts')
+      if (!src) return { ok: false, detail: 'spike조차 없다' }
+      const list = src.slice(src.indexOf('export const SPIKE_BLOCKERS'))
+      const n = (list.match(/^\s*what: /gm) ?? []).length
+      return n === 0
+        ? { ok: true }
+        : { ok: false, detail: `spike가 막힌 자리 ${n}곳 — 컨테이너까지만 된다` }
+    },
+  },
+  {
+    id: 'git-history',
+    why: 'Git 히스토리에 원본 유래 산출물이 남아 있다',
+    where: 'COPYRIGHT.md §9',
+    resolved() {
+      let out
+      try {
+        out = execFileSync('git', ['log', '--all', '--oneline', '--', 'public/data', 'assets-manifest.json'],
+          { cwd: ROOT, encoding: 'utf8' })
+      } catch {
+        return { ok: false, detail: 'git을 못 읽었다' }
+      }
+      const n = out.split('\n').filter(Boolean).length
+      return n === 0 ? { ok: true } : { ok: false, detail: `커밋 ${n}개가 그 경로를 건드린다` }
+    },
+  },
+]
+
+/** 아직 안 풀린 것만 */
+export function openBlockers() {
+  return BLOCKERS
+    .map((b) => ({ ...b, state: b.resolved() }))
+    .filter((b) => !b.state.ok)
+}

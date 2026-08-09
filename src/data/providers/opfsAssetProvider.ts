@@ -27,9 +27,27 @@ export interface OpfsAssetProvider extends AssetProvider {
   releaseAll(): void
 }
 
+/**
+ * 거둔 뒤에 도착한 요청.
+ *
+ * `objectUrl()`이 바이트를 기다리는 동안 `releaseAll()`이 돌면, 기다리던 쪽이
+ * 깨어나 **거둬진 다음에** 새 URL을 `held`에 넣는다 — 그러면 아무도 안 쓰는
+ * URL이 영원히 남는다. 그 자리를 오류로 만든다
+ */
+export class ProviderClosed extends Error {
+  constructor(readonly path: AssetPath) {
+    super(`${path}: 받는 사이에 Provider가 거둬졌다`)
+    this.name = 'ProviderClosed'
+  }
+}
+
 export function opfsAssetProvider(store: PackStore): OpfsAssetProvider {
   const kind = `opfs:${store.kind}`
   const held = new Map<AssetPath, Held>()
+  // ⚠️ **`releaseAll()`마다 오른다.** 이 숫자가 없으면 위 경쟁을 못 잡는다 —
+  // `held`가 비어 있다는 사실만으로는 "아직 아무도 안 잡았다"와 "방금 다
+  // 거뒀다"를 구별할 수 없기 때문이다
+  let generation = 0
 
   const need = async (path: AssetPath): Promise<Uint8Array> => {
     const bytes = await store.read(path)
@@ -62,7 +80,11 @@ export function opfsAssetProvider(store: PackStore): OpfsAssetProvider {
     async objectUrl(path) {
       const hit = held.get(path)
       if (hit) { hit.refs++; return hit.url }
+      const mine = generation
       const url = URL.createObjectURL(await toBlob(path))
+      // ⚠️ 기다리는 사이에 `releaseAll()`이 돌았으면 이 URL은 주인이 없다.
+      // 넣으면 아무도 안 놓는 것이 하나 생긴다
+      if (mine !== generation) { URL.revokeObjectURL(url); throw new ProviderClosed(path) }
       // ⚠️ `await` 사이에 다른 호출이 끼어들 수 있다. 그동안 누가 먼저 만들었으면
       // 방금 만든 것을 버려야 한다 — 안 그러면 지도 하나에 URL이 두 벌 남는다
       const raced = held.get(path)
@@ -86,6 +108,7 @@ export function opfsAssetProvider(store: PackStore): OpfsAssetProvider {
     }),
 
     releaseAll() {
+      generation++
       for (const h of held.values()) URL.revokeObjectURL(h.url)
       held.clear()
     },

@@ -133,3 +133,121 @@ describe('앱 셸 목록', () => {
     expect(readFileSync(join(ROOT, 'vite.config.ts'), 'utf8')).toMatch(/copyPublicDir:\s*false/)
   })
 })
+
+describe('앱 셸은 파일 단위다', () => {
+  it('⚠️ 폴더가 목록에 없다 — 폴더 한 줄이면 그 아래는 심사가 없다', () => {
+    // 한때 `{ kind: 'dir', path: 'assets' }` 한 줄이었다. `public/assets`에
+    // 무엇을 떨어뜨리든 그대로 실려 나갔다
+    for (const e of PUBLIC_SHELL) {
+      expect(e.path, e.path).toMatch(/\.[a-z0-9]+$/)
+    }
+  })
+
+  it('출처가 전부 적혀 있고 전부 자체 제작이다', () => {
+    for (const e of PUBLIC_SHELL) {
+      expect(e.origin, e.path).toBe('자체')
+      expect(e.note?.length ?? 0, e.path).toBeGreaterThan(0)
+    }
+  })
+
+  it('⚠️ 목록에 없는 파일이 심사 나무에 없다', async () => {
+    const { unlistedShellFiles } = await import('./appShell.mjs')
+    expect(unlistedShellFiles(join(ROOT, 'public'))).toEqual([])
+  })
+
+  it('목록에 없는 파일을 넣으면 잡는다 — 검사에 이빨이 있다', async () => {
+    const { unlistedShellFiles } = await import('./appShell.mjs')
+    const fake = mkdtempSync(join(tmpdir(), 'shell-'))
+    try {
+      mkdirSync(join(fake, 'assets'))
+      writeFileSync(join(fake, 'assets', '몰래.png'), 'x')
+      expect(unlistedShellFiles(fake)).toEqual(['assets/몰래.png'])
+    } finally { rmSync(fake, { recursive: true, force: true }) }
+  })
+
+  it('문서에도 같은 목록이 적혀 있다', async () => {
+    const { readFileSync } = await import('node:fs')
+    const doc = readFileSync(join(ROOT, 'docs/APP_SHELL.md'), 'utf8')
+    for (const e of PUBLIC_SHELL) expect(doc, e.path).toContain(e.path)
+  })
+})
+
+describe('CSP 정본', () => {
+  it('connect-src에 바깥 오리진이 없다 — 그것이 무전송 경계다', async () => {
+    const { CSP, cspHeader } = await import('./csp.mjs')
+    expect(CSP['connect-src']).toBe("'self' blob:")
+    expect(cspHeader()).not.toMatch(/https?:/)
+  })
+
+  it("증명 없이 'wasm-unsafe-eval'을 넣지 않는다", async () => {
+    const { cspHeader } = await import('./csp.mjs')
+    expect(cspHeader()).not.toContain('wasm-unsafe-eval')
+  })
+
+  it('바깥 report endpoint가 없다 — 그 자체가 전송이다', async () => {
+    const { cspHeader } = await import('./csp.mjs')
+    expect(cspHeader()).not.toMatch(/report-(uri|to)/)
+  })
+
+  it('⚠️ meta에는 frame-ancestors를 안 넣는다 — 어차피 무시된다', async () => {
+    const { cspMeta, cspHeader } = await import('./csp.mjs')
+    expect(cspHeader()).toContain('frame-ancestors')
+    expect(cspMeta()).not.toContain('frame-ancestors')
+  })
+
+  it('헤더와 정본이 어긋나면 잡는다', async () => {
+    const { compareHeader, cspHeader } = await import('./csp.mjs')
+    expect(compareHeader(cspHeader()).ok).toBe(true)
+    expect(compareHeader('').missing.length).toBeGreaterThan(10)
+    expect(compareHeader(cspHeader().replace("script-src 'self'", "script-src *")).differs)
+      .toHaveLength(1)
+  })
+})
+
+describe('release blocker', () => {
+  it('⚠️ 각자 직접 잰다 — 손으로 지우는 목록이 아니다', async () => {
+    const { BLOCKERS } = await import('./blockers.mjs')
+    for (const b of BLOCKERS) {
+      expect(typeof b.resolved, b.id).toBe('function')
+      const state = b.resolved()
+      expect(state, b.id).toHaveProperty('ok')
+      if (!state.ok) expect(state.detail, b.id).toBeTruthy()
+    }
+  })
+
+  it('문서 §1의 표와 같은 수다', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { BLOCKERS } = await import('./blockers.mjs')
+    const doc = readFileSync(join(ROOT, 'docs/DEPLOY.md'), 'utf8')
+    // 표에 줄이 몇 개인가 — `| 1 |`처럼 번호로 센다
+    const rows = doc.match(/^\| \d+ \| /gm) ?? []
+    expect(rows).toHaveLength(BLOCKERS.length)
+  })
+})
+
+describe('번들 출처', () => {
+  it('@pkmn/sim 데이터 모듈을 알아본다', async () => {
+    const { classify } = await import('./provenance.mjs')
+    const data = classify('/x/node_modules/@pkmn/sim/build/esm/data/learnsets.mjs')
+    expect(data.kind).toBe('의존성-데이터')
+    expect(data.pkg).toBe('@pkmn/sim')
+  })
+
+  it('엔진 코드는 데이터가 아니다 — 통째로 막으면 배틀이 깨진다', async () => {
+    const { classify } = await import('./provenance.mjs')
+    expect(classify('/x/node_modules/@pkmn/sim/build/esm/sim/battle.mjs').kind).toBe('의존성-코드')
+    expect(classify('/x/node_modules/three/build/three.module.js').kind).toBe('의존성-코드')
+  })
+
+  it('우리 코드는 앱이다', async () => {
+    const { classify } = await import('./provenance.mjs')
+    expect(classify('C:/repo/src/engine/battle/sim/bridge.ts').kind).toBe('앱')
+  })
+
+  it('windows 경로도 같게 본다', async () => {
+    const { classify } = await import('./provenance.mjs')
+    // 역슬래시 경로. 노드가 윈도에서 이 모양으로 준다
+    const win = String.raw`C:\repo\node_modules\@pkmn\sim\build\esm\data\moves.mjs`
+    expect(classify(win).kind).toBe('의존성-데이터')
+  })
+})

@@ -13,7 +13,12 @@ import { readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { openNds, type ByteSource } from './nds'
 import { Cancelled, GROUPS, groupsBlocked, groupsReady, parseMove } from './convert'
+import { martLocator, SUPPORTED } from './validate'
+import { MartError, readMarts } from './marts'
 import { DATA, withRom, romPath } from '../../data/romData.testkit'
+
+/** 변환기가 요구하는 지역판. 시험은 실측된 롬 하나로 돈다 */
+const EN = SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!
 
 function fileSource(path: string): ByteSource {
   const size = statSync(path).size
@@ -88,6 +93,7 @@ withRom('en')('브라우저 변환 — 진짜 롬', () => {
     const out = await group.convert!({
       fs: await open(),
       locale: 'en',
+      release: EN,
       onProgress: (done) => seen.push(done),
     })
 
@@ -107,6 +113,7 @@ withRom('en')('브라우저 변환 — 진짜 롬', () => {
     await expect(group.convert!({
       fs: await open(),
       locale: 'en',
+      release: EN,
       signal,
       // 첫 보고에서 끊는다. 취소를 늦게 보면 몇 초를 더 돈다
       onProgress: () => { signal.aborted = true },
@@ -115,7 +122,7 @@ withRom('en')('브라우저 변환 — 진짜 롬', () => {
 
   it('알려진 기술 몇 개가 원작 값이다', async () => {
     const group = GROUPS.find((g) => g.name === 'moves')!
-    const out = await group.convert!({ fs: await open(), locale: 'en' })
+    const out = await group.convert!({ fs: await open(), locale: 'en', release: EN })
     const json = JSON.parse(new TextDecoder().decode(out.get('data/moves.json')!)) as {
       moves: { id: number; power: number; priority: number; pp: number; contact: boolean }[]
     }
@@ -147,12 +154,88 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
 
     const fs = await openNds(fileSource(romPath('en')!))
     const group = GROUPS.find((g) => g.name === 'moves')!
-    const out = await group.convert!({ fs: fs!, locale: 'en' })
+    const out = await group.convert!({ fs: fs!, locale: 'en', release: EN })
     const actual = new TextDecoder().decode(out.get('data/moves.json')!)
 
     // 바이트로 같다. 키 순서와 들여쓰기까지 — 직렬화가 갈리면 두 경로가 만든
     // 파일의 해시가 달라지고, 설치 저널이 그걸 "바뀐 것"으로 읽는다
     expect(actual.length).toBe(expected.length)
     expect(actual).toBe(expected)
+  })
+})
+
+// ── marts ────────────────────────────────────────────────────────────────────
+//
+// ⚠️ **"상점 재고는 롬에 없다"가 틀렸다는 것을 재는 시험이다.** 노드 추출기가
+// 디컴프 헤더(`include/data/mart_items.h`)를 읽고 있어서 롬에 없는 줄 알았는데,
+// 표는 ARM9 안에 그대로 있다. 여기서 지역판 셋을 다 열어 `public/data/marts.json`과
+// 맞춘다 — 하나라도 어긋나면 `supported.json`의 자리가 틀린 것이다.
+
+withRom('en', 'ko', 'ja')('marts — ARM9에서 읽는다', () => {
+  const nodeFile = resolve(DATA, 'marts.json')
+
+  const openAt = async (locale: 'en' | 'ko' | 'ja') => {
+    const fs = await openNds(fileSource(romPath(locale)!))
+    if (!fs) throw new Error(`${locale} 롬을 못 열었다`)
+    return fs
+  }
+
+  it('헤더에서 ARM9 자리를 읽는다 — 0x4000을 박아 두지 않는다', async () => {
+    for (const locale of ['en', 'ko', 'ja'] as const) {
+      const fs = await openAt(locale)
+      // 실측: 셋 다 0x4000 / 0x02000000이지만 값이 아니라 **읽는다는 것**이 요점이다
+      expect(fs.header.arm9RomOffset, locale).toBe(0x4000)
+      expect(fs.header.arm9RamAddress, locale).toBe(0x02000000)
+      expect(fs.header.arm9Size, locale).toBeGreaterThan(0x100000)
+    }
+  })
+
+  it('⚠️ ARM9 범위 밖은 null이다 — 잘린 롬에서 쓰레기를 표로 읽지 않는다', async () => {
+    const fs = await openAt('en')
+    expect(await fs.arm9(fs.header.arm9Size, 4)).toBeNull()
+    expect(await fs.arm9(-4, 4)).toBeNull()
+    expect(fs.arm9At(0x01000000)).toBeNull()   // ARM9 아래
+    expect(fs.arm9At(0x03000000)).toBeNull()   // ARM9 위
+    expect(fs.arm9At(0x02000000)).toBe(0)      // 딱 시작
+  })
+
+  it('⚠️ 지역판 셋 다 노드 산출물과 같다', async () => {
+    let expected: string
+    try {
+      expected = readFileSync(nodeFile, 'utf8')
+    } catch {
+      expect.unreachable('public/data/marts.json이 없다 — pnpm extract:marts')
+      return
+    }
+    const group = GROUPS.find((g) => g.name === 'marts')!
+    for (const locale of ['en', 'ko', 'ja'] as const) {
+      const release = SUPPORTED.releases.find((r) => r.locale === locale)!
+      const out = await group.convert!({ fs: await openAt(locale), locale, release })
+      const actual = new TextDecoder().decode(out.get('data/marts.json')!)
+      // 세 롬이 **같은 재고**를 낸다. 상점은 지역판에 안 따라간다
+      expect(actual, locale).toBe(expected)
+    }
+  })
+
+  it('자리를 한 바이트만 밀어도 걸린다 — 검사에 이빨이 있다', async () => {
+    const fs = await openAt('en')
+    const at = martLocator(SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!)
+    // 4바이트 밀면 첫 줄이 사라지고 마지막 줄에 쓰레기가 붙는다
+    await expect(readMarts(fs, { ...at, common: at.common + 4 })).rejects.toThrow(MartError)
+  })
+
+  it('포인터 표를 밀면 ARM9 밖을 가리킨다', async () => {
+    const fs = await openAt('en')
+    const at = martLocator(SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!)
+    await expect(readMarts(fs, { ...at, specialty: at.specialty + 8 })).rejects.toThrow(MartError)
+  })
+
+  it('아이템 표 크기를 주면 범위 밖 번호를 잡는다', async () => {
+    const fs = await openAt('en')
+    const at = martLocator(SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!)
+    // 실측 446개. 100으로 주면 백화점 재고(410번 등)가 걸려야 한다
+    await expect(readMarts(fs, at, 100)).rejects.toThrow(/아이템 표/)
+    // 제대로 주면 통과한다
+    await expect(readMarts(fs, at, 446)).resolves.toBeTruthy()
   })
 })

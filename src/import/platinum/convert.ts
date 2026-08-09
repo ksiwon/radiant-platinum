@@ -4,14 +4,16 @@
 // 옮기지 않는다 — **한 그룹을 끝까지 옮겨 parity를 세워 놓고** 그 자리를 넓힌다.
 // 순서를 뒤집으면(전부 반쯤 옮긴 상태) 어느 것이 맞는지 아무도 모른다.
 //
-// ⚠️ **지금 여기 있는 것은 `moves` 하나다.** 그 하나가 증명하는 것:
+// ⚠️ **지금 여기 있는 것은 `moves`와 `marts` 둘이다.** 그 둘이 증명하는 것:
 //
-//   · 브라우저가 NARC를 열어 같은 바이트를 읽는다
+//   · 브라우저가 NARC를 열고 ARM9를 짚어 같은 바이트를 읽는다
 //   · 그 결과가 노드 산출물과 **바이트로 같다** (`convert.test.ts`)
 //   · 진행률·취소·transferable이 그 길을 지난다 (`worker.ts`)
 //
 // 남은 그룹과 막힌 이유는 `GROUPS` 표에 그대로 적는다. 표가 곧 남은 일이다.
-import { narcEntry, type NdsFileSystem } from './nds'
+import { narcCount, narcEntry, type NdsFileSystem } from './nds'
+import { readMarts } from './marts'
+import { martLocator, type Release } from './validate'
 
 /** 한 그룹이 만드는 것 — 논리 경로 → 바이트 */
 export type Produced = Map<string, Uint8Array>
@@ -19,6 +21,11 @@ export type Produced = Map<string, Uint8Array>
 export interface ConvertContext {
   fs: NdsFileSystem
   locale: string
+  /**
+   * 판정된 지역판. ARM9 표 자리처럼 **지역판마다 다른 것**을 여기서 읽는다
+   * (`marts.ts`) — 코드에 세 벌을 박으면 판이 늘 때마다 갈라진다
+   */
+  release: Release
   /** 몇 개 중 몇 개째인지. 화면이 이걸로 진행을 그린다 */
   onProgress?: (done: number, total: number) => void
   /** 취소 신호. 그룹마다 **자주** 본다 — 한 그룹이 몇 초씩 걸린다 */
@@ -33,10 +40,35 @@ const check = (ctx: ConvertContext): void => {
   if (ctx.signal?.aborted) throw new Cancelled()
 }
 
+/**
+ * 메시지를 받을 틈을 낸다.
+ *
+ * ⚠️ **마이크로태스크로는 안 된다.** 취소는 Worker 바깥에서 `postMessage`로
+ * 오고, 그것은 **태스크**로 큐에 들어간다 — `await Promise.resolve()`로는
+ * 그 큐가 안 돌아서 신호가 영영 안 보인다. 진짜 포트로 시험을 돌렸을 때
+ * 취소가 한 번도 안 먹은 것이 그 증거였고, 같은 스레드에서 함수를 직접
+ * 부르던 시험은 이걸 못 잡았다 (시험이 직접 `aborted`를 켰기 때문이다).
+ *
+ * `setTimeout(0)`은 브라우저에서 4ms까지 늘어난다. 그래서 **자주 안 부른다** —
+ * 진행 보고는 촘촘하게, 숨은 드물게
+ */
+async function breathe(ctx: ConvertContext): Promise<void> {
+  await new Promise<void>((done) => { setTimeout(done, 0) })
+  check(ctx)
+}
+
+/** 이만큼마다 한 번 숨을 쉰다. 471개면 여덟 번이라 취소가 60ms 안에 먹는다 */
+const BREATH = 64
+
 export interface GroupSpec {
   name: string
   /** 이 그룹이 만드는 논리 경로들 (진단·저널용) */
   outputs: string[]
+  /**
+   * 변환기 판. **고치면 올린다** — 설치 기록에 남아서, 올라간 그룹만 다시 만든다.
+   * 이게 없으면 변환기를 고쳐도 옛 산출물이 온전하다는 이유로 그대로 남는다
+   */
+  converter: number
   /** 구현됐으면 변환 함수, 아직이면 왜 막혔는지 */
   convert?: (ctx: ConvertContext) => Promise<Produced>
   blockedBy?: string
@@ -117,6 +149,8 @@ async function convertMoves(ctx: ConvertContext): Promise<Produced> {
     moves.push(parseMove(entry, id))
     // 471개라 열 개마다면 진행이 눈에 보이고 메시지가 안 넘친다
     if (id % 10 === 0) { check(ctx); ctx.onProgress?.(id, 471) }
+    // 취소 메시지가 들어올 틈. 마이크로태스크로는 안 온다 (`breathe` 참조)
+    if (id % BREATH === 0) await breathe(ctx)
   }
   ctx.onProgress?.(moves.length, moves.length)
 
@@ -125,6 +159,23 @@ async function convertMoves(ctx: ConvertContext): Promise<Produced> {
   return new Map([
     ['data/moves.json', encoder.encode(JSON.stringify({ count: moves.length, moves }))],
   ])
+}
+
+// ── marts ───────────────────────────────────────────────────────────────────
+
+async function convertMarts(ctx: ConvertContext): Promise<Produced> {
+  ctx.onProgress?.(0, 2)
+  await breathe(ctx)
+  // 아이템 표 엔트리 수를 먼저 센다 — 읽어 낸 번호가 그 안에 드는지 보려는 것이다.
+  // 못 세면 그 검사만 건너뛴다. 상점을 못 읽는 이유가 되지는 않는다
+  const items = await ctx.fs.read('/itemtool/itemdata/pl_item_data.narc')
+  const itemCount = items ? narcCount(items) ?? undefined : undefined
+  check(ctx)
+  ctx.onProgress?.(1, 2)
+  const table = await readMarts(ctx.fs, martLocator(ctx.release), itemCount)
+  ctx.onProgress?.(2, 2)
+  // 노드 쪽 writeJson과 같은 모양이어야 한다 — parity를 바이트로 재기 때문이다
+  return new Map([['data/marts.json', encoder.encode(JSON.stringify(table))]])
 }
 
 // ── 그룹 표 ──────────────────────────────────────────────────────────────────
@@ -136,11 +187,13 @@ async function convertMoves(ctx: ConvertContext): Promise<Produced> {
  * 그대로 읽어 "이 판은 아직 여기까지"라고 말한다 (IMPORT.md §13-5)
  */
 export const GROUPS: readonly GroupSpec[] = [
-  { name: 'moves', outputs: ['data/moves.json'], convert: convertMoves },
+  { name: 'moves', outputs: ['data/moves.json'], converter: 1, convert: convertMoves },
+  { name: 'marts', outputs: ['data/marts.json'], converter: 1, convert: convertMarts },
 
   {
     name: 'text',
     outputs: ['data/names/*.json', 'data/dialogue/**'],
+    converter: 1,
     blockedBy:
       '글 디코더(charmap + 뱅크 복호화)를 아직 안 옮겼다. '
       + '`tools/extract/message.js`와 `tools/spike/gen4text.js`가 정본이고, '
@@ -149,11 +202,13 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     name: 'species',
     outputs: ['data/species.json'],
+    converter: 1,
     blockedBy: '`moves`와 같은 모양이라 옮기는 데 막힌 것은 없다. 아직 안 했을 뿐이다.',
   },
   {
     name: 'maps',
     outputs: ['data/maps.json', 'data/matrices/**', 'data/bdhc.*'],
+    converter: 1,
     blockedBy:
       'arm9 오버레이에서 맵 헤더 표를 읽어야 하는데 오버레이는 FNT에 이름이 없다. '
       + '헤더의 오버레이 표(+0x50)로 파일 번호를 찾는 길은 노드 쪽에 이미 있다 '
@@ -162,6 +217,7 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     name: 'chunks',
     outputs: ['data/chunks/**', 'data/props/**', 'data/tex/**'],
+    converter: 1,
     blockedBy:
       'NSBMD 디스플레이 리스트 해석기를 안 옮겼다 (DATA.md §2.2). 노드 쪽은 '
       + '666/666 검증을 통과했고, 브라우저로 옮기면 같은 수치가 나와야 한다.',
@@ -169,22 +225,16 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     name: 'scripts',
     outputs: ['data/scripts.bin', 'data/scripts.json', 'data/events.json'],
+    converter: 1,
     blockedBy:
       '⚠️ **`raw/decomp`에 기댄다.** 명령 폭 표와 scriptID 표를 디컴프에서 뽑는다 '
       + '(PLAN §14 "Platinum 추출기의 decomp 의존"). 롬 자체 파싱으로 바꾸거나, '
       + '배포 가능한 최소 호환성 메타데이터로 분리해야 한다.',
   },
   {
-    name: 'marts',
-    outputs: ['data/marts.json'],
-    blockedBy:
-      '⚠️ **롬에 없다.** 상점 재고는 디컴프의 `include/data/mart_items.h`에 있다 '
-      + '(DATA.md §2.13). 사용자의 롬 두 입력만으로는 만들 수 없다 — '
-      + '메타데이터로 배포할지 다른 길을 찾을지 정해야 한다.',
-  },
-  {
     name: 'sound',
     outputs: ['data/sound/**'],
+    converter: 1,
     blockedBy:
       'SDAT 파서와 SSEQ 렌더러를 안 옮겼다. 렌더러는 이미 Worker에서 도는 코드가 '
       + '있으므로(`engine/audio/renderWorker.ts`) 남은 것은 SDAT 쪽이다.',
@@ -192,6 +242,7 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     name: 'pokegra',
     outputs: ['data/pokemon/**'],
+    converter: 1,
     blockedBy: '`pl_pokegra.narc`의 암호를 푸는 코드를 안 옮겼다 (DATA.md §2.17).',
   },
 ]

@@ -1,6 +1,6 @@
 {
-  "//": "지원 Platinum 지역판 지문 (IMPORT.md §5 · COPYRIGHT.md §2 '비표현적 호환성 메타데이터'). 원본 바이트도 해시도 아니다 — 헤더 필드와 컨테이너 엔트리 수뿐이고, 전부 개발 기계의 롬 셋에서 실측했다. Node 추출기와 브라우저 Importer가 이 한 파일을 함께 읽는다.",
-  "contractVersion": 1,
+  "//": "지원 Platinum 지역판 지문 (IMPORT.md §5 · COPYRIGHT.md §2 '비표현적 호환성 메타데이터'). 원본 바이트도 해시도 아니다 — 헤더 필드 · 컨테이너 엔트리 수 · ARM9 표의 자리와 개수뿐이고, 전부 개발 기계의 롬 셋에서 실측했다. Node 추출기와 브라우저 Importer가 이 한 파일을 함께 읽는다.",
+  "contractVersion": 2,
   "title": "POKEMON PL",
   "makerCode": "01",
   "sizeBytes": 134217728,
@@ -41,21 +41,38 @@
       "locale": "en",
       "label": "Pokémon Platinum (영어)",
       "fileCount": 340,
-      "messageBanks": 724
+      "messageBanks": 724,
+      "marts": {
+        "common": "0xEBAFC",
+        "specialty": "0x100B1C"
+      }
     },
     {
       "gameCode": "CPUK",
       "locale": "ko",
       "label": "포켓몬스터 Pt 기라티나 (한국어)",
       "fileCount": 339,
-      "messageBanks": 714
+      "messageBanks": 714,
+      "marts": {
+        "common": "0xEC584",
+        "specialty": "0x1019F8"
+      }
     },
     {
       "gameCode": "CPUJ",
       "locale": "ja",
       "label": "ポケットモンスター プラチナ (일본어)",
       "fileCount": 339,
-      "messageBanks": 709
+      "messageBanks": 709,
+      "marts": {
+        "common": "0xEB18C",
+        "specialty": "0xFFF10"
+      }
     }
-  ]
+  ],
+  "arm9Note": "ARM9 정적 바이너리 안의 표 자리 (ARM9 시작 기준 상대, 16진 문자열). 재고 자체는 여기 없다 — 자리와 개수만 적는다. 사용자의 롬에서 읽는 데 필요한 최소 locator다. 파일 오프셋은 arm9RomOffset(헤더 0x20)을 더해 구한다. 실측 확인: public/data/marts.json과 일반 19줄·지역 20곳이 셋 다 일치.",
+  "martCounts": {
+    "common": 19,
+    "specialty": 20
+  }
 }

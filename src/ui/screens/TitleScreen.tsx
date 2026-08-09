@@ -158,7 +158,7 @@ export function TitleScreen() {
     { key: 'options', label: '설정', go: () => { useMenuStore.getState().open('options') } },
     // ⚠️ **아직 완성되지 않은 것을 완성된 것처럼 두지 않는다.** 변환 그룹이
     // 하나만 옮겨져 있어서, 여기서 설치를 끝내도 게임은 시작되지 않는다
-    { key: 'import', label: '에셋 설치 (구현 전)', go: () => { setImporting(true) } },
+    { key: 'import', label: '에셋 설치', go: () => { setImporting(true) } },
   ]
 
   const [cursor, setCursor] = useState(0)

@@ -21,7 +21,8 @@ import { useEffect, useState } from 'react'
 import { loadUiText, OPTIONS_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import {
-  useGameLocale, useOptionsStore, type BattlePace, type BattleRule, type BattleScene,
+  availableLanguages, LANGUAGE_NAMES, LANGUAGES, useGameLocale, useOptionsStore,
+  type BattlePace, type BattleRule, type BattleScene,
   type Language, type Options, type SoundMode, type TextSpeed, type ViewMode,
 } from '../../state/optionsStore'
 import { APP_ROOT } from '../../data/assetBase'
@@ -70,6 +71,10 @@ export function OptionsScreen() {
    * 자리는 `LANGUAGES`의 차례와 같다 — 한국어 · 영어 · 일본어
    */
   const our = <T,>(ko: T, en: T, ja: T): T => [ko, en, ja][options.language] ?? ko
+
+  // 설치된 언어와 지금 언어. 화면과 `move`가 같은 목록을 봐야 한다
+  const langs = availableLanguages()
+  const here = LANGUAGES[options.language] ?? langs[0]!
 
   const rows: Row[] = [
     {
@@ -124,8 +129,12 @@ export function OptionsScreen() {
       // 우리가 옮긴 말이 아니라 그 나라 롬에 찍힌 글이다. 그래서 이름·기술·설명까지
       // 통째로 바뀐다 — 화면 글만 갈아 끼우는 것이 아니다.
       //
-      // 값은 어느 언어에서나 같다. 언어 이름은 그 언어로 적는 것이 맞다
-      values: ['한국어', 'English', '日本語'], at: options.language,
+      // 언어 이름은 그 언어로 적는 것이 맞다 — 어느 언어에서나 같다.
+      // ⚠️ **설치된 것만 보여 준다.** 개발판은 세 벌이 다 있지만 공개판은
+      // 사용자가 고른 롬 하나에서 나온 언어뿐이다 (optionsStore의
+      // `setAvailableLocales`). 안 그러면 고를 수는 있는데 글이 전부 비는
+      // 칸이 생긴다
+      values: langs.map((l) => LANGUAGE_NAMES[l]), at: Math.max(0, langs.indexOf(here)),
       help: our(
         '이름도 기술도 설명도 그 나라 롬의 글로 바뀝니다\n지금 서 있는 맵의 대사까지 곧바로 바뀝니다',
         'Names, moves and descriptions all come from that ROM.\nEven the dialogue of the map you stand on switches at once.',
@@ -148,8 +157,11 @@ export function OptionsScreen() {
   const move = (delta: number): void => {
     if (!row || row.key === 'reset' || row.values.length === 0) return
     const next = wrapCursor(row.at, delta, row.values.length)
+    // 언어 칸의 자리는 **설치된 목록 안의 자리**다. 저장하는 값은
+    // `LANGUAGES` 기준 번호라 되돌려 준다
+    const value = row.key === 'language' ? LANGUAGES.indexOf(langs[next]!) : next
     options.set(row.key,
-      next as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
+      value as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
   }
 
   useMenuKeys({

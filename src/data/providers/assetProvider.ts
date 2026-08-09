@@ -70,7 +70,40 @@ export function assets(): AssetProvider {
   return current
 }
 
-/** 갈아 끼운다. `null`이면 기본(개발 HTTP)으로 돌아간다 */
+/**
+ * 갈아 끼울 때 옛 Provider에 묶인 것을 놓는 쪽.
+ *
+ * ⚠️ **provider에 묶인 상태를 들고 있는 모듈은 전부 여기 등록해야 한다.**
+ * 아틀라스 주소, 파싱된 게임 자료, 로더 캐시가 그렇다. 등록을 빠뜨리면
+ * 갈아 끼운 뒤에도 옛 것을 계속 쓰거나, 옛 Provider가 만든 Blob URL을
+ * **새 Provider에게 놓아 달라고** 하게 된다 — 그러면 아무 일도 안 일어나고
+ * 그 URL은 문서가 닫힐 때까지 남는다
+ */
+type SwapHook = (leaving: AssetProvider) => void
+const swapHooks = new Set<SwapHook>()
+
+/** 모듈이 자기 캐시를 비우는 길을 등록한다. 모듈이 읽히는 순간 부른다 */
+export function onProviderSwap(hook: SwapHook): void {
+  swapHooks.add(hook)
+}
+
+/** `releaseAll()`을 가진 Provider인가 */
+function canReleaseAll(p: AssetProvider): p is AssetProvider & { releaseAll(): void } {
+  return typeof (p as { releaseAll?: unknown }).releaseAll === 'function'
+}
+
+/**
+ * 갈아 끼운다. `null`이면 기본(개발 HTTP)으로 돌아간다.
+ *
+ * ⚠️ **순서가 전부다.** 새 것을 먼저 꽂으면, 옛 것이 만든 주소를 놓아 달라는
+ * 요청이 새 것에게 간다. 새 것은 그런 주소를 모르므로 조용히 아무것도 안 하고
+ * 옛 Blob들은 문서가 닫힐 때까지 산다. 그래서 **놓기 → 거두기 → 꽂기**다
+ */
 export function setAssetProvider(provider: AssetProvider | null): void {
+  const leaving = current
+  if (leaving && leaving !== provider) {
+    for (const hook of swapHooks) hook(leaving)
+    if (canReleaseAll(leaving)) leaving.releaseAll()
+  }
   current = provider
 }

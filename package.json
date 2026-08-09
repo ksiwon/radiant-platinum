@@ -1,7 +1,7 @@
 {
   "name": "pokemon-radiant-platinum",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -21,8 +21,7 @@
     "extract:bike": "py -3.13 tools/extract/bdspGlb.py raw/bdsp/Characters/objects/ob1003_00 -o public/models/bike.glb --max-texture 256 --no-clips",
     "extract:motionTiming": "py -3.13 tools/extract/bdspMotionTiming.py",
     "assets:manifest": "node tools/assets/manifest.mjs",
-    "assets:check": "node tools/assets/pull.mjs --check",
-    "assets:pull": "node tools/assets/pull.mjs",
+    "assets:check": "node tools/assets/manifest.mjs --check",
     "shot": "node tools/shot/shot.mjs",
     "check": "pnpm typecheck && pnpm lint && pnpm test:strict",
     "spike:extract": "node tools/spike/extract.js",
@@ -57,10 +56,14 @@
     "extract:spawns": "node tools/extract/spawns.js",
     "extract:npcModels": "node --experimental-strip-types tools/extract/npcModels.mjs",
     "extract:marts": "node tools/extract/marts.js",
-    "extract:sndTables": "node tools/extract/sndTables.js"
+    "extract:sndTables": "node tools/extract/sndTables.js",
+    "release:check": "node tools/distribution/check.mjs --stage=post --release",
+    "provenance": "node tools/distribution/reportProvenance.mjs",
+    "verify:deploy": "node tools/distribution/verifyDeploy.mjs",
+    "audit:history": "node tools/distribution/auditHistory.mjs",
+    "check:worker": "node tools/shot/workerCheck.mjs"
   },
   "dependencies": {
-    "@pkmn/data": "^0.10.11",
     "@pkmn/protocol": "^0.7.3",
     "@pkmn/sim": "^0.10.11",
     "@react-three/fiber": "^9.0.0",
@@ -76,6 +79,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@pkmn/data": "^0.10.11",
     "@types/node": "^26.1.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

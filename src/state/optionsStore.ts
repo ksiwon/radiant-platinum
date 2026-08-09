@@ -38,6 +38,40 @@ export type Language = 0 | 1 | 2
  */
 export const LANGUAGES: readonly DataLocale[] = ['ko', 'en', 'ja']
 
+/** 언어 이름은 그 언어로 적는다. 어느 화면에서나 같다 */
+export const LANGUAGE_NAMES: Readonly<Record<DataLocale, string>> = {
+  ko: '한국어', en: 'English', ja: '日本語',
+}
+
+/**
+ * 지금 **실제로 설치된** 언어.
+ *
+ * ⚠️ 개발판은 세 벌이 다 있어서 `LANGUAGES` 그대로다. 공개판은 사용자가 고른
+ * 롬 하나에서 나온 언어뿐이다 — 설치 매니페스트가 정한다 (`app/boot.ts`).
+ * 이 구별이 없으면 한국어 롬만 넣은 사람에게 영어·일본어 칸이 보이고,
+ * 고르면 글이 통째로 빈다
+ */
+let installed: readonly DataLocale[] = LANGUAGES
+
+export function availableLanguages(): readonly DataLocale[] {
+  return installed
+}
+
+/** 설치 매니페스트가 부른다. 모르는 코드는 버린다 */
+export function setAvailableLocales(locales: readonly string[]): void {
+  const known = locales.filter((l): l is DataLocale => (LANGUAGES as readonly string[]).includes(l))
+  // 하나도 못 알아들으면 그대로 둔다 — 언어를 0개로 만들면 화면이 아무것도 못 고른다
+  installed = known.length > 0 ? known : LANGUAGES
+  // ⚠️ 지금 고른 언어가 설치 목록에 없으면 첫 번째로 되돌린다. 안 그러면
+  // "영어"가 선택된 채로 글이 전부 빈다
+  const state = useOptionsStore.getState()
+  const now = LANGUAGES[state.language]
+  if (now !== undefined && !installed.includes(now)) {
+    const first = LANGUAGES.indexOf(installed[0]!)
+    if (first >= 0) state.set('language', first as Language)
+  }
+}
+
 export interface Options {
   speed: TextSpeed
   battleScene: BattleScene

@@ -116,6 +116,7 @@ export function withDecomp(...files: readonly string[]): SuiteFn {
 
 interface RawSources {
   platinumRom(locale: string): string | null
+  sourceDir(key: string): string | null
   describeSources(): [string, string][]
 }
 
@@ -131,6 +132,36 @@ const rawSources = createRequire(import.meta.url)('../../tools/raw/sources.cjs')
 /** 그 지역판 롬. 이 기계에 없으면 null (파일 이름이 아니라 헤더로 찾는다) */
 export function romPath(locale: string): string | null {
   return rawSources.platinumRom(locale)
+}
+
+/**
+ * BDSP 원본 폴더. 이 기계에 없으면 null.
+ *
+ * ⚠️ **번들을 커밋하지 않는다** (COPYRIGHT.md §5). BDSP spike는 이것이 있는
+ * 기계에서만 진짜 번들을 열고, 없는 곳에서는 합성 fixture로만 돈다
+ */
+export function bdspDir(name: string): string | null {
+  return rawSources.sourceDir(`bdsp.${name}`)
+}
+
+/**
+ * 리포에 없는 **아무 로컬 파일**이 다 있을 때만 도는 `describe`.
+ *
+ * `withData`·`withModels`처럼 나무가 정해진 것이 아니라, BDSP 번들 하나나
+ * 로컬 목차처럼 자리가 제각각인 것들을 위한 갈래다. `describe.skip`을 손으로
+ * 적으면 `PT_REQUIRE_DATA`가 그 파일을 못 본다 — 그래서 여기로 모은다
+ */
+export function withLocal(label: string, ...files: readonly (string | null)[]): SuiteFn {
+  const missing = files.filter((f) => f === null || !existsSync(f))
+  if (missing.length === 0) return describe
+  if (requireData()) {
+    throw new Error(
+      `${label}: 있어야 할 것이 없다\n`
+      + `  ${files.map((f) => f ?? '(자리를 못 찾았다)').join('\n  ')}`,
+    )
+  }
+  skipped.push(label)
+  return describe.skip
 }
 
 /**

@@ -3,9 +3,18 @@
 > 상태: **일부 구현** (2026-08-10). 이 문서는 공개 배포판이 도달해야 할 계약이며,
 > §14 완료 조건을 통과하기 전 현재 빌드를 공개판으로 간주하지 않는다.
 >
-> ⚠️ **지금 막혀 있는 것은 변환이다.** 경계·리포트·Provider·설치 골격은 섰지만
-> Platinum 변환은 그룹 아홉 중 하나만 옮겨졌고 BDSP 변환은 스파이크조차 없다.
-> 무엇이 왜 막혔는지는 `src/import/platinum/convert.ts`의 `GROUPS` 표에 있다.
+> ⚠️ **지금 막혀 있는 것은 변환이다.** 경계·리포트·Provider·부팅·Worker·설치·
+> 무결성 검증은 섰지만 Platinum 변환은 그룹 아홉 중 **둘**(`moves`·`marts`)만
+> 옮겨졌고, BDSP 변환은 **컨테이너까지만** 된다 — UnityFS를 열어 안에 무엇이
+> 몇 개 있는지 세는 데까지고(UnityPy와 208개 일치) 정점도 픽셀도 아직 안 읽는다.
+> 무엇이 왜 막혔는지는 `src/import/platinum/convert.ts`의 `GROUPS` 표와
+> `src/import/bdsp/unityfs.ts`의 `SPIKE_BLOCKERS`에 있다.
+>
+> ⚠️ **그래서 공개판은 아직 `ready`에 도달할 수 없다.** 필수 그룹
+> (`src/import/install/required.ts`)이 열둘인데 둘만 만들 수 있다. 설치를 끝내도
+> 상태는 `partial`이고, `partial`로는 게임이 안 열린다 — 그것이 설계다.
+>
+> 공개 배포를 막고 있는 것 전체는 [DEPLOY.md](DEPLOY.md) §1.
 >
 > 정책 경계는 [COPYRIGHT.md](COPYRIGHT.md), 포맷은 [DATA.md](DATA.md),
 > 작업 순서는 [PLAN.md](PLAN.md)를 따른다.
@@ -413,11 +422,17 @@ checksum은 우발적 손상을 찾는 장치이지 보안 서명이 아니다. 
 | 단일 삭제 경로 | ✅ 지우기 전에 `.rpsave`와 IndexedDB 백업 슬롯 둘 다 | — |
 | 대용량 메모리 | ✅ `Blob.slice()`. 크기로 걸러지는 파일은 **한 조각도 안 읽는다** | 변환 그룹이 늘면 그룹별 해제를 다시 잰다 |
 | 중단 복구 | ✅ 저널 + 임시 파일 + 검증 후 commit + 재개. **저널만 믿지 않고 실제 파일과 대조한다** | — |
-| 3개 언어 가정 | ⚠️ 설치 manifest는 `availableLocales`를 하나만 담는다. 게임 UI는 아직 고정 배열이다 | 화면이 manifest를 읽게 한다 |
-| **Python BDSP 변환** | ❌ UnityPy·NumPy·Pillow·일부 Blender 의존. **대체가 없다** | 브라우저 TS/WASM 동등 변환과 parity test |
-| **Platinum 변환 이식** | ⚠️ 그룹 아홉 중 하나(`moves`)만. 노드 산출물과 바이트로 같다 | 나머지 여덟. 표가 곧 남은 일이다 |
-| **decomp 의존 추출** | ❌ `scripts`는 명령 폭·scriptID 표를, `marts`는 재고 전체를 `raw/decomp`에서 읽는다 — 상점 재고는 **롬에 없다** | ROM 자체 파싱 또는 배포 가능한 최소 호환성 메타데이터의 법적·기술적 분리 |
-| 무전송 검증 | ❌ Network 패널 검사와 새 프로필 왕복 E2E가 없다 | §14 완료 조건 |
+| 3개 언어 가정 | ✅ `availableLanguages()`가 설치 manifest에서 온다. 없는 언어를 고른 상태면 첫 번째로 되돌린다 | — |
+| 부팅 배선 | ✅ 개발=HTTP · 공개+ready=OPFS · 공개+미설치=**설치 화면**. 미설치에서 HTTP로 안 되돌아간다 | — |
+| 부분 설치 | ✅ `installing`/`partial`/`ready` 분리. 필수 그룹이 다 있어야 `ready`다 | — |
+| 파일 무결성 | ✅ 파일마다 길이 + SHA-256. 재개가 깨진 그룹만 다시 만든다 | — |
+| Import Worker | ✅ 실제 module Worker. `File`이 아니라 `Blob`을 넘기고, 산출물은 transferable | — |
+| **Platinum 변환 이식** | ⚠️ 그룹 아홉 중 **둘**(`moves`·`marts`). 셋 다 노드 산출물과 바이트로 같다 | 나머지 일곱 |
+| **decomp 의존 추출** | ⚠️ `scripts`만 남았다 (명령 폭·scriptID 표). `marts`는 ARM9에서 직접 읽는다 | `scripts`를 롬 파싱으로 |
+| **BDSP 변환** | ⚠️ 컨테이너까지. UnityFS·LZ4·SerializedFile 오브젝트 표가 UnityPy와 208개 일치. **정점도 픽셀도 아직 안 읽는다** | 타입 트리 해석 · 텍스처 디코딩 · GLB 쓰기 (`SPIKE_BLOCKERS`) |
+| 번들 안의 제3자 데이터 | ❌ `battle-sim` 청크 6.55MB 중 8,673kB가 `@pkmn/sim` 정적 게임 데이터 | DEPLOY.md §4. **미해결 release blocker** |
+| CSP | ⚠️ 정본과 meta 태그는 있다. **응답 헤더를 실제 호스트에서 잰 적이 없다** | `pnpm verify:deploy <url>` |
+| 무전송 검증 | ⚠️ 단위 시험은 "미설치 부팅에서 `fetch` 0회"를 잰다. 실제 브라우저 Network 검사는 아직 | §14 완료 조건 |
 
 ---
 
@@ -431,16 +446,23 @@ checksum은 우발적 손상을 찾는 장치이지 보안 서명이 아니다. 
    DevAssetProvider가 기존 게임의 동작을 그대로 보존한다.
 4. ⚠️ **raw source adapter**: 경로 매핑은 끝났다. **출력은 아직 `public/` 안이다** —
    배포물로는 안 나가지만 목표는 `raw/dev-assets`다. 기존 raw 파일은 한 개도 안 옮겼다.
-5. ⚠️ **Platinum 변환**: 입력 검증과 단일 설치 언어는 끝났고, 변환은 `moves` 하나가
-   노드 산출물과 바이트로 같다. 나머지 여덟이 남았다.
+5. ⚠️ **Platinum 변환**: 입력 검증·단일 설치 언어·Worker는 끝났고, 변환은
+   `moves`와 `marts`가 노드 산출물과 바이트로 같다. 나머지 일곱이 남았다.
 6. ✅ **BDSP 디렉터리 스캐너**: 상위 폴더 자동 탐색, 그룹 다섯 검증, 표본 종, 누락 진단.
-7. ❌ **BDSP 브라우저 변환**: 캐릭터 → 대표 포켓몬 → 무대 → 전량 순으로 TS/WASM
-   변환기를 늘리고 Python 결과와 비교한다. **최우선 기술 게이트다.**
-8. ✅ **OPFS installer**: quota, persist, journal, 원자적 commit, 재개, 삭제 분리.
-9. ⚠️ **Import Wizard**: 단계 UI는 돈다. 변환이 하나뿐이라 화면 첫 줄에
-   "구현 전"이라고 적어 둔다.
-10. ❌ **PWA·개인정보 검증**: 앱 셸만 offline, 네트워크 무전송, 지원 브라우저 E2E,
-    새 설치·중단 재개·업데이트·세이브 왕복.
+7. ⚠️ **BDSP 브라우저 변환**: spike가 컨테이너까지 갔다 — UnityFS 헤더·LZ4·블록·
+   디렉터리·SerializedFile 오브젝트 표. 실측으로 UnityPy와 오브젝트 208개와 클래스별
+   개수가 **정확히 같다**. 그 위(타입 트리 해석 · 텍스처 디코딩 · GLB 쓰기)는
+   `SPIKE_BLOCKERS`에 무엇이 왜 막혔는지와 다음 선택지를 적어 두었다.
+   **최우선 기술 게이트다.**
+8. ✅ **OPFS installer**: quota, persist, journal, 원자적 commit, 재개, 삭제 분리,
+   파일별 길이·SHA-256 검증, `partial`/`ready` 구분.
+9. ⚠️ **Import Wizard**: 단계 UI가 Worker로 돈다. 설치 시작 조건에 Platinum·BDSP·
+   저장 공간·브라우저 지원이 모두 걸린다. 필수 그룹이 모자라 아직 `partial`까지고,
+   화면 첫 줄이 그 사실을 적는다.
+10. ⚠️ **부팅 배선**: 개발=HTTP · 공개+ready=OPFS · 공개+미설치=설치 화면.
+    설치 직후 reload 없이 갈아 끼우고, 다시 켜도 복구된다.
+11. ❌ **PWA·개인정보 검증**: 실제 브라우저 Network 무전송 검사, 지원 브라우저 E2E,
+    새 프로필 세이브 왕복, 배포 URL CSP 응답 헤더.
 
 2~4가 끝나기 전에 브라우저 추출 UI부터 만들지 않는다. 저장·로더 경계가 없으면
 Importer가 만든 결과를 기존 게임이 소비할 수 없고, 실패 중 리포트를 잃을 수 있다.

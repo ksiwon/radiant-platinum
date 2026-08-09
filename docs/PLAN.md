@@ -503,9 +503,10 @@ interface AssetProvider {
   있는 것은 휴대용 리포트 `.rpsave`뿐이다.
 - 전체 설치·사용자 안내·중단 복구 계약은 [IMPORT.md](IMPORT.md)가 정본이다.
 
-현재 `assets-manifest.json`, `assets:pull`, `VITE_ASSET_BASE`는 전환 전 개발
-장치다. 공개 CDN 설계로 재사용하지 않고, 새 프로덕션 빌드에서는 외부 에셋 오리진
-설정 자체를 금지한다.
+`assets:pull`·`PT_ASSET_ORIGIN`·`VITE_ASSET_BASE`는 **없앴다** — 서버가 원본 유래
+산출물을 내려 주는 경로 자체가 공개 모델과 어긋난다. `VITE_ASSET_BASE`가 설정돼
+있으면 `boundary:pre`가 선다. 에셋 목차는 `raw/work/assets-manifest.local.json`
+으로 옮겨 **로컬 개발 전용**이 됐다 (COPYRIGHT.md §5·§9).
 
 ### 4.2 추출 대상과 전략
 
@@ -1851,22 +1852,33 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 | `AssetProvider` + Dev 경로 보존 | ✅ 소비자 열아홉 곳 전환 · 두 구현이 같은 계약 시험을 지난다 |
 | raw 원천 어댑터 | ✅ 파일 이름이 아니라 헤더의 게임 코드로 찾는다. **파일은 안 옮겼다** |
 | Platinum 입력 검증 | ✅ 크기·헤더·FNT/FAT 범위·지역판 지문·표본 NARC. 진짜 롬 셋으로 확인 |
-| Platinum 브라우저 변환 | ⚠️ **그룹 아홉 중 하나**(`moves`)만 옮겼다. 노드 산출물과 바이트로 같다 |
+| Platinum 브라우저 변환 | ⚠️ **그룹 아홉 중 둘**(`moves`·`marts`). 셋 다 노드 산출물과 바이트로 같다 |
+| Import Worker | ✅ 진짜 module Worker. `Blob`만 넘기고 산출물은 transferable · 취소 · job 번호 |
+| 부팅 배선 | ✅ 개발=HTTP · 공개+ready=OPFS · 공개+미설치=설치 화면(**HTTP로 안 돌아간다**) |
+| 설치 상태 구분 | ✅ `installing`/`partial`/`ready`. 필수 그룹 열둘이 다 있어야 `ready` |
+| 파일 무결성 | ✅ 파일마다 길이 + SHA-256. 재개가 깨진 그룹만 다시 만든다 |
+| 언어 목록 | ✅ 설치 manifest에서 온다. 없는 언어를 고른 상태면 되돌린다 |
 | BDSP 폴더 검증 | ✅ `AssetAssistant` 자동 탐색 · 그룹 다섯 · 표본 종 |
-| BDSP TS/WASM 변환 | ❌ UnityPy 대체가 없다. 최우선 기술 게이트 (§14) |
+| BDSP TS/WASM 변환 | ⚠️ **컨테이너까지.** UnityFS·LZ4·SerializedFile이 UnityPy와 208개 일치. 정점·픽셀은 아직 |
 | OPFS 설치·저널·재개 | ✅ quota·persist·임시 파일·검증 후 commit·재개·에셋/리포트 분리 |
-| Import Wizard | ⚠️ 단계 UI는 돌지만 변환이 하나뿐이라 **"구현 전"으로 표시**한다 |
-| 무전송 E2E | ❌ Network 패널 검사와 새 프로필 왕복이 아직 없다 |
+| Import Wizard | ⚠️ Worker로 돈다. 필수 그룹이 모자라 **아직 `partial`까지**라고 화면이 적는다 |
+| 번들 출처 검사 | ✅ 청크별 모듈 출처. ❌ 그 검사가 찾아낸 8,673kB는 미해결 (DEPLOY.md §4) |
+| CSP | ⚠️ 정본·meta는 있다. **응답 헤더를 실제 호스트에서 잰 적이 없다** |
+| Git 히스토리 감사 | ✅ 읽기 전용으로 실측. ❌ 다시 쓰기는 승인 대기 (COPYRIGHT.md §9) |
+| 무전송 E2E | ⚠️ 단위 시험은 "미설치 부팅 `fetch` 0회". 실제 브라우저 검사는 아직 |
 
 ⚠️ **변환 그룹 표가 곧 남은 일이다** (`src/import/platinum/convert.ts`의 `GROUPS`).
 막힌 그룹마다 왜 막혔는지가 그 표에 있고, 시험이 그 이유가 비어 있지 않은지 센다.
-그중 둘은 기술이 아니라 **정책** 문제다:
 
-- `scripts` — 명령 폭 표와 scriptID 표를 `raw/decomp`에서 뽑는다
-- `marts` — 상점 재고가 **롬에 없다**. 디컴프 헤더에만 있다 (DATA.md §2.13)
+한때 그중 둘을 "정책 문제"로 적었는데 하나는 사실이 틀렸다:
 
-사용자의 롬 두 입력만으로는 이 둘을 만들 수 없다. 롬 자체 파싱으로 바꾸거나
-배포 가능한 최소 호환성 메타데이터로 분리해야 한다 (§14).
+- `marts` — **롬에 있다.** ARM9 정적 바이너리 안이고 파일시스템 밖일 뿐이다.
+  세 지역판의 표 자리를 실측해 `supported.json`에 locator로 적었고, 브라우저가
+  사용자의 롬에서 직접 읽는다. 재고 자체는 코드에도 문서에도 안 넣었다 (DATA.md §2.13)
+- `scripts` — 아직 `raw/decomp`의 명령 폭 표와 scriptID 표에 기댄다. 이것도 롬에
+  있는 정보라 파싱으로 옮길 수 있다
+
+남은 정책 문제는 **번들 안의 제3자 게임 데이터** 하나다 (DEPLOY.md §4).
 
 구현 순서는 [IMPORT.md §13](IMPORT.md#13-구현-순서)을 따른다. 특히 리포트
 휴대성과 Provider 경계를 Import UI보다 먼저 만든다.
@@ -1944,9 +1956,13 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 - 테스트 fixture가 프로덕션 청크에 들어가지 않는지 import graph 검사
 - 과거 Git 히스토리는 공개 remote 전에 별도 승인 아래 감사
 
-현재 `assets-manifest.json`과 `tools/assets/pull.mjs`는 기존 로컬 산출물의
-완전성을 확인하는 레거시 도구로만 남긴다. 공개 CDN에서 받는 경로로 사용하지 않는다.
-장기적으로는 Dev/OPFS 논리 계약 매니페스트와 parity fixture로 대체한다.
+`tools/assets/pull.mjs`는 **삭제했다.** 목차 확인은 `pnpm assets:check`가
+`raw/work/assets-manifest.local.json`을 읽어 하고, 어디서도 받아 오지 않는다.
+
+경로·확장자만으로는 **번들 안**을 못 본다. 빌드가 청크별 모듈 출처를
+`.audit/bundle-provenance.json`에 남기고 `pnpm provenance`가 사람이 읽게 찍는다 —
+그 검사가 `battle-sim` 청크의 8,673kB짜리 제3자 게임 데이터를 찾아냈다
+(DEPLOY.md §4). 공개 배포 판정은 `pnpm release:check`가 하고, 아직 통과 못 한다.
 
 ---
 
@@ -2180,13 +2196,18 @@ PNG를 남긴다. 확인 지점 목록은 **돌고 있는 페이지에서 받는
 
 | | 실측 |
 |---|---|
-| 코드 | 65,162줄 · 파일 348개 · 시험 파일 118개 / 시험 1,477개 (`src/**/*.ts{,x}`) |
+| 코드 | 67,400줄 · 파일 365개 · 시험 파일 124개 / 시험 1,556개 (`src/**/*.ts{,x}`) |
 | 화면 | 93.8k ~ 208.4k 삼각형 · 드로우콜 163~283 (`pnpm shot --perf`, 네 자리) |
 | 지형 | 청크 176종, 삼각형 중앙값 1,228 · 최대 2,686 → 창 5×5에 약 30,700 |
 | 나무 | 창 5×5에 3,583~4,003그루 × 252삼각형 (30타일 밖 56) |
 | 소품 | 590종 / 오버월드 배치 501개 |
 | 자산 | 파일 7,086개 · 630.1MB — **포켓몬 3D 404.4**(493종) · **배틀 무대 128.2**(30벌) · NPC 모델 41.6 · 청크 28.4 · 소리 7.5 · 주인공 4.8 · 행렬 3.4 · 대사 3.3 · 자전거 0.6MB (전부 PNG, KTX2 0개) |
-| 배포물 | `dist` 파일 27개 · 11.9MB · 초기 청크 58.1KB (three·sim 없음) |
+| 배포물 | `dist` 파일 29개 · 12.0MB. 첫 화면이 받는 것 437.2KB · **gzip 140.8KB** (예산 150KB) |
+| 번들 출처 | `battle-sim` 청크 6.55MB 중 **8,673kB가 `@pkmn/sim` 정적 게임 데이터** — 미해결 (DEPLOY.md §4) |
+
+⚠️ **첫 화면 140.8KB는 부팅 게이트를 포함한 값이다.** `<App />`을 곧바로 그리던
+때가 133.3KB였으니 `BootGate`+설치 기록 읽기가 7.5KB(gzip)다. 공개판은 부팅할 때
+`install.json`을 읽어야 화면을 고를 수 있으므로 이 비용은 미룰 데가 없다.
 
 ⚠️ **삼각형과 드로우콜은 헤드리스에서 재고, 프레임률은 못 잰다.** 헤드리스
 크롬에는 WebGPU 어댑터가 없어 WebGL2 + SwiftShader(소프트웨어)로 떨어진다 —

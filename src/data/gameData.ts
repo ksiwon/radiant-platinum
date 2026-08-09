@@ -14,7 +14,7 @@ import {
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
   type Species, type Trainer,
 } from './schema'
-import { assets, readJson } from './providers/assetProvider'
+import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
 
 /**
@@ -53,6 +53,9 @@ async function fetchJson<T>(path: string, parse: (v: unknown) => T): Promise<T> 
 export function resetGameDataCache(): void {
   cache.clear()
 }
+
+// 갈아 끼울 때 자동으로. 손으로 부르는 것에 기대면 한 군데를 반드시 빠뜨린다
+onProviderSwap(() => { resetGameDataCache() })
 
 export interface SpeciesTable {
   all: readonly Species[]

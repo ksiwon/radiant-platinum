@@ -25,7 +25,7 @@ import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { worldState } from '../state/worldState'
-import { assets } from '../data/providers/assetProvider'
+import { assets, onProviderSwap } from '../data/providers/assetProvider'
 
 /**
  * 동시에 세우는 모델 수의 상한.
@@ -43,6 +43,9 @@ const MOVING = 0.05
 const scenes = new Map<string, Object3D>()
 const loading = new Set<string>()
 const loader = new GLTFLoader()
+
+// 갈아 끼우면 사람 모델은 옛 설치본 것이다
+onProviderSwap(() => { scenes.clear(); loading.clear() })
 
 /** 한 사람 몫. 모델·리그·래퍼를 함께 들고 있는다 */
 interface Slot {
@@ -138,12 +141,12 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
 function fetchModel(tag: string, done: () => void): void {
   if (loading.has(tag)) return
   loading.add(tag)
-  // ⚠️ Blob URL을 **거두지 않는다.** 한 번 파싱한 장면을 `scenes`에 영원히
-  // 들고 있으므로 같은 주소를 다시 물을 일이 없고, 사람 종류는 470개로 유한하다.
-  // Provider를 갈아 끼울 때 `releaseAll()`이 한 번에 정리한다
+  // ⚠️ **파싱이 끝나면 주소를 놓는다.** 장면은 `scenes`가 들고 있고 원본
+  // 바이트는 더 안 쓴다 — 사람이 470종이라 붙들면 GLB 470벌이 남는다
   const path = `models/npc/${tag}.glb`
-  assets().objectUrl(path)
-    .then((url) => loader.loadAsync(url))
+  const provider = assets()
+  provider.objectUrl(path)
+    .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
     .then((gltf) => { scenes.set(tag, gltf.scene); done() })
     .catch(() => { /* 못 받으면 그 사람은 판때기로 남는다 */ })
     .finally(() => { loading.delete(tag) })

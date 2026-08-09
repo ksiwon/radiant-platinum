@@ -21,7 +21,8 @@ const nameIn = (dir, ...heads) => (p) =>
 /**
  * 앞에서부터 먼저 맞는 것이 임자다.
  *
- * `name`은 매니페스트의 열쇠이자 `pnpm assets:pull --group=<name>`의 이름이다.
+ * `name`은 목차의 열쇠다. `make`는 그 그룹을 다시 굽는 명령이고,
+ * 자료가 없을 때 `pnpm assets:check`가 그대로 찍어 준다.
  * `make`는 **그 자리를 다시 채우는 명령**이다 — 버킷이 없을 때 이걸 그대로 찍는다
  */
 export const GROUPS = [

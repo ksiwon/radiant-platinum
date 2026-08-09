@@ -23,6 +23,13 @@ export interface Release {
   label: string
   fileCount: number
   messageBanks: number
+  /**
+   * ARM9 안의 상점 표 자리 (16진 문자열, ARM9 시작 기준 상대).
+   *
+   * **재고가 아니라 자리다.** 물건 목록은 사용자의 롬에서 읽는다
+   * (`marts.ts`)
+   */
+  marts: { common: string; specialty: string }
 }
 
 export const SUPPORTED = table as unknown as {
@@ -32,7 +39,21 @@ export const SUPPORTED = table as unknown as {
   sizeBytes: number
   requiredFiles: string[]
   sampleCounts: Record<string, number>
+  martCounts: { common: number; specialty: number }
   releases: Release[]
+}
+
+/** 16진 문자열 자리를 수로. 못 읽으면 던진다 — 조용히 0이 되면 안 된다 */
+export function martLocator(release: Release): { common: number; specialty: number } {
+  const parse = (s: string, what: string): number => {
+    const n = Number(s)
+    if (!Number.isInteger(n) || n <= 0) throw new Error(`${release.gameCode} ${what} 자리가 이상하다: ${s}`)
+    return n
+  }
+  return {
+    common: parse(release.marts.common, 'common'),
+    specialty: parse(release.marts.specialty, 'specialty'),
+  }
 }
 
 export type ValidationStep =

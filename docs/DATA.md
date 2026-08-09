@@ -39,7 +39,7 @@
 | 이벤트 스크립트 | `fielddata/script/scr_seq.narc` | ✅ **포맷 확정** — 1124개를 디컴프 원본과 바이트 대조 (§2.10) |
 | 대사 | `msgdata/pl_msg.narc` | ✅ 뱅크 450개 — 미국 685개가 디컴프 원문과 완전 일치 (§2.11) |
 | 아이템 | `itemtool/itemdata/pl_item_data.narc` | ✅ 468종 — 디컴프 446개와 필드 대조, 불일치 0 (§2.12) |
-| 상점 재고 | 디컴프 `include/data/mart_items.h` | ✅ 롬이 아니라 코드에 있다 (§2.13) |
+| 상점 재고 | ROM ARM9 정적 바이너리 | ✅ 파일시스템 밖이지만 롬 안이다 (§2.13) |
 | **오버월드 NPC 스프라이트** | `data/mmodel/mmodel.narc` | ✅ 470칸 순서 확정 · 텍스처 이름 396/396 (§2.16) — **필드에 서 있다** |
 | **포켓몬 배틀 그림** | `poketool/pokegra/pl_pokegra.narc` | ✅ 암호 풀림 — 1808/1812 (§2.17). **배틀에 493종이 선다** |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 발밑 높이를 이것이 잡는다 (`engine/map/height`) |
@@ -1520,11 +1520,31 @@ PP맥스). 나머지는 그냥 개수고, 체력도 PP도 넘치는 만큼은 �
 468칸을 24×20 격자로 굽고(768×640, **88.6KB**) 자료 없는 22칸은 `none` 아이콘으로
 채운다. 빈칸을 남기면 잘못 그렸을 때 "원래 빈 칸"과 구분이 안 된다.
 
-### 2.13 상점 재고 — 롬이 아니라 코드에 있다
+### 2.13 상점 재고 — 파일시스템 밖, ARM9 안
 
-상점만은 롬 데이터가 아니다. `Shop_Start(…, shopItems, …)`에 넘기는 배열이
-`include/data/mart_items.h`에 **상수로 박혀 있다.** 그래서 `tools/extract/marts.js`는
-롬이 아니라 디컴프 헤더를 읽는다.
+상점 재고는 NARC에 없다. `Shop_Start(…, shopItems, …)`에 넘기는 배열이 **코드에
+박힌 표**라서 FNT에도 FAT에도 이름이 없다.
+
+⚠️ **그것을 “롬에 없다”고 적어 두었던 것은 틀렸다.** 코드에 박혀 있다는 말은
+**ARM9 정적 바이너리 안에 있다**는 뜻이지 롬 밖이라는 뜻이 아니다. 헤더의
+`arm9RomOffset`(0x20)·`arm9RamAddress`(0x28)·`arm9Size`(0x2c)로 찾아가면 그대로 있다.
+
+| gameCode | 언어 | 일반 표 | 지역 포인터 표 |
+|---|---|---:|---:|
+| `CPUE` | en | `0xEBAFC` | `0x100B1C` |
+| `CPUK` | ko | `0xEC584` | `0x1019F8` |
+| `CPUJ` | ja | `0xEB18C` | `0xFFF10` |
+
+자리는 **ARM9 시작 기준 상대**다. 파일 오프셋은 `arm9RomOffset`(셋 다 실측 0x4000)을
+더해 구한다. RAM 주소도 셋 다 0x02000000이었지만 값을 박지 않고 헤더에서 읽는다.
+
+- 일반 표: `{ u16 아이템, u16 계단 }` × 19
+- 지역 표: little-endian u32 ARM 포인터 × 20 → 파일 자리는
+  `arm9RomOffset + (포인터 − arm9RamAddress)`. 각 배열은 u16을 `0xFFFF`까지 읽는다
+
+브라우저 쪽 구현은 `src/import/platinum/marts.ts`고, 세 지역판 모두 노드 산출물
+(`public/data/marts.json`)과 **바이트로 같다**. 노드 추출기(`tools/extract/marts.js`)는
+아직 디컴프 헤더를 읽는다 — 같은 값을 내는 오라클로 남겨 둔 것이다.
 
 포켓몬센터 옆 상점(`PokeMartCommon`)은 재고가 뱃지 수로 늘어난다. 표에 적힌
 `requiredBadges`는 **뱃지 개수가 아니라 계단 번호**고, 그 계단은

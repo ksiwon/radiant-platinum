@@ -18,7 +18,7 @@ import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import {
   artDir, cameraQuadrant, frameOf, npcSprite, TEXELS_PER_TILE, type NpcSprite,
 } from '../engine/actor/sprites'
-import { assets } from '../data/providers/assetProvider'
+import { assets, onProviderSwap } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 
 /** 한 맵에 동시에 세우는 최대 인원. 넘치는 사람은 안 그린다 */
@@ -38,15 +38,26 @@ const IDLE_TICK = 0
 const loader = new TextureLoader()
 const textures = new Map<number, Texture>()
 
+// 갈아 끼우면 사람 그림은 옛 설치본 것이다. 텍스처도 함께 버린다
+onProviderSwap(() => {
+  for (const tex of textures.values()) tex.dispose()
+  textures.clear()
+})
+
 function textureFor(gfx: number): Texture {
   const had = textures.get(gfx)
   if (had !== undefined) return had
   // ⚠️ 빈 텍스처를 먼저 돌려주고 주소가 오면 채운다. `textureFor`는 매 프레임
   // 도는 자리라 비동기로 바꿀 수 없다 — 대신 그림이 늦게 오면 `needsUpdate`로
-  // 한 번 더 올린다. 사람 종류는 470개로 유한하고 세션 내내 사니 안 거둔다
+  // 한 번 더 올린다.
+  //
+  // ⚠️ **다 읽으면 주소를 놓는다.** 그림은 `textures`가 들고 있고 Blob 원본은
+  // 더 안 쓴다. 사람이 470종이라 붙들면 그만큼 남는다
   const tex = new Texture()
-  void assets().objectUrl(`data/npc/${String(gfx)}.png`)
-    .then((url) => loader.loadAsync(url))
+  const path = `data/npc/${String(gfx)}.png`
+  const provider = assets()
+  void provider.objectUrl(path)
+    .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
     .then((loaded) => {
       tex.image = loaded.image as TexImageSource
       tex.needsUpdate = true

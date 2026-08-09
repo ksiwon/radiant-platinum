@@ -1,23 +1,43 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { vanillaExtractPlugin } from '@vanilla-extract/vite-plugin'
 // @ts-expect-error — tools/는 타입 검사 밖의 순수 JS다 (tsconfig include: src)
 import { collectShell } from './tools/distribution/appShell.mjs'
+// @ts-expect-error — 같은 이유
+import { collectProvenance } from './tools/distribution/provenance.mjs'
+// @ts-expect-error — 같은 이유
+import { cspMeta } from './tools/distribution/csp.mjs'
 
 const PUBLIC_DIR = resolve(import.meta.dirname, 'public')
+const AUDIT_DIR = resolve(import.meta.dirname, '.audit')
 
 /**
  * 앱 빌드 번호. 휴대용 리포트 봉투가 이걸 적는다 (`state/save/contract.ts`).
  *
+ * ⚠️ **`0.0.0`으로 나가면 안 된다.** `package.json`의 version이 `0.0.0`이던
+ * 동안 모든 `.rpsave`가 같은 값을 달고 나왔고, 그러면 "어느 판이 쓴 파일인가"를
+ * 물을 수가 없다 — 적어 둔 자리가 있는데 아무것도 안 적힌 것과 같다.
+ *
+ * 뒤에 표식을 붙여 **로컬과 릴리스를 가른다.** CI가 커밋 해시를 주면 그것을,
+ * 없으면 `dev`를 쓴다. `git`이 없는 clone에서도 빌드는 돼야 하므로 실패는
+ * `dev`로 떨어진다.
+ *
  * ⚠️ `package.json`을 런타임에 import 하면 그 파일이 통째로 번들에 실린다 —
  * 스크립트 60줄과 의존성 목록까지. 값 하나만 박아 넣는다
  */
-const APP_BUILD: string = (
-  JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as
-    { version?: string }
-).version ?? '0.0.0'
+function appBuild(): string {
+  const version = (
+    JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as
+      { version?: string }
+  ).version ?? '0.0.0'
+  const ci = process.env.GITHUB_SHA ?? process.env.CI_COMMIT_SHA ?? process.env.APP_BUILD_ID
+  if (ci?.trim()) return `${version}+${ci.trim().slice(0, 7)}`
+  return `${version}+dev`
+}
+
+const APP_BUILD: string = appBuild()
 
 /**
  * `public/`에서 **앱 셸만** 배포물로 옮긴다 (COPYRIGHT.md §6).
@@ -49,8 +69,52 @@ function appShellOnly(): Plugin {
   }
 }
 
+/**
+ * 청크마다 무엇이 들어갔는지 적어 둔다 (COPYRIGHT.md §6 · DEPLOY.md §4).
+ *
+ * ⚠️ **경로·확장자 검사는 번들 안을 못 본다.** `dist/assets/battle-sim-*.js`는
+ * 이름도 `.js`, 자리도 `assets/`라 모든 규칙을 통과하는데 실제로는 6.5MB이고
+ * 대부분이 `@pkmn/sim`의 종족·기술·습득기술 표다. 그것을 발견한 것이 이 보고서다.
+ *
+ * 결과는 `.audit/`에 남긴다 — **`dist/`가 아니다.** 배포물이 아니라 감사 기록이고,
+ * 모듈 경로에 개발 기계의 절대 경로가 들어가므로 내보낼 것도 아니다
+ */
+function bundleProvenance(): Plugin {
+  return {
+    name: 'radiant-bundle-provenance',
+    apply: 'build',
+    writeBundle(_options, bundle) {
+      const report = collectProvenance(bundle) as unknown
+      mkdirSync(AUDIT_DIR, { recursive: true })
+      writeFileSync(
+        resolve(AUDIT_DIR, 'bundle-provenance.json'),
+        `${JSON.stringify(report, null, 1)}\n`,
+      )
+    },
+  }
+}
+
+/**
+ * CSP를 `<meta http-equiv>`로도 넣는다 (DEPLOY.md §3).
+ *
+ * ⚠️ **이것으로 CSP가 있다고 세지 않는다.** meta는 `frame-ancestors`를 무시하고,
+ * 태그를 파싱하기 전에 시작된 요청도 못 막는다. 정본은 호스트 응답 헤더고
+ * `verifyDeploy.mjs`가 그것을 잰다. 여기 넣는 이유는 헤더가 잘못 설정된 채로
+ * 올라갔을 때 **아무 방어도 없는 것보다는 낫기** 때문이다
+ */
+function cspMetaTag(): Plugin {
+  return {
+    name: 'radiant-csp-meta',
+    apply: 'build',
+    transformIndexHtml(html: string) {
+      const tag = `<meta http-equiv="Content-Security-Policy" content="${cspMeta() as string}" />`
+      return html.replace('<meta charset="UTF-8" />', `<meta charset="UTF-8" />\n    ${tag}`)
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), vanillaExtractPlugin(), appShellOnly()],
+  plugins: [react(), vanillaExtractPlugin(), appShellOnly(), bundleProvenance(), cspMetaTag()],
   define: { __APP_BUILD__: JSON.stringify(APP_BUILD) },
   // 개발 서버에서만 쓴다. 배포 빌드와는 무관하다.
   //
