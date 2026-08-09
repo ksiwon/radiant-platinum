@@ -17,7 +17,7 @@ import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './pokedexScreen.css'
 import { music } from '../../engine/audio/music'
-import { dataUrl } from '../../data/assetBase'
+import { useAssetImage } from '../../data/providers/useAssetUrl'
 
 const PAGE = 8
 
@@ -60,6 +60,9 @@ export function PokedexScreen() {
   const species = order[at] ?? 0
   const seen = dexHas(dex.seen, species)
   const caught = dexHas(dex.caught, species)
+  // 커서를 굴리면 종이 바뀐다 — 짧게 사는 갈래다. 잡은 종만 그림이 뜨지만
+  // 훅은 조건부로 못 부르므로 경로는 늘 만들고, 화면에서 가린다
+  const art = useAssetImage(`data/pokemon/${String(species)}_front.png`)
 
   useMenuKeys({
     up: () => { setCursor((c) => clampCursor(c, -1, order.length)) },
@@ -112,10 +115,10 @@ export function PokedexScreen() {
           {seen ? (
             <>
               {/* 잡은 종만 그림이 뜬다. 본 것은 이름·키·몸무게까지다 */}
-              {caught && (
+              {caught && art !== null && (
                 <img
                   className={own.art}
-                  src={dataUrl(`pokemon/${String(species)}_front.png`)}
+                  src={art}
                   alt=""
                   onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
                 />

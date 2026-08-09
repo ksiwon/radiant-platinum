@@ -15,7 +15,7 @@ import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
 import { HM_CARRIER, HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
 import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
-import { dataUrl } from '../data/assetBase'
+import { assets, readJson } from '../data/providers/assetProvider'
 
 export const devWarp = {
   /** 씬이 처리해야 할 확인 지점. 처리하고 나면 씬이 null로 되돌린다 */
@@ -115,7 +115,7 @@ async function applySetup(cp: Checkpoint): Promise<void> {
  */
 async function markSeenAlongTheWay(cp: Checkpoint): Promise<void> {
   const get = async <T,>(name: string): Promise<T> =>
-    await (await fetch(dataUrl(name))).json() as T
+    await readJson(assets(), `data/${name}`) as T
   try {
     const [mapsFile, encFile] = await Promise.all([
       get<{ maps: { encounters: number | null }[] }>('maps.json'),

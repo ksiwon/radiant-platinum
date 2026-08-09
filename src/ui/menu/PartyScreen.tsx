@@ -26,7 +26,7 @@ import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
-import { dataUrl } from '../../data/assetBase'
+import { useAssetImage } from '../../data/providers/useAssetUrl'
 
 /** 상태 이상 배지. 이름은 `TEXT_BANK_MENU_ENTRIES` 0~4와 같은 낱말이다 */
 const STATUS_LABEL: Record<string, string> = {
@@ -38,7 +38,7 @@ const STAT_LABEL = { hp: 'HP', atk: '공격', def: '방어', spa: '특공', spd:
 /** 배틀 게이지와 같은 색. 두 화면에서 같은 체력이 같은 색이어야 한다 */
 const BAR_COLOR = { green: '#5fd35f', yellow: '#f5c542', red: '#ef5350', empty: '#3a3f4a' }
 
-const SPRITE = dataUrl('pokemon')
+
 
 /** 기술 번호 → 비전머신 이름. 기술 칸에 표시를 붙이는 데 쓴다 */
 const FIELD_BY_MOVE = new Map<number, FieldMoveId>(
@@ -262,6 +262,8 @@ function Card(
     onGrab: () => void
   },
 ) {
+  // 종별 그림은 짧게 산다 — 파티가 바뀌면 다른 종이 된다. 잡았다 놓는 갈래다
+  const art = useAssetImage(`data/pokemon/${String(mon.species)}_front.png`)
   const fainted = mon.hp <= 0
   const ratio = full > 0 ? Math.max(0, Math.min(mon.hp, full)) / full : 0
   const gender = GENDER_MARK[genderOf(mon.pid, genderRatio)]
@@ -275,13 +277,15 @@ function Card(
 
   return (
     <div className={shell} onPointerEnter={onPick} onClick={onGrab}>
-      <img
-        className={lead ? own.portraitLead : own.portrait}
-        src={`${SPRITE}/${String(mon.species)}_front.png`}
-        alt=""
-        // 그림을 못 받아도 카드는 서야 한다. 자리만 비운다
-        onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
-      />
+      {/* 그림을 못 받아도 카드는 서야 한다. 자리만 비운다 */}
+      {art !== null && (
+        <img
+          className={lead ? own.portraitLead : own.portrait}
+          src={art}
+          alt=""
+          onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
+        />
+      )}
       <span className={own.body}>
         <span className={own.nameRow}>
           <span className={own.name}>{name}</span>

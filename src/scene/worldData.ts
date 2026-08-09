@@ -9,19 +9,16 @@ import { heightField, type HeightData } from '../engine/map/height'
 import { world, type AreaData, type EventFile, type MapHeader } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadNpcSprites, type NpcSprite } from '../engine/actor/sprites'
-import { dataUrl } from '../data/assetBase'
+import { assets, readJson } from '../data/providers/assetProvider'
 import type { EncounterTable } from '../engine/battle/encounter'
 
+// 주소를 만들지 않는다 — 공개판에서 이 자료는 OPFS에서 온다 (IMPORT.md §7)
 async function json<T>(path: string): Promise<T> {
-  const r = await fetch(dataUrl(path))
-  if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
-  return r.json() as Promise<T>
+  return await readJson(assets(), `data/${path}`) as T
 }
 
-async function bytes(path: string): Promise<ArrayBuffer> {
-  const r = await fetch(dataUrl(path))
-  if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
-  return r.arrayBuffer()
+function bytes(path: string): Promise<ArrayBuffer> {
+  return assets().bytes(`data/${path}`)
 }
 
 /** 행렬 격자 캐시. 한 번 만든 것은 버리지 않는다 — 실내는 작고 재방문이 잦다 */

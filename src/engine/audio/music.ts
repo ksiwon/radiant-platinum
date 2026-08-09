@@ -7,7 +7,7 @@
 // 브라우저는 사용자가 건드리기 전에는 소리를 못 낸다. 그래서 `resume()`을
 // 먼저 부르는 것이 아니라 **첫 입력 때 깨운다**.
 import { getAudioContext, onAudioUnlock } from './unlock'
-import { dataUrl } from '../../data/assetBase'
+import { assets, readJson } from '../../data/providers/assetProvider'
 import type { RenderReply, RenderRequest } from './renderWorker'
 
 /** 곡 하나를 얼마나 길게 펴 볼 것인가 (초). 도돌이표를 만나면 거기서 멈춘다 */
@@ -150,17 +150,14 @@ export class Music {
   get awake(): boolean { return this.ctx !== null }
 
   private getIndex(): Promise<SoundIndex> {
-    this.index ??= fetch(dataUrl('sound/index.json')).then((r) => r.json() as Promise<SoundIndex>)
+    this.index ??= readJson(assets(), 'data/sound/index.json') as Promise<SoundIndex>
     return this.index
   }
 
   private file(rel: string): Promise<ArrayBuffer> {
     let got = this.files.get(rel)
     if (!got) {
-      got = fetch(dataUrl(`sound/${rel}`)).then((r) => {
-        if (!r.ok) throw new Error(`${rel}을 못 받았다`)
-        return r.arrayBuffer()
-      })
+      got = assets().bytes(`data/sound/${rel}`)
       this.files.set(rel, got)
     }
     return got

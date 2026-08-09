@@ -17,7 +17,7 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
-import { modelUrl } from '../../data/assetBase'
+import { assets, readJson } from '../../data/providers/assetProvider'
 
 /** 한 종의 모델 정보 */
 export interface MonEntry {
@@ -38,8 +38,7 @@ export function posedHeight(entry: MonEntry): number {
 let index: Promise<MonIndex> | null = null
 
 export function loadMonIndex(): Promise<MonIndex> {
-  index ??= fetch(modelUrl('pokemon/index.json'))
-    .then((r) => (r.ok ? (r.json() as Promise<MonIndex>) : { pokemon: {} }))
+  index ??= (readJson(assets(), 'models/pokemon/index.json') as Promise<MonIndex>)
     .catch(() => ({ pokemon: {} }))
   return index
 }
@@ -88,7 +87,10 @@ export function loadMonModel(species: number): Promise<Loaded | null> {
       .then(async (idx) => {
         const entry = idx.pokemon[String(species)]
         if (!entry) return null
-        const gltf = await loader.loadAsync(modelUrl(`pokemon/${entry.file}`))
+        // ⚠️ 주소를 안 거둔다 — 파싱한 장면을 `cache`가 영원히 들고 있어서
+        // 같은 종을 다시 받을 일이 없다. 갈아 끼울 때 `releaseAll()`이 정리한다
+        const url = await assets().objectUrl(`models/pokemon/${entry.file}`)
+        const gltf = await loader.loadAsync(url)
         return { scene: gltf.scene, clips: gltf.animations, entry }
       })
       .catch(() => null)

@@ -36,7 +36,7 @@ import { useOptionsStore } from '../../state/optionsStore'
 import {
   BACK_DIR, TIME_LOOKS, backFill, blendLooks, makeBlobShadow, makeSkyTexture, type TimeLook,
 } from '../fx/sky'
-import { modelUrl } from '../../data/assetBase'
+import { useAssetUrl } from '../../data/providers/useAssetUrl'
 
 /**
  * 무대 바닥의 높이 (실측).
@@ -391,7 +391,7 @@ function Slot(
  * 선다 — 첫 프레임에 빈 화면을 보이지 않으려고
  */
 function Arena({ look, file }: { look: TimeLook; file: string }) {
-  const gltf = useLoader(GLTFLoader, modelUrl(`arena/${file}`))
+  const gltf = useLoader(GLTFLoader, useAssetUrl(`models/arena/${file}`))
   const scene = useMemo(() => {
     const root = gltf.scene.clone(true)
     root.traverse((o) => {

@@ -17,8 +17,10 @@
 // 예전처럼 조용히 빠진다.
 import { existsSync, readFileSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
+import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { describe } from 'vitest'
+import { AssetMissing, setAssetProvider, type AssetProvider } from './providers/assetProvider'
 
 /** 굽는 자료가 놓이는 자리 */
 export const DATA = resolve(__dirname, '../../public/data')
@@ -107,6 +109,50 @@ export function withModels(...files: readonly string[]): SuiteFn {
 /** 같은 것을 `raw/decomp` 아래로 */
 export function withDecomp(...files: readonly string[]): SuiteFn {
   return gate('decomp', files)
+}
+
+/**
+ * 시험용 Provider — 디스크에서 바로 읽는다 (IMPORT.md §7).
+ *
+ * ⚠️ **`fetch`를 흉내 내던 것을 대신한다.** 예전에는 시험마다 `globalThis.fetch`에
+ * `{ ok, json }`만 든 가짜를 꽂아 두었는데, 로더가 `.text()`나 `.arrayBuffer()`를
+ * 쓰기 시작하면 그 자리에서 죽는다 — 실제로 그렇게 26개가 한 번에 터졌다.
+ * Provider 계약을 통째로 갈아 끼우면 무엇을 부르든 같은 파일이 나온다.
+ *
+ * 시험은 노드라 Blob URL이 없다. `objectUrl`은 `file://` 주소를 준다 — 실제로
+ * 그림을 그리지는 않지만 "주소가 나온다"는 계약은 지킨다
+ */
+export function nodeAssetProvider(): AssetProvider {
+  const PUBLIC = resolve(__dirname, '../../public')
+  const at = (path: string): string => {
+    if (!/^(data|models)\//.test(path)) {
+      throw new Error(`논리 경로는 data/ 나 models/ 로 시작해야 한다: ${path}`)
+    }
+    return resolve(PUBLIC, path)
+  }
+  const read = (path: string): Buffer => {
+    const file = at(path)
+    if (!existsSync(file)) throw new AssetMissing(path, 'node')
+    return readFileSync(file)
+  }
+  return {
+    kind: 'node-disk',
+    exists: (path) => Promise.resolve(existsSync(at(path))),
+    bytes: (path) => {
+      const b = read(path)
+      return Promise.resolve(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer)
+    },
+    text: (path) => Promise.resolve(read(path).toString('utf8')),
+    blob: (path) => Promise.resolve(new Blob([read(path) as unknown as BlobPart])),
+    objectUrl: (path) => Promise.resolve(pathToFileURL(at(path)).href),
+    releaseObjectUrl: () => { /* 파일 주소라 거둘 것이 없다 */ },
+  }
+}
+
+/** 시험 파일 하나가 통째로 디스크에서 읽게 한다. `afterAll`에서 되돌린다 */
+export function installNodeAssets(): () => void {
+  setAssetProvider(nodeAssetProvider())
+  return () => { setAssetProvider(null) }
 }
 
 /**

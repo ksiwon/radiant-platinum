@@ -40,7 +40,7 @@ import {
   backFill, blendLooks, characterKey, makeSkyTexture,
   type TimeLook,
 } from './fx/sky'
-import { dataUrl } from '../data/assetBase'
+import { assets, readJson } from '../data/providers/assetProvider'
 import { timeBlend } from '../engine/map/timeOfDay'
 
 /** 렌더 창 반경(청크). 2면 5×5청크 = 160×160타일 — far 200 안에 들어온다 */
@@ -327,8 +327,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const [npcModels, setNpcModels] = useState<Record<string, string> | null>(null)
   useEffect(() => {
     let alive = true
-    fetch(dataUrl('npcModels.json'))
-      .then((r) => (r.ok ? r.json() as Promise<Record<string, string>> : null))
+    void (readJson(assets(), 'data/npcModels.json') as Promise<Record<string, string>>)
       .then((t) => { if (alive) setNpcModels(t) })
       .catch(() => { /* 표가 없으면 판때기로 선다 */ })
     return () => { alive = false }

@@ -7,10 +7,8 @@
 // 롬의 `pl_poke_icon.narc`가 종족 순서로 놓여 있다.
 import type { CSSProperties } from 'react'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
-import { dataUrl } from '../../data/assetBase'
-
-const ICONS = dataUrl('pokeIcons.png')
-const WALLS = dataUrl('boxWallpapers.png')
+import { BOX_WALLPAPER_ATLAS, POKE_ICON_ATLAS } from '../../data/gameData'
+import { atlasUrl } from '../../data/providers/atlas'
 
 /** 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
 export function pokeIcon(
@@ -22,7 +20,7 @@ export function pokeIcon(
   return {
     width: px,
     height: px,
-    backgroundImage: `url(${ICONS})`,
+    backgroundImage: `url(${atlasUrl(POKE_ICON_ATLAS)})`,
     backgroundSize: `${String(icons.cols * px)}px ${String(icons.rows * px)}px`,
     backgroundPosition: `-${String(col * px)}px -${String(row * px)}px`,
   }
@@ -43,7 +41,7 @@ export function boxWallpaper(
   const row = Math.floor(at / walls.cols)
   const w = walls.width * k, h = walls.height * k
   return {
-    backgroundImage: `url(${WALLS})`,
+    backgroundImage: `url(${atlasUrl(BOX_WALLPAPER_ATLAS)})`,
     backgroundSize: `${String(walls.cols * w)}px ${String(walls.rows * h)}px`,
     backgroundPosition: `-${String(col * w)}px -${String(row * h)}px`,
   }

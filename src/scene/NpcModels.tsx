@@ -25,7 +25,7 @@ import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { worldState } from '../state/worldState'
-import { modelUrl } from '../data/assetBase'
+import { assets } from '../data/providers/assetProvider'
 
 /**
  * 동시에 세우는 모델 수의 상한.
@@ -138,8 +138,12 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
 function fetchModel(tag: string, done: () => void): void {
   if (loading.has(tag)) return
   loading.add(tag)
-  loader
-    .loadAsync(modelUrl(`npc/${tag}.glb`))
+  // ⚠️ Blob URL을 **거두지 않는다.** 한 번 파싱한 장면을 `scenes`에 영원히
+  // 들고 있으므로 같은 주소를 다시 물을 일이 없고, 사람 종류는 470개로 유한하다.
+  // Provider를 갈아 끼울 때 `releaseAll()`이 한 번에 정리한다
+  const path = `models/npc/${tag}.glb`
+  assets().objectUrl(path)
+    .then((url) => loader.loadAsync(url))
     .then((gltf) => { scenes.set(tag, gltf.scene); done() })
     .catch(() => { /* 못 받으면 그 사람은 판때기로 남는다 */ })
     .finally(() => { loading.delete(tag) })

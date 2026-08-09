@@ -14,7 +14,7 @@ import { useSaveStore } from '../../state/saveStore'
 import { MenuScreen } from './MenuScreen'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as css from './menuChrome.css'
-import { dataUrl } from '../../data/assetBase'
+import { assets, readJson } from '../../data/providers/assetProvider'
 
 export function FlyScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
@@ -25,8 +25,7 @@ export function FlyScreen() {
 
   useEffect(() => {
     let alive = true
-    fetch(dataUrl('names/locations.ko.json'))
-      .then((r) => r.json() as Promise<string[]>)
+    void (readJson(assets(), 'data/names/locations.ko.json') as Promise<string[]>)
       .then((list) => { if (alive) setNames(list) })
       .catch(() => { /* 이름이 없으면 맵 이름으로 뜬다 */ })
     return () => { alive = false }

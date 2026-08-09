@@ -8,7 +8,7 @@ import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
 import { BikeModel } from './BikeModel'
 import { sceneRefs } from './sceneRefs'
-import { modelUrl } from '../data/assetBase'
+import { useAssetUrl } from '../data/providers/useAssetUrl'
 
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
 const ALT_OUTFIT = ['hair2', 'shoes2']
@@ -16,7 +16,9 @@ const ALT_OUTFIT = ['hair2', 'shoes2']
 export function PlayerModel() {
   const groupRef = useRef<Group>(null)
   const normRef = useRef<Group>(null)
-  const gltf = useLoader(GLTFLoader, modelUrl('dawn.glb'))
+  // 주소를 Provider에서 받는다 — 공개판에서는 OPFS Blob URL이다 (IMPORT.md §7).
+  // 세션 내내 사는 모델이라 참조를 안 놓는다 (`useAssetUrl` 머리말)
+  const gltf = useLoader(GLTFLoader, useAssetUrl('models/dawn.glb'))
 
   useEffect(() => {
     gltf.scene.traverse((o) => {

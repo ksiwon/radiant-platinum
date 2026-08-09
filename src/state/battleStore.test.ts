@@ -6,9 +6,7 @@
 //
 // 지연 로딩 경계도 여기서 지나간다 — `startWild`가 `@pkmn/sim`을 처음 끌어온다.
 import 'fake-indexeddb/auto'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { beforeAll, beforeEach, describe, it, expect } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest'
 import { useBattleStore } from './battleStore'
 import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
@@ -16,16 +14,15 @@ import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instan
 import { expForLevel } from '../engine/pokemon/exp'
 import { loadItems, loadMoves, loadSpecies, loadTrainers } from '../data/gameData'
 import { quantity } from '../engine/bag/bag'
+import { installNodeAssets } from '../data/romData.testkit'
 
-// gameData는 fetch로 받는다. 테스트에서는 같은 파일을 디스크에서 읽어 준다
-beforeAll(() => {
-  globalThis.fetch = ((input: RequestInfo | URL) => {
-    const url = String(input)
-    const path = resolve(__dirname, '../../public', url.replace(/^\/?/, ''))
-    const body = readFileSync(path, 'utf8')
-    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(JSON.parse(body)) })
-  }) as typeof fetch
-})
+// gameData는 AssetProvider로 받는다. 시험에서는 디스크에서 읽는 Provider로 바꾼다.
+//
+// ⚠️ 예전에는 `globalThis.fetch`에 `{ ok, json }`만 든 가짜를 꽂았다. 로더가
+// `.text()`를 쓰기 시작하자 26개가 한 번에 터졌다 — 흉내가 계약보다 좁았던 것이다
+let restoreAssets: (() => void) | null = null
+beforeAll(() => { restoreAssets = installNodeAssets() })
+afterAll(() => { restoreAssets?.() })
 
 const STARLY = 396
 const RATTATA = 19

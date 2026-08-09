@@ -14,28 +14,44 @@ import {
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
   type Species, type Trainer,
 } from './schema'
-import { dataUrl } from './assetBase'
+import { assets, readJson } from './providers/assetProvider'
+import { pinAtlas } from './providers/atlas'
+
+/**
+ * 세션 내내 살아 있는 그림 넉 장 (`providers/atlas`).
+ *
+ * 이름을 여기 두는 것은 **칸 크기 자료를 받는 자리가 여기**이기 때문이다 —
+ * `itemIcons.json`과 `itemIcons.png`가 갈리면 한쪽만 온 상태가 생긴다
+ */
+export const ITEM_ICON_ATLAS = 'data/itemIcons.png'
+export const POKE_ICON_ATLAS = 'data/pokeIcons.png'
+export const BOX_WALLPAPER_ATLAS = 'data/boxWallpapers.png'
+export const SIGNPOST_ATLAS = 'data/signposts.png'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
 
 /** 모듈 스코프 캐시 — 같은 파일을 두 번 받지 않는다 */
 const cache = new Map<string, Promise<unknown>>()
 
+// ⚠️ **주소를 만들지 않는다.** 공개판에서 이 자료는 HTTP로 오지 않고 사용자의
+// OPFS에서 온다 (IMPORT.md §7). 논리 경로만 넘기고 어디서 오는지는 Provider가
+// 정한다 — 그 분기가 여기 들어오면 스무 군데로 번진다
 async function fetchJson<T>(path: string, parse: (v: unknown) => T): Promise<T> {
   const hit = cache.get(path)
   if (hit) return hit as Promise<T>
-  const promise = fetch(dataUrl(`${path}`))
-    .then((r) => {
-      if (!r.ok) throw new Error(`${path} 로드 실패: HTTP ${r.status}`)
-      return r.json()
-    })
+  const promise = readJson(assets(), `data/${path}`)
     .then(parse)
-    .catch((e) => {
+    .catch((e: unknown) => {
       cache.delete(path) // 실패를 캐시하면 재시도가 영영 막힌다
       throw e
     })
   cache.set(path, promise)
   return promise
+}
+
+/** Provider를 갈아 끼우면 캐시도 버려야 한다 — 옛 설치본의 자료가 남는다 */
+export function resetGameDataCache(): void {
+  cache.clear()
 }
 
 export interface SpeciesTable {
@@ -198,24 +214,33 @@ export function loadItemDescriptions(locale: DataLocale): Promise<string[]> {
   return fetchJson(`names/itemDescriptions.${locale}.json`, (v) => nameListSchema.parse(v))
 }
 
-/** 아이콘 아틀라스의 칸 크기. 그림 자체는 `data/itemIcons.png`다 */
+/**
+ * 아이콘 아틀라스의 칸 크기. 그림 자체는 `data/itemIcons.png`다.
+ *
+ * ⚠️ **그림을 함께 잡아 둔다.** 칸 크기와 그림은 한 짝이라, 따로 두면 크기만
+ * 온 상태가 화면에 남아 빈 칸이 뜬다 (`providers/atlas`)
+ */
 export function loadItemIcons(): Promise<ItemIcons> {
   return fetchJson('itemIcons.json', (v) => itemIconsSchema.parse(v))
+    .then(async (icons) => { await pinAtlas(ITEM_ICON_ATLAS); return icons })
 }
 
 /** 포켓몬 아이콘 아틀라스의 칸 크기. 그림은 `data/pokeIcons.png`다 */
 export function loadPokeIcons(): Promise<PokeIcons> {
   return fetchJson('pokeIcons.json', (v) => pokeIconsSchema.parse(v))
+    .then(async (icons) => { await pinAtlas(POKE_ICON_ATLAS); return icons })
 }
 
 /** 박스 벽지 아틀라스. 그림은 `data/boxWallpapers.png`다 */
 export function loadBoxWallpapers(): Promise<BoxWallpapers> {
   return fetchJson('boxWallpapers.json', (v) => boxWallpapersSchema.parse(v))
+    .then(async (walls) => { await pinAtlas(BOX_WALLPAPER_ATLAS); return walls })
 }
 
 /** 간판 판 그림 아틀라스. 그림은 `data/signposts.png`다 */
 export function loadSignposts(): Promise<Signposts> {
   return fetchJson('signposts.json', (v) => signpostsSchema.parse(v))
+    .then(async (a) => { await pinAtlas(SIGNPOST_ATLAS); return a })
 }
 
 /** 상점 재고표. 롬이 아니라 디컴프 헤더에서 나온 것이다 (`tools/extract/marts.js`) */
@@ -243,11 +268,7 @@ export function loadScriptMeta(): Promise<ScriptFile> {
 export function loadScriptBytes(): Promise<Uint8Array> {
   const hit = cache.get('scripts.bin')
   if (hit) return hit as Promise<Uint8Array>
-  const promise = fetch(dataUrl('scripts.bin'))
-    .then((r) => {
-      if (!r.ok) throw new Error(`scripts.bin 로드 실패: HTTP ${r.status}`)
-      return r.arrayBuffer()
-    })
+  const promise = assets().bytes('data/scripts.bin')
     .then((b) => new Uint8Array(b))
     .catch((e: unknown) => {
       cache.delete('scripts.bin')

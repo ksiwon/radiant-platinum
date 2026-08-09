@@ -12,7 +12,7 @@
 import {
   ClampToEdgeWrapping, NearestFilter, SRGBColorSpace, TextureLoader, type Texture,
 } from 'three'
-import { dataUrl } from '../../data/assetBase'
+import { assets, readJson } from '../../data/providers/assetProvider'
 
 /** 그림에서 실제로 칠해진 자리. 이것이 없으면 발밑이 안 맞는다 */
 export interface SpriteBox { x: number; y: number; w: number; h: number }
@@ -25,8 +25,7 @@ export interface SpriteIndex {
 let index: Promise<SpriteIndex> | null = null
 
 export function loadSpriteIndex(): Promise<SpriteIndex> {
-  index ??= fetch(dataUrl('pokemon/index.json'))
-    .then((r) => r.json() as Promise<SpriteIndex>)
+  index ??= readJson(assets(), 'data/pokemon/index.json') as Promise<SpriteIndex>
   return index
 }
 
@@ -43,9 +42,12 @@ export function loadMonSprite(species: number, back: boolean): Promise<Texture> 
   const key = `${String(species)}/${back ? 'back' : 'front'}`
   let got = textures.get(key)
   if (!got) {
-    got = new Promise<Texture>((resolve, reject) => {
+    // ⚠️ 주소를 안 거둔다 — 텍스처를 `textures`가 영원히 캐시하므로 같은 종을
+    // 다시 받을 일이 없다. 갈아 끼울 때 `releaseAll()`이 정리한다
+    const path = `data/pokemon/${key.replace('/', '_')}.png`
+    got = assets().objectUrl(path).then((url) => new Promise<Texture>((resolve, reject) => {
       loader.load(
-        dataUrl(`pokemon/${key.replace('/', '_')}.png`),
+        url,
         (tex) => {
           // 도트는 보간하면 안 된다. 밉맵도 안 만든다 — 한 장을 화면에 크게
           // 띄우는 것이라 축소가 없다
@@ -60,7 +62,8 @@ export function loadMonSprite(species: number, back: boolean): Promise<Texture> 
         undefined,
         (e) => { textures.delete(key); reject(e instanceof Error ? e : new Error(String(e))) },
       )
-    })
+    }))
+    got.catch(() => { textures.delete(key) })
     textures.set(key, got)
   }
   return got

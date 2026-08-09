@@ -36,7 +36,7 @@ import {
   BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES,
 } from './starterScene'
 import * as css from './chooseStarter.css'
-import { dataUrl } from '../../data/assetBase'
+import { useAssetImage } from '../../data/providers/useAssetUrl'
 
 /** `Menu_MakeYesNoChoice` — 위가 "예"다 */
 const MENU_YES = 0
@@ -76,6 +76,8 @@ export function ChooseStarter() {
   const [ready, setReady] = useState(false)
   /** 커서를 띄웠나. `choose` 글을 다 찍은 뒤다 */
   const [live, setLive] = useState(false)
+  /** 미리보기 그림. 커서를 옮기면 바뀐다 */
+  const art = useAssetImage(`data/pokemon/${String(STARTERS[pick] ?? 0)}_front.png`)
   const printer = useRef<MessagePrinter | null>(null)
   const slots = useRef(new MessageSlots())
 
@@ -225,12 +227,10 @@ export function ChooseStarter() {
         미리보기 창 (`StarterPreviewWindow`). 확인을 물을 때만 열린다 —
         커서를 옮기는 동안에는 볼만 보인다
       */}
-      {step === 'confirm' && (
+      {step === 'confirm' && art !== null && (
         <div
           className={css.preview}
-          style={{
-            backgroundImage: `url(${dataUrl(`pokemon/${String(STARTERS[pick])}_front.png`)})`,
-          }}
+          style={{ backgroundImage: `url(${art})` }}
           aria-hidden
         />
       )}

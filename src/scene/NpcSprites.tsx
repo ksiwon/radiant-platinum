@@ -18,7 +18,7 @@ import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import {
   artDir, cameraQuadrant, frameOf, npcSprite, TEXELS_PER_TILE, type NpcSprite,
 } from '../engine/actor/sprites'
-import { dataUrl } from '../data/assetBase'
+import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 
 /** 한 맵에 동시에 세우는 최대 인원. 넘치는 사람은 안 그린다 */
@@ -41,7 +41,17 @@ const textures = new Map<number, Texture>()
 function textureFor(gfx: number): Texture {
   const had = textures.get(gfx)
   if (had !== undefined) return had
-  const tex = loader.load(dataUrl(`npc/${String(gfx)}.png`))
+  // ⚠️ 빈 텍스처를 먼저 돌려주고 주소가 오면 채운다. `textureFor`는 매 프레임
+  // 도는 자리라 비동기로 바꿀 수 없다 — 대신 그림이 늦게 오면 `needsUpdate`로
+  // 한 번 더 올린다. 사람 종류는 470개로 유한하고 세션 내내 사니 안 거둔다
+  const tex = new Texture()
+  void assets().objectUrl(`data/npc/${String(gfx)}.png`)
+    .then((url) => loader.loadAsync(url))
+    .then((loaded) => {
+      tex.image = loaded.image as TexImageSource
+      tex.needsUpdate = true
+    })
+    .catch(() => { /* 그림이 없으면 빈 판으로 선다 */ })
   // 도트를 뭉개지 않는다. 원작이 16텍셀 격자라 보간하면 윤곽이 흐려진다
   tex.magFilter = NearestFilter
   tex.minFilter = NearestFilter

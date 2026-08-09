@@ -65,4 +65,23 @@ describe('에셋 뿌리', () => {
     // 죽었다. 규칙이 죽어도 이 숫자는 안 죽는다
     expect(hits).toEqual(['src/data/assetBase.ts'])
   })
+
+  it('⚠️ src에서 주소를 만드는 곳은 개발 Provider 하나뿐이다', () => {
+    // 이 모듈은 이제 **개발판 전용 주소 생성기**다 (IMPORT.md §7). 공개판에서
+    // 에셋은 HTTP로 오지 않고 사용자의 OPFS에서 오므로, `dataUrl()`로 주소를
+    // 만드는 코드는 그 자리에서 통째로 죽는다.
+    //
+    // 스무 군데였던 것을 하나로 모았다. 다시 늘어나는 것을 여기서 막는다 —
+    // 늘어나도 **오늘은 안 깨져서** 아무 데서도 안 걸리기 때문이다
+    //
+    // ⚠️ **주석을 걷어내고 센다.** 왜 모았는지가 근거라 주석에는 그 이름이
+    // 그대로 남는다 — 안 걷어내면 설명을 쓴 파일이 위반으로 잡힌다
+    const strip = (s: string) => s.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+    const hits = sources(SRC)
+      .filter((f) => /\b(dataUrl|modelUrl)\s*\(/.test(strip(readFileSync(f, 'utf8'))))
+      .map((f) => f.replace(/\\/g, '/').replace(/.*\/src\//, 'src/'))
+      // 이 모듈 자신(정의)과 시험은 뺀다
+      .filter((f) => f !== 'src/data/assetBase.ts' && !/\.test\.tsx?$/.test(f))
+    expect(hits).toEqual(['src/data/providers/httpAssetProvider.ts'])
+  })
 })

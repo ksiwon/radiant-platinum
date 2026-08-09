@@ -13,7 +13,7 @@ import { Mesh, Quaternion, Vector3, type Group, type MeshStandardMaterial, type 
 import { BDSP_TO_WORLD } from '../engine/model/normalize'
 import { BIKE } from '../engine/actor/bike'
 import { sceneRefs } from './sceneRefs'
-import { modelUrl } from '../data/assetBase'
+import { useAssetUrl } from '../data/providers/useAssetUrl'
 
 /** 돌려야 하는 뼈들. 앞뒤 바퀴는 바퀴 반지름, 크랭크는 그 물린 비율로 돈다 */
 const SPIN = ['FTire', 'BTire', 'Gear', 'LPedal1', 'RPedal1'] as const
@@ -36,7 +36,7 @@ export function spinBike(bike: Object3D, phase: number) {
 
 export function BikeModel() {
   const groupRef = useRef<Group>(null)
-  const gltf = useLoader(GLTFLoader, modelUrl('bike.glb'))
+  const gltf = useLoader(GLTFLoader, useAssetUrl('models/bike.glb'))
 
   useEffect(() => {
     gltf.scene.traverse((o) => {

@@ -8,9 +8,8 @@
 // 설명칸에서는 크게 같은 그림을 쓴다.
 import type { CSSProperties } from 'react'
 import type { ItemIcons } from '../../data/schema'
-import { dataUrl } from '../../data/assetBase'
-
-const ATLAS = dataUrl('itemIcons.png')
+import { ITEM_ICON_ATLAS } from '../../data/gameData'
+import { atlasUrl } from '../../data/providers/atlas'
 
 /** 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
 export function itemIcon(
@@ -22,7 +21,7 @@ export function itemIcon(
   return {
     width: px,
     height: px,
-    backgroundImage: `url(${ATLAS})`,
+    backgroundImage: `url(${atlasUrl(ITEM_ICON_ATLAS)})`,
     backgroundSize: `${String(icons.cols * px)}px ${String(icons.rows * px)}px`,
     backgroundPosition: `-${String(col * px)}px -${String(rowAt * px)}px`,
   }
