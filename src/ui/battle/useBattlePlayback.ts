@@ -78,40 +78,51 @@ export function useBattlePlayback(
       raf = requestAnimationFrame(frame)
       const r = runner.current
       const { beats: list, apply: fold } = latest.current
-      const beat = list[r.at]
-      if (!beat) { setCaughtUp((c) => (c ? c : true)); return }
-      setCaughtUp((c) => (c ? false : c))
+      // 글도 쉼도 없는 박자는 이 프레임 안에서 이어서 접는다. 한 박자에 두
+      // 프레임씩 쓰면 `turn`·`request`처럼 화면에 아무 일도 안 일어나는 자리가
+      // 눈에 보이는 지연이 된다.
+      //
+      // ⚠️ **합치는 일은 여기서만 한다.** 박자를 만드는 쪽에서 합치면 뒤에 사건이
+      // 붙을 때 이미 틀어 버린 박자가 커져서, 그 안에 들어간 사건이 통째로
+      // 안 틀린다 (`engine/battle/playback`의 머리말)
+      for (;;) {
+        const beat = list[r.at]
+        if (!beat) { setCaughtUp((c) => (c ? c : true)); return }
+        setCaughtUp((c) => (c ? false : c))
 
-      // ① 글. 다 찍기 전에는 화면이 안 바뀐다
-      if (!r.applied) {
-        if (beat.text !== null && r.printer === null) {
-          r.printer = new MessagePrinter(beat.text, slots.current, options())
+        // ① 글. 다 찍기 전에는 화면이 안 바뀐다
+        if (!r.applied) {
+          if (beat.text !== null && r.printer === null) {
+            r.printer = new MessagePrinter(beat.text, slots.current, options())
+          }
+          const p = r.printer
+          if (p !== null) {
+            p.tick({ pressed: false, held: false })
+            const now = printedText(p)
+            if (now !== latest.current.text) setText(now)
+            if (!p.finished) return
+            r.printer = null
+          }
+          // ② 화면. 체력바 전환 길이를 같은 렌더에 실어 보낸다.
+          //
+          // 쉼에만 설정의 빠르기를 곱한다 — `beat.hold`는 원작이 정한 프레임 수고
+          // (`playback.ts`) 그 값은 자료라서 안 건드린다. 0으로 접히지 않게 1프레임은
+          // 남긴다: 0이면 체력바 전환 시간이 사라져 게이지가 순간이동한다
+          const hold = beat.hold === 0 ? 0 : Math.max(1, Math.round(beat.hold * battlePaceScale()))
+          setHoldMs(hold * FRAME_MS)
+          fold(beat.events)
+          r.applied = true
+          r.wait = hold
+          // 쉬거나 글을 띄운 박자는 여기서 이 프레임을 끝낸다. 아무것도 안 남긴
+          // 박자만 다음 것으로 이어 붙는다
+          if (hold > 0 || beat.text !== null) return
         }
-        const p = r.printer
-        if (p !== null) {
-          p.tick({ pressed: false, held: false })
-          const now = printedText(p)
-          if (now !== latest.current.text) setText(now)
-          if (!p.finished) return
-          r.printer = null
-        }
-        // ② 화면. 체력바 전환 길이를 같은 렌더에 실어 보낸다.
-        //
-        // 쉼에만 설정의 빠르기를 곱한다 — `beat.hold`는 원작이 정한 프레임 수고
-        // (`playback.ts`) 그 값은 자료라서 안 건드린다. 0으로 접히지 않게 1프레임은
-        // 남긴다: 0이면 체력바 전환 시간이 사라져 게이지가 순간이동한다
-        const hold = beat.hold === 0 ? 0 : Math.max(1, Math.round(beat.hold * battlePaceScale()))
-        setHoldMs(hold * FRAME_MS)
-        fold(beat.events)
-        r.applied = true
-        r.wait = hold
-        return
+
+        // ③ 쉼
+        if (r.wait > 0) { r.wait--; return }
+        r.at++
+        r.applied = false
       }
-
-      // ③ 쉼
-      if (r.wait > 0) { r.wait--; return }
-      r.at++
-      r.applied = false
     }
     raf = requestAnimationFrame(frame)
     return () => { cancelAnimationFrame(raf) }

@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest'
 import type { BattleAction } from '../choice'
 import type { BattleEvent } from '../events'
 import { applyEvents, emptyView } from '../view'
+import { buildBeats } from '../playback'
 import { Ball } from '../meta/capture'
 import { TrainerItems } from '../meta/trainerItems'
 import type { Item } from '../../../data/schema'
@@ -377,4 +378,87 @@ describe('트레이너의 도구', () => {
       .toBe(false)
     controller.destroy()
   }, 30_000)
+})
+
+describe('화면이 정본을 따라잡는다', () => {
+  /**
+   * 재생기가 하는 그대로 한다 (`ui/battle/useBattlePlayback`).
+   *
+   * ⚠️ **박자 목록을 통째로 한 번 훑는 것이 아니다.** 사건이 붙을 때마다
+   * `buildBeats`를 **처음부터** 다시 부르고, 이미 튼 번호 뒤부터 이어서 튼다.
+   * 그 재생기와 똑같이 굴려야 앞부분이 흔들리는 것을 여기서 잡는다
+   */
+  class Screen {
+    view = emptyView()
+    private at = 0
+
+    play(events: readonly BattleEvent[]): void {
+      const beats = buildBeats(events, () => null)
+      for (; this.at < beats.length; this.at++) {
+        this.view = applyEvents(this.view, beats[this.at]!.events)
+      }
+    }
+  }
+
+  it('내가 교체하면 화면의 마리도 바뀐다', async () => {
+    // ⚠️ **실제로 안 바뀌던 자리다.** 기술 목록은 `actions`에서 바로 오니까
+    // 렌트라 것으로 바뀌는데, 이름표와 3D 모델은 이 뷰를 보므로 토대부기가
+    // 계속 서 있었다 (`playback`의 머리말)
+    const { controller, step } = await BattleController.start({
+      player: {
+        name: '빛나',
+        team: [spawn(TURTWIG, 55, 401, 'p1-0'), spawn(LUXRAY, 54, 402, 'p1-1')],
+      },
+      foe: { name: '상대', team: [spawn(STARLY, 20, 403, 'p2-0')] },
+      seed: [1, 2, 3, 4],
+      random: rng(21),
+    })
+    const all = [...step.events]
+    const screen = new Screen()
+    screen.play(all)
+    expect(screen.view.active.p1?.key, '첫 마리가 안 섰다').toBe('p1-0')
+
+    const swap = controller.actions.find((a) => a.type === 'switch')
+    expect(swap, '교체할 수 있는 마리가 없다').toBeDefined()
+    all.push(...(await controller.choose(swap!)).events)
+    screen.play(all)
+
+    expect(screen.view.active.p1?.key, '화면이 아직 앞 마리를 들고 있다').toBe('p1-1')
+    expect(screen.view.active.p1?.species, '화면의 종이 안 바뀌었다').toBe(LUXRAY)
+    // 정본과 어긋나면 안 된다. 모델·이름표·체력바가 전부 이 뷰를 본다
+    expect(screen.view.active.p1?.species).toBe(controller.state.active.p1?.species)
+    controller.destroy()
+  }, 30_000)
+
+  it('한 판을 끝까지 틀어도 화면이 정본과 안 어긋난다', async () => {
+    const r = rng(22)
+    const { controller, step } = await BattleController.start({
+      player: {
+        name: '빛나',
+        team: [spawn(TURTWIG, 30, 411, 'p1-0'), spawn(LUXRAY, 30, 412, 'p1-1')],
+      },
+      foe: {
+        name: '상대',
+        team: [spawn(STARLY, 28, 413, 'p2-0'), spawn(RATTATA, 28, 414, 'p2-1')],
+      },
+      seed: [9, 8, 7, 6],
+      random: r,
+    })
+    const all = [...step.events]
+    const screen = new Screen()
+    screen.play(all)
+
+    for (let i = 0; i < 60 && !controller.ended; i++) {
+      const options = controller.actions
+      if (!options.length) break
+      all.push(...(await controller.choose(options[Math.floor(r() * options.length)]!)).events)
+      screen.play(all)
+      // 재생이 끝난 자리에서는 화면이 정본과 같은 마리를 들고 있어야 한다
+      expect(screen.view.active.p1?.key, `${i}번째 수에서 우리 쪽이 어긋났다`)
+        .toBe(controller.state.active.p1?.key)
+      expect(screen.view.active.p2?.key, `${i}번째 수에서 상대 쪽이 어긋났다`)
+        .toBe(controller.state.active.p2?.key)
+    }
+    controller.destroy()
+  }, 60_000)
 })

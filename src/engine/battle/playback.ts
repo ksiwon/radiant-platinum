@@ -88,8 +88,15 @@ function isSilent(e: BattleEvent): boolean {
  * `text`는 사건 하나를 한 줄로 옮기는 함수다(`ui/battle/messages.ts`). 여기서
  * 부르기만 하고 문장은 모른다 — 그래야 엔진이 UI 문구에 안 묶인다.
  *
- * 사건이 뒤에 붙기만 하는 목록이므로 결과도 앞부분이 그대로 남는다. 화면은
- * 읽던 자리를 안 잃는다.
+ * ⚠️ **앞부분은 절대 안 흔들린다.** 재생기는 이 목록을 통째로 받는 것이 아니라
+ * 사건이 붙을 때마다 다시 받고, 자기가 몇 번째까지 틀었는지만 들고 있다
+ * (`ui/battle/useBattlePlayback`). 그래서 뒤에 사건이 붙었을 때 **앞의 박자가
+ * 한 칸이라도 달라지면 그 자리의 사건은 영영 안 틀린다.**
+ *
+ * 그래서 여기서는 박자를 **합치지 않는다.** 예전엔 글도 쉼도 없는 박자를
+ * 뒤엣것과 합쳐 프레임을 아꼈는데, 그 합치기가 턴 끝의 `turn` 박자에 다음 턴의
+ * `switch`를 빨아들였다 — 교체를 해도 앞 마리가 계속 서 있었다. 프레임을 아끼는
+ * 일은 **이미 틀어 버린 자리를 못 건드리는** 재생기 쪽으로 옮겼다
  */
 export function buildBeats(
   events: readonly BattleEvent[],
@@ -192,20 +199,5 @@ export function buildBeats(
   }
   flush()
 
-  return merge(out)
-}
-
-/** 글도 멈춤도 없는 박자가 줄줄이 붙으면 한 박자로 합친다. 그래야 프레임을 안 버린다 */
-function merge(beats: readonly Beat[]): Beat[] {
-  const out: Beat[] = []
-  for (const beat of beats) {
-    const last = out[out.length - 1]
-    if (last && last.text === null && last.hold === 0 && beat.text === null) {
-      last.events = [...last.events, ...beat.events]
-      last.hold = beat.hold
-      continue
-    }
-    out.push({ ...beat })
-  }
   return out
 }

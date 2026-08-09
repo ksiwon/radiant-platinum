@@ -23,6 +23,12 @@ const enter = (actor: Actor, hp: number): BattleEvent => ({
   forced: false,
 })
 
+/** 배틀 중에 갈아탄다. 종이 바뀌므로 모델도 이름표도 이걸 보고 바뀐다 */
+const swap = (actor: Actor, species: number, speciesName: string): BattleEvent => {
+  const on = enter(actor, 40)
+  return on.kind === 'switch' ? { ...on, species, speciesName } : on
+}
+
 const hit = (actor: Actor, hp: number, maxHp: number): BattleEvent => ({
   kind: 'damage', actor, condition: { hp, maxHp, status: 'ok' }, from: null,
 })
@@ -165,6 +171,25 @@ describe('박자 순서', () => {
     ], say)
     expect(beats.filter((b) => b.text?.includes('Fury Attack'))).toHaveLength(1)
     expect(beats.filter((b) => b.events.some((e) => e.kind === 'damage'))).toHaveLength(3)
+  })
+
+  it('사건이 뒤에 붙어도 앞의 박자는 한 칸도 안 흔들린다', () => {
+    // ⚠️ **재생기가 다 만든 목록을 한 번 훑는 것이 아니다.** 배틀이 도는 동안
+    // 사건이 계속 붙고, 화면은 그때마다 이 함수를 **처음부터 다시** 부른다.
+    // 재생기는 "몇 번째 박자까지 틀었나"만 들고 있으므로, 앞부분이 한 칸이라도
+    // 달라지면 그 자리의 사건이 통째로 안 틀린다.
+    //
+    // 실제로 그랬다 — 조용한 박자를 뒤엣것과 합치는 코드가 있어서, 턴 끝의
+    // `turn`에 다음 턴의 `switch`가 빨려 들어갔다. **교체해도 화면에는 앞
+    // 마리가 계속 서 있었다** (기술 목록만 바뀌어서 더 헷갈렸다)
+    const chunk1: BattleEvent[] = [enter(p1, 20), enter(p2, 20), { kind: 'turn', turn: 1 }]
+    const chunk2: BattleEvent[] = [swap(p1, 405, 'Luxray'), { kind: 'turn', turn: 2 }]
+    const before = buildBeats(chunk1, say)
+    const after = buildBeats([...chunk1, ...chunk2], say)
+    expect(after.slice(0, before.length)).toEqual(before)
+    // 그리고 뒤에 붙은 사건은 **틀지 않은 박자에** 실려 있어야 한다
+    const late = after.slice(before.length).flatMap((b) => b.events)
+    expect(late.filter((e) => e.kind === 'switch')).toHaveLength(1)
   })
 
   it('여러 줄짜리 보상은 창 하나에 한 줄씩 나온다', () => {
