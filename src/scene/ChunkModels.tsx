@@ -18,10 +18,11 @@ import {
 import {
   cachedSplit, canBorrowFloor, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites,
   grassColors,
-  plateColors, shiftFloors, treeSites, waterColors,
-  type FloorPatch, type FloorSource, type FloorTri,
+  plateColors, plateFloor, plateLumps, rockSites, shiftFloors, treeSites, waterColors,
+  type FloorPatch, type FloorSource, type FloorTri, type LumpSet,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
+import { Rocks, plateBands, type RockGroup } from './Rocks'
 import { Flowers, type FlowerField } from './Flowers'
 import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
@@ -122,13 +123,14 @@ const shellCache = new Map<string, CardShells | null>()
 
 function cachedShells(
   key: string, mesh: ChunkMesh, cutout: readonly boolean[],
-  split: ReturnType<typeof cachedSplit>, sheet: TexSheet,
+  split: ReturnType<typeof cachedSplit>, sheet: TexSheet, lumps: LumpSet,
 ): CardShells | null {
   const hit = shellCache.get(key)
   if (hit !== undefined) return hit
   const made = cardShells(
     mesh, cutout,
-    (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array, sheet)
+    (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array,
+    sheet, lumps)
   shellCache.set(key, made)
   return made
 }
@@ -151,6 +153,8 @@ interface Piece {
   c: { mx: number, my: number, land: number }
   mesh: ChunkMesh
   cutout: readonly boolean[]
+  /** 담이 아니라 덩이인 판때기 사각형들 (`plates.plateLumps`) */
+  lumps: LumpSet
   split: ReturnType<typeof cachedSplit>
   source: FloorSource
   originX: number
@@ -258,6 +262,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
     (x: number, z: number, near: number) => grid.heightAtWorld(x, z, near), [grid])
   const [placed, setPlaced] = useState<Land[]>([])
   const [foliage, setFoliage] = useState<FoliageGroup[]>([])
+  const [rocks, setRocks] = useState<RockGroup[]>([])
   const [grass, setGrass] = useState<GrassField | null>(null)
   const [flowers, setFlowers] = useState<FlowerField | null>(null)
   const [water, setWater] = useState<WaterField | null>(null)
@@ -278,6 +283,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         // 그림이 같은 나무는 청크를 넘어 한 덩어리로 모은다. 창 안에 2천 그루가
         // 서므로 청크마다 따로 그리면 드로우콜이 수십 개가 된다
         const byTexture = new Map<string, FoliageGroup>()
+        // 물가의 바위도 판때기 한 장이다. 나무와 같은 길로 모은다 (`Rocks`)
+        const byRock = new Map<string, RockGroup>()
         // 화단 자리와 꽃잎 색. 청크를 넘어 한 덩어리로 모은다 — 창 하나에
         // 수백 칸이라 청크마다 따로 그리면 드로우콜만 늘어난다
         const petals: number[] = []
@@ -286,9 +293,12 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         const pieces: Piece[] = loaded.map(({ c, mesh }) => {
           const cutout = cutoutGroups(mesh, sheet)
           const key = `${String(c.land)}/${String(texSet)}`
-          const split = cachedSplit(key, mesh, cutout)
+          const lumps = plateLumps(
+            mesh, sheet, cutout,
+            (mesh.geometry.getAttribute('position') as BufferAttribute).array as Float32Array)
+          const split = cachedSplit(key, mesh, cutout, lumps)
           return {
-            c, mesh, cutout, split,
+            c, mesh, cutout, lumps, split,
             source: cachedFloors(key, mesh, split),
             originX: c.mx * CHUNK_TILES + CHUNK_TILES / 2,
             originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
@@ -311,8 +321,48 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               const colors = item
                 ? plateColors(sheet, item)
                 : { leaf: [0x4f9e52], trunk: 0x4a3a24 }
-              group = { key, ...colors, items: [] }
+              // 원작이 그 나무 밑에 깔아 둔 바닥 타일. 그림 칸과 크기가
+              // 종류마다 하나로 떨어져서(실측) 한 벌만 만들면 된다
+              const plate = plateFloor(
+                mesh, site.cell.group,
+                (mesh.geometry.getAttribute('position') as BufferAttribute)
+                  .array as Float32Array)
+              group = {
+                key, ...colors, items: [],
+                floor: plate && spec && item
+                  ? {
+                      plate,
+                      material: makeMaterial(spec, sliceTexture(sheet, item, spec.rep), true),
+                    }
+                  : null,
+              }
               byTexture.set(key, group)
+            }
+            group.items.push([site, originX, originZ])
+          }
+          // 세워 놓은 바위 판. 원작은 45°로 눕힌 사각형 한 장이라 세우면
+          // 새까만 달걀이 된다 — 자리와 폭만 가져와 입체로 세운다 (`Rocks`)
+          for (const site of rockSites(
+            mesh, (mesh.geometry.getAttribute('position') as BufferAttribute)
+              .array as Float32Array, p.lumps)) {
+            const spec = mesh.materials[site.group]
+            // ⚠️ 열쇠에 **그림 칸**이 들어간다. 한 그림에 바위와 화분이 같이
+            // 있어서 이름만으로 묶으면 화분이 바위 색으로 칠해진다
+            const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
+              + `/${site.u0.toFixed(3)},${site.u1.toFixed(3)}`
+              + `,${site.v0.toFixed(3)},${site.v1.toFixed(3)}`
+            let group = byRock.get(key)
+            if (!group) {
+              const item = sheet.items.find(
+                (s) => s.tex === spec?.tex && s.pal === (spec.pal ?? ''))
+              group = {
+                key,
+                bands: item
+                  ? plateBands(sheet, item, site.u0, site.u1, site.v0, site.v1)
+                  : [0x8c8c84],
+                items: [],
+              }
+              byRock.set(key, group)
             }
             group.items.push([site, originX, originZ])
           }
@@ -344,11 +394,12 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               split, (x, z, near) => groundAt(x + originX, z + originZ, near),
               borrowed, p.source),
             shells: cachedShells(
-              `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet),
+              `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet, p.lumps),
           }
         })
         setPlaced(next)
         setFoliage([...byTexture.values()])
+        setRocks([...byRock.values()])
         // 풀숲 자리는 격자가 준다 — 그림이 아니라 타일 거동값이다. 색만
         // 이 영역 그림에서 가져온다
         setGrass({ spots: grassSpots(grid, chunkIndex, radius), colors: grassColors(sheet) })
@@ -361,7 +412,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         setWater({ ...waterField(grid, chunkIndex, radius), colors: waterColors(sheet) })
       })
       .catch(() => {
-        if (alive) { setPlaced([]); setFoliage([]); setGrass(null); setWater(null); setFlowers(null) }
+        if (alive) {
+          setPlaced([]); setFoliage([]); setRocks([])
+          setGrass(null); setWater(null); setFlowers(null)
+        }
       })
     return () => { alive = false }
   }, [grid, chunkIndex, radius, texSet, groundAt])
@@ -453,6 +507,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         색만 가져와 입체로 세운다 (`plates.ts`)
       */}
       <Foliage groups={foliage} ground={groundAt} />
+      {/*
+        물가의 바위. 원작은 45°로 눕힌 판 한 장이라(실측 1,001장이 전부 그렇다)
+        세우면 새까만 달걀이 물 위에 늘어선다 — 자리와 폭만 가져온다 (`Rocks.tsx`)
+      */}
+      <Rocks groups={rocks} />
       {/*
         긴 풀. 원작은 바닥 그림이라 1인칭에서 초록 장판이 된다 — 거동값
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)

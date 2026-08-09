@@ -14,6 +14,8 @@ import { fillMenuText, INTRO_TEXT, NAMING_TEXT, UI_BANK } from '../../data/uiTex
 import {
   INFO_CHOICES, infoLines, INTRO, RIVAL_NAME_CHOICES, type IntroStep,
 } from '../../engine/intro/beats'
+import { music } from '../../engine/audio/music'
+import { OPENING_SONG } from '../../engine/audio/songIds'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
 import { textSpeedFrames, useGameLocale } from '../../state/optionsStore'
@@ -74,6 +76,16 @@ export function IntroScreen() {
    * 수밖에 없다. `useMenuKeys`는 keydown만 듣기 때문에 여기서 따로 잡는다
    */
   const holding = useRef(false)
+
+  /**
+   * 나무박사의 인트로 곡 (`SEQ_OPENING`).
+   *
+   * 원작 `rowan_intro_app.c`가 `Sound_SetSceneAndPlayBGM(SOUND_SCENE_2,
+   * SEQ_OPENING, 1)`을 부른다. **여기서 안 갈아타면 타이틀 곡이 그대로
+   * 흘러 들어온다** — 타이틀이 나갈 때 곡을 안 끄기 때문이다(끄면 필드로
+   * 들어갈 때 사이가 정적이 된다)
+   */
+  useEffect(() => { void music.play(OPENING_SONG) }, [])
 
   useEffect(() => {
     const CONFIRM = new Set(['Space', 'KeyZ', 'Enter'])

@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
 import { cardShells, fitAffine } from './cards'
-import { cutoutGroups, splitFoliage } from './plates'
+import { cutoutGroups, plateLumps, splitFoliage } from './plates'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import type { MatrixMeta } from '../engine/map/grid'
 import { withData } from '../data/romData.testkit'
@@ -191,10 +191,14 @@ maybe('원작 자료', () => {
       const mesh = readChunk(c.land, fmt)
       const sheet = sheetFor(texOf(c.zone))
       const cutout = cutoutGroups(mesh, sheet)
-      const split = splitFoliage(mesh, cutout)
+      const lumps = plateLumps(
+        mesh, sheet, cutout,
+        (mesh.geometry.getAttribute('position') as BufferAttribute).array as Float32Array)
+      const split = splitFoliage(mesh, cutout, lumps)
       const shells = cardShells(
         mesh, cutout,
-        (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array, sheet)
+        (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array,
+        sheet, lumps)
       if (!shells) continue
       t.tris += shells.geometry.getAttribute('position').count / 3
       for (const [, count, g] of shells.groups) {
@@ -211,10 +215,20 @@ maybe('원작 자료', () => {
     //
     // 387,692였다. `standCutouts`가 원작이 눕혀 둔 각(45.0°)만 세우게 되면서
     // 29% 줄었다 — 15.9°로 놓인 바닷가 거품(`seaside3`)을 일으켜 세우고 거기에
-    // 두께까지 붙이던 몫이다
-    expect(t.tris).toBe(275_528)
-    // 흰 울타리 — 오버월드 판 1,427장이 여기서 두께를 얻는다
-    expect(t.byTexture.get('imped')).toBe(106_488)
+    // 두께까지 붙이던 몫이다.
+    //
+    // 275,528에서 또 절반이 빠졌다. **판때기 바위와 화분이 빠진 몫**이다 —
+    // 이제 `Rocks`가 입체로 세우므로 종잇장에 두께를 붙일 일이 없다
+    expect(t.tris).toBe(72_284)
+    // ⚠️ **바위는 여기서 두께를 안 얻는다.** `searock` 판 1,001장이 전부 45°라
+    // 세워지고 있었고, 그 실루엣에 두께를 붙이느라 삼각형 148,888개를 썼다
+    expect(t.byTexture.get('searock')).toBeUndefined()
+    // 흰 울타리 — 오버월드 판 1,427장이 여기서 두께를 얻는다.
+    //
+    // 106,488이었다. 줄어든 42,392는 **같은 그림에 든 바위와 화분**이다:
+    // 축복시티 `imped` 한 장에 울타리 두 줄 · 바위 · 화분 둘 · 자갈 둘이
+    // 같이 들어 있고, 그 넷이 이제 `Rocks`로 간다 (`plates.plateLumps`)
+    expect(t.byTexture.get('imped')).toBe(64_096)
     // ⚠️ **바닷가 거품은 지형이다.** 15.9°·80.5°·85.8°로 놓여 있고 45°가 하나도
     // 없다. 세우지 않으니 옆면도 안 생긴다
     expect(t.byTexture.get('seaside3')).toBeUndefined()

@@ -20,6 +20,7 @@ import {
 } from '../../state/saveStore'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
+import { TITLE_SONG } from '../../engine/audio/songIds'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import * as css from './titleScreen.css'
 
@@ -62,6 +63,20 @@ export function TitleScreen() {
   // 메뉴 소리를 미리 펴 둔다. 깨어나기 전이면 줄을 서고 첫 입력 때 받는다 —
   // 안 그러면 타이틀에서 처음 커서를 움직일 때 452KB를 기다린다
   useEffect(() => { void music.prewarm([SFX.MENU]) }, [])
+
+  /**
+   * 타이틀 곡 (`SEQ_TITLE01`).
+   *
+   * ⚠️ **브라우저가 여기서는 아직 소리를 못 낸다.** 사용자가 한 번 건드리기
+   * 전에는 `AudioContext`가 안 열린다. `music.play`가 그걸 알고 곡 번호만
+   * 적어 두었다가 깨어날 때 트므로 여기서는 그냥 부르면 된다 — 첫 키·첫
+   * 클릭에서 흐르기 시작한다.
+   *
+   * 나갈 때 안 끈다. 필드로 들어가면 `MusicDirector`가 1초 안에 맵 헤더의
+   * 곡으로 갈아타면서 이 곡을 겹쳐 끈다(`FADE`) — 여기서 먼저 끊으면
+   * 그 사이가 정적이 된다
+   */
+  useEffect(() => { void music.play(TITLE_SONG) }, [])
 
   useEffect(() => {
     let alive = true

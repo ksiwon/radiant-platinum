@@ -237,6 +237,7 @@ export interface CardShells {
  */
 export function cardShells(
   mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array, sheet: TexSheet | null,
+  lumps?: ReadonlySet<number>,
 ): CardShells | null {
   if (!sheet) return null
   const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
@@ -267,7 +268,18 @@ export function cardShells(
       const ra = find(a), rb = find(b)
       if (ra !== rb) parent.set(ra, rb)
     }
+    /**
+     * 덩이로 빠진 사각형. `Rocks`가 입체로 세우므로 옆면을 붙일 것이 없다.
+     *
+     * ⚠️ **셈에서 빼지 않으면 옆에 붙은 진짜 담까지 사라진다.** 화분 사각형은
+     * 안 세워지고 울타리 사각형은 세워지는데, 둘이 정점을 함께 쓰면 한 덩이가
+     * 되어 면적 가중 법선이 그 사이 어딘가로 눕는다. `UPRIGHT`에 걸려 그
+     * 덩이가 통째로 빠지고, 실측으로 옆면 삼각형이 275,528개에서 122,232개로
+     * 반토막 났다
+     */
+    const lump = (t: number): boolean => lumps?.has(start + t - (t % 6)) === true
     for (let t = 0; t < count; t += 3) {
+      if (lump(t)) continue
       for (const k of [0, 1, 2]) {
         const i = index[start + t + k]!
         if (!parent.has(i)) parent.set(i, i)
@@ -278,6 +290,7 @@ export function cardShells(
     /** 덩이마다 정점과 면적 가중 법선. 누워 있는 것을 여기서 가른다 */
     const byRoot = new Map<number, { verts: Set<number>, n: [number, number, number] }>()
     for (let t = 0; t < count; t += 3) {
+      if (lump(t)) continue
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       const root = find(a)
       let part = byRoot.get(root)

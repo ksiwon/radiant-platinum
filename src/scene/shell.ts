@@ -350,7 +350,7 @@ export interface ShellPaint {
  */
 interface WallSource {
   group: number
-  /** 그 벽이 쓰는 **그림 칸**. 판이 이 칸을 통째로 늘려 쓴다 */
+  /** 그 벽이 쓰는 **그림 칸** */
   u0: number
   u1: number
   /** 벽 아래끝과 위끝의 v. 어느 쪽이 큰지는 원작이 정한 대로 따라간다 */
@@ -359,6 +359,15 @@ interface WallSource {
   /** 그 v를 읽은 높이 */
   yLow: number
   yHigh: number
+  /**
+   * 한 타일에 u가 얼마나 가는가 — **옆벽이 실제로 쓰는 눈금**.
+   *
+   * 0이면 못 쟀다는 뜻이고, 그때는 칸을 판 가로에 한 번 늘려 붙인다.
+   * 물리는 그림에서만 쓴다 (`repeat`)
+   */
+  uPerTile: number
+  /** 그 재질이 가로로 물리는가 (`rep` 비트0). 안 물리면 늘려 붙일 수밖에 없다 */
+  repeat: boolean
 }
 
 /** 옆벽으로 칠 만큼 세로인가. 지붕(위를 봄)과 바닥은 여기서 빠진다 */
@@ -437,6 +446,7 @@ function wallSource(
         hit = {
           group, u0: Infinity, u1: -Infinity,
           vLow: 0, vHigh: 0, yLow: Infinity, yHigh: -Infinity,
+          uPerTile: 0, repeat: (mesh.materials[group]?.rep ?? 0) % 2 === 1,
         }
         box.set(group, hit)
       }
@@ -447,6 +457,18 @@ function wallSource(
         if (tu > hit.u1) hit.u1 = tu
         if (y < hit.yLow) { hit.yLow = y; hit.vLow = tv }
         if (y > hit.yHigh) { hit.yHigh = y; hit.vHigh = tv }
+      }
+      // **눈금을 잰다.** 이 벽에서 가로로 제일 멀리 떨어진 두 점의 u 차이를
+      // 그 거리로 나눈다. 옆벽은 판의 깊이 방향으로 뻗어 있으므로 거리는
+      // 그쪽으로 잰다 (`axis`)
+      for (let i = 0; i < 3; i++) {
+        for (let j = i + 1; j < 3; j++) {
+          const ka = tri[i]!, kb = tri[j]!
+          const d = Math.abs(pos[kb * 3 + axis]! - pos[ka * 3 + axis]!)
+          if (d < 0.05) continue
+          const per = Math.abs(uv[kb * 2]! - uv[ka * 2]!) / d
+          if (per > hit.uPerTile) hit.uPerTile = per
+        }
       }
     }
   })
@@ -575,12 +597,25 @@ export function facePlate(
           // 그림 칸을 벗어날 수 없게 하려면 **칸 안에서만 셈하면 된다.** 옆벽이
           // 실제로 쓰는 u 범위를 판의 가로 전체에, 옆벽의 높이–v 대응을 판의
           // 높이에 건다. 널판 한 벌이 뒷벽을 정확히 한 번 덮는다
+          //
+          // ⚠️ **다만 물리는 그림이면 늘리지 않고 되풀이한다.** 칸을 판 가로에
+          // 한 번 늘려 붙이면 널판 한 벌이 뒷벽 폭에 맞춰 **늘어난다** — 옆벽의
+          // 널판보다 굵어지고, 칸에 같이 든 기단 한 줄이 벽 폭만큼 넓은 띠가
+          // 되어 파랗게 번진다. 옆벽이 쓰는 눈금(`uPerTile`)으로 되풀이하면
+          // 널판이 네 벽에서 같은 굵기가 되고, 그 한 줄은 **일정한 간격의
+          // 모서리 기둥**으로 읽힌다.
+          //
+          // 안 물리는 그림은 되풀이할 수가 없다(가장자리 텍셀로 눌린다) —
+          // 그때만 늘려 붙인다
           const t = span > 0 ? (out[across]! - low) / span : 0
           const h = from.yHigh > from.yLow
             ? (out[1]! - from.yLow) / (from.yHigh - from.yLow) : 0
           const clamp = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x)
+          const tile = from.repeat && from.uPerTile > 0
           into.uv.push(
-            from.u0 + clamp(t) * (from.u1 - from.u0),
+            tile
+              ? from.u0 + (out[across]! - low) * from.uPerTile
+              : from.u0 + clamp(t) * (from.u1 - from.u0),
             from.vLow + clamp(h) * (from.vHigh - from.vLow))
         } else into.uv.push(uv?.[tri[j]! * 2] ?? 0, uv?.[tri[j]! * 2 + 1] ?? 0)
       }

@@ -141,17 +141,192 @@ export function isBakedShadow(mesh: ChunkMesh, group: number): boolean {
 }
 
 /**
+ * **판때기로 세워 놓은 바위.**
+ *
+ * 나무만 판때기인 것이 아니다. 물가의 바위도 사각형 한 장이고, 원작이 고정
+ * 카메라를 보고 45°로 눕혀 놓았다 — 그 각도에서 보면 물에 잠긴 바위로 읽힌다.
+ * 세워 놓으면 **새까만 달걀**이 물 위에 늘어선다(양지시티 해안).
+ *
+ * 이름으로 고르는 것이 위태로워 보이지만 실측이 딱 갈라 준다:
+ *
+ *   `searock`    사각형 1,001장 — **1,001장 다** 45.0° · **1,001장 다** 2.0×1.41×1.41타일
+ *   `dun_srock`  2장 — 둘 다 45.0° · 둘 다 같은 크기
+ *   ── 여기까지가 세워 놓은 바위 ──
+ *   `c3_iwa_s`   48장 전부 90°(땅에 깔린 무늬)
+ *   `c3_grand`   75장 전부 90°
+ *   `c3_iwa_l`   11장 전부 60.3° — 45°도 63.4°도 아니라 원래 그 각으로 놓인 지형이다
+ *   `m_4ten_iwa` 21장이 11°~57°로 흩어져 있다 (창관산 배경)
+ *
+ * 한 서브메시가 통째로 한 가지라 삼각형을 골라낼 일이 없다
+ */
+const ROCK_NAME = /^(searock|dun_srock)$/
+
+export function isRock(mesh: ChunkMesh, group: number): boolean {
+  return ROCK_NAME.test(mesh.materials[group]?.tex ?? '')
+}
+
+/** 입체로 세울 덩이 하나. 자리는 밑바닥 한가운데다 */
+export interface RockSite {
+  x: number
+  z: number
+  /** 밑바닥 높이 */
+  y: number
+  /** 원작 판의 가로 폭 (타일) */
+  w: number
+  /** 색을 가져올 서브메시 */
+  group: number
+  /** 색을 가져올 **그림 칸**. 한 그림에 여러 물건이 들어 있다 */
+  u0: number
+  u1: number
+  v0: number
+  v1: number
+}
+
+/**
+ * 눕혀 놓은 바위 판의 자리와 크기.
+ *
+ * 사각형 하나가 바위 하나다 — 삼각형 둘씩 이어져 있고(실측: 1,001장이 전부
+ * 그렇다), 상자의 가로가 곧 바위 폭이다
+ */
+export function rockSites(
+  mesh: ChunkMesh, position: Float32Array, lumps?: LumpSet,
+): RockSite[] {
+  const index = mesh.geometry.getIndex()!.array
+  const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
+    Float32Array | undefined
+  const out: RockSite[] = []
+  mesh.groups.forEach(([, start, count], group) => {
+    const named = isRock(mesh, group)
+    for (let t = 0; t + 6 <= count; t += 6) {
+      if (!named && !lumps?.has(start + t)) continue
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity
+      let z0 = Infinity, z1 = -Infinity
+      let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity
+      for (let k = 0; k < 6; k++) {
+        const i = index[start + t + k]!
+        const x = position[i * 3]!, y = position[i * 3 + 1]!, z = position[i * 3 + 2]!
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (y < y0) y0 = y
+        if (z < z0) z0 = z
+        if (z > z1) z1 = z
+        const tu = uv ? uv[i * 2]! : 0, tv = uv ? uv[i * 2 + 1]! : 0
+        if (tu < u0) u0 = tu
+        if (tu > u1) u1 = tu
+        if (tv < v0) v0 = tv
+        if (tv > v1) v1 = tv
+      }
+      out.push({
+        x: (x0 + x1) / 2, z: (z0 + z1) / 2, y: y0,
+        w: Math.max(x1 - x0, z1 - z0), group, u0, u1, v0, v1,
+      })
+    }
+  })
+  return out
+}
+
+/** 입체로 바꿀 판때기 사각형들. 열쇠는 색인 배열에서의 시작 자리다 */
+export type LumpSet = Set<number>
+
+/**
+ * **담이 아니라 덩이인 판때기.**
+ *
+ * ⚠️ 원작 그림 한 장에 여러 물건이 들어 있다. 축복시티 `imped`(64×64) 한 장에
+ * 흰 울타리 두 줄 · **바위 한 덩이** · 화분 둘 · 자갈 둘이 같이 있다. 이름으로는
+ * 못 가른다 — 같은 서브메시고 같은 텍스처다. 전부 45°로 눕혀 놓아서
+ * `standCutouts`가 다 세우는데, 울타리는 세우는 것이 맞고 바위와 화분은
+ * **세우면 액자가 된다.** 사용자 화면에서 인도 위에 떠 있던 회색 판이 그 화분이다.
+ *
+ * 가르는 것은 **그 판이 쓰는 그림 칸의 좌우 끝**이다. 담은 옆으로 이어지므로
+ * 칸의 왼쪽 끝과 오른쪽 끝이 둘 다 불투명하고, 덩이는 칸 안에 떠 있어서 한쪽이
+ * 비어 있다. 오버월드 45° 사각형 4,651개를 이 잣대로 세면:
+ *
+ *   담   3,808 — `newstep`(계단 난간) · `seaside3`(물거품) · `imped` 울타리 줄
+ *   덩이   843 — `imped` 화분 378+129 · 자갈 104 · 바위 80 …
+ *
+ * 겹치는 칸이 없다: `imped`의 울타리 칸(u0.00~1.00 · u0.50~0.62, v0.00~0.25)은
+ * 전부 담이고 아래쪽 칸(v0.50~1.00)은 전부 덩이다
+ */
+export function plateLumps(
+  mesh: ChunkMesh, sheet: TexSheet | null, cutout: readonly boolean[],
+  position: Float32Array,
+): LumpSet {
+  const out: LumpSet = new Set()
+  if (!sheet) return out
+  const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
+    Float32Array | undefined
+  if (!uv) return out
+  const index = mesh.geometry.getIndex()!.array
+
+  mesh.groups.forEach(([, start, count], group) => {
+    if (cutout[group] !== true) return
+    if (isFoliage(mesh, group, cutout) || isBakedShadow(mesh, group) || isRock(mesh, group)) return
+    const spec = mesh.materials[group]!
+    const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
+    if (!item) return
+    for (let t = 0; t + 6 <= count; t += 6) {
+      const vs = [0, 1, 2, 3, 4, 5].map((k) => index[start + t + k]!)
+      const a = vs[0]!, b = vs[1]!, c = vs[2]!
+      const ax = position[a * 3]!, ay = position[a * 3 + 1]!, az = position[a * 3 + 2]!
+      const ux = position[b * 3]! - ax, uy = position[b * 3 + 1]! - ay
+      const uz = position[b * 3 + 2]! - az
+      const vx = position[c * 3]! - ax, vy = position[c * 3 + 1]! - ay
+      const vz = position[c * 3 + 2]! - az
+      const ny = uz * vx - ux * vz
+      const len = Math.hypot(uy * vz - uz * vy, ny, ux * vy - uy * vx)
+      if (len < 1e-9) continue
+      // 원작이 눕혀 놓은 각인 것만 본다 — 나머지는 원래 그 각으로 놓인 지형이다
+      if (!leaning(Math.abs(ny) / len)) continue
+      let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity
+      for (const i of vs) {
+        const tu = uv[i * 2]!, tv = uv[i * 2 + 1]!
+        if (tu < u0) u0 = tu
+        if (tu > u1) u1 = tu
+        if (tv < v0) v0 = tv
+        if (tv > v1) v1 = tv
+      }
+      if (!edgeToEdge(sheet, item, u0, u1, v0, v1)) out.add(start + t)
+    }
+  })
+  return out
+}
+
+/** 그 그림 칸의 **왼쪽 끝과 오른쪽 끝이 둘 다** 불투명한가 — 담의 표시다 */
+function edgeToEdge(
+  sheet: TexSheet, item: { x: number; y: number; w: number; h: number },
+  u0: number, u1: number, v0: number, v1: number,
+): boolean {
+  const clampX = (t: number) => Math.min(item.w - 1, Math.max(0, t))
+  const clampY = (t: number) => Math.min(item.h - 1, Math.max(0, t))
+  const tx0 = clampX(Math.round(u0 * item.w))
+  const tx1 = clampX(Math.round(u1 * item.w) - 1)
+  const ty0 = clampY(Math.round(v0 * item.h))
+  const ty1 = clampY(Math.round(v1 * item.h) - 1)
+  const opaque = (tx: number): boolean => {
+    for (let ty = ty0; ty <= ty1; ty++) {
+      if (sheet.pixels[((item.y + ty) * sheet.width + item.x + tx) * 4 + 3]! >= ALPHA_CUT) {
+        return true
+      }
+    }
+    return false
+  }
+  return opaque(tx0) && opaque(tx1)
+}
+
+/**
  * 잎을 걷어내고 덮은 칸을 돌려준다.
  *
  * 원본 지오메트리는 손대지 않는다 — 청크는 캐시돼 있고 텍스처 묶음이 다르면
  * 잘라 낼 것도 달라진다
  */
-export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split {
+export function splitFoliage(
+  mesh: ChunkMesh, cutout: readonly boolean[], lumps?: LumpSet,
+): Split {
   const src = mesh.geometry
   const source = (src.getAttribute('position') as BufferAttribute).array as Float32Array
   // 누워 있는 오려 낸 판(울타리·표지판)을 세운다. 원본은 안 건드린다 —
   // 청크는 캐시돼 있고 텍스처 묶음이 다르면 오려 낸 판도 달라진다
-  const position = standCutouts(mesh, cutout, source)
+  const position = standCutouts(mesh, cutout, source, lumps)
   const index = src.getIndex()!.array
   const cells = new Map<number, Cell>()
   const shadows = new Set<number>()
@@ -165,14 +340,15 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
     // 대신 **어디 있었는지는 적어 둔다**: 그 자리가 원작 나무의 자리다
     const shadow = isBakedShadow(mesh, group)
     if (shadow) { soloShadows(position, index, start, count, shadows); groups.push([begin, 0, group]); return }
+    // 세워 놓은 바위 판도 걷어낸다 — `Rocks`가 입체로 다시 세운다.
+    // 서브메시가 통째로 45°짜리 판이라(실측 1,001/1,001) 고를 것이 없다
+    if (isRock(mesh, group)) { groups.push([begin, 0, group]); return }
     for (let t = 0; t < count; t += 3) {
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
+      // 담이 아니라 덩이인 판(화분·바위)도 걷어낸다 — `Rocks`가 입체로 세운다.
+      // 사각형 단위라 짝수 삼각형에 표가 붙어 있다
+      if (lumps?.has(start + t - (t % 6))) continue
       if (!foliage) { kept.push(a, b, c); continue }
-      // ⚠️ **평평한 잎 판은 숲 바닥이 아니다.** 한 번 그렇게 읽고 남겨 뒀다가
-      // 틀렸다: 지면에서 정확히 0.06타일(1도트) 위라는 것은 **어디 놓였는지**를
-      // 말할 뿐 무엇을 그린 것인지는 말하지 않는다. 남겨 보니 나무마다 밑에
-      // 검푸른 원반이 깔렸다 — 저건 바닥이 아니라 *위에서 내려다본 우듬지*다.
-      // 바닥은 `floorPatch`가 **둘레 지형의 타일**로 메운다
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
       let z0 = Infinity, z1 = -Infinity
       for (const i of [a, b, c]) {
@@ -184,6 +360,23 @@ export function splitFoliage(mesh: ChunkMesh, cutout: readonly boolean[]): Split
         if (z < z0) z0 = z
         if (z > z1) z1 = z
       }
+      // ⚠️ **평평한 잎 판은 걷어내지 않는다 — 그것이 나무 바닥 타일이다.**
+      //
+      // 원작 나무 그림 한 장에는 위에서 내려다본 그루터기가 같이 들어 있다
+      // (`tree01`의 오른쪽 위 칸이 나이테까지 그려진 밑동이다). 그 그림을 붙인
+      // 평평한 판이 나무 밑에 깔려 있고, 그것이 그 자리의 바닥이다.
+      //
+      // 한동안 이걸 걷어내고 **옆 타일을 베껴** 메웠는데, 베끼기가 물가에서
+      // 웅덩이를, 벼랑 밑에서 벼랑 그림을, 축복시티 가로수 밑에서 횡단보도를,
+      // 떡잎마을 숲에서 **하얀 모래**를 깔았다(실측 상위: `ngrass` 31,887 ·
+      // `puddlep` 8,121 · `nectgr` 7,848 · `criffp` 7,546 · `nhana` 7,294 ·
+      // `sea` 6,820). 원작이 거기 그려 둔 그림이 있는데 옆에서 베낄 이유가 없다.
+      //
+      // 나이테가 보이는 것은 **줄기가 가린다** — 원작이 그린 그루터기가
+      // 1.20타일이고 줄기를 정확히 그 굵기로 세운다 (`Foliage.TRUNK_R`).
+      //
+      // 베끼기는 그대로 남는다. 이 판은 그림이 뚫린 구석이 있어서, 밑에
+      // 아무것도 없으면 그 구석이 하늘이 된다 (`floorPatch`)
       // 삼각형이 걸친 칸을 전부 칠한다. −0.01은 딱 경계에서 끝나는 면이 다음
       // 칸까지 물들이는 것을 막는다 — 판이 정수 좌표에 딱 맞춰 놓여 있다
       for (let tz = Math.floor(z0); tz <= Math.floor(z1 - 0.01); tz++) {
@@ -304,13 +497,17 @@ function standCard(pos: Float32Array, verts: number[], n: [number, number, numbe
  * 저마다 다른 자리에서 시작한다. 그래서 정점을 함께 쓰는 삼각형끼리 묶는다
  */
 export function standCutouts(
-  mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array,
+  mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array, lumps?: LumpSet,
 ): Float32Array {
   const index = mesh.geometry.getIndex()!.array
   let out: Float32Array | null = null
   mesh.groups.forEach(([, start, count], group) => {
     if (cutout[group] !== true) return
     if (isFoliage(mesh, group, cutout) || isBakedShadow(mesh, group)) return
+    // 바위 판은 세우지 않는다 — 세우면 새까만 달걀이고, `Rocks`가 입체로 세운다
+    if (isRock(mesh, group)) return
+    /** 덩이로 빠진 사각형인가. 세워 봐야 걷어낼 것이라 손대지 않는다 */
+    const lump = (t: number): boolean => lumps?.has(start + t - (t % 6)) === true
 
     // 정점을 함께 쓰는 삼각형끼리 묶는다 (유니온-파인드)
     const parent = new Map<number, number>()
@@ -324,6 +521,7 @@ export function standCutouts(
       if (ra !== rb) parent.set(ra, rb)
     }
     for (let t = 0; t < count; t += 3) {
+      if (lump(t)) continue
       for (const k of [0, 1, 2]) {
         const i = index[start + t + k]!
         if (!parent.has(i)) parent.set(i, i)
@@ -335,6 +533,7 @@ export function standCutouts(
     /** 덩이마다 면적 가중 법선과 정점 목록 */
     const parts = new Map<number, { n: [number, number, number]; verts: Set<number> }>()
     for (let t = 0; t < count; t += 3) {
+      if (lump(t)) continue
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       const root = find(a)
       let part = parts.get(root)
@@ -477,13 +676,15 @@ export function canBorrowFloor(mesh: ChunkMesh, group: number): boolean {
  * 물이라도 깔아야 발밑이 안 뚫린다
  */
 export function floorSource(split: Split, keep?: (group: number) => boolean): FloorSource {
-  const all = gatherFloors(split)
-  if (!keep) return all
-  const floors = all.floors.filter((f) => keep(f.group))
-  return floors.length === 0 ? all : { ...all, floors }
+  if (!keep) return gatherFloors(split)
+  const some = gatherFloors(split, keep)
+  // 걸러 놓고 아무것도 안 남으면 안 거른 것을 준다 — 물가 청크는 바닥이 물뿐일
+  // 수 있고, 그때는 물이라도 깔아야 발밑이 안 뚫린다
+  return some.floors.length === 0 ? gatherFloors(split) : some
 }
 
-function gatherFloors(split: Split): FloorSource {
+/** @param keep 이 서브메시를 **바닥으로 셀 것인가** */
+function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSource {
   const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
   const uvAttr = split.geometry.getAttribute('uv') as BufferAttribute | undefined
   const uv = uvAttr?.array as Float32Array | undefined
@@ -494,6 +695,7 @@ function gatherFloors(split: Split): FloorSource {
   const covered = new Set<number>()
   const levels = new Map<number, number[]>()
   for (const [start, count, group] of split.groups) {
+    if (keep && !keep(group)) continue
     for (let t = 0; t < count; t += 3) {
       const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
       const ax = pos[a * 3]!, ay = pos[a * 3 + 1]!, az = pos[a * 3 + 2]!
@@ -638,18 +840,28 @@ export function floorPatch(
 
   /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */
   const bucket = new Map<number, { position: number[]; uv: number[]; color: number[] }>()
-  for (const key of bare) {
-    const cell = split.cells.get(key)!
-    const tx = cellX(key), tz = cellZ(key)
-    const cx = tx + 0.5, cz = tz + 0.5
-    const best = nearest.get(key)
-    if (!best) continue
-    // 높이 자료가 없으면 **베껴 온 타일이 서 있는 높이**로 깐다. 예전엔 그런
-    // 칸을 건너뛰었는데, 그러면 943칸이 그대로 뚫린 채 남는다
-    const y = ground(cx, cz, cell.minY) ?? best.cy
 
-    // 그 삼각형의 평면을 그대로 늘린다 — 무게중심 좌표는 삼각형 밖에서도 산다
-    const { ax, az, ux, uz, vx, vz, au, av, du, dv, eu, ev } = best
+  /**
+   * 칸 하나를 삼각형 판 하나로 깐다. 그림은 `src`의 타일을 그대로 한 장 베낀다.
+   *
+   * ⚠️ **평면을 늘리지 않고 그 칸으로 되접는다.**
+   *
+   * 평면을 그냥 늘리면 UV가 삼각형에서 멀어진 만큼 그대로 벗어난다. 안 물리는
+   * 그림은 벗어난 값이 가장자리 텍셀로 눌려서 **한 색으로 칠한 널따란 판**이
+   * 깔린다 — 영원의 숲 바닥 절반이 그렇게 민무늬 초록이었다.
+   *
+   * ⚠️ **물리는 그림이면 괜찮다고 뒀던 것이 두 번째 고장이었다.** 원작 바닥
+   * 그림 한 장은 타일 한 장이 아니라 **여러 벌을 모아 둔 한 장**이다. 늘리면
+   * 칸마다 다른 벌을 집어서, 같은 `fenter`인데 원래 땅은 #198a30이고 메운
+   * 바닥은 #44b946으로 나왔다 — 영원의 숲 바닥이 밝고 어두운 사각형이
+   * 번갈아 깔린 바둑판이 된 것이 이것이다.
+   *
+   * 그래서 늘 되접는다: 칸 안쪽 자리만 살리고 칸 번호는 **베껴 온 칸의 것**을
+   * 쓴다. `at`이 아핀이라 정수 칸만큼 옮기는 것은 곧 그 타일을 그대로 한 장
+   * 복사하는 것이고, 메운 칸이 원본 칸과 **똑같이** 보인다
+   */
+  const lay = (src: FloorTri, tx: number, tz: number, y: number): void => {
+    const { ax, az, ux, uz, vx, vz, au, av, du, dv, eu, ev } = src
     const area = ux * vz - vx * uz
     const at = (x: number, z: number): [number, number] => {
       if (Math.abs(area) < 1e-9) return [0, 0]
@@ -658,27 +870,11 @@ export function floorPatch(
       const w2 = (ux * pz - px * uz) / area
       return [au + w1 * du + w2 * eu, av + w1 * dv + w2 * ev]
     }
-    // ⚠️ **평면을 늘리지 않고 그 칸으로 되접는다.**
-    //
-    // 평면을 그냥 늘리면 UV가 삼각형에서 멀어진 만큼 그대로 벗어난다. 안 물리는
-    // 그림은 벗어난 값이 가장자리 텍셀로 눌려서 **한 색으로 칠한 널따란 판**이
-    // 깔린다 — 영원의 숲 바닥 절반이 그렇게 민무늬 초록이었다.
-    //
-    // ⚠️ **물리는 그림이면 괜찮다고 뒀던 것이 두 번째 고장이었다.** 원작 바닥
-    // 그림 한 장은 타일 한 장이 아니라 **여러 벌을 모아 둔 한 장**이다. 늘리면
-    // 칸마다 다른 벌을 집어서, 같은 `fenter`인데 원래 땅은 #198a30이고 메운
-    // 바닥은 #44b946으로 나왔다 — 영원의 숲 바닥이 밝고 어두운 사각형이
-    // 번갈아 깔린 바둑판이 된 것이 이것이다.
-    //
-    // 그래서 늘 되접는다: 칸 안쪽 자리만 살리고 칸 번호는 **베껴 온 칸의 것**을
-    // 쓴다. `at`이 아핀이라 정수 칸만큼 옮기는 것은 곧 그 타일을 그대로 한 장
-    // 복사하는 것이고, 메운 칸이 원본 칸과 **똑같이** 보인다
-    const shiftX = Math.floor(best.cx) - tx
-    const shiftZ = Math.floor(best.cz) - tz
-    const tiled = (x: number, z: number): [number, number] => at(x + shiftX, z + shiftZ)
+    const shiftX = Math.floor(src.cx) - tx
+    const shiftZ = Math.floor(src.cz) - tz
 
-    let into = bucket.get(best.group)
-    if (!into) { into = { position: [], uv: [], color: [] }; bucket.set(best.group, into) }
+    let into = bucket.get(src.group)
+    if (!into) { into = { position: [], uv: [], color: [] }; bucket.set(src.group, into) }
     // 칸 하나를 살짝 넘겨 깐다 — 딱 맞추면 이웃 칸과의 사이에 실금이 보인다
     const e = 0.01
     // ⚠️ **위를 보게 감는다.** 법선 배열만 +Y로 채우고 감는 방향을 안 맞추면
@@ -691,10 +887,22 @@ export function floorPatch(
     ]
     for (const [x, z] of quad) {
       into.position.push(x, y, z)
-      into.uv.push(...tiled(x, z))
+      into.uv.push(...at(x + shiftX, z + shiftZ))
       // 베껴 온 삼각형의 그늘을 같이 가져온다 — 안 그러면 이 칸만 하얗게 뜬다
-      into.color.push(best.r, best.g, best.b)
+      into.color.push(src.r, src.g, src.b)
     }
+  }
+
+  for (const key of bare) {
+    const cell = split.cells.get(key)!
+    const tx = cellX(key), tz = cellZ(key)
+    const cx = tx + 0.5, cz = tz + 0.5
+    const best = nearest.get(key)
+    if (!best) continue
+    // 높이 자료가 없으면 **베껴 온 타일이 서 있는 높이**로 깐다. 예전엔 그런
+    // 칸을 건너뛰었는데, 그러면 943칸이 그대로 뚫린 채 남는다
+    const y = ground(cx, cz, cell.minY) ?? best.cy
+    lay(best, tx, tz, y)
   }
   if (bucket.size === 0) return null
 
@@ -744,6 +952,80 @@ function soloShadows(
     out.add(cellKey(Math.round(x0), Math.round(z0)))
   }
 }
+
+/**
+ * 원작이 나무 밑에 깔아 둔 **바닥 타일** 한 장의 규격.
+ *
+ * 나무 그림 한 장에는 위에서 내려다본 그루터기가 같이 들어 있고(`tree01`의
+ * 오른쪽 위 칸이 나이테까지 그려진 밑동이다), 그 그림을 붙인 평평한 판이
+ * 나무 밑에 깔려 있다. 그것이 그 자리의 바닥이다.
+ *
+ * 규격이 하나로 떨어진다 — 실측으로 `tree01` 2,317장 · `tree2_01` 3,760장 ·
+ * `tree04_2` 195장 · `tree_sbt01` 89장이 **전부 2.0×1.88타일**이고 그림 칸도
+ * 같다. 그래서 그루마다 재지 않고 종류마다 한 벌만 있으면 된다
+ */
+export interface PlateFloor {
+  /** 세계 크기 (타일) */
+  w: number
+  d: number
+  /** 그림 칸 */
+  u0: number
+  u1: number
+  v0: number
+  v1: number
+}
+
+/**
+ * 이 잎 서브메시가 쓰는 나무 바닥 타일. 없으면 `null`.
+ *
+ * ⚠️ **한 그루짜리 판만 쓴다.** 숲 지붕(`conttree_b` 16.0×1.88 ·
+ * `conttree2_b` 6.0×1.88 · `bf_tree02` 16×16)은 숲 한 덩어리를 위에서 덮은
+ * 한 장이라 그루마다 한 벌씩 붙일 수가 없다
+ */
+export function plateFloor(
+  mesh: ChunkMesh, group: number, position: Float32Array,
+): PlateFloor | null {
+  const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
+    Float32Array | undefined
+  if (!uv) return null
+  const index = mesh.geometry.getIndex()!.array
+  const [, start, count] = mesh.groups[group] ?? []
+  if (start === undefined || count === undefined) return null
+  for (let t = 0; t + 6 <= count; t += 6) {
+    const vs = [0, 1, 2, 3, 4, 5].map((k) => index[start + t + k]!)
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+    let z0 = Infinity, z1 = -Infinity
+    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity
+    for (const i of vs) {
+      const x = position[i * 3]!, y = position[i * 3 + 1]!, z = position[i * 3 + 2]!
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+      if (z < z0) z0 = z
+      if (z > z1) z1 = z
+      const tu = uv[i * 2]!, tv = uv[i * 2 + 1]!
+      if (tu < u0) u0 = tu
+      if (tu > u1) u1 = tu
+      if (tv < v0) v0 = tv
+      if (tv > v1) v1 = tv
+    }
+    // 평평하고 한 그루 크기인 사각형 — 그 첫 장이 곧 이 종류의 규격이다
+    if (y1 - y0 > 1e-4) continue
+    if (x1 - x0 > PLATE_SPAN || z1 - z0 > PLATE_SPAN) continue
+    if (!(x1 > x0) || !(z1 > z0)) continue
+    return { w: x1 - x0, d: z1 - z0, u0, u1, v0, v1 }
+  }
+  return null
+}
+
+/**
+ * 한 그루짜리 바닥 타일의 최대 크기 (타일).
+ *
+ * 실측으로 한 그루짜리는 전부 2.0×1.88이고 숲 지붕은 6.0·16.0이라, 그 사이
+ * 어디서 끊어도 같다
+ */
+const PLATE_SPAN = 2.5
 
 export interface TreeSite {
   /** 크기·색을 정하는 잎 칸 */
@@ -814,10 +1096,12 @@ export function treeSites(split: Split): TreeSite[] {
  */
 const splitCache = new Map<string, Split>()
 
-export function cachedSplit(key: string, mesh: ChunkMesh, cutout: readonly boolean[]): Split {
+export function cachedSplit(
+  key: string, mesh: ChunkMesh, cutout: readonly boolean[], lumps?: LumpSet,
+): Split {
   const hit = splitCache.get(key)
   if (hit) return hit
-  const made = splitFoliage(mesh, cutout)
+  const made = splitFoliage(mesh, cutout, lumps)
   splitCache.set(key, made)
   return made
 }

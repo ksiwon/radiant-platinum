@@ -17,6 +17,7 @@ import {
 } from './plates'
 import {
   BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
+  crownGeometry, trunkGeometry,
   contactGeometry, contactMaterial, contactTexture, merge, nearScale, paint, treeAt,
   treeGeometry,
 } from './Foliage'
@@ -304,7 +305,9 @@ maybe('잎 걷어내기', () => {
       groups: [[0, 0, 6], [1, 6, 6], [2, 12, 6]],
     }
     // 걸어 다니는 높이가 1이다. 칸 (1,0)에는 y=0짜리만 있으므로 메워야 한다
-    const patch = floorPatch(splitFoliage(mesh, [true, false, false]), () => 1)!
+    const split = splitFoliage(mesh, [true, false, false])
+    // 여기 잎 판은 **평평하다** — 곧 원작이 그 칸에 깔아 둔 나무 바닥 타일이다
+    const patch = floorPatch(split, () => 1)!
     const p = patch.geometry.getAttribute('position') as BufferAttribute
     expect(p.count / 3, '삼각형 둘 = 칸 하나').toBe(2)
     expect(p.getX(0)).toBeCloseTo(1, 1)
@@ -475,10 +478,13 @@ maybe('잎 걷어내기', () => {
     // 묶여 삼각형 4개가 되는데, 그 넷이 전부 **수평**이고 각각 잎 속과 땅속에
     // 묻힌다. 그래서 화면에 줄기가 통째로 없었다 — 눈으로는 "안 보인다"까지만
     // 알 수 있어서 여기서 면의 개수와 방향을 직접 센다
-    const geo = treeGeometry([0x60a050], 0x6b4a2a)
+    // 잎 80+20×5=180 · 줄기 6각 × 마디 4 × 2 = 48 · 가지 3 × 4각 × 2 = 24
+    expect(treeGeometry([0x60a050], 0x6b4a2a).getAttribute('position').count / 3).toBe(252)
+
+    // 줄기만 따로 잰다. 가로가 `TRUNK_R` 배수라 나무와 단위가 다르다
+    const geo = trunkGeometry(0x6b4a2a)
     const pos = geo.getAttribute('position') as BufferAttribute
-    // 잎 80+20+20 · 줄기 6각 × 마디 4 × 2 = 48
-    expect(pos.count / 3).toBe(168)
+    expect(pos.count / 3, '줄기 48 + 가지 24').toBe(72)
 
     // 줄기 축은 곧지 않고 조금씩 휘어 있다. 바깥쪽을 재려면 그 높이의 축을 알아야 한다
     const axis = (h: number): number => {
@@ -492,14 +498,12 @@ maybe('잎 걷어내기', () => {
 
     const a = new Vector3(), b = new Vector3(), c = new Vector3()
     const u = new Vector3(), v = new Vector3(), n = new Vector3(), mid = new Vector3()
-    let trunk = 0, upright = 0, outward = 0, area = 0
-    for (let t = 0; t < pos.count / 3; t++) {
+    let upright = 0, outward = 0, area = 0
+    // 가지는 축이 따로라 여기서 빼고, 줄기 몸통 48개만 본다
+    for (let t = 0; t < 48; t++) {
       a.fromBufferAttribute(pos, t * 3)
       b.fromBufferAttribute(pos, t * 3 + 1)
       c.fromBufferAttribute(pos, t * 3 + 2)
-      // 잎은 `BARE` 위에서 시작한다. 그 밑에 걸친 삼각형은 줄기뿐이다
-      if (Math.min(a.y, b.y, c.y) >= BARE - 0.01) continue
-      trunk++
       n.crossVectors(u.subVectors(b, a), v.subVectors(c, a))
       area += n.length() / 2
       n.normalize()
@@ -508,14 +512,53 @@ maybe('잎 걷어내기', () => {
       mid.addVectors(a, b).add(c).multiplyScalar(1 / 3)
       if (n.x * (mid.x - axis(mid.y)) + n.z * mid.z > 0) outward++
     }
-    expect(trunk).toBe(48)
     expect(upright).toBe(48)
     // 그리고 **바깥을 봐야** 한다. 재질이 앞면만 그리므로 감는 방향이 뒤집히면
     // 면은 다 있는데 화면에는 통째로 없다 — 개수로는 안 걸리는 자리다
     expect(outward).toBe(48)
     // 넓이도 봐야 한다 — 면이 찌부러져 있으면 개수만으로는 안 걸린다.
-    // 둘레 2π×0.16 × 높이 1.55 ≈ 1.5가 대충 맞는 자리다
-    expect(area).toBeGreaterThan(0.8)
+    // 둘레 2π×0.6 × 높이 1.82 ≈ 6.9가 대충 맞는 자리다 (`TRUNK_R` 배수)
+    expect(area).toBeGreaterThan(4)
+
+    // ⚠️ **법선을 다시 세면 안 된다.** 색인이 없으므로 그것이 곧 면 법선이라,
+    // 여섯 면짜리 줄기가 널판 여섯 장으로 갈려 보인다. 옆으로 뻗은 값이
+    // 그대로 실려 와야 한다
+    const nrm = geo.getAttribute('normal') as BufferAttribute
+    for (let i = 0; i < 48 * 3; i++) expect(Math.abs(nrm.getY(i))).toBeLessThan(1e-6)
+  })
+
+  it('잎 덩이의 법선이 공의 것이다 — 면 법선이면 주사위가 된다', () => {
+    // ⚠️ 사용자가 "폴리곤 느낌"이라고 한 것의 절반이 이것이다. 정이십면체를
+    // 면 법선으로 그리면 20개의 평면이 또렷이 갈려 보인다. 법선만 중심에서
+    // 뻗은 방향으로 바꾸면 같은 삼각형 수로 빛이 공처럼 흐르고, 각진 것은
+    // 윤곽에만 남는다 — 세분을 올리는 것과 값이 다르다
+    const geo = crownGeometry([0x60a050, 0x2f6b34])
+    const pos = geo.getAttribute('position') as BufferAttribute
+    const nrm = geo.getAttribute('normal') as BufferAttribute
+    expect(pos.count / 3, '80 + 20×5').toBe(180)
+
+    // 같은 삼각형의 세 정점이 **서로 다른** 법선을 가져야 매끄럽다.
+    // 면 법선이면 셋이 똑같다
+    let varied = 0
+    for (let t = 0; t < pos.count / 3; t++) {
+      const a = new Vector3().fromBufferAttribute(nrm, t * 3)
+      const b = new Vector3().fromBufferAttribute(nrm, t * 3 + 1)
+      if (a.distanceTo(b) > 1e-3) varied++
+    }
+    expect(varied).toBe(pos.count / 3)
+    // 그리고 전부 단위 벡터여야 한다 — 길이가 흐트러지면 밝기가 튄다
+    for (let i = 0; i < nrm.count; i++) {
+      expect(new Vector3().fromBufferAttribute(nrm, i).length()).toBeCloseTo(1, 5)
+    }
+
+    // 색은 위아래로 갈린다. 원작 색 둘 사이를 잇는 것뿐이라 새 색은 안 만든다
+    const col = geo.getAttribute('color') as BufferAttribute
+    let lowest = 0, highest = 0
+    for (let i = 1; i < pos.count; i++) {
+      if (pos.getY(i) < pos.getY(lowest)) lowest = i
+      if (pos.getY(i) > pos.getY(highest)) highest = i
+    }
+    expect(col.getY(highest), '꼭대기가 밑보다 밝다').toBeGreaterThan(col.getY(lowest))
   })
 
   it('3인칭 26.6°에서 잎이 줄기를 다 가리지 않는다', () => {
@@ -561,13 +604,15 @@ maybe('잎 걷어내기', () => {
   })
 
   it('먼 나무는 값싼 모양으로 선다 — 다만 실루엣은 안 바꾼다', () => {
-    // 그루당 168이면 짙은 숲에서 78만 삼각형이다(떡잎마을 일대 4,628그루 실측).
-    // 30타일 밖에서는 세분과 줄기 단면이 안 읽히지만 **윤곽은 읽힌다** —
-    // 덩이를 빼면 그 거리에서도 모양이 달라지는 것이 보인다
+    // 짙은 숲에 창 하나당 4,628그루가 선다(떡잎마을 일대 실측). 30타일 밖에서는
+    // 덩이 하나하나의 면 수가 안 읽히지만 **윤곽은 읽힌다** — 덩이를 빼면
+    // 그 거리에서도 모양이 달라지는 것이 보인다. 그래서 덩이는 여섯 그대로
+    // 두고 20면짜리를 8면짜리로 바꾼다
     const near = treeGeometry([0x60a050], 0x6b4a2a, false)
     const far = treeGeometry([0x60a050], 0x6b4a2a, true)
-    expect(near.getAttribute('position').count / 3).toBe(168)
-    expect(far.getAttribute('position').count / 3).toBe(66)
+    expect(near.getAttribute('position').count / 3).toBe(252)
+    // 잎 8×6 = 48 · 줄기 4각 × 마디 1 × 2 = 8. 예전 먼 나무(66)보다 싸다
+    expect(far.getAttribute('position').count / 3).toBe(56)
     // 값싼 것도 **폭과 높이는 같아야** 한다 — 다르면 LOD가 바뀌는 순간 튄다
     const span = (g: BufferGeometry) => {
       const p = g.getAttribute('position') as BufferAttribute
@@ -964,8 +1009,10 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
     // 어긋난 칸 2,842개가 숨어 있었다 — 밑으로 아랫단 잔디가 지나갈 뿐 걸어
     // 다니는 층에는 아무것도 없는 칸이다. 영원의 숲 길가에 하늘이 비치던
     // 구멍이 그 2,842개 중 하나다
-    expect(t.covered).toBe(9_621)
-    expect(t.filled).toBe(101_082)
+    // 9,621이었다. 줄어든 930은 **판때기 바위**가 덮고 있던 칸이다 — 그 판을
+    // 걷어내고 `Rocks`가 입체로 세우면서 그 자리가 다시 메울 칸이 됐다
+    expect(t.covered).toBe(8_691)
+    expect(t.filled).toBe(102_012)
     // **절반이 이웃에서 온다.** 청크 안만 보면 이만큼이 그대로 뚫린다
     expect(t.borrowed).toBe(51_546)
     // 여기가 이 시험의 전부다

@@ -3,6 +3,8 @@
 // **곡 번호는 지어내지 않는다.** 맵 헤더가 `bgmDay`·`bgmNight`를 들고 있고,
 // 헤더가 내놓는 번호 1186개가 **전부** SDAT의 곡을 가리킨다 — 없는 번호가 0개다.
 // 여기서 할 일은 지금 선 맵의 헤더를 보고 낮/밤을 고르는 것뿐이다.
+// 화면이 직접 쓰는 번호는 잎 모듈에 있다 — 여기를 들여오면 three가 딸려 온다
+export { OPENING_SONG, TITLE_SONG } from './songIds'
 import { mapById } from '../map/world'
 import { TimeOfDay, timeOfDayForHour } from '../map/timeOfDay'
 
