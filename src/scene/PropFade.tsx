@@ -55,9 +55,31 @@ export function fadeFor(distance: number): number {
 interface Props {
   /** 흐려질 소품의 지오메트리. 상자를 여기서 잰다 */
   geometry: BufferGeometry
-  /** 그 소품만 쓰는 재질. **공유 재질을 넘기면 다른 집까지 같이 흐려진다** */
+  /**
+   * 그 소품만 쓰는 재질. **공유 재질을 넘기면 다른 집까지 같이 흐려진다**.
+   *
+   * ⚠️ **배열 자체도 소품마다 하나여야 한다** — 그릴 때마다 새로 만들면
+   * `useEffect`의 의존이 매번 바뀌어 **정리 함수가 프레임마다 돈다.** 그
+   * 정리가 원래 값을 되돌리는 일이라, 실제로 그 길로 롬의 반투명이 통째로
+   * 지워졌다 (`ChunkModels`의 `Prop.fade`)
+   */
   materials: readonly Material[]
   children: React.ReactNode
+}
+
+/**
+ * 재질이 **원래** 갖고 있던 값.
+ *
+ * ⚠️ **흐리게 하는 것은 덮어쓰기가 아니라 곱하기다.** 여기가 틀려 있었다 —
+ * `opacity = 흐린정도`로 덮어썼더니 롬이 정해 둔 반투명이 사라졌다. 소품 590종
+ * 1,333개 재질 중 **279개(21%)가 불투명이 아니고**, 그중 146개가 집 밑에 까는
+ * 그림자(`h_kage`, 알파 9/31)다. 그게 1.0으로 덮여서 마을마다 집 밑에
+ * **새까만 판때기**가 깔려 있었다
+ */
+interface Base {
+  opacity: number
+  transparent: boolean
+  depthWrite: boolean
 }
 
 const probe = new Vector3()
@@ -83,10 +105,21 @@ export function PropFade({ geometry, materials, children }: Props) {
   const at = useRef(1)
   const shadows = useRef(true)
 
+  // 손대기 전의 값. 흐려질 때는 여기에 곱하고, 돌아올 때는 여기로 돌아온다
+  const base = useMemo((): Base[] => materials.map((m) => ({
+    opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite,
+  })), [materials])
+
   // 흐려진 채로 언마운트되면 그 재질을 물려받은 다음 소품이 흐리게 시작한다
   useEffect(() => () => {
-    for (const m of materials) { m.transparent = false; m.opacity = 1; m.depthWrite = true }
-  }, [materials])
+    materials.forEach((m, i) => {
+      const b = base[i]
+      if (!b) return
+      m.transparent = b.transparent
+      m.opacity = b.opacity
+      m.depthWrite = b.depthWrite
+    })
+  }, [materials, base])
 
   useFrame(() => {
     const node = group.current
@@ -123,17 +156,22 @@ export function PropFade({ geometry, materials, children }: Props) {
     // 다 옅어졌으면 통째로 안 그린다. 드로우콜도 그만큼 준다
     node.visible = next > GONE
     const solid = next >= 0.995
-    for (const m of materials) {
-      m.opacity = next
+    materials.forEach((m, i) => {
+      const b = base[i]
+      if (!b) return
+      // **곱한다.** 롬이 정한 반투명(집 밑 그림자 9/31 등) 위에 흐림을 얹는다
+      m.opacity = b.opacity * next
+      // 원래 반투명이던 것은 되돌아와도 반투명이다
+      const blend = b.transparent || !solid
       // ⚠️ `transparent`를 바꾸면 파이프라인이 다시 서야 한다. 값이 실제로
       // 뒤집힐 때만 표시를 세운다 — 프레임마다 세우면 WebGPU에서 매번 다시 굽는다
-      if (m.transparent === solid) {
-        m.transparent = !solid
+      if (m.transparent !== blend) {
+        m.transparent = blend
         // 반투명일 때 깊이를 쓰면 그 뒤의 것이 통째로 안 그려진다
-        m.depthWrite = solid
+        m.depthWrite = b.depthWrite && solid
         m.needsUpdate = true
       }
-    }
+    })
     // 흐려지기 시작하면 그림자부터 뗀다. 안 그러면 없는 집의 그림자가 땅에 남는다
     if (solid !== shadows.current) {
       shadows.current = solid

@@ -7,13 +7,12 @@
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  DoubleSide, MeshBasicMaterial, MeshLambertMaterial,
+  DoubleSide, MeshBasicMaterial,
   type BufferAttribute, type BufferGeometry, type Material,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import {
-  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sheetTexture,
-  sliceTexture,
+  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import {
@@ -67,29 +66,13 @@ interface Prop extends Placed {
   y: number
   rot: [number, number, number]
   scale: [number, number, number]
-  /** 빠진 면을 채운 판. 원작 소품은 면이 통째로 없다 (`shell.ts`) */
+  /**
+   * 빠진 면을 채운 판. 원작 소품은 면이 통째로 없다 (`shell.ts`).
+   *
+   * 재질은 따로 없다 — **소품이 쓰는 그 배열을 그대로 쓴다.** 판에 서브메시
+   * 그룹이 달려 있어서 번호가 그대로 맞는다
+   */
   back: BufferGeometry | null
-  /** 그 판에 입힐 재질. 소품마다 제 그림 묶음을 쓴다 */
-  backMaterial: Material
-}
-
-/**
- * 채운 면의 재질.
- *
- * **원작 그림을 그대로 입힌다.** 판의 UV가 아틀라스 좌표로 고쳐져 있어서
- * (`shell.ts`의 `atlasUv`) 시트 한 장이면 소품 하나의 판 전체가 드로우콜 하나다.
- * 정점 색은 그대로 곱해진다 — 시트를 못 받았을 때 평균색으로 떨어지는 자리다.
- *
- * ⚠️ **묶음이 아니라 배치마다 한 벌이다.** 소품은 카메라가 막히면 흐려지는데
- * (`PropFade`) 재질을 나눠 쓰면 옆 마을의 같은 집까지 같이 흐려진다.
- * 텍스처는 그대로 공유하므로 늘어나는 것은 재질 객체 하나뿐이다
- */
-function backMaterial(sheet: TexSheet | null): Material {
-  return new MeshLambertMaterial({
-    name: '채운 면',
-    vertexColors: true,
-    map: sheet ? sheetTexture(sheet) : null,
-  })
 }
 
 /**
@@ -248,7 +231,7 @@ function walkableSpot(grid: MapGrid, x: number, z: number): boolean {
 function disposeProps(list: readonly Prop[]): void {
   const seen = new Set<Material>()
   for (const p of list) {
-    for (const m of [...p.materials, p.backMaterial]) {
+    for (const m of p.materials) {
       if (m === MISSING || seen.has(m)) continue
       seen.add(m)
       m.dispose()
@@ -414,7 +397,6 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             geometry: got.mesh.geometry,
             materials,
             back: cachedBack(got.mesh, got.sheet, got.id),
-            backMaterial: backMaterial(got.sheet),
           }]
         }))
       })
@@ -496,7 +478,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             3인칭에서 카메라와 플레이어 사이에 든 건물은 흐려진다. 나무는 이미
             비켜 주는데 집은 안 비켜서 화면의 절반이 지붕이 됐다 (`PropFade`)
           */}
-          <PropFade geometry={p.mesh.geometry} materials={[...p.materials, p.backMaterial]}>
+          <PropFade geometry={p.mesh.geometry} materials={p.materials}>
             <mesh name="소품" geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
             {/*
               빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준 −Z가 64% ·
@@ -504,7 +486,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               **안쪽**이 보인다 (`shell.ts`)
             */}
             {p.back && (
-              <mesh name="소품 채운 면" geometry={p.back} material={p.backMaterial} castShadow receiveShadow />
+              <mesh name="소품 채운 면" geometry={p.back} material={p.materials} castShadow receiveShadow />
             )}
           </PropFade>
         </group>

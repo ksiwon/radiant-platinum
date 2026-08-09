@@ -36,8 +36,8 @@ import { NpcSprites } from './NpcSprites'
 import { NpcModels } from './NpcModels'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
-  CHAR_KEY_COLOR, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, FILL_DIR, SUN_DIR, TIME_LOOKS,
-  blendLooks, characterKey, makeSkyTexture,
+  BACK_DIR, CHAR_KEY_COLOR, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, FILL_DIR, SUN_DIR, TIME_LOOKS,
+  backFill, blendLooks, characterKey, makeSkyTexture,
   type TimeLook,
 } from './fx/sky'
 import { dataUrl } from '../data/assetBase'
@@ -461,6 +461,14 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
       <directionalLight position={[...FILL_DIR]} intensity={look.fill} color={look.skyColor} />
+      {/*
+        해 반대편에서 넣는 되비침. **태양도 필도 남쪽에서 와서** 북쪽을 보는
+        면에는 방향광이 하나도 안 닿는다 — 반구광만 받아 남쪽 벽의 42.8%다.
+        마을에서 내 남쪽에 선 집은 늘 그 면을 보이므로 벽이 늘 검게 뭉쳤다.
+        세기는 상수가 아니라 **모자란 만큼**이다 (`fx/sky`의 `backFill`)
+      */}
+      <directionalLight
+        position={[...BACK_DIR]} intensity={backFill(look)} color={look.skyColor} />
 
       {/*
         인물 키 라이트. **밤에 사람이 배경에 묻히는 것**을 막는다 — 심야의 몸빛은

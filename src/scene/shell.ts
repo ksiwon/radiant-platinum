@@ -286,15 +286,7 @@ export function openDirections(mesh: ChunkMesh): (readonly [number, number])[] {
  * 소품이 350개로 같다. 달라지는 것은 **이미 만들던 판이 얼마나 덮느냐**뿐이다
  */
 export function shellPaint(mesh: ChunkMesh, sheet: TexSheet | null): ShellPaint {
-  return {
-    colors: shellColors(mesh, sheet),
-    rects: mesh.materials.map((spec) => {
-      if (!sheet) return null
-      const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
-      if (!item) return null
-      return { ...item, sheetW: sheet.width, sheetH: sheet.height }
-    }),
-  }
+  return { colors: shellColors(mesh, sheet) }
 }
 
 export function shellColors(mesh: ChunkMesh, sheet: TexSheet | null): (number | null)[] {
@@ -322,26 +314,24 @@ export function shellColors(mesh: ChunkMesh, sheet: TexSheet | null): (number | 
  * 주인공 집은 나무벽 + 파란 기단 + 회색 문인데 그 평균이 흙탕 회색이라, 뒤로
  * 돌아가면 창문 자리에 실선만 남은 판때기가 서 있었다.
  *
- * 그래서 **원작 그림을 그대로 입힌다.** 재질마다 판을 따로 그리면 드로우콜이
- * 소품 하나에 중앙값 2개·최대 13개씩 늘어나므로, UV를 아틀라스 좌표로 고쳐 쓰고
- * 시트 한 장을 물린다 — 판 전체가 드로우콜 하나다.
+ * ⚠️ **아틀라스 한 장으로 칠하는 것도 안 된다.** 그다음에 그렇게 했다 — 드로우콜
+ * 하나로 끝내려고 UV를 시트 좌표로 고쳐 썼는데, 원작 UV는 **칸마다 0~1이고
+ * 반복**한다(`sliceTexture`가 `wrapS/T`로 흉내 낸다). 아틀라스는 반복을 못 하므로
+ * 소수부만 남기게 되고, 그러면 칸 경계를 걸친 삼각형이 **거꾸로 뒤집힌다**:
+ * u가 0.98과 1.02인 두 꼭짓점이 0.98과 0.02가 되어, 폭 0.04짜리 띠가 그림 전체를
+ * 거꾸로 훑는 폭 0.96짜리가 된다. 판 삼각형 29,922개 중 **7,405개(24.7%)**가
+ * 그랬고, 판을 만드는 소품 350종 중 277종에 그런 삼각형이 있었다. 화면에서는
+ * 벽 텍스처의 검은 줄눈이 뒷벽 절반을 덮은 **검은 줄무늬 판때기**로 나왔다.
  *
- * `colors`는 그대로 남는다. 시트를 못 받았을 때 떨어질 자리이자, 어느 그룹이
- * 오려 낸 그림이라 판을 만들면 안 되는지(`null`)를 나르는 표다
+ * 그래서 지금은 **소품이 쓰는 그 재질을 그대로 쓴다.** 판에 서브메시 그룹을 달아
+ * 두면 재질 배열을 그대로 물릴 수 있고, 반복도 알파도 원작 그대로다. 값은
+ * 드로우콜이 소품 하나에 중앙값 2개 느는 것뿐이다.
+ *
+ * `colors`는 그대로 남는다. 어느 그룹이 그림을 못 찾아 판을 만들면 안 되는지
+ * (`null`)를 나르는 표다
  */
 export interface ShellPaint {
   colors: readonly (number | null)[]
-  /** 그룹이 아틀라스에서 차지한 칸. 없으면 UV를 못 고친다 */
-  rects: readonly (AtlasRect | null)[]
-}
-
-export interface AtlasRect {
-  x: number
-  y: number
-  w: number
-  h: number
-  sheetW: number
-  sheetH: number
 }
 
 /**
@@ -360,15 +350,15 @@ export interface AtlasRect {
  */
 interface WallSource {
   group: number
-  /** 기준 꼭짓점과 그 자리의 UV */
-  p: [number, number, number]
-  uv: [number, number]
-  /** UV 기울기. 그 면의 법선 방향 성분이 0이라 옆으로 이어진다 */
-  gu: [number, number, number]
-  gv: [number, number, number]
-  /** 판 평면에서의 자리. 어느 것이 가까운지 이걸로 잰다 */
-  cu: number
-  cv: number
+  /** 그 벽이 쓰는 **그림 칸**. 판이 이 칸을 통째로 늘려 쓴다 */
+  u0: number
+  u1: number
+  /** 벽 아래끝과 위끝의 v. 어느 쪽이 큰지는 원작이 정한 대로 따라간다 */
+  vLow: number
+  vHigh: number
+  /** 그 v를 읽은 높이 */
+  yLow: number
+  yHigh: number
 }
 
 /** 옆벽으로 칠 만큼 세로인가. 지붕(위를 봄)과 바닥은 여기서 빠진다 */
@@ -395,48 +385,38 @@ const PERPENDICULAR = 0.3
  */
 const MINOR_WALL = 0.1
 
-/** 3×3 연립방정식. 행이 `rows`, 우변이 `rhs` */
-function solve3(
-  rows: readonly (readonly [number, number, number])[], rhs: readonly [number, number, number],
-): [number, number, number] | null {
-  const [r0, r1, r2] = rows as [
-    readonly [number, number, number], readonly [number, number, number],
-    readonly [number, number, number],
-  ]
-  const det = r0[0] * (r1[1] * r2[2] - r1[2] * r2[1])
-    - r0[1] * (r1[0] * r2[2] - r1[2] * r2[0])
-    + r0[2] * (r1[0] * r2[1] - r1[1] * r2[0])
-  if (Math.abs(det) < 1e-9) return null
-  const col = (k: number): [number, number, number] => {
-    const m = [[...r0], [...r1], [...r2]] as number[][]
-    for (let i = 0; i < 3; i++) m[i]![k] = rhs[i]!
-    return [
-      m[0]![0]! * (m[1]![1]! * m[2]![2]! - m[1]![2]! * m[2]![1]!)
-      - m[0]![1]! * (m[1]![0]! * m[2]![2]! - m[1]![2]! * m[2]![0]!)
-      + m[0]![2]! * (m[1]![0]! * m[2]![1]! - m[1]![1]! * m[2]![0]!), 0, 0]
-  }
-  return [col(0)[0] / det, col(1)[0] / det, col(2)[0] / det]
-}
-
-/** 이 소품의 옆벽들. 뒷판이 여기서 그림을 베껴 온다 */
-function wallSources(
+/**
+ * 이 판이 그림을 베껴 올 **옆벽 하나**. 없으면 `null`.
+ *
+ * ⚠️ **삼각형마다 제일 가까운 옆벽을 따로 고르면 안 된다.** 한동안 그랬고,
+ * 그게 뒷벽을 조각보로 만들었다 — 옆벽마다 UV의 상수항이 달라서, 이웃한 두
+ * 삼각형이 서로 다른 옆벽을 베끼면 그 경계에서 그림이 툭 끊긴다. 주인공 집
+ * 뒷벽에 파란 기단 줄이 허리 높이와 처마 밑에 두 번 더 그어져 있던 것이 이것이다.
+ *
+ * 판 하나가 **제일 넓은 옆벽 하나**를 통째로 베끼면 UV가 아핀 함수 한 벌이라
+ * 끊길 자리가 없다. 가로로는 기울기가 0이라(법선 방향) 모서리에서 본 줄무늬가
+ * 그대로 이어지고, 세로로는 기단이 기단 높이에, 벽이 벽 높이에 온다
+ */
+function wallSource(
   mesh: ChunkMesh, paint: ShellPaint, axis: number,
   pos: ArrayLike<number>, uv: ArrayLike<number> | undefined,
-): WallSource[] {
-  if (!uv) return []
+): WallSource | null {
+  if (!uv) return null
   const index = mesh.geometry.getIndex()!.array
-  const u = (axis + 1) % 3, v = (axis + 2) % 3
-  const out: WallSource[] = []
+  /** 서브메시별 옆벽 넓이. 문을 걸러내는 잣대다 */
   const area = new Map<number, number>()
+  /** 서브메시별 그림 칸과 위아래 끝 */
+  const box = new Map<number, WallSource>()
   mesh.groups.forEach(([, start, count], group) => {
     if (paint.colors[group] === null || paint.colors[group] === undefined) return
     for (let t = 0; t < count; t += 3) {
-      const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
-      const ap: [number, number, number] = [pos[a * 3]!, pos[a * 3 + 1]!, pos[a * 3 + 2]!]
+      const tri = [index[start + t]!, index[start + t + 1]!, index[start + t + 2]!]
+      const ap: [number, number, number] = [
+        pos[tri[0]! * 3]!, pos[tri[0]! * 3 + 1]!, pos[tri[0]! * 3 + 2]!]
       const ab: [number, number, number] = [
-        pos[b * 3]! - ap[0], pos[b * 3 + 1]! - ap[1], pos[b * 3 + 2]! - ap[2]]
+        pos[tri[1]! * 3]! - ap[0], pos[tri[1]! * 3 + 1]! - ap[1], pos[tri[1]! * 3 + 2]! - ap[2]]
       const ac: [number, number, number] = [
-        pos[c * 3]! - ap[0], pos[c * 3 + 1]! - ap[1], pos[c * 3 + 2]! - ap[2]]
+        pos[tri[2]! * 3]! - ap[0], pos[tri[2]! * 3 + 1]! - ap[1], pos[tri[2]! * 3 + 2]! - ap[2]]
       const n: [number, number, number] = [
         ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]]
       const len = Math.hypot(...n)
@@ -444,55 +424,45 @@ function wallSources(
       // 옆벽 — 이 축에 수직이고(뒤에서 보면 선이다) 세로로 서 있다
       if (Math.abs(n[axis]!) / len >= PERPENDICULAR) continue
       if (Math.abs(n[1]) / len >= WALLISH) continue
-      const rows = [ab, ac, n] as const
-      const gu = solve3(rows, [uv[b * 2]! - uv[a * 2]!, uv[c * 2]! - uv[a * 2]!, 0])
-      const gv = solve3(rows, [
-        uv[b * 2 + 1]! - uv[a * 2 + 1]!, uv[c * 2 + 1]! - uv[a * 2 + 1]!, 0])
-      if (!gu || !gv) continue
       area.set(group, (area.get(group) ?? 0) + len / 2)
-      out.push({
-        group,
-        p: ap,
-        uv: [uv[a * 2]!, uv[a * 2 + 1]!],
-        gu, gv,
-        cu: ap[u]! + (ab[u]! + ac[u]!) / 3,
-        cv: ap[v]! + (ab[v]! + ac[v]!) / 3,
-      })
+      // 그 서브메시가 쓰는 **그림 칸 전체**를 모은다.
+      //
+      // ⚠️ 삼각형 하나만 골라 쓰면 안 된다. 제일 넓은 것도, 세로로 제일 긴 것도
+      // 둘 다 **모서리 기둥**을 집어서 뒷벽이 통짜 검정으로 깔렸다 — 기둥은
+      // 높이가 벽과 같고 그림칸이 어두운 한 줄이다. 칸 전체를 쓰면 널판이
+      // 널판으로 깔리고, 대신 기단 칸이 세로줄 하나로 섞여 든다. 그 줄은
+      // 모서리 기둥으로 읽혀서 통짜 검정보다 훨씬 낫다
+      let hit = box.get(group)
+      if (!hit) {
+        hit = {
+          group, u0: Infinity, u1: -Infinity,
+          vLow: 0, vHigh: 0, yLow: Infinity, yHigh: -Infinity,
+        }
+        box.set(group, hit)
+      }
+      for (const k of tri) {
+        const y = pos[k * 3 + 1]!
+        const tu = uv[k * 2]!, tv = uv[k * 2 + 1]!
+        if (tu < hit.u0) hit.u0 = tu
+        if (tu > hit.u1) hit.u1 = tu
+        if (y < hit.yLow) { hit.yLow = y; hit.vLow = tv }
+        if (y > hit.yHigh) { hit.yHigh = y; hit.vHigh = tv }
+      }
     }
   })
-  if (out.length === 0) return out
+  if (area.size === 0) return null
+  // **문은 벽이 아니다.** 서브메시 넓이로 먼저 거른다
   const most = Math.max(...area.values())
-  return out.filter((w) => (area.get(w.group) ?? 0) >= most * MINOR_WALL)
+  let best: WallSource | null = null
+  let bestArea = 0
+  for (const [group, size] of area) {
+    if (size < most * MINOR_WALL || size <= bestArea) continue
+    bestArea = size
+    best = box.get(group) ?? null
+  }
+  return best
 }
 
-/**
- * 아틀라스 좌표로 고친 UV.
- *
- * 원작 UV는 **칸마다 0~1이고 반복**한다(`sliceTexture`가 `wrapS/T`로 흉내 낸다).
- * 아틀라스 한 장에 물리면 반복을 못 하므로 소수부만 남긴다 — 뒷판은 그림을
- * 여러 번 되풀이할 자리가 아니라 실루엣을 채우는 자리라 이 손해가 안 보인다.
- *
- * 가장자리에서 반 픽셀 안으로 당긴다. 안 그러면 이웃 그림이 한 줄 새어 들어온다
- */
-function atlasUv(
-  uv: ArrayLike<number> | undefined, vertex: number, rect: AtlasRect | null,
-): [number, number] {
-  if (!uv || !rect) return [0, 0]
-  return atlasUvAt(uv[vertex * 2] ?? 0, uv[vertex * 2 + 1] ?? 0, rect)
-}
-
-/** 같은 일을 UV 값에서 바로. 옆벽에서 베껴 온 UV가 이쪽으로 온다 */
-function atlasUvAt(u: number, v: number, rect: AtlasRect | null): [number, number] {
-  if (!rect) return [0, 0]
-  const frac = (t: number): number => t - Math.floor(t)
-  const su = frac(u)
-  const sv = frac(v)
-  const inset = 0.5
-  return [
-    (rect.x + inset + su * (rect.w - 2 * inset)) / rect.sheetW,
-    (rect.y + inset + sv * (rect.h - 2 * inset)) / rect.sheetH,
-  ]
-}
 
 /**
  * 한 방향의 판. 없으면 `null`.
@@ -531,13 +501,21 @@ export function facePlate(
    */
   const flat = (pu: number, pv: number, c: number): number =>
     depthAt(pu, pv) + sign * SLAB * (1 - (c - lo) / depth)
-  const position: number[] = []
-  const color: number[] = []
-  const texcoord: number[] = []
-  // 눌러 붙인 앞벽이 제 UV를 들고 가면 문과 창이 뒤에 찍힌다. 옆벽에서 베껴 온다
-  const walls = wallSources(mesh, paint, axis, pos, uv)
+  const vcol = (src.getAttribute('color') as BufferAttribute | undefined)?.array as
+    ArrayLike<number> | undefined
+  /** 서브메시별로 모은다 — 그 재질을 그대로 물리려면 그룹이 있어야 한다 */
+  const bucket = new Map<number, { position: number[]; color: number[]; uv: number[] }>()
+  // 눌러 붙인 앞벽이 제 UV를 들고 가면 문과 창이 뒤에 찍힌다. 옆벽에서 베껴 온다.
+  //
+  // ⚠️ **위(+Y) 판은 안 베낀다.** 그 판은 지붕이고, 지붕에 있어야 할 그림은
+  // 옆벽이 아니라 제 것이다. 완만한 지붕면은 `WALLISH`(0.5)에 걸려 벽으로
+  // 세어지므로, 안 막으면 지붕에 벽 그림이 발린다
+  const wall = axis === 1 ? null : wallSource(mesh, paint, axis, pos, uv)
+  /** 판의 가로 축과 그 범위. 옆벽 그림 칸을 여기에 한 번 늘려 붙인다 */
+  const across = axis === 0 ? 2 : 0
+  const [low, high] = bounds(pos)[across]!
+  const span = high - low
   mesh.groups.forEach(([, start, count], group) => {
-    const rect = paint.rects[group]
     const rgb = paint.colors[group]
     // 그림을 못 찾은 서브메시는 칠할 것이 없다
     if (rgb === null || rgb === undefined) return
@@ -557,21 +535,13 @@ export function facePlate(
       const nz = (p[1]![0] - p[0]![0]) * (p[2]![1] - p[0]![1])
         - (p[1]![1] - p[0]![1]) * (p[2]![0] - p[0]![0])
       const nl = Math.hypot(nx, ny, nz)
-      let from: WallSource | null = null
-      if (nl > 1e-9 && Math.abs(ny) / nl < WALLISH && walls.length > 0) {
-        const cu = (p[0]![u] + p[1]![u] + p[2]![u]) / 3
-        const cv = (p[0]![v] + p[1]![v] + p[2]![v]) / 3
-        let far = Infinity
-        for (const w of walls) {
-          const d = (w.cu - cu) ** 2 + (w.cv - cv) ** 2
-          if (d < far) { far = d; from = w }
-        }
-      }
-      const useRect = from ? paint.rects[from.group] ?? rect : rect
-      const useRgb = from ? paint.colors[from.group] ?? rgb : rgb
-      const r = ((useRgb >> 16) & 255) / 255
-      const g = ((useRgb >> 8) & 255) / 255
-      const b = (useRgb & 255) / 255
+      const from = nl > 1e-9 && Math.abs(ny) / nl < WALLISH ? wall : null
+      // **그림을 가져온 서브메시로 간다.** 그래야 그 재질의 반복·알파가 그대로
+      // 걸린다 — 옆벽에서 베껴 온 삼각형은 옆벽의 재질로 그려야 맞다
+      const paintedBy = from ? from.group : group
+      const fallback = paint.colors[paintedBy] ?? rgb
+      let into = bucket.get(paintedBy)
+      if (!into) { into = { position: [], color: [], uv: [] }; bucket.set(paintedBy, into) }
 
       // **그쪽을 보게 감는다.** 원작의 감는 방향을 그대로 물려받으면 판이 반대를
       // 보고 있어서, 면은 다 있는데 그 방향에서는 하나도 안 보인다
@@ -580,20 +550,52 @@ export function facePlate(
         const q = p[j]!
         const out = [q[0], q[1], q[2]]
         out[axis] = flat(q[u], q[v], q[axis])
-        position.push(out[0]!, out[1]!, out[2]!)
-        color.push(r, g, b)
+        into.position.push(out[0]!, out[1]!, out[2]!)
+        // 정점 색은 원작이 구워 둔 것을 그대로 쓴다. 없으면 그림 평균색으로 —
+        // 재질이 `vertexColors`라 흰색으로 두면 그림이 그대로 나온다
+        if (vcol) {
+          const k = tri[j]! * 3
+          into.color.push(vcol[k] ?? 1, vcol[k + 1] ?? 1, vcol[k + 2] ?? 1)
+        } else {
+          into.color.push(
+            ((fallback >> 16) & 255) / 255, ((fallback >> 8) & 255) / 255, (fallback & 255) / 255)
+        }
         if (from) {
-          // 눌러 붙인 **그 자리**에서 옆벽의 UV를 읽는다. 법선 방향 기울기가
-          // 0이라 모서리에서 본 줄무늬가 그대로 이어진다
-          const dx = out[0]! - from.p[0], dy = out[1]! - from.p[1], dz = out[2]! - from.p[2]
-          texcoord.push(...atlasUvAt(
-            from.uv[0] + from.gu[0] * dx + from.gu[1] * dy + from.gu[2] * dz,
-            from.uv[1] + from.gv[0] * dx + from.gv[1] * dy + from.gv[2] * dz,
-            useRect))
-        } else texcoord.push(...atlasUv(uv, tri[j]!, rect))
+          // **옆벽이 쓰는 그림 칸을 판에 통째로 늘려 붙인다.**
+          //
+          // ⚠️ 옆벽의 UV를 아핀 함수로 읽어 그 자리 좌표를 넣는 방법을 두 번
+          // 시도했고 둘 다 틀렸다. ① 법선 방향 기울기를 0으로 두면 판의 **가로가
+          // 통째로 한 값**이 된다 — 원작 벽 그림은 널판이 세로줄이라 변화가 죄다
+          // 가로에 있는데 그걸 버리는 것이다(뒷벽이 텍셀 하나짜리 통짜 갈색이
+          // 됐다). ② 가로를 옆벽의 길이 방향으로 바꿔 넣으면 이번에는 값이
+          // 그림 칸을 벗어난다 — 원작 벽 그림은 **벽 조각을 여러 개 모아 둔 한
+          // 장**이라(`t1_h01` 64×64 안에 지붕·창·널판·기단이 다 있다) 조금만
+          // 넘쳐도 벽 자리에 지붕이나 창이 찍힌다.
+          //
+          // 그림 칸을 벗어날 수 없게 하려면 **칸 안에서만 셈하면 된다.** 옆벽이
+          // 실제로 쓰는 u 범위를 판의 가로 전체에, 옆벽의 높이–v 대응을 판의
+          // 높이에 건다. 널판 한 벌이 뒷벽을 정확히 한 번 덮는다
+          const t = span > 0 ? (out[across]! - low) / span : 0
+          const h = from.yHigh > from.yLow
+            ? (out[1]! - from.yLow) / (from.yHigh - from.yLow) : 0
+          const clamp = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x)
+          into.uv.push(
+            from.u0 + clamp(t) * (from.u1 - from.u0),
+            from.vLow + clamp(h) * (from.vHigh - from.vLow))
+        } else into.uv.push(uv?.[tri[j]! * 2] ?? 0, uv?.[tri[j]! * 2 + 1] ?? 0)
       }
     }
   })
+  const position: number[] = []
+  const color: number[] = []
+  const texcoord: number[] = []
+  const groups: [number, number, number][] = []
+  for (const [group, part] of bucket) {
+    groups.push([position.length / 3, part.position.length / 3, group])
+    position.push(...part.position)
+    color.push(...part.color)
+    texcoord.push(...part.uv)
+  }
   if (position.length === 0) return null
 
   const geo = new BufferGeometry()
@@ -603,6 +605,8 @@ export function facePlate(
   const normal = new Float32Array(position.length)
   for (let i = 0; i < normal.length; i += 3) normal[i + axis] = sign
   geo.setAttribute('normal', new BufferAttribute(normal, 3))
+  // 그룹이 곧 재질 번호다. 소품의 재질 배열을 그대로 물릴 수 있다
+  for (const [start, count, group] of groups) geo.addGroup(start, count, group)
   geo.computeBoundingSphere()
   return geo
 }
@@ -610,8 +614,9 @@ export function facePlate(
 /**
  * 빠진 면을 전부 채운 지오메트리 하나. 없으면 `null`.
  *
- * 방향마다 따로 그리면 소품 하나가 드로우콜을 넷씩 먹는다. 색을 정점이 나르고
- * 재질이 한 벌이라 합칠 수 있다
+ * 방향마다 따로 그리면 소품 하나가 드로우콜을 넷씩 먹는다. 방향이 달라도 재질은
+ * 같은 배열이라, **같은 서브메시끼리 합치면** 드로우콜이 방향 수가 아니라
+ * 재질 수만큼만 는다
  */
 export function shellPlates(
   mesh: ChunkMesh, paint: ShellPaint,
@@ -624,29 +629,43 @@ export function shellPlates(
   if (parts.length === 0) return null
   if (parts.length === 1) return parts[0]!
 
-  let n = 0
-  for (const p of parts) n += p.getAttribute('position').count
-  const position = new Float32Array(n * 3)
-  const normal = new Float32Array(n * 3)
-  const color = new Float32Array(n * 3)
-  // ⚠️ **UV를 안 옮기면 판이 통짜 색이 된다.** 방향 하나만 뚫린 소품은 위에서
-  // 그대로 돌아가니까 멀쩡한데, 둘 이상 뚫린 **69종**은 여기를 지나면서 UV를
-  // 잃고 아틀라스 (0,0) 한 픽셀로 칠해진다 — 원작 그림을 다 만들어 놓고 버렸다
-  const texcoord = new Float32Array(n * 2)
-  let at = 0
+  /** 서브메시 → 그 재질로 그릴 삼각형 전부. 방향을 넘어 합친다 */
+  const bucket = new Map<number, { position: number[]; normal: number[]; color: number[]; uv: number[] }>()
+  const grab = (a: BufferAttribute, from: number, count: number, wide: number): number[] => {
+    const arr = a.array as ArrayLike<number>
+    const out: number[] = []
+    for (let i = from * wide; i < (from + count) * wide; i++) out.push(arr[i]!)
+    return out
+  }
   for (const p of parts) {
-    position.set((p.getAttribute('position') as BufferAttribute).array as Float32Array, at * 3)
-    normal.set((p.getAttribute('normal') as BufferAttribute).array as Float32Array, at * 3)
-    color.set((p.getAttribute('color') as BufferAttribute).array as Float32Array, at * 3)
-    texcoord.set((p.getAttribute('uv') as BufferAttribute).array as Float32Array, at * 2)
-    at += p.getAttribute('position').count
+    for (const { start, count, materialIndex } of p.groups) {
+      let into = bucket.get(materialIndex ?? 0)
+      if (!into) { into = { position: [], normal: [], color: [], uv: [] }; bucket.set(materialIndex ?? 0, into) }
+      into.position.push(...grab(p.getAttribute('position') as BufferAttribute, start, count, 3))
+      into.normal.push(...grab(p.getAttribute('normal') as BufferAttribute, start, count, 3))
+      into.color.push(...grab(p.getAttribute('color') as BufferAttribute, start, count, 3))
+      into.uv.push(...grab(p.getAttribute('uv') as BufferAttribute, start, count, 2))
+    }
     p.dispose()
   }
+  const position: number[] = []
+  const normal: number[] = []
+  const color: number[] = []
+  const texcoord: number[] = []
+  const groups: [number, number, number][] = []
+  for (const [group, part] of bucket) {
+    groups.push([position.length / 3, part.position.length / 3, group])
+    position.push(...part.position)
+    normal.push(...part.normal)
+    color.push(...part.color)
+    texcoord.push(...part.uv)
+  }
   const geo = new BufferGeometry()
-  geo.setAttribute('position', new BufferAttribute(position, 3))
-  geo.setAttribute('normal', new BufferAttribute(normal, 3))
-  geo.setAttribute('color', new BufferAttribute(color, 3))
-  geo.setAttribute('uv', new BufferAttribute(texcoord, 2))
+  geo.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
+  geo.setAttribute('normal', new BufferAttribute(new Float32Array(normal), 3))
+  geo.setAttribute('color', new BufferAttribute(new Float32Array(color), 3))
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array(texcoord), 2))
+  for (const [start, count, group] of groups) geo.addGroup(start, count, group)
   geo.computeBoundingSphere()
   return geo
 }

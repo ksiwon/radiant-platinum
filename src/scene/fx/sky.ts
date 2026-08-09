@@ -110,6 +110,19 @@ export const TIME_LOOKS: readonly TimeLook[] = [
  */
 export const SUN_DIR: readonly [number, number, number] = [24, 42, 18]
 export const FILL_DIR: readonly [number, number, number] = [-14, 12, 26]
+/**
+ * **해가 안 닿는 쪽에서 넣는 되비침.**
+ *
+ * ⚠️ 태양(24, 42, 18)도 필(−14, 12, 26)도 **둘 다 남쪽에서 온다.** 3인칭
+ * 카메라가 남쪽 고정이라 그렇게 잡았는데, 그러면 **북쪽을 보는 면에는 방향광이
+ * 하나도 안 닿는다.** 반구광만 받아서, 실측으로 남쪽 벽의 42.8%다(`wallLight`).
+ * 마을을 걸으면 내 남쪽에 선 집은 늘 북면을 보이므로 그 벽이 늘 검다.
+ *
+ * 그래서 **태양의 수평 반대편**(−24, −18)에서 낮게 넣는다. 낮게 두는 이유는
+ * 지붕까지 밝히지 않기 위해서다 — 여덟 높이면 위쪽 성분이 0.26이라 지붕에는
+ * 거의 안 얹힌다. 세기는 상수가 아니라 `backFill`이 **모자란 만큼** 낸다
+ */
+export const BACK_DIR: readonly [number, number, number] = [-24, 8, -18]
 
 /** sRGB 한 채널을 선형으로. 밝기는 선형에서 재야 뜻이 있다 */
 function toLinear(c: number): number {
@@ -125,11 +138,6 @@ export function luminance(hex: string): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
-/** 방향 벡터의 위쪽 성분 — 평평한 땅에서의 램버트 계수다 */
-function upward(dir: readonly [number, number, number]): number {
-  return dir[1] / Math.hypot(...dir)
-}
-
 /**
  * **평평한 땅이 받는 빛**. 세기 × 빛 색의 휘도를 셋 더한 것이다.
  *
@@ -140,9 +148,73 @@ function upward(dir: readonly [number, number, number]): number {
  * 심야 22.6%
  */
 export function groundLight(look: TimeLook): number {
-  return luminance(look.skyColor) * look.ambient
-    + luminance(look.sunColor) * look.sun * upward(SUN_DIR)
-    + luminance(look.skyColor) * look.fill * upward(FILL_DIR)
+  return faceLight(look, UP, backFill(look))
+}
+
+/** 위를 보는 면 */
+const UP: readonly [number, number, number] = [0, 1, 0]
+
+/**
+ * 사방을 보는 세로면 넷. 건물의 네 벽이다.
+ *
+ * 여기서 재는 이유: 반구광은 세로면이면 방향과 무관하게 같은 값을 주므로,
+ * 벽마다 갈리는 것은 **방향광 셋뿐**이다. 그 셋이 어느 벽을 비우는지가 곧
+ * 화면에서 검게 뭉치는 자리다
+ */
+const WALL_NORMALS: readonly (readonly [number, number, number])[] = [
+  [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1],
+]
+
+/** 방향광의 램버트 계수. `normal`은 단위 벡터다 */
+function lambert(dir: readonly [number, number, number],
+  normal: readonly [number, number, number]): number {
+  const len = Math.hypot(...dir)
+  const dot = (dir[0] * normal[0] + dir[1] * normal[1] + dir[2] * normal[2]) / len
+  return dot > 0 ? dot : 0
+}
+
+/** 반구광이 그 법선에 주는 몫. three의 `hemisphereLight` 그대로다 */
+function hemisphere(look: TimeLook, normal: readonly [number, number, number]): number {
+  const t = 0.5 * normal[1] + 0.5
+  return look.ambient * (luminance(look.groundColor) * (1 - t) + luminance(look.skyColor) * t)
+}
+
+/**
+ * 그 방향을 보는 면이 받는 빛. 광원 넷을 램버트로 더한 것이다.
+ *
+ * 시간대 다섯 벌 전부에서 **제일 어두운 벽이 제일 밝은 벽의 얼마인지**를
+ * 이걸로 잰다 (`sky.test`)
+ */
+export function faceLight(
+  look: TimeLook, normal: readonly [number, number, number], back = 0,
+): number {
+  return hemisphere(look, normal)
+    + luminance(look.sunColor) * look.sun * lambert(SUN_DIR, normal)
+    + luminance(look.skyColor) * look.fill * lambert(FILL_DIR, normal)
+    + luminance(look.skyColor) * back * lambert(BACK_DIR, normal)
+}
+
+/**
+ * 되비침 세기.
+ *
+ * **고정 상수가 아니라 모자란 만큼이다** — 키 라이트(`characterKey`)와 같은
+ * 방식이다. 프리셋을 다시 손보면 이 값도 따라 움직인다.
+ *
+ * 목표치를 어디에 둘지가 문제인데, **해가 이미 만들어 둔 차이**를 쓴다:
+ * 볕 드는 벽이 지붕의 몇 할인지(낮 64.7%)를 재서, 벽과 벽 사이가 그보다 더
+ * 벌어지지 않게 한다. 우리가 고른 숫자가 아니라 이 장면에 이미 있던 대비다
+ */
+export function backFill(look: TimeLook): number {
+  const base = WALL_NORMALS.map((n) => faceLight(look, n))
+  const bright = Math.max(...base)
+  const dark = Math.min(...base)
+  // 해가 벽과 지붕 사이에 만들어 둔 비율. 벽끼리는 이보다 더 벌어지면 안 된다
+  const want = bright / faceLight(look, UP)
+  const at = WALL_NORMALS[base.indexOf(dark)]!
+  const gain = luminance(look.skyColor) * lambert(BACK_DIR, at)
+  if (gain <= 0) return 0
+  const short = want * bright - dark
+  return short <= 0 ? 0 : short / gain
 }
 
 /**

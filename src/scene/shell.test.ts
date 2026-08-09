@@ -167,7 +167,6 @@ maybe('소품 빠진 면', () => {
   /** 색만 있고 그림은 없는 칠 — 판이 서는지만 보는 자리다 */
   const paint = (mesh: ChunkMesh): ShellPaint => ({
     colors: mesh.materials.map(() => 0x8a7f6a),
-    rects: mesh.materials.map(() => null),
   })
 
   /**
@@ -395,28 +394,18 @@ maybe('소품 빠진 면', () => {
    * 센다. 문 칸에 한 점도 안 떨어져야 한다
    */
   it('뒷판에 앞문이 안 찍힌다 — 그림은 옆벽에서 온다', () => {
-    const SHEET = 64
-    const cell = (g: number) => ({ x: g * 8, y: 0, w: 8, h: 8, sheetW: SHEET, sheetH: 8 })
     for (const id of [22, 23, 236]) {
       const mesh = readProp(id, fmt)
-      const marked: ShellPaint = {
-        colors: mesh.materials.map(() => 0x8a7f6a),
-        rects: mesh.materials.map((_, g) => cell(g)),
-      }
       const door = mesh.materials.findIndex((m) => m.tex === 't1_door1')
       expect(door, `소품 ${String(id)}에 문이 있어야 이 시험에 뜻이 있다`).toBeGreaterThanOrEqual(0)
 
-      const plate = facePlate(mesh, marked, 2, -1)!
-      const uv = plate.getAttribute('uv') as BufferAttribute
-      const inCell = new Map<number, number>()
-      for (let i = 0; i < uv.count; i++) {
-        const g = Math.floor(uv.getX(i) * SHEET / 8)
-        inCell.set(g, (inCell.get(g) ?? 0) + 1)
-      }
-      // 문 칸은 비어 있다
-      expect(inCell.get(door), `소품 ${String(id)} 뒷판에 문 그림`).toBeUndefined()
-      // 그리고 뭔가는 들어 있어야 한다 — 전부 0이면 위 조건이 공허하다
-      expect(uv.count).toBeGreaterThan(0)
+      // 판은 **그림을 가져온 서브메시**로 그룹을 나눈다. 문 서브메시로 그리는
+      // 삼각형이 하나라도 있으면 뒤에 문이 하나 더 생긴 것이다
+      const plate = facePlate(mesh, paint(mesh), 2, -1)!
+      const used = plate.groups.map((g) => g.materialIndex)
+      expect(used, `소품 ${String(id)} 뒷판에 문 그림`).not.toContain(door)
+      // 그리고 뭔가는 들어 있어야 한다 — 비어 있으면 위 조건이 공허하다
+      expect(plate.getAttribute('position').count).toBeGreaterThan(0)
     }
   })
 
@@ -424,19 +413,12 @@ maybe('소품 빠진 면', () => {
     // 소품 23은 서브메시 3(`t1_s01_1`)의 54%가 위를 보는 지붕이다. 그 삼각형은
     // 눌러 붙여도 제 UV 그대로여야 한다
     const mesh = readProp(23, fmt)
-    const SHEET = 64
-    const marked: ShellPaint = {
-      colors: mesh.materials.map(() => 0x8a7f6a),
-      rects: mesh.materials.map((_, g) => ({ x: g * 8, y: 0, w: 8, h: 8, sheetW: SHEET, sheetH: 8 })),
-    }
     // 위(+Y)에서 본 판 — 여기 들어가는 것은 지붕이다
-    const plate = facePlate(mesh, marked, 1, 1)!
-    const uv = plate.getAttribute('uv') as BufferAttribute
-    const cells = new Set<number>()
-    for (let i = 0; i < uv.count; i++) cells.add(Math.floor(uv.getX(i) * SHEET / 8))
-    // 위를 보는 삼각형은 저마다 제 칸에 그대로 남는다 — 0(구운 그림자)·
+    const plate = facePlate(mesh, paint(mesh), 1, 1)!
+    const used = [...new Set(plate.groups.map((g) => g.materialIndex ?? 0))].sort((a, b) => a - b)
+    // 위를 보는 삼각형은 저마다 제 서브메시에 그대로 남는다 — 0(구운 그림자)·
     // 2(`t1_s01_2`의 위쪽 16%)·3(지붕)
-    expect([...cells].sort((a, b) => a - b)).toEqual([0, 2, 3])
+    expect(used).toEqual([0, 2, 3])
   })
 
   it('베껴 올 옆벽이 없으면 제 UV 그대로다', () => {
@@ -452,11 +434,10 @@ maybe('소품 빠진 면', () => {
       materials: [{ tex: 'w', pal: '', rep: 0, a: 31, f: 0 }],
       groups: [[0, 0, 3]],
     }
-    const rect = { x: 0, y: 0, w: 8, h: 8, sheetW: 8, sheetH: 8 }
-    const plate = facePlate(mesh, { colors: [0x808080], rects: [rect] }, 2, -1)!
+    const plate = facePlate(mesh, { colors: [0x808080] }, 2, -1)!
     const uv = plate.getAttribute('uv') as BufferAttribute
-    // 첫 꼭짓점의 u가 0.25 그대로 (반 픽셀 안으로 당긴 값)
-    expect(uv.getX(0)).toBeCloseTo((0.5 + 0.25 * 7) / 8, 10)
+    // 첫 꼭짓점의 u가 0.25 그대로. 아틀라스로 옮기지 않으므로 값이 안 변한다
+    expect(uv.getX(0)).toBeCloseTo(0.25, 10)
   })
 
   it('모로 선 면은 판에 안 들어간다', () => {
@@ -512,11 +493,7 @@ maybe('소품 빠진 면', () => {
     // 전부 이 자리를 지난다
     const mesh = readProp(34, fmt)
     expect(openDirections(mesh).length, '이 소품이 두 방향 이상 뚫려 있어야 뜻이 있다').toBe(4)
-    const rect = { x: 0, y: 0, w: 8, h: 8, sheetW: 64, sheetH: 8 }
-    const plate = shellPlates(mesh, {
-      colors: mesh.materials.map(() => 0x8a7f6a),
-      rects: mesh.materials.map(() => rect),
-    })!
+    const plate = shellPlates(mesh, { colors: mesh.materials.map(() => 0x8a7f6a) })!
     const uv = plate.getAttribute('uv') as BufferAttribute | undefined
     expect(uv, '합친 판에 UV가 없다').toBeDefined()
     expect(uv!.count).toBe(plate.getAttribute('position').count)
@@ -548,9 +525,6 @@ maybe('소품 빠진 면', () => {
 })
 
 describe('판에 입히는 그림', () => {
-  /** 4×4 그림이 시트 (10,20)에 놓인 경우 */
-  const rect = { x: 10, y: 20, w: 4, h: 4, sheetW: 64, sheetH: 32 }
-
   /** z가 0과 1인 삼각형 하나. UV는 넘겨받은 대로 */
   const oneTri = (uv: number[]): ChunkMesh => {
     const geo = new BufferGeometry()
@@ -566,41 +540,36 @@ describe('판에 입히는 그림', () => {
     }
   }
 
-  const uvOf = (mesh: ChunkMesh) => {
-    const plate = facePlate(mesh, { colors: [0x808080], rects: [rect] }, 2, -1)!
-    return Array.from((plate.getAttribute('uv') as BufferAttribute).array)
-  }
+  const plateOf = (mesh: ChunkMesh) => facePlate(mesh, { colors: [0x808080] }, 2, -1)!
+  const uvOf = (mesh: ChunkMesh) =>
+    Array.from((plateOf(mesh).getAttribute('uv') as BufferAttribute).array)
 
-  it('UV가 그 그림이 차지한 칸 안으로 들어간다', () => {
-    // ⚠️ 아틀라스 한 장을 물리므로 칸 밖으로 새면 **이웃 그림이 벽에 나타난다**
-    const out = uvOf(oneTri([0, 0, 1, 0, 0.5, 1]))
+  it('원작 UV를 그대로 쓴다 — 아틀라스로 옮기지 않는다', () => {
+    // ⚠️ **여기가 옆·뒷면을 검은 줄무늬로 만들던 자리다.** 한동안 시트 한 장에
+    // 물리려고 UV를 아틀라스 칸으로 옮겼는데, 원작 UV는 칸마다 0~1이고 **반복**해서
+    // 소수부만 남길 수밖에 없었다. 그러면 칸 경계를 걸친 삼각형이 거꾸로 뒤집힌다
+    const out = uvOf(oneTri([0.25, 0.5, 1, 0, 0.5, 1]))
     expect(out).toHaveLength(6)
-    for (let i = 0; i < out.length; i += 2) {
-      expect(out[i]!).toBeGreaterThanOrEqual(rect.x / rect.sheetW)
-      expect(out[i]!).toBeLessThanOrEqual((rect.x + rect.w) / rect.sheetW)
-      expect(out[i + 1]!).toBeGreaterThanOrEqual(rect.y / rect.sheetH)
-      expect(out[i + 1]!).toBeLessThanOrEqual((rect.y + rect.h) / rect.sheetH)
-    }
+    expect(out[0]).toBeCloseTo(0.25, 10)
+    expect(out[1]).toBeCloseTo(0.5, 10)
   })
 
-  it('가장자리에서 반 픽셀 안으로 당긴다 — 안 그러면 옆 그림이 한 줄 샌다', () => {
-    const out = uvOf(oneTri([0, 0, 1, 0, 0.5, 1]))
-    // u=0은 칸 왼쪽 끝이 아니라 반 픽셀 안쪽이다
-    expect(out[0]!).toBeCloseTo((rect.x + 0.5) / rect.sheetW, 10)
+  it('되풀이하는 UV가 살아 있다 — 1을 넘는 값을 안 자른다', () => {
+    // 소품이 쓰는 그 재질을 그대로 물리므로 `wrapS/T`가 되풀이를 맡는다.
+    // 잘라 버리면 벽 한 장이 가장자리 텍셀로 뭉개진다
+    const out = uvOf(oneTri([3.25, 0, 1, 0, 0.5, 1]))
+    expect(out[0]).toBeCloseTo(3.25, 10)
   })
 
-  it('반복하는 UV는 소수부만 남긴다 — 아틀라스에서는 되풀이를 못 한다', () => {
-    const once = uvOf(oneTri([0.25, 0, 1, 0, 0.5, 1]))
-    const thrice = uvOf(oneTri([3.25, 0, 1, 0, 0.5, 1]))
-    expect(thrice[0]).toBeCloseTo(once[0]!, 10)
+  it('판이 제 서브메시 번호를 달고 나온다', () => {
+    // 재질 배열을 그대로 물리려면 그룹의 번호가 원본 서브메시와 같아야 한다
+    const plate = plateOf(oneTri([0, 0, 1, 0, 0.5, 1]))
+    expect(plate.groups).toHaveLength(1)
+    expect(plate.groups[0]!.materialIndex).toBe(0)
+    expect(plate.groups[0]!.count).toBe(plate.getAttribute('position').count)
   })
 
-  it('그림을 못 찾으면 UV가 0이다 — 평균색으로 떨어지는 자리다', () => {
-    const plate = facePlate(oneTri([0.3, 0.7, 1, 0, 0.5, 1]), {
-      colors: [0x808080], rects: [null],
-    }, 2, -1)!
-    expect(Array.from((plate.getAttribute('uv') as BufferAttribute).array)).toEqual(
-      [0, 0, 0, 0, 0, 0],
-    )
+  it('그림을 못 찾은 서브메시는 판을 안 만든다', () => {
+    expect(facePlate(oneTri([0.3, 0.7, 1, 0, 0.5, 1]), { colors: [null] }, 2, -1)).toBeNull()
   })
 })

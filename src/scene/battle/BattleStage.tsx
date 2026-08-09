@@ -34,7 +34,7 @@ import {
 } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
-  TIME_LOOKS, blendLooks, makeBlobShadow, makeSkyTexture, type TimeLook,
+  BACK_DIR, TIME_LOOKS, backFill, blendLooks, makeBlobShadow, makeSkyTexture, type TimeLook,
 } from '../fx/sky'
 import { modelUrl } from '../../data/assetBase'
 
@@ -422,6 +422,12 @@ export function BattleStage() {
       <directionalLight position={[8, 14, 9]} intensity={timeLook.sun} color={timeLook.sunColor} />
       {/* 카메라 쪽 필. 이게 없으면 몸통의 그늘진 쪽이 배경에 묻는다 */}
       <directionalLight position={[-7, 6, 12]} intensity={timeLook.fill} color={timeLook.skyColor} />
+      {/*
+        해 반대편 되비침. 오버월드와 같은 이유다 — 광원 둘이 다 카메라 쪽에
+        있으면 무대의 안쪽 면과 포켓몬의 뒤통수가 검게 뭉친다 (`fx/sky`)
+      */}
+      <directionalLight
+        position={[...BACK_DIR]} intensity={backFill(timeLook)} color={timeLook.skyColor} />
 
       {/*
         무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다

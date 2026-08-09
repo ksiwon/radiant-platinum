@@ -4,6 +4,7 @@
 //     pnpm shot forest --keys=z,z,z    뛰어든 뒤 키를 더 누른다
 //     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
+//     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
 //     pnpm shot --list                 확인 지점 목록
 //
@@ -337,6 +338,29 @@ async function main() {
         w.worldState.player.prevPosition.copy(w.worldState.player.position)
       }, [x, z])
       await page.waitForTimeout(Number(flag('atAfter', 6000)))
+    }
+    // **아무 데서나 아무 데나 보게 한다** — `--eye=x,y,z --gaze=x,y,z`.
+    //
+    // ⚠️ 3인칭 카메라는 원작처럼 **남쪽에 고정**이라, 무엇을 찍어도 건물의
+    // 남쪽 면과 지붕만 나온다. 옆·뒷면이 어떻게 생겼는지를 화면으로 확인할
+    // 길이 아예 없었다 — 1인칭으로 돌려 봐도 눈이 사람 키에 묶여 있어 나무
+    // 속이나 벽 안에서 찍히기 일쑤였다.
+    //
+    // 그래서 **카메라 시스템을 루프에서 뺀다.** 값만 밀어 넣으면 다음 프레임에
+    // 추적 카메라가 도로 끌고 간다 — 크리티컬 댐프드라 조용히, 몇 프레임에 걸쳐
+    const eye = flag('eye')
+    if (eye) {
+      await page.evaluate(async ([e, g]) => {
+        const loop = (await import('/src/engine/loop/GameLoop.ts')).gameLoop
+        const cams = (await import('/src/engine/actor/camera.ts')).cameraSystem
+        // `private`은 타입 검사에만 있다. 실행 중에는 그냥 배열이다
+        const box = loop
+        box.systems = box.systems.filter((s) => s !== cams)
+        const w = await import('/src/state/worldState.ts')
+        w.worldState.camera.position.set(e[0], e[1], e[2])
+        w.worldState.camera.target.set(g[0], g[1], g[2])
+      }, [eye.split(',').map(Number), (flag('gaze') ?? '0,0,0').split(',').map(Number)])
+      await page.waitForTimeout(Number(flag('lookAfter', 1500)))
     }
     // 스크립트를 태우지 않고 메뉴 화면 하나를 바로 연다. 고르는 장면처럼
     // 이야기 도중에만 뜨는 화면을 보려면 이 길이 필요하다

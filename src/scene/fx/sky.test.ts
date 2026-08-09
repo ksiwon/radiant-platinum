@@ -2,8 +2,15 @@
 import { describe, it, expect } from 'vitest'
 import {
   CHAR_KEY_COLOR, CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, NIGHT_FLOOR, TIME_LOOKS,
-  blendLooks, bodyLight, characterKey, groundLight, litBody, luminance, mixHex,
+  backFill, blendLooks, bodyLight, characterKey, faceLight, groundLight, litBody, luminance,
+  mixHex,
 } from './sky'
+
+/** 사방을 보는 세로면 넷 — 건물의 네 벽 */
+const WALLS: readonly (readonly [number, number, number])[] = [
+  [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1],
+]
+const UP: readonly [number, number, number] = [0, 1, 0]
 
 // 색인이 `TimeOfDay` 값이다 — 아침 · 낮 · 해질녘 · 밤 · 심야
 const MORNING = TIME_LOOKS[0]!, DAY = TIME_LOOKS[1]!, DUSK = TIME_LOOKS[2]!
@@ -155,3 +162,50 @@ function groundGain(): number {
   return attenuation(d, CHAR_KEY_RANGE) * (y / d) * luminance(CHAR_KEY_COLOR)
 }
 
+/**
+ * **네 벽이 서로 얼마나 차이 나는가** (DATA.md §2.2).
+ *
+ * ⚠️ 태양(24, 42, 18)도 필(−14, 12, 26)도 남쪽에서 온다. 3인칭 카메라가 남쪽
+ * 고정이라 그렇게 잡았는데, 그러면 **북쪽을 보는 벽에는 방향광이 하나도 안
+ * 닿는다.** 되비침을 넣기 전에 재 보면 남쪽 벽의 42.8%다 — 마을에서 내 남쪽에
+ * 선 집은 늘 그 면을 보이므로, 걷다 보면 벽이 검게 뭉친 집만 지나가게 된다
+ */
+describe('벽마다 다른 밝기', () => {
+  const walls = (look: typeof DAY, back: number) => WALLS.map((n) => faceLight(look, n, back))
+
+  it('되비침이 없으면 북쪽 벽에 방향광이 하나도 안 닿는다', () => {
+    const dark = faceLight(DAY, [0, 0, -1])
+    const bright = Math.max(...walls(DAY, 0))
+    expect(dark / bright).toBeCloseTo(0.428, 2)
+    // 반구광만 받는다 — 방향광 둘의 몫이 정확히 0이다
+    expect(dark).toBeCloseTo(faceLight({ ...DAY, sun: 0, fill: 0 }, [0, 0, -1]), 10)
+  })
+
+  it('되비침을 넣으면 제일 어두운 벽이 해가 만든 대비까지 올라온다', () => {
+    // 목표는 우리가 고른 숫자가 아니라 **이미 있던 대비**다 — 볕 드는 벽이
+    // 지붕의 몇 할인가. 낮은 64.7%다
+    for (const look of TIME_LOOKS) {
+      const back = backFill(look)
+      const lit = walls(look, back)
+      const want = Math.max(...walls(look, 0)) / faceLight(look, UP, 0)
+      expect(Math.min(...lit) / Math.max(...lit), `되비침 ${back.toFixed(2)}`)
+        .toBeGreaterThanOrEqual(want - 1e-9)
+    }
+  })
+
+  it('지붕까지 밝히지는 않는다 — 낮게 넣는 이유다', () => {
+    // 되비침이 지붕에 얹는 몫이 벽에 얹는 몫의 절반 아래여야 한다.
+    // 위에서 들어오면 지붕만 밝아지고 정작 벽은 그대로다
+    const back = backFill(DAY)
+    const onRoof = faceLight(DAY, UP, back) - faceLight(DAY, UP, 0)
+    const onWall = faceLight(DAY, [0, 0, -1], back) - faceLight(DAY, [0, 0, -1], 0)
+    expect(onRoof).toBeLessThan(onWall * 0.5)
+  })
+
+  it('밤에도 벽이 안 뭉친다 — 시간대 다섯 벌 전부', () => {
+    for (const [i, look] of TIME_LOOKS.entries()) {
+      const lit = walls(look, backFill(look))
+      expect(Math.min(...lit) / Math.max(...lit), `시간대 ${String(i)}`).toBeGreaterThan(0.6)
+    }
+  })
+})
