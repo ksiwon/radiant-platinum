@@ -99,7 +99,14 @@ export function installDevConsole(): void {
     heal,
     party: show,
     /** 리포트를 지우고 새 판으로. 설정의 "처음부터"와 같은 것이다 */
-    reset: () => { void useSaveStore.getState().resetSave() },
+    // ⚠️ **백업을 건너뛴다.** 개발 중에 리셋을 스무 번 누르면 `.rpsave` 스무 개가
+    // 다운로드 폴더에 쌓인다. 개발 모드 예외이므로 경고는 남긴다 (IMPORT.md §11 끝)
+    reset: () => {
+      console.warn('pt.reset: 리포트를 백업 없이 지운다. 남겨야 하면 pt.backup()을 먼저')
+      void useSaveStore.getState().resetSave({ backup: false })
+    },
+    /** 지금 리포트를 `.rpsave`로 받는다 */
+    backup: () => useSaveStore.getState().exportReport(),
     /**
      * 시각을 민다. 하늘·조명·안개가 따라오고 시간대 인카운터도 같이 바뀐다.
      *

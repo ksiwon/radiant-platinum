@@ -81,6 +81,37 @@ export const choiceOn = style([choiceBase, {
   borderColor: 'transparent',
 }])
 
+/**
+ * 파일 백업 줄 — 리포트 성공 **아래** 한 줄 (IMPORT.md §10).
+ *
+ * 내부 저장과 다른 줄인 것이 요점이다. 같은 줄에 두면 다운로드가 막혔을 때
+ * 리포트까지 실패한 것처럼 읽힌다
+ */
+export const backup = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  maxWidth: 620,
+  padding: '8px 14px',
+  fontSize: 13,
+  lineHeight: 1.6,
+  opacity: 0.86,
+  borderRadius: 10,
+  border: `1px solid ${vars.panel.border}`,
+  background: 'rgba(12, 17, 30, 0.6)',
+})
+
+export const backupButton = style({
+  appearance: 'none',
+  padding: '5px 10px',
+  fontSize: 12,
+  color: 'inherit',
+  borderRadius: 999,
+  border: `1px solid ${vars.panel.border}`,
+  background: 'rgba(30, 38, 60, 0.9)',
+  cursor: 'pointer',
+})
+
 /** 설정 — 왼쪽 항목 이름, 오른쪽 고른 값 */
 export const rows = style({
   width: 'min(660px, 100%)',

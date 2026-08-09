@@ -6,19 +6,25 @@
 // 꺼도 다음에 켜면 걸어 둔 자리에 그대로 서 있다. 원작은 리포트를 쓴 그 순간만
 // 남긴다. 디스크로 나가는 문은 `report()` 하나뿐이다 (`state/report.ts`).
 import { create } from 'zustand'
-import { clearReport, readReport, writeReport } from './report'
+import {
+  backupReport, clearReport, readReport, readReportDetailed, writeReportVerified,
+} from './report'
+import { downloadPortable, saveFileName, type DownloadOutcome } from './save/download'
+import {
+  buildPortable, buildPortableRaw, explainFailure, parsePortable, type PortableSave,
+} from './save/portable'
+import { compareContract, type Compatibility } from './save/contract'
+import { migrateSave } from './save/migrate'
 
-/** 전국도감 493종을 담는 비트필드 크기 (ceil(493/8) = 62, 여유 두어 64) */
-export const DEX_BYTES = 64
+// 도감 비트필드는 엔진이 갖는다 — 세이브 스키마가 그 크기를 알아야 하는데
+// 여기서 가져가면 `saveStore → report → slots → schema → saveStore` 고리가
+// 생기고 ESM이 상수를 TDZ로 만든다. 부르는 쪽이 안 바뀌게 그대로 다시 내보낸다
+export { DEX_BYTES, dexHas, dexSet } from '../engine/pokemon/dex'
+export type { DexField } from '../engine/pokemon/dex'
+import { DEX_BYTES, dexSet, type DexField } from '../engine/pokemon/dex'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
-
-/**
- * 도감 비트필드. `Uint8Array`는 기본이 `ArrayBufferLike`라 SharedArrayBuffer 뷰까지 허용하는데,
- * 세이브 데이터는 structured clone으로 오가는 독립 버퍼여야 하므로 `ArrayBuffer`로 좁힌다.
- */
-export type DexField = Uint8Array<ArrayBuffer>
 
 export interface TrainerInfo {
   name: string
@@ -192,22 +198,6 @@ export function createNewSave(): SaveData {
   }
 }
 
-/** 도감 비트필드 헬퍼 — dexNo는 1부터 시작하는 전국도감 번호 */
-export function dexHas(field: Uint8Array, dexNo: number): boolean {
-  const i = dexNo - 1
-  return (field[i >> 3]! & (1 << (i & 7))) !== 0
-}
-
-export function dexSet(field: Uint8Array, dexNo: number): DexField {
-  // 불변 갱신 — 구독자가 변화를 감지할 수 있어야 한다.
-  // new Uint8Array(view)는 ArrayBufferLike로 추론되므로 길이로 만들고 복사한다.
-  const next = new Uint8Array(field.length)
-  next.set(field)
-  const i = dexNo - 1
-  next[i >> 3]! |= 1 << (i & 7)
-  return next
-}
-
 interface SaveStore extends SaveData {
   /** 리포트를 한 번 찾아봤는가. IndexedDB가 비동기라 첫 프레임에는 아직이다 */
   hydrated: boolean
@@ -302,12 +292,55 @@ interface SaveStore extends SaveData {
    * 자리는 인자로 받는다 — 좌표는 프레임 상태(`worldState`)에 있고 이 스토어가
    * 그것을 알면 저빈도/고빈도 경계가 무너진다
    */
-  report: (position: SaveData['position']) => Promise<void>
+  report: (position: SaveData['position']) => Promise<ReportOutcome>
   /** 리포트를 읽어 그 자리에서 이어한다. 없으면 false */
   loadReport: () => Promise<boolean>
-  /** 처음부터. 리포트도 같이 지운다 — 안 지우면 다음에 켤 때 옛 판이 되살아난다 */
-  resetSave: () => Promise<void>
+  /**
+   * 지금 리포트를 `.rpsave` 파일로 받는다.
+   *
+   * 못 읽는 리포트여도 **원본 그대로** 내보낸다 — 버리는 것보다 낫다
+   */
+  exportReport: () => Promise<ExportOutcome>
+  /** 파일을 열어 보기만 한다. 아직 아무것도 안 바꾼다 */
+  previewImport: (text: string) => ImportPreview
+  /** 미리 본 것을 실제로 들인다. 실패하면 기존 리포트는 그대로다 */
+  commitImport: (preview: ImportPreview & { ok: true }) => Promise<ImportOutcome>
+  /**
+   * 처음부터. 리포트도 같이 지운다 — 안 지우면 다음에 켤 때 옛 판이 되살아난다.
+   *
+   * ⚠️ **지우기 전에 백업을 시도한다** (IMPORT.md §11 끝). 파일 다운로드와
+   * IndexedDB 백업 슬롯 둘 다 — 둘 중 하나는 남을 확률을 올린다
+   */
+  resetSave: (options?: { backup?: boolean }) => Promise<void>
 }
+
+/** 리포트 한 번의 결과. **내부 저장과 파일 백업이 따로다** (IMPORT.md §10) */
+export interface ReportOutcome {
+  saved: boolean
+  /** 내부 저장이 실패한 이유. 성공이면 없다 */
+  why?: string
+  /** 파일 다운로드를 시작했는가. 막혀도 위의 `saved`를 취소하지 않는다 */
+  backup: DownloadOutcome
+  fileName: string
+}
+
+export type ExportOutcome =
+  | { kind: 'none' }
+  | { kind: 'done'; outcome: DownloadOutcome; fileName: string; raw: boolean }
+
+export type ImportPreview =
+  | { ok: false; why: string }
+  | {
+      ok: true
+      envelope: PortableSave
+      save: SaveData
+      migrated: boolean
+      contract: Compatibility
+    }
+
+export type ImportOutcome =
+  | { ok: true; backedUp: DownloadOutcome }
+  | { ok: false; why: string }
 
 /**
  * 인트로가 끝났다. 이름·성별·라이벌 이름을 적고 판을 연다.
@@ -509,8 +542,19 @@ export const useSaveStore = create<SaveStore>()(
       },
 
       report: async (position) => {
-        await writeReport(snapshot(useSaveStore.getState(), position))
+        const data = snapshot(useSaveStore.getState(), position)
+        const at = new Date()
+        const fileName = saveFileName(data.trainer.name, at)
+
+        const written = await writeReportVerified(data)
+        if (!written.ok) {
+          return { saved: false, why: written.why, backup: { started: false, why: 'blocked' }, fileName }
+        }
         set({ position, loaded: true })
+
+        // ⚠️ **내부 저장이 끝난 뒤에 받는다.** 순서를 뒤집으면 다운로드가 막혔을 때
+        // 리포트까지 실패한 것처럼 보인다 — 둘은 별개의 성공이다 (IMPORT.md §10)
+        return { saved: true, backup: downloadPortable(buildPortable(data, at), fileName), fileName }
       },
 
       loadReport: async () => {
@@ -521,9 +565,89 @@ export const useSaveStore = create<SaveStore>()(
         return true
       },
 
-      resetSave: async () => {
+      exportReport: async () => {
+        const got = await readReportDetailed(SAVE_VERSION)
+        if (got.kind === 'none') return { kind: 'none' }
+        const at = new Date()
+        if (got.kind === 'ok') {
+          const name = saveFileName(got.save.trainer.name, at)
+          return {
+            kind: 'done', fileName: name, raw: false,
+            outcome: downloadPortable(buildPortable(got.save, at), name),
+          }
+        }
+        // 못 읽는 리포트도 **버리지 않는다.** 원본 그대로 파일로 돌려준다
+        const found = got.reason.kind === 'invalid' ? (got.reason.found ?? 0) : got.reason.found
+        const name = saveFileName('복구', at)
+        return {
+          kind: 'done', fileName: name, raw: true,
+          outcome: downloadPortable(buildPortableRaw(got.raw, found, at), name),
+        }
+      },
+
+      previewImport: (text) => {
+        const parsed = parsePortable(text)
+        if (!parsed.ok) return { ok: false, why: explainFailure(parsed.fail) }
+
+        const moved = migrateSave(parsed.data, SAVE_VERSION)
+        if (moved.kind === 'too-new') {
+          return { ok: false, why: '더 새로운 판에서 만든 리포트입니다. 그 판에서 열어 주세요' }
+        }
+        if (moved.kind === 'unsupported-old') {
+          return {
+            ok: false,
+            why: `너무 옛 리포트라 옮길 수 없습니다 (판 ${String(moved.found)}). `
+              + '원본 파일은 그대로 보관해 주세요',
+          }
+        }
+        if (moved.kind === 'invalid') return { ok: false, why: `내용이 어긋납니다 — ${moved.why}` }
+
+        return {
+          ok: true,
+          envelope: parsed.envelope,
+          save: moved.save,
+          migrated: moved.migrated,
+          contract: compareContract(parsed.envelope.contentContract),
+        }
+      },
+
+      commitImport: async (preview) => {
+        // ⚠️ **덮기 전에 지금 것을 먼저 받는다** (IMPORT.md §11-8). 여기서
+        // 실패해도 들이는 것을 막지는 않는다 — 막으면 다운로드가 차단된 브라우저에서
+        // 영영 못 들인다
+        const backedUp = await backupBeforeOverwrite()
+
+        const written = await writeReportVerified(preview.save)
+        // 실패하면 기존 리포트는 **한 바이트도 안 바뀐 채로** 남는다
+        if (!written.ok) return { ok: false, why: written.why }
+
+        set({ ...preview.save, hydrated: true, loaded: true, pendingInit: false })
+        return { ok: true, backedUp }
+      },
+
+      resetSave: async (options) => {
+        if (options?.backup !== false) await backupBeforeOverwrite()
         await clearReport()
         set({ ...createNewSave(), hydrated: true, loaded: false })
       },
     }),
 )
+
+/**
+ * 지우거나 덮기 직전의 백업 (IMPORT.md §11-8).
+ *
+ * 두 벌을 남긴다 — 파일과 IndexedDB 백업 슬롯. 파일이 최종 보험이지만
+ * 브라우저가 반복 다운로드를 막을 수 있고, 백업 슬롯은 사이트 데이터를 통째로
+ * 지우면 같이 사라진다. 둘 다 완전하지 않아서 둘 다 한다
+ */
+async function backupBeforeOverwrite(): Promise<DownloadOutcome> {
+  const got = await readReportDetailed(SAVE_VERSION)
+  if (got.kind === 'none') return { started: false, why: 'no-dom' }
+  await backupReport().catch(() => false)
+  const at = new Date()
+  if (got.kind === 'ok') {
+    return downloadPortable(buildPortable(got.save, at), saveFileName(got.save.trainer.name, at))
+  }
+  const found = got.reason.kind === 'invalid' ? (got.reason.found ?? 0) : got.reason.found
+  return downloadPortable(buildPortableRaw(got.raw, found, at), saveFileName('복구', at))
+}

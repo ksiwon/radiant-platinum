@@ -1,5 +1,17 @@
 # Pokémon Radiant Platinum — 포켓몬스터 플래티넘 3D 리메이크 기획서
 
+> **배포 설계 확정 (2026-08-10):** 공개판은 원본 유래 에셋 CDN을 사용하지 않는다.
+> 사용자가 이 기기에서 Platinum `.nds`와 이미 추출된 BDSP
+> `AssetAssistant/` 계열 폴더를 선택하면 브라우저가 로컬 변환해 OPFS에 설치한다.
+> 상세 사용자 흐름은 [IMPORT.md](IMPORT.md), 정책과 남는 위험은
+> [COPYRIGHT.md](COPYRIGHT.md), 포맷·변환 계약은 [DATA.md](DATA.md)가 정본이다.
+>
+> **현재 구현은 아직 전환 전이다.** `src/data/assetBase.ts`와 약 20개 소비자는
+> HTTP URL을 사용하고, `public/data/` 약 50MB와 `public/models/` 약 580MB는
+> Vite 빌드 시 `dist/`로 복사된다. 기존 `raw/`와 게임 기능은 보존하되,
+> Import·AssetProvider·OPFS·프로덕션 경계 게이트를 완료하기 전 현재 빌드를
+> 공개 배포하지 않는다.
+
 > 작성일: 2026-08-04 · v3 (선행 사례 / 기술 호환성 / 공백 영역 — 3갈래 외부 리서치 재검증 반영)
 > 스택: React 19 + Vite 8 + TypeScript + vanilla-extract + react-router 7 + three.js(WebGPU/R3F)
 >
@@ -78,7 +90,7 @@ apicula convert -f=glb out/*.nsbmd -o gltf/
 3. **에셋은 저장소에 넣지 않는다.** pokeemerald-wasm, 모든 디컴프 프로젝트가 그렇듯, 저장소에는 *추출 스크립트*만 두고 사용자가 자기 ROM으로 로컬 생성한다.
 4. **풀스케일은 1인 3~5년짜리다.** 후술할 스코프 재정의가 이 기획서에서 가장 중요한 부분이다.
 5. **@pkmn/sim은 심판이지 게임이 아니다.** 포획 판정, 경험치/노력치, 레벨업 기술, 진화, 그리고 상대 AI까지 전부 우리 몫이다 (§7.6·§7.7).
-6. **현지화는 번역이 아니라 추출이다.** 영어(pret)·한국어(한글판 ROM)·일본어(일본판 ROM) — 로케일 3개가 사실상 공짜다. 게임 데이터(맵·수치·음악)는 지역판 간 동일하므로 정본은 US 하나고, KO/JP 롬은 텍스트 NARC 전용이다.
+6. **현지화는 번역이 아니라 사용자 입력에서의 추출이다.** 개발 raw의 3지역판은 대조 오라클이고, 공개판은 사용자가 설치한 지역판 언어만 제공한다 (§12.2).
 
 ---
 
@@ -134,7 +146,7 @@ apicula convert -f=glb out/*.nsbmd -o gltf/
 | 초기 청크 | **≤ 150KB gz** | 126KB ✅ — 타이틀에 three.js를 싣지 않는다 (§10.4) |
 | 게임 진입 시 추가 JS | ≤ 450KB gz | 475KB ⚠️ — `three/webgpu`가 혼자 423KB다 (§10.4) |
 | 첫 플레이 가능까지 | ≤ 8초 (4G) | 저해상도 선행 로드 |
-| 2회차 이후 네트워크 | **0** | 에셋 IndexedDB + **앱 셸 SW precache** (§4.6) |
+| 설치 완료 뒤 게임 에셋 네트워크 | **0** | 에셋은 OPFS, 앱 셸은 SW. 첫 Import는 로컬 변환 (§4.6) |
 | 드로우콜 | Low ≤100 / Med ≤200 / High ≤300 | 단일 값이 아니라 프리셋별 (§10.1) |
 | 가시 트라이앵글 | ≤ 1.5M | |
 | 플레이 타임 (v1.0) | 60~90분 | |
@@ -162,7 +174,7 @@ zod 4                             # 데이터 스키마 검증
 @vanilla-extract/dynamic          # 고빈도 값 → CSS 변수 주입
 @pkmn/sim, @pkmn/protocol, @pkmn/data
 idb-keyval                        # IndexedDB 세이브
-vite-plugin-pwa                   # SW precache, prompt 모드 (§4.6). 도입은 Phase 4
+Service Worker                  # 현재 수동 sw.js; 목표는 앱 셸만 precache (§4.6)
 ```
 
 버전 커플링 주의: **R3F v9 ↔ React 19 ↔ rapier v2**는 세트다. React 18을 쓰면 R3F v8 + rapier v1이어야 한다. 섞으면 안 된다. R3F **v10**이 WebGPURenderer를 기본 지원할 예정이므로 릴리스 시 마이그레이션을 검토한다.
@@ -443,26 +455,57 @@ function EngineDriver() {
 
 ### 4.1 원칙
 
-**에셋은 빌드 산출물로 취급한다 — git이 아니라 아티팩트 스토리지로.**
+**공개 서버는 앱 셸만 배포하고, 원본 유래 런타임 에셋은 사용자 브라우저 안에서
+만든다.** `.gitignore`는 저장소 유입만 막을 뿐 Vite의 `public → dist` 복사를
+막지 못하므로 프로덕션 빌드 게이트가 별도로 필요하다.
 
-이건 저작권이 아니라 **git이 바이너리를 못 다루기 때문**이다. git의 델타 압축은 텍스트를 전제하므로 바이너리에서 무력하다. 수 GB의 glb/텍스처를 커밋하면 히스토리가 영구적으로 부풀고 clone이 수십 분짜리가 된다. 한 번 들어가면 되돌리기도 어렵다.
-
+```mermaid
+flowchart TB
+  subgraph DEV["개발 경로"]
+    R["기존 raw/ 입력"]
+    X["Node/Python 추출기"]
+    L["로컬 dev-assets<br/>현재 public/data·models 호환"]
+    R --> X --> L
+  end
+  subgraph PROD["공개 브라우저 경로"]
+    U["사용자 Platinum .nds<br/>+ BDSP AssetAssistant"]
+    W["Import Worker<br/>TypeScript/WASM"]
+    O["OPFS 설치 팩"]
+    U --> W --> O
+  end
+  L --> A["공통 AssetProvider 계약"]
+  O --> A
+  A --> G["게임 런타임"]
 ```
-ROM (최초 1회, 로컬)
-  ↓  tools/extract   (ndstool → NARC 언팩 → apicula / sdat)
-raw/                                    ← gitignore. 중간 산출물
-  ↓  tools/optimize  (gltf-transform)
-dist-assets/                            ← gitignore
-  ↓  업로드 (R2 / S3 / GitHub Releases)
-CDN  +  assets-manifest.json            ← 이 매니페스트만 커밋
-  ↓  런타임 fetch + IndexedDB 캐시
-게임
+
+목표 계약은 JSON·바이너리·이미지·GLB를 모두 다룬다.
+
+```ts
+interface AssetProvider {
+  exists(path: string): Promise<boolean>
+  bytes(path: string): Promise<ArrayBuffer>
+  text(path: string): Promise<string>
+  blob(path: string): Promise<Blob>
+  objectUrl(path: string): Promise<string>
+  releaseObjectUrl(path: string): void
+}
 ```
 
-- **`assets-manifest.json`만 저장소에 들어간다** — 경로·해시·크기·버전. 재현성과 무결성 검증은 이걸로 확보
-- 기기/협업자 간에는 `pnpm assets:pull`이 매니페스트를 보고 CDN에서 받는다. ROM 재추출 불필요
-- **최종 사용자는 ROM이 필요 없다.** URL 열면 바로 플레이
-- 첫 로딩은 필수 에셋만. 나머지는 청크 단위 지연 로드 + IndexedDB 영속 캐시 → **2회차부터 네트워크 요청 0** (에셋은 IndexedDB가, JS/CSS 앱 셸은 Service Worker가 담당 — §4.6)
+- `DevAssetProvider`는 현재 `raw → tools/extract → 로컬 산출물` 경로를 살린다.
+  기존 raw 파일을 이동·삭제하지 않고 레거시 경로 어댑터로 먼저 연결한다.
+- `OpfsAssetProvider`는 공개 Importer가 만든 로컬 설치 팩을 읽는다.
+- 두 Provider는 같은 논리 경로·스키마·대표 콘텐츠 parity test를 통과해야 한다.
+- JSON·바이너리는 Provider에서 직접 읽고, CSS 이미지와 Three.js GLB처럼 URL이
+  필요한 경우에만 수명 관리되는 Blob URL을 쓴다.
+- 공개 서버·배포 ZIP·Service Worker 캐시에는 원본 또는 원본 유래 런타임 에셋을
+  넣지 않는다.
+- 브라우저가 만든 런타임 팩은 내보내기 기능을 제공하지 않는다. 사용자가 내보낼 수
+  있는 것은 휴대용 리포트 `.rpsave`뿐이다.
+- 전체 설치·사용자 안내·중단 복구 계약은 [IMPORT.md](IMPORT.md)가 정본이다.
+
+현재 `assets-manifest.json`, `assets:pull`, `VITE_ASSET_BASE`는 전환 전 개발
+장치다. 공개 CDN 설계로 재사용하지 않고, 새 프로덕션 빌드에서는 외부 에셋 오리진
+설정 자체를 금지한다.
 
 ### 4.2 추출 대상과 전략
 
@@ -583,53 +626,52 @@ interface PokemonModelSource {
 
 **용량 실측:** 무압축 glb 5.0MB (텍스처 embed PNG가 대부분). §10.4 예산 대비 캐릭터 1인분으로는 과대 — §4.4의 KTX2(ETC1S) + Meshopt 적용이 선택이 아니라 필수임을 확인.
 
-#### 4.3.1 BDSP 자가 추출 — 완료
+#### 4.3.1 BDSP 로컬 입력과 브라우저 변환 — 개발 경로 완료, 공개 경로 미구현
 
-**Switch 덤프에서 캐릭터 에셋을 전량 추출하는 경로가 뚫렸다. Models Resource 수동 다운로드는 더 이상 필요 없다.**
+현재 개발 환경에서는 이미 필요한 BDSP AssetBundle 하위 집합을 `raw/bdsp/`에
+준비했고 Python/UnityPy 변환기로 캐릭터·포켓몬·무대를 GLB로 만들 수 있다. 이것은
+**개발 파이프라인이 뚫렸다는 뜻**이지 공개 브라우저 Import가 완성됐다는 뜻이 아니다.
 
-```
-NSP → (nstool + prod.keys) → NCA → romfs
-  → /Data/StreamingAssets/AssetAssistant/Characters/persons/{battle,field}/
-```
+공개 사용자는 자신이 준비한 다음 폴더 또는 그 상위를 선택한다.
 
-- `battle/`은 **풀비율**, `field/`는 치비 오버월드다. 우리가 쓰는 `pc0002`(빛나)가 battle 쪽이라는 것이 원본에서 확인됐다 — §4.3의 아트 방향 결정이 소스 구조와 일치한다
-- 번들 하나가 자급자족이다. `pc0002_00` 기준 **Mesh 6 + Transform 180(스켈레톤) + Material 12 + Texture2D 36 + AnimationClip 23 + AvatarMask + Animator**
-- **애니메이션 확보.** `stand_b` `wait_b` `wait02_b` `walk_b` `run_b` `pose_b` `win01_b` `order_b` + 표정·눈 깜빡임. 접미사 `_b`는 배틀용이다
-- **`tr####` 트레이너 클래스 96종** — 기존에 "덤프 없으면 불가"로 표시했던 항목이 전부 열렸다. `pc0002_10`~`_22`는 의상 변형 세트다
-- 도구: [nstool](https://github.com/jakcron/nstool)(NSP/NCA/romfs) + **UnityPy**(에셋번들 파싱). Unity 2019.4.27f1
-- ⚠️ 타이틀 업데이트(v1.3.0)는 불필요하다. 캐릭터 에셋은 전부 베이스에 있다
-- ⚠️ **파일 하나만 뽑을 수는 없다.** 이 nstool은 `-x`에 파일 경로를 줘도 디렉터리로
-  다룬다(`getDirectoryListing` 실패 또는 "액세스 거부"). **부모 디렉터리를 통째로**
-  뽑아야 한다. Git Bash에서는 `MSYS_NO_PATHCONV=1`을 앞에 붙인다
-
-**같은 길로 뽑은 것 (배틀 무대·표):**
-
-```
-AssetAssistant/Dpr/                        44MB  masterdatas · scriptableobjects/gamesettings
-AssetAssistant/Battle/                     11MB  battle_masterdatas · btlv (기술 시퀀스)
-AssetAssistant/Environments/bg/arenas/    480MB  무대 104벌 + 하늘 20벌
-AssetAssistant/Pokemon Database/
-  pokemons/battle/                         55MB  프리팹 1,303 + 동작 525
-  pokemons/common/                        384MB  **메시와 텍스처**
+```text
+Data/StreamingAssets/AssetAssistant/
+  Battle/
+  Characters/
+  Dpr/
+  Environments/
+  Pokemon Database/
 ```
 
-⚠️ **포켓몬은 번들이 셋으로 갈려 있다.** 배틀 프리팹만 열면 메시가 208바이트짜리
-껍데기다 — `battle/pm0387_00_00` · `common/pm0387_00`(메시) ·
-`common/pm0387_00_00`(텍스처) 셋을 한 UnityPy 환경에 같이 올려야 풀린다
-(DATA.md §2.17.2).
+`romfs/`, `Data/`, `StreamingAssets/`를 선택해도 앱이 아래에서
+`AssetAssistant/`를 찾는다. 공개 Importer는 NSP·NCA·XCI·키 파일을 받지 않으며,
+다운로드·복호화·보호조치 우회 절차를 안내하지 않는다. 이미 추출된 지원 폴더가
+없으면 그 자리에서 멈춘다.
 
-여기 든 표가 배틀 무대를 고르는 근거다 (DATA.md §2.17.1):
+현재 raw와 정식 폴더의 매핑:
 
-| 표 | 어디에 | 무엇 |
+| 현재 개발 경로 | 공개 입력의 논리 그룹 | 용도 |
 |---|---|---|
-| `ArenaInfo` | `Dpr/scriptableobjects/gamesettings` | 무대 104벌 — 일본어 이름 · 땅/하늘 번들 · 실내 여부 · 자연의 힘 기술 · 도롱마담 겉모습 |
-| `MapInfo` | 같은 파일 | 신오 658개 존 — 존마다 `BattleBg: [뭍, 물 위]` · 카메라 · 날씨 |
-| `BattleDataTable` | `Battle/battle_masterdatas` | 기술 828개의 연출 시퀀스 · 종족 1,008마리의 모션 타이밍 |
-| `BattleDefaultPlacementData` | 같은 파일 | **BDSP의 배틀 배치** — 포켓몬 (0,0,±2.0~2.5) · 트레이너 (±0.5,0,±5.8) · 카메라 (−2.7, 0.7, 5.0) 화각 30 |
+| `raw/bdsp/dpr` | `Dpr` | 맵·게임 설정·연결 표 |
+| `raw/bdsp/battle` | `Battle` | 배틀 표·시퀀스 |
+| `raw/bdsp/Characters` | `Characters` | 주인공·NPC·자전거 |
+| `raw/bdsp/arenas` | `Environments`의 사용 하위 집합 | 배틀 무대·하늘 |
+| `raw/bdsp/pokemon`, `pokemon-common` | `Pokemon Database`의 사용 하위 집합 | 프리팹·메시·텍스처 |
 
-⚠️ 마지막 것은 아직 안 쓴다. 우리 배치는 원작 DS의 문법(내 것은 앞쪽 왼쪽에
-뒷모습, 상대는 뒤쪽 오른쪽에 작게)이고 BDSP는 z축 대칭에 망원 카메라라, 옮기면
-연출을 통째로 다시 짜야 한다 (§16.6)
+`raw/bdsp`의 다른 컨테이너·중간 폴더는 정상 개발 빌드와 공개 Importer가 읽지
+않는다. 기존 파일은 보존하고 `RawSourceAdapter`로 위 논리 그룹을 매핑한 뒤,
+검증을 통과한 경우에만 목표 `raw/sources`, `references`, `work`,
+`dev-assets`, `legacy` 구획으로 점진 정리한다.
+
+가장 큰 선행조건은 변환기 이식이다. 현재 캐릭터·포켓몬·무대 변환은
+UnityPy·NumPy·Pillow에 의존한다. 공개판에는 Unity AssetBundle, Mesh, Texture2D,
+AnimationClip, 재질 채색, GLB 작성을 처리하는 TypeScript/WASM 동등 구현이 필요하다.
+현재 Python 산출물과 메시 바운드·클립·대표 픽셀·파일 인덱스를 대조하기 전에는
+완료로 표시하지 않는다.
+
+포켓몬은 번들이 셋으로 갈릴 수 있다. 배틀 프리팹 하나만 확인하지 않고, 공용 메시와
+폼별 텍스처까지 한 세트로 열리는 표본 검증을 거친다. 자세한 입력 진단과 단계 UI는
+[IMPORT.md §5~6](IMPORT.md#5-입력-검증)를 따른다.
 
 #### 4.3.2 BDSP 채색 구조 — 해독 완료
 
@@ -793,37 +835,53 @@ src/engine/audio/tables.ts      ARM7에서 뜯은 포락선 표
 
 무엇을 어떻게 확인했는지는 §16.8에, 형식은 DATA.md §2.18에 있다.
 
-### 4.6 전송·캐싱·오프라인
+### 4.6 로컬 설치·캐싱·오프라인
 
-#### 호스팅
+#### 호스팅 경계
 
-**결정: Cloudflare Pages(앱 셸) + R2(대용량 에셋).**
+호스팅 사업자는 정적 앱 셸만 제공한다. 플랫폼은 Pages·정적 호스팅 어디든 바꿀 수
+있지만 다음 조건은 바뀌지 않는다.
 
-| 후보 | 판정 |
-|---|---|
-| **Cloudflare Pages + R2** | ✅ R2는 **egress 완전 무료**, 무료 티어 10GB + 월 1,000만 읽기 — 수백 MB 팬게임에 최적. R2에 커스텀 도메인을 붙이면 CDN 캐시도 적용 |
-| itch.io HTML5 | 총 500MB / 단일 200MB / 1,000파일 제한 — CDN 스트리밍 구조와 충돌. 홍보용 보조 채널로만 |
-| GitHub Pages | 커스텀 헤더 불가, 대역폭 소프트 리밋 — 부적합 |
+- 배포물: HTML·해시 JS/CSS·서비스 워커·웹 매니페스트·자체 제작 아이콘
+- 비배포물: `data/`, `models/`, ROM, romfs, AssetBundle, 변환 팩과 원본 유래 표
+- 외부 에셋 CDN 없음, `VITE_ASSET_BASE` 없음
+- Import 라우트에 분석 SDK·원격 오류 수집 없음
+- CSP 기본값 `connect-src 'self'`; 사용자 파일 내용·이름·해시 전송 금지
 
-- **R2 CORS 설정 필수**: `AllowedOrigins` + `AllowedHeaders: Range` + `ExposeHeaders: Content-Range, Accept-Ranges, ETag`. 오디오 부분 다운로드(Range 요청)와 아래 opaque 패딩 문제를 동시에 해결한다
-- Brotli 사전 압축은 JS/CSS/JSON(도감·대사 데이터)에만 — KTX2/meshopt glb는 이미 자체 압축이라 이득이 없다
-- **COOP/COEP는 켜지 않는다.** three 로더들은 SharedArrayBuffer를 쓰지 않는다. 켜면 외부 리소스 임베드만 깨진다
+현재 `public/data`와 `public/models`는 각각 약 50MB·580MB이고 기존
+`dist/data`·`dist/models`에도 거의 그대로 들어가 있다. 전환 첫 구현은
+`tools/checkDistributionBoundary` 같은 사전 검사로 이 경로와 금지 확장자를
+발견하면 `vite build` 전에 실패해야 한다. 이후 개발 산출물을 `public/` 밖으로
+옮기고 Vite dev middleware에서만 노출한다.
 
-#### Service Worker (vite-plugin-pwa)
+#### Service Worker
 
-"2회차 네트워크 0"에서 IndexedDB가 담당하는 건 에셋뿐이다. **JS/CSS/HTML 앱 셸은 Service Worker precache가 담당한다:**
+Service Worker는 앱 셸만 precache한다. 현재 `public/sw.js`의
+`/data|models|assets/` HTTP runtime cache는 제거한다.
 
-- `vite-plugin-pwa` + `strategies: 'generateSW'`. Vite의 콘텐츠 해시 파일명과 궁합이 좋다
-- precache 대상: 앱 셸 + 활성 로케일의 상용 폰트 청크(§10.4) + Basis 트랜스코더
-- **CDN 에셋은 SW runtime cache에서 제외한다** — 이미 IndexedDB로 직접 관리하므로 이중 캐시가 된다. `urlPattern`을 앱 셸로 한정
-- **업데이트는 `registerType: 'prompt'`.** autoUpdate는 플레이 도중 리로드 사고를 낸다. "새 버전 있음" 토스트는 세이브 직후에만 노출
+- 내비게이션은 네트워크 우선, 실패 시 캐시된 앱 셸
+- 해시 JS/CSS와 자체 제작 정적 자산만 앱 셸 캐시
+- OPFS 에셋은 Cache Storage에 중복 저장하지 않음
+- 업데이트는 플레이 중 강제 reload하지 않고 리포트 이후 적용을 제안
+- 앱 업데이트와 에셋 계약 업데이트를 분리; 필요한 그룹만 재생성
 
-#### 스토리지 견고성
+#### OPFS 설치와 견고성
 
-- 첫 대량 다운로드 전에 `navigator.storage.persist()` 요청 + `estimate()`로 여유 확인 + `QuotaExceededError` 핸들링
-- 브라우저 에빅션은 **origin 단위 전체 삭제**로 온다. Safari는 7일 미사용 시 삭제 가능(홈 화면 PWA 설치 시 면제) — 세이브 내보내기(§9)가 보험이다
-- opaque response(no-cors fetch)를 Cache Storage에 넣으면 Chrome이 항목당 ~7MB로 패딩한다 — 반드시 `mode: 'cors'`로 fetch (위 CORS 설정이 전제)
-- 에셋 캐시는 LRU + 상한 200MB + 세이브와 별도 저장소 (§10.4)
+- 변환 전 `navigator.storage.estimate()`로 결과 + 임시 여유를 확인한다.
+- 사용자 제스처 안에서 `navigator.storage.persist()`를 요청하되 승인을 보장으로
+  취급하지 않는다.
+- Worker가 그룹·청크 단위로 임시 파일에 쓰고 검증 후 commit한다.
+- `journal.json`이 완료 청크를 기록해 취소·탭 종료·quota 초과 뒤 재개한다.
+- 설치 manifest가 `ready`가 되기 전 게임을 시작하지 않는다.
+- 에셋 캐시와 리포트는 저장소·삭제 UI를 분리한다.
+- 앱을 다시 설치하거나 에셋을 지워도 리포트는 남는다.
+- Service Worker와 OPFS가 있어도 브라우저 데이터 삭제는 가능하므로 매 리포트
+  `.rpsave` 다운로드와 수동 내보내기·가져오기가 최종 보험이다 (§9).
+
+첫 공개 지원은 대용량 폴더 선택과 Worker/OPFS 검증이 쉬운 데스크톱 Chromium이다.
+디렉터리 핸들이 없으면 `webkitdirectory` 폴백을 제공하되, 중단 재개 때 같은 폴더를
+다시 선택하게 될 수 있다. 세부 상태 머신과 오류 문구는 [IMPORT.md](IMPORT.md)가
+정본이다.
 
 ---
 
@@ -1385,14 +1443,48 @@ PP도 넘치는 만큼은 안 들어간다(`Pokemon_IncreaseValue`가 최대치�
 교체와 같은 전면 화면을 쓰고 파티 카드도 같은 것을 쓴다(`PartyCards`) — 따로
 그리면 한쪽만 상태이상 딱지가 빠지는 식으로 조용히 갈린다.
 
-#### 7.8.5 아직 안 옮긴 것
+#### 7.8.5 「금제」가 걸리면 가방이 안 열린다
 
-- **엠바고.** 원작은 도구를 쓰기 전에 그 마리에게 엠바고가 걸렸는지 본다
-  (`battle_bag.c`·`battle_party.c` 양쪽). 우리는 그 기술이 아직 없다.
-- **친밀도 보정.** 럭셔리볼·알을 받은 자리·친밀도업 소지품 배수를 안 본다.
-  배틀 중 소지품을 아직 안 들기 때문이다. 구간(100·200)과 증감 자체는 넣었고
-  **세이브를 바로 고친다** — 배틀 결과(`applyResults`)에 친밀도가 안 실려 오므로
-  거기서 안 주면 영영 안 준다.
+상대가 금제(`MOVE_EMBARGO` #373)를 걸어 두면 **그 마리에게는 도구를 못 쓴다.**
+원작은 가방 화면과 파티 화면 두 군데에서 같은 검사를 하고, 빠져나가는 것은
+둘뿐이다 (`battle_bag.c`의 `TryUseItem`):
+
+- **이펙트가드** — 개체가 아니라 진영에 흰안개를 건다
+- **삐삐인형·에나비꼬리** — 누구에게 쓰는 도구가 아니다
+
+⚠️ 원본은 이펙트가드를 **도구 번호로** 걸러낸다(`!= ITEM_GUARD_SPEC`). 우리는
+`guardSpec` 칸으로 가르는데, 468종 중 그 칸이 선 것이 이펙트가드 하나뿐이라
+같은 집합이다. 벤치는 검사 자체를 안 거친다 — 원작도 배틀러 자리(0·1)만 본다.
+
+#### 7.8.6 친밀도 보정은 **두 루틴이 다르다**
+
+올라갈 때 붙는 보정 셋(럭셔리볼 +1 · 알을 받은 자리 +1 · 평온의방울 ×1.5)은
+원작이 두 군데에서 얹는다. 한 함수로 모았다 (`pokemon/friendship`) — 실제로
+세이브 쪽에는 럭셔리볼만 붙어 있고 나머지 둘이 빠져 있었다.
+
+⚠️ **1.5배가 무엇을 보는지가 다르다.**
+
+| | 보는 것 |
+|---|---|
+| `Pokemon_UpdateFriendship` (레벨업·걷기…) | **소지품**의 홀드 효과 |
+| `BattleSystem_UseBagItem` (배틀 도구) | **방금 쓴 가방 도구**의 홀드 효과 |
+
+뒤엣것은 원작의 실수로 보인다 — 소지품 번호를 읽어 놓고(`param = ...HELD_ITEM`)
+정작 검사는 `item`으로 한다. 그대로 옮겼다(§7.7.4). 그래서 배틀에서는 이 배수가
+영영 안 걸린다: 평온의방울(#218, 유일한 `HOLD_EFFECT_FRIENDSHIP_UP`)은 배틀
+주머니가 없어서 애초에 못 고른다.
+
+⚠️ **알을 받은 자리는 `PokemonInstance`에 아직 칸이 없다.** 알도 육아방도 없어
+넣을 값이 안 생긴다. 0을 넘겨도 판이 안 달라지는 것은 재 봤다 — 이 보정은
+자리 번호가 지금 맵 번호와 같을 때 붙는데, 0번 맵은 「수수께끼의 장소」라
+못 간다. 육아방이 붙는 날 개체에 칸이 하나 늘고 `NO_EGG_LOCATION`이 없어진다.
+
+⚠️ **지금 맵 번호는 `sessionStore`에서 온다.** `engine/map/world`에도 같은 값이
+있지만 그 모듈은 three를 끌고 와서, 초기 청크에 있는 배틀 스토어가 import 하면
+타이틀에 three가 딸려 온다 — `app/initialChunk.test.ts`가 그 자리를 잡았다.
+
+친밀도는 **세이브를 바로 고친다.** 배틀 결과(`applyResults`)에 친밀도가 안 실려
+오므로 거기서 안 주면 영영 안 준다.
 
 ---
 
@@ -1441,30 +1533,80 @@ function* run(script: Script): Generator<Wait, void> {
 
 ## 9. 세이브 시스템
 
+### 9.1 현재 구현 — 동작하지만 휴대성은 없다
+
+현재 `SAVE_VERSION`은 7이고 슬롯은 **리포트 한 벌**이다. `report()`를 부른
+시점만 `radiant-platinum/save/report` IndexedDB에 structured clone으로 저장한다.
+자동저장은 하지 않는다. 도감·플래그의 `Uint8Array`가 JSON에서 깨지는 문제를
+피한 선택이며, 기존 `pt-3d` 데이터베이스에서 새 이름으로 한 번 옮기는 코드도 있다.
+
+2026-08-10 감사에서 `saveStore.test.ts`와 `report.test.ts` 24개가 통과했다.
+확인된 것은 리포트 쓰기·읽기, TypedArray 보존, 옛 DB 이전, 게임 상태 스냅샷이다.
+
+현재 한계:
+
+- 파일 다운로드·가져오기가 없다.
+- 저장 데이터의 Zod 스키마와 범위 검증이 없다.
+- 버전이 정확히 같지 않으면 migration 없이 `null`을 반환해 리포트가 사라진 것처럼
+  보인다.
+- 새 게임과 설정의 “처음부터”가 확인 후 IndexedDB 리포트를 즉시 지운다.
+- 저장 성공 뒤 다시 읽어 검증하거나 이전 사본을 남기지 않는다.
+- 에셋 설치와 분리된 삭제 정책이 아직 없다.
+
+### 9.2 목표 — 리포트할 때 내부 저장과 파일 백업을 함께 한다
+
+```mermaid
+flowchart LR
+  R["리포트 작성"]
+  T["임시 슬롯 기록"]
+  V["다시 읽어<br/>스키마·체크섬 검증"]
+  C["현재 슬롯 원자적 교체"]
+  D[".rpsave 다운로드 시도"]
+  B["항상 보이는<br/>백업 받기 버튼"]
+
+  R --> T --> V --> C --> D
+  D --> B
+```
+
+순서는 고정한다.
+
+1. 현재 상태를 snapshot한다.
+2. 임시 슬롯에 기록한다.
+3. 다시 읽어 SaveSchema와 체크섬을 검증한다.
+4. 검증 성공 후에만 현재 슬롯을 교체한다.
+5. 휴대용 `.rpsave`를 만들고 **매 리포트마다 다운로드를 시도**한다.
+6. 브라우저가 반복 다운로드를 막으면 내부 리포트는 성공으로 유지하고
+   “백업 파일 받기” 버튼을 보여 준다.
+
+타이틀과 설정에도 수동 “리포트 백업 받기”와 “리포트 파일 불러오기”를 항상 둔다.
+새 게임·리포트 삭제·가져오기 덮어쓰기 전에는 현재 리포트 다운로드를 먼저 시도한다.
+
+### 9.3 휴대용 포맷과 migration
+
 ```ts
-const SAVE_VERSION = 3
-
-const migrations: Record<number, (s: any) => any> = {
-  1: (s) => ({ ...s, pokedex: { seen: new Uint8Array(493), caught: new Uint8Array(493) } }),
-  2: (s) => ({ ...s, money: s.money ?? 3000 }),
-}
-
-function migrate(save: any) {
-  let s = save
-  while (s.version < SAVE_VERSION) {
-    s = migrations[s.version](s)
-    s.version++
-  }
-  return SaveSchema.parse(s)   // zod 최종 검증
+interface PortableSave {
+  magic: 'RADIANT_PLATINUM_SAVE'
+  formatVersion: number
+  saveVersion: number
+  createdAt: string
+  contentContract: { platinumLocale: string; schema: number }
+  codec: 'json+base64-typed-arrays'
+  checksum: string
+  payload: string
 }
 ```
 
-- 슬롯 3개 + 자동저장 슬롯 1개
-- 저장 전 이전 세이브를 `slot_N.bak`으로 복사 (손상 복구)
-- 내보내기/가져오기: base64 JSON 파일 — 기기 이동용이자 **에빅션 보험**(§4.6). 브라우저 스토리지 삭제는 origin 단위 전체로 오기 때문에 백업 수단이 없으면 세이브가 통째로 사라진다
-- 직렬화는 structured clone 경로 — persist 기본 JSON 직렬화 금지 (§3.2). `Uint8Array` 보존 확인 테스트 포함
-- 첫 세이브 시 `navigator.storage.persist()` 요청 (§4.6)
-- 저장 시점 스크린샷 썸네일(캔버스 128×72 캡처)을 슬롯 목록에 표시
+- TypedArray는 명시적 codec으로 encode/decode한다. `JSON.stringify(SaveData)`를
+  직접 부르지 않는다.
+- 체크섬은 전송·디스크 손상을 찾는 장치이며 보안 서명으로 주장하지 않는다.
+- 원본 파일명·경로·ROM 전체 해시·에셋 바이트는 세이브에 넣지 않는다.
+- `migrations[n]`은 n에서 n+1로만 옮기고 마지막에 SaveSchema로 범위를 검증한다.
+- 더 최신 포맷, 손상 파일, 지원 불가능한 옛 버전은 기존 리포트를 건드리지 않는다.
+- 가져오기 전에 요약과 호환 결과를 보여 주고, 임시 슬롯 round-trip 뒤에만 교체한다.
+- 에셋 캐시 삭제와 리포트 삭제는 별도 저장소·별도 버튼이다.
+
+세부 사용자 흐름, 파일명, 오류 처리는
+[IMPORT.md §10~11](IMPORT.md#10-리포트-저장과-휴대용-백업)이 정본이다.
 
 ---
 
@@ -1536,7 +1678,7 @@ KTX2 기준 실제 계산:
 | 게임 진입 시 추가 JS | **≤ 450 KB gz** | **475 KB** ⚠️ | 5.5% 초과. 앱 코드는 53KB고 나머지가 three다 |
 | 배틀 진입 시 추가 | ≤ 120 KB gz | **1,059 KB** ❌ | `@pkmn/sim`이 혼자 1,045KB — 아래 참조 |
 | 첫 플레이 가능까지 | ≤ 8초 (4G 기준) | 미측정 | 저해상도 선행 로드 후 교체 |
-| **2회차 이후 네트워크** | **0** | ⚠️ 껍데기만 | 앱 셸은 SW precache에 있고 에셋은 **쓴 것만** 남는다 — 걸어 본 길은 0이고 처음 가는 길은 아니다 (§4.6) |
+| **설치 완료 뒤 게임 에셋 네트워크** | **0** | ❌ 전환 전 | 목표는 전량 OPFS. 현재는 HTTP data/models를 쓴다 (§4.6) |
 | CJK 폰트 | 다이나믹 서브셋 | 미구현 | 전량 로드 금지 — 아래 참조 |
 
 **분할 실측** (`pnpm build` 뒤 `gzip -c <파일> | wc -c`, 1 KB = 1,000바이트).
@@ -1577,11 +1719,11 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 합성하는 층(`input/keyboard`)을 나누고, `app/initialChunk.test.ts`가 import
 그래프를 직접 걸어 이 경계를 지킨다.
 
-이걸 감수하는 근거: **체감 로딩을 지배하는 건 초기 청크(126 KB)지 게임 청크가 아니다.** 게임 청크는 ① 지연 로드라 타이틀 표시를 막지 않고, ② 타이틀 화면에서 유휴 시점에 프리페치되며(`requestIdleCallback`, 커서를 올려도), ③ SW precache 대상이라 2회차부터 0이다. 사용자가 타이틀을 읽는 동안 받아지므로 클릭 시점엔 이미 따뜻하다.
+이걸 감수하는 근거: **체감 로딩을 지배하는 건 초기 앱 청크(126KB)다.** JS 게임 청크는 지연 로드하고 타이틀에서 유휴 프리페치한다. 변환 에셋은 설치 완료 뒤 OPFS에서 읽으며 Service Worker precache 대상이 아니다.
 
 **프로그레시브 로딩:** 저해상도 LOD를 먼저 보여주고 고해상도를 비동기로 교체한다. 참조 사례로 56MB 자산을 **초기 300KB + 8MB 스트리밍**으로 낮춘 케이스가 있다. 청크 메시와 포켓몬 모델 양쪽에 적용한다.
 
-**IndexedDB 캐시 주의:** 캐시한 항목이 전부 메모리에 상주하는 구조를 만들면 역효과다(Unity WebGL이 이 문제로 유명하다). **명시적 evict 정책**을 둔다 — LRU, 상한 200MB, 세이브 데이터와는 별도 저장소.
+**OPFS·Blob URL 주의:** 디스크에 설치됐다는 이유로 Blob URL과 파싱된 GLB를 메모리에 계속 두면 누수다. AssetProvider가 참조 수·LRU·revoke를 맡고, 세이브 저장소와 삭제 경로를 분리한다.
 
 **CJK 폰트:** 한글 11,172자·한자 수만 자를 통짜 woff2로 실으면 그것만으로 초기 예산이 깨진다. 로케일별 전략:
 
@@ -1657,10 +1799,23 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 
 ### 12.2 i18n 구조
 
-- **UI 문자열(수백 개)과 대사 스크립트(수천 줄)를 분리한다.** UI는 key-value JSON(ko/en/ja). **대사는 i18n 라이브러리에 넣지 않는다** — 화자·분기·연출이 붙은 이벤트 스크립트 데이터의 일부로 `dialogue/{locale}/{map}.json`에 두고, 맵 단위 lazy-load(에셋 스트리밍 파이프라인에 편승)
-- 텍스트 소스: 영어 = pret `res/text`, 한국어 = 한글판 ROM, 일본어 = 일본판 ROM (§4.2) — 로케일 3개가 사실상 공짜. 로케일 간 정렬은 **뱅크 매핑 테이블 경유** — 지역판마다 뱅크 순서가 다르다는 것이 스파이크에서 확인됨(§4.2). pret의 뱅크 이름 목록을 앵커로 구간별 오프셋을 산출한다
-- 치환은 `{name}` 수준이면 충분. ICU 풀스펙은 과함. 한국어 조사(은/는·이/가·을/를)는 마지막 글자 받침 판정으로 자동화: `(code - 0xAC00) % 28 > 0`. 일본어는 조사 문제가 없어 추가 처리 불요
-- 폰트 로딩 전략은 §10.4 — 로케일 선택 후 해당 언어 폰트만
+- **UI 문자열과 원본 대사 데이터를 분리한다.** 자체 제작 UI 문구는 앱 셸에 둘 수
+  있지만, 원본 대사·이름·설명은 사용자가 선택한 Platinum에서 브라우저가 생성한다.
+- 공개 설치의 기본 언어는 선택한 Platinum 지역판 하나다. KO·EN·JA를 모두
+  `public/data/dialogue`에 미리 싣지 않는다.
+- 추가 언어는 사용자가 그 지역판의 호환 Platinum을 별도로 선택해 설치한다.
+  `install.json.availableLocales`가 실제 설치 언어를 선언하고 설정 화면은 그 목록만
+  보여 준다.
+- 현재 `LANGUAGES = ['ko','en','ja']` 고정 배열, `textBanks.json`, 일부
+  `loadLabels('en')` 호출은 전환 감사 대상이다. 개발 raw가 세 지역판을 갖는 것과
+  공개 사용자가 세 언어를 갖는 것은 다르다.
+- 대사는 `dialogue/{locale}/{bank}.json` 논리 계약을 유지해 맵 단위로 읽되,
+  물리 저장은 DevAssetProvider 또는 OPFS pack 뒤에 둔다.
+- 로케일 간 뱅크 매핑·제어 코드·한국어 조사는 검증된 현재 규칙을 유지한다.
+  단, 원본 유래 매핑표를 앱 셸에 포함할 수 있는지는 별도 감사하고, 가능하면 선택한
+  ROM에서 런타임 생성한다.
+- 폰트는 프로젝트가 배포 권한을 가진 것만 앱 셸 또는 자체 폰트 캐시에 둔다.
+  설치 언어가 정해진 뒤 필요한 서브셋만 로드한다.
 
 ---
 
@@ -1671,7 +1826,7 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 
 ### 지나온 것 — Phase 0 ~ 2
 
-세 페이즈의 완료 조건은 전부 통과했고, 그 상태를 시험 1,318개가 붙들고 있다.
+세 페이즈의 완료 조건은 전부 통과했고, 그 상태를 시험 1,331개가 붙들고 있다.
 
 - **Phase 0 기반.** 영속 Canvas가 라우트를 왕복해도 컨텍스트를 안 잃는다.
   WebGPU가 뜨고 안 되면 WebGL2로 내려간다. 고정 타임스텝 루프 · 상태 3분할 ·
@@ -1682,6 +1837,26 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
   풀숲에서 야생을 만나고, 리포트를 쓴 자리에서 다시 시작한다. 대화·간판·좌표
   이벤트·트레이너전이 원작 바이트코드로 돈다.
 
+### Phase D0 — 공개 배포 기반 (최우선, 미완료)
+
+게임 콘텐츠 페이즈와 별개인 배포 게이트다. 아래가 끝나지 않으면 현재 빌드는
+로컬 개발판이다.
+
+| | 상태 |
+|---|---|
+| 프로덕션 금지 산출물 검사 | ❌ `public/data·models`가 현재 `dist`에 복사됨 |
+| 휴대용 `.rpsave` 내보내기·가져오기·migration | ❌ |
+| `AssetProvider` + Dev 경로 보존 | ❌ |
+| Platinum 브라우저 Worker | ❌ |
+| BDSP 폴더 검증·TS/WASM 변환 | ❌ |
+| OPFS 설치·저널·재개 | ❌ |
+| Import Wizard·무전송 E2E | ❌ |
+| 앱 셸 전용 Service Worker | ❌ 현재 HTTP 에셋 runtime cache |
+
+구현 순서는 [IMPORT.md §13](IMPORT.md#13-구현-순서)을 따른다. 특히 리포트
+휴대성과 Provider 경계를 Import UI보다 먼저 만든다.
+
+
 ### Phase 3 — 배틀
 
 | | 상태 |
@@ -1691,7 +1866,7 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 | 메타게임 (포획·경험치·노력치·레벨업 기술·진화) | ✅ |
 | 트레이너 AI (§7.7) | ✅ 원작 분기표의 42.0%까지 · 교체 판단과 가방까지 (§7.7.6~8) |
 | 배틀 HUD · 기술 선택 · 배속 | ✅ 키보드로 끝까지 간다 (§16.3) |
-| 내 가방 (§7.8) | ✅ 회복·상태·볼·배틀용·PP 68종. 대상과 기술 칸까지 묻는다. ⚠️ 엠바고는 안 본다 |
+| 내 가방 (§7.8) | ✅ 회복·상태·볼·배틀용·PP 68종. 대상과 기술 칸까지 묻고 「금제」도 막는다 |
 | 포켓몬 그림 | ✅ **BDSP 3D 모델 493종** · 동작 여덟. 도트는 모델을 못 받은 종의 대비책 |
 | 기술 연출 | ✅ 틀 다섯 + 타입 색. ⚠️ 원작 연출을 한 컷씩 옮긴 것은 아니다 |
 | 카메라 샷 8종 (§7.4) | ✅ 여섯. 남은 둘(`travel`·`finisher`)은 붙을 연출이 아직 없다 |
@@ -1707,7 +1882,7 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 | 낮/밤 사이클 | ✅ 하늘·조명·안개가 원작 `rtc.c` 표대로 갈린다 |
 | 비전기술 필드 사용 | ✅ 여덟 다 나간다 (거합베기·괴력·파도타기·공중날기·폭포오르기·락클라임·바위깨기·플래시) |
 | 키 리맵 UI | ❌ |
-| PWA | ✅ 매니페스트 + 서비스 워커. 껍데기만 미리 받고 에셋은 쓴 것만 남긴다 (§4.6) |
+| PWA | ⚠️ 전환 필요 — 매니페스트는 있으나 현재 HTTP 에셋 runtime cache를 앱 셸 전용으로 교체해야 함 (§4.6) |
 | 접근성 최소 세트 (§12.1) | ⚠️ 일부 |
 
 ### Phase 5 — 콘텐츠 확장 (지속)
@@ -1724,97 +1899,124 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 
 | 리스크 | 영향 | 대응 |
 |---|---|---|
-| **스코프 폭주** | 미완성으로 사망 | **최대 리스크.** Phase 2·3 완료 전 신규 기능 금지. v1.0 범위를 문서로 고정하고 변경 시 ADR 작성 |
-| **성능 붕괴** | 몰입감 목표 실패 | Phase 0부터 예산 계측. CI 벤치로 회귀 차단 |
-| **React 리렌더 지옥** | 원인 추적 난이도 높음 | 상태 3분할을 ESLint 룰로 기계적 강제. `worldState` import를 React 컴포넌트에서 금지 |
-| **모델 품질 불균일** | 배틀 씬 일관성 붕괴 | 종마다 스케일·축·클립 세트가 다름. 로더 뒤 정규화 단계 필수(§4.3). 누락 클립은 절차적 폴백 |
-| **모바일 VRAM 초과 → 탭 크래시** | **치명적** | iOS Safari WebGL 힙 300~500MB(가변). 프레임 저하가 아니라 크래시다. KTX2 필수 + 예산 180MB + 상시 계측 (§10.3) |
-| **에셋 총량 / 초기 로딩** | 이탈률 | 청크 지연 로드 + IndexedDB 영속 캐시 + 프로그레시브 LOD (§10.4) |
-| **sim↔세이브 왕복 변환 버그** | 세이브 손상 | 메타게임 레이어(§7.6)의 직렬화 경계에 프로퍼티 테스트. 세이브 백업(`.bak`) + 내보내기 |
-| **브라우저 스토리지 에빅션** | 세이브·캐시 소실 | origin 단위 전체 삭제로 온다. `storage.persist()` + 내보내기 + Safari 7일 규칙은 PWA 설치로 면제 (§4.6·§9) |
-| **테이크다운 / 배포 채널 소멸** | 프로젝트 지속성 | → [COPYRIGHT.md](COPYRIGHT.md) |
-| **4세대 로직 불일치** | 원작 팬 이탈 | diff 리포트 자동화 + 오버라이드 레이어 |
-| **@pkmn/sim 번들 크기** | 초기 로딩 | 배틀 씬을 `React.lazy` + 동적 import. 오버월드에는 안 실림 |
-| **TSL 내장 포스트프로세싱 표현력 부족** | 룩 목표 미달 | Phase 0 스파이크로 조기 판정 (§2.4). pmndrs v7의 WebGPU 대응이 나오면 재평가 |
+| **스코프 폭주** | 미완성으로 사망 | 수직 슬라이스와 완료 게이트 유지 |
+| **프로덕션에 로컬 에셋 혼입** | 원본 유래 약 630MB 직접 배포 | `public/data·models`, `dist/data·models`, 금지 확장자 사전 검사. 깨끗한 clone 배포 테스트 |
+| **BDSP 브라우저 변환 불가·불일치** | 3D 핵심이 설치되지 않음 | UnityPy 대체 TS/WASM 스파이크를 최우선 기술 게이트로 두고 Python 산출물 parity test |
+| **Platinum 추출기의 decomp 의존** | 사용자의 ROM 두 입력만으로 결과를 못 만듦 | 각 의존을 ROM 파싱·배포 가능한 최소 메타데이터·개발 검증 전용으로 분류 |
+| **대용량 변환 메모리·중단** | 탭 크래시·재시작 | File.slice, Worker, transferable, 그룹별 해제, OPFS journal |
+| **브라우저 quota·에빅션** | 설치 에셋·리포트 소실 | estimate/persist, 에셋·세이브 삭제 분리, 매 리포트 `.rpsave` |
+| **세이브 버전 불일치** | 업데이트 뒤 진행이 사라져 보임 | SaveSchema, 순차 migration, 가져오기 전 백업, 기존 슬롯 불변 |
+| **Blob URL 누수** | 장시간 플레이 메모리 증가 | Provider 참조 카운트·revoke와 맵 왕복 soak test |
+| **3개 언어 고정 가정** | 한 ROM 설치에서 404·빈 대사 | install manifest의 availableLocales만 노출 |
+| **React 리렌더 지옥** | 원인 추적 난이도 | 상태 3분할과 ESLint 경계 유지 |
+| **모바일 VRAM 초과** | 탭 크래시 | 첫 Import 지원은 데스크톱, KTX2·예산·실기 계측 뒤 확장 |
+| **테이크다운 / 배포 채널 소멸** | 프로젝트 중단 | [COPYRIGHT.md](COPYRIGHT.md)의 위험 수용·통지 대응. BYOR도 면책 아님 |
+| **4세대 로직 불일치** | 원작 팬 이탈 | 기존 diff·실측·회귀 테스트 유지 |
+| **@pkmn/sim 번들 크기** | 첫 배틀 지연 | 배틀 진입 동적 import 유지 |
 
-### 14.1 에셋 정책
+### 14.1 에셋·저장소 정책
 
-**→ [COPYRIGHT.md](COPYRIGHT.md).** 원본 에셋을 쓴다는 결정, 그 결정이 배포에
-지우는 조건, 테이크다운 대응이 전부 거기 있다.
+`.gitignore`는 `raw/`, `public/data/`, `public/models/`, `*.nds`,
+`*.sdat`를 막고 있다. 이것은 필요하지만 충분하지 않다. Vite는 Git 추적 여부와
+무관하게 `public/`을 `dist/`로 복사한다.
 
-여기에는 저장소가 무엇을 막고 있는지만 적어 둔다.
+공개 배포 게이트:
 
-`.gitignore`가 지금 막는 것: `raw/`, `dist-assets/`, `*.nds`, `*.sdat`,
-**`public/models/`, `public/data/`** — 롬에서 나온 것은 폴더째다.
+- 앱 셸 이외의 `data/`, `models/`, 원본·추출·변환 확장자가 있으면 실패
+- 외부 원본 유래 에셋 오리진과 `VITE_ASSET_BASE`가 있으면 실패
+- `raw/`가 정적 서버 root나 Rollup 입력에 연결되면 실패
+- 빌드 뒤 파일 목록·MIME·용량을 다시 검사
+- 테스트 fixture가 프로덕션 청크에 들어가지 않는지 import graph 검사
+- 과거 Git 히스토리는 공개 remote 전에 별도 승인 아래 감사
 
-목차만 남기는 예외를 두려고 로더가 첫 왕복에 읽는 것을 재 봤더니 16개 2.6MB였고,
-그 안에 `matrices/0.bin`(1.8MB, 신오 전체 배치)과 `encounters.json`(254KB)이 있었다.
-빼려던 바로 그것이라 예외가 성립하지 않는다 — 목차 노릇은 `assets-manifest.json`
-(경로·크기·짧은 해시 6,561줄, 325KB)이 대신한다. 없을 때 무엇을 돌리면 되는지는
-`pnpm assets:check`가 그룹 28개로 나눠 찍는다 (DATA.md §3.3).
+현재 `assets-manifest.json`과 `tools/assets/pull.mjs`는 기존 로컬 산출물의
+완전성을 확인하는 레거시 도구로만 남긴다. 공개 CDN에서 받는 경로로 사용하지 않는다.
+장기적으로는 Dev/OPFS 논리 계약 매니페스트와 parity fixture로 대체한다.
 
 ---
 
 ## 15. 디렉토리 구조
 
-지금 있는 그대로다. **계획한 구조가 아니라 선 구조를 적는다** — 다른 것을 적어
-두면 문서를 읽고 코드를 못 찾는다. 아직 안 만든 것은 아래에 따로 모아 뒀다.
+### 15.0 현재 감사 결과
 
-```
-pt-3d/
-├─ docs/
-│  ├─ PLAN.md                 # 이 문서 — 무엇을 왜 그렇게 만드는가
-│  └─ DATA.md                 # 원본이 어떻게 생겼는가 (실측 스펙)
-├─ tools/                     # Node/Python CLI — 앱과 완전 분리
-│  ├─ extract/                # 롬 → public/data. `pnpm extract`가 여기를 돈다
-│  ├─ assets/                 # 산출물 목차 + 받기 (DATA.md §3.3)
-│  ├─ spike/                  # 포맷을 뚫을 때 쓴 일회성 디코더 (§16의 근거)
-│  └─ preview/                # 오프라인 소프트웨어 래스터라이저 (아래 ⚠️)
-├─ assets-manifest.json       # 있어야 할 에셋 6,561개의 경로·크기·짧은 해시
-├─ raw/                       # .gitignore — 롬·덤프·중간 산출물 (§14.1)
-├─ public/                    # .gitignore — 롬에서 나온 것은 폴더째다 (§14.1)
-│  ├─ data/                   # 추출 결과: chunks · props · tex · npc · dialogue …
-│  │  └─ sound/               # 악보 1013 · 악기표 521 · 파형 창고 521 (§4.5)
-│  └─ models/                 # dawn.glb
-├─ src/
-│  ├─ app/                    # 라우터·프로바이더·개발 콘솔
-│  ├─ ui/                     # DOM UI (vanilla-extract). ★ three import 금지
-│  │  ├─ theme/ · screens/ · menu/ · battle/ · hud/ · field/ · intro/
-│  │  └─ dev/                 # 시험용 화면 — DEV 빌드에만 (§15.1)
-│  ├─ scene/                  # R3F 선언
-│  │  ├─ Stage.tsx            # 영속 Canvas
-│  │  ├─ EngineDriver.tsx     # useFrame → gameLoop
-│  │  ├─ MapStreamer.tsx · ChunkModels.tsx · WorldLoader.tsx
-│  │  ├─ plates.ts · Foliage.tsx · Grass.tsx · shell.ts   # 판때기를 세우는 층
-│  │  ├─ NpcSprites.tsx · PlayerModel.tsx
-│  │  ├─ battle/ · fx/
-│  ├─ engine/                 # ★ React·zustand import 금지 (eslint가 막는다)
-│  │  ├─ loop/ · map/ · actor/ · script/ · battle/ · pokemon/ · bag/
-│  │  ├─ intro/ · input/ · model/ · audio/
-│  │  └─ dev/                 # 확인 지점 표 — DEV 빌드에만 (§15.1)
-│  ├─ state/                  # saveStore(영속) · sessionStore(UI) · worldState(프레임)
-│  └─ data/                   # 로더 + zod 스키마 + `assetBase`(에셋 주소를 만드는 유일한 곳)
-└─ vite.config.ts
+현재 실제 구조는 다음과 같다. 문서 수정 시 파일을 이동하지 않았다.
+
+```text
+radiant-platinum/
+  docs/                   PLAN · DATA · COPYRIGHT · IMPORT
+  tools/
+    extract/              Node/Python → public/data·models
+    assets/               레거시 manifest·pull
+    spike/                포맷 연구
+    shot/                 화면 회귀 확인
+  raw/                    Git 무시, 약 10GB
+    roms/                 Platinum 입력과 기존 보관물
+    extracted/            us·ko·ja 선추출
+    decomp/               검증 참조
+    decomp-derived/       검증 중간표
+    bdsp/                 원천 하위 집합 + 중간물 + 변환 전 번들
+    models/               모델 작업물
+  public/
+    assets/               자체 제작 앱 아이콘
+    data/                 로컬 원본 유래 산출물 약 50MB
+    models/               로컬 원본 유래 산출물 약 580MB
+    sw.js
+  src/
+    app/ · data/ · engine/ · scene/ · state/ · ui/
+  dist/                   현재 data·models가 복사된 기존 빌드
 ```
 
-시험은 **소스 옆에 둔다**(`*.test.ts`, 110파일 / 1,318개). 따로 `tests/`를 두지
-않는 이유는 옮길 때 같이 안 옮겨져서 조용히 죽기 때문이다.
+`raw`의 큰 범주는 분리돼 있지만 `raw/bdsp` 안에서는 공개 사용자가 선택할
+`AssetAssistant` 원천과 개발 중간물·재배치된 하위 집합이 섞여 있다. 현재 추출기가
+실제로 읽는 것은 `Characters`, `dpr`, `pokemon`, `pokemon-common`,
+`arenas` 등이고 다른 보관·중간 폴더는 정상 체인의 입력이 아니다.
 
-⚠️ `tools/preview/`는 **게임이 쓰는 코드가 아니다.** `scene/`의 규칙을 옮겨 적고
-소프트웨어로 래스터라이즈해 PPM을 뱉는다. 여기서 맞다고 게임에서 맞는 것은
-아니다 — 소품 한 종의 모양과 크기를 재는 용도다. 그래도 필요하다: 소품 뒷면을
-처음 시도했을 때 수치는 맞고 화면은 틀렸는데, 그것을 잡은 것이 이 도구다
-(DATA.md §2.2). 게임 화면 자체를 보는 것은 `pnpm shot`이다 (§15.2).
+### 15.0.1 목표 구조
 
-**아직 없는 것** (§4·§10이 예고한 것들, 필요해질 때 만든다):
+```text
+radiant-platinum/
+  docs/
+    PLAN.md
+    DATA.md
+    COPYRIGHT.md
+    IMPORT.md
+  src/
+    import/
+      sources/             PlatinumFileSource · BdspDirectorySource
+      workers/             Platinum · BDSP 변환 Worker
+      install/             OPFS writer · journal · validation
+      ui/                  Import Wizard
+    data/
+      providers/           AssetProvider · DevAssetProvider · OpfsAssetProvider
+    state/
+      save/                schema · codec · migration · portable backup
+    engine/ · scene/ · ui/ · app/
+  tools/
+    extract/               기존 raw 개발 파이프라인
+    parity/                Dev 결과 ↔ 브라우저 결과 대조
+    distribution/          공개 빌드 금지 산출물 검사
+  raw/                     전부 Git 무시; 정적 서버 노출 금지
+    sources/
+      platinum/
+      bdsp/AssetAssistant/
+    references/
+    work/
+    dev-assets/
+    legacy/
+  public/
+    assets/                자체 제작물만
+    manifest.webmanifest
+    sw.js                  앱 셸 전용
+```
 
-| | 언제 |
-|---|---|
-| `public/basis/` · KTX2 트랜스코더 | 텍스처를 KTX2로 바꿀 때 (§16.4) |
-| `dist-assets/` (gltf-transform 최적화 산출) | 모델을 줄여야 할 때 (§4.1) |
-| R2 버킷 — `pnpm assets:pull`은 이미 있고 주소만 없다 | 배포할 때 (§4.6) |
-| `tools/optimize/` (gltf-transform) | 포켓몬·NPC 모델이 들어올 때 (§16.6) |
-| `docs/adr/` | 되돌리기 어려운 결정이 쌓일 때 |
+이동 순서는 **어댑터 도입 → 현재 경로 parity → 새 경로 복사 → 개수·지문 검증 →
+설정 전환 → 원본 보존**이다. 현재 raw를 먼저 정리하거나 삭제하지 않는다.
+`raw.sources.local.json` 같은 Git 무시 설정이 레거시 실제 경로를 논리 입력에
+매핑한다.
+
+기존 소스 옆 `*.test.ts` 배치는 유지한다. 새 Import·Provider·save codec도 같은
+원칙으로 소스 옆에 계약 테스트를 둔다.
+
 
 ### 15.1 시험용 손잡이 (개발 빌드 전용)
 
@@ -1938,20 +2140,28 @@ PNG를 남긴다. 확인 지점 목록은 **돌고 있는 페이지에서 받는
 
 ---
 
-## 16. 다음 단계 — 실측으로 잡은 여섯 갈래
+## 16. 다음 단계 — 공개 배포 기반 + 실측 여섯 갈래
 
-Phase 0~2는 지났다. 걸어서 이어진 신오를 돌아다니고, 건물에 드나들고, 풀숲에서
-야생을 만나 배틀을 끝내고, 저장하고 껐다 켜면 그 자리다. 시험 1,318개가 그것을 묶고
-있다. 그러니 여기서부터는 "무엇을 만들까"가 아니라 **무엇이 비어 있는지를 재고**
-그 순서를 정하는 일이다.
+게임 콘텐츠의 현재 상태와 실측 우선순위는 아래에 계속 기록한다. 다만 공개 배포를
+목표로 할 때는 콘텐츠보다 먼저 **배포 기반 D0**를 통과해야 한다.
 
-아래 수치는 전부 이 리포의 자료에서 직접 센 것이다. 눈대중이 아니다.
+### 16.0 배포 기반의 첫 순서
+
+1. 현재 리포트 schema·portable codec·migration을 만들고 매 리포트 다운로드를 붙인다.
+2. 프로덕션 빌드에서 `public/data·models` 혼입을 즉시 차단한다.
+3. AssetProvider를 도입해 기존 raw 개발판의 화면·테스트를 그대로 유지한다.
+4. raw 레거시 경로 어댑터를 만들고 개발 산출물을 `public/` 밖으로 옮긴다.
+5. Platinum Worker와 BDSP TS/WASM 스파이크를 대표 자산 하나씩 완성한다.
+6. OPFS journal과 Import Wizard를 붙인 뒤 전량 parity를 넓힌다.
+
+완료 조건과 사용자 흐름은 [IMPORT.md §13~14](IMPORT.md#13-구현-순서)가 정본이다.
+
 
 ### 16.1 지금 서 있는 자리
 
 | | 실측 |
 |---|---|
-| 코드 | 59,683줄 · 파일 318개 · 시험 파일 110개 / 시험 1,318개 (`src/**/*.ts{,x}`) |
+| 코드 | 59,999줄 · 파일 319개 · 시험 파일 110개 / 시험 1,331개 (`src/**/*.ts{,x}`) |
 | 화면 | 93.8k ~ 208.4k 삼각형 · 드로우콜 163~283 (`pnpm shot --perf`, 네 자리) |
 | 지형 | 청크 176종, 삼각형 중앙값 1,228 · 최대 2,686 → 창 5×5에 약 30,700 |
 | 나무 | 창 5×5에 3,583~4,003그루 × 252삼각형 (30타일 밖 56) |
@@ -2511,48 +2721,28 @@ WebGL2 폴백을 따로 봐야 하는데, 창 하나에 드는 물이 최대 864
 내리는 별건의 일이고, 지금 드로우콜은 예산(High ≤300) 안이며 **헤드리스에서는
 프레임률을 못 재니 이득을 증명할 수도 없다.** 실제 기계에서 모자랄 때 한다.
 
-### 16.5 ④ 캐릭터 모션 — 막힌 곳이 어디인지
+### 16.5 ④ 캐릭터 모션 — 개발 에셋은 확보, 공개 변환은 미구현
 
-지금 걷는 것은 **절차적 보행**이다(`gait.ts` + `locomotion.ts`). dawn.glb의 166조인트를
-그대로 쓰고, 위상 속도를 보폭에서 유도해 발이 안 미끄러지며, 걷기↔달리기를 진폭으로
-섞는다. 실제 클립이 들어오면 이 계층만 걷어내면 된다.
+지금 걷는 것은 **절차적 보행**이다(`gait.ts` + `locomotion.ts`). dawn.glb의
+166조인트를 그대로 쓰고 위상 속도를 보폭에서 유도한다. 현재 개발 raw에는 BDSP의
+캐릭터 번들과 AnimationClip이 준비돼 있어 UnityPy 경로로 검증할 수 있다.
 
-**BDSP 클립 경로가 열렸다.** 로컬 상태를 다시 쟀다:
+공개판의 상황은 다르다. 사용자는 이미 추출된 `AssetAssistant/Characters`를
+선택하고, 브라우저 TS/WASM 변환기가 그 안의 Mesh·bone·material·texture·clip을
+읽어야 한다. 원천 컨테이너·키·복호화 절차는 Importer 범위가 아니다. 이 브라우저
+변환과 Python 오라클 parity가 아직 없으므로 공개 배포 게이트는 ❌다.
 
-| | 상태 |
-|---|---|
-| Blender 4.2 | **있다** (`C:\Program Files\Blender Foundation\Blender 4.2`, PATH에는 없음) |
-| BDSP nsp | **있다** — `raw/roms/`에 4.3GB, `prod.keys`·`title.keys`까지 |
-| nstool | **있다** — 1.9.2 (`~/Downloads/설치 파일/nstool.exe`) |
-| UnityPy | **있다** — 1.25.3 (`py -3.13`에만 깔려 있다. 기본 `python`엔 없다) |
+절차적 보행은 변환이 끝날 때까지 폴백이자 기준선으로 남긴다. 아직 필요한 동작:
 
-**막힌 것이 없다.** nstool에 `prod.keys`를 물려 nsp를 열면 NCA 다섯 개가 나온다
-(cnmt 하나 + 프로그램·데이터 셋). 실제로 확인했다:
-
-```
-[PartitionFs] Type: PFS0  FileNum: 5
-  7c047e4740efc275286f98da0e148527.cnmt.xml / .cnmt.nca
-  69ab3424f037989d254df83040f4a02c.nca  2400a395c886ed53072133e67616eb92.nca
-  ccad5a77dd32e7f66c4e55d20f9e3431.nca
-```
-
-⚠️ 앞서 "nsp도 romfs도 아예 없다"고 적었는데 **틀렸다.** `raw/bdsp`만 보고
-판단했고 실제로는 `raw/roms/`에 있다.
-
-다음은 프로그램 NCA에서 romfs를 뽑고 UnityPy로 번들을 여는 일이다. 그 전에는 절차적 보행이
-계속 자리를 지킨다 — 그리고 그것이 나쁜 자리는 아니다. 지금 부족한 것은 클립이
-아니라 **동작의 가짓수**다:
-
-- 턱을 뛰어넘는 동작(지금은 포물선으로 미끄러진다)
+- 턱을 뛰어넘는 동작
 - 문에 들어가고 나오는 동작
-- 서 있을 때의 미세한 흔들림(idle) — 없으면 조각상으로 보인다
+- 서 있을 때의 미세한 흔들림
 - 방향 전환의 한 박자
 
-이 넷은 절차적으로도 만들 수 있고, 클립이 들어와도 버릴 일이 없다.
+본 로컬 축은 하드코딩하지 않는다. dawn.glb는 본이 로컬 +X로 뻗고 Hips가 돌아
+있어서 월드 회전을 본의 로컬로 켤레변환해야 한다. 새 브라우저 변환기도 같은 rig
+round-trip test를 통과해야 한다.
 
-⚠️ 본 로컬 축을 하드코딩하지 않는다. dawn.glb는 본이 로컬 +X로 뻗고 Hips가 180°
-돌아 있어서, 월드 축 회전을 만들어 본의 로컬로 켤레변환해야 한다. 축을 박으면
-곧바로 깨진다.
 
 ### 16.6 ⑤ NPC와 포켓몬 3D — ✅ 포켓몬이 섰다
 
@@ -2732,9 +2922,11 @@ Web Audio 노드를 만들면 곡 하나에 수천 개가 되고, 포락선을 `
 | ⑤ NPC 3D | ✅ 갈래 44 · 배치의 21.9%가 등신 모델로 선다. 나머지는 판때기 |
 | ② 판때기 | ✅ 나무·울타리·바위·화분이 전부 입체다. 잎은 법선으로 매끈해졌다 |
 
-**BDSP 경로는 열렸다.** nsp → NCA → romfs를 풀어 `Characters/persons` 아래를
-전부 꺼냈고(644MB), UnityPy로 열면 메시·재질·텍스처·애니메이션이 그대로 들어
-있다. 절차와 함정은 `tools/extract/bdspNpc.py` 머리말에 적어 뒀다.
+**BDSP 개발 경로는 열려 있다.** 현재 raw에는 필요한
+`AssetAssistant/Characters` 하위 집합이 준비돼 있고 UnityPy로 메시·재질·텍스처·
+애니메이션을 읽은 결과가 있다. 이 로컬 결과를 브라우저 TS/WASM 변환기의 오라클로
+쓴다. 공개 사용자에게는 이미 추출된 지원 폴더만 요구하며, 준비 과정이나 원천
+컨테이너는 문서·Importer의 범위가 아니다.
 
 ⚠️ **인물이 두 벌이다.** `battle/tr####`가 등신 124벌, `field/fc####`가 치비
 161벌이다. 우리는 등신을 쓴다(§4.3) — BDSP가 혹평받은 대목이 치비 오버월드이고,
@@ -2896,7 +3088,6 @@ UnityPy로 번들을 열어 glTF 2.0 바이너리를 직접 쓴다 — 메시·�
   - `src/battle/trainer_ai/trainer_ai.c` — AI VM 명령 구현. 점수 초기화·동점 처리
   - `generated/ai_flags.txt` · `generated/move_battle_effects.txt` — 플래그와 기술 효과 열거형
 - [Generation 4 Trainer Move Selection AI](https://gist.github.com/lhearachel/ff61af1f58c84c96592b0b8184dba096) — 위 스크립트를 사람이 읽게 옮긴 것. 확률 주석의 출처
-- [nstool](https://github.com/jakcron/nstool) — NSP/NCA/romfs 추출 (BDSP 덤프, §4.3.1)
 - [UnityPy](https://github.com/K0lb3/UnityPy) — Unity 에셋번들 파싱. 머티리얼 색·컴포넌트를 스크립트로 직접 읽는다
 - [scurest/apicula](https://github.com/scurest/apicula) — NSBMD → glTF
 - [DSPRE](https://github.com/DS-Pokemon-Rom-Editor/DSPRE) — DS 포켓몬 ROM 에디터
@@ -2913,13 +3104,10 @@ UnityPy로 번들을 열어 glTF 2.0 바이너리를 직접 쓴다 — 메시·�
 - [pokeplatinum-portable](https://github.com/arcanite24/pokeplatinum-portable) — 플래티넘 디컴파일 SDL3 포팅
 
 **캐릭터 모델 (§4.3)**
-- [The Models Resource — BDSP](https://www.models-resource.com/nintendo_switch/pokemonbrilliantdiamondshiningpearl/) — Dawn(Platinum Style)·Barry·관장·사천왕 등 배틀 모델 립 (.dae)
-- [New3DsSuchti — BDSP Battle Trainer PMX 팩](https://www.deviantart.com/new3dssuchti/art/MMD-BDSP-Battle-Trainer-v-0-7-DL-897408164) — Lucas 포함
-- [pikapika-2000 — Masters EX MMD 팩](https://www.deviantart.com/pikapika-2000/art/MMD-Pkm-Masters-EX-Models-DL-Version-2-16-0-874909161) — 현역 유지보수, 신오 전원
-- [Pokemon MMD Masterlist](https://www.deviantart.com/dunsparmy/journal/Pokemon-MMD-Masterlist-874142969) — 캐릭터별 제작자 총정리
-- [MMD Tools (Blender 공식 익스텐션)](https://extensions.blender.org/add-ons/mmd-tools/) — pmx → Blender → glb 경로
-- [BDSPedia Visuals](https://bdsp-modding.wiki/index.php/Visuals) · [Luminescent 팀 문서](https://luminescent.team/rom-hacking/art/animations) — romfs 추출 워크플로
-- [GBAtemp BDSP 모델 추출 스레드](https://gbatemp.net/threads/brilliant-diamond-and-shining-pearl-pokemon-models-and-textures.603132/) — AssetStudio/AssetRipper 사용법
+
+공개 사용자 안내에는 제3자 립 다운로드나 원천 컨테이너 추출 워크플로를 링크하지
+않는다. 현재 개발 변환의 기술 의존은 위 UnityPy 항목과 소스 코드 주석으로 추적하고,
+사용자 입력 계약은 [IMPORT.md](IMPORT.md)만 안내한다.
 
 **텍스트/현지화**
 - [포켓몬스터Pt 기라티나](https://ko.wikipedia.org/wiki/%ED%8F%AC%EC%BC%93%EB%AA%AC%EC%8A%A4%ED%84%B0Pt_%EA%B8%B0%EB%9D%BC%ED%8B%B0%EB%82%98) — 2009-07-02 한국 정발
@@ -2948,7 +3136,6 @@ UnityPy로 번들을 열어 glTF 2.0 바이너리를 직접 쓴다 — 메시·�
 **웹 플랫폼**
 - [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) — SW precache
 - [MDN — Storage quotas and eviction](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria) · [web.dev — Persistent storage](https://web.dev/articles/persistent-storage)
-- [Cloudflare R2](https://developers.cloudflare.com/r2/) — egress 무료
 - [unmute-ios-audio](https://github.com/feross/unmute-ios-audio) — iOS 무음 스위치 대응
 - [nipplejs](https://github.com/yoannmoinet/nipplejs) — 터치 가상 스틱
 - [Fix Your Timestep (Gaffer On Games)](https://gafferongames.com/post/fix_your_timestep/) — §3.4 루프의 원전

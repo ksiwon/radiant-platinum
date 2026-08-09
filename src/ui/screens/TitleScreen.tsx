@@ -9,15 +9,16 @@
 //
 // 요약 넷(주인공·플레이 시간·도감·배지)의 글은 원작 `main_menu_options` 뱅크에서
 // 온다. 우리가 이름을 새로 짓지 않는다.
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
-import { readReport } from '../../state/report'
+import { readReportDetailed } from '../../state/report'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import {
-  dexHas, SAVE_VERSION, useSaveStore, type SaveData,
+  dexHas, SAVE_VERSION, useSaveStore, type ImportPreview, type SaveData,
 } from '../../state/saveStore'
+import { PORTABLE_EXT } from '../../state/save/portable'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
 import { TITLE_SONG } from '../../engine/audio/songIds'
@@ -43,6 +44,11 @@ export function TitleScreen() {
   const navigate = useNavigate()
   const [text, setText] = useState<string[]>([])
   const [report, setReport] = useState<SaveData | null | undefined>(undefined)
+  /** 저장돼 있지만 **이 판이 못 읽는** 리포트. 없는 것과 다른 일이다 */
+  const [unreadable, setUnreadable] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [pending, setPending] = useState<(ImportPreview & { ok: true }) | null>(null)
+  const filePicker = useRef<HTMLInputElement>(null)
   // 설정은 필드 메뉴와 **같은 화면**을 쓴다. 스택에 올려 두면 그쪽의 "돌아가기"가
   // 그대로 동작하고, 스택이 비면 여기서도 닫힌다
   const menuTop = useMenuStore((s) => s.top)
@@ -80,8 +86,13 @@ export function TitleScreen() {
 
   useEffect(() => {
     let alive = true
-    void readReport(SAVE_VERSION).then((data) => { if (alive) setReport(data) })
-      .catch(() => { if (alive) setReport(null) })
+    void readReportDetailed(SAVE_VERSION).then((got) => {
+      if (!alive) return
+      setReport(got.kind === 'ok' ? got.save : null)
+      // ⚠️ **"없다"로 뭉개지 않는다.** 앱을 한 번 올린 것뿐인데 진행이 사라진
+      // 것처럼 보이던 자리다 (IMPORT.md §11 끝) — 원본을 파일로 돌려줄 수 있다
+      setUnreadable(got.kind === 'unreadable' ? explainStored(got.reason.kind) : null)
+    }).catch(() => { if (alive) setReport(null) })
     void loadUiText('mainMenu', locale).then((bank) => { if (alive) setText(bank) })
       .catch(() => { /* 우리 글로 떨어진다 */ })
     return () => { alive = false }
@@ -93,10 +104,39 @@ export function TitleScreen() {
   const go = (fresh: boolean): void => {
     const save = useSaveStore.getState()
     if (fresh) {
+      // 지우기 전에 백업을 시도한다 — 스토어가 알아서 한다 (IMPORT.md §11-8)
       void save.resetSave().then(() => { navigate('/intro') })
       return
     }
     void save.loadReport().then(() => { navigate('/play') })
+  }
+
+  const backup = (): void => {
+    void useSaveStore.getState().exportReport().then((got) => {
+      if (got.kind === 'none') { setNotice('받을 리포트가 없습니다'); return }
+      setNotice(got.outcome.started
+        ? `${got.fileName}${got.raw ? '\n(이 판이 못 읽는 리포트라 원본 그대로 담았습니다)' : ''}`
+        : '브라우저가 다운로드를 막았습니다. 한 번 더 눌러 주세요')
+    })
+  }
+
+  const pickFile = (file: File): void => {
+    setNotice(null)
+    void file.text().then((raw) => {
+      const preview = useSaveStore.getState().previewImport(raw)
+      if (!preview.ok) { setPending(null); setNotice(preview.why); return }
+      setPending(preview)
+    }).catch(() => { setNotice('파일을 읽지 못했습니다') })
+  }
+
+  const bringIn = (): void => {
+    if (!pending) return
+    const target = pending
+    setPending(null)
+    void useSaveStore.getState().commitImport(target).then((done) => {
+      if (!done.ok) { setNotice(`불러오지 못했습니다 — ${done.why}\n지금 리포트는 그대로입니다`); return }
+      navigate('/play')
+    })
   }
 
   const hasSave = report !== null && report !== undefined
@@ -166,12 +206,64 @@ export function TitleScreen() {
         </div>
 
         {/*
+          ⚠️ **리포트가 없어도 보인다.** 새 브라우저·새 기계에서 파일을 들고 온
+          사람에게는 이것이 유일한 입구인데, "리포트가 있을 때만"으로 두면
+          그 사람에게는 아무 데도 없다 (IMPORT.md §11)
+        */}
+        <div className={css.files}>
+          <button className={css.fileButton} onClick={backup}>리포트 백업 받기</button>
+          <button
+            className={css.fileButton}
+            onClick={() => { filePicker.current?.click() }}
+          >
+            리포트 파일 불러오기
+          </button>
+          <input
+            ref={filePicker}
+            type="file"
+            accept={PORTABLE_EXT}
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
+              // change 이벤트가 아예 안 온다
+              e.target.value = ''
+              if (file) pickFile(file)
+            }}
+          />
+        </div>
+
+        {unreadable !== null && (
+          <div className={css.notice}>
+            {`저장된 리포트를 이 판이 못 읽습니다 — ${unreadable}\n`}
+            {'"리포트 백업 받기"로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
+          </div>
+        )}
+
+        {pending && (
+          <div className={css.notice}>
+            {`${pending.envelope.summary.trainer || '이름 없음'} · `}
+            {`${clock(pending.envelope.summary.playtimeMs)} · `}
+            {`저장 ${stamp(pending.envelope.createdAt)}\n`}
+            {pending.migrated ? '옛 판이라 지금 판으로 옮겨서 들입니다\n' : ''}
+            {pending.contract === 'same' ? '' : '⚠️ 설치본과 콘텐츠 계약이 다릅니다\n'}
+            {'지금 리포트는 들이기 전에 파일로 먼저 받습니다.'}
+            <div className={css.files}>
+              <button className={css.fileButton} onClick={bringIn}>이 리포트로 이어하기</button>
+              <button className={css.fileButton} onClick={() => { setPending(null) }}>그만두기</button>
+            </div>
+          </div>
+        )}
+
+        {notice !== null && <div className={css.notice}>{notice}</div>}
+
+        {/*
           리포트가 있을 때만. 버튼이 아니라 글자인 것은 **되돌릴 수 없는 일**이라서다 —
           이어하기 바로 옆에 같은 크기로 두면 잘못 눌린다
         */}
         {report && (
           <button className={css.restart} onClick={() => { go(true) }}>
-            처음부터 다시 시작하기 (지금 리포트는 지워집니다)
+            처음부터 다시 시작하기 (지우기 전에 백업 파일을 받습니다)
           </button>
         )}
       </div>
@@ -190,6 +282,21 @@ export function TitleScreen() {
       )}
     </div>
   )
+}
+
+/** 저장된 리포트를 왜 못 읽는가. 사용자가 할 일이 갈리므로 뭉치면 안 된다 */
+function explainStored(kind: 'too-new' | 'unsupported-old' | 'invalid'): string {
+  switch (kind) {
+    case 'too-new': return '더 새로운 판이 쓴 리포트입니다'
+    case 'unsupported-old': return '너무 옛 판이라 옮길 길이 없습니다'
+    case 'invalid': return '내용이 어긋납니다'
+  }
+}
+
+/** ISO 시각을 그 기계의 시각으로. 파일을 고른 사람이 보는 것은 자기 시계다 */
+function stamp(iso: string): string {
+  const at = new Date(iso)
+  return Number.isNaN(at.getTime()) ? '알 수 없음' : at.toLocaleString()
 }
 
 /** `HH:MM`. 원작 요약창도 시·분까지만 보여준다 */

@@ -201,6 +201,53 @@ globalStyle(`${summary} dd`, {
   fontVariantNumeric: 'tabular-nums',
 })
 
+/**
+ * 리포트 파일 줄 — "백업 받기"와 "파일 불러오기" (IMPORT.md §10~11).
+ *
+ * ⚠️ **리포트가 없어도 보여야 한다.** 새 브라우저 프로필에서 파일을 들고 온
+ * 사람에게는 이것이 유일한 입구인데, "리포트가 있을 때만"으로 두면 그 사람에게는
+ * 아무 데도 없다
+ */
+export const files = style({
+  display: 'flex',
+  gap: 10,
+  marginTop: 14,
+  flexWrap: 'wrap',
+})
+
+export const fileButton = style({
+  appearance: 'none',
+  padding: '7px 12px',
+  fontFamily: vars.font.ui,
+  fontSize: 12,
+  color: vars.panel.text,
+  background: 'rgba(8, 13, 23, 0.54)',
+  border: '1px solid rgba(255,255,255,0.12)',
+  borderRadius: 999,
+  opacity: 0.78,
+  backdropFilter: 'blur(4px)',
+  cursor: 'pointer',
+  pointerEvents: 'auto',
+  selectors: { '&:hover': { opacity: 1 } },
+})
+
+/** 파일을 열어 보고 나서 확인받는 자리, 그리고 실패 이유 */
+export const notice = style({
+  marginTop: 12,
+  padding: '10px 12px',
+  maxWidth: 460,
+  fontFamily: vars.font.ui,
+  fontSize: 12,
+  lineHeight: 1.6,
+  color: vars.panel.text,
+  background: 'rgba(8, 13, 23, 0.66)',
+  border: '1px solid rgba(255,255,255,0.14)',
+  borderRadius: 10,
+  backdropFilter: 'blur(4px)',
+  pointerEvents: 'auto',
+  whiteSpace: 'pre-line',
+})
+
 /** 리포트가 있을 때만 뜨는 "처음부터". 실수로 누르면 안 되므로 글자로만 둔다 */
 export const restart = style({
   position: 'absolute',

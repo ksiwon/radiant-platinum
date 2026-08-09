@@ -46,13 +46,27 @@ describe('서비스 워커', () => {
   const sw = read('public/sw.js')
 
   it('⚠️ 에셋을 미리 받지 않는다', () => {
-    // 롬에서 나온 것이 571MB다. 설치할 때 다 끌어오면 저장 한도에 부딪히고
+    // 롬에서 나온 것이 630MB다. 설치할 때 다 끌어오면 저장 한도에 부딪히고
     // 처음 여는 데 몇 분이 걸린다 — 미리 받는 목록에 `data/`·`models/`가
     // 들어가는 순간 그렇게 된다
     const list = /const SHELL_FILES = \[([\s\S]*?)\]/.exec(sw)?.[1] ?? ''
     expect(list).not.toContain('data/')
     expect(list).not.toContain('models/')
     expect(list).toContain('index.html')
+  })
+
+  it('⚠️ 런타임 캐시도 앱 셸뿐이다 — `/data`·`/models`를 붙들지 않는다', () => {
+    // 예전 판은 `/(data|models|assets)/`에 걸리는 요청을 캐시 우선으로 받아
+    // Cache Storage에 쌓았다. 공개판에서 변환 에셋은 OPFS에 있으므로 그러면
+    // 같은 수 GB를 두 곳에 이중으로 들게 된다 (IMPORT.md §8 끝)
+    //
+    // 주석에는 그 이름이 남는다 — 왜 걷어냈는지가 근거이기 때문이다.
+    // 그래서 **주석을 걷어내고** 잰다
+    const code = sw.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(code).not.toMatch(/\bmodels\b/)
+    expect(code).not.toMatch(/['"`/(|]data[/|)]/)
+    // 옛 판이 남긴 에셋 캐시를 활성화 때 지운다. 안 지우면 주인 없이 남는다
+    expect(sw).toContain('caches.delete')
   })
 
   it('화면 이동은 네트워크가 먼저다', () => {

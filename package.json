@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm boundary:pre && tsc -b && vite build && pnpm boundary:post",
+    "boundary": "node tools/distribution/check.mjs",
+    "boundary:pre": "node tools/distribution/check.mjs --stage=pre",
+    "boundary:post": "node tools/distribution/check.mjs --stage=post",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "eslint src --max-warnings=0",

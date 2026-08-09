@@ -1,5 +1,12 @@
 # 롬 데이터 지도 · 추출 설계
 
+> **배포 경계 (2026-08-10):** 이 문서의 포맷 실측은 유지하지만, 공개판은 아래
+> 데이터를 서버에서 받지 않는다. 사용자가 선택한 Platinum `.nds`와 이미 추출된
+> BDSP `AssetAssistant/`를 브라우저 Worker가 변환해 OPFS에 설치한다. 현재
+> Node/Python 추출기는 기존 `raw/`를 쓰는 개발 정본으로 유지한다.
+> 사용자 단계는 [IMPORT.md](IMPORT.md), 정책은 [COPYRIGHT.md](COPYRIGHT.md),
+> 구현 우선순위는 [PLAN.md](PLAN.md)를 따른다.
+
 플래티넘 롬에서 무엇을 어떻게 꺼내는지에 대한 정본. [PLAN.md](PLAN.md)가 "무엇을 만들 것인가"라면 이 문서는 "원본이 어떻게 생겼는가"다.
 
 **원칙: 포맷은 추측하지 않고 실측으로 확정한다.** 크기 합·값 분포·원작 대조·독립 자료 교차검증 중 최소 하나로 검증되지 않은 구조는 "미확정"으로 표시한다. 이 프로젝트에서 이미 세 번, 그럴듯한 가설이 데이터에 반박당했다(charmap 오프바이원, BDSP 채널 매핑, 풀숲 타일 값).
@@ -10,7 +17,7 @@
 
 | 데이터 | 위치 | 상태 |
 |---|---|---|
-| 텍스트 3로케일 | `msgdata/pl_msg.narc` | ✅ 디코드 + 뱅크 매핑 (PLAN §4.2.1) |
+| 텍스트 지역판 | `msgdata/pl_msg.narc` | ✅ 개발 raw 3지역판 대조 · 공개판은 설치 지역판만 (PLAN §12.2) |
 | **맵 헤더 표** | arm9 `0xea01c` | ✅ 593개 × 24B, 전 필드 확정 (날씨·카메라·`battleBG`·통행 플래그까지) |
 | 맵 행렬 | `fielddata/mapmatrix/map_matrix.narc` | ✅ 289개 전부 |
 | 맵 청크 | `fielddata/land_data/land_data.narc` | ✅ 666개 전부 |
@@ -32,7 +39,7 @@
 | **포켓몬 배틀 그림** | `poketool/pokegra/pl_pokegra.narc` | ✅ 암호 풀림 — 1808/1812 (§2.17). **배틀에 493종이 선다** |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 발밑 높이를 이것이 잡는다 (`engine/map/height`) |
 | 소리 | `data/sound/pl_sound_data.sdat` | ✅ 곡 1013 · 악기 뱅크 521 · 파형 874. **울린다** — BGM · 효과음 · 울음소리 493종 (§2.18) |
-| 캐릭터 모델·애니메이션 | BDSP 덤프 (롬 아님) | ✅ 추출 (PLAN §4.3.1) |
+| 캐릭터 모델·애니메이션 | 개발 raw의 BDSP 하위 집합 / 공개판의 사용자 AssetAssistant | ✅ 개발 추출 · ❌ 브라우저 변환 (PLAN §4.3.1) |
 
 ---
 
@@ -177,8 +184,8 @@ TEX0를 같이 갖는다. 나머지 22개만 영역의 건물 텍스처 묶음(`
 
 정점 89253 · 삼각형 50935 · 2.5MB, 헤더 수치와 590/590 일치.
 
-청크 모델(28MB)과 소품(2.5MB), 맵 텍스처(0.6MB)는 리포에 안 넣는다. `public/models/`와 같은
-이유다 — raw/에서 언제든 다시 만들 수 있고 최종적으로는 R2에서 서빙한다.
+청크 모델(28MB)과 소품(2.5MB), 맵 텍스처(0.6MB)는 휴대용 리포트에 넣지 않는다.
+개발판은 raw에서 재생성하고 공개판은 사용자의 Platinum 입력에서 브라우저가 OPFS에 만든다.
 
 **건물 배치 (48B)** — 20.12 고정소수점, `/65536`이 곧 타일 단위:
 
@@ -1379,54 +1386,20 @@ STRVAR 계열은 명령 코드의 **아래 바이트가 첫 인자**다(`0x0103`
 번호를 **미국 기준**으로 쓴다 — 맵 헤더가 그 번호이고, 로케일이 바뀌어도 같은
 파일 이름을 가리켜야 하기 때문이다.
 
-#### 언어를 게임 안에서 바꾼다 — 원작에는 없던 항목
+#### 언어 설치 — 개발은 3개, 공개판은 선택한 지역판만
 
-원작 DS 롬은 언어마다 따로 찍혀 나왔다. 그래서 게임 안에 언어를 고를 자리가
-아예 없다. 우리는 롬 **셋**(한국어·미국·일본)에서 뽑은 글을 같이 싣고 있으니
-바꿀 수 있다 — 번역이 아니라 **그 나라 롬에 찍힌 글**이다.
+현재 개발 raw에는 미국·한국·일본 지역판 자료가 있어 KO·EN·JA 세 결과를 나란히
+대조할 수 있다. 이것은 charmap과 뱅크 정렬을 검증하는 개발 자산으로 계속 쓴다.
 
-바꿀 수 있게 만든 것은 위 문단의 결과다. **파일 이름이 미국 번호**라 로케일만
-갈아 끼우면 같은 스크립트가 같은 뱅크를 가리킨다. 뱅크 **안의 자리**도 어긋나지
-않는다 — `options_menu`(us#220)를 맞대 보면 항목 이름 3~8, 고를 값 10~18, 설명
-43~48이 두 롬에서 같은 자리다(`optionsStore.test.ts`).
+공개판은 사용자가 선택한 Platinum 한 지역판에서 그 언어의 대사·이름·설명만 만든다.
+다른 언어를 원하면 사용자가 해당 지역판을 추가로 선택한다. 따라서 물리 산출물은
+`dialogue/{installedLocale}/...`만 있어도 정상이며, 설정 화면은
+`install.json.availableLocales`를 본다.
 
-설정값은 `LANGUAGES` 배열의 자리 번호로 남는다. 자료를 부르는 자리가 스무 곳
-남짓인데 전부 `'ko'`를 손으로 적고 있었고, 그 자리들이 같은 값을 봐야 한다 —
-한 군데만 빠뜨리면 도감만 옛 언어로 남는 식으로 조용히 어긋난다. 그래서
-`gameLocale()` 하나만 본다. 화면은 `useGameLocale()`로 구독해서 바뀌는 즉시
-다시 받는다.
+현재 `src/state/optionsStore.ts`의 고정 3언어 배열과 일부 영어 라벨 직접 요청은
+전환 대상이다. 뱅크의 의미 이름과 로케일별 인덱스 계약은 유지하되, 설치되지 않은
+언어를 요청하면 HTTP 404가 아니라 명시적 `LocaleNotInstalled` 오류를 낸다.
 
-지금 서 있는 맵의 대사는 화면이 아니라 엔진이 들고 있다. 언어를 바꾸면
-`setFieldLocale()`이 그 뱅크를 다시 받는다 — 안 그러면 맵을 옮기는 순간
-갑자기 바뀐다.
-
-⚠️ **일본어는 항목 수 정렬이 꼬리에서 통째로 밀린다.** 611번
-(`ability_names_uppercase`)이 일본 롬에 없어 뒤가 한 칸씩 당겨지는데, 701~723은
-전부 종별 표(도감 설명·분류·키·몸무게)라 **항목 수가 494로 다 같다.** 수로는
-가를 수가 없어 24곳이 어긋난 채 붙는다.
-
-열쇠 표가 맞다는 것은 글을 열어 확인했다:
-
-| 뱅크 | 열쇠 표 | 항목 수 정렬 |
-|---|---|---|
-| `species_category` | ja#698 → `たねポケモン` | ja#696 → `　　０．７ｍ` |
-| `species_pokedex_entry_fr` | ja#689 → `Au matin de sa vie…` | ja#686 → 일본어 도감문 |
-
-그리고 열쇠 표가 적어 둔 일본어 항목 수가 **708/708** 실제와 맞는다. 이 24곳은
-`LCS_WRONG.ja`에 적어 두었다 — 정렬이 못 가른다는 것을 알고 넘어가는 자리다.
-
-싣는 뱅크 450개 중 **`game_corner`(us#147) 하나가 일본 롬에 없다.** 열쇠 표와
-항목 수 정렬이 둘 다 "없다"고 말하므로 우리 실수가 아니고, 그 맵만 글이 빈다.
-
-`LANGUAGES`가 실린 로케일 목록(`dialogue/index.json`)을 벗어나거나 빠진 뱅크가
-늘면 시험이 걸린다.
-
-⚠️ **한자 글꼴은 순서가 곧 나라다.** UI 글꼴 목록에서 일본어 글꼴을 한국어
-글꼴보다 **앞에** 둔다 — 브라우저는 글자마다 앞에서부터 그 글자를 가진 글꼴을
-찾으므로, 한글은 맑은 고딕에만 있어 그대로 오고 가나·한자는 Yu Gothic으로 간다.
-반대로 두면 일본어 한자가 한국 자형으로 나온다. 같은 코드포인트라 눈으로만 갈린다.
-
----
 
 ### 2.12 pl_item_data — 아이템 468종
 
@@ -1517,7 +1490,13 @@ PP맥스). 나머지는 그냥 개수고, 체력도 PP도 넘치는 만큼은 �
 
 친밀도는 지금 값이 구간을 고른다(100 미만 · 200 미만 · 그 이상)에 각각 다른 칸이
 있고, **앞에서 뭐라도 했을 때만** 붙는다(`&& result == TRUE`). 힘의가루가 −5/−5/−10,
-부활초가 −15/−15/−20, 배틀용 도구가 +1/+1(높은 구간 칸은 없다).
+부활초가 −15/−15/−20, 배틀용 도구가 +1/+1(높은 구간 칸은 없다). 올라갈 때는
+보정 셋이 더 붙는다 — 럭셔리볼 +1, 알을 받은 자리 +1, `HOLD_EFFECT_FRIENDSHIP_UP`
+×1.5. **그 홀드 효과를 가진 것은 평온의방울(#218) 하나뿐이다** (PLAN §7.8.6).
+
+⚠️ **금제(`MOVE_EMBARGO` #373)가 걸린 마리에게는 아무 도구도 못 쓴다.** 가방
+화면과 파티 화면 두 군데에 같은 검사가 있고, 빠져나가는 것은 이펙트가드(진영에
+거는 것)와 도망 도구 둘뿐이다.
 
 #### 아이콘
 
@@ -2643,146 +2622,251 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
 
 ---
 
-## 3. 추출 파이프라인
+## 3. 추출·Import 파이프라인
 
-```
-tools/
-  spike/          역공학용. 포맷을 뚫을 때만 쓰고 산출물은 신뢰하지 않는다
-  extract/        정식 파이프라인. 여기 나온 산출물만 게임이 소비한다
-    rom.js          롬 접근 + 로케일 텍스트 뱅크
-    textbanks.js    뱅크 헤더의 키로 724개 이름 확정 → src/data/textBanks.json
-    maps.js         행렬·청크·건물 파서 (다른 추출기가 공유)
-    headers.js      맵 헤더 표 → maps.json + 지역명
-    matrices.js     행렬별 충돌 격자 → 0.bin / interiors.bin
-    bdhc.js         지면 높이 → bdhc.json + bdhc.bin
-    events.js       워프·NPC·간판·트리거 → events.json
-    events-verify.js  디컴프 원본 534개와 필드 대조 (pnpm verify:events)
-    scrcmd-table.js 스크립트 명령 840개의 피연산자 폭 (디컴프 매크로에서)
-    scrasm.js       디컴프 .s를 조립 — 롬과 대조해 명령표를 검증한다
-    scripts-verify.js  그 대조를 1124개에 돌린다 (pnpm verify:scripts)
-    scripts.js      이벤트 스크립트 → scripts.json + scripts.bin
-    message.js      메시지 디코더 (제어 코드까지 살린다)
-    dialogue.js     대사 뱅크 450개 → dialogue/{로케일}/{번호}.json
-    dialogue-verify.js  디컴프 원문·한국어 헤더와 대조 (pnpm verify:dialogue)
-    encounters.js   야생 표 → encounters.json
-    species.js      personal/evo/wotbl → species.json
-    moves.js        waza_tbl → moves.json
-    trainers.js     trdata/trpoke + 상금 배수 → trainers.json
-    chunks.js       청크 NSBMD → chunks/<i>.bin (헤더 수치와 666/666 일치)
-    props.js        건물 모델 590개 → props/<i>.bin + .png (590/590 일치)
-    starterScene.js 파트너 고르는 장면 모델 6개 → starter/<칸>.bin + .png
-    mapTextures.js  BTX0 74벌 → tex/<묶음>.png
-    items.js        pl_item_data → items.json (디컴프 446개와 필드 대조)
-    itemIcons.js    NCGR/NCLR → itemIcons.png 아틀라스
-    marts.js        디컴프 헤더의 상점 재고표 → marts.json
-    spawns.js       부활 지점·공중날기 자리 20곳 → spawns.json (디컴프 표에서)
-    png.js          최소 PNG 인코더 (zlib만 쓴다)
-  shot/           화면을 열고 확인 지점으로 뛰어들어 그림을 찍는다 (PLAN §15.2)
-  assets/         산출물이 있어야 할 자리를 아는 쪽 (§3.3)
-    groups.mjs      파일 → 그것을 만드는 명령. 추출기 소스에서 뽑은 짝 28개
-    manifest.mjs    디스크를 훑어 assets-manifest.json을 굽는다
-    pull.mjs        없는 것을 세고, 버킷이 있으면 받는다
-```
+### 3.0 현재 감사 결과
 
-⚠️ **글 디코더는 `extract/message.js` 하나만 쓴다.** `spike/gen4text.js`에도 하나
-있는데 그것은 이름표용이라 charmap의 `
-`을 **글자 두 개 그대로** 둔다. `rom.js`의
-`openText()`가 한동안 그쪽을 쓰고 있었고, 이름에는 줄 바꿈이 없어서 아무 검증에도
-안 걸리다가 아이템 설명이 화면에 `상처약.
-포켓몬`으로 뜨고 나서야 보였다.
+2026-08-10에 실제 폴더와 호출부를 다시 셌다.
 
-`spike/`와 `extract/`를 나누는 이유: 스파이크 코드는 **틀린 가설을 담고 있을 수 있다**. 실제로 charmap·BDSP 채널 매핑·풀숲 타일이 그랬다. NDS 파일시스템과 NARC 파서만 예외로 spike에서 그대로 쓴다 — 크기 합 검증을 666/666, 534/534로 통과한 실측 확정이라 가설이 아니다.
+| 로컬 경로 | 파일 수 | 대략 크기 | 역할 |
+|---|---:|---:|---|
+| `raw/roms` | 6 | 4.67GB | 개발 원본·기존 보관물 |
+| `raw/extracted` | 22 | 61MB | us·ko·ja Platinum 선추출 |
+| `raw/decomp` | 27,109 | 125MB | 포맷·상수 대조 참조 |
+| `raw/decomp-derived` | 4 | 매우 작음 | 명령 폭 등 개발 중간표 |
+| `raw/bdsp` | 5,573 | 5.89GB | BDSP 하위 집합·중간물·변환 전 번들 |
+| `raw/models` | 70 | 19MB | 모델 작업물 |
+| `public/data` | 6,516 | 50.4MB | 현재 개발 런타임 데이터 |
+| `public/models` | 570 | 579.6MB | 현재 개발 GLB |
+| 기존 `dist/data·models` | 7,084 | 약 628MB | Vite가 복사한 공개 금지 산출물 |
 
-`pnpm extract`가 순서대로 전부 돌린다 (textbanks → headers → matrices → bdhc → events → scripts → dialogue → encounters → species → moves → trainers → items → itemIcons). 앞의 산출물을 뒤가 참조하므로 순서가 있다 — 뱅크 표가 맨 앞인 것은 텍스트를 읽는 추출기가 전부 그것을 쓰기 때문이고, 아이콘이 맨 뒤인 것은 `items.json`의 아이콘 번호를 쓰기 때문이다.
+큰 종류는 분리돼 있지만 `raw/bdsp` 안에는 공개 사용자의 원천
+`AssetAssistant`와 같은 하위 집합, 재배치·변환 중간물, 기존 보관물이 함께 있다.
+따라서 현재 raw를 공개 입력 폴더의 정본으로 부르지 않는다. 기존 파일은 보존하고
+논리 source adapter로 먼저 매핑한다.
 
-### 3.1 산출물
+또한 현재 추출기 전부가 Platinum ROM 하나만 읽는 것은 아니다.
 
-| 파일 | 원본 | brotli |
+| 의존 | 현재 용도 | 공개판에서의 처리 |
 |---|---|---|
-| `maps.json` | 104KB | 7.2KB |
-| `events.json` (워프·NPC·간판·트리거) | 712KB | 56KB |
-| `encounters.json` | 248KB | 12KB |
-| `matrices/0.json` + `0.bin` (오버월드) | 1859KB | 20.5KB |
-| `matrices/interiors.json` + `.bin` (269개) | 1585KB | 32.5KB |
-| `bdhc.json` + `bdhc.bin` (높이, 청크 666개) | 176KB | 28.5KB |
-| `scripts.json` + `scripts.bin` (스크립트 1124개 + 이동 동작 표) | 435KB | 87KB |
-| `dialogue/ko/*.json` (뱅크 450개, 지연 로딩) | 999KB | 199KB |
-| `species.json` | 355KB | 28KB |
-| `moves.json` | 89KB | 4.3KB |
-| `trainers.json` (대사 색인 포함) | 183KB | 16KB |
-| `items.json` (468종) | 155KB | 7.9KB |
-| `itemIcons.png` (468칸 아틀라스, 768×640) | 88.6KB | — |
-| `pokeIcons.png` (종족 496칸 아틀라스, 768×672) | 97.1KB | — |
-| `boxWallpapers.png` (박스 벽지 32장, 1344×640) | 76.4KB | — |
-| `signposts.png` (간판 그림 50장, 480×160) | 3.5KB | — |
-| `marts.json` (상점 재고) | 0.8KB | — |
-| `spawns.json` (부활·공중날기 20곳) | 4.0KB | — |
-| `npcSprites.json` (NPC 그림표 156벌) | 33.2KB | 1.6KB |
-| `npc/*.png` (NPC 아틀라스 156장, 서 있는 사람 것만 받는다) | 218KB | — |
-| `names/*.json` (3로케일, 아이템 이름·설명 포함) | 264KB | 59KB |
+| Platinum `.nds` | NDS FS·NARC·오버레이·SDAT | 사용자가 선택, File.slice로 로컬 파싱 |
+| `raw/extracted/{us,ko,ja}` | 3지역판 텍스트·SDAT 캐시 | 선택 지역판에서 브라우저가 생성 |
+| `raw/decomp` | 상점·스폰·스크립트 폭·검증 원문 등 | ROM 파싱, 배포 가능한 최소 호환 메타데이터, 개발 검증 전용으로 항목별 분리 |
+| `src/data/textBanks.json` | 검증된 지역판 뱅크 매핑 | 원본 유래 범위 감사; 가능하면 선택 ROM에서 생성 |
+| BDSP 재배치 하위 폴더 | Python/UnityPy 모델 변환 | 정식 AssetAssistant source adapter + TS/WASM 변환 |
+| 앞 단계 `public/data` | 뒤 추출기의 입력 | 브라우저에서는 작업 그래프의 명시적 artifact로 전달 |
 
-**신오 전체가 압축 후 210KB 남짓이다.** 전부 정적 JSON·바이너리이고 런타임에 롬을 파싱하지 않는다.
+“브라우저 포팅은 기존 JS를 복사하면 끝”이 아니다. `fs`, Node `Buffer`, zlib,
+Python UnityPy·NumPy·Pillow와 일부 Blender 경로를 제거하거나 동등 구현해야 한다.
 
-충돌 격자와 높이만 JSON이 아니라 원시 바이너리다 — 격자는 92만 개 숫자라 JSON으로 쓰면 4MB에 파싱도 느리고, 높이는 판 8974개의 좌표 4개씩이다. `fetch → ArrayBuffer`로 그대로 뷰를 얹는다.
+### 3.1 두 실행 경로, 한 산출물 계약
 
-높이 좌표를 반 타일 int8로 줄이면 40KB가 빠지지만 **안 한다.** 좌표 30928개 중 29426개는 정수 타일인데 40개가 DS 유닛 정수도 아니라서(−2.3535타일 같은 값) 그 40개가 조용히 어긋난다. 평면 표만 색인으로 공유해도 판 하나가 18바이트다.
-
-실내 269개를 **한 파일로 이어 붙인** 이유: 행렬마다 나누면 파일 500개에 문 열 때마다 왕복이 생긴다. 다 합쳐도 압축하면 32KB라 나눌 이유가 없다. 첫 워프 때 한 번만 받으면 이후 건물 출입이 즉시다.
-
-### 3.2 스키마
-
-`src/data/schema.ts`가 zod로 런타임 검증 + 타입 생성. 추출기가 롬을 잘못 읽으면 **그럴듯한 쓰레기**가 나오므로, 스키마는 그게 게임 코드까지 조용히 흘러드는 것을 막는 마지막 방어선이다. 범위까지 좁게 잡는다(우선도 -7~+5, EV 0~3, 성장곡선 0~5).
-
-검증된 값은 테스트로 고정한다. 4세대 데이터는 이제 변하지 않으므로, 이 숫자가 흔들리면 그건 개선이 아니라 회귀다.
-
-### 3.3 자료가 없는 기계에서
-
-**`public/data`와 `public/models`는 리포에 안 들어간다** (COPYRIGHT.md §5).
-파일 6,561개 · 103.4MB이고 전부 롬에서 나온 것이다. 그래서 새로 클론하면
-**아무것도 없는 상태로 시작한다.**
-
-그러면 무엇이 있어야 하는지를 아는 것이 필요하다. 그것이 `assets-manifest.json`이다 —
-경로 · 크기 · sha256 앞 8바이트, 6,561줄에 325KB. 롬 바이트가 아니라 **롬 바이트의
-목차**라 이것만 커밋한다.
-
-```
-pnpm assets:check      무엇이 없는지 그룹별로 센다 (없으면 종료 코드 1)
-pnpm assets:pull       버킷에서 받는다
-pnpm assets:manifest   지금 디스크로 매니페스트를 다시 굽는다
+```mermaid
+flowchart TB
+  subgraph DEV["개발 정본"]
+    R["기존 raw"]
+    N["Node NDS/NARC 추출"]
+    P["Python/UnityPy BDSP 변환"]
+    L["로컬 dev-assets"]
+    R --> N --> L
+    R --> P --> L
+  end
+  subgraph WEB["공개판"]
+    F["사용자 Platinum File"]
+    D["사용자 AssetAssistant Directory"]
+    W1["Platinum Worker"]
+    W2["BDSP TS/WASM Worker"]
+    O["OPFS assets"]
+    F --> W1 --> O
+    D --> W2 --> O
+  end
+  L --> C["LogicalAssetContract"]
+  O --> C
+  C --> G["AssetProvider → 게임"]
 ```
 
-`assets:check`의 출력은 이렇게 생겼다 — **없는 것과 그것을 만드는 명령이 한 줄에 있다.**
+두 경로가 내는 논리 이름은 동일하다. 물리적으로 개발은 파일, 공개판은 pack/index를
+써도 게임은 그 차이를 모른다.
 
+```ts
+interface LogicalAsset {
+  path: string
+  kind: 'json' | 'binary' | 'image' | 'glb' | 'audio'
+  schemaVersion: number
+  byteLength: number
+  checksum: string
+  sourceGroup: string
+}
 ```
-starterScene     없음     1   pnpm extract:starterScene
-headers          없음     2   pnpm extract:headers
-— 모두 3개
-```
 
-⚠️ **버킷 주소는 코드에 없다.** `PT_ASSET_ORIGIN` 또는 `--from=`으로만 들어온다
-(COPYRIGHT.md §6 — 채널은 언젠가 죽는다는 전제다). 주소가 없으면 받지 않고,
-대신 위 목록을 찍고 선다. 버킷이 아직 없어도 이 도구가 쓸모 있어야 하기 때문이다.
+체크섬은 로컬 산출물 손상과 parity를 찾는 용도다. 공개 서버에 사용자의 원본 지문을
+보내는 용도가 아니다.
 
-⚠️ **크기만으로는 모자라서 짧은 해시를 같이 담는다.** 추출기를 고치면 크기가 같은
-채로 내용만 바뀌는 일이 실제로 잦다. sha256 전부를 넣으면 6,561줄 × 64자로
-매니페스트가 자료보다 자주 바뀌는 덩치가 되므로 앞 8바이트만 쓴다 — 무결성 증명이
-아니라 **바뀐 것을 알아채는 장치**다.
+### 3.2 현재 개발 추출기
 
-#### 누가 무엇을 만드는가
+`tools/spike/`는 포맷 연구용이고 `tools/extract/`만 정식 개발 산출물을 만든다.
+NDS 파일시스템과 NARC 파서는 전량 구조 검증을 통과한 현재 구현을 공유한다.
 
-`tools/assets/groups.mjs`가 파일 경로와 그것을 만드는 명령을 짝지어 28개 그룹으로
-나눈다. 짝은 손으로 적은 것이 아니라 추출기 소스에서 뽑았다 —
-`writeJson('species.json', …)` · `OUT_DIR = 'public/data/npc'` 같은 자리를 훑었다.
-그리고 **`manifest.mjs`가 임자 없는 파일을 하나라도 만나면 선다.** 추출기가 새 파일을
-뱉기 시작하면 조용히 빠지지 않는다.
+주요 그룹:
 
-⚠️ **`pnpm extract` 체인이 전부가 아니다.** 세 갈래가 밖에 있다:
-
-| 그룹 | 만드는 법 | 왜 밖인가 |
+| 그룹 | 현재 도구 | 논리 산출물 |
 |---|---|---|
-| `npcSprites` | `node tools/extract/npcSprites.js` | pnpm 스크립트 자체가 없다 |
-| `player` · `arena` · `bdspNpcTable` | `py -3.13 tools/extract/{dawn_to_glb,bdspArena,bdspNpc}.py` | 파이썬 + BDSP 번들이 필요하다 (PLAN §4.3) |
-| `npcModels` | `pnpm extract:npcModels` | 스크립트는 있는데 `extract` 체인에 안 들어 있다 |
+| 맵 등뼈 | `headers`, `matrices`, `bdhc`, `events` | maps·matrices·height·events |
+| 스크립트·대사 | `textbanks`, `scripts`, `dialogue` | scripts·dialogue·names |
+| 전투 데이터 | `species`, `moves`, `trainers`, `encounters` | JSON tables |
+| 아이템·UI 그림 | `items`, `itemIcons`, `pokeIcons`, `boxWallpapers`, `signposts` | tables·atlases |
+| 필드 렌더 | `chunks`, `props`, `mapTextures`, `starterScene` | mesh binary·PNG |
+| 오디오 | `sound`, `sndTables` | sequence·bank·wave·index |
+| BDSP 캐릭터 | `bdspNpc`, `bdspGlb`, `npcModels` | npc table·GLB |
+| BDSP 포켓몬 | `bdspPokemon`, `bdspMotionTiming` | Pokémon GLB·motion table |
+| BDSP 무대 | `bdspArena` | arena GLB |
+
+앞 산출물을 뒤 도구가 읽는 순서가 있으므로 개발 CLI는 작업 그래프로 고정한다.
+암묵적으로 `public/data`를 읽는 현재 호출은 단계별 input/output 선언으로 바꿔,
+개발 파일 저장과 OPFS writer가 같은 변환 함수를 쓸 수 있게 한다.
+
+현재 Python 모델 변환은 개발 오라클로 유지한다. 공개 TS/WASM 결과가 동등해질
+때까지 제거하지 않는다.
+
+### 3.3 브라우저 Platinum 파이프라인
+
+입력은 `File` 하나이며 전체 128MB를 한 Buffer로 복사하지 않는다.
+
+1. NDS 헤더·FNT·FAT 범위 검증
+2. 지역판·리비전과 필수 엔트리 로컬 판정
+3. 필요한 NARC·overlay·SDAT 범위를 `File.slice()`로 읽기
+4. 정적 테이블·맵·스크립트·선택 언어 대사 변환
+5. 그림·오디오를 그룹별로 변환해 OPFS 임시 파일에 쓰기
+6. 각 그룹 스키마·범위·체크섬 검증
+7. journal 완료 표시 후 메모리 해제
+
+Node `Buffer` API는 DataView·TypedArray 기반 reader로 바꾼다. zlib이 필요한 PNG
+경로는 브라우저 `CompressionStream`, 검증된 WASM codec 또는 Canvas/ImageData
+경로를 선택하되 동일 픽셀 parity를 확인한다.
+
+decomp 의존은 도구마다 분류한다.
+
+- **검증에만 필요:** 브라우저 출력에는 포함하지 않고 개발 parity에서만 사용
+- **ROM 안에서 찾을 수 있음:** 브라우저 파서로 옮김
+- **게임 실행에 필요한 코드 상수:** 최소 비표현적 호환성 메타데이터로 분리하고
+  출처·라이선스·저작권 범위를 별도 감사
+- **원본 표현 자체:** 앱 셸에 넣지 않고 사용자 입력에서 생성
+
+분류가 끝나지 않은 도구는 브라우저 완료로 표시하지 않는다.
+
+### 3.4 브라우저 BDSP 파이프라인
+
+입력은 `AssetAssistant` 또는 그 상위 폴더다. source adapter가 다음 정식 그룹을
+찾는다.
+
+```text
+AssetAssistant/
+  Battle/
+  Characters/
+  Dpr/
+  Environments/
+  Pokemon Database/
+```
+
+현재 raw의 `dpr`, `battle`, `Characters`, `arenas`, `pokemon`,
+`pokemon-common`은 이 논리 그룹의 개발 호환 경로다. 다른 보관·중간 폴더를
+정상 입력으로 탐색하지 않는다.
+
+브라우저 변환기가 구현해야 할 최소 기능:
+
+- Unity AssetBundle container와 object table
+- Mesh·skin·bone·bind pose
+- Material·Texture2D와 현재 확정한 채색·마스크 규칙
+- AnimationClip과 필요한 clip role
+- 포켓몬의 프리팹·공용 메시·폼 텍스처 다중 번들 연결
+- 좌표·스케일·발밑 원점 정규화
+- 외부 참조 없는 self-contained GLB 작성
+- 현재 arena crop·하늘·material bake 규칙
+
+첫 스파이크는 캐릭터 하나, 포켓몬 한 종, 무대 한 벌만 변환한다. 그 세 개가 Python
+오라클과 동등하지 않으면 전량 변환 UI를 만들지 않는다.
+
+### 3.5 산출물과 물리 저장
+
+현재 개발 파일의 대표 논리 계약:
+
+| 논리 경로 | 내용 |
+|---|---|
+| `maps.json`, `events.json`, `encounters.json` | 맵·배치·야생 |
+| `matrices/*.json|bin`, `bdhc.json|bin` | 충돌·높이 |
+| `scripts.json|bin`, `dialogue/<locale>/*` | 이벤트·대사 |
+| `species.json`, `moves.json`, `trainers.json`, `items.json` | 게임 표 |
+| `chunks/*`, `props/*`, `tex/*`, `starter/*` | 필드 메시·텍스처 |
+| `sound/*` | 악보·악기·파형 |
+| `models/player|npc|pokemon|arena` | BDSP 기반 GLB |
+
+개발 중에는 먼저 파일 단위 계약을 유지한다. 공개 OPFS는 소파일 수를 줄이기 위해
+다음처럼 종류별 pack과 index로 묶는다.
+
+```text
+/radiant-platinum/
+  install.json
+  journal.json
+  assets/
+    data.pack + data.index.json
+    models.pack + models.index.json
+    textures.pack + textures.index.json
+    audio.pack + audio.index.json
+```
+
+pack은 배포 파일이 아니다. 같은 브라우저 오리진 안에서만 만들고 읽으며 내보내기
+기능을 두지 않는다.
+
+### 3.6 스키마·parity·완료 판정
+
+`src/data/schema.ts`의 Zod 범위 검증은 유지한다. 여기에 provider-agnostic contract
+test를 더한다.
+
+- 필수 논리 경로 존재
+- JSON schemaVersion과 Zod parse
+- binary header·길이·index 범위
+- 이미지 폭·높이·대표 픽셀
+- GLB node·mesh·clip 수, bounds, self-contained 여부
+- 오디오 index가 가리키는 모든 bank·wave 존재
+- 전체 파일/entry 수와 그룹 체크섬
+- 대표 맵·대사·포켓몬·NPC·무대의 Dev ↔ OPFS parity
+
+바이트가 완전히 같을 필요가 없는 GLB·PNG 최적화는 의미 parity를 쓴다. 허용 오차와
+비교 항목을 그룹 schema에 명시하며 눈대중만으로 통과시키지 않는다.
+
+### 3.7 raw 보존과 목표 분리
+
+현재 파일은 자동 이동하지 않는다. 먼저 Git 무시 로컬 설정이 실제 경로를 논리
+source에 매핑한다.
+
+```text
+raw/
+  sources/       # 공개 사용자가 고르는 것과 동등한 원천
+  references/    # decomp 등 검증 전용
+  work/          # 재생성 가능한 중간물
+  dev-assets/    # DevAssetProvider 결과
+  legacy/        # 검증 전 기존 경로
+```
+
+이동이 필요할 때는 복사 → 파일 수·크기·지문 검증 → source adapter 전환 → parity
+테스트 → 원본 보존 순서다. `raw/` 자체를 Vite publicDir로 설정하거나 브라우저에
+직접 노출하지 않는다.
+
+### 3.8 자료가 없는 개발 기계와 공개 사용자
+
+새 개발 clone은 원본 유래 산출물을 저장소나 CDN에서 받지 않는다.
+
+- 개발자는 자신의 `raw` source를 로컬 설정에 연결해 추출한다.
+- 자료가 필요한 정합성 테스트는 `PT_REQUIRE_DATA=1`에서 없으면 실패한다.
+- 자료 없는 단위 테스트는 fixture만 쓰며 “조용히 전체 정합성 통과”로 표시하지 않는다.
+- 기존 `assets-manifest.json`·`assets:check`는 로컬 개발 결과 감사에만 잠시
+  남기고, `assets:pull`의 원격 받기 경로는 공개 설계에서 폐기한다.
+- 장기적으로 논리 계약 manifest와 source-to-output 작업 그래프가 이를 대체한다.
+
+공개 사용자는 개발 CLI나 decomp를 준비하지 않는다. [IMPORT.md](IMPORT.md)의
+두 입력만 선택하고 브라우저가 지원 계약을 충족하는지 판정한다. 브라우저 파이프라인이
+같은 결과를 아직 못 만들면 공개 기능은 미완료이며, 서버에서 미리 만든 결과로
+메우지 않는다.
 
 ---
 

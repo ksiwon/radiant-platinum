@@ -26,10 +26,21 @@ const BADGES = 8
 
 type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
 
+/**
+ * 파일 백업 상태 — **내부 저장과 따로다** (IMPORT.md §10).
+ *
+ * ⚠️ 둘을 하나로 묶으면 브라우저가 반복 다운로드를 막았을 때 "리포트를 쓰지
+ * 못했다"가 뜬다. 사실은 써졌다. 그래서 두 줄로 나눠 보여 주고, 못 받았으면
+ * 그 자리에 "백업 파일 받기"를 남긴다
+ */
+type Backup = { started: boolean; fileName: string } | null
+
 export function SaveScreen() {
   const [labels, setLabels] = useState<string[]>([])
   const [common, setCommon] = useState<string[]>([])
   const [phase, setPhase] = useState<Phase>('ask')
+  const [failure, setFailure] = useState<string | null>(null)
+  const [backup, setBackup] = useState<Backup>(null)
   const [yes, setYes] = useState(true)
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
@@ -68,8 +79,24 @@ export function SaveScreen() {
         z: p.z,
         facing: worldState.player.facing,
       })
-      .then(() => { setPhase('done') })
-      .catch(() => { setPhase('failed') })
+      .then((got) => {
+        setBackup({ started: got.backup.started, fileName: got.fileName })
+        if (got.saved) { setPhase('done'); return }
+        setFailure(got.why ?? null)
+        setPhase('failed')
+      })
+      .catch((e: unknown) => {
+        setFailure(e instanceof Error ? e.message : String(e))
+        setPhase('failed')
+      })
+  }
+
+  /** 다운로드가 막혔을 때. 사용자 클릭 안에서 다시 부르면 통과하는 일이 많다 */
+  const retryBackup = (): void => {
+    void useSaveStore.getState().exportReport().then((got) => {
+      if (got.kind === 'none') return
+      setBackup({ started: got.outcome.started, fileName: got.fileName })
+    })
   }
 
   const asking = phase === 'ask' || phase === 'overwrite'
@@ -85,7 +112,7 @@ export function SaveScreen() {
 
   const line = phase === 'overwrite' ? common[SAVE_TEXT.overwrite]
     : phase === 'writing' ? common[SAVE_TEXT.writing]
-      : phase === 'failed' ? '리포트를 쓰지 못했다'
+      : phase === 'failed' ? `리포트를 쓰지 못했다${failure === null ? '' : `\n${failure}`}`
         : phase === 'done' ? fillMenuText(common[SAVE_TEXT.done] ?? '', [save.trainer.name])
           : common[SAVE_TEXT.ask]
 
@@ -109,6 +136,22 @@ export function SaveScreen() {
           <div className={own.choices}>
             <span className={yes ? own.choiceOn : own.choice}>{common[82] ?? '예'}</span>
             <span className={yes ? own.choice : own.choiceOn}>{common[83] ?? '아니오'}</span>
+          </div>
+        )}
+
+        {/*
+          ⚠️ **두 줄이다.** 브라우저 저장소는 사용자가 모르는 사이에 비워지므로
+          매 리포트마다 파일도 한 벌 내보낸다. 다운로드가 막히는 것은 흔한 일이고,
+          그때 리포트까지 실패한 것처럼 보이면 안 된다 (IMPORT.md §10)
+        */}
+        {backup && phase === 'done' && (
+          <div className={own.backup}>
+            {backup.started
+              ? `백업 파일도 받았다 — ${backup.fileName}`
+              : '⚠️ 브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'}
+            {!backup.started && (
+              <button className={own.backupButton} onClick={retryBackup}>백업 파일 받기</button>
+            )}
           </div>
         )}
       </div>
