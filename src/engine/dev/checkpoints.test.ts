@@ -200,6 +200,19 @@ describe('확인 지점의 진행도', () => {
     expect(had).toBe(true)
   })
 
+  it('러닝슈즈도 한 번 받으면 안 사라진다 — 그리고 도감보다 먼저다', () => {
+    // 원작 순서: 201번도로가 `VAR_PLAYER_HOUSE_STATE`를 3으로 세우고 → 집에서
+    // 엄마가 `GiveRunningShoes` → 잔모래마을 연구소에서 `GivePokedex`.
+    // 없으면 Shift를 눌러도 걷는다 (`actor/player`)
+    let had = false
+    for (const c of CHECKPOINTS) {
+      if (had) expect(c.runningShoes, `${c.id}에서 신발이 사라졌다`).toBe(true)
+      had = had || c.runningShoes === true
+      if (c.dex === true) expect(c.runningShoes, `${c.id}: 도감이 신발보다 빠르다`).toBe(true)
+    }
+    expect(had).toBe(true)
+  })
+
   it('배지를 받은 판에는 도감이 있다 — 순서가 그렇다', () => {
     for (const c of CHECKPOINTS) {
       if ((c.badges ?? 0) === 0) continue

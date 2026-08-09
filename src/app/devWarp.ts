@@ -95,6 +95,9 @@ async function applySetup(cp: Checkpoint): Promise<void> {
 
   if (cp.money !== undefined) useSaveStore.setState({ money: cp.money })
   if (cp.badges !== undefined) useSaveStore.setState({ badges: cp.badges })
+  // 신발이 없으면 Shift를 눌러도 걷는다 (`actor/player`). 도감과 같은 갈래라
+  // 뛰어든 자리가 이야기상 신발 뒤면 채워 준다
+  if (cp.runningShoes) useSaveStore.setState({ runningShoes: true })
 
   if (cp.dex) {
     giveDex()

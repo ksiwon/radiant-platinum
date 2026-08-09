@@ -75,6 +75,19 @@ export interface Checkpoint {
    * 안 준다 — 거기서 도감이 뜨면 그건 원작에 없는 판이다
    */
   dex?: boolean
+  /**
+   * 러닝슈즈를 이미 받은 판인가.
+   *
+   * ⚠️ **없으면 Shift를 눌러도 걷는다.** 원작이 `PlayerData_HasRunningShoes`로
+   * 막고 우리도 그대로 막는데(`actor/player`), 순간이동은 이 칸을 안 채워서
+   * **어디로 뛰어들어도 못 뛰었다** — 만들어 둔 속도(`RUN_SPEED`)인데 낼 길이
+   * 없는 상태였다. 도감과 같은 갈래다.
+   *
+   * 받는 자리는 **도감보다 앞**이다. `scripts_route_201`이 `VAR_PLAYER_HOUSE_STATE`를
+   * 3으로 세우고, 집에 들어가면 `OnFrame_CutsceneAfterRivalBattle`이 돌면서
+   * 엄마가 준다(`GiveRunningShoes`). 그래서 파트너를 받은 다음 단계부터 켠다
+   */
+  runningShoes?: boolean
   battle?: DevBattle
 }
 
@@ -154,6 +167,11 @@ type Items = readonly (readonly [number, number])[]
 interface Stage {
   badges: number
   dex: boolean
+  /**
+   * 러닝슈즈. **도감과 같은 칸에서 갈리는 것이 우연이다** — 원작에서 신발(집)과
+   * 도감(연구소) 사이에 확인 지점을 하나도 안 뒀을 뿐이라, 하나로 합치면 안 된다
+   */
+  runningShoes: boolean
   party: readonly PartySpec[]
   items: Items
   money: number
@@ -170,33 +188,36 @@ const KEY_LATE: Items = [...KEY_MID, [HM_STRENGTH, 1]]
  * 30이면 배틀을 확인하는 뜻이 없다. 관장 편성은 `trainers.json`에 있다
  */
 const STAGE = {
-  /** 아직 아무것도 없다. 도감도 파티도 없는 판이다 */
-  home: { badges: 0, dex: false, party: [], items: [], money: 3000 },
+  /** 아직 아무것도 없다. 도감도 파티도 신발도 없는 판이다 */
+  home: { badges: 0, dex: false, runningShoes: false, party: [], items: [], money: 3000 },
 
-  /** 예지호수에서 첫 파트너를 받았다. 도감은 아직 못 받았다 */
+  /**
+   * 예지호수에서 첫 파트너를 받았다. 도감도 신발도 아직이다 —
+   * 신발은 201번도로를 지나 **집에 다시 들어가야** 나온다
+   */
   partner: {
-    badges: 0, dex: false, money: 3000,
+    badges: 0, dex: false, runningShoes: false, money: 3000,
     party: [{ species: TURTWIG, level: 5 }],
     items: [[POTION, 3]],
   },
 
   /** 잔모래마을에서 도감을 받았다. 여기서부터 도감이 뜬다 */
   pokedex: {
-    badges: 0, dex: true, money: 3000,
+    badges: 0, dex: true, runningShoes: true, money: 3000,
     party: [{ species: TURTWIG, level: 7 }],
     items: [[POKE_BALL, 10], [POTION, 5]],
   },
 
   /** 축복시티. 포켓치를 받고 한 마리가 더 늘었다 */
   jubilife: {
-    badges: 0, dex: true, money: 3800,
+    badges: 0, dex: true, runningShoes: true, money: 3800,
     party: [{ species: TURTWIG, level: 11 }, { species: STARLY, level: 10 }],
     items: [[POKE_BALL, 10], [POTION, 6]],
   },
 
   /** 203번도로를 지나 무쇠시티까지. 잡은 것이 늘었다 */
   oreburgh: {
-    badges: 0, dex: true, money: 4200,
+    badges: 0, dex: true, runningShoes: true, money: 4200,
     party: [
       { species: TURTWIG, level: 13 }, { species: STARLY, level: 11 },
       { species: SHINX, level: 10 },
@@ -206,7 +227,7 @@ const STAGE = {
 
   /** 강석을 이겼다 — 탄광배지 */
   badge1: {
-    badges: badges(1), dex: true, money: 6800,
+    badges: badges(1), dex: true, runningShoes: true, money: 6800,
     party: [
       { species: GROTLE, level: 18 }, { species: STARAVIA, level: 16 },
       { species: SHINX, level: 15 }, { species: BIDOOF, level: 14 },
@@ -216,7 +237,7 @@ const STAGE = {
 
   /** 유채를 이겼다 — 숲배지. 자전거와 거합베기가 붙는다 */
   badge2: {
-    badges: badges(2), dex: true, money: 9500,
+    badges: badges(2), dex: true, runningShoes: true, money: 9500,
     party: [
       { species: GROTLE, level: 22 }, { species: STARAVIA, level: 21 },
       { species: LUXIO, level: 20 }, { species: BIBAREL, level: 19 },
@@ -229,7 +250,7 @@ const STAGE = {
 
   /** 멜리사를 이겼다 — 릴레이배지 */
   badge3: {
-    badges: badges(3), dex: true, money: 14000,
+    badges: badges(3), dex: true, runningShoes: true, money: 14000,
     party: [
       { species: GROTLE, level: 27 }, { species: STARAVIA, level: 26 },
       { species: LUXIO, level: 25 }, { species: PACHIRISU, level: 24 },
@@ -243,7 +264,7 @@ const STAGE = {
 
   /** 자두를 이겼다 — 주먹배지 */
   badge4: {
-    badges: badges(4), dex: true, money: 21000,
+    badges: badges(4), dex: true, runningShoes: true, money: 21000,
     party: [
       { species: TORTERRA, level: 33 }, { species: STARAVIA, level: 31 },
       { species: LUXRAY, level: 31 }, { species: FLOATZEL, level: 30 },
@@ -257,7 +278,7 @@ const STAGE = {
 
   /** 맥실러를 이겼다 — 늪배지 */
   badge5: {
-    badges: badges(5), dex: true, money: 30000,
+    badges: badges(5), dex: true, runningShoes: true, money: 30000,
     party: [
       { species: TORTERRA, level: 38 }, { species: STARAPTOR, level: 37 },
       { species: LUXRAY, level: 37 }, { species: FLOATZEL, level: 36 },
@@ -271,7 +292,7 @@ const STAGE = {
 
   /** 동관을 이겼다 — 광산배지 */
   badge6: {
-    badges: badges(6), dex: true, money: 42000,
+    badges: badges(6), dex: true, runningShoes: true, money: 42000,
     party: [
       { species: TORTERRA, level: 43 }, { species: STARAPTOR, level: 42 },
       { species: LUXRAY, level: 42 }, { species: FLOATZEL, level: 41 },
@@ -285,7 +306,7 @@ const STAGE = {
 
   /** 무청을 이겼다 — 빙설배지 */
   badge7: {
-    badges: badges(7), dex: true, money: 58000,
+    badges: badges(7), dex: true, runningShoes: true, money: 58000,
     party: [
       { species: TORTERRA, level: 48 }, { species: STARAPTOR, level: 47 },
       { species: LUXRAY, level: 47 }, { species: GARCHOMP, level: 46 },
@@ -299,7 +320,7 @@ const STAGE = {
 
   /** 전진을 이겼다 — 비콘배지. 여덟 개가 다 찼다 */
   badge8: {
-    badges: badges(8), dex: true, money: 80000,
+    badges: badges(8), dex: true, runningShoes: true, money: 80000,
     party: [
       { species: TORTERRA, level: 55 }, { species: STARAPTOR, level: 54 },
       { species: LUXRAY, level: 54 }, { species: GARCHOMP, level: 54 },

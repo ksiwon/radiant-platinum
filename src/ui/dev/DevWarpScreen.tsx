@@ -129,6 +129,7 @@ function describe(cp: Checkpoint) {
   if (cp.money !== undefined) lines.push(['소지금', `${cp.money}엔`])
   if (cp.badges !== undefined) lines.push(['배지', `0b${cp.badges.toString(2)}`])
   if (cp.dex) lines.push(['도감', '받은 뒤의 판 — 시작 메뉴에 도감이 뜬다'])
+  if (cp.runningShoes) lines.push(['신발', '엄마가 준 뒤의 판 — Shift로 뛴다'])
   if (cp.battle) {
     lines.push(['배틀', cp.battle.kind === 'trainer'
       ? `트레이너 ${cp.battle.id}`

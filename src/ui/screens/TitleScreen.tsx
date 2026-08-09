@@ -108,10 +108,18 @@ export function TitleScreen() {
   ]
 
   const [cursor, setCursor] = useState(0)
+  // ⚠️ **버튼이 가로로 놓인다** (`titleScreen.css`의 `menu`가 `flex-direction: row`).
+  // 한동안 ↑↓만 묶여 있어서, 나란히 놓인 것을 보고 ←→를 누르면 아무 일도 안
+  // 일어났다. 네 방향을 다 받는다 — 칸이 둘뿐이라 어느 축으로 눌러도 뜻이 하나다
+  const move = (delta: number): void => {
+    setCursor((c) => clampCursor(c, delta, entries.length))
+  }
   // 설정이 떠 있는 동안에는 타이틀이 키를 안 듣는다 — 그쪽이 먼저다
   useMenuKeys({
-    up: () => { setCursor((c) => clampCursor(c, -1, entries.length)) },
-    down: () => { setCursor((c) => clampCursor(c, 1, entries.length)) },
+    left: () => { move(-1) },
+    right: () => { move(1) },
+    up: () => { move(-1) },
+    down: () => { move(1) },
     confirm: () => { entries[cursor]?.go() },
   }, menuTop === null)
 
@@ -169,7 +177,7 @@ export function TitleScreen() {
       </div>
 
       <div className={css.foot}>
-        <p className={css.hint}>↑↓ 고르기 · Z·Enter 결정</p>
+        <p className={css.hint}>←→ 고르기 · Z·Enter 결정</p>
         <p className={css.hint}>
           WASD·방향키 이동 · Shift 달리기 · X 메뉴 · Z 말 걸기 · 휠·V 시점 전환
         </p>
