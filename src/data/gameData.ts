@@ -7,10 +7,12 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
-  martTableSchema, moveFileSchema, nameListSchema, pokeIconsSchema, scriptFileSchema,
+  martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
+  scriptFileSchema,
   speciesFileSchema, trainerFileSchema,
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
-  type MartTable, type Move, type PokeIcons, type ScriptFile, type Species, type Trainer,
+  type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
+  type Species, type Trainer,
 } from './schema'
 import { dataUrl } from './assetBase'
 
@@ -74,6 +76,35 @@ export function loadSpecies(): Promise<SpeciesTable> {
 
 export function loadMoves(): Promise<MoveTable> {
   return fetchJson('moves.json', (v) => indexed(moveFileSchema.parse(v).moves, '기술'))
+}
+
+export interface MotionTimingTable {
+  /** 그 동작이 **몇 초 뒤에 꽂히는가**. 표에 없는 종은 null */
+  at(species: number, form: number, motion: string): number | null
+}
+
+/**
+ * 종마다 다른 동작 타이밍 (`BattleDataTable.MotionTimingData`, 11.9KB).
+ *
+ * 프레임 번호를 그대로 내놓지 않고 **초**로 바꿔 준다 — 읽는 쪽이 30이라는
+ * 수를 알 필요가 없고, 표가 프레임률을 함께 들고 있기 때문이다
+ */
+export function loadMotionTiming(): Promise<MotionTimingTable> {
+  return fetchJson('motionTiming.json', (v) => {
+    const file: MotionTiming = motionTimingSchema.parse(v)
+    const slot = new Map(file.order.map((name, i) => [name, i]))
+    return {
+      at(species, form, motion) {
+        const i = slot.get(motion)
+        if (i === undefined) return null
+        // 폼이 있는 종은 그 폼 줄이 따로 있고, 없으면 0번 폼으로 떨어진다
+        const row = file.frames[String(species * 100 + form)]
+          ?? file.frames[String(species * 100)]
+        const frame = row?.[i]
+        return frame === undefined || frame === 0 ? null : frame / file.fps
+      },
+    }
+  })
 }
 
 /**

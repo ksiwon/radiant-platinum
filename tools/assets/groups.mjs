@@ -127,6 +127,12 @@ export const GROUPS = [
     make: 'pnpm extract:pokemon',
     match: under('models/pokemon/'),
   },
+  {
+    // 종마다 다른 타격 프레임. 배틀이 열릴 때 한 번 받는다 (11.9KB)
+    name: 'motionTiming',
+    make: 'pnpm extract:motionTiming',
+    match: (p) => p === 'data/motionTiming.json',
+  },
 ]
 
 /** 이 파일을 만드는 것은 누구인가. 아무도 아니면 null — 부르는 쪽이 세운다 */

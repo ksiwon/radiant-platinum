@@ -20,7 +20,7 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
-import { loadMoves, loadSpecies } from '../../data/gameData'
+import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
@@ -87,6 +87,21 @@ const FADE = 0.35
  * 연출이 끝나기도 전에 다음 글이 뜨거나, 다 끝나고도 화면이 멈춰 있다
  */
 const LUNGE = MOVE_FRAMES / 60
+
+/**
+ * 0→1 진행 `k`를 **정점이 `p`에 오는** 0→1→0 곡선의 위상으로 옮긴다.
+ *
+ * `Math.sin(위상 × π)`에 넣으면 `k = p`에서 1이 되고 양끝에서 0이 된다.
+ * `p = 0.5`면 `k`를 그대로 돌려주므로 예전과 같은 대칭 곡선이다.
+ *
+ * ⚠️ **양끝을 막아야 한다.** 표에 0.9 같은 값이 오면 돌아오는 구간이 거의
+ * 없어서 순간이동으로 보이고, 0에 붙으면 나가는 것 없이 이미 뻗어 있다
+ */
+export function peakAt(k: number, p: number): number {
+  const at = Math.min(0.85, Math.max(0.15, p))
+  return k <= at ? (k / at) * 0.5 : 0.5 + ((k - at) / (1 - at)) * 0.5
+}
+
 /** 맞고 움찔하는 시간(초). 원작은 스프라이트가 흔들리며 깜빡인다 */
 const FLINCH = 0.34
 /** 깜빡이는 횟수. 이보다 잦으면 화면이 지저분해지고 뜸하면 안 보인다 */
@@ -196,13 +211,37 @@ function Slot(
   // 물리냐 특수냐. **BDSP 모델이 그 둘을 따로 갖고 있다**(`ba20` · `ba21`) —
   // 롬의 기술 데이터가 정하는 값이라 여기서 짐작하지 않는다
   const special = useRef(false)
+  /**
+   * 이 종이 **몇 초 뒤에 때리는가** (`BattleDataTable.MotionTimingData`).
+   *
+   * 여태 모든 종이 같은 박자로 나갔다 왔는데, 공식 리메이크는 종마다 타격
+   * 프레임을 적어 두었다 — 모부기 25 · 리아코 14 · 블레이범 30프레임이다.
+   * 그만큼 돌진의 정점이 갈리고, 그 정점이 곧 클립에서 팔이 뻗는 순간이다.
+   *
+   * 표가 없거나 그 종이 없으면 `LUNGE`의 절반, 곧 지금까지의 박자다
+   */
+  const hitAt = useRef(LUNGE / 2)
   useEffect(() => {
-    if (cast?.by !== side || cast.move === null) return
+    if (cast?.by !== side || cast.move === null) return undefined
     const id = cast.move
-    void loadMoves()
-      .then((table) => { special.current = table.byId.get(id)?.category === 'special' })
+    let alive = true
+    // ⚠️ **둘을 한 자리에서 푼다.** 분류를 아는 쪽과 타이밍을 보는 쪽을 나누면
+    // 표가 먼저 오는 프레임에 **지난번 분류로** 시간을 잡는다 — 물리 기술 뒤에
+    // 특수를 쓰면 첫 번은 물리 박자로 나간다
+    void Promise.all([loadMoves(), loadMotionTiming()])
+      .then(([moves, timing]) => {
+        if (!alive) return
+        const isSpecial = moves.byId.get(id)?.category === 'special'
+        special.current = isSpecial
+        // 폼은 아직 첫 판만 세우므로 0이다 (§16.6)
+        const at = species === null
+          ? null
+          : timing.at(species, 0, isSpecial ? 'special' : 'physical')
+        hitAt.current = at ?? LUNGE / 2
+      })
       .catch(() => { special.current = false })
-  }, [cast, side])
+    return () => { alive = false }
+  }, [cast, side, species])
 
   useFrame((_, delta) => {
     const g = body.current
@@ -218,11 +257,12 @@ function Slot(
     // 모델은 대기 동작이 이미 숨을 쉬므로 안 흔든다
     const bob = model ? 0 : (Math.sin(performance.now() / 620 + spot.x) * 0.5 + 0.5) * 0.05
 
-    // 때리러 나간다. 앞의 반은 가고 뒤의 반은 온다 — 갔다가 순간이동으로
-    // 돌아오면 뒷걸음질이 아니라 깜빡임으로 보인다
+    // 때리러 나간다. **정점이 그 종의 타격 프레임이다** — 앞뒤가 반반이 아니라
+    // 표가 정하는 자리에서 꺾인다(`hitAt`). 갔다가 순간이동으로 돌아오면
+    // 뒷걸음질이 아니라 깜빡임으로 보이므로 돌아오는 길도 이어서 민다
     lunge.current = Math.max(0, lunge.current - delta / LUNGE)
     const k = 1 - lunge.current
-    const reach = lunge.current > 0 ? Math.sin(k * Math.PI) * 0.42 : 0
+    const reach = lunge.current > 0 ? Math.sin(peakAt(k, hitAt.current / LUNGE) * Math.PI) * 0.42 : 0
 
     // 맞으면 흔들리며 깜빡인다
     flinch.current = Math.max(0, flinch.current - delta / FLINCH)

@@ -328,6 +328,19 @@ export const itemIconsSchema = z.object({
 /** 포켓몬 아이콘 아틀라스. 칸 하나가 32×32고 색인이 종족 번호다 */
 export const pokeIconsSchema = itemIconsSchema
 
+/**
+ * 종마다 다른 동작 타이밍 (`BattleDataTable.MotionTimingData`).
+ *
+ * 열쇠가 **종×100 + 폼**이고 값이 프레임 번호 넷이다(`order`의 차례 —
+ * 물리·특수·울음·등판). 단위는 30프레임/초이고, 그것을 어떻게 확정했는지는
+ * `tools/extract/bdspMotionTiming.py` 머리말에 있다
+ */
+export const motionTimingSchema = z.object({
+  fps: z.number().int().positive(),
+  order: z.array(z.string()),
+  frames: z.record(z.string(), z.array(z.number().int().nonnegative())),
+})
+
 /** 박스 벽지 아틀라스. 한 장이 168×160이라 칸이 네모가 아니다 */
 export const boxWallpapersSchema = z.object({
   count: z.number().int().positive(),
@@ -387,6 +400,7 @@ export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
 export type Item = z.infer<typeof itemSchema>
 export type ItemIcons = z.infer<typeof itemIconsSchema>
 export type PokeIcons = z.infer<typeof pokeIconsSchema>
+export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
