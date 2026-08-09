@@ -6,6 +6,7 @@
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
 //     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
+//     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
 //     pnpm shot --list                 확인 지점 목록
 //
 // ⚠️ **이 프로젝트에는 여태 브라우저 자동화가 없었다.** 그래서 "수치는 맞는데
@@ -361,6 +362,15 @@ async function main() {
         w.worldState.camera.target.set(g[0], g[1], g[2])
       }, [eye.split(',').map(Number), (flag('gaze') ?? '0,0,0').split(',').map(Number)])
       await page.waitForTimeout(Number(flag('lookAfter', 1500)))
+    }
+    // 자전거에 태운다. 가방에서 꺼내 쓰는 길은 맵마다 탈 수 있느냐가 갈려서
+    // 확인 지점을 고를 때마다 걸린다 — 여기서는 상태만 세운다
+    if (args.includes('--bike')) {
+      await page.evaluate(async () => {
+        const w = await import('/src/state/worldState.ts')
+        w.worldState.player.cycling = true
+      })
+      await page.waitForTimeout(600)
     }
     // 스크립트를 태우지 않고 메뉴 화면 하나를 바로 연다. 고르는 장면처럼
     // 이야기 도중에만 뜨는 화면을 보려면 이 길이 필요하다

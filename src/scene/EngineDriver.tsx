@@ -13,6 +13,7 @@ import { warpSystem } from '../engine/map/world'
 import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { worldState } from '../state/worldState'
+import { spinBike } from './BikeModel'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
 import { battleStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
@@ -85,8 +86,13 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       const hop = worldState.player.hop
       updateLocomotion(
         sceneRefs.playerRig, delta, speed, WALK_SPEED, RUN_SPEED,
-        hop.active ? hop.t : null,
+        hop.active ? hop.t : null, p.cycling,
       )
+      // 자전거는 사람이 앉은 자세와 한 몸이라 같은 위상으로 돈다
+      if (sceneRefs.bike) {
+        sceneRefs.bike.visible = p.cycling
+        if (p.cycling) spinBike(sceneRefs.bike, sceneRefs.playerRig.phase)
+      }
     }
     // 배틀 중에는 무대가 카메라를 갖는다. 오버월드 카메라 시스템은 계속 돌지만
     // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다.

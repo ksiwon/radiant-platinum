@@ -2,15 +2,51 @@
 //
 // 원작에서 자전거가 하는 일은 셋이다: **빨라지고**, **조우가 잦아지고**, 탈 수
 // 있는 자리가 정해져 있다. 셋 다 원작이 값으로 적어 두었다.
-//
-// ⚠️ **아직 자전거가 안 그려진다.** 타면 주인공이 빨라질 뿐 몸 밑에 자전거가
-// 없다. BDSP의 자전거는 주인공 프리팹 쪽에 붙어 있고 우리 주인공(`dawn.glb`)은
-// 다른 길로 왔다 — 모델을 잇는 것은 다음 걸음이다 (PLAN §16.2).
 import type { MapHeader } from '../map/world'
 import { isSurfable } from '../map/zone'
 
 /** 자전거 (`items.ko.json` 450번). 열쇠도구라 쓰면 없어지지 않는다 */
 export const BIKE_ITEM = 450
+
+/**
+ * BDSP 자전거(`Characters/objects/ob1003_00`)의 자리들 — **번들의 뼈를 잰 값**이다.
+ * 단위는 BDSP 것이라 게임 단위로 쓰려면 `BDSP_TO_WORLD`를 곱한다.
+ *
+ * ⚠️ **원점이 땅이다.** 붙이는 자리를 가리키는 `loc_attach`가 (0, 0, 0)이고
+ * 메시의 제일 아래도 −0.0006이라, **주인공 발밑에 그대로 놓으면 된다** —
+ * 자리를 눈으로 맞출 것이 없다.
+ *
+ * 앞은 +Z다(앞바퀴 z +0.446 · 뒷바퀴 −0.433). 우리 사람도 +Z를 보므로 자전거를
+ * 돌릴 일이 없다.
+ */
+export const BIKE = {
+  /** 안장. 여기에 골반이 앉는다 */
+  saddle: { y: 0.56, z: -0.20 },
+  /**
+   * 크랭크 축(`Gear`)과 반지름. 반지름은 페달 둘의 자리에서 나온다 —
+   * `LPedal2`가 z −0.256, `RPedal2`가 +0.084이고 축이 −0.086이라 둘 다 0.17이고
+   * **서로 반대편**이다
+   */
+  crank: { x: 0.095, y: 0.2907, z: -0.086, r: 0.17 },
+  /** 손잡이 끝(`EndLHandle2`). 여기를 잡는다 */
+  grip: { x: 0.3768, y: 0.8803, z: 0.1008 },
+  /** 바퀴 축과 반지름. 축 높이가 곧 반지름이다 (땅이 y = 0) */
+  wheel: { front: 0.4458, back: -0.4332, y: 0.2494, r: 0.2494 },
+} as const
+
+/**
+ * 페달 한쪽의 자리. `phase`는 크랭크가 돈 각(라디안)이고 `side`는 왼쪽이 +1이다.
+ *
+ * 0에서 왼쪽 페달이 **뒤**에 있다 — 번들이 그 자세로 서 있다(`LPedal2` z −0.256).
+ */
+export function pedalPoint(phase: number, side: 1 | -1): { x: number, y: number, z: number } {
+  const a = side > 0 ? phase : phase + Math.PI
+  return {
+    x: side * BIKE.crank.x,
+    y: BIKE.crank.y + BIKE.crank.r * Math.sin(a),
+    z: BIKE.crank.z - BIKE.crank.r * Math.cos(a),
+  }
+}
 
 /**
  * 자전거의 속도 단계 (걷기의 몇 배인가).

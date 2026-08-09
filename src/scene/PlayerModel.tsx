@@ -1,11 +1,12 @@
 // 플레이어 캐릭터 모델 (PLAN §4.3) — BDSP 풀비율 모델을 glb로 변환한 것
 // 모델 전방은 +Z. playerSystem의 facing = atan2(vx, vz) 규약과 그대로 일치한다.
-import { useEffect, useRef } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { Mesh, type MeshStandardMaterial, type Group } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
+import { BikeModel } from './BikeModel'
 import { sceneRefs } from './sceneRefs'
 import { modelUrl } from '../data/assetBase'
 
@@ -66,6 +67,8 @@ export function PlayerModel() {
       <group ref={normRef}>
         <primitive object={gltf.scene} />
       </group>
+      {/* 자전거는 정규화 밖이다 — 번들 단위 그대로고 발밑이 원점이다 */}
+      <Suspense fallback={null}><BikeModel /></Suspense>
     </group>
   )
 }

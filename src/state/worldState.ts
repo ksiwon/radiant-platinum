@@ -30,7 +30,7 @@ export const worldState = {
      * 자전거를 타고 있는가 (`PLAYER_AVATAR_CYCLING`).
      *
      * 조우 관문이 40에서 70으로 오르고(§7.1) 속도가 걷기의 2~4배가 된다.
-     * ⚠️ **자전거는 아직 안 그려진다** — 몸만 빨라진다 (`actor/bike`)
+     * 이 값이 서면 `BikeModel`이 보이고 걷기 대신 앉은 자세로 간다
      */
     cycling: false,
     /** 페달을 밟기 시작한 뒤 흐른 시간(초). 단이 여기서 오른다 */

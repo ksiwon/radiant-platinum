@@ -7,9 +7,12 @@ export const sceneRefs: {
   player: Object3D | null
   /** 절차적 보행용 리그. 모델이 로드되면 PlayerModel이 채운다 */
   playerRig: Rig | null
+  /** 자전거. 주인공 그룹의 자식이고, 안 탈 때는 `visible`만 꺼 둔다 */
+  bike: Object3D | null
 } = {
   player: null,
   playerRig: null,
+  bike: null,
 }
 
 // 성능 계측 스냅샷 (PerfOverlay가 폴링)

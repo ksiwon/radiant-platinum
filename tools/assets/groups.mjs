@@ -118,6 +118,12 @@ export const GROUPS = [
     match: oneOf('models/dawn.glb'),
   },
   {
+    // 자전거 한 대. 인물이 아니라 소품 번들에서 온다 (DATA.md §4.2.1)
+    name: 'bike',
+    make: 'pnpm extract:bike',
+    match: oneOf('models/bike.glb'),
+  },
+  {
     name: 'arena',
     make: 'pnpm extract:arenas',
     match: under('models/arena/'),

@@ -18,6 +18,8 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { createRig, resetRig, updateLocomotion } from './locomotion'
+import { BIKE, pedalPoint } from './bike'
+import { BDSP_TO_WORLD, PLAYER_HEIGHT } from '../model/normalize'
 
 interface GlbNode {
   name?: string
@@ -535,5 +537,89 @@ describe('포즈 적용', () => {
     expect(nodes.get('LThigh')!.quaternion.angleTo(before)).toBeGreaterThan(0.01)
     resetRig(rig)
     expect(nodes.get('LThigh')!.quaternion.angleTo(before)).toBeCloseTo(0, 10)
+  })
+})
+
+/**
+ * 자전거 자세는 **닿았는가**로 잰다 (DATA.md §4.2.1).
+ *
+ * 각도를 눈으로 맞출 수가 없다 — 안장·페달·손잡이 자리는 번들이 정한 값이고
+ * 팔다리 길이는 우리 모델이 정한 값이라, 맞았는지 아닌지는 "발이 페달 위에
+ * 있는가"로만 답할 수 있다.
+ *
+ * ⚠️ **정규화한 리그로 재야 한다.** `dawn.glb`는 원본이 2.5095유닛이고 화면에
+ * 서는 것은 1.5m로 줄인 것이다 — 안 줄이고 재면 다리가 자전거보다 커서 어떤
+ * 각도로도 페달에 못 닿는다.
+ */
+function seated(speed: number, ticks: number) {
+  const { root, nodes } = loadSkeleton()
+  const group = new Object3D()
+  const wrapper = new Object3D()
+  // `normalizeModel`이 하는 일과 같다. 원본 키는 §4.3의 실측값이다
+  wrapper.scale.setScalar(PLAYER_HEIGHT / 2.5095)
+  group.add(wrapper)
+  wrapper.add(root)
+  const rig = createRig(root, wrapper)!
+  for (let i = 0; i < ticks; i++) updateLocomotion(rig, 1 / 60, speed, 4.5, 8, null, true)
+  group.updateMatrixWorld(true)
+  const at = (name: string): Vector3 =>
+    group.worldToLocal(nodes.get(name)!.getWorldPosition(new Vector3()))
+  return { rig, at, nodes, group }
+}
+
+const bikePoint = (p: { x: number, y: number, z: number }): Vector3 =>
+  new Vector3(p.x, p.y, p.z).multiplyScalar(BDSP_TO_WORLD)
+
+describe('자전거 자세', () => {
+  it('골반이 안장에 앉는다', () => {
+    const { at } = seated(0, 1)
+    const hips = at('LThigh')
+    const seat = bikePoint({ x: 0, y: BIKE.saddle.y, z: BIKE.saddle.z })
+    expect(Math.abs(hips.y - seat.y)).toBeLessThan(0.02)
+    expect(Math.abs(hips.z - seat.z)).toBeLessThan(0.02)
+  })
+
+  it('두 발이 페달에서 안 떨어진다 — 한 바퀴 내내', () => {
+    let worst = 0
+    for (let k = 0; k < 12; k++) {
+      const { rig, at } = seated(4, 0)
+      rig.phase = (k / 12) * Math.PI * 2
+      updateLocomotion(rig, 0, 0, 4.5, 8, null, true)
+      rig.bobTarget.parent!.updateMatrixWorld(true)
+      for (const [bone, side] of [['LFoot', 1], ['RFoot', -1]] as const) {
+        const want = bikePoint(pedalPoint(rig.phase, side))
+        // 앞뒤·위아래만 본다. 좌우는 페달 폭(9.5cm)이라 다리가 벌어질 수 없다
+        const got = at(bone)
+        worst = Math.max(worst, Math.hypot(got.y - want.y, got.z - want.z))
+      }
+    }
+    // 발목에서 발바닥까지가 남으므로 0은 될 수 없다. 5cm면 페달 위다
+    expect(worst).toBeLessThan(0.05)
+  })
+
+  it('두 손이 손잡이를 잡는다', () => {
+    const { at } = seated(4, 1)
+    const grip = bikePoint(BIKE.grip)
+    for (const [bone, side] of [['LHand', 1], ['RHand', -1]] as const) {
+      const got = at(bone)
+      const d = Math.hypot(got.x - side * grip.x, got.y - grip.y, got.z - grip.z)
+      expect(d).toBeLessThan(0.005)
+    }
+  })
+
+  it('페달은 바퀴가 구른 만큼만 돈다 — 굴러가지 않으면 안 돈다', () => {
+    const { rig } = seated(0, 60)
+    expect(rig.phase).toBe(0)
+    const moving = seated(4, 60)
+    // 1초에 4m, 바퀴 반지름 0.254m → 15.7rad ≈ 2.5바퀴
+    expect(moving.rig.phase).toBeGreaterThan(0)
+  })
+
+  it('내리면 걷기로 돌아온다 — 몸이 안장에 남지 않는다', () => {
+    const { rig } = seated(4, 30)
+    const seatDrop = rig.bobTarget.position.y
+    for (let i = 0; i < 30; i++) updateLocomotion(rig, 1 / 60, 4, 4.5, 8)
+    expect(rig.bobTarget.position.y).toBeGreaterThan(seatDrop + 0.1)
+    expect(rig.bobTarget.position.z).toBe(rig.bobBaseZ)
   })
 })

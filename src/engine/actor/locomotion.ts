@@ -16,6 +16,8 @@
 // 같지만 **두 축을 겹치는 순간 깨진다** — 팔을 내린(roll) 뒤 스윙(pitch)하면
 // 스윙 축이 내린 각만큼 함께 돌아가 앞뒤가 아니라 좌우로 흔들린다.
 import { Object3D, Quaternion, Vector3 } from 'three'
+import { BDSP_TO_WORLD } from '../model/normalize'
+import { BIKE, pedalPoint } from './bike'
 import { hopGait, idleBreath, phaseRate, sampleGait } from './gait'
 
 /** 캐릭터는 +Z를 본다. 앞뒤 스윙은 월드 X축, 좌우 벌림은 Z축, 비틀림은 Y축이다 */
@@ -58,6 +60,26 @@ interface Joint {
   parentInv: Quaternion
 }
 
+/**
+ * 팔다리의 길이와 뿌리 자리. **바인드에서 재고 발밑이 원점이다.**
+ *
+ * 자전거 자세가 이걸 쓴다 — 안장과 페달은 롬(번들)이 정한 자리라, 거기에
+ * 닿으려면 우리 팔다리가 실제로 몇 센티인지를 알아야 한다.
+ */
+export interface Limbs {
+  /** 왼쪽 넓적다리 뿌리 */
+  hip: Vector3
+  thigh: number
+  shin: number
+  /** 왼쪽 어깨(상완 뿌리) */
+  shoulder: Vector3
+  upperArm: number
+  foreArm: number
+  /** 바인드에서 왼쪽 상완·전완이 뻗은 방향. **정확히 +X가 아니고 둘이 나란하지도 않다** */
+  armDir: Vector3
+  foreDir: Vector3
+}
+
 export interface Rig {
   joints: Record<string, Joint>
   /** 팔꿈치 경첩 축(바인드 월드). 상완 이름으로 색인한다 */
@@ -65,6 +87,9 @@ export interface Rig {
   /** bob을 걸 노드. 본이 아니라 정규화 래퍼라 스킨 바인드를 건드리지 않는다 */
   bobTarget: Object3D
   bobBase: number
+  /** 안장에 앉으려면 몸을 뒤로도 물려야 한다 */
+  bobBaseZ: number
+  limbs: Limbs
   phase: number
   elapsed: number
 }
@@ -75,6 +100,13 @@ const delta = new Quaternion()
 const identity = new Quaternion()
 /** 관절별로 이번 프레임에 건 월드 회전. 헬퍼 본이 그 절반을 되돌릴 때 쓴다 */
 const applied = new Map<string, Quaternion>()
+/** 자전거 자세에서 팔을 풀 때 쓰는 임시값 */
+const bindFore = new Vector3()
+const bindHand = new Vector3()
+const aim = new Vector3()
+const shoulderNow = new Vector3()
+const spineTwist = new Quaternion()
+const faceQ = new Quaternion()
 
 function store(name: string, q: Quaternion) {
   let slot = applied.get(name)
@@ -123,13 +155,42 @@ export function createRig(root: Object3D, bobTarget: Object3D): Rig | null {
     if (axis.lengthSq() > 1e-10) hinge[arm!] = axis.normalize()
   }
 
-  return { joints, hinge, bobTarget, bobBase: bobTarget.position.y, phase: 0, elapsed: 0 }
+  // 팔다리 길이. **발밑을 원점으로 재야 한다** — 그룹이 이미 맵 어딘가에 가
+  // 있을 수 있으므로 월드 좌표를 그 그룹의 로컬로 되돌린다
+  const frame = bobTarget.parent ?? bobTarget
+  frame.updateWorldMatrix(true, false)
+  const at = (name: string): Vector3 => {
+    const node = found.get(name)
+    const p = node ? node.getWorldPosition(new Vector3()) : new Vector3()
+    return frame.worldToLocal(p)
+  }
+  const hip = at('LThigh'), knee = at('LLeg'), foot = at('LFoot')
+  const shoulder = at('LArm'), elbow = at('LForeArm'), hand = at('LHand')
+  const limbs: Limbs = {
+    hip,
+    thigh: hip.distanceTo(knee),
+    shin: knee.distanceTo(foot),
+    shoulder,
+    upperArm: shoulder.distanceTo(elbow),
+    // 손 본이 없는 리그가 있다. 그럴 땐 상완과 같다고 본다
+    foreArm: hand.lengthSq() > 0 ? elbow.distanceTo(hand) : shoulder.distanceTo(elbow),
+    armDir: elbow.clone().sub(shoulder).normalize(),
+    foreDir: (hand.lengthSq() > 0 ? hand.clone().sub(elbow) : elbow.clone().sub(shoulder))
+      .normalize(),
+  }
+
+  return {
+    joints, hinge, bobTarget, limbs,
+    bobBase: bobTarget.position.y, bobBaseZ: bobTarget.position.z,
+    phase: 0, elapsed: 0,
+  }
 }
 
 /** 관절을 바인드 포즈로 되돌린다 */
 export function resetRig(rig: Rig) {
   for (const j of Object.values(rig.joints)) j.node.quaternion.copy(j.rest)
   rig.bobTarget.position.y = rig.bobBase
+  rig.bobTarget.position.z = rig.bobBaseZ
 }
 
 /** 월드 회전을 본의 로컬로 켤레변환해 건다. Δ = 부모월드⁻¹ × R_w × 부모월드 */
@@ -233,21 +294,156 @@ const FORWARD_UP = -FORWARD
  */
 const SHOULDER_SHARE = 0.15
 
+const clamp = (x: number, lo: number, hi: number): number => (x < lo ? lo : x > hi ? hi : x)
+
+/** 자전거에서 상체가 앞으로 숙는 각 */
+const BIKE_LEAN = 0.30
+
+/**
+ * 평면 두 마디 역기구학. 뿌리에서 목표까지 닿는 **뿌리 각**과 **굽힘량**을 낸다.
+ *
+ * 시상면(앞뒤·위아래)에서만 푼다 — 페달도 손잡이도 몸 옆으로만 벌어져 있지
+ * 앞뒤로는 한 평면이라, 벌린 각을 따로 주고 나면 남는 것이 이 두 각뿐이다.
+ * 뿌리 각은 걷기와 같은 규약이다(양수가 앞), 굽힘량은 늘 0 이상이다.
+ *
+ * ⚠️ **닿지 못하는 목표를 그대로 풀면 NaN이 나온다.** 다리가 완전히 펴지거나
+ * 접히는 자리에서 코사인 값이 ±1을 넘는다 — 거리를 먼저 가둔다.
+ */
+function reach(
+  rootY: number, rootZ: number, targetY: number, targetZ: number, l1: number, l2: number,
+): { root: number, bend: number } {
+  const dy = targetY - rootY, dz = targetZ - rootZ
+  const d = clamp(Math.hypot(dy, dz), Math.abs(l1 - l2) + 1e-4, l1 + l2 - 1e-4)
+  const bend = Math.PI - Math.acos(clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1))
+  const lift = Math.acos(clamp((l1 * l1 + d * d - l2 * l2) / (2 * l1 * d), -1, 1))
+  // 아래(−Y)를 0으로, 앞(+Z)을 양수로 잰다
+  return { root: Math.atan2(dz, -dy) + lift, bend }
+}
+
+/**
+ * 자전거 자세 (DATA.md §4.2.1).
+ *
+ * ⚠️ **자세를 지어내지 않는다.** 골반은 번들이 적어 둔 안장 자리에 앉히고, 발은
+ * 크랭크가 실제로 도는 원 위의 페달에, 손은 손잡이 끝에 **역기구학으로 보낸다** —
+ * 자전거 크기가 바뀌어도 몸이 따라간다. 눈으로 맞춘 각도가 아니라서, 발이
+ * 페달에서 몇 센티 떨어졌는지를 시험이 잰다.
+ *
+ * @param scale BDSP 단위 → 게임 단위 (`BDSP_TO_WORLD`)
+ */
+function bikePose(rig: Rig, scale: number) {
+  const j = rig.joints
+  const seatY = BIKE.saddle.y * scale, seatZ = BIKE.saddle.z * scale
+  // 몸통째로 안장으로 옮긴다. 발밑 기준으로 잰 골반이 안장에 가 앉는다
+  const dy = seatY - rig.limbs.hip.y, dz = seatZ - rig.limbs.hip.z
+  rig.bobTarget.position.y = rig.bobBase + dy
+  rig.bobTarget.position.z = rig.bobBaseZ + dz
+
+  for (const side of [1, -1] as const) {
+    const p = pedalPoint(rig.phase, side)
+    const leg = reach(seatY, seatZ, p.y * scale, p.z * scale, rig.limbs.thigh, rig.limbs.shin)
+    const name = side > 0 ? 'L' : 'R'
+    apply(j[`${name}Thigh`], `${name}Thigh`, FORWARD * leg.root)
+    apply(j[`${name}Leg`], `${name}Leg`, leg.bend)
+    // 발바닥은 페달과 나란히 둔다. 정강이가 접힌 만큼 되받으면 수평이다
+    apply(j[`${name}Foot`], `${name}Foot`, FORWARD * (leg.root - leg.bend))
+  }
+
+  // 상체는 손잡이 쪽으로 숙인다. 세 마디에 나눠 건다 — 걷기와 같은 이유다
+  apply(j.Spine1, 'Spine1', FORWARD_UP * BIKE_LEAN * 0.4)
+  apply(j.Spine2, 'Spine2', FORWARD_UP * BIKE_LEAN * 0.3)
+  apply(j.Spine3, 'Spine3', FORWARD_UP * BIKE_LEAN * 0.3)
+  apply(j.Neck, 'Neck', -FORWARD_UP * BIKE_LEAN * 0.8)
+
+  // 팔은 손잡이를 **잡는다**. 손이 손잡이에 닿으려면 굴린 각(roll)과 흔든 각
+  // (pitch)을 따로 풀 수가 없다 — 팔꿈치를 굽히는 순간 손이 팔 방향에서 벗어나기
+  // 때문이다. 그래서 손이 가야 할 방향을 먼저 정하고 두 각을 거기서 뽑는다.
+  //
+  // ⚠️ **척추를 숙인 뒤에 푼다.** 어깨는 척추의 자식이라 상체가 숙는 만큼 함께
+  // 돌아간다 — 바인드 자리로 풀면 숙인 각(0.30rad)만큼 손이 어긋난다. 실제로
+  // 그렇게 나와 있었다. 그래서 지금 어깨가 어디에 있고 얼마나 돌았는지를 씬에서
+  // 읽어 와서, 목표를 그 회전만큼 되돌린 자리에서 푼다
+  const armNode = j.LArm?.node
+  const parent = armNode?.parent
+  const frame = rig.bobTarget.parent
+  if (!armNode || !parent || !frame || !j.LArm) return
+  parent.updateWorldMatrix(true, false)
+  parent.getWorldQuaternion(spineTwist)
+  // ⚠️ **월드 회전을 그대로 쓰면 안 된다.** 사람이 남쪽을 보고 있으면 그 회전까지
+  // 딸려 와서 팔이 자전거 뒤로 뻗는다 — 화면에서 그렇게 나와 있었다. `apply`가
+  // 거는 축은 리그를 만든 순간의 축(그룹 로컬)이므로 여기도 그 틀로 되돌린다
+  frame.getWorldQuaternion(faceQ)
+  spineTwist.premultiply(faceQ.invert()).multiply(j.LArm.parentInv).invert()
+  shoulderNow.copy(armNode.position)
+  frame.worldToLocal(parent.localToWorld(shoulderNow))
+
+  const l1 = rig.limbs.upperArm, l2 = rig.limbs.foreArm
+  aim.set(
+    BIKE.grip.x * scale - Math.abs(shoulderNow.x),
+    BIKE.grip.y * scale - shoulderNow.y,
+    BIKE.grip.z * scale - shoulderNow.z,
+  )
+  const far = aim.length()
+  aim.applyQuaternion(spineTwist)
+  const gx = aim.x, gy = aim.y, gz = aim.z
+  const len = clamp(far, Math.abs(l1 - l2) + 1e-4, l1 + l2 - 1e-4)
+  // ⚠️ **바인드에서 이미 조금 굽어 있다.** 상완과 전완이 정확히 나란하지 않으므로
+  // (실측 4.4°) 코사인 법칙이 주는 것은 총 벌어짐이고, 더 굽혀야 할 몫은 그 차다
+  const slack = Math.acos(clamp(rig.limbs.armDir.dot(rig.limbs.foreDir), -1, 1))
+  const total = Math.acos(clamp((len * len - l1 * l1 - l2 * l2) / (2 * l1 * l2), -1, 1))
+  const bend = total - slack
+  // 그렇게 굽힌 팔에서 **손이 바인드에서 어느 쪽을 보는가**. 상완이 정확히 +X를
+  // 보지 않으므로(리그마다 다르다) 축을 가정하지 않고 그대로 잰다
+  bindFore.copy(rig.limbs.foreDir).applyAxisAngle(rig.hinge.LArm ?? AXIS_PITCH, bend)
+  bindHand.copy(rig.limbs.armDir).multiplyScalar(l1).addScaledVector(bindFore, l2).normalize()
+  // 손이 가야 할 방향(왼팔 기준. 오른팔은 x만 뒤집으면 같다)
+  const ux = gx / far, uy = gy / far, uz = gz / far
+  // `apply`가 거는 것은 R_x(pitch)·R_z(roll)이다. x 성분은 pitch가 안 건드리므로
+  // roll이 혼자 정하고, 남는 두 성분을 pitch가 돌려 맞춘다
+  const spread = Math.hypot(bindHand.x, bindHand.y)
+  const base = Math.atan2(bindHand.y, bindHand.x)
+  const swing = Math.acos(clamp(ux / Math.max(spread, 1e-6), -1, 1))
+  // 두 갈래가 나온다. 팔꿈치가 위로 솟는 쪽이 아니라 **내려가는 쪽**을 고른다
+  const roll = (swing > 0 ? -swing : swing) - base
+  const ry = bindHand.x * Math.sin(roll) + bindHand.y * Math.cos(roll)
+  const pitch = Math.atan2(uz, uy) - Math.atan2(bindHand.z, ry)
+  // ⚠️ **쇄골에 나눠 주지 않는다.** 걷기는 어깨가 파이지 않게 회전을 쇄골과
+  // 나누는데(`SHOULDER_SHARE`), 여기서는 그러면 팔뿌리가 함께 움직여 위에서 푼
+  // 삼각형이 틀어진다 — 실측으로 손이 손잡이에서 11.9cm 떨어졌다
+  for (const side of [1, -1] as const) {
+    const name = side > 0 ? 'L' : 'R'
+    apply(j[`${name}Arm`], `${name}Arm`, pitch, side * roll)
+    applyElbow(rig, `${name}ForeArm`, `${name}Arm`, bend)
+  }
+  for (const [helper, joint] of HELPERS) applyHelper(rig, helper, joint)
+}
+
 /**
  * @param dt    렌더 델타(초). 시뮬레이션이 아니라 표현이라 렌더 레이트로 돌린다
  * @param speed 현재 수평 속도(m/s)
  * @param walkSpeed / runSpeed  player.ts의 값. 이동/달리기 혼합 비율을 여기서 만든다
+ * @param cycling 자전거를 타고 있으면 걷기 대신 앉은 자세로 간다
  */
 export function updateLocomotion(
   rig: Rig, dt: number, speed: number, walkSpeed: number, runSpeed: number,
-  hop: number | null = null,
+  hop: number | null = null, cycling = false,
 ) {
   rig.elapsed += dt
+
+  if (cycling) {
+    // 크랭크는 바퀴와 물려 있다. 한 바퀴에 바퀴 둘레만큼 나아간다고 두면
+    // 페달이 땅과 어긋나지 않는다 (기어비는 원작에 없다)
+    rig.phase = (rig.phase + (speed * dt) / (BIKE.wheel.r * BDSP_TO_WORLD)) % (Math.PI * 2)
+    bikePose(rig, BDSP_TO_WORLD)
+    return
+  }
   // 아주 느린 속도까지 걷게 하면 제자리에서 발을 떠는 것처럼 보인다
   const moving = Math.min(1, speed / (walkSpeed * 0.55))
   const run = Math.max(0, Math.min(1, (speed - walkSpeed) / Math.max(1e-3, runSpeed - walkSpeed)))
   // 보폭이 달리기에서 늘어나므로 run을 먼저 구해야 위상 속도를 정할 수 있다
   rig.phase = (rig.phase + phaseRate(speed, run) * dt) % (Math.PI * 2)
+
+  // 자전거에서 내리면 안장으로 물렸던 몸을 제자리로 돌린다
+  rig.bobTarget.position.z = rig.bobBaseZ
 
   // 턱을 넘는 동안은 걷기를 멈추고 도약 자세를 쓴다. 걷는 자세로 포물선을
   // 그리면 얼음판을 타는 것으로 보인다 (`actor/ledge`)
