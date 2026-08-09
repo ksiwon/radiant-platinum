@@ -22,6 +22,7 @@ const { writeJson, ROOT } = require('./rom')
 const { parseNarc } = require('../spike/gen4text')
 const { loadCharmap, decodeBank, toString } = require('./message')
 const { readBankNames, alignByCount } = require('./dialogue-verify')
+const sources = require('../raw/sources.cjs')
 
 const CHARMAP = path.join(ROOT, 'tools/spike/charmap.txt')
 const HEADER_SIZE = 24
@@ -40,10 +41,12 @@ const NO_BANK = 0xffff
  * 바꿔 읽는 것은 `textBanks.json`이 한다. 헤더 주소는 그 표를 만들 때 쓴 것이지
  * 뽑을 때 쓰는 것이 아니다
  */
+// ⚠️ 파일 이름이 아니라 **지역판**으로 가리킨다. 실제 자리는 헤더의 게임 코드로
+// 찾는다 (`tools/raw/sources`) — 개발자마다 붙인 이름이 다르다
 const ROMS = {
-  en: { file: 'Pokemon Platinum (US).nds', extracted: 'us', headers: 0xea01c },
-  ko: { file: 'Pokemon Platinum (KO).nds', extracted: 'ko', headers: 0xeaaa4 },
-  ja: { file: 'Pokemon Platinum (JA).nds', extracted: 'ja', headers: null },
+  en: { extracted: 'us', headers: 0xea01c },
+  ko: { extracted: 'ko', headers: 0xeaaa4 },
+  ja: { extracted: 'ja', headers: null },
 }
 
 /**
@@ -112,7 +115,7 @@ function bankMap(from, to, locale) {
 }
 
 function decodeAll(extracted, charmap) {
-  const file = path.join(ROOT, 'raw/extracted', extracted, 'pl_msg.narc')
+  const file = path.join(sources.requireDir('platinum.extracted'), extracted, 'pl_msg.narc')
   if (!fs.existsSync(file)) throw new Error(`메시지 아카이브가 없다: ${file}`)
   return parseNarc(fs.readFileSync(file)).map((bank) =>
     decodeBank(bank).map((codes) => toString(codes, charmap)))
@@ -120,7 +123,7 @@ function decodeAll(extracted, charmap) {
 
 /** 맵이 쓰는 뱅크 번호 (미국 기준) */
 function mapBanks() {
-  const rom = fs.readFileSync(path.join(ROOT, 'raw/roms', ROMS.en.file))
+  const rom = fs.readFileSync(sources.requirePlatinumRom('en'))
   const used = new Set()
   for (let id = 0; id < MAP_COUNT; id++) {
     const msg = rom.readUInt16LE(ROMS.en.headers + id * HEADER_SIZE + 8)
@@ -132,7 +135,7 @@ function mapBanks() {
 /** `SCRIPT_RANGE_TABLE`이 쓰는 공용 뱅크 (이름 → 미국 번호) */
 function commonBanks(names) {
   const manager = fs.readFileSync(
-    path.join(ROOT, 'raw/decomp/src/script_manager.c'), 'utf8',
+    path.join(sources.requireDir('references.decomp'), 'src/script_manager.c'), 'utf8',
   )
   const used = new Set()
   for (const m of manager.matchAll(/Entry\(\s*\w+\s*,\s*\w+\s*,\s*(TEXT_BANK_\w+)\s*\)/g)) {

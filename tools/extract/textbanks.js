@@ -20,7 +20,8 @@ const { parseNarc } = require('../spike/gen4text')
 const { ROOT } = require('./rom')
 
 const LOCALES = ['us', 'ko', 'ja']
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 
 /**
  * 예전 방식(알려진 영어 문자열로 us를 짚고 LCS 드리프트로 ko/ja를 추정)이 낸 값.
@@ -93,7 +94,7 @@ function decompKeys() {
 function main() {
   const narcs = {}
   for (const loc of LOCALES) {
-    const p = path.join(ROOT, 'raw/extracted', loc, 'pl_msg.narc')
+    const p = path.join(require('../raw/sources.cjs').requireDir('platinum.extracted'), loc, 'pl_msg.narc')
     if (!fs.existsSync(p)) throw new Error(`메시지 아카이브가 없다: ${p}`)
     narcs[loc] = parseNarc(fs.readFileSync(p))
   }

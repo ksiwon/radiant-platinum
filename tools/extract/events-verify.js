@@ -12,7 +12,8 @@ const path = require('path')
 const { openRom, ROOT } = require('./rom')
 const { extractEvents } = require('./events')
 
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const EVENTS_DIR = path.join(DECOMP, 'res/field/events')
 
 /** `generated/*.txt` — 줄 번호가 값이다 */

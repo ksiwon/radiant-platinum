@@ -9,6 +9,7 @@
     "boundary": "node tools/distribution/check.mjs",
     "boundary:pre": "node tools/distribution/check.mjs --stage=pre",
     "boundary:post": "node tools/distribution/check.mjs --stage=post",
+    "raw:sources": "node tools/raw/sources.cjs",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "eslint src --max-warnings=0",

@@ -16,7 +16,8 @@ const fs = require('fs')
 const path = require('path')
 const { writeJson, ROOT } = require('./rom')
 
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const HEADER = path.join(DECOMP, 'include/data/mart_items.h')
 
 /** `ITEM_POKE_BALL` → 4. `constants/items.h`가 아니라 우리 산출물을 정본으로 쓴다 */

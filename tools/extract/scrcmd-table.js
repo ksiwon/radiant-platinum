@@ -18,8 +18,10 @@ const fs = require('fs')
 const path = require('path')
 
 const ROOT = path.resolve(__dirname, '../..')
-const DECOMP = path.join(ROOT, 'raw/decomp')
-const OUT = path.join(ROOT, 'raw/decomp-derived')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
+const OUT = require('../raw/sources.cjs').sourceDir('references.decompDerived')
+  ?? path.join(ROOT, 'raw/decomp-derived')
 
 /** `.macro` 안에서 바이트를 내보내는 지시어와 그 폭 */
 const WIDTH = { '.byte': 1, '.short': 2, '.hword': 2, '.long': 4, '.word': 4 }

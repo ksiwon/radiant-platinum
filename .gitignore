@@ -5,6 +5,10 @@ dist-assets/
 # 원본 ROM·추출물. 리포에 절대 들어가면 안 된다 (§14.1) — 롬 1개가 128MB다
 raw/
 
+# raw 원천 매핑. **개발자 기계의 경로**가 들어가므로 추적하지 않는다
+# (예시는 추적하는 raw.sources.example.json에 있다 — COPYRIGHT.md §5)
+raw.sources.local.json
+
 # raw/ + tools/ 파이프라인으로 재생성되는 산출물. R2에서 서빙한다 (§4.6, COPYRIGHT.md §5)
 #
 # ⚠️ **폴더째다. 목차만 남기는 예외를 안 둔다.** 두려고 로더가 첫 왕복에 읽는 것을

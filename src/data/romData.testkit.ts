@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
 import { pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 import { describe } from 'vitest'
 import { AssetMissing, setAssetProvider, type AssetProvider } from './providers/assetProvider'
@@ -109,6 +110,47 @@ export function withModels(...files: readonly string[]): SuiteFn {
 /** 같은 것을 `raw/decomp` 아래로 */
 export function withDecomp(...files: readonly string[]): SuiteFn {
   return gate('decomp', files)
+}
+
+// ── 롬 원본 ──────────────────────────────────────────────────────────────────
+
+interface RawSources {
+  platinumRom(locale: string): string | null
+  describeSources(): [string, string][]
+}
+
+/**
+ * raw 원천 어댑터를 시험에서도 그대로 쓴다 (`tools/raw/sources.cjs`).
+ *
+ * ⚠️ **같은 결정을 두 번 적지 않는다.** 시험이 롬을 따로 찾으면 도구와 다른
+ * 파일을 열 수 있고, 그러면 "도구는 되는데 시험은 안 된다"가 된다. CJS 모듈이라
+ * `createRequire`로 부른다 — 도구 쪽 실행 경로를 안 바꾸려는 것이다
+ */
+const rawSources = createRequire(import.meta.url)('../../tools/raw/sources.cjs') as RawSources
+
+/** 그 지역판 롬. 이 기계에 없으면 null (파일 이름이 아니라 헤더로 찾는다) */
+export function romPath(locale: string): string | null {
+  return rawSources.platinumRom(locale)
+}
+
+/**
+ * 그 지역판 롬들이 다 있을 때만 도는 `describe`.
+ *
+ * `raw/`는 리포에 안 들어가므로 없는 기계가 정상이다. `PT_REQUIRE_DATA=1`이면
+ * 건너뛰는 대신 선다 — 개발 기계에서 지문 표가 실제와 갈리는 것을 놓치지 않는다
+ */
+export function withRom(...locales: readonly string[]): SuiteFn {
+  const missing = locales.filter((l) => romPath(l) === null)
+  if (missing.length === 0) return describe
+  if (requireData()) {
+    throw new Error(
+      `롬이 없다 — ${missing.join(' · ')}\n`
+      + '  파일 이름은 상관없다. 헤더의 게임 코드로 찾는다 (tools/raw/sources.cjs).\n'
+      + '  다른 데 있으면 raw.sources.local.json에 적는다 (raw.sources.example.json 참고).',
+    )
+  }
+  skipped.push(`rom: ${missing.join(' · ')}`)
+  return describe.skip
 }
 
 /**

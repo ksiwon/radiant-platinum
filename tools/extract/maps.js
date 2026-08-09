@@ -128,7 +128,7 @@ function exportZone(rom, zoneName) {
 function main() {
   const args = process.argv.slice(2)
   const romPath = args.find((a) => a.startsWith('--rom='))?.slice(6)
-    ?? path.resolve(__dirname, '../../raw/roms/Pokemon Platinum (US).nds')
+    ?? require('../raw/sources.cjs').requirePlatinumRom('en')
   const zones = args.filter((a) => !a.startsWith('--'))
   if (!zones.length) zones.push('T01')
 

@@ -19,7 +19,8 @@ const fs = require('fs')
 const path = require('path')
 const { ROOT } = require('./rom')
 
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 /** 한 타일의 단위 길이. `InitWalk`의 거리×프레임이 이 값이면 한 칸이다 */
 const UNITS_PER_TILE = 16
 

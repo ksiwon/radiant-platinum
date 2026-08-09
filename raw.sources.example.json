@@ -1,0 +1,27 @@
+{
+  "//": "raw 원천 매핑 예시 (COPYRIGHT.md §5 · IMPORT.md §9). 이 파일을 raw.sources.local.json으로 복사해 쓴다 — 그 이름은 Git이 무시한다. 아무것도 안 두면 도구가 raw/ 아래 알려진 자리를 스스로 찾는다.",
+
+  "platinum": {
+    "//": "지역판 → 롬 파일. 보통은 안 적어도 된다 — 폴더의 .nds를 열어 헤더의 게임 코드(CPUE·CPUK·CPUJ)로 찾는다. 롬을 다른 드라이브에 두었을 때만 적는다.",
+    "en": "raw/roms/platinum-en.nds",
+    "ko": "raw/roms/platinum-ko.nds",
+    "ja": "raw/roms/platinum-ja.nds"
+  },
+
+  "dirs": {
+    "//": "논리 그룹 → 실제 폴더. 적지 않은 것은 tools/raw/sources.cjs의 후보 목록에서 찾는다.",
+    "platinum.dir": "raw/roms",
+    "platinum.extracted": "raw/extracted",
+    "references.decomp": "raw/decomp",
+    "references.decompDerived": "raw/decomp-derived",
+    "bdsp.root": "raw/bdsp",
+    "bdsp.characters": "raw/bdsp/Characters",
+    "bdsp.dpr": "raw/bdsp/dpr",
+    "bdsp.pokemon": "raw/bdsp/pokemon",
+    "bdsp.pokemonCommon": "raw/bdsp/pokemon-common",
+    "bdsp.environments": "raw/bdsp/arenas",
+    "work.models": "raw/models",
+    "devAssets.data": "public/data",
+    "devAssets.models": "public/models"
+  }
+}

@@ -24,7 +24,8 @@ const { encodePng } = require('./png')
 const { parseTex0, decode } = require('../spike/nitrotex')
 const { readDict } = require('../spike/nsbmd')
 
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const SPRITES = path.join(DECOMP, 'res/graphics/field_sprites')
 const OUT_DIR = path.join(ROOT, 'public/data/npc')
 

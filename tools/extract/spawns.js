@@ -10,7 +10,8 @@
 const { readFileSync, writeFileSync } = require('node:fs')
 const { resolve } = require('node:path')
 
-const DECOMP = resolve(__dirname, '../../raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const OUT = resolve(__dirname, '../../public/data/spawns.json')
 
 const read = (p) => readFileSync(resolve(DECOMP, p), 'utf8')

@@ -8,7 +8,7 @@
 'use strict'
 const fs = require('fs')
 const path = require('path')
-const { ROOT, DEFAULT_ROM } = require('./rom')
+const { ROOT, sources } = require('./rom')
 
 /** ARM7 정적 바이너리 안에서 표가 앉은 자리 */
 const AT = { sin: 0xe8e8, dbSquare: 0xe90c, db: 0xea0c, attack: 0xeb20 }
@@ -19,7 +19,7 @@ const DB_COUNT = 128
 const ATTACK_COUNT = 19
 
 function main() {
-  const rom = fs.readFileSync(DEFAULT_ROM)
+  const rom = fs.readFileSync(sources.requirePlatinumRom('en'))
   const arm7 = rom.subarray(rom.readUInt32LE(0x30), rom.readUInt32LE(0x30) + rom.readUInt32LE(0x3c))
 
   const s16 = (at, n) => Array.from({ length: n }, (_, i) => arm7.readInt16LE(at + i * 2))

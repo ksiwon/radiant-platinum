@@ -1,0 +1,61 @@
+{
+  "//": "지원 Platinum 지역판 지문 (IMPORT.md §5 · COPYRIGHT.md §2 '비표현적 호환성 메타데이터'). 원본 바이트도 해시도 아니다 — 헤더 필드와 컨테이너 엔트리 수뿐이고, 전부 개발 기계의 롬 셋에서 실측했다. Node 추출기와 브라우저 Importer가 이 한 파일을 함께 읽는다.",
+  "contractVersion": 1,
+  "title": "POKEMON PL",
+  "makerCode": "01",
+  "sizeBytes": 134217728,
+  "requiredFiles": [
+    "/msgdata/pl_msg.narc",
+    "/fielddata/mapmatrix/map_matrix.narc",
+    "/fielddata/land_data/land_data.narc",
+    "/fielddata/encountdata/pl_enc_data.narc",
+    "/fielddata/script/scr_seq.narc",
+    "/fielddata/build_model/build_model.narc",
+    "/fielddata/areadata/area_data.narc",
+    "/fielddata/areadata/area_map_tex/map_tex_set.narc",
+    "/poketool/personal/pl_personal.narc",
+    "/poketool/personal/evo.narc",
+    "/poketool/personal/wotbl.narc",
+    "/poketool/waza/pl_waza_tbl.narc",
+    "/poketool/trainer/trdata.narc",
+    "/poketool/trainer/trpoke.narc",
+    "/poketool/pokegra/pl_pokegra.narc",
+    "/itemtool/itemdata/pl_item_data.narc",
+    "/data/mmodel/mmodel.narc",
+    "/graphic/ev_pokeselect.narc",
+    "/data/sound/pl_sound_data.sdat"
+  ],
+  "sampleCountsNote": "지역판에 상관없이 같아야 하는 엔트리 수. 하나라도 어긋나면 우리가 아는 판이 아니다. 대사 뱅크 수만 지역판마다 달라서 releases에 따로 있다.",
+  "sampleCounts": {
+    "/poketool/personal/pl_personal.narc": 508,
+    "/poketool/waza/pl_waza_tbl.narc": 471,
+    "/itemtool/itemdata/pl_item_data.narc": 446,
+    "/fielddata/land_data/land_data.narc": 666,
+    "/fielddata/mapmatrix/map_matrix.narc": 289,
+    "/fielddata/script/scr_seq.narc": 1124,
+    "/data/mmodel/mmodel.narc": 470
+  },
+  "releases": [
+    {
+      "gameCode": "CPUE",
+      "locale": "en",
+      "label": "Pokémon Platinum (영어)",
+      "fileCount": 340,
+      "messageBanks": 724
+    },
+    {
+      "gameCode": "CPUK",
+      "locale": "ko",
+      "label": "포켓몬스터 Pt 기라티나 (한국어)",
+      "fileCount": 339,
+      "messageBanks": 714
+    },
+    {
+      "gameCode": "CPUJ",
+      "locale": "ja",
+      "label": "ポケットモンスター プラチナ (일본어)",
+      "fileCount": 339,
+      "messageBanks": 709
+    }
+  ]
+}

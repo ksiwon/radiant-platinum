@@ -14,7 +14,8 @@ const fs = require('fs')
 const path = require('path')
 const { openRom, openText, writeJson, ROOT, LOCALES } = require('./rom')
 
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const ITEM_DATA_SIZE = 34
 
 const POCKETS = [

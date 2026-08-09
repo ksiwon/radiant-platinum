@@ -18,7 +18,8 @@ const { ROOT } = require('./rom')
 const { parseNarc } = require('../spike/gen4text')
 const { loadCharmap, decodeBank, toString } = require('./message')
 
-const DECOMP = path.join(ROOT, 'raw/decomp')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const CHARMAP = path.join(ROOT, 'tools/spike/charmap.txt')
 
 /** 뱅크 이름 → 미국 롬 뱅크 번호. 줄 번호가 곧 번호다 */
@@ -31,7 +32,7 @@ function readBankNames() {
 }
 
 function openNarc(locale) {
-  const file = path.join(ROOT, 'raw/extracted', locale, 'pl_msg.narc')
+  const file = path.join(require('../raw/sources.cjs').requireDir('platinum.extracted'), locale, 'pl_msg.narc')
   if (!fs.existsSync(file)) throw new Error(`메시지 아카이브가 없다: ${file}`)
   return parseNarc(fs.readFileSync(file))
 }

@@ -16,13 +16,17 @@ const { readRom } = require('../spike/nds')
 const { parseNarc } = require('../spike/gen4text')
 const { loadCharmap, decodeBank, toString: codesToString } = require('./message')
 
+const sources = require('../raw/sources.cjs')
+
 const ROOT = path.resolve(__dirname, '../..')
-const DEFAULT_ROM = path.join(ROOT, 'raw/roms/Pokemon Platinum (US).nds')
+// ⚠️ **파일 이름을 적어 두지 않는다.** 여기 `Pokemon Platinum (US).nds`가
+// 박혀 있었다 — 그 이름은 이 기계에서 붙인 것이고, 같은 롬을 다른 이름으로 둔
+// 사람에게는 "롬이 없다"가 된다. 헤더의 게임 코드로 찾는다 (`tools/raw/sources`)
 const LOCALES = ['en', 'ko', 'ja']
 /** textBanks.json은 US 롬 기준이라 로케일 키가 us다 */
 const BANK_KEY = { en: 'us', ko: 'ko', ja: 'ja' }
 
-function openRom(romPath = DEFAULT_ROM) {
+function openRom(romPath = sources.requirePlatinumRom('en')) {
   if (!fs.existsSync(romPath)) throw new Error(`롬이 없다: ${romPath}`)
   const rom = readRom(romPath)
   return {
@@ -68,7 +72,7 @@ function openText() {
   const charmap = loadCharmap(path.join(ROOT, 'tools/spike/charmap.txt'))
   const narcs = {}
   for (const loc of LOCALES) {
-    const p = path.join(ROOT, 'raw/extracted', BANK_KEY[loc], 'pl_msg.narc')
+    const p = path.join(sources.requireDir('platinum.extracted'), BANK_KEY[loc], 'pl_msg.narc')
     if (!fs.existsSync(p)) throw new Error(`메시지 아카이브가 없다: ${p}`)
     narcs[loc] = parseNarc(fs.readFileSync(p))
   }
@@ -99,4 +103,5 @@ function writeJson(relPath, data) {
   return { file, kb, rel: path.relative(ROOT, file).replace(/\\/g, '/') }
 }
 
-module.exports = { openRom, openText, writeJson, ROOT, DEFAULT_ROM, LOCALES }
+// 은 없어졌다 — 롬 자리는 어댑터가 헤더로 찾는다 ()
+module.exports = { openRom, openText, writeJson, ROOT, LOCALES, sources }

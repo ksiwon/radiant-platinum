@@ -16,7 +16,9 @@ const fs = require('fs')
 const path = require('path')
 const { writeJson, ROOT } = require('./rom')
 
-const SDAT = path.join(ROOT, 'raw/extracted/us/pl_sound_data.sdat')
+// 자리는 어댑터가 정한다 (`tools/raw/sources`) — 폴더를 옮겨도 여기가 안 바뀐다
+const SDAT = path.join(
+  require('../raw/sources.cjs').requireDir('platinum.extracted'), 'us/pl_sound_data.sdat')
 const OUT_DIR = path.join(ROOT, 'public/data/sound')
 /** SSEQ 헤더 뒤 악보가 시작하는 자리. 트랙 오프셋의 기준점이다 */
 const SEQ_BASE = 0x1c // `sseq.ts`의 `SEQ_BASE`와 같은 값이다
