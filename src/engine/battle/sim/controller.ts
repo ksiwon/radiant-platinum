@@ -13,11 +13,14 @@ import {
   chooseRandom, encodeAction, legalActions, partySummary, type PartySlot,
 } from '../choice'
 import type { BattleEvent, BattleRequest, FinalMon, SideId } from '../events'
+import type { BagItem, ItemPlan } from '../meta/bagItem'
+import { planItemUse } from '../meta/bagItem'
 import type { BallId, CatchContext } from '../meta/capture'
 import { throwBall } from '../meta/capture'
 import { tryEscape } from '../meta/escape'
 import { healAmount, type TrainerItems } from '../meta/trainerItems'
 import type { Item } from '../../../data/schema'
+import type { Status } from '../../pokemon/instance'
 import { statsOf } from '../../pokemon/instance'
 import { applyEvent, emptyView, type BattleView } from '../view'
 import { parseLines } from './protocol'
@@ -447,11 +450,92 @@ export class BattleController {
     const use = kit.bag.decide(target, team.filter((r) => !r.fainted).length)
     if (!use) return null
 
+    // 무엇을 쓸지는 원작 AI(`TrainerItems.decide`)가 정하고, **먹이는 문은 우리와
+    // 같다**. 그쪽은 언제나 나와 있는 한 마리에게 쓰므로 계획도 그만큼만 채운다
     const item = kit.item(use.item)
-    this.session.applyItem('p2', healAmount(use, target, item), use.kind !== 'hp')
+    const cured: Status[] = use.kind === 'hp' || real.status === 'ok' ? [] : [real.status]
+    this.session.applyPlan('p2', seen.key, {
+      heal: healAmount(use, target, item),
+      revive: false,
+      cure: cured,
+      clear: use.kind === 'hp' ? [] : ['confusion'],
+      mist: false,
+      boosts: [],
+      focusEnergy: false,
+      pp: [],
+    })
     this.session.send(`p2 move ${String(slot)}`)
     this.spent.p2 = true
     return { kind: 'trainerItem', key: seen.key, item: use.item }
+  }
+
+  /**
+   * 우리 가방에서 도구를 쓴다. **우리 턴을 쓴다** — 원작도 도구는 한 수다.
+   *
+   * `key`는 먹일 마리(벤치도 된다), `moveSlot`은 PP 도구가 채울 칸(0부터).
+   * 아무 일도 안 일어날 도구면 **턴을 안 쓰고** 빈 걸음을 돌려준다 — 원작도
+   * "효과가 없을 것 같다"를 띄우고 파티 화면으로 되돌린다. 화면은 그 전에
+   * `planFor`로 미리 잠그므로 여기까지 오는 것은 방어선이다
+   */
+  async useBagItem(item: BagItem, key: string, moveSlot?: number): Promise<BattleStep> {
+    if (this.view.ended) return { events: [], view: this.view }
+    const plan = this.planFor(item.data, key, moveSlot)
+    if (!plan) return { events: [], view: this.view }
+
+    const events: BattleEvent[] = [{ kind: 'bagItem', key, item: item.id }]
+    this.session.applyPlan('p1', key, plan)
+    if (!this.spendTurn()) return { events, view: this.view }
+    const step = await this.advance()
+    return { events: [...events, ...step.events], view: step.view }
+  }
+
+  /**
+   * 이 도구를 이 마리에게 쓰면 무슨 일이 일어나는가. 아무 일도 없으면 null.
+   *
+   * 화면이 대상 칸을 잠그는 데 쓰고 `useBagItem`이 실제로 쓸 때 다시 부른다.
+   * 둘이 **같은 함수**를 봐야 "고를 수 있는데 아무 일도 안 일어나는" 칸이 안 생긴다
+   */
+  planFor(item: Item, key: string, moveSlot?: number): ItemPlan | null {
+    const real = this.session.results('p1').find((r) => r.key === key)
+    if (!real) return null
+    const seen = this.view.active.p1
+    const out = seen?.key === key
+    return planItemUse(item, {
+      hp: real.hp,
+      maxHp: real.maxHp,
+      status: real.status,
+      fainted: real.fainted,
+      active: out,
+      confused: out && (seen?.volatiles.has('confusion') ?? false),
+      attracted: out && (seen?.volatiles.has('attract') ?? false),
+      boosts: out && seen ? seen.boosts : {},
+      focusEnergy: out && (seen?.volatiles.has('focusenergy') ?? false),
+      mist: (this.view.sideConditions.p1.get('mist') ?? 0) > 0,
+      moves: this.session.moveSlots('p1', key),
+    }, moveSlot)
+  }
+
+  /** 우리 쪽 한 마리의 기술 칸과 남은 PP. PP 도구가 어느 칸을 채울지 고르는 데 쓴다 */
+  moveSlotsOf(key: string): { move: number | null; pp: number; maxPp: number }[] {
+    return this.session.moveSlots('p1', key)
+  }
+
+  /**
+   * 삐삐인형·에나비꼬리. 야생전에서 **반드시** 도망친다.
+   *
+   * 도망 판정을 안 거친다 — `subscript_escape_item`이 곧바로
+   * `BATTLE_RESULT_PLAYER_FLED`를 세운다. 트레이너전에서는 애초에 못 쓴다
+   * (`battle_bag.c`가 "지금은 그럴 때가 아니다"로 막는다)
+   */
+  useEscapeItem(item: BagItem): BattleStep {
+    if (this.view.ended) return { events: [], view: this.view }
+    const key = this.view.active.p1?.key ?? ''
+    this.fled = true
+    this.view = { ...this.view, ended: true }
+    return {
+      events: [{ kind: 'bagItem', key, item: item.id }, { kind: 'escape', success: true }],
+      view: this.view,
+    }
   }
 
   destroy(): void {

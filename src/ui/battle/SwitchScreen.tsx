@@ -12,7 +12,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { BattleAction, PartySlot } from '../../engine/battle/choice'
 import { effectivenessOf } from '../../engine/battle/ai/typeChart'
-import { hpColor } from '../../engine/battle/healthbar'
 import { loadSpecies } from '../../data/gameData'
 import type { Move, Species } from '../../data/schema'
 import type { RosterEntry } from '../../state/battleStore'
@@ -22,16 +21,9 @@ import type { MoveSlot } from '../../engine/pokemon/instance'
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import type { BattleNames } from './messages'
+import { PartyCards, type PartyCard } from './PartyCards'
 import { typeColor } from './typeColor'
 import * as css from './switchScreen.css'
-
-const STATUS_LABEL: Record<string, string> = {
-  slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
-}
-const STATUS_COLOR: Record<string, string> = {
-  slp: '#b6a8d8', psn: '#c58ccd', tox: '#a45cb0', brn: '#f0885a',
-  frz: '#7fd0ee', par: '#f0d055',
-}
 
 /** 이름·타입·특성 이름을 푸는 데 필요한 것 */
 export interface SwitchNames extends BattleNames {
@@ -132,56 +124,25 @@ export function SwitchScreen(
   const mon = entry ? species?.(entry.species) : undefined
   const saved = chosen ? saveParty[chosen.index - 1] : undefined
 
+  const cards = party.map((slot, i): PartyCard => {
+    const it = roster[slot.key]
+    return {
+      slot,
+      label: it?.nickname ?? (it ? names?.species[it.species] : null) ?? slot.key,
+      level: it?.level ?? '?',
+      can: actionAt(i) !== null,
+      note: slot.active ? '나와 있다' : null,
+    }
+  })
+
   return (
     <div className={css.sheet}>
-      <div className={css.list}>
-        {party.map((slot, i) => {
-          const it = roster[slot.key]
-          const label = it?.nickname ?? (it ? names?.species[it.species] : null) ?? slot.key
-          const can = actionAt(i) !== null
-          const ratio = slot.maxHp > 0 ? slot.hp / slot.maxHp : 0
-          return (
-            <button
-              key={slot.key}
-              className={[
-                css.card, i === cursor ? css.cardOn : '',
-                can ? '' : css.cardOut, slot.active ? css.cardHere : '',
-              ].filter(Boolean).join(' ')}
-              onClick={() => { setAt(i); const a = actionAt(i); if (a) onPick(a) }}
-              disabled={!can}
-            >
-              <span className={css.cardTop}>
-                <span className={css.name}>{label}</span>
-                {slot.fainted && (
-                  <span className={css.tag} style={{ background: '#8b93a3' }}>기절</span>
-                )}
-                {!slot.fainted && slot.status && (
-                  <span
-                    className={css.tag}
-                    style={{ background: STATUS_COLOR[slot.status] ?? '#8b93a3' }}
-                  >
-                    {STATUS_LABEL[slot.status] ?? slot.status}
-                  </span>
-                )}
-                <span className={css.level}>Lv.{it?.level ?? '?'}</span>
-              </span>
-              <span className={css.bar}>
-                <span
-                  className={css.fill}
-                  style={{
-                    width: `${String(Math.round(ratio * 100))}%`,
-                    background: css.fillColor[hpColor(slot.hp, slot.maxHp)],
-                  }}
-                />
-              </span>
-              <span className={css.numbers}>
-                <span>{slot.hp} / {slot.maxHp}</span>
-                {slot.active && <span style={{ opacity: 0.75 }}>· 나와 있다</span>}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+      <PartyCards
+        cards={cards}
+        cursor={cursor}
+        onHover={setAt}
+        onPick={(i) => { const a = actionAt(i); if (a) onPick(a) }}
+      />
 
       {chosen ? (
         <div className={css.detail}>

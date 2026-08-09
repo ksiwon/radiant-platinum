@@ -26,6 +26,8 @@ export interface TextContext {
   label: (actor: Actor) => string
   /** 상대 트레이너 이름("체육관 관장 동관"). 야생이면 null */
   foeName?: string | null
+  /** 내 이름. 가방 도구를 쓴 주어다 — 원작도 플레이어 이름으로 부른다 */
+  playerName?: string | null
   /**
    * 자리 표시 없는 이름. "상대 자철석"이 아니라 그냥 "자철석"이다.
    *
@@ -213,6 +215,12 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       const trainer = ctx.foeName ?? '상대'
       const item = names.items[e.item] ?? `#${e.item}`
       return `${withTopic(trainer)} ${withObject(item)} 썼다!`
+    }
+
+    case 'bagItem': {
+      // `BattleStrings_Text_UsedTheItem` — "{플레이어}는 {도구}를 썼다!"
+      const item = names.items[e.item] ?? `#${e.item}`
+      return `${withTopic(ctx.playerName ?? '나')} ${withObject(item)} 썼다!`
     }
 
     case 'tie':

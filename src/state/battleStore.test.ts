@@ -14,7 +14,8 @@ import { useSaveStore, createNewSave, dexHas } from './saveStore'
 import { Ball } from '../engine/battle/meta/capture'
 import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instance'
 import { expForLevel } from '../engine/pokemon/exp'
-import { loadMoves, loadSpecies, loadTrainers } from '../data/gameData'
+import { loadItems, loadMoves, loadSpecies, loadTrainers } from '../data/gameData'
+import { quantity } from '../engine/bag/bag'
 
 // gameData는 fetch로 받는다. 테스트에서는 같은 파일을 디스크에서 읽어 준다
 beforeAll(() => {
@@ -226,6 +227,104 @@ describe('도망', () => {
     expect(useBattleStore.getState().outcome).toBe('fled')
     useBattleStore.getState().close()
     expect(useSaveStore.getState().party.length).toBeGreaterThan(0)
+  }, 30_000)
+})
+
+describe('가방 도구', () => {
+  /** 도구마다 사는 주머니가 다르다. 상처약은 「약」, 삐삐인형은 「배틀용」이다 */
+  const put = async (name: string, count: number): Promise<number> => {
+    const bank = await loadItems()
+    const id = bank.all.findIndex((one) => one.name === name)
+    useSaveStore.getState().addItem(bank.get(id).pocket ?? 0, id, count)
+    return id
+  }
+  const left = async (id: number): Promise<number> => {
+    const bank = await loadItems()
+    return quantity(useSaveStore.getState().bag, bank.get(id).pocket ?? 0, id)
+  }
+
+  /**
+   * 한 대 맞은 30레벨짜리 한 마리로 배틀을 연다.
+   *
+   * ⚠️ **시작 파트너(5레벨)로는 못 한다.** 20레벨 찌르꼬 한 방에 쓰러져서
+   * "깎였다"가 아니라 "끝났다"가 된다 — 실제로 이 시험이 처음에 그렇게 샜다
+   */
+  async function hurtBattle(): Promise<string> {
+    const species = await loadSpecies()
+    const moves = await loadMoves()
+    const sp = species.get(387)
+    const mine = fillPp(
+      createWild({ species: sp, level: 30, rng: () => 0.5, otId: 1, otSecretId: 2 }),
+      (id) => moves.byId.get(id)?.pp ?? 5,
+    )
+    mine.hp = statsOf(mine, sp).hp
+    useSaveStore.setState({ party: [mine] })
+
+    await useBattleStore.getState().startWild({ species: STARLY, level: 20 })
+    for (let i = 0; i < 12; i++) {
+      const mon = useBattleStore.getState().truth?.active.p1
+      if (mon && mon.hp > 0 && mon.hp < mon.maxHp) return mon.key
+      const move = useBattleStore.getState().actions.find((a) => a.type === 'move')
+      if (!move) break
+      await useBattleStore.getState().choose(move)
+    }
+    throw new Error('열두 턴을 둬도 성하게 안 깎였다')
+  }
+
+  it('상처약을 쓰면 체력이 차고 가방에서 한 개가 빠진다', async () => {
+    const key = await hurtBattle()
+    const potion = await put('potion', 3)
+    const before = useBattleStore.getState().truth!.active.p1!.hp
+    await useBattleStore.getState().useItem(potion, key)
+
+    // 도구를 쓰고 나면 상대가 반격하므로 지금 체력이 아니라 **회복 사건**으로 잰다
+    const healed = useBattleStore.getState().events.find(
+      (e) => e.kind === 'heal' && e.actor.side === 'p1')
+    expect(healed, '회복 사건이 안 왔다').toBeDefined()
+    if (healed?.kind === 'heal') expect(healed.condition.hp).toBeGreaterThan(before)
+    expect(await left(potion), '개수가 안 줄었다').toBe(2)
+    // "빛나는 상처약을 썼다!"가 줄기에 남아야 화면이 그 줄을 찍는다
+    expect(useBattleStore.getState().events.some(
+      (e) => e.kind === 'bagItem' && e.item === potion)).toBe(true)
+  }, 30_000)
+
+  it('아무 일도 안 일어날 도구는 개수도 안 줄고 턴도 안 쓴다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const potion = await put('potion', 1)
+    const key = useBattleStore.getState().truth!.active.p1!.key
+    const turn = useBattleStore.getState().truth!.turn
+
+    // 만피인 애에게 상처약. 원작도 "효과가 없을 것 같다"를 띄우고 되돌린다
+    expect(useBattleStore.getState().plan(potion, key)).toBeNull()
+    await useBattleStore.getState().useItem(potion, key)
+    expect(await left(potion)).toBe(1)
+    expect(useBattleStore.getState().truth!.turn).toBe(turn)
+  }, 30_000)
+
+  it('힘의가루를 먹이면 친밀도가 깎인다 — 배틀 결과에는 안 실려 오는 값이다', async () => {
+    const key = await hurtBattle()
+    const powder = await put('energypowder', 1)
+    const before = useSaveStore.getState().party[0]!.friendship
+    await useBattleStore.getState().useItem(powder, key)
+    expect(useSaveStore.getState().party[0]!.friendship, '친밀도가 그대로다')
+      .toBeLessThan(before)
+  }, 30_000)
+
+  it('삐삐인형은 야생에서 반드시 도망치고 트레이너에게는 안 통한다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 30 })
+    const doll = await put('poke_doll', 2)
+    const key = useBattleStore.getState().truth!.active.p1!.key
+    await useBattleStore.getState().useItem(doll, key)
+    expect(useBattleStore.getState().outcome).toBe('fled')
+    expect(await left(doll)).toBe(1)
+    useBattleStore.getState().close()
+
+    // 트레이너전에서는 `battle_bag.c`가 "지금은 그럴 때가 아니다"로 막는다
+    await useBattleStore.getState().startTrainer(1)
+    const mine = useBattleStore.getState().truth!.active.p1!.key
+    await useBattleStore.getState().useItem(doll, mine)
+    expect(useBattleStore.getState().outcome).toBeNull()
+    expect(await left(doll), '트레이너전인데 줄었다').toBe(1)
   }, 30_000)
 })
 

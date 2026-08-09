@@ -8,6 +8,7 @@
 import { BattleStreams, Teams } from '@pkmn/sim'
 import type { Species } from '../../../data/schema'
 import type { BattleRequest, FinalMon, SideId } from '../events'
+import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simMove, simSpecies } from './bridge'
@@ -278,20 +279,92 @@ export class BattleSession {
   }
 
   /**
-   * 트레이너가 도구를 먹인다. 나와 있는 한 마리에게만.
+   * 도구 하나를 개체에 먹인다. 우리 가방도 트레이너의 것도 여기로 온다.
    *
-   * sim은 트레이너전의 도구를 모른다 — 대전 규칙 밖의 일이라 없는 게 맞다.
+   * sim은 배틀 중의 가방 도구를 모른다 — 대전 규칙 밖의 일이라 없는 게 맞다.
    * 그래서 개체를 직접 고치고 **프로토콜 줄만 sim이 내게 한다**(`battle.add`).
-   * 그래야 화면·연출·배틀 뒤 세이브가 전부 같은 한 줄기를 본다
+   * 그래야 화면·연출·배틀 뒤 세이브가 전부 같은 한 줄기를 본다.
+   *
+   * ⚠️ **나와 있는 애와 벤치가 다르다.** 프로토콜 줄은 나와 있는 한 마리에게만
+   * 낸다 — 뷰는 자리(`p1`·`p2`)로 접기 때문에(`view.ts`) 벤치의 `-heal`을 흘리면
+   * **엉뚱한 마리의 게이지가 움직인다.** 원본도 같은 자리에서 갈린다:
+   * 배틀 개체 사본은 `selectedSlot == partySlot`일 때만 같이 고친다
+   * (`battle_system.c`의 `BattleSystem_UseBagItem`)
    */
-  applyItem(side: SideId, heal: number, cure: boolean): void {
+  applyPlan(side: SideId, key: string, plan: ItemPlan): void {
     const battle = this.raw.battle
-    const mon = battle?.sides[side === 'p1' ? 0 : 1]?.active[0]
-    if (!battle || !mon || !mon.hp) return
-    if (heal > 0 && mon.heal(heal) !== false) battle.add('-heal', mon, mon.getHealth)
-    if (!cure) return
-    if (mon.status) mon.cureStatus()
-    mon.removeVolatile('confusion')
+    const s = battle?.sides[side === 'p1' ? 0 : 1]
+    const mon = s?.pokemon.find((p) => p.name === key)
+    if (!battle || !s || !mon) return
+    const out = mon.isActive
+
+    // 되살리기. sim에는 없다 — 대전에 없는 일이라 당연하다. 그래서 `faintMessages`가
+    // 쓰러뜨릴 때 손댄 칸을 그대로 되돌린다. **`pokemonLeft`를 빼먹으면** 남은
+    // 마리를 한 마리 적게 세서 다 살아 있는데도 배틀이 끝난다.
+    //
+    // 체력은 여기서 안 세운다. 아래 `heal`이 0에서부터 채워야 기력의조각이
+    // 정확히 절반이 된다 — 1로 올려 두면 절반+1이 된다
+    if (plan.revive && !mon.hp) {
+      mon.fainted = false
+      mon.faintQueued = false
+      mon.status = ''
+      s.pokemonLeft++
+      if (s.totalFainted > 0) s.totalFainted--
+    }
+    // ⚠️ `heal()`은 **체력 0인 개체를 거절한다.** 방금 되살린 자리가 그렇다.
+    // 그때와 벤치는 칸을 직접 채운다 — 프로토콜 줄도 그 둘에는 안 낸다
+    if (plan.heal > 0) {
+      const told = out && !plan.revive && mon.heal(plan.heal) !== false
+      if (told) battle.add('-heal', mon, mon.getHealth)
+      else mon.hp = Math.min(mon.maxhp, mon.hp + plan.heal)
+    }
+
+    if (plan.cure.length > 0 && mon.status) {
+      if (out) mon.cureStatus()
+      else mon.status = ''
+    }
+    for (const v of plan.clear) {
+      if (out) mon.removeVolatile(v)
+    }
+
+    // 흰안개는 개체가 아니라 진영에 걸린다. 대상이 벤치여도 걸리는 것이 원본이다
+    if (plan.mist) s.addSideCondition('mist')
+
+    // ⚠️ **`battle.boost`를 안 쓴다.** 원본은 랭크 칸을 직접 +1 한다
+    // (`Battler_AddVal(..., BATTLEMON_ATTACK_STAGE, 1)`) — 단순·클리어보디 같은
+    // 특성을 아예 안 거친다. sim의 `boost`는 그 사건들을 다 돌린다
+    for (const stat of plan.boosts) {
+      if (!out) continue
+      const delta = mon.boostBy({ [stat]: 1 })
+      if (delta) battle.add('-boost', mon, stat, delta)
+    }
+    // 크리티컬커터는 기합의띠와 **같은 칸**을 세운다 (`VOLATILE_CONDITION_FOCUS_ENERGY`)
+    if (plan.focusEnergy && out) mon.addVolatile('focusenergy')
+
+    for (const { slot, amount } of plan.pp) {
+      const target = mon.moveSlots[slot]
+      if (target) target.pp = Math.min(target.maxpp, target.pp + amount)
+    }
+  }
+
+  /**
+   * 우리 쪽 한 마리의 기술 칸. 남은 PP와 최대 PP를 **칸 순서 그대로** 준다.
+   *
+   * `results()`로는 못 쓴다 — 거기는 기술 번호로 중복을 걷어내므로 칸 번호가
+   * 어긋나고 최대치도 없다. PP 도구는 "몇 번째 칸"을 정확히 짚어야 한다.
+   *
+   * ⚠️ **맨 뒤의 빈 턴 칸은 뺀다** (`IDLE_MOVE`). 우리가 몰래 붙인 자리라
+   * 화면에 다섯 번째 기술로 뜨면 안 된다 — `idleSlotOf`와 같은 규칙이다
+   */
+  moveSlots(side: SideId, key: string): { move: number | null; pp: number; maxPp: number }[] {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.pokemon.find((p) => p.name === key)
+    if (!mon) return []
+    const slots = mon.moveSlots
+    const last = slots.length - 1
+    const hidden = slots.length > 1 && slots[last]?.id === IDLE_MOVE_ID ? last : -1
+    return slots
+      .filter((_, i) => i !== hidden)
+      .map((s) => ({ move: romMove(s.id), pp: s.pp, maxPp: s.maxpp }))
   }
 
   private write(line: string): void {

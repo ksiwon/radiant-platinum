@@ -462,3 +462,154 @@ describe('화면이 정본을 따라잡는다', () => {
     controller.destroy()
   }, 60_000)
 })
+
+describe('우리 가방에서 도구를 쓴다', () => {
+  const POTION = itemList.findIndex((i) => i.name === 'potion')
+  const REVIVE = itemList.findIndex((i) => i.name === 'revive')
+  const X_ATTACK = itemList.findIndex((i) => i.name === 'x_attack')
+  const bag = (id: number) => ({ id, data: itemTable.get(id) })
+
+  /** 우리 쪽 누군가가 깎일 때까지 굴린다. 상처약을 쓰려면 깎여 있어야 한다 */
+  async function hurt(seed: number, team: number[]) {
+    const r = rng(seed)
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: team.map((id, i) => spawn(id, 30, seed * 10 + i, `p1-${i}`)) },
+      foe: { name: '상대', team: [spawn(LUXRAY, 40, seed * 10 + 90, 'p2-0')] },
+      seed: [seed & 0xffff, 2, 3, 4],
+      random: r,
+    })
+    for (let i = 0; i < 30; i++) {
+      const mine = controller.results('p1')
+      if (mine.some((one) => !one.fainted && one.hp < one.maxHp)) return controller
+      const options = controller.actions
+      if (!options.length) break
+      await controller.choose(options[0]!)
+    }
+    throw new Error('서른 턴을 둬도 우리 쪽이 안 깎였다')
+  }
+
+  it('상처약을 쓰면 나와 있는 마리의 체력이 실제로 찬다', async () => {
+    const controller = await hurt(7, [TURTWIG])
+    const before = controller.results('p1')[0]!
+    const step = await controller.useBagItem(bag(POTION), 'p1-0')
+
+    expect(step.events.some((e) => e.kind === 'bagItem' && e.item === POTION),
+      '도구를 썼다는 사건이 없다').toBe(true)
+    // 사건만 뜨고 숫자가 그대로면 아무 일도 안 한 것이다
+    const after = controller.results('p1').find((one) => one.key === 'p1-0')!
+    const want = Math.min(before.maxHp, before.hp + (itemTable.get(POTION).param?.hpRestored ?? 0))
+    // 도구를 쓴 뒤 상대가 반격하므로 그만큼 다시 깎일 수 있다. 회복 사건으로 잰다
+    const healed = step.events.find((e) => e.kind === 'heal' && e.actor.side === 'p1')
+    expect(healed, '회복 사건이 안 왔다').toBeDefined()
+    if (healed?.kind === 'heal') expect(healed.condition.hp).toBe(want)
+    expect(after.hp).toBeGreaterThan(0)
+    controller.destroy()
+  }, 60_000)
+
+  it('도구를 쓴 턴에는 기술이 안 나간다 — 도구가 그 턴을 쓴다', async () => {
+    const controller = await hurt(11, [TURTWIG])
+    const step = await controller.useBagItem(bag(POTION), 'p1-0')
+    expect(step.events.some((e) => e.kind === 'move' && e.actor.side === 'p1'),
+      '도구를 쓰고도 우리가 기술을 썼다').toBe(false)
+    // 빈 턴 칸이 로그에 새어 나오면 "모부기의 물장구!"가 뜬다
+    expect(step.events.some((e) => e.kind === 'move' && e.move === SPLASH)).toBe(false)
+    // 상대는 반격한다. 도구가 공짜면 원작과 다른 게임이 된다
+    expect(step.events.some((e) => e.kind === 'move' && e.actor.side === 'p2')).toBe(true)
+    controller.destroy()
+  }, 60_000)
+
+  it('벤치에 있는 마리도 먹일 수 있다 — 그런데 화면의 게이지는 안 움직인다', async () => {
+    // 벤치의 `-heal`을 프로토콜로 흘리면 뷰가 **자리로** 접기 때문에 나와 있는
+    // 마리의 게이지가 움직인다. 원본도 배틀 개체 사본은 안 건드린다
+    // (`selectedSlot == partySlot`일 때만 같이 고친다)
+    const controller = await hurt(13, [TURTWIG, BLISSEY])
+    // 깎인 애를 벤치로 보낸다. 해피너스는 두꺼워서 그동안 안 쓰러진다
+    let bench: string | undefined
+    for (let i = 0; i < 10; i++) {
+      const here = controller.state.active.p1?.key
+      bench = controller.results('p1').find(
+        (one) => one.key !== here && !one.fainted && one.hp < one.maxHp)?.key
+      if (bench !== undefined) break
+      const swap = controller.actions.find((a) => a.type === 'switch')
+      if (!swap) break
+      await controller.choose(swap)
+    }
+    expect(bench, '벤치에 깎인 마리가 안 생겼다').toBeDefined()
+
+    const before = controller.results('p1').find((one) => one.key === bench)!
+    const step = await controller.useBagItem(bag(POTION), bench!)
+    const after = controller.results('p1').find((one) => one.key === bench)!
+    expect(after.hp, '벤치의 체력이 안 찼다').toBeGreaterThan(before.hp)
+    expect(step.events.some((e) => e.kind === 'heal' && e.actor.side === 'p1'),
+      '벤치를 먹였는데 화면 게이지가 움직였다').toBe(false)
+    controller.destroy()
+  }, 60_000)
+
+  it('기력의조각을 쓰면 남은 마리를 다시 센다 — 안 그러면 그 자리에서 진다', async () => {
+    // ⚠️ **`side.pokemonLeft`가 이 시험의 전부다.** sim은 쓰러질 때 그 칸을 하나
+    // 줄이고, 0이 되면 그쪽이 진 것으로 본다. 되살리면서 안 되돌리면 **되살린
+    // 마리가 멀쩡히 서 있는데도** 다음 한 마리가 쓰러지는 순간 배틀이 끝난다
+    const { controller } = await BattleController.start({
+      player: {
+        name: '빛나',
+        team: [spawn(STARLY, 5, 210, 'p1-0'), spawn(RATTATA, 5, 211, 'p1-1')],
+      },
+      foe: { name: '상대', team: [spawn(ARCEUS, 60, 212, 'p2-0')] },
+      seed: [9, 9, 9, 9],
+      random: rng(21),
+    })
+    // 찌르꼬가 먼저 쓰러진다. 쓰러진 직후는 강제 교체라 원작도 가방을 안 열어 준다
+    for (let i = 0; i < 6 && !controller.mustSwitch; i++) {
+      const options = controller.actions
+      if (!options.length) break
+      await controller.choose(options[0]!)
+    }
+    expect(controller.results('p1').find((one) => one.key === 'p1-0')?.fainted,
+      '찌르꼬가 안 쓰러졌다').toBe(true)
+    await controller.choose(controller.actions.find(
+      (a) => a.type === 'switch' && a.key === 'p1-1')!)
+    expect(controller.ended).toBe(false)
+
+    // 되살린다. 절반까지 찬다 — 254는 개수가 아니라 "절반"이라는 표지다
+    await controller.useBagItem(bag(REVIVE), 'p1-0')
+    const back = controller.results('p1').find((one) => one.key === 'p1-0')!
+    expect(back.fainted, '되살아나지 않았다').toBe(false)
+    expect(back.hp).toBe(Math.max(1, Math.floor(back.maxHp / 2)))
+
+    // 도구를 쓴 턴에 아르세우스가 코리를 눕힌다. 그래도 배틀은 안 끝나야 한다
+    expect(controller.results('p1').find((one) => one.key === 'p1-1')?.fainted,
+      '코리가 안 쓰러졌다 — 이 판으로는 검증이 안 된다').toBe(true)
+    expect(controller.ended, '되살렸는데 그 자리에서 졌다').toBe(false)
+    expect(controller.actions.some((a) => a.type === 'switch' && a.key === 'p1-0'),
+      '되살렸는데 내보낼 수가 없다').toBe(true)
+    controller.destroy()
+  }, 60_000)
+
+  it('플러스파워는 나와 있는 마리에게만 걸리고 랭크 사건이 뜬다', async () => {
+    const controller = await hurt(17, [TURTWIG, STARLY])
+    const step = await controller.useBagItem(bag(X_ATTACK), 'p1-0')
+    const boosted = step.events.find((e) => e.kind === 'boost' && e.actor.side === 'p1')
+    expect(boosted, '랭크 사건이 안 왔다').toBeDefined()
+    if (boosted?.kind === 'boost') expect(boosted).toMatchObject({ stat: 'atk', amount: 1 })
+    // 벤치에는 랭크 칸이 없다 — 계획 자체가 안 선다
+    expect(controller.planFor(itemTable.get(X_ATTACK), 'p1-1')).toBeNull()
+    controller.destroy()
+  }, 60_000)
+
+  it('아무 일도 안 일어날 도구는 턴을 안 쓴다', async () => {
+    const r = rng(23)
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [spawn(TURTWIG, 30, 230, 'p1-0')] },
+      foe: { name: '상대', team: [spawn(RATTATA, 5, 231, 'p2-0')] },
+      seed: [3, 3, 3, 3],
+      random: r,
+    })
+    // 멀쩡한 애에게 상처약. 원작도 "효과가 없을 것 같다"를 띄우고 되돌린다
+    expect(controller.planFor(itemTable.get(POTION), 'p1-0')).toBeNull()
+    const turn = controller.state.turn
+    const step = await controller.useBagItem(bag(POTION), 'p1-0')
+    expect(step.events).toHaveLength(0)
+    expect(controller.state.turn, '턴이 지나가 버렸다').toBe(turn)
+    controller.destroy()
+  }, 60_000)
+})

@@ -213,6 +213,15 @@ export type BattleEvent =
   | { kind: 'shift'; key: string }
   /** 트레이너가 도구를 썼다. `item`은 도구 번호, `key`는 먹인 마리 */
   | { kind: 'trainerItem'; key: string; item: number }
+  /**
+   * 우리가 가방에서 도구를 썼다.
+   *
+   * ⚠️ **원작 배틀 로그에는 이 줄이 없다** — `subscript_battle_item`이 통째로
+   * 비어 있다. DS는 아래 화면(가방·파티)에서 도구 이름과 회복 애니메이션을
+   * 보여 주고 위 화면은 가만히 있어서다. 우리는 화면이 하나라 그 자리에 원작이
+   * 다른 데서 쓰는 문장을 놓는다 (`BattleStrings_Text_UsedTheItem`)
+   */
+  | { kind: 'bagItem'; key: string; item: number }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {

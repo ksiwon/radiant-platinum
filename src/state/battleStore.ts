@@ -7,10 +7,12 @@
 import { create } from 'zustand'
 import {
   loadItems, loadMoves, loadSpecies, loadTrainerClasses, loadTrainerNames, loadTrainers,
-  type SpeciesTable,
+  type ItemTable, type SpeciesTable,
 } from '../data/gameData'
-import type { Species } from '../data/schema'
+import type { Item, Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
+import type { ItemPlan } from '../engine/battle/meta/bagItem'
+import { friendshipGain, isEscapeItem } from '../engine/battle/meta/bagItem'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
@@ -110,6 +112,24 @@ interface BattleState {
   choose: (action: BattleAction) => Promise<void>
   /** 볼을 던진다. 우리 턴을 쓴다 — 실패하면 야생이 반격한다 */
   throwBall: (ball?: BallId) => Promise<void>
+  /**
+   * 가방 도구를 쓴다. **우리 턴을 쓴다.**
+   *
+   * `key`는 먹일 마리(벤치도 된다), `moveSlot`은 PP 도구가 채울 칸(0부터).
+   * 아무 일도 안 일어날 도구면 개수도 안 깎고 턴도 안 쓴다
+   */
+  useItem: (item: number, key: string, moveSlot?: number) => Promise<void>
+  /**
+   * 그 도구를 그 마리에게 쓰면 무슨 일이 일어나는가. 아무 일도 안 일어나면 null.
+   *
+   * 화면이 대상 칸을 잠그고 미리보기를 띄우는 데 쓴다. **`useItem`과 같은 함수를
+   * 본다** — 안 그러면 "고를 수는 있는데 눌러도 아무 일도 없는" 칸이 생긴다.
+   *
+   * 도구표를 아직 못 받았으면 null이다. 화면은 그동안 다 잠긴 것으로 그린다
+   */
+  plan: (item: number, key: string, moveSlot?: number) => ItemPlan | null
+  /** 그 마리의 기술 칸과 남은 PP. PP 도구가 어느 칸을 채울지 고르는 데 쓴다 */
+  moveSlotsOf: (key: string) => { move: number | null; pp: number; maxPp: number }[]
   /** 도망친다. 실패하면 마찬가지로 턴을 버린 것이다 */
   run: () => Promise<void>
   /** 재생기가 박자 하나분을 화면에 접는다. 이것 말고는 `view`를 건드리는 곳이 없다 */
@@ -132,6 +152,11 @@ let current: BattleController | null = null
 let participants = new Set<string>()
 /** 종족 표. 보상 계산이 매번 다시 받지 않도록 들고 있는다 */
 let speciesTable: { get(id: number): Species } | null = null
+/**
+ * 도구 표. **화면이 동기로 물어보기 때문에** 들고 있어야 한다 —
+ * "이 상처약을 이 마리에게 쓰면 어떻게 되나"를 그릴 때마다 기다릴 수는 없다
+ */
+let itemTable: ItemTable | null = null
 /** 기술 번호 → 최대 PP. 레벨업으로 배운 기술의 PP를 채우는 데 쓴다 */
 let ppOf: (move: number) => number = () => 5
 
@@ -257,6 +282,36 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }))
   },
 
+  useItem: async (id, key, moveSlot) => {
+    const controller = current
+    if (!controller || get().phase !== 'running') return
+    const bank = await loadItems()
+    const data = bank.get(id)
+    const item = { id, data }
+
+    // 삐삐인형·에나비꼬리. 야생에서만 되고 판정 없이 도망친다
+    if (isEscapeItem(data)) {
+      if (get().kind !== 'wild') return
+      spendFromBag(bank, id)
+      await advance(set, get, () => Promise.resolve(controller.useEscapeItem(item)))
+      return
+    }
+
+    // 아무 일도 안 일어날 도구는 개수도 안 깎는다. 화면이 미리 잠그지만
+    // 규칙은 화면이 아니라 여기가 갖고 있어야 한다
+    if (!controller.planFor(data, key, moveSlot)) return
+    spendFromBag(bank, id)
+    grantFriendship(data, key)
+    await advance(set, get, (c) => c.useBagItem(item, key, moveSlot))
+  },
+
+  plan: (id, key, moveSlot) => {
+    if (!current || !itemTable) return null
+    return current.planFor(itemTable.get(id), key, moveSlot)
+  },
+
+  moveSlotsOf: (key) => current?.moveSlotsOf(key) ?? [],
+
   run: async () => {
     // 트레이너전은 도망칠 수 없다
     if (get().kind !== 'wild') return
@@ -366,6 +421,31 @@ async function advance(
   })
 }
 
+/** 쓴 도구를 가방에서 한 개 뺀다. 주머니는 도구 자료가 알고 있다 */
+function spendFromBag(bank: ItemTable, id: number): void {
+  useSaveStore.getState().removeItem(bank.get(id).pocket ?? 0, id, 1)
+}
+
+/**
+ * 도구를 먹은 마리의 친밀도를 움직인다. 힘의가루가 깎고 배틀용이 조금 올린다.
+ *
+ * **세이브를 바로 고친다.** 배틀 결과(`applyResults`)는 체력·상태이상·PP만
+ * 되돌리고 친밀도는 안 실어 오기 때문이다 — 여기서 안 주면 영영 안 준다.
+ *
+ * 구간이 지금 친밀도로 갈리므로 세이브 값을 보고 정해야 한다 (`friendshipGain`)
+ */
+function grantFriendship(item: Item, key: string): void {
+  const party = useSaveStore.getState().party
+  const index = party.findIndex((_, i) => partyKey(i) === key)
+  const mon = party[index]
+  if (!mon) return
+  const delta = friendshipGain(item, mon.friendship)
+  if (delta === 0) return
+  const next = [...party]
+  next[index] = { ...mon, friendship: Math.max(0, Math.min(255, mon.friendship + delta)) }
+  useSaveStore.setState({ party: next })
+}
+
 /** 나온 적이 있어야 경험치를 나눠 가진다 */
 function trackParticipants(events: readonly BattleEvent[]): void {
   for (const e of events) {
@@ -457,13 +537,15 @@ async function open(
   })
 
   try {
-    const [{ BattleController }, species, moves] = await Promise.all([
+    const [{ BattleController }, species, moves, bank] = await Promise.all([
       import('../engine/battle/sim/controller'),
       loadSpecies(),
       loadMoves(),
+      loadItems(),
     ])
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
     speciesTable = species
+    itemTable = bank
     ppOf = pp
     participants = new Set()
 

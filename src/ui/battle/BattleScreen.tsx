@@ -87,6 +87,8 @@ export function BattleScreen() {
   const phase = useBattleStore((s) => s.phase)
   // 이미 잡아 본 종이면 상대 판에 공 표시가 뜬다 (원작 `HealthBox_DrawCaughtIcon`)
   const caughtDex = useSaveStore((s) => s.pokedex.caught)
+  // 가방 도구를 쓴 주어. 원작도 플레이어 이름으로 부른다
+  const playerName = useSaveStore((s) => s.trainer.name)
   const kind = useBattleStore((s) => s.kind)
   const foeName = useBattleStore((s) => s.foeName)
   const view = useBattleStore((s) => s.view)
@@ -97,6 +99,8 @@ export function BattleScreen() {
   const outcome = useBattleStore((s) => s.outcome)
   const choose = useBattleStore((s) => s.choose)
   const throwBall = useBattleStore((s) => s.throwBall)
+  // 이름을 `useItem`으로 받으면 eslint가 훅으로 읽는다 (`rules-of-hooks`)
+  const spendItem = useBattleStore((s) => s.useItem)
   const run = useBattleStore((s) => s.run)
   const close = useBattleStore((s) => s.close)
   const playEvents = useBattleStore((s) => s.playEvents)
@@ -140,7 +144,9 @@ export function BattleScreen() {
 
   const beats = useMemo(() => {
     if (!names) return []
-    const out = buildBeats(events, (e) => battleText(e, { names, label, foeName, bare }))
+    const out = buildBeats(
+      events, (e) => battleText(e, { names, label, foeName, bare, playerName }),
+    )
     // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다
     if (kind === 'trainer' && foeName) {
       out.unshift({ text: `${withSubject(foeName)} 승부를 걸어왔다!`, events: [], hold: 30 })
@@ -151,7 +157,7 @@ export function BattleScreen() {
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
     if (end !== null) out.push({ text: end, events: [], hold: 30 })
     return out
-  }, [events, names, label, bare, outcome, kind, foeName])
+  }, [events, names, label, bare, outcome, kind, foeName, playerName])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
   const script = useBattlePlayback(beats, playEvents)
@@ -186,6 +192,20 @@ export function BattleScreen() {
           names={names && extras ? { ...names, ...extras } : null}
           onPick={choose}
           onBack={forced ? null : () => { setPage('root') }}
+        />
+      )}
+      {/*
+        가방도 **화면 전체**를 쓴다. 명령 메뉴 옆의 좁은 칸에 도구를 쌓으면
+        회복약을 열 종류 들고 다닐 때 아무것도 안 보이고, 무엇보다 도구는
+        대부분 "누구에게" 를 물어야 한다 — 그 파티 화면이 교체와 같은 카드다
+      */}
+      {!reading && shiftAsk === null && phase !== 'over'
+        && !forced && page === 'bag' && actions.length > 0 && (
+        <BattleBag
+          wild={kind === 'wild'} party={party} roster={roster} names={names}
+          onThrow={(ball) => void throwBall(ball)}
+          onUse={(item, key, slot) => void spendItem(item, key, slot)}
+          onBack={() => { setPage('root') }}
         />
       )}
       <div className={css.field}>
@@ -236,19 +256,13 @@ export function BattleScreen() {
               />
             ) : actions.length === 0 ? (
               <div className={css.waiting}>…</div>
-            ) : forced || page === 'party' ? (
-              // 교체는 **화면 전체**를 쓴다 (`SwitchScreen`). 여기 칸에는 아무것도
-              // 안 남긴다 — 같은 화면에 알약과 카드가 같이 뜨면 어디를 보는지 모른다
+            ) : forced || page === 'party' || page === 'bag' ? (
+              // 교체와 가방은 **화면 전체**를 쓴다. 여기 칸에는 아무것도 안 남긴다 —
+              // 같은 화면에 알약과 카드가 같이 뜨면 어디를 보는지 모른다
               null
             ) : page === 'fight' ? (
               <MoveMenu
                 actions={moveActions} names={names} extras={extras} onPick={choose}
-                onBack={() => setPage('root')}
-              />
-            ) : page === 'bag' ? (
-              <BattleBag
-                wild={kind === 'wild'}
-                onThrow={(ball) => void throwBall(ball)}
                 onBack={() => setPage('root')}
               />
             ) : (
@@ -261,11 +275,9 @@ export function BattleScreen() {
               />
             )}
           </div>
-          {/* 가방만 ←→로 갈래를 넘긴다. 안 적으면 볼 말고는 못 찾는다 */}
+          {/* 전면 화면(교체·가방)은 자기 바닥에 직접 적는다 */}
           <div className={css.keyHint}>
-            {reading ? 'Z 넘기기'
-              : page === 'bag' ? '↑↓ 고르기 · ←→ 갈래 · Z 결정 · X 뒤로'
-                : '↑↓ 고르기 · Z 결정 · X 뒤로'}
+            {reading ? 'Z 넘기기' : '↑↓ 고르기 · Z 결정 · X 뒤로'}
           </div>
         </div>
       </div>
