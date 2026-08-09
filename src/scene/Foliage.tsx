@@ -29,10 +29,10 @@ import { useFrame, useThree } from '@react-three/fiber'
 import {
   BufferAttribute, BufferGeometry, Color, DataTexture, Frustum, IcosahedronGeometry,
   InstancedMesh, Matrix4, MeshBasicMaterial, MeshLambertMaterial, MultiplyBlending,
-  OctahedronGeometry, Quaternion, Sphere, Vector3, type Material,
+  OctahedronGeometry, Quaternion, Sphere, Vector3,
 } from 'three'
 import { worldState } from '../state/worldState'
-import { cellX, cellZ, type Cell, type PlateFloor, type TreeSite } from './plates'
+import { cellX, cellZ, type Cell, type TreeSite } from './plates'
 
 /** 잎 덩이의 세로 눌림. 1이면 완전한 공이라 버섯처럼 보인다 */
 const CROWN_SQUASH = 0.8
@@ -214,42 +214,8 @@ export interface FoliageGroup {
   key: string
   leaf: number[]
   trunk: number
-  /**
-   * 원작이 그 나무 밑에 깔아 둔 **바닥 타일**과 그 재질 (`plates.plateFloor`).
-   *
-   * ⚠️ **지형이 아니라 나무가 들고 있어야 한다.** 청크 지오메트리에 그려 넣어
-   * 봤더니, 3인칭 카메라가 5.5타일 안의 나무를 지우는 자리(`HIDE_RADIUS`)에서
-   * **줄기 없는 그루터기**만 격자로 남았다 — 영원의 숲 발밑이 그랬다.
-   * 나무와 같은 인스턴스로 다루면 나무가 사라질 때 같이 사라진다
-   */
-  floor?: { plate: PlateFloor; material: Material } | null
   /** [세울 자리, 청크 원점 x, 청크 원점 z] */
   items: [TreeSite, number, number][]
-}
-
-/** 바닥 타일을 땅에서 이만큼 띄운다 — **원작이 띄워 둔 1도트**다 */
-const PLATE_LIFT = 0.0625
-
-/** 바닥 타일 한 장. 원점이 밑동이고 크기는 행렬이 준다 */
-function plateGeometry(p: PlateFloor): BufferGeometry {
-  const hw = p.w / 2, hd = p.d / 2, y = PLATE_LIFT
-  const geo = new BufferGeometry()
-  // 위를 보게 감는다 — 감는 방향이 뒤집히면 위에서 볼 때 통째로 사라진다
-  geo.setAttribute('position', new BufferAttribute(new Float32Array([
-    -hw, y, -hd, hw, y, hd, hw, y, -hd,
-    -hw, y, -hd, -hw, y, hd, hw, y, hd,
-  ]), 3))
-  geo.setAttribute('uv', new BufferAttribute(new Float32Array([
-    p.u0, p.v0, p.u1, p.v1, p.u1, p.v0,
-    p.u0, p.v0, p.u0, p.v1, p.u1, p.v1,
-  ]), 2))
-  const normal = new Float32Array(18)
-  for (let i = 1; i < 18; i += 3) normal[i] = 1
-  geo.setAttribute('normal', new BufferAttribute(normal, 3))
-  // 재질이 `vertexColors`라 색을 안 주면 백엔드마다 다르게 채운다
-  geo.setAttribute('color', new BufferAttribute(new Float32Array(18).fill(1), 3))
-  geo.computeBoundingSphere()
-  return geo
 }
 
 /**
@@ -708,7 +674,6 @@ function contact(): [BufferGeometry, MeshBasicMaterial] {
 const offset = new Matrix4()
 const scaled = new Matrix4()
 const stem = new Matrix4()
-const tile = new Matrix4()
 const shrink = new Vector3()
 const viewProj = new Matrix4()
 const frustum = new Frustum()
@@ -788,16 +753,6 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
     shade.name = '밑동 그림자'
     shade.frustumCulled = false
     shade.count = 0
-    // 원작이 그 나무 밑에 깔아 둔 바닥 타일. 나무와 같이 뜨고 같이 사라진다
-    const floor = g.floor
-      ? new InstancedMesh(plateGeometry(g.floor.plate), g.floor.material, matrices.length)
-      : null
-    if (floor) {
-      floor.name = '나무 바닥 타일'
-      floor.receiveShadow = true
-      floor.frustumCulled = false
-      floor.count = 0
-    }
     // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
     // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
     const spots = matrices.map((m) => {
@@ -811,7 +766,7 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
       key: g.key,
       near: make(false, false), far: make(true, false),
       stemNear: make(false, true), stemFar: make(true, true),
-      shade, floor, matrices, stems, spots, radius,
+      shade, matrices, stems, spots, radius,
     }
   }), [groups, ground])
 
@@ -851,14 +806,6 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
           g.stemFar.setMatrixAt(f++, stem)
         }
         g.shade.setMatrixAt(s, scaled)
-        // ⚠️ **바닥 타일은 안 돌리고 안 키운다.** 크기는 원작이 타일로 정해
-        // 놓았고(2.0×1.88), 그림은 **위에서 내려다본 것**이라 세계 격자에
-        // 붙어 있어야 한다. 그루마다 아무렇게나 돌리면 그루터기가 줄기 밖으로
-        // 돌아 나간다 — 실제로 그렇게 찍혔다. 자리만 가져온다
-        if (g.floor) {
-          scaled.decompose(place, spin, size)
-          g.floor.setMatrixAt(s, tile.makeTranslation(place.x, place.y, place.z))
-        }
         s++
       }
       g.near.count = n
@@ -866,10 +813,6 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
       g.far.count = f
       g.stemFar.count = f
       g.shade.count = s
-      if (g.floor) {
-        g.floor.count = s
-        g.floor.instanceMatrix.needsUpdate = true
-      }
       g.near.instanceMatrix.needsUpdate = true
       g.stemNear.instanceMatrix.needsUpdate = true
       g.far.instanceMatrix.needsUpdate = true
@@ -885,20 +828,19 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
     for (const g of meshes) {
       g.near.dispose(); g.far.dispose()
       g.stemNear.dispose(); g.stemFar.dispose()
-      g.shade.dispose(); g.floor?.dispose()
+      g.shade.dispose()
     }
   }, [meshes])
 
   return (
     <group>
-      {meshes.map(({ key, near, far, stemNear, stemFar, shade, floor }) => (
+      {meshes.map(({ key, near, far, stemNear, stemFar, shade }) => (
         <group key={key}>
           <primitive object={near} />
           <primitive object={far} />
           <primitive object={stemNear} />
           <primitive object={stemFar} />
           <primitive object={shade} />
-          {floor && <primitive object={floor} />}
         </group>
       ))}
     </group>

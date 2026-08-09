@@ -12,18 +12,18 @@ import {
 } from 'three'
 import {
   canBorrowFloor, cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, isBakedShadow, isFoliage,
-  leaning, LEVEL_SLACK, plateColors, shiftFloors, splitFoliage, treeSites,
+  leaning, LEVEL_SLACK, plateColors, shiftFloors, splitFoliage, treeSites, trunkNudge,
   type FloorSource, type FloorTri, type Split,
 } from './plates'
 import {
-  BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK,
+  BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK, TRUNK_R,
   crownGeometry, trunkGeometry,
   contactGeometry, contactMaterial, contactTexture, merge, nearScale, paint, treeAt,
   treeGeometry,
 } from './Foliage'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import { heightField, heightInChunk, type HeightData } from '../engine/map/height'
-import type { MatrixMeta } from '../engine/map/grid'
+import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
@@ -1017,5 +1017,100 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
     expect(t.borrowed).toBe(51_546)
     // 여기가 이 시험의 전부다
     expect(t.bare).toBe(0)
+  }, 600_000)
+})
+
+/**
+ * **밑동이 걸어 다니는 칸을 밟지 않는가** (DATA.md §2.2).
+ *
+ * 원작 나무는 판 한 장이라 통행 가능한 칸 위에 걸쳐 있어도 그림으로만 보였다.
+ * 그걸 입체로 세우면 길 위에 줄기가 서고 몸이 그 속을 지나간다 — 사용자가
+ * "나무 칸을 튀어나와 도보 가능한 타일을 튀어나온 나무들"이라 한 것이 이것이다.
+ *
+ * 여기서 오버월드 전체를 실제 격자로 훑는다.
+ */
+maybe('밑동이 길을 안 밟는다', () => {
+  const CHUNK = 32
+  const sheets = new Map<number, TexSheet>()
+  function sheetFor(set: number): TexSheet {
+    const hit = sheets.get(set)
+    if (hit) return hit
+    const { decodePng } = createRequire(import.meta.url)('../../tools/spike/png-decode.js') as {
+      decodePng: (f: string) => { width: number; height: number; pixels: Uint8Array }
+    }
+    const png = decodePng(resolve(DATA, `tex/${String(set)}.png`))
+    const info = (read('tex/index.json') as {
+      sets: { items: [string, string, number, number, number, number][] }[]
+    }).sets[set]!
+    const made: TexSheet = {
+      width: png.width,
+      height: png.height,
+      items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
+      pixels: new Uint8ClampedArray(png.pixels.buffer, png.pixels.byteOffset, png.pixels.length),
+    }
+    sheets.set(set, made)
+    return made
+  }
+
+  it('오버월드 26,199그루 중 길을 0.15타일 넘게 밟는 것이 없다', () => {
+    const fmt = read('chunks/index.json') as Fmt
+    const maps = read('maps.json') as { maps: { area: number }[]; areas: { tex: number }[] }
+    const meta = read('matrices/0.json') as MatrixMeta
+    const bin = readFileSync(resolve(DATA, 'matrices/0.bin'))
+    const grid = new MapGrid(meta, new Uint16Array(
+      bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength)))
+    const texOf = (zone: number) => maps.areas[maps.maps[zone]?.area ?? 0]?.tex ?? 0
+    const blocked = (tx: number, tz: number) => grid.isBlocked(tx, tz)
+
+    const meshes = new Map<number, ChunkMesh>()
+    const splits = new Map<string, Split>()
+    const splitOf = (c: { land: number; zone: number }) => {
+      const key = `${String(c.land)}/${String(texOf(c.zone))}`
+      let hit = splits.get(key)
+      if (!hit) {
+        let mesh = meshes.get(c.land)
+        if (!mesh) { mesh = readChunk(c.land, fmt); meshes.set(c.land, mesh) }
+        hit = splitFoliage(mesh, cutoutGroups(mesh, sheetFor(texOf(c.zone))))
+        splits.set(key, hit)
+      }
+      return hit
+    }
+
+    let total = 0, skipped = 0, atRisk = 0, nudged = 0, deep = 0
+    for (const c of meta.chunks) {
+      const ox = c.mx * CHUNK + CHUNK / 2, oz = c.my * CHUNK + CHUNK / 2
+      for (const site of treeSites(splitOf(c))) {
+        total++
+        const tx = site.x + ox, tz = site.z + oz
+        const nudge = trunkNudge(blocked, tx, tz)
+        // 사방이 다 열린 자리는 아예 안 세운다 — 길 한복판이다
+        if (!nudge) { skipped++; continue }
+        const open = ([[-1, -1], [0, -1], [-1, 0], [0, 0]] as const)
+          .filter(([dx, dz]) => !blocked(tx + dx, tz + dz)).length
+        if (open > 0) atRisk++
+        if (nudge.dx !== 0 || nudge.dz !== 0) nudged++
+        // 민 뒤에도 열린 칸을 얼마나 밟는가. 밑동 반지름이 `TRUNK_R`이다
+        let worst = 0
+        for (const [dx, dz] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) {
+          if (blocked(tx + dx, tz + dz)) continue
+          const cx = tx + nudge.dx, cz = tz + nudge.dz
+          const inX = Math.min(cx + TRUNK_R, tx + dx + 1) - Math.max(cx - TRUNK_R, tx + dx)
+          const inZ = Math.min(cz + TRUNK_R, tz + dz + 1) - Math.max(cz - TRUNK_R, tz + dz)
+          if (inX > 0 && inZ > 0) worst = Math.max(worst, Math.min(inX, inZ))
+        }
+        if (worst > 0.15) deep++
+      }
+    }
+    expect(total).toBe(26_199)
+    // 길 한복판이라 안 세우는 것 — 예전부터 이 규칙이었다
+    expect(skipped).toBe(923)
+    // 길가라 그냥 남겨 두던 것 — 밑동이 열린 칸에 0.6타일씩 들어가 있었다
+    expect(atRisk).toBe(869)
+    // 그중 실제로 밀 축이 있는 것. 나머지 셋은 막힌 칸 둘이 **대각으로** 놓여
+    // 어느 축으로도 밀 곳이 없다
+    expect(nudged).toBe(866)
+    // ⚠️ **여기가 이 시험의 전부다.** 밀기 전에는 869그루가 다 0.6타일을 밟았다
+    expect(deep).toBe(3)
+    expect(atRisk - nudged).toBe(deep)
   }, 600_000)
 })

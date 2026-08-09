@@ -360,23 +360,21 @@ export function splitFoliage(
         if (z < z0) z0 = z
         if (z > z1) z1 = z
       }
-      // ⚠️ **평평한 잎 판은 걷어내지 않는다 — 그것이 나무 바닥 타일이다.**
+      // ⚠️ **평평한 잎 판도 같이 걷어낸다.**
       //
-      // 원작 나무 그림 한 장에는 위에서 내려다본 그루터기가 같이 들어 있다
-      // (`tree01`의 오른쪽 위 칸이 나이테까지 그려진 밑동이다). 그 그림을 붙인
-      // 평평한 판이 나무 밑에 깔려 있고, 그것이 그 자리의 바닥이다.
+      // 원작 나무 그림 한 장에는 위에서 내려다본 밑동이 같이 들어 있고
+      // (`tree01`의 오른쪽 위 칸이 초록 타원 위의 그루터기다), 그 그림을 붙인
+      // 평평한 판이 나무 밑에 깔려 있었다. 한동안 그 판을 그루마다 다시
+      // 깔아 줬는데 — **위에서 내려다본 나무를, 입체로 세운 나무 밑에 또
+      // 붙이는 일**이라 세 가지가 어긋났다: ① 타원이 잔디색이라 모랫길
+      // 위에서는 초록 스티커가 됐고, ② 카메라가 가까워 나무가 줄어들면
+      // (`Foliage.nearScale`) 판은 안 줄어서 그린 그루터기가 줄기 밖으로
+      // 삐져나왔고, ③ 진짜 그림자와 접지 그늘 위에 하드한 동그라미가 하나 더
+      // 겹쳤다.
       //
-      // 한동안 이걸 걷어내고 **옆 타일을 베껴** 메웠는데, 베끼기가 물가에서
-      // 웅덩이를, 벼랑 밑에서 벼랑 그림을, 축복시티 가로수 밑에서 횡단보도를,
-      // 떡잎마을 숲에서 **하얀 모래**를 깔았다(실측 상위: `ngrass` 31,887 ·
-      // `puddlep` 8,121 · `nectgr` 7,848 · `criffp` 7,546 · `nhana` 7,294 ·
-      // `sea` 6,820). 원작이 거기 그려 둔 그림이 있는데 옆에서 베낄 이유가 없다.
-      //
-      // 나이테가 보이는 것은 **줄기가 가린다** — 원작이 그린 그루터기가
-      // 1.20타일이고 줄기를 정확히 그 굵기로 세운다 (`Foliage.TRUNK_R`).
-      //
-      // 베끼기는 그대로 남는다. 이 판은 그림이 뚫린 구석이 있어서, 밑에
-      // 아무것도 없으면 그 구석이 하늘이 된다 (`floorPatch`)
+      // 걷어내도 발밑은 안 뚫린다. 잎 칸을 메우는 것은 이 판이 아니라
+      // `floorPatch`이고, 오버월드 잎 칸 110,703개가 **한 칸도 안 남는다**
+      // (`plates.test`가 그 0을 잰다). 판은 그 위에 덧깔려 있었을 뿐이다
       // 삼각형이 걸친 칸을 전부 칠한다. −0.01은 딱 경계에서 끝나는 면이 다음
       // 칸까지 물들이는 것을 막는다 — 판이 정수 좌표에 딱 맞춰 놓여 있다
       for (let tz = Math.floor(z0); tz <= Math.floor(z1 - 0.01); tz++) {
@@ -953,79 +951,40 @@ function soloShadows(
   }
 }
 
-/**
- * 원작이 나무 밑에 깔아 둔 **바닥 타일** 한 장의 규격.
- *
- * 나무 그림 한 장에는 위에서 내려다본 그루터기가 같이 들어 있고(`tree01`의
- * 오른쪽 위 칸이 나이테까지 그려진 밑동이다), 그 그림을 붙인 평평한 판이
- * 나무 밑에 깔려 있다. 그것이 그 자리의 바닥이다.
- *
- * 규격이 하나로 떨어진다 — 실측으로 `tree01` 2,317장 · `tree2_01` 3,760장 ·
- * `tree04_2` 195장 · `tree_sbt01` 89장이 **전부 2.0×1.88타일**이고 그림 칸도
- * 같다. 그래서 그루마다 재지 않고 종류마다 한 벌만 있으면 된다
- */
-export interface PlateFloor {
-  /** 세계 크기 (타일) */
-  w: number
-  d: number
-  /** 그림 칸 */
-  u0: number
-  u1: number
-  v0: number
-  v1: number
-}
+/** 밑동이 서는 모서리에 닿는 네 칸 (dx, dz). 왼위 · 오위 · 왼아래 · 오아래 */
+const CORNER_TILES = [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const
 
 /**
- * 이 잎 서브메시가 쓰는 나무 바닥 타일. 없으면 `null`.
+ * 밑동을 **막힌 칸 쪽으로 반 칸 민다**. 아예 세우면 안 되는 자리면 `null`.
  *
- * ⚠️ **한 그루짜리 판만 쓴다.** 숲 지붕(`conttree_b` 16.0×1.88 ·
- * `conttree2_b` 6.0×1.88 · `bf_tree02` 16×16)은 숲 한 덩어리를 위에서 덮은
- * 한 장이라 그루마다 한 벌씩 붙일 수가 없다
+ * ⚠️ 밑동은 타일 **모서리**에 선다(실측: 자리값이 전부 정수다). 굵기는 원작이
+ * 그린 그루터기 그대로 1.2타일(`Foliage.TRUNK_R` × 2)이라, 모서리에 서면 네
+ * 칸에 각각 0.6타일씩 들어간다. 그중 하나라도 걸어 다니는 칸이면 **길 위에
+ * 줄기가 서고 몸이 그 속을 지나간다** — 사람 반지름이 0.3이라 피할 수가 없다.
+ *
+ * 사방이 다 열린 자리는 예전대로 아예 안 세운다(길 한복판). 남은 것이 길가인데,
+ * "서 있어도 몸이 안 지나간다"며 그대로 뒀던 자리다. 실측으로 오버월드
+ * 26,199그루 중 **869그루**가 그렇다 — 열린 칸이 1개 91 · 2개 644 · 3개 134.
+ *
+ * 미는 방법은 **축마다 막힌 쪽으로 반 칸**이다. 그러면 밑동 한가운데가 모서리가
+ * 아니라 막힌 칸 한가운데로 가고, 열린 칸에 남는 것이 0.6−0.5 = **0.1타일**이
+ * 된다. 남는 것은 막힌 칸 둘이 **대각으로** 놓여 밀 축이 없는 자리뿐이다
  */
-export function plateFloor(
-  mesh: ChunkMesh, group: number, position: Float32Array,
-): PlateFloor | null {
-  const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
-    Float32Array | undefined
-  if (!uv) return null
-  const index = mesh.geometry.getIndex()!.array
-  const [, start, count] = mesh.groups[group] ?? []
-  if (start === undefined || count === undefined) return null
-  for (let t = 0; t + 6 <= count; t += 6) {
-    const vs = [0, 1, 2, 3, 4, 5].map((k) => index[start + t + k]!)
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
-    let z0 = Infinity, z1 = -Infinity
-    let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity
-    for (const i of vs) {
-      const x = position[i * 3]!, y = position[i * 3 + 1]!, z = position[i * 3 + 2]!
-      if (x < x0) x0 = x
-      if (x > x1) x1 = x
-      if (y < y0) y0 = y
-      if (y > y1) y1 = y
-      if (z < z0) z0 = z
-      if (z > z1) z1 = z
-      const tu = uv[i * 2]!, tv = uv[i * 2 + 1]!
-      if (tu < u0) u0 = tu
-      if (tu > u1) u1 = tu
-      if (tv < v0) v0 = tv
-      if (tv > v1) v1 = tv
-    }
-    // 평평하고 한 그루 크기인 사각형 — 그 첫 장이 곧 이 종류의 규격이다
-    if (y1 - y0 > 1e-4) continue
-    if (x1 - x0 > PLATE_SPAN || z1 - z0 > PLATE_SPAN) continue
-    if (!(x1 > x0) || !(z1 > z0)) continue
-    return { w: x1 - x0, d: z1 - z0, u0, u1, v0, v1 }
+export function trunkNudge(
+  blocked: (tx: number, tz: number) => boolean, tx: number, tz: number,
+): { dx: number, dz: number } | null {
+  const open = CORNER_TILES.map(([dx, dz]) => !blocked(tx + dx, tz + dz))
+  const openCount = open.filter(Boolean).length
+  if (openCount === 4) return null
+  if (openCount === 0) return { dx: 0, dz: 0 }
+  const wall = (i: number): number => (open[i] === true ? 0 : 1)
+  const left = wall(0) + wall(2), right = wall(1) + wall(3)
+  const up = wall(0) + wall(1), down = wall(2) + wall(3)
+  return {
+    dx: left === right ? 0 : left > right ? -0.5 : 0.5,
+    dz: up === down ? 0 : up > down ? -0.5 : 0.5,
   }
-  return null
 }
-
-/**
- * 한 그루짜리 바닥 타일의 최대 크기 (타일).
- *
- * 실측으로 한 그루짜리는 전부 2.0×1.88이고 숲 지붕은 6.0·16.0이라, 그 사이
- * 어디서 끊어도 같다
- */
-const PLATE_SPAN = 2.5
 
 export interface TreeSite {
   /** 크기·색을 정하는 잎 칸 */

@@ -7,8 +7,9 @@
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  DoubleSide, MeshBasicMaterial,
-  type BufferAttribute, type BufferGeometry, type Material,
+  ClampToEdgeWrapping, DataTexture, DoubleSide, MeshBasicMaterial, NearestFilter,
+  SRGBColorSpace,
+  type BufferAttribute, type BufferGeometry, type Material, type Texture,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import {
@@ -18,7 +19,7 @@ import {
 import {
   cachedSplit, canBorrowFloor, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites,
   grassColors,
-  plateColors, plateFloor, plateLumps, rockSites, shiftFloors, treeSites, waterColors,
+  plateColors, plateLumps, rockSites, shiftFloors, treeSites, trunkNudge, waterColors,
   type FloorPatch, type FloorSource, type FloorTri, type LumpSet,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
@@ -26,7 +27,7 @@ import { Rocks, plateBands, type RockGroup } from './Rocks'
 import { Flowers, type FlowerField } from './Flowers'
 import { Grass, grassSpots, type GrassField } from './Grass'
 import { Water, waterField, type WaterField } from './Water'
-import { shellPaint, shellPlates } from './shell'
+import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
 import { PropFade } from './PropFade'
 
@@ -209,30 +210,45 @@ function borrowFloors(
 
 /**
  * 소품 판 보관함. 한 소품은 늘 같은 판을 내므로 한 번만 만든다 —
- * 청크를 넘을 때마다 다시 만들면 그 순간 끊긴다
+ * 청크를 넘을 때마다 다시 만들면 그 순간 끊긴다.
+ *
+ * 그림(띠)도 여기 함께 둔다. 재질은 배치마다 새로 만들지만(`PropFade`) 그림은
+ * 모델마다 하나면 된다
  */
-const backCache = new Map<number, BufferGeometry | null>()
-
-function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): BufferGeometry | null {
-  const hit = backCache.get(id)
-  if (hit !== undefined) return hit
-  const made = shellPlates(mesh, shellPaint(mesh, sheet))
-  backCache.set(id, made)
-  return made
+interface Back {
+  geometry: BufferGeometry | null
+  /** 옆벽을 높이별 한 색으로 접은 띠의 그림. 없으면 벽 판이 없다는 뜻이다 */
+  strip: Texture | null
+  /** 띠가 물려받을 재질 명세 (알파·불투명도) */
+  spec: ChunkMesh['materials'][number] | null
 }
 
-/**
- * 이 자리가 **사방이 다 걸어 다닐 수 있는가**.
- *
- * 밑동은 타일 모서리에 선다(실측: 자리값이 전부 정수다). 그래서 한 칸만 보면
- * 안 된다 — 모서리에 닿는 네 칸을 다 봐야 "길 한복판"인지 "길가"인지 갈린다.
- * 길가의 나무는 그대로 둔다. 서 있어도 몸이 안 지나가기 때문이다
- */
-function walkableSpot(grid: MapGrid, x: number, z: number): boolean {
-  for (const [dx, dz] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]] as const) {
-    if (grid.isBlockedAtWorld(x + dx, z + dz)) return false
+const backCache = new Map<number, Back>()
+
+function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
+  const hit = backCache.get(id)
+  if (hit !== undefined) return hit
+  const paint = shellPaint(mesh, sheet)
+  const band = wallStrip(mesh, sheet, wallSource(mesh, paint))
+  let strip: Texture | null = null
+  if (band) {
+    // 폭 1텍셀 × 높이 h. 세로만 늘어나므로 가로 물림은 뜻이 없다
+    strip = new DataTexture(band.pixels, 1, band.h)
+    strip.colorSpace = SRGBColorSpace
+    strip.wrapS = ClampToEdgeWrapping
+    strip.wrapT = ClampToEdgeWrapping
+    strip.magFilter = NearestFilter
+    strip.minFilter = NearestFilter
+    strip.generateMipmaps = false
+    strip.needsUpdate = true
   }
-  return true
+  const made: Back = {
+    geometry: shellPlates(mesh, paint),
+    strip,
+    spec: band ? mesh.materials[band.group] ?? null : null,
+  }
+  backCache.set(id, made)
+  return made
 }
 
 /** 배치가 저 혼자 갖고 있던 재질을 버린다. `MISSING`은 모두가 함께 쓰므로 뺀다 */
@@ -306,12 +322,17 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         })
         const next = pieces.map((p) => {
           const { c, mesh, split, originX, originZ } = p
-          for (const site of treeSites(split)) {
-            // ⚠️ **걸어 다니는 칸에는 밑동을 안 세운다.** 원작 나무는 판 한
-            // 장이라 통행 가능한 칸 위에 걸쳐 있어도 그림으로만 보였다. 그걸
-            // 그대로 입체로 세우면 **길 한복판에 나무가 서고 몸이 그 안을
-            // 지나간다.** 영원의 숲 창 하나에서 1,259그루 중 19그루가 그랬다
-            if (walkableSpot(grid, site.x + originX, site.z + originZ)) continue
+          for (const raw of treeSites(split)) {
+            // ⚠️ **걸어 다니는 칸에는 밑동을 안 세우거나 비켜 세운다.** 원작
+            // 나무는 판 한 장이라 통행 가능한 칸 위에 걸쳐 있어도 그림으로만
+            // 보였다. 그걸 그대로 입체로 세우면 **길 한복판에 나무가 서고 몸이
+            // 그 안을 지나간다** (`trunkNudge`)
+            const nudge = trunkNudge(
+              (tx, tz) => grid.isBlocked(tx, tz), raw.x + originX, raw.z + originZ)
+            if (!nudge) continue
+            const site = nudge.dx === 0 && nudge.dz === 0
+              ? raw
+              : { ...raw, x: raw.x + nudge.dx, z: raw.z + nudge.dz }
             const spec = mesh.materials[site.cell.group]
             const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
             let group = byTexture.get(key)
@@ -321,21 +342,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               const colors = item
                 ? plateColors(sheet, item)
                 : { leaf: [0x4f9e52], trunk: 0x4a3a24 }
-              // 원작이 그 나무 밑에 깔아 둔 바닥 타일. 그림 칸과 크기가
-              // 종류마다 하나로 떨어져서(실측) 한 벌만 만들면 된다
-              const plate = plateFloor(
-                mesh, site.cell.group,
-                (mesh.geometry.getAttribute('position') as BufferAttribute)
-                  .array as Float32Array)
-              group = {
-                key, ...colors, items: [],
-                floor: plate && spec && item
-                  ? {
-                      plate,
-                      material: makeMaterial(spec, sliceTexture(sheet, item, spec.rep), true),
-                    }
-                  : null,
-              }
+              group = { key, ...colors, items: [] }
               byTexture.set(key, group)
             }
             group.items.push([site, originX, originZ])
@@ -443,6 +450,12 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 소품은 **전부** 양면으로 그린다. 간판·그림자처럼 한 장짜리가
             // 98개나 되고, 그것들은 단면으로 두면 뒤에서 사라진다
             got.mesh, got.sheet, own, got.mesh.materials.map(() => true))
+          const back = cachedBack(got.mesh, got.sheet, got.id)
+          // 띠 재질은 소품 재질 배열 **뒤에** 붙는다 (`shell.stripGroup`). 배치마다
+          // 새로 만들되 그림은 모델이 갖고 있는 것을 나눠 쓴다
+          if (back.strip && back.spec) {
+            materials.push(makeMaterial(back.spec, back.strip, true))
+          }
           return [{
             key: `${String(b.model)}/${String(i)}/${String(b.x)}/${String(b.z)}`,
             index: b.model,
@@ -451,7 +464,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             mesh: got.mesh,
             geometry: got.mesh.geometry,
             materials,
-            back: cachedBack(got.mesh, got.sheet, got.id),
+            back: back.geometry,
           }]
         }))
       })
