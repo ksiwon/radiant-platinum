@@ -452,11 +452,16 @@ def export(bundle, out: Path, color_index: int | None = None,
         name = png.name[: -len("_albedo.png")]
         view = buf._view(png.read_bytes())
         images.append({"bufferView": view, "mimeType": "image/png", "name": name})
-        wrap_s, wrap_t = spec.get(name, {}).get("wrap", (10497, 10497))
+        look = spec.get(name, {})
+        wrap_s, wrap_t = look.get("wrap", (10497, 10497))
         want = {"wrapS": wrap_s, "wrapT": wrap_t}
         if want not in samplers:
             samplers.append(want)
         textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
+        # ⚠️ **여기를 `MASK` 하나로 못 박아 두던 자리다.** 그러면 알파가 낮은
+        # 자리가 전부 뚫린다 — 눈이 통째로 사라졌다. 재질이 스스로 적어 둔
+        # 블렌드 상태를 그대로 옮긴다 (`bdsp_bake_albedo`의 `GLTF_ALPHA`)
+        mode = look.get("alpha", "OPAQUE")
         materials.append({
             "name": name,
             "pbrMetallicRoughness": {
@@ -464,9 +469,9 @@ def export(bundle, out: Path, color_index: int | None = None,
                 "metallicFactor": 0.0,
                 "roughnessFactor": 0.85,
             },
-            "alphaMode": "MASK",
-            "alphaCutoff": 0.5,
-            "doubleSided": False,
+            "alphaMode": mode,
+            **({"alphaCutoff": 0.5} if mode == "MASK" else {}),
+            "doubleSided": bool(look.get("double", False)),
         })
         by_name[name] = len(materials) - 1
         png.unlink()

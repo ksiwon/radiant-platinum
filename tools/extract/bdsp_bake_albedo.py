@@ -65,13 +65,91 @@ GLTF_WRAP = {0: 10497, 1: 33071, 2: 33648, 3: 33648}
 def wrap_of(tex) -> tuple[int, int]:
     """텍스처가 스스로 적어 둔 U·V 반복 방식. **읽어야 한다** — 기본값으로
     두면 포켓몬이 좌우로 갈린다 (`bdspGlb` 머리말)."""
+    u, v = raw_wrap(tex)
+    return GLTF_WRAP.get(u, 10497), GLTF_WRAP.get(v, 10497)
+
+
+def raw_wrap(tex) -> tuple[int, int]:
+    """유니티 값 그대로. 오프라인에서 겹칠 때는 glTF 상수가 아니라 이쪽이 필요하다"""
     s = getattr(tex, "m_TextureSettings", None)
     u = getattr(s, "m_WrapU", None)
     v = getattr(s, "m_WrapV", None)
     if u is None or v is None:
         d = tex.object_reader.read_typetree().get("m_TextureSettings", {})
         u, v = d.get("m_WrapU", 0), d.get("m_WrapV", 0)
-    return GLTF_WRAP.get(int(u), 10497), GLTF_WRAP.get(int(v), 10497)
+    return int(u), int(v)
+
+
+# `_BlendMode` → glTF `alphaMode` (`m_Floats`에 재질이 적어 둔다).
+#
+# ⚠️ **여기를 안 읽고 전부 `MASK`로 굽던 자리다.** 그러면 알파가 낮은 자리가
+# 통째로 뚫린다 — 493종 중 143종이 그랬고, 제일 눈에 띈 것이 **눈**이었다.
+#
+#   0 불투명   SrcBlend=One,      DstBlend=Zero            → 알파는 불투명도가 아니다
+#   1 반투명   SrcBlend=SrcAlpha, DstBlend=OneMinusSrcAlpha → 알파가 곧 불투명도다
+#   2 가산     SrcBlend=SrcAlpha, DstBlend=One             → glTF에 없다. 아래 참조
+#
+# 실측(포켓몬 481종 2,869재질): 0이 2,780 · 1이 70 · 2가 19.
+#
+# ⚠️ **가산은 glTF에 없다.** 슬러그마의 속불빛(`BodyInc`)이 그렇다 — 원판은
+# 배경에 더하는데 여기서는 반투명으로 얹는다. 불빛이 원작보다 덜 밝게 나온다
+GLTF_ALPHA = {0: "OPAQUE", 1: "BLEND", 2: "BLEND"}
+
+
+def floats_of(props) -> dict[str, float]:
+    return {k: float(v) for k, v in prop_pairs(props.get("m_Floats", []))}
+
+
+def wrap_uv(x: np.ndarray, mode: int) -> np.ndarray:
+    """유니티 랩 모드대로 [0,1] 안으로 접는다. 0 Repeat · 1 Clamp · 2·3 Mirror"""
+    if mode == 1:
+        return np.clip(x, 0.0, 1.0)
+    if mode in (2, 3):
+        y = np.abs(x) % 2.0
+        return np.where(y > 1.0, 2.0 - y, y)
+    return x % 1.0
+
+
+def bilinear(img: np.ndarray, u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """`img`(PIL 순서, 위가 0행)를 (u, v)에서 겹선형으로 읽는다. v는 위에서 잰다"""
+    h, w = img.shape[:2]
+    fx, fy = u * w - 0.5, v * h - 0.5
+    x0, y0 = np.floor(fx).astype(np.int64), np.floor(fy).astype(np.int64)
+    dx, dy = (fx - x0)[..., None], (fy - y0)[..., None]
+
+    def at(x, y):
+        return img[np.clip(y, 0, h - 1), np.clip(x, 0, w - 1)]
+
+    return (at(x0, y0) * (1 - dx) * (1 - dy) + at(x0 + 1, y0) * dx * (1 - dy)
+            + at(x0, y0 + 1) * (1 - dx) * dy + at(x0 + 1, y0 + 1) * dx * dy)
+
+
+def layer_under(main_tex, main_st, layer_tex, layer_st, shape) -> np.ndarray:
+    """2층 그림을 **1층 그림의 좌표계로** 옮겨 온다 (선형 RGB).
+
+    두 층은 UV 배율이 서로 다르다 — 눈은 1층이 (2,1)이고 2층(홍채)이 (4,4)다.
+    그래서 그냥 겹치면 홍채가 엉뚱한 자리에 앉는다. 메시 UV를 한 번 거슬러
+    올라갔다가 2층 배율로 다시 내려온다:
+
+        u_mesh = (u₀ − off₀) / scale₀        →      u₁ = u_mesh × scale₁ + off₁
+
+    `v`는 유니티가 아래에서 재고 PIL은 위에서 재므로 한 번 뒤집는다.
+    """
+    h, w = shape
+    sx, sy, ox, oy = main_st
+    lx, ly, lox, loy = layer_st
+    sx = sx or 1.0
+    sy = sy or 1.0
+    # 1층 텍셀 한가운데의 유니티 UV
+    u0 = ((np.arange(w) + 0.5) / w)[None, :]
+    v0 = (1.0 - (np.arange(h) + 0.5) / h)[:, None]
+    u1 = (u0 - ox) / sx * lx + lox
+    v1 = (v0 - oy) / sy * ly + loy
+    wu, wv = raw_wrap(layer_tex)
+    img = np.asarray(layer_tex.image.convert("RGBA"), dtype=np.float32) / 255.0
+    img = np.concatenate([srgb_to_linear(img[..., :3]), img[..., 3:]], axis=2)
+    return bilinear(img, wrap_uv(np.broadcast_to(u1, (h, w)), wu),
+                    wrap_uv(np.broadcast_to(1.0 - v1, (h, w)), wv))
 
 
 def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, dict]]:
@@ -121,8 +199,9 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
     """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
 
     돌려주는 것은 **머티리얼 이름 → 그 그림을 어떻게 읽어야 하는가**다:
-    `uv`(배율·오프셋)와 `wrap`(glTF 샘플러 상수 둘). 그림만 굽고 이 둘을 버리면
-    UV가 어디에 앉는지가 달라진다.
+    `uv`(배율·오프셋), `wrap`(glTF 샘플러 상수 둘), `alpha`(glTF alphaMode),
+    `double`(양면인가). 그림만 굽고 이것들을 버리면 UV가 어디에 앉는지,
+    무엇이 뚫리는지가 달라진다.
 
     `max_size`를 주면 긴 변을 그만큼으로 줄인다. **오버월드 NPC 때문에 있다** —
     번들 하나가 1024짜리 넉 장을 들고 나오면 glb가 5MB고, 마흔 몇 명을 세우면
@@ -171,11 +250,44 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             continue
 
         main_tex = slots[found].read()
-        spec[name] = {"uv": uvs[found], "wrap": wrap_of(main_tex)}
+        nums = floats_of(props)
+        # 재질이 어떻게 그려지는지는 **재질이 적어 둔다.** 짐작하면 안 된다.
+        #
+        # ⚠️ **안 적어 둔 재질도 있다.** 사람(`pc####`·`tr####`)과 소품
+        # (자전거)의 셰이더에는 `_BlendMode`도 `_CullMode`도 없다 — 실측했다.
+        # 그런 것은 예전대로 오려 낸다(`MASK`). 없는 값을 0으로 읽어 불투명으로
+        # 돌리면, 지금 잘 나오고 있는 머리카락·속눈썹이 사각형으로 막힌다
+        blend = nums.get("_BlendMode")
+        opaque = blend == 0
+        spec[name] = {
+            "uv": uvs[found],
+            "wrap": wrap_of(main_tex),
+            "alpha": "MASK" if blend is None else GLTF_ALPHA.get(int(blend), "OPAQUE"),
+            # 유니티 `CullMode`: 0 Off · 1 Front · 2 Back.
+            # ⚠️ 지금은 아무것도 여기 안 걸린다 — Off인 26개가 전부 그림 없는
+            # `FireMask*`라 애초에 안 구워진다 (DATA.md §2.17.2). 그래도 읽는다:
+            # 값이 있는데 안 읽는 것이 이 파일에서 두 번 사고를 냈다
+            "double": nums.get("_CullMode", 2) == 0,
+        }
         main = main_tex.image.convert("RGBA")
         w, h = main.size
         col = np.asarray(main, dtype=np.float32) / 255.0
         rgb_lin = srgb_to_linear(col[..., :3])
+
+        # 2층. **불투명한 재질의 알파는 불투명도가 아니라 여기를 꺼내는
+        # 마스크다** — 눈이 그렇다. 1층의 알파가 0인 자리에 홍채가 들어간다.
+        # 안 겹치면 그 자리가 통째로 뚫린다 (`GLTF_ALPHA` 참조)
+        #
+        # ⚠️ **불투명한 재질에서만 겹친다.** 반투명 재질(`_BlendMode` 1·2)에서는
+        # 알파가 진짜 불투명도라, 같은 값이 2층 마스크를 겸할 수 없다. 그런
+        # 재질이 스무 개 있는데(질퍽이 몸통이 그렇다) 무엇이 마스크인지 아직
+        # 못 읽었다 — 지어내느니 2층을 안 얹는다
+        lerp = nums.get("_Layer1OverLerpValue", 1.0)
+        if opaque and nums.get("_Layer1Enable", 0.0) and "_L1Col0Tex" in slots and lerp > 0:
+            under = layer_under(main_tex, uvs[found], slots["_L1Col0Tex"].read(),
+                                uvs["_L1Col0Tex"], (h, w))
+            k = (1.0 - col[..., 3:4]) * lerp
+            rgb_lin = rgb_lin * (1.0 - k) + under[..., :3] * k
 
         if "_MaskTex" in slots:
             mask_img = slots["_MaskTex"].read().image.convert("RGB")
@@ -200,7 +312,10 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         tint = tint + (1.0 - coverage)
 
         out_lin = rgb_lin * tint
-        out = np.concatenate([linear_to_srgb(out_lin), col[..., 3:4]], axis=2)
+        # 불투명하다고 적힌 재질은 알파를 통째로 채운다. 남겨 두면 KTX2로
+        # 옮길 때나 다른 곳에서 다시 오려 낼 빌미가 된다
+        opacity = np.ones_like(col[..., 3:4]) if opaque else col[..., 3:4]
+        out = np.concatenate([linear_to_srgb(out_lin), opacity], axis=2)
         img = Image.fromarray((np.clip(out, 0, 1) * 255).round().astype(np.uint8), "RGBA")
 
         if max_size is not None and max(img.size) > max_size:
