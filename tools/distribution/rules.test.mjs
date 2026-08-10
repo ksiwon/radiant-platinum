@@ -173,7 +173,10 @@ describe('앱 셸은 파일 단위다', () => {
   })
 })
 
-describe('CSP 정본', () => {
+// ⚠️ **`import()`가 첫 호출에서 5초를 넘길 수 있다.** 전체 시험을 한꺼번에 돌리면
+// 이 묶음의 첫 동적 import가 기본 제한에 걸려 "무전송 경계가 깨졌다"처럼 보였다 —
+// 실제로는 CSP가 아니라 시계 문제였다. 단정문은 그대로 두고 시간만 넉넉히 준다
+describe('CSP 정본', { timeout: 60_000 }, () => {
   it('connect-src에 바깥 오리진이 없다 — 그것이 무전송 경계다', async () => {
     const { CSP, cspHeader } = await import('./csp.mjs')
     expect(CSP['connect-src']).toBe("'self' blob:")
