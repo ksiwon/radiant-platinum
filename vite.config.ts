@@ -10,6 +10,8 @@ import { collectShell } from './tools/distribution/appShell.mjs'
 import { collectProvenance } from './tools/distribution/provenance.mjs'
 // @ts-expect-error — 같은 이유
 import { cspMeta } from './tools/distribution/csp.mjs'
+// @ts-expect-error — 같은 이유
+import { pkmnDiet, pkmnDietEsbuild } from './tools/distribution/pkmnDiet.mjs'
 
 const PUBLIC_DIR = resolve(import.meta.dirname, 'public')
 const AUDIT_DIR = resolve(import.meta.dirname, '.audit')
@@ -159,6 +161,9 @@ function cspMetaTag(): Plugin {
 
 export default defineConfig({
   plugins: [
+    // ⚠️ `pkmnDiet`이 먼저다 — `enforce: 'pre'`로 `resolveId`를 먼저 잡아야
+    // 데이터 모듈이 그래프에 들어오기 전에 껍데기로 바뀐다
+    pkmnDiet() as Plugin,
     react(), vanillaExtractPlugin(), appShellOnly(), bundleProvenance(), buildStamp(), cspMetaTag(),
   ],
   define: {
@@ -173,6 +178,10 @@ export default defineConfig({
   // 서버 시작이 몇 초 길어지는 대신 배틀 중에 새로고침이 안 난다
   optimizeDeps: {
     include: ['@pkmn/sim', '@pkmn/protocol', 'idb-keyval', 'zod', 'zustand/middleware'],
+    // ⚠️ 미리 묶기는 esbuild가 한다 — 위 `pkmnDiet`의 `resolveId`가 안 불린다.
+    // 안 걸면 개발판만 진짜 게임 데이터를 들고 돌고, 표가 없어서 나는 문제를
+    // 배포 직전에야 만난다
+    esbuildOptions: { plugins: [pkmnDietEsbuild() as never] },
   },
   build: {
     target: 'es2022',
