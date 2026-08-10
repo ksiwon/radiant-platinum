@@ -78,7 +78,7 @@ withRom('en')('Worker 경계', () => {
         onProgress: (_d, t) => { lastTotal = t },
         onWrote: (p) => wrote.push(p),
       })
-      expect(wrote).toEqual(['data/moves.json'])
+      expect(wrote).toEqual(['data/moves.json', 'data/names/moves.en.json'])
       expect(lastTotal).toBeGreaterThan(0)
       const bytes = produced.get('data/moves.json')!
       const text = new TextDecoder().decode(bytes)
@@ -114,7 +114,7 @@ withRom('en')('Worker 경계', () => {
         .rejects.toBeInstanceOf(WorkerCancelled)
       // 새 작업은 새 번호다. 옛 작업의 늦은 `produced`가 여기 안 들어와야 한다
       const produced = await client.convert('moves')
-      expect([...produced.keys()]).toEqual(['data/moves.json'])
+      expect([...produced.keys()]).toEqual(['data/moves.json', 'data/names/moves.en.json'])
     } finally { close() }
   })
 

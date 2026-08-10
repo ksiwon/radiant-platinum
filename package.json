@@ -26,6 +26,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test:strict",
     "spike:extract": "node tools/spike/extract.js",
     "spike:text": "node tools/spike/text-test4.js",
+    "gen:charmap": "node tools/extract/charmapModule.cjs",
     "spike:sdat": "node tools/spike/sdat-test.js",
     "extract:species": "node tools/extract/species.js",
     "extract:moves": "node tools/extract/moves.js",

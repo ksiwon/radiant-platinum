@@ -1,0 +1,194 @@
+// 종족 그룹 — 브라우저에서 (DATA.md §2.4)
+//
+//   /poketool/personal/pl_personal.narc  508 × 44B  종족값·타입·특성·성비·알
+//   /poketool/personal/evo.narc          508 × 44B  진화 7슬롯 × 6B + 2B 패딩
+//   /poketool/personal/wotbl.narc        508 × 가변 레벨업 기술, u16 패킹
+//
+// ⚠️ 롬의 스탯 순서는 HP/공/방/**스피드**/특공/특방이다. 표시 순서와 다르므로
+// 여기서 이름 붙인 객체로 바꿔 내보낸다 — 그러면 이후로 순서 착각이 불가능해진다.
+import { narcEntry, type NdsFileSystem } from './nds'
+import { openBanks, nameList, type DataLocale } from './text'
+import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+
+const PERSONAL_SIZE = 44
+const EVO_SLOTS = 7
+const EVO_ENTRY = 6
+/** wotbl 종료 표식 */
+const WOTBL_END = 0xffff
+/** 레벨업 기술 u16 패킹: 하위 9비트 기술, 다음 7비트 레벨 */
+const MOVE_MASK = 0x1ff
+
+export const STAT_ORDER = ['hp', 'atk', 'def', 'spe', 'spa', 'spd'] as const
+export type StatName = (typeof STAT_ORDER)[number]
+
+export interface Personal {
+  stats: Record<StatName, number>
+  types: [number, number]
+  catchRate: number
+  baseExp: number
+  ev: Record<StatName, number>
+  heldItems: [number, number]
+  genderRatio: number
+  eggCycles: number
+  baseFriendship: number
+  growthRate: number
+  eggGroups: [number, number]
+  abilities: [number, number]
+  safariFlee: number
+  color: number
+  /** 기술머신·비전머신 학습 가능 비트필드 128비트 */
+  tm: string
+}
+
+const hex = (b: Uint8Array, from: number, to: number): string => {
+  let out = ''
+  for (let i = from; i < to; i++) out += b[i]!.toString(16).padStart(2, '0')
+  return out
+}
+
+export function parsePersonal(b: Uint8Array): Personal {
+  if (b.byteLength !== PERSONAL_SIZE) {
+    throw new Error(`personal 크기 ${String(b.byteLength)} ≠ ${String(PERSONAL_SIZE)}`)
+  }
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const stats = {} as Record<StatName, number>
+  STAT_ORDER.forEach((k, i) => { stats[k] = b[i]! })
+  const evBits = view.getUint16(10, true)
+  const ev = {} as Record<StatName, number>
+  STAT_ORDER.forEach((k, i) => { ev[k] = (evBits >> (i * 2)) & 3 })
+  return {
+    stats,
+    types: [b[6]!, b[7]!],
+    catchRate: b[8]!,
+    baseExp: b[9]!,
+    ev,
+    heldItems: [view.getUint16(12, true), view.getUint16(14, true)],
+    // 255 = 무성, 0 = 항상 수컷, 254 = 항상 암컷, 그 외 = 암컷 확률 × 255/8
+    genderRatio: b[16]!,
+    eggCycles: b[17]!,
+    baseFriendship: b[18]!,
+    growthRate: b[19]!,
+    eggGroups: [b[20]!, b[21]!],
+    abilities: [b[22]!, b[23]!],
+    safariFlee: b[24]!,
+    color: b[25]! & 0x3f,
+    tm: hex(b, 28, 44),
+  }
+}
+
+export interface Evolution { method: number, param: number, to: number }
+
+export function parseEvo(b: Uint8Array): Evolution[] {
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const out: Evolution[] = []
+  for (let i = 0; i < EVO_SLOTS; i++) {
+    const method = view.getUint16(i * EVO_ENTRY, true)
+    if (method === 0) continue
+    out.push({
+      method,
+      param: view.getUint16(i * EVO_ENTRY + 2, true),
+      to: view.getUint16(i * EVO_ENTRY + 4, true),
+    })
+  }
+  // 44B - 42B = 꼬리 2B는 508개 전부 0이다. 아니라면 8슬롯 가설을 다시 봐야 한다
+  if (view.getUint16(EVO_SLOTS * EVO_ENTRY, true) !== 0) throw new Error('evo 꼬리가 0이 아니다')
+  return out
+}
+
+export interface LearnMove { level: number, move: number }
+
+export function parseLearnset(b: Uint8Array): LearnMove[] {
+  const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const out: LearnMove[] = []
+  for (let p = 0; p + 2 <= b.byteLength; p += 2) {
+    const v = view.getUint16(p, true)
+    if (v === WOTBL_END) break
+    out.push({ level: (v >> 9) & 0x7f, move: v & MOVE_MASK })
+  }
+  return out
+}
+
+const readAll = async (fs: NdsFileSystem, path: string): Promise<Uint8Array[]> => {
+  const narc = await fs.read(path)
+  if (!narc) throw new Error(`${path}을 못 읽었다`)
+  const out: Uint8Array[] = []
+  for (let i = 0; ; i++) {
+    const e = narcEntry(narc, i)
+    if (!e) break
+    out.push(e)
+  }
+  return out
+}
+
+/**
+ * 신오도감 순서 (`Pokemon_SinnohDexNumber`).
+ *
+ * 표가 **양방향으로 두 벌** 있다. `pl_pokezukan`이 종족 → 신오 번호(494칸),
+ * `shinzukan`이 신오 번호 → 종족(211칸)이다. 둘이 서로의 역이어야 하고,
+ * 그것이 표를 제대로 읽었다는 증거다 — 한 칸만 밀려도 역이 깨진다.
+ *
+ * 211칸인 것은 0번을 비워 두기 때문이다. 신오도감은 210마리다.
+ */
+async function dexOrder(fs: NdsFileSystem): Promise<{ sinnohOf: number[], sinnohDex: number[] }> {
+  const u16 = (b: Uint8Array): number[] => {
+    const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+    return Array.from({ length: Math.floor(b.byteLength / 2) }, (_, i) => view.getUint16(i * 2, true))
+  }
+  const forward = (await readAll(fs, '/poketool/pl_pokezukan.narc'))[0]
+  const backward = (await readAll(fs, '/poketool/shinzukan.narc'))[0]
+  if (!forward || !backward) throw new Error('신오도감 표가 비어 있다')
+  const sinnohOf = u16(forward)
+  const speciesOf = u16(backward)
+
+  let checked = 0
+  for (let n = 1; n < speciesOf.length; n++) {
+    const species = speciesOf[n]!
+    if (sinnohOf[species] !== n) {
+      throw new Error(
+        `신오도감 ${String(n)}번이 종족 ${String(species)}인데 역표는 ${String(sinnohOf[species])}라고 한다`,
+      )
+    }
+    checked++
+  }
+  const listed = sinnohOf.filter((n) => n !== 0).length
+  if (listed !== checked) {
+    throw new Error(`신오도감에 오른 종족 ${String(listed)}종 ≠ 역표 ${String(checked)}칸`)
+  }
+  return { sinnohOf, sinnohDex: speciesOf }
+}
+
+export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
+  const personal = await readAll(ctx.fs, '/poketool/personal/pl_personal.narc')
+  const evo = await readAll(ctx.fs, '/poketool/personal/evo.narc')
+  const wotbl = await readAll(ctx.fs, '/poketool/personal/wotbl.narc')
+  if (personal.length !== evo.length || personal.length !== wotbl.length) {
+    throw new Error('personal/evo/wotbl 개수 불일치 — 인덱스 축이 다르다')
+  }
+  check(ctx)
+
+  const species: unknown[] = []
+  let maxId = 0
+  for (let id = 0; id < personal.length; id++) {
+    const p = parsePersonal(personal[id]!)
+    // #0은 자리표시자다. 종족값이 전부 0이면 실체가 없는 슬롯으로 본다
+    if (STAT_ORDER.every((k) => p.stats[k] === 0)) continue
+    species.push({ id, ...p, evolutions: parseEvo(evo[id]!), learnset: parseLearnset(wotbl[id]!) })
+    maxId = id
+    if (id % 64 === 0) { ctx.onProgress?.(id, personal.length + 64); await breathe(ctx) }
+  }
+  ctx.onProgress?.(personal.length, personal.length + 64)
+
+  const dex = await dexOrder(ctx.fs)
+  check(ctx)
+
+  // 이름 배열은 **종족 번호로 색인**한다. species 배열 순서로 색인하면 id와 어긋나서
+  // 조용히 옆 포켓몬 이름이 나온다 — 그런 버그는 눈으로 안 잡힌다
+  const banks = await openBanks(ctx)
+  const loc = ctx.locale as DataLocale
+  ctx.onProgress?.(personal.length + 64, personal.length + 64)
+
+  return new Map([
+    ['data/species.json', json({ count: species.length, species, ...dex })],
+    [`data/names/species.${loc}.json`, json(nameList(banks.require('species_name'), maxId + 1))],
+  ])
+}

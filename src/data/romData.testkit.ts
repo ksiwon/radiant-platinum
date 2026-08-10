@@ -15,7 +15,7 @@
 // 그래서 건너뛰기를 여기 한 군데로 모으고, **`PT_REQUIRE_DATA=1`이면 건너뛰는
 // 대신 세운다.** `pnpm check`가 그 값을 켠다 — 개발 중에 하나씩 돌릴 때는
 // 예전처럼 조용히 빠진다.
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
 import { pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
@@ -132,6 +132,27 @@ const rawSources = createRequire(import.meta.url)('../../tools/raw/sources.cjs')
 /** 그 지역판 롬. 이 기계에 없으면 null (파일 이름이 아니라 헤더로 찾는다) */
 export function romPath(locale: string): string | null {
   return rawSources.platinumRom(locale)
+}
+
+/**
+ * 롬 파일을 브라우저 변환기가 받는 모양(`ByteSource`)으로.
+ *
+ * ⚠️ **통째로 안 읽는다.** 롬 하나가 128MB고 시험이 세 벌을 연다. 브라우저에서
+ * `Blob.slice()`가 하는 것을 노드에서 `readSync`로 하는 것뿐이라, 변환기가 보는
+ * 계약이 시험과 실제에서 같다
+ */
+export function fileSource(path: string): { readonly size: number, slice(a: number, b: number): Promise<Uint8Array> } {
+  const size = statSync(path).size
+  return {
+    size,
+    slice(start, end) {
+      const want = Math.max(0, Math.min(end, size) - start)
+      const out = Buffer.alloc(want)
+      const fd = openSync(path, 'r')
+      try { readSync(fd, out, 0, want, start) } finally { closeSync(fd) }
+      return Promise.resolve(new Uint8Array(out.buffer, out.byteOffset, out.byteLength))
+    },
+  }
 }
 
 /**
