@@ -13,6 +13,7 @@
 // ⚠️ **이 서버는 배포가 아니다.** 여기서 CSP 헤더가 붙는다고 실제 호스트에서
 // 붙는 것이 아니다 — release blocker 2번은 이걸로 안 풀린다 (DEPLOY.md §3).
 import { spawn } from 'node:child_process'
+import { createServer as netServer } from 'node:net'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -110,9 +111,13 @@ async function readDownload(download) {
  * 여기서 재는 것은 배포 경계가 아니라 앱 동작이고, 표에 그렇게 적는다
  */
 async function withDev(fn) {
-  const port = 5197
-  const proc = spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
+  // ⚠️ **자리를 못 박지 않는다.** 5197로 고정했더니 앞선 실행이 남긴 vite가
+  // 그 자리를 잡고 있어서 `--strictPort`가 exit 1로 죽었고, 그 예외가
+  // 하네스 전체를 끌어내렸다 — 검사 셋이 아니라 **스무 개가 통째로** 안 돌았다
+  const port = await freePort()
+  const spawnDev = () => spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
     { cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const proc = spawnDev()
   const at = `http://localhost:${String(port)}`
   let live = proc
   /**
@@ -123,17 +128,32 @@ async function withDev(fn) {
    */
   const ensure = async () => {
     if (live.exitCode === null) return
-    live = spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
-      { cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    live = spawnDev()
     await ready(live, at)
   }
   try {
     await ready(proc, at)
     await fn(at, ensure)
+  } catch (e) {
+    // ⚠️ **하네스의 실패가 앱의 실패를 가리면 안 되고, 나머지를 멈춰서도 안 된다.**
+    // 개발 서버가 안 뜨는 것은 이 셋을 못 쟀다는 뜻이지 앱이 틀렸다는 뜻이 아니다
+    throw new DevServerDown(String(e.message ?? e))
   } finally {
     live.kill()
     if (live !== proc) proc.kill()
   }
+}
+
+class DevServerDown extends Error {
+  constructor(why) { super(why); this.name = 'DevServerDown' }
+}
+
+/** 비어 있는 포트 하나 */
+function freePort() {
+  return new Promise((done) => {
+    const s = netServer()
+    s.listen(0, () => { const { port } = s.address(); s.close(() => { done(port) }) })
+  })
 }
 
 /**
@@ -356,8 +376,13 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   await waitBoot(page)
   await armWizard(page)
   const before = requests.length
+  const heap = () => page.evaluate(() => performance.memory?.usedJSHeapSize ?? 0)
+  const base = await heap()
+  const t0 = Date.now()
   await page.getByRole('button', { name: '설치 시작' }).click()
   await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
+  const took = Date.now() - t0
+  const peak = await heap()
 
   const got = await page.evaluate(readInstalled)
   assert(got.state === 'partial', `상태가 partial이 아니다: ${got.state}`)
@@ -370,7 +395,8 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   // 128MB를 읽는 내내 바깥으로도, /data로도 아무것도 안 나갔다
   const leaked = [...contentRequests(requests.slice(before)), ...outsideRequests(requests.slice(before))]
   assert(leaked.length === 0, `변환 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
-  return `moves·marts 설치 · 노드 산출물과 해시 일치 · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
+  return `moves·marts 설치 ${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
+    + `노드 산출물과 해시 일치 · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
 
 await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜 설치기)', async ({ page }) => {
@@ -447,7 +473,8 @@ await (haveRom ? run : skip)('11', '취소가 진짜 Worker에서 먹고, 하다
 // 배포 경계가 아니라 앱 동작이므로 **개발 서버에서 잰다** — 어느 쪽에서 쟀는지
 // 표에 적는다. 노드 시험이 봉투를 재고, 여기서는 진짜 IndexedDB와 진짜
 // 다운로드 경로를 지난다.
-await withDev(async (dev, ensure) => {
+try {
+  await withDev(async (dev, ensure) => {
   await run('12', '.rpsave 새 프로필 왕복 (개발 서버)', async ({ page }) => {
     await ensure()
     await page.goto(`${dev}/`, { waitUntil: 'load' })
@@ -534,8 +561,19 @@ await withDev(async (dev, ensure) => {
     const fmt = (n) => `${(n / (1 << 20)).toFixed(0)}MB`
     return `원본 ${fmt(m.SIZE)} → 만들고 ${fmt(m.made - m.before)} · `
       + `쓰는 동안 +${fmt(m.wrote - m.made)} · 해시 +${fmt(m.hashed - m.wrote)}`
+    })
   })
-})
+} catch (e) {
+  if (e.name !== 'DevServerDown') throw e
+  // 못 잰 것을 통과로도, 앱의 실패로도 세지 않는다. 그리고 나머지는 계속 돈다
+  for (const [id, what] of [
+    ['12', '.rpsave 새 프로필 왕복 (개발 서버)'],
+    ['13', '다운로드 차단 시 내부 세이브 유지 (개발 서버)'],
+    ['14', '큰 파일 하나를 쓰는 동안 힙이 몇 배가 되는가 (개발 서버)'],
+  ]) {
+    if (!results.some((r) => r.id === id)) record(id, what, 'NOT RUN', `개발 서버가 안 떴다 — ${e.message}`)
+  }
+}
 
 // ── ⑰~㉒ 한 번 설치하면 다시 안 묻는가 (IMPORT.md §15) ──────────────────────
 //
@@ -607,16 +645,27 @@ await run('18', '설치가 끝나 있으면 파일을 안 묻고 바로 연다',
   const workers = []
   again.on('worker', (w) => workers.push(w.url()))
   const mark = requests.length
+  const t0 = Date.now()
   await again.goto(`${origin}/`, { waitUntil: 'load' })
   const tag = await waitBoot(again)
+  // 부팅이 갈래를 정한 순간까지. **이 안에 해시가 한 번도 안 들어간다**
+  const decided = Date.now() - t0
   assert(tag === 'play:opfs', `설치본을 안 읽었다: ${tag}`)
+  // 타이틀 글자가 실제로 뜰 때까지
+  await again.getByText('비공식·비제휴').first().waitFor({ timeout: 60_000 })
+  const title = Date.now() - t0
+  const nav = await again.evaluate(() => {
+    const e = performance.getEntriesByType('navigation')[0]
+    return e ? Math.round(e.responseEnd) : null
+  })
   await again.waitForTimeout(1_500)
   // 설치 화면이 **잠깐이라도** 뜨면 안 된다
   const wizard = await again.getByRole('heading', { name: '에셋 설치' }).count()
   assert(wizard === 0, '설치 화면이 떴다')
   assert(workers.filter((u) => /importWorker/.test(u)).length === 0, '변환기 Worker가 떴다')
   assert(contentRequests(requests.slice(mark)).length === 0, '/data·/models를 불렀다')
-  return `play:opfs · 설치 화면 안 뜸 · 변환기 0 · 앱 셸 ${String(requests.length - mark)}건`
+  return `play:opfs · 갈래 결정 ${String(decided)}ms · 타이틀 ${String(title)}ms `
+    + `(문서 ${String(nav)}ms) · 설치 화면 안 뜸 · 변환기 0 · 앱 셸 ${String(requests.length - mark)}건`
 })
 
 await run('19', '앱 판·빌드가 달라져도 설치본을 그대로 쓴다', async ({ context, page }) => {
