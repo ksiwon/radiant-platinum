@@ -144,7 +144,12 @@ export function readMesh(value: Record<string, UnityValue>, little = true): Mesh
 
   const vertexCount = vd.m_VertexCount as number
   const channels = (vd.m_Channels as Record<string, number>[]).map((c): Channel => ({
-    stream: c.stream, offset: c.offset, format: c.format, dimension: c.dimension,
+    stream: c.stream, offset: c.offset, format: c.format,
+    // ⚠️ **`dimension`의 윗 네 비트는 차원이 아니라 플래그다.** 실측 무대 메시의
+    // 법선 채널이 52(0x34)로 들어 있다 — 그대로 쓰면 stride가 36 대신 116이 되고
+    // "채널이 정점 자료 밖을 가리킨다"로 죽는다. g001 메시 158개 중 107개가
+    // 그렇게 통째로 버려지고 있었고, 화면에서는 무대가 조금 휑한 것으로만 보였다
+    dimension: c.dimension & 0x0f,
   }))
   const data = vd.m_DataSize as Uint8Array
   const layout = streamLayout(channels, vertexCount)
@@ -226,6 +231,45 @@ export function readMesh(value: Record<string, UnityValue>, little = true): Mesh
     bindPose,
     boneNameHashes: Uint32Array.from((value.m_BoneNameHashes as number[] | undefined) ?? []),
   }
+}
+
+/**
+ * 정점 자료가 `.resS`에 나가 있는 메시를 이어 붙여 읽는다.
+ *
+ * ⚠️ **큰 메시는 `m_DataSize`가 비어 있다.** Unity가 정점 뭉치를 번들 안의
+ * 리소스 파일로 빼고 `m_StreamData`에 (오프셋, 길이, 경로)만 남긴다 — 텍스처와
+ * 같은 방식이다. 이걸 안 이으면 `readMesh`가 "채널이 정점 자료 밖을 가리킨다"로
+ * 죽는다. 무대 g001은 메시 158개 중 **107개**가 그쪽이었고, 그 상태로 구운 glb는
+ * 1.3MB짜리 휑한 땅이었다 (제대로 구우면 7.0MB)
+ */
+export function meshFrom(
+  value: Record<string, UnityValue>,
+  resource: (path: string) => Uint8Array | null,
+  little = true,
+): MeshData {
+  const stream = value.m_StreamData as Record<string, UnityValue> | undefined
+  const size = typeof stream?.size === 'number' ? stream.size : 0
+  const path = typeof stream?.path === 'string' ? stream.path : ''
+  if (size <= 0 || path === '') return readMesh(value, little)
+
+  const vd = value.m_VertexData as Record<string, UnityValue> | undefined
+  const have = vd?.m_DataSize
+  // 이미 안에 들어 있으면 그대로 쓴다 — 둘 다 있는 판은 안 봤지만, 있으면
+  // 파일 안의 것이 임자다
+  if (have instanceof Uint8Array && have.byteLength > 0) return readMesh(value, little)
+
+  const blob = resource(path)
+  if (!blob) throw new MeshError(`메시 스트림 ${path}을(를) 못 찾았다`)
+  const offset = typeof stream?.offset === 'number' ? stream.offset : 0
+  if (offset + size > blob.byteLength) {
+    throw new MeshError(
+      `메시 스트림이 리소스 밖을 가리킨다 (${String(offset + size)} > ${String(blob.byteLength)})`,
+    )
+  }
+  return readMesh(
+    { ...value, m_VertexData: { ...vd, m_DataSize: blob.subarray(offset, offset + size) } },
+    little,
+  )
 }
 
 /** 파일 안의 모든 Mesh */

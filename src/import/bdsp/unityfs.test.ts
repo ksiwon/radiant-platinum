@@ -84,12 +84,21 @@ describe('헤더', () => {
 })
 
 describe('막힌 자리', () => {
-  it('⚠️ 무엇이 안 되는지 적혀 있다 — 비면 시험이 선다', () => {
-    expect(SPIKE_BLOCKERS.length).toBeGreaterThan(0)
+  // ⚠️ 한때 이 시험이 **목록이 비면 섰다.** "안 되는 것을 안 적었다"를 잡으려던
+  // 것인데, 실제로 다 풀린 날에는 그것이 거꾸로 "풀었다는 이유로 시험이 선다"가
+  // 됐다. 재야 할 것은 개수가 아니라 **적힌 것이 쓸모 있는가**다 — 비어 있다는
+  // 사실 자체는 `blockers.mjs`가 release 판정에 쓴다
+  it('적힌 것은 무엇이·왜·다음이 다 있다', () => {
     for (const b of SPIKE_BLOCKERS) {
       expect(b.why.length, b.what).toBeGreaterThan(40)
       expect(b.next.length, b.what).toBeGreaterThan(20)
     }
+  })
+
+  it('지금은 비어 있다 — 텍스처 디코딩과 GLB 쓰기가 풀렸다', () => {
+    // 여기가 비었다는 것은 "이 파일이 아무것도 안 잰다"가 아니다. 실제로 재는
+    // 자리는 `bcn.test`·`astc.test`(픽셀)와 `convert.test`(실측 수)다
+    expect(SPIKE_BLOCKERS.map((b) => b.what)).toEqual([])
   })
 })
 
@@ -97,7 +106,7 @@ describe('막힌 자리', () => {
 
 const BUNDLE = bdspDir('pokemon') ? resolve(bdspDir('pokemon')!, 'pm0001_00_00') : null
 const haveBundle = BUNDLE !== null && existsSync(BUNDLE)
-const withBundle = withLocal('BDSP 번들 (raw/bdsp/pokemon/pm0001_00_00)', BUNDLE)
+const withBundle = withLocal('BDSP 번들 (Pokemon Database/pokemons/battle/pm0001_00_00)', BUNDLE)
 
 withBundle('진짜 BDSP 번들', () => {
   const bytes = haveBundle ? new Uint8Array(readFileSync(BUNDLE!)) : new Uint8Array()

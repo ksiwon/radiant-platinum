@@ -14,7 +14,8 @@ import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT,
   outwardRatio, verifyGlb, writeGlb, type Gltf,
 } from './glb'
-import { readMesh, CHANNEL, type MeshData } from './mesh'
+import { meshFrom, CHANNEL, type MeshData } from './mesh'
+import { resource } from './texture'
 import type { Entry, Environment } from './environment'
 import type { UnityValue } from './typetree'
 
@@ -444,7 +445,11 @@ export async function exportModel(
     if (!meshValue) { dropped++; continue }
     if (meshPid) seenMesh.add(meshPid)
     let mesh: MeshData
-    try { mesh = readMesh(meshValue) } catch { dropped++; continue }
+    // ⚠️ 큰 메시는 정점 자료가 `.resS`에 나가 있다 (`meshFrom`)
+    const holder = env.bundleOf(meshPid)
+    try {
+      mesh = meshFrom(meshValue, (p) => (holder ? resource(holder, p) : null))
+    } catch { dropped++; continue }
 
     const count = mesh.vertexCount
     const pos = mesh.attributes.get(CHANNEL.position)

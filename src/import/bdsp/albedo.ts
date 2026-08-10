@@ -41,13 +41,33 @@ const GLTF_WRAP: Readonly<Record<number, number>> = { 0: 10497, 1: 33071, 2: 336
  */
 const GLTF_ALPHA: Readonly<Record<number, string>> = { 0: 'OPAQUE', 1: 'BLEND', 2: 'BLEND' }
 
+/**
+ * ⚠️ **개발 추출기는 이 계산을 float32로 한다** (numpy `dtype=np.float32`).
+ * 우리가 float64로 하면 같은 식이어도 마지막 자리가 갈리고, 그 차이가 256으로
+ * 줄이는 자리에서 **최대 3/255까지 벌어졌다**. 곱셈·덧셈마다 32비트로 되접어
+ * 같은 값을 낸다 — 느려지는 것은 없다(`Math.fround`는 한 명령이다)
+ */
+const f32 = Math.fround
+
+/**
+ * numpy `ndarray.round()`는 **짝수로 반올림한다** (round-half-to-even).
+ * `Math.round`는 늘 위로 올린다 — 0.5로 떨어지는 자리마다 한 칸씩 갈린다
+ */
+function roundHalfEven(v: number): number {
+  const down = Math.floor(v)
+  const rest = v - down
+  if (rest > 0.5) return down + 1
+  if (rest < 0.5) return down
+  return down % 2 === 0 ? down : down + 1
+}
+
 const srgbToLinear = (x: number): number =>
-  (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)
+  (x <= 0.04045 ? f32(x / 12.92) : f32(f32(f32(x + 0.055) / 1.055) ** 2.4))
 const linearToSrgb = (x: number): number =>
-  (x <= 0.0031308 ? x * 12.92 : 1.055 * Math.max(0, x) ** (1 / 2.4) - 0.055)
+  (x <= 0.0031308 ? f32(x * 12.92) : f32(f32(1.055 * f32(Math.max(0, x) ** (1 / 2.4))) - 0.055))
 
 /** 0..255 → 선형. 256칸이라 표로 두면 곱셈마다 pow를 안 부른다 */
-const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255))
+const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(f32(i / 255)))
 
 export interface MaterialLook {
   /** 밑그림 UV 배율·오프셋 (sx, sy, ox, oy) */
@@ -328,19 +348,22 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
           const my = Math.min(maskH - 1, Math.floor((y * maskH) / height))
           const at = (my * maskW + mx) * 4
           for (let c = 0; c < 3; c++) {
-            const w = mask[at + c]! / 255
-            tr += w * layers[c]![0]
-            tg += w * layers[c]![1]
-            tb += w * layers[c]![2]
-            coverage += w
+            const w = f32(mask[at + c]! / 255)
+            tr = f32(tr + f32(w * layers[c]![0]))
+            tg = f32(tg + f32(w * layers[c]![1]))
+            tb = f32(tb + f32(w * layers[c]![2]))
+            coverage = f32(coverage + w)
           }
         }
         // 어느 채널에도 안 속한(검정) 자리는 틴트 없이 밑그림 그대로 둔다
-        const rest = 1 - Math.min(1, coverage)
-        tr += rest; tg += rest; tb += rest
-        outPixels[i * 4] = Math.round(Math.min(1, Math.max(0, linearToSrgb(lin[i * 3]! * tr))) * 255)
-        outPixels[i * 4 + 1] = Math.round(Math.min(1, Math.max(0, linearToSrgb(lin[i * 3 + 1]! * tg))) * 255)
-        outPixels[i * 4 + 2] = Math.round(Math.min(1, Math.max(0, linearToSrgb(lin[i * 3 + 2]! * tb))) * 255)
+        const rest = f32(1 - Math.min(1, coverage))
+        tr = f32(tr + rest); tg = f32(tg + rest); tb = f32(tb + rest)
+        const sr = linearToSrgb(f32(lin[i * 3]! * tr))
+        const sg = linearToSrgb(f32(lin[i * 3 + 1]! * tg))
+        const sb = linearToSrgb(f32(lin[i * 3 + 2]! * tb))
+        outPixels[i * 4] = roundHalfEven(f32(Math.min(1, Math.max(0, sr)) * 255))
+        outPixels[i * 4 + 1] = roundHalfEven(f32(Math.min(1, Math.max(0, sg)) * 255))
+        outPixels[i * 4 + 2] = roundHalfEven(f32(Math.min(1, Math.max(0, sb)) * 255))
         // 불투명하다고 적힌 재질은 알파를 채운다. 남겨 두면 다른 데서 또 오려 낸다
         outPixels[i * 4 + 3] = opaque ? 255 : src[i * 4 + 3]!
       }

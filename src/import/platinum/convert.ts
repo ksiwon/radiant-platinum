@@ -25,7 +25,7 @@ import {
 } from './convertTypes'
 
 export { Cancelled } from './convertTypes'
-export type { ConvertContext, GroupSpec, Produced } from './convertTypes'
+export type { BdspSource, ConvertContext, GroupSpec, Produced } from './convertTypes'
 
 // ── moves ────────────────────────────────────────────────────────────────────
 
@@ -198,11 +198,3 @@ export const GROUPS: readonly GroupSpec[] = [
     convert: convertPokegra,
   },
 ]
-
-export function groupsReady(): readonly GroupSpec[] {
-  return GROUPS.filter((g) => g.convert !== undefined)
-}
-
-export function groupsBlocked(): readonly GroupSpec[] {
-  return GROUPS.filter((g) => g.convert === undefined)
-}

@@ -22,7 +22,7 @@ import type { WritablePackStore } from '../../data/providers/packStore'
 // (`scriptMeta.ts` 하나가 91KB다) `boot.ts`가 이 파일을 읽으므로 그것이 전부
 // **첫 화면 청크**로 딸려 들어온다. 실제로 그렇게 gzip이 145kB → 185kB가 됐다.
 // 계약만 있는 `convertTypes.ts`에서 가져온다 — 값은 `Cancelled` 하나뿐이다
-import { Cancelled, type GroupSpec, type Produced } from '../platinum/convertTypes'
+import { Cancelled, type BdspSource, type GroupSpec, type Produced } from '../platinum/convertTypes'
 import type { NdsFileSystem } from '../platinum/nds'
 import type { Release } from '../platinum/validate'
 import { APP_VERSION, BUILD_ID } from '../../state/save/contract'
@@ -68,13 +68,24 @@ export type InstallEvent =
  */
 export type Producer = (
   spec: GroupSpec,
-  hooks: { onProgress: (done: number, total: number) => void },
+  hooks: {
+    onProgress: (done: number, total: number) => void
+    /**
+     * 산출물 하나를 **만드는 즉시** 넘긴다. 설치기가 받아서 바로 쓴다.
+     *
+     * ⚠️ **모델 그룹은 `Produced`에 다 못 담는다** (580MB). 담아서 넘기면
+     * Worker와 메인이 각각 그만큼을 든다 — `convertTypes.ts`의 `emit` 참고
+     */
+    onFile: (path: string, data: Uint8Array) => void
+  },
 ) => Promise<Produced>
 
 /** 같은 스레드에서 만든다. 시험과 노드 parity가 이 길로 간다 */
 export function localProducer(fs: NdsFileSystem, release: Release, locale: string,
-  signal?: { aborted: boolean }): Producer {
-  return (spec, hooks) => spec.convert!({ fs, release, locale, signal, onProgress: hooks.onProgress })
+  signal?: { aborted: boolean }, bdsp?: BdspSource): Producer {
+  return (spec, hooks) => spec.convert!({
+    fs, release, locale, signal, bdsp, emit: hooks.onFile, onProgress: hooks.onProgress,
+  })
 }
 
 export interface InstallOptions extends InstallStores {
@@ -260,19 +271,31 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
     journal.running = spec.name
     await writeJson(root, JOURNAL_FILE, journal)
 
-    const produced: Produced = await produce(spec, {
-      onProgress: (done, total) => { onEvent?.({ kind: 'progress', name: spec.name, done, total }) },
-    })
-
     const files: FileRecord[] = []
     let groupBytes = 0
-    for (const [path, data] of produced) {
-      // 저장소가 임시 이름에 쓰고 길이를 맞춘 뒤 제자리로 옮긴다 (`packStore`)
-      await assets.write(path, data)
-      files.push(await recordOf(path, data))
-      groupBytes += data.byteLength
-      onEvent?.({ kind: 'wrote', path, bytes: data.byteLength })
+    // ⚠️ **쓰기를 한 줄로 세운다.** 산출물이 도착하는 대로 받으므로 `write`가
+    // 겹칠 수 있는데, 저장소는 임시 이름에 쓰고 제자리로 옮기는 방식이라
+    // 겹치면 같은 임시 이름을 두 쓰기가 나눠 쓴다 (`packStore`)
+    let chain: Promise<void> = Promise.resolve()
+    let failure: unknown = null
+    const take = (path: string, data: Uint8Array): void => {
+      chain = chain.then(async () => {
+        if (failure !== null) return
+        await assets.write(path, data)
+        files.push(await recordOf(path, data))
+        groupBytes += data.byteLength
+        onEvent?.({ kind: 'wrote', path, bytes: data.byteLength })
+      }).catch((e: unknown) => { failure ??= e })
     }
+
+    const produced: Produced = await produce(spec, {
+      onProgress: (done, total) => { onEvent?.({ kind: 'progress', name: spec.name, done, total }) },
+      onFile: take,
+    })
+    // `emit`을 안 쓴 그룹은 Map으로 돌려준다
+    for (const [path, data] of produced) take(path, data)
+    await chain
+    if (failure !== null) throw failure
 
     manifest.groups[spec.name] = {
       files, bytes: groupBytes, converter: spec.converter, format: groupFormat(spec.name),

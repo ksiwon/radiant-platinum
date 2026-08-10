@@ -201,74 +201,124 @@ export function textureObjects(ser: SerializedFile): UnityObject[] {
 
 // ── 크기 줄이기 ──────────────────────────────────────────────────────────────
 
+/** PIL이 8비트 이미지에서 쓰는 고정소수 자릿수 (`Resample.c`의 `PRECISION_BITS`) */
+const PRECISION_BITS = 32 - 8 - 2
+
+/** Lanczos-3. PIL의 `lanczos_filter` 그대로 — 구간이 `-3 <= x < 3`으로 **비대칭**이다 */
+function lanczos(x: number): number {
+  if (x < -3 || x >= 3) return 0
+  if (x === 0) return 1
+  const p = Math.PI * x
+  // sinc(x) · sinc(x/3)
+  return (3 * Math.sin(p) * Math.sin(p / 3)) / (p * p)
+}
+
+interface Coeffs { size: number, bounds: Int32Array, k: Float64Array }
+
+/**
+ * 한 축의 무게표. **PIL `precompute_coeffs`와 같은 식이다** — 창의 양끝을
+ * `floor(center ∓ support + 0.5)`로 잡는 것까지 같다
+ */
+function coeffs(from: number, to: number): Coeffs {
+  const scale = from / to
+  const filterScale = Math.max(1, scale)
+  const support = 3 * filterScale
+  const size = Math.ceil(support) * 2 + 1
+  const bounds = new Int32Array(to * 2)
+  const k = new Float64Array(to * size)
+  for (let i = 0; i < to; i++) {
+    const center = (i + 0.5) * scale
+    const ss = 1 / filterScale
+    let lo = Math.trunc(center - support + 0.5)
+    if (lo < 0) lo = 0
+    let hi = Math.trunc(center + support + 0.5)
+    if (hi > from) hi = from
+    const count = hi - lo
+    let sum = 0
+    for (let x = 0; x < count; x++) {
+      const w = lanczos((x + lo - center + 0.5) * ss)
+      k[i * size + x] = w
+      sum += w
+    }
+    if (sum !== 0) for (let x = 0; x < count; x++) k[i * size + x] = k[i * size + x]! / sum
+    bounds[i * 2] = lo
+    bounds[i * 2 + 1] = count
+  }
+  return { size, bounds, k }
+}
+
+/** 무게를 정수로. PIL `normalize_coeffs_8bpc` — 0에서 **멀어지는 쪽**으로 반올림한다 */
+function fixed(c: Coeffs): Int32Array {
+  const out = new Int32Array(c.k.length)
+  for (let i = 0; i < c.k.length; i++) {
+    const v = c.k[i]!
+    out[i] = v < 0
+      ? Math.trunc(-0.5 + v * (1 << PRECISION_BITS))
+      : Math.trunc(0.5 + v * (1 << PRECISION_BITS))
+  }
+  return out
+}
+
+const clip8 = (v: number): number => {
+  const x = Math.floor(v / (1 << PRECISION_BITS))
+  return x < 0 ? 0 : x > 255 ? 255 : x
+}
+
+/** 한 축만 줄이거나 늘린다. RGBA8 안팎 */
+function pass(
+  src: Uint8Array, width: number, height: number, to: number, horizontal: boolean,
+): Uint8Array<ArrayBuffer> {
+  const from = horizontal ? width : height
+  const c = coeffs(from, to)
+  const k = fixed(c)
+  const outW = horizontal ? to : width
+  const outH = horizontal ? height : to
+  const out = new Uint8Array(outW * outH * 4)
+  const half = 1 << (PRECISION_BITS - 1)
+  for (let y = 0; y < outH; y++) {
+    for (let x = 0; x < outW; x++) {
+      const i = horizontal ? x : y
+      const lo = c.bounds[i * 2]!
+      const count = c.bounds[i * 2 + 1]!
+      const row = i * c.size
+      for (let ch = 0; ch < 4; ch++) {
+        // ⚠️ **반올림 몫을 미리 더한다.** PIL이 그렇게 하고, 이게 없으면 결과가
+        // 늘 아래로 깎여 한 칸씩 어두워진다
+        let sum = half
+        for (let s = 0; s < count; s++) {
+          const at = horizontal
+            ? (y * width + lo + s) * 4 + ch
+            : ((lo + s) * width + x) * 4 + ch
+          sum += src[at]! * k[row + s]!
+        }
+        out[(y * outW + x) * 4 + ch] = clip8(sum)
+      }
+    }
+  }
+  return out
+}
+
 /**
  * Lanczos-3 축소.
  *
  * ⚠️ **평균이나 최근접으로 줄이면 안 된다.** 인물 텍스처는 도트가 아니라 그림
  * 계열이고, 1024를 256으로 줄이는 자리라 최근접은 눈·입이 조각조각 난다.
- * 개발 추출기(`bdsp_bake_albedo.py`)가 PIL LANCZOS를 쓰는 것과 같은 필터다 —
- * 부동소수 반올림까지 같지는 않으므로 대조는 **픽셀 차이 한도**로 잰다
+ *
+ * ⚠️ **PIL의 두 걸음을 그대로 옮겼다** (`Resample.c`). 손으로 쓴 Lanczos는
+ * "같은 필터"이기만 하면 되는 것이 아니다 — PIL은 가로 걸음 결과를 **8비트로
+ * 되접고** 무게를 22비트 고정소수로 양자화한다. 그 둘을 안 흉내 냈을 때 개발
+ * 추출기와 최대 9/255, 픽셀의 23%가 갈렸다. 지금은 0이다 (`glbDiff.py`)
  */
 export function resize(
   src: Uint8Array, width: number, height: number, toWidth: number, toHeight: number,
 ): Uint8Array<ArrayBuffer> {
   if (toWidth === width && toHeight === height) return src.slice()
-  const lanczos = (x: number): number => {
-    if (x === 0) return 1
-    const a = Math.abs(x)
-    if (a >= 3) return 0
-    const p = Math.PI * a
-    return (3 * Math.sin(p) * Math.sin(p / 3)) / (p * p)
+  let pixels: Uint8Array<ArrayBuffer> = src.slice() as Uint8Array<ArrayBuffer>
+  let w = width
+  if (toWidth !== width) {
+    pixels = pass(pixels, w, height, toWidth, true)
+    w = toWidth
   }
-  /** 한 축을 줄이는 무게표. 늘릴 때는 창을 안 넓힌다 */
-  const weights = (from: number, to: number): { at: number[], w: Float32Array }[] => {
-    const scale = to / from
-    const support = 3 / Math.min(1, scale)
-    const out: { at: number[], w: Float32Array }[] = []
-    for (let i = 0; i < to; i++) {
-      const center = (i + 0.5) / scale
-      const lo = Math.max(0, Math.floor(center - support))
-      const hi = Math.min(from - 1, Math.ceil(center + support))
-      const at: number[] = []
-      const raw: number[] = []
-      let sum = 0
-      for (let s = lo; s <= hi; s++) {
-        const w = lanczos((s + 0.5 - center) * Math.min(1, scale))
-        if (w === 0) continue
-        at.push(s)
-        raw.push(w)
-        sum += w
-      }
-      const w = new Float32Array(raw.length)
-      for (let k = 0; k < raw.length; k++) w[k] = raw[k]! / (sum || 1)
-      out.push({ at, w })
-    }
-    return out
-  }
-
-  const cols = weights(width, toWidth)
-  const mid = new Float32Array(toWidth * height * 4)
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < toWidth; x++) {
-      const { at, w } = cols[x]!
-      for (let c = 0; c < 4; c++) {
-        let v = 0
-        for (let k = 0; k < at.length; k++) v += src[(y * width + at[k]!) * 4 + c]! * w[k]!
-        mid[(y * toWidth + x) * 4 + c] = v
-      }
-    }
-  }
-  const rows = weights(height, toHeight)
-  const out = new Uint8Array(toWidth * toHeight * 4)
-  for (let y = 0; y < toHeight; y++) {
-    const { at, w } = rows[y]!
-    for (let x = 0; x < toWidth; x++) {
-      for (let c = 0; c < 4; c++) {
-        let v = 0
-        for (let k = 0; k < at.length; k++) v += mid[(at[k]! * toWidth + x) * 4 + c]! * w[k]!
-        out[(y * toWidth + x) * 4 + c] = v < 0 ? 0 : v > 255 ? 255 : Math.round(v)
-      }
-    }
-  }
-  return out
+  if (toHeight !== height) pixels = pass(pixels, w, height, toHeight, false)
+  return pixels
 }

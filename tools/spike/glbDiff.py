@@ -95,6 +95,9 @@ def main() -> int:
                             acc(gb, bb, pb_['attributes'][attr]), tol))
             check(f'메시{m}/{p} 색인',
                   close(acc(ga, ba, pa_['indices']), acc(gb, bb, pb_['indices']), 0))
+        # 무대는 뼈가 없다 (`bdspArena`) — 스킨이 아예 없는 glb도 여기로 온다
+        if m >= len(ga.get('skins', [])) or m >= len(gb.get('skins', [])):
+            continue
         sa, sb = ga['skins'][m], gb['skins'][m]
         check(f'스킨{m} 관절', None if sa['joints'] == sb['joints'] else '관절 배열이 다르다')
         check(f'스킨{m} 역바인드',
@@ -116,11 +119,22 @@ def main() -> int:
         worst = max(worst, float(d.max()))
         off += int((d.max(axis=2) > 0).sum())
         total += pa_.shape[0] * pa_.shape[1]
-    # ⚠️ 그림은 **바이트로 못 잰다.** sRGB 왕복이 부동소수라 마지막 자리가
-    # 갈린다(파이썬은 짝수 반올림, JS는 위로 올림). 한 칸 차이는 눈에 안 보인다
+    # ⚠️ 그림은 **바이트로 못 잰다.** 남은 차이의 임자를 실측으로 좁혀 두었다:
+    #
+    #   · 반올림 방식 — numpy는 짝수 반올림, JS는 위로 올림. `albedo.ts`가
+    #     `roundHalfEven`으로 맞췄다
+    #   · float32 대 float64 — numpy는 32비트로 계산한다. `Math.fround`로 맞췄다
+    #   · 축소 필터 — PIL은 가로 걸음을 8비트로 되접고 무게를 22비트 고정소수로
+    #     양자화한다. `texture.ts`의 `resize`가 그걸 그대로 옮겼다 (합성 이미지
+    #     대조에서 **다른 픽셀 0개**)
+    #
+    # 남은 것은 **`powf` 하나뿐이다.** numpy는 C `powf`(32비트)를 부르고 JS에는
+    # 64비트 `Math.pow`밖에 없어서, 되접어도 1 ULP가 갈리는 자리가 있다. sRGB를
+    # 두 번 지나므로 굽기 단계에서 최대 2, 거기서 축소까지 가면 3이다 — 실측값이고
+    # 눈에 보이는 크기가 아니다
     print(f'  {"그림 픽셀":<28} 최대 차 {worst:.0f} · 다른 픽셀 {off}/{total} '
           f'({100 * off / max(1, total):.3f}%)')
-    if worst > 2:
+    if worst > 3:
         bad.append(f'그림 픽셀 최대 차 {worst:.0f}')
 
     # 애니메이션

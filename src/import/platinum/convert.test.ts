@@ -12,9 +12,10 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, statSync, openSync, readSync, closeSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { openNds, type ByteSource } from './nds'
-import { Cancelled, GROUPS, groupsBlocked, groupsReady, parseMove } from './convert'
+import { Cancelled, GROUPS, parseMove } from './convert'
+import { ALL_GROUPS, groupsBlocked, groupsReady } from '../groups'
 import { martLocator, SUPPORTED } from './validate'
-import { REQUIRED_PLATINUM_GROUPS } from '../install/required'
+import { REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS } from '../install/required'
 import { MartError, readMarts } from './marts'
 import { DATA, withRom, romPath } from '../../data/romData.testkit'
 
@@ -43,19 +44,26 @@ describe('그룹 표', () => {
       expect(g.blockedBy!.length, g.name).toBeGreaterThan(20)
     }
     expect(groupsReady().length).toBeGreaterThan(0)
-    expect(groupsReady().length + groupsBlocked().length).toBe(GROUPS.length)
+    expect(groupsReady().length + groupsBlocked().length).toBe(ALL_GROUPS.length)
     // Platinum 쪽 필수 그룹 아홉이 전부 변환기를 갖고 있다. **이 목록이 줄면 선다**
     const ready = new Set(groupsReady().map((g) => g.name))
     for (const name of REQUIRED_PLATINUM_GROUPS) expect(ready.has(name), name).toBe(true)
   })
 
   it('그룹마다 무엇을 만드는지 적혀 있다 — 저널이 그걸로 재개를 판단한다', () => {
-    for (const g of GROUPS) expect(g.outputs.length, g.name).toBeGreaterThan(0)
+    for (const g of ALL_GROUPS) expect(g.outputs.length, g.name).toBeGreaterThan(0)
   })
 
   it('이름이 겹치지 않는다', () => {
-    const names = GROUPS.map((g) => g.name)
+    const names = ALL_GROUPS.map((g) => g.name)
     expect(new Set(names).size).toBe(names.length)
+  })
+
+  // ⚠️ **필수 목록을 줄여서 통과시키지 않는다.** 이 시험이 12/12의 정의다 —
+  // 그룹을 하나라도 못 만들면 공개판은 `ready`에 못 간다 (`install/required.ts`)
+  it('필수 그룹 열둘이 전부 변환기를 갖고 있다', () => {
+    const ready = new Set(groupsReady().map((g) => g.name))
+    for (const name of REQUIRED_GROUPS) expect(ready.has(name), name).toBe(true)
   })
 })
 

@@ -323,23 +323,17 @@ function readSerializedType(
 /**
  * 이 spike가 못 넘은 자리. **여기 없는 것을 "됐다"고 하지 않는다.**
  *
- * `blockers.mjs`가 이 목록이 빌 때까지 release를 막는다
+ * `blockers.mjs`가 이 목록이 빌 때까지 release를 막는다.
+ *
+ * ⚠️ **지금은 비어 있다.** 두 자리가 다 풀렸다:
+ *
+ *   · 텍스처 디코딩 — `bcn.ts`(BC1·BC3·BC4·BC5·BC7)와 `astc.ts`(LDR). 지어낸
+ *     유효 블록 4,096개와 **실제 텍스처 150장 17,446,608픽셀**에서 오라클
+ *     (`texture2ddecoder`)과 다른 픽셀 0개다.
+ *   · GLB 쓰기 — `glb.ts`·`model.ts`·`arena.ts`. Blender를 안 거친다.
+ *     개발 추출기와 뜻 단위로 대조한다 (`tools/spike/glbDiff.py`).
+ *
+ * **비었다고 해서 아무것도 안 재는 것이 아니다** — 위의 대조가 재는 자리이고,
+ * 새로 막히는 것이 생기면 여기 적어야 release가 다시 막힌다
  */
-export const SPIKE_BLOCKERS: readonly { what: string; why: string; next: string }[] = [
-  {
-    what: '텍스처 디코딩',
-    why:
-      'Texture2D가 BC7·ASTC·ETC2 중 하나로 들어 있고 브라우저에서 그대로 못 올린다 '
-      + '(WebGPU가 BC7을 지원해도 GLB에 넣으려면 PNG여야 한다). CPU 디코더가 필요하다.',
-    next:
-      'KTX2로 그대로 싣고 런타임에서 GPU가 푸는 길이 있다 — 그러면 디코더가 아예 '
-      + '필요 없다. 다만 PLAN이 GLB를 전제하고 있어 그쪽 계약이 먼저 바뀌어야 한다.',
-  },
-  {
-    what: 'GLB 쓰기',
-    why: '개발 추출기는 Blender를 거쳐 GLB를 만든다. 브라우저에는 Blender가 없다.',
-    next:
-      'glTF 2.0 작성기는 우리가 쓰는 범위(메시·재질·스킨·클립)로 좁히면 클 것이 '
-      + '없다. 앞의 둘이 풀린 뒤에 붙는다.',
-  },
-]
+export const SPIKE_BLOCKERS: readonly { what: string; why: string; next: string }[] = []

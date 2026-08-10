@@ -85,8 +85,14 @@ export const BLOCKERS = [
       // Platinum 쪽 7개가 안 옮겨진 것은 BDSP와 무관한 별개의 미완이고,
       // 그걸 BDSP blocker에 얹으면 BDSP를 푸는 날 조용히 함께 풀린다
       const required = read('src/import/install/required.ts')
-      const convert = read('src/import/platinum/convert.ts')
-      if (!required || !convert) return { ok: false, detail: '목록을 못 읽었다' }
+      // ⚠️ **표가 둘이다.** Platinum 롬 쪽과 BDSP 폴더 쪽이 각자 파일을 갖는다
+      // (`src/import/groups.ts`가 둘을 합친다). 한쪽만 읽으면 BDSP 그룹 셋이
+      // 영영 "안 만들어진 것"으로 남는다
+      const convert = [
+        read('src/import/platinum/convert.ts'),
+        read('src/import/bdsp/convert.ts'),
+      ].filter(Boolean).join('\n')
+      if (!required || convert === '') return { ok: false, detail: '목록을 못 읽었다' }
       const names = (src, from) => {
         const at = src.indexOf(from)
         if (at < 0) return []

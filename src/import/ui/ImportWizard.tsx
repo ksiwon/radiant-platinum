@@ -12,14 +12,13 @@
 // `typeof Worker === 'function'`만 확인하고 메인 스레드에서 직접 돌렸다 —
 // 확인만 하고 안 쓰는 것은 확인이 아니다.
 //
-// ⚠️ **아직 완성되지 않았다.** 옮겨진 변환 그룹이 필수 목록에 한참 못 미치고
-// BDSP 변환은 하나도 없다. 그 사실을 첫 화면에 적는다 — 감추면 설치를 끝내고도
-// 게임이 안 뜨는 이유를 아무도 모른다.
+// ⚠️ **무엇이 안 옮겨졌는지 첫 화면에 적는다.** 감추면 설치를 끝내고도 게임이
+// 안 뜨는 이유를 아무도 모른다 — 표는 `import/groups.ts`가 임자다.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ValidationReport } from '../worker/protocol'
 import { spawnImportWorker, WorkerCancelled, type ImportClient } from '../worker/client'
 import { explain, SUPPORTED, type Validation } from '../platinum/validate'
-import { GROUPS, groupsBlocked, groupsReady } from '../platinum/convert'
+import { ALL_GROUPS, groupsBlocked, groupsReady } from '../groups'
 import type { BdspScan } from '../bdsp/scan'
 import { formatBytes, NEEDED_BYTES, requestPersist, storageState, type StorageState } from '../install/storage'
 import { clearAssets, runInstall, type InstallEvent, type InstallStores, type Producer } from '../install/installer'
@@ -175,13 +174,15 @@ export function ImportWizard({ onClose, onReady }: {
     })
 
     // Worker가 만들고 메인이 커밋한다 (`worker/client.ts` 머리말)
+    // ⚠️ **`onFile`을 준다.** 모델 그룹 산출물이 580MB라 Map으로 모으면 메인
+    // 스레드가 그만큼을 들고 있다가 죽는다 (`worker/client.ts`의 `ConvertHooks`)
     const produce: Producer = (spec, hooks) =>
-      worker.convert(spec.name, { onProgress: hooks.onProgress })
+      worker.convert(spec.name, { onProgress: hooks.onProgress, onFile: hooks.onFile })
 
     void runInstall({
       ...stores(),
       locale: platinum.release.locale,
-      groups: GROUPS,
+      groups: ALL_GROUPS,
       produce,
       signal,
       onEvent: (e: InstallEvent) => {
@@ -454,15 +455,11 @@ export function ImportWizard({ onClose, onReady }: {
         <section className={css.step}>
           <div className={css.stepHead}>
             아직 안 옮긴 변환
-            <span className={css.stepNote}>{`Platinum ${String(blocked.length)}개 · BDSP 전부`}</span>
+            <span className={css.stepNote}>{`${String(blocked.length)}개`}</span>
           </div>
           <ul className={css.list}>
             {blocked.map((g) => <li key={g.name}><b>{g.name}</b> — {g.blockedBy}</li>)}
-            <li>
-              <b>BDSP {REQUIRED_BDSP_GROUPS.join(' · ')}</b>
-              {' — 브라우저에서 Unity 번들을 읽는 코드가 아직 없습니다. '}
-              {'개발 추출기는 파이썬(UnityPy·NumPy·Pillow)이라 그대로는 못 부릅니다.'}
-            </li>
+            {blocked.length === 0 && <li>{'없습니다 — 필수 그룹이 전부 옮겨졌습니다.'}</li>}
           </ul>
         </section>
 

@@ -8,6 +8,19 @@ import type { Release } from './validate'
 /** 한 그룹이 만드는 것 — 논리 경로 → 바이트 */
 export type Produced = Map<string, Uint8Array>
 
+/**
+ * BDSP 폴더를 읽는 길. **`scan`이 찾은 뿌리 기준의 상대 경로**로 묻는다.
+ *
+ * ⚠️ **`DirSource`를 그대로 넘기지 않는다.** 그쪽은 사용자가 **고른** 폴더
+ * 기준이라 `AssetAssistant`가 몇 겹 아래일 수 있다. 그룹이 그 차이를 알아야
+ * 하면 뿌리를 다루는 코드가 그룹 수만큼 늘어난다
+ */
+export interface BdspSource {
+  /** 뿌리 아래 상대 경로 전부 (POSIX) */
+  list(): Promise<readonly string[]>
+  read(path: string): Promise<Uint8Array | null>
+}
+
 export interface ConvertContext {
   fs: NdsFileSystem
   locale: string
@@ -16,6 +29,20 @@ export interface ConvertContext {
    * (`marts.ts`) — 코드에 세 벌을 박으면 판이 늘 때마다 갈라진다
    */
   release: Release
+  /**
+   * BDSP 폴더. **BDSP 그룹에만 있다** — 사용자가 그 폴더를 고르기 전에는 없다.
+   * 그룹이 `requireBdsp(ctx)`로 집어서 없으면 그 자리에서 죽는다
+   */
+  bdsp?: BdspSource
+  /**
+   * 산출물 하나를 **바로 내보낸다.**
+   *
+   * ⚠️ **모델 그룹은 `Produced`에 다 담을 수가 없다.** 포켓몬 493마리가 406MB고
+   * 무대까지 580MB인데, 그것을 Map에 모았다가 한꺼번에 넘기면 Worker와 메인이
+   * 각각 그만큼을 든다. 있으면 만드는 즉시 흘려보내고 Map에는 안 담는다.
+   * 없으면(로컬 parity 시험) 부르는 쪽이 Map으로 받는다
+   */
+  emit?: (path: string, data: Uint8Array) => void
   /** 몇 개 중 몇 개째인지. 화면이 이걸로 진행을 그린다 */
   onProgress?: (done: number, total: number) => void
   /** 취소 신호. 그룹마다 **자주** 본다 — 한 그룹이 몇 초씩 걸린다 */
@@ -30,6 +57,27 @@ export class Cancelled extends Error {
 
 export const check = (ctx: ConvertContext): void => {
   if (ctx.signal?.aborted) throw new Cancelled()
+}
+
+/**
+ * BDSP 폴더가 있어야만 도는 그룹용.
+ *
+ * ⚠️ **없을 때 조용히 빈 산출물을 내지 않는다.** 그러면 필수 그룹이 "됐다"로
+ * 기록되고, 3D가 통째로 빈 설치본이 `ready`가 된다 (`install/required.ts`)
+ */
+export function requireBdsp(ctx: ConvertContext): BdspSource {
+  if (!ctx.bdsp) throw new Error('BDSP 폴더를 먼저 골라야 합니다')
+  return ctx.bdsp
+}
+
+/**
+ * 산출물 하나를 내보낸다. `emit`이 있으면 그리로, 없으면 Map에 담는다.
+ *
+ * 돌려주는 것은 담은 Map 자신이라, 그룹이 `return out`으로 끝낼 수 있다
+ */
+export function put(ctx: ConvertContext, out: Produced, path: string, data: Uint8Array): void {
+  if (ctx.emit) ctx.emit(path, data)
+  else out.set(path, data)
 }
 
 /**

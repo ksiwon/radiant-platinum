@@ -14,6 +14,15 @@ import type { FromWorker, JobId, ToWorker, ValidationReport } from './protocol'
 export interface ConvertHooks {
   onProgress?: (done: number, total: number) => void
   onWrote?: (path: string, bytes: number) => void
+  /**
+   * 산출물 하나를 **도착하는 대로** 받는다.
+   *
+   * ⚠️ **모델 그룹은 Map으로 못 받는다.** 포켓몬 493마리가 406MB고 무대까지
+   * 580MB인데, `convert()`가 끝날 때까지 메인 스레드가 그것을 다 들고 있으면
+   * 탭이 죽는다. 이걸 주면 Map에 안 담고 그때그때 넘긴다 — 설치기가 받아서
+   * 바로 OPFS에 쓴다
+   */
+  onFile?: (path: string, data: Uint8Array) => void
 }
 
 export class WorkerFailed extends Error {
@@ -93,10 +102,14 @@ export function attachImportClient(
     switch (msg.kind) {
       case 'step': waiting.onStep?.(msg.step); return
       case 'progress': waiting.hooks?.onProgress?.(msg.done, msg.total); return
-      case 'produced':
-        waiting.produced.set(msg.path, new Uint8Array(msg.bytes))
+      case 'produced': {
+        const data = new Uint8Array(msg.bytes)
+        // `onFile`을 준 쪽은 바로 받아 간다. 안 주면 Map에 쌓아 뒀다가 끝에 넘긴다
+        if (waiting.hooks?.onFile) waiting.hooks.onFile(msg.path, data)
+        else waiting.produced.set(msg.path, data)
         waiting.hooks?.onWrote?.(msg.path, msg.bytes.byteLength)
         return
+      }
       default: waiting.settle(msg)
     }
   })

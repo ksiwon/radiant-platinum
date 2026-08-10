@@ -25,10 +25,8 @@ export const REQUIRED_PLATINUM_GROUPS = [
 /**
  * BDSP에서 나와야 하는 것.
  *
- * ⚠️ 지금 이 목록은 **하나도 구현되지 않았다.** UnityFS 컨테이너와 타입 트리·
- * 메시는 풀렸지만(`bdsp/typetree.ts`·`bdsp/mesh.ts`) 텍스처 디코딩과 GLB 쓰기가
- * 남아서(IMPORT.md §12) 공개판은 `ready`에 도달할 수 없다. 목록을 비워서 도달하게
- * 만들지 않는다 — 그러면 3D가 통째로 빈 설치본이 "완료"가 된다
+ * ⚠️ **목록을 줄여서 `ready`에 도달하게 만들지 않는다.** 그러면 3D가 통째로 빈
+ * 설치본이 "완료"가 된다. 셋 다 `bdsp/convert.ts`가 만든다
  */
 export const REQUIRED_BDSP_GROUPS = [
   'npcModels',  // 사람 모델
