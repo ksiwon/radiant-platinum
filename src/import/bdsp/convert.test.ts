@@ -9,7 +9,7 @@
 // --experimental-strip-types tools/spike/bdspGroups.mjs <그룹>`으로 구워
 // `public/models`의 개발 산출물과 대조했다. 무대 g001은 **모두 같다**,
 // 인물은 그림만 최대 2~3/255 다르다 (`glbDiff.py` 머리말에 임자가 적혀 있다).
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { openEnvironment } from './environment'

@@ -35,10 +35,16 @@ export class BankReader {
   private readonly cache = new Map<string, string[]>()
   private readonly map = charmap()
 
-  constructor(
-    private readonly narc: Uint8Array,
-    private readonly layout: ReadonlyMap<string, number>,
-  ) {}
+  private readonly narc: Uint8Array
+  private readonly layout: ReadonlyMap<string, number>
+
+  // ⚠️ 매개변수 프로퍼티(`constructor(private x)`)를 안 쓴다 — node의
+  // `--experimental-strip-types`가 그것만은 못 벗겨서, 스파이크 드라이버가
+  // 이 파일을 거치는 순간 통째로 못 돈다 (`tools/spike/tsResolve.mjs`)
+  constructor(narc: Uint8Array, layout: ReadonlyMap<string, number>) {
+    this.narc = narc
+    this.layout = layout
+  }
 
   /** 그 롬에 없는 뱅크면 null */
   read(name: string): string[] | null {

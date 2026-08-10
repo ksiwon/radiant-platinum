@@ -19,6 +19,8 @@ import { convertPokegra } from './pokegra'
 import { convertChunks } from './chunks'
 import { convertScripts } from './scripts'
 import { convertSound } from './sound'
+import { convertEncounters } from './encounters'
+import { convertTrainers } from './trainers'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -190,6 +192,20 @@ export const GROUPS: readonly GroupSpec[] = [
     ],
     converter: 1,
     convert: convertSound,
+  },
+  {
+    name: 'encounters',
+    outputs: ['data/encounters.json'],
+    converter: 1,
+    convert: convertEncounters,
+  },
+  {
+    name: 'trainers',
+    outputs: [
+      'data/trainers.json', 'data/names/trainers.*.json', 'data/names/trainerClasses.*.json',
+    ],
+    converter: 1,
+    convert: convertTrainers,
   },
   {
     name: 'pokegra',

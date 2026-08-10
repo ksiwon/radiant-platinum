@@ -20,6 +20,8 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'marts',     // 상점 재고 (ARM9에서 읽는다 — DATA.md §2.13)
   'sound',     // 음악·효과음
   'pokegra',   // 포켓몬 도트
+  'encounters', // 야생 출현표. 없으면 풀숲에서 아무것도 안 나온다
+  'trainers',  // 트레이너 파티·상금. 없으면 트레이너 배틀이 안 열린다
 ] as const
 
 /**

@@ -110,6 +110,14 @@ export interface NdsFileSystem {
    * "이 포인터는 ARM9 안을 안 가리킨다"는 뜻이고, 표를 잘못 짚었다는 신호다
    */
   arm9At(pointer: number): number | null
+  /**
+   * 오버레이 하나를 통째로.
+   *
+   * ⚠️ **오버레이는 FNT에 이름이 없다.** 헤더의 `overlayOffset`에 32바이트짜리
+   * 표가 있고, 그 안 `fileId`가 FAT 칸을 가리킨다 — 파일 경로로는 못 찾는다.
+   * 상금 배수표처럼 NARC이 아니라 **코드 안에 박힌 표**가 여기 있다
+   */
+  overlay(id: number): Promise<Uint8Array | null>
 }
 
 /**
@@ -155,6 +163,9 @@ function walkFnt(fnt: Uint8Array, fat: readonly FatEntry[]): Map<string, FatEntr
   walk(0xf000, '/')
   return out
 }
+
+/** 오버레이 표 한 칸. `id`(4) … `fileId`(4)가 24바이트째다 */
+const OVERLAY_ENTRY = 32
 
 export async function openNds(src: ByteSource): Promise<NdsFileSystem | null> {
   const header = await readHeader(src)
@@ -203,6 +214,21 @@ export async function openNds(src: ByteSource): Promise<NdsFileSystem | null> {
       const { arm9RamAddress, arm9Size } = header
       const at = pointer - arm9RamAddress
       return at >= 0 && at < arm9Size ? at : null
+    },
+
+    async overlay(id) {
+      if (id < 0 || id >= overlays) return null
+      const at = header.overlayOffset + id * OVERLAY_ENTRY
+      if (at + OVERLAY_ENTRY > src.size) return null
+      const row = await src.slice(at, at + OVERLAY_ENTRY)
+      if (row.byteLength !== OVERLAY_ENTRY) return null
+      const view = new DataView(row.buffer, row.byteOffset, row.byteLength)
+      // 표가 자기 번호를 갖고 있다. 어긋나면 자리를 잘못 짚은 것이다
+      if (view.getUint32(0, true) !== id) return null
+      const fileId = view.getUint32(24, true)
+      const slot = fat[fileId]
+      if (!slot || slot.end < slot.start || slot.end > src.size) return null
+      return src.slice(slot.start, slot.end)
     },
   }
 }
