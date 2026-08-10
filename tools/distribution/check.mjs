@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PUBLIC_SHELL, collectShell, unlistedShellFiles } from './appShell.mjs'
+import { SHELL_ART, missingArt, unlistedArt } from './shellArt.mjs'
 import { openBlockers } from './blockers.mjs'
 import {
   TRACKED_TABLES, bannedTablesPresent, missingTables, tablesLeakedInto, trackedContentLeaks,
@@ -105,6 +106,20 @@ function checkPre() {
   for (const t of TRACKED_TABLES) {
     if (t.note.includes('미해결')) notes.push(`${t.path} — ${t.holds} (미해결 판단 있음: dataTables.mjs)`)
   }
+  // ①-g 셸 그림마다 **무엇을 그렸는지** 적혀 있는가 (COPYRIGHT.md §11).
+  //
+  // ⚠️ 바이트로는 못 잡는다 — 전부 우리가 그린 PNG라 출처 검사도 매직바이트도
+  // 통과한다. 그런데 타이틀 배경에는 금속 워드마크가 그려져 있다. 화면을 열어야
+  // 보이는 것이라, 본 사실을 여기 적어 두고 안 적힌 그림이 생기면 세운다
+  const shellFiles = collectShell(resolve(ROOT, 'public'))
+  for (const rel of unlistedArt(shellFiles)) {
+    fail('심사 안 받은 셸 그림', `${rel} — tools/distribution/shellArt.mjs에 무엇을 그렸는지 적는다`)
+  }
+  for (const rel of missingArt(shellFiles)) {
+    fail('대장에는 있는데 셸에 없는 그림', `${rel} — 이름이 갈리면 검사가 무의미해진다`)
+  }
+  notes.push(`셸 그림 ${SHELL_ART.length}개를 심사했다`)
+
   for (const t of bannedTablesPresent()) {
     fail('지운 자료 표가 다시 왔다', `${t.path} — ${t.why}`)
   }

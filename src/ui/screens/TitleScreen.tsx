@@ -199,10 +199,14 @@ export function TitleScreen() {
       <div className={css.ground} />
 
       <div className={css.head}>
+        {/*
+          ⚠️ 예전에 제목 위에 `POKÉMON`을 얹어 두었다. 그건 공식 로고가 놓이는
+          자리와 같은 배치라, 화면에 안 보이더라도(지금 `crest`는 숨겨져 있다)
+          문서에는 남아 검색과 스크린 리더에 그대로 읽힌다. 뺐다 (COPYRIGHT.md §11)
+        */}
         <div className={css.crest}>
-          <span className={css.brand}>POKÉMON</span>
           <h1 className={css.title}>Radiant Platinum</h1>
-          <span className={css.sub}>팬이 만든 3D 리메이크 · 비영리</span>
+          <span className={css.sub}>비공식 팬 프로젝트 · 비영리</span>
         </div>
 
         {report && (
@@ -234,6 +238,18 @@ export function TitleScreen() {
             </button>
           ))}
         </div>
+
+        {/*
+          ⚠️ **눈에 띄는 자리여야 한다** (COPYRIGHT.md §11). `crest`와 `foot`은
+          `display: none`이라 거기 넣으면 문서에만 있고 화면에는 없다 — 그건
+          "표시했다"가 아니다. 메뉴 바로 아래, 리포트 단추와 같은 층에 둔다
+        */}
+        <p className={css.disclaimer}>
+          비공식·비제휴 팬 프로젝트입니다. 관련 상표와 저작물은 각 권리자의 것입니다.
+          자신이 적법하게 보유한 게임 데이터만 고르세요 — 서버는 원본도 변환 결과도
+          받거나 저장하지 않습니다. 무료·비영리이고 사용자가 자기 데이터를 가져오는
+          방식이지만, 그것이 권리자의 허가를 뜻하지는 않습니다.
+        </p>
 
         {/*
           ⚠️ **리포트가 없어도 보인다.** 새 브라우저·새 기계에서 파일을 들고 온

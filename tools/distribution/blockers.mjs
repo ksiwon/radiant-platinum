@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { forbiddenIn } from './provenance.mjs'
+import { brandRisks } from './shellArt.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const read = (rel) => (existsSync(resolve(ROOT, rel)) ? readFileSync(resolve(ROOT, rel), 'utf8') : null)
@@ -30,6 +31,20 @@ export const BLOCKERS = [
       return bad.length === 0
         ? { ok: true }
         : { ok: false, detail: `${bad.length}개 모듈 · ${(bytes / 1048576).toFixed(1)}MB` }
+    },
+  },
+  {
+    id: 'brand-art',
+    why: '앱 셸 그림이 공식처럼 보인다',
+    where: 'COPYRIGHT.md §11',
+    resolved() {
+      // ⚠️ 바이트 검사가 절대 못 잡는 자리다 — 전부 우리가 그린 PNG라 출처
+      // 검사도 매직바이트도 다 통과한다. 화면을 열어야 보인다 (tools/shot/title.mjs).
+      // 대장(`shellArt.mjs`)에 적힌 사실로 판정하고, 그림을 바꾸면 스스로 풀린다
+      const risks = brandRisks()
+      return risks.length === 0
+        ? { ok: true }
+        : { ok: false, detail: risks.map((r) => `${r.path} (${r.why})`).join(' · ') }
     },
   },
   {

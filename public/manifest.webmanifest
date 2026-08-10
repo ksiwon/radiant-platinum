@@ -1,7 +1,7 @@
 {
-  "name": "Pokémon Radiant Platinum",
+  "name": "Radiant Platinum (비공식 팬 프로젝트)",
   "short_name": "Radiant",
-  "description": "웹으로 다시 지은 3D 신오. 팬이 만든 것이고 팔지 않는다.",
+  "description": "비공식·비제휴 팬 프로젝트입니다. 관련 상표와 저작물은 각 권리자의 것입니다. 무료이고 팔지 않지만, 그것이 권리자의 허가를 뜻하지는 않습니다. 게임 자산은 사용자가 자기 기기에서 고른 입력으로 브라우저 안에서 만들며 서버는 아무것도 받지 않습니다.",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",

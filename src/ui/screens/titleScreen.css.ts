@@ -247,6 +247,36 @@ export const fileButton = style({
   selectors: { '&:hover': { opacity: 1 } },
 })
 
+/**
+ * 비공식·비제휴 고지 (COPYRIGHT.md §11).
+ *
+ * ⚠️ **`crest`·`foot`처럼 숨기지 않는다.** 문서에만 있고 화면에 없으면 그건
+ * 표시한 것이 아니다. 형제인 `menu`·`filesArea`처럼 자리를 직접 잡는다 —
+ * `head`가 `position: absolute; inset: 0`이라 보통 흐름에 두면 왼쪽 위로 올라간다
+ */
+export const disclaimer = style({
+  position: 'absolute',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  // ⚠️ **배경 그림 위에 겹치면 못 읽는다.** 처음에 메뉴 위쪽에 뒀더니 제목
+  // 그림과 정확히 겹쳐 글자가 사라졌다 (`shots/title.png`로 확인). 그림이
+  // 비어 있는 맨 위로 올리고, 어두운 판을 깐다
+  top: 'clamp(8px, 1.6vh, 16px)',
+  width: 'min(720px, calc(100vw - 24px))',
+  margin: 0,
+  padding: '6px 12px',
+  boxSizing: 'border-box',
+  fontFamily: vars.font.ui,
+  fontSize: 11,
+  lineHeight: 1.65,
+  textAlign: 'center',
+  color: 'rgba(233, 238, 250, 0.92)',
+  background: 'rgba(6, 10, 18, 0.72)',
+  border: '1px solid rgba(255,255,255,0.10)',
+  borderRadius: 8,
+  backdropFilter: 'blur(3px)',
+})
+
 /** 파일을 열어 보고 나서 확인받는 자리, 그리고 실패 이유 */
 export const notice = style({
   padding: '10px 12px',
