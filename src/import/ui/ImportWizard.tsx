@@ -21,11 +21,17 @@ import { explain, SUPPORTED, type Validation } from '../platinum/validate'
 import { ALL_GROUPS, groupsBlocked, groupsReady } from '../groups'
 import type { BdspScan } from '../bdsp/scan'
 import { formatBytes, NEEDED_BYTES, requestPersist, storageState, type StorageState } from '../install/storage'
-import { clearAssets, runInstall, type InstallEvent, type InstallStores, type Producer } from '../install/installer'
+import {
+  clearAssets, runInstall,
+  type GroupFailure, type InstallEvent, type InstallStores, type Producer,
+} from '../install/installer'
 import { REQUIRED_BDSP_GROUPS, missingRequired } from '../install/required'
 import { opfsAvailable, opfsPackStore, OPFS_ASSETS, OPFS_ROOT } from '../../data/providers/packStore'
 import { activateInstall } from '../../app/boot'
 import * as css from './importWizard.css'
+
+/** 못 만든 그룹을 몇 줄까지 적을지. Worker가 죽으면 남은 것이 줄줄이 같은 말을 한다 */
+const FAILURES_SHOWN = 6
 
 interface Capability {
   ok: boolean
@@ -69,6 +75,8 @@ export function ImportWizard({ onClose, onReady }: {
   const [progress, setProgress] = useState(0)
   const [failure, setFailure] = useState<string | null>(null)
   const [missing, setMissing] = useState<string[]>([])
+  /** 죽은 그룹과 그 이유. **이름만 적지 않는다** — 왜 죽었는지가 다음 걸음이다 */
+  const [failed, setFailed] = useState<GroupFailure[]>([])
   const romPicker = useRef<HTMLInputElement>(null)
   const dirPicker = useRef<HTMLInputElement>(null)
   /**
@@ -158,6 +166,7 @@ export function ImportWizard({ onClose, onReady }: {
     setFailure(null)
     setProgress(0)
     setMissing([])
+    setFailed([])
     const signal = { aborted: false }
     abort.current = signal
 
@@ -194,7 +203,8 @@ export function ImportWizard({ onClose, onReady }: {
           if (e.rebuilt.length > 0) say(`깨진 것 ${String(e.rebuilt.length)}개는 다시 만듭니다: ${e.rebuilt.join(' · ')}`)
         }
         if (e.kind === 'verifying' && e.total > 0) setProgress(e.done / e.total)
-        if (e.kind === 'done') setMissing(e.missing)
+        if (e.kind === 'groupFailed') say(`⚠️ ${e.name} 실패 — ${e.why}`)
+        if (e.kind === 'done') { setMissing(e.missing); setFailed(e.failed) }
       },
     })
       .then((manifest) => {
@@ -225,6 +235,7 @@ export function ImportWizard({ onClose, onReady }: {
       say('에셋과 설치 기록을 지웠습니다 (리포트는 그대로입니다)')
       setPhase('idle')
       setMissing([])
+      setFailed([])
     })
   }
 
@@ -446,6 +457,14 @@ export function ImportWizard({ onClose, onReady }: {
             <div className={`${css.body} ${css.bad}`}>
               {`옮겨진 그룹은 설치됐지만 ${String(missing.length)}개가 더 필요합니다:\n`}
               {missing.join(' · ')}
+              {/* ⚠️ **왜 없는지가 이름보다 중요하다.** 무엇을 다시 고르면 되는지
+                  알려면 "arenas가 없다"가 아니라 "무대를 하나도 못 구웠다"가
+                  필요하다 — 설치는 죽은 그룹을 건너뛰고 끝까지 간다 */}
+              {/* Worker가 죽으면 남은 그룹이 줄줄이 같은 말을 하므로 몇 줄만 */}
+              {failed.length > 0 && `\n\n못 만든 그룹 ${String(failed.length)}개:\n`}
+              {failed.slice(0, FAILURES_SHOWN).map((f) => `  ${f.name} — ${f.why}\n`)}
+              {failed.length > FAILURES_SHOWN
+                && `  … 외 ${String(failed.length - FAILURES_SHOWN)}개\n`}
             </div>
           )}
           {log.length > 0 && (

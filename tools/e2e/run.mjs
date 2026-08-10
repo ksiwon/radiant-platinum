@@ -927,20 +927,50 @@ await ((haveRom && haveBdsp) ? run : () => {})(
 
     // 오프닝은 글 → 몬스터볼 → 이름 → 고르기가 섞여 있고 길이가 롬 글에 달렸다.
     // 그래서 **모양을 보고 대응**한다: 이름 칸이 뜨면 적고, 아니면 넘긴다
+    // ⚠️ **오프닝은 되돌아오는 자리가 있다.** 나무박사가 "그 밖에 알고 싶은
+    // 건?"을 묻고, 설명을 다 들으면 **그 물음으로 되돌아온다** — 첫 칸만 계속
+    // 고르면 영영 그 고리를 돈다(실측: 600걸음에서 조작 설명 화면). 나가는 칸이
+    // 몇 번째인지는 롬 글이라 시험이 알 수 없으므로, **같은 화면을 세 번 보면
+    // 커서를 한 칸 내린다.** 어느 고리든 이 규칙 하나로 빠져나온다
     const NAME = 'TESTER'
-    for (let i = 0; i < 400 && page.url().endsWith('/intro'); i++) {
+    const trail = []
+    const seen = new Map()
+    let steps = 0
+    for (; steps < 600 && new URL(page.url()).pathname === '/intro'; steps++) {
       const input = page.getByLabel('이름')
       if (await input.count() > 0) {
+        trail.push('이름')
         await input.fill(NAME)
         await page.getByRole('button', { name: '결정' }).click()
+        await page.waitForTimeout(200)
         continue
       }
       const ball = page.getByLabel('몬스터볼')
-      if (await ball.count() > 0) { await ball.click(); continue }
+      if (await ball.count() > 0) { trail.push('볼'); await ball.click(); await page.waitForTimeout(200); continue }
+
+      // 숫자를 지운다 — 성능 오버레이의 FPS가 매번 달라서 그대로 두면 모든
+      // 화면이 처음 보는 것처럼 보인다
+      const sig = (await page.locator('body').innerText().catch(() => ''))
+        .replace(/[\d.]+/g, '').replace(/\s+/g, ' ').slice(0, 200)
+      const times = (seen.get(sig) ?? 0) + 1
+      seen.set(sig, times)
+      if (times >= 3) {
+        trail.push(`내려간다(${String(times)})`)
+        await page.keyboard.press('ArrowDown')
+        await page.waitForTimeout(80)
+      }
       await page.keyboard.press('Space')
-      await page.waitForTimeout(60)
+      await page.waitForTimeout(120)
     }
-    await page.waitForFunction(() => location.pathname === '/play', null, { timeout: 120_000 })
+    if (new URL(page.url()).pathname !== '/play') {
+      // ⚠️ **"멈췄다"만 남기면 다음 실행도 똑같이 멈춘다.** 어느 장면에서
+      // 무슨 글을 띄운 채로 멈췄는지를 그대로 적는다
+      const said = await page.locator('body').innerText().catch(() => '(못 읽었다)')
+      throw new Error(
+        `오프닝이 ${String(steps)}걸음에서 멈췄다 (${new URL(page.url()).pathname}) · `
+        + `지난 자리 ${trail.join('>') || '없음'} · 화면: ${said.replace(/\s+/g, ' ').slice(0, 300)}`,
+      )
+    }
 
     // ── 오버월드가 실제로 섰는가 ──
     //

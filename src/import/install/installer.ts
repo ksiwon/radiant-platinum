@@ -56,7 +56,23 @@ export type InstallEvent =
   | { kind: 'wrote'; path: string; bytes: number }
   | { kind: 'resumed'; skipped: string[]; rebuilt: string[] }
   | { kind: 'verifying'; done: number; total: number }
-  | { kind: 'done'; manifest: InstallManifest; missing: string[] }
+  /** 그룹 하나가 실패했다. **설치는 계속 간다** — 아래 ⚠️ 참고 */
+  | { kind: 'groupFailed'; name: string; why: string }
+  | { kind: 'done'; manifest: InstallManifest; missing: string[]; failed: GroupFailure[] }
+
+export interface GroupFailure { name: string, why: string }
+
+/**
+ * 그룹 하나가 아니라 **설치 전체를 멈춰야 하는 실패**인가.
+ *
+ * 취소는 사용자가 시킨 것이고, 저장 공간이 찬 것은 다음 그룹도 똑같이 실패한다 —
+ * 삼키면 스물두 번 더 부딪히면서 시간만 쓰고 화면에는 같은 말이 스물두 줄 뜬다
+ */
+function mustStop(e: unknown): boolean {
+  if (e instanceof Cancelled) return true
+  const name = (e as { name?: string } | null)?.name
+  return name === 'Cancelled' || name === 'QuotaExceededError'
+}
 
 /**
  * 바이트를 만들어 오는 쪽.
@@ -264,6 +280,7 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
   await writeJson(root, JOURNAL_FILE, journal)
 
   const todo = groups.filter((g) => g.convert !== undefined && !skip.includes(g.name))
+  const failed: GroupFailure[] = []
   for (const [index, spec] of todo.entries()) {
     if (signal?.aborted) throw new Cancelled()
     onEvent?.({ kind: 'group', name: spec.name, index, total: todo.length })
@@ -288,14 +305,33 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
       }).catch((e: unknown) => { failure ??= e })
     }
 
-    const produced: Produced = await produce(spec, {
-      onProgress: (done, total) => { onEvent?.({ kind: 'progress', name: spec.name, done, total }) },
-      onFile: take,
-    })
-    // `emit`을 안 쓴 그룹은 Map으로 돌려준다
-    for (const [path, data] of produced) take(path, data)
-    await chain
-    if (failure !== null) throw failure
+    // ⚠️ **한 그룹이 죽었다고 스물셋을 버리지 않는다.**
+    //
+    // 예전에는 여기서 그대로 던졌다. 그러면 사용자가 고른 BDSP 폴더에서 무대
+    // 하나가 깨져 있어도 **Platinum 스물두 그룹이 통째로 없던 일**이 되고,
+    // 화면에는 "무엇이 모자란지"가 아니라 예외 문구 하나가 뜬다. 설계는 원래
+    // `partial`을 갖고 있다 — 된 것은 남기고, 안 된 것을 이름과 이유로 적는다.
+    //
+    // ⚠️ **취소와 저장 공간은 예외다.** 그 둘은 "이 그룹이 나쁘다"가 아니라
+    // "지금 그만둬야 한다"라서, 삼키면 다음 그룹이 같은 벽에 스물두 번 부딪힌다
+    try {
+      const produced: Produced = await produce(spec, {
+        onProgress: (done, total) => { onEvent?.({ kind: 'progress', name: spec.name, done, total }) },
+        onFile: take,
+      })
+      // `emit`을 안 쓴 그룹은 Map으로 돌려준다
+      for (const [path, data] of produced) take(path, data)
+      await chain
+      if (failure !== null) throw failure
+    } catch (e) {
+      if (mustStop(e)) throw e
+      const why = e instanceof Error ? e.message : String(e)
+      failed.push({ name: spec.name, why })
+      onEvent?.({ kind: 'groupFailed', name: spec.name, why })
+      journal.running = null
+      await writeJson(root, JOURNAL_FILE, journal)
+      continue
+    }
 
     manifest.groups[spec.name] = {
       files, bytes: groupBytes, converter: spec.converter, format: groupFormat(spec.name),
@@ -331,7 +367,7 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
     manifest.commit = { at, appVersion: APP_VERSION, buildId: BUILD_ID, assetFormat: ASSET_FORMAT }
   }
   await writeJson(root, INSTALL_FILE, manifest)
-  onEvent?.({ kind: 'done', manifest, missing })
+  onEvent?.({ kind: 'done', manifest, missing, failed })
   return manifest
 }
 

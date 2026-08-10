@@ -132,17 +132,32 @@ describe('한 번에 끝나는 설치', () => {
 })
 
 describe('끊기고 다시 잇기', () => {
-  it('⚠️ 실패해도 ready가 안 된다', async () => {
+  it('⚠️ 한 그룹이 죽어도 나머지를 버리지 않는다', async () => {
+    // 예전에는 여기서 그대로 던졌다. 그러면 사용자가 고른 BDSP 폴더에서 무대
+    // 하나가 깨져 있을 때 **Platinum 스물두 그룹이 통째로 없던 일**이 되고,
+    // 화면에는 무엇이 모자란지가 아니라 예외 문구 하나가 떴다
     const s = stores()
-    const broken = [FULL[0]!, group(FULL[1]!.name, {}, { fail: '변환이 터졌다' })]
-    await expect(run(s, broken)).rejects.toThrow('변환이 터졌다')
+    const broken = [FULL[0]!, group(FULL[1]!.name, {}, { fail: '변환이 터졌다' }), FULL[2]!]
+    const seen: InstallEvent[] = []
+    const manifest = await run(s, broken, { onEvent: (e) => seen.push(e) })
 
-    // 먼저 끝난 그룹은 남는다 — 다시 만들 이유가 없다
-    expect(await s.assets.list()).toHaveLength(1)
-    // 그러나 **게임은 시작 못 한다**
+    // 죽은 것 하나만 빠지고 나머지는 다 들어왔다
+    expect(await s.assets.list()).toHaveLength(2)
+    expect(Object.keys(manifest.groups).sort()).toEqual([FULL[0]!.name, FULL[2]!.name].sort())
+    // **왜 죽었는지가 남는다** — 이름만 남으면 다시 고를 것을 못 정한다
+    expect(seen).toContainEqual({ kind: 'groupFailed', name: FULL[1]!.name, why: '변환이 터졌다' })
+    const done = seen.at(-1)
+    expect(done?.kind === 'done' && done.failed)
+      .toEqual([{ name: FULL[1]!.name, why: '변환이 터졌다' }])
+    // 그래도 **게임은 시작 못 한다**
+    expect(manifest.state).toBe('partial')
     expect(await installReady(s.root)).toBeNull()
-    const got = await readInstall(s.root)
-    expect(got.kind === 'ok' && got.value.state).toBe('installing')
+  })
+
+  it('⚠️ 취소는 삼키지 않는다 — 다음 그룹으로 넘어가면 취소가 아니다', async () => {
+    const s = stores()
+    const signal = { aborted: true }
+    await expect(run(s, FULL.slice(0, 3), { signal })).rejects.toBeInstanceOf(Cancelled)
   })
 
   it('취소하면 하다 만 그룹이 저널에 남는다', async () => {
@@ -162,8 +177,7 @@ describe('끊기고 다시 잇기', () => {
 
   it('재개하면 온전한 그룹을 건너뛴다', async () => {
     const s = stores()
-    await expect(run(s, [FULL[0]!, group(FULL[1]!.name, {}, { fail: '한 번 터진다' })]))
-      .rejects.toThrow()
+    await run(s, [FULL[0]!, group(FULL[1]!.name, {}, { fail: '한 번 터진다' })])
 
     let ran = 0
     const again = FULL.map((g) => (g.name === FULL[0]!.name

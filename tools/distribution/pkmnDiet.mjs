@@ -68,11 +68,20 @@ export const SHIMS = [
  * 객체다. 수치만 빼려면 파일을 반으로 가르는 변환이 필요하고, 그건 이 자리에서
  * 조용히 할 일이 아니다.
  *
- * `pokedex.mjs`는 다르다 — 순수 데이터고, 사용자의 롬에 같은 것이 있다.
- * 그것을 OPFS 설치본에서 주입하는 것이 다음 일이다 (DEPLOY.md §4).
+ * ⚠️ **"수치와 구현이 한 객체"가 어디까지 사실인지 재 봤다** (DEPLOY.md §4).
+ * 값인 프로퍼티와 함수인 프로퍼티의 글자 수를 따로 세면 `moves` 21% · `items`
+ * 21% · `abilities` 5% · `conditions` 2%가 자료다 — 나머지는 구현이고, 그것은
+ * MIT 코드다. **그런데 `pokedex`는 100%가 자료다.**
+ *
+ * 그리고 그 자료가 전부 사용자의 롬에 있다: 종족값·타입·특성·성비는
+ * `pl_personal.narc`, 진화는 `evo.narc`, **키·몸무게는
+ * `application/zukanlist/zkn_data/zukan_data.narc` 멤버 0·1**(`int[494]`,
+ * 데시미터·헥토그램)이다. 4세대 덱스와 맞대면 종족값 493/493, 키·몸무게
+ * 492/493이 같고 나머지 하나(기라티나)는 폼마다 NARC이 갈리는 것이라 그것도
+ * 롬에 있다. 남은 것은 Showdown의 id(`turtwig`)로 가는 **이름표 다리**뿐이다
  */
 export const KEPT = [
-  { file: 'data/pokedex.mjs', why: '종족 표 — 순수 데이터. 롬에서 주입할 수 있다. **다음 일**' },
+  { file: 'data/pokedex.mjs', why: '종족 표 — **100% 자료다.** 롬이 전부 갖고 있다 (위 ⚠️). **다음 일**' },
   { file: 'data/moves.mjs', why: '기술 — 위력·명중률 같은 수치와 `onHit` 구현이 한 객체다' },
   { file: 'data/items.mjs', why: '도구 — 수치와 구현이 한 객체다. 같은 이유' },
   { file: 'data/abilities.mjs', why: '특성 — 수치와 구현이 한 객체다. 같은 이유' },
