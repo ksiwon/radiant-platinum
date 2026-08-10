@@ -14,9 +14,8 @@
 |---|---|---|
 | `manifest.webmanifest` | 자체 | PWA 매니페스트. 손으로 쓴 JSON |
 | `sw.js` | 자체 | 앱 셸 전용 service worker. 손으로 쓴 JS |
-| `assets/radiant-platinum-favicon.png` | 자체 | 파비콘 |
-| `assets/radiant-platinum-icon.png` | 자체 | 앱 아이콘 |
-| `assets/radiant-platinum-intro.png` | 자체 | 타이틀 배경 |
+| `assets/mark.svg` | 자체 | 파비콘 · PWA 아이콘 (코드로 그린다) |
+| `assets/mark-180.png` | 자체 | apple-touch-icon (코드로 그린다) |
 
 세 PNG는 이 저장소를 위해 만든 그림이다. 원작 스프라이트·로고·배경을 자르거나
 따라 그린 것이 아니다.

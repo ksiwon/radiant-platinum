@@ -32,11 +32,22 @@ export const sky = style({
   position: 'absolute',
   inset: 0,
   zIndex: -2,
-  backgroundImage: "url('/assets/radiant-platinum-intro.png')",
-  backgroundPosition: 'center',
-  backgroundRepeat: 'no-repeat',
-  backgroundSize: 'cover',
-
+  // ⚠️ **그림을 쓰지 않는다.** 예전에는 2.4MB짜리 PNG 한 장이었고 그 안에 금속
+  // 질감의 워드마크와 기라티나(오리진 폼)로 보이는 형상이 그려져 있었다 —
+  // 우리가 만든 PNG라 바이트 검사는 전부 통과하는데 화면은 공식처럼 보였다
+  // (COPYRIGHT.md §11). 지금 여기 있는 것은 그라디언트 넷뿐이고, 배포물에서
+  // 2.4MB가 그대로 빠졌다
+  backgroundColor: '#070c16',
+  backgroundImage: [
+    // 위쪽에서 비스듬히 드는 차가운 빛
+    'radial-gradient(120% 90% at 50% -18%, rgba(126, 168, 214, 0.42), transparent 62%)',
+    // 지평선 쪽 옅은 온기
+    'radial-gradient(140% 70% at 50% 108%, rgba(96, 120, 158, 0.30), transparent 60%)',
+    // 백금빛 띠 하나. 금속 느낌은 이 기울기에서 나온다
+    'linear-gradient(200deg, rgba(214, 228, 244, 0.10) 0%, transparent 36%,'
+    + ' transparent 64%, rgba(214, 228, 244, 0.07) 100%)',
+    'linear-gradient(180deg, #0b1422 0%, #070c16 58%, #05080f 100%)',
+  ].join(', '),
 })
 
 /** 아래쪽 땅. 지평선이 있으면 하늘이 하늘로 읽힌다 */

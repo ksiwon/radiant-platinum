@@ -101,7 +101,7 @@ const MAGIC = [
 const TABLE_BYTES = 64 * 1024
 
 /** 우리가 그린 것. 종류는 같아도 출처가 다르다 (docs/APP_SHELL.md) */
-const OURS = /^public\/assets\/radiant-platinum-|^docs\/[^/]*\.png$/
+const OURS = /^public\/assets\/(radiant-platinum-|mark)|^docs\/[^/]*\.png$/
 
 function sniff(head, size) {
   for (const m of MAGIC) {

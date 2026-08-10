@@ -24,8 +24,8 @@ const SHELL_FILES = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './assets/radiant-platinum-favicon.png',
-  './assets/radiant-platinum-icon.png',
+  './assets/mark.svg',
+  './assets/mark-180.png',
 ]
 
 self.addEventListener('install', (e) => {

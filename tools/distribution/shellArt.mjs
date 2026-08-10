@@ -1,10 +1,10 @@
 // 앱 셸이 내보내는 그림 (COPYRIGHT.md §11 · DEPLOY.md §7)
 //
-// ⚠️ **바이트 검사로는 이걸 절대 못 잡는다.** 셸의 그림 셋은 전부 우리가 만든
-// PNG다 — 롬에서 나온 것이 한 조각도 없고, 그래서 출처 검사도 매직바이트 검사도
-// 히스토리 감사도 전부 통과한다. 그런데 화면을 실제로 열어 보면(`tools/shot/title.mjs`)
-// 타이틀 배경에 **금속 질감의 `POKEMON` 워드마크**가 그려져 있고, 아이콘과
-// 배경의 주인공은 **기라티나(오리진 폼)** 다.
+// ⚠️ **바이트 검사로는 이걸 절대 못 잡는다.** 셸의 그림은 전부 우리가 만든
+// 것이다 — 롬에서 나온 것이 한 조각도 없고, 그래서 출처 검사도 매직바이트 검사도
+// 히스토리 감사도 전부 통과한다. 그런데 한때 타이틀 배경에 **금속 질감의 워드마크**가
+// 그려져 있었고 아이콘의 주인공은 **기라티나(오리진 폼)** 였다. 화면을 실제로
+// 열어 보고서야(`tools/shot/title.mjs`) 보였다 — 지금은 `REMOVED_ART`에 있다.
 //
 // 원본 바이트를 안 싣는 것과, 공식처럼 보이지 않는 것은 **다른 문제다.**
 // 앞은 BYOR가 줄여 주지만 뒤는 안 줄여 준다 — 상표와 2차적 저작물의 자리다.
@@ -22,32 +22,49 @@
  */
 export const SHELL_ART = [
   {
-    path: 'assets/radiant-platinum-intro.png',
-    what: '타이틀 배경',
-    drawnBy: '이 프로젝트 (원작 에셋 아님)',
-    wordmark: true,
-    depicts: '기라티나(오리진 폼)로 보이는 형상',
+    path: 'assets/mark.svg',
+    what: '탭 아이콘 · PWA 아이콘',
+    drawnBy: '이 프로젝트 — `tools/assets/shellMark.cjs`가 코드로 그린다',
+    wordmark: false,
+    depicts: null,
     note:
-      '⚠️ 금속 질감의 `POKEMON RADIANT PLATINUM` 로고가 그림 안에 그려져 있다. '
-      + 'DOM에서 워드마크를 빼도 이 그림이 그대로 같은 자리에 같은 글자를 낸다 — '
-      + '공식 로고가 놓이는 자리와 같은 배치이고, 그건 trade dress를 흉내 낸 것이다. '
-      + '2.4MB로 배포물에서 가장 큰 파일이기도 하다.',
+      '퍼져 나가는 고리 여섯. 생물 실루엣도 몬스터볼 모양도 공식 로고 형태도 없다. '
+      + '코드가 곧 원본이라 무엇을 그렸는지 다툴 여지가 없다. 1.3KB.',
+  },
+  {
+    path: 'assets/mark-180.png',
+    what: 'apple-touch-icon',
+    drawnBy: '이 프로젝트 — `tools/assets/shellMark.cjs`가 코드로 그린다',
+    wordmark: false,
+    depicts: null,
+    note:
+      'SVG와 같은 그림. Safari가 PNG만 받는 자리라 한 장만 굽는다. 색을 32단계로 '
+      + '눌러 담아 15KB다 — 안 누르면 같은 그림이 173KB였다.',
+  },
+]
+
+/**
+ * 지운 그림과 그 이유.
+ *
+ * ⚠️ **"바꿨다"로 끝내지 않고 무엇을 왜 지웠는지 남긴다.** 셋 다 우리가 만든
+ * PNG였고 그래서 출처 검사·매직바이트 검사·히스토리 감사를 전부 통과했다.
+ * 화면을 실제로 열어 보고서야(`tools/shot/title.mjs`) 보였다
+ */
+export const REMOVED_ART = [
+  {
+    path: 'assets/radiant-platinum-intro.png',
+    why: '금속 질감의 워드마크 + 기라티나(오리진 폼)로 보이는 형상 · 2.4MB',
+    now: '`titleScreen.css.ts`의 그라디언트 넷. 배포물에서 2.4MB가 통째로 빠졌다',
   },
   {
     path: 'assets/radiant-platinum-icon.png',
-    what: 'PWA·홈 화면 아이콘',
-    drawnBy: '이 프로젝트 (원작 에셋 아님)',
-    wordmark: false,
-    depicts: '기라티나(오리진 폼)의 머리로 보이는 형상',
-    note: '홈 화면과 설치 배너에 그대로 뜬다. 1.2MB.',
+    why: '기라티나(오리진 폼)의 머리로 보이는 형상 · 1.2MB',
+    now: 'assets/mark.svg + assets/mark-180.png',
   },
   {
     path: 'assets/radiant-platinum-favicon.png',
-    what: '탭 아이콘',
-    drawnBy: '이 프로젝트 (원작 에셋 아님)',
-    wordmark: false,
-    depicts: '위 아이콘의 축소판',
-    note: '64×64.',
+    why: '위 아이콘의 축소판',
+    now: 'assets/mark.svg',
   },
 ]
 

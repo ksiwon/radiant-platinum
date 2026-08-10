@@ -29,9 +29,8 @@ import { join } from 'node:path'
 export const PUBLIC_SHELL = [
   { path: 'manifest.webmanifest', origin: '자체', note: 'PWA 매니페스트. 손으로 쓴 JSON' },
   { path: 'sw.js', origin: '자체', note: '앱 셸 전용 service worker. 손으로 쓴 JS' },
-  { path: 'assets/radiant-platinum-favicon.png', origin: '자체', note: '파비콘' },
-  { path: 'assets/radiant-platinum-icon.png', origin: '자체', note: '앱 아이콘' },
-  { path: 'assets/radiant-platinum-intro.png', origin: '자체', note: '타이틀 배경' },
+  { path: 'assets/mark.svg', origin: '자체', note: '파비콘 · PWA 아이콘 (코드로 그린다)' },
+  { path: 'assets/mark-180.png', origin: '자체', note: 'apple-touch-icon (코드로 그린다)' },
 ]
 
 /** 목록에 없는 파일이 있으면 안 되는 나무. 여기만 전수 대조한다 */

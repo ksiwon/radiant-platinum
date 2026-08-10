@@ -18,7 +18,11 @@
 // ⚠️ **에셋과 리포트는 저장소가 다르다.** 에셋은 OPFS, 리포트는 IndexedDB다
 // (`state/report.ts`). "에셋 다시 설치"가 리포트를 안 건드리는 것이 그래서 성립한다.
 import type { WritablePackStore } from '../../data/providers/packStore'
-import { Cancelled, type GroupSpec, type Produced } from '../platinum/convert'
+// ⚠️ **`convert.ts`에서 가져오면 안 된다.** 거기에는 변환기 열 벌이 붙어 있고
+// (`scriptMeta.ts` 하나가 91KB다) `boot.ts`가 이 파일을 읽으므로 그것이 전부
+// **첫 화면 청크**로 딸려 들어온다. 실제로 그렇게 gzip이 145kB → 185kB가 됐다.
+// 계약만 있는 `convertTypes.ts`에서 가져온다 — 값은 `Cancelled` 하나뿐이다
+import { Cancelled, type GroupSpec, type Produced } from '../platinum/convertTypes'
 import type { NdsFileSystem } from '../platinum/nds'
 import type { Release } from '../platinum/validate'
 import { APP_VERSION, BUILD_ID } from '../../state/save/contract'
