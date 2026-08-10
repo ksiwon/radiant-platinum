@@ -43,8 +43,8 @@
       "fileCount": 340,
       "messageBanks": 724,
       "marts": {
-        "common": "0xEBAFC",
-        "specialty": "0x100B1C"
+        "common": { "romOffset": "0xEFAFC", "arm9RelativeOffset": "0xEBAFC" },
+        "specialty": { "romOffset": "0x104B1C", "arm9RelativeOffset": "0x100B1C" }
       }
     },
     {
@@ -54,8 +54,8 @@
       "fileCount": 339,
       "messageBanks": 714,
       "marts": {
-        "common": "0xEC584",
-        "specialty": "0x1019F8"
+        "common": { "romOffset": "0xF0584", "arm9RelativeOffset": "0xEC584" },
+        "specialty": { "romOffset": "0x1059F8", "arm9RelativeOffset": "0x1019F8" }
       }
     },
     {
@@ -65,12 +65,12 @@
       "fileCount": 339,
       "messageBanks": 709,
       "marts": {
-        "common": "0xEB18C",
-        "specialty": "0xFFF10"
+        "common": { "romOffset": "0xEF18C", "arm9RelativeOffset": "0xEB18C" },
+        "specialty": { "romOffset": "0x103F10", "arm9RelativeOffset": "0xFFF10" }
       }
     }
   ],
-  "arm9Note": "ARM9 정적 바이너리 안의 표 자리 (ARM9 시작 기준 상대, 16진 문자열). 재고 자체는 여기 없다 — 자리와 개수만 적는다. 사용자의 롬에서 읽는 데 필요한 최소 locator다. 파일 오프셋은 arm9RomOffset(헤더 0x20)을 더해 구한다. 실측 확인: public/data/marts.json과 일반 19줄·지역 20곳이 셋 다 일치.",
+  "arm9Note": "ARM9 정적 바이너리 안의 표 자리. 재고 자체는 여기 없다 — 자리와 개수만 적는다. 사용자의 롬에서 읽는 데 필요한 최소 locator다. 두 값을 다 적는 이유는 이 자리가 실제로 한 번 헷갈렸기 때문이다: romOffset은 롬 파일 처음부터의 절대 오프셋, arm9RelativeOffset은 ARM9 이미지 시작 기준이고, 둘의 차가 곧 헤더 0x20의 arm9RomOffset(이 셋 다 0x4000)이다. martLocator가 사용자 롬의 실제 헤더와 그 차를 맞춰 보므로 한쪽만 고쳐 쓰면 걸린다. 실측 확인: public/data/marts.json과 일반 19줄·지역 20곳이 셋 다 일치.",
   "martCounts": {
     "common": 19,
     "specialty": 20

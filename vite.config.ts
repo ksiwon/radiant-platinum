@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
@@ -14,30 +15,50 @@ const PUBLIC_DIR = resolve(import.meta.dirname, 'public')
 const AUDIT_DIR = resolve(import.meta.dirname, '.audit')
 
 /**
- * 앱 빌드 번호. 휴대용 리포트 봉투가 이걸 적는다 (`state/save/contract.ts`).
- *
- * ⚠️ **`0.0.0`으로 나가면 안 된다.** `package.json`의 version이 `0.0.0`이던
- * 동안 모든 `.rpsave`가 같은 값을 달고 나왔고, 그러면 "어느 판이 쓴 파일인가"를
- * 물을 수가 없다 — 적어 둔 자리가 있는데 아무것도 안 적힌 것과 같다.
- *
- * 뒤에 표식을 붙여 **로컬과 릴리스를 가른다.** CI가 커밋 해시를 주면 그것을,
- * 없으면 `dev`를 쓴다. `git`이 없는 clone에서도 빌드는 돼야 하므로 실패는
- * `dev`로 떨어진다.
+ * 앱의 **판**. SemVer이고 이것만 비교 대상이다.
  *
  * ⚠️ `package.json`을 런타임에 import 하면 그 파일이 통째로 번들에 실린다 —
  * 스크립트 60줄과 의존성 목록까지. 값 하나만 박아 넣는다
  */
-function appBuild(): string {
-  const version = (
+function appVersion(): string {
+  return (
     JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8')) as
       { version?: string }
   ).version ?? '0.0.0'
-  const ci = process.env.GITHUB_SHA ?? process.env.CI_COMMIT_SHA ?? process.env.APP_BUILD_ID
-  if (ci?.trim()) return `${version}+${ci.trim().slice(0, 7)}`
-  return `${version}+dev`
 }
 
-const APP_BUILD: string = appBuild()
+/**
+ * 이 빌드가 **어느 소스에서 나왔는가.** 판이 아니라 신원이다.
+ *
+ * ⚠️ **판과 섞어 쓰지 않는다.** 한때 `0.1.0+a1b2c3d` 한 문자열만 있었는데,
+ * SemVer에서 `+` 뒤는 **빌드 메타데이터라 우선순위를 안 바꾼다** — 즉
+ * `0.1.0+dev`와 `0.1.0+a1b2c3d`는 SemVer상 같은 판이다. 호환을 그 문자열로
+ * 따지면 "다르게 생겼으니 다른 판"이라고 잘못 읽게 된다. 그래서 둘을 나눈다:
+ * 호환 판정은 `APP_VERSION`, 신원은 `BUILD_ID`.
+ *
+ *   `dev`             로컬 빌드 (git이 없거나 CI가 아님)
+ *   `a1b2c3d`         깨끗한 나무에서 나온 빌드
+ *   `a1b2c3d-dirty`   커밋 안 한 변경이 섞인 빌드 — 재현이 안 된다
+ *
+ * `-dirty`는 릴리스에서 막는다 (`check.mjs --release`). 어느 소스에서 나왔는지
+ * 말할 수 없는 것을 공개하면 나중에 "그 빌드"를 다시 만들 수가 없다
+ */
+function buildId(): string {
+  const ci = process.env.GITHUB_SHA ?? process.env.CI_COMMIT_SHA ?? process.env.APP_BUILD_ID
+  if (ci?.trim()) return ci.trim().slice(0, 7)
+  try {
+    const sha = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8' }).trim()
+    if (!/^[0-9a-f]{7}$/.test(sha)) return 'dev'
+    const dirty = execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim()
+    return dirty ? `${sha}-dirty` : sha
+  } catch {
+    // git이 없는 clone에서도 빌드는 돼야 한다
+    return 'dev'
+  }
+}
+
+const APP_VERSION: string = appVersion()
+const BUILD_ID: string = buildId()
 
 /**
  * `public/`에서 **앱 셸만** 배포물로 옮긴다 (COPYRIGHT.md §6).
@@ -95,6 +116,29 @@ function bundleProvenance(): Plugin {
 }
 
 /**
+ * 이 배포물이 어느 소스에서 나왔는지 적어 둔다.
+ *
+ * ⚠️ **릴리스 게이트가 지금 나무를 다시 묻지 않게 하려는 것이다.** 빌드하고
+ * 검사할 때까지 사이에 파일이 바뀔 수 있으므로, 재야 하는 것은 검사 시점의
+ * 나무가 아니라 **`dist/`를 만든 그 나무**다 (`blockers.mjs`의 `release-build`).
+ *
+ * `.audit/`에 둔다 — 배포물이 아니다
+ */
+function buildStamp(): Plugin {
+  return {
+    name: 'radiant-build-stamp',
+    apply: 'build',
+    writeBundle() {
+      mkdirSync(AUDIT_DIR, { recursive: true })
+      writeFileSync(
+        resolve(AUDIT_DIR, 'build.json'),
+        `${JSON.stringify({ version: APP_VERSION, buildId: BUILD_ID }, null, 1)}\n`,
+      )
+    },
+  }
+}
+
+/**
  * CSP를 `<meta http-equiv>`로도 넣는다 (DEPLOY.md §3).
  *
  * ⚠️ **이것으로 CSP가 있다고 세지 않는다.** meta는 `frame-ancestors`를 무시하고,
@@ -114,8 +158,13 @@ function cspMetaTag(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), vanillaExtractPlugin(), appShellOnly(), bundleProvenance(), cspMetaTag()],
-  define: { __APP_BUILD__: JSON.stringify(APP_BUILD) },
+  plugins: [
+    react(), vanillaExtractPlugin(), appShellOnly(), bundleProvenance(), buildStamp(), cspMetaTag(),
+  ],
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   // 개발 서버에서만 쓴다. 배포 빌드와는 무관하다.
   //
   // 이 목록에 없는 의존성은 vite가 **처음 import되는 순간** 발견해 다시 묶고

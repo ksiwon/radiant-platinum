@@ -219,9 +219,78 @@ describe('release blocker', () => {
     const { readFileSync } = await import('node:fs')
     const { BLOCKERS } = await import('./blockers.mjs')
     const doc = readFileSync(join(ROOT, 'docs/DEPLOY.md'), 'utf8')
+    // ⚠️ **§1만 본다.** 문서에 번호 매긴 표가 더 생기면(§5의 실측 표처럼)
+    // 문서 전체에서 세는 것은 그 줄들까지 세서 아무 뜻이 없어진다
+    const first = doc.indexOf('## 1. ')
+    const next = doc.indexOf('\n## ', first + 1)
+    const section = doc.slice(first, next < 0 ? undefined : next)
     // 표에 줄이 몇 개인가 — `| 1 |`처럼 번호로 센다
-    const rows = doc.match(/^\| \d+ \| /gm) ?? []
-    expect(rows).toHaveLength(BLOCKERS.length)
+    const rows = section.match(/^\| \d+ \| /gm) ?? []
+    expect(rows, `§1 표 ${String(rows.length)}줄 ≠ blocker ${String(BLOCKERS.length)}개`)
+      .toHaveLength(BLOCKERS.length)
+  })
+})
+
+describe('src 안의 자료 표', () => {
+  // ⚠️ 경로 규칙은 이것들을 하나도 못 봤다. `src/data/textBanks.json`은 소스
+  // 나무 안이고 이름도 `.json`이라 `public/data` 검사에도 `dist` 규칙에도
+  // 안 걸리는데, 안에 롬 뱅크 헤더에서 읽은 u16 키가 697개 있다
+  it('심사 안 받은 표가 없다', async () => {
+    const { unlistedTables } = await import('./dataTables.mjs')
+    expect(unlistedTables(join(ROOT, 'src'))).toEqual([])
+  })
+
+  it('목록에 있는 표가 실제로 있다 — 이름이 갈리면 검사가 무의미해진다', async () => {
+    const { missingTables } = await import('./dataTables.mjs')
+    expect(missingTables()).toEqual([])
+  })
+
+  it('새 표를 넣으면 잡는다 — 검사에 이빨이 있다', async () => {
+    const { unlistedTables } = await import('./dataTables.mjs')
+    const fake = mkdtempSync(join(tmpdir(), 'tables-'))
+    try {
+      mkdirSync(join(fake, 'data'))
+      writeFileSync(join(fake, 'data', '몰래.json'), '[]')
+      expect(unlistedTables(fake)).toEqual(['src/data/몰래.json'])
+    } finally { rmSync(fake, { recursive: true, force: true }) }
+  })
+
+  it('표마다 무엇이 들었는지·어디서 왔는지가 적혀 있다', async () => {
+    const { TRACKED_TABLES } = await import('./dataTables.mjs')
+    expect(TRACKED_TABLES.length).toBeGreaterThan(0)
+    for (const t of TRACKED_TABLES) {
+      expect(t.holds.length, t.path).toBeGreaterThan(10)
+      expect(t.origin.length, t.path).toBeGreaterThan(3)
+      expect(t.marker.length, t.path).toBeGreaterThan(3)
+      expect(typeof t.inBundle, t.path).toBe('boolean')
+    }
+  })
+
+  it("⚠️ `inBundle: false`는 주장이 아니라 검사다", async () => {
+    const { tablesLeakedInto } = await import('./dataTables.mjs')
+    // 진짜 dist에는 없어야 하고
+    expect(tablesLeakedInto(join(ROOT, 'dist'))).toEqual([])
+    // 심어 두면 잡혀야 한다. 트리 셰이킹은 import 하나만 늘어도 깨진다
+    const fake = mkdtempSync(join(tmpdir(), 'leak-'))
+    try {
+      writeFileSync(join(fake, 'chunk.js'), 'const x = "moves_used_in_battle"')
+      const bad = tablesLeakedInto(fake)
+      expect(bad).toHaveLength(1)
+      expect(bad[0].table).toBe('src/data/textBanks.json')
+    } finally { rmSync(fake, { recursive: true, force: true }) }
+  })
+})
+
+describe('E2E 재료가 앱과 안 갈린다', () => {
+  it('⚠️ 필수 그룹 목록이 `required.ts`와 같다', async () => {
+    // 갈리면 브라우저 시험 ⑥이 **거짓으로 통과한다** — 없는 그룹으로 만든
+    // `ready` 기록을 앱이 안 받아 주는데도 시험은 통과했다고 말한다
+    const { readFileSync } = await import('node:fs')
+    const { REQUIRED_GROUPS } = await import('../e2e/fixtures.mjs')
+    const src = readFileSync(join(ROOT, 'src/import/install/required.ts'), 'utf8')
+    const names = [...src.matchAll(/^ {2}'([a-zA-Z]+)',/gm)].map((m) => m[1])
+    expect(names.length).toBe(12)
+    expect([...REQUIRED_GROUPS].sort()).toEqual(names.sort())
   })
 })
 

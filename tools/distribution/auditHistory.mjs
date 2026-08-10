@@ -67,6 +67,106 @@ for (const target of TARGETS) {
   console.log(`  ⚠️ ${target.path.padEnd(22)} 커밋 ${String(n).padStart(3)} · 블롭 ${String(blobs).padStart(5)} · ${mb(bytes)}   ${target.why}`)
 }
 
+// ── 내용으로 훑기 ────────────────────────────────────────────────────────────
+//
+// ⚠️ **경로 목록만으로는 부족하다.** 위 `TARGETS`는 우리가 *기억하는* 자리다.
+// 같은 산출물이 다른 이름으로 들어갔으면 — `src/data/*.json`으로, 스크린샷으로,
+// 확장자 없는 덤프로 — 저 목록은 그것을 통째로 못 본다. 그래서 히스토리의
+// **모든 블롭을 열어** 머리 몇 바이트로 종류를 가린다. 이름이 아니라 내용이다.
+//
+// 이 목록은 "지워야 할 것"이 아니라 **"봐야 할 것"**이다. 우리가 그린 아이콘도
+// PNG라 여기 뜬다 — 판단은 사람이 한다.
+
+/** 머리 바이트로 가리는 종류. 앞에서부터 먼저 맞는 것 */
+const MAGIC = [
+  { kind: 'PNG', why: '이미지 — 스프라이트 덤프·스크린샷', at: 0, sig: [0x89, 0x50, 0x4e, 0x47] },
+  { kind: 'JPEG', why: '이미지', at: 0, sig: [0xff, 0xd8, 0xff] },
+  { kind: 'GIF', why: '이미지', at: 0, sig: [0x47, 0x49, 0x46, 0x38] },
+  { kind: 'WEBP', why: '이미지', at: 8, sig: [...'WEBP'].map((c) => c.charCodeAt(0)) },
+  { kind: 'KTX2', why: '압축 텍스처', at: 0, sig: [0xab, 0x4b, 0x54, 0x58] },
+  { kind: 'GLB', why: '3D 모델', at: 0, sig: [...'glTF'].map((c) => c.charCodeAt(0)) },
+  { kind: 'NARC', why: '⚠️ 롬 컨테이너 그 자체', at: 0, sig: [...'NARC'].map((c) => c.charCodeAt(0)) },
+  { kind: 'SDAT', why: '⚠️ 롬 사운드 아카이브', at: 0, sig: [...'SDAT'].map((c) => c.charCodeAt(0)) },
+  { kind: 'NCLR', why: '⚠️ 롬 팔레트', at: 0, sig: [...'RLCN'].map((c) => c.charCodeAt(0)) },
+  { kind: 'NCGR', why: '⚠️ 롬 타일', at: 0, sig: [...'RGCN'].map((c) => c.charCodeAt(0)) },
+  { kind: 'NSBMD', why: '⚠️ 롬 모델', at: 0, sig: [...'BMD0'].map((c) => c.charCodeAt(0)) },
+  { kind: 'OggS', why: '소리', at: 0, sig: [...'OggS'].map((c) => c.charCodeAt(0)) },
+  { kind: 'ZIP', why: '압축 묶음 — 안을 못 본다', at: 0, sig: [0x50, 0x4b, 0x03, 0x04] },
+]
+
+/** 이 크기 아래 JSON은 표가 아니라 설정으로 본다 */
+const TABLE_BYTES = 64 * 1024
+
+/** 우리가 그린 것. 종류는 같아도 출처가 다르다 (docs/APP_SHELL.md) */
+const OURS = /^public\/assets\/radiant-platinum-|^docs\/[^/]*\.png$/
+
+function sniff(head, size) {
+  for (const m of MAGIC) {
+    if (head.length < m.at + m.sig.length) continue
+    if (m.sig.every((b, i) => head[m.at + i] === b)) return m
+  }
+  const first = head[0]
+  if ((first === 0x7b || first === 0x5b) && size >= TABLE_BYTES) {
+    return { kind: 'JSON표', why: `생성된 표로 보인다 (${mb(size)})` }
+  }
+  return null
+}
+
+{
+  const lines = git('rev-list', '--all', '--objects').split('\n').map((l) => l.trim()).filter(Boolean)
+  // 같은 블롭이 여러 경로에 있을 수 있다. 경로를 다 모은다
+  const wherePaths = new Map()
+  for (const line of lines) {
+    const at = line.indexOf(' ')
+    if (at <= 0) continue
+    const sha = line.slice(0, at)
+    if (!wherePaths.has(sha)) wherePaths.set(sha, new Set())
+    wherePaths.get(sha).add(line.slice(at + 1))
+  }
+  const shas = [...wherePaths.keys()]
+  // ⚠️ 내용을 진짜로 읽는다. `--batch-check`는 크기만 주고 머리 바이트를 안 준다
+  const raw = execFileSync('git', ['cat-file', '--batch'],
+    { cwd: ROOT, input: shas.join('\n'), maxBuffer: 1 << 29 })
+
+  const found = new Map()   // kind → { why, bytes, blobs, paths:Set }
+  let scanned = 0
+  let i = 0
+  while (i < raw.length) {
+    const nl = raw.indexOf(0x0a, i)
+    if (nl < 0) break
+    const [sha, type, sizeText] = raw.toString('utf8', i, nl).split(' ')
+    if (type !== 'blob') { i = nl + 1; continue }   // missing / tree / commit
+    const size = Number(sizeText)
+    const start = nl + 1
+    const head = raw.subarray(start, Math.min(start + 16, start + size))
+    i = start + size + 1
+    scanned += 1
+
+    const hit = sniff(head, size)
+    if (!hit) continue
+    const paths = [...(wherePaths.get(sha) ?? [])]
+    // 우리 것만 있는 블롭은 넘어간다. 하나라도 다른 자리에 있으면 남긴다
+    if (paths.length > 0 && paths.every((p) => OURS.test(p))) continue
+    const slot = found.get(hit.kind) ?? { why: hit.why, bytes: 0, blobs: 0, paths: new Set() }
+    slot.bytes += size
+    slot.blobs += 1
+    for (const p of paths) slot.paths.add(p)
+    found.set(hit.kind, slot)
+  }
+
+  console.log(`\n내용으로 훑기 — 블롭 ${String(scanned)}개를 열어 머리 바이트를 봤다:`)
+  if (found.size === 0) {
+    console.log('  ✓ 걸리는 종류 없음')
+  } else {
+    for (const [kind, s] of [...found].sort((a, b) => b[1].bytes - a[1].bytes)) {
+      const sample = [...s.paths].slice(0, 3).join(' · ')
+      console.log(`  ⚠️ ${kind.padEnd(7)} 블롭 ${String(s.blobs).padStart(5)} · ${mb(s.bytes).padStart(8)}   ${s.why}`)
+      console.log(`       경로 ${String(s.paths.size)}개 예: ${sample}`)
+    }
+    console.log('  ↑ 이름이 아니라 내용으로 가린 것이다. 우리가 그린 앱 셸 이미지는 뺐다')
+  }
+}
+
 // ── 큰 블롭 ──────────────────────────────────────────────────────────────────
 console.log('\n히스토리에서 가장 큰 블롭 10개:')
 const all = git('rev-list', '--all', '--objects')

@@ -59,6 +59,21 @@ export const CSP = {
 /** meta 태그에서는 듣지 않는 지시자. 넣어도 브라우저가 버린다 */
 export const HEADER_ONLY = ['frame-ancestors']
 
+/**
+ * CSP 말고 같이 붙는 응답 헤더 (DEPLOY.md §3 끝).
+ *
+ * `Strict-Transport-Security`는 https일 때만 뜻이 있어서 여기 없다 —
+ * `verifyDeploy.mjs`가 프로토콜을 보고 따로 요구한다.
+ *
+ * `Cross-Origin-Embedder-Policy`는 **안 켠다.** `SharedArrayBuffer`를 안 쓰고,
+ * 켜면 blob:/data: 규칙이 까다로워져 OPFS 경로가 흔들린다
+ */
+export const EXTRA_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Cross-Origin-Opener-Policy': 'same-origin',
+}
+
 /** 한 줄짜리 헤더 값 */
 export function cspHeader() {
   return Object.entries(CSP).map(([k, v]) => `${k} ${v}`).join('; ')

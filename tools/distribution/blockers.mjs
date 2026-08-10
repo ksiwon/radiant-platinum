@@ -61,6 +61,26 @@ export const BLOCKERS = [
     },
   },
   {
+    id: 'release-build',
+    why: '이 배포물이 어느 커밋에서 나왔는지 말할 수 없다',
+    where: 'state/save/contract.ts',
+    resolved() {
+      // 빌드가 스스로 적어 둔 것을 읽는다. 여기서 git을 다시 묻지 않는 이유는
+      // **빌드 시점과 검사 시점 사이에 나무가 바뀔 수 있어서다** — 재야 하는
+      // 것은 지금 나무가 아니라 `dist/`를 만든 그 나무다
+      const at = read('.audit/build.json')
+      if (!at) return { ok: false, detail: '빌드 도장이 없다 — pnpm build를 안 돌렸다' }
+      const { version, buildId } = JSON.parse(at)
+      if (buildId.endsWith('-dirty')) {
+        return { ok: false, detail: `${version}+${buildId} — 커밋 안 한 변경이 섞였다. 재현이 안 된다` }
+      }
+      if (buildId === 'dev' || buildId === 'unknown') {
+        return { ok: false, detail: `${version}+${buildId} — 커밋 해시가 안 박혔다` }
+      }
+      return { ok: true }
+    },
+  },
+  {
     id: 'git-history',
     why: 'Git 히스토리에 원본 유래 산출물이 남아 있다',
     where: 'COPYRIGHT.md §9',

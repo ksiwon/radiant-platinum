@@ -28,16 +28,33 @@ export interface ImportClient {
   validate(file: Blob, onStep?: (step: string) => void): Promise<ValidationReport>
   scanBdsp(input: { handle?: FileSystemDirectoryHandle; files?: File[] }): Promise<BdspScan>
   convert(group: string, hooks?: ConvertHooks): Promise<Produced>
-  /** 지금 도는 작업을 취소한다. 오류가 아니라 취소다 */
-  cancel(): void
+  /**
+   * 지금 도는 작업을 취소한다. 오류가 아니라 취소다.
+   *
+   * **협조적 취소가 먼저다.** Worker가 숨 쉬는 자리에서 신호를 보고 스스로
+   * 접는다 — 그래야 판정해 둔 파일시스템이 살아남아 다시 시작할 때 128MB를
+   * 또 안 읽는다. `hardAfterMs` 안에 대답이 없으면 **스레드를 끊는다.**
+   * 즉시 멈추는 대신 Worker가 들고 있던 것이 다 사라지므로 롬부터 다시 고른다.
+   *
+   * 끊는 갈래가 필요한 이유는 협조가 원리적으로 보장이 아니어서다 — 숨을 안
+   * 쉬는 루프가 하나라도 들어오면 취소 버튼이 먹통이 된다. 그때 사용자에게
+   * 남는 수단이 탭을 닫는 것뿐이면 안 된다
+   */
+  cancel(opts?: { hardAfterMs?: number }): void
   /** Worker를 끝낸다. 화면을 닫을 때 반드시 부른다 — 안 부르면 스레드가 남는다 */
   close(): void
+  /** 스레드가 끊겼는가. 끊겼으면 이 클라이언트로는 아무것도 못 한다 */
+  readonly dead: boolean
 }
+
+/** 협조적 취소를 이만큼 기다린 뒤 스레드를 끊는다 */
+export const HARD_CANCEL_MS = 2_000
 
 /** 진짜 Worker를 띄운다. Vite가 `new URL(...)`을 보고 청크를 만든다 */
 export function spawnImportWorker(): ImportClient {
   const worker = new Worker(new URL('./importWorker.ts', import.meta.url), { type: 'module' })
-  return attachImportClient(worker, () => { worker.terminate() })
+  const kill = (): void => { worker.terminate() }
+  return attachImportClient(worker, kill, kill)
 }
 
 /**
@@ -52,9 +69,13 @@ export function attachImportClient(
     addEventListener(type: 'message', fn: (e: { data: unknown }) => void): void
   },
   close: () => void,
+  /** 스레드를 끊는 법. 안 주면 협조적 취소만 쓴다 (`MessageChannel` 시험) */
+  hardCancel?: () => void,
 ): ImportClient {
   let nextJob: JobId = 1
   let live: JobId | null = null
+  let dead = false
+  let hardTimer: ReturnType<typeof setTimeout> | null = null
 
   interface Waiting {
     job: JobId
@@ -82,11 +103,26 @@ export function attachImportClient(
 
   const send = (msg: ToWorker): void => { port.postMessage(msg) }
 
+  /** 협조적 취소를 기다리다 만 자리. 스레드를 끊고 기다리던 쪽을 깨운다 */
+  const killNow = (): void => {
+    hardTimer = null
+    if (dead || !hardCancel) return
+    dead = true
+    hardCancel()
+    // 끊긴 스레드는 답을 못 보낸다 — 기다리는 쪽을 여기서 접는다
+    if (waiting) waiting.settle({ kind: 'cancelled', job: waiting.job })
+  }
+
+  const stopHardTimer = (): void => {
+    if (hardTimer !== null) { clearTimeout(hardTimer); hardTimer = null }
+  }
+
   async function ask<T>(
     make: (job: JobId) => ToWorker,
     take: (msg: FromWorker, produced: Produced) => T,
     extra: Pick<Waiting, 'onStep' | 'hooks'> = {},
   ): Promise<T> {
+    if (dead) throw new WorkerFailed('Terminated', '스레드를 끊었습니다. 롬부터 다시 골라 주세요.')
     const job = nextJob++
     live = job
     const done = new Promise<FromWorker>((resolve) => {
@@ -94,6 +130,7 @@ export function attachImportClient(
     })
     send(make(job))
     const msg = await done
+    stopHardTimer()
     const produced = waiting?.produced ?? new Map()
     waiting = null
     if (live === job) live = null
@@ -130,11 +167,21 @@ export function attachImportClient(
       { hooks },
     ),
 
-    cancel() {
-      if (live === null) return
+    cancel(opts) {
+      if (live === null || dead) return
       send({ kind: 'cancel', job: live })
+      // 협조가 원리적으로 보장이 아니라서 시한을 건다. 대답이 오면 `ask`가 끈다
+      if (hardCancel && hardTimer === null) {
+        hardTimer = setTimeout(killNow, opts?.hardAfterMs ?? HARD_CANCEL_MS)
+      }
     },
 
-    close,
+    close() {
+      stopHardTimer()
+      dead = true
+      close()
+    },
+
+    get dead() { return dead },
   }
 }

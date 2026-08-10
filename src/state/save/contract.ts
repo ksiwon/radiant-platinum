@@ -9,25 +9,53 @@
 // 것을 담으면 그것 자체가 유출 경로가 된다.
 
 /**
- * 이 앱을 만든 빌드. vite가 `define`으로 박아 넣는다.
+ * 앱의 **판**. vite가 `define`으로 박아 넣는다 (`package.json`의 version).
  *
- * 모양은 `<package.json version>+<표식>`이다:
- *
- *   `0.1.0+dev`        개발 서버·로컬 빌드
- *   `0.1.0+a1b2c3d`    CI 빌드 (커밋 짧은 해시)
- *
- * ⚠️ **`0.0.0`이면 안 된다.** 한때 `package.json`의 version이 `0.0.0`이라
- * 모든 `.rpsave`가 같은 값을 달고 나왔다 — "어느 판이 쓴 파일인가"를 물을 수
- * 없으니 적어 둔 의미가 없었다. 지금은 로컬과 릴리스도 갈린다
+ * ⚠️ **비교해도 되는 것은 이것뿐이다.** SemVer라 순서가 있다
  */
-declare const __APP_BUILD__: string
+declare const __APP_VERSION__: string
+/**
+ * 이 빌드가 **어느 소스에서 나왔는가.** `dev` · `a1b2c3d` · `a1b2c3d-dirty`.
+ *
+ * 판이 아니라 신원이다 — 크기 비교를 하면 안 된다
+ */
+declare const __BUILD_ID__: string
 
-export const APP_BUILD: string =
-  typeof __APP_BUILD__ === 'string' && __APP_BUILD__.length > 0 ? __APP_BUILD__ : '0.0.0+unknown'
+const defined = (v: unknown, fallback: string): string =>
+  typeof v === 'string' && v.length > 0 ? v : fallback
+
+export const APP_VERSION: string =
+  defined(typeof __APP_VERSION__ === 'undefined' ? undefined : __APP_VERSION__, '0.0.0')
+export const BUILD_ID: string =
+  defined(typeof __BUILD_ID__ === 'undefined' ? undefined : __BUILD_ID__, 'unknown')
+
+/**
+ * 봉투에 적는 한 줄. `0.1.0+a1b2c3d` 꼴이다.
+ *
+ * ⚠️ **이 문자열을 호환 판정에 쓰지 않는다.** SemVer에서 `+` 뒤는 빌드
+ * 메타데이터라 **우선순위를 안 바꾼다** — `0.1.0+dev`와 `0.1.0+a1b2c3d`는
+ * SemVer상 같은 판이다. 한때 이 자리에 문자열 하나뿐이라 "다르게 생겼으니
+ * 다른 판"으로 읽힐 자리였다. 판은 `APP_VERSION`, 신원은 `BUILD_ID`,
+ * 이 줄은 **사람이 읽고 버그를 재현할 때 쓰는 표시**다.
+ *
+ * ⚠️ `0.0.0`이면 안 된다. 한때 `package.json`의 version이 `0.0.0`이라 모든
+ * `.rpsave`가 같은 값을 달고 나왔다 — 적어 둔 의미가 없었다
+ */
+export const APP_BUILD: string = `${APP_VERSION}+${BUILD_ID}`
 
 /** 로컬에서 만든 빌드인가. 진단 화면이 이걸 적는다 */
-export function isDevBuild(build = APP_BUILD): boolean {
-  return build.endsWith('+dev') || build.endsWith('+unknown')
+export function isDevBuild(id = BUILD_ID): boolean {
+  return id === 'dev' || id === 'unknown'
+}
+
+/**
+ * 커밋 안 한 변경이 섞인 빌드인가.
+ *
+ * 이런 빌드는 **재현이 안 된다** — 해시가 가리키는 소스가 실제로 돌아간 소스가
+ * 아니다. 릴리스에서 막는다 (`tools/distribution/check.mjs --release`)
+ */
+export function isDirtyBuild(id = BUILD_ID): boolean {
+  return id.endsWith('-dirty')
 }
 
 /**
@@ -58,7 +86,7 @@ export interface ContentContract {
  *
  * 기본값이 `dev`인 것은 개발판이 raw에서 구운 산출물을 쓰고 거기에 지역판
  * 개념이 없기 때문이다. 공개판은 부팅할 때 `install.json`이 이 값을 준다
- * (`app/boot.ts`의 `useInstalled`) — 그래서 다른 기계에서 만든 `.rpsave`를
+ * (`app/boot.ts`의 `activateInstall`) — 그래서 다른 기계에서 만든 `.rpsave`를
  * 열면 "다른 지역판"이라고 말할 수 있다
  */
 let current: ContentContract = { platinumLocale: 'dev', schema: CONTENT_SCHEMA }

@@ -13,6 +13,7 @@ import {
   loadTrainers,
 } from '../data/gameData'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
+import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
@@ -107,6 +108,30 @@ export function installDevConsole(): void {
     },
     /** 지금 리포트를 `.rpsave`로 받는다 */
     backup: () => useSaveStore.getState().exportReport(),
+    /**
+     * 지금 자리를 리포트로 저장한다. 설정의 "리포트에 적기"와 같은 것이다.
+     *
+     * 돌려주는 `{ saved, backup }`이 **둘 다 따로**인 것이 요점이다 — 내부
+     * 저장과 파일 받기는 별개의 성공이다 (IMPORT.md §10). 브라우저 E2E가
+     * 다운로드를 막아 놓고 이 값을 본다 (`tools/e2e/run.mjs`)
+     */
+    report: () => {
+      const save = useSaveStore.getState()
+      // 맵에 아직 안 들어갔으면(타이틀 화면) 세이브에 적힌 자리를 그대로 쓴다.
+      // `world.mapId`가 -1인 채로 넘기면 스키마가 막는다 — 맞는 동작이라
+      // 우회하지 않고 **물어볼 자리를 바꾼다**
+      const p = worldState.player.position
+      const here = world.mapId >= 0
+        ? { map: world.mapId, matrix: world.matrix, x: p.x, z: p.z, facing: worldState.player.facing }
+        : save.position
+      return save.report(here)
+    },
+    /** 파일 글을 그대로 들인다. 화면의 "리포트 파일 불러오기"와 같은 길이다 */
+    bringIn: (text: string) => {
+      const preview = useSaveStore.getState().previewImport(text)
+      if (!preview.ok) return Promise.resolve({ ok: false as const, why: preview.why })
+      return useSaveStore.getState().commitImport(preview)
+    },
     /**
      * 시각을 민다. 하늘·조명·안개가 따라오고 시간대 인카운터도 같이 바뀐다.
      *

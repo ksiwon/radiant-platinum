@@ -7,7 +7,7 @@
 //   ② 버전이 오르는 날 migration이 비어 있지 않은가. 이 시험이 없으면
 //      `SAVE_VERSION`만 8로 올리고 표를 안 적어도 아무도 안 막는다
 import { describe, expect, it } from 'vitest'
-import { APP_BUILD, isDevBuild, MIN_COMPATIBLE_BUILD } from './contract'
+import { APP_BUILD, APP_VERSION, BUILD_ID, isDevBuild, isDirtyBuild, MIN_COMPATIBLE_BUILD } from './contract'
 import { MIGRATIONS, oldestSupported } from './migrate'
 import { SAVE_VERSION } from '../saveStore'
 
@@ -15,18 +15,31 @@ describe('빌드 식별자', () => {
   it('⚠️ 0.0.0으로 나가지 않는다', () => {
     // 한때 `package.json`의 version이 `0.0.0`이라 모든 `.rpsave`가 같은 값을
     // 달고 나왔다. 그 자리는 있는데 아무것도 안 적힌 것과 같았다
-    expect(APP_BUILD).not.toBe('0.0.0')
+    expect(APP_VERSION).not.toBe('0.0.0')
     expect(APP_BUILD.startsWith('0.0.0+')).toBe(false)
   })
 
-  it('`<판>+<표식>` 모양이다 — 로컬과 릴리스가 갈린다', () => {
-    expect(APP_BUILD).toMatch(/^\d+\.\d+\.\d+\+[0-9a-z]+$/)
+  it('⚠️ 판과 신원이 **다른 값**이다', () => {
+    // SemVer에서 `+` 뒤는 빌드 메타데이터라 우선순위를 안 바꾼다 —
+    // `0.1.0+dev`와 `0.1.0+a1b2c3d`는 SemVer상 같은 판이다. 한 문자열로 두면
+    // "다르게 생겼으니 다른 판"으로 읽을 자리가 생긴다
+    expect(APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/)
+    expect(BUILD_ID).toMatch(/^(dev|unknown|[0-9a-f]{7}(-dirty)?)$/)
+    expect(APP_BUILD).toBe(`${APP_VERSION}+${BUILD_ID}`)
   })
 
   it('개발 빌드인지 알 수 있다', () => {
-    expect(isDevBuild('0.1.0+dev')).toBe(true)
-    expect(isDevBuild('0.1.0+unknown')).toBe(true)
-    expect(isDevBuild('0.1.0+a1b2c3d')).toBe(false)
+    expect(isDevBuild('dev')).toBe(true)
+    expect(isDevBuild('unknown')).toBe(true)
+    expect(isDevBuild('a1b2c3d')).toBe(false)
+  })
+
+  it('⚠️ 커밋 안 한 나무에서 나온 빌드를 가려낸다', () => {
+    // 그런 빌드는 재현이 안 된다 — 해시가 가리키는 소스가 실제로 돌아간
+    // 소스가 아니다. 릴리스 게이트가 이걸 보고 막는다
+    expect(isDirtyBuild('a1b2c3d-dirty')).toBe(true)
+    expect(isDirtyBuild('a1b2c3d')).toBe(false)
+    expect(isDirtyBuild('dev')).toBe(false)
   })
 
   it('MIN_COMPATIBLE_BUILD는 아무것도 안 막는다고 적혀 있다', () => {

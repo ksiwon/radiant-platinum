@@ -39,6 +39,18 @@ function team(prefix: string, seed: number): SideMon[] {
   return ROSTER.map(([id, level], i) => spawn(id, level, seed + i * 17, `${prefix}-${i}`))
 }
 
+/**
+ * sim 내부 난수까지 못 박는다.
+ *
+ * ⚠️ **이게 없으면 같은 커밋을 두 번 돌려도 승률이 달라진다.** 우리 쪽 난수(`rng`)만
+ * 잡아 봐야 명중·급소·데미지 폭은 `BattleStream`이 `Math.random`으로 굴린다.
+ * 문턱에 걸친 판 하나가 뒤집히면 시험이 깜빡이고, 깜빡이는 시험은 회귀를 못 잡는다
+ */
+function simSeed(seed: number): [number, number, number, number] {
+  const r = rng(seed ^ 0x5eed)
+  return [0, 0, 0, 0].map(() => Math.floor(r() * 65536)) as [number, number, number, number]
+}
+
 /** 무작위로 기술 하나. 교체를 강요당한 턴에만 교체를 고른다 */
 function randomMove(actions: BattleAction[], random: () => number): BattleAction | null {
   if (!actions.length) return null
@@ -62,6 +74,7 @@ async function battle(seed: number, smart: boolean): Promise<boolean | null> {
     // 못 가른다. 키만 다르다
     foe: { name: 'AI', team: team('p2', seed) },
     random,
+    seed: simSeed(seed),
     ai: { flags: AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT, moves: moveTable },
     ...(smart ? {} : { foePolicy: (r) => chooseRandom(r, random) }),
   }).then((r) => r.controller)
@@ -101,13 +114,22 @@ describe('AI가 실제로 이긴다', () => {
     const off = await winRate(false, ROUNDS)
     const on = await winRate(true, ROUNDS)
 
-    expect(off.played, '기준선 배틀이 안 끝났다').toBeGreaterThan(ROUNDS - 5)
-    expect(on.played, 'AI 배틀이 안 끝났다').toBeGreaterThan(ROUNDS - 5)
+    // 한 판도 맴돌지 않는다. 예전에는 `> ROUNDS - 5`였다 — 몇 판이 안 끝나도
+    // 지나갔고, 그러면 분모가 판마다 달라져 승률 자체가 흔들린다
+    expect(off.played, '기준선 배틀이 안 끝났다').toBe(ROUNDS)
+    expect(on.played, 'AI 배틀이 안 끝났다').toBe(ROUNDS)
+
+    // 씨앗을 다 잡았으므로 **승수까지 못 박는다.** 이 줄이 깨졌다면 AI 판단이
+    // 바뀌었거나 sim 버전이 올라간 것이고, 둘 다 눈에 띄어야 하는 변화다.
+    // 예전에는 `offRate > 0.3`이었고 실측이 정확히 0.375였다. 문턱에 붙은
+    // 부등호라 판 하나가 뒤집힐 때마다 깜빡였고, 깜빡이는 시험은 회귀를 못 잡는다
+    expect(off.wins, '기준선(무작위 대 무작위)').toBe(15)
+    expect(on.wins, 'AI를 꽂은 쪽').toBe(34)
 
     const offRate = off.wins / off.played
     const onRate = on.wins / on.played
-    // 실측은 5할 대 8할이다. 문턱을 10%p로 둔 것은 sim 내부 난수를 우리가 못 잡아서다
-    // — 판마다 흔들리므로 "확실히 벌어진다"만 요구한다
+    // 위 두 줄이 이 셋을 이미 함축한다. 그래도 남기는 것은 승수를 새 실측으로
+    // 고쳐 쓸 사람이 **무엇을 지켜야 하는지** 알아야 해서다
     expect(onRate, `무작위 ${off.wins}/${off.played} · AI ${on.wins}/${on.played}`)
       .toBeGreaterThan(offRate + 0.1)
     // 기준선이 5할 언저리여야 위 비교가 의미가 있다. 여기가 8할이면 파티가 이미
@@ -115,6 +137,14 @@ describe('AI가 실제로 이긴다', () => {
     expect(offRate, `기준선 ${off.wins}/${off.played}`).toBeGreaterThan(0.3)
     expect(offRate, `기준선 ${off.wins}/${off.played}`).toBeLessThan(0.7)
   }, 120_000)
+
+  it('같은 씨앗은 같은 판을 만든다', async () => {
+    // 위 시험이 승수를 못 박을 수 있는 근거. 씨앗이 실제로 안 먹으면 40판을
+    // 다 돌리기 전에 여기서 먼저 깨진다
+    const first = await battle(9000, true)
+    const again = await battle(9000, true)
+    expect(again, '같은 씨앗인데 결과가 다르다').toBe(first)
+  }, 30_000)
 })
 
 describe('바닥 플래그', () => {

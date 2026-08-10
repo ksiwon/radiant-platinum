@@ -30,6 +30,8 @@ export interface ConvertContext {
   onProgress?: (done: number, total: number) => void
   /** 취소 신호. 그룹마다 **자주** 본다 — 한 그룹이 몇 초씩 걸린다 */
   signal?: { aborted: boolean }
+  /** 몇 번째 숨인가. `breathe`가 센다 — 넷에 한 번은 타이머여야 한다 */
+  breaths?: number
 }
 
 export class Cancelled extends Error {
@@ -49,16 +51,38 @@ const check = (ctx: ConvertContext): void => {
  * 취소가 한 번도 안 먹은 것이 그 증거였고, 같은 스레드에서 함수를 직접
  * 부르던 시험은 이걸 못 잡았다 (시험이 직접 `aborted`를 켰기 때문이다).
  *
- * `setTimeout(0)`은 브라우저에서 4ms까지 늘어난다. 그래서 **자주 안 부른다** —
- * 진행 보고는 촘촘하게, 숨은 드물게
+ * ⚠️ **`scheduler.yield()`만으로는 안 된다.** 중첩 `setTimeout(0)`은 4ms로
+ * 늘어나서 느리지만, `scheduler.yield()`의 재개는 다른 태스크보다 **먼저**
+ * 실행되도록 우선순위가 붙는다 — 그러면 취소 메시지를 계속 앞질러서 이 함수가
+ * 고치려던 버그가 그대로 돌아온다. 그래서 둘을 섞는다: 평소에는 싼 쪽으로
+ * 양보하고, `TIMER_EVERY`번에 한 번은 반드시 타이머로 큐를 비운다.
+ * 브라우저에서 실제로 취소가 먹는지는 `tools/e2e/run.mjs`가 잰다
  */
 async function breathe(ctx: ConvertContext): Promise<void> {
-  await new Promise<void>((done) => { setTimeout(done, 0) })
+  ctx.breaths = (ctx.breaths ?? 0) + 1
+  if (ctx.breaths % TIMER_EVERY === 0 || !yieldFn) {
+    await new Promise<void>((done) => { setTimeout(done, 0) })
+  } else {
+    await yieldFn()
+  }
   check(ctx)
 }
 
-/** 이만큼마다 한 번 숨을 쉰다. 471개면 여덟 번이라 취소가 60ms 안에 먹는다 */
+/**
+ * `scheduler.yield()`가 있으면 그것. 없으면 null이고 늘 타이머로 간다.
+ *
+ * 표준에 없는 API라 타입에 없다. Node 18+에도 전역 `scheduler`가 있어서
+ * (`setImmediate` 상당) 시험도 이 갈래를 지난다
+ */
+const yieldFn: (() => Promise<void>) | null = (() => {
+  const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler
+  return typeof s?.yield === 'function' ? s.yield.bind(s) : null
+})()
+
+/** 이만큼마다 한 번 숨을 쉰다. 471개면 여덟 번이라 취소가 곧 먹는다 */
 const BREATH = 64
+/** 그 숨 중 이만큼마다 한 번은 **반드시** 타이머다 — 위 ⚠️ 참고 */
+const TIMER_EVERY = 4
 
 export interface GroupSpec {
   name: string
@@ -172,7 +196,9 @@ async function convertMarts(ctx: ConvertContext): Promise<Produced> {
   const itemCount = items ? narcCount(items) ?? undefined : undefined
   check(ctx)
   ctx.onProgress?.(1, 2)
-  const table = await readMarts(ctx.fs, martLocator(ctx.release), itemCount)
+  // 자리를 이 롬의 헤더와 맞춰 본다. 표가 어긋나 있으면 여기서 던진다
+  const at = martLocator(ctx.release, ctx.fs.header.arm9RomOffset)
+  const table = await readMarts(ctx.fs, at, itemCount)
   ctx.onProgress?.(2, 2)
   // 노드 쪽 writeJson과 같은 모양이어야 한다 — parity를 바이트로 재기 때문이다
   return new Map([['data/marts.json', encoder.encode(JSON.stringify(table))]])

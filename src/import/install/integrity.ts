@@ -10,10 +10,18 @@
 
 /** 브라우저 산출물의 SHA-256 (소문자 16진) */
 export async function sha256(bytes: Uint8Array): Promise<string> {
-  // ⚠️ 뷰의 `buffer`를 통째로 넘기면 안 된다 — 여러 파일이 한 버퍼를 나눠 쓰는
-  // 날 남의 바이트까지 해싱한다. 자기 몫만 자른다
-  const slice = new Uint8Array(bytes).buffer
-  const digest = await crypto.subtle.digest('SHA-256', slice)
+  // ⚠️ 뷰의 `.buffer`를 통째로 넘기면 안 된다 — 여러 파일이 한 버퍼를 나눠 쓰는
+  // 날 남의 바이트까지 해싱한다. **뷰를 그대로 넘긴다**: `digest`는 BufferSource를
+  // 받고 뷰면 `byteOffset`·`byteLength`만큼만 본다.
+  //
+  // 한때 여기서 `new Uint8Array(bytes).buffer`로 잘라 넘겼다. 자기 몫만 보는
+  // 것은 맞았지만 **전체를 한 벌 더 만든다** — 96MB 파일 하나에 힙이 +97MB
+  // 뛰는 것을 브라우저에서 쟀다 (`tools/e2e/run.mjs` ⑭). BDSP 모델 그룹이
+  // 붙으면 그 한 벌이 그대로 실패로 이어진다
+  //
+  // 캐스트는 `SharedArrayBuffer` 하나 때문이다. 우리는 그걸 안 쓴다 —
+  // CSP에서 `Cross-Origin-Embedder-Policy`를 안 켠 것이 그 선언이다 (csp.mjs)
+  const digest = await crypto.subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>)
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 

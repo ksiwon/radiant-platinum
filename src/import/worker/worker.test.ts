@@ -134,6 +134,42 @@ withRom('en')('Worker 경계', () => {
   })
 })
 
+describe('협조하지 않는 스레드', () => {
+  // ⚠️ 협조적 취소는 **원리적으로 보장이 아니다.** 숨을 안 쉬는 루프가 하나만
+  // 들어와도 취소 버튼이 먹통이 되고, 그때 사용자에게 남는 수단이 탭을 닫는
+  // 것뿐이면 안 된다. 그래서 대답 없는 스레드를 끊는 갈래를 따로 잰다.
+  //
+  // 대답 없는 Worker를 흉내내는 법: 포트 반대쪽에 핸들러를 안 붙인다
+  function deaf(): { client: ImportClient; killed: () => number } {
+    const { port1, port2 } = new MessageChannel()
+    port1.start()
+    let kills = 0
+    const client = attachImportClient(
+      port1 as unknown as Parameters<typeof attachImportClient>[0],
+      () => { port1.close(); port2.close() },
+      () => { kills += 1; port1.close(); port2.close() },
+    )
+    return { client, killed: () => kills }
+  }
+
+  it('대답이 없으면 스레드를 끊고 취소로 접는다', async () => {
+    const { client, killed } = deaf()
+    const running = client.convert('moves')
+    client.cancel({ hardAfterMs: 10 })
+    await expect(running).rejects.toBeInstanceOf(WorkerCancelled)
+    expect(killed(), '끊지 않았다').toBe(1)
+    expect(client.dead).toBe(true)
+  })
+
+  it('끊긴 클라이언트는 그렇다고 말한다 — 조용히 매달리지 않는다', async () => {
+    const { client } = deaf()
+    const running = client.convert('moves')
+    client.cancel({ hardAfterMs: 10 })
+    await expect(running).rejects.toBeInstanceOf(WorkerCancelled)
+    await expect(client.validate(new Blob([new Uint8Array(4)]))).rejects.toThrow(/다시 골라/)
+  })
+})
+
 describe('Worker 기동 배선', () => {
   // ⚠️ 여기서 소스를 읽는 것은 **경로가 조용히 썩는 것**을 막으려는 것이다.
   // `importWorker.ts`의 이름을 바꾸면 vite가 청크를 못 만들고, 그 실패는

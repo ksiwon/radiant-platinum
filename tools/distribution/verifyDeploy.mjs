@@ -13,7 +13,7 @@
 // 그렇다고 찍는다. **약한 검사를 통과라고 쓰지 않는다.**
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { compareHeader, cspHeader } from './csp.mjs'
+import { compareHeader, cspHeader, EXTRA_HEADERS } from './csp.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 
@@ -55,10 +55,10 @@ if (!got) {
 }
 
 // ── ② 그 밖의 헤더 ──────────────────────────────────────────────────────────
-const want = {
-  'x-content-type-options': 'nosniff',
-  'referrer-policy': 'no-referrer',
-}
+// 정본은 `csp.mjs`의 `EXTRA_HEADERS` 하나다 — 여기 또 적으면 두 벌이 갈린다
+const want = Object.fromEntries(
+  Object.entries(EXTRA_HEADERS).map(([k, v]) => [k.toLowerCase(), v.toLowerCase()]),
+)
 for (const [k, v] of Object.entries(want)) {
   const h = res.headers.get(k)
   if (h?.toLowerCase() !== v) problems.push(`${k}: ${h ?? '없음'} ≠ ${v}`)

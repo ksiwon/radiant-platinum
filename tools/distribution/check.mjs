@@ -12,10 +12,12 @@
 // 것이라 빌드를 세운다. blocker는 아직 해결 못 한 것이라 세우면 개발이 멈춘다 —
 // 대신 매 빌드에 숫자를 찍고, `--release`에서만 실패로 바꾼다. 공개 배포는
 // 그 판정을 지나야 한다 (DEPLOY.md §1).
+import { gzipSync } from 'node:zlib'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PUBLIC_SHELL, collectShell, unlistedShellFiles } from './appShell.mjs'
 import { openBlockers } from './blockers.mjs'
+import { TRACKED_TABLES, missingTables, tablesLeakedInto, unlistedTables } from './dataTables.mjs'
 import { forbiddenIn } from './provenance.mjs'
 import { pathViolations, scanTree, originsIn } from './rules.mjs'
 
@@ -84,6 +86,22 @@ function checkPre() {
     }
   }
 
+  // ①-e `src/` 안의 자료 표가 전부 심사받았는가 (`dataTables.mjs`).
+  //
+  // ⚠️ 경로 규칙은 이것들을 하나도 못 봤다. `src/**/*.json`은 `public/data`
+  // 검사에 안 걸리고 `dist` 규칙도 통과한다. 그런데 `src/data/textBanks.json`
+  // 안에는 롬 뱅크 헤더에서 읽은 u16 키가 697개 들어 있다 — 내용 기반
+  // 히스토리 감사를 붙이고 나서야 보였다
+  for (const rel of unlistedTables(resolve(ROOT, 'src'))) {
+    fail('심사 안 받은 자료 표', `${rel} — tools/distribution/dataTables.mjs에 무엇이 들었는지 적는다`)
+  }
+  for (const rel of missingTables()) {
+    fail('목록에는 있는데 파일이 없는 자료 표', `${rel} — 이름이 갈리면 검사가 조용히 무의미해진다`)
+  }
+  for (const t of TRACKED_TABLES) {
+    if (t.note.includes('미해결')) notes.push(`${t.path} — ${t.holds} (미해결 판단 있음: dataTables.mjs)`)
+  }
+
   // ② `public/` 안에 원본 유래 나무가 남아 있는가.
   //
   // 있어도 빌드는 된다 — `copyPublicDir: false`라 안 실려 나간다. 다만 **그
@@ -133,6 +151,37 @@ function checkPre() {
 
 // ── 빌드 후 ──────────────────────────────────────────────────────────────────
 
+/** PLAN §10.4 예산. 넘으면 빌드를 세운다 */
+const PAYLOAD_LIMIT = 150 * 1024
+/**
+ * 내부 목표. 예산에 붙어 있으면 다음 화면 하나에 넘긴다 —
+ * 여유를 재는 자리가 없으면 "통과했다"와 "간신히 통과했다"가 구별이 안 된다
+ */
+const PAYLOAD_TARGET = 135 * 1024
+
+/**
+ * 첫 화면이 실제로 받는 것 (gzip).
+ *
+ * ⚠️ **`index.html`이 스스로 적어 둔 것을 읽는다.** 청크 목록을 손으로 적으면
+ * 코드 쪼개기가 바뀔 때마다 갈라진다. 브라우저가 첫 로드에 받는 것은 정확히
+ * 여기 있는 것들이다 — 진입 스크립트 · modulepreload · 스타일시트
+ */
+function initialPayload(dist) {
+  const html = readFileSync(resolve(dist, 'index.html'), 'utf8')
+  const files = new Set()
+  for (const m of html.matchAll(/(?:src|href)="\/(assets\/[^"]+\.(?:js|css))"/g)) files.add(m[1])
+  let raw = 0
+  let gz = gzipSync(Buffer.from(html)).length
+  for (const rel of files) {
+    const at = resolve(dist, rel)
+    if (!existsSync(at)) continue
+    const bytes = readFileSync(at)
+    raw += bytes.length
+    gz += gzipSync(bytes).length
+  }
+  return { files: [...files], raw, gz }
+}
+
 function checkPost() {
   const dist = resolve(ROOT, 'dist')
   if (!existsSync(dist)) {
@@ -141,6 +190,21 @@ function checkPost() {
   }
   const scan = scanTree(dist, { label: 'dist' })
   for (const v of scan.violations) fail(v.why, `${v.file} (${mb(v.bytes)})`)
+
+  // 첫 화면 예산 (PLAN §10.4). 문서에만 있고 아무도 안 재던 값이다 —
+  // 그러면 어느 날 넘어도 눈으로 봐야 안다
+  if (existsSync(resolve(dist, 'index.html'))) {
+    const p = initialPayload(dist)
+    notes.push(
+      `첫 화면 ${String(p.files.length + 1)}개 · ${mb(p.raw)} · gzip ${mb(p.gz)}`
+      + ` (목표 ${mb(PAYLOAD_TARGET)} · 예산 ${mb(PAYLOAD_LIMIT)})`,
+    )
+    if (p.gz > PAYLOAD_LIMIT) {
+      fail(`첫 화면이 예산을 넘었다 — gzip ${mb(p.gz)} > ${mb(PAYLOAD_LIMIT)}`, p.files.join(' · '))
+    } else if (p.gz > PAYLOAD_TARGET) {
+      notes.push(`⚠️ 내부 목표 ${mb(PAYLOAD_TARGET)}를 넘었다 — 예산까지 ${mb(PAYLOAD_LIMIT - p.gz)} 남았다`)
+    }
+  }
 
   // 서비스 워커는 앱 셸만 캐시해야 한다 (IMPORT.md §8 끝)
   const sw = resolve(dist, 'sw.js')
@@ -153,6 +217,14 @@ function checkPost() {
       fail('서비스 워커가 아직 원본 유래 나무를 캐시한다', 'dist/sw.js')
     }
     for (const host of originsIn(text)) fail(`서비스 워커에 바깥 오리진 '${host}'`, 'dist/sw.js')
+  }
+
+  // `inBundle: false`라고 적어 둔 표가 정말 안 실렸는가.
+  //
+  // ⚠️ 트리 셰이킹은 import 하나만 늘어도 깨진다. "안 들어간다"를 가정으로
+  // 두면 어느 날 조용히 들어간다 — 그래서 배포물을 실제로 뒤진다
+  for (const leak of tablesLeakedInto(dist)) {
+    fail(`자료 표가 배포물에 실렸다: ${leak.table}`, `dist/${leak.file}에 '${leak.marker}'가 있다`)
   }
 
   // 번들 **안**에 무엇이 들어갔는가 (COPYRIGHT.md §6 · DEPLOY.md §4).

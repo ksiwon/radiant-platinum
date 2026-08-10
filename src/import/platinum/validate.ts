@@ -24,12 +24,25 @@ export interface Release {
   fileCount: number
   messageBanks: number
   /**
-   * ARM9 안의 상점 표 자리 (16진 문자열, ARM9 시작 기준 상대).
+   * ARM9 안의 상점 표 자리.
    *
-   * **재고가 아니라 자리다.** 물건 목록은 사용자의 롬에서 읽는다
-   * (`marts.ts`)
+   * **재고가 아니라 자리다.** 물건 목록은 사용자의 롬에서 읽는다 (`marts.ts`)
    */
-  marts: { common: string; specialty: string }
+  marts: { common: MartSite; specialty: MartSite }
+}
+
+/**
+ * 표 하나의 자리. **두 값을 다 적는다** — 여기가 실제로 한 번 헷갈렸다.
+ *
+ * 처음 받은 여섯 값은 `.nds` 파일 절대 오프셋이었는데 "ARM9 상대"로 적혀 왔고,
+ * 그대로 쓰면 0x4000만큼 어긋난 자리를 읽는다. 이름 하나로 갈리는 값이라
+ * 둘 다 적고 **차이를 사용자 롬의 헤더와 맞춰 본다** (`martLocator`)
+ */
+export interface MartSite {
+  /** 롬 파일 처음부터 (16진 문자열) */
+  romOffset: string
+  /** ARM9 이미지 시작부터 (16진 문자열). 실제로 쓰는 값은 이쪽이다 */
+  arm9RelativeOffset: string
 }
 
 export const SUPPORTED = table as unknown as {
@@ -43,17 +56,41 @@ export const SUPPORTED = table as unknown as {
   releases: Release[]
 }
 
-/** 16진 문자열 자리를 수로. 못 읽으면 던진다 — 조용히 0이 되면 안 된다 */
-export function martLocator(release: Release): { common: number; specialty: number } {
-  const parse = (s: string, what: string): number => {
-    const n = Number(s)
-    if (!Number.isInteger(n) || n <= 0) throw new Error(`${release.gameCode} ${what} 자리가 이상하다: ${s}`)
-    return n
+/**
+ * 표 자리를 수로 바꾸고 **사용자 롬의 헤더와 맞춰 본다.**
+ *
+ * `romOffset − arm9RelativeOffset`은 정의상 헤더 0x20의 `arm9RomOffset`이다.
+ * 안 맞으면 우리 표가 틀렸거나(둘 중 하나만 고쳐 씀) 이 롬의 ARM9가 우리가
+ * 아는 자리에 없는 것이다. 어느 쪽이든 그 자리를 읽으면 안 된다 — 던진다.
+ *
+ * `arm9RomOffset`을 안 주면 그 대조를 건너뛴다 (표 자체를 재는 시험용)
+ */
+export function martLocator(
+  release: Release,
+  arm9RomOffset?: number,
+): { common: number; specialty: number } {
+  const at = (site: MartSite, what: string): number => {
+    const rom = hexAt(site.romOffset, release.gameCode, `${what}.romOffset`)
+    const rel = hexAt(site.arm9RelativeOffset, release.gameCode, `${what}.arm9RelativeOffset`)
+    if (rom <= rel) {
+      throw new Error(`${release.gameCode} ${what}: romOffset이 arm9RelativeOffset보다 앞이다`)
+    }
+    if (arm9RomOffset !== undefined && rom - rel !== arm9RomOffset) {
+      throw new Error(
+        `${release.gameCode} ${what}: 표의 차 0x${(rom - rel).toString(16)}가 `
+        + `이 롬의 arm9RomOffset 0x${arm9RomOffset.toString(16)}와 다르다`,
+      )
+    }
+    return rel
   }
-  return {
-    common: parse(release.marts.common, 'common'),
-    specialty: parse(release.marts.specialty, 'specialty'),
-  }
+  return { common: at(release.marts.common, 'common'), specialty: at(release.marts.specialty, 'specialty') }
+}
+
+/** 16진 문자열 하나. 못 읽으면 던진다 — 조용히 0이 되면 엉뚱한 자리를 읽는다 */
+function hexAt(s: string, gameCode: string, what: string): number {
+  const n = Number(s)
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`${gameCode} ${what} 자리가 이상하다: ${s}`)
+  return n
 }
 
 export type ValidationStep =

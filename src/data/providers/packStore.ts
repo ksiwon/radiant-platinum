@@ -26,8 +26,13 @@ export interface WritablePackStore extends PackStore {
    */
   write(path: string, bytes: Uint8Array): Promise<void>
   remove(path: string): Promise<void>
-  /** 그 아래 전부. 재개할 때 저널과 실제 파일을 대조하는 데 쓴다 */
-  list(prefix?: string): Promise<string[]>
+  /**
+   * 그 아래 전부. 재개할 때 저널과 실제 파일을 대조하는 데 쓴다.
+   *
+   * `parts`를 켜면 쓰다 만 `.part` 조각까지 준다 — **지울 때만 쓴다.**
+   * 평소에 주면 재개가 조각을 완성품으로 읽는다
+   */
+  list(prefix?: string, options?: { parts?: boolean }): Promise<string[]>
   /** 나무 하나를 통째로. "에셋 다시 설치"가 쓴다 — **세이브는 안 건드린다** */
   clear(prefix: string): Promise<void>
 }
@@ -133,9 +138,13 @@ export function opfsPackStore(base = `${OPFS_ROOT}/${OPFS_ASSETS}`): WritablePac
       await stream.write(bytes as unknown as BufferSource)
       await stream.close()
 
-      const back = await (await tmpHandle.getFile()).arrayBuffer()
-      if (back.byteLength !== bytes.byteLength) {
-        throw new Error(`${path}: 쓴 길이가 다르다 (${String(bytes.byteLength)} → ${String(back.byteLength)})`)
+      // ⚠️ **길이만 확인하고 바이트는 JS 힙으로 안 끌어올린다.** 한때 여기서
+      // `.arrayBuffer()`로 통째로 다시 읽었다 — 그러면 `bytes`와 읽어 온 것이
+      // 동시에 살아 있어서 큰 파일 하나에 메모리가 두 배로 뛴다. `File`은
+      // Blob이라 그대로 쓰기 스트림에 넘길 수 있고, 그 복사는 브라우저가 한다
+      const back = await tmpHandle.getFile()
+      if (back.size !== bytes.byteLength) {
+        throw new Error(`${path}: 쓴 길이가 다르다 (${String(bytes.byteLength)} → ${String(back.size)})`)
       }
 
       const handle = await fileAt(dir, path, true)
@@ -155,7 +164,7 @@ export function opfsPackStore(base = `${OPFS_ROOT}/${OPFS_ASSETS}`): WritablePac
       try { await dir.removeEntry(name, { recursive: true }) } catch { /* 이미 없다 */ }
     },
 
-    async list(prefix = '') {
+    async list(prefix = '', options) {
       const out: string[] = []
       const walk = async (dir: FileSystemDirectoryHandle, at: string): Promise<void> => {
         // ⚠️ `entries()`는 아직 TS의 DOM 타입에 없다. 크로미움에는 있고 OPFS를
@@ -168,8 +177,10 @@ export function opfsPackStore(base = `${OPFS_ROOT}/${OPFS_ASSETS}`): WritablePac
             await walk(handle as FileSystemDirectoryHandle, rel)
             continue
           }
-          // 완성되지 않은 조각은 목록에 없다 — 재개가 그걸 완료로 읽으면 안 된다
-          if (rel.endsWith('.part')) continue
+          // 완성되지 않은 조각은 목록에 없다 — 재개가 그걸 완료로 읽으면 안 된다.
+          // ⚠️ 다만 **지울 때는 봐야 한다.** 안 그러면 탭이 쓰기 도중에 죽어
+          // 남은 조각을 아무도 못 지운다 — 목록에 안 보이니 `clear`도 못 본다
+          if (rel.endsWith('.part') && options?.parts !== true) continue
           if (rel.startsWith(prefix)) out.push(rel)
         }
       }
@@ -178,7 +189,7 @@ export function opfsPackStore(base = `${OPFS_ROOT}/${OPFS_ASSETS}`): WritablePac
     },
 
     async clear(prefix) {
-      for (const path of await this.list(prefix)) await this.remove(path)
+      for (const path of await this.list(prefix, { parts: true })) await this.remove(path)
     },
   }
 }

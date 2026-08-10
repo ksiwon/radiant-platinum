@@ -72,6 +72,16 @@ export function ImportWizard({ onClose, onReady }: {
   const [missing, setMissing] = useState<string[]>([])
   const romPicker = useRef<HTMLInputElement>(null)
   const dirPicker = useRef<HTMLInputElement>(null)
+  /**
+   * 지금 설치의 취소 신호.
+   *
+   * ⚠️ **Worker에게 말하는 것만으로는 모자란다.** `runInstall`은 그룹을 돌리기
+   * 전에 저널·매니페스트를 쓰고 이미 있는 것을 검증한다 — 그 사이에는 Worker에
+   * 걸린 일이 없어서 `client.cancel()`이 조용히 아무것도 안 한다. 브라우저
+   * E2E가 취소를 켜지자마자 눌렀더니 그 창에 정확히 떨어졌다. 신호를
+   * `runInstall`에도 함께 준다
+   */
+  const abort = useRef<{ aborted: boolean } | null>(null)
 
   // ⚠️ Worker를 화면 수명에 묶는다. 안 끝내면 탭에 스레드가 쌓인다
   const client = useRef<ImportClient | null>(null)
@@ -139,6 +149,8 @@ export function ImportWizard({ onClose, onReady }: {
     setFailure(null)
     setProgress(0)
     setMissing([])
+    const signal = { aborted: false }
+    abort.current = signal
 
     // Worker가 만들고 메인이 커밋한다 (`worker/client.ts` 머리말)
     const produce: Producer = (spec, hooks) =>
@@ -149,6 +161,7 @@ export function ImportWizard({ onClose, onReady }: {
       locale: platinum.release.locale,
       groups: GROUPS,
       produce,
+      signal,
       onEvent: (e: InstallEvent) => {
         if (e.kind === 'group') { say(`${e.name} (${String(e.index + 1)}/${String(e.total)})`); setProgress(0) }
         if (e.kind === 'progress' && e.total > 0) setProgress(e.done / e.total)
@@ -270,7 +283,7 @@ export function ImportWizard({ onClose, onReady }: {
               {explain(platinum as Validation)}
               {platinum.ok && `\n설치될 언어: ${platinum.locales.join(' · ')}`
                 + `\n파일 ${String(platinum.measured.files)}개 · 오버레이 ${String(platinum.measured.overlays)}개`
-                + `\n상점 표: ARM9 ${platinum.release.marts.common}`
+                + `\n상점 표: ARM9+${platinum.release.marts.common.arm9RelativeOffset}`
                 + ` · ${String(SUPPORTED.martCounts.common)}줄`}
               {!platinum.ok && platinum.detail !== undefined && `\n${platinum.detail}`}
             </div>
@@ -303,7 +316,11 @@ export function ImportWizard({ onClose, onReady }: {
           <div className={css.body}>
             {'필요합니다 — '}{REQUIRED_BDSP_GROUPS.join(' · ')}
             {'. 폴더를 못 고르면 여기서 멈춥니다. '}
-            {'이미 추출된 지원 폴더가 필요합니다.'}
+            {'이미 추출된 지원 폴더가 필요합니다.\n'}
+            {/* ⚠️ 여기가 사람들이 "그럼 그건 어디서 구하나요"를 묻는 자리다.
+                안내하지 않는다는 것을 그 자리에서 말한다 (COPYRIGHT.md §4) */}
+            {'파일을 구하는 방법, 콘솔 개조, 키 획득, 복호화, 보호조치 우회는 '}
+            {'안내하지 않습니다. 원천 컨테이너나 키를 요구하지도 않습니다.'}
           </div>
           {bdsp && (
             <>
@@ -359,7 +376,11 @@ export function ImportWizard({ onClose, onReady }: {
             <button
               className={css.button}
               disabled={phase !== 'installing'}
-              onClick={() => { client.current?.cancel() }}
+              onClick={() => {
+                // 둘 다 켠다 — 어느 창에서 눌렸는지 모른다 (`abort` 참고)
+                if (abort.current) abort.current.aborted = true
+                client.current?.cancel()
+              }}
             >
               취소
             </button>

@@ -217,6 +217,21 @@ withRom('en', 'ko', 'ja')('marts — ARM9에서 읽는다', () => {
     }
   })
 
+  it('⚠️ 표의 두 오프셋 차가 롬의 arm9RomOffset과 맞는다', async () => {
+    // 처음 받은 여섯 값은 파일 절대 오프셋인데 "ARM9 상대"로 적혀 왔었다.
+    // 이름 하나로 0x4000이 갈리는 자리라 **두 값을 다 적고 차를 대조한다**
+    for (const locale of ['en', 'ko', 'ja'] as const) {
+      const fs = await openAt(locale)
+      const release = SUPPORTED.releases.find((r) => r.locale === locale)!
+      const at = martLocator(release, fs.header.arm9RomOffset)
+      expect(at.common, locale).toBe(Number(release.marts.common.arm9RelativeOffset))
+      expect(Number(release.marts.common.romOffset) - at.common, locale)
+        .toBe(fs.header.arm9RomOffset)
+      // 대조에 이빨이 있는가 — 한 바이트만 틀린 헤더를 주면 던져야 한다
+      expect(() => martLocator(release, fs.header.arm9RomOffset + 1)).toThrow(/arm9RomOffset/)
+    }
+  })
+
   it('자리를 한 바이트만 밀어도 걸린다 — 검사에 이빨이 있다', async () => {
     const fs = await openAt('en')
     const at = martLocator(SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!)

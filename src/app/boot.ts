@@ -64,6 +64,24 @@ export function bootEnv(): BootEnv {
  * 문제였다
  */
 export async function boot(env: BootEnv = bootEnv()): Promise<BootState> {
+  return mark(await decide(env))
+}
+
+/**
+ * 어느 갈래로 떴는지를 문서에 적어 둔다 — `<html data-boot="play:opfs">`.
+ *
+ * ⚠️ **시험용 뒷문이 아니다.** 아무것도 바꾸지 않고 이미 내린 결정을 밖에서
+ * 읽을 수 있게만 한다. 이게 없으면 "설치본을 읽고 떴는가"를 화면 글자로
+ * 짐작해야 하는데, 그건 갈래가 아니라 렌더 결과를 재는 것이다. 지원 문의에도
+ * 같은 값이 필요하다 — 사용자가 개발자 도구를 열어 한 줄만 읽으면 된다
+ */
+function mark(state: BootState): BootState {
+  const tag = state.kind === 'play' ? `play:${state.source}` : `install:${state.reason}`
+  if (typeof document !== 'undefined') document.documentElement.dataset.boot = tag
+  return state
+}
+
+async function decide(env: BootEnv): Promise<BootState> {
   if (env.dev) {
     // 개발판은 기존 raw 산출물을 그대로 쓴다 (COPYRIGHT.md §5). 이 동작을
     // 보존하는 것이 전환의 첫 조건이다
