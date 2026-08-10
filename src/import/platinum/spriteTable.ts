@@ -268,6 +268,14 @@ export const SPRITE_TABLE: readonly SpriteRow[] = [
   [4096, "BERRY_SPROUT", 95, 447, [[0,60,0]], "seed00_a"],
 ]
 
+/**
+ * `mmodel.narc` 멤버 수 = `field_sprites.order` 줄 수.
+ *
+ * 빌드가 `nitroarc --files-from field_sprites.order`로 넣기 때문에 둘이 같다.
+ * 롬의 개수가 이것과 다르면 위 `member` 번호가 전부 헛것이다
+ */
+export const SPRITE_MEMBER_COUNT = 470
+
 /** 그림 번호 → 이름표. BDSP 인물과 잇는 재료다 (`engine/actor/npcModels`) */
 export const SPRITE_NAMES: Readonly<Record<number, string>> =
   Object.fromEntries(SPRITE_TABLE.map((r) => [r[0], r[1]]))

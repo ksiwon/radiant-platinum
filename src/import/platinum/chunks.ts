@@ -155,7 +155,7 @@ export function parseMaterials(
   return materials
 }
 
-interface Vertex { pos: Vec3, uv: [number, number], normal: Vec3, color: Vec3 }
+export interface Vertex { pos: Vec3, uv: [number, number], normal: Vec3, color: Vec3 }
 
 /** 디스플레이 리스트 → 정점 배열 + 삼각형 색인 */
 export function buildMesh(
@@ -330,7 +330,7 @@ export function blocks(buf: Uint8Array, view: DataView): Record<string, number> 
 }
 
 /** 재질이 쓰는 (그림, 팔레트) 쌍 중 이 TEX0에 실제로 있는 것 */
-function wantedItems(materials: readonly Material[], tex0: Tex0): SheetItem[] {
+export function wantedItems(materials: readonly Material[], tex0: Tex0): SheetItem[] {
   const byName = new Map(tex0.textures.map((t) => [t.name, t]))
   const wanted = new Map<string, SheetItem>()
   for (const m of materials) {

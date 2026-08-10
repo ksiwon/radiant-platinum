@@ -435,6 +435,96 @@ async function convertArenas(ctx: ConvertContext): Promise<Produced> {
   return out
 }
 
+// ── motionTiming ─────────────────────────────────────────────────────────────
+//
+// **때리는 순간은 종마다 다르다.** 한 박자로 때리면 모부기도 리아코도 같은 때에
+// 부딪히는데, 공식 리메이크는 종마다 타격 프레임을 적어 두었다 —
+// `battle_masterdatas`의 `BattleDataTable.MotionTimingData` 1,008줄이다. 모부기는
+// 물리 25프레임, 리아코는 14프레임이다.
+//
+// ⚠️ **단위는 30프레임/초다.** 표는 프레임 번호만 주고 초를 안 준다. 클립 길이와
+// 견주는 것으로는 못 가른다 — 30fps로 읽든 60fps로 읽든 465종이 465종 다 클립
+// 안에 든다. 가른 것은 **돌진의 정점**이다: `ba20` 클립에서 뿌리 뼈가 제자리에서
+// 제일 멀리 나간 시각을 재어 표와 견주면, 454종 중 410종이 30fps 쪽에 더 가깝다
+// (중앙 오차 0.23초 대 0.52초).
+
+const BATTLE_MASTERDATAS = 'Battle/battle_masterdatas'
+/** 표가 적어 둔 프레임 번호의 단위 */
+const MOTION_FPS = 30
+/** 폼 번호를 종 번호에 붙일 때 쓰는 자릿수. 폼이 100을 넘지 않는다 */
+const FORM_BASE = 100
+
+/** 표의 칸 이름 → 우리 동작 이름 (`scene/battle/monModel.MOTION`) */
+const MOTION_FIELDS = {
+  physical: 'Buturi01',
+  special: 'Tokusyu01',
+  cry: 'Cry',
+  enter: 'LandingFall',
+} as const
+
+/** `BattleDataTable`의 `MotionTimingData` 줄들 */
+function motionRows(env: Environment): Props[] {
+  for (const e of env.ofType('MonoBehaviour')) {
+    const v = env.readEntry(e) as Props | null
+    if (!v || v.m_Name !== 'BattleDataTable') continue
+    const rows = v.MotionTimingData as Props[] | undefined
+    if (rows) return rows
+  }
+  throw new Error('battle_masterdatas에 BattleDataTable이 없습니다')
+}
+
+async function convertMotionTiming(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  ctx.onProgress?.(0, 2)
+
+  const path = lookup(at, BATTLE_MASTERDATAS)
+  const env = path ? await environmentOf(src, [path]) : null
+  if (!env) throw new Error(`${BATTLE_MASTERDATAS} 번들을 못 읽었습니다`)
+  const rows = motionRows(env)
+  check(ctx)
+  ctx.onProgress?.(1, 2)
+  await breathe(ctx)
+
+  const byKey = new Map<number, Props[]>()
+  for (const row of rows) {
+    const mons = row.MonsNo, form = row.FormNo
+    if (typeof mons !== 'number' || typeof form !== 'number') continue
+    const key = mons * FORM_BASE + form
+    const group = byKey.get(key)
+    if (group) group.push(row)
+    else byKey.set(key, [row])
+  }
+  if (byKey.size === 0) throw new Error('MotionTimingData가 비어 있습니다')
+
+  // ⚠️ **성별 칸을 버리기 전에 여기서 다시 센다.** 지금은 남녀가 다른 조합이
+  // 0개라 버려도 되는데, 표가 바뀌면 그때 알아야 한다 — 조용히 첫 줄만 쓰면
+  // 암컷만 다른 박자로 때리는 종이 생겨도 아무도 모른다
+  const fields = Object.keys(rows[0] ?? {}).filter((k) => !['MonsNo', 'FormNo', 'Sex'].includes(k))
+  let split = 0
+  for (const group of byKey.values()) {
+    if (group.length > 1 && fields.some((f) => group[0]![f] !== group[1]![f])) split++
+  }
+  if (split > 0) throw new Error(`성별로 값이 갈리는 조합이 ${String(split)}개다 — 성별을 버리면 안 된다`)
+
+  const frames: Record<string, number[]> = {}
+  for (const key of [...byKey.keys()].sort((a, b) => a - b)) {
+    const row = byKey.get(key)![0]!
+    frames[String(key)] = Object.values(MOTION_FIELDS).map((f) => {
+      const v = row[f]
+      if (typeof v !== 'number') throw new Error(`${f} 칸이 숫자가 아니다`)
+      return v
+    })
+  }
+  ctx.onProgress?.(2, 2)
+
+  return new Map([
+    ['data/motionTiming.json', json({
+      fps: MOTION_FPS, order: Object.keys(MOTION_FIELDS), frames,
+    })],
+  ])
+}
+
 // ── 그룹 표 ──────────────────────────────────────────────────────────────────
 
 export const BDSP_GROUPS: readonly GroupSpec[] = [
@@ -455,5 +545,11 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['models/arena/{무대}.glb', 'models/arena/index.json'],
     converter: 1,
     convert: convertArenas,
+  },
+  {
+    name: 'motionTiming',
+    outputs: ['data/motionTiming.json'],
+    converter: 1,
+    convert: convertMotionTiming,
   },
 ]

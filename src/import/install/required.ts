@@ -23,18 +23,26 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'encounters', // 야생 출현표. 없으면 풀숲에서 아무것도 안 나온다
   'trainers',  // 트레이너 파티·상금. 없으면 트레이너 배틀이 안 열린다
   'spawns',    // 부활 지점·공중날기. 전멸은 첫 배틀부터 날 수 있다
+  'items',     // 도구 표·이름·설명. 가방과 상점이 이걸 읽는다
+  'npcSprites', // 오버월드 사람 판때기. 없으면 마을이 빈 땅이다
+  'itemIcons',  // 가방 그림
+  'pokeIcons',  // 파티·박스 아이콘
+  'boxWallpapers', // 박스 벽지
+  'signposts',  // 마을 이름표·도로 표지판 그림
+  'starterScene', // 파트너 고르는 장면. 새 게임이 여기서 막힌다
 ] as const
 
 /**
  * BDSP에서 나와야 하는 것.
  *
  * ⚠️ **목록을 줄여서 `ready`에 도달하게 만들지 않는다.** 그러면 3D가 통째로 빈
- * 설치본이 "완료"가 된다. 셋 다 `bdsp/convert.ts`가 만든다
+ * 설치본이 "완료"가 된다. 넷 다 `bdsp/convert.ts`가 만든다
  */
 export const REQUIRED_BDSP_GROUPS = [
   'npcModels',  // 사람 모델
   'monModels',  // 포켓몬 모델
   'arenas',     // 배틀 무대
+  'motionTiming', // 종마다 다른 타격 프레임. 없으면 배틀이 첫 수에서 멈춘다
 ] as const
 
 export const REQUIRED_GROUPS: readonly string[] = [

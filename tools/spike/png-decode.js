@@ -14,8 +14,13 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /** @returns {{width:number,height:number,pixels:Uint8Array}} RGBA8 */
 function decodePng(file) {
-  const buf = fs.readFileSync(file)
-  if (!buf.subarray(0, 8).equals(PNG_MAGIC)) throw new Error(`PNG가 아니다: ${file}`)
+  return decodePngBytes(fs.readFileSync(file), file)
+}
+
+/** 같은 것을 바이트로. 파일로 안 떨군 산출물을 그 자리에서 견주려면 이쪽이다 */
+function decodePngBytes(bytes, where = '<메모리>') {
+  const buf = Buffer.from(bytes.buffer ?? bytes, bytes.byteOffset ?? 0, bytes.byteLength ?? bytes.length)
+  if (!buf.subarray(0, 8).equals(PNG_MAGIC)) throw new Error(`PNG가 아니다: ${where}`)
 
   let at = 8
   let width = 0, height = 0, depth = 0, colorType = 0
@@ -74,4 +79,4 @@ function paeth(a, b, c) {
   return pb <= pc ? b : c
 }
 
-module.exports = { decodePng }
+module.exports = { decodePng, decodePngBytes }

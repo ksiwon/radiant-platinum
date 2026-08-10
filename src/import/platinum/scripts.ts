@@ -83,6 +83,31 @@ export function parseEventFile(buf: Uint8Array): Section[] {
   return sections
 }
 
+/**
+ * 배치표에 실제로 서 있는 그림 번호와 그 횟수.
+ *
+ * ⚠️ **`npcSprites` 그룹이 `events.json`을 읽게 하지 않는다.** 그러면 그룹 사이에
+ * 순서가 생기고, 다시 만들 때 하나만 골라 굽는 길이 막힌다. 같은 NARC을 한 번 더
+ * 훑는 값이 그보다 싸다 — NPC 구역만 세면 되므로 파싱도 안 한다
+ */
+export async function placedSprites(ctx: ConvertContext): Promise<Map<number, number>> {
+  const narc = await ctx.fs.read(EVENT_NARC)
+  if (!narc) throw new Error(`${EVENT_NARC}을 못 읽었다`)
+  const used = new Map<number, number>()
+  for (let i = 0; ; i++) {
+    const buf = narcEntry(narc, i)
+    if (!buf) break
+    const npcs = parseEventFile(buf)[NPC_INDEX]!
+    // 그림 번호는 32B 중 둘째 u16이다 (`parseNpcs`의 `sprite`)
+    for (let k = 0; k < npcs.count; k++) {
+      const id = npcs.view.getUint16(k * npcs.size + 2, true)
+      used.set(id, (used.get(id) ?? 0) + 1)
+    }
+    if (i % 64 === 0) { check(ctx); await breathe(ctx) }
+  }
+  return used
+}
+
 function parseWarps(s: Section): unknown[] {
   return Array.from({ length: s.count }, (_, i) => {
     const o = i * s.size

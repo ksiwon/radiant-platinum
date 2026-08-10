@@ -20,6 +20,12 @@ import { convertChunks } from './chunks'
 import { convertScripts } from './scripts'
 import { convertSound } from './sound'
 import { convertEncounters } from './encounters'
+import { convertItems } from './items'
+import { convertNpcSprites } from './npcSprites'
+import { convertItemIcons, convertPokeIcons } from './icons'
+import { convertBoxWallpapers } from './boxWallpapers'
+import { convertSignposts } from './signposts'
+import { convertStarterScene } from './starterScene'
 import { convertTrainers } from './trainers'
 import { convertSpawns } from './spawns'
 import {
@@ -159,6 +165,14 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   { name: 'marts', outputs: ['data/marts.json'], converter: 1, convert: convertMarts },
   {
+    name: 'items',
+    outputs: [
+      'data/items.json', 'data/names/items.*.json', 'data/names/itemDescriptions.*.json',
+    ],
+    converter: 1,
+    convert: convertItems,
+  },
+  {
     name: 'maps',
     outputs: [
       'data/maps.json',
@@ -213,6 +227,42 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/spawns.json'],
     converter: 1,
     convert: convertSpawns,
+  },
+  {
+    name: 'npcSprites',
+    outputs: ['data/npc/{그림번호}.png', 'data/npcSprites.json'],
+    converter: 1,
+    convert: convertNpcSprites,
+  },
+  {
+    name: 'itemIcons',
+    outputs: ['data/itemIcons.png', 'data/itemIcons.json'],
+    converter: 1,
+    convert: convertItemIcons,
+  },
+  {
+    name: 'pokeIcons',
+    outputs: ['data/pokeIcons.png', 'data/pokeIcons.json'],
+    converter: 1,
+    convert: convertPokeIcons,
+  },
+  {
+    name: 'boxWallpapers',
+    outputs: ['data/boxWallpapers.png', 'data/boxWallpapers.json'],
+    converter: 1,
+    convert: convertBoxWallpapers,
+  },
+  {
+    name: 'signposts',
+    outputs: ['data/signposts.png', 'data/signposts.json'],
+    converter: 1,
+    convert: convertSignposts,
+  },
+  {
+    name: 'starterScene',
+    outputs: ['data/starter/{번호}.bin', 'data/starter/{번호}.png', 'data/starter/index.json'],
+    converter: 1,
+    convert: convertStarterScene,
   },
   {
     name: 'pokegra',
