@@ -1,25 +1,19 @@
 // UnityFS 컨테이너 — 브라우저에서 (IMPORT.md §12 spike)
 //
-// ⚠️ **이것은 spike다. 변환기가 아니다.** 개발 추출기는 파이썬 UnityPy가 하고,
-// 그것을 브라우저에서 그대로 부를 수 없다는 것이 §12의 게이트다. 그 게이트를
-// "언젠가 하겠다"로 두지 않으려고, **어디까지 되고 어디서 막히는지**를 실제로
-// 짚어 본 것이 이 파일이다.
+// 개발 추출기는 파이썬 UnityPy가 하고, 그것을 브라우저에서 그대로 부를 수 없다는
+// 것이 §12의 게이트다.
 //
 // 여기까지 된다 (실측):
 //
 //   · `UnityFS` 헤더 · 블록 목록 · 디렉터리 목록
 //   · LZ4 블록 풀기 (LZ4HC = LZ4 블록 포맷과 같다)
-//   · SerializedFile 헤더 · 타입 표 · 오브젝트 표 (classID와 자리)
+//   · SerializedFile 헤더 · 타입 표 · 오브젝트 표
+//   · **타입 트리를 걸어 필드 읽기** (`typetree.ts`) — UnityPy와 같은 값을 낸다
+//   · **Mesh** (`mesh.ts`) — 채널·스트림·부분메시·바인드포즈
 //
-// 여기서 막힌다 (`SPIKE_BLOCKERS`):
-//
-//   · 타입 트리를 걸어 필드를 읽는 일 — Mesh 하나가 채널·스트림·압축 조합이라
-//     구현이 UnityPy의 `TypeTreeHelper` 통째와 같은 크기다
-//   · 텍스처 디코딩 — BC7/ASTC/ETC2를 CPU에서 풀어야 한다
-//   · GLB 쓰기 — Blender 없이 하려면 glTF 작성기를 새로 써야 한다
-//
-// 세 가지 다 **할 수 있는 일**이고 못 할 이유는 아직 안 나왔다. 다만 이 spike가
-// 증명한 것은 컨테이너까지고, 그 위는 아직 아무것도 아니다.
+// 남은 것은 `SPIKE_BLOCKERS`에 적는다. **거기 없는 것을 "됐다"고 하지 않는다.**
+
+import { buildTree, readNodes, readObject, type TypeNode, type UnityValue } from './typetree'
 
 const MAGIC = 'UnityFS\0'
 
@@ -205,6 +199,12 @@ export interface SerializedFile {
   objects: UnityObject[]
   /** classID → 몇 개 */
   counts: Record<number, number>
+  /** 오브젝트 자료가 시작하는 자리 (`byteStart`의 기준) */
+  dataOffset: number
+  /** 타입 표 차례 → 트리. 트리가 안 실린 파일이면 null */
+  trees: (TypeNode | null)[]
+  /** 오브젝트의 필드를 읽는다. 트리가 없으면 null */
+  read(o: UnityObject): UnityValue | null
 }
 
 /** 우리가 알아볼 클래스만. 나머지는 번호로 남는다 */
@@ -231,7 +231,7 @@ export function readSerializedFile(bytes: Uint8Array): SerializedFile {
   r.u32()                     // metadataSize (옛 판용)
   r.u32()                     // fileSize
   const version = r.u32()
-  r.u32()                     // dataOffset
+  const dataOffset = r.u32()
   if (version < 9 || version > 22) throw new UnsupportedBundle(`SerializedFile 판 ${String(version)}`)
   const bigEndian = r.u8() !== 0
   r.take(3)                   // reserved
@@ -245,12 +245,16 @@ export function readSerializedFile(bytes: Uint8Array): SerializedFile {
   const typeCount = r.u32(!little)
   /** 타입 표의 차례 → classID. 오브젝트가 이 차례를 가리킨다 */
   const typeClasses: number[] = []
+  const trees: (TypeNode | null)[] = []
   for (let i = 0; i < typeCount; i++) {
-    typeClasses.push(readSerializedType(r, version, little, hasTypeTree, false))
+    const t = readSerializedType(r, version, little, hasTypeTree, false)
+    typeClasses.push(t.classId)
+    trees.push(t.tree)
   }
 
   const objectCount = r.u32(!little)
   const objects: UnityObject[] = []
+  const typeIndexOf = new Map<number, number>()
   for (let i = 0; i < objectCount; i++) {
     r.align(4)
     const pathId = r.i64(!little)
@@ -258,17 +262,39 @@ export function readSerializedFile(bytes: Uint8Array): SerializedFile {
     const byteSize = r.u32(!little)
     const typeIndex = r.u32(!little)
     objects.push({ pathId, byteStart, byteSize, classId: typeClasses[typeIndex] ?? -1 })
+    typeIndexOf.set(pathId, typeIndex)
   }
 
   const counts: Record<number, number> = {}
   for (const o of objects) counts[o.classId] = (counts[o.classId] ?? 0) + 1
-  return { version, unityVersion, targetPlatform, objects, counts }
+
+  return {
+    version,
+    unityVersion,
+    targetPlatform,
+    objects,
+    counts,
+    dataOffset,
+    trees,
+    /**
+     * 오브젝트 하나의 필드를 읽는다.
+     *
+     * ⚠️ **`byteStart`는 `dataOffset` 기준이다.** 파일 처음으로 착각하면 값이
+     * 그럴듯하게 나오다가 어느 필드부터 쓰레기가 된다 — 어디서부터인지 안 보인다
+     */
+    read(o) {
+      const tree = trees[typeIndexOf.get(o.pathId) ?? -1]
+      if (!tree) return null
+      const from = dataOffset + o.byteStart
+      return readObject(bytes.subarray(from, from + o.byteSize), tree, little)
+    },
+  }
 }
 
-/** 타입 하나를 건너뛰며 classID만 집는다 */
+/** 타입 하나 — classID와, 트리가 실려 있으면 트리 */
 function readSerializedType(
   r: Reader, version: number, little: boolean, hasTypeTree: boolean, isRef: boolean,
-): number {
+): { classId: number, tree: TypeNode | null } {
   const classId = r.i32(!little)
   if (version >= 16) r.u8()                       // isStrippedType
   if (version >= 17) r.u16(!little)               // scriptTypeIndex
@@ -276,20 +302,20 @@ function readSerializedType(
     if ((isRef && classId !== -1) || (version < 16 ? classId < 0 : classId === 114)) r.take(16)
     r.take(16)                                    // oldTypeHash
   }
-  if (hasTypeTree) {
-    // ⚠️ 여기가 spike가 멈추는 문턱이다. 노드를 세어 건너뛰기만 한다 —
-    // **읽지는 않는다.** 읽으려면 필드 타입마다 해석기가 필요하다
-    const nodeCount = r.u32(!little)
-    const stringSize = r.u32(!little)
-    r.take(nodeCount * (version >= 19 ? 32 : 24))
-    r.take(stringSize)
-    if (version >= 21) {
-      const deps = r.u32(!little)
-      r.take(deps * 4)
-    }
+  if (!hasTypeTree) return { classId, tree: null }
+
+  const nodeCount = r.u32(!little)
+  const stringSize = r.u32(!little)
+  const nodeBytes = r.take(nodeCount * (version >= 19 ? 32 : 24))
+  const strings = r.take(stringSize)
+  if (version >= 21) {
+    const deps = r.u32(!little)
+    r.take(deps * 4)
   }
-  return classId
+  const flat = readNodes(nodeBytes, 0, nodeCount, strings, little, version >= 19)
+  return { classId, tree: buildTree(flat) }
 }
+
 
 /**
  * 이 spike가 못 넘은 자리. **여기 없는 것을 "됐다"고 하지 않는다.**
@@ -297,16 +323,6 @@ function readSerializedType(
  * `blockers.mjs`가 이 목록이 빌 때까지 release를 막는다
  */
 export const SPIKE_BLOCKERS: readonly { what: string; why: string; next: string }[] = [
-  {
-    what: '타입 트리로 필드 읽기',
-    why:
-      'Mesh 하나가 채널(위치·법선·탄젠트·UV 넷·뼈 가중치)·스트림·정점 압축 조합이고, '
-      + '그 배치는 오브젝트 안이 아니라 타입 트리에 적혀 있다. 트리를 걸어 필드를 '
-      + '읽는 코드가 UnityPy의 `TypeTreeHelper` 통째와 같은 크기다.',
-    next:
-      'BDSP 번들은 타입 트리를 싣고 있으므로(`hasTypeTree`) 클래스별 하드코딩 없이 '
-      + '일반 해석기를 쓸 수 있다. 그것부터가 다음 조각이다.',
-  },
   {
     what: '텍스처 디코딩',
     why:

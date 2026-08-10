@@ -1,7 +1,7 @@
 // UnityFS spike — 어디까지 되는가 (IMPORT.md §12)
 //
-// ⚠️ **이 시험이 증명하는 것은 컨테이너까지다.** 브라우저가 번들을 열고, 블록을
-// 풀고, 안에 무엇이 몇 개 있는지 세는 것. 메시 정점도 텍스처 픽셀도 아직 안 읽는다
+// ⚠️ **이 시험이 증명하는 것은 컨테이너와 타입 트리까지다.** 브라우저가 번들을
+// 열고, 블록을 풀고, 타입 트리를 걸어 필드를 읽는 것. 텍스처 픽셀은 아직 안 푼다
 // (`SPIKE_BLOCKERS`). 그 사실을 이 시험이 함께 못 박는다 — 목록이 비면 시험이 선다.
 //
 // 오라클은 UnityPy다 (`tools/spike/bdspObjects.py`). 오래 돌고 검증된 쪽이라
@@ -143,14 +143,25 @@ withBundle('진짜 BDSP 번들', () => {
     expect(mine).toEqual(oracle.counts)
   })
 
-  it('여기까지가 전부다 — 정점도 픽셀도 아직 안 읽는다', () => {
+  it('이제 자리뿐 아니라 안까지 읽는다 — 타입 트리가 실려 있다', () => {
     const bundle = openBundle(bytes)
     const node = bundle.nodes[0]!
     const file = readSerializedFile(bundle.data.subarray(node.offset, node.offset + node.size))
-    // 오브젝트의 **자리**는 안다
-    const mesh = file.objects.find((o) => className(o.classId) === 'SkinnedMeshRenderer')
-    expect(mesh?.byteSize).toBeGreaterThan(0)
-    // 그 안을 읽는 코드는 없다. 없다는 것이 `SPIKE_BLOCKERS`에 적혀 있다
-    expect(SPIKE_BLOCKERS.some((b) => b.what.includes('타입 트리'))).toBe(true)
+    const renderer = file.objects.find((o) => className(o.classId) === 'SkinnedMeshRenderer')
+    expect(renderer?.byteSize).toBeGreaterThan(0)
+    // 트리가 실려 있고, 그 트리로 필드가 읽힌다
+    expect(file.trees.some((t) => t !== null)).toBe(true)
+    const value = file.read(renderer!) as Record<string, unknown> | null
+    expect(value, '필드를 못 읽었다').not.toBeNull()
+    expect(value!.m_Materials, '재질 목록이 없다').toBeDefined()
+  })
+
+  it('⚠️ 남은 자리는 목록에 그대로 있다 — 푼 것만 지운다', () => {
+    // 타입 트리는 풀렸으므로 목록에서 빠졌다. 나머지 둘은 아직 그대로다
+    expect(SPIKE_BLOCKERS.some((b) => b.what.includes('타입 트리'))).toBe(false)
+    for (const b of SPIKE_BLOCKERS) {
+      expect(b.why.length, b.what).toBeGreaterThan(20)
+      expect(b.next.length, b.what).toBeGreaterThan(20)
+    }
   })
 })
