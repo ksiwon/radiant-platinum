@@ -602,3 +602,13 @@ async function open(
     set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
   }
 }
+
+// ⚠️ **배틀 화면 마운트 스위치를 여기서 민다** (`sessionStore.battleScreen`).
+//
+// 전환 자리마다 손으로 켜고 끄면 언젠가 하나를 빠뜨리고, 그러면 배틀이 안 뜨거나
+// 끝나고도 안 사라진다. `phase` 하나가 임자이므로 그것을 구독해서 따라가게 둔다.
+// 이 모듈은 필드가 불러올 때 처음 들어오고, 배틀은 필드에서만 시작한다
+useBattleStore.subscribe((now, before) => {
+  const on = now.phase !== 'off'
+  if (on !== (before.phase !== 'off')) useSessionStore.getState().setBattleScreen(on)
+})

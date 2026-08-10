@@ -4,8 +4,7 @@
 // **눌려 있는가**를 보고, 메뉴는 **눌린 순간**과 길게 누를 때의 반복이 필요하다.
 // 그래서 여기는 DOM 이벤트를 그대로 쓴다.
 import { useEffect, useRef } from 'react'
-import { music } from '../../engine/audio/music'
-import { SFX } from '../../engine/audio/sfx'
+import { menuBeep } from '../../engine/audio/lazy'
 
 export interface MenuKeys {
   up?: () => void
@@ -57,7 +56,7 @@ export function useMenuKeys(handlers: MenuKeys, enabled = true): void {
       // 원작은 A·B·상하좌우에 **같은 소리 하나**를 쓴다 (`menu.c`의
       // `Menu_ProcessInput`). 화면이 그 키를 안 받으면 위에서 이미 빠져나갔으므로
       // 여기 온 것은 실제로 무언가가 일어난 경우다
-      void music.playEffect(SFX.MENU)
+      menuBeep()
       fn()
     }
     // 캡처 단계에서 받는다 — 필드의 Escape 처리보다 먼저 가로채야 한다

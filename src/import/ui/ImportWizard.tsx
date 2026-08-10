@@ -240,12 +240,16 @@ export function ImportWizard({ onClose, onReady }: {
       <div className={css.sheet}>
         <h1 className={css.title}>에셋 설치</h1>
 
+        {/* ⚠️ **여기 적힌 것이 사실이어야 한다.** 한때 "설치를 끝내도 아직 게임은
+            시작할 수 없습니다"가 박혀 있었는데, 그 말이 참이 아니게 된 뒤에도
+            남아 있었다. 그래서 숫자는 전부 표에서 세어 온다 */}
         <div className={css.banner}>
-          {'⚠️ 이 화면은 아직 완성되지 않았습니다.\n'}
-          {`Platinum 변환은 ${String(ready.length)}개(${ready.map((g) => g.name).join(' · ')})가 옮겨졌고 `}
-          {`${String(blocked.length)}개가 남았습니다. BDSP 변환은 아직 하나도 없습니다.\n`}
-          {`게임을 시작하려면 ${String(stillMissing.length)}개가 더 필요합니다 — `}
-          {'설치를 끝내도 아직 게임은 시작할 수 없습니다.\n'}
+          {stillMissing.length > 0
+            ? `⚠️ 이 화면은 아직 완성되지 않았습니다. 게임을 시작하려면 `
+              + `${String(stillMissing.length)}개가 더 필요합니다 — 설치를 끝내도 아직 `
+              + `게임은 시작할 수 없습니다: ${stillMissing.join(' · ')}\n`
+            : `변환 ${String(ready.length)}개가 전부 옮겨졌습니다. 설치가 끝나면 `
+              + '이 화면이 스스로 게임으로 넘어갑니다.\n'}
           {'여기서 실제로 도는 것은 입력 검증 · 폴더 판정 · 저장 공간 · '}
           {'Worker 변환 · OPFS 설치와 재개 · 파일별 무결성 검증입니다.'}
         </div>

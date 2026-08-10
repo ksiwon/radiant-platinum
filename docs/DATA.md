@@ -44,7 +44,7 @@
 | **포켓몬 배틀 그림** | `poketool/pokegra/pl_pokegra.narc` | ✅ 암호 풀림 — 1808/1812 (§2.17). **배틀에 493종이 선다** |
 | 높이 지오메트리 | land_data의 `BDHC` 구역 | ✅ 포맷 확정 (§2.2) — 발밑 높이를 이것이 잡는다 (`engine/map/height`) |
 | 소리 | `data/sound/pl_sound_data.sdat` | ✅ 곡 1013 · 악기 뱅크 521 · 파형 874. **울린다** — BGM · 효과음 · 울음소리 493종 (§2.18) |
-| 캐릭터 모델·애니메이션 | 개발 raw의 BDSP 하위 집합 / 공개판의 사용자 AssetAssistant | ✅ 개발 추출 · ❌ 브라우저 변환 (PLAN §4.3.1) |
+| 캐릭터 모델·애니메이션 | 사용자의 `AssetAssistant` | ✅ 브라우저가 굽는다 — 무대 g001이 개발 추출기와 픽셀까지 같다 (IMPORT.md §12) |
 
 ---
 
@@ -2678,7 +2678,7 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
 | `raw/extracted/{us,ko,ja}` | 3지역판 텍스트·SDAT 캐시 | 선택 지역판에서 브라우저가 생성 |
 | `raw/decomp` | 상점·스폰·스크립트 폭·검증 원문 등 | ROM 파싱, 배포 가능한 최소 호환 메타데이터, 개발 검증 전용으로 항목별 분리 |
 | ~~`src/data/textBanks.json`~~ | **지웠다.** 뱅크 724개의 암호화 키(u16)와 로케일별 인덱스였다 | 자리는 `src/import/platinum/textBanks.ts`가 이름 순서에서 계산하고 사용자의 롬으로 검산한다 (COPYRIGHT.md §6) |
-| BDSP 재배치 하위 폴더 | Python/UnityPy 모델 변환 | 정식 AssetAssistant source adapter + TS/WASM 변환 |
+| ~~BDSP 재배치 하위 폴더~~ | **안 본다.** 한때 필요한 것만 골라 다른 이름으로 옮긴 폴더를 같이 봤다 | 정본은 `AssetAssistant` 하나다 (`tools/raw/sources.cjs`) — 개발도 공개도 같은 구조를 읽는다 |
 | 앞 단계 `public/data` | 뒤 추출기의 입력 | 브라우저에서는 작업 그래프의 명시적 artifact로 전달 |
 
 “브라우저 포팅은 기존 JS를 복사하면 끝”이 아니다. `fs`, Node `Buffer`, zlib,

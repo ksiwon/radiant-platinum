@@ -38,7 +38,11 @@ except ImportError:  # pragma: no cover
     sys.exit('UnityPy가 없다. `py -3.13 -m pip install UnityPy`')
 
 ROOT = Path(__file__).resolve().parents[2]
-BUNDLE = ROOT / 'raw' / 'bdsp' / 'battle' / 'battle_masterdatas'
+sys.path.insert(0, str(ROOT))
+from tools.raw.sources import require_dir  # noqa: E402
+
+# 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
+BUNDLE = require_dir('bdsp.root') / 'Battle' / 'battle_masterdatas'
 OUT = ROOT / 'public' / 'data' / 'motionTiming.json'
 
 # 표의 칸 이름 → 우리 동작 이름 (`scene/battle/monModel.MOTION`)

@@ -26,6 +26,19 @@ interface SessionState {
    */
   mapId: number
   setMapId: (id: number) => void
+  /**
+   * 배틀 화면을 마운트할지.
+   *
+   * ⚠️ **`battleStore.phase`를 그대로 두고 굳이 여기 한 칸을 더 두는 이유가
+   * 있다.** `App`이 배틀 화면을 늘 그려 두면(안에서 `phase === 'off'`면 null을
+   * 내더라도) 배틀 UI 서른 모듈이 **타이틀 첫 화면 청크**에 실린다 —
+   * `battleStore`·`aftermath`·`capture`·`reward`·`view`·`playback`까지 딸려
+   * 온다. 그래서 켜고 끄는 스위치만 여기(가벼운 스토어)에 두고, 화면 자체는
+   * 켜질 때 받는다. **손으로 안 맞춘다** — `battleStore`가 자기 `phase`를
+   * 구독해서 이 칸을 따라 움직인다 (`app/initialChunk.test.ts`)
+   */
+  battleScreen: boolean
+  setBattleScreen: (on: boolean) => void
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -37,4 +50,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setZoneName: (zoneName) => set((s) => (s.zoneName === zoneName ? s : { zoneName })),
   mapId: -1,
   setMapId: (mapId) => set((s) => (s.mapId === mapId ? s : { mapId })),
+  battleScreen: false,
+  setBattleScreen: (battleScreen) =>
+    set((s) => (s.battleScreen === battleScreen ? s : { battleScreen })),
 }))

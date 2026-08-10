@@ -20,8 +20,11 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
-import { fakeBdsp, readInstalled, REQUIRED_GROUPS, SYNTHETIC } from './fixtures.mjs'
-import { platinumRoms } from '../raw/sources.cjs'
+import {
+  fakeBdsp, readInstalled, readInstalledLight,
+  REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS, SYNTHETIC,
+} from './fixtures.mjs'
+import { platinumRoms, sourceDir } from '../raw/sources.cjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const DIST = resolve(ROOT, 'dist')
@@ -36,6 +39,14 @@ if (!existsSync(resolve(DIST, 'index.html'))) {
 const ROM = (() => {
   try { return platinumRoms().en ?? null } catch { return null }
 })()
+
+/**
+ * 진짜 BDSP 덤프. 있으면 ⑮가 **끝까지** 설치한다.
+ *
+ * ⚠️ 없는 기계에서는 ⑮가 NOT RUN이다 — 합성 폴더로 바꿔치기하지 않는다.
+ * 그러면 재려던 것("진짜 입력으로 완주")이 아니라 다른 것을 재게 된다
+ */
+const BDSP = sourceDir('bdsp.root')
 
 /** 노드 산출물의 해시. 브라우저가 만든 것과 견준다 */
 const NODE_SHA = (() => {
@@ -357,13 +368,19 @@ await run('08', '설치 기록이 ready가 되면 reload 없이 OPFS로 전환',
 // 이 셋은 Worker가 사용자의 롬을 읽어 OPFS에 쓰는 길 전체를 잰다. 롬이 없는
 // 기계에서는 NOT RUN이다 — 건너뛴 것을 통과로 세지 않는다.
 
-/** 설치 화면에서 Platinum과 BDSP를 골라 "설치 시작"까지 갈 수 있게 만든다 */
-async function armWizard(page) {
+/**
+ * 설치 화면에서 Platinum과 BDSP를 골라 "설치 시작"까지 갈 수 있게 만든다.
+ *
+ * `bdsp`를 안 주면 합성 폴더다 — 그때 BDSP 그룹은 변환에서 죽고 설치는
+ * `partial`에서 선다. **그것을 숨기지 않는다**: ⑨~⑪·⑰은 Platinum 쪽 길을
+ * 재는 시험이고, 진짜 완주는 ⑮가 진짜 덤프로 잰다
+ */
+async function armWizard(page, bdsp = fakeBdsp(), timeout = 60_000) {
   await page.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 20_000 })
   await page.locator('input[accept=".nds"]').setInputFiles(ROM)
   await page.getByText('지원됩니다').waitFor({ timeout: 120_000 })
-  await page.locator('input[webkitdirectory]').setInputFiles(fakeBdsp())
-  await page.getByText('찾았습니다:').waitFor({ timeout: 60_000 })
+  await page.locator('input[webkitdirectory]').setInputFiles(bdsp)
+  await page.getByText('찾았습니다:').waitFor({ timeout })
   await page.getByRole('button', { name: '공간 확인하고 자리 잡기' }).click()
   await page.getByRole('button', { name: '설치 시작' })
     .and(page.locator('button:not([disabled])')).waitFor({ timeout: 30_000 })
@@ -386,9 +403,9 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
 
   const got = await page.evaluate(readInstalled)
   assert(got.state === 'partial', `상태가 partial이 아니다: ${got.state}`)
-  // Platinum 쪽 필수 아홉이 **다** 들어와야 한다. 이 목록이 줄면 시험이 선다 —
+  // Platinum 쪽 필수가 **다** 들어와야 한다. 이 목록이 줄면 시험이 선다 —
   // 한때 `marts,moves` 둘이었고, 그때는 이 줄이 "다 됐다"처럼 읽혔다
-  const WANT = 'chunks,maps,marts,moves,pokegra,scripts,sound,species,text'
+  const WANT = [...REQUIRED_PLATINUM_GROUPS].sort().join(',')
   assert(got.groups.sort().join(',') === WANT,
     `그룹이 다르다: ${got.groups.sort().join(',')} (기대 ${WANT})`)
   // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다
@@ -399,7 +416,8 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   // 128MB를 읽는 내내 바깥으로도, /data로도 아무것도 안 나갔다
   const leaked = [...contentRequests(requests.slice(before)), ...outsideRequests(requests.slice(before))]
   assert(leaked.length === 0, `변환 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
-  return `Platinum 필수 9그룹 · 파일 ${String(Object.keys(got.sha).length)}개 · `
+  return `Platinum 필수 ${String(REQUIRED_PLATINUM_GROUPS.length)}그룹 · `
+    + `파일 ${String(Object.keys(got.sha).length)}개 · `
     + `${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
     + `노드 산출물과 해시 일치 · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
@@ -784,12 +802,260 @@ await run('24', 'persist가 거부돼도 설치는 되고 경고가 뜬다', asy
   return `거부돼도 화면이 남고 경고가 뜬다 — "${said.slice(0, 40)}…"`
 })
 
+// ── ⑮ 진짜 입력으로 끝까지 ───────────────────────────────────────────────────
+//
+// ⚠️ **여기가 계약 전체를 한 줄로 잇는 자리다.** ⑨는 Platinum만 굽고 ⑰은 첫
+// 설치가 `partial`인 채로 두 번째 실행을 재는데, 둘 다 `ready`를 못 본다.
+// 이것은 진짜 롬 + 진짜 `AssetAssistant`로 **필수 스물셋을 다 굽고**, 그 뒤
+// 페이지를 닫았다 다시 열어 **타이틀로 바로 들어가는 것**까지 본다.
+//
+// ⚠️ **오래 걸린다.** 산출물이 580MB고 포켓몬만 493마리다 — 40분을 준다.
+// 그래서 `--only=15`로 따로 돌릴 수 있게 두었고, 나머지 시험을 이것 때문에
+// 못 돌리는 일이 없게 마지막에 세워 뒀다.
+
+const haveBdsp = BDSP !== null
+
+if (!haveBdsp) {
+  record('15', '진짜 입력으로 필수 전부 완주 → 두 번째 실행에서 타이틀 진입', 'NOT RUN',
+    ROM === null ? '이 기계에 Platinum 롬이 없다' : '이 기계에 BDSP 덤프가 없다')
+}
+
+await ((haveRom && haveBdsp) ? run : () => {})(
+  '15', '진짜 입력으로 필수 전부 완주 → 두 번째 실행에서 타이틀 진입',
+  async ({ context, requests }) => {
+    const first = await context.newPage()
+    first.setDefaultTimeout(60_000)
+    await first.goto(`${origin}/`, { waitUntil: 'load' })
+    await waitBoot(first)
+    // 12,691개짜리 폴더를 파일 입력에 밀어 넣는 것부터가 몇십 초다
+    await armWizard(first, BDSP, 300_000)
+
+    const t0 = Date.now()
+    await first.getByRole('button', { name: '설치 시작' }).click()
+    // ⚠️ **`partial` 문구를 기다리면 안 된다.** 그것이 뜨면 이미 진 것이다 —
+    // 완주하면 화면이 **다시 켜지 않고** 그 자리에서 게임으로 넘어간다
+    // (`activateInstall` → `onReady`). 둘 중 먼저 오는 쪽을 잡는다
+    await Promise.race([
+      first.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 }),
+      first.getByText(/옮겨진 그룹은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
+        .then(() => { throw new Error('필수 그룹이 모자라 partial에서 섰다') }),
+    ])
+    const took = Date.now() - t0
+
+    const want = ['data/moves.json', 'data/marts.json', 'data/motionTiming.json']
+    const made = await first.evaluate(readInstalledLight, want)
+    assert(made.state === 'ready', `상태가 ready가 아니다: ${made.state}`)
+    const missing = REQUIRED_GROUPS.filter((g) => !made.groups.includes(g))
+    assert(missing.length === 0, `필수 그룹이 빠졌다: ${missing.join(' · ')}`)
+    assert(made.sha['data/moves.json'] === NODE_SHA.moves, '브라우저가 만든 moves.json이 다르다')
+    assert(made.sha['data/marts.json'] === NODE_SHA.marts, '브라우저가 만든 marts.json이 다르다')
+    // 모델이 진짜 들어왔는지는 개수로 본다. 493마리 + 무대 + 사람이다
+    assert((made.counts.monModels ?? 0) > 400,
+      `포켓몬 모델이 ${String(made.counts.monModels ?? 0)}개뿐이다`)
+    assert((made.counts.arenas ?? 0) > 1, `무대가 ${String(made.counts.arenas ?? 0)}개뿐이다`)
+
+    // ── 두 번째 실행 ──
+    await first.close()
+    const mark = requests.length
+    const again = await context.newPage()
+    const workers = []
+    again.on('worker', (w) => workers.push(w.url()))
+    await again.addInitScript(() => {
+      globalThis.__writes = 0
+      const real = FileSystemFileHandle.prototype.createWritable
+      FileSystemFileHandle.prototype.createWritable = function patched(...args) {
+        globalThis.__writes += 1
+        return real.apply(this, args)
+      }
+    })
+    const t1 = Date.now()
+    await again.goto(`${origin}/`, { waitUntil: 'load' })
+    const tag = await waitBoot(again)
+    const decided = Date.now() - t1
+    assert(tag === 'play:opfs', `갈래가 play:opfs가 아니다: ${tag}`)
+    // 설치 화면이 **뜨지 않는 것**이 계약이다. 뜬 뒤에 사라지는 것과 다르다
+    assert(await again.getByRole('heading', { name: '에셋 설치' }).count() === 0,
+      '설치 화면이 다시 떴다')
+    await again.getByText('비공식·비제휴').first().waitFor({ timeout: 60_000 })
+    const title = Date.now() - t1
+
+    const writes = await again.evaluate(() => globalThis.__writes ?? -1)
+    const converters = workers.filter((u) => /importWorker/.test(u))
+    const contentAsked = contentRequests(requests.slice(mark))
+    const outside = outsideRequests(requests.slice(mark))
+    assert(converters.length === 0, `변환기 Worker가 ${String(converters.length)}개 떴다`)
+    assert(writes === 0, `OPFS 쓰기가 ${String(writes)}번 일어났다`)
+    assert(contentAsked.length === 0, `/data·/models를 불렀다: ${contentAsked[0]}`)
+    assert(outside.length === 0, `바깥으로 나갔다: ${outside[0]}`)
+
+    return `필수 ${String(REQUIRED_GROUPS.length)}그룹 · 파일 ${made.files.toLocaleString()}개 · `
+      + `${mb(made.bytes)} · 설치 ${(took / 1000 / 60).toFixed(1)}분 · `
+      + `두 번째 실행: 갈래 ${String(decided)}ms · 타이틀 ${String(title)}ms · `
+      + `변환기 0회 · OPFS 쓰기 0회 · /data 0건 · 외부 0건`
+  },
+)
+
+// ── ㉕ 진짜 설치본으로 게임을 몰아 본다 ─────────────────────────────────────
+//
+// ⚠️ **손잡이를 안 쓴다.** `window.pt`는 개발 빌드에만 있고, 공개 빌드에 시험용
+// 뒷문을 내지 않는다 (IMPORT.md §13). 그래서 여기서 만지는 것은 사람이 만지는
+// 것과 같다 — 버튼·키보드·파일 입력뿐이고, 보는 것도 화면에 실제로 뜬 글자다.
+//
+// ⚠️ **여기서 안 재는 것을 아래 ㉖에 적는다.** 대사·야생 배틀·맵 전환은 오프닝
+// 이야기를 끝까지 몰아야 닿는 자리라 아직 안 몬다 — 못 잰 것을 잰 것처럼 세지
+// 않는다.
+
+if (!(haveRom && haveBdsp)) {
+  record('25', '진짜 설치본으로 타이틀 → 새 게임 → 오버월드 → 리포트 → .rpsave', 'NOT RUN',
+    ROM === null ? '이 기계에 Platinum 롬이 없다' : '이 기계에 BDSP 덤프가 없다')
+}
+
+await ((haveRom && haveBdsp) ? run : () => {})(
+  '25', '진짜 설치본으로 타이틀 → 새 게임 → 오버월드 → 리포트 → .rpsave',
+  async ({ page, requests, errors }) => {
+    page.setDefaultTimeout(60_000)
+    await page.goto(`${origin}/`, { waitUntil: 'load' })
+    await waitBoot(page)
+    await armWizard(page, BDSP, 300_000)
+    await page.getByRole('button', { name: '설치 시작' }).click()
+    await page.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 })
+    const mark = requests.length
+
+    // ── 새 게임 ──
+    await page.getByRole('button', { name: '새로운 모험 시작하기' }).click()
+    await page.waitForFunction(() => location.pathname === '/intro', null, { timeout: 60_000 })
+
+    // 오프닝은 글 → 몬스터볼 → 이름 → 고르기가 섞여 있고 길이가 롬 글에 달렸다.
+    // 그래서 **모양을 보고 대응**한다: 이름 칸이 뜨면 적고, 아니면 넘긴다
+    const NAME = 'TESTER'
+    for (let i = 0; i < 400 && page.url().endsWith('/intro'); i++) {
+      const input = page.getByLabel('이름')
+      if (await input.count() > 0) {
+        await input.fill(NAME)
+        await page.getByRole('button', { name: '결정' }).click()
+        continue
+      }
+      const ball = page.getByLabel('몬스터볼')
+      if (await ball.count() > 0) { await ball.click(); continue }
+      await page.keyboard.press('Space')
+      await page.waitForTimeout(60)
+    }
+    await page.waitForFunction(() => location.pathname === '/play', null, { timeout: 120_000 })
+
+    // ── 오버월드가 실제로 섰는가 ──
+    //
+    // 지역 배너는 맵 헤더의 label에서 오고, 그것이 뜬다는 것은 행렬·청크·헤더가
+    // 다 읽혔다는 뜻이다. 캔버스만 보면 "검은 화면"과 구별이 안 된다
+    const zone = await page.locator('div').filter({ hasText: /^\S/ }).first().innerText()
+      .catch(() => '')
+    await page.waitForFunction(() => document.querySelector('canvas') !== null, null,
+      { timeout: 60_000 })
+    // 그림이 실제로 그려졌는가 — 캔버스가 한 색으로 비어 있으면 안 된다
+    const painted = await page.evaluate(() => {
+      const c = document.querySelector('canvas')
+      return c !== null && c.width > 0 && c.height > 0
+    })
+    assert(painted, '캔버스가 0×0이다')
+
+    // ── 걷는다 ──
+    for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) {
+      await page.keyboard.down(key)
+      await page.waitForTimeout(400)
+      await page.keyboard.up(key)
+    }
+
+    // ── 시작 메뉴 → 리포트 ──
+    //
+    // ⚠️ **줄 이름으로 못 찾는다.** 메뉴 글은 사용자 롬에서 오므로 판마다 다르고
+    // (`START_MENU`), 줄은 버튼이 아니라 커서로 고르는 `div`다. 그래서 **줄
+    // 수로 자리를 확정한다** — 새 게임 직후에는 도감·포켓몬·공중날기가 아직
+    // 없어서 [가방 · 트레이너카드 · 리포트 · 설정 · 닫는다] 다섯 줄이다.
+    // 다섯이 아니면 가정이 깨진 것이므로 조용히 넘어가지 않고 여기서 선다
+    await page.keyboard.press('KeyX')
+    await page.waitForTimeout(500)
+    const rows = await page.evaluate(() => {
+      const cards = [...document.querySelectorAll('div')]
+        .filter((d) => [...d.children].length >= 4
+          && [...d.children].every((c) => c.querySelector('span') !== null))
+      const card = cards[cards.length - 1]
+      return card ? [...card.children].map((c) => c.textContent?.trim() ?? '') : []
+    })
+    assert(rows.length === 5, `시작 메뉴가 다섯 줄이 아니다 (${String(rows.length)}): ${rows.join(' · ')}`)
+    const SAVE_ROW = 2
+    for (let i = 0; i < SAVE_ROW; i++) { await page.keyboard.press('ArrowDown') }
+    await page.keyboard.press('Space')
+    // 리포트 화면은 `주인공 · 배지 · 도감 · 플레이 시간` 네 칸짜리 `dl`이 임자다
+    await page.waitForFunction(() => {
+      const dl = [...document.querySelectorAll('dl')].pop()
+      return dl !== undefined && dl.querySelectorAll('dd').length === 4
+    }, null, { timeout: 30_000 })
+    // "쓸까요?"에 예. 커서가 예에 서 있으므로 그대로 확인이다
+    await page.keyboard.press('Space')
+    // 다 쓰면 `{이름}는 리포트를 …` 줄이 뜬다. 이름이 그 안에 있다
+    await page.getByText(new RegExp(NAME)).first().waitFor({ timeout: 60_000 })
+    await page.keyboard.press('Space')
+
+    // ── 타이틀로 돌아가면 진행이 보인다 ──
+    //
+    // Escape는 화면을 한 겹씩 벗긴다 — 리포트 → 시작 메뉴 → 오버월드 → 타이틀.
+    // 몇 겹인지 세지 말고 주소가 바뀔 때까지 두드린다
+    for (let i = 0; i < 8 && !page.url().endsWith('/'); i++) {
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(300)
+    }
+    await page.waitForFunction(() => location.pathname === '/', null, { timeout: 60_000 })
+    await page.getByRole('button', { name: /모험 계속하기|이어/ }).first()
+      .waitFor({ timeout: 60_000 })
+    const shown = await page.locator('dl').first().innerText()
+    assert(shown.includes(NAME), `타이틀에 이름이 안 뜬다: ${shown.replace(/\n/g, ' ')}`)
+
+    // ── .rpsave 내보내고, 지우고, 파일만으로 되살린다 ──
+    const [download] = await Promise.all([
+      page.waitForEvent('download', { timeout: 60_000 }),
+      page.getByRole('button', { name: '리포트 백업 받기' }).click(),
+    ])
+    const at = resolve(ROOT, '.audit/e2e.tmp', download.suggestedFilename())
+    mkdirSync(resolve(ROOT, '.audit/e2e.tmp'), { recursive: true })
+    await download.saveAs(at)
+    const bytes = readFileSync(at)
+    assert(bytes.length > 0, '내려받은 .rpsave가 비어 있다')
+
+    // 새 프로필과 같은 자리로 만든다 — 리포트만 지우고 설치본은 그대로 둔다
+    await page.evaluate(async () => {
+      for (const name of await indexedDB.databases()) {
+        if (name.name) indexedDB.deleteDatabase(name.name)
+      }
+    })
+    await page.reload({ waitUntil: 'load' })
+    await waitBoot(page)
+    await page.getByRole('button', { name: '새로운 모험 시작하기' }).waitFor({ timeout: 60_000 })
+
+    await page.locator('input[accept=".rpsave"]').setInputFiles(at)
+    await page.getByRole('button', { name: '이 리포트로 이어하기' }).click({ timeout: 60_000 })
+    await page.getByRole('button', { name: /모험 계속하기|이어/ }).first()
+      .waitFor({ timeout: 60_000 })
+    const back = await page.locator('dl').first().innerText()
+    assert(back.includes(NAME), `되살린 리포트에 이름이 없다: ${back.replace(/\n/g, ' ')}`)
+    rmSync(at, { force: true })
+
+    // 게임을 끝까지 도는 동안 바깥으로도, /data로도 아무것도 안 나갔다
+    const leaked = [
+      ...contentRequests(requests.slice(mark)), ...outsideRequests(requests.slice(mark)),
+    ]
+    assert(leaked.length === 0, `게임 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
+    const fatal = errors.filter((e) => !/ResizeObserver|WebGL|Download the React/.test(e))
+    assert(fatal.length === 0, `콘솔 오류: ${fatal.slice(0, 2).join(' / ')}`)
+
+    return `새 게임 → 오버월드(${zone.slice(0, 12)}) → 걷기 4방향 → 리포트 → `
+      + `.rpsave ${(bytes.length / 1024).toFixed(1)}kB 왕복 · 게임 중 요청 0건 · 콘솔 오류 0건`
+  },
+)
+
 // ── 못 재는 것 ───────────────────────────────────────────────────────────────
-record('15', '진짜 입력으로 12/12 완주 → 두 번째 실행에서 타이틀 진입', 'BLOCKED',
-  '필수 그룹 12개 중 변환기가 있는 것이 9개다 — Platinum 아홉은 다 됐고 BDSP 셋이 없다 (blocker 4). '
-  + '⑰이 **진짜 변환된 바이트로** "두 번째 실행에서 다시 안 만든다"를 재고, ⑱이 '
-  + '`ready`일 때의 부팅 순서를 재지만, 그 둘을 잇는 **진짜 12/12 완주**는 못 한다. '
-  + '이것이 남아 있는 한 문서에 "한 번만 고르면 된다"를 확정으로 쓰지 않는다')
+record('26', '오프닝 이야기 · NPC 대사 · 야생/트레이너 배틀 · 맵 전환', 'NOT RUN',
+  '㉕가 새 게임에서 오버월드까지만 몬다. 그 뒤(호수 → 서류가방 → 파트너 → 풀숲)는 '
+  + '스크립트 VM이 도는 자리라 화면 글에만 기대서는 어디까지 갔는지 못 가른다 — '
+  + '읽기 전용 진행 표식을 하나 내기 전에는 재는 척하지 않는다')
 record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
   '호스트를 안 정했다 (blocker 2). 이 하네스는 우리가 띄운 서버라 증거가 안 된다 — '
   + 'pnpm verify:deploy <url>')

@@ -73,4 +73,38 @@ describe('초기 청크', () => {
     // `Stage`는 `lazy(() => import(...))`다. 정적으로 닿으면 위 시험이 터진다
     expect(seen).not.toContain(resolve('src/scene/Stage.tsx'))
   })
+
+  /**
+   * ⚠️ **배틀 UI도 첫 화면 밖이다.**
+   *
+   * `App`이 `<BattleScreen />`을 늘 그려 두고 있었다 — 안에서 `phase === 'off'`면
+   * null을 내므로 화면에는 아무 문제가 없었는데, **모듈 그래프에는 서른 개가
+   * 그대로 들어와 있었다**(`battleStore`·`aftermath`·`capture`·`reward`·`view`·
+   * `playback`·`BattleBag`·`SwitchScreen`…). 첫 화면 gzip 138.7kB 중 18kB가
+   * 그것이었다. 지금은 `sessionStore.battleScreen`이 켜질 때 받는다
+   */
+  it('배틀 UI는 첫 화면 그래프에 없다', () => {
+    for (const at of ['src/ui/battle/BattleScreen.tsx', 'src/state/battleStore.ts',
+      'src/engine/battle/view.ts', 'src/engine/battle/playback.ts',
+      'src/engine/battle/meta/capture.ts']) {
+      expect(seen, at).not.toContain(resolve(at))
+    }
+    // 스위치는 남아야 한다 — 그것이 없으면 배틀이 켜져도 아무도 안 받는다
+    expect(seen).toContain(resolve('src/state/sessionStore.ts'))
+  })
+
+  /**
+   * ⚠️ **소리 뭉치도 첫 화면 밖이다.** 타이틀이 `music`을 정적으로 잡고 있었고,
+   * 그것이 sseq·swar·렌더 워커까지 끌고 와서 첫 화면 gzip에 11.1kB를 더했다 —
+   * 예산(150kB)은 안 넘어서 아무 데서도 안 걸렸고, 내부 목표 135kB만 조용히
+   * 넘고 있었다. 쓰는 자리는 둘 다 그려진 **뒤**에 도는 `useEffect`다
+   */
+  it('소리 뭉치는 첫 화면 그래프에 없다', () => {
+    for (const at of ['src/engine/audio/music.ts', 'src/engine/audio/sfx.ts',
+      'src/engine/audio/sseq.ts', 'src/engine/audio/render.ts']) {
+      expect(seen, at).not.toContain(resolve(at))
+    }
+    // 깨우기는 남는다 — 첫 제스처를 놓치면 소리가 영영 안 난다 (§11.1)
+    expect(seen).toContain(resolve('src/engine/audio/unlock.ts'))
+  })
 })

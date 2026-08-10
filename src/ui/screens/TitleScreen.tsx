@@ -20,10 +20,9 @@ import {
 } from '../../state/saveStore'
 import { PORTABLE_EXT } from '../../state/save/portable'
 import { watchIntegrity } from '../../app/integrityWatch'
-import { music } from '../../engine/audio/music'
-import { SFX } from '../../engine/audio/sfx'
-import { TITLE_SONG } from '../../engine/audio/songIds'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
+import { playSong, warmMenu } from '../../engine/audio/lazy'
+import { TITLE_SONG } from '../../engine/audio/songIds'
 import * as css from './titleScreen.css'
 
 /** 게임 청크를 미리 받아둔다 — 클릭 시점의 대기를 없앤다 (PLAN §10.4) */
@@ -82,7 +81,7 @@ export function TitleScreen() {
 
   // 메뉴 소리를 미리 펴 둔다. 깨어나기 전이면 줄을 서고 첫 입력 때 받는다 —
   // 안 그러면 타이틀에서 처음 커서를 움직일 때 452KB를 기다린다
-  useEffect(() => { void music.prewarm([SFX.MENU]) }, [])
+  useEffect(() => { warmMenu() }, [])
 
   // 타이틀에 닿았으면 이제 설치본을 뒤에서 훑는다 (IMPORT.md §15).
   //
@@ -109,7 +108,7 @@ export function TitleScreen() {
    * 곡으로 갈아타면서 이 곡을 겹쳐 끈다(`FADE`) — 여기서 먼저 끊으면
    * 그 사이가 정적이 된다
    */
-  useEffect(() => { void music.play(TITLE_SONG) }, [])
+  useEffect(() => { playSong(TITLE_SONG) }, [])
 
   useEffect(() => {
     let alive = true

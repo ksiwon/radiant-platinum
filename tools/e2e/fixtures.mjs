@@ -73,13 +73,52 @@ export async function readInstalled() {
   return { state: manifest.state, groups: Object.keys(manifest.groups), sha }
 }
 
-/** `src/import/install/required.ts`와 같아야 한다. 갈리면 ⑥이 거짓 통과한다 */
-export const REQUIRED_GROUPS = [
+/**
+ * 같은 것을 **해시 없이**. 진짜 BDSP까지 설치한 뒤에는 파일이 수천 개에
+ * 580MB라, 전부 다시 읽어 SHA-256을 뜨는 것만으로 몇 분이 간다.
+ *
+ * 무결성은 앱이 부팅할 때 스스로 검사한다 — 여기서는 **무엇이 몇 개 들어왔는지**와
+ * 이름을 대서 고른 몇 개만 본다 (`want`에 적은 경로)
+ */
+export async function readInstalledLight(want) {
+  const root = await navigator.storage.getDirectory()
+  const rp = await root.getDirectoryHandle('radiant-platinum')
+  const assets = await rp.getDirectoryHandle('assets')
+  const manifest = JSON.parse(await (await (await rp.getFileHandle('install.json')).getFile()).text())
+  const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('')
+
+  let files = 0
+  let bytes = 0
+  const counts = {}
+  for (const [name, group] of Object.entries(manifest.groups)) {
+    counts[name] = group.files.length
+    files += group.files.length
+    for (const rec of group.files) bytes += rec.bytes ?? 0
+  }
+
+  const sha = {}
+  for (const path of want) {
+    const parts = path.split('/')
+    let dir = assets
+    for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p)
+    const file = await (await dir.getFileHandle(parts.at(-1))).getFile()
+    sha[path] = hex(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
+  }
+  return { state: manifest.state, groups: Object.keys(manifest.groups), counts, files, bytes, sha }
+}
+
+// ⚠️ **`src/import/install/required.ts`와 같아야 한다.** 갈리면 ⑥이 거짓
+// 통과한다. 둘로 나눠 두는 것은 ⑨가 **BDSP 없이** 도는 시험이라, "Platinum
+// 쪽은 전부 나왔다"를 따로 못 박아야 하기 때문이다
+export const REQUIRED_PLATINUM_GROUPS = [
   'text', 'species', 'moves', 'maps', 'chunks', 'scripts', 'marts', 'sound', 'pokegra',
   'encounters', 'trainers', 'spawns', 'items', 'npcSprites', 'itemIcons', 'pokeIcons',
   'boxWallpapers', 'signposts', 'starterScene',
-  'npcModels', 'monModels', 'arenas', 'motionTiming',
 ]
+
+export const REQUIRED_BDSP_GROUPS = ['npcModels', 'monModels', 'arenas', 'motionTiming']
+
+export const REQUIRED_GROUPS = [...REQUIRED_PLATINUM_GROUPS, ...REQUIRED_BDSP_GROUPS]
 
 /**
  * 페이지 안에서 도는 함수. `page.evaluate(SYNTHETIC, { state, groups })`.

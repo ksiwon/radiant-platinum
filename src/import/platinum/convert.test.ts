@@ -17,7 +17,7 @@ import { ALL_GROUPS, groupsBlocked, groupsReady } from '../groups'
 import { martLocator, SUPPORTED } from './validate'
 import { REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS } from '../install/required'
 import { MartError, readMarts } from './marts'
-import { DATA, withRom, romPath } from '../../data/romData.testkit'
+import { DATA, decodePngBytes, withRom, romPath } from '../../data/romData.testkit'
 
 /** 변환기가 요구하는 지역판. 시험은 실측된 롬 하나로 돈다 */
 const EN = SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!
@@ -45,7 +45,7 @@ describe('그룹 표', () => {
     }
     expect(groupsReady().length).toBeGreaterThan(0)
     expect(groupsReady().length + groupsBlocked().length).toBe(ALL_GROUPS.length)
-    // Platinum 쪽 필수 그룹 아홉이 전부 변환기를 갖고 있다. **이 목록이 줄면 선다**
+    // Platinum 쪽 필수 그룹이 전부 변환기를 갖고 있다. **이 목록이 줄면 선다**
     const ready = new Set(groupsReady().map((g) => g.name))
     for (const name of REQUIRED_PLATINUM_GROUPS) expect(ready.has(name), name).toBe(true)
   })
@@ -59,9 +59,9 @@ describe('그룹 표', () => {
     expect(new Set(names).size).toBe(names.length)
   })
 
-  // ⚠️ **필수 목록을 줄여서 통과시키지 않는다.** 이 시험이 12/12의 정의다 —
+  // ⚠️ **필수 목록을 줄여서 통과시키지 않는다.** 이 시험이 "다 됐다"의 정의다 —
   // 그룹을 하나라도 못 만들면 공개판은 `ready`에 못 간다 (`install/required.ts`)
-  it('필수 그룹 열둘이 전부 변환기를 갖고 있다', () => {
+  it('필수 그룹이 전부 변환기를 갖고 있다', () => {
     const ready = new Set(groupsReady().map((g) => g.name))
     for (const name of REQUIRED_GROUPS) expect(ready.has(name), name).toBe(true)
   })
@@ -265,4 +265,55 @@ withRom('en', 'ko', 'ja')('marts — ARM9에서 읽는다', () => {
     // 제대로 주면 통과한다
     await expect(readMarts(fs, at, 446)).resolves.toBeTruthy()
   })
+})
+
+// ── 뒤늦게 옮긴 여덟 (DATA.md §2.12 · §2.16 · §2.20 · §2.21 · §2.14) ─────────
+//
+// ⚠️ **이 여덟이 없으면 설치가 끝나도 첫 화면에서 선다.** `bootWorld`와 메뉴가
+// 읽는 파일인데 어느 그룹도 안 만들고 있었고, 필수 목록에도 없어서 그대로
+// `ready`가 찍혔다. 여기서 개발 산출물과 다시 맞댄다.
+//
+// ⚠️ **PNG는 바이트로 못 맞춘다.** 노드는 zlib으로, 브라우저는
+// `CompressionStream`으로 굽는다 — deflate 구현이 다르면 같은 픽셀도 다른
+// 바이트다. 그래서 PNG만 펴서 픽셀로 견준다
+
+withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
+  /** 그룹 하나를 돌려 산출물마다 개발판과 맞댄다 */
+  const parity = async (group: string): Promise<void> => {
+    const fs = await openNds(fileSource(romPath('en')!))
+    const spec = GROUPS.find((g) => g.name === group)
+    if (!spec?.convert) { expect.unreachable(`${group} 그룹이 없다`); return }
+    const out = await spec.convert({ fs: fs!, locale: 'en', release: EN })
+    expect(out.size, group).toBeGreaterThan(0)
+
+    for (const [path, bytes] of out) {
+      const dev = resolve(DATA, path.replace(/^data\//, ''))
+      let expected: Uint8Array
+      try { expected = new Uint8Array(readFileSync(dev)) } catch {
+        expect.unreachable(`개발 산출물이 없다: ${path}`)
+        return
+      }
+      if (path.endsWith('.png')) {
+        const a = decodePngBytes(expected)
+        const b = decodePngBytes(bytes)
+        expect([a.width, a.height], path).toEqual([b.width, b.height])
+        let worst = 0
+        for (let i = 0; i < a.pixels.length; i++) {
+          worst = Math.max(worst, Math.abs(a.pixels[i]! - b.pixels[i]!))
+        }
+        expect(worst, path).toBe(0)
+      } else {
+        expect(bytes.byteLength, path).toBe(expected.byteLength)
+        expect(new TextDecoder().decode(bytes), path).toBe(new TextDecoder().decode(expected))
+      }
+    }
+  }
+
+  it('items — 자료 446개와 이름·설명', async () => { await parity('items') }, 60_000)
+  it('npcSprites — 판때기 156벌과 차례표', async () => { await parity('npcSprites') }, 120_000)
+  it('itemIcons — 가방 아틀라스', async () => { await parity('itemIcons') }, 60_000)
+  it('pokeIcons — 파티·박스 아틀라스', async () => { await parity('pokeIcons') }, 60_000)
+  it('boxWallpapers — 벽지 32장', async () => { await parity('boxWallpapers') }, 60_000)
+  it('signposts — 간판 50장', async () => { await parity('signposts') }, 60_000)
+  it('starterScene — 모델 여섯과 애니 길이', async () => { await parity('starterScene') }, 60_000)
 })

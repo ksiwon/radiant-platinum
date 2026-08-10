@@ -8,12 +8,16 @@ import { BrowserRouter, Routes, Route } from 'react-router'
 import { TitleScreen } from '../ui/screens/TitleScreen'
 import { PerfOverlay } from '../ui/hud/PerfOverlay'
 import { ZoneBanner } from '../ui/hud/ZoneBanner'
-import { BattleScreen } from '../ui/battle/BattleScreen'
 import { dayTheme } from '../ui/theme/day.css'
 import { installAudioUnlock } from '../engine/audio/unlock'
 import { useSessionStore } from '../state/sessionStore'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
+// ⚠️ **배틀 화면도 지연이다.** 늘 그려 두면(안에서 null을 내더라도) 배틀 UI
+// 서른 모듈이 타이틀 첫 화면에 실린다. 켜지는 순간은 `battleStore`가
+// `sessionStore.battleScreen`으로 알려 준다
+const BattleScreen = lazy(() =>
+  import('../ui/battle/BattleScreen').then((m) => ({ default: m.BattleScreen })))
 const PlayRoute = lazy(() => import('./PlayRoute').then((m) => ({ default: m.PlayRoute })))
 // 인트로는 three를 안 쓴다. 그래도 타이틀 청크에 안 넣는 이유는 대사 인쇄기와
 // 뱅크 로더를 끌고 오기 때문이다 — "이어하기"로 들어오면 한 번도 안 쓴다
@@ -24,6 +28,7 @@ let bootstrapped = false
 
 export function App() {
   const stageMounted = useSessionStore((s) => s.stageMounted)
+  const battleUp = useSessionStore((s) => s.battleScreen)
 
   useEffect(() => {
     if (bootstrapped) return
@@ -45,7 +50,11 @@ export function App() {
       )}
       <PerfOverlay />
       <ZoneBanner />
-      <BattleScreen />
+      {battleUp && (
+        <Suspense fallback={null}>
+          <BattleScreen />
+        </Suspense>
+      )}
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<TitleScreen />} />

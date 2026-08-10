@@ -8,7 +8,7 @@
 // 사건을 시간축에 펴는 것은 `engine/battle/playback.ts`다. 이 화면은 그 재생기가
 // 지금까지 접은 뷰만 그린다 — sim의 최종 상태를 직접 보지 않는다. 기술 연출과
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { Actor } from '../../engine/battle/events'
 import { buildBeats } from '../../engine/battle/playback'
@@ -28,7 +28,10 @@ import { battleText, type BattleNames } from './messages'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import * as css from './battleScreen.css'
-import { BattleSound } from './BattleSound'
+// ⚠️ **소리는 지연 마운트다.** `BattleScreen`은 App이 정적으로 잡는데(막을
+// 화면이 언제 뜰지 몰라서다), `BattleSound`가 `music`을 정적으로 잡으면 소리
+// 뭉치 gzip 11.1kB가 **타이틀 첫 화면**에 실린다. 배틀이 켜질 때 오면 된다
+const BattleSound = lazy(() => import('./BattleSound').then((m) => ({ default: m.BattleSound })))
 import { hpColor } from '../../engine/battle/healthbar'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 
@@ -178,7 +181,7 @@ export function BattleScreen() {
   // 서로 다른 return으로 나누면 그때마다 다시 마운트되어 두 번 깜빡인다
   return (
     <div className={shell}>
-      <BattleSound />
+      <Suspense fallback={null}><BattleSound /></Suspense>
       <div className={css.wipe} />
       {phase === 'loading' ? <div className={css.waiting}>배틀 준비 중…</div> : <>
       {/*
