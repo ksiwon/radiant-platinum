@@ -17,6 +17,7 @@ import { convertSpecies } from './species'
 import { convertMaps } from './maps'
 import { convertPokegra } from './pokegra'
 import { convertChunks } from './chunks'
+import { convertScripts } from './scripts'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -178,10 +179,7 @@ export const GROUPS: readonly GroupSpec[] = [
     name: 'scripts',
     outputs: ['data/scripts.bin', 'data/scripts.json', 'data/events.json'],
     converter: 1,
-    blockedBy:
-      '⚠️ **`raw/decomp`에 기댄다.** 명령 폭 표와 scriptID 표를 디컴프에서 뽑는다 '
-      + '(PLAN §14 "Platinum 추출기의 decomp 의존"). 롬 자체 파싱으로 바꾸거나, '
-      + '배포 가능한 최소 호환성 메타데이터로 분리해야 한다.',
+    convert: convertScripts,
   },
   {
     name: 'sound',

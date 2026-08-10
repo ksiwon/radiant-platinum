@@ -97,8 +97,20 @@ export const BLOCKERS = [
         ...names(required, 'REQUIRED_PLATINUM_GROUPS'),
         ...names(required, 'REQUIRED_BDSP_GROUPS'),
       ]
-      // 변환기가 붙은 그룹 = `convert:`가 적힌 항목
-      const made = [...convert.matchAll(/name:\s*'([a-zA-Z]+)',[^}]*?convert:\s*\w/gs)]
+      // 변환기가 붙은 그룹 = 그 항목 안에 `convert:`가 적힌 것.
+      //
+      // ⚠️ **`[^}]*?`로 항목 끝을 잡으면 안 된다.** 한때 그렇게 적었는데, 산출물
+      // 이름에 `data/chunks/{번호}.bin`처럼 중괄호가 들어가는 순간 거기서 끊겨
+      // 구현된 그룹이 **안 구현된 것으로 보였다**. 검사가 헐거워지는 방향은
+      // 아니었지만(있는 것을 없다고 셌다) 어느 쪽이든 틀린 수를 보고한 것이다.
+      // 항목 경계는 다음 `name:`으로 잡는다
+      const at = [...convert.matchAll(/name:\s*'([a-zA-Z]+)'/g)]
+      const made = at
+        .filter((m, i) => {
+          const from = m.index
+          const to = i + 1 < at.length ? at[i + 1].index : convert.length
+          return /convert:\s*\w/.test(convert.slice(from, to))
+        })
         .map((m) => m[1])
       const missing = need.filter((n) => !made.includes(n))
       return missing.length === 0
