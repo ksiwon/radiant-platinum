@@ -16,6 +16,7 @@ import { convertText, TEXT_OUTPUTS, openBanks, nameList, type DataLocale } from 
 import { convertSpecies } from './species'
 import { convertMaps } from './maps'
 import { convertPokegra } from './pokegra'
+import { convertChunks } from './chunks'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -165,11 +166,9 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'chunks',
-    outputs: ['data/chunks/**', 'data/props/**', 'data/tex/**'],
+    outputs: ['data/chunks/{번호}.bin', 'data/chunks/index.json'],
     converter: 1,
-    blockedBy:
-      'NSBMD 디스플레이 리스트 해석기를 안 옮겼다 (DATA.md §2.2). 노드 쪽은 '
-      + '666/666 검증을 통과했고, 브라우저로 옮기면 같은 수치가 나와야 한다.',
+    convert: convertChunks,
   },
   {
     name: 'scripts',
