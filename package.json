@@ -30,6 +30,7 @@
     "gen:charmap": "node tools/extract/charmapModule.cjs",
     "gen:scriptMeta": "node tools/extract/scriptMetaModule.cjs",
     "gen:spriteTable": "node tools/extract/spriteTableModule.cjs",
+    "gen:spawnTable": "node tools/extract/spawnTableModule.cjs",
     "spike:sdat": "node tools/spike/sdat-test.js",
     "extract:species": "node tools/extract/species.js",
     "extract:moves": "node tools/extract/moves.js",

@@ -76,6 +76,7 @@ export async function readInstalled() {
 /** `src/import/install/required.ts`와 같아야 한다. 갈리면 ⑥이 거짓 통과한다 */
 export const REQUIRED_GROUPS = [
   'text', 'species', 'moves', 'maps', 'chunks', 'scripts', 'marts', 'sound', 'pokegra',
+  'encounters', 'trainers', 'spawns',
   'npcModels', 'monModels', 'arenas',
 ]
 

@@ -21,6 +21,7 @@ import { convertScripts } from './scripts'
 import { convertSound } from './sound'
 import { convertEncounters } from './encounters'
 import { convertTrainers } from './trainers'
+import { convertSpawns } from './spawns'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -206,6 +207,12 @@ export const GROUPS: readonly GroupSpec[] = [
     ],
     converter: 1,
     convert: convertTrainers,
+  },
+  {
+    name: 'spawns',
+    outputs: ['data/spawns.json'],
+    converter: 1,
+    convert: convertSpawns,
   },
   {
     name: 'pokegra',

@@ -22,6 +22,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'pokegra',   // 포켓몬 도트
   'encounters', // 야생 출현표. 없으면 풀숲에서 아무것도 안 나온다
   'trainers',  // 트레이너 파티·상금. 없으면 트레이너 배틀이 안 열린다
+  'spawns',    // 부활 지점·공중날기. 전멸은 첫 배틀부터 날 수 있다
 ] as const
 
 /**

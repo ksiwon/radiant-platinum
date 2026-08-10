@@ -334,7 +334,10 @@ describe('E2E 재료가 앱과 안 갈린다', () => {
     const { REQUIRED_GROUPS } = await import('../e2e/fixtures.mjs')
     const src = readFileSync(join(ROOT, 'src/import/install/required.ts'), 'utf8')
     const names = [...src.matchAll(/^ {2}'([a-zA-Z]+)',/gm)].map((m) => m[1])
-    expect(names.length).toBe(12)
+    // ⚠️ **개수를 여기 박지 않는다.** 한때 12로 박아 뒀는데, 필수 그룹이 늘 때
+    // 두 목록을 다 고쳐도 이 줄 때문에 선다 — 재려던 것은 개수가 아니라
+    // **두 목록이 같은가**다. 비어 있는 것만 따로 막는다
+    expect(names.length).toBeGreaterThan(0)
     expect([...REQUIRED_GROUPS].sort()).toEqual(names.sort())
   })
 })
