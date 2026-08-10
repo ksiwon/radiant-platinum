@@ -107,6 +107,25 @@ async function run(id, what, fn) {
 
 const assert = (cond, why) => { if (!cond) throw new Error(why) }
 
+/**
+ * 기다리되, 안 오면 **무엇을 기다렸고 그때 화면에 뭐가 있었는지**를 적는다.
+ *
+ * ⚠️ 맨 `waitForFunction`은 `Timeout 60000ms exceeded` 한 줄만 남긴다. 한
+ * 시험에 그런 기다림이 넷이면 어느 것이 섰는지 못 가르고, 그 한 줄을 보고
+ * 다음 실행도 똑같이 8분을 태우게 된다 (실제로 두 번 그랬다)
+ */
+async function where(page, fn, what, timeout = 60_000) {
+  try {
+    await page.waitForFunction(fn, null, { timeout })
+  } catch {
+    const said = await page.locator('body').innerText().catch(() => '(못 읽었다)')
+    throw new Error(
+      `${what} — ${String(timeout / 1000)}초 기다렸다 · 자리 ${new URL(page.url()).pathname}`
+      + ` · 화면: "${said.replace(/\s+/g, ' ').slice(0, 200)}"`,
+    )
+  }
+}
+
 /** 받은 파일의 글. 디스크에 안 남긴다 */
 async function readDownload(download) {
   const at = resolve(ROOT, '.audit/e2e.tmp', download.suggestedFilename())
@@ -923,7 +942,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
 
     // ── 새 게임 ──
     await page.getByRole('button', { name: '새로운 모험 시작하기' }).click()
-    await page.waitForFunction(() => location.pathname === '/intro', null, { timeout: 60_000 })
+    await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
 
     // 오프닝은 글 → 몬스터볼 → 이름 → 고르기가 섞여 있고 길이가 롬 글에 달렸다.
     // 그래서 **모양을 보고 대응**한다: 이름 칸이 뜨면 적고, 아니면 넘긴다
@@ -985,8 +1004,8 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 다 읽혔다는 뜻이다. 캔버스만 보면 "검은 화면"과 구별이 안 된다
     const zone = await page.locator('div').filter({ hasText: /^\S/ }).first().innerText()
       .catch(() => '')
-    await page.waitForFunction(() => document.querySelector('canvas') !== null, null,
-      { timeout: 60_000 })
+    await where(page, () => document.querySelector('canvas') !== null,
+      '오버월드에 캔버스가 안 생겼다')
     // 그림이 실제로 그려졌는가 — 캔버스가 한 색으로 비어 있으면 안 된다
     const painted = await page.evaluate(() => {
       const c = document.querySelector('canvas')
@@ -1038,27 +1057,36 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     for (let i = 0; i < SAVE_ROW; i++) { await page.keyboard.press('ArrowDown') }
     await page.keyboard.press('Space')
     // 리포트 화면은 `주인공 · 배지 · 도감 · 플레이 시간` 네 칸짜리 `dl`이 임자다
-    await page.waitForFunction(() => {
+    await where(page, () => {
       const dl = [...document.querySelectorAll('dl')].pop()
       return dl !== undefined && dl.querySelectorAll('dd').length === 4
-    }, null, { timeout: 30_000 })
+    }, '리포트 화면이 안 뜬다', 30_000)
     // "쓸까요?"에 예. 커서가 예에 서 있으므로 그대로 확인이다
     await page.keyboard.press('Space')
     // 다 쓰면 `{이름}는 리포트를 …` 줄이 뜬다. 이름이 그 안에 있다
     await page.getByText(new RegExp(NAME)).first().waitFor({ timeout: 60_000 })
     await page.keyboard.press('Space')
 
-    // ── 타이틀로 돌아가면 진행이 보인다 ──
+    // ── 다시 열면 진행이 보인다 ──
     //
-    // Escape는 화면을 한 겹씩 벗긴다 — 리포트 → 시작 메뉴 → 오버월드 → 타이틀.
-    // 몇 겹인지 세지 말고 주소가 바뀔 때까지 두드린다
-    for (let i = 0; i < 8 && !page.url().endsWith('/'); i++) {
-      await page.keyboard.press('Escape')
-      await page.waitForTimeout(300)
-    }
-    await page.waitForFunction(() => location.pathname === '/', null, { timeout: 60_000 })
-    await page.getByRole('button', { name: /모험 계속하기|이어/ }).first()
-      .waitFor({ timeout: 60_000 })
+    // ⚠️ **Escape로는 타이틀에 못 간다.** 한때 "Escape가 화면을 한 겹씩 벗겨
+    // 오버월드에서 타이틀까지 나간다"고 적혀 있었는데, 실측하니 여덟 번을
+    // 두드려도 `/play`에 그대로 있었다. 나가는 길은 설정의 "처음부터" 하나이고
+    // 그건 **리포트를 지운다** — 여기서 재려는 것과 정반대다.
+    //
+    // 그래서 사람이 실제로 하는 것을 한다: 창을 닫았다 다시 연다. 리포트가
+    // 남았으면 타이틀에 이름이 뜬다
+    //
+    // ⚠️ `reload()`가 아니라 **주소를 새로 연다.** 지금 있는 자리가 `/play`라
+    // 그대로 다시 읽으면 또 `/play`다 — 타이틀은 영영 안 온다
+    await page.goto(`${origin}/`, { waitUntil: 'load' })
+    await waitBoot(page)
+    await where(page, () => location.pathname === '/', '다시 열었는데 타이틀이 아니다')
+    // ⚠️ **이어하기 버튼의 글은 롬에서 온다.** `MAIN_MENU.continue_`라 영어
+    // 롬에서는 `CONTINUE`이고 일본어 롬에서는 또 다르다 — 한국어 글로 찾으면
+    // 영어 설치본에서 영영 못 찾는다. 실측이 정확히 여기서 60초를 섰다.
+    // 리포트가 남았다는 증거는 버튼이 아니라 **요약창에 뜬 이름**이다
+    await page.locator('dl').filter({ hasText: NAME }).first().waitFor({ timeout: 60_000 })
     const shown = await page.locator('dl').first().innerText()
     assert(shown.includes(NAME), `타이틀에 이름이 안 뜬다: ${shown.replace(/\n/g, ' ')}`)
 
@@ -1081,12 +1109,13 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     })
     await page.reload({ waitUntil: 'load' })
     await waitBoot(page)
-    await page.getByRole('button', { name: '새로운 모험 시작하기' }).waitFor({ timeout: 60_000 })
+    // ⚠️ 여기도 롬 글로 기다리면 안 된다 — `새로운 모험 시작하기`는 영어 롬에서
+    // `NEW GAME`이다. 리포트 칸은 **우리가 그리는 것**이라 어느 롬에서나 같다
+    await page.locator('input[accept=".rpsave"]').waitFor({ state: 'attached', timeout: 60_000 })
 
     await page.locator('input[accept=".rpsave"]').setInputFiles(at)
     await page.getByRole('button', { name: '이 리포트로 이어하기' }).click({ timeout: 60_000 })
-    await page.getByRole('button', { name: /모험 계속하기|이어/ }).first()
-      .waitFor({ timeout: 60_000 })
+    await page.locator('dl').filter({ hasText: NAME }).first().waitFor({ timeout: 60_000 })
     const back = await page.locator('dl').first().innerText()
     assert(back.includes(NAME), `되살린 리포트에 이름이 없다: ${back.replace(/\n/g, ' ')}`)
     rmSync(at, { force: true })
