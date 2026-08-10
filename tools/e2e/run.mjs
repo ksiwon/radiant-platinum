@@ -928,15 +928,16 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 오프닝은 글 → 몬스터볼 → 이름 → 고르기가 섞여 있고 길이가 롬 글에 달렸다.
     // 그래서 **모양을 보고 대응**한다: 이름 칸이 뜨면 적고, 아니면 넘긴다
     // ⚠️ **오프닝은 되돌아오는 자리가 있다.** 나무박사가 "그 밖에 알고 싶은
-    // 건?"을 묻고, 설명을 다 들으면 **그 물음으로 되돌아온다** — 첫 칸만 계속
-    // 고르면 영영 그 고리를 돈다(실측: 600걸음에서 조작 설명 화면). 나가는 칸이
-    // 몇 번째인지는 롬 글이라 시험이 알 수 없으므로, **같은 화면을 세 번 보면
-    // 커서를 한 칸 내린다.** 어느 고리든 이 규칙 하나로 빠져나온다
+    // 건?"을 묻고 설명을 다 들으면 **그 물음으로 되돌아온다**(실측: 첫 칸만
+    // 고르면 600걸음이 조작 설명과 그 물음을 오갔다). 나가는 길은 마지막 칸이다.
+    //
+    // 롬 글을 못 읽으니 **고르는 줄의 생김새**로 가른다: 칸이 셋 이상이면
+    // 마지막(= 나무박사의 "괜찮다!" · 라이벌 이름의 "스스로 결정한다!"), 둘이면
+    // 첫 칸(= "예")이다. 화면 글이 아니라 구조를 보므로 판이 바뀌어도 산다
     const NAME = 'TESTER'
     const trail = []
-    const seen = new Map()
     let steps = 0
-    for (; steps < 600 && new URL(page.url()).pathname === '/intro'; steps++) {
+    for (; steps < 400 && new URL(page.url()).pathname === '/intro'; steps++) {
       const input = page.getByLabel('이름')
       if (await input.count() > 0) {
         trail.push('이름')
@@ -948,15 +949,21 @@ await ((haveRom && haveBdsp) ? run : () => {})(
       const ball = page.getByLabel('몬스터볼')
       if (await ball.count() > 0) { trail.push('볼'); await ball.click(); await page.waitForTimeout(200); continue }
 
-      // 숫자를 지운다 — 성능 오버레이의 FPS가 매번 달라서 그대로 두면 모든
-      // 화면이 처음 보는 것처럼 보인다
-      const sig = (await page.locator('body').innerText().catch(() => ''))
-        .replace(/[\d.]+/g, '').replace(/\s+/g, ' ').slice(0, 200)
-      const times = (seen.get(sig) ?? 0) + 1
-      seen.set(sig, times)
-      if (times >= 3) {
-        trail.push(`내려간다(${String(times)})`)
-        await page.keyboard.press('ArrowDown')
+      // 고르는 줄 = 자식이 전부 글 있는 `<span>`인 div. 성능 오버레이는 span이
+      // 하나뿐이라 안 걸리고, 힌트 줄에는 span이 없다
+      const choices = await page.evaluate(() => {
+        for (const d of document.querySelectorAll('div')) {
+          const kids = [...d.children]
+          if (kids.length < 2) continue
+          if (kids.every((c) => c.tagName === 'SPAN' && (c.textContent ?? '').trim() !== '')) {
+            return kids.length
+          }
+        }
+        return 0
+      })
+      if (choices >= 3) {
+        trail.push(`${String(choices)}칸 중 끝`)
+        for (let d = 0; d < choices - 1; d++) await page.keyboard.press('ArrowDown')
         await page.waitForTimeout(80)
       }
       await page.keyboard.press('Space')
@@ -1001,16 +1008,32 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 수로 자리를 확정한다** — 새 게임 직후에는 도감·포켓몬·공중날기가 아직
     // 없어서 [가방 · 트레이너카드 · 리포트 · 설정 · 닫는다] 다섯 줄이다.
     // 다섯이 아니면 가정이 깨진 것이므로 조용히 넘어가지 않고 여기서 선다
-    await page.keyboard.press('KeyX')
-    await page.waitForTimeout(500)
-    const rows = await page.evaluate(() => {
+    // ⚠️ **바로 안 열린다.** 새 게임 직후에는 맵을 아직 읽는 중이고(623MB
+    // 설치본에서 청크를 꺼낸다) 화면 전환 막이 입력을 먹는다. 열릴 때까지
+    // 두드리되, 안 열리면 **그때 화면에 무엇이 있었는지**를 그대로 적는다
+    const menuRows = () => page.evaluate(() => {
       const cards = [...document.querySelectorAll('div')]
         .filter((d) => [...d.children].length >= 4
           && [...d.children].every((c) => c.querySelector('span') !== null))
       const card = cards[cards.length - 1]
       return card ? [...card.children].map((c) => c.textContent?.trim() ?? '') : []
     })
-    assert(rows.length === 5, `시작 메뉴가 다섯 줄이 아니다 (${String(rows.length)}): ${rows.join(' · ')}`)
+    let rows = []
+    for (let i = 0; i < 30 && rows.length === 0; i++) {
+      await page.keyboard.press('KeyX')
+      await page.waitForTimeout(1_000)
+      rows = await menuRows()
+    }
+    if (rows.length !== 5) {
+      const said = await page.locator('body').innerText().catch(() => '(못 읽었다)')
+      // ⚠️ **화면이 비어 있으면 콘솔이 임자다.** 오버월드가 죽으면 DOM이 통째로
+      // 사라져서 "무엇이 없다"만 남는다 — 무엇 때문에 죽었는지는 여기에 있다
+      throw new Error(
+        `시작 메뉴가 다섯 줄이 아니다 (${String(rows.length)}: ${rows.join(' · ')}) · `
+        + `화면: "${said.replace(/\s+/g, ' ').slice(0, 200)}" · `
+        + `오류 ${String(errors.length)}건: ${errors.slice(0, 3).join(' | ')}`,
+      )
+    }
     const SAVE_ROW = 2
     for (let i = 0; i < SAVE_ROW; i++) { await page.keyboard.press('ArrowDown') }
     await page.keyboard.press('Space')

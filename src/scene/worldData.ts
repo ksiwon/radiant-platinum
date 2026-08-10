@@ -10,6 +10,7 @@ import { world, type AreaData, type EventFile, type MapHeader } from '../engine/
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadNpcSprites, type NpcSprite } from '../engine/actor/sprites'
 import { assets, readJson } from '../data/providers/assetProvider'
+import { gameLocale } from '../state/optionsStore'
 import type { EncounterTable } from '../engine/battle/encounter'
 
 // 주소를 만들지 않는다 — 공개판에서 이 자료는 OPFS에서 온다 (IMPORT.md §7)
@@ -77,7 +78,10 @@ export async function bootWorld(): Promise<WorldBoot> {
       json<{ maps: MapHeader[], areas: AreaData[] }>('maps.json'),
       json<{ events: Record<string, EventFile> }>('events.json'),
       json<{ tables: EncounterTable[] }>('encounters.json'),
-      json<string[]>('names/locations.ko.json'),
+      // ⚠️ **설치된 언어로 읽는다.** 여기가 `ko`로 박혀 있었고, 그래서
+      // 영어 롬으로 설치하면 오버월드가 이 파일을 못 찾고 통째로 죽었다 —
+      // 화면이 새까매져서 "무엇이 없다"조차 안 보였다 (브라우저 실측 ㉑가 잡았다)
+      json<string[]>(`names/locations.${gameLocale()}.json`),
       json<MatrixMeta>('matrices/0.json'),
       bytes('matrices/0.bin'),
       // 높이는 land_data 청크 단위라 실내에도 같은 표를 쓴다. 28.5KB(brotli)라

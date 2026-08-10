@@ -11,6 +11,7 @@ import { spawnTable, spawnWarp } from '../../engine/map/spawns'
 import { mapById, world } from '../../engine/map/world'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { MenuScreen } from './MenuScreen'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as css from './menuChrome.css'
@@ -22,14 +23,16 @@ export function FlyScreen() {
   const flySpots = useSaveStore((s) => s.flySpots)
   const [names, setNames] = useState<string[]>([])
   const [cursor, setCursor] = useState(0)
+  // 설치된 언어로 읽는다 — `ko`로 박아 두면 영어 설치본에서 이름이 통째로 없다
+  const locale = useGameLocale()
 
   useEffect(() => {
     let alive = true
-    void (readJson(assets(), 'data/names/locations.ko.json') as Promise<string[]>)
+    void (readJson(assets(), `data/names/locations.${locale}.json`) as Promise<string[]>)
       .then((list) => { if (alive) setNames(list) })
       .catch(() => { /* 이름이 없으면 맵 이름으로 뜬다 */ })
     return () => { alive = false }
-  }, [])
+  }, [locale])
 
   const spots = spawnTable.list
     .map((spot, index) => ({ spot, index }))
