@@ -86,21 +86,38 @@ const ASSET_ASSISTANT = 'assetassistant'
 /**
  * 고른 폴더 아래에서 `AssetAssistant`를 찾는다.
  *
- * ⚠️ **이름이 비슷한 아무 폴더나 받아들이지 않는다** (IMPORT.md §5). 대소문자만
- * 정규화하고, 그 아래에 우리가 아는 그룹이 실제로 있는지까지 본 뒤에 인정한다.
- * 가장 얕은 것을 고른다 — 덤프를 두 번 겹쳐 둔 폴더에서 깊은 쪽을 잡으면
- * 사용자가 왜 그게 골라졌는지 알 수 없다
+ * ⚠️ **이름으로 찾지 않는다.** 한때 경로에 `AssetAssistant`가 들어 있는지만 봤는데,
+ * 사용자가 그 폴더를 **직접** 고르면 상대 경로에 그 이름이 안 나온다 — 제대로 된
+ * 덤프를 골라 놓고 "AssetAssistant를 못 찾았습니다"가 떴다. 그래서 **내용**으로
+ * 찾는다: 그룹 색인 `<이름>.bin`이 전부 한 폴더에 모여 있으면 거기가 뿌리다.
+ * 이름이 무엇이든, 몇 겹 아래에 있든, 뿌리 자신이든 같은 길로 잡힌다.
+ *
+ * 덤으로 **재배치한 폴더가 저절로 걸러진다** — 필요한 것만 골라 다른 이름으로
+ * 옮겨 둔 사본에는 색인이 없다.
+ *
+ * 여럿이면 얕은 쪽, 같은 깊이면 이름이 `AssetAssistant`인 쪽이다. 덤프를 두 번
+ * 겹쳐 둔 폴더에서 깊은 쪽을 잡으면 사용자가 왜 그게 골라졌는지 알 수 없다
  */
 export function findRoot(entries: readonly DirEntry[]): string | null {
-  const found = new Set<string>()
+  const need = REQUIRED_GROUPS.map((g) => `${g.name.toLowerCase()}.bin`)
+  const byDir = new Map<string, Set<string>>()
   for (const e of entries) {
-    const parts = e.path.split('/')
-    for (let i = 0; i < parts.length; i++) {
-      if (parts[i]!.toLowerCase() === ASSET_ASSISTANT) found.add(parts.slice(0, i + 1).join('/'))
-    }
+    const cut = e.path.lastIndexOf('/')
+    const name = e.path.slice(cut + 1).toLowerCase()
+    if (!need.includes(name)) continue
+    const dir = cut < 0 ? '' : e.path.slice(0, cut)
+    let has = byDir.get(dir)
+    if (!has) { has = new Set(); byDir.set(dir, has) }
+    has.add(name)
   }
-  if (found.size === 0) return null
-  return [...found].sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))[0]!
+  if (byDir.size === 0) return null
+  // 하나라도 빠진 덤프도 뿌리로는 잡는다 — 무엇이 빠졌는지 이름으로 말해 주려는
+  // 것이다. 색인이 아예 없으면 뿌리가 아니다
+  const best = Math.max(...[...byDir.values()].map((s) => s.size))
+  const roots = [...byDir].filter(([, has]) => has.size === best).map(([dir]) => dir)
+  const depth = (p: string): number => (p === '' ? 0 : p.split('/').length)
+  const named = (p: string): number => (p.split('/').pop()?.toLowerCase() === ASSET_ASSISTANT ? 0 : 1)
+  return roots.sort((a, b) => depth(a) - depth(b) || named(a) - named(b) || a.localeCompare(b))[0]!
 }
 
 const under = (path: string, root: string): string | null => {
@@ -119,7 +136,8 @@ export async function scanBdsp(dir: DirSource): Promise<BdspScan> {
     return {
       ok: false, reason: 'no-root',
       why: '이 폴더 아래에서 AssetAssistant를 못 찾았습니다. '
-        + '이미 추출된 지원 폴더가 필요합니다.',
+        + '이미 추출된 지원 폴더가 필요합니다. '
+        + 'AssetAssistant 폴더 자체를 골라도 되고, 그 위 아무 폴더를 골라도 됩니다.',
     }
   }
 

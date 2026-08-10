@@ -29,26 +29,41 @@ function goodTree(prefix = 'romfs/Data/StreamingAssets/AssetAssistant'): Record<
   return files
 }
 
+const indices = (prefix: string): DirEntry[] =>
+  REQUIRED_GROUPS.map((g) => ({ path: prefix ? `${prefix}/${g.name}.bin` : `${g.name}.bin`, size: 1 }))
+
 describe('AssetAssistant 찾기', () => {
   it('상위 폴더를 골라도 아래에서 찾는다', () => {
-    const root = findRoot([{ path: 'romfs/Data/StreamingAssets/AssetAssistant/Dpr.bin', size: 1 }])
-    expect(root).toBe('romfs/Data/StreamingAssets/AssetAssistant')
+    expect(findRoot(indices('romfs/Data/StreamingAssets/AssetAssistant')))
+      .toBe('romfs/Data/StreamingAssets/AssetAssistant')
   })
 
-  it('대소문자만 정규화한다', () => {
-    expect(findRoot([{ path: 'x/assetassistant/Dpr.bin', size: 1 }])).toBe('x/assetassistant')
+  it('⚠️ 폴더 자체를 골라도 찾는다 — 상대 경로에 이름이 안 나온다', () => {
+    // 이름으로 찾던 시절에는 제대로 된 덤프를 직접 골라 놓고 no-root가 떴다
+    expect(findRoot(indices(''))).toBe('')
+  })
+
+  it('이름이 달라도 색인이 다 있으면 찾는다', () => {
+    expect(findRoot(indices('내려받은것'))).toBe('내려받은것')
   })
 
   it('⚠️ 겹쳐 둔 덤프에서는 얕은 쪽을 고른다', () => {
     // 깊은 쪽을 잡으면 사용자가 왜 그게 골라졌는지 알 수 없다
-    const entries: DirEntry[] = [
-      { path: 'a/b/AssetAssistant/Dpr.bin', size: 1 },
-      { path: 'a/AssetAssistant/Dpr.bin', size: 1 },
-    ]
-    expect(findRoot(entries)).toBe('a/AssetAssistant')
+    expect(findRoot([...indices('a/b/AssetAssistant'), ...indices('a/AssetAssistant')]))
+      .toBe('a/AssetAssistant')
   })
 
-  it('없으면 null이다', () => {
+  it('같은 깊이면 AssetAssistant라는 이름을 고른다', () => {
+    expect(findRoot([...indices('a/사본'), ...indices('a/AssetAssistant')])).toBe('a/AssetAssistant')
+  })
+
+  it('⚠️ 색인 하나가 빠져도 뿌리로는 잡는다 — 무엇이 빠졌는지 말해 주려는 것이다', () => {
+    const all = indices('x/AssetAssistant')
+    expect(findRoot(all.slice(1))).toBe('x/AssetAssistant')
+  })
+
+  it('색인이 하나도 없으면 null이다', () => {
+    expect(findRoot([{ path: 'AssetAssistant/Characters/persons/field/fc0001_00', size: 1 }])).toBeNull()
     expect(findRoot([{ path: 'romfs/Data/StreamingAssets/Other/x', size: 1 }])).toBeNull()
   })
 })
@@ -135,8 +150,14 @@ function bdspRoot(): string | null {
 const withBdsp: (name: string, body: () => void) => void =
   bdspRoot() === null ? vitestDescribe.skip : vitestDescribe
 
-/** 디스크 폴더를 `DirSource`로. 브라우저 쪽과 같은 계약이다 */
-function diskDirSource(root: string): DirSource {
+/**
+ * 디스크 폴더를 `DirSource`로. 브라우저 쪽과 같은 계약이다.
+ *
+ * `prefix`를 주면 상대 경로 앞에 그것을 붙인다 — "한 칸 위를 골랐다"를 흉내 내는
+ * 것이다. ⚠️ 진짜로 `raw/`를 걸으면 10GB를 훑는다. 상위 선택에서 달라지는 것은
+ * **경로 앞칸뿐**이므로 그것만 흉내 낸다
+ */
+function diskDirSource(root: string, prefix = ''): DirSource {
   const walk = (at: string, rel: string): DirEntry[] =>
     readdirSync(at, { withFileTypes: true }).flatMap((e) => {
       const child = join(at, e.name)
@@ -146,26 +167,34 @@ function diskDirSource(root: string): DirSource {
     })
   return {
     label: root,
-    list: () => Promise.resolve(walk(root, '')),
+    list: () => Promise.resolve(walk(root, prefix)),
     read: () => Promise.resolve(null),
   }
 }
 
 withBdsp('진짜 BDSP 폴더', () => {
-  it('⚠️ 개발 하위 집합은 공개 판정을 통과하지 못한다 — 그것이 맞다', async () => {
-    // 개발 기계의 `raw/bdsp`는 필요한 것만 골라 **재배치한** 것이다
-    // (IMPORT.md §9 표). 공개 Importer가 받는 것은 원래 구조의
-    // `AssetAssistant`이므로, 여기가 통과하면 판정이 헐거운 것이다
+  it('⚠️ 폴더를 직접 골랐을 때 통과한다', async () => {
+    // 공개 Importer가 받는 것과 **같은 계약**이다: 상대 경로가 뿌리 아래에서
+    // 시작한다. 이 자리가 한때 `no-root`였다
     const got = await scanBdsp(diskDirSource(bdspRoot()!))
-    expect(got.ok).toBe(false)
-    if (!got.ok) expect(got.reason).toBe('no-root')
+    expect(got.ok ? 'ok' : `${got.reason}: ${got.why}`).toBe('ok')
+    if (!got.ok) return
+    expect(got.root).toBe('')
+    expect(got.groups.every((g) => g.index && g.bundles > 0)).toBe(true)
+    expect(got.files).toBeGreaterThan(10_000)
   })
 
-  it('덤프 목록에 실측 구조가 실제로 그렇게 적혀 있다', () => {
-    // 위 판정의 근거. `fstree.txt`는 추출할 때 받아 둔 원본 트리다
-    const tree = join(bdspRoot()!, 'fstree.txt')
-    if (!existsSync(tree)) return
-    const text = readdirSync(bdspRoot()!).join(' ')
-    expect(text).toContain('fstree.txt')
+  it('⚠️ 상위 폴더를 골라도 같은 답이 나온다', async () => {
+    const name = bdspRoot()!.split(/[\\/]/).pop()!
+    const got = await scanBdsp(diskDirSource(bdspRoot()!, name))
+    expect(got.ok ? 'ok' : `${got.reason}: ${got.why}`).toBe('ok')
+    if (got.ok) expect(got.root).toBe(name)
+  })
+
+  it('필수 그룹 다섯의 색인과 폴더가 다 있다', () => {
+    for (const { name } of REQUIRED_GROUPS) {
+      expect(existsSync(join(bdspRoot()!, `${name}.bin`)), `${name}.bin`).toBe(true)
+      expect(statSync(join(bdspRoot()!, name)).isDirectory(), name).toBe(true)
+    }
   })
 })

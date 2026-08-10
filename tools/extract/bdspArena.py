@@ -36,6 +36,9 @@ from UnityPy.helpers import MeshHelper
 
 from bdsp_bake_albedo import bake, prop_pairs
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tools.raw.sources import require_dir
+
 GLB_MAGIC = 0x46546C67
 JSON_CHUNK = 0x4E4F534A
 BIN_CHUNK = 0x004E4942
@@ -389,7 +392,7 @@ def write_glb(path: Path, gltf: dict, blob: bytes) -> None:
 
 ROOT = Path(__file__).resolve().parents[2]
 TABLE = ROOT / "src/engine/battle/arena.ts"
-GROUND = ROOT / "raw/bdsp/arenas/ground"
+GROUND = require_dir("bdsp.arenas") / "ground"
 OUTDIR = ROOT / "public/models/arena"
 
 

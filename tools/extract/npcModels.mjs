@@ -22,11 +22,14 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'no
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bundlesByTag, modelFor } from '../../src/engine/actor/npcModels.ts'
+import { createRequire } from 'node:module'
+
+const rawSources = createRequire(import.meta.url)('../raw/sources.cjs')
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DATA = resolve(ROOT, 'public/data')
 const OUT = resolve(ROOT, 'public/models/npc')
-const PERSONS = resolve(ROOT, 'raw/bdsp/Characters/persons')
+const PERSONS = resolve(rawSources.requireDir('bdsp.characters'), 'persons')
 
 /** 텍스처 긴 변의 상한. 위 표가 근거다 */
 const MAX_TEXTURE = 256

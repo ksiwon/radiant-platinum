@@ -26,6 +26,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 import UnityPy
 
@@ -60,8 +61,10 @@ def tags_of(path):
 
 
 def main():
-    root = sys.argv[1] if len(sys.argv) > 1 else 'raw/bdsp/Characters/persons/field'
-    out = sys.argv[2] if len(sys.argv) > 2 else 'raw/bdsp/fcTags.json'
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from tools.raw.sources import require_dir
+    root = sys.argv[1] if len(sys.argv) > 1 else str(require_dir('bdsp.characters') / 'persons/field')
+    out = sys.argv[2] if len(sys.argv) > 2 else 'raw/work/fcTags.json'
 
     table = {}
     for name in sorted(os.listdir(root)):

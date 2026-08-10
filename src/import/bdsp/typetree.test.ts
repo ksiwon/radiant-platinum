@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { openBundle, readSerializedFile, className } from './unityfs'
 import { buildTree, TreeReader, stringAt, type TypeNode } from './typetree'
 import { readMesh, streamLayout, float16, MeshError, type Channel } from './mesh'
-import { withLocal } from '../../data/romData.testkit'
+import { bdspDir, withLocal } from '../../data/romData.testkit'
 
 const node = (o: Partial<TypeNode> & { type: string, name: string, level: number }): TypeNode => ({
   byteSize: -1, index: 0, typeFlags: 0, metaFlag: 0, children: [], ...o,
@@ -161,7 +161,10 @@ describe('정점 배치', () => {
 
 // ── 진짜 번들 ────────────────────────────────────────────────────────────────
 
-const BUNDLES = ['raw/bdsp/Characters/persons/battle', 'raw/bdsp/Characters/persons/field']
+const CHARACTERS = bdspDir('characters')
+const BUNDLES = CHARACTERS
+  ? [join(CHARACTERS, 'persons/battle'), join(CHARACTERS, 'persons/field')]
+  : []
 
 const someBundles = (limit: number): string[] => {
   const out: string[] = []

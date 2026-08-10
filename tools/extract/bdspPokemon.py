@@ -35,14 +35,18 @@ import struct
 import sys
 from pathlib import Path
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from tools.raw.sources import require_dir
+
 from bdspGlb import export
 
 ROOT = Path(__file__).resolve().parents[2]
-BATTLE = ROOT / "raw/bdsp/pokemon"
-COMMON = ROOT / "raw/bdsp/pokemon-common"
+BATTLE = require_dir("bdsp.pokemon")
+COMMON = require_dir("bdsp.pokemonCommon")
 OUTDIR = ROOT / "public/models/pokemon"
 INDEX = OUTDIR / "index.json"
-MASTER = ROOT / "raw/bdsp/dpr/masterdatas"
+MASTER = require_dir("bdsp.masterdatas")
 
 # 포켓몬 셰이더의 알베도 자리. `_MainTex`도 같이 본다 — 몇몇 이펙트 재질이
 # 그쪽을 쓴다
