@@ -13,11 +13,15 @@
 // 대신 매 빌드에 숫자를 찍고, `--release`에서만 실패로 바꾼다. 공개 배포는
 // 그 판정을 지나야 한다 (DEPLOY.md §1).
 import { gzipSync } from 'node:zlib'
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { PUBLIC_SHELL, collectShell, unlistedShellFiles } from './appShell.mjs'
 import { openBlockers } from './blockers.mjs'
-import { TRACKED_TABLES, missingTables, tablesLeakedInto, unlistedTables } from './dataTables.mjs'
+import {
+  TRACKED_TABLES, bannedTablesPresent, missingTables, tablesLeakedInto, trackedContentLeaks,
+  unlistedTables,
+} from './dataTables.mjs'
 import { forbiddenIn } from './provenance.mjs'
 import { pathViolations, scanTree, originsIn } from './rules.mjs'
 
@@ -90,8 +94,8 @@ function checkPre() {
   //
   // ⚠️ 경로 규칙은 이것들을 하나도 못 봤다. `src/**/*.json`은 `public/data`
   // 검사에 안 걸리고 `dist` 규칙도 통과한다. 그런데 `src/data/textBanks.json`
-  // 안에는 롬 뱅크 헤더에서 읽은 u16 키가 697개 들어 있다 — 내용 기반
-  // 히스토리 감사를 붙이고 나서야 보였다
+  // 안에는 롬 뱅크 헤더에서 읽은 u16 키가 724개 들어 있었다 — 내용 기반
+  // 히스토리 감사를 붙이고 나서야 보였고, 그래서 지웠다
   for (const rel of unlistedTables(resolve(ROOT, 'src'))) {
     fail('심사 안 받은 자료 표', `${rel} — tools/distribution/dataTables.mjs에 무엇이 들었는지 적는다`)
   }
@@ -101,6 +105,20 @@ function checkPre() {
   for (const t of TRACKED_TABLES) {
     if (t.note.includes('미해결')) notes.push(`${t.path} — ${t.holds} (미해결 판단 있음: dataTables.mjs)`)
   }
+  for (const t of bannedTablesPresent()) {
+    fail('지운 자료 표가 다시 왔다', `${t.path} — ${t.why}`)
+  }
+
+  // ①-f tracked 나무를 **내용으로** 훑는다 (§2.10 · §9).
+  //
+  // 이름을 바꿔 옮겨 놓으면 위의 경로 검사가 전부 조용히 통과한다. 그래서
+  // 머리 바이트가 롬 컨테이너인지, 본문이 지운 값의 모양인지를 직접 본다
+  const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n').map((s) => s.trim()).filter(Boolean)
+  for (const leak of trackedContentLeaks(tracked)) {
+    fail('tracked 파일이 원본 유래다', `${leak.path} — ${leak.what}: ${leak.why}`)
+  }
+  notes.push(`tracked ${tracked.length}개를 내용으로 훑었다 — 원본 유래 0개`)
 
   // ② `public/` 안에 원본 유래 나무가 남아 있는가.
   //

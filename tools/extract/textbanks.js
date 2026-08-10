@@ -171,10 +171,19 @@ function main() {
   )
   for (const u of stats.unknown) console.log(`  ? ${u}`)
 
+  // ⚠️ **리포에 안 넣는다.** 이 표에는 뱅크 724개의 암호화 키(u16)와 로케일별
+  // 엔트리 수가 들어 있다 — 사용자 롬에서 읽은 정확한 값이라 공개 저장소에 둘
+  // 것이 아니다 (COPYRIGHT.md §6). `raw/work/`는 .gitignore가 통째로 막는다.
+  //
+  // 앱은 이 파일을 안 읽는다. 자리는 `src/import/platinum/textBanks.ts`가 이름
+  // 순서에서 계산하고, 사용자의 롬으로 검산한다. 이 표는 그 계산이 맞는지
+  // 확인하는 데만 쓴다 (`textBanks.local.test.ts`, PT_REQUIRE_DATA=1).
+  const out = path.join(ROOT, 'raw/work/textBanks.json')
+  fs.mkdirSync(path.dirname(out), { recursive: true })
   // 한 줄에 뱅크 하나 — 724개짜리를 들여쓰면 파일이 두 배가 되고 diff도 못 읽는다
   const json = '[\n' + table.map((t) => JSON.stringify(t)).join(',\n') + '\n]\n'
-  fs.writeFileSync(path.join(ROOT, 'src/data/textBanks.json'), json, 'utf8')
-  console.log(`→ src/data/textBanks.json (${table.length}개)`)
+  fs.writeFileSync(out, json, 'utf8')
+  console.log(`→ raw/work/textBanks.json (${table.length}개) — 리포에 안 들어간다`)
 }
 
 main()

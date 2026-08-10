@@ -27,13 +27,14 @@ import {
 } from '../../state/optionsStore'
 import { APP_ROOT } from '../../data/assetBase'
 import { useSaveStore } from '../../state/saveStore'
+import { verifyEverything } from '../../app/integrityWatch'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './dialog.css'
 
 interface Row {
-  key: keyof Options | 'reset'
+  key: keyof Options | 'reset' | 'verify'
   label: string
   /** 고를 수 있는 값의 글. 'reset'은 값이 없다 */
   values: string[]
@@ -47,6 +48,8 @@ export function OptionsScreen() {
   const [text, setText] = useState<string[]>([])
   const [cursor, setCursor] = useState(0)
   const [confirming, setConfirming] = useState(false)
+  /** 손으로 부른 에셋 확인의 진행·결과. 없으면 안 눌렀다는 뜻이다 */
+  const [verifying, setVerifying] = useState<string | null>(null)
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
   const options = useOptionsStore()
@@ -142,6 +145,15 @@ export function OptionsScreen() {
       ), ours: true,
     },
     {
+      key: 'verify', label: our('에셋 확인', 'CHECK ASSETS', 'アセット確認'),
+      values: [], at: 0,
+      help: verifying ?? our(
+        '설치된 파일을 전부 다시 읽어 확인합니다\n켤 때마다 하지 않는 검사입니다 — 몇 분 걸립니다',
+        'Re-reads every installed file and checks it.\nThis is the check we skip on every start — it takes minutes.',
+        'インストール済みのファイルを全部読み直して確かめます\n起動のたびには行わない検査です — 数分かかります',
+      ), ours: true,
+    },
+    {
       key: 'reset', label: our('처음부터', 'NEW GAME', 'はじめから'),
       values: [], at: 0,
       help: our(
@@ -154,8 +166,37 @@ export function OptionsScreen() {
 
   const row = rows[Math.min(cursor, rows.length - 1)]
 
+  /**
+   * 설치본을 손으로 전부 확인한다.
+   *
+   * ⚠️ **부팅에서 안 하는 검사가 여기 있다** (IMPORT.md §15). 개발판은
+   * 설치 기록이 없어서 `null`이 오고, 그때는 할 말이 없다고 말한다
+   */
+  const checkAssets = (): void => {
+    if (verifying) return
+    setVerifying(our('확인하는 중… 0%', 'Checking… 0%', '確認中… 0%'))
+    void verifyEverything((done, total) => {
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0
+      setVerifying(our(`확인하는 중… ${pct}%`, `Checking… ${pct}%`, `確認中… ${pct}%`))
+    })
+      .then((got) => {
+        if (!got) { setVerifying(our('개발판이라 확인할 설치 기록이 없습니다', 'Dev build — nothing installed to check', '開発版なので確認する記録がありません')); return }
+        if (got.broken.length === 0) {
+          setVerifying(our(`파일 ${got.ok}개가 전부 온전합니다`, `All ${got.ok} files are intact`, `ファイル${got.ok}件すべて無事です`))
+          return
+        }
+        // ⚠️ 깨진 그룹만 말한다. 나머지는 그대로 쓴다
+        setVerifying(our(
+          `⚠️ 파일 ${got.broken.length}개가 어긋납니다 — 다시 만들 그룹: ${got.groups.join(' · ')}`,
+          `⚠️ ${got.broken.length} files are wrong — groups to rebuild: ${got.groups.join(' · ')}`,
+          `⚠️ ファイル${got.broken.length}件が食い違います — 作り直すグループ: ${got.groups.join(' · ')}`,
+        ))
+      })
+      .catch((e: unknown) => { setVerifying(`⚠️ ${String(e)}`) })
+  }
+
   const move = (delta: number): void => {
-    if (!row || row.key === 'reset' || row.values.length === 0) return
+    if (!row || row.key === 'reset' || row.key === 'verify' || row.values.length === 0) return
     const next = wrapCursor(row.at, delta, row.values.length)
     // 언어 칸의 자리는 **설치된 목록 안의 자리**다. 저장하는 값은
     // `LANGUAGES` 기준 번호라 되돌려 준다
@@ -171,6 +212,7 @@ export function OptionsScreen() {
     right: () => { move(1) },
     confirm: () => {
       if (row?.key === 'reset') { setConfirming(true); return }
+      if (row?.key === 'verify') { checkAssets(); return }
       move(1)
     },
     cancel: () => { if (confirming) setConfirming(false); else back() },

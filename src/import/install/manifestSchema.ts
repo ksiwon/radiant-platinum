@@ -8,8 +8,13 @@
 // 여기서 걸리면 결론은 하나다 — **다시 설치.** 리포트는 안 건드린다.
 import { z } from 'zod'
 
-/** 계약이 바뀌면 올린다. 다르면 옛 설치는 무효고 다시 설치한다 */
-export const CONTRACT_VERSION = 2
+/**
+ * **기록의 모양** 판. 다르면 그 기록을 못 읽으니 다시 설치한다.
+ *
+ * ⚠️ 산출물의 모양은 이것이 아니라 `ASSET_FORMAT`이 센다 (`assetFormat.ts`).
+ * 둘을 하나로 두면 기록에 필드 하나 늘 때마다 사용자의 600MB가 날아간다
+ */
+export const CONTRACT_VERSION = 3
 
 const FileRecord = z.object({
   path: z.string().min(1),
@@ -34,7 +39,33 @@ export const GroupRecordSchema = z.object({
   bytes: z.int().nonnegative(),
   /** 이 그룹을 만든 변환기 판. 올라가면 그 그룹만 다시 만든다 */
   converter: z.int().positive(),
+  /**
+   * 이 그룹 **산출물**의 모양 판 (`assetFormat.ts`).
+   *
+   * 옛 기록에는 없다 — 없으면 1로 읽는다. 그룹마다 따로 두는 것이 요점이다:
+   * 모델 포맷을 바꿨다고 글 표까지 다시 만들 이유가 없다
+   */
+  format: z.int().positive().default(1),
 })
+
+/**
+ * **마지막에 딱 한 번 찍는 도장.** 이게 있어야 설치가 끝난 것이다.
+ *
+ * ⚠️ 매니페스트와 **같은 쓰기**로 들어간다. 따로 두면 둘이 어긋날 수 있고,
+ * 그 순간 "완료됐다는 표식은 있는데 목록은 반쪽"인 상태가 생긴다.
+ * `packStore.write`가 임시 이름에 쓰고 길이를 확인한 뒤 제자리로 옮기므로,
+ * 이 필드가 보인다는 것은 곧 그 앞의 모든 검증이 끝났다는 뜻이다
+ */
+export const CommitSchema = z.object({
+  at: z.string().min(1),
+  /** 도장을 찍은 앱 판·빌드. **호환 판정에 안 쓴다** — 기록용이다 */
+  appVersion: z.string().min(1),
+  buildId: z.string().min(1),
+  /** 이때의 산출물 모양 판. 부팅이 이것부터 본다 */
+  assetFormat: z.int().positive(),
+})
+
+export type InstallCommit = z.infer<typeof CommitSchema>
 
 export const InstallManifestSchema = z.object({
   contractVersion: z.literal(CONTRACT_VERSION),
@@ -48,6 +79,10 @@ export const InstallManifestSchema = z.object({
   availableLocales: z.array(z.string().min(1)).min(1),
   startedAt: z.string().min(1),
   finishedAt: z.string().min(1).optional(),
+  /** 설치물 전체의 모양 판. 그룹별 판은 `groups[].format`에 따로 있다 */
+  assetFormat: z.int().positive().default(1),
+  /** `state: 'ready'`일 때만 있다. 없으면 완료가 아니다 */
+  commit: CommitSchema.optional(),
   groups: z.record(z.string(), GroupRecordSchema),
 })
 

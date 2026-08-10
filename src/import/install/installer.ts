@@ -21,6 +21,8 @@ import type { WritablePackStore } from '../../data/providers/packStore'
 import { Cancelled, type GroupSpec, type Produced } from '../platinum/convert'
 import type { NdsFileSystem } from '../platinum/nds'
 import type { Release } from '../platinum/validate'
+import { APP_VERSION, BUILD_ID } from '../../state/save/contract'
+import { ASSET_FORMAT, groupFormat, needsSource, planAssets } from './assetFormat'
 import { checkFile, recordOf, type Broken, type FileRecord } from './integrity'
 import {
   CONTRACT_VERSION, parseJournal, parseManifest,
@@ -122,15 +124,25 @@ async function readJournal(store: WritablePackStore): Promise<InstallJournal> {
 /**
  * 게임을 시작해도 되는가. **이 함수 하나가 그 판단의 전부다**
  *
- * 해시를 다시 세지 않는다 — `state: 'ready'`는 그 검사를 통과했을 때만 쓰이고,
- * 부팅마다 630MB를 다시 해싱하면 첫 화면이 몇 초씩 늦는다
+ * ⚠️ **해시를 다시 세지 않는다.** `state: 'ready'`와 도장은 그 검사를 통과했을
+ * 때만 찍히고, 부팅마다 630MB를 다시 해싱하면 첫 화면이 몇 초씩 늦는다.
+ * 무결성은 그 파일을 **처음 읽을 때** 한 번 본다 (`verifiedPackStore.ts`).
+ *
+ * 보는 것은 넷뿐이고 전부 파일 하나 읽는 값이다 — 기록의 모양, 도장, 산출물
+ * 판, 필수 그룹. 여기서 통과하면 원본은 두 번 다시 안 묻는다
  */
 export async function installReady(store: WritablePackStore): Promise<InstallManifest | null> {
   const got = await readInstall(store)
   if (got.kind !== 'ok') return null
   if (got.value.state !== 'ready') return null
+  // ⚠️ 도장이 없으면 완료가 아니다. `state`만 보고 믿으면, 마지막 검증 전에
+  // 죽은 설치가 "준비 완료"로 남는 자리가 생긴다
+  if (!got.value.commit) return null
   // ready인데 필수 그룹이 빠져 있으면 그 기록 자체를 안 믿는다
   if (missingRequired(Object.keys(got.value.groups)).length > 0) return null
+  // 산출물 판이 낡아 **원본이 있어야만** 되는 그룹이 있으면 그대로 못 쓴다.
+  // 옮길 수 있는 것뿐이면 통과시키고, 옮기는 일은 부팅이 이어서 한다
+  if (needsSource(planAssets(got.value.groups))) return null
   return got.value
 }
 
@@ -221,8 +233,11 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
 
   const manifest: InstallManifest = {
     contractVersion: CONTRACT_VERSION,
-    // ⚠️ 여기서 `installing`으로 되돌린다. 도중에 죽으면 옛 `ready`가 남으면 안 된다
+    // ⚠️ 여기서 `installing`으로 되돌린다. 도중에 죽으면 옛 `ready`가 남으면 안 된다.
+    // 도장도 같이 지운다 — 도장이 곧 "끝났다"이므로 다시 시작할 때 남아 있으면 안 된다
     state: 'installing',
+    commit: undefined,
+    assetFormat: ASSET_FORMAT,
     platinumLocale: locale,
     availableLocales: [locale],
     startedAt: before.kind === 'ok' ? before.value.startedAt : now().toISOString(),
@@ -255,7 +270,9 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
       onEvent?.({ kind: 'wrote', path, bytes: data.byteLength })
     }
 
-    manifest.groups[spec.name] = { files, bytes: groupBytes, converter: spec.converter }
+    manifest.groups[spec.name] = {
+      files, bytes: groupBytes, converter: spec.converter, format: groupFormat(spec.name),
+    }
     await writeJson(root, INSTALL_FILE, manifest)
 
     journal.done.push(spec.name)
@@ -278,7 +295,14 @@ export async function runInstall(options: InstallOptions): Promise<InstallManife
   const missing = missingRequired(Object.keys(manifest.groups))
   // 깨진 것이 있으면 필수를 다 채웠더라도 `ready`가 아니다
   manifest.state = missing.length === 0 && broken.size === 0 ? 'ready' : 'partial'
-  if (manifest.state === 'ready') manifest.finishedAt = now().toISOString()
+  if (manifest.state === 'ready') {
+    const at = now().toISOString()
+    manifest.finishedAt = at
+    // ⚠️ **여기가 유일한 도장 자리다.** 위의 검증을 다 지난 뒤에만 찍고,
+    // 매니페스트와 같은 쓰기로 나간다 — 저장소가 임시 이름에 쓰고 길이를
+    // 확인한 뒤 제자리로 옮기므로, 도장이 보이면 목록도 함께 온 것이다
+    manifest.commit = { at, appVersion: APP_VERSION, buildId: BUILD_ID, assetFormat: ASSET_FORMAT }
+  }
   await writeJson(root, INSTALL_FILE, manifest)
   onEvent?.({ kind: 'done', manifest, missing })
   return manifest

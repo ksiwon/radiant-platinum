@@ -17,7 +17,9 @@ import { assets, setAssetProvider } from '../data/providers/assetProvider'
 import { memoryPackStore, type WritablePackStore } from '../data/providers/packStore'
 import { contentContract, setContentContract } from '../state/save/contract'
 import { availableLanguages, LANGUAGES } from '../state/optionsStore'
-import { INSTALL_FILE, runInstall, type InstallStores } from '../import/install/installer'
+import {
+  CONTRACT_VERSION, INSTALL_FILE, runInstall, type InstallStores,
+} from '../import/install/installer'
 import { REQUIRED_GROUPS } from '../import/install/required'
 import type { GroupSpec } from '../import/platinum/convert'
 
@@ -175,7 +177,7 @@ describe('언어 목록', () => {
   afterEach(() => {
     // 다른 시험이 세 언어를 본다. 원래대로 돌려놓는다
     activateInstall({
-      contractVersion: 2, state: 'ready', platinumLocale: 'dev',
+      contractVersion: CONTRACT_VERSION, state: 'ready', platinumLocale: 'dev', assetFormat: 1,
       availableLocales: [...LANGUAGES], startedAt: 'x', groups: {},
     }, memoryPackStore())
     setAssetProvider(null)
@@ -183,7 +185,7 @@ describe('언어 목록', () => {
 
   it('모르는 코드는 버리고, 하나도 못 알아들으면 그대로 둔다', () => {
     activateInstall({
-      contractVersion: 2, state: 'ready', platinumLocale: 'xx',
+      contractVersion: CONTRACT_VERSION, state: 'ready', platinumLocale: 'xx', assetFormat: 1,
       availableLocales: ['xx', 'yy'], startedAt: 'x', groups: {},
     }, memoryPackStore())
     // 언어를 0개로 만들면 화면이 아무것도 못 고른다

@@ -33,22 +33,77 @@ export const TRACKED_TABLES = [
       'COPYRIGHT.md §2의 비표현적 호환성 메타데이터. 원본 바이트도, 문자열도, '
       + '재고도 없다 — 자리와 개수뿐이다.',
   },
+]
+
+/**
+ * 지웠고 다시 오면 안 되는 파일.
+ *
+ * `src/data/textBanks.json`은 뱅크 724개의 **암호화 키(u16)** 와 로케일별 인덱스·
+ * 엔트리 수를 들고 있었다 — 자리나 개수가 아니라 사용자 롬에서 읽은 값이다.
+ * 지금은 `src/import/platinum/textBanks.ts`가 **이름 순서에서 자리를 계산**하고
+ * 사용자의 롬으로 검산한다. 표는 `raw/work/`에서만 굽는다 (gitignore).
+ */
+export const BANNED_TABLES = [
   {
     path: 'src/data/textBanks.json',
-    holds: '대사 뱅크 697개의 이름 · 상수 · 복호화 키(u16) · 지역별 인덱스 · 엔트리 수',
-    origin: '이름과 상수는 디컴프, 키와 엔트리 수는 롬 뱅크 헤더',
-    inBundle: false,
-    marker: 'moves_used_in_battle',
-    note:
-      '⚠️ **미해결.** `key`는 사용자 롬 뱅크 헤더 +2의 u16을 그대로 옮긴 값이다 '
-      + '(697개). 자리나 개수가 아니라 롬에서 읽은 값이라 §2의 "비표현적 '
-      + '메타데이터"에 그대로 들지 않는다. 지금 상태: 배포물에는 안 들어간다(측정), '
-      + '리포와 히스토리에는 있다. 지우려면 `tools/extract/textbanks.js`가 (키, '
-      + '엔트리 수) 쌍으로 ko·ja 인덱스를 확정하는 근거와 `textBanks.test.ts`의 '
-      + '유일성 검사를 대신할 것이 있어야 한다 — 판단이 필요한 자리라 '
-      + '혼자 지우지 않았다.',
+    why: '뱅크 암호화 키(u16) 724개. 자리 계산이 대신한다 — import/platinum/textBanks.ts',
   },
 ]
+
+/**
+ * 내용으로 찾는다. **경로 규칙은 이름을 바꾸면 못 본다.**
+ *
+ * 이름 목록은 남아 있어도 된다 — 지운 것은 **값**이다. 그래서 이름이 아니라
+ * 값이 붙어 있는 모양을 찾는다
+ */
+export const BANNED_CONTENT = [
+  {
+    what: '뱅크 암호화 키 표',
+    why: '뱅크 헤더 +2의 u16을 그대로 옮긴 값 (COPYRIGHT.md §6)',
+    signature: /"constant"\s*:\s*"TEXT_BANK_|"key"\s*:\s*\d+\s*,\s*"bank"\s*:/,
+  },
+]
+
+/** 롬 컨테이너 그 자체. tracked 나무에 있으면 안 된다 */
+const ROM_MAGIC = [
+  { kind: 'NARC', sig: 'NARC' }, { kind: 'SDAT', sig: 'SDAT' },
+  { kind: 'NCLR', sig: 'RLCN' }, { kind: 'NCGR', sig: 'RGCN' },
+  { kind: 'NSBMD', sig: 'BMD0' }, { kind: 'NSBTX', sig: 'BTX0' },
+  { kind: 'UnityFS', sig: 'UnityFS' },
+]
+
+/** 다시 생긴 금지 파일 */
+export function bannedTablesPresent() {
+  return BANNED_TABLES.filter((t) => existsSync(resolve(ROOT, t.path)))
+}
+
+/**
+ * tracked 파일을 **내용으로** 훑는다.
+ *
+ * 경로도 확장자도 안 본다 — 머리 바이트가 롬 컨테이너인지, 본문이 지운 값의
+ * 모양인지를 본다. 이름을 바꿔 옮겨 놓아도 여기서 걸린다
+ */
+export function trackedContentLeaks(trackedPaths) {
+  const bad = []
+  for (const rel of trackedPaths) {
+    const at = resolve(ROOT, rel)
+    if (!existsSync(at)) continue
+    const size = statSync(at).size
+    if (size === 0 || size > 8 * 1024 * 1024) continue
+    const bytes = readFileSync(at)
+    const head = bytes.subarray(0, 16).toString('latin1')
+    for (const m of ROM_MAGIC) {
+      if (head.startsWith(m.sig)) bad.push({ path: rel, what: `${m.kind} 컨테이너`, why: '롬 파일 그 자체' })
+    }
+    // 텍스트가 아니면 서명 검사는 건너뛴다 (NUL이 있으면 이진으로 본다)
+    if (bytes.includes(0)) continue
+    const text = bytes.toString('utf8')
+    for (const c of BANNED_CONTENT) {
+      if (c.signature.test(text)) bad.push({ path: rel, what: c.what, why: c.why })
+    }
+  }
+  return bad
+}
 
 /** `src/` 아래 실제 `.json` 전부 (리포 상대 경로) */
 export function jsonTablesIn(srcDir = resolve(ROOT, 'src')) {

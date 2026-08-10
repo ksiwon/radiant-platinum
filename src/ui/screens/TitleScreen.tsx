@@ -19,6 +19,7 @@ import {
   dexHas, SAVE_VERSION, useSaveStore, type ImportPreview, type SaveData,
 } from '../../state/saveStore'
 import { PORTABLE_EXT } from '../../state/save/portable'
+import { watchIntegrity } from '../../app/integrityWatch'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
 import { TITLE_SONG } from '../../engine/audio/songIds'
@@ -59,6 +60,8 @@ export function TitleScreen() {
   const [pending, setPending] = useState<(ImportPreview & { ok: true }) | null>(null)
   /** 에셋 설치 화면이 떠 있는가 */
   const [importing, setImporting] = useState(false)
+  /** 한가할 때 훑은 설치본에서 어긋난 것이 나왔는가 */
+  const [assetWarning, setAssetWarning] = useState<string | null>(null)
   const filePicker = useRef<HTMLInputElement>(null)
   // 설정은 필드 메뉴와 **같은 화면**을 쓴다. 스택에 올려 두면 그쪽의 "돌아가기"가
   // 그대로 동작하고, 스택이 비면 여기서도 닫힌다
@@ -80,6 +83,19 @@ export function TitleScreen() {
   // 메뉴 소리를 미리 펴 둔다. 깨어나기 전이면 줄을 서고 첫 입력 때 받는다 —
   // 안 그러면 타이틀에서 처음 커서를 움직일 때 452KB를 기다린다
   useEffect(() => { void music.prewarm([SFX.MENU]) }, [])
+
+  // 타이틀에 닿았으면 이제 설치본을 뒤에서 훑는다 (IMPORT.md §15).
+  //
+  // ⚠️ **부팅에서 안 한 일이 여기 있다.** 켤 때 630MB를 다시 해싱하면 첫 화면이
+  // 몇 초씩 늦는다. 그렇다고 안 보면 브라우저가 조용히 되찾아 간 파일을 게임이
+  // 만난다 — 그래서 화면이 뜬 뒤 한가할 때 본다. 개발판은 설치 기록이 없어서
+  // 아무 일도 안 일어난다
+  useEffect(() => watchIntegrity((got) => {
+    if (got.broken.length > 0) {
+      setAssetWarning(`⚠️ 설치본에서 파일 ${got.broken.length}개가 어긋납니다 — `
+        + `다시 만들 그룹: ${got.groups.join(' · ')}`)
+    }
+  }), [])
 
   /**
    * 타이틀 곡 (`SEQ_TITLE01`).
@@ -271,6 +287,9 @@ export function TitleScreen() {
           )}
 
           {notice !== null && <div className={css.notice}>{notice}</div>}
+          {/* 뒤에서 훑다 어긋난 것을 만났을 때. 화면을 막지 않는다 — 멀쩡한
+              그룹은 그대로 열리고, 깨진 그룹을 실제로 읽을 때 그 자리에서 선다 */}
+          {assetWarning !== null && <div className={css.notice}>{assetWarning}</div>}
         </div>
 
         {/*

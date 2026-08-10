@@ -1,12 +1,13 @@
 // 메뉴 글의 뱅크 번호 고정 (DATA.md §2.11)
 //
-// `uiText.ts`는 뱅크 번호를 손으로 적어 둔다 — 724개짜리 표(111KB)를 앱에 싣지
-// 않으려고. 그 대신 여기서 표와 맞대 본다. 번호가 하나 어긋나면 "가방" 자리에
-// 엉뚱한 낱말이 뜨는데, 글자가 나오긴 하므로 눈으로는 넘어가기 쉽다.
+// `uiText.ts`는 미국 롬 기준 뱅크 번호를 손으로 적어 둔다. 그 번호가 맞는지는
+// **뱅크 이름 순서에서 계산한 자리**와 맞대 본다 (`import/platinum/textBanks.ts`).
+// 번호가 하나 어긋나면 "가방" 자리에 엉뚱한 낱말이 뜨는데, 글자가 나오긴 하므로
+// 눈으로는 넘어가기 쉽다.
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getBank, type TextBankName } from './textBanks'
+import { bankIndex, type TextBankName } from '../import/platinum/textBanks'
 import {
   fillMenuText, MAIN_MENU, OPTIONS_TEXT, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK,
 } from './uiText'
@@ -38,7 +39,7 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
 describe('메뉴 글', () => {
   for (const [key, name] of Object.entries(NAMED) as [keyof typeof UI_BANK, TextBankName][]) {
     it(`${key}가 ${name} 뱅크를 가리킨다`, () => {
-      expect(UI_BANK[key]).toBe(getBank(name).bank.us)
+      expect(UI_BANK[key]).toBe(bankIndex(name, 'us'))
     })
   }
 

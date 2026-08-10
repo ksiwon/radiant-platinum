@@ -23,6 +23,8 @@ import {
   opfsAvailable, opfsPackStore, OPFS_ASSETS, OPFS_ROOT,
   type PackStore, type WritablePackStore,
 } from '../data/providers/packStore'
+import { verifiedPackStore, type VerifiedStore } from '../data/providers/verifiedPackStore'
+import { needsSource, planAssets } from '../import/install/assetFormat'
 import { installReady, readInstall, type InstallManifest } from '../import/install/installer'
 import { setContentContract } from '../state/save/contract'
 import { setAvailableLocales } from '../state/optionsStore'
@@ -33,6 +35,7 @@ export type InstallReason =
   | 'partial'      // 하다 말았다. 이어서 할 수 있다
   | 'invalid'      // 기록이 깨졌다. 다시 설치해야 한다 (리포트는 그대로)
   | 'unsupported'  // 이 브라우저로는 못 한다 (OPFS 없음)
+  | 'outdated'     // 설치물 모양이 낡았고 **원본 없이는** 못 옮기는 그룹이 있다
 
 export type BootState =
   | { kind: 'play'; source: 'dev' | 'opfs'; manifest: InstallManifest | null }
@@ -102,6 +105,13 @@ async function decide(env: BootEnv): Promise<BootState> {
     const got = await readInstall(root)
     if (got.kind === 'invalid') return { kind: 'install', reason: 'invalid', detail: got.why }
     if (got.kind === 'none') return { kind: 'install', reason: 'none' }
+    // 기록은 멀쩡한데 산출물 모양이 낡아서 원본이 필요한 경우를 따로 말한다 —
+    // "하다 말았다"와 "다시 만들어야 한다"는 사용자가 할 일이 다르다
+    const stale = planAssets(got.value.groups)
+    if (got.value.state === 'ready' && needsSource(stale)) {
+      const names = stale.regenerate.map((r) => r.group).join(' · ')
+      return { kind: 'install', reason: 'outdated', detail: `다시 만들 그룹: ${names}` }
+    }
     return { kind: 'install', reason: 'partial', detail: `상태: ${got.value.state}` }
   }
 
@@ -113,11 +123,27 @@ async function decide(env: BootEnv): Promise<BootState> {
  * 설치본을 쓰기 시작한다.
  *
  * 설치가 막 끝난 직후에도 부른다 — **다시 켜지 않고** 그 자리에서 갈아 끼운다.
- * `setAssetProvider`가 옛 Provider의 캐시와 Blob URL을 먼저 정리한다
+ * `setAssetProvider`가 옛 Provider의 캐시와 Blob URL을 먼저 정리한다.
+ *
+ * ⚠️ 저장소를 `verifiedPackStore`로 감싼다. 부팅에서 해싱하지 않고 **읽는
+ * 파일만 처음 한 번** 본다 — 그 균형이 이 계약의 전부다
  */
 export function activateInstall(manifest: InstallManifest, store?: PackStore): void {
-  setAssetProvider(opfsAssetProvider(store ?? opfsPackStore(`${OPFS_ROOT}/${OPFS_ASSETS}`)))
+  const raw = store ?? opfsPackStore(`${OPFS_ROOT}/${OPFS_ASSETS}`)
+  const checked = verifiedPackStore(raw, manifest)
+  live = checked
+  setAssetProvider(opfsAssetProvider(checked))
   setContentContract({ platinumLocale: manifest.platinumLocale, schema: manifest.contractVersion })
   // ⚠️ 설치된 언어만 준다. 개발판에 세 벌이 있다고 세 언어를 주지 않는다
   setAvailableLocales(manifest.availableLocales)
+}
+
+/**
+ * 지금 쓰고 있는 검사 저장소. 설정 화면의 "전부 확인"과 타이틀 뒤 idle 검사가
+ * 여기로 온다. 개발판(HTTP)에서는 null이다 — 확인할 설치 기록이 없다
+ */
+let live: VerifiedStore | null = null
+
+export function installedStore(): VerifiedStore | null {
+  return live
 }

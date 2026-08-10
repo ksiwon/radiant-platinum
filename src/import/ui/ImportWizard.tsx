@@ -152,6 +152,18 @@ export function ImportWizard({ onClose, onReady }: {
     const signal = { aborted: false }
     abort.current = signal
 
+    // ⚠️ **설치 전에 오래 보관을 청한다.** 이 버튼 클릭이 그 제스처다 — 나중에
+    // 부르면 브라우저가 그냥 거절한다. 거절을 실패로 다루지 않는다: 설치는
+    // 그대로 하고, 브라우저가 공간을 되찾아 갈 수 있다고 말해 준다
+    void requestPersist().then(async () => {
+      const got = await storageState()
+      setStorage(got)
+      say(got.persisted
+        ? '오래 보관: 켜졌습니다. 사이트 데이터를 지우기 전에는 설치본이 남습니다'
+        : '⚠️ 오래 보관이 안 켜졌습니다. 공간이 모자라면 브라우저가 설치본을 '
+          + '되찾아 갈 수 있습니다 — 리포트는 `.rpsave`로 따로 내보내 두세요')
+    })
+
     // Worker가 만들고 메인이 커밋한다 (`worker/client.ts` 머리말)
     const produce: Producer = (spec, hooks) =>
       worker.convert(spec.name, { onProgress: hooks.onProgress })
@@ -230,8 +242,15 @@ export function ImportWizard({ onClose, onReady }: {
         <div className={css.body}>
           {'고른 파일은 이 기기 안에서만 읽습니다. 바이트도, 파일 이름도, 폴더 목록도, '}
           {'판정 결과도 서버로 보내지 않습니다. 변환은 전부 브라우저 안에서 일어납니다.\n'}
+          {'설치가 끝나면 다음부터는 파일을 다시 고르지 않습니다 — 이 브라우저의 '}
+          {'저장 공간에서 바로 엽니다. 원본 파일과 폴더는 설치에 쓰고 놓아 줍니다: '}
+          {'경로도 파일 이름도 핸들도 저장하지 않으므로, 설치가 끝난 뒤 원본을 옮기거나 '}
+          {'지워도 게임은 그대로 돌아갑니다.\n'}
+          {'⚠️ 설치본은 이 브라우저 · 이 기기 · 이 주소에만 있습니다. 다른 브라우저나 '}
+          {'다른 기기에서는 다시 설치해야 하고, 주소가 바뀌어도 이어받지 못합니다.\n'}
           {'사이트 데이터를 지우면 설치된 에셋도 함께 사라집니다. 리포트는 '}
-          {'`.rpsave` 파일로 따로 내보내 둘 수 있습니다 (타이틀 화면).'}
+          {'`.rpsave` 파일로 따로 내보내 둘 수 있습니다 (타이틀 화면) — 에셋을 다시 '}
+          {'설치한 뒤 그 파일로 진행 상태를 되돌립니다.'}
         </div>
 
         {/* ── 0. 환경 ─────────────────────────────────────────────── */}

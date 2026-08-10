@@ -222,8 +222,9 @@ export const GROUPS: readonly GroupSpec[] = [
     converter: 1,
     blockedBy:
       '글 디코더(charmap + 뱅크 복호화)를 아직 안 옮겼다. '
-      + '`tools/extract/message.js`와 `tools/spike/gen4text.js`가 정본이고, '
-      + '뱅크 매핑표(`src/data/textBanks.json`)는 이미 브라우저에서 읽을 수 있다.',
+      + '`tools/extract/message.js`와 `tools/spike/gen4text.js`가 정본이다. '
+      + '뱅크 자리 찾기는 이미 브라우저에 있다 — `textBanks.ts`가 이름 순서로 '
+      + '계산하고 사용자의 롬으로 검산한다. 남은 것은 디코더뿐이다.',
   },
   {
     name: 'species',

@@ -4,7 +4,8 @@
 // 죽으면 위반 0건이 되고, 그 0건은 "깨끗하다"와 화면에서 구별이 안 된다. 그래서
 // **잡혀야 하는 것이 실제로 잡히는지**를 먼저 잰다.
 import { describe, it, expect } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathViolations, scanTree, originsIn, listTree } from './rules.mjs'
@@ -234,7 +235,7 @@ describe('release blocker', () => {
 describe('src 안의 자료 표', () => {
   // ⚠️ 경로 규칙은 이것들을 하나도 못 봤다. `src/data/textBanks.json`은 소스
   // 나무 안이고 이름도 `.json`이라 `public/data` 검사에도 `dist` 규칙에도
-  // 안 걸리는데, 안에 롬 뱅크 헤더에서 읽은 u16 키가 697개 있다
+  // 안 걸리는데, 안에 롬 뱅크 헤더에서 읽은 u16 키가 724개 있었다. 지웠다
   it('심사 안 받은 표가 없다', async () => {
     const { unlistedTables } = await import('./dataTables.mjs')
     expect(unlistedTables(join(ROOT, 'src'))).toEqual([])
@@ -267,17 +268,58 @@ describe('src 안의 자료 표', () => {
   })
 
   it("⚠️ `inBundle: false`는 주장이 아니라 검사다", async () => {
-    const { tablesLeakedInto } = await import('./dataTables.mjs')
+    const { tablesLeakedInto, TRACKED_TABLES } = await import('./dataTables.mjs')
     // 진짜 dist에는 없어야 하고
     expect(tablesLeakedInto(join(ROOT, 'dist'))).toEqual([])
-    // 심어 두면 잡혀야 한다. 트리 셰이킹은 import 하나만 늘어도 깨진다
+    // 심어 두면 잡혀야 한다. 트리 셰이킹은 import 하나만 늘어도 깨진다.
+    // 지금 `inBundle: false`인 표가 없으면 이 검사에 이빨이 없다는 뜻이라 그것도 본다
+    const hidden = TRACKED_TABLES.filter((t) => !t.inBundle)
     const fake = mkdtempSync(join(tmpdir(), 'leak-'))
     try {
-      writeFileSync(join(fake, 'chunk.js'), 'const x = "moves_used_in_battle"')
-      const bad = tablesLeakedInto(fake)
-      expect(bad).toHaveLength(1)
-      expect(bad[0].table).toBe('src/data/textBanks.json')
+      for (const t of hidden) {
+        writeFileSync(join(fake, 'chunk.js'), `const x = ${JSON.stringify(t.marker)}`)
+        expect(tablesLeakedInto(fake).map((b) => b.table)).toContain(t.path)
+      }
     } finally { rmSync(fake, { recursive: true, force: true }) }
+  })
+
+  it('지운 표는 다시 오면 잡는다 — 경로로도 내용으로도', async () => {
+    const { BANNED_TABLES, bannedTablesPresent, trackedContentLeaks } = await import('./dataTables.mjs')
+    expect(BANNED_TABLES.map((t) => t.path)).toContain('src/data/textBanks.json')
+    expect(bannedTablesPresent()).toEqual([])
+
+    // 이름을 바꿔 옮겨 놓아도 내용으로 걸린다 — 그게 이 검사의 요점이다.
+    //
+    // ⚠️ **재료를 소스에 글자로 안 적는다.** 처음엔 적었더니 이 시험 파일 자신이
+    // 아래 "진짜 tracked 나무" 검사에 걸렸다. 예외 목록을 두는 쪽이 쉽지만,
+    // 진짜 유출이 새는 길도 정확히 그 예외 목록이다 — 그래서 조립해서 만든다
+    const row = { name: 'bag', constant: `TEXT_${'BANK'}_BAG`, key: 31415, bank: { us: 7 } }
+    const rel = 'src/data/아무이름.json'
+    const inRepo = join(ROOT, rel)
+    writeFileSync(inRepo, JSON.stringify([row]))
+    try {
+      const bad = trackedContentLeaks([rel])
+      expect(bad).toHaveLength(1)
+      expect(bad[0].what).toBe('뱅크 암호화 키 표')
+    } finally { rmSync(inRepo, { force: true }) }
+  })
+
+  it('롬 컨테이너가 tracked로 들어오면 잡는다', async () => {
+    const { trackedContentLeaks } = await import('./dataTables.mjs')
+    const rel = 'src/data/아무것.bin'
+    const inRepo = join(ROOT, rel)
+    writeFileSync(inRepo, Buffer.concat([Buffer.from('NARC'), Buffer.alloc(64)]))
+    try {
+      expect(trackedContentLeaks([rel]).map((b) => b.what)).toEqual(['NARC 컨테이너'])
+    } finally { rmSync(inRepo, { force: true }) }
+  })
+
+  it('진짜 tracked 나무에는 원본 유래가 없다', async () => {
+    const { trackedContentLeaks } = await import('./dataTables.mjs')
+    const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+      .split('\n').map((s) => s.trim()).filter(Boolean)
+    expect(tracked.length).toBeGreaterThan(400)
+    expect(trackedContentLeaks(tracked)).toEqual([])
   })
 })
 
