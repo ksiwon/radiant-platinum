@@ -152,8 +152,12 @@ export const BLOCKERS = [
     resolved() {
       let out
       try {
-        out = execFileSync('git', ['log', '--all', '--oneline', '--', 'public/data', 'assets-manifest.json'],
-          { cwd: ROOT, encoding: 'utf8' })
+        // ⚠️ `auditHistory.mjs`의 `TARGETS`와 같은 목록이어야 한다. 갈리면
+        // 감사가 잡은 것을 blocker가 못 보고 조용히 풀린다
+        out = execFileSync('git', ['log', '--all', '--oneline', '--',
+          'public/data', 'public/models', 'assets-manifest.json', 'src/data/textBanks.json',
+          'raw', 'dist', 'dist-assets'],
+        { cwd: ROOT, encoding: 'utf8' })
       } catch {
         return { ok: false, detail: 'git을 못 읽었다' }
       }
