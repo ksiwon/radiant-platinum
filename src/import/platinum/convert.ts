@@ -166,7 +166,11 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'chunks',
-    outputs: ['data/chunks/{번호}.bin', 'data/chunks/index.json'],
+    outputs: [
+      'data/chunks/{번호}.bin', 'data/chunks/index.json',
+      'data/tex/{묶음}.png', 'data/tex/index.json',
+      'data/props/{번호}.bin', 'data/props/{번호}.png', 'data/props/index.json',
+    ],
     converter: 1,
     convert: convertChunks,
   },

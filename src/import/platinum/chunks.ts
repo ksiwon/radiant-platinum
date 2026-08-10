@@ -8,9 +8,12 @@
 // 것과 한 개도 안 틀려야 한다 (666/666).
 import { narcEntry } from './nds'
 import {
-  fx32, readDict, runDisplayList, vertexFrom, parsePolygons, openModel,
+  fx32, readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, openModel,
   type ModelHeader, type Vec3,
 } from './nsbmd'
+import { parseTex0, type Tex0 } from './nitrotex'
+import { bakeSheet, SHEET_WIDTH, type Sheet, type SheetItem } from './sheets'
+import { encodePng } from './png'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
 
 /**
@@ -267,7 +270,12 @@ export function packChunk(
   return out
 }
 
-export interface BuiltChunk { bytes: Uint8Array, verts: number, headerVerts: number }
+export interface BuiltChunk {
+  bytes: Uint8Array
+  verts: number
+  headerVerts: number
+  materials: Material[]
+}
 
 export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
   const { buf, view, modelAt, header } = openModel(chunk)
@@ -298,26 +306,173 @@ export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
     bytes: packChunk(verts, indices, materials, submeshes),
     verts: verts.length,
     headerVerts: header.verts,
+    materials,
   }
 }
+
+// ── 소품 ─────────────────────────────────────────────────────────────────────
+//
+// 집·간판·표지판은 청크 모델에 안 들어 있다. `build_model.narc`에 590개가 따로
+// 있고, 청크의 48바이트 배치 기록이 그 번호와 자리·회전·크기를 준다.
+//
+// 청크 모델과 달리 **자기 텍스처를 들고 있다** — 590개 중 568개가 TEX0를 같이
+// 갖는다. 파일 형식은 청크와 같다(`PT3C`). 읽는 쪽이 하나면 된다.
+
+/** BMD0 안에서 이름으로 블록을 찾는다. 소품은 MDL0 + TEX0 둘이다 */
+export function blocks(buf: Uint8Array, view: DataView): Record<string, number> {
+  const out: Record<string, number> = {}
+  const count = view.getUint16(14, true)
+  for (let i = 0; i < count; i++) {
+    const off = view.getUint32(16 + i * 4, true)
+    out[String.fromCharCode(buf[off]!, buf[off + 1]!, buf[off + 2]!, buf[off + 3]!)] = off
+  }
+  return out
+}
+
+/** 재질이 쓰는 (그림, 팔레트) 쌍 중 이 TEX0에 실제로 있는 것 */
+function wantedItems(materials: readonly Material[], tex0: Tex0): SheetItem[] {
+  const byName = new Map(tex0.textures.map((t) => [t.name, t]))
+  const wanted = new Map<string, SheetItem>()
+  for (const m of materials) {
+    if (!m.texture) continue
+    const key = `${m.texture} ${m.palette ?? ''}`
+    const tex = byName.get(m.texture)
+    if (tex && !wanted.has(key)) {
+      wanted.set(key, {
+        tex: m.texture, pal: m.palette ?? '',
+        width: tex.width, height: tex.height, src: tex, x: 0, y: 0,
+      })
+    }
+  }
+  return [...wanted.values()]
+}
+
+async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
+  const narc = await ctx.fs.read('/fielddata/build_model/build_model.narc')
+  if (!narc) throw new Error('build_model.narc을 못 읽었다')
+
+  const sheets: (Sheet | null)[] = []
+  let count = 0
+  for (let i = 0; ; i++) {
+    const file = narcEntry(narc, i)
+    if (!file) break
+    count = i + 1
+    const view = new DataView(file.buffer, file.byteOffset, file.byteLength)
+    const found = blocks(file, view)
+    const mdlAt = found.MDL0
+    if (mdlAt === undefined) throw new Error(`소품 ${String(i)}에 MDL0가 없다`)
+    const list = readDict(file, view, mdlAt + 8)
+    const modelAt = mdlAt + view.getUint32(list[0]!.at, true)
+    const header = parseModel(file, view, modelAt)
+    const materials = parseMaterials(file, view, modelAt, header)
+    const polygons = parsePolygons(file, view, modelAt, header)
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
+
+    const verts: Vertex[] = []
+    const indices: number[] = []
+    const submeshes: [number, number, number][] = []
+    for (const pair of pairs) {
+      const mesh = buildMesh(polygons[pair.polygon]!.dl, header.upScale, materials[pair.material]!)
+      const base = verts.length
+      verts.push(...mesh.verts)
+      submeshes.push([pair.material, indices.length, mesh.indices.length])
+      for (const idx of mesh.indices) indices.push(base + idx)
+    }
+    out.set(`data/props/${String(i)}.bin`, packChunk(verts, indices, materials, submeshes))
+
+    // 자기 텍스처를 갖고 있으면 시트로 굽는다
+    const texAt = found.TEX0
+    let baked: { png: Uint8Array, sheet: Sheet } | null = null
+    if (texAt !== undefined) {
+      const tex0 = parseTex0(file, texAt)
+      const palAt = new Map(tex0.palettes.map((p) => [p.name, p.offset]))
+      baked = await bakeSheet(tex0, wantedItems(materials, tex0), palAt)
+    }
+    if (baked) out.set(`data/props/${String(i)}.png`, baked.png)
+    sheets.push(baked?.sheet ?? null)
+
+    if (i % 16 === 0) { check(ctx); await breathe(ctx) }
+  }
+  out.set('data/props/index.json', json({ count, sheets }))
+}
+
+// ── 맵 텍스처 ────────────────────────────────────────────────────────────────
+//
+// 맵 모델은 텍스처를 자기 안에 안 갖고 있다. 영역(area)마다 한 벌씩 BTX0로 들어
+// 있고, 재질이 **이름으로** 그것을 가리킨다 — 그림 이름과 팔레트 이름이 따로다.
+// 같은 그림을 팔레트만 바꿔 여러 번 쓰는 일이 있어 (그림, 팔레트) 쌍마다 하나씩 편다.
+
+let blank: Uint8Array | null = null
+/** 쓰는 텍스처가 하나도 없는 묶음. 자리를 비우면 번호가 밀린다 */
+async function emptySheet(): Promise<Uint8Array> {
+  blank ??= await encodePng(new Uint8Array(SHEET_WIDTH * 4), SHEET_WIDTH, 1)
+  return blank
+}
+
+async function convertTextures(
+  ctx: ConvertContext, out: Produced, wanted: ReadonlySet<string>,
+): Promise<void> {
+  const narc = await ctx.fs.read('/fielddata/areadata/area_map_tex/map_tex_set.narc')
+  if (!narc) throw new Error('map_tex_set.narc을 못 읽었다')
+
+  const sets: Sheet[] = []
+  for (let s = 0; ; s++) {
+    const buf = narcEntry(narc, s)
+    if (!buf) break
+    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+    const tex0 = parseTex0(buf, view.getUint32(16, true))
+    const byName = new Map(tex0.textures.map((t) => [t.name, t]))
+    const palAt = new Map(tex0.palettes.map((p) => [p.name, p.offset]))
+
+    const items: SheetItem[] = []
+    for (const pair of wanted) {
+      const sp = pair.indexOf(' ')
+      const texName = pair.slice(0, sp)
+      const palName = pair.slice(sp + 1)
+      const tex = byName.get(texName)
+      if (!tex) continue
+      if (palName !== '' && !palAt.has(palName)) continue
+      items.push({
+        tex: texName, pal: palName, width: tex.width, height: tex.height, src: tex, x: 0, y: 0,
+      })
+    }
+    const baked = await bakeSheet(tex0, items, palAt)
+    out.set(`data/tex/${String(s)}.png`, baked ? baked.png : await emptySheet())
+    sets.push(baked ? baked.sheet : { w: SHEET_WIDTH, h: 1, items: [] })
+    if (s % 4 === 0) { check(ctx); await breathe(ctx) }
+  }
+  out.set('data/tex/index.json', json({ sheetWidth: SHEET_WIDTH, sets }))
+}
+
+/** 청크·텍스처·소품 셋이 한 그룹이다 — 셋이 다 있어야 땅이 그려진다 */
+const TOTAL = 666 + 32 + 590
 
 export async function convertChunks(ctx: ConvertContext): Promise<Produced> {
   const narc = await ctx.fs.read('/fielddata/land_data/land_data.narc')
   if (!narc) throw new Error('land_data.narc을 못 읽었다')
 
   const out: Produced = new Map()
+  // 청크 재질이 쓰는 (그림, 팔레트) 쌍. 텍스처 묶음은 이 목록만 굽는다
+  const wanted = new Set<string>()
   let count = 0
   for (let i = 0; ; i++) {
     const entry = narcEntry(narc, i)
     if (!entry) break
-    out.set(`data/chunks/${String(i)}.bin`, buildChunk(entry, i).bytes)
+    const built = buildChunk(entry, i)
+    out.set(`data/chunks/${String(i)}.bin`, built.bytes)
+    for (const m of built.materials) if (m.texture) wanted.add(`${m.texture} ${m.palette ?? ''}`)
     count = i + 1
-    if (i % 16 === 0) { check(ctx); ctx.onProgress?.(i, 666); await breathe(ctx) }
+    if (i % 16 === 0) { check(ctx); ctx.onProgress?.(i, TOTAL); await breathe(ctx) }
   }
   out.set('data/chunks/index.json', json({
     posScale: POS_SCALE, uvScale: UV_SCALE, vertexBytes: VERTEX_BYTES,
     unitsPerTile: UNITS_PER_TILE, count,
   }))
-  ctx.onProgress?.(count, count)
+
+  ctx.onProgress?.(count, TOTAL)
+  await convertTextures(ctx, out, wanted)
+  await convertProps(ctx, out)
+  ctx.onProgress?.(TOTAL, TOTAL)
   return out
 }
+

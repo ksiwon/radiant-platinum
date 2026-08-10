@@ -12,9 +12,12 @@ import { openNds, narcEntry } from './nds'
 import { countGeometry, openModel, parsePolygons, runDisplayList } from './nsbmd'
 import { buildChunk, readSbc, convertChunks } from './chunks'
 import { SUPPORTED } from './validate'
-import { DATA, withRom, romPath, fileSource } from '../../data/romData.testkit'
+import {
+  DATA, withRom, romPath, fileSource, decodePng, decodePngBytes,
+} from '../../data/romData.testkit'
 
 const EN = SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!
+const decoder = new TextDecoder()
 
 describe('SBC', () => {
   it('재질을 바꾸고 폴리곤을 그린다 — 순서대로 1:1이 아니다', () => {
@@ -116,6 +119,8 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
     const diff: string[] = []
     let same = 0
     for (const [path, bytes] of out) {
+      // 그림은 이 시험이 안 잰다 — 아래 시험이 픽셀로 잰다
+      if (!path.startsWith('data/chunks/')) continue
       const file = resolve(DATA, path.replace(/^data\//, ''))
       if (!existsSync(file)) { diff.push(`${path}: 노드 쪽에 없다`); continue }
       const expected = readFileSync(file)
@@ -127,6 +132,52 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
       else diff.push(`${path}: 크기는 같은데 내용이 다르다`)
     }
     expect(diff.slice(0, 5), `${String(diff.length)}개가 어긋난다`).toEqual([])
+    // 청크 666 + 목차 · 소품 590 + 시트 568 + 목차 · 텍스처 묶음 32 + 목차
     expect(same).toBe(667)
-  }, 600_000)
+  }, 900_000)
+
+  it('⚠️ 소품과 텍스처 시트도 픽셀로 같다', async () => {
+    if (!existsSync(resolve(DATA, 'tex/index.json'))) {
+      expect.unreachable('public/data/tex가 없다 — pnpm extract:mapTextures')
+      return
+    }
+    const fs = await openNds(fileSource(romPath('en')!))
+    const out = await convertChunks({ fs: fs!, locale: 'en', release: EN })
+
+    const diff: string[] = []
+    let pngs = 0, jsons = 0
+    for (const [path, bytes] of out) {
+      if (!/^data\/(tex|props)\//.test(path)) continue
+      const file = resolve(DATA, path.replace(/^data\//, ''))
+      if (!existsSync(file)) { diff.push(`${path}: 노드 쪽에 없다`); continue }
+      if (path.endsWith('.json')) {
+        if (decoder.decode(bytes) === readFileSync(file, 'utf8')) jsons++
+        else diff.push(`${path}: 목차가 다르다`)
+        continue
+      }
+      if (path.endsWith('.png')) {
+        // PNG는 압축 부호가 달라서 바이트로 못 잰다 — 픽셀로 잰다
+        const mine = decodePngBytes(bytes)
+        const theirs = decodePng(file)
+        if (mine.width !== theirs.width || mine.height !== theirs.height) {
+          diff.push(`${path}: ${String(mine.width)}×${String(mine.height)} ≠ `
+            + `${String(theirs.width)}×${String(theirs.height)}`)
+          continue
+        }
+        let bad = 0
+        for (let i = 0; i < mine.pixels.length; i++) if (mine.pixels[i] !== theirs.pixels[i]) bad++
+        if (bad) diff.push(`${path}: 픽셀 ${String(bad)}개가 다르다`)
+        else pngs++
+        continue
+      }
+      // 소품 지오메트리는 바이트로 잰다
+      const expected = readFileSync(file)
+      if (!Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).equals(expected)) {
+        diff.push(`${path}: 바이트가 다르다`)
+      }
+    }
+    expect(diff.slice(0, 5), `${String(diff.length)}개가 어긋난다`).toEqual([])
+    expect(pngs).toBeGreaterThan(560)
+    expect(jsons).toBe(2)
+  }, 900_000)
 })
