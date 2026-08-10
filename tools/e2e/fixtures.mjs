@@ -86,10 +86,13 @@ export const REQUIRED_GROUPS = [
  * 표준 API와 `crypto.subtle`만 쓴다. 그래서 이 함수가 만든 것이 앱이 읽는
  * 것과 같은지는 **스키마를 손으로 맞춰서** 보장한다 (`manifestSchema.ts`)
  */
-export async function SYNTHETIC({ state, groups }) {
+export async function SYNTHETIC({ state, groups, groupFormat, commit }) {
   const ROOT = 'radiant-platinum'
   const ASSETS = 'assets'
-  const CONTRACT_VERSION = 2
+  // ⚠️ `manifestSchema.ts`의 값과 같아야 한다. 갈리면 앱이 이 기록을 못 읽고,
+  // 그러면 시험이 "설치본이 있을 때"가 아니라 "기록이 깨졌을 때"를 재게 된다
+  const CONTRACT_VERSION = 3
+  const ASSET_FORMAT = 1
 
   const root = await navigator.storage.getDirectory()
   const rp = await root.getDirectoryHandle(ROOT, { create: true })
@@ -118,7 +121,11 @@ export async function SYNTHETIC({ state, groups }) {
     // 그룹마다 파일 하나. 내용은 그룹 이름이라 서로 다른 해시가 나온다
     const bytes = enc.encode(JSON.stringify({ synthetic: name, note: 'e2e fixture' }))
     const record = await put(`data/${name}.json`, bytes)
-    table[name] = { files: [record], bytes: record.bytes, converter: 1 }
+    table[name] = {
+      files: [record], bytes: record.bytes, converter: 1,
+      // 그룹마다 산출물 판. 하나만 낡게 만들어 "그 그룹만 다시" 를 잴 수 있다
+      format: groupFormat?.[name] ?? ASSET_FORMAT,
+    }
   }
 
   const manifest = {
@@ -127,9 +134,22 @@ export async function SYNTHETIC({ state, groups }) {
     platinumLocale: 'en',
     availableLocales: ['en'],
     startedAt: '2026-08-10T00:00:00.000Z',
+    assetFormat: ASSET_FORMAT,
     groups: table,
   }
-  if (state === 'ready') manifest.finishedAt = '2026-08-10T00:01:00.000Z'
+  if (state === 'ready') {
+    manifest.finishedAt = '2026-08-10T00:01:00.000Z'
+    // 도장. `commit: false`를 주면 일부러 안 찍는다 — 도장 없이 ready인
+    // 기록을 앱이 거절하는지 재려고
+    if (commit !== false) {
+      manifest.commit = {
+        at: '2026-08-10T00:01:00.000Z',
+        appVersion: commit?.appVersion ?? '0.1.0',
+        buildId: commit?.buildId ?? 'e2efixt',
+        assetFormat: ASSET_FORMAT,
+      }
+    }
+  }
 
   const write = async (name, value) => {
     const h = await rp.getFileHandle(name, { create: true })

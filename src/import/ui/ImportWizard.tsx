@@ -85,18 +85,28 @@ export function ImportWizard({ onClose, onReady }: {
 
   // ⚠️ Worker를 화면 수명에 묶는다. 안 끝내면 탭에 스레드가 쌓인다
   const client = useRef<ImportClient | null>(null)
-  useEffect(() => {
-    if (!caps.worker) return
-    client.current = spawnImportWorker()
-    return () => { client.current?.close(); client.current = null }
-  }, [caps.worker])
+  useEffect(() => () => { client.current?.close(); client.current = null }, [])
+
+  /**
+   * 필요할 때 만든다. **화면이 떴다는 것만으로 스레드를 띄우지 않는다.**
+   *
+   * ⚠️ 예전에는 마운트하면서 곧바로 띄웠다. 그러면 하다 만 설치본으로 다시
+   * 접속했을 때, 사용자가 아무것도 안 눌러도 변환기 스레드가 하나 뜬다 —
+   * "한 번 설치하면 다시 안 만든다"를 재는 E2E(⑰)가 그것을 잡았다.
+   * 파일을 고르거나 설치를 누를 때 만들면 그 자리가 없어진다
+   */
+  const workerNow = (): ImportClient | null => {
+    if (!caps.worker) return null
+    client.current ??= spawnImportWorker()
+    return client.current
+  }
 
   const say = useCallback((line: string) => {
     setLog((prev) => [...prev.slice(-40), line])
   }, [])
 
   const pickPlatinum = (file: File): void => {
-    const worker = client.current
+    const worker = workerNow()
     if (!worker) return
     setChecking(true)
     setPlatinum(null)
@@ -111,7 +121,7 @@ export function ImportWizard({ onClose, onReady }: {
   // ⚠️ 이름을 `useDir`로 두면 안 된다 — lint가 훅으로 보고 "콜백 안에서 훅을
   // 부른다"며 선다 (`react-hooks/rules-of-hooks`)
   const scanDir = (input: { handle?: FileSystemDirectoryHandle; files?: File[] }): void => {
-    const worker = client.current
+    const worker = workerNow()
     if (!worker) return
     setScanning(true)
     setBdsp(null)
@@ -143,7 +153,7 @@ export function ImportWizard({ onClose, onReady }: {
   }
 
   const install = (): void => {
-    const worker = client.current
+    const worker = workerNow()
     if (!worker || !platinum?.ok) return
     setPhase('installing')
     setFailure(null)
@@ -262,7 +272,7 @@ export function ImportWizard({ onClose, onReady }: {
           <div className={css.groups}>
             <Line label="보안 컨텍스트 (HTTPS·localhost)" ok={caps.secure} />
             <Line label="OPFS" ok={caps.opfs} />
-            <Line label="Worker" ok={caps.worker} note={client.current ? '떠 있음' : ''} />
+            <Line label="Worker" ok={caps.worker} note={client.current ? '떠 있음' : '아직 안 띄웠다'} />
             <Line
               label="폴더 선택 API"
               ok={caps.directoryPicker}

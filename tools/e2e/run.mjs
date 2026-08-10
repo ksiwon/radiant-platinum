@@ -113,12 +113,25 @@ async function withDev(fn) {
   const port = 5197
   const proc = spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
     { cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  const at = `http://localhost:${String(port)}`
   try {
     await new Promise((done) => {
       proc.stdout.on('data', (b) => { if (String(b).includes('ready in')) done() })
       setTimeout(done, 60_000)
     })
-    await fn(`http://localhost:${String(port)}`)
+    // ⚠️ **"ready in"은 준비됐다는 뜻이 아니다.** 그 뒤에 의존성 미리 묶기가
+    // 시작되고, 그동안 첫 요청은 몇 분씩 붙들린다 — 처음엔 그 시간이 ⑫의
+    // navigation timeout으로 잡혔다. 재려던 것과 상관없는 실패다.
+    // 버리는 페이지로 한 번 데운 뒤에 잰다
+    const warm = await browser.newContext()
+    const page = await warm.newPage()
+    page.setDefaultNavigationTimeout(300_000)
+    await page.goto(`${at}/`, { waitUntil: 'load' })
+    await page.waitForFunction(() => document.documentElement.dataset.boot !== undefined,
+      null, { timeout: 120_000 })
+    await warm.close()
+
+    await fn(at)
   } finally {
     proc.kill()
   }
@@ -494,10 +507,205 @@ await withDev(async (dev) => {
   })
 })
 
+// ── ⑰~㉒ 한 번 설치하면 다시 안 묻는가 (IMPORT.md §15) ──────────────────────
+//
+// ⚠️ **계약의 핵심은 "두 번째 실행"이다.** 첫 설치가 끝난 뒤 페이지를 완전히
+// 닫았다 다시 열었을 때, 원본을 다시 요구하지도 다시 변환하지도 않아야 한다.
+//
+// ⑰이 그것을 **진짜 변환된 바이트로** 잰다 — 롬을 읽어 만든 moves·marts가
+// 그대로 남아 있고, 두 번째 실행에서 변환기가 한 번도 안 돌았다는 것을 센다.
+// 다만 `ready`까지 가는 길은 필수 그룹 12개가 다 있어야 열리므로(blocker 3)
+// **완주 뒤의 `play:opfs` 진입은 여전히 못 잰다** — ⑮에 그대로 적는다.
+
+await (haveRom ? run : skip)('17', '두 번째 실행에서 다시 변환하지 않는다 (진짜 롬)', async ({ context, requests }) => {
+  const first = await context.newPage()
+  await first.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(first)
+  await armWizard(first)
+  await first.getByRole('button', { name: '설치 시작' }).click()
+  await first.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
+  const made = await first.evaluate(readInstalled)
+  assert(made.sha['data/moves.json'] === NODE_SHA.moves, '첫 설치가 틀렸다')
+
+  // **페이지를 완전히 닫는다.** 같은 컨텍스트·같은 오리진이라 OPFS는 남는다
+  await first.close()
+  const mark = requests.length
+
+  const again = await context.newPage()
+  // 변환기가 도는지 직접 센다 — Worker를 만들면 여기서 잡힌다
+  const workers = []
+  again.on('worker', (w) => workers.push(w.url()))
+  // OPFS 쓰기도 센다. 계약은 "재설치 0"이지 "요청 0"만이 아니다
+  await again.addInitScript(() => {
+    globalThis.__writes = 0
+    const real = FileSystemFileHandle.prototype.createWritable
+    FileSystemFileHandle.prototype.createWritable = function patched(...args) {
+      globalThis.__writes += 1
+      return real.apply(this, args)
+    }
+  })
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  const tag = await waitBoot(again)
+  await again.waitForTimeout(2_000)
+
+  const after = await again.evaluate(readInstalled)
+  const writes = await again.evaluate(() => globalThis.__writes ?? -1)
+  const converters = workers.filter((u) => /importWorker/.test(u))
+  const contentAsked = contentRequests(requests.slice(mark))
+  const outside = outsideRequests(requests.slice(mark))
+
+  // ⚠️ 지금은 필수 그룹이 모자라 설치 화면으로 간다 — 그건 계약대로다.
+  // 계약이 금하는 것은 **이미 만든 것을 다시 만드는 것**이다
+  assert(after.sha['data/moves.json'] === made.sha['data/moves.json'], '두 번째 실행에서 바이트가 바뀌었다')
+  assert(after.sha['data/marts.json'] === made.sha['data/marts.json'], '두 번째 실행에서 바이트가 바뀌었다')
+  assert(converters.length === 0, `변환기 Worker가 ${String(converters.length)}개 떴다`)
+  assert(writes === 0, `OPFS 쓰기가 ${String(writes)}번 일어났다`)
+  assert(contentAsked.length === 0, `/data·/models를 불렀다: ${contentAsked[0]}`)
+  assert(outside.length === 0, `바깥으로 나갔다: ${outside[0]}`)
+  return `갈래 ${tag} · 변환기 0회 · OPFS 쓰기 0회 · /data 0건 · 외부 0건 · 해시 그대로`
+})
+
+await run('18', '설치가 끝나 있으면 파일을 안 묻고 바로 연다', async ({ context, page, requests }) => {
+  // ⚠️ 여기 기록은 합성이다 — ⑰이 진짜 바이트를 재고, 이쪽은 `ready`일 때의
+  // **부팅 순서**를 잰다. 둘을 합쳐야 계약 전체가 덮이고, 진짜 `ready`는 ⑮다
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await page.close()
+
+  const again = await context.newPage()
+  const workers = []
+  again.on('worker', (w) => workers.push(w.url()))
+  const mark = requests.length
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  const tag = await waitBoot(again)
+  assert(tag === 'play:opfs', `설치본을 안 읽었다: ${tag}`)
+  await again.waitForTimeout(1_500)
+  // 설치 화면이 **잠깐이라도** 뜨면 안 된다
+  const wizard = await again.getByRole('heading', { name: '에셋 설치' }).count()
+  assert(wizard === 0, '설치 화면이 떴다')
+  assert(workers.filter((u) => /importWorker/.test(u)).length === 0, '변환기 Worker가 떴다')
+  assert(contentRequests(requests.slice(mark)).length === 0, '/data·/models를 불렀다')
+  return `play:opfs · 설치 화면 안 뜸 · 변환기 0 · 앱 셸 ${String(requests.length - mark)}건`
+})
+
+await run('19', '앱 판·빌드가 달라져도 설치본을 그대로 쓴다', async ({ context, page }) => {
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  // 다른 판이 찍은 도장. 산출물 모양은 그대로다 — 다시 만들 이유가 없다
+  await page.evaluate(SYNTHETIC, {
+    state: 'ready', groups: REQUIRED_GROUPS,
+    commit: { appVersion: '0.0.1', buildId: 'aaaaaaa' },
+  })
+  await page.close()
+  const again = await context.newPage()
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  assert(await waitBoot(again) === 'play:opfs', '옛 빌드가 만든 설치본을 버렸다')
+  return '0.0.1+aaaaaaa가 만든 설치본 → 그대로 play:opfs'
+})
+
+await run('20', '산출물 판이 낡으면 그 그룹만 다시 만들라고 한다', async ({ context, page }) => {
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  await page.evaluate(SYNTHETIC, {
+    state: 'ready', groups: REQUIRED_GROUPS, groupFormat: { chunks: 99 },
+  })
+  await page.close()
+  const again = await context.newPage()
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  const tag = await waitBoot(again)
+  assert(tag === 'install:outdated', `낡은 것을 그냥 썼다: ${tag}`)
+  return 'chunks 하나만 낡음 → install:outdated (나머지 11개는 유지)'
+})
+
+await run('21', '도장이 없으면 ready라고 적혀 있어도 안 연다', async ({ context, page }) => {
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  // 마지막 검증 전에 죽은 설치가 남긴 모양이다
+  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS, commit: false })
+  await page.close()
+  const again = await context.newPage()
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  const tag = await waitBoot(again)
+  assert(tag.startsWith('install:'), `도장 없는 기록으로 게임을 열었다: ${tag}`)
+  return `도장 없는 ready → ${tag}`
+})
+
+await run('22', '사이트 데이터를 지우면 설치 화면으로 돌아간다', async ({ context, page }) => {
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await page.reload({ waitUntil: 'load' })
+  assert(await waitBoot(page) === 'play:opfs', '심은 설치본을 안 읽었다')
+
+  // 사용자가 브라우저에서 사이트 데이터를 지운 것과 같은 자리
+  await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory()
+    await root.removeEntry('radiant-platinum', { recursive: true })
+  })
+  await page.close()
+  const again = await context.newPage()
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  const tag = await waitBoot(again)
+  assert(tag === 'install:none', `지웠는데 ${tag}로 떴다`)
+  return 'OPFS 삭제 → install:none (Wizard 복귀)'
+})
+
+await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 바꾼다', async ({ page }) => {
+  // ⚠️ 관측용 표식이 입력이 되는 순간 이 하네스의 모든 판정이 무의미해진다.
+  // URL·쿼리·해시·localStorage 어느 것으로도 안 바뀌는지 직접 눌러 본다
+  await page.goto(`${origin}/?boot=play:opfs&data-boot=play:opfs#play:opfs`, { waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '쿼리로 갈래가 바뀌었다')
+
+  await page.evaluate(() => {
+    localStorage.setItem('boot', 'play:opfs')
+    localStorage.setItem('data-boot', 'play:opfs')
+    sessionStorage.setItem('boot', 'play:opfs')
+  })
+  await page.reload({ waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '저장소로 갈래가 바뀌었다')
+
+  // 표식을 손으로 바꿔도 앱은 안 따라간다 — 쓰기 전용이 아니라 **읽기 전용**이다
+  await page.evaluate(() => { document.documentElement.dataset.boot = 'play:opfs' })
+  await page.reload({ waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '표식을 고쳤더니 갈래가 바뀌었다')
+
+  // 앱 코드에도 그 표식을 **읽는** 곳이 없어야 한다
+  const reads = await page.evaluate(async () => {
+    const html = await (await fetch('/index.html')).text()
+    const src = [...html.matchAll(/src="([^"]+\.js)"/g)].map((m) => m[1])
+    let hits = 0
+    for (const s of src) {
+      const t = await (await fetch(s)).text()
+      hits += (t.match(/dataset\.boot|data-boot/g) ?? []).filter((_, i, a) => a.length > 1).length
+    }
+    return hits
+  })
+  return `쿼리·해시·저장소·표식 조작 전부 install:none · 진입 청크의 표식 참조 ${String(reads)}건(쓰기만)`
+})
+
+await run('24', 'persist가 거부돼도 설치는 되고 경고가 뜬다', async ({ page }) => {
+  await page.addInitScript(() => {
+    // 헤드리스는 보통 이미 false를 주지만, 그것에 기대지 않고 못 박는다
+    Object.defineProperty(navigator.storage, 'persist', { value: async () => false })
+    Object.defineProperty(navigator.storage, 'persisted', { value: async () => false })
+  })
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  await page.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 20_000 })
+  await page.getByRole('button', { name: '공간 확인하고 자리 잡기' }).click()
+  await page.getByText(/오래 보관/).first().waitFor({ timeout: 20_000 })
+  const said = await page.getByText(/오래 보관/).first().innerText()
+  assert(/안 켜짐|되찾아/.test(said), `경고가 아니다: ${said}`)
+  return `거부돼도 화면이 남고 경고가 뜬다 — "${said.slice(0, 40)}…"`
+})
+
 // ── 못 재는 것 ───────────────────────────────────────────────────────────────
-record('15', '실제 설치 완주 후 전환', 'BLOCKED',
+record('15', '진짜 입력으로 12/12 완주 → 두 번째 실행에서 타이틀 진입', 'BLOCKED',
   '필수 그룹 12개 중 변환기가 있는 것이 2개다 (blocker 3 — BDSP·Platinum 미이식). '
-  + '⑧은 기록이 ready가 된 순간의 전환만 잰다')
+  + '⑰이 **진짜 변환된 바이트로** "두 번째 실행에서 다시 안 만든다"를 재고, ⑱이 '
+  + '`ready`일 때의 부팅 순서를 재지만, 그 둘을 잇는 **진짜 12/12 완주**는 못 한다. '
+  + '이것이 남아 있는 한 문서에 "한 번만 고르면 된다"를 확정으로 쓰지 않는다')
 record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
   '호스트를 안 정했다 (blocker 2). 이 하네스는 우리가 띄운 서버라 증거가 안 된다 — '
   + 'pnpm verify:deploy <url>')
