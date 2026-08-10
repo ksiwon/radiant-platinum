@@ -380,13 +380,17 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   const base = await heap()
   const t0 = Date.now()
   await page.getByRole('button', { name: '설치 시작' }).click()
-  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
+  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
   const took = Date.now() - t0
   const peak = await heap()
 
   const got = await page.evaluate(readInstalled)
   assert(got.state === 'partial', `상태가 partial이 아니다: ${got.state}`)
-  assert(got.groups.sort().join(',') === 'marts,moves', `그룹이 다르다: ${got.groups.join(',')}`)
+  // Platinum 쪽 필수 아홉이 **다** 들어와야 한다. 이 목록이 줄면 시험이 선다 —
+  // 한때 `marts,moves` 둘이었고, 그때는 이 줄이 "다 됐다"처럼 읽혔다
+  const WANT = 'chunks,maps,marts,moves,pokegra,scripts,sound,species,text'
+  assert(got.groups.sort().join(',') === WANT,
+    `그룹이 다르다: ${got.groups.sort().join(',')} (기대 ${WANT})`)
   // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다
   assert(got.sha['data/moves.json'] === NODE_SHA.moves,
     `moves.json이 노드 산출물과 다르다: ${got.sha['data/moves.json']}`)
@@ -395,7 +399,8 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   // 128MB를 읽는 내내 바깥으로도, /data로도 아무것도 안 나갔다
   const leaked = [...contentRequests(requests.slice(before)), ...outsideRequests(requests.slice(before))]
   assert(leaked.length === 0, `변환 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
-  return `moves·marts 설치 ${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
+  return `Platinum 필수 9그룹 · 파일 ${String(Object.keys(got.sha).length)}개 · `
+    + `${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
     + `노드 산출물과 해시 일치 · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
 
@@ -404,7 +409,7 @@ await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜
   await waitBoot(page)
   await armWizard(page)
   await page.getByRole('button', { name: '설치 시작' }).click()
-  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
+  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
 
   // 한 파일을 0바이트로 자른다. 저널에는 "끝났다"고 적혀 있다 —
   // 이름만 세던 시절에는 이걸 완료로 지나갔다
@@ -420,7 +425,7 @@ await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜
   assert(wrecked === 0, '자르지 못했다')
 
   await page.getByRole('button', { name: '설치 시작' }).click()
-  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
+  await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
   const got = await page.evaluate(readInstalled)
   assert(got.sha['data/moves.json'] === NODE_SHA.moves,
     `다시 안 만들었다: ${JSON.stringify(got.sha)}`)
@@ -781,7 +786,7 @@ await run('24', 'persist가 거부돼도 설치는 되고 경고가 뜬다', asy
 
 // ── 못 재는 것 ───────────────────────────────────────────────────────────────
 record('15', '진짜 입력으로 12/12 완주 → 두 번째 실행에서 타이틀 진입', 'BLOCKED',
-  '필수 그룹 12개 중 변환기가 있는 것이 2개다 (blocker 3 — BDSP·Platinum 미이식). '
+  '필수 그룹 12개 중 변환기가 있는 것이 9개다 — Platinum 아홉은 다 됐고 BDSP 셋이 없다 (blocker 4). '
   + '⑰이 **진짜 변환된 바이트로** "두 번째 실행에서 다시 안 만든다"를 재고, ⑱이 '
   + '`ready`일 때의 부팅 순서를 재지만, 그 둘을 잇는 **진짜 12/12 완주**는 못 한다. '
   + '이것이 남아 있는 한 문서에 "한 번만 고르면 된다"를 확정으로 쓰지 않는다')
