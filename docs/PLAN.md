@@ -1808,9 +1808,10 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 - 추가 언어는 사용자가 그 지역판의 호환 Platinum을 별도로 선택해 설치한다.
   `install.json.availableLocales`가 실제 설치 언어를 선언하고 설정 화면은 그 목록만
   보여 준다.
-- 현재 `LANGUAGES = ['ko','en','ja']` 고정 배열, `textBanks.json`, 일부
-  `loadLabels('en')` 호출은 전환 감사 대상이다. 개발 raw가 세 지역판을 갖는 것과
-  공개 사용자가 세 언어를 갖는 것은 다르다.
+- 현재 `LANGUAGES = ['ko','en','ja']` 고정 배열과 일부 `loadLabels('en')` 호출은
+  전환 감사 대상이다. 개발 raw가 세 지역판을 갖는 것과 공개 사용자가 세 언어를
+  갖는 것은 다르다. (뱅크 대응표는 정리됐다 — `textBanks.json`을 지우고
+  `import/platinum/textBanks.ts`가 사용자의 롬에서 자리를 계산한다.)
 - 대사는 `dialogue/{locale}/{bank}.json` 논리 계약을 유지해 맵 단위로 읽되,
   물리 저장은 DevAssetProvider 또는 OPFS pack 뒤에 둔다.
 - 로케일 간 뱅크 매핑·제어 코드·한국어 조사는 검증된 현재 규칙을 유지한다.

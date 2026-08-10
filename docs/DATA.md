@@ -2677,7 +2677,7 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
 | Platinum `.nds` | NDS FS·NARC·오버레이·SDAT | 사용자가 선택, File.slice로 로컬 파싱 |
 | `raw/extracted/{us,ko,ja}` | 3지역판 텍스트·SDAT 캐시 | 선택 지역판에서 브라우저가 생성 |
 | `raw/decomp` | 상점·스폰·스크립트 폭·검증 원문 등 | ROM 파싱, 배포 가능한 최소 호환 메타데이터, 개발 검증 전용으로 항목별 분리 |
-| `src/data/textBanks.json` | 검증된 지역판 뱅크 매핑 | 원본 유래 범위 감사; 가능하면 선택 ROM에서 생성 |
+| ~~`src/data/textBanks.json`~~ | **지웠다.** 뱅크 724개의 암호화 키(u16)와 로케일별 인덱스였다 | 자리는 `src/import/platinum/textBanks.ts`가 이름 순서에서 계산하고 사용자의 롬으로 검산한다 (COPYRIGHT.md §6) |
 | BDSP 재배치 하위 폴더 | Python/UnityPy 모델 변환 | 정식 AssetAssistant source adapter + TS/WASM 변환 |
 | 앞 단계 `public/data` | 뒤 추출기의 입력 | 브라우저에서는 작업 그래프의 명시적 artifact로 전달 |
 
