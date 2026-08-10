@@ -37,13 +37,16 @@ export type Compression = 'none' | 'lzma' | 'lz4' | 'lz4hc'
 const COMPRESSION: Record<number, Compression> = { 0: 'none', 1: 'lzma', 2: 'lz4', 3: 'lz4hc' }
 
 export class UnsupportedBundle extends Error {
-  constructor(readonly why: string) { super(`UnityFS: ${why}`); this.name = 'UnsupportedBundle' }
+  readonly why: string
+  constructor(why: string) { super(`UnityFS: ${why}`); this.name = 'UnsupportedBundle'; this.why = why }
 }
 
 class Reader {
   at = 0
+  readonly bytes: Uint8Array
   private readonly view: DataView
-  constructor(readonly bytes: Uint8Array) {
+  constructor(bytes: Uint8Array) {
+    this.bytes = bytes
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   }
   u8(): number { return this.view.getUint8(this.at++) }

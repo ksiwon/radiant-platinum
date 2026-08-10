@@ -13,20 +13,20 @@ import { className, type SerializedFile, type UnityObject } from './unityfs'
 import type { UnityValue } from './typetree'
 
 /** `m_Channels`의 형식 번호 → 읽는 법 */
-export const enum VertexFormat {
-  Float = 0,
-  Float16 = 1,
-  UNorm8 = 2,
-  SNorm8 = 3,
-  UNorm16 = 4,
-  SNorm16 = 5,
-  UInt8 = 6,
-  SInt8 = 7,
-  UInt16 = 8,
-  SInt16 = 9,
-  UInt32 = 10,
-  SInt32 = 11,
-}
+export const VertexFormat = {
+  Float: 0,
+  Float16: 1,
+  UNorm8: 2,
+  SNorm8: 3,
+  UNorm16: 4,
+  SNorm16: 5,
+  UInt8: 6,
+  SInt8: 7,
+  UInt16: 8,
+  SInt16: 9,
+  UInt32: 10,
+  SInt32: 11,
+} as const
 
 const FORMAT_BYTES: Readonly<Record<number, number>> = {
   0: 4, 1: 2, 2: 1, 3: 1, 4: 2, 5: 2, 6: 1, 7: 1, 8: 2, 9: 2, 10: 4, 11: 4,

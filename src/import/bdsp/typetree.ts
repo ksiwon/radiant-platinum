@@ -131,7 +131,11 @@ export class TreeReader {
   at = 0
   private readonly view: DataView
 
-  constructor(private readonly bytes: Uint8Array, private readonly little = true) {
+  private readonly bytes: Uint8Array
+  private readonly little: boolean
+  constructor(bytes: Uint8Array, little = true) {
+    this.bytes = bytes
+    this.little = little
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   }
 
