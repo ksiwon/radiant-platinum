@@ -15,6 +15,7 @@ import { martLocator } from './validate'
 import { convertText, TEXT_OUTPUTS, openBanks, nameList, type DataLocale } from './text'
 import { convertSpecies } from './species'
 import { convertMaps } from './maps'
+import { convertPokegra } from './pokegra'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -189,9 +190,9 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'pokegra',
-    outputs: ['data/pokemon/**'],
+    outputs: ['data/pokemon/{종족}_{front,back}.png', 'data/pokemon/index.json'],
     converter: 1,
-    blockedBy: '`pl_pokegra.narc`의 암호를 푸는 코드를 안 옮겼다 (DATA.md §2.17).',
+    convert: convertPokegra,
   },
 ]
 

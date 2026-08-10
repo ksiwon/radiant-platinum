@@ -259,7 +259,20 @@ export function installNodeAssets(): () => void {
 export function decodePng(
   file: string,
 ): { width: number, height: number, pixels: Uint8ClampedArray } {
-  const buf = readFileSync(file)
+  return decodePngBytes(readFileSync(file))
+}
+
+/**
+ * 같은 것을 파일이 아니라 바이트에서.
+ *
+ * 브라우저 변환기가 만든 PNG는 디스크를 안 거친다. 그리고 그 PNG는 노드 산출물과
+ * **바이트로 같지 않다** — deflate가 같은 픽셀에서 여러 정답을 내기 때문이다.
+ * 그래서 그림 parity는 픽셀로 잰다
+ */
+export function decodePngBytes(
+  bytes: Uint8Array,
+): { width: number, height: number, pixels: Uint8ClampedArray } {
+  const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let at = 8, width = 0, height = 0, depth = 0, kind = 0
   const idat: Buffer[] = []
   while (at < buf.length) {
