@@ -18,6 +18,7 @@ import { convertMaps } from './maps'
 import { convertPokegra } from './pokegra'
 import { convertChunks } from './chunks'
 import { convertScripts } from './scripts'
+import { convertSound } from './sound'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -183,11 +184,12 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'sound',
-    outputs: ['data/sound/**'],
+    outputs: [
+      'data/sound/seq/N.bin', 'data/sound/bnk/N.bin', 'data/sound/war/N.bin',
+      'data/sound/index.json',
+    ],
     converter: 1,
-    blockedBy:
-      'SDAT 파서와 SSEQ 렌더러를 안 옮겼다. 렌더러는 이미 Worker에서 도는 코드가 '
-      + '있으므로(`engine/audio/renderWorker.ts`) 남은 것은 SDAT 쪽이다.',
+    convert: convertSound,
   },
   {
     name: 'pokegra',
