@@ -114,26 +114,53 @@ async function withDev(fn) {
   const proc = spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
     { cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
   const at = `http://localhost:${String(port)}`
+  let live = proc
+  /**
+   * 지금 살아 있는가. 죽었으면 다시 띄운다.
+   *
+   * 검사 사이에 죽으면 다음 검사가 `ERR_CONNECTION_REFUSED`로 실패하는데,
+   * 그건 앱이 아니라 하네스의 실패다. 실제로 ⑫와 ⑬ 사이에서 한 번 죽었다
+   */
+  const ensure = async () => {
+    if (live.exitCode === null) return
+    live = spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
+      { cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    await ready(live, at)
+  }
   try {
-    await new Promise((done) => {
-      proc.stdout.on('data', (b) => { if (String(b).includes('ready in')) done() })
-      setTimeout(done, 60_000)
-    })
-    // ⚠️ **"ready in"은 준비됐다는 뜻이 아니다.** 그 뒤에 의존성 미리 묶기가
-    // 시작되고, 그동안 첫 요청은 몇 분씩 붙들린다 — 처음엔 그 시간이 ⑫의
-    // navigation timeout으로 잡혔다. 재려던 것과 상관없는 실패다.
-    // 버리는 페이지로 한 번 데운 뒤에 잰다
-    const warm = await browser.newContext()
-    const page = await warm.newPage()
-    page.setDefaultNavigationTimeout(300_000)
-    await page.goto(`${at}/`, { waitUntil: 'load' })
-    await page.waitForFunction(() => document.documentElement.dataset.boot !== undefined,
-      null, { timeout: 120_000 })
-    await warm.close()
-
-    await fn(at)
+    await ready(proc, at)
+    await fn(at, ensure)
   } finally {
-    proc.kill()
+    live.kill()
+    if (live !== proc) proc.kill()
+  }
+}
+
+/**
+ * 개발 서버가 **실제로 요청을 받을 때까지** 기다린다.
+ *
+ * ⚠️ **"ready in"은 준비됐다는 뜻이 아니다.** 그 뒤에 의존성 미리 묶기가
+ * 시작되고 그동안 첫 요청이 몇 분씩 붙들린다 — 처음엔 그 시간이 ⑫의
+ * navigation timeout으로 잡혔다. 재려던 것과 상관없는 실패다.
+ *
+ * ⚠️ **그리고 죽을 수 있다.** 진짜 롬 설치를 셋 돌린 뒤라 메모리가 눌려 있고,
+ * 실제로 ⑫와 ⑬ 사이에서 한 번 죽어 `ERR_CONNECTION_RESET`이 났다. 그것도
+ * 앱의 실패가 아니다 — 살아 있는지 보고, 죽었으면 그렇게 말한다
+ */
+async function ready(proc, at) {
+  await new Promise((done) => {
+    proc.stdout.on('data', (b) => { if (String(b).includes('ready in')) done() })
+    setTimeout(done, 60_000)
+  })
+  const until = Date.now() + 300_000
+  for (;;) {
+    if (proc.exitCode !== null) throw new Error(`개발 서버가 죽었다 (exit ${String(proc.exitCode)})`)
+    try {
+      const got = await fetch(`${at}/`, { signal: AbortSignal.timeout(20_000) })
+      if (got.ok) { await got.text(); return }
+    } catch { /* 아직 안 떴거나 미리 묶는 중 */ }
+    if (Date.now() > until) throw new Error('개발 서버가 300초 안에 응답하지 않았다')
+    await new Promise((r) => setTimeout(r, 1_000))
   }
 }
 
@@ -420,8 +447,9 @@ await (haveRom ? run : skip)('11', '취소가 진짜 Worker에서 먹고, 하다
 // 배포 경계가 아니라 앱 동작이므로 **개발 서버에서 잰다** — 어느 쪽에서 쟀는지
 // 표에 적는다. 노드 시험이 봉투를 재고, 여기서는 진짜 IndexedDB와 진짜
 // 다운로드 경로를 지난다.
-await withDev(async (dev) => {
+await withDev(async (dev, ensure) => {
   await run('12', '.rpsave 새 프로필 왕복 (개발 서버)', async ({ page }) => {
+    await ensure()
     await page.goto(`${dev}/`, { waitUntil: 'load' })
     assert(await waitBoot(page) === 'play:dev', '개발 갈래로 안 떴다')
     await page.waitForFunction(() => 'pt' in globalThis, null, { timeout: 60_000 })
@@ -449,6 +477,7 @@ await withDev(async (dev) => {
   })
 
   await run('13', '다운로드 차단 시 내부 세이브 유지 (개발 서버)', async ({ context, page }) => {
+    await ensure()
     // 브라우저가 다운로드를 막는 상황을 만든다. 그래도 **내부 저장은 성공**이라야
     // 한다 — 둘은 별개의 성공이고, 순서도 저장이 먼저다 (IMPORT.md §10)
     await context.route('blob:**', (r) => r.abort())
@@ -471,6 +500,7 @@ await withDev(async (dev) => {
   })
 
   await run('14', '큰 파일 하나를 쓰는 동안 힙이 몇 배가 되는가 (개발 서버)', async ({ page }) => {
+    await ensure()
     // ⚠️ BDSP 모델이 붙으면 그룹 하나가 수백 MB다. `.part`에 쓰고 → 되읽고 →
     // 해시하고 → 제자리로 옮기는 길에서 **같은 바이트가 몇 벌 살아 있는가**를
     // 잰다. 한때 되읽기가 `.arrayBuffer()`라 두 벌이었다
