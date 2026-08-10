@@ -518,9 +518,9 @@ SemVer에서 `+` 뒤는 빌드 메타데이터라 우선순위를 안 바꾼다 
 | 부분 설치 | ✅ `installing`/`partial`/`ready` 분리. 필수 그룹이 다 있어야 `ready`다 | — |
 | 파일 무결성 | ✅ 파일마다 길이 + SHA-256. 재개가 깨진 그룹만 다시 만든다 | — |
 | Import Worker | ✅ 실제 module Worker. `File`이 아니라 `Blob`을 넘기고, 산출물은 transferable | — |
-| **Platinum 변환 이식** | ⚠️ 그룹 아홉 중 **둘**(`moves`·`marts`). 셋 다 노드 산출물과 바이트로 같다 | 나머지 일곱 |
-| **decomp 의존 추출** | ⚠️ `scripts`만 남았다 (명령 폭·scriptID 표). `marts`는 ARM9에서 직접 읽는다 | `scripts`를 롬 파싱으로 |
-| **BDSP 변환** | ⚠️ 컨테이너까지. UnityFS·LZ4·SerializedFile 오브젝트 표가 UnityPy와 208개 일치. **정점도 픽셀도 아직 안 읽는다** | 타입 트리 해석 · 텍스처 디코딩 · GLB 쓰기 (`SPIKE_BLOCKERS`) |
+| **Platinum 변환 이식** | ✅ 필수 아홉이 전부 브라우저에서 돈다 (`text`·`species`·`moves`·`marts`·`maps`·`chunks`·`scripts`·`sound`·`pokegra`). 산출물이 노드 추출기와 **바이트로 같다** — 그림만 픽셀로 잰다 | — |
+| **decomp 의존 추출** | ⚠️ `scripts`가 명령 폭·scriptID 표를 디컴프에서 받는다. 롬에 없는 값이라 `scriptMeta.ts`에 **호환성 메타데이터로 굽는다**(91KB, 롬 바이트 0). `maps`는 주소 상수마저 없앴다 — 표를 성질로 찾는다 | 굽는 것이 맞는가를 COPYRIGHT.md §11에서 다시 본다 |
+| **BDSP 변환** | ⚠️ 컨테이너 + **타입 트리 + 메시**. 오브젝트 수·클래스별 개수·정점 7,693·채널 14·정점 자료 615,456B·부분메시 7·색인 73,116B·바인드포즈 111이 UnityPy와 같다. **픽셀은 아직 안 읽는다** | 텍스처 디코딩 · GLB 쓰기 (`SPIKE_BLOCKERS`) |
 | 번들 안의 제3자 데이터 | ⚠️ 8,881kB → **1,732kB**. 습득기술·설명문·티어·안 쓰는 세대 모드 7,149kB를 뺐다. 남은 것은 수치와 구현이 한 객체인 파일들과 `pokedex.mjs` | DEPLOY.md §4. **release blocker 유지** |
 | 번들 안의 `eval(` | ✅ **0건**. `>eval` 디버그 명령을 빌드에서 지운다 | — |
 | CSP | ⚠️ 정본과 meta 태그는 있다. **응답 헤더를 실제 호스트에서 잰 적이 없다** | `pnpm verify:deploy <url>` |

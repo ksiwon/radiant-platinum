@@ -14,6 +14,7 @@ import { resolve } from 'node:path'
 import { openNds, type ByteSource } from './nds'
 import { Cancelled, GROUPS, groupsBlocked, groupsReady, parseMove } from './convert'
 import { martLocator, SUPPORTED } from './validate'
+import { REQUIRED_PLATINUM_GROUPS } from '../install/required'
 import { MartError, readMarts } from './marts'
 import { DATA, withRom, romPath } from '../../data/romData.testkit'
 
@@ -43,6 +44,9 @@ describe('그룹 표', () => {
     }
     expect(groupsReady().length).toBeGreaterThan(0)
     expect(groupsReady().length + groupsBlocked().length).toBe(GROUPS.length)
+    // Platinum 쪽 필수 그룹 아홉이 전부 변환기를 갖고 있다. **이 목록이 줄면 선다**
+    const ready = new Set(groupsReady().map((g) => g.name))
+    for (const name of REQUIRED_PLATINUM_GROUPS) expect(ready.has(name), name).toBe(true)
   })
 
   it('그룹마다 무엇을 만드는지 적혀 있다 — 저널이 그걸로 재개를 판단한다', () => {

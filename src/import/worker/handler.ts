@@ -45,7 +45,10 @@ export function createImportWorker(port: Port): void {
   async function convert(job: JobId, group: string): Promise<void> {
     if (!held) throw new Error('먼저 Platinum을 확인해야 합니다')
     const spec = GROUPS.find((g) => g.name === group)
-    if (!spec?.convert) throw new Error(`${group}: 아직 안 옮긴 변환입니다`)
+    // ⚠️ **모르는 이름과 안 옮긴 그룹을 갈라 말한다.** 한때 둘이 같은 문장이었고,
+    // 그래서 그룹 이름을 오타 낸 것과 아직 못 만드는 것이 화면에서 구별이 안 됐다
+    if (!spec) throw new Error(`${group}: 그런 그룹이 없습니다`)
+    if (!spec.convert) throw new Error(`${group}: 아직 안 옮긴 변환입니다 — ${spec.blockedBy ?? ''}`)
 
     const ctx: ConvertContext = {
       fs: held.fs,

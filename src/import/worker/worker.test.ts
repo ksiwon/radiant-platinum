@@ -125,13 +125,17 @@ withRom('en')('Worker 경계', () => {
     } finally { close() }
   })
 
-  it('안 옮긴 그룹은 그렇다고 말한다', async () => {
+  it('모르는 그룹 이름은 그렇다고 말한다 — 안 옮긴 것과 다른 말이다', async () => {
+    // ⚠️ 한때 이 시험이 `chunks`를 "안 옮긴 것"으로 썼다. 옮기고 나서 시험이
+    // 섰고, 그것이 맞는 동작이다 — 표가 자라면 시험도 자란 만큼을 봐야 한다
     const { client, close } = pair()
     try {
       await client.validate(rom)
-      await expect(client.convert('chunks')).rejects.toThrow(/아직 안 옮긴/)
+      await expect(client.convert('없는그룹')).rejects.toThrow(/그런 그룹이 없습니다/)
     } finally { close() }
   })
+
+
 })
 
 describe('협조하지 않는 스레드', () => {
