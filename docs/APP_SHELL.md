@@ -40,8 +40,24 @@
 **컴파일**되어 나온다. 그쪽 출처는 `pnpm provenance`가 청크별로 뽑는다 —
 `docs/DEPLOY.md` §4.
 
-⚠️ 현재 `@pkmn/sim`의 종족·기술·룰 데이터가 번들에 들어간다. 미해결
-release blocker다. `docs/DEPLOY.md` §4에 크기와 다음 선택지를 적어 뒀다.
+⚠️ `@pkmn/sim`의 게임 데이터가 8,881kB 들어가던 것을 빌드에서 **1,732kB로**
+줄였다 (`tools/distribution/pkmnDiet.mjs`). 0이 아니므로 release blocker는
+그대로다 — 무엇을 뺐고 무엇이 왜 남았는지는 `docs/DEPLOY.md` §4.
+
+배포물 JS에 `eval(`은 **0건**이다. 매 빌드 `boundary:post`가 다시 잰다.
+소스맵도 0개다 — 있으면 뺀 것이 원문으로 되돌아온다.
+
+## 3-1. 셸 그림에 무엇이 그려져 있는가
+
+⚠️ **바이트 검사가 절대 못 잡는 자리다.** 위 그림 셋은 전부 우리가 만든 PNG라
+출처 검사도 매직바이트도 히스토리 감사도 다 통과한다. 그런데 화면을 열어 보면
+(`node tools/shot/title.mjs`) 타이틀 배경에 금속 질감의 `POKEMON` 워드마크가
+그려져 있고, 아이콘의 주인공은 원작 캐릭터로 보이는 형상이다.
+
+그래서 그림마다 **무엇을 그렸는지** 적는다
+([`tools/distribution/shellArt.mjs`](../tools/distribution/shellArt.mjs)).
+목록에 없는 그림이 셸에 들어오면 빌드가 서고, 워드마크나 캐릭터가 적혀 있으면
+공개 배포가 막힌다 (`brand-art` blocker). 자세한 것은 `COPYRIGHT.md` §11.
 
 ## 4. 개발 서버는 배포 수단이 아니다
 

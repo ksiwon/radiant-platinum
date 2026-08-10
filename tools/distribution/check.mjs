@@ -252,6 +252,45 @@ function checkPost() {
     for (const host of originsIn(text)) fail(`서비스 워커에 바깥 오리진 '${host}'`, 'dist/sw.js')
   }
 
+  // 소스맵이 배포물에 있는가 (§9).
+  //
+  // ⚠️ **소스맵은 뺀 것을 되돌려 놓는다.** `pkmnDiet`이 껍데기로 바꾼 데이터
+  // 모듈도, 우리 소스도 원문 그대로 들어간다 — 청크가 작아졌는데 옆에 원문이
+  // 통째로 놓이면 아무것도 뺀 것이 아니다
+  const maps = readdirSync(resolve(dist, 'assets'), { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.map')).map((e) => `assets/${e.name}`)
+  for (const rel of maps) fail('배포물에 소스맵이 있다', `dist/${rel} — 뺀 것이 원문으로 돌아온다`)
+
+  // 배포물 JS에 `eval(`이 있는가 (§3.8 · DEPLOY.md §3).
+  //
+  // ⚠️ **CSP를 여는 유일한 이유였다.** `@pkmn/sim`의 `>eval` 디버그 명령 하나
+  // 때문에 `'unsafe-eval'`이 필요해졌다. 빌드가 그 호출을 지우지만, 지웠다는
+  // 것을 여기서 다시 잰다 — 다음에 다른 의존성이 들여오면 그때 걸린다
+  const jsFiles = readdirSync(resolve(dist, 'assets'), { withFileTypes: true })
+    .filter((e) => e.isFile() && e.name.endsWith('.js')).map((e) => e.name)
+  for (const name of jsFiles) {
+    const text = readFileSync(resolve(dist, 'assets', name), 'utf8')
+    if (text.includes('eval(')) fail("배포물에 eval(이 있다", `dist/assets/${name} — CSP를 열 이유가 된다`)
+  }
+
+  // 배포물을 **내용으로** 훑는다 (§9).
+  //
+  // 경로 규칙(`scanTree`)은 이름과 자리만 본다. 롬 컨테이너가 `.js`라는 이름을
+  // 달고 `assets/`에 앉아 있으면 그대로 통과한다
+  const distFiles = []
+  const walkDist = (at, rel) => {
+    for (const e of readdirSync(at, { withFileTypes: true })) {
+      const childRel = rel ? `${rel}/${e.name}` : e.name
+      if (e.isDirectory()) { walkDist(resolve(at, e.name), childRel); continue }
+      distFiles.push(childRel)
+    }
+  }
+  walkDist(dist, '')
+  for (const leak of trackedContentLeaks(distFiles.map((f) => `dist/${f}`))) {
+    fail('배포물이 원본 유래다', `${leak.path} — ${leak.what}: ${leak.why}`)
+  }
+  notes.push(`배포물 ${String(distFiles.length)}개를 내용으로 훑었다 — 원본 유래 0개 · 소스맵 0개`)
+
   // `inBundle: false`라고 적어 둔 표가 정말 안 실렸는가.
   //
   // ⚠️ 트리 셰이킹은 import 하나만 늘어도 깨진다. "안 들어간다"를 가정으로

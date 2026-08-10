@@ -23,6 +23,9 @@ const TARGETS = [
   { path: 'raw', why: '원본 롬·추출물·디컴프' },
   { path: 'dist', why: '빌드 산출물 (한때 645MB였다)' },
   { path: 'dist-assets', why: '같은 이유' },
+  // 지금 나무에서는 지웠다. 히스토리에는 그대로 있다 — 뱅크 724개의 암호화
+  // 키(u16)와 로케일별 엔트리 수다 (COPYRIGHT.md §6)
+  { path: 'src/data/textBanks.json', why: '롬 뱅크 헤더에서 읽은 u16 키 724개' },
 ]
 
 const mb = (n) => `${(n / (1 << 20)).toFixed(1)}MB`

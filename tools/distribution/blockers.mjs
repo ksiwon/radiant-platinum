@@ -76,6 +76,56 @@ export const BLOCKERS = [
     },
   },
   {
+    id: 'install-groups',
+    why: '필수 설치 그룹이 다 구현되지 않았다',
+    where: 'IMPORT.md §8',
+    resolved() {
+      // ⚠️ `bdsp-convert`와 다른 것을 잰다. 그쪽은 BDSP spike가 어디서 막혔는지,
+      // 이쪽은 **게임을 시작하는 데 필요한 12개 중 몇 개가 실제로 만들어지는가**다.
+      // Platinum 쪽 7개가 안 옮겨진 것은 BDSP와 무관한 별개의 미완이고,
+      // 그걸 BDSP blocker에 얹으면 BDSP를 푸는 날 조용히 함께 풀린다
+      const required = read('src/import/install/required.ts')
+      const convert = read('src/import/platinum/convert.ts')
+      if (!required || !convert) return { ok: false, detail: '목록을 못 읽었다' }
+      const names = (src, from) => {
+        const at = src.indexOf(from)
+        if (at < 0) return []
+        const block = src.slice(at, src.indexOf(']', at))
+        return [...block.matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1])
+      }
+      const need = [
+        ...names(required, 'REQUIRED_PLATINUM_GROUPS'),
+        ...names(required, 'REQUIRED_BDSP_GROUPS'),
+      ]
+      // 변환기가 붙은 그룹 = `convert:`가 적힌 항목
+      const made = [...convert.matchAll(/name:\s*'([a-zA-Z]+)',[^}]*?convert:\s*\w/gs)]
+        .map((m) => m[1])
+      const missing = need.filter((n) => !made.includes(n))
+      return missing.length === 0
+        ? { ok: true }
+        : { ok: false, detail: `${String(made.length)}/${String(need.length)} — 남은 것: ${missing.join(' · ')}` }
+    },
+  },
+  {
+    id: 'browser-e2e',
+    why: '브라우저 실측이 통과 상태가 아니다',
+    where: 'DEPLOY.md §5',
+    resolved() {
+      // 안 돌린 것을 통과로 세지 않는다. BLOCKED 줄이 하나라도 있으면 아직이다 —
+      // 그 줄들이 곧 "브라우저에서 아직 증명 못 한 것"의 목록이다
+      const at = read('.audit/e2e.json')
+      if (!at) return { ok: false, detail: 'pnpm e2e를 돌린 적이 없다' }
+      const { results } = JSON.parse(at)
+      const bad = results.filter((r) => r.status === 'FAIL')
+      const blocked = results.filter((r) => r.status === 'BLOCKED')
+      const notRun = results.filter((r) => r.status === 'NOT RUN')
+      if (bad.length) return { ok: false, detail: `FAIL ${String(bad.length)}건: ${bad.map((r) => r.id).join(' · ')}` }
+      if (notRun.length) return { ok: false, detail: `NOT RUN ${String(notRun.length)}건 — 전부 돌린 결과가 아니다` }
+      if (blocked.length) return { ok: false, detail: `BLOCKED ${String(blocked.length)}건: ${blocked.map((r) => `${r.id} ${r.what}`).join(' · ')}` }
+      return { ok: true }
+    },
+  },
+  {
     id: 'release-build',
     why: '이 배포물이 어느 커밋에서 나왔는지 말할 수 없다',
     where: 'state/save/contract.ts',
