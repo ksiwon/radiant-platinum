@@ -14,6 +14,7 @@ import { readMarts } from './marts'
 import { martLocator } from './validate'
 import { convertText, TEXT_OUTPUTS, openBanks, nameList, type DataLocale } from './text'
 import { convertSpecies } from './species'
+import { convertMaps } from './maps'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -152,12 +153,14 @@ export const GROUPS: readonly GroupSpec[] = [
   { name: 'marts', outputs: ['data/marts.json'], converter: 1, convert: convertMarts },
   {
     name: 'maps',
-    outputs: ['data/maps.json', 'data/matrices/**', 'data/bdhc.*'],
+    outputs: [
+      'data/maps.json',
+      'data/matrices/0.bin', 'data/matrices/0.json',
+      'data/matrices/interiors.bin', 'data/matrices/interiors.json',
+      'data/bdhc.bin', 'data/bdhc.json',
+    ],
     converter: 1,
-    blockedBy:
-      'arm9 오버레이에서 맵 헤더 표를 읽어야 하는데 오버레이는 FNT에 이름이 없다. '
-      + '헤더의 오버레이 표(+0x50)로 파일 번호를 찾는 길은 노드 쪽에 이미 있다 '
-      + '(`tools/extract/rom.js`의 `overlay()`).',
+    convert: convertMaps,
   },
   {
     name: 'chunks',
