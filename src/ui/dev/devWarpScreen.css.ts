@@ -20,6 +20,107 @@ export const rowNote = style({
   fontVariantNumeric: 'tabular-nums',
 })
 
+// ── 왼쪽: 단계로 묶은 칸들 ───────────────────────────────────────────────────
+//
+// ⚠️ **세로 한 줄로 늘어놓지 않는다.** 지점이 쉰 개를 넘으면 훑는 데만 한참
+// 걸린다. 이야기 단계로 묶고 칸을 옆으로 채우면 한 화면에 거의 다 들어온다
+
+export const groups = style({
+  overflowY: 'auto',
+  display: 'grid',
+  gap: 18,
+  alignContent: 'start',
+  paddingRight: 6,
+})
+
+export const group = style({
+  display: 'grid',
+  gap: 8,
+})
+
+export const groupTitle = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  margin: 0,
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: '0.14em',
+  opacity: 0.62,
+  // 제목 줄이 칸들과 붙어 보이지 않게 밑줄 하나
+  paddingBottom: 5,
+  borderBottom: `1px solid ${vars.panel.border}`,
+})
+
+/** 그 단계에 몇 개 있는가 */
+export const groupCount = style({
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: 0,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background: 'rgba(240, 180, 41, 0.16)',
+  color: '#f0b429',
+})
+
+export const chips = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 7,
+})
+
+const chipBase = {
+  appearance: 'none',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '7px 13px',
+  fontFamily: vars.font.ui,
+  fontSize: 14,
+  lineHeight: 1.2,
+  color: vars.panel.text,
+  background: 'rgba(255, 255, 255, 0.05)',
+  border: `1px solid ${vars.panel.border}`,
+  borderRadius: 999,
+  cursor: 'pointer',
+  textAlign: 'left',
+  transition: 'background 90ms linear, border-color 90ms linear',
+} as const
+
+export const chip = style(chipBase)
+
+/**
+ * 지금 올려놓은 칸.
+ *
+ * 마우스 hover와 키보드 커서를 **같은 표시**로 둔다 — 둘이 다르면 어느 쪽이
+ * 오른쪽에 떠 있는 칸인지 헷갈린다
+ */
+export const chipOn = style({
+  ...chipBase,
+  background: 'rgba(240, 180, 41, 0.18)',
+  borderColor: 'rgba(240, 180, 41, 0.7)',
+  fontWeight: 700,
+})
+
+/** 배틀이 열리는 자리·시각을 못 박는 자리 표시 */
+export const chipMark = style({
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.04em',
+  padding: '1px 6px',
+  borderRadius: 999,
+  background: 'rgba(240, 180, 41, 0.20)',
+  color: '#f0b429',
+})
+
+/** 오른쪽 칸 맨 위 — 지금 올려놓은 지점의 이름 */
+export const detailName = style({
+  margin: '0 0 10px',
+  fontSize: 20,
+  fontWeight: 800,
+  lineHeight: 1.25,
+})
+
 /** 오른쪽 칸 아래에 붙는 조건 목록 */
 export const setup = style({
   marginTop: 18,

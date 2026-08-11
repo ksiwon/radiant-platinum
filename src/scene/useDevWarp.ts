@@ -73,6 +73,8 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
         const out = walkOutOfDoor(next, at.x, at.z)
         enter(next, cp.map, out.x, out.z, header.matrix)
         worldState.player.facing = at.facing
+        // 시각을 못 박는 지점이 있다 — 밤 하늘·조명·시간대 인카운터를 보는 자리다
+        if (cp.hour !== undefined) worldState.time.gameHour = ((cp.hour % 24) + 24) % 24
         // ⚠️ **여기서 한 번 더 끊는다.** `warpTo`가 이미 끊었지만, 새 판을 여는
         // 것과 맵이 실제로 뜨는 것 사이에 프레임이 있어서 그 사이에 주인공 방의
         // TV 방송이 시작된다. 안 끊으면 딴 맵에서 그 대사창이 뜨고 플레이어가

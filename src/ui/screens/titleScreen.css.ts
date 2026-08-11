@@ -2,10 +2,25 @@
 //
 // 여기가 게임의 첫인상이라 **게임 화면처럼 보여야 한다.** 가운데 정렬한 버튼
 // 두 개가 아니라, 제목이 화면을 차지하고 그 아래에 고를 것이 놓인 모양이다.
-import { globalStyle, style } from '@vanilla-extract/css'
+//
+// ⚠️ **한동안 화면이 통째로 비어 있었다.** 배경 그림을 뺐는데(아래 `sky`)
+// 제목까지 `display: none`인 채로 남아서, 그라디언트만 깔린 검은 화면에 버튼
+// 다섯 개가 떠 있었다. 그림을 되살릴 수는 없다 — 대신 **우리가 그린 추상
+// 표식**(`public/assets/mark.svg`와 같은 고리 여섯)을 크게 놓고 제목을 켠다.
+import { globalStyle, keyframes, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
-/** 배경이 천천히 흐른다. 정지 화면이면 게임이 멈춘 것처럼 보인다 */
+/** 표식이 아주 천천히 돈다. 완전히 멈춰 있으면 화면이 죽은 것처럼 보인다 */
+const spin = keyframes({
+  from: { transform: 'translate(-50%, -50%) rotate(0deg)' },
+  to: { transform: 'translate(-50%, -50%) rotate(360deg)' },
+})
+
+/** 표식 뒤의 빛이 숨 쉰다 */
+const breathe = keyframes({
+  '0%, 100%': { opacity: 0.55, transform: 'translate(-50%, -50%) scale(1)' },
+  '50%': { opacity: 0.85, transform: 'translate(-50%, -50%) scale(1.06)' },
+})
 
 
 export const wrap = style({
@@ -67,8 +82,73 @@ export const head = style({
   pointerEvents: 'none',
 })
 
+/**
+ * 제목 덩어리 — 표식 · 이름 · 한 줄 설명.
+ *
+ * ⚠️ 예전에 `display: none`이었다. 배경 그림 안에 제목이 이미 그려져 있었기
+ * 때문인데, 그 그림을 뺀 뒤로는 **아무것도 안 남았다**
+ */
 export const crest = style({
-  display: 'none',
+  position: 'absolute',
+  left: '50%',
+  top: '43%',
+  transform: 'translate(-50%, -50%)',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 'clamp(6px, 1vh, 12px)',
+  width: 'min(900px, calc(100vw - 32px))',
+})
+
+/**
+ * 제목 뒤의 추상 표식 — 퍼져 나가는 고리 여섯.
+ *
+ * ⚠️ **파일을 안 받는다.** `assets/mark.svg`와 같은 그림이지만 여기서는 문서에
+ * 직접 그린다 — 첫 화면에 요청을 하나 더 만들 이유가 없고, 크기와 밝기를 이
+ * 자리에 맞춰야 한다. 무엇을 그렸는지는 `tools/distribution/shellArt.mjs`에
+ * 적혀 있다: 생물 실루엣도 몬스터볼 모양도 공식 로고 형태도 없다
+ */
+export const emblem = style({
+  position: 'absolute',
+  left: '50%',
+  top: '46%',
+  width: 'min(58vh, 560px)',
+  height: 'min(58vh, 560px)',
+  transform: 'translate(-50%, -50%)',
+  animation: `${spin} 240s linear infinite`,
+  opacity: 0.24,
+  pointerEvents: 'none',
+  zIndex: -1,
+})
+
+/**
+ * 제목 자리를 눌러 주는 타원.
+ *
+ * ⚠️ **고리가 글자를 가로지른다.** 표식을 제목 뒤에 두면 선이 글자 획과 섞여
+ * 둘 다 안 읽힌다. 그렇다고 상자를 깔면 투박하다 — **가장자리가 없는 타원**으로
+ * 가운데만 어둡게 누른다.
+ *
+ * ⚠️ 이걸 `crest`의 배경으로 두면 안 된다. 그 상자가 그라디언트를 잘라서
+ * **가로로 곧은 이음매 두 줄**이 생긴다 — 실측으로 화면에 그대로 보였다.
+ * 글자보다 넉넉히 큰 자기 자리를 갖고 있어야 falloff가 끝까지 흐려진다
+ */
+export const halo = style({
+  position: 'absolute',
+  left: '50%',
+  top: '43%',
+  width: 'min(1240px, 94vw)',
+  height: 'min(52vh, 460px)',
+  transform: 'translate(-50%, -50%)',
+  borderRadius: '50%',
+  background: [
+    'radial-gradient(closest-side, rgba(4, 7, 13, 0.88) 0%,'
+    + ' rgba(4, 7, 13, 0.60) 38%, rgba(4, 7, 13, 0.22) 62%, transparent 82%)',
+    'radial-gradient(closest-side, rgba(126, 168, 214, 0.20) 26%,'
+    + ' rgba(126, 168, 214, 0.06) 54%, transparent 78%)',
+  ].join(', '),
+  animation: `${breathe} 9s ease-in-out infinite`,
+  pointerEvents: 'none',
+  zIndex: -1,
 })
 
 /** 위에 작게 얹히는 줄 */
@@ -89,7 +169,7 @@ export const brand = style({
  */
 export const title = style({
   margin: 0,
-  fontSize: 'clamp(38px, 7.4vw, 92px)',
+  fontSize: 'clamp(38px, 6.6vw, 84px)',
   fontWeight: 800,
   lineHeight: 1.02,
   letterSpacing: '0.02em',
@@ -111,26 +191,45 @@ export const sub = style({
   textShadow: '0 1px 4px rgba(0,0,0,0.7)',
 })
 
+/**
+ * 고를 것 다섯 — 한 줄이다.
+ *
+ * ⚠️ **두 줄로 두면 층이 갈린다.** 예전에는 위 줄에 리포트 단추 둘, 아래 줄에
+ * 나머지 셋이었는데, 같은 층의 일인데도 위아래로 나뉘어 보였고 키보드 커서는
+ * 아래 셋만 돌았다. 다섯을 한 줄에 놓고 커서도 다섯을 다 돈다.
+ *
+ * 첫 칸만 넓다 — "모험 시작"은 나머지 넷과 무게가 다르다
+ */
 export const menu = style({
   position: 'absolute',
   left: '50%',
-  bottom: 'clamp(12px, 2vh, 24px)',
+  bottom: 'clamp(16px, 2.6vh, 30px)',
   display: 'flex',
   flexDirection: 'row',
-  alignItems: 'center',
-  gap: 8,
-  width: 'min(440px, calc(100vw - 32px))',
+  alignItems: 'stretch',
+  justifyContent: 'center',
+  gap: 10,
+  width: 'min(940px, calc(100vw - 32px))',
   transform: 'translateX(-50%)',
   pointerEvents: 'auto',
+  '@media': {
+    'screen and (max-width: 760px)': { flexWrap: 'wrap' },
+  },
 })
 
 export const button = style({
   position: 'relative',
-  flex: 1,
+  flex: '1 1 0',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minHeight: 44,
   appearance: 'none',
-  padding: '10px 18px',
-  fontSize: 15,
+  padding: '10px 16px 10px 26px',
+  fontSize: 14,
   fontWeight: 700,
+  lineHeight: 1.25,
+  whiteSpace: 'nowrap',
   fontFamily: vars.font.ui,
   color: '#eef3fa',
   textAlign: 'center',
@@ -158,10 +257,31 @@ export const buttonOn = style({
   background: 'linear-gradient(180deg, rgba(34, 48, 72, 0.92), rgba(18, 27, 44, 0.94))',
 })
 
+/**
+ * 첫 칸 — 모험을 시작하거나 이어하는 자리.
+ *
+ * 나머지 넷과 **무게가 다르다.** 다섯을 똑같이 두면 처음 온 사람이 어디를
+ * 눌러야 하는지 화면이 안 알려 준다
+ */
+export const buttonMain = style({
+  flexGrow: 1.7,
+  fontSize: 15,
+  borderColor: 'rgba(247, 224, 138, 0.42)',
+  background: 'linear-gradient(180deg, rgba(38, 52, 78, 0.86), rgba(14, 22, 38, 0.9))',
+})
+
+/** 리포트 파일 쪽 둘. 눌릴 일이 드물어 한 톤 죽인다 */
+export const buttonGhost = style({
+  fontWeight: 600,
+  fontSize: 13,
+  opacity: 0.86,
+  selectors: { '&:hover': { opacity: 1 } },
+})
+
 /** 지금 고른 칸 앞의 화살표. 원작 메뉴도 커서를 글자 앞에 둔다 */
 export const caret = style({
   position: 'absolute',
-  left: 12,
+  left: 10,
   top: '50%',
   transform: 'translateY(-50%)',
   color: '#f7e08a',
@@ -221,13 +341,14 @@ globalStyle(`${summary} dd`, {
  */
 export const filesArea = style({
   // ⚠️ `head`가 `position: absolute; inset: 0`이라 **보통 흐름에 두면 왼쪽 위로
-  // 올라간다.** 실제로 파일 줄이 제목 위에 겹쳐 잘려 있었다 — 형제인 `menu`처럼
-  // 자리를 직접 잡는다
+  // 올라간다.** 실제로 이 줄이 제목 위에 겹쳐 잘려 있었다 — 형제인 `menu`처럼
+  // 자리를 직접 잡는다. 단추는 이제 `menu` 한 줄에 있고, 여기 남는 것은
+  // 알림·확인 판뿐이라 버튼 줄 **위로** 쌓인다
   position: 'absolute',
   left: '50%',
   transform: 'translateX(-50%)',
-  bottom: 'calc(clamp(12px, 2vh, 24px) + 54px)',
-  width: 'min(560px, calc(100vw - 32px))',
+  bottom: 'calc(clamp(16px, 2.6vh, 30px) + 58px)',
+  width: 'min(620px, calc(100vw - 32px))',
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -273,13 +394,16 @@ export const disclaimer = style({
   // 그림과 정확히 겹쳐 글자가 사라졌다 (`shots/title.png`로 확인). 그림이
   // 비어 있는 맨 위로 올리고, 어두운 판을 깐다
   top: 'clamp(8px, 1.6vh, 16px)',
-  width: 'min(720px, calc(100vw - 24px))',
+  // ⚠️ **두 줄에 들어와야 한다.** 넉 줄짜리 문단이 화면 위를 가로질러 덮고
+  // 있었다. 담아야 하는 것은 다섯 가지고(COPYRIGHT.md §11) 그것을 줄이지 않은
+  // 채로 두 줄에 넣으려면 폭이 필요하다 — 좁히지 말고 넓힌다
+  width: 'min(1000px, calc(100vw - 24px))',
   margin: 0,
-  padding: '6px 12px',
+  padding: '7px 16px',
   boxSizing: 'border-box',
   fontFamily: vars.font.ui,
-  fontSize: 11,
-  lineHeight: 1.65,
+  fontSize: 12,
+  lineHeight: 1.55,
   textAlign: 'center',
   color: 'rgba(233, 238, 250, 0.92)',
   background: 'rgba(6, 10, 18, 0.72)',

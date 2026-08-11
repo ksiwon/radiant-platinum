@@ -166,20 +166,31 @@ export function TitleScreen() {
   }
 
   const hasSave = report !== null && report !== undefined
-  const entries = [
+  /**
+   * 고를 것 다섯. **한 줄에 놓이고 커서도 다섯을 다 돈다.**
+   *
+   * ⚠️ 예전에는 리포트 단추 둘이 따로 떠 있었고 커서는 셋만 돌았다 — 화면에는
+   * 다섯이 보이는데 키보드로는 셋만 닿는 상태였다
+   */
+  const entries: { key: string, label: string, tone: 'main' | 'plain' | 'ghost', go: () => void }[] = [
     hasSave
-      ? { key: 'continue', label: at(MAIN_MENU.continue_, '모험 계속하기'), go: () => { go(false) } }
-      : { key: 'new', label: '새로운 모험 시작하기', go: () => { go(true) } },
-    { key: 'options', label: '설정', go: () => { useMenuStore.getState().open('options') } },
+      ? { key: 'continue', label: at(MAIN_MENU.continue_, '모험 계속하기'), tone: 'main', go: () => { go(false) } }
+      : { key: 'new', label: '새로운 모험 시작하기', tone: 'main', go: () => { go(true) } },
+    { key: 'options', label: '설정', tone: 'plain', go: () => { useMenuStore.getState().open('options') } },
     // ⚠️ **아직 완성되지 않은 것을 완성된 것처럼 두지 않는다.** 변환 그룹이
     // 하나만 옮겨져 있어서, 여기서 설치를 끝내도 게임은 시작되지 않는다
-    { key: 'import', label: '에셋 설치', go: () => { setImporting(true) } },
+    { key: 'import', label: '에셋 설치', tone: 'plain', go: () => { setImporting(true) } },
+    // ⚠️ **리포트가 없어도 보인다.** 새 브라우저·새 기계에서 파일을 들고 온
+    // 사람에게는 이 둘이 유일한 입구인데, "리포트가 있을 때만"으로 두면
+    // 그 사람에게는 아무 데도 없다 (IMPORT.md §11)
+    { key: 'backup', label: '리포트 백업 받기', tone: 'ghost', go: backup },
+    { key: 'load', label: '리포트 파일 불러오기', tone: 'ghost', go: () => { filePicker.current?.click() } },
   ]
 
   const [cursor, setCursor] = useState(0)
   // ⚠️ **버튼이 가로로 놓인다** (`titleScreen.css`의 `menu`가 `flex-direction: row`).
   // 한동안 ↑↓만 묶여 있어서, 나란히 놓인 것을 보고 ←→를 누르면 아무 일도 안
-  // 일어났다. 네 방향을 다 받는다 — 칸이 둘뿐이라 어느 축으로 눌러도 뜻이 하나다
+  // 일어났다. 네 방향을 다 받는다
   const move = (delta: number): void => {
     setCursor((c) => clampCursor(c, delta, entries.length))
   }
@@ -203,6 +214,8 @@ export function TitleScreen() {
           자리와 같은 배치라, 화면에 안 보이더라도(지금 `crest`는 숨겨져 있다)
           문서에는 남아 검색과 스크린 리더에 그대로 읽힌다. 뺐다 (COPYRIGHT.md §11)
         */}
+        <div className={css.halo} aria-hidden />
+        <Emblem />
         <div className={css.crest}>
           <h1 className={css.title}>Radiant Platinum</h1>
           <span className={css.sub}>비공식 팬 프로젝트 · 비영리</span>
@@ -225,17 +238,35 @@ export function TitleScreen() {
           {entries.map((entry, i) => (
             <button
               key={entry.key}
-              className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+              className={[
+                css.button,
+                entry.tone === 'main' ? css.buttonMain : '',
+                entry.tone === 'ghost' ? css.buttonGhost : '',
+                i === cursor ? css.buttonOn : '',
+              ].filter(Boolean).join(' ')}
               onClick={entry.go}
               onPointerEnter={() => {
                 setCursor(i)
-                if (entry.key !== 'options') prefetchGameChunk()
+                if (entry.tone === 'main') prefetchGameChunk()
               }}
             >
               {i === cursor && <span className={css.caret} aria-hidden>▶</span>}
               {entry.label}
             </button>
           ))}
+          <input
+            ref={filePicker}
+            type="file"
+            accept={PORTABLE_EXT}
+            hidden
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
+              // change 이벤트가 아예 안 온다
+              e.target.value = ''
+              if (file) pickFile(file)
+            }}
+          />
         </div>
 
         {/*
@@ -243,42 +274,21 @@ export function TitleScreen() {
           `display: none`이라 거기 넣으면 문서에만 있고 화면에는 없다 — 그건
           "표시했다"가 아니다. 메뉴 바로 아래, 리포트 단추와 같은 층에 둔다
         */}
+        {/*
+          ⚠️ **줄여도 다섯 가지는 다 남는다** (COPYRIGHT.md §11): 비공식·비제휴 ·
+          상표는 권리자의 것 · 적법 보유분만 · 서버는 안 받고 안 저장한다 ·
+          무료·비영리·BYOR가 허가를 뜻하지 않는다. 문장을 붙여 두 줄로 접었다
+        */}
         <p className={css.disclaimer}>
-          비공식·비제휴 팬 프로젝트입니다. 관련 상표와 저작물은 각 권리자의 것입니다.
-          자신이 적법하게 보유한 게임 데이터만 고르세요 — 서버는 원본도 변환 결과도
-          받거나 저장하지 않습니다. 무료·비영리이고 사용자가 자기 데이터를 가져오는
-          방식이지만, 그것이 권리자의 허가를 뜻하지는 않습니다.
+          비공식·비제휴 팬 프로젝트입니다. 관련 상표와 저작물은 각 권리자의 것이며,
+          무료·비영리·BYOR는 권리자의 허가를 뜻하지 않습니다.
+          <br />
+          적법하게 보유한 게임 데이터만 고르세요 — 서버는 원본도 변환 결과도
+          받거나 저장하지 않습니다.
         </p>
 
-        {/*
-          ⚠️ **리포트가 없어도 보인다.** 새 브라우저·새 기계에서 파일을 들고 온
-          사람에게는 이것이 유일한 입구인데, "리포트가 있을 때만"으로 두면
-          그 사람에게는 아무 데도 없다 (IMPORT.md §11)
-        */}
+        {/* 파일을 열어 보고 확인받는 자리, 그리고 실패 이유. 단추 줄 위로 쌓인다 */}
         <div className={css.filesArea}>
-          <div className={css.files}>
-            <button className={css.fileButton} onClick={backup}>리포트 백업 받기</button>
-            <button
-              className={css.fileButton}
-              onClick={() => { filePicker.current?.click() }}
-            >
-              리포트 파일 불러오기
-            </button>
-            <input
-              ref={filePicker}
-              type="file"
-              accept={PORTABLE_EXT}
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                // 같은 파일을 두 번 고를 수 있어야 한다 — 값을 안 비우면 두 번째
-                // change 이벤트가 아예 안 온다
-                e.target.value = ''
-                if (file) pickFile(file)
-              }}
-            />
-          </div>
-
           {unreadable !== null && (
             <div className={css.notice}>
               {`저장된 리포트를 이 판이 못 읽습니다 — ${unreadable}\n`}
@@ -337,6 +347,42 @@ export function TitleScreen() {
         </Suspense>
       )}
     </div>
+  )
+}
+
+/**
+ * 제목 뒤의 추상 표식 — 퍼져 나가는 고리 여섯.
+ *
+ * ⚠️ **여기 있는 것이 무엇인지 대장에 적혀 있다** (`tools/distribution/shellArt.mjs`).
+ * `public/assets/mark.svg`와 같은 그림이고, 생물 실루엣도 몬스터볼 모양도 공식
+ * 로고 형태도 없다. 예전에 이 자리에 있던 2.4MB짜리 배경 그림(금속 워드마크 +
+ * 기라티나로 보이는 형상)은 **되살리지 않는다** — 그것이 release blocker였다
+ * (COPYRIGHT.md §11).
+ *
+ * 파일로 안 받고 문서에 직접 그린다. 첫 화면에 요청을 하나 더 만들 이유가 없다
+ */
+const RINGS: readonly (readonly [number, number])[] = [
+  [240.6, 15.4], [194.6, 11.3], [153.6, 25.6], [112.6, 8.2], [76.8, 35.8], [33.3, 66.6],
+]
+
+function Emblem() {
+  return (
+    <svg className={css.emblem} viewBox="0 0 512 512" aria-hidden focusable="false">
+      <defs>
+        <linearGradient id="rp-metal" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="46%" stopColor="#d6e4f4" />
+          <stop offset="54%" stopColor="#9fb2c6" />
+          <stop offset="100%" stopColor="#7f92a8" />
+        </linearGradient>
+      </defs>
+      {RINGS.map(([r, w]) => (
+        <circle
+          key={r} cx="256" cy="256" r={r}
+          fill="none" stroke="url(#rp-metal)" strokeWidth={w}
+        />
+      ))}
+    </svg>
   )
 }
 

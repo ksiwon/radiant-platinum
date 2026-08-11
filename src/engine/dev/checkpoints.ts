@@ -89,6 +89,32 @@ export interface Checkpoint {
    */
   runningShoes?: boolean
   battle?: DevBattle
+  /**
+   * 시각을 못 박는다 (0~23). 안 주면 지금 시각 그대로다.
+   *
+   * ⚠️ **밤은 따로 가 봐야 한다.** 하늘색·조명·안개가 갈리고 인카운터 표도
+   * 갈리는데(`map/timeOfDay`), 낮에만 뛰어들면 그 절반을 한 번도 안 본다
+   */
+  hour?: number
+  /**
+   * 전당등록 **뒤**의 판인가.
+   *
+   * ⚠️ 배지 수로는 못 가른다 — 챔피언로드도 파이트에리어도 여덟 개다.
+   * 화면이 이 둘을 다른 묶음으로 보여야 해서 여기에 적는다 (`stageOf`)
+   */
+  postGame?: boolean
+}
+
+/**
+ * 이 지점이 이야기의 **어느 단계**인가. 백틱 화면이 이 이름으로 묶는다.
+ *
+ * ⚠️ **배지 수만으로는 안 된다.** 여덟 개짜리가 챔피언로드·사천왕·챔피언과
+ * 엔딩 뒤로 갈리는데, 둘은 갈 수 있는 데도 파티도 아주 다르다
+ */
+export function stageOf(cp: Checkpoint): string {
+  if (cp.postGame === true) return '전당등록 이후'
+  const n = (cp.badges ?? 0).toString(2).replace(/0/g, '').length
+  return n >= 8 ? '전당등록 전' : `배지 ${String(n)}개`
 }
 
 // ── 종족 ──────────────────────────────────────────────────────────────────
@@ -401,6 +427,20 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.pokedex,
   },
   {
+    id: 'grass-night',
+    label: '201번도로 풀숲 (밤)',
+    env: '야외 · 같은 풀숲인데 밤이다 (하늘·조명·인카운터가 전부 갈린다)',
+    try: [
+      '낮과 하늘색·그림자 길이를 견줘 본다',
+      '밤에만 나오는 종이 섞이는지 본다 — 시간대 교체분이 있다',
+      '어두운 화면에서 UI 글자가 읽히는지 본다',
+    ],
+    map: 342,
+    spot: { kind: 'grass' },
+    hour: 22,
+    ...STAGE.pokedex,
+  },
+  {
     id: 'wild',
     label: '야생전 바로',
     env: '배틀 · 야생전 (들어가자마자 열린다)',
@@ -516,6 +556,32 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     battle: { kind: 'trainer', id: 195 },
   },
   {
+    id: 'museum',
+    label: '탄갱박물관',
+    env: '실내 · 전시장 (좁은 방에 NPC 8명이 붙어 선다)',
+    try: [
+      '사람이 몰린 자리에서 판때기가 서로 겹치는지 본다',
+      '전시물 간판을 차례로 읽는다',
+      '좁은 실내에서 카메라가 벽을 뚫는지 본다',
+    ],
+    map: 59,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.oreburgh,
+  },
+  {
+    id: 'mine-deep',
+    label: '무쇠탄갱 지하 (동굴 야생)',
+    env: '실내 · 동굴 안쪽 (어둡고 인카운터가 돈다)',
+    try: [
+      '동굴 인카운터 표가 도로와 다른지 본다',
+      '어두운 실내에서 배틀로 넘어갈 때 밝기가 튀는지 본다',
+      '동굴 곡이 계속 이어지는지 듣는다',
+    ],
+    map: 199,
+    spot: { kind: 'grass' },
+    ...STAGE.oreburgh,
+  },
+  {
     id: 'gym1',
     label: '무쇠 체육관 · 강석 (첫 배지)',
     env: '실내 · 체육관 (바위) · 배지 0개에서 1개로',
@@ -556,6 +622,32 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '가방의 중요한 물건 주머니를 본다',
     ],
     map: 65,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge1,
+  },
+  {
+    id: 'cycle',
+    label: '사이클숍 (자전거를 받는 자리)',
+    env: '실내 · 가게 (좁고 밝다) · 배지 1개',
+    try: [
+      '가방의 중요한 물건 주머니에 자전거가 있는지 본다',
+      '나가서 바로 타 본다 — 속도와 카메라가 따라오는지',
+      '주인에게 말을 건다',
+    ],
+    map: 71,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge1,
+  },
+  {
+    id: 'wayward',
+    label: '미혹의 동굴',
+    env: '실내 취급 · 좁은 동굴 (트레이너가 빽빽하다) · 배지 1개',
+    try: [
+      '좁은 통로에서 눈이 마주쳐 배틀이 열리는지 본다',
+      '연달아 붙는 트레이너전을 치른다',
+      '어두운 동굴의 조명과 발소리를 본다',
+    ],
+    map: 284,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge1,
   },
@@ -604,6 +696,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge2,
   },
   {
+    id: 'contest',
+    label: '콘테스트회장',
+    env: '실내 · 큰 홀 (NPC 11명 · 안쪽 방에 31명)',
+    try: [
+      '넓은 실내의 드로우콜과 프레임을 본다',
+      '사람이 제일 많은 자리에서 판때기가 도는 것을 본다',
+      '콘테스트 곡이 따로 나오는지 듣는다',
+    ],
+    map: 117,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge2,
+  },
+  {
     id: 'gym3',
     label: '연고 체육관 · 멜리사 (고스트)',
     env: '실내 · 체육관 (고스트) · 배지 2개에서 3개로',
@@ -638,6 +743,32 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 132,
     spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge3,
+  },
+  {
+    id: 'depot',
+    label: '장막백화점',
+    env: '실내 · 여러 층짜리 가게 (층마다 재고가 다르다) · 배지 3개',
+    try: [
+      '층을 오르내리며 스트리밍이 끊기는지 본다',
+      '층마다 파는 것이 다른지 본다',
+      '엘리베이터 자리를 찾아 본다',
+    ],
+    map: 137,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge3,
+  },
+  {
+    id: 'gamecorner',
+    label: '게임코너',
+    env: '실내 · 슬롯이 늘어선 방 (반복 소품이 많다) · 배지 3개',
+    try: [
+      '같은 소품이 줄지어 선 자리의 드로우콜을 본다',
+      '기계에 대고 A를 눌러 본다',
+      '실내 곡이 따로 나오는지 듣는다',
+    ],
+    map: 136,
+    spot: { kind: 'warp', index: 0 },
     ...STAGE.badge3,
   },
   {
@@ -706,6 +837,58 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge5,
   },
   {
+    id: 'library',
+    label: '운하도서관',
+    env: '실내 · 서가가 늘어선 방 (책장 간판이 많다) · 배지 5개',
+    try: [
+      '책장 간판을 차례로 읽는다 — 글 뱅크가 맞는지 보는 자리다',
+      '좁은 통로에서 카메라가 서가를 뚫는지 본다',
+      '위층으로 올라가 본다',
+    ],
+    map: 38,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge5,
+  },
+  {
+    id: 'ironworks',
+    label: '골풀무제철소',
+    env: '야외 · 파도타기로만 닿는 자리 (물을 건너 들어간다) · 배지 5개',
+    try: [
+      '물 위에서 뭍으로 오르내려 본다',
+      '파도타기 상태에서 야생이 나오는지 본다',
+      '물결과 반사를 가까이서 본다',
+    ],
+    map: 204,
+    spot: { kind: 'grass' },
+    ...STAGE.badge5,
+  },
+  {
+    id: 'ironisle',
+    label: '강철섬',
+    env: '실내 · 섬 안 동굴 (층이 여럿) · 배지 5개',
+    try: [
+      '층 사이를 오르내리며 높이가 지는 것을 본다',
+      '동굴 인카운터를 본다',
+      '괴력으로 밀 바위가 있는지 찾아 본다',
+    ],
+    map: 293,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge5,
+  },
+  {
+    id: 'valor',
+    label: '진실호수',
+    env: '야외 · 호수 (물이 넓다) · 배지 5개',
+    try: [
+      '넓은 수면의 물결과 하늘 반사를 본다',
+      '물 위 인카운터 표를 본다',
+      '호숫가를 한 바퀴 돈다',
+    ],
+    map: 311,
+    spot: { kind: 'grass' },
+    ...STAGE.badge5,
+  },
+  {
     id: 'gym6',
     label: '운하 체육관 · 동관 (강철)',
     env: '실내 · 체육관 (강철) · 배지 5개에서 6개로',
@@ -741,6 +924,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '밝은 배경 위에서 UI 글자가 읽히는지 본다',
     ],
     map: 165,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge6,
+  },
+  {
+    id: 'coronet-deep',
+    label: '천관산 안쪽',
+    env: '실내 · 큰 동굴 안쪽 (제일 어둡고 층이 많다) · 배지 6개',
+    try: [
+      '동굴 안 높이 변화가 실제로 걸리는지 본다',
+      '어두운 자리의 조명과 안개를 본다',
+      '층을 여러 번 오가며 스트리밍이 버티는지 본다',
+    ],
+    map: 208,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge6,
   },
@@ -784,6 +980,32 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge7,
   },
   {
+    id: 'acuity',
+    label: '입지호수',
+    env: '야외 · 눈 덮인 호수 (밝은 배경) · 배지 7개',
+    try: [
+      '눈과 물이 붙은 자리의 색을 본다',
+      '밝은 배경 위에서 UI 글자가 읽히는지 본다',
+      '눈 위를 걷는 소리를 듣는다',
+    ],
+    map: 315,
+    spot: { kind: 'grass' },
+    ...STAGE.badge7,
+  },
+  {
+    id: 'lighthouse',
+    label: '길잡이등대',
+    env: '실내 · 등대 (높이가 지고 바깥이 보인다) · 배지 7개',
+    try: [
+      '높은 자리에서 바깥 하늘이 보이는지 본다',
+      '위층으로 끝까지 올라간다',
+      '해질녘에 다시 와 본다 — 하늘이 갈린다',
+    ],
+    map: 164,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge7,
+  },
+  {
     id: 'gym8',
     label: '물가 체육관 · 전진 (전기)',
     env: '실내 · 체육관 (전기) · 배지 7개에서 8개로',
@@ -807,6 +1029,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 244,
     spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+  },
+  {
+    id: 'league',
+    label: '포켓몬리그 로비',
+    env: '실내 · 사천왕으로 들어가는 방 · 배지 8개',
+    try: [
+      '배지 여덟 개로 문이 열리는지 본다',
+      '회복과 상점이 붙어 있는지 본다',
+      '리그 곡을 듣는다',
+    ],
+    map: 175,
+    spot: { kind: 'warp', index: 0 },
     ...STAGE.badge8,
   },
   {
@@ -849,6 +1084,77 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     map: 188,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'battlepark',
+    label: '배틀파크',
+    env: '실내 · 엔딩 뒤 시설 (NPC 14명) · 배지 8개',
+    try: [
+      '엔딩 뒤에만 열리는 자리가 실제로 서는지 본다',
+      '안쪽 시설 문으로 들어가 본다',
+      '여기 곡이 따로 나오는지 듣는다',
+    ],
+    map: 322,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'battletower',
+    label: '배틀타워',
+    env: '실내 · 연전 시설 (레벨 50 규칙) · 배지 8개',
+    try: [
+      '접수 NPC에게 말을 건다',
+      '넓은 로비의 드로우콜을 본다',
+      '6마리 파티로 연전을 걸어 본다',
+    ],
+    map: 326,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'resort',
+    label: '리조트에리어',
+    env: '야외 · 엔딩 뒤 해변 마을 (물과 모래) · 배지 8개',
+    try: [
+      '바다와 모래가 붙은 자리의 색을 본다',
+      '해질녘에 다시 와 본다',
+      '레벨이 통째로 높은 야생을 본다',
+    ],
+    map: 457,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'turnback',
+    label: '귀혼동굴',
+    env: '실내 · 엔딩 뒤 동굴 (방이 이어진다) · 배지 8개',
+    try: [
+      '방을 여러 번 오가며 스트리밍이 버티는지 본다',
+      '제일 어두운 자리의 조명을 본다',
+      '레벨 높은 동굴 인카운터를 본다',
+    ],
+    map: 271,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'mart8',
+    label: '프렌들리숍 (배지 8개 재고)',
+    env: '실내 · 상점 — 같은 가게인데 재고가 다르다 · 배지 8개',
+    try: [
+      '배지 0개짜리 상점과 파는 것을 견줘 본다 — 배지 수로 갈린다',
+      '소지금 8만으로 비싼 것을 사 본다',
+      '팔기까지 한 바퀴 돌린다',
+    ],
+    map: 419,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
   },
 ]
 
@@ -930,10 +1236,17 @@ export function resolveSpot(
  */
 function grassSpot(grid: MapGrid, mapId: number): Placement | null {
   const n = grid.chunkTiles
+  // ⚠️ **실내 행렬은 청크에 맵 번호가 없다** (`zone`이 −1). 행렬 하나가 통째로
+  // 한 맵이라 적을 것이 없어서 그런 것인데, 청크를 맵 번호로 거르면 후보가
+  // 0이 되어 버린다 — 동굴과 호수의 풀숲 지점이 전부 "자리를 못 찾았다"로
+  // 나왔다(실측: 무쇠탄갱 지하·진실호수·입지호수). 대습초원처럼 실내 행렬인데도
+  // 맵이 여럿인 자리가 있으므로, **맵 번호가 붙은 청크가 하나라도 있으면**
+  // 그것만 보고 없을 때만 행렬 전체를 본다
+  const mine = grid.meta.chunks.filter((c) => c.zone === mapId)
+  const boxes = mine.length > 0 ? mine : grid.meta.chunks.filter((c) => c.zone < 0)
   const found: number[] = []
   let sx = 0, sz = 0
-  for (const c of grid.meta.chunks) {
-    if (c.zone !== mapId) continue
+  for (const c of boxes) {
     for (let tz = c.my * n; tz < (c.my + 1) * n; tz++) {
       for (let tx = c.mx * n; tx < (c.mx + 1) * n; tx++) {
         if (grid.isBlocked(tx, tz) || !isEncounterTile(grid.behavior(tx, tz))) continue
