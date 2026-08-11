@@ -1,26 +1,15 @@
 // 타이틀 화면.
 //
 // 여기가 게임의 첫인상이라 **게임 화면처럼 보여야 한다.** 가운데 정렬한 버튼
-// 두 개가 아니라, 제목이 화면을 차지하고 그 아래에 고를 것이 놓인 모양이다.
+// 두 개가 아니라, 제목 그림이 화면을 차지하고 그 아래에 고를 것이 놓인 모양이다.
 //
 // ⚠️ **한동안 화면이 통째로 비어 있었다.** 배경 그림을 뺐는데(아래 `sky`)
 // 제목까지 `display: none`인 채로 남아서, 그라디언트만 깔린 검은 화면에 버튼
-// 다섯 개가 떠 있었다. 그림을 되살릴 수는 없다 — 대신 **우리가 그린 추상
-// 표식**(`public/assets/mark.svg`와 같은 고리 여섯)을 크게 놓고 제목을 켠다.
-import { globalStyle, keyframes, style } from '@vanilla-extract/css'
+// 다섯 개가 떠 있었다. 지금은 그림이 돌아왔고 제목도 그 안에 그려져 있다 —
+// 그래서 `crest`는 다시 눈에 안 보이지만, 이번에는 **문서에는 남는다**
+// (`display: none`이 아니라 화면에서만 걷어낸다).
+import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
-
-/** 표식이 아주 천천히 돈다. 완전히 멈춰 있으면 화면이 죽은 것처럼 보인다 */
-const spin = keyframes({
-  from: { transform: 'translate(-50%, -50%) rotate(0deg)' },
-  to: { transform: 'translate(-50%, -50%) rotate(360deg)' },
-})
-
-/** 표식 뒤의 빛이 숨 쉰다 */
-const breathe = keyframes({
-  '0%, 100%': { opacity: 0.55, transform: 'translate(-50%, -50%) scale(1)' },
-  '50%': { opacity: 0.85, transform: 'translate(-50%, -50%) scale(1.06)' },
-})
 
 
 export const wrap = style({
@@ -38,22 +27,27 @@ export const wrap = style({
 })
 
 /**
- * 하늘.
+ * 하늘 — 타이틀 그림.
  *
  * 3D 무대를 띄우지 않는다 — 타이틀은 three.js 없이 떠야 한다(PLAN §10.4).
- * 대신 필드의 낮 하늘과 같은 계열로 칠해서 이어지는 느낌만 남긴다
+ *
+ * ⚠️ **그림 아래에 그라디언트를 남겨 둔다.** 2.3MB짜리 PNG라 첫 프레임에는
+ * 아직 안 와 있고, 오프라인에서는 아예 안 온다(서비스 워커가 이 장은 미리
+ * 안 받는다 — `public/sw.js`). 밑칠이 없으면 그 사이가 검은 화면이다.
+ *
+ * 무엇이 그려져 있는지는 `tools/distribution/shellArt.mjs`에 적혀 있고,
+ * 그것이 `brand-art` release blocker다 (COPYRIGHT.md §11)
  */
 export const sky = style({
   position: 'absolute',
   inset: 0,
   zIndex: -2,
-  // ⚠️ **그림을 쓰지 않는다.** 예전에는 2.4MB짜리 PNG 한 장이었고 그 안에 금속
-  // 질감의 워드마크와 기라티나(오리진 폼)로 보이는 형상이 그려져 있었다 —
-  // 우리가 만든 PNG라 바이트 검사는 전부 통과하는데 화면은 공식처럼 보였다
-  // (COPYRIGHT.md §11). 지금 여기 있는 것은 그라디언트 넷뿐이고, 배포물에서
-  // 2.4MB가 그대로 빠졌다
   backgroundColor: '#070c16',
+  backgroundPosition: 'center',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
   backgroundImage: [
+    "url('/assets/radiant-platinum-intro.png')",
     // 위쪽에서 비스듬히 드는 차가운 빛
     'radial-gradient(120% 90% at 50% -18%, rgba(126, 168, 214, 0.42), transparent 62%)',
     // 지평선 쪽 옅은 온기
@@ -83,112 +77,27 @@ export const head = style({
 })
 
 /**
- * 제목 덩어리 — 표식 · 이름 · 한 줄 설명.
+ * 제목 덩어리 — 이름과 한 줄 설명.
  *
- * ⚠️ 예전에 `display: none`이었다. 배경 그림 안에 제목이 이미 그려져 있었기
- * 때문인데, 그 그림을 뺀 뒤로는 **아무것도 안 남았다**
+ * ⚠️ **화면에서만 걷어낸다.** 제목은 배경 그림 안에 이미 그려져 있어서 글자로
+ * 또 얹으면 두 번 겹친다. 그렇다고 `display: none`으로 두면 스크린 리더에도
+ * 안 잡혀 이 화면에는 제목이 아예 없는 것이 된다 — 그건 그림 안의 글자를
+ * 못 읽는 사람에게 제목을 안 준 것이다.
+ *
+ * 비공식 고지는 여기 들어 있지 않다. 그건 `disclaimer`가 **눈에 보이게**
+ * 들고 있다 (COPYRIGHT.md §11) — 숨긴 자리에 적는 것은 표시한 것이 아니다
  */
 export const crest = style({
   position: 'absolute',
-  left: '50%',
-  top: '43%',
-  transform: 'translate(-50%, -50%)',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 'clamp(6px, 1vh, 12px)',
-  width: 'min(900px, calc(100vw - 32px))',
-})
-
-/**
- * 제목 뒤의 추상 표식 — 퍼져 나가는 고리 여섯.
- *
- * ⚠️ **파일을 안 받는다.** `assets/mark.svg`와 같은 그림이지만 여기서는 문서에
- * 직접 그린다 — 첫 화면에 요청을 하나 더 만들 이유가 없고, 크기와 밝기를 이
- * 자리에 맞춰야 한다. 무엇을 그렸는지는 `tools/distribution/shellArt.mjs`에
- * 적혀 있다: 생물 실루엣도 몬스터볼 모양도 공식 로고 형태도 없다
- */
-export const emblem = style({
-  position: 'absolute',
-  left: '50%',
-  top: '46%',
-  width: 'min(58vh, 560px)',
-  height: 'min(58vh, 560px)',
-  transform: 'translate(-50%, -50%)',
-  animation: `${spin} 240s linear infinite`,
-  opacity: 0.24,
-  pointerEvents: 'none',
-  zIndex: -1,
-})
-
-/**
- * 제목 자리를 눌러 주는 타원.
- *
- * ⚠️ **고리가 글자를 가로지른다.** 표식을 제목 뒤에 두면 선이 글자 획과 섞여
- * 둘 다 안 읽힌다. 그렇다고 상자를 깔면 투박하다 — **가장자리가 없는 타원**으로
- * 가운데만 어둡게 누른다.
- *
- * ⚠️ 이걸 `crest`의 배경으로 두면 안 된다. 그 상자가 그라디언트를 잘라서
- * **가로로 곧은 이음매 두 줄**이 생긴다 — 실측으로 화면에 그대로 보였다.
- * 글자보다 넉넉히 큰 자기 자리를 갖고 있어야 falloff가 끝까지 흐려진다
- */
-export const halo = style({
-  position: 'absolute',
-  left: '50%',
-  top: '43%',
-  width: 'min(1240px, 94vw)',
-  height: 'min(52vh, 460px)',
-  transform: 'translate(-50%, -50%)',
-  borderRadius: '50%',
-  background: [
-    'radial-gradient(closest-side, rgba(4, 7, 13, 0.88) 0%,'
-    + ' rgba(4, 7, 13, 0.60) 38%, rgba(4, 7, 13, 0.22) 62%, transparent 82%)',
-    'radial-gradient(closest-side, rgba(126, 168, 214, 0.20) 26%,'
-    + ' rgba(126, 168, 214, 0.06) 54%, transparent 78%)',
-  ].join(', '),
-  animation: `${breathe} 9s ease-in-out infinite`,
-  pointerEvents: 'none',
-  zIndex: -1,
-})
-
-/** 위에 작게 얹히는 줄 */
-export const brand = style({
-  fontSize: 'clamp(15px, 1.9vw, 22px)',
-  fontWeight: 700,
-  letterSpacing: '0.42em',
-  textIndent: '0.42em',
-  color: '#f7e08a',
-  textShadow: '0 2px 6px rgba(0,0,0,0.6), 0 0 18px rgba(247, 224, 138, 0.35)',
-})
-
-/**
- * 제목.
- *
- * 백금이라 **금속처럼** 보여야 한다 — 위아래로 밝기가 뒤집히는 그라디언트가
- * 그 느낌을 낸다. 글자에 직접 칠하려고 `background-clip`을 쓴다
- */
-export const title = style({
-  margin: 0,
-  fontSize: 'clamp(38px, 6.6vw, 84px)',
-  fontWeight: 800,
-  lineHeight: 1.02,
-  letterSpacing: '0.02em',
-  textAlign: 'center',
-  backgroundImage:
-    'linear-gradient(180deg, #ffffff 0%, #dfe8f2 26%, #9fb2c6 48%,' +
-    ' #f2f6fa 56%, #b9c8d8 74%, #7f92a8 100%)',
-  backgroundClip: 'text',
-  WebkitBackgroundClip: 'text',
-  color: 'transparent',
-  filter: 'drop-shadow(0 3px 0 rgba(30, 48, 74, 0.55)) drop-shadow(0 10px 26px rgba(0,0,0,0.6))',
-})
-
-/** 팬이 만든 것이라는 표시. 감추지 않는다 */
-export const sub = style({
-  fontSize: 'clamp(11px, 1.25vw, 14px)',
-  letterSpacing: '0.16em',
-  opacity: 0.72,
-  textShadow: '0 1px 4px rgba(0,0,0,0.7)',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+  border: 0,
 })
 
 /**

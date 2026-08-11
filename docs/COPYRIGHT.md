@@ -422,6 +422,7 @@ BYOR가 줄이는 것은 **원본 바이트 배포**다. 공개 앱 셸이 공�
 |---|---|---|
 | `assets/radiant-platinum-intro.png` (2.3MB) | ⚠️ 있다 | ⚠️ 기라티나(오리진 폼)로 보이는 형상 |
 | `assets/radiant-platinum-icon.png` (1.2MB) | 없다 | ⚠️ 같은 형상의 머리 |
+| `assets/radiant-platinum-favicon.svg` (102KB) | 없다 | ⚠️ 위 아이콘의 픽셀 그대로 |
 | `assets/radiant-platinum-favicon.png` | 없다 | ⚠️ 위의 축소판 |
 
 이것이 `brand-art` release blocker다. 워드마크를 지우고 캐릭터가 아닌 것으로
@@ -457,7 +458,7 @@ BYOR가 줄이는 것은 **원본 바이트 배포**다. 공개 앱 셸이 공�
 
 | | |
 |---|---|
-| 공식 로고·아트·스크린샷·음악·폰트 | 없다 (셸 5개가 전부고 그중 그림은 3개다) |
+| 공식 로고·아트·스크린샷·음악·폰트 | 없다 (셸 6개가 전부고 그중 그림은 4개다) |
 | Open Graph 이미지 | 없다 |
 | 광고·결제·후원 유도·유료 기능 | 없다 |
 | 분석·telemetry·외부 CDN·광고 SDK | 없다 — CSP `connect-src 'self' blob:`가 구조로 막는다 |

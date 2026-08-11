@@ -24,9 +24,13 @@ const SHELL_FILES = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './assets/mark.svg',
-  './assets/mark-180.png',
+  './assets/radiant-platinum-favicon.svg',
+  './assets/radiant-platinum-favicon.png',
+  './assets/radiant-platinum-icon.png',
 ]
+// ⚠️ 타이틀 배경(`radiant-platinum-intro.png`, 2.3MB)은 **여기 안 적는다.**
+// 설치할 때 받는 것이 셋에서 넷으로 늘면서 3.6MB가 된다. 오프라인에서 그림이
+// 안 오면 `titleScreen.css`의 그라디언트가 그대로 보인다 — 화면은 안 비어 있다
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

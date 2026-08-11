@@ -45,7 +45,7 @@ describe('경로 규칙', () => {
     for (const f of [
       'index.html', 'sw.js', 'manifest.webmanifest',
       'assets/index-DkH2f.js', 'assets/index-91ab.css',
-      'assets/mark-180.png', 'assets/font.woff2',
+      'assets/radiant-platinum-icon.png', 'assets/font.woff2',
     ]) {
       expect(pathViolations(f), f).toEqual([])
     }

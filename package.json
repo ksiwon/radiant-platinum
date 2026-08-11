@@ -23,6 +23,7 @@
     "extract:motionTiming": "py -3.13 tools/extract/bdspMotionTiming.py",
     "assets:manifest": "node tools/assets/manifest.mjs",
     "assets:check": "node tools/assets/manifest.mjs --check",
+    "assets:favicon": "py -3.13 tools/assets/faviconSvg.py",
     "shot": "node tools/shot/shot.mjs",
     "check": "pnpm typecheck && pnpm lint && pnpm test:strict && pnpm test:shimmed",
     "spike:extract": "node tools/spike/extract.js",

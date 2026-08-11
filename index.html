@@ -3,14 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <link rel="icon" type="image/svg+xml" href="/assets/mark.svg" />
+    <!-- ⚠️ SVG를 먼저 준다. 탭·북마크·작업표시줄이 저마다 다른 크기로 쓰는데
+         64px PNG를 늘리면 계단이 진다. 안에 든 것은 아이콘 원본 픽셀 그대로다
+         (`tools/assets/faviconSvg.py` — 선으로 따라 그리면 금빛 기울기가 띠가
+         된다). SVG 파비콘을 안 받는 브라우저는 아래 PNG로 떨어진다 -->
+    <link rel="icon" type="image/svg+xml" href="/assets/radiant-platinum-favicon.svg" />
+    <link rel="alternate icon" type="image/png" sizes="64x64" href="/assets/radiant-platinum-favicon.png" />
     <!-- 홈 화면에 설치하면 전체화면으로 열린다. iOS Safari가 캔버스 전체화면을
          안 주는데(§12.2) 그 우회로이자, 7일 미사용 삭제의 면제 조건이다 (§4.6) -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#0f1420" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="apple-touch-icon" href="/assets/mark-180.png" />
+    <link rel="apple-touch-icon" href="/assets/radiant-platinum-icon.png" />
     <!-- ⚠️ 제목에 "Pokémon"을 앞세우지 않는다 (COPYRIGHT.md §11). 앞세우면 탭
          이름·홈 화면 아이콘·검색 결과가 전부 공식 제품처럼 읽힌다. 상표는
          권리자의 것이고 이 프로젝트는 비공식·비제휴다 -->

@@ -15,16 +15,21 @@
   "theme_color": "#0f1420",
   "icons": [
     {
-      "src": "assets/mark.svg",
+      "src": "assets/radiant-platinum-favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "assets/mark-180.png",
-      "sizes": "180x180",
+      "src": "assets/radiant-platinum-icon.png",
+      "sizes": "1254x1254",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "assets/radiant-platinum-favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
     }
   ]
 }

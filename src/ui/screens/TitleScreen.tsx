@@ -210,15 +210,17 @@ export function TitleScreen() {
 
       <div className={css.head}>
         {/*
+          제목은 배경 그림(`assets/radiant-platinum-intro.png`)이 들고 있다.
+          여기 있는 것은 **읽히기 위한** 제목이다 — `crest`가 화면에서만
+          걷어내므로 스크린 리더와 문서에는 남는다.
+
           ⚠️ 예전에 제목 위에 `POKÉMON`을 얹어 두었다. 그건 공식 로고가 놓이는
-          자리와 같은 배치라, 화면에 안 보이더라도(지금 `crest`는 숨겨져 있다)
-          문서에는 남아 검색과 스크린 리더에 그대로 읽힌다. 뺐다 (COPYRIGHT.md §11)
+          자리와 같은 배치고, 화면에 안 보이더라도 문서에는 남아 검색과 스크린
+          리더에 그대로 읽힌다. 뺐다 (COPYRIGHT.md §11)
         */}
-        <div className={css.halo} aria-hidden />
-        <Emblem />
         <div className={css.crest}>
-          <h1 className={css.title}>Radiant Platinum</h1>
-          <span className={css.sub}>비공식 팬 프로젝트 · 비영리</span>
+          <h1>Radiant Platinum</h1>
+          <span>비공식 팬 프로젝트 · 비영리</span>
         </div>
 
         {report && (
@@ -347,42 +349,6 @@ export function TitleScreen() {
         </Suspense>
       )}
     </div>
-  )
-}
-
-/**
- * 제목 뒤의 추상 표식 — 퍼져 나가는 고리 여섯.
- *
- * ⚠️ **여기 있는 것이 무엇인지 대장에 적혀 있다** (`tools/distribution/shellArt.mjs`).
- * `public/assets/mark.svg`와 같은 그림이고, 생물 실루엣도 몬스터볼 모양도 공식
- * 로고 형태도 없다. 예전에 이 자리에 있던 2.4MB짜리 배경 그림(금속 워드마크 +
- * 기라티나로 보이는 형상)은 **되살리지 않는다** — 그것이 release blocker였다
- * (COPYRIGHT.md §11).
- *
- * 파일로 안 받고 문서에 직접 그린다. 첫 화면에 요청을 하나 더 만들 이유가 없다
- */
-const RINGS: readonly (readonly [number, number])[] = [
-  [240.6, 15.4], [194.6, 11.3], [153.6, 25.6], [112.6, 8.2], [76.8, 35.8], [33.3, 66.6],
-]
-
-function Emblem() {
-  return (
-    <svg className={css.emblem} viewBox="0 0 512 512" aria-hidden focusable="false">
-      <defs>
-        <linearGradient id="rp-metal" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffffff" />
-          <stop offset="46%" stopColor="#d6e4f4" />
-          <stop offset="54%" stopColor="#9fb2c6" />
-          <stop offset="100%" stopColor="#7f92a8" />
-        </linearGradient>
-      </defs>
-      {RINGS.map(([r, w]) => (
-        <circle
-          key={r} cx="256" cy="256" r={r}
-          fill="none" stroke="url(#rp-metal)" strokeWidth={w}
-        />
-      ))}
-    </svg>
   )
 }
 
