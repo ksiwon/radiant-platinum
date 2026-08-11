@@ -10,7 +10,9 @@ import { PerfOverlay } from '../ui/hud/PerfOverlay'
 import { ZoneBanner } from '../ui/hud/ZoneBanner'
 import { dayTheme } from '../ui/theme/day.css'
 import { installAudioUnlock } from '../engine/audio/unlock'
+import { useMenuStore } from '../state/menuStore'
 import { useSessionStore } from '../state/sessionStore'
+import { markMap, markMenu, markScene } from './sceneMark'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
 // ⚠️ **배틀 화면도 지연이다.** 늘 그려 두면(안에서 null을 내더라도) 배틀 UI
@@ -29,6 +31,19 @@ let bootstrapped = false
 export function App() {
   const stageMounted = useSessionStore((s) => s.stageMounted)
   const battleUp = useSessionStore((s) => s.battleScreen)
+
+  // 지금 무엇이 떠 있는지를 `<html>`에 적어 둔다 — 읽기 전용이고 `data-boot`과
+  // 같은 자리다 (`sceneMark.ts`가 왜인지를 적는다)
+  const phase = useSessionStore((s) => s.phase)
+  const mapId = useSessionStore((s) => s.mapId)
+  const menu = useMenuStore((s) => s.top)
+  useEffect(() => {
+    // ⚠️ 순서가 곧 우선순위다. 배틀 위에도 메뉴가 뜨는 일은 없지만, 메뉴 위에
+    // 배틀이 켜지는 일은 있다 (스크립트가 트레이너 배틀을 연다)
+    markScene(battleUp ? 'battle' : menu ? 'menu' : phase === 'overworld' ? 'overworld' : 'title')
+    markMenu(menu)
+    markMap(mapId)
+  }, [battleUp, menu, phase, mapId])
 
   useEffect(() => {
     if (bootstrapped) return

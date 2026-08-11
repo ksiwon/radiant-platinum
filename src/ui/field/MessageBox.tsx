@@ -5,6 +5,7 @@
 // 넣으면 매 프레임 리렌더가 트리 전체로 번진다. 대신 rAF로 들여다보고 **글이
 // 실제로 바뀐 프레임에만** setState 한다 — 보통 속도면 초당 12번쯤이다.
 import { useEffect, useState } from 'react'
+import { markTalk } from '../../app/sceneMark'
 import { fieldScripts } from '../../engine/script/field'
 import type { Line } from '../../engine/script/printer'
 import type { MenuEntry } from '../../engine/script/world'
@@ -81,6 +82,10 @@ export function MessageBox() {
       const key = digest(next)
       if (key === last) return
       last = key
+      // 대사창이 떠 있다는 것을 문서에 적어 둔다 — 읽기 전용이고, 여기서
+      // 적는 이유는 **이 폴링이 유일하게 그 순간을 아는 자리**여서다
+      // (`sceneMark.ts`). 스토어에 올리면 매 프레임 리렌더가 번진다
+      markTalk(next !== null)
       // 줄 배열은 인쇄기가 제자리에서 고치는 것이라 그대로 넘기면 React가
       // 같은 참조로 보고 넘어간다. 얕게 복사해서 새 값으로 만든다
       setView(next === null || next.text === null ? next : {
@@ -89,7 +94,7 @@ export function MessageBox() {
       })
     }
     raf = requestAnimationFrame(poll)
-    return () => { cancelAnimationFrame(raf) }
+    return () => { cancelAnimationFrame(raf); markTalk(false) }
   }, [])
 
   if (view === null) return null
