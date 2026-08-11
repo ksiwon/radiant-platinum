@@ -235,9 +235,12 @@ export function IntroScreen() {
         }
         break
       case 'pokeBall':
-        // 볼을 눌러야 열린다. 키를 누르면 원작처럼 "그 버튼이 아니고"라고 한다
+        // ⚠️ **키로도 열린다.** 원작은 터치 화면이라 볼을 눌러야 하고, 키를
+        // 누르면 "그 버튼이 아니고"라고 나무란다 — 그 말은 그대로 두되 거기서
+        // 막지는 않는다. 여기서 막으면 마우스 없이는 게임을 **시작조차** 못 한다
         if (stage.opened) step(stage.at)
         else if (!stage.nagged) setStage({ ...stage, nagged: true })
+        else setStage({ ...stage, opened: true })
         break
       default: break
     }

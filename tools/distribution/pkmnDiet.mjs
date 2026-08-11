@@ -16,7 +16,6 @@
 // ⚠️ **뺐다고 주장하지 않는다.** 빌드가 끝나면 `provenance.mjs`가 청크 안을 다시
 // 세고, `check.mjs`가 그 숫자를 blocker에 적는다. 이 파일이 하는 말과 그 숫자가
 // 어긋나면 숫자가 이긴다.
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /**
@@ -96,10 +95,30 @@ export const SHIMS = [
  */
 export const KEPT = []
 
-/** `build/esm/` 아래 경로로 정규화. pnpm의 해시 경로를 안 본다 */
+/**
+ * `build/esm/` 아래 경로로 정규화. pnpm의 해시 경로를 안 본다.
+ *
+ * ⚠️ **물음표 뒤를 자른다.** 개발 서버는 모듈 id에 `?v=c1d18f89`를 붙인다.
+ * 안 자르면 `data/pokedex.mjs?v=…`가 되어 아래 규칙(`/^data\/pokedex\.mjs$/`)에
+ * 하나도 안 걸린다 — **빌드에서만 걸리고 개발 서버에서는 통째로 안 걸렸다.**
+ * 그 어긋남이 개발 서버의 배틀을 죽였다 (`sim/bridge.ts`의 검사 참고)
+ */
 function relOf(id) {
-  const at = id.replace(/\\/g, '/').indexOf('/@pkmn/sim/build/esm/')
-  return at < 0 ? null : id.replace(/\\/g, '/').slice(at + '/@pkmn/sim/build/esm/'.length)
+  const path = id.replace(/\\/g, '/').split('?')[0]
+  const at = path.indexOf('/@pkmn/sim/build/esm/')
+  return at < 0 ? null : path.slice(at + '/@pkmn/sim/build/esm/'.length)
+}
+
+/**
+ * 이 모듈 id를 무엇으로 갈아 끼우는가. 안 갈아 끼우면 null.
+ *
+ * 밖으로 내보내는 이유는 **시험 때문**이다. 개발 서버가 붙이는 `?v=` 하나에
+ * 규칙이 통째로 빗나가 개발판만 진짜 표를 들고 돌던 자리라, 그 모양을 직접 잰다
+ */
+export function shimFor(id) {
+  const rel = relOf(id)
+  if (rel === null) return null
+  return SHIMS.find((s) => s.match.test(rel)) ?? null
 }
 
 const PREFIX = '\0pkmn-diet:'
@@ -121,31 +140,6 @@ function EVAL_REPLACEMENT() {
 }
 
 /**
- * 개발 서버의 미리 묶기(esbuild)에도 같은 것을 건다.
- *
- * ⚠️ **안 걸면 개발과 배포가 갈린다.** `optimizeDeps`는 롤업이 아니라 esbuild가
- * 하고, 그 길에는 위 `resolveId`가 안 불린다 — 그러면 개발판만 진짜 표를 들고
- * 돌게 되고, 표가 없어서 나는 문제를 배포 직전에야 만난다. 같은 규칙을 같은
- * 파일에서 읽어 양쪽에 건다
- */
-export function pkmnDietEsbuild() {
-  return {
-    name: 'radiant-pkmn-diet-esbuild',
-    setup(build) {
-      build.onLoad({ filter: /@pkmn[\\/]sim[\\/]build[\\/]esm[\\/].*\.mjs$/ }, (args) => {
-        const rel = relOf(args.path)
-        if (!rel) return null
-        const shim = SHIMS.find((s) => s.match.test(rel))
-        if (shim) return { contents: shim.source, loader: 'js' }
-        if (rel !== EVAL_SITE.file) return null
-        const code = readFileSync(args.path, 'utf8')
-        return { contents: code.replaceAll(EVAL_SITE.from, EVAL_SITE.to), loader: 'js' }
-      })
-    },
-  }
-}
-
-/**
  * @returns {import('vite').Plugin}
  */
 export function pkmnDiet() {
@@ -161,9 +155,7 @@ export function pkmnDiet() {
       const got = await this.resolve(source, importer, { ...options, skipSelf: true })
       if (!got) return null
       const rel = relOf(got.id)
-      if (!rel) return null
-      const shim = SHIMS.find((s) => s.match.test(rel))
-      if (!shim) return null
+      if (rel === null || !shimFor(got.id)) return null
       swapped.add(rel)
       return PREFIX + rel
     },

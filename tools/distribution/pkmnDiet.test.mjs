@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { KEPT, SHIMS } from './pkmnDiet.mjs'
+import { KEPT, SHIMS, shimFor } from './pkmnDiet.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 
@@ -90,6 +90,28 @@ describe('껍데기 규칙이 실제 파일과 맞는다', () => {
     // 하나라도 남으면 그 표가 배포물에 실린다. 규칙이 전부를 덮는지 여기서 센다
     const left = modules.filter((m) => m.startsWith('data/') && !SHIMS.some((s) => s.match.test(m)))
     expect(left).toEqual([])
+  })
+
+  /**
+   * ⚠️ **개발 서버가 붙이는 `?v=` 하나에 규칙이 통째로 빗나갔다.**
+   *
+   * 빌드의 모듈 id는 파일 경로지만 개발 서버의 id는 `…/data/pokedex.mjs?v=c1d18f89`
+   * 같은 URL이다. 물음표 뒤를 안 자르면 `/^data\/pokedex\.mjs$/`에 하나도 안 걸리고,
+   * 그러면 **개발판만** sim의 진짜 표를 들고 돈다. 실제로 그 상태에서 `FormatsData`만
+   * 비어 배틀이 로토무 폼에서 터졌고, 야생도 트레이너도 열리자마자 닫혔다.
+   *
+   * 브라우저 실측(㉖)은 `dist`를 몰기 때문에 이걸 못 잡는다 — 사람이 개발
+   * 서버에서 놀다가 찾았다. 그래서 여기서 잰다
+   */
+  it('개발 서버의 `?v=` 붙은 id도 껍데기로 간다', () => {
+    const base = '/node_modules/.pnpm/@pkmn+sim@0.10.11/node_modules/@pkmn/sim/build/esm'
+    expect(shimFor(`${base}/data/pokedex.mjs`), '빌드 id가 안 걸린다').not.toBe(null)
+    expect(shimFor(`${base}/data/pokedex.mjs?v=c1d18f89`), '개발 id가 안 걸린다').not.toBe(null)
+    expect(shimFor(`${base}/data/index.mjs?v=c1d18f89`)).not.toBe(null)
+    expect(shimFor(`${base}/data/formats-data.mjs?v=c1d18f89`)).not.toBe(null)
+    // 엔진 코드는 그대로 둔다 — 여기까지 갈아 끼우면 sim이 안 돈다
+    expect(shimFor(`${base}/sim/dex.mjs?v=c1d18f89`)).toBe(null)
+    expect(shimFor('/some/other/package/data/pokedex.mjs')).toBe(null)
   })
 })
 

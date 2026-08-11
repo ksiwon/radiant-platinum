@@ -54,6 +54,10 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
     const waiting = battle.current
     if (waiting) {
       battle.current = undefined
+      // ⚠️ **여기서 한 번 더 끊는다.** 아래에서 이미 끊었지만 그것은 맵이 뜬
+      // 프레임이고, 주인공 방의 TV 방송은 그 다음 프레임에 시작한다 — 안 끊으면
+      // 배틀 화면 위에 그 대사창이 겹쳐 뜬다 (실측: 배틀 중에 `data-talk=1`)
+      abortScript()
       if (waiting.kind === 'trainer') void useBattleStore.getState().startTrainer(waiting.id)
       else void useBattleStore.getState().startWild({ species: waiting.species, level: waiting.level })
       return

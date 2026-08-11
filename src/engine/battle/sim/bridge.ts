@@ -16,6 +16,29 @@ import { Dex } from '@pkmn/sim'
 /** 플래티넘은 4세대다. sim의 세대별 덱스를 그 세대로 고정한다 */
 export const gen4 = Dex.forGen(4)
 
+// ⚠️ **개발 서버가 sim의 진짜 표를 들고 도는 것을 여기서 잡는다.**
+//
+// 빌드는 sim의 데이터 모듈 자리에 우리 표를 끼운다(`tools/distribution/pkmnDiet.mjs`).
+// 그 갈아 끼우기가 개발 서버에서만 빠지면 **아무 오류 없이** 배틀이 딴 수치로
+// 돌고, 그보다 나쁘게는 껍데기가 걸린 표와 안 걸린 표가 섞인다 — 실제로
+// `FormatsData`만 비고 `Pokedex`에 폼이 남아서, 아래 `species.all()`이 로토무
+// 폼에서 터졌다. 야생도 트레이너도 열리자마자 닫혔고 화면에는 아무 말도 없었다.
+//
+// 폼은 롬 표에 **절대 안 들어온다**(우리는 493종을 번호로 넣는다). 그러니
+// 로토무 폼이 보이면 그것은 sim의 표다
+// ⚠️ **개발 서버에서만 잰다** (`MODE === 'development'`). 시험은 껍데기 없이
+// sim의 표를 그대로 쓰는 것이 맞다 — `DEV`로 재면 시험 145벌이 여기서 선다
+if (import.meta.env.MODE === 'development') {
+  let simsOwn: boolean
+  try { simsOwn = gen4.species.get('rotomheat').exists } catch { simsOwn = true }
+  if (simsOwn) {
+    throw new Error(
+      '개발 서버가 @pkmn/sim의 진짜 표를 들고 있다 — 미리 묶기가 껍데기를 안 걸었다. '
+      + 'vite.config.ts의 optimizeDeps.exclude에 @pkmn/sim이 있는지 보라',
+    )
+  }
+}
+
 // ⚠️ `Dex.forGen(4)`는 **세대로 거르지 않는다.** 4세대 규칙과 4세대 수치를 얹어
 // 줄 뿐, 표에는 이후 세대 항목이 그대로 남아 있다 — 실측으로 종족 532개, 기술
 // 468개, 특성 193개가 더 들어 있고 전부 `exists: true`다. 그대로 두면 `조로아크`가

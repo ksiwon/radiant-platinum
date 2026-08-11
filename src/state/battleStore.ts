@@ -605,7 +605,11 @@ async function open(
       shiftAsk: controller.shiftAsk,
     })
   } catch (e) {
-    // 배틀 청크를 못 받은 경우(오프라인, 캐시 실패)를 화면이 알아야 한다
+    // ⚠️ **삼키지 않는다.** `phase: 'off'`로 돌아가면 배틀 화면이 곧바로 사라져서
+    // 밖에서는 "잠깐 깜빡이고 필드로 돌아왔다"로만 보인다 — 실제로 그 상태로
+    // 야생도 트레이너도 안 열리는 것을 사람이 눈으로 먼저 찾아냈고, 로그에도
+    // 화면에도 이유가 한 줄도 없었다. 이유는 반드시 어딘가에 남는다
+    console.error('배틀을 못 열었다', e)
     set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
   }
 }

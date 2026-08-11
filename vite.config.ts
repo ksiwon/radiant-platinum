@@ -11,10 +11,19 @@ import { collectProvenance } from './tools/distribution/provenance.mjs'
 // @ts-expect-error — 같은 이유
 import { cspMeta } from './tools/distribution/csp.mjs'
 // @ts-expect-error — 같은 이유
-import { pkmnDiet, pkmnDietEsbuild } from './tools/distribution/pkmnDiet.mjs'
+import { pkmnDiet } from './tools/distribution/pkmnDiet.mjs'
 
 const PUBLIC_DIR = resolve(import.meta.dirname, 'public')
 const AUDIT_DIR = resolve(import.meta.dirname, '.audit')
+
+/**
+ * vitest가 이 설정을 읽고 있는가.
+ *
+ * ⚠️ **설정을 함수로 바꾸지 않는다.** `defineConfig((env) => …)`로 하면
+ * `vitest.shimmed.config.ts`의 `mergeConfig(base, …)`가 함수를 못 합친다.
+ * vitest는 설정을 읽기 전에 이 환경변수를 세운다
+ */
+const TESTING = process.env.VITEST === 'true'
 
 /**
  * 앱의 **판**. SemVer이고 이것만 비교 대상이다.
@@ -164,8 +173,24 @@ export default defineConfig({
     // ⚠️ `pkmnDiet`이 먼저다 — `enforce: 'pre'`로 `resolveId`를 먼저 잡아야
     // 데이터 모듈이 그래프에 들어오기 전에 껍데기로 바뀐다
     pkmnDiet() as Plugin,
-    react(), vanillaExtractPlugin(), appShellOnly(), bundleProvenance(), buildStamp(), cspMetaTag(),
+    react(),
+    // ⚠️ **시험 실행에서는 CSS를 안 굽는다.** 이 플러그인이 시험 시간의 거의
+    // 전부였다 — 배틀 시험 27벌 219초 중 183초, 빈 시험 하나도 76초였다
+    // (`.css.ts` 하나마다 별도의 vite 실행을 띄운다). 대신 `@vanilla-extract/css`를
+    // 대역으로 바꿔 `.css.ts`가 **그대로 실행되게** 둔다 — 이름도 구조도 같고,
+    // 굽지만 않는다 (`tools/test/vanillaExtractStub.ts`)
+    ...(TESTING ? [] : [vanillaExtractPlugin()]),
+    appShellOnly(), bundleProvenance(), buildStamp(), cspMetaTag(),
   ],
+  ...(TESTING
+    ? {
+      resolve: {
+        alias: {
+          '@vanilla-extract/css': resolve(import.meta.dirname, 'tools/test/vanillaExtractStub.ts'),
+        },
+      },
+    }
+    : {}),
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __BUILD_ID__: JSON.stringify(BUILD_ID),
@@ -177,11 +202,30 @@ export default defineConfig({
   // 발견되므로, 그대로 두면 첫 배틀에서 반드시 한 번 튕긴다. 미리 묶어 둔다 —
   // 서버 시작이 몇 초 길어지는 대신 배틀 중에 새로고침이 안 난다
   optimizeDeps: {
-    include: ['@pkmn/sim', '@pkmn/protocol', 'idb-keyval', 'zod', 'zustand/middleware'],
-    // ⚠️ 미리 묶기는 esbuild가 한다 — 위 `pkmnDiet`의 `resolveId`가 안 불린다.
-    // 안 걸면 개발판만 진짜 게임 데이터를 들고 돌고, 표가 없어서 나는 문제를
-    // 배포 직전에야 만난다
-    esbuildOptions: { plugins: [pkmnDietEsbuild() as never] },
+    // ⚠️ `ts-chacha20`은 sim이 쓰는 **CommonJS** 딸림 꾸러미다 (`sim/prng.mjs`).
+    // sim을 미리 묶기에서 빼면 이것도 같이 빠지는데, 브라우저는 CJS를 못 읽어
+    // "does not provide an export named 'Chacha20'"으로 배틀이 선다. 이것만
+    // 따로 미리 묶어 ESM으로 만들어 둔다
+    include: [
+      '@pkmn/protocol', '@pkmn/sim > ts-chacha20',
+      'idb-keyval', 'zod', 'zustand/middleware',
+    ],
+    // ⚠️ **@pkmn/sim은 미리 묶지 않는다.** 미리 묶기는 vite의 플러그인 파이프라인
+    // 밖에서 도는 별개의 번들이라 위 `pkmnDiet`의 `resolveId`가 안 불린다.
+    // 한동안 `optimizeDeps.esbuildOptions.plugins`로 같은 규칙을 걸어 뒀는데,
+    // vite 8은 미리 묶기를 rolldown으로 하고 그 칸은 **조용히 무시된다** —
+    // 그래서 개발판만 sim의 진짜 표(종족 1,517개)를 들고 돌았다.
+    //
+    // 그 어긋남이 개발 서버에서 배틀을 통째로 죽였다: 껍데기가 걸린 모듈과 안
+    // 걸린 모듈이 섞여 `FormatsData`는 비었는데 `Pokedex`에는 폼이 남았고,
+    // `gen4.species.all()`이 로토무 폼에서 "Rotom has no formats-data entry"로
+    // 터졌다. 야생도 트레이너도 열리자마자 닫혔다.
+    //
+    // rolldown용 플러그인을 다시 다는 길도 있지만, 그러면 우리 표(`dex/tables.ts`)가
+    // 미리 묶기 번들 **안으로 복사**돼 앱이 채우는 표와 sim이 읽는 표가 딴
+    // 객체가 된다. 빼는 편이 맞다 — 개발에서도 배포와 **같은 파이프라인**을
+    // 지나가고, sim은 첫 배틀에서 `await import()`로만 들어온다
+    exclude: ['@pkmn/sim'],
   },
   build: {
     target: 'es2022',

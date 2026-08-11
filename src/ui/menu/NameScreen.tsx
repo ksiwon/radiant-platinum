@@ -43,16 +43,36 @@ export function NameScreen() {
     return () => { alive = false }
   }, [locale, what])
 
-  if (!what) return null
-
   /**
    * 결정한다. **빈 이름은 안 바꾼 것으로 친다** — 원작도 이름을 비우면 종족
    * 이름으로 되돌린다(`Pokemon_SetValue`가 기본 이름을 다시 넣는다)
    */
   const done = (name: string): void => {
+    if (!what) return
     naming.answer = { name: name.trim(), slot: what.slot }
     closeAll()
   }
+
+  /**
+   * Esc로 그냥 지나간다 — 원작의 B다.
+   *
+   * ⚠️ **`useMenuKeys`를 못 쓴다.** 그쪽은 X와 Backspace도 "물러난다"로 잡고
+   * `preventDefault`까지 하는데, 여기는 글자를 치는 자리라 그러면 이름에 x를
+   * 못 넣고 지우지도 못한다. 그래서 Esc 하나만 따로 듣는다.
+   *
+   * 마우스 없이도 이 화면을 빠져나갈 수 있어야 한다 — Enter로 결정, Esc로 통과
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.code !== 'Escape' || what === null) return
+      e.preventDefault()
+      done('')
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => { window.removeEventListener('keydown', onKey, true) }
+  })
+
+  if (!what) return null
 
   return (
     <div className={css.center}>
