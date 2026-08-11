@@ -178,6 +178,11 @@ stateDiagram-v2
 `?boot=play:opfs` · `#play:opfs` · `localStorage` · `sessionStorage` · 표식을
 손으로 고치기 — **다섯 다 안 먹는다.** 진입 청크에 그 표식을 *읽는* 코드도 없다.
 
+게임에 들어간 뒤의 상태도 같은 자리에 같은 규칙으로 적는다 — 지금 무엇이
+떠 있고 어느 맵의 어느 칸인지, 스크립트가 도는 중인지, 배틀이 야생인지
+트레이너인지(`src/app/sceneMark.ts`). 목록과 그것이 왜 필요한지는 DEPLOY.md §5에
+있다. 값은 번호와 좌표뿐이고 **롬에서 온 글은 안 적는다** (COPYRIGHT.md §6).
+
 ---
 
 ## 5. 입력 검증
