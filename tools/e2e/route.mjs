@@ -21,6 +21,13 @@ const json = (rel) => JSON.parse(readFileSync(resolve(DATA, rel), 'utf8'))
 
 /** `map/zone.ts`와 같은 값이어야 한다 */
 const IMPASSABLE = 0x8000
+/**
+ * `TILE_BEHAVIOR_TABLE` — 계산대·탁자 (`map/world.ts`와 같은 값).
+ *
+ * 이 칸을 앞에 두고 말을 걸면 게임이 **한 칸 더** 본다(`talkTile`). 점원과
+ * 간호사가 전부 그 너머에 서므로, 모르면 상점에 영영 못 닿는다
+ */
+export const TILE_TABLE = 0x80
 
 const maps = json('maps.json').maps
 const events = json('events.json').events

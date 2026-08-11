@@ -20,6 +20,7 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
+import { driveStory, playOpening } from './drive.mjs'
 import {
   fakeBdsp, readInstalled, readInstalledLight,
   REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS, SYNTHETIC,
@@ -67,7 +68,17 @@ const skip = (id, what) => {
 
 const server = await serveDist(DIST)
 const origin = server.url
-const browser = await chromium.launch({ args: ['--enable-precise-memory-info'] })
+/**
+ * ⚠️ **ANGLE 백엔드를 못 박는다.** 안 그러면 헤드리스가 SwiftShader로 떨어져
+ * 게임이 **6FPS**로 돈다 — 그러면 ㉖처럼 플레이해서 닿아야 하는 시험이
+ * 몇 시간짜리가 된다. D3D11로 주면 같은 헤드리스가 진짜 GPU를 잡는다
+ * (실측 6 → 60FPS). WebGPU는 여전히 없으므로 **성능을 재는 것이 아니다**
+ * (DEPLOY.md §5).
+ */
+const GPU = process.platform === 'win32'
+  ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist']
+  : ['--enable-gpu', '--ignore-gpu-blocklist']
+const browser = await chromium.launch({ args: ['--enable-precise-memory-info', ...GPU] })
 
 /** 새 컨텍스트 하나. OPFS도 캐시도 매번 새것이다 */
 async function fresh() {
@@ -1177,14 +1188,63 @@ await ((haveRom && haveBdsp) ? run : () => {})(
   },
 )
 
-// ── 못 재는 것 ───────────────────────────────────────────────────────────────
-record('26', '야생/트레이너 배틀 · 상점', 'NOT RUN',
-  '표식은 냈고(`data-scene`·`data-map`·`data-tile`·`data-script`) 그것으로 진짜 설치본을 '
-  + '다섯 번 몰아 봤다 — 오프닝 완주 · 맵 셋(411 야외 · 415 · 414 실내) · NPC 대사 · '
-  + '70칸 이동 · 콘솔 오류 0. 배틀과 상점에는 못 닿았다: 헤드리스가 WebGL2 폴백이라 '
-  + '게임이 6FPS로 돌아 그 앞까지 몰려면 몇 시간이 든다. 그리고 다섯 번 중 세 번은 '
-  + '실내 맵 414에서 걸음이 영영 멈췄다 — 그 자리를 고치기 전에 본 시험에 넣으면 '
-  + '깜빡이는 시험이 되고, 깜빡이는 시험은 회귀를 못 잡는다')
+// ── ㉖ 이야기를 끝까지 몬다 — 배틀 둘과 상점 ────────────────────────────────
+//
+// ⚠️ **㉕가 안 재는 것이 여기 있다.** 그쪽은 새 게임에서 오버월드까지고, 야생·
+// 트레이너 배틀과 상점은 이야기를 한참 몰아야 닿는 자리다.
+//
+// ⚠️ **길은 자료에서 계산한다** (`route.mjs`). 무작위로 걸으면 침실 21칸을
+// 맴돌다 끝난다 — 실측으로 열 번 그랬다. 그렇다고 게임에 뒷문을 내는 것은
+// 아니다: 여기서 나오는 것은 방향키 목록뿐이고, 실제로 갈 수 있는지는
+// 브라우저가 `data-tile`로 답한다.
+//
+// ⚠️ **운에 안 걸리게 짠다.** 지나가다 야생을 만나기를 기다리면 실행마다
+// 0회~3회로 갈린다. 풀 칸을 일부러 밟고, 트레이너와 점원은 **옆에 서서 마주
+// 보고 말을 건다** — 우리 게임은 사람이 이동을 안 막아서 그 칸을 목적지로
+// 잡으면 사람 위로 올라서 버린다 (`actor/obstacles.ts`)
+
+const STORY_NAME = 'TESTER'
+
+if (!(haveRom && haveBdsp)) {
+  record('26', '야생 배틀 · 트레이너 배틀 · 상점', 'NOT RUN',
+    ROM === null ? '이 기계에 Platinum 롬이 없다' : '이 기계에 BDSP 덤프가 없다')
+}
+
+await ((haveRom && haveBdsp) ? run : () => {})(
+  '26', '야생 배틀 · 트레이너 배틀 · 상점',
+  async ({ page, requests, errors }) => {
+    page.setDefaultTimeout(60_000)
+    await page.goto(`${origin}/`, { waitUntil: 'load' })
+    await waitBoot(page)
+    await armWizard(page, BDSP, 300_000)
+    await page.getByRole('button', { name: '설치 시작' }).click()
+    await page.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 })
+    const mark = requests.length
+
+    await page.getByRole('button', { name: '새로운 모험 시작하기' }).click()
+    await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
+    const after = await playOpening(page, STORY_NAME)
+    assert(after === '/play', `오프닝이 안 끝났다 — ${after}`)
+
+    const story = await driveStory(page, { totalMs: 900_000 })
+    const say = `맵 ${story.maps.join('·')} · 야생 ${String(story.wild)} · `
+      + `트레이너 ${String(story.trainer)} · 상점 ${String(story.shops)} · ${String(story.seconds)}초`
+    assert(story.trouble.length === 0, `${story.trouble.join(' | ')} (${say})`)
+    assert(story.wild > 0, `야생 배틀에 못 닿았다 — ${say}`)
+    assert(story.trainer > 0, `트레이너 배틀에 못 닿았다 — ${say}`)
+    assert(story.shops > 0, `상점이 안 열렸다 — ${say}`)
+
+    const leaked = [
+      ...contentRequests(requests.slice(mark)), ...outsideRequests(requests.slice(mark)),
+    ]
+    assert(leaked.length === 0, `게임 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
+    const fatal = errors.filter((e) => !/ResizeObserver|WebGL|Download the React/.test(e))
+    assert(fatal.length === 0, `콘솔 오류: ${fatal.slice(0, 2).join(' / ')}`)
+
+    return `${say} · 게임 중 요청 0건 · 콘솔 오류 0건`
+  },
+)
+
 record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
   '호스트를 안 정했다 (blocker 2). 이 하네스는 우리가 띄운 서버라 증거가 안 된다 — '
   + 'pnpm verify:deploy <url>')

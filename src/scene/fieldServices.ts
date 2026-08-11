@@ -159,10 +159,15 @@ const services: FieldServices = {
   startTrainerBattle(trainerID: number): void {
     battleResult = null
     waiting = true
-    void useBattleStore.getState().startTrainer(trainerID).catch(() => {
+    void useBattleStore.getState().startTrainer(trainerID).catch((e: unknown) => {
       // 배틀을 못 열면 스크립트가 영영 기다린다. 진 것으로 놓아준다
       battleResult = 'loss'
       waiting = false
+      // ⚠️ **조용히 넘기면 안 된다.** 한때 여기서 소리 없이 삼켰더니 브라우저
+      // 실측에서 트레이너전이 **한 번도 안 열리는데** 이야기는 그냥 지나갔다 —
+      // 배틀이 없었다는 것을 아무도 몰랐다. 못 여는 것은 이상한 일이므로 남긴다
+      console.error(`트레이너 #${String(trainerID)} 배틀을 못 열었다:`,
+        e instanceof Error ? e.message : String(e))
     })
   },
 
