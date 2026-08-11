@@ -12,6 +12,7 @@ import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
 import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
+import { markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { spinBike } from './BikeModel'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
@@ -65,6 +66,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
 
   useFrame((state, delta) => {
     gameLoop.tick(delta)
+
+    // 서 있는 칸을 문서에 적어 둔다 — 읽기 전용이고 `data-boot`과 같은 자리다
+    // (`sceneMark.ts`). 프레임마다 부르지만 **칸이 바뀔 때만** 쓴다
+    markTile(worldState.player.position.x, worldState.player.position.z)
 
     // 씬 동기화 — 렌더 보간 (prev → current, alpha)
     const p = worldState.player

@@ -53,3 +53,22 @@ export function markMenu(name: string | null): void {
 export function markTalk(on: boolean): void {
   put('talk', on ? '1' : null)
 }
+
+/**
+ * 서 있는 칸 — `data-tile="12,-34"`.
+ *
+ * ⚠️ **왜 필요한가.** 오버월드는 거의 전부가 캔버스라 "움직였는가"를 밖에서
+ * 알 길이 없다. 벽에 붙어 있는지 걷고 있는지를 못 가르면 자동 검사가 제자리를
+ * 걷는 것을 통과로 읽는다 — 실제로 다섯 걸음마다 방향을 바꾸는 걷기가
+ * 알짜 이동 0인 채로 5분을 태웠고, 그때 화면에는 아무 표시도 없었다.
+ * 지원 문의에도 같은 값이 필요하다 ("여기서 못 나가요").
+ *
+ * ⚠️ **좌표는 게임 데이터가 아니다.** 플레이어가 지금 어디 서 있는지고
+ * 롬에서 온 글도 표도 아니다.
+ *
+ * 프레임마다 불리지만 **칸이 바뀔 때만** 쓴다 — 매 프레임 DOM을 만지면
+ * 레이아웃이 흔들린다
+ */
+export function markTile(x: number, z: number): void {
+  put('tile', `${String(Math.round(x))},${String(Math.round(z))}`)
+}
