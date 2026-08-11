@@ -523,7 +523,9 @@ describe('우리 가방에서 도구를 쓴다', () => {
     // 벤치의 `-heal`을 프로토콜로 흘리면 뷰가 **자리로** 접기 때문에 나와 있는
     // 마리의 게이지가 움직인다. 원본도 배틀 개체 사본은 안 건드린다
     // (`selectedSlot == partySlot`일 때만 같이 고친다)
-    const controller = await hurt(13, [TURTWIG, BLISSEY])
+    // ⚠️ 씨앗 13은 모부기가 **깎이는 게 아니라 쓰러진다** — 그러면 벤치로
+    // 보낼 것이 없어 시나리오가 아예 안 선다. 실측으로 서는 씨앗을 골랐다
+    const controller = await hurt(14, [TURTWIG, BLISSEY])
     // 깎인 애를 벤치로 보낸다. 해피너스는 두꺼워서 그동안 안 쓰러진다
     let bench: string | undefined
     for (let i = 0; i < 10; i++) {

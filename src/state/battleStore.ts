@@ -543,6 +543,12 @@ async function open(
   })
 
   try {
+    // ⚠️ **표를 먼저 채운다.** sim의 데이터 폴더는 빌드에서 빠져 있고 종족값·
+    // 위력은 사용자의 롬에서 온다 (`dex/provider.ts`). sim이 표를 한 번 읽으면
+    // 그 결과를 캐시하므로, 비어 있는 채로 그 순간이 지나가면 그 뒤로 아무리
+    // 채워도 종족을 하나도 모르는 심판이 된다
+    const { primeBattleDex } = await import('../engine/battle/dex/provider')
+    await primeBattleDex()
     const [{ BattleController }, species, moves, bank] = await Promise.all([
       import('../engine/battle/sim/controller'),
       loadSpecies(),

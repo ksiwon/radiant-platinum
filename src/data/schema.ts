@@ -61,6 +61,14 @@ export const speciesSchema = z.object({
   abilities: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
   safariFlee: z.number().int().min(0).max(255),
   color: z.number().int().min(0).max(63),
+  /**
+   * 키(데시미터)와 몸무게(헥토그램). `zukan_data.narc` 멤버 0·1이다.
+   *
+   * 배틀이 쓰는 숫자다 — 저울질과 풀묶기의 위력이 몸무게에서 나온다. 폼 자리
+   * (494번 뒤)는 표에 칸이 없어서 0이다
+   */
+  heightDm: z.number().int().min(0),
+  weightHg: z.number().int().min(0),
   /** 기술머신 학습 비트필드 128비트 = 32자리 hex */
   tm: z.string().regex(/^[0-9a-f]{32}$/),
   evolutions: z.array(evolutionSchema),

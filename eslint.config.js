@@ -81,7 +81,9 @@ const DESCRIBE_SKIP_FORBIDDEN = {
 }
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'raw/**', 'tools/**', 'node_modules/**'] },
+  // `src/engine/battle/dex/vendor`는 생성물이다 — `@pkmn/sim`(MIT)의 4세대
+  // 구현을 **한 글자도 안 고치고** 옮긴 것이라 우리 규칙으로 재면 안 된다
+  { ignores: ['dist/**', 'raw/**', 'tools/**', 'node_modules/**', 'src/engine/battle/dex/vendor/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

@@ -10,7 +10,7 @@ import type { Species } from '../../../data/schema'
 import type { BattleRequest, FinalMon, SideId } from '../events'
 import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
-import { maxPpOf, natureOf } from '../../pokemon/instance'
+import { genderOf, maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simMove, simSpecies } from './bridge'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
@@ -21,6 +21,9 @@ const NATURE_NAMES = [
   'Modest', 'Mild', 'Quiet', 'Bashful', 'Rash',
   'Calm', 'Gentle', 'Sassy', 'Careful', 'Quirky',
 ] as const
+
+/** 우리 성별 이름 → sim이 쓰는 한 글자 */
+const SIM_GENDER = { male: 'M', female: 'F', genderless: 'N' } as const
 
 export interface SideMon {
   mon: PokemonInstance
@@ -94,7 +97,10 @@ function toSet(side: SideMon, idle: boolean) {
     // 빈 문자열이면 sim이 종족의 첫 특성을 쓴다 — 절반이 조용히 틀리므로 반드시 잇는다
     ability: simAbility(abilityId) ?? '',
     item: '',
-    gender: '' as const,
+    // ⚠️ **비워 두면 sim이 자기가 굴린다.** 우리 개체의 성별은 이미 PID로
+    // 정해져 있는데(`(pid & 0xff) < 성비`) 그것과 따로 굴리면 화면에 ♀로 뜨는
+    // 애가 배틀 안에서는 ♂가 되고, 매혹·헤롱헤롱·투쟁심이 반대로 돈다
+    gender: SIM_GENDER[genderOf(mon.pid, species.genderRatio)],
     nature: NATURE_NAMES[natureOf(mon.pid)]!,
     ivs: { ...mon.ivs },
     evs: { ...mon.evs },

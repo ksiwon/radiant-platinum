@@ -58,19 +58,38 @@ describe('껍데기 규칙이 실제 파일과 맞는다', () => {
   it('껍데기가 원본과 같은 이름을 내보낸다', () => {
     // 이름 하나만 어긋나도 `dex.mjs`가 `undefined`를 스프레드한다
     for (const shim of SHIMS) {
-      const names = [...shim.source.matchAll(/export const (\w+)/g)].map((m) => m[1])
+      // 껍데기는 두 꼴이다: 빈 표(`export const X = {}`)와 우리 표를 다시
+      // 내보내는 것(`export { X, Y } from '…'`). 둘 다에서 이름을 뽑는다
+      const names = [
+        ...[...shim.source.matchAll(/export const (\w+)/g)].map((m) => m[1]),
+        ...[...shim.source.matchAll(/export \{([^}]*)\} from/g)]
+          .flatMap((m) => m[1].split(',').map((x) => x.trim()).filter(Boolean)),
+      ]
       if (names.length === 0) continue   // `export {}` — 모드 index는 이름이 없다
       const sample = modules.find((m) => shim.match.test(m))
       const real = readFileSync(join(esmDir(), sample), 'utf8')
       for (const name of names) {
-        expect(real, `${sample}에 ${name}이 없다`).toMatch(new RegExp(`export const ${name}\\b`))
+        // 원본도 두 꼴이다 — `data/index.mjs`는 다시 내보내기만 한다
+        expect(real, `${sample}에 ${name}이 없다`)
+          .toMatch(new RegExp(`export (const ${name}\\b|\\{[^}]*\\b${name}\\b)`))
       }
     }
   })
 
-  it('아직 못 뺀 것마다 이유가 적혀 있다', () => {
-    expect(KEPT.length).toBeGreaterThan(0)
+  it('안 갈아 끼운 것마다 이유가 적혀 있다 — 지금은 하나도 없다', () => {
     for (const k of KEPT) expect(k.why.length, k.file).toBeGreaterThan(10)
+  })
+
+  it('굽기가 안 낡았다 — 설치된 패키지로 다시 구워도 같은 파일이 나온다', () => {
+    // ⚠️ **낡으면 배포판만 조용히 옛 구현으로 돈다.** 패키지를 올려도 `src/`의
+    // 생성물은 그대로이기 때문이다. 여기서 다시 구워 맞대 본다
+    execFileSync('node', ['tools/distribution/mechanics/bake.mjs', '--check'], { cwd: ROOT })
+  })
+
+  it('`data/` 아래 모듈이 하나도 안 남는다', () => {
+    // 하나라도 남으면 그 표가 배포물에 실린다. 규칙이 전부를 덮는지 여기서 센다
+    const left = modules.filter((m) => m.startsWith('data/') && !SHIMS.some((s) => s.match.test(m)))
+    expect(left).toEqual([])
   })
 })
 
@@ -96,20 +115,13 @@ describe('배포물에 표가 없다', () => {
   it.skipIf(!audit)('남은 것은 `KEPT`에 적힌 것뿐이다', () => {
     // 규칙에도 안 걸리고 적혀 있지도 않은 모듈이 있으면, 아무도 판단 안 한 표가
     // 배포물에 있다는 뜻이다
-    const listed = (rel) => KEPT.some((k) => {
-      const pat = k.file.replace('gen4..gen8/*', 'gen[45678]/')
-      return rel === pat || rel.startsWith(pat)
-    })
-    const unexplained = shipped.filter((m) => !listed(m.rel) && !/^data\/mods\/gen[45678]\//.test(m.rel))
-      .map((m) => m.rel)
-    expect(unexplained).toEqual([])
+    const listed = (rel) => KEPT.some((k) => rel === k.file || rel.startsWith(k.file))
+    expect(shipped.filter((m) => !listed(m.rel)).map((m) => m.rel)).toEqual([])
   })
 
-  it.skipIf(!audit)('남은 표의 총량이 잰 값 아래다 — 늘면 잡는다', () => {
-    const bytes = shipped.reduce((a, m) => a + m.bytes, 0)
-    // 8,881,507 → 1,732,260 (실측). 다시 2MB를 넘으면 무언가 되돌아온 것이다
-    expect(bytes).toBeGreaterThan(0)
-    expect(bytes).toBeLessThan(2_000_000)
+  it.skipIf(!audit)('배포물에 남은 표가 0바이트다', () => {
+    // 8,881,507 → 1,732,260 → 0 (실측). 되돌아오면 여기서 잡는다
+    expect(shipped.reduce((a, m) => a + m.bytes, 0)).toBe(0)
   })
 
   it.skipIf(files.length === 0)('⚠️ `eval(`이 한 군데도 없다 — CSP를 열 이유가 없다', () => {

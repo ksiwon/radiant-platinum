@@ -47,7 +47,9 @@ function productionImports(dir) {
       const childRel = rel ? `${rel}/${e.name}` : e.name
       if (e.isDirectory()) { walk(child, childRel); continue }
       if (!/\.tsx?$/.test(e.name)) continue
-      if (/\.test\.tsx?$|\.testkit\.ts$/.test(e.name)) continue
+      // ⚠️ `.test.` 뒤에 꼬리가 더 붙는 시험이 있다 — `shimmed.test.shim.ts`는
+      // 기본 실행이 안 줍게 이름 끝을 다르게 둔 것이고, 그래도 시험이다
+      if (/\.(test|testkit)\.(.*\.)?tsx?$/.test(e.name)) continue
       const text = readFileSync(child, 'utf8')
       for (const m of text.matchAll(/import\s+(?!type\s)(?:[^;'"]*?from\s*)?'([^']+)'/g)) {
         out.push([`src/${childRel}`, m[1]])

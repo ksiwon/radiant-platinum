@@ -123,8 +123,12 @@ describe('AI가 실제로 이긴다', () => {
     // 바뀌었거나 sim 버전이 올라간 것이고, 둘 다 눈에 띄어야 하는 변화다.
     // 예전에는 `offRate > 0.3`이었고 실측이 정확히 0.375였다. 문턱에 붙은
     // 부등호라 판 하나가 뒤집힐 때마다 깜빡였고, 깜빡이는 시험은 회귀를 못 잡는다
-    expect(off.wins, '기준선(무작위 대 무작위)').toBe(15)
-    expect(on.wins, 'AI를 꽂은 쪽').toBe(34)
+    //
+    // ⚠️ 15·34 → 18·32로 옮겼다. 개체를 넣을 때 **성별을 글자로 박아** 넘기게 되면서
+    // (`session.ts`의 `toSet`) sim이 성별을 안 굴리고, 그만큼 난수 흐름이
+    // 밀렸다. AI가 나빠진 것이 아니라 같은 씨앗이 다른 판이 된 것이다
+    expect(off.wins, '기준선(무작위 대 무작위)').toBe(18)
+    expect(on.wins, 'AI를 꽂은 쪽').toBe(32)
 
     const offRate = off.wins / off.played
     const onRate = on.wins / on.played

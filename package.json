@@ -24,7 +24,7 @@
     "assets:manifest": "node tools/assets/manifest.mjs",
     "assets:check": "node tools/assets/manifest.mjs --check",
     "shot": "node tools/shot/shot.mjs",
-    "check": "pnpm typecheck && pnpm lint && pnpm test:strict",
+    "check": "pnpm typecheck && pnpm lint && pnpm test:strict && pnpm test:shimmed",
     "spike:extract": "node tools/spike/extract.js",
     "spike:text": "node tools/spike/text-test4.js",
     "gen:charmap": "node tools/extract/charmapModule.cjs",
@@ -69,7 +69,9 @@
     "verify:deploy": "node tools/distribution/verifyDeploy.mjs",
     "audit:history": "node tools/distribution/auditHistory.mjs",
     "check:worker": "node tools/shot/workerCheck.mjs",
-    "e2e": "node tools/e2e/run.mjs"
+    "e2e": "node tools/e2e/run.mjs",
+    "bake:mechanics": "node tools/distribution/mechanics/bake.mjs",
+    "test:shimmed": "vitest run --config vitest.shimmed.config.ts"
   },
   "dependencies": {
     "@pkmn/protocol": "^0.7.3",

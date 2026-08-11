@@ -73,6 +73,35 @@ function parseLearnset(b) {
   return out
 }
 
+/**
+ * 키·몸무게 (`application/zukanlist/zkn_data/zukan_data.narc` 멤버 0·1).
+ *
+ * ⚠️ **글 뱅크가 아니다.** 화면에 찍는 `1.0 m`은 따로 있고, 배틀이 쓰는 것은
+ * 여기 있는 `int[494]`다 — 데시미터와 헥토그램이다. 저울질과 풀묶기의 위력이
+ * 이 숫자에서 나온다. 폼 자리(494번 뒤)는 표에 칸이 없어서 0이다.
+ *
+ * ⚠️ **기라티나 한 마리만 표가 둘이다.** 기본 표는 오리진(6.9m·650kg)이고
+ * 어나더(4.5m·750kg)는 `zukan_data_gira.narc`에 있다 — 원작이 폼에 따라
+ * NARC을 갈아 끼운다(`Pokedex_SetupGiratina`)
+ */
+const GIRATINA = 487
+
+function readSizes(rom) {
+  const ints = (b) => Array.from({ length: b.length >> 2 }, (_, i) => b.readInt32LE(i * 4))
+  const read = (p) => {
+    const m = rom.narc(p)
+    return [ints(m[0]), ints(m[1])]
+  }
+  const [heightDm, weightHg] = read('/application/zukanlist/zkn_data/zukan_data.narc')
+  if (heightDm.length !== weightHg.length) {
+    throw new Error(`키 ${heightDm.length}칸 ≠ 몸무게 ${weightHg.length}칸`)
+  }
+  const [giraH, giraW] = read('/application/zukanlist/zkn_data/zukan_data_gira.narc')
+  heightDm[GIRATINA] = giraH[GIRATINA]
+  weightHg[GIRATINA] = giraW[GIRATINA]
+  return { heightDm, weightHg }
+}
+
 function extractSpecies(rom, text) {
   const personal = rom.narc('/poketool/personal/pl_personal.narc')
   const evo = rom.narc('/poketool/personal/evo.narc')
@@ -81,12 +110,21 @@ function extractSpecies(rom, text) {
     throw new Error('personal/evo/wotbl 개수 불일치 — 인덱스 축이 다르다')
   }
 
+  const size = readSizes(rom)
+
   const species = []
   for (let id = 0; id < personal.length; id++) {
     const p = parsePersonal(personal[id])
     // #0은 자리표시자다. 종족값이 전부 0이면 실체가 없는 슬롯으로 본다
     if (STAT_ORDER.every((k) => p.stats[k] === 0)) continue
-    species.push({ id, ...p, evolutions: parseEvo(evo[id]), learnset: parseLearnset(wotbl[id]) })
+    species.push({
+      id,
+      ...p,
+      heightDm: size.heightDm[id] ?? 0,
+      weightHg: size.weightHg[id] ?? 0,
+      evolutions: parseEvo(evo[id]),
+      learnset: parseLearnset(wotbl[id]),
+    })
   }
 
   // 이름 배열은 **종족 번호로 색인**한다. species 배열 순서로 색인하면 id와 어긋나서

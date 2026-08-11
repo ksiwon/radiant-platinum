@@ -157,6 +157,47 @@ async function dexOrder(fs: NdsFileSystem): Promise<{ sinnohOf: number[], sinnoh
   return { sinnohOf, sinnohDex: speciesOf }
 }
 
+/**
+ * 키·몸무게 (`application/zukanlist/zkn_data/zukan_data.narc` 멤버 0·1).
+ *
+ * ⚠️ **글 뱅크가 아니다.** 화면에 찍는 `1.0 m` 같은 문자열은 따로 있고, 배틀이
+ * 쓰는 것은 여기 있는 `int[494]`다 — 데시미터와 헥토그램이다. 저울질과
+ * 풀묶기의 위력이 이 숫자에서 나오므로 근사하면 위력이 틀린다.
+ *
+ * ⚠️ **기라티나 한 마리만 표가 둘이다.** 기본 표는 오리진(6.9m·650kg)을 들고
+ * 있고 어나더(4.5m·750kg)는 `zukan_data_gira.narc`에 따로 있다 — 원작이 폼에
+ * 따라 NARC을 갈아 끼운다(`Pokedex_SetupGiratina`). 폼 번호 없는 #487은
+ * 어나더이므로 그 자리만 저쪽 표에서 읽는다. **둘 다 롬에 있으므로 근사할
+ * 일이 없다** (실측: 나머지 492종은 두 표가 같은 값이다)
+ */
+const GIRATINA = 487
+
+async function readSizes(fs: NdsFileSystem, count: number): Promise<{ heightDm: number[], weightHg: number[] }> {
+  const ints = (b: Uint8Array): number[] => {
+    const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
+    return Array.from({ length: Math.floor(b.byteLength / 4) }, (_, i) => view.getInt32(i * 4, true))
+  }
+  const read = async (path: string): Promise<[number[], number[]]> => {
+    const [heights, weights] = await readAll(fs, path)
+    if (!heights || !weights) throw new Error(`${path}에 멤버가 둘 미만이다`)
+    return [ints(heights), ints(weights)]
+  }
+  const [heightDm, weightHg] = await read('/application/zukanlist/zkn_data/zukan_data.narc')
+  if (heightDm.length !== weightHg.length) {
+    throw new Error(`키 ${String(heightDm.length)}칸 ≠ 몸무게 ${String(weightHg.length)}칸`)
+  }
+  if (heightDm.length < count) {
+    throw new Error(`크기 표가 ${String(heightDm.length)}칸인데 종족은 ${String(count)}번까지 있다`)
+  }
+  const [giraH, giraW] = await read('/application/zukanlist/zkn_data/zukan_data_gira.narc')
+  const h = giraH[GIRATINA]
+  const w = giraW[GIRATINA]
+  if (h === undefined || w === undefined) throw new Error('기라티나 표에 487번 칸이 없다')
+  heightDm[GIRATINA] = h
+  weightHg[GIRATINA] = w
+  return { heightDm, weightHg }
+}
+
 export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
   const personal = await readAll(ctx.fs, '/poketool/personal/pl_personal.narc')
   const evo = await readAll(ctx.fs, '/poketool/personal/evo.narc')
@@ -166,13 +207,25 @@ export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
   }
   check(ctx)
 
+  // 표는 전국도감 494칸이라 폼 자리(494번 뒤)는 안 담고 있다. 거기까지 요구하면
+  // 멀쩡한 롬에서 추출이 선다 — 있는 칸만 붙이고 없으면 0으로 남긴다
+  const size = await readSizes(ctx.fs, Math.min(personal.length, 494))
+  check(ctx)
+
   const species: unknown[] = []
   let maxId = 0
   for (let id = 0; id < personal.length; id++) {
     const p = parsePersonal(personal[id]!)
     // #0은 자리표시자다. 종족값이 전부 0이면 실체가 없는 슬롯으로 본다
     if (STAT_ORDER.every((k) => p.stats[k] === 0)) continue
-    species.push({ id, ...p, evolutions: parseEvo(evo[id]!), learnset: parseLearnset(wotbl[id]!) })
+    species.push({
+      id,
+      ...p,
+      heightDm: size.heightDm[id] ?? 0,
+      weightHg: size.weightHg[id] ?? 0,
+      evolutions: parseEvo(evo[id]!),
+      learnset: parseLearnset(wotbl[id]!),
+    })
     maxId = id
     if (id % 64 === 0) { ctx.onProgress?.(id, personal.length + 64); await breathe(ctx) }
   }

@@ -17,14 +17,49 @@
 // 세고, `check.mjs`가 그 숫자를 blocker에 적는다. 이 파일이 하는 말과 그 숫자가
 // 어긋나면 숫자가 이긴다.
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 /**
- * `build/esm/` 아래 상대 경로 → 그 자리에 넣을 껍데기.
+ * 우리 표가 있는 자리. 껍데기가 여기서 다시 내보낸다.
  *
- * 내보내는 이유는 시험이 **실제 패키지 파일과 맞대 보기** 위해서다 —
- * 패키지가 올라 경로가 바뀌면 규칙이 조용히 아무것도 안 맞게 된다
+ * ⚠️ **절대 경로로 적는다.** 가상 모듈에는 자기 자리가 없어서 상대 경로가
+ * 어디를 가리킬지 정해지지 않는다
  */
+const TABLES = resolve(import.meta.dirname, '../../src/engine/battle/dex/tables.ts')
+  .split('\\').join('/')
+
+/**
+ * `data/` 아래 모듈을 **우리 표로** 바꾼다.
+ *
+ * ⚠️ 여기 없는 모듈이 하나라도 남으면 blocker가 안 풀린다 — `provenance.mjs`가
+ * `@pkmn/sim/build/esm/data/` 아래에서 온 것을 전부 세기 때문이다
+ */
+const OURS = (names) => `export { ${names.join(', ')} } from ${JSON.stringify(TABLES)}\n`
+
 export const SHIMS = [
+  // ── 표: 사용자의 롬에서 채운다 (`src/engine/battle/dex/provider.ts`) ───────
+  //
+  // 수치·이름은 롬, 효과 구현은 `MechanicsRegistry`다. 왜 그렇게 갈랐는지는
+  // COPYRIGHT.md §2.9 · DEPLOY.md §4
+  { match: /^data\/index\.mjs$/, source: OURS(['Abilities', 'Aliases', 'Conditions', 'Rulesets', 'Items', 'Moves', 'Natures', 'Pokedex', 'Scripts', 'TypeChart', 'Tags']) },
+  { match: /^data\/pokedex\.mjs$/, source: OURS(['Pokedex']) },
+  { match: /^data\/moves\.mjs$/, source: OURS(['Moves']) },
+  { match: /^data\/items\.mjs$/, source: OURS(['Items']) },
+  { match: /^data\/abilities\.mjs$/, source: OURS(['Abilities']) },
+  { match: /^data\/conditions\.mjs$/, source: OURS(['Conditions']) },
+  { match: /^data\/rulesets\.mjs$/, source: OURS(['Rulesets']) },
+  { match: /^data\/typechart\.mjs$/, source: OURS(['TypeChart']) },
+  { match: /^data\/natures\.mjs$/, source: OURS(['Natures']) },
+  { match: /^data\/scripts\.mjs$/, source: OURS(['Scripts']) },
+
+  // ── 세대 사슬: 미리 평탄화했다 ──────────────────────────────────────────
+  //
+  // ⚠️ **gen4가 base를 그대로 상속한다.** `loadData`는 base가 아닌 모드의
+  // 부모를 `Scripts.inherit || 'base'`로 정한다. 우리 `Scripts`에는 `inherit`이
+  // 없으므로 gen4 → base 한 단계뿐이고, base의 표가 곧 4세대 평탄화 결과다.
+  // 그래서 gen1~8·bdsp·legends 모드는 통째로 빈 것이 맞다 (실측 217kB)
+  { match: /^data\/mods\//, source: 'export {}\n' },
+
   // ── 습득기술: 5,202kB. 전 세대 전 종족의 기술 습득표다 ──────────────────────
   //
   // 배틀 심판은 이걸 안 본다 — 팀 합법성 검사(`TeamValidator`)만 본다. 우리는
@@ -50,49 +85,16 @@ export const SHIMS = [
   { match: /^data\/aliases\.mjs$/, source: 'export const Aliases = {}\n' },
   { match: /^data\/pokemongo\.mjs$/, source: 'export const PokemonGoData = {}\n' },
   { match: /^data\/tags\.mjs$/, source: 'export const Tags = {}\n' },
-
-  // ── 안 쓰는 세대 모드: 217kB ──────────────────────────────────────────────
-  //
-  // `Dex.forGen(4)`는 gen4 → gen5 → gen6 → gen7 → gen8 → base(gen9)로만 거슬러
-  // 올라간다 (`Scripts.inherit`). gen1·2·3은 반대 방향이라 4세대가 절대 안 읽고,
-  // bdsp·legends는 gen8에서 갈라진 다른 가지다. `dexes[mod]`는 만들어지기만 하고
-  // `loadData()`가 안 불린다 — 우리가 그 mod로 배틀을 안 하기 때문이다
-  { match: /^data\/mods\/(gen1|gen2|gen3|gen8bdsp|gen8legends)\//, source: 'export {}\n' },
 ]
 
 /**
- * 아직 못 뺀 것. **숨기지 않는다.**
+ * `data/` 아래에서 **안 갈아 끼우는** 모듈. 지금은 없다.
  *
- * 이 표에 있는 것은 전부 **코드와 데이터가 한 파일에 섞여 있다** — `moves.mjs`의
- * 한 항목은 위력·명중률 같은 수치와 `onHit(target, source)` 같은 구현이 한
- * 객체다. 수치만 빼려면 파일을 반으로 가르는 변환이 필요하고, 그건 이 자리에서
- * 조용히 할 일이 아니다.
- *
- * ⚠️ **"수치와 구현이 한 객체"가 어디까지 사실인지 재 봤다** (DEPLOY.md §4).
- * 값인 프로퍼티와 함수인 프로퍼티의 글자 수를 따로 세면 `moves` 21% · `items`
- * 21% · `abilities` 5% · `conditions` 2%가 자료다 — 나머지는 구현이고, 그것은
- * MIT 코드다. **그런데 `pokedex`는 100%가 자료다.**
- *
- * 그리고 그 자료가 전부 사용자의 롬에 있다: 종족값·타입·특성·성비는
- * `pl_personal.narc`, 진화는 `evo.narc`, **키·몸무게는
- * `application/zukanlist/zkn_data/zukan_data.narc` 멤버 0·1**(`int[494]`,
- * 데시미터·헥토그램)이다. 4세대 덱스와 맞대면 종족값 493/493, 키·몸무게
- * 492/493이 같고 나머지 하나(기라티나)는 폼마다 NARC이 갈리는 것이라 그것도
- * 롬에 있다. 남은 것은 Showdown의 id(`turtwig`)로 가는 **이름표 다리**뿐이다
+ * 비어 있는 것이 목표 상태다 — 하나라도 남으면 `provenance.mjs`가 그것을 세고
+ * `check.mjs`가 blocker에 적는다. 이 목록은 그 자리에 무엇이 왜 남았는지를
+ * 사람이 읽을 수 있게 두는 칸이고, 지금은 남은 것이 없다
  */
-export const KEPT = [
-  { file: 'data/pokedex.mjs', why: '종족 표 — **100% 자료다.** 롬이 전부 갖고 있다 (위 ⚠️). **다음 일**' },
-  { file: 'data/moves.mjs', why: '기술 — 위력·명중률 같은 수치와 `onHit` 구현이 한 객체다' },
-  { file: 'data/items.mjs', why: '도구 — 수치와 구현이 한 객체다. 같은 이유' },
-  { file: 'data/abilities.mjs', why: '특성 — 수치와 구현이 한 객체다. 같은 이유' },
-  { file: 'data/conditions.mjs', why: '상태 이상 — 거의 전부가 구현 코드다' },
-  { file: 'data/rulesets.mjs', why: '룰 — 구현. `gen4customgame`이 여기서 나온다' },
-  { file: 'data/typechart.mjs', why: '상성표 7kB — 타입 18×18 격자' },
-  { file: 'data/natures.mjs', why: '성격 1.5kB — 25종의 능력치 보정' },
-  { file: 'data/scripts.mjs', why: '배틀 진행 구현. 데이터가 아니다' },
-  { file: 'data/index.mjs', why: '위 표들을 모으는 자리. 437바이트' },
-  { file: 'data/mods/gen4..gen8/*', why: '4세대로 거슬러 올라가는 사슬. 세대 차이만 담는다' },
-]
+export const KEPT = []
 
 /** `build/esm/` 아래 경로로 정규화. pnpm의 해시 경로를 안 본다 */
 function relOf(id) {

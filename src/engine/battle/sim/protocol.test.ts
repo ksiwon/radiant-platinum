@@ -222,7 +222,10 @@ const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
  */
 // 지속 효과 여섯 줄(`-start`/`-end`/`-sidestart`/`-sideend`/`-fieldstart`/`-fieldend`)은
 // 트레이너 AI가 리플렉터·대타출동·트릭룸을 보게 하려고 모양을 줬다 (PLAN §7.7)
-const UNMODELLED = ['-activate', '-ohko', '-prepare']
+// ⚠️ 이 목록은 **여덟 판에서 실제로 본 것**이라 난수 흐름이 바뀌면 같이
+// 바뀐다. `-ohko`가 빠진 것은 일격필살을 안 다루게 됐다는 뜻이 아니라
+// 이 여덟 판에 안 나왔다는 뜻이다 (성별을 sim이 안 굴리게 되면서 흐름이 밀렸다)
+const UNMODELLED = ['-activate', '-prepare']
 
 /** 배틀 굴리기는 비싸다. 두 테스트가 같은 판을 나눠 쓴다 */
 let cached: Promise<Playout[]> | null = null

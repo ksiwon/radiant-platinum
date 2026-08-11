@@ -39,7 +39,7 @@
 **컴파일**되어 나온다. 그쪽 출처는 `pnpm provenance`가 청크별로 뽑는다 —
 `docs/DEPLOY.md` §4.
 
-⚠️ `@pkmn/sim`의 게임 데이터가 8,881kB 들어가던 것을 빌드에서 **1,732kB로**
+⚠️ `@pkmn/sim`의 게임 데이터가 8,881kB 들어가던 것을 빌드에서 **0으로**
 줄였다 (`tools/distribution/pkmnDiet.mjs`). 0이 아니므로 release blocker는
 그대로다 — 무엇을 뺐고 무엇이 왜 남았는지는 `docs/DEPLOY.md` §4.
 
