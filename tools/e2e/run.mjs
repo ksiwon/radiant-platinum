@@ -114,6 +114,23 @@ const assert = (cond, why) => { if (!cond) throw new Error(why) }
  * 시험에 그런 기다림이 넷이면 어느 것이 섰는지 못 가르고, 그 한 줄을 보고
  * 다음 실행도 똑같이 8분을 태우게 된다 (실제로 두 번 그랬다)
  */
+/**
+ * 뜰 때까지 기다리되, 안 뜨면 **무엇을 기다렸는지**를 적는다.
+ *
+ * `locator.waitFor`도 맨살로 두면 `Timeout 60000ms exceeded` 한 줄뿐이다
+ */
+async function seen(page, locator, what, timeout = 60_000, state = 'visible') {
+  try {
+    await locator.waitFor({ timeout, state })
+  } catch {
+    const said = await page.locator('body').innerText().catch(() => '(못 읽었다)')
+    throw new Error(
+      `${what} — ${String(timeout / 1000)}초 기다렸다 · 자리 ${new URL(page.url()).pathname}`
+      + ` · 화면: "${said.replace(/\s+/g, ' ').slice(0, 200)}"`,
+    )
+  }
+}
+
 async function where(page, fn, what, timeout = 60_000) {
   try {
     await page.waitForFunction(fn, null, { timeout })
@@ -1002,8 +1019,15 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     //
     // 지역 배너는 맵 헤더의 label에서 오고, 그것이 뜬다는 것은 행렬·청크·헤더가
     // 다 읽혔다는 뜻이다. 캔버스만 보면 "검은 화면"과 구별이 안 된다
-    const zone = await page.locator('div').filter({ hasText: /^\S/ }).first().innerText()
-      .catch(() => '')
+    // ⚠️ 첫 `div`를 집으면 성능 오버레이(`FPS …`)가 잡힌다 — 그걸 지역 이름이라
+    // 적으면 보고서가 거짓말을 한다. 오버레이가 아닌 첫 줄을 고른다
+    const zone = await page.evaluate(() => {
+      for (const d of document.querySelectorAll('div')) {
+        const t = (d.textContent ?? '').trim()
+        if (t !== '' && !t.startsWith('FPS') && d.children.length === 0) return t
+      }
+      return ''
+    }).catch(() => '')
     await where(page, () => document.querySelector('canvas') !== null,
       '오버월드에 캔버스가 안 생겼다')
     // 그림이 실제로 그려졌는가 — 캔버스가 한 색으로 비어 있으면 안 된다
@@ -1063,8 +1087,17 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     }, '리포트 화면이 안 뜬다', 30_000)
     // "쓸까요?"에 예. 커서가 예에 서 있으므로 그대로 확인이다
     await page.keyboard.press('Space')
-    // 다 쓰면 `{이름}는 리포트를 …` 줄이 뜬다. 이름이 그 안에 있다
-    await page.getByText(new RegExp(NAME)).first().waitFor({ timeout: 60_000 })
+    // ⚠️ **이름으로 "다 썼다"를 재면 안 된다.** 리포트 화면은 열리자마자
+    // 요약창에 `주인공: {이름}`을 띄우므로 이름은 **묻기도 전에** 이미 있다.
+    // 그걸 완료로 읽고 곧장 나갔더니 쓰는 중에 화면을 떠났고, 다시 열었을 때
+    // 타이틀에 리포트가 없었다 — 실측이 여기서 섰다.
+    //
+    // 다 쓴 자리에서만 뜨는 것은 **백업 줄**이다 (`phase === 'done'`). 우리가
+    // 그리는 글이라 어느 롬에서나 같고, 받았든 막혔든 한 줄이 뜬다
+    await seen(page, page.getByText(/백업 파일도 받았다|백업 파일 다운로드를 막았다/).first(),
+      '리포트를 다 썼다는 표시가 안 뜬다')
+    const wrote = await page.locator('body').innerText()
+    assert(wrote.includes(NAME), `다 쓴 화면에 이름이 없다: ${wrote.replace(/\s+/g, ' ').slice(0, 120)}`)
     await page.keyboard.press('Space')
 
     // ── 다시 열면 진행이 보인다 ──
@@ -1086,7 +1119,8 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 롬에서는 `CONTINUE`이고 일본어 롬에서는 또 다르다 — 한국어 글로 찾으면
     // 영어 설치본에서 영영 못 찾는다. 실측이 정확히 여기서 60초를 섰다.
     // 리포트가 남았다는 증거는 버튼이 아니라 **요약창에 뜬 이름**이다
-    await page.locator('dl').filter({ hasText: NAME }).first().waitFor({ timeout: 60_000 })
+    await seen(page, page.locator('dl').filter({ hasText: NAME }).first(),
+      '다시 열었는데 타이틀 요약창에 이름이 없다')
     const shown = await page.locator('dl').first().innerText()
     assert(shown.includes(NAME), `타이틀에 이름이 안 뜬다: ${shown.replace(/\n/g, ' ')}`)
 
@@ -1111,11 +1145,21 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     await waitBoot(page)
     // ⚠️ 여기도 롬 글로 기다리면 안 된다 — `새로운 모험 시작하기`는 영어 롬에서
     // `NEW GAME`이다. 리포트 칸은 **우리가 그리는 것**이라 어느 롬에서나 같다
-    await page.locator('input[accept=".rpsave"]').waitFor({ state: 'attached', timeout: 60_000 })
+    // 파일 칸은 화면에 안 보이게 숨겨 두므로 `attached`로 본다
+    await seen(page, page.locator('input[accept=".rpsave"]'),
+      '리포트를 지웠는데 백업 고르는 칸이 안 뜬다', 60_000, 'attached')
 
     await page.locator('input[accept=".rpsave"]').setInputFiles(at)
     await page.getByRole('button', { name: '이 리포트로 이어하기' }).click({ timeout: 60_000 })
-    await page.locator('dl').filter({ hasText: NAME }).first().waitFor({ timeout: 60_000 })
+    // ⚠️ **되살리면 타이틀에 안 머문다.** `commitImport`가 성공하면 곧장
+    // `/play`로 들어간다 — 여기서 요약창을 찾으면 영영 없다. 들어간 것을 먼저
+    // 보고, 리포트가 남았는지는 타이틀을 다시 열어서 본다
+    await where(page, () => location.pathname === '/play',
+      '.rpsave로 되살렸는데 게임에 안 들어간다')
+    await page.goto(`${origin}/`, { waitUntil: 'load' })
+    await waitBoot(page)
+    await seen(page, page.locator('dl').filter({ hasText: NAME }).first(),
+      '.rpsave로 되살린 리포트가 타이틀에 안 남는다')
     const back = await page.locator('dl').first().innerText()
     assert(back.includes(NAME), `되살린 리포트에 이름이 없다: ${back.replace(/\n/g, ' ')}`)
     rmSync(at, { force: true })
