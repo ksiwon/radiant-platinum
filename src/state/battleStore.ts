@@ -104,6 +104,14 @@ interface BattleState {
   actions: BattleAction[]
   /** 파티 여섯 칸의 지금 상태. 교체 화면이 그린다 */
   party: PartySlot[]
+  /**
+   * 지금 **턴을 쓸 수 있는가** — 볼·도망·가방이 열리는 조건이다.
+   *
+   * 쓰러져 갈아타는 턴, 참기·역린처럼 기술에 묶인 턴, 도발에 걸린 턴에는
+   * 닫힌다. 원작도 그 자리에서는 명령 창을 안 띄운다 —
+   * 눌러도 아무 일이 없는 칸을 남기지 않으려고 화면까지 이 값을 올린다
+   */
+  canSpendTurn: boolean
   /** 배틀 내내 쌓인 사건. 텍스트 박스와 연출이 같은 줄기를 본다 */
   events: BattleEvent[]
   roster: Record<string, RosterEntry>
@@ -216,6 +224,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   truth: null,
   actions: [],
   party: [],
+  canSpendTurn: false,
   events: [],
   roster: {},
   outcome: null,
@@ -365,8 +374,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     participants = new Set()
     set({
       phase: 'off', kind: 'wild', foeName: null, prize: 0,
-      view: null, truth: null, actions: [], party: [], events: [], roster: {}, outcome: null,
-      shiftAsk: null,
+      view: null, truth: null, actions: [], party: [], canSpendTurn: false,
+      events: [], roster: {}, outcome: null, shiftAsk: null,
     })
   },
 }))
@@ -388,7 +397,7 @@ async function advance(
   const controller = current
   if (!controller || get().phase !== 'running') return
   // 미는 즉시 후보를 비운다 — 계산 중에 두 번 누르면 sim이 거절한다
-  set({ actions: [], party: [] })
+  set({ actions: [], party: [], canSpendTurn: false })
 
   const result = await step(controller)
 
@@ -418,6 +427,7 @@ async function advance(
     events: [...get().events, ...events],
     actions: controller.actions,
     party: controller.party,
+    canSpendTurn: controller.canSpendTurn,
     phase: ended ? 'over' : 'running',
     outcome: controller.finish,
     shiftAsk: controller.shiftAsk,
@@ -539,8 +549,8 @@ async function open(
   if (get().phase !== 'off') return
   set({
     phase: 'loading', kind, foeName, prize,
-    view: null, truth: null, actions: [], party: [], events: [], roster: {}, outcome: null, error: null,
-    shiftAsk: null,
+    view: null, truth: null, actions: [], party: [], canSpendTurn: false,
+    events: [], roster: {}, outcome: null, error: null, shiftAsk: null,
   })
 
   try {
@@ -601,6 +611,7 @@ async function open(
       events: step.events,
       actions: controller.actions,
       party: controller.party,
+      canSpendTurn: controller.canSpendTurn,
       roster,
       shiftAsk: controller.shiftAsk,
     })

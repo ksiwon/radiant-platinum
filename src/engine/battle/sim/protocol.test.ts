@@ -225,7 +225,10 @@ const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
 // ⚠️ 이 목록은 **여덟 판에서 실제로 본 것**이라 난수 흐름이 바뀌면 같이
 // 바뀐다. `-ohko`가 빠진 것은 일격필살을 안 다루게 됐다는 뜻이 아니라
 // 이 여덟 판에 안 나왔다는 뜻이다 (성별을 sim이 안 굴리게 되면서 흐름이 밀렸다)
-const UNMODELLED = ['-activate', '-prepare']
+// ⚠️ 또 바뀌었다. 빈 턴 칸의 PP를 0으로 눕히면서(`session.lowerIdle`) 무작위로
+// 두는 쪽의 후보 목록이 달라졌고, 여덟 판이 다른 길로 흘렀다 — `-hitcount`(연타)와
+// `-singleturn`(방어·기합펀치)이 그 길에서 새로 보였다
+const UNMODELLED = ['-activate', '-hitcount', '-prepare', '-singleturn']
 
 /** 배틀 굴리기는 비싸다. 두 테스트가 같은 판을 나눠 쓴다 */
 let cached: Promise<Playout[]> | null = null

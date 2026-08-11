@@ -239,6 +239,16 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
     case 'tie':
       return { ...view, ended: true, winner: null }
 
+    // 잡거나 도망치면 배틀은 그 자리에서 끝난다. sim은 이걸 모르므로(대전 규칙
+    // 밖이다) `|win|`이 안 온다 — 컨트롤러가 제 뷰만 세우고 사건에는 안 남기면
+    // **재생기가 접어 만든 화면은 영영 안 끝난 상태**로 남는다. 담금질에서
+    // 그렇게 여섯 판이 어긋났다 (`soak.test.ts`)
+    case 'ball':
+      return e.caught ? { ...view, ended: true } : view
+
+    case 'escape':
+      return e.success ? { ...view, ended: true } : view
+
     default:
       return view
   }

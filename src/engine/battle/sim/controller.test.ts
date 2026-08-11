@@ -656,3 +656,123 @@ describe('「금제」가 걸리면 가방이 안 열린다', () => {
     expect(embargoBlocks(itemTable.get(POTION), true)).toBe(true)
   })
 })
+
+/**
+ * **담금질이 잡은 것들** (`soak.test.ts`).
+ *
+ * 무작위 1,200판을 굴려 찾은 자리다. 손으로 고른 판으로는 하나도 안 걸렸고,
+ * 전부 화면에서 배틀이 통째로 서거나 없는 기술이 뜨는 고장이었다. 찾은 것을
+ * 담금질에만 두면 씨앗이 바뀌는 순간 잊히므로 여기 못 박는다.
+ */
+describe('담금질이 잡은 자리', () => {
+  /** 물장구를 진짜로 아는 잉어킹. 빈 턴 칸과 헷갈리기 쉬운 자리다 */
+  const MAGIKARP = 129
+
+  it('벤치의 빈 턴 칸이 교체 화면에 안 보인다', async () => {
+    // 빈 턴 칸은 **우리 팀 전원**의 맨 뒤에 붙는다(`session.toSet`). 예전에는
+    // 나와 있는 한 마리만 가려서, 교체 화면의 잉어킹이 `물장구·몸통박치기·물장구`
+    // 세 칸으로 떴다 — 아는 것은 둘인데
+    const mine = [spawn(TURTWIG, 20, 1, 'p1-0'), spawn(MAGIKARP, 20, 2, 'p1-1')]
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: mine },
+      foe: { name: '야생', team: [spawn(STARLY, 20, 3, 'p2-0')] },
+      seed: [1, 2, 3, 4],
+      random: rng(5),
+      basePp: (m) => movesById.get(m)?.pp ?? 5,
+    })
+    for (const slot of controller.party) {
+      const real = mine.find((m) => m.key === slot.key)!.mon.moves.length
+      expect(slot.moves.length, `${slot.key}의 기술 칸`).toBe(real)
+    }
+    // 잉어킹의 진짜 물장구는 남아 있어야 한다 — 이름으로 지우면 안 된다
+    const karp = controller.party.find((p) => p.key === 'p1-1')!
+    expect(karp.moves.some((m) => m.id === 'splash'), '진짜 물장구까지 지웠다').toBe(true)
+    controller.destroy()
+  }, 30_000)
+
+  it('진짜 기술 PP가 다 떨어지면 발버둥이 나온다', async () => {
+    // 빈 턴 칸에 PP를 남겨 두면 sim이 "아직 쓸 게 있다"고 보고 발버둥을 안 준다.
+    // 그런데 그 칸은 화면에서도 AI에서도 걸러지므로 **고를 것이 하나도 없는
+    // 요청**이 되고 배틀이 그 자리에 선다 (담금질 씨앗 1019, 103턴째)
+    const mine = spawn(TURTWIG, 30, 11, 'p1-0')
+    for (const slot of mine.mon.moves) slot.pp = 0
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [mine] },
+      foe: { name: '야생', team: [spawn(STARLY, 5, 12, 'p2-0')] },
+      seed: [7, 7, 7, 7],
+      random: rng(7),
+      basePp: (m) => movesById.get(m)?.pp ?? 5,
+    })
+    const moves = controller.actions.filter((a) => a.type === 'move')
+    expect(moves.map((m) => m.id), '발버둥 하나여야 한다').toEqual(['struggle'])
+    controller.destroy()
+  }, 30_000)
+
+  it('쓰러져 갈아타는 턴에는 볼도 도망도 안 먹는다', async () => {
+    // sim은 그 턴에 기술 명령을 거절한다("You need a switch response"). 우리는
+    // 이미 요청을 비운 뒤라 답이 영영 안 오고 **배틀이 선다** (씨앗 1016·1022)
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [spawn(MAGIKARP, 2, 21, 'p1-0'), spawn(TURTWIG, 50, 22, 'p1-1')] },
+      foe: { name: '야생', team: [spawn(LUXRAY, 60, 23, 'p2-0')] },
+      seed: [8, 8, 8, 8],
+      random: rng(8),
+      basePp: (m) => movesById.get(m)?.pp ?? 5,
+    })
+    // 2레벨 잉어킹이 60레벨 렌트라 앞에 섰다. 한 대면 쓰러진다
+    for (let i = 0; i < 6 && !controller.mustSwitch && !controller.ended; i++) {
+      const moves = controller.actions.filter((a) => a.type === 'move')
+      if (moves.length === 0) break
+      await controller.choose(moves[0]!)
+    }
+    expect(controller.mustSwitch, '강제 교체가 안 왔다 — 아래 단언이 공허하다').toBe(true)
+    expect(controller.canSpendTurn).toBe(false)
+    expect((await controller.throwBall(Ball.POKE, {
+      caughtBefore: false, inWater: false, darkness: false,
+    })).events).toHaveLength(0)
+    expect((await controller.run()).events).toHaveLength(0)
+    // 그래도 교체는 그대로 열려 있어야 한다
+    expect(controller.actions.length, '교체까지 막혔다').toBeGreaterThan(0)
+    controller.destroy()
+  }, 60_000)
+
+  it('기술에 묶인 턴에는 도망이 안 먹는다', async () => {
+    // 참기·역린·구르기·회복 턴에는 sim이 요청에 **묶인 기술 하나만** 담는다.
+    // 그 틈에 도망치면 `move 5`가 "그런 기술 없다"로 거절되고 배틀이 선다
+    // (씨앗 1077, 참기 다음 턴)
+    const BIDE = 117
+    const mine = spawn(TURTWIG, 40, 31, 'p1-0')
+    mine.mon.moves = [{ move: BIDE, pp: 10, ppUps: 0 }]
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [mine] },
+      foe: { name: '야생', team: [spawn(STARLY, 5, 32, 'p2-0')] },
+      seed: [9, 9, 9, 9],
+      random: rng(9),
+      basePp: (m) => movesById.get(m)?.pp ?? 5,
+    })
+    expect(controller.canSpendTurn, '묶이기 전에는 열려 있어야 한다').toBe(true)
+    await controller.choose(controller.actions.find((a) => a.type === 'move')!)
+    expect(controller.state.active.p1?.volatiles.has('bide'), '참기가 안 걸렸다').toBe(true)
+    expect(controller.canSpendTurn).toBe(false)
+    expect((await controller.run()).events).toHaveLength(0)
+    expect(controller.ended, '배틀이 끝나 버렸다').toBe(false)
+    // 묶인 기술은 그대로 고를 수 있어야 한다
+    expect(controller.actions.length).toBeGreaterThan(0)
+    controller.destroy()
+  }, 60_000)
+
+  it('잡으면 사건만 다시 접어도 끝난 것으로 나온다', async () => {
+    // sim은 포획을 모른다(대전 규칙 밖이다). 컨트롤러가 제 뷰만 세우고 사건에
+    // 안 남기면 **재생기가 접어 만든 화면은 영영 안 끝난 상태**로 남는다
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [spawn(TURTWIG, 30, 41, 'p1-0')] },
+      foe: { name: '야생', team: [spawn(STARLY, 3, 42, 'p2-0')] },
+      seed: [5, 5, 5, 5],
+      random: rng(5),
+    })
+    const step = await controller.throwBall(Ball.MASTER, {
+      caughtBefore: false, inWater: false, darkness: false,
+    })
+    expect(applyEvents(emptyView(), step.events).ended, '다시 접으면 안 끝났다').toBe(true)
+    controller.destroy()
+  }, 30_000)
+})

@@ -27,7 +27,7 @@ import { parseLines } from './protocol'
 import { romMove } from './bridge'
 import { TrainerBrain, type MoveTable } from './brain'
 import {
-  BattleSession, IDLE_MOVE, idleSlotOf, type BattleOptions, type SideMon,
+  BattleSession, IDLE_MOVE, IDLE_MOVE_ID, idleSlotOf, type BattleOptions, type SideMon,
 } from './session'
 
 /** 배틀이 어떻게 끝났는가. 승패 말고도 포획·도망이 있다 */
@@ -157,7 +157,12 @@ export class BattleController {
    * 영어 아이디만 주고, 번호로 되돌릴 수 있는 것은 sim을 아는 이 계층뿐이다
    */
   get party(): PartySlot[] {
-    return partySummary(this.request.p1, { moveId: romMove, hiddenSlot: this.idleSlot })
+    return partySummary(this.request.p1, {
+      moveId: romMove,
+      hiddenSlot: this.idleSlot,
+      // 빈 턴 칸은 **여섯 마리 전원**의 맨 뒤에 붙어 있다 (`choice.hiddenLast`)
+      hiddenLast: IDLE_MOVE_ID,
+    })
   }
 
   /**
@@ -181,11 +186,14 @@ export class BattleController {
     return idleSlotOf(this.request.p1)
   }
 
-  /** 볼·도망으로 우리 턴을 비운다. 비울 수 없으면 false */
+  /**
+   * 볼·도망으로 우리 턴을 비운다. 비울 수 없으면 false.
+   *
+   * 칸 번호를 요청에서 안 센다 — 발버둥만 남은 자리에서는 요청에 그 칸이 없다.
+   * 세션이 개체의 기술 칸을 보고 세운다 (`session.useIdle`)
+   */
   private spendTurn(): boolean {
-    const slot = this.idleSlot
-    if (slot === null) return false
-    this.session.send(`p1 move ${String(slot)}`)
+    if (!this.session.useIdle('p1')) return false
     this.spent.p1 = true
     this.request.p1 = null
     return true
@@ -220,9 +228,28 @@ export class BattleController {
     return out
   }
 
-  /** 쓰러져서 교체만 골라야 하는 턴인가. UI가 "도망" 버튼을 막는 데 쓴다 */
+  /**
+   * 쓰러져서 교체만 골라야 하는 턴인가.
+   *
+   * 화면은 이때 명령 메뉴를 통째로 교체 화면으로 바꾼다(`BattleScreen`의 `forced`).
+   * 아래의 볼·도망·가방도 같은 자리에서 스스로 물러난다 — **방어선이다**
+   */
   get mustSwitch(): boolean {
     return this.request.p1?.forceSwitch?.[0] === true
+  }
+
+  /**
+   * 지금 우리 턴을 쓸 수 있는가 (볼·도망·가방).
+   *
+   * ⚠️ **쓰러져 갈아타는 턴에는 못 쓴다.** 그 턴의 요청은 `forceSwitch`라
+   * sim이 기술 명령을 거절한다("You need a switch response") — 그런데 우리는
+   * 이미 요청을 비워 버린 뒤라, 거절당한 명령의 답이 영영 안 오고 **배틀이 그
+   * 자리에 선다.** 담금질에서 두 판이 그렇게 굳었다 (씨앗 1016·1022).
+   *
+   * 화면이 이미 막고 있지만, 막는 곳이 화면 하나뿐이면 다음 화면에서 또 뚫린다
+   */
+  get canSpendTurn(): boolean {
+    return !this.mustSwitch && this.session.hasIdle('p1')
   }
 
   get state(): BattleView {
@@ -264,7 +291,7 @@ export class BattleController {
   async throwBall(ball: BallId, context: Omit<CatchContext, 'turn' | 'level' | 'types'>)
     : Promise<BattleStep> {
     const foe = this.activeFoe()
-    if (!foe || this.view.ended) return { events: [], view: this.view }
+    if (!foe || this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
     const seen = this.view.active.p2!
 
     const result = throwBall(
@@ -295,7 +322,7 @@ export class BattleController {
    * 여기서 들고 있으므로 밖에서 어림잡아 넘길 필요가 없다
    */
   async run(): Promise<BattleStep> {
-    if (this.view.ended) return { events: [], view: this.view }
+    if (this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
     const mine = this.speedOf(this.playerTeam, this.view.active.p1?.key)
     const foe = this.speedOf(this.foeTeam, this.view.active.p2?.key)
     const success = tryEscape(mine, foe, this.escapeAttempts, this.random)
@@ -434,9 +461,11 @@ export class BattleController {
     const kit = this.items
     const seen = this.view.active.p2
     if (!kit || kit.bag.left === 0 || !seen) return null
-    // 턴을 비울 칸이 없으면 도구도 못 쓴다. PP가 다 떨어져 발버둥만 남은 때다
-    const slot = idleSlotOf(request)
-    if (slot === null) return null
+    // 쓰러져서 갈아타는 턴에는 안 쓴다 — 부르는 쪽이 이미 걸렀다
+    if (request.forceSwitch?.[0] === true) return null
+    // 턴을 비울 칸이 없으면 도구도 못 쓴다. **먹이기 전에** 본다 — 먹여 놓고
+    // 턴을 못 비우면 그 도구가 공짜가 된다
+    if (!this.session.hasIdle('p2')) return null
 
     const team = this.session.results('p2')
     const real = team.find((r) => r.key === seen.key)
@@ -464,7 +493,8 @@ export class BattleController {
       focusEnergy: false,
       pp: [],
     })
-    this.session.send(`p2 move ${String(slot)}`)
+    // 턴을 비울 칸이 없으면 도구도 못 쓴다 — 그런 자리는 없지만 방어선이다
+    if (!this.session.useIdle('p2')) return null
     this.spent.p2 = true
     return { kind: 'trainerItem', key: seen.key, item: use.item }
   }
@@ -478,7 +508,7 @@ export class BattleController {
    * `planFor`로 미리 잠그므로 여기까지 오는 것은 방어선이다
    */
   async useBagItem(item: BagItem, key: string, moveSlot?: number): Promise<BattleStep> {
-    if (this.view.ended) return { events: [], view: this.view }
+    if (this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
     const plan = this.planFor(item.data, key, moveSlot)
     if (!plan) return { events: [], view: this.view }
 
@@ -529,7 +559,7 @@ export class BattleController {
    * (`battle_bag.c`가 "지금은 그럴 때가 아니다"로 막는다)
    */
   useEscapeItem(item: BagItem): BattleStep {
-    if (this.view.ended) return { events: [], view: this.view }
+    if (this.view.ended || this.mustSwitch) return { events: [], view: this.view }
     const key = this.view.active.p1?.key ?? ''
     this.fled = true
     this.view = { ...this.view, ended: true }

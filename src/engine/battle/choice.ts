@@ -38,6 +38,20 @@ export interface ActionOptions {
    * (`session.ts`의 `IDLE_MOVE` 참고). 플레이어가 이걸 직접 고르면 안 된다
    */
   hiddenSlot?: number | null
+  /**
+   * 파티 전원의 **맨 뒤 칸**에 붙어 있는 빈 턴 기술의 아이디 (`IDLE_MOVE_ID`).
+   *
+   * ⚠️ **`hiddenSlot`으로는 이걸 못 가린다.** 그 번호는 `|request|`의
+   * `active[0].moves`에서 나오므로 **지금 나와 있는 한 마리**에만 맞는데, 빈 턴
+   * 칸은 우리 팀 **전원**에게 붙는다(`session.toSet`이 여섯 마리 다 `idle: true`로
+   * 만든다). 그래서 교체 화면에서 벤치의 잉어킹이 `물장구·몸통박치기·물장구`
+   * 세 칸으로 떴다 — 아는 것은 둘인데.
+   *
+   * 칸 번호가 아니라 **아이디**로 받는 이유는 마리마다 아는 기술 수가 달라서다.
+   * 그 칸은 언제나 맨 뒤다(`session.ts`) — 진짜 물장구를 아는 애도 그 뒤에
+   * 한 칸이 더 붙으므로 맨 뒤만 떼면 맞는다
+   */
+  hiddenLast?: string | null
 }
 
 /**
@@ -76,8 +90,13 @@ export function partySummary(
   return request.side.pokemon.map((p, i) => {
     // ⚠️ **빈 턴 칸은 감춘다.** 볼·도망이 턴을 쓰려고 끼워 넣은 기술이라
     // (`session.ts`의 `IDLE_MOVE`) 파티에 다섯 번째 기술로 뜨면 안 된다.
-    // 그 칸은 지금 나와 있는 한 마리에게만 붙는다
-    const hidden = p.active ? options.hiddenSlot ?? null : null
+    //
+    // 그 칸은 나와 있는 한 마리가 아니라 **우리 팀 전원**에게 붙어 있다
+    // (`hiddenLast` 참조). 맨 뒤 한 칸만 떼면 맞는다
+    const last = p.moves.length
+    const trailing = options.hiddenLast != null && last >= 2
+      && p.moves[last - 1] === options.hiddenLast
+    const hidden = trailing ? last : p.active ? options.hiddenSlot ?? null : null
     const [gauge, mark] = p.condition.split(' ')
     const [now, max] = (gauge ?? '').split('/')
     const fainted = mark === 'fnt' || Number(now) === 0

@@ -383,10 +383,16 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             }
           }
           const materials = materialsFor(mesh, sheet, cache, p.cutout)
-          // 바닥이 아예 없는 청크는 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다
+          // 바닥이 아예 없는 청크는 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다.
+          //
+          // ⚠️ **물·턱만 있는 청크도 "없는 것"으로 친다** (`plates.floorSource`).
+          // 그 그림을 숲 밑에 깔면 잔디에 파란 마름모와 갈색 턱 띠가 그어진다.
+          // 이웃에서도 못 빌려 오면 그때 마지막 보루를 쓴다 — 발밑이 뚫리는
+          // 것보다는 낫다
           const borrowed = p.source.floors.length > 0
             ? []
             : borrowFloors(p, pieces, sheet, materials, cache)
+          const floors = borrowed.length > 0 ? borrowed : p.source.fallback ?? []
           return {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,
             index: c.land,
@@ -399,7 +405,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 칸마다 제일 가까운 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓴다
             floor: floorPatch(
               split, (x, z, near) => groundAt(x + originX, z + originZ, near),
-              borrowed, p.source),
+              floors, p.source),
             shells: cachedShells(
               `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet, p.lumps),
           }

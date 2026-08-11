@@ -955,7 +955,10 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
       const originX = c.mx * CHUNK + CHUNK / 2
       const originZ = c.my * CHUNK + CHUNK / 2
 
-      // 바닥이 아예 없으면 이웃에서 빌려 온다. 고리는 렌더 창(반경 2)까지다
+      // 바닥이 아예 없으면 이웃에서 빌려 온다. 고리는 렌더 창(반경 2)까지다.
+      //
+      // **물·턱만 있는 청크도 "없는 것"이다** (`floorSource`). 그래서 여기가
+      // 화면과 같은 순서여야 한다: 이웃 → 없으면 마지막 보루
       let borrowed: FloorTri[] = []
       if (source.floors.length === 0) {
         for (let ring = 1; ring <= 2 && borrowed.length === 0; ring++) {
@@ -971,6 +974,7 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
             }
           }
         }
+        if (borrowed.length === 0) borrowed = source.fallback ?? []
       }
 
       const patch = floorPatch(
@@ -1011,10 +1015,15 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
     // 구멍이 그 2,842개 중 하나다
     // 9,621이었다. 줄어든 930은 **판때기 바위**가 덮고 있던 칸이다 — 그 판을
     // 걷어내고 `Rocks`가 입체로 세우면서 그 자리가 다시 메울 칸이 됐다
-    expect(t.covered).toBe(8_691)
-    expect(t.filled).toBe(102_012)
-    // **절반이 이웃에서 온다.** 청크 안만 보면 이만큼이 그대로 뚫린다
-    expect(t.borrowed).toBe(51_546)
+    // 8,691이었다. 줄어든 10은 **덮은 것이 물뿐이던 칸**이다 — 물은 이제
+    // 바닥으로 안 세므로(`NOT_FLOOR`) 덮인 것이 아니라 메울 칸이 됐다
+    expect(t.covered).toBe(8_681)
+    expect(t.filled).toBe(102_022)
+    // **절반이 이웃에서 온다.** 청크 안만 보면 이만큼이 그대로 뚫린다.
+    //
+    // 51,546이었다. 늘어난 4,158은 물·턱만 들고 있던 청크다 — 예전에는 제
+    // 웅덩이를 숲 밑에 깔았고(실측 8,296삼각형) 이제 이웃의 땅을 빌려 온다
+    expect(t.borrowed).toBe(55_704)
     // 여기가 이 시험의 전부다
     expect(t.bare).toBe(0)
   }, 600_000)

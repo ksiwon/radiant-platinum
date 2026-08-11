@@ -624,6 +624,14 @@ export interface FloorTri {
 /** 이 청크의 바닥 삼각형과, 원작 지형이 이미 덮은 칸 */
 export interface FloorSource {
   floors: FloorTri[]
+  /**
+   * 걸러 내기 전의 바닥. **`floors`가 비었을 때만 채워진다.**
+   *
+   * 물·턱밖에 없는 청크가 여기 걸린다. 그 그림을 숲 밑에 깔면 안 되지만
+   * (`NOT_FLOOR`), 이웃도 못 빌려 왔으면 발밑이 뚫리는 것보다는 낫다 —
+   * 마지막 보루다 (`ChunkModels`)
+   */
+  fallback?: FloorTri[]
   covered: Set<number>
   /**
    * 칸마다 **바닥이 실제로 있는 높이들**.
@@ -658,7 +666,7 @@ export const LEVEL_SLACK = 0.5
  * 이름으로 거른다. 어디가 물인지는 거동값이 말하고(`Water.tsx`), 여기서 쓰는
  * 것은 **그 그림을 베껴 오지 말라**는 표시뿐이다
  */
-const NOT_FLOOR = /^(sea|lake|asasea|dun_sea|puddle)/
+const NOT_FLOOR = /^(sea|lake|asasea|dun_sea|puddle|allpeak)/
 
 /** 이 서브메시를 메울 바닥으로 베껴 와도 되는가 */
 export function canBorrowFloor(mesh: ChunkMesh, group: number): boolean {
@@ -676,9 +684,18 @@ export function canBorrowFloor(mesh: ChunkMesh, group: number): boolean {
 export function floorSource(split: Split, keep?: (group: number) => boolean): FloorSource {
   if (!keep) return gatherFloors(split)
   const some = gatherFloors(split, keep)
-  // 걸러 놓고 아무것도 안 남으면 안 거른 것을 준다 — 물가 청크는 바닥이 물뿐일
-  // 수 있고, 그때는 물이라도 깔아야 발밑이 안 뚫린다
-  return some.floors.length === 0 ? gatherFloors(split) : some
+  if (some.floors.length > 0) return some
+  // ⚠️ **여기서 그냥 물을 깔면 거른 것이 헛일이 된다.** 한동안 그랬다 — 걸러
+  // 놓고 아무것도 안 남으면 안 거른 것을 돌려줬는데, 그러면 `floors`가 안 비고
+  // `ChunkModels`가 **이웃에서 빌려 오는 길로 안 간다.** 실측으로 오버월드
+  // 176청크에서 메운 삼각형 8,296개가 `puddlep`(웅덩이)였다 — 잔디 44,310개
+  // 다음으로 많고, 정작 웅덩이의 바닥 넓이는 전체의 0.1%다. 떡잎마을 숲
+  // 사이사이에 파란 마름모가 떠 있던 것이 이것이다.
+  //
+  // 비워서 돌려준다. 이웃 청크에서 빌려 오는 것이 언제나 낫고
+  // (`ChunkModels.borrowFloors`가 고리 4까지 찾는다), 정말 아무 데도 없으면
+  // `fallback`이 마지막 보루로 남는다
+  return { ...some, fallback: gatherFloors(split).floors }
 }
 
 /** @param keep 이 서브메시를 **바닥으로 셀 것인가** */
@@ -772,7 +789,27 @@ function nearestFloors(
   cells: Iterable<number>, floors: readonly FloorTri[],
 ): Map<number, FloorTri> {
   const seed = new Map<number, number>()
-  floors.forEach((f, i) => {
+  /**
+   * **넓은 땅이 이긴다.**
+   *
+   * ⚠️ 같은 거리에 두 바닥이 있으면 예전에는 배열에서 먼저 나온 것이 이겼다 —
+   * 뜻 없는 순서다. 그래서 떡잎마을 나무줄 밑이 통째로 눈밭이 됐다: 눈
+   * (`s_snow`)은 그 청크 바닥의 0.1%인데 메운 칸의 22배를 칠했다. 화면에서는
+   * 숲 앞에 흰 선반이 깔린 것으로 보였다.
+   *
+   * 서브메시 넓이 순으로 훑으면 **비긴 칸은 그 청크를 실제로 이루는 땅**이
+   * 가져간다. 눈 바로 옆 칸은 여전히 눈이다 — 거리가 이기지, 넓이가 거리를
+   * 뒤집지는 않는다
+   */
+  const area = new Map<number, number>()
+  for (const f of floors) {
+    area.set(f.group, (area.get(f.group) ?? 0) + Math.abs(f.ux * f.vz - f.vx * f.uz) / 2)
+  }
+  const order = floors
+    .map((_, i) => i)
+    .sort((a, b) => (area.get(floors[b]!.group) ?? 0) - (area.get(floors[a]!.group) ?? 0))
+  order.forEach((i) => {
+    const f = floors[i]!
     const x0 = Math.floor(Math.min(f.ax, f.ax + f.ux, f.ax + f.vx))
     const x1 = Math.floor(Math.max(f.ax, f.ax + f.ux, f.ax + f.vx))
     const z0 = Math.floor(Math.min(f.az, f.az + f.uz, f.az + f.vz))
@@ -788,8 +825,12 @@ function nearestFloors(
   const out = new Map<number, FloorTri>()
   let front = [...seed.keys()]
   const from = new Map(seed)
-  // 청크가 ±16타일이고 이웃까지 ±48이다. 그 밖으로 번질 이유가 없다
-  const LIMIT = 56
+  // 청크가 ±16타일이고 이웃까지 ±48이다.
+  //
+  // ⚠️ **56이었다.** 바로 옆 청크(씨앗이 ±32)까지만 닿는 값이라, 물·턱만 든
+  // 청크가 두 칸 떨어진 데서 바닥을 빌려 오게 되자 그 씨앗(±64)이 통째로
+  // 잘려 나가 잎 칸 2,244개가 뚫렸다. 고리 3까지 덮는다
+  const LIMIT = 120
   for (let step = 0; front.length > 0 && out.size < want.size && step <= LIMIT * 2; step++) {
     const next: number[] = []
     for (const k of front) {
@@ -820,9 +861,19 @@ export function floorPatch(
   borrowed: readonly FloorTri[] = [],
   source?: FloorSource,
 ): FloorPatch | null {
-  const { floors: own, levels } = source ?? floorSource(split)
+  const src = source ?? floorSource(split)
+  const { floors: own, levels } = src
   const floors = borrowed.length > 0 ? [...own, ...borrowed] : own
-  if (floors.length === 0) return null
+  /**
+   * 마지막 보루. 물·턱뿐이라 걸러 낸 바닥이다 (`floorSource`).
+   *
+   * ⚠️ **없는 것으로 두면 발밑이 뚫린다.** 걸러 내기만 하고 이웃도 못 빌려 온
+   * 자리가 잎 칸 2,244개였다 — 파란 마름모보다 하늘 구멍이 나쁘다. 그래서
+   * 진짜 바닥으로 닿는 칸은 진짜 바닥으로 메우고, **거기서 못 닿은 칸만**
+   * 이걸로 메운다
+   */
+  const spare = src.fallback ?? []
+  if (floors.length === 0 && spare.length === 0) return null
 
   // ⚠️ **"덮였는가"가 아니라 "그 층에 바닥이 있는가"를 본다.** 층이 겹친 자리에서
   // 잎이 걸린 층에 바닥이 없으면 그 칸은 그대로 뚫린다 (`FloorSource.levels`)
@@ -834,7 +885,12 @@ export function floorPatch(
     if (here && (want === null || here.some((y) => Math.abs(y - want) <= LEVEL_SLACK))) continue
     bare.push(key)
   }
-  const nearest = nearestFloors(bare, floors)
+  const nearest = floors.length > 0 ? nearestFloors(bare, floors) : new Map<number, FloorTri>()
+  // 진짜 바닥으로 못 닿은 칸만 마지막 보루로 다시 찾는다
+  const missed = bare.filter((k) => !nearest.has(k))
+  if (missed.length > 0 && spare.length > 0) {
+    for (const [k, f] of nearestFloors(missed, spare)) nearest.set(k, f)
+  }
 
   /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */
   const bucket = new Map<number, { position: number[]; uv: number[]; color: number[] }>()

@@ -96,6 +96,7 @@ export function BattleScreen() {
   const foeName = useBattleStore((s) => s.foeName)
   const view = useBattleStore((s) => s.view)
   const actions = useBattleStore((s) => s.actions)
+  const canSpendTurn = useBattleStore((s) => s.canSpendTurn)
   const party = useBattleStore((s) => s.party)
   const events = useBattleStore((s) => s.events)
   const roster = useBattleStore((s) => s.roster)
@@ -273,6 +274,7 @@ export function BattleScreen() {
                 canFight={moveActions.length > 0}
                 canSwitch={switchActions.length > 0}
                 wild={kind === 'wild'}
+                canSpend={canSpendTurn}
                 onPick={setPage}
                 onRun={() => void run()}
               />
@@ -374,19 +376,32 @@ function MonCard(
 
 /** 원작의 첫 단. 싸운다·가방·포켓몬·도망친다 */
 function RootMenu(
-  { canFight, canSwitch, wild, onPick, onRun }: {
+  { canFight, canSwitch, wild, canSpend, onPick, onRun }: {
     canFight: boolean
     canSwitch: boolean
     wild: boolean
+    /**
+     * 턴을 쓸 수 있는 턴인가. 참기·역린에 묶였거나 도발에 걸리면 닫힌다 —
+     * 그때 가방과 도망은 **눌러도 아무 일이 없다**(`session.hasIdle`)
+     */
+    canSpend: boolean
     onPick: (page: MenuPage) => void
     onRun: () => void
   },
 ) {
   const entries = [
     { label: '싸운다', sub: '기술을 고른다', tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') } },
-    { label: '가방', sub: '도구를 쓴다', tint: css.TINT.bag, on: true, go: () => { onPick('bag') } },
+    {
+      label: '가방',
+      sub: canSpend ? '도구를 쓴다' : '지금은 쓸 수 없다',
+      tint: css.TINT.bag, on: canSpend, go: () => { onPick('bag') },
+    },
     { label: '포켓몬', sub: '교체한다', tint: css.TINT.party, on: canSwitch, go: () => { onPick('party') } },
-    { label: '도망친다', sub: wild ? '배틀을 끝낸다' : '도망칠 수 없다', tint: css.TINT.run, on: wild, go: onRun },
+    {
+      label: '도망친다',
+      sub: !wild ? '도망칠 수 없다' : canSpend ? '배틀을 끝낸다' : '지금은 도망칠 수 없다',
+      tint: css.TINT.run, on: wild && canSpend, go: onRun,
+    },
   ]
   const cursor = useListCursor(entries.length, (i) => { if (entries[i]?.on) entries[i].go() })
   return (

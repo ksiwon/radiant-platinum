@@ -65,6 +65,20 @@ export function idleSlotOf(request: BattleRequest | null): number | null {
 }
 
 /**
+ * 개체의 **맨 뒤 빈 턴 칸**. 없으면 null.
+ *
+ * 칸이 둘 이상일 때만 본다 — 물장구 하나만 아는 개체(우리 팀에는 안 생긴다)의
+ * 진짜 기술을 빈 칸으로 오인하지 않기 위해서다
+ */
+interface IdleSlot { id: string; pp: number; disabled: boolean | string }
+function idleOf(mon: { moveSlots: IdleSlot[] }): IdleSlot | null {
+  const slots = mon.moveSlots
+  if (slots.length < 2) return null
+  const last = slots[slots.length - 1]!
+  return last.id === IDLE_MOVE_ID ? last : null
+}
+
+/**
  * 우리 개체를 sim의 팀 항목으로.
  *
  * 능력치를 직접 넘기지 않는다 — sim이 레벨·개체값·노력치·성격에서 다시 계산하고,
@@ -162,6 +176,9 @@ export class BattleSession {
   private readonly buffer: SideLines = { p1: [], p2: [] }
   private closed = false
   private destroyed = false
+  /** 이번 턴에 빈 턴 칸을 쓰기로 세워 둔 자리 (`lowerIdle`) */
+  private readonly armed: Record<SideId, { mon: unknown; turn: number } | null> =
+    { p1: null, p2: null }
 
   constructor(options: BattleOptions) {
     this.raw = new BattleStreams.BattleStream()
@@ -190,6 +207,11 @@ export class BattleSession {
     // p2가 들어오는 순간 배틀이 시작되고 첫 `|request|`가 나간다. PP는 그 전에
     // 맞춰야 요청에 실린 숫자부터 우리 값이다 (실측으로 확인했다)
     if (options.basePp) this.syncPp(0, options.player.team, options.basePp)
+    // ⚠️ **여기서 눕혀야 한다.** `>player p2`가 들어오는 순간 배틀이 시작되고
+    // 1턴 요청이 그 자리에서 만들어진다 — 그때 빈 턴 칸에 PP가 남아 있으면
+    // sim이 "아직 쓸 기술이 있다"고 보고 발버둥을 안 준다. PP가 다 떨어진 채로
+    // 배틀에 들어가면 첫 턴에 고를 것이 **하나도** 없다
+    this.lowerIdle()
     // 도구를 든 트레이너에게도 빈 턴 칸이 필요하다 — **도구를 쓰는 턴**에
     // 기술을 안 쓴다. AI는 이 칸을 못 본다(`idleSlotOf`로 후보에서 뺀다)
     const foeIdle = options.foeIdle === true
@@ -198,7 +220,91 @@ export class BattleSession {
       team: Teams.pack(options.foe.team.map((m) => toSet(m, foeIdle))),
     })}`)
     if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
+    // 이제 상대 것도 눕힌다. 그쪽 첫 요청은 이미 나갔지만 상관없다 — 우리가
+    // 그 칸을 쓸지 묻는 자리(`hasIdle`)는 요청이 아니라 개체를 본다
+    this.lowerIdle()
     if (options.noCrit) this.blockCrits()
+  }
+
+  /**
+   * 빈 턴 칸의 PP를 **0으로 눕혀 둔다.** 쓸 때만 한 칸 세운다 (`useIdle`).
+   *
+   * ⚠️ **여기가 배틀을 통째로 얼려 놓던 자리다.** 빈 턴 칸에 PP를 남겨 두면
+   * sim이 "아직 쓸 수 있는 기술이 하나 있다"고 보고 **발버둥을 안 준다**
+   * (`pokemon.js`의 `getMoves`는 쓸 만한 칸이 하나라도 있으면 목록을 그대로
+   * 내고, 하나도 없을 때만 발버둥으로 갈아 끼운다). 그런데 그 한 칸은 우리가
+   * 몰래 붙인 것이라 화면에서도 AI에서도 걸러진다 — 그래서 **고를 것이 하나도
+   * 없는 요청**이 되고, 양쪽 다 아무것도 못 보내 배틀이 그 자리에 선다.
+   *
+   * 담금질에서 실제로 나왔다: 씨앗 1019, 103턴째. 진짜 기술 PP가 다 떨어진
+   * 상대가 물장구 63을 들고 굳었다. 화면에서는 명령 창이 영영 안 뜬다.
+   *
+   * 눕혀 두면 sim이 우리 칸을 **처음부터 없는 것처럼** 다룬다 — PP가 다 떨어진
+   * 순간 원작처럼 발버둥이 나온다
+   */
+  private lowerIdle(): void {
+    const battle = this.raw.battle
+    if (!battle) return
+    for (const [i, side] of battle.sides.entries()) {
+      // 한쪽만 들어온 시점에도 불린다 — 상대가 오기 전에 우리 칸부터 눕힌다
+      if (!side) continue
+      const armed = this.armed[i === 0 ? 'p1' : 'p2']
+      for (const p of side.pokemon) {
+        const slot = idleOf(p)
+        if (!slot) continue
+        // ⚠️ **이번 턴에 쓰기로 세워 둔 칸은 안 눕힌다.** 한쪽이 명령을 넣어도
+        // 다른 쪽이 아직 안 골랐으면 턴이 안 돈다 — 그 사이에 눕히면 sim이
+        // 실행할 때 PP가 없어 `|cant|nopp|`가 뜨고 볼을 던진 턴이 통째로 샌다.
+        // 개체와 턴이 둘 다 그때 그대로일 때만 남긴다
+        if (armed && armed.mon === p && armed.turn === battle.turn) continue
+        slot.pp = 0
+      }
+    }
+  }
+
+  /**
+   * 그쪽 턴을 **비운다.** 볼·도망·트레이너 도구가 쓰는 길이다.
+   *
+   * 눕혀 둔 칸을 한 번만 세워서 보낸다. sim의 `chooseMove`는 **그 자리에서**
+   * `getMoveRequestData()`를 다시 부르므로(`side.js`), 미리 내보낸 요청에
+   * 그 칸이 잠겨 있어도 지금 세워 두면 받아 준다.
+   *
+   * 발버둥만 남은 자리에서도 된다 — 세우는 순간 목록이 원래 길이로 돌아온다.
+   * 그래서 칸 번호는 요청이 아니라 **개체의 기술 칸**에서 센다
+   */
+  useIdle(side: SideId): boolean {
+    if (!this.hasIdle(side)) return false
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[0]
+    if (!mon) return false
+    const at = mon.moveSlots.length
+    const slot = idleOf(mon)
+    if (!slot) return false
+    slot.pp = 1
+    this.armed[side] = { mon, turn: this.raw.battle?.turn ?? -1 }
+    this.send(`${side} move ${String(at)}`)
+    return true
+  }
+
+  /**
+   * 그쪽이 지금 턴을 비울 수 있는가. **아무것도 안 바꾼다** — 먹이기 전에 묻는다.
+   *
+   * ⚠️ **칸이 있다고 쓸 수 있는 것이 아니다.** 두 가지가 그 칸을 막는다:
+   *
+   * ① **기술에 묶인 턴** — 참기·역린·구르기·회복 턴. sim은 그때 요청에 묶인
+   *    기술 **하나만** 담으므로(`getMoves`의 `lockedMove` 갈래) `move 5`가
+   *    "그런 기술 없다"로 거절된다.
+   * ② **도발·앙코르·사슬묶기** — 물장구는 변화 기술이라 도발에 걸린다.
+   *
+   * 둘 다 거절이 조용히 일어나고, 우리는 이미 요청을 비운 뒤라 **배틀이 선다.**
+   * 담금질에서 참기 다음 턴에 도망친 판이 그렇게 굳었다 (씨앗 1077)
+   */
+  hasIdle(side: SideId): boolean {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[0]
+    if (!mon) return false
+    const slot = idleOf(mon)
+    if (!slot) return false
+    if (mon.getLockedMove()) return false
+    return !slot.disabled
   }
 
   /**
@@ -245,16 +351,7 @@ export class BattleSession {
         target.maxpp = maxPpOf(slot, basePp(slot.move))
         target.pp = Math.min(slot.pp, target.maxpp)
       })
-
-      // 네 칸이 다 비어 있으면 발버둥이 나와야 한다. 그런데 우리 쪽에는 빈 턴용
-      // 물장구 칸이 하나 더 붙어 있어서(`IDLE_MOVE`) sim이 "아직 쓸 게 있다"고
-      // 본다 — 그 칸까지 비워야 발버둥으로 넘어간다.
-      //
-      // ⚠️ 배틀 **도중에** 다 떨어지는 경우는 아직 못 잡는다. 한 배틀에서 100턴
-      // 넘게 같은 기술만 써야 닿는 자리라 지금은 열어 둔다. 시작 시점은 회복
-      // 수단이 없는 지금 실제로 닿으므로 여기서 막는다
-      const idle = p.moveSlots[kept.length]
-      if (idle && kept.length > 0 && kept.every((s) => s.pp <= 0)) idle.pp = 0
+      // 빈 턴 칸은 여기서 안 건드린다 — `lowerIdle`이 늘 0으로 눕혀 둔다
     }
   }
 
@@ -396,6 +493,9 @@ export class BattleSession {
   async settle(): Promise<SideLines> {
     await Promise.resolve()
     await new Promise((r) => setTimeout(r, 0))
+    // 세워 뒀던 빈 턴 칸을 도로 눕힌다. 기술이 도중에 실패해 PP가 안 깎이는 길이
+    // 있어서, 여기서 한 번 더 0으로 맞춰야 다음 턴에 그 칸이 살아나지 않는다
+    this.lowerIdle()
     return { p1: this.drain('p1'), p2: this.drain('p2') }
   }
 
