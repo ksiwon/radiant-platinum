@@ -72,3 +72,17 @@ export function markTalk(on: boolean): void {
 export function markTile(x: number, z: number): void {
   put('tile', `${String(Math.round(x))},${String(Math.round(z))}`)
 }
+
+/**
+ * 필드 스크립트가 도는 중인가 — `data-script="1"`.
+ *
+ * ⚠️ **이게 없으면 밖에서 두 가지가 똑같이 보인다.** 스크립트가 발을 묶은
+ * 것과 벽에 막힌 것 — 둘 다 대사도 없고 걸음도 없다. 실제로 그 둘을 못 갈라
+ * 자동 검사가 "운이 나빠 배틀에 못 닿았다"고 읽고 있었다.
+ *
+ * 대사창(`data-talk`)과 다르다. 스크립트는 대사 없이도 돈다 — 카메라를
+ * 옮기거나 NPC를 걷게 하는 동안이 그렇다
+ */
+export function markScript(on: boolean): void {
+  put('script', on ? '1' : null)
+}

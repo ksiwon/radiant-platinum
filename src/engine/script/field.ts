@@ -6,6 +6,7 @@
 //
 // 이 모듈은 React를 모른다. 화면은 `world`를 들여다보기만 한다.
 import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } from '../../data/gameData'
+import { markScript } from '../../app/sceneMark'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
   signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
@@ -475,6 +476,10 @@ export const scriptSystem = {
     readInput()
 
     const { ctx, world } = fieldScripts
+    // 스크립트가 도는 중인지를 문서에 적어 둔다 — 읽기 전용이고 `data-boot`과
+    // 같은 자리다 (`sceneMark.ts`). 이게 없으면 **발이 묶인 것과 벽에 막힌
+    // 것이 밖에서 똑같이 보인다** — 둘 다 대사도 없고 걸음도 없다
+    markScript(ctx !== null)
     if (ctx !== null && world !== null) {
       // 스크립트가 도는 동안은 발이 묶인다. 입력 시스템 다음에 돌아야
       // 이 지우기가 이동 시스템보다 먼저다
