@@ -29,6 +29,7 @@ import { useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
+import { resetStepTile } from './stepSystem'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
@@ -124,6 +125,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   /** 맵을 갈아 끼운다. 격자·플레이어 위치·존 이름을 한 번에 맞춘다 */
   const enter = useCallback((next: MapGrid, mapId: number, x: number, z: number, matrix: number) => {
+    // ⚠️ **갈아 끼우기 전에** 어디서 떠나는지를 적는다 (`Field_TrySetMapConnection`).
+    // 신오 본판(행렬 0)에 있다가 아닌 맵으로 넘어가는 그 한 번만이고, 그 자리가
+    // 동굴탈출로프의 목적지다 (PARITY §4.1)
+    const from = mapById(world.mapId)
+    if (from && from.matrix === 0 && mapById(mapId)?.matrix !== 0) {
+      const p = worldState.player.position
+      useSaveStore.setState({
+        exit: {
+          map: from.id, matrix: 0,
+          x: Math.floor(p.x) + 0.5, z: Math.floor(p.z) + 0.5,
+          facing: worldState.player.facing,
+        },
+      })
+    }
     setGrid(next)
     activeZone.grid = next
     world.grid = next
@@ -140,6 +155,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     publishMap(mapId)
     // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
     resetEncounterTile()
+    resetStepTile()
     // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
     disarmWarp()
     // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야

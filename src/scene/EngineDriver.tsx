@@ -12,6 +12,7 @@ import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
 import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
+import { stepSystem } from './stepSystem'
 import { markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { spinBike } from './BikeModel'
@@ -32,7 +33,7 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   useEffect(() => {
     if (!systemsRegistered) {
       // 시스템 실행 순서 고정 (PLAN §3.4):
-      // Input → Script → NPC → Movement → Warp → Encounter → Camera
+      // Input → Script → NPC → Movement → Warp → Step → Encounter → Camera
       //
       // Script가 Movement보다 **먼저**여야 한다. 스크립트가 도는 동안 입력을
       // 지워서 발을 묶는데, 뒤에 두면 이미 그 프레임만큼 걸어간 뒤가 된다.
@@ -44,6 +45,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       gameLoop.register(npcSystem)
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)
+      // 한 칸을 밟은 뒤에 도는 것들 — 독·리펠·친밀도 (PARITY §1.1).
+      // 조우보다 **먼저**다. 원작도 `Field_ProcessStep`이 이동이 끝난 자리에서
+      // 먼저 돌고, 그 안에서 스크립트가 걸리면 그 프레임은 거기서 끝난다
+      gameLoop.register(stepSystem)
       gameLoop.register(encounterSystem)
       gameLoop.register(cameraSystem)
       systemsRegistered = true

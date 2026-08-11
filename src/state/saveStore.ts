@@ -134,9 +134,30 @@ export interface SaveData {
    * 없다. 엄마가 201번도로에서 돌아온 뒤에 준다 — 그전에는 못 뛴다
    */
   runningShoes: boolean
+  /**
+   * 걸음이 쌓이는 자리 (PARITY §1.1) — `Field_ProcessStep`.
+   *
+   * 친밀도 걸음은 여기 없다. 원작이 그것만 스크립트 변수로 두었고
+   * (`VAR_FRIENDSHIP_INCREMENT_STEP_COUNTER`) 우리도 같은 칸을 쓴다 —
+   * 새 칸을 만들면 같은 값이 두 군데 생긴다
+   */
+  steps: {
+    /** 0~3. 0으로 돌아오는 걸음마다 독이 1씩 깎는다 */
+    poison: number
+    /** 남은 리펠 걸음 */
+    repel: number
+  }
+  /**
+   * 동굴탈출로프가 데려다 놓을 자리 (`FieldOverworldState_GetExitLocation`).
+   *
+   * **오버월드에서 굴로 들어선 그 칸**이다. 원작은 행렬 0(신오 본판)에 있다가
+   * 아닌 맵으로 넘어갈 때 그 자리를 적어 둔다 (`Field_TrySetMapConnection`).
+   * 아직 한 번도 안 들어갔으면 null이고, 그때는 로프를 못 쓴다
+   */
+  exit: { map: number; matrix: number; x: number; z: number; facing: number } | null
 }
 
-export const SAVE_VERSION = 7
+export const SAVE_VERSION = 8
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -195,6 +216,8 @@ export function createNewSave(): SaveData {
     flySpots: 0,
     // 러닝슈즈는 201번도로에서 돌아온 뒤 엄마가 준다 (`GiveRunningShoes`)
     runningShoes: false,
+    steps: { poison: 0, repel: 0 },
+    exit: null,
   }
 }
 
@@ -397,6 +420,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     healSpot: s.healSpot,
     flySpots: s.flySpots,
     runningShoes: s.runningShoes,
+    steps: s.steps,
+    exit: s.exit,
   }
 }
 

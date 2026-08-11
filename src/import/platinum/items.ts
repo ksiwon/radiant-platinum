@@ -13,7 +13,7 @@
 //
 // ⚠️ **노드 쪽(`tools/extract/items.js`)과 한 줄씩 같아야 한다.**
 import { narcCount, narcEntry } from './nds'
-import { ITEM_TABLE, ITEM_ICON_COUNT } from './itemTable'
+import { ITEM_TABLE, ITEM_ICON_COUNT, TM_MOVES } from './itemTable'
 import { openBanks, type DataLocale } from './text'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
 
@@ -173,7 +173,7 @@ export async function convertItems(ctx: ConvertContext): Promise<Produced> {
   ctx.onProgress?.(total, total)
 
   return new Map([
-    ['data/items.json', json({ pockets: POCKETS, items })],
+    ['data/items.json', json({ pockets: POCKETS, items, tmMoves: TM_MOVES })],
     [`data/names/items.${loc}.json`, json(names)],
     [`data/names/itemDescriptions.${loc}.json`, json(banks.require('item_descriptions'))],
   ])

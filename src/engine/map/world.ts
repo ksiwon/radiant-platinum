@@ -57,6 +57,13 @@ export interface MapHeader {
    * 593개 맵 중 실내·굴이 대부분 0이다 — 원작이 그렇게 찍어 두었다
    */
   bike: number
+  /**
+   * 이 맵에서 동굴탈출로프를 쓸 수 있는가 (`MapHeader_IsEscapeRopeAllowed`, 1비트).
+   *
+   * ⚠️ **동굴이라고 다 되는 것이 아니다.** `CanUseEscapeRope`가 갈래(동굴)와
+   * 이 칸을 **둘 다** 본다 — 나가면 안 되는 굴이 있다
+   */
+  escapeRope: number
 }
 
 export interface Warp {

@@ -9,6 +9,7 @@ import { useMenuStore } from '../../state/menuStore'
 import { ChooseStarter } from '../field/ChooseStarter'
 import { BagScreen } from './BagScreen'
 import { BoxScreen } from './BoxScreen'
+import { EvolutionScreen } from './EvolutionScreen'
 import { NameScreen } from './NameScreen'
 import { OptionsScreen } from './OptionsScreen'
 import { PartyScreen } from './PartyScreen'
@@ -56,6 +57,7 @@ export function MenuLayer() {
     case 'shop': return <ShopScreen />
     case 'box': return <BoxScreen />
     case 'chooseStarter': return <ChooseStarter />
+    case 'evolution': return <EvolutionScreen />
     case 'naming': return <NameScreen />
     // 'devWarp'은 여기서 안 그린다 — 시험용이라 배포 빌드에 들어오면 안 되고,
     // 스택에는 키를 가져가려고 올라가 있을 뿐이다 (`App`이 그린다)

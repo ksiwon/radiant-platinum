@@ -287,4 +287,27 @@ describe('타격 정보 — 소리가 이걸 보고 난다', () => {
     // 두 번 맞았으니 번호가 두 번 바뀐다
     expect(new Set(seqs).size).toBe(2)
   })
+  it('기술 칸이 다 차면 **묻고 선다** — 배우고 싶어 하는 기술마다 한 번씩', () => {
+    // 그전에는 `pending`이 글로만 뜨고 아무도 안 받아서 기술이 조용히 사라졌다.
+    // 이제 그 자리에 답을 기다리는 박자가 선다 (PARITY §2.10)
+    const reward: BattleEvent = {
+      kind: 'reward', key: 'p1-0', exp: 120, levels: [12],
+      learned: [], pending: [33, 45],
+    }
+    const beats = buildBeats([reward], say)
+    const asks = beats.filter((b) => b.ask !== undefined).map((b) => b.ask)
+    expect(asks).toEqual([{ key: 'p1-0', move: 33 }, { key: 'p1-0', move: 45 }])
+    // 묻는 박자는 글도 사건도 없다 — 앞 글을 띄운 채로 멈춘다
+    for (const b of beats.filter((x) => x.ask !== undefined)) {
+      expect(b.text).toBeNull()
+      expect(b.events).toEqual([])
+    }
+  })
+
+  it('빈 칸에 그냥 들어간 기술은 안 묻는다', () => {
+    const reward: BattleEvent = {
+      kind: 'reward', key: 'p1-0', exp: 10, levels: [7], learned: [33], pending: [],
+    }
+    expect(buildBeats([reward], say).some((b) => b.ask !== undefined)).toBe(false)
+  })
 })

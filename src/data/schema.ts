@@ -324,6 +324,14 @@ export const itemSchema = z.object({
 export const itemFileSchema = z.object({
   pockets: z.array(z.string()).length(POCKET_COUNT),
   items: z.array(itemSchema).length(468),
+  /**
+   * 기술머신 92 + 비전머신 8이 가르치는 기술 (`sTMHMMoves`).
+   *
+   * ⚠️ **롬의 아이템 표에 없다.** 원작도 별도 배열로 들고 있어서 도구 하나를
+   * 봐서는 무엇을 가르치는지 알 수 없다. 차례는 아이템 열거형 순서(TM01…TM92,
+   * HM01…HM08)이고 종족표의 128비트 필드가 같은 차례를 쓴다
+   */
+  tmMoves: z.array(z.number().int().min(0)).length(100),
 })
 
 export const itemIconsSchema = z.object({

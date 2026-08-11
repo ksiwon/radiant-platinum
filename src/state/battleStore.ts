@@ -32,6 +32,8 @@ import { store as storeInBox } from '../engine/pokemon/boxes'
 import { gameLocale, useOptionsStore } from './optionsStore'
 import { useSessionStore } from './sessionStore'
 import { markBattle } from '../app/sceneMark'
+import { useEvolutionStore } from './evolutionStore'
+import { useMenuStore } from './menuStore'
 import { dexSet, useSaveStore } from './saveStore'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
@@ -153,6 +155,13 @@ interface BattleState {
   shiftAsk: string | null
   /** 그 물음에 답한다. `true`면 우리도 한 마리 바꾼다 — 턴을 안 쓴다 */
   answerShift: (change: boolean) => Promise<void>
+  /**
+   * 기술 칸이 다 찼을 때의 답 (`BATTLE_SUBSCRIPT_LEARN_MOVE`).
+   *
+   * `forget`이 null이면 안 배운다. 아니면 그 칸을 새 기술로 갈아 끼운다 —
+   * **PP는 새로 채운다.** 원작도 잊은 기술의 남은 PP를 물려주지 않는다
+   */
+  learnMove: (key: string, move: number, forget: number | null) => void
   /** 화면을 닫는다. 결과는 이 시점에 세이브로 넘어간다 */
   close: () => void
 }
@@ -161,6 +170,13 @@ interface BattleState {
 let current: BattleController | null = null
 /** 이번 배틀에서 한 번이라도 나온 우리 개체의 키. 경험치를 나눠 가질 인원이다 */
 let participants = new Set<string>()
+/**
+ * 이번 배틀에서 **레벨이 오른** 파티 자리. 원작의 `leveledUpMonsMask`다.
+ *
+ * 배틀이 닫힐 때 이 자리들만 진화를 확인한다 — 원작도 레벨이 안 오른 마리는
+ * 안 본다(친밀도가 문턱을 넘어도 그 판에서는 안 진화한다)
+ */
+let leveledUp = new Set<number>()
 /** 종족 표. 보상 계산이 매번 다시 받지 않도록 들고 있는다 */
 let speciesTable: { get(id: number): Species } | null = null
 /**
@@ -335,6 +351,20 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     set({ view: applyEvents(get().view ?? emptyView(), events) })
   },
 
+  learnMove: (key, move, forget) => {
+    if (forget === null) return
+    const party = [...useSaveStore.getState().party]
+    const index = party.findIndex((_, i) => partyKey(i) === key)
+    const mon = party[index]
+    if (!mon || forget < 0 || forget >= mon.moves.length) return
+    // 이미 아는 기술이면 아무것도 안 한다 — 같은 기술이 두 칸에 서면 안 된다
+    if (mon.moves.some((s) => s.move === move)) return
+    const moves = [...mon.moves]
+    moves[forget] = { move, pp: ppOf(move), ppUps: 0 }
+    party[index] = { ...mon, moves }
+    useSaveStore.setState({ party })
+  },
+
   close: () => {
     const controller = current
     if (controller) {
@@ -368,10 +398,21 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         }
       }
       useSaveStore.setState({ party, boxes, pokedex })
+      // 레벨이 오른 자리를 진화 큐에 넘긴다. 이긴 판·잡은 판·도망친 판에서만이다
+      // (`Battle_FindEvolvingPartyMember`가 그 셋으로 거른다) — 진 판에서는
+      // 병원으로 실려 가므로 진화 장면이 끼어들면 안 된다
+      const finish = get().outcome
+      if (leveledUp.size > 0 && (finish === 'win' || finish === 'caught' || finish === 'fled')) {
+        useEvolutionStore.getState().queue([...leveledUp])
+      }
       controller.destroy()
       current = null
     }
     participants = new Set()
+    leveledUp = new Set()
+    // 진화할 마리가 있으면 필드로 돌아가기 전에 그 장면이 먼저다. 원작도
+    // 배틀 화면이 닫히면서 바로 이 화면으로 넘어간다
+    if (useEvolutionStore.getState().pending.length > 0) useMenuStore.getState().open('evolution')
     set({
       phase: 'off', kind: 'wild', foeName: null, prize: 0,
       view: null, truth: null, actions: [], party: [], canSpendTurn: false,
@@ -504,6 +545,7 @@ function grantRewards(
     // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다
     const taught = learnMoves(reward.mon, reward.levelUps.flatMap((l) => l.moves), ppOf)
     party[index] = taught.mon
+    if (reward.levelUps.length > 0) leveledUp.add(index)
     out.push({
       kind: 'reward',
       key,

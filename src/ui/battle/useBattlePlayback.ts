@@ -10,7 +10,7 @@
 // 저 혼자 흘러가고 A는 빨리 감기일 뿐이다 — 줄마다 눌러야 하는 것이 아니다.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BattleEvent } from '../../engine/battle/events'
-import type { Beat } from '../../engine/battle/playback'
+import type { Beat, LearnPrompt } from '../../engine/battle/playback'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
 import { battlePaceScale, textSpeedFrames } from '../../state/optionsStore'
@@ -28,6 +28,14 @@ export interface Playback {
   text: string
   /** 박자를 다 소화했는가. 명령 메뉴는 이때만 뜬다 */
   caughtUp: boolean
+  /**
+   * 지금 사람에게 묻고 서 있는 자리. null이면 안 묻고 있다.
+   *
+   * 이 값이 있으면 **재생기가 멈춰 있다** — `resolve()`를 불러야 다음 박자로 간다
+   */
+  ask: LearnPrompt | null
+  /** 물음에 답했다. 재생기를 다시 굴린다 */
+  resolve: () => void
   /**
    * 방금 접은 박자의 쉼 길이(ms). 체력바가 이 시간 동안 줄어든다.
    *
@@ -50,6 +58,8 @@ interface Runner {
   applied: boolean
   /** 남은 쉼 프레임 */
   wait: number
+  /** 묻는 박자에서 답을 받았는가. 받으면 그 박자를 넘긴다 */
+  answered: boolean
 }
 
 /**
@@ -65,7 +75,8 @@ export function useBattlePlayback(
   const [text, setText] = useState('')
   const [caughtUp, setCaughtUp] = useState(true)
   const [holdMs, setHoldMs] = useState(0)
-  const runner = useRef<Runner>({ at: 0, printer: null, applied: false, wait: 0 })
+  const [ask, setAsk] = useState<LearnPrompt | null>(null)
+  const runner = useRef<Runner>({ at: 0, printer: null, applied: false, wait: 0, answered: false })
   const slots = useRef(new MessageSlots())
 
   // 프레임 루프가 최신 값을 봐야 한다. 의존성으로 걸면 루프가 매번 다시 선다
@@ -120,6 +131,14 @@ export function useBattlePlayback(
 
         // ③ 쉼
         if (r.wait > 0) { r.wait--; return }
+
+        // ④ 물음. 답이 올 때까지 여기서 선다 — 프레임은 계속 도므로 화면은 살아 있다
+        if (beat.ask !== undefined && !r.answered) {
+          setAsk((a) => (a === beat.ask ? a : beat.ask ?? null))
+          return
+        }
+        if (r.answered) { r.answered = false; setAsk(null) }
+
         r.at++
         r.applied = false
       }
@@ -140,5 +159,9 @@ export function useBattlePlayback(
     r.wait = 0
   }, [])
 
-  return { text, caughtUp, holdMs, advance }
+  const resolve = useCallback(() => {
+    runner.current.answered = true
+  }, [])
+
+  return { text, caughtUp, holdMs, ask, advance, resolve }
 }

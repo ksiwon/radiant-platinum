@@ -18,7 +18,10 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
-import { BIKE_ITEM, BIKE_WHY, bikeBlock } from '../../engine/actor/bike'
+import { BIKE_WHY, bikeBlock } from '../../engine/actor/bike'
+import { fieldAction } from '../../engine/bag/fieldUse'
+import { isSurfable } from '../../engine/map/zone'
+import { frontTile } from '../../engine/script/field'
 import { mapById, world } from '../../engine/map/world'
 import { worldState } from '../../state/worldState'
 import { itemIcon } from './itemIcon'
@@ -50,6 +53,10 @@ export function BagScreen() {
   const back = useMenuStore((s) => s.back)
   const bag = useSaveStore((s) => s.bag)
   const money = useSaveStore((s) => s.money)
+  const steps = useSaveStore((s) => s.steps)
+  const removeItem = useSaveStore((s) => s.removeItem)
+  const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
+  const closeAll = useMenuStore((s) => s.closeAll)
 
   useEffect(() => {
     let alive = true
@@ -69,20 +76,69 @@ export function BagScreen() {
   const selected = slots[at]
 
   /**
-   * 고른 물건을 쓴다. **지금은 자전거 하나뿐이다** — 원작의 `sItemUseFuncs`가
-   * 물건마다 다른 함수를 물려 두었고 (`item_use_functions.c`) 그중 필드에서
-   * 바로 효과가 나는 것이 자전거다. 나머지는 아직 쓰는 길이 없다
+   * 고른 물건을 쓴다 (PARITY §4.1).
+   *
+   * 무엇을 하는지는 도구표의 `fieldUseFunc`가 정한다 (`engine/bag/fieldUse`) —
+   * 원작의 `sItemUseFuncs`와 같은 표다. 예전에는 자전거 하나만 반응하고
+   * 나머지는 **눌러도 아무 일도 안 일어났다**
    */
   const use = (): void => {
-    if (selected?.item !== BIKE_ITEM) return
+    const id = selected?.item
+    if (id === undefined || !data) return
+    const item = data.items.get(id)
+    const header = mapById(world.mapId)
     const p = worldState.player
     const grid = world.grid
-    const here = grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
-    const why = bikeBlock(mapById(world.mapId), here, p.surfing, p.cycling)
-    if (why !== null) { setDenied(BIKE_WHY[why]); return }
-    p.cycling = !p.cycling
-    p.pedalling = 0
-    back()
+    const front = frontTile()
+    const action = fieldAction(item, {
+      mapId: world.mapId,
+      mapType: header?.mapType ?? 0,
+      escapeRopeAllowed: header?.escapeRope === 1,
+      repelSteps: steps.repel,
+      waterAhead: grid !== null && isSurfable(grid.behavior(front.x, front.z)),
+    })
+
+    switch (action.kind) {
+      case 'bike': {
+        const here = grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
+        const why = bikeBlock(header, here, p.surfing, p.cycling)
+        if (why !== null) { setDenied(BIKE_WHY[why]); return }
+        p.cycling = !p.cycling
+        p.pedalling = 0
+        back()
+        return
+      }
+      case 'party':
+        openPartyWithItem({ item: id, use: action.use })
+        return
+      case 'repel':
+        // `TryUseRepel` — 걸음을 세우고 한 개를 쓴다
+        useSaveStore.setState({ steps: { ...steps, repel: action.steps } })
+        removeItem(item.pocket ?? 0, id, 1)
+        setDenied(`${data.names[id] ?? ''}을(를) 썼다!`)
+        return
+      case 'escapeRope': {
+        const exit = useSaveStore.getState().exit
+        if (!exit) { setDenied('돌아갈 자리가 없다.'); return }
+        removeItem(item.pocket ?? 0, id, 1)
+        world.pending = {
+          to: exit.map, matrix: exit.matrix, x: exit.x, z: exit.z, facing: exit.facing,
+          // 문으로 나오는 것이 아니라 굴 밖에 툭 선다. 원작도 문 여닫는 연출이 없다
+          viaDoor: false,
+        }
+        closeAll()
+        return
+      }
+      case 'fish':
+        // 낚시는 조우 계통이 붙을 때 여기서 이어진다 (PARITY §1.5)
+        setDenied('아직 낚시를 못 한다.')
+        return
+      case 'missing':
+        setDenied(`${action.what}이(가) 아직 없다.`)
+        return
+      default:
+        setDenied(action.why)
+    }
   }
 
   useMenuKeys({
@@ -99,8 +155,7 @@ export function BagScreen() {
       title="가방"
       note={`${money.toLocaleString('ko-KR')}원`}
       foot={denied
-        ?? `←→ 주머니 · ↑↓ 고르기 · ${selected?.item === BIKE_ITEM
-          ? (worldState.player.cycling ? 'Z 내린다' : 'Z 탄다') : 'X 닫기'}`
+        ?? `←→ 주머니 · ↑↓ 고르기 · Z 쓴다 · X 닫기`
         + ` · ${String(slots.length)}/${String(POCKET_SIZE[pocket] ?? 0)}칸`}
     >
       <div className={css.tabs}>

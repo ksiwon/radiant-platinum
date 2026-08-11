@@ -65,10 +65,19 @@ function overlay(rom, id) {
 /**
  * 로케일별 메시지 뱅크 접근자.
  * raw/extracted/{us,ko,ja}/pl_msg.narc — 3개 롬에서 각각 뽑아둔 것이다.
- * 뱅크 인덱스는 src/data/textBanks.json에 검증된 매핑이 있다 (PLAN §4.2.1).
+ * 뱅크 인덱스 표는 `pnpm extract:textbanks`가 굽는다 (PLAN §4.2.1).
+ *
+ * ⚠️ **리포 안이 아니라 `raw/work/`다.** 한때 `src/data/textBanks.json`을
+ * 추적했는데 그 표에 롬에서 읽은 키가 들어 있어서 빼냈고(COPYRIGHT.md §5),
+ * 읽는 쪽이 옛 자리를 그대로 가리키고 있었다 — 그래서 글이 필요한 추출기가
+ * 전부 `ENOENT`로 섰다
  */
 function openText() {
-  const banks = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/data/textBanks.json'), 'utf8'))
+  const table = path.join(ROOT, 'raw/work/textBanks.json')
+  if (!fs.existsSync(table)) {
+    throw new Error(`뱅크 표가 없다: ${table} — 먼저 \`pnpm extract:textbanks\`를 돌린다`)
+  }
+  const banks = JSON.parse(fs.readFileSync(table, 'utf8'))
   const charmap = loadCharmap(path.join(ROOT, 'tools/spike/charmap.txt'))
   const narcs = {}
   for (const loc of LOCALES) {

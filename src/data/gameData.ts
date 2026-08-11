@@ -186,6 +186,8 @@ export interface ItemTable {
   get(id: number): Item
   /** 주머니별 아이템 번호. 가방이 이 순서로 보여 준다 */
   pocket(index: number): readonly number[]
+  /** 기술머신 100개가 가르치는 기술 번호 (TM01…TM92, HM01…HM08) */
+  tmMoves: readonly number[]
 }
 
 /** 아이템 468종. 자료가 없는 ITEM_UNUSED_* 22종도 자리를 지킨다 */
@@ -205,6 +207,7 @@ export function loadItems(): Promise<ItemTable> {
         return it
       },
       pocket: (index: number) => byPocket[index] ?? [],
+      tmMoves: file.tmMoves,
     }
   })
 }

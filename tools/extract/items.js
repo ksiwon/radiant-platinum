@@ -17,6 +17,8 @@ const { openRom, openText, writeJson, ROOT, LOCALES } = require('./rom')
 // 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
 const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 const ITEM_DATA_SIZE = 34
+/** `ITEM_USE_FUNC_TM_HM`. 이 갈래만 기술을 하나 가르친다 */
+const ITEM_USE_FUNC_TM_HM = 6
 
 const POCKETS = [
   'items', 'medicine', 'balls', 'tmhms', 'berries', 'mail', 'battleItems', 'keyItems',
@@ -129,6 +131,10 @@ function main() {
     throw new Error(`자료 있는 아이템 ${withData.length}개 ≠ 아카이브 파일 ${narc.length}개`)
   }
 
+  // `generated/moves.txt`의 줄 번호가 기술 번호다
+  const moves = readEnum('moves')
+  const tmMoves = []
+
   const items = []
   let dataID = 0
   for (const constant of names) {
@@ -146,8 +152,20 @@ function main() {
       throw new Error(`${constant}: 아이콘 ${src.icon.sprite}/${src.icon.palette}이 순서 파일에 없다`)
     }
     items.push({ name: stem, constant, icon, palette, dataID, ...parseItem(buf) })
+    // 기술머신이 무엇을 가르치는가. 롬의 아이템 표에는 **없다** — 원작도
+    // `sTMHMMoves`라는 별도 배열로 들고 있고, 디컴프는 그것을 아이템 JSON의
+    // `teachesMove`에서 만든다. 우리도 같은 자리에서 같은 차례로 만든다
+    // (`tools/dataproc/src/itemproc.c`의 `iter_tms`)
+    if (parseItem(buf).fieldUseFunc === ITEM_USE_FUNC_TM_HM) {
+      const move = moves.indexOf(src.teachesMove)
+      if (move < 0) throw new Error(`${constant}: ${src.teachesMove}가 기술 목록에 없다`)
+      tmMoves.push(move)
+    }
     dataID++
   }
+
+  // 기술머신 92 + 비전머신 8. 하나라도 어긋나면 배우는 기술이 통째로 밀린다
+  if (tmMoves.length !== 100) throw new Error(`기술머신 ${tmMoves.length}개 ≠ 100`)
 
   verify(items, icons)
 
@@ -161,8 +179,9 @@ function main() {
     }
   }
 
-  const out = writeJson('items.json', { pockets: POCKETS, items })
+  const out = writeJson('items.json', { pockets: POCKETS, items, tmMoves })
   console.log(`아이템 ${items.length}종 (자료 ${dataID}개) → ${out.rel} (${out.kb}KB)`)
+  console.log(`  기술머신 ${tmMoves.length}개: TM01=${tmMoves[0]} · HM01=${tmMoves[92]}`)
   for (const loc of LOCALES) {
     const n = writeJson(`names/items.${loc}.json`, text.names[loc])
     const d = writeJson(`names/itemDescriptions.${loc}.json`, text.descriptions[loc])

@@ -16,6 +16,8 @@ export type MenuScreen =
   | 'fly' | 'box'
   // 파트너를 고르는 화면. 스크립트가 열고, **고르기 전에는 못 닫는다**
   | 'chooseStarter'
+  // 진화. **스스로 뜬다** — 배틀이 닫힐 때 큐에 자리가 있으면 열린다
+  | 'evolution'
   // 이름 짓기. 스크립트가 열고 `naming`이 무엇의 이름인지를 든다
   | 'naming'
   // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
@@ -48,6 +50,13 @@ interface MenuStore {
    * 인자라 컴포넌트가 못 받는다
    */
   naming: { kind: 'pokemon'; slot: number; initial: string; max: number } | null
+  /**
+   * 가방에서 고른 도구를 **누구에게** 쓰는 중인가 (PARITY §4.1).
+   *
+   * 파티 화면이 이 값을 보고 "쓴다" 모드로 뜬다. 상점 재고와 같은 이유로
+   * 여기 있다 — 화면을 여는 인자라 컴포넌트가 못 받는다
+   */
+  usingItem: { item: number; use: 'heal' | 'tmhm' | 'evoStone' } | null
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고를 같이 받는다 */
@@ -56,6 +65,10 @@ interface MenuStore {
   openBox: (mode: number) => void
   /** 이름 짓기 화면을 연다 */
   openNaming: (what: NonNullable<MenuStore['naming']>) => void
+  /** 도구를 들고 파티 화면을 연다. 스택 위에 쌓는다 — B로 가방으로 돌아간다 */
+  openPartyWithItem: (what: NonNullable<MenuStore['usingItem']>) => void
+  /** 도구 쓰기를 끝낸다 */
+  clearUsingItem: () => void
   back: () => void
   closeAll: () => void
 }
@@ -71,6 +84,15 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   shopStock: [],
   boxMode: 0,
   naming: null,
+  usingItem: null,
+
+  openPartyWithItem: (what) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'party']
+    capture(stack)
+    return { stack, top: 'party' as const, usingItem: what }
+  }),
+
+  clearUsingItem: () => { set({ usingItem: null }) },
 
   openShop: (items) => set(() => {
     const stack: MenuScreen[] = ['shop']
@@ -105,11 +127,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   back: () => set((s) => {
     const stack = s.stack.slice(0, -1)
     capture(stack)
-    return { stack, top: stack[stack.length - 1] ?? null }
+    // 파티 화면에서 물러나면 들고 있던 도구도 내려놓는다
+    return { stack, top: stack[stack.length - 1] ?? null, usingItem: null }
   }),
 
   closeAll: () => set(() => {
     capture([])
-    return { stack: [], top: null }
+    return { stack: [], top: null, usingItem: null }
   }),
 }))

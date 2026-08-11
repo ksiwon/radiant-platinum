@@ -36,6 +36,17 @@ export function timeOfDayForHour(hour: number): TimeOfDayId {
 }
 
 /**
+ * `rtc.c`의 `IsNight` — **밤과 심야를 묶은** 하나의 참/거짓.
+ *
+ * 진화가 이 값을 본다(에브이/블래키·글라이온·독개굴 …). 해질녘은 밤이 아니다 —
+ * 17~19시에 블래키를 만들려고 하면 안 된다
+ */
+export function isNight(hour: number): boolean {
+  const t = timeOfDayForHour(hour)
+  return t === TimeOfDay.NIGHT || t === TimeOfDay.LATE_NIGHT
+}
+
+/**
  * 시간대가 바뀌는 경계에서 0→1로 넘어가는 값.
  *
  * 표는 시간 단위라 20시 정각에 하늘이 툭 바뀐다. 원작은 화면 전환이 있어서

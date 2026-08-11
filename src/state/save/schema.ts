@@ -128,6 +128,28 @@ export const saveSchema = z.object({
   // 공중날기 자리는 비트마스크다. 32비트를 넘으면 비트 연산이 무너진다
   flySpots: int(0, 0x7fffffff),
   runningShoes: z.boolean(),
+  /**
+   * 걸음이 쌓이는 자리 (PARITY §1.1).
+   *
+   * 원작은 이 둘을 변수가 아니라 각자의 구조체에 둔다 —
+   * `FieldOverworldState.poisonStepCount`와 `SpecialEncounter.repelSteps`.
+   * 친밀도 걸음만 스크립트 변수(`VAR_FRIENDSHIP_INCREMENT_STEP_COUNTER`)라
+   * `vars`에 그대로 들어간다
+   */
+  steps: z.object({
+    /** 0~3. 4가 될 때마다 독이 1씩 깎는다 */
+    poison: int(0, 3),
+    /** 남은 리펠 걸음. 0이면 효과가 없다 */
+    repel: int(0, 255),
+  }),
+  /** 굴에 들어서기 직전에 서 있던 오버월드 칸. 탈출로프가 여기로 돌려보낸다 */
+  exit: z.object({
+    map: int(0, 592),
+    matrix: int(0, 288),
+    x: z.number().finite(),
+    z: z.number().finite(),
+    facing: z.number().finite(),
+  }).nullable(),
 })
 
 /**

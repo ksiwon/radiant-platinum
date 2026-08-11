@@ -21,7 +21,9 @@ import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { withObject, withSubject } from '../korean'
-import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
+import { useMenuKeys } from '../menu/useMenuKeys'
+import { useListCursor } from './listCursor'
+import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
 import { SwitchScreen } from './SwitchScreen'
 import { battleText, type BattleNames } from './messages'
@@ -33,10 +35,17 @@ import * as css from './battleScreen.css'
 // 뭉치 gzip 11.1kB가 **타이틀 첫 화면**에 실린다. 배틀이 켜질 때 오면 된다
 const BattleSound = lazy(() => import('./BattleSound').then((m) => ({ default: m.BattleSound })))
 import { hpColor } from '../../engine/battle/healthbar'
+import { maxPpOf } from '../../engine/pokemon/instance'
 import { dexHas, useSaveStore } from '../../state/saveStore'
 
 const STATUS_LABEL: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
+}
+
+/** `p1-3` → 3. 파티 자리 키를 되짚는다 (`aftermath.partyKey`) */
+function slotOfKey(key: string): number {
+  const n = Number(key.slice(3))
+  return Number.isInteger(n) ? n : -1
 }
 
 /**
@@ -110,6 +119,10 @@ export function BattleScreen() {
   const playEvents = useBattleStore((s) => s.playEvents)
   const shiftAsk = useBattleStore((s) => s.shiftAsk)
   const answerShift = useBattleStore((s) => s.answerShift)
+  const learnMove = useBattleStore((s) => s.learnMove)
+  // ⚠️ **세이브를 본다.** 배틀 안의 기술 칸(`moveSlotsOf`)이 아니다 — 레벨업으로
+  // 배운 기술은 세이브에 먼저 들어가고 sim은 그 판이 끝날 때까지 모른다
+  const savedParty = useSaveStore((s) => s.party)
   const { names, extras } = useNames()
   const [page, setPage] = useState<MenuPage>('root')
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
@@ -165,9 +178,12 @@ export function BattleScreen() {
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
   const script = useBattlePlayback(beats, playEvents)
-  // 아직 재생 중이면 A가 빨리 감기다. 메뉴 키와 겹치면 안 된다
+  // 아직 재생 중이면 A가 빨리 감기다. 메뉴 키와 겹치면 안 된다.
+  // ⚠️ **묻는 자리에서는 빨리 감기를 끈다** — 안 그러면 Z 한 번이 물음을
+  // 넘기면서 동시에 답으로도 먹혀 아무거나 골라진다
   const reading = !script.caughtUp
-  useMenuKeys({ confirm: script.advance, cancel: script.advance }, phase !== 'off' && reading)
+  useMenuKeys({ confirm: script.advance, cancel: script.advance },
+    phase !== 'off' && reading && script.ask === null)
   // 배틀이 끝난 뒤의 "계속". 여기만 키 처리가 비어 있어서 마우스로만 닫혔다
   useMenuKeys({ confirm: close, cancel: close }, phase === 'over' && !reading)
 
@@ -238,7 +254,25 @@ export function BattleScreen() {
         </div>
         <div className={css.side}>
           <div className={css.menu}>
-            {reading ? null : phase === 'over' ? (
+            {script.ask !== null && names && extras ? (
+              // 기술 칸이 다 찼다. 답할 때까지 재생기가 서 있다
+              <LearnMove
+                move={script.ask.move}
+                who={bare(script.ask.key)}
+                slots={(savedParty[slotOfKey(script.ask.key)]?.moves ?? []).map((s) => ({
+                  move: s.move,
+                  pp: s.pp,
+                  maxPp: maxPpOf(s, extras.move(s.move)?.pp ?? s.pp),
+                }))}
+                moveName={(id) => names.moves[id] ?? `#${String(id)}`}
+                moveData={(id) => extras.move(id)}
+                typeName={(t) => extras.types[t]}
+                onAnswer={(forget) => {
+                  learnMove(script.ask!.key, script.ask!.move, forget)
+                  script.resolve()
+                }}
+              />
+            ) : reading ? null : phase === 'over' ? (
               <button
                 className={`${css.button} ${css.buttonOn}`}
                 style={{ ['--tint' as string]: css.TINT.run }}
@@ -289,28 +323,6 @@ export function BattleScreen() {
       </>}
     </div>
   )
-}
-
-/**
- * 명령 목록의 커서.
- *
- * 칸이 세로로 한 줄이라 위아래가 한 칸씩 움직인다. 좌우도 같이 받는 이유는
- * 원작이 십자키 게임이어서다 — 오른쪽을 눌렀는데 아무 일도 안 일어나면 고장으로
- * 읽힌다
- */
-function useListCursor(count: number, onPick: (i: number) => void, onBack?: () => void) {
-  const [at, setAt] = useState(0)
-  const cursor = Math.min(at, Math.max(0, count - 1))
-  const step = (d: number) => () => { setAt(clampCursor(cursor, d, count)) }
-  useMenuKeys({
-    up: step(-1),
-    down: step(1),
-    left: step(-1),
-    right: step(1),
-    confirm: () => { onPick(cursor) },
-    cancel: onBack,
-  })
-  return cursor
 }
 
 const GENDER_MARK: Record<string, { mark: string; cls: string }> = {

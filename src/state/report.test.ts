@@ -68,8 +68,20 @@ describe('새 창고', () => {
     expect((await readReport(SAVE_VERSION))?.trainer.name).toBe('한새')
   })
 
-  it('판이 안 맞는 리포트는 없는 것으로 친다', async () => {
-    await set('report', { ...saveWith('옛판'), version: SAVE_VERSION - 1 }, NEW)
+  it('못 옮기는 판의 리포트는 없는 것으로 친다', async () => {
+    // ⚠️ **"판이 다르다"가 아니라 "못 옮긴다"가 기준이다.** 옮길 수 있는 판은
+    // 옮겨야 한다 — 앱을 올린 것뿐인데 진행이 사라지면 안 된다 (`save/migrate`)
+    await set('report', { ...saveWith('옛판'), version: 1 }, NEW)
     expect(await readReport(SAVE_VERSION)).toBeNull()
+  })
+
+  it('옮길 수 있는 판은 옮겨서 읽는다', async () => {
+    // 7에는 걸음 계수기가 없다. 그 칸을 빼고 저장해도 읽혀야 한다
+    const old = { ...saveWith('일곱'), version: 7 } as Record<string, unknown>
+    delete old.steps
+    await set('report', old, NEW)
+    const got = await readReport(SAVE_VERSION)
+    expect(got?.trainer.name).toBe('일곱')
+    expect(got?.steps).toEqual({ poison: 0, repel: 0 })
   })
 })

@@ -8,17 +8,23 @@
 //   · 이 판보다 최신이다 → 손대지 않고 "더 새 판에서 쓰라"고 말한다
 //   · 못 옮긴다         → 손대지 않고 **원본 파일을 돌려준다**
 //
-// ⚠️ **없는 과거를 지어내지 않는다.** `SAVE_VERSION`은 7이고 여태 한 번도 안
-// 올랐다 — 1~6으로 저장된 리포트는 세상에 없다. 그래서 표가 비어 있다. 표가
-// 비었다고 장치가 없는 것은 아니다: 8이 되는 날 `MIGRATIONS[7]`을 적으면 되고,
-// 그 자리가 도는지는 시험이 가짜 표로 이미 확인한다.
+// ⚠️ **없는 과거를 지어내지 않는다.** 1~6으로 저장된 리포트는 세상에 없다 —
+// 판이 7에서 8로 처음 올랐고, 그래서 표에 `7`만 있다.
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
 /** n에서 n+1로만 옮긴다. 두 칸을 한 번에 건너뛰는 함수는 두지 않는다 */
 export type Migration = (data: Record<string, unknown>) => Record<string, unknown>
 
-export const MIGRATIONS: Readonly<Record<number, Migration>> = {}
+export const MIGRATIONS: Readonly<Record<number, Migration>> = {
+  /**
+   * 7 → 8. 걸음 계수기와 탈출 자리가 생겼다 (PARITY §1.1 · §4.1).
+   *
+   * 옛 리포트에는 그 칸이 없다. **0과 null로 시작하는 것이 맞다** — 원작도 새
+   * 게임을 열 때 걸음이 둘 다 0이고, 굴에 한 번도 안 들어갔으면 탈출 자리가 없다
+   */
+  7: (data) => ({ ...data, version: 8, steps: { poison: 0, repel: 0 }, exit: null }),
+}
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */
 export function oldestSupported(target: number, table = MIGRATIONS): number {

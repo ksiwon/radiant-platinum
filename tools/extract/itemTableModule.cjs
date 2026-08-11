@@ -31,6 +31,12 @@ function main() {
   const order = lines('res/items/item_icon.order')
   const iconIndex = new Map(order.map((f, i) => [f.replace(/\./g, '_'), i]))
 
+  // 기술머신이 무엇을 가르치는가 (`sTMHMMoves`). 롬의 아이템 자료에는 **없고**
+  // 디컴프의 `teachesMove`에만 있다 — 아이콘 색인과 같은 이유로 여기 굽는다.
+  // 담기는 것은 기술 **번호**뿐이고 이름도 위력도 안 담는다 (COPYRIGHT.md §2)
+  const moves = lines('generated/moves.txt')
+  const tmMoves = []
+
   const rows = []
   let withData = 0
   for (const constant of names) {
@@ -46,6 +52,11 @@ function main() {
       throw new Error(`${constant}: 아이콘 ${src.icon.sprite}/${src.icon.palette}이 순서 파일에 없다`)
     }
     rows.push([constant, icon, palette])
+    if (src.fieldUseFunc === 'ITEM_USE_FUNC_TM_HM') {
+      const move = moves.indexOf(src.teachesMove)
+      if (move < 0) throw new Error(`${constant}: ${src.teachesMove}가 기술 목록에 없다`)
+      tmMoves.push(move)
+    }
     withData++
   }
 
@@ -77,10 +88,22 @@ ${body}
 
 /** 아이콘 아카이브 멤버 수. 표가 가리키는 번호가 이 안에 들어야 한다 */
 export const ITEM_ICON_COUNT = ${order.length}
+
+/**
+ * 기술머신 92 + 비전머신 8이 가르치는 기술 번호 (\`sTMHMMoves\`).
+ *
+ * 차례는 아이템 열거형 순서(TM01…TM92, HM01…HM08)이고, 종족표의 128비트
+ * 학습 필드가 **같은 차례**를 쓴다. 롬의 아이템 자료에는 안 들어 있다
+ */
+export const TM_MOVES: readonly number[] = [
+${tmMoves.join(', ')},
+]
 `
   fs.writeFileSync(OUT, out)
   const kb = (Buffer.byteLength(out) / 1024).toFixed(1)
-  console.log(`아이템 ${rows.length}종 (자료 ${withData}개) · 아이콘 ${order.length}칸`)
+  if (tmMoves.length !== 100) throw new Error(`기술머신 ${tmMoves.length}개 ≠ 100`)
+  console.log(`아이템 ${rows.length}종 (자료 ${withData}개) · 아이콘 ${order.length}칸`
+    + ` · 기술머신 ${tmMoves.length}개`)
   console.log(`  → ${path.relative(ROOT, OUT)} (${kb}KB)`)
 }
 

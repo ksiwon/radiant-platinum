@@ -23,6 +23,14 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
+import { planItemUse } from '../../engine/battle/meta/bagItem'
+import {
+  applyFieldPlan, canLearnTm, fieldTarget, tmIndex, tmMove,
+} from '../../engine/bag/fieldUse'
+import { EvoClass, evolutionTarget } from '../../engine/pokemon/evolution'
+import { maxPpOf } from '../../engine/pokemon/instance'
+import { useEvolutionStore } from '../../state/evolutionStore'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
@@ -66,12 +74,27 @@ export function PartyScreen() {
   /** 자리를 바꾸려고 집어 든 카드. null이면 안 집었다 */
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** 가방에서 들고 온 도구. 있으면 이 화면은 "누구에게 쓸까"다 (PARITY §4.1) */
+  const usingItem = useMenuStore((s) => s.usingItem)
+  const clearUsingItem = useMenuStore((s) => s.clearUsingItem)
+  const [tables, setTables] = useState<{ items: ItemTable; moves: MoveTable } | null>(null)
+
+  useEffect(() => {
+    if (usingItem === null) return
+    let alive = true
+    void Promise.all([loadItems(), loadMoves()]).then(([items, moves]) => {
+      if (alive) setTables({ items, moves })
+    }).catch(() => { /* 아무것도 못 쓴다 */ })
+    return () => { alive = false }
+  }, [usingItem])
 
   const back = useMenuStore((s) => s.back)
   const push = useMenuStore((s) => s.push)
   const closeAll = useMenuStore((s) => s.closeAll)
   const party = useSaveStore((s) => s.party)
   const swapParty = useSaveStore((s) => s.swapParty)
+  const removeItem = useSaveStore((s) => s.removeItem)
+  const open = useMenuStore((s) => s.open)
 
   useEffect(() => {
     let alive = true
@@ -116,6 +139,63 @@ export function PartyScreen() {
     setNotice(DENIAL[verdict] ?? null)
   }
 
+  /**
+   * 들고 온 도구를 고른 마리에게 쓴다 (`item_use_pokemon.c`).
+   *
+   * 갈래 셋이 여기서 갈린다 — 회복은 배틀 가방과 **같은 계산기**를 쓰고
+   * (`planItemUse`), 기술머신은 배울 수 있는지를 종족표의 비트로 보고,
+   * 진화의돌은 진화 판정을 도구 갈래로 돌린다
+   */
+  const applyItem = (): void => {
+    if (usingItem === null || !tables || !species || !selected) return
+    const item = tables.items.get(usingItem.item)
+    const info = species.byId.get(selected.species)
+    if (!info) return
+    const ppOf = (slot: { move: number; ppUps: number; pp: number }): number =>
+      maxPpOf(slot, tables.moves.get(slot.move).pp)
+
+    if (usingItem.use === 'heal') {
+      const plan = planItemUse(item, fieldTarget(selected, maxHp(selected, info), ppOf))
+      if (plan === null) { setNotice('효과가 없을 것 같다.'); return }
+      const next = [...party]
+      next[at] = applyFieldPlan(selected, plan, maxHp(selected, info), ppOf)
+      useSaveStore.setState({ party: next })
+      removeItem(item.pocket ?? 0, usingItem.item, 1)
+      clearUsingItem()
+      back()
+      return
+    }
+
+    if (usingItem.use === 'tmhm') {
+      const index = tmIndex(item)
+      const move = tmMove(item, tables.items.tmMoves)
+      if (index === null || move === null) { setNotice('가르칠 수 없다.'); return }
+      if (!canLearnTm(info.tm, index)) { setNotice('이 포켓몬은 배울 수 없다.'); return }
+      if (selected.moves.some((m) => m.move === move)) { setNotice('이미 배웠다.'); return }
+      if (selected.moves.length >= 4) { setNotice('기술 칸이 다 찼다.'); return }
+      const next = [...party]
+      next[at] = {
+        ...selected,
+        moves: [...selected.moves, { move, pp: maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp), ppUps: 0 }],
+      }
+      useSaveStore.setState({ party: next })
+      // 기술머신은 한 번 쓰면 사라진다. 비전머신은 안 사라진다
+      if (index < 92) removeItem(item.pocket ?? 0, usingItem.item, 1)
+      setNotice(`${moveNames[move] ?? ''}을(를) 배웠다!`)
+      clearUsingItem()
+      return
+    }
+
+    // 진화의돌
+    const evo = evolutionTarget(EvoClass.ITEM, selected, info, { item: usingItem.item })
+    if (evo === null) { setNotice('효과가 없을 것 같다.'); return }
+    removeItem(item.pocket ?? 0, usingItem.item, 1)
+    useEvolutionStore.getState().queue([at])
+    clearUsingItem()
+    closeAll()
+    open('evolution')
+  }
+
   useMenuKeys({
     up: pane === 'party' ? stepParty(-1) : () => { setMoveAt((c) => clampCursor(c, -1, moves.length)) },
     down: pane === 'party' ? stepParty(1) : () => { setMoveAt((c) => clampCursor(c, 1, moves.length)) },
@@ -128,6 +208,8 @@ export function PartyScreen() {
     },
     confirm: () => {
       setNotice(null)
+      // 도구를 들고 왔으면 자리 바꾸기가 아니라 **먹이기**다
+      if (usingItem !== null) { applyItem(); return }
       if (pane === 'moves') { tryMove(); return }
       // 집었다 놓는다. 놓는 자리가 곧 새 자리다 — 옮기는 동안 이미 바뀌어 있다
       setHeld((h) => (h === null ? at : null))
@@ -144,7 +226,9 @@ export function PartyScreen() {
   const info = species && selected ? species.byId.get(selected.species) : undefined
   const alive = party.filter((m) => m.hp > 0).length
 
-  const foot = held !== null
+  const foot = usingItem !== null
+    ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
+    : held !== null
     ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
     : pane === 'moves'
       ? '↑↓ 고르기 · Z 쓴다 · Tab/← 포켓몬 · X 닫기'

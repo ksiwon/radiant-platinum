@@ -64,10 +64,11 @@ describe('⚠️ migration guard', () => {
     expect(holes, `migration이 없는 판: ${holes.join(' · ')}`).toEqual([])
   })
 
-  it('지금은 7이 곧 지금 판이라 표가 비어 있다', () => {
-    // 없는 과거를 지어내지 않았다는 것. 이 줄은 버전이 오르면 자연히 깨진다
-    expect(SAVE_VERSION).toBe(FIRST_PORTABLE)
-    expect(Object.keys(MIGRATIONS)).toEqual([])
+  it('표에 없는 과거가 없다 — 7부터가 전부다', () => {
+    // 없는 과거를 지어내지 않았다는 것. 판이 7에서 8로 처음 올랐으므로 표에는
+    // `7` 하나만 있어야 하고, 거슬러 갈 수 있는 가장 낮은 판이 7이어야 한다
+    expect(Object.keys(MIGRATIONS).map(Number).sort((a, b) => a - b))
+      .toEqual([...Array(SAVE_VERSION - FIRST_PORTABLE).keys()].map((i) => i + FIRST_PORTABLE))
     expect(oldestSupported(SAVE_VERSION)).toBe(FIRST_PORTABLE)
   })
 })

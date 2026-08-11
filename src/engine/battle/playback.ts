@@ -38,6 +38,22 @@ export interface Beat {
   events: BattleEvent[]
   /** 접고 나서 쉬는 프레임. A·B로 건너뛴다 */
   hold: number
+  /**
+   * 여기서 **사람에게 묻고 멈춘다.** 답이 올 때까지 다음 박자로 안 넘어간다.
+   *
+   * 원작 배틀도 기술 네 칸이 찼을 때 이 자리에서 선다
+   * (`BATTLE_SUBSCRIPT_LEARN_MOVE` → "어느 기술을 잊게 할까?"). 그전에는
+   * 재생기가 답을 받을 데가 없어서 **배운 적 없는 기술이 조용히 사라졌다**
+   */
+  ask?: LearnPrompt
+}
+
+/** 기술 칸이 다 차서 무엇을 지울지 물어야 하는 자리 */
+export interface LearnPrompt {
+  /** 파티 자리 키 (`aftermath.partyKey`) */
+  key: string
+  /** 배우려는 기술 */
+  move: number
 }
 
 /** `WaitButtonABTime 30` — 글 하나를 읽히는 시간 */
@@ -193,6 +209,13 @@ export function buildBeats(
         // 랭크·상태이상은 연출이 먼저고 글이 뒤다 (`PlayBattleAnimation` → `PrintMessage`)
         show([e], 0)
         say(text(e), HOLD_MESSAGE)
+        // 배우고 싶어 하는 기술마다 한 번씩 묻는다. 사건이 이미 확정된 뒤라
+        // 이 박자들도 흔들리지 않는다
+        if (e.kind === 'reward') {
+          for (const move of e.pending) {
+            out.push({ text: null, events: [], hold: 0, ask: { key: e.key, move } })
+          }
+        }
     }
 
     if (e.kind === 'damage') flush()
