@@ -388,8 +388,7 @@ BDSP 모델 그룹이 붙으면 이 한 벌 한 벌이 그대로 설치 실패�
 | `raw/extracted/{us,ko,ja}/` | 언어별 선추출 캐시 | 아니오. 공개판은 선택 ROM에서 생성 |
 | `raw/decomp/` | 구조·상수 대조 참조 | 아니오. Import 입력이 아님 |
 | `raw/decomp-derived/` | 개발 검증 중간표 | 아니오 |
-| `raw/bdsp/Characters`, `dpr`, `pokemon*`, `arenas` | 이미 골라 둔 BDSP 하위 집합 | 공개 `AssetAssistant`의 논리 그룹에 매핑 |
-| `raw/bdsp/nca`, `out` 등 | 기존 준비 과정의 보관·중간물 | 아니오. 정상 빌드·Importer가 읽지 않음 |
+| `raw/AssetAssistant/` | BDSP 원천 | **그렇다.** 공개 사용자가 고르는 것과 같은 폴더를 개발도 그대로 읽는다 |
 | `raw/models/` | 모델 실험·중간물 | 아니오 |
 
 목표 구조는 [COPYRIGHT.md §5](COPYRIGHT.md#5-개발용-raw-정책)의

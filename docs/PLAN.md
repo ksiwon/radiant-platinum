@@ -629,9 +629,9 @@ interface PokemonModelSource {
 
 #### 4.3.1 BDSP 로컬 입력과 브라우저 변환 — 개발 경로 완료, 공개 경로 미구현
 
-현재 개발 환경에서는 이미 필요한 BDSP AssetBundle 하위 집합을 `raw/bdsp/`에
-준비했고 Python/UnityPy 변환기로 캐릭터·포켓몬·무대를 GLB로 만들 수 있다. 이것은
-**개발 파이프라인이 뚫렸다는 뜻**이지 공개 브라우저 Import가 완성됐다는 뜻이 아니다.
+개발 환경도 공개 사용자와 **같은 폴더**를 읽는다 — `raw/AssetAssistant/`이고,
+구조가 덤프 그대로다. 한때 필요한 번들만 골라 다른 이름으로 옮긴 폴더를 썼는데,
+그러면 개발만 그 재배치에 기대게 되고 진짜 구조에서는 안 도는 코드가 남는다.
 
 공개 사용자는 자신이 준비한 다음 폴더 또는 그 상위를 선택한다.
 
@@ -649,20 +649,19 @@ Data/StreamingAssets/AssetAssistant/
 다운로드·복호화·보호조치 우회 절차를 안내하지 않는다. 이미 추출된 지원 폴더가
 없으면 그 자리에서 멈춘다.
 
-현재 raw와 정식 폴더의 매핑:
+읽는 논리 그룹:
 
-| 현재 개발 경로 | 공개 입력의 논리 그룹 | 용도 |
-|---|---|---|
-| `raw/bdsp/dpr` | `Dpr` | 맵·게임 설정·연결 표 |
-| `raw/bdsp/battle` | `Battle` | 배틀 표·시퀀스 |
-| `raw/bdsp/Characters` | `Characters` | 주인공·NPC·자전거 |
-| `raw/bdsp/arenas` | `Environments`의 사용 하위 집합 | 배틀 무대·하늘 |
-| `raw/bdsp/pokemon`, `pokemon-common` | `Pokemon Database`의 사용 하위 집합 | 프리팹·메시·텍스처 |
+| 뿌리 아래 자리 | 용도 |
+|---|---|
+| `Dpr` | 맵·게임 설정·연결 표 · `masterdatas`(배틀 배율) |
+| `Battle` | 배틀 표·시퀀스 · `battle_masterdatas`(타격 프레임) |
+| `Characters` | 주인공·NPC·자전거 |
+| `Environments/bg/arenas` | 배틀 무대·하늘 |
+| `Pokemon Database/pokemons/{battle,common}` | 프리팹·메시·텍스처 |
 
-`raw/bdsp`의 다른 컨테이너·중간 폴더는 정상 개발 빌드와 공개 Importer가 읽지
-않는다. 기존 파일은 보존하고 `RawSourceAdapter`로 위 논리 그룹을 매핑한 뒤,
-검증을 통과한 경우에만 목표 `raw/sources`, `references`, `work`,
-`dev-assets`, `legacy` 구획으로 점진 정리한다.
+자리는 `tools/raw/sources.cjs`가 정한다 — `bdsp.root`만 기계마다 다르고 그
+아래는 덤프 구조 그대로다. 공개 Importer도 사용자가 고른 핸들에 같은 계약을
+건다 (`src/import/bdsp/scan.ts`).
 
 가장 큰 선행조건은 변환기 이식이다. 현재 캐릭터·포켓몬·무대 변환은
 UnityPy·NumPy·Pillow에 의존한다. 공개판에는 Unity AssetBundle, Mesh, Texture2D,
@@ -2030,10 +2029,8 @@ radiant-platinum/
   dist/                   현재 data·models가 복사된 기존 빌드
 ```
 
-`raw`의 큰 범주는 분리돼 있지만 `raw/bdsp` 안에서는 공개 사용자가 선택할
-`AssetAssistant` 원천과 개발 중간물·재배치된 하위 집합이 섞여 있다. 현재 추출기가
-실제로 읽는 것은 `Characters`, `dpr`, `pokemon`, `pokemon-common`,
-`arenas` 등이고 다른 보관·중간 폴더는 정상 체인의 입력이 아니다.
+BDSP 쪽 정본은 `raw/AssetAssistant` 하나다 — 공개 사용자가 고르는 것과 같은
+구조이고, 개발 추출기도 브라우저 변환기도 그것만 읽는다.
 
 ### 15.0.1 목표 구조
 

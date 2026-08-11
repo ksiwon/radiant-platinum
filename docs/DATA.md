@@ -759,7 +759,7 @@ arm9 안 절대 오프셋 **`0xea01c`**, 24바이트 × 593개. NARC 파일이 �
 ⚠️ **아직 무대를 안 가른다.** 우리 무대는 BDSP `g001` 한 벌뿐이라 어디서 싸워도
 같은 풀밭이다 (PLAN §16.2). 번호는 `maps.json`에 실어 두었고, 무대를 여러 벌
 구울 때 이 값이 고르는 열쇠가 된다. BDSP 쪽 무대는 `arenas/ground/`에 **102벌**이
-뽑혀 있다(`raw/bdsp`, 452MB) — 굽는 일이지 만드는 일이 아니다.
+뽑혀 있다(`Environments/bg/arenas/ground`) — 굽는 일이지 만드는 일이 아니다.
 
 **주소를 어떻게 찾았나 — 추측이 아니라 역산이다:**
 
@@ -2659,16 +2659,16 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
 | `raw/extracted` | 22 | 61MB | us·ko·ja Platinum 선추출 |
 | `raw/decomp` | 27,109 | 125MB | 포맷·상수 대조 참조 |
 | `raw/decomp-derived` | 4 | 매우 작음 | 명령 폭 등 개발 중간표 |
-| `raw/bdsp` | 5,573 | 5.89GB | BDSP 하위 집합·중간물·변환 전 번들 |
+| `raw/AssetAssistant` | 12,691 | 4.05GB | BDSP 원천. 공개 사용자가 고르는 것과 같은 구조 |
 | `raw/models` | 70 | 19MB | 모델 작업물 |
 | `public/data` | 6,516 | 50.4MB | 현재 개발 런타임 데이터 |
 | `public/models` | 570 | 579.6MB | 현재 개발 GLB |
 | 기존 `dist/data·models` | 7,084 | 약 628MB | Vite가 복사한 공개 금지 산출물 |
 
-큰 종류는 분리돼 있지만 `raw/bdsp` 안에는 공개 사용자의 원천
-`AssetAssistant`와 같은 하위 집합, 재배치·변환 중간물, 기존 보관물이 함께 있다.
-따라서 현재 raw를 공개 입력 폴더의 정본으로 부르지 않는다. 기존 파일은 보존하고
-논리 source adapter로 먼저 매핑한다.
+BDSP 쪽은 이제 **정본이 하나다.** 공개 사용자가 고르는 `AssetAssistant`를
+개발도 그대로 읽는다 — 골라 옮긴 하위 집합을 따로 두면 개발만 그 재배치에
+기대게 되고, 진짜 구조에서는 안 도는 코드가 남는다. 자리는 논리 source
+adapter(`tools/raw/sources.cjs`)가 정한다.
 
 또한 현재 추출기 전부가 Platinum ROM 하나만 읽는 것은 아니다.
 
