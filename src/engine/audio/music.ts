@@ -7,6 +7,7 @@
 // 브라우저는 사용자가 건드리기 전에는 소리를 못 낸다. 그래서 `resume()`을
 // 먼저 부르는 것이 아니라 **첫 입력 때 깨운다**.
 import { getAudioContext, onAudioUnlock } from './unlock'
+import { RingCounter, type Ring } from './ringing'
 import { assets, readJson } from '../../data/providers/assetProvider'
 import type { RenderReply, RenderRequest } from './renderWorker'
 
@@ -37,6 +38,14 @@ export const MAX_CRY_SPECIES = 494
 export const FAINT_SEMITONES = -3.5
 /** 곡을 바꿀 때 겹치는 시간 (초) */
 const FADE = 0.6
+/**
+ * 소리 하나를 "아직 울리는 중"으로 셀 수 있는 최대 시간 (ms).
+ *
+ * 펴는 데 걸리는 시간 + 소리 길이(`SHORT_SECONDS`)를 넉넉히 덮는다. 소리
+ * 길이를 알게 되면 곧바로 그 값으로 줄인다 (`ring`의 `by`) — 이 값은 **길이를
+ * 알기 전에 죽는 경우**만을 위한 것이다
+ */
+const RING_CAP_MS = 15_000
 /**
  * 받아 둔 것을 몇 개까지 들고 있나.
  *
@@ -82,11 +91,14 @@ export class Music {
    *
    * 스크립트가 `WaitSE`로 **소리가 끝날 때까지 선다**(`Sound_IsEffectPlaying`).
    * 그 물음에 답하려면 무엇이 울리는 중인지 알아야 한다. 같은 번호가 겹쳐 날 수
-   * 있으므로 수를 센다 — 두 번 낸 소리 하나가 끝났다고 "끝났다"고 하면 안 된다
+   * 있으므로 수를 센다 — 두 번 낸 소리 하나가 끝났다고 "끝났다"고 하면 안 된다.
+   *
+   * ⚠️ 시간 상한이 왜 붙어 있는지는 `ringing.ts` 머리말에 있다 — 없으면
+   * 소리 하나가 안 끝나는 것으로 **게임이 멈춘다**
    */
-  private ringing = new Map<number, number>()
-  /** 울음소리가 울리는 중인가 (`Sound_IsPokemonCryPlaying`) */
-  private crying = 0
+  private readonly ringing = new RingCounter(RING_CAP_MS)
+  /** 울음소리도 같은 함정이 있다 (`WaitCry`). 번호가 없으므로 한 칸만 쓴다 */
+  private readonly cries = new RingCounter(RING_CAP_MS)
 
   /**
    * 소리를 낼 수 있게 만든다.
@@ -304,27 +316,21 @@ export class Music {
    * 여러 개가 동시에 나도 되므로 붙였다 끝나면 떼기만 한다 — BGM처럼 하나만
    * 살아 있을 이유가 없다
    */
-  private oneShot(buf: AudioBuffer, gain: number, tag?: () => void): void {
+  private oneShot(buf: AudioBuffer, gain: number, tag?: Ring): void {
     const ctx = this.ctx, bus = this.bus
-    if (!ctx || !bus) { tag?.(); return }
+    if (!ctx || !bus) { tag?.release(); return }
     const g = ctx.createGain()
     g.gain.value = gain
     g.connect(bus)
     const src = ctx.createBufferSource()
     src.buffer = buf
     src.connect(g)
-    src.onended = () => { g.disconnect(); tag?.() }
+    src.onended = () => { g.disconnect(); tag?.release() }
     src.start()
-  }
-
-  /** 울리는 중인 소리를 하나 센다. 끝나면 되돌린다 */
-  private ring(song: number): () => void {
-    this.ringing.set(song, (this.ringing.get(song) ?? 0) + 1)
-    return () => {
-      const left = (this.ringing.get(song) ?? 1) - 1
-      if (left <= 0) this.ringing.delete(song)
-      else this.ringing.set(song, left)
-    }
+    // ⚠️ **`onended`만 믿으면 안 된다.** 문맥이 멈춰 있으면(`suspended`) 소스가
+    // 영영 안 끝나고, 그러면 아래 `isEffectPlaying`이 영영 참이다. 소리 길이는
+    // 이미 알고 있으므로 그만큼 지나면 끝난 것으로 센다
+    tag?.by((buf.duration + 0.5) * 1000)
   }
 
   /** 이 소리가 아직 울리는가 (`Sound_IsEffectPlaying`) */
@@ -334,7 +340,7 @@ export class Music {
 
   /** 울음소리가 아직 울리는가 (`Sound_IsPokemonCryPlaying`) */
   isCryPlaying(): boolean {
-    return this.crying > 0
+    return this.cries.has(CRY_SEQ)
   }
 
   /** 지금 트는 곡. 없으면 null */
@@ -378,16 +384,21 @@ export class Music {
   /** 효과음 하나 */
   async playEffect(song: number, gain = 1): Promise<void> {
     if (!this.ctx) return
-    const done = this.ring(song)
-    const buf = await this.render(`se:${String(song)}`, song, { maxSeconds: SHORT_SECONDS })
-    if (!buf) { done(); return }
+    const done = this.ringing.start(song)
+    // ⚠️ **터져도 놓아 준다.** 여기서 던지면 `void`로 부른 쪽은 아무것도 못
+    // 하고, 센 것이 안 돌아와 `WaitSE`가 영영 선다
+    let buf = null
+    try {
+      buf = await this.render(`se:${String(song)}`, song, { maxSeconds: SHORT_SECONDS })
+    } catch { /* 소리만 빠진다 — 게임은 계속 돈다 */ }
+    if (!buf) { done.release(); return }
     this.oneShot(buf, gain, done)
   }
 
   /** 나는 중인 소리를 끊는다 (`Sound_StopEffect`) */
   stopEffect(song: number): void {
     // 이미 붙은 소스를 되찾을 길이 없다. 끝난 것으로만 표시해 `WaitSE`가 안 멎게 한다
-    this.ringing.delete(song)
+    this.ringing.clear(song)
   }
 
   /**
@@ -400,17 +411,20 @@ export class Music {
     if (!this.ctx) return
     if (species < 1 || species > MAX_CRY_SPECIES) return
     const faint = opts?.faint === true
-    this.crying++
-    const buf = await this.render(
-      `cry:${String(species)}${faint ? ':faint' : ''}`, CRY_SEQ,
-      {
-        warOverride: species,
-        maxSeconds: SHORT_SECONDS,
-        transpose: faint ? FAINT_SEMITONES : undefined,
-      },
-    )
-    if (!buf) { this.crying--; return }
-    this.oneShot(buf, 1, () => { this.crying-- })
+    const cry = this.cries.start(CRY_SEQ)
+    let buf = null
+    try {
+      buf = await this.render(
+        `cry:${String(species)}${faint ? ':faint' : ''}`, CRY_SEQ,
+        {
+          warOverride: species,
+          maxSeconds: SHORT_SECONDS,
+          transpose: faint ? FAINT_SEMITONES : undefined,
+        },
+      )
+    } catch { /* 울음소리만 빠진다 */ }
+    if (!buf) { cry.release(); return }
+    this.oneShot(buf, 1, cry)
   }
 }
 

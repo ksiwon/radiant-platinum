@@ -68,9 +68,14 @@ export function markTalk(on: boolean): void {
  *
  * 프레임마다 불리지만 **칸이 바뀔 때만** 쓴다 — 매 프레임 DOM을 만지면
  * 레이아웃이 흔들린다
+ *
+ * ⚠️ **`round`가 아니라 `floor`다.** 주인공은 칸 **가운데**에 서므로 좌표가
+ * 늘 `칸 + 0.5`고, `round`는 그것을 위 칸으로 올린다 — 표식이 한 칸씩 어긋난
+ * 채로 나갔다. 격자도 `isBlockedAtWorld`가 `floor`로 묻는다(`map/grid.ts`).
+ * 실측으로 잡았다: 침실에서 표식이 (1,9)라고 했는데 그 칸은 벽이었다
  */
 export function markTile(x: number, z: number): void {
-  put('tile', `${String(Math.round(x))},${String(Math.round(z))}`)
+  put('tile', `${String(Math.floor(x))},${String(Math.floor(z))}`)
 }
 
 /**
@@ -85,4 +90,16 @@ export function markTile(x: number, z: number): void {
  */
 export function markScript(on: boolean): void {
   put('script', on ? '1' : null)
+}
+
+/**
+ * 어느 갈래의 배틀인가 — `data-battle="wild"` · `"trainer"`. 없으면 지운다.
+ *
+ * ⚠️ **`data-scene="battle"`만으로는 못 가른다.** 야생과 트레이너는 여는 길도
+ * 규칙도 다른데(`battleStore`의 `startWild`·`startTrainer`) 밖에서는 똑같이
+ * 보인다. 그러면 자동 검사가 "배틀 둘 다 됐다"를 증명할 수가 없다 —
+ * 야생만 스무 번 나고도 통과한다
+ */
+export function markBattle(kind: 'wild' | 'trainer' | null): void {
+  put('battle', kind)
 }

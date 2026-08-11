@@ -31,6 +31,7 @@ import {
 import { store as storeInBox } from '../engine/pokemon/boxes'
 import { gameLocale, useOptionsStore } from './optionsStore'
 import { useSessionStore } from './sessionStore'
+import { markBattle } from '../app/sceneMark'
 import { dexSet, useSaveStore } from './saveStore'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
@@ -616,5 +617,11 @@ async function open(
 // 이 모듈은 필드가 불러올 때 처음 들어오고, 배틀은 필드에서만 시작한다
 useBattleStore.subscribe((now, before) => {
   const on = now.phase !== 'off'
-  if (on !== (before.phase !== 'off')) useSessionStore.getState().setBattleScreen(on)
+  if (on !== (before.phase !== 'off')) {
+    useSessionStore.getState().setBattleScreen(on)
+    // 어느 갈래의 배틀인지도 문서에 적어 둔다 — 읽기 전용이고 `data-scene`과
+    // 같은 자리다 (`app/sceneMark.ts`). `data-scene="battle"`만으로는 야생과
+    // 트레이너를 밖에서 못 가른다
+    markBattle(on ? now.kind : null)
+  }
 })
