@@ -1048,12 +1048,38 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     })
     assert(painted, '캔버스가 0×0이다')
 
+    // ── 필드가 조용해지기를 기다린다 ──
+    //
+    // ⚠️ **대사창이 떠 있으면 걸음도 시작 메뉴도 안 먹는다.** 새 판의 주인공
+    // 방은 들어서자마자 TV 방송 스크립트가 돌고, 스크립트가 도는 동안은 입력이
+    // 0으로 지워진다(`scriptSystem.fixedUpdate`). 실측으로 여기서 한 번 섰다 —
+    // 30번을 두드리고도 메뉴가 0줄이었고, 화면에는 방송 대사가 떠 있었다.
+    // 밖에서 그것을 아는 길이 표식이다 (`data-talk` · `data-script`)
+    const quiet = async () => {
+      for (let i = 0; i < 150; i++) {
+        const busy = await page.evaluate(() => {
+          const d = document.documentElement.dataset
+          return d.talk === '1' || d.script === '1'
+        })
+        if (!busy) return true
+        // ⚠️ `press`로는 안 넘어간다 — 누르고 떼는 사이가 1ms도 안 돼서 프레임
+        // 사이로 빠진다. 한 프레임 이상 붙잡아야 눌린 것으로 센다
+        await page.keyboard.down('Space')
+        await page.waitForTimeout(70)
+        await page.keyboard.up('Space')
+        await page.waitForTimeout(120)
+      }
+      return false
+    }
+    assert(await quiet(), '대사창이 안 닫힌다 — 스크립트가 안 끝났다')
+
     // ── 걷는다 ──
     for (const key of ['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight']) {
       await page.keyboard.down(key)
       await page.waitForTimeout(400)
       await page.keyboard.up(key)
     }
+    await quiet()
 
     // ── 시작 메뉴 → 리포트 ──
     //
@@ -1074,7 +1100,9 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     })
     let rows = []
     for (let i = 0; i < 30 && rows.length === 0; i++) {
-      await page.keyboard.press('KeyX')
+      await page.keyboard.down('KeyX')
+      await page.waitForTimeout(70)
+      await page.keyboard.up('KeyX')
       await page.waitForTimeout(1_000)
       rows = await menuRows()
     }

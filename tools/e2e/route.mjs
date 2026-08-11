@@ -132,7 +132,16 @@ export const STEP = {
  * 못 가면 `null`이다 — "길이 없다"와 "짧은 길"을 구별해야 시험이 무엇에
  * 막혔는지 말할 수 있다
  */
-export function pathTo(matrixId, from, isGoal, { limit = 40_000, avoid = null } = {}) {
+/**
+ * 너비 우선이 볼 칸 수의 상한.
+ *
+ * ⚠️ **오버월드 한 판을 다 볼 수 있어야 한다.** 행렬 0이 960×960(92만 칸)이고
+ * 202번도로에서 떡잎마을까지가 그 대각선쯤이다. 4만으로 잘라 두었더니 먼 곳을
+ * "길이 없다"로 답했고, 그러면 부르는 쪽이 가까운 엉뚱한 구역으로 대신 갔다
+ */
+const NODE_CAP = 250_000
+
+export function pathTo(matrixId, from, isGoal, { limit = NODE_CAP, avoid = null } = {}) {
   const grid = gridOf(matrixId)
   const start = `${from.x},${from.z}`
   const prev = new Map([[start, null]])

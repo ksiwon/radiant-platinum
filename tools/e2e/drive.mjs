@@ -11,6 +11,21 @@
 // 실행은 세 번 만나고 어떤 실행은 한 번도 안 만난다(실측 3회 · 0회). 그래서
 // **일부러 풀밭 위를 왕복하고**, 트레이너와 점원은 **말을 걸어서** 연다 —
 // 눈이 마주치기를 기다리지 않는다.
+//
+// ⚠️ **이야기를 건너뛸 수는 없다.** 여기서 제일 오래 헤맨 것이 이 지점이다.
+// 지도상 갈 수 있다고 갈 수 있는 것이 아니라, 원작이 순서대로 문을 연다:
+//
+//   ① 201번도로 (110~113, 857)을 **밟아야** 마박사가 나와 가방을 놓는다
+//      — 안 밟으면 가방이 숨은 채라 네 방향에서 A를 눌러도 아무 일이 없다
+//   ② 그 가방에 말을 걸어야 첫 파트너를 고르고 **라이벌전**이 열린다
+//      — 안 고르면 "포켓몬부터 고르라"며 가방 앞으로 도로 밀려난다
+//   ③ 도감을 받고 집으로 돌아가 엄마에게 말을 걸어야 **소포**가 나온다
+//      — 소포가 없으면 202번도로 입구가 주인공을 되돌려 세운다
+//
+// 셋 다 원작 그대로다(`raw/decomp`의 `scripts_route_201.s` ·
+// `scripts_route_202.s` · `scripts_twinleaf_town_player_house_1f.s`). 한때
+// 이것을 게임의 결함으로 의심했는데, 막고 있던 것은 전부 **이 하네스가 건너뛴
+// 걸음**이었다.
 import {
   encounterTiles, gridOf, mapRoute, matrixOf, pathTo, TILE_TABLE, trainersOn, warpsOf,
 } from './route.mjs'
@@ -256,27 +271,39 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
         await page.waitForTimeout(300); continue
       }
 
-      let goal
-      if (here === matrixOf(target)) goal = (x, z) => grid.zoneAt(x, z) === target
-      else {
-        const route = mapRoute(s.map, target)
-        if (!route || route.length < 2) return `길이 없다 (${String(s.map)} → ${String(target)})`
-        const hop = route[1]
-        if (matrixOf(hop) === here) goal = (x, z) => grid.zoneAt(x, z) === hop
-        else {
-          const doors = warpsOf(s.map).filter((w) => w.to === hop)
-          if (doors.length === 0) return `${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`
-          goal = (x, z) => doors.some((w) => w.x === x && w.z === z)
-        }
-      }
-
       // 이 맵의 **다른 문은 밟지 않는다** — 모래시티는 한 줄에 문이 셋이라,
       // 상점으로 가는 길이 포켓몬센터 문을 지난다 (실측: 419로 가다 422에 들어갔다)
       const others = warpsOf(s.map)
-      const keys = pathTo(here, { x: s.x, z: s.z }, goal, {
-        avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
-          || others.some((w) => w.x === x && w.z === z),
-      })
+      const avoid = (x, z) => shun.has(`${String(x)},${String(z)}`)
+        || others.some((w) => w.x === x && w.z === z)
+      const from = { x: s.x, z: s.z }
+
+      let keys = null
+      if (here === matrixOf(target)) {
+        keys = pathTo(here, from, (x, z) => grid.zoneAt(x, z) === target, { avoid })
+      } else {
+        const route = mapRoute(s.map, target)
+        if (!route || route.length < 2) return `길이 없다 (${String(s.map)} → ${String(target)})`
+        // ⚠️ **중간 구역을 하나씩 밟으면 안 된다.** 같은 행렬 안에서는 구역이
+        // 맞닿아 있기만 하면 한 걸음으로 세므로, 맵 그래프가 202번도로에서
+        // 집으로 가는 길을 `[343, 0, 411, 414]`로 냈다 — 그 "0"으로 가는
+        // 51걸음이 하필 **서쪽 잡는 법 관문**을 지났고, 관문은 소포가 없는
+        // 주인공을 되돌려 세운다. 그래서 되돌려 세우고 다시 가기를 되풀이하며
+        // 400바퀴를 돌았다. 지나갈 구역이 아니라 **같은 행렬에 있는 마지막
+        // 구역**을 곧바로 노린다. 멀어서 못 찾으면 한 칸씩 당겨 본다
+        let far = 0
+        while (far + 1 < route.length && matrixOf(route[far + 1]) === here) far++
+        if (far === 0) {
+          const hop = route[1]
+          const doors = others.filter((w) => w.to === hop)
+          if (doors.length === 0) return `${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`
+          keys = pathTo(here, from, (x, z) => doors.some((w) => w.x === x && w.z === z), { avoid })
+        } else {
+          for (let i = far; i >= 1 && keys === null; i--) {
+            keys = pathTo(here, from, (x, z) => grid.zoneAt(x, z) === route[i], { avoid })
+          }
+        }
+      }
       if (keys === null) {
         lost++
         // 피할 칸이 너무 쌓여 길이 막힌 것일 수 있다. 한 번 비우고 다시 본다
@@ -305,6 +332,42 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
   }
 
   /**
+   * 그 칸을 **밟는다**.
+   *
+   * ⚠️ **구역에 들어서는 것과 장면을 여는 것은 다르다.** 이야기 장면의 절반은
+   * 밟아야 걸리는 것이고(`events.json`의 `triggers`), 그 칸은 대개 구역 한복판에
+   * 있다. 구역 경계에 발만 들여놓고 다음 목적지로 떠나면 장면이 안 열리고,
+   * 그 뒤의 문이 조용히 잠긴다 — 실측으로 201번도로 첫 장면을 이렇게 지나쳐서
+   * 가방이 끝까지 안 나타났고, 파트너를 못 고른 채로 이야기가 멎었다
+   */
+  const stepOn = async (mapId, spot, budgetMs) => {
+    const here = matrixOf(mapId)
+    const doors = warpsOf(mapId)
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const shun = new Set()
+    while (Date.now() < till) {
+      const s = await settle()
+      if (!s.ok) { await page.waitForTimeout(200); continue }
+      // 장면이 주인공을 다른 맵으로 데려갔으면 그것이 열린 것이다
+      if (s.map !== mapId) return 'warped'
+      if (s.x === spot.x && s.z === spot.z) return 'arrived'
+      const keys = pathTo(here, { x: s.x, z: s.z }, (x, z) => x === spot.x && z === spot.z, {
+        avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
+          || doors.some((w) => w.x === x && w.z === z),
+      })
+      if (keys === null) {
+        if (shun.size > 0) shun.clear()
+        else await page.waitForTimeout(200)
+        continue
+      }
+      const how = await walk(keys, { x: s.x, z: s.z }, mapId, shun)
+      if (how === 'done') return 'arrived'
+      if (verbose) log(`      ${String(spot.x)},${String(spot.z)}까지 ${how}`)
+    }
+    return '시간이 다 됐다'
+  }
+
+  /**
    * 그 사람 **옆에 서서 마주 보고** 말을 건다.
    *
    * ⚠️ **그 칸으로 걸어가면 안 된다.** 우리 게임은 사람이 이동을 안 막는다
@@ -315,7 +378,7 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
    *
    * 네 옆칸을 차례로 시도한다. 어느 쪽에서 접근할 수 있는지는 지형이 정한다
    */
-  const talkTo = async (mapId, spot) => {
+  const talkTo = async (mapId, spot, budgetMs = 120_000) => {
     const here = matrixOf(mapId)
     const doors = warpsOf(mapId)
     // 옆칸 넷. ⚠️ **계산대 너머도 넣는다** — 점원과 간호사는 계산대 뒤에 서고,
@@ -332,29 +395,44 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
         sides.push({ key, at: { x: near.x + dx, z: near.z + dz } })
       }
     }
-    let answered = false
-    for (const side of sides) {
+    const open = sides.filter((s) => !grid.blocked(s.at.x, s.at.z))
+    if (open.length === 0) {
+      if (verbose) log(`      ${String(spot.x)},${String(spot.z)} 옆이 사방 벽이다`)
+      return false
+    }
+
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    /** 이번에 못 지나간 칸 */
+    const shun = new Set()
+    for (let i = 0; Date.now() < till; i++) {
+      const side = open[i % open.length]
       const s = await settle()
-      if (s.map !== mapId || !s.ok) {
+      if (!s.ok || s.map !== mapId) {
         if (verbose) log(`      말 걸기 그만 — 맵 ${String(s.map)} (원한 맵 ${String(mapId)})`)
         return false
-      }
-      if (grid.blocked(side.at.x, side.at.z)) {
-        if (verbose) log(`      옆칸 ${String(side.at.x)},${String(side.at.z)}는 벽이다`)
-        continue
       }
       if (s.x !== side.at.x || s.z !== side.at.z) {
         const keys = pathTo(here, { x: s.x, z: s.z },
           (x, z) => x === side.at.x && z === side.at.z,
-          { avoid: (x, z) => doors.some((w) => w.x === x && w.z === z) })
+          {
+            avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
+              || doors.some((w) => w.x === x && w.z === z),
+          })
         if (keys === null) {
           if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}로 가는 길이 없다`)
+          if (shun.size > 0) shun.clear()
+          else await page.waitForTimeout(200)
           continue
         }
-        const how = await walk(keys, { x: s.x, z: s.z }, mapId)
-        if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}까지 ${how}`)
-        if (how === 'battle') { await fightThrough(); return true }
-        if (how === 'talk') { await clearTalk(); return true }
+        const how = await walk(keys, { x: s.x, z: s.z }, mapId, shun)
+        // ⚠️ **가는 길에 이야기가 끼어든 것은 "말을 걸었다"가 아니다.** 한때
+        // 여기서 `talk`를 성공으로 세었더니, 202번도로 입구에서 라이벌이 길을
+        // 막는 장면이 트레이너 셋의 "반응"으로 세 번 적혔다 — 배틀은 0인데
+        // 실패가 아무 데도 안 남았다. 끼어든 것은 `settle`이 치우고 **다시 간다**
+        if (how !== 'done') {
+          if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}까지 ${how}`)
+          continue
+        }
       }
       // 마주 본다. 짧게 누르면 그 자리에서 방향만 돈다
       await tap(side.key, 40)
@@ -367,11 +445,10 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
       }
       if (after.scene === 'battle' || after.talk || after.scene === 'menu' || after.script) {
         await settle()
-        answered = true
-        break
+        return true
       }
     }
-    return answered
+    return false
   }
 
   /**
@@ -421,21 +498,46 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
     { map: 411, what: '떡잎마을', budget: 120_000 },
     { map: 413, what: '라이벌 집 2층', budget: 120_000 },
     { map: 411, what: '떡잎마을(다시)', budget: 120_000 },
-    { map: 342, what: '201번도로', budget: 180_000 },
-    { map: 334, what: '예진호수', budget: 240_000 },
-    { map: 418, what: '모래시티', budget: 240_000 },
+    // ⚠️ **구역에 들어서기만 해서는 안 된다.** 첫 장면은 (110~113, 857)을
+    // 밟아야 열린다. 그 장면이 마박사와 광휘를 부르고 **가방을 내려놓는다**
+    // (`scripts_route_201.s`의 `ChooseStarterScene` — `ClearFlag
+    // FLAG_HIDE_ROUTE_201_BRIEFCASE` + `AddObject`). 새 게임은 그 가방을
+    // 숨긴 채로 시작하므로(`scripts_init_new_game.s`), 이 칸을 안 밟으면
+    // 가방이 **거기 없다** — 실측으로 네 방향에서 A를 눌러도 아무 일이 없었다
+    { map: 342, what: '201번도로', at: { x: 111, z: 857 }, budget: 180_000 },
+    // ⚠️ **여기를 건너뛰면 그 뒤가 통째로 막힌다.** 첫 파트너는 연구소가 아니라
+    // 이 가방에서 고른다. 안 고르면 라이벌이 "포켓몬부터 고르라"며 가방 앞으로
+    // 도로 밀어 놓는다 — 그것도 지나갈 때마다 다시
+    // (`CoordEvent_PickAPokemon`, `VAR_FOLLOWER_RIVAL_STATE`가 1인 동안).
+    // 고르고 나면 라이벌전을 치르고 이야기가 주인공을 집으로 데려간다
+    { map: 342, what: '201번도로 가방', talk: { x: 112, z: 854 }, budget: 300_000 },
+    { map: 334, what: '예진호수', at: { x: 80, z: 844 }, budget: 300_000 },
+    { map: 418, what: '모래시티', budget: 300_000 },
   ]
 
   const reached = []
   const missed = []
   for (const stop of STOPS) {
     if (left() <= 0) break
-    const verdict = await goTo(stop.map, stop.budget)
+    const verdict = await goTo(stop.map, Math.min(stop.budget, left()))
+    let stood = null
+    if (verdict === 'arrived' && stop.at) {
+      stood = await stepOn(stop.map, stop.at, Math.min(180_000, left()))
+      await settle()
+    }
+    let said = null
+    if (verdict === 'arrived' && stop.talk) {
+      said = await talkTo(stop.map, stop.talk, Math.min(180_000, left()))
+      await settle()
+    }
     const s = await now()
-    log(`${stop.what}(${String(stop.map)}) → ${verdict} · 지금 맵 ${String(s.map)} `
-      + `칸 ${String(s.x)},${String(s.z)} · ${((Date.now() - started) / 1000).toFixed(0)}초`)
-    if (verdict === 'arrived') reached.push(stop.map)
-    else missed.push(`${stop.what}(${String(stop.map)}): ${verdict}`)
+    log(`${stop.what}(${String(stop.map)}) → ${verdict}`
+      + (stood === null ? '' : ` · 밟기 ${stood}`)
+      + (said === null ? '' : ` · 말 걸기 ${said ? '됐다' : '안 됐다'}`)
+      + ` · 지금 맵 ${String(s.map)} 칸 ${String(s.x)},${String(s.z)} `
+      + `· ${((Date.now() - started) / 1000).toFixed(0)}초`)
+    if (verdict === 'arrived' && said !== false) reached.push(stop.map)
+    else missed.push(`${stop.what}(${String(stop.map)}): ${verdict}${said === false ? ' (말을 못 걸었다)' : ''}`)
   }
 
   // ── 상점 ──
@@ -462,21 +564,10 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
   if (battles.wild === 0) trouble.push('야생 배틀에 못 닿았다')
 
   // ── 트레이너 배틀 ──
-  if (battles.trainer === 0 && left() > 0) {
-    const to202 = await goTo(343, Math.min(240_000, left()))
-    if (to202 === 'arrived') {
-      maps.add(343)
-      for (const t of trainersOn(343)) {
-        if (battles.trainer > 0 || left() <= 0) break
-        const said = await talkTo(343, { x: t.x, z: t.z })
-        await settle()
-        log(`  트레이너 ${String(t.x)},${String(t.z)} → ${said ? '반응했다' : '못 걸었다'} · `
-          + `트레이너전 ${String(battles.trainer)}`)
-      }
-      log(`202번도로 트레이너 → ${String(battles.trainer)}회 · `
-        + `${((Date.now() - started) / 1000).toFixed(0)}초`)
-    } else trouble.push(`202번도로에 못 갔다: ${to202}`)
-  }
+  //
+  // 여기까지 오는 길에 라이벌전을 이미 치렀으면 더 갈 것이 없다. 못 치렀으면
+  // 202번도로에 서 있는 셋에게 말을 건다 — 다만 그 길이 소포로 잠겨 있다
+  if (battles.trainer === 0 && left() > 0) await parcelThenRoute202()
   if (battles.trainer === 0) trouble.push('트레이너 배틀에 못 닿았다')
 
   return {
@@ -486,6 +577,66 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
     missed,
     wild: battles.wild, trainer: battles.trainer, shops, trouble,
     seconds: Math.round((Date.now() - started) / 1000),
+  }
+
+  /** 소포를 받고 202번도로 트레이너에게 간다 */
+  async function parcelThenRoute202() {
+    await getParcel()
+    if (left() <= 0) return
+    const to202 = await goTo(343, Math.min(240_000, left()))
+    if (to202 !== 'arrived') { trouble.push(`202번도로에 못 갔다: ${to202}`); return }
+    maps.add(343)
+    for (const t of trainersOn(343)) {
+      if (battles.trainer > 0 || left() <= 0) break
+      const said = await talkTo(343, { x: t.x, z: t.z }, Math.min(120_000, left()))
+      // ⚠️ **"반응했다"만으로는 아무것도 모른다.** 한 실행에서 셋 다 반응하고
+      // 배틀은 0이었는데, 실은 입구 장면이 발을 묶은 채로 나머지 둘을
+      // "반응했다"로 센 것이었다. 그래서 **뒤에 무엇이 남았는지**를 적는다
+      const after = await settle()
+      log(`  트레이너 ${String(t.x)},${String(t.z)} → ${said ? '반응했다' : '못 걸었다'} · `
+        + `트레이너전 ${String(battles.trainer)} · 뒤 ${JSON.stringify({
+          scene: after.scene, script: after.script, talk: after.talk,
+          menu: after.menu, x: after.x, z: after.z,
+        })}`)
+      if (after.script) {
+        trouble.push(`트레이너 ${String(t.x)},${String(t.z)}의 스크립트가 안 끝났다`)
+        break
+      }
+    }
+    log(`202번도로 트레이너 → ${String(battles.trainer)}회 · `
+      + `${((Date.now() - started) / 1000).toFixed(0)}초`)
+  }
+
+  /**
+   * 소포를 받는다.
+   *
+   * ⚠️ **이 한 걸음을 빼면 202번도로에 못 들어간다.** 원작이 입구에서 막는다:
+   *
+   *     Route202_CheckStartCatchingTutorial:
+   *         GoToIfUnset FLAG_RECEIVED_PARCEL, Route202_TellYourFamily
+   *
+   * 소포가 없으면 라이벌이 "가족한테 말은 하고 왔니"라며 되돌려 세운다 —
+   * 그것도 **들어설 때마다 다시**. 실측으로 트레이너 셋을 부르러 갈 때마다
+   * 이 장면이 열려서, 트레이너전이 한 번도 안 열린 채로 "다 반응했다"로 적혔다.
+   *
+   * 소포를 주는 곳은 집 1층의 엄마다. 도감을 받은 뒤에 말을 걸면 리포트를
+   * 주고, 그 자리에 라이벌 엄마가 들어와 소포를 맡긴다
+   * (`scripts_twinleaf_town_player_house_1f.s`의 `MomGiveJournal` →
+   * `RivalsMomEnters` → `TakeThisToRival` → `SetFlag FLAG_RECEIVED_PARCEL`).
+   *
+   * ⚠️ 엄마는 (7,8)이다. 라이벌전 뒤 장면에서 (2,4)로 옮겨 서지만, 그 장면의
+   * 이동이 소파 앞 (7,8)로 되돌려 놓는다 — 어느 쪽으로 들어와도 여기다
+   */
+  async function getParcel() {
+    const home = await goTo(414, Math.min(300_000, left()))
+    log(`집 1층(414) → ${home} · ${((Date.now() - started) / 1000).toFixed(0)}초`)
+    if (home !== 'arrived') { trouble.push(`소포를 받으러 집에 못 갔다: ${home}`); return }
+    reached.push(414)
+    const said = await talkTo(414, { x: 7, z: 8 }, Math.min(120_000, left()))
+    await settle()
+    log(`  엄마에게 → ${said ? '말을 걸었다' : '못 걸었다'} · `
+      + `${((Date.now() - started) / 1000).toFixed(0)}초`)
+    if (!said) trouble.push('집 1층에서 엄마에게 말을 못 걸었다 — 소포를 못 받는다')
   }
 }
 
