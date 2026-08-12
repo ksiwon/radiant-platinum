@@ -86,3 +86,122 @@ export const art = style({
   objectFit: 'contain',
   filter: 'drop-shadow(0 5px 9px rgba(0, 0, 0, 0.55))',
 })
+
+// ── 검색 창 ──────────────────────────────────────────────────────────────────
+
+export const search = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+})
+
+export const searchHead = style({
+  fontSize: 13,
+  fontWeight: 800,
+  letterSpacing: '0.08em',
+  opacity: 0.7,
+  marginBottom: 4,
+})
+
+export const searchRow = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  gap: 12,
+  padding: '5px 8px',
+  borderRadius: 6,
+  fontSize: 15,
+})
+
+export const searchRowOn = style([searchRow, {
+  background: 'rgba(255,255,255,0.10)',
+  outline: '1px solid rgba(255,255,255,0.22)',
+}])
+
+export const searchName = style({ opacity: 0.72, fontWeight: 600 })
+export const searchValue = style({ fontWeight: 700, fontVariantNumeric: 'tabular-nums' })
+
+export const searchNote = style({
+  marginTop: 10,
+  paddingTop: 10,
+  borderTop: `1px solid ${vars.panel.border}`,
+  fontSize: 12,
+  lineHeight: 1.6,
+  opacity: 0.7,
+})
+
+// ── 서식지 ───────────────────────────────────────────────────────────────────
+
+export const habitat = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 10,
+  paddingTop: 6,
+})
+
+/**
+ * 30×30 칸짜리 지도.
+ *
+ * ⚠️ **배경 그림을 안 깐다.** 원작의 도감 지도는 따로 그린 신오 윤곽인데
+ * 우리에게는 그 그림이 없다 — 칸만 찍으면 그 자체가 신오 모양이 된다
+ */
+export const habitatMap = style({
+  position: 'relative',
+  border: `1px solid ${vars.panel.border}`,
+  borderRadius: 4,
+  background: 'rgba(0,0,0,0.28)',
+})
+
+export const habitatCell = style({
+  position: 'absolute',
+  background: 'rgba(120, 200, 130, 0.75)',
+})
+
+export const habitatDot = style({
+  position: 'absolute',
+  width: 7,
+  height: 7,
+  marginLeft: -1,
+  marginTop: -1,
+  borderRadius: '50%',
+  background: vars.hud.warn,
+  boxShadow: '0 0 6px rgba(0,0,0,0.6)',
+})
+
+export const habitatNote = style({
+  margin: 0,
+  fontSize: 13,
+  opacity: 0.72,
+  textAlign: 'center',
+})
+
+// ── 폼 ───────────────────────────────────────────────────────────────────────
+
+export const forms = style({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 10,
+  paddingTop: 6,
+})
+
+export const formArt = style({
+  width: 128,
+  height: 128,
+  imageRendering: 'pixelated',
+  objectFit: 'contain',
+  filter: 'drop-shadow(0 5px 9px rgba(0, 0, 0, 0.55))',
+})
+
+export const formDots = style({ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'center' })
+
+export const formDot = style({
+  width: 7,
+  height: 7,
+  borderRadius: '50%',
+  border: '1px solid currentColor',
+  opacity: 0.45,
+})
+
+export const formDotOn = style([formDot, { background: 'currentColor', opacity: 1 }])

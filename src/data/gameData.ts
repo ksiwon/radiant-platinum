@@ -7,17 +7,20 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
-  hiddenItemsSchema,
+  hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema,
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type HiddenItems,
+  type PokedexHabitat, type PokedexSort,
 } from './schema'
 
 /** 숨은 도구 한 줄 */
 export type HiddenItemRow = HiddenItems['items'][number]
+
+export type { PokedexHabitat, PokedexSort }
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
 import { formSpeciesId } from '../engine/pokemon/form'
@@ -297,6 +300,16 @@ export function loadHiddenItems(): Promise<Map<number, HiddenItemRow>> {
     const file = hiddenItemsSchema.parse(v)
     return new Map(file.items.map((row) => [row.script, row]))
   })
+}
+
+/** 도감 정렬 목록 (PARITY §5). **로케일마다 다르다** — 가나다순이 언어에 매인다 */
+export function loadPokedexSort(locale: DataLocale): Promise<PokedexSort> {
+  return fetchJson(`pokedexSort.${locale}.json`, (v) => pokedexSortSchema.parse(v))
+}
+
+/** 도감 서식지 지도 (PARITY §5) */
+export function loadPokedexHabitat(): Promise<PokedexHabitat> {
+  return fetchJson('pokedexHabitat.json', (v) => pokedexHabitatSchema.parse(v))
 }
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {

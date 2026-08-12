@@ -53,6 +53,16 @@ export const GROUPS = [
     match: oneOf('data/hiddenItems.json'),
   },
   {
+    name: 'pokedexSort',
+    make: 'pnpm extract:pokedexSort',
+    match: (p) => /^data\/pokedexSort\.[a-z]+\.json$/.test(p),
+  },
+  {
+    name: 'pokedexHabitat',
+    make: 'pnpm extract:pokedexHabitat',
+    match: oneOf('data/pokedexHabitat.json'),
+  },
+  {
     name: 'moves',
     make: 'pnpm extract:moves',
     match: (p) => p === 'data/moves.json' || nameIn('data/names', 'moves.', 'labels.')(p),

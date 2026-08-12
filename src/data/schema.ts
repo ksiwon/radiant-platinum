@@ -450,6 +450,40 @@ export const hiddenItemsSchema = z.object({
   })).nonempty(),
 })
 
+/**
+ * 도감의 정렬·거르기 목록 마흔일곱 벌 (`zukan_data.narc`).
+ *
+ * 원작이 미리 정렬해 구워 둔 것을 그대로 쓴다 — 무게·키로 다시 정렬하면
+ * **동률의 차례**가 달라진다 (PARITY §5)
+ */
+export const pokedexSortSchema = z.object({
+  lists: z.record(z.string(), z.array(z.number().int().nonnegative())),
+  /** 종족 → 몸 모양 0~13. 0번 칸은 −1이다 */
+  shapes: z.array(z.number().int().min(-1).max(13)),
+})
+
+/**
+ * 도감의 서식지 지도 (`zukan_enc_platinum.narc`).
+ *
+ * 30×30 칸짜리 지도 위에 던전은 점으로, 들판은 칸 뭉치로 찍힌다
+ */
+export const pokedexHabitatSchema = z.object({
+  dungeons: z.array(z.object({
+    x: z.number().int().nonnegative(),
+    y: z.number().int().nonnegative(),
+    mtCoronet: z.boolean(),
+  })),
+  fields: z.array(z.object({
+    x: z.number().int().nonnegative(),
+    y: z.number().int().nonnegative(),
+    width: z.number().int().nonnegative(),
+    height: z.number().int().nonnegative(),
+    cells: z.array(z.number().int()).length(32),
+  })),
+  /** 종족 번호 → 갈래별 자리 번호. 자리가 없는 종은 아예 없다 */
+  species: z.record(z.string(), z.record(z.string(), z.array(z.number().int().nonnegative()))),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -477,5 +511,7 @@ export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
 export type HiddenItems = z.infer<typeof hiddenItemsSchema>
+export type PokedexSort = z.infer<typeof pokedexSortSchema>
+export type PokedexHabitat = z.infer<typeof pokedexHabitatSchema>
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
