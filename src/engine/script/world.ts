@@ -231,6 +231,22 @@ export interface FieldServices {
     /** 곡을 갈지 않고 소리만 줄였다 키운다. 음량은 원작대로 0~127 */
     fadeVolume: (volume: number, frames: number) => void
   }
+  /**
+   * 날마다 바뀌는 것 (PARITY §6.11).
+   *
+   * 씨앗은 세이브에 있고 표는 `encountersEx.json`에 있다 — 둘 다 여기서
+   * 직접 못 읽어서 바깥에서 받는다
+   */
+  daily?: {
+    /** 무리를 연다 (`SpecialEncounter_EnableSwarms`) */
+    enableSwarms: () => void
+    /** 오늘 무리가 뜬 곳과 그 종족. 아직 안 열렸으면 null */
+    swarm: () => { map: number, species: number } | null
+    /** 트로피가든에 한 마리 더한다 (`TrophyGarden_AddNewMon`) */
+    addTrophyMon: () => void
+    /** 그 자리의 종족. 없으면 0 */
+    trophySpecies: (slot: 0 | 1) => number
+  }
   /** 파티 전원 회복 (`ScrCmd_HealParty`). 종족값 표가 필요해서 바깥 일이다 */
   healParty?: () => void
   /** 부활 지점을 옮긴다 (`ScrCmd_SetBlackOutWarpId`). `spawns.json`의 번호다 */

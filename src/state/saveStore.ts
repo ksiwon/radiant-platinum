@@ -22,6 +22,7 @@ import { migrateSave } from './save/migrate'
 export { DEX_BYTES, dexHas, dexSet } from '../engine/pokemon/dex'
 export type { DexField } from '../engine/pokemon/dex'
 import { DEX_BYTES, dexSet, type DexField } from '../engine/pokemon/dex'
+import { dayNumber, newDaily, type DailyState } from '../engine/world/daily'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -155,9 +156,15 @@ export interface SaveData {
    * 아직 한 번도 안 들어갔으면 null이고, 그때는 로프를 못 쓴다
    */
   exit: { map: number; matrix: number; x: number; z: number; facing: number } | null
+  /**
+   * 날마다 바뀌는 것 (PARITY §6.11) — 빈티나 칸·무리·대습초원·트로피가든.
+   *
+   * 씨앗 하나가 넷을 다 정한다. 새 게임에서 뽑고, 날이 넘어갈 때만 굴린다
+   */
+  daily: DailyState
 }
 
-export const SAVE_VERSION = 8
+export const SAVE_VERSION = 9
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -218,6 +225,9 @@ export function createNewSave(): SaveData {
     runningShoes: false,
     steps: { poison: 0, repel: 0 },
     exit: null,
+    // 씨앗은 새 게임에서 한 번만 뽑는다 (`game_start.c`의 `MTRNG_Next()`).
+    // 그 뒤로는 날이 넘어갈 때만 굴러간다 (PARITY §6.11)
+    daily: newDaily(Math.floor(Math.random() * 0x100000000), dayNumber(new Date())),
   }
 }
 
@@ -422,6 +432,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     runningShoes: s.runningShoes,
     steps: s.steps,
     exit: s.exit,
+    daily: s.daily,
   }
 }
 

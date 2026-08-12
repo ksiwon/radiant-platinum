@@ -9,7 +9,8 @@
 //   · 못 옮긴다         → 손대지 않고 **원본 파일을 돌려준다**
 //
 // ⚠️ **없는 과거를 지어내지 않는다.** 1~6으로 저장된 리포트는 세상에 없다 —
-// 판이 7에서 8로 처음 올랐고, 그래서 표에 `7`만 있다.
+// 판이 7에서 처음 올랐고, 그래서 표가 7에서 시작한다.
+import { dayNumber, newDaily } from '../../engine/world/daily'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -24,6 +25,23 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 게임을 열 때 걸음이 둘 다 0이고, 굴에 한 번도 안 들어갔으면 탈출 자리가 없다
    */
   7: (data) => ({ ...data, version: 8, steps: { poison: 0, repel: 0 }, exit: null }),
+
+  /**
+   * 8 → 9. 날마다 바뀌는 것의 씨앗이 생겼다 (PARITY §6.11).
+   *
+   * ⚠️ **여기서 진짜 난수를 뽑는다.** 0으로 두면 `ARNG_Next(0) = 1`이라
+   * 옛 리포트를 이어 온 사람이 전부 **같은 빈티나 칸·같은 무리**를 갖는다.
+   * 원작도 새 게임에서 `MTRNG_Next()`로 뽑으므로, 처음 뽑는 그 자리가 여기다.
+   *
+   * 날짜는 오늘로 잡는다. 옛 리포트에는 "마지막으로 논 날"이 없어서
+   * 며칠이 지났는지 알 방법이 없다 — 0으로 두면 에폭부터 오늘까지 이만 번을
+   * 굴리게 된다
+   */
+  8: (data) => ({
+    ...data,
+    version: 9,
+    daily: newDaily(Math.floor(Math.random() * 0x100000000), dayNumber(new Date())),
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

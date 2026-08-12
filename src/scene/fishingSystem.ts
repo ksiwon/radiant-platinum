@@ -10,7 +10,10 @@ import {
 } from '../engine/actor/fishing'
 import { hooksFish, rollRod, type Rod, type WildEncounter } from '../engine/battle/encounter'
 import { encounters, tableForCurrentMap } from '../engine/battle/encounterSystem'
-import { scriptBusy } from '../engine/script/field'
+import { facingFeebas, FEEBAS_LEVELS, MAP_MT_CORONET_B1F } from '../engine/world/daily'
+import { frontTile, scriptBusy } from '../engine/script/field'
+import { world as mapWorld } from '../engine/map/world'
+import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
 
 export const fishing = {
@@ -28,6 +31,31 @@ let heldA = false
 let heldB = false
 
 /**
+ * 지금 보고 있는 칸이 오늘의 빈티나 칸인가 (PARITY §1.5 · §6.11).
+ *
+ * ⚠️ **표를 갈아 끼우는 것이 아니라 통째로 덮는다.** 원작이
+ * `WildEncounters_TryFishingEncounter`에서 다섯 칸을 전부 빈티나로 채운다 —
+ * 그래서 그 칸에서는 **낚싯대 종류와 무관하게** 빈티나만 나온다
+ */
+function feebasHere(): WildEncounter | null {
+  const ex = encounters.ex
+  const grid = mapWorld.grid
+  if (!ex || !grid || mapWorld.mapId !== MAP_MT_CORONET_B1F) return null
+  const front = frontTile()
+  const got = facingFeebas(
+    useSaveStore.getState().daily.rand, ex.feebas, grid.tileWidth / 32,
+    front.x, front.z, () => fishing.rng() < 0.5,
+  )
+  if (!got) return null
+  const span = FEEBAS_LEVELS.max - FEEBAS_LEVELS.min + 1
+  return {
+    species: ex.feebas.species,
+    level: FEEBAS_LEVELS.min + Math.floor(fishing.rng() * span),
+    slot: 0,
+  }
+}
+
+/**
  * 낚싯대를 던진다. 던질 수 있는지는 이미 `fieldAction`이 봤다.
  *
  * 표가 없는 자리(인카운터 표가 안 붙은 물)에서는 아무것도 안 물린다 —
@@ -36,7 +64,9 @@ let heldB = false
 export function castRod(rod: Rod): void {
   const table = tableForCurrentMap()
   const hooked = table !== null && hooksFish(table, rod, fishing.rng)
-  fishing.catch = hooked && table ? rollRod(table, rod, fishing.rng) : null
+  fishing.catch = hooked && table
+    ? feebasHere() ?? rollRod(table, rod, fishing.rng)
+    : null
   // 표에는 걸렸는데 그 칸이 비어 있으면 아무것도 안 나온다. 그건 "안 물린 것"이다
   fishing.state = startFishing(rod, fishing.catch !== null, fishing.rng)
   // 낚는 동안은 야생이 안 튀어나온다. 물 위에서 낚으면 그 칸이 조우 칸이다

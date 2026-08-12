@@ -46,6 +46,21 @@ export interface EncounterTable {
   superRod: WaterTable
 }
 
+/**
+ * 날마다 바뀌는 것들 (`data/encountersEx.json` · PARITY §6.11).
+ *
+ * `/arc/encdata_ex.narc` 열두 칸을 그대로 옮긴 것이다. 표 183개와 달리 맵에
+ * 안 매여 있어서 한 벌뿐이다
+ */
+export interface EncountersEx {
+  feebas: { species: number; groups: number[]; tiles: number[] }
+  /** 꿀나무 세 희귀도. 각 6칸 */
+  honeyTree: Record<string, number[]>
+  /** 트로피가든 특별 16종 */
+  trophyGarden: number[]
+  greatMarsh: { natdex: number[]; local: number[]; spots: { x: number; y: number }[] }
+}
+
 export interface WildEncounter {
   species: number
   level: number
@@ -167,13 +182,57 @@ export function timedLand(table: EncounterTable, time: TimeOfDayId): LandSlot[] 
   })
 }
 
+/**
+ * 오늘 무리가 뜬 자리면 슬롯 0·1을 갈아 끼운다
+ * (`WildEncounters_ReplaceSwarmEncounters`).
+ *
+ * ⚠️ 시간대와 **다른 칸**이다 — 무리는 0·1, 시간대는 2·3. 겹치지 않아서
+ * 둘이 같이 걸릴 수 있다
+ */
+export function swarmLand(table: EncounterTable, land: LandSlot[]): LandSlot[] {
+  return land.map((s, i) => {
+    if (i !== 0 && i !== 1) return s
+    const species = table.swarm[i]
+    return species === undefined || species <= 0 ? s : { level: s.level, species }
+  })
+}
+
+/**
+ * 트로피가든이 슬롯 6·7을 갈아 끼운다
+ * (`WildEncounters_ReplaceTrophyGardenEncounters`).
+ *
+ * 자리가 안 정해졌으면(`null`) 그 칸은 표 그대로다 — 원작도
+ * `TROPHY_GARDEN_SLOT_NONE`이면 손대지 않는다
+ */
+export function trophyLand(
+  land: LandSlot[], pair: readonly (number | null)[],
+): LandSlot[] {
+  return land.map((s, i) => {
+    if (i !== 6 && i !== 7) return s
+    const species = pair[i - 6]
+    return species == null || species <= 0 ? s : { level: s.level, species }
+  })
+}
+
+/** 갈아 끼우는 것들. 세 자리가 안 겹쳐서 한 번에 다 걸릴 수 있다 */
+export interface LandSwaps {
+  /** 오늘 무리가 뜬 자리인가 — 슬롯 0·1 */
+  swarming?: boolean
+  /** 트로피가든 두 자리 — 슬롯 6·7 */
+  trophy?: readonly (number | null)[]
+}
+
 /** 육상 조우 하나를 굴린다. 표가 비었으면 null */
 export function rollLand(
   table: EncounterTable, rng: Rng, time: TimeOfDayId = TimeOfDay.MORNING,
+  swaps: LandSwaps = {},
 ): WildEncounter | null {
   if (table.landRate <= 0) return null
   const slot = pickSlot(LAND_SLOT_RATES, rng)
-  const s = timedLand(table, time)[slot]
+  let land = timedLand(table, time)
+  if (swaps.swarming) land = swarmLand(table, land)
+  if (swaps.trophy) land = trophyLand(land, swaps.trophy)
+  const s = land[slot]
   if (!s || s.species <= 0) return null
   return { species: s.species, level: s.level, slot }
 }

@@ -71,7 +71,11 @@ export const GROUPS = [
     make: 'pnpm extract:scripts',
     match: oneOf('data/scripts.bin', 'data/scripts.json'),
   },
-  { name: 'encounters', make: 'pnpm extract:encounters', match: oneOf('data/encounters.json') },
+  {
+    name: 'encounters',
+    make: 'pnpm extract:encounters',
+    match: oneOf('data/encounters.json', 'data/encountersEx.json'),
+  },
   { name: 'marts', make: 'pnpm extract:marts', match: oneOf('data/marts.json') },
   { name: 'spawns', make: 'pnpm extract:spawns', match: oneOf('data/spawns.json') },
   {

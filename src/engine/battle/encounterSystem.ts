@@ -6,14 +6,26 @@ import { worldState } from '../../state/worldState'
 import { world } from '../map/world'
 import {
   encounterKind, newEncounterState, rollLand, rollWater, shouldEncounter,
-  type EncounterTable, type Rng, type WildEncounter,
+  type EncounterTable, type EncountersEx, type Rng, type WildEncounter,
 } from './encounter'
 import { Behavior } from '../map/zone'
 import { timeOfDayForHour } from '../map/timeOfDay'
+import { MAP_TROPHY_GARDEN } from '../world/daily'
 
 export const encounters = {
   /** 인카운터 표 183개. 씬이 로드해 넣는다 */
   tables: null as EncounterTable[] | null,
+  /** 날마다 바뀌는 것들 (PARITY §6.11) — 빈티나·꿀나무·트로피가든·대습초원 */
+  ex: null as EncountersEx | null,
+  /**
+   * 날마다 바뀌는 것 중 **조우표를 갈아 끼우는 값**. 씬이 넣어 준다
+   * (`scene/stepSystem`).
+   *
+   * ⚠️ 여기서 세이브를 직접 못 읽는다 — `src/engine`은 스토어에 안 기댄다
+   * (PLAN §3.2). 그래서 씬이 날짜를 넘길 때 이 칸도 같이 맞춘다
+   */
+  swarmAt: null as number | null,
+  trophy: null as readonly (number | null)[] | null,
   /** 씬이 처리해야 할 조우. 처리 후 null로 되돌린다 */
   pending: null as WildEncounter | null,
   /** 판정을 멈추는 스위치 — 전투 중이거나 워프 전이 중일 때 */
@@ -63,7 +75,10 @@ export const encounterSystem = {
     state = newEncounterState()
     encounters.pending = kind === 'surf'
       ? rollWater(table.surf, encounters.rng)
-      : rollLand(table, encounters.rng, timeOfDayForHour(worldState.time.gameHour))
+      : rollLand(table, encounters.rng, timeOfDayForHour(worldState.time.gameHour), {
+        swarming: encounters.swarmAt === world.mapId,
+        trophy: world.mapId === MAP_TROPHY_GARDEN ? encounters.trophy ?? undefined : undefined,
+      })
   },
 }
 

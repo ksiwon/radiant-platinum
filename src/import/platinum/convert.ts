@@ -210,7 +210,7 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'encounters',
-    outputs: ['data/encounters.json'],
+    outputs: ['data/encounters.json', 'data/encountersEx.json'],
     converter: 1,
     convert: convertEncounters,
   },

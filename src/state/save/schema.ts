@@ -150,6 +150,22 @@ export const saveSchema = z.object({
     z: z.number().finite(),
     facing: z.number().finite(),
   }).nullable(),
+  /**
+   * 날마다 바뀌는 것 (PARITY §6.11) — `RecordMixedRNG` + `SpecialEncounter`.
+   *
+   * ⚠️ **씨앗을 저장한다.** 매번 새로 뽑으면 "오늘의 빈티나 칸"이 리포트를
+   * 다시 열 때마다 달라져서, 찾아 둔 자리가 사라진다
+   */
+  daily: z.object({
+    /** 지금 굴려져 있는 값 (u32) */
+    rand: int(0, 0xffffffff),
+    /** 마지막으로 넘긴 날. 지역 자정 기준의 일련번호다 */
+    day: z.number().int(),
+    /** 무리가 열렸는가 (`SpecialEncounter_EnableSwarms`) */
+    swarms: z.boolean(),
+    /** 트로피가든 두 자리. 표(16종)의 자리 번호고 없으면 -1 */
+    trophy: z.tuple([int(-1, 15), int(-1, 15)]),
+  }),
 })
 
 /**

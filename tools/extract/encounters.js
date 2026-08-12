@@ -53,6 +53,87 @@ function parseEncounter(b) {
   }
 }
 
+/**
+ * 특수 출현 자료 (DATA.md §2.8)
+ *
+ *   /arc/encdata_ex.narc  12칸
+ *
+ * 날마다 바뀌는 것들이 전부 여기 있다. 칸 순서는 원작 `encdata_ex.order`다:
+ *
+ *   0 빈티나 종족(4B) · 1 천관산 B1F 낚시 칸(1068B)
+ *   2~4 꿀나무 흔함/조금흔함/드묾(24B씩) · 5~7 **같은 것이 한 번 더**
+ *   8 트로피가든 16종(64B) · 9 대습초원 전국도감판(128B) ·
+ *   10 대습초원 이전판(128B) · 11 쌍안경 자리 36개(144B)
+ *
+ * ⚠️ 5~7은 2~4와 **바이트가 같다.** 원작 빌드가 같은 파일을 두 번 넣는다 —
+ * 다른 자료로 착각해서 여섯 갈래를 만들면 없는 희귀도가 생긴다
+ */
+const EX_HONEY = { common: 2, uncommon: 3, rare: 4 }
+const EX_HONEY_REPEAT = { common: 5, uncommon: 6, rare: 7 }
+const TROPHY_GARDEN_MONS = 16
+const MARSH_SLOTS = 32
+const MARSH_SPOTS = 36
+
+function extractEncountersEx(rom) {
+  const m = rom.narc('/arc/encdata_ex.narc')
+  if (m.length !== 12) throw new Error(`encdata_ex 칸이 ${m.length}개다 (12이어야 한다)`)
+  const u32 = (b) => {
+    const out = []
+    for (let i = 0; i < b.length; i += 4) out.push(b.readUInt32LE(i))
+    return out
+  }
+
+  // 빈티나 낚시 칸. 앞이 (구역 수, 구역별 칸 수…)고 그 뒤가 u16 좌표다
+  const t = m[1]
+  const groupCount = t.readUInt32LE(0)
+  const groups = []
+  for (let i = 0; i < groupCount; i++) groups.push(t.readUInt32LE(4 + i * 4))
+  const total = groups.reduce((a, b) => a + b, 0)
+  const base = (1 + groupCount) * 4
+  if (base + total * 2 !== t.length) {
+    throw new Error(`빈티나 칸 ${total}개가 ${t.length}B에 안 맞는다`)
+  }
+  const tiles = []
+  for (let i = 0; i < total; i++) tiles.push(t.readUInt16LE(base + i * 2))
+
+  const honey = {}
+  for (const [name, at] of Object.entries(EX_HONEY)) {
+    if (Buffer.compare(m[at], m[EX_HONEY_REPEAT[name]]) !== 0) {
+      throw new Error(`꿀나무 ${name}: 칸 ${at}과 ${EX_HONEY_REPEAT[name]}이 다르다`)
+    }
+    honey[name] = u32(m[at])
+  }
+
+  const trophyGarden = u32(m[8])
+  if (trophyGarden.length !== TROPHY_GARDEN_MONS) {
+    throw new Error(`트로피가든이 ${trophyGarden.length}종이다`)
+  }
+  const marshNatdex = u32(m[9])
+  const marshLocal = u32(m[10])
+  if (marshNatdex.length !== MARSH_SLOTS || marshLocal.length !== MARSH_SLOTS) {
+    throw new Error('대습초원 일일표가 32칸이 아니다')
+  }
+  const marshSpots = []
+  for (let i = 0; i < MARSH_SPOTS; i++) {
+    marshSpots.push({ x: m[11].readUInt16LE(i * 4), y: m[11].readUInt16LE(i * 4 + 2) })
+  }
+
+  // 종족 번호만 범위를 본다. 낚시 칸과 쌍안경 자리는 좌표라 여기 안 든다 —
+  // 한 칸이라도 밀리면 "왜 천관산에 뮤츠가"로만 드러난다
+  const species = [m[0].readUInt32LE(0), ...honey.common, ...honey.uncommon, ...honey.rare,
+    ...trophyGarden, ...marshNatdex, ...marshLocal]
+  for (const s of species) {
+    if (s < 1 || s > 507) throw new Error(`특수 출현 종족 ${s}가 범위 밖이다`)
+  }
+
+  return {
+    feebas: { species: m[0].readUInt32LE(0), groups, tiles },
+    honeyTree: honey,
+    trophyGarden,
+    greatMarsh: { natdex: marshNatdex, local: marshLocal, spots: marshSpots },
+  }
+}
+
 function extractEncounters(rom) {
   const files = rom.narc('/fielddata/encountdata/pl_enc_data.narc')
   const tables = files.map(parseEncounter)
@@ -130,7 +211,16 @@ function main() {
   const cc = crossCheckGrass(tables)
   console.log(`  풀숲 타일(0x02) 교차검증: 일치 ${cc.agree} · 불일치 ${cc.disagree}`)
   if (cc.odd.length) console.log(`    ${cc.odd.slice(0, 8).join(' · ')}`)
+
+  const ex = extractEncountersEx(rom)
+  const exOut = writeJson('encountersEx.json', ex)
+  console.log(`encountersEx: 빈티나 칸 ${ex.feebas.tiles.length}개(구역 ${ex.feebas.groups.join('+')}) · ` +
+    `트로피가든 ${ex.trophyGarden.length}종 · 꿀나무 ${ex.honeyTree.common.length}칸 → ` +
+    `${exOut.rel} (${exOut.kb}KB)`)
 }
 
 if (require.main === module) main()
-module.exports = { extractEncounters, parseEncounter, ENTRY_SIZE, LAND_SLOTS, WATER_SLOTS, TALL_GRASS }
+module.exports = {
+  extractEncounters, extractEncountersEx, parseEncounter,
+  ENTRY_SIZE, LAND_SLOTS, WATER_SLOTS, TALL_GRASS,
+}

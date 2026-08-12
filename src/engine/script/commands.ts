@@ -778,6 +778,36 @@ on('GetRandom', (ctx) => {
   return false
 })
 
+// ── 날마다 바뀌는 것 (PARITY §6.11) ──────────────────────────────────────────
+//
+// 신오방송국이 무리를 켜고, 포켓몬저택 사무실이 트로피가든에 한 마리씩 더한다.
+// 안 만들면 방송국 사람이 무리를 알려 줘도 그 도로에 아무것도 안 뜨고,
+// 트로피가든은 영영 특별한 것이 없다.
+
+on('EnableSwarms', (ctx) => {
+  ctx.host.world.services.daily?.enableSwarms()
+  return false
+})
+
+on('GetSwarmMapAndSpecies', (ctx) => {
+  const destMap = ctx.readHalfWord()
+  const destSpecies = ctx.readHalfWord()
+  const got = ctx.host.world.services.daily?.swarm() ?? null
+  ctx.host.vars.set(destMap, got?.map ?? 0)
+  ctx.host.vars.set(destSpecies, got?.species ?? 0)
+  return false
+})
+
+on('AddTrophyGardenMon', (ctx) => {
+  ctx.host.world.services.daily?.addTrophyMon()
+  return false
+})
+
+on('GetTrophyGardenSlot1Species', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.daily?.trophySpecies(0) ?? 0)
+  return false
+})
+
 on('GetPartyCount', (ctx) => {
   ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.party?.count() ?? 0)
   return false

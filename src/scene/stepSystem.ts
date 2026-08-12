@@ -15,6 +15,8 @@ import { VARS_START } from '../engine/script/vars'
 import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
+import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
+import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, type ItemTable } from '../data/gameData'
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 3)` — 독이 깎였을 때 */
@@ -42,8 +44,26 @@ export function resetStepTile(): void {
   lastTile = -1
 }
 
+/**
+ * 날이 넘어갔는지 본다 (PARITY §6.11) — `FieldSystem_HandleDailyEvents`.
+ *
+ * ⚠️ **걸음이 아니라 프레임마다 본다.** 원작은 시계 인터럽트로 도는데, 우리는
+ * 걸음에 붙이면 서 있는 동안 자정이 지나도 안 넘어간다 — 밤새 켜 둔 화면에서
+ * 어제의 빈티나 칸이 그대로 남는다. 값을 실제로 쓰는 것은 날이 바뀐 프레임뿐이다
+ */
+function checkDay(): void {
+  const save = useSaveStore.getState()
+  const daily = rollOver(save.daily, dayNumber(new Date()))
+  if (daily !== save.daily) useSaveStore.setState({ daily })
+  // 조우 시스템은 세이브를 못 읽는다 (PLAN §3.2). 갈아 끼울 값을 여기서 넘긴다
+  encounters.swarmAt = swarmMap(daily)
+  const garden = encounters.ex?.trophyGarden
+  encounters.trophy = garden ? trophySpecies(daily, garden, save.nationalDex) : null
+}
+
 export const stepSystem = {
   fixedUpdate(): void {
+    checkDay()
     const grid = mapWorld.grid
     if (!grid || mapWorld.pending) return
     // 스크립트가 걸어 옮기는 중이면 그것은 내 걸음이 아니다

@@ -24,7 +24,9 @@ import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
-import { setWarpEventPos } from '../engine/map/world'
+import { setWarpEventPos, world as mapWorld } from '../engine/map/world'
+import { encounters } from '../engine/battle/encounterSystem'
+import { addTrophyMon, swarmMap, trophySpecies } from '../engine/world/daily'
 import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
@@ -328,6 +330,41 @@ const services: FieldServices = {
   },
 
   timeOfDay: () => timeOfDayForHour(worldState.time.gameHour),
+
+  /**
+   * 날마다 바뀌는 것 (PARITY §6.11).
+   *
+   * 스크립트가 여는 것이 둘이다 — 무리는 신오방송국 사람이 켜 주고
+   * (`EnableSwarms`), 트로피가든은 저택 사무실 스크립트가 하루에 한 마리씩
+   * 더한다 (`AddTrophyGardenMon`)
+   */
+  daily: {
+    enableSwarms: () => {
+      const daily = useSaveStore.getState().daily
+      if (!daily.swarms) useSaveStore.setState({ daily: { ...daily, swarms: true } })
+    },
+    swarm: () => {
+      const at = swarmMap(useSaveStore.getState().daily)
+      if (at === null) return null
+      // 원작도 **그 맵의 표**에서 무리 슬롯 0번을 읽는다
+      // (`Swarm_GetMapIdAndSpecies`) — 지금 서 있는 맵의 표가 아니다
+      const index = mapWorld.maps?.[at]?.encounters
+      const table = index == null ? null : encounters.tables?.[index] ?? null
+      return { map: at, species: table?.swarm[0] ?? 0 }
+    },
+    addTrophyMon: () => {
+      const table = encounters.ex?.trophyGarden
+      if (!table) return
+      const { daily } = useSaveStore.getState()
+      useSaveStore.setState({ daily: addTrophyMon(daily, table, Math.random) })
+    },
+    trophySpecies: (slot) => {
+      const table = encounters.ex?.trophyGarden
+      if (!table) return 0
+      const { daily, nationalDex } = useSaveStore.getState()
+      return trophySpecies(daily, table, nationalDex)[slot] ?? 0
+    },
+  },
 
   gear: {
     giveRunningShoes: () => { useSaveStore.setState({ runningShoes: true }) },

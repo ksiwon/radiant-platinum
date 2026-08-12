@@ -11,7 +11,7 @@ import { encounters } from '../engine/battle/encounterSystem'
 import { loadNpcSprites, type NpcSprite } from '../engine/actor/sprites'
 import { assets, readJson } from '../data/providers/assetProvider'
 import { gameLocale } from '../state/optionsStore'
-import type { EncounterTable } from '../engine/battle/encounter'
+import type { EncountersEx, EncounterTable } from '../engine/battle/encounter'
 
 // 주소를 만들지 않는다 — 공개판에서 이 자료는 OPFS에서 온다 (IMPORT.md §7)
 async function json<T>(path: string): Promise<T> {
@@ -72,12 +72,16 @@ export interface WorldBoot {
 /** 시작 데이터. world 싱글톤을 채우고 오버월드 격자를 돌려준다 */
 export async function bootWorld(): Promise<WorldBoot> {
   const [
-    mapsFile, eventsFile, encFile, locationNames, meta, bin, bdhcMeta, bdhcBin, sprites, spawnFile,
+    mapsFile, eventsFile, encFile, exFile, locationNames, meta, bin, bdhcMeta, bdhcBin,
+    sprites, spawnFile,
   ] =
     await Promise.all([
       json<{ maps: MapHeader[], areas: AreaData[] }>('maps.json'),
       json<{ events: Record<string, EventFile> }>('events.json'),
       json<{ tables: EncounterTable[] }>('encounters.json'),
+      // 날마다 바뀌는 것들 (PARITY §6.11). 3.5KB고 빈티나 칸은 첫 낚시부터
+      // 필요하다 — 미루면 그 한 번이 조용히 "없는 칸"으로 지나간다
+      json<EncountersEx>('encountersEx.json'),
       // ⚠️ **설치된 언어로 읽는다.** 여기가 `ko`로 박혀 있었고, 그래서
       // 영어 롬으로 설치하면 오버월드가 이 파일을 못 찾고 통째로 죽었다 —
       // 화면이 새까매져서 "무엇이 없다"조차 안 보였다 (브라우저 실측 ㉑가 잡았다)
@@ -98,6 +102,7 @@ export async function bootWorld(): Promise<WorldBoot> {
   world.areas = mapsFile.areas
   world.events = eventsFile.events
   encounters.tables = encFile.tables
+  encounters.ex = exFile
   heightField.data = bindHeights(bdhcMeta, bdhcBin)
   loadNpcSprites(sprites)
   spawnTable.list = spawnFile.spawns

@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_370
+const RUNNING_SITES = 53_376
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 201
+const IMPLEMENTED_COMMANDS = 205
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -475,6 +475,9 @@ const IDLE_COMMANDS = [
   // 201번도로에 딱 한 번 나오는데 그것이 `Route201_…_Unused` 안이라 어느
   // 진입점에서도 안 닿는다. 반대 성별 주인공 쪽은 필드 스크립트에 0회다
   'BufferPlayerStarterSpeciesName', 'BufferPlayerCounterpartStarterSpeciesName',
+  // 무리를 알려 주는 신오방송국 사람은 **무리가 열린 뒤**에만 그 말을 한다
+  // (`EnableSwarms`가 먼저다). 훑기는 깨끗한 세이브로 도니 그 가지에 못 든다
+  'GetSwarmMapAndSpecies',
   'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
@@ -501,6 +504,10 @@ const IDLE_COMMANDS = [
   // 모험노트는 **도감을 받은 뒤**라야 준다(`GoToIfSet FLAG_HAS_POKEDEX`).
   // 도감을 주는 명령을 아직 안 만들어서 그 플래그가 안 선다
   'GiveJournal',
+  // ⚠️ **셋 다 전국도감 뒤의 자리다.** 트로피가든에 특별한 것이 뜨는 것도,
+  // 무리가 열리는 것도 이야기를 끝낸 뒤라 훑기가 그 가지에 못 들어간다 —
+  // `AddTrophyGardenMon`은 포켓몬저택 사무실, `EnableSwarms`는 신오방송국이다
+  'AddTrophyGardenMon', 'GetTrophyGardenSlot1Species', 'EnableSwarms',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
