@@ -188,7 +188,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     case 'reward': {
       // 숫자 뒤에는 조사를 붙이지 않는다 — 읽는 소리로 갈리기 때문에(5는 "오가",
       // 6은 "육이") 받침 규칙으로는 못 고른다. 문장을 그렇게 안 쓰면 그만이다
-      const who = ctx.label({ slot: '', side: 'p1', name: e.key })
+      const who = ctx.label({ slot: 'p1a', side: 'p1', name: e.key })
       const lines = [`${withTopic(who)} 경험치를 ${e.exp} 얻었다!`]
       const top = e.levels[e.levels.length - 1]
       if (top !== undefined) lines.push(`${who}의 레벨이 올랐다! (Lv.${top})`)
@@ -206,7 +206,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       return `상금으로 ${e.money}엔을 받았다!`
 
     case 'shift': {
-      const who = ctx.bare?.(e.key) ?? ctx.label({ slot: '', side: 'p2', name: e.key })
+      const who = ctx.bare?.(e.key) ?? ctx.label({ slot: 'p2a', side: 'p2', name: e.key })
       const trainer = ctx.foeName ?? '상대'
       return `${withTopic(trainer)} ${withObject(who)} 내보내려고 한다.`
     }

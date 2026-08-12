@@ -220,7 +220,7 @@ describe('기술 연출 자리', () => {
   it('뷰가 기술을 내밀고, 같은 기술이 이어져도 순번이 는다', () => {
     // 순번이 없으면 몸통박치기를 두 턴 연속 쓸 때 두 번째 연출이 안 돈다
     const one = applyEvents(emptyView(), [move(p1, '몸통박치기')])
-    expect(one.lastMove).toEqual({ by: 'p1', to: null, move: 33, seq: 1 })
+    expect(one.lastMove).toEqual({ by: 'p1a', to: null, move: 33, seq: 1 })
     const two = applyEvents(one, [move(p1, '몸통박치기')])
     expect(two.lastMove?.seq).toBe(2)
   })

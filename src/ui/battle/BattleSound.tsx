@@ -10,7 +10,7 @@
 import { useEffect, useRef } from 'react'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
-import type { SideId } from '../../engine/battle/events'
+import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { useBattleStore } from '../../state/battleStore'
 
 /** 쓰러진 뒤 울음소리를 얼마나 늦출지 (ms). 소리 둘이 겹치면 둘 다 안 들린다 */
@@ -19,33 +19,37 @@ const FAINT_CRY_DELAY = 220
 export function BattleSound() {
   const view = useBattleStore((s) => s.view)
   const phase = useBattleStore((s) => s.phase)
-  /** 쪽마다 마지막으로 본 개체와 쓰러짐 여부 */
-  const seen = useRef<Record<SideId, { key: string | null; fainted: boolean }>>({
-    p1: { key: null, fainted: false },
-    p2: { key: null, fainted: false },
+  /**
+   * **자리마다** 마지막으로 본 개체와 쓰러짐 여부.
+   *
+   * ⚠️ 쪽으로 세면 더블에서 둘째 마리의 등장·기절 소리가 통째로 안 난다 —
+   * 첫째와 키를 비교하게 되어 "이미 본 애"로 걸러진다
+   */
+  const blank = (): Record<SlotId, { key: string | null; fainted: boolean }> => ({
+    p1a: { key: null, fainted: false }, p1b: { key: null, fainted: false },
+    p2a: { key: null, fainted: false }, p2b: { key: null, fainted: false },
   })
+  const seen = useRef(blank())
 
   useEffect(() => {
-    if (phase === 'off') {
-      seen.current = { p1: { key: null, fainted: false }, p2: { key: null, fainted: false } }
-    }
+    if (phase === 'off') seen.current = blank()
   }, [phase])
 
   useEffect(() => {
     if (!view) return
-    for (const side of ['p1', 'p2'] as const) {
-      const mon = view.active[side]
-      const was = seen.current[side]
-      if (!mon) { seen.current[side] = { key: null, fainted: false }; continue }
+    for (const slot of SLOTS) {
+      const mon = view.active[slot]
+      const was = seen.current[slot]
+      if (!mon) { seen.current[slot] = { key: null, fainted: false }; continue }
 
       if (mon.key !== was.key) {
         // 새로 나왔다. 상대는 던지는 소리 없이 나타나고, 우리 쪽은 공을 던진다.
         // 공에서 나오는 소리는 양쪽 다 난다 — `battle_display.c` 2058줄이
         // 앞을 보든 뒤를 보든 `BOWA2`를 내고 좌우만 갈라 준다
-        if (side === 'p1') void music.playEffect(SFX.THROW)
+        if (mon.side === 'p1') void music.playEffect(SFX.THROW)
         void music.playEffect(SFX.SEND_OUT)
         if (mon.species !== null) void music.playCry(mon.species)
-        seen.current[side] = { key: mon.key, fainted: mon.fainted }
+        seen.current[slot] = { key: mon.key, fainted: mon.fainted }
         continue
       }
 
@@ -57,7 +61,7 @@ export function BattleSound() {
           setTimeout(() => { void music.playCry(species, { faint: true }) }, FAINT_CRY_DELAY)
         }
       }
-      seen.current[side] = { key: mon.key, fainted: mon.fainted }
+      seen.current[slot] = { key: mon.key, fainted: mon.fainted }
     }
   }, [view])
 

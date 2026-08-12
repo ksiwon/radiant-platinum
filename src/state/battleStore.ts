@@ -388,7 +388,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const caught = controller.captured
       if (caught) {
         // 화면(`view`)이 아니라 정본을 본다 — 재생이 아직 못 따라왔을 수 있다
-        const seen = get().truth?.active.p2
+        const seen = get().truth?.active.p2a
         const mon: PokemonInstance = {
           ...caught.mon,
           hp: seen?.hp ?? caught.mon.hp,

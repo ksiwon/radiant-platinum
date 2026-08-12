@@ -118,7 +118,7 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
   const moveSlotsOf = useBattleStore((s) => s.moveSlotsOf)
   // 「금제」가 걸려 있으면 도구를 못 쓴다. 이유가 "효과가 없다"와 다르므로
   // 화면이 따로 안다 — 규칙 자체는 `embargoBlocks` 하나뿐이다
-  const embargo = useBattleStore((s) => s.truth?.active.p1?.volatiles.has('embargo') ?? false)
+  const embargo = useBattleStore((s) => s.truth?.active.p1a?.volatiles.has('embargo') ?? false)
   // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
   const locale = useGameLocale()
 

@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest'
 import { chooseRandom, encodeAction } from '../choice'
 import type { BattleRequest, SideId } from '../events'
 import { parseCondition, parseDetails } from '../events'
-import { applyEvent, emptyView, type BattleView } from '../view'
+import { activeAt, applyEvent, emptyView, type BattleView } from '../view'
 import { parseLines } from './protocol'
 import { rng, spawn } from './fixtures.testkit'
 import { BattleSession } from './session'
@@ -90,15 +90,15 @@ describe('지속 효과 접기', () => {
       '|-start|p2a: 난천|move: Leech Seed',
       '|-start|p2a: 난천|Substitute',
     ])
-    expect(seeded.active.p2?.volatiles.has('leechseed')).toBe(true)
-    expect(seeded.active.p2?.volatiles.has('substitute')).toBe(true)
+    expect(seeded.active.p2a?.volatiles.has('leechseed')).toBe(true)
+    expect(seeded.active.p2a?.volatiles.has('substitute')).toBe(true)
 
     const switched = fold([
       '|switch|p2a: 난천|Roserade, L58, F|100/100',
       '|-start|p2a: 난천|move: Leech Seed',
       '|switch|p2a: 난천2|Milotic, L58, F|100/100',
     ])
-    expect(switched.active.p2?.volatiles.size).toBe(0)
+    expect(switched.active.p2a?.volatiles.size).toBe(0)
   })
 
   it('필드 효과는 쪽이 없다', () => {
@@ -198,7 +198,7 @@ function compare(
   into: string[],
 ): void {
   const truth = activeInRequest(request)
-  const mine = view.active[side]
+  const mine = activeAt(view, side)
   if (!truth || !mine) return
   const c = parseCondition(truth.condition)
   const at = `#${seed} 턴${view.turn} ${side}`

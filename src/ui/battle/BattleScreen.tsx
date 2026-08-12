@@ -191,8 +191,8 @@ export function BattleScreen() {
 
   if (phase === 'off') return null
 
-  const mine = view?.active.p1 ?? null
-  const foe = view?.active.p2 ?? null
+  const mine = view?.active.p1a ?? null
+  const foe = view?.active.p2a ?? null
 
   // 검은 막은 이 트리 안에 **한 번만** 마운트되어야 한다. loading과 running을
   // 서로 다른 return으로 나누면 그때마다 다시 마운트되어 두 번 깜빡인다

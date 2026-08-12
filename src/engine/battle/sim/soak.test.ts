@@ -25,7 +25,7 @@ import { describe, it, expect } from 'vitest'
 import type { BattleAction } from '../choice'
 import type { BattleEvent } from '../events'
 import type { Item } from '../../../data/schema'
-import { applyEvents, emptyView } from '../view'
+import { activeAt, applyEvents, emptyView } from '../view'
 import { buildBeats } from '../playback'
 import { Ball } from '../meta/capture'
 import { TrainerItems } from '../meta/trainerItems'
@@ -145,7 +145,7 @@ async function soak(plan: Plan): Promise<Broken> {
   /** 어느 시점에서든 체력이 범위를 벗어나면 안 된다 */
   const checkHp = () => {
     for (const side of ['p1', 'p2'] as const) {
-      const mon = controller.state.active[side]
+      const mon = activeAt(controller.state, side)
       if (!mon) continue
       if (mon.hp < 0 || mon.hp > mon.maxHp) note(`${side} 체력이 범위 밖 ${String(mon.hp)}/${String(mon.maxHp)}`)
       if (mon.maxHp <= 0) note(`${side} 최대 체력이 0 이하`)
@@ -168,7 +168,7 @@ async function soak(plan: Plan): Promise<Broken> {
     const leaked = (ids: readonly string[], real: number | undefined): boolean =>
       real !== undefined && ids.length > real && ids[ids.length - 1] === IDLE_MOVE_ID
     const moves = controller.actions.filter((a) => a.type === 'move')
-    const key = controller.state.active.p1?.key
+    const key = controller.state.active.p1a?.key
     if (leaked(moves.map((a) => a.id), key === undefined ? undefined : realMoves.get(key))) {
       note(`기술 목록 맨 뒤에 빈 턴 칸이 있다 (${String(moves.length)}개)`)
     }
@@ -223,7 +223,7 @@ async function soak(plan: Plan): Promise<Broken> {
   if (rebuilt.winner !== live.winner) note('다시 접으면 승자가 다르다')
   if (rebuilt.turn !== live.turn) note(`다시 접으면 턴이 다르다 ${String(rebuilt.turn)}≠${String(live.turn)}`)
   for (const side of ['p1', 'p2'] as const) {
-    if (JSON.stringify(rebuilt.active[side]) !== JSON.stringify(live.active[side])) {
+    if (JSON.stringify(activeAt(rebuilt, side)) !== JSON.stringify(activeAt(live, side))) {
       note(`다시 접으면 ${side}의 개체가 다르다`)
     }
   }

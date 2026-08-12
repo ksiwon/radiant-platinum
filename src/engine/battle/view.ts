@@ -6,7 +6,8 @@
 //
 // sim을 import 하지 않으므로 UI가 마음대로 가져다 써도 지연 로딩 경계가 안 깨진다.
 import type { Gender, Status } from '../pokemon/instance'
-import type { BattleEvent, BoostStat, Condition, Effectiveness, SideId } from './events'
+import type { BattleEvent, BoostStat, Condition, Effectiveness, SideId, SlotId } from './events'
+import { SLOTS, slotId } from './events'
 
 export const BOOST_STATS: readonly BoostStat[] = [
   'atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion',
@@ -20,7 +21,7 @@ export function noBoosts(): Boosts {
 
 /** 지금 나와 있는 한 마리. 화면이 그리는 데 필요한 전부 */
 export interface ViewMon {
-  slot: string
+  slot: SlotId
   side: SideId
   /**
    * 세션에 넣은 고유 키(`SideMon.key`). **표시 이름이 아니다** — 화면에 쓸 이름은
@@ -48,7 +49,16 @@ export interface ViewMon {
 
 export interface BattleView {
   turn: number
-  active: Record<SideId, ViewMon | null>
+  /**
+   * 무대에 서 있는 마리. **자리마다** 하나다 (PARITY §2.2).
+   *
+   * ⚠️ 싱글에서는 `p1b`·`p2b`가 늘 null이다. 그래도 칸을 없애지 않는다 —
+   * 자리로 접는 것과 쪽으로 접는 것을 코드 두 벌로 나누면 더블에서만 나는
+   * 버그가 싱글 시험에 안 걸린다. 읽는 쪽은 `activeAt`을 쓴다
+   */
+  active: Record<SlotId, ViewMon | null>
+  /** 더블인가. 화면·연출이 자리 수를 이걸로 안다 */
+  doubles: boolean
   weather: string | null
   /**
    * 진영별 지속 효과와 **겹친 횟수**. `reflect`, `lightscreen`, `spikes`, `safeguard`.
@@ -68,31 +78,49 @@ export interface BattleView {
    * `seq`가 있는 이유는 **같은 기술이 이어서 나오기 때문**이다 — 몸통박치기를
    * 두 턴 연속 쓰면 나머지 값이 전부 같아서, 번호가 없으면 두 번째가 안 돈다
    */
-  lastMove: { by: SideId; to: SideId | null; move: number | null; seq: number } | null
+  lastMove: { by: SlotId; to: SlotId | null; move: number | null; seq: number } | null
   /**
    * 방금 맞은 타격. 소리가 이걸 보고 난다 (`ui/battle/BattleSound`).
    *
    * `seq`가 필요한 이유는 `lastMove`와 같다 — 연타 기술은 같은 값이 이어서 오고,
    * 번호가 없으면 두 번째 타격이 조용하다
    */
-  lastHit: { side: SideId; level: Effectiveness | 'normal'; crit: boolean; seq: number } | null
+  lastHit: { slot: SlotId; level: Effectiveness | 'normal'; crit: boolean; seq: number } | null
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
 const EMPTY_MAP: ReadonlyMap<string, number> = new Map()
 
-export function emptyView(): BattleView {
+export function emptyView(doubles = false): BattleView {
   return {
     lastMove: null,
     lastHit: null,
     turn: 0,
-    active: { p1: null, p2: null },
+    doubles,
+    active: { p1a: null, p1b: null, p2a: null, p2b: null },
     weather: null,
     sideConditions: { p1: EMPTY_MAP, p2: EMPTY_MAP },
     field: EMPTY,
     ended: false,
     winner: null,
   }
+}
+
+/** 그 쪽 `at`번째 자리에 서 있는 마리. 싱글에서 `at`이 1이면 늘 null */
+export function activeAt(view: BattleView, side: SideId, at = 0): ViewMon | null {
+  return view.active[slotId(side, at)]
+}
+
+/** 그 쪽에 서 있는 마리 전부. 싱글이면 하나, 더블이면 최대 둘 */
+export function activeOn(view: BattleView, side: SideId): ViewMon[] {
+  return SLOTS.filter((s) => s.startsWith(side))
+    .map((s) => view.active[s])
+    .filter((m): m is ViewMon => m !== null)
+}
+
+/** 그 키를 들고 있는 자리. 없으면 null */
+export function slotOfKey(view: BattleView, key: string): SlotId | null {
+  return SLOTS.find((s) => view.active[s]?.key === key) ?? null
 }
 
 /** 집합 하나를 켜거나 끈 새 집합. 안 바뀌면 같은 객체를 돌려준다 */
@@ -120,12 +148,12 @@ function stack(
 /** 한 마리만 바꾼 새 뷰. zustand가 변화를 감지해야 하므로 전부 새 객체로 만든다 */
 function patch(
   view: BattleView,
-  side: SideId,
+  slot: SlotId,
   change: (mon: ViewMon) => ViewMon,
 ): BattleView {
-  const cur = view.active[side]
+  const cur = view.active[slot]
   if (!cur) return view
-  return { ...view, active: { ...view.active, [side]: change(cur) } }
+  return { ...view, active: { ...view.active, [slot]: change(cur) } }
 }
 
 /**
@@ -156,8 +184,8 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       return {
         ...view,
         lastMove: {
-          by: e.actor.side,
-          to: e.target?.side ?? null,
+          by: e.actor.slot,
+          to: e.target?.slot ?? null,
           move: e.move,
           seq: (view.lastMove?.seq ?? 0) + 1,
         },
@@ -181,33 +209,33 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         fainted: e.condition.hp <= 0,
         volatiles: EMPTY, // 대타출동·씨뿌리기도 마찬가지다
       }
-      return { ...view, active: { ...view.active, [e.actor.side]: mon } }
+      return { ...view, active: { ...view.active, [e.actor.slot]: mon } }
     }
 
     case 'damage': {
-      const hurt = patch(view, e.actor.side, (m) => withCondition(m, e.condition))
+      const hurt = patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
       if (e.hit === undefined) return hurt
       return {
         ...hurt,
-        lastHit: { side: e.actor.side, ...e.hit, seq: (view.lastHit?.seq ?? 0) + 1 },
+        lastHit: { slot: e.actor.slot, ...e.hit, seq: (view.lastHit?.seq ?? 0) + 1 },
       }
     }
 
     case 'heal':
-      return patch(view, e.actor.side, (m) => withCondition(m, e.condition))
+      return patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
 
     case 'faint':
-      return patch(view, e.actor.side, (m) => ({ ...m, hp: 0, fainted: true }))
+      return patch(view, e.actor.slot, (m) => ({ ...m, hp: 0, fainted: true }))
 
     case 'status':
-      return patch(view, e.actor.side, (m) => ({ ...m, status: e.status }))
+      return patch(view, e.actor.slot, (m) => ({ ...m, status: e.status }))
 
     case 'curestatus':
       // 대타·교체로 이미 다른 애가 나와 있을 수 있다. 지금 걸린 것과 같을 때만 푼다
-      return patch(view, e.actor.side, (m) => (m.status === e.status ? { ...m, status: 'ok' } : m))
+      return patch(view, e.actor.slot, (m) => (m.status === e.status ? { ...m, status: 'ok' } : m))
 
     case 'boost':
-      return patch(view, e.actor.side, (m) => ({
+      return patch(view, e.actor.slot, (m) => ({
         ...m,
         // 4세대 랭크는 ±6에서 멈춘다
         boosts: { ...m.boosts, [e.stat]: clampBoost(m.boosts[e.stat] + e.amount) },
@@ -228,7 +256,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
     }
 
     case 'volatile':
-      return patch(view, e.actor.side, (m) => {
+      return patch(view, e.actor.slot, (m) => {
         const next = toggle(m.volatiles, e.volatile, e.start)
         return next === m.volatiles ? m : { ...m, volatiles: next }
       })

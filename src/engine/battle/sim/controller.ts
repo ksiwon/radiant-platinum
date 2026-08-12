@@ -292,7 +292,7 @@ export class BattleController {
     : Promise<BattleStep> {
     const foe = this.activeFoe()
     if (!foe || this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
-    const seen = this.view.active.p2!
+    const seen = this.view.active.p2a!
 
     const result = throwBall(
       { hp: seen.hp, maxHp: seen.maxHp, catchRate: foe.species.catchRate, status: seen.status },
@@ -323,8 +323,8 @@ export class BattleController {
    */
   async run(): Promise<BattleStep> {
     if (this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
-    const mine = this.speedOf(this.playerTeam, this.view.active.p1?.key)
-    const foe = this.speedOf(this.foeTeam, this.view.active.p2?.key)
+    const mine = this.speedOf(this.playerTeam, this.view.active.p1a?.key)
+    const foe = this.speedOf(this.foeTeam, this.view.active.p2a?.key)
     const success = tryEscape(mine, foe, this.escapeAttempts, this.random)
     this.escapeAttempts++
     const events: BattleEvent[] = [{ kind: 'escape', success }]
@@ -341,7 +341,7 @@ export class BattleController {
 
   /** 지금 나와 있는 상대. 키로 찾는다 — 같은 종을 둘 데리고 있어도 안 헷갈린다 */
   private activeFoe(): SideMon | null {
-    const key = this.view.active.p2?.key
+    const key = this.view.active.p2a?.key
     return this.foeTeam.find((m) => m.key === key) ?? null
   }
 
@@ -443,7 +443,7 @@ export class BattleController {
 
   /** 우리 쪽이 지금 공짜로 바꿀 수 있는가 — 서 있는 애가 멀쩡하고 벤치가 남았을 때 */
   private canShift(): boolean {
-    const key = this.view.active.p1?.key
+    const key = this.view.active.p1a?.key
     if (key === undefined) return false
     const mine = this.session.results('p1')
     const active = mine.find((r) => r.key === key)
@@ -459,7 +459,7 @@ export class BattleController {
    */
   private useItem(request: BattleRequest): BattleEvent | null {
     const kit = this.items
-    const seen = this.view.active.p2
+    const seen = this.view.active.p2a
     if (!kit || kit.bag.left === 0 || !seen) return null
     // 쓰러져서 갈아타는 턴에는 안 쓴다 — 부르는 쪽이 이미 걸렀다
     if (request.forceSwitch?.[0] === true) return null
@@ -528,7 +528,7 @@ export class BattleController {
   planFor(item: Item, key: string, moveSlot?: number): ItemPlan | null {
     const real = this.session.results('p1').find((r) => r.key === key)
     if (!real) return null
-    const seen = this.view.active.p1
+    const seen = this.view.active.p1a
     const out = seen?.key === key
     return planItemUse(item, {
       hp: real.hp,
@@ -560,7 +560,7 @@ export class BattleController {
    */
   useEscapeItem(item: BagItem): BattleStep {
     if (this.view.ended || this.mustSwitch) return { events: [], view: this.view }
-    const key = this.view.active.p1?.key ?? ''
+    const key = this.view.active.p1a?.key ?? ''
     this.fled = true
     this.view = { ...this.view, ended: true }
     return {

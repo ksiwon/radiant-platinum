@@ -9,10 +9,42 @@ import type { Gender, Status } from '../pokemon/instance'
 
 export type SideId = 'p1' | 'p2'
 
+/**
+ * 무대 위의 **자리**. 싱글은 `a` 둘, 더블은 넷이 다 선다 (PARITY §2.2).
+ *
+ * ⚠️ **쪽(`SideId`)으로는 못 센다.** 더블에서는 한쪽에 둘이 서 있어서, 뷰를
+ * 쪽으로 접으면 둘째 마리의 체력이 첫째를 덮어쓴다. 프로토콜은 처음부터
+ * `p1a`·`p1b`로 갈라 주고 있었고 우리가 그것을 버리고 있었다
+ */
+export type SlotId = 'p1a' | 'p1b' | 'p2a' | 'p2b'
+
+/** 무대의 네 자리. 싱글에서도 순서는 같다 */
+export const SLOTS: readonly SlotId[] = ['p1a', 'p1b', 'p2a', 'p2b']
+
+/** 쪽 + 자리 번호 → 자리 표기 */
+export function slotId(side: SideId, at = 0): SlotId {
+  return `${side}${at === 0 ? 'a' : 'b'}`
+}
+
+/** 자리 표기 → 자리 번호(0·1) */
+export function slotIndex(slot: SlotId): 0 | 1 {
+  return slot.endsWith('a') ? 0 : 1
+}
+
+/** 그 쪽의 두 자리 */
+export function slotsOf(side: SideId): readonly [SlotId, SlotId] {
+  return [slotId(side, 0), slotId(side, 1)]
+}
+
+/** 상대 쪽 */
+export function otherSide(side: SideId): SideId {
+  return side === 'p1' ? 'p2' : 'p1'
+}
+
 /** 프로토콜의 `p1a: 별명`. 자리와 표시 이름을 같이 들고 다닌다 */
 export interface Actor {
-  /** `p1a`. 4세대 싱글은 자리가 늘 `a`지만 프로토콜 원문을 그대로 둔다 */
-  slot: string
+  /** `p1a`. 싱글은 늘 `a`고, 더블에서 둘째 자리가 `b`다 */
+  slot: SlotId
   side: SideId
   /** 별명. 종족 이름이 아니다 */
   name: string
@@ -226,11 +258,16 @@ export type BattleEvent =
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {
   const colon = raw.indexOf(':')
-  const slot = (colon < 0 ? raw : raw.slice(0, colon)).trim()
-  if (!/^p[12][a-c]?$/.test(slot)) return null
+  const text = (colon < 0 ? raw : raw.slice(0, colon)).trim()
+  if (!/^p[12][a-c]?$/.test(text)) return null
+  const side = text.slice(0, 2) as SideId
+  // ⚠️ 자리 글자가 없는 줄이 있다 (`|-sidestart|p1: 빛나`처럼 쪽만 쓰는 자리에서
+  // 이 함수를 부르는 길). 그때는 첫 자리로 친다 — 세 번째 자리(`c`)는 3vs3
+  // 형식의 것이라 4세대에는 없지만, 들어오면 둘째로 접는다
+  const letter = text.length > 2 ? text[2] : 'a'
   return {
-    slot,
-    side: slot.slice(0, 2) as SideId,
+    slot: `${side}${letter === 'a' ? 'a' : 'b'}`,
+    side,
     name: colon < 0 ? '' : raw.slice(colon + 1).trim(),
   }
 }

@@ -22,6 +22,7 @@ import { CHAMPION_FLAGS } from '../ai/score'
 import { postKoSwitchIn, shouldSwitch, type BenchMon } from '../ai/switching'
 import { abilitySlotOf, genderOf, statsOf } from '../../pokemon/instance'
 import type { BattleView, ViewMon } from '../view'
+import { activeAt } from '../view'
 import { romMove } from './bridge'
 import { idleSlotOf, type SideMon } from './session'
 
@@ -188,8 +189,8 @@ export class TrainerBrain {
 
   /** 지금 상황. 기술을 못 고르는 턴이면 null */
   buildTurn(request: BattleRequest, view: BattleView): AiTurn | null {
-    const mySeen = view.active[this.options.side]
-    const foeSeen = view.active[this.foeSide]
+    const mySeen = activeAt(view, this.options.side)
+    const foeSeen = activeAt(view, this.foeSide)
     if (!mySeen || !foeSeen) return null
 
     const me = this.options.team.find((m) => m.key === mySeen.key)
@@ -299,7 +300,7 @@ export class TrainerBrain {
    */
   private pickSwitch(options: BattleAction[], view: BattleView): BattleAction {
     const fallback = options[Math.floor(this.options.random() * options.length)] ?? options[0]!
-    const foeSeen = view.active[this.foeSide]
+    const foeSeen = activeAt(view, this.foeSide)
     const foeMon = foeSeen && this.options.foeTeam.find((m) => m.key === foeSeen.key)
     if (!foeSeen || !foeMon) return fallback
     const foe = this.toAiMon(foeMon, foeSeen, view, false)

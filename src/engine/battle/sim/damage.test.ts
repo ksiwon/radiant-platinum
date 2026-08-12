@@ -89,7 +89,7 @@ async function oneHit(
     random: rng(seed),
   })
   try {
-    const maxHp = step.view.active.p2?.maxHp ?? 0
+    const maxHp = step.view.active.p2a?.maxHp ?? 0
     const result = await controller.choose(controller.actions[0]!)
     if (result.events.some((e) => e.kind === 'crit')) return null
     if (result.events.some((e) => e.kind === 'miss')) return null

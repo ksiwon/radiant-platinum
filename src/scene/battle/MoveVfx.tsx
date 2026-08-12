@@ -17,6 +17,7 @@ import { loadMoves } from '../../data/gameData'
 import { MOVE_FRAMES, archetypeFor, type Archetype } from '../../engine/battle/vfx'
 import { typeColor } from '../../engine/battle/typeColor'
 import { useBattleStore } from '../../state/battleStore'
+import type { SlotId } from '../../engine/battle/events'
 
 /** 60fps 기준 프레임을 초로 */
 const DURATION = MOVE_FRAMES / 60
@@ -136,7 +137,13 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
  * 박자(`playback`)가 `MOVE_FRAMES`만큼 쉬는 그 자리다. 둘이 같은 상수를 보므로
  * 연출이 잘리거나 빈 화면이 남지 않는다
  */
-export function MoveVfx({ mine, foe }: { mine: [number, number]; foe: [number, number] }) {
+export function MoveVfx({ spotAt }: {
+  /**
+   * 그 자리의 바닥 좌표. **자리마다 다르다** — 더블에서 쪽만 보고 두 점을
+   * 쓰면 옆 짝을 때려도 도형이 첫째 마리에게 날아간다 (PARITY §2.2)
+   */
+  spotAt: (slot: SlotId) => [number, number]
+}) {
   const view = useBattleStore((s) => s.view)
   const [shot, setShot] = useState<Shot | null>(null)
   const [table, setTable] = useState<Awaited<ReturnType<typeof loadMoves>> | null>(null)
@@ -156,9 +163,9 @@ export function MoveVfx({ mine, foe }: { mine: [number, number]; foe: [number, n
     if (last.current === key) return
     last.current = key
     const move = cast.move === null ? null : table?.byId.get(cast.move) ?? null
-    const ours = cast.by === 'p1'
-    const attacker = ours ? mine : foe
-    const target = ours ? foe : mine
+    const attacker = spotAt(cast.by)
+    // 대상이 없는 줄(전체기·자기 강화)은 맞은편 첫 자리를 겨눈다
+    const target = spotAt(cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a'))
     const kind = archetypeFor(move)
     setShot({
       kind,
@@ -167,7 +174,7 @@ export function MoveVfx({ mine, foe }: { mine: [number, number]; foe: [number, n
       // 제 몸에 거는 것은 목표가 자기 자신이다
       to: kind === 'self-buff' ? attacker : target,
     })
-  }, [cast, table, mine, foe])
+  }, [cast, table, spotAt])
 
   if (!shot) return null
   return <Shape shot={shot} done={() => { setShot(null) }} />

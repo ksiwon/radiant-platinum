@@ -25,7 +25,7 @@ export function MusicDirector() {
   const phase = useBattleStore((s) => s.phase)
   const kind = useBattleStore((s) => s.kind)
   // 야생은 **누가 나왔는지**가 곡을 정한다. 기라티나는 전용 곡이다 (`songs.ts`)
-  const foeSpecies = useBattleStore((s) => s.view?.active.p2?.species ?? null)
+  const foeSpecies = useBattleStore((s) => s.view?.active.p2a?.species ?? null)
   const sound = useOptionsStore((s) => s.sound)
   const since = useRef(0)
   const last = useRef<number | null>(null)

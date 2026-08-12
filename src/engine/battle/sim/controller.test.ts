@@ -103,8 +103,8 @@ describe('배틀 진행', () => {
       expect(kinds.has(kind as never), `${kind} 이벤트가 사라졌다`).toBe(true)
     }
     const rebuilt = applyEvents(emptyView(), all)
-    expect(rebuilt.active.p1).toEqual(view.active.p1)
-    expect(rebuilt.active.p2).toEqual(view.active.p2)
+    expect(rebuilt.active.p1a).toEqual(view.active.p1a)
+    expect(rebuilt.active.p2a).toEqual(view.active.p2a)
     expect(rebuilt.turn).toBe(view.turn)
     expect(rebuilt.winner).toBe(view.winner)
     expect(rebuilt.ended).toBe(view.ended)
@@ -121,7 +121,7 @@ describe('배틀 진행', () => {
       expect(r.fainted).toBe(r.hp === 0)
     }
     // 나와 있던 애의 HP는 프로토콜로 접은 화면과 같아야 한다 — 서로 모르는 두 출처다
-    const active = view.active.p1!
+    const active = view.active.p1a!
     const same = results.find((r) => r.key === active.key)
     expect(same, `${active.key}가 결과에 없다`).toBeDefined()
     expect(same!.hp).toBe(active.hp)
@@ -285,7 +285,7 @@ describe('시합규칙 「교체」', () => {
     expect(between.filter((e) => e.kind === 'switch').map((e) => e.actor.name).sort())
       .toEqual(['p1-1', 'p2-1'])
     expect(controller.state.turn, '턴이 두 번 넘어갔다').toBe(before + 1)
-    expect(controller.state.active.p1?.key).toBe('p1-1')
+    expect(controller.state.active.p1a?.key).toBe('p1-1')
     controller.destroy()
   }, 30_000)
 
@@ -296,7 +296,7 @@ describe('시합규칙 「교체」', () => {
     expect(controller.shiftAsk).toBeNull()
     expect(step.events.some((e) => e.kind === 'switch' && e.actor.name === 'p2-1'),
       '상대가 안 나왔다').toBe(true)
-    expect(controller.state.active.p1?.key, '우리 쪽이 바뀌었다').toBe('p1-0')
+    expect(controller.state.active.p1a?.key, '우리 쪽이 바뀌었다').toBe('p1-0')
     controller.destroy()
   }, 30_000)
 
@@ -417,17 +417,17 @@ describe('화면이 정본을 따라잡는다', () => {
     const all = [...step.events]
     const screen = new Screen()
     screen.play(all)
-    expect(screen.view.active.p1?.key, '첫 마리가 안 섰다').toBe('p1-0')
+    expect(screen.view.active.p1a?.key, '첫 마리가 안 섰다').toBe('p1-0')
 
     const swap = controller.actions.find((a) => a.type === 'switch')
     expect(swap, '교체할 수 있는 마리가 없다').toBeDefined()
     all.push(...(await controller.choose(swap!)).events)
     screen.play(all)
 
-    expect(screen.view.active.p1?.key, '화면이 아직 앞 마리를 들고 있다').toBe('p1-1')
-    expect(screen.view.active.p1?.species, '화면의 종이 안 바뀌었다').toBe(LUXRAY)
+    expect(screen.view.active.p1a?.key, '화면이 아직 앞 마리를 들고 있다').toBe('p1-1')
+    expect(screen.view.active.p1a?.species, '화면의 종이 안 바뀌었다').toBe(LUXRAY)
     // 정본과 어긋나면 안 된다. 모델·이름표·체력바가 전부 이 뷰를 본다
-    expect(screen.view.active.p1?.species).toBe(controller.state.active.p1?.species)
+    expect(screen.view.active.p1a?.species).toBe(controller.state.active.p1a?.species)
     controller.destroy()
   }, 30_000)
 
@@ -455,10 +455,10 @@ describe('화면이 정본을 따라잡는다', () => {
       all.push(...(await controller.choose(options[Math.floor(r() * options.length)]!)).events)
       screen.play(all)
       // 재생이 끝난 자리에서는 화면이 정본과 같은 마리를 들고 있어야 한다
-      expect(screen.view.active.p1?.key, `${i}번째 수에서 우리 쪽이 어긋났다`)
-        .toBe(controller.state.active.p1?.key)
-      expect(screen.view.active.p2?.key, `${i}번째 수에서 상대 쪽이 어긋났다`)
-        .toBe(controller.state.active.p2?.key)
+      expect(screen.view.active.p1a?.key, `${i}번째 수에서 우리 쪽이 어긋났다`)
+        .toBe(controller.state.active.p1a?.key)
+      expect(screen.view.active.p2a?.key, `${i}번째 수에서 상대 쪽이 어긋났다`)
+        .toBe(controller.state.active.p2a?.key)
     }
     controller.destroy()
   }, 60_000)
@@ -529,7 +529,7 @@ describe('우리 가방에서 도구를 쓴다', () => {
     // 깎인 애를 벤치로 보낸다. 해피너스는 두꺼워서 그동안 안 쓰러진다
     let bench: string | undefined
     for (let i = 0; i < 10; i++) {
-      const here = controller.state.active.p1?.key
+      const here = controller.state.active.p1a?.key
       bench = controller.results('p1').find(
         (one) => one.key !== here && !one.fainted && one.hp < one.maxHp)?.key
       if (bench !== undefined) break
@@ -639,7 +639,7 @@ describe('「금제」가 걸리면 가방이 안 열린다', () => {
     // 걸리기 전에는 플러스파워가 먹는다 — 안 그러면 아래 단언이 공허하다
     expect(controller.planFor(itemTable.get(X_ATTACK), 'p1-0')).not.toBeNull()
     await controller.choose(controller.actions.find((a) => a.type === 'move')!)
-    expect(controller.state.active.p1?.volatiles.has('embargo'), '금제가 안 걸렸다').toBe(true)
+    expect(controller.state.active.p1a?.volatiles.has('embargo'), '금제가 안 걸렸다').toBe(true)
 
     expect(controller.planFor(itemTable.get(X_ATTACK), 'p1-0'), '랭크가 올라갔다').toBeNull()
     expect(controller.planFor(itemTable.get(POTION), 'p1-0'), '회복이 됐다').toBeNull()
@@ -751,7 +751,7 @@ describe('담금질이 잡은 자리', () => {
     })
     expect(controller.canSpendTurn, '묶이기 전에는 열려 있어야 한다').toBe(true)
     await controller.choose(controller.actions.find((a) => a.type === 'move')!)
-    expect(controller.state.active.p1?.volatiles.has('bide'), '참기가 안 걸렸다').toBe(true)
+    expect(controller.state.active.p1a?.volatiles.has('bide'), '참기가 안 걸렸다').toBe(true)
     expect(controller.canSpendTurn).toBe(false)
     expect((await controller.run()).events).toHaveLength(0)
     expect(controller.ended, '배틀이 끝나 버렸다').toBe(false)

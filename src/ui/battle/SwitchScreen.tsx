@@ -113,7 +113,7 @@ export function SwitchScreen(
   const saveParty = useSaveStore((s) => s.party)
 
   // 상대의 타입. 기술이 얼마나 통하는지를 여기에 대고 잰다
-  const foe = useBattleStore((s) => s.view?.active.p2 ?? null)
+  const foe = useBattleStore((s) => s.view?.active.p2a ?? null)
   const foeTypes = useMemo(
     () => (foe?.species != null ? species?.(foe.species)?.types ?? null : null),
     [foe, species],

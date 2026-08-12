@@ -23,6 +23,7 @@ import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
+import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
@@ -77,6 +78,30 @@ const WATCH_UNTIL = 9
 const MINE = { ...SLOT.p1, radius: 1.5 }
 const FOE = { ...SLOT.p2, radius: 1.5 }
 
+/**
+ * 더블에서 두 마리가 좌우로 벌어지는 폭 (PARITY §2.2).
+ *
+ * ⚠️ **BDSP가 적어 둔 값이 아니다.** 우리가 `battle_masterdatas`에서 읽어 온
+ * 것은 싱글 자리(z축 대칭 ±2.0~2.5)뿐이고, 더블 자리는 아직 안 뽑았다.
+ * 그림자 반지름이 1.5라 1.7이면 두 발판이 겹치지 않고, 화각 30°에서 넷이
+ * 다 화면에 든다 — **재서 고른 값이지 원작 값이 아니다.**
+ *
+ * `a`가 바깥(−x), `b`가 안쪽(+x)이다. 원작 DS도 첫째 마리가 화면 바깥쪽이다
+ */
+const PAIR_X = 1.7
+
+/** 그 자리의 발판. 싱글이면 `a`만 선다 */
+function spotOf(slot: SlotId): typeof MINE {
+  const base = slot.startsWith('p1') ? MINE : FOE
+  const dir = slot.startsWith('p1') ? 1 : -1
+  return { ...base, x: base.x + (slot.endsWith('a') ? -PAIR_X : PAIR_X) * dir }
+}
+
+/** 자리 → 쪽. 카메라 샷은 쪽 단위다 */
+function sideOf(slot: SlotId): Side {
+  return slot.startsWith('p1') ? 'p1' : 'p2'
+}
+
 /** 등판·기절이 딱 끊기지 않게 하는 시간(초) */
 const FADE = 0.35
 
@@ -126,9 +151,11 @@ const MON_TALL = 1.2
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
 function Slot(
-  { mon, look, spot, other, mine, shadow, onBody }: {
+  { mon, look, slot, spot, other, mine, shadow, onBody }: {
     mon: ViewMon | null
     look: SpeciesLook | null
+    /** 이 발판의 자리 표기. 누가 때렸는지·맞았는지를 이걸로 가른다 */
+    slot: SlotId
     spot: typeof MINE
     /** 상대가 선 자리. 때리러 나가는 방향을 여기서 뽑는다 */
     other: typeof MINE
@@ -202,11 +229,12 @@ function Slot(
    */
   const lunge = useRef(0)
   const flinch = useRef(0)
-  const side = mine ? 'p1' : 'p2'
+  // ⚠️ **쪽이 아니라 자리로 본다.** 더블에서 쪽으로 보면 한 마리가 때릴 때
+  // 옆의 짝도 같이 앞으로 나간다
   const cast = useBattleStore((s) => s.view?.lastMove ?? null)
   const struck = useBattleStore((s) => s.view?.lastHit ?? null)
-  useEffect(() => { if (cast?.by === side) lunge.current = 1 }, [cast, side])
-  useEffect(() => { if (struck?.side === side) flinch.current = 1 }, [struck, side])
+  useEffect(() => { if (cast?.by === slot) lunge.current = 1 }, [cast, slot])
+  useEffect(() => { if (struck?.slot === slot) flinch.current = 1 }, [struck, slot])
 
   // 물리냐 특수냐. **BDSP 모델이 그 둘을 따로 갖고 있다**(`ba20` · `ba21`) —
   // 롬의 기술 데이터가 정하는 값이라 여기서 짐작하지 않는다
@@ -222,7 +250,7 @@ function Slot(
    */
   const hitAt = useRef(LUNGE / 2)
   useEffect(() => {
-    if (cast?.by !== side || cast.move === null) return undefined
+    if (!cast || cast.by !== slot || cast.move === null) return undefined
     const id = cast.move
     let alive = true
     // ⚠️ **둘을 한 자리에서 푼다.** 분류를 아는 쪽과 타이밍을 보는 쪽을 나누면
@@ -241,7 +269,7 @@ function Slot(
       })
       .catch(() => { special.current = false })
     return () => { alive = false }
-  }, [cast, side, species])
+  }, [cast, slot, species])
 
   useFrame((_, delta) => {
     const g = body.current
@@ -514,16 +542,28 @@ export function BattleStage() {
         <Arena look={timeLook} file={arena.file} />
       </Suspense>
 
-      <Slot
-        mon={view?.active.p2 ?? null} look={look(view?.active.p2 ?? null, 'p2-0')}
-        spot={FOE} other={MINE} mine={false} shadow={shadow}
-        onBody={(t) => { setTall((was) => (was.p2 === t ? was : { ...was, p2: t })) }}
-      />
-      <Slot
-        mon={view?.active.p1 ?? null} look={look(view?.active.p1 ?? null, 'p1-0')}
-        spot={MINE} other={FOE} mine shadow={shadow}
-        onBody={(t) => { setTall((was) => (was.p1 === t ? was : { ...was, p1: t })) }}
-      />
+      {/*
+        네 자리를 늘 세운다 (PARITY §2.2). 싱글에서는 `b` 둘이 빈 발판이라
+        아무것도 안 그린다 — `Slot`이 `mon === null`이면 통째로 숨긴다.
+        조건부로 그리면 더블에 들어설 때 컴포넌트가 새로 마운트되어 모델을
+        다시 받는다
+      */}
+      {SLOTS.map((id) => (
+        <Slot
+          key={id}
+          slot={id}
+          mon={view?.active[id] ?? null}
+          look={look(view?.active[id] ?? null, `${id}-0`)}
+          spot={spotOf(id)}
+          other={spotOf(id.startsWith('p1') ? 'p2a' : 'p1a')}
+          mine={id.startsWith('p1')}
+          shadow={shadow}
+          onBody={(t) => {
+            const side = sideOf(id)
+            setTall((was) => (was[side] >= t ? was : { ...was, [side]: t }))
+          }}
+        />
+      ))}
       {/*
         기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —
         틀은 롬의 기술 데이터가, 색은 타입이 정한다 (`engine/battle/vfx`)
@@ -532,7 +572,9 @@ export function BattleStage() {
         기술 연출. ⚠️ 설정에서 "배틀 애니메이션"을 끄면 통째로 안 그린다 —
         원작의 그 항목이 하는 일이 바로 이것이고, 그래서 배틀이 빨라진다
       */}
-      {scene === SHOW_SCENE && <MoveVfx mine={[MINE.x, MINE.z]} foe={[FOE.x, FOE.z]} />}
+      {scene === SHOW_SCENE && (
+        <MoveVfx spotAt={(id) => { const p = spotOf(id); return [p.x, p.z] }} />
+      )}
     </group>
   )
 }
@@ -555,7 +597,7 @@ function useBattleCamera(fit: number): void {
   const active = useBattleStore((s) => s.view?.active ?? null)
 
   /** 두 번 같은 일로 컷하지 않게, 방금 본 것을 기억한다 */
-  const seen = useRef({ move: -1, hit: -1, out: '', down: '00' })
+  const seen = useRef({ move: -1, hit: -1, out: '', down: '0000' })
 
   const cut = (name: ShotName, side: Side): void => {
     if (scene === SHOW_SCENE) director.current.cut(name, side)
@@ -564,33 +606,34 @@ function useBattleCamera(fit: number): void {
   useEffect(() => {
     if (!cast || cast.seq === seen.current.move) return
     seen.current.move = cast.seq
-    cut('oncoming', cast.by)
+    cut('oncoming', sideOf(cast.by))
   })
 
   useEffect(() => {
     if (!struck || struck.seq === seen.current.hit) return
     seen.current.hit = struck.seq
-    cut('impact', struck.side)
+    cut('impact', sideOf(struck.slot))
   })
 
   // 등판과 기절. 어느 쪽이 바뀌었는지는 종족 번호와 체력으로 안다
   useEffect(() => {
     if (!active) return
-    const out = SIDES.map((side) => String(active[side]?.species ?? '')).join('/')
+    // ⚠️ **자리마다 본다.** 쪽으로 세면 더블에서 짝이 바뀔 때 컷이 안 걸린다
+    const out = SLOTS.map((slot) => String(active[slot]?.species ?? '')).join('/')
     const was = seen.current.out.split('/')
     if (out !== seen.current.out) {
-      const changed = SIDES.filter((side, i) => String(active[side]?.species ?? '') !== was[i])
+      const changed = SLOTS.filter((slot, i) => String(active[slot]?.species ?? '') !== was[i])
       const first = seen.current.out === ''
       seen.current.out = out
       // ⚠️ 첫 등판에는 컷하지 않는다. 배틀이 열리는 순간이라 두 자리가 한꺼번에
       // 차는데, 그때 등판 샷을 걸면 무대가 서기도 전에 카메라가 한쪽으로 붙는다
-      if (!first && changed[0]) cut('switchIn', changed[0])
+      if (!first && changed[0]) cut('switchIn', sideOf(changed[0]))
     }
-    const down = SIDES.map((side) => ((active[side]?.hp ?? 1) <= 0 ? '1' : '0')).join('')
+    const down = SLOTS.map((slot) => ((active[slot]?.hp ?? 1) <= 0 ? '1' : '0')).join('')
     if (down !== seen.current.down) {
-      const fell = SIDES.filter((_, i) => down[i] === '1' && seen.current.down[i] !== '1')
+      const fell = SLOTS.filter((_, i) => down[i] === '1' && seen.current.down[i] !== '1')
       seen.current.down = down
-      if (fell[0]) cut('faint', fell[0])
+      if (fell[0]) cut('faint', sideOf(fell[0]))
     }
   })
 
@@ -618,4 +661,3 @@ function useBattleCamera(fit: number): void {
 /** 설정의 "배틀 애니메이션"에서 **보는** 쪽 값 (`options_menu` 뱅크 13번) */
 const SHOW_SCENE = 0
 
-const SIDES: readonly Side[] = ['p1', 'p2']

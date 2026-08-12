@@ -72,16 +72,16 @@ describe('배틀 스토어', () => {
     expect(useSaveStore.getState().party).toHaveLength(1)
 
     const view = useBattleStore.getState().truth!
-    expect(view.active.p1, '우리 쪽이 안 나왔다').not.toBeNull()
-    expect(view.active.p2!.species).toBe(STARLY)
-    expect(view.active.p2!.level).toBe(3)
+    expect(view.active.p1a, '우리 쪽이 안 나왔다').not.toBeNull()
+    expect(view.active.p2a!.species).toBe(STARLY)
+    expect(view.active.p2a!.level).toBe(3)
     expect(useBattleStore.getState().actions.length, '고를 게 없다').toBeGreaterThan(0)
   }, 30_000)
 
   it('키가 파티 순서와 이어져 있다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
     const { roster, truth: view } = useBattleStore.getState()
-    const key = view!.active.p1!.key
+    const key = view!.active.p1a!.key
     expect(roster[key], `${key}가 명부에 없다`).toBeDefined()
     expect(roster[key]!.species).toBe(useSaveStore.getState().party[0]!.species)
     expect(roster[key]!.side).toBe('p1')
@@ -107,7 +107,7 @@ describe('배틀 스토어', () => {
     expect(before.hp, '시작부터 만피가 아니다').toBe(full)
 
     await playToEnd()
-    const inBattle = useBattleStore.getState().truth!.active.p1!
+    const inBattle = useBattleStore.getState().truth!.active.p1a!
     expect(inBattle.hp, 'HP가 하나도 안 깎였다 — 이 판으로는 검증이 안 된다')
       .toBeLessThan(full)
     useBattleStore.getState().close()
@@ -259,7 +259,7 @@ describe('가방 도구', () => {
 
     await useBattleStore.getState().startWild({ species: STARLY, level: 20 })
     for (let i = 0; i < 12; i++) {
-      const mon = useBattleStore.getState().truth?.active.p1
+      const mon = useBattleStore.getState().truth?.active.p1a
       if (mon && mon.hp > 0 && mon.hp < mon.maxHp) return mon.key
       const move = useBattleStore.getState().actions.find((a) => a.type === 'move')
       if (!move) break
@@ -271,7 +271,7 @@ describe('가방 도구', () => {
   it('상처약을 쓰면 체력이 차고 가방에서 한 개가 빠진다', async () => {
     const key = await hurtBattle()
     const potion = await put('potion', 3)
-    const before = useBattleStore.getState().truth!.active.p1!.hp
+    const before = useBattleStore.getState().truth!.active.p1a!.hp
     await useBattleStore.getState().useItem(potion, key)
 
     // 도구를 쓰고 나면 상대가 반격하므로 지금 체력이 아니라 **회복 사건**으로 잰다
@@ -288,7 +288,7 @@ describe('가방 도구', () => {
   it('아무 일도 안 일어날 도구는 개수도 안 줄고 턴도 안 쓴다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
     const potion = await put('potion', 1)
-    const key = useBattleStore.getState().truth!.active.p1!.key
+    const key = useBattleStore.getState().truth!.active.p1a!.key
     const turn = useBattleStore.getState().truth!.turn
 
     // 만피인 애에게 상처약. 원작도 "효과가 없을 것 같다"를 띄우고 되돌린다
@@ -310,7 +310,7 @@ describe('가방 도구', () => {
   it('삐삐인형은 야생에서 반드시 도망치고 트레이너에게는 안 통한다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 30 })
     const doll = await put('poke_doll', 2)
-    const key = useBattleStore.getState().truth!.active.p1!.key
+    const key = useBattleStore.getState().truth!.active.p1a!.key
     await useBattleStore.getState().useItem(doll, key)
     expect(useBattleStore.getState().outcome).toBe('fled')
     expect(await left(doll)).toBe(1)
@@ -318,7 +318,7 @@ describe('가방 도구', () => {
 
     // 트레이너전에서는 `battle_bag.c`가 "지금은 그럴 때가 아니다"로 막는다
     await useBattleStore.getState().startTrainer(1)
-    const mine = useBattleStore.getState().truth!.active.p1!.key
+    const mine = useBattleStore.getState().truth!.active.p1a!.key
     await useBattleStore.getState().useItem(doll, mine)
     expect(useBattleStore.getState().outcome).toBeNull()
     expect(await left(doll), '트레이너전인데 줄었다').toBe(1)
@@ -414,7 +414,7 @@ describe('트레이너전', () => {
     expect(useBattleStore.getState().foeName).toBe('체육관 관장 동관')
 
     // 자철석 L37이 먼저 나온다 — 파티 순서가 그대로여야 한다
-    const foe = useBattleStore.getState().truth!.active.p2!
+    const foe = useBattleStore.getState().truth!.active.p2a!
     expect(foe.species).toBe(82)
     expect(foe.level).toBe(37)
     // 명부에 세 마리가 다 있어야 교체할 때 이름을 찾을 수 있다

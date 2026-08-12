@@ -141,7 +141,7 @@ export function buildBeats(
 
   /** 게이지가 지금 값에서 새 값까지 가는 프레임 */
   const drainFor = (e: Extract<BattleEvent, { kind: 'damage' | 'heal' }>): number => {
-    const mon = view.active[e.actor.side]
+    const mon = view.active[e.actor.slot]
     if (!mon) return HOLD_MESSAGE
     return drainFrames(Math.abs(e.condition.hp - mon.hp), e.condition.maxHp ?? mon.maxHp)
   }
