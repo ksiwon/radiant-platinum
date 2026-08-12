@@ -19,7 +19,7 @@ import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { BIKE_WHY, bikeBlock } from '../../engine/actor/bike'
-import { fieldAction } from '../../engine/bag/fieldUse'
+import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
 import { castRod } from '../../scene/fishingSystem'
 import { isSurfable } from '../../engine/map/zone'
 import { frontTile } from '../../engine/script/field'
@@ -70,6 +70,7 @@ export function BagScreen() {
   const giveTo = useMenuStore((s) => s.giveTo)
   const closeAll = useMenuStore((s) => s.closeAll)
   const push = useMenuStore((s) => s.push)
+  const openBerryTag = useMenuStore((s) => s.openBerryTag)
 
   useEffect(() => {
     let alive = true
@@ -194,6 +195,17 @@ export function BagScreen() {
     down: () => { setCursor((c) => clampCursor(c, 1, slots.length)) },
     left: () => { setPocket((p) => wrapCursor(p, -1, POCKET_SIZE.length)); setCursor(0) },
     right: () => { setPocket((p) => wrapCursor(p, 1, POCKET_SIZE.length)); setCursor(0) },
+    // ⚠️ **원작은 가방의 갈래 메뉴에서 태그를 연다** (「태그를 본다」).
+    // 우리 가방에는 아직 갈래 메뉴가 없어서 Tab으로 연다 — 여는 길만 다르다
+    tab: () => {
+      const id = selected?.item
+      if (id === undefined || !data) return
+      if (data.items.get(id).fieldUseFunc !== FieldUse.BERRY) {
+        setDenied('나무열매가 아니다')
+        return
+      }
+      openBerryTag(id)
+    },
     confirm: use,
     cancel: back,
   })

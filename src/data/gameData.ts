@@ -7,20 +7,21 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
-  hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
+  berriesSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema,
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type HiddenItems,
-  type PokedexHabitat, type PokedexSort,
+  type PokedexHabitat, type PokedexSort, type Berries,
 } from './schema'
 
 /** 숨은 도구 한 줄 */
 export type HiddenItemRow = HiddenItems['items'][number]
 
-export type { PokedexHabitat, PokedexSort }
+export type { PokedexHabitat, PokedexSort, Berries }
+export type { Berry } from './schema'
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
 import { formSpeciesId } from '../engine/pokemon/form'
@@ -310,6 +311,11 @@ export function loadPokedexSort(locale: DataLocale): Promise<PokedexSort> {
 /** 도감 서식지 지도 (PARITY §5) */
 export function loadPokedexHabitat(): Promise<PokedexHabitat> {
   return fetchJson('pokedexHabitat.json', (v) => pokedexHabitatSchema.parse(v))
+}
+
+/** 나무열매 64종 (PARITY §5 `berry_tag` · §4.6) */
+export function loadBerries(): Promise<Berries> {
+  return fetchJson('berries.json', (v) => berriesSchema.parse(v))
 }
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {

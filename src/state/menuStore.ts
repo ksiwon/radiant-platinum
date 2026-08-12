@@ -16,6 +16,12 @@ export type MenuScreen =
   | 'fly' | 'box'
   // 모험노트. 가방의 열쇠도구에서 연다 (`ItemUseFunc_Journal`)
   | 'journal'
+  // 기술 되살리기·기술가르침. 스크립트가 열고 `reminder`가 무엇을 가르칠지 든다
+  | 'reminder'
+  // 도감 완성 상장 (`ShowDiplomaSinnoh` · `ShowDiplomaNationalDex`)
+  | 'diploma'
+  // 나무열매 태그. 가방에서 연다
+  | 'berryTag'
   // 요약 화면. `summarySlot`이 어느 파티 자리인지를 든다
   | 'summary'
   // 파트너를 고르는 화면. 스크립트가 열고, **고르기 전에는 못 닫는다**
@@ -75,6 +81,19 @@ interface MenuStore {
    * 도구 하나를 고르는 순간 그 자리에 붙는다. null이면 평소의 가방이다
    */
   giveTo: number | null
+  /**
+   * 기술 되살리기가 무엇을 누구에게 가르치려는가 (`MoveReminderData`).
+   *
+   * `tutor`가 참이면 기술가르침이라 목록이 한 줄뿐이다. 상점 재고와 같은
+   * 이유로 여기 있다 — 화면을 여는 인자라 컴포넌트가 못 받는다
+   */
+  reminder: { slot: number; moves: number[]; tutor: boolean } | null
+  /** 마지막 되살리기가 실제로 가르쳤는가 (`keepOldMove`). 스크립트가 이 값으로 갈린다 */
+  reminderLearned: boolean
+  /** 상장이 전국도감판인가 (`ShowDiplomaNationalDex`) */
+  diplomaNational: boolean
+  /** 태그를 볼 나무열매의 **도구 번호** */
+  berryItem: number
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고를 같이 받는다 */
@@ -89,6 +108,14 @@ interface MenuStore {
   openSummary: (slot: number) => void
   /** 도구를 건네주려고 가방을 쌓는다 */
   openBagToGive: (slot: number) => void
+  /** 기술 되살리기를 연다 */
+  openReminder: (what: NonNullable<MenuStore['reminder']>) => void
+  /** 되살리기가 끝났다. 스크립트가 `reminderLearned`를 읽는다 */
+  finishReminder: (learned: boolean) => void
+  /** 상장을 연다 */
+  openDiploma: (national: boolean) => void
+  /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다 */
+  openBerryTag: (item: number) => void
   /** 도구 쓰기를 끝낸다 */
   clearUsingItem: () => void
   back: () => void
@@ -109,6 +136,30 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   usingItem: null,
   summarySlot: 0,
   giveTo: null,
+  reminder: null,
+  reminderLearned: false,
+  diplomaNational: false,
+  berryItem: 0,
+
+  openReminder: (what) => set(() => {
+    const stack: MenuScreen[] = ['reminder']
+    capture(stack)
+    return { stack, top: 'reminder' as const, reminder: what, reminderLearned: false }
+  }),
+
+  finishReminder: (learned) => { set({ reminderLearned: learned, reminder: null }) },
+
+  openDiploma: (national) => set(() => {
+    const stack: MenuScreen[] = ['diploma']
+    capture(stack)
+    return { stack, top: 'diploma' as const, diplomaNational: national }
+  }),
+
+  openBerryTag: (item) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'berryTag']
+    capture(stack)
+    return { stack, top: 'berryTag' as const, berryItem: item }
+  }),
 
   openBagToGive: (slot) => set((s) => {
     const stack: MenuScreen[] = [...s.stack, 'bag']

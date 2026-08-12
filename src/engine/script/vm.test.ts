@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_561
+const RUNNING_SITES = 53_570
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 235
+const IMPLEMENTED_COMMANDS = 242
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -521,10 +521,18 @@ const IDLE_COMMANDS = [
   // 모험노트는 **도감을 받은 뒤**라야 준다(`GoToIfSet FLAG_HAS_POKEDEX`).
   // 도감을 주는 명령을 아직 안 만들어서 그 플래그가 안 선다
   'GiveJournal',
+  // 상장 둘은 도감을 다 채운 사람에게만 오는 갈래라 훑기가 안 닿는다
+  'ShowDiplomaSinnoh',
+  'ShowDiplomaNationalDex',
   // ⚠️ **셋 다 전국도감 뒤의 자리다.** 트로피가든에 특별한 것이 뜨는 것도,
   // 무리가 열리는 것도 이야기를 끝낸 뒤라 훑기가 그 가지에 못 들어간다 —
   // `AddTrophyGardenMon`은 포켓몬저택 사무실, `EnableSwarms`는 신오방송국이다
   'AddTrophyGardenMon', 'GetTrophyGardenSlot1Species', 'EnableSwarms',
+  // ⚠️ **기술 되살리기 다섯은 파티에서 한 마리를 고른 뒤에 온다.** 고르는
+  // 명령(`SelectMoveTutorPokemon` 갈래)이 아직 없어서 훑기가 그 앞에서 멈춘다 —
+  // 명령 자체는 실제 스크립트에 있다 (§10 「기술가르침」 39자리)
+  'CheckHasLearnableReminderMoves', 'OpenMoveReminderMenu', 'CheckLearnedReminderMove',
+  'OpenMoveTutorMenu', 'CheckLearnedTutorMove',
   // ⚠️ **테오키스는 배포 이벤트다** (§9). 축복시티의 유성이 폼을 갈아 끼우는데
   // (`scripts_veilstone_city.s`), 그 앞이 파티에 테오키스가 있는지 보는 갈래다
   'ChangeDeoxysForm',

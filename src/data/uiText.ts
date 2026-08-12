@@ -67,6 +67,21 @@ export const UI_BANK = {
   poketchApps: 457,
   /** `TEXT_BANK_POKETCH_MOVE_TESTER` — 기술효과체커의 일곱 줄 */
   poketchMoveTester: 456,
+  /** `TEXT_BANK_DIPLOMA` — 도감 완성 상장 네 줄 */
+  diploma: 1,
+  /** `TEXT_BANK_BERRY_TAGS` — 나무열매 태그의 이름표 열여섯 */
+  berryTags: 398,
+  /** `TEXT_BANK_BERRY_NAMES` · `..._DESCRIPTIONS` — 열매 64종 */
+  berryNames: 424,
+  berryText: 423,
+} as const
+
+/** 나무열매 태그의 글 자리 (`berry_tags` 뱅크) */
+export const BERRY_TAG = {
+  title: 0, spicy: 1, dry: 2, sweet: 3, bitter: 4, sour: 5,
+  size: 8, firm: 10,
+  /** 11~15가 단단함 다섯. **1부터 센다** */
+  firmness: 11,
 } as const
 
 export type UiBank = keyof typeof UI_BANK

@@ -1553,6 +1553,55 @@ on('SetHiddenLocation', (ctx) => {
   return false
 })
 
+// ── 기술 되살리기 · 상장 (PARITY §5) ─────────────────────────────────────────
+
+on('CheckHasLearnableReminderMoves', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.reminder?.count(slot) ?? 0)
+  return false
+})
+
+on('OpenMoveReminderMenu', (ctx) => {
+  const slot = ctx.readVar()
+  ctx.host.world.services.reminder?.open(slot)
+  // ⚠️ **화면이 뜨는 동안 스크립트가 멈춘다** (`ScriptContext_Pause`).
+  // 안 멈추면 「배웠니?」를 배우기 전에 묻는다
+  return true
+})
+
+on('OpenMoveTutorMenu', (ctx) => {
+  const slot = ctx.readVar()
+  const move = ctx.readVar()
+  ctx.host.world.services.reminder?.open(slot, move)
+  return true
+})
+
+/** `keepOldMove`가 거짓이면 0, 참이면 0xff다 — 원작이 그 두 값을 쓴다 */
+const REMINDER_KEPT_OLD = 0xff
+
+on('CheckLearnedReminderMove', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.reminder?.learned() === true ? 0 : REMINDER_KEPT_OLD)
+  return false
+})
+
+on('CheckLearnedTutorMove', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.reminder?.learned() === true ? 0 : REMINDER_KEPT_OLD)
+  return false
+})
+
+on('ShowDiplomaSinnoh', (ctx) => {
+  ctx.host.world.services.diploma?.show(false)
+  return true
+})
+
+on('ShowDiplomaNationalDex', (ctx) => {
+  ctx.host.world.services.diploma?.show(true)
+  return true
+})
+
 // ── 포켓치 (PARITY §7.3) ─────────────────────────────────────────────────────
 
 on('CheckPoketchEnabled', (ctx) => {

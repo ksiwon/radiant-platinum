@@ -29,6 +29,17 @@ import { mapById, setWarpEventPos, world as mapWorld } from '../engine/map/world
 import { LocationEvent } from '../engine/world/journal'
 import { journalGiven, journalGotItem, journalPlain, journalUsedMove } from './journal'
 import { poketchEnable, poketchEnabled, poketchHasApp, poketchRegister, poketchShow } from './poketch'
+import { relearnableMoves } from '../engine/pokemon/relearn'
+
+/** 그 파티 자리가 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`) */
+function relearnFor(slot: number): number[] {
+  const mon = useSaveStore.getState().party[slot]
+  const table = speciesTable
+  if (!mon || !table) return []
+  return relearnableMoves(
+    table.of(mon).learnset, mon.level, mon.moves.map((m) => m.move),
+  )
+}
 
 /**
  * 포켓치 앱 이름 25개. 스크립트가 대사에 끼워 넣는다 (`BufferPoketchAppName`).
@@ -736,6 +747,23 @@ const services: FieldServices = {
     appName: (app) => poketchAppNames[app] ?? '',
     show: poketchShow,
   },
+
+  /**
+   * 기술 되살리기·기술가르침 (PARITY §5).
+   *
+   * 목록은 학습표에서 나온다 — 종족 표를 못 받았으면 아무것도 못 가르치므로
+   * 「없다」로 답한다 (스크립트가 그 갈래로 흘러간다)
+   */
+  reminder: {
+    count: (slot) => relearnFor(slot).length,
+    open: (slot, move) => {
+      const moves = move === undefined ? relearnFor(slot) : [move]
+      useMenuStore.getState().openReminder({ slot, moves, tutor: move !== undefined })
+    },
+    learned: () => useMenuStore.getState().reminderLearned,
+  },
+
+  diploma: { show: (national) => { useMenuStore.getState().openDiploma(national) } },
 
   gear: {
     giveRunningShoes: () => { useSaveStore.setState({ runningShoes: true }) },

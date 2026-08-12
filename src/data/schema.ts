@@ -484,6 +484,30 @@ export const pokedexHabitatSchema = z.object({
   species: z.record(z.string(), z.record(z.string(), z.array(z.number().int().nonnegative()))),
 })
 
+/**
+ * 나무열매 64종 (`nuts_data.narc`).
+ *
+ * 도구 번호는 `firstItem + 자리`다 (`BerryData_LoadDataByItemID`)
+ */
+export const berriesSchema = z.object({
+  count: z.number().int().positive(),
+  firstItem: z.number().int().positive(),
+  berries: z.array(z.object({
+    size: z.number().int().nonnegative(),
+    /** 1~5. **0은 값이 아니다** (`FIRMNESS_VERY_SOFT`가 1) */
+    firmness: z.number().int().min(1).max(5),
+    baseYield: z.number().int().nonnegative(),
+    stageDuration: z.number().int().nonnegative(),
+    moistureDrain: z.number().int().nonnegative(),
+    spicy: z.number().int().nonnegative(),
+    dry: z.number().int().nonnegative(),
+    sweet: z.number().int().nonnegative(),
+    bitter: z.number().int().nonnegative(),
+    sour: z.number().int().nonnegative(),
+    smoothness: z.number().int().nonnegative(),
+  })).nonempty(),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -513,5 +537,7 @@ export type TownMapFile = z.infer<typeof townMapSchema>
 export type HiddenItems = z.infer<typeof hiddenItemsSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>
 export type PokedexHabitat = z.infer<typeof pokedexHabitatSchema>
+export type Berries = z.infer<typeof berriesSchema>
+export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>

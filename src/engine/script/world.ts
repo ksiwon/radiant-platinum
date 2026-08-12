@@ -302,6 +302,22 @@ export interface FieldServices {
     /** 연출 동안 치운다 (`ScrCmd_HidePoketch`) */
     show: (visible: boolean) => void
   }
+  /**
+   * 기술 되살리기·기술가르침 (PARITY §5 `move_reminder`).
+   *
+   * 둘이 **같은 화면**을 쓴다 (`FieldSystem_OpenMoveReminderMenu`) — 다른 것은
+   * 목록이 학습표에서 오느냐 한 줄뿐이냐 하나다
+   */
+  reminder?: {
+    /** 그 자리가 되살릴 수 있는 기술 수 */
+    count: (partySlot: number) => number
+    /** 화면을 연다. `move`를 주면 기술가르침이다 */
+    open: (partySlot: number, move?: number) => void
+    /** 실제로 배웠는가 (`keepOldMove`) */
+    learned: () => boolean
+  }
+  /** 도감 완성 상장 (PARITY §5 `diploma`) */
+  diploma?: { show: (national: boolean) => void }
   /** 모험노트 (PARITY §7.4) — `ScrCmd_GiveJournal` · `ScrCmd_CreateJournalEvent` */
   journal?: {
     /** 노트를 받는다. 첫 쪽이 여기서 펼쳐진다 */

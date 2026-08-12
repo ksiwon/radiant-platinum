@@ -211,6 +211,10 @@ const EXTRA_BANKS = [
   // 기술상성체커의 「효과가 굉장함」 일곱, 포켓몬이력의 제목, 나무열매서처의 제목
   'TEXT_BANK_POKETCH_APP_NAMES', 'TEXT_BANK_POKETCH_MOVE_TESTER',
   'TEXT_BANK_POKETCH_POKEMON_HISTORY', 'TEXT_BANK_POKETCH_BERRY_SEARCHER',
+  // 도감 완성 상장 네 줄 (`applications/diploma`)
+  'TEXT_BANK_DIPLOMA',
+  // 나무열매 태그 — 이름표 열여섯과 열매 이름·설명 예순넷
+  'TEXT_BANK_BERRY_TAGS', 'TEXT_BANK_BERRY_NAMES', 'TEXT_BANK_BERRY_DESCRIPTIONS',
 ]
 
 function main() {
