@@ -70,5 +70,8 @@ export function trainerMonToInstance(
     ball: 0,
     // 같은 까닭으로 출신도 안 남는다. 세이브에 안 들어가는 개체다
     origin: noOrigin({ name: '', gender: 'male' }),
+    // ⚠️ **롬 트레이너 자료에 폼 칸이 없다.** 4바이트 기본형에도, 기술·도구가
+    // 붙은 확장형에도 없다 — 그래서 트레이너의 도롱마담은 언제나 풀 옷감이다
+    form: 0,
   }
 }

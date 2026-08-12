@@ -14,18 +14,19 @@
 // 32×64인 것은 **프레임이 둘**이기 때문이다. 원작은 둘을 번갈아 그려 아이콘이
 // 까딱거리게 한다. 우리는 위쪽 한 장만 쓴다.
 //
-// ⚠️ 팔레트는 종마다 다르다 — 16벌 중 몇 번을 쓰는지가 그림에 안 적혀 있고
-// 코드에 박힌 표다(`sPokemonIconPaletteIndex`). 그 표는 디컴프의 종별
-// `data.json`에 `icon_palette`로 있고, 종 번호와의 짝은 `generated/species.txt`
-// 줄 순서다(0 = SPECIES_NONE). 짐작으로 0번을 쓰면 풀색 포켓몬이 보라색이 된다.
+// ⚠️ 팔레트는 칸마다 다르다 — 16벌 중 몇 번을 쓰는지가 그림에 안 적혀 있고
+// 코드에 박힌 표다(`sPokemonIconPaletteIndex`). 그 표는 `pokeIconTableModule.cjs`가
+// 디컴프에서 굽고 **여기와 브라우저 쪽이 같은 함수를 부른다**. 짐작으로 0번을
+// 쓰면 풀색 포켓몬이 보라색이 된다.
+//
+// ⚠️ **540칸 중 앞 495만 종이다.** 그 뒤 45칸이 폼 아이콘이라, 칸 번호를 종
+// 번호로 읽으면 로토무 폼이 없는 종으로 잡힌다 (`engine/pokemon/form.iconSlot`)
 'use strict'
 const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
 const { encodePng } = require('./png')
-
-// 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
-const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
+const { iconPalettes } = require('./pokeIconTableModule.cjs')
 
 const ICON = 32
 const TILE = 8
@@ -73,36 +74,15 @@ function frame(buf) {
   return px
 }
 
-/**
- * 종 번호 → 팔레트 번호.
- *
- * 폼마다 다른 종(이상해·도롱마담·조개무지…)은 `icon_palette`가 객체다. 그
- * 종의 기본 폼만 쓰므로 `base`를 집는다 — 우리 개체 자료에 폼이 없다
- */
-function paletteIndex() {
-  const list = fs.readFileSync(path.join(DECOMP, 'generated/species.txt'), 'utf8')
-    .split(/\r?\n/).filter(Boolean)
-  return list.map((constant) => {
-    const dir = constant.replace('SPECIES_', '').toLowerCase()
-    const file = path.join(DECOMP, 'res/pokemon', dir, 'data.json')
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8')).icon_palette
-    if (typeof raw === 'number') return raw
-    // "base,0,a,0,…" 꼴로 폼마다 적힌 것. 기본 폼을 집는다
-    const parts = String(raw).split(',')
-    const at = parts.indexOf('base')
-    if (at < 0) throw new Error(`${dir}: icon_palette에 base가 없다 — ${raw}`)
-    return Number(parts[at + 1])
-  })
-}
-
 function main() {
   const narc = openRom().narc('/poketool/icongra/pl_poke_icon.narc')
   const pals = palettes(narc[0])
-  const perSpecies = paletteIndex()
+  // 표는 한 군데서만 만든다 — 브라우저 쪽(`pokeIconTable.ts`)도 이 함수가 굽는다
+  const { palettes: perSpecies } = iconPalettes()
   const count = perSpecies.length
 
   if (narc.length < FIRST_ICON + count) {
-    throw new Error(`아이콘 ${narc.length - FIRST_ICON}장인데 종은 ${count}개다`)
+    throw new Error(`아이콘 ${narc.length - FIRST_ICON}장인데 칸은 ${count}개다`)
   }
 
   const rows = Math.ceil(count / COLS)
@@ -113,7 +93,7 @@ function main() {
   for (let species = 0; species < count; species++) {
     const px = frame(narc[FIRST_ICON + species])
     const pal = pals[perSpecies[species]]
-    if (!pal) throw new Error(`종 ${species}: 팔레트 ${perSpecies[species]}번은 없다`)
+    if (!pal) throw new Error(`칸 ${species}: 팔레트 ${perSpecies[species]}번은 없다`)
     const ox = (species % COLS) * ICON, oy = Math.floor(species / COLS) * ICON
     let n = 0
     for (let y = 0; y < ICON; y++) {
@@ -138,7 +118,7 @@ function main() {
   const meta = writeJson('pokeIcons.json', { size: ICON, cols: COLS, rows, count })
 
   console.log(
-    `포켓몬 아이콘 ${count}칸 → public/data/pokeIcons.png ` +
+    `포켓몬 아이콘 ${count}칸(폼 포함) → public/data/pokeIcons.png ` +
     `(${width}×${height}, ${(png.length / 1024).toFixed(1)}KB) · ${meta.rel}`,
   )
   const drawn = solid.slice(1)

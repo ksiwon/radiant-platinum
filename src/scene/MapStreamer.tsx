@@ -432,7 +432,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       const e = encounters.pending
       encounters.pending = null
       encounters.suspended = true
-      void startWild({ species: e.species, level: e.level })
+      void startWild({ species: e.species, level: e.level, form: e.form })
     }
   })
 

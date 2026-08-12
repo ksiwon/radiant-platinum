@@ -79,13 +79,27 @@ function parseLearnset(b) {
  *
  * ⚠️ **글 뱅크가 아니다.** 화면에 찍는 `1.0 m`은 따로 있고, 배틀이 쓰는 것은
  * 여기 있는 `int[494]`다 — 데시미터와 헥토그램이다. 저울질과 풀묶기의 위력이
- * 이 숫자에서 나온다. 폼 자리(494번 뒤)는 표에 칸이 없어서 0이다.
+ * 이 숫자에서 나온다.
+ *
+ * ⚠️ **표는 494칸이라 폼 자리가 비어 있다.** 그대로 두면 저울질과 풀묶기가
+ * 도롱마담 쓰레기에게 0kg으로 걸린다. 원작은 그 표를 **종족 번호로** 읽으므로
+ * (`Pokedex_HeightWeightData_Weight`) 폼은 기본형과 같은 크기다.
  *
  * ⚠️ **기라티나 한 마리만 표가 둘이다.** 기본 표는 오리진(6.9m·650kg)이고
  * 어나더(4.5m·750kg)는 `zukan_data_gira.narc`에 있다 — 원작이 폼에 따라
- * NARC을 갈아 끼운다(`Pokedex_SetupGiratina`)
+ * NARC을 갈아 끼운다(`Pokedex_SetupGiratina`). 그래서 오리진(501번)은
+ * **덮기 전의** 기본 표 값을 가져간다
  */
 const GIRATINA = 487
+
+/** 폼 종족 자료 번호 → 기본 종족 번호 (`Pokemon_GetFormNarcIndex`의 역) */
+const FORM_BASE = [
+  [496, 386], [497, 386], [498, 386], // 테오키스 어택·디펜스·스피드
+  [499, 413], [500, 413],             // 도롱마담 모래·쓰레기
+  [501, GIRATINA],                    // 기라티나 오리진
+  [502, 492],                         // 쉐이미 스카이
+  [503, 479], [504, 479], [505, 479], [506, 479], [507, 479], // 로토무 다섯
+]
 
 function readSizes(rom) {
   const ints = (b) => Array.from({ length: b.length >> 2 }, (_, i) => b.readInt32LE(i * 4))
@@ -98,6 +112,10 @@ function readSizes(rom) {
     throw new Error(`키 ${heightDm.length}칸 ≠ 몸무게 ${weightHg.length}칸`)
   }
   const [giraH, giraW] = read('/application/zukanlist/zkn_data/zukan_data_gira.narc')
+  for (const [form, base] of FORM_BASE) {
+    heightDm[form] = heightDm[base] ?? 0
+    weightHg[form] = weightHg[base] ?? 0
+  }
   heightDm[GIRATINA] = giraH[GIRATINA]
   weightHg[GIRATINA] = giraW[GIRATINA]
   return { heightDm, weightHg }

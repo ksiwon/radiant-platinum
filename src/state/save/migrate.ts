@@ -93,6 +93,23 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       : data.boxes
     return { ...data, version: 12, party, boxes }
   },
+
+  /**
+   * 12 → 13. 개체에 폼 칸이 생겼다 (PARITY §3.4).
+   *
+   * ⚠️ **전부 0으로 둔다.** 옛 리포트의 조개무지가 어느 바다에서 왔는지는 아무
+   * 데도 안 적혀 있다 — 잡은 자리로 되짚으면 그럴듯하지만 그건 지어내는 것이고,
+   * 서쪽 바다(0)가 원작에서 자료가 없을 때의 대답이다
+   */
+  12: (data) => {
+    const stamp = (mon: unknown): unknown =>
+      mon === null || typeof mon !== 'object' ? mon : { ...mon, form: 0 }
+    const party = Array.isArray(data.party) ? data.party.map(stamp) : data.party
+    const boxes = Array.isArray(data.boxes)
+      ? data.boxes.map((box) => (Array.isArray(box) ? box.map(stamp) : box))
+      : data.boxes
+    return { ...data, version: 13, party, boxes }
+  },
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

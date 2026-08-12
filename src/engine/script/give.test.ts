@@ -61,6 +61,8 @@ const noParty: NonNullable<FieldServices['party']> = {
   aliveExcept: () => 0, level: () => 0, nature: () => 0, friendship: () => 0,
   addFriendship: () => { /* 안 본다 */ }, hasMove: () => false, move: () => 0,
   give: () => false,
+  form: () => 0, setForm: () => { /* 안 본다 */ }, giratinaForm: () => { /* 안 본다 */ },
+  revertForms: () => 0, rotomForms: () => 0, rotomCount: () => ({ count: 0, first: 0xff }),
 }
 
 maybe('주는 명령', () => {

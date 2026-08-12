@@ -16,6 +16,7 @@ import {
 } from './schema'
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
+import { formSpeciesId } from '../engine/pokemon/form'
 
 /**
  * 세션 내내 살아 있는 그림 넉 장 (`providers/atlas`).
@@ -57,10 +58,27 @@ export function resetGameDataCache(): void {
 // 갈아 끼울 때 자동으로. 손으로 부르는 것에 기대면 한 군데를 반드시 빠뜨린다
 onProviderSwap(() => { resetGameDataCache() })
 
-export interface SpeciesTable {
+/**
+ * 종족 자료를 집어 오는 데 필요한 최소한.
+ *
+ * 표 전체가 아니라 이것만 받는 자리가 여럿이다 — 시험이 표를 흉내 내기 쉽고,
+ * 무엇을 실제로 읽는지가 형에 드러난다
+ */
+export interface SpeciesLookup {
+  get(id: number): Species
+  /**
+   * 그 **개체**의 종족 자료 (`SpeciesData_LoadForm`).
+   *
+   * ⚠️ **폼이 있는 마리는 `get(mon.species)`가 아니다.** 도롱마담 쓰레기의
+   * 종족값·타입·특성·기술표가 표의 500번 칸에 따로 있어서, 종 번호로 읽으면
+   * 겉모습만 바뀌고 싸울 때는 풀 옷감이 된다
+   */
+  of(mon: { species: number, form: number }): Species
+}
+
+export interface SpeciesTable extends SpeciesLookup {
   all: readonly Species[]
   byId: ReadonlyMap<number, Species>
-  get(id: number): Species
   /** 종족 번호 → 신오도감 번호. 0이면 신오도감에 없다 */
   sinnohOf: readonly number[]
   /** 신오도감 순서 (1번이 모부기다). 0번 칸은 비어 있다 */
@@ -91,8 +109,11 @@ function indexed<T extends { id: number }>(all: T[], what: string) {
 export function loadSpecies(): Promise<SpeciesTable> {
   return fetchJson('species.json', (v) => {
     const file = speciesFileSchema.parse(v)
+    const base = indexed(file.species, '종족')
     return {
-      ...indexed(file.species, '종족'),
+      ...base,
+      of: (mon: { species: number, form: number }) =>
+        base.get(formSpeciesId(mon.species, mon.form)),
       sinnohOf: file.sinnohOf,
       sinnohDex: file.sinnohDex,
       babyOf: file.babyOf,

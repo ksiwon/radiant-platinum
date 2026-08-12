@@ -8,8 +8,8 @@
 // 있는지가 안 보인다 — 원작도 위 화면에 고른 물건을 크게 띄운다.
 import { useEffect, useState } from 'react'
 import {
-  loadItemDescriptions, loadItemIcons, loadItemNames, loadItems,
-  type ItemTable,
+  loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoves, loadSpecies,
+  type ItemTable, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { POCKET_SIZE } from '../../engine/bag/bag'
@@ -26,6 +26,7 @@ import { frontTile } from '../../engine/script/field'
 import { mapById, world } from '../../engine/map/world'
 import { worldState } from '../../state/worldState'
 import { itemIcon } from './itemIcon'
+import { withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './bagScreen.css'
@@ -41,6 +42,14 @@ interface Loaded {
   descriptions: string[]
   icons: ItemIcons
   pockets: string[]
+  /**
+   * 종족·기술 표.
+   *
+   * ⚠️ **도구를 「건네준다」로 붙이는 자리 때문에 필요하다** — 백금옥을 쥐여
+   * 주면 그 자리에서 기라티나의 폼과 능력치가 바뀐다 (PARITY §3.4)
+   */
+  species: SpeciesTable
+  moves: MoveTable
 }
 
 export function BagScreen() {
@@ -65,10 +74,10 @@ export function BagScreen() {
     let alive = true
     void Promise.all([
       loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
-      loadItemIcons(), loadUiText('bagPockets', locale),
+      loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
     ])
-      .then(([items, names, descriptions, icons, pockets]) => {
-        if (alive) setData({ items, names, descriptions, icons, pockets })
+      .then(([items, names, descriptions, icons, pockets, species, moves]) => {
+        if (alive) setData({ items, names, descriptions, icons, pockets, species, moves })
       })
       .catch(() => { /* 빈 가방으로 뜬다 */ })
     return () => { alive = false }
@@ -90,7 +99,8 @@ export function BagScreen() {
     if (!mon) return
     const held = mon.heldItem
     const next = [...party]
-    next[slot] = { ...mon, heldItem: id }
+    // 백금옥을 쥐여 주면 그 자리에서 오리진이 된다 (PARITY §3.4)
+    next[slot] = withHeldItem({ ...mon, heldItem: id }, data?.species, data?.moves)
     useSaveStore.setState({ party: next })
     removeItem(pocket, id, 1)
     if (held > 0) addItem(data?.items.get(held).pocket ?? 0, held, 1)

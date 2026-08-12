@@ -30,6 +30,10 @@ import {
   caughtAt, eggFrom, MET_DAYCARE, metToday, SPECIAL_MET_BASE,
 } from '../engine/pokemon/origin'
 import { encounters } from '../engine/battle/encounterSystem'
+import {
+  changeForm, GIRATINA_ORIGIN, giratinaForm as giratinaFormOf, ITEM_GRISEOUS_ORB,
+  SHAYMIN_LAND, SPECIES_GIRATINA, SPECIES_ROTOM, SPECIES_SHAYMIN, type FormTables,
+} from '../engine/pokemon/form'
 import { addTrophyMon, swarmMap, trophySpecies } from '../engine/world/daily'
 import {
   compatibilityLevel, daycareCompatibility, daycarePrice, daycareState, EGG_LEVEL,
@@ -120,6 +124,97 @@ function hereLabel(): number {
 
 /** `generated/items.txt` — 스크립트가 준 포켓몬이 들어 있는 볼 */
 const ITEM_POKE_BALL = 4
+
+// ── 폼 (PARITY §3.4) ─────────────────────────────────────────────────────────
+
+/** 표가 있어야 능력치를 다시 셀 수 있다. 없으면 폼을 안 건드린다 */
+function formTables(): FormTables | null {
+  const table = speciesTable
+  const moves = moveTable
+  if (!table || !moves) return null
+  return {
+    maxHp: (mon) => statsOf(mon, table.of(mon)).hp,
+    maxPp: (move) => moves.byId.get(move)?.pp ?? 5,
+  }
+}
+
+/**
+ * 파티를 훑으며 폼을 다시 정한다.
+ *
+ * `want`가 null을 주면 그 마리는 그대로 둔다. 실제 갈아입기는 전부
+ * `changeForm`을 지나가므로 능력치와 로토무 기술칸이 여기서 어긋날 일이 없다
+ */
+function forEachParty(
+  want: (mon: PokemonInstance) => number | null, moveSlot = 0,
+): boolean {
+  const tables = formTables()
+  if (!tables) return false
+  const party = useSaveStore.getState().party
+  let touched = false
+  const next = party.map((mon) => {
+    const to = want(mon)
+    if (to === null) return mon
+    const grown = changeForm(mon, to, tables, moveSlot)
+    if (grown !== mon) touched = true
+    return grown
+  })
+  if (touched) useSaveStore.setState({ party: next })
+  return touched
+}
+
+/** 한 자리의 폼을 바꾼다 */
+function reshape(slot: number, want: (mon: PokemonInstance) => number, moveSlot: number): void {
+  forEachParty((mon) => (useSaveStore.getState().party.indexOf(mon) === slot ? want(mon) : null),
+    moveSlot)
+}
+
+/**
+ * 폼이 바뀐 마리를 되돌린다 (`ScrCmd_TryRevertPartyPokemonForms`).
+ *
+ * ⚠️ **백금옥을 먼저 가방에 넣어 본다.** 자리가 없으면 **아무것도 안 하고**
+ * 0xFF를 돌려준다 — 반쯤 되돌려 놓고 구슬만 사라지면 안 된다
+ */
+function revertForms(slot?: number): number {
+  const save = useSaveStore.getState()
+  const inScope = (i: number): boolean => slot === undefined || i === slot
+  const orbs = save.party.filter((m, i) => inScope(i) && m.heldItem === ITEM_GRISEOUS_ORB).length
+  if (orbs > 0) {
+    const pocket = items?.all[ITEM_GRISEOUS_ORB]?.pocket ?? 0
+    if (!save.addItem(pocket, ITEM_GRISEOUS_ORB, orbs)) return 0xff
+    useSaveStore.setState({
+      party: useSaveStore.getState().party.map((m, i) => (
+        inScope(i) && m.heldItem === ITEM_GRISEOUS_ORB ? { ...m, heldItem: 0 } : m
+      )),
+    })
+  }
+  const at = useSaveStore.getState().party
+  forEachParty((mon) => {
+    if (!inScope(at.indexOf(mon)) || mon.form === 0) return null
+    if (mon.species === SPECIES_GIRATINA) return giratinaFormOf(mon.heldItem)
+    if (mon.species === SPECIES_ROTOM) return 0
+    if (mon.species === SPECIES_SHAYMIN) return SHAYMIN_LAND
+    return null
+  })
+  return 0
+}
+
+/**
+ * 리포트 안의 로토무가 가진 폼 비트 (`SaveData_GetRotomFormsInSave`).
+ *
+ * ⚠️ **파티만 세면 안 된다.** 박스에 넣어 둔 로토무도 세고 육성가에 맡긴
+ * 로토무도 센다 — 가전 방의 스크립트가 이 비트로 「이미 해 본 가전」을 가린다
+ */
+function rotomForms(): number {
+  const save = useSaveStore.getState()
+  let bits = 0
+  const count = (mon: PokemonInstance | null): void => {
+    if (mon && mon.species === SPECIES_ROTOM && !mon.isEgg) bits |= 1 << mon.form
+  }
+  for (const mon of save.party) count(mon)
+  for (const box of save.boxes) for (const mon of box) count(mon)
+  for (const kept of save.daycare.slots) count(kept?.mon ?? null)
+  return bits
+}
 
 /**
  * 알 하나를 만들어 파티에 넣는다 (`Egg_CreateEgg`).
@@ -286,6 +381,27 @@ const services: FieldServices = {
     hasMove: (slot, move) =>
       useSaveStore.getState().party[slot]?.moves.some((s) => s.move === move) === true,
     move: (slot, moveSlot) => useSaveStore.getState().party[slot]?.moves[moveSlot]?.move ?? 0,
+    form: (slot) => useSaveStore.getState().party[slot]?.form ?? 0,
+    setForm: (slot, form, moveSlot = 0) => { reshape(slot, () => form, moveSlot) },
+    // 되돌림월드 안에서는 백금옥과 상관없이 오리진이다 (`Party_SetGiratinaForm`)
+    giratinaForm: (origin) => {
+      forEachParty((mon) => (
+        mon.species === SPECIES_GIRATINA
+          ? (origin ? GIRATINA_ORIGIN : giratinaFormOf(mon.heldItem))
+          : null
+      ))
+    },
+    revertForms,
+    rotomForms,
+    rotomCount: () => {
+      const party = useSaveStore.getState().party
+      const first = party.findIndex((m) => m.species === SPECIES_ROTOM && !m.isEgg)
+      return {
+        count: party.filter((m) => m.species === SPECIES_ROTOM && !m.isEgg).length,
+        // 원작의 `PARTY_SLOT_NONE`. 없으면 스크립트가 이 값으로 갈라진다
+        first: first < 0 ? 0xff : first,
+      }
+    },
   },
 
   trainerInfo: {

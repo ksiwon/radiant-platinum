@@ -6,6 +6,7 @@
 // RNG를 주입받는 이유: 테스트에서 결과를 고정해야 하고, 나중에 저장 파일 기반
 // 재현 가능한 시드로 바꿀 여지를 남겨 둔다.
 import { Behavior } from '../map/zone'
+import { SPECIES_GASTRODON, SPECIES_SHELLOS, SPECIES_UNOWN } from '../pokemon/form'
 import { TimeOfDay, type TimeOfDayId } from '../map/timeOfDay'
 
 /** 4세대 육상 12슬롯 가중치 (합 100) */
@@ -40,6 +41,10 @@ export interface EncounterTable {
   day: number[]
   night: number[]
   radar: number[]
+  /** 조개무지·트리토돈이 어느 바다에서 나오는가. 0이면 서쪽 */
+  forms: [number, number]
+  /** 안농 글자 표 번호. 0이면 안농이 안 나오는 맵이다 */
+  unownTable: number
   surf: WaterTable
   oldRod: WaterTable
   goodRod: WaterTable
@@ -66,6 +71,13 @@ export interface WildEncounter {
   level: number
   /** 어느 슬롯에서 나왔는지 — 디버그·로그용 */
   slot: number
+  /**
+   * 어느 모습으로 나오는가 (`AddWildMonToParty`).
+   *
+   * ⚠️ **칸을 뽑은 뒤에 정한다.** 원작도 개체를 다 만들고 파티에 넣기 직전에
+   * 이 값을 적는다 — 조개무지는 맵이, 안농은 방이 정하고 PID와 상관없다
+   */
+  form: number
 }
 
 export type Rng = () => number
@@ -259,7 +271,7 @@ export function rollLand(
   const slot = swaps.bump ? swaps.bump(land, picked) : picked
   const s = land[slot]
   if (!s || s.species <= 0) return null
-  return { species: s.species, level: s.level, slot }
+  return { species: s.species, level: s.level, slot, form: 0 }
 }
 
 /** 물 조우에 끼어드는 것들 */
@@ -288,7 +300,7 @@ export function rollWater(
   const level = swaps.level
     ? swaps.level(s.min, s.max)
     : s.min + Math.floor(rng() * (s.max - s.min + 1))
-  return { species: s.species, level, slot }
+  return { species: s.species, level, slot, form: 0 }
 }
 
 /** 낚싯대가 보는 칸. 이름이 곧 표의 이름이다 */
@@ -406,4 +418,35 @@ export function isTuftTile(behavior: number): boolean {
   return isGrassTile(behavior)
     || behavior === Behavior.MUD_WITH_GRASS
     || behavior === Behavior.MUD_DEEP_WITH_GRASS
+}
+
+// ── 야생의 폼 (PARITY §3.4 · `AddWildMonToParty`) ─────────────────────────────
+
+/**
+ * 안농 글자 표 (`WildEncounters_UnownTables`).
+ *
+ * 0번은 **F·R·I·E·N·D 여섯을 뺀 스무 글자**로, 유적의 막다른 방이 쓴다.
+ * 1~6번은 그 여섯 글자를 하나씩 — 「올바른 길」의 방 여섯이 F-R-I-E-N-D 차례로
+ * 쓴다. 7번은 스물여섯을 다 본 뒤 매니아터널로 들어가는 비밀방의 「!」와 「?」다
+ */
+export const UNOWN_TABLES: readonly (readonly number[])[] = [
+  [0, 1, 2, 6, 7, 9, 10, 11, 12, 14, 15, 16, 18, 19, 20, 21, 22, 23, 24, 25],
+  [5], [17], [8], [13], [4], [3],
+  [26, 27],
+]
+
+/**
+ * 이 맵에서 이 종이 어느 모습으로 나오는가.
+ *
+ * ⚠️ **셋뿐이다.** 조개무지·트리토돈은 맵이 정하고(서/동 바다), 안농은 방이
+ * 정한다. 도롱마담 옷감은 야생이 아니라 **싸운 땅**이 정하므로 여기 없다
+ */
+export function wildForm(table: EncounterTable, species: number, rng: Rng): number {
+  if (species === SPECIES_SHELLOS) return table.forms[0] ? 1 : 0
+  if (species === SPECIES_GASTRODON) return table.forms[1] ? 1 : 0
+  if (species !== SPECIES_UNOWN) return 0
+  // ⚠️ **0은 「표 없음」이라 1을 뺀다** (`InitEncounterFieldParams`). 표가 없는
+  // 맵에서 안농이 나오면 원작도 0번 표를 쓴다
+  const at = UNOWN_TABLES[Math.max(0, table.unownTable - 1)] ?? UNOWN_TABLES[0]!
+  return at[Math.floor(rng() * at.length)] ?? 0
 }

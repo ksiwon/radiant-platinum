@@ -263,7 +263,7 @@ describe('확인 지점의 진행도', () => {
     const table = (map: number): EncounterTable | null => ({
       landRate: 10,
       land: [{ level: 3, species: map }],
-      swarm: [], day: [], night: [], radar: [],
+      swarm: [], day: [], night: [], radar: [], forms: [0, 0], unownTable: 0,
       surf: { rate: 0, slots: [] }, oldRod: { rate: 0, slots: [] },
       goodRod: { rate: 0, slots: [] }, superRod: { rate: 0, slots: [] },
     })

@@ -215,10 +215,40 @@ async function readSizes(fs: NdsFileSystem, count: number): Promise<{ heightDm: 
   const h = giraH[GIRATINA]
   const w = giraW[GIRATINA]
   if (h === undefined || w === undefined) throw new Error('기라티나 표에 487번 칸이 없다')
+  // 폼 자리를 먼저 채운다 — 기라티나 오리진(501번)이 쓰는 것이 **덮기 전의**
+  // 기본 표 값이다
+  fillFormSizes(heightDm, weightHg)
   heightDm[GIRATINA] = h
   weightHg[GIRATINA] = w
   return { heightDm, weightHg }
 }
+
+/**
+ * 폼 자리(496번 뒤)의 키·몸무게 (`Pokedex_HeightWeightData_Weight`).
+ *
+ * ⚠️ **크기 표는 494칸뿐이라 폼 자리가 비어 있다.** 그대로 두면 저울질과
+ * 풀묶기가 도롱마담 쓰레기에게 0kg으로 걸려 위력이 20이 된다. 원작은 그 표를
+ * **종족 번호로** 읽으므로(폼 번호를 안 넘긴다) 폼은 기본형과 같은 크기다.
+ *
+ * ⚠️ **기라티나만 예외다.** 기본 표의 487번이 오리진(6.9m·650kg)이고 어나더는
+ * `zukan_data_gira.narc`에 따로 있다 — 원작이 폼에 따라 NARC을 갈아 끼운다
+ * (`Pokedex_SetupGiratina`). 그래서 오리진(501번)은 덮기 전의 값을 가져간다
+ */
+function fillFormSizes(heightDm: number[], weightHg: number[]): void {
+  for (const [form, base] of FORM_BASE) {
+    heightDm[form] = heightDm[base] ?? 0
+    weightHg[form] = weightHg[base] ?? 0
+  }
+}
+
+/** 폼 종족 자료 번호 → 기본 종족 번호 (`Pokemon_GetFormNarcIndex`의 역) */
+const FORM_BASE: readonly (readonly [number, number])[] = [
+  [496, 386], [497, 386], [498, 386], // 테오키스 어택·디펜스·스피드
+  [499, 413], [500, 413],             // 도롱마담 모래·쓰레기
+  [501, GIRATINA],                    // 기라티나 오리진
+  [502, 492],                         // 쉐이미 스카이
+  [503, 479], [504, 479], [505, 479], [506, 479], [507, 479], // 로토무 다섯
+]
 
 export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
   const personal = await readAll(ctx.fs, '/poketool/personal/pl_personal.narc')

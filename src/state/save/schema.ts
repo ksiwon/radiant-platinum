@@ -104,6 +104,13 @@ export const monSchema = z.object({
   otSecretId: int(0, 0xffff),
   ball: int(0, 511),
   origin: originSchema,
+  /**
+   * 폼 (`engine/pokemon/form.ts`). 제일 많은 것이 안농 28폼이라 상한이 27이다.
+   *
+   * ⚠️ **마지막 칸이다.** `PokemonInstance`의 칸 차례와 여기가 같아야
+   * 검사합이 맞는다 — 새 칸은 양쪽 다 끝에 붙인다
+   */
+  form: int(0, 27),
 })
 
 const bagSlotSchema = z.object({

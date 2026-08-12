@@ -10,10 +10,10 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { boxWallpapersSchema, pokeIconsSchema } from '../../data/schema'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
-import { boxWallpaper, pokeIcon } from './pokeIcon'
+import { boxWallpaper, monIcon, pokeIcon } from './pokeIcon'
 
 /** 실제 자료와 같은 값이다 (`public/data/pokeIcons.json`) */
-const ICONS: PokeIcons = { size: 32, cols: 24, rows: 21, count: 496 }
+const ICONS: PokeIcons = { size: 32, cols: 24, rows: 23, count: 540 }
 /** `public/data/boxWallpapers.json` */
 const WALLS: BoxWallpapers = { count: 32, cols: 8, rows: 4, width: 168, height: 160 }
 
@@ -61,10 +61,29 @@ describe('포켓몬 아이콘', () => {
   })
 
   it('없는 번호는 자리만 잡는다', () => {
-    // 496칸뿐이다. 시트 밖을 가리키면 **빈 칸이 아니라 다른 포켓몬**이 뜬다
+    // 540칸뿐이다. 시트 밖을 가리키면 **빈 칸이 아니라 다른 포켓몬**이 뜬다
     expect(pokeIcon(ICONS, 900, 40).backgroundImage).toBeUndefined()
     expect(pokeIcon(undefined, 25, 40).backgroundImage).toBeUndefined()
     expect(pokeIcon(undefined, 25, 40).width).toBe(40)
+  })
+
+  /**
+   * 폼 아이콘 (PARITY §3.4).
+   *
+   * ⚠️ **개체를 넘겨야 폼이 걸린다.** 종족 번호만 넘기면 로토무 다섯 가전이
+   * 전부 같은 그림이 되고, 알에서 안에 든 것이 새어 나간다
+   */
+  it('개체를 넘기면 폼 칸을 집는다', () => {
+    const mon = (species: number, form: number, isEgg = false) => ({ species, form, isEgg })
+    // 로토무 워시 = 536 = 22 × 24 + 8
+    expect(offset(monIcon(ICONS, mon(479, 2), 32).backgroundPosition as string))
+      .toEqual([8 * 32, 22 * 32])
+    // 폼 0은 종족 번호 그대로다
+    expect(offset(monIcon(ICONS, mon(479, 0), 32).backgroundPosition as string))
+      .toEqual(offset(pokeIcon(ICONS, 479, 32).backgroundPosition as string))
+    // 알은 안을 안 보여 준다 — 494번 알 칸이다
+    expect(offset(monIcon(ICONS, mon(479, 2, true), 32).backgroundPosition as string))
+      .toEqual(offset(pokeIcon(ICONS, 494, 32).backgroundPosition as string))
   })
 })
 

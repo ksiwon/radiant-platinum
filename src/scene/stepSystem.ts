@@ -19,7 +19,10 @@ import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/da
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
 import { daycareStep } from '../engine/pokemon/breeding'
-import { abilityOf, genderOf, type PokemonInstance } from '../engine/pokemon/instance'
+import {
+  changeForm, SHAYMIN_LAND, SHAYMIN_SKY, shayminMustLand, SPECIES_SHAYMIN,
+} from '../engine/pokemon/form'
+import { abilityOf, genderOf, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { useHatchStore } from '../state/hatchStore'
 import { NO_LEAD, type Lead } from '../engine/battle/encounterLead'
 
@@ -47,7 +50,7 @@ void loadSpecies().then((table) => { speciesTable = table }).catch(() => { speci
 
 /** 그 개체의 특성 번호. 마그마의무장·불꽃몸이 부화를 두 배로 만든다 */
 function monAbility(mon: PokemonInstance): number {
-  const species = speciesTable?.byId.get(mon.species)
+  const species = speciesTable?.of(mon)
   return species ? abilityOf(mon.pid, species.abilities) : 0
 }
 
@@ -64,7 +67,7 @@ function monAbility(mon: PokemonInstance): number {
 function publishMods(): void {
   const save = useSaveStore.getState()
   const first = save.party[0]
-  const species = first ? speciesTable?.byId.get(first.species) : undefined
+  const species = first ? speciesTable?.of(first) : undefined
   const lead: Lead = first && species && !first.isEgg
     ? {
       isEgg: false,
@@ -123,9 +126,32 @@ function checkDay(): void {
   encounters.trophy = garden ? trophySpecies(daily, garden, save.nationalDex) : null
 }
 
+/**
+ * 밤이 되면 스카이 쉐이미가 랜드로 돌아간다 (`Party_SetShayminForm`).
+ *
+ * ⚠️ **20시부터 4시까지다.** 원작은 필드 시계가 1분 단위로 이 판정을 돌리는데,
+ * 우리는 프레임마다 봐도 결과가 같다 — 조건이 시각 하나뿐이라서다.
+ * 리포트를 이어 열 때도 같은 판정이 돈다 (`game_start.c`가 그렇게 한다)
+ */
+function landShaymin(): void {
+  if (!shayminMustLand(worldState.time.gameHour)) return
+  const table = speciesTable
+  if (!table) return
+  const party = useSaveStore.getState().party
+  if (!party.some((m) => m.species === SPECIES_SHAYMIN && m.form === SHAYMIN_SKY)) return
+  useSaveStore.setState({
+    party: party.map((mon) => (
+      mon.species === SPECIES_SHAYMIN && mon.form === SHAYMIN_SKY
+        ? changeForm(mon, SHAYMIN_LAND, { maxHp: (m) => statsOf(m, table.of(m)).hp })
+        : mon
+    )),
+  })
+}
+
 export const stepSystem = {
   fixedUpdate(): void {
     checkDay()
+    landShaymin()
     // ⚠️ **걸음이 아니라 프레임마다 맞춘다.** 조우 판정은 걸음이 아니라 칸이
     // 바뀔 때 도는데(`encounterSystem`), 그 사이에 가방에서 피리를 불거나
     // 선두를 바꿀 수 있다 — 걸음에 붙이면 한 칸 늦게 먹는다

@@ -35,6 +35,11 @@ import {
 import { EvoClass, evolutionTarget } from '../../engine/pokemon/evolution'
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { useEvolutionStore } from '../../state/evolutionStore'
+import { worldState } from '../../state/worldState'
+import {
+  canShayminSky, changeForm, ITEM_GRACIDEA, SHAYMIN_SKY,
+} from '../../engine/pokemon/form'
+import { formTables, withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
@@ -224,7 +229,8 @@ export function PartyScreen() {
     if (!selected || selected.heldItem === 0) { setNotice('아무것도 안 들고 있다.'); return }
     const held = selected.heldItem
     const next = [...party]
-    next[at] = { ...selected, heldItem: 0 }
+    // 기라티나는 백금옥을 뺀 순간 어나더로 돌아간다 (PARITY §3.4)
+    next[at] = withHeldItem({ ...selected, heldItem: 0 }, species, tables?.moves)
     useSaveStore.setState({ party: next })
     addItem(tables?.items.get(held).pocket ?? 0, held, 1)
   }
@@ -241,10 +247,27 @@ export function PartyScreen() {
   const applyItem = (): void => {
     if (usingItem === null || !tables || !species || !selected) return
     const item = tables.items.get(usingItem.item)
-    const info = species.byId.get(selected.species)
+    const info = species.of(selected)
     if (!info) return
     const ppOf = (slot: { move: number; ppUps: number; pp: number }): number =>
       maxPpOf(slot, tables.moves.get(slot.move).pp)
+
+    // ⚠️ **그라시데아가 도구표보다 먼저다** (`ApplyItemEffectOnPokemon`). 원작도
+    // 회복·PP·기술머신 갈래를 보기 전에 이것부터 걸러낸다 — 도구표에서는 그냥
+    // 「효과 없음」이라 뒤로 흘리면 아무 일도 안 일어난다 (PARITY §3.4)
+    if (usingItem.item === ITEM_GRACIDEA) {
+      const hour = worldState.time.gameHour
+      if (!canShayminSky(selected, hour)) { setNotice('효과가 없을 것 같다.'); return }
+      const forms = formTables(species, tables.moves)
+      if (!forms) return
+      const next = [...party]
+      next[at] = changeForm(selected, SHAYMIN_SKY, forms)
+      useSaveStore.setState({ party: next })
+      // ⚠️ **꽃은 안 없어진다.** 원작도 그라시데아를 소모하지 않는다
+      clearUsingItem()
+      back()
+      return
+    }
 
     if (usingItem.use === 'heal') {
       const plan = planItemUse(item, fieldTarget(selected, maxHp(selected, info), ppOf))
@@ -325,7 +348,7 @@ export function PartyScreen() {
   })
 
   const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
-  const info = species && selected ? species.byId.get(selected.species) : undefined
+  const info = species && selected ? species.of(selected) : undefined
   const alive = party.filter((m) => m.hp > 0).length
 
   const foot = inMenu
@@ -352,7 +375,7 @@ export function PartyScreen() {
               key={`${String(mon.pid)}/${String(i)}`}
               mon={mon}
               name={nameOf(mon)}
-              genderRatio={species?.byId.get(mon.species)?.genderRatio ?? 255}
+              genderRatio={species?.of(mon).genderRatio ?? 255}
               full={species ? fullHp(mon, species) : mon.hp}
               lead={i === 0}
               on={i === at && pane === 'party'}
@@ -443,8 +466,7 @@ export function PartyScreen() {
 }
 
 function fullHp(mon: PokemonInstance, species: SpeciesTable): number {
-  const info = species.byId.get(mon.species)
-  return info ? maxHp(mon, info) : mon.hp
+  return maxHp(mon, species.of(mon))
 }
 
 const GENDER_MARK: Record<string, { mark: string; cls: string }> = {

@@ -12,6 +12,7 @@
 // 초기 로딩에 끼면 안 된다. 오버월드 코드에서 여기를 정적 import 하지 말 것 —
 // 배틀이 시작될 때 `await import()`로만 들어온다.
 import { Dex } from '@pkmn/sim'
+import { FORM_IDS } from '../dex/vendor/names.gen'
 
 /** 플래티넘은 4세대다. sim의 세대별 덱스를 그 세대로 고정한다 */
 export const gen4 = Dex.forGen(4)
@@ -24,13 +25,16 @@ export const gen4 = Dex.forGen(4)
 // `FormatsData`만 비고 `Pokedex`에 폼이 남아서, 아래 `species.all()`이 로토무
 // 폼에서 터졌다. 야생도 트레이너도 열리자마자 닫혔고 화면에는 아무 말도 없었다.
 //
-// 폼은 롬 표에 **절대 안 들어온다**(우리는 493종을 번호로 넣는다). 그러니
-// 로토무 폼이 보이면 그것은 sim의 표다
+// ⚠️ **로토무 폼으로는 못 잰다.** 한때 `rotomheat`이 보이면 sim의 표라고
+// 판단했는데, PARITY §3.4를 하면서 우리도 폼을 넣기 시작해서 그 표식이 죽었다.
+// 지금 재는 것은 **5세대 종족**이다 — 우리 표는 493번까지라 조로아크가 보이면
+// 그것은 sim의 표다. 세대가 늘 일이 없으니 이 표식은 안 죽는다
+//
 // ⚠️ **개발 서버에서만 잰다** (`MODE === 'development'`). 시험은 껍데기 없이
 // sim의 표를 그대로 쓰는 것이 맞다 — `DEV`로 재면 시험 145벌이 여기서 선다
 if (import.meta.env.MODE === 'development') {
   let simsOwn: boolean
-  try { simsOwn = gen4.species.get('rotomheat').exists } catch { simsOwn = true }
+  try { simsOwn = gen4.species.get('zoroark').exists } catch { simsOwn = true }
   if (simsOwn) {
     throw new Error(
       '개발 서버가 @pkmn/sim의 진짜 표를 들고 있다 — 미리 묶기가 껍데기를 안 걸었다. '
@@ -112,8 +116,18 @@ export function simAbility(id: number): string | null {
   return abilities().get(id) ?? null
 }
 
-/** 롬 종족 번호 → sim 종족 이름. 모르는 번호면 null */
-export function simSpecies(id: number): string | null {
+/**
+ * 롬 종족 번호 → sim 종족 이름. 모르는 번호면 null.
+ *
+ * ⚠️ **폼을 안 넘기면 도롱마담이 늘 풀 옷감으로 싸운다** (PARITY §3.4). 폼
+ * 이름이 없는 자리(안농 글자·아르세우스 `???`)는 기본형으로 떨어지는 것이
+ * 맞다 — 그쪽은 종족값도 타입도 기본형과 같다
+ */
+export function simSpecies(id: number, form = 0): string | null {
+  if (form > 0) {
+    const named = FORM_IDS[id]?.[form]
+    if (named) return named
+  }
   return species().get(id) ?? null
 }
 

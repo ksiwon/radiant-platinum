@@ -91,6 +91,12 @@ maybe('오프닝 — 서류가방', () => {
         addFriendship: () => { /* 안 쓴다 */ },
         hasMove: () => false,
         move: () => 0,
+        form: () => 0,
+        setForm: () => { /* 시험은 폼을 안 본다 */ },
+        giratinaForm: () => { /* 같음 */ },
+        revertForms: () => 0,
+        rotomForms: () => 0,
+        rotomCount: () => ({ count: 0, first: 0xff }),
       },
       labels: {
         move: () => '',

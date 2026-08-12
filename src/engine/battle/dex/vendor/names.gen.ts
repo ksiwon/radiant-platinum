@@ -506,6 +506,29 @@ export const SPECIES_IDS: readonly (string | null)[] = [
   "arceus",
 ]
 
+/**
+ * 종족 번호 → **폼 번호별** id (PARITY §3.4).
+ *
+ * 자리 0이 기본형이고 그 뒤가 `res/pokemon/form_registry.json`의 등록 차례,
+ * 곧 롬의 폼 번호다. `null`은 sim이 그 폼을 따로 안 두는 자리다 —
+ * 안농 스물일곱 글자와 아르세우스 `???`가 그렇고, 그때는 기본형으로 싸우는
+ * 것이 맞다 (종족값도 타입도 같다)
+ */
+export const FORM_IDS: Readonly<Record<number, readonly (string | null)[]>> = {
+  201: ["unown",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  351: ["castform","castformsunny","castformrainy","castformsnowy"],
+  386: ["deoxys","deoxysattack","deoxysdefense","deoxysspeed"],
+  412: ["burmy","burmysandy","burmytrash"],
+  413: ["wormadam","wormadamsandy","wormadamtrash"],
+  421: ["cherrim","cherrimsunshine"],
+  422: ["shellos","shelloseast"],
+  423: ["gastrodon","gastrodoneast"],
+  479: ["rotom","rotomheat","rotomwash","rotomfrost","rotomfan","rotommow"],
+  487: ["giratina","giratinaorigin"],
+  492: ["shaymin","shayminsky"],
+  493: ["arceus","arceusfighting","arceusflying","arceuspoison","arceusground","arceusrock","arceusbug","arceusghost","arceussteel",null,"arceusfire","arceuswater","arceusgrass","arceuselectric","arceuspsychic","arceusice","arceusdragon","arceusdark"],
+}
+
 /** 기술 번호 → id */
 export const MOVE_IDS: readonly (string | null)[] = [
   null, // 0번은 없다

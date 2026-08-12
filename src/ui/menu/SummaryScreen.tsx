@@ -121,7 +121,7 @@ export function SummaryScreen() {
   }, [locale])
 
   const mon = party[Math.min(at, Math.max(0, party.length - 1))]
-  const info = mon && t ? t.species.byId.get(mon.species) : undefined
+  const info = mon && t ? t.species.of(mon) : undefined
   // 알은 메모 쪽만 볼 수 있다 (`PokemonSummaryScreen_PageIsVisble`)
   const isEgg = mon?.isEgg ?? false
   const pages: readonly Page[] = useMemo(() => (isEgg ? ['memo'] : PAGES), [isEgg])
@@ -208,7 +208,7 @@ function Rail(
 ) {
   const art = useAssetImage(mon && !mon.isEgg ? `data/pokemon/${String(mon.species)}_front.png` : null)
   if (!mon) return <div className={own.rail} />
-  const ratio = t?.species.byId.get(mon.species)?.genderRatio ?? 255
+  const ratio = t?.species.of(mon).genderRatio ?? 255
   const gender = mon.isEgg ? 'genderless' : genderOf(mon.pid, ratio)
   const shiny = !mon.isEgg && isShiny(mon.pid, mon.otId, mon.otSecretId)
 
@@ -239,7 +239,7 @@ function Rail(
 function InfoPage(
   { mon, t, trainerName }: { mon: PokemonInstance; t: Tables; trainerName: string },
 ) {
-  const info = t.species.byId.get(mon.species)
+  const info = t.species.of(mon)
   const dex = t.species.sinnohOf[mon.species] ?? 0
   const shiny = isShiny(mon.pid, mon.otId, mon.otSecretId)
   const types = [...new Set(info?.types ?? [])]
@@ -336,8 +336,7 @@ function Colored({ raw, slots }: { raw: string; slots: readonly string[] }) {
 
 /** 능력 쪽 — 여섯 능력치와 특성 (`DrawSkillsPageWindows`) */
 function SkillsPage({ mon, t }: { mon: PokemonInstance; t: Tables }) {
-  const info = t.species.byId.get(mon.species)
-  if (!info) return null
+  const info = t.species.of(mon)
   const stats = statsOf(mon, info)
   const full = maxHp(mon, info)
   const effect = natureEffect(natureOf(mon.pid))

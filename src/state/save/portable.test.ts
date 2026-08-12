@@ -35,6 +35,7 @@ function filled() {
     hp: 19, status: 'psn', statusTurns: 0, heldItem: 17,
     friendship: 70, isEgg: false, otId: 40404, otSecretId: 12, ball: 4,
     origin: noOrigin({ name: '', gender: 'male' }),
+    form: 0,
   }]
   return save
 }

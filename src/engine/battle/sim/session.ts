@@ -87,7 +87,9 @@ function idleOf(mon: { moveSlots: IdleSlot[] }): IdleSlot | null {
  */
 function toSet(side: SideMon, idle: boolean) {
   const { mon, species } = side
-  const name = simSpecies(mon.species)
+  // ⚠️ **폼까지 넘긴다.** 종 번호만 넘기면 도롱마담 쓰레기가 풀 옷감의
+  // 종족값·타입으로 싸우고, 기라티나 오리진이 어나더로 선다 (PARITY §3.4)
+  const name = simSpecies(mon.species, mon.form)
   if (!name) throw new Error(`종족 #${mon.species}를 sim에서 못 찾는다`)
 
   const moves: string[] = []

@@ -25,7 +25,7 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { MenuScreen } from './MenuScreen'
-import { boxWallpaper, pokeIcon } from './pokeIcon'
+import { boxWallpaper, monIcon } from './pokeIcon'
 import { useMenuKeys, wrapCursor } from './useMenuKeys'
 import * as css from './menuChrome.css'
 import * as own from './boxScreen.css'
@@ -179,7 +179,7 @@ export function BoxScreen() {
   })
 
   const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
-  const info = species && selected ? species.byId.get(selected.species) : undefined
+  const info = species && selected ? species.of(selected) : undefined
   const boxName = boxText[BOX_TEXT.boxName + box] ?? ''
   const title = pcText[PC_MENU.storageModes + mode] ?? ''
 
@@ -229,7 +229,7 @@ export function BoxScreen() {
                   style={{
                     left: (i % BOX_COLS) * own.SLOT_PITCH,
                     top: Math.floor(i / BOX_COLS) * own.SLOT_PITCH,
-                    ...(mon ? pokeIcon(icons, mon.species, SLOT_ICON) : { width: SLOT_ICON, height: SLOT_ICON }),
+                    ...(mon ? monIcon(icons, mon, SLOT_ICON) : { width: SLOT_ICON, height: SLOT_ICON }),
                   }}
                   onPointerEnter={() => { setCursor({ pane: 'box', at: i }) }}
                   onClick={grab}
@@ -258,7 +258,7 @@ export function BoxScreen() {
                 >
                   <span
                     className={own.partyIcon}
-                    style={mon ? pokeIcon(icons, mon.species, 40) : undefined}
+                    style={mon ? monIcon(icons, mon, 40) : undefined}
                   />
                   {mon && (
                     <span className={own.partyName}>

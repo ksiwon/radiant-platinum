@@ -7,6 +7,7 @@
 //     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
+//     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
 //     pnpm shot --list                 확인 지점 목록
 //
 // ⚠️ **이 프로젝트에는 여태 브라우저 자동화가 없었다.** 그래서 "수치는 맞는데
@@ -378,6 +379,20 @@ async function main() {
         w.worldState.player.cycling = true
       })
       await page.waitForTimeout(600)
+    }
+    // 파티에 몇 마리를 넣는다 — `--give=479:30:2,413:30:2`(종족:레벨:폼).
+    //
+    // ⚠️ **폼을 눈으로 보려면 이 길밖에 없다** (PARITY §3.4). 로토무 가전도
+    // 도롱마담 옷감도 이야기 한복판에 있어서, 뛰어들기만 해서는 아이콘 하나
+    // 못 본다
+    const give = flag('give')
+    if (give) {
+      await page.evaluate(async (list) => {
+        for (const [species, level, form] of list) {
+          await globalThis.pt.give(species, level, form)
+        }
+      }, give.split(',').map((one) => one.split(':').map(Number)))
+      await page.waitForTimeout(Number(flag('giveAfter', 1500)))
     }
     // 스크립트를 태우지 않고 메뉴 화면 하나를 바로 연다. 고르는 장면처럼
     // 이야기 도중에만 뜨는 화면을 보려면 이 길이 필요하다

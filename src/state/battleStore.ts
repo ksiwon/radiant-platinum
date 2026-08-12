@@ -7,7 +7,7 @@
 import { create } from 'zustand'
 import {
   loadItems, loadMoves, loadSpecies, loadTrainerClasses, loadTrainerNames, loadTrainers,
-  type ItemTable, type SpeciesTable,
+  type ItemTable, type SpeciesLookup, type SpeciesTable,
 } from '../data/gameData'
 import type { Item, Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
@@ -15,7 +15,9 @@ import type { ItemPlan } from '../engine/battle/meta/bagItem'
 import { friendshipGain, isEscapeItem } from '../engine/battle/meta/bagItem'
 import { clampFriendship } from '../engine/pokemon/friendship'
 import { caughtAt, metToday } from '../engine/pokemon/origin'
-import { mapById } from '../engine/map/world'
+import { mapById, world } from '../engine/map/world'
+import { Terrain, terrainOf, type TerrainId } from '../engine/battle/terrain'
+import { burmyCloak, SPECIES_BURMY } from '../engine/pokemon/form'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
@@ -39,6 +41,7 @@ import { markBattle } from '../app/sceneMark'
 import { useEvolutionStore } from './evolutionStore'
 import { useMenuStore } from './menuStore'
 import { dexSet, playerTrainer, useSaveStore } from './saveStore'
+import { worldState } from './worldState'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
 type ControllerItems = NonNullable<
@@ -78,6 +81,13 @@ export interface RosterEntry {
 export interface WildStart {
   species: number
   level: number
+  /**
+   * 어느 모습으로 나오는가 (PARITY §3.4).
+   *
+   * 맵이나 방이 정한다 (`wildForm`). 전설 조우처럼 스크립트가 부르는 자리는
+   * 안 넘기고, 그러면 기본 모습이다
+   */
+  form?: number
 }
 
 interface BattleState {
@@ -205,7 +215,7 @@ let participants = new Set<string>()
  */
 let leveledUp = new Set<number>()
 /** 종족 표. 보상 계산이 매번 다시 받지 않도록 들고 있는다 */
-let speciesTable: { get(id: number): Species } | null = null
+let speciesTable: SpeciesLookup | null = null
 /**
  * 도구 표. **화면이 동기로 물어보기 때문에** 들고 있어야 한다 —
  * "이 상처약을 이 마리에게 쓰면 어떻게 되나"를 그릴 때마다 기다릴 수는 없다
@@ -237,7 +247,7 @@ function ready(mon: PokemonInstance, species: Species, key: string): SideMon {
  * 아니게 된다. 회복은 포켓몬센터가 한다 (`scene/pokecenter`)
  */
 function ensureParty(
-  table: { get(id: number): Species },
+  table: SpeciesLookup,
   pp: (move: number) => number,
 ): PokemonInstance[] {
   const save = useSaveStore.getState()
@@ -279,18 +289,23 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   startWild: async (wild) => {
     await open(set, get, 'wild', null, 0, ({ species, pp }) => {
-      const foeSpecies = species.get(wild.species)
+      // ⚠️ **개체는 기본형으로 만들고 모습을 나중에 적는다.** 폼 칸을 넘기면
+      // `createWild`가 그 칸의 번호(로토무 히트면 503)를 종족으로 박는다.
+      // 원작도 `Pokemon_InitWith` 뒤에 `AddWildMonToParty`가 폼을 적는다
+      const base = species.get(wild.species)
       // 선두 특성이 성격·성별·가진 도구까지 민다 (PARITY §1.22). 싱크로는
       // 성격을, 헤롱헤롱바디는 반대 성별을, 복안은 도구 확률을 올린다
       const lead = encounters.mods.lead
       const foe = createWild({
-        species: foeSpecies, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
+        species: base, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
         bias: {
           nature: wildNature(lead, Math.random),
           gender: wildGender(lead, Math.random),
         },
         compoundEyes: leadHas(lead, LeadAbility.COMPOUND_EYES),
       })
+      foe.form = wild.form ?? 0
+      const foeSpecies = species.of(foe)
       foe.hp = statsOf(foe, foeSpecies).hp
       return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }
     })
@@ -502,6 +517,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           caught: dexSet(pokedex.caught, mon.species),
         }
       }
+      // 도롱마담은 싸운 땅의 옷감으로 갈아입는다 (PARITY §3.4)
+      party = dressBurmy(party)
       useSaveStore.setState({ party, boxes, pokedex })
       // 레벨이 오른 자리를 진화 큐에 넘긴다. 이긴 판·잡은 판·도망친 판에서만이다
       // (`Battle_FindEvolvingPartyMember`가 그 셋으로 거른다) — 진 판에서는
@@ -630,6 +647,31 @@ function grantFriendship(item: Item, key: string): void {
   useSaveStore.setState({ party: next })
 }
 
+/**
+ * 이번 배틀이 선 땅. 배틀이 열릴 때 한 번 정한다.
+ *
+ * ⚠️ **끝날 때 다시 재면 안 된다.** 도롱마담 옷감은 배틀이 끝나면서 정해지는데
+ * (`BattleMain_CopyBattleSysToDTOAndFree`) 그 시점에 플레이어는 이미 다른 칸에
+ * 서 있을 수 있다 — 워프로 들어간 배틀이 그렇다
+ */
+let battleTerrain: TerrainId = Terrain.PLAIN
+
+/**
+ * 도롱마담이 싸운 땅의 옷감을 입는다 (`BattleSystem_SetBurmyForm`).
+ *
+ * ⚠️ **나온 마리만 갈아입는다.** 원작이 `battleParticipantMask`로 거른다 —
+ * 뒤에서 구경만 한 도롱마담은 그대로다
+ */
+function dressBurmy(party: readonly PokemonInstance[]): PokemonInstance[] {
+  const cloak = burmyCloak(battleTerrain)
+  return party.map((mon, i) => (
+    mon.species === SPECIES_BURMY && !mon.isEgg
+      && participants.has(partyKey(i)) && mon.form !== cloak
+      ? { ...mon, form: cloak }
+      : mon
+  ))
+}
+
 /** 나온 적이 있어야 경험치를 나눠 가진다 */
 function trackParticipants(events: readonly BattleEvent[]): void {
   for (const e of events) {
@@ -666,7 +708,7 @@ function grantRewards(
     const index = party.findIndex((_, i) => partyKey(i) === key)
     const mon = party[index]
     if (!mon) continue
-    const reward = applyReward(mon, table.get(mon.species), gain, foeSpecies.ev)
+    const reward = applyReward(mon, table.of(mon), gain, foeSpecies.ev)
     // 레벨업 기술은 **여기서 실제로 넣는다.** 배틀이 끝난 뒤로 미루면 다음
     // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다
     const taught = learnMoves(reward.mon, reward.levelUps.flatMap((l) => l.moves), ppOf)
@@ -737,6 +779,12 @@ async function open(
       loadItems(),
     ])
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
+    // ⚠️ **밟고 선 칸도 본다.** 원작 `CalcTerrain`이 그렇다 — 무대 고르기와
+    // 같은 잣대이고(`arenaFor`), 도롱마담 옷감이 이 값에서 나온다
+    const here = world.grid?.behaviorAtWorld(
+      worldState.player.position.x, worldState.player.position.z,
+    ) ?? null
+    battleTerrain = terrainOf(here, mapById(world.mapId)?.battleBg ?? -1)
     speciesTable = species
     itemTable = bank
     ppOf = pp
@@ -748,7 +796,7 @@ async function open(
       roster[partyKey(i)] = {
         side: 'p1', species: mon.species, nickname: mon.nickname, level: mon.level,
       }
-      return ready(mon, species.get(mon.species), partyKey(i))
+      return ready(mon, species.of(mon), partyKey(i))
     })
 
     const foe = buildFoe({ species, pp })

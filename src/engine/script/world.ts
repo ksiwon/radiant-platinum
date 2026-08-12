@@ -137,6 +137,38 @@ export interface FieldServices {
     hasMove: (slot: number, move: number) => boolean
     /** 그 기술칸의 번호. 빈 칸이면 0 */
     move: (slot: number, moveSlot: number) => number
+    /** 그 자리의 폼 번호 (`MON_DATA_FORM`). 빈 자리면 0 */
+    form: (slot: number) => number
+    /**
+     * 폼을 갈아 끼운다 (`ScrCmd_SetRotomForm` · `ScrCmd_ChangeDeoxysForm`).
+     *
+     * 능력치와 로토무 기술칸까지 여기서 맞춘다 (`engine/pokemon/form.changeForm`)
+     */
+    setForm: (slot: number, form: number, moveSlot?: number) => void
+    /**
+     * 파티의 기라티나를 한꺼번에 (`Party_SetGiratinaForm`).
+     *
+     * `origin`이면 무조건 오리진이고(되돌림월드), 아니면 백금옥을 보고 정한다
+     */
+    giratinaForm: (origin: boolean) => void
+    /**
+     * 폼이 바뀐 마리를 되돌린다 (`ScrCmd_TryRevertPartyPokemonForms`).
+     *
+     * 백금옥은 **가방으로 옮긴다** — 자리가 없으면 아무것도 안 하고 0xFF다.
+     * `slot`이 없으면 파티 전체
+     *
+     * @returns 0이면 됐고 0xFF면 가방이 가득 찼다
+     */
+    revertForms: (slot?: number) => number
+    /**
+     * 리포트 안의 로토무가 가진 폼 비트 (`SaveData_GetRotomFormsInSave`).
+     *
+     * ⚠️ **파티만 보지 않는다.** 박스와 육성가까지 훑는다 — 가전 방의 문이
+     * 그 비트로 열린다
+     */
+    rotomForms: () => number
+    /** 파티의 로토무 수와 첫 자리 (`ScrCmd_GetPartyRotomCountAndFirst`) */
+    rotomCount: () => { count: number, first: number }
   }
   /** 트레이너 정보 · 도감 (`scrcmd_system_flags.c`) */
   trainerInfo?: {
@@ -402,8 +434,6 @@ export interface FieldServices {
    * @returns 버텼으면 true
    */
   survivePoison?: (slot: number) => boolean
-  /** 기라티나의 모습을 바꾼다 (`Party_SetGiratinaForm`). 0 어나더 · 1 오리진 */
-  setGiratinaForm?: (form: number) => void
   /**
    * 자유 카메라 (`AddFreeCamera`·`RestoreCamera`).
    *

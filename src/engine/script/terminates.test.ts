@@ -168,6 +168,12 @@ const ALL_SERVICES = {
     addFriendship: () => {},
     hasMove: () => true,
     move: () => 33,
+    form: () => 0,
+    setForm: () => {},
+    giratinaForm: () => {},
+    revertForms: () => 0,
+    rotomForms: () => 0,
+    rotomCount: () => ({ count: 0, first: 0xff }),
   },
   trainerInfo: {
     gender: () => 0,
@@ -222,6 +228,5 @@ const ALL_SERVICES = {
   naming: { openForParty: () => {}, named: () => '' },
   giveEgg: () => {},
   survivePoison: () => true,
-  setGiratinaForm: () => {},
   camera: { free: () => {}, restore: () => {} },
 }

@@ -17,6 +17,7 @@ import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
 import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
+import { SPECIES_DEOXYS } from '../pokemon/form'
 
 /**
  * 이름으로 등록한다.
@@ -1773,13 +1774,6 @@ on('GiveEgg', (ctx) => {
   return false
 })
 
-/** 기라티나의 모습 (`Party_SetGiratinaForm`). 0 어나더 · 1 오리진 */
-on('SetPartyGiratinaForm', (ctx) => {
-  const form = ctx.readVar()
-  ctx.host.world.services.setGiratinaForm?.(form)
-  return false
-})
-
 on('AddFreeCamera', (ctx) => {
   const x = ctx.readVar()
   const z = ctx.readVar()
@@ -1902,3 +1896,110 @@ export function buildCommands(table: readonly ScriptCommand[]): CommandTable {
   }
   return { map, unhandled }
 }
+
+// ── 폼 (PARITY §3.4) ─────────────────────────────────────────────────────────
+//
+// 폼을 실제로 갈아입히는 곳은 씬 서비스다 (`fieldServices`). 여기서는 인자
+// 차례만 원작과 맞추는데, 그 차례가 명령마다 다르다 — `GetPartyMonForm`은
+// **자리 먼저 답 나중**이고 `GetRotomFormsInSave`는 답이 다섯 개다.
+
+on('GetPartyMonForm', (ctx) => {
+  const slot = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.form(slot) ?? 0)
+  return false
+})
+
+// 되돌림월드 쪽이 쓰는 같은 명령. 오버레이가 달라 번호가 둘이다
+on('GetPartyMonForm2', (ctx) => {
+  const slot = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.form(slot) ?? 0)
+  return false
+})
+
+/**
+ * 파티의 기라티나를 한꺼번에 (`ScrCmd_SetPartyGiratinaForm`).
+ *
+ * 0이 아니면 **무조건 오리진**이다 — 되돌림월드가 그렇게 부른다. 0이면 백금옥을
+ * 보고 정한다
+ */
+on('SetPartyGiratinaForm', (ctx) => {
+  const form = ctx.readVar()
+  ctx.host.world.services.party?.giratinaForm(form !== 0)
+  return false
+})
+
+/**
+ * 로토무를 가전에 넣는다 (`ScrCmd_SetRotomForm`).
+ *
+ * ⚠️ 인자가 넷인데 **셋째는 안 쓴다.** 원작도 읽기만 하고 버린다 — 그래도
+ * 읽어야 넷째(폼)가 제자리에서 읽힌다
+ */
+on('SetRotomForm', (ctx) => {
+  const slot = ctx.readVar()
+  const moveSlot = ctx.readVar()
+  ctx.readVar()
+  const form = ctx.readVar()
+  ctx.host.world.services.party?.setForm(slot, form, moveSlot)
+  return false
+})
+
+/** 테오키스는 그 자리의 유성이 폼을 정한다 (`ScrCmd_ChangeDeoxysForm`) */
+on('ChangeDeoxysForm', (ctx) => {
+  const form = ctx.readVar()
+  const party = ctx.host.world.services.party
+  if (party) {
+    for (let slot = 0; slot < party.count(); slot++) {
+      if (party.species(slot) === SPECIES_DEOXYS) party.setForm(slot, form)
+    }
+  }
+  return false
+})
+
+/** 파티에 로토무가 몇 마리고 첫 자리가 어디인가 */
+on('GetPartyRotomCountAndFirst', (ctx) => {
+  const countVar = ctx.readHalfWord()
+  const slotVar = ctx.readHalfWord()
+  const got = ctx.host.world.services.party?.rotomCount() ?? { count: 0, first: 0xff }
+  ctx.host.vars.set(countVar, got.count)
+  ctx.host.vars.set(slotVar, got.first)
+  return false
+})
+
+/**
+ * 리포트에 어느 가전을 써 본 로토무가 있는가.
+ *
+ * 답이 다섯 개고 차례가 히트·워시·프로스트·팬·모우다 — 그 차례가 폼 번호와
+ * 같아서 비트를 그대로 편다
+ */
+on('GetRotomFormsInSave', (ctx) => {
+  const dest = [
+    ctx.readHalfWord(), ctx.readHalfWord(), ctx.readHalfWord(),
+    ctx.readHalfWord(), ctx.readHalfWord(),
+  ]
+  const bits = ctx.host.world.services.party?.rotomForms() ?? 0
+  dest.forEach((at, i) => { ctx.host.vars.set(at, (bits >> (i + 1)) & 1) })
+  return false
+})
+
+/**
+ * 폼이 바뀐 마리를 전부 되돌린다 (통신에 나가기 전에).
+ *
+ * ⚠️ 답이 0xFF면 **가방에 백금옥 자리가 없다**는 뜻이고, 그때는 아무것도 안
+ * 바뀐다. 스크립트가 그 값으로 「가방이 가득 찼다」 쪽으로 갈라진다
+ */
+on('TryRevertPartyPokemonForms', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.revertForms() ?? 0)
+  return false
+})
+
+on('TryRevertPokemonForm', (ctx) => {
+  const slot = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  // 0xff는 "그런 자리 없음"이다 — 원작도 그때는 아무것도 안 한다
+  const got = slot === 0xff ? 0 : ctx.host.world.services.party?.revertForms(slot) ?? 0
+  ctx.host.vars.set(dest, got)
+  return false
+})

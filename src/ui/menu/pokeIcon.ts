@@ -3,20 +3,32 @@
 // ⚠️ **위치와 시트 크기를 함께 민다.** 배경 위치만 옮기고 `background-size`를
 // 안 늘리면 그림이 안 바뀐 채 잘리기만 한다. 도구 아이콘에서 한 번 겪은 자리다.
 //
-// 아이콘 색인은 **종족 번호 그대로**다 (0 = 빈 칸). 도감 순서가 아니다 —
-// 롬의 `pl_poke_icon.narc`가 종족 순서로 놓여 있다.
+// ⚠️ **칸 번호는 종족 번호가 아니다.** 앞 495칸까지만 종족 순서와 같고
+// (494 = 알), 그 뒤 45칸이 폼 아이콘이다 — 안농 스물일곱 글자·도롱마담 옷감·
+// 로토무 다섯 가전이 거기 있다. 어느 칸인지는 `engine/pokemon/form.iconSlot`이
+// 답한다 (`PokeIconSpriteIndex`).
 import type { CSSProperties } from 'react'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
 import { BOX_WALLPAPER_ATLAS, POKE_ICON_ATLAS } from '../../data/gameData'
 import { atlasUrl } from '../../data/providers/atlas'
+import { iconSlot } from '../../engine/pokemon/form'
 
-/** 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
-export function pokeIcon(
-  icons: PokeIcons | undefined, species: number, px: number,
+/** 그 개체의 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
+export function monIcon(
+  icons: PokeIcons | undefined,
+  mon: { species: number, form: number, isEgg: boolean },
+  px: number,
 ): CSSProperties {
-  if (!icons || species < 0 || species >= icons.count) return { width: px, height: px }
-  const col = species % icons.cols
-  const row = Math.floor(species / icons.cols)
+  return pokeIcon(icons, iconSlot(mon.species, mon.form, mon.isEgg), px)
+}
+
+/** 아이콘 칸 하나. 개체가 있으면 `monIcon`을 쓴다 */
+export function pokeIcon(
+  icons: PokeIcons | undefined, slot: number, px: number,
+): CSSProperties {
+  if (!icons || slot < 0 || slot >= icons.count) return { width: px, height: px }
+  const col = slot % icons.cols
+  const row = Math.floor(slot / icons.cols)
   return {
     width: px,
     height: px,

@@ -70,6 +70,13 @@ export interface PokemonInstance {
    * `JSON.stringify`가 다른 글을 내고 검사합이 깨진다
    */
   origin: Origin
+  /**
+   * 어느 모습인가 (`MON_DATA_FORM` · `engine/pokemon/form.ts`).
+   *
+   * ⚠️ **PID에서 다시 세지 않는다.** 4세대는 이 칸이 정본이고, 야생 안농의
+   * 글자도 맵의 표에서 와서 PID와 아무 상관이 없다. 폼이 없는 종은 늘 0이다
+   */
+  form: number
 }
 
 /** 데리고 다닐 수 있는 수 (`MAX_PARTY_SIZE`). 넘치면 박스로 간다 */
@@ -279,6 +286,9 @@ export function createWild(
     otSecretId,
     ball: 0,
     origin: noOrigin(trainer ?? { name: '', gender: 'male' }),
+    // 폼은 여기서 안 정한다 — 야생은 맵의 표가(`AddWildMonToParty`), 그 밖은
+    // 주는 자리가 정한다. 기본값 0이 곧 "보통 모습"이다
+    form: 0,
   }
 }
 

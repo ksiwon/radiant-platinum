@@ -56,7 +56,7 @@ export function FishingBox() {
         setView(null)
         last = ''
         if (got) {
-          void useBattleStore.getState().startWild({ species: got.species, level: got.level })
+          void useBattleStore.getState().startWild({ species: got.species, level: got.level, form: got.form })
         }
         closing.current = false
         return

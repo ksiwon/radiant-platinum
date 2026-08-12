@@ -7,7 +7,7 @@
 // 부활 지점이 정해지는 방식이 특이하다. 간호사에게 말을 걸 필요가 없다 —
 // 원작은 **맵을 갈아 끼울 때마다** `GetMapBlackOutWarpId`를 돌려서, 새 맵이
 // 센터 1층이면 그 자리로 옮긴다(`field_map_change.c` 291줄). 들어서기만 하면 된다.
-import { loadMoves, loadSpecies } from '../data/gameData'
+import { loadMoves, loadSpecies, type SpeciesLookup } from '../data/gameData'
 import { statsOf, maxPpOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { flyUnlockedAt, spawnAt, spawnWarp } from '../engine/map/spawns'
 import { world } from '../engine/map/world'
@@ -15,7 +15,7 @@ import { useSaveStore } from '../state/saveStore'
 import { useBattleStore } from '../state/battleStore'
 
 /** 종족값·기술 표. 회복량을 내려면 둘 다 있어야 한다 */
-let species: { get(id: number): Parameters<typeof statsOf>[1] } | null = null
+let species: SpeciesLookup | null = null
 let pp: ((move: number) => number) | null = null
 
 export function loadHealTables(): void {
@@ -34,7 +34,7 @@ export function healParty(): void {
   const table = species
   if (!table) return
   useSaveStore.getState().healParty((mon: PokemonInstance) => ({
-    hp: statsOf(mon, table.get(mon.species)).hp,
+    hp: statsOf(mon, table.of(mon)).hp,
     pp: mon.moves.map((slot) => (pp ? maxPpOf(slot, pp(slot.move)) : slot.pp)),
   }))
 }

@@ -179,6 +179,74 @@ function mechanicsOnly(label, id, entry, rom) {
   return out
 }
 
+// ── 폼 다리 ─────────────────────────────────────────────────────────────────
+//
+// 롬은 폼을 **번호**로 들고(`MON_DATA_FORM`) sim은 이름으로 든다
+// (`wormadamsandy`). 그 사이를 잇는 표를 여기서 굽는다.
+//
+// ⚠️ **번호와 이름의 짝은 디컴프가 정한다.** `res/pokemon/form_registry.json`에
+// 적힌 차례가 곧 폼 번호다 (기본형이 0, 등록 차례가 1부터) — 실제로
+// `constants/forms.h`의 열거형과 하나씩 맞는다. 우리가 짝을 짓는 것이 아니라
+// **읽어서 맞춰 본다**
+const FORM_REGISTRY = JSON.parse(
+  readFileSync(resolve(ROOT, 'raw/decomp/res/pokemon/form_registry.json'), 'utf8'),
+)
+const SPECIES_ENUM = readFileSync(resolve(ROOT, 'raw/decomp/generated/species.txt'), 'utf8')
+  .split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+
+/**
+ * 디컴프 폼 이름이 Showdown id와 다른 자리. **철자 차이뿐이다.**
+ *
+ * 셋뿐이고, 그 셋도 같은 것을 다르게 부르는 것이다 — 체리버의 「해」를 디컴프는
+ * `sunny`, Showdown은 `Sunshine`이라고 하고, 「동쪽 바다」를 디컴프는
+ * `east_sea`, Showdown은 `East`라고 한다
+ */
+const FORM_SPELLING = {
+  'cherrim.sunny': 'cherrimsunshine',
+  'shellos.east_sea': 'shelloseast',
+  'gastrodon.east_sea': 'gastrodoneast',
+}
+
+/**
+ * sim에 짝이 **없는 것이 맞는** 자리.
+ *
+ *   · 안농 스물일곱 글자 — Showdown은 글자를 종족으로 안 나눈다. 배틀에서 A와
+ *     Z가 종족값도 타입도 같으니 그 편이 맞고, 우리는 그림과 아이콘에서만 가른다
+ *   · 아르세우스 `???` — 그 타입의 플레이트가 없어서 영영 안 걸린다
+ *   · 알 — 배틀에 안 나온다 (등록부에서 통째로 건너뛴다)
+ *
+ * ⚠️ **여기 없는 폼을 못 찾으면 굽기가 선다.** 조용히 기본 폼으로 싸우느니
+ * 서는 편이 낫다
+ */
+const FORM_NO_SIM = new Set(['arceus.mystery'])
+
+const formIds = {}
+const missingForms = []
+for (const [dir, forms] of Object.entries(FORM_REGISTRY)) {
+  if (dir === 'egg') continue
+  const num = SPECIES_ENUM.indexOf(`SPECIES_${dir.toUpperCase()}`)
+  if (num <= 0) throw new Error(`폼 등록부의 ${dir}이 종 열거형에 없다`)
+  const base = gen4.species.get(dir)
+  if (!base.exists) throw new Error(`${dir}을 sim이 모른다`)
+  const row = [base.id]
+  for (const form of Object.keys(forms)) {
+    if (form.startsWith('__')) continue
+    const key = `${dir}.${form}`
+    const named = FORM_SPELLING[key] ?? dir + form.replaceAll('_', '')
+    // 안농 글자는 sim에서 **꾸밈 폼**이라 표에 항목이 없다 (`cosmeticFormes`).
+    // `get('unownb')`는 만들어 낸 것을 돌려주므로 그것에 속으면 안 된다
+    const e = named in D.Pokedex ? gen4.species.get(named) : null
+    if (e?.exists && e.num === base.num) { row.push(e.id); continue }
+    if (dir === 'unown' || FORM_NO_SIM.has(key)) { row.push(null); continue }
+    missingForms.push(key)
+  }
+  formIds[num] = row
+}
+if (missingForms.length > 0) throw new Error(`폼 다리가 안 맞는다: ${missingForms.join(' · ')}`)
+
+/** 구현을 같이 구워야 하는 폼 id들 */
+const FORM_ID_SET = new Set(Object.values(formIds).flat().filter(Boolean))
+
 // ── 굽기 ────────────────────────────────────────────────────────────────────
 
 mkdirSync(OUT, { recursive: true })
@@ -188,14 +256,13 @@ let total = 0
 
 // 종족.
 //
-// ⚠️ **폼은 안 굽는다.** 배틀에 들어가는 개체는 종족 번호로만 만들어지고
-// (`session.ts`의 `toSet`), 폼 번호를 sim에 넘기는 길이 아예 없다. 안 쓰는
-// 폼을 구워 두면 "있는데 안 도는 것"이 되고, 나중에 폼이 필요해졌을 때
-// `simSpecies`가 null을 주고 **소리 내며 서는 것**이 조용히 기본 폼으로
-// 싸우는 것보다 낫다
+// **폼도 굽는다** (PARITY §3.4). 항목 자체는 여전히 롬에서 오고 여기서 나가는
+// 것은 이름 다리(`FORM_IDS`)와 구현뿐이다 — 로토무 히트의 종족값은 롬의 503번
+// 칸에 있고 sim은 그것을 우리가 채운 `Pokedex`에서 읽는다
 const speciesOut = {}
 for (const [id, e] of Object.entries(D.Pokedex)) {
-  if (!(e.num > 0 && e.num <= MAX_SPECIES) || e.forme) continue
+  if (!(e.num > 0 && e.num <= MAX_SPECIES)) continue
+  if (e.forme && !FORM_ID_SET.has(id)) continue
   const m = mechanicsOnly('종족', id, e, ROM_SPECIES)
   if (Object.keys(m).length > 0) speciesOut[id] = m
 }
@@ -373,6 +440,9 @@ if (natureIds.length !== 25) throw new Error(`성격이 ${natureIds.length}개�
 const arr = (a) => `[\n${a.map((v, i) => `  ${v === undefined ? 'null' : JSON.stringify(v)},${i === 0 ? ' // 0번은 없다' : ''}`).join('\n')}\n]`
 const filled = (a, max) => Array.from({ length: max + 1 }, (_, i) => a[i])
 
+const formIdsSrc = `{\n${Object.keys(formIds).map(Number).sort((a, b) => a - b)
+  .map((num) => `  ${num}: ${JSON.stringify(formIds[num])},`).join('\n')}\n}`
+
 const namesSrc = `/**
  * ⚠️ **생성물이다. 손으로 고치지 않는다** — \`tools/distribution/mechanics/bake.mjs\`가
  * 디컴프의 열거형(\`raw/decomp/generated/*.txt\`)에서 구운 것이다.
@@ -385,6 +455,16 @@ const namesSrc = `/**
 
 /** 종족 번호 → id. 0번 칸은 비어 있다 */
 export const SPECIES_IDS: readonly (string | null)[] = ${arr(filled(speciesIds, MAX_SPECIES))}
+
+/**
+ * 종족 번호 → **폼 번호별** id (PARITY §3.4).
+ *
+ * 자리 0이 기본형이고 그 뒤가 \`res/pokemon/form_registry.json\`의 등록 차례,
+ * 곧 롬의 폼 번호다. \`null\`은 sim이 그 폼을 따로 안 두는 자리다 —
+ * 안농 스물일곱 글자와 아르세우스 \`???\`가 그렇고, 그때는 기본형으로 싸우는
+ * 것이 맞다 (종족값도 타입도 같다)
+ */
+export const FORM_IDS: Readonly<Record<number, readonly (string | null)[]>> = ${formIdsSrc}
 
 /** 기술 번호 → id */
 export const MOVE_IDS: readonly (string | null)[] = ${arr(filled(moveIds, MAX_MOVE))}

@@ -20,6 +20,14 @@ const D = gen4.data
 
 /** bridge.ts와 같은 경계 */
 const MAX_SPECIES = 493
+/**
+ * 우리가 넣는 폼 수 (PARITY §3.4).
+ *
+ * 캐스퐁 3 · 테오키스 3 · 도롱마담 2 · 버섯모 2 · 체리버 1 · 조개무지 1 ·
+ * 트리토돈 1 · 로토무 5 · 기라티나 1 · 쉐이미 1 · 아르세우스 16 = 36.
+ * 안농 스물일곱 글자와 아르세우스 `???`는 sim에 항목이 없어서 안 센다
+ */
+const FORMES = 36
 const MAX_MOVE = 467
 const MAX_ABILITY = 123
 
@@ -39,6 +47,7 @@ const DROPPED = new Set([
   'prevo', 'evos', 'evoLevel', 'evoType', 'evoItem', 'evoCondition', 'evoMove',
   'otherFormes', 'baseSpecies', 'forme', 'baseForme', 'changesFrom',
   'requiredItem', 'requiredItems', 'requiredAbility', 'requiredMove', 'battleOnly',
+  'isCosmeticForme',
   // ⚠️ **성비는 안 넘긴다.** sim은 `gender`가 비어 있을 때만 이걸 보는데,
   // 우리는 PID로 정해진 성별을 글자로 박아 넘긴다 (`session.ts`의 `toSet`)
   'genderRatio',
@@ -50,9 +59,15 @@ const DROPPED = new Set([
  * ⚠️ 참고 있기의 우선도는 **롬이 +3이고 Showdown이 +4**다. 4세대는 +3이 맞고
  * (5세대에 +4가 된다) Showdown의 gen4 모드가 그것을 안 되돌린다. 원작이
  * 정답이므로 롬 값을 쓴다 — 이 시험은 그 차이를 알고 통과한다
+ *
+ * ⚠️ **스카이 쉐이미의 몸무게는 4세대에서 랜드와 같다.** 원작은 크기 표를
+ * **종족 번호로만** 읽어서(`Pokedex_HeightWeightData_Weight(data, species)`)
+ * 폼을 안 본다 — 그래서 풀묶기가 스카이에게도 2.1kg으로 걸린다. Showdown이
+ * 적어 둔 5.2kg은 5세대에 붙은 값이고, 그 gen4 모드가 되돌리지 않는다
  */
 const KNOWN: Record<string, Record<string, unknown>> = {
   'Moves.endure': { priority: 3 },
+  'Pokedex.shayminsky': { heightm: 0.2, weightkg: 2.1 },
 }
 
 /** 이름 자리에는 id를 넣는다 — sim이 `toID(name)`으로 색인하기 때문이다 */
@@ -135,7 +150,49 @@ withData('species.json', 'moves.json', 'items.json')('롬으로 채운 표가 4�
       bad.push(...diff('Pokedex', id, Pokedex[id], s))
     }
     expect(bad.slice(0, 20)).toEqual([])
-    expect(Object.keys(Pokedex)).toHaveLength(MAX_SPECIES)
+    expect(Object.keys(Pokedex)).toHaveLength(MAX_SPECIES + FORMES)
+  })
+
+  /**
+   * 폼도 같은 잣대로 잰다 (PARITY §3.4).
+   *
+   * ⚠️ **여기가 로토무 히트의 종족값이 롬에서 왔는지를 재는 자리다.** 폼 항목을
+   * 지어내면 이 대조가 바로 어긋난다 — 원작 `pl_personal`의 503번 칸과
+   * Showdown의 `rotomheat`이 우연히 같을 리 없다
+   */
+  it('폼 36개도 칸마다 같다', () => {
+    const bad: string[] = []
+    let seen = 0
+    for (const [id, e] of Object.entries(D.Pokedex)) {
+      const s = e as unknown as Record<string, unknown> & {
+        num?: number, forme?: string, baseSpecies?: string, isCosmeticForme?: boolean
+      }
+      if (!s.forme) continue
+      // ⚠️ **꾸밈 폼은 항목이 반쪽이다.** 조개무지 동쪽·도롱마담 옷감 넷은
+      // `{ name, baseSpecies, forme, color }`뿐이고 종족값도 번호도 없다 —
+      // 기본형과 똑같다는 뜻이라, 여기서도 기본형에 얹어서 맞대야 한다
+      const base = s.isCosmeticForme && s.baseSpecies
+        ? (D.Pokedex[toId(s.baseSpecies)] as unknown as Record<string, unknown> | undefined)
+        : undefined
+      const full = { ...base, ...s }
+      const num = full.num as number | undefined
+      if (!(num !== undefined && num > 0 && num <= MAX_SPECIES)) continue
+      if (!(id in Pokedex)) continue // 안 넣는 것이 맞는 폼은 아래에서 따로 센다
+      seen++
+      bad.push(...diff('Pokedex', id, Pokedex[id], full))
+    }
+    expect(bad.slice(0, 20)).toEqual([])
+    expect(seen).toBe(FORMES)
+  })
+
+  /**
+   * ⚠️ **아르세우스 페어리는 넣으면 안 된다.** Showdown의 4세대 표에 남아
+   * 있지만 페어리 타입은 6세대 것이고, 그 폼의 플레이트도 4세대에 없다
+   */
+  it('4세대에 없는 폼은 안 들어간다', () => {
+    expect('arceusfairy' in Pokedex).toBe(false)
+    // 안농 글자는 Showdown이 종족으로 안 나눈다 (`cosmeticFormes`)
+    expect('unownb' in Pokedex).toBe(false)
   })
 
   it('기술 467개가 칸마다 같다', () => {

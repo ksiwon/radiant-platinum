@@ -16,8 +16,9 @@ import {
   Abilities, clearBattleTables, Items, Moves, Natures, Pokedex, TypeChart,
 } from './tables'
 import {
-  ABILITY_IDS, ITEM_IDS, MOVE_IDS, NATURE_IDS, SPECIES_IDS, TYPE_NAMES,
+  ABILITY_IDS, FORM_IDS, ITEM_IDS, MOVE_IDS, NATURE_IDS, SPECIES_IDS, TYPE_NAMES,
 } from './vendor/names.gen'
+import { formSpeciesId, formTypes } from '../../pokemon/form'
 
 /**
  * sim의 `damageTaken` 부호. 0 보통 · 1 효과 굉장 · 2 반감 · 3 무효.
@@ -42,7 +43,9 @@ function typeName(id: number): string {
   return name
 }
 
-function speciesEntry(s: Species, id: string): Record<string, unknown> {
+function speciesEntry(
+  s: Species, id: string, over: Record<string, unknown> = {},
+): Record<string, unknown> {
   const [t0, t1] = s.types
   return withMechanics({
     num: s.id,
@@ -57,7 +60,58 @@ function speciesEntry(s: Species, id: string): Record<string, unknown> {
     heightm: s.heightDm / 10,
     weightkg: s.weightHg / 10,
     ...genderOf(s.genderRatio),
+    ...over,
   }, MechanicsRegistry.species(id))
+}
+
+// ── 폼 (PARITY §3.4) ─────────────────────────────────────────────────────────
+
+/**
+ * id의 첫 글자를 올린다. `castform` → `Castform`.
+ *
+ * ⚠️ **구현이 이름을 글자로 비교하는 자리가 셋 있어서 필요하다.** 날씨구슬은
+ * `pokemon.baseSpecies.baseSpecies !== 'Castform'`으로, 플라워기프트는
+ * `!== 'Cherrim'`으로 걸러내고, 얼음 상태는 `species.name === 'Shaymin-Sky'`일
+ * 때만 스카이를 랜드로 되돌린다. id를 그대로 넣으면 그 셋이 **조용히 아무
+ * 일도 안 한다** — 캐스퐁이 날씨를 타지 않고 스카이 쉐이미가 얼어도 안 바뀐다.
+ *
+ * 새 자료가 아니다. 이미 우리 소스에 있는 id를 첫 글자만 올린 것이고, 비교
+ * 대상 글자 자체는 벤더 구현 파일에 그대로 들어 있다
+ */
+const cap = (id: string): string => id[0]!.toUpperCase() + id.slice(1)
+
+/** `castform` + `sunny` → `Castform-Sunny` (`Species.name`이 이 꼴이다) */
+function formName(baseId: string, id: string): string {
+  return `${cap(baseId)}-${cap(id.slice(baseId.length))}`
+}
+
+/**
+ * 폼 항목 하나.
+ *
+ * 종족값·특성은 **롬의 폼 칸**에서 온다(`formSpeciesId`) — 로토무 히트는 503번,
+ * 도롱마담 모래는 499번이다. 제 칸이 없는 폼(안농·캐스퐁·아르세우스…)은 기본형
+ * 칸을 그대로 쓰는 것이 맞다.
+ *
+ * ⚠️ **타입만 롬 표에서 못 온다.** 캐스퐁과 아르세우스는 폼마다 타입이 다른데
+ * 그 값이 종족 자료가 아니라 배틀 코드에 있다 (`BattleSystem_TriggerFormChange`·
+ * `Pokemon_GetArceusTypeOf`). 그래서 `form.ts`가 그 규칙을 들고 있다
+ */
+function formEntry(rom: Species, id: string, baseId: string, base: number, form: number) {
+  const types = formTypes(base, form)
+  return speciesEntry(rom, id, {
+    // 도감 번호는 기본형과 같다 — 폼은 도감에서 한 자리를 나눠 쓴다
+    num: base,
+    name: formName(baseId, id),
+    baseSpecies: cap(baseId),
+    forme: cap(id.slice(baseId.length)),
+    ...(types ? { types: [...new Set(types.map(typeName))] } : {}),
+    // ⚠️ **티어를 안 적으면 sim이 선다.** 폼 항목은 `baseSpecies !== name`이라
+    // `getByID`가 대전 티어를 기본형의 `FormatsData`에서 끌어오려 하는데, 우리
+    // 표에는 그 칸이 통째로 없다 — `Castform has no formats-data entry`로 던진다.
+    // 여기 적는 `Illegal`은 **그 함수가 빈 표에서 계산해 낼 바로 그 값**이고,
+    // 우리는 팀 검사 없는 `gen4customgame`으로 싸우므로 아무 데서도 안 읽힌다
+    tier: 'Illegal',
+  })
 }
 
 /** 특성 두 칸. 둘째가 첫째와 같거나 비면 칸이 하나다 */
@@ -153,7 +207,25 @@ async function build(): Promise<void> {
     if (!id) continue
     const s = species.byId.get(num)
     if (!s) throw new Error(`종족 #${String(num)}이 설치본에 없다`)
-    Pokedex[id] = speciesEntry(s, id)
+    // 폼이 있는 종은 기본형에도 `baseSpecies`를 적는다 — 날씨구슬과
+    // 플라워기프트가 **기본형일 때** 그 글자를 보고 걸러내기 때문이다
+    Pokedex[id] = num in FORM_IDS
+      ? speciesEntry(s, id, { name: cap(id), baseSpecies: cap(id) })
+      : speciesEntry(s, id)
+  }
+
+  // 폼. 종족값은 롬의 폼 칸에서 오고 여기서 나가는 것은 이름 다리뿐이다
+  for (const [key, forms] of Object.entries(FORM_IDS)) {
+    const base = Number(key)
+    const baseId = forms[0]
+    if (!baseId) continue
+    for (let form = 1; form < forms.length; form++) {
+      const id = forms[form]
+      if (!id) continue // sim이 안 나누는 폼(안농 글자·아르세우스 `???`)
+      const s = species.byId.get(formSpeciesId(base, form))
+      if (!s) throw new Error(`종족 #${String(base)} 폼 ${String(form)}이 설치본에 없다`)
+      Pokedex[id] = formEntry(s, id, baseId, base, form)
+    }
   }
 
   for (let num = 1; num < MOVE_IDS.length; num++) {

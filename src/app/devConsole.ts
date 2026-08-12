@@ -45,15 +45,21 @@ async function find(query: string) {
   return hits.length
 }
 
-/** 파티에 한 마리 넣는다. 나로 이벤트도 포켓몬센터도 없어서 손으로 꾸려야 한다 */
-async function give(species: number, level = 50) {
+/**
+ * 파티에 한 마리 넣는다. 나로 이벤트도 포켓몬센터도 없어서 손으로 꾸려야 한다.
+ *
+ * `form`은 폼을 눈으로 볼 때 쓴다 (PARITY §3.4) — 안농 글자·도롱마담 옷감·
+ * 로토무 가전이 아이콘과 능력치에 제대로 걸리는지가 파티·박스 화면에서 보인다
+ */
+async function give(species: number, level = 50, form = 0) {
   const [table, moves] = await Promise.all([loadSpecies(), loadMoves()])
-  const sp = table.get(species)
   const save = useSaveStore.getState()
   const mon = createWild({
-    species: sp, level, rng: Math.random,
+    species: table.get(species), level, rng: Math.random,
     otId: save.trainer.id, otSecretId: save.trainer.secretId,
   })
+  mon.form = form
+  const sp = table.of(mon)
   mon.hp = statsOf(mon, sp).hp
   const party = [...save.party, fillPp(mon, (id) => moves.byId.get(id)?.pp ?? 5)].slice(0, 6)
   useSaveStore.setState({ party })
@@ -66,7 +72,7 @@ async function heal() {
   const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
   useSaveStore.setState({
     party: useSaveStore.getState().party.map((m) => fillPp(
-      { ...m, hp: statsOf(m, table.get(m.species)).hp, status: 'ok' as const }, pp,
+      { ...m, hp: statsOf(m, table.of(m)).hp, status: 'ok' as const }, pp,
     )),
   })
   await show()
@@ -81,7 +87,7 @@ async function show() {
   console.table(save.party.map((m) => ({
     이름: m.nickname ?? names[m.species] ?? `#${m.species}`,
     Lv: m.level,
-    HP: `${m.hp}/${statsOf(m, table.get(m.species)).hp}`,
+    HP: `${m.hp}/${statsOf(m, table.of(m)).hp}`,
     상태: m.status,
     기술: m.moves.map((s) => `${moveNames[s.move] ?? s.move}(${s.pp})`).join(' '),
   })))

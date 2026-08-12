@@ -8,7 +8,7 @@
 import {
   castSounds, startFishing, tickFishing, type FishingResult, type FishingState,
 } from '../engine/actor/fishing'
-import { hooksFish, rollRod, type Rod, type WildEncounter } from '../engine/battle/encounter'
+import { hooksFish, rollRod, wildForm, type Rod, type WildEncounter } from '../engine/battle/encounter'
 import { encounters, tableForCurrentMap } from '../engine/battle/encounterSystem'
 import { fishRate, forcedSlot, waterLevel, waterSpeciesOf } from '../engine/battle/encounterLead'
 import { facingFeebas, FEEBAS_LEVELS, MAP_MT_CORONET_B1F } from '../engine/world/daily'
@@ -53,6 +53,7 @@ function feebasHere(): WildEncounter | null {
     species: ex.feebas.species,
     level: FEEBAS_LEVELS.min + Math.floor(fishing.rng() * span),
     slot: 0,
+    form: 0,
   }
 }
 
@@ -76,6 +77,8 @@ export function castRod(rod: Rod): void {
       level: (min, max) => waterLevel(min, max, lead, rng),
     })
     : null
+  // 낚아 올린 것도 모습을 정한다 — 조개무지는 낚싯대에도 걸린다 (PARITY §3.4)
+  if (fishing.catch && table) fishing.catch.form = wildForm(table, fishing.catch.species, rng)
   // 표에는 걸렸는데 그 칸이 비어 있으면 아무것도 안 나온다. 그건 "안 물린 것"이다
   fishing.state = startFishing(rod, fishing.catch !== null, fishing.rng)
   // 낚는 동안은 야생이 안 튀어나온다. 물 위에서 낚으면 그 칸이 조우 칸이다

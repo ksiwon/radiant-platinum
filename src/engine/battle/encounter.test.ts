@@ -166,7 +166,8 @@ maybe('인카운터 표', () => {
   it('슬롯 0을 지목하면 그 슬롯이 나온다', () => {
     const t = table('R201')
     // pickSlot은 rng()*100에서 가중치를 빼 나간다. 0이면 무조건 첫 슬롯
-    expect(rollLand(t, seq(0))).toEqual({ species: t.land[0]!.species, level: t.land[0]!.level, slot: 0 })
+    expect(rollLand(t, seq(0)))
+      .toEqual({ species: t.land[0]!.species, level: t.land[0]!.level, slot: 0, form: 0 })
     // 0.999 → 99.9에서 20,20,10,10,10,10,5,5,4,4,1을 빼면 마지막 슬롯
     expect(rollLand(t, seq(0.999))?.slot).toBe(11)
   })

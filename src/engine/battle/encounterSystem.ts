@@ -5,7 +5,7 @@
 import { worldState } from '../../state/worldState'
 import { world } from '../map/world'
 import {
-  encounterKind, newEncounterState, rollLand, rollWater, shouldEncounter,
+  encounterKind, newEncounterState, rollLand, rollWater, shouldEncounter, wildForm,
   type EncounterTable, type EncountersEx, type Rng, type WildEncounter,
 } from './encounter'
 import { Behavior } from '../map/zone'
@@ -121,6 +121,8 @@ export const encounterSystem = {
     if (got && (leadScaresOff(lead, got.level, rng) || repelBlocks(mods.repelLevel, got.level))) {
       return
     }
+    // 모습은 맨 마지막에 정한다 — 원작도 개체를 다 만든 뒤 파티에 넣기 직전이다
+    if (got) got.form = wildForm(table, got.species, rng)
     encounters.pending = got
   },
 }

@@ -261,7 +261,7 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
-  it('닿는 자리의 96.2%가 돈다 — DATA.md §2.10의 그 수', () => {
+  it('닿는 자리의 96.4%가 돈다 — DATA.md §2.10의 그 수', () => {
     // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.
     // 쓰는 눈금은 스크립트가 **실제로 밟는 자리**고, 문서가 그 수를 적고
     // 있으므로 여기서 같은 방법으로 세어 못 박는다 — 안 그러면 문서만 낡는다.
@@ -438,14 +438,14 @@ const LOOPING_ENTRIES_YES = 34
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
  *
- * DATA.md §2.10이 이 둘의 비를 적는다(96.2%). 문서에만 적어 두면 명령을 붙일
+ * DATA.md §2.10이 이 둘의 비를 적는다(96.4%). 문서에만 적어 두면 명령을 붙일
  * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_411
+const RUNNING_SITES = 53_440
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 218
+const IMPLEMENTED_COMMANDS = 226
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -465,6 +465,10 @@ const IDLE_COMMANDS = [
   'SetSpecialBGM',
   // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
   'GiveMoney',
+  // ⚠️ **폼을 묻는 자리는 파티 너머다.** 유적마을 동쪽 집의 「도롱마담 아저씨」
+  // 하나뿐이고(`scripts_solaceon_town_east_house.s`), 그 앞이 파티에 도롱마담이
+  // 있는지 보는 갈래라 세이브 없는 훑기가 못 지나간다
+  'GetPartyMonForm',
   // 기술을 가졌는지 묻는 자리(14곳)는 전부 **파티가 있어야** 닿는다. 훑기는
   // 세이브를 안 붙이므로 파티 조회가 0으로 답하고 "가진 게 없다" 쪽으로 갈라진다
   'CheckPartyMonHasMove',
@@ -521,6 +525,9 @@ const IDLE_COMMANDS = [
   // 무리가 열리는 것도 이야기를 끝낸 뒤라 훑기가 그 가지에 못 들어간다 —
   // `AddTrophyGardenMon`은 포켓몬저택 사무실, `EnableSwarms`는 신오방송국이다
   'AddTrophyGardenMon', 'GetTrophyGardenSlot1Species', 'EnableSwarms',
+  // ⚠️ **테오키스는 배포 이벤트다** (§9). 축복시티의 유성이 폼을 갈아 끼우는데
+  // (`scripts_veilstone_city.s`), 그 앞이 파티에 테오키스가 있는지 보는 갈래다
+  'ChangeDeoxysForm',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
@@ -529,6 +536,10 @@ const IDLE_COMMANDS = [
   'IsSequencePlaying',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다
   'GetItemQuantity',
+  // ⚠️ **로토무 가전 방 셋은 로토무가 있어야 열린다.** `scripts_rotoms_room.s`
+  // 하나에 다 모여 있고, 그 앞이 `GetPartyRotomCountAndFirst`로 파티를 세는
+  // 갈래다 — 세이브 없는 훑기는 0마리로 답해서 「아무 일도 안 일어났다」로 빠진다
+  'GetRotomFormsInSave', 'SetRotomForm', 'GetPartyMonForm2',
 ]
 
 /**
