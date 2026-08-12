@@ -264,3 +264,67 @@ export const notice = style({
   fontSize: 13,
   color: vars.hud.warn,
 })
+
+// ── 비교하기 (`PC_MODE_COMPARE`) ────────────────────────────────────────────
+
+export const compare = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+})
+
+export const compareHead = style({
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 8,
+  fontSize: 13,
+  fontWeight: 700,
+})
+
+export const compareName = style({
+  flex: 1,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  selectors: { '&:last-child': { textAlign: 'right' } },
+})
+
+export const comparePage = style({
+  textAlign: 'center',
+  fontSize: 11,
+  letterSpacing: '0.08em',
+  opacity: 0.62,
+})
+
+export const compareRows = style({ display: 'flex', flexDirection: 'column', gap: 3 })
+
+export const compareRow = style({
+  display: 'grid',
+  gridTemplateColumns: '1fr auto 1fr',
+  alignItems: 'baseline',
+  gap: 8,
+  fontSize: 13,
+})
+
+export const compareLabel = style({
+  fontSize: 11,
+  opacity: 0.6,
+  textAlign: 'center',
+  minWidth: 44,
+})
+
+export const compareValue = style({
+  fontVariantNumeric: 'tabular-nums',
+  selectors: { '&:last-child': { textAlign: 'right' } },
+})
+
+/** 이긴 쪽. 색이 아니라 **굵기**로 말한다 — 색맹에도 보인다 */
+export const compareWin = style([compareValue, { fontWeight: 800 }])
+
+export const compareNote = style({
+  fontSize: 12,
+  opacity: 0.66,
+  lineHeight: 1.55,
+  textAlign: 'center',
+  paddingTop: 6,
+})

@@ -367,6 +367,15 @@ interface SaveStore extends SaveData {
   withdrawMon: (at: BoxSpot) => boolean
   /** 박스 안에서, 또는 박스끼리 자리를 바꾼다 */
   swapBoxSlots: (a: BoxSpot, b: BoxSpot) => void
+  /**
+   * 박스 한 칸을 통째로 갈아 끼운다.
+   *
+   * 도구를 옮길 때 쓴다 (PARITY §5 `pc_boxes`) — 마리는 그대로고 지닌 물건만
+   * 바뀌므로 자리바꿈이 아니라 덮어쓰기다
+   */
+  setBoxSlot: (at: BoxSpot, mon: PokemonInstance | null) => void
+  /** 파티 한 자리를 통째로 갈아 끼운다 */
+  setPartySlot: (slot: number, mon: PokemonInstance) => void
   /** 부활 지점을 옮긴다. 포켓몬센터에 들어서면 씬이 부른다 */
   setHealSpot: (index: number) => void
   /** 공중날기 자리를 연다 */
@@ -605,6 +614,14 @@ export const useSaveStore = create<SaveStore>()(
 
       swapBoxSlots: (a, b) => {
         set((st) => ({ boxes: swapSlots(st.boxes, a, b) }))
+      },
+
+      setBoxSlot: (at, mon) => {
+        set((st) => ({ boxes: withSlot(st.boxes, at, mon) }))
+      },
+
+      setPartySlot: (slot, mon) => {
+        set((st) => ({ party: st.party.map((m, i) => (i === slot ? mon : m)) }))
       },
 
       addToParty: (mon) => {

@@ -19,6 +19,9 @@ import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { SCRIPT_EVENT_TYPES } from '../world/journal'
+import {
+  HIDDEN_LOCATION_COUNT, HIDDEN_LOCATION_MAGIC, VAR_HIDDEN_LOCATION_FIRST,
+} from '../map/townMap'
 
 /**
  * 이름으로 등록한다.
@@ -1530,6 +1533,24 @@ on('CreateJournalEvent', (ctx) => {
   if (!SCRIPT_EVENT_TYPES.includes(type)) return true
   ctx.host.world.services.journal?.event(type, param)
   return true
+})
+
+/**
+ * 숨은 자리를 열고 닫는다 (`ScrCmd_SetHiddenLocation`).
+ *
+ * ⚠️ **0/1을 안 적는다.** 원작은 자리마다 정해진 **매직 넘버**를 변수에 넣고
+ * 지도가 「그 수와 같은가」를 본다 (`sHiddenLocationMagicNumbers`) — 다른
+ * 값이 흘러 들어와도 안 열리게 하는 자물쇠다
+ */
+on('SetHiddenLocation', (ctx) => {
+  const which = ctx.readVar()
+  const enable = ctx.readByte()
+  if (which < 0 || which >= HIDDEN_LOCATION_COUNT) return false
+  ctx.host.vars.set(
+    VAR_HIDDEN_LOCATION_FIRST + which,
+    enable ? HIDDEN_LOCATION_MAGIC[which] ?? 0 : 0,
+  )
+  return false
 })
 
 // ── 포켓치 (PARITY §7.3) ─────────────────────────────────────────────────────

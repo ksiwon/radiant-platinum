@@ -481,15 +481,9 @@ const services: FieldServices = {
 
   openShop: (stock) => { useMenuStore.getState().openShop(stock) },
 
-  /**
-   * 보관 시스템 (`OpenPokemonStorage`).
-   *
-   * ⚠️ **다섯 갈래 중 셋만 연다.** 3(도구 옮긴다)과 4(비교한다)는 아직 화면이
-   * 없다 — 여는 시늉을 하고 아무것도 못 하는 것보다 안 여는 편이 낫다.
-   * 스크립트는 화면이 안 뜬 것으로 보고 바로 PC 메뉴로 돌아간다
-   */
+  /** 보관 시스템 다섯 갈래 (`OpenPokemonStorage`) */
   openStorage: (mode) => {
-    if (mode > BOX_MODE.move) return
+    if (mode < 0 || mode > BOX_MODE.compare) return
     useMenuStore.getState().openBox(mode)
   },
 

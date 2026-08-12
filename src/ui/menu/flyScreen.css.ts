@@ -3,7 +3,7 @@
 // ⚠️ **지도는 256×192 그림 한 장이다.** 늘려서 그릴 때 보간을 켜면 도트가
 // 뭉개져서 도로가 흐릿해진다 — 원작은 픽셀 그대로다. 그래서 정수배로만 키우고
 // `image-rendering: pixelated`를 건다.
-import { style, styleVariants } from '@vanilla-extract/css'
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 /** 원작 위 화면 크기. 지도 좌표가 전부 이 안의 픽셀이다 */
@@ -37,7 +37,27 @@ export const map = style({
   borderRadius: 6,
   overflow: 'hidden',
   boxShadow: '0 6px 22px rgba(0, 0, 0, 0.45)',
+  transition: 'transform 0.16s ease-out',
 })
+
+/**
+ * 확대판을 담는 창.
+ *
+ * ⚠️ **좌표를 안 건드린다.** 원작은 아래 화면에 확대판을 따로 그리지만
+ * 우리는 화면이 하나라 같은 지도를 키운다 — 칸 계산이 두 벌이 되면
+ * 커서와 표식이 어긋난다. 키우는 것은 CSS 변환 하나로 끝낸다
+ */
+export const viewport = style({
+  position: 'relative',
+  width: MAP_W * ZOOM,
+  height: MAP_H * ZOOM,
+  flex: '0 0 auto',
+  borderRadius: 6,
+  overflow: 'hidden',
+})
+
+/** 확대 배율. 도로 이름을 읽을 만큼만 키운다 */
+export const ZOOM_IN = 2.2
 
 export const sheet = style({
   position: 'absolute',
@@ -79,12 +99,19 @@ export const cursor = style({
 })
 
 /** 지금 서 있는 자리. 커서와 헷갈리지 않게 속을 채운다 */
+/** 지금 자리는 **깜빡인다** — 원작도 표식 하나만 깜빡여서 눈이 거기로 간다 */
+const blink = keyframes({
+  '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+  '50%': { opacity: 0.25, transform: 'scale(0.72)' },
+})
+
 export const here = style({
   position: 'absolute',
   background: '#fff',
   borderRadius: '50%',
   boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.6)',
   pointerEvents: 'none',
+  animation: `${blink} 1s steps(2, end) infinite`,
 })
 
 /**

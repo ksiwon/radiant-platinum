@@ -151,6 +151,40 @@ export interface TownMapCell {
 export const NO_LANDMARK = 0xffff
 
 /** 그 칸의 이름표 (`TownMap_GetMapBlockAtPosition`) */
-export function cellAt(cells: readonly TownMapCell[], x: number, z: number): TownMapCell | null {
-  return cells.find((c) => c.x === x && c.z === z) ?? null
+export function cellAt(
+  cells: readonly TownMapCell[], x: number, z: number, unlocked = 0,
+): TownMapCell | null {
+  const cell = cells.find((c) => c.x === x && c.z === z) ?? null
+  if (cell === null) return null
+  // ⚠️ **숨은 자리는 열기 전에는 아예 없는 칸이다** (`TownMap_GetMapBlockAtPosition`).
+  // 이름만 가리면 안 된다 — 만월도가 「가 본 적 없는 곳」으로 보이면
+  // 이야기가 그리로 가라고 말하기 전에 있는 줄 알게 된다
+  if (cell.hidden !== 0 && (cell.hidden & unlocked) === 0) return null
+  return cell
+}
+
+/** `enum HiddenLocation` */
+export const HiddenLocation = {
+  FULLMOON_ISLAND: 0, NEWMOON_ISLAND: 1, SPRING_PATH: 2, SEABREAK_PATH: 3,
+} as const
+export const HIDDEN_LOCATION_COUNT = 4
+
+/**
+ * 숨은 자리를 여는 **매직 넘버** (`sHiddenLocationMagicNumbers`).
+ *
+ * ⚠️ **0/1이 아니다.** 원작이 변수에 이 수를 적어 두고 **같은 수인지**를
+ * 본다 — 다른 값이 흘러 들어와도 안 열리게 하는 자물쇠다
+ */
+export const HIDDEN_LOCATION_MAGIC: readonly number[] = [0x0208, 0x0229, 0x0312, 0x1028]
+
+/** `VAR_HIDDEN_LOCATION_FULL_MOON_ISLAND` */
+export const VAR_HIDDEN_LOCATION_FIRST = 16438
+
+/** 열린 숨은 자리를 비트마스크로 (`ctx->unlockedHiddenLocations`) */
+export function unlockedHidden(varOf: (id: number) => number): number {
+  let mask = 0
+  for (let i = 0; i < HIDDEN_LOCATION_COUNT; i++) {
+    if (varOf(VAR_HIDDEN_LOCATION_FIRST + i) === HIDDEN_LOCATION_MAGIC[i]) mask |= 1 << i
+  }
+  return mask
 }

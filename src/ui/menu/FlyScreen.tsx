@@ -14,8 +14,9 @@ import { spawnWarp } from '../../engine/map/spawns'
 import { world } from '../../engine/map/world'
 import {
   cellAt, flySpotAt, FLY_SPOTS, GRID, gridX, gridY, GRID_MAX_X, GRID_MAX_Z,
-  GRID_MIN_X, GRID_MIN_Z, NO_LANDMARK, SHAPE_SIZE, type TownMapCell,
+  GRID_MIN_X, GRID_MIN_Z, NO_LANDMARK, SHAPE_SIZE, unlockedHidden, type TownMapCell,
 } from '../../engine/map/townMap'
+import { fieldScripts } from '../../engine/script/field'
 import { loadTownMap } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
@@ -29,7 +30,7 @@ import { useMenuKeys } from './useMenuKeys'
 import { roamersFlew } from '../../scene/roamers'
 import { journalFlew } from '../../scene/journal'
 import * as own from './flyScreen.css'
-import { ZOOM } from './flyScreen.css'
+import { ZOOM, ZOOM_IN } from './flyScreen.css'
 
 /** 커서가 처음 서는 칸. 갈 수 있는 첫 곳으로 간다 */
 const HOME = { x: 3, z: 27 }
@@ -46,6 +47,7 @@ export function FlyScreen() {
   /** 지역명 (`names/locations.*.json`). 이름은 이쪽에서 온다 */
   const [names, setNames] = useState<string[]>([])
   const [at, setAt] = useState(HOME)
+  const [zoomed, setZoomed] = useState(false)
   const sheet = useAssetImage('data/townMap.png')
 
   useEffect(() => {
@@ -71,7 +73,9 @@ export function FlyScreen() {
     if (open) setAt({ x: open.x, z: open.z })
   }, [flySpots])
 
-  const cellHere = cellAt(cells, at.x, at.z)
+  // 숨은 자리 넷은 이야기가 열기 전에는 지도에 아예 없다 (PARITY §5)
+  const hidden = unlockedHidden((id) => fieldScripts.vars.get(id))
+  const cellHere = cellAt(cells, at.x, at.z, hidden)
   const spot = flySpotAt(cellHere?.map ?? -1, at.x, at.z)
   const unlocked = spot !== null && (flySpots & (1 << spot.spawn)) !== 0
   const cell = cellHere
@@ -102,6 +106,9 @@ export function FlyScreen() {
     down: move(0, 1),
     left: move(-1, 0),
     right: move(1, 0),
+    // 원작은 아래 화면이 늘 확대판이다. 우리는 화면이 하나라 Tab으로 오간다 —
+    // 도로 이름을 읽기에는 확대 쪽이 낫고, 어디로 갈지 고르기에는 전체가 낫다
+    tab: () => { setZoomed((z) => !z) },
     confirm: fly,
     cancel: back,
   })
@@ -113,10 +120,21 @@ export function FlyScreen() {
     <MenuScreen
       title="타운맵"
       note={`갈 수 있는 곳 ${String(open)}`}
-      foot={<span>↑↓←→ 옮기기 · Z 날아간다 · X 뒤로</span>}
+      foot={<span>↑↓←→ 옮기기 · Tab {zoomed ? '전체' : '확대'} · Z 날아간다 · X 뒤로</span>}
     >
       <div className={own.stage}>
-        <div className={own.map}>
+        <div className={own.viewport}>
+        <div
+          className={own.map}
+          style={zoomed
+            ? {
+              transform: `scale(${String(ZOOM_IN)})`,
+              // 커서를 가운데 두고 키운다 — 확대하면 보고 있던 자리가 밖으로
+              // 밀려나는 것이 제일 답답하다
+              transformOrigin: `${String(px(gridX(at.x)))}px ${String(px(gridY(at.z)))}px`,
+            }
+            : undefined}
+        >
           {sheet !== null && <img className={own.sheet} src={sheet} alt="" />}
 
           {FLY_SPOTS.map((s, i) => {
@@ -163,6 +181,7 @@ export function FlyScreen() {
             }}
           />
 
+        </div>
           <div className={own.caption}>
           {/* 이름도 원작 글이다 (`TEXT_BANK_TOWN_MAP`) — 칸마다 이름이 붙어 있다 */}
             {/* 이름은 지역명 표, 아래 한 줄은 타운맵 뱅크의 설명이다 —
