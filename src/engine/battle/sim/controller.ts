@@ -31,7 +31,7 @@ import {
 } from './session'
 
 /** 배틀이 어떻게 끝났는가. 승패 말고도 포획·도망이 있다 */
-export type BattleFinish = 'win' | 'loss' | 'caught' | 'fled' | null
+export type BattleFinish = 'win' | 'loss' | 'caught' | 'fled' | 'foeFled' | null
 
 /** 한 걸음의 결과 */
 export interface BattleStep {
@@ -61,6 +61,12 @@ export interface ControllerOptions extends BattleOptions {
    * 안 주면 「토너먼트」다 — 안 묻고 그대로 잇는다
    */
   shift?: boolean
+  /**
+   * 배회 포켓몬과의 판 (PARITY §6.3) — `BATTLE_TYPE_ROAMER`.
+   *
+   * 묶어 두지 않으면 상대가 **무엇을 하기도 전에** 달아난다
+   */
+  roamer?: boolean
   /**
    * 트레이너가 쓰는 도구 (`trainers.json`의 `items`). 야생에는 없다.
    *
@@ -116,6 +122,16 @@ export class BattleController {
   private readonly brain: TrainerBrain | null
   /** 시합규칙 「교체」인가 */
   private readonly shift: boolean
+  /**
+   * 배회 포켓몬과의 판인가 (PARITY §6.3).
+   *
+   * 원작은 이 판에만 다른 AI를 물린다 (`AI_FLAG_ROAMING_POKEMON`) — 그 AI가
+   * 하는 일은 **딱 하나, 도망**이다. 묶여 있지 않으면 다른 후보를 다 제치고
+   * 달아난다
+   */
+  private readonly roamer: boolean
+  /** 상대가 달아나서 끝났는가. 이겼다고 말하면 안 되는 자리다 */
+  private foeFled = false
   private readonly items: ControllerOptions['items']
   /** 더블인가 (PARITY §2.2). 자리 수가 이 값 하나에서 갈린다 */
   private readonly doubles: boolean
@@ -141,6 +157,7 @@ export class BattleController {
     this.foeTeam = options.foe.team
     this.random = options.random ?? Math.random
     this.shift = options.shift === true
+    this.roamer = options.roamer === true
     this.items = options.items
     this.brain = options.ai
       ? new TrainerBrain({
@@ -359,6 +376,8 @@ export class BattleController {
   get finish(): BattleFinish {
     if (this.caught) return 'caught'
     if (this.fled) return 'fled'
+    // 상대가 달아난 판은 이긴 판이 아니다. 경험치도 상금도 없다
+    if (this.foeFled) return 'foeFled'
     if (!this.view.ended) return null
     const mine = this.session.results('p1')
     return mine.length > 0 && mine.every((r) => r.fainted) ? 'loss' : 'win'
@@ -407,6 +426,10 @@ export class BattleController {
       this.view = { ...this.view, ended: true }
       return { events, view: this.view }
     }
+    // ⚠️ **볼이 빗나가면 배회는 그 자리에서 달아난다.** 볼 한 번이 한 판의
+    // 전부라는 것이 배회를 쫓는 놀이의 규칙이다 (PARITY §6.3)
+    const gone = this.roamerFlees()
+    if (gone) return { events: [...events, ...gone.events], view: gone.view }
     if (!this.spendTurn()) return { events, view: this.view }
     const step = await this.advance()
     return { events: [...events, ...step.events], view: step.view }
@@ -438,6 +461,33 @@ export class BattleController {
     return { events: [...events, ...step.events], view: step.view }
   }
 
+  /**
+   * 배회가 이 자리에서 달아나는가 (`RoamingPokemon_Main`).
+   *
+   * ⚠️ **우리 명령보다 먼저 일어난다.** 원작에서 도망은 기술이 아니라 도구·교체와
+   * 같은 갈래의 행동이고 그쪽이 먼저 처리된다 — 그래서 묶어 두지 않으면 기술을
+   * 한 번도 못 맞힌다. 볼은 그보다 앞서서, 한 판에 한 번은 던져 볼 수 있다.
+   *
+   * 묶였는지는 sim에게 묻는다(`request.active.trapped`) — 그림자밟기·개미지옥·
+   * 검은눈빛·조이기가 다 그 한 값에 접혀 있다. 원작 목록에 없는 자력만 더
+   * 걸리는데, 실제로 도는 배회 둘은 강철이 아니라 갈리는 자리가 없다
+   */
+  private roamerFlees(): BattleStep | null {
+    if (!this.roamer || this.view.ended) return null
+    if (this.request.p2?.active?.[0]?.trapped === true) return null
+    const seen = activeAt(this.view, 'p2')
+    if (!seen) return null
+    this.foeFled = true
+    this.view = { ...this.view, ended: true }
+    return {
+      events: [{
+        kind: 'escape', success: true, foe: true,
+        actor: { slot: seen.slot, side: 'p2', name: seen.key },
+      }],
+      view: this.view,
+    }
+  }
+
   /** 지금 나와 있는 상대. 키로 찾는다 — 같은 종을 둘 데리고 있어도 안 헷갈린다 */
   private activeFoe(): SideMon | null {
     const key = activeAt(this.view, 'p2')?.key
@@ -464,6 +514,9 @@ export class BattleController {
    */
   async chooseTurn(actions: readonly BattleAction[]): Promise<BattleStep> {
     if (this.view.ended || actions.length === 0) return { events: [], view: this.view }
+    // 배회는 우리 기술이 나가기 전에 달아난다 (PARITY §6.3)
+    const gone = this.roamerFlees()
+    if (gone) return gone
     this.session.send(`p1 ${encodeTurn(actions)}`)
     this.request.p1 = null
     return this.advance()

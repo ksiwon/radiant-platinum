@@ -13,6 +13,7 @@ import { PARTY_MAX } from '../../engine/pokemon/instance'
 import { BOX_COUNT, BOX_SIZE } from '../../engine/pokemon/boxes'
 import { MAX_QUANTITY, POCKET_SIZE } from '../../engine/bag/bag'
 import { FLAG_COUNT, SAVED_VAR_COUNT } from '../../engine/script/vars'
+import { ROAMER_SLOT_COUNT } from '../../engine/world/roamer'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -148,7 +149,13 @@ export const saveSchema = z.object({
   wallpapers: z.array(int(0, 63)).length(BOX_COUNT),
   bag: bagSchema,
   badges: int(0, 0xff),
-  pokedex: z.object({ seen: u8(DEX_BYTES), caught: u8(DEX_BYTES) }),
+  pokedex: z.object({
+    seen: u8(DEX_BYTES),
+    caught: u8(DEX_BYTES),
+    // ⚠️ **맨 뒤에 붙인다.** 읽어들일 때 스키마 차례대로 다시 세우므로,
+    // 사이에 끼우면 예전에 쓴 리포트와 바이트가 어긋난다
+    battled: u8(DEX_BYTES),
+  }),
   nationalDex: z.boolean(),
   flags: u8(FLAG_BYTES),
   vars: u16(SAVED_VAR_COUNT),
@@ -231,6 +238,33 @@ export const saveSchema = z.object({
     eggPid: int(0, 0xffffffff),
     /** 알 주기 계수기 0~254 */
     cycle: int(0, 255),
+  }),
+  /**
+   * 배회 포켓몬 여섯 자리 (PARITY §6.3) — `SpecialEncounter.roamers`.
+   *
+   * ⚠️ **개체값과 성격값까지 적는다.** 배회는 도망쳐도 사라지지 않고 같은
+   * 개체가 다시 나온다 — 만날 때마다 새로 뽑으면 색이 다른 개체를 쫓는 일이
+   * 성립하지 않는다
+   */
+  roamers: z.array(z.object({
+    active: z.boolean(),
+    species: int(0, 493),
+    level: int(0, 100),
+    pid: int(0, 0xffffffff),
+    ivs: statsSchema,
+    hp: int(0, 999),
+    status: statusSchema,
+    /** `ROAMER_ROUTES`의 색인. 맵 번호가 아니다 */
+    at: int(0, 28),
+  })).length(ROAMER_SLOT_COUNT),
+  /**
+   * 방금 떠나온 맵 (`PlayerRecentRoutes`).
+   *
+   * 배회가 **내가 방금 나온 맵으로는 안 간다**. 이 두 칸이 그것만을 위해 있다
+   */
+  recentRoutes: z.object({
+    current: int(0, 592),
+    previous: int(0, 592),
   }),
 })
 

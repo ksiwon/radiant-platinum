@@ -790,6 +790,20 @@ on('EnableSwarms', (ctx) => {
   return false
 })
 
+/**
+ * 배회 포켓몬 한 자리를 연다 (`ScrCmd_ActivateRoamingPokemon`, PARITY §6.3).
+ *
+ * 신오에서 이 명령이 도는 자리는 둘이다 — 예진호수에서 엠라이트를 깨우는
+ * 장면과 명예의 전당 뒤 만월도에서 크레세리아가 날아가는 장면
+ */
+on('ActivateRoamingPokemon', (ctx) => {
+  // ⚠️ **인자를 먼저 읽는다.** `?.activate(ctx.readByte())`로 쓰면 서비스가
+  // 없을 때 바이트를 안 읽고 지나가 명령 흐름이 한 칸 어긋난다
+  const slot = ctx.readByte()
+  ctx.host.world.services.roamers?.activate(slot)
+  return false
+})
+
 on('GetSwarmMapAndSpecies', (ctx) => {
   const destMap = ctx.readHalfWord()
   const destSpecies = ctx.readHalfWord()

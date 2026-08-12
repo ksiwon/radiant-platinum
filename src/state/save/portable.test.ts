@@ -13,7 +13,7 @@ import { saveFileName } from './download'
 import { checksum, encodePayload } from './codec'
 import { createNewSave, SAVE_VERSION } from '../saveStore'
 import { noOrigin } from '../../engine/pokemon/origin'
-import { dexSet } from '../../engine/pokemon/dex'
+import { DEX_BYTES, dexHas, dexSet } from '../../engine/pokemon/dex'
 
 const AT = new Date('2026-08-10T14:03:07')
 
@@ -220,6 +220,26 @@ describe('버전 이전', () => {
     const table: Record<number, Migration> = { 6: (d) => ({ ...d, money: -5 }) }
     const got = migrateSave({ ...createNewSave(), version: 6 }, 7, table)
     expect(got.kind).toBe('invalid')
+  })
+
+  /**
+   * ⚠️ 이 시험이 막는 것: 13 → 14에서 `battled`를 0으로 깔아 두는 것. 그러면
+   * 옛 리포트를 이어 온 사람은 도감을 다 모으고도 상성 표시가 하나도 안 뜬다
+   */
+  it('옛 리포트의 「상대해 봤다」는 잡은 것에서 온다', () => {
+    const old = createNewSave() as unknown as Record<string, unknown>
+    old.version = 13
+    old.pokedex = {
+      seen: dexSet(new Uint8Array(DEX_BYTES), 25),
+      caught: dexSet(new Uint8Array(DEX_BYTES), 387),
+    }
+    const got = migrateSave(old, 14)
+
+    expect(got.kind).toBe('ok')
+    if (got.kind !== 'ok') return
+    expect(dexHas(got.save.pokedex.battled, 387)).toBe(true)
+    // 본 적만 있는 종은 아니다 — 도망친 것까지 지어내지 않는다
+    expect(dexHas(got.save.pokedex.battled, 25)).toBe(false)
   })
 
   it('닿을 수 있는 가장 낮은 판을 센다', () => {

@@ -15,6 +15,7 @@ import { expForLevel } from '../engine/pokemon/exp'
 import { loadItems, loadMoves, loadSpecies, loadTrainers } from '../data/gameData'
 import { quantity } from '../engine/bag/bag'
 import { installNodeAssets } from '../data/romData.testkit'
+import { newRoamers } from '../engine/world/roamer'
 
 // gameData는 AssetProvider로 받는다. 시험에서는 디스크에서 읽는 Provider로 바꾼다.
 //
@@ -118,6 +119,58 @@ describe('배틀 스토어', () => {
     expect(useBattleStore.getState().phase).toBe('off')
   }, 30_000)
 
+  /**
+   * ⚠️ 이 시험이 막는 것: **배틀이 파티를 통째로 낫게 하는 것.**
+   *
+   * sim의 팀 목록에는 체력 칸이 없어서, 아무것도 안 하면 개체가 만피·무상태로
+   * 선다. 7밖에 안 남은 모부기가 55로 서고 배틀이 끝나면 그 55가 세이브에
+   * 도로 적혔다 — 포켓몬센터에 갈 이유도, 독에 걸릴 이유도 없었다
+   * (`BattleSession.syncVitals`)
+   */
+  it('다친 채로 배틀에 들어가면 다친 채로 선다', async () => {
+    const species = await loadSpecies()
+    const moves = await loadMoves()
+    const sp = species.get(387)
+    const mon = fillPp(
+      createWild({ species: sp, level: 20, rng: () => 0.5, otId: 1, otSecretId: 1 }),
+      (id) => moves.byId.get(id)?.pp ?? 5,
+    )
+    const full = statsOf(mon, sp).hp
+    expect(full, '7보다는 커야 시험이 성립한다').toBeGreaterThan(7)
+    useSaveStore.setState({ party: [{ ...mon, hp: 7, status: 'psn' as const }] })
+
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const me = useBattleStore.getState().truth!.active.p1a!
+    expect(me.hp).toBe(7)
+    expect(me.maxHp).toBe(full)
+    expect(me.status).toBe('psn')
+  }, 30_000)
+
+  /**
+   * ⚠️ **쓰러진 마리를 앞세우고 열 수 없다.** 원작도 의식이 있는 첫 마리를
+   * 내보낸다. sim은 팀의 0번을 그냥 세우므로 여는 쪽이 앞으로 당겨야 한다
+   */
+  it('선두가 쓰러져 있으면 뒤의 멀쩡한 마리가 나온다', async () => {
+    const species = await loadSpecies()
+    const moves = await loadMoves()
+    const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
+    const mon = (id: number, level: number) => {
+      const m = fillPp(createWild({
+        species: species.get(id), level, rng: () => 0.5, otId: 1, otSecretId: 1,
+      }), pp)
+      return { ...m, hp: statsOf(m, species.get(id)).hp }
+    }
+    const down = { ...mon(RATTATA, 10), hp: 0 }
+    useSaveStore.setState({ party: [down, mon(STARLY, 10)] })
+
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const me = useBattleStore.getState().truth!.active.p1a!
+    expect(me.species).toBe(STARLY)
+    expect(me.hp).toBeGreaterThan(0)
+    // 세이브의 차례는 안 바뀐다 — 앞으로 당기는 것은 배틀에 넘기는 목록뿐이다
+    expect(useSaveStore.getState().party[0]!.species).toBe(RATTATA)
+  }, 30_000)
+
   it('파티 순서를 바꾼다 — 맨 앞이 선두다', async () => {
     const species = await loadSpecies()
     const moves = await loadMoves()
@@ -171,6 +224,97 @@ describe('배틀 스토어', () => {
     const view = useBattleStore.getState().truth
     await useBattleStore.getState().startWild({ species: 19, level: 40 })
     expect(useBattleStore.getState().truth).toBe(view)
+  }, 30_000)
+})
+
+describe('배회 포켓몬', () => {
+  const MESPRIT = 481
+
+  /**
+   * ⚠️ **배회는 만날 때마다 새로 만드는 개체가 아니다** (PARITY §6.3).
+   * 세이브에 적힌 개체값·성격값·남은 체력으로 서야 도망친 그 마리가 같은
+   * 마리로 다시 나온다 — 새로 만들면 깎아 둔 체력이 매번 되살아난다
+   */
+  it('세이브에 적힌 그 개체로 선다', async () => {
+    const roamers = newRoamers()
+    roamers[0] = {
+      active: true, species: MESPRIT, level: 50, pid: 0x1234abcd,
+      ivs: { hp: 31, atk: 5, def: 5, spa: 5, spd: 5, spe: 5 },
+      hp: 23, status: 'par', at: 0,
+    }
+    useSaveStore.setState({ roamers })
+
+    await useBattleStore.getState().startWild({
+      species: MESPRIT, level: 50, roamer: 0,
+    })
+    const foe = useBattleStore.getState().truth!.active.p2a!
+    expect(foe.species).toBe(MESPRIT)
+    expect(foe.hp, '남은 체력이 안 실려 왔다').toBe(23)
+    expect(foe.status).toBe('par')
+  }, 30_000)
+
+  /**
+   * ⚠️ **묶어 두지 않으면 기술을 한 번도 못 맞힌다** (`RoamingPokemon_Main`).
+   * 원작에서 도망은 기술이 아니라 도구·교체와 같은 갈래의 행동이라 우리 명령보다
+   * 먼저 처리된다 — 배회를 쫓는 놀이가 통째로 이 한 줄에 걸려 있다
+   */
+  it('명령을 내리면 그 자리에서 달아난다', async () => {
+    const roamers = newRoamers()
+    roamers[0] = {
+      active: true, species: MESPRIT, level: 50, pid: 7,
+      ivs: { hp: 20, atk: 20, def: 20, spa: 20, spd: 20, spe: 20 },
+      hp: 100, status: 'ok', at: 0,
+    }
+    useSaveStore.setState({ roamers })
+    await useBattleStore.getState().startWild({ species: MESPRIT, level: 50, roamer: 0 })
+
+    const actions = useBattleStore.getState().actions
+    await useBattleStore.getState().choose(actions.find((a) => a.type === 'move')!)
+
+    expect(useBattleStore.getState().phase).toBe('over')
+    expect(useBattleStore.getState().outcome, '이긴 판으로 세면 안 된다').toBe('foeFled')
+    const said = useBattleStore.getState().events
+      .some((e) => e.kind === 'escape' && e.foe === true)
+    expect(said, '달아났다는 사건이 없다').toBe(true)
+  }, 30_000)
+
+  it('배회가 아니면 만피로 선다', async () => {
+    await useBattleStore.getState().startWild({ species: MESPRIT, level: 50 })
+    const foe = useBattleStore.getState().truth!.active.p2a!
+    expect(foe.hp).toBe(foe.maxHp)
+  }, 30_000)
+})
+
+describe('도감 기록', () => {
+  /**
+   * ⚠️ 이 시험이 막는 것: 배틀이 도감을 통째로 못 보는 것. 오래 그랬다 —
+   * 「본 적 있다」가 스크립트·부화·진화에서만 서서, 풀숲에서 백 마리를 만나도
+   * 도감이 비어 있었다 (`BattleSystem_DexFlagSeen`)
+   */
+  it('무대에 선 상대는 본 것으로 적힌다', async () => {
+    expect(dexHas(useSaveStore.getState().pokedex.seen, STARLY)).toBe(false)
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    expect(dexHas(useSaveStore.getState().pokedex.seen, STARLY)).toBe(true)
+  }, 30_000)
+
+  /** 내 포켓몬은 도감에 안 적힌다. 이미 내 것이다 */
+  it('내 쪽은 안 적힌다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const mine = useSaveStore.getState().party[0]!.species
+    expect(dexHas(useSaveStore.getState().pokedex.seen, mine)).toBe(false)
+  }, 30_000)
+
+  /**
+   * 「상대해 봤다」는 원작에 없는 칸이다 — BDSP의 상성 표시가 본다 (§2.22).
+   * ⚠️ **본 것만으로는 안 선다.** 그러면 지금 눈앞의 첫 상대에게도 약점이 뜬다
+   */
+  it('쓰러뜨려야 「상대해 봤다」가 선다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    expect(dexHas(useSaveStore.getState().pokedex.battled, STARLY)).toBe(false)
+
+    await playToEnd()
+    expect(useBattleStore.getState().outcome).toBe('win')
+    expect(dexHas(useSaveStore.getState().pokedex.battled, STARLY)).toBe(true)
   }, 30_000)
 })
 

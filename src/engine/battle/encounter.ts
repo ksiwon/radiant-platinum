@@ -78,6 +78,13 @@ export interface WildEncounter {
    * 이 값을 적는다 — 조개무지는 맵이, 안농은 방이 정하고 PID와 상관없다
    */
   form: number
+  /**
+   * 배회 포켓몬이면 그 자리 번호 (PARITY §6.3). 아니면 null.
+   *
+   * ⚠️ **여기서는 자리 번호만 나른다.** 개체값·남은 체력은 세이브에 있고
+   * 이 파일은 세이브를 안 본다 — 배틀을 여는 쪽이 그 자리를 펴서 쓴다
+   */
+  roamer: number | null
 }
 
 export type Rng = () => number
@@ -271,7 +278,7 @@ export function rollLand(
   const slot = swaps.bump ? swaps.bump(land, picked) : picked
   const s = land[slot]
   if (!s || s.species <= 0) return null
-  return { species: s.species, level: s.level, slot, form: 0 }
+  return { species: s.species, level: s.level, slot, form: 0, roamer: null }
 }
 
 /** 물 조우에 끼어드는 것들 */
@@ -300,7 +307,7 @@ export function rollWater(
   const level = swaps.level
     ? swaps.level(s.min, s.max)
     : s.min + Math.floor(rng() * (s.max - s.min + 1))
-  return { species: s.species, level, slot, form: 0 }
+  return { species: s.species, level, slot, form: 0, roamer: null }
 }
 
 /** 낚싯대가 보는 칸. 이름이 곧 표의 이름이다 */

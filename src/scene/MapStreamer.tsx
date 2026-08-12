@@ -29,6 +29,7 @@ import { useBattleStore } from '../state/battleStore'
 import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
+import { installRoamers, roamersWalked, roamersWarped } from './roamers'
 import { resetStepTile } from './stepSystem'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
@@ -159,6 +160,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 피리는 맵을 벗어나면 끝이다 (`FieldSystem_InitFlagsWarp`). 걸음을 안 세는
     // 대신 이 한 줄이 유일한 만료 조건이라, 빠지면 한 번 불고 영영 도는 값이 된다
     if (useSaveStore.getState().flute !== 0) useSaveStore.setState({ flute: 0 })
+    // 워프는 "방금 어디에서 왔는가"만 적는다. 배회는 안 움직인다
+    // (`FieldSystem_InitFlagsWarp`, PARITY §6.3)
+    roamersWarped(mapId)
     // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
     disarmWarp()
     // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
@@ -250,6 +254,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       fieldScripts.onScriptEnd = null
     }
   }, [generic, locale])
+
+  // 배회 포켓몬을 조우 시스템에 꽂는다 (PARITY §6.3)
+  useEffect(() => installRoamers(), [])
 
   useEffect(() => {
     loadGenericNames(locale).then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
@@ -416,6 +423,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       setZone(displayName(zone))
       setMapId(zone)
       publishMap(zone)
+      // ⚠️ **배회가 움직이는 것은 여기뿐이다** (`FieldSystem_InitFlagsOnMapChange`,
+      // PARITY §6.3). 워프로는 안 움직인다 — 움직이면 문을 들락거리는 것만으로
+      // 배회를 흔들 수 있게 되어 도로를 걸어 찾는 놀이가 사라진다
+      roamersWalked(zone)
       // 마을은 워프가 아니라 **걸어서** 들어간다. 공중날기 자리가 열리는 것은
       // 대개 이쪽이다 — 워프만 보면 마을 열일곱 곳이 영영 안 열린다
       arriveAt(zone)
@@ -432,7 +443,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       const e = encounters.pending
       encounters.pending = null
       encounters.suspended = true
-      void startWild({ species: e.species, level: e.level, form: e.form })
+      void startWild({
+        species: e.species, level: e.level, form: e.form, roamer: e.roamer,
+      })
     }
   })
 

@@ -24,6 +24,9 @@ export type { DexField } from '../engine/pokemon/dex'
 import { DEX_BYTES, dexSet, type DexField } from '../engine/pokemon/dex'
 import { dayNumber, newDaily, type DailyState } from '../engine/world/daily'
 import { newDaycare, type DaycareState } from '../engine/pokemon/breeding'
+import {
+  newRecentRoutes, newRoamers, type RecentRoutes, type Roamer,
+} from '../engine/world/roamer'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -111,7 +114,15 @@ export interface SaveData {
   wallpapers: number[]
   bag: Pockets
   badges: number // 비트마스크
-  pokedex: { seen: DexField; caught: DexField }
+  /**
+   * 도감 비트필드.
+   *
+   * `battled`는 원작에 없는 칸이다 — **BDSP의 상성 표시**가 그걸 본다
+   * (PARITY §2.22). 「효과가 굉장함」은 아무 때나 뜨지 않고, 잡았거나 쓰러뜨려
+   * 본 종에게만 뜬다. `seen`으로는 못 가른다 — 지금 눈앞의 상대는 이미
+   * 본 것이다
+   */
+  pokedex: { seen: DexField; caught: DexField; battled: DexField }
   /**
    * 전국도감을 켰는가 (`Pokedex_IsNationalDexObtained`).
    *
@@ -187,9 +198,18 @@ export interface SaveData {
    * 맡기려 하면 막힌다
    */
   daycare: DaycareState
+  /**
+   * 배회 포켓몬 여섯 자리 (PARITY §6.3). 신오에서 실제로 도는 것은 둘이다.
+   *
+   * 자리마다 개체가 통째로 들어 있다 — 도망친 배회는 **맞은 만큼을 들고**
+   * 다른 도로에서 다시 나온다
+   */
+  roamers: Roamer[]
+  /** 방금 떠나온 맵. 배회가 그리로는 안 간다 (`PlayerRecentRoutes`) */
+  recentRoutes: RecentRoutes
 }
 
-export const SAVE_VERSION = 13
+export const SAVE_VERSION = 15
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -237,7 +257,11 @@ export function createNewSave(): SaveData {
     // 원작도 빈 가방으로 시작한다. 몬스터볼은 예진호수에서 마박사가 준다
     bag: emptyBag(),
     badges: 0,
-    pokedex: { seen: new Uint8Array(DEX_BYTES), caught: new Uint8Array(DEX_BYTES) },
+    pokedex: {
+      seen: new Uint8Array(DEX_BYTES),
+      caught: new Uint8Array(DEX_BYTES),
+      battled: new Uint8Array(DEX_BYTES),
+    },
     nationalDex: false,
     flags: new Uint8Array(FLAG_BYTES),
     vars: new Uint16Array(SAVED_VAR_COUNT),
@@ -255,6 +279,8 @@ export function createNewSave(): SaveData {
     // 그 뒤로는 날이 넘어갈 때만 굴러간다 (PARITY §6.11)
     daily: newDaily(Math.floor(Math.random() * 0x100000000), dayNumber(new Date())),
     daycare: newDaycare(),
+    roamers: newRoamers(),
+    recentRoutes: newRecentRoutes(),
   }
 }
 
@@ -272,6 +298,8 @@ interface SaveStore extends SaveData {
   pendingInit: boolean
   markSeen: (dexNo: number) => void
   markCaught: (dexNo: number) => void
+  /** 쓰러뜨려 봤다고 적는다. 상성 표시가 이걸 본다 */
+  markBattled: (dexNo: number) => void
   /** 전국도감을 켠다 (`Pokedex_ObtainNationalDex`) */
   obtainNationalDex: () => void
   /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
@@ -462,6 +490,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     flute: s.flute,
     daily: s.daily,
     daycare: s.daycare,
+    roamers: s.roamers,
+    recentRoutes: s.recentRoutes,
   }
 }
 
@@ -482,6 +512,17 @@ export const useSaveStore = create<SaveStore>()(
           pokedex: {
             seen: dexSet(s.pokedex.seen, dexNo), // 잡았으면 본 것이기도 하다
             caught: dexSet(s.pokedex.caught, dexNo),
+            // 잡은 것도 「상대해 봤다」다. BDSP의 상성 표시가 그 둘을 같이 본다
+            battled: dexSet(s.pokedex.battled, dexNo),
+          },
+        })),
+
+      markBattled: (dexNo) =>
+        set((s) => ({
+          pokedex: {
+            seen: dexSet(s.pokedex.seen, dexNo),
+            caught: s.pokedex.caught,
+            battled: dexSet(s.pokedex.battled, dexNo),
           },
         })),
 

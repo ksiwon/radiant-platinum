@@ -54,6 +54,8 @@ function feebasHere(): WildEncounter | null {
     level: FEEBAS_LEVELS.min + Math.floor(fishing.rng() * span),
     slot: 0,
     form: 0,
+    // 배회는 낚시로 안 나온다 — 원작도 물 위 조우 자리에서만 물어본다
+    roamer: null,
   }
 }
 

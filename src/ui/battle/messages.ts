@@ -183,6 +183,10 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     }
 
     case 'escape':
+      // 배회 포켓몬이 달아난 자리 (PARITY §6.3). 우리가 도망친 것과 글이 다르다
+      if (e.foe) {
+        return e.actor ? `${withSubject(ctx.label(e.actor))} 도망쳤다!` : '상대가 도망쳤다!'
+      }
       return e.success ? '무사히 도망쳤다!' : '도망칠 수 없다!'
 
     case 'reward': {

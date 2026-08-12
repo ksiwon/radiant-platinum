@@ -9,6 +9,7 @@ import {
   type EncounterTable, type EncountersEx, type Rng, type WildEncounter,
 } from './encounter'
 import { Behavior } from '../map/zone'
+import type { Status } from '../pokemon/instance'
 import { timeOfDayForHour } from '../map/timeOfDay'
 import { MAP_TROPHY_GARDEN } from '../world/daily'
 import { dateGate } from '../world/specialDates'
@@ -46,6 +47,27 @@ export const encounters = {
   } as FieldMods,
   /** 종족 번호 → 타입 둘. 자력·정전기가 본다. 씬이 종족표에서 넣어 준다 */
   typeOf: (() => NO_TYPES) as (species: number) => readonly [number, number],
+  /**
+   * 지금 이 맵에 배회가 나오는가 (PARITY §6.3). 씬이 세이브를 보고 답한다.
+   *
+   * ⚠️ **여기서 세이브를 못 읽는다** — `src/engine`은 스토어에 안 기댄다
+   * (PLAN §3.2). 빈 채로 두면 배회가 없는 게임이 되고, 그래도 풀숲은 돈다
+   */
+  roamerHere: null as ((mapId: number, rng: Rng) => WildEncounter | null) | null,
+  /**
+   * 야생전이 끝났다. 배회의 남은 체력을 적고 자리를 흩는다 (PARITY §6.3).
+   *
+   * 조우와 같은 자리에 두는 이유는 원작이 그렇기 때문이다 — 배회는 무리·꿀나무·
+   * 리펠 걸음과 **같은 구조체**(`SpecialEncounter`)에 산다
+   */
+  roamerAfterBattle: null as ((got: {
+    /** 방금 상대한 배회 자리. 배회가 아니었으면 null */
+    met: number | null
+    mapId: number
+    hp: number
+    status: Status
+    outcome: 'win' | 'caught' | 'other'
+  }) => void) | null,
   /** 씬이 처리해야 할 조우. 처리 후 null로 되돌린다 */
   pending: null as WildEncounter | null,
   /** 판정을 멈추는 스위치 — 전투 중이거나 워프 전이 중일 때 */
@@ -101,6 +123,17 @@ export const encounterSystem = {
     state = newEncounterState()
 
     const rng = encounters.rng
+    // ⚠️ **배회가 야생보다 먼저다.** 원작도 칸을 뽑기 전에 물어본다
+    // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
+    // 표의 칸을 아예 안 굴린다. 뒤에 두면 배회는 「가끔 야생 대신」이 아니라
+    // 「야생을 다 뽑고 나서 덮어쓰는 것」이 되어 확률이 달라진다
+    const roam = encounters.roamerHere?.(world.mapId, rng) ?? null
+    if (roam) {
+      // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —
+      // 뒤의 야생으로 넘어가지 않는다
+      if (!repelBlocks(mods.repelLevel, roam.level)) encounters.pending = roam
+      return
+    }
     const lead = mods.lead
     const typeOf = encounters.typeOf
     const got = kind === 'surf'

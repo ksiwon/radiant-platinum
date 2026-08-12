@@ -279,6 +279,11 @@ export interface FieldServices {
     /** 그 자리의 종족. 없으면 0 */
     trophySpecies: (slot: 0 | 1) => number
   }
+  /** 배회 포켓몬 (PARITY §6.3) — `RoamingPokemon_ActivateSlot` */
+  roamers?: {
+    /** 그 자리를 열고 신오 어딘가에 놓는다. 자리 번호는 `RoamerSlot` */
+    activate: (slot: number) => void
+  }
   /**
    * 육성가와 알 (PARITY §3.2·§3.3) — `scrcmd_daycare.c`.
    *

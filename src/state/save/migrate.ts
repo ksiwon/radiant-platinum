@@ -12,6 +12,7 @@
 // 판이 7에서 처음 올랐고, 그래서 표가 7에서 시작한다.
 import { newDaycare } from '../../engine/pokemon/breeding'
 import { dayNumber, newDaily } from '../../engine/world/daily'
+import { newRecentRoutes, newRoamers } from '../../engine/world/roamer'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -110,6 +111,42 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       : data.boxes
     return { ...data, version: 13, party, boxes }
   },
+
+  /**
+   * 13 → 14. 도감에 「쓰러뜨려 봤다」 칸이 생겼다 (PARITY §2.22).
+   *
+   * ⚠️ **잡은 것을 베낀다.** 0으로 두면 예전 리포트를 이어 온 사람은 다 모은
+   * 도감을 들고도 상성 표시가 하나도 안 뜬다. 잡은 종은 반드시 상대해 본 종이므로
+   * 그만큼은 사실이고, 놓아준 종만 다시 만날 때까지 안 뜬다
+   */
+  13: (data) => {
+    const dex = data.pokedex
+    if (dex === null || typeof dex !== 'object') return { ...data, version: 14 }
+    const caught = (dex as { caught?: unknown }).caught
+    return {
+      ...data,
+      version: 14,
+      pokedex: {
+        ...dex,
+        battled: caught instanceof Uint8Array ? caught.slice() : caught,
+      },
+    }
+  },
+
+  /**
+   * 14 → 15. 배회 포켓몬 여섯 자리가 생겼다 (PARITY §6.3).
+   *
+   * 빈 자리로 시작한다. 여는 것은 이야기이고(`ActivateRoamingPokemon`), 옛
+   * 리포트가 그 자리를 이미 지나왔다면 다시 안 열린다 — **없는 배회를 지어내
+   * 풀어놓지 않는다.** 잃는 것은 이미 지나간 사람의 엠라이트 하나고, 지어내면
+   * 잡은 적 없는 크레세리아가 도감에 뜨는 쪽이 된다
+   */
+  14: (data) => ({
+    ...data,
+    version: 15,
+    roamers: newRoamers(),
+    recentRoutes: newRecentRoutes(),
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

@@ -30,7 +30,7 @@ import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import {
-  createWild, fillPp, PARTY_MAX, statsOf, type PokemonInstance,
+  createWild, fillPp, PARTY_MAX, statsOf, type PokemonInstance, type Status,
 } from '../engine/pokemon/instance'
 import { store as storeInBox } from '../engine/pokemon/boxes'
 import { encounters } from '../engine/battle/encounterSystem'
@@ -68,6 +68,8 @@ export type BattleKind = 'wild' | 'trainer'
  */
 export interface BattleRules {
   noCrit?: boolean
+  /** 배회 포켓몬과의 판 (PARITY §6.3). 묶어 두지 않으면 상대가 달아난다 */
+  roamer?: boolean
 }
 
 /** 키로 찾는 개체 정보. 화면이 이름·모델을 고르는 데 쓴다 */
@@ -95,6 +97,12 @@ export interface WildStart {
    * 안 넘기고, 그러면 기본 모습이다
    */
   form?: number
+  /**
+   * 배회 포켓몬이면 그 자리 번호 (PARITY §6.3).
+   *
+   * 개체는 세이브에 있다 — 여기로는 **어느 자리인지**만 온다
+   */
+  roamer?: number | null
 }
 
 interface BattleState {
@@ -230,6 +238,20 @@ let speciesTable: SpeciesLookup | null = null
 let itemTable: ItemTable | null = null
 /** 기술 번호 → 최대 PP. 레벨업으로 배운 기술의 PP를 채우는 데 쓴다 */
 let ppOf: (move: number) => number = () => 5
+/**
+ * 이번 판의 상대가 배회 포켓몬이면 그 자리 번호 (PARITY §6.3).
+ *
+ * ⚠️ **닫을 때까지 들고 있어야 한다.** 남은 체력을 어느 자리에 적을지가
+ * 여기서만 나온다 — 종족으로 되찾으려 하면 같은 종이 둘 도는 판에서 갈린다
+ */
+let roamerMet: number | null = null
+
+/** 세이브에 적힌 그 배회의 남은 체력과 상태이상. 자리가 비었으면 아무것도 안 바꾼다 */
+function foeVitals(slot: number, maxHp: number | null): { hp: number; status: Status } | object {
+  const saved = useSaveStore.getState().roamers[slot]
+  if (!saved?.active) return {}
+  return { hp: maxHp === null ? saved.hp : Math.min(saved.hp, maxHp), status: saved.status }
+}
 
 /**
  * 전투용 사본.
@@ -314,8 +336,22 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       foe.form = wild.form ?? 0
       const foeSpecies = species.of(foe)
       foe.hp = statsOf(foe, foeSpecies).hp
+      // ⚠️ **배회는 그때그때 만드는 개체가 아니다** (PARITY §6.3). 성격값과
+      // 개체값이 세이브에 적혀 있고, 남은 체력과 상태이상도 지난번 그대로다 —
+      // 여기서 덮어써야 도망친 그 마리가 같은 마리로 다시 선다
+      const at = wild.roamer ?? null
+      if (at !== null) {
+        const saved = useSaveStore.getState().roamers[at]
+        if (saved?.active) {
+          foe.pid = saved.pid
+          foe.ivs = saved.ivs
+          foe.status = saved.status
+          foe.hp = Math.min(saved.hp, statsOf(foe, foeSpecies).hp)
+        }
+      }
+      roamerMet = at
       return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }
-    })
+    }, undefined, wild.roamer == null ? undefined : { roamer: true })
   },
 
   startTrainer: async (trainerId, options) => {
@@ -522,11 +558,29 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         pokedex = {
           seen: dexSet(pokedex.seen, mon.species),
           caught: dexSet(pokedex.caught, mon.species),
+          // 잡은 것도 상대해 본 것이다 (§2.22)
+          battled: dexSet(pokedex.battled, mon.species),
         }
       }
       // 도롱마담은 싸운 땅의 옷감으로 갈아입는다 (PARITY §3.4)
       party = dressBurmy(party)
       useSaveStore.setState({ party, boxes, pokedex })
+      // 배회는 여기서 자리를 옮기거나 지워진다 (PARITY §6.3).
+      //
+      // ⚠️ **만난 판이 아니어도 부른다.** 원작은 야생을 한 판 치를 때마다
+      // 30%로 이 맵의 배회를 흩어 놓는다 — 안 부르면 같은 도로에서 야생만
+      // 잡는 동안 배회가 붙박이가 된다
+      if (get().kind === 'wild') {
+        const foe = get().truth?.active.p2a ?? null
+        encounters.roamerAfterBattle?.({
+          met: roamerMet,
+          mapId: world.mapId,
+          hp: foe?.hp ?? 0,
+          status: foe?.status ?? 'ok',
+          outcome: get().outcome === 'caught' ? 'caught'
+            : get().outcome === 'win' ? 'win' : 'other',
+        })
+      }
       // 레벨이 오른 자리를 진화 큐에 넘긴다. 이긴 판·잡은 판·도망친 판에서만이다
       // (`Battle_FindEvolvingPartyMember`가 그 셋으로 거른다) — 진 판에서는
       // 병원으로 실려 가므로 진화 장면이 끼어들면 안 된다
@@ -593,6 +647,7 @@ async function advance(
   const result = await step(controller)
 
   trackParticipants(result.events)
+  trackDex(result.events, get().roster)
   // 쓰러뜨린 만큼 보상을 준다. 여러 마리가 한 턴에 쓰러질 수 있다.
   //
   // ⚠️ **쓰러진 그 자리에 끼워 넣는다.** 뒤에 몰아 붙이면 상대의 다음 마리가
@@ -683,6 +738,37 @@ function dressBurmy(party: readonly PokemonInstance[]): PokemonInstance[] {
 function trackParticipants(events: readonly BattleEvent[]): void {
   for (const e of events) {
     if (e.kind === 'switch' && e.actor.side === 'p1') participants.add(e.actor.name)
+  }
+}
+
+/**
+ * 무대에 선 것과 쓰러진 것을 도감에 적는다 (`BattleSystem_DexFlagSeen`).
+ *
+ * ⚠️ **여기서 안 적으면 도감이 배틀을 통째로 못 본다.** 지금까지 「본 적 있다」는
+ * 스크립트(`SetSpeciesSeen`)와 부화·진화에서만 섰다 — 풀숲에서 백 마리를
+ * 만나도 도감은 비어 있었다.
+ *
+ * 원작이 거르는 조건 둘을 그대로 옮긴다:
+ *   · **상대 쪽만** 본 것으로 친다. 내 포켓몬은 이미 내 것이다
+ *   · 통신·프론티어는 안 적는다 (우리는 아직 그 판이 없다)
+ *
+ * 「쓰러뜨려 봤다」(`battled`)는 원작에 없는 칸이다 — BDSP의 상성 표시가 본다.
+ */
+function trackDex(events: readonly BattleEvent[], roster: Record<string, RosterEntry>): void {
+  const save = useSaveStore.getState()
+  for (const e of events) {
+    if (e.kind === 'switch') {
+      const at = roster[e.actor.name]
+      if (!at) continue
+      if (at.side === 'p2') save.markSeen(at.species)
+      // ⚠️ **내 도롱충이는 「잡았다」로 적힌다** — 원작이 `Pokedex_Capture`를
+      // 부른다. 배틀이 끝나면서 옷감이 바뀌므로(§3.4) 그 모습을 도감에
+      // 남겨야 하기 때문이다
+      else if (at.species === SPECIES_BURMY) save.markCaught(at.species)
+    } else if (e.kind === 'faint') {
+      const at = roster[e.actor.name]
+      if (at?.side === 'p2') save.markBattled(at.species)
+    }
   }
 }
 
@@ -796,6 +882,7 @@ async function open(
     itemTable = bank
     ppOf = pp
     participants = new Set()
+    roamerMet = null
 
     const party = ensureParty(species, pp)
     const roster: Record<string, RosterEntry> = {}
@@ -805,6 +892,12 @@ async function open(
       }
       return ready(mon, species.of(mon), partyKey(i))
     })
+    // ⚠️ **쓰러진 마리를 앞세우고 배틀을 열 수 없다.** 원작도 첫 번째
+    // **의식이 있는** 마리를 내보낸다 (`BATTLECTX_SELECTED_PARTY_SLOT`).
+    // sim은 팀의 0번을 그냥 세우므로 여기서 앞으로 당긴다 — 키가 같이
+    // 따라가고 세이브 순서는 안 바뀐다 (`applyResults`가 키로 짝짓는다)
+    const awake = team.findIndex((m) => m.mon.hp > 0)
+    if (awake > 0) team.unshift(...team.splice(awake, 1))
 
     const foe = buildFoe({ species, pp })
     foe.team.forEach((m, i) => {
@@ -822,6 +915,7 @@ async function open(
       // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
       ...(rules?.noCrit === true ? { noCrit: true } : {}),
+      ...(rules?.roamer === true ? { roamer: true } : {}),
       ...(items ? { items } : {}),
       ...(doubles ? { doubles: true } : {}),
       // 시합규칙 「교체」는 트레이너전에만 뜻이 있다 — 야생은 다음 마리가 없다.
@@ -831,13 +925,27 @@ async function open(
     })
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
-    trackParticipants(step.events)
+    // ⚠️ **배회의 첫 체력만 화면 쪽에서 고쳐 준다** (PARITY §6.3).
+    //
+    // sim 안의 값은 이미 맞다 (`syncVitals`). 그런데 등장 줄(`|switch|`)은
+    // 상대가 자리에 들어서는 **그 순간** 만들어져서 우리가 값을 맞추기
+    // 한 걸음 앞서 나간다 — 고치지 않으면 첫 타를 맞을 때까지 게이지만
+    // 만피로 거짓말을 한다
+    const met = roamerMet
+    const events = met === null ? step.events
+      : step.events.map((e) => (
+        e.kind === 'switch' && e.actor.side === 'p2'
+          ? { ...e, condition: { ...e.condition, ...foeVitals(met, e.condition.maxHp) } }
+          : e
+      ))
+    trackParticipants(events)
+    trackDex(events, roster)
     set({
       phase: 'running',
-      truth: step.view,
+      truth: events === step.events ? step.view : applyEvents(emptyView(doubles), events),
       // 빈 무대에서 시작한다. 등판도 재생기가 한 박자씩 올린다
       view: emptyView(doubles),
-      events: step.events,
+      events,
       doubles,
       ...turnState(controller),
       roster,

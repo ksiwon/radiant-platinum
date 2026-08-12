@@ -14,8 +14,12 @@ import type { Actor, SlotId } from '../../engine/battle/events'
 import { buildBeats } from '../../engine/battle/playback'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
 import {
-  loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpeciesNames,
+  loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames,
 } from '../../data/gameData'
+import {
+  MATCH_LABEL, moveMatch, shownType, type MoveMatch,
+} from '../../engine/battle/movePreview'
+import { formSpeciesId } from '../../engine/pokemon/form'
 import type { Move } from '../../data/schema'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
@@ -54,6 +58,17 @@ function slotOfKey(key: string): number {
  */
 type MenuPage = 'root' | 'fight' | 'bag' | 'party'
 
+/**
+ * 기술 한 칸이 **고르기 전에** 보여 주는 것 (PARITY §2.22).
+ *
+ * `type`이 기술표의 값과 다를 수 있다 — 잠재파워가 그렇다. 칸 색과 타입 이름도
+ * 이 값을 따라가야 상성 표시와 어긋나지 않는다
+ */
+interface MovePreview {
+  type: number | null
+  match: MoveMatch | null
+}
+
 /** 기술 칸이 타입까지 보여주려면 기술표가 필요하다. 이름만으로는 모자란다 */
 interface Extras {
   types: string[]
@@ -62,6 +77,8 @@ interface Extras {
   /** 특성의 영어 이름. 프로토콜 아이디를 번호로 되돌리는 열쇠다 */
   abilitiesEn: string[]
   move(id: number): Move | undefined
+  /** 그 모습의 타입 둘. 상성 표시가 본다 (§2.22) */
+  typesOf(species: number, form: number): readonly number[] | null
 }
 
 function useNames(): { names: BattleNames | null; extras: Extras | null } {
@@ -78,8 +95,11 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
       // 아이디라, 같은 차례의 영어 이름과 맞춰야 롬 번호가 나온다
       // (`SwitchScreen`의 `abilityIndex`). 6KB짜리라 늘 받아 둔다
       loadLabels('en'),
+      // 종족표는 배틀을 열 때 이미 받아 뒀다 (`battleStore.open`) — 두 번째
+      // 호출은 캐시에서 돌아온다
+      loadSpecies(),
     ])
-      .then(([species, moves, labels, table, items, en]) => {
+      .then(([species, moves, labels, table, items, en, dex]) => {
         if (!alive) return
         setNames({ species, moves, abilities: labels.abilities, items })
         setExtras({
@@ -87,6 +107,8 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
           abilityText: labels.abilityText,
           abilitiesEn: en.abilities,
           move: (id) => table.byId.get(id),
+          // 표에 없는 번호가 오면 상성 칸을 비운다. 화면 하나 때문에 던지지 않는다
+          typesOf: (id, form) => dex.byId.get(formSpeciesId(id, form))?.types ?? null,
         })
       })
       .catch(() => { /* 이름을 못 받으면 아래에서 영어 원문으로 떨어진다 */ })
@@ -99,6 +121,8 @@ export function BattleScreen() {
   const phase = useBattleStore((s) => s.phase)
   // 이미 잡아 본 종이면 상대 판에 공 표시가 뜬다 (원작 `HealthBox_DrawCaughtIcon`)
   const caughtDex = useSaveStore((s) => s.pokedex.caught)
+  // 기술 칸의 상성은 **상대해 본 종에게만** 뜬다 (§2.22)
+  const battledDex = useSaveStore((s) => s.pokedex.battled)
   // 가방 도구를 쓴 주어. 원작도 플레이어 이름으로 부른다
   const playerName = useSaveStore((s) => s.trainer.name)
   const kind = useBattleStore((s) => s.kind)
@@ -166,6 +190,37 @@ export function BattleScreen() {
     const entry: RosterEntry | undefined = roster[key]
     return entry?.nickname ?? names?.species[entry?.species ?? -1] ?? key
   }, [roster, names])
+
+  /**
+   * 기술 칸 밑에 뜨는 상성 (PARITY §2.22). 1배거나 보여 줄 수 없으면 null.
+   *
+   * ⚠️ **겨눈 자리를 본다.** 더블에서 상대 둘의 타입이 다르면 같은 기술도
+   * 오른쪽과 왼쪽이 다르다 — 한 줄에 하나만 적으려고 상대 A로 몰면
+   * 거짓말이 된다. 그래서 접힌 줄에는 아예 안 적고, "누구에게?"에서 적는다
+   */
+  const previewOf = useMemo(() => (action: BattleAction): MovePreview => {
+    const none: MovePreview = { type: null, match: null }
+    if (action.type !== 'move' || action.move === null || !extras) return none
+    const move = extras.move(action.move)
+    if (!move) return none
+    // 잠재파워는 **쓰는 쪽**의 개체값이 타입을 정한다. 타입 이름과 칸 색도 그 값이다
+    const me = view?.active[atSlot === 0 ? 'p1a' : 'p1b'] ?? null
+    const ivs = me ? savedParty[slotOfKey(me.key)]?.ivs ?? null : null
+    const type = shownType(move, ivs)
+
+    const slot: SlotId = action.target === undefined || action.target === 1 ? 'p2a'
+      : action.target === 2 ? 'p2b'
+        : action.target === -1 ? 'p1a' : 'p1b'
+    // 내 편을 겨눈 기술에는 안 뜬다
+    if (slot === 'p1a' || slot === 'p1b') return { type, match: null }
+    const target = view?.active[slot] ?? null
+    if (target === null || target.species === null) return { type, match: null }
+    const types = extras.typesOf(target.species, roster[target.key]?.form ?? 0)
+    return {
+      type,
+      match: moveMatch(move, types, ivs, dexHas(battledDex, target.species)),
+    }
+  }, [extras, view, roster, atSlot, savedParty, battledDex])
 
   const beats = useMemo(() => {
     if (!names) return []
@@ -319,7 +374,7 @@ export function BattleScreen() {
             ) : page === 'fight' ? (
               <MoveMenu
                 actions={moveActions} names={names} extras={extras} onPick={choose}
-                doubles={doubles}
+                doubles={doubles} previewOf={previewOf}
                 targetName={(t) => targetLabel(t, atSlot, view, bare)}
                 onBack={() => setPage('root')}
               />
@@ -538,7 +593,7 @@ function YesNo({ question, onPick }: { question: string; onPick: (yes: boolean) 
 
 /** 기술 네 칸. 원작처럼 타입과 남은 PP를 같이 보여준다 */
 function MoveMenu(
-  { actions, names, extras, onPick, onBack, doubles = false, targetName }: {
+  { actions, names, extras, onPick, onBack, doubles = false, targetName, previewOf }: {
     actions: BattleAction[]
     names: BattleNames | null
     extras: Extras | null
@@ -547,6 +602,8 @@ function MoveMenu(
     doubles?: boolean
     /** 대상 번호 → 화면에 쓸 이름 */
     targetName?: (target: number) => string
+    /** 그 명령을 고르기 전에 보여 줄 것 */
+    previewOf: (a: BattleAction) => MovePreview
   },
 ) {
   /**
@@ -589,8 +646,11 @@ function MoveMenu(
             {i === aimCursor && <span className={css.caret} aria-hidden />}
             <span className={css.face}>
               <span className={css.dot} aria-hidden />
-              <span className={css.label}>
-                {a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
+              <span className={css.labelCol}>
+                <span className={css.label}>
+                  {a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
+                </span>
+                <MatchLine match={previewOf(a).match} />
               </span>
             </span>
           </button>
@@ -599,16 +659,33 @@ function MoveMenu(
       </>
     )
   }
-  return <MoveRows rows={rows} names={names} extras={extras} onPick={pick} onBack={onBack} />
+  return (
+    <MoveRows
+      rows={rows} names={names} extras={extras} onPick={pick} onBack={onBack}
+      // 접힌 줄에는 후보가 하나일 때만 적는다. 여럿이면 자리마다 다르다
+      previewOf={(a) => {
+        const at = previewOf(a)
+        return a.type === 'move' && (groups.get(a.slot)?.length ?? 1) > 1
+          ? { type: at.type, match: null } : at
+      }}
+    />
+  )
+}
+
+/** 기술 이름 밑 한 줄. 상성이 없으면 자리도 안 잡는다 */
+function MatchLine({ match }: { match: MoveMatch | null }) {
+  if (match === null) return null
+  return <span className={`${css.matchLine} ${css.matchTone[match]}`}>{MATCH_LABEL[match]}</span>
 }
 
 function MoveRows(
-  { rows: actions, names, extras, onPick, onBack }: {
+  { rows: actions, names, extras, onPick, onBack, previewOf }: {
     rows: BattleAction[]
     names: BattleNames | null
     extras: Extras | null
     onPick: (a: BattleAction) => void
     onBack: () => void
+    previewOf: (a: BattleAction) => MovePreview
   },
 ) {
   const cursor = useListCursor(actions.length, (i) => {
@@ -620,8 +697,8 @@ function MoveRows(
       {actions.map((action, i) => {
         if (action.type !== 'move') return null
         const label = (action.move !== null ? names?.moves[action.move] : null) ?? action.name
-        const move = action.move !== null ? extras?.move(action.move) : undefined
-        const type = move ? extras?.types[move.type] : undefined
+        const { type: typeId, match } = previewOf(action)
+        const type = typeId !== null ? extras?.types[typeId] : undefined
         // PP를 못 푸는 칸이 있다 — 발버둥이 그렇다. 그때는 오른쪽을 비운다
         const hasPp = action.pp !== undefined && action.maxPp !== undefined
         const ppClass = !hasPp ? ''
@@ -632,14 +709,25 @@ function MoveRows(
           <button key={`m${action.slot}`}
             className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
             // 기술 칸의 색은 **타입 색**이다. 색만 보고도 무엇을 고르는지 안다
-            style={move ? { ['--tint' as string]: typeColor(move.type) } : undefined}
+            style={typeId !== null ? { ['--tint' as string]: typeColor(typeId) } : undefined}
             onClick={() => onPick(action)}>
             {i === cursor && <span className={css.caret} aria-hidden />}
             <span className={css.face}>
               <span className={css.dot} aria-hidden />
               <span className={css.labelCol}>
                 <span className={css.label}>{label}</span>
-                {type !== undefined && <span className={css.subLine}>{type}</span>}
+                {/*
+                  타입과 상성이 **한 줄에 같이** 선다. BDSP는 타입을 글자 대신
+                  아이콘으로 놓아서 밑줄이 통째로 비지만, 우리 왼쪽에 있는 것은
+                  점 하나뿐이라 그 점만으로는 무슨 타입인지 못 읽는다
+                */}
+                {type !== undefined && (
+                  <span className={css.subLine}>
+                    {type}
+                    {match !== null && <span className={css.sep} aria-hidden>·</span>}
+                    <MatchLine match={match} />
+                  </span>
+                )}
               </span>
               {hasPp && (
                 <span className={`${css.pp} ${ppClass}`}>

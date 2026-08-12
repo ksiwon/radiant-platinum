@@ -3,7 +3,7 @@
 // 배경을 칠하지 않는다. 무대(`scene/battle/BattleStage`)가 뒤에서 렌더되고 이
 // 계층은 그 위에 얹히는 정보만 담당한다. 무대가 없는 경우(타이틀에서 배틀을
 // 직접 연 개발용 경로)에만 `fallback`이 임시 배경을 깐다.
-import { globalStyle, keyframes, style } from '@vanilla-extract/css'
+import { globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 /** 떠 있는 판의 공통 재질. 무대가 비치되 글씨는 읽혀야 한다 */
@@ -442,12 +442,34 @@ export const label = style({
   textShadow: '0 1px 2px rgba(0,0,0,0.55)',
 })
 
-/** 기술 타입·교체 레벨처럼 이름을 거드는 줄 */
+/**
+ * 기술 타입·교체 레벨처럼 이름을 거드는 줄.
+ *
+ * ⚠️ **`opacity`가 아니라 글자색이다.** 투명도는 자식까지 곱해져서, 이 줄 안에
+ * 들어오는 상성 표시(`matchLine`)의 색을 되돌릴 방법이 없어진다
+ */
 export const subLine = style({
   fontSize: 11,
   fontWeight: 500,
   letterSpacing: '0.04em',
-  opacity: 0.75,
+  color: 'rgba(255, 255, 255, 0.75)',
+})
+
+/** 타입과 상성 사이의 가운뎃점 */
+export const sep = style({ margin: '0 5px', color: 'rgba(255, 255, 255, 0.4)' })
+
+/**
+ * 「효과가 굉장함」 (PARITY §2.22).
+ *
+ * 상자를 따로 두지 않는다 — 타입 이름과 같은 줄에 이어 붙이고 색으로만 가른다.
+ * 네 칸마다 알약이 하나씩 더 붙으면 기술 목록이 표가 된다
+ */
+export const matchLine = style({ fontWeight: 700 })
+
+export const matchTone = styleVariants({
+  super: { color: '#ffd166' },
+  resisted: { color: '#8fb8d8' },
+  immune: { color: '#ff8f8f' },
 })
 
 /** 오른쪽 끝의 PP. 큰 숫자 옆에 작은 분모 — 남은 값에 눈이 먼저 간다 */

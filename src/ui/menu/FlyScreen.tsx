@@ -26,6 +26,7 @@ import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { assets, readJson } from '../../data/providers/assetProvider'
 import { MenuScreen } from './MenuScreen'
 import { useMenuKeys } from './useMenuKeys'
+import { roamersFlew } from '../../scene/roamers'
 import * as own from './flyScreen.css'
 import { ZOOM } from './flyScreen.css'
 
@@ -85,6 +86,10 @@ export function FlyScreen() {
     if (!spot || !unlocked) return
     const target = spawnWarp(spot.spawn, 'fly')
     if (!target) return
+    // ⚠️ **날면 배회가 전부 흩어진다** (`FieldSystem_SetFlyFlags`, PARITY §6.3).
+    // 이게 없으면 배회를 찾아 놓고 날아가서 잡는 것이 되어, 도로를 걸어
+    // 뒤쫓는다는 규칙이 통째로 무의미해진다
+    roamersFlew()
     world.pending = target
     closeAll()
   }

@@ -9,6 +9,7 @@
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
+//     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
 //
 // ⚠️ **이 프로젝트에는 여태 브라우저 자동화가 없었다.** 그래서 "수치는 맞는데
@@ -112,7 +113,10 @@ async function startVite(port) {
   for (;;) {
     if (dead !== null) throw new Error(`vite가 죽었다 (${String(dead)})\n${log}`)
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(2000) })
+      // ⚠️ **두드리는 시간이 넉넉해야 한다.** 첫 요청은 vite가 index.html을
+      // 변환하면서 답하므로 기계가 바쁘면 몇 초가 걸린다 — 2초에서 끊으면
+      // 서버는 멀쩡히 떠 있는데 3분 내내 "안 떴다"로 돌다가 죽는다
+      const r = await fetch(url, { signal: AbortSignal.timeout(20_000) })
       if (r.ok) break
     } catch { /* 아직 안 떴다 */ }
     if (Date.now() > until) throw new Error(`vite가 안 떴다 (3분)\n${log}`)
@@ -395,10 +399,29 @@ async function main() {
       }, give.split(',').map((one) => one.split(':').map(Number)))
       await page.waitForTimeout(Number(flag('giveAfter', 1500)))
     }
+    // 도감에 「상대해 봤다」로 적어 둔다 — `--dex=19,25`.
+    //
+    // 기술 칸의 상성 표시는 상대해 본 종에게만 뜬다 (PARITY §2.20). 이걸 안 적고
+    // 야생전을 열면 그 줄이 비어 있는 것이 **맞는 화면**이라, 안 뜨는 것을 보고
+    // 고장으로 읽게 된다
+    const dex = flag('dex')
+    if (dex) {
+      await page.evaluate((list) => { globalThis.pt.dex(...list) }, dex.split(',').map(Number))
+    }
     // 야생전을 연다 — `--wild=479:30:2`(종족:레벨:폼).
     //
     // ⚠️ **배틀 무대에 무엇이 서는지는 이 길로만 본다.** 확인 지점에서 풀숲을
     // 밟아 나오기를 기다리면 무엇이 나올지 못 고른다
+    // 배회 포켓몬을 열고 곧바로 만난다 — `--roam=0:60`(자리:남은 체력).
+    // 이야기로 여는 자리가 예진호수와 만월도뿐이라 그 앞까지 몰고 갈 수 없다
+    const roam = flag('roam')
+    if (roam) {
+      const [slot, hp] = roam.split(':').map(Number)
+      await page.evaluate(async ([s, h]) => {
+        await globalThis.pt.roam(s, h)
+      }, [slot ?? 0, hp])
+      await page.waitForTimeout(Number(flag('wildAfter', 8000)))
+    }
     const wild = flag('wild')
     if (wild) {
       const [species, level, form] = wild.split(':').map(Number)

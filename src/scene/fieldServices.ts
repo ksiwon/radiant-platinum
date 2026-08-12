@@ -30,6 +30,8 @@ import {
   caughtAt, eggFrom, MET_DAYCARE, metToday, SPECIAL_MET_BASE,
 } from '../engine/pokemon/origin'
 import { encounters } from '../engine/battle/encounterSystem'
+import { activateRoamer } from './roamers'
+import { computeStats } from '../engine/pokemon/stats'
 import {
   changeForm, GIRATINA_ORIGIN, giratinaForm as giratinaFormOf, ITEM_GRISEOUS_ORB,
   SHAYMIN_LAND, SPECIES_GIRATINA, SPECIES_ROTOM, SPECIES_SHAYMIN, type FormTables,
@@ -656,6 +658,27 @@ const services: FieldServices = {
       if (!table) return 0
       const { daily, nationalDex } = useSaveStore.getState()
       return trophySpecies(daily, table, nationalDex)[slot] ?? 0
+    },
+  },
+
+  /**
+   * 배회 포켓몬 (PARITY §6.3).
+   *
+   * 최대 체력은 종족값 표에서 온다 — 개체값까지 넣고 실제로 계산해야
+   * 「만피로 시작해서 맞은 만큼 들고 다닌다」가 맞는 수가 된다
+   */
+  roamers: {
+    activate: (slot) => {
+      activateRoamer(slot, (species, level, ivs) => {
+        const table = speciesTable
+        if (!table) return null
+        return computeStats({
+          base: table.get(species).stats, ivs, level, speciesId: species,
+          evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
+          // 성격은 체력에 안 걸린다. 그래서 아무 값이나 넣어도 같은 수가 나온다
+          nature: 0,
+        }).hp
+      })
     },
   },
 

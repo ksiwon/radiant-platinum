@@ -17,6 +17,9 @@ import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
+import { activateRoamer } from '../scene/roamers'
+import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
+import { computeStats } from '../engine/pokemon/stats'
 
 /** 검색 결과에서 한 번에 보여줄 줄 수. 928명이라 전부 찍으면 콘솔이 막힌다 */
 const MAX_ROWS = 40
@@ -105,6 +108,39 @@ export function installDevConsole(): void {
     find,
     give,
     heal,
+    /**
+     * 도감에 「상대해 봤다」로 적는다 (PARITY §2.22).
+     *
+     * 기술 칸의 상성 표시가 이 값을 본다 — 처음 보는 종에게는 안 뜨므로,
+     * 그 화면을 보려면 한 번 쓰러뜨려 보거나 여기서 적어 두어야 한다
+     */
+    dex: (...species: number[]) => {
+      for (const id of species) useSaveStore.getState().markBattled(id)
+      return species.length
+    },
+    /**
+     * 배회 포켓몬 한 자리를 열고 그 자리와 곧바로 배틀을 연다 (PARITY §6.3).
+     *
+     * 이야기로 여는 자리는 예진호수와 만월도뿐이라, 그 앞까지 안 가고
+     * 확인하려면 이 길이 있어야 한다. `hp`를 주면 그만큼 깎아 둔 채로 만난다
+     */
+    roam: async (slot = 0, hp?: number) => {
+      const species = ROAMER_SPECIES[slot]
+      const level = ROAMER_LEVEL[slot]
+      if (species === undefined || level === undefined) return null
+      const table = await loadSpecies()
+      activateRoamer(slot, (id, at, ivs) => computeStats({
+        base: table.get(id).stats, ivs, level: at, speciesId: id,
+        evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 }, nature: 0,
+      }).hp)
+      if (hp !== undefined) {
+        const roamers = [...useSaveStore.getState().roamers]
+        roamers[slot] = { ...roamers[slot]!, hp }
+        useSaveStore.setState({ roamers })
+      }
+      await useBattleStore.getState().startWild({ species, level, roamer: slot })
+      return useSaveStore.getState().roamers[slot]
+    },
     party: show,
     /** 리포트를 지우고 새 판으로. 설정의 "처음부터"와 같은 것이다 */
     // ⚠️ **백업을 건너뛴다.** 개발 중에 리셋을 스무 번 누르면 `.rpsave` 스무 개가
@@ -157,6 +193,8 @@ export function installDevConsole(): void {
     '  pt.trainer(250)      트레이너전 시작\n' +
     '  pt.wild(403, 12)     야생전 시작 (종족번호, 레벨, 폼)\n' +
     '  pt.give(392, 50)     파티에 넣기 (종족번호, 레벨)\n' +
+    '  pt.dex(19, 25)       도감에 「상대해 봤다」로 적기 (상성 표시가 본다)\n' +
+    '  pt.roam(0, 60)       배회 포켓몬 열고 만나기 (자리, 남은 체력)\n' +
     '  pt.heal()            파티 회복\n' +
     '  pt.party()           파티 상태\n' +
     '  pt.reset()           세이브 초기화\n' +

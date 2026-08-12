@@ -227,8 +227,13 @@ export type BattleEvent =
   // 봐야 하기 때문이다 — 볼이 흔들린 뒤에 야생이 반격한다
   /** 볼을 던졌다. `shakes`는 0~3이고 잡히면 4다 */
   | { kind: 'ball'; actor: Actor; ball: number; shakes: number; caught: boolean }
-  /** 도망을 시도했다 */
-  | { kind: 'escape'; success: boolean }
+  /**
+   * 도망을 시도했다.
+   *
+   * `foe`가 서면 **상대가 달아난 것**이다 — 배회 포켓몬이 그렇다 (PARITY §6.3).
+   * 그때는 `actor`가 달아난 마리이고 판이 그 자리에서 끝난다
+   */
+  | { kind: 'escape'; success: boolean; foe?: boolean; actor?: Actor }
   /**
    * 경험치를 받았다. `levels`는 새로 도달한 레벨.
    *

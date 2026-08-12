@@ -220,6 +220,7 @@ export class BattleSession {
     // p2가 들어오는 순간 배틀이 시작되고 첫 `|request|`가 나간다. PP는 그 전에
     // 맞춰야 요청에 실린 숫자부터 우리 값이다 (실측으로 확인했다)
     if (options.basePp) this.syncPp(0, options.player.team, options.basePp)
+    this.syncVitals(0, options.player.team)
     // ⚠️ **여기서 눕혀야 한다.** `>player p2`가 들어오는 순간 배틀이 시작되고
     // 1턴 요청이 그 자리에서 만들어진다 — 그때 빈 턴 칸에 PP가 남아 있으면
     // sim이 "아직 쓸 기술이 있다"고 보고 발버둥을 안 준다. PP가 다 떨어진 채로
@@ -233,6 +234,8 @@ export class BattleSession {
       team: Teams.pack(options.foe.team.map((m) => toSet(m, foeIdle))),
     })}`)
     if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
+    // 상대 쪽도 맞춘다 — 배회 포켓몬이 맞은 채로 다시 나온다 (PARITY §6.3)
+    this.syncVitals(1, options.foe.team)
     // 이제 상대 것도 눕힌다. 그쪽 첫 요청은 이미 나갔지만 상관없다 — 우리가
     // 그 칸을 쓸지 묻는 자리(`hasIdle`)는 요청이 아니라 개체를 본다
     this.lowerIdle()
@@ -359,6 +362,46 @@ export class BattleSession {
    * 붙인 빈 턴 칸이 진짜 물장구를 덮어쓴다 — 그 칸은 대응하는 세이브 칸이
    * 없으므로 여기서 건드리지 않는 것이 맞다
    */
+  /**
+   * 세이브의 **남은 체력과 상태이상**을 sim의 개체에 밀어 넣는다.
+   *
+   * ⚠️ **없으면 배틀이 파티를 통째로 낫게 한다.** sim의 팀 목록에는 PP와
+   * 마찬가지로 체력 칸도 없어서, 무엇을 넣든 개체가 만피·무상태로 선다.
+   * 7밖에 안 남은 모부기가 배틀에 들어서면 55로 서고, 배틀이 끝나면
+   * `applyResults`가 그 55를 세이브에 도로 적는다 — 포켓몬센터에 갈 이유도,
+   * 독에 걸릴 이유도 없어진다. 실제로 그렇게 돌고 있었다.
+   *
+   * PP와 같은 자리에서, 첫 `|request|`가 나가기 전에 맞춘다.
+   *
+   * ⚠️ **전부 쓰러진 팀은 손대지 않는다.** 원작에서는 그 상태로 배틀이 열릴 수
+   * 없다(먼저 눈앞이 캄캄해진다). sim에 넣으면 시작하자마자 무너지므로,
+   * 있을 수 없는 자리에서는 조용히 지금까지대로 둔다
+   */
+  private syncVitals(side: 0 | 1, team: readonly SideMon[]): void {
+    const simSide = this.raw.battle?.sides[side]
+    if (!simSide) return
+    if (team.every((m) => m.mon.hp <= 0)) return
+    for (const p of simSide.pokemon) {
+      const mine = team.find((m) => m.key === p.name)
+      if (!mine) continue
+      p.hp = Math.max(0, Math.min(mine.mon.hp, p.maxhp))
+      p.fainted = p.hp === 0
+      const status = mine.mon.status === 'ok' ? '' : mine.mon.status
+      // 우리 이름과 sim의 이름이 같은 글자다 — 옮겨 적을 표가 필요 없다
+      p.status = status as typeof p.status
+      // 잠든 턴 수까지 옮긴다. 안 옮기면 sim이 새로 굴려서, 재우고 리포트를
+      // 쓴 다음 이어 하면 잠이 처음부터 다시 시작한다
+      p.statusState = {
+        ...p.statusState,
+        id: status,
+        ...(status === 'slp' ? { time: Math.max(1, mine.mon.statusTurns) } : {}),
+      } as typeof p.statusState
+    }
+    // ⚠️ **남은 마릿수도 같이 고친다.** 이걸 안 맞추면 sim이 이미 쓰러진 벤치를
+    // 아직 살아 있다고 세어서, 마지막 한 마리가 쓰러져도 배틀이 안 끝난다
+    simSide.pokemonLeft = simSide.pokemon.filter((p) => !p.fainted).length
+  }
+
   private syncPp(side: 0 | 1, team: readonly SideMon[], basePp: (move: number) => number): void {
     const pokemon = this.raw.battle?.sides[side]?.pokemon
     if (!pokemon) return
