@@ -30,6 +30,9 @@ import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
+import {
+  journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins,
+} from './journal'
 import { resetStepTile } from './stepSystem'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
@@ -163,6 +166,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 워프는 "방금 어디에서 왔는가"만 적는다. 배회는 안 움직인다
     // (`FieldSystem_InitFlagsWarp`, PARITY §6.3)
     roamersWarped(mapId)
+    // 노트도 여기서 한 줄 적는다 — 굴/건물에서 나왔거나, 아직 못 이긴
+    // 체육관에 들어섰거나, 처음 온 마을이거나 (PARITY §7.4)
+    journalChangedMap(from?.id ?? mapId, mapId)
+    // 야생을 몇 마리 이겼는지는 맵마다 다시 센다 (`FieldMapChange_UpdateGameData`)
+    journalResetWildWins()
     // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
     disarmWarp()
     // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
@@ -194,6 +202,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 실내는 그 격자를 따로 받아야 해서 오버월드로 한 번 세운 뒤 갈아 끼운다 —
   // 첫 프레임에 빈 화면을 안 보이려고
   useEffect(() => {
+    // 노트의 쪽을 넘기고 오늘 머리글을 적는다 (`FieldTask_LoadSavedGameMap`).
+    // ⚠️ **맵을 세우기 전이다** — 머리글의 자리는 리포트에 적힌 그 자리고,
+    // 확인 지점으로 뛰어든 판에서도 세이브가 가리키는 곳이어야 한다
+    journalEnterMap(useSaveStore.getState().position.map)
     enter(initial, spawn.map, spawn.x, spawn.z, 0)
     // 시험용 확인 지점으로 들어온 판이면 세이브 자리를 안 들른다. 잠깐이라도
     // 주인공 방을 비추고 가면 무엇을 보고 있는지 헷갈린다 — 곧 `devWarp.tick`이
@@ -427,6 +439,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // PARITY §6.3). 워프로는 안 움직인다 — 움직이면 문을 들락거리는 것만으로
       // 배회를 흔들 수 있게 되어 도로를 걸어 찾는 놀이가 사라진다
       roamersWalked(zone)
+      // ⚠️ **`arriveAt`보다 먼저다.** 노트의 「도착!」은 그 자리가 아직 안 열려
+      // 있을 때만 적히는데, `arriveAt`이 먼저 돌면 방금 연 자리라 안 적힌다
+      journalArrived(zone)
       // 마을은 워프가 아니라 **걸어서** 들어간다. 공중날기 자리가 열리는 것은
       // 대개 이쪽이다 — 워프만 보면 마을 열일곱 곳이 영영 안 열린다
       arriveAt(zone)

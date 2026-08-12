@@ -200,6 +200,13 @@ const EXTRA_BANKS = [
   'TEXT_BANK_MONTH_NAMES',
   // 타운맵이 커서 아래 칸의 이름을 여기서 읽는다 (`tmap_block.dat`의 `areaDescString`)
   'TEXT_BANK_TOWN_MAP',
+  // 모험노트 103줄. 요일 일곱 · 자리 일과 서른아홉 · 잡음/쓰러뜨림 여덟 ·
+  // 트레이너 넷 · 통신 마흔넷. 스크립트가 안 가리키는 응용 프로그램이다
+  // (`applications/journal_display`)
+  'TEXT_BANK_JOURNAL_ENTRIES',
+  // 노트의 빈칸 둘이 다른 뱅크를 본다 (`StringTemplate_SetGymName` ·
+  // `StringTemplate_SetTimeOfDay`) — 체육관 여덟 이름과 시간대 넷
+  'TEXT_BANK_GYM_NAMES', 'TEXT_BANK_TIMES_OF_DAY',
 ]
 
 function main() {

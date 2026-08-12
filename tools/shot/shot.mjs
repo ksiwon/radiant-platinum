@@ -422,6 +422,11 @@ async function main() {
       }, [slot ?? 0, hp])
       await page.waitForTimeout(Number(flag('wildAfter', 8000)))
     }
+    // 모험노트를 받고 오늘 쪽을 채운다 — `--note`.
+    // 이야기로는 축복시티에서 받고 하루를 돌아다녀야 한 쪽이 찬다
+    if (args.includes('--note')) {
+      await page.evaluate(() => { globalThis.pt.note() })
+    }
     const wild = flag('wild')
     if (wild) {
       const [species, level, form] = wild.split(':').map(Number)

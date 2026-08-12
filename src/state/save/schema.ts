@@ -14,6 +14,9 @@ import { BOX_COUNT, BOX_SIZE } from '../../engine/pokemon/boxes'
 import { MAX_QUANTITY, POCKET_SIZE } from '../../engine/bag/bag'
 import { FLAG_COUNT, SAVED_VAR_COUNT } from '../../engine/script/vars'
 import { ROAMER_SLOT_COUNT } from '../../engine/world/roamer'
+import {
+  MAX_JOURNAL_ENTRIES, MAX_LOCATION_EVENTS, MAX_ONLINE_EVENTS,
+} from '../../engine/world/journal'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -266,6 +269,25 @@ export const saveSchema = z.object({
     current: int(0, 592),
     previous: int(0, 592),
   }),
+  /**
+   * 모험노트 열 쪽 (PARITY §7.4) — `JournalEntry[MAX_JOURNAL_ENTRIES]`.
+   *
+   * ⚠️ **자리 일 넷은 원작이 묶은 u32 그대로다.** 풀어서 담으면 겹침을 거르는
+   * 규칙(`locationEvents[i - 1] >> 16`)을 옮길 수가 없다
+   */
+  journal: z.array(z.object({
+    title: z.object({
+      year: int(0, 127), month: int(0, 12), day: int(0, 31), week: int(0, 7),
+      mapId: int(0, 8191),
+    }),
+    locationEvents: z.array(int(0, 0xffffffff)).length(MAX_LOCATION_EVENTS),
+    mon: z.object({
+      result: int(0, 2), variant: int(0, 3), timeOfDay: int(0, 15),
+      gender: int(0, 3), species: int(0, 493),
+    }),
+    trainer: z.object({ standard: int(0, 1), trainerId: int(0, 32767), mapId: int(0, 592) }),
+    online: z.array(z.object({ type: int(0, 63), result: int(0, 15) })).length(MAX_ONLINE_EVENTS),
+  })).length(MAX_JOURNAL_ENTRIES),
 })
 
 /**

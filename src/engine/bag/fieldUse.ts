@@ -79,6 +79,8 @@ export type FieldItemAction =
   | { kind: 'bike' }
   /** 낚싯대를 던진다 */
   | { kind: 'fish'; rod: Rod }
+  /** 화면 하나를 연다. 모험노트처럼 **여는 것이 전부인** 도구다 */
+  | { kind: 'screen'; screen: 'journal' }
   /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
   | { kind: 'blocked'; why: string }
   /** 그 계통이 아직 없다 */
@@ -102,7 +104,6 @@ export interface FieldContext {
 const MISSING: Partial<Record<number, string>> = {
   [FieldUse.TOWN_MAP]: '타운맵',
   [FieldUse.EXPLORER_KIT]: '지하통로',
-  [FieldUse.JOURNAL]: '모험노트',
   [FieldUse.MAIL]: '편지',
   [FieldUse.BERRY]: '나무열매 밭',
   [FieldUse.POFFIN_CASE]: '포핀',
@@ -133,6 +134,11 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       return { kind: 'party', use: 'evoStone' }
     case FieldUse.BICYCLE:
       return { kind: 'bike' }
+
+    // 모험노트는 여는 것이 전부다 (`ItemUseFunc_Journal`). 어디서든 열린다 —
+    // 원작도 막는 자리가 없다
+    case FieldUse.JOURNAL:
+      return { kind: 'screen', screen: 'journal' }
 
     case FieldUse.OLD_ROD:
     case FieldUse.GOOD_ROD:

@@ -38,6 +38,9 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   specialMetLocations: 'special_met_location_names',
   monthNames: 'month_names',
   townMap: 'town_map',
+  journal: 'journal_entries',
+  gymNames: 'gym_names',
+  timesOfDay: 'times_of_day',
 }
 
 describe('메뉴 글', () => {

@@ -15,6 +15,7 @@ import { OptionsScreen } from './OptionsScreen'
 import { PartyScreen } from './PartyScreen'
 import { PokedexScreen } from './PokedexScreen'
 import { FlyScreen } from './FlyScreen'
+import { JournalScreen } from './JournalScreen'
 import { SaveScreen } from './SaveScreen'
 import { ShopScreen } from './ShopScreen'
 import { StartMenu } from './StartMenu'
@@ -58,6 +59,7 @@ export function MenuLayer() {
     case 'options': return <OptionsScreen />
     case 'shop': return <ShopScreen />
     case 'box': return <BoxScreen />
+    case 'journal': return <JournalScreen />
     case 'chooseStarter': return <ChooseStarter />
     case 'evolution': return <EvolutionScreen />
     case 'naming': return <NameScreen />

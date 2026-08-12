@@ -10,7 +10,7 @@
 // ⚠️ 그림은 **원작 아이콘**이다. 배틀 그림을 줄여 쓰면 서른 칸이 그림으로 덮인다
 // (`data/pokeIcons.png`). 벽지도 원작 것이다 — 박스 열여덟 개를 눈으로 가르는
 // 것이 이름이 아니라 벽지 색이다.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loadBoxWallpapers, loadPokeIcons, loadSpecies, loadSpeciesNames } from '../../data/gameData'
 import type { SpeciesTable } from '../../data/gameData'
 import type { BoxWallpapers, PokeIcons } from '../../data/schema'
@@ -24,6 +24,8 @@ import type { BoxSpot } from '../../engine/pokemon/boxes'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
+import { LocationEvent } from '../../engine/world/journal'
+import { journalPlain } from '../../scene/journal'
 import { MenuScreen } from './MenuScreen'
 import { boxWallpaper, monIcon } from './pokeIcon'
 import { useMenuKeys, wrapCursor } from './useMenuKeys'
@@ -69,6 +71,8 @@ export function BoxScreen() {
   const box = useSaveStore((s) => s.currentBox)
   const wallpapers = useSaveStore((s) => s.wallpapers)
   const setCurrentBox = useSaveStore((s) => s.setCurrentBox)
+  // 이 화면에서 한 마리라도 옮겼는가. 노트가 나갈 때 이 값을 본다
+  const moved = useRef(false)
   const depositMon = useSaveStore((s) => s.depositMon)
   const withdrawMon = useSaveStore((s) => s.withdrawMon)
   const swapBoxSlots = useSaveStore((s) => s.swapBoxSlots)
@@ -129,7 +133,7 @@ export function BoxScreen() {
         : { pane: 'party', at: cursor.at })
       return
     }
-    if (place(held)) setHeld(null)
+    if (place(held)) { moved.current = true; setHeld(null) }
   }
 
   const place = (from: Held): boolean => {
@@ -174,6 +178,10 @@ export function BoxScreen() {
     cancel: () => {
       setNotice(null)
       if (held !== null) { setHeld(null); return }
+      // 한 마리라도 옮겼으면 노트에 「박스를 썼다」 (PARITY §7.4).
+      // ⚠️ **연 것만으로는 안 적는다** — 원작도 실제로 옮겼을 때만 깃발을 세운다
+      // (`BoxAppMan_FlagRecordBoxUseInJournal`)
+      if (moved.current) journalPlain(LocationEvent.USED_PC_BOX)
       back()
     },
   })

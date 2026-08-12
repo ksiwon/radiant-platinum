@@ -88,7 +88,7 @@ function pad2(n: number): string {
  * 한다). 그래서 **제 번호로 시작하는 이름은 단위가 이미 붙은 것**으로 보고
  * 숫자만 넣는다 — 안 그러면 한국어가 "1월월"이 된다
  */
-function monthText(month: number, names: MemoNames): string {
+export function monthText(month: number, names: MemoNames): string {
   const at = month < 1 || month > 12 ? 1 : month
   const name = names.month[at - 1]
   if (name === undefined) return String(at)

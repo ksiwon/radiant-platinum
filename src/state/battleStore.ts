@@ -30,8 +30,10 @@ import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import {
-  createWild, fillPp, PARTY_MAX, statsOf, type PokemonInstance, type Status,
+  createWild, fillPp, genderOf, PARTY_MAX, statsOf, type PokemonInstance, type Status,
 } from '../engine/pokemon/instance'
+import { timeOfDayForHour } from '../engine/map/timeOfDay'
+import { journalBeatTrainer, journalWildBattle } from '../scene/journal'
 import { store as storeInBox } from '../engine/pokemon/boxes'
 import { encounters } from '../engine/battle/encounterSystem'
 import { LeadAbility, leadHas, wildGender, wildNature } from '../engine/battle/encounterLead'
@@ -246,6 +248,12 @@ let ppOf: (move: number) => number = () => 5
  */
 let roamerMet: number | null = null
 
+/**
+ * 방금 상대한 트레이너 번호. 이긴 판만 노트에 적으려면 배틀이 끝난 뒤에도
+ * 알아야 한다 (`JournalEntry_CreateAndSaveEventTrainer`, PARITY §7.4)
+ */
+let metTrainer: number | null = null
+
 /** 세이브에 적힌 그 배회의 남은 체력과 상태이상. 자리가 비었으면 아무것도 안 바꾼다 */
 function foeVitals(slot: number, maxHp: number | null): { hp: number; status: Status } | object {
   const saved = useSaveStore.getState().roamers[slot]
@@ -359,6 +367,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       loadTrainers(), loadTrainerNames(gameLocale()), loadTrainerClasses(gameLocale()),
     ])
     const trainer = table.get(trainerId)
+    metTrainer = trainerId
     // 부적금화는 도구 데이터가 아직 없어서 안 본다
     const prize = prizeFor(trainer, table.prizeMul)
     if (!trainer.party.length) {
@@ -572,6 +581,19 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // 잡는 동안 배회가 붙박이가 된다
       if (get().kind === 'wild') {
         const foe = get().truth?.active.p2a ?? null
+        // 노트의 포켓몬 한 줄 (PARITY §7.4). 잡은 것은 그 자리에서, 쓰러뜨린 것은
+        // **이 맵에서 다섯째부터** 적힌다 (`encounter.c`)
+        const kept = caught ?? null
+        const outcome = get().outcome
+        if (kept || outcome === 'win') {
+          journalWildBattle({
+            result: kept ? 'caught' : 'defeated',
+            species: kept?.mon.species ?? foe?.species ?? 0,
+            gender: kept ? genderOf(kept.mon.pid, kept.species.genderRatio) : foe?.gender ?? 'genderless',
+            timeOfDay: timeOfDayForHour(worldState.time.gameHour),
+            playtimeMs: save.trainer.playtimeMs,
+          })
+        }
         encounters.roamerAfterBattle?.({
           met: roamerMet,
           mapId: world.mapId,
@@ -581,6 +603,12 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             : get().outcome === 'win' ? 'win' : 'other',
         })
       }
+      // 이긴 트레이너를 노트에 적는다 (PARITY §7.4). 관장·사천왕·챔피언은
+      // 자리 일로, 나머지는 따로 있는 한 줄로 간다
+      if (get().kind === 'trainer' && get().outcome === 'win' && metTrainer !== null) {
+        journalBeatTrainer(world.mapId, metTrainer)
+      }
+      metTrainer = null
       // 레벨이 오른 자리를 진화 큐에 넘긴다. 이긴 판·잡은 판·도망친 판에서만이다
       // (`Battle_FindEvolvingPartyMember`가 그 셋으로 거른다) — 진 판에서는
       // 병원으로 실려 가므로 진화 장면이 끼어들면 안 된다

@@ -69,6 +69,7 @@ export function BagScreen() {
   const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
   const giveTo = useMenuStore((s) => s.giveTo)
   const closeAll = useMenuStore((s) => s.closeAll)
+  const push = useMenuStore((s) => s.push)
 
   useEffect(() => {
     let alive = true
@@ -175,6 +176,10 @@ export function BagScreen() {
         // 필드 과제(`FieldTask_Fishing`)가 화면을 가져간다
         castRod(action.rod)
         closeAll()
+        return
+      case 'screen':
+        // 여는 것이 전부인 도구. 쌓아 올려서 B로 가방으로 돌아온다
+        push(action.screen)
         return
       case 'missing':
         setDenied(`${action.what}이(가) 아직 없다.`)

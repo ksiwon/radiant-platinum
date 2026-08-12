@@ -13,6 +13,7 @@
 import { newDaycare } from '../../engine/pokemon/breeding'
 import { dayNumber, newDaily } from '../../engine/world/daily'
 import { newRecentRoutes, newRoamers } from '../../engine/world/roamer'
+import { newJournal } from '../../engine/world/journal'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -147,6 +148,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     roamers: newRoamers(),
     recentRoutes: newRecentRoutes(),
   }),
+
+  /**
+   * 모험노트 (PARITY §7.4).
+   *
+   * ⚠️ **지난 날을 지어내지 않는다.** 빈 노트 열 쪽으로 시작한다 — 이미
+   * 신오를 한 바퀴 돈 리포트라도 노트에는 오늘부터 적힌다. 어제 무엇을 했는지는
+   * 세이브 어디에도 안 남아 있어서, 채우려면 만들어내는 수밖에 없다
+   */
+  15: (data) => ({ ...data, version: 16, journal: newJournal() }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

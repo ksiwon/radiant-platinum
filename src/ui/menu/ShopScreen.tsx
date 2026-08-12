@@ -5,7 +5,7 @@
 // (`engine/bag/mart.ts`). 값도 아이템 자료의 `price`를 그대로 쓴다.
 //
 // 파는 값은 **사는 값의 절반**이다 (`Item_SellPrice`: price / 2).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, type ItemTable,
 } from '../../data/gameData'
@@ -15,6 +15,8 @@ import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
+import { world } from '../../engine/map/world'
+import { journalShopped } from '../../scene/journal'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { itemIcon } from './itemIcon'
 import { MenuScreen } from './MenuScreen'
@@ -44,6 +46,9 @@ export function ShopScreen() {
   // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
   const locale = useGameLocale()
   const [tab, setTab] = useState<Tab>('buy')
+  // 노트가 「많이 샀다」를 가르는 데 쓰는 횟수. 상점을 나갈 때 한 번 읽는다
+  const bought = useRef(0)
+  const sold = useRef(0)
   const [cursor, setCursor] = useState(0)
   /** 몇 개 살지. 0이면 아직 고르는 중이다 */
   const [count, setCount] = useState(0)
@@ -105,10 +110,12 @@ export function ShopScreen() {
         setNote('가방이 가득 찼습니다')
         return
       }
+      bought.current++
       setNote(`${data?.names[row.item] ?? ''} ${count}개를 샀다`)
     } else {
       if (!save.removeItem(pocket, row.item, count)) { setNote('팔 수 없습니다'); return }
       save.addMoney(unit * count)
+      sold.current++
       setNote(`${unit * count}원을 받았다`)
     }
     setCount(0)
@@ -124,7 +131,13 @@ export function ShopScreen() {
       if (count > 0) { settle(); return }
       if (max > 0) { setCount(1); setNote(null) }
     },
-    cancel: () => { if (count > 0) reset(); else closeAll() },
+    cancel: () => {
+      if (count > 0) { reset(); return }
+      // 상점을 나갈 때 노트에 한 줄 (PARITY §7.4). ⚠️ **횟수로 가른다** —
+      // 두 번 이상 샀으면 「많이 샀다」다
+      journalShopped(world.mapId, bought.current, sold.current)
+      closeAll()
+    },
   })
 
   return (

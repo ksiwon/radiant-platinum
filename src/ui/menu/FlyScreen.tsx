@@ -27,6 +27,7 @@ import { assets, readJson } from '../../data/providers/assetProvider'
 import { MenuScreen } from './MenuScreen'
 import { useMenuKeys } from './useMenuKeys'
 import { roamersFlew } from '../../scene/roamers'
+import { journalFlew } from '../../scene/journal'
 import * as own from './flyScreen.css'
 import { ZOOM } from './flyScreen.css'
 
@@ -90,6 +91,8 @@ export function FlyScreen() {
     // 이게 없으면 배회를 찾아 놓고 날아가서 잡는 것이 되어, 도로를 걸어
     // 뒤쫓는다는 규칙이 통째로 무의미해진다
     roamersFlew()
+    // 노트에 「…로 날아갔다!」 (PARITY §7.4)
+    journalFlew(target.to)
     world.pending = target
     closeAll()
   }

@@ -14,6 +14,8 @@ import { setUiCapture } from '../engine/input/keys'
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
   | 'fly' | 'box'
+  // 모험노트. 가방의 열쇠도구에서 연다 (`ItemUseFunc_Journal`)
+  | 'journal'
   // 요약 화면. `summarySlot`이 어느 파티 자리인지를 든다
   | 'summary'
   // 파트너를 고르는 화면. 스크립트가 열고, **고르기 전에는 못 닫는다**

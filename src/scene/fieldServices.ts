@@ -26,6 +26,18 @@ import { fieldBgm } from '../engine/audio/songs'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
 import { mapById, setWarpEventPos, world as mapWorld } from '../engine/map/world'
+import { LocationEvent } from '../engine/world/journal'
+import { journalGiven, journalGotItem, journalPlain, journalUsedMove } from './journal'
+
+/**
+ * 스크립트가 여는 노트 일 중 **맵 번호를 곁값으로 받는** 것들
+ * (`JournalEntry_CreateEventUsedMove`). 나머지는 곁값을 안 본다
+ */
+const AT_MAP_EVENTS = new Set<number>([
+  LocationEvent.USED_CUT, LocationEvent.USED_SURF, LocationEvent.USED_STRENGTH,
+  LocationEvent.USED_DEFOG, LocationEvent.USED_ROCK_SMASH, LocationEvent.USED_WATERFALL,
+  LocationEvent.USED_ROCK_CLIMB,
+])
 import {
   caughtAt, eggFrom, MET_DAYCARE, metToday, SPECIAL_MET_BASE,
 } from '../engine/pokemon/origin'
@@ -679,6 +691,22 @@ const services: FieldServices = {
           nature: 0,
         }).hp
       })
+    },
+  },
+
+  /**
+   * 모험노트 (PARITY §7.4).
+   *
+   * ⚠️ **비전기술 자리는 맵 번호가 인자로 온다.** 스크립트가 「어디에서 썼는가」를
+   * 직접 넘기므로 지금 서 있는 맵을 우리가 다시 물어보면 안 된다 —
+   * 락클라임처럼 두 맵의 경계에서 쓰는 것이 어긋난다
+   */
+  journal: {
+    give: () => { journalGiven(mapWorld.mapId) },
+    event: (type, param) => {
+      if (type === LocationEvent.ITEM_WAS_OBTAINED) { journalGotItem(param); return }
+      if (AT_MAP_EVENTS.has(type)) { journalUsedMove(type, param); return }
+      journalPlain(type)
     },
   },
 

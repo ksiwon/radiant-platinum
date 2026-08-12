@@ -18,6 +18,7 @@ import { DIR, parseMovements } from './movement'
 import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
+import { SCRIPT_EVENT_TYPES } from '../world/journal'
 
 /**
  * 이름으로 등록한다.
@@ -1502,11 +1503,32 @@ systemFlag(SYSTEM_FLAG.step, {
 /**
  * 모험노트를 받았다 (`ScrCmd_GiveJournal`).
  *
- * ⚠️ 원작은 플래그를 세우고 **첫 쪽도 펼친다**(`Journal_GetSavedPage`). 우리는
- * 노트 화면이 아직 없어서 플래그만 세운다 — 스크립트의 갈래는 이 비트로만
- * 갈리므로 이야기는 그대로 흐른다
+ * 플래그를 세우고 **첫 쪽도 펼친다** (`Journal_GetSavedPage` + `sub_02053494`) —
+ * 받은 그 자리가 노트 첫 줄의 「…에서 시작!」이 된다
  */
-systemFlag(SYSTEM_FLAG.journalAcquired, { set: 'GiveJournal' })
+on('GiveJournal', (ctx) => {
+  ctx.host.vars.setFlag(SYSTEM_FLAG.journalAcquired)
+  ctx.host.world.services.journal?.give()
+  return false
+})
+
+/**
+ * 노트에 일 하나를 적는다 (`ScrCmd_CreateJournalEvent`).
+ *
+ * ⚠️ **인자를 다섯 개 다 읽는다.** 뒤 셋은 원작도 안 쓰지만, 안 읽으면
+ * 명령 흐름이 밀려서 다음 명령이 엉뚱한 자리에서 시작한다
+ */
+on('CreateJournalEvent', (ctx) => {
+  const type = ctx.readVar()
+  const param = ctx.readVar()
+  ctx.readVar()
+  ctx.readVar()
+  ctx.readVar()
+  // 표에 없는 갈래는 원작도 아무것도 안 적고 빠져나간다
+  if (!SCRIPT_EVENT_TYPES.includes(type)) return true
+  ctx.host.world.services.journal?.event(type, param)
+  return true
+})
 
 on('GiveRunningShoes', (ctx) => {
   ctx.host.world.services.gear?.giveRunningShoes()

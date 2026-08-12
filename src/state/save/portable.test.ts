@@ -12,6 +12,7 @@ import { migrateSave, oldestSupported, type Migration } from './migrate'
 import { saveFileName } from './download'
 import { checksum, encodePayload } from './codec'
 import { createNewSave, SAVE_VERSION } from '../saveStore'
+import { isEmptyEntry, MAX_JOURNAL_ENTRIES } from '../../engine/world/journal'
 import { noOrigin } from '../../engine/pokemon/origin'
 import { DEX_BYTES, dexHas, dexSet } from '../../engine/pokemon/dex'
 
@@ -240,6 +241,22 @@ describe('버전 이전', () => {
     expect(dexHas(got.save.pokedex.battled, 387)).toBe(true)
     // 본 적만 있는 종은 아니다 — 도망친 것까지 지어내지 않는다
     expect(dexHas(got.save.pokedex.battled, 25)).toBe(false)
+  })
+
+  /**
+   * ⚠️ 이 시험이 막는 것: 15 → 16에서 지난 날을 지어내는 것. 세이브 어디에도
+   * 어제 무엇을 했는지가 안 남아 있어서, 채우려면 만들어내는 수밖에 없다
+   */
+  it('옛 리포트의 모험노트는 빈 열 쪽으로 시작한다', () => {
+    const old = createNewSave() as unknown as Record<string, unknown>
+    old.version = 15
+    delete old.journal
+    const got = migrateSave(old, 16)
+
+    expect(got.kind).toBe('ok')
+    if (got.kind !== 'ok') return
+    expect(got.save.journal).toHaveLength(MAX_JOURNAL_ENTRIES)
+    expect(got.save.journal.every((e) => isEmptyEntry(e))).toBe(true)
   })
 
   it('닿을 수 있는 가장 낮은 판을 센다', () => {

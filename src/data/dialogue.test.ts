@@ -32,8 +32,8 @@ maybe('대사', () => {
     // 맵이 안 가리키는 것을 따로 싣는다 — 이름 짓기 표, 트레이너 대사,
     // 메뉴 화면들의 글(시작 메뉴·가방·주머니 이름·포켓몬·도감), 그리고
     // 파트너를 고르는 화면(360), 요약 화면(455)·특별한 만난 자리(435)·달 이름(414)·
-    // 타운맵(615)
-    expect(index.banks.length).toBe(454)
+    // 타운맵(615), 모험노트 셋(366 노트·378 체육관 이름·608 시간대)
+    expect(index.banks.length).toBe(457)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -108,7 +108,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 2965, ko: 2955, ja: 3168 })
+    expect(counted).toEqual({ en: 3044, ko: 3034, ja: 3247 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

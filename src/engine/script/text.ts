@@ -66,7 +66,14 @@ function marker(name: string, args: number[]): MessageToken | null {
   const a = args[0] ?? 0
   switch (name) {
     // `{STRVAR_1 종류, 칸, 조사}`. 첫 인자는 부호의 하위 바이트고 **칸이 아니다** —
-    // `CharCode_FormatArgParam(c, 0)`이 가리키는 것은 두 번째다
+    // `CharCode_FormatArgParam(c, 0)`이 가리키는 것은 두 번째다.
+    //
+    // ⚠️ **칸을 채우는 부호가 셋이다.** `CharCode_IsFormatArg`가 부호의 상위
+    // 바이트를 0x01·0x05·0x06 셋과 맞대 본다 — 0x0600(광장 미니게임 이름)도
+    // 같은 자리다. 0x0300은 그 셋에 없어서 원작도 **안 채운다** (일본 롬
+    // 뱅크 366의 광장 줄이 그렇게 비어 있다)
+    case 'STRVAR_5':
+    case 'STRVAR_6':
     case 'STRVAR_1':
       return args.length < 2
         ? null

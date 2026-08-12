@@ -20,6 +20,13 @@ import { useSaveStore } from '../state/saveStore'
 import { activateRoamer } from '../scene/roamers'
 import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
 import { computeStats } from '../engine/pokemon/stats'
+import { LocationEvent } from '../engine/world/journal'
+import { fieldScripts } from '../engine/script/field'
+import { SYSTEM_FLAG } from '../engine/script/commands'
+import {
+  journalArrived, journalBeatTrainer, journalGiven, journalGotItem, journalPlain,
+  journalUsedMove, journalWildBattle,
+} from '../scene/journal'
 
 /** 검색 결과에서 한 번에 보여줄 줄 수. 928명이라 전부 찍으면 콘솔이 막힌다 */
 const MAX_ROWS = 40
@@ -140,6 +147,28 @@ export function installDevConsole(): void {
       }
       await useBattleStore.getState().startWild({ species, level, roamer: slot })
       return useSaveStore.getState().roamers[slot]
+    },
+    /**
+     * 모험노트를 받고 오늘 쪽을 채운다 (PARITY §7.4).
+     *
+     * 이야기로 받는 자리는 축복시티 하나뿐이고, 쪽이 채워지려면 그 뒤로 하루를
+     * 돌아다녀야 한다. 화면을 확인하려면 이 길이 있어야 한다 — **쓰는 길은
+     * 실제 함수 그대로**라 무엇이 어떻게 적히는지도 여기서 갈린다
+     */
+    note: () => {
+      // 스크립트가 세우는 그 비트다 (`ScrCmd_GiveJournal`)
+      fieldScripts.vars.setFlag(SYSTEM_FLAG.journalAcquired)
+      journalGiven(world.mapId >= 0 ? world.mapId : 411)
+      journalArrived(8)
+      journalUsedMove(LocationEvent.USED_ROCK_SMASH, 40)
+      journalPlain(LocationEvent.USED_PC_BOX)
+      journalGotItem(4)
+      journalWildBattle({
+        result: 'caught', species: 25, gender: 'female',
+        timeOfDay: 1, playtimeMs: 12 * 60_000,
+      })
+      journalBeatTrainer(8, 246)
+      return useSaveStore.getState().journal[0]
     },
     party: show,
     /** 리포트를 지우고 새 판으로. 설정의 "처음부터"와 같은 것이다 */

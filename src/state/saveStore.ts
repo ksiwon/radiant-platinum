@@ -27,6 +27,7 @@ import { newDaycare, type DaycareState } from '../engine/pokemon/breeding'
 import {
   newRecentRoutes, newRoamers, type RecentRoutes, type Roamer,
 } from '../engine/world/roamer'
+import { newJournal, type JournalEntry } from '../engine/world/journal'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -207,9 +208,16 @@ export interface SaveData {
   roamers: Roamer[]
   /** 방금 떠나온 맵. 배회가 그리로는 안 간다 (`PlayerRecentRoutes`) */
   recentRoutes: RecentRoutes
+  /**
+   * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
+   *
+   * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
+   * 축복시티에서 받기 전까지 `journalAcquired` 플래그가 안 서 있어서 비어 있다
+   */
+  journal: JournalEntry[]
 }
 
-export const SAVE_VERSION = 15
+export const SAVE_VERSION = 16
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -281,6 +289,7 @@ export function createNewSave(): SaveData {
     daycare: newDaycare(),
     roamers: newRoamers(),
     recentRoutes: newRecentRoutes(),
+    journal: newJournal(),
   }
 }
 
@@ -492,6 +501,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     daycare: s.daycare,
     roamers: s.roamers,
     recentRoutes: s.recentRoutes,
+    journal: s.journal,
   }
 }
 

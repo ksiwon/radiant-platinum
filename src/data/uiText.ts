@@ -57,6 +57,12 @@ export const UI_BANK = {
   monthNames: 414,
   /** `TEXT_BANK_TOWN_MAP` — 격자 칸마다의 이름 130줄 */
   townMap: 615,
+  /** `TEXT_BANK_JOURNAL_ENTRIES` — 모험노트 103줄 */
+  journal: 366,
+  /** `TEXT_BANK_GYM_NAMES` — 체육관 여덟. 노트가 관장 줄에서 쓴다 */
+  gymNames: 378,
+  /** `TEXT_BANK_TIMES_OF_DAY` — 아침·낮·저녁·밤·심야 */
+  timesOfDay: 608,
 } as const
 
 export type UiBank = keyof typeof UI_BANK

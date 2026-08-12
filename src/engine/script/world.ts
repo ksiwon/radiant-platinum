@@ -284,6 +284,18 @@ export interface FieldServices {
     /** 그 자리를 열고 신오 어딘가에 놓는다. 자리 번호는 `RoamerSlot` */
     activate: (slot: number) => void
   }
+  /** 모험노트 (PARITY §7.4) — `ScrCmd_GiveJournal` · `ScrCmd_CreateJournalEvent` */
+  journal?: {
+    /** 노트를 받는다. 첫 쪽이 여기서 펼쳐진다 */
+    give: () => void
+    /**
+     * 오늘 쪽에 자리 일 하나를 적는다.
+     *
+     * `param`은 갈래마다 뜻이 다르다 — 도구는 도구 번호, 비전기술은 맵 번호,
+     * 나머지는 안 본다 (`ScrCmd_CreateJournalEvent`)
+     */
+    event: (type: number, param: number) => void
+  }
   /**
    * 육성가와 알 (PARITY §3.2·§3.3) — `scrcmd_daycare.c`.
    *
