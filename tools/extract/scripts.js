@@ -36,8 +36,10 @@ const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
  * 대응표를 통째로 들고 있어야 그 번호를 안다
  */
 function bankNumbers() {
+  // ⚠️ 리포 안이 아니라 `raw/work/`다 — 표에 롬 키가 들어 있어서 뺐다
+  // (COPYRIGHT.md §5). `rom.js`의 `openText`와 같은 자리를 본다
   const table = JSON.parse(
-    fs.readFileSync(path.join(ROOT, 'src/data/textBanks.json'), 'utf8'),
+    fs.readFileSync(path.join(ROOT, 'raw/work/textBanks.json'), 'utf8'),
   )
   return new Map(table.map((b) => [b.constant, b.bank.us]))
 }

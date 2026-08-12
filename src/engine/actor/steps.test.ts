@@ -5,6 +5,7 @@
 // 친밀도가 영영 안 오른다.
 import { describe, expect, it } from 'vitest'
 import type { PokemonInstance } from '../pokemon/instance'
+import { noOrigin } from '../pokemon/origin'
 import {
   FRIENDSHIP_STEPS, Poison, POISON_STEPS, poisonStep, step, walkFriendship, type StepWorld,
 } from './steps'
@@ -14,11 +15,12 @@ const mon = (over: Partial<PokemonInstance> = {}): PokemonInstance => ({
   ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
   evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
   moves: [], hp: 30, status: 'ok', statusTurns: 0, heldItem: 0,
-  friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 4, ...over,
+  friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 4,
+  origin: noOrigin({ name: '', gender: 'male' }), ...over,
 })
 
 const world = (over: Partial<StepWorld> = {}): StepWorld => ({
-  party: [mon()], mapId: 411, poisonSteps: 0, repelSteps: 0, friendshipSteps: 0,
+  party: [mon()], label: 411, poisonSteps: 0, repelSteps: 0, friendshipSteps: 0,
   soothing: () => false,
   // 동전이 늘 앞면이면(=`LCRNG_Next() & 1`이 0이면) 친밀도가 오른다
   coin: () => false,

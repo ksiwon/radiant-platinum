@@ -6,6 +6,7 @@
 //
 // 저장 크기도 덤이다. u32 하나가 네 값을 대신한다.
 import type { Species, Stats } from '../../data/schema'
+import { noOrigin, type Origin, type Trainer } from './origin'
 import { computeStats } from './stats'
 import { expForLevel, levelForExp } from './exp'
 import { NATURE_COUNT } from './stats'
@@ -61,6 +62,14 @@ export interface PokemonInstance {
   otId: number
   otSecretId: number
   ball: number
+  /**
+   * 어디서 왔는가 (`origin.ts`). 요약 화면의 트레이너 메모가 이것만으로 쓰인다.
+   *
+   * ⚠️ **칸 차례를 지킨다.** 여기가 마지막 칸이고 `save/schema.ts`도 마지막이다 —
+   * 리포트를 다시 읽으면 zod가 스키마 차례로 세우므로, 둘이 어긋나면
+   * `JSON.stringify`가 다른 글을 내고 검사합이 깨진다
+   */
+  origin: Origin
 }
 
 /** 데리고 다닐 수 있는 수 (`MAX_PARTY_SIZE`). 넘치면 박스로 간다 */
@@ -85,6 +94,18 @@ export function natureOf(pid: number): number {
 /** PID → 특성 슬롯. 4세대는 최하위 비트 하나로 두 특성 중 하나를 고른다 */
 export function abilitySlotOf(pid: number): 0 | 1 {
   return (pid & 1) as 0 | 1
+}
+
+/**
+ * 이 개체의 특성 (`BoxPokemon_CalcAbility`).
+ *
+ * ⚠️ **둘째 칸이 비어 있으면 첫 칸이다.** 원작이 `if (monAbility2 != ABILITY_NONE)`로
+ * 먼저 거른다 — 비트만 보고 고르면 특성이 하나뿐인 종의 **절반이 특성 0**을
+ * 갖게 되고, 그러면 싱크로도 정전기도 안 걸리고 요약 화면에는 " -"가 뜬다.
+ * 0은 `undefined`가 아니라서 `??`로는 안 걸러진다
+ */
+export function abilityOf(pid: number, abilities: readonly [number, number]): number {
+  return abilities[abilitySlotOf(pid)] || abilities[0] || 0
 }
 
 /**
@@ -226,11 +247,16 @@ export interface WildOptions {
   bias?: PidBias
   /** 복안 — 도구를 들고 나올 확률이 오른다 */
   compoundEyes?: boolean
+  /**
+   * 원래 트레이너의 이름과 성별. 안 주면 **빈 출신**으로 만든다 —
+   * 야생 개체는 아직 아무의 것도 아니라서, 잡는 자리가 `caughtAt`으로 새긴다
+   */
+  trainer?: Trainer
 }
 
 /** 야생 개체를 만든다. PP는 기술 데이터를 아직 모르므로 호출자가 채운다 */
 export function createWild(
-  { species, level, rng, otId, otSecretId, bias, compoundEyes }: WildOptions,
+  { species, level, rng, otId, otSecretId, bias, compoundEyes, trainer }: WildOptions,
 ): PokemonInstance {
   const iv = () => Math.floor(rng() * 32)
   return {
@@ -252,6 +278,7 @@ export function createWild(
     otId,
     otSecretId,
     ball: 0,
+    origin: noOrigin(trainer ?? { name: '', gender: 'male' }),
   }
 }
 

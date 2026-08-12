@@ -157,7 +157,10 @@ maybe('코퍼스 전량', () => {
         particles.set(key, (particles.get(key) ?? 0) + 1)
       }
     }
-    expect([...over.keys()].sort((a, b) => a - b)).toEqual(BANLIST_BANKS)
+    expect([...over.keys()].sort((a, b) => a - b)).toEqual([...BANLIST_BANKS, SUMMARY_BANK])
+    // 요약 화면은 표가 **9칸**이라(`StringTemplate_New(9, 32, …)`) 8번 칸이
+    // 하나 나온다 — 알을 받은 자리다. 그 하나뿐이어야 한다
+    expect([...over.get(SUMMARY_BANK) ?? []]).toEqual([SUMMARY_EGG_SLOT])
     // ⚠️ **일본판 금지 목록이 한 종 더 길다.** 미국·한국판은 칸 1~18에 18종을
     // 적는데(0번 칸은 마릿수다) 일본판 304번 41번 글은 1~19에 **19종**이다.
     // 롬이 다른 것이지 우리가 밀려 읽은 것이 아니다 — 칸이 1부터 빈틈없이
@@ -169,9 +172,14 @@ maybe('코퍼스 전량', () => {
 })
 
 /** 코퍼스 전체의 제어 부호 개수 (줄 바꿈 제외). 세 로케일 합계다 */
-const MARKER_COUNT = 8208
+const MARKER_COUNT = 9087
 
 /** 표가 19칸인 뱅크 — 타워·홀·캐슬·아케이드의 출전 금지 목록 */
 const BANLIST_BANKS = [304, 311, 312, 313]
 /** 일본판만 한 종 더 길다. 미국·한국판은 `BATTLE_FRONTIER_BANLIST_SIZE`(18)다 */
 const JA_BANLIST_SIZE = 19
+
+/** `TEXT_BANK_POKEMON_SUMMARY_SCREEN` — 표가 9칸인 유일한 메뉴 뱅크 */
+const SUMMARY_BANK = 455
+/** 그 아홉째 칸에 들어가는 것 — 알을 받은 자리 (`MON_DATA_EGG_LOCATION`) */
+const SUMMARY_EGG_SLOT = 8

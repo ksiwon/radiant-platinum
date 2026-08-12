@@ -14,6 +14,8 @@ import { setUiCapture } from '../engine/input/keys'
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
   | 'fly' | 'box'
+  // 요약 화면. `summarySlot`이 어느 파티 자리인지를 든다
+  | 'summary'
   // 파트너를 고르는 화면. 스크립트가 열고, **고르기 전에는 못 닫는다**
   | 'chooseStarter'
   // 진화. **스스로 뜬다** — 배틀이 닫힐 때 큐에 자리가 있으면 열린다
@@ -57,6 +59,20 @@ interface MenuStore {
    * 여기 있다 — 화면을 여는 인자라 컴포넌트가 못 받는다
    */
   usingItem: { item: number; use: 'heal' | 'tmhm' | 'evoStone' } | null
+  /**
+   * 요약 화면이 보여 줄 파티 자리.
+   *
+   * 상점 재고와 같은 이유로 여기 있다 — 화면을 여는 인자라 컴포넌트가 못 받는다.
+   * 화면 안에서 ←→로 옮겨 다니므로 **여는 자리**일 뿐 정본이 아니다
+   */
+  summarySlot: number
+  /**
+   * 가방을 **건네줄 상대**를 안고 열었는가 (`PartyMenu_SelectItemGive`).
+   *
+   * 파티 화면의 갈래 메뉴에서 「건네준다」를 고르면 가방이 이 값을 들고 뜨고,
+   * 도구 하나를 고르는 순간 그 자리에 붙는다. null이면 평소의 가방이다
+   */
+  giveTo: number | null
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고를 같이 받는다 */
@@ -67,6 +83,10 @@ interface MenuStore {
   openNaming: (what: NonNullable<MenuStore['naming']>) => void
   /** 도구를 들고 파티 화면을 연다. 스택 위에 쌓는다 — B로 가방으로 돌아간다 */
   openPartyWithItem: (what: NonNullable<MenuStore['usingItem']>) => void
+  /** 요약 화면을 쌓는다. B로 파티 화면으로 돌아간다 */
+  openSummary: (slot: number) => void
+  /** 도구를 건네주려고 가방을 쌓는다 */
+  openBagToGive: (slot: number) => void
   /** 도구 쓰기를 끝낸다 */
   clearUsingItem: () => void
   back: () => void
@@ -85,6 +105,20 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   boxMode: 0,
   naming: null,
   usingItem: null,
+  summarySlot: 0,
+  giveTo: null,
+
+  openBagToGive: (slot) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'bag']
+    capture(stack)
+    return { stack, top: 'bag' as const, giveTo: slot }
+  }),
+
+  openSummary: (slot) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'summary']
+    capture(stack)
+    return { stack, top: 'summary' as const, summarySlot: slot }
+  }),
 
   openPartyWithItem: (what) => set((s) => {
     const stack: MenuScreen[] = [...s.stack, 'party']
@@ -128,11 +162,11 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     const stack = s.stack.slice(0, -1)
     capture(stack)
     // 파티 화면에서 물러나면 들고 있던 도구도 내려놓는다
-    return { stack, top: stack[stack.length - 1] ?? null, usingItem: null }
+    return { stack, top: stack[stack.length - 1] ?? null, usingItem: null, giveTo: null }
   }),
 
   closeAll: () => set(() => {
     capture([])
-    return { stack: [], top: null, usingItem: null }
+    return { stack: [], top: null, usingItem: null, giveTo: null }
   }),
 }))

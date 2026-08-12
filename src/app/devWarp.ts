@@ -7,9 +7,10 @@
 // **배포 번들에 들어가면 안 된다.** 부르는 쪽이 전부 `import.meta.env.DEV`로 감싼
 // 동적 import라, 프로덕션 빌드에서는 이 가지가 통째로 접히고 청크로도 안 나온다.
 import { loadItems, loadMoves, loadSpecies } from '../data/gameData'
-import { useSaveStore, type PokemonInstance } from '../state/saveStore'
+import { playerTrainer, useSaveStore, type PokemonInstance } from '../state/saveStore'
 import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
+import { caughtAt, metToday } from '../engine/pokemon/origin'
 import { abortScript, fieldScripts } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
 import { HM_CARRIER, HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
@@ -59,7 +60,9 @@ async function applySetup(cp: Checkpoint): Promise<void> {
   const save = useSaveStore.getState()
 
   if (cp.party) {
-    const [species, moves] = await Promise.all([loadSpecies(), loadMoves()])
+    const [species, moves, label] = await Promise.all([
+      loadSpecies(), loadMoves(), labelOf(cp.map),
+    ])
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
     const make = (spec: PartySpec): PokemonInstance => {
       const sp = species.get(spec.species)
@@ -68,7 +71,14 @@ async function applySetup(cp: Checkpoint): Promise<void> {
         otId: save.trainer.id, otSecretId: save.trainer.secretId,
       }), pp)
       const max = statsOf(mon, sp).hp
-      return { ...mon, hp: cp.hurt ? Math.max(1, Math.floor(max * HURT_FRACTION)) : max }
+      return {
+        ...mon,
+        hp: cp.hurt ? Math.max(1, Math.floor(max * HURT_FRACTION)) : max,
+        // 확인 지점의 파티도 **어디선가 잡은 것**이어야 한다. 안 새기면 요약
+        // 화면의 메모가 "수수께끼의 장소에서 Lv.0일 때"로 떠서, 화면이 맞는지를
+        // 그 자리에서 못 본다
+        origin: caughtAt(playerTrainer(save.trainer), label, spec.level, metToday()),
+      }
     }
     const party = withHmCarrier(cp.party.slice(0, 6).map(make), cp.items ?? [], make, pp)
     useSaveStore.setState({ party })
@@ -102,6 +112,22 @@ async function applySetup(cp: Checkpoint): Promise<void> {
   if (cp.dex) {
     giveDex()
     await markSeenAlongTheWay(cp)
+  }
+}
+
+/**
+ * 그 맵의 지역명 번호.
+ *
+ * ⚠️ **`world`를 안 본다** — `markSeenAlongTheWay`와 같은 까닭이다. 타이틀에서
+ * 뛰어들면 아직 세계가 안 떠 있어서 `world.maps`가 비어 있고, 그러면 잡은
+ * 자리가 0이 되어 요약 화면이 "수수께끼의 장소"라고 한다
+ */
+async function labelOf(mapId: number): Promise<number> {
+  try {
+    const file = await readJson(assets(), 'data/maps.json') as { maps: { label: number }[] }
+    return file.maps[mapId]?.label ?? 0
+  } catch {
+    return 0
   }
 }
 

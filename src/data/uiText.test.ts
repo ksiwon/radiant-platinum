@@ -34,6 +34,9 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   moveDescriptions: 'move_descriptions',
   storageSystem: 'pokemon_storage_system',
   boxMessages: 'box_messages',
+  summary: 'pokemon_summary_screen',
+  specialMetLocations: 'special_met_location_names',
+  monthNames: 'month_names',
 }
 
 describe('메뉴 글', () => {

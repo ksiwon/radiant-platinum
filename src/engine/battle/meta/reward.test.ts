@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest'
 import { speciesFileSchema, type Species } from '../../../data/schema'
 import { expForLevel, levelForExp } from '../../pokemon/exp'
 import type { PokemonInstance } from '../../pokemon/instance'
+import { noOrigin } from '../../pokemon/origin'
 import {
   addEvs, applyReward, EV_PER_STAT, EV_TOTAL, expGain, learnMoves, MOVE_SLOTS, type StatKey,
 } from './reward'
@@ -29,6 +30,7 @@ function mon(speciesId: number, level: number): PokemonInstance {
     exp: expForLevel(sp.growthRate, level), level,
     ivs: zero(), evs: zero(), moves: [], hp: 20, status: 'ok', statusTurns: 0,
     heldItem: 0, friendship: 70, isEgg: false, otId: 1, otSecretId: 2, ball: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
   }
 }
 

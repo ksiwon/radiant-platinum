@@ -14,6 +14,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { loadPokeIcons, loadSpeciesNames } from '../../data/gameData'
 import type { PokeIcons } from '../../data/schema'
 import { hatch } from '../../engine/pokemon/breeding'
+import { mapById } from '../../engine/map/world'
+import { useSessionStore } from '../../state/sessionStore'
 import { useHatchStore } from '../../state/hatchStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -56,7 +58,8 @@ export function HatchScreen() {
     const at = store.party[slot]
     if (!at || !at.isEgg) { setStage('born'); return }
     const next = [...store.party]
-    next[slot] = hatch(at)
+    // 만난 자리는 **깬 자리**다. 맵 번호가 아니라 지역명 번호를 넘긴다
+    next[slot] = hatch(at, mapById(useSessionStore.getState().mapId)?.label ?? 0)
     useSaveStore.setState({ party: next })
     store.markSeen(at.species)
     store.markCaught(at.species)

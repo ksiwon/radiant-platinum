@@ -101,9 +101,17 @@ describe('뱅크 자리 계산', () => {
     expect(differing.length).toBeGreaterThan(600)
   })
 
-  it('코드가 쓰는 이름 32개가 세 로케일 전부에 있다', () => {
+  it('코드가 쓰는 이름이 세 로케일에 있다 — 달 이름만 빼고', () => {
     for (const name of TEXT_BANK_NAMES) {
-      for (const locale of LOCALES) expect(bankIndex(name, locale)).not.toBeNull()
+      for (const locale of LOCALES) {
+        // ⚠️ **일본 롬에는 달 이름 표가 없다.** 일본어가 달을 이름으로 안
+        // 부르고 문장 틀이 숫자 뒤에 단위를 직접 쓴다 — 우리 실수가 아니다
+        if (name === 'month_names' && locale === 'ja') {
+          expect(bankIndex(name, locale)).toBeNull()
+          continue
+        }
+        expect(bankIndex(name, locale), `${name}/${locale}`).not.toBeNull()
+      }
     }
   })
 

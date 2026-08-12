@@ -7,7 +7,7 @@
 // 있고(`textBanks.json`), 싣는 파일 이름이 미국 번호다. 아래 상수가 그 표와
 // 어긋나지 않는지는 `uiText.test.ts`가 지킨다 — 표 자체(111KB)를 앱에 싣지
 // 않으려고 필요한 번호만 여기 적는다.
-import { formatMessage, MessageSlots } from '../engine/script/text'
+import { formatMessage, MESSAGE_SLOTS, MessageSlots } from '../engine/script/text'
 import { gameLocale } from '../state/optionsStore'
 import { loadDialogueBank, type DataLocale } from './gameData'
 
@@ -49,6 +49,12 @@ export const UI_BANK = {
   storageSystem: 18,
   /** `TEXT_BANK_BOX_MESSAGES` — 박스 화면이 띄우는 말과 능력 이름표 */
   boxMessages: 19,
+  /** `TEXT_BANK_POKEMON_SUMMARY_SCREEN` — 쪽 이름표부터 트레이너 메모의 문장 틀까지 187줄 */
+  summary: 455,
+  /** `TEXT_BANK_SPECIAL_MET_LOCATION_NAMES` — 지도에 없는 만난 자리 열셋 */
+  specialMetLocations: 435,
+  /** ⚠️ `TEXT_BANK_MONTH_NAMES` — **일본 롬에는 없다.** 받는 쪽이 빈 배열을 견뎌야 한다 */
+  monthNames: 414,
 } as const
 
 export type UiBank = keyof typeof UI_BANK
@@ -84,7 +90,9 @@ export const START_MENU = {
  */
 export function fillMenuText(raw: string, values: readonly string[]): string {
   if (!raw.includes('{')) return raw
-  const slots = new MessageSlots()
+  // 표 크기는 **부르는 쪽이 준 만큼**이다. 8로 굳히면 요약 화면의 아홉째 칸
+  // (알을 받은 자리)이 조용히 버려진다
+  const slots = new MessageSlots(Math.max(values.length, MESSAGE_SLOTS))
   values.forEach((value, i) => { slots.set(i, value) })
   return formatMessage(raw, slots)
 }

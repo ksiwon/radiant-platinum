@@ -10,7 +10,7 @@ import type { Species } from '../../../data/schema'
 import type { BattleRequest, FinalMon, SideId } from '../events'
 import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
-import { genderOf, maxPpOf, natureOf } from '../../pokemon/instance'
+import { abilityOf, genderOf, maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simMove, simSpecies } from './bridge'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
@@ -100,8 +100,7 @@ function toSet(side: SideMon, idle: boolean) {
   if (idle) moves.push(IDLE_MOVE)
 
   // 특성은 PID의 최하위 비트가 고른다. 두 번째 칸이 비어 있으면 첫 칸으로 떨어진다
-  const slot = mon.pid & 1
-  const abilityId = species.abilities[slot] || species.abilities[0] || 0
+  const abilityId = abilityOf(mon.pid, species.abilities)
 
   return {
     name: side.key,

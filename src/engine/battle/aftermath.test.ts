@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import type { FinalMon } from './events'
 import type { PokemonInstance } from '../pokemon/instance'
 import { applyResults, foeKey, isWipedOut, partyKey } from './aftermath'
+import { noOrigin } from '../pokemon/origin'
 
 function mon(species: number, hp: number): PokemonInstance {
   return {
@@ -11,6 +12,7 @@ function mon(species: number, hp: number): PokemonInstance {
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp, status: 'ok', statusTurns: 0,
     heldItem: 0, friendship: 70, isEgg: false, otId: 1, otSecretId: 2, ball: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
   }
 }
 

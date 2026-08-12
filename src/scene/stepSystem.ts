@@ -19,7 +19,7 @@ import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/da
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
 import { daycareStep } from '../engine/pokemon/breeding'
-import { abilitySlotOf, genderOf, type PokemonInstance } from '../engine/pokemon/instance'
+import { abilityOf, genderOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { useHatchStore } from '../state/hatchStore'
 import { NO_LEAD, type Lead } from '../engine/battle/encounterLead'
 
@@ -46,10 +46,9 @@ let speciesTable: SpeciesTable | null = null
 void loadSpecies().then((table) => { speciesTable = table }).catch(() => { speciesTable = null })
 
 /** 그 개체의 특성 번호. 마그마의무장·불꽃몸이 부화를 두 배로 만든다 */
-function abilityOf(mon: PokemonInstance): number {
+function monAbility(mon: PokemonInstance): number {
   const species = speciesTable?.byId.get(mon.species)
-  if (!species) return 0
-  return species.abilities[abilitySlotOf(mon.pid)] ?? species.abilities[0] ?? 0
+  return species ? abilityOf(mon.pid, species.abilities) : 0
 }
 
 /**
@@ -69,7 +68,7 @@ function publishMods(): void {
   const lead: Lead = first && species && !first.isEgg
     ? {
       isEgg: false,
-      ability: abilityOf(first),
+      ability: monAbility(first),
       level: first.level,
       gender: genderOf(first.pid, species.genderRatio),
       pid: first.pid,
@@ -151,7 +150,7 @@ export const stepSystem = {
     const vars = fieldScripts.vars
     const got = stepOnce({
       party: save.party,
-      mapId: mapWorld.mapId,
+      label: mapById(mapWorld.mapId)?.label ?? 0,
       poisonSteps: save.steps.poison,
       repelSteps: save.steps.repel,
       friendshipSteps: vars.get(VARS_START + VAR_FRIENDSHIP_STEPS),
@@ -179,7 +178,7 @@ export const stepSystem = {
       party: got.party,
       month: now.getMonth() + 1,
       day: now.getDate(),
-      abilityOf: (mon) => abilityOf(mon),
+      abilityOf: monAbility,
       dataOf: (id) => table.get(id),
       rng: Math.random,
       coin: () => Math.random() < 0.5,

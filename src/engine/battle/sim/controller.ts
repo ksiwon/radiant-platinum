@@ -102,6 +102,13 @@ export class BattleController {
   private readonly random: () => number
   private view: BattleView = emptyView()
   private caught: SideMon | null = null
+  /**
+   * 어느 볼로 잡았는가.
+   *
+   * ⚠️ 잡은 개체만 들고 있으면 **볼이 몬스터볼로 굳는다** — 럭셔리볼의 친밀도
+   * 보정과 힐볼의 회복이 개체의 `ball`을 보고 갈리므로, 던진 것을 그대로 적어야 한다
+   */
+  private caughtBall: BallId | null = null
   private fled = false
   /** 도망 시도 횟수. 시도할수록 쉬워진다 */
   private escapeAttempts = 0
@@ -362,6 +369,11 @@ export class BattleController {
     return this.caught
   }
 
+  /** 잡을 때 던진 볼의 도구 번호 */
+  get capturedBall(): BallId | null {
+    return this.caughtBall
+  }
+
   /**
    * 볼을 던진다. **우리 턴을 쓴다** — 실패하면 야생이 반격한다.
    *
@@ -391,6 +403,7 @@ export class BattleController {
 
     if (result.caught) {
       this.caught = foe
+      this.caughtBall = ball
       this.view = { ...this.view, ended: true }
       return { events, view: this.view }
     }

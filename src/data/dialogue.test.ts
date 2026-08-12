@@ -31,8 +31,8 @@ maybe('대사', () => {
   it('맵이 쓰는 뱅크 404개 + 공용을 담는다', () => {
     // 맵이 안 가리키는 것을 따로 싣는다 — 이름 짓기 표, 트레이너 대사,
     // 메뉴 화면들의 글(시작 메뉴·가방·주머니 이름·포켓몬·도감), 그리고
-    // 파트너를 고르는 화면(360번)
-    expect(index.banks.length).toBe(450)
+    // 파트너를 고르는 화면(360번), 요약 화면(455)·특별한 만난 자리(435)·달 이름(414)
+    expect(index.banks.length).toBe(453)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -42,9 +42,12 @@ maybe('대사', () => {
 
   /**
    * 일본 롬에 아예 없는 뱅크. 열쇠 표와 항목 수 정렬이 **둘 다 없다**고 하므로
-   * 우리 실수가 아니다 — 그 맵만 글이 빈다
+   * 우리 실수가 아니다 — 그 맵만 글이 빈다.
+   *
+   * 414(`month_names`)는 일본어가 달을 이름으로 안 부르기 때문이다 — 문장 틀이
+   * 숫자 뒤에 `がつ`를 직접 쓴다. 미국판만 `Jan.`을 쓴다
    */
-  const MISSING = { ja: [147] } as Record<string, number[] | undefined>
+  const MISSING = { ja: [147, 414] } as Record<string, number[] | undefined>
 
   /**
    * 일본 롬만 항목이 **뒤에서** 몇 개 짧은 뱅크. 앞은 한 줄씩 그대로 맞으므로
@@ -104,7 +107,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 2672, ko: 2662, ja: 2875 })
+    expect(counted).toEqual({ en: 2965, ko: 2955, ja: 3168 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

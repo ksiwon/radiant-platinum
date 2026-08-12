@@ -56,6 +56,32 @@ const moveSlotSchema = z.object({
 
 const statusSchema = z.enum(['ok', 'slp', 'psn', 'tox', 'brn', 'frz', 'par'])
 
+/**
+ * 만난 날. `year`는 2000을 뺀 값이라 0~99다 (원작 `RTCDate.year`와 같다).
+ *
+ * ⚠️ 통째로 null일 수 있다 — **원작에는 없는 상태고 옛 리포트에만 생긴다.**
+ * 판 12 이전에는 새기는 칸이 없었으므로 날짜를 지어내지 않고 비워 둔다
+ */
+const metDateSchema = z.object({
+  year: int(0, 99), month: int(1, 12), day: int(1, 31),
+}).nullable()
+
+/** `location` 0은 "안 새겨졌다"다. 이름을 찾을 때 수수께끼의 장소로 떨어진다 */
+const metPlaceSchema = z.object({
+  location: int(0, 3999),
+  date: metDateSchema,
+})
+
+/** ⚠️ 칸 차례가 `engine/pokemon/origin.ts`의 `Origin`과 같아야 한다 */
+const originSchema = z.object({
+  otName: z.string().max(24),
+  otGender: z.enum(['male', 'female']),
+  met: metPlaceSchema,
+  metLevel: int(0, 100),
+  egg: metPlaceSchema,
+  fateful: z.boolean(),
+})
+
 export const monSchema = z.object({
   species: int(1, 493),
   pid: int(0, 0xffffffff),
@@ -77,6 +103,7 @@ export const monSchema = z.object({
   otId: int(0, 0xffff),
   otSecretId: int(0, 0xffff),
   ball: int(0, 511),
+  origin: originSchema,
 })
 
 const bagSlotSchema = z.object({

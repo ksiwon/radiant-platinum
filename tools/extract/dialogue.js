@@ -25,6 +25,12 @@ const { readBankNames, alignByCount } = require('./dialogue-verify')
 const sources = require('../raw/sources.cjs')
 
 const CHARMAP = path.join(ROOT, 'tools/spike/charmap.txt')
+/**
+ * ⚠️ **리포 안이 아니라 `raw/work/`다.** 표에 롬에서 읽은 키가 들어 있어서
+ * 빼냈는데(COPYRIGHT.md §5) 여기가 옛 자리를 가리키고 있었다 — 그래서
+ * `pnpm extract:dialogue`가 `ENOENT`로 섰다. `rom.js`의 `openText`와 같은 자리다
+ */
+const BANK_TABLE = path.join(ROOT, 'raw/work/textBanks.json')
 const HEADER_SIZE = 24
 const MAP_COUNT = 593
 const NO_BANK = 0xffff
@@ -91,12 +97,12 @@ const LCS_WRONG = {
 /**
  * 미국 뱅크 번호로 색인한 로케일 뱅크 번호.
  *
- * 이제는 헤더의 암호화 키로 확정한 표(src/data/textBanks.json)를 쓴다. 예전의
+ * 이제는 헤더의 암호화 키로 확정한 표(`raw/work/textBanks.json`)를 쓴다. 예전의
  * 항목 수 LCS 정렬은 추정이었다 — 여기서 둘을 맞대 보고 어긋나면 터뜨린다.
  */
 function bankMap(from, to, locale) {
   if (from === to) return to.map((_, i) => i)
-  const table = JSON.parse(fs.readFileSync(path.join(ROOT, 'src/data/textBanks.json'), 'utf8'))
+  const table = JSON.parse(fs.readFileSync(BANK_TABLE, 'utf8'))
   const exact = table.map((b) => b.bank[locale])
 
   const guess = alignByCount(from.map((b) => b.length), to.map((b) => b.length))
@@ -184,6 +190,14 @@ const EXTRA_BANKS = [
   // `choose_starter_app.c`가 뱅크 360의 0·1~3·4~6·7번을 읽는다
   // (0 "이것은 몬스터볼" · 1~3 고른 볼의 설명 · 4~6 이름표 · 7 "골라라")
   'TEXT_BANK_UNK_0360',
+  // 요약 화면. 쪽 이름표·능력 이름표부터 트레이너 메모의 문장 틀까지 187줄이
+  // 여기 있다 — 성격 25 · 만난 자리 문장 16 · 개성 30 · 알 메모 8
+  'TEXT_BANK_POKEMON_SUMMARY_SCREEN',
+  // 만난 자리가 2000을 넘으면 지역명이 아니라 이 표다 (`sub_02017038`).
+  // 육성가·통신교환·먼 옛날처럼 지도에 없는 자리들이다
+  'TEXT_BANK_SPECIAL_MET_LOCATION_NAMES',
+  // 메모의 날짜가 달을 **이름으로** 찍는다 (`StringTemplate_SetMonthName`)
+  'TEXT_BANK_MONTH_NAMES',
 ]
 
 function main() {

@@ -36,6 +36,17 @@ export interface TrainerInfo {
   playtimeMs: number
 }
 
+/**
+ * 개체에 새길 원래 트레이너.
+ *
+ * ⚠️ 낱말이 다르다. 주인공은 `boy`/`girl`인데(주인공 모델을 가르는 값이다)
+ * 개체에 들어가는 것은 `MON_DATA_OT_GENDER`, 즉 `GENDER_MALE`/`GENDER_FEMALE`다.
+ * 요약 화면이 그 값으로 이름 색을 가른다 — 남자 파랑, 여자 빨강
+ */
+export function playerTrainer(info: TrainerInfo): { name: string; gender: 'male' | 'female' } {
+  return { name: info.name, gender: info.gender === 'boy' ? 'male' : 'female' }
+}
+
 // 개체 모델은 엔진이 갖는다 — 능력치·경험치 계산이 붙어 있고 배틀에서도 같은 것을
 // 쓴다. 여기서 다시 정의하면 두 벌이 어긋난다.
 import { PARTY_MAX, type PokemonInstance, type Status } from '../engine/pokemon/instance'
@@ -178,7 +189,7 @@ export interface SaveData {
   daycare: DaycareState
 }
 
-export const SAVE_VERSION = 11
+export const SAVE_VERSION = 12
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999

@@ -8,6 +8,7 @@
 import type { Species, Stats } from '../../data/schema'
 import { genderOf, type MoveSlot, type PokemonInstance, type Rng } from './instance'
 import { natureOf } from './instance'
+import { hatchedAt, metToday } from './origin'
 
 /** `generated/egg_groups.txt`. 줄 번호가 곧 값이다 */
 export const EggGroup = {
@@ -577,7 +578,19 @@ export const MAX_LEVEL = 100
 /** 부화한 뒤의 친밀도. **종족 기본값이 아니라 120이다** (`Egg_CreateHatchedMonInternal`) */
 export const HATCHED_FRIENDSHIP = 120
 
-/** 알을 깬다. 레벨 1짜리 개체가 되고 별명이 지워진다 */
-export function hatch(mon: PokemonInstance): PokemonInstance {
-  return { ...mon, isEgg: false, friendship: HATCHED_FRIENDSHIP, nickname: null }
+/**
+ * 알을 깬다. 레벨 1짜리 개체가 되고 별명이 지워진다.
+ *
+ * **깬 자리가 만난 자리다** (`egg_hatch.c` → `sel = 6`). 알 자리는 그대로
+ * 남아서, 메모가 "육성가에서 받아 여기서 깼다" 두 줄이 된다. 레벨은 안 새긴다 —
+ * 부화한 개체의 메모에는 Lv 줄 자체가 없다
+ */
+export function hatch(mon: PokemonInstance, location: number, date = metToday()): PokemonInstance {
+  return {
+    ...mon,
+    isEgg: false,
+    friendship: HATCHED_FRIENDSHIP,
+    nickname: null,
+    origin: hatchedAt(mon.origin, location, date),
+  }
 }

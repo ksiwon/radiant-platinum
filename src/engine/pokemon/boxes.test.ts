@@ -12,6 +12,7 @@ import {
   freeSlots, nextSpace, store, swapSlots, withSlot,
 } from './boxes'
 import type { PokemonInstance } from './instance'
+import { noOrigin } from './origin'
 
 /** 종족 번호만 다른 껍데기. 이 시험은 자리만 본다 */
 function mon(species: number): PokemonInstance {
@@ -21,6 +22,7 @@ function mon(species: number): PokemonInstance {
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp: 20, status: 'ok', statusTurns: 0, heldItem: 0,
     friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
   }
 }
 

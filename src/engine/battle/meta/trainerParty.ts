@@ -5,6 +5,7 @@
 import type { Species, TrainerMon } from '../../../data/schema'
 import { expForLevel } from '../../pokemon/exp'
 import { wildMoves, type MoveSlot, type PokemonInstance } from '../../pokemon/instance'
+import { noOrigin } from '../../pokemon/origin'
 
 /**
  * 난이도 바이트 → 여섯 능력치 공통 개체값.
@@ -67,5 +68,7 @@ export function trainerMonToInstance(
     otId: 0,
     otSecretId: 0,
     ball: 0,
+    // 같은 까닭으로 출신도 안 남는다. 세이브에 안 들어가는 개체다
+    origin: noOrigin({ name: '', gender: 'male' }),
   }
 }

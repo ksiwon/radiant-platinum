@@ -13,7 +13,9 @@ import type { Item, Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
 import type { ItemPlan } from '../engine/battle/meta/bagItem'
 import { friendshipGain, isEscapeItem } from '../engine/battle/meta/bagItem'
-import { clampFriendship, NO_EGG_LOCATION } from '../engine/pokemon/friendship'
+import { clampFriendship } from '../engine/pokemon/friendship'
+import { caughtAt, metToday } from '../engine/pokemon/origin'
+import { mapById } from '../engine/map/world'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
@@ -36,7 +38,7 @@ import { useSessionStore } from './sessionStore'
 import { markBattle } from '../app/sceneMark'
 import { useEvolutionStore } from './evolutionStore'
 import { useMenuStore } from './menuStore'
-import { dexSet, useSaveStore } from './saveStore'
+import { dexSet, playerTrainer, useSaveStore } from './saveStore'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
 type ControllerItems = NonNullable<
@@ -472,13 +474,23 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       if (caught) {
         // 화면(`view`)이 아니라 정본을 본다 — 재생이 아직 못 따라왔을 수 있다
         const seen = get().truth?.active.p2a
+        // 잡은 자리·잡은 레벨·오늘 날짜를 새긴다 (`Pokemon_SetCatchData` →
+        // `sel = 0`). 자리는 맵 번호가 아니라 **지역명 번호**다 —
+        // 원작도 `MapHeader_GetMapLabelTextID`를 넘긴다
+        const level = seen?.level ?? caught.mon.level
         const mon: PokemonInstance = {
           ...caught.mon,
           hp: seen?.hp ?? caught.mon.hp,
           status: seen?.status ?? 'ok',
           otId: save.trainer.id,
           otSecretId: save.trainer.secretId,
-          ball: Ball.POKE,
+          ball: controller.capturedBall ?? Ball.POKE,
+          origin: caughtAt(
+            playerTrainer(save.trainer),
+            mapById(useSessionStore.getState().mapId)?.label ?? 0,
+            level,
+            metToday(),
+          ),
         }
         // 파티가 차 있으면 박스로 간다 (`PCBoxes_TryStoreBoxMon`). **지금 열려
         // 있는 박스**부터 자리를 찾고 차 있으면 다음 박스로 넘어간다 — 마지막
@@ -607,8 +619,10 @@ function grantFriendship(item: Item, key: string): void {
   if (!mon) return
   const delta = friendshipGain(item, mon.friendship, {
     ball: mon.ball,
-    eggLocation: NO_EGG_LOCATION,
-    mapId: useSessionStore.getState().mapId,
+    eggLocation: mon.origin.egg.location,
+    // 원작이 견주는 것은 맵 번호가 아니라 **지역명 번호**다 (`Pokemon_UpdateFriendship`이
+    // 알 자리와 견주는데, 알 자리에 들어간 값이 지역명 번호다)
+    mapId: mapById(useSessionStore.getState().mapId)?.label ?? 0,
   })
   if (delta === 0) return
   const next = [...party]

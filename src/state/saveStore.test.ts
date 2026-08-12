@@ -6,6 +6,7 @@ import { get, set, createStore } from 'idb-keyval'
 import { DEX_BYTES, createNewSave, dexHas, dexSet, useSaveStore } from './saveStore'
 import { NO_EGG_LOCATION } from '../engine/pokemon/friendship'
 import type { PokemonInstance } from '../engine/pokemon/instance'
+import { noOrigin } from '../engine/pokemon/origin'
 
 describe('도감 비트필드', () => {
   it('세트한 번호만 켜진다', () => {
@@ -82,6 +83,7 @@ describe('박스에 맡기고 꺼내기', () => {
     ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp, status: 'ok', statusTurns: 0, heldItem: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
     friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 0,
   })
 
@@ -140,6 +142,7 @@ describe('스크립트가 주는 것', () => {
     ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp: 20, status: 'ok', statusTurns: 0, heldItem: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
     friendship, isEgg: false, otId: 0, otSecretId: 0, ball,
   })
 

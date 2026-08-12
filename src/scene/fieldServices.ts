@@ -25,7 +25,10 @@ import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
-import { setWarpEventPos, world as mapWorld } from '../engine/map/world'
+import { mapById, setWarpEventPos, world as mapWorld } from '../engine/map/world'
+import {
+  caughtAt, eggFrom, MET_DAYCARE, metToday, SPECIAL_MET_BASE,
+} from '../engine/pokemon/origin'
 import { encounters } from '../engine/battle/encounterSystem'
 import { addTrophyMon, swarmMap, trophySpecies } from '../engine/world/daily'
 import {
@@ -38,7 +41,7 @@ import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
-import { useSaveStore } from '../state/saveStore'
+import { playerTrainer, useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { naming as namingAnswer } from '../ui/menu/namingAnswer'
 import type { ItemTable } from '../data/gameData'
@@ -103,8 +106,16 @@ function giveMon(species: number, level: number, heldItem: number): boolean {
     // `Pokemon_SetCatchData(..., ITEM_POKE_BALL, ...)` — 받은 것은 몬스터볼이다
     ball: ITEM_POKE_BALL,
     hp: statsOf(mon, info).hp,
+    // 받은 것도 잡은 것과 같은 갈래다 (`sel = 0`). 자리는 지금 서 있는 곳의
+    // 지역명 번호 — 연구소에서 받은 파트너는 "무성시티에서 만났다"가 된다
+    origin: caughtAt(playerTrainer(save.trainer), hereLabel(), level, metToday()),
   })
   return true
+}
+
+/** 지금 서 있는 맵의 지역명 번호 (`MapHeader_GetMapLabelTextID`) */
+function hereLabel(): number {
+  return mapById(useSessionStore.getState().mapId)?.label ?? 0
 }
 
 /** `generated/items.txt` — 스크립트가 준 포켓몬이 들어 있는 볼 */
@@ -116,7 +127,9 @@ const ITEM_POKE_BALL = 4
  * 육성가에서 받는 알도, 선물로 받는 알도 이 길로 온다. 레벨 1에 **남은 부화
  * 걸음이 친밀도 칸에** 들어간다 — 원작이 칸을 하나로 쓴다
  */
-function makeEggMon(species: number, plan: EggPlan | null): PokemonInstance | null {
+function makeEggMon(
+  species: number, plan: EggPlan | null, from: number = MET_DAYCARE,
+): PokemonInstance | null {
   const table = speciesTable
   const moves = moveTable
   if (!table || !moves) return null
@@ -141,6 +154,10 @@ function makeEggMon(species: number, plan: EggPlan | null): PokemonInstance | nu
     friendship: plan?.eggCycles ?? info.eggCycles,
     hp: statsOf(base, info).hp,
     nickname: null,
+    // 알을 받았다 (`sel = 3`). **만난 자리는 비운다** — 아직 안 만났고,
+    // 깨는 자리에서 `hatchedAt`이 채운다. 육성가 알이든 선물 알이든
+    // 원작이 같은 자리(`SpecialMetLoc_GetId(1, 0)`)를 적는다
+    origin: eggFrom(playerTrainer(save.trainer), from, metToday()),
   }
 }
 
@@ -474,8 +491,10 @@ const services: FieldServices = {
    * 이야기에서 받는 알(우호광장의 리오르, 마나피)이 이 길로 온다.
    * 그동안 이 자리가 비어 있어서 **말은 걸리는데 알이 안 들어왔다**
    */
-  giveEgg: (species) => {
-    const mon = makeEggMon(species, null)
+  giveEgg: (species, giver) => {
+    // `giver`가 알 받은 자리를 고른다 (`SpecialMetLoc_GetId(1, giver)`) —
+    // 9 여행하는 남자(마나피) · 10 라이리(리오르) · 11 난천(토게피)
+    const mon = makeEggMon(species, null, SPECIAL_MET_BASE + giver)
     if (mon) useSaveStore.setState({ party: [...useSaveStore.getState().party, mon] })
   },
 

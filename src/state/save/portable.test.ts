@@ -12,6 +12,7 @@ import { migrateSave, oldestSupported, type Migration } from './migrate'
 import { saveFileName } from './download'
 import { checksum, encodePayload } from './codec'
 import { createNewSave, SAVE_VERSION } from '../saveStore'
+import { noOrigin } from '../../engine/pokemon/origin'
 import { dexSet } from '../../engine/pokemon/dex'
 
 const AT = new Date('2026-08-10T14:03:07')
@@ -33,6 +34,7 @@ function filled() {
     moves: [{ move: 33, pp: 35, ppUps: 0 }, { move: 45, pp: 40, ppUps: 0 }],
     hp: 19, status: 'psn', statusTurns: 0, heldItem: 17,
     friendship: 70, isEgg: false, otId: 40404, otSecretId: 12, ball: 4,
+    origin: noOrigin({ name: '', gender: 'male' }),
   }]
   return save
 }

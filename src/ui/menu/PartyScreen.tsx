@@ -8,11 +8,15 @@
 // 아이콘을 따로 안 뽑았고, 없는 그림을 지어내는 것보다 있는 것을 쓰는 편이 낫다.
 // three를 안 거치고 `<img>`로 받는다 — UI 계층은 three를 import 할 수 없다.
 //
-// 화면 안에 목록이 둘이다 — 왼쪽 카드와 오른쪽 기술. Tab으로 오간다. 카드 쪽
-// Z는 **집기**고(자리 바꾸기), 기술 쪽 Z는 **쓰기**다(비전머신).
+// 카드에서 Z를 누르면 **갈래 메뉴**가 뜬다 (`GetContextMenuEntriesForPartyMon`).
+// 차례가 원작 그대로다 — 요약 → 그 마리가 아는 비전기술 → 자리바꾸기 → 도구 →
+// 그만둔다. 메뉴 없이 Z에 자리바꾸기를 바로 걸어 두면 요약도 도구도 갈 길이 없다.
+//
+// 오른쪽 기술 목록은 남는다 — 원작에는 없지만 커서를 올리면 설명이 뜨는 자리라
+// 갈래 메뉴와 겹치지 않는다.
 import { useEffect, useState } from 'react'
 import { loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
-import { loadUiText } from '../../data/uiText'
+import { fillMenuText, loadUiText } from '../../data/uiText'
 import { genderOf, maxHp, natureOf, statsOf } from '../../engine/pokemon/instance'
 import { natureEffect } from '../../engine/pokemon/stats'
 import { hpColor } from '../../engine/battle/healthbar'
@@ -60,6 +64,29 @@ const DENIAL: Record<string, string> = {
   notHere: '여기서는 쓸 수 없다.',
 }
 
+/**
+ * 파티 뱅크(453)의 갈래 메뉴 글. 원작 상수 이름 그대로다.
+ *
+ * 비전기술 칸은 `FieldMove0`~`3`인데 넷 다 `{COLOR 1}{기술 이름}{COLOR 0}`
+ * 하나뿐이라 우리는 기술 이름을 바로 쓴다
+ */
+const P = {
+  askMon: 37, askItem: 38,
+  switch_: 145, summary: 146, item: 147, cancel: 152,
+  give: 160, take: 161,
+} as const
+
+/** 갈래 하나 */
+interface Choice {
+  label: string
+  run: () => void
+}
+
+/** 빈칸이 없는 글. 줄 바꿈만 남기고 제어 부호를 뗀다 */
+function plainText(raw: string | undefined): string {
+  return fillMenuText(raw ?? '', [])
+}
+
 export function PartyScreen() {
   const [species, setSpecies] = useState<SpeciesTable | null>(null)
   // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
@@ -74,19 +101,25 @@ export function PartyScreen() {
   /** 자리를 바꾸려고 집어 든 카드. null이면 안 집었다 */
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** 떠 있는 갈래 메뉴. null이면 카드를 고르는 중이다 */
+  const [menu, setMenu] = useState<'root' | 'item' | null>(null)
+  const [menuAt, setMenuAt] = useState(0)
+  /** 파티 뱅크의 글. 갈래 메뉴의 낱말이 전부 여기서 온다 */
+  const [partyText, setPartyText] = useState<string[]>([])
   /** 가방에서 들고 온 도구. 있으면 이 화면은 "누구에게 쓸까"다 (PARITY §4.1) */
   const usingItem = useMenuStore((s) => s.usingItem)
   const clearUsingItem = useMenuStore((s) => s.clearUsingItem)
   const [tables, setTables] = useState<{ items: ItemTable; moves: MoveTable } | null>(null)
 
+  // ⚠️ 도구를 들고 왔을 때만 받으면 **「뺏는다」가 주머니를 모른다.** 표가
+  // 없으면 돌려받은 도구가 0번 주머니로 들어가서 조용히 엉뚱한 칸에 쌓인다
   useEffect(() => {
-    if (usingItem === null) return
     let alive = true
     void Promise.all([loadItems(), loadMoves()]).then(([items, moves]) => {
       if (alive) setTables({ items, moves })
     }).catch(() => { /* 아무것도 못 쓴다 */ })
     return () => { alive = false }
-  }, [usingItem])
+  }, [])
 
   const back = useMenuStore((s) => s.back)
   const push = useMenuStore((s) => s.push)
@@ -94,17 +127,21 @@ export function PartyScreen() {
   const party = useSaveStore((s) => s.party)
   const swapParty = useSaveStore((s) => s.swapParty)
   const removeItem = useSaveStore((s) => s.removeItem)
+  const addItem = useSaveStore((s) => s.addItem)
   const open = useMenuStore((s) => s.open)
+  const openSummary = useMenuStore((s) => s.openSummary)
+  const openBagToGive = useMenuStore((s) => s.openBagToGive)
 
   useEffect(() => {
     let alive = true
     void Promise.all([
       loadSpecies(), loadSpeciesNames(locale), loadMoveNames(locale),
-      loadUiText('moveDescriptions', locale),
+      loadUiText('moveDescriptions', locale), loadUiText('partyMenu', locale),
     ])
-      .then(([table, list, moves, texts]) => {
+      .then(([table, list, moves, texts, party]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setMoveNames(moves); setMoveTexts(texts)
+        setPartyText(party)
       })
       .catch(() => { /* 이름만 빈다 */ })
     return () => { alive = false }
@@ -129,15 +166,70 @@ export function PartyScreen() {
     setCursor(next)
   }
 
-  const tryMove = (): void => {
-    const slot = moves[moveOn]
-    if (!slot) return
-    const verdict = fieldMoveFromMenu(slot.move)
+  const runFieldMove = (move: number): void => {
+    const verdict = fieldMoveFromMenu(move)
     if (verdict === null) { setNotice('밖에서는 쓸 수 없는 기술이다.'); return }
     if (verdict === 'fly') { push('fly'); return }
     if (verdict === 'used') { closeAll(); return }
     setNotice(DENIAL[verdict] ?? null)
   }
+
+  const tryMove = (): void => {
+    const slot = moves[moveOn]
+    if (slot) runFieldMove(slot.move)
+  }
+
+  /**
+   * 갈래 메뉴의 항목 (`GetContextMenuEntriesForPartyMon`).
+   *
+   * ⚠️ **차례가 자료다.** 요약이 맨 위고 비전기술이 그다음이며 자리바꾸기는
+   * 그 아래다 — 기술을 아는 마리와 모르는 마리에서 「자리바꾸기」의 높이가
+   * 달라지는 것이 원작의 모습이다. 알은 요약과 자리바꾸기 둘뿐이다
+   */
+  const rootChoices = (): Choice[] => {
+    const text = (id: number): string => partyText[id] ?? ''
+    const out: Choice[] = [
+      { label: text(P.summary), run: () => { setMenu(null); openSummary(at) } },
+    ]
+    if (selected && !selected.isEgg) {
+      for (const slot of selected.moves) {
+        if (!FIELD_BY_MOVE.has(slot.move)) continue
+        const move = slot.move
+        out.push({
+          label: moveNames[move] ?? '',
+          run: () => { setMenu(null); runFieldMove(move) },
+        })
+      }
+    }
+    out.push({ label: text(P.switch_), run: () => { setMenu(null); setHeld(at) } })
+    if (selected && !selected.isEgg) {
+      out.push({ label: text(P.item), run: () => { setMenu('item'); setMenuAt(0) } })
+    }
+    out.push({ label: text(P.cancel), run: () => { setMenu(null) } })
+    return out
+  }
+
+  /** 도구 갈래 (`PartyMenu_SelectItem`) — 건네준다 · 뺏는다 · 그만둔다 */
+  const itemChoices = (): Choice[] => {
+    const text = (id: number): string => partyText[id] ?? ''
+    return [
+      { label: text(P.give), run: () => { setMenu(null); openBagToGive(at) } },
+      { label: text(P.take), run: () => { setMenu(null); takeItem() } },
+      { label: text(P.cancel), run: () => { setMenu('root'); setMenuAt(0) } },
+    ]
+  }
+
+  /** 들고 있던 것을 가방으로 돌려받는다 (`PartyMenu_SelectItemTake`) */
+  const takeItem = (): void => {
+    if (!selected || selected.heldItem === 0) { setNotice('아무것도 안 들고 있다.'); return }
+    const held = selected.heldItem
+    const next = [...party]
+    next[at] = { ...selected, heldItem: 0 }
+    useSaveStore.setState({ party: next })
+    addItem(tables?.items.get(held).pocket ?? 0, held, 1)
+  }
+
+  const choices = menu === 'root' ? rootChoices() : menu === 'item' ? itemChoices() : []
 
   /**
    * 들고 온 도구를 고른 마리에게 쓴다 (`item_use_pokemon.c`).
@@ -196,26 +288,36 @@ export function PartyScreen() {
     open('evolution')
   }
 
+  // 갈래 메뉴가 떠 있으면 **키를 그쪽이 다 가져간다** — 뒤에서 카드가 같이
+  // 움직이면 무엇을 고르는 중인지가 사라진다
+  const inMenu = menu !== null
   useMenuKeys({
-    up: pane === 'party' ? stepParty(-1) : () => { setMoveAt((c) => clampCursor(c, -1, moves.length)) },
-    down: pane === 'party' ? stepParty(1) : () => { setMoveAt((c) => clampCursor(c, 1, moves.length)) },
-    left: pane === 'party' ? stepParty(-1) : () => { setPane('party') },
-    right: pane === 'party' ? stepParty(1) : undefined,
+    up: inMenu ? () => { setMenuAt((c) => clampCursor(c, -1, choices.length)) }
+      : pane === 'party' ? stepParty(-1) : () => { setMoveAt((c) => clampCursor(c, -1, moves.length)) },
+    down: inMenu ? () => { setMenuAt((c) => clampCursor(c, 1, choices.length)) }
+      : pane === 'party' ? stepParty(1) : () => { setMoveAt((c) => clampCursor(c, 1, moves.length)) },
+    left: inMenu ? undefined : pane === 'party' ? stepParty(-1) : () => { setPane('party') },
+    right: inMenu ? undefined : pane === 'party' ? stepParty(1) : undefined,
     tab: () => {
       setNotice(null)
-      if (held !== null) return // 집은 채로는 칸을 안 옮긴다
+      if (inMenu || held !== null) return // 집은 채로는 칸을 안 옮긴다
       setPane((p) => (p === 'party' && moves.length > 0 ? 'moves' : 'party'))
     },
     confirm: () => {
       setNotice(null)
-      // 도구를 들고 왔으면 자리 바꾸기가 아니라 **먹이기**다
+      if (inMenu) { choices[Math.min(menuAt, choices.length - 1)]?.run(); return }
+      // 도구를 들고 왔으면 갈래 메뉴가 아니라 **먹이기**다
       if (usingItem !== null) { applyItem(); return }
       if (pane === 'moves') { tryMove(); return }
-      // 집었다 놓는다. 놓는 자리가 곧 새 자리다 — 옮기는 동안 이미 바뀌어 있다
-      setHeld((h) => (h === null ? at : null))
+      // 집은 것을 놓는다. 놓는 자리가 곧 새 자리다 — 옮기는 동안 이미 바뀌어 있다
+      if (held !== null) { setHeld(null); return }
+      setMenu('root')
+      setMenuAt(0)
     },
     cancel: () => {
       setNotice(null)
+      if (menu === 'item') { setMenu('root'); setMenuAt(0); return }
+      if (inMenu) { setMenu(null); return }
       if (held !== null) { setHeld(null); return }
       if (pane === 'moves') { setPane('party'); return }
       back()
@@ -226,13 +328,15 @@ export function PartyScreen() {
   const info = species && selected ? species.byId.get(selected.species) : undefined
   const alive = party.filter((m) => m.hp > 0).length
 
-  const foot = usingItem !== null
-    ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
-    : held !== null
-    ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
-    : pane === 'moves'
-      ? '↑↓ 고르기 · Z 쓴다 · Tab/← 포켓몬 · X 닫기'
-      : '↑↓←→ 고르기 · Z 집기 · Tab 기술 · X 닫기'
+  const foot = inMenu
+    ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
+    : usingItem !== null
+      ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
+      : held !== null
+        ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
+        : pane === 'moves'
+          ? '↑↓ 고르기 · Z 쓴다 · Tab/← 포켓몬 · X 닫기'
+          : '↑↓←→ 고르기 · Z 갈래 · Tab 기술 · X 닫기'
 
   return (
     <MenuScreen
@@ -267,7 +371,28 @@ export function PartyScreen() {
         </div>
 
         <div className={css.detail}>
-          {selected && info ? (
+          {inMenu && (
+            <div className={own.choices}>
+              {/* 원작이 먼저 묻고("○○을 어떻게 할까?") 그 아래에 갈래를 편다 */}
+              <div className={own.choiceAsk}>
+                {menu === 'item'
+                  ? plainText(partyText[P.askItem])
+                  : fillMenuText(partyText[P.askMon] ?? '', [selected ? nameOf(selected) : ''])}
+              </div>
+              {choices.map((c, i) => (
+                <div
+                  key={c.label + String(i)}
+                  className={i === Math.min(menuAt, choices.length - 1)
+                    ? own.choiceOn : own.choice}
+                  onPointerEnter={() => { setMenuAt(i) }}
+                  onClick={c.run}
+                >
+                  {c.label}
+                </div>
+              ))}
+            </div>
+          )}
+          {!inMenu && selected && info ? (
             <>
               <div className={css.detailTitle}>
                 {nameOf(selected)}

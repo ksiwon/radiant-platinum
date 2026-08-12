@@ -13,9 +13,7 @@
 // ⚠️ **프레임이 아니라 걸음이다.** 60fps에서 프레임마다 돌리면 한 칸에 여덟
 // 번씩 도는데, 그러면 독이 여덟 배로 깎이고 친밀도는 128걸음이 16걸음이 된다.
 import type { PokemonInstance } from '../pokemon/instance'
-import {
-  clampFriendship, LUXURY_BALL, MAX_FRIENDSHIP, NO_EGG_LOCATION,
-} from '../pokemon/friendship'
+import { clampFriendship, LUXURY_BALL, MAX_FRIENDSHIP } from '../pokemon/friendship'
 
 /** `LOW_FRIENDSHIP_LIMIT` · `MED_FRIENDSHIP_LIMIT` */
 const LOW_TIER = 100
@@ -56,13 +54,15 @@ function tierOf(friendship: number): number {
 
 /** 걸음 하나가 얹는 친밀도. 보정 셋까지 얹은 값이다 */
 export function walkFriendship(
-  mon: PokemonInstance, mapId: number, soothing: boolean,
+  mon: PokemonInstance, label: number, soothing: boolean,
 ): number {
   let change: number = WALK_CHANGE[tierOf(mon.friendship)] ?? 0
   if (change <= 0) return change
   if (mon.ball === LUXURY_BALL) change++
-  // 알을 받은 자리는 개체에 아직 칸이 없다 (`NO_EGG_LOCATION`)
-  if (NO_EGG_LOCATION === mapId) change++
+  // ⚠️ 견주는 것은 **알을 받은 자리**다 (`Pokemon_UpdateFriendship`). 잡은
+  // 자리가 아니다 — 잡은 마리는 알 자리가 0이라 0번 지역명에서만 걸린다.
+  // `label`은 맵 번호가 아니라 **지역명 번호**다
+  if (mon.origin.egg.location === label) change++
   if (soothing) change = Math.trunc((change * 150) / 100)
   return change
 }
@@ -117,8 +117,8 @@ export function poisonStep(party: readonly PokemonInstance[]): PoisonResult {
 /** 걸음 하나가 바깥에서 필요로 하는 것 */
 export interface StepWorld {
   party: readonly PokemonInstance[]
-  /** 지금 맵 헤더 번호 */
-  mapId: number
+  /** 지금 맵의 **지역명 번호** (`MapHeader_GetMapLabelTextID`). 맵 번호가 아니다 */
+  label: number
   /** 독 걸음 (0~3) */
   poisonSteps: number
   /** 남은 리펠 걸음 */
@@ -168,7 +168,7 @@ export function step(world: StepWorld): StepResult {
     party = party.map((mon) => {
       // 동전 던지기는 **마리마다** 한 번씩이다 — 원작이 개체마다 부른다
       if (world.coin()) return mon
-      const delta = walkFriendship(mon, world.mapId, world.soothing(mon))
+      const delta = walkFriendship(mon, world.label, world.soothing(mon))
       if (delta === 0 || mon.friendship >= MAX_FRIENDSHIP) return mon
       return { ...mon, friendship: clampFriendship(mon.friendship + delta) }
     })

@@ -56,7 +56,9 @@ export function BagScreen() {
   const money = useSaveStore((s) => s.money)
   const steps = useSaveStore((s) => s.steps)
   const removeItem = useSaveStore((s) => s.removeItem)
+  const addItem = useSaveStore((s) => s.addItem)
   const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
+  const giveTo = useMenuStore((s) => s.giveTo)
   const closeAll = useMenuStore((s) => s.closeAll)
 
   useEffect(() => {
@@ -77,6 +79,25 @@ export function BagScreen() {
   const selected = slots[at]
 
   /**
+   * 도구를 파티의 한 마리에게 붙인다 (`PartyMenu_SelectItemGive`).
+   *
+   * ⚠️ **이미 들고 있으면 맞바꾼다.** 원작이 들고 있던 것을 가방에 돌려주고
+   * 새것을 붙인다 — 덮어쓰면 도구 하나가 세상에서 사라진다
+   */
+  const giveItem = (slot: number, id: number, pocket: number): void => {
+    const party = useSaveStore.getState().party
+    const mon = party[slot]
+    if (!mon) return
+    const held = mon.heldItem
+    const next = [...party]
+    next[slot] = { ...mon, heldItem: id }
+    useSaveStore.setState({ party: next })
+    removeItem(pocket, id, 1)
+    if (held > 0) addItem(data?.items.get(held).pocket ?? 0, held, 1)
+    back()
+  }
+
+  /**
    * 고른 물건을 쓴다 (PARITY §4.1).
    *
    * 무엇을 하는지는 도구표의 `fieldUseFunc`가 정한다 (`engine/bag/fieldUse`) —
@@ -87,6 +108,9 @@ export function BagScreen() {
     const id = selected?.item
     if (id === undefined || !data) return
     const item = data.items.get(id)
+    // 「건네준다」로 열린 가방이다 (`PartyMenu_SelectItemGive`). 쓰는 것이
+    // 아니라 **붙이는 것**이라 도구표의 갈래를 아예 안 본다
+    if (giveTo !== null) { giveItem(giveTo, id, item.pocket ?? 0); return }
     const header = mapById(world.mapId)
     const p = worldState.player
     const grid = world.grid

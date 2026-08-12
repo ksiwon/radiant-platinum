@@ -18,6 +18,7 @@ import { FlyScreen } from './FlyScreen'
 import { SaveScreen } from './SaveScreen'
 import { ShopScreen } from './ShopScreen'
 import { StartMenu } from './StartMenu'
+import { SummaryScreen } from './SummaryScreen'
 import { TrainerCard } from './TrainerCard'
 
 const OPEN_KEYS = new Set(['KeyX', 'Escape'])
@@ -49,6 +50,7 @@ export function MenuLayer() {
     case 'start': return <StartMenu />
     case 'bag': return <BagScreen />
     case 'party': return <PartyScreen />
+    case 'summary': return <SummaryScreen />
     case 'pokedex': return <PokedexScreen />
     case 'fly': return <FlyScreen />
     case 'trainerCard': return <TrainerCard />

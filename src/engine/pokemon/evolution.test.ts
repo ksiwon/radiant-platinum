@@ -12,6 +12,7 @@ import { expect, it } from 'vitest'
 import { speciesFileSchema, type Species } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 import type { PokemonInstance } from './instance'
+import { noOrigin } from './origin'
 import {
   Evo, EvoClass, evolutionTarget, evolve, FRIENDSHIP_THRESHOLD, HOLD_EFFECT_NO_EVOLVE,
   MAP_EVOLUTION, movesOnEvolve, spawnsShedinja, type EvoContext,
@@ -50,6 +51,7 @@ maybe('진화', () => {
     otId: 0,
     otSecretId: 0,
     ball: 4,
+    origin: noOrigin({ name: '', gender: 'male' }),
     ...over,
   })
 

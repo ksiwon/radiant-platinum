@@ -67,6 +67,32 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 맵을 옮기면 어차피 풀리는 값이라 **안 분 것으로** 시작한다
    */
   10: (data) => ({ ...data, version: 11, flute: 0 }),
+
+  /**
+   * 11 → 12. 개체에 **어디서 왔는가**가 새겨진다 (PARITY §3.8 · §5 요약 화면).
+   *
+   * ⚠️ **없는 과거를 지어내지 않는다.** 옛 리포트의 마리가 어느 풀숲에서
+   * 몇 레벨에 잡혔는지는 세상에 남아 있지 않다. 자리를 0으로 두면 원작이
+   * 이름을 못 찾을 때 쓰는 "수수께끼의 장소"로 떨어지고
+   * (`StringTemplate_SetMetLocationName`), 날짜는 null이라 그 줄을 안 찍는다 —
+   * 오늘 날짜를 넣으면 전부 오늘 잡은 것으로 보인다.
+   *
+   * 원래 트레이너 이름만은 안다. 통신이 없어서 **모두 주인공의 것**이다
+   */
+  11: (data) => {
+    const who = data.trainer as { name?: unknown; gender?: unknown } | undefined
+    const name = typeof who?.name === 'string' ? who.name : ''
+    const gender = who?.gender === 'boy' ? 'male' : 'female'
+    const blank = { location: 0, date: null }
+    const origin = { otName: name, otGender: gender, met: blank, metLevel: 0, egg: blank, fateful: false }
+    const stamp = (mon: unknown): unknown =>
+      mon === null || typeof mon !== 'object' ? mon : { ...mon, origin }
+    const party = Array.isArray(data.party) ? data.party.map(stamp) : data.party
+    const boxes = Array.isArray(data.boxes)
+      ? data.boxes.map((box) => (Array.isArray(box) ? box.map(stamp) : box))
+      : data.boxes
+    return { ...data, version: 12, party, boxes }
+  },
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

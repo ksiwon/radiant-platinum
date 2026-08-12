@@ -274,3 +274,37 @@ export const movePp = style({
   fontSize: 12,
   opacity: 0.75,
 })
+
+/**
+ * 갈래 메뉴 (`GetContextMenuEntriesForPartyMon`).
+ *
+ * 원작은 오른쪽 아래 구석에 창 하나로 뜬다. 우리는 오른쪽 칸을 통째로 쓰므로
+ * 그 자리에 물음과 갈래만 세운다 — 카드 위에 겹쳐 띄우면 무엇을 고르는
+ * 중인지 가려진다
+ */
+export const choices = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 1,
+  paddingTop: 2,
+})
+
+export const choiceAsk = style({
+  fontSize: 15,
+  fontWeight: 600,
+  whiteSpace: 'pre-line',
+  lineHeight: 1.5,
+  marginBottom: 8,
+})
+
+export const choice = style({
+  padding: '5px 10px',
+  borderRadius: 6,
+  fontSize: 15,
+})
+
+export const choiceOn = style([choice, {
+  background: 'rgba(238, 243, 255, 0.14)',
+  boxShadow: `inset 0 0 0 2px ${vars.hud.warn}`,
+  fontWeight: 600,
+}])

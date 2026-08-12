@@ -16,6 +16,7 @@ import {
 } from './breeding'
 import { ABILITY_FLAME_BODY, ABILITY_MAGMA_ARMOR } from './breeding'
 import type { PokemonInstance } from './instance'
+import { noOrigin } from './origin'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const maybe = withData('species.json')
@@ -38,6 +39,7 @@ maybe('알과 육성가', () => {
     ivs: { hp: 1, atk: 2, def: 3, spa: 4, spd: 5, spe: 6 },
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp: 30, status: 'ok', statusTurns: 0, heldItem: 0,
+    origin: noOrigin({ name: '', gender: 'male' }),
     friendship: 70, isEgg: false, otId: 1, otSecretId: 1, ball: 4, ...over,
   })
   /** 암컷이 되는 PID — 성비 문턱보다 낮은 하위 바이트 */
@@ -263,7 +265,7 @@ maybe('알과 육성가', () => {
   it('부화하면 친밀도가 120이다 — 종족 기본값이 아니다', () => {
     const baby = dataOf(TURTWIG)
     expect(baby.baseFriendship).not.toBe(HATCHED_FRIENDSHIP)
-    const got = hatch(mon(TURTWIG, { isEgg: true, friendship: 0, nickname: '알' }))
+    const got = hatch(mon(TURTWIG, { isEgg: true, friendship: 0, nickname: '알' }), 411)
     expect(got.isEgg).toBe(false)
     expect(got.friendship).toBe(HATCHED_FRIENDSHIP)
     expect(got.nickname).toBeNull()

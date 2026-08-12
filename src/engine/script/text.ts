@@ -157,12 +157,23 @@ export function particleFor(selector: number, value: string): string {
 
 // ── 칸 채우기 ────────────────────────────────────────────────────────────────
 
-/** 스크립트가 `Buffer…` 명령으로 채우는 8칸 */
+/**
+ * 스크립트가 `Buffer…` 명령으로 채우는 8칸.
+ *
+ * ⚠️ **화면마다 표가 다르다.** 8은 필드 스크립트의 값이고
+ * (`StringTemplate_New(8, 64, HEAP_ID_FIELD2)`), 요약 화면의 트레이너 메모는
+ * 9칸이라(`StringTemplate_New(9, 32, …)`) 알 자리가 8번 칸에 들어간다.
+ * 기본값으로 두면 그 칸이 조용히 버려져 알 자리가 빈 채로 찍힌다
+ */
 export class MessageSlots {
-  private readonly values: string[] = Array<string>(MESSAGE_SLOTS).fill('')
+  private readonly values: string[]
+
+  constructor(private readonly size: number = MESSAGE_SLOTS) {
+    this.values = Array<string>(size).fill('')
+  }
 
   set(slot: number, value: string): void {
-    if (slot >= 0 && slot < MESSAGE_SLOTS) this.values[slot] = value
+    if (slot >= 0 && slot < this.size) this.values[slot] = value
   }
 
   get(slot: number): string {
