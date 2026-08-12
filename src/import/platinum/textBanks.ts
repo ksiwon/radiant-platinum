@@ -416,7 +416,7 @@ export const TEXT_BANK_NAMES = [
   'start_menu', 'menu_entries', 'bag', 'bag_pocket_names', 'party_menu', 'pokedex',
   'options_menu', 'save_info_window', 'main_menu_options', 'common_strings', 'rowan_intro',
   'naming_screen', 'pokemon_storage_system', 'box_messages',
-  'pokemon_summary_screen', 'special_met_location_names', 'month_names',
+  'pokemon_summary_screen', 'special_met_location_names', 'month_names', 'town_map',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

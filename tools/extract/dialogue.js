@@ -198,6 +198,8 @@ const EXTRA_BANKS = [
   'TEXT_BANK_SPECIAL_MET_LOCATION_NAMES',
   // 메모의 날짜가 달을 **이름으로** 찍는다 (`StringTemplate_SetMonthName`)
   'TEXT_BANK_MONTH_NAMES',
+  // 타운맵이 커서 아래 칸의 이름을 여기서 읽는다 (`tmap_block.dat`의 `areaDescString`)
+  'TEXT_BANK_TOWN_MAP',
 ]
 
 function main() {

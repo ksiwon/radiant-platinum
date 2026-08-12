@@ -2789,7 +2789,7 @@ NDS 파일시스템과 NARC 파서는 전량 구조 검증을 통과한 현재 �
 | 맵 등뼈 | `headers`, `matrices`, `bdhc`, `events` | maps·matrices·height·events |
 | 스크립트·대사 | `textbanks`, `scripts`, `dialogue` | scripts·dialogue·names |
 | 전투 데이터 | `species`, `moves`, `trainers`, `encounters` | JSON tables |
-| 아이템·UI 그림 | `items`, `itemIcons`, `pokeIcons`, `boxWallpapers`, `signposts` | tables·atlases |
+| 아이템·UI 그림 | `items`, `itemIcons`, `pokeIcons`, `boxWallpapers`, `townMap`, `signposts` | tables·atlases |
 | 필드 렌더 | `chunks`, `props`, `mapTextures`, `starterScene` | mesh binary·PNG |
 | 오디오 | `sound`, `sndTables` | sequence·bank·wave·index |
 | BDSP 캐릭터 | `bdspNpc`, `bdspGlb`, `npcModels` | npc table·GLB |
@@ -3658,6 +3658,31 @@ PC를 여는 간판도 NPC도 없다. `Field_TileBehaviorToScript`가 앞 칸의
 칸 자리도 원작에서 잰다. `ov19_021D79F8`이 아이콘을 `112 + 24*col`,
 `40 + 24*row`에 놓는다 — **간격 24에 아이콘 32라 8만큼 겹친다.** 간격을 벌리면
 서른 칸이 화면을 넘는다.
+
+### 2.20.1 tmap_gra — 신오 지도 한 장
+
+공중날기가 목록이 아니라 지도 위에서 일어난다. `graphic/tmap_gra.narc`의 멤버
+차례는 디컴프의 `res/graphics/town_map/town_map_graphics.order`에 있다:
+
+| 멤버 | 뜻 |
+|---|---|
+| 0 | `top_screen_map.NCLR` — 16색 **두 벌**. NSCR 한 칸의 위 4비트가 벌을 고른다 |
+| 19 | `top_screen_map_tiles.NCGR` — LZ77 |
+| 22 | `top_screen_region_bg_tilemap.NSCR` — 32×24칸. 바다와 테두리 |
+| 24 | `top_screen_region_map_tilemap.NSCR` — 32×24칸. 육지와 도로 |
+
+⚠️ **두 판을 겹쳐야 지도가 된다.** 22가 층 3(맨 뒤)이고 24가 층 2다 —
+NDS는 층 번호가 클수록 뒤라 22를 먼저 깔고 24를 얹는다. 24의 **색 0은 비침**이라
+그냥 칠하면 육지가 바다를 통째로 덮는다. → `data/townMap.png` 256×192, 5.4KB.
+
+격자는 `TOWN_MAP_GRID_SPACING`이 7이고 원점이 `(+25, −34)`다. 한 칸이 **행렬 0의
+한 칸**과 같다(디컴프 주석이 그렇게 적어 두었다).
+
+칸마다의 이름은 `data/tmap_block.dat`에 있다 — `int` 개수 + 24바이트 구조체
+182개. ⚠️ 그 안의 `areaDescString`은 **이름이 아니라 설명**이다("어린잎의 숨결이…").
+이름은 행렬 0의 그 칸에 놓인 맵의 `label`, 즉 지역명 표에서 온다 — 그래서
+추출할 때 행렬을 읽어 칸마다 `map`과 `label`을 같이 적는다. ⚠️ 이름난 자리가
+없으면 `landmark`가 **65535**다. 0으로 견주면 뱅크의 첫 글이 온 지도에 붙는다.
 
 ### 2.21 field_board — 간판 판에 붙는 그림
 

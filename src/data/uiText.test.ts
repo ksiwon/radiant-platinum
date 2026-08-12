@@ -37,6 +37,7 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   summary: 'pokemon_summary_screen',
   specialMetLocations: 'special_met_location_names',
   monthNames: 'month_names',
+  townMap: 'town_map',
 }
 
 describe('메뉴 글', () => {

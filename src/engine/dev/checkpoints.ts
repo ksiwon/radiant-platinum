@@ -1203,6 +1203,27 @@ export function seenAlongTheWay(
   return [...out]
 }
 
+/**
+ * 지나온 자리에서 열렸을 공중날기 자리 (`unlockOnMapEntry`).
+ *
+ * 도감과 같은 규칙이다 — 표의 **순서**가 이야기 순서라, 앞자리의 맵에 발을
+ * 들였으면 그 마을은 열려 있다. 안 열면 타운맵이 통째로 회색이라 화면이
+ * 맞는지를 볼 수가 없다
+ */
+export function fliesAlongTheWay(
+  upTo: string,
+  unlockAt: (mapId: number) => number | null,
+): number[] {
+  const end = CHECKPOINTS.findIndex((c) => c.id === upTo)
+  if (end < 0) return []
+  const out = new Set<number>()
+  for (const cp of CHECKPOINTS.slice(0, end + 1)) {
+    const at = unlockAt(cp.map)
+    if (at !== null) out.add(at)
+  }
+  return [...out]
+}
+
 /** 세운 자리. 좌표는 타일 한가운데, `facing`은 `atan2(dx, dz)`라 0이 남쪽이다 */
 export interface Placement {
   x: number

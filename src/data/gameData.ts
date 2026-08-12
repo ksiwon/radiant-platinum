@@ -9,10 +9,10 @@ import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
   scriptFileSchema,
-  speciesFileSchema, trainerFileSchema,
+  speciesFileSchema, trainerFileSchema, townMapSchema,
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
-  type Species, type Trainer,
+  type Species, type Trainer, type TownMapFile,
 } from './schema'
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
@@ -263,6 +263,11 @@ export function loadMarts(): Promise<MartTable> {
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {
   return fetchJson(`names/labels.${locale}.json`, (v) => labelsSchema.parse(v))
+}
+
+/** 타운맵의 격자 표. 그림은 `data/townMap.png`로 따로 받는다 */
+export function loadTownMap(): Promise<TownMapFile> {
+  return fetchJson('townMap.json', (v) => townMapSchema.parse(v))
 }
 
 // ── 스크립트·대사 (DATA.md §2.10, §2.11) ──────────────────────────────────────

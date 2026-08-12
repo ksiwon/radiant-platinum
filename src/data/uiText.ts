@@ -55,6 +55,8 @@ export const UI_BANK = {
   specialMetLocations: 435,
   /** ⚠️ `TEXT_BANK_MONTH_NAMES` — **일본 롬에는 없다.** 받는 쪽이 빈 배열을 견뎌야 한다 */
   monthNames: 414,
+  /** `TEXT_BANK_TOWN_MAP` — 격자 칸마다의 이름 130줄 */
+  townMap: 615,
 } as const
 
 export type UiBank = keyof typeof UI_BANK

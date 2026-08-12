@@ -13,7 +13,9 @@ import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { caughtAt, metToday } from '../engine/pokemon/origin'
 import { abortScript, fieldScripts } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
-import { HM_CARRIER, HM_TEACHES, seenAlongTheWay } from '../engine/dev/checkpoints'
+import {
+  fliesAlongTheWay, HM_CARRIER, HM_TEACHES, seenAlongTheWay,
+} from '../engine/dev/checkpoints'
 import type { EncounterTable } from '../engine/battle/encounter'
 import type { Checkpoint, PartySpec } from '../engine/dev/checkpoints'
 import { assets, readJson } from '../data/providers/assetProvider'
@@ -112,6 +114,22 @@ async function applySetup(cp: Checkpoint): Promise<void> {
   if (cp.dex) {
     giveDex()
     await markSeenAlongTheWay(cp)
+  }
+
+  // 지나온 마을은 공중날기가 열려 있다. 안 열면 타운맵이 통째로 회색이다.
+  // ⚠️ `spawnTable`을 안 본다 — 타이틀에서 뛰어들면 아직 안 채워져 있다
+  try {
+    const file = await readJson(assets(), 'data/spawns.json') as {
+      spawns: { fly: { map: number }; unlockOnMapEntry: boolean }[]
+    }
+    const at = (mapId: number): number | null => {
+      const i = file.spawns.findIndex((sp) => sp.unlockOnMapEntry && sp.fly.map === mapId)
+      return i < 0 ? null : i
+    }
+    const save3 = useSaveStore.getState()
+    for (const index of fliesAlongTheWay(cp.id, at)) save3.unlockFly(index)
+  } catch {
+    // 타운맵만 회색으로 뜬다. 뛰어드는 것 자체는 막지 않는다
   }
 }
 

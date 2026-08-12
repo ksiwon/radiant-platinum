@@ -94,6 +94,11 @@ export const GROUPS = [
     match: oneOf('data/boxWallpapers.json', 'data/boxWallpapers.png'),
   },
   {
+    name: 'townMap',
+    make: 'pnpm extract:townMap',
+    match: oneOf('data/townMap.json', 'data/townMap.png'),
+  },
+  {
     name: 'signposts',
     make: 'pnpm extract:signposts',
     match: oneOf('data/signposts.json', 'data/signposts.png'),

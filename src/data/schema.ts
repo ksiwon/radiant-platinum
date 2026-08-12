@@ -372,6 +372,33 @@ export const motionTimingSchema = z.object({
 })
 
 /** 박스 벽지 아틀라스. 한 장이 168×160이라 칸이 네모가 아니다 */
+/**
+ * 타운맵 (`tools/extract/townMap.js`).
+ *
+ * `cells`가 격자 칸마다의 이름표다 (`tmap_block.dat`) — 그림만으로는 커서 아래가
+ * 어느 도로인지 알 수 없다
+ */
+export const townMapSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  grid: z.number().int().positive(),
+  originX: z.number().int(),
+  originY: z.number().int(),
+  palettes: z.number().int().positive(),
+  cells: z.array(z.object({
+    x: z.number().int(),
+    z: z.number().int(),
+    area: z.number().int(),
+    /** ⚠️ **없으면 65535다** — 0이 아니다. 0으로 견주면 첫 글이 늘 붙는다 */
+    landmark: z.number().int(),
+    hidden: z.number().int(),
+    /** 이 칸에 놓인 맵의 헤더 번호 (행렬 0). 날 수 있는 곳을 찾는 열쇠다 */
+    map: z.number().int(),
+    /** 지역명 번호 (`names/locations.*.json`) */
+    label: z.number().int(),
+  })),
+})
+
 export const boxWallpapersSchema = z.object({
   count: z.number().int().positive(),
   cols: z.number().int().positive(),
@@ -432,5 +459,6 @@ export type ItemIcons = z.infer<typeof itemIconsSchema>
 export type PokeIcons = z.infer<typeof pokeIconsSchema>
 export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
+export type TownMapFile = z.infer<typeof townMapSchema>
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
