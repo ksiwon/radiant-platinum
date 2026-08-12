@@ -276,6 +276,9 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
  * 한 화면에 같이 세울 수가 없다. BDSP는 종마다 배율을 따로 적어 두었고 그걸로
  * 화면에 드는 크기를 좁힌다 — 우리가 지어낼 값이 아니다
  */
+/** 배율표의 열쇠. 폼마다 다를 수 있어서 도감 번호만으로는 부족하다 */
+const scaleKey = (dex: number, form: number): number => dex * 100 + form
+
 function battleScales(env: Environment): Map<number, number> {
   const out = new Map<number, number>()
   const spare = new Map<number, number>()
@@ -289,36 +292,63 @@ function battleScales(env: Environment): Map<number, number> {
       const scale = row.BattleScale
       if (typeof no !== 'number' || typeof scale !== 'number') continue
       const value = Math.round(scale * 1000) / 1000
-      if (!spare.has(no)) spare.set(no, value)
-      // 기본 모습(판 0 · 수컷 · 보통색)이 우선이다
-      if (row.FormNo === 0 && row.Sex === 0 && row.Rare === 0) out.set(no, value)
+      const form = typeof row.FormNo === 'number' ? row.FormNo : 0
+      const key = scaleKey(no, form)
+      if (!spare.has(key)) spare.set(key, value)
+      // 같은 폼 안에서는 수컷 · 보통색이 우선이다
+      if (row.Sex === 0 && row.Rare === 0) out.set(key, value)
     }
     break
   }
-  for (const [no, scale] of spare) if (!out.has(no)) out.set(no, scale)
+  for (const [key, scale] of spare) if (!out.has(key)) out.set(key, scale)
   return out
 }
 
 /**
- * 구울 수 있는 종. `(도감 번호, 번들 이름)`.
+ * 폼이 여럿인 종의 첫 판 번호.
  *
  * ⚠️ **판이 여럿인 종은 `_00`이 없다.** 안농·캐스퐁·테오키스·도롱마담·체리버·
- * 깝질무·트리토돈·로토무·기라티나·쉐이미·아르세우스 열둘이 그렇다 — 판 번호가
- * **11부터** 시작한다. 그중 제일 앞선 것을 기본 모습으로 쓴다
+ * 깝질무·트리토돈·로토무·기라티나·쉐이미·아르세우스 열둘이 그렇고, 판 번호가
+ * **11부터** 시작한다 — `pm0479_11_00`이 로토무의 기본 모습이다. 그래서
+ * 우리 폼 번호는 `판 번호 − 11`이다.
+ *
+ * 실측으로 그 열둘의 판 수가 원작 폼 수와 하나도 안 틀리고 같다 (안농 28 ·
+ * 아르세우스 18 · 로토무 6 · 테오키스 4 · 캐스퐁 4 · 도롱마담 3 · 도롱충이 3 ·
+ * 체리버 2 · 조개무지 2 · 트리토돈 2 · 기라티나 2 · 쉐이미 2)
  */
-function speciesBundles(at: Map<string, string>): { dex: number, name: string }[] {
+const FORM_BUNDLE_BASE = 11
+
+/**
+ * 구울 수 있는 것. `(도감 번호, 폼, 번들 이름)`.
+ *
+ * 폼도 전부 굽는다 (PARITY §3.4) — 로토무 가전 다섯이 다 같은 모습으로 서면
+ * 가전 방이 아무 뜻이 없다
+ */
+function speciesBundles(at: Map<string, string>): { dex: number, form: number, name: string }[] {
   const battle = new Set(
     childrenOf(at, POKEMON_BATTLE).map((p) => p.slice(p.lastIndexOf('/') + 1)),
   )
-  const out: { dex: number, name: string }[] = []
+  const out: { dex: number, form: number, name: string }[] = []
   for (let dex = 1; dex <= LAST_DEX; dex++) {
     const four = String(dex).padStart(4, '0')
     const plain = `pm${four}_00_00`
-    if (battle.has(plain)) { out.push({ dex, name: plain }); continue }
+    if (battle.has(plain)) { out.push({ dex, form: 0, name: plain }); continue }
     const forms = [...battle].filter((n) => new RegExp(`^pm${four}_\\d\\d_00$`).test(n)).sort()
-    if (forms.length > 0) out.push({ dex, name: forms[0]! })
+    for (const name of forms) {
+      out.push({ dex, form: Number(name.slice(7, 9)) - FORM_BUNDLE_BASE, name })
+    }
   }
   return out
+}
+
+/** 그 종의 첫 판이 들고 있는 메시 번들. 폼이 나눠 쓰는 자리다 */
+function sharedMesh(at: Map<string, string>, name: string): string | null {
+  const want = new RegExp(`^${name.slice(0, 6)}_\\d\\d$`)
+  const found = childrenOf(at, POKEMON_COMMON)
+    .map((p) => p.slice(p.lastIndexOf('/') + 1))
+    .filter((n) => want.test(n))
+    .sort()
+  return found.length > 0 ? lookup(at, `${POKEMON_COMMON}/${found[0]!}`) : null
 }
 
 /** 바인드 포즈에서 잰 키(m). 종마다 크기가 다른 것을 이걸로 옮긴다 */
@@ -358,15 +388,19 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
 
   const index2: Record<string, { file: string, height: number, scale: number }> = {}
   let done = 0
-  for (const { dex, name } of todo) {
+  for (const { dex, form, name } of todo) {
     check(ctx)
     // ⚠️ **번들이 셋으로 갈려 있다.** 배틀 프리팹에 재질·뼈대·동작이 있고 메시와
     // 텍스처는 `pokemons/common` 쪽 번들 둘에 있다. 하나만 열면 "메시가 없다"로
     // 끝나고 그 종이 통째로 빠진다
     const stem = name.replace(/_\d\d$/, '')
+    // ⚠️ **메시가 기본 판에만 있는 종이 있다.** 아르세우스·도롱충이·도롱마담·
+    // 조개무지·트리토돈이 그렇다 — `common/pm0493_12`가 아예 없고 열여덟 판이
+    // `common/pm0493_11` 하나를 나눠 쓴다. 제 것이 없으면 그 종의 첫 판을 연다
+    const mesh = lookup(at, `${POKEMON_COMMON}/${stem}`) ?? sharedMesh(at, name)
     const paths = [
       lookup(at, `${POKEMON_BATTLE}/${name}`),
-      lookup(at, `${POKEMON_COMMON}/${stem}`),
+      mesh,
       lookup(at, `${POKEMON_COMMON}/${name}`),
     ].filter((p): p is string => p !== null)
     const env = await environmentOf(src, paths)
@@ -378,9 +412,16 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
           clipFilter: BATTLE_CLIPS,
           mainProps: MON_MAIN_PROPS,
         })
-        const file = `${String(dex)}.glb`
+        // 폼 0은 종 번호 그대로다 — 읽는 쪽이 폼을 모르는 자리가 아직 있다
+        const key = form === 0 ? String(dex) : `${String(dex)}-${String(form)}`
+        const file = `${key}.glb`
         put(ctx, out, `models/pokemon/${file}`, glb)
-        index2[String(dex)] = { file, height: glbHeight(glb), scale: scales.get(dex) ?? 1 }
+        index2[key] = {
+          file,
+          height: glbHeight(glb),
+          // 폼 배율이 없으면 기본 모습 것으로 떨어진다
+          scale: scales.get(scaleKey(dex, form)) ?? scales.get(scaleKey(dex, 0)) ?? 1,
+        }
       } catch { /* 이 종은 못 구웠다. 다음으로 */ }
     }
     done++
@@ -536,7 +577,7 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'monModels',
-    outputs: ['models/pokemon/{도감}.glb', 'models/pokemon/index.json'],
+    outputs: ['models/pokemon/{도감}[-{폼}].glb', 'models/pokemon/index.json'],
     converter: 1,
     convert: convertMonModels,
   },

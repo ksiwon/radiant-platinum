@@ -67,37 +67,60 @@ MAX_TEXTURE = 256
 
 
 def trio(name: str) -> list[Path]:
-    """번들 셋. 없는 것은 뺀다 — 텍스처가 종족 공용인 판이 있다"""
+    """번들 셋. 없는 것은 뺀다 — 텍스처가 종족 공용인 판이 있다
+
+    ⚠️ **메시가 기본 판에만 있는 종이 있다.** 아르세우스·도롱충이·도롱마담·
+    조개무지·트리토돈이 그렇다 — `common/pm0493_12`가 아예 없고 열여덟 판이
+    `common/pm0493_11` 하나를 나눠 쓴다. 그래서 제 판의 메시 번들이 없으면
+    **그 종의 첫 판**을 대신 연다. 안 그러면 "메시가 다른 번들에 있다"로
+    스물셋이 통째로 안 구워진다
+    """
     stem = re.sub(r"_\d\d$", "", name)  # pm0387_00_00 → pm0387_00
-    found = [BATTLE / name, COMMON / stem, COMMON / name]
-    missing = [p for p in found if not p.is_file()]
-    if BATTLE / name in missing:
+    mesh = COMMON / stem
+    if not mesh.is_file():
+        shared = sorted(COMMON.glob(f"{name[:6]}_[0-9][0-9]"))
+        if shared:
+            mesh = shared[0]
+    found = [BATTLE / name, mesh, COMMON / name]
+    if not (BATTLE / name).is_file():
         raise FileNotFoundError(f"{name}: 배틀 번들이 없다")
     return [p for p in found if p.is_file()]
 
 
-def available() -> list[tuple[int, str]]:
-    """구울 수 있는 종. `(도감 번호, 번들 이름)`
+#: 폼이 여럿인 종의 첫 판 번호.
+#:
+#: ⚠️ **판이 여럿인 종은 `_00`이 없다.** 안농·캐스퐁·테오키스·도롱마담·체리버·
+#: 깝질무·트리토돈·로토무·기라티나·쉐이미·아르세우스 열둘이 그렇고, 판 번호가
+#: **11부터** 시작한다 (아르세우스가 `_11`~`_28`로 열여덟 판이다). 그래서 우리
+#: 폼 번호는 `판 번호 − 11`이고, 실측으로 그 열둘의 판 수가 원작 폼 수와
+#: 하나도 안 틀리고 같다.
+FORM_BUNDLE_BASE = 11
 
-    ⚠️ **판이 여럿인 종은 `_00`이 없다.** 안농·캐스퐁·테오키스·도롱마담·체리버·
-    깝질무·트리토돈·로토무·기라티나·쉐이미·아르세우스 열둘이 그렇다 — 판 번호가
-    **11부터** 시작한다 (아르세우스가 `_11`~`_28`로 열여덟 판이다). 그중 제일
-    앞선 것을 기본 모습으로 쓴다
+
+def available() -> list[tuple[int, int, str]]:
+    """구울 수 있는 것. `(도감 번호, 폼, 번들 이름)`
+
+    폼도 전부 굽는다 (PARITY §3.4) — 로토무 가전 다섯이 다 같은 모습으로
+    서면 가전 방이 아무 뜻이 없다
     """
     out = []
     for dex in range(1, LAST_DEX + 1):
         name = f"pm{dex:04d}_00_00"
         if (BATTLE / name).is_file():
-            out.append((dex, name))
+            out.append((dex, 0, name))
             continue
-        forms = sorted(BATTLE.glob(f"pm{dex:04d}_??_00"))
-        if forms:
-            out.append((dex, forms[0].name))
+        for form in sorted(BATTLE.glob(f"pm{dex:04d}_??_00")):
+            out.append((dex, int(form.name[7:9]) - FORM_BUNDLE_BASE, form.name))
     return out
 
 
-def bake_one(dex: int, name: str, outdir: Path) -> dict:
-    out = outdir / f"{dex}.glb"
+def key_of(dex: int, form: int) -> str:
+    """파일 이름. 폼 0은 종 번호 그대로다 — 읽는 쪽이 폼을 모르는 자리가 있다"""
+    return str(dex) if form == 0 else f"{dex}-{form}"
+
+
+def bake_one(dex: int, form: int, name: str, outdir: Path) -> dict:
+    out = outdir / f"{key_of(dex, form)}.glb"
     stat = export(
         trio(name), out, None, None, None, MAX_TEXTURE, True, MAIN_PROPS,
         BATTLE_CLIPS,
@@ -124,16 +147,17 @@ def main() -> int:
     todo = available()
     if args.dex:
         want = set(args.dex)
-        todo = [(d, n) for d, n in todo if d in want]
-        missing = want - {d for d, _ in todo}
+        todo = [(d, f, n) for d, f, n in todo if d in want]
+        missing = want - {d for d, _, _ in todo}
         if missing:
             print(f"⚠️ 번들이 없다: {sorted(missing)}")
-    print(f"종 {len(todo)}마리")
+    forms = sum(1 for _, f, _ in todo if f > 0)
+    print(f"종 {len(todo) - forms}마리 · 폼 {forms}개")
 
     total = 0
-    for i, (dex, name) in enumerate(todo, 1):
+    for i, (dex, form, name) in enumerate(todo, 1):
         try:
-            stat = bake_one(dex, name, args.out)
+            stat = bake_one(dex, form, name, args.out)
         except SystemExit as e:
             print(f"  {dex:>3} {name}: {e}")
             continue
@@ -170,6 +194,11 @@ def glb_height(path: Path) -> float:
     return round(top - low, 3)
 
 
+def scale_key(dex: int, form: int) -> int:
+    """배율표의 열쇠. 폼마다 다를 수 있어서 도감 번호만으로는 부족하다"""
+    return dex * 100 + form
+
+
 def battle_scales() -> dict[int, float]:
     """종마다 배틀에서 곱하는 배율 (`PokemonInfo.Catalog.BattleScale`).
 
@@ -194,17 +223,18 @@ def battle_scales() -> dict[int, float]:
             tree = obj.read_typetree()
         except Exception:
             continue
-        # 기본 모습(판 0 · 수컷 · 보통색)이 우선이고, 없으면 그 종의 아무 줄이나
+        # 같은 폼 안에서 수컷 · 보통색이 우선이고, 없으면 그 폼의 아무 줄이나
         # 쓴다 — 레쿠쟈처럼 기본 줄이 없는 종이 있다
         out: dict[int, float] = {}
         spare: dict[int, float] = {}
         for row in tree["Catalog"]:
             scale = round(row["BattleScale"], 3)
-            spare.setdefault(row["MonsNo"], scale)
-            if row["FormNo"] == 0 and row["Sex"] == 0 and row["Rare"] == 0:
-                out[row["MonsNo"]] = scale
-        for no, scale in spare.items():
-            out.setdefault(no, scale)
+            key = scale_key(row["MonsNo"], row.get("FormNo", 0))
+            spare.setdefault(key, scale)
+            if row["Sex"] == 0 and row["Rare"] == 0:
+                out[key] = scale
+        for key, scale in spare.items():
+            out.setdefault(key, scale)
         return out
     return {}
 
@@ -213,12 +243,17 @@ def write_index(outdir: Path) -> dict:
     """`index.json`을 **디스크에 있는 것**으로 다시 쓴다"""
     scales = battle_scales()
     index = {}
-    for glb in sorted(outdir.glob("*.glb"), key=lambda p: int(p.stem)):
-        dex = int(glb.stem)
+    def order(p: Path) -> tuple[int, int]:
+        dex, _, form = p.stem.partition("-")
+        return int(dex), int(form or 0)
+
+    for glb in sorted(outdir.glob("*.glb"), key=order):
+        dex, form = order(glb)
         index[glb.stem] = {
             "file": glb.name,
             "height": glb_height(glb),
-            "scale": scales.get(dex, 1.0),
+            # 폼 배율이 없으면 기본 모습 것으로 떨어진다
+            "scale": scales.get(scale_key(dex, form), scales.get(scale_key(dex, 0), 1.0)),
         }
     INDEX.parent.mkdir(parents=True, exist_ok=True)
     INDEX.write_text(json.dumps({"pokemon": index}, ensure_ascii=False), encoding="utf-8")

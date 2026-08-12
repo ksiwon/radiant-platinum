@@ -20,7 +20,11 @@
 const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
+const { rows, TOTAL_FILES } = require('./otherpokeTableModule.cjs')
 const { encodePng } = require('./png')
+
+/** 알의 종 번호. `pl_pokegra`에 칸이 없다 */
+const EGG_SPECIES = 494
 
 const OUT_DIR = path.join(ROOT, 'public/data/pokemon')
 /** 한 종족이 쓰는 칸 수. 2964 ÷ 6 = 494종 */
@@ -149,8 +153,66 @@ function main() {
     if (Object.keys(entry).length > 0) meta[s] = entry
   }
 
+  const forms = otherpoke(rom, meta)
+
   writeJson('pokemon/index.json', { size: CUT, sprites: meta })
   console.log(`종족 ${species}종 · 그림 ${wrote}장 · 팔레트 없음 ${blank} · 못 푼 것 ${dim}`)
+  console.log(`  폼·알 그림 ${forms}장 (pl_otherpoke)`)
+}
+
+/**
+ * 폼 그림과 **알 그림** (`pl_otherpoke.narc`).
+ *
+ * ⚠️ **알은 여기에만 있다.** `pl_pokegra`는 494종뿐이라 알의 배틀 그림이 없다.
+ * 어느 칸인지는 표가 안다 — 픽셀 암호도 팔레트 모양도 `pl_pokegra`와 같다.
+ *
+ * ⚠️ **브라우저 쪽(`src/import/platinum/pokegra.ts`)과 한 줄씩 같아야 한다.**
+ */
+function otherpoke(rom, meta) {
+  const files = rom.narc('/poketool/pokegra/pl_otherpoke.narc')
+  if (files.length !== TOTAL_FILES) {
+    throw new Error(`pl_otherpoke ${files.length}칸 ≠ ${TOTAL_FILES}칸`)
+  }
+  let wrote = 0
+  for (const row of rows().rows) {
+    // 기본형은 `pl_pokegra`에 같은 그림이 있다. 알(494)만 여기가 낸다
+    const first = row.id === EGG_SPECIES ? 0 : 1
+    for (let form = first; form < row.forms; form++) {
+      const palette = paletteOf(files[palIndex(row, form)])
+      if (!palette) continue
+      const key = form === 0 ? String(row.id) : `${row.id}-${form}`
+      const entry = {}
+      for (const [name, front] of [['back', false], ['front', true]]) {
+        const at = charIndex(row, form, front)
+        if (at === null) continue
+        const px = pixelsOf(files[at] ?? Buffer.alloc(0))
+        if (!px) continue
+        const rgba = toRgba(px, palette, 0)
+        if (clearRatio(rgba) < CLEAR_MIN) continue
+        const box = boundsOf(rgba)
+        if (!box) continue
+        fs.writeFileSync(path.join(OUT_DIR, `${key}_${name}.png`), encodePng(rgba, CUT, CUT))
+        entry[name] = box
+        wrote++
+      }
+      if (Object.keys(entry).length > 0) meta[key] = entry
+    }
+  }
+  return wrote
+}
+
+/** 그 폼의 그림 칸. 알의 뒷모습은 없다 */
+function charIndex(row, form, front) {
+  if (row.frontOnly) return front ? row.chars + form : null
+  if (row.backsThenFronts) return row.chars + (front ? row.forms : 0) + form
+  return row.chars + form * 2 + (front ? 1 : 0)
+}
+
+/** 그 폼의 보통색 팔레트 칸 */
+function palIndex(row, form) {
+  if (row.shared) return row.pals
+  if (row.frontOnly || row.normalsThenShinies) return row.pals + form
+  return row.pals + form * 2
 }
 
 main()

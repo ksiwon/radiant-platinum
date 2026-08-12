@@ -32,6 +32,7 @@ import { worldState } from '../../state/worldState'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { withSubject, withTopic } from '../korean'
 import { useMenuKeys } from './useMenuKeys'
+import { spriteKey } from '../../engine/pokemon/form'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './evolutionScreen.css'
@@ -48,7 +49,7 @@ interface Tables {
 type Stage =
   | { kind: 'idle' }
   | { kind: 'changing'; slot: number; mon: PokemonInstance; evo: EvoResult }
-  | { kind: 'done'; slot: number; to: number; lines: string[]; at: number }
+  | { kind: 'done'; slot: number; to: number; form: number; lines: string[]; at: number }
   | { kind: 'canceled'; name: string }
   | { kind: 'forget'; slot: number; move: number }
 
@@ -150,7 +151,7 @@ export function EvolutionScreen() {
     store.markCaught(s.evo.to)
 
     pendingMoves.current = [...taught.pending]
-    setStage({ kind: 'done', slot: s.slot, to: s.evo.to, lines, at: 0 })
+    setStage({ kind: 'done', slot: s.slot, to: s.evo.to, form: s.mon.form, lines, at: 0 })
   }, [tables, nameOf])
 
   // 표가 오면 첫 자리를 집는다
@@ -187,9 +188,15 @@ export function EvolutionScreen() {
     stage.kind === 'done' || stage.kind === 'canceled' || stage.kind === 'changing',
   )
 
+  // ⚠️ **폼은 진화해도 그대로다** (PARITY §3.4). 도롱충이가 입고 있던 옷감이
+  // 그대로 도롱마담의 옷감이라, 여기서 폼을 버리면 장면에서만 풀 옷감으로 바뀐다
   const shown = stage.kind === 'changing' ? stage.mon.species
     : stage.kind === 'done' ? stage.to : null
-  const art = useAssetImage(shown === null ? null : `data/pokemon/${String(shown)}_front.png`)
+  const form = stage.kind === 'changing' ? stage.mon.form
+    : stage.kind === 'done' ? stage.form : 0
+  const art = useAssetImage(
+    shown === null ? null : `data/pokemon/${spriteKey(shown, form, false)}_front.png`,
+  )
 
   const line = useMemo(() => {
     if (stage.kind === 'changing') return `어라!? ${withSubject(nameOf(stage.mon))} 모습이…!`

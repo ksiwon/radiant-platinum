@@ -37,7 +37,7 @@ import { maxPpOf } from '../../engine/pokemon/instance'
 import { useEvolutionStore } from '../../state/evolutionStore'
 import { worldState } from '../../state/worldState'
 import {
-  canShayminSky, changeForm, ITEM_GRACIDEA, SHAYMIN_SKY,
+  canShayminSky, changeForm, ITEM_GRACIDEA, SHAYMIN_SKY, spriteKey,
 } from '../../engine/pokemon/form'
 import { formTables, withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
@@ -494,7 +494,7 @@ function Card(
   },
 ) {
   // 종별 그림은 짧게 산다 — 파티가 바뀌면 다른 종이 된다. 잡았다 놓는 갈래다
-  const art = useAssetImage(`data/pokemon/${String(mon.species)}_front.png`)
+  const art = useAssetImage(`data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png`)
   const fainted = mon.hp <= 0
   const ratio = full > 0 ? Math.max(0, Math.min(mon.hp, full)) / full : 0
   const gender = GENDER_MARK[genderOf(mon.pid, genderRatio)]

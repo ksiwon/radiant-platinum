@@ -8,6 +8,7 @@
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
+//     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot --list                 확인 지점 목록
 //
 // ⚠️ **이 프로젝트에는 여태 브라우저 자동화가 없었다.** 그래서 "수치는 맞는데
@@ -393,6 +394,18 @@ async function main() {
         }
       }, give.split(',').map((one) => one.split(':').map(Number)))
       await page.waitForTimeout(Number(flag('giveAfter', 1500)))
+    }
+    // 야생전을 연다 — `--wild=479:30:2`(종족:레벨:폼).
+    //
+    // ⚠️ **배틀 무대에 무엇이 서는지는 이 길로만 본다.** 확인 지점에서 풀숲을
+    // 밟아 나오기를 기다리면 무엇이 나올지 못 고른다
+    const wild = flag('wild')
+    if (wild) {
+      const [species, level, form] = wild.split(':').map(Number)
+      await page.evaluate(async ([s, l, f]) => {
+        await globalThis.pt.wild(s, l, f)
+      }, [species, level ?? 10, form ?? 0])
+      await page.waitForTimeout(Number(flag('wildAfter', 8000)))
     }
     // 스크립트를 태우지 않고 메뉴 화면 하나를 바로 연다. 고르는 장면처럼
     // 이야기 도중에만 뜨는 화면을 보려면 이 길이 필요하다

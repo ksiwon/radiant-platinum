@@ -74,6 +74,13 @@ export interface BattleRules {
 export interface RosterEntry {
   side: SideId
   species: number
+  /**
+   * 어느 모습인가 (PARITY §3.4).
+   *
+   * ⚠️ **뷰가 이 값을 들고 있어야 무대에 제 모습이 선다.** sim이 내는 프로토콜은
+   * 이름을 실어 오지만 우리 씬은 번호로 돌고, 폼은 그 번호에 안 담긴다
+   */
+  form: number
   nickname: string | null
   level: number
 }
@@ -794,14 +801,16 @@ async function open(
     const roster: Record<string, RosterEntry> = {}
     const team = party.map((mon, i) => {
       roster[partyKey(i)] = {
-        side: 'p1', species: mon.species, nickname: mon.nickname, level: mon.level,
+        side: 'p1', species: mon.species, form: mon.form, nickname: mon.nickname, level: mon.level,
       }
       return ready(mon, species.of(mon), partyKey(i))
     })
 
     const foe = buildFoe({ species, pp })
     foe.team.forEach((m, i) => {
-      roster[foeKey(i)] = { side: 'p2', species: m.mon.species, nickname: null, level: m.mon.level }
+      roster[foeKey(i)] = {
+        side: 'p2', species: m.mon.species, form: m.mon.form, nickname: null, level: m.mon.level,
+      }
     })
 
     const trainer = useSaveStore.getState().trainer

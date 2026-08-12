@@ -16,14 +16,36 @@ maybe('배틀 그림', () => {
     readFileSync(resolve(DATA, 'pokemon/index.json'), 'utf8')) as SpriteIndex
 
   it('494종에서 앞뒤 그림이 다 나온다', () => {
-    // 롬의 2964칸 ÷ 6 = 494종. 0번은 빈 칸이라 493종에 그림이 있어야 한다
+    // 롬의 2964칸 ÷ 6 = 494종. 0번은 빈 칸이라 493종에 그림이 있고,
+    // 여기에 알(494)이 하나 더 붙는다
     expect(idx.size).toBe(80)
-    const ids = Object.keys(idx.sprites).map(Number)
-    expect(ids.length).toBe(493)
+    const ids = Object.keys(idx.sprites).filter((k) => !k.includes('-')).map(Number)
+    expect(ids.length).toBe(494)
     expect(Math.min(...ids)).toBe(1)
-    expect(Math.max(...ids)).toBe(493)
+    // ⚠️ 494는 **알**이다 (`pl_otherpoke`). 종족 번호의 위쪽 끝은 493이고
+    // 알은 앞모습만 있어서 아래 짝 검사에도 안 든다
+    expect(Math.max(...ids)).toBe(494)
     const both = ids.filter((s) => idx.sprites[String(s)]?.front && idx.sprites[String(s)]?.back)
     expect(both.length).toBe(493)
+  })
+
+  /**
+   * 폼 그림 (PARITY §3.4).
+   *
+   * ⚠️ **기본형은 안 들어온다.** `pl_pokegra`에 같은 그림이 이미 있고 이름도
+   * 그쪽이 잡고 있다 — 두 벌이 되면 어느 쪽이 임자인지가 흐려진다
+   */
+  it('폼 그림이 `종-폼` 이름으로 들어온다', () => {
+    const forms = Object.keys(idx.sprites).filter((k) => k.includes('-'))
+    expect(forms).toHaveLength(65)
+    // 로토무 워시 · 도롱마담 쓰레기 · 안농 F · 기라티나 오리진
+    for (const k of ['479-2', '413-2', '201-5', '487-1']) {
+      expect(idx.sprites[k]?.front, k).toBeDefined()
+      expect(idx.sprites[k]?.back, k).toBeDefined()
+    }
+    // 알은 앞모습뿐이다
+    expect(idx.sprites['494']?.back).toBeUndefined()
+    expect(idx.sprites['494-1']?.front).toBeDefined()
   })
 
   it('그림 크기가 종마다 다르다 — 원작 덩치 차이가 여기 들어 있다', () => {

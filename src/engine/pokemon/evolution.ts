@@ -267,6 +267,11 @@ function byItem(
  *
  * ⚠️ 레벨은 다시 안 센다. 4세대는 종족이 바뀌어도 누적 경험치가 정본이고
  * 성장 곡선이 다른 종으로 진화하는 경우가 없다.
+ *
+ * ⚠️ **폼도 그대로 넘어간다** (PARITY §3.4). 도롱충이가 입고 있던 옷감이
+ * 그대로 도롱마담의 옷감이 된다 — 원작도 폼 칸을 안 건드린다. 수컷이
+ * 나메일로 진화하면 그쪽은 폼이 하나뿐이라 읽는 자리에서 0으로 접힌다
+ * (`sanitizeForm`)
  */
 export function evolve(mon: PokemonInstance, to: number): PokemonInstance {
   return { ...mon, species: to }

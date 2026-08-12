@@ -34,6 +34,7 @@
     "gen:itemTable": "node tools/extract/itemTableModule.cjs",
     "gen:eggMoveTable": "node tools/extract/eggMoveTableModule.cjs",
     "gen:pokeIconTable": "node tools/extract/pokeIconTableModule.cjs",
+    "gen:otherpokeTable": "node tools/extract/otherpokeTableModule.cjs",
     "gen:spawnTable": "node tools/extract/spawnTableModule.cjs",
     "spike:sdat": "node tools/spike/sdat-test.js",
     "extract:species": "node tools/extract/species.js",

@@ -99,8 +99,9 @@ export function installDevConsole(): void {
   const pt = {
     /** 트레이너전을 연다. 번호는 `pt.find()`로 찾는다 */
     trainer: (id: number) => useBattleStore.getState().startTrainer(id),
-    /** 야생전을 연다 */
-    wild: (species: number, level = 10) => useBattleStore.getState().startWild({ species, level }),
+    /** 야생전을 연다. 셋째 값은 폼이다 (PARITY §3.4) */
+    wild: (species: number, level = 10, form = 0) =>
+      useBattleStore.getState().startWild({ species, level, form }),
     find,
     give,
     heal,
@@ -154,7 +155,7 @@ export function installDevConsole(): void {
     '%cPokémon Radiant Platinum 개발 콘솔%c\n' +
     '  pt.find("관장")      트레이너 찾기 (번호·AI·상금)\n' +
     '  pt.trainer(250)      트레이너전 시작\n' +
-    '  pt.wild(403, 12)     야생전 시작\n' +
+    '  pt.wild(403, 12)     야생전 시작 (종족번호, 레벨, 폼)\n' +
     '  pt.give(392, 50)     파티에 넣기 (종족번호, 레벨)\n' +
     '  pt.heal()            파티 회복\n' +
     '  pt.party()           파티 상태\n' +

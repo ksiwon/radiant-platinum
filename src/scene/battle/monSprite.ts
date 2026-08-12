@@ -39,10 +39,13 @@ onProviderSwap(() => { textures.clear(); index = null })
  * 한 종족의 앞모습 또는 뒷모습.
  *
  * 같은 종을 여럿 데리고 있어도 그림은 한 벌이면 되므로 캐시한다 — 배틀마다 다시
- * 받으면 등판할 때마다 한 프레임씩 끊긴다
+ * 받으면 등판할 때마다 한 프레임씩 끊긴다.
+ *
+ * ⚠️ **`id`는 종 번호가 아니라 그림 이름이다** (`engine/pokemon/form.spriteKey`).
+ * 폼이 있으면 `479-2`고 알은 `494`다 — 번호로 받으면 폼이 통째로 사라진다
  */
-export function loadMonSprite(species: number, back: boolean): Promise<Texture> {
-  const key = `${String(species)}/${back ? 'back' : 'front'}`
+export function loadMonSprite(id: string, back: boolean): Promise<Texture> {
+  const key = `${id}/${back ? 'back' : 'front'}`
   let got = textures.get(key)
   if (!got) {
     // ⚠️ **로더가 다 읽으면 주소를 바로 놓는다.** 파싱된 `Texture`는 Blob과

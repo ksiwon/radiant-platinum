@@ -21,6 +21,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { pokeIcon } from './pokeIcon'
+import { spriteKey } from '../../engine/pokemon/form'
 import { withSubject } from '../korean'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
@@ -82,12 +83,12 @@ export function HatchScreen() {
 
   useMenuKeys({ confirm: done, cancel: done }, stage === 'born')
 
-  // ⚠️ **알은 배틀 그림이 없다.** `pl_pokegra`는 494종(0~493)뿐이고 알은
-  // `pl_otherpoke` 쪽이라 아직 안 뽑는다(§3.4 폼 그림과 같은 자리). 그동안은
-  // **원작 아이콘**(`pl_poke_icon`의 494번)을 키워서 쓴다 — 지어낸 그림이 아니다
-  const shown = stage === 'shaking' ? EGG_SPECIES : mon?.species ?? EGG_SPECIES
+  // ⚠️ **알 그림은 `pl_otherpoke`에서 온다.** `pl_pokegra`는 494종(0~493)뿐이라
+  // 알 칸이 없다 — 한동안 아이콘을 키워 쓰다가 §3.4에서 그쪽을 뽑으면서 제
+  // 그림이 생겼다. 흔들리는 동안에는 여전히 아이콘이다 (작게 까딱거려야 한다)
+  const key = mon ? spriteKey(mon.species, mon.form, false) : String(EGG_SPECIES)
   const art = useAssetImage(
-    stage === 'shaking' ? null : `data/pokemon/${String(shown)}_front.png`,
+    stage === 'shaking' ? null : `data/pokemon/${key}_front.png`,
   )
 
   const line = useMemo(() => {

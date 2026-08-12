@@ -381,3 +381,15 @@ export function afterHeldItem(mon: PokemonInstance, tables: FormTables): Pokemon
   if (mon.species !== SPECIES_GIRATINA) return mon
   return changeForm(mon, giratinaForm(mon.heldItem), tables)
 }
+
+/**
+ * 배틀 그림 파일 이름의 앞부분 (`data/pokemon/{key}_front.png`).
+ *
+ * 기본형은 종 번호 그대로고 폼이 있으면 `479-2`다. **알은 494번**이다 —
+ * `pl_pokegra`에 칸이 없어서 그 그림만 `pl_otherpoke`에서 온다
+ */
+export function spriteKey(species: number, form: number, isEgg: boolean): string {
+  if (isEgg) return species === SPECIES_MANAPHY ? `${String(SPECIES_EGG)}-1` : String(SPECIES_EGG)
+  const at = sanitizeForm(species, form)
+  return at === 0 ? String(species) : `${String(species)}-${String(at)}`
+}

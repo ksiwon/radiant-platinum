@@ -72,7 +72,7 @@ export function clipFor(clips: readonly AnimationClip[], want: MotionName): Anim
 export interface Loaded { scene: Group; clips: AnimationClip[]; entry: MonEntry }
 
 const loader = new GLTFLoader(new LoadingManager())
-const cache = new Map<number, Promise<Loaded | null>>()
+const cache = new Map<string, Promise<Loaded | null>>()
 
 // 갈아 끼우면 파싱해 둔 장면은 옛 설치본 것이다
 onProviderSwap(() => { cache.clear(); index = null })
@@ -81,14 +81,19 @@ onProviderSwap(() => { cache.clear(); index = null })
  * 한 종의 모델.
  *
  * 종마다 0.8MB라 493종이 388MB다 — **배틀이 열릴 때 그 두 마리만** 받는다.
- * 같은 종을 여럿 데리고 있어도 한 벌이면 되므로 캐시한다
+ * 같은 종을 여럿 데리고 있어도 한 벌이면 되므로 캐시한다.
+ *
+ * ⚠️ **폼이 있으면 그 폼 모델을 먼저 찾는다** (PARITY §3.4). 없으면 기본형으로
+ * 떨어진다 — 설치본이 폼 번들을 안 갖고 있을 수 있고, 그때 아무것도 안 서는
+ * 것보다 기본 모습이 서는 편이 낫다
  */
-export function loadMonModel(species: number): Promise<Loaded | null> {
-  let got = cache.get(species)
+export function loadMonModel(species: number, form = 0): Promise<Loaded | null> {
+  const key = form > 0 ? `${String(species)}-${String(form)}` : String(species)
+  let got = cache.get(key)
   if (!got) {
     got = loadMonIndex()
       .then(async (idx) => {
-        const entry = idx.pokemon[String(species)]
+        const entry = idx.pokemon[key] ?? idx.pokemon[String(species)]
         if (!entry) return null
         // ⚠️ **파싱이 끝나면 주소를 바로 놓는다.** 장면은 `cache`가 들고 있고
         // Blob 원본 바이트는 더 안 쓴다 — 붙들면 GLB 한 벌이 통째로 남는다.
@@ -104,7 +109,7 @@ export function loadMonModel(species: number): Promise<Loaded | null> {
         }
       })
       .catch(() => null)
-    cache.set(species, got)
+    cache.set(key, got)
   }
   return got
 }

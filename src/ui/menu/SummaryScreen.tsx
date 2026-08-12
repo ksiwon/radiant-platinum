@@ -33,6 +33,7 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { playerTrainer, useSaveStore } from '../../state/saveStore'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
+import { spriteKey } from '../../engine/pokemon/form'
 import { MenuScreen } from './MenuScreen'
 import { itemIcon } from './itemIcon'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
@@ -206,7 +207,9 @@ export function SummaryScreen() {
 function Rail(
   { mon, name, t }: { mon: PokemonInstance | undefined; name: string; t: Tables | null },
 ) {
-  const art = useAssetImage(mon && !mon.isEgg ? `data/pokemon/${String(mon.species)}_front.png` : null)
+  const art = useAssetImage(
+    mon ? `data/pokemon/${spriteKey(mon.species, mon.form, mon.isEgg)}_front.png` : null,
+  )
   if (!mon) return <div className={own.rail} />
   const ratio = t?.species.of(mon).genderRatio ?? 255
   const gender = mon.isEgg ? 'genderless' : genderOf(mon.pid, ratio)

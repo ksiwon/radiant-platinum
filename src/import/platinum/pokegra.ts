@@ -16,7 +16,10 @@
 //
 // 픽셀은 타일이 아니라 **선형**이다. 160×80 한 장에 80×80짜리 두 컷이 나란히
 // 있고, 원작은 그중 첫 컷만 쓴다(둘째는 같은 그림의 다른 프레임이다).
-import { narcEntry } from './nds'
+import { narcCount, narcEntry } from './nds'
+import {
+  OTHERPOKE, OTHERPOKE_FILES, otherpokeChar, otherpokePalette,
+} from './otherpokeTable'
 import { encodePng } from './png'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
 
@@ -26,6 +29,8 @@ const PER_SPECIES = 6
 export const CUT = 80
 /** 한 줄의 실제 픽셀 수. 컷 둘이 나란히 있다 */
 const ROW = 160
+/** 알의 종 번호. `pl_pokegra`에 칸이 없어서 그림이 `pl_otherpoke`에만 있다 */
+const EGG_SPECIES = 494
 /** 배경이 이 비율을 넘어야 제대로 풀린 그림이다 */
 const CLEAR_MIN = 0.3
 /** 픽셀 암호 LCG */
@@ -133,7 +138,8 @@ export async function convertPokegra(ctx: ConvertContext): Promise<Produced> {
   if (!narc) throw new Error('pl_pokegra.narc을 못 읽었다')
 
   const out: Produced = new Map()
-  const meta: Record<number, Record<string, Box>> = {}
+  // 색인 키가 종 번호이거나 `479-2`(폼)다 — 아래 `convertOtherpoke`가 뒤엣것을 얹는다
+  const meta: Record<string, Record<string, Box>> = {}
   const empty = new Uint8Array(0)
   let species = 0
   for (let s = 0; ; s++) {
@@ -167,7 +173,59 @@ export async function convertPokegra(ctx: ConvertContext): Promise<Produced> {
     if (Object.keys(entry).length > 0) meta[s] = entry
   }
 
+  await convertOtherpoke(ctx, out, meta)
+
   out.set('data/pokemon/index.json', json({ size: CUT, sprites: meta }))
   ctx.onProgress?.(species, species)
   return out
+}
+
+/**
+ * 폼 그림과 **알 그림** (`pl_otherpoke.narc`, PARITY §3.4 · §8.10).
+ *
+ * ⚠️ **알은 여기에만 있다.** `pl_pokegra`는 494종(0~493)뿐이라 알의 배틀 그림이
+ * 없었고, 부화 화면이 아이콘을 늘려 쓰고 있었다.
+ *
+ * 어느 칸인지는 표가 안다 (`otherpokeTable`). 픽셀 암호도 팔레트 모양도
+ * `pl_pokegra`와 같아서 위의 함수를 그대로 쓴다 — 같은 도구가 구웠다.
+ *
+ * ⚠️ **기본형(폼 0)은 안 싣는다.** `pl_pokegra`에 같은 그림이 이미 있고,
+ * 이름도 그쪽이 `387_front.png`로 잡고 있다. 알(494번)만 예외다 — 그쪽에
+ * 칸이 없어서 여기가 기본형까지 낸다
+ */
+async function convertOtherpoke(
+  ctx: ConvertContext, out: Produced, meta: Record<string, Record<string, Box>>,
+): Promise<void> {
+  const narc = await ctx.fs.read('/poketool/pokegra/pl_otherpoke.narc')
+  if (!narc) throw new Error('pl_otherpoke.narc을 못 읽었다')
+  const have = narcCount(narc) ?? 0
+  if (have !== OTHERPOKE_FILES) {
+    throw new Error(`pl_otherpoke ${String(have)}칸 ≠ ${String(OTHERPOKE_FILES)}칸`)
+  }
+  const empty = new Uint8Array(0)
+
+  for (const row of OTHERPOKE) {
+    const first = row.species === EGG_SPECIES ? 0 : 1
+    for (let form = first; form < row.forms; form++) {
+      const palette = paletteOf(narcEntry(narc, otherpokePalette(row, form)) ?? empty)
+      if (!palette) continue
+      const key = form === 0 ? String(row.species) : `${String(row.species)}-${String(form)}`
+      const entry: Record<string, Box> = {}
+      for (const [name, front] of [['back', false], ['front', true]] as const) {
+        const at = otherpokeChar(row, form, front)
+        if (at === null) continue
+        const px = pixelsOf(narcEntry(narc, at) ?? empty)
+        if (!px) continue
+        const rgba = toRgba(px, palette, 0)
+        if (clearRatio(rgba) < CLEAR_MIN) continue
+        const box = boundsOf(rgba)
+        if (!box) continue
+        out.set(`data/pokemon/${key}_${name}.png`, await encodePng(rgba, CUT, CUT))
+        entry[name] = box
+      }
+      if (Object.keys(entry).length > 0) meta[key] = entry
+      check(ctx)
+      await breathe(ctx)
+    }
+  }
 }

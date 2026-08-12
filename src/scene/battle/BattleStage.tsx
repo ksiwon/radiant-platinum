@@ -28,6 +28,7 @@ import { battleStage, STAGE_ORIGIN } from './stageRefs'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
+import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { MOVE_FRAMES } from '../../engine/battle/vfx'
 import {
@@ -178,8 +179,16 @@ const MON_TALL = 1.2
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
 function Slot(
-  { mon, look, slot, spot, other, mine, shadow, onBody }: {
+  { mon, form, look, slot, spot, other, mine, shadow, onBody }: {
     mon: ViewMon | null
+    /**
+     * 어느 모습인가 (PARITY §3.4). 뷰가 아니라 **명단**이 들고 있다.
+     *
+     * ⚠️ **배틀 안에서 바뀌는 폼은 못 따라간다.** 날씨구슬 캐스퐁과 플라워기프트
+     * 체리버가 그렇다 — 규칙은 sim이 제대로 돌리지만(타입이 실제로 바뀐다) 그
+     * `-formechange`가 우리 뷰까지 안 올라온다. 리포트에 남는 폼은 다 맞는다
+     */
+    form: number
     look: SpeciesLook | null
     /** 이 발판의 자리 표기. 누가 때렸는지·맞았는지를 이걸로 가른다 */
     slot: SlotId
@@ -211,7 +220,7 @@ function Slot(
     grown.current = 0
     watch.current = 0
     if (species === null) return
-    void loadMonModel(species)
+    void loadMonModel(species, form)
       .then((loaded) => {
         if (!alive) return null
         if (loaded) {
@@ -222,17 +231,18 @@ function Slot(
         }
         onBody(0)
         // 모델이 없다 — 원작 도트로 떨어진다
-        return Promise.all([loadSpriteIndex(), loadMonSprite(species, mine)])
+        const key = spriteKey(species, form, false)
+        return Promise.all([loadSpriteIndex(), loadMonSprite(key, mine)])
           .then(([idx, map]) => {
             if (!alive) return
-            const box = idx.sprites[String(species)]?.[mine ? 'back' : 'front']
+            const box = idx.sprites[key]?.[mine ? 'back' : 'front']
             setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
           })
       })
       .catch(() => { /* 둘 다 못 받으면 아래에서 도형으로 떨어진다 */ })
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [species, mine])
+  }, [species, form, mine])
 
   /**
    * 지금 트는 동작. 뷰가 바뀌는 순간에만 갈아 끼운다.
@@ -534,6 +544,9 @@ export function BattleStage() {
   const doubles = useBattleStore((s) => s.doubles)
   useBattleCamera(cameraFit(arena, Math.max(tall.p1, tall.p2)) * (doubles ? 1.35 : 1))
 
+  /** 그 개체의 폼. 명단이 임자다 — 뷰는 폼을 안 들고 있다 */
+  const formOf = (mon: ViewMon | null): number => (mon ? roster[mon.key]?.form ?? 0 : 0)
+
   const look = (mon: ViewMon | null, key: string): SpeciesLook | null => {
     if (!mon) return null
     const id = mon.species ?? roster[key]?.species ?? -1
@@ -583,6 +596,7 @@ export function BattleStage() {
           key={id}
           slot={id}
           mon={view?.active[id] ?? null}
+          form={formOf(view?.active[id] ?? null)}
           look={look(view?.active[id] ?? null, `${id}-0`)}
           spot={spotOf(id)}
           other={spotOf(id.startsWith('p1') ? 'p2a' : 'p1a')}
