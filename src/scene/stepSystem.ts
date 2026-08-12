@@ -15,6 +15,7 @@ import { VARS_START } from '../engine/script/vars'
 import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
+import { poketchStep } from './poketch'
 import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
@@ -171,6 +172,10 @@ export const stepSystem = {
     lastTile = key
     // 맵에 막 들어선 칸은 세지 않는다 — 원작도 이동이 끝난 자리에서만 센다
     if (first) return
+
+    // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
+    // `poketchStep`이 앞에서 막는다
+    poketchStep()
 
     const save = useSaveStore.getState()
     const vars = fieldScripts.vars

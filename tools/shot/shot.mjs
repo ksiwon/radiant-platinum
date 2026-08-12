@@ -427,6 +427,17 @@ async function main() {
     if (args.includes('--note')) {
       await page.evaluate(() => { globalThis.pt.note() })
     }
+    // 포켓치를 켜고 앱을 등록한다 — `--watch` 또는 `--watch=4`(그 앱으로).
+    // 이야기로 앱 스물다섯을 다 받으려면 신오를 한 바퀴 돌아야 한다
+    const watch = args.find((a) => a === '--watch' || a.startsWith('--watch='))
+    if (watch) {
+      const app = watch.includes('=') ? Number(watch.split('=')[1]) : null
+      await page.evaluate((a) => {
+        globalThis.pt.watch()
+        if (a !== null) globalThis.pt.app(a)
+      }, app)
+      await page.waitForTimeout(500)
+    }
     const wild = flag('wild')
     if (wild) {
       const [species, level, form] = wild.split(':').map(Number)

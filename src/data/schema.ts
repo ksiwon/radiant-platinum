@@ -434,6 +434,22 @@ export const martTableSchema = z.object({
   specialties: z.array(z.array(z.number().int())),
 })
 
+/**
+ * 숨은 도구 257개 (`gHiddenItems`).
+ *
+ * `script`는 맵 BG 이벤트의 `script − 8000`이고, `range`는 다우징머신의
+ * 탐지 반경 0~2다 (PARITY §7.3)
+ */
+export const hiddenItemsSchema = z.object({
+  count: z.number().int().positive(),
+  items: z.array(z.object({
+    script: z.number().int().nonnegative(),
+    item: z.number().int().nonnegative(),
+    qty: z.number().int().positive(),
+    range: z.number().int().min(0).max(2),
+  })).nonempty(),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -460,5 +476,6 @@ export type PokeIcons = z.infer<typeof pokeIconsSchema>
 export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
+export type HiddenItems = z.infer<typeof hiddenItemsSchema>
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>

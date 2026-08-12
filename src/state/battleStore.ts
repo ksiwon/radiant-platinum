@@ -34,6 +34,7 @@ import {
 } from '../engine/pokemon/instance'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { journalBeatTrainer, journalWildBattle } from '../scene/journal'
+import { poketchGotMon } from '../scene/poketch'
 import { store as storeInBox } from '../engine/pokemon/boxes'
 import { encounters } from '../engine/battle/encounterSystem'
 import { LeadAbility, leadHas, wildGender, wildNature } from '../engine/battle/encounterLead'
@@ -570,6 +571,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           // 잡은 것도 상대해 본 것이다 (§2.22)
           battled: dexSet(pokedex.battled, mon.species),
         }
+        // 포켓치의 포켓몬히스토리에도 붙는다 (PARITY §7.3)
+        poketchGotMon({ species: mon.species, form: mon.form })
       }
       // 도롱마담은 싸운 땅의 옷감으로 갈아입는다 (PARITY §3.4)
       party = dressBurmy(party)

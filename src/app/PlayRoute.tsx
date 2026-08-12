@@ -14,6 +14,7 @@ import { FishingBox } from '../ui/field/FishingBox'
 import { HatchScreen } from '../ui/menu/HatchScreen'
 import { FadeOverlay } from '../ui/field/FadeOverlay'
 import { MenuLayer } from '../ui/menu/MenuLayer'
+import { PoketchWidget } from '../ui/poketch/PoketchWidget'
 
 export function PlayRoute() {
   const navigate = useNavigate()
@@ -67,6 +68,7 @@ export function PlayRoute() {
       <FishingBox />
       <HatchScreen />
       <FadeOverlay />
+      <PoketchWidget />
       <MenuLayer />
     </>
   )

@@ -21,6 +21,9 @@ import { activateRoamer } from '../scene/roamers'
 import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
 import { computeStats } from '../engine/pokemon/stats'
 import { LocationEvent } from '../engine/world/journal'
+import { POKETCH_APP_COUNT } from '../engine/world/poketch'
+import { poketchEnable, poketchRegister } from '../scene/poketch'
+import { usePoketchStore } from '../state/poketchStore'
 import { fieldScripts } from '../engine/script/field'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import {
@@ -169,6 +172,25 @@ export function installDevConsole(): void {
       })
       journalBeatTrainer(8, 246)
       return useSaveStore.getState().journal[0]
+    },
+    /**
+     * 포켓치를 켜고 앱을 등록한다 (PARITY §7.3).
+     *
+     * 번호를 안 주면 **스물다섯 전부**다. 이야기로 받으려면 축복시티부터
+     * 신오 곳곳을 돌아야 해서, 화면을 확인하려면 이 길이 있어야 한다
+     */
+    watch: (...apps: number[]) => {
+      poketchEnable()
+      const list = apps.length ? apps : [...Array(POKETCH_APP_COUNT).keys()]
+      for (const app of list) poketchRegister(app)
+      usePoketchStore.getState().setView('large')
+      return useSaveStore.getState().poketch.registry.filter(Boolean).length
+    },
+    /** 포켓치를 그 앱으로 넘긴다 */
+    app: (app: number) => {
+      const p = useSaveStore.getState().poketch
+      useSaveStore.setState({ poketch: { ...p, appIndex: app } })
+      return app
     },
     party: show,
     /** 리포트를 지우고 새 판으로. 설정의 "처음부터"와 같은 것이다 */

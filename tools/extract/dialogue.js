@@ -207,6 +207,10 @@ const EXTRA_BANKS = [
   // 노트의 빈칸 둘이 다른 뱅크를 본다 (`StringTemplate_SetGymName` ·
   // `StringTemplate_SetTimeOfDay`) — 체육관 여덟 이름과 시간대 넷
   'TEXT_BANK_GYM_NAMES', 'TEXT_BANK_TIMES_OF_DAY',
+  // 포켓치 (`applications/poketch/`). 앱 이름 25개와 앱 셋이 쓰는 글 —
+  // 기술상성체커의 「효과가 굉장함」 일곱, 포켓몬이력의 제목, 나무열매서처의 제목
+  'TEXT_BANK_POKETCH_APP_NAMES', 'TEXT_BANK_POKETCH_MOVE_TESTER',
+  'TEXT_BANK_POKETCH_POKEMON_HISTORY', 'TEXT_BANK_POKETCH_BERRY_SEARCHER',
 ]
 
 function main() {

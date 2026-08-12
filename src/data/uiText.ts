@@ -63,6 +63,10 @@ export const UI_BANK = {
   gymNames: 378,
   /** `TEXT_BANK_TIMES_OF_DAY` — 아침·낮·저녁·밤·심야 */
   timesOfDay: 608,
+  /** `TEXT_BANK_POKETCH_APP_NAMES` — 앱 25개 이름 */
+  poketchApps: 457,
+  /** `TEXT_BANK_POKETCH_MOVE_TESTER` — 기술효과체커의 일곱 줄 */
+  poketchMoveTester: 456,
 } as const
 
 export type UiBank = keyof typeof UI_BANK

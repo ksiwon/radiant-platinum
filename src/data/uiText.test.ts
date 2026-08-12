@@ -41,6 +41,8 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   journal: 'journal_entries',
   gymNames: 'gym_names',
   timesOfDay: 'times_of_day',
+  poketchApps: 'poketch_app_names',
+  poketchMoveTester: 'poketch_move_tester',
 }
 
 describe('메뉴 글', () => {

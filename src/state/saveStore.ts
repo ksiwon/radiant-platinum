@@ -28,6 +28,7 @@ import {
   newRecentRoutes, newRoamers, type RecentRoutes, type Roamer,
 } from '../engine/world/roamer'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
+import { newPoketch, type PoketchState } from '../engine/world/poketch'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -215,9 +216,16 @@ export interface SaveData {
    * 축복시티에서 받기 전까지 `journalAcquired` 플래그가 안 서 있어서 비어 있다
    */
   journal: JournalEntry[]
+  /**
+   * 포켓치 (PARITY §7.3). 등록된 앱·화면 색·만보기·캘린더·도트아트가 여기 남는다.
+   *
+   * ⚠️ **앱이 쓰던 값은 안 남는다** — 계산기의 숫자도 메모용지의 그림도
+   * 원작이 휘발 버퍼 하나에 두고, 앱을 넘기는 순간 지워진다
+   */
+  poketch: PoketchState
 }
 
-export const SAVE_VERSION = 16
+export const SAVE_VERSION = 17
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -290,6 +298,7 @@ export function createNewSave(): SaveData {
     roamers: newRoamers(),
     recentRoutes: newRecentRoutes(),
     journal: newJournal(),
+    poketch: newPoketch(),
   }
 }
 
@@ -502,6 +511,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     roamers: s.roamers,
     recentRoutes: s.recentRoutes,
     journal: s.journal,
+    poketch: s.poketch,
   }
 }
 

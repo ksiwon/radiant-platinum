@@ -17,6 +17,10 @@ import { ROAMER_SLOT_COUNT } from '../../engine/world/roamer'
 import {
   MAX_JOURNAL_ENTRIES, MAX_LOCATION_EVENTS, MAX_ONLINE_EVENTS,
 } from '../../engine/world/journal'
+import {
+  POKETCH_APP_COUNT, POKETCH_COLOR_COUNT, POKETCH_DOTART_BYTES, POKETCH_HISTORY_MAX,
+  POKETCH_MARKER_COUNT, POKETCH_REGISTRY_SIZE,
+} from '../../engine/world/poketch'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -288,6 +292,29 @@ export const saveSchema = z.object({
     trainer: z.object({ standard: int(0, 1), trainerId: int(0, 32767), mapId: int(0, 592) }),
     online: z.array(z.object({ type: int(0, 63), result: int(0, 15) })).length(MAX_ONLINE_EVENTS),
   })).length(MAX_JOURNAL_ENTRIES),
+  /**
+   * 포켓치 (PARITY §7.3) — `Poketch`.
+   *
+   * ⚠️ **앱마다의 임시 상태는 여기 없다.** 원작이 `PoketchMemory` 버퍼 하나를
+   * 모든 앱이 돌려 쓰고 앱을 넘기면 지워진다 — 계산기의 숫자도 메모용지의
+   * 그림도 저장되지 않는다. 도트아트만 예외로 세이브에 들어간다
+   */
+  poketch: z.object({
+    enabled: z.boolean(),
+    pedometerEnabled: z.boolean(),
+    dotArtModified: z.boolean(),
+    screenColor: int(0, POKETCH_COLOR_COUNT - 1),
+    appIndex: int(0, POKETCH_APP_COUNT - 1),
+    registry: z.array(int(0, 1)).length(POKETCH_REGISTRY_SIZE),
+    stepCount: int(0, 0xffffffff),
+    alarm: z.object({ set: z.boolean(), hour: int(0, 23), minute: int(0, 59) }),
+    dotArt: u8(POKETCH_DOTART_BYTES),
+    calendar: z.object({ month: int(1, 12), marks: int(0, 0xffffffff) }),
+    markers: z.array(z.object({ x: int(0, 255), y: int(0, 255) }))
+      .length(POKETCH_MARKER_COUNT),
+    history: z.array(z.object({ species: int(1, 493), form: int(0, 27) }))
+      .max(POKETCH_HISTORY_MAX),
+  }),
 })
 
 /**

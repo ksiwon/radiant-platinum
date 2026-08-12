@@ -7,13 +7,17 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  hiddenItemsSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema,
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
-  type Species, type Trainer, type TownMapFile,
+  type Species, type Trainer, type TownMapFile, type HiddenItems,
 } from './schema'
+
+/** 숨은 도구 한 줄 */
+export type HiddenItemRow = HiddenItems['items'][number]
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
 import { formSpeciesId } from '../engine/pokemon/form'
@@ -280,6 +284,19 @@ export function loadSignposts(): Promise<Signposts> {
 /** 상점 재고표. 롬이 아니라 디컴프 헤더에서 나온 것이다 (`tools/extract/marts.js`) */
 export function loadMarts(): Promise<MartTable> {
   return fetchJson('marts.json', (v) => martTableSchema.parse(v))
+}
+
+/**
+ * 숨은 도구 표 (PARITY §7.3). 다우징머신이 탐지 반경을 여기서 읽는다.
+ *
+ * 자리 번호(`script`)로 바로 짚을 수 있게 표로 만들어 준다 — 257개를
+ * 매 프레임 훑으면 안 된다
+ */
+export function loadHiddenItems(): Promise<Map<number, HiddenItemRow>> {
+  return fetchJson('hiddenItems.json', (v) => {
+    const file = hiddenItemsSchema.parse(v)
+    return new Map(file.items.map((row) => [row.script, row]))
+  })
 }
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {

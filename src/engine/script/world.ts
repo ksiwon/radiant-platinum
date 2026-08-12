@@ -284,6 +284,24 @@ export interface FieldServices {
     /** 그 자리를 열고 신오 어딘가에 놓는다. 자리 번호는 `RoamerSlot` */
     activate: (slot: number) => void
   }
+  /**
+   * 포켓치 (PARITY §7.3) — `scrcmd.c`의 여섯 명령.
+   *
+   * ⚠️ **켜는 명령이 따로 없다.** 원작은 축복시티의 포켓치 화면이 뜰 때
+   * `Poketch_Enable`을 부르는데, 그 화면은 스크립트 명령이 아니라 필드 과제다.
+   * 우리는 **앱을 처음 등록할 때** 같이 켠다 — 사장이 기계를 주면서 앱도
+   * 등록하므로 같은 순간이다
+   */
+  poketch?: {
+    enabled: () => boolean
+    /** 등록한다. 이미 있으면 거짓 */
+    register: (app: number) => boolean
+    has: (app: number) => boolean
+    /** 앱 이름 (`poketch_app_names` 뱅크) */
+    appName: (app: number) => string
+    /** 연출 동안 치운다 (`ScrCmd_HidePoketch`) */
+    show: (visible: boolean) => void
+  }
   /** 모험노트 (PARITY §7.4) — `ScrCmd_GiveJournal` · `ScrCmd_CreateJournalEvent` */
   journal?: {
     /** 노트를 받는다. 첫 쪽이 여기서 펼쳐진다 */

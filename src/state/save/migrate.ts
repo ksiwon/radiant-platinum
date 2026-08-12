@@ -14,6 +14,7 @@ import { newDaycare } from '../../engine/pokemon/breeding'
 import { dayNumber, newDaily } from '../../engine/world/daily'
 import { newRecentRoutes, newRoamers } from '../../engine/world/roamer'
 import { newJournal } from '../../engine/world/journal'
+import { newPoketch } from '../../engine/world/poketch'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -157,6 +158,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 세이브 어디에도 안 남아 있어서, 채우려면 만들어내는 수밖에 없다
    */
   15: (data) => ({ ...data, version: 16, journal: newJournal() }),
+
+  /**
+   * 포켓치 (PARITY §7.3).
+   *
+   * ⚠️ **앱을 지어내지 않는다.** 디지털시계 하나만 든 새 포켓치로 시작한다 —
+   * 옛 리포트가 축복시티를 지나왔더라도 받은 앱이 어디에도 안 적혀 있다.
+   * 다시 받으러 갈 수 있는 것들이라 잃는 것은 걸음 하나다
+   */
+  16: (data) => ({ ...data, version: 17, poketch: newPoketch() }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

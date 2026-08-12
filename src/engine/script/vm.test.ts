@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_495
+const RUNNING_SITES = 53_556
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 228
+const IMPLEMENTED_COMMANDS = 234
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -528,6 +528,9 @@ const IDLE_COMMANDS = [
   // ⚠️ **테오키스는 배포 이벤트다** (§9). 축복시티의 유성이 폼을 갈아 끼우는데
   // (`scripts_veilstone_city.s`), 그 앞이 파티에 테오키스가 있는지 보는 갈래다
   'ChangeDeoxysForm',
+  // 포켓치를 잠깐 치우는 쪽은 실제 스크립트에 안 나온다 — 되살리는
+  // `ShowPoketch`만 쓰인다
+  'HidePoketch',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다

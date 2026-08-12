@@ -876,6 +876,11 @@ const SCRIPT_ID_OFFSET_HIDDEN_ITEMS = 8000
 /** `generated/vars_flags.txt`의 `HIDDEN_ITEM_FLAGS_START` */
 const HIDDEN_ITEM_FLAGS_START = 730
 
+// 다우징머신도 같은 두 수로 「이미 주웠나」를 본다 (PARITY §7.3) — 베껴 적으면
+// 한쪽만 고쳐진다
+export { SCRIPT_ID_OFFSET_HIDDEN_ITEMS as HIDDEN_ITEM_SCRIPT_BASE }
+export { HIDDEN_ITEM_FLAGS_START as HIDDEN_ITEM_FLAG_BASE }
+
 // ── 좌표 트리거 ──────────────────────────────────────────────────────────────
 
 /** 마지막으로 판정한 칸. 한 칸에 여러 번 돌지 않게 한다 */

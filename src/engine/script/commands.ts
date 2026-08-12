@@ -1478,6 +1478,8 @@ export const SYSTEM_FLAG = {
    * 걸음마다 `SystemFlag_ClearStep`을 부른다)
    */
   step: 2405,
+  /** 포켓치를 잠깐 치웠는가 (`FLAG_POKETCH_HIDDEN`) — 연출이 세우고 지운다 */
+  poketchHidden: 2428,
 } as const
 
 /** 플래그 하나를 세우고/지우고/묻는 명령 셋을 한 번에 등록한다 */
@@ -1528,6 +1530,46 @@ on('CreateJournalEvent', (ctx) => {
   if (!SCRIPT_EVENT_TYPES.includes(type)) return true
   ctx.host.world.services.journal?.event(type, param)
   return true
+})
+
+// ── 포켓치 (PARITY §7.3) ─────────────────────────────────────────────────────
+
+on('CheckPoketchEnabled', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.poketch?.enabled() === true ? 1 : 0)
+  return false
+})
+
+on('RegisterPoketchApp', (ctx) => {
+  // ⚠️ 인자를 **먼저** 읽는다. `?.`가 인자를 건너뛰면 그 뒤가 통째로 밀린다
+  const app = ctx.readVar()
+  ctx.host.world.services.poketch?.register(app)
+  return false
+})
+
+on('CheckPoketchAppRegistered', (ctx) => {
+  const app = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.poketch?.has(app) === true ? 1 : 0)
+  return false
+})
+
+on('BufferPoketchAppName', (ctx) => {
+  const slot = ctx.readByte()
+  const app = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.poketch?.appName(app) ?? '')
+  return false
+})
+
+on('HidePoketch', (ctx) => {
+  ctx.host.vars.setFlag(SYSTEM_FLAG.poketchHidden)
+  ctx.host.world.services.poketch?.show(false)
+  return false
+})
+
+on('ShowPoketch', (ctx) => {
+  ctx.host.vars.clearFlag(SYSTEM_FLAG.poketchHidden)
+  ctx.host.world.services.poketch?.show(true)
+  return false
 })
 
 on('GiveRunningShoes', (ctx) => {

@@ -28,6 +28,15 @@ import { isSoothing } from '../engine/pokemon/friendship'
 import { mapById, setWarpEventPos, world as mapWorld } from '../engine/map/world'
 import { LocationEvent } from '../engine/world/journal'
 import { journalGiven, journalGotItem, journalPlain, journalUsedMove } from './journal'
+import { poketchEnable, poketchEnabled, poketchHasApp, poketchRegister, poketchShow } from './poketch'
+
+/**
+ * 포켓치 앱 이름 25개. 스크립트가 대사에 끼워 넣는다 (`BufferPoketchAppName`).
+ *
+ * 필드가 뜰 때 한 번 받아 둔다 — 스크립트 명령은 동기라 그 자리에서 못 기다린다
+ */
+let poketchAppNames: readonly string[] = []
+export function setPoketchAppNames(names: readonly string[]): void { poketchAppNames = names }
 
 /**
  * 스크립트가 여는 노트 일 중 **맵 번호를 곁값으로 받는** 것들
@@ -70,6 +79,8 @@ import type { MartTable, Trainer } from '../data/schema'
 const TRAINER_MESSAGE_BANK = 617
 /** `TEXT_BANK_BAG_POCKET_NAMES` — 주머니 8개 이름 */
 const POCKET_NAME_BANK = 395
+/** `TEXT_BANK_POKETCH_APP_NAMES` — 포켓치 앱 이름 25개 */
+const POKETCH_APP_NAME_BANK = 457
 
 
 /** 지금 배틀의 결과. 스크립트가 물어볼 때까지 들고 있는다 */
@@ -311,6 +322,10 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   // 실패를 돌려준다 — 반쯤 만들어진 개체를 파티에 넣지 않는다
   void loadSpecies().then((table) => { speciesTable = table }).catch(() => { /* 못 준다 */ })
   void loadMoves().then((table) => { moveTable = table }).catch(() => { /* 못 준다 */ })
+  // 포켓치 앱 이름 25개. 스크립트가 대사에 끼워 넣는다 (PARITY §7.3)
+  void loadDialogueBank(locale, POKETCH_APP_NAME_BANK)
+    .then((bank) => { setPoketchAppNames(bank) })
+    .catch(() => { /* 이름만 빈다 */ })
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
@@ -708,6 +723,24 @@ const services: FieldServices = {
       if (AT_MAP_EVENTS.has(type)) { journalUsedMove(type, param); return }
       journalPlain(type)
     },
+  },
+
+  /**
+   * 포켓치 (PARITY §7.3).
+   *
+   * ⚠️ **앱을 처음 등록할 때 기계도 같이 켠다.** 원작은 축복시티의 포켓치
+   * 화면(필드 과제)이 `Poketch_Enable`을 부르는데 그건 스크립트 명령이
+   * 아니다 — 사장이 기계를 주면서 앱을 등록하므로 같은 순간이다
+   */
+  poketch: {
+    enabled: poketchEnabled,
+    register: (app) => {
+      poketchEnable()
+      return poketchRegister(app)
+    },
+    has: poketchHasApp,
+    appName: (app) => poketchAppNames[app] ?? '',
+    show: poketchShow,
   },
 
   gear: {
