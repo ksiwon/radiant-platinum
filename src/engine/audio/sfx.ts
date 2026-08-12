@@ -60,6 +60,11 @@ export const SFX = {
    * (`choose_starter_app.c`의 `CHOICE_STEP_PLAY_BAG_NOISE`)
    */
   BAG_OPEN: 1738,
+  /**
+   * `SEQ_SE_DP_FW104`. 낚싯대를 던져 찌가 물에 떨어지는 소리
+   * (`fishing.c`의 `FishingTask_CastRod`, 던지고 10프레임째)
+   */
+  CAST_ROD: 1616,
 } as const
 
 export type SfxName = keyof typeof SFX

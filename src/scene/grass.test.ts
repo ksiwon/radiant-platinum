@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
 import { heightField } from '../engine/map/height'
-import { isEncounterTile, isGrassTile, isTuftTile } from '../engine/battle/encounter'
+import { isLandEncounterTile, isGrassTile, isTuftTile } from '../engine/battle/encounter'
 import { grassSpots } from './Grass'
 import { withData } from '../data/romData.testkit'
 
@@ -58,7 +58,7 @@ maybe('서 있는 풀숲', () => {
       expect(isGrassTile(behavior), `(${String(tx)},${String(tz)})`).toBe(true)
       // 같은 칸을 인카운터 판정도 풀숲으로 봐야 한다. 두 코드가 따로 있어서
       // 한쪽만 고치면 눈에 보이는 풀과 실제로 튀어나오는 자리가 어긋난다
-      expect(isEncounterTile(behavior)).toBe(true)
+      expect(isLandEncounterTile(behavior)).toBe(true)
     }
   })
 
@@ -79,7 +79,7 @@ maybe('서 있는 풀숲', () => {
     // ⚠️ 발소리·흔들림은 안 넓힌다. 원작은 진흙에서 풀 흔들림을 안 돌린다
     expect(isGrassTile(0xa6), '진흙 위에서는 안 스친다').toBe(false)
     // 그래도 야생은 나온다 — 두 판정이 갈리는 자리다
-    expect(isEncounterTile(0xa6)).toBe(true)
+    expect(isLandEncounterTile(0xa6)).toBe(true)
   })
 
   it('풀숲이 없는 곳에는 하나도 안 선다', () => {

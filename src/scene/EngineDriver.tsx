@@ -13,6 +13,7 @@ import { warpSystem } from '../engine/map/world'
 import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
+import { fishingSystem } from './fishingSystem'
 import { markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { spinBike } from './BikeModel'
@@ -42,6 +43,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 먹어야 한다 — 앞에 두면 멈추라는 말을 듣기 전에 한 걸음 더 간다
       gameLoop.register(inputSystem)
       gameLoop.register(scriptSystem)
+      // 낚시도 발을 묶는다. 스크립트와 같은 이유로 이동 시스템 **앞**이다 —
+      // 뒤에 두면 낚는 동안 그 프레임만큼 걸어가 물에서 멀어진다 (PARITY §1.5)
+      gameLoop.register(fishingSystem)
       gameLoop.register(npcSystem)
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)

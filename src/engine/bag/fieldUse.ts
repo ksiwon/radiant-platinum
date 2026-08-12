@@ -11,6 +11,7 @@
 //   0 없음 214 · 1 회복 38 · 6 기술머신 100 · 8 나무열매 64 · 19 알림 9 ·
 //   20 진화의돌 10 · 13 비료 4 · 7 편지 12 · 나머지는 하나씩
 import type { Item } from '../../data/schema'
+import type { Rod } from '../battle/encounter'
 import type { ItemPlan, ItemTarget } from '../battle/meta/bagItem'
 import type { MoveSlot, PokemonInstance } from '../pokemon/instance'
 
@@ -46,8 +47,17 @@ export const FieldUse = {
 /** `MAP_TYPE_CAVE` (`enum MapType`) */
 export const MAP_TYPE_CAVE = 3
 
-/** 낚싯대 셋. 조우표의 어느 칸을 볼지가 갈린다 */
-export type Rod = 'old' | 'good' | 'super'
+export type { Rod }
+
+/**
+ * 낚시를 막는 맵 열하나 (`CanUseFishingRod`) — 파멸의세계 전부다.
+ *
+ * 헤더 번호는 `generated/map_headers.txt`의 줄 번호 − 1이고, 573~583이
+ * `DISTORTION_WORLD_1F`부터 `DISTORTION_WORLD_TURNBACK_CAVE_ROOM`까지
+ * 끊김 없이 이어진다. 저기 물처럼 보이는 것은 물이 아니다
+ */
+const NO_FISHING_FIRST = 573
+const NO_FISHING_LAST = 583
 
 /**
  * 이 도구를 지금 쓰면 무슨 일이 일어나는가.
@@ -125,7 +135,10 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     case FieldUse.OLD_ROD:
     case FieldUse.GOOD_ROD:
     case FieldUse.SUPER_ROD:
-      if (!ctx.waterAhead) return { kind: 'blocked', why: '여기서는 낚시를 할 수 없다.' }
+      if (ctx.mapId >= NO_FISHING_FIRST && ctx.mapId <= NO_FISHING_LAST) {
+        return { kind: 'blocked', why: '여기서는 낚시를 할 수 없다.' }
+      }
+      if (!ctx.waterAhead) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       return {
         kind: 'fish',
         rod: item.fieldUseFunc === FieldUse.OLD_ROD ? 'old'

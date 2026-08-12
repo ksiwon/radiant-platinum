@@ -10,6 +10,7 @@ import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { MessageBox } from '../ui/field/MessageBox'
+import { FishingBox } from '../ui/field/FishingBox'
 import { FadeOverlay } from '../ui/field/FadeOverlay'
 import { MenuLayer } from '../ui/menu/MenuLayer'
 
@@ -62,6 +63,7 @@ export function PlayRoute() {
   return (
     <>
       <MessageBox />
+      <FishingBox />
       <FadeOverlay />
       <MenuLayer />
     </>

@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { flatGate, isEncounterTile } from './encounter'
+import { encounterKind, flatGate, isLandEncounterTile, isSurfEncounterTile } from './encounter'
 import { withDecomp } from '../../data/romData.testkit'
 
 const DECOMP = resolve(__dirname, '../../../raw/decomp')
@@ -43,12 +43,24 @@ function readBehaviorNumbers(): Map<string, number> {
   return out
 }
 
-/** `[TILE_BEHAVIOR_X] = TILE_BEHAVIOR_FLAG_ENCOUNTER,` 인 것들 */
-function readEncounterNames(): string[] {
+/**
+ * 거동마다 붙은 표식을 그대로 읽는다.
+ *
+ * ⚠️ **표식이 셋이다.** `FLAG_ENCOUNTER`(걸어서) · `FLAG_SURFABLE`(탈 수 있다) ·
+ * `FLAG_SURFABLE_ENCOUNTER`(둘 다). 셋째를 앞의 것과 문자열로 가르려다 보면
+ * `"FLAG_SURFABLE_ENCOUNTER".includes("FLAG_ENCOUNTER")`가 거짓이라는 것에
+ * 기대게 된다 — 이름 하나 바뀌면 조용히 틀린다. 표식마다 정확히 맞춘다
+ */
+function readFlagged(): { land: string[], surf: string[] } {
   const src = readFileSync(FLAGS, 'utf8')
   const table = src.slice(src.indexOf('sTileBehaviorFlags'))
   const found = [...table.matchAll(/\[(TILE_BEHAVIOR_\w+)\]\s*=\s*([^,\n]+),/g)]
-  return found.filter(([, , flags]) => flags?.includes('FLAG_ENCOUNTER')).map((m) => m[1]!)
+  const flagOf = (m: RegExpMatchArray): string => (m[2] ?? '').trim()
+  return {
+    land: found.filter((m) => flagOf(m) === 'TILE_BEHAVIOR_FLAG_ENCOUNTER').map((m) => m[1]!),
+    surf: found.filter((m) => flagOf(m) === 'TILE_BEHAVIOR_FLAG_SURFABLE_ENCOUNTER')
+      .map((m) => m[1]!),
+  }
 }
 
 /**
@@ -74,7 +86,9 @@ describe('평평한 관문', () => {
 
 maybe('야생이 나오는 타일', () => {
   const numbers = readBehaviorNumbers()
-  const names = readEncounterNames()
+  const { land, surf } = readFlagged()
+  const idsOf = (names: string[]): Set<number | undefined> =>
+    new Set(names.map((n) => numbers.get(n)))
 
   /** 세는 법이 맞는지부터. 이름에 번호가 박힌 것들이 그 번호로 떨어져야 한다 */
   it('거동 번호를 제대로 세었다', () => {
@@ -84,19 +98,33 @@ maybe('야생이 나오는 타일', () => {
     expect(wrong).toEqual([])
   })
 
-  it('표식이 붙은 거동이 열셋이다', () => {
-    expect(names).toHaveLength(13)
+  it('걸어서 만나는 거동이 열셋이다', () => {
+    expect(land).toHaveLength(13)
     // 이 셋이 빠져 있어서 동굴·대습초원이 조용했다
-    expect(names).toContain('TILE_BEHAVIOR_CAVE_FLOOR')
-    expect(names).toContain('TILE_BEHAVIOR_MUD_WITH_GRASS')
-    expect(names).toContain('TILE_BEHAVIOR_VERY_TALL_GRASS')
+    expect(land).toContain('TILE_BEHAVIOR_CAVE_FLOOR')
+    expect(land).toContain('TILE_BEHAVIOR_MUD_WITH_GRASS')
+    expect(land).toContain('TILE_BEHAVIOR_VERY_TALL_GRASS')
+  })
+
+  it('파도타기로 만나는 거동이 여섯이다 — 탈 수 있는 물 열여섯 중에서', () => {
+    expect(surf).toHaveLength(6)
+    expect(surf).toContain('TILE_BEHAVIOR_WATER_RIVER')
+    expect(surf).toContain('TILE_BEHAVIOR_WATER_SEA')
+    // ⚠️ 폭포와 물 위 다리는 **탈 수는 있어도 조우가 없다.** `isSurfable`로
+    // 뭉뚱그리면 다리 위를 지나가는 것만으로 배틀이 열린다
+    expect(surf).not.toContain('TILE_BEHAVIOR_WATERFALL')
+    expect(surf).not.toContain('TILE_BEHAVIOR_BRIDGE_OVER_WATER')
   })
 
   it('0~255 전부가 원작 표와 같다', () => {
-    const want = new Set(names.map((n) => numbers.get(n)))
+    const wantLand = idsOf(land)
+    const wantSurf = idsOf(surf)
     const mismatched: string[] = []
     for (let b = 0; b <= 0xff; b++) {
-      if (isEncounterTile(b) !== want.has(b)) mismatched.push(`0x${b.toString(16)}`)
+      const want = wantLand.has(b) ? 'land' : wantSurf.has(b) ? 'surf' : null
+      if (isLandEncounterTile(b) !== wantLand.has(b)) mismatched.push(`육상 0x${b.toString(16)}`)
+      if (isSurfEncounterTile(b) !== wantSurf.has(b)) mismatched.push(`물 0x${b.toString(16)}`)
+      if (encounterKind(b) !== want) mismatched.push(`갈래 0x${b.toString(16)}`)
     }
     expect(mismatched).toEqual([])
   })

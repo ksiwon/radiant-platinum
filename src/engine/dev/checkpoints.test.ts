@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../map/grid'
 import { walkOutOfDoor, type EventFile, type MapHeader } from '../map/world'
-import { isEncounterTile, type EncounterTable } from '../battle/encounter'
+import { isLandEncounterTile, type EncounterTable } from '../battle/encounter'
 import { CHECKPOINTS, HM_CARRIER, HM_TEACHES, resolveSpot, seenAlongTheWay } from './checkpoints'
 import { withData } from '../../data/romData.testkit'
 
@@ -134,7 +134,7 @@ maybe('확인 지점', () => {
     for (const c of grass) {
       const grid = grids.get(maps[c.map]!.matrix)!
       const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map))!
-      expect(isEncounterTile(grid.behavior(Math.floor(at.x), Math.floor(at.z))), c.label).toBe(true)
+      expect(isLandEncounterTile(grid.behavior(Math.floor(at.x), Math.floor(at.z))), c.label).toBe(true)
       // 야생이 나오려면 그 맵에 인카운터 표가 붙어 있어야 한다
       expect(maps[c.map]!.encounters, c.label).not.toBeNull()
     }

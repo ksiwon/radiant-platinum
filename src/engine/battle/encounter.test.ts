@@ -9,10 +9,12 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
-  LAND_SLOT_RATES, WATER_SLOT_RATES, graceSteps, isEncounterTile, newEncounterState,
-  rollLand, rollWater, shouldEncounter, type EncounterTable,
+  LAND_SLOT_RATES, ROD_SLOT_RATES, WATER_SLOT_RATES, encounterKind, graceSteps, hooksFish,
+  isLandEncounterTile, isSurfEncounterTile, newEncounterState, rollLand, rollRod, rollWater,
+  shouldEncounter, timedLand, type EncounterTable,
 } from './encounter'
 import { Behavior } from '../map/zone'
+import { TimeOfDay } from '../map/timeOfDay'
 import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
@@ -26,15 +28,34 @@ describe('슬롯 확률표', () => {
   it('육상 12슬롯과 물 5슬롯 모두 합이 100이다', () => {
     expect(LAND_SLOT_RATES.reduce((a, b) => a + b, 0)).toBe(100)
     expect(WATER_SLOT_RATES.reduce((a, b) => a + b, 0)).toBe(100)
+    for (const [rod, rates] of Object.entries(ROD_SLOT_RATES)) {
+      expect(rates.reduce((a, b) => a + b, 0), rod).toBe(100)
+    }
+  })
+
+  /**
+   * ⚠️ 여기가 조용히 틀리기 쉬운 자리다. 낚싯대 셋을 물 표 하나로 뭉뚱그리면
+   * **대단한 낚싯대의 셋째 칸이 15%에서 5%로 줄어든다** — 원작에서 흔한 것이
+   * 여기서는 안 나오는데, 화면에는 아무 표시도 없다
+   */
+  it('낡은 낚싯대만 파도타기와 같고 좋은·대단한 것은 다르다', () => {
+    expect(ROD_SLOT_RATES.old).toEqual([...WATER_SLOT_RATES])
+    expect(ROD_SLOT_RATES.good).toEqual([40, 40, 15, 4, 1])
+    expect(ROD_SLOT_RATES.super).toEqual([40, 40, 15, 4, 1])
   })
 })
 
 describe('타일 판정', () => {
-  it('풀숲에서만 야생이 나온다', () => {
-    expect(isEncounterTile(Behavior.TALL_GRASS)).toBe(true)
-    expect(isEncounterTile(Behavior.NORMAL)).toBe(false)
-    expect(isEncounterTile(Behavior.WATER_OPEN)).toBe(false)
-    expect(isEncounterTile(Behavior.WATER_POND)).toBe(false)
+  it('걷는 조우와 물 조우가 갈린다', () => {
+    expect(isLandEncounterTile(Behavior.TALL_GRASS)).toBe(true)
+    expect(isLandEncounterTile(Behavior.NORMAL)).toBe(false)
+    // 물은 걷는 표가 아니라 파도타기 표를 본다 — 예전에는 둘 다 거짓이라
+    // **물 위에서는 야생이 한 마리도 안 나왔다**
+    expect(isLandEncounterTile(Behavior.WATER_OPEN)).toBe(false)
+    expect(isSurfEncounterTile(Behavior.WATER_OPEN)).toBe(true)
+    expect(encounterKind(Behavior.WATER_OPEN)).toBe('surf')
+    expect(encounterKind(Behavior.TALL_GRASS)).toBe('land')
+    expect(encounterKind(Behavior.NORMAL)).toBeNull()
   })
 })
 
@@ -162,6 +183,67 @@ maybe('인카운터 표', () => {
       expect(e.level).toBeGreaterThanOrEqual(slot.min)
       expect(e.level).toBeLessThanOrEqual(slot.max)
     }
+  })
+
+  /**
+   * ⚠️ **표에 적힌 열두 칸은 「아침」판이다.** 낮·해질녘이면 2·3번 칸이
+   * `day`로, 밤·심야면 `night`로 바뀐다. 안 갈아 끼우면 밤에도 아침 것만
+   * 나오는데, 201번도로에서 귀뚤뚜기가 슬롯 3에 이미 있어서 **눈으로는 티가
+   * 안 난다** — 세어 봐야 보인다
+   */
+  it('시간대가 슬롯 2·3의 종족을 갈아 끼운다 — 레벨은 그대로다', () => {
+    const t = table('R201')
+    const morning = timedLand(t, TimeOfDay.MORNING)
+    expect(morning).toBe(t.land)
+
+    for (const time of [TimeOfDay.DAY, TimeOfDay.TWILIGHT]) {
+      const got = timedLand(t, time)
+      expect(got.map((s) => s.species).slice(2, 4)).toEqual(t.day)
+      expect(got.map((s) => s.level)).toEqual(t.land.map((s) => s.level))
+      expect(got.filter((_, i) => i !== 2 && i !== 3))
+        .toEqual(t.land.filter((_, i) => i !== 2 && i !== 3))
+    }
+    for (const time of [TimeOfDay.NIGHT, TimeOfDay.LATE_NIGHT]) {
+      expect(timedLand(t, time).map((s) => s.species).slice(2, 4)).toEqual(t.night)
+    }
+  })
+
+  it('실제로 밤에만 나오는 자리가 있다 — 갈아 끼우기가 눈금이 된다', () => {
+    // 표 183개를 통째로 훑어 "아침에는 못 만나고 밤에만 만나는 종족"을 센다.
+    // 이 수가 0이면 갈아 끼우기가 아무 일도 안 하고 있다는 뜻이다
+    let onlyAtNight = 0
+    for (const t of tables) {
+      if (t.landRate === 0) continue
+      const day = new Set(timedLand(t, TimeOfDay.MORNING).map((s) => s.species))
+      for (const id of timedLand(t, TimeOfDay.NIGHT).map((s) => s.species)) {
+        if (!day.has(id)) onlyAtNight++
+      }
+    }
+    expect(onlyAtNight).toBeGreaterThan(30)
+  })
+
+  it('낚싯대는 저마다 다른 표와 다른 가중치를 본다', () => {
+    // 세 낚싯대 표가 다 채워진 자리를 찾아 그 위에서 잰다
+    const t = tables.find((x) => x.oldRod.rate > 0 && x.goodRod.rate > 0 && x.superRod.rate > 0)!
+    expect(rollRod(t, 'old', seq(0))?.species).toBe(t.oldRod.slots[0]!.species)
+    expect(rollRod(t, 'good', seq(0))?.species).toBe(t.goodRod.slots[0]!.species)
+    expect(rollRod(t, 'super', seq(0))?.species).toBe(t.superRod.slots[0]!.species)
+    // 굴림값 0.5 → 50. 낡은 것은 60을 못 넘어 슬롯 0, 좋은 것은 40을 넘어 슬롯 1
+    expect(rollRod(t, 'old', seq(0.5, 0))?.slot).toBe(0)
+    expect(rollRod(t, 'good', seq(0.5, 0))?.slot).toBe(1)
+    // 0.85 → 85. 낡은 것은 90 미만이라 슬롯 1, 좋은 것은 80을 넘어 슬롯 2
+    expect(rollRod(t, 'old', seq(0.85, 0))?.slot).toBe(1)
+    expect(rollRod(t, 'super', seq(0.85, 0))?.slot).toBe(2)
+  })
+
+  it('낚시는 관문 없이 출현률 하나로 갈린다', () => {
+    const t = tables.find((x) => x.superRod.rate > 0)!
+    const rate = t.superRod.rate
+    expect(hooksFish(t, 'super', () => (rate - 0.5) / 100)).toBe(true)
+    expect(hooksFish(t, 'super', () => (rate + 0.5) / 100)).toBe(false)
+    // 표가 안 붙은 낚싯대에는 아무것도 안 걸린다
+    const dry = tables.find((x) => x.oldRod.rate === 0)!
+    expect(hooksFish(dry, 'old', () => 0)).toBe(false)
   })
 
   it('육상 슬롯이 있는 표는 전부 종족·레벨이 유효하다', () => {

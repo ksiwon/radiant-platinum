@@ -6,11 +6,28 @@
 // RNG를 주입받는 이유: 테스트에서 결과를 고정해야 하고, 나중에 저장 파일 기반
 // 재현 가능한 시드로 바꿀 여지를 남겨 둔다.
 import { Behavior } from '../map/zone'
+import { TimeOfDay, type TimeOfDayId } from '../map/timeOfDay'
 
 /** 4세대 육상 12슬롯 가중치 (합 100) */
 export const LAND_SLOT_RATES = [20, 20, 10, 10, 10, 10, 5, 5, 4, 4, 1, 1] as const
-/** 물 5슬롯 가중치 (합 100) */
+/** 파도타기 5슬롯 가중치 (합 100) — `GetWaterEncounterSlot` */
 export const WATER_SLOT_RATES = [60, 30, 5, 4, 1] as const
+
+/** 낚싯대 셋. 조우표의 어느 칸을 볼지가 갈린다 */
+export type Rod = 'old' | 'good' | 'super'
+
+/**
+ * 낚싯대별 5슬롯 가중치 (`GetRodEncounterSlot`).
+ *
+ * ⚠️ **낡은 낚싯대만 파도타기와 같다.** 좋은/대단한 낚싯대는 앞 두 칸이
+ * 40·40이고 셋째가 15다 — 하나로 뭉뚱그리면 대단한 낚싯대의 셋째 칸(15%)이
+ * 5%로 줄어, 원작에서 흔한 것이 여기서는 안 나온다
+ */
+export const ROD_SLOT_RATES: Readonly<Record<Rod, readonly number[]>> = {
+  old: [60, 30, 5, 4, 1],
+  good: [40, 40, 15, 4, 1],
+  super: [40, 40, 15, 4, 1],
+}
 
 export interface LandSlot { level: number; species: number }
 export interface WaterSlot { min: number; max: number; species: number }
@@ -128,38 +145,93 @@ export function flatGate(where: Footing): number {
   return Math.min(100, FLAT_GATE + bonus)
 }
 
+/**
+ * 시간대가 갈아 끼우는 육상 슬롯 (`WildEncounters_ReplaceTimedEncounters`).
+ *
+ * ⚠️ **표에 적힌 열두 칸은 「아침」판이다.** 낮·해질녘이면 2·3번 칸의 종족이
+ * `day`로, 밤·심야면 `night`로 바뀐다. **레벨은 안 바뀐다** — 갈아 끼우는 것은
+ * 종족뿐이라, 레벨까지 옮기면 원작에 없는 개체가 나온다.
+ *
+ * 아침(0)에는 아무것도 안 바뀐다. 그래서 `day`·`night`가 놀고 있으면
+ * 하루 종일 아침 표만 나온다 — 눈으로는 "왜 얘만 나오지"로만 보인다
+ */
+export function timedLand(table: EncounterTable, time: TimeOfDayId): LandSlot[] {
+  const swap = time === TimeOfDay.DAY || time === TimeOfDay.TWILIGHT ? table.day
+    : time === TimeOfDay.NIGHT || time === TimeOfDay.LATE_NIGHT ? table.night
+      : null
+  if (!swap) return table.land
+  return table.land.map((s, i) => {
+    if (i !== 2 && i !== 3) return s
+    const species = swap[i - 2]
+    return species === undefined || species <= 0 ? s : { level: s.level, species }
+  })
+}
+
 /** 육상 조우 하나를 굴린다. 표가 비었으면 null */
-export function rollLand(table: EncounterTable, rng: Rng): WildEncounter | null {
+export function rollLand(
+  table: EncounterTable, rng: Rng, time: TimeOfDayId = TimeOfDay.MORNING,
+): WildEncounter | null {
   if (table.landRate <= 0) return null
   const slot = pickSlot(LAND_SLOT_RATES, rng)
-  const s = table.land[slot]
+  const s = timedLand(table, time)[slot]
   if (!s || s.species <= 0) return null
   return { species: s.species, level: s.level, slot }
 }
 
-/** 물 조우 하나를 굴린다 (파도타기·낚시). 레벨은 min~max 균등 */
-export function rollWater(t: WaterTable, rng: Rng): WildEncounter | null {
+/**
+ * 물 조우 하나를 굴린다. 레벨은 min~max 균등.
+ *
+ * `rates`를 밖에서 받는 이유가 전부다 — 파도타기와 낡은 낚싯대는 60/30/5/4/1이고
+ * 좋은·대단한 낚싯대는 40/40/15/4/1이다
+ */
+export function rollWater(
+  t: WaterTable, rng: Rng, rates: readonly number[] = WATER_SLOT_RATES,
+): WildEncounter | null {
   if (t.rate <= 0) return null
-  const slot = pickSlot(WATER_SLOT_RATES, rng)
+  const slot = pickSlot(rates, rng)
   const s = t.slots[slot]
   if (!s || s.species <= 0) return null
   const level = s.min + Math.floor(rng() * (s.max - s.min + 1))
   return { species: s.species, level, slot }
 }
 
+/** 낚싯대가 보는 칸. 이름이 곧 표의 이름이다 */
+export function rodTable(table: EncounterTable, rod: Rod): WaterTable {
+  return rod === 'old' ? table.oldRod : rod === 'good' ? table.goodRod : table.superRod
+}
+
+/** 낚싯대 하나를 던진다. 가중치가 낚싯대마다 다르다 */
+export function rollRod(
+  table: EncounterTable, rod: Rod, rng: Rng,
+): WildEncounter | null {
+  return rollWater(rodTable(table, rod), rng, ROD_SLOT_RATES[rod])
+}
+
 /**
- * 야생이 나오는 타일 거동 13개.
+ * 낚싯줄에 뭔가 걸리는가 (`WildEncounters_TryFishingEncounter`).
+ *
+ * ⚠️ **걷는 조우의 관문 셋이 여기엔 없다.** 유예 구간도 40% 관문도 안 거치고
+ * 출현률 하나로 끝난다 — 낚시는 걸음이 아니라 한 번의 시도이기 때문이다.
+ * 관문을 그대로 갖다 붙이면 대단한 낚싯대(출현률 40~75)가 거의 안 걸린다
+ */
+export function hooksFish(table: EncounterTable, rod: Rod, rng: Rng): boolean {
+  const rate = rodTable(table, rod).rate
+  return rate > 0 && rng() * 100 < rate
+}
+
+/**
+ * 걸어서 야생을 만나는 타일 거동 13개.
  *
  * ⚠️ **풀숲 하나만 보고 있었다.** 그래서 동굴(무쇠탄갱·천관산·챔피언로드)과
  * 대습초원에서는 아무리 걸어도 야생이 안 나왔다 — 대습초원 풀은 `TALL_GRASS`가
  * 아니라 `MUD_WITH_GRASS`(0xA6)다.
  *
  * 목록을 눈으로 고르지 않는다. 원작이 `map_tile_behavior.c`에 거동마다 표식을
- * 붙여 두었고(`TILE_BEHAVIOR_FLAG_ENCOUNTER`), 그 표식이 붙은 것이 정확히 이
- * 열셋이다. 자전거 다리 둘이 여기 드는 것이 특히 중요한데, 다리 **아래**가
- * 인카운터 구역이라 다리 위에서도 나온다는 뜻이라 손으로는 못 고를 값이다.
+ * 붙여 두었고, `TILE_BEHAVIOR_FLAG_ENCOUNTER`만 붙은 것이 정확히 이 열셋이다.
+ * 자전거 다리 둘이 여기 드는 것이 특히 중요한데, 다리 **아래**가 인카운터
+ * 구역이라 다리 위에서도 나온다는 뜻이라 손으로는 못 고를 값이다.
  */
-const ENCOUNTER_BEHAVIORS: ReadonlySet<number> = new Set([
+const LAND_BEHAVIORS: ReadonlySet<number> = new Set([
   0x02, // TALL_GRASS
   0x03, // VERY_TALL_GRASS
   0x05, // UNUSED_x05
@@ -175,9 +247,42 @@ const ENCOUNTER_BEHAVIORS: ReadonlySet<number> = new Set([
   0xa7, // MUD_DEEP_WITH_GRASS — 대습초원 깊은 곳
 ])
 
-/** 이 타일에서 야생이 나올 수 있는가. 물 위는 파도타기가 들어올 때 함께 다룬다 */
-export function isEncounterTile(behavior: number): boolean {
-  return ENCOUNTER_BEHAVIORS.has(behavior)
+/**
+ * 파도타기로 야생을 만나는 타일 거동 6개 — `FLAG_SURFABLE_ENCOUNTER`.
+ *
+ * ⚠️ **탈 수 있는 물 열여섯 칸 중 여섯에서만 나온다.** 폭포(0x13)와 물 위
+ * 다리 셋(0x73·0x78·0x7C)은 탈 수는 있어도 조우가 없다. `isSurfable`로
+ * 뭉뚱그리면 다리 위를 지나가는 것만으로 배틀이 열린다
+ */
+const SURF_BEHAVIORS: ReadonlySet<number> = new Set([
+  0x10, // WATER_RIVER
+  0x11, // UNUSED_x11
+  0x12, // UNUSED_x12
+  0x15, // WATER_SEA
+  0x22, // UNUSED_x22
+  0x2a, // UNUSED_x2A
+])
+
+/** 이 타일을 밟고 걸으면 야생이 나올 수 있는가 */
+export function isLandEncounterTile(behavior: number): boolean {
+  return LAND_BEHAVIORS.has(behavior)
+}
+
+/** 이 물 위에서 파도타기 조우가 일어나는가 */
+export function isSurfEncounterTile(behavior: number): boolean {
+  return SURF_BEHAVIORS.has(behavior)
+}
+
+/**
+ * 어느 표를 볼 것인가 (`GetTileEncounterRateAndType`).
+ *
+ * 원작은 `HasEncounters`로 한 번 거르고 `IsSurfable`로 육상/물을 가른다.
+ * 우리는 두 집합이 겹치지 않으니 곧바로 답한다
+ */
+export function encounterKind(behavior: number): 'land' | 'surf' | null {
+  if (LAND_BEHAVIORS.has(behavior)) return 'land'
+  if (SURF_BEHAVIORS.has(behavior)) return 'surf'
+  return null
 }
 
 /** 풀숲인가 — 흔들리는 풀 연출과 발소리가 이걸 본다. 동굴 바닥은 아니다 */

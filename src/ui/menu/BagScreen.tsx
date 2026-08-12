@@ -20,6 +20,7 @@ import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { BIKE_WHY, bikeBlock } from '../../engine/actor/bike'
 import { fieldAction } from '../../engine/bag/fieldUse'
+import { castRod } from '../../scene/fishingSystem'
 import { isSurfable } from '../../engine/map/zone'
 import { frontTile } from '../../engine/script/field'
 import { mapById, world } from '../../engine/map/world'
@@ -130,8 +131,10 @@ export function BagScreen() {
         return
       }
       case 'fish':
-        // 낚시는 조우 계통이 붙을 때 여기서 이어진다 (PARITY §1.5)
-        setDenied('아직 낚시를 못 한다.')
+        // 던지는 순간 가방을 닫는다. 원작도 낚싯대를 쓰면 가방이 사라지고
+        // 필드 과제(`FieldTask_Fishing`)가 화면을 가져간다
+        castRod(action.rod)
+        closeAll()
         return
       case 'missing':
         setDenied(`${action.what}이(가) 아직 없다.`)

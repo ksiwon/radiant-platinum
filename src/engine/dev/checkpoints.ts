@@ -13,7 +13,7 @@
 import type { MapGrid } from '../map/grid'
 import type { Warp } from '../map/world'
 import type { EncounterTable } from '../battle/encounter'
-import { isEncounterTile } from '../battle/encounter'
+import { isLandEncounterTile } from '../battle/encounter'
 
 /** 파티에 넣을 한 마리 */
 export interface PartySpec {
@@ -1249,7 +1249,7 @@ function grassSpot(grid: MapGrid, mapId: number): Placement | null {
   for (const c of boxes) {
     for (let tz = c.my * n; tz < (c.my + 1) * n; tz++) {
       for (let tx = c.mx * n; tx < (c.mx + 1) * n; tx++) {
-        if (grid.isBlocked(tx, tz) || !isEncounterTile(grid.behavior(tx, tz))) continue
+        if (grid.isBlocked(tx, tz) || !isLandEncounterTile(grid.behavior(tx, tz))) continue
         found.push(tx, tz)
         sx += tx; sz += tz
       }

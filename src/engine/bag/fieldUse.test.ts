@@ -90,6 +90,21 @@ maybe('필드 도구', () => {
       .toEqual({ kind: 'fish', rod: 'super' })
   })
 
+  it('파멸의세계에서는 물이 있어도 못 낚는다', () => {
+    // `CanUseFishingRod`가 헤더 열하나를 이름으로 막는다 — 573~583이다.
+    // 저기 물처럼 보이는 것은 물이 아니라서, 앞이 물이어도 막혀야 한다
+    const rod = named('ITEM_SUPER_ROD')
+    for (const mapId of [573, 578, 583]) {
+      expect(fieldAction(rod, town({ mapId, waterAhead: true })).kind, `맵 ${String(mapId)}`)
+        .toBe('blocked')
+    }
+    // 그 앞뒤 맵은 안 막힌다 — 범위를 넓게 잡으면 멀쩡한 물가가 같이 죽는다
+    for (const mapId of [572, 584]) {
+      expect(fieldAction(rod, town({ mapId, waterAhead: true })).kind, `맵 ${String(mapId)}`)
+        .toBe('fish')
+    }
+  })
+
   it('계통이 없는 것과 원작이 막는 것을 가른다', () => {
     // 타운맵은 **우리가 아직 안 만든 것**이지 원작이 막는 것이 아니다
     expect(fieldAction(named('ITEM_TOWN_MAP'), town())).toEqual({ kind: 'missing', what: '타운맵' })
