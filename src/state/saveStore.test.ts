@@ -82,7 +82,7 @@ describe('박스에 맡기고 꺼내기', () => {
     ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp, status: 'ok', statusTurns: 0, heldItem: 0,
-    friendship: 70, otId: 0, otSecretId: 0, ball: 0,
+    friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 0,
   })
 
   const reset = (party: PokemonInstance[], currentBox = 0): void => {
@@ -140,7 +140,7 @@ describe('스크립트가 주는 것', () => {
     ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp: 20, status: 'ok', statusTurns: 0, heldItem: 0,
-    friendship, otId: 0, otSecretId: 0, ball,
+    friendship, isEgg: false, otId: 0, otSecretId: 0, ball,
   })
 
   const reset = (party: PokemonInstance[]): void => {

@@ -32,7 +32,7 @@ function filled() {
     evs: { hp: 0, atk: 4, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [{ move: 33, pp: 35, ppUps: 0 }, { move: 45, pp: 40, ppUps: 0 }],
     hp: 19, status: 'psn', statusTurns: 0, heldItem: 17,
-    friendship: 70, otId: 40404, otSecretId: 12, ball: 4,
+    friendship: 70, isEgg: false, otId: 40404, otSecretId: 12, ball: 4,
   }]
   return save
 }

@@ -46,6 +46,7 @@ maybe('진화', () => {
     statusTurns: 0,
     heldItem: 0,
     friendship: 70,
+    isEgg: false,
     otId: 0,
     otSecretId: 0,
     ball: 4,

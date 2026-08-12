@@ -32,6 +32,7 @@
     "gen:scriptMeta": "node tools/extract/scriptMetaModule.cjs",
     "gen:spriteTable": "node tools/extract/spriteTableModule.cjs",
     "gen:itemTable": "node tools/extract/itemTableModule.cjs",
+    "gen:eggMoveTable": "node tools/extract/eggMoveTableModule.cjs",
     "gen:pokeIconTable": "node tools/extract/pokeIconTableModule.cjs",
     "gen:spawnTable": "node tools/extract/spawnTableModule.cjs",
     "spike:sdat": "node tools/spike/sdat-test.js",

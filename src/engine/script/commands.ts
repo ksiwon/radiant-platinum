@@ -808,6 +808,86 @@ on('GetTrophyGardenSlot1Species', (ctx) => {
   return false
 })
 
+// ── 육성가와 알 (PARITY §3.2·§3.3) ───────────────────────────────────────────
+//
+// 육성가 아저씨·아주머니의 대사가 **전부 이 값들로 갈린다.** 안 만들면 맡길
+// 수도, 찾을 수도, 알을 받을 수도 없다 — 말은 걸리는데 아무 일도 안 일어난다.
+
+on('GetDaycareState', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.daycare?.state() ?? 0)
+  return false
+})
+
+on('GetDaycareCompatibilityLevel', (ctx) => {
+  // ⚠️ 없을 때 0을 주면 "무척 사이가 좋다"가 된다. 3이 "서로 놀지도 않는다"다
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.daycare?.compatibility() ?? 3)
+  return false
+})
+
+on('CheckDaycareHasEgg', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.daycare?.hasEgg() ? 1 : 0)
+  return false
+})
+
+on('StorePartyMonIntoDaycare', (ctx) => {
+  // ⚠️ **인자를 먼저 읽는다.** `?.`로 감싸면 바깥 세계가 없을 때 읽기 자체가
+  // 안 일어나서 그 뒤가 통째로 밀린다 (`argWidth.test.ts`가 그걸 센다)
+  const slot = ctx.readVar()
+  ctx.host.world.services.daycare?.store(slot)
+  return false
+})
+
+on('MoveMonToPartyFromDaycareSlot', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.daycare?.withdraw(slot) ?? 0)
+  return false
+})
+
+on('BufferDaycarePriceBySlot', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.daycare?.price(slot).money ?? 0)
+  return false
+})
+
+on('BufferDaycareGainedLevelsBySlot', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.daycare?.price(slot).levels ?? 0)
+  return false
+})
+
+on('GiveEggFromDaycare', (ctx) => {
+  ctx.host.world.services.daycare?.takeEgg()
+  return false
+})
+
+on('ResetDaycarePersonalityAndStepCounter', (ctx) => {
+  ctx.host.world.services.daycare?.resetEgg()
+  return false
+})
+
+on('CountPartyNonEggs', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.eggs?.nonEggs() ?? 0)
+  return false
+})
+
+on('CountPartyEggs', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.eggs?.count() ?? 0)
+  return false
+})
+
+on('GetFirstNonEggInParty', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.eggs?.firstNonEgg() ?? 0)
+  return false
+})
+
+on('HatchEgg', (ctx) => {
+  ctx.host.world.services.eggs?.hatchFirst()
+  return false
+})
+
 on('GetPartyCount', (ctx) => {
   ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.party?.count() ?? 0)
   return false

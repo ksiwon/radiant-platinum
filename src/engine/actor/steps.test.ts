@@ -14,7 +14,7 @@ const mon = (over: Partial<PokemonInstance> = {}): PokemonInstance => ({
   ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
   evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
   moves: [], hp: 30, status: 'ok', statusTurns: 0, heldItem: 0,
-  friendship: 70, otId: 0, otSecretId: 0, ball: 4, ...over,
+  friendship: 70, isEgg: false, otId: 0, otSecretId: 0, ball: 4, ...over,
 })
 
 const world = (over: Partial<StepWorld> = {}): StepWorld => ({

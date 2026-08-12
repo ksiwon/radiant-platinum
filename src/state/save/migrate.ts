@@ -10,6 +10,7 @@
 //
 // ⚠️ **없는 과거를 지어내지 않는다.** 1~6으로 저장된 리포트는 세상에 없다 —
 // 판이 7에서 처음 올랐고, 그래서 표가 7에서 시작한다.
+import { newDaycare } from '../../engine/pokemon/breeding'
 import { dayNumber, newDaily } from '../../engine/world/daily'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
@@ -42,6 +43,23 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 9,
     daily: newDaily(Math.floor(Math.random() * 0x100000000), dayNumber(new Date())),
   }),
+
+  /**
+   * 9 → 10. 알과 육성가가 생겼다 (PARITY §3.2·§3.3).
+   *
+   * 개체마다 `isEgg` 칸이 늘었다 — 옛 리포트의 마리는 **전부 알이 아니다**.
+   * 파티만이 아니라 **박스 540칸까지** 손봐야 한다. 파티만 고치면 박스에서
+   * 꺼내는 순간 스키마가 걸리는데, 그때는 이유가 안 보인다
+   */
+  9: (data) => {
+    const hatched = (mon: unknown): unknown =>
+      mon === null || typeof mon !== 'object' ? mon : { ...mon, isEgg: false }
+    const party = Array.isArray(data.party) ? data.party.map(hatched) : data.party
+    const boxes = Array.isArray(data.boxes)
+      ? data.boxes.map((box) => (Array.isArray(box) ? box.map(hatched) : box))
+      : data.boxes
+    return { ...data, version: 10, party, boxes, daycare: newDaycare() }
+  },
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

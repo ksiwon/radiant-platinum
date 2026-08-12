@@ -28,7 +28,7 @@ function mon(speciesId: number, level: number): PokemonInstance {
     species: speciesId, pid: 1, nickname: null,
     exp: expForLevel(sp.growthRate, level), level,
     ivs: zero(), evs: zero(), moves: [], hp: 20, status: 'ok', statusTurns: 0,
-    heldItem: 0, friendship: 70, otId: 1, otSecretId: 2, ball: 0,
+    heldItem: 0, friendship: 70, isEgg: false, otId: 1, otSecretId: 2, ball: 0,
   }
 }
 

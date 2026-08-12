@@ -42,7 +42,21 @@ export interface PokemonInstance {
   /** 잠듦·얼음이 남은 턴 */
   statusTurns: number
   heldItem: number
+  /**
+   * 친밀도 0~255.
+   *
+   * ⚠️ **알일 때는 이 칸이 남은 부화 걸음이다.** 원작이 칸을 하나로 쓴다
+   * (`Egg_CreateEgg`가 `MON_DATA_FRIENDSHIP`에 `hatchCycles`를 넣는다) —
+   * 칸을 따로 만들면 원작에 없는 상태가 하나 생기고, 두 값이 어긋날 자리가
+   * 생긴다. 부화하면 **120**으로 세워진다 (종족의 기본 친밀도가 아니다)
+   */
   friendship: number
+  /**
+   * 알인가 (`MON_DATA_IS_EGG`).
+   *
+   * 알은 배틀에 못 나가고, 걸음을 세도 친밀도가 안 오르고, 특성도 안 센다
+   */
+  isEgg: boolean
   /** 원래 트레이너. 경험치 보정과 말 안 듣기 판정이 쓴다 */
   otId: number
   otSecretId: number
@@ -208,6 +222,7 @@ export function createWild({ species, level, rng, otId, otSecretId }: WildOption
     statusTurns: 0,
     heldItem: wildHeldItem(species, rng),
     friendship: species.baseFriendship,
+    isEgg: false,
     otId,
     otSecretId,
     ball: 0,

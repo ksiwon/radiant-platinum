@@ -65,6 +65,8 @@ export interface SpeciesTable {
   sinnohOf: readonly number[]
   /** 신오도감 순서 (1번이 모부기다). 0번 칸은 비어 있다 */
   sinnohDex: readonly number[]
+  /** 종족 → 알에서 나오는 맨 앞 단계 (`pms.narc`). 육성가가 이걸 본다 */
+  babyOf: readonly number[]
 }
 
 export interface MoveTable {
@@ -89,7 +91,12 @@ function indexed<T extends { id: number }>(all: T[], what: string) {
 export function loadSpecies(): Promise<SpeciesTable> {
   return fetchJson('species.json', (v) => {
     const file = speciesFileSchema.parse(v)
-    return { ...indexed(file.species, '종족'), sinnohOf: file.sinnohOf, sinnohDex: file.sinnohDex }
+    return {
+      ...indexed(file.species, '종족'),
+      sinnohOf: file.sinnohOf,
+      sinnohDex: file.sinnohDex,
+      babyOf: file.babyOf,
+    }
   })
 }
 

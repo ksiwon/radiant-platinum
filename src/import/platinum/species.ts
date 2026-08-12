@@ -9,6 +9,7 @@
 import { narcEntry, type NdsFileSystem } from './nds'
 import { openBanks, nameList, type DataLocale } from './text'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+import { EGG_MOVES } from './eggMoveTable'
 
 const PERSONAL_SIZE = 44
 const EVO_SLOTS = 7
@@ -158,6 +159,27 @@ async function dexOrder(fs: NdsFileSystem): Promise<{ sinnohOf: number[], sinnoh
 }
 
 /**
+ * 종족 → 그 계통의 **맨 앞**(알에서 나오는 종).
+ *
+ *   /poketool/personal/pms.narc  508 × u16 평평한 표
+ *
+ * ⚠️ NARC 껍데기를 벗기지 않는다. 원작이 이 파일을 아카이브로 안 열고
+ * `species * 2` 바이트로 **직접 시크**한다
+ * (`Pokemon_GetBaseSpeciesFromPersonalData`) — 헤더까지 포함한 파일 전체가 표다
+ */
+async function readBabyTable(fs: NdsFileSystem): Promise<number[]> {
+  const raw = await fs.read('/poketool/personal/pms.narc')
+  if (!raw) throw new Error('pms.narc을 못 읽었다')
+  const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
+  const table = Array.from({ length: raw.byteLength >> 1 }, (_, i) => view.getUint16(i * 2, true))
+  // 피카츄(25) → 피츄(172). 진화 전이 아니라 **알 단계**로 가는 표다
+  if (table[25] !== 172) {
+    throw new Error(`피카츄의 알 단계가 ${String(table[25])}다 (172이어야 한다)`)
+  }
+  return table
+}
+
+/**
  * 키·몸무게 (`application/zukanlist/zkn_data/zukan_data.narc` 멤버 0·1).
  *
  * ⚠️ **글 뱅크가 아니다.** 화면에 찍는 `1.0 m` 같은 문자열은 따로 있고, 배틀이
@@ -225,6 +247,9 @@ export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
       weightHg: size.weightHg[id] ?? 0,
       evolutions: parseEvo(evo[id]!),
       learnset: parseLearnset(wotbl[id]!),
+      // 알 기술은 롬의 종족 자료에 **없다** — 원작도 오버레이 5의 배열
+      // (`sEggMoves`)로 들고 있다. 기술머신표와 같은 자리라 디컴프에서 굽는다
+      eggMoves: EGG_MOVES[id] ?? [],
     })
     maxId = id
     if (id % 64 === 0) { ctx.onProgress?.(id, personal.length + 64); await breathe(ctx) }
@@ -232,6 +257,7 @@ export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
   ctx.onProgress?.(personal.length, personal.length + 64)
 
   const dex = await dexOrder(ctx.fs)
+  const babyOf = await readBabyTable(ctx.fs)
   check(ctx)
 
   // 이름 배열은 **종족 번호로 색인**한다. species 배열 순서로 색인하면 id와 어긋나서
@@ -241,7 +267,7 @@ export async function convertSpecies(ctx: ConvertContext): Promise<Produced> {
   ctx.onProgress?.(personal.length + 64, personal.length + 64)
 
   return new Map([
-    ['data/species.json', json({ count: species.length, species, ...dex })],
+    ['data/species.json', json({ count: species.length, species, babyOf, ...dex })],
     [`data/names/species.${loc}.json`, json(nameList(banks.require('species_name'), maxId + 1))],
   ])
 }

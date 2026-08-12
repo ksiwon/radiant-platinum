@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_376
+const RUNNING_SITES = 53_411
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 205
+const IMPLEMENTED_COMMANDS = 218
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -499,8 +499,21 @@ const IDLE_COMMANDS = [
   // 110~113인지 보는 갈래라, 주인공을 안 세운 훑기는 못 지나간다
   'SetStepFlag',
   'ClearStepFlag',
+  // ⚠️ **육성가 여덟은 파티가 있어야 닿는다.** 아저씨·아주머니의 대사가 전부
+  // `GetDaycareState`로 갈리는데, 훑기는 세이브를 안 붙이므로 늘 "없음"(0)
+  // 가지로 간다 — 맡긴 마리가 있어야 열리는 쪽에 이 여덟이 있다
+  // (opcode 순서대로 늘어놓는다)
+  'CountPartyEggs',
+  'MoveMonToPartyFromDaycareSlot',
+  'ResetDaycarePersonalityAndStepCounter',
+  'GiveEggFromDaycare',
+  'BufferDaycarePriceBySlot',
+  'BufferDaycareGainedLevelsBySlot',
+  'StorePartyMonIntoDaycare',
   // 친밀도를 올리고 기술칸을 읽는 자리도 파티 너머다
-  'IncreasePartyMonFriendship', 'GetPartyMonMove',
+  'IncreasePartyMonFriendship',
+  'GetDaycareCompatibilityLevel',
+  'GetPartyMonMove',
   // 모험노트는 **도감을 받은 뒤**라야 준다(`GoToIfSet FLAG_HAS_POKEDEX`).
   // 도감을 주는 명령을 아직 안 만들어서 그 플래그가 안 선다
   'GiveJournal',

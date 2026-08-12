@@ -62,6 +62,7 @@ export function trainerMonToInstance(
     statusTurns: 0,
     heldItem: mon.item ?? 0,
     friendship: species.baseFriendship,
+    isEgg: false,
     // 트레이너 개체는 잡을 수 없으므로 원트레이너가 의미 없다
     otId: 0,
     otSecretId: 0,

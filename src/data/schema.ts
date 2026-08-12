@@ -73,6 +73,13 @@ export const speciesSchema = z.object({
   tm: z.string().regex(/^[0-9a-f]{32}$/),
   evolutions: z.array(evolutionSchema),
   learnset: z.array(learnMoveSchema),
+  /**
+   * 알에서 태어날 때만 받을 수 있는 기술 (`sEggMoves`).
+   *
+   * ⚠️ 롬의 종족 자료 44바이트에 **없다** — 알 그룹과 부화 걸음은 있는데 이것만
+   * 코드에 있다. 그래서 두 파이프라인 다 디컴프에서 구운 표를 쓴다
+   */
+  eggMoves: z.array(z.number().int().nonnegative()),
 })
 
 /** 신오도감 210마리. 0번은 비워 두므로 표는 211칸이다 */
@@ -81,6 +88,13 @@ export const REGIONAL_DEX_COUNT = 210
 export const speciesFileSchema = z.object({
   count: z.number().int().positive(),
   species: z.array(speciesSchema).nonempty(),
+  /**
+   * 종족 번호 → 그 계통의 **맨 앞**(알에서 나오는 종). `pms.narc`가 준다.
+   *
+   * 이상해꽃을 맡겨도 이상해씨 알이 나오는 것이 이 표다. 진화 전이 아니라
+   * **알 단계**라 피카츄가 피츄를 가리킨다
+   */
+  babyOf: z.array(z.number().int().min(0)).nonempty(),
   /** 종족 번호 → 신오도감 번호. 0이면 신오도감에 없다 */
   sinnohOf: z.array(z.number().int().min(0).max(REGIONAL_DEX_COUNT)).nonempty(),
   /** 신오도감 번호 → 종족 번호. 0번 칸은 비어 있다 */

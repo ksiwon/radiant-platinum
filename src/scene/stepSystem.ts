@@ -17,7 +17,10 @@ import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
 import { encounters } from '../engine/battle/encounterSystem'
-import { loadItems, type ItemTable } from '../data/gameData'
+import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
+import { daycareStep } from '../engine/pokemon/breeding'
+import { abilitySlotOf, type PokemonInstance } from '../engine/pokemon/instance'
+import { useHatchStore } from '../state/hatchStore'
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 3)` — 독이 깎였을 때 */
 const COMMON_SCRIPT_POISON = 2003
@@ -31,6 +34,22 @@ const COMMON_SCRIPT_REPEL = 2032
  */
 let items: ItemTable | null = null
 void loadItems().then((table) => { items = table }).catch(() => { items = null })
+
+/**
+ * 종족 표. 육성가가 알 그룹과 성비를 본다.
+ *
+ * ⚠️ 표가 없으면 **육성가만** 쉰다 — 걸음과 독은 그대로 돈다. 알이 하루 늦게
+ * 생기는 것과 걸음이 안 세어지는 것은 무게가 다르다
+ */
+let speciesTable: SpeciesTable | null = null
+void loadSpecies().then((table) => { speciesTable = table }).catch(() => { speciesTable = null })
+
+/** 그 개체의 특성 번호. 마그마의무장·불꽃몸이 부화를 두 배로 만든다 */
+function abilityOf(mon: PokemonInstance): number {
+  const species = speciesTable?.byId.get(mon.species)
+  if (!species) return 0
+  return species.abilities[abilitySlotOf(mon.pid)] ?? species.abilities[0] ?? 0
+}
 
 let lastTile = -1
 
@@ -94,12 +113,39 @@ export const stepSystem = {
       coin: () => Math.random() < 0.5,
     })
 
+    // 육성가와 알도 같은 한 걸음에 돈다 (`Daycare_Update`)
+    const now = new Date()
+    const table = speciesTable
+    if (!table) {
+      vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
+      useSaveStore.setState({
+        party: got.party,
+        steps: { poison: got.poisonSteps, repel: got.repelSteps },
+        vars: Uint16Array.from(vars.saved),
+      })
+      return
+    }
+    const bred = daycareStep({
+      daycare: save.daycare,
+      party: got.party,
+      month: now.getMonth() + 1,
+      day: now.getDate(),
+      abilityOf: (mon) => abilityOf(mon),
+      dataOf: (id) => table.get(id),
+      rng: Math.random,
+      coin: () => Math.random() < 0.5,
+    })
+
     vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
     useSaveStore.setState({
-      party: got.party,
+      party: bred.party,
+      daycare: bred.daycare,
       steps: { poison: got.poisonSteps, repel: got.repelSteps },
       vars: Uint16Array.from(vars.saved),
     })
+
+    // 알이 깼다. 원작도 여기서 걸음을 멈추고 부화 장면으로 넘어간다
+    if (bred.hatched >= 0) { useHatchStore.getState().open(bred.hatched); return }
 
     // 알리는 것은 하나뿐이다 — 원작도 `Field_ProcessStep`이 첫 참에서 돌아온다
     const scripts = mapById(mapWorld.mapId)?.scripts

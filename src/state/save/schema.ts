@@ -71,7 +71,9 @@ export const monSchema = z.object({
   status: statusSchema,
   statusTurns: int(0, 15),
   heldItem: int(0, 511),
+  /** 알일 때는 이 칸이 **남은 부화 걸음**이다 (원작이 칸을 하나로 쓴다) */
   friendship: int(0, 255),
+  isEgg: z.boolean(),
   otId: int(0, 0xffff),
   otSecretId: int(0, 0xffff),
   ball: int(0, 511),
@@ -165,6 +167,23 @@ export const saveSchema = z.object({
     swarms: z.boolean(),
     /** 트로피가든 두 자리. 표(16종)의 자리 번호고 없으면 -1 */
     trophy: z.tuple([int(-1, 15), int(-1, 15)]),
+  }),
+  /**
+   * 육성가 (PARITY §3.3) — `Daycare`.
+   *
+   * 맡긴 두 마리는 **박스 개체**라 파티와 같은 모양이다. `steps`는 맡긴 뒤
+   * 걸은 수고 경험치와 요금이 그것을 본다
+   */
+  daycare: z.object({
+    slots: z.array(z.object({
+      mon: monSchema,
+      steps: int(0, 0xffffffff),
+      levelIn: int(1, 100),
+    }).nullable()).length(2),
+    /** 알이 생겼으면 그 PID. 0이면 아직 없다 */
+    eggPid: int(0, 0xffffffff),
+    /** 알 주기 계수기 0~254 */
+    cycle: int(0, 255),
   }),
 })
 

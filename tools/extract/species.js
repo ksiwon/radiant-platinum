@@ -8,6 +8,7 @@
 // 여기서 이름 붙인 객체로 바꿔 내보낸다 — 그러면 이후로 순서 착각이 불가능해진다.
 'use strict'
 const { openRom, openText, writeJson, LOCALES } = require('./rom')
+const { eggMovesBySpecies } = require('./eggMoveTableModule.cjs')
 
 const PERSONAL_SIZE = 44
 const EVO_SLOTS = 7
@@ -111,6 +112,7 @@ function extractSpecies(rom, text) {
   }
 
   const size = readSizes(rom)
+  const eggMoves = eggMovesBySpecies()
 
   const species = []
   for (let id = 0; id < personal.length; id++) {
@@ -124,6 +126,9 @@ function extractSpecies(rom, text) {
       weightHg: size.weightHg[id] ?? 0,
       evolutions: parseEvo(evo[id]),
       learnset: parseLearnset(wotbl[id]),
+      // 알 기술은 롬의 종족 자료에 **없다** — 원작도 오버레이 5의 배열
+      // (`sEggMoves`)로 들고 있다. 기술머신표와 같은 자리라 디컴프에서 온다
+      eggMoves: eggMoves[id] ?? [],
     })
   }
 
@@ -135,7 +140,28 @@ function extractSpecies(rom, text) {
     const bank = text.bank('species_name', loc)
     names[loc] = Array.from({ length: maxId + 1 }, (_, id) => bank[id] ?? '')
   }
-  return { species, names, ...dexOrder(rom) }
+  return { species, names, babyOf: readBabyTable(rom), ...dexOrder(rom) }
+}
+
+/**
+ * 종족 → 그 계통의 **맨 앞**(알에서 나오는 종).
+ *
+ *   /poketool/personal/pms.narc  508 × u16 평평한 표
+ *
+ * ⚠️ NARC 껍데기를 벗기지 않는다. 원작이 이 파일을 아카이브로 안 열고
+ * `species * 2` 바이트로 **직접 시크**한다 (`Pokemon_GetBaseSpeciesFromPersonalData`)
+ * — 그래서 헤더까지 포함한 파일 전체가 표다.
+ *
+ * 이게 없으면 이상해꽃을 맡겨도 이상해꽃 알이 나온다. 실측으로 246종이
+ * 자기 자신이 아닌 앞 단계를 가리킨다 — 진화 분기 수와 같다
+ */
+function readBabyTable(rom) {
+  const raw = rom.read('/poketool/personal/pms.narc')
+  const table = Array.from({ length: raw.length >> 1 }, (_, i) => raw.readUInt16LE(i * 2))
+  // 피카츄(25) → 피츄(172)가 이 표의 눈금이다. 진화 전으로만 가는 표가 아니라
+  // **알 단계**로 간다 — 4세대에서 새로 생긴 아기들이 여기 걸린다
+  if (table[25] !== 172) throw new Error(`피카츄의 알 단계가 ${table[25]}다 (172이어야 한다)`)
+  return table
 }
 
 /**
@@ -170,9 +196,10 @@ function main() {
   const romPath = process.argv.find((a) => a.startsWith('--rom='))?.slice(6)
   const rom = openRom(romPath)
   const text = openText()
-  const { species, names, sinnohOf, sinnohDex } = extractSpecies(rom, text)
+  const { species, names, babyOf, sinnohOf, sinnohDex } = extractSpecies(rom, text)
 
-  const out = writeJson('species.json', { count: species.length, species, sinnohOf, sinnohDex })
+  const out = writeJson('species.json',
+    { count: species.length, species, babyOf, sinnohOf, sinnohDex })
   console.log(`species: ${species.length}종 → ${out.rel} (${out.kb}KB)`)
   console.log(`  신오도감 ${sinnohDex.length - 1}마리 (양방향 표가 서로의 역)`)
   for (const loc of LOCALES) {
@@ -188,7 +215,10 @@ function main() {
     `진화 ${JSON.stringify(turtwig.evolutions)} 레벨업 ${turtwig.learnset.length}개`)
   const totalMoves = species.reduce((s, x) => s + x.learnset.length, 0)
   const totalEvos = species.reduce((s, x) => s + x.evolutions.length, 0)
-  console.log(`  레벨업 기술 ${totalMoves}개 · 진화 분기 ${totalEvos}개`)
+  const totalEggMoves = species.reduce((s, x) => s + x.eggMoves.length, 0)
+  const babies = babyOf.filter((v, i) => v !== 0 && v !== i).length
+  console.log(`  레벨업 기술 ${totalMoves}개 · 진화 분기 ${totalEvos}개 · 알 기술 ${totalEggMoves}개`)
+  console.log(`  알 단계표 ${babyOf.length}칸 (자기가 아닌 것 ${babies}종)`)
 }
 
 if (require.main === module) main()

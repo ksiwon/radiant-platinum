@@ -23,6 +23,7 @@ export { DEX_BYTES, dexHas, dexSet } from '../engine/pokemon/dex'
 export type { DexField } from '../engine/pokemon/dex'
 import { DEX_BYTES, dexSet, type DexField } from '../engine/pokemon/dex'
 import { dayNumber, newDaily, type DailyState } from '../engine/world/daily'
+import { newDaycare, type DaycareState } from '../engine/pokemon/breeding'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -162,9 +163,16 @@ export interface SaveData {
    * 씨앗 하나가 넷을 다 정한다. 새 게임에서 뽑고, 날이 넘어갈 때만 굴린다
    */
   daily: DailyState
+  /**
+   * 육성가 (PARITY §3.3). 두 자리와 알 하나.
+   *
+   * 맡긴 마리는 파티에서 **빠진다** — 원작도 그렇고, 그래서 한 마리만 남기고
+   * 맡기려 하면 막힌다
+   */
+  daycare: DaycareState
 }
 
-export const SAVE_VERSION = 9
+export const SAVE_VERSION = 10
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -228,6 +236,7 @@ export function createNewSave(): SaveData {
     // 씨앗은 새 게임에서 한 번만 뽑는다 (`game_start.c`의 `MTRNG_Next()`).
     // 그 뒤로는 날이 넘어갈 때만 굴러간다 (PARITY §6.11)
     daily: newDaily(Math.floor(Math.random() * 0x100000000), dayNumber(new Date())),
+    daycare: newDaycare(),
   }
 }
 
@@ -433,6 +442,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     steps: s.steps,
     exit: s.exit,
     daily: s.daily,
+    daycare: s.daycare,
   }
 }
 

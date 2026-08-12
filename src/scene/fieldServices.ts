@@ -12,7 +12,8 @@ import {
 } from '../data/gameData'
 import type { DataLocale } from '../data/gameData'
 import {
-  createWild, fillPp, natureOf, PARTY_MAX, statsOf,
+  createWild, fillPp, genderOf, natureOf, PARTY_MAX, setExp, statsOf,
+  type PokemonInstance,
 } from '../engine/pokemon/instance'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
@@ -27,6 +28,12 @@ import { isSoothing } from '../engine/pokemon/friendship'
 import { setWarpEventPos, world as mapWorld } from '../engine/map/world'
 import { encounters } from '../engine/battle/encounterSystem'
 import { addTrophyMon, swarmMap, trophySpecies } from '../engine/world/daily'
+import {
+  compatibilityLevel, daycareCompatibility, daycarePrice, daycareState, EGG_LEVEL,
+  emptySlot, makeEgg, MAX_LEVEL, type EggPlan,
+} from '../engine/pokemon/breeding'
+import { canLearnTm } from '../engine/bag/fieldUse'
+import { useHatchStore } from '../state/hatchStore'
 import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
@@ -102,6 +109,40 @@ function giveMon(species: number, level: number, heldItem: number): boolean {
 
 /** `generated/items.txt` — 스크립트가 준 포켓몬이 들어 있는 볼 */
 const ITEM_POKE_BALL = 4
+
+/**
+ * 알 하나를 만들어 파티에 넣는다 (`Egg_CreateEgg`).
+ *
+ * 육성가에서 받는 알도, 선물로 받는 알도 이 길로 온다. 레벨 1에 **남은 부화
+ * 걸음이 친밀도 칸에** 들어간다 — 원작이 칸을 하나로 쓴다
+ */
+function makeEggMon(species: number, plan: EggPlan | null): PokemonInstance | null {
+  const table = speciesTable
+  const moves = moveTable
+  if (!table || !moves) return null
+  const save = useSaveStore.getState()
+  if (save.party.length >= PARTY_MAX) return null
+
+  const info = table.get(species)
+  const ppOf = (id: number): number => moves.byId.get(id)?.pp ?? 5
+  const base = fillPp(createWild({
+    species: info, level: EGG_LEVEL, rng: Math.random,
+    otId: save.trainer.id, otSecretId: save.trainer.secretId,
+  }), ppOf)
+  return {
+    ...base,
+    // 육성가에서 온 알은 PID·개체값·기술이 이미 정해져 있다
+    pid: plan?.pid ?? base.pid,
+    ivs: plan?.ivs ?? base.ivs,
+    moves: plan?.moves ?? base.moves,
+    heldItem: 0,
+    ball: ITEM_POKE_BALL,
+    isEgg: true,
+    friendship: plan?.eggCycles ?? info.eggCycles,
+    hp: statsOf(base, info).hp,
+    nickname: null,
+  }
+}
 
 /** `constants/string.h`의 `MON_NAME_LEN`. 우리가 정한 상한이 아니다 */
 const MON_NAME_LEN = 10
@@ -330,6 +371,123 @@ const services: FieldServices = {
   },
 
   timeOfDay: () => timeOfDayForHour(worldState.time.gameHour),
+
+  daycare: {
+    state: () => daycareState(useSaveStore.getState().daycare),
+    compatibility: () => {
+      const table = speciesTable
+      if (!table) return 3
+      return compatibilityLevel(
+        daycareCompatibility(useSaveStore.getState().daycare, (id) => table.get(id)),
+      )
+    },
+    hasEgg: () => useSaveStore.getState().daycare.eggPid !== 0,
+
+    store: (partySlot) => {
+      const save = useSaveStore.getState()
+      const mon = save.party[partySlot]
+      const at = emptySlot(save.daycare)
+      if (!mon || at < 0) return
+      const slots = [...save.daycare.slots]
+      slots[at] = { mon, steps: 0, levelIn: mon.level }
+      useSaveStore.setState({
+        party: save.party.filter((_, i) => i !== partySlot),
+        daycare: { ...save.daycare, slots },
+      })
+    },
+
+    withdraw: (slot) => {
+      const save = useSaveStore.getState()
+      const held = save.daycare.slots[slot]
+      const table = speciesTable
+      if (!held || !table) return 0
+      const info = table.get(held.mon.species)
+      const grown = { ...held.mon }
+      // ⚠️ **걸음 하나가 경험치 1이다.** 100레벨은 안 받는다
+      if (grown.level < MAX_LEVEL) setExp(grown, info, grown.exp + held.steps)
+      grown.hp = statsOf(grown, info).hp
+      // 앞으로 당긴다 (`Daycare_ShiftMonSlots`) — 두 자리가 늘 앞에서부터 찬다
+      const rest = save.daycare.slots.filter((_, i) => i !== slot)
+      useSaveStore.setState({
+        party: [...save.party, grown],
+        daycare: { ...save.daycare, slots: [rest[0] ?? null, null] },
+      })
+      return held.mon.species
+    },
+
+    price: (slot) => {
+      const save = useSaveStore.getState()
+      const held = save.daycare.slots[slot]
+      const table = speciesTable
+      if (!held || !table) return { money: daycarePrice(0), levels: 0 }
+      const info = table.get(held.mon.species)
+      const after = { ...held.mon }
+      if (after.level < MAX_LEVEL) setExp(after, info, after.exp + held.steps)
+      const levels = after.level - held.levelIn
+      return { money: daycarePrice(levels), levels }
+    },
+
+    takeEgg: () => {
+      const save = useSaveStore.getState()
+      const table = speciesTable
+      const moves = moveTable
+      if (save.daycare.eggPid === 0 || !table || !moves || !items) return false
+      const plan = makeEgg(
+        save.daycare, table.babyOf, (id) => table.get(id),
+        (id) => moves.byId.get(id)?.pp ?? 5,
+        items.tmMoves,
+        (species, index) => canLearnTm(table.get(species).tm, index),
+        Math.random,
+      )
+      if (!plan) return false
+      const mon = makeEggMon(plan.species, plan)
+      if (!mon) return false
+      useSaveStore.setState({
+        party: [...useSaveStore.getState().party, mon],
+        daycare: { ...useSaveStore.getState().daycare, eggPid: 0, cycle: 0 },
+      })
+      return true
+    },
+
+    resetEgg: () => {
+      const save = useSaveStore.getState()
+      useSaveStore.setState({ daycare: { ...save.daycare, eggPid: 0, cycle: 0 } })
+    },
+
+    info: (slot) => {
+      const held = useSaveStore.getState().daycare.slots[slot]
+      const table = speciesTable
+      if (!held || !table) return null
+      const ratio = table.get(held.mon.species).genderRatio
+      const gender = genderOf(held.mon.pid, ratio)
+      return {
+        name: held.mon.nickname ?? speciesNames[held.mon.species] ?? '',
+        level: held.mon.level,
+        gender: gender === 'female' ? 1 : gender === 'male' ? 0 : 2,
+      }
+    },
+  },
+
+  /**
+   * 선물 알 (`ScrCmd_GiveEgg`) — 육성가 밖에서 받는 것.
+   *
+   * 이야기에서 받는 알(우호광장의 리오르, 마나피)이 이 길로 온다.
+   * 그동안 이 자리가 비어 있어서 **말은 걸리는데 알이 안 들어왔다**
+   */
+  giveEgg: (species) => {
+    const mon = makeEggMon(species, null)
+    if (mon) useSaveStore.setState({ party: [...useSaveStore.getState().party, mon] })
+  },
+
+  eggs: {
+    nonEggs: () => useSaveStore.getState().party.filter((m) => !m.isEgg).length,
+    count: () => useSaveStore.getState().party.filter((m) => m.isEgg).length,
+    firstNonEgg: () => Math.max(0, useSaveStore.getState().party.findIndex((m) => !m.isEgg)),
+    hatchFirst: () => {
+      const at = useSaveStore.getState().party.findIndex((m) => m.isEgg)
+      if (at >= 0) useHatchStore.getState().open(at)
+    },
+  },
 
   /**
    * 날마다 바뀌는 것 (PARITY §6.11).

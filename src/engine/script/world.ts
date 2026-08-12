@@ -247,6 +247,38 @@ export interface FieldServices {
     /** 그 자리의 종족. 없으면 0 */
     trophySpecies: (slot: 0 | 1) => number
   }
+  /**
+   * 육성가와 알 (PARITY §3.2·§3.3) — `scrcmd_daycare.c`.
+   *
+   * 규칙은 `engine/pokemon/breeding.ts`에 있고, 여기는 세이브를 만지는 자리다
+   */
+  daycare?: {
+    /** `DAYCARE_*` — 0 없음 · 1 알이 있다 · 2 한 마리 · 3 두 마리 */
+    state: () => number
+    /** 궁합 말투 0~3. **0이 제일 좋다** */
+    compatibility: () => number
+    hasEgg: () => boolean
+    /** 파티의 그 자리를 맡긴다. 파티에서 빠진다 */
+    store: (partySlot: number) => void
+    /** 맡긴 것을 찾아온다. 돌려주는 값은 그 종족 번호 */
+    withdraw: (slot: number) => number
+    /** 찾아갈 때 낼 돈. 오른 레벨 수도 함께 */
+    price: (slot: number) => { money: number, levels: number }
+    /** 알을 받아 파티에 넣는다. 자리가 없으면 false */
+    takeEgg: () => boolean
+    /** 알 자리를 비운다 (`Daycare_ResetPersonalityAndStepCounter`) */
+    resetEgg: () => void
+    /** 맡긴 마리의 별명·레벨·성별 (글 칸을 채우는 데 쓴다) */
+    info: (slot: number) => { name: string, level: number, gender: number } | null
+  }
+  /** 알을 뺀 파티 수·알 수·첫 알 아닌 자리 (`scrcmd_party.c`) */
+  eggs?: {
+    nonEggs: () => number
+    count: () => number
+    firstNonEgg: () => number
+    /** 첫 알을 즉시 깬다 (`ScrCmd_HatchEgg`) */
+    hatchFirst: () => void
+  }
   /** 파티 전원 회복 (`ScrCmd_HealParty`). 종족값 표가 필요해서 바깥 일이다 */
   healParty?: () => void
   /** 부활 지점을 옮긴다 (`ScrCmd_SetBlackOutWarpId`). `spawns.json`의 번호다 */
