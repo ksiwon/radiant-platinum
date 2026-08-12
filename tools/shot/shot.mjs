@@ -308,7 +308,10 @@ async function main() {
     // 엉뚱한 줄에서 뛰어드는데, 그래도 화면은 멀쩡히 나오므로 다른 맵을 찍어
     // 놓고 맞다고 하기 십상이다. 실제로 그렇게 두 번 헛돌았다 — 줄을 직접
     // 누르고, 뛰어든 뒤에 **맵 번호를 확인한다**
-    const row = page.getByText(cp.title, { exact: true }).first()
+    // ⚠️ **이름으로 찾지 않는다.** 배틀 지점의 줄에는 「전투」 표가 뒤에 붙어서
+    // 이름이 정확히 안 맞고, 그러면 배틀 지점을 **하나도** 못 찍는다.
+    // 화면이 줄마다 붙여 둔 `data-checkpoint`가 곧 id다
+    const row = page.locator(`[data-checkpoint="${id}"]`).first()
     await row.hover()
     await page.waitForTimeout(200)
     await row.click()

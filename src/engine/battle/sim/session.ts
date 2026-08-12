@@ -58,8 +58,8 @@ export const IDLE_MOVE_ID = 'splash'
  * 화면도(플레이어가 못 고르게) AI도(후보에서 빼게) 같은 자리를 봐야 해서
  * 여기 한 번만 적는다. PP가 다 떨어져 발버둥만 남으면 칸이 하나라 null이다
  */
-export function idleSlotOf(request: BattleRequest | null): number | null {
-  const moves = request?.active?.[0]?.moves
+export function idleSlotOf(request: BattleRequest | null, at = 0): number | null {
+  const moves = request?.active?.[at]?.moves
   if (!moves || moves.length < 2) return null
   return moves[moves.length - 1]!.id === IDLE_MOVE_ID ? moves.length : null
 }
@@ -155,6 +155,14 @@ export interface BattleOptions {
    * 자리인데, 야생에 붙이면 무작위로 두는 상대가 다섯 칸 중 하나로 물장구를 친다
    */
   foeIdle?: boolean
+  /**
+   * 더블인가 (PARITY §2.2). 참이면 형식이 `gen4doublescustomgame`이고
+   * 양쪽이 두 마리씩 선다.
+   *
+   * ⚠️ **팀이 두 마리 이상이어야 한다.** 한 마리로 더블을 열면 sim이
+   * 시작하자마자 승부를 내 버린다 — 부르는 쪽이 먼저 본다
+   */
+  doubles?: boolean
 }
 
 /** 한 번 정산에서 각 쪽이 받은 줄 */
@@ -179,6 +187,8 @@ export class BattleSession {
   /** 이번 턴에 빈 턴 칸을 쓰기로 세워 둔 자리 (`lowerIdle`) */
   private readonly armed: Record<SideId, { mon: unknown; turn: number } | null> =
     { p1: null, p2: null }
+  /** 방금 세운 빈 턴 칸의 번호. 더블은 명령을 묶어 보내야 해서 밖에서 읽는다 */
+  private readonly armedSlot: Record<SideId, number> = { p1: 0, p2: 0 }
 
   constructor(options: BattleOptions) {
     this.raw = new BattleStreams.BattleStream()
@@ -197,7 +207,9 @@ export class BattleSession {
     // 안 읽는 갈래(전지적·관전·p3·p4)는 그냥 버퍼에 쌓인다. `push`가 배압을 걸지
     // 않으므로 막히지는 않고, 한 배틀 분량의 문자열이라 destroy에서 통째로 사라진다
 
-    const spec: Record<string, unknown> = { formatid: 'gen4customgame' }
+    const spec: Record<string, unknown> = {
+      formatid: options.doubles ? 'gen4doublescustomgame' : 'gen4customgame',
+    }
     if (options.seed) spec.seed = options.seed
     this.write(`>start ${JSON.stringify(spec)}`)
     this.write(`>player p1 ${JSON.stringify({
@@ -272,17 +284,26 @@ export class BattleSession {
    * 발버둥만 남은 자리에서도 된다 — 세우는 순간 목록이 원래 길이로 돌아온다.
    * 그래서 칸 번호는 요청이 아니라 **개체의 기술 칸**에서 센다
    */
-  useIdle(side: SideId): boolean {
-    if (!this.hasIdle(side)) return false
-    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[0]
+  useIdle(side: SideId, at = 0): boolean {
+    if (!this.hasIdle(side, at)) return false
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
     if (!mon) return false
-    const at = mon.moveSlots.length
     const slot = idleOf(mon)
     if (!slot) return false
     slot.pp = 1
     this.armed[side] = { mon, turn: this.raw.battle?.turn ?? -1 }
-    this.send(`${side} move ${String(at)}`)
+    // ⚠️ 싱글에서만 여기서 곧바로 보낸다. 더블은 두 자리를 **한 줄로 묶어야**
+    // 해서 부르는 쪽(`controller`)이 명령을 만든다 — 그래서 칸 번호만 돌려준다
+    this.armedSlot[side] = mon.moveSlots.length
+    if (this.raw.battle?.gameType !== 'doubles') {
+      this.send(`${side} move ${String(mon.moveSlots.length)}`)
+    }
     return true
+  }
+
+  /** 방금 세워 둔 빈 턴 칸의 번호(1부터). 더블에서 명령을 묶을 때 쓴다 */
+  armedIdleSlot(side: SideId): number {
+    return this.armedSlot[side]
   }
 
   /**
@@ -298,8 +319,8 @@ export class BattleSession {
    * 둘 다 거절이 조용히 일어나고, 우리는 이미 요청을 비운 뒤라 **배틀이 선다.**
    * 담금질에서 참기 다음 턴에 도망친 판이 그렇게 굳었다 (씨앗 1077)
    */
-  hasIdle(side: SideId): boolean {
-    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[0]
+  hasIdle(side: SideId, at = 0): boolean {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
     if (!mon) return false
     const slot = idleOf(mon)
     if (!slot) return false
@@ -369,10 +390,10 @@ export class BattleSession {
    * ⚠️ `makeRequest`는 요청 객체만 다시 만들고 보내지는 않는다. 턴이 도는 중이
    * 아니라 `sendUpdates`가 안 불리므로(로그가 안 늘었다) 여기서 직접 내보낸다
    */
-  freeSwitch(side: SideId): boolean {
+  freeSwitch(side: SideId, at = 0): boolean {
     const battle = this.raw.battle
     const mine = battle?.sides[side === 'p1' ? 0 : 1]
-    const active = mine?.active[0]
+    const active = mine?.active[at]
     if (!battle || !active || active.fainted) return false
     active.switchFlag = true
     battle.makeRequest('switch')
@@ -459,6 +480,11 @@ export class BattleSession {
    * ⚠️ **맨 뒤의 빈 턴 칸은 뺀다** (`IDLE_MOVE`). 우리가 몰래 붙인 자리라
    * 화면에 다섯 번째 기술로 뜨면 안 된다 — `idleSlotOf`와 같은 규칙이다
    */
+  /** 더블인가. 컨트롤러가 명령을 묶을지 여기서 묻는다 */
+  get doubles(): boolean {
+    return this.raw.battle?.gameType === 'doubles'
+  }
+
   moveSlots(side: SideId, key: string): { move: number | null; pp: number; maxPp: number }[] {
     const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.pokemon.find((p) => p.name === key)
     if (!mon) return []

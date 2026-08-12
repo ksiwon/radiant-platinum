@@ -66,6 +66,14 @@ export interface RequestMove {
   pp: number
   maxpp: number
   disabled: boolean
+  /**
+   * 그 기술이 무엇을 겨누는가 (`normal`·`self`·`allAdjacentFoes`…).
+   *
+   * 더블에서 **다섯 갈래만** 대상을 따로 찍어야 한다. 눈으로 고른 목록이
+   * 아니라 sim에 열넷을 다 던져 보고 거절당하는 것을 센 것이다
+   * (`needsTarget`)
+   */
+  target?: string
 }
 
 /** `|request|`의 파티 한 마리 */

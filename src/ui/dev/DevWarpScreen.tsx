@@ -145,6 +145,10 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
                   <button
                     key={item.id}
                     type="button"
+                    // ⚠️ **`pnpm shot`이 이 값으로 줄을 찾는다.** 예전에는 이름을
+                    // 글자로 찾았는데, 배틀 지점에는 「전투」 표가 뒤에 붙어서
+                    // 이름이 정확히 안 맞는다 — 배틀 지점을 하나도 못 찍고 있었다
+                    data-checkpoint={item.id}
                     className={at === cursor ? own.chipOn : own.chip}
                     // 올려놓기만 하면 오른쪽이 바뀐다 — 누르지 않아도 읽을 수 있다
                     onPointerEnter={() => { setCursor(at) }}

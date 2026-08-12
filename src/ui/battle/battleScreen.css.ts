@@ -529,6 +529,22 @@ export const ppLow = style({ color: '#ffd166', opacity: 1 })
 export const ppOut = style({ color: vars.hud.warn, opacity: 1 })
 
 /** 한 단 들어간 메뉴의 "돌아가기". 명령 아래에 글자로만 둔다 */
+/**
+ * 「누구에게?」·「○○은(는) 무엇을 할까?」 한 줄 (PARITY §2.2).
+ *
+ * 더블은 자리마다 따로 묻는다. 이 줄이 없으면 같은 메뉴가 두 번 뜨는 것으로만
+ * 보여서, 첫째에게 물었는지 둘째에게 물었는지를 화면에서 알 수 없다
+ */
+export const askWho = style({
+  color: vars.panel.text,
+  font: 'inherit',
+  fontSize: 13,
+  opacity: 0.85,
+  padding: '2px 6px 6px',
+  textShadow: '0 1px 3px rgba(0,0,0,0.85)',
+  flex: '0 0 auto',
+})
+
 export const backButton = style({
   alignSelf: 'flex-end',
   appearance: 'none',

@@ -105,7 +105,24 @@ interface BattleState {
    * 계산 결과는 이미 나와 있다
    */
   truth: BattleView | null
+  /**
+   * **지금 물어보고 있는 자리**에서 고를 수 있는 것.
+   *
+   * 싱글은 늘 한 자리라 예전과 같다. 더블은 자리마다 한 번씩 물어보므로
+   * `atSlot`이 바뀔 때마다 이 목록도 갈린다
+   */
   actions: BattleAction[]
+  /** 더블인가 (PARITY §2.2). 화면이 자리 수를 이걸로 안다 */
+  doubles: boolean
+  /**
+   * 지금 명령을 묻고 있는 자리 번호. 싱글은 늘 0.
+   *
+   * 더블은 첫째 마리 → 둘째 마리 차례로 묻고, B로 앞 자리로 되돌아간다 —
+   * 원작도 그 자리에서 뒤로 갈 수 있다
+   */
+  atSlot: number
+  /** 이번 턴에 이미 정한 명령들. 자리를 다 채우면 한 줄로 나간다 */
+  pending: BattleAction[]
   /** 파티 여섯 칸의 지금 상태. 교체 화면이 그린다 */
   party: PartySlot[]
   /**
@@ -157,6 +174,12 @@ interface BattleState {
   shiftAsk: string | null
   /** 그 물음에 답한다. `true`면 우리도 한 마리 바꾼다 — 턴을 안 쓴다 */
   answerShift: (change: boolean) => Promise<void>
+  /**
+   * 앞 자리로 되돌아간다 (더블). 첫 자리면 아무것도 안 하고 false.
+   *
+   * 원작도 둘째 마리의 명령 창에서 B를 누르면 첫째로 돌아간다
+   */
+  backSlot: () => boolean
   /**
    * 기술 칸이 다 찼을 때의 답 (`BATTLE_SUBSCRIPT_LEARN_MOVE`).
    *
@@ -241,6 +264,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   view: null,
   truth: null,
   actions: [],
+  doubles: false,
+  atSlot: 0,
+  pending: [],
   party: [],
   canSpendTurn: false,
   events: [],
@@ -290,6 +316,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       items = { bag: new TrainerItems(trainer.items, bank), item: (id) => bank.get(id) }
     }
 
+    // 더블 배틀 (PARITY §2.2). 롬이 트레이너마다 적어 둔 표식이다 —
+    // 928명 중 28명이 참이다.
+    //
+    // ⚠️ **양쪽 다 두 마리가 있어야 연다.** 원작은 스크립트가 먼저 세어 보고
+    // "포켓몬이 두 마리 필요하다"로 막지만(§10 「글 칸 채우기」), 우리는 아직
+    // 그 자리가 없다 — 한 마리로 더블을 열면 sim이 시작하자마자 승부를 낸다.
+    // 여기서 싱글로 떨어뜨리는 것이 그 사이의 방어선이다
+    const able = useSaveStore.getState().party.filter((m) => !m.isEgg && m.hp > 0).length
+    const doubles = trainer.double && trainer.party.length >= 2 && able >= 2
+
     await open(set, get, 'trainer', label, prize, ({ species, pp }) => ({
       name: label || '상대',
       team: trainer.party.map((entry, i) => {
@@ -298,7 +334,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         mon.hp = statsOf(mon, sp).hp
         return ready(fillPp(mon, pp), sp, foeKey(i))
       }),
-    }), trainer.ai, options, items)
+    }), trainer.ai, options, items, doubles)
   },
 
   answerShift: async (change) => {
@@ -306,8 +342,35 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     await advance(set, get, (c) => c.answerShift(change))
   },
 
+  /**
+   * 이 자리의 명령을 정한다 (PARITY §2.2).
+   *
+   * ⚠️ **싱글은 곧바로 나가고 더블은 모았다 나간다.** sim이 더블에서 두 자리의
+   * 명령을 쉼표로 묶은 한 줄로만 받기 때문이다 — 자리마다 따로 보내면 첫 줄이
+   * 거절되고 배틀이 그 자리에 선다
+   */
   choose: async (action) => {
-    await advance(set, get, (c) => c.choose(action))
+    const controller = current
+    if (!controller || get().phase !== 'running') return
+    const at = get().atSlot
+    const pending = [...get().pending.filter((a) => (a.at ?? 0) !== at), { ...action, at }]
+    const left = controller.chooseSlots.filter(
+      (i) => !pending.some((a) => (a.at ?? 0) === i),
+    )
+    if (left.length > 0) {
+      // 아직 물어볼 자리가 남았다. 화면만 다음 자리로 옮긴다
+      set(turnState(controller, pending))
+      return
+    }
+    await advance(set, get, (c) => c.chooseTurn(pending))
+  },
+
+  backSlot: () => {
+    const controller = current
+    const pending = get().pending
+    if (!controller || pending.length === 0) return false
+    set(turnState(controller, pending.slice(0, -1)))
+    return true
   },
 
   throwBall: async (ball = Ball.POKE) => {
@@ -338,6 +401,26 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // 아무 일도 안 일어날 도구는 개수도 안 깎는다. 화면이 미리 잠그지만
     // 규칙은 화면이 아니라 여기가 갖고 있어야 한다
     if (!controller.planFor(data, key, moveSlot)) return
+
+    // ⚠️ **더블에서는 도구가 그 자리의 이번 턴 명령이다.** 원작도 가방이
+    // 명령 창의 한 칸이라, 도구를 쓰면 그 마리는 그 턴에 기술을 못 쓴다.
+    // 나머지 자리는 그대로 물어봐야 하므로 여기서 보내지 않고 모은다
+    if (get().doubles) {
+      const at = get().atSlot
+      const armed = controller.armBagItem(item, key, at, moveSlot)
+      if (!armed) return
+      spendFromBag(bank, id)
+      grantFriendship(data, key)
+      const pending = [...get().pending.filter((a) => (a.at ?? 0) !== at), armed.action]
+      set({ events: [...get().events, ...armed.events] })
+      const left = controller.chooseSlots.filter(
+        (i) => !pending.some((a) => (a.at ?? 0) === i),
+      )
+      if (left.length > 0) { set(turnState(controller, pending)); return }
+      await advance(set, get, (c) => c.chooseTurn(pending))
+      return
+    }
+
     spendFromBag(bank, id)
     grantFriendship(data, key)
     await advance(set, get, (c) => c.useBagItem(item, key, moveSlot))
@@ -440,6 +523,27 @@ type GetState = () => BattleState
  * 경험치는 **이 안에서** 준다. 배틀이 끝난 뒤 몰아서 주면 레벨업이 승부가 난
  * 뒤에야 뜨고, 두 마리째를 상대할 때 이미 올라 있어야 할 레벨이 안 올라 있다
  */
+/**
+ * 다음에 물어볼 자리와 그 자리의 후보.
+ *
+ * ⚠️ **자리를 다시 셀 때마다 이걸로 만든다.** 예전에는 `controller.actions`
+ * 하나였는데, 더블은 「지금 몇 번째 자리를 묻고 있는가」가 있어야 후보가 정해진다 —
+ * 그 값을 세 군데에서 따로 만들면 한 곳이 곧 어긋난다
+ */
+function turnState(controller: BattleController, pending: BattleAction[] = []) {
+  const slots = controller.chooseSlots
+  const done = new Set(pending.map((a) => a.at ?? 0))
+  const at = slots.find((i) => !done.has(i)) ?? slots[0] ?? 0
+  const taken = pending.filter((a) => a.type === 'switch').map((a) => a.index)
+  return {
+    atSlot: at,
+    pending,
+    actions: controller.actionsAt(at, taken),
+    party: controller.party,
+    canSpendTurn: controller.canSpendAt(at),
+  }
+}
+
 async function advance(
   set: SetState,
   get: GetState,
@@ -448,7 +552,7 @@ async function advance(
   const controller = current
   if (!controller || get().phase !== 'running') return
   // 미는 즉시 후보를 비운다 — 계산 중에 두 번 누르면 sim이 거절한다
-  set({ actions: [], party: [], canSpendTurn: false })
+  set({ actions: [], party: [], canSpendTurn: false, pending: [], atSlot: 0 })
 
   const result = await step(controller)
 
@@ -476,9 +580,7 @@ async function advance(
   set({
     truth: result.view,
     events: [...get().events, ...events],
-    actions: controller.actions,
-    party: controller.party,
-    canSpendTurn: controller.canSpendTurn,
+    ...turnState(controller),
     phase: ended ? 'over' : 'running',
     outcome: controller.finish,
     shiftAsk: controller.shiftAsk,
@@ -597,11 +699,13 @@ async function open(
   aiFlags?: number,
   rules?: BattleRules,
   items?: ControllerItems,
+  doubles = false,
 ): Promise<void> {
   if (get().phase !== 'off') return
   set({
     phase: 'loading', kind, foeName, prize,
     view: null, truth: null, actions: [], party: [], canSpendTurn: false,
+    doubles: false, atSlot: 0, pending: [],
     events: [], roster: {}, outcome: null, error: null, shiftAsk: null,
   })
 
@@ -648,8 +752,10 @@ async function open(
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
       ...(rules?.noCrit === true ? { noCrit: true } : {}),
       ...(items ? { items } : {}),
-      // 시합규칙 「교체」는 트레이너전에만 뜻이 있다 — 야생은 다음 마리가 없다
-      ...(kind === 'trainer' && useOptionsStore.getState().battleRule === 0
+      ...(doubles ? { doubles: true } : {}),
+      // 시합규칙 「교체」는 트레이너전에만 뜻이 있다 — 야생은 다음 마리가 없다.
+      // ⚠️ 더블에는 안 걸린다. 원작의 그 설정은 1대1 전용이다
+      ...(kind === 'trainer' && !doubles && useOptionsStore.getState().battleRule === 0
         ? { shift: true } : {}),
     })
     current = controller
@@ -659,11 +765,10 @@ async function open(
       phase: 'running',
       truth: step.view,
       // 빈 무대에서 시작한다. 등판도 재생기가 한 박자씩 올린다
-      view: emptyView(),
+      view: emptyView(doubles),
       events: step.events,
-      actions: controller.actions,
-      party: controller.party,
-      canSpendTurn: controller.canSpendTurn,
+      doubles,
+      ...turnState(controller),
       roster,
       shiftAsk: controller.shiftAsk,
     })

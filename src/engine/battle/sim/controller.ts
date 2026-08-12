@@ -10,7 +10,7 @@
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import type { BattleAction } from '../choice'
 import {
-  chooseRandom, encodeAction, legalActions, partySummary, type PartySlot,
+  chooseRandom, encodeAction, encodeTurn, legalActions, partySummary, type PartySlot,
 } from '../choice'
 import type { BattleEvent, BattleRequest, FinalMon, SideId } from '../events'
 import type { BagItem, ItemPlan } from '../meta/bagItem'
@@ -22,7 +22,7 @@ import { healAmount, type TrainerItems } from '../meta/trainerItems'
 import type { Item } from '../../../data/schema'
 import type { Status } from '../../pokemon/instance'
 import { statsOf } from '../../pokemon/instance'
-import { applyEvent, emptyView, type BattleView } from '../view'
+import { activeAt, applyEvent, emptyView, slotOfKey, type BattleView } from '../view'
 import { parseLines } from './protocol'
 import { romMove } from './bridge'
 import { TrainerBrain, type MoveTable } from './brain'
@@ -41,7 +41,7 @@ export interface BattleStep {
 }
 
 /** 상대의 수를 정하는 것. 야생은 무작위, 트레이너는 AI가 들어온다 (PLAN §7.7) */
-export type FoePolicy = (request: BattleRequest) => BattleAction | null
+export type FoePolicy = (request: BattleRequest, at?: number) => BattleAction | null
 
 export interface ControllerOptions extends BattleOptions {
   /** 안 주면 무작위 — 원작의 야생 포켓몬과 같다 */
@@ -69,6 +69,22 @@ export interface ControllerOptions extends BattleOptions {
   items?: { bag: TrainerItems; item: (id: number) => Item }
 }
 
+/**
+ * 명령을 내야 하는 자리 번호들 (`chooseSlots`).
+ *
+ * 강제 교체 턴에는 자리 전부다 — 안 쓰러진 자리는 `pass`를 보낸다.
+ * 기술을 고르는 턴에는 **서 있는 자리만**이다
+ */
+function chooseSlotsFor(
+  request: BattleRequest | null, alive: readonly boolean[], doubles: boolean,
+): number[] {
+  if (!request || request.wait) return []
+  if (request.forceSwitch) return request.forceSwitch.map((_, i) => i)
+  const count = request.active?.length ?? 1
+  const all = Array.from({ length: count }, (_, i) => i)
+  return doubles ? all.filter((i) => alive[i]) : all
+}
+
 /** 한 걸음 안에서 sim과 주고받는 횟수의 상한. 넘으면 정책이 못 고르고 있는 것이다 */
 const MAX_EXCHANGES = 64
 
@@ -94,6 +110,8 @@ export class BattleController {
   /** 시합규칙 「교체」인가 */
   private readonly shift: boolean
   private readonly items: ControllerOptions['items']
+  /** 더블인가 (PARITY §2.2). 자리 수가 이 값 하나에서 갈린다 */
+  private readonly doubles: boolean
   /**
    * 「교체」 규칙에서 답을 기다리는 중. 상대가 내보내려고 골라 둔 명령이다.
    *
@@ -110,6 +128,8 @@ export class BattleController {
     // 상대의 빈 턴 칸은 **도구를 들었을 때만** 붙인다. 야생에 붙이면 무작위로
     // 두는 상대가 다섯 칸 중 하나로 물장구를 친다
     this.session = new BattleSession({ ...options, foeIdle: options.items !== undefined })
+    this.doubles = options.doubles === true
+    this.view = emptyView(this.doubles)
     this.playerTeam = options.player.team
     this.foeTeam = options.foe.team
     this.random = options.random ?? Math.random
@@ -127,7 +147,9 @@ export class BattleController {
       : null
     const fromBrain = this.brain?.policy(() => this.view)
     this.foePolicy = options.foePolicy ?? fromBrain
-      ?? ((r) => chooseRandom(r, this.random, { hiddenSlot: idleSlotOf(r) }))
+      ?? ((r, at = 0) => chooseRandom(r, this.random, {
+        hiddenSlot: idleSlotOf(r, at), at, doubles: this.doubles,
+      }))
   }
 
   /** 배틀을 열고 첫 등판까지 진행한다 */
@@ -146,8 +168,56 @@ export class BattleController {
    * 되돌릴 수 있는 것은 sim을 아는 이 계층뿐이다
    */
   get actions(): BattleAction[] {
-    const actions = legalActions(this.request.p1, { moveId: romMove, hiddenSlot: this.idleSlot })
+    return this.actionsAt(0)
+  }
+
+  /**
+   * 그 자리에서 고를 수 있는 것 (PARITY §2.2).
+   *
+   * 싱글은 `at = 0`만 쓴다. 더블은 화면이 자리마다 한 번씩 물어보고
+   * 모은 것을 `chooseTurn`에 한꺼번에 준다
+   */
+  actionsAt(at: number, taken: readonly number[] = []): BattleAction[] {
+    const actions = legalActions(this.request.p1, {
+      moveId: romMove,
+      hiddenSlot: idleSlotOf(this.request.p1, at),
+      at,
+      doubles: this.doubles,
+      foeAlive: this.aliveOn('p2'),
+      allyAlive: this.aliveOn('p1')[at === 0 ? 1 : 0],
+    }).filter((a) => a.type !== 'switch' || !taken.includes(a.index))
+    // ⚠️ **벤치가 모자라면 남는 자리는 `pass`다.** 둘이 같이 쓰러졌는데 벤치에
+    // 한 마리뿐이면 앞 자리가 그 하나를 데려가고 뒤 자리는 고를 것이 없다 —
+    // 명령을 하나만 보내면 sim이 「Incomplete choice … missing other pokemon」으로
+    // 거절하고 배틀이 굳는다. 담금질 씨앗 3의 12턴째가 그 자리였다
+    if (actions.length === 0 && this.request.p1?.forceSwitch) return [{ type: 'pass', at }]
     return actions.map((a) => (a.type === 'move' ? { ...a, ...this.ppOf(a) } : a))
+  }
+
+  /** 이번 턴에 명령을 내야 하는 자리 수. 싱글은 1 */
+  get slotCount(): number {
+    return this.chooseSlots.length
+  }
+
+  /**
+   * 이번 턴에 **명령을 내야 하는** 자리 번호들.
+   *
+   * ⚠️ **쓰러진 자리는 빠진다.** 벤치가 남아 있으면 sim이 강제 교체를 주지만,
+   * 다 떨어졌으면 그 자리는 쓰러진 채로 남는다 — 그때 명령을 하나 더 보내면
+   * sim이 「You sent more choices than unfainted Pokémon」으로 거절하고,
+   * 우리는 이미 요청을 비운 뒤라 **배틀이 그 자리에 선다.**
+   * 담금질 씨앗 23의 7턴째가 그 자리였다
+   */
+  get chooseSlots(): number[] {
+    return chooseSlotsFor(this.request.p1, this.aliveOn('p1'), this.doubles)
+  }
+
+  /** 그 쪽 두 자리에 멀쩡한 마리가 서 있는가 */
+  private aliveOn(side: SideId): [boolean, boolean] {
+    return [0, 1].map((at) => {
+      const mon = activeAt(this.view, side, at)
+      return mon !== null && !mon.fainted
+    }) as [boolean, boolean]
   }
 
   /**
@@ -172,7 +242,7 @@ export class BattleController {
    * 때문이다. 그게 없으면 여기 숫자는 포인트업을 다 먹인 sim의 최대치다
    */
   private ppOf(action: BattleAction & { type: 'move' }): { pp?: number; maxPp?: number } {
-    const req = this.request.p1?.active?.[0]?.moves[action.slot - 1]
+    const req = this.request.p1?.active?.[action.at ?? 0]?.moves[action.slot - 1]
     return req ? { pp: req.pp, maxPp: req.maxpp } : {}
   }
 
@@ -186,14 +256,19 @@ export class BattleController {
     return idleSlotOf(this.request.p1)
   }
 
+  /** 이 자리가 쓰러져서 교체만 골라야 하는가 */
+  mustSwitchAt(at: number): boolean {
+    return this.request.p1?.forceSwitch?.[at] === true
+  }
+
   /**
    * 볼·도망으로 우리 턴을 비운다. 비울 수 없으면 false.
    *
    * 칸 번호를 요청에서 안 센다 — 발버둥만 남은 자리에서는 요청에 그 칸이 없다.
    * 세션이 개체의 기술 칸을 보고 세운다 (`session.useIdle`)
    */
-  private spendTurn(): boolean {
-    if (!this.session.useIdle('p1')) return false
+  private spendTurn(at = 0): boolean {
+    if (!this.session.useIdle('p1', at)) return false
     this.spent.p1 = true
     this.request.p1 = null
     return true
@@ -235,7 +310,7 @@ export class BattleController {
    * 아래의 볼·도망·가방도 같은 자리에서 스스로 물러난다 — **방어선이다**
    */
   get mustSwitch(): boolean {
-    return this.request.p1?.forceSwitch?.[0] === true
+    return this.request.p1?.forceSwitch?.some((f) => f) === true
   }
 
   /**
@@ -249,7 +324,12 @@ export class BattleController {
    * 화면이 이미 막고 있지만, 막는 곳이 화면 하나뿐이면 다음 화면에서 또 뚫린다
    */
   get canSpendTurn(): boolean {
-    return !this.mustSwitch && this.session.hasIdle('p1')
+    return this.canSpendAt(0)
+  }
+
+  /** 그 자리가 지금 턴을 도구·볼·도망으로 쓸 수 있는가 */
+  canSpendAt(at: number): boolean {
+    return !this.mustSwitchAt(at) && this.session.hasIdle('p1', at)
   }
 
   get state(): BattleView {
@@ -291,8 +371,12 @@ export class BattleController {
   async throwBall(ball: BallId, context: Omit<CatchContext, 'turn' | 'level' | 'types'>)
     : Promise<BattleStep> {
     const foe = this.activeFoe()
-    if (!foe || this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
-    const seen = this.view.active.p2a!
+    // ⚠️ **더블에서는 볼도 도망도 없다.** 우리 더블은 트레이너전뿐이고
+    // (`trainers.json`의 28명), 원작도 트레이너전에서 둘 다 막는다
+    if (!foe || this.view.ended || this.doubles || !this.canSpendTurn) {
+      return { events: [], view: this.view }
+    }
+    const seen = activeAt(this.view, 'p2')!
 
     const result = throwBall(
       { hp: seen.hp, maxHp: seen.maxHp, catchRate: foe.species.catchRate, status: seen.status },
@@ -322,9 +406,11 @@ export class BattleController {
    * 여기서 들고 있으므로 밖에서 어림잡아 넘길 필요가 없다
    */
   async run(): Promise<BattleStep> {
-    if (this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
-    const mine = this.speedOf(this.playerTeam, this.view.active.p1a?.key)
-    const foe = this.speedOf(this.foeTeam, this.view.active.p2a?.key)
+    if (this.view.ended || this.doubles || !this.canSpendTurn) {
+      return { events: [], view: this.view }
+    }
+    const mine = this.speedOf(this.playerTeam, activeAt(this.view, 'p1')?.key)
+    const foe = this.speedOf(this.foeTeam, activeAt(this.view, 'p2')?.key)
     const success = tryEscape(mine, foe, this.escapeAttempts, this.random)
     this.escapeAttempts++
     const events: BattleEvent[] = [{ kind: 'escape', success }]
@@ -341,7 +427,7 @@ export class BattleController {
 
   /** 지금 나와 있는 상대. 키로 찾는다 — 같은 종을 둘 데리고 있어도 안 헷갈린다 */
   private activeFoe(): SideMon | null {
-    const key = this.view.active.p2a?.key
+    const key = activeAt(this.view, 'p2')?.key
     return this.foeTeam.find((m) => m.key === key) ?? null
   }
 
@@ -353,8 +439,19 @@ export class BattleController {
 
   /** 우리 수를 두고 다음 선택 시점까지 나아간다 */
   async choose(action: BattleAction): Promise<BattleStep> {
-    if (this.view.ended) return { events: [], view: this.view }
-    this.session.send(`p1 ${encodeAction(action)}`)
+    return this.chooseTurn([action])
+  }
+
+  /**
+   * 자리마다의 명령을 한꺼번에 둔다 (PARITY §2.2).
+   *
+   * ⚠️ **한 줄로 묶어야 한다.** sim은 더블에서 두 자리의 명령을 쉼표로 묶은
+   * 한 줄로만 받는다 — 자리마다 따로 보내면 첫 줄이 "명령이 모자라다"로
+   * 거절되고, 우리는 이미 요청을 비운 뒤라 배틀이 그 자리에 선다
+   */
+  async chooseTurn(actions: readonly BattleAction[]): Promise<BattleStep> {
+    if (this.view.ended || actions.length === 0) return { events: [], view: this.view }
+    this.session.send(`p1 ${encodeTurn(actions)}`)
     this.request.p1 = null
     return this.advance()
   }
@@ -392,28 +489,88 @@ export class BattleController {
       const foe = this.request.p2
       // 트레이너가 도구를 쓰는 자리. 기술을 고를 수 있는 턴에만 열린다 —
       // 원작도 쓰러져서 갈아타는 턴에는 도구를 안 쓴다
+      let itemAction: BattleAction | null = null
       if (foe && foe.forceSwitch?.[0] !== true) {
         const used = this.useItem(foe)
-        if (used) { events.push(used); this.request.p2 = null; continue }
+        if (used) {
+          events.push(used.event)
+          // ⚠️ 싱글은 `useIdle`이 그 자리에서 명령까지 보냈다. 더블은 두 자리를
+          // 한 줄로 묶어야 해서 아직 안 보냈다 — 나머지 자리를 마저 채운다
+          if (!this.doubles) { this.request.p2 = null; continue }
+          itemAction = used.action
+        }
       }
-      const action = foe ? this.foePolicy(foe) : null
-      if (!action) {
+      const turn = foe ? this.foeTurn(foe, itemAction) : []
+      if (turn.length === 0) {
         // 양쪽 다 고를 게 없다. 정산이 아직 안 끝났을 수 있으니 한 틱 더 준다
         if (lines.p1.length === 0 && lines.p2.length === 0) break
         continue
       }
-      // 시합규칙 「교체」 — 상대가 새로 내보내려는 참이면 우리도 바꿀지 묻는다
-      if (this.shift && action.type === 'switch'
+      // 시합규칙 「교체」 — 상대가 새로 내보내려는 참이면 우리도 바꿀지 묻는다.
+      // ⚠️ **싱글에만 있는 규칙이다.** 원작의 「교체」는 1대1 트레이너전 설정이라
+      // 더블에는 아예 안 걸린다
+      const first = turn[0]!
+      if (this.shift && !this.doubles && first.type === 'switch'
         && foe?.forceSwitch?.[0] === true && this.canShift()) {
-        this.asking = { action, key: action.key }
-        events.push({ kind: 'shift', key: action.key })
+        this.asking = { action: first, key: first.key }
+        events.push({ kind: 'shift', key: first.key })
         break
       }
-      this.session.send(`p2 ${encodeAction(action)}`)
+      this.session.send(`p2 ${encodeTurn(turn)}`)
       this.request.p2 = null
     }
 
     return { events, view: this.view }
+  }
+
+  /**
+   * 상대가 이번에 둘 것 전부. 더블이면 자리 둘을 다 채운다.
+   *
+   * ⚠️ **같은 마리를 두 자리가 같이 내보내면 안 된다.** sim이 거절하고, 우리는
+   * 이미 요청을 비운 뒤라 배틀이 굳는다 — 앞 자리가 고른 것을 뒤에서 뺀다
+   */
+  private foeTurn(request: BattleRequest, forced: BattleAction | null = null): BattleAction[] {
+    if (!this.doubles) {
+      const one = this.foePolicy(request, 0)
+      return one ? [one] : []
+    }
+    const taken = new Set<number>()
+    const out: BattleAction[] = []
+    for (const at of chooseSlotsFor(request, this.aliveOn('p2'), true)) {
+      // 도구를 쓴 자리는 이미 빈 턴 칸이 세워져 있다. 그 칸으로 턴을 비운다
+      if (forced && (forced.at ?? 0) === at) { out.push(forced); continue }
+      // 쓰러진 자리만 바꾸는 턴에는 멀쩡한 자리가 `pass`다
+      if (request.forceSwitch && !request.forceSwitch[at]) {
+        out.push({ type: 'pass', at })
+        continue
+      }
+      const opts = {
+        hiddenSlot: idleSlotOf(request, at), at, doubles: this.doubles,
+        foeAlive: this.aliveOn('p1'),
+        allyAlive: this.aliveOn('p2')[at === 0 ? 1 : 0],
+      }
+      const legal = legalActions(request, opts)
+        .filter((a) => a.type !== 'switch' || !taken.has(a.index))
+      let pick = this.foePolicy(request, at)
+      // ⚠️ **정책이 고른 수가 그대로 합법인 것이 아니다.** 원작 AI는 기술에
+      // 점수를 매기지 대상까지 고르지 않고(싱글용 점수표다), 앞 자리가 이미
+      // 부른 마리를 또 고를 수도 있다. 그대로 보내면 sim이 거절하고, 우리는
+      // 이미 요청을 비운 뒤라 **배틀이 그 자리에 선다** — 합법 목록으로 접는다
+      if (pick?.type === 'move') {
+        const want = pick.slot
+        const same = legal.filter((a) => a.type === 'move' && a.slot === want)
+        pick = same[Math.floor(this.random() * same.length)] ?? same[0] ?? null
+      } else if (pick?.type === 'switch' && taken.has(pick.index)) {
+        pick = null
+      }
+      pick ??= legal[Math.floor(this.random() * legal.length)] ?? legal[0] ?? null
+      // 벤치가 모자란 자리는 넘긴다 (우리 쪽 `actionsAt`과 같은 규칙)
+      if (!pick && request.forceSwitch) { out.push({ type: 'pass', at }); continue }
+      if (!pick) return []
+      if (pick.type === 'switch') taken.add(pick.index)
+      out.push({ ...pick, at })
+    }
+    return out
   }
 
   /**
@@ -443,7 +600,7 @@ export class BattleController {
 
   /** 우리 쪽이 지금 공짜로 바꿀 수 있는가 — 서 있는 애가 멀쩡하고 벤치가 남았을 때 */
   private canShift(): boolean {
-    const key = this.view.active.p1a?.key
+    const key = activeAt(this.view, 'p1')?.key
     if (key === undefined) return false
     const mine = this.session.results('p1')
     const active = mine.find((r) => r.key === key)
@@ -457,9 +614,9 @@ export class BattleController {
    * 체력은 **sim의 실제 값**을 본다. `view`의 상대 체력은 백분율이라(프로토콜이
    * 그렇게 준다) "상처약 20칸"과 비교할 수 있는 눈금이 아니다
    */
-  private useItem(request: BattleRequest): BattleEvent | null {
+  private useItem(request: BattleRequest): { event: BattleEvent; action: BattleAction } | null {
     const kit = this.items
-    const seen = this.view.active.p2a
+    const seen = activeAt(this.view, 'p2')
     if (!kit || kit.bag.left === 0 || !seen) return null
     // 쓰러져서 갈아타는 턴에는 안 쓴다 — 부르는 쪽이 이미 걸렀다
     if (request.forceSwitch?.[0] === true) return null
@@ -496,7 +653,14 @@ export class BattleController {
     // 턴을 비울 칸이 없으면 도구도 못 쓴다 — 그런 자리는 없지만 방어선이다
     if (!this.session.useIdle('p2')) return null
     this.spent.p2 = true
-    return { kind: 'trainerItem', key: seen.key, item: use.item }
+    return {
+      event: { kind: 'trainerItem', key: seen.key, item: use.item },
+      // 더블에서 이 자리의 명령이 된다. 싱글은 `useIdle`이 이미 보냈으므로 안 쓴다
+      action: {
+        type: 'move', at: 0, slot: this.session.armedIdleSlot('p2'),
+        id: IDLE_MOVE_ID, name: IDLE_MOVE, move: IDLE_ROM_MOVE,
+      },
+    }
   }
 
   /**
@@ -508,15 +672,36 @@ export class BattleController {
    * `planFor`로 미리 잠그므로 여기까지 오는 것은 방어선이다
    */
   async useBagItem(item: BagItem, key: string, moveSlot?: number): Promise<BattleStep> {
-    if (this.view.ended || !this.canSpendTurn) return { events: [], view: this.view }
-    const plan = this.planFor(item.data, key, moveSlot)
-    if (!plan) return { events: [], view: this.view }
-
-    const events: BattleEvent[] = [{ kind: 'bagItem', key, item: item.id }]
-    this.session.applyPlan('p1', key, plan)
-    if (!this.spendTurn()) return { events, view: this.view }
+    const armed = this.armBagItem(item, key, 0, moveSlot)
+    if (!armed) return { events: [], view: this.view }
     const step = await this.advance()
-    return { events: [...events, ...step.events], view: step.view }
+    return { events: [...armed.events, ...step.events], view: step.view }
+  }
+
+  /**
+   * 도구를 먹이고 **그 자리의 턴을 비운다.** 명령은 아직 안 보낸다.
+   *
+   * 더블에서 화면이 자리마다 물어볼 때 쓴다 — 도구를 쓰면 그것이 그 자리의
+   * 이번 턴 명령이 되고, 나머지 자리는 그대로 기술을 고른다.
+   *
+   * ⚠️ 싱글에서는 `session.useIdle`이 그 자리에서 명령까지 보내므로
+   * `action`을 다시 보내면 안 된다 — `useBagItem`이 그래서 곧바로 `advance`한다
+   */
+  armBagItem(
+    item: BagItem, key: string, at = 0, moveSlot?: number,
+  ): { events: BattleEvent[]; action: BattleAction } | null {
+    if (this.view.ended || !this.canSpendAt(at)) return null
+    const plan = this.planFor(item.data, key, moveSlot)
+    if (!plan) return null
+    this.session.applyPlan('p1', key, plan)
+    if (!this.spendTurn(at)) return null
+    return {
+      events: [{ kind: 'bagItem', key, item: item.id }],
+      action: {
+        type: 'move', at, slot: this.session.armedIdleSlot('p1'),
+        id: IDLE_MOVE_ID, name: IDLE_MOVE, move: IDLE_ROM_MOVE,
+      },
+    }
   }
 
   /**
@@ -528,8 +713,10 @@ export class BattleController {
   planFor(item: Item, key: string, moveSlot?: number): ItemPlan | null {
     const real = this.session.results('p1').find((r) => r.key === key)
     if (!real) return null
-    const seen = this.view.active.p1a
-    const out = seen?.key === key
+    // ⚠️ 더블에서는 **두 자리 중 어느 쪽**에 서 있는지를 봐야 한다
+    const slot = slotOfKey(this.view, key)
+    const seen = slot && slot.startsWith('p1') ? this.view.active[slot] : null
+    const out = seen !== null
     return planItemUse(item, {
       hp: real.hp,
       maxHp: real.maxHp,
@@ -559,8 +746,10 @@ export class BattleController {
    * (`battle_bag.c`가 "지금은 그럴 때가 아니다"로 막는다)
    */
   useEscapeItem(item: BagItem): BattleStep {
-    if (this.view.ended || this.mustSwitch) return { events: [], view: this.view }
-    const key = this.view.active.p1a?.key ?? ''
+    if (this.view.ended || this.doubles || this.mustSwitch) {
+      return { events: [], view: this.view }
+    }
+    const key = activeAt(this.view, 'p1')?.key ?? ''
     this.fled = true
     this.view = { ...this.view, ended: true }
     return {

@@ -31,7 +31,7 @@ import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './m
 import { MoveVfx } from './MoveVfx'
 import { MOVE_FRAMES } from '../../engine/battle/vfx'
 import {
-  ShotDirector, SLOT, sampleShot, shotFor, type ShotName, type Side,
+  PAIR_DIR, ShotDirector, SLOT, sampleShot, shotFor, type ShotName, type Side,
 } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
@@ -79,22 +79,49 @@ const MINE = { ...SLOT.p1, radius: 1.5 }
 const FOE = { ...SLOT.p2, radius: 1.5 }
 
 /**
- * 더블에서 두 마리가 좌우로 벌어지는 폭 (PARITY §2.2).
+ * 더블에서 두 마리가 벌어지는 폭 (PARITY §2.2).
  *
  * ⚠️ **BDSP가 적어 둔 값이 아니다.** 우리가 `battle_masterdatas`에서 읽어 온
- * 것은 싱글 자리(z축 대칭 ±2.0~2.5)뿐이고, 더블 자리는 아직 안 뽑았다.
- * 그림자 반지름이 1.5라 1.7이면 두 발판이 겹치지 않고, 화각 30°에서 넷이
- * 다 화면에 든다 — **재서 고른 값이지 원작 값이 아니다.**
+ * 것은 싱글 자리(z축 대칭 ±2.0~2.5)뿐이고 더블 자리는 아직 안 뽑았다 —
+ * **재서 고른 값이지 원작 값이 아니다.**
  *
- * `a`가 바깥(−x), `b`가 안쪽(+x)이다. 원작 DS도 첫째 마리가 화면 바깥쪽이다
+ * 1.15는 찍어 보고 줄인 값이다. 1.7로 두니 상대 둘이 화면 가운데와 오른쪽
+ * 끝으로 갈라졌다 — 화각 30°에서 넷이 다 들려면 이만큼이어야 한다.
+ * 그림자 반지름이 1.5라 발판은 살짝 겹치지만, 몸은 그보다 훨씬 작다.
+ *
+ * 벌어지는 **방향**은 x축이 아니라 시선의 좌우다 (`PAIR_DIR`)
  */
-const PAIR_X = 1.7
+/**
+ * 짝이 벌어지는 폭과, 짝 둘을 통째로 화면 **왼쪽**으로 미는 양.
+ *
+ * ⚠️ **쪽마다 다르다.** 내 자리는 카메라에서 3.9m, 상대는 7.7m다 — 같은
+ * 거리를 밀면 가까운 쪽이 화면에서 **두 배로** 움직여서 한 마리가 밖으로
+ * 나간다. 그래서 내 쪽은 대략 절반이다.
+ *
+ * ⚠️ **왼쪽으로 미는 이유가 체력판이다.** 오른쪽 절반을 판 둘과 명령 창이
+ * 쓰므로, 가운데를 기준으로 벌리면 바깥쪽 하나가 늘 판 뒤로 들어간다.
+ * 네 값 다 **찍어 보고 고른 것**이지 원작 값이 아니다
+ */
+const PAIR = {
+  p1: { spread: 0.45, bias: 0.02 },
+  p2: { spread: 0.85, bias: 1.35 },
+} as const
 
 /** 그 자리의 발판. 싱글이면 `a`만 선다 */
 function spotOf(slot: SlotId): typeof MINE {
-  const base = slot.startsWith('p1') ? MINE : FOE
-  const dir = slot.startsWith('p1') ? 1 : -1
-  return { ...base, x: base.x + (slot.endsWith('a') ? -PAIR_X : PAIR_X) * dir }
+  const mine = slot.startsWith('p1')
+  const base = mine ? MINE : FOE
+  // ⚠️ **`PAIR_DIR`는 화면 왼쪽이다.** 카메라가 (−2.7, 5.0)에서 원점을 보므로
+  // 시선의 좌우가 월드 x축과 안 맞는다 — 찍어 보고 알았다. `a`가 오른쪽,
+  // `b`가 왼쪽에 서고, 둘 다 `PAIR_BIAS`만큼 왼쪽으로 밀린다
+  const sign = slot.endsWith('a') ? -1 : 1
+  const { spread, bias } = mine ? PAIR.p1 : PAIR.p2
+  const off = spread * sign + bias
+  return {
+    ...base,
+    x: base.x + PAIR_DIR[0] * off,
+    z: base.z + PAIR_DIR[2] * off,
+  }
 }
 
 /** 자리 → 쪽. 카메라 샷은 쪽 단위다 */
@@ -502,7 +529,10 @@ export function BattleStage() {
 
   // 큰 종 앞에서는 카메라가 물러난다. 둘 중 큰 쪽이 화면을 정한다
   const [tall, setTall] = useState({ p1: 0, p2: 0 })
-  useBattleCamera(cameraFit(arena, Math.max(tall.p1, tall.p2)))
+  // ⚠️ **더블에서는 한 걸음 물러난다.** 무대에 넷이 서므로 싱글 화각 그대로면
+  // 바깥 둘이 화면 밖으로 나간다. 짝을 벌린 만큼만 물러난다
+  const doubles = useBattleStore((s) => s.doubles)
+  useBattleCamera(cameraFit(arena, Math.max(tall.p1, tall.p2)) * (doubles ? 1.35 : 1))
 
   const look = (mon: ViewMon | null, key: string): SpeciesLook | null => {
     if (!mon) return null

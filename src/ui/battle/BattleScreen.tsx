@@ -10,9 +10,9 @@
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
-import type { Actor } from '../../engine/battle/events'
+import type { Actor, SlotId } from '../../engine/battle/events'
 import { buildBeats } from '../../engine/battle/playback'
-import type { ViewMon } from '../../engine/battle/view'
+import type { BattleView, ViewMon } from '../../engine/battle/view'
 import {
   loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpeciesNames,
 } from '../../data/gameData'
@@ -20,7 +20,7 @@ import type { Move } from '../../data/schema'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
-import { withObject, withSubject } from '../korean'
+import { withObject, withSubject, withTopic } from '../korean'
 import { useMenuKeys } from '../menu/useMenuKeys'
 import { useListCursor } from './listCursor'
 import { LearnMove } from './LearnMove'
@@ -106,6 +106,9 @@ export function BattleScreen() {
   const view = useBattleStore((s) => s.view)
   const actions = useBattleStore((s) => s.actions)
   const canSpendTurn = useBattleStore((s) => s.canSpendTurn)
+  const doubles = useBattleStore((s) => s.doubles)
+  const atSlot = useBattleStore((s) => s.atSlot)
+  const backSlot = useBattleStore((s) => s.backSlot)
   const party = useBattleStore((s) => s.party)
   const events = useBattleStore((s) => s.events)
   const roster = useBattleStore((s) => s.roster)
@@ -131,9 +134,14 @@ export function BattleScreen() {
 
   const moveActions = actions.filter((a) => a.type === 'move')
   const switchActions = actions.filter((a) => a.type === 'switch')
+  // 벤치가 모자라 넘기는 자리 (`pass`). 고를 것이 하나뿐이라 곧바로 보낸다
+  const passOnly = actions.length === 1 && actions[0]!.type === 'pass'
+  useEffect(() => {
+    if (passOnly) void choose(actions[0]!)
+  }, [passOnly, actions, choose])
   // 쓰러진 직후에는 교체만 고를 수 있다. 그때는 뿌리 메뉴를 거치지 않는다 —
   // 원작도 "누구를 내보낼까?"로 바로 간다
-  const forced = moveActions.length === 0 && switchActions.length > 0
+  const forced = moveActions.length === 0 && switchActions.length > 0 && !passOnly
 
   // 고를 게 새로 생기면 뿌리로 돌아간다. 한 턴 고르고 나면 다음 턴은 처음부터다
   useEffect(() => { setPage('root') }, [actions])
@@ -193,6 +201,10 @@ export function BattleScreen() {
 
   const mine = view?.active.p1a ?? null
   const foe = view?.active.p2a ?? null
+  const mineB = view?.active.p1b ?? null
+  const foeB = view?.active.p2b ?? null
+  /** 지금 명령을 묻고 있는 마리. 더블에서 "누가 무엇을 할까"를 말해 준다 */
+  const asking = doubles ? view?.active[atSlot === 0 ? 'p1a' : 'p1b'] ?? null : null
 
   // 검은 막은 이 트리 안에 **한 번만** 마운트되어야 한다. loading과 running을
   // 서로 다른 return으로 나누면 그때마다 다시 마운트되어 두 번 깜빡인다
@@ -231,16 +243,22 @@ export function BattleScreen() {
       <div className={css.field}>
         <div className={css.foeSlot}>
           {foeName && <div className={css.foeTrainer}>{foeName}</div>}
-          {foe && (
+          {[foe, foeB].map((m, i) => m && (
             <MonCard
-              mon={foe} names={names} drainMs={script.holdMs}
+              key={i}
+              mon={m} names={names} drainMs={script.holdMs}
               prefix={kind === 'wild' ? '야생의 ' : '상대 '}
-              caught={foe.species !== null && dexHas(caughtDex, foe.species)}
+              caught={m.species !== null && dexHas(caughtDex, m.species)}
             />
-          )}
+          ))}
         </div>
         <div className={css.mineSlot}>
-          {mine && <MonCard mon={mine} names={names} drainMs={script.holdMs} showHp />}
+          {[mine, mineB].map((m, i) => m && (
+            <MonCard
+              key={i} mon={m} names={names} drainMs={script.holdMs} showHp
+              dim={doubles && asking !== null && m.key !== asking.key}
+            />
+          ))}
         </div>
       </div>
 
@@ -301,16 +319,22 @@ export function BattleScreen() {
             ) : page === 'fight' ? (
               <MoveMenu
                 actions={moveActions} names={names} extras={extras} onPick={choose}
+                doubles={doubles}
+                targetName={(t) => targetLabel(t, atSlot, view, bare)}
                 onBack={() => setPage('root')}
               />
             ) : (
               <RootMenu
                 canFight={moveActions.length > 0}
                 canSwitch={switchActions.length > 0}
-                wild={kind === 'wild'}
+                // ⚠️ **더블에는 볼도 도망도 없다.** 우리 더블은 트레이너전뿐이고
+                // 원작도 트레이너전에서 둘 다 막는다
+                wild={kind === 'wild' && !doubles}
                 canSpend={canSpendTurn}
+                who={asking ? bare(asking.key) : null}
                 onPick={setPage}
                 onRun={() => void run()}
+                onBack={doubles && atSlot > 0 ? () => { backSlot() } : null}
               />
             )}
           </div>
@@ -323,6 +347,27 @@ export function BattleScreen() {
       </>}
     </div>
   )
+}
+
+/**
+ * 대상 번호를 화면 이름으로. 상대는 1·2, 짝은 −1·−2다 (`choice.ts`).
+ *
+ * 이름을 그대로 쓴다 — 「앞」·「뒤」로 쓰면 무대의 어느 쪽인지가 안 맞는다
+ */
+function targetLabel(
+  target: number, at: number, view: BattleView | null, bare: (key: string) => string,
+): string {
+  const slot: SlotId = target === 1 ? 'p2a'
+    : target === 2 ? 'p2b'
+      : target === -1 ? 'p1a' : 'p1b'
+  const mon = view?.active[slot] ?? null
+  if (!mon) return target > 0 ? '상대' : '짝'
+  const name = bare(mon.key)
+  if (target < 0) {
+    const self = (at === 0 && target === -1) || (at === 1 && target === -2)
+    return self ? `${name} (자신)` : `${name} (짝)`
+  }
+  return `상대 ${name}`
 }
 
 const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
@@ -341,10 +386,12 @@ const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
  * `HEALTHBOX_INFO_NOT_ON_ENEMY = CURRENT_HP | MAX_HP | EXP_GAUGE`.
  */
 function MonCard(
-  { mon, names, drainMs, prefix = '', showHp = false, caught = false }:
+  { mon, names, drainMs, prefix = '', showHp = false, caught = false, dim = false }:
   {
     mon: ViewMon; names: BattleNames | null; drainMs: number
     prefix?: string; showHp?: boolean; caught?: boolean
+    /** 더블에서 **지금 명령을 묻고 있지 않은** 쪽. 흐리게 둔다 */
+    dim?: boolean
   },
 ) {
   const name = (mon.species !== null ? names?.species[mon.species] : null) ?? mon.speciesName
@@ -353,7 +400,10 @@ function MonCard(
   const fill = color === 'green' ? css.barGreen : color === 'yellow' ? css.barYellow : css.barRed
   const gender = GENDER_MARK[mon.gender]
   return (
-    <div className={`${css.card} ${showHp ? css.cardMine : css.cardFoe}`}>
+    <div
+      className={`${css.card} ${showHp ? css.cardMine : css.cardFoe}`}
+      style={dim ? { opacity: 0.55 } : undefined}
+    >
       <div className={css.cardHead}>
         <span className={css.monName}>{prefix}{name}</span>
         {gender && <span className={`${css.genderMark} ${gender.cls}`}>{gender.mark}</span>}
@@ -388,10 +438,14 @@ function MonCard(
 
 /** 원작의 첫 단. 싸운다·가방·포켓몬·도망친다 */
 function RootMenu(
-  { canFight, canSwitch, wild, canSpend, onPick, onRun }: {
+  { canFight, canSwitch, wild, canSpend, who, onPick, onRun, onBack }: {
     canFight: boolean
     canSwitch: boolean
     wild: boolean
+    /** 지금 명령을 묻고 있는 마리. 더블에서만 있다 */
+    who: string | null
+    /** 앞 자리로 되돌아간다 (더블 둘째 자리). 없으면 X가 아무 일도 안 한다 */
+    onBack: (() => void) | null
     /**
      * 턴을 쓸 수 있는 턴인가. 참기·역린에 묶였거나 도발에 걸리면 닫힌다 —
      * 그때 가방과 도망은 **눌러도 아무 일이 없다**(`session.hasIdle`)
@@ -415,9 +469,15 @@ function RootMenu(
       tint: css.TINT.run, on: wild && canSpend, go: onRun,
     },
   ]
-  const cursor = useListCursor(entries.length, (i) => { if (entries[i]?.on) entries[i].go() })
+  const cursor = useListCursor(
+    entries.length,
+    (i) => { if (entries[i]?.on) entries[i].go() },
+    onBack ?? undefined,
+  )
   return (
     <>
+      {/* 더블은 자리마다 물어본다. 누구에게 묻는지가 안 보이면 아무것도 못 고른다 */}
+      {who !== null && <div className={css.askWho}>{withTopic(who)} 무엇을 할까?</div>}
       {entries.map((entry, i) => (
         <button
           key={entry.label}
@@ -478,8 +538,73 @@ function YesNo({ question, onPick }: { question: string; onPick: (yes: boolean) 
 
 /** 기술 네 칸. 원작처럼 타입과 남은 PP를 같이 보여준다 */
 function MoveMenu(
-  { actions, names, extras, onPick, onBack }: {
+  { actions, names, extras, onPick, onBack, doubles = false, targetName }: {
     actions: BattleAction[]
+    names: BattleNames | null
+    extras: Extras | null
+    onPick: (a: BattleAction) => void
+    onBack: () => void
+    doubles?: boolean
+    /** 대상 번호 → 화면에 쓸 이름 */
+    targetName?: (target: number) => string
+  },
+) {
+  /**
+   * 대상을 고르는 중이면 그 기술의 후보들.
+   *
+   * ⚠️ **기술 목록에는 칸마다 하나만 세운다.** 후보를 그대로 펴면 몸통박치기가
+   * 두 줄로 뜬다 — 원작도 기술을 고른 **다음에** 누구에게인지를 묻는다
+   */
+  const [aiming, setAiming] = useState<BattleAction[] | null>(null)
+  // 같은 칸 번호의 후보를 하나로 접는다. 접힌 것이 둘 이상이면 대상을 묻는다
+  const groups = new Map<number, BattleAction[]>()
+  for (const a of actions) {
+    if (a.type !== 'move') continue
+    groups.set(a.slot, [...(groups.get(a.slot) ?? []), a])
+  }
+  const rows = [...groups.values()].map((g) => g[0]!)
+
+  const pick = (row: BattleAction): void => {
+    if (row.type !== 'move') return
+    const all = groups.get(row.slot) ?? [row]
+    if (doubles && all.length > 1) { setAiming(all); return }
+    onPick(row)
+  }
+
+  const aimCursor = useListCursor(
+    aiming?.length ?? 0,
+    (i) => { const a = aiming?.[i]; if (a) onPick(a) },
+    () => { setAiming(null) },
+  )
+  if (aiming) {
+    return (
+      <>
+        <div className={css.askWho}>누구에게?</div>
+        {aiming.map((a, i) => (
+          <button
+            key={a.type === 'move' ? a.target : i}
+            className={`${css.button} ${i === aimCursor ? css.buttonOn : ''}`}
+            onClick={() => { onPick(a) }}
+          >
+            {i === aimCursor && <span className={css.caret} aria-hidden />}
+            <span className={css.face}>
+              <span className={css.dot} aria-hidden />
+              <span className={css.label}>
+                {a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
+              </span>
+            </span>
+          </button>
+        ))}
+        <button className={css.backButton} onClick={() => { setAiming(null) }}>← 돌아가기</button>
+      </>
+    )
+  }
+  return <MoveRows rows={rows} names={names} extras={extras} onPick={pick} onBack={onBack} />
+}
+
+function MoveRows(
+  { rows: actions, names, extras, onPick, onBack }: {
+    rows: BattleAction[]
     names: BattleNames | null
     extras: Extras | null
     onPick: (a: BattleAction) => void
