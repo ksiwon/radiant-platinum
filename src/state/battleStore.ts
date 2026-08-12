@@ -29,6 +29,8 @@ import {
   createWild, fillPp, PARTY_MAX, statsOf, type PokemonInstance,
 } from '../engine/pokemon/instance'
 import { store as storeInBox } from '../engine/pokemon/boxes'
+import { encounters } from '../engine/battle/encounterSystem'
+import { LeadAbility, leadHas, wildGender, wildNature } from '../engine/battle/encounterLead'
 import { gameLocale, useOptionsStore } from './optionsStore'
 import { useSessionStore } from './sessionStore'
 import { markBattle } from '../app/sceneMark'
@@ -250,8 +252,16 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   startWild: async (wild) => {
     await open(set, get, 'wild', null, 0, ({ species, pp }) => {
       const foeSpecies = species.get(wild.species)
+      // 선두 특성이 성격·성별·가진 도구까지 민다 (PARITY §1.22). 싱크로는
+      // 성격을, 헤롱헤롱바디는 반대 성별을, 복안은 도구 확률을 올린다
+      const lead = encounters.mods.lead
       const foe = createWild({
         species: foeSpecies, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
+        bias: {
+          nature: wildNature(lead, Math.random),
+          gender: wildGender(lead, Math.random),
+        },
+        compoundEyes: leadHas(lead, LeadAbility.COMPOUND_EYES),
       })
       foe.hp = statsOf(foe, foeSpecies).hp
       return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }

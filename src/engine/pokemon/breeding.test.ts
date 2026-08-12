@@ -112,9 +112,9 @@ maybe('알과 육성가', () => {
     expect(incenseSpecies(TURTWIG, pair(mon(1), mon(1)))).toBe(TURTWIG)
   })
 
-  it('개체값 셋을 물려받는다 — 그리고 겹칠 수 있다', () => {
-    // ⚠️ 원작이 지우는 자리를 잘못 골라서(`RemoveIVIndexFromList(availableIVs, i)`)
-    // 같은 능력치가 두 번 뽑힐 수 있다. 고치면 4세대와 다른 분포가 된다
+  it('개체값을 늘 셋 물려받는다 — 원작 버그는 안 옮긴다', () => {
+    // ⚠️ 원작은 지우는 자리를 잘못 골라(`RemoveIVIndexFromList(availableIVs, i)`)
+    // 같은 능력치를 두 번 뽑는다. 자기 모순이라 안 옮긴다 (BUGS.md §1.4)
     const mother = mon(TURTWIG, { ivs: { hp: 31, atk: 31, def: 31, spa: 31, spd: 31, spe: 31 } })
     const father = mon(TURTWIG, { ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 } })
     const base = { hp: 15, atk: 15, def: 15, spa: 15, spd: 15, spe: 15 }
@@ -129,13 +129,9 @@ maybe('알과 육성가', () => {
       const changed = Object.values(ivs).filter((v) => v !== 15).length
       counts.set(changed, (counts.get(changed) ?? 0) + 1)
     }
-    // 셋을 넘게 바뀌는 일은 없다
-    expect([...counts.keys()].every((n) => n <= INHERITED_IVS)).toBe(true)
-    // **셋보다 적게 바뀌는 판이 실제로 나온다** — 그것이 원작의 그 버그다
-    expect(counts.get(INHERITED_IVS) ?? 0).toBeGreaterThan(0)
-    const fewer = [...counts].filter(([n]) => n < INHERITED_IVS)
-      .reduce((s, [, c]) => s + c, 0)
-    expect(fewer, '겹쳐서 덜 바뀌는 판이 있어야 한다').toBeGreaterThan(0)
+    // 부모 둘의 값(31·0)이 다 기준값 15와 달라서, 물려받은 자리는 **반드시**
+    // 바뀐다. 그래서 바뀐 칸 수가 곧 서로 다른 자리의 수다
+    expect([...counts], '4천 판 전부 정확히 셋').toEqual([[INHERITED_IVS, 4000]])
   })
 
   it('변함없는돌은 반쯤만 먹는다 — 4세대의 그 한 줄', () => {

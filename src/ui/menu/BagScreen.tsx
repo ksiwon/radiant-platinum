@@ -118,6 +118,12 @@ export function BagScreen() {
         removeItem(item.pocket ?? 0, id, 1)
         setDenied(`${data.names[id] ?? ''}을(를) 썼다!`)
         return
+      case 'flute':
+        // 걸음을 안 센다. 이 맵을 벗어나면 풀린다 (`FieldSystem_InitFlagsWarp`)
+        useSaveStore.setState({ flute: action.factor })
+        removeItem(item.pocket ?? 0, id, 1)
+        setDenied(`${data.names[id] ?? ''}을(를) 불었다!`)
+        return
       case 'escapeRope': {
         const exit = useSaveStore.getState().exit
         if (!exit) { setDenied('돌아갈 자리가 없다.'); return }

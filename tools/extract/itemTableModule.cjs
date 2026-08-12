@@ -18,6 +18,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const { ROOT, requireDir } = require('../raw/sources.cjs')
+const { fixTmPalette, checkTmPalette } = require('./tmPalette.cjs')
 const DECOMP = requireDir('references.decomp')
 const OUT = path.join(ROOT, 'src/import/platinum/itemTable.ts')
 
@@ -39,6 +40,7 @@ function main() {
 
   const rows = []
   let withData = 0
+  const repalette = []
   for (const constant of names) {
     const stem = constant.slice('ITEM_'.length).toLowerCase()
     // ⚠️ 되돌아가야 한다. 브라우저 쪽은 이름표에서 `stem`을 다시 만들어 쓴다
@@ -47,16 +49,19 @@ function main() {
 
     const src = JSON.parse(read(`res/items/data/${stem}.json`))
     const icon = iconIndex.get(src.icon.sprite)
-    const palette = iconIndex.get(src.icon.palette)
+    let palette = iconIndex.get(src.icon.palette)
     if (icon === undefined || palette === undefined) {
       throw new Error(`${constant}: 아이콘 ${src.icon.sprite}/${src.icon.palette}이 순서 파일에 없다`)
     }
-    rows.push([constant, icon, palette])
     if (src.fieldUseFunc === 'ITEM_USE_FUNC_TM_HM') {
       const move = moves.indexOf(src.teachesMove)
       if (move < 0) throw new Error(`${constant}: ${src.teachesMove}가 기술 목록에 없다`)
       tmMoves.push(move)
+      // 기술머신 팔레트는 기술 타입이 정한다 (BUGS.md §1.1). 노드 추출기와
+      // **같은 모듈**을 쓴다 — 따로 계산하면 두 파이프라인이 어긋난다
+      palette = fixTmPalette(DECOMP, iconIndex, constant, src.teachesMove, palette, repalette)
     }
+    rows.push([constant, icon, palette])
     withData++
   }
 
@@ -102,8 +107,10 @@ ${tmMoves.join(', ')},
   fs.writeFileSync(OUT, out)
   const kb = (Buffer.byteLength(out) / 1024).toFixed(1)
   if (tmMoves.length !== 100) throw new Error(`기술머신 ${tmMoves.length}개 ≠ 100`)
+  checkTmPalette(repalette)
   console.log(`아이템 ${rows.length}종 (자료 ${withData}개) · 아이콘 ${order.length}칸`
     + ` · 기술머신 ${tmMoves.length}개`)
+  for (const line of repalette) console.log(`  팔레트 고침 — ${line}`)
   console.log(`  → ${path.relative(ROOT, OUT)} (${kb}KB)`)
 }
 

@@ -150,14 +150,22 @@ export function shouldEncounter(
 export interface Footing {
   /** 긴 풀(0x03) 위인가 */
   veryTallGrass?: boolean
-  /** 자전거를 타고 있는가. ⚠️ 아직 아무 데서도 안 켠다 — 자전거가 없다 */
+  /** 자전거를 타고 있는가 */
   cycling?: boolean
+  /**
+   * 특별한 날의 보정 (`engine/world/specialDates`).
+   *
+   * ⚠️ **자르기 전에 먹인다.** 원작도 100으로 자르기 직전에 부른다 —
+   * 긴 풀 위(70)에서 +10이면 80이고, 100을 넘겨야 잘린다
+   */
+  date?: (gate: number) => number
 }
 
 export function flatGate(where: Footing): number {
   // 원작이 `else if`다. 긴 풀 위에서 자전거를 타도 100이 아니라 70이다
   const bonus = where.veryTallGrass || where.cycling ? FLAT_GATE_BONUS : 0
-  return Math.min(100, FLAT_GATE + bonus)
+  const dated = where.date ? where.date(FLAT_GATE + bonus) : FLAT_GATE + bonus
+  return Math.min(100, dated)
 }
 
 /**
@@ -214,12 +222,25 @@ export function trophyLand(
   })
 }
 
-/** 갈아 끼우는 것들. 세 자리가 안 겹쳐서 한 번에 다 걸릴 수 있다 */
+/**
+ * 조우표를 갈아 끼우거나 칸을 골라 주는 것들.
+ *
+ * 갈아 끼우는 세 자리가 **안 겹친다** — 무리 0·1, 시간대 2·3, 트로피가든 6·7.
+ * 한 번에 다 걸릴 수 있다
+ */
 export interface LandSwaps {
   /** 오늘 무리가 뜬 자리인가 — 슬롯 0·1 */
   swarming?: boolean
   /** 트로피가든 두 자리 — 슬롯 6·7 */
   trophy?: readonly (number | null)[]
+  /**
+   * 선두 특성이 칸을 집는가 (자력·정전기). null이면 가중치로 뽑는다.
+   *
+   * ⚠️ **갈아 끼운 뒤의 표**를 본다 — 무리로 들어온 강철 타입도 자력이 집는다
+   */
+  pick?: (land: readonly LandSlot[]) => number | null
+  /** 같은 종의 더 높은 레벨 칸으로 옮긴다 (의욕·의기양양·프레셔) */
+  bump?: (land: readonly LandSlot[], slot: number) => number
 }
 
 /** 육상 조우 하나를 굴린다. 표가 비었으면 null */
@@ -228,13 +249,25 @@ export function rollLand(
   swaps: LandSwaps = {},
 ): WildEncounter | null {
   if (table.landRate <= 0) return null
-  const slot = pickSlot(LAND_SLOT_RATES, rng)
   let land = timedLand(table, time)
   if (swaps.swarming) land = swarmLand(table, land)
   if (swaps.trophy) land = trophyLand(land, swaps.trophy)
+  // ⚠️ 특성이 집으면 가중치를 **안 굴린다**. 원작도 `if (!forcedSlot)` 안에서만
+  // `GetGroundEncounterSlot()`을 부른다
+  const forced = swaps.pick?.(land) ?? null
+  const picked = forced ?? pickSlot(LAND_SLOT_RATES, rng)
+  const slot = swaps.bump ? swaps.bump(land, picked) : picked
   const s = land[slot]
   if (!s || s.species <= 0) return null
   return { species: s.species, level: s.level, slot }
+}
+
+/** 물 조우에 끼어드는 것들 */
+export interface WaterSwaps {
+  /** 선두 특성이 칸을 집는가 (자력·정전기) */
+  pick?: (t: WaterTable) => number | null
+  /** 레벨을 어떻게 뽑는가. 없으면 min~max 균등 */
+  level?: (min: number, max: number) => number
 }
 
 /**
@@ -245,12 +278,16 @@ export function rollLand(
  */
 export function rollWater(
   t: WaterTable, rng: Rng, rates: readonly number[] = WATER_SLOT_RATES,
+  swaps: WaterSwaps = {},
 ): WildEncounter | null {
   if (t.rate <= 0) return null
-  const slot = pickSlot(rates, rng)
+  const forced = swaps.pick?.(t) ?? null
+  const slot = forced ?? pickSlot(rates, rng)
   const s = t.slots[slot]
   if (!s || s.species <= 0) return null
-  const level = s.min + Math.floor(rng() * (s.max - s.min + 1))
+  const level = swaps.level
+    ? swaps.level(s.min, s.max)
+    : s.min + Math.floor(rng() * (s.max - s.min + 1))
   return { species: s.species, level, slot }
 }
 
@@ -261,9 +298,9 @@ export function rodTable(table: EncounterTable, rod: Rod): WaterTable {
 
 /** 낚싯대 하나를 던진다. 가중치가 낚싯대마다 다르다 */
 export function rollRod(
-  table: EncounterTable, rod: Rod, rng: Rng,
+  table: EncounterTable, rod: Rod, rng: Rng, swaps: WaterSwaps = {},
 ): WildEncounter | null {
-  return rollWater(rodTable(table, rod), rng, ROD_SLOT_RATES[rod])
+  return rollWater(rodTable(table, rod), rng, ROD_SLOT_RATES[rod], swaps)
 }
 
 /**
@@ -273,8 +310,10 @@ export function rollRod(
  * 출현률 하나로 끝난다 — 낚시는 걸음이 아니라 한 번의 시도이기 때문이다.
  * 관문을 그대로 갖다 붙이면 대단한 낚싯대(출현률 40~75)가 거의 안 걸린다
  */
-export function hooksFish(table: EncounterTable, rod: Rod, rng: Rng): boolean {
-  const rate = rodTable(table, rod).rate
+export function hooksFish(
+  table: EncounterTable, rod: Rod, rng: Rng, modify: (rate: number) => number = (r) => r,
+): boolean {
+  const rate = modify(rodTable(table, rod).rate)
   return rate > 0 && rng() * 100 < rate
 }
 

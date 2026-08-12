@@ -33,6 +33,13 @@ export interface MapHeader {
   initScripts: number
   msg: number
   /**
+   * 맵 날씨 (`MapHeader.weather`). 0이 없음.
+   *
+   * 모래숨기·눈숨기가 이 값을 보고 출현률을 반으로 깎는다
+   * (`engine/battle/encounterLead`)
+   */
+  weather: number
+  /**
    * 맵 갈래 (`MapHeader.mapType`, 7비트).
    *
    * 0 없음 · 1 마을/도시 · 2 야외 · 3 동굴 · 4 실내 · 5 포켓몬센터 · 6 지하.

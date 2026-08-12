@@ -156,6 +156,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
     resetEncounterTile()
     resetStepTile()
+    // 피리는 맵을 벗어나면 끝이다 (`FieldSystem_InitFlagsWarp`). 걸음을 안 세는
+    // 대신 이 한 줄이 유일한 만료 조건이라, 빠지면 한 번 불고 영영 도는 값이 된다
+    if (useSaveStore.getState().flute !== 0) useSaveStore.setState({ flute: 0 })
     // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
     disarmWarp()
     // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야

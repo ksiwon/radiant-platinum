@@ -16,6 +16,7 @@ const { openRom, openText, writeJson, ROOT, LOCALES } = require('./rom')
 
 // 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
 const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
+const { fixTmPalette, checkTmPalette } = require('./tmPalette.cjs')
 const ITEM_DATA_SIZE = 34
 /** `ITEM_USE_FUNC_TM_HM`. 이 갈래만 기술을 하나 가르친다 */
 const ITEM_USE_FUNC_TM_HM = 6
@@ -134,6 +135,7 @@ function main() {
   // `generated/moves.txt`의 줄 번호가 기술 번호다
   const moves = readEnum('moves')
   const tmMoves = []
+  const repalette = []
 
   const items = []
   let dataID = 0
@@ -147,9 +149,15 @@ function main() {
     }
     const src = JSON.parse(fs.readFileSync(path.join(DECOMP, `res/items/data/${stem}.json`), 'utf8'))
     const icon = iconIndex.get(src.icon.sprite)
-    const palette = iconIndex.get(src.icon.palette)
+    let palette = iconIndex.get(src.icon.palette)
     if (icon === undefined || palette === undefined) {
       throw new Error(`${constant}: 아이콘 ${src.icon.sprite}/${src.icon.palette}이 순서 파일에 없다`)
+    }
+    // 기술머신 팔레트는 기술 타입이 정한다 (docs/BUGS.md §1.1). 브라우저 표를
+    // 굽는 `itemTableModule.cjs`와 **같은 모듈**을 쓴다 — 각자 계산하면
+    // `convert.test.ts`가 두 파이프라인의 바이트 차이로 걸린다
+    if (parseItem(buf).fieldUseFunc === ITEM_USE_FUNC_TM_HM) {
+      palette = fixTmPalette(DECOMP, iconIndex, constant, src.teachesMove, palette, repalette)
     }
     items.push({ name: stem, constant, icon, palette, dataID, ...parseItem(buf) })
     // 기술머신이 무엇을 가르치는가. 롬의 아이템 표에는 **없다** — 원작도
@@ -166,6 +174,7 @@ function main() {
 
   // 기술머신 92 + 비전머신 8. 하나라도 어긋나면 배우는 기술이 통째로 밀린다
   if (tmMoves.length !== 100) throw new Error(`기술머신 ${tmMoves.length}개 ≠ 100`)
+  checkTmPalette(repalette)
 
   verify(items, icons)
 
@@ -182,6 +191,7 @@ function main() {
   const out = writeJson('items.json', { pockets: POCKETS, items, tmMoves })
   console.log(`아이템 ${items.length}종 (자료 ${dataID}개) → ${out.rel} (${out.kb}KB)`)
   console.log(`  기술머신 ${tmMoves.length}개: TM01=${tmMoves[0]} · HM01=${tmMoves[92]}`)
+  for (const line of repalette) console.log(`  팔레트 고침 — ${line}`)
   for (const loc of LOCALES) {
     const n = writeJson(`names/items.${loc}.json`, text.names[loc])
     const d = writeJson(`names/itemDescriptions.${loc}.json`, text.descriptions[loc])

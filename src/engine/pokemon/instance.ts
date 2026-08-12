@@ -180,20 +180,40 @@ export function wildMoves(species: Species, level: number): MoveSlot[] {
 }
 
 /**
- * 야생에서 들고 나오는 도구.
+ * 야생에서 들고 나오는 도구 (`Pokemon_GiveHeldItem`).
  *
- * 두 칸이 같으면 100%, 다르면 흔한 쪽 50% · 귀한 쪽 5%다.
- * 도구 데이터가 아직 없으므로 번호만 넣어 둔다
+ * 두 칸이 같으면 100%, 다르면 「없음 45 · 흔한 것 50 · 귀한 것 5」다.
+ * `eyed`(복안)면 「20 · 60 · 20」으로 바뀐다
  */
-export function wildHeldItem(species: Species, rng: Rng): number {
+export function wildHeldItem(species: Species, rng: Rng, eyed = false): number {
   const [common, rare] = species.heldItems
   if (common === 0 && rare === 0) return 0
   if (common === rare) return common
+  const [none, upTo] = eyed ? [20, 80] : [45, 95]
   const roll = rng() * 100
-  if (roll < 5 && rare !== 0) return rare
-  if (roll < 55 && common !== 0) return common
-  return 0
+  if (roll < none) return 0
+  return roll < upTo ? common : rare
 }
+
+/**
+ * 야생의 PID를 어느 쪽으로 몰 것인가 (`engine/battle/encounterLead`).
+ *
+ * 싱크로는 성격을, 헤롱헤롱바디는 성별을 정한다. **둘이 같이 걸릴 일은 없다** —
+ * 한 마리에 특성이 하나뿐이라, 원작도 `else if`로 갈라 둔다
+ */
+export interface PidBias {
+  nature: number | null
+  gender: 'male' | 'female' | null
+}
+
+/**
+ * 조건에 맞는 PID가 나올 때까지 다시 굴린다.
+ *
+ * ⚠️ **상한을 둔다.** 성비가 한쪽뿐인 종에게 반대 성별을 요구하면 영영 안
+ * 나온다 — 원작은 그런 종을 미리 걸러서 `while (TRUE)`로 돌지만, 걸러진다는
+ * 보장을 여기서 다시 만들지 않고 그냥 포기하고 마지막 값을 쓴다
+ */
+const PID_TRIES = 1000
 
 export interface WildOptions {
   species: Species
@@ -202,14 +222,20 @@ export interface WildOptions {
   /** 색 판정에 쓴다. 야생은 플레이어 ID로 굴린다 */
   otId: number
   otSecretId: number
+  /** 선두 특성이 미는 방향. 없으면 그냥 굴린다 */
+  bias?: PidBias
+  /** 복안 — 도구를 들고 나올 확률이 오른다 */
+  compoundEyes?: boolean
 }
 
 /** 야생 개체를 만든다. PP는 기술 데이터를 아직 모르므로 호출자가 채운다 */
-export function createWild({ species, level, rng, otId, otSecretId }: WildOptions): PokemonInstance {
+export function createWild(
+  { species, level, rng, otId, otSecretId, bias, compoundEyes }: WildOptions,
+): PokemonInstance {
   const iv = () => Math.floor(rng() * 32)
   return {
     species: species.id,
-    pid: randomPid(rng),
+    pid: biasedPid(rng, species, bias),
     nickname: null,
     exp: expForLevel(species.growthRate, level),
     level,
@@ -220,11 +246,24 @@ export function createWild({ species, level, rng, otId, otSecretId }: WildOption
     hp: 0,
     status: 'ok',
     statusTurns: 0,
-    heldItem: wildHeldItem(species, rng),
+    heldItem: wildHeldItem(species, rng, compoundEyes ?? false),
     friendship: species.baseFriendship,
     isEgg: false,
     otId,
     otSecretId,
     ball: 0,
   }
+}
+
+/** 조건이 맞을 때까지 다시 굴린 PID. 조건이 없으면 한 번만 굴린다 */
+function biasedPid(rng: Rng, species: Species, bias: PidBias | undefined): number {
+  if (!bias || (bias.nature === null && bias.gender === null)) return randomPid(rng)
+  let pid = randomPid(rng)
+  for (let i = 0; i < PID_TRIES; i++) {
+    const natureOk = bias.nature === null || natureOf(pid) === bias.nature
+    const genderOk = bias.gender === null || genderOf(pid, species.genderRatio) === bias.gender
+    if (natureOk && genderOk) return pid
+    pid = randomPid(rng)
+  }
+  return pid
 }

@@ -153,6 +153,19 @@ export const saveSchema = z.object({
     facing: z.number().finite(),
   }).nullable(),
   /**
+   * 불어 둔 피리 (`SpecialEncounter.fluteFactor`) — 0 없음 · 1 검은 · 2 하얀.
+   *
+   * ⚠️ **맵을 옮기면 풀린다** (`FieldSystem_InitFlagsWarp`). 리펠처럼 걸음을
+   * 세지 않고, 그 맵을 벗어나는 순간 끝이다. 그래도 저장한다 — 원작이
+   * 리펠 걸음과 **같은 구조체**에 넣어 두어서, 같은 맵에서 리포트를 다시
+   * 열면 피리가 그대로 살아 있다.
+   *
+   * ⚠️ **칸의 차례가 스키마와 같아야 한다.** 체크섬이 `JSON.stringify`라
+   * 키 순서가 다르면 "다시 읽은 리포트가 다르다"로 떨어진다 — `saveStore`의
+   * `snapshot()`과 이 스키마를 같은 차례로 둔다
+   */
+  flute: int(0, 2),
+  /**
    * 날마다 바뀌는 것 (PARITY §6.11) — `RecordMixedRNG` + `SpecialEncounter`.
    *
    * ⚠️ **씨앗을 저장한다.** 매번 새로 뽑으면 "오늘의 빈티나 칸"이 리포트를

@@ -249,11 +249,12 @@ export function offspringPid(
 /**
  * 물려받는 개체값 셋 (`Egg_InheritIVs`).
  *
- * ⚠️ **원작에 버그가 있고, 그 버그가 곧 4세대의 개체값 유전이다.**
- * 목록에서 뽑은 자리를 지워야 하는데 원작은 `RemoveIVIndexFromList(availableIVs, i)`로
- * **루프 변수 `i`**를 지운다 (`selectedIVs[i]`가 아니라). 그래서 같은 능력치가
- * 두 번 뽑힐 수 있고, 실제로 4세대는 "세 자리가 서로 다르지 않다".
- * 고치면 원작과 다른 분포가 나온다
+ * ⚠️ **원작 버그를 안 옮긴다** (BUGS.md §1.4). 목록에서 **뽑은 자리**를 지워야
+ * 하는데 원작은 `RemoveIVIndexFromList(availableIVs, i)`로 루프 변수 `i`를
+ * 지운다. 지우려는 대상과 지우는 대상이 다른 자기 모순이라, 4세대에서는 같은
+ * 능력치가 두 번 뽑혀 "셋을 물려받는다"는 규칙 자체가 자주 깨진다.
+ *
+ * 여기서는 뽑은 자리를 지운다 — 셋이 늘 서로 다르다
  */
 export function inheritedIvs(
   mother: PokemonInstance, father: PokemonInstance, base: Stats, rng: Rng,
@@ -263,10 +264,9 @@ export function inheritedIvs(
   const available = [0, 1, 2, 3, 4, 5]
   const picked: number[] = []
   for (let i = 0; i < INHERITED_IVS; i++) {
-    picked.push(available[Math.floor(rng() * (6 - i))] ?? 0)
-    // ⚠️ 지우는 것이 `picked[i]`가 아니라 `i`다. 원작 그대로다
-    const at = available.indexOf(i)
-    if (at >= 0) available.splice(at, 1)
+    const at = Math.floor(rng() * available.length)
+    picked.push(available[at] ?? 0)
+    available.splice(at, 1)
   }
   const from = Array.from({ length: INHERITED_IVS }, () => (rng() < 0.5 ? mother : father))
   const out = { ...base }

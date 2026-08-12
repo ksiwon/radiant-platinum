@@ -71,6 +71,8 @@ export type FieldItemAction =
   | { kind: 'party'; use: 'heal' | 'tmhm' | 'evoStone' }
   /** 리펠 부류. `steps`걸음 동안 약한 야생이 안 나온다 */
   | { kind: 'repel'; steps: number }
+  /** 검은·하얀 피리. 이 맵을 벗어날 때까지 출현률이 바뀐다 */
+  | { kind: 'flute'; factor: number }
   /** 동굴탈출로프 */
   | { kind: 'escapeRope' }
   /** 자전거를 타거나 내린다 */
@@ -155,6 +157,8 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     case FieldUse.BAG_MESSAGE: {
       // 이 갈래에 리펠 셋과 비드로 둘, 그리고 그냥 열리는 물건 넷이 섞여 있다.
       // 가르는 것은 이름이 아니라 **효과값**이다 — 리펠은 걸음 수를 들고 있다
+      const factor = fluteFactorOf(item)
+      if (factor !== null) return { kind: 'flute', factor }
       const steps = repelStepsOf(item)
       if (steps === null) return { kind: 'missing', what: '그 화면' }
       // `TryUseRepel` — 남아 있으면 새로 안 쓴다. 개수도 안 깎는다
@@ -181,6 +185,20 @@ export function repelStepsOf(item: Item): number | null {
   if (!/^ITEM_(SUPER_|MAX_)?REPEL$/.test(item.constant)) return null
   const steps = item.effectParam ?? 0
   return steps > 0 ? steps : null
+}
+
+/**
+ * 검은·하얀 피리인가. 맞으면 `FLUTE_FACTOR_*`(1·2), 아니면 null.
+ *
+ * ⚠️ **효과값으로는 못 가른다.** 검은피리의 `effectParam`이 50인데 그 50은
+ * 「출현률 50% 감소」라는 뜻이라 걸음 수가 아니다 — 리펠의 100·200·250과
+ * 같은 칸에 다른 단위로 들어 있다. 원작도 가방에서 **도구 번호로** 가른다
+ * (`UseItemInBag`의 `item == ITEM_BLACK_FLUTE`). 여기서는 롬이 준 이름표를 본다
+ */
+export function fluteFactorOf(item: Item): number | null {
+  if (item.constant === 'ITEM_BLACK_FLUTE') return 1
+  if (item.constant === 'ITEM_WHITE_FLUTE') return 2
+  return null
 }
 
 /** 기술머신·비전머신이 가르치는 기술 번호. 아니면 null */

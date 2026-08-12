@@ -10,6 +10,7 @@ import {
 } from '../engine/actor/fishing'
 import { hooksFish, rollRod, type Rod, type WildEncounter } from '../engine/battle/encounter'
 import { encounters, tableForCurrentMap } from '../engine/battle/encounterSystem'
+import { fishRate, forcedSlot, waterLevel, waterSpeciesOf } from '../engine/battle/encounterLead'
 import { facingFeebas, FEEBAS_LEVELS, MAP_MT_CORONET_B1F } from '../engine/world/daily'
 import { frontTile, scriptBusy } from '../engine/script/field'
 import { world as mapWorld } from '../engine/map/world'
@@ -63,9 +64,17 @@ function feebasHere(): WildEncounter | null {
  */
 export function castRod(rod: Rod): void {
   const table = tableForCurrentMap()
-  const hooked = table !== null && hooksFish(table, rod, fishing.rng)
+  const lead = encounters.mods.lead
+  const rng = fishing.rng
+  // ⚠️ **낚시에는 피리도 클리어부적도 안 붙는다.** 원작이 낚시 갈래에서만
+  // 특성 보정을 부른다 — 그 안의 끈끈이·흡반 2배는 되살렸다 (BUGS.md §1.2)
+  const hooked = table !== null && hooksFish(table, rod, rng, (r) => fishRate(r, lead))
   fishing.catch = hooked && table
-    ? feebasHere() ?? rollRod(table, rod, fishing.rng)
+    ? feebasHere() ?? rollRod(table, rod, rng, {
+      // 자력·정전기가 물에서도 돈다 (BUGS.md §1.3)
+      pick: (t) => forcedSlot(waterSpeciesOf(t), lead, encounters.typeOf, rng),
+      level: (min, max) => waterLevel(min, max, lead, rng),
+    })
     : null
   // 표에는 걸렸는데 그 칸이 비어 있으면 아무것도 안 나온다. 그건 "안 물린 것"이다
   fishing.state = startFishing(rod, fishing.catch !== null, fishing.rng)

@@ -19,8 +19,9 @@ import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/da
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
 import { daycareStep } from '../engine/pokemon/breeding'
-import { abilitySlotOf, type PokemonInstance } from '../engine/pokemon/instance'
+import { abilitySlotOf, genderOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { useHatchStore } from '../state/hatchStore'
+import { NO_LEAD, type Lead } from '../engine/battle/encounterLead'
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 3)` — 독이 깎였을 때 */
 const COMMON_SCRIPT_POISON = 2003
@@ -49,6 +50,49 @@ function abilityOf(mon: PokemonInstance): number {
   const species = speciesTable?.byId.get(mon.species)
   if (!species) return 0
   return species.abilities[abilitySlotOf(mon.pid)] ?? species.abilities[0] ?? 0
+}
+
+/**
+ * 선두 포켓몬·피리·리펠·날짜를 조우 시스템에 넘긴다 (PARITY §1.22).
+ *
+ * ⚠️ **여기서 넘겨야 하는 이유가 규칙이다.** `src/engine`은 스토어를 못 읽는다
+ * (PLAN §3.2). 파티도 가방도 세이브에 있으니 씬이 다리를 놓는다.
+ *
+ * ⚠️ **리펠 기준이 선두가 아니다.** 원작은 `Party_FindFirstEligibleBattler`,
+ * 즉 **싸울 수 있는 첫 마리**의 레벨을 본다. 선두가 쓰러져 있으면 기준이
+ * 뒤 마리로 넘어간다 — 선두를 쓰면 쓰러진 1레벨을 앞세워 리펠을 무력화할 수 있다
+ */
+function publishMods(): void {
+  const save = useSaveStore.getState()
+  const first = save.party[0]
+  const species = first ? speciesTable?.byId.get(first.species) : undefined
+  const lead: Lead = first && species && !first.isEgg
+    ? {
+      isEgg: false,
+      ability: abilityOf(first),
+      level: first.level,
+      gender: genderOf(first.pid, species.genderRatio),
+      pid: first.pid,
+      heldItem: first.heldItem,
+    }
+    : NO_LEAD
+
+  const battler = save.party.find((m) => !m.isEgg && m.hp > 0)
+  const now = new Date()
+  encounters.mods = {
+    lead,
+    weather: mapById(mapWorld.mapId)?.weather ?? 0,
+    flute: save.flute,
+    repelLevel: save.steps.repel > 0 ? battler?.level ?? 0 : 0,
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  }
+}
+
+/** 종족 번호 → 타입 둘. 자력·정전기가 조우 칸을 집을 때 본다 */
+function typeOf(species: number): readonly [number, number] {
+  const s = speciesTable?.byId.get(species)
+  return s ? [s.types[0], s.types[1]] : [-1, -1]
 }
 
 let lastTile = -1
@@ -83,6 +127,11 @@ function checkDay(): void {
 export const stepSystem = {
   fixedUpdate(): void {
     checkDay()
+    // ⚠️ **걸음이 아니라 프레임마다 맞춘다.** 조우 판정은 걸음이 아니라 칸이
+    // 바뀔 때 도는데(`encounterSystem`), 그 사이에 가방에서 피리를 불거나
+    // 선두를 바꿀 수 있다 — 걸음에 붙이면 한 칸 늦게 먹는다
+    publishMods()
+    encounters.typeOf = typeOf
     const grid = mapWorld.grid
     if (!grid || mapWorld.pending) return
     // 스크립트가 걸어 옮기는 중이면 그것은 내 걸음이 아니다

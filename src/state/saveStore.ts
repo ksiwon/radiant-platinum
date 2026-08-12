@@ -158,6 +158,12 @@ export interface SaveData {
    */
   exit: { map: number; matrix: number; x: number; z: number; facing: number } | null
   /**
+   * 불어 둔 피리 (PARITY §1.22) — 0 없음 · 1 검은(÷2) · 2 하얀(×1.5).
+   *
+   * ⚠️ **걸음이 아니라 맵으로 끝난다.** 워프 한 번이면 풀린다
+   */
+  flute: number
+  /**
    * 날마다 바뀌는 것 (PARITY §6.11) — 빈티나 칸·무리·대습초원·트로피가든.
    *
    * 씨앗 하나가 넷을 다 정한다. 새 게임에서 뽑고, 날이 넘어갈 때만 굴린다
@@ -172,7 +178,7 @@ export interface SaveData {
   daycare: DaycareState
 }
 
-export const SAVE_VERSION = 10
+export const SAVE_VERSION = 11
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -233,6 +239,7 @@ export function createNewSave(): SaveData {
     runningShoes: false,
     steps: { poison: 0, repel: 0 },
     exit: null,
+    flute: 0,
     // 씨앗은 새 게임에서 한 번만 뽑는다 (`game_start.c`의 `MTRNG_Next()`).
     // 그 뒤로는 날이 넘어갈 때만 굴러간다 (PARITY §6.11)
     daily: newDaily(Math.floor(Math.random() * 0x100000000), dayNumber(new Date())),
@@ -441,6 +448,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     runningShoes: s.runningShoes,
     steps: s.steps,
     exit: s.exit,
+    flute: s.flute,
     daily: s.daily,
     daycare: s.daycare,
   }

@@ -60,6 +60,13 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       : data.boxes
     return { ...data, version: 10, party, boxes, daycare: newDaycare() }
   },
+
+  /**
+   * 10 → 11. 검은·하얀 피리가 실제로 먹는다 (PARITY §1.22).
+   *
+   * 맵을 옮기면 어차피 풀리는 값이라 **안 분 것으로** 시작한다
+   */
+  10: (data) => ({ ...data, version: 11, flute: 0 }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

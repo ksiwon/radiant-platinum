@@ -441,7 +441,7 @@ export const ITEM_TABLE: readonly ItemRow[] = [
   ["ITEM_HM02", 414, 413],
   ["ITEM_HM03", 414, 400],
   ["ITEM_HM04", 414, 402],
-  ["ITEM_HM05", 414, 400],
+  ["ITEM_HM05", 414, 413],
   ["ITEM_HM06", 414, 398],
   ["ITEM_HM07", 414, 400],
   ["ITEM_HM08", 414, 402],
