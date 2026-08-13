@@ -86,12 +86,20 @@ export const TILE_DYNAMIC_HEIGHT_COLLISION = 0x59
  * 그 칸이 지금 물 높이에서 막히는가
  * (`PastoriaGym_DynamicMapFeaturesCheckCollision`).
  *
- * `null`이면 이 체육관이 안 보는 칸이라 평소 판정으로 내려간다
+ * ⚠️ **「뚫렸다」는 답이 없다.** 막혔으면 참이고, 아니면 `null`이다 — 원작도
+ * 통행 가능일 때는 `FALSE`를 내서 **격자 판정으로 내려보낸다**. 여기서
+ * 「뚫렸다」로 답해 버리면 물 높이가 맞는 칸에서 벽까지 뚫린다
  */
 export function pastoriaBlocked(behavior: number, waterHeight: number): boolean | null {
-  if (behavior === PASTORIA_BEHAVIOR.highGround) return waterHeight !== PASTORIA_WATER.low
-  if (behavior === PASTORIA_BEHAVIOR.middleGround) return waterHeight !== PASTORIA_WATER.middle
-  if (behavior === PASTORIA_BEHAVIOR.lowGround) return waterHeight !== PASTORIA_WATER.high
+  if (behavior === PASTORIA_BEHAVIOR.highGround) {
+    return waterHeight !== PASTORIA_WATER.low ? true : null
+  }
+  if (behavior === PASTORIA_BEHAVIOR.middleGround) {
+    return waterHeight !== PASTORIA_WATER.middle ? true : null
+  }
+  if (behavior === PASTORIA_BEHAVIOR.lowGround) {
+    return waterHeight !== PASTORIA_WATER.high ? true : null
+  }
   return null
 }
 

@@ -96,6 +96,23 @@ export interface LedgeGrid {
 }
 
 /**
+ * 그 맵에만 있는 장치가 「여기는 넘는 자리」라고 말하는가.
+ *
+ * 지금은 영원시티 체육관의 시침 하나다 (`DynamicMapFeatures_WillPlayerJumpEternaGymClock`).
+ * 씬 쪽 모듈이 꽂아 준다 — 엔진이 씬을 들여오면 three가 딸려 오기 때문이다
+ */
+export const ledgeBridge: {
+  jumpsClockHand: ((tileX: number, tileZ: number, dir: number) => boolean) | null
+} = { jumpsClockHand: null }
+
+/** `dx`·`dz` → 원작 방향 번호 (`DIR_NORTH` 0 · 남 1 · 서 2 · 동 3) */
+function dirOf(dx: number, dz: number): number {
+  if (dz < 0) return 0
+  if (dz > 0) return 1
+  return dx < 0 ? 2 : 3
+}
+
+/**
  * 지금 자리에서 이 방향으로 가면 턱을 넘는가. 넘으면 **착지할 칸 한가운데**를,
  * 아니면 null을 돌려준다.
  *
@@ -111,6 +128,14 @@ export function ledgeHop(
   if (dx === 0 && dz === 0) return null
 
   const tx = Math.floor(x), tz = Math.floor(z)
+  // ⚠️ **영원시티 체육관의 시침이 먼저다** (`PlayerAvatar_WillJump`의 첫 줄).
+  // 그 칸은 거동값이 턱이 아니라 보통 바닥인데, 시계 상태가 「여기는 넘는
+  // 자리」라고 말한다 — 못 넘으면 시계 한가운데가 막힌 채로 남는다
+  if (ledgeBridge.jumpsClockHand?.(tx + dx, tz + dz, dirOf(dx, dz)) === true) {
+    const overX = tx + dx * 2, overZ = tz + dz * 2
+    return grid.isBlocked(overX, overZ) ? null : { x: overX + 0.5, z: overZ + 0.5 }
+  }
+
   const jump = ledgeJump(grid.behavior(tx + dx, tz + dz))
   // 턱은 **뛰는 쪽에서만** 넘을 수 있다. 반대쪽에서 오면 그냥 벽이다
   if (!jump || jump[0] !== dx || jump[1] !== dz) return null

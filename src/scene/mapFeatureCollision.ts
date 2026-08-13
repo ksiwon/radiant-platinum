@@ -10,6 +10,8 @@ import { heightCameFromPlate } from '../engine/map/dynamicHeight'
 import { MAP_FEATURE, mapFeature, mapFeatureBridge } from '../engine/world/mapFeatures'
 import { TILE_DYNAMIC_HEIGHT_COLLISION } from '../engine/world/pastoriaGym'
 import { pastoriaBlockedAt } from './pastoriaGym'
+import { sunyshoreBlockedAt } from './sunyshoreGym'
+import { eternaBlockedAt } from './eternaGym'
 
 /**
  * 그 칸이 막혔는가.
@@ -37,6 +39,10 @@ function featureBlocked(tileX: number, tileZ: number, height: number): boolean |
   switch (mapFeature()) {
     case MAP_FEATURE.pastoriaGym:
       return pastoriaBlockedAt(behavior)
+    case MAP_FEATURE.sunyshoreGym:
+      return sunyshoreBlockedAt(tileX, tileZ)
+    case MAP_FEATURE.eternaGym:
+      return eternaBlockedAt(tileX, tileZ)
     default:
       return null
   }

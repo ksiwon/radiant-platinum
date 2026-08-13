@@ -137,20 +137,22 @@ describe('물 높이가 길을 여닫는다', () => {
 
   it('⚠️ 이름과 반대다 — 높은 땅은 물이 낮아야 딛는다', () => {
     // 땅이 높으면 물이 낮아야 발이 닿는다. 뒤집으면 방의 길이 통째로 뒤집힌다
-    expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.highGround)).toBe(false)
+    expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.highGround)).toBeNull()
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.middleGround)).toBe(true)
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.lowGround)).toBe(true)
 
     pressPastoriaButton(PASTORIA_BUTTON_MODEL.blue)
     settle()
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.highGround)).toBe(true)
-    expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.lowGround)).toBe(false)
+    expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.lowGround)).toBeNull()
   })
 
-  it('가운데 땅은 초록에서만 열린다', () => {
+  it('⚠️ 「뚫렸다」는 답이 없다 — 격자로 내려보낸다', () => {
+    // 원작도 통행 가능일 때는 `FALSE`를 내서 격자가 판정하게 둔다. 여기서
+    // 「뚫렸다」로 답하면 물 높이가 맞는 칸에서 벽까지 뚫린다
     pressPastoriaButton(PASTORIA_BUTTON_MODEL.green)
     settle()
-    expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.middleGround)).toBe(false)
+    expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.middleGround)).toBeNull()
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.highGround)).toBe(true)
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.lowGround)).toBe(true)
   })

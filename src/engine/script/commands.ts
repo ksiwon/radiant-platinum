@@ -18,6 +18,7 @@ import { mapById, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
 import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
+import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
@@ -2962,6 +2963,62 @@ on('PressPastoriaGymButton', (ctx) => {
   const moved = ctx.host.world.services.mapFeatures?.pressPastoriaButton() === true
   if (!moved) return false
   ctx.pause((c) => c.host.world.services.mapFeatures?.pastoriaBusy() !== true)
+  return true
+})
+
+/**
+ * 선단시티 체육관이다 (`PersistedMapFeatures_InitForSunyshoreGym`).
+ *
+ * ⚠️ **처음 회전 상태가 방마다 다르고 들어온 문이 그것을 뒤집는다.** 앞 방에서
+ * 걸어 들어오면 0이고, 뒤에서 돌아오면 방마다 2·1·0으로 선다 — 되돌아 나가는
+ * 길이 그때 열려 있어야 하기 때문이다
+ */
+on('InitPersistedMapFeaturesForSunyshoreGym', (ctx) => {
+  const room = ctx.readByte()
+  ctx.host.world.services.mapFeatures?.initSunyshoreGym(room)
+  return false
+})
+
+/**
+ * 톱니를 돌린다 (`SunyshoreGym_PressButton`).
+ *
+ * 단추가 셋이다 — 보통(+1) · 거꾸로(−1) · 두 배(+2).
+ * ⚠️ **회전 상태는 누르는 순간 바뀐다.** 톱니가 다 돌기를 안 기다린다
+ */
+on('PressSunyshoreGymButton', (ctx) => {
+  const button = ctx.readByte()
+  const turned = ctx.host.world.services.mapFeatures?.pressSunyshoreButton(button) === true
+  if (!turned) return false
+  ctx.pause((c) => c.host.world.services.mapFeatures?.sunyshoreBusy() !== true)
+  return true
+})
+
+/**
+ * 영원시티 체육관이다 (`PersistedMapFeatures_InitForEternaGym`).
+ *
+ * ⚠️ **시계 상태만 리포트에 남는다.** 다른 체육관 장치는 나가면 처음으로
+ * 돌아가는데 이것만 변수에 따로 적힌다 — 트레이너를 이긴 것을 되돌릴 수는 없다
+ */
+on('InitPersistedMapFeaturesForEternaGym', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initEternaGym(
+    ctx.host.vars.get(VAR_ETERNA_GYM_FLOWER_CLOCK_STATE))
+  return false
+})
+
+/**
+ * 꽃시계를 한 칸 넘긴다 (`EternaGym_AdvanceClockState`).
+ *
+ * 트레이너 셋과 관장을 이길 때마다 한 번씩, 모두 다섯 상태다. 바늘이 돌면
+ * 시계 판의 통행이 통째로 갈린다 — 그것이 이 방의 길이다.
+ *
+ * ⚠️ **통행은 즉시 바뀌고 바늘만 미끄러진다.** 원작도 태스크를 걸기 **전에**
+ * 상태를 올린다
+ */
+on('AdvanceEternaGymClock', (ctx) => {
+  const next = ctx.host.world.services.mapFeatures?.advanceEternaClock() ?? null
+  if (next === null) return false
+  ctx.host.vars.set(VAR_ETERNA_GYM_FLOWER_CLOCK_STATE, next)
+  ctx.pause((c) => c.host.world.services.mapFeatures?.eternaBusy() !== true)
   return true
 })
 

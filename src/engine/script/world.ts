@@ -148,6 +148,15 @@ export interface FieldServices {
     /** 밟은 칸의 단추를 누른다. 물이 실제로 움직이면 true */
     pressPastoriaButton: () => boolean
     pastoriaBusy: () => boolean
+    /** 선단시티 체육관의 톱니. 방은 셋이고 스크립트가 번호를 준다 */
+    initSunyshoreGym: (room: number) => void
+    pressSunyshoreButton: (button: number) => boolean
+    sunyshoreBusy: () => boolean
+    /** 영원시티 체육관의 꽃시계. 상태는 스크립트가 변수에서 읽어 넘긴다 */
+    initEternaGym: (state: number) => void
+    /** 시계를 한 칸 넘긴다. 넘겼으면 새 상태, 끝까지 갔으면 null */
+    advanceEternaClock: () => number | null
+    eternaBusy: () => boolean
   }
   /**
    * 귀혼동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).

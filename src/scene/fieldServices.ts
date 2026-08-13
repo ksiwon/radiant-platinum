@@ -55,6 +55,11 @@ import {
 import {
   initPastoriaGym, pastoriaBusy, pastoriaSound, pressPastoriaButton,
 } from './pastoriaGym'
+import {
+  initSunyshoreGym, pressSunyshoreButton, sunyshoreBusy, sunyshoreSound,
+} from './sunyshoreGym'
+import { SUNYSHORE_GYM_MAPS, type SunyshoreButton } from '../engine/world/sunyshoreGym'
+import { advanceEternaClock, eternaBusy, eternaSound, initEternaGym } from './eternaGym'
 
 /**
  * 지금 선 칸에 놓인 소품의 모델 번호 (`FieldSystem_FindCollidingLoadedMapProp*`).
@@ -508,6 +513,9 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   liftSound.stop = (seq) => { music.stopEffect(seq) }
   pastoriaSound.play = (seq) => { void music.playEffect(seq) }
   pastoriaSound.stop = (seq) => { music.stopEffect(seq) }
+  sunyshoreSound.play = (seq) => { void music.playEffect(seq) }
+  sunyshoreSound.stop = (seq) => { music.stopEffect(seq) }
+  eternaSound.play = (seq) => { void music.playEffect(seq) }
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
@@ -1223,6 +1231,12 @@ const services: FieldServices = {
     initPastoriaGym: () => { initPastoriaGym(mapWorld.mapId) },
     pressPastoriaButton: () => pressPastoriaButton(propModelUnderPlayer()),
     pastoriaBusy: () => pastoriaBusy(),
+    initSunyshoreGym: (room) => { initSunyshoreGym(SUNYSHORE_GYM_MAPS[room] ?? -1, mapWorld.enteredZ) },
+    pressSunyshoreButton: (button) => pressSunyshoreButton(button as SunyshoreButton),
+    sunyshoreBusy: () => sunyshoreBusy(),
+    initEternaGym: (state) => { initEternaGym(mapWorld.mapId, state) },
+    advanceEternaClock: () => advanceEternaClock(),
+    eternaBusy: () => eternaBusy(),
   },
 
   /** 전설을 만나기 전의 미리보기 창 */

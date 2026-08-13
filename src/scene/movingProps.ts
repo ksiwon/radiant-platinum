@@ -14,6 +14,8 @@
 // 그림이 그 자리에 남는다.
 import { platformLiftProp } from './platformLift'
 import { pastoriaWaterProp } from './pastoriaGym'
+import { sunyshoreProps } from './sunyshoreGym'
+import { eternaProps } from './eternaGym'
 
 /** 지금 움직이고 있는 소품 하나 */
 export interface FeatureProp {
@@ -24,8 +26,10 @@ export interface FeatureProp {
   x: number
   y: number
   z: number
-  /** y축 회전(라디안). 도는 소품만 쓴다 */
+  /** y축 회전(라디안). 바닥에 누운 톱니가 이쪽으로 돈다 */
   rotY?: number
+  /** x축 회전(라디안). 벽에 붙은 톱니만 쓴다 */
+  rotX?: number
 }
 
 /**
@@ -39,6 +43,8 @@ export function featureProps(): FeatureProp[] {
   if (lift !== null) out.push({ key: '승강판', ...lift })
   const water = pastoriaWaterProp()
   if (water !== null) out.push({ key: '물바닥', ...water })
+  out.push(...sunyshoreProps())
+  out.push(...eternaProps())
   return out
 }
 

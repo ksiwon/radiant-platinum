@@ -58,7 +58,7 @@ export function FeatureProps() {
       const g = groups.current.get(p.key)
       if (g === undefined) continue
       g.position.set(p.x, p.y, p.z)
-      g.rotation.y = p.rotY ?? 0
+      g.rotation.set(p.rotX ?? 0, p.rotY ?? 0, 0)
     }
   })
 
@@ -75,7 +75,7 @@ export function FeatureProps() {
               else groups.current.set(p.key, g)
             }}
             position={[p.x, p.y, p.z]}
-            rotation={[0, p.rotY ?? 0, 0]}
+            rotation={[p.rotX ?? 0, p.rotY ?? 0, 0]}
           >
             <mesh name={p.key} geometry={got.mesh.geometry} material={got.materials} castShadow receiveShadow />
           </group>

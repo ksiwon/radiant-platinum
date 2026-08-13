@@ -72,6 +72,8 @@ import { DisguisePlates } from './DisguisePlates'
 import { FeatureProps } from './FeatureProps'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
+import { resetSunyshoreGym, sunyshoreTick } from './sunyshoreGym'
+import { eternaTick, resetEternaGym } from './eternaGym'
 import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
@@ -247,6 +249,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 다시 세우는데, 뒤에서 지우면 방금 세운 것을 지운다
       resetPlatformLift()
       resetPastoriaGym()
+      resetSunyshoreGym()
+      resetEternaGym()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
@@ -559,6 +563,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 리그·강철섬의 승강판 (PARITY §7.12). 타는 동안은 판이 자리를 정한다
     platformLiftTick(dt)
     pastoriaTick(dt)
+    sunyshoreTick(dt)
+    eternaTick(dt)
     worldState.player.riding = distortionRiding() || distortionBoulderFalling()
       || distortionGhostRunning() || distortionJumping() || platformLiftBusy()
 
