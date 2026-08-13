@@ -14,6 +14,13 @@ export const stage = style({
   padding: '12px 0 4px',
 })
 
+/** 뒤의 영속 Canvas에서 그리는 모델을 보여 주는 투명한 무대 창. */
+export const cinematicSpace = style({
+  width: 'min(520px, 78vw)',
+  height: 'min(420px, 52vh)',
+  pointerEvents: 'none',
+})
+
 export const art = style({
   display: 'grid',
   placeItems: 'center',

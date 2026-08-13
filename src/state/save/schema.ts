@@ -15,15 +15,23 @@ import { MAX_QUANTITY, POCKET_SIZE } from '../../engine/bag/bag'
 import { FLAG_COUNT, SAVED_VAR_COUNT } from '../../engine/script/vars'
 import { ROAMER_SLOT_COUNT } from '../../engine/world/roamer'
 import {
-  MAX_JOURNAL_ENTRIES, MAX_LOCATION_EVENTS, MAX_ONLINE_EVENTS,
+  MAX_JOURNAL_ENTRIES,
+  MAX_LOCATION_EVENTS,
+  MAX_ONLINE_EVENTS,
 } from '../../engine/world/journal'
 import {
-  POKETCH_APP_COUNT, POKETCH_COLOR_COUNT, POKETCH_DOTART_BYTES, POKETCH_HISTORY_MAX,
-  POKETCH_MARKER_COUNT, POKETCH_REGISTRY_SIZE,
+  POKETCH_APP_COUNT,
+  POKETCH_COLOR_COUNT,
+  POKETCH_DOTART_BYTES,
+  POKETCH_HISTORY_MAX,
+  POKETCH_MARKER_COUNT,
+  POKETCH_REGISTRY_SIZE,
 } from '../../engine/world/poketch'
 import { MAX_GHOST_PROP_GROUPS, MAX_PERSISTED_PLATFORMS } from '../../engine/world/distortion'
 import {
-  HALL_OF_FAME_PARTY, MAX_HALL_OF_FAME_ENTRIES, MAX_TOTAL_ENTRIES,
+  HALL_OF_FAME_PARTY,
+  MAX_HALL_OF_FAME_ENTRIES,
+  MAX_TOTAL_ENTRIES,
 } from '../../engine/world/hallOfFame'
 import { MAX_COINS } from '../../engine/world/coins'
 import { POCKET_COUNT } from '../../data/schema'
@@ -51,8 +59,12 @@ const u16 = (length: number) =>
 const int = (min: number, max: number) => z.number().int().min(min).max(max)
 
 const statsSchema = z.object({
-  hp: int(0, 255), atk: int(0, 255), def: int(0, 255),
-  spa: int(0, 255), spd: int(0, 255), spe: int(0, 255),
+  hp: int(0, 255),
+  atk: int(0, 255),
+  def: int(0, 255),
+  spa: int(0, 255),
+  spd: int(0, 255),
+  spe: int(0, 255),
 })
 
 /** 노력치는 한 항목 255, 합 510이 상한이다 (`MAX_EV_TOTAL`) */
@@ -75,9 +87,13 @@ const statusSchema = z.enum(['ok', 'slp', 'psn', 'tox', 'brn', 'frz', 'par'])
  * ⚠️ 통째로 null일 수 있다 — **원작에는 없는 상태고 옛 리포트에만 생긴다.**
  * 판 12 이전에는 새기는 칸이 없었으므로 날짜를 지어내지 않고 비워 둔다
  */
-const metDateSchema = z.object({
-  year: int(0, 99), month: int(1, 12), day: int(1, 31),
-}).nullable()
+const metDateSchema = z
+  .object({
+    year: int(0, 99),
+    month: int(1, 12),
+    day: int(1, 31),
+  })
+  .nullable()
 
 /** `location` 0은 "안 새겨졌다"다. 이름을 찾을 때 수수께끼의 장소로 떨어진다 */
 const metPlaceSchema = z.object({
@@ -136,7 +152,8 @@ const bagSlotSchema = z.object({
  * 볼은 15칸인데 도구는 165칸이다. 그 상한을 안 보면 화면이 감당 못 할
  * 세이브가 통과한다
  */
-const bagSchema = z.array(z.array(bagSlotSchema))
+const bagSchema = z
+  .array(z.array(bagSlotSchema))
   .length(POCKET_COUNT)
   .refine((pockets) => pockets.every((slots, i) => slots.length <= (POCKET_SIZE[i] ?? 0)), {
     message: '주머니 칸 수 상한을 넘었다',
@@ -219,13 +236,15 @@ export const saveSchema = z.object({
     repel: int(0, 255),
   }),
   /** 굴에 들어서기 직전에 서 있던 오버월드 칸. 탈출로프가 여기로 돌려보낸다 */
-  exit: z.object({
-    map: int(0, 592),
-    matrix: int(0, 288),
-    x: z.number().finite(),
-    z: z.number().finite(),
-    facing: z.number().finite(),
-  }).nullable(),
+  exit: z
+    .object({
+      map: int(0, 592),
+      matrix: int(0, 288),
+      x: z.number().finite(),
+      z: z.number().finite(),
+      facing: z.number().finite(),
+    })
+    .nullable(),
   /**
    * 불어 둔 피리 (`SpecialEncounter.fluteFactor`) — 0 없음 · 1 검은 · 2 하얀.
    *
@@ -262,11 +281,17 @@ export const saveSchema = z.object({
    * 걸은 수고 경험치와 요금이 그것을 본다
    */
   daycare: z.object({
-    slots: z.array(z.object({
-      mon: monSchema,
-      steps: int(0, 0xffffffff),
-      levelIn: int(1, 100),
-    }).nullable()).length(2),
+    slots: z
+      .array(
+        z
+          .object({
+            mon: monSchema,
+            steps: int(0, 0xffffffff),
+            levelIn: int(1, 100),
+          })
+          .nullable(),
+      )
+      .length(2),
     /** 알이 생겼으면 그 PID. 0이면 아직 없다 */
     eggPid: int(0, 0xffffffff),
     /** 알 주기 계수기 0~254 */
@@ -279,17 +304,21 @@ export const saveSchema = z.object({
    * 개체가 다시 나온다 — 만날 때마다 새로 뽑으면 색이 다른 개체를 쫓는 일이
    * 성립하지 않는다
    */
-  roamers: z.array(z.object({
-    active: z.boolean(),
-    species: int(0, 493),
-    level: int(0, 100),
-    pid: int(0, 0xffffffff),
-    ivs: statsSchema,
-    hp: int(0, 999),
-    status: statusSchema,
-    /** `ROAMER_ROUTES`의 색인. 맵 번호가 아니다 */
-    at: int(0, 28),
-  })).length(ROAMER_SLOT_COUNT),
+  roamers: z
+    .array(
+      z.object({
+        active: z.boolean(),
+        species: int(0, 493),
+        level: int(0, 100),
+        pid: int(0, 0xffffffff),
+        ivs: statsSchema,
+        hp: int(0, 999),
+        status: statusSchema,
+        /** `ROAMER_ROUTES`의 색인. 맵 번호가 아니다 */
+        at: int(0, 28),
+      }),
+    )
+    .length(ROAMER_SLOT_COUNT),
   /**
    * 방금 떠나온 맵 (`PlayerRecentRoutes`).
    *
@@ -305,19 +334,31 @@ export const saveSchema = z.object({
    * ⚠️ **자리 일 넷은 원작이 묶은 u32 그대로다.** 풀어서 담으면 겹침을 거르는
    * 규칙(`locationEvents[i - 1] >> 16`)을 옮길 수가 없다
    */
-  journal: z.array(z.object({
-    title: z.object({
-      year: int(0, 127), month: int(0, 12), day: int(0, 31), week: int(0, 7),
-      mapId: int(0, 8191),
-    }),
-    locationEvents: z.array(int(0, 0xffffffff)).length(MAX_LOCATION_EVENTS),
-    mon: z.object({
-      result: int(0, 2), variant: int(0, 3), timeOfDay: int(0, 15),
-      gender: int(0, 3), species: int(0, 493),
-    }),
-    trainer: z.object({ standard: int(0, 1), trainerId: int(0, 32767), mapId: int(0, 592) }),
-    online: z.array(z.object({ type: int(0, 63), result: int(0, 15) })).length(MAX_ONLINE_EVENTS),
-  })).length(MAX_JOURNAL_ENTRIES),
+  journal: z
+    .array(
+      z.object({
+        title: z.object({
+          year: int(0, 127),
+          month: int(0, 12),
+          day: int(0, 31),
+          week: int(0, 7),
+          mapId: int(0, 8191),
+        }),
+        locationEvents: z.array(int(0, 0xffffffff)).length(MAX_LOCATION_EVENTS),
+        mon: z.object({
+          result: int(0, 2),
+          variant: int(0, 3),
+          timeOfDay: int(0, 15),
+          gender: int(0, 3),
+          species: int(0, 493),
+        }),
+        trainer: z.object({ standard: int(0, 1), trainerId: int(0, 32767), mapId: int(0, 592) }),
+        online: z
+          .array(z.object({ type: int(0, 63), result: int(0, 15) }))
+          .length(MAX_ONLINE_EVENTS),
+      }),
+    )
+    .length(MAX_JOURNAL_ENTRIES),
   /**
    * 포켓치 (PARITY §7.3) — `Poketch`.
    *
@@ -336,10 +377,8 @@ export const saveSchema = z.object({
     alarm: z.object({ set: z.boolean(), hour: int(0, 23), minute: int(0, 59) }),
     dotArt: u8(POKETCH_DOTART_BYTES),
     calendar: z.object({ month: int(1, 12), marks: int(0, 0xffffffff) }),
-    markers: z.array(z.object({ x: int(0, 255), y: int(0, 255) }))
-      .length(POKETCH_MARKER_COUNT),
-    history: z.array(z.object({ species: int(1, 493), form: int(0, 27) }))
-      .max(POKETCH_HISTORY_MAX),
+    markers: z.array(z.object({ x: int(0, 255), y: int(0, 255) })).length(POKETCH_MARKER_COUNT),
+    history: z.array(z.object({ species: int(1, 493), form: int(0, 27) })).max(POKETCH_HISTORY_MAX),
   }),
 
   /**
@@ -367,21 +406,30 @@ export const saveSchema = z.object({
    * `engine/world/hallOfFame.ts`가 그 차이를 흡수한다
    */
   hallOfFame: z.object({
-    entries: z.array(z.object({
-      pokemon: z.array(z.object({
-        species: int(1, 493),
-        level: int(1, 100),
-        form: int(0, 63),
-        pid: int(0, 0xffffffff),
-        otId: int(0, 0xffffffff),
-        nickname: z.string().max(24),
-        otName: z.string().max(24),
-        moves: z.array(int(0, 511)).max(4),
-      })).max(HALL_OF_FAME_PARTY),
-      year: int(0, 99),
-      month: int(1, 12),
-      day: int(1, 31),
-    })).max(MAX_HALL_OF_FAME_ENTRIES),
+    entries: z
+      .array(
+        z.object({
+          pokemon: z
+            .array(
+              z.object({
+                species: int(1, 493),
+                level: int(1, 100),
+                form: int(0, 63),
+                pid: int(0, 0xffffffff),
+                otId: int(0, 0xffffffff),
+                otSecretId: int(0, 0xffff).default(0),
+                nickname: z.string().max(24),
+                otName: z.string().max(24),
+                moves: z.array(int(0, 511)).max(4),
+              }),
+            )
+            .max(HALL_OF_FAME_PARTY),
+          year: int(0, 99),
+          month: int(1, 12),
+          day: int(1, 31),
+        }),
+      )
+      .max(MAX_HALL_OF_FAME_ENTRIES),
     next: int(0, MAX_HALL_OF_FAME_ENTRIES - 1),
     total: int(0, MAX_TOTAL_ENTRIES),
   }),
@@ -401,10 +449,15 @@ export function parseSave(value: unknown): SaveData {
   return saveSchema.parse(value) as unknown as SaveData
 }
 
-export function safeParseSave(value: unknown): { ok: true; save: SaveData } | { ok: false; why: string } {
+export function safeParseSave(
+  value: unknown,
+): { ok: true; save: SaveData } | { ok: false; why: string } {
   const got = saveSchema.safeParse(value)
   if (got.success) return { ok: true, save: got.data as unknown as SaveData }
   const first = got.error.issues[0]
   const at = first?.path.join('.') ?? ''
-  return { ok: false, why: at ? `${at}: ${first?.message ?? ''}` : (first?.message ?? '알 수 없음') }
+  return {
+    ok: false,
+    why: at ? `${at}: ${first?.message ?? ''}` : (first?.message ?? '알 수 없음'),
+  }
 }

@@ -29,6 +29,7 @@ export interface HallOfFameMon {
   /** `personality` — 성별과 색을 여기서 다시 낸다. 종족값은 안 들고 있다 */
   pid: number
   otId: number
+  otSecretId: number
   nickname: string
   otName: string
   /** 네 칸 그대로. 0은 빈 칸이다 */
@@ -70,7 +71,9 @@ export function newHallOfFame(): HallOfFameRecord {
  * 새 기록을 돌려준다 — 부르는 쪽이 세이브에 그대로 얹는다
  */
 export function addHallOfFameEntry(
-  record: HallOfFameRecord, party: readonly PokemonInstance[], date: MetDate,
+  record: HallOfFameRecord,
+  party: readonly PokemonInstance[],
+  date: MetDate,
 ): HallOfFameRecord {
   if (record.total >= MAX_TOTAL_ENTRIES) return record
 
@@ -84,6 +87,7 @@ export function addHallOfFameEntry(
       form: mon.form,
       pid: mon.pid,
       otId: mon.otId,
+      otSecretId: mon.otSecretId,
       nickname: mon.nickname ?? '',
       otName: mon.origin.otName,
       moves: mon.moves.map((slot) => slot.move),
@@ -91,7 +95,10 @@ export function addHallOfFameEntry(
   }
 
   const entry: HallOfFameEntry = {
-    pokemon, year: date.year, month: date.month, day: date.day,
+    pokemon,
+    year: date.year,
+    month: date.month,
+    day: date.day,
   }
   const entries = [...record.entries]
   if (entries.length < MAX_HALL_OF_FAME_ENTRIES) entries.push(entry)
@@ -156,9 +163,7 @@ export const MET_KIND = {
  * 났다 (§9 통신·팔파크). 갈래를 지우지 않고 남겨 둔다 — 지우면 나중에
  * 그 칸이 생겼을 때 이 함수를 다시 읽어야 한다
  */
-export function metKindOf(
-  mon: PokemonInstance, trainerId: number, trainerName: string,
-): number {
+export function metKindOf(mon: PokemonInstance, trainerId: number, trainerName: string): number {
   if (mon.origin.fateful) return MET_KIND.fateful
   if (mon.otId !== trainerId) return MET_KIND.linkTrade
   if (mon.origin.otName !== trainerName) return MET_KIND.linkTrade

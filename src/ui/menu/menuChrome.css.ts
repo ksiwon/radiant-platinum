@@ -52,6 +52,12 @@ export const overlay = style({
   animation: `${fadeIn} 0.11s ease-out`,
 })
 
+export const cinematicOverlay = style([overlay, {
+  background: 'rgba(6, 9, 17, 0.28)',
+  backdropFilter: 'none',
+}])
+
+
 /**
  * 창 하나.
  *
@@ -71,6 +77,13 @@ export const screen = style({
   background: 'linear-gradient(180deg, #1a2138 0%, #101629 62%, #0d1222 100%)',
   boxShadow: '0 0 0 2px rgba(6, 9, 17, 0.85), 0 22px 56px rgba(0, 0, 0, 0.62)',
 })
+
+export const cinematicScreen = style([screen, {
+  background: 'linear-gradient(180deg, rgba(18, 25, 46, 0.12), rgba(6, 9, 17, 0.08))',
+  borderColor: 'rgba(158, 198, 255, 0.42)',
+  boxShadow: '0 0 0 2px rgba(6, 9, 17, 0.35), 0 22px 56px rgba(0, 0, 0, 0.34)',
+}])
+
 
 export const head = style({
   flex: '0 0 auto',

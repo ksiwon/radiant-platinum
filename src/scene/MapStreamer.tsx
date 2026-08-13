@@ -17,10 +17,17 @@ import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import {
-  enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars, start,
+  enterMap,
+  fieldScripts,
+  initFieldScripts,
+  initNewGame,
+  loadVars,
+  start,
 } from '../engine/script/field'
 import {
-  FLAG_DISTORTION_WORLD_PUZZLE_FINISHED, VAR_DISTORTION_CYRUS, VAR_DISTORTION_WORLD_PROGRESS,
+  FLAG_DISTORTION_WORLD_PUZZLE_FINISHED,
+  VAR_DISTORTION_CYRUS,
+  VAR_DISTORTION_WORLD_PROGRESS,
 } from '../engine/script/vars'
 import { installFieldServices } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
@@ -33,24 +40,47 @@ import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
-import {
-  journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins,
-} from './journal'
+import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
 import {
-  distortionAddObject, distortionBoulderFalling, distortionBoulderTick, distortionEnter,
-  distortionForgetEvents, distortionHooks, distortionLeave, distortionLoaded, distortionPreload,
-  distortionRideTick, distortionRiding, isDistortionFloor,
+  distortionAddObject,
+  distortionBoulderFalling,
+  distortionBoulderTick,
+  distortionEnter,
+  distortionForgetEvents,
+  distortionHooks,
+  distortionLeave,
+  distortionLoaded,
+  distortionPreload,
+  distortionRideTick,
+  distortionRiding,
+  isDistortionFloor,
 } from './distortion'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
-import { NpcSprites } from './NpcSprites'
+import { NpcFallbackModels } from './NpcFallbackModels'
+import { DistortionAmbience } from './DistortionAmbience'
 import { NpcModels } from './NpcModels'
+import { FieldWeather } from './FieldWeather'
+import { Ledges } from './Ledges'
+import { fieldWeatherKind, weatherFogProfile } from './weatherVisual'
+import { DoorAnimations } from './DoorAnimations'
+import { useDoorVisualStore } from './doorVisualStore'
+import { InteractionPrompt } from './InteractionPrompt'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
-  BACK_DIR, CHAR_KEY_COLOR, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, FILL_DIR, SUN_DIR, TIME_LOOKS,
-  backFill, blendLooks, characterKey, makeSkyTexture,
+  BACK_DIR,
+  CHAR_KEY_COLOR,
+  CHAR_KEY_OFFSET,
+  CHAR_KEY_RANGE,
+  FILL_DIR,
+  SUN_DIR,
+  TIME_LOOKS,
+  backFill,
+  blendLooks,
+  characterKey,
+  makeSkyTexture,
   type TimeLook,
 } from './fx/sky'
 import { assets, readJson } from '../data/providers/assetProvider'
@@ -116,7 +146,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const startWild = useBattleStore((s) => s.startWild)
   const [grid, setGrid] = useState(initial)
   const [chunkIndex, setChunkIndex] = useState(() =>
-    initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)))
+    initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)),
+  )
 
   const skyRef = useRef<Mesh>(null)
   const sunRef = useRef<DirectionalLight>(null)
@@ -130,79 +161,95 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     return world.areas?.[area]?.tex ?? 0
   }, [mapId])
 
-  const displayName = useCallback((mapId: number) => {
-    const m = mapById(mapId)
-    return m ? (locationNames[m.label] ?? m.name) : null
-  }, [locationNames])
+  const displayName = useCallback(
+    (mapId: number) => {
+      const m = mapById(mapId)
+      return m ? (locationNames[m.label] ?? m.name) : null
+    },
+    [locationNames],
+  )
 
   /** 맵을 갈아 끼운다. 격자·플레이어 위치·존 이름을 한 번에 맞춘다 */
-  const enter = useCallback((
-    next: MapGrid, mapId: number, x: number, z: number, matrix: number,
-    /** 도착 높이를 부르는 쪽이 정할 때. 승강 발판만 쓴다 (PARITY §6.10) */
-    atY?: number,
-  ) => {
-    // ⚠️ **갈아 끼우기 전에** 어디서 떠나는지를 적는다 (`Field_TrySetMapConnection`).
-    // 신오 본판(행렬 0)에 있다가 아닌 맵으로 넘어가는 그 한 번만이고, 그 자리가
-    // 동굴탈출로프의 목적지다 (PARITY §4.1)
-    const from = mapById(world.mapId)
-    if (from && from.matrix === 0 && mapById(mapId)?.matrix !== 0) {
-      const p = worldState.player.position
-      useSaveStore.setState({
-        exit: {
-          map: from.id, matrix: 0,
-          x: Math.floor(p.x) + 0.5, z: Math.floor(p.z) + 0.5,
-          facing: worldState.player.facing,
-        },
-      })
-    }
-    setGrid(next)
-    activeZone.grid = next
-    world.grid = next
-    world.mapId = mapId
-    world.matrix = matrix
-    // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
-    // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
-    worldState.player.position.set(x, atY ?? next.heightAtWorld(x, z, 0) ?? 0, z)
-    worldState.player.prevPosition.copy(worldState.player.position)
-    worldState.player.velocity.set(0, 0, 0)
-    setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
-    setZone(displayName(mapId))
-    setMapId(mapId)
-    publishMap(mapId)
-    // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
-    resetEncounterTile()
-    resetStepTile()
-    // 피리는 맵을 벗어나면 끝이다 (`FieldSystem_InitFlagsWarp`). 걸음을 안 세는
-    // 대신 이 한 줄이 유일한 만료 조건이라, 빠지면 한 번 불고 영영 도는 값이 된다
-    if (useSaveStore.getState().flute !== 0) useSaveStore.setState({ flute: 0 })
-    // 워프는 "방금 어디에서 왔는가"만 적는다. 배회는 안 움직인다
-    // (`FieldSystem_InitFlagsWarp`, PARITY §6.3)
-    roamersWarped(mapId)
-    // 노트도 여기서 한 줄 적는다 — 굴/건물에서 나왔거나, 아직 못 이긴
-    // 체육관에 들어섰거나, 처음 온 마을이거나 (PARITY §7.4)
-    journalChangedMap(from?.id ?? mapId, mapId)
-    // 야생을 몇 마리 이겼는지는 맵마다 다시 센다 (`FieldMapChange_UpdateGameData`)
-    journalResetWildWins()
-    // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
-    disarmWarp()
-    // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
-    // 같은 프레임에 그릴 수 있다
-    enterMap(mapId)
-    // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
-    // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
-    arriveAt(mapId)
-    // 깨어진 세계는 맵 격자가 아니라 「떠 있는 판」이 통행을 정한다 (PARITY §6.10).
-    // 자료가 따로라 처음 들어설 때 한 번 받는다 — 받는 동안은 판이 없어서
-    // 평범한 격자로 걷는다
-    distortionForgetEvents()
-    if (isDistortionFloor(mapId)) {
-      const y = atY ?? next.heightAtWorld(x, z, 0) ?? 0
-      if (distortionLoaded()) distortionEnter(mapId, x, y, z)
-      else void distortionPreload().then(() => { distortionEnter(mapId, x, y, z) })
-    } else {
-      distortionLeave()
-    }
-  }, [setZone, publishMap, displayName])
+  const enter = useCallback(
+    (
+      next: MapGrid,
+      mapId: number,
+      x: number,
+      z: number,
+      matrix: number,
+      /** 도착 높이를 부르는 쪽이 정할 때. 승강 발판만 쓴다 (PARITY §6.10) */
+      atY?: number,
+    ) => {
+      // ⚠️ **갈아 끼우기 전에** 어디서 떠나는지를 적는다 (`Field_TrySetMapConnection`).
+      // 신오 본판(행렬 0)에 있다가 아닌 맵으로 넘어가는 그 한 번만이고, 그 자리가
+      // 동굴탈출로프의 목적지다 (PARITY §4.1)
+      const from = mapById(world.mapId)
+      useDoorVisualStore.getState().clear()
+      if (from && from.matrix === 0 && mapById(mapId)?.matrix !== 0) {
+        const p = worldState.player.position
+        useSaveStore.setState({
+          exit: {
+            map: from.id,
+            matrix: 0,
+            x: Math.floor(p.x) + 0.5,
+            z: Math.floor(p.z) + 0.5,
+            facing: worldState.player.facing,
+          },
+        })
+      }
+      setGrid(next)
+      activeZone.grid = next
+      world.grid = next
+      world.mapId = mapId
+      world.matrix = matrix
+      // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
+      // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
+      worldState.player.position.set(x, atY ?? next.heightAtWorld(x, z, 0) ?? 0, z)
+      worldState.player.prevPosition.copy(worldState.player.position)
+      worldState.player.velocity.set(0, 0, 0)
+      setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
+      setZone(displayName(mapId))
+      setMapId(mapId)
+      publishMap(mapId)
+      // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
+      resetEncounterTile()
+      resetStepTile()
+      // 피리는 맵을 벗어나면 끝이다 (`FieldSystem_InitFlagsWarp`). 걸음을 안 세는
+      // 대신 이 한 줄이 유일한 만료 조건이라, 빠지면 한 번 불고 영영 도는 값이 된다
+      if (useSaveStore.getState().flute !== 0) useSaveStore.setState({ flute: 0 })
+      // 워프는 "방금 어디에서 왔는가"만 적는다. 배회는 안 움직인다
+      // (`FieldSystem_InitFlagsWarp`, PARITY §6.3)
+      roamersWarped(mapId)
+      // 노트도 여기서 한 줄 적는다 — 굴/건물에서 나왔거나, 아직 못 이긴
+      // 체육관에 들어섰거나, 처음 온 마을이거나 (PARITY §7.4)
+      journalChangedMap(from?.id ?? mapId, mapId)
+      // 야생을 몇 마리 이겼는지는 맵마다 다시 센다 (`FieldMapChange_UpdateGameData`)
+      journalResetWildWins()
+      // 도착한 자리가 워프판이어도 발을 떼기 전에는 안 걸린다 (`disarmWarp` 머리말)
+      disarmWarp()
+      // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
+      // 같은 프레임에 그릴 수 있다
+      enterMap(mapId)
+      // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
+      // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
+      arriveAt(mapId)
+      // 깨어진 세계는 맵 격자가 아니라 「떠 있는 판」이 통행을 정한다 (PARITY §6.10).
+      // 자료가 따로라 처음 들어설 때 한 번 받는다 — 받는 동안은 판이 없어서
+      // 평범한 격자로 걷는다
+      distortionForgetEvents()
+      if (isDistortionFloor(mapId)) {
+        const y = atY ?? next.heightAtWorld(x, z, 0) ?? 0
+        if (distortionLoaded()) distortionEnter(mapId, x, y, z)
+        else
+          void distortionPreload().then(() => {
+            distortionEnter(mapId, x, y, z)
+          })
+      } else {
+        distortionLeave()
+      }
+    },
+    [setZone, publishMap, displayName],
+  )
 
   // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —
   // 안 그러면 배틀 화면 뒤에서 계속 걸어다니고 두 번째 조우가 겹쳐 들어온다.
@@ -239,8 +286,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
       else {
         void gridFor(at.matrix)
-          .then((next) => { enter(next, at.map, at.x, at.z, at.matrix) })
-          .catch(() => { /* 못 받으면 기본 스폰에 그대로 선다 */ })
+          .then((next) => {
+            enter(next, at.map, at.x, at.z, at.matrix)
+          })
+          .catch(() => {
+            /* 못 받으면 기본 스폰에 그대로 선다 */
+          })
       }
     }
     return () => {
@@ -267,8 +318,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     fieldScripts.names = {
       player: () => {
         const save = useSaveStore.getState()
-        return save.trainer.name
-          || fallback(save.trainer.gender === 'girl' ? 'playerFemale' : 'playerMale')
+        return (
+          save.trainer.name ||
+          fallback(save.trainer.gender === 'girl' ? 'playerFemale' : 'playerMale')
+        )
       },
       rival: () => useSaveStore.getState().rivalName || fallback('rival'),
       // 주인공의 반대 성별 주인공
@@ -301,8 +354,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionHooks.setPuzzleFinished = () => {
       fieldScripts.vars.setFlag(FLAG_DISTORTION_WORLD_PUZZLE_FINISHED)
     }
-    distortionHooks.addObject = (localID) => { distortionAddObject(localID, fieldScripts.vars) }
-    void initFieldScripts(locale).then(() => { setScriptsReady(true) })
+    distortionHooks.addObject = (localID) => {
+      distortionAddObject(localID, fieldScripts.vars)
+    }
+    void initFieldScripts(locale).then(() => {
+      setScriptsReady(true)
+    })
     const uninstall = installFieldServices(locale)
     return () => {
       uninstall()
@@ -314,7 +371,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   useEffect(() => installRoamers(), [])
 
   useEffect(() => {
-    loadGenericNames(locale).then(setGeneric).catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
+    loadGenericNames(locale)
+      .then(setGeneric)
+      .catch(() => {
+        /* 이름이 비면 대사에 빈칸이 난다 */
+      })
   }, [locale])
 
   // 플래그·변수를 붓는다. 새 판이면 원작의 초기화 스크립트를 **돌려서** 세운다 —
@@ -341,10 +402,14 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 러닝슈즈는 세이브에 있고 이동 시스템은 프레임 상태만 본다. 그 사이를
   // 여기서 잇는다 — 엄마가 주는 순간 다음 프레임부터 뛸 수 있어야 한다
   const runningShoes = useSaveStore((s) => s.runningShoes)
-  useEffect(() => { worldState.player.runningShoes = runningShoes }, [runningShoes])
+  useEffect(() => {
+    worldState.player.runningShoes = runningShoes
+  }, [runningShoes])
 
   // 존만 바뀌는 경우(마을 → 도로)도 맵이 바뀐 것이다
-  useEffect(() => { enterMap(mapId) }, [mapId])
+  useEffect(() => {
+    enterMap(mapId)
+  }, [mapId])
 
   // 시점은 설정에 있고 카메라는 프레임 상태를 본다. 그 사이를 여기서 잇는다 —
   // 카메라 시스템이 zustand를 구독하면 프레임마다 스토어를 읽게 된다
@@ -375,6 +440,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 챔피언로드가 파란 하늘 위의 판때기로 찍혔고 천관산 위에도 하늘이 걸렸다
    */
   const outdoors = isOutdoors(mapById(mapId))
+  const weather = useMemo(() => fieldWeatherKind(mapById(mapId)?.weather ?? 0), [mapId])
 
   const [look, setLook] = useState<TimeLook>(() => currentLook())
   useFrame(() => {
@@ -389,17 +455,24 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const scene = useThree((s) => s.scene)
   useEffect(() => {
     const fog = scene.fog
+    const atmosphere = weatherFogProfile(weather)
+    const fogColor = new Color(outdoors ? look.fog : INDOOR_VOID)
+    const background = new Color(outdoors ? look.stops[0]![1] : INDOOR_VOID)
+    if (outdoors) {
+      fogColor.lerp(new Color(atmosphere.tint), atmosphere.mix)
+      background.lerp(fogColor, atmosphere.mix * 0.42)
+    }
     // 실내·동굴은 시간대를 안 탄다. 창문 하나 없는 방이 밖에 따라 어두워지면
     // 그게 더 이상하고, 무엇보다 **맵 밖이 안 보여야 한다**
     if (fog instanceof Fog) {
-      fog.color.set(outdoors ? look.fog : INDOOR_VOID)
-      fog.near = outdoors ? look.fogNear : INDOOR_FOG_NEAR
-      fog.far = outdoors ? look.fogFar : INDOOR_FOG_FAR
+      fog.color.copy(fogColor)
+      fog.near = outdoors ? look.fogNear * atmosphere.nearScale : INDOOR_FOG_NEAR
+      fog.far = outdoors ? look.fogFar * atmosphere.farScale : INDOOR_FOG_FAR
     }
     if (scene.background instanceof Color) {
-      scene.background.set(outdoors ? look.stops[0]![1] : INDOOR_VOID)
+      scene.background.copy(background)
     }
-  }, [scene, look, outdoors])
+  }, [scene, look, outdoors, weather])
 
   /**
    * 그림 번호 → BDSP 갈래. 추출기가 **구워 낸 것만** 담아 준다
@@ -409,9 +482,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   useEffect(() => {
     let alive = true
     void (readJson(assets(), 'data/npcModels.json') as Promise<Record<string, string>>)
-      .then((t) => { if (alive) setNpcModels(t) })
-      .catch(() => { /* 표가 없으면 판때기로 선다 */ })
-    return () => { alive = false }
+      .then((t) => {
+        if (alive) setNpcModels(t)
+      })
+      .catch(() => {
+        /* 표가 없으면 판때기로 선다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   /** 입체로 선 사람들. 판때기는 이 사람들을 건너뛴다 */
@@ -432,7 +511,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     worldState.player.riding = distortionRiding() || distortionBoulderFalling()
 
     const p = worldState.player.position
-    const tx = Math.floor(p.x), tz = Math.floor(p.z)
+    const tx = Math.floor(p.x),
+      tz = Math.floor(p.z)
     const l = Math.round(p.y)
     if (l !== layer) setLayer(l)
 
@@ -465,16 +545,22 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         .then((next) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
           // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
-          const at = target.y === undefined
-            ? walkOutOfDoor(next, target.x, target.z)
-            : { x: target.x, z: target.z }
+          const at =
+            target.y === undefined
+              ? walkOutOfDoor(next, target.x, target.z)
+              : { x: target.x, z: target.z }
           enter(next, target.to, at.x, at.z, target.matrix, target.y)
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간
           // 방향 그대로 나오는 것이 맞아서 안 건드린다
           if (target.facing !== undefined) worldState.player.facing = FACING_OF[target.facing] ?? 0
         })
-        .catch((e) => { console.error('워프 실패', e) })
-        .finally(() => { world.pending = null; warping.current = false })
+        .catch((e) => {
+          console.error('워프 실패', e)
+        })
+        .finally(() => {
+          world.pending = null
+          warping.current = false
+        })
       return
     }
 
@@ -513,11 +599,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       encounters.pending = null
       encounters.suspended = true
       void startWild({
-        species: e.species, level: e.level, form: e.form, roamer: e.roamer,
+        species: e.species,
+        level: e.level,
+        form: e.form,
+        roamer: e.roamer,
       })
     }
   })
-
 
   return (
     <group>
@@ -572,8 +660,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         마을에서 내 남쪽에 선 집은 늘 그 면을 보이므로 벽이 늘 검게 뭉쳤다.
         세기는 상수가 아니라 **모자란 만큼**이다 (`fx/sky`의 `backFill`)
       */}
-      <directionalLight
-        position={[...BACK_DIR]} intensity={backFill(look)} color={look.skyColor} />
+      <directionalLight position={[...BACK_DIR]} intensity={backFill(look)} color={look.skyColor} />
 
       {/*
         인물 키 라이트. **밤에 사람이 배경에 묻히는 것**을 막는다 — 심야의 몸빛은
@@ -598,13 +685,19 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         받는다. 충돌·높이는 여전히 perm/BDHC가 잡으므로 이 층은 그림만 담당한다
       */}
       <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
+      <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} />
+      <DoorAnimations grid={grid} />
+      <DistortionAmbience />
+      <FieldWeather kind={weather} />
 
       {/*
-        NPC. 붙는 사람은 BDSP 등신 모델로 서고(`NpcModels`) 나머지는 원작
-        판때기 그림 그대로다 — 지금 붙는 것이 배치의 21.4%다
+        NPC. 검증된 사람은 BDSP 등신 모델로 서고(`NpcModels`), 나머지는 사람·
+        포켓몬·장애물을 구분한 절차적 입체 폴백으로 선다. 정식 GLB가 늦게 도착하면
+        `standing` 집합이 갱신되어 폴백은 같은 프레임에 숨는다.
       */}
       <NpcModels grid={grid} layer={layer} table={npcModels} onStanding={setStanding} />
-      <NpcSprites grid={grid} layer={layer} standing={standing} />
+      <NpcFallbackModels grid={grid} layer={layer} standing={standing} />
+      <InteractionPrompt grid={grid} layer={layer} />
     </group>
   )
 }

@@ -14,7 +14,7 @@ export const wrap = style({
   display: 'flex',
   flexDirection: 'column',
   // 원작 인트로는 검은 바탕에서 마박사만 떠오른다
-  background: 'radial-gradient(120% 90% at 50% 30%, #14203a, #05070d 70%)',
+  background: 'rgba(5, 7, 13, 0.08)',
   color: vars.panel.text,
   fontFamily: vars.font.ui,
   userSelect: 'none',
@@ -50,10 +50,26 @@ export const ball = style([ballBase, {}])
  * 열린 볼. 원작은 여기서 이어롭이 나온다 — 우리는 포켓몬 그림을 아직 못 뽑아서
  * 빛만 남는다 (`engine/intro/beats.ts` 머리말)
  */
-export const ballOpen = style([ballBase, {
-  transform: 'scale(1.15)',
-  boxShadow: '0 0 90px 30px rgba(255, 246, 200, 0.75), 0 12px 40px rgba(0, 0, 0, 0.6)',
-}])
+export const ballOpen = style([
+  ballBase,
+  {
+    transform: 'scale(1.15)',
+    boxShadow: '0 0 90px 30px rgba(255, 246, 200, 0.75), 0 12px 40px rgba(0, 0, 0, 0.6)',
+  },
+])
+
+/** Transparent hit target; the visible ball is rendered by IntroStage. */
+export const ballHit = style({
+  width: 150,
+  height: 150,
+  borderRadius: '50%',
+  border: 0,
+  padding: 0,
+  background: 'transparent',
+  cursor: 'pointer',
+  outline: 'none',
+  ':focus-visible': { boxShadow: '0 0 0 3px rgba(255, 238, 164, 0.72)' },
+})
 
 export const box = style({
   margin: '0 auto 28px',
@@ -91,12 +107,15 @@ const choiceBase = style({
 
 export const choice = style([choiceBase, { opacity: 0.55 }])
 
-export const choiceOn = style([choiceBase, {
-  background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(222, 232, 252, 0.9))',
-  color: '#131a2c',
-  fontWeight: 700,
-  borderColor: 'transparent',
-}])
+export const choiceOn = style([
+  choiceBase,
+  {
+    background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(222, 232, 252, 0.9))',
+    color: '#131a2c',
+    fontWeight: 700,
+    borderColor: 'transparent',
+  },
+])
 
 export const nameRow = style({
   display: 'flex',

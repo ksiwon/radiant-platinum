@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
-  addHallOfFameEntry, entryAt, entryNumber, HALL_OF_FAME_PARTY, MAX_HALL_OF_FAME_ENTRIES,
-  MAX_TOTAL_ENTRIES, MET_KIND, metKindNeedsPlace, metKindOf, newHallOfFame, storedEntries,
+  addHallOfFameEntry,
+  entryAt,
+  entryNumber,
+  HALL_OF_FAME_PARTY,
+  MAX_HALL_OF_FAME_ENTRIES,
+  MAX_TOTAL_ENTRIES,
+  MET_KIND,
+  metKindNeedsPlace,
+  metKindOf,
+  newHallOfFame,
+  storedEntries,
   type HallOfFameRecord,
 } from './hallOfFame'
 import { SPECIAL_MET_BASE } from '../pokemon/origin'
@@ -11,16 +20,30 @@ const DATE = { year: 8, month: 3, day: 14 }
 
 function mon(over: Partial<PokemonInstance> = {}): PokemonInstance {
   return {
-    species: 387, pid: 0x1234, nickname: null, exp: 0, level: 5,
+    species: 387,
+    pid: 0x1234,
+    nickname: null,
+    exp: 0,
+    level: 5,
     ivs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [{ move: 33, pp: 35, ppUps: 0 }],
-    hp: 20, status: 'ok', statusTurns: 0, heldItem: 0, friendship: 70, isEgg: false,
-    otId: 1234, otSecretId: 0, ball: 4,
+    hp: 20,
+    status: 'ok',
+    statusTurns: 0,
+    heldItem: 0,
+    friendship: 70,
+    isEgg: false,
+    otId: 1234,
+    otSecretId: 0,
+    ball: 4,
     origin: {
-      otName: '나', otGender: 'male',
-      met: { location: 12, date: DATE }, metLevel: 5,
-      egg: { location: 0, date: null }, fateful: false,
+      otName: '나',
+      otGender: 'male',
+      met: { location: 12, date: DATE },
+      metLevel: 5,
+      egg: { location: 0, date: null },
+      fateful: false,
     },
     form: 0,
     ...over,
@@ -33,8 +56,14 @@ const party = (n: number) => Array.from({ length: n }, (_, i) => mon({ species: 
 describe('한 줄 더하기', () => {
   it('파티를 그대로 옮긴다 — 기술 넷과 별명·트레이너까지', () => {
     const one = mon({
-      nickname: '토도', level: 68, form: 0, pid: 7,
-      moves: [{ move: 56, pp: 5, ppUps: 0 }, { move: 89, pp: 10, ppUps: 0 }],
+      nickname: '토도',
+      level: 68,
+      form: 0,
+      pid: 7,
+      moves: [
+        { move: 56, pp: 5, ppUps: 0 },
+        { move: 89, pp: 10, ppUps: 0 },
+      ],
     })
     const got = addHallOfFameEntry(newHallOfFame(), [one], DATE)
     expect(got.total).toBe(1)
@@ -42,15 +71,24 @@ describe('한 줄 더하기', () => {
     const entry = entryAt(got, 0)!
     expect(entry).toMatchObject({ year: 8, month: 3, day: 14 })
     expect(entry.pokemon[0]).toEqual({
-      species: 387, level: 68, form: 0, pid: 7, otId: 1234,
-      nickname: '토도', otName: '나', moves: [56, 89],
+      species: 387,
+      level: 68,
+      form: 0,
+      pid: 7,
+      otId: 1234,
+      otSecretId: 0,
+      nickname: '토도',
+      otName: '나',
+      moves: [56, 89],
     })
   })
 
   it('⚠️ 알은 건너뛴다 — 뒤엣것이 앞으로 당겨진다', () => {
-    const got = addHallOfFameEntry(newHallOfFame(), [
-      mon({ species: 1 }), mon({ species: 2, isEgg: true }), mon({ species: 3 }),
-    ], DATE)
+    const got = addHallOfFameEntry(
+      newHallOfFame(),
+      [mon({ species: 1 }), mon({ species: 2, isEgg: true }), mon({ species: 3 })],
+      DATE,
+    )
     expect(entryAt(got, 0)!.pokemon.map((p) => p.species)).toEqual([1, 3])
   })
 
@@ -107,9 +145,13 @@ describe('만난 자리 글', () => {
 
   it('잡은 것은 「만났다」, 깬 것은 「태어났다」', () => {
     expect(kind(mon())).toBe(MET_KIND.metAt)
-    expect(kind(mon({
-      origin: { ...mon().origin, egg: { location: 5, date: DATE } },
-    }))).toBe(MET_KIND.hatchedAt)
+    expect(
+      kind(
+        mon({
+          origin: { ...mon().origin, egg: { location: 5, date: DATE } },
+        }),
+      ),
+    ).toBe(MET_KIND.hatchedAt)
   })
 
   it('트레이너가 다르면 통신교환이다 — 번호든 이름이든', () => {
@@ -131,7 +173,14 @@ describe('만난 자리 글', () => {
 
   it('자리 이름이 들어가는 글은 둘뿐이다', () => {
     expect([MET_KIND.metAt, MET_KIND.hatchedAt].every(metKindNeedsPlace)).toBe(true)
-    expect([MET_KIND.linkTrade, MET_KIND.kanto, MET_KIND.hoenn, MET_KIND.distantLand,
-      MET_KIND.fateful].some(metKindNeedsPlace)).toBe(false)
+    expect(
+      [
+        MET_KIND.linkTrade,
+        MET_KIND.kanto,
+        MET_KIND.hoenn,
+        MET_KIND.distantLand,
+        MET_KIND.fateful,
+      ].some(metKindNeedsPlace),
+    ).toBe(false)
   })
 })

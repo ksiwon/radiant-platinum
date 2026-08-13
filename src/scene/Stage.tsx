@@ -10,11 +10,18 @@ import { WorldLoader } from './WorldLoader'
 import { BattleStage } from './battle/BattleStage'
 import { StarterStage } from './field/StarterStage'
 import { DAY } from './fx/sky'
+import { CinematicStage } from './CinematicStage'
+import { PokemonPreviewStage } from './PokemonPreviewStage'
+import { HallOfFameStage } from './HallOfFameStage'
 import { attachKeyboard } from '../engine/input/keyboard'
+import { IntroStage } from './IntroStage'
 import { attachMouse } from '../engine/input/mouse'
 import { useBattleStore } from '../state/battleStore'
 import { useMenuStore } from '../state/menuStore'
 import { useOptionsStore } from '../state/optionsStore'
+import { useCinematicStore } from '../state/cinematicStore'
+import { useHallOfFameStageStore } from '../state/hallOfFameStageStore'
+import { useIntroStageStore } from '../state/introStageStore'
 import { MusicDirector } from './MusicDirector'
 
 let keyboardAttached = false
@@ -26,7 +33,10 @@ export function Stage() {
   // 파트너 고르는 무대도 같은 Canvas에 선다 (`field/StarterStage`) — 화면이
   // 열려 있는 동안만이다
   const choosing = useMenuStore((s) => s.top === 'chooseStarter')
+  const cinematic = useCinematicStore((s) => s.scene !== 'off')
+  const hallOfFame = useHallOfFameStageStore((s) => s.mode !== 'off')
   // 입력 리스너는 게임 청크에 속한다 — 초기 청크가 worldState(three 의존)를 끌어오지 않게 한다
+  const intro = useIntroStageStore((s) => s.scene !== 'off')
   useEffect(() => {
     if (keyboardAttached) return
     keyboardAttached = true
@@ -39,7 +49,9 @@ export function Stage() {
   useEffect(() => {
     const el = wrapRef.current
     if (el === null) return
-    return attachMouse(el, (mode) => { useOptionsStore.getState().set('view', mode) })
+    return attachMouse(el, (mode) => {
+      useOptionsStore.getState().set('view', mode)
+    })
   }, [])
 
   return (
@@ -89,8 +101,12 @@ export function Stage() {
         <Suspense fallback={<PlayerCapsule />}>
           <PlayerModel />
         </Suspense>
+        <PokemonPreviewStage />
         {inBattle && <BattleStage />}
         {choosing && <StarterStage />}
+        {cinematic && <CinematicStage />}
+        {intro && <IntroStage />}
+        {hallOfFame && <HallOfFameStage />}
         <EngineDriver />
         <MusicDirector />
       </Canvas>

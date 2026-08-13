@@ -11,7 +11,7 @@ import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
   signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
 } from '../map/world'
-import { worldState } from '../../state/worldState'
+import { worldState, type FieldActionFxKind } from '../../state/worldState'
 import {
   buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG,
   TRAINER_DEFEATED_FLAGS_START, trainerIdOf, type CommandTable,
@@ -736,6 +736,14 @@ export function frontTile(): { x: number; z: number } {
   return tileInFront(p.position.x, p.position.z, p.facing)
 }
 
+/** 규칙을 막지 않는 짧은 3D 피드백을 시작한다. */
+function showFieldAction(kind: FieldActionFxKind, duration: number): void {
+  const fx = worldState.player.fieldAction
+  fx.kind = kind
+  fx.elapsed = 0
+  fx.duration = duration
+}
+
 /**
  * 기술 하나를 실제로 쓴다.
  *
@@ -755,14 +763,17 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
       const actor = obstacleAt(front.x, front.z)
       if (!actor) return false
       actor.visible = false
+      showFieldAction(id, 0.65)
       return true
     }
     case 'strength':
       // 원작은 여기서 미는 것을 **허락만** 한다. 실제로 미는 것은 걸어가서 하는
       // 일이라 이동 시스템이 가져간다 (`actor/player`)
       p.strength = true
+      showFieldAction('strength', 0.8)
       return true
     case 'surf':
+      showFieldAction('surf', 0.7)
       p.surfing = true
       hopTo(front.x + 0.5, front.z + 0.5)
       return true
@@ -775,6 +786,7 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
       const landX = x + step.x, landZ = z + step.z
       if (grid.isBlocked(landX, landZ)) return false
       hopTo(landX + 0.5, landZ + 0.5)
+      showFieldAction(id, 1.1)
       return true
     }
     default:

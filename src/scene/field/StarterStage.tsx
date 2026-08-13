@@ -13,18 +13,37 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
-  BackSide, DoubleSide, FrontSide, Group, Mesh, MeshBasicMaterial,
-  type BufferGeometry, type Material,
+  BackSide,
+  DoubleSide,
+  FrontSide,
+  Group,
+  Mesh,
+  MeshBasicMaterial,
+  type BufferGeometry,
+  type Material,
 } from 'three'
 import {
-  loadStarterMesh, loadStarterSheet, sliceTexture, type ChunkMesh, type TexSheet,
+  loadStarterMesh,
+  loadStarterSheet,
+  sliceTexture,
+  type ChunkMesh,
+  type TexSheet,
 } from '../chunkMesh'
 import { STARTER_ORIGIN, starterStage } from '../battle/stageRefs'
 import {
-  BALL_POSITION, CAMERA_CHOOSE, CAMERA_OPEN, CAMERA_FRAMES, FRAME_MS, GROUND_PLACE,
-  STARTER_MODEL, cameraPosition, type CameraShot,
+  BALL_POSITION,
+  CAMERA_CHOOSE,
+  CAMERA_OPEN,
+  CAMERA_FRAMES,
+  FRAME_MS,
+  GROUND_PLACE,
+  STARTER_MODEL,
+  cameraPosition,
+  type CameraShot,
 } from '../../ui/field/starterScene'
 import { starterScene } from './starterRefs'
+import { STARTERS } from '../../ui/field/starterChoice'
+import { StarterMon } from './StarterMon'
 
 /**
  * DS 단위 → 우리 타일.
@@ -116,33 +135,49 @@ export function StarterStage() {
   useEffect(() => {
     let alive = true
     const wanted = [
-      STARTER_MODEL.caseClosed, STARTER_MODEL.caseOpen,
-      ...STARTER_MODEL.balls, STARTER_MODEL.ground,
+      STARTER_MODEL.caseClosed,
+      STARTER_MODEL.caseOpen,
+      ...STARTER_MODEL.balls,
+      STARTER_MODEL.ground,
     ]
-    void Promise.all(wanted.map((id) =>
-      Promise.all([loadStarterMesh(id), loadStarterSheet(id)])
-        .then(([mesh, sheet]): Loaded => ({
-          id, geometry: mesh.geometry, materials: materialsOf(mesh, sheet),
-        }))
-        .catch(() => null)))
-      .then((got) => { if (alive) setLoaded(got.filter((v) => v !== null)) })
-      .catch(() => { if (alive) setLoaded([]) })
-    return () => { alive = false }
+    void Promise.all(
+      wanted.map((id) =>
+        Promise.all([loadStarterMesh(id), loadStarterSheet(id)])
+          .then(([mesh, sheet]): Loaded => ({
+            id,
+            geometry: mesh.geometry,
+            materials: materialsOf(mesh, sheet),
+          }))
+          .catch(() => null),
+      ),
+    )
+      .then((got) => {
+        if (alive) setLoaded(got.filter((v) => v !== null))
+      })
+      .catch(() => {
+        if (alive) setLoaded([])
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   // 카메라를 가져간다. 화면에 있는 동안만이다 — 나가면 필드가 도로 갖는다
   useEffect(() => {
     starterStage.active = true
-    return () => { starterStage.active = false }
+    return () => {
+      starterStage.active = false
+    }
   }, [])
 
   useFrame(() => {
     const scene = starterScene
     // 가방이 열리기 전에는 처음 자리, 고르기 시작하면 6프레임에 걸쳐 옮겨 간다.
     // 원작 `AdvanceStarterMovement`가 선형이다
-    const shot = scene.camera === 'open'
-      ? CAMERA_OPEN
-      : lerpShot(CAMERA_OPEN, CAMERA_CHOOSE, ramp(scene.cameraSince, CAMERA_FRAMES))
+    const shot =
+      scene.camera === 'open'
+        ? CAMERA_OPEN
+        : lerpShot(CAMERA_OPEN, CAMERA_CHOOSE, ramp(scene.cameraSince, CAMERA_FRAMES))
     const [ex, ey, ez] = cameraPosition(shot)
     starterStage.position.set(
       STARTER_ORIGIN.x + ex * UNIT,
@@ -206,6 +241,9 @@ export function StarterStage() {
           )
         })}
       </group>
+      {STARTERS.map((species, at) => (
+        <StarterMon key={species} species={species} at={at} />
+      ))}
     </group>
   )
 }

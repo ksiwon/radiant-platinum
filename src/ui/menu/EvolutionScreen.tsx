@@ -12,27 +12,44 @@
 // 이 화면이 다시 뜬다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  loadItems, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames,
-  type ItemTable, type MoveTable, type SpeciesTable,
+  loadItems,
+  loadMoveNames,
+  loadMoves,
+  loadSpecies,
+  loadSpeciesNames,
+  type ItemTable,
+  type MoveTable,
+  type SpeciesTable,
 } from '../../data/gameData'
 import { quantity } from '../../engine/bag/bag'
 import { learnMoves } from '../../engine/battle/meta/reward'
 import { isNight } from '../../engine/map/timeOfDay'
 import {
-  EvoClass, evolutionTarget, evolve, ITEM_POKE_BALL, movesOnEvolve, spawnsShedinja,
-  SPECIES_SHEDINJA, type EvoResult,
+  EvoClass,
+  evolutionTarget,
+  evolve,
+  ITEM_POKE_BALL,
+  movesOnEvolve,
+  spawnsShedinja,
+  SPECIES_SHEDINJA,
+  type EvoResult,
 } from '../../engine/pokemon/evolution'
-import { maxPpOf, PARTY_MAX, type PokemonInstance } from '../../engine/pokemon/instance'
+import {
+  genderOf,
+  isShiny,
+  maxPpOf,
+  PARTY_MAX,
+  type PokemonInstance,
+} from '../../engine/pokemon/instance'
 import { useEvolutionStore } from '../../state/evolutionStore'
 import { useMenuStore } from '../../state/menuStore'
+import { useCinematicStore } from '../../state/cinematicStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { withSubject, withTopic } from '../korean'
 import { useMenuKeys } from './useMenuKeys'
-import { spriteKey } from '../../engine/pokemon/form'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './evolutionScreen.css'
@@ -70,15 +87,31 @@ export function EvolutionScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadSpecies(), loadMoves(), loadSpeciesNames(locale), loadMoveNames(locale), loadItems(),
+      loadSpecies(),
+      loadMoves(),
+      loadSpeciesNames(locale),
+      loadMoveNames(locale),
+      loadItems(),
     ]).then(([species, moves, names, moveNames, items]) => {
       if (alive) setTables({ species, moves, names, moveNames, items })
     })
-    return () => { alive = false }
+    return () => {
+      alive = false
+    }
   }, [locale])
 
-  const nameOf = useCallback((mon: PokemonInstance): string =>
-    mon.nickname ?? tables?.names[mon.species] ?? `#${String(mon.species)}`, [tables])
+  useEffect(
+    () => () => {
+      useCinematicStore.getState().clear()
+    },
+    [],
+  )
+
+  const nameOf = useCallback(
+    (mon: PokemonInstance): string =>
+      mon.nickname ?? tables?.names[mon.species] ?? `#${String(mon.species)}`,
+    [tables],
+  )
 
   /**
    * 다음으로 진화할 자리를 찾는다. 없으면 화면을 닫는다.
@@ -92,7 +125,11 @@ export function EvolutionScreen() {
     const night = isNight(worldState.time.gameHour)
     for (;;) {
       const slot = take()
-      if (slot === null) { closeAll(); return }
+      if (slot === null) {
+        useCinematicStore.getState().clear()
+        closeAll()
+        return
+      }
       const mon = save.party[slot]
       if (!mon) continue
       const evo = evolutionTarget(EvoClass.LEVEL, mon, tables.species.get(mon.species), {
@@ -102,57 +139,86 @@ export function EvolutionScreen() {
         holdEffect: mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect : undefined,
       })
       if (!evo) continue
+      useCinematicStore.getState().startEvolution(
+        {
+          species: mon.species,
+          form: mon.form,
+          gender: genderOf(mon.pid, tables.species.get(mon.species).genderRatio),
+          shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
+        },
+        {
+          species: evo.to,
+          form: mon.form,
+          gender: genderOf(mon.pid, tables.species.get(evo.to).genderRatio),
+          shiny: isShiny(mon.pid, mon.otId, mon.otSecretId),
+        },
+      )
       setStage({ kind: 'changing', slot, mon, evo })
       return
     }
   }, [tables, take, closeAll, mapId])
 
   /** 진화를 실제로 적용한다. 여기서만 세이브가 바뀐다 */
-  const apply = useCallback((s: Extract<Stage, { kind: 'changing' }>): void => {
-    if (!tables) return
-    const store = useSaveStore.getState()
-    const party = [...store.party]
-    const before = party[s.slot]
-    if (!before) { setStage({ kind: 'idle' }); return }
+  const apply = useCallback(
+    (s: Extract<Stage, { kind: 'changing' }>): void => {
+      if (!tables) return
+      const store = useSaveStore.getState()
+      const party = [...store.party]
+      const before = party[s.slot]
+      if (!before) {
+        useCinematicStore.getState().clear()
+        setStage({ kind: 'idle' })
+        return
+      }
 
-    const after = evolve(before, s.evo.to)
-    const grown = tables.species.get(s.evo.to)
-    const ppOf = (move: number): number =>
-      maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp)
-    const taught = learnMoves(after, movesOnEvolve(grown, after.level), ppOf)
-    party[s.slot] = taught.mon
+      const after = evolve(before, s.evo.to)
+      const grown = tables.species.get(s.evo.to)
+      const ppOf = (move: number): number =>
+        maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp)
+      const taught = learnMoves(after, movesOnEvolve(grown, after.level), ppOf)
+      party[s.slot] = taught.mon
 
-    const grownName = tables.names[s.evo.to] ?? `#${String(s.evo.to)}`
-    const lines = [
-      `축하합니다! ${withSubject(nameOf(before))} ${grownName}(으)로 진화했다!`,
-      ...taught.learned.map((m) =>
-        `${withTopic(nameOf(taught.mon))} 새로 ${tables.moveNames[m] ?? `#${String(m)}`}을(를) 배웠다!`),
-    ]
+      const grownName = tables.names[s.evo.to] ?? `#${String(s.evo.to)}`
+      const lines = [
+        `축하합니다! ${withSubject(nameOf(before))} ${grownName}(으)로 진화했다!`,
+        ...taught.learned.map(
+          (m) =>
+            `${withTopic(nameOf(taught.mon))} 새로 ${tables.moveNames[m] ?? `#${String(m)}`}을(를) 배웠다!`,
+        ),
+      ]
 
-    // 껍질몬. 몬스터볼 하나를 쓰고 파티에 빈자리가 있어야 한다
-    const ballPocket = tables.items.get(ITEM_POKE_BALL).pocket ?? 0
-    const hasBall = quantity(store.bag, ballPocket, ITEM_POKE_BALL) > 0
-    const shedinja = spawnsShedinja(s.evo.method) && party.length < PARTY_MAX && hasBall
-    if (shedinja) {
-      party.push({
-        ...taught.mon, species: SPECIES_SHEDINJA, nickname: null,
-        ball: ITEM_POKE_BALL, heldItem: 0, status: 'ok', statusTurns: 0,
-      })
-      lines.push(`${withSubject(tables.names[SPECIES_SHEDINJA] ?? '')} 나타났다!`)
-    }
+      // 껍질몬. 몬스터볼 하나를 쓰고 파티에 빈자리가 있어야 한다
+      const ballPocket = tables.items.get(ITEM_POKE_BALL).pocket ?? 0
+      const hasBall = quantity(store.bag, ballPocket, ITEM_POKE_BALL) > 0
+      const shedinja = spawnsShedinja(s.evo.method) && party.length < PARTY_MAX && hasBall
+      if (shedinja) {
+        party.push({
+          ...taught.mon,
+          species: SPECIES_SHEDINJA,
+          nickname: null,
+          ball: ITEM_POKE_BALL,
+          heldItem: 0,
+          status: 'ok',
+          statusTurns: 0,
+        })
+        lines.push(`${withSubject(tables.names[SPECIES_SHEDINJA] ?? '')} 나타났다!`)
+      }
 
-    useSaveStore.setState({ party })
-    if (shedinja) {
-      store.removeItem(ballPocket, ITEM_POKE_BALL, 1)
-      store.markSeen(SPECIES_SHEDINJA)
-      store.markCaught(SPECIES_SHEDINJA)
-    }
-    store.markSeen(s.evo.to)
-    store.markCaught(s.evo.to)
+      useSaveStore.setState({ party })
+      if (shedinja) {
+        store.removeItem(ballPocket, ITEM_POKE_BALL, 1)
+        store.markSeen(SPECIES_SHEDINJA)
+        store.markCaught(SPECIES_SHEDINJA)
+      }
+      store.markSeen(s.evo.to)
+      store.markCaught(s.evo.to)
 
-    pendingMoves.current = [...taught.pending]
-    setStage({ kind: 'done', slot: s.slot, to: s.evo.to, form: s.mon.form, lines, at: 0 })
-  }, [tables, nameOf])
+      pendingMoves.current = [...taught.pending]
+      useCinematicStore.getState().finishEvolution()
+      setStage({ kind: 'done', slot: s.slot, to: s.evo.to, form: s.mon.form, lines, at: 0 })
+    },
+    [tables, nameOf],
+  )
 
   // 표가 오면 첫 자리를 집는다
   useEffect(() => {
@@ -162,24 +228,39 @@ export function EvolutionScreen() {
   // 모습이 바뀌는 동안. 이 사이에 X를 누르면 멈춘다
   useEffect(() => {
     if (stage.kind !== 'changing') return
-    const at = setTimeout(() => { apply(stage) }, CHANGE_MS)
+    const at = setTimeout(() => {
+      apply(stage)
+    }, CHANGE_MS)
     timer.current = at
-    return () => { clearTimeout(at) }
+    return () => {
+      clearTimeout(at)
+    }
   }, [stage, apply])
 
   const cancel = useCallback((): void => {
     if (stage.kind !== 'changing') return
     if (timer.current) clearTimeout(timer.current)
+    useCinematicStore.getState().cancelEvolution()
     setStage({ kind: 'canceled', name: nameOf(stage.mon) })
   }, [stage, nameOf])
 
   /** 글 한 줄을 넘긴다 */
   const next = useCallback((): void => {
-    if (stage.kind === 'canceled') { setStage({ kind: 'idle' }); return }
+    if (stage.kind === 'canceled') {
+      setStage({ kind: 'idle' })
+      return
+    }
     if (stage.kind !== 'done') return
-    if (stage.at + 1 < stage.lines.length) { setStage({ ...stage, at: stage.at + 1 }); return }
+    if (stage.at + 1 < stage.lines.length) {
+      setStage({ ...stage, at: stage.at + 1 })
+      return
+    }
     const move = pendingMoves.current.shift()
-    if (move !== undefined) { setStage({ kind: 'forget', slot: stage.slot, move }); return }
+    if (move !== undefined) {
+      useCinematicStore.getState().clear()
+      setStage({ kind: 'forget', slot: stage.slot, move })
+      return
+    }
     setStage({ kind: 'idle' })
   }, [stage])
 
@@ -190,13 +271,6 @@ export function EvolutionScreen() {
 
   // ⚠️ **폼은 진화해도 그대로다** (PARITY §3.4). 도롱충이가 입고 있던 옷감이
   // 그대로 도롱마담의 옷감이라, 여기서 폼을 버리면 장면에서만 풀 옷감으로 바뀐다
-  const shown = stage.kind === 'changing' ? stage.mon.species
-    : stage.kind === 'done' ? stage.to : null
-  const form = stage.kind === 'changing' ? stage.mon.form
-    : stage.kind === 'done' ? stage.form : 0
-  const art = useAssetImage(
-    shown === null ? null : `data/pokemon/${spriteKey(shown, form, false)}_front.png`,
-  )
 
   const line = useMemo(() => {
     if (stage.kind === 'changing') return `어라!? ${withSubject(nameOf(stage.mon))} 모습이…!`
@@ -210,12 +284,14 @@ export function EvolutionScreen() {
   if (stage.kind === 'forget') {
     return (
       <ForgetMove
-        slot={stage.slot} move={stage.move} tables={tables}
+        slot={stage.slot}
+        move={stage.move}
+        tables={tables}
         onDone={() => {
           const move = pendingMoves.current.shift()
-          setStage(move !== undefined
-            ? { kind: 'forget', slot: stage.slot, move }
-            : { kind: 'idle' })
+          setStage(
+            move !== undefined ? { kind: 'forget', slot: stage.slot, move } : { kind: 'idle' },
+          )
         }}
       />
     )
@@ -224,9 +300,7 @@ export function EvolutionScreen() {
   return (
     <MenuScreen title="진화" foot={stage.kind === 'changing' ? 'X 그만둔다' : 'Z 넘기기'}>
       <div className={own.stage}>
-        <div className={stage.kind === 'changing' ? own.artPulse : own.art}>
-          {art !== null && <img src={art} alt="" className={own.image} />}
-        </div>
+        <div className={own.cinematicSpace} aria-hidden />
         <div className={own.line}>{line}</div>
       </div>
     </MenuScreen>
@@ -234,10 +308,17 @@ export function EvolutionScreen() {
 }
 
 /** 진화한 뒤 칸이 없어서 못 배운 기술 — 무엇을 지울지 묻는다 */
-function ForgetMove(
-  { slot, move, tables, onDone }:
-  { slot: number; move: number; tables: Tables; onDone: () => void },
-) {
+function ForgetMove({
+  slot,
+  move,
+  tables,
+  onDone,
+}: {
+  slot: number
+  move: number
+  tables: Tables
+  onDone: () => void
+}) {
   const party = useSaveStore((s) => s.party)
   const mon = party[slot]
   const [cursor, setCursor] = useState(0)
@@ -248,7 +329,11 @@ function ForgetMove(
   const pick = (i: number): void => {
     if (i < rows.length && mon) {
       const moves = [...mon.moves]
-      moves[i] = { move, pp: maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp), ppUps: 0 }
+      moves[i] = {
+        move,
+        pp: maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp),
+        ppUps: 0,
+      }
       const next = [...party]
       next[slot] = { ...mon, moves }
       useSaveStore.setState({ party: next })
@@ -257,10 +342,18 @@ function ForgetMove(
   }
 
   useMenuKeys({
-    up: () => { setCursor((c) => (c + count - 1) % count) },
-    down: () => { setCursor((c) => (c + 1) % count) },
-    confirm: () => { pick(cursor) },
-    cancel: () => { pick(rows.length) },
+    up: () => {
+      setCursor((c) => (c + count - 1) % count)
+    },
+    down: () => {
+      setCursor((c) => (c + 1) % count)
+    },
+    confirm: () => {
+      pick(cursor)
+    },
+    cancel: () => {
+      pick(rows.length)
+    },
   })
 
   return (
@@ -269,15 +362,23 @@ function ForgetMove(
         <div className={css.list}>
           <div className={css.hint}>{`${name}을(를) 배우려면 잊을 기술을 골라야 한다.`}</div>
           {rows.map((s, i) => (
-            <button key={`${String(i)}-${String(s.move)}`}
+            <button
+              key={`${String(i)}-${String(s.move)}`}
               className={i === cursor ? css.rowOn : css.row}
-              onClick={() => { pick(i) }}>
+              onClick={() => {
+                pick(i)
+              }}
+            >
               {i === cursor && <span className={css.caret} aria-hidden />}
               <span className={css.label}>{tables.moveNames[s.move] ?? `#${String(s.move)}`}</span>
             </button>
           ))}
-          <button className={cursor === rows.length ? css.rowOn : css.row}
-            onClick={() => { pick(rows.length) }}>
+          <button
+            className={cursor === rows.length ? css.rowOn : css.row}
+            onClick={() => {
+              pick(rows.length)
+            }}
+          >
             {cursor === rows.length && <span className={css.caret} aria-hidden />}
             <span className={css.label}>그만둔다</span>
           </button>

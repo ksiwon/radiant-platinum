@@ -11,6 +11,8 @@
 // 두 시점 다 크리티컬 댐프드로 따라간다. 즉시 붙이면 계단에서 화면이 튄다.
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
+import { distortionBridge } from '../world/distortion'
+import { surfaceVector } from './distortionSurface'
 
 const THIRD = { distance: 8, height: 4, damping: 5 }
 
@@ -31,6 +33,8 @@ const LOOK_AHEAD = 6
 const goal = new Vector3()
 const look = new Vector3()
 const free = new Vector3()
+const offset = new Vector3()
+const view = new Vector3()
 
 export const cameraSystem = {
   /**
@@ -53,6 +57,7 @@ export const cameraSystem = {
       ? worldState.player.position
       : free.set(at.x, worldState.player.position.y, at.z)
     const first = cam.mode === 'first'
+    const frame = distortionBridge.frame?.() ?? null
 
     if (first) {
       // 시선은 마우스가 정한다. yaw 0이 북쪽(−Z)이고 오른쪽으로 돌면 커진다
@@ -62,13 +67,19 @@ export const cameraSystem = {
       const fy = Math.sin(cam.pitch)
       // 눈은 수평으로만 앞으로 내민다. 위아래까지 따라가면 고개를 들 때 눈이
       // 뒤통수 밖으로 나가 제 모자가 화면에 걸린다
-      goal.set(p.x + Math.sin(cam.yaw) * EYE_FORWARD, p.y + EYE_HEIGHT,
-        p.z - Math.cos(cam.yaw) * EYE_FORWARD)
-      look.set(goal.x + fx * LOOK_AHEAD, goal.y + fy * LOOK_AHEAD, goal.z + fz * LOOK_AHEAD)
+      surfaceVector(
+        frame, Math.sin(cam.yaw) * EYE_FORWARD, EYE_HEIGHT,
+        -Math.cos(cam.yaw) * EYE_FORWARD, offset,
+      )
+      goal.copy(p).add(offset)
+      surfaceVector(frame, fx, fy, fz, view).multiplyScalar(LOOK_AHEAD)
+      look.copy(goal).add(view)
     } else {
-      goal.set(p.x, p.y + THIRD.height, p.z + THIRD.distance)
+      surfaceVector(frame, 0, THIRD.height, THIRD.distance, offset)
+      goal.copy(p).add(offset)
       look.copy(p)
     }
+    surfaceVector(frame, 0, 1, 0, cam.up)
 
     const t = 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
     cam.position.lerp(goal, t)

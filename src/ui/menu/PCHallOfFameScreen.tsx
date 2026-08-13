@@ -15,20 +15,27 @@
 // A가 「일반」과 「기술」을 오간다 (`textState ^= 1`).
 import { useEffect, useMemo, useState } from 'react'
 import { music } from '../../engine/audio/music'
-import { genderOf } from '../../engine/pokemon/instance'
-import { spriteKey } from '../../engine/pokemon/form'
+import { genderOf, isShiny } from '../../engine/pokemon/instance'
 import { monthText } from '../../engine/pokemon/memo'
 import {
-  entryAt, entryNumber, storedEntries, type HallOfFameMon,
+  entryAt,
+  entryNumber,
+  storedEntries,
+  type HallOfFameMon,
 } from '../../engine/world/hallOfFame'
-import { loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
+import {
+  loadMoveNames,
+  loadSpecies,
+  loadSpeciesNames,
+  type SpeciesTable,
+} from '../../data/gameData'
 import { fillMenuText, loadUiText, PC_HALL_OF_FAME_TEXT } from '../../data/uiText'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
+import { useHallOfFameStageStore } from '../../state/hallOfFameStageStore'
 import * as css from './pcHallOfFame.css'
 
 /**
@@ -36,9 +43,6 @@ import * as css from './pcHallOfFame.css'
  *
  * 격자가 아니다 — 가운데 위에 첫 마리, 그 좌우에 둘, 아래에 셋이 어긋나게 선다
  */
-const SPOTS: readonly (readonly [number, number])[] = [
-  [120, 56], [40, 56], [200, 56], [136, 112], [216, 112], [56, 112],
-]
 
 interface Tables {
   species: SpeciesTable
@@ -63,18 +67,49 @@ export function PCHallOfFameScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadSpecies(), loadSpeciesNames(locale), loadMoveNames(locale),
+      loadSpecies(),
+      loadSpeciesNames(locale),
+      loadMoveNames(locale),
       loadUiText('pcHallOfFame', locale),
       loadUiText('monthNames', locale).catch(() => [] as string[]),
-    ]).then(([species, names, moveNames, text, month]) => {
-      if (alive) setTables({ species, names, moveNames, text, month })
-    }).catch(() => { /* 글 없이는 이름표가 안 뜬다 */ })
-    return () => { alive = false }
+    ])
+      .then(([species, names, moveNames, text, month]) => {
+        if (alive) setTables({ species, names, moveNames, text, month })
+      })
+      .catch(() => {
+        /* 글 없이는 이름표가 안 뜬다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [locale])
 
   const shown = entryAt(record, entry)
   const mons = shown?.pokemon ?? []
   const mon = mons[Math.min(at, Math.max(0, mons.length - 1))]
+  useEffect(() => {
+    return () => {
+      useHallOfFameStageStore.getState().clear()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!shown) {
+      useHallOfFameStageStore.getState().clear()
+      return
+    }
+    useHallOfFameStageStore.getState().showArchive(
+      shown.pokemon.map((member) => ({
+        species: member.species,
+        form: member.form,
+        gender: tables
+          ? genderOf(member.pid, tables.species.get(member.species).genderRatio)
+          : undefined,
+        shiny: isShiny(member.pid, member.otId, member.otSecretId),
+      })),
+      at,
+    )
+  }, [shown, at, tables])
 
   // 커서가 앉은 마리가 운다 (`Sound_PlayPokemonCry`)
   useEffect(() => {
@@ -99,9 +134,17 @@ export function PCHallOfFameScreen() {
   useMenuKeys({
     left: older(false),
     right: newer,
-    up: () => { if (at - 1 < 0) older(true)(); else setAt(at - 1) },
-    down: () => { if (at + 1 >= mons.length) newer(); else setAt(at + 1) },
-    confirm: () => { setPage((p) => p ^ 1) },
+    up: () => {
+      if (at - 1 < 0) older(true)()
+      else setAt(at - 1)
+    },
+    down: () => {
+      if (at + 1 >= mons.length) newer()
+      else setAt(at + 1)
+    },
+    confirm: () => {
+      setPage((p) => p ^ 1)
+    },
     cancel: back,
   })
 
@@ -131,9 +174,6 @@ export function PCHallOfFameScreen() {
     >
       <div className={css.stage}>
         <div className={css.title}>{title}</div>
-        {mons.map((m, i) => (
-          <MonSprite key={i} mon={m} spot={SPOTS[i] ?? SPOTS[0]!} on={i === at} />
-        ))}
         <div className={css.info}>
           {page === 0 ? <General mon={mon} tables={tables} /> : <Moves mon={mon} tables={tables} />}
         </div>
@@ -142,21 +182,8 @@ export function PCHallOfFameScreen() {
   )
 }
 
-function MonSprite(
-  { mon, spot, on }: { mon: HallOfFameMon, spot: readonly [number, number], on: boolean },
-) {
-  const art = useAssetImage(`data/pokemon/${spriteKey(mon.species, mon.form, false)}_front.png`)
-  if (art === null) return null
-  return (
-    <img
-      src={art} alt="" className={on ? css.monOn : css.monOff}
-      style={{ left: `${String((spot[0] / 256) * 100)}%`, top: `${String((spot[1] / 192) * 100)}%` }}
-    />
-  )
-}
-
 /** 「일반」 — 별명/종족 ♂ Lv.n 과 어버이 */
-function General({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tables | null }) {
+function General({ mon, tables }: { mon: HallOfFameMon | undefined; tables: Tables | null }) {
   if (!mon || !tables) return null
   const text = (i: number): string => tables.text[i] ?? ''
   const speciesName = tables.names[mon.species] ?? ''
@@ -181,7 +208,7 @@ function General({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tabl
 }
 
 /** 「기술」 — 네 칸. 0번 칸에서 멈춘다 (`if (moves[i]) … else break`) */
-function Moves({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tables | null }) {
+function Moves({ mon, tables }: { mon: HallOfFameMon | undefined; tables: Tables | null }) {
   if (!mon || !tables) return null
   const shown: string[] = []
   for (const move of mon.moves) {
@@ -190,7 +217,9 @@ function Moves({ mon, tables }: { mon: HallOfFameMon | undefined, tables: Tables
   }
   return (
     <div className={css.moves}>
-      {shown.map((name, i) => <span key={i}>{name}</span>)}
+      {shown.map((name, i) => (
+        <span key={i}>{name}</span>
+      ))}
     </div>
   )
 }

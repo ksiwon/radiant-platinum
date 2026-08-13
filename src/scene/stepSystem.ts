@@ -185,7 +185,7 @@ export const stepSystem = {
     // 맵에 막 들어선 칸은 세지 않는다 — 원작도 이동이 끝난 자리에서만 센다
     if (first) return
 
-    // 파열된 세계는 칸이 바뀔 때마다 판·카메라·뛰는 자리·사건을 본다
+    // 깨어진 세계는 칸이 바뀔 때마다 판·카메라·뛰는 자리·사건을 본다
     // (`DistWorld_HandlePlayerMoved`, PARITY §6.10)
     if (distortionActive()) {
       distortionRebindPlatform(p.x, p.y, p.z)

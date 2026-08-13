@@ -13,7 +13,6 @@ import { fieldScripts } from '../../engine/script/field'
 import { useGameLocale } from '../../state/optionsStore'
 import { endFishing, fishing } from '../../scene/fishingSystem'
 import { useBattleStore } from '../../state/battleStore'
-import * as css from './fishingBox.css'
 import * as box from './messageBox.css'
 
 interface View {
@@ -73,18 +72,15 @@ export function FishingBox() {
   if (view === null) return null
   const text = view.result === null ? null : bank?.[FISHING_TEXT[view.result]] ?? null
 
+  // 낚싯대·찌·입질 표시는 플레이어와 함께 움직이는 3D 씬에서 그린다.
+  if (view.phase !== 'message' || text === null) return null
+
   return (
-    <>
-      {view.phase === 'wait' && <div className={css.float} aria-hidden>◦</div>}
-      {view.phase === 'bite' && <div className={css.bubble} role="status" aria-label="입질">!</div>}
-      {view.phase === 'message' && text !== null && (
-        <div className={box.frame}>
-          <div className={box.box}>
-            <div className={box.line}>{text}</div>
-            <span className={box.arrow} aria-hidden>▼</span>
-          </div>
-        </div>
-      )}
-    </>
+    <div className={box.frame}>
+      <div className={box.box}>
+        <div className={box.line}>{text}</div>
+        <span className={box.arrow} aria-hidden>▼</span>
+      </div>
+    </div>
   )
 }

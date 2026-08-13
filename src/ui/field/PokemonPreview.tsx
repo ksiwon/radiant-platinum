@@ -7,16 +7,12 @@
 // 같이 넘기는데 우리 그림 자료에는 성별 차이가 없다(`pokegra`가 앞모습 하나다).
 // 값은 받아 두기만 한다 — 크레세리아는 늘 암컷이라 눈에 보이는 차이가 없다
 import { usePreviewStore } from '../../state/previewStore'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
 import * as css from './pokemonPreview.css'
 
 export function PokemonPreview() {
   const species = usePreviewStore((s) => s.species)
-  const art = useAssetImage(species === null ? null : `data/pokemon/${String(species)}_front.png`)
   if (species === null) return null
   return (
-    <div className={css.frame}>
-      {art !== null && <img className={css.art} src={art} alt="" />}
-    </div>
+    <div className={css.frame} aria-hidden />
   )
 }

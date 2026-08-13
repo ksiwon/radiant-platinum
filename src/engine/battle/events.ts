@@ -157,6 +157,7 @@ export type BattleEvent =
       kind: 'switch'
       actor: Actor
       species: number | null
+      form?: number
       speciesName: string
       level: number
       gender: Gender
@@ -164,6 +165,13 @@ export type BattleEvent =
       condition: Condition
       /** 흔들기·날려버리기처럼 본인 의사와 무관하게 끌려나온 경우 */
       forced: boolean
+    }
+  | {
+      kind: 'form'
+      actor: Actor
+      species: number | null
+      speciesName: string
+      form: number
     }
   | {
       kind: 'move'

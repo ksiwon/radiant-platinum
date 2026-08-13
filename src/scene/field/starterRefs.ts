@@ -12,6 +12,8 @@ export const starterScene = {
   /** 커서가 떠 있는가. 원작은 글 두 줄을 다 찍은 뒤에 켠다 */
   cursorShown: false,
   /** 고른 자리 (0=왼쪽) */
+  /** ?? ??? ?? ??? 3D ?? ?? ???. */
+  confirming: false,
   pick: 0,
 }
 
@@ -22,4 +24,5 @@ export function resetStarterScene(): void {
   starterScene.cameraSince = 0
   starterScene.cursorShown = false
   starterScene.pick = 0
+  starterScene.confirming = false
 }

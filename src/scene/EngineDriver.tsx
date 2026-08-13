@@ -1,7 +1,7 @@
 // useFrame → 게임 루프 → 씬 동기화 → 렌더 (priority 1: 렌더를 우리가 소유)
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { Vector3, type PerspectiveCamera } from 'three'
+import { Quaternion, Vector3, type PerspectiveCamera } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { inputSystem } from '../engine/input/keyboard'
@@ -18,11 +18,15 @@ import { markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { spinBike } from './BikeModel'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
-import { battleStage, starterStage } from './battle/stageRefs'
+import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
+import { distortionBridge } from '../engine/world/distortion'
+import { surfaceHeading, surfaceQuaternion } from '../engine/actor/distortionSurface'
 
 let systemsRegistered = false
 const interpolated = new Vector3()
+const playerRotation = new Quaternion()
+const WORLD_UP = new Vector3(0, 1, 0)
 
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   const { gl, scene, camera } = useThree()
@@ -86,7 +90,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 플레이어 노드의 원점은 발밑(y=0) 기준이므로 보간값을 그대로 쓴다
       interpolated.copy(p.prevPosition).lerp(p.position, gameLoop.alpha)
       sceneRefs.player.position.copy(interpolated)
-      sceneRefs.player.rotation.y = p.facing
+      const frame = distortionBridge.frame?.() ?? null
+      const heading = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
+      surfaceQuaternion(frame, heading, playerRotation)
+      sceneRefs.player.quaternion.slerp(playerRotation, Math.min(1, delta * 12))
       // 1인칭에서는 자기 몸이 화면을 가린다. 눈이 머리 안쪽에 있어서
       // 안 끄면 얼굴 텍스처가 통째로 보인다
       sceneRefs.player.visible = worldState.camera.mode !== 'first'
@@ -95,7 +102,7 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     // 보행 포즈. 시뮬레이션이 아니라 표현이라 고정 스텝이 아닌 렌더 델타로 돈다 —
     // 60fps가 아니어도 위상 속도가 속도에 묶여 있어 발이 미끄러지지 않는다
     if (sceneRefs.playerRig) {
-      const speed = Math.hypot(p.velocity.x, p.velocity.z)
+      const speed = Math.hypot(p.velocity.x, p.velocity.y, p.velocity.z)
       // 턱을 넘는 중이면 그 진행을 넘긴다 — 걷기 대신 도약 자세가 나간다
       const hop = worldState.player.hop
       updateLocomotion(
@@ -112,13 +119,17 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     // (돌아왔을 때 제자리여야 한다) 그 값을 화면에 쓰지 않는다.
     // ⚠️ **화각도 같이 가져간다.** 배틀은 BDSP의 30°, 파트너 고르는 장면은
     // 원작의 44°다 — 필드(55°)로 두면 실측 크기의 포켓몬이 점이 된다
-    const shot = starterStage.active ? starterStage
-      : battleStage.active ? battleStage : worldState.camera
+    const shot = cinematicStage.active ? cinematicStage
+      : starterStage.active ? starterStage
+        : battleStage.active ? battleStage : worldState.camera
     state.camera.position.copy(shot.position)
+    state.camera.up.copy(cinematicStage.active || starterStage.active || battleStage.active
+      ? WORLD_UP : worldState.camera.up)
     state.camera.lookAt(shot.target)
     const lens = state.camera as PerspectiveCamera
-    const fov = starterStage.active ? starterStage.fov
-      : battleStage.active ? battleStage.fov : fieldFov.current
+    const fov = cinematicStage.active ? cinematicStage.fov
+      : starterStage.active ? starterStage.fov
+        : battleStage.active ? battleStage.fov : fieldFov.current
     if (lens.isPerspectiveCamera && lens.fov !== fov) {
       lens.fov = fov
       lens.updateProjectionMatrix()

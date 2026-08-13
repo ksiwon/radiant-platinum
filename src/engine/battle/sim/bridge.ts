@@ -150,6 +150,14 @@ export function romSpecies(name: string): number | null {
   return s.exists && s.num > 0 && s.num <= MAX_SPECIES ? s.num : null
 }
 
+export function romSpeciesForm(name: string): { species: number; form: number } | null {
+  const found = gen4.species.get(name)
+  if (!found.exists || found.num <= 0 || found.num > MAX_SPECIES) return null
+  const forms = FORM_IDS[found.num] ?? []
+  const form = forms.indexOf(found.id)
+  return { species: found.num, form: form < 0 ? 0 : form }
+}
+
 /** sim 기술 이름 → 롬 번호. 모르는 이름이면 null */
 export function romMove(name: string): number | null {
   const m = gen4.moves.get(name)

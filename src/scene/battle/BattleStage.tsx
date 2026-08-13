@@ -12,8 +12,14 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import {
-  BackSide, Box3, Color, Group, Mesh, MeshStandardMaterial,
-  type CanvasTexture, type Texture,
+  BackSide,
+  Box3,
+  Color,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  type CanvasTexture,
+  type Texture,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { worldState } from '../../state/worldState'
@@ -25,18 +31,35 @@ import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleStage, STAGE_ORIGIN } from './stageRefs'
+import { BattleBallEffects } from './BattleBallEffects'
+import { BattleTrainers } from './BattleTrainers'
+import { BattleWorldLabels } from './BattleWorldLabels'
+import { captureBodyScale } from './battleBallMotion'
 import { bodyColor } from './bodyColor'
 import { loadMonSprite, loadSpriteIndex, spriteFit } from './monSprite'
 import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './monModel'
 import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
+import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES } from '../../engine/battle/vfx'
 import {
-  PAIR_DIR, ShotDirector, SLOT, sampleShot, shotFor, type ShotName, type Side,
+  PAIR_DIR,
+  ShotDirector,
+  SLOT,
+  sampleShot,
+  shotFor,
+  type ShotName,
+  type Side,
 } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
-  BACK_DIR, TIME_LOOKS, backFill, blendLooks, makeBlobShadow, makeSkyTexture, type TimeLook,
+  BACK_DIR,
+  TIME_LOOKS,
+  backFill,
+  blendLooks,
+  makeBlobShadow,
+  makeSkyTexture,
+  type TimeLook,
 } from '../fx/sky'
 import { useAssetUrl } from '../../data/providers/useAssetUrl'
 
@@ -178,29 +201,37 @@ const MON_TALL = 1.2
  * `mine`이면 **뒷모습**이다 — 원작 문법 그대로 내 포켓몬은 등을 보이고 상대는
  * 앞을 본다. 그림이 따로 있으므로 여기서 뒤집지 않는다
  */
-function Slot(
-  { mon, form, look, slot, spot, other, mine, shadow, onBody }: {
-    mon: ViewMon | null
-    /**
-     * 어느 모습인가 (PARITY §3.4). 뷰가 아니라 **명단**이 들고 있다.
-     *
-     * ⚠️ **배틀 안에서 바뀌는 폼은 못 따라간다.** 날씨구슬 캐스퐁과 플라워기프트
-     * 체리버가 그렇다 — 규칙은 sim이 제대로 돌리지만(타입이 실제로 바뀐다) 그
-     * `-formechange`가 우리 뷰까지 안 올라온다. 리포트에 남는 폼은 다 맞는다
-     */
-    form: number
-    look: SpeciesLook | null
-    /** 이 발판의 자리 표기. 누가 때렸는지·맞았는지를 이걸로 가른다 */
-    slot: SlotId
-    spot: typeof MINE
-    /** 상대가 선 자리. 때리러 나가는 방향을 여기서 뽑는다 */
-    other: typeof MINE
-    mine: boolean
-    shadow: CanvasTexture | null
-    /** 몸이 바뀌면 알려 준다. 카메라가 큰 종 앞에서 물러나야 한다 */
-    onBody: (tall: number) => void
-  },
-) {
+function Slot({
+  mon,
+  form,
+  look,
+  slot,
+  spot,
+  other,
+  mine,
+  shadow,
+  onBody,
+}: {
+  mon: ViewMon | null
+  /**
+   * 어느 모습인가 (PARITY §3.4). 뷰가 아니라 **명단**이 들고 있다.
+   *
+   * ⚠️ **배틀 안에서 바뀌는 폼은 못 따라간다.** 날씨구슬 캐스퐁과 플라워기프트
+   * 체리버가 그렇다 — 규칙은 sim이 제대로 돌리지만(타입이 실제로 바뀐다) 그
+   * `-formechange`가 우리 뷰까지 안 올라온다. 리포트에 남는 폼은 다 맞는다
+   */
+  form: number
+  look: SpeciesLook | null
+  /** 이 발판의 자리 표기. 누가 때렸는지·맞았는지를 이걸로 가른다 */
+  slot: SlotId
+  spot: typeof MINE
+  /** 상대가 선 자리. 때리러 나가는 방향을 여기서 뽑는다 */
+  other: typeof MINE
+  mine: boolean
+  shadow: CanvasTexture | null
+  /** 몸이 바뀌면 알려 준다. 카메라가 큰 종 앞에서 물러나야 한다 */
+  onBody: (tall: number) => void
+}) {
   const body = useRef<Group>(null)
   const shade = useRef<Mesh>(null)
   /** 지금까지 본 제일 높은 자리와, 다음에 잴 시각 */
@@ -220,7 +251,7 @@ function Slot(
     grown.current = 0
     watch.current = 0
     if (species === null) return
-    void loadMonModel(species, form)
+    void loadMonModel(species, form, { gender: mon?.gender, shiny: mon?.shiny })
       .then((loaded) => {
         if (!alive) return null
         if (loaded) {
@@ -232,17 +263,20 @@ function Slot(
         onBody(0)
         // 모델이 없다 — 원작 도트로 떨어진다
         const key = spriteKey(species, form, false)
-        return Promise.all([loadSpriteIndex(), loadMonSprite(key, mine)])
-          .then(([idx, map]) => {
-            if (!alive) return
-            const box = idx.sprites[key]?.[mine ? 'back' : 'front']
-            setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
-          })
+        return Promise.all([loadSpriteIndex(), loadMonSprite(key, mine)]).then(([idx, map]) => {
+          if (!alive) return
+          const box = idx.sprites[key]?.[mine ? 'back' : 'front']
+          setArt({ map, ...spriteFit(box, idx.size, MON_TALL) })
+        })
       })
-      .catch(() => { /* 둘 다 못 받으면 아래에서 도형으로 떨어진다 */ })
-    return () => { alive = false }
+      .catch(() => {
+        /* 둘 다 못 받으면 아래에서 도형으로 떨어진다 */
+      })
+    return () => {
+      alive = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [species, form, mine])
+  }, [species, form, mine, mon?.gender, mon?.shiny])
 
   /**
    * 지금 트는 동작. 뷰가 바뀌는 순간에만 갈아 끼운다.
@@ -270,8 +304,28 @@ function Slot(
   // 옆의 짝도 같이 앞으로 나간다
   const cast = useBattleStore((s) => s.view?.lastMove ?? null)
   const struck = useBattleStore((s) => s.view?.lastHit ?? null)
-  useEffect(() => { if (cast?.by === slot) lunge.current = 1 }, [cast, slot])
-  useEffect(() => { if (struck?.slot === slot) flinch.current = 1 }, [struck, slot])
+  useEffect(() => {
+    if (cast?.by === slot) lunge.current = 1
+  }, [cast, slot])
+  useEffect(() => {
+    if (struck?.slot === slot) flinch.current = 1
+  }, [struck, slot])
+  const lastBall = useBattleStore((s) => s.view?.lastBall ?? null)
+  const capture = useRef<{
+    seq: number
+    started: number
+    shakes: number
+    caught: boolean
+  } | null>(null)
+  useEffect(() => {
+    if (!lastBall || lastBall.slot !== slot || capture.current?.seq === lastBall.seq) return
+    capture.current = {
+      seq: lastBall.seq,
+      started: performance.now() / 1000,
+      shakes: lastBall.shakes,
+      caught: lastBall.caught,
+    }
+  }, [lastBall, slot])
 
   // 물리냐 특수냐. **BDSP 모델이 그 둘을 따로 갖고 있다**(`ba20` · `ba21`) —
   // 롬의 기술 데이터가 정하는 값이라 여기서 짐작하지 않는다
@@ -299,24 +353,36 @@ function Slot(
         const isSpecial = moves.byId.get(id)?.category === 'special'
         special.current = isSpecial
         // 폼은 아직 첫 판만 세우므로 0이다 (§16.6)
-        const at = species === null
-          ? null
-          : timing.at(species, 0, isSpecial ? 'special' : 'physical')
+        const at =
+          species === null ? null : timing.at(species, 0, isSpecial ? 'special' : 'physical')
         hitAt.current = at ?? LUNGE / 2
       })
-      .catch(() => { special.current = false })
-    return () => { alive = false }
+      .catch(() => {
+        special.current = false
+      })
+    return () => {
+      alive = false
+    }
   }, [cast, slot, species])
 
   useFrame((_, delta) => {
     const g = body.current
     if (!g) return
     const want = mon && !fainted ? 1 : 0
-    shown.current += Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
+    shown.current +=
+      Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     const t = shown.current
+    const captureNow = capture.current
+    const caughtScale = captureNow
+      ? captureBodyScale(
+          performance.now() / 1000 - captureNow.started,
+          captureNow.shakes,
+          captureNow.caught,
+        )
+      : 1
     // ⚠️ **3D 모델은 크기를 여기서 안 만진다.** 배율은 BDSP가 종마다 적어 둔
     // 값이고(`monModel`), 등판할 때 작아졌다 커지는 것은 도트의 문법이다
-    g.scale.setScalar(model ? 1 : 0.6 + 0.4 * t)
+    g.scale.setScalar((model ? 1 : 0.6 + 0.4 * t) * caughtScale)
     // 살짝 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다.
     // **위로만 뜬다** — 아래로 내려가면 발이 땅에 파묻힌다.
     // 모델은 대기 동작이 이미 숨을 쉬므로 안 흔든다
@@ -327,14 +393,15 @@ function Slot(
     // 뒷걸음질이 아니라 깜빡임으로 보이므로 돌아오는 길도 이어서 민다
     lunge.current = Math.max(0, lunge.current - delta / LUNGE)
     const k = 1 - lunge.current
-    const reach = lunge.current > 0 ? Math.sin(peakAt(k, hitAt.current / LUNGE) * Math.PI) * 0.42 : 0
+    const reach =
+      lunge.current > 0 ? Math.sin(peakAt(k, hitAt.current / LUNGE) * Math.PI) * 0.42 : 0
 
     // 맞으면 흔들리며 깜빡인다
     flinch.current = Math.max(0, flinch.current - delta / FLINCH)
     const hurt = flinch.current
     const shake = hurt > 0 ? Math.sin(hurt * Math.PI * 8) * 0.22 * hurt : 0
     const blink = hurt > 0 && Math.floor((1 - hurt) * FLINCH_BLINKS * 2) % 2 === 1
-    g.visible = t > 0.01 && !blink
+    g.visible = t > 0.01 && caughtScale > 0.01 && !blink
 
     g.position.x = (other.x - spot.x) * reach + shake
     // ⚠️ **발이 땅에 닿아야 한다.** 예전엔 여기에 `spot.scale * 0.72`를 더해
@@ -352,15 +419,21 @@ function Slot(
     g.rotation.y = model
       ? Math.atan2(other.x - spot.x, other.z - spot.z)
       : Math.atan2(
-        battleStage.position.x - STAGE_ORIGIN.x - spot.x,
-        battleStage.position.z - STAGE_ORIGIN.z - spot.z,
-      )
+          battleStage.position.x - STAGE_ORIGIN.x - spot.x,
+          battleStage.position.z - STAGE_ORIGIN.z - spot.z,
+        )
 
     // 동작을 넘긴다. 때리고 맞는 것이 우선이고 그 타이머가 다 되면 대기로 돈다
-    const now: MotionName = t < 0.99 ? 'enter'
-      : flinch.current > 0 ? 'damage'
-        : lunge.current > 0 ? (special.current ? 'special' : 'physical')
-          : 'wait'
+    const now: MotionName =
+      t < 0.99
+        ? 'enter'
+        : flinch.current > 0
+          ? 'damage'
+          : lunge.current > 0
+            ? special.current
+              ? 'special'
+              : 'physical'
+            : 'wait'
     if (model) {
       if (now !== motion.current) {
         motion.current = now
@@ -378,7 +451,10 @@ function Slot(
           // 서 있어서 그대로 쓰면 −496이 나오고, 그러면 "더 커졌나"가 영영
           // 거짓이라 카메라가 한 번도 안 물러난다 — 실제로 그랬다
           const top = new Box3().setFromObject(model.root, true).max.y - STAGE_ORIGIN.y - GROUND
-          if (top > grown.current + 0.02) { grown.current = top; onBody(top) }
+          if (top > grown.current + 0.02) {
+            grown.current = top
+            onBody(top)
+          }
         }
       }
     }
@@ -391,8 +467,8 @@ function Slot(
     // 그림자까지 같이 깜빡이면 땅이 번쩍인다
     const s = shade.current
     if (s) {
-      s.visible = t > 0.01
-      s.scale.setScalar(t)
+      s.visible = t > 0.01 && caughtScale > 0.01
+      s.scale.setScalar(t * caughtScale)
     }
   })
 
@@ -404,7 +480,12 @@ function Slot(
         그림자만 진다. 원판을 깔면 무대가 아니라 좌대 위의 인형이 된다
       */}
       {shadow && (
-        <mesh ref={shade} visible={false} position={[0, GROUND + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh
+          ref={shade}
+          visible={false}
+          position={[0, GROUND + 0.01, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
           <planeGeometry args={[spot.radius * 1.05, spot.radius * 1.05]} />
           <meshBasicMaterial map={shadow} transparent depthWrite={false} />
         </mesh>
@@ -429,7 +510,9 @@ function Slot(
           <mesh castShadow>
             <capsuleGeometry args={[0.42, height, 6, 16]} />
             <meshStandardMaterial
-              color={look?.color ?? '#8b9099'} roughness={0.62} metalness={0.02}
+              color={look?.color ?? '#8b9099'}
+              roughness={0.62}
+              metalness={0.02}
             />
           </mesh>
         )}
@@ -527,14 +610,20 @@ export function BattleStage() {
       .then((table) => {
         if (alive) setColors(() => (id: number) => bodyColor(table.byId.get(id)?.color ?? -1))
       })
-      .catch(() => { /* 못 받으면 아래에서 회색으로 떨어진다 */ })
-    return () => { alive = false }
+      .catch(() => {
+        /* 못 받으면 아래에서 회색으로 떨어진다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [])
 
   // 카메라를 가져간다. EngineDriver가 이 깃발을 보고 오버월드 카메라를 양보한다
   useEffect(() => {
     battleStage.active = true
-    return () => { battleStage.active = false }
+    return () => {
+      battleStage.active = false
+    }
   }, [])
 
   // 큰 종 앞에서는 카메라가 물러난다. 둘 중 큰 쪽이 화면을 정한다
@@ -545,7 +634,8 @@ export function BattleStage() {
   useBattleCamera(cameraFit(arena, Math.max(tall.p1, tall.p2)) * (doubles ? 1.35 : 1))
 
   /** 그 개체의 폼. 명단이 임자다 — 뷰는 폼을 안 들고 있다 */
-  const formOf = (mon: ViewMon | null): number => (mon ? roster[mon.key]?.form ?? 0 : 0)
+  const formOf = (mon: ViewMon | null): number =>
+    mon ? (mon.form ?? roster[mon.key]?.form ?? 0) : 0
 
   const look = (mon: ViewMon | null, key: string): SpeciesLook | null => {
     if (!mon) return null
@@ -570,13 +660,20 @@ export function BattleStage() {
       <hemisphereLight args={[timeLook.skyColor, timeLook.groundColor, timeLook.ambient]} />
       <directionalLight position={[8, 14, 9]} intensity={timeLook.sun} color={timeLook.sunColor} />
       {/* 카메라 쪽 필. 이게 없으면 몸통의 그늘진 쪽이 배경에 묻는다 */}
-      <directionalLight position={[-7, 6, 12]} intensity={timeLook.fill} color={timeLook.skyColor} />
+      <directionalLight
+        position={[-7, 6, 12]}
+        intensity={timeLook.fill}
+        color={timeLook.skyColor}
+      />
       {/*
         해 반대편 되비침. 오버월드와 같은 이유다 — 광원 둘이 다 카메라 쪽에
         있으면 무대의 안쪽 면과 포켓몬의 뒤통수가 검게 뭉친다 (`fx/sky`)
       */}
       <directionalLight
-        position={[...BACK_DIR]} intensity={backFill(timeLook)} color={timeLook.skyColor} />
+        position={[...BACK_DIR]}
+        intensity={backFill(timeLook)}
+        color={timeLook.skyColor}
+      />
 
       {/*
         무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다
@@ -584,6 +681,21 @@ export function BattleStage() {
       <Suspense fallback={<Flat look={timeLook} />}>
         <Arena look={timeLook} file={arena.file} />
       </Suspense>
+      <BattleAtmosphere
+        view={view}
+        spotAt={(id) => {
+          const p = spotOf(id)
+          return [p.x, p.z]
+        }}
+      />
+      <BattleBallEffects
+        view={view}
+        spotAt={(id) => {
+          const p = spotOf(id)
+          return [p.x, p.z]
+        }}
+      />
+      <BattleTrainers />
 
       {/*
         네 자리를 늘 세운다 (PARITY §2.2). 싱글에서는 `b` 둘이 빈 발판이라
@@ -608,6 +720,15 @@ export function BattleStage() {
           }}
         />
       ))}
+      {view && (
+        <BattleWorldLabels
+          view={view}
+          spotAt={(id) => {
+            const p = spotOf(id)
+            return [p.x, p.z]
+          }}
+        />
+      )}
       {/*
         기술 연출. 박자가 `MOVE_FRAMES`만큼 쉬는 그 자리에 한 번 돈다 —
         틀은 롬의 기술 데이터가, 색은 타입이 정한다 (`engine/battle/vfx`)
@@ -617,7 +738,12 @@ export function BattleStage() {
         원작의 그 항목이 하는 일이 바로 이것이고, 그래서 배틀이 빨라진다
       */}
       {scene === SHOW_SCENE && (
-        <MoveVfx spotAt={(id) => { const p = spotOf(id); return [p.x, p.z] }} />
+        <MoveVfx
+          spotAt={(id) => {
+            const p = spotOf(id)
+            return [p.x, p.z]
+          }}
+        />
       )}
     </group>
   )
@@ -682,9 +808,10 @@ function useBattleCamera(fit: number): void {
   })
 
   useFrame((_, delta) => {
-    const frame = scene === SHOW_SCENE
-      ? director.current.advance(delta)
-      : sampleShot(shotFor('establish', 'p1'), 0)
+    const frame =
+      scene === SHOW_SCENE
+        ? director.current.advance(delta)
+        : sampleShot(shotFor('establish', 'p1'), 0)
     // 흔들림은 방향을 여기서 정한다 — 엔진이 난수를 들고 있을 이유가 없다
     const jitter = frame.shake === 0 ? 0 : Math.sin(performance.now() / 17) * frame.shake
     // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 샷은 풀밭(반지름 12m) 기준으로
@@ -704,4 +831,3 @@ function useBattleCamera(fit: number): void {
 
 /** 설정의 "배틀 애니메이션"에서 **보는** 쪽 값 (`options_menu` 뱅크 13번) */
 const SHOW_SCENE = 0
-

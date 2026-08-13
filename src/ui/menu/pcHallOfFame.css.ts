@@ -14,7 +14,7 @@ export const stage = style({
   margin: '0 auto',
   borderRadius: 10,
   overflow: 'hidden',
-  background: 'radial-gradient(120% 90% at 50% 20%, #1d2c50 0%, #0b1122 70%, #05070e 100%)',
+  background: 'rgba(8, 14, 28, 0.16)',
   boxShadow: 'inset 0 0 0 2px rgba(120, 160, 230, 0.35)',
   // ⚠️ **글자 크기를 `min(100%, …)`로 잡으면 안 된다.** font-size의 `100%`는
   // 너비가 아니라 **부모 글자 크기**라, 무대가 아무리 커도 16px의 한 조각이

@@ -6,8 +6,15 @@
 // 초기 청크에 715 kB가 실린다.
 import { create } from 'zustand'
 import {
-  loadItems, loadMoves, loadSpecies, loadTrainerClasses, loadTrainerNames, loadTrainers,
-  type ItemTable, type SpeciesLookup, type SpeciesTable,
+  loadItems,
+  loadMoves,
+  loadSpecies,
+  loadTrainerClasses,
+  loadTrainerNames,
+  loadTrainers,
+  type ItemTable,
+  type SpeciesLookup,
+  type SpeciesTable,
 } from '../data/gameData'
 import type { Item, Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
@@ -30,7 +37,13 @@ import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
 import type { BattleController, BattleFinish, BattleStep } from '../engine/battle/sim/controller'
 import type { SideMon, SideSpec } from '../engine/battle/sim/session'
 import {
-  createWild, fillPp, genderOf, PARTY_MAX, statsOf, type PokemonInstance, type Status,
+  createWild,
+  fillPp,
+  genderOf,
+  PARTY_MAX,
+  statsOf,
+  type PokemonInstance,
+  type Status,
 } from '../engine/pokemon/instance'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { journalBeatTrainer, journalWildBattle } from '../scene/journal'
@@ -47,10 +60,7 @@ import { dexSet, playerTrainer, useSaveStore } from './saveStore'
 import { worldState } from './worldState'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
-type ControllerItems = NonNullable<
-  Parameters<typeof BattleController['start']>[0]['items']
->
-
+type ControllerItems = NonNullable<Parameters<(typeof BattleController)['start']>[0]['items']>
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
@@ -120,6 +130,10 @@ interface BattleState {
   kind: BattleKind
   /** 상대 트레이너 표시 이름("체육관 관장 동관"). 야생이면 null */
   foeName: string | null
+  /** Active opponent trainer identity, retained for the 3D battle stage. */
+  trainerId: number | null
+  trainerClass: number | null
+
   /**
    * 이기면 받을 상금. 야생이면 0.
    *
@@ -291,10 +305,7 @@ function ready(mon: PokemonInstance, species: Species, key: string): SideMon {
  * 여기 뒀는데, 그러면 져도 다음 배틀에서 저절로 멀쩡해져서 진 것이 아무 일도
  * 아니게 된다. 회복은 포켓몬센터가 한다 (`scene/pokecenter`)
  */
-function ensureParty(
-  table: SpeciesLookup,
-  pp: (move: number) => number,
-): PokemonInstance[] {
+function ensureParty(table: SpeciesLookup, pp: (move: number) => number): PokemonInstance[] {
   const save = useSaveStore.getState()
   let party = save.party
 
@@ -302,8 +313,11 @@ function ensureParty(
   {
     const species = table.get(STARTER)
     const mon = createWild({
-      species, level: 5, rng: Math.random,
-      otId: save.trainer.id, otSecretId: save.trainer.secretId,
+      species,
+      level: 5,
+      rng: Math.random,
+      otId: save.trainer.id,
+      otSecretId: save.trainer.secretId,
     })
     mon.hp = statsOf(mon, species).hp
     party = [fillPp(mon, pp)]
@@ -317,6 +331,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   phase: 'off',
   kind: 'wild',
   foeName: null,
+  trainerId: null,
+  trainerClass: null,
   prize: 0,
   view: null,
   truth: null,
@@ -333,47 +349,63 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   shiftAsk: null,
 
   startWild: async (wild) => {
-    await open(set, get, 'wild', null, 0, ({ species, pp }) => {
-      // ⚠️ **개체는 기본형으로 만들고 모습을 나중에 적는다.** 폼 칸을 넘기면
-      // `createWild`가 그 칸의 번호(로토무 히트면 503)를 종족으로 박는다.
-      // 원작도 `Pokemon_InitWith` 뒤에 `AddWildMonToParty`가 폼을 적는다
-      const base = species.get(wild.species)
-      // 선두 특성이 성격·성별·가진 도구까지 민다 (PARITY §1.22). 싱크로는
-      // 성격을, 헤롱헤롱바디는 반대 성별을, 복안은 도구 확률을 올린다
-      const lead = encounters.mods.lead
-      const foe = createWild({
-        species: base, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
-        bias: {
-          nature: wildNature(lead, Math.random),
-          gender: wildGender(lead, Math.random),
-        },
-        compoundEyes: leadHas(lead, LeadAbility.COMPOUND_EYES),
-      })
-      foe.form = wild.form ?? 0
-      if (wild.fateful === true) foe.origin = { ...foe.origin, fateful: true }
-      const foeSpecies = species.of(foe)
-      foe.hp = statsOf(foe, foeSpecies).hp
-      // ⚠️ **배회는 그때그때 만드는 개체가 아니다** (PARITY §6.3). 성격값과
-      // 개체값이 세이브에 적혀 있고, 남은 체력과 상태이상도 지난번 그대로다 —
-      // 여기서 덮어써야 도망친 그 마리가 같은 마리로 다시 선다
-      const at = wild.roamer ?? null
-      if (at !== null) {
-        const saved = useSaveStore.getState().roamers[at]
-        if (saved?.active) {
-          foe.pid = saved.pid
-          foe.ivs = saved.ivs
-          foe.status = saved.status
-          foe.hp = Math.min(saved.hp, statsOf(foe, foeSpecies).hp)
+    set({ trainerId: null, trainerClass: null })
+    await open(
+      set,
+      get,
+      'wild',
+      null,
+      0,
+      ({ species, pp }) => {
+        // ⚠️ **개체는 기본형으로 만들고 모습을 나중에 적는다.** 폼 칸을 넘기면
+        // `createWild`가 그 칸의 번호(로토무 히트면 503)를 종족으로 박는다.
+        // 원작도 `Pokemon_InitWith` 뒤에 `AddWildMonToParty`가 폼을 적는다
+        const base = species.get(wild.species)
+        // 선두 특성이 성격·성별·가진 도구까지 민다 (PARITY §1.22). 싱크로는
+        // 성격을, 헤롱헤롱바디는 반대 성별을, 복안은 도구 확률을 올린다
+        const lead = encounters.mods.lead
+        const foe = createWild({
+          species: base,
+          level: wild.level,
+          rng: Math.random,
+          otId: 0,
+          otSecretId: 0,
+          bias: {
+            nature: wildNature(lead, Math.random),
+            gender: wildGender(lead, Math.random),
+          },
+          compoundEyes: leadHas(lead, LeadAbility.COMPOUND_EYES),
+        })
+        foe.form = wild.form ?? 0
+        if (wild.fateful === true) foe.origin = { ...foe.origin, fateful: true }
+        const foeSpecies = species.of(foe)
+        foe.hp = statsOf(foe, foeSpecies).hp
+        // ⚠️ **배회는 그때그때 만드는 개체가 아니다** (PARITY §6.3). 성격값과
+        // 개체값이 세이브에 적혀 있고, 남은 체력과 상태이상도 지난번 그대로다 —
+        // 여기서 덮어써야 도망친 그 마리가 같은 마리로 다시 선다
+        const at = wild.roamer ?? null
+        if (at !== null) {
+          const saved = useSaveStore.getState().roamers[at]
+          if (saved?.active) {
+            foe.pid = saved.pid
+            foe.ivs = saved.ivs
+            foe.status = saved.status
+            foe.hp = Math.min(saved.hp, statsOf(foe, foeSpecies).hp)
+          }
         }
-      }
-      roamerMet = at
-      return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }
-    }, undefined, wild.roamer == null ? undefined : { roamer: true })
+        roamerMet = at
+        return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }
+      },
+      undefined,
+      wild.roamer == null ? undefined : { roamer: true },
+    )
   },
 
   startTrainer: async (trainerId, options) => {
     const [table, names, classes] = await Promise.all([
-      loadTrainers(), loadTrainerNames(gameLocale()), loadTrainerClasses(gameLocale()),
+      loadTrainers(),
+      loadTrainerNames(gameLocale()),
+      loadTrainerClasses(gameLocale()),
     ])
     const trainer = table.get(trainerId)
     metTrainer = trainerId
@@ -387,6 +419,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
 
     // 트레이너가 들고 나오는 회복 도구. 개수도 종류도 롬 기록 그대로다 —
+    set({ trainerId, trainerClass: trainer.class })
     // 라이벌은 상처약, 관장은 좋은상처약, 사천왕·챔피언은 회복약이다
     let items: ControllerItems | undefined
     if (trainer.items.length > 0) {
@@ -404,15 +437,26 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     const able = useSaveStore.getState().party.filter((m) => !m.isEgg && m.hp > 0).length
     const doubles = trainer.double && trainer.party.length >= 2 && able >= 2
 
-    await open(set, get, 'trainer', label, prize, ({ species, pp }) => ({
-      name: label || '상대',
-      team: trainer.party.map((entry, i) => {
-        const sp = species.get(entry.species)
-        const mon = trainerMonToInstance(entry, sp, trainerId, i)
-        mon.hp = statsOf(mon, sp).hp
-        return ready(fillPp(mon, pp), sp, foeKey(i))
+    await open(
+      set,
+      get,
+      'trainer',
+      label,
+      prize,
+      ({ species, pp }) => ({
+        name: label || '상대',
+        team: trainer.party.map((entry, i) => {
+          const sp = species.get(entry.species)
+          const mon = trainerMonToInstance(entry, sp, trainerId, i)
+          mon.hp = statsOf(mon, sp).hp
+          return ready(fillPp(mon, pp), sp, foeKey(i))
+        }),
       }),
-    }), trainer.ai, options, items, doubles)
+      trainer.ai,
+      options,
+      items,
+      doubles,
+    )
   },
 
   answerShift: async (change) => {
@@ -432,9 +476,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (!controller || get().phase !== 'running') return
     const at = get().atSlot
     const pending = [...get().pending.filter((a) => (a.at ?? 0) !== at), { ...action, at }]
-    const left = controller.chooseSlots.filter(
-      (i) => !pending.some((a) => (a.at ?? 0) === i),
-    )
+    const left = controller.chooseSlots.filter((i) => !pending.some((a) => (a.at ?? 0) === i))
     if (left.length > 0) {
       // 아직 물어볼 자리가 남았다. 화면만 다음 자리로 옮긴다
       set(turnState(controller, pending))
@@ -455,10 +497,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // 트레이너의 포켓몬에는 볼을 못 던진다. 화면도 버튼을 안 보여주지만,
     // 규칙은 화면이 아니라 여기가 갖고 있어야 한다
     if (get().kind !== 'wild') return
-    await advance(set, get, (c) => c.throwBall(ball, {
-      // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
-      caughtBefore: false, inWater: false, darkness: false,
-    }))
+    await advance(set, get, (c) =>
+      c.throwBall(ball, {
+        // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
+        caughtBefore: false,
+        inWater: false,
+        darkness: false,
+      }),
+    )
   },
 
   useItem: async (id, key, moveSlot) => {
@@ -491,10 +537,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       grantFriendship(data, key)
       const pending = [...get().pending.filter((a) => (a.at ?? 0) !== at), armed.action]
       set({ events: [...get().events, ...armed.events] })
-      const left = controller.chooseSlots.filter(
-        (i) => !pending.some((a) => (a.at ?? 0) === i),
-      )
-      if (left.length > 0) { set(turnState(controller, pending)); return }
+      const left = controller.chooseSlots.filter((i) => !pending.some((a) => (a.at ?? 0) === i))
+      if (left.length > 0) {
+        set(turnState(controller, pending))
+        return
+      }
       await advance(set, get, (c) => c.chooseTurn(pending))
       return
     }
@@ -600,7 +647,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           journalWildBattle({
             result: kept ? 'caught' : 'defeated',
             species: kept?.mon.species ?? foe?.species ?? 0,
-            gender: kept ? genderOf(kept.mon.pid, kept.species.genderRatio) : foe?.gender ?? 'genderless',
+            gender: kept
+              ? genderOf(kept.mon.pid, kept.species.genderRatio)
+              : (foe?.gender ?? 'genderless'),
             timeOfDay: timeOfDayForHour(worldState.time.gameHour),
             playtimeMs: save.trainer.playtimeMs,
           })
@@ -610,8 +659,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           mapId: world.mapId,
           hp: foe?.hp ?? 0,
           status: foe?.status ?? 'ok',
-          outcome: get().outcome === 'caught' ? 'caught'
-            : get().outcome === 'win' ? 'win' : 'other',
+          outcome:
+            get().outcome === 'caught' ? 'caught' : get().outcome === 'win' ? 'win' : 'other',
         })
       }
       // 이긴 트레이너를 노트에 적는다 (PARITY §7.4). 관장·사천왕·챔피언은
@@ -636,9 +685,21 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // 배틀 화면이 닫히면서 바로 이 화면으로 넘어간다
     if (useEvolutionStore.getState().pending.length > 0) useMenuStore.getState().open('evolution')
     set({
-      phase: 'off', kind: 'wild', foeName: null, prize: 0,
-      view: null, truth: null, actions: [], party: [], canSpendTurn: false,
-      events: [], roster: {}, outcome: null, shiftAsk: null,
+      phase: 'off',
+      kind: 'wild',
+      foeName: null,
+      prize: 0,
+      trainerId: null,
+      trainerClass: null,
+      view: null,
+      truth: null,
+      actions: [],
+      party: [],
+      canSpendTurn: false,
+      events: [],
+      roster: {},
+      outcome: null,
+      shiftAsk: null,
     })
   },
 }))
@@ -765,12 +826,14 @@ let battleTerrain: TerrainId = Terrain.PLAIN
  */
 function dressBurmy(party: readonly PokemonInstance[]): PokemonInstance[] {
   const cloak = burmyCloak(battleTerrain)
-  return party.map((mon, i) => (
-    mon.species === SPECIES_BURMY && !mon.isEgg
-      && participants.has(partyKey(i)) && mon.form !== cloak
+  return party.map((mon, i) =>
+    mon.species === SPECIES_BURMY &&
+    !mon.isEgg &&
+    participants.has(partyKey(i)) &&
+    mon.form !== cloak
       ? { ...mon, form: cloak }
-      : mon
-  ))
+      : mon,
+  )
 }
 
 /** 나온 적이 있어야 경험치를 나눠 가진다 */
@@ -822,7 +885,12 @@ function grantRewards(
   if (!table || !foe) return []
 
   // 쓰러진 참가자는 4세대에서도 경험치를 못 받는다
-  const down = new Set(controller.results('p1').filter((r) => r.fainted).map((r) => r.key))
+  const down = new Set(
+    controller
+      .results('p1')
+      .filter((r) => r.fainted)
+      .map((r) => r.key),
+  )
   const alive = [...participants].filter((k) => !down.has(k))
   if (!alive.length) return []
 
@@ -843,7 +911,11 @@ function grantRewards(
     const reward = applyReward(mon, table.of(mon), gain, foeSpecies.ev)
     // 레벨업 기술은 **여기서 실제로 넣는다.** 배틀이 끝난 뒤로 미루면 다음
     // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다
-    const taught = learnMoves(reward.mon, reward.levelUps.flatMap((l) => l.moves), ppOf)
+    const taught = learnMoves(
+      reward.mon,
+      reward.levelUps.flatMap((l) => l.moves),
+      ppOf,
+    )
     party[index] = taught.mon
     if (reward.levelUps.length > 0) leveledUp.add(index)
     out.push({
@@ -891,10 +963,23 @@ async function open(
 ): Promise<void> {
   if (get().phase !== 'off') return
   set({
-    phase: 'loading', kind, foeName, prize,
-    view: null, truth: null, actions: [], party: [], canSpendTurn: false,
-    doubles: false, atSlot: 0, pending: [],
-    events: [], roster: {}, outcome: null, error: null, shiftAsk: null,
+    phase: 'loading',
+    kind,
+    foeName,
+    prize,
+    view: null,
+    truth: null,
+    actions: [],
+    party: [],
+    canSpendTurn: false,
+    doubles: false,
+    atSlot: 0,
+    pending: [],
+    events: [],
+    roster: {},
+    outcome: null,
+    error: null,
+    shiftAsk: null,
   })
 
   try {
@@ -913,9 +998,9 @@ async function open(
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
     // ⚠️ **밟고 선 칸도 본다.** 원작 `CalcTerrain`이 그렇다 — 무대 고르기와
     // 같은 잣대이고(`arenaFor`), 도롱마담 옷감이 이 값에서 나온다
-    const here = world.grid?.behaviorAtWorld(
-      worldState.player.position.x, worldState.player.position.z,
-    ) ?? null
+    const here =
+      world.grid?.behaviorAtWorld(worldState.player.position.x, worldState.player.position.z) ??
+      null
     battleTerrain = terrainOf(here, mapById(world.mapId)?.battleBg ?? -1)
     speciesTable = species
     itemTable = bank
@@ -927,7 +1012,11 @@ async function open(
     const roster: Record<string, RosterEntry> = {}
     const team = party.map((mon, i) => {
       roster[partyKey(i)] = {
-        side: 'p1', species: mon.species, form: mon.form, nickname: mon.nickname, level: mon.level,
+        side: 'p1',
+        species: mon.species,
+        form: mon.form,
+        nickname: mon.nickname,
+        level: mon.level,
       }
       return ready(mon, species.of(mon), partyKey(i))
     })
@@ -941,7 +1030,11 @@ async function open(
     const foe = buildFoe({ species, pp })
     foe.team.forEach((m, i) => {
       roster[foeKey(i)] = {
-        side: 'p2', species: m.mon.species, form: m.mon.form, nickname: null, level: m.mon.level,
+        side: 'p2',
+        species: m.mon.species,
+        form: m.mon.form,
+        nickname: null,
+        level: m.mon.level,
       }
     })
 
@@ -960,7 +1053,8 @@ async function open(
       // 시합규칙 「교체」는 트레이너전에만 뜻이 있다 — 야생은 다음 마리가 없다.
       // ⚠️ 더블에는 안 걸린다. 원작의 그 설정은 1대1 전용이다
       ...(kind === 'trainer' && !doubles && useOptionsStore.getState().battleRule === 0
-        ? { shift: true } : {}),
+        ? { shift: true }
+        : {}),
     })
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다
@@ -971,12 +1065,14 @@ async function open(
     // 한 걸음 앞서 나간다 — 고치지 않으면 첫 타를 맞을 때까지 게이지만
     // 만피로 거짓말을 한다
     const met = roamerMet
-    const events = met === null ? step.events
-      : step.events.map((e) => (
-        e.kind === 'switch' && e.actor.side === 'p2'
-          ? { ...e, condition: { ...e.condition, ...foeVitals(met, e.condition.maxHp) } }
-          : e
-      ))
+    const events =
+      met === null
+        ? step.events
+        : step.events.map((e) =>
+            e.kind === 'switch' && e.actor.side === 'p2'
+              ? { ...e, condition: { ...e.condition, ...foeVitals(met, e.condition.maxHp) } }
+              : e,
+          )
     trackParticipants(events)
     trackDex(events, roster)
     set({
@@ -996,7 +1092,12 @@ async function open(
     // 야생도 트레이너도 안 열리는 것을 사람이 눈으로 먼저 찾아냈고, 로그에도
     // 화면에도 이유가 한 줄도 없었다. 이유는 반드시 어딘가에 남는다
     console.error('배틀을 못 열었다', e)
-    set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
+    set({
+      phase: 'off',
+      trainerId: null,
+      trainerClass: null,
+      error: e instanceof Error ? e.message : String(e),
+    })
   }
 }
 

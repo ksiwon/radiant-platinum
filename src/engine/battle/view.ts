@@ -10,7 +10,13 @@ import type { BattleEvent, BoostStat, Condition, Effectiveness, SideId, SlotId }
 import { SLOTS, slotId } from './events'
 
 export const BOOST_STATS: readonly BoostStat[] = [
-  'atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion',
+  'atk',
+  'def',
+  'spa',
+  'spd',
+  'spe',
+  'accuracy',
+  'evasion',
 ]
 
 export type Boosts = Record<BoostStat, number>
@@ -30,6 +36,7 @@ export interface ViewMon {
   key: string
   /** 롬 종족 번호. 모델·한국어 이름·도감이 전부 이걸로 돈다 */
   species: number | null
+  form?: number
   speciesName: string
   level: number
   gender: Gender
@@ -85,7 +92,21 @@ export interface BattleView {
    * `seq`가 필요한 이유는 `lastMove`와 같다 — 연타 기술은 같은 값이 이어서 오고,
    * 번호가 없으면 두 번째 타격이 조용하다
    */
-  lastHit: { slot: SlotId; level: Effectiveness | 'normal'; crit: boolean; seq: number } | null
+  lastHit: {
+    slot: SlotId
+    level: Effectiveness | 'normal'
+    crit: boolean
+    amount: number
+    seq: number
+  } | null
+  /** Most recent capture attempt, retained long enough for the 3D stage to play it once. */
+  lastBall: {
+    slot: SlotId
+    ball: number
+    shakes: number
+    caught: boolean
+    seq: number
+  } | null
 }
 
 const EMPTY: ReadonlySet<string> = new Set()
@@ -99,6 +120,7 @@ export function emptyView(doubles = false): BattleView {
     doubles,
     active: { p1a: null, p1b: null, p2a: null, p2b: null },
     weather: null,
+    lastBall: null,
     sideConditions: { p1: EMPTY_MAP, p2: EMPTY_MAP },
     field: EMPTY,
     ended: false,
@@ -146,11 +168,7 @@ function stack(
 }
 
 /** 한 마리만 바꾼 새 뷰. zustand가 변화를 감지해야 하므로 전부 새 객체로 만든다 */
-function patch(
-  view: BattleView,
-  slot: SlotId,
-  change: (mon: ViewMon) => ViewMon,
-): BattleView {
+function patch(view: BattleView, slot: SlotId, change: (mon: ViewMon) => ViewMon): BattleView {
   const cur = view.active[slot]
   if (!cur) return view
   return { ...view, active: { ...view.active, [slot]: change(cur) } }
@@ -197,6 +215,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         side: e.actor.side,
         key: e.actor.name,
         species: e.species,
+        form: e.form ?? 0,
         speciesName: e.speciesName,
         level: e.level,
         gender: e.gender,
@@ -212,12 +231,22 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       return { ...view, active: { ...view.active, [e.actor.slot]: mon } }
     }
 
+    case 'form':
+      return patch(view, e.actor.slot, (mon) => ({
+        ...mon,
+        species: e.species,
+        speciesName: e.speciesName,
+        form: e.form,
+      }))
+
     case 'damage': {
       const hurt = patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
+      const previousHp = view.active[e.actor.slot]?.hp ?? e.condition.hp
+      const amount = Math.max(0, previousHp - e.condition.hp)
       if (e.hit === undefined) return hurt
       return {
         ...hurt,
-        lastHit: { slot: e.actor.slot, ...e.hit, seq: (view.lastHit?.seq ?? 0) + 1 },
+        lastHit: { slot: e.actor.slot, ...e.hit, amount, seq: (view.lastHit?.seq ?? 0) + 1 },
       }
     }
 
@@ -272,7 +301,17 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
     // **재생기가 접어 만든 화면은 영영 안 끝난 상태**로 남는다. 담금질에서
     // 그렇게 여섯 판이 어긋났다 (`soak.test.ts`)
     case 'ball':
-      return e.caught ? { ...view, ended: true } : view
+      return {
+        ...view,
+        ended: e.caught || view.ended,
+        lastBall: {
+          slot: e.actor.slot,
+          ball: e.ball,
+          shakes: e.shakes,
+          caught: e.caught,
+          seq: (view.lastBall?.seq ?? 0) + 1,
+        },
+      }
 
     case 'escape':
       return e.success ? { ...view, ended: true } : view

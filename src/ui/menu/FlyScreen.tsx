@@ -11,10 +11,21 @@
 // (`unlockOnMapEntry`).
 import { useEffect, useState } from 'react'
 import { spawnWarp } from '../../engine/map/spawns'
-import { world } from '../../engine/map/world'
 import {
-  cellAt, flySpotAt, FLY_SPOTS, GRID, gridX, gridY, GRID_MAX_X, GRID_MAX_Z,
-  GRID_MIN_X, GRID_MIN_Z, NO_LANDMARK, SHAPE_SIZE, unlockedHidden, type TownMapCell,
+  cellAt,
+  flySpotAt,
+  FLY_SPOTS,
+  GRID,
+  gridX,
+  gridY,
+  GRID_MAX_X,
+  GRID_MAX_Z,
+  GRID_MIN_X,
+  GRID_MIN_Z,
+  NO_LANDMARK,
+  SHAPE_SIZE,
+  unlockedHidden,
+  type TownMapCell,
 } from '../../engine/map/townMap'
 import { fieldScripts } from '../../engine/script/field'
 import { loadTownMap } from '../../data/gameData'
@@ -29,6 +40,7 @@ import { MenuScreen } from './MenuScreen'
 import { useMenuKeys } from './useMenuKeys'
 import { roamersFlew } from '../../scene/roamers'
 import { journalFlew } from '../../scene/journal'
+import { beginFlyTransition } from '../../scene/flyTransition'
 import * as own from './flyScreen.css'
 import { ZOOM, ZOOM_IN } from './flyScreen.css'
 
@@ -63,8 +75,12 @@ export function FlyScreen() {
         setNotes(text)
         setNames(places)
       })
-      .catch(() => { /* 이름 없이도 지도는 뜬다 */ })
-    return () => { alive = false }
+      .catch(() => {
+        /* 이름 없이도 지도는 뜬다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [locale])
 
   // 커서를 갈 수 있는 첫 곳에 세운다. 아무 데도 못 가면 떡잎마을 자리다
@@ -97,7 +113,7 @@ export function FlyScreen() {
     roamersFlew()
     // 노트에 「…로 날아갔다!」 (PARITY §7.4)
     journalFlew(target.to)
-    world.pending = target
+    beginFlyTransition(target)
     closeAll()
   }
 
@@ -108,7 +124,9 @@ export function FlyScreen() {
     right: move(1, 0),
     // 원작은 아래 화면이 늘 확대판이다. 우리는 화면이 하나라 Tab으로 오간다 —
     // 도로 이름을 읽기에는 확대 쪽이 낫고, 어디로 갈지 고르기에는 전체가 낫다
-    tab: () => { setZoomed((z) => !z) },
+    tab: () => {
+      setZoomed((z) => !z)
+    },
     confirm: fly,
     cancel: back,
   })
@@ -124,73 +142,80 @@ export function FlyScreen() {
     >
       <div className={own.stage}>
         <div className={own.viewport}>
-        <div
-          className={own.map}
-          style={zoomed
-            ? {
-              transform: `scale(${String(ZOOM_IN)})`,
-              // 커서를 가운데 두고 키운다 — 확대하면 보고 있던 자리가 밖으로
-              // 밀려나는 것이 제일 답답하다
-              transformOrigin: `${String(px(gridX(at.x)))}px ${String(px(gridY(at.z)))}px`,
+          <div
+            className={own.map}
+            style={
+              zoomed
+                ? {
+                    transform: `scale(${String(ZOOM_IN)})`,
+                    // 커서를 가운데 두고 키운다 — 확대하면 보고 있던 자리가 밖으로
+                    // 밀려나는 것이 제일 답답하다
+                    transformOrigin: `${String(px(gridX(at.x)))}px ${String(px(gridY(at.z)))}px`,
+                  }
+                : undefined
             }
-            : undefined}
-        >
-          {sheet !== null && <img className={own.sheet} src={sheet} alt="" />}
+          >
+            {sheet !== null && <img className={own.sheet} src={sheet} alt="" />}
 
-          {FLY_SPOTS.map((s, i) => {
-            const [w, h] = SHAPE_SIZE[s.shape] ?? [GRID, GRID]
-            const lit = (flySpots & (1 << s.spawn)) !== 0
-            return (
-              <span
-                key={`${String(s.spawn)}/${String(i)}`}
-                className={own.mark[lit ? (s.city ? 'city' : 'town') : 'locked']}
-                style={{
-                  left: px(gridX(s.x) + s.dx),
-                  top: px(gridY(s.z) + s.dy),
-                  width: px(w),
-                  height: px(h),
-                }}
-                onPointerEnter={() => { setAt({ x: s.x, z: s.z }) }}
-                onClick={fly}
-              />
-            )
-          })}
+            {FLY_SPOTS.map((s, i) => {
+              const [w, h] = SHAPE_SIZE[s.shape] ?? [GRID, GRID]
+              const lit = (flySpots & (1 << s.spawn)) !== 0
+              return (
+                <span
+                  key={`${String(s.spawn)}/${String(i)}`}
+                  className={own.mark[lit ? (s.city ? 'city' : 'town') : 'locked']}
+                  style={{
+                    left: px(gridX(s.x) + s.dx),
+                    top: px(gridY(s.z) + s.dy),
+                    width: px(w),
+                    height: px(h),
+                  }}
+                  onPointerEnter={() => {
+                    setAt({ x: s.x, z: s.z })
+                  }}
+                  onClick={fly}
+                />
+              )
+            })}
 
-          {/* 지금 서 있는 자리. 어디서 나는지가 보여야 어디로 갈지가 읽힌다 */}
-          {(() => {
-            const home = FLY_SPOTS.find((s) => s.map === mapId)
-            if (!home) return null
-            return (
-              <span
-                className={own.here}
-                style={{
-                  left: px(gridX(home.x) + 2), top: px(gridY(home.z) + 2),
-                  width: px(3), height: px(3),
-                }}
-              />
-            )
-          })()}
+            {/* 지금 서 있는 자리. 어디서 나는지가 보여야 어디로 갈지가 읽힌다 */}
+            {(() => {
+              const home = FLY_SPOTS.find((s) => s.map === mapId)
+              if (!home) return null
+              return (
+                <span
+                  className={own.here}
+                  style={{
+                    left: px(gridX(home.x) + 2),
+                    top: px(gridY(home.z) + 2),
+                    width: px(3),
+                    height: px(3),
+                  }}
+                />
+              )
+            })()}
 
-          <span
-            className={own.cursor}
-            style={{
-              left: px(gridX(at.x)) - ZOOM,
-              top: px(gridY(at.z)) - ZOOM,
-              width: px(GRID),
-              height: px(GRID),
-            }}
-          />
-
-        </div>
+            <span
+              className={own.cursor}
+              style={{
+                left: px(gridX(at.x)) - ZOOM,
+                top: px(gridY(at.z)) - ZOOM,
+                width: px(GRID),
+                height: px(GRID),
+              }}
+            />
+          </div>
           <div className={own.caption}>
-          {/* 이름도 원작 글이다 (`TEXT_BANK_TOWN_MAP`) — 칸마다 이름이 붙어 있다 */}
+            {/* 이름도 원작 글이다 (`TEXT_BANK_TOWN_MAP`) — 칸마다 이름이 붙어 있다 */}
             {/* 이름은 지역명 표, 아래 한 줄은 타운맵 뱅크의 설명이다 —
                 원작도 이름과 설명을 다른 표에서 가져온다 */}
-            <span className={own.captionName}>{cell ? names[cell.label] ?? '' : ''}</span>
+            <span className={own.captionName}>{cell ? (names[cell.label] ?? '') : ''}</span>
             <span className={own.captionSub}>
               {cell && cell.landmark !== NO_LANDMARK
-                ? notes[cell.landmark] ?? ''
-                : cell ? notes[cell.area] ?? '' : ''}
+                ? (notes[cell.landmark] ?? '')
+                : cell
+                  ? (notes[cell.area] ?? '')
+                  : ''}
             </span>
             {spot && (
               <span className={own.captionFly}>

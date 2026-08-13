@@ -7,18 +7,23 @@ import { Mesh, type MeshStandardMaterial, type Group } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
 import { BikeModel } from './BikeModel'
+import { FieldActionEffects } from './FieldActionEffects'
 import { sceneRefs } from './sceneRefs'
 import { useAssetUrl } from '../data/providers/useAssetUrl'
 
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
+import { useSaveStore } from '../state/saveStore'
+import { playerModelPath } from './playerModelPath'
 const ALT_OUTFIT = ['hair2', 'shoes2']
 
 export function PlayerModel() {
   const groupRef = useRef<Group>(null)
   const normRef = useRef<Group>(null)
   // 주소를 Provider에서 받는다 — 공개판에서는 OPFS Blob URL이다 (IMPORT.md §7).
+  const gender = useSaveStore((state) => state.trainer.gender)
+  const modelPath = playerModelPath(gender)
   // 세션 내내 사는 모델이라 참조를 안 놓는다 (`useAssetUrl` 머리말)
-  const gltf = useLoader(GLTFLoader, useAssetUrl('models/dawn.glb'))
+  const gltf = useLoader(GLTFLoader, useAssetUrl(modelPath))
 
   useEffect(() => {
     gltf.scene.traverse((o) => {
@@ -43,7 +48,7 @@ export function PlayerModel() {
     const r = normalizeModel(normRef.current, gltf.scene, PLAYER_HEIGHT)
     if (import.meta.env.DEV) {
       console.info(
-        `[model] dawn.glb 원본 ${r.nativeHeight.toFixed(3)} → ${PLAYER_HEIGHT}m (×${r.scale.toFixed(4)})`,
+        `[model] ${modelPath} 원본 ${r.nativeHeight.toFixed(3)} → ${PLAYER_HEIGHT}m (×${r.scale.toFixed(4)})`,
       )
     }
 
@@ -56,7 +61,7 @@ export function PlayerModel() {
       console.warn('[model] 보행 리그를 만들지 못했다 — 필요한 본이 없다. 바인드 포즈로 둔다')
     }
     return () => { sceneRefs.playerRig = null }
-  }, [gltf])
+  }, [gltf, modelPath])
 
   useEffect(() => {
     sceneRefs.player = groupRef.current
@@ -71,6 +76,7 @@ export function PlayerModel() {
       </group>
       {/* 자전거는 정규화 밖이다 — 번들 단위 그대로고 발밑이 원점이다 */}
       <Suspense fallback={null}><BikeModel /></Suspense>
+      <FieldActionEffects bodyRef={normRef} />
     </group>
   )
 }

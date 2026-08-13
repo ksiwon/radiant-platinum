@@ -11,17 +11,15 @@
 // ⚠️ **친밀도가 종족 기본값이 아니라 120이다.** 규칙은 `breeding.ts`가 갖고,
 // 여기는 그 함수를 부르기만 한다
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { loadPokeIcons, loadSpeciesNames } from '../../data/gameData'
-import type { PokeIcons } from '../../data/schema'
+import { loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
 import { hatch } from '../../engine/pokemon/breeding'
+import { genderOf, isShiny } from '../../engine/pokemon/instance'
 import { mapById } from '../../engine/map/world'
 import { useSessionStore } from '../../state/sessionStore'
 import { useHatchStore } from '../../state/hatchStore'
 import { useGameLocale } from '../../state/optionsStore'
+import { useCinematicStore } from '../../state/cinematicStore'
 import { useSaveStore } from '../../state/saveStore'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
-import { pokeIcon } from './pokeIcon'
-import { spriteKey } from '../../engine/pokemon/form'
 import { withSubject } from '../korean'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
@@ -35,7 +33,7 @@ type Stage = 'shaking' | 'born'
 export function HatchScreen() {
   const locale = useGameLocale()
   const [names, setNames] = useState<string[] | null>(null)
-  const [icons, setIcons] = useState<PokeIcons | undefined>(undefined)
+  const [species, setSpecies] = useState<SpeciesTable | null>(null)
   const [stage, setStage] = useState<Stage>('shaking')
   const slot = useHatchStore((s) => s.slot)
   const close = useHatchStore((s) => s.close)
@@ -45,19 +43,40 @@ export function HatchScreen() {
   useEffect(() => {
     let alive = true
     loadSpeciesNames(locale)
-      .then((got) => { if (alive) setNames(got) })
-      .catch(() => { /* 이름 없이도 장면은 돈다 */ })
-    loadPokeIcons()
-      .then((got) => { if (alive) setIcons(got) })
-      .catch(() => { /* 아이콘 없이도 돈다 */ })
-    return () => { alive = false }
+      .then((got) => {
+        if (alive) setNames(got)
+      })
+      .catch(() => {
+        /* 이름 없이도 장면은 돈다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [locale])
+
+  useEffect(() => {
+    let alive = true
+    void loadSpecies()
+      .then((got) => {
+        if (alive) setSpecies(got)
+      })
+      .catch(() => {
+        /* ?? ???? ??? ?? ?? */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   /** 알을 실제로 깬다. 여기서만 세이브가 바뀐다 */
   const born = useCallback((): void => {
     const store = useSaveStore.getState()
     const at = store.party[slot]
-    if (!at || !at.isEgg) { setStage('born'); return }
+    if (!at || !at.isEgg) {
+      useCinematicStore.getState().finishHatch()
+      setStage('born')
+      return
+    }
     const next = [...store.party]
     // 만난 자리는 **깬 자리**다. 맵 번호가 아니라 지역명 번호를 넘긴다
     next[slot] = hatch(at, mapById(useSessionStore.getState().mapId)?.label ?? 0)
@@ -65,31 +84,48 @@ export function HatchScreen() {
     store.markSeen(at.species)
     store.markCaught(at.species)
     setStage('born')
+    useCinematicStore.getState().finishHatch()
   }, [slot])
 
   useEffect(() => {
     if (slot < 0 || stage !== 'shaking') return
     const timer = setTimeout(born, SHAKE_MS)
-    return () => { clearTimeout(timer) }
+    return () => {
+      clearTimeout(timer)
+    }
   }, [slot, stage, born])
 
   // 자리가 바뀌면 처음부터
-  useEffect(() => { if (slot >= 0) setStage('shaking') }, [slot])
+  useEffect(() => {
+    if (slot < 0) {
+      useCinematicStore.getState().clear()
+      return
+    }
+    const at = useSaveStore.getState().party[slot]
+    setStage('shaking')
+    if (at)
+      useCinematicStore.getState().startHatch({
+        species: at.species,
+        form: at.form,
+        gender: species ? genderOf(at.pid, species.get(at.species).genderRatio) : undefined,
+        shiny: isShiny(at.pid, at.otId, at.otSecretId),
+      })
+  }, [slot, species])
+
+  useEffect(
+    () => () => {
+      useCinematicStore.getState().clear()
+    },
+    [],
+  )
 
   const done = useCallback((): void => {
     if (stage !== 'born') return
+    useCinematicStore.getState().clear()
     close()
   }, [stage, close])
 
   useMenuKeys({ confirm: done, cancel: done }, stage === 'born')
-
-  // ⚠️ **알 그림은 `pl_otherpoke`에서 온다.** `pl_pokegra`는 494종(0~493)뿐이라
-  // 알 칸이 없다 — 한동안 아이콘을 키워 쓰다가 §3.4에서 그쪽을 뽑으면서 제
-  // 그림이 생겼다. 흔들리는 동안에는 여전히 아이콘이다 (작게 까딱거려야 한다)
-  const key = mon ? spriteKey(mon.species, mon.form, false) : String(EGG_SPECIES)
-  const art = useAssetImage(
-    stage === 'shaking' ? null : `data/pokemon/${key}_front.png`,
-  )
 
   const line = useMemo(() => {
     if (stage === 'shaking') return '어라!?'
@@ -102,18 +138,9 @@ export function HatchScreen() {
   return (
     <MenuScreen title="알" foot={stage === 'born' ? 'Z 넘기기' : ''}>
       <div className={own.stage}>
-        <div className={stage === 'shaking' ? own.artPulse : own.art}>
-          {stage === 'shaking'
-            ? <div style={pokeIcon(icons, EGG_SPECIES, ICON_PX)} aria-hidden />
-            : art !== null && <img src={art} alt="" className={own.image} />}
-        </div>
+        <div className={own.cinematicSpace} aria-hidden />
         <div className={own.line}>{line}</div>
       </div>
     </MenuScreen>
   )
 }
-
-/** `SPECIES_EGG`. 아이콘 표(496칸)의 494번이 알이다 */
-const EGG_SPECIES = 494
-/** 아이콘을 키우는 크기. 32픽셀짜리라 도트가 살아 보이는 선까지만 */
-const ICON_PX = 160

@@ -12,12 +12,18 @@ import { loadDialogueBank } from '../../data/gameData'
 import { loadGenericNames, pickName } from '../../data/genericNames'
 import { fillMenuText, INTRO_TEXT, NAMING_TEXT, UI_BANK } from '../../data/uiText'
 import {
-  INFO_CHOICES, infoLines, INTRO, RIVAL_NAME_CHOICES, type IntroStep,
+  INFO_CHOICES,
+  infoLines,
+  INTRO,
+  RIVAL_NAME_CHOICES,
+  type IntroStep,
 } from '../../engine/intro/beats'
 import { music } from '../../engine/audio/music'
 import { OPENING_SONG } from '../../engine/audio/songIds'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
+import { useSessionStore } from '../../state/sessionStore'
+import { useIntroStageStore } from '../../state/introStageStore'
 import { textSpeedFrames, useGameLocale } from '../../state/optionsStore'
 import { startNewGame } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
@@ -41,6 +47,7 @@ type Stage =
 
 export function IntroScreen() {
   const navigate = useNavigate()
+  const mountStage = useSessionStore((state) => state.mountStage)
   const [bank, setBank] = useState<string[]>([])
   const [naming, setNaming] = useState<string[]>([])
   const [generic, setGeneric] = useState<string[]>([])
@@ -58,6 +65,31 @@ export function IntroScreen() {
   const [ready, setReady] = useState(false)
   const printer = useRef<MessagePrinter | null>(null)
   const slots = useRef(new MessageSlots())
+  useEffect(() => {
+    mountStage()
+    useIntroStageStore.getState().start()
+    return () => {
+      useIntroStageStore.getState().clear()
+    }
+  }, [mountStage])
+
+  useEffect(() => {
+    const visual = useIntroStageStore.getState()
+    const selectedGender =
+      stage.kind === 'gender' ? (cursor === 0 ? 'boy' : 'girl') : boy ? 'boy' : 'girl'
+    visual.setGender(selectedGender)
+    if (stage.kind === 'pokeBall') visual.show(stage.opened ? 'buneary' : 'ball')
+    else if (stage.kind === 'gender' || stage.kind === 'genderConfirm') visual.show('gender')
+    else if ((stage.kind === 'nameEntry' || stage.kind === 'nameConfirm') && stage.who === 'player')
+      visual.show('player')
+    else if (
+      stage.kind === 'rivalChoice' ||
+      ((stage.kind === 'nameEntry' || stage.kind === 'nameConfirm') && stage.who === 'rival') ||
+      (stage.kind === 'say' && stage.at >= 9)
+    )
+      visual.show('rival')
+    else visual.show('rowan')
+  }, [stage, cursor, boy])
   /**
    * 이번 프레임에 A를 눌렀는가.
    *
@@ -85,14 +117,22 @@ export function IntroScreen() {
    * 흘러 들어온다** — 타이틀이 나갈 때 곡을 안 끄기 때문이다(끄면 필드로
    * 들어갈 때 사이가 정적이 된다)
    */
-  useEffect(() => { void music.play(OPENING_SONG) }, [])
+  useEffect(() => {
+    void music.play(OPENING_SONG)
+  }, [])
 
   useEffect(() => {
     const CONFIRM = new Set(['Space', 'KeyZ', 'Enter'])
-    const down = (e: KeyboardEvent): void => { if (CONFIRM.has(e.code)) holding.current = true }
-    const up = (e: KeyboardEvent): void => { if (CONFIRM.has(e.code)) holding.current = false }
+    const down = (e: KeyboardEvent): void => {
+      if (CONFIRM.has(e.code)) holding.current = true
+    }
+    const up = (e: KeyboardEvent): void => {
+      if (CONFIRM.has(e.code)) holding.current = false
+    }
     // 창 밖으로 나가면 뗀 것으로 친다 — 안 그러면 돌아왔을 때 계속 눌린 상태다
-    const blur = (): void => { holding.current = false }
+    const blur = (): void => {
+      holding.current = false
+    }
     window.addEventListener('keydown', down, true)
     window.addEventListener('keyup', up, true)
     window.addEventListener('blur', blur)
@@ -109,13 +149,19 @@ export function IntroScreen() {
       loadDialogueBank(locale, UI_BANK.intro),
       loadDialogueBank(locale, UI_BANK.naming),
       loadGenericNames(locale),
-    ]).then(([intro, name, names]) => {
-      if (!alive) return
-      setBank(intro)
-      setNaming(name)
-      setGeneric(names)
-    }).catch(() => { /* 글을 못 받으면 빈 화면이 뜬다 */ })
-    return () => { alive = false }
+    ])
+      .then(([intro, name, names]) => {
+        if (!alive) return
+        setBank(intro)
+        setNaming(name)
+        setGeneric(names)
+      })
+      .catch(() => {
+        /* 글을 못 받으면 빈 화면이 뜬다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [locale])
 
   /**
@@ -124,9 +170,10 @@ export function IntroScreen() {
    * 끝의 새 쪽 표지(CR·FF)는 떼어 낸다. 그것은 "버튼을 기다렸다가 창을 닫아라"는
    * 뜻이지 새 쪽이 아니다 — 그대로 두면 마지막에 빈 창이 한 번 더 뜬다
    */
-  const line = useCallback((at: number): string =>
-    fillMenuText(bank[at] ?? '', [player, rival]).replace(/[\r\f]+$/, ''),
-  [bank, player, rival])
+  const line = useCallback(
+    (at: number): string => fillMenuText(bank[at] ?? '', [player, rival]).replace(/[\r\f]+$/, ''),
+    [bank, player, rival],
+  )
 
   // ── 인쇄기 ────────────────────────────────────────────────────────────────
   /** 지금 창에 올릴 글. 없으면 null */
@@ -136,14 +183,20 @@ export function IntroScreen() {
         const step = INTRO[stage.at]
         return step?.kind === 'say' ? line(step.line) : null
       }
-      case 'infoMenu': return line(INTRO_TEXT.anythingElse)
-      case 'infoLines': return line(stage.lines[stage.index] ?? INTRO_TEXT.anythingElse)
+      case 'infoMenu':
+        return line(INTRO_TEXT.anythingElse)
+      case 'infoLines':
+        return line(stage.lines[stage.index] ?? INTRO_TEXT.anythingElse)
       // 볼이 열린 뒤의 말("우리 인간은 포켓몬과…")은 **다음 박자**가 찍는다.
       // 여기서 같이 띄우면 같은 줄이 두 번 나온다
-      case 'pokeBall': return line(stage.nagged ? INTRO_TEXT.wrongButton : INTRO_TEXT.havePokeBall)
-      case 'gender': return line(INTRO_TEXT.genderAsk)
-      case 'genderConfirm': return line(stage.boy ? INTRO_TEXT.confirmBoy : INTRO_TEXT.confirmGirl)
-      case 'rivalChoice': return line(INTRO_TEXT.rivalNameAsk)
+      case 'pokeBall':
+        return line(stage.nagged ? INTRO_TEXT.wrongButton : INTRO_TEXT.havePokeBall)
+      case 'gender':
+        return line(INTRO_TEXT.genderAsk)
+      case 'genderConfirm':
+        return line(stage.boy ? INTRO_TEXT.confirmBoy : INTRO_TEXT.confirmGirl)
+      case 'rivalChoice':
+        return line(INTRO_TEXT.rivalNameAsk)
       case 'nameEntry':
         return stage.who === 'player'
           ? (naming[NAMING_TEXT.player] ?? line(INTRO_TEXT.nameAsk))
@@ -156,9 +209,16 @@ export function IntroScreen() {
   }, [stage, line, naming, boy])
 
   useEffect(() => {
-    if (showing === null) { printer.current = null; setText(''); setReady(true); return }
+    if (showing === null) {
+      printer.current = null
+      setText('')
+      setReady(true)
+      return
+    }
     printer.current = new MessagePrinter(showing, slots.current, {
-      speed: textSpeedFrames(), canSkip: true, autoScroll: false,
+      speed: textSpeedFrames(),
+      canSkip: true,
+      autoScroll: false,
     })
     setText('')
     setReady(false)
@@ -175,11 +235,16 @@ export function IntroScreen() {
       pressed.current = false
       p.tick({ pressed: hit, held: holding.current })
       const now = printedText(p)
-      if (now !== last) { last = now; setText(now) }
+      if (now !== last) {
+        last = now
+        setText(now)
+      }
       setReady((r) => (r === p.finished ? r : p.finished))
     }
     raf = requestAnimationFrame(frame)
-    return () => { cancelAnimationFrame(raf) }
+    return () => {
+      cancelAnimationFrame(raf)
+    }
   }, [])
 
   /**
@@ -201,30 +266,50 @@ export function IntroScreen() {
   }, [player, boy, rival, navigate])
 
   /** 곧게 흐르는 자리에서 다음 박자로 */
-  const step = useCallback((at: number): void => {
-    const next = INTRO[at + 1]
-    if (!next) { finish(); return }
-    setCursor(0)
-    setDraft('')
-    switch (next.kind) {
-      case 'say': setStage({ kind: 'say', at: at + 1 }); break
-      case 'infoMenu': setStage({ kind: 'infoMenu', at: at + 1 }); break
-      case 'pokeBall': setStage({ kind: 'pokeBall', at: at + 1, opened: false, nagged: false }); break
-      case 'gender': setStage({ kind: 'gender', at: at + 1 }); break
-      case 'name':
-        // 라이벌은 후보 여덟 중에서 고르거나 직접 짓는다. 주인공은 바로 자판이다
-        setStage(next.who === 'rival'
-          ? { kind: 'rivalChoice', at: at + 1 }
-          : { kind: 'nameEntry', at: at + 1, who: 'player' })
-        break
-      case 'done': finish(); break
-    }
-  }, [finish])
+  const step = useCallback(
+    (at: number): void => {
+      const next = INTRO[at + 1]
+      if (!next) {
+        finish()
+        return
+      }
+      setCursor(0)
+      setDraft('')
+      switch (next.kind) {
+        case 'say':
+          setStage({ kind: 'say', at: at + 1 })
+          break
+        case 'infoMenu':
+          setStage({ kind: 'infoMenu', at: at + 1 })
+          break
+        case 'pokeBall':
+          setStage({ kind: 'pokeBall', at: at + 1, opened: false, nagged: false })
+          break
+        case 'gender':
+          setStage({ kind: 'gender', at: at + 1 })
+          break
+        case 'name':
+          // 라이벌은 후보 여덟 중에서 고르거나 직접 짓는다. 주인공은 바로 자판이다
+          setStage(
+            next.who === 'rival'
+              ? { kind: 'rivalChoice', at: at + 1 }
+              : { kind: 'nameEntry', at: at + 1, who: 'player' },
+          )
+          break
+        case 'done':
+          finish()
+          break
+      }
+    },
+    [finish],
+  )
 
   const advance = (): void => {
     if (rush()) return
     switch (stage.kind) {
-      case 'say': step(stage.at); break
+      case 'say':
+        step(stage.at)
+        break
       case 'infoLines':
         if (stage.index + 1 < stage.lines.length) {
           setStage({ ...stage, index: stage.index + 1 })
@@ -242,7 +327,8 @@ export function IntroScreen() {
         else if (!stage.nagged) setStage({ ...stage, nagged: true })
         else setStage({ ...stage, opened: true })
         break
-      default: break
+      default:
+        break
     }
   }
 
@@ -252,7 +338,10 @@ export function IntroScreen() {
       case 'infoMenu': {
         const choice = INFO_CHOICES[cursor]?.value ?? 2
         const lines = infoLines(choice)
-        if (lines.length === 0) { step(stage.at); return }
+        if (lines.length === 0) {
+          step(stage.at)
+          return
+        }
         setStage({ kind: 'infoLines', at: stage.at, lines, index: 0 })
         break
       }
@@ -263,7 +352,10 @@ export function IntroScreen() {
         break
       case 'genderConfirm':
         if (cursor === 0) step(stage.at)
-        else { setStage({ kind: 'gender', at: stage.at }); setCursor(0) }
+        else {
+          setStage({ kind: 'gender', at: stage.at })
+          setCursor(0)
+        }
         break
       case 'rivalChoice': {
         // 마지막 칸이 "스스로 결정한다!"다
@@ -279,8 +371,13 @@ export function IntroScreen() {
       }
       case 'nameConfirm':
         if (cursor === 0) step(stage.at)
-        else if (stage.who === 'player') { setDraft(player); setStage({ kind: 'nameEntry', at: stage.at, who: 'player' }) }
-        else { setStage({ kind: 'rivalChoice', at: stage.at }); setCursor(0) }
+        else if (stage.who === 'player') {
+          setDraft(player)
+          setStage({ kind: 'nameEntry', at: stage.at, who: 'player' })
+        } else {
+          setStage({ kind: 'rivalChoice', at: stage.at })
+          setCursor(0)
+        }
         break
       default:
         advance()
@@ -290,8 +387,10 @@ export function IntroScreen() {
   /** 이름을 확정한다. 비면 원작이 제안하는 이름을 쓴다 */
   const commitName = (who: 'player' | 'rival', at: number): void => {
     const trimmed = draft.trim().slice(0, NAME_MAX)
-    const fallback = generic.length === 0 ? ''
-      : pickName(generic, who === 'rival' ? 'rival' : boy ? 'playerMale' : 'playerFemale', 0)
+    const fallback =
+      generic.length === 0
+        ? ''
+        : pickName(generic, who === 'rival' ? 'rival' : boy ? 'playerMale' : 'playerFemale', 0)
     const value = trimmed || fallback
     if (who === 'player') setPlayer(value)
     else setRival(value)
@@ -302,13 +401,27 @@ export function IntroScreen() {
   const typing = stage.kind === 'nameEntry' && ready
   const choices = ready ? choiceLabels(stage, bank) : null
 
-  useMenuKeys({
-    up: () => { if (choices) setCursor((c) => clampCursor(c, -1, choices.length)) },
-    down: () => { if (choices) setCursor((c) => clampCursor(c, 1, choices.length)) },
-    left: () => { if (choices && choices.length === 2) setCursor(0) },
-    right: () => { if (choices && choices.length === 2) setCursor(1) },
-    confirm: () => { if (choices) pick(); else advance() },
-  }, !typing)
+  useMenuKeys(
+    {
+      up: () => {
+        if (choices) setCursor((c) => clampCursor(c, -1, choices.length))
+      },
+      down: () => {
+        if (choices) setCursor((c) => clampCursor(c, 1, choices.length))
+      },
+      left: () => {
+        if (choices && choices.length === 2) setCursor(0)
+      },
+      right: () => {
+        if (choices && choices.length === 2) setCursor(1)
+      },
+      confirm: () => {
+        if (choices) pick()
+        else advance()
+      },
+    },
+    !typing,
+  )
 
   const step_ = INTRO[stageAt(stage)]
   const ballStep: IntroStep | undefined = step_
@@ -318,7 +431,7 @@ export function IntroScreen() {
       <div className={css.stage}>
         {stage.kind === 'pokeBall' && ready && ballStep?.kind === 'pokeBall' && (
           <button
-            className={stage.opened ? css.ballOpen : css.ball}
+            className={css.ballHit}
             onClick={() => {
               if (rush()) return
               if (!stage.opened) setStage({ ...stage, opened: true })
@@ -329,23 +442,35 @@ export function IntroScreen() {
         )}
       </div>
 
-      <div className={css.box} onClick={() => { if (!typing && !choices) advance() }}>
+      <div
+        className={css.box}
+        onClick={() => {
+          if (!typing && !choices) advance()
+        }}
+      >
         <div className={css.text}>{text}</div>
 
         {typing && (
           <form
             className={css.nameRow}
-            onSubmit={(e) => { e.preventDefault(); commitName(stage.who, stage.at) }}
+            onSubmit={(e) => {
+              e.preventDefault()
+              commitName(stage.who, stage.at)
+            }}
           >
             <input
               className={css.input}
               value={draft}
               maxLength={NAME_MAX}
               autoFocus
-              onChange={(e) => { setDraft(e.target.value) }}
+              onChange={(e) => {
+                setDraft(e.target.value)
+              }}
               aria-label="이름"
             />
-            <button className={css.ok} type="submit">결정</button>
+            <button className={css.ok} type="submit">
+              결정
+            </button>
           </form>
         )}
 
@@ -376,12 +501,17 @@ function stageAt(stage: Stage): number {
 function choiceLabels(stage: Stage, bank: string[]): string[] | null {
   const at = (i: number): string => bank[i] ?? ''
   switch (stage.kind) {
-    case 'infoMenu': return INFO_CHOICES.map((c) => at(c.line))
+    case 'infoMenu':
+      return INFO_CHOICES.map((c) => at(c.line))
     // 원작은 성별을 그림으로 고르게 한다. 우리는 아직 초상이 없어서 글로 묻는다
-    case 'gender': return ['남자', '여자']
+    case 'gender':
+      return ['남자', '여자']
     case 'genderConfirm':
-    case 'nameConfirm': return [at(INTRO_TEXT.yes), at(INTRO_TEXT.no)]
-    case 'rivalChoice': return [...RIVAL_NAME_CHOICES.map(at), at(INTRO_TEXT.rivalChoiceOwn)]
-    default: return null
+    case 'nameConfirm':
+      return [at(INTRO_TEXT.yes), at(INTRO_TEXT.no)]
+    case 'rivalChoice':
+      return [...RIVAL_NAME_CHOICES.map(at), at(INTRO_TEXT.rivalChoiceOwn)]
+    default:
+      return null
   }
 }

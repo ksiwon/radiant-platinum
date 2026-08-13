@@ -7,21 +7,26 @@
 import type { ReactNode } from 'react'
 import * as css from './menuChrome.css'
 
-export function MenuScreen(
-  { title, tag, note, foot, children }: {
-    title: string
-    /** 제목 옆에 붙는 표식 (시험용 화면의 "시험용"처럼) */
-    tag?: ReactNode
-    /** 오른쪽 위 — 소지금·마릿수처럼 이 화면의 한 줄 요약 */
-    note?: ReactNode
-    /** 바닥 조작 안내 */
-    foot?: ReactNode
-    children: ReactNode
-  },
-) {
+export function MenuScreen({
+  title,
+  tag,
+  note,
+  foot,
+  children,
+}: {
+  title: string
+  /** 제목 옆에 붙는 표식 (시험용 화면의 "시험용"처럼) */
+  tag?: ReactNode
+  /** 오른쪽 위 — 소지금·마릿수처럼 이 화면의 한 줄 요약 */
+  note?: ReactNode
+  /** 바닥 조작 안내 */
+  foot?: ReactNode
+  children: ReactNode
+}) {
+  const cinematic = title === '진화' || title === '알' || title === '명예의 전당'
   return (
-    <div className={css.overlay}>
-      <div className={css.screen}>
+    <div className={cinematic ? css.cinematicOverlay : css.overlay}>
+      <div className={cinematic ? css.cinematicScreen : css.screen}>
         <div className={css.head}>
           <span className={css.crest}>
             <span className={css.crestText}>{title}</span>

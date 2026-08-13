@@ -22,19 +22,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
-import { genderOf, type PokemonInstance } from '../../engine/pokemon/instance'
-import { spriteKey } from '../../engine/pokemon/form'
+import { genderOf, isShiny, type PokemonInstance } from '../../engine/pokemon/instance'
 import { metName } from '../../engine/pokemon/memo'
 import { metToday } from '../../engine/pokemon/origin'
 import {
-  addHallOfFameEntry, HALL_OF_FAME_PARTY, metKindNeedsPlace, metKindOf,
+  addHallOfFameEntry,
+  HALL_OF_FAME_PARTY,
+  metKindNeedsPlace,
+  metKindOf,
 } from '../../engine/world/hallOfFame'
 import { loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
 import { assets, readJson } from '../../data/providers/assetProvider'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { fillMenuText, HALL_OF_FAME_TEXT, loadUiText } from '../../data/uiText'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
+import { useHallOfFameStageStore } from '../../state/hallOfFameStageStore'
 import { START_LOCATION, useSaveStore } from '../../state/saveStore'
 import { healParty } from '../../scene/pokecenter'
 import * as css from './hallOfFame.css'
@@ -52,16 +54,12 @@ const y = (px: number): string => `${String((px / H) * 100)}%`
 const MON_FRAME = { w: 96, h: 128, top: 32, left: [24, 136] } as const
 const PLAYER_FRAME = { left: 88, right: 168, top: 24, h: 144 } as const
 /** 포켓몬 그림이 서는 자리 (`pokemonMovements`의 끝값 ÷ 4096) */
-const MON_X = [72, 184] as const
-const MON_Y = 96
 /** 글이 놓이는 칸 — 그림 반대쪽 136픽셀 (`monIndex & 1 ? 0 : 120`) */
 const TEXT_X = [120, 0] as const
 /** 줄 높이 (`ROW_HEIGHT`) */
 const ROW = 16
 
 /** 파티 여섯이 마지막에 서는 자리 (`endPositionsX` · `initialPositions`) */
-const PARTY_X = [160, 96, 192, 64, 224, 32] as const
-const PARTY_Y = [96, 96, 88, 88, 80, 80] as const
 
 /**
  * 무대 조명 여섯 (`ov86_0223CAA0` 여섯 번).
@@ -69,23 +67,34 @@ const PARTY_Y = [96, 96, 88, 88, 80, 80] as const
  * 첫 값이 기울기고 둘째가 좌우 자리다. 기울기는 fx16이라 −0.714~0.714이고,
  * 자리는 화면 픽셀이다
  */
-const BEAMS: readonly (readonly [number, number])[] = [
-  [-0.714, 20], [-0.429, 60], [-0.143, 40], [0.143, 140], [0.429, 120], [0.714, 160],
-]
 
 /** 색종이 마흔여덟 (`NUM_CONFETTI`) */
-const CONFETTI = 48
-const CONFETTI_COLORS = ['#ff5f6d', '#ffd86f', '#6fd0ff', '#8bff9b', '#d99bff']
 
 /**
  * 장면의 걸음. 밀리초는 원작의 프레임 수를 60fps로 옮긴 것이다 —
  * 미끄러지는 데 28프레임, 사이의 뜸이 20이나 30프레임이다
  */
 type Beat =
-  | 'fadeIn' | 'monIn' | 'monSettle' | 'monText1' | 'monText2' | 'monText3'
-  | 'monHold' | 'monOut' | 'monGap'
-  | 'playerIn' | 'playerHold' | 'expand' | 'playerText' | 'partyIn' | 'partyHold'
-  | 'confetti' | 'wipe' | 'fadeOut' | 'saving' | 'saved'
+  | 'fadeIn'
+  | 'monIn'
+  | 'monSettle'
+  | 'monText1'
+  | 'monText2'
+  | 'monText3'
+  | 'monHold'
+  | 'monOut'
+  | 'monGap'
+  | 'playerIn'
+  | 'playerHold'
+  | 'expand'
+  | 'playerText'
+  | 'partyIn'
+  | 'partyHold'
+  | 'confetti'
+  | 'wipe'
+  | 'fadeOut'
+  | 'saving'
+  | 'saved'
 
 const frames = (n: number): number => Math.round((n / 60) * 1000)
 
@@ -130,21 +139,71 @@ export function HallOfFameScreen() {
 
   // ⚠️ **파티를 한 번만 집는다.** 마지막에 파티를 회복시키므로 그 뒤에 다시
   // 읽으면 화면의 HP가 장면 도중에 바뀐다. 알은 빼고 센다 (`MON_DATA_IS_EGG`)
-  const [party] = useState<PokemonInstance[]>(
-    () => useSaveStore.getState().party.filter((m) => !m.isEgg).slice(0, HALL_OF_FAME_PARTY),
+  const [party] = useState<PokemonInstance[]>(() =>
+    useSaveStore
+      .getState()
+      .party.filter((m) => !m.isEgg)
+      .slice(0, HALL_OF_FAME_PARTY),
   )
   const trainer = useSaveStore((s) => s.trainer)
+  useEffect(() => {
+    const stage = useHallOfFameStageStore.getState()
+    stage.startCeremony(
+      party.map((member) => ({ species: member.species, form: member.form })),
+      trainer.gender,
+    )
+    return () => {
+      useHallOfFameStageStore.getState().clear()
+    }
+  }, [party, trainer.gender])
+
+  useEffect(() => {
+    if (!tables) return
+    useHallOfFameStageStore.getState().setMons(
+      party.map((member) => ({
+        species: member.species,
+        form: member.form,
+        gender: genderOf(member.pid, tables.species.get(member.species).genderRatio),
+        shiny: isShiny(member.pid, member.otId, member.otSecretId),
+      })),
+    )
+  }, [party, tables])
+
+  useEffect(() => {
+    const stage = useHallOfFameStageStore.getState()
+    if (MON_BEATS.some(([name]) => name === beat)) {
+      stage.setCeremony(beat === 'monOut' || beat === 'monGap' ? 'hidden' : 'solo', at)
+    } else if (
+      beat === 'playerIn' ||
+      beat === 'playerHold' ||
+      beat === 'expand' ||
+      beat === 'playerText'
+    ) {
+      stage.setCeremony('player')
+    } else if (beat === 'partyIn' || beat === 'partyHold' || beat === 'wipe') {
+      stage.setCeremony('party')
+    } else if (beat === 'confetti') stage.setCeremony('confetti')
+    else stage.setCeremony('hidden')
+  }, [beat, at])
 
   useEffect(() => {
     let alive = true
     void Promise.all([
-      loadSpecies(), loadSpeciesNames(locale), loadUiText('hallOfFame', locale),
+      loadSpecies(),
+      loadSpeciesNames(locale),
+      loadUiText('hallOfFame', locale),
       readJson(assets(), `data/names/locations.${locale}.json`) as Promise<string[]>,
       loadUiText('specialMetLocations', locale),
-    ]).then(([species, names, text, location, special]) => {
-      if (alive) setTables({ species, names, text, location, special })
-    }).catch(() => { /* 글이 없어도 장면은 돈다 */ })
-    return () => { alive = false }
+    ])
+      .then(([species, names, text, location, special]) => {
+        if (alive) setTables({ species, names, text, location, special })
+      })
+      .catch(() => {
+        /* 글이 없어도 장면은 돈다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [locale])
 
   useEffect(() => {
@@ -163,10 +222,16 @@ export function HallOfFameScreen() {
     // ⚠️ **자리를 떡잎마을 침실로 적어 저장한다.** 원작은 「특별한 자리」 칸에
     // 그걸 넣고 다음에 켤 때 그리로 워프시키는데(`SystemFlag_SetCommunicationClubAccessible`),
     // 결과가 같으므로 우리는 리포트의 자리를 바로 그리로 쓴다
-    void useSaveStore.getState().report(START_LOCATION).then(() => {
-      void music.playEffect(SFX.SAVE)
-      setBeat('saved')
-    }).catch(() => { setBeat('saved') })
+    void useSaveStore
+      .getState()
+      .report(START_LOCATION)
+      .then(() => {
+        void music.playEffect(SFX.SAVE)
+        setBeat('saved')
+      })
+      .catch(() => {
+        setBeat('saved')
+      })
   }, [])
 
   // 걸음을 하나씩 밟는다
@@ -176,8 +241,10 @@ export function HallOfFameScreen() {
     let ms: number | null = null
     let next: Beat = beat
 
-    if (beat === 'fadeIn') { ms = frames(16); next = party.length > 0 ? 'monIn' : 'playerIn' }
-    else if (monBeats.has(beat)) {
+    if (beat === 'fadeIn') {
+      ms = frames(16)
+      next = party.length > 0 ? 'monIn' : 'playerIn'
+    } else if (monBeats.has(beat)) {
       ms = monBeats.get(beat)!
       const order = MON_BEATS.map(([b]) => b)
       const i = order.indexOf(beat)
@@ -187,20 +254,29 @@ export function HallOfFameScreen() {
       const order = FINALE_BEATS.map(([b]) => b)
       const i = order.indexOf(beat)
       next = i + 1 < order.length ? order[i + 1]! : 'confetti'
-    } else if (beat === 'wipe') { ms = 400; next = 'fadeOut' }
-    else if (beat === 'fadeOut') { ms = frames(16); next = 'saving' }
+    } else if (beat === 'wipe') {
+      ms = 400
+      next = 'fadeOut'
+    } else if (beat === 'fadeOut') {
+      ms = frames(16)
+      next = 'saving'
+    }
 
     if (ms === null) return
     const timer = setTimeout(() => {
       if (next === 'monIn' && beat === 'monGap') {
         // 다음 마리로. 마지막이었으면 파티 장면으로 넘어간다
-        if (at + 1 < party.length) { setAt(at + 1); setBeat('monIn') }
-        else setBeat('playerIn')
+        if (at + 1 < party.length) {
+          setAt(at + 1)
+          setBeat('monIn')
+        } else setBeat('playerIn')
         return
       }
       setBeat(next)
     }, ms)
-    return () => { clearTimeout(timer) }
+    return () => {
+      clearTimeout(timer)
+    }
   }, [beat, at, party.length])
 
   // 울음소리는 글이 뜨는 순간이다 (`HallOfFame_InitPokemonAnimation(…, playCry: TRUE)`)
@@ -232,25 +308,26 @@ export function HallOfFameScreen() {
       else if (beat === 'saved') leave()
     }
     window.addEventListener('keydown', onKey, true)
-    return () => { window.removeEventListener('keydown', onKey, true) }
+    return () => {
+      window.removeEventListener('keydown', onKey, true)
+    }
   }, [beat, leave])
 
   const mon = party[at]
   const side = at & 1
-  const monArt = useAssetImage(
-    mon ? `data/pokemon/${spriteKey(mon.species, mon.form, false)}_front.png` : null,
-  )
-  const playerArt = useAssetImage(
-    `data/trainers/${trainer.gender === 'girl' ? '1' : '0'}.png`,
-  )
-  const partyArt = usePartySprites(party)
 
   const lines = useMemo(() => monLines(mon, tables, trainer), [mon, tables, trainer])
 
   const monPhase = MON_BEATS.some(([b]) => b === beat)
   const shown = monPhase && beat !== 'monOut' && beat !== 'monGap'
-  const textAt = beat === 'monText1' ? 1 : beat === 'monText2' ? 2
-    : beat === 'monText3' || beat === 'monHold' ? 3 : 0
+  const textAt =
+    beat === 'monText1'
+      ? 1
+      : beat === 'monText2'
+        ? 2
+        : beat === 'monText3' || beat === 'monHold'
+          ? 3
+          : 0
 
   const finale = !monPhase && beat !== 'fadeIn'
   const expanded = finale && beat !== 'playerIn' && beat !== 'playerHold' && beat !== 'expand'
@@ -261,41 +338,19 @@ export function HallOfFameScreen() {
   return (
     <div className={css.backdrop}>
       <div className={css.stage}>
-        <div className={css.floor} />
-        {BEAMS.map(([tilt, left], i) => (
-          <div
-            key={i}
-            className={css.beam}
-            style={{
-              left: x(left),
-              rotate: `${String(tilt * 45)}deg`,
-              animationDelay: `${String(i * 0.4)}s`,
-            }}
-          />
-        ))}
-
         {/* 한 마리씩 */}
         {monPhase && mon && (
           <>
             <div
               className={css.pane}
               style={{
-                left: x(shown ? MON_FRAME.left[side]! : (side ? W : -MON_FRAME.w)),
+                left: x(shown ? MON_FRAME.left[side]! : side ? W : -MON_FRAME.w),
                 top: y(MON_FRAME.top),
                 width: x(MON_FRAME.w),
                 height: y(MON_FRAME.h),
                 transition: 'left 0.47s linear',
               }}
             />
-            {monArt !== null && (
-              <img
-                src={monArt} alt="" className={css.monArt}
-                style={{
-                  left: x((shown ? MON_X[side]! : (side ? 64 : 192)) - 40),
-                  top: y(MON_Y - 40),
-                }}
-              />
-            )}
             {lines.map((text, i) => (
               <div
                 key={i}
@@ -325,26 +380,11 @@ export function HallOfFameScreen() {
                 transition: 'left 0.2s linear, width 0.2s linear',
               }}
             />
-            {playerArt !== null && (
-              <img
-                src={playerArt} alt="" className={css.playerArt}
-                style={{ top: y((beat === 'playerIn' ? 232 : 104) - 40) }}
-              />
-            )}
-            {(beat === 'partyIn' || beat === 'partyHold' || beat === 'confetti' || wiping)
-              && party.map((_, i) => (
-                <img
-                  key={i}
-                  src={partyArt[i] ?? undefined} alt="" className={css.monArt}
-                  style={{
-                    left: x(PARTY_X[i]! - 40),
-                    top: y(PARTY_Y[i]! - 40),
-                    transitionDelay: `${String(i * 0.067)}s`,
-                  }}
-                />
-              ))}
-            {(beat === 'playerText' || beat === 'partyIn' || beat === 'partyHold'
-              || beat === 'confetti' || wiping) && (
+            {(beat === 'playerText' ||
+              beat === 'partyIn' ||
+              beat === 'partyHold' ||
+              beat === 'confetti' ||
+              wiping) && (
               <>
                 <div className={css.centerLine} style={{ top: y(4) }}>
                   {tables?.text[HALL_OF_FAME_TEXT.congratulations] ?? ''}
@@ -354,24 +394,18 @@ export function HallOfFameScreen() {
                 </div>
               </>
             )}
-            {(beat === 'confetti' || wiping) && Array.from({ length: CONFETTI }, (_, i) => (
-              <div
-                key={i}
-                className={css.confetti}
-                style={{
-                  left: x(((i * 37) % W)),
-                  background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-                  animationDelay: `${String(((i * 13) % 24) / 10)}s`,
-                  animationDuration: `${String(1.8 + ((i * 7) % 10) / 10)}s`,
-                }}
-              />
-            ))}
           </>
         )}
 
         {/* 검게 닫히는 띠 둘 (24 → 96, 168 → 96). 닫힐 때만 글 위로 올라온다 */}
-        <div className={css.wipe.top} style={{ height: y(wiping ? 96 : 24), zIndex: wiping ? 3 : 1 }} />
-        <div className={css.wipe.bottom} style={{ height: y(wiping ? 96 : 24), zIndex: wiping ? 3 : 1 }} />
+        <div
+          className={css.wipe.top}
+          style={{ height: y(wiping ? 96 : 24), zIndex: wiping ? 3 : 1 }}
+        />
+        <div
+          className={css.wipe.bottom}
+          style={{ height: y(wiping ? 96 : 24), zIndex: wiping ? 3 : 1 }}
+        />
 
         <div
           className={css.fade}
@@ -407,7 +441,7 @@ const LINE_STEP = [1, 1, 2, 2, 3, 3, 3] as const
 function monLines(
   mon: PokemonInstance | undefined,
   tables: Tables | null,
-  trainer: { id: number, name: string },
+  trainer: { id: number; name: string },
 ): string[] {
   if (!mon || !tables) return []
   const text = (i: number): string => tables.text[i] ?? ''
@@ -416,28 +450,32 @@ function monLines(
   const gender = genderOf(mon.pid, species.genderRatio)
   const slot = gender === 'male' ? 0 : gender === 'female' ? 1 : 2
   const speciesName = tables.names[mon.species] ?? ''
-  const info = fillMenuText(
-    text(HALL_OF_FAME_TEXT.info[slot]!), [speciesName, String(mon.level)],
-  )
+  const info = fillMenuText(text(HALL_OF_FAME_TEXT.info[slot]!), [speciesName, String(mon.level)])
   const ot = fillMenuText(text(HALL_OF_FAME_TEXT.ot), [mon.origin.otName])
   const kind = metKindOf(mon, trainer.id, trainer.name)
   const place = metKindNeedsPlace(kind)
     ? metName(mon.origin.met.location, {
-      location: tables.location, special: tables.special, month: [],
-    })
+        location: tables.location,
+        special: tables.special,
+        month: [],
+      })
     : ''
   const met = fillMenuText(text(HALL_OF_FAME_TEXT.metAt + kind), [place]).split('\n')
   return [
-    welcome[0] ?? '', welcome[1] ?? '',
-    mon.nickname ?? speciesName, info,
-    ot, met[0] ?? '', met[1] ?? '',
+    welcome[0] ?? '',
+    welcome[1] ?? '',
+    mon.nickname ?? speciesName,
+    info,
+    ot,
+    met[0] ?? '',
+    met[1] ?? '',
   ]
 }
 
 /** 아래 줄 — 이름·ID·플레이 시간 (`HallOfFame_Text_PlayerInfo`) */
 function playerLine(
   tables: Tables | null,
-  trainer: { name: string, id: number, playtimeMs: number },
+  trainer: { name: string; id: number; playtimeMs: number },
 ): string {
   if (!tables) return ''
   const minutes = Math.floor(trainer.playtimeMs / 60000)
@@ -450,16 +488,3 @@ function playerLine(
 }
 
 /** 파티 여섯의 앞모습. 한 장씩 받아 순서대로 담는다 */
-function usePartySprites(party: readonly PokemonInstance[]): (string | null)[] {
-  const a = useAssetImage(art(party[0]))
-  const b = useAssetImage(art(party[1]))
-  const c = useAssetImage(art(party[2]))
-  const d = useAssetImage(art(party[3]))
-  const e = useAssetImage(art(party[4]))
-  const f = useAssetImage(art(party[5]))
-  return [a, b, c, d, e, f]
-}
-
-function art(mon: PokemonInstance | undefined): string | null {
-  return mon ? `data/pokemon/${spriteKey(mon.species, mon.form, false)}_front.png` : null
-}

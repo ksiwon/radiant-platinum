@@ -1,6 +1,9 @@
 // 프레임 상태 — React를 절대 건드리지 않는 mutable 싱글톤 (PLAN §3.2 ③)
 import { Vector2, Vector3 } from 'three'
 
+export type FieldActionFxKind =
+  'cut' | 'rockSmash' | 'strength' | 'surf' | 'waterfall' | 'rockClimb'
+
 /** 켤 때의 시각. 원작이 본체 시계를 읽는 것과 같은 자리다 */
 function startHour(): number {
   const now = new Date()
@@ -19,6 +22,8 @@ export const worldState = {
      * 원작도 뛰는 동안은 조작이 안 먹는다 (`actor/ledge`)
      */
     hop: { active: false, t: 0, fromX: 0, fromZ: 0, toX: 0, toZ: 0 },
+    /** 공중날기 연출 중. 그동안 조작이 안 먹는다 */
+    flying: false,
     /**
      * 깨어진 세계의 승강 발판을 타는 중 (`DistWorldElevatorPlatform`).
      *
@@ -56,10 +61,18 @@ export const worldState = {
      * 준다(`MapStreamer`) — 이동 시스템은 세이브를 안 본다
      */
     runningShoes: false,
+    /** 필드 기술의 짧은 3D 연출. 규칙과 무관하며 시간이 끝나면 씬이 비운다. */
+    fieldAction: {
+      kind: null as FieldActionFxKind | null,
+      elapsed: 0,
+      duration: 0,
+    },
   },
   camera: {
     position: new Vector3(0, 6, 9),
     target: new Vector3(),
+    /** 깨어진 세계에서는 현재 판의 법선. 렌더 직전에 카메라 `up`으로 복사한다. */
+    up: new Vector3(0, 1, 0),
     /**
      * 1인칭 시선의 좌우. **0이 북쪽(−Z)**이고 오른쪽으로 돌면 커진다.
      *

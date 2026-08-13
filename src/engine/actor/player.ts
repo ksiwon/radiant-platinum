@@ -23,10 +23,12 @@ const CLIMB_SNAP = 1.5
 
 /** 바라보는 방향의 단위 벡터. `facing`은 `atan2(vx, vz)`라 0이 +z다 */
 const FACING_STEP = [
-  { x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 },
+  { x: 0, z: 1 },
+  { x: 1, z: 0 },
+  { x: 0, z: -1 },
+  { x: -1, z: 0 },
 ] as const
-const quarterOf = (facing: number): number =>
-  ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
+const quarterOf = (facing: number): number => ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
 
 const desired = new Vector3()
 
@@ -46,10 +48,12 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     // 판 위가 아니면 null을 주고, 그때만 아래 평소 판정으로 내려간다
     const dw = distortionBridge.blockedAt?.(cx, y, cz)
     if (dw !== null && dw !== undefined) return dw
-    return grid.isBlockedAtWorld(cx, cz)
-    || (!surfing && isSurfable(grid.behaviorAtWorld(cx, cz)))
-    // 벨 나무·깰 바위·밀 바위는 지형이 아니라 객체다 (`actor/obstacles`)
-    || obstacleAt(Math.floor(cx), Math.floor(cz)) !== null
+    return (
+      grid.isBlockedAtWorld(cx, cz) ||
+      (!surfing && isSurfable(grid.behaviorAtWorld(cx, cz))) ||
+      // 벨 나무·깰 바위·밀 바위는 지형이 아니라 객체다 (`actor/obstacles`)
+      obstacleAt(Math.floor(cx), Math.floor(cz)) !== null
+    )
   }
   // 캐릭터를 점이 아니라 반지름 있는 원으로 본다
   return (
@@ -67,7 +71,7 @@ export const playerSystem = {
 
     // 승강 발판을 타는 동안은 자리를 발판이 정한다 (PARITY §6.10). 여기서
     // 한 줄이라도 손대면 허공에서 걸어 내려가 버린다
-    if (p.riding) {
+    if (p.riding || p.flying) {
       p.velocity.set(0, 0, 0)
       worldState.time.elapsed += dt
       return
@@ -82,8 +86,11 @@ export const playerSystem = {
     // 올린다 (`actor/bike`의 실측 배수 2 · 2.67 · 4). 멈추면 처음으로 돌아간다
     const moving = worldState.input.move.lengthSq() > 0.0001
     p.pedalling = p.cycling && moving ? p.pedalling + dt : 0
-    const speed = p.cycling ? WALK_SPEED * bikeSpeedAt(p.pedalling)
-      : input.run && p.runningShoes ? RUN_SPEED : WALK_SPEED
+    const speed = p.cycling
+      ? WALK_SPEED * bikeSpeedAt(p.pedalling)
+      : input.run && p.runningShoes
+        ? RUN_SPEED
+        : WALK_SPEED
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
     const dir = pushDirection()
@@ -112,8 +119,12 @@ export const playerSystem = {
       const land = ledgeHop(grid, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
       if (land) {
         p.hop = {
-          active: true, t: 0,
-          fromX: p.position.x, fromZ: p.position.z, toX: land.x, toZ: land.z,
+          active: true,
+          t: 0,
+          fromX: p.position.x,
+          fromZ: p.position.z,
+          toX: land.x,
+          toZ: land.z,
         }
         p.facing = Math.atan2(land.x - p.position.x, land.z - p.position.z)
         return
@@ -176,15 +187,17 @@ export const playerSystem = {
     //
     // ⚠️ **벽에 서 있으면 안 따라간다.** 그 y는 지면 높이가 아니라 걷고 있는
     // 축이라, 지면으로 끌어내리면 벽에 붙는 순간 바닥까지 미끄러진다
-    const ground = onWall ? null
+    const ground = onWall
+      ? null
       : activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
     if (ground !== null && ground !== undefined) {
       // 계단은 한 칸에 반 타일씩 오른다. 그대로 대입하면 판 경계에서 튀므로
       // 짧게 따라붙인다 — 시뮬레이션이 아니라 표현이라 눈에 맞추면 된다
       const gap = ground - p.position.y
-      p.position.y += Math.abs(gap) > CLIMB_SNAP
-        ? gap // 워프·낙하처럼 크게 벌어지면 즉시 맞춘다
-        : gap * (1 - Math.exp(-CLIMB_RATE * dt))
+      p.position.y +=
+        Math.abs(gap) > CLIMB_SNAP
+          ? gap // 워프·낙하처럼 크게 벌어지면 즉시 맞춘다
+          : gap * (1 - Math.exp(-CLIMB_RATE * dt))
     }
 
     // 1인칭은 **보는 쪽이 곧 앞**이다. 서서 고개만 돌려도 몸이 따라 돌아야
@@ -193,13 +206,18 @@ export const playerSystem = {
     if (worldState.camera.mode === 'first') {
       p.facing = facingFromYaw(worldState.camera.yaw)
     } else if (p.velocity.lengthSq() > 0.01) {
-      p.facing = Math.atan2(p.velocity.x, p.velocity.z)
+      // 벽에서는 월드 y가 화면의 좌우 축이다. yaw는 계속 표면 로컬 좌표로 둔다.
+      const lateral = onWall ? p.velocity.y * (frame?.sign ?? 1) : p.velocity.x
+      p.facing = Math.atan2(lateral, p.velocity.z)
     }
 
     // 뭍에 올라서면 내린다. 원작도 물 밖으로 나가는 순간 상태가 풀린다 —
     // 타는 것은 A를 눌러야 하지만 내리는 것은 걸어 나오면 된다
-    if (p.surfing && activeZone.grid
-      && !isSurfable(activeZone.grid.behaviorAtWorld(p.position.x, p.position.z))) {
+    if (
+      p.surfing &&
+      activeZone.grid &&
+      !isSurfable(activeZone.grid.behaviorAtWorld(p.position.x, p.position.z))
+    ) {
       p.surfing = false
     }
     worldState.time.elapsed += dt

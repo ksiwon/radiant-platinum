@@ -20,7 +20,7 @@ export const frame = style({
   height: 132,
   display: 'grid',
   placeItems: 'center',
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.96), rgba(232, 236, 244, 0.96))',
+  background: 'radial-gradient(circle, rgba(219, 233, 255, 0.06), rgba(8, 13, 28, 0.28))',
   border: '2px solid rgba(60, 74, 102, 0.85)',
   borderRadius: 10,
   boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.7)',

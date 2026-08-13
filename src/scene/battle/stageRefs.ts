@@ -46,3 +46,14 @@ export const starterStage = {
 
 /** 그 장면이 서는 자리. 배틀과 반대쪽으로 올려 둔다 */
 export const STARTER_ORIGIN = new Vector3(0, 500, 0)
+
+/** 진화·부화가 카메라를 가져갈 때 쓰는 세 번째 무대. */
+export const cinematicStage = {
+  active: false,
+  position: new Vector3(),
+  target: new Vector3(),
+  fov: 38,
+}
+
+/** 배틀·파트너 무대와 겹치지 않도록 더 아래에 둔다. */
+export const CINEMATIC_ORIGIN = new Vector3(0, -1000, 0)

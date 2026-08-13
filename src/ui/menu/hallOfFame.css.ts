@@ -20,7 +20,7 @@ export const backdrop = style({
   position: 'fixed',
   inset: 0,
   zIndex: 400,
-  background: '#000',
+  background: 'rgba(0, 0, 0, 0.12)',
   display: 'grid',
   placeItems: 'center',
   overflow: 'hidden',
@@ -43,7 +43,7 @@ export const stage = style({
 export const floor = style({
   position: 'absolute',
   inset: 0,
-  background: 'radial-gradient(120% 80% at 50% 100%, #12203a 0%, #060a14 60%, #000 100%)',
+  background: 'transparent',
 })
 
 const sweep = keyframes({
@@ -73,7 +73,7 @@ export const beam = style({
 /** 밝은 판 하나. 자리와 크기는 부르는 쪽이 인라인으로 준다 */
 export const pane = style({
   position: 'absolute',
-  background: 'linear-gradient(180deg, rgba(28, 46, 84, 0.92), rgba(10, 18, 38, 0.92))',
+  background: 'linear-gradient(180deg, rgba(28, 46, 84, 0.42), rgba(10, 18, 38, 0.32))',
   boxShadow: 'inset 0 0 0 2px rgba(126, 174, 255, 0.55), 0 0 24px rgba(90, 140, 230, 0.35)',
   overflow: 'hidden',
 })
@@ -152,11 +152,19 @@ export const confetti = style({
 /** 검게 닫히는 띠 두 장 (`HallOfFame_WipeToBlack`) */
 export const wipe = styleVariants({
   top: {
-    position: 'absolute', left: 0, width: '100%', top: 0, background: '#000',
+    position: 'absolute',
+    left: 0,
+    width: '100%',
+    top: 0,
+    background: '#000',
     transition: 'height 0.4s linear',
   },
   bottom: {
-    position: 'absolute', left: 0, width: '100%', bottom: 0, background: '#000',
+    position: 'absolute',
+    left: 0,
+    width: '100%',
+    bottom: 0,
+    background: '#000',
     transition: 'height 0.4s linear',
   },
 })

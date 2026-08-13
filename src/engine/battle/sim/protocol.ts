@@ -10,7 +10,7 @@ import type {
 } from '../events'
 import { conditionId, parseActor, parseCondition, parseDetails, parseSide } from '../events'
 import type { Status } from '../../pokemon/instance'
-import { romAbility, romMove, romSpecies } from './bridge'
+import { romAbility, romMove, romSpeciesForm } from './bridge'
 
 const STATUS_CAUSES = new Set(['psn', 'tox', 'brn', 'frz', 'par', 'slp'])
 
@@ -97,10 +97,12 @@ export function parseLine(line: string): BattleEvent | null {
       const actor = need(0)
       if (!actor) break
       const d = parseDetails(rest[1] ?? '')
+      const resolved = romSpeciesForm(d.speciesName)
       return {
         kind: 'switch',
         actor,
-        species: romSpecies(d.speciesName),
+        species: resolved?.species ?? null,
+        form: resolved?.form ?? 0,
         speciesName: d.speciesName,
         level: d.level,
         gender: d.gender,
@@ -110,6 +112,20 @@ export function parseLine(line: string): BattleEvent | null {
       }
     }
 
+
+    case '-formechange':
+    case 'detailschange': {
+      const actor = need(0)
+      if (!actor) break
+      const details = parseDetails(rest[1] ?? '')
+      const resolved = romSpeciesForm(details.speciesName)
+      return {
+        kind: 'form', actor,
+        species: resolved?.species ?? null,
+        speciesName: details.speciesName,
+        form: resolved?.form ?? 0,
+      }
+    }
     case 'move': {
       const actor = need(0)
       if (!actor) break

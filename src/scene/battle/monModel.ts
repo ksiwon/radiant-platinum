@@ -12,8 +12,19 @@
 // 모부기 0.79 = 0.40×1.98, 잠만보 1.81 = 2.03×0.89, 강철톤 0.85 = 1.66×0.51로
 // `PokemonInfo.BattleScale`과 맞아떨어진다. 한 번 더 곱하면 네 배가 된다.
 import {
-  AnimationMixer, LoadingManager, LoopOnce, LoopRepeat,
-  type AnimationAction, type AnimationClip, type Group,
+  AnimationMixer,
+  LoadingManager,
+  LoopOnce,
+  LoopRepeat,
+  SRGBColorSpace,
+  TextureLoader,
+  type AnimationAction,
+  type AnimationClip,
+  type Group,
+  type Material,
+  type Mesh,
+  type MeshStandardMaterial,
+  type Texture,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
@@ -28,7 +39,27 @@ export interface MonEntry {
   scale: number
 }
 
-export interface MonIndex { pokemon: Record<string, MonEntry> }
+export interface MonIndex {
+  pokemon: Record<string, MonEntry>
+}
+
+export type MonModelGender = 'male' | 'female' | 'genderless'
+
+export interface MonAppearance {
+  gender?: MonModelGender
+  shiny?: boolean
+}
+
+interface TextureVariant {
+  textures: Record<string, string>
+}
+
+export interface MonVariantIndex {
+  version: number
+  shiny: Record<string, TextureVariant>
+  female: Record<string, MonEntry>
+  femaleShiny: Record<string, MonEntry>
+}
 
 /** 화면에 실제로 서는 키(m). 배율까지 먹인 값이다 */
 export function posedHeight(entry: MonEntry): number {
@@ -36,11 +67,25 @@ export function posedHeight(entry: MonEntry): number {
 }
 
 let index: Promise<MonIndex> | null = null
+let variantIndex: Promise<MonVariantIndex> | null = null
 
 export function loadMonIndex(): Promise<MonIndex> {
-  index ??= (readJson(assets(), 'models/pokemon/index.json') as Promise<MonIndex>)
-    .catch(() => ({ pokemon: {} }))
+  index ??= (readJson(assets(), 'models/pokemon/index.json') as Promise<MonIndex>).catch(() => ({
+    pokemon: {},
+  }))
   return index
+}
+
+export function loadMonVariantIndex(): Promise<MonVariantIndex> {
+  variantIndex ??= (
+    readJson(assets(), 'models/pokemon/variants/index.json') as Promise<MonVariantIndex>
+  ).catch(() => ({
+    version: 1,
+    shiny: {},
+    female: {},
+    femaleShiny: {},
+  }))
+  return variantIndex
 }
 
 /**
@@ -63,19 +108,63 @@ export type MotionName = keyof typeof MOTION
 
 /** 그 동작의 클립. 없으면 대기, 그것도 없으면 첫 클립 */
 export function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationClip | null {
-  return clips.find((c) => MOTION[want].test(c.name))
-    ?? clips.find((c) => MOTION.wait.test(c.name))
-    ?? clips[0]
-    ?? null
+  return (
+    clips.find((c) => MOTION[want].test(c.name)) ??
+    clips.find((c) => MOTION.wait.test(c.name)) ??
+    clips[0] ??
+    null
+  )
 }
 
-export interface Loaded { scene: Group; clips: AnimationClip[]; entry: MonEntry }
+export interface Loaded {
+  scene: Group
+  clips: AnimationClip[]
+  entry: MonEntry
+  maps?: ReadonlyMap<string, Texture>
+}
 
 const loader = new GLTFLoader(new LoadingManager())
+const textureLoader = new TextureLoader(new LoadingManager())
 const cache = new Map<string, Promise<Loaded | null>>()
 
 // 갈아 끼우면 파싱해 둔 장면은 옛 설치본 것이다
-onProviderSwap(() => { cache.clear(); index = null })
+onProviderSwap(() => {
+  cache.clear()
+  index = null
+  variantIndex = null
+})
+
+export function materialVariantKey(name: string): string {
+  const suffix = name.includes('-') ? name.slice(name.indexOf('-') + 1) : name
+  return suffix.replace(/_rare$/, '')
+}
+
+export function appearanceEntry(
+  variants: MonVariantIndex,
+  key: string,
+  appearance: MonAppearance,
+): MonEntry | null {
+  if (appearance.gender !== 'female') return null
+  return (appearance.shiny ? variants.femaleShiny[key] : variants.female[key]) ?? null
+}
+
+async function loadMaps(paths: Record<string, string>): Promise<ReadonlyMap<string, Texture>> {
+  const provider = assets()
+  const entries = await Promise.all(
+    Object.entries(paths).map(async ([name, path]) => {
+      const url = await provider.objectUrl(path)
+      try {
+        const texture = await textureLoader.loadAsync(url)
+        texture.flipY = false
+        texture.colorSpace = SRGBColorSpace
+        return [name, texture] as const
+      } finally {
+        provider.releaseObjectUrl(path)
+      }
+    }),
+  )
+  return new Map(entries)
+}
 
 /**
  * 한 종의 모델.
@@ -87,14 +176,22 @@ onProviderSwap(() => { cache.clear(); index = null })
  * 떨어진다 — 설치본이 폼 번들을 안 갖고 있을 수 있고, 그때 아무것도 안 서는
  * 것보다 기본 모습이 서는 편이 낫다
  */
-export function loadMonModel(species: number, form = 0): Promise<Loaded | null> {
+export function loadMonModel(
+  species: number,
+  form = 0,
+  appearance: MonAppearance = {},
+): Promise<Loaded | null> {
   const key = form > 0 ? `${String(species)}-${String(form)}` : String(species)
-  let got = cache.get(key)
+  const appearanceKey = `${key}|${appearance.gender ?? 'genderless'}|${appearance.shiny ? 'shiny' : 'normal'}`
+  let got = cache.get(appearanceKey)
   if (!got) {
-    got = loadMonIndex()
-      .then(async (idx) => {
-        const entry = idx.pokemon[key] ?? idx.pokemon[String(species)]
-        if (!entry) return null
+    got = Promise.all([loadMonIndex(), loadMonVariantIndex()])
+      .then(async ([idx, variants]) => {
+        const resolvedKey = idx.pokemon[key] ? key : String(species)
+        const baseEntry = idx.pokemon[resolvedKey]
+        if (!baseEntry) return null
+        const exactEntry = appearanceEntry(variants, resolvedKey, appearance)
+        const entry = exactEntry ?? baseEntry
         // ⚠️ **파싱이 끝나면 주소를 바로 놓는다.** 장면은 `cache`가 들고 있고
         // Blob 원본 바이트는 더 안 쓴다 — 붙들면 GLB 한 벌이 통째로 남는다.
         // 성공·실패 양쪽에서 놓아야 해서 `finally`다
@@ -103,13 +200,15 @@ export function loadMonModel(species: number, form = 0): Promise<Loaded | null> 
         const url = await provider.objectUrl(path)
         try {
           const gltf = await loader.loadAsync(url)
-          return { scene: gltf.scene, clips: gltf.animations, entry }
+          const shiny = appearance.shiny && !exactEntry ? variants.shiny[resolvedKey] : undefined
+          const maps = shiny ? await loadMaps(shiny.textures) : undefined
+          return { scene: gltf.scene, clips: gltf.animations, entry, maps }
         } finally {
           provider.releaseObjectUrl(path)
         }
       })
       .catch(() => null)
-    cache.set(key, got)
+    cache.set(appearanceKey, got)
   }
   return got
 }
@@ -134,6 +233,29 @@ export interface MonBody {
 export function makeBody(loaded: Loaded): MonBody {
   const root = cloneSkinned(loaded.scene) as Group
   root.traverse((o) => {
+    const mesh = o as Mesh
+    if (loaded.maps && mesh.material) {
+      const replace = (material: Material): Material => {
+        const source = material as MeshStandardMaterial
+        const map = loaded.maps?.get(materialVariantKey(source.name))
+        if (!map) return material
+        const next = source.clone()
+        if (source.map) {
+          map.wrapS = source.map.wrapS
+          map.wrapT = source.map.wrapT
+          map.magFilter = source.map.magFilter
+          map.minFilter = source.map.minFilter
+          map.anisotropy = source.map.anisotropy
+        }
+        next.map = map
+        next.needsUpdate = true
+        return next
+      }
+      mesh.material = Array.isArray(mesh.material)
+        ? mesh.material.map(replace)
+        : replace(mesh.material)
+    }
+
     o.castShadow = true
     o.receiveShadow = false
     // ⚠️ **절두체 컬링을 끈다.** three가 스킨 메시의 경계구를 뼈로 다시 재는데,
@@ -144,8 +266,11 @@ export function makeBody(loaded: Loaded): MonBody {
     o.frustumCulled = false
   })
   return {
-    root, tall: posedHeight(loaded.entry),
-    mixer: new AnimationMixer(root), clips: loaded.clips, action: null,
+    root,
+    tall: posedHeight(loaded.entry),
+    mixer: new AnimationMixer(root),
+    clips: loaded.clips,
+    action: null,
   }
 }
 

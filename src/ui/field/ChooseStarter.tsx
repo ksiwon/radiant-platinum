@@ -32,11 +32,8 @@ import { textSpeedFrames, useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { STARTER_BANK, STARTER_TEXT as TEXT, STARTERS } from './starterChoice'
-import {
-  BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES,
-} from './starterScene'
+import { BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES } from './starterScene'
 import * as css from './chooseStarter.css'
-import { useAssetImage } from '../../data/providers/useAssetUrl'
 
 /** `Menu_MakeYesNoChoice` — 위가 "예"다 */
 const MENU_YES = 0
@@ -77,29 +74,39 @@ export function ChooseStarter() {
   /** 커서를 띄웠나. `choose` 글을 다 찍은 뒤다 */
   const [live, setLive] = useState(false)
   /** 미리보기 그림. 커서를 옮기면 바뀐다 */
-  const art = useAssetImage(`data/pokemon/${String(STARTERS[pick] ?? 0)}_front.png`)
   const printer = useRef<MessagePrinter | null>(null)
   const slots = useRef(new MessageSlots())
 
   useEffect(() => {
     resetStarterScene()
-    return () => { resetStarterScene() }
+    return () => {
+      resetStarterScene()
+    }
   }, [])
 
   useEffect(() => {
     let alive = true
     void loadDialogueBank(locale, STARTER_BANK)
-      .then((lines) => { if (alive) setBank(lines) })
-      .catch(() => { /* 글이 비어도 고를 수는 있다 */ })
-    return () => { alive = false }
+      .then((lines) => {
+        if (alive) setBank(lines)
+      })
+      .catch(() => {
+        /* 글이 비어도 고를 수는 있다 */
+      })
+    return () => {
+      alive = false
+    }
   }, [locale])
 
   /** 지금 창에 올릴 글 */
   const showing = useMemo((): string => {
     if (!PRINTING.has(step)) return ''
-    const at = step === 'intro' ? TEXT.pokeBalls
-      : step === 'confirm' ? TEXT.firstChoice + pick
-        : TEXT.nowChoose
+    const at =
+      step === 'intro'
+        ? TEXT.pokeBalls
+        : step === 'confirm'
+          ? TEXT.firstChoice + pick
+          : TEXT.nowChoose
     // 끝의 새 쪽 표지는 뗀다 — "버튼을 기다렸다 창을 닫아라"는 뜻이라
     // 이 화면에는 해당이 없다
     return (bank[at] ?? '').replace(/[\r\f]+$/, '')
@@ -107,15 +114,24 @@ export function ChooseStarter() {
 
   useEffect(() => {
     printer.current = new MessagePrinter(showing, slots.current, {
-      speed: textSpeedFrames(), canSkip: true, autoScroll: false,
+      speed: textSpeedFrames(),
+      canSkip: true,
+      autoScroll: false,
     })
     setText('')
     setReady(false)
   }, [showing])
 
   // 무대(3D)에 지금 상태를 넘긴다. React 상태로 이으면 프레임마다 다시 그린다
-  useEffect(() => { starterScene.pick = pick }, [pick])
-  useEffect(() => { starterScene.cursorShown = live }, [live])
+  useEffect(() => {
+    starterScene.pick = pick
+  }, [pick])
+  useEffect(() => {
+    starterScene.cursorShown = live
+  }, [live])
+  useEffect(() => {
+    starterScene.confirming = step === 'confirm'
+  }, [step])
 
   /**
    * 기다리는 단계를 굴린다.
@@ -129,7 +145,9 @@ export function ChooseStarter() {
         fieldScripts.services.sound?.playEffect(SFX.BAG_OPEN)
         setStep('opening')
       }, BAG_NOISE_DELAY * FRAME_MS)
-      return () => { clearTimeout(id) }
+      return () => {
+        clearTimeout(id)
+      }
     }
     if (step === 'opening') {
       const id = setTimeout(() => {
@@ -138,12 +156,20 @@ export function ChooseStarter() {
         starterScene.cameraSince = 0
         setStep('camera')
       }, OPEN_FRAMES * FRAME_MS)
-      return () => { clearTimeout(id) }
+      return () => {
+        clearTimeout(id)
+      }
     }
     if (step === 'camera') {
       const id = setTimeout(
-        () => { setStep('intro') }, (CAMERA_FRAMES + CURSOR_DELAY) * FRAME_MS)
-      return () => { clearTimeout(id) }
+        () => {
+          setStep('intro')
+        },
+        (CAMERA_FRAMES + CURSOR_DELAY) * FRAME_MS,
+      )
+      return () => {
+        clearTimeout(id)
+      }
     }
     return undefined
   }, [step])
@@ -161,11 +187,16 @@ export function ChooseStarter() {
       if (p === null) return
       p.tick({ pressed: false, held: false })
       const shown = printedText(p)
-      if (shown !== last) { last = shown; setText(shown) }
+      if (shown !== last) {
+        last = shown
+        setText(shown)
+      }
       setReady((r) => (r === p.finished ? r : p.finished))
     }
     raf = requestAnimationFrame(frame)
-    return () => { cancelAnimationFrame(raf) }
+    return () => {
+      cancelAnimationFrame(raf)
+    }
   }, [])
 
   // 0번은 **다 찍히면 저절로** 7번으로 갈린다 (`CHOOSE_STARTER_STEP_DELETE_…`)
@@ -187,15 +218,18 @@ export function ChooseStarter() {
     fieldScripts.services.sound?.playCry(STARTERS[at] ?? 0)
   }, [])
 
-  const move = useCallback((by: number): void => {
-    if (step !== 'choose' || !live) return
-    setPick((c) => {
-      const next = clampCursor(c, by, STARTERS.length)
-      // `ChangePokeballChoice` — 끝에서 더 밀면 소리가 안 난다
-      if (next !== c) fieldScripts.services.sound?.playEffect(SFX.MENU)
-      return next
-    })
-  }, [step, live])
+  const move = useCallback(
+    (by: number): void => {
+      if (step !== 'choose' || !live) return
+      setPick((c) => {
+        const next = clampCursor(c, by, STARTERS.length)
+        // `ChangePokeballChoice` — 끝에서 더 밀면 소리가 안 난다
+        if (next !== c) fieldScripts.services.sound?.playEffect(SFX.MENU)
+        return next
+      })
+    },
+    [step, live],
+  )
 
   const confirm = useCallback((): void => {
     if (step === 'choose') {
@@ -205,20 +239,37 @@ export function ChooseStarter() {
       return
     }
     if (step !== 'confirm' || !ready) return
-    if (answer !== MENU_YES) { setStep('choose'); setLive(true); return }
+    if (answer !== MENU_YES) {
+      setStep('choose')
+      setLive(true)
+      return
+    }
     setStarterChoice(STARTERS[pick] ?? 0)
     closeAll()
   }, [step, live, ready, pick, answer, choose, closeAll])
 
   useMenuKeys({
-    left: () => { move(-1) },
-    right: () => { move(1) },
-    up: () => { if (step === 'confirm') setAnswer(0) },
-    down: () => { if (step === 'confirm') setAnswer(1) },
+    left: () => {
+      move(-1)
+    },
+    right: () => {
+      move(1)
+    },
+    up: () => {
+      if (step === 'confirm') setAnswer(0)
+    },
+    down: () => {
+      if (step === 'confirm') setAnswer(1)
+    },
     confirm,
     // ⚠️ **물러날 자리가 없다.** 원작도 이 화면에서는 안 고르고 나갈 수 없다 —
     // 스크립트가 고른 결과를 기다리며 서 있기 때문이다. 확인 창에서만 되돌아간다
-    cancel: () => { if (step === 'confirm') { setStep('choose'); setLive(true) } },
+    cancel: () => {
+      if (step === 'confirm') {
+        setStep('choose')
+        setLive(true)
+      }
+    },
   })
 
   return (
@@ -227,13 +278,6 @@ export function ChooseStarter() {
         미리보기 창 (`StarterPreviewWindow`). 확인을 물을 때만 열린다 —
         커서를 옮기는 동안에는 볼만 보인다
       */}
-      {step === 'confirm' && art !== null && (
-        <div
-          className={css.preview}
-          style={{ backgroundImage: `url(${art})` }}
-          aria-hidden
-        />
-      )}
 
       {text !== '' && (
         <div className={css.box} role="status">
