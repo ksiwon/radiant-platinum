@@ -58,6 +58,11 @@ export const GROUPS = [
     match: oneOf('data/berries.json'),
   },
   {
+    name: 'distortion',
+    make: 'pnpm extract:distortion',
+    match: oneOf('data/distortion.json'),
+  },
+  {
     name: 'pokedexSort',
     make: 'pnpm extract:pokedexSort',
     match: (p) => /^data\/pokedexSort\.[a-z]+\.json$/.test(p),

@@ -508,6 +508,102 @@ export const berriesSchema = z.object({
   })).nonempty(),
 })
 
+/**
+ * 파열된 세계 (PARITY §6.10) — `fielddata/tornworld/` + `ov9_02249960.c`.
+ *
+ * ⚠️ **`bounds`의 `s*`는 개수가 아니라 차이다.** 안에 드는 마지막 칸이
+ * `start + size`다 (`DistWorldBounds_AreCoordinatesInBounds`가 `<=`로 본다)
+ */
+const distortionBoundsSchema = z.object({
+  x: z.number().int(), y: z.number().int(), z: z.number().int(),
+  sx: z.number().int().nonnegative(),
+  sy: z.number().int().nonnegative(),
+  sz: z.number().int().nonnegative(),
+})
+
+export const distortionSchema = z.object({
+  maps: z.array(z.object({
+    map: z.number().int().nonnegative(),
+    /** 층을 하나의 세로 통로로 잇는 값. 이 맵의 칸 좌표에 더하면 세계 좌표다 */
+    offsetX: z.number().int(),
+    offsetY: z.number().int(),
+    offsetZ: z.number().int(),
+    platforms: z.array(z.object({
+      /** 0 바닥 · 1 서쪽 벽 · 2 동쪽 벽 · 3 천장 */
+      kind: z.number().int().min(0).max(3),
+      /** `tw_arc_attr`의 몇 번째 격자인가 */
+      attr: z.number().int().nonnegative(),
+      bounds: distortionBoundsSchema,
+      rows: z.number().int().positive(),
+      cols: z.number().int().positive(),
+    })),
+    jumps: z.array(z.object({
+      handler: z.number().int().nonnegative(),
+      dir: z.number().int(),
+      bounds: distortionBoundsSchema,
+      dx: z.number().int(), dy: z.number().int(), dz: z.number().int(),
+      spriteAngle: z.number().int(),
+      steps: z.number().int(),
+      axis: z.number().int().min(0).max(2),
+      inverted: z.number().int(),
+      facing: z.number().int(),
+      platformKind: z.number().int(),
+      platformIndex: z.number().int().nonnegative(),
+    })),
+    cameras: z.array(z.object({
+      bounds: distortionBoundsSchema,
+      angleX: z.number().int(), angleY: z.number().int(), angleZ: z.number().int(),
+      dir: z.number().int(),
+      steps: z.number().int(),
+    })),
+    props: z.array(z.object({
+      group: z.number().int().nonnegative(),
+      kind: z.number().int().nonnegative(),
+      x: z.number().int(), y: z.number().int(), z: z.number().int(),
+    })),
+    triggers: z.array(z.object({
+      group: z.number().int().nonnegative(),
+      dir: z.number().int(),
+      show: z.number().int(),
+      bounds: distortionBoundsSchema,
+    })),
+    visibleGroups: z.number().int().nonnegative(),
+  })).nonempty(),
+  /** 판마다의 통행 격자. u16 하나가 한 칸이고 0x8000이 막힘이다 */
+  attrs: z.array(z.array(z.number().int().nonnegative())).nonempty(),
+  connections: z.array(z.object({
+    currID: z.number().int().nonnegative(),
+    prevID: z.number().int().nonnegative(),
+    nextID: z.number().int().nonnegative(),
+  })).nonempty(),
+  events: z.array(z.object({
+    map: z.number().int().nonnegative(),
+    events: z.array(z.object({
+      x: z.number().int(), y: z.number().int(), z: z.number().int(),
+      flagCond: z.number().int().nonnegative(),
+      flagVal: z.number().int(),
+      cmds: z.array(z.object({
+        kind: z.number().int().nonnegative(),
+        params: z.record(z.string(), z.unknown()).nullable(),
+      })),
+    })),
+  })),
+  movingPlatforms: z.array(z.object({
+    map: z.number().int().nonnegative(),
+    platforms: z.array(z.record(z.string(), z.unknown())),
+  })),
+  elevatorPaths: z.array(z.record(z.string(), z.unknown())).nonempty(),
+  simpleProps: z.array(z.object({
+    map: z.number().int().nonnegative(),
+    props: z.array(z.record(z.string(), z.unknown())),
+  })),
+  mapObjects: z.array(z.object({
+    map: z.number().int().nonnegative(),
+    objects: z.array(z.record(z.string(), z.unknown())),
+  })),
+  giratinaShadows: z.array(z.record(z.string(), z.unknown())),
+})
+
 export const nameListSchema = z.array(z.string())
 export const labelsSchema = z.object({
   types: z.array(z.string()).length(TYPE_COUNT),
@@ -538,6 +634,12 @@ export type HiddenItems = z.infer<typeof hiddenItemsSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>
 export type PokedexHabitat = z.infer<typeof pokedexHabitatSchema>
 export type Berries = z.infer<typeof berriesSchema>
+export type DistortionData = z.infer<typeof distortionSchema>
+export type DistortionMap = DistortionData['maps'][number]
+export type DistortionBounds = DistortionMap['platforms'][number]['bounds']
+export type DistortionPlatform = DistortionMap['platforms'][number]
+export type DistortionJump = DistortionMap['jumps'][number]
+export type DistortionCamera = DistortionMap['cameras'][number]
 export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
