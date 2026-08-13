@@ -4,6 +4,7 @@
 // 있는 자리가 정해져 있다. 셋 다 원작이 값으로 적어 두었다.
 import type { MapHeader } from '../map/world'
 import { isSurfable } from '../map/zone'
+import { isBikeBridge, onElevatedBridge } from './bridge'
 
 /** 자전거 (`items.ko.json` 450번). 열쇠도구라 쓰면 없어지지 않는다 */
 export const BIKE_ITEM = 450
@@ -84,8 +85,6 @@ export type BikeBlock = 'grass' | 'surf' | 'map' | 'stuck'
 // 타일 거동값 (`map_tile_behaviors.h`, §2.2)
 const VERY_TALL_GRASS = 0x03
 const MUD = new Set([0xa4, 0xa5, 0xa6, 0xa7])
-/** 자전거 다리. **여기서는 내릴 수 없다** — 내리면 다리 아래로 떨어진다 */
-const BIKE_BRIDGE = new Set([0x74, 0x75, 0x76, 0x77])
 
 /**
  * 여기서 타거나 내릴 수 있는가 (`CanUseBicycle`).
@@ -102,7 +101,15 @@ export function bikeBlock(
   // 다리 거동으로도 걸리지만 스크립트가 따로 켜는 자리가 있다 — 206번도로의
   // 입구가 그렇고, 그때는 다리 타일 밖에서도 이 값이 서 있다
   if (riding && onRoad) return 'stuck'
-  if (behavior !== null && BIKE_BRIDGE.has(behavior)) return riding ? 'stuck' : null
+  // ⚠️ **다리 **위**일 때만 못 내린다** (`MapObject_IsOnBikeBridge*`가 층을 같이 본다).
+  // 밑을 지나가는 사람은 같은 칸에 서 있어도 자유롭게 타고 내린다 (PARITY §1.16).
+  //
+  // ⚠️ 거동값도 틀려 있었다 — 자전거 다리는 0x76~0x7d고, 0x74·0x75는
+  // 모래·눈 위의 **보통 다리**다. 그 둘까지 묶으면 사막과 설원의 다리에서
+  // 자전거가 안 내려진다
+  if (behavior !== null && isBikeBridge(behavior) && onElevatedBridge()) {
+    return riding ? 'stuck' : null
+  }
   if (riding) return null
   if (behavior !== null && (behavior === VERY_TALL_GRASS || MUD.has(behavior))) return 'grass'
   if (surfing) return 'surf'

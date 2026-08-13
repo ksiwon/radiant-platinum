@@ -271,10 +271,16 @@ export const scriptFileSchema = z.object({
    */
   movementTypes: z.array(z.object({
     name: z.string(),
-    kind: z.enum(['look', 'wander', 'face', 'rotate', 'pace', 'route', 'other']),
+    kind: z.enum([
+      'look', 'wander', 'face', 'rotate', 'pace', 'route',
+      // 남을 보고 움직이거나(따라가기 둘) 아예 안 움직이는 갈래(변장 넷)
+      'follow', 'partner', 'disguise', 'other',
+    ]),
     dirs: z.array(z.number().int().min(0).max(3)).optional(),
     /** `route`만 쓴다. 한 바퀴를 셀 때 0이면 x, 1이면 z를 본다 */
     axis: z.number().int().min(0).max(1).optional(),
+    /** `disguise`만 쓴다. 0 눈 · 1 모래 · 2 바위 · 3 풀 (`Unk_ov5_02200678`) */
+    prop: z.number().int().min(0).max(3).optional(),
   })).nonempty(),
   /** 다음 짓까지 기다리는 프레임 후보. 실측 16·32·48·64 */
   movementDelays: z.array(z.number().int().positive()).nonempty(),

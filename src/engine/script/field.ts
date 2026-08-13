@@ -19,8 +19,10 @@ import {
 import { ScriptContext, ScriptError, type CommonScripts } from './context'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { resetFade } from './fade'
-import { clearNpcPlacement, npcActors, spawnNpcs } from '../actor/npcs'
-import { setAmbientTables } from '../actor/ambient'
+import {
+  clearNpcPlacement, npcActors, npcByMovementType, spawnNpcs, switchMovementType,
+} from '../actor/npcs'
+import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
 import { obstacleAt } from '../actor/obstacles'
@@ -273,7 +275,14 @@ export function makeWorld(
     vars,
     messages,
     movements: movements ?? fieldScripts.data?.meta.movements,
-    objects: (localID) => (localID === LOCALID_PLAYER ? playerMovable : npcActors.byLocalID.get(localID) ?? null),
+    objects: (localID) => {
+      if (localID === LOCALID_PLAYER) return playerMovable
+      // ⚠️ **동행에게는 번호가 없다** (`GetLocalMapObjByIndex`). 원작이 이
+      // 번호만은 **이동 유형으로** 찾는다 — 셰릴이든 라이벌이든 지금
+      // 따라다니고 있는 사람 하나다. 번호로 찾으면 아무도 안 나온다
+      if (localID === LOCALID_FOLLOWER) return npcByMovementType(MOVEMENT_FOLLOW_PLAYER)
+      return npcActors.byLocalID.get(localID) ?? null
+    },
     options: { speed: TEXT_SPEED.normal, canSkip: true, autoScroll: false },
     input: () => frameInput,
     // 이름은 세이브가 복원되면 바뀌므로 그때그때 물어본다. 여기서 값을
@@ -292,6 +301,12 @@ export function makeWorld(
 
 /** `constants/scrcmd.h` — 이동 명령이 주인공을 가리키는 번호 */
 const LOCALID_PLAYER = 0xff
+/** 같은 표의 「지금 따라다니는 사람」. 배치표 번호가 아니다 */
+const LOCALID_FOLLOWER = 0xf2
+/** `MOVEMENT_TYPE_FOLLOW_PLAYER` (`generated/movement_types.txt` 49번째 줄) */
+const MOVEMENT_FOLLOW_PLAYER = 48
+/** `MOVEMENT_TYPE_NONE`. 변장이 풀린 사람이 이걸로 갈린다 */
+const MOVEMENT_NONE = 0
 
 /**
  * 주인공을 이동 명령이 만질 수 있는 모양으로 감싼다.
@@ -1000,6 +1015,14 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
   if (!target) return false
   const info = data.meta.files[target.file]
   if (!info || target.entry >= info.entries) return false
+
+  // ⚠️ **변장이 여기서 풀린다** (PARITY §1.15). 원작은 다가오는 연출의 마지막에
+  // 이동 유형을 `NONE`으로 갈아 끼운다 (`ApproachingTrainerTask_SwitchMovementTypeNone`)
+  // — 그 한 값이 곧 「정체가 드러났다」다. 눈이 마주쳤든 말을 걸었든 그 사람의
+  // 스크립트가 도는 순간이므로 자리가 여기 하나면 된다
+  if (localID !== 0 && disguiseOf(npcActors.byLocalID.get(localID)) !== null) {
+    switchMovementType(localID, MOVEMENT_NONE)
+  }
 
   vars.resetLocals()
   vars.set(VAR_LAST_TALKED, localID)

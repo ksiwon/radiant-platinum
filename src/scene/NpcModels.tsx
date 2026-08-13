@@ -20,6 +20,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
+import { disguiseOf } from '../engine/actor/ambient'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
@@ -93,6 +94,8 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     for (const actor of npcActors.list) {
       if (n >= MAX) break
       if (!actor.visible) continue
+      // 변장 중이면 사람이 아니라 더미가 선다 (`DisguisePlates`)
+      if (disguiseOf(actor) !== null) continue
       if (Math.abs(actor.x - p.x) > RANGE || Math.abs(actor.z - p.z) > RANGE) continue
       const tag = table[String(actor.gfx)]
       if (tag === undefined) continue

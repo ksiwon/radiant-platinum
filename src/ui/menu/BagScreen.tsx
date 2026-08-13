@@ -19,6 +19,7 @@ import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
+import { onElevatedBridge } from '../../engine/actor/bridge'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
 import { castRod } from '../../scene/fishingSystem'
 import { isSurfable } from '../../engine/map/zone'
@@ -133,6 +134,7 @@ export function BagScreen() {
       escapeRopeAllowed: header?.escapeRope === 1,
       repelSteps: steps.repel,
       waterAhead: grid !== null && isSurfable(grid.behavior(front.x, front.z)),
+      onBridge: onElevatedBridge(),
     })
 
     switch (action.kind) {

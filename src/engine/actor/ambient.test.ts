@@ -35,6 +35,9 @@ const TYPE = {
   rotateCounterclockwise: 18,
   pace: 20,
   route: 21,
+  follow: 48,
+  partner: 50,
+  disguiseGrass: 54,
 } as const
 
 /** `MOVEMENT_ACTION_WALK_NORMAL_*` — 한 칸에 8프레임 */
@@ -224,6 +227,87 @@ maybe('혼자 하는 짓', () => {
     run(100)
     expect({ x: npc.x, z: npc.z }).toEqual({ x: 3, z: 3 })
   })
+
+  // ── 따라다니기 (PARITY §1.14) ──────────────────────────────────────────────
+  //
+  // ⚠️ 여기서 재는 것은 「한 칸 뒤를 따라온다」다. **지금 선 칸**으로 걸으면
+  // 두 몸이 겹치고, 주인공이 멈추는 순간 옆으로 파고든다
+
+  /** 주인공을 그 칸 가운데에 세운다. 세계 좌표는 타일 + 0.5다 */
+  const stand = (x: number, z: number): void => {
+    worldState.player.position.set(x + 0.5, 0, z + 0.5)
+  }
+
+  it('처음 본 프레임에는 안 움직인다 — 아직 떠난 칸이 없다', () => {
+    const npc = actor(TYPE.follow, 3, 4)
+    npcActors.list = [npc]
+    stand(3, 3)
+    run(60)
+    expect({ x: npc.x, z: npc.z }).toEqual({ x: 3, z: 4 })
+  })
+
+  it('주인공이 떠난 칸으로 한 칸 들어간다', () => {
+    const npc = actor(TYPE.follow, 3, 4)
+    npcActors.list = [npc]
+    stand(3, 3)
+    run(1)
+    // 주인공이 북으로 한 칸. 동행은 주인공이 **비운** (3,3)으로 간다
+    stand(3, 2)
+    run(STEP_FRAMES)
+    expect({ x: npc.x, z: npc.z, dir: npc.dir }).toEqual({ x: 3, z: 3, dir: 0 })
+  })
+
+  it('주인공이 멈춰 있으면 옆으로 파고들지 않는다', () => {
+    const npc = actor(TYPE.follow, 3, 4)
+    npcActors.list = [npc]
+    stand(3, 3)
+    run(1)
+    stand(3, 2)
+    run(STEP_FRAMES)
+    // 주인공이 그대로 서 있는 동안은 한 발짝도 더 안 온다
+    run(200)
+    expect({ x: npc.x, z: npc.z }).toEqual({ x: 3, z: 3 })
+  })
+
+  it('모퉁이에서는 좌우를 먼저 좁힌다 (`GetDirectionBetweenPoints`)', () => {
+    // 동행 (5,5), 주인공이 비운 칸 (3,3) → x가 먼저라 서쪽이다
+    const npc = actor(TYPE.follow, 5, 5)
+    npcActors.list = [npc]
+    stand(3, 3)
+    run(1)
+    stand(3, 2)
+    run(STEP_FRAMES)
+    expect({ x: npc.x, z: npc.z, dir: npc.dir }).toEqual({ x: 4, z: 5, dir: 2 })
+  })
+
+  it('짝 트레이너는 짝이 떠난 칸을 따라간다', () => {
+    // 같은 스크립트 번호를 가진 둘. 앞사람을 손으로 옮긴다
+    const lead = actor(TYPE.none, 3, 3)
+    const back = actor(TYPE.partner, 3, 4)
+    ;(lead.info as { script?: number }).script = 3007
+    ;(back.info as { script?: number }).script = 3007
+    npcActors.list = [lead, back]
+    run(1)
+    lead.z = 2
+    run(STEP_FRAMES)
+    expect({ x: back.x, z: back.z }).toEqual({ x: 3, z: 3 })
+  })
+
+  it('짝이 없으면 아무것도 안 한다', () => {
+    const back = actor(TYPE.partner, 3, 4)
+    ;(back.info as { script?: number }).script = 3007
+    npcActors.list = [back]
+    run(200)
+    expect({ x: back.x, z: back.z }).toEqual({ x: 3, z: 4 })
+  })
+
+  it('변장한 트레이너는 스스로 안 움직인다', () => {
+    const npc = actor(TYPE.disguiseGrass, 3, 3)
+    npcActors.list = [npc]
+    stand(3, 4)
+    run(300)
+    expect({ x: npc.x, z: npc.z, dir: npc.dir }).toEqual({ x: 3, z: 3, dir: 0 })
+  })
 })
 
 maybe('배치표가 실제로 시키는 것', () => {
@@ -259,11 +343,18 @@ maybe('배치표가 실제로 시키는 것', () => {
     expect(count.get('face')).toBe(655)
     expect(still.get('NONE')).toBe(2051)
 
-    // ⚠️ 여기 남은 132명이 **아직 안 옮긴 것**이다. 나무 열매 밭 118곳이
-    // 대부분이고(자란 단계에 따라 모습이 바뀐다), 나머지는 변장한 트레이너
-    // 11명과 따라오는 파트너 3명이다
+    // 짝을 따라가는 트레이너 셋과 변장한 트레이너 열하나 (PARITY §1.14·§1.15).
+    // ⚠️ 배치표에 `FOLLOW_PLAYER`는 **한 명도 없다** — 동행은 스크립트가
+    // 그 자리에서 유형을 갈아 끼운다 (`SetMovementType`)
+    expect(count.get('partner')).toBe(3)
+    expect(count.get('disguise')).toBe(11)
+    expect(count.get('follow')).toBeUndefined()
+
+    // ⚠️ 여기 남은 118명이 **아직 안 옮긴 것**이다 — 나무 열매 밭이고
+    // 자란 단계에 따라 모습이 바뀐다 (§4.6)
     const notYet = total - moving - (count.get('face') ?? 0) - (still.get('NONE') ?? 0)
-    expect(notYet).toBe(132)
+      - (count.get('partner') ?? 0) - (count.get('disguise') ?? 0)
+    expect(notYet).toBe(118)
     expect(still.get('BERRY_SOIL')).toBe(118)
   })
 })

@@ -98,6 +98,13 @@ export interface FieldContext {
   repelSteps: number
   /** 앞 칸이 물인가 — 낚싯대는 물을 봐야 던진다 */
   waterAhead: boolean
+  /**
+   * 지금 다리 **위**에 서 있는가 (`MapObject_IsStatusOnElevatedBridge`).
+   *
+   * 다리 위에서는 밑의 물에 낚싯대를 못 던진다 — 원작이 그 한 줄로 막는다
+   * (`CanUseFishingRod`). 밑을 지나갈 때는 같은 칸에서도 던질 수 있다
+   */
+  onBridge?: boolean
 }
 
 /** 아직 계통이 없는 갈래의 이름. 화면이 그대로 보여 준다 */
@@ -147,6 +154,9 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
         return { kind: 'blocked', why: '여기서는 낚시를 할 수 없다.' }
       }
       if (!ctx.waterAhead) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      // ⚠️ **다리 위에서는 못 던진다** (PARITY §1.16). 밑을 지나갈 때는
+      // 같은 칸에서도 던진다 — 「위인가 밑인가」가 여기서도 갈린다
+      if (ctx.onBridge === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       return {
         kind: 'fish',
         rod: item.fieldUseFunc === FieldUse.OLD_ROD ? 'old'

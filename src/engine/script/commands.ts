@@ -11,7 +11,9 @@ import type { ScriptCommand } from '../../data/schema'
 import {
   compare, conditionHolds, type CommandFn, type ResumeFn, type ScriptContext,
 } from './context'
-import { addNpc, npcActors, removeNpc, setNpcPlacement } from '../actor/npcs'
+import {
+  addNpc, npcActors, removeNpc, setNpcPlacement, switchMovementType,
+} from '../actor/npcs'
 import { mapById, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
@@ -714,9 +716,17 @@ on('SetPosition', (ctx) => {
   return false
 })
 
+/**
+ * 이쪽도 **지금 서 있는 사람**이다 (`MapObject_SwitchMovementType`).
+ *
+ * ⚠️ 배치표를 고치는 위의 `SetObjectEventMovementType`과 다른 명령이다. 여기를
+ * 배치표로 두면 유형이 「맵을 한 번 나갔다 들어와야」 먹는다 — 동행이 붙는
+ * 자리 여덟이 전부 이 명령이라(영원의숲 셰릴·강철섬 리키·201번도로 라이벌…)
+ * 그동안 동행은 그 자리에 굳어 있었다
+ */
 on('SetMovementType', (ctx) => {
   const localID = ctx.readVar()
-  setNpcPlacement(localID, { move: ctx.readHalfWord() })
+  switchMovementType(localID, ctx.readHalfWord())
   return false
 })
 

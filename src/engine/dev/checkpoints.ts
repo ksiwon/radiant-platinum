@@ -939,6 +939,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge6,
   },
   {
+    id: 'route217',
+    label: '217번도로 (눈에 숨은 닌자보이 둘)',
+    env: '야외 · 눈보라 치는 설원 · 눈 더미 둘이 길가에 있다',
+    try: [
+      '눈 더미 앞을 지나 본다 — 사방을 보는 시야라 어느 쪽에서 와도 걸린다',
+      '더미가 사람으로 갈리는지 본다 (`DisguisePlates` → `NpcSprites`)',
+      '이긴 뒤 맵을 나갔다 들어오면 다시 숨는지 본다 — 배치표가 그렇다',
+    ],
+    map: 385,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge6,
+  },
+  {
     id: 'snowpoint',
     label: '선단시티 (눈)',
     env: '야외 · 눈 덮인 도시 (하늘과 땅이 밝다) · 배지 6개',

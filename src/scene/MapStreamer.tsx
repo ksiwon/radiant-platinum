@@ -42,6 +42,7 @@ import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
+import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
 import {
   distortionAddObject,
@@ -67,6 +68,7 @@ import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
+import { DisguisePlates } from './DisguisePlates'
 import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
@@ -223,6 +225,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
       resetEncounterTile()
       resetStepTile()
+      // 다리 위에 선 채로 맵을 옮길 수는 없다 — 새 맵의 어귀를 다시 밟아야 한다
+      resetBridge()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
@@ -729,6 +733,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <NpcModels grid={grid} layer={layer} table={npcModels} onStanding={setStandingPeople} />
       <NpcMonModels grid={grid} layer={layer} taken={standingPeople} onStanding={setStandingMons} />
       <NpcSprites grid={grid} layer={layer} standing={standing} />
+      {/* 변장한 트레이너는 사람 대신 더미가 선다 (PARITY §1.15) */}
+      <DisguisePlates grid={grid} layer={layer} />
       <InteractionPrompt grid={grid} layer={layer} />
     </group>
   )

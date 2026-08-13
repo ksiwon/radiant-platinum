@@ -15,6 +15,7 @@ import {
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
+import { disguiseOf } from '../engine/actor/ambient'
 import {
   artDir, cameraQuadrant, frameOf, npcSprite, TEXELS_PER_TILE, type NpcSprite,
 } from '../engine/actor/sprites'
@@ -161,6 +162,8 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       if (n >= MAX) break
       if (!actor.visible) continue
       if (standing?.has(actor) === true) continue
+      // 변장 중이면 사람이 아니라 더미가 선다 (`DisguisePlates`)
+      if (disguiseOf(actor) !== null) continue
       if (Math.abs(actor.x - p.x) > RANGE) continue
       if (Math.abs(actor.z - p.z) > RANGE) continue
       const sprite = npcSprite(actor.gfx)

@@ -231,7 +231,7 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   {
     name: 'npcSprites',
-    outputs: ['data/npc/{그림번호}.png', 'data/npcSprites.json'],
+    outputs: ['data/npc/{그림번호}.png', 'data/npc/disguise.png', 'data/npcSprites.json'],
     converter: 1,
     convert: convertNpcSprites,
   },

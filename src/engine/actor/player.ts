@@ -1,18 +1,32 @@
 // 플레이어 이동 — fixedUpdate에서 적분, 렌더는 prev/current 보간
 import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
-import { activeZone, isSurfable } from '../map/zone'
+import { activeZone, isOnWater } from '../map/zone'
 import { MapGrid } from '../map/grid'
 import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, STRENGTH_BOULDER } from './obstacles'
 import { bikeSpeedAt } from './bike'
+import { onElevatedBridge, trackBridge } from './bridge'
 import { distortionBridge } from '../world/distortion'
 import { DIR } from '../script/movement'
 
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
+
+/**
+ * 지금 주인공이 내는 속도(타일/초).
+ *
+ * 걷기·달리기·자전거 세 갈래고 자전거는 밟을수록 빨라진다. 따라다니는 동행이
+ * 이 값으로 걸음 빠르기를 고른다 (`actor/ambient`) — 그쪽이 이 식을 다시 쓰면
+ * 한쪽만 고쳐졌을 때 동행이 조용히 뒤처진다
+ */
+export function playerSpeed(): number {
+  const p = worldState.player
+  if (p.cycling) return WALK_SPEED * bikeSpeedAt(p.pedalling)
+  return worldState.input.run && p.runningShoes ? RUN_SPEED : WALK_SPEED
+}
 /** 캐릭터 반지름(타일 단위). 벽에 얼굴이 박히지 않게 여유를 둔다 */
 const RADIUS = 0.3
 /** 존이 없을 때(회색 박스 월드) 쓰는 경계 */
@@ -51,7 +65,9 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     if (dw !== null && dw !== undefined) return dw
     return (
       grid.isBlockedAtWorld(cx, cz) ||
-      (!surfing && isSurfable(grid.behaviorAtWorld(cx, cz))) ||
+      // ⚠️ **물인지 땅인지가 층에 달린 칸이 있다** — 물 위의 다리다 (PARITY §1.16).
+      // 위를 건널 때는 걸어갈 땅이고 밑을 지날 때는 파도를 탈 물이다
+      (!surfing && isOnWater(grid.behaviorAtWorld(cx, cz), onElevatedBridge())) ||
       // 벨 나무·깰 바위·밀 바위는 지형이 아니라 객체다 (`actor/obstacles`)
       obstacleAt(Math.floor(cx), Math.floor(cz)) !== null
     )
@@ -68,7 +84,6 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
 export const playerSystem = {
   fixedUpdate(dt: number) {
     const p = worldState.player
-    const input = worldState.input
 
     // 승강 발판을 타는 동안은 자리를 발판이 정한다 (PARITY §6.10). 여기서
     // 한 줄이라도 손대면 허공에서 걸어 내려가 버린다
@@ -87,11 +102,7 @@ export const playerSystem = {
     // 올린다 (`actor/bike`의 실측 배수 2 · 2.67 · 4). 멈추면 처음으로 돌아간다
     const moving = worldState.input.move.lengthSq() > 0.0001
     p.pedalling = p.cycling && moving ? p.pedalling + dt : 0
-    const speed = p.cycling
-      ? WALK_SPEED * bikeSpeedAt(p.pedalling)
-      : input.run && p.runningShoes
-        ? RUN_SPEED
-        : WALK_SPEED
+    const speed = playerSpeed()
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
     const dir = pushDirection()
@@ -253,15 +264,15 @@ export const playerSystem = {
       p.facing = Math.atan2(lateral, p.velocity.z)
     }
 
+    const here = activeZone.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
     // 뭍에 올라서면 내린다. 원작도 물 밖으로 나가는 순간 상태가 풀린다 —
     // 타는 것은 A를 눌러야 하지만 내리는 것은 걸어 나오면 된다
-    if (
-      p.surfing &&
-      activeZone.grid &&
-      !isSurfable(activeZone.grid.behaviorAtWorld(p.position.x, p.position.z))
-    ) {
+    if (p.surfing && here !== null && !isOnWater(here, onElevatedBridge())) {
       p.surfing = false
     }
+    // 다리 어귀를 밟았는가 · 다리에서 내려섰는가 (PARITY §1.16).
+    // **밑을 지나가는 것과 위를 건너는 것이 이 한 값으로 갈린다**
+    if (here !== null) trackBridge(here)
     worldState.time.elapsed += dt
   },
 }

@@ -1,6 +1,7 @@
 // 존(맵) 데이터와 충돌 질의 (PLAN §4.2 / Phase 1)
 // tools/extract/maps.js가 뽑은 JSON을 평평한 타일 격자로 펴서 O(1) 질의를 제공한다.
 // React를 모르는 순수 TS 계층이다 — 씬 연결은 src/scene이 담당한다.
+import { isBridgeOverWater } from '../actor/bridge'
 
 /** 타일 u16의 최상위 비트가 통행 불가 플래그 */
 export const IMPASSABLE = 0x8000
@@ -103,6 +104,11 @@ const SURFABLE: ReadonlySet<number> = new Set([
   0x14, // UNUSED_x14
   0x15, // WATER_SEA
   0x19, 0x22, 0x2a, 0x50, 0x51, 0x52, 0x53,
+  // ⚠️ **다리 밑의 물 셋이 빠져 있었다** (PARITY §1.16). `BRIDGE_OVER_WATER`와
+  // 자전거 다리 둘은 원작 거동표에도 `TILE_BEHAVIOR_FLAG_SURFABLE`이 서 있다 —
+  // 빠뜨리면 다리 밑을 지나는 순간 파도타기가 풀리고 뭍으로 내려선다.
+  // **위를 건널 때 땅이 되는 것은 `isOnWater`가 층으로 가른다**
+  0x73, 0x78, 0x7c,
 ])
 
 /**
@@ -124,6 +130,26 @@ const SURFABLE: ReadonlySet<number> = new Set([
  * (떡잎 → 201 → 마사고 → 202 → 축복 → 203)는 그대로 이어진다.
  */
 export function isSurfable(behavior: number): boolean {
+  return SURFABLE.has(behavior)
+}
+
+/**
+ * 그 칸이 **지금 나에게** 물인가 (`MapObject_IsOnWater`).
+ *
+ * ⚠️ **같은 칸이 물이기도 하고 땅이기도 하다.** 물 위의 다리가 그렇다 — 위를
+ * 건너면 발밑이 다리라 걸어가고, 밑을 지나면 물이라 파도를 탄다. 원작이 그
+ * 갈래를 이 함수 하나에 적어 두었다:
+ *
+ * ```c
+ * if (TileBehavior_IsBridgeOverWater(b)) { if (!onElevatedBridge) return TRUE; }
+ * else if (TileBehavior_IsSurfable(b))   { return TRUE; }
+ * return FALSE;
+ * ```
+ *
+ * `onBridge`는 다리 어귀를 밟고 올라섰는가다 (`actor/bridge`)
+ */
+export function isOnWater(behavior: number, onBridge: boolean): boolean {
+  if (isBridgeOverWater(behavior)) return !onBridge
   return SURFABLE.has(behavior)
 }
 

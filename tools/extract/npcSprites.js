@@ -326,7 +326,11 @@ function main() {
     }
   }
 
+  const hide = disguises(rom)
+  fs.writeFileSync(path.join(OUT_DIR, 'disguise.png'), hide.png)
+
   const json = writeJson('npcSprites.json', manifest)
+  console.log(`변장 더미 ${hide.count}장 · ${hide.size}×${hide.size}`)
   console.log(`mmodel.narc ${files.length}칸 = field_sprites.order ${order.count}줄`)
   console.log(`텍스처 이름 대조 ${named}/${named} — 어긋남 0`)
   console.log(`배치 ${placed}건 중 ${covered}건이 그림으로 떨어진다`)
@@ -351,3 +355,41 @@ function main() {
 }
 
 main()
+
+/**
+ * 변장한 트레이너가 쓰고 있는 더미 넷 (PARITY §1.15).
+ *
+ * `Unk_ov5_02200678`이 적어 둔 `fldeff.narc` 멤버 넷을 그 차례로 읽는다 —
+ * **눈 · 모래 · 바위 · 풀**이고 이동 유형 51~54와 같은 차례다.
+ *
+ * ⚠️ **모델을 안 굽는다.** 넷 다 꼭짓점 넷·삼각형 둘짜리 **한 칸 크기의 평면**
+ * 하나가 전부고(y = 0.1875, 앞뒤 양면) 그 값을 롬에서 실측했다. 껍데기가
+ * 고정이라 남는 것은 16×16 그림 넷뿐이다.
+ *
+ * ⚠️ **브라우저 쪽(`src/import/platinum/npcSprites.ts`)과 한 줄씩 같아야 한다.**
+ */
+function disguises(rom) {
+  const narc = rom.narc('/data/mmodel/fldeff.narc')
+  const members = [103, 104, 105, 106]
+  const sheets = []
+  let size = 0
+  for (const member of members) {
+    const buf = narc[member]
+    const tex0 = parseTex0(buf, texBlock(buf))
+    const tex = tex0.textures[0]
+    const pal = tex0.palettes[0]
+    if (size === 0) size = tex.width
+    if (tex.width !== size || tex.height !== size) {
+      throw new Error(`변장 더미 ${member}가 ${tex.width}×${tex.height}다 — 표가 밀렸다`)
+    }
+    sheets.push(decode(tex0, tex, pal.offset))
+  }
+  const strip = new Uint8Array(size * sheets.length * size * 4)
+  for (let k = 0; k < sheets.length; k++) {
+    for (let y = 0; y < size; y++) {
+      const from = y * size * 4
+      strip.set(sheets[k].subarray(from, from + size * 4), (y * size * sheets.length + k * size) * 4)
+    }
+  }
+  return { png: encodePng(strip, size * sheets.length, size), count: sheets.length, size }
+}

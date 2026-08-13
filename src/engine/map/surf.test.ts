@@ -5,14 +5,14 @@
 // 상태로 가른다(`player_move.c` 248줄).
 //
 // 그래서 여기서 재는 것은 두 가지다:
-//  ① 목록이 맞는가 — 원작 `sTileBehaviorFlags`의 SURFABLE 16개에서 다리 셋을 뺀 열셋
+//  ① 목록이 맞는가 — 원작 `sTileBehaviorFlags`의 SURFABLE **열여섯** 그대로
 //  ② 막으면 무엇을 잃는가 — 걸어 닿는 존이 11개에서 9개로 줄고, 잃는 둘이
 //     하필 **220번 수로와 221번 도로**다. 물로만 갈 수 있는 곳이라 맞다
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { MapGrid, type MatrixMeta } from './grid'
-import { activeZone, isSurfable, isWater, Behavior } from './zone'
+import { activeZone, isOnWater, isSurfable, isWater, Behavior } from './zone'
 import { playerSystem } from '../actor/player'
 import { worldState } from '../../state/worldState'
 import type { MapHeader } from './world'
@@ -27,17 +27,37 @@ describe('파도타기 타일', () => {
    * 원작 `map_tile_behavior.c`에서 `TILE_BEHAVIOR_FLAG_SURFABLE`이 붙은 것이
    * 16개다. 이름이 16진수를 담은 것이 열 개라 값이 우연히 맞을 수 없다
    */
-  it('열셋이고, 다리 셋은 빠져 있다', () => {
-    const surf = [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x19, 0x22, 0x2a, 0x50, 0x51, 0x52, 0x53]
+  it('열여섯이고 다리 셋도 든다', () => {
+    const surf = [
+      0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x19, 0x22, 0x2a, 0x50, 0x51, 0x52, 0x53,
+      // 물 위의 다리 셋. 원작 거동표에도 `SURFABLE`이 서 있다 (PARITY §1.16)
+      0x73, 0x78, 0x7c,
+    ]
     for (const b of surf) expect(isSurfable(b), `0x${b.toString(16)}`).toBe(true)
     expect([...Array(256).keys()].filter(isSurfable)).toEqual(surf)
-
-    // 다리는 물 **위를 걷는** 자리다. 막으면 건널 다리를 못 건넌다
-    for (const b of [0x73, 0x78, 0x7c]) expect(isSurfable(b), `다리 0x${b.toString(16)}`).toBe(false)
     // 풀숲·길은 당연히 아니다
     for (const b of [0x00, Behavior.TALL_GRASS, Behavior.VERY_TALL_GRASS]) {
       expect(isSurfable(b)).toBe(false)
     }
+  })
+
+  /**
+   * ⚠️ **다리 셋은 층이 갈린다** (`MapObject_IsOnWater`).
+   *
+   * 한때는 이 셋을 목록에서 빼는 것으로 때웠다 — 「다리는 물 위를 걷는
+   * 자리다」로. 그러면 위는 건널 수 있지만 **밑을 지날 수 없다**: 파도를 타고
+   * 다리 밑에 들어서는 순간 물이 아니게 되어 뭍으로 내려선다
+   */
+  it('물 위의 다리는 위를 건너면 땅이고 밑을 지나면 물이다', () => {
+    for (const b of [0x73, 0x78, 0x7c]) {
+      expect(isOnWater(b, true), `위 0x${b.toString(16)}`).toBe(false)
+      expect(isOnWater(b, false), `밑 0x${b.toString(16)}`).toBe(true)
+    }
+    // 보통 물은 층과 상관없다
+    expect(isOnWater(Behavior.WATER_OPEN, true)).toBe(true)
+    expect(isOnWater(Behavior.WATER_OPEN, false)).toBe(true)
+    // 다리 아닌 땅도 마찬가지다
+    expect(isOnWater(0x00, false)).toBe(false)
   })
 
   it('그리는 물보다 넓다 — 폭포도 못 걷는다', () => {

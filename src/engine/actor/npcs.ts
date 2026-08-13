@@ -63,8 +63,15 @@ export interface NpcActor extends Movable {
   readonly gfx: number
   /** 서 있는 층 (BDHC 높이) */
   y: number
-  /** 배치표의 이동 유형. 변장한 트레이너를 가려내는 데 쓴다 */
-  readonly movementType: number
+  /**
+   * 지금 이 사람의 이동 유형 (`MapObject_GetMovementType`).
+   *
+   * ⚠️ **읽기 전용이 아니다.** 스크립트가 `SetMovementType`으로 **서 있는
+   * 사람**의 유형을 갈아 끼운다 (`MapObject_SwitchMovementType`) — 따라다니는
+   * 동행이 그 길로 붙는다. 셰릴·리키·미라·마리·벅과 라이벌 여덟 자리가
+   * 전부 그렇다. 배치표에는 그 유형이 한 명도 안 적혀 있다
+   */
+  movementType: number
   /** 배치표의 `data[3]`. `events.json`의 `raw[7..9]` 자리다 */
   readonly params: readonly number[]
   /**
@@ -247,6 +254,29 @@ export function addNpc(localID: number, vars: VarStore): boolean {
   npcActors.list.push(actor)
   npcActors.byLocalID.set(localID, actor)
   return true
+}
+
+/**
+ * 서 있는 사람의 이동 유형을 갈아 끼운다 (`MapObject_SwitchMovementType`).
+ *
+ * ⚠️ **배치표를 고치는 것과 다른 일이다.** `SetObjectEventMovementType`은 다음에
+ * 세울 사람에게 먹고, 이쪽은 **지금 그 자리에 선 사람**에게 먹는다. 둘을 같이
+ * 두면 동행이 붙는 순간이 「맵을 한 번 나갔다 들어와야」로 밀린다 —
+ * 영원의숲 셰릴이 그 자리에서 굳어 있었다.
+ *
+ * 굴리던 상태도 버린다. 유형이 바뀌면 「어디서 시작했는가」가 새로 잡혀야 한다
+ */
+export function switchMovementType(localID: number, type: number): boolean {
+  const actor = npcActors.byLocalID.get(localID)
+  if (!actor) return false
+  actor.movementType = type
+  actor.ambient = null
+  return true
+}
+
+/** 그 이동 유형으로 서 있는 첫 사람 (`MapObjMan_GetLocalMapObjByMovementType`) */
+export function npcByMovementType(type: number): NpcActor | null {
+  return npcActors.list.find((a) => a.movementType === type) ?? null
 }
 
 /**

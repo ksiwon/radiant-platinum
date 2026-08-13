@@ -173,6 +173,14 @@ function movementTable() {
 //   sub_02064C48  pace    시작 방향으로 걷다 막히면 돌아온다
 //   sub_02064EC8  route   방향 넷을 차례로 돈다 (x축으로 한 바퀴를 센다)
 //   sub_020650DC  route   같은 것인데 z축으로 센다
+//
+// 아래 셋은 `src/unk_02069BE0.c`에 따로 산다 — 남을 보고 움직이거나 아예 안
+// 움직이는 갈래라 위의 다섯과 얼개가 다르다:
+//
+//   sub_02069C0C  follow   **주인공이 방금 떠난 칸**으로 한 칸 걷는다
+//   sub_02069E1C  partner  같은 트레이너 ID를 가진 짝이 떠난 칸으로 걷는다
+//   sub_0206A134  disguise 스스로는 안 움직인다. 몸을 32단위 아래로 내리고
+//                          그 자리에 눈·모래·바위·풀 더미를 그린다 (`ov5_021F3D90`)
 const TYPE_STEPS = {
   sub_020645C0: 'look',
   sub_02064690: 'wander',
@@ -181,6 +189,9 @@ const TYPE_STEPS = {
   sub_02064C48: 'pace',
   sub_02064EC8: 'route',
   sub_020650DC: 'route',
+  sub_02069C0C: 'follow',
+  sub_02069E1C: 'partner',
+  sub_0206A134: 'disguise',
 }
 
 /** 기다림 표 `Unk_020EEA88`. 이 중 하나를 뽑아 프레임을 센다 */
@@ -267,7 +278,12 @@ function movementTypeTable() {
   const src = decompFile('src/unk_0206450C.c')
   const arrays = readIntArrays(src)
   const setNames = readDirSets(src)
-  const inits = readInitBodies(src)
+  // 따라가기·변장 넷은 시작 함수가 **다른 파일**에 산다 (`unk_02069BE0.c`).
+  // 한쪽만 읽으면 그 넷이 조용히 `other`로 떨어져 아무 일도 안 한다
+  const inits = new Map([
+    ...readInitBodies(src),
+    ...readInitBodies(decompFile('src/unk_02069BE0.c')),
+  ])
   const structs = readTypeStructs()
 
   const names = decompFile('generated/movement_types.txt').trim().split(/\r?\n/)
@@ -284,6 +300,8 @@ function movementTypeTable() {
     const name = names[index] ?? String(index)
     const kind = TYPE_STEPS[entry.step]
     if (kind === undefined) return { name, kind: 'other' }
+    // 따라가는 둘은 시작 함수가 상태 칸만 잡는다 — 읽을 인자가 없다
+    if (kind === 'follow' || kind === 'partner') return { name, kind }
     const init = readInitArgs(inits.get(entry.init))
     if (init === null) {
       // `pace`는 시작 함수가 인자를 안 받는다 — 방향이 배치표의 시작 방향이다
@@ -297,6 +315,9 @@ function movementTypeTable() {
       return { name, kind, dirs: init.args[0] === 2 ? [0, 2, 1, 3] : [0, 3, 1, 2] }
     }
     if (kind === 'route') return { name, kind, dirs: dirsOf(init.args[2]), axis: init.args[1] }
+    // 변장 넷은 시작 함수가 `sub_0206A0BC(mapObj, 0~3)`으로 **어떤 더미인지**만
+    // 넘긴다. 0 눈 · 1 모래 · 2 바위 · 3 풀 (`Unk_ov5_02200678`의 모델 넷과 같은 차례)
+    if (kind === 'disguise') return { name, kind, prop: init.args[0] }
     return { name, kind }
   })
 

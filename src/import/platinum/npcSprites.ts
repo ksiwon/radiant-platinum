@@ -210,5 +210,52 @@ export async function convertNpcSprites(ctx: ConvertContext): Promise<Produced> 
 
   ctx.onProgress?.(ids.length, ids.length)
   out.set('data/npcSprites.json', json(manifest))
+  const hide = await convertDisguises(ctx)
+  if (hide) out.set('data/npc/disguise.png', hide)
   return out
+}
+
+/** 변장 더미가 사는 아카이브 (`NARC_INDEX_DATA__MMODEL__FLDEFF`) */
+const FLDEFF = '/data/mmodel/fldeff.narc'
+
+/**
+ * 변장한 트레이너가 쓰고 있는 더미 넷 (PARITY §1.15).
+ *
+ * `Unk_ov5_02200678`이 적어 둔 멤버 넷을 그 차례로 읽는다 —
+ * **눈 · 모래 · 바위 · 풀**이고 이동 유형 51~54와 같은 차례다
+ * (`movementTypes[i].prop`).
+ *
+ * ⚠️ **모델을 안 굽는다.** 넷 다 꼭짓점 넷·삼각형 둘짜리 **한 칸 크기의 평면**
+ * 하나가 전부고(y = 0.1875, 앞뒤 양면), 그 값은 롬에서 실측했다. 껍데기가
+ * 고정이라 남는 것은 16×16 그림 넷뿐이라, 가로로 이어 붙인 한 줄로 낸다
+ */
+async function convertDisguises(ctx: ConvertContext): Promise<Uint8Array | null> {
+  const narc = await ctx.fs.read(FLDEFF)
+  if (!narc) return null
+  const members = [103, 104, 105, 106]
+  const sheets: Uint8Array[] = []
+  let size = 0
+  for (const member of members) {
+    const buf = narcEntry(narc, member)
+    if (!buf) return null
+    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+    const at = texBlock(buf, view)
+    if (at < 0) return null
+    const tex0 = parseTex0(buf, at)
+    const tex = tex0.textures[0]
+    const pal = tex0.palettes[0]
+    if (!tex || !pal) return null
+    // 넷이 같은 크기여야 한 줄로 이어 붙일 수 있다. 다르면 표가 밀린 것이다
+    if (size === 0) size = tex.width
+    if (tex.width !== size || tex.height !== size) return null
+    sheets.push(decode(tex0, tex, pal.offset))
+  }
+  const strip = new Uint8Array(size * sheets.length * size * 4)
+  for (let k = 0; k < sheets.length; k++) {
+    for (let y = 0; y < size; y++) {
+      const from = y * size * 4
+      strip.set(sheets[k]!.subarray(from, from + size * 4), (y * size * sheets.length + k * size) * 4)
+    }
+  }
+  return encodePng(strip, size * sheets.length, size)
 }

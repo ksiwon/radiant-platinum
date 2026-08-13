@@ -5,6 +5,7 @@
 // 내리지 못하는데, 그 검사를 나중에 두면 다리 위에서 내려 아래로 떨어진다.
 import { describe, it, expect } from 'vitest'
 import { BIKE_GEARS, GEAR_TIME, bikeBlock, bikeSpeedAt } from './bike'
+import { BRIDGE_START, resetBridge, trackBridge } from './bridge'
 import type { MapHeader } from '../map/world'
 
 const map = (bike: number): MapHeader => ({ bike } as MapHeader)
@@ -51,13 +52,30 @@ describe('여기서 탈 수 있는가', () => {
     expect(bikeBlock(map(1), 0x15, false, false)).toBe('surf')
   })
 
-  it('⚠️ 자전거 다리 위에서는 내리지도 못한다', () => {
-    // 원작이 이 검사를 **제일 먼저** 한다. 내리면 다리 아래로 떨어진다
-    for (const b of [0x74, 0x75, 0x76, 0x77]) {
+  it('⚠️ 자전거 다리 **위**에서는 내리지도 못한다', () => {
+    // 원작이 이 검사를 **제일 먼저** 한다. 내리면 다리 아래로 떨어진다.
+    // 자전거 다리는 0x76~0x7d다 — 남북 넷, 동서 넷
+    trackBridge(BRIDGE_START)
+    for (const b of [0x76, 0x79, 0x7a, 0x7d]) {
       expect(bikeBlock(map(1), b, false, true), `0x${b.toString(16)}`).toBe('stuck')
       // 아직 안 타고 있으면 다리 위에서도 탈 수 있다
       expect(bikeBlock(map(1), b, false, false)).toBeNull()
     }
+  })
+
+  it('⚠️ 다리 **밑**을 지나갈 때는 자유롭게 내린다 (PARITY §1.16)', () => {
+    // 어귀를 안 밟았으므로 같은 칸이어도 「위」가 아니다. 이 구분이 없으면
+    // 다리 밑에서 자전거가 통째로 잠긴다
+    resetBridge()
+    expect(bikeBlock(map(1), 0x76, false, true)).toBeNull()
+  })
+
+  it('⚠️ 모래·눈 위의 보통 다리는 자전거 다리가 아니다', () => {
+    // 0x74·0x75는 `BRIDGE_OVER_SAND`·`BRIDGE_OVER_SNOW`다. 자전거 다리로
+    // 묶어 두면 사막과 설원의 다리에서 자전거가 안 내려진다
+    trackBridge(BRIDGE_START)
+    expect(bikeBlock(map(1), 0x74, false, true)).toBeNull()
+    expect(bikeBlock(map(1), 0x75, false, true)).toBeNull()
   })
 
   it('이미 타고 있으면 어디서든 내릴 수 있다 — 다리만 빼고', () => {
