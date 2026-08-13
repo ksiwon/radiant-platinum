@@ -413,7 +413,12 @@ def borrowed_clips(
 def export(bundle, out: Path, color_index: int | None = None,
            clips_from: Path | None = None, only: set[str] | None = None,
            max_texture: int | None = None, keep_clips: bool = True,
-           main_props: tuple[str, ...] = ("_MainTex",),
+           # ⚠️ **둘 다 본다.** 인물 셰이더는 `_MainTex`에 음영을 싣고 포켓몬
+           # 셰이더는 `_Col0Tex`에 색을 싣는데, **인물 번들에 포켓몬이 들어 있는
+           # 자리가 있다** — 대호평 아가씨(`tr1021_00`)가 우리는 (pm0438)를
+           # 안고 서 있다. `_MainTex`만 보면 그 열두 조각에 재질이 안 붙어
+           # 우리가 하얀 덩어리가 된다
+           main_props: tuple[str, ...] = ("_MainTex", "_Col0Tex"),
            clip_filter: "re.Pattern | None" = None) -> dict:
     # 번들이 여럿일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹(재질·뼈대·동작)과
     # `pokemons/common`의 메시·텍스처 둘을 한 환경에 같이 올려야 풀린다
@@ -480,6 +485,7 @@ def export(bundle, out: Path, color_index: int | None = None,
     meshes, skins, verts_all, written = [], [], [], []
     seen_mesh: set[int] = set()
     dropped_smr = 0
+    stat = {"noMaterial": []}
     for smr in smrs:
         # ⚠️ **껍데기가 겹쳐 들어오는 종이 있다.** 독침붕(pm0015)은 SMR이 다섯인데
         # 날개 두 벌이 **같은 메시를 두 번** 가리키고, 그중 한 벌은 재질이 다른
@@ -600,9 +606,22 @@ def export(bundle, out: Path, color_index: int | None = None,
                 "mode": 4,
             }
             mat = by_name.get(mat_name)
-            if mat is not None:
-                prim["material"] = mat
+            # ⚠️ **재질이 없으면 그리지 않는다.** three는 재질 없는 조각을
+            # **기본 흰색**으로 그린다 — 리자몽 꼬리·또가스 연기·로토무 오라에
+            # 흰 덩어리가 붙어 있었다(54종 233조각). 색이 있는 것은
+            # `effect_albedo`가 구워 주고, 여기 남는 것은 스텐실로 깎아 내는
+            # `*Mask` 조각뿐이라 안 그리는 것이 맞다
+            if mat is None:
+                stat["noMaterial"].append(mat_name or mesh.m_Name)
+                continue
+            prim["material"] = mat
             primitives.append(prim)
+
+        # 조각이 하나도 안 남았다 — 스텐실 마스크만 든 껍데기다. glTF는 조각
+        # 없는 메시를 안 받으므로 껍데기째 뺀다 (`verify`가 잡아 준다)
+        if not primitives:
+            dropped_smr += 1
+            continue
 
         ibm = np.array([
             [m.e00, m.e10, m.e20, m.e30, m.e01, m.e11, m.e21, m.e31,
@@ -662,6 +681,7 @@ def export(bundle, out: Path, color_index: int | None = None,
     return {
         "meshes": len(meshes),
         "dropped": dropped_smr,
+        "noMaterial": stat["noMaterial"],
         "vertices": int(every.shape[0]),
         "triangles": int(sum(t.shape[0] for _, t in written)),
         "bones": len(bones),

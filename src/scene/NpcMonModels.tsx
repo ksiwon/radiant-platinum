@@ -19,6 +19,7 @@ import { Group } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { npcSprite } from '../engine/actor/sprites'
+import { overworldMon } from '../engine/actor/overworldMon'
 import { DIR_STEP } from '../engine/script/movement'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
@@ -31,32 +32,6 @@ const MAX = 12
 const RANGE = 24
 /** 오버월드에 세울 때의 키 상한(m). 이보다 크면 줄여서 길을 안 막는다 */
 const TALL_CAP = 2.6
-
-/**
- * 그림 이름 → 종족·폼.
- *
- * ⚠️ **이름을 지어 맞추지 않는다.** 원작 `graphicsID` 이름이 그대로 종족
- * 이름인 것만 담는다 (`fallbackNames` 시험이 이 표의 이름이 실제 배치표에
- * 있는지 되짚는다). 로토무는 폼마다 그림이 따로라 폼 번호까지 적는다
- */
-const MON_BY_NAME: Readonly<Record<string, readonly [number, number]>> = {
-  PIKACHU: [25, 0], CLEFAIRY: [35, 0], PSYDUCK: [54, 0], MACHOP: [66, 0],
-  MAGIKARP: [129, 0], TORCHIC: [255, 0], SHROOMISH: [285, 0], SKITTY: [300, 0],
-  STARLY: [396, 0], PACHIRISU: [417, 0], DRIFLOON: [425, 0], BUNEARY: [427, 0],
-  HAPPINY: [440, 0], CROAGUNK: [453, 0], UXIE: [480, 0], MESPRIT: [481, 0],
-  AZELF: [482, 0], HEATRAN: [485, 0], REGIGIGAS: [486, 0], GIRATINA_ALTERED: [487, 0],
-  CRESSELIA: [488, 0], DARKRAI: [491, 0], SHAYMIN: [492, 0], ARCEUS: [493, 0],
-  ROTOM_HEAT: [479, 1], ROTOM_WASH: [479, 2], ROTOM_FROST: [479, 3],
-  ROTOM_FAN: [479, 4], ROTOM_MOW: [479, 5],
-}
-
-/** 이 그림이 실제 포켓몬 모델로 설 수 있는가. 아니면 판때기로 남는다 */
-export function overworldMon(name: string): readonly [number, number] | null {
-  return MON_BY_NAME[name] ?? null
-}
-
-/** 시험이 표 전체를 훑을 수 있게 이름만 내 준다 */
-export const OVERWORLD_MON_NAMES: readonly string[] = Object.keys(MON_BY_NAME)
 
 interface Slot {
   outer: Group

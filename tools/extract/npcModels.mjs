@@ -7,6 +7,11 @@
 // 구워 둔 사람이 조용히 갈린다. 그래서 그 모듈을 그대로 불러 쓴다
 // (노드가 타입만 벗겨 준다).
 //
+// ⚠️ **파일 이름이 번들 이름이다.** 한동안 번들 안 텍스처 이름표(`eliteM`)로
+// 이름을 붙였는데, 그 낱말은 **번들 하나를 가리키지 않는다** — `tr1024_00`
+// (에이스 트레이너)과 `tr1053_00`(눈 지방 에이스 트레이너)이 둘 다 `eliteM`이라
+// 먼저 구운 것이 나중 것을 덮었다. 번들 이름은 하나뿐이다.
+//
 // ⚠️ **텍스처와 클립을 줄여서 굽는다.** 그냥 구우면 한 명이 5.07MB고
 // 마흔둘이면 213MB다. 그 중 절반이 애니메이션 클립인데 걷기는
 // `actor/locomotion`이 뼈를 직접 돌려서 만들므로(주인공도 그렇다) 쓸 자리가
@@ -18,10 +23,11 @@
 //
 // 한 맵이 쓰는 서로 다른 그림이 중앙값 셋이라, 맵 하나에 3MB쯤이다.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { bundlesByTag, modelFor } from '../../src/engine/actor/npcModels.ts'
+import { buildOf, modelFor } from '../../src/engine/actor/npcModels.ts'
+import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
 import { createRequire } from 'node:module'
 
 const rawSources = createRequire(import.meta.url)('../raw/sources.cjs')
@@ -63,32 +69,28 @@ function main() {
     for (const g of THROUGH_VARS) used.set(g, (used.get(g) ?? 0) + 1)
   }
 
-  const wanted = new Map()
-  /** 그림 번호 → 갈래. 화면 쪽은 이 표만 보면 된다 */
+  /** 그림 번호 → 후보 번들들. 실제로 구워진 첫 번째가 그 사람이 된다 */
   const bySprite = new Map()
+  /** 후보 차례 하나. 같은 차례를 여럿이 쓰면 한 번만 굽는다 */
+  const wanted = new Map()
   for (const [sprite] of used) {
     const name = sprites[String(sprite)]?.name
-    const model = name ? modelFor(name, table) : null
+    const model = name ? modelFor(name, table, sprite) : null
     if (!model) continue
-    bySprite.set(sprite, model.tag)
-    if (wanted.has(model.tag)) continue
-    const source = model.build === 'battle' ? table.battle : table.field
-    const set = bundlesByTag(source)
-    // 옷만 다른 같은 사람이 여럿이면 **번호가 제일 앞선 것**을 쓴다. 우리가
-    // 고르는 것이 아니라 늘 같은 것이 나오게만 하면 된다.
-    //
-    // ⚠️ **갈래를 둘 든 번들은 뒤로 민다.** `pc0001_12`가 `["hero","heroine"]`이라
-    // 이름순으로는 `heroine`의 첫 번째가 되는데, 그건 남주 옷 번들에 여주
-    // 텍스처가 섞여 든 것이라 **구우면 터진다.** 갈래를 하나만 든 번들
-    // (`pc0002_00`)이 그 사람 본체다
-    //
-    // 그래도 **한 번들에 걸지 않는다.** 어떤 번들은 같은 폴더에 없는 CAB을
-    // 가리켜서 열다가 끊긴다(`tr1026_00`의 재질). 순서대로 두고 굽다가
-    // 실패하면 다음 것으로 넘어간다 — 안 그러면 그 사람만 통째로 사라진다
-    const alone = (b) => (source.bundles[b] ?? []).length === 1
-    const all = [...(set.get(model.tag) ?? [])].sort()
-    const order = [...all.filter(alone), ...all.filter((b) => !alone(b))]
-    if (order.length > 0) wanted.set(model.tag, { build: model.build, order })
+    bySprite.set(sprite, model)
+    if (!wanted.has(model.bundles.join(' '))) wanted.set(model.bundles.join(' '), model)
+  }
+
+  // ⚠️ **배틀에 서는 몸은 오버월드와 다르다.** 「PI」처럼 오버월드 그림을 다른
+  // 갈래와 나눠 쓰는 사람이 있어서, 배치표만 보고 구우면 그 갈래로 배틀에
+  // 들어갈 때 몸이 없다 (`scene/battle/BattleTrainers`). 근거표에 있는 갈래는
+  // 전부 굽는다
+  for (const [cls, bundle] of TRAINER_MODELS) {
+    const order = [bundle, `fc${bundle.slice(2)}`]
+      .filter((b, i) => i === 0 || b in table.field.bundles)
+    if (!wanted.has(order.join(' '))) {
+      wanted.set(order.join(' '), { bundles: order, via: `배틀 갈래 ${cls}` })
+    }
   }
 
   mkdirSync(OUT, { recursive: true })
@@ -97,54 +99,71 @@ function main() {
   // 전부 "그대로 둔 것"이 되어 낡은 glb가 남는다 — 실제로 스킨 폭을 고친 뒤에
   // 0개가 다시 구워졌다
   const bakerAt = statSync(BAKER).mtimeMs
+  const done = new Set()
+  const broken = new Set()
   let made = 0, skipped = 0, bytes = 0
   const failed = []
-  for (const [tag, { build, order }] of [...wanted].sort()) {
-    const out = resolve(OUT, `${tag}.glb`)
-    const here = order.filter((b) => existsSync(resolve(PERSONS, build, b)))
-    if (here.length === 0) { console.warn(`  ⚠ 번들이 없다: ${tag} (${order.join(' ')})`); continue }
-    const fresh = Math.max(...here.map((b) => statSync(resolve(PERSONS, build, b)).mtimeMs), bakerAt)
+  /** 번들 하나. 이미 해 본 것은 다시 안 한다 — 여럿이 같은 몸을 쓴다 */
+  const bake = (bundle) => {
+    if (done.has(bundle)) return true
+    if (broken.has(bundle)) return false
+    const src = resolve(PERSONS, buildOf(bundle), bundle)
+    if (!existsSync(src)) { broken.add(bundle); return false }
+    const out = resolve(OUT, `${bundle}.glb`)
+    const fresh = Math.max(statSync(src).mtimeMs, bakerAt)
     if (existsSync(out) && statSync(out).mtimeMs > fresh) {
+      done.add(bundle)
       skipped++
       bytes += statSync(out).size
-      continue
+      return true
     }
-    let bundle = null
-    for (const b of here) {
-      try {
-        execFileSync('py', [
-          '-3.13', BAKER, resolve(PERSONS, build, b),
-          '-o', out, '--max-texture', String(MAX_TEXTURE), '--no-clips',
-        ], { stdio: ['ignore', 'ignore', 'pipe'] })
-        bundle = b
-        break
-      } catch { /* 다음 번들로 */ }
+    try {
+      execFileSync('py', [
+        '-3.13', BAKER, src, '-o', out,
+        '--max-texture', String(MAX_TEXTURE), '--no-clips',
+      ], { stdio: ['ignore', 'ignore', 'pipe'] })
+    } catch {
+      broken.add(bundle)
+      return false
     }
-    if (bundle === null) {
-      // 갈래 하나가 든 번들이 전부 끊겼다. 한 명을 못 구웠다고 마흔 명을
-      // 멈추지 않는다 — 그 그림은 판때기로 남는다
-      failed.push(`${tag}(${here.join(' ')})`)
-      continue
-    }
+    done.add(bundle)
     made++
     bytes += statSync(out).size
-    console.log(`  ${tag} ← ${bundle} (${(statSync(out).size / 1024 / 1024).toFixed(2)}MB)`)
+    return true
   }
+
+  for (const [key, model] of [...wanted].sort()) {
+    // ⚠️ **앞엣것이 되면 뒤엣것은 안 굽는다.** 후보가 등신 하나에 치비 하나라,
+    // 다 구우면 쓰지도 않을 치비 백 벌이 같이 남는다 (37MB였다)
+    const hit = model.bundles.find(bake)
+    if (hit === undefined) { failed.push(key); continue }
+    console.log(`  ${hit} ← ${model.via}`)
+  }
+
   // 화면이 볼 표. **구워 낸 것만** 담는다 — 없는 glb를 받으러 가면 그 사람이
   // 판때기로도 안 서고 사라진다
   const table_out = {}
-  for (const [sprite, tag] of [...bySprite].sort((a, b) => a[0] - b[0])) {
-    if (existsSync(resolve(OUT, `${tag}.glb`))) table_out[sprite] = tag
+  for (const [sprite, model] of [...bySprite].sort((a, b) => a[0] - b[0])) {
+    const bundle = model.bundles.find((b) => done.has(b))
+    if (bundle !== undefined) table_out[sprite] = bundle
   }
+  // ⚠️ **안 쓰는 glb를 남기지 않는다.** 규칙을 고칠 때마다 낡은 파일이 쌓이고,
+  // 그것이 에셋 목차에 그대로 들어가 배포 크기로 잡힌다. 이름 규칙을 한 번
+  // 바꿨을 때 87벌이 그렇게 남았다. **이 폴더는 이 도구가 임자다**
+  const stale = readdirSync(OUT).filter((f) => !done.has(f.replace(/\.glb$/, '')))
+  for (const f of stale) rmSync(resolve(OUT, f))
+  if (stale.length) console.log(`  안 쓰는 glb ${stale.length}벌을 치웠다`)
+
   writeFileSync(resolve(DATA, 'npcModels.json'), JSON.stringify(table_out))
   console.log(`  표 ${Object.keys(table_out).length}개 → public/data/npcModels.json`)
-  console.log(`NPC 모델 ${wanted.size}종 — 새로 구운 것 ${made} · 그대로 둔 것 ${skipped}`)
-  if (failed.length) console.warn(`  ⚠ 못 구운 번들 ${failed.length}개: ${failed.join(' ')}`)
+  console.log(`NPC 모델 ${done.size}벌 — 새로 구운 것 ${made} · 그대로 둔 것 ${skipped}`)
+  if (broken.size) console.warn(`  ⚠ 열다 끊긴 번들 ${broken.size}개: ${[...broken].join(' ')}`)
+  if (failed.length) console.warn(`  ⚠ 후보가 다 끊긴 사람 ${failed.length}: ${failed.join(' · ')}`)
   console.log(`  합계 ${(bytes / 1024 / 1024).toFixed(1)}MB`)
   // ⚠️ **짝이 맞은 것이 아니라 실제로 구워진 것을 센다.** 못 구운 번들이 있으면
   // 그 그림은 판때기로 서는데(`table_out`에서 빠진다), 짝 기준으로 세면 안 선
-  // 사람까지 "선다"로 잡힌다 — `idol` 11건이 그렇게 끼어 21.9%가 22.2%로 보였다.
-  // 그리고 변수 자리로 넣은 주인공 둘은 배치가 0이라 분모에서도 뺀다
+  // 사람까지 "선다"로 잡힌다. 그리고 변수 자리로 넣은 주인공 둘은 배치가 0이라
+  // 분모에서도 뺀다
   const real = [...used].filter(([g]) => !THROUGH_VARS.includes(g))
   const total = real.reduce((a, [, c]) => a + c, 0)
   const shown = real.filter(([g]) => table_out[g] !== undefined).reduce((a, [, c]) => a + c, 0)

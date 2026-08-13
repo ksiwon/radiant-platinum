@@ -21,7 +21,8 @@ import { MOVE_FRAMES, archetypeFor, type Archetype } from '../../engine/battle/v
 import { typeColor } from '../../engine/battle/typeColor'
 import { useBattleStore } from '../../state/battleStore'
 import type { SlotId } from '../../engine/battle/events'
-import { clearMoveImpact, moveImpact } from './stageRefs'
+import { clearMoveImpact, moveImpact, tallOf } from './stageRefs'
+import { GIRTH, muzzleY, shapeSpan, torsoY } from './moveAnchor'
 import type { MoveAnim } from '../../data/schema'
 import {
   elementFamilyForType,
@@ -113,6 +114,10 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
     if (!h || !l) return
     const [fx, fz] = shot.from,
       [tx, tz] = shot.to
+    // 나가는 높이·맞는 높이·도형 크기를 **그 자리에 선 몸**에서 뽑는다
+    const from = muzzleY(shot.by)
+    const to = shot.kind === 'self-buff' ? from : torsoY(shot.at)
+    const span = shapeSpan(shot.by, shot.at)
     const fade = pulse(k)
     material.opacity = fade
 
@@ -120,29 +125,29 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
       case 'contact-melee': {
         // 달려가서 부딪고 돌아온다. 앞의 반은 가고 뒤의 반은 온다
         const go = k < 0.5 ? k * 2 : (1 - k) * 2
-        h.position.set(fx + (tx - fx) * go, 1.1, fz + (tz - fz) * go)
-        h.scale.setScalar(0.55 + 0.5 * go)
+        h.position.set(fx + (tx - fx) * go, from + (to - from) * go, fz + (tz - fz) * go)
+        h.scale.setScalar((0.55 + 0.5 * go) * span)
         // 부딪는 순간에만 터진다
         const hit = pulse(Math.max(0, (k - 0.45) / 0.25))
-        l.position.set(tx, 1.2, tz)
-        l.scale.setScalar(0.2 + hit * 1.9)
+        l.position.set(tx, to, tz)
+        l.scale.setScalar((0.2 + hit * 1.9) * span)
         break
       }
       case 'projectile': {
         // 덩어리가 날아가 맞는다. 뒤에 꼬리가 따라붙는다
         h.position.set(
           fx + (tx - fx) * k,
-          1.2 + Math.sin(k * Math.PI) * shot.signature.lift,
+          from + (to - from) * k + Math.sin(k * Math.PI) * shot.signature.lift,
           fz + (tz - fz) * k,
         )
-        h.scale.setScalar(0.5)
+        h.scale.setScalar(0.5 * span)
         const back = Math.max(0, k - 0.12)
         l.position.set(
           fx + (tx - fx) * back,
-          1.2 + Math.sin(back * Math.PI) * shot.signature.lift,
+          from + (to - from) * back + Math.sin(back * Math.PI) * shot.signature.lift,
           fz + (tz - fz) * back,
         )
-        l.scale.setScalar(0.3 * (1 - k))
+        l.scale.setScalar(0.3 * (1 - k) * span)
         break
       }
       case 'beam': {
@@ -151,28 +156,36 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
         const cut = Math.max(0, (k - 0.7) / 0.3)
         const a = cut,
           b = grow
-        h.position.set(fx + (tx - fx) * ((a + b) / 2), 1.2, fz + (tz - fz) * ((a + b) / 2))
-        h.rotation.y = Math.atan2(tx - fx, tz - fz)
-        h.scale.set(0.34, 0.34, Math.max(0.01, (b - a) * Math.hypot(tx - fx, tz - fz)))
-        l.position.set(tx, 1.2, tz)
-        l.scale.setScalar(grow >= 1 ? 0.9 * fade : 0)
+        const mid = (a + b) / 2
+        // ⚠️ 줄기는 **입에서 몸통으로 비스듬히** 간다. y를 한 값으로 두면
+        // 큰 놈이 작은 놈을 쏠 때 줄기가 상대 머리 위를 지난다
+        h.position.set(fx + (tx - fx) * mid, from + (to - from) * mid, fz + (tz - fz) * mid)
+        const run = Math.hypot(tx - fx, tz - fz)
+        h.rotation.set(-Math.atan2(to - from, run), Math.atan2(tx - fx, tz - fz), 0, 'YXZ')
+        h.scale.set(0.34 * span, 0.34 * span,
+          Math.max(0.01, (b - a) * Math.hypot(run, to - from)))
+        l.position.set(tx, to, tz)
+        l.scale.setScalar(grow >= 1 ? 0.9 * fade * span : 0)
         break
       }
       case 'self-buff': {
         // 발밑에서 고리가 올라온다
-        h.position.set(fx, 0.3 + k * 2.4, fz)
-        h.scale.set(1.5 * (1 - k * 0.4), 0.12, 1.5 * (1 - k * 0.4))
-        l.position.set(fx, 0.3 + Math.max(0, k - 0.3) * 2.4, fz)
-        l.scale.set(1.1, 0.1, 1.1)
+        const rise = tallOf(shot.by) * 1.25
+        const ring = tallOf(shot.by) * GIRTH
+        h.position.set(fx, 0.1 + k * rise, fz)
+        h.scale.set(ring * (1 - k * 0.4), 0.12, ring * (1 - k * 0.4))
+        l.position.set(fx, 0.1 + Math.max(0, k - 0.3) * rise, fz)
+        l.scale.set(ring * 0.75, 0.1, ring * 0.75)
         break
       }
       default: {
         // 상대 둘레를 점이 돈다
         const a = k * Math.PI * 4
-        h.position.set(tx + Math.cos(a) * 1.3, 1.0 + Math.sin(a * 2) * 0.5, tz + Math.sin(a) * 1.3)
-        h.scale.setScalar(0.34)
-        l.position.set(tx - Math.cos(a) * 1.3, 1.0 - Math.sin(a * 2) * 0.5, tz - Math.sin(a) * 1.3)
-        l.scale.setScalar(0.34)
+        const r = tallOf(shot.at) * GIRTH * 1.4
+        h.position.set(tx + Math.cos(a) * r, to + Math.sin(a * 2) * r * 0.4, tz + Math.sin(a) * r)
+        h.scale.setScalar(0.34 * span)
+        l.position.set(tx - Math.cos(a) * r, to - Math.sin(a * 2) * r * 0.4, tz - Math.sin(a) * r)
+        l.scale.setScalar(0.34 * span)
         break
       }
     }
@@ -197,94 +210,97 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
       const angle = progress * Math.PI * spin + index * 2.4
       const px = fx + (tx - fx) * progress
       const pz = fz + (tz - fz) * progress
+      const py = from + (to - from) * progress
       particle.visible = progress > 0 && progress < 1
       switch (shot.family) {
         case 'flame':
           particle.position.set(
-            px + Math.cos(angle) * 0.16,
-            1 + Math.sin(progress * Math.PI) * 1.1 + (index % 3) * 0.08,
-            pz + Math.sin(angle) * 0.16,
+            px + Math.cos(angle) * 0.16 * span,
+            py + (Math.sin(progress * Math.PI) * 0.8 + (index % 3) * 0.08) * span,
+            pz + Math.sin(angle) * 0.16 * span,
           )
-          particle.scale.setScalar((0.22 + (index % 3) * 0.05) * pulse(progress))
+          particle.scale.setScalar((0.22 + (index % 3) * 0.05) * pulse(progress) * span)
           break
         case 'water':
           particle.position.set(
-            px + Math.cos(angle) * 0.22,
-            1.15 + Math.sin(progress * Math.PI) * 0.8,
-            pz + Math.sin(angle) * 0.22,
+            px + Math.cos(angle) * 0.22 * span,
+            py + Math.sin(progress * Math.PI) * 0.6 * span,
+            pz + Math.sin(angle) * 0.22 * span,
           )
-          particle.scale.set(0.13, 0.13 + progress * 0.18, 0.13)
+          particle.scale.set(0.13 * span, (0.13 + progress * 0.18) * span, 0.13 * span)
           break
         case 'spark':
           particle.position.set(
-            px + Math.sin(angle * 2) * 0.23,
-            1.2 + Math.sin(angle * 3) * 0.22,
-            pz + Math.cos(angle * 2) * 0.23,
+            px + Math.sin(angle * 2) * 0.23 * span,
+            py + Math.sin(angle * 3) * 0.22 * span,
+            pz + Math.cos(angle * 2) * 0.23 * span,
           )
-          particle.scale.set(0.07, 0.32, 0.07)
+          particle.scale.set(0.07 * span, 0.32 * span, 0.07 * span)
           particle.rotation.set(angle, angle * 0.7, angle * 1.3)
           break
         case 'frost':
           particle.position.set(
-            px + Math.cos(angle) * 0.35,
-            1.3 + Math.sin(progress * Math.PI) * 0.7,
-            pz + Math.sin(angle) * 0.35,
+            px + Math.cos(angle) * 0.35 * span,
+            py + Math.sin(progress * Math.PI) * 0.5 * span,
+            pz + Math.sin(angle) * 0.35 * span,
           )
-          particle.scale.setScalar(0.12 + (index % 3) * 0.035)
+          particle.scale.setScalar((0.12 + (index % 3) * 0.035) * span)
           particle.rotation.set(angle * 0.5, angle, -angle * 0.6)
           break
         case 'leaf':
           particle.position.set(
-            px + Math.cos(angle) * 0.48,
-            1.1 + Math.sin(angle * 0.55) * 0.45,
-            pz + Math.sin(angle) * 0.48,
+            px + Math.cos(angle) * 0.48 * span,
+            py + Math.sin(angle * 0.55) * 0.35 * span,
+            pz + Math.sin(angle) * 0.48 * span,
           )
-          particle.scale.set(0.08, 0.24, 0.16)
+          particle.scale.set(0.08 * span, 0.24 * span, 0.16 * span)
           particle.rotation.set(angle, angle * 0.4, angle * 0.7)
           break
         case 'stone':
+          // 돌덩이는 땅에서 솟아 포물선으로 간다 — 바닥이 기준이다
           particle.position.set(
             px,
-            0.25 + Math.sin(progress * Math.PI) * (0.8 + (index % 3) * 0.25),
+            0.15 + Math.sin(progress * Math.PI) * (0.6 + (index % 3) * 0.25) * span
+              + (to - 0.15) * progress,
             pz,
           )
-          particle.scale.setScalar(0.12 + (index % 4) * 0.045)
+          particle.scale.setScalar((0.12 + (index % 4) * 0.045) * span)
           particle.rotation.set(angle, angle * 0.7, angle * 0.4)
           break
         case 'spirit': {
-          const gather = 0.4 + progress * 0.8
+          const gather = (0.4 + progress * 0.8) * span
           particle.position.set(
             tx + Math.cos(angle) * gather,
-            1.2 + Math.sin(angle * 1.7) * 0.55,
+            to + Math.sin(angle * 1.7) * 0.45 * span,
             tz + Math.sin(angle) * gather,
           )
-          particle.scale.setScalar(0.1 + pulse(progress) * 0.14)
+          particle.scale.setScalar((0.1 + pulse(progress) * 0.14) * span)
           break
         }
         case 'wind':
           particle.position.set(
-            px + Math.cos(angle) * 0.65,
-            1 + progress * 0.8 + Math.sin(angle) * 0.25,
-            pz + Math.sin(angle) * 0.65,
+            px + Math.cos(angle) * 0.65 * span,
+            py + (progress * 0.5 + Math.sin(angle) * 0.25) * span,
+            pz + Math.sin(angle) * 0.65 * span,
           )
-          particle.scale.set(0.28, 0.045, 0.28)
+          particle.scale.set(0.28 * span, 0.045 * span, 0.28 * span)
           particle.rotation.set(Math.PI / 2, 0, angle)
           break
         case 'venom':
           particle.position.set(
-            px + Math.cos(angle) * 0.28,
-            1.55 - progress * 0.55 + Math.sin(progress * Math.PI) * 0.55,
-            pz + Math.sin(angle) * 0.28,
+            px + Math.cos(angle) * 0.28 * span,
+            py + (Math.sin(progress * Math.PI) * 0.45 - progress * 0.2) * span,
+            pz + Math.sin(angle) * 0.28 * span,
           )
-          particle.scale.set(0.13, 0.18 + progress * 0.14, 0.13)
+          particle.scale.set(0.13 * span, (0.18 + progress * 0.14) * span, 0.13 * span)
           break
         default:
           particle.position.set(
-            tx + Math.cos(angle) * progress * 1.2,
-            1.2 + Math.sin(angle) * progress * 0.5,
-            tz + Math.sin(angle) * progress * 1.2,
+            tx + Math.cos(angle) * progress * 1.2 * span,
+            to + Math.sin(angle) * progress * 0.5 * span,
+            tz + Math.sin(angle) * progress * 1.2 * span,
           )
-          particle.scale.setScalar(0.08 + pulse(progress) * 0.12)
+          particle.scale.setScalar((0.08 + pulse(progress) * 0.12) * span)
       }
     }
   })

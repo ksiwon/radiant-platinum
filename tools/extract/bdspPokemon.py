@@ -74,6 +74,16 @@ def trio(name: str) -> list[Path]:
     `common/pm0493_11` 하나를 나눠 쓴다. 그래서 제 판의 메시 번들이 없으면
     **그 종의 첫 판**을 대신 연다. 안 그러면 "메시가 다른 번들에 있다"로
     스물셋이 통째로 안 구워진다
+
+    ⚠️ **색 그림이 다른 판의 번들에 있는 종이 있다.** 캥카(`pm0115_00_00`)의
+    몸 재질은 `_Col0Tex`로 `pm0115_51_00_BodyA_col`을 가리키는데, 그 그림은
+    `common/pm0115_51_00`에 있다 — 셋만 열면 그 재질이 통째로 안 구워지고
+    조각이 **흰색**으로 남는다. 안농도 같다: 판 12~38이 판 11의 그림
+    (`common/pm0201_11_00`)을 나눠 쓴다.
+
+    그래서 그 종의 **세 토막짜리 텍스처 번들을 전부** 같이 연다. 세 토막
+    (`pm0115_51_00`)은 실측으로 `Texture2D`만 들었다 — 메시도 뼈도 안 들어와서
+    다른 판의 몸이 섞일 일이 없다. 두 토막(`pm0115_00`)은 메시가 있어서 안 연다
     """
     stem = re.sub(r"_\d\d$", "", name)  # pm0387_00_00 → pm0387_00
     mesh = COMMON / stem
@@ -81,10 +91,11 @@ def trio(name: str) -> list[Path]:
         shared = sorted(COMMON.glob(f"{name[:6]}_[0-9][0-9]"))
         if shared:
             mesh = shared[0]
-    found = [BATTLE / name, mesh, COMMON / name]
     if not (BATTLE / name).is_file():
         raise FileNotFoundError(f"{name}: 배틀 번들이 없다")
-    return [p for p in found if p.is_file()]
+    kin = sorted(COMMON.glob(f"{name[:6]}_[0-9][0-9]_[0-9][0-9]"))
+    found = [BATTLE / name, mesh, COMMON / name, *kin]
+    return [p for p in dict.fromkeys(found) if p.is_file()]
 
 
 #: 폼이 여럿인 종의 첫 판 번호.

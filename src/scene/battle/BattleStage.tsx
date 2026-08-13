@@ -30,7 +30,7 @@ import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
-import { battleStage, impactHits, moveImpact, STAGE_ORIGIN } from './stageRefs'
+import { battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN } from './stageRefs'
 import { BattleBallEffects } from './BattleBallEffects'
 import { BattleTrainers } from './BattleTrainers'
 import { BattleWorldLabels } from './BattleWorldLabels'
@@ -250,6 +250,7 @@ function Slot({
     setArt(null)
     grown.current = 0
     watch.current = 0
+    delete slotBody[slot]
     if (species === null) return
     void loadMonModel(species, form, { gender: mon?.gender, shiny: mon?.shiny })
       .then((loaded) => {
@@ -484,6 +485,9 @@ function Slot({
           if (top > grown.current + 0.02) {
             grown.current = top
             onBody(top)
+            // 기술 연출이 이 키로 자리를 잡는다 — 상수로 두면 디그다 머리
+            // 위와 갸라도스 배를 지나간다 (`stageRefs`의 `slotBody`)
+            slotBody[slot] = top
           }
         }
       }

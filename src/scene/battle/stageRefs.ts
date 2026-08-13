@@ -98,6 +98,28 @@ export function clearMoveImpact(): void {
   moveImpact.vanish = false
 }
 
+/**
+ * 자리마다 **실제로 서 있는 몸의 크기** (PARITY §7.3).
+ *
+ * ⚠️ **이걸 안 보면 기술이 허공에서 나간다.** 연출의 높이가 한동안 상수였다 —
+ * 줄기도 덩어리도 y=1.2에서 나가고 발밑 고리는 반지름 1.5였다. 그런데 화면에
+ * 서는 키가 디그다 0.30m에서 갸라도스 3.54m까지다. 작은 쪽은 머리 위 네 배
+ * 높이로 빔이 지나가고, 큰 쪽은 배를 뚫고 지나간다.
+ *
+ * 발판마다 **자세를 먹인 뒤의 키**를 여기 적어 두고(`BattleStage`의 `Slot`이
+ * 반 초에 한 번 재는 그 값이다) 연출이 그 비율로 자리를 잡는다
+ */
+export const slotBody: Record<string, number> = {}
+
+/** 기본 키(m). 아직 안 재었거나 도트로 선 자리에 쓴다 */
+export const SLOT_TALL = 1.4
+
+/** 그 자리에 선 몸의 키. 못 재었으면 기본값 */
+export function tallOf(slot: string): number {
+  const tall = slotBody[slot]
+  return tall !== undefined && tall > 0.05 ? tall : SLOT_TALL
+}
+
 /** 이 자리에 이 효과가 걸리는가 */
 export function impactHits(who: string, slot: string): boolean {
   if (who === 'both') return slot === moveImpact.attacker || slot === moveImpact.defender

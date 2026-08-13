@@ -17,7 +17,7 @@ import {
   type BdspSource, type ConvertContext, type GroupSpec, type Produced,
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
-import { bundlesByTag, modelFor, type NpcModelTable } from '../../engine/actor/npcModels'
+import { NPC_BUNDLE, buildOf, modelFor, type NpcModelTable } from '../../engine/actor/npcModels'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { openEnvironment, type Environment } from './environment'
 import { exportModel } from './model'
@@ -169,20 +169,6 @@ async function scanPersons(
 
 // ── npcModels ────────────────────────────────────────────────────────────────
 
-/**
- * 옷만 다른 같은 사람이 여럿이면 **번호가 제일 앞선 것**을 쓴다.
- *
- * ⚠️ **갈래를 둘 든 번들은 뒤로 민다.** `pc0001_12`가 `["hero","heroine"]`이라
- * 이름순으로는 `heroine`의 첫 번째가 되는데, 그건 남주 옷 번들에 여주 텍스처가
- * 섞여 든 것이라 **구우면 터진다.** 갈래를 하나만 든 번들이 그 사람 본체다
- */
-function bundleOrder(bundles: Readonly<Record<string, readonly string[]>>, tag: string): string[] {
-  const set = bundlesByTag({ bundles, vocabulary: [] })
-  const all = [...(set.get(tag) ?? [])].sort()
-  const alone = (b: string): boolean => (bundles[b] ?? []).length === 1
-  return [...all.filter(alone), ...all.filter((b) => !alone(b))]
-}
-
 async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   const src = requireBdsp(ctx)
   const at = await index(src)
@@ -190,44 +176,53 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
 
   const table = await scanPersons(ctx, src, at)
 
-  /** 갈래 → 어느 뭉치의 어느 번들들 */
-  const wanted = new Map<string, { build: 'battle' | 'field', order: string[] }>()
-  /** 그림 번호 → 갈래. 화면 쪽은 이 표만 보면 된다 */
-  const bySprite = new Map<number, string>()
+  /** 후보 차례 → 그 차례를 쓰는 사람. 같은 차례는 한 번만 굽는다 */
+  const wanted = new Map<string, readonly string[]>()
+  /** 그림 번호 → 후보 번들들. 실제로 구워진 첫 번째가 그 사람이 된다 */
+  const bySprite = new Map<number, readonly string[]>()
   for (const [id, name] of Object.entries(SPRITE_NAMES)) {
-    const model = modelFor(name, table)
+    const model = modelFor(name, table, Number(id))
     if (!model) continue
-    bySprite.set(Number(id), model.tag)
-    if (wanted.has(model.tag)) continue
-    const order = bundleOrder(table[model.build].bundles, model.tag)
-    if (order.length > 0) wanted.set(model.tag, { build: model.build, order })
+    bySprite.set(Number(id), model.bundles)
+    wanted.set(model.bundles.join(' '), model.bundles)
   }
-  if (wanted.size === 0) throw new Error('BDSP 인물 번들에서 이름표를 하나도 못 찾았습니다')
+  if (wanted.size === 0) throw new Error('BDSP 인물 번들에서 세울 사람을 하나도 못 찾았습니다')
 
-  const jobs = [...wanted].sort(([a], [b]) => a.localeCompare(b))
+  const jobs = [...wanted.values()].sort((a, b) => a[0]!.localeCompare(b[0]!))
   const made = new Set<string>()
+  const broken = new Set<string>()
   let done = 0
-  for (const [tag, { build, order }] of jobs) {
+
+  /** 번들 하나. 이미 해 본 것은 다시 안 한다 — 여럿이 같은 몸을 쓴다 */
+  const bake = async (bundle: string): Promise<boolean> => {
+    if (made.has(bundle)) return true
+    if (broken.has(bundle)) return false
+    const path = lookup(at, `${PERSONS}/${buildOf(bundle)}/${bundle}`)
+    const env = path ? await environmentOf(src, [path]) : null
+    if (!env) { broken.add(bundle); return false }
+    try {
+      const { glb } = await exportModel(env, encodePng, {
+        maxSize: MAX_TEXTURE,
+        // 걷기는 `actor/locomotion`이 뼈를 직접 돌려서 만든다 — 클립을 실을
+        // 자리가 없고, 실으면 한 명이 1.06MB에서 2.58MB가 된다
+        keepClips: false,
+      })
+      put(ctx, out, `models/npc/${bundle}.glb`, glb)
+      made.add(bundle)
+      return true
+    } catch {
+      broken.add(bundle)
+      return false
+    }
+  }
+
+  for (const order of jobs) {
     check(ctx)
-    // ⚠️ **한 번들에 걸지 않는다.** 어떤 번들은 같은 폴더에 없는 CAB을 가리켜서
-    // 열다가 끊긴다 (`tr1026_00`의 재질). 순서대로 두고 굽다가 실패하면 다음
-    // 것으로 넘어간다 — 안 그러면 그 사람만 통째로 사라진다
-    for (const name of order) {
-      const path = lookup(at, `${PERSONS}/${build}/${name}`)
-      if (!path) continue
-      const env = await environmentOf(src, [path])
-      if (!env) continue
-      try {
-        const { glb } = await exportModel(env, encodePng, {
-          maxSize: MAX_TEXTURE,
-          // 걷기는 `actor/locomotion`이 뼈를 직접 돌려서 만든다 — 클립을 실을
-          // 자리가 없고, 실으면 한 명이 1.06MB에서 2.58MB가 된다
-          keepClips: false,
-        })
-        put(ctx, out, `models/npc/${tag}.glb`, glb)
-        made.add(tag)
-        break
-      } catch { /* 다음 번들로 */ }
+    // ⚠️ **한 번들에 걸지 않는다.** 어떤 배틀 번들은 같은 폴더에 없는 CAB을
+    // 가리켜서 열다가 끊긴다 (`tr1085_00`의 재질). 그때 쓸 다음 후보가 **같은
+    // 번호의 필드 번들**이다 — 안 그러면 그 사람만 통째로 사라진다
+    for (const bundle of order) {
+      if (await bake(bundle)) break
     }
     done++
     ctx.onProgress?.(done, jobs.length + 2)
@@ -238,15 +233,15 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   // ⚠️ **구워 낸 것만 담는다.** 없는 glb를 받으러 가면 그 사람이 판때기로도
   // 안 서고 사라진다
   const sprites: Record<string, string> = {}
-  for (const [sprite, tag] of [...bySprite].sort((a, b) => a[0] - b[0])) {
-    if (made.has(tag)) sprites[String(sprite)] = tag
+  for (const [sprite, order] of [...bySprite].sort((a, b) => a[0] - b[0])) {
+    const bundle = order.find((b) => made.has(b))
+    if (bundle !== undefined) sprites[String(sprite)] = bundle
   }
   put(ctx, out, 'data/npcModels.json', json(sprites))
 
-  // 주인공. 화면 쪽이 `models/dawn.glb`로 받는다 — 갈래로는 `heroine`이다
-  const hero = made.has('heroine') ? 'heroine' : null
-  if (hero) {
-    const path = lookup(at, `${PERSONS}/battle/${bundleOrder(table.battle.bundles, hero)[0]!}`)
+  // 주인공. 화면 쪽이 `models/dawn.glb`로도 받는다
+  if (made.has(NPC_BUNDLE.heroine)) {
+    const path = lookup(at, `${PERSONS}/battle/${NPC_BUNDLE.heroine}`)
     const env = path ? await environmentOf(src, [path]) : null
     if (env) {
       const { glb } = await exportModel(env, encodePng, { maxSize: MAX_TEXTURE, keepClips: false })
@@ -571,7 +566,7 @@ async function convertMotionTiming(ctx: ConvertContext): Promise<Produced> {
 export const BDSP_GROUPS: readonly GroupSpec[] = [
   {
     name: 'npcModels',
-    outputs: ['models/npc/{갈래}.glb', 'models/dawn.glb', 'models/bike.glb', 'data/npcModels.json'],
+    outputs: ['models/npc/{번들}.glb', 'models/dawn.glb', 'models/bike.glb', 'data/npcModels.json'],
     converter: 1,
     convert: convertNpcModels,
   },

@@ -10,7 +10,8 @@ import { useBattleStore } from '../../state/battleStore'
 import { useSaveStore } from '../../state/saveStore'
 import { playerModelPath } from '../playerModelPath'
 import { trainerThrowOrigin } from './battleBallMotion'
-import { trainerFallbackPalette, trainerModelTag } from './battleTrainerVisual'
+import { trainerFallbackPalette } from './battleTrainerVisual'
+import { trainerModelBundle } from '../../engine/actor/npcModels'
 
 const loader = new GLTFLoader()
 const SECONDARY_OUTFIT = ['hair2', 'shoes2']
@@ -157,8 +158,8 @@ export function BattleTrainers() {
   const view = useBattleStore((state) => state.view)
   const gender = useSaveStore((state) => state.trainer.gender)
   const opponentPath = useMemo<AssetPath | null>(() => {
-    const tag = trainerModelTag(trainerClass)
-    return tag ? `models/npc/${tag}.glb` : null
+    const bundle = trainerModelBundle(trainerClass)
+    return bundle ? `models/npc/${bundle}.glb` : null
   }, [trainerClass])
 
   return (

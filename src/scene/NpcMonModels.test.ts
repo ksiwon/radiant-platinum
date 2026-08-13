@@ -5,7 +5,7 @@
 // 을 직접 읽는다
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
-import { OVERWORLD_MON_NAMES, overworldMon } from './NpcMonModels'
+import { OVERWORLD_MON_NAMES, overworldMon } from '../engine/actor/overworldMon'
 
 const FILE = 'public/data/npcSprites.json'
 const real = existsSync(FILE)

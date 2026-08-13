@@ -10,6 +10,7 @@ import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
+import { NPC_BUNDLE } from '../engine/actor/npcModels'
 
 const personLoader = new GLTFLoader()
 const ALT_OUTFIT = ['hair2', 'shoes2']
@@ -233,8 +234,8 @@ export function IntroStage() {
       <directionalLight position={[-4, 7, 5]} intensity={1.85} color="#eaf2ff" castShadow />
       <pointLight position={[0, 2.4, 2.5]} intensity={0.65} color="#8cbcff" distance={8} />
 
-      {scene === 'rowan' && <Person path="models/npc/gentleman.glb" position={[0, 0, 0]} />}
-      {scene === 'rival' && <Person path="models/npc/friend.glb" position={[0, 0, 0]} />}
+      {scene === 'rowan' && <Person path={`models/npc/${NPC_BUNDLE.gentleman}.glb`} position={[0, 0, 0]} />}
+      {scene === 'rival' && <Person path={`models/npc/${NPC_BUNDLE.rival}.glb`} position={[0, 0, 0]} />}
       {scene === 'player' && <Person path={playerModelPath(gender)} position={[0, 0, 0]} />}
       {scene === 'gender' && (
         <>

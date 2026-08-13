@@ -20,6 +20,7 @@ import { verifyGlb } from './glb'
 import { encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { modelFor } from '../../engine/actor/npcModels'
+import { TRAINER_MODELS } from './trainerModels'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
 
 const AA = bdspDir('root')
@@ -86,22 +87,28 @@ suite('인물', () => {
     expect(verifyGlb(glb)).toEqual([])
   }, 120_000)
 
-  it('그림 번호가 BDSP 갈래로 이어진다', () => {
-    // 이름표는 번들 텍스처 이름에서 나오고 규칙은 `engine/actor/npcModels`가
-    // 임자다. 여기서는 **표가 실제로 이어지는지**만 본다
-    const battle = readdirSync(join(bdspDir('characters')!, 'persons/battle'))
+  it('그림 번호가 BDSP 번들로 이어진다', () => {
+    // 규칙은 `engine/actor/npcModels`가 임자다. 여기서는 **그 규칙이 가리키는
+    // 번들이 실제 덤프에 있는지**만 본다
+    const dir = join(bdspDir('characters')!, 'persons/battle')
+    const battle = readdirSync(dir)
     expect(battle.length).toBeGreaterThan(100)
-    const vocabulary = ['friend', 'police', 'worker', 'heroine']
     const table = {
-      battle: { bundles: {}, vocabulary },
+      battle: { bundles: {}, vocabulary: [] },
       field: { bundles: {}, vocabulary: [] },
     }
-    expect(modelFor('BARRY', table)?.tag).toBe('friend')
-    expect(modelFor('POLICEMAN', table)?.tag).toBe('police')
-    expect(modelFor('PLAYER_F', table)?.tag).toBe('heroine')
+    // 갈래로 이어지는 사람은 낱말표가 비어 있어도 붙는다
+    expect(modelFor('BARRY', table)?.bundles[0]).toBe('tr0002_00')
+    expect(modelFor('CYNTHIA', table)?.bundles[0]).toBe('tr0001_00')
+    expect(modelFor('PLAYER_F', table)?.bundles[0]).toBe('pc0002_00')
+    const missing = TRAINER_MODELS
+      .map((r) => r[1])
+      .filter((b) => b.startsWith('tr') || b.startsWith('pc'))
+      .filter((b) => !existsSync(join(dir, b)))
+    expect(missing).toEqual([])
     // 그림표에 그 이름들이 실제로 있어야 짝이 성립한다
     const names = new Set(Object.values(SPRITE_NAMES))
-    for (const n of ['BARRY', 'POLICEMAN', 'WORKER', 'PLAYER_F']) expect(names.has(n)).toBe(true)
+    for (const n of ['BARRY', 'CYNTHIA', 'WORKER', 'PLAYER_F']) expect(names.has(n)).toBe(true)
   })
 })
 

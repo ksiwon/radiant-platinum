@@ -104,22 +104,27 @@ maybe('사람 키', () => {
     }
   })
 
+  // 파일 이름이 번들이다 — 이름표로 지으면 한 낱말이 번들 둘을 가리켜 덮어쓴다
+  // (`eliteM`이 tr1024_00과 tr1053_00에 다 붙어 있다)
+  const GENTLEMAN = 'tr0046_00'
+  const WORKER = 'tr0040_00'
+
   it('어른은 주인공보다 크고 아이는 작다 — 다 같은 키로 맞추지 않는다', () => {
     const at = (name: string): number =>
       npcs.find(([n]) => n === name)![1] * BDSP_TO_WORLD
-    // 신사(tr0046) · 일꾼은 열 살 빛나보다 커야 한다
-    expect(at('gentleman')).toBeGreaterThan(PLAYER_HEIGHT)
-    expect(at('worker')).toBeGreaterThan(PLAYER_HEIGHT)
-    // 곤충소년 · 꼬맹이는 작아야 한다
-    expect(at('bugcatcher')).toBeLessThan(PLAYER_HEIGHT)
-    expect(at('tuber')).toBeLessThan(PLAYER_HEIGHT)
+    // 신사 · 일꾼은 열 살 빛나보다 커야 한다
+    expect(at(GENTLEMAN)).toBeGreaterThan(PLAYER_HEIGHT)
+    expect(at(WORKER)).toBeGreaterThan(PLAYER_HEIGHT)
+    // 곤충소년(tr1006_00) · 꼬맹이(tr1044_00)는 작아야 한다
+    expect(at('tr1006_00')).toBeLessThan(PLAYER_HEIGHT)
+    expect(at('tr1044_00')).toBeLessThan(PLAYER_HEIGHT)
   })
 
   it('주인공 파일 키를 분모로 쓰면 어른이 주인공보다 작아진다 — 그게 그 버그였다', () => {
     // 이 시험이 없으면 위 조건은 "지금 값으로는 맞다"밖에 못 말한다. 틀린 배수를
     // 직접 넣어 보고 **실제로 깨지는지** 본다
     const wrong = PLAYER_HEIGHT / heightIn(resolve(MODELS, 'dawn.glb'))
-    const gentleman = npcs.find(([n]) => n === 'gentleman')![1]
+    const gentleman = npcs.find(([n]) => n === GENTLEMAN)![1]
     expect(gentleman * wrong).toBeLessThan(PLAYER_HEIGHT)
     expect(gentleman * wrong).toBeCloseTo(1.049, 2)
   })

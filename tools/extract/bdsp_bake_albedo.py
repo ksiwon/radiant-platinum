@@ -193,6 +193,60 @@ def color_overrides(env, color_index: int | None = None) -> dict[int, dict[int, 
     return out
 
 
+def effect_albedo(name, colors, slots, uvs, spec: dict, outdir: Path,
+                  max_size: int | None) -> bool:
+    """불꽃·연기·오라처럼 **색이 재질에 적혀 있는** 조각을 albedo로 굽는다.
+
+    ⚠️ **이걸 안 하면 하얀 덩어리가 붙는다.** BDSP의 불·연기는 색 텍스처가
+    없다 — 리자몽 꼬리불은 `_BaseColor`(1.0, 0.196, 0.102)와
+    `_LayerColor`(0.941, 0.808, 0.0), 또가스 연기는 `_BaseColor`
+    (0.85, 0.82, 0.615)가 재질에 그대로 적혀 있고, 모양은 마스크 그림이 낸다.
+    한동안 이 재질들을 통째로 건너뛰었는데, 그러면 조각에 재질이 안 붙고
+    three가 **기본 흰색**으로 그린다 — 리자몽 꼬리에 흰 덩어리가 달렸다.
+    실측: 그런 조각이 54종 233개다.
+
+    ⚠️ **마스크는 그리지 않는다.** `FireMask`·`SmokeMask`에는 `_BaseColor`가
+    없고 `_Color`만 하얗다. 셰이더 키워드가 `MASK_CALC_MODE_ADD`이고 스텐실을
+    쓰는, **깎아 내는 도구**지 보이는 면이 아니다. 색이 없으면 여기서 `False`를
+    돌려주고 `bdspGlb`가 그 조각을 통째로 뺀다
+    """
+    base = colors.get("_BaseColor")
+    if base is None:
+        return False
+    layer = colors.get("_LayerColor", base)
+    rgb = np.array([[to_linear(base[k]) for k in ("r", "g", "b")]], dtype=np.float32)
+    top = np.array([[to_linear(layer[k]) for k in ("r", "g", "b")]], dtype=np.float32)
+
+    # 모양은 마스크가 낸다. `_Blend0Tex`가 세기, `_Blend1Tex`/`_LerpTex`가 두 색을
+    # 섞는 비율이다. 마스크가 아예 없는 재질(또가스 연기)은 제 색으로 꽉 찬 면이다
+    shape_tex = next((slots[p] for p in ("_Blend0Tex", "_LerpTex", "_Mask0Tex") if p in slots), None)
+    mix_tex = next((slots[p] for p in ("_Blend1Tex", "_LerpTex") if p in slots), None)
+    if shape_tex is None:
+        rgba = np.concatenate([linear_to_srgb(rgb), np.ones((1, 1), np.float32)], axis=1)
+        img = Image.fromarray((rgba.reshape(1, 1, 4) * 255).astype(np.uint8), "RGBA")
+        st = (1.0, 1.0, 0.0, 0.0)
+        wrap = (10497, 10497)
+    else:
+        tex = shape_tex.read()
+        mask = np.asarray(tex.image.convert("L"), dtype=np.float32)[..., None] / 255.0
+        blend = mask if mix_tex is None else (
+            np.asarray(mix_tex.read().image.convert("L").resize(tex.image.size),
+                       dtype=np.float32)[..., None] / 255.0)
+        lin = rgb.reshape(1, 1, 3) * (1 - blend) + top.reshape(1, 1, 3) * blend
+        rgba = np.concatenate([linear_to_srgb(lin), mask], axis=2)
+        img = Image.fromarray((np.clip(rgba, 0, 1) * 255).astype(np.uint8), "RGBA")
+        key = next(p for p in ("_Blend0Tex", "_LerpTex", "_Mask0Tex") if p in slots)
+        st = uvs[key]
+        wrap = wrap_of(tex)
+    if max_size is not None and max(img.size) > max_size:
+        scale = max_size / max(img.size)
+        img = img.resize((max(1, int(img.width * scale)), max(1, int(img.height * scale))))
+    img.save(outdir / f"{name}_albedo.png")
+    # 불빛은 뒤가 비쳐야 한다. 원판은 가산인데 glTF에 없어서 반투명으로 얹는다
+    spec[name] = {"uv": st, "wrap": wrap, "alpha": "BLEND", "double": True}
+    return True
+
+
 def bake(bundle, outdir: Path, color_index: int | None = None,
          max_size: int | None = None,
          main_props: tuple[str, ...] = ("_MainTex",)) -> dict[str, dict]:
@@ -246,6 +300,8 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
 
         found = next((p for p in main_props if p in slots), None)
         if found is None:
+            if effect_albedo(name, colors, slots, uvs, spec, outdir, max_size):
+                continue
             print(f"  {name}: {'·'.join(main_props)} 없음 — 건너뜀")
             continue
 
