@@ -114,11 +114,17 @@ export function DistortionProps({ mapId }: { mapId: number }) {
       const mesh = meshes.current[i]
       if (!mesh) continue
       mesh.visible = distortionPropShown(place)
-      if (ride === null || place.elevator !== ride.index) continue
-      // 타고 가는 동안 발판은 주인공 발밑에 붙어 같이 움직인다
+      if (place.elevator < 0) continue
       const off = offsets[place.kind] ?? [0, 0, 0]
+      // 타고 가는 동안 발판은 주인공 발밑에 붙어 같이 움직인다.
+      // ⚠️ **내린 뒤에는 제자리로 돌려놓는다.** 안 돌려놓으면 그 발판이 내린
+      // 자리에 남아, 다음에 그 층에 왔을 때 엉뚱한 칸에 판이 하나 떠 있다
+      const on = ride !== null && place.elevator === ride.index
       mesh.position.set(
-        ride.x + 0.5 + off[0]!, ride.y + 0.5 + off[1]!, ride.z + 0.5 + off[2]!)
+        (on ? ride.x : place.x) + 0.5 + off[0]!,
+        (on ? ride.y : place.y) + 0.5 + off[1]!,
+        (on ? ride.z : place.z) + 0.5 + off[2]!,
+      )
     }
   })
 

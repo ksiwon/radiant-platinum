@@ -368,11 +368,16 @@ export const distortionBridge: {
    * 밀어서 옮기는 것이 아니라 **구멍에 빠뜨리는** 것이다 (`world/distortionBoulder`)
    */
   /**
-   * 깨어진 세계의 지면 높이. 그 세계 밖이면 null.
+   * 지금 깨어진 세계 안인가.
    *
-   * 이 세계의 맵에는 BDHC 판이 없어서 보통 격자로는 0이 온다
+   * ⚠️ **그 안에서는 지면을 따라가지 않는다.** 원작이 이 세계에 들어서면서
+   * 주인공의 높이 계산을 꺼 버린다 (`InitPlayer`의
+   * `MapObject_SetHeightCalculationDisabled(playerMapObj, TRUE)`) — y는 지형에서
+   * 읽는 값이 아니라 승강 발판·뛰는 자리·벽 걷기만 바꾸는 상태다.
+   * 지형에서 읽으려 들면 B2F에서 여덟 칸이 뜬다 (`scene/distortion`의
+   * `DISTORTION_STAND_Y`)
    */
-  groundY: ((x: number, z: number) => number | null) | null
+  inWorld: (() => boolean) | null
   /**
    * 그 칸의 성질. 판 위가 아니면 null — 그때는 부르는 쪽이 맵 격자를 본다.
    *
@@ -389,7 +394,7 @@ export const distortionBridge: {
     ((boulder: { localID: number; x: number; z: number },
       step: { x: number; z: number }) => boolean) | null
 } = {
-  blockedAt: null, frame: null, groundY: null, behaviorAt: null, jumpBlocked: null,
+  blockedAt: null, frame: null, inWorld: null, behaviorAt: null, jumpBlocked: null,
   dropBoulder: null,
 }
 

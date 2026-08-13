@@ -24,7 +24,7 @@ export const worldState = {
      * `time`은 이 뜀에 걸리는 시간(초)이다. 턱과 깨어진 세계의 두 칸 뛰기가
      * 거리도 시간도 달라서 한 상수로 못 묶는다 (2칸 · 3칸 / 16 · 24프레임)
      */
-    hop: { active: false, t: 0, time: 0.4, fromX: 0, fromZ: 0, toX: 0, toZ: 0 },
+    hop: { active: false, t: 0, time: 0.4, fromX: 0, fromZ: 0, fromY: 0, toX: 0, toZ: 0 },
     /** 공중날기 연출 중. 그동안 조작이 안 먹는다 */
     flying: false,
     /**

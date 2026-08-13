@@ -13,7 +13,7 @@
 import { loadDistortion } from '../data/gameData'
 import type { DistortionData, DistortionMap } from '../data/schema'
 import {
-  ATTRS_INVALID, CYNTHIA_BLOCK, EVENT_CMD, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL,
+  ATTRS_INVALID, CYNTHIA_BLOCK, EVENT_CMD, FLAG_COND, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL,
   PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, PROGRESS, TELEPORT, blocked, cameraAt,
   connectionOf, findPlatform,
   flagHolds, initialHiddenGroups, MAX_PERSISTED_PLATFORMS, distortionBridge, hasPlatformAt,
@@ -32,7 +32,7 @@ import {
   initialPuzzleFlags, puzzleSolved,
 } from '../engine/world/distortionBoulder'
 import { addNpcFrom, npcActors, removeNpc } from '../engine/actor/npcs'
-import { world } from '../engine/map/world'
+import { world, type Npc } from '../engine/map/world'
 import type { VarStore } from '../engine/script/vars'
 import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
@@ -221,44 +221,33 @@ function bindPlatform(index: number): void {
  */
 
 /**
- * 그 칸의 **바닥 판 높이** (맵 안 좌표).
+ * 이 세계에서 서 있는 높이 (맵 안 좌표). 한 층 내내 **한 값**이다.
  *
- * ⚠️ **여기 없으면 주인공이 땅에 묻힌다.** 이 세계의 걷는 면은 맵 격자가 아니라
- * 떠 있는 판이라, 보통 맵처럼 `heightAtWorld`를 물으면 0이 온다 — 판이 y=2에
- * 있는데 0에 세우니 발목까지 파묻힌 채로 시작했다.
+ * ⚠️ **여기서는 지면을 따라가지 않는다.** 원작이 이 세계에 들어서면서
+ * `MapObject_SetHeightCalculationDisabled(playerMapObj, TRUE)`를 건다
+ * (`InitPlayer`) — 서쪽 벽에 붙어 있을 때만 푼다. 즉 주인공의 y는 지형에서
+ * 읽는 값이 아니라 **들고 다니는 상태**고, 승강 발판·뛰는 자리·움직이는
+ * 발판·벽 걷기만 그것을 바꾼다.
  *
- * 바닥 판(`PLATFORM_FLOOR`)만 본다. 벽·천장은 서 있는 면이 세로라 「높이」가
- * 없고, 그런 자리로 들어서는 것은 승강 발판이 자기 높이를 직접 준다
+ * 처음 서는 높이는 원작이 `LoadFloor`에서 한 줄로 적어 둔다 —
+ * `playerPos.y = mapOffset.y + MAP_OBJECT_TILE_SIZE`, 즉 **층 오프셋 + 한 칸**.
+ * 층을 오르내려도 그대로다: 승강 경로의 y 변화(−32·−14·−50)가 층 오프셋의
+ * 차이와 정확히 같아서 지역 y가 보존된다.
+ *
+ * ⚠️ **판의 bounds나 배치표의 중앙값으로 짐작하면 안 된다.** 그렇게 하던 때
+ * B2F에서 여덟 칸이 떴다 — 그 층의 바닥 판 넷이 세계 y=233(지역 9)에 있는데
+ * 그건 서쪽 벽을 타고 올라가야 닿는 위층이고, 바닥은 지역 1이다 (실측:
+ * 걸을 수 있는 196칸 중 170칸의 그림이 지역 1, 지역 9에는 셋뿐)
  */
-export function distortionGroundY(mapId: number, x: number, z: number): number | null {
-  // ⚠️ 지금 걸린 층(`floor`)을 보면 안 된다. 워프는 자리를 **먼저** 잡고 층을
-  // 나중에 거는데, 그때 `floor`는 아직 떠나온 층이다
-  const map = data === null ? null : mapOf(data, mapId)
-  if (map === null) return null
-  const wx = x + map.offsetX
-  const wz = z + map.offsetZ
-  let best: number | null = null
-  for (const p of map.platforms) {
-    if (p.kind !== PLATFORM_FLOOR) continue
-    const b = p.bounds
-    if (wx < b.x || wx > b.x + b.sx) continue
-    if (wz < b.z || wz > b.z + b.sz) continue
-    // 겹치면 제일 높은 바닥이 서는 자리다 — 아래 판은 그 밑을 지난다
-    const y = b.y + b.sy - map.offsetY
-    if (best === null || y > best) best = y
-  }
-  if (best !== null) return best
+export const DISTORTION_STAND_Y = 1
 
-  // ⚠️ **판이 없는 층은 배치표에 물어본다.** 열 층 중 여섯이 판 없이 보통
-  // 격자로 걷는데, 그 격자에는 BDHC 판이 없어서 `heightAtWorld`가 0을 준다 —
-  // 그런데 실제 지면은 한 칸 위다. 그 높이를 아는 유일한 원작 자료가 이 층에
-  // 선 사람들의 y다 (`distortionAddObject`가 고정소수점에서 푸는 그 값).
-  // 지어낸 값이 아니라 롬이 「여기가 발 높이다」라고 적어 둔 것이다
-  const objects = data?.mapObjects.find((m) => m.map === mapId)?.objects
-  if (objects === undefined || objects.length === 0) return null
-  const heights = objects.map((o) => Math.round((o.y as number) / FX32_PER_TILE) - map.offsetY)
-  heights.sort((a, b2) => a - b2)
-  return heights[Math.floor(heights.length / 2)] ?? null
+export function distortionGroundY(mapId: number): number | null {
+  // ⚠️ 지금 걸린 층(`floor`)도, 받아 놓은 자료도 보지 않는다. 워프는 자리를
+  // **먼저** 잡고 층을 나중에 거는데 그때 `floor`는 아직 떠나온 층이고,
+  // 자료는 처음 들어설 때 아직 안 와 있다 — 그 한 번을 놓치면 y가 0으로
+  // 잡히고, 그러면 승강 발판이 있는 칸의 세계 y가 한 칸 어긋나 **아래층으로
+  // 내려가는 발판이 안 걸린다** (실측: 1F에서 발판을 밟아도 안 탔다)
+  return isDistortionFloor(mapId) ? DISTORTION_STAND_Y : null
 }
 
 /**
@@ -305,7 +294,7 @@ export function groundYAt(
 ): number {
   if (isDistortionFloor(mapId)) {
     if (own !== undefined) return own
-    const y = distortionGroundY(mapId, Math.floor(x), Math.floor(z))
+    const y = distortionGroundY(mapId)
     if (y !== null) return y
   }
   return grid.heightAtWorld(x, z, layer) ?? 0
@@ -328,10 +317,12 @@ export function distortionEnter(mapId: number, x: number, y: number, z: number):
       puzzleFlags: initialPuzzleFlags(distortionHooks.puzzleFinished?.() ?? false),
       hiddenGroups: initialHiddenGroups(floor.visibleGroups),
     })
+    spawnFloorObjects(mapId)
     return
   }
   // 판 개수 이상이면 「어느 판도 아니다」다 — 보통 격자로 걷는다
   platform = s.platformIndex < floor.platforms.length ? s.platformIndex : -1
+  spawnFloorObjects(mapId)
   // ⚠️ **층을 갈아탈 때마다 소품 보임새를 그 층 기본값으로 되돌린다.**
   // 원작이 층을 바꿀 때 `SetPersistedHiddenGhostPropGroups(system, 0)` 뒤에
   // `InitActiveGhostPropManager(system, TRUE)`를 부른다 — 즉 이어받는 것이
@@ -347,6 +338,7 @@ export function distortionLeave(): void {
   floor = null
   platform = -1
   ride = null
+  jumping = null
 }
 
 /** 지금 깨어진 세계 안인가 */
@@ -455,10 +447,12 @@ export const distortionHooks: {
   setPuzzleFinished: (() => void) | null
   /** 번호로 사람을 세운다. `fieldServices`가 스크립트 변수를 들고 있어서 거기 있다 */
   addObject: ((localID: number) => void) | null
+  /** 스크립트 변수·플래그. 층에 들어설 때 사람을 세우려면 숨김 플래그를 봐야 한다 */
+  vars: (() => VarStore) | null
 } = {
   runScript: null, progress: null, setProgress: null,
   giratinaAnim: null, cyrusAppearance: null, setCyrusAppearance: null,
-  puzzleFinished: null, setPuzzleFinished: null, addObject: null,
+  puzzleFinished: null, setPuzzleFinished: null, addObject: null, vars: null,
 }
 
 /** 이미 돈 사건은 다시 안 돈다. 맵을 나가면 지운다 */
@@ -527,23 +521,78 @@ function applyCamera(wx: number, wy: number, wz: number, dir: number): void {
 }
 
 /**
- * 뛰는 자리 (`HandleFloatingPlatformJumpPointAt`).
+ * 벽·천장으로 건너뛰는 자리 (`HandleFloatingPlatformJumpPointAt`).
  *
- * 판을 갈아타면서 자리를 옮긴다. 원작은 여기서 화면 연출까지 하지만 옮기는
- * 값은 표에 그대로 있다 — `dx·dy·dz`가 세계 좌표의 차이다
+ * ⚠️ **한 프레임에 옮기면 안 된다.** 원작은 `steps`프레임에 걸쳐 조금씩 밀고
+ * (`TickJumpOnFloatingPlatformMovementAnimation`), **다 옮긴 뒤에야** 판을
+ * 갈아 끼운다 (`PrepareNewCurrentFloatingPlatform`은 `..._MOVE_PLAYER`의
+ * 끝에 있다). 즉시 갈아 끼우면 중력 축이 그 프레임에 뒤집혀 **화면이 뚝
+ * 끊기며 돌아간다** — 실제로 그렇게 보였다. 표의 `steps`가 16이다
  */
+interface PlatformJump {
+  /** 남은 프레임 */
+  frames: number
+  total: number
+  from: [number, number, number]
+  to: [number, number, number]
+  platformIndex: number
+  /** 다 뛰고 나서 보는 쪽 (`finalFacingDir`) */
+  facing: number
+}
+
+let jumping: PlatformJump | null = null
+
+/** 판을 건너뛰는 중인가. 그동안은 조작이 안 먹는다 */
+export function distortionJumping(): boolean {
+  return jumping !== null
+}
+
 function applyJump(wx: number, wy: number, wz: number, dir: number): boolean {
-  if (floor === null) return false
+  if (floor === null || jumping !== null) return false
   const jump = jumpAt(floor.jumps, wx, wy, wz, dir)
   if (jump === null) return false
 
-  const [lx, ly, lz] = toLocalTiles(wx + jump.dx, wy + jump.dy, wz + jump.dz)
   const p = worldState.player
-  p.position.set(lx + 0.5, ly, lz + 0.5)
+  const [lx, ly, lz] = toLocalTiles(wx + jump.dx, wy + jump.dy, wz + jump.dz)
+  jumping = {
+    frames: 0,
+    total: Math.max(1, jump.steps),
+    from: [p.position.x, p.position.y, p.position.z],
+    to: [lx + 0.5, ly, lz + 0.5],
+    platformIndex: jump.platformIndex,
+    facing: jump.facing,
+  }
+  p.velocity.set(0, 0, 0)
+  return true
+}
+
+/** 한 프레임 (`TickJumpOnFloatingPlatformMovementAnimation`) */
+export function distortionJumpTick(dt: number): void {
+  const j = jumping
+  if (j === null) return
+  j.frames = Math.min(j.total, j.frames + dt * 60)
+  const k = j.frames / j.total
+  const p = worldState.player
+  p.position.set(
+    j.from[0] + (j.to[0] - j.from[0]) * k,
+    j.from[1] + (j.to[1] - j.from[1]) * k,
+    j.from[2] + (j.to[2] - j.from[2]) * k,
+  )
   p.prevPosition.copy(p.position)
   p.velocity.set(0, 0, 0)
-  bindPlatform(jump.platformIndex)
-  return true
+  if (j.frames < j.total) return
+  // 다 옮긴 자리에서 판을 갈아 끼운다 — 여기서 중력 축이 바뀐다
+  bindPlatform(j.platformIndex)
+  p.facing = FACING_YAW[j.facing] ?? p.facing
+  jumping = null
+}
+
+/** 방향 번호 → 우리 yaw. `facing`은 `atan2(vx, vz)`라 0이 남쪽이다 */
+const FACING_YAW: Readonly<Record<number, number>> = {
+  [DIR.south]: 0,
+  [DIR.east]: Math.PI / 2,
+  [DIR.north]: Math.PI,
+  [DIR.west]: -Math.PI / 2,
 }
 
 function applyEvents(wx: number, wy: number, wz: number): void {
@@ -651,6 +700,16 @@ interface Ride {
   from: [number, number, number]
   /** 같이 타는 사람의 번호. 없으면 null */
   passenger: number | null
+  /**
+   * 층이 바뀐 뒤 다시 세울 사람. 세계 좌표로 들고 있는다.
+   *
+   * ⚠️ **닿는 층의 배치표에는 그 사람이 없다.** 원작은 새로 세우지 않고 타고
+   * 온 객체의 번호만 갈아 끼운다 (`MapObject_SetLocalID` · `..._SetMapHeaderID`).
+   * 우리는 층이 바뀌면 배우 목록을 다시 세우므로(`spawnNpcs`) 그 사람이
+   * 지워지는데, 닿는 층 표에서 찾으면 없다 — B1F의 시로나가 그래서 사라졌다.
+   * 그래서 **타고 온 사람의 정보를 그대로 들고 가** 번호만 바꿔 다시 세운다
+   */
+  carry: { info: Npc; worldX: number; worldZ: number } | null
   /** 층이 바뀐 뒤 그 사람을 아직 안 세웠다 */
   addPassenger: boolean
   /** 발판의 자리 번호 (B4F의 태홍이 이걸 본다) */
@@ -691,6 +750,7 @@ function startRide(wx: number, wy: number, wz: number): boolean {
     legs, leg: 0, frame: 0, dir: found.elevatorDir, changed: false,
     from: [wx, wy, wz],
     passenger: passengerLocalID(floor.map, distortionHooks.progress?.() ?? 0),
+    carry: null,
     addPassenger: false,
     platformIndex: found.index,
   }
@@ -726,10 +786,14 @@ export function distortionRideTick(dt: number): void {
   if (total <= 0) { ride = null; return }
   ride.frame = Math.min(total, ride.frame + dt * 60)
 
-  // 층을 다 받았으면 같이 타는 사람을 닿는 층의 번호로 다시 세운다
-  if (ride.addPassenger && ride.passenger !== null) {
+  // 층을 다 받았으면 같이 타고 온 사람을 **번호만 갈아** 다시 세운다
+  const carry = ride.carry
+  if (ride.addPassenger && carry !== null) {
     ride.addPassenger = false
-    distortionHooks.addObject?.(ride.passenger)
+    ride.carry = null
+    const vars = distortionHooks.vars?.()
+    const [lx0, , lz0] = toLocalTiles(carry.worldX, 0, carry.worldZ)
+    if (vars) addNpcFrom({ ...carry.info, x: lx0, z: lz0 }, vars)
   }
 
   const k = ride.frame / total
@@ -780,11 +844,28 @@ function changeFloor(leg: ElevatorLeg): void {
     flags = withFlag(flags, leg.path.persistedFlagToClear, false)
     setState({ platformFlags: flags })
   }
-  // ⚠️ **번호가 층마다 다시 128에서 센다.** 같이 타는 사람은 층이 바뀌는
-  // 순간 다른 번호가 되므로, 앞 층의 것을 지우고 닿는 층의 것을 세운다 —
-  // 원작은 같은 객체의 `localID`를 갈아 끼운다 (`MapObject_SetLocalID`)
+  // ⚠️ **번호가 층마다 다시 128에서 센다.** 같이 타는 사람은 층이 바뀌는 순간
+  // 다른 번호가 된다 — 원작은 **같은 객체의** `localID`를 갈아 끼운다
+  // (`MapObject_SetLocalID` · `MapObject_SetMapHeaderID`). 닿는 층의 배치표에는
+  // 그 사람이 아예 없으므로 거기서 찾아 세우면 아무도 안 나온다 (실측: B1F에
+  // 시로나가 없는데 대사만 떴다). 그래서 타고 온 사람을 **그대로 들고 간다**
   const after = ride.passenger === null ? null : passengerAfter(dest)
-  if (ride.passenger !== null) removeNpc(ride.passenger)
+  if (ride.passenger !== null) {
+    const actor = npcActors.byLocalID.get(ride.passenger)
+    if (actor !== undefined && after !== null) {
+      const [awx, , awz] = toWorldTiles(actor.x, 0, actor.z)
+      ride.carry = {
+        info: {
+          ...actor.info,
+          localID: after.localID,
+          script: after.script ?? actor.info.script,
+        },
+        worldX: awx,
+        worldZ: awz,
+      }
+    }
+    removeNpc(ride.passenger)
+  }
 
   // 지금 세계 좌표 그대로 다음 층의 지역 좌표로 옮긴다 — 층마다 오프셋이 달라서
   // 같은 칸이라도 지역 좌표는 딴판이다
@@ -1054,12 +1135,16 @@ export function distortionAddObject(localID: number, vars: VarStore): void {
   const table = data.mapObjects.find((m) => m.map === floor?.map)
   const row = table?.objects.find((o) => o.localID === localID)
   if (row === undefined) return
+  addObjectRow(row, vars)
+}
+
+function addObjectRow(row: Record<string, unknown>, vars: VarStore): void {
   const worldY = Math.round((row.y as number) / FX32_PER_TILE)
   const [lx, ly, lz] = toLocalTiles(row.x as number, worldY, row.z as number)
   const hidden = row.hiddenFlag as number
   addNpcFrom({
     x: lx, z: lz, height: ly,
-    localID,
+    localID: row.localID as number,
     sprite: row.graphicsID as number,
     move: row.movementType as number,
     trainerType: row.trainerType as number,
@@ -1069,6 +1154,45 @@ export function distortionAddObject(localID: number, vars: VarStore): void {
     range: [row.movementRangeX as number, row.movementRangeZ as number],
     raw: [0, 0, 0, 0, 0, 0, 0, ...(row.data as number[])],
   }, vars)
+}
+
+/**
+ * 층에 들어서면 **그 층의 사람과 바위를 세운다** (`AddMapObjectsForMap`).
+ *
+ * ⚠️ **이게 없으면 이 세계에는 아무도 없다.** 원작은 세계에 들어서는 순간
+ * `AddMapObjectsForCurrentAndNextMap`을 부르고, 층을 갈 때마다 다시 부른다
+ * (`ov9_02249960.c` 7152줄). 우리는 스크립트가 `AddDistortionWorldMapObject`로
+ * 부를 때만 세우고 있었다 — 그래서 기라티나도, 엠라이트·아그노무·유크시도,
+ * 바위 수수께끼의 바위 아홉도, 각 층의 시로나·태홍도 한 번도 안 나타났다.
+ *
+ * 거는 조건은 원작의 `CheckFlagConditionForObjectEvent`다: `manualAddOnly`는
+ * 스크립트가 직접 부를 때만 서고(그래서 여기서는 건너뛴다), 나머지는
+ * `CheckFlagCondition`을 통과해야 하며, 숨김 플래그가 서 있으면 안 선다.
+ *
+ * ⚠️ **다음 층 것은 안 세운다.** 원작이 같이 세우는 것은 좌표가 세계 좌표라
+ * 층이 겹쳐도 자리가 안 겹치기 때문인데, 우리 배우는 층마다 지역 좌표라
+ * 다음 층 사람이 이 층 한복판에 서 버린다. 승강 발판을 같이 타는 사람은
+ * `changeFloor`가 따로 옮긴다
+ */
+function spawnFloorObjects(mapId: number): void {
+  if (data === null) return
+  const vars = distortionHooks.vars?.()
+  if (vars === undefined || vars === null) return
+  const table = data.mapObjects.find((m) => m.map === mapId)
+  if (table === undefined) return
+  const ctx = {
+    progress: distortionHooks.progress?.() ?? 0,
+    state: state(),
+    giratinaAnim: (n: number) => distortionHooks.giratinaAnim?.(n) ?? false,
+    cyrusAppearance: distortionHooks.cyrusAppearance?.() ?? 0,
+  }
+  for (const row of table.objects) {
+    if ((row.flagCond as number) === FLAG_COND.manualAddOnly) continue
+    if (!flagHolds(row.flagCond as number, row.flagCondVal as number, ctx)) continue
+    const hidden = row.hiddenFlag as number
+    if (hidden !== 0 && vars.checkFlag(hidden)) continue
+    addObjectRow(row, vars)
+  }
 }
 
 export function distortionRemoveObject(localID: number): void {
@@ -1090,8 +1214,7 @@ export function distortionPlayerPos(): { x: number; y: number; z: number } {
 // 이동 시스템이 볼 수 있게 다리를 꽂는다 (`engine/world/distortion`의 머리말)
 distortionBridge.blockedAt = distortionBlockedAt
 distortionBridge.frame = distortionFrame
-distortionBridge.groundY = (x, z) =>
-  (floor === null ? null : distortionGroundY(floor.map, Math.floor(x), Math.floor(z)))
+distortionBridge.inWorld = () => floor !== null
 distortionBridge.behaviorAt = distortionBehaviorAt
 distortionBridge.jumpBlocked = distortionJumpBlocked
 distortionBridge.dropBoulder = dropBoulder

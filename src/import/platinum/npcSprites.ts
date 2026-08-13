@@ -23,6 +23,22 @@ const DIRS = 4
 /** 주인공은 배치표에 안 선다 — 남녀 둘 다 있어야 한다 */
 const PLAYERS = ['PLAYER_M', 'PLAYER_F']
 
+/**
+ * **깨어진 세계에만 서는 사람들.**
+ *
+ * ⚠️ 그 층의 사람과 바위는 맵 헤더의 배치표(`events.narc`)가 아니라 `tw_arc`의
+ * 제 표에 들어 있다 (`sMapObjectEvents`). 배치표만 훑으면 이 다섯이 통째로
+ * 빠져서 **세워도 아무것도 안 그려진다** — 기라티나가 그래서 안 보였다.
+ * 시로나·태홍·바위·호수 셋의 보통 그림은 다른 맵에도 서므로 이미 들어온다
+ */
+const DIST_WORLD_ONLY = [
+  'GIRATINA_ORIGIN',
+  'DIST_WORLD_B1F_MESPRIT',
+  'DIST_WORLD_B6F_UXIE',
+  'DIST_WORLD_B6F_MESPRIT',
+  'DIST_WORLD_B6F_AZELF',
+]
+
 /** BMD0/BTX0 안에서 TEX0 블록 자리를 찾는다. 없으면 -1 */
 function texBlock(buf: Uint8Array, view: DataView): number {
   for (let i = 0, n = view.getUint16(14, true); i < n; i++) {
@@ -124,7 +140,7 @@ export async function convertNpcSprites(ctx: ConvertContext): Promise<Produced> 
 
   const rows = new Map<number, SpriteRow>(SPRITE_TABLE.map((r) => [r[0], r]))
   const used = await placedSprites(ctx)
-  for (const who of PLAYERS) {
+  for (const who of [...PLAYERS, ...DIST_WORLD_ONLY]) {
     const row = SPRITE_TABLE.find((r) => r[1] === who)
     if (row && !used.has(row[0])) used.set(row[0], 0)
   }

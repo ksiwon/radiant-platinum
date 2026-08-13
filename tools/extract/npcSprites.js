@@ -32,6 +32,25 @@ const OUT_DIR = path.join(ROOT, 'public/data/npc')
 /** 사람이 걷는 데 필요한 방향 넷. `constants/map_object.h`의 DIR_* 순서다 */
 const DIRS = 4
 
+/**
+ * **깨어진 세계에만 서는 사람들.**
+ *
+ * ⚠️ 그 층의 사람과 바위는 맵 헤더의 배치표(`events.narc`)가 아니라 `tw_arc`의
+ * 제 표에 들어 있다 (`sMapObjectEvents`). 배치표만 훑으면 이 다섯이 통째로
+ * 빠져서 **세워도 아무것도 안 그려진다** — 기라티나가 그래서 안 보였다.
+ * 시로나·태홍·바위·호수 셋의 보통 그림은 다른 맵에도 서므로 이미 들어온다
+ */
+const DIST_WORLD_ONLY = [
+  'OBJ_EVENT_GFX_GIRATINA_ORIGIN',
+  'OBJ_EVENT_GFX_DIST_WORLD_B1F_MESPRIT',
+  'OBJ_EVENT_GFX_DIST_WORLD_B6F_UXIE',
+  'OBJ_EVENT_GFX_DIST_WORLD_B6F_MESPRIT',
+  'OBJ_EVENT_GFX_DIST_WORLD_B6F_AZELF',
+]
+
+/** 「그림이 없다」 (`OBJ_EVENT_GFX_NONE`). 보이지 않는 판정용 객체가 쓴다 */
+const NO_GRAPHICS = 8192
+
 // ── 디컴프에서 표 셋을 읽는다 ────────────────────────────────────────────────
 
 /** `OBJ_EVENT_GFX_*` → 번호. 값이 안 적힌 줄은 앞 번호 + 1이다 */
@@ -219,6 +238,27 @@ function main() {
   for (const n of ['OBJ_EVENT_GFX_PLAYER_M', 'OBJ_EVENT_GFX_PLAYER_F']) {
     const id = ids.get(n)
     if (id !== undefined && !used.has(id)) used.set(id, 0)
+  }
+  // 깨어진 세계 사람들도 배치표에 없다 (`DIST_WORLD_ONLY`)
+  for (const n of DIST_WORLD_ONLY) {
+    const id = ids.get(n)
+    if (id !== undefined && !used.has(id)) used.set(id, 0)
+  }
+  // ⚠️ **그 목록이 자료와 맞는지 여기서 못 박는다.** 늘리기만 하고 확인을
+  // 안 하면 나중에 한 종이 늘었을 때 조용히 안 보이는 사람이 생긴다
+  const dwFile = path.join(ROOT, 'public/data/distortion.json')
+  if (fs.existsSync(dwFile)) {
+    const dw = JSON.parse(fs.readFileSync(dwFile, 'utf8'))
+    const miss = new Set()
+    for (const table of dw.mapObjects ?? []) {
+      for (const row of table.objects) {
+        if (row.graphicsID === NO_GRAPHICS || used.has(row.graphicsID)) continue
+        miss.add(row.graphicsID)
+      }
+    }
+    if (miss.size > 0) {
+      throw new Error(`깨어진 세계가 쓰는데 목록에 없는 그림: ${[...miss].join(' ')}`)
+    }
   }
 
   fs.rmSync(OUT_DIR, { recursive: true, force: true })

@@ -107,10 +107,12 @@ export const playerSystem = {
       p.position.x = p.hop.fromX + (p.hop.toX - p.hop.fromX) * k
       p.position.z = p.hop.fromZ + (p.hop.toZ - p.hop.fromZ) * k
       p.velocity.set(0, 0, 0)
-      // ⚠️ 깨어진 세계는 격자에 물으면 0이 온다 (BDHC 판이 없다). 걸을 때와
-      // 같은 자리에 물어야 뛰는 동안만 발판 속으로 꺼지지 않는다
-      const ground = distortionBridge.groundY?.(p.position.x, p.position.z)
-        ?? activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
+      // ⚠️ 깨어진 세계에서는 지면에 안 묻는다 — 그 세계의 높이는 지형이 아니라
+      // 들고 다니는 상태다 (`distortionBridge.inWorld`). 뛰는 동안 격자에
+      // 물으면 0이 와서 발판 속으로 꺼진다
+      const ground = distortionBridge.inWorld?.() === true
+        ? p.hop.fromY
+        : activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
       // 포물선으로 뜬다. 4k(1−k)는 가운데서 1이고 양 끝에서 0이다
       p.position.y = (ground ?? p.position.y) + HOP_RISE * 4 * k * (1 - k)
       if (p.hop.t >= 1) p.hop.active = false
@@ -121,7 +123,8 @@ export const playerSystem = {
     const startHop = (land: { x: number; z: number }, time: number) => {
       p.hop = {
         active: true, t: 0, time,
-        fromX: p.position.x, fromZ: p.position.z, toX: land.x, toZ: land.z,
+        fromX: p.position.x, fromZ: p.position.z, fromY: p.position.y,
+        toX: land.x, toZ: land.z,
       }
       p.facing = Math.atan2(land.x - p.position.x, land.z - p.position.z)
     }
@@ -221,14 +224,14 @@ export const playerSystem = {
     //
     // ⚠️ **벽에 서 있으면 안 따라간다.** 그 y는 지면 높이가 아니라 걷고 있는
     // 축이라, 지면으로 끌어내리면 벽에 붙는 순간 바닥까지 미끄러진다
-    // ⚠️ **깨어진 세계는 격자에 물으면 0이 온다.** 그 맵들은 BDHC 판이 없어서
-    // 지면 높이가 안 나오는데, 실제 지면은 그보다 위다 — 물어본 대로 끌어내리면
-    // 주인공이 판에 파묻힌 채로 걷는다. 그 세계에서는 판·배치표가 높이를 안다
-    // (`distortionBridge.groundY`)
-    const ground = onWall
+    //
+    // ⚠️ **깨어진 세계에서는 아예 안 따라간다.** 원작이 그 세계에 들어서면서
+    // 주인공의 높이 계산을 끈다 (`InitPlayer`) — 높이는 승강 발판·뛰는 자리·
+    // 벽 걷기가 정하는 상태고, 그 층 내내 한 값이다. 지형에서 읽으려 들면
+    // B2F에서 여덟 칸이 떠 버린다 (`scene/distortion`의 `DISTORTION_STAND_Y`)
+    const ground = onWall || distortionBridge.inWorld?.() === true
       ? null
-      : distortionBridge.groundY?.(p.position.x, p.position.z)
-        ?? activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
+      : activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
     if (ground !== null && ground !== undefined) {
       // 계단은 한 칸에 반 타일씩 오른다. 그대로 대입하면 판 경계에서 튀므로
       // 짧게 따라붙인다 — 시뮬레이션이 아니라 표현이라 눈에 맞추면 된다

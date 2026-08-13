@@ -824,7 +824,7 @@ function hopTo(x: number, z: number): void {
   const p = worldState.player
   p.hop = {
     active: true, t: 0, time: HOP_TIME,
-    fromX: p.position.x, fromZ: p.position.z, toX: x, toZ: z,
+    fromX: p.position.x, fromZ: p.position.z, fromY: p.position.y, toX: x, toZ: z,
   }
 }
 

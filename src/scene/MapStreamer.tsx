@@ -42,6 +42,7 @@ import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
+import { cameraSystem } from '../engine/actor/camera'
 import {
   distortionAddObject,
   distortionBoulderFalling,
@@ -51,6 +52,8 @@ import {
   distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
+  distortionJumpTick,
+  distortionJumping,
   distortionHooks,
   distortionLeave,
   distortionLoaded,
@@ -220,6 +223,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
       resetEncounterTile()
       resetStepTile()
+      // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
+      // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
+      cameraSystem.snap()
       // 피리는 맵을 벗어나면 끝이다 (`FieldSystem_InitFlagsWarp`). 걸음을 안 세는
       // 대신 이 한 줄이 유일한 만료 조건이라, 빠지면 한 번 불고 영영 도는 값이 된다
       if (useSaveStore.getState().flute !== 0) useSaveStore.setState({ flute: 0 })
@@ -363,6 +369,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionHooks.addObject = (localID) => {
       distortionAddObject(localID, fieldScripts.vars)
     }
+    // 층에 들어설 때 그 층 사람들을 세우려면 숨김 플래그를 봐야 한다
+    // (`AddMapObjectsForMap`). 스크립트 변수는 여기 있다
+    distortionHooks.vars = () => fieldScripts.vars
     void initFieldScripts(locale).then(() => {
       setScriptsReady(true)
     })
@@ -520,9 +529,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 깨어진 세계의 승강 발판. 층이 바뀌는 것도 여기서 나므로 워프보다 먼저
     // 돈다 (PARITY §6.10)
     distortionRideTick(dt)
+    distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
-    worldState.player.riding = distortionRiding() || distortionBoulderFalling() || distortionGhostRunning()
+    worldState.player.riding = distortionRiding() || distortionBoulderFalling()
+      || distortionGhostRunning() || distortionJumping()
 
     const p = worldState.player.position
     const tx = Math.floor(p.x),
