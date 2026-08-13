@@ -52,7 +52,7 @@ maybe('진화', () => {
     otSecretId: 0,
     ball: 4,
     origin: noOrigin({ name: '', gender: 'male' }),
-    form: 0,
+    form: 0, pokerus: 0,
     ...over,
   })
 

@@ -275,6 +275,18 @@ export type BattleEvent =
    * 다른 데서 쓰는 문장을 놓는다 (`BattleStrings_Text_UsedTheItem`)
    */
   | { kind: 'bagItem'; key: string; item: number }
+  /**
+   * 명령을 안 들었다 (PARITY §2.18 · `battle/meta/obedience.ts`).
+   *
+   * 원작에서는 배틀 스크립트가 끼어드는 자리라 프로토콜에 대응하는 줄이 없다.
+   * `flavor`는 아무것도 안 했을 때의 네 마디 중 몇 번째인지다
+   */
+  | {
+      kind: 'disobey'
+      actor: Actor
+      reason: 'ignoredAsleep' | 'otherMove' | 'nap' | 'hitSelf' | 'nothing'
+      flavor?: number
+    }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {

@@ -84,6 +84,32 @@ export interface Trainer {
   gender: 'male' | 'female'
 }
 
+/** 원래 트레이너를 가리는 데 필요한 것 전부 (`TrainerInfo`) */
+export interface TrainerIdentity extends Trainer {
+  id: number
+  secretId: number
+}
+
+/**
+ * 이 마리의 원래 트레이너가 나인가 (`BattleSystem_PokemonIsOT`).
+ *
+ * ⚠️ **ID만 보면 안 된다.** 원작이 ID·성별·이름 셋을 다 맞춰 본다 — ID는
+ * 65536분의 1로 겹치고, 그 하나가 겹치면 남에게 받은 마리가 내 마리로 읽혀서
+ * 경험치 1.5배도 말 안 듣기도 통째로 사라진다.
+ *
+ * 이 판정이 갈라 놓는 것 둘: 받은 마리의 **경험치 1.5배**(`expFor`)와
+ * **말 안 듣기**(`battle/meta/obedience.ts`)
+ */
+export function isOriginalTrainer(
+  mon: { otId: number; otSecretId: number; origin: Origin },
+  me: TrainerIdentity,
+): boolean {
+  return mon.otId === me.id
+    && mon.otSecretId === me.secretId
+    && mon.origin.otGender === me.gender
+    && mon.origin.otName === me.name
+}
+
 /**
  * 잡았거나 받았다 (`sel = 0`).
  *

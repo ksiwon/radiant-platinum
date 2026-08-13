@@ -14,6 +14,7 @@ function mon(species: number, hp: number): PokemonInstance {
     heldItem: 0, friendship: 70, isEgg: false, otId: 1, otSecretId: 2, ball: 0,
     origin: noOrigin({ name: '', gender: 'male' }),
     form: 0,
+    pokerus: 0,
   }
 }
 

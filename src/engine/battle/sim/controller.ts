@@ -19,9 +19,14 @@ import type { BallId, CatchContext } from '../meta/capture'
 import { throwBall } from '../meta/capture'
 import { tryEscape } from '../meta/escape'
 import { healAmount, type TrainerItems } from '../meta/trainerItems'
+import {
+  badgeCount, checkObedience, damageVariance, idleFlavor, selfHitDamage,
+} from '../meta/obedience'
 import type { Item } from '../../../data/schema'
 import type { Status } from '../../pokemon/instance'
 import { statsOf } from '../../pokemon/instance'
+import { isOriginalTrainer, type TrainerIdentity } from '../../pokemon/origin'
+import { boosted } from '../ai/context'
 import { activeAt, applyEvent, emptyView, slotOfKey, type BattleView } from '../view'
 import { parseLines } from './protocol'
 import { romMove } from './bridge'
@@ -73,6 +78,13 @@ export interface ControllerOptions extends BattleOptions {
    * `bag`이 개수를 들고 있고, `item`은 회복량을 읽는 데 쓴다
    */
   items?: { bag: TrainerItems; item: (id: number) => Item }
+  /**
+   * 말 안 듣기 (PARITY §2.18). 안 주면 **전부 잘 듣는다** — 시험이 그렇게 쓴다.
+   *
+   * 뱃지 수와 지금 리포트의 주인이 필요하다. 개체 쪽 정보(레벨·원래 트레이너)는
+   * `player.team`에 이미 실려 있다
+   */
+  obedience?: { badges: number; trainer: TrainerIdentity }
 }
 
 /**
@@ -98,6 +110,16 @@ const MAX_EXCHANGES = 64
 const IDLE_ROM_MOVE = romMove(IDLE_MOVE)
 /** 물장구가 그 뒤에 내는 "아무 일도 일어나지 않았다" 줄 */
 const IDLE_ACTIVATE = `move: ${IDLE_MOVE}`
+
+// 말 안 듣기가 따로 보는 기술·특성 (`generated/moves.txt` · `abilities.txt`)
+/** 코골기 — 자고 있어야 나가므로 다른 기술로 못 바꾼다 */
+const MOVE_SNORE = 173
+/** 잠꼬대 — 같은 이유다 */
+const MOVE_SLEEP_TALK = 214
+/** 불면 */
+const ABILITY_INSOMNIA = 15
+/** 의욕 */
+const ABILITY_VITAL_SPIRIT = 72
 
 export class BattleController {
   private readonly session: BattleSession
@@ -133,6 +155,8 @@ export class BattleController {
   /** 상대가 달아나서 끝났는가. 이겼다고 말하면 안 되는 자리다 */
   private foeFled = false
   private readonly items: ControllerOptions['items']
+  /** 말 안 듣기 (PARITY §2.18). 없으면 전부 잘 듣는다 */
+  private readonly obedience: ControllerOptions['obedience']
   /** 더블인가 (PARITY §2.2). 자리 수가 이 값 하나에서 갈린다 */
   private readonly doubles: boolean
   /**
@@ -159,6 +183,7 @@ export class BattleController {
     this.shift = options.shift === true
     this.roamer = options.roamer === true
     this.items = options.items
+    this.obedience = options.obedience
     this.brain = options.ai
       ? new TrainerBrain({
         flags: options.ai.flags,
@@ -517,9 +542,104 @@ export class BattleController {
     // 배회는 우리 기술이 나가기 전에 달아난다 (PARITY §6.3)
     const gone = this.roamerFlees()
     if (gone) return gone
-    this.session.send(`p1 ${encodeTurn(actions)}`)
+    // 남에게 받은 마리는 명령을 안 들을 수 있다 (PARITY §2.18)
+    const heard = this.obey(actions)
+    if (heard.send) this.session.send(`p1 ${encodeTurn(heard.actions)}`)
     this.request.p1 = null
-    return this.advance()
+    const step = await this.advance()
+    return { events: [...heard.events, ...step.events], view: step.view }
+  }
+
+  /**
+   * 명령을 낸 자리마다 말을 듣는지 본다 (`BattleControllerPlayer_CheckObedience`).
+   *
+   * 불복은 넷 중 하나로 갈리고, **다른 기술을 쓰는 것 말고는 전부 이 턴을 버린다.**
+   * 버리는 길은 볼·도망과 같은 빈 턴 칸이다 (`spendTurn`) — 그래야 상대는
+   * 제 수를 두고 턴이 정상으로 돈다.
+   *
+   * ⚠️ **턴을 못 비우면 그냥 듣는다.** 참기·역린에 묶였거나 도발에 걸린 자리가
+   * 그렇다 (`hasIdle`). 그때 명령을 안 보내면 sim이 답을 기다리다 굳는다 —
+   * 원작보다 순한 쪽으로 틀리는 것이 배틀이 서는 것보다 낫다
+   */
+  private obey(actions: readonly BattleAction[]): {
+    actions: BattleAction[]
+    events: BattleEvent[]
+    /** 싱글에서 턴을 비웠으면 false — `spendTurn`이 이미 명령을 보냈다 */
+    send: boolean
+  } {
+    const rule = this.obedience
+    if (!rule) return { actions: [...actions], events: [], send: true }
+
+    const out: BattleAction[] = []
+    const events: BattleEvent[] = []
+    let send = true
+    for (const action of actions) {
+      const at = action.at ?? 0
+      const seen = action.type === 'move' ? activeAt(this.view, 'p1', at) : null
+      const mine = seen ? this.playerTeam.find((m) => m.key === seen.key) : null
+      if (!seen || !mine || action.type !== 'move') { out.push(action); continue }
+
+      // 발버둥과 우리가 몰래 붙인 빈 턴 칸은 명령이 아니다
+      const others = this.actionsAt(at)
+        .filter((a) => a.type === 'move' && a.slot !== action.slot && a.id !== IDLE_MOVE_ID)
+        .map((a) => (a as BattleAction & { type: 'move' }).slot)
+
+      const check = checkObedience({
+        level: seen.level,
+        badges: badgeCount(rule.badges),
+        isOwn: isOriginalTrainer(mine.mon, rule.trainer),
+        status: seen.status,
+        sleepMove: action.move === MOVE_SNORE || action.move === MOVE_SLEEP_TALK,
+        cantSleep: mine.species.abilities.includes(ABILITY_INSOMNIA)
+          || mine.species.abilities.includes(ABILITY_VITAL_SPIRIT),
+        otherSlots: others,
+      }, this.random)
+      if (check.result === 'obey') { out.push(action); continue }
+
+      const actor = { slot: seen.slot, side: 'p1' as const, name: seen.key }
+      if (check.result === 'otherMove') {
+        const swap = this.actionsAt(at).find((a) => a.type === 'move' && a.slot === check.slot)
+        if (swap) {
+          events.push({ kind: 'disobey', actor, reason: 'otherMove' })
+          out.push({ ...swap, at })
+          continue
+        }
+        out.push(action)
+        continue
+      }
+
+      // ⚠️ **먼저 비울 수 있는지 본다.** 재우거나 깎아 놓고 턴을 못 비우면
+      // 그 마리가 잠든 채로 원래 기술을 쓴다
+      if (!this.canSpendAt(at)) { out.push(action); continue }
+      if (check.result === 'nap') this.session.sleep('p1', at)
+      if (check.result === 'hitSelf') this.selfHit(mine, seen.slot, at)
+      if (!this.spendTurn(at)) { out.push(action); continue }
+      events.push({
+        kind: 'disobey', actor, reason: check.result,
+        ...(check.result === 'nothing' ? { flavor: idleFlavor(this.random) } : {}),
+      })
+      // 더블은 두 자리를 한 줄로 묶어야 해서 빈 턴 칸을 명령으로 넣는다.
+      // 싱글은 `useIdle`이 이미 보냈다
+      if (this.doubles) {
+        out.push({
+          type: 'move', at, slot: this.session.armedIdleSlot('p1'),
+          id: IDLE_MOVE_ID, name: IDLE_MOVE, move: IDLE_ROM_MOVE,
+        })
+      } else {
+        send = false
+      }
+    }
+    return { actions: out, events, send }
+  }
+
+  /** 말을 안 듣고 자기를 때린다. 혼란 자해와 같은 계산이다 (PARITY §2.18) */
+  private selfHit(mine: SideMon, slot: string, at: number): void {
+    const seen = this.view.active[slot as keyof BattleView['active']]
+    const stats = statsOf(mine.mon, mine.species)
+    const atk = boosted(stats.atk, seen?.boosts.atk ?? 0)
+    const def = boosted(stats.def, seen?.boosts.def ?? 0)
+    const raw = selfHitDamage(mine.mon.level, atk, def)
+    this.session.hurt('p1', at, damageVariance(raw, this.random))
   }
 
   /**
@@ -586,6 +706,11 @@ export class BattleController {
       this.request.p2 = null
     }
 
+    // ⚠️ **삼킬 물장구가 안 나왔으면 그 표를 버린다.** 명령을 넣은 마리가 그 전에
+    // 쓰러지면(말을 안 듣고 자기를 때린 자리가 그렇다) sim이 그 명령을 통째로
+    // 건너뛴다 — 표를 남겨 두면 **다음에 나오는 진짜 물장구**가 대신 지워진다
+    this.spent.p1 = false
+    this.spent.p2 = false
     return { events, view: this.view }
   }
 

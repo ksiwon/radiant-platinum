@@ -77,6 +77,14 @@ export interface PokemonInstance {
    * 글자도 맵의 표에서 와서 PID와 아무 상관이 없다. 폼이 없는 종은 늘 0이다
    */
   form: number
+  /**
+   * 포켓루스 한 바이트 (`MON_DATA_POKERUS` · `engine/pokemon/pokerus.ts`).
+   *
+   * 아래 니블이 남은 날, 위 니블이 균주다. 0이면 한 번도 안 걸린 것이다.
+   *
+   * ⚠️ **여기가 마지막 칸이다.** `save/schema.ts`의 차례와 같아야 검사합이 맞는다
+   */
+  pokerus: number
 }
 
 /** 데리고 다닐 수 있는 수 (`MAX_PARTY_SIZE`). 넘치면 박스로 간다 */
@@ -289,6 +297,8 @@ export function createWild(
     // 폼은 여기서 안 정한다 — 야생은 맵의 표가(`AddWildMonToParty`), 그 밖은
     // 주는 자리가 정한다. 기본값 0이 곧 "보통 모습"이다
     form: 0,
+    // 야생은 포켓루스를 안 달고 나온다. 걸리는 자리는 배틀이 끝나는 순간뿐이다
+    pokerus: 0,
   }
 }
 

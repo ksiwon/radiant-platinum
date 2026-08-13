@@ -22,6 +22,7 @@ import {
 } from './distortion'
 import { pushDirection } from '../engine/input/move'
 import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
+import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
 import { daycareStep } from '../engine/pokemon/breeding'
@@ -151,8 +152,17 @@ export function resetStepTile(): void {
  */
 function checkDay(): void {
   const save = useSaveStore.getState()
-  const daily = rollOver(save.daily, dayNumber(new Date()))
-  if (daily !== save.daily) useSaveStore.setState({ daily })
+  const today = dayNumber(new Date())
+  const daily = rollOver(save.daily, today)
+  if (daily !== save.daily) {
+    // 포켓루스는 **하루에 한 칸씩** 낫는다 (`Party_UpdatePokerusStatus`).
+    // 며칠을 안 켰으면 그만큼 한꺼번에 깎이고, 나흘을 넘겼으면 통째로 낫는다.
+    //
+    // ⚠️ 시계를 뒤로 돌린 경우는 0이다 — `rollOver`가 그때 씨앗을 안 굴리는
+    // 것과 같은 이유로, 균주도 시계를 돌려 가며 늘릴 수 없어야 한다
+    const days = Math.max(0, today - save.daily.day)
+    useSaveStore.setState({ daily, party: elapseDays(save.party, days) })
+  }
   // 조우 시스템은 세이브를 못 읽는다 (PLAN §3.2). 갈아 끼울 값을 여기서 넘긴다
   encounters.swarmAt = swarmMap(daily)
   const garden = encounters.ex?.trophyGarden

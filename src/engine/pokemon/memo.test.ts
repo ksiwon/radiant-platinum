@@ -148,7 +148,7 @@ function mon(over: Partial<PokemonInstance> = {}): PokemonInstance {
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp: 20, status: 'ok', statusTurns: 0, heldItem: 0,
     friendship: 70, isEgg: false, otId: 1, otSecretId: 2, ball: 4,
-    origin: noOrigin(ME), form: 0, ...over,
+    origin: noOrigin(ME), form: 0, pokerus: 0, ...over,
   }
 }
 

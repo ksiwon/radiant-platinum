@@ -21,7 +21,7 @@ import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
 import type { ItemPlan } from '../engine/battle/meta/bagItem'
 import { friendshipGain, isEscapeItem } from '../engine/battle/meta/bagItem'
 import { clampFriendship } from '../engine/pokemon/friendship'
-import { caughtAt, metToday } from '../engine/pokemon/origin'
+import { caughtAt, isOriginalTrainer, metToday, type TrainerIdentity } from '../engine/pokemon/origin'
 import { mapById, world } from '../engine/map/world'
 import { Terrain, terrainOf, type TerrainId } from '../engine/battle/terrain'
 import { burmyCloak, SPECIES_BURMY } from '../engine/pokemon/form'
@@ -29,7 +29,10 @@ import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
 import { Ball } from '../engine/battle/meta/capture'
-import { applyReward, expGain, learnMoves } from '../engine/battle/meta/reward'
+import {
+  applyReward, evYieldOf, expFor, expPool, HOLD_EFFECT_EXP_SHARE, HOLD_EFFECT_EXP_UP, learnMoves,
+} from '../engine/battle/meta/reward'
+import { afterBattle as pokerusAfterBattle, doublesEvs } from '../engine/pokemon/pokerus'
 import { MAX_MONEY, prizeFor } from '../engine/battle/meta/prize'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
 import { TrainerItems } from '../engine/battle/meta/trainerItems'
@@ -631,6 +634,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
       // 도롱마담은 싸운 땅의 옷감으로 갈아입는다 (PARITY §3.4)
       party = dressBurmy(party)
+      // 포켓루스가 걸리고 옆으로 옮는 자리 (PARITY §3.9).
+      //
+      // ⚠️ **판이 어떻게 끝났든 돈다.** 원작은 `BattleControllerPlayer_EndFight`에서
+      // 통신 배틀만 빼고 무조건 부른다 — 이겼는지 도망쳤는지를 안 본다
+      party = pokerusAfterBattle(party, Math.random)
       useSaveStore.setState({ party, boxes, pokedex })
       // 배회는 여기서 자리를 옮기거나 지워진다 (PARITY §6.3).
       //
@@ -874,7 +882,19 @@ function trackDex(events: readonly BattleEvent[], roster: Record<string, RosterE
   }
 }
 
-/** 쓰러진 상대 하나분의 경험치를 참가자에게 나눠 준다. 세이브를 바로 갱신한다 */
+/** 지금 리포트의 주인. 원래 트레이너 판정이 이 넷을 다 본다 */
+function myIdentity(): TrainerIdentity {
+  const t = useSaveStore.getState().trainer
+  return { ...playerTrainer(t), id: t.id, secretId: t.secretId }
+}
+
+/**
+ * 쓰러진 상대 하나분의 경험치를 나눠 준다. 세이브를 바로 갱신한다.
+ *
+ * 받는 사람이 둘 갈래다 — **나갔던 마리**와 **학습장치를 든 마리**.
+ * 학습장치가 하나라도 있으면 경험치가 반으로 갈려 한쪽은 나간 마리들이,
+ * 다른 한쪽은 장치를 든 마리들이 나눠 갖는다 (`BtlCmd_CalcExpGain`)
+ */
 function grantRewards(
   state: BattleState,
   foeKey: string,
@@ -884,31 +904,54 @@ function grantRewards(
   const foe = state.roster[foeKey]
   if (!table || !foe) return []
 
-  // 쓰러진 참가자는 4세대에서도 경험치를 못 받는다
+  // 쓰러진 마리는 4세대에서도 경험치를 못 받는다 — 나간 몫도 학습장치 몫도
   const down = new Set(
     controller
       .results('p1')
       .filter((r) => r.fainted)
       .map((r) => r.key),
   )
-  const alive = [...participants].filter((k) => !down.has(k))
-  if (!alive.length) return []
-
-  const foeSpecies = table.get(foe.species)
-  const gain = expGain({
-    baseExp: foeSpecies.baseExp,
-    level: foe.level,
-    participants: alive.length,
-    trainerBattle: state.kind === 'trainer',
-  })
-
   const party = [...useSaveStore.getState().party]
+  const me = myIdentity()
+  const hold = (mon: PokemonInstance): number =>
+    mon.heldItem > 0 ? itemTable?.get(mon.heldItem).holdEffect ?? 0 : 0
+
+  /** 받을 자격이 있는 파티 칸 — 나갔거나 학습장치를 들었고, 안 쓰러졌고, 알이 아니다 */
+  const takers = party.flatMap((mon, i) => {
+    const key = partyKey(i)
+    if (mon.isEgg || mon.hp <= 0 || down.has(key)) return []
+    const share = hold(mon) === HOLD_EFFECT_EXP_SHARE
+    const went = participants.has(key)
+    return went || share ? [{ index: i, key, share, went }] : []
+  })
+  // ⚠️ **인원은 `takers`가 아니라 원작의 두 셈이다.** 레벨 100도 나눌 인원에
+  // 들어간다 — 자기는 한 점도 못 받으면서 남의 몫을 깎는다 (원작이 인원을 셀 때
+  // 레벨을 안 본다). 여기서 걸러 내면 다 큰 마리를 데리고 다니는 것이 이득이 된다
+  const foeSpecies = table.get(foe.species)
+  const pool = expPool(
+    foeSpecies.baseExp,
+    foe.level,
+    takers.filter((t) => t.went).length,
+    takers.filter((t) => t.share).length,
+  )
+
   const out: BattleEvent[] = []
-  for (const key of alive) {
-    const index = party.findIndex((_, i) => partyKey(i) === key)
-    const mon = party[index]
+  for (const taker of takers) {
+    const mon = party[taker.index]
     if (!mon) continue
-    const reward = applyReward(mon, table.of(mon), gain, foeSpecies.ev)
+    const effect = hold(mon)
+    const gain = expFor(pool, {
+      participant: taker.went,
+      expShare: taker.share,
+      luckyEgg: effect === HOLD_EFFECT_EXP_UP,
+      trainerBattle: state.kind === 'trainer',
+      traded: !isOriginalTrainer(mon, me),
+    })
+    const reward = applyReward(mon, table.of(mon), gain, evYieldOf(table.of(mon), {
+      holdEffect: effect,
+      itemPower: mon.heldItem > 0 ? itemTable?.get(mon.heldItem).effectParam ?? 0 : 0,
+      pokerus: doublesEvs(mon),
+    }))
     // 레벨업 기술은 **여기서 실제로 넣는다.** 배틀이 끝난 뒤로 미루면 다음
     // 상대를 새 기술 없이 맞이한다 — 원작은 오른 그 자리에서 배운다
     const taught = learnMoves(
@@ -916,11 +959,13 @@ function grantRewards(
       reward.levelUps.flatMap((l) => l.moves),
       ppOf,
     )
-    party[index] = taught.mon
-    if (reward.levelUps.length > 0) leveledUp.add(index)
+    party[taker.index] = taught.mon
+    if (reward.levelUps.length > 0) leveledUp.add(taker.index)
+    // 한 점도 안 받은 마리는 줄을 안 낸다 — 레벨 100이 그렇다
+    if (reward.gainedExp === 0 && taught.learned.length === 0) continue
     out.push({
       kind: 'reward',
-      key,
+      key: taker.key,
       exp: reward.gainedExp,
       levels: reward.levelUps.map((l) => l.level),
       learned: taught.learned,
@@ -1055,6 +1100,8 @@ async function open(
       ...(kind === 'trainer' && !doubles && useOptionsStore.getState().battleRule === 0
         ? { shift: true }
         : {}),
+      // 남에게 받은 마리는 뱃지 수만큼만 말을 듣는다 (PARITY §2.18)
+      obedience: { badges: useSaveStore.getState().badges, trainer: myIdentity() },
     })
     current = controller
     // 첫 등판도 참가자다. 여기서 안 담으면 첫 상대를 쓰러뜨려도 경험치가 안 간다

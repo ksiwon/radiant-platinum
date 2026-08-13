@@ -23,6 +23,35 @@ import type { SaveData } from '../saveStore'
 /** n에서 n+1로만 옮긴다. 두 칸을 한 번에 건너뛰는 함수는 두지 않는다 */
 export type Migration = (data: Record<string, unknown>) => Record<string, unknown>
 
+/**
+ * 개체마다 새 칸을 박는다.
+ *
+ * ⚠️ **개체가 사는 곳이 셋이다** — 파티 6, 박스 540, 육성가 2. 한 군데를
+ * 빠뜨리면 그 자리에서 꺼낼 때 스키마가 걸리는데, 그때는 이유가 안 보인다
+ */
+function stampMons(
+  data: Record<string, unknown>, add: Record<string, unknown>,
+): Record<string, unknown> {
+  const stamp = (mon: unknown): unknown =>
+    mon === null || typeof mon !== 'object' ? mon : { ...mon, ...add }
+  const daycare = data.daycare as { slots?: unknown } | undefined
+  return {
+    party: Array.isArray(data.party) ? data.party.map(stamp) : data.party,
+    boxes: Array.isArray(data.boxes)
+      ? data.boxes.map((box) => (Array.isArray(box) ? box.map(stamp) : box))
+      : data.boxes,
+    daycare: Array.isArray(daycare?.slots)
+      ? {
+        ...daycare,
+        slots: daycare.slots.map((slot) => (
+          slot === null || typeof slot !== 'object' ? slot
+            : { ...slot, mon: stamp((slot as { mon?: unknown }).mon) }
+        )),
+      }
+      : data.daycare,
+  }
+}
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   /**
    * 7 → 8. 걸음 계수기와 탈출 자리가 생겼다 (PARITY §1.1 · §4.1).
@@ -106,15 +135,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 데도 안 적혀 있다 — 잡은 자리로 되짚으면 그럴듯하지만 그건 지어내는 것이고,
    * 서쪽 바다(0)가 원작에서 자료가 없을 때의 대답이다
    */
-  12: (data) => {
-    const stamp = (mon: unknown): unknown =>
-      mon === null || typeof mon !== 'object' ? mon : { ...mon, form: 0 }
-    const party = Array.isArray(data.party) ? data.party.map(stamp) : data.party
-    const boxes = Array.isArray(data.boxes)
-      ? data.boxes.map((box) => (Array.isArray(box) ? box.map(stamp) : box))
-      : data.boxes
-    return { ...data, version: 13, party, boxes }
-  },
+  12: (data) => ({ ...data, version: 13, ...stampMons(data, { form: 0 }) }),
 
   /**
    * 13 → 14. 도감에 「쓰러뜨려 봤다」 칸이 생겼다 (PARITY §2.22).
@@ -208,6 +229,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     trainer: { ...(data.trainer as object), tabletName: '', appearance: 0 },
     coins: 0,
   }),
+
+  /**
+   * 20 → 21. 개체에 포켓루스 한 바이트가 생겼다 (PARITY §3.9).
+   *
+   * ⚠️ **전부 0이다 — 「걸린 적 없다」.** 0이 아닌 값을 넣으면 옛 리포트의
+   * 마리가 전부 노력치를 두 배로 먹는다. 걸리는 자리는 배틀이 끝나는 순간뿐이고
+   * (`Pokemon_ApplyPokerus`), 65536분의 3이라 그 희소함이 이 규칙의 전부다
+   */
+  20: (data) => ({ ...data, version: 21, ...stampMons(data, { pokerus: 0 }) }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

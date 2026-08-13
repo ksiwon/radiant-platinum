@@ -62,6 +62,17 @@ const CANT_REASON: Record<string, string> = {
   'move: Taunt': '도발당해서 그 기술을 쓸 수 없다!',
 }
 
+/**
+ * 명령을 안 듣고 **아무것도 안 했을 때**의 네 마디
+ * (`subscript_disobey_do_nothing`). 차례가 원작의 뽑은 값 0~3과 같아야 한다
+ */
+const IDLE_FLAVOR: readonly string[] = [
+  '빈둥거리고 있다!',
+  '말을 안 듣는다!',
+  '외면했다!',
+  '못 들은 척했다!',
+]
+
 const STAT_NOUN: Record<BoostStat, string> = {
   atk: '공격', def: '방어', spa: '특수공격', spd: '특수방어',
   spe: '스피드', accuracy: '명중률', evasion: '회피율',
@@ -225,6 +236,18 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // `BattleStrings_Text_UsedTheItem` — "{플레이어}는 {도구}를 썼다!"
       const item = names.items[e.item] ?? `#${e.item}`
       return `${withTopic(ctx.playerName ?? '나')} ${withObject(item)} 썼다!`
+    }
+
+    case 'disobey': {
+      const who = ctx.label(e.actor)
+      if (e.reason === 'ignoredAsleep') return `${withTopic(who)} 자면서 명령을 무시했다!`
+      if (e.reason === 'otherMove') return `${withTopic(who)} 명령을 무시했다!`
+      if (e.reason === 'nap') return `${withTopic(who)} 꾸벅꾸벅 졸기 시작했다!`
+      // 자기를 때리는 자리는 두 줄이다 — 원작도 "말을 안 듣는다"를 먼저 찍는다
+      if (e.reason === 'hitSelf') {
+        return `${withTopic(who)} 말을 안 듣는다!\n혼란에 빠져 자신을 공격했다!`
+      }
+      return `${withTopic(who)} ${IDLE_FLAVOR[e.flavor ?? 0] ?? IDLE_FLAVOR[0]!}`
     }
 
     case 'tie':

@@ -27,6 +27,7 @@ import {
 } from '../../engine/pokemon/instance'
 import { buildMemo, type MemoNames } from '../../engine/pokemon/memo'
 import { otMatches } from '../../engine/pokemon/origin'
+import { cured, infected } from '../../engine/pokemon/pokerus'
 import { natureEffect } from '../../engine/pokemon/stats'
 import { parseMessage } from '../../engine/script/text'
 import { useMenuStore } from '../../state/menuStore'
@@ -225,8 +226,11 @@ function Rail(
         {gender === 'male' && <span className={own.male}>♂</span>}
         {gender === 'female' && <span className={own.female}>♀</span>}
         {shiny && <span className={own.shiny}>★</span>}
+        {/* 다 나은 뒤에 남는 점. 노력치가 계속 두 배라는 표시다 (PARITY §3.9) */}
+        {!mon.isEgg && cured(mon) && <span className={own.pokerusCured} title="포켓루스">●</span>}
       </span>
       {!mon.isEgg && <span className={own.level}>Lv.{mon.level}</span>}
+      {!mon.isEgg && infected(mon) && <span className={own.pokerus}>포켓루스</span>}
       {mon.heldItem > 0 && (
         <span className={own.held}>
           <span className={own.heldIcon} style={itemIcon(t?.icons, mon.heldItem, 24)} aria-hidden />

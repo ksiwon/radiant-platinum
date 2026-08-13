@@ -516,6 +516,39 @@ export class BattleSession {
   }
 
   /**
+   * 나와 있는 한 마리를 깎는다. 실제로 깎인 만큼을 돌려준다 (PARITY §2.18).
+   *
+   * 말을 안 듣고 자기를 때리는 자리가 쓴다 (`obedience.selfHitDamage`). 원작에서는
+   * 배틀 스크립트가 `hpCalcTemp`를 음수로 넣고 `UPDATE_HP`로 가는 자리다 — sim에는
+   * 그런 길이 없으므로 개체를 직접 깎고 **프로토콜 줄만 sim이 내게 한다.**
+   *
+   * ⚠️ **쓰러지는 것을 우리가 처리하지 않는다.** sim의 `damage()`가 체력이 0 이하가
+   * 되면 스스로 `faint()`를 걸어 대기열에 넣는다 — 그러면 이번 턴의 명령은 sim이
+   * 알아서 건너뛰고 교체를 묻는다. 우리가 `fainted`를 세우면 그 흐름과 어긋난다
+   */
+  hurt(side: SideId, at: number, amount: number): number {
+    const battle = this.raw.battle
+    const mon = battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
+    if (!battle || !mon || !mon.hp) return 0
+    const dealt = mon.damage(amount)
+    if (dealt) battle.add('-damage', mon, mon.getHealth)
+    return dealt
+  }
+
+  /**
+   * 나와 있는 한 마리를 재운다 (PARITY §2.18의 `BATTLE_SUBSCRIPT_FALL_ASLEEP`).
+   *
+   * ⚠️ **면역 판정을 sim에 맡긴다.** 부르는 쪽이 이미 상태이상 없음과 불면·자기
+   * 최면을 봤지만, 시끄럽게하기 같은 장 효과는 sim만 안다 — `setStatus`가
+   * 거절하면 그냥 못 잔 것이고, 잠들면 프로토콜 줄과 몇 턴짜리인지까지 sim이 낸다
+   */
+  sleep(side: SideId, at: number): boolean {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
+    if (!mon || !mon.hp || mon.status) return false
+    return mon.setStatus('slp') === true
+  }
+
+  /**
    * 우리 쪽 한 마리의 기술 칸. 남은 PP와 최대 PP를 **칸 순서 그대로** 준다.
    *
    * `results()`로는 못 쓴다 — 거기는 기술 번호로 중복을 걷어내므로 칸 번호가

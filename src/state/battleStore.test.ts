@@ -31,7 +31,15 @@ const RATTATA = 19
 beforeEach(() => {
   // 닫기가 먼저다 — 앞 판이 남아 있으면 close가 새 세이브에 옛 결과를 쓴다
   useBattleStore.getState().close()
-  useSaveStore.setState(createNewSave())
+  // ⚠️ **주인공을 시험 개체의 원트레이너와 맞춘다.** 안 맞추면 아래 파티가
+  // 전부 「남에게 받은 마리」가 되어 뱃지 0에서 말을 안 듣는다 (PARITY §2.18) —
+  // 그러면 PP도 경험치도 도구도 재려던 판이 통째로 흔들린다.
+  // `createWild`는 출신을 `noOrigin({ name: '', gender: 'male' })`로 둔다
+  const save = createNewSave()
+  useSaveStore.setState({
+    ...save,
+    trainer: { ...save.trainer, id: 1, secretId: 1, name: '', gender: 'boy' },
+  })
 })
 
 /**
@@ -395,7 +403,7 @@ describe('가방 도구', () => {
     const moves = await loadMoves()
     const sp = species.get(387)
     const mine = fillPp(
-      createWild({ species: sp, level: 30, rng: () => 0.5, otId: 1, otSecretId: 2 }),
+      createWild({ species: sp, level: 30, rng: () => 0.5, otId: 1, otSecretId: 1 }),
       (id) => moves.byId.get(id)?.pp ?? 5,
     )
     mine.hp = statsOf(mine, sp).hp
@@ -526,9 +534,12 @@ async function giveStrongParty(ids = [483, 484, 445, 487, 493, 249]) {
   const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
   const party = ids.map((id, i) => {
     const sp = table.get(id)
-    const mon = createWild({ species: sp, level: 100, rng: rng(i + 1), otId: 1, otSecretId: 2 })
-    mon.exp = expForLevel(sp.growthRate, 100)
-    mon.moves = wildMoves(sp, 100)
+    // ⚠️ **99다.** 레벨 100은 경험치도 노력치도 한 점도 안 받으므로
+    // (원작이 둘을 같은 `if`에 넣어 둔다) 보상 사건이 아예 안 나온다 —
+    // 그러면 "경험치가 다음 마리보다 먼저 온다"를 재는 시험이 공허해진다
+    const mon = createWild({ species: sp, level: 99, rng: rng(i + 1), otId: 1, otSecretId: 1 })
+    mon.exp = expForLevel(sp.growthRate, 99)
+    mon.moves = wildMoves(sp, 99)
     mon.hp = statsOf(mon, sp).hp
     return fillPp(mon, pp)
   })
@@ -713,7 +724,7 @@ describe('배틀 뒤에 남는 것', () => {
     const species = await loadSpecies()
     const sp = species.get(STARLY)
     // 기술 한 칸만 들고 레벨업 직전까지 채워 둔다
-    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 2 })
+    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 1 })
     mon.hp = statsOf(mon, sp).hp
     mon.moves = [{ move: 33, pp: 35, ppUps: 0 }]
     mon.exp = expForLevel(sp.growthRate, 5) - 1
@@ -738,7 +749,7 @@ describe('배틀 뒤에 남는 것', () => {
   it('네 칸이 차 있으면 안 넣고 물어본다', async () => {
     const species = await loadSpecies()
     const sp = species.get(STARLY)
-    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 2 })
+    const mon = createWild({ species: sp, level: 4, rng: Math.random, otId: 1, otSecretId: 1 })
     mon.hp = statsOf(mon, sp).hp
     // 5레벨에 배우는 전광석화(98)는 일부러 뺀다 — 이미 알고 있으면 물어볼 일이 없다
     mon.moves = [33, 45, 116, 10].map((move) => ({ move, pp: 30, ppUps: 0 }))

@@ -45,7 +45,7 @@ function mon(over: Partial<PokemonInstance> = {}): PokemonInstance {
       egg: { location: 0, date: null },
       fateful: false,
     },
-    form: 0,
+    form: 0, pokerus: 0,
     ...over,
   }
 }
@@ -58,7 +58,7 @@ describe('한 줄 더하기', () => {
     const one = mon({
       nickname: '토도',
       level: 68,
-      form: 0,
+      form: 0, pokerus: 0,
       pid: 7,
       moves: [
         { move: 56, pp: 5, ppUps: 0 },

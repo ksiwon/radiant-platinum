@@ -7,7 +7,8 @@ import { expForLevel, levelForExp } from '../../pokemon/exp'
 import type { PokemonInstance } from '../../pokemon/instance'
 import { noOrigin } from '../../pokemon/origin'
 import {
-  addEvs, applyReward, EV_PER_STAT, EV_TOTAL, expGain, learnMoves, MOVE_SLOTS, type StatKey,
+  addEvs, applyReward, EV_PER_STAT, EV_TOTAL, evYieldOf, expFor, expPool,
+  HOLD_EFFECT_EV_UP, learnMoves, MOVE_SLOTS, type StatKey,
 } from './reward'
 
 const species = new Map<number, Species>(
@@ -32,36 +33,98 @@ function mon(speciesId: number, level: number): PokemonInstance {
     heldItem: 0, friendship: 70, isEgg: false, otId: 1, otSecretId: 2, ball: 0,
     origin: noOrigin({ name: '', gender: 'male' }),
     form: 0,
+    pokerus: 0,
   }
 }
 
 describe('경험치 계산', () => {
+  const went = { participant: true }
+
   it('기초경험치 × 레벨 / 7', () => {
     // 찌르꼬(기초 56)를 20레벨에서 혼자 잡으면 160. 기초값은 롬에서 읽는다
     expect(species.get(STARLY)!.baseExp).toBe(56)
-    expect(expGain({ baseExp: 56, level: 20, participants: 1 })).toBe(160)
+    expect(expFor(expPool(56, 20, 1, 0), went)).toBe(160)
   })
 
   it('인원수로 나눈다', () => {
-    expect(expGain({ baseExp: 56, level: 20, participants: 2 })).toBe(80)
-    expect(expGain({ baseExp: 56, level: 20, participants: 4 })).toBe(40)
+    expect(expFor(expPool(56, 20, 2, 0), went)).toBe(80)
+    expect(expFor(expPool(56, 20, 4, 0), went)).toBe(40)
   })
 
   it('트레이너·교환·럭키에그가 각각 1.5배', () => {
-    const base = expGain({ baseExp: 56, level: 20, participants: 1 })
-    expect(expGain({ baseExp: 56, level: 20, participants: 1, trainerBattle: true }))
-      .toBe(Math.floor((base * 3) / 2))
-    // 셋이 겹치면 순서대로 곱해진다
-    const all = expGain({
-      baseExp: 56, level: 20, participants: 1,
-      trainerBattle: true, traded: true, luckyEgg: true,
-    })
-    expect(all).toBe(540) // 160 → 240 → 360 → 540
+    expect(expFor(expPool(56, 20, 1, 0), { ...went, trainerBattle: true })).toBe(240)
+    // 셋이 겹치면 순서대로 곱해진다. 160 → 240 → 360 → 540
+    expect(expFor(expPool(56, 20, 1, 0), {
+      participant: true, luckyEgg: true, trainerBattle: true, traded: true,
+    })).toBe(540)
   })
 
   it('아무리 작아도 1은 준다', () => {
     // 0을 주면 화면에 "경험치를 얻었다"가 뜨는데 실제로는 아무 일도 안 생긴다
-    expect(expGain({ baseExp: 1, level: 1, participants: 6 })).toBe(1)
+    expect(expFor(expPool(1, 1, 6, 0), went)).toBe(1)
+  })
+
+  // ── 학습장치 (PARITY §2.17) ────────────────────────────────────────────────
+  it('학습장치가 하나라도 있으면 경험치가 반으로 갈린다', () => {
+    // 나간 한 마리 + 학습장치 한 마리. 160이 80과 80으로 갈린다
+    const pool = expPool(56, 20, 1, 1)
+    expect(pool).toEqual({ gained: 80, shared: 80 })
+    expect(expFor(pool, { participant: true })).toBe(80)
+    expect(expFor(pool, { participant: false, expShare: true })).toBe(80)
+  })
+
+  it('나간 마리가 학습장치를 들면 양쪽 몫을 다 받는다', () => {
+    // ⚠️ 이걸 배타로 다루면 학습장치를 든 채로 나가는 것이 손해가 된다
+    const pool = expPool(56, 20, 1, 1)
+    expect(expFor(pool, { participant: true, expShare: true })).toBe(160)
+  })
+
+  it('학습장치 몫은 든 마리 수로 나눈다', () => {
+    expect(expPool(56, 20, 2, 4)).toEqual({ gained: 40, shared: 20 })
+  })
+
+  it('나간 마리가 다 쓰러져도 학습장치 몫은 살아 있다', () => {
+    // 나눌 인원이 0이다. 원작에서도 0으로 나누는 자리라 그 몫만 0이 되고
+    // 학습장치 쪽은 그대로 나간다
+    const pool = expPool(56, 20, 0, 1)
+    expect(pool.shared).toBe(80)
+    expect(expFor(pool, { participant: false, expShare: true })).toBe(80)
+  })
+
+  it('배수는 받는 마리마다 갈린다', () => {
+    // ⚠️ 몫을 만들 때 곱해 두면 남의 럭키에그로 불어난 경험치를 학습장치가 받는다
+    const pool = expPool(56, 20, 1, 1)
+    expect(expFor(pool, { participant: false, expShare: true, luckyEgg: true })).toBe(120)
+    expect(expFor(pool, { participant: true })).toBe(80)
+  })
+
+  it('나가지도 않고 학습장치도 없으면 0이다', () => {
+    expect(expFor(expPool(56, 20, 1, 0), { participant: false })).toBe(0)
+    // 0에는 배수도 안 걸린다 — 1.5배 해서 1이 되면 안 준 것이 준 것이 된다
+    expect(expFor(expPool(56, 20, 1, 0), { participant: false, trainerBattle: true })).toBe(0)
+  })
+})
+
+describe('노력치를 불리는 것들', () => {
+  const starly = () => species.get(STARLY)!
+
+  it('포켓루스는 두 배', () => {
+    const plain = evYieldOf(starly())
+    const sick = evYieldOf(starly(), { pokerus: true })
+    for (const k of Object.keys(plain) as StatKey[]) expect(sick[k]).toBe(plain[k] * 2)
+  })
+
+  it('마초브레이스도 두 배고, 포켓루스와 겹치면 네 배', () => {
+    const plain = evYieldOf(starly())
+    const both = evYieldOf(starly(), { pokerus: true, holdEffect: HOLD_EFFECT_EV_UP })
+    for (const k of Object.keys(plain) as StatKey[]) expect(both[k]).toBe(plain[k] * 4)
+  })
+
+  it('파워 아이템은 먼저 더하고 그 합에 배수가 걸린다', () => {
+    // 파워앵클(스피드 +4). 곱한 뒤에 더하면 4가 8이 안 된다
+    const got = evYieldOf(starly(), { holdEffect: 121, itemPower: 4, pokerus: true })
+    expect(got.spe).toBe((starly().ev.spe + 4) * 2)
+    expect(got.atk).toBe(starly().ev.atk * 2)
   })
 })
 

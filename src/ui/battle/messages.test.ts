@@ -195,4 +195,24 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
   it('상금 줄', () => {
     expect(say({ kind: 'prize', money: 4920 })).toBe('상금으로 4920엔을 받았다!')
   })
+
+  it('말을 안 들으면 갈래마다 다른 줄이 나온다 (PARITY §2.18)', () => {
+    // 넷이 같은 문장이면 "왜 내 명령이 안 먹었는가"를 화면에서 알 길이 없다
+    expect(say({ kind: 'disobey', actor: MINE, reason: 'otherMove' }))
+      .toBe('모부기는 명령을 무시했다!')
+    expect(say({ kind: 'disobey', actor: MINE, reason: 'ignoredAsleep' }))
+      .toBe('모부기는 자면서 명령을 무시했다!')
+    expect(say({ kind: 'disobey', actor: MINE, reason: 'nap' }))
+      .toBe('모부기는 꾸벅꾸벅 졸기 시작했다!')
+    expect(say({ kind: 'disobey', actor: MINE, reason: 'hitSelf' }))
+      .toBe('모부기는 말을 안 듣는다!\n혼란에 빠져 자신을 공격했다!')
+  })
+
+  it('아무것도 안 한 마디는 넷이고 서로 다르다', () => {
+    const said = [0, 1, 2, 3].map((flavor) =>
+      say({ kind: 'disobey', actor: MINE, reason: 'nothing', flavor }))
+    expect(new Set(said).size).toBe(4)
+    expect(said[0]).toBe('모부기는 빈둥거리고 있다!')
+    expect(said[3]).toBe('모부기는 못 들은 척했다!')
+  })
 })

@@ -61,6 +61,30 @@ export const level = style({
 /** 색이 다른 개체의 별. 도감 번호도 붉게 뜬다 (`SUMMARY_TEXT_RED`) */
 export const shiny = style({ color: '#ffd257', fontSize: 14 })
 
+/**
+ * 포켓루스에 걸려 있는 동안 뜨는 딱지 (`SUMMARY_CONDITION_POKERUS`).
+ *
+ * 원작은 상태이상 칸에 이것을 넣는다 — 상태이상이 **없을 때만**이다
+ */
+export const pokerus = style({
+  marginTop: 4,
+  alignSelf: 'flex-start',
+  padding: '1px 6px',
+  borderRadius: 4,
+  fontSize: 11,
+  fontWeight: 700,
+  color: '#2a1030',
+  background: '#f19bd0',
+})
+
+/**
+ * 다 나은 뒤에 남는 작은 점 (`SUMMARY_SPRITE_POKERUS_CURED_ICON`).
+ *
+ * 원작도 이로치 별과 **같은 그림 묶음**의 다른 칸이라 나란히 붙는다.
+ * 이 점이 「노력치가 계속 두 배로 들어간다」는 표시다
+ */
+export const pokerusCured = style({ color: '#f19bd0', fontSize: 12 })
+
 /** 지닌 도구 한 줄. 없으면 이 줄이 아예 없다 — 원작도 빈칸을 안 남긴다 */
 export const held = style({
   marginTop: 6,
