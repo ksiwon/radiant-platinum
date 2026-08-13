@@ -59,7 +59,8 @@ import {
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
-import { NpcFallbackModels } from './NpcFallbackModels'
+import { NpcMonModels } from './NpcMonModels'
+import { NpcSprites } from './NpcSprites'
 import { DistortionAmbience } from './DistortionAmbience'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
@@ -493,8 +494,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
   }, [])
 
-  /** 입체로 선 사람들. 판때기는 이 사람들을 건너뛴다 */
-  const [standing, setStanding] = useState<ReadonlySet<NpcActor>>(() => new Set())
+  /** 등신 모델로 선 사람들. 판때기와 포켓몬 층이 이 사람들을 건너뛴다 */
+  const [standingPeople, setStandingPeople] = useState<ReadonlySet<NpcActor>>(() => new Set())
+  /** 실제 모델로 선 오버월드 포켓몬 */
+  const [standingMons, setStandingMons] = useState<ReadonlySet<NpcActor>>(() => new Set())
+  /** 입체가 이미 맡은 배치 전부. 판때기는 여기 든 사람을 안 세운다 */
+  const standing = useMemo(
+    () => new Set([...standingPeople, ...standingMons]),
+    [standingPeople, standingMons],
+  )
 
   // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
   // 정수로 반올림해 두는 이유는 계단을 오르는 동안 매 프레임 창을 다시 세우지
@@ -691,12 +699,19 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <FieldWeather kind={weather} />
 
       {/*
-        NPC. 검증된 사람은 BDSP 등신 모델로 서고(`NpcModels`), 나머지는 사람·
-        포켓몬·장애물을 구분한 절차적 입체 폴백으로 선다. 정식 GLB가 늦게 도착하면
-        `standing` 집합이 갱신되어 폴백은 같은 프레임에 숨는다.
+        NPC는 세 층이다. 짝이 확인된 사람은 BDSP 등신 모델(`NpcModels`), 오버월드
+        포켓몬은 배틀에 쓰는 그 모델(`NpcMonModels`), **그 밖의 전부는 원작 그림
+        그대로 판때기**(`NpcSprites`)다.
+
+        ⚠️ 없는 모델을 도형으로 대신 세우지 않는다. 그렇게 했더니 배치의 대부분이
+        얼굴 없는 마네킹이 됐다 — 원작 그림을 쓰는 판때기보다 못하다.
+
+        `standing`은 **실제로 선** 배치만 담는다. 모델을 받는 동안 미리 담으면
+        판때기도 안 서고 모델도 아직 없어서 그 자리가 빈다.
       */}
-      <NpcModels grid={grid} layer={layer} table={npcModels} onStanding={setStanding} />
-      <NpcFallbackModels grid={grid} layer={layer} standing={standing} />
+      <NpcModels grid={grid} layer={layer} table={npcModels} onStanding={setStandingPeople} />
+      <NpcMonModels grid={grid} layer={layer} taken={standingPeople} onStanding={setStandingMons} />
+      <NpcSprites grid={grid} layer={layer} standing={standing} />
       <InteractionPrompt grid={grid} layer={layer} />
     </group>
   )
