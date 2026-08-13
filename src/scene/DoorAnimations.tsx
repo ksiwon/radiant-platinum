@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group } from 'three'
 import type { MapGrid } from '../engine/map/grid'
@@ -57,7 +57,12 @@ function Door({ door, y }: { door: DoorVisual; y: number }) {
 
 /** `LoadDoorAnimation`으로 지정한 타일 위에 실제 회전 문짝을 세운다. */
 export function DoorAnimations({ grid }: { grid: MapGrid }) {
-  const doors = useDoorVisualStore((state) => Object.values(state.doors))
+  // ⚠️ **셀렉터 안에서 배열을 만들면 안 된다.** zustand 5는 `useSyncExternalStore`에
+  // `Object.is`로만 견주므로 `Object.values`가 매번 새 배열을 돌려주면 스냅숏이
+  // 늘 바뀐 것으로 보인다 — 무한 렌더로 `<Canvas>`가 통째로 죽어서 필드 화면이
+  // 한 색으로 남았다. 바뀌지 않는 표를 받아 놓고 여기서 편다
+  const table = useDoorVisualStore((state) => state.doors)
+  const doors = useMemo(() => Object.values(table), [table])
   return (
     <group>
       {doors.map((door) => (
