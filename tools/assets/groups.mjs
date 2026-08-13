@@ -83,6 +83,11 @@ export const GROUPS = [
     match: (p) => p === 'data/moves.json' || nameIn('data/names', 'moves.', 'labels.')(p),
   },
   {
+    name: 'distortionProps',
+    make: 'pnpm extract:distortionProps',
+    match: (p) => p.startsWith('data/distortionProps/'),
+  },
+  {
     name: 'moveAnim',
     make: 'pnpm extract:moveAnim',
     match: oneOf('data/moveAnim.json'),

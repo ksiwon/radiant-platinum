@@ -463,7 +463,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             materials.push(makeMaterial(back.spec, back.strip, true))
           }
           return [{
-            key: `${String(b.model)}/${String(i)}/${String(b.x)}/${String(b.z)}`,
+            // ⚠️ **y를 빼면 안 된다.** 깨어진 세계는 열 층이 같은 x·z 위에 세로로
+            // 쌓여 있어서, 높이가 없으면 다른 층의 같은 소품이 같은 열쇠가 된다 —
+            // React가 「중복 key」로 울고 한쪽이 안 그려진다
+            key: `${String(b.model)}/${String(i)}/${String(b.x)}/${String(b.y)}/${String(b.z)}`,
             index: b.model,
             x: b.x, y: b.y, z: b.z,
             rot: b.rot, scale: b.scale,

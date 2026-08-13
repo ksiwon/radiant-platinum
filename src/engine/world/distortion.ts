@@ -376,3 +376,17 @@ export const distortionBridge: {
 export function isDistortionMap(data: Pick<DistortionData, 'maps'>, map: number): boolean {
   return data.maps.some((m) => m.map === map)
 }
+
+/**
+ * 층에 들어설 때의 소품 보임새 (`InitActiveGhostPropManager`).
+ *
+ * ⚠️ **켜진 무리가 아니라 꺼진 무리를 담는다.** 원작이
+ * `hiddenGhostPropGroups = ~header->defaultVisiblePropGroups`로 뒤집어 넣는다 —
+ * 0으로 두면 **모든 무리가 처음부터 보인다.** 실제로 그랬고, 그래서 밟으면
+ * 나타나야 할 발판이 이미 서 있거나(24무리 중 안 쓰는 자리까지) 반대로
+ * 아무 일도 안 일어나는 것처럼 보였다
+ */
+export function initialHiddenGroups(visibleGroups: number): number {
+  const mask = (1 << MAX_GHOST_PROP_GROUPS) - 1
+  return ~visibleGroups & mask
+}

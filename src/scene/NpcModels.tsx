@@ -25,6 +25,8 @@ import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { worldState } from '../state/worldState'
+import { world } from '../engine/map/world'
+import { groundYAt } from './distortion'
 import { assets, onProviderSwap } from '../data/providers/assetProvider'
 
 /**
@@ -106,7 +108,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       n++
       seen.add(actor)
 
-      const y = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, layer) ?? 0
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
       slot.outer.position.set(actor.x + 0.5, y, actor.z + 0.5)
       // 모델 정면이 +Z다. `DIR_STEP`이 그 방향의 걸음이라 그대로 각이 된다
       const step = DIR_STEP[actor.dir & 3]!

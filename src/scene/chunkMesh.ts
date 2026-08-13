@@ -47,6 +47,8 @@ export interface TexSheet {
 const chunkCache = new Map<number, Promise<ChunkMesh>>()
 const propCache = new Map<number, Promise<ChunkMesh>>()
 const sheetCache = new Map<number, Promise<TexSheet>>()
+const distPropCache = new Map<number, Promise<ChunkMesh>>()
+const distPropSheetCache = new Map<number, Promise<TexSheet | null>>()
 const propSheetCache = new Map<number, Promise<TexSheet | null>>()
 const starterCache = new Map<number, Promise<ChunkMesh>>()
 const starterSheetCache = new Map<number, Promise<TexSheet | null>>()
@@ -154,6 +156,41 @@ export function loadPropSheet(index: number): Promise<TexSheet | null> {
     })
     .catch((e: unknown) => { propSheetCache.delete(index); throw e })
   propSheetCache.set(index, promise)
+  return promise
+}
+
+/**
+ * 깨어진 세계의 소품 하나 (`/data/mmodel/fldeff.narc` 0x7C~0x94).
+ *
+ * 청크·건물 소품과 같은 `PT3C`다. 번호는 원작 소품 종류 번호 그대로다 —
+ * 0 작은 발판 · 1 떠 있는 푸른 바위 · 22 덩굴꽃 · 23 바위 · 24 문
+ */
+export function loadDistortionPropMesh(kind: number): Promise<ChunkMesh> {
+  const hit = distPropCache.get(kind)
+  if (hit) return hit
+  const promise = Promise.all([
+    loadChunkFormat(),
+    assets().bytes(`data/distortionProps/${String(kind)}.bin`),
+  ]).then(([fmt, buffer]) => build(buffer, fmt))
+    .catch((e: unknown) => { distPropCache.delete(kind); throw e })
+  distPropCache.set(kind, promise)
+  return promise
+}
+
+/** 그 소품의 텍스처. 스물다섯 중 하나만 자기 것이 없다 */
+export function loadDistortionPropSheet(kind: number): Promise<TexSheet | null> {
+  const hit = distPropSheetCache.get(kind)
+  if (hit) return hit
+  const promise = (readJson(assets(), 'data/distortionProps/index.json') as Promise<{
+    sheets: ({ w: number, h: number, items: [string, string, number, number, number, number][] } | null)[]
+  }>)
+    .then(async (idx) => {
+      const info = idx.sheets[kind]
+      if (!info) return null
+      return sheetFrom(`data/distortionProps/${String(kind)}.png`, info)
+    })
+    .catch((e: unknown) => { distPropSheetCache.delete(kind); throw e })
+  distPropSheetCache.set(kind, promise)
   return promise
 }
 

@@ -14,10 +14,14 @@ import { worldState } from '../state/worldState'
 import { abortScript } from '../engine/script/field'
 import { useBattleStore } from '../state/battleStore'
 import { gridFor } from './worldData'
+import { distortionSpawn, isDistortionFloor } from './distortion'
 import type { Checkpoint } from '../engine/dev/checkpoints'
 
-export type EnterFn =
-  (grid: MapGrid, mapId: number, x: number, z: number, matrix: number) => void
+export type EnterFn = (
+  grid: MapGrid, mapId: number, x: number, z: number, matrix: number,
+  /** 도착 높이. 깨어진 세계처럼 격자에서 못 받는 데서만 준다 */
+  atY?: number,
+) => void
 
 interface DevApi {
   devWarp: { pending: Checkpoint | null }
@@ -75,7 +79,14 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
         if (!at) { console.error(`확인 지점 ${cp.id}: 설 자리를 못 찾았다`); return }
         // 문 위면 통행 불가라 한 칸 내려 세운다 — 워프가 지나는 길과 같다
         const out = walkOutOfDoor(next, at.x, at.z)
-        enter(next, cp.map, out.x, out.z, header.matrix)
+        // ⚠️ 깨어진 세계는 맵 격자가 아니라 떠 있는 판 위를 걷는다. 격자에서
+        // 고른 칸은 판 밖이라 그대로 세우면 판 속에 묻힌다 (`distortionSpawn`)
+        const onPlatform = isDistortionFloor(cp.map) ? distortionSpawn(cp.map) : null
+        if (onPlatform !== null) {
+          enter(next, cp.map, onPlatform.x + 0.5, onPlatform.z + 0.5, header.matrix, onPlatform.y)
+        } else {
+          enter(next, cp.map, out.x, out.z, header.matrix)
+        }
         worldState.player.facing = at.facing
         // 시각을 못 박는 지점이 있다 — 밤 하늘·조명·시간대 인카운터를 보는 자리다
         if (cp.hour !== undefined) worldState.time.gameHour = ((cp.hour % 24) + 24) % 24

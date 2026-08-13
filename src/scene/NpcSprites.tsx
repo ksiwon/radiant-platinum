@@ -20,6 +20,8 @@ import {
 } from '../engine/actor/sprites'
 import { assets, onProviderSwap } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
+import { world } from '../engine/map/world'
+import { groundYAt } from './distortion'
 
 /** 한 맵에 동시에 세우는 최대 인원. 넘치는 사람은 안 그린다 */
 const MAX = 64
@@ -187,7 +189,7 @@ export function NpcSprites({ grid, layer, standing }: Props) {
         slot.frame = frame
       }
 
-      const y = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, layer) ?? 0
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
       slot.mesh.position.set(actor.x + 0.5, y, actor.z + 0.5)
       slot.mesh.scale.set(sprite.w / TEXELS_PER_TILE, sprite.h / TEXELS_PER_TILE, 1)
       // 판때기가 카메라를 본다. 좌우로만 돈다 — 위아래로도 눕히면 발이 뜬다

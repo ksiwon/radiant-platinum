@@ -48,6 +48,9 @@ import {
   distortionBoulderTick,
   distortionEnter,
   distortionForgetEvents,
+  distortionGhostRunning,
+  groundYAt,
+  distortionGhostTick,
   distortionHooks,
   distortionLeave,
   distortionLoaded,
@@ -61,7 +64,7 @@ import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
-import { DistortionAmbience } from './DistortionAmbience'
+import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
 import { Ledges } from './Ledges'
@@ -205,7 +208,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       world.matrix = matrix
       // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
       // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
-      worldState.player.position.set(x, atY ?? next.heightAtWorld(x, z, 0) ?? 0, z)
+      // ⚠️ 깨어진 세계는 걷는 면이 맵 격자가 아니라 떠 있는 판이다. 보통 맵처럼
+      // 물으면 0이 와서 주인공이 판에 파묻힌 채로 선다 (`distortionGroundY`)
+      worldState.player.position.set(x, atY ?? groundYAt(next, mapId, x, z, 0), z)
       worldState.player.prevPosition.copy(worldState.player.position)
       worldState.player.velocity.set(0, 0, 0)
       setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
@@ -516,7 +521,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 돈다 (PARITY §6.10)
     distortionRideTick(dt)
     distortionBoulderTick(dt)
-    worldState.player.riding = distortionRiding() || distortionBoulderFalling()
+    distortionGhostTick(dt)
+    worldState.player.riding = distortionRiding() || distortionBoulderFalling() || distortionGhostRunning()
 
     const p = worldState.player.position
     const tx = Math.floor(p.x),
@@ -695,7 +701,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
       <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} />
       <DoorAnimations grid={grid} />
-      <DistortionAmbience />
+      <DistortionProps mapId={mapId} />
       <FieldWeather kind={weather} />
 
       {/*

@@ -21,6 +21,8 @@ import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { npcSprite } from '../engine/actor/sprites'
 import { DIR_STEP } from '../engine/script/movement'
 import { worldState } from '../state/worldState'
+import { world } from '../engine/map/world'
+import { groundYAt } from './distortion'
 import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 
 /** 동시에 세우는 수. 사람 모델(24)보다 적다 — 한 마리가 사람보다 무겁다 */
@@ -121,7 +123,7 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
       count++
       seen.add(actor)
 
-      const y = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, layer) ?? 0
+      const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
       slot.outer.position.set(actor.x + 0.5, y, actor.z + 0.5)
       const step = DIR_STEP[actor.dir & 3]!
       slot.outer.rotation.y = Math.atan2(step.x, step.z)

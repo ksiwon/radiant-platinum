@@ -15,7 +15,8 @@ import type { DistortionData, DistortionMap } from '../data/schema'
 import {
   ATTRS_INVALID, EVENT_CMD, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL, PLATFORM_FLOOR,
   PLATFORM_NONE, PLATFORM_WEST_WALL, TELEPORT, blocked, cameraAt, connectionOf, findPlatform,
-  flagHolds, MAX_PERSISTED_PLATFORMS, distortionBridge, hasPlatformAt, jumpAt, mapOf,
+  flagHolds, initialHiddenGroups, MAX_PERSISTED_PLATFORMS, distortionBridge, hasPlatformAt,
+  jumpAt, mapOf,
   tileAttributes, type DistortionFrame, type DistortionState,
 } from '../engine/world/distortion'
 import {
@@ -184,6 +185,87 @@ function bindPlatform(index: number): void {
  * 판 번호**를 그대로 쓴다 (`IsPersistedDataValid`). 층을 넘나들 때 판이 도로
  * 바닥으로 잡히면 벽에 붙어 있다가 층을 옮긴 순간 떨어지기 때문이다
  */
+
+/**
+ * 그 칸의 **바닥 판 높이** (맵 안 좌표).
+ *
+ * ⚠️ **여기 없으면 주인공이 땅에 묻힌다.** 이 세계의 걷는 면은 맵 격자가 아니라
+ * 떠 있는 판이라, 보통 맵처럼 `heightAtWorld`를 물으면 0이 온다 — 판이 y=2에
+ * 있는데 0에 세우니 발목까지 파묻힌 채로 시작했다.
+ *
+ * 바닥 판(`PLATFORM_FLOOR`)만 본다. 벽·천장은 서 있는 면이 세로라 「높이」가
+ * 없고, 그런 자리로 들어서는 것은 승강 발판이 자기 높이를 직접 준다
+ */
+export function distortionGroundY(mapId: number, x: number, z: number): number | null {
+  // ⚠️ 지금 걸린 층(`floor`)을 보면 안 된다. 워프는 자리를 **먼저** 잡고 층을
+  // 나중에 거는데, 그때 `floor`는 아직 떠나온 층이다
+  const map = data === null ? null : mapOf(data, mapId)
+  if (map === null) return null
+  const wx = x + map.offsetX
+  const wz = z + map.offsetZ
+  let best: number | null = null
+  for (const p of map.platforms) {
+    if (p.kind !== PLATFORM_FLOOR) continue
+    const b = p.bounds
+    if (wx < b.x || wx > b.x + b.sx) continue
+    if (wz < b.z || wz > b.z + b.sz) continue
+    // 겹치면 제일 높은 바닥이 서는 자리다 — 아래 판은 그 밑을 지난다
+    const y = b.y + b.sy - map.offsetY
+    if (best === null || y > best) best = y
+  }
+  return best
+}
+
+/**
+ * 그 층의 판 한가운데 (맵 안 좌표). 판이 없으면 null이다.
+ *
+ * ⚠️ **이 세계에서는 「(x,z) 고르고 높이 물어보기」가 성립하지 않는다.** 판이
+ * 벽이면 걷는 면이 세로라, 맵 격자에서 고른 (x,z)는 판 위가 아니라 허공이다 —
+ * 확인 지점이 그렇게 잡혀서 주인공과 난천이 판 속에 묻힌 채로 섰다.
+ *
+ * 판마다 서는 면이 다르다: 바닥·천장은 y가 고정이고 x·z로 걷지만, 서쪽·동쪽
+ * 벽은 **x가 고정**이고 y·z로 걷는다 (`tileAttributes`가 그 축을 가른다)
+ */
+export function distortionSpawn(mapId: number): { x: number; y: number; z: number } | null {
+  const map = data === null ? null : mapOf(data, mapId)
+  if (map === null) return null
+  const p = map.platforms[0]
+  if (p === undefined) return null
+  const b = p.bounds
+  const mid = (at: number, size: number) => at + Math.floor(size / 2)
+  return {
+    x: mid(b.x, b.sx) - map.offsetX,
+    y: mid(b.y, b.sy) - map.offsetY,
+    z: mid(b.z, b.sz) - map.offsetZ,
+  }
+}
+
+/**
+ * 그 칸의 발 높이. 깨어진 세계면 판에서, 아니면 맵 격자에서 받는다.
+ *
+ * 주인공·NPC·소품이 **같은 함수**를 봐야 한다 — 한쪽만 고치면 사람은 판 위에
+ * 서고 다른 쪽은 판 속에 묻힌다. 실제로 난천이 그렇게 묻혀 있었다
+ */
+export function groundYAt(
+  grid: { heightAtWorld(x: number, z: number, layer: number): number | null },
+  mapId: number, x: number, z: number, layer: number,
+  /**
+   * 그 배우가 배치표에서 받은 제 높이.
+   *
+   * ⚠️ **깨어진 세계에서는 이게 맞고 격자가 틀리다.** 배치표의 y는 고정소수점
+   * 세계 높이라(`distortionAddObject`가 풀어 둔다) 층마다 다른데, 격자에 물으면
+   * 0이 온다 — 그래서 난천이 판에 한 칸 파묻힌 채로 서 있었다
+   */
+  own?: number,
+): number {
+  if (isDistortionFloor(mapId)) {
+    if (own !== undefined) return own
+    const y = distortionGroundY(mapId, Math.floor(x), Math.floor(z))
+    if (y !== null) return y
+  }
+  return grid.heightAtWorld(x, z, layer) ?? 0
+}
+
 export function distortionEnter(mapId: number, x: number, y: number, z: number): void {
   if (data === null) { floor = null; platform = -1; return }
   floor = mapOf(data, mapId)
@@ -199,11 +281,20 @@ export function distortionEnter(mapId: number, x: number, y: number, z: number):
       platformIndex: Math.max(0, platform),
       platformFlags: initialPlatformFlags(mapId),
       puzzleFlags: initialPuzzleFlags(distortionHooks.puzzleFinished?.() ?? false),
+      hiddenGroups: initialHiddenGroups(floor.visibleGroups),
     })
     return
   }
   // 판 개수 이상이면 「어느 판도 아니다」다 — 보통 격자로 걷는다
   platform = s.platformIndex < floor.platforms.length ? s.platformIndex : -1
+  // ⚠️ **층을 갈아탈 때마다 소품 보임새를 그 층 기본값으로 되돌린다.**
+  // 원작이 층을 바꿀 때 `SetPersistedHiddenGhostPropGroups(system, 0)` 뒤에
+  // `InitActiveGhostPropManager(system, TRUE)`를 부른다 — 즉 이어받는 것이
+  // 아니라 **다시 세운다**. 안 그러면 앞 층에서 켠 무리가 다음 층에서 켜진
+  // 채로 남아, 아직 나오면 안 되는 발판이 미리 서 있는다
+  if (s.hiddenGroups !== initialHiddenGroups(floor.visibleGroups)) {
+    setState({ hiddenGroups: initialHiddenGroups(floor.visibleGroups) })
+  }
 }
 
 /** 깨어진 세계를 나갔다 */
@@ -361,6 +452,15 @@ function runEvent(cmds: readonly { kind: number; params: Record<string, unknown>
         break
       case EVENT_CMD.movePlatform:
         movePlatform(p)
+        break
+      // ⚠️ **이 둘을 「연출」로 넘기면 기라티나 방에서 길이 안 생긴다.**
+      // 발판 무리 1~3을 한 무리씩 세우는 것이 이 명령이고, 그게 없으면
+      // 숨은 소품 여섯이 영영 안 나타나서 그 방에서 못 나간다
+      case EVENT_CMD.showGiratinaRoomPlatforms:
+        ghost = { group: GIRATINA_ROOM_GROUP.first, delay: SHOW_INITIAL_DELAY, show: true }
+        break
+      case EVENT_CMD.hideGiratinaRoomPlatforms:
+        ghost = { group: GIRATINA_ROOM_GROUP.last, delay: HIDE_INITIAL_DELAY, show: false }
         break
       default:
         // 남은 것은 전부 연출이다 (그림자·폭포·바위 안내·기라티나 도착)
@@ -651,6 +751,60 @@ const FALL_INTO_PIT_FRAMES = 12
 const PIT_SETTLE_FRAMES = 32
 /** `..._TickToWrongPit`의 0·1·2단계 */
 const FALL_WRONG_FRAMES = 52
+
+
+// ── 기라티나 방 발판 (`EventCmdShowGiratinaRoomPlatforms`) ────────────────────
+
+/**
+ * 세우고 거두는 무리 범위 (`GIRATINA_ROOM_PLATFORMS_*_GHOST_PROP_GROUP`).
+ *
+ * 셋이다 — 1·2·3. 세울 때는 1에서 3으로 올라가고 거둘 때는 3에서 1로 내려간다
+ */
+const GIRATINA_ROOM_GROUP = { first: 1, last: 3 } as const
+/** 첫 무리가 서기까지 (`GIRATINA_ROOM_SHOW_PLATFORMS_INITIAL_DELAY`) */
+const SHOW_INITIAL_DELAY = 36
+/** 다음 무리까지 (`..._SHOW_PLATFORMS_DELAY` · `..._HIDE_PLATFORMS_DELAY`, 둘 다 48) */
+const STEP_DELAY = 48
+/** 거둘 때의 첫 뜸 (`GIRATINA_ROOM_HIDE_PLATFORMS_INITIAL_DELAY`) */
+const HIDE_INITIAL_DELAY = 16
+
+interface GhostRun {
+  /** 다음에 손댈 무리 */
+  group: number
+  /** 남은 프레임 */
+  delay: number
+  show: boolean
+}
+let ghost: GhostRun | null = null
+
+/** 발판이 서거나 거둬지는 중인가. 도는 동안은 조작을 막는다 */
+export function distortionGhostRunning(): boolean {
+  return ghost !== null
+}
+
+/**
+ * 한 프레임 (`EventCmdShowGiratinaRoomPlatforms_ShowPlatforms`).
+ *
+ * 48프레임마다 한 무리씩이다. 한 번에 다 세우지 않는 이유가 있다 — 원작은
+ * 발판이 하나씩 솟는 것을 보여 주고, 그 사이에 소리를 끊는다
+ */
+export function distortionGhostTick(dt: number): void {
+  const run = ghost
+  if (run === null) return
+  run.delay -= dt * 60
+  if (run.delay > 0) return
+
+  const s = state()
+  const bit = 1 << run.group
+  setState({ hiddenGroups: run.show ? s.hiddenGroups & ~bit : s.hiddenGroups | bit })
+  run.delay = STEP_DELAY
+  run.group += run.show ? 1 : -1
+
+  const done = run.show
+    ? run.group > GIRATINA_ROOM_GROUP.last
+    : run.group < GIRATINA_ROOM_GROUP.first
+  if (done) ghost = null
+}
 
 export function distortionBoulderFalling(): boolean {
   return falling !== null
