@@ -343,7 +343,7 @@ export const saveSchema = z.object({
   }),
 
   /**
-   * 파열된 세계 (PARITY §6.10) — `DistWorldPersistedData`.
+   * 깨어진 세계 (PARITY §6.10) — `DistWorldPersistedData`.
    *
    * ⚠️ **판 자리가 4비트다.** 원작이 비트필드에 넣어 두어서 열여섯 이상은
    * 못 담는다. 지금 제일 많은 맵(B2F)이 다섯이라 여유가 있다

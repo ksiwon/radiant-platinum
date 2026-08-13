@@ -171,7 +171,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
   16: (data) => ({ ...data, version: 17, poketch: newPoketch() }),
 
   /**
-   * 파열된 세계 (PARITY §6.10).
+   * 깨어진 세계 (PARITY §6.10).
    *
    * ⚠️ **valid를 거짓으로 둔다.** 이 칸이 서 있으면 「이미 들어와 본 적이 있고
    * 서 있던 판·카메라 각이 이것」이라는 뜻인데, 옛 리포트에는 그 자리가 없다.

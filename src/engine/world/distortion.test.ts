@@ -215,7 +215,7 @@ describe('롬 자료', () => {
     expect(isDistortionMap(real!, connectionOf(real!, MAP.f1)!.prev)).toBe(false)
   })
 
-  it.runIf(real)('되돌림동굴 방과 기라티나 방은 앞뒤가 없다 — 워프로만 간다', () => {
+  it.runIf(real)('귀혼동굴 방과 기라티나 방은 앞뒤가 없다 — 워프로만 간다', () => {
     for (const map of [MAP.giratinaRoom, MAP.turnbackCaveRoom]) {
       const link = connectionOf(real!, map)
       if (link === null) continue

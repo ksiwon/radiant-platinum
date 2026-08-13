@@ -246,11 +246,11 @@ export interface SaveData {
    */
   poketch: PoketchState
   /**
-   * 파열된 세계에 남는 것 (PARITY §6.10) — `DistWorldPersistedData`.
+   * 깨어진 세계에 남는 것 (PARITY §6.10) — `DistWorldPersistedData`.
    *
    * 원작은 이걸 「맵마다 바뀌는 것」 칸 하나에 얹어 두고, 다른 맵으로 나가면
    * 그 칸을 체육관 장치 같은 것이 덮어쓴다. 우리는 칸을 따로 둔다 — 덮어쓰기를
-   * 흉내 낼 이유가 없고, 원작에서 지워지는 값들도 되돌림동굴로 다시 들어가면
+   * 흉내 낼 이유가 없고, 원작에서 지워지는 값들도 귀혼동굴로 다시 들어가면
    * 어차피 처음부터 잡힌다
    */
   distortion: DistortionState

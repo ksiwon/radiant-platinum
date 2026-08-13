@@ -19,7 +19,9 @@ import { SFX } from '../engine/audio/sfx'
 import {
   enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars, start,
 } from '../engine/script/field'
-import { VAR_DISTORTION_CYRUS, VAR_DISTORTION_WORLD_PROGRESS } from '../engine/script/vars'
+import {
+  FLAG_DISTORTION_WORLD_PUZZLE_FINISHED, VAR_DISTORTION_CYRUS, VAR_DISTORTION_WORLD_PROGRESS,
+} from '../engine/script/vars'
 import { installFieldServices } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
@@ -36,8 +38,9 @@ import {
 } from './journal'
 import { resetStepTile } from './stepSystem'
 import {
-  distortionEnter, distortionForgetEvents, distortionHooks, distortionLeave,
-  distortionLoaded, distortionPreload, isDistortionFloor,
+  distortionAddObject, distortionBoulderFalling, distortionBoulderTick, distortionEnter,
+  distortionForgetEvents, distortionHooks, distortionLeave, distortionLoaded, distortionPreload,
+  distortionRideTick, distortionRiding, isDistortionFloor,
 } from './distortion'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
@@ -133,7 +136,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [locationNames])
 
   /** 맵을 갈아 끼운다. 격자·플레이어 위치·존 이름을 한 번에 맞춘다 */
-  const enter = useCallback((next: MapGrid, mapId: number, x: number, z: number, matrix: number) => {
+  const enter = useCallback((
+    next: MapGrid, mapId: number, x: number, z: number, matrix: number,
+    /** 도착 높이를 부르는 쪽이 정할 때. 승강 발판만 쓴다 (PARITY §6.10) */
+    atY?: number,
+  ) => {
     // ⚠️ **갈아 끼우기 전에** 어디서 떠나는지를 적는다 (`Field_TrySetMapConnection`).
     // 신오 본판(행렬 0)에 있다가 아닌 맵으로 넘어가는 그 한 번만이고, 그 자리가
     // 동굴탈출로프의 목적지다 (PARITY §4.1)
@@ -155,7 +162,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     world.matrix = matrix
     // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
     // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
-    worldState.player.position.set(x, next.heightAtWorld(x, z, 0) ?? 0, z)
+    worldState.player.position.set(x, atY ?? next.heightAtWorld(x, z, 0) ?? 0, z)
     worldState.player.prevPosition.copy(worldState.player.position)
     worldState.player.velocity.set(0, 0, 0)
     setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
@@ -184,12 +191,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
     // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
     arriveAt(mapId)
-    // 파열된 세계는 맵 격자가 아니라 「떠 있는 판」이 통행을 정한다 (PARITY §6.10).
+    // 깨어진 세계는 맵 격자가 아니라 「떠 있는 판」이 통행을 정한다 (PARITY §6.10).
     // 자료가 따로라 처음 들어설 때 한 번 받는다 — 받는 동안은 판이 없어서
     // 평범한 격자로 걷는다
     distortionForgetEvents()
     if (isDistortionFloor(mapId)) {
-      const y = next.heightAtWorld(x, z, 0) ?? 0
+      const y = atY ?? next.heightAtWorld(x, z, 0) ?? 0
       if (distortionLoaded()) distortionEnter(mapId, x, y, z)
       else void distortionPreload().then(() => { distortionEnter(mapId, x, y, z) })
     } else {
@@ -275,7 +282,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     fieldScripts.onScriptEnd = (vars) => {
       useSaveStore.getState().commitScriptState(vars.saved, vars.flags)
     }
-    // 파열된 세계의 사건이 스크립트를 부르고 진행도를 세운다 (PARITY §6.10).
+    // 깨어진 세계의 사건이 스크립트를 부르고 진행도를 세운다 (PARITY §6.10).
     // 그쪽은 세이브도 스크립트 VM도 못 보므로 여기서 꽂는다
     distortionHooks.runScript = (scriptID) => {
       const scripts = mapById(world.mapId)?.scripts
@@ -286,6 +293,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       fieldScripts.vars.set(VAR_DISTORTION_WORLD_PROGRESS, value)
     }
     distortionHooks.cyrusAppearance = () => fieldScripts.vars.get(VAR_DISTORTION_CYRUS)
+    distortionHooks.setCyrusAppearance = (value) => {
+      fieldScripts.vars.set(VAR_DISTORTION_CYRUS, value)
+    }
+    distortionHooks.puzzleFinished = () =>
+      fieldScripts.vars.checkFlag(FLAG_DISTORTION_WORLD_PUZZLE_FINISHED)
+    distortionHooks.setPuzzleFinished = () => {
+      fieldScripts.vars.setFlag(FLAG_DISTORTION_WORLD_PUZZLE_FINISHED)
+    }
+    distortionHooks.addObject = (localID) => { distortionAddObject(localID, fieldScripts.vars) }
     void initFieldScripts(locale).then(() => { setScriptsReady(true) })
     const uninstall = installFieldServices(locale)
     return () => {
@@ -408,7 +424,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   // 프레임마다 도는 일은 정수 비교 셋뿐이다
   const warping = useRef(false)
-  useFrame(() => {
+  useFrame((_, dt) => {
+    // 깨어진 세계의 승강 발판. 층이 바뀌는 것도 여기서 나므로 워프보다 먼저
+    // 돈다 (PARITY §6.10)
+    distortionRideTick(dt)
+    distortionBoulderTick(dt)
+    worldState.player.riding = distortionRiding() || distortionBoulderFalling()
+
     const p = worldState.player.position
     const tx = Math.floor(p.x), tz = Math.floor(p.z)
     const l = Math.round(p.y)
@@ -435,13 +457,18 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 문이냐 계단이냐는 워프를 잡을 때 이미 갈렸다 (`warpSystem`). 문은
       // **앞 칸**이라 발밑을 봐서는 못 가린다 — 원작도 소리가 갈린다:
       // 계단은 `SEQ_SE_DP_KAIDAN2`, 문은 `SEQ_SE_DP_DOOR_OPEN`
-      void music.playEffect(target.viaDoor ? SFX.DOOR : SFX.STAIRS)
+      // 승강 발판은 제 소리가 따로 있어서 문·계단 소리를 안 낸다
+      if (target.silent !== true) {
+        void music.playEffect(target.viaDoor ? SFX.DOOR : SFX.STAIRS)
+      }
       gridFor(target.matrix)
         .then((next) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
           // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
-          const at = walkOutOfDoor(next, target.x, target.z)
-          enter(next, target.to, at.x, at.z, target.matrix)
+          const at = target.y === undefined
+            ? walkOutOfDoor(next, target.x, target.z)
+            : { x: target.x, z: target.z }
+          enter(next, target.to, at.x, at.z, target.matrix, target.y)
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간
           // 방향 그대로 나오는 것이 맞아서 안 건드린다
           if (target.facing !== undefined) worldState.player.facing = FACING_OF[target.facing] ?? 0

@@ -302,6 +302,49 @@ maybe('스크립트 VM', () => {
     expect(meta.commands.length - unhandled.size).toBe(IMPLEMENTED_COMMANDS)
   })
 
+  it('이야기를 끝내는 맵들은 자리가 하나도 안 빈다', () => {
+    // 97.3%는 전체 평균이라 **여기서는 눈금이 못 된다.** 이야기를 끝까지
+    // 밀려면 깨어진 세계 열 층과 전설 넷의 자리가 **하나도** 안 비어야 한다 —
+    // 한 자리만 건너뛰어도 그 방에서 멈춘다.
+    //
+    // 지명은 롬의 지명표를 따른다: 깨어진 세계(573~583) · 신수유적 B5F(282,
+    // 레지기가스) · 시작의 방(509, 아르세우스) · 신월섬 숲(320, 다크라이) ·
+    // 만월섬 숲(260, 크레세리아)
+    const STORY_MAPS = [
+      573, 574, 575, 576, 577, 579, 580, 581, 582, 583,
+      282, 509, 320, 260,
+    ]
+    const headers = JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as
+      { scripts: number }[]
+    const files = new Set(STORY_MAPS.map((m) => headers[m]?.scripts ?? -1))
+    const missing: string[] = []
+    for (const [i, info] of meta.files.entries()) {
+      if (info.kind !== 'code' || !files.has(i)) continue
+      const bytes = fileBytes(data, i)
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      const stack: number[] = []
+      for (let e = 0; e < info.entries; e++) stack.push(entryOffset(data, i, e))
+      const seen = new Set<number>()
+      while (stack.length > 0) {
+        let at = stack.pop()!
+        while (at >= 0 && at + 2 <= bytes.length && !seen.has(at)) {
+          seen.add(at)
+          const op = view.getUint16(at, true)
+          const cmd = meta.commands[op]
+          if (!cmd) break
+          if (unhandled.has(op)) missing.push(`${info.name}: ${cmd.name}`)
+          const width = argWidth(cmd.args)
+          if (/^(GoTo|Call)/.test(cmd.name) && width >= 4) {
+            stack.push(at + 2 + width + view.getInt32(at + 2 + width - 4, true))
+          }
+          if (cmd.name === 'End' || cmd.name === 'Return' || cmd.name === 'GoTo') break
+          at += 2 + width
+        }
+      }
+    }
+    expect([...new Set(missing)]).toEqual([])
+  })
+
 /** `"1 2 4*"` → 7. 가변 길이 명령은 첫 피연산자만큼만 센다 */
 function argWidth(spec: string): number {
   return spec === '' ? 0 : spec.split(' ').reduce((n, s) => n + Number(s[0]), 0)

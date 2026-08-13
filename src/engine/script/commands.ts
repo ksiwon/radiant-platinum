@@ -2649,19 +2649,19 @@ on('OpenPokemonNamingScreen', (ctx) => {
   return true
 })
 
-/** 뒤틀린 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
+/** 깨어진 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
 on('ScrCmd_2FB', () => false)
 
-/** 뒤틀린 세계 워프 (`FieldSystem_StartDWWarp`) */
+/** 깨어진 세계 워프 (`FieldSystem_StartDWWarp`) */
 on('DoDWWarp', () => false)
 
 /** 소리 장면을 63번으로 (`Sound_SetSceneAndPlayBGM(SOUND_SCENE_SUB_63, …)`) */
 on('SetSubScene63', () => false)
 
-// ── 파열된 세계와 전설 (PARITY §6.10) ────────────────────────────────────────
+// ── 깨어진 세계와 전설 (PARITY §6.10) ────────────────────────────────────────
 
 /**
- * 파열된 세계의 「맵마다 바뀌는 것」을 연다 (`PersistedMapFeatures_InitForDistortionWorld`).
+ * 깨어진 세계의 「맵마다 바뀌는 것」을 연다 (`PersistedMapFeatures_InitForDistortionWorld`).
  *
  * ⚠️ **원작은 여기서 통째로 지운다.** 층마다의 `OnTransition`이 이걸 부르는데
  * `PersistedMapFeatures_InitWithID`가 버퍼를 0으로 밀어 버린다 — 그래서 층을
@@ -2677,7 +2677,7 @@ on('ResetDistortionWorldPersistedCameraAngles', (ctx) => {
 })
 
 /**
- * 파열된 세계에만 있는 사람을 세운다 (`DistWorld_AddMapObjectWithLocalID`).
+ * 깨어진 세계에만 있는 사람을 세운다 (`DistWorld_AddMapObjectWithLocalID`).
  *
  * 이 세계의 시로나·태홍·기라티나는 **맵 배치표에 없다.** 층이 이어져 흐르는
  * 세계라 배치표로는 못 세우고, 스크립트와 사건이 번호로 불러다 세운다
@@ -2708,7 +2708,7 @@ on('StartDistortionWorldGiratinaShadowEvent', (ctx) => {
 
 on('FinishDistortionWorldGiratinaShadowEvent', () => false)
 
-/** `ScrCmd_2B5` — 파열된 세계의 이름 없는 연출 하나. 인자 셋을 읽고 지나간다 */
+/** `ScrCmd_2B5` — 깨어진 세계의 이름 없는 연출 하나. 인자 셋을 읽고 지나간다 */
 on('ScrCmd_2B5', (ctx) => {
   ctx.readHalfWord(); ctx.readHalfWord(); ctx.readHalfWord()
   return false
@@ -2819,7 +2819,7 @@ on('GetPlayer3DPos', (ctx) => {
 })
 
 /**
- * 되돌림동굴의 다음 방을 정한다 (`ScrCmd_InitTurnbackCave`).
+ * 귀혼동굴의 다음 방을 정한다 (`ScrCmd_InitTurnbackCave`).
  *
  * 방이 **무작위로 이어진다.** 기둥을 셋 다 보면 기라티나 방, 서른 방을 돌면
  * 입구, 아니면 지금 본 기둥 수에 맞는 여섯 방 중 하나로 간다.
@@ -2938,7 +2938,7 @@ on('GetPartyMonForm', (ctx) => {
   return false
 })
 
-// 되돌림월드 쪽이 쓰는 같은 명령. 오버레이가 달라 번호가 둘이다
+// 깨어진 세계 쪽이 쓰는 같은 명령. 오버레이가 달라 번호가 둘이다
 on('GetPartyMonForm2', (ctx) => {
   const slot = ctx.readVar()
   const dest = ctx.readHalfWord()
@@ -2949,7 +2949,7 @@ on('GetPartyMonForm2', (ctx) => {
 /**
  * 파티의 기라티나를 한꺼번에 (`ScrCmd_SetPartyGiratinaForm`).
  *
- * 0이 아니면 **무조건 오리진**이다 — 되돌림월드가 그렇게 부른다. 0이면 백금옥을
+ * 0이 아니면 **무조건 오리진**이다 — 깨어진 세계가 그렇게 부른다. 0이면 백금옥을
  * 보고 정한다
  */
 on('SetPartyGiratinaForm', (ctx) => {

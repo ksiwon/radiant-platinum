@@ -183,6 +183,16 @@ export interface PendingWarp {
    * 가린다: 문은 **앞 칸**이라 발밑이 그냥 길이다
    */
   viaDoor: boolean
+  /**
+   * 도착 높이를 이쪽이 정한다. 없으면 격자의 바닥에 선다.
+   *
+   * 깨어진 세계의 승강 발판만 쓴다 — 층이 바뀌는 순간에도 발판은 허공을
+   * 지나는 중이라, 바닥에 붙이면 한 프레임 뚝 떨어졌다가 도로 올라온다
+   * (`scene/distortion`의 `rideTick`)
+   */
+  y?: number
+  /** 문·계단 소리를 안 낸다. 승강 발판은 제 소리가 따로 있다 */
+  silent?: boolean
 }
 
 /** `area_data.narc` — 영역이 어느 텍스처·소품 묶음을 쓰는가 */
@@ -252,7 +262,7 @@ export function setWarpEventPos(index: number, x: number, z: number): void {
 /**
  * 워프의 **목적지 맵**을 갈아 끼운다 (`MapHeaderData_SetWarpEventDestHeaderID`).
  *
- * 되돌림동굴이 이걸로 방을 굴린다 — 문은 그대로 두고 그 너머만 바꾼다
+ * 귀혼동굴이 이걸로 방을 굴린다 — 문은 그대로 두고 그 너머만 바꾼다
  */
 const warpRetargeted = new Map<number, number>()
 

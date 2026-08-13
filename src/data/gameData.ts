@@ -323,7 +323,7 @@ export function loadBerries(): Promise<Berries> {
   return fetchJson('berries.json', (v) => berriesSchema.parse(v))
 }
 
-/** 파열된 세계의 판·뛰는 자리·카메라·사건 (PARITY §6.10) */
+/** 깨어진 세계의 판·뛰는 자리·카메라·사건 (PARITY §6.10) */
 export function loadDistortion(): Promise<DistortionData> {
   return fetchJson('distortion.json', (v) => distortionSchema.parse(v))
 }

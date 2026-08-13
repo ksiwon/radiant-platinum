@@ -111,7 +111,7 @@ export interface FieldServices {
    * 오리진폼 기라티나와의 야생전 (`Encounter_NewVsGiratinaOrigin`).
    *
    * 전설 조우와 딱 하나 다르다 — 만들어 놓고 **모습을 오리진으로 갈아 끼운다**.
-   * 백금옥 없이 그 모습으로 나오는 것은 파열된 세계 안에서뿐이다
+   * 백금옥 없이 그 모습으로 나오는 것은 깨어진 세계 안에서뿐이다
    */
   startGiratinaOriginBattle?: (species: number, level: number) => void
   /**
@@ -121,7 +121,7 @@ export interface FieldServices {
    * 트레이너 메모가 달라지고, 쉐이미는 이게 있어야 스카이폼이 된다
    */
   startFatefulEncounter?: (species: number, level: number) => void
-  /** 파열된 세계 (PARITY §6.10). 이 세계 안에서만 붙어 있다 */
+  /** 깨어진 세계 (PARITY §6.10). 이 세계 안에서만 붙어 있다 */
   distortion?: {
     /** 배치표에 없는 사람을 번호로 세운다 (`DistWorld_AddMapObjectWithLocalID`) */
     addObject: (localID: number) => void
@@ -132,7 +132,7 @@ export interface FieldServices {
   /** 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`). y는 이미 타일 단위다 */
   playerPos?: () => { x: number; y: number; z: number }
   /**
-   * 되돌림동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
+   * 귀혼동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
    *
    * 들어온 문만 빼고 **나머지 세 문의 목적지를 전부 같은 방으로** 돌린다
    */
@@ -191,7 +191,7 @@ export interface FieldServices {
     /**
      * 파티의 기라티나를 한꺼번에 (`Party_SetGiratinaForm`).
      *
-     * `origin`이면 무조건 오리진이고(되돌림월드), 아니면 백금옥을 보고 정한다
+     * `origin`이면 무조건 오리진이고(깨어진 세계), 아니면 백금옥을 보고 정한다
      */
     giratinaForm: (origin: boolean) => void
     /**

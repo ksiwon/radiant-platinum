@@ -148,7 +148,7 @@ function paramsOf(info: Npc): readonly number[] {
 /**
  * 배치표에 없는 사람을 세운다 (`DistWorld_AddMapObjectWithLocalID`).
  *
- * 파열된 세계의 시로나·태홍·기라티나가 그렇다 — 층이 끊김 없이 이어지는
+ * 깨어진 세계의 시로나·태홍·기라티나가 그렇다 — 층이 끊김 없이 이어지는
  * 세계라 맵 배치표에 자리가 없고, 스크립트와 사건이 번호로 불러다 세운다.
  * 여기 오는 `info`는 그 세계의 전용 표(`distortion.json`)에서 온다
  */

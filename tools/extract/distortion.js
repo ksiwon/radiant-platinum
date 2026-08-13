@@ -1,4 +1,4 @@
-// 파열된 세계 (PARITY §6.10) — `overlay009/ov9_02249960.c` · `fielddata/tornworld/`
+// 깨어진 세계 (PARITY §6.10) — `overlay009/ov9_02249960.c` · `fielddata/tornworld/`
 //
 // 여기만 맵이 **평범한 격자가 아니다.** 바닥·서쪽 벽·동쪽 벽·천장 네 갈래의
 // 「떠 있는 판」이 겹쳐 있고, 서 있는 판이 무엇이냐에 따라 같은 (x,y,z)가 다른
@@ -588,7 +588,7 @@ function main() {
   const propCount = data.maps.reduce((n, m) => n + m.props.length, 0)
   const cmdCount = data.events.reduce((n, m) => n + m.events.reduce((k, e) => k + e.cmds.length, 0), 0)
   const out = writeJson('distortion.json', data)
-  console.log(`파열된 세계 맵 ${data.maps.length}개 → ${out.rel} (${out.kb}KB)`)
+  console.log(`깨어진 세계 맵 ${data.maps.length}개 → ${out.rel} (${out.kb}KB)`)
   console.log(`  떠 있는 판 ${platformCount} · 뛰는 자리 ${jumpCount} · 카메라 ${cameraCount}`)
   console.log(`  통행 격자 ${data.attrs.length}벌 · 유령 소품 ${propCount}`)
   console.log(`  사건 ${data.events.reduce((n, m) => n + m.events.length, 0)}자리 · 명령 ${cmdCount}`)

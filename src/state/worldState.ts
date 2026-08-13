@@ -20,6 +20,13 @@ export const worldState = {
      */
     hop: { active: false, t: 0, fromX: 0, fromZ: 0, toX: 0, toZ: 0 },
     /**
+     * 깨어진 세계의 승강 발판을 타는 중 (`DistWorldElevatorPlatform`).
+     *
+     * 타는 동안은 조작이 통째로 안 먹는다 — 자리는 발판이 정하고, 원작도
+     * 필드 태스크가 도는 동안 입력을 안 받는다 (`scene/distortion`)
+     */
+    riding: false,
+    /**
      * 파도타기 중인가 (`PLAYER_AVATAR_SURFING`).
      *
      * 물은 이게 서 있을 때만 지나간다 — 원작이 통행 판정에서 그 한 줄로 가른다

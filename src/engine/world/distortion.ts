@@ -1,4 +1,4 @@
-// 파열된 세계의 규칙 (PARITY §6.10) — `overlay009/ov9_02249960.c`
+// 깨어진 세계의 규칙 (PARITY §6.10) — `overlay009/ov9_02249960.c`
 //
 // 여기서만 **서 있는 면이 바닥이 아니다.** 같은 (x, y, z)라도 지금 어느 판 위에
 // 있느냐에 따라 통행 여부가 달라진다. 그래서 이 세계는 맵 격자를 안 보고
@@ -91,7 +91,7 @@ export const EVENT_CMD = {
   clearPuzzleFlag: 17,
 } as const
 
-/** 파열된 세계의 맵 번호 (`generated/map_headers.txt`의 줄 −1) */
+/** 깨어진 세계의 맵 번호 (`generated/map_headers.txt`의 줄 −1) */
 export const MAP = {
   f1: 573, b1f: 574, b2f: 575, b3f: 576, b4f: 577,
   // ⚠️ **578번이 비어 있다.** B4F 다음 줄이 B5F가 아니다
@@ -354,16 +354,25 @@ export interface DistortionFrame {
  * 씬이 채우는 다리.
  *
  * `src/engine`은 스토어도 자료 파일도 못 읽는다 (PLAN §3.2). 이동 시스템이
- * 파열된 세계를 알아야 하는 것은 **두 가지뿐**이라 그 둘만 꽂는다
+ * 깨어진 세계를 알아야 하는 것은 **두 가지뿐**이라 그 둘만 꽂는다
  */
 export const distortionBridge: {
   /** 그 칸이 막혔는가. 판 위가 아니면 null — 그때는 평소의 맵 격자를 본다 */
   blockedAt: ((x: number, y: number, z: number) => boolean | null) | null
-  /** 지금 걷는 축. 파열된 세계 밖이면 null */
+  /** 지금 걷는 축. 깨어진 세계 밖이면 null */
   frame: (() => DistortionFrame | null) | null
-} = { blockedAt: null, frame: null }
+  /**
+   * 밀린 바위가 **떨어지는 자리**로 가는가 (`DistWorld_WillBoulderBeAtFallLocation`).
+   *
+   * 떨어뜨렸으면 true — 그러면 미는 쪽은 아무것도 안 한다. 이 세계의 바위는
+   * 밀어서 옮기는 것이 아니라 **구멍에 빠뜨리는** 것이다 (`world/distortionBoulder`)
+   */
+  dropBoulder:
+    ((boulder: { localID: number; x: number; z: number },
+      step: { x: number; z: number }) => boolean) | null
+} = { blockedAt: null, frame: null, dropBoulder: null }
 
-/** 파열된 세계의 맵인가 */
+/** 깨어진 세계의 맵인가 */
 export function isDistortionMap(data: Pick<DistortionData, 'maps'>, map: number): boolean {
   return data.maps.some((m) => m.map === map)
 }

@@ -509,7 +509,7 @@ export const berriesSchema = z.object({
 })
 
 /**
- * 파열된 세계 (PARITY §6.10) — `fielddata/tornworld/` + `ov9_02249960.c`.
+ * 깨어진 세계 (PARITY §6.10) — `fielddata/tornworld/` + `ov9_02249960.c`.
  *
  * ⚠️ **`bounds`의 `s*`는 개수가 아니라 차이다.** 안에 드는 마지막 칸이
  * `start + size`다 (`DistWorldBounds_AreCoordinatesInBounds`가 `<=`로 본다)
@@ -588,11 +588,47 @@ export const distortionSchema = z.object({
       })),
     })),
   })),
+  /**
+   * 층을 잇는 **움직이는 발판** (`sMovingPlatformsMapTemplates`).
+   *
+   * 좌표는 세계 좌표고, 그 칸에 서면 승강이 시작된다. `persistedFlag`가
+   * 세이브의 발판 자리 열하나 중 하나이며 `PLATFORM_FLAG_INVALID`(11)이면
+   * 늘 있다는 뜻이다 (`engine/world/distortionElevator`)
+   */
   movingPlatforms: z.array(z.object({
     map: z.number().int().nonnegative(),
-    platforms: z.array(z.record(z.string(), z.unknown())),
+    platforms: z.array(z.object({
+      index: z.number().int().nonnegative(),
+      tileX: z.number().int(), tileY: z.number().int(), tileZ: z.number().int(),
+      elevatorPathIndex: z.number().int().nonnegative(),
+      /** 0 위 · 1 아래 · 2 승강이 아니다 (그냥 떠 있는 발판) */
+      elevatorDir: z.number().int().min(0).max(2),
+      /** 닿는 층에서 이 발판이 몇 번인가 */
+      destIndex: z.number().int().nonnegative(),
+      propKind: z.number().int().nonnegative(),
+      persistedFlag: z.number().int().nonnegative(),
+    })),
   })),
-  elevatorPaths: z.array(z.record(z.string(), z.unknown())).nonempty(),
+  /**
+   * 승강 경로 (`sElevatorPlatformPaths`).
+   *
+   * `posDelta`가 한 프레임에 움직이는 고정소수점 양이고 `final*Offset`이
+   * 닿는 칸까지의 차다. `changeMaps*Offset`만큼 왔을 때 층이 바뀐다.
+   * `nextIndex`가 표 길이(22)면 거기서 끝이다
+   */
+  elevatorPaths: z.array(z.object({
+    index: z.number().int().nonnegative(),
+    nextIndex: z.number().int().nonnegative(),
+    finalTileXOffset: z.number().int(),
+    finalTileYOffset: z.number().int(),
+    finalTileZOffset: z.number().int(),
+    changeMapsTileXOffset: z.number().int(),
+    changeMapsTileYOffset: z.number().int(),
+    changeMapsTileZOffset: z.number().int(),
+    posDelta: z.array(z.number().int()).length(3),
+    persistedFlagToSet: z.number().int().nonnegative(),
+    persistedFlagToClear: z.number().int().nonnegative(),
+  })).nonempty(),
   simpleProps: z.array(z.object({
     map: z.number().int().nonnegative(),
     props: z.array(z.record(z.string(), z.unknown())),
@@ -640,6 +676,8 @@ export type DistortionBounds = DistortionMap['platforms'][number]['bounds']
 export type DistortionPlatform = DistortionMap['platforms'][number]
 export type DistortionJump = DistortionMap['jumps'][number]
 export type DistortionCamera = DistortionMap['cameras'][number]
+export type DistortionMovingPlatform = DistortionData['movingPlatforms'][number]['platforms'][number]
+export type DistortionElevatorPath = DistortionData['elevatorPaths'][number]
 export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>

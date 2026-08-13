@@ -95,6 +95,7 @@ import { canLearnTm } from '../engine/bag/fieldUse'
 import { useHatchStore } from '../state/hatchStore'
 import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
+import { useDoorVisualStore } from './doorVisualStore'
 import { useBattleStore } from '../state/battleStore'
 import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
@@ -568,7 +569,7 @@ const services: FieldServices = {
     move: (slot, moveSlot) => useSaveStore.getState().party[slot]?.moves[moveSlot]?.move ?? 0,
     form: (slot) => useSaveStore.getState().party[slot]?.form ?? 0,
     setForm: (slot, form, moveSlot = 0) => { reshape(slot, () => form, moveSlot) },
-    // 되돌림월드 안에서는 백금옥과 상관없이 오리진이다 (`Party_SetGiratinaForm`)
+    // 깨어진 세계 안에서는 백금옥과 상관없이 오리진이다 (`Party_SetGiratinaForm`)
     giratinaForm: (origin) => {
       forEachParty((mon) => (
         mon.species === SPECIES_GIRATINA
@@ -1119,7 +1120,7 @@ const services: FieldServices = {
   /**
    * 오리진폼 기라티나 (`Encounter_NewVsGiratinaOrigin`).
    *
-   * ⚠️ **백금옥과 무관하다.** 파열된 세계 안이라 그 모습인 것이고
+   * ⚠️ **백금옥과 무관하다.** 깨어진 세계 안이라 그 모습인 것이고
    * (`Pokemon_SetGiratinaOriginForm`), 잡아서 밖으로 데리고 나오면 도로
    * 어나더폼이 된다 — 그 되돌림은 `SetPartyGiratinaForm`이 한다
    */
@@ -1161,7 +1162,7 @@ const services: FieldServices = {
   /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
   seeSpecies: (species) => { useSaveStore.getState().markSeen(species) },
 
-  /** 파열된 세계 (PARITY §6.10) */
+  /** 깨어진 세계 (PARITY §6.10) */
   distortion: {
     addObject: (localID) => { distortionAddObject(localID, fieldScripts.vars) },
     removeObject: (localID) => { distortionRemoveObject(localID) },
@@ -1171,7 +1172,7 @@ const services: FieldServices = {
   /**
    * 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`).
    *
-   * 파열된 세계에서는 **세계 좌표**다 — 층마다의 오프셋이 이미 더해져 있다.
+   * 깨어진 세계에서는 **세계 좌표**다 — 층마다의 오프셋이 이미 더해져 있다.
    * 밖에서는 그냥 지금 칸이다
    */
   playerPos: () => distortionPlayerPos(),
@@ -1183,7 +1184,7 @@ const services: FieldServices = {
   },
 
   /**
-   * 되돌림동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
+   * 귀혼동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
    *
    * ⚠️ **들어온 문만 빼고 셋을 전부 같은 방으로 돌린다.** 어느 문으로 나가도
    * 같은 곳이다 — 길을 고르는 것이 아니라 굴리는 것이다. 들어온 문은 서 있는
@@ -1296,15 +1297,23 @@ const DOOR_MS = 200
 const doorUntil = new Map<number, number>()
 
 const door = {
-  load: (_x: number, _z: number, tag: number): void => { doorUntil.delete(tag) },
+  load: (x: number, z: number, tag: number): void => {
+    doorUntil.delete(tag)
+    useDoorVisualStore.getState().load(x, z, tag, worldState.player.position.x, worldState.player.position.z)
+  },
   open: (tag: number): void => {
     doorUntil.set(tag, performance.now() + DOOR_MS)
+    useDoorVisualStore.getState().open(tag)
     void music.playEffect(DOOR_OPEN_SE)
   },
   close: (tag: number): void => {
     doorUntil.set(tag, performance.now() + DOOR_MS)
+    useDoorVisualStore.getState().close(tag)
     void music.playEffect(DOOR_CLOSE_SE)
   },
   busy: (tag: number): boolean => performance.now() < (doorUntil.get(tag) ?? 0),
-  unload: (tag: number): void => { doorUntil.delete(tag) },
+  unload: (tag: number): void => {
+    doorUntil.delete(tag)
+    useDoorVisualStore.getState().unload(tag)
+  },
 }

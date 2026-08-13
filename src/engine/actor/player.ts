@@ -42,7 +42,7 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
   if (!grid) return false
   const surfing = worldState.player.surfing
   const shut = (cx: number, cz: number) => {
-    // 파열된 세계는 맵 격자가 아니라 **서 있는 판**이 정한다 (PARITY §6.10).
+    // 깨어진 세계는 맵 격자가 아니라 **서 있는 판**이 정한다 (PARITY §6.10).
     // 판 위가 아니면 null을 주고, 그때만 아래 평소 판정으로 내려간다
     const dw = distortionBridge.blockedAt?.(cx, y, cz)
     if (dw !== null && dw !== undefined) return dw
@@ -64,6 +64,14 @@ export const playerSystem = {
   fixedUpdate(dt: number) {
     const p = worldState.player
     const input = worldState.input
+
+    // 승강 발판을 타는 동안은 자리를 발판이 정한다 (PARITY §6.10). 여기서
+    // 한 줄이라도 손대면 허공에서 걸어 내려가 버린다
+    if (p.riding) {
+      p.velocity.set(0, 0, 0)
+      worldState.time.elapsed += dt
+      return
+    }
 
     p.prevPosition.copy(p.position)
 
@@ -113,7 +121,7 @@ export const playerSystem = {
     }
 
     /**
-     * 파열된 세계에서 **벽에 서 있는가** (PARITY §6.10).
+     * 깨어진 세계에서 **벽에 서 있는가** (PARITY §6.10).
      *
      * 벽에서는 x가 판에 붙고 y가 걷는 축이 된다 — 화면의 좌우가 세계의 위아래다.
      * 부호는 판의 갈래가 준다(서쪽 벽과 동쪽 벽이 서로 뒤집혀 있다)

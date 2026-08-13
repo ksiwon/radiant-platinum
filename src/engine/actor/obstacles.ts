@@ -12,6 +12,7 @@
 //
 // ⚠️ **이것들이 길을 막아야 한다.** 안 막으면 통과해서 지나가 버리고, 그러면
 // 비전머신이 여는 문이 처음부터 다 열려 있는 것이 된다.
+import { distortionBridge } from '../world/distortion'
 import { npcActors, type NpcActor } from './npcs'
 
 /** 그림 번호 → 어느 기술로 치우는가 */
@@ -49,6 +50,9 @@ export function pushBoulder(
   boulder: NpcActor,
   step: { x: number; z: number },
 ): boolean {
+  // 깨어진 세계의 바위는 옮기는 것이 아니라 **떨어뜨리는** 것이다 (PARITY §6.10).
+  // 떨어지는 자리면 여기서 끝난다 — 막혔는지도 안 본다
+  if (distortionBridge.dropBoulder?.(boulder, step) === true) return true
   const tx = Math.round(boulder.x) + step.x
   const tz = Math.round(boulder.z) + step.z
   if (grid.isBlockedAtWorld(tx + 0.5, tz + 0.5)) return false

@@ -205,7 +205,7 @@ export const ITEM_GRACIDEA = 466
 /**
  * 기라티나는 백금옥을 들었으면 오리진이다 (`BoxPokemon_SetGiratinaForm`).
  *
- * ⚠️ 되돌림월드 안에서는 **들지 않아도** 오리진이다 — 그쪽은 자리가 정하는
+ * ⚠️ 깨어진 세계 안에서는 **들지 않아도** 오리진이다 — 그쪽은 자리가 정하는
  * 것이라 `Party_SetGiratinaForm(party, 1)`이 따로 부른다
  */
 export function giratinaForm(heldItem: number): number {

@@ -1,4 +1,4 @@
-// 되돌림동굴 (PARITY §6.10) — `ScrCmd_InitTurnbackCave`
+// 귀혼동굴 (PARITY §6.10) — `ScrCmd_InitTurnbackCave`
 //
 // 길이 없는 동굴이다. 방마다 문이 넷 있는데 **들어온 문 말고는 전부 같은
 // 곳으로 이어진다** — 어느 쪽으로 나가든 다음 방이 하나로 정해져 있고, 그
