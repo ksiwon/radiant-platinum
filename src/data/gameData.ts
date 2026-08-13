@@ -215,6 +215,11 @@ export function loadTrainerClasses(locale: DataLocale): Promise<string[]> {
   return fetchJson(`names/trainerClasses.${locale}.json`, (v) => nameListSchema.parse(v))
 }
 
+/** 지역명. 맵 헤더의 `label`로 색인한다 (`MapHeader_GetMapLabelTextID`) */
+export function loadLocationNames(locale: DataLocale): Promise<string[]> {
+  return fetchJson(`names/locations.${locale}.json`, (v) => nameListSchema.parse(v))
+}
+
 export interface ItemTable {
   all: readonly Item[]
   pockets: readonly string[]

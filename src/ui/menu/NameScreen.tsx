@@ -37,7 +37,9 @@ export function NameScreen() {
         // `{SCREEN 0}`은 예/아니오를 부르는 부호라 글로는 안 나온다
         const slots = new MessageSlots()
         slots.set(0, what?.initial ?? '')
-        setPrompt(formatMessage(bank[NAMING_TEXT.pokemon] ?? '', slots).trim())
+        // 무엇의 이름인가에 따라 물음이 다르다 — 별명은 1번, 석판은 6번이다
+        const line = what?.kind === 'tablet' ? NAMING_TEXT.tablet : NAMING_TEXT.pokemon
+        setPrompt(formatMessage(bank[line] ?? '', slots).trim())
       })
       .catch(() => { setPrompt('') })
     return () => { alive = false }
@@ -49,7 +51,7 @@ export function NameScreen() {
    */
   const done = (name: string): void => {
     if (!what) return
-    naming.answer = { name: name.trim(), slot: what.slot }
+    naming.answer = { name: name.trim(), slot: what.slot, kind: what.kind }
     closeAll()
   }
 

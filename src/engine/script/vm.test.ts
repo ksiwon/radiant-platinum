@@ -324,9 +324,12 @@ function argWidth(spec: string): number {
     for (let i = 0; i < vars.flags.length * 8; i++) if (vars.checkFlag(i)) set++
     expect(set).toBe(112)
 
-    // 변수 셋: 기타리스트·오르burgh 게이트 등산가·연승 보너스
+    // 변수 넷: 크기 대회의 첫 기록(33280) · 기타리스트 · 오르burgh 게이트
+    // 등산가 · 연승 보너스. 첫 기록은 `InitSizeContestRecord`가 넣는 값이라
+    // 새 게임에서 이미 0이 아니다 (`SystemVars_SetSizeContestRecord`)
     const nonZero = [...vars.saved].filter((v) => v !== 0)
-    expect(nonZero).toHaveLength(3)
+    expect(nonZero).toHaveLength(4)
+    expect(nonZero).toContain(33_280)
   })
 
   it('떡잎마을 기타리스트가 플래그에 따라 다른 대사로 간다', () => {
@@ -431,9 +434,9 @@ const FLAG_HAS_POKEDEX = 144
  * 중요한 것은 해독 오류가 0이라는 쪽이고, 이 숫자는 **얼마나 멀리 가는가**의
  * 눈금이라 값이 바뀌면 왜 바뀌었는지 설명이 되어야 한다
  */
-const LOOPING_ENTRIES = 31
+const LOOPING_ENTRIES = 30
 /** 예/아니오에 "예"로 답했을 때. 갈라지는 가지가 달라서 수도 다르다 */
-const LOOPING_ENTRIES_YES = 34
+const LOOPING_ENTRIES_YES = 31
 
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
@@ -443,9 +446,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_689
+const RUNNING_SITES = 53_845
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 270
+const IMPLEMENTED_COMMANDS = 313
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -479,10 +482,16 @@ const IDLE_COMMANDS = [
   // `FLAG_GAME_COMPLETED`가 서야 그 줄을 붙이고(`CommonScript_InitPlayersPCMenu`),
   // 훑기는 깨끗한 플래그로 도니 그 항목이 아예 안 생긴다
   'OpenPCHallOfFameScreen',
+  // ⚠️ **무연시티 포켓몬센터의 「모습」은 목록 메뉴 너머다.** 후보 넷을
+  // `LoadTrainerAppearances`로 만들고 `ShowMenu`로 고르게 하는데, 훑기는
+  // 메뉴가 답하기를 기다리지 않으므로 고른 뒤의 가지에 못 든다
+  'BufferTrainerClassFromAppearance',
   // ⚠️ **원본이 안 쓰는 자리에만 있다.** 처음 고른 파트너 이름을 찍는 곳은
   // 201번도로에 딱 한 번 나오는데 그것이 `Route201_…_Unused` 안이라 어느
   // 진입점에서도 안 닿는다. 반대 성별 주인공 쪽은 필드 스크립트에 0회다
   'BufferPlayerStarterSpeciesName', 'BufferPlayerCounterpartStarterSpeciesName',
+  // 맵 이름을 칸에 넣는 자리는 **날아가기 표 너머** 하나뿐이다
+  'BufferMapName',
   // 무리를 알려 주는 신오방송국 사람은 **무리가 열린 뒤**에만 그 말을 한다
   // (`EnableSwarms`가 먼저다). 훑기는 깨끗한 세이브로 도니 그 가지에 못 든다
   'GetSwarmMapAndSpecies',
@@ -510,6 +519,8 @@ const IDLE_COMMANDS = [
   // ⚠️ **명예의 전당을 세우는 것은 스크립트가 아니다.** 전당 화면이 끝나면서
   // 코드가 켠다 (`hall_of_fame.c`). 스크립트에는 묻는 쪽만 있다
   'SetGameCompleted',
+  // 남에게 받은 마리인지 묻는 자리도 파티 너머다
+  'CheckIsPartyMonOutsider',
   // ⚠️ **육성가 여덟은 파티가 있어야 닿는다.** 아저씨·아주머니의 대사가 전부
   // `GetDaycareState`로 갈리는데, 훑기는 세이브를 안 붙이므로 늘 "없음"(0)
   // 가지로 간다 — 맡긴 마리가 있어야 열리는 쪽에 이 여덟이 있다
@@ -520,11 +531,24 @@ const IDLE_COMMANDS = [
   'GiveEggFromDaycare',
   'BufferDaycarePriceBySlot',
   'BufferDaycareGainedLevelsBySlot',
+  'BufferPartyMonNicknameReturnSpecies',
   'StorePartyMonIntoDaycare',
   // 친밀도를 올리고 기술칸을 읽는 자리도 파티 너머다
   'IncreasePartyMonFriendship',
   'GetDaycareCompatibilityLevel',
+  // ⚠️ **크기 대회 넷은 총어를 데리고 있어야 닿는다.** 222번도로 동쪽 집의
+  // 첫 갈래가 `CheckPartyHasSpecies SPECIES_REMORAID`라, 파티가 빈 훑기는
+  // 「꿈이었나 보다」 쪽으로 빠진다 (`scripts_route_222_east_house.s`)
+  'CalcSizeContestResult',
+  'UpdateSizeContestRecord',
+  'BufferPartyPokemonSize',
+  'BufferSizeContestRecord',
+  // 기술 칸을 세고 비우는 자리도 파티 너머다 — 기술가르침 세 집이 전부
+  // 「가르칠 포켓몬을 골라」 다음이다
+  'GetPartyMonMoveCount',
+  'ClearPartyMonMoveSlot',
   'GetPartyMonMove',
+  'BufferPartyMoveName',
   // 모험노트는 **도감을 받은 뒤**라야 준다(`GoToIfSet FLAG_HAS_POKEDEX`).
   // 도감을 주는 명령을 아직 안 만들어서 그 플래그가 안 선다
   'GiveJournal',
@@ -534,12 +558,18 @@ const IDLE_COMMANDS = [
   // ⚠️ **셋 다 전국도감 뒤의 자리다.** 트로피가든에 특별한 것이 뜨는 것도,
   // 무리가 열리는 것도 이야기를 끝낸 뒤라 훑기가 그 가지에 못 들어간다 —
   // `AddTrophyGardenMon`은 포켓몬저택 사무실, `EnableSwarms`는 신오방송국이다
-  'AddTrophyGardenMon', 'GetTrophyGardenSlot1Species', 'EnableSwarms',
+  'AddTrophyGardenMon', 'GetTrophyGardenSlot1Species',
+  // 레벨을 세거나 성격으로 찾는 자리도 파티가 있어야 열린다
+  'CountPartyMonsBelowLevelThreshold', 'FindPartySlotWithNature',
+  'EnableSwarms',
   // ⚠️ **기술 되살리기 다섯은 파티에서 한 마리를 고른 뒤에 온다.** 고르는
   // 명령(`SelectMoveTutorPokemon` 갈래)이 아직 없어서 훑기가 그 앞에서 멈춘다 —
   // 명령 자체는 실제 스크립트에 있다 (§10 「기술가르침」 39자리)
   'CheckHasLearnableReminderMoves', 'OpenMoveReminderMenu', 'CheckLearnedReminderMove',
   'OpenMoveTutorMenu', 'CheckLearnedTutorMove',
+  'GetPartyMonType',
+  // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
+  'BufferMonNicknameFromPC',
   // ⚠️ **테오키스는 배포 이벤트다** (§9). 축복시티의 유성이 폼을 갈아 끼우는데
   // (`scripts_veilstone_city.s`), 그 앞이 파티에 테오키스가 있는지 보는 갈래다
   'ChangeDeoxysForm',
@@ -555,6 +585,11 @@ const IDLE_COMMANDS = [
   'SetInitialVolumeForSequence',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
+  'FindPartySlotWithSpecies',
+  'ResetMoveSlot',
+  // 트레이너 이름·타입 이름을 칸에 넣는 자리도 전부 파티나 메뉴 너머다
+  'BufferTrainerName',
+  'BufferTypeName',
   // 개수 확인은 가방 화면에서 고른 도구를 되묻는 자리라 훑기가 못 밟는다
   'GetItemQuantity',
   // ⚠️ **로토무 가전 방 셋은 로토무가 있어야 열린다.** `scripts_rotoms_room.s`
@@ -564,6 +599,7 @@ const IDLE_COMMANDS = [
   // ⚠️ **기라티나를 이긴 뒤에만 도는 줄이다** (`…_RemoveGiratina`). 그 방의
   // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
   'ResetDistortionWorldPersistedCameraAngles',
+  'CheckPartyHasHeldItem',
   // 위와 같은 자리다 — 전당 항목을 고른 **뒤에** 나오는 줄이라 더 못 닿는다
   'CheckIsHallOfFameCorrupted',
 ]

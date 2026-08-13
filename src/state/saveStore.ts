@@ -48,6 +48,19 @@ export interface TrainerInfo {
    * 찍는다. 아직 안 이겼으면 null이고, 트레이너 카드가 그 줄을 안 그린다
    */
   firstClearedAt: number | null
+  /**
+   * 224번도로 석판에 새긴 이름 (`MiscSaveBlock_TabletName`). 열 글자.
+   *
+   * 안 새겼으면 빈 글이다 — 그때는 석판이 "표면에 아무것도 적혀 있지 않다"다
+   */
+  tabletName: string
+  /**
+   * 통신에서 남에게 보이는 「모습」 (`TrainerInfo_Appearance`).
+   *
+   * 트레이너 카드의 **그림 번호**지 분류 번호가 아니다. 무연시티
+   * 포켓몬센터에서 넷 중 하나를 고르고, 안 골랐으면 0이다
+   */
+  appearance: number
 }
 
 /**
@@ -248,9 +261,15 @@ export interface SaveData {
    * 것을 덮어쓴다. PC의 「명예의 전당」이 이걸 읽는다
    */
   hallOfFame: HallOfFameRecord
+  /**
+   * 게임코너의 코인 (`SaveData_GetCoins`).
+   *
+   * 돈과 따로 센다. 상한이 50,000이고 그 위로는 안 늘어난다 (`MAX_COINS`)
+   */
+  coins: number
 }
 
-export const SAVE_VERSION = 19
+export const SAVE_VERSION = 20
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -290,6 +309,8 @@ export function createNewSave(): SaveData {
       secretId: Math.floor(Math.random() * 0x10000),
       playtimeMs: 0,
       firstClearedAt: null,
+      tabletName: '',
+      appearance: 0,
     },
     rivalName: '',
     party: [],
@@ -327,6 +348,7 @@ export function createNewSave(): SaveData {
     poketch: newPoketch(),
     distortion: newDistortionState(),
     hallOfFame: newHallOfFame(),
+    coins: 0,
   }
 }
 
@@ -551,6 +573,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     poketch: s.poketch,
     distortion: s.distortion,
     hallOfFame: s.hallOfFame,
+    coins: s.coins,
   }
 }
 

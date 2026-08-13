@@ -212,11 +212,52 @@ export interface FieldServices {
     rotomForms: () => number
     /** 파티의 로토무 수와 첫 자리 (`ScrCmd_GetPartyRotomCountAndFirst`) */
     rotomCount: () => { count: number, first: number }
+    /** 아는 기술 수. **알은 0이다** (`ScrCmd_GetPartyMonMoveCount`) */
+    moveCount: (slot: number) => number
+    /** 그 도구를 든 마리가 있는가 (`ScrCmd_CheckPartyHasHeldItem`) */
+    hasHeldItem: (item: number) => boolean
+    /** 타입 둘 (`MON_DATA_TYPE_1`·`_2`). 한 타입이면 둘이 같다 */
+    types: (slot: number) => [number, number]
+    /** 그 레벨 **이하**인 알 아닌 마리 수 (`CountPartyMonsBelowLevelThreshold`) */
+    countAtOrBelowLevel: (level: number) => number
+    /** 남에게 받은 마리인가 — 트레이너 번호만 견준다 (`CheckIsPartyMonOutsider`) */
+    isOutsider: (slot: number) => boolean
+    /** 노력치 여섯의 합 (`ScrCmd_GetPartyMonEVTotal`) */
+    evTotal: (slot: number) => number
+    /**
+     * 조건에 맞는 첫 자리. 못 찾으면 원작이 주는 값 그대로다 —
+     * 기술만 **6**(`MAX_PARTY_SIZE`)이고 나머지는 **0xFF**다. 알은 건너뛴다
+     */
+    findWithMove: (move: number) => number
+    findWithNature: (nature: number) => number
+    findWithSpecies: (species: number) => number
+    findFateful: (species: number) => number
+    /** 기술 한 칸을 비운다 (`Pokemon_ClearMoveSlot`) */
+    clearMoveSlot: (slot: number, moveSlot: number) => void
+    /** 기술 한 칸을 갈아 끼운다. PP는 새 기술의 최대치로 되돌아간다 */
+    setMoveSlot: (slot: number, moveSlot: number, move: number) => void
+    /** 크기 대회가 쓰는 값 — 성격값·개체값과 종족의 키 (`size_contest.c`) */
+    sizeOf: (slot: number) => { factor: number, heightDm: number } | null
+    /** 종족의 키만. 기록과 견줄 때 쓴다 (`BufferSizeContestRecord`) */
+    heightOf: (species: number) => number
+  }
+  /**
+   * 스크립트가 여는 「한 마리 골라」 화면
+   * (`FieldSystem_OpenPartyMenu_SelectPokemon`).
+   *
+   * 열고 나면 스크립트가 멈추고, 닫히면 `picked()`가 고른 자리를 준다 —
+   * 안 골랐으면 `PARTY_SLOT_NONE`(0xFF)
+   */
+  chooseMon?: {
+    open: () => void
+    picked: () => number
   }
   /** 트레이너 정보 · 도감 (`scrcmd_system_flags.c`) */
   trainerInfo?: {
     /** 0 남 · 1 여 (`TrainerInfo_Gender`) */
     gender: () => number
+    /** 보이는 다섯 자리 번호 (`TrainerInfo_ID`). 모습 후보가 이 값으로 갈린다 */
+    id: () => number
     hasBadge: (badge: number) => boolean
     /** 뱃지 하나를 준다 (`TrainerInfo_SetBadge`) */
     giveBadge: (badge: number) => void
@@ -228,6 +269,53 @@ export interface FieldServices {
     move: (move: number) => string
     pocket: (pocket: number) => string
     species: (species: number) => string
+    /** 타입 열일곱 (`labels.*.json`의 `types`) */
+    type: (type: number) => string
+    /** 성격 25 (`TEXT_BANK_NATURE_NAMES`) */
+    nature: (nature: number) => string
+    /** 트레이너 이름 928 (`TEXT_BANK_NPC_TRAINER_NAMES`) */
+    trainer: (id: number) => string
+    /** 트레이너 분류 105 (`TEXT_BANK_TRAINER_CLASS_NAMES`) */
+    trainerClass: (trainerClass: number) => string
+    /** 맵 번호의 지역명 (`MapHeader_LoadName`) */
+    map: (mapHeaderId: number) => string
+    /** 기술머신이 가르치는 기술의 이름 (`Item_MoveForTMHM`). 머신이 아니면 빈 글 */
+    tmMove: (item: number) => string
+    /**
+     * 조사가 붙은 판과 복수형.
+     *
+     * ⚠️ **한국·일본 롬에는 이 표가 없다** — 그쪽에서는 맨 이름을 돌려준다.
+     * 없는 표를 억지로 만들지 않는다
+     */
+    itemWithArticle: (item: number) => string
+    itemPlural: (item: number) => string
+    speciesWithArticle: (species: number) => string
+    trainerClassWithArticle: (trainerClass: number) => string
+  }
+  /** 보관 시스템. 스크립트가 박스 안을 들여다보는 자리가 몇 군데 있다 */
+  boxes?: {
+    /**
+     * 박스와 자리가 **한 수에 들어 있다** (`boxSlot / 30`, `boxSlot % 30`).
+     * 빈 자리면 빈 글 (`ScrCmd_BufferMonNicknameFromPC`)
+     */
+    nickname: (boxSlot: number) => string
+  }
+  /** 224번도로의 석판 (`MiscSaveBlock_TabletName`, PARITY §6.9) */
+  tablet?: {
+    /** 새긴 이름. 아직 안 새겼으면 빈 글 */
+    name: () => string
+    /** 이름 짓기 화면을 연다 (`OpenShayminTabletNamingScreen`) */
+    open: () => void
+  }
+  /**
+   * 트레이너의 「모습」 (`appearance.c`, 무연시티 포켓몬센터).
+   *
+   * 통신 대전에서 남에게 보이는 겉모습이다. 후보 넷은 트레이너 번호로 정해지고
+   * (`sAppearanceShuffleTable`), 고른 것이 리포트에 남는다
+   */
+  appearance?: {
+    get: () => number
+    set: (appearance: number) => void
   }
   /** 가방. 주머니 번호는 아이템 자료가 정하므로 여기서 물어본다 */
   bag?: {

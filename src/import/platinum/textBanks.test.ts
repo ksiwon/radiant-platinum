@@ -101,13 +101,26 @@ describe('뱅크 자리 계산', () => {
     expect(differing.length).toBeGreaterThan(600)
   })
 
-  it('코드가 쓰는 이름이 세 로케일에 있다 — 달 이름만 빼고', () => {
+  /**
+   * 미국 롬에만 있는 표. 조사가 붙은 판과 복수형이라 한국어·일본어에는
+   * 그런 말이 아예 없고, 롬도 표를 안 들고 있다 — 우리 실수가 아니다
+   */
+  const EN_ONLY = new Set([
+    'item_names_with_articles', 'item_names_plural',
+    'species_name_with_articles', 'trainer_class_names_with_articles',
+  ])
+
+  it('코드가 쓰는 이름이 세 로케일에 있다 — 달 이름과 조사 판만 빼고', () => {
     for (const name of TEXT_BANK_NAMES) {
       for (const locale of LOCALES) {
         // ⚠️ **일본 롬에는 달 이름 표가 없다.** 일본어가 달을 이름으로 안
         // 부르고 문장 틀이 숫자 뒤에 단위를 직접 쓴다 — 우리 실수가 아니다
         if (name === 'month_names' && locale === 'ja') {
           expect(bankIndex(name, locale)).toBeNull()
+          continue
+        }
+        if (EN_ONLY.has(name) && locale !== 'us') {
+          expect(bankIndex(name, locale), `${name}/${locale}`).toBeNull()
           continue
         }
         expect(bankIndex(name, locale), `${name}/${locale}`).not.toBeNull()

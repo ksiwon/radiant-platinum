@@ -41,6 +41,7 @@ import {
 } from '../../engine/pokemon/form'
 import { formTables, withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
+import { PARTY_SLOT_NONE, partyChoice } from './partyChoice'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
@@ -114,6 +115,13 @@ export function PartyScreen() {
   /** 가방에서 들고 온 도구. 있으면 이 화면은 "누구에게 쓸까"다 (PARITY §4.1) */
   const usingItem = useMenuStore((s) => s.usingItem)
   const clearUsingItem = useMenuStore((s) => s.clearUsingItem)
+  /**
+   * 스크립트가 「한 마리 골라」로 열었는가 (`SelectMoveTutorPokemon`).
+   *
+   * 갈래 메뉴도 자리바꾸기도 없다 — Z가 곧 답이고 X는 안 고르고 나가는 것이다.
+   * 기술가르침·크기 대회·교환이 전부 이 길로 온다
+   */
+  const choosingMon = useMenuStore((s) => s.choosingMon)
   const [tables, setTables] = useState<{ items: ItemTable; moves: MoveTable } | null>(null)
 
   // ⚠️ 도구를 들고 왔을 때만 받으면 **「뺏는다」가 주머니를 모른다.** 표가
@@ -329,6 +337,13 @@ export function PartyScreen() {
     confirm: () => {
       setNotice(null)
       if (inMenu) { choices[Math.min(menuAt, choices.length - 1)]?.run(); return }
+      // 스크립트가 부른 고르기. 빈 파티에서는 고를 것이 없다
+      if (choosingMon) {
+        if (party.length === 0) return
+        partyChoice.slot = at
+        closeAll()
+        return
+      }
       // 도구를 들고 왔으면 갈래 메뉴가 아니라 **먹이기**다
       if (usingItem !== null) { applyItem(); return }
       if (pane === 'moves') { tryMove(); return }
@@ -341,6 +356,8 @@ export function PartyScreen() {
       setNotice(null)
       if (menu === 'item') { setMenu('root'); setMenuAt(0); return }
       if (inMenu) { setMenu(null); return }
+      // 안 고르고 나간다. 원작도 이때 `PARTY_SLOT_NONE`을 준다
+      if (choosingMon) { partyChoice.slot = PARTY_SLOT_NONE; closeAll(); return }
       if (held !== null) { setHeld(null); return }
       if (pane === 'moves') { setPane('party'); return }
       back()
@@ -353,7 +370,9 @@ export function PartyScreen() {
 
   const foot = inMenu
     ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
-    : usingItem !== null
+    : choosingMon
+      ? '↑↓←→ 고르기 · Z 결정 · X 그만둔다'
+      : usingItem !== null
       ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
       : held !== null
         ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
@@ -386,6 +405,9 @@ export function PartyScreen() {
                 setPane('party')
               }}
               onGrab={() => {
+                // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
+                // 순간 Z가 「놓기」가 되어 고를 길이 사라진다
+                if (choosingMon) { partyChoice.slot = i; closeAll(); return }
                 if (held === null) setHeld(i)
                 else { swapParty(held, i); setHeld(null); setCursor(i) }
               }}

@@ -18,6 +18,7 @@ import { ScriptContext } from './context'
 import { VarStore } from './vars'
 import { FieldWorld, type FieldServices } from './world'
 import { withData } from '../../data/romData.testkit'
+import { stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const maybe = withData('scripts.json')
@@ -52,18 +53,8 @@ function run(
 /** 두 바이트를 리틀엔디언으로 편다 */
 const u16 = (v: number): number[] => [v & 0xff, (v >> 8) & 0xff]
 
-/**
- * 파티 서비스 한 벌. 시험이 보려는 것만 갈아 끼운다 —
- * 인터페이스가 넓어서 매번 다 적으면 무엇을 보는 시험인지가 안 보인다
- */
-const noParty: NonNullable<FieldServices['party']> = {
-  count: () => 0, species: () => 0, nickname: () => '', hasSpecies: () => false,
-  aliveExcept: () => 0, level: () => 0, nature: () => 0, friendship: () => 0,
-  addFriendship: () => { /* 안 본다 */ }, hasMove: () => false, move: () => 0,
-  give: () => false,
-  form: () => 0, setForm: () => { /* 안 본다 */ }, giratinaForm: () => { /* 안 본다 */ },
-  revertForms: () => 0, rotomForms: () => 0, rotomCount: () => ({ count: 0, first: 0xff }),
-}
+/** 시험이 보려는 것만 갈아 끼운다 (`services.testkit`) */
+const noParty = stubParty
 
 maybe('주는 명령', () => {
   const meta = JSON.parse(readFileSync(resolve(DATA, 'scripts.json'), 'utf8')) as ScriptFile
@@ -97,10 +88,7 @@ maybe('주는 명령', () => {
   it('GiveBadge가 뱃지 번호를 그대로 넘긴다', () => {
     const given: number[] = []
     run('GiveBadge', u16(3), {
-      trainerInfo: {
-        gender: () => 0, hasBadge: () => false, nationalDex: () => false,
-        giveBadge: (badge) => { given.push(badge) },
-      },
+      trainerInfo: { ...stubTrainerInfo, giveBadge: (badge) => { given.push(badge) } },
     })
     expect(given).toEqual([3])
   })
@@ -129,7 +117,7 @@ maybe('처음 고른 파트너', () => {
   /** 종족 이름표만 있으면 된다 */
   const labels: FieldServices = {
     labels: {
-      move: () => '', pocket: () => '',
+      ...stubLabels,
       species: (id) => (
         { [TURTWIG]: '모부기', [CHIMCHAR]: '불꽃숭이', [PIPLUP]: '팽도리' }[id] ?? `#${String(id)}`
       ),

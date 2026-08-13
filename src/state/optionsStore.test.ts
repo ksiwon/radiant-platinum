@@ -83,14 +83,21 @@ describe('언어 — 우리가 연 자리', () => {
     // 일본 롬에 없는 뱅크가 둘이다. 147(`game_corner`)은 열쇠 표와 항목 수
     // 정렬이 **둘 다 없다**고 말하는 자리고, 414(`month_names`)는 일본어가
     // 달을 이름으로 안 부르기 때문이다 — 문장 틀이 숫자 뒤에 단위를 직접 쓴다.
-    // 둘 다 우리 실수가 아니다. 이 수가 늘면 추출이 어긋난 것이다
+    //
+    // 393·394·413·620은 **미국 롬에만 있다** — 조사가 붙은 판과 복수형이라
+    // 한국어에도 일본어에도 그런 표가 없다.
+    //
+    // 전부 우리 실수가 아니다. 이 수가 늘면 추출이 어긋난 것이다
     const dir = resolve(__dirname, '../../public/data/dialogue')
     if (!existsSync(dir)) return
     const banks = (JSON.parse(readFileSync(resolve(dir, 'index.json'), 'utf8')) as
       { banks: { index: number }[] }).banks
     for (const locale of LANGUAGES) {
       const missing = banks.filter((b) => !existsSync(resolve(dir, locale, `${String(b.index)}.json`)))
-      expect(missing.map((b) => b.index), locale).toEqual(locale === 'ja' ? [147, 414] : [])
+      const articles = [393, 394, 413, 620]
+      expect(missing.map((b) => b.index), locale).toEqual(
+        locale === 'ja' ? [147, 393, 394, 413, 414, 620] : locale === 'ko' ? articles : [],
+      )
     }
   })
 

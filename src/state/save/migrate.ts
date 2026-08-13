@@ -195,6 +195,19 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     // 있으므로 비워 두고, 트레이너 카드는 그 줄을 안 그린다
     trainer: { ...(data.trainer as object), firstClearedAt: null },
   }),
+
+  /**
+   * 코인·석판 이름·모습 (PARITY §5 · §6.9).
+   *
+   * 셋 다 빈 값으로 시작한다. 코인은 게임코너에서 벌던 것을 아무 데도 안 적어
+   * 뒀으니 0이고, 석판은 안 새긴 것이며, 모습은 아직 안 고른 0번이다
+   */
+  19: (data) => ({
+    ...data,
+    version: 20,
+    trainer: { ...(data.trainer as object), tabletName: '', appearance: 0 },
+    coins: 0,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

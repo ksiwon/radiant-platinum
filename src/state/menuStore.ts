@@ -64,7 +64,7 @@ interface MenuStore {
    * `slot`은 파티 자리다. 상점 재고와 같은 이유로 여기 있다 — 화면을 여는
    * 인자라 컴포넌트가 못 받는다
    */
-  naming: { kind: 'pokemon'; slot: number; initial: string; max: number } | null
+  naming: { kind: 'pokemon' | 'tablet'; slot: number; initial: string; max: number } | null
   /**
    * 가방에서 고른 도구를 **누구에게** 쓰는 중인가 (PARITY §4.1).
    *
@@ -99,6 +99,14 @@ interface MenuStore {
   diplomaNational: boolean
   /** 태그를 볼 나무열매의 **도구 번호** */
   berryItem: number
+  /**
+   * 스크립트가 「한 마리 골라」로 파티 화면을 열었는가
+   * (`FieldSystem_OpenPartyMenu_SelectPokemon`).
+   *
+   * 갈래 메뉴 없이 Z가 곧 고르기다. 답은 `partyChoice`가 든다 — 화면이 닫힌
+   * 뒤에 스크립트가 묻기 때문이다
+   */
+  choosingMon: boolean
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고를 같이 받는다 */
@@ -121,6 +129,8 @@ interface MenuStore {
   openDiploma: (national: boolean) => void
   /** 명예의 전당 장면을 연다 (`ClearGame`) */
   openHallOfFame: () => void
+  /** 스크립트가 한 마리를 고르라고 파티 화면을 연다 */
+  openPartyToChoose: () => void
   /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다 */
   openBerryTag: (item: number) => void
   /** 도구 쓰기를 끝낸다 */
@@ -147,6 +157,13 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   reminderLearned: false,
   diplomaNational: false,
   berryItem: 0,
+  choosingMon: false,
+
+  openPartyToChoose: () => set(() => {
+    const stack: MenuScreen[] = ['party']
+    capture(stack)
+    return { stack, top: 'party' as const, choosingMon: true, usingItem: null }
+  }),
 
   openReminder: (what) => set(() => {
     const stack: MenuScreen[] = ['reminder']
@@ -228,11 +245,14 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     const stack = s.stack.slice(0, -1)
     capture(stack)
     // 파티 화면에서 물러나면 들고 있던 도구도 내려놓는다
-    return { stack, top: stack[stack.length - 1] ?? null, usingItem: null, giveTo: null }
+    return {
+      stack, top: stack[stack.length - 1] ?? null,
+      usingItem: null, giveTo: null, choosingMon: false,
+    }
   }),
 
   closeAll: () => set(() => {
     capture([])
-    return { stack: [], top: null, usingItem: null, giveTo: null }
+    return { stack: [], top: null, usingItem: null, giveTo: null, choosingMon: false }
   }),
 }))

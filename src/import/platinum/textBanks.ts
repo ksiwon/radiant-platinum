@@ -421,6 +421,11 @@ export const TEXT_BANK_NAMES = [
   'poketch_app_names', 'poketch_move_tester', 'diploma',
   'berry_tags', 'berry_names', 'berry_descriptions',
   'hall_of_fame', 'pc_hall_of_fame',
+  // 글 칸 채우기 — 조사가 붙은 판·복수형(미국 롬에만 있다)과 성격 이름
+  'item_names_with_articles', 'item_names_plural',
+  'species_name_with_articles', 'trainer_class_names_with_articles',
+  // 상점 말과 소지금 창의 문장 틀
+  'unk_0543',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

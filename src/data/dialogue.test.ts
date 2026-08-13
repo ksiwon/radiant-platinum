@@ -34,8 +34,10 @@ maybe('대사', () => {
     // 파트너를 고르는 화면(360), 요약 화면(455)·특별한 만난 자리(435)·달 이름(414)·
     // 타운맵(615), 모험노트 셋(366 노트·378 체육관 이름·608 시간대),
     // 포켓치 넷(457 앱 이름·456 기술효과체커·458 이력·459 나무열매), 상장(1),
-    // 나무열매 셋(398 태그·424 이름·423 설명), 명예의 전당 둘(351 장면·352 PC)
-    expect(index.banks.length).toBe(467)
+    // 나무열매 셋(398 태그·424 이름·423 설명), 명예의 전당 둘(351 장면·352 PC),
+    // 글 칸 채우기 다섯(202 성격·393·394 도구·413 종족·620 트레이너 분류)과
+    // 소지금 창(543)
+    expect(index.banks.length).toBe(473)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -50,7 +52,13 @@ maybe('대사', () => {
    * 414(`month_names`)는 일본어가 달을 이름으로 안 부르기 때문이다 — 문장 틀이
    * 숫자 뒤에 `がつ`를 직접 쓴다. 미국판만 `Jan.`을 쓴다
    */
-  const MISSING = { ja: [147, 414] } as Record<string, number[] | undefined>
+  const MISSING = {
+    ja: [147, 414, 393, 394, 413, 620],
+    // ⚠️ **조사가 붙은 판과 복수형은 미국 롬에만 있다.** 한국어에는 조사도
+    // 복수형도 없어서 롬이 표 자체를 안 들고 있다 — 우리는 맨 이름표로
+    // 떨어뜨린다 (`fieldServices`의 `orPlain`)
+    ko: [393, 394, 413, 620],
+  } as Record<string, number[] | undefined>
 
   /**
    * 일본 롬만 항목이 **뒤에서** 몇 개 짧은 뱅크. 앞은 한 줄씩 그대로 맞으므로
@@ -110,7 +118,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 3071, ko: 3061, ja: 3274 })
+    expect(counted).toEqual({ en: 4979, ko: 3089, ja: 3302 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {
@@ -142,7 +150,9 @@ maybe('대사', () => {
 
   it('줄바꿈·스크롤·새 쪽이 서로 다른 문자로 남는다', () => {
     // 4세대는 셋이 다 다르다. 하나로 뭉치면 대화창 연출을 복원할 수 없다
-    const all = index.banks.flatMap((b) => bank('ko', b.index))
+    const all = index.banks
+      .filter((b) => MISSING.ko?.includes(b.index) !== true)
+      .flatMap((b) => bank('ko', b.index))
     expect(all.some((t) => t.includes('\n'))).toBe(true)
     expect(all.some((t) => t.includes('\r'))).toBe(true)
     expect(all.some((t) => t.includes('\f'))).toBe(true)

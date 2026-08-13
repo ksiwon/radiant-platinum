@@ -25,6 +25,7 @@ import { MAX_GHOST_PROP_GROUPS, MAX_PERSISTED_PLATFORMS } from '../../engine/wor
 import {
   HALL_OF_FAME_PARTY, MAX_HALL_OF_FAME_ENTRIES, MAX_TOTAL_ENTRIES,
 } from '../../engine/world/hallOfFame'
+import { MAX_COINS } from '../../engine/world/coins'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -160,6 +161,19 @@ export const saveSchema = z.object({
      * 트레이너 카드가 이 날짜를 보여 준다 (`trainer_case.c`)
      */
     firstClearedAt: z.number().int().min(0).max(1e15).nullable(),
+    /**
+     * 224번도로 석판에 새긴 이름 (`MiscSaveBlock_TabletName`).
+     *
+     * 열 글자. 아직 안 새겼으면 빈 글이고, 그때는 스크립트가 이 대사로 안 온다
+     */
+    tabletName: z.string().max(10),
+    /**
+     * 통신에서 남에게 보이는 「모습」 (`TrainerInfo_Appearance`).
+     *
+     * 트레이너 카드의 그림 번호다 — 분류 번호가 아니다. 무연시티
+     * 포켓몬센터에서 넷 중 하나를 고른다 (`engine/world/appearance`)
+     */
+    appearance: int(0, 105),
   }),
   rivalName: z.string().max(24),
   party: z.array(monSchema).max(PARTY_MAX),
@@ -371,6 +385,9 @@ export const saveSchema = z.object({
     next: int(0, MAX_HALL_OF_FAME_ENTRIES - 1),
     total: int(0, MAX_TOTAL_ENTRIES),
   }),
+
+  /** 게임코너의 코인. 상한이 `MAX_COINS`다 */
+  coins: int(0, MAX_COINS),
 })
 
 /**

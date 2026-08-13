@@ -218,6 +218,17 @@ const EXTRA_BANKS = [
   // 명예의 전당 (`cutscenes/hall_of_fame.c`)과 PC로 다시 보는 화면
   // (`applications/pc_hall_of_fame`). 둘 다 스크립트가 안 가리키는 응용 프로그램이다
   'TEXT_BANK_HALL_OF_FAME', 'TEXT_BANK_PC_HALL_OF_FAME',
+  // 글 칸을 채우는 이름표들 (`string_template.c`). 이름 표는 이미 있지만
+  // **조사가 붙은 판과 복수형이 아예 다른 뱅크다** — `BufferItemNamePlural`이
+  // 쓰는 것은 `item_names`가 아니라 이쪽이라, 이름 표로 대신하면 영어가
+  // "2 Potion"이 된다
+  'TEXT_BANK_ITEM_NAMES_WITH_ARTICLES', 'TEXT_BANK_ITEM_NAMES_PLURAL',
+  'TEXT_BANK_SPECIES_NAME_WITH_ARTICLES', 'TEXT_BANK_TRAINER_CLASS_NAMES_WITH_ARTICLES',
+  // 성격 25 (`StringTemplate_SetNatureName`). 요약 화면 뱅크의 성격 줄과 다른
+  // 표다 — 저쪽은 "노력한 성격이다" 같은 문장이고 이쪽은 이름 하나다
+  'TEXT_BANK_NATURE_NAMES',
+  // 소지금 창의 이름표와 문장 틀 (`FieldMenu_CreateMoneyWindow` — 18·19번)
+  'TEXT_BANK_UNK_0543',
 ]
 
 function main() {

@@ -27,6 +27,7 @@ import {
 } from './field'
 import { VarStore } from './vars'
 import { withData } from '../../data/romData.testkit'
+import { stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const maybe = withData('scripts.bin', 'events.json', 'maps.json')
@@ -156,32 +157,24 @@ const ALL_SERVICES = {
   trainerMessage: () => '',
   aliveMons: () => 6,
   party: {
+    ...stubParty,
     count: () => 6,
     species: () => 387,
-    nickname: () => '',
     hasSpecies: () => true,
     aliveExcept: () => 5,
     give: () => true,
     level: () => 5,
-    nature: () => 0,
     friendship: () => 70,
-    addFriendship: () => {},
     hasMove: () => true,
     move: () => 33,
-    form: () => 0,
-    setForm: () => {},
-    giratinaForm: () => {},
-    revertForms: () => 0,
-    rotomForms: () => 0,
-    rotomCount: () => ({ count: 0, first: 0xff }),
+    moveCount: () => 4,
   },
-  trainerInfo: {
-    gender: () => 0,
-    hasBadge: () => true,
-    giveBadge: () => {},
-    nationalDex: () => false,
-  },
-  labels: { move: () => '', pocket: () => '', species: () => '' },
+  trainerInfo: { ...stubTrainerInfo, hasBadge: () => true },
+  labels: stubLabels,
+  chooseMon: { open: () => {}, picked: () => 0 },
+  boxes: { nickname: () => '' },
+  tablet: { name: () => '', open: () => {} },
+  appearance: { get: () => 0, set: () => {} },
   bag: {
     pocketOf: () => 0,
     add: () => true,

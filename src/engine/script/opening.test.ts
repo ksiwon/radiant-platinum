@@ -23,6 +23,7 @@ import { TEXT_SPEED } from './printer'
 import { VarStore } from './vars'
 import type { MapHeader } from '../map/world'
 import { withData } from '../../data/romData.testkit'
+import { stubLabels, stubParty } from './services.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const maybe = withData('scripts.bin', 'maps.json')
@@ -79,30 +80,14 @@ maybe('오프닝 — 서류가방', () => {
     const services: FieldServices = {
       chooseStarter: { open: () => { /* 곧바로 끝난다 */ }, chosen: () => chosen },
       party: {
+        ...stubParty,
         count: () => given.length,
         species: (slot) => given[slot]?.species ?? 0,
-        nickname: () => '',
         hasSpecies: (s) => given.some((g) => g.species === s),
-        aliveExcept: () => 0,
         give: (species, level) => { given.push({ species, level }); return true },
         level: () => STARTER_LEVEL,
-        nature: () => 0,
-        friendship: () => 0,
-        addFriendship: () => { /* 안 쓴다 */ },
-        hasMove: () => false,
-        move: () => 0,
-        form: () => 0,
-        setForm: () => { /* 시험은 폼을 안 본다 */ },
-        giratinaForm: () => { /* 같음 */ },
-        revertForms: () => 0,
-        rotomForms: () => 0,
-        rotomCount: () => ({ count: 0, first: 0xff }),
       },
-      labels: {
-        move: () => '',
-        pocket: () => '',
-        species: (id) => `종${String(id)}`,
-      },
+      labels: { ...stubLabels, species: (id) => `종${String(id)}` },
       startFirstBattle: (id) => { battles.push(id) },
       battleResult: () => (won ? 'win' : 'loss'),
       healParty: () => { /* 집으로 돌아가기 전에 회복한다 */ },

@@ -49,7 +49,22 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   berryText: 'berry_descriptions',
   hallOfFame: 'hall_of_fame',
   pcHallOfFame: 'pc_hall_of_fame',
+  natureNames: 'nature_names',
+  itemNamesWithArticles: 'item_names_with_articles',
+  itemNamesPlural: 'item_names_plural',
+  speciesNamesWithArticles: 'species_name_with_articles',
+  trainerClassNamesWithArticles: 'trainer_class_names_with_articles',
+  shop: 'unk_0543',
 }
+
+/**
+ * 한국·일본 롬에 짝이 없는 뱅크. 「싣는 뱅크에 빠짐이 없다」가 이것을 빼고 센다 —
+ * 미국 롬에만 있는 표라 안 실리는 것이 맞다
+ */
+const EN_ONLY: readonly (keyof typeof UI_BANK)[] = [
+  'itemNamesWithArticles', 'itemNamesPlural',
+  'speciesNamesWithArticles', 'trainerClassNamesWithArticles',
+]
 
 describe('메뉴 글', () => {
   for (const [key, name] of Object.entries(NAMED) as [keyof typeof UI_BANK, TextBankName][]) {
@@ -67,6 +82,15 @@ describe('메뉴 글', () => {
         .banks.map((b) => b.index),
     )
     for (const bank of Object.values(UI_BANK)) expect(shipped.has(bank)).toBe(true)
+  })
+
+  it('조사·복수형 뱅크는 한국어 판에 없다', () => {
+    // 없는 것이 맞다는 것을 못 박아 둔다 — 어느 날 실리기 시작하면 맨 이름표로
+    // 떨어뜨리는 길(`orPlain`)이 죽은 코드가 되므로 그때 알아야 한다
+    if (!existsSync(resolve(DATA, `${String(UI_BANK.startMenu)}.json`))) return
+    for (const key of EN_ONLY) {
+      expect(existsSync(resolve(DATA, `${String(UI_BANK[key])}.json`))).toBe(false)
+    }
   })
 })
 

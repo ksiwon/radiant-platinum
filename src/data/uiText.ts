@@ -78,7 +78,29 @@ export const UI_BANK = {
   hallOfFame: 351,
   /** `TEXT_BANK_PC_HALL_OF_FAME` — PC로 다시 보는 화면의 여섯 줄 */
   pcHallOfFame: 352,
+  /** `TEXT_BANK_NATURE_NAMES` — 성격 25 (`StringTemplate_SetNatureName`) */
+  natureNames: 202,
+  /**
+   * 조사가 붙은 판과 복수형 (`StringTemplate_SetItemNameWithArticle` 등).
+   *
+   * ⚠️ **미국 롬에만 있다.** 한국·일본 롬의 뱅크 표에는 이 넷의 짝이 없어서
+   * `public/data/dialogue/{ko,ja}`에 안 실린다 — 조사도 복수형도 없는 말이라
+   * 롬 자체가 표를 안 들고 있는 것이다. 받는 쪽이 빈 배열을 견디고 맨 이름표로
+   * 떨어져야 한다 (`fieldServices`의 `orPlain`)
+   */
+  itemNamesWithArticles: 393,
+  itemNamesPlural: 394,
+  speciesNamesWithArticles: 413,
+  trainerClassNamesWithArticles: 620,
+  /** `TEXT_BANK_UNK_0543` — 상점 말과 소지금 창. 18번이 이름표, 19번이 문장 틀 */
+  shop: 543,
 } as const
+
+/** 소지금 창 (`FieldMenu_CreateMoneyWindow` · `..._PrintMoneyToWindow`) */
+export const MONEY_WINDOW_TEXT = { label: 18, amount: 19 } as const
+
+/** 코인 창의 문장 틀 (`FieldMenu_PrintCoinsToWindow` — `menu_entries` 뱅크) */
+export const COIN_WINDOW_TEXT = 197
 
 /**
  * 명예의 전당 장면 (`hall_of_fame` 뱅크).
@@ -221,7 +243,11 @@ export const INTRO_TEXT = {
 } as const
 
 /** 이름 짓기 화면 (`naming_screen`) */
-export const NAMING_TEXT = { player: 0, pokemon: 1, box: 2, rival: 3 } as const
+export const NAMING_TEXT = {
+  player: 0, pokemon: 1, box: 2, rival: 3,
+  /** 224번도로 석판 — 「고맙다고 전하고 싶은 상대는?」 */
+  tablet: 6,
+} as const
 
 /**
  * 보관 시스템의 글 자리.

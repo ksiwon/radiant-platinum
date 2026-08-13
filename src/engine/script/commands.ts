@@ -18,6 +18,8 @@ import { DIR, parseMovements } from './movement'
 import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
+import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
+import { compareSize, SIZE_RECORD_INITIAL, SIZE_RESULT, sizeParts } from '../world/sizeContest'
 import { SCRIPT_EVENT_TYPES } from '../world/journal'
 import {
   HIDDEN_LOCATION_COUNT, HIDDEN_LOCATION_MAGIC, VAR_HIDDEN_LOCATION_FIRST,
@@ -739,10 +741,192 @@ on('BufferValuePaddingDigits', (ctx) => {
   const mode = ctx.readByte()
   const digits = ctx.readByte()
   const text = String(value)
+  ctx.host.world.slots.set(slot, padNumber(text, mode, digits))
+  return false
+})
+
+on('BufferVarPaddingDigits', (ctx) => {
+  // 값이 4바이트가 아니라 **변수**인 것 말고는 위와 같다. 원작은 「안 채움」일 때
+  // 자릿수를 그 수 자신에게서 다시 얻는데(`GetNumberDigitCount`), 어차피 안
+  // 채우므로 결과가 같다
+  const slot = ctx.readByte()
+  const value = ctx.readVar()
+  const mode = ctx.readByte()
+  const digits = ctx.readByte()
+  ctx.host.world.slots.set(slot, padNumber(String(value), mode, digits))
+  return false
+})
+
+/** 0 안 채움 · 1 공백 · 2 영 (`constants/string.h`의 `PADDING_MODE_*`) */
+function padNumber(text: string, mode: number, digits: number): string {
+  return mode === 0 ? text : text.padStart(digits, mode === 2 ? '0' : ' ')
+}
+
+on('BufferTypeName', (ctx) => {
+  const slot = ctx.readByte()
+  const type = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.type(type) ?? '')
+  return false
+})
+
+on('BufferNatureName', (ctx) => {
+  const slot = ctx.readByte()
+  const nature = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.nature(nature) ?? '')
+  return false
+})
+
+on('BufferTrainerName', (ctx) => {
+  const slot = ctx.readByte()
+  const id = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.trainer(id) ?? '')
+  return false
+})
+
+on('BufferTrainerClassNameWithArticle', (ctx) => {
+  const slot = ctx.readByte()
+  const trainerClass = ctx.readVar()
   ctx.host.world.slots.set(
-    slot,
-    mode === 0 ? text : text.padStart(digits, mode === 2 ? '0' : ' '),
+    slot, ctx.host.world.services.labels?.trainerClassWithArticle(trainerClass) ?? '',
   )
+  return false
+})
+
+on('BufferItemNameWithArticle', (ctx) => {
+  const slot = ctx.readByte()
+  const item = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.itemWithArticle(item) ?? '')
+  return false
+})
+
+on('BufferItemNamePlural', (ctx) => {
+  const slot = ctx.readByte()
+  const item = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.itemPlural(item) ?? '')
+  return false
+})
+
+on('BufferTMHMMoveName', (ctx) => {
+  // 인자는 기술 번호가 아니라 **도구 번호**다 (`Item_MoveForTMHM`)
+  const slot = ctx.readByte()
+  const item = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.tmMove(item) ?? '')
+  return false
+})
+
+on('BufferMapName', (ctx) => {
+  const slot = ctx.readByte()
+  const mapHeaderId = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.map(mapHeaderId) ?? '')
+  return false
+})
+
+// ⚠️ 이 둘은 인자 뒤에 **안 쓰는 값 둘이 더 붙는다** (`unused1` 반워드 ·
+// `unused2` 바이트). 안 읽고 지나가면 명령 흐름이 세 바이트 어긋난다
+on('BufferSpeciesNameFromVar', (ctx) => {
+  const slot = ctx.readByte()
+  const species = ctx.readVar()
+  ctx.readHalfWord()
+  ctx.readByte()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.species(species) ?? '')
+  return false
+})
+
+on('BufferSpeciesNameWithArticle', (ctx) => {
+  const slot = ctx.readByte()
+  const species = ctx.readVar()
+  ctx.readHalfWord()
+  ctx.readByte()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.speciesWithArticle(species) ?? '')
+  return false
+})
+
+on('BufferPlayerCounterpartStarterSpeciesNameWithArticle', (ctx) => {
+  const slot = ctx.readByte()
+  const species = counterpartStarter(ctx.host.vars.get(VAR_PLAYER_STARTER))
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.speciesWithArticle(species) ?? '')
+  return false
+})
+
+on('BufferPartyMoveName', (ctx) => {
+  const slot = ctx.readByte()
+  const at = ctx.readVar()
+  const moveSlot = ctx.readVar()
+  const move = ctx.host.world.services.party?.move(at, moveSlot) ?? 0
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.move(move) ?? '')
+  return false
+})
+
+on('BufferPartyMonNicknameReturnSpecies', (ctx) => {
+  // 이름을 칸에 넣고 **종족 번호를 변수로도** 준다. 칸 번호가 아니라 안 쓰는
+  // 반워드가 먼저 온다 (`.short 0 // unused`) — 육성가가 맡긴 마리를 부를 때다
+  ctx.readHalfWord()
+  const at = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const party = ctx.host.world.services.party
+  // 원작 `Party_StringTemplateSetNicknameReturnSpecies`가 **0번 칸**에 넣는다
+  ctx.host.world.slots.set(0, party?.nickname(at) ?? '')
+  ctx.host.vars.set(dest, party?.species(at) ?? 0)
+  return false
+})
+
+on('BufferMonNicknameFromPC', (ctx) => {
+  // 변수 하나에 박스와 자리가 함께 들어 있다 (`slot / 30`, `slot % 30`)
+  const slot = ctx.readByte()
+  const boxSlot = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.boxes?.nickname(boxSlot) ?? '')
+  return false
+})
+
+on('BufferTrainerClassFromAppearance', (ctx) => {
+  const slot = ctx.readByte()
+  const services = ctx.host.world.services
+  const gender = services.trainerInfo?.gender() ?? 0
+  const trainerClass = appearanceClass(gender, services.appearance?.get() ?? 0)
+  ctx.host.world.slots.set(slot, services.labels?.trainerClassWithArticle(trainerClass) ?? '')
+  return false
+})
+
+/**
+ * 크기 대회의 수 두 칸 (`SizeContest_SetPartyMonSizeStrParams`).
+ *
+ * ⚠️ **칸 번호도 변수로 온다.** 다른 `Buffer…`가 바이트 하나로 주는 것과 다르다
+ */
+on('BufferPartyPokemonSize', (ctx) => {
+  const wholeSlot = ctx.readVar()
+  const tenthSlot = ctx.readVar()
+  const at = ctx.readVar()
+  const size = ctx.host.world.services.party?.sizeOf(at) ?? null
+  const parts = size === null ? { whole: 0, tenth: 0 } : sizeParts(size.heightDm, size.factor)
+  ctx.host.world.slots.set(wholeSlot, String(parts.whole))
+  ctx.host.world.slots.set(tenthSlot, String(parts.tenth))
+  return false
+})
+
+on('BufferSizeContestRecord', (ctx) => {
+  const wholeSlot = ctx.readVar()
+  const tenthSlot = ctx.readVar()
+  const species = ctx.readVar()
+  const height = ctx.host.world.services.party?.heightOf(species) ?? 0
+  const parts = sizeParts(height, ctx.host.vars.get(VAR_SIZE_CONTEST_RECORD))
+  ctx.host.world.slots.set(wholeSlot, String(parts.whole))
+  ctx.host.world.slots.set(tenthSlot, String(parts.tenth))
+  return false
+})
+
+on('BufferTabletName', (ctx) => {
+  // 224번도로의 석판에 새긴 이름 (`MiscSaveBlock_TabletName`). 아직 안 새겼으면
+  // 빈 글이고, 스크립트도 그때는 이 대사로 안 온다
+  ctx.host.world.slots.set(ctx.readByte(), ctx.host.world.services.tablet?.name() ?? '')
+  return false
+})
+
+on('CapitalizeFirstLetter', (ctx) => {
+  // ⚠️ **한국어에서는 하는 일이 없다.** 원작 `StringTemplate_CapitalizeArgAtIndex`가
+  // 라틴 소문자만 대문자로 올린다 — 그래도 칸 번호는 읽어야 흐름이 안 어긋난다
+  const slot = ctx.readByte()
+  const text = ctx.host.world.slots.get(slot)
+  if (text) ctx.host.world.slots.set(slot, text[0]!.toUpperCase() + text.slice(1))
   return false
 })
 
@@ -999,6 +1183,217 @@ on('CheckPartyHasSpecies', (ctx) => {
   const dest = ctx.readHalfWord()
   const species = ctx.readVar()
   ctx.host.vars.set(dest, ctx.host.world.services.party?.hasSpecies(species) === true ? 1 : 0)
+  return false
+})
+
+on('CheckPartyHasSpecies2', (ctx) => {
+  // 앞의 것과 하는 일이 같은데 **인자 차례가 반대**고 답을 준 뒤 한 프레임 쉰다
+  const species = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.hasSpecies(species) === true ? 1 : 0)
+  return true
+})
+
+on('CheckPartyHasHeldItem', (ctx) => {
+  const item = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.hasHeldItem(item) === true ? 1 : 0)
+  return false
+})
+
+on('GetPartyMonMoveCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.moveCount(slot) ?? 0)
+  return false
+})
+
+on('GetPartyMonType', (ctx) => {
+  // 답이 **둘**이다. 하나만 읽으면 다음 명령이 통째로 어긋난다
+  const first = ctx.readHalfWord()
+  const second = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  const [a, b] = ctx.host.world.services.party?.types(slot) ?? [0, 0]
+  ctx.host.vars.set(first, a)
+  ctx.host.vars.set(second, b)
+  return false
+})
+
+on('CountPartyMonsBelowLevelThreshold', (ctx) => {
+  // ⚠️ 이름과 달리 **그 레벨까지 센다** (`level <= threshold`)
+  const dest = ctx.readHalfWord()
+  const level = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.countAtOrBelowLevel(level) ?? 0)
+  return false
+})
+
+on('CheckIsPartyMonOutsider', (ctx) => {
+  // ⚠️ **트레이너 번호만 견준다** — 이름도 비밀번호도 안 본다. 그래서 번호가
+  // 우연히 같으면 남의 포켓몬도 내 것으로 센다. 원작이 그렇다
+  const slotVar = ctx.readHalfWord()
+  const dest = ctx.readHalfWord()
+  const slot = ctx.host.vars.get(slotVar)
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.isOutsider(slot) === true ? 1 : 0)
+  return false
+})
+
+on('GetPartyMonEVTotal', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.evTotal(slot) ?? 0)
+  return false
+})
+
+// ── 조건에 맞는 파티 자리 찾기 (`scrcmd_party.c`) ────────────────────────────
+//
+// ⚠️ **못 찾았을 때의 값이 명령마다 다르다.** 기술만 6이고 나머지 셋은 0xFF다.
+// 스크립트가 그 값을 그대로 견주므로(`GoToIfEq VAR_RESULT, 6`) 하나로 맞추면 안 된다.
+
+/** `MAX_PARTY_SIZE` — `FindPartySlotWithMove`가 못 찾았을 때 주는 값 */
+const FIND_MOVE_NONE = 6
+/** 나머지 셋이 못 찾았을 때 주는 값 */
+const FIND_SLOT_NONE = 0xff
+
+on('FindPartySlotWithMove', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const move = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.findWithMove(move) ?? FIND_MOVE_NONE)
+  return false
+})
+
+on('FindPartySlotWithNature', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const nature = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.findWithNature(nature) ?? FIND_SLOT_NONE)
+  return false
+})
+
+on('FindPartySlotWithSpecies', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const species = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.findWithSpecies(species) ?? FIND_SLOT_NONE)
+  return false
+})
+
+on('FindPartySlotWithFatefulEncounterSpecies', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const species = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.findFateful(species) ?? FIND_SLOT_NONE)
+  return false
+})
+
+on('ClearPartyMonMoveSlot', (ctx) => {
+  const slot = ctx.readVar()
+  const moveSlot = ctx.readVar()
+  ctx.host.world.services.party?.clearMoveSlot(slot, moveSlot)
+  return false
+})
+
+/**
+ * 기술 한 칸을 갈아 끼운다 (`ScrCmd_ResetMoveSlot`).
+ *
+ * ⚠️ **디컴프의 인자 이름을 믿으면 안 된다.** 매크로는 `partySlot, moveID, moveSlot`
+ * 이라고 적혀 있지만, `Party_ResetMonMoveSlot(party, slot, moveSlot, moveID)`에
+ * 인자를 뒤바꿔 넘기고 그 함수가 다시 뒤바꿔 부른다 — 실제로는 **둘째가 칸,
+ * 셋째가 기술**이다. 212번도로 집의 스크립트가 그 차례로 쓰는 것을 보고 확정했다
+ * (`VAR_0x8002`가 `GetSummarySelectedMoveSlot`의 답이고 `VAR_0x8003`이 기술)
+ */
+on('ResetMoveSlot', (ctx) => {
+  const slot = ctx.readVar()
+  const moveSlot = ctx.readVar()
+  const move = ctx.readVar()
+  ctx.host.world.services.party?.setMoveSlot(slot, moveSlot, move)
+  return false
+})
+
+// ── 한 마리 고르기 (`FieldSystem_OpenPartyMenu_SelectPokemon`) ───────────────
+//
+// 기술가르침·크기 대회·교환·리본 확인이 전부 이 화면 하나를 쓴다. 이름이
+// `SelectMoveTutorPokemon`인 것은 디컴프가 처음 만난 자리가 기술가르침이라서고,
+// 실제로는 아무 데서나 부른다.
+
+on('SelectMoveTutorPokemon', (ctx) => {
+  ctx.host.world.services.chooseMon?.open()
+  // 화면이 닫힐 때까지 스크립트가 선다 (`ScriptContext_WaitForApplicationExit`)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+on('GetSelectedPartySlot', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.chooseMon?.picked() ?? PARTY_SLOT_NONE)
+  return false
+})
+
+/** `constants/pokemon.h` — 안 고르고 나갔다 */
+const PARTY_SLOT_NONE = 0xff
+
+// ── 크기 대회 (`overlay005/size_contest.c`) ──────────────────────────────────
+//
+// 222번도로의 집. 총어 한 마리만 재 주고, 기록은 시스템 변수 하나에 남는다
+
+/** `generated/vars_flags.txt`의 `VAR_SIZE_CONTEST_RECORD` */
+const VAR_SIZE_CONTEST_RECORD = 0x4035
+
+on('InitSizeContestRecord', (ctx) => {
+  ctx.host.vars.set(VAR_SIZE_CONTEST_RECORD, SIZE_RECORD_INITIAL)
+  return false
+})
+
+on('CalcSizeContestResult', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const at = ctx.readVar()
+  const size = ctx.host.world.services.party?.sizeOf(at) ?? null
+  const record = ctx.host.vars.get(VAR_SIZE_CONTEST_RECORD)
+  ctx.host.vars.set(
+    dest,
+    size === null ? SIZE_RESULT.smaller : compareSize(size.heightDm, size.factor, record),
+  )
+  return false
+})
+
+on('UpdateSizeContestRecord', (ctx) => {
+  const at = ctx.readVar()
+  const size = ctx.host.world.services.party?.sizeOf(at) ?? null
+  if (size !== null) ctx.host.vars.set(VAR_SIZE_CONTEST_RECORD, size.factor)
+  return false
+})
+
+// ── 트레이너의 모습 (무연시티 포켓몬센터) ────────────────────────────────────
+
+on('LoadTrainerAppearances', (ctx) => {
+  // 칸 0~3에 후보 넷의 분류 이름을 넣는다. 메뉴가 그 칸을 읽어 항목을 만든다
+  const services = ctx.host.world.services
+  const classes = appearanceVariants(
+    services.trainerInfo?.id() ?? 0, services.trainerInfo?.gender() ?? 0,
+  )
+  classes.forEach((c, i) => { ctx.host.world.slots.set(i, services.labels?.trainerClass(c) ?? '') })
+  return false
+})
+
+on('CalculateTrainerInfoAppearance', (ctx) => {
+  const variant = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, appearanceOf(
+    ctx.host.world.services.trainerInfo?.id() ?? 0,
+    ctx.host.world.services.trainerInfo?.gender() ?? 0,
+    variant,
+  ))
+  return false
+})
+
+on('GetTrainerInfoTrainerClass', (ctx) => {
+  // 위와 같은데 **모습 번호를 분류 번호로 한 번 더 옮긴다**
+  const variant = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const gender = ctx.host.world.services.trainerInfo?.gender() ?? 0
+  const appearance = appearanceOf(ctx.host.world.services.trainerInfo?.id() ?? 0, gender, variant)
+  ctx.host.vars.set(dest, appearanceClass(gender, appearance))
+  return false
+})
+
+on('SetTrainerInfoAppearance', (ctx) => {
+  const appearance = ctx.readVar()
+  ctx.host.world.services.appearance?.set(appearance)
   return false
 })
 
@@ -2274,6 +2669,23 @@ on('DrawPokemonPreview', (ctx) => {
   ctx.host.world.services.seeSpecies?.(species)
   return false
 })
+
+/**
+ * 파티의 한 마리를 창에 띄운다 (`ScrCmd_DrawPokemonPreviewFromPartySlot`).
+ *
+ * ⚠️ **성별은 그 개체의 것이다.** 위의 것은 스크립트가 성별을 주는데 이쪽은
+ * 개체에서 읽는다 — 서비스가 성별을 모르므로 없음(2)으로 두고 종족만 준다
+ */
+on('DrawPokemonPreviewFromPartySlot', (ctx) => {
+  const at = ctx.readVar()
+  const species = ctx.host.world.services.party?.species(at) ?? 0
+  ctx.host.world.services.preview?.draw(species, GENDER_NONE)
+  ctx.host.world.services.seeSpecies?.(species)
+  return false
+})
+
+/** `constants/pokemon.h`의 `GENDER_NONE` */
+const GENDER_NONE = 2
 
 on('RemovePokemonPreview', (ctx) => {
   ctx.host.world.services.preview?.remove()

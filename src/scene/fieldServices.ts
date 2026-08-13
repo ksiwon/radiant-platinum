@@ -7,9 +7,11 @@
 // `outcome`을 지우는데, 스크립트는 **닫힌 뒤에** 결과를 묻는다. 그래서 결과가
 // 정해지는 순간 여기서 따로 받아 둔다.
 import {
-  loadDialogueBank, loadItemNames, loadItems, loadMarts, loadMoveNames, loadSpecies,
-  loadSpeciesNames, loadMoves, loadTrainers,
+  loadDialogueBank, loadItemNames, loadItems, loadLabels, loadLocationNames, loadMarts,
+  loadMoveNames, loadSpecies, loadSpeciesNames, loadMoves, loadTrainerClasses,
+  loadTrainerNames, loadTrainers,
 } from '../data/gameData'
+import { UI_BANK } from '../data/uiText'
 import type { DataLocale } from '../data/gameData'
 import {
   createWild, fillPp, genderOf, natureOf, PARTY_MAX, setExp, statsOf,
@@ -40,6 +42,8 @@ import {
   TURNBACK_WARP_COUNT, turnbackDestination, turnbackEntryWarp,
 } from '../engine/world/turnbackCave'
 import { entryNumber } from '../engine/world/hallOfFame'
+import { sizeFactor } from '../engine/world/sizeContest'
+import { partyChoice } from '../ui/menu/partyChoice'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 
 /** 그 파티 자리가 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`) */
@@ -129,9 +133,43 @@ let moveNames: string[] = []
 /** 주머니 이름 8개 (`TEXT_BANK_BAG_POCKET_NAMES`) */
 let pocketNames: string[] = []
 let marts: MartTable | null = null
+/** 타입 열일곱 (`labels.*.json`) */
+let typeNames: readonly string[] = []
+/** 성격 25 (`TEXT_BANK_NATURE_NAMES`) */
+let natureNames: readonly string[] = []
+/** 트레이너 이름 928 · 분류 105 */
+let trainerNames: readonly string[] = []
+let trainerClassNames: readonly string[] = []
+/** 지역명 (`names/locations.*.json`) */
+let locationNames: readonly string[] = []
+/**
+ * 조사가 붙은 판과 복수형.
+ *
+ * ⚠️ **미국 롬에만 있는 표다.** 한국·일본 판에서는 이 넷이 끝까지 빈 배열로
+ * 남고 `orPlain`이 맨 이름표로 떨어뜨린다 — 없는 것을 지어내지 않는다
+ */
+let itemArticleNames: readonly string[] = []
+let itemPluralNames: readonly string[] = []
+let speciesArticleNames: readonly string[] = []
+let trainerClassArticleNames: readonly string[] = []
+
+/** 조사 판이 없으면 맨 이름표로 (`ko`·`ja`) */
+const orPlain = (fancy: readonly string[], plain: readonly string[], at: number): string =>
+  fancy[at] ?? plain[at] ?? ''
 
 /** 자료가 아직 안 왔으면 도구 주머니로 본다 — 번호 0이 그 자리다 */
 const pocketOf = (item: number): number => items?.all[item]?.pocket ?? 0
+
+/** `constants/items.h`의 `ITEM_TM01`. 여기서 100칸이 기술머신·비전머신이다 */
+const ITEM_TM01 = 328
+const TMHM_COUNT = 100
+
+/** 기술머신이 가르치는 기술 (`Item_MoveForTMHM`). 머신이 아니면 0 */
+function tmhmMove(item: number): number {
+  const at = item - ITEM_TM01
+  if (at < 0 || at >= TMHM_COUNT) return 0
+  return items?.tmMoves[at] ?? 0
+}
 
 /** 종족값·기술 표. 개체를 만들려면 둘 다 있어야 한다 */
 let speciesTable: Awaited<ReturnType<typeof loadSpecies>> | null = null
@@ -170,6 +208,48 @@ function giveMon(species: number, level: number, heldItem: number): boolean {
     origin: caughtAt(playerTrainer(save.trainer), hereLabel(), level, metToday()),
   })
   return true
+}
+
+/**
+ * 조건에 맞는 첫 파티 자리 (`scrcmd_party.c`의 `FindPartySlotWith*`).
+ *
+ * ⚠️ **알은 건너뛴다.** 넷 다 `MON_DATA_IS_EGG`를 먼저 보고 넘어간다 —
+ * 안 그러면 알이 아는 기술로 자리가 걸려서 알에게 기술을 가르치려 든다
+ */
+function findSlot(
+  match: (mon: PokemonInstance) => boolean, none = 0xff,
+): number {
+  const party = useSaveStore.getState().party
+  for (let slot = 0; slot < party.length; slot++) {
+    const mon = party[slot]!
+    if (mon.isEgg) continue
+    if (match(mon)) return slot
+  }
+  return none
+}
+
+/** `MAX_PARTY_SIZE` — `FindPartySlotWithMove`만 이 값으로 「없다」를 말한다 */
+const MAX_PARTY_SIZE = 6
+
+/** 박스 한 칸의 마리 수 (`MAX_MONS_PER_BOX`) */
+const BOX_SIZE = 30
+
+/**
+ * 기술 한 칸을 비우거나 갈아 끼운다 (`Pokemon_ClearMoveSlot`·`_ResetMoveSlot`).
+ *
+ * `move`가 null이면 비운다. 갈아 끼울 때 PP는 **새 기술의 최대치**로 돌아가고
+ * 포인트업도 0이 된다 — 원작이 그렇다
+ */
+function editMoves(slot: number, moveSlot: number, move: number | null): void {
+  const party = useSaveStore.getState().party
+  const mon = party[slot]
+  if (!mon || moveSlot < 0 || moveSlot >= 4) return
+  const moves = [...mon.moves]
+  if (move === null) moves.splice(moveSlot, 1)
+  else moves[moveSlot] = { move, pp: moveTable?.byId.get(move)?.pp ?? 5, ppUps: 0 }
+  const next = [...party]
+  next[slot] = { ...mon, moves }
+  useSaveStore.setState({ party: next })
 }
 
 /** 지금 서 있는 맵의 지역명 번호 (`MapHeader_GetMapLabelTextID`) */
@@ -357,6 +437,22 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, POCKET_NAME_BANK)
     .then((bank) => { pocketNames = [...bank] })
     .catch(() => { /* 주머니 이름만 빈다 */ })
+  void loadLabels(locale).then((l) => { typeNames = l.types }).catch(() => { /* 타입 이름만 빈다 */ })
+  void loadTrainerNames(locale).then((n) => { trainerNames = n }).catch(() => { /* 이름만 빈다 */ })
+  void loadTrainerClasses(locale).then((n) => { trainerClassNames = n }).catch(() => { /* 이름만 빈다 */ })
+  void loadLocationNames(locale).then((n) => { locationNames = n }).catch(() => { /* 지역명만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.natureNames)
+    .then((bank) => { natureNames = bank })
+    .catch(() => { /* 성격 이름만 빈다 */ })
+  // 아래 넷은 미국 롬에만 있다. 못 받는 것이 정상이라 조용히 넘긴다
+  void loadDialogueBank(locale, UI_BANK.itemNamesWithArticles)
+    .then((bank) => { itemArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
+  void loadDialogueBank(locale, UI_BANK.itemNamesPlural)
+    .then((bank) => { itemPluralNames = bank }).catch(() => { /* 맨 이름표로 */ })
+  void loadDialogueBank(locale, UI_BANK.speciesNamesWithArticles)
+    .then((bank) => { speciesArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
+  void loadDialogueBank(locale, UI_BANK.trainerClassNamesWithArticles)
+    .then((bank) => { trainerClassArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
   // 회복량은 종족값 표가 있어야 나온다. 전멸은 첫 배틀부터 날 수 있으므로 미리 받는다
   loadHealTables()
   // 스크립트가 주는 포켓몬도 같은 표로 만든다. 못 받으면 `GivePokemon`이
@@ -478,11 +574,84 @@ const services: FieldServices = {
         first: first < 0 ? 0xff : first,
       }
     },
+    moveCount: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      // ⚠️ **알은 0이다.** 알도 기술을 갖고 있어서 세면 부화 전에 배우려 든다
+      if (!mon || mon.isEgg) return 0
+      return mon.moves.filter((m) => m.move !== 0).length
+    },
+    hasHeldItem: (item) => useSaveStore.getState().party.some((m) => m.heldItem === item),
+    types: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      const info = mon === undefined ? undefined : speciesTable?.of(mon)
+      // 한 타입인 종족도 표에 두 칸이 같은 값으로 들어 있다
+      return [info?.types[0] ?? 0, info?.types[1] ?? 0]
+    },
+    countAtOrBelowLevel: (level) =>
+      useSaveStore.getState().party.filter((m) => !m.isEgg && m.level <= level).length,
+    isOutsider: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      // ⚠️ 원작은 **보이는 번호만** 견준다 (`MON_DATA_OT_ID` 아래 16비트)
+      return mon !== undefined && (mon.otId & 0xffff) !== useSaveStore.getState().trainer.id
+    },
+    evTotal: (slot) => {
+      const ev = useSaveStore.getState().party[slot]?.evs
+      return ev === undefined ? 0 : ev.hp + ev.atk + ev.def + ev.spa + ev.spd + ev.spe
+    },
+    findWithMove: (move) => findSlot(
+      (m) => m.moves.some((s) => s.move === move), MAX_PARTY_SIZE,
+    ),
+    findWithNature: (nature) => findSlot((m) => natureOf(m.pid) === nature),
+    findWithSpecies: (species) => findSlot((m) => m.species === species),
+    findFateful: (species) => findSlot((m) => m.species === species && m.origin.fateful),
+    clearMoveSlot: (slot, moveSlot) => { editMoves(slot, moveSlot, null) },
+    setMoveSlot: (slot, moveSlot, move) => { editMoves(slot, moveSlot, move) },
+    sizeOf: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      const info = mon === undefined ? undefined : speciesTable?.of(mon)
+      if (!mon || !info) return null
+      return { factor: sizeFactor(mon), heightDm: info.heightDm }
+    },
+    heightOf: (species) => speciesTable?.get(species).heightDm ?? 0,
+  },
+
+  chooseMon: {
+    open: () => { useMenuStore.getState().openPartyToChoose() },
+    picked: () => partyChoice.slot,
+  },
+
+  boxes: {
+    nickname: (boxSlot) => {
+      const mon = useSaveStore.getState().boxes[Math.floor(boxSlot / BOX_SIZE)]
+        ?.[boxSlot % BOX_SIZE]
+      return mon?.nickname ?? speciesNames[mon?.species ?? 0] ?? ''
+    },
+  },
+
+  tablet: {
+    name: () => useSaveStore.getState().trainer.tabletName,
+    open: () => {
+      namingAnswer.answer = null
+      useMenuStore.getState().openNaming({
+        kind: 'tablet', slot: 0,
+        initial: useSaveStore.getState().trainer.tabletName,
+        // 원작도 열 글자다 (`sub_0203DFE8(..., 0, 10, ...)`)
+        max: 10,
+      })
+    },
+  },
+
+  appearance: {
+    get: () => useSaveStore.getState().trainer.appearance,
+    set: (appearance) => {
+      useSaveStore.setState((s) => ({ trainer: { ...s.trainer, appearance } }))
+    },
   },
 
   trainerInfo: {
     // 원작 번호는 남 0 · 여 1이다 (`TrainerInfo_Gender`)
     gender: () => (useSaveStore.getState().trainer.gender === 'girl' ? 1 : 0),
+    id: () => useSaveStore.getState().trainer.id,
     hasBadge: (badge) => (useSaveStore.getState().badges & (1 << badge)) !== 0,
     giveBadge: (badge) => { useSaveStore.getState().giveBadge(badge) },
     nationalDex: (set) => {
@@ -495,6 +664,16 @@ const services: FieldServices = {
     move: (move) => moveNames[move] ?? '',
     pocket: (pocket) => pocketNames[pocket] ?? '',
     species: (species) => speciesNames[species] ?? '',
+    type: (type) => typeNames[type] ?? '',
+    nature: (nature) => natureNames[nature] ?? '',
+    trainer: (id) => trainerNames[id] ?? '',
+    trainerClass: (c) => trainerClassNames[c] ?? '',
+    map: (mapHeaderId) => locationNames[mapById(mapHeaderId)?.label ?? 0] ?? '',
+    tmMove: (item) => moveNames[tmhmMove(item)] ?? '',
+    itemWithArticle: (item) => orPlain(itemArticleNames, itemNames, item),
+    itemPlural: (item) => orPlain(itemPluralNames, itemNames, item),
+    speciesWithArticle: (s) => orPlain(speciesArticleNames, speciesNames, s),
+    trainerClassWithArticle: (c) => orPlain(trainerClassArticleNames, trainerClassNames, c),
   },
 
   /**
@@ -983,7 +1162,12 @@ const services: FieldServices = {
       const got = namingAnswer.answer
       if (got === null) return null
       // 지었으면 세이브에 넣는다. 빈 글이면 안 지은 것이라 그대로 둔다
-      if (got.name !== '') useSaveStore.getState().renameMon(got.slot, got.name)
+      if (got.name === '') return got.name
+      if (got.kind === 'tablet') {
+        useSaveStore.setState((s) => ({ trainer: { ...s.trainer, tabletName: got.name } }))
+      } else {
+        useSaveStore.getState().renameMon(got.slot, got.name)
+      }
       return got.name
     },
   },
