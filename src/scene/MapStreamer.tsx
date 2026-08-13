@@ -17,8 +17,9 @@ import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import {
-  enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars,
+  enterMap, fieldScripts, initFieldScripts, initNewGame, loadVars, start,
 } from '../engine/script/field'
+import { VAR_DISTORTION_CYRUS, VAR_DISTORTION_WORLD_PROGRESS } from '../engine/script/vars'
 import { installFieldServices } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
@@ -34,6 +35,10 @@ import {
   journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins,
 } from './journal'
 import { resetStepTile } from './stepSystem'
+import {
+  distortionEnter, distortionForgetEvents, distortionHooks, distortionLeave,
+  distortionLoaded, distortionPreload, isDistortionFloor,
+} from './distortion'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
@@ -179,6 +184,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
     // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
     arriveAt(mapId)
+    // 파열된 세계는 맵 격자가 아니라 「떠 있는 판」이 통행을 정한다 (PARITY §6.10).
+    // 자료가 따로라 처음 들어설 때 한 번 받는다 — 받는 동안은 판이 없어서
+    // 평범한 격자로 걷는다
+    distortionForgetEvents()
+    if (isDistortionFloor(mapId)) {
+      const y = next.heightAtWorld(x, z, 0) ?? 0
+      if (distortionLoaded()) distortionEnter(mapId, x, y, z)
+      else void distortionPreload().then(() => { distortionEnter(mapId, x, y, z) })
+    } else {
+      distortionLeave()
+    }
   }, [setZone, publishMap, displayName])
 
   // 배틀 중에는 오버월드가 멈춘다. 조우 판정도 키보드도 다 꺼야 한다 —
@@ -259,6 +275,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     fieldScripts.onScriptEnd = (vars) => {
       useSaveStore.getState().commitScriptState(vars.saved, vars.flags)
     }
+    // 파열된 세계의 사건이 스크립트를 부르고 진행도를 세운다 (PARITY §6.10).
+    // 그쪽은 세이브도 스크립트 VM도 못 보므로 여기서 꽂는다
+    distortionHooks.runScript = (scriptID) => {
+      const scripts = mapById(world.mapId)?.scripts
+      if (scripts !== undefined) start(scriptID, scripts)
+    }
+    distortionHooks.progress = () => fieldScripts.vars.get(VAR_DISTORTION_WORLD_PROGRESS)
+    distortionHooks.setProgress = (value) => {
+      fieldScripts.vars.set(VAR_DISTORTION_WORLD_PROGRESS, value)
+    }
+    distortionHooks.cyrusAppearance = () => fieldScripts.vars.get(VAR_DISTORTION_CYRUS)
     void initFieldScripts(locale).then(() => { setScriptsReady(true) })
     const uninstall = installFieldServices(locale)
     return () => {

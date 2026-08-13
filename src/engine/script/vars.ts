@@ -14,6 +14,16 @@
 
 /** 이 아래는 변수 번호가 아니라 상수다 */
 export const VARS_START = 0x4000
+
+/**
+ * 파열된 세계가 어디까지 왔는가 (`VAR_DISTORTION_WORLD_PROGRESS`).
+ *
+ * ⚠️ **줄 번호가 아니라 C 열거형으로 센 값이다** — `vars_flags.txt`에 별명 줄이
+ * 여럿이라 줄로 세면 어긋난다 (`tools/extract/distortion.js`의 계산기가 정본이다)
+ */
+export const VAR_DISTORTION_WORLD_PROGRESS = 16469
+/** 파열된 세계의 태홍이 어느 자리에 서 있는가 (`…_CYRUS_APPEARANCE`) */
+export const VAR_DISTORTION_CYRUS = 16475
 /** 여기부터는 스크립트 한 판만 사는 칸이다 */
 export const SCRIPT_LOCAL_VARS_START = 0x8000
 

@@ -101,6 +101,13 @@ export interface WildStart {
    */
   form?: number
   /**
+   * 「운명적인 만남」인가 (`MON_DATA_FATEFUL_ENCOUNTER`).
+   *
+   * 아르세우스·다크라이·쉐이미가 이 표시를 달고 나온다 (`StartFatefulEncounter`).
+   * 요약 화면의 트레이너 메모가 갈리고, 쉐이미는 이게 있어야 스카이폼이 된다
+   */
+  fateful?: boolean
+  /**
    * 배회 포켓몬이면 그 자리 번호 (PARITY §6.3).
    *
    * 개체는 세이브에 있다 — 여기로는 **어느 자리인지**만 온다
@@ -343,6 +350,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         compoundEyes: leadHas(lead, LeadAbility.COMPOUND_EYES),
       })
       foe.form = wild.form ?? 0
+      if (wild.fateful === true) foe.origin = { ...foe.origin, fateful: true }
       const foeSpecies = species.of(foe)
       foe.hp = statsOf(foe, foeSpecies).hp
       // ⚠️ **배회는 그때그때 만드는 개체가 아니다** (PARITY §6.3). 성격값과

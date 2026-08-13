@@ -33,6 +33,13 @@ export type Spot =
   | { kind: 'warp'; index: number }
   | { kind: 'atWarp'; index: number }
   | { kind: 'grass' }
+  /**
+   * 걸어갈 수 있는 칸 아무 데나 — **가운데에 제일 가까운 칸**.
+   *
+   * 워프가 하나도 없는 맵을 위한 것이다. 파열된 세계가 그렇다 — 층이 발판으로
+   * 이어져 있어서 문이 없다
+   */
+  | { kind: 'open' }
 
 /** 도착하자마자 열 배틀 */
 export type DevBattle =
@@ -984,6 +991,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge7,
   },
   {
+    id: 'distortion',
+    label: '파열된 세계 1F',
+    env: '실내 · 뒤틀린 세계 (하늘이 돈다) · 배지 7개',
+    try: [
+      '판 위에서 걸어 보고 통행이 맵 격자가 아니라 판을 따르는지 본다',
+      '떠 있는 소품과 하늘 배경을 본다',
+      '아래로 내려가는 발판 자리에 서 본다',
+    ],
+    map: 573,
+    spot: { kind: 'open' },
+    ...STAGE.badge7,
+  },
+  {
     id: 'sunyshore',
     label: '물가시티',
     env: '야외 · 바닷가 도시 (태양판 길이 높다) · 배지 7개',
@@ -1250,6 +1270,7 @@ export function resolveSpot(
   grid: MapGrid, mapId: number, spot: Spot, warps: readonly Warp[],
 ): Placement | null {
   if (spot.kind === 'grass') return grassSpot(grid, mapId)
+  if (spot.kind === 'open') return openSpot(grid, mapId)
 
   const w = warps[spot.index]
   if (!w) return null
@@ -1263,6 +1284,42 @@ export function resolveSpot(
     return center(tx, tz, look(tx, tz, w.x, w.z))
   }
   return null
+}
+
+/**
+ * 걸어갈 수 있는 칸 중 **제일 붐비는 곳**.
+ *
+ * 문이 없는 맵에 설 자리를 주기 위한 것이다 — 파열된 세계가 그렇다.
+ *
+ * ⚠️ **격자 한가운데를 고르면 안 된다.** 그 세계는 발판 몇 장이 허공에 떠
+ * 있는 모양이라 한가운데가 대개 빈 곳이고, 거기 세우면 화면이 새까맣게 나온다
+ * (실측: B1F·B2F 둘 다). 그래서 **둘레에 걸어갈 칸이 제일 많은** 자리를 고른다
+ */
+function openSpot(grid: MapGrid, mapId: number): Placement | null {
+  const n = grid.chunkTiles
+  const mine = grid.meta.chunks.filter((c) => c.zone === mapId)
+  const boxes = mine.length > 0 ? mine : grid.meta.chunks.filter((c) => c.zone < 0)
+  /** 둘레를 세는 반지름. 발판 한 장이 대개 이보다 넓다 */
+  const R = 3
+  let best: [number, number] | null = null
+  let bestScore = -1
+  for (const c of boxes) {
+    for (let tz = c.my * n; tz < (c.my + 1) * n; tz++) {
+      for (let tx = c.mx * n; tx < (c.mx + 1) * n; tx++) {
+        if (grid.isBlocked(tx, tz)) continue
+        let score = 0
+        for (let dz = -R; dz <= R; dz++) {
+          for (let dx = -R; dx <= R; dx++) {
+            if (!grid.isBlocked(tx + dx, tz + dz)) score++
+          }
+        }
+        if (score <= bestScore) continue
+        bestScore = score
+        best = [tx, tz]
+      }
+    }
+  }
+  return best === null ? null : center(best[0], best[1], 0)
 }
 
 /**

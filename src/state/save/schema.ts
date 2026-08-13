@@ -21,6 +21,7 @@ import {
   POKETCH_APP_COUNT, POKETCH_COLOR_COUNT, POKETCH_DOTART_BYTES, POKETCH_HISTORY_MAX,
   POKETCH_MARKER_COUNT, POKETCH_REGISTRY_SIZE,
 } from '../../engine/world/poketch'
+import { MAX_GHOST_PROP_GROUPS, MAX_PERSISTED_PLATFORMS } from '../../engine/world/distortion'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -314,6 +315,23 @@ export const saveSchema = z.object({
       .length(POKETCH_MARKER_COUNT),
     history: z.array(z.object({ species: int(1, 493), form: int(0, 27) }))
       .max(POKETCH_HISTORY_MAX),
+  }),
+
+  /**
+   * 파열된 세계 (PARITY §6.10) — `DistWorldPersistedData`.
+   *
+   * ⚠️ **판 자리가 4비트다.** 원작이 비트필드에 넣어 두어서 열여섯 이상은
+   * 못 담는다. 지금 제일 많은 맵(B2F)이 다섯이라 여유가 있다
+   */
+  distortion: z.object({
+    valid: z.boolean(),
+    hiddenGroups: int(0, (1 << MAX_GHOST_PROP_GROUPS) - 1),
+    platformIndex: int(0, MAX_PERSISTED_PLATFORMS - 1),
+    cameraAngleX: int(0, 0xffff),
+    cameraAngleY: int(0, 0xffff),
+    cameraAngleZ: int(0, 0xffff),
+    platformFlags: int(0, 0xffff),
+    puzzleFlags: int(0, 0xffffffff),
   }),
 })
 

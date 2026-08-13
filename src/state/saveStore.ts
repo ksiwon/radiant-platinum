@@ -29,6 +29,7 @@ import {
 } from '../engine/world/roamer'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
+import { newDistortionState, type DistortionState } from '../engine/world/distortion'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -223,9 +224,18 @@ export interface SaveData {
    * 원작이 휘발 버퍼 하나에 두고, 앱을 넘기는 순간 지워진다
    */
   poketch: PoketchState
+  /**
+   * 파열된 세계에 남는 것 (PARITY §6.10) — `DistWorldPersistedData`.
+   *
+   * 원작은 이걸 「맵마다 바뀌는 것」 칸 하나에 얹어 두고, 다른 맵으로 나가면
+   * 그 칸을 체육관 장치 같은 것이 덮어쓴다. 우리는 칸을 따로 둔다 — 덮어쓰기를
+   * 흉내 낼 이유가 없고, 원작에서 지워지는 값들도 되돌림동굴로 다시 들어가면
+   * 어차피 처음부터 잡힌다
+   */
+  distortion: DistortionState
 }
 
-export const SAVE_VERSION = 17
+export const SAVE_VERSION = 18
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -299,6 +309,7 @@ export function createNewSave(): SaveData {
     recentRoutes: newRecentRoutes(),
     journal: newJournal(),
     poketch: newPoketch(),
+    distortion: newDistortionState(),
   }
 }
 
@@ -521,6 +532,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     recentRoutes: s.recentRoutes,
     journal: s.journal,
     poketch: s.poketch,
+    distortion: s.distortion,
   }
 }
 

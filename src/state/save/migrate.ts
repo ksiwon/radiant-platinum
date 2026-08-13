@@ -15,6 +15,7 @@ import { dayNumber, newDaily } from '../../engine/world/daily'
 import { newRecentRoutes, newRoamers } from '../../engine/world/roamer'
 import { newJournal } from '../../engine/world/journal'
 import { newPoketch } from '../../engine/world/poketch'
+import { newDistortionState } from '../../engine/world/distortion'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -167,6 +168,16 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 다시 받으러 갈 수 있는 것들이라 잃는 것은 걸음 하나다
    */
   16: (data) => ({ ...data, version: 17, poketch: newPoketch() }),
+
+  /**
+   * 파열된 세계 (PARITY §6.10).
+   *
+   * ⚠️ **valid를 거짓으로 둔다.** 이 칸이 서 있으면 「이미 들어와 본 적이 있고
+   * 서 있던 판·카메라 각이 이것」이라는 뜻인데, 옛 리포트에는 그 자리가 없다.
+   * 거짓이면 들어서는 순간 발밑을 보고 다시 잡는다 — 원작이 처음 들어올 때
+   * 하는 것과 같다
+   */
+  17: (data) => ({ ...data, version: 18, distortion: newDistortionState() }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

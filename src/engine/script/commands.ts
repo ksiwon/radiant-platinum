@@ -1481,9 +1481,28 @@ export const SYSTEM_FLAG = {
    * 걸음마다 `SystemFlag_ClearStep`을 부른다)
    */
   step: 2405,
+  /** 명예의 전당에 들어가 봤는가 (`FLAG_GAME_COMPLETED`) */
+  gameCompleted: 2404,
   /** 포켓치를 잠깐 치웠는가 (`FLAG_POKETCH_HIDDEN`) — 연출이 세우고 지운다 */
   poketchHidden: 2428,
 } as const
+
+/** 레지 셋 (`SPECIES_REGIROCK`·`REGICE`·`REGISTEEL`) */
+const LEGENDARY_TITANS = [377, 378, 379] as const
+
+/** `BATTLE_RESULT_CAPTURED_MON`. ⚠️ 도망 둘이 이 비트를 **같이 쓴다** */
+const BATTLE_RESULT_CAPTURED = 4
+
+/** `VAR_DISTRIBUTION_EVENT_DARKRAI`. 뒤로 쉐이미·아르세우스·로토무가 붙는다 */
+const VAR_DISTRIBUTION_EVENT_FIRST = 16451
+
+/**
+ * 배포 이벤트가 열렸는지 재는 「마법의 수」 (`sDistributionEventMagicNumbers`).
+ *
+ * ⚠️ 0/1이 아니다. 변수에 딱 이 값이 들어 있어야 열린다 — 배포 없이는 못 여는
+ * 자리라는 뜻이고, 우리도 값을 지어내지 않는다
+ */
+const DISTRIBUTION_MAGIC = [0x1209, 0x1112, 0x1123, 0x1103] as const
 
 /** 플래그 하나를 세우고/지우고/묻는 명령 셋을 한 번에 등록한다 */
 function systemFlag(flag: number, names: { set?: string, clear?: string, check?: string }): void {
@@ -2001,6 +2020,213 @@ on('DoDWWarp', () => false)
 
 /** 소리 장면을 63번으로 (`Sound_SetSceneAndPlayBGM(SOUND_SCENE_SUB_63, …)`) */
 on('SetSubScene63', () => false)
+
+// ── 파열된 세계와 전설 (PARITY §6.10) ────────────────────────────────────────
+
+/**
+ * 파열된 세계의 「맵마다 바뀌는 것」을 연다 (`PersistedMapFeatures_InitForDistortionWorld`).
+ *
+ * ⚠️ **원작은 여기서 통째로 지운다.** 층마다의 `OnTransition`이 이걸 부르는데
+ * `PersistedMapFeatures_InitWithID`가 버퍼를 0으로 밀어 버린다 — 그래서 층을
+ * 넘을 때마다 서 있던 판도 카메라 각도 되잡힌다. 우리는 그 칸을 세이브에 따로
+ * 두었으므로 지우지 않는다. 지우면 벽에 붙어 있다가 층을 옮긴 순간 떨어진다
+ */
+on('InitPersistedMapFeaturesForDistortionWorld', () => false)
+
+/** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */
+on('ResetDistortionWorldPersistedCameraAngles', (ctx) => {
+  ctx.host.world.services.distortion?.resetCamera()
+  return false
+})
+
+/**
+ * 파열된 세계에만 있는 사람을 세운다 (`DistWorld_AddMapObjectWithLocalID`).
+ *
+ * 이 세계의 시로나·태홍·기라티나는 **맵 배치표에 없다.** 층이 이어져 흐르는
+ * 세계라 배치표로는 못 세우고, 스크립트와 사건이 번호로 불러다 세운다
+ */
+on('AddDistortionWorldMapObject', (ctx) => {
+  const localID = ctx.readVar()
+  ctx.host.world.services.distortion?.addObject(localID)
+  return false
+})
+
+on('DeleteDistortionWorldMapObject', (ctx) => {
+  const localID = ctx.readVar()
+  ctx.host.world.services.distortion?.removeObject(localID)
+  return false
+})
+
+/**
+ * 기라티나의 그림자가 지나간다 (`DistWorld_StartGiratinaShadowEvent`).
+ *
+ * ⚠️ **연출만이다.** 그림자가 날아가는 것 자체는 스크립트의 갈래를 안 바꾸고,
+ * 「봤다」는 사실은 바로 뒤의 `SetVar VAR_DISTORTION_WORLD_PROGRESS`가 적는다.
+ * 그래서 이 둘이 비어 있어도 이야기는 끝까지 흐른다 — 없는 것은 그림뿐이다
+ */
+on('StartDistortionWorldGiratinaShadowEvent', (ctx) => {
+  ctx.readVar()
+  return false
+})
+
+on('FinishDistortionWorldGiratinaShadowEvent', () => false)
+
+/** `ScrCmd_2B5` — 파열된 세계의 이름 없는 연출 하나. 인자 셋을 읽고 지나간다 */
+on('ScrCmd_2B5', (ctx) => {
+  ctx.readHalfWord(); ctx.readHalfWord(); ctx.readHalfWord()
+  return false
+})
+
+/** `Dummy1F9` — 원작에서도 빈 명령이다. **인자 한 칸은 있다** */
+on('Dummy1F9', (ctx) => {
+  ctx.readHalfWord()
+  return false
+})
+
+/**
+ * 오리진폼 기라티나 (`Encounter_NewVsGiratinaOrigin`).
+ *
+ * 전설 조우와 딱 하나 다르다 — 세우고 나서 모습을 오리진으로 갈아 끼운다
+ */
+on('StartGiratinaOriginBattle', (ctx) => {
+  const species = ctx.readVar()
+  const level = ctx.readVar()
+  ctx.host.world.services.startGiratinaOriginBattle?.(species, level)
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+/** 「운명적인 만남」 조우 (`Encounter_NewFatefulVsSpeciesAtLevel`) — 아르세우스 */
+on('StartFatefulEncounter', (ctx) => {
+  const species = ctx.readVar()
+  const level = ctx.readVar()
+  ctx.host.world.services.startFatefulEncounter?.(species, level)
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+/**
+ * 배틀 결과를 **마스크 그대로** 받는다 (`ScrCmd_GetBattleResult`).
+ *
+ * `CheckWonBattle`은 이겼나만 답하는데, 기라티나전은 다섯 갈래로 갈린다 —
+ * 졌다 · 비겼다 · 내가 달아났다 · 상대가 달아났다 · 잡았다. 그 수가 이것이다
+ */
+on('GetBattleResult', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleMask?.() ?? 0)
+  return true
+})
+
+/**
+ * 못 잡았는가 (`CheckPlayerDidNotCaptureWildMon`).
+ *
+ * ⚠️ **「잡았다」 하나만 거짓이다.** 달아난 판(포획|승)도 상대가 달아난 판도
+ * 참이다 — 값이 겹쳐 있어서 비트로 보면 안 되고 수 전체를 견줘야 한다
+ */
+on('CheckDidNotCapture', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.battleMask?.() === BATTLE_RESULT_CAPTURED ? 0 : 1)
+  return true
+})
+
+/** 명예의 전당에 들어가 봤는가 (`FLAG_GAME_COMPLETED`) */
+on('CheckGameCompleted', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.checkFlag(SYSTEM_FLAG.gameCompleted) ? 1 : 0)
+  return false
+})
+
+on('SetGameCompleted', (ctx) => {
+  ctx.host.vars.setFlag(SYSTEM_FLAG.gameCompleted)
+  return false
+})
+
+/**
+ * 레지 셋이 파티에 다 있는가 (`HasAllLegendaryTitansInParty`).
+ *
+ * 눈덮인신전 지하 5층의 레지기가스가 이걸 본다. 셋이 다 있어야 깨어난다
+ */
+on('CheckHasAllLegendaryTitansInParty', (ctx) => {
+  const party = ctx.host.world.services.party
+  const all = LEGENDARY_TITANS.every((s) => party?.hasSpecies(s) === true)
+  ctx.host.vars.set(ctx.readHalfWord(), all ? 1 : 0)
+  return false
+})
+
+/**
+ * 배포 이벤트를 받았는가 (`SystemVars_CheckDistributionEvent`).
+ *
+ * ⚠️ **변수에 「마법의 수」가 들어 있어야 한다.** 0이나 1이 아니라 이벤트마다
+ * 다른 상수다 — 다크라이 0x1209 · 쉐이미 0x1112 · 아르세우스 0x1123 ·
+ * 로토무 0x1103. 배포를 받지 않고는 열 수 없는 자리라는 뜻이고, 우리도
+ * 지어내지 않는다 — 신월도·꽃의낙원·하늘의피리는 그래서 잠겨 있다
+ */
+on('CheckDistributionEvent', (ctx) => {
+  const event = ctx.readByte()
+  const dest = ctx.readHalfWord()
+  const magic = DISTRIBUTION_MAGIC[event]
+  const got = magic !== undefined
+    && ctx.host.vars.get(VAR_DISTRIBUTION_EVENT_FIRST + event) === magic
+  ctx.host.vars.set(dest, got ? 1 : 0)
+  return false
+})
+
+/** 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`). ⚠️ y는 **반 타일 단위라 2로 나눈다** */
+on('GetPlayer3DPos', (ctx) => {
+  const dx = ctx.readHalfWord()
+  const dy = ctx.readHalfWord()
+  const dz = ctx.readHalfWord()
+  const at = ctx.host.world.services.playerPos?.()
+  ctx.host.vars.set(dx, at?.x ?? 0)
+  ctx.host.vars.set(dy, at?.y ?? 0)
+  ctx.host.vars.set(dz, at?.z ?? 0)
+  return false
+})
+
+/**
+ * 되돌림동굴의 다음 방을 정한다 (`ScrCmd_InitTurnbackCave`).
+ *
+ * 방이 **무작위로 이어진다.** 기둥을 셋 다 보면 기라티나 방, 서른 방을 돌면
+ * 입구, 아니면 지금 본 기둥 수에 맞는 여섯 방 중 하나로 간다.
+ *
+ * ⚠️ **들어온 문만 빼고 나머지 셋을 전부 같은 곳으로 돌린다.** 어느 문으로
+ * 나가든 같은 방이다 — 길을 고르는 것이 아니라 굴리는 것이라는 뜻이다
+ */
+on('InitTurnbackCave', (ctx) => {
+  const pillarsSeen = ctx.readVar()
+  const roomsVisited = ctx.readVar()
+  ctx.host.world.services.turnbackCave?.(pillarsSeen, roomsVisited)
+  return false
+})
+
+/** 전설을 만나기 전에 그 모습을 창에 띄운다 (`ScrCmd_DrawPokemonPreview`) */
+on('DrawPokemonPreview', (ctx) => {
+  const species = ctx.readVar()
+  const gender = ctx.readVar()
+  ctx.host.world.services.preview?.draw(species, gender)
+  // 원작도 여기서 도감에 「봤다」를 적는다 (`FieldSystem_WriteSpeciesSeen`)
+  ctx.host.world.services.seeSpecies?.(species)
+  return false
+})
+
+on('RemovePokemonPreview', (ctx) => {
+  ctx.host.world.services.preview?.remove()
+  return false
+})
+
+/**
+ * 사람이 깜빡인다 · 흔들린다 (`MapObject_Flicker` · `MapObject_Shake`).
+ *
+ * ⚠️ **연출뿐이라 값을 읽고 지나간다.** 원작은 애니메이션이 끝날 때까지 서
+ * 있는데, 우리가 안 서도 스크립트의 갈래는 안 바뀐다 — 없는 것은 흔들림 하나다
+ */
+on('FlickerObject', (ctx) => {
+  ctx.readVar(); ctx.readVar(); ctx.readVar()
+  return false
+})
+
+on('ShakeObject', (ctx) => {
+  ctx.readVar(); ctx.readVar(); ctx.readVar(); ctx.readVar(); ctx.readVar()
+  return false
+})
 
 // ── 표 만들기 ────────────────────────────────────────────────────────────────
 

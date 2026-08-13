@@ -185,6 +185,9 @@ const real: DistortionData | null = existsSync(FILE)
   ? distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8')))
   : null
 
+/** 그 판이 쓰는 통행 격자 */
+const grid = (p: DistortionPlatform) => real!.attrs[p.attr]!
+
 describe('롬 자료', () => {
   it.runIf(real)('맵 열 개가 위에서 아래로 쌓여 있다', () => {
     expect(real!.maps).toHaveLength(10)
@@ -364,12 +367,64 @@ describe('롬 자료', () => {
     }
   })
 
-  it.runIf(real)('뛰는 자리·카메라 자리가 그 맵의 판이나 세계 안에 있다', () => {
+  it.runIf(real)('뛰는 자리는 제가 가리킨 판 **안**에 내려놓는다', () => {
+    // ⚠️ 이 시험이 막는 것: `dx·dy·dz`를 맵 좌표로 착각하는 것. 세계 좌표라
+    // 오프셋을 더하면 판 밖으로 나가고, 그러면 벽에 붙자마자 통행 값이
+    // −2가 되어 그 자리에서 굳는다
+    let checked = 0
     for (const m of real!.maps) {
       for (const j of m.jumps) {
-        expect(cameraAt(m.cameras, j.bounds.x, j.bounds.y, j.bounds.z, j.dir) === null
-          || jumpAt(m.jumps, j.bounds.x, j.bounds.y, j.bounds.z, j.dir) !== null).toBe(true)
+        const p = m.platforms[j.platformIndex]
+        if (p === undefined) continue // 0xFFFF — 벽에서 보통 바닥으로 내려온다
+        const b = j.bounds
+        expect(inBounds(b.x + j.dx, b.y + j.dy, b.z + j.dz, p.bounds),
+          `맵 ${String(m.map)}의 뛰는 자리`).toBe(true)
+        checked++
       }
     }
+    expect(checked).toBe(12)
+  })
+
+  it.runIf(real)('뛰는 자리와 카메라 자리는 **방향까지 맞아야** 걸린다', () => {
+    const b1f = mapOf(real!, MAP.b1f)!
+    const j = b1f.jumps[0]!
+    expect(jumpAt(b1f.jumps, j.bounds.x, j.bounds.y, j.bounds.z, j.dir)).toBe(j)
+    // 같은 칸이라도 다른 쪽을 보고 있으면 안 걸린다
+    const other = (j.dir + 1) % 4
+    expect(jumpAt(b1f.jumps, j.bounds.x, j.bounds.y, j.bounds.z, other)).not.toBe(j)
+    const c = b1f.cameras[0]!
+    expect(cameraAt(b1f.cameras, c.bounds.x, c.bounds.y, c.bounds.z, c.dir)).toBe(c)
+  })
+
+  it.runIf(real)('⚠️ 되돌아 뛰는 자리는 판 번호가 0xFFFF다 — 「어느 판도 아니다」', () => {
+    const back = real!.maps.flatMap((m) => m.jumps).filter((j) => j.platformIndex === 0xffff)
+    expect(back).toHaveLength(8)
+    // 그 값을 그대로 세이브에 적으면 안 된다 — 판 자리가 4비트다
+    expect(0xffff).toBeGreaterThan(MAX_PERSISTED_PLATFORMS)
+  })
+
+  it.runIf(real)('벽 판은 **가로로** 이어져 있다 — 벽을 타고 걷는 길이다', () => {
+    // ⚠️ 벽이 늘 높지는 않다. B3F의 서쪽 벽은 세로로 두 칸인데 걸을 수 있는
+    // 것은 한 줄뿐이다 — 벽을 오르는 것이 아니라 벽에 난 턱을 따라 가는 자리다.
+    // 그래서 세로가 아니라 **가로**로 이어져 있는지를 본다
+    let walls = 0
+    for (const m of real!.maps) {
+      for (const p of m.platforms) {
+        if (p.kind !== PLATFORM_WEST_WALL && p.kind !== PLATFORM_EAST_WALL) continue
+        walls++
+        let bestRun = 0
+        for (let dy = 0; dy <= p.bounds.sy; dy++) {
+          let run = 0
+          for (let dz = 0; dz <= p.bounds.sz; dz++) {
+            const open = !blocked(
+              tileAttributes(p, grid(p), p.bounds.x, p.bounds.y + dy, p.bounds.z + dz))
+            run = open ? run + 1 : 0
+            bestRun = Math.max(bestRun, run)
+          }
+        }
+        expect(bestRun, `맵 ${String(m.map)}의 벽`).toBeGreaterThan(1)
+      }
+    }
+    expect(walls).toBe(5)
   })
 })

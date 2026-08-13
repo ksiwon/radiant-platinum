@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_570
+const RUNNING_SITES = 53_680
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 242
+const IMPLEMENTED_COMMANDS = 264
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -503,6 +503,9 @@ const IDLE_COMMANDS = [
   // 110~113인지 보는 갈래라, 주인공을 안 세운 훑기는 못 지나간다
   'SetStepFlag',
   'ClearStepFlag',
+  // ⚠️ **명예의 전당을 세우는 것은 스크립트가 아니다.** 전당 화면이 끝나면서
+  // 코드가 켠다 (`hall_of_fame.c`). 스크립트에는 묻는 쪽만 있다
+  'SetGameCompleted',
   // ⚠️ **육성가 여덟은 파티가 있어야 닿는다.** 아저씨·아주머니의 대사가 전부
   // `GetDaycareState`로 갈리는데, 훑기는 세이브를 안 붙이므로 늘 "없음"(0)
   // 가지로 간다 — 맡긴 마리가 있어야 열리는 쪽에 이 여덟이 있다
@@ -539,6 +542,9 @@ const IDLE_COMMANDS = [
   // 포켓치를 잠깐 치우는 쪽은 실제 스크립트에 안 나온다 — 되살리는
   // `ShowPoketch`만 쓰인다
   'HidePoketch',
+  // ⚠️ **흔드는 자리는 눈덮인신전 지하 5층 하나뿐이다.** 레지기가스가 깨어나는
+  // 그 장면인데, 그 앞이 레지 셋을 파티에서 세는 갈래라 훑기가 못 지나간다
+  'ShakeObject',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
@@ -551,6 +557,9 @@ const IDLE_COMMANDS = [
   // 하나에 다 모여 있고, 그 앞이 `GetPartyRotomCountAndFirst`로 파티를 세는
   // 갈래다 — 세이브 없는 훑기는 0마리로 답해서 「아무 일도 안 일어났다」로 빠진다
   'GetRotomFormsInSave', 'SetRotomForm', 'GetPartyMonForm2',
+  // ⚠️ **기라티나를 이긴 뒤에만 도는 줄이다** (`…_RemoveGiratina`). 그 방의
+  // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
+  'ResetDistortionWorldPersistedCameraAngles',
 ]
 
 /**

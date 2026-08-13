@@ -330,6 +330,39 @@ export function mapOf(data: Pick<DistortionData, 'maps'>, map: number): Distorti
   return data.maps.find((m) => m.map === map) ?? null
 }
 
+/**
+ * 서 있는 판이 정하는 **걷는 축**.
+ *
+ * · 바닥·천장 — (x, z)를 걷고 y가 판의 높이에 붙는다
+ * · 서쪽·동쪽 벽 — (y, z)를 걷고 x가 판의 x에 붙는다
+ *
+ * ⚠️ **부호가 갈래마다 다르다.** 통행 격자의 세로 자리가 서쪽 벽과 천장에서
+ * 뒤집혀 있어서(`tileAttributes`), 화면에서 오른쪽으로 가는 것이 세계에서는
+ * 축이 줄어드는 쪽이다. 안 맞추면 벽에서 좌우가 뒤집힌 채로 걷는다
+ */
+export interface DistortionFrame {
+  /** 걷는 첫째 축 (둘째는 늘 z다) */
+  axis: 'x' | 'y'
+  /** 그 축이 화면 오른쪽과 같은 방향인가 */
+  sign: 1 | -1
+  /** 고정되는 축의 값 (맵 좌표) */
+  lock: number
+  lockAxis: 'x' | 'y'
+}
+
+/**
+ * 씬이 채우는 다리.
+ *
+ * `src/engine`은 스토어도 자료 파일도 못 읽는다 (PLAN §3.2). 이동 시스템이
+ * 파열된 세계를 알아야 하는 것은 **두 가지뿐**이라 그 둘만 꽂는다
+ */
+export const distortionBridge: {
+  /** 그 칸이 막혔는가. 판 위가 아니면 null — 그때는 평소의 맵 격자를 본다 */
+  blockedAt: ((x: number, y: number, z: number) => boolean | null) | null
+  /** 지금 걷는 축. 파열된 세계 밖이면 null */
+  frame: (() => DistortionFrame | null) | null
+} = { blockedAt: null, frame: null }
+
 /** 파열된 세계의 맵인가 */
 export function isDistortionMap(data: Pick<DistortionData, 'maps'>, map: number): boolean {
   return data.maps.some((m) => m.map === map)

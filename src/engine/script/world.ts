@@ -99,6 +99,49 @@ export interface FieldServices {
   startTrainerBattle?: (trainerID: number) => void
   /** 배틀이 끝났으면 결과, 아직이면 `null` */
   battleResult?: () => 'win' | 'loss' | null
+  /**
+   * 배틀 결과를 원작의 **비트 마스크**로 (`SCRIPT_MANAGER_BATTLE_RESULT`).
+   *
+   * `battleResult`는 이겼나 졌나 둘뿐인데 스크립트는 다섯 갈래로 갈린다 —
+   * 잡았나, 내가 달아났나, 상대가 달아났나까지 본다 (기라티나가 그렇다).
+   * 값은 `BATTLE_RESULT_*`고 **겹친 값**이 있다 (도망 = 포획|승)
+   */
+  battleMask?: () => number | null
+  /**
+   * 오리진폼 기라티나와의 야생전 (`Encounter_NewVsGiratinaOrigin`).
+   *
+   * 전설 조우와 딱 하나 다르다 — 만들어 놓고 **모습을 오리진으로 갈아 끼운다**.
+   * 백금옥 없이 그 모습으로 나오는 것은 파열된 세계 안에서뿐이다
+   */
+  startGiratinaOriginBattle?: (species: number, level: number) => void
+  /**
+   * 「운명적인 만남」 조우 (`Encounter_NewFatefulVsSpeciesAtLevel`).
+   *
+   * 아르세우스가 이 길로 나온다. 잡은 마리에 표시가 남아서 요약 화면의
+   * 트레이너 메모가 달라지고, 쉐이미는 이게 있어야 스카이폼이 된다
+   */
+  startFatefulEncounter?: (species: number, level: number) => void
+  /** 파열된 세계 (PARITY §6.10). 이 세계 안에서만 붙어 있다 */
+  distortion?: {
+    /** 배치표에 없는 사람을 번호로 세운다 (`DistWorld_AddMapObjectWithLocalID`) */
+    addObject: (localID: number) => void
+    removeObject: (localID: number) => void
+    /** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */
+    resetCamera: () => void
+  }
+  /** 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`). y는 이미 타일 단위다 */
+  playerPos?: () => { x: number; y: number; z: number }
+  /**
+   * 되돌림동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
+   *
+   * 들어온 문만 빼고 **나머지 세 문의 목적지를 전부 같은 방으로** 돌린다
+   */
+  turnbackCave?: (pillarsSeen: number, roomsVisited: number) => void
+  /** 전설을 만나기 전의 미리보기 창 (`ScrCmd_DrawPokemonPreview`) */
+  preview?: {
+    draw: (species: number, gender: number) => void
+    remove: () => void
+  }
   /** 트레이너 자료 (더블 여부·대사 색인) */
   trainer?: (id: number) => { double: boolean, msg: Record<string, number> } | null
   /** `TEXT_BANK_NPC_TRAINER_MESSAGES`의 글 하나 */

@@ -25,11 +25,20 @@ import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
-import { mapById, setWarpEventPos, world as mapWorld } from '../engine/map/world'
+import {
+  mapById, setWarpDestination, setWarpEventPos, world as mapWorld,
+} from '../engine/map/world'
 import { LocationEvent } from '../engine/world/journal'
 import { journalGiven, journalGotItem, journalPlain, journalUsedMove } from './journal'
 import { poketchEnable, poketchEnabled, poketchHasApp, poketchRegister, poketchShow } from './poketch'
 import { relearnableMoves } from '../engine/pokemon/relearn'
+import {
+  distortionAddObject, distortionPlayerPos, distortionRemoveObject, distortionResetCamera,
+} from './distortion'
+import { usePreviewStore } from '../state/previewStore'
+import {
+  TURNBACK_WARP_COUNT, turnbackDestination, turnbackEntryWarp,
+} from '../engine/world/turnbackCave'
 
 /** 그 파티 자리가 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`) */
 function relearnFor(slot: number): number[] {
@@ -96,6 +105,14 @@ const POKETCH_APP_NAME_BANK = 457
 
 /** 지금 배틀의 결과. 스크립트가 물어볼 때까지 들고 있는다 */
 let battleResult: 'win' | 'loss' | null = null
+/**
+ * 원작의 결과 마스크 (`BATTLE_RESULT_*`).
+ *
+ * ⚠️ **겹친 값이 있다** — 도망은 `CAPTURED_MON | WIN`이고 상대 도망은
+ * `CAPTURED_MON | LOSE`다. 그래서 "잡았다"와 "달아났다"를 같은 비트로 세면
+ * 안 되고, 스크립트는 이 수 전체를 `GoToIfEq`로 견준다
+ */
+let battleMask: number | null = null
 /** 마지막으로 튼 팡파르. `WaitFanfare`가 이것이 끝나기를 기다린다 */
 let fanfare: number | null = null
 /** 배틀을 스크립트가 열었는가. 야생 조우까지 여기 걸리면 안 된다 */
@@ -292,6 +309,16 @@ function makeEggMon(
   }
 }
 
+/**
+ * 배틀이 어떻게 끝났는가 → 원작의 `BATTLE_RESULT_*` (`constants/battle.h`).
+ *
+ * 이겼다 1 · 졌다 2 · 잡았다 4. 나머지 셋은 그 셋을 겹친 값이다 —
+ * 비긴 판 3(승|패) · 내가 달아난 판 5(포획|승) · 상대가 달아난 판 6(포획|패)
+ */
+const BATTLE_RESULT_OF: Record<string, number> = {
+  win: 1, loss: 2, caught: 4, fled: 5, foeFled: 6,
+}
+
 /** `constants/string.h`의 `MON_NAME_LEN`. 우리가 정한 상한이 아니다 */
 const MON_NAME_LEN = 10
 
@@ -305,6 +332,7 @@ function watchBattle(): () => void {
     if (!waiting) return
     if (state.outcome !== null && prev.outcome === null) {
       battleResult = state.outcome === 'win' ? 'win' : 'loss'
+      battleMask = BATTLE_RESULT_OF[state.outcome]
     }
     // 화면이 닫혀야 스크립트를 놓아준다. 결과만 나오고 화면이 떠 있으면
     // 대사창이 배틀 위에 겹친다
@@ -353,10 +381,12 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
 const services: FieldServices = {
   startTrainerBattle(trainerID: number): void {
     battleResult = null
+    battleMask = null
     waiting = true
     void useBattleStore.getState().startTrainer(trainerID).catch((e: unknown) => {
       // 배틀을 못 열면 스크립트가 영영 기다린다. 진 것으로 놓아준다
       battleResult = 'loss'
+      battleMask = 2
       waiting = false
       // ⚠️ **조용히 넘기면 안 된다.** 한때 여기서 소리 없이 삼켰더니 브라우저
       // 실측에서 트레이너전이 **한 번도 안 열리는데** 이야기는 그냥 지나갔다 —
@@ -368,6 +398,10 @@ const services: FieldServices = {
 
   battleResult(): 'win' | 'loss' | null {
     return waiting ? null : battleResult
+  },
+
+  battleMask(): number | null {
+    return waiting ? null : battleMask
   },
 
   trainer(id: number): { double: boolean, msg: Record<string, number> } | null {
@@ -790,11 +824,13 @@ const services: FieldServices = {
 
   startFirstBattle: (trainerID) => {
     battleResult = null
+    battleMask = null
     waiting = true
     // ⚠️ 보통 트레이너전과 딱 하나 다르다 — **급소가 안 난다**
     // (`BATTLE_STATUS_FIRST_BATTLE` → `BtlCmd_CalcCrit`이 `criticalMul = 1`)
     void useBattleStore.getState().startTrainer(trainerID, { noCrit: true }).catch(() => {
       battleResult = 'loss'
+      battleMask = 2
       waiting = false
     })
   },
@@ -808,11 +844,37 @@ const services: FieldServices = {
    */
   startLegendaryBattle: (species, level) => {
     battleResult = null
+    battleMask = null
     waiting = true
     void useBattleStore.getState().startWild({ species, level }).catch(() => {
       battleResult = 'loss'
+      battleMask = 2
       waiting = false
     })
+  },
+
+  /**
+   * 오리진폼 기라티나 (`Encounter_NewVsGiratinaOrigin`).
+   *
+   * ⚠️ **백금옥과 무관하다.** 파열된 세계 안이라 그 모습인 것이고
+   * (`Pokemon_SetGiratinaOriginForm`), 잡아서 밖으로 데리고 나오면 도로
+   * 어나더폼이 된다 — 그 되돌림은 `SetPartyGiratinaForm`이 한다
+   */
+  startGiratinaOriginBattle: (species, level) => {
+    battleResult = null
+    battleMask = null
+    waiting = true
+    void useBattleStore.getState().startWild({ species, level, form: GIRATINA_ORIGIN })
+      .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+  },
+
+  /** 「운명적인 만남」 (`Encounter_NewFatefulVsSpeciesAtLevel`) */
+  startFatefulEncounter: (species, level) => {
+    battleResult = null
+    battleMask = null
+    waiting = true
+    void useBattleStore.getState().startWild({ species, level, fateful: true })
+      .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
   },
 
   /**
@@ -825,6 +887,7 @@ const services: FieldServices = {
    */
   startTagBattle: (_partner, enemy1) => {
     battleResult = null
+    battleMask = null
     waiting = true
     void useBattleStore.getState().startTrainer(enemy1).catch(() => {
       battleResult = 'loss'
@@ -834,6 +897,44 @@ const services: FieldServices = {
 
   /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */
   seeSpecies: (species) => { useSaveStore.getState().markSeen(species) },
+
+  /** 파열된 세계 (PARITY §6.10) */
+  distortion: {
+    addObject: (localID) => { distortionAddObject(localID, fieldScripts.vars) },
+    removeObject: (localID) => { distortionRemoveObject(localID) },
+    resetCamera: () => { distortionResetCamera() },
+  },
+
+  /**
+   * 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`).
+   *
+   * 파열된 세계에서는 **세계 좌표**다 — 층마다의 오프셋이 이미 더해져 있다.
+   * 밖에서는 그냥 지금 칸이다
+   */
+  playerPos: () => distortionPlayerPos(),
+
+  /** 전설을 만나기 전의 미리보기 창 */
+  preview: {
+    draw: (species, gender) => { usePreviewStore.getState().draw(species, gender) },
+    remove: () => { usePreviewStore.getState().remove() },
+  },
+
+  /**
+   * 되돌림동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
+   *
+   * ⚠️ **들어온 문만 빼고 셋을 전부 같은 방으로 돌린다.** 어느 문으로 나가도
+   * 같은 곳이다 — 길을 고르는 것이 아니라 굴리는 것이다. 들어온 문은 서 있는
+   * 칸으로 역산한다(원작이 x·z를 보고 0~3을 고른다)
+   */
+  turnbackCave: (pillarsSeen, roomsVisited) => {
+    const dest = turnbackDestination(pillarsSeen, roomsVisited, Math.random)
+    const p = worldState.player.position
+    const entry = turnbackEntryWarp(Math.floor(p.x), Math.floor(p.z))
+    for (let warp = 0; warp < TURNBACK_WARP_COUNT; warp++) {
+      if (warp === entry) continue
+      setWarpDestination(warp, dest)
+    }
+  },
 
   /**
    * 별명 짓는 화면 (`ScrCmd_OpenPokemonNamingScreen`).

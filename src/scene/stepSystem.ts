@@ -12,10 +12,12 @@ import { VAR_FRIENDSHIP_STEPS } from '../engine/actor/steps'
 import { HOLD_EFFECT_FRIENDSHIP_UP } from '../engine/pokemon/friendship'
 import { fieldScripts, scriptBusy, start } from '../engine/script/field'
 import { VARS_START } from '../engine/script/vars'
+import { DIR } from '../engine/script/movement'
 import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { poketchStep } from './poketch'
+import { distortionActive, distortionRebindPlatform, distortionStepped } from './distortion'
 import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
@@ -26,6 +28,16 @@ import {
 import { abilityOf, genderOf, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { useHatchStore } from '../state/hatchStore'
 import { NO_LEAD, type Lead } from '../engine/battle/encounterLead'
+
+/**
+ * 보고 있는 쪽을 원작의 방향 번호로 (`FACE_UP`·`DOWN`·`LEFT`·`RIGHT`).
+ *
+ * `facing`은 `atan2(vx, vz)`라 0이 +z, 즉 **남쪽**이다
+ */
+function facingDir(): number {
+  const quarter = ((Math.round(worldState.player.facing / (Math.PI / 2)) % 4) + 4) % 4
+  return [DIR.south, DIR.east, DIR.north, DIR.west][quarter]!
+}
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 3)` — 독이 깎였을 때 */
 const COMMON_SCRIPT_POISON = 2003
@@ -172,6 +184,13 @@ export const stepSystem = {
     lastTile = key
     // 맵에 막 들어선 칸은 세지 않는다 — 원작도 이동이 끝난 자리에서만 센다
     if (first) return
+
+    // 파열된 세계는 칸이 바뀔 때마다 판·카메라·뛰는 자리·사건을 본다
+    // (`DistWorld_HandlePlayerMoved`, PARITY §6.10)
+    if (distortionActive()) {
+      distortionRebindPlatform(p.x, p.y, p.z)
+      distortionStepped(p.x, p.y, p.z, facingDir())
+    }
 
     // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
     // `poketchStep`이 앞에서 막는다

@@ -11,6 +11,7 @@ import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { MessageBox } from '../ui/field/MessageBox'
 import { FishingBox } from '../ui/field/FishingBox'
+import { PokemonPreview } from '../ui/field/PokemonPreview'
 import { HatchScreen } from '../ui/menu/HatchScreen'
 import { FadeOverlay } from '../ui/field/FadeOverlay'
 import { MenuLayer } from '../ui/menu/MenuLayer'
@@ -66,6 +67,7 @@ export function PlayRoute() {
     <>
       <MessageBox />
       <FishingBox />
+      <PokemonPreview />
       <HatchScreen />
       <FadeOverlay />
       <PoketchWidget />

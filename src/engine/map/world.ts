@@ -249,18 +249,32 @@ export function setWarpEventPos(index: number, x: number, z: number): void {
   warpMoved.set(index, { x, z })
 }
 
+/**
+ * 워프의 **목적지 맵**을 갈아 끼운다 (`MapHeaderData_SetWarpEventDestHeaderID`).
+ *
+ * 되돌림동굴이 이걸로 방을 굴린다 — 문은 그대로 두고 그 너머만 바꾼다
+ */
+const warpRetargeted = new Map<number, number>()
+
+export function setWarpDestination(index: number, to: number): void {
+  warpRetargeted.set(index, to)
+}
+
 /** 맵을 옮길 때 버린다. 초기화 스크립트가 돌기 **전**이어야 한다 */
 export function clearWarpOverrides(): void {
   warpMoved.clear()
+  warpRetargeted.clear()
 }
 
 export function warpsOf(mapId: number): Warp[] {
   const list = eventsOf(mapId)?.warps ?? []
   // 수정은 **지금 서 있는 맵**에만 걸린다. 원작도 불러 둔 맵 헤더만 고친다
-  if (warpMoved.size === 0 || mapId !== world.mapId) return list
+  if ((warpMoved.size === 0 && warpRetargeted.size === 0) || mapId !== world.mapId) return list
   return list.map((w, i) => {
     const at = warpMoved.get(i)
-    return at === undefined ? w : { ...w, x: at.x, z: at.z }
+    const to = warpRetargeted.get(i)
+    if (at === undefined && to === undefined) return w
+    return { ...w, x: at?.x ?? w.x, z: at?.z ?? w.z, to: to ?? w.to }
   })
 }
 
