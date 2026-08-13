@@ -8,6 +8,7 @@
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
+//     pnpm shot center --give=... --hof=3 --menu=pcHallOfFame   전당 기록을 열어 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
@@ -421,6 +422,13 @@ async function main() {
         await globalThis.pt.roam(s, h)
       }, [slot ?? 0, hp])
       await page.waitForTimeout(Number(flag('wildAfter', 8000)))
+    }
+    // 전당에 든 것으로 적는다 — `--hof` 또는 `--hof=3`(그만큼 이긴 것으로).
+    // 이야기로는 사천왕 넷과 챔피언을 이겨야 PC의 그 화면이 열린다
+    const hof = args.find((a) => a === '--hof' || a.startsWith('--hof='))
+    if (hof) {
+      const times = hof.includes('=') ? Number(hof.split('=')[1]) : 1
+      await page.evaluate((n) => { globalThis.pt.hof(n) }, times)
     }
     // 모험노트를 받고 오늘 쪽을 채운다 — `--note`.
     // 이야기로는 축복시티에서 받고 하루를 돌아다녀야 한 쪽이 찬다

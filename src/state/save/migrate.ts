@@ -16,6 +16,7 @@ import { newRecentRoutes, newRoamers } from '../../engine/world/roamer'
 import { newJournal } from '../../engine/world/journal'
 import { newPoketch } from '../../engine/world/poketch'
 import { newDistortionState } from '../../engine/world/distortion'
+import { newHallOfFame } from '../../engine/world/hallOfFame'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -178,6 +179,22 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 하는 것과 같다
    */
   17: (data) => ({ ...data, version: 18, distortion: newDistortionState() }),
+
+  /**
+   * 명예의 전당 (PARITY §7.11).
+   *
+   * ⚠️ **한 줄도 지어내지 않는다.** 이미 챔피언을 이긴 리포트라도 그때의 파티가
+   * 어땠는지는 아무 데도 안 남아 있다 — 빈 기록으로 시작하고, 다음에 다시
+   * 이기면 그때부터 쌓인다. 원작도 기록이 깨지면 `HallOfFame_Init`으로 비운다
+   */
+  18: (data) => ({
+    ...data,
+    version: 19,
+    hallOfFame: newHallOfFame(),
+    // ⚠️ **전당에 든 날도 지어내지 않는다.** 언제 이겼는지가 아무 데도 안 남아
+    // 있으므로 비워 두고, 트레이너 카드는 그 줄을 안 그린다
+    trainer: { ...(data.trainer as object), firstClearedAt: null },
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

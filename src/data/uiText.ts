@@ -74,6 +74,31 @@ export const UI_BANK = {
   /** `TEXT_BANK_BERRY_NAMES` · `..._DESCRIPTIONS` — 열매 64종 */
   berryNames: 424,
   berryText: 423,
+  /** `TEXT_BANK_HALL_OF_FAME` — 전당 장면의 열네 줄 */
+  hallOfFame: 351,
+  /** `TEXT_BANK_PC_HALL_OF_FAME` — PC로 다시 보는 화면의 여섯 줄 */
+  pcHallOfFame: 352,
+} as const
+
+/**
+ * 명예의 전당 장면 (`hall_of_fame` 뱅크).
+ *
+ * 5~11번 일곱 줄이 「만난 자리」다. `MET_KIND`가 그 차례 그대로라 `metAt + 갈래`로
+ * 집는다 (`HallOfFame_Text_MetAt + metStringIndex`)
+ */
+export const HALL_OF_FAME_TEXT = {
+  welcome: 0,
+  /** 1 수 · 2 암 · 3 없음 — `{종족} ♂ Lv.{레벨}` */
+  info: [1, 2, 3],
+  ot: 4,
+  metAt: 5,
+  congratulations: 12,
+  playerInfo: 13,
+} as const
+
+/** PC로 다시 보는 화면 (`pc_hall_of_fame` 뱅크) */
+export const PC_HALL_OF_FAME_TEXT = {
+  title: 0, level: 1, ot: 2, male: 3, female: 4, slash: 5,
 } as const
 
 /** 나무열매 태그의 글 자리 (`berry_tags` 뱅크) */

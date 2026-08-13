@@ -32,6 +32,11 @@ export const GROUPS = [
   { name: 'mapTextures', make: 'pnpm extract:mapTextures', match: under('data/tex/') },
   { name: 'sound', make: 'pnpm extract:sound', match: under('data/sound/') },
   { name: 'pokegra', make: 'pnpm extract:pokegra', match: under('data/pokemon/') },
+  {
+    name: 'trainerSprites',
+    make: 'pnpm extract:trainerSprites',
+    match: under('data/trainers/'),
+  },
   { name: 'starterScene', make: 'pnpm extract:starterScene', match: under('data/starter/') },
   { name: 'dialogue', make: 'pnpm extract:dialogue', match: under('data/dialogue/') },
   { name: 'matrices', make: 'pnpm extract:matrices', match: under('data/matrices/') },

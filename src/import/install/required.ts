@@ -30,6 +30,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'boxWallpapers', // 박스 벽지
   'signposts',  // 마을 이름표·도로 표지판 그림
   'starterScene', // 파트너 고르는 장면. 새 게임이 여기서 막힌다
+  'trainerSprites', // 트레이너 그림. 명예의 전당이 주인공을 여기서 꺼낸다
 ] as const
 
 /**

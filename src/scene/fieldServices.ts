@@ -39,6 +39,8 @@ import { usePreviewStore } from '../state/previewStore'
 import {
   TURNBACK_WARP_COUNT, turnbackDestination, turnbackEntryWarp,
 } from '../engine/world/turnbackCave'
+import { entryNumber } from '../engine/world/hallOfFame'
+import { SYSTEM_FLAG } from '../engine/script/commands'
 
 /** 그 파티 자리가 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`) */
 function relearnFor(slot: number): number[] {
@@ -798,6 +800,29 @@ const services: FieldServices = {
   },
 
   diploma: { show: (national) => { useMenuStore.getState().openDiploma(national) } },
+
+  /**
+   * 명예의 전당 (PARITY §7.11) — `ClearGame`.
+   *
+   * 장면을 열기 **전에** 세이브를 손본다. 원작도 `ClearGame()`이 깃발과 자리를
+   * 먼저 세우고 나서 화면을 띄운다 (`FieldTask_InitCall`)
+   */
+  hallOfFame: {
+    clear: () => {
+      const vars = fieldScripts.vars
+      // ⚠️ **전당에 든 날은 처음 한 번만 적는다** (`if (CheckGameCompleted() == FALSE)`)
+      if (!vars.checkFlag(SYSTEM_FLAG.gameCompleted)) {
+        const save = useSaveStore.getState()
+        useSaveStore.setState({ trainer: { ...save.trainer, firstClearedAt: Date.now() } })
+      }
+      // ⚠️ **이 깃발을 세우는 것은 스크립트가 아니다** (`SystemFlag_SetGameCompleted`가
+      // `ClearGame()` 안에 있다). 여기서 안 세우면 후반부가 통째로 안 열린다
+      vars.setFlag(SYSTEM_FLAG.gameCompleted)
+      useMenuStore.getState().openHallOfFame()
+    },
+    victories: () => entryNumber(useSaveStore.getState().hallOfFame, 0),
+    openPC: () => { useMenuStore.getState().push('pcHallOfFame') },
+  },
 
   gear: {
     giveRunningShoes: () => { useSaveStore.setState({ runningShoes: true }) },

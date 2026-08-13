@@ -22,6 +22,9 @@ import {
   POKETCH_MARKER_COUNT, POKETCH_REGISTRY_SIZE,
 } from '../../engine/world/poketch'
 import { MAX_GHOST_PROP_GROUPS, MAX_PERSISTED_PLATFORMS } from '../../engine/world/distortion'
+import {
+  HALL_OF_FAME_PARTY, MAX_HALL_OF_FAME_ENTRIES, MAX_TOTAL_ENTRIES,
+} from '../../engine/world/hallOfFame'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -149,6 +152,14 @@ export const saveSchema = z.object({
     secretId: int(0, 0xffff),
     // 999시간을 훨씬 넘겨도 되지만 무한대·NaN은 막는다
     playtimeMs: z.number().int().min(0).max(1e13),
+    /**
+     * 처음 명예의 전당에 든 때 (`GameTime.firstCompletionTimestamp`).
+     *
+     * ⚠️ **첫 번째만 적는다.** 두 번째부터는 안 덮어쓴다 — 원작이
+     * `if (SystemFlag_CheckGameCompleted() == FALSE)` 안에서만 찍는다.
+     * 트레이너 카드가 이 날짜를 보여 준다 (`trainer_case.c`)
+     */
+    firstClearedAt: z.number().int().min(0).max(1e15).nullable(),
   }),
   rivalName: z.string().max(24),
   party: z.array(monSchema).max(PARTY_MAX),
@@ -332,6 +343,33 @@ export const saveSchema = z.object({
     cameraAngleZ: int(0, 0xffff),
     platformFlags: int(0, 0xffff),
     puzzleFlags: int(0, 0xffffffff),
+  }),
+
+  /**
+   * 명예의 전당 (PARITY §7.11) — `HallOfFame`.
+   *
+   * ⚠️ **서른 칸을 미리 벌려 두지 않는다.** 원작은 구조체라 늘 서른 줄이지만
+   * 우리 리포트는 JSON이라 빈 줄이 그대로 용량이 된다. 규칙은
+   * `engine/world/hallOfFame.ts`가 그 차이를 흡수한다
+   */
+  hallOfFame: z.object({
+    entries: z.array(z.object({
+      pokemon: z.array(z.object({
+        species: int(1, 493),
+        level: int(1, 100),
+        form: int(0, 63),
+        pid: int(0, 0xffffffff),
+        otId: int(0, 0xffffffff),
+        nickname: z.string().max(24),
+        otName: z.string().max(24),
+        moves: z.array(int(0, 511)).max(4),
+      })).max(HALL_OF_FAME_PARTY),
+      year: int(0, 99),
+      month: int(1, 12),
+      day: int(1, 31),
+    })).max(MAX_HALL_OF_FAME_ENTRIES),
+    next: int(0, MAX_HALL_OF_FAME_ENTRIES - 1),
+    total: int(0, MAX_TOTAL_ENTRIES),
   }),
 })
 

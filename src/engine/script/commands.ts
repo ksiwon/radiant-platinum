@@ -1346,6 +1346,29 @@ on('HealParty', (ctx) => {
   return false
 })
 
+/**
+ * 회복기 위에 볼이 하나씩 놓이는 연출 (`ScrCmd_PlayPokecenterHealingAnimation` ·
+ * `ScrCmd_PlayHallOfFameHealingAnimation`).
+ *
+ * ⚠️ **소리만 난다.** 원작은 회복기 소품을 찾아 그 위에 미니 몬스터볼 모델을
+ * 파티 마릿수만큼 12프레임 간격으로 얹고, 다 놓이면 한 번 돌린다
+ * (`overlay006/healing_machine_animation/`). 우리는 소품을 **맵 메시에 구워
+ * 두어서** 소품 하나를 자리 잡아 새로 띄울 길이 아직 없다 (PARITY §8.11).
+ *
+ * 인자는 **꼭 읽는다** — 폭이 2바이트다
+ */
+const healingAnimation: CommandFn = (ctx) => {
+  ctx.readVar()
+  ctx.host.world.services.sound?.playEffect(SFX_HEAL)
+  return false
+}
+
+/** `SEQ_SE_DP_KAIFUKU`. 회복기가 내는 소리 */
+const SFX_HEAL = 1516
+
+on('PlayPokecenterHealingAnimation', healingAnimation)
+on('PlayHallOfFameHealingAnimation', healingAnimation)
+
 on('SetBlackOutWarpId', (ctx) => {
   // 인자는 **1부터 센 번호**다 (`MapSpawnIdToIndex`가 하나를 뺀다).
   // ⚠️ 여기도 **먼저 읽는다** — `?.`는 왼쪽이 없으면 오른쪽을 아예 안 계산한다
@@ -1619,6 +1642,51 @@ on('ShowDiplomaSinnoh', (ctx) => {
 on('ShowDiplomaNationalDex', (ctx) => {
   ctx.host.world.services.diploma?.show(true)
   return true
+})
+
+// ── 명예의 전당 (PARITY §7.11) ───────────────────────────────────────────────
+
+/**
+ * 이야기를 끝낸다 (`ScrCmd_ClearGame` → `clear_game.c`).
+ *
+ * ⚠️ **이 명령 뒤로는 아무것도 안 돈다.** 원작이 장면 끝에서
+ * `OS_ResetSystem(RESET_CLEAN)`을 부르므로, 전당 방 스크립트의 남은 네 줄
+ * (`ReturnToField`·`FadeScreenIn`·`WaitFadeScreen`·`ReleaseAll`)은 실제로
+ * 실행되지 않는다. 우리도 타이틀로 나가면서 이 문맥이 통째로 사라진다
+ */
+on('ClearGame', (ctx) => {
+  ctx.host.world.services.hallOfFame?.clear()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+/** PC의 「명예의 전당」 (`ScrCmd_OpenPCHallOfFameScreen`) */
+on('OpenPCHallOfFameScreen', (ctx) => {
+  ctx.host.world.services.hallOfFame?.openPC()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+/**
+ * 여태 몇 번 전당에 들었는가 (`ScrCmd_GetLeagueVictories`).
+ *
+ * ⚠️ **기록이 깨졌으면 0이다.** 원작이 `LOAD_RESULT_CORRUPT`도 0으로 답한다 —
+ * 그래서 처음 이긴 사람과 같은 대사가 나온다
+ */
+on('GetLeagueVictories', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.hallOfFame?.victories() ?? 0)
+  return false
+})
+
+/**
+ * 기록이 깨졌는가 (`ScrCmd_CheckIsHallOfFameCorrupted`).
+ *
+ * 우리 리포트는 통째로 검증하고 들이므로 여기까지 깨진 채로 올 수가 없다.
+ * 늘 거짓이다 — 값을 안 쓰는 것과 다르다
+ */
+on('CheckIsHallOfFameCorrupted', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
 })
 
 // ── 포켓치 (PARITY §7.3) ─────────────────────────────────────────────────────

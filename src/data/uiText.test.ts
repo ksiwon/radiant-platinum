@@ -47,6 +47,8 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   berryTags: 'berry_tags',
   berryNames: 'berry_names',
   berryText: 'berry_descriptions',
+  hallOfFame: 'hall_of_fame',
+  pcHallOfFame: 'pc_hall_of_fame',
 }
 
 describe('메뉴 글', () => {

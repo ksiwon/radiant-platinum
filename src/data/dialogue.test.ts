@@ -34,8 +34,8 @@ maybe('대사', () => {
     // 파트너를 고르는 화면(360), 요약 화면(455)·특별한 만난 자리(435)·달 이름(414)·
     // 타운맵(615), 모험노트 셋(366 노트·378 체육관 이름·608 시간대),
     // 포켓치 넷(457 앱 이름·456 기술효과체커·458 이력·459 나무열매), 상장(1),
-    // 나무열매 셋(398 태그·424 이름·423 설명)
-    expect(index.banks.length).toBe(465)
+    // 나무열매 셋(398 태그·424 이름·423 설명), 명예의 전당 둘(351 장면·352 PC)
+    expect(index.banks.length).toBe(467)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -110,7 +110,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 3049, ko: 3039, ja: 3252 })
+    expect(counted).toEqual({ en: 3071, ko: 3061, ja: 3274 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

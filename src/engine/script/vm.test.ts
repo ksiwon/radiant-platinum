@@ -443,9 +443,9 @@ const LOOPING_ENTRIES_YES = 34
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_680
+const RUNNING_SITES = 53_689
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 264
+const IMPLEMENTED_COMMANDS = 270
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -475,6 +475,10 @@ const IDLE_COMMANDS = [
   // 재대결은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
   // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
   'GetRematchTrainerID',
+  // ⚠️ **PC의 「명예의 전당」은 목록 메뉴 너머다.** 주인공 집 PC 메뉴가
+  // `FLAG_GAME_COMPLETED`가 서야 그 줄을 붙이고(`CommonScript_InitPlayersPCMenu`),
+  // 훑기는 깨끗한 플래그로 도니 그 항목이 아예 안 생긴다
+  'OpenPCHallOfFameScreen',
   // ⚠️ **원본이 안 쓰는 자리에만 있다.** 처음 고른 파트너 이름을 찍는 곳은
   // 201번도로에 딱 한 번 나오는데 그것이 `Route201_…_Unused` 안이라 어느
   // 진입점에서도 안 닿는다. 반대 성별 주인공 쪽은 필드 스크립트에 0회다
@@ -560,6 +564,8 @@ const IDLE_COMMANDS = [
   // ⚠️ **기라티나를 이긴 뒤에만 도는 줄이다** (`…_RemoveGiratina`). 그 방의
   // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
   'ResetDistortionWorldPersistedCameraAngles',
+  // 위와 같은 자리다 — 전당 항목을 고른 **뒤에** 나오는 줄이라 더 못 닿는다
+  'CheckIsHallOfFameCorrupted',
 ]
 
 /**

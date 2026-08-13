@@ -215,6 +215,9 @@ const EXTRA_BANKS = [
   'TEXT_BANK_DIPLOMA',
   // 나무열매 태그 — 이름표 열여섯과 열매 이름·설명 예순넷
   'TEXT_BANK_BERRY_TAGS', 'TEXT_BANK_BERRY_NAMES', 'TEXT_BANK_BERRY_DESCRIPTIONS',
+  // 명예의 전당 (`cutscenes/hall_of_fame.c`)과 PC로 다시 보는 화면
+  // (`applications/pc_hall_of_fame`). 둘 다 스크립트가 안 가리키는 응용 프로그램이다
+  'TEXT_BANK_HALL_OF_FAME', 'TEXT_BANK_PC_HALL_OF_FAME',
 ]
 
 function main() {

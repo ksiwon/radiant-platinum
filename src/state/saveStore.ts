@@ -30,6 +30,7 @@ import {
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
+import { newHallOfFame, type HallOfFameRecord } from '../engine/world/hallOfFame'
 
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
@@ -40,6 +41,13 @@ export interface TrainerInfo {
   id: number
   secretId: number
   playtimeMs: number
+  /**
+   * 처음 명예의 전당에 든 때 (`GameTime.firstCompletionTimestamp`, epoch ms).
+   *
+   * ⚠️ **첫 번째만 적는다** — 원작이 `if (CheckGameCompleted() == FALSE)` 안에서만
+   * 찍는다. 아직 안 이겼으면 null이고, 트레이너 카드가 그 줄을 안 그린다
+   */
+  firstClearedAt: number | null
 }
 
 /**
@@ -233,9 +241,16 @@ export interface SaveData {
    * 어차피 처음부터 잡힌다
    */
   distortion: DistortionState
+  /**
+   * 명예의 전당 (PARITY §7.11) — `HallOfFame`.
+   *
+   * 리그를 이길 때마다 그때의 파티가 한 줄씩 남고, 서른 줄이 차면 제일 오래된
+   * 것을 덮어쓴다. PC의 「명예의 전당」이 이걸 읽는다
+   */
+  hallOfFame: HallOfFameRecord
 }
 
-export const SAVE_VERSION = 18
+export const SAVE_VERSION = 19
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -274,6 +289,7 @@ export function createNewSave(): SaveData {
       id: Math.floor(Math.random() * 0x10000),
       secretId: Math.floor(Math.random() * 0x10000),
       playtimeMs: 0,
+      firstClearedAt: null,
     },
     rivalName: '',
     party: [],
@@ -310,6 +326,7 @@ export function createNewSave(): SaveData {
     journal: newJournal(),
     poketch: newPoketch(),
     distortion: newDistortionState(),
+    hallOfFame: newHallOfFame(),
   }
 }
 
@@ -533,6 +550,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     journal: s.journal,
     poketch: s.poketch,
     distortion: s.distortion,
+    hallOfFame: s.hallOfFame,
   }
 }
 

@@ -361,6 +361,20 @@ export interface FieldServices {
   }
   /** 도감 완성 상장 (PARITY §5 `diploma`) */
   diploma?: { show: (national: boolean) => void }
+  /** 명예의 전당 (PARITY §7.11) — `ClearGame` · `OpenPCHallOfFameScreen` */
+  hallOfFame?: {
+    /**
+     * 이야기를 끝낸다 (`ClearGame`).
+     *
+     * 깃발과 전당에 든 날을 먼저 세우고 장면을 연다. 장면이 리포트를 쓰고
+     * **타이틀로 나간다** — 그래서 이 뒤의 스크립트 줄은 안 돈다
+     */
+    clear: () => void
+    /** 여태 몇 번 들었는가 (`HallOfFame_GetEntryNum(hof, 0)`) */
+    victories: () => number
+    /** PC로 다시 보는 화면을 연다 */
+    openPC: () => void
+  }
   /** 모험노트 (PARITY §7.4) — `ScrCmd_GiveJournal` · `ScrCmd_CreateJournalEvent` */
   journal?: {
     /** 노트를 받는다. 첫 쪽이 여기서 펼쳐진다 */

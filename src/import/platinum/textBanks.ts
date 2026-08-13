@@ -420,6 +420,7 @@ export const TEXT_BANK_NAMES = [
   'journal_entries', 'gym_names', 'times_of_day',
   'poketch_app_names', 'poketch_move_tester', 'diploma',
   'berry_tags', 'berry_names', 'berry_descriptions',
+  'hall_of_fame', 'pc_hall_of_fame',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

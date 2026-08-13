@@ -30,6 +30,11 @@ export type MenuScreen =
   | 'evolution'
   // 이름 짓기. 스크립트가 열고 `naming`이 무엇의 이름인지를 든다
   | 'naming'
+  // 명예의 전당 장면. `ClearGame`이 열고 **끝나면 타이틀로 나간다** —
+  // 그래서 물러날 자리가 없다
+  | 'hallOfFame'
+  // PC의 「명예의 전당」. `OpenPCHallOfFameScreen`이 연다
+  | 'pcHallOfFame'
   // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
   // 스택이 비어 있지 않아야 필드 입력이 멈추고 X가 시작 메뉴를 열지 않는다.
   // 그림은 `App`이 DEV에서만 동적으로 받아 그린다
@@ -114,6 +119,8 @@ interface MenuStore {
   finishReminder: (learned: boolean) => void
   /** 상장을 연다 */
   openDiploma: (national: boolean) => void
+  /** 명예의 전당 장면을 연다 (`ClearGame`) */
+  openHallOfFame: () => void
   /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다 */
   openBerryTag: (item: number) => void
   /** 도구 쓰기를 끝낸다 */
@@ -148,6 +155,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   }),
 
   finishReminder: (learned) => { set({ reminderLearned: learned, reminder: null }) },
+
+  openHallOfFame: () => set(() => {
+    const stack: MenuScreen[] = ['hallOfFame']
+    capture(stack)
+    return { stack, top: 'hallOfFame' as const }
+  }),
 
   openDiploma: (national) => set(() => {
     const stack: MenuScreen[] = ['diploma']

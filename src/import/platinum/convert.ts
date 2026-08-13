@@ -27,6 +27,7 @@ import { convertBoxWallpapers } from './boxWallpapers'
 import { convertSignposts } from './signposts'
 import { convertStarterScene } from './starterScene'
 import { convertTrainers } from './trainers'
+import { convertTrainerSprites } from './trainerSprites'
 import { convertSpawns } from './spawns'
 import {
   breathe, check, json, BREATH,
@@ -269,5 +270,11 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/pokemon/{종족}_{front,back}.png', 'data/pokemon/index.json'],
     converter: 1,
     convert: convertPokegra,
+  },
+  {
+    name: 'trainerSprites',
+    outputs: ['data/trainers/{갈래}.png', 'data/trainers/index.json'],
+    converter: 1,
+    convert: convertTrainerSprites,
   },
 ]

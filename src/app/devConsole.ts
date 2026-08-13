@@ -25,6 +25,7 @@ import { POKETCH_APP_COUNT } from '../engine/world/poketch'
 import { poketchEnable, poketchRegister } from '../scene/poketch'
 import { usePoketchStore } from '../state/poketchStore'
 import { fieldScripts } from '../engine/script/field'
+import { addHallOfFameEntry } from '../engine/world/hallOfFame'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import {
   journalArrived, journalBeatTrainer, journalGiven, journalGotItem, journalPlain,
@@ -150,6 +151,26 @@ export function installDevConsole(): void {
       }
       await useBattleStore.getState().startWild({ species, level, roamer: slot })
       return useSaveStore.getState().roamers[slot]
+    },
+    /**
+     * 전당에 든 것으로 적는다 (PARITY §7.11).
+     *
+     * 이야기로는 사천왕 넷과 챔피언을 이겨야 한 줄이 생긴다. PC의 「명예의
+     * 전당」 화면을 보려면 이 길이 있어야 한다 — **쓰는 함수는 실제 것 그대로**라
+     * 고리가 어떻게 감기는지도 여기서 갈린다
+     *
+     * @param times 몇 번 이긴 것으로 할지. 서른을 넘기면 고리가 감긴다
+     */
+    hof: (times = 1) => {
+      const party = useSaveStore.getState().party
+      if (party.length === 0) return null
+      let record = useSaveStore.getState().hallOfFame
+      for (let i = 0; i < times; i++) {
+        record = addHallOfFameEntry(record, party, { year: 8, month: 1 + (i % 12), day: 1 + i % 28 })
+      }
+      useSaveStore.setState({ hallOfFame: record })
+      fieldScripts.vars.setFlag(SYSTEM_FLAG.gameCompleted)
+      return record.total
     },
     /**
      * 모험노트를 받고 오늘 쪽을 채운다 (PARITY §7.4).

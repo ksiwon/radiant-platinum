@@ -17,6 +17,13 @@ function playtime(ms: number): string {
   return `${String(Math.floor(minutes / 60))}:${String(minutes % 60).padStart(2, '0')}`
 }
 
+/** 처음 전당에 든 때. 원작도 날짜와 시:분까지 찍는다 (`TrainerCase_SetDates`) */
+function debut(at: number): string {
+  const d = new Date(at)
+  return `${String(d.getFullYear())}. ${String(d.getMonth() + 1)}. ${String(d.getDate())}`
+    + ` ${String(d.getHours())}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 export function TrainerCard() {
   const back = useMenuStore((s) => s.back)
   const { trainer, money, badges, pokedex } = useSaveStore()
@@ -43,6 +50,14 @@ export function TrainerCard() {
             <dt>소지금</dt><dd>{money.toLocaleString('ko-KR')}원</dd>
             <dt>도감</dt><dd>{caught}마리</dd>
             <dt>플레이 시간</dt><dd>{playtime(trainer.playtimeMs)}</dd>
+            {/* 원작 카드도 **이긴 뒤에만** 이 줄을 그린다 (`TrainerCase_SetDates`가
+                `gameCompleted`를 같이 받는다) */}
+            {trainer.firstClearedAt !== null && (
+              <>
+                <dt>명예의 전당</dt>
+                <dd>{debut(trainer.firstClearedAt)}</dd>
+              </>
+            )}
           </dl>
 
           <div className={own.badgeHead}>배지</div>

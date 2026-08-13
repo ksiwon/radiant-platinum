@@ -1579,7 +1579,7 @@ function* run(script: Script): Generator<Wait, void> {
 
 ### 9.1 슬롯 하나 — 원작이 그렇다
 
-`SAVE_VERSION`은 11이고 슬롯은 **리포트 한 벌**이다. `report()`를 부른 시점만
+`SAVE_VERSION`은 19이고 슬롯은 **리포트 한 벌**이다. `report()`를 부른 시점만
 `radiant-platinum/save/report` IndexedDB에 structured clone으로 저장한다.
 자동저장은 하지 않는다.
 
