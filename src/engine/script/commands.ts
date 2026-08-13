@@ -515,6 +515,113 @@ on('CheckMoney', (ctx) => {
   return false
 })
 
+// 값을 **변수**로 받는 짝. 하는 일은 위와 같다
+on('RemoveMoney2', (ctx) => {
+  const amount = ctx.readVar()
+  ctx.host.world.services.money?.spend(amount)
+  return false
+})
+
+on('CheckMoney2', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const amount = ctx.readVar()
+  ctx.host.world.vars.set(dest, (ctx.host.world.services.money?.get() ?? 0) >= amount ? 1 : 0)
+  return false
+})
+
+// ── 소지금·코인 창 ───────────────────────────────────────────────────────────
+//
+// 필드 스크립트에서 가장 자주 나오는 명령 셋이다 (`HideMoney` 46자리).
+// 상점·육성가·게임코너 앞에서 「지금 얼마 있는지」를 띄워 두는 작은 창이고,
+// 안 만들면 값을 흥정하는 대사가 전부 허공에 뜬다.
+//
+// ⚠️ **자리가 타일 좌표다** — `ShowMoney 20, 2`는 왼쪽 20칸·위 2칸이다.
+// 창 크기는 코드가 정한다 (돈 10×4 · 코인 10×2).
+
+on('ShowMoney', (ctx) => {
+  const left = ctx.readVar()
+  const top = ctx.readVar()
+  ctx.host.world.services.currency?.showMoney(left, top)
+  return false
+})
+
+on('HideMoney', (ctx) => {
+  ctx.host.world.services.currency?.hideMoney()
+  return false
+})
+
+on('UpdateMoneyDisplay', (ctx) => {
+  ctx.host.world.services.currency?.updateMoney()
+  return false
+})
+
+on('ShowCoins', (ctx) => {
+  const left = ctx.readVar()
+  const top = ctx.readVar()
+  ctx.host.world.services.currency?.showCoins(left, top)
+  return false
+})
+
+on('HideCoins', (ctx) => {
+  ctx.host.world.services.currency?.hideCoins()
+  return false
+})
+
+on('UpdateCoinDisplay', (ctx) => {
+  ctx.host.world.services.currency?.updateCoins()
+  return false
+})
+
+// ── 코인 (`coins.c`) ─────────────────────────────────────────────────────────
+
+on('GetCoinsAmount', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.coins?.get() ?? 0)
+  return false
+})
+
+on('AddCoins', (ctx) => {
+  const amount = ctx.readVar()
+  ctx.host.world.services.coins?.add(amount)
+  return false
+})
+
+on('SubtractCoinsFromValue', (ctx) => {
+  const amount = ctx.readVar()
+  ctx.host.world.services.coins?.subtract(amount)
+  return false
+})
+
+on('SubtractCoinsFromVar', (ctx) => {
+  // ⚠️ **변수 번호를 먼저 읽고 그 값을 쓴다** (`GetVarPointer`). 폭은 같지만
+  // 원작이 값이 아니라 포인터를 받는 자리다
+  const amount = ctx.host.vars.get(ctx.readHalfWord())
+  ctx.host.world.services.coins?.subtract(amount)
+  return false
+})
+
+on('HasCoinsFromValue', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const amount = ctx.readWord()
+  ctx.host.vars.set(dest, (ctx.host.world.services.coins?.get() ?? 0) >= amount ? 1 : 0)
+  return false
+})
+
+on('HasCoinsFromVar', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const amount = ctx.host.vars.get(ctx.readHalfWord())
+  ctx.host.vars.set(dest, (ctx.host.world.services.coins?.get() ?? 0) >= amount ? 1 : 0)
+  return false
+})
+
+on('CheckCanAddCoins', (ctx) => {
+  // ⚠️ **「더할 수 있나」와 「더해진다」의 답이 다르다.** 이쪽은 합이 상한
+  // 이하인지만 보고, `AddCoins`는 이미 가득이면 한 닢도 안 넣는다 (`coins.ts`)
+  const dest = ctx.readHalfWord()
+  const amount = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.coins?.canAdd(amount) === true ? 1 : 0)
+  return false
+})
+
 // ── 이동 ─────────────────────────────────────────────────────────────────────
 //
 // `ApplyMovement`는 **또 다른 언어**를 가리킨다 — `{동작, 횟수}` 목록이다
@@ -2432,6 +2539,73 @@ on('SetPlayerState', (ctx) => {
 })
 
 on('ChangePlayerState', () => false)
+
+// ── 필드 기술과 자전거 ───────────────────────────────────────────────────────
+//
+// 파도타기·폭포오르기·록클라임은 **길이 둘**이다. 파티 화면의 기술 목록에서
+// 고르는 길은 이미 있었고(`fieldMoveFromMenu`), 물이나 벽에 대고 확인을
+// 누르면 "쓰겠습니까"를 묻는 길이 이 명령들이다. 둘 다 같은 규칙으로 간다.
+
+for (const [name, id] of [
+  ['UseSurf', 'surf'],
+  ['UseWaterfall', 'waterfall'],
+  ['UseRockClimb', 'rockClimb'],
+] as const) {
+  on(name, (ctx) => {
+    // 인자는 **연출을 어느 쪽으로 낼지**다. 우리는 방향을 주인공에게서 읽으므로
+    // 읽고 지나간다 (`FieldTask_StartUseSurf(task, dir, ScriptContext_GetVar(ctx))`)
+    ctx.readVar()
+    ctx.host.world.services.fieldMoves?.use(id)
+    return true
+  })
+}
+
+/**
+ * 괴력을 켜고·끄고·묻는다 (`ScrCmd_DoStrengthFunc`).
+ *
+ * ⚠️ **갈래마다 인자 수가 다르다.** 묻는 쪽(2)만 답 변수를 하나 더 읽는다 —
+ * 늘 읽으면 켜는 자리에서 두 바이트가 어긋난다
+ */
+on('DoStrengthFunc', (ctx) => {
+  const mode = ctx.readByte()
+  if (mode === FIELD_MOVE_FUNC.check) {
+    const dest = ctx.readHalfWord()
+    ctx.host.vars.set(dest, ctx.host.vars.checkFlag(FLAG_STRENGTH_ACTIVE) ? 1 : 0)
+    return false
+  }
+  const on_ = mode === FIELD_MOVE_FUNC.set
+  if (on_) ctx.host.vars.setFlag(FLAG_STRENGTH_ACTIVE)
+  else ctx.host.vars.clearFlag(FLAG_STRENGTH_ACTIVE)
+  ctx.host.world.services.fieldMoves?.strength(on_ ? 'set' : 'clear')
+  return false
+})
+
+/** `constants/scrcmd.h`의 `FIELD_MOVE_FUNC_*` — 0 끈다 · 1 켠다 · 2 묻는다 */
+const FIELD_MOVE_FUNC = { clear: 0, set: 1, check: 2 } as const
+/** `generated/vars_flags.txt`의 `FLAG_STRENGTH_ACTIVE` */
+const FLAG_STRENGTH_ACTIVE = 2402
+
+on('SetPlayerBike', (ctx) => {
+  // ⚠️ **바이트지 변수가 아니다** (`ScriptContext_ReadByte`).
+  // ⚠️ **인자를 먼저 읽는다** — `bike?.ride(ctx.readByte())`로 쓰면 서비스가
+  // 없을 때 `?.`가 오른쪽을 아예 계산하지 않아 한 바이트가 안 읽히고, 그
+  // 뒤가 통째로 밀린다. 실제로 그렇게 써서 다섯 맵이 해독 오류로 섰다
+  const on_ = ctx.readByte() === 1
+  ctx.host.world.services.bike?.ride(on_)
+  return false
+})
+
+on('CheckPlayerOnBike', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.bike?.riding() === true ? 1 : 0)
+  return false
+})
+
+on('ForceBicycling', (ctx) => {
+  // 자전거로드 위. 서 있는 동안은 다리에서 못 내린다
+  const on_ = ctx.readByte() !== 0
+  ctx.host.world.services.bike?.setRoad(on_)
+  return false
+})
 
 // ── 아직 화면이 없는 것들 ────────────────────────────────────────────────────
 //

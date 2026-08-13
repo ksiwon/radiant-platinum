@@ -18,7 +18,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
-import { BIKE_WHY, bikeBlock } from '../../engine/actor/bike'
+import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
 import { castRod } from '../../scene/fishingSystem'
 import { isSurfable } from '../../engine/map/zone'
@@ -138,7 +138,7 @@ export function BagScreen() {
     switch (action.kind) {
       case 'bike': {
         const here = grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
-        const why = bikeBlock(header, here, p.surfing, p.cycling)
+        const why = bikeBlock(header, here, p.surfing, p.cycling, isOnCyclingRoad())
         if (why !== null) { setDenied(BIKE_WHY[why]); return }
         p.cycling = !p.cycling
         p.pedalling = 0

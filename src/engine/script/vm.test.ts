@@ -446,9 +446,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 53_845
+const RUNNING_SITES = 53_970
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 313
+const IMPLEMENTED_COMMANDS = 335
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -468,6 +468,10 @@ const IDLE_COMMANDS = [
   'SetSpecialBGM',
   // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
   'GiveMoney',
+  // ⚠️ **코인은 게임코너 안에서만 움직인다.** 슬롯도 룰렛도 목록 메뉴로
+  // 들어가는데 그 화면이 아직 없어서, 창을 여는 `ShowCoins`까지만 밟히고
+  // 닫고·다시 찍고·더하고 빼는 다섯은 그 너머에 있다
+  'HideCoins', 'UpdateCoinDisplay', 'GetCoinsAmount', 'AddCoins', 'SubtractCoinsFromValue',
   // ⚠️ **폼을 묻는 자리는 파티 너머다.** 유적마을 동쪽 집의 「도롱마담 아저씨」
   // 하나뿐이고(`scripts_solaceon_town_east_house.s`), 그 앞이 파티에 도롱마담이
   // 있는지 보는 갈래라 세이브 없는 훑기가 못 지나간다
@@ -482,6 +486,9 @@ const IDLE_COMMANDS = [
   // `FLAG_GAME_COMPLETED`가 서야 그 줄을 붙이고(`CommonScript_InitPlayersPCMenu`),
   // 훑기는 깨끗한 플래그로 도니 그 항목이 아예 안 생긴다
   'OpenPCHallOfFameScreen',
+  // 자전거로드에 들어서는 자리는 206번도로의 문 안쪽이고, 그 앞이 자전거를
+  // 가졌는지 보는 갈래라 훑기가 못 지나간다
+  'ForceBicycling',
   // ⚠️ **무연시티 포켓몬센터의 「모습」은 목록 메뉴 너머다.** 후보 넷을
   // `LoadTrainerAppearances`로 만들고 `ShowMenu`로 고르게 하는데, 훑기는
   // 메뉴가 답하기를 기다리지 않으므로 고른 뒤의 가지에 못 든다
@@ -526,6 +533,8 @@ const IDLE_COMMANDS = [
   // 가지로 간다 — 맡긴 마리가 있어야 열리는 쪽에 이 여덟이 있다
   // (opcode 순서대로 늘어놓는다)
   'CountPartyEggs',
+  // 값을 변수로 받아 돈을 깎는 쪽은 육성가와 상점 너머다
+  'RemoveMoney2',
   'MoveMonToPartyFromDaycareSlot',
   'ResetDaycarePersonalityAndStepCounter',
   'GiveEggFromDaycare',
@@ -579,10 +588,12 @@ const IDLE_COMMANDS = [
   // ⚠️ **흔드는 자리는 눈덮인신전 지하 5층 하나뿐이다.** 레지기가스가 깨어나는
   // 그 장면인데, 그 앞이 레지 셋을 파티에서 세는 갈래라 훑기가 못 지나간다
   'ShakeObject',
+  'HasCoinsFromValue', 'CheckCanAddCoins',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
   'SetInitialVolumeForSequence',
+  'SubtractCoinsFromVar',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
   'FindPartySlotWithSpecies',

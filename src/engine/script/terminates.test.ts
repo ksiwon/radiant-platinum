@@ -27,7 +27,7 @@ import {
 } from './field'
 import { VarStore } from './vars'
 import { withData } from '../../data/romData.testkit'
-import { stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
+import { stubFieldMoves, stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const maybe = withData('scripts.bin', 'events.json', 'maps.json')
@@ -192,7 +192,7 @@ const ALL_SERVICES = {
   boxFreeSlots: () => 30,
   aliveAndBoxMons: () => 6,
   martStock: { common: () => [], specialties: () => [] },
-  fieldMoves: { badges: () => 0xff, knows: () => true },
+  fieldMoves: { ...stubFieldMoves, badges: () => 0xff, knows: () => true },
   sound: {
     playEffect: () => {},
     stopEffect: () => {},

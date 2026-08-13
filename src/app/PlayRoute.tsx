@@ -9,6 +9,7 @@ import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
+import { CurrencyWindow } from '../ui/field/CurrencyWindow'
 import { MessageBox } from '../ui/field/MessageBox'
 import { FishingBox } from '../ui/field/FishingBox'
 import { PokemonPreview } from '../ui/field/PokemonPreview'
@@ -66,6 +67,7 @@ export function PlayRoute() {
   return (
     <>
       <MessageBox />
+      <CurrencyWindow />
       <FishingBox />
       <PokemonPreview />
       <HatchScreen />

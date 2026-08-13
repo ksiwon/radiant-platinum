@@ -11,6 +11,7 @@ import { worldState } from '../../state/worldState'
 import { npcActors } from '../actor/npcs'
 import type { MapGrid } from '../map/grid'
 import type { NpcActor } from '../actor/npcs'
+import { stubFieldMoves } from './services.testkit'
 
 /** 필요한 것만 갖춘 격자. `behavior`가 주는 값을 시험이 갈아 끼운다 */
 function fakeGrid(behavior: number) {
@@ -23,7 +24,7 @@ function fakeGrid(behavior: number) {
 /** 뱃지와 파티를 세운다 */
 function trainer(badges: number, moves: number[]) {
   fieldScripts.services = {
-    fieldMoves: { badges: () => badges, knows: (m) => moves.includes(m) },
+    fieldMoves: { ...stubFieldMoves, badges: () => badges, knows: (m) => moves.includes(m) },
   }
 }
 

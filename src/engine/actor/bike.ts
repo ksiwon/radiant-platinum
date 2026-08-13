@@ -96,7 +96,12 @@ const BIKE_BRIDGE = new Set([0x74, 0x75, 0x76, 0x77])
  */
 export function bikeBlock(
   header: MapHeader | null, behavior: number | null, surfing: boolean, riding: boolean,
+  onRoad = false,
 ): BikeBlock | null {
+  // ⚠️ **자전거로드 위에서는 못 내린다** (`PlayerAvatar_SetOnCyclingRoad`).
+  // 다리 거동으로도 걸리지만 스크립트가 따로 켜는 자리가 있다 — 206번도로의
+  // 입구가 그렇고, 그때는 다리 타일 밖에서도 이 값이 서 있다
+  if (riding && onRoad) return 'stuck'
   if (behavior !== null && BIKE_BRIDGE.has(behavior)) return riding ? 'stuck' : null
   if (riding) return null
   if (behavior !== null && (behavior === VERY_TALL_GRASS || MUD.has(behavior))) return 'grass'
@@ -113,3 +118,14 @@ export const BIKE_WHY: Readonly<Record<BikeBlock, string>> = {
   map: '여기서는 자전거를 탈 수 없다!',
   stuck: '지금은 내릴 수 없다!',
 }
+
+/**
+ * 자전거로드 위인가 (`PlayerAvatar_SetOnCyclingRoad`).
+ *
+ * 리포트에 안 남는다 — 원작도 아바타의 런타임 값이고, 맵을 옮기는 스크립트가
+ * 켜고 끈다 (`ForceBicycling`)
+ */
+let onCyclingRoad = false
+
+export function setOnCyclingRoad(on: boolean): void { onCyclingRoad = on }
+export function isOnCyclingRoad(): boolean { return onCyclingRoad }

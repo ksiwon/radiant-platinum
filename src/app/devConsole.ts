@@ -27,6 +27,7 @@ import { usePoketchStore } from '../state/poketchStore'
 import { fieldScripts } from '../engine/script/field'
 import { addHallOfFameEntry } from '../engine/world/hallOfFame'
 import { SYSTEM_FLAG } from '../engine/script/commands'
+import { useCurrencyStore } from '../state/currencyStore'
 import {
   journalArrived, journalBeatTrainer, journalGiven, journalGotItem, journalPlain,
   journalUsedMove, journalWildBattle,
@@ -171,6 +172,19 @@ export function installDevConsole(): void {
       useSaveStore.setState({ hallOfFame: record })
       fieldScripts.vars.setFlag(SYSTEM_FLAG.gameCompleted)
       return record.total
+    },
+    /**
+     * 소지금·코인 창을 띄운다 (`ShowMoney` · `ShowCoins`).
+     *
+     * 스크립트로 뜨는 자리는 상점·게임코너 앞이라 화면을 보려면 길이 있어야
+     * 한다. **자리는 게임코너의 그 값 그대로**다 — 코인 20,2 · 돈 20,7
+     */
+    currency: (coins = 1234) => {
+      useSaveStore.setState({ coins })
+      const store = useCurrencyStore.getState()
+      store.showCoins(20, 2, coins)
+      store.showMoney(20, 7, useSaveStore.getState().money)
+      return { coins, money: useSaveStore.getState().money }
     },
     /**
      * 모험노트를 받고 오늘 쪽을 채운다 (PARITY §7.4).

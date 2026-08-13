@@ -67,3 +67,10 @@ export const stubTrainerInfo: NonNullable<FieldServices['trainerInfo']> = {
   giveBadge: () => { /* 안 본다 */ },
   nationalDex: () => false,
 }
+
+export const stubFieldMoves: NonNullable<FieldServices['fieldMoves']> = {
+  badges: () => 0,
+  knows: () => false,
+  use: () => false,
+  strength: () => false,
+}

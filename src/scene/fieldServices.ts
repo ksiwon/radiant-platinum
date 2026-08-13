@@ -19,8 +19,10 @@ import {
 } from '../engine/pokemon/instance'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
-import { fieldScripts } from '../engine/script/field'
+import { fieldMoveFromMenu, fieldScripts } from '../engine/script/field'
 import { cameraSystem } from '../engine/actor/camera'
+import { setOnCyclingRoad } from '../engine/actor/bike'
+import { FIELD_MOVES } from '../engine/script/fieldMoves'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -42,6 +44,7 @@ import {
   TURNBACK_WARP_COUNT, turnbackDestination, turnbackEntryWarp,
 } from '../engine/world/turnbackCave'
 import { entryNumber } from '../engine/world/hallOfFame'
+import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
 import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
 import { SYSTEM_FLAG } from '../engine/script/commands'
@@ -93,6 +96,7 @@ import { useHatchStore } from '../state/hatchStore'
 import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useBattleStore } from '../state/battleStore'
+import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
 import { playerTrainer, useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
@@ -107,6 +111,15 @@ const TRAINER_MESSAGE_BANK = 617
 const POCKET_NAME_BANK = 395
 /** `TEXT_BANK_POKETCH_APP_NAMES` — 포켓치 앱 이름 25개 */
 const POKETCH_APP_NAME_BANK = 457
+
+/**
+ * 자전거 곡 (`SEQ_BICYCLE`).
+ *
+ * ⚠️ **줄 번호로 세면 1206이 나오는데 틀린 값이다.** `generated/sdat.txt`에
+ * `= 값`으로 자리를 다시 잡는 줄이 섞여 있어서 열거형으로 풀어야 한다 —
+ * 기라티나 곡이 1201로 떨어지는 것과 같은 계산이다 (`audio/songs`)
+ */
+const SEQ_BICYCLE = 1152
 
 
 /** 지금 배틀의 결과. 스크립트가 물어볼 때까지 들고 있는다 */
@@ -686,6 +699,52 @@ const services: FieldServices = {
     badges: () => useSaveStore.getState().badges,
     knows: (move: number) =>
       useSaveStore.getState().party.some((mon) => mon.moves.some((s) => s.move === move)),
+    // 메뉴에서 고르는 길과 **같은 규칙**을 쓴다 — 지형을 보고 뛰거나 오른다
+    use: (id) => fieldMoveFromMenu(FIELD_MOVES[id].move) === 'used',
+    strength: (mode) => {
+      const p = worldState.player
+      if (mode === 'check') return p.strength
+      p.strength = mode === 'set'
+      return p.strength
+    },
+  },
+
+  coins: {
+    get: () => useSaveStore.getState().coins,
+    add: (amount) => {
+      useSaveStore.setState((s) => ({ coins: addCoins(s.coins, amount).coins }))
+    },
+    subtract: (amount) => {
+      useSaveStore.setState((s) => ({ coins: subtractCoins(s.coins, amount).coins }))
+    },
+    canAdd: (amount) => canAddCoins(useSaveStore.getState().coins, amount),
+  },
+
+  currency: {
+    showMoney: (left, top) => {
+      useCurrencyStore.getState().showMoney(left, top, useSaveStore.getState().money)
+    },
+    hideMoney: () => { useCurrencyStore.getState().hideMoney() },
+    updateMoney: () => { useCurrencyStore.getState().updateMoney(useSaveStore.getState().money) },
+    showCoins: (left, top) => {
+      useCurrencyStore.getState().showCoins(left, top, useSaveStore.getState().coins)
+    },
+    hideCoins: () => { useCurrencyStore.getState().hideCoins() },
+    updateCoins: () => { useCurrencyStore.getState().updateCoins(useSaveStore.getState().coins) },
+  },
+
+  bike: {
+    riding: () => worldState.player.cycling,
+    ride: (on) => {
+      const p = worldState.player
+      if (p.cycling === on) return
+      p.cycling = on
+      p.pedalling = 0
+      // 원작도 여기서 자전거 곡으로 갈아 끼우고, 내리면 **가로채기를 비워**
+      // 맵 곡으로 되돌린다 (`FieldBGM_SetOverride(fieldSystem, SEQ_NONE)`)
+      fieldBgm.override = on ? SEQ_BICYCLE : null
+    },
+    setRoad: (on) => { setOnCyclingRoad(on) },
   },
 
   healParty: () => { healParty() },

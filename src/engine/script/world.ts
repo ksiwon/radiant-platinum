@@ -332,6 +332,31 @@ export interface FieldServices {
     add: (amount: number) => void
     spend: (amount: number) => boolean
   }
+  /**
+   * 게임코너의 코인 (`coins.c`).
+   *
+   * ⚠️ `canAdd`와 `add`의 답이 다를 수 있다 — 규칙은 `engine/world/coins`가 안다
+   */
+  coins?: {
+    get: () => number
+    add: (amount: number) => void
+    subtract: (amount: number) => void
+    canAdd: (amount: number) => boolean
+  }
+  /**
+   * 소지금·코인 창 (`FieldMenu_CreateMoneyWindow` · `FieldMenu_DrawCoinWindow`).
+   *
+   * 자리는 **타일 좌표**다. ⚠️ 값은 `update`를 부를 때만 다시 찍는다 —
+   * 원작이 그렇고, 그래서 돈을 깎은 직후 한순간 옛 숫자가 남는다
+   */
+  currency?: {
+    showMoney: (left: number, top: number) => void
+    hideMoney: () => void
+    updateMoney: () => void
+    showCoins: (left: number, top: number) => void
+    hideCoins: () => void
+    updateCoins: () => void
+  }
   /** 시작 메뉴를 연다 (`ShowStartMenu`) */
   openStartMenu?: () => void
   /** 메뉴가 아직 떠 있는가 */
@@ -371,6 +396,25 @@ export interface FieldServices {
     badges: () => number
     /** 이 기술을 아는 파티원이 있는가 */
     knows: (move: number) => boolean
+    /**
+     * 지금 서 있는 자리에서 그 기술을 쓴다 (`FieldTask_StartUseSurf` 등).
+     *
+     * 스크립트가 부르는 길은 **말을 걸어 여는 쪽**이다 — 파도타기·폭포오르기·
+     * 록클라임은 물이나 벽에 대고 확인을 누르면 "쓰겠습니까"를 묻고 여기로 온다.
+     * 자격은 스크립트가 이미 봤으므로 여기서는 지형만 본다
+     *
+     * @returns 실제로 썼으면 true
+     */
+    use: (id: 'surf' | 'waterfall' | 'rockClimb') => boolean
+    /** 괴력을 켜고 끄고 묻는다 (`SystemFlag_HandleStrengthActive`) */
+    strength: (mode: 'set' | 'clear' | 'check') => boolean
+  }
+  /** 자전거 (`PlayerAvatar_SetTransitionState`·`_SetOnCyclingRoad`) */
+  bike?: {
+    riding: () => boolean
+    ride: (on: boolean) => void
+    /** 자전거로드 위인가. 서 있으면 다리 위에서 못 내린다 */
+    setRoad: (on: boolean) => void
   }
   /**
    * 소리 (`scrcmd_sound.c`).

@@ -9,6 +9,7 @@
 //     pnpm shot hearthome --bike       자전거에 태워 놓고 찍는다
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
 //     pnpm shot center --give=... --hof=3 --menu=pcHallOfFame   전당 기록을 열어 본다
+//     pnpm shot center --currency=250            소지금·코인 창을 띄워 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
@@ -429,6 +430,13 @@ async function main() {
     if (hof) {
       const times = hof.includes('=') ? Number(hof.split('=')[1]) : 1
       await page.evaluate((n) => { globalThis.pt.hof(n) }, times)
+    }
+    // 소지금·코인 창을 띄운다 — `--currency` 또는 `--currency=250`(코인 수).
+    // 이야기로는 상점·게임코너 앞에서만 뜨는 창이다
+    const currency = args.find((a) => a === '--currency' || a.startsWith('--currency='))
+    if (currency) {
+      const coins = currency.includes('=') ? Number(currency.split('=')[1]) : 1234
+      await page.evaluate((c) => { globalThis.pt.currency(c) }, coins)
     }
     // 모험노트를 받고 오늘 쪽을 채운다 — `--note`.
     // 이야기로는 축복시티에서 받고 하루를 돌아다녀야 한 쪽이 찬다
