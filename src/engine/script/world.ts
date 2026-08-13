@@ -157,6 +157,25 @@ export interface FieldServices {
     /** 시계를 한 칸 넘긴다. 넘겼으면 새 상태, 끝까지 갔으면 null */
     advanceEternaClock: () => number | null
     eternaBusy: () => boolean
+    /** 운하시티 체육관의 뜨는 판 스물넷. 움직이는 것은 걸음이 맡는다 */
+    initCanalaveGym: () => void
+    /**
+     * 한 걸음 옮겼다 (`Field_ProcessStep`).
+     *
+     * 지금 선 칸에 판이 있으면 태운다. 밟아서 도는 장치가 이것뿐이라
+     * 갈래를 안 나눈다
+     */
+    stepOnFeature?: () => void
+    /** 장막시티 체육관의 뜨는 판… 이 아니라 샌드백. A로 찬다 */
+    initVeilstoneGym: () => void
+    /**
+     * 앞 칸의 샌드백을 찬다 (`VeilstoneGym_HitPunchingBag`).
+     *
+     * @returns 샌드백이 있어서 찼으면 true — 그러면 말 걸기는 안 돈다
+     */
+    kickBag?: (tileX: number, tileZ: number, dir: number) => boolean
+    /** 연고시티 체육관의 문 고르기. 틀린 문들의 목적지를 되돌린다 */
+    initHearthomeGym: () => void
   }
   /**
    * 귀혼동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).

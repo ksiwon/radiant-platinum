@@ -276,10 +276,19 @@ export function setWarpEventPos(index: number, x: number, z: number): void {
  *
  * 귀혼동굴이 이걸로 방을 굴린다 — 문은 그대로 두고 그 너머만 바꾼다
  */
-const warpRetargeted = new Map<number, number>()
+const warpRetargeted = new Map<number, { to: number; anchor?: number }>()
 
-export function setWarpDestination(index: number, to: number): void {
-  warpRetargeted.set(index, to)
+export function setWarpDestination(index: number, to: number, anchor?: number): void {
+  warpRetargeted.set(index, { to, anchor })
+}
+
+/**
+ * 그 칸에 놓인 워프의 번호 (`MapHeaderData_GetIndexOfWarpEventAtPos`).
+ *
+ * 연고시티 체육관이 이걸로 **틀린 문들만** 골라 되돌린다
+ */
+export function warpIndexAt(mapId: number, x: number, z: number): number {
+  return (eventsOf(mapId)?.warps ?? []).findIndex((w) => w.x === x && w.z === z)
 }
 
 /** 맵을 옮길 때 버린다. 초기화 스크립트가 돌기 **전**이어야 한다 */
@@ -296,7 +305,11 @@ export function warpsOf(mapId: number): Warp[] {
     const at = warpMoved.get(i)
     const to = warpRetargeted.get(i)
     if (at === undefined && to === undefined) return w
-    return { ...w, x: at?.x ?? w.x, z: at?.z ?? w.z, to: to ?? w.to }
+    return {
+      ...w,
+      x: at?.x ?? w.x, z: at?.z ?? w.z,
+      to: to?.to ?? w.to, anchor: to?.anchor ?? w.anchor,
+    }
   })
 }
 

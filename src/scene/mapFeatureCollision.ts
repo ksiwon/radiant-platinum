@@ -12,6 +12,8 @@ import { TILE_DYNAMIC_HEIGHT_COLLISION } from '../engine/world/pastoriaGym'
 import { pastoriaBlockedAt } from './pastoriaGym'
 import { sunyshoreBlockedAt } from './sunyshoreGym'
 import { eternaBlockedAt } from './eternaGym'
+import { canalaveBlockedAt } from './canalaveGym'
+import { veilstoneBlockedAt } from './veilstoneGym'
 
 /**
  * 그 칸이 막혔는가.
@@ -43,6 +45,10 @@ function featureBlocked(tileX: number, tileZ: number, height: number): boolean |
       return sunyshoreBlockedAt(tileX, tileZ)
     case MAP_FEATURE.eternaGym:
       return eternaBlockedAt(tileX, tileZ)
+    case MAP_FEATURE.canalaveGym:
+      return canalaveBlockedAt(tileX, tileZ, height)
+    case MAP_FEATURE.veilstoneGym:
+      return veilstoneBlockedAt(tileX, tileZ)
     default:
       return null
   }

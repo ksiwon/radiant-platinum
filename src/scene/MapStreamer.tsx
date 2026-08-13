@@ -42,6 +42,7 @@ import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
+import { resetStepFeatureTile } from '../engine/script/field'
 import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
 import {
@@ -74,6 +75,9 @@ import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platfor
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
 import { resetSunyshoreGym, sunyshoreTick } from './sunyshoreGym'
 import { eternaTick, resetEternaGym } from './eternaGym'
+import { canalaveBusy, canalaveTick, resetCanalaveGym } from './canalaveGym'
+import { resetVeilstoneGym, veilstoneBusy, veilstoneTick } from './veilstoneGym'
+import { resetHearthomeGym } from './hearthomeGym'
 import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
@@ -242,6 +246,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
       resetEncounterTile()
       resetStepTile()
+      resetStepFeatureTile()
       // 다리 위에 선 채로 맵을 옮길 수는 없다 — 새 맵의 어귀를 다시 밟아야 한다
       resetBridge()
       // 그 맵에만 있는 장치도 맵과 함께 없어진다 (`DynamicMapFeatures_Free`).
@@ -251,6 +256,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       resetPastoriaGym()
       resetSunyshoreGym()
       resetEternaGym()
+      resetCanalaveGym()
+      resetVeilstoneGym()
+      resetHearthomeGym()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
@@ -565,8 +573,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     pastoriaTick(dt)
     sunyshoreTick(dt)
     eternaTick(dt)
+    canalaveTick(dt)
+    veilstoneTick(dt)
     worldState.player.riding = distortionRiding() || distortionBoulderFalling()
       || distortionGhostRunning() || distortionJumping() || platformLiftBusy()
+      || canalaveBusy() || veilstoneBusy()
 
     const p = worldState.player.position
     const tx = Math.floor(p.x),

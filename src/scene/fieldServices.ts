@@ -19,7 +19,7 @@ import {
 } from '../engine/pokemon/instance'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
-import { fieldMoveFromMenu, fieldScripts } from '../engine/script/field'
+import { fieldMoveFromMenu, fieldScripts, resetStepFeatureTile } from '../engine/script/field'
 import { cameraSystem } from '../engine/actor/camera'
 import { setOnCyclingRoad } from '../engine/actor/bike'
 import { FIELD_MOVES } from '../engine/script/fieldMoves'
@@ -60,6 +60,9 @@ import {
 } from './sunyshoreGym'
 import { SUNYSHORE_GYM_MAPS, type SunyshoreButton } from '../engine/world/sunyshoreGym'
 import { advanceEternaClock, eternaBusy, eternaSound, initEternaGym } from './eternaGym'
+import { canalaveArrived, canalaveSound, canalaveStepped, initCanalaveGym } from './canalaveGym'
+import { hitVeilstoneBag, initVeilstoneGym, veilstoneSound } from './veilstoneGym'
+import { initHearthomeGym } from './hearthomeGym'
 
 /**
  * 지금 선 칸에 놓인 소품의 모델 번호 (`FieldSystem_FindCollidingLoadedMapProp*`).
@@ -516,6 +519,12 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   sunyshoreSound.play = (seq) => { void music.playEffect(seq) }
   sunyshoreSound.stop = (seq) => { music.stopEffect(seq) }
   eternaSound.play = (seq) => { void music.playEffect(seq) }
+  canalaveSound.play = (seq) => { void music.playEffect(seq) }
+  canalaveSound.stop = (seq) => { music.stopEffect(seq) }
+  veilstoneSound.play = (seq) => { void music.playEffect(seq) }
+  veilstoneSound.stop = (seq) => { music.stopEffect(seq) }
+  // 판에서 내린 칸은 「방금 밟았다」로 친다 — 안 그러면 그 자리에서 다시 탄다
+  canalaveArrived.settle = () => { resetStepFeatureTile() }
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
@@ -1237,6 +1246,11 @@ const services: FieldServices = {
     initEternaGym: (state) => { initEternaGym(mapWorld.mapId, state) },
     advanceEternaClock: () => advanceEternaClock(),
     eternaBusy: () => eternaBusy(),
+    initCanalaveGym: () => { initCanalaveGym(mapWorld.mapId) },
+    stepOnFeature: () => { canalaveStepped() },
+    initVeilstoneGym: () => { initVeilstoneGym(mapWorld.mapId) },
+    kickBag: (x, z, dir) => hitVeilstoneBag(x, z, dir),
+    initHearthomeGym: () => { initHearthomeGym(mapWorld.mapId, Math.random) },
   },
 
   /** 전설을 만나기 전의 미리보기 창 */

@@ -19,6 +19,7 @@ import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
 import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
+import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
@@ -3020,6 +3021,81 @@ on('AdvanceEternaGymClock', (ctx) => {
   ctx.host.vars.set(VAR_ETERNA_GYM_FLOWER_CLOCK_STATE, next)
   ctx.pause((c) => c.host.world.services.mapFeatures?.eternaBusy() !== true)
   return true
+})
+
+/**
+ * 운하시티 체육관이다 (`PersistedMapFeatures_InitForCanalaveGym`).
+ *
+ * 스크립트가 하는 일은 이 한 줄뿐이다 — 판을 움직이는 것은 명령이 아니라
+ * **걸음**이다 (`Field_ProcessStep`이 한 걸음마다 묻는다)
+ */
+on('InitPersistedMapFeaturesForCanalaveGym', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initCanalaveGym()
+  return false
+})
+
+/**
+ * 장막시티 체육관이다 (`PersistedMapFeatures_InitForVeilstoneGym`).
+ *
+ * 여기도 스크립트가 하는 일은 이 한 줄뿐이다 — 샌드백을 차는 것은 명령이
+ * 아니라 **A**다 (`field_control.c`가 말 걸기보다 먼저 묻는다)
+ */
+on('InitPersistedMapFeaturesForVeilstoneGym', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initVeilstoneGym()
+  return false
+})
+
+/**
+ * 연고시티 체육관이다 (`PersistedMapFeatures_InitForHearthomeGym`).
+ *
+ * 문 고르기 방 둘에서는 여기서 **틀린 문들의 목적지를 입구 방으로 돌려놓는다** —
+ * 문을 잠그는 것이 아니라 그 너머를 바꾼다. 입구 방·관장 방에서는 아무 일도 없다
+ */
+on('InitPersistedMapFeaturesForHearthomeGym', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initHearthomeGym()
+  return false
+})
+
+// ── 승강기 (PARITY §7.12) ────────────────────────────────────────────────────
+//
+// ⚠️ **길을 막지는 않는다.** 층을 고르는 목록도 워프도 스크립트에 통째로
+// 적혀 있어서 이 넷이 없어도 승강기는 돈다 — 없으면 「지금 몇 층인가」가
+// 안 뜰 뿐이다.
+
+/**
+ * 승강기를 타기 전의 자리를 적어 둔다 (`FieldOverworldState_SetSpecialLocation`).
+ *
+ * 승강기 방은 층마다 따로 있지 않고 하나를 돌려 쓴다 — 어느 층에서 탔는지를
+ * 아는 길이 이 값뿐이다
+ */
+on('SetSpecialLocation', (ctx) => {
+  const map = ctx.readVar()
+  ctx.readVar(); ctx.readVar(); ctx.readVar(); ctx.readVar()
+  specialLocation = map
+  return false
+})
+
+/** `FieldOverworldState_GetSpecialLocation`의 맵 번호만. 리포트에는 안 남는다 */
+let specialLocation = -1
+
+on('GetFloorsAbove', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), floorsAbove(specialLocation))
+  return false
+})
+
+/**
+ * 층 이름을 글 칸에 넣는다 (`StringTemplate_SetFloorNumber`).
+ *
+ * ⚠️ **0이 지하다.** 원작이 `floor == 0`만 따로 갈라 B1F로 보낸다
+ */
+on('BufferFloorNumber', (ctx) => {
+  const slot = ctx.readByte()
+  const floor = ctx.readByte()
+  // 목록 메뉴가 이미 그 뱅크를 들고 있다 (`TEXT_BANK_MENU_ENTRIES`) — 층 이름이
+  // 「5F」·「B1F」로 그 안에 있고, 승강기 메뉴가 쓰는 바로 그 글이다
+  ctx.host.world.slots.set(
+    slot, ctx.host.world.menuEntryTexts[floorTextIndex(floor)] ?? '')
+  return false
 })
 
 // ── 표 만들기 ────────────────────────────────────────────────────────────────

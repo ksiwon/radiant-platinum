@@ -507,6 +507,10 @@ export const scriptSystem = {
     }
     // 맵이 스스로 거는 것이 제일 먼저다 (`FieldInput_Process`)
     tryFrameTable()
+    // ⚠️ **운하시티 체육관의 판이 좌표 트리거보다 먼저다** (`Field_ProcessStep`의
+    // 첫 줄). 그 방은 단추도 트리거도 없고 **밟는 것**으로 판이 움직인다 —
+    // 태웠으면 그 걸음은 여기서 끝이다
+    if (fieldScripts.ctx === null) tryStepFeature()
     // 그 다음이 밟아서 걸리는 것. 원작도 이동이 끝난 자리에서 좌표를 본다
     if (fieldScripts.ctx === null) tryTrigger()
     // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
@@ -651,6 +655,13 @@ export function npcAt(mapId: number, x: number, z: number, vars: VarStore): Npc 
  */
 const TRAINER_TYPE_NO_TALK = 9
 
+/**
+ * 우리 `facing` 사분면 → 원작 방향 번호.
+ *
+ * `quarterOf`가 0을 +z(남쪽)로 세는데 원작은 북 0 · 남 1 · 서 2 · 동 3이다
+ */
+const DIR_OF_QUARTER: readonly number[] = [1, 3, 0, 2]
+
 function tryTalk(): void {
   const { world, vars } = fieldScripts
   if (world === null) return
@@ -659,6 +670,12 @@ function tryTalk(): void {
 
   const p = worldState.player
   const front = tileInFront(p.position.x, p.position.z, p.facing)
+
+  // ⚠️ **장막시티 체육관의 샌드백이 사람보다 먼저다** (`field_control.c` 567줄).
+  // 앞 칸에 샌드백이 있으면 말을 거는 대신 그것을 찬다 — 스크립트도 트리거도
+  // 없이 A 하나로 도는 자리다
+  if (fieldScripts.services.mapFeatures?.kickBag?.(
+    front.x, front.z, DIR_OF_QUARTER[quarterOf(p.facing)] ?? 0) === true) return
 
   // ⚠️ **카운터 너머로 말을 건다** (`map/world`의 `talkTile`)
   const grid = mapWorld.grid
@@ -942,6 +959,28 @@ export function triggerAt(mapId: number, x: number, z: number, vars: VarStore): 
     return t.script
   }
   return null
+}
+
+/**
+ * 밟아서 도는 장치 (`Field_ProcessStep`).
+ *
+ * 지금은 운하시티 체육관의 뜨는 판 하나다. 좌표 트리거와 같은 자리에서
+ * 「칸이 바뀌었나」를 보되, 트리거보다 **먼저** 묻는다
+ */
+function tryStepFeature(): void {
+  const p = worldState.player.position
+  const x = Math.floor(p.x), z = Math.floor(p.z)
+  if (x === lastStepTile.x && z === lastStepTile.z) return
+  lastStepTile = { x, z }
+  fieldScripts.services.mapFeatures?.stepOnFeature?.()
+}
+
+let lastStepTile = { x: Number.NaN, z: Number.NaN }
+
+/** 도착한 칸을 「방금 밟았다」로 친다. 판을 타고 내린 자리에서도 부른다 */
+export function resetStepFeatureTile(): void {
+  const p = worldState.player.position
+  lastStepTile = { x: Math.floor(p.x), z: Math.floor(p.z) }
 }
 
 function tryTrigger(): void {

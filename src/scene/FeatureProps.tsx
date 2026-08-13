@@ -8,23 +8,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group, type Material } from 'three'
-import { loadPropMesh, loadPropSheet, type ChunkMesh } from './chunkMesh'
+import {
+  loadDistortionPropMesh, loadDistortionPropSheet, loadPropMesh, loadPropSheet,
+  type ChunkMesh,
+} from './chunkMesh'
 import { materialsFor } from './ChunkModels'
 import { featureProps } from './movingProps'
 
 interface Loaded {
-  model: number
+  key: string
   mesh: ChunkMesh
   materials: Material[]
 }
 
-/** 모델 번호 → 실린 메시. 맵마다 몇 개 안 되므로 그대로 들고 있는다 */
-const loading = new Set<number>()
+/** 어느 아카이브의 몇 번인가. 두 아카이브의 번호가 겹치므로 열쇠를 합쳐 쓴다 */
+const modelKey = (from: 'prop' | 'fldeff', model: number): string =>
+  `${from}/${String(model)}`
+
+const loading = new Set<string>()
 
 export function FeatureProps() {
   /** 지금 세워야 할 것들의 열쇠 목록. 바뀔 때만 다시 그린다 */
   const [keys, setKeys] = useState<string>('')
-  const [meshes, setMeshes] = useState<Map<number, Loaded>>(new Map())
+  const [meshes, setMeshes] = useState<Map<string, Loaded>>(new Map())
   const groups = useRef(new Map<string, Group>())
 
   const wanted = featureProps()
@@ -32,27 +38,32 @@ export function FeatureProps() {
   useEffect(() => {
     let alive = true
     for (const prop of featureProps()) {
-      if (loading.has(prop.model)) continue
-      loading.add(prop.model)
-      void Promise.all([loadPropMesh(prop.model), loadPropSheet(prop.model)])
+      const from = prop.from ?? 'prop'
+      const key = modelKey(from, prop.model)
+      if (loading.has(key)) continue
+      loading.add(key)
+      const load = from === 'fldeff'
+        ? Promise.all([loadDistortionPropMesh(prop.model), loadDistortionPropSheet(prop.model)])
+        : Promise.all([loadPropMesh(prop.model), loadPropSheet(prop.model)])
+      void load
         .then(([mesh, sheet]) => {
           if (!alive) return
           // 소품은 전부 양면으로 그린다 — 청크 쪽과 같은 규칙이다
           const own = new Map<string, Material>()
           const made: Loaded = {
-            model: prop.model, mesh,
+            key, mesh,
             materials: materialsFor(mesh, sheet, own, mesh.materials.map(() => true)),
           }
-          setMeshes((old) => new Map(old).set(prop.model, made))
+          setMeshes((old) => new Map(old).set(key, made))
         })
-        .catch(() => { loading.delete(prop.model) })
+        .catch(() => { loading.delete(key) })
     }
     return () => { alive = false }
   }, [keys])
 
   useFrame(() => {
     const now = featureProps()
-    const key = now.map((p) => `${p.key}:${String(p.model)}`).join('|')
+    const key = now.map((p) => `${p.key}:${modelKey(p.from ?? 'prop', p.model)}`).join('|')
     if (key !== keys) setKeys(key)
     for (const p of now) {
       const g = groups.current.get(p.key)
@@ -65,7 +76,7 @@ export function FeatureProps() {
   return (
     <group>
       {wanted.map((p) => {
-        const got = meshes.get(p.model)
+        const got = meshes.get(modelKey(p.from ?? 'prop', p.model))
         if (got === undefined) return null
         return (
           <group

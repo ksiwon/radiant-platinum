@@ -16,13 +16,23 @@ import { platformLiftProp } from './platformLift'
 import { pastoriaWaterProp } from './pastoriaGym'
 import { sunyshoreProps } from './sunyshoreGym'
 import { eternaProps } from './eternaGym'
+import { canalaveProps } from './canalaveGym'
+import { veilstoneProps } from './veilstoneGym'
 
 /** 지금 움직이고 있는 소품 하나 */
 export interface FeatureProp {
   /** React 열쇠. 장치마다 고정 문자열이면 된다 — 한 맵에 하나씩이다 */
   key: string
-  /** 소품 모델 번호 (`res/field/props/models/meson.build`의 차례) */
+  /** 모델 번호. `from`이 어느 아카이브의 번호인지 정한다 */
   model: number
+  /**
+   * 어느 아카이브에서 오는가.
+   *
+   * `prop`은 맵 소품(`res/field/props/models`의 차례)이고, `fldeff`는
+   * `/data/mmodel/fldeff.narc`다 — 장막시티 체육관의 샌드백·타이어가 그쪽이라
+   * 원작도 소품이 아니라 따로 그리는 렌더러를 쓴다
+   */
+  from?: 'prop' | 'fldeff'
   x: number
   y: number
   z: number
@@ -45,6 +55,8 @@ export function featureProps(): FeatureProp[] {
   if (water !== null) out.push({ key: '물바닥', ...water })
   out.push(...sunyshoreProps())
   out.push(...eternaProps())
+  out.push(...canalaveProps())
+  out.push(...veilstoneProps())
   return out
 }
 
@@ -55,5 +67,6 @@ export function featureProps(): FeatureProp[] {
  * 지금 자리에 세운다
  */
 export function isFeaturePlacement(model: number, x: number, z: number): boolean {
-  return featureProps().some((p) => p.model === model && p.x === x && p.z === z)
+  return featureProps().some(
+    (p) => (p.from ?? 'prop') === 'prop' && p.model === model && p.x === x && p.z === z)
 }
