@@ -48,6 +48,31 @@ import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
 import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
 import { SYSTEM_FLAG } from '../engine/script/commands'
+import {
+  initPlatformLift, liftSound, platformLiftBusy, platformLiftNotUsedWhenEnteredMap,
+  triggerPlatformLift,
+} from './platformLift'
+import {
+  initPastoriaGym, pastoriaBusy, pastoriaSound, pressPastoriaButton,
+} from './pastoriaGym'
+
+/**
+ * 지금 선 칸에 놓인 소품의 모델 번호 (`FieldSystem_FindCollidingLoadedMapProp*`).
+ *
+ * 물가시티 체육관의 단추가 이걸로 갈린다 — 스크립트는 색깔마다 나뉘어 있는데
+ * 명령은 하나라, 어느 단추인지는 **밟은 칸**이 말한다. 없으면 −1이다
+ */
+function propModelUnderPlayer(): number {
+  const grid = mapWorld.grid
+  if (grid === null) return -1
+  const p = worldState.player.position
+  const tx = Math.floor(p.x), tz = Math.floor(p.z)
+  const chunk = grid.chunkIndexAt(tx, tz)
+  for (const b of grid.meta.buildings[String(chunk)] ?? []) {
+    if (Math.floor(b.x) === tx && Math.floor(b.z) === tz) return b.model
+  }
+  return -1
+}
 
 /** 그 파티 자리가 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`) */
 function relearnFor(slot: number): number[] {
@@ -477,6 +502,12 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, POKETCH_APP_NAME_BANK)
     .then((bank) => { setPoketchAppNames(bank) })
     .catch(() => { /* 이름만 빈다 */ })
+
+  // 장치가 내는 소리. 엔진 쪽 모듈이 오디오를 직접 안 부르므로 여기서 꽂는다
+  liftSound.play = (seq) => { void music.playEffect(seq) }
+  liftSound.stop = (seq) => { music.stopEffect(seq) }
+  pastoriaSound.play = (seq) => { void music.playEffect(seq) }
+  pastoriaSound.stop = (seq) => { music.stopEffect(seq) }
 
   // 세계가 먼저 만들어져 있을 수 있다. 그 자리에도 넣어 준다
   if (fieldScripts.world !== null) fieldScripts.world.services = services
@@ -1176,6 +1207,23 @@ const services: FieldServices = {
    * 밖에서는 그냥 지금 칸이다
    */
   playerPos: () => distortionPlayerPos(),
+
+  /**
+   * 그 맵에만 있는 장치 (PARITY §7.12).
+   *
+   * ⚠️ **선 자리가 아니라 들어선 칸이다.** 원작이 `fieldSystem->location->z`를
+   * 보는데 그것은 워프 표가 적어 둔 값이고, 문 앞에서 한 칸 내려 세운 뒤의
+   * 자리와 다를 수 있다
+   */
+  mapFeatures: {
+    initPlatformLift: () => { initPlatformLift(mapWorld.mapId, mapWorld.enteredZ) },
+    triggerPlatformLift: () => triggerPlatformLift(),
+    platformLiftBusy: () => platformLiftBusy(),
+    platformLiftNotUsedWhenEnteredMap: () => platformLiftNotUsedWhenEnteredMap(),
+    initPastoriaGym: () => { initPastoriaGym(mapWorld.mapId) },
+    pressPastoriaButton: () => pressPastoriaButton(propModelUnderPlayer()),
+    pastoriaBusy: () => pastoriaBusy(),
+  },
 
   /** 전설을 만나기 전의 미리보기 창 */
   preview: {

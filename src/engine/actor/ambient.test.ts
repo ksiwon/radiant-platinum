@@ -64,6 +64,9 @@ function room(size: number): CollisionGrid {
     isBlockedAtWorld: (x, z) => wall(Math.floor(x)) || wall(Math.floor(z)),
     behaviorAtWorld: () => 0,
     heightAtWorld: () => 0,
+    bakedHeightAtWorld: () => 0,
+    behavior: () => 0,
+    isBlocked: (tx, tz) => wall(tx) || wall(tz),
   }
 }
 

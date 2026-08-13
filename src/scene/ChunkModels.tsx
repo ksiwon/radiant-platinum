@@ -30,6 +30,7 @@ import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
 import { PropFade } from './PropFade'
+import { isFeaturePlacement } from './movingProps'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -84,7 +85,7 @@ interface Prop extends Placed {
  * `cutout`이 선 서브메시는 양면으로 만든다 — 오려 낸 그림은 판 한 장이라
  * 단면으로 두면 뒤에서 사라진다
  */
-function materialsFor(
+export function materialsFor(
   mesh: ChunkMesh, sheet: TexSheet | null, cache: Map<string, Material>,
   cutout: readonly boolean[] = [],
 ): Material[] {
@@ -449,6 +450,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         setProps(spots.flatMap((b, i) => {
           const got = byId.get(b.model)
           if (!got) return []
+          // ⚠️ **장치가 움직이는 소품은 여기서 안 그린다.** 배치 기록의 y는
+          // 「처음 자리」 하나뿐이라, 여기서 그리면 승강판이 올라가도 그림이 그
+          // 자리에 남는다. `FeatureProps`가 지금 자리에 세운다 (PARITY §7.12)
+          if (isFeaturePlacement(b.model, b.x, b.z)) return []
           // ⚠️ 재질 보관함이 **배치마다** 새것이다. 나눠 쓰면 카메라를 막은 집
           // 하나를 흐리게 할 때 같은 모델의 다른 집까지 같이 흐려진다 (`PropFade`)
           const own = new Map<string, Material>()

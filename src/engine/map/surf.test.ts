@@ -72,6 +72,9 @@ const fake = {
   isBlockedAtWorld: (x: number) => x > 10,
   behaviorAtWorld: (x: number) => (x < 0 ? Behavior.WATER_OPEN : 0),
   heightAtWorld: () => 0,
+  bakedHeightAtWorld: () => 0,
+  behavior: (tx: number) => (tx < 0 ? Behavior.WATER_OPEN : 0),
+  isBlocked: (tx: number) => tx > 10,
 }
 
 describe('물 위를 걷지 못한다', () => {

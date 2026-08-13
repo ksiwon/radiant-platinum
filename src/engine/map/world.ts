@@ -223,6 +223,18 @@ export const world = {
    * 워프로 도착한 직후엔 해제돼 있고, 워프 타일에서 발을 떼면 다시 걸린다.
    */
   armed: false,
+  /**
+   * 이 맵에 **들어선 칸** (`fieldSystem->location`의 x·z).
+   *
+   * ⚠️ **선 자리와 다를 수 있다.** 문 타일은 통행 불가라 씬이 한 칸 내려
+   * 세우고(`walkOutOfDoor`), 그 뒤로는 걸어 다니면 계속 달라진다. 원작이
+   * `location`을 따로 들고 있는 이유가 그것이다.
+   *
+   * 승강판이 이 값으로 층을 가른다 — 아래층 문의 z로 들어왔으면 아래층이다
+   * (`PersistedMapFeatures_InitForPlatformLift`)
+   */
+  enteredX: 0,
+  enteredZ: 0,
 }
 
 export function mapById(id: number): MapHeader | null {

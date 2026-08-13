@@ -6,6 +6,7 @@
 // 통행 불가로 오판한다 — 그럴 이유가 없다. 스트리밍은 렌더링에만 쓴다.
 import { BEHAVIOR_MASK, IMPASSABLE, type Building, type CollisionGrid } from './zone'
 import { heightInChunk } from './height'
+import { resolveDynamicHeight } from './dynamicHeight'
 
 export interface MatrixChunk {
   /** 행렬 안 선형 인덱스. buildings의 키다 */
@@ -93,8 +94,23 @@ export class MapGrid implements CollisionGrid {
    *
    * `near`는 지금 높이다 — 다리와 그 밑처럼 판이 겹치는 자리에서 어느 층인지
    * 가르는 유일한 단서다. 0을 넘기면 다리 위를 걷다가 밑으로 떨어진다
+   *
+   * ⚠️ **구워진 높이가 마지막 답이 아니다.** 승강판·물바닥처럼 딛는 면이
+   * 움직이는 자리는 그 위에 판을 한 겹 얹는다 (`map/dynamicHeight`) — BDHC만
+   * 보면 리그 승강기가 올라가는 동안 사람이 바닥에 남는다
    */
   heightAtWorld(x: number, z: number, near = 0): number | null {
+    return resolveDynamicHeight(
+      this.bakedHeightAtWorld(x, z, near), Math.floor(x), Math.floor(z), near)
+  }
+
+  /**
+   * 판을 얹기 **전**의, 구워진 높이만 (`CalculateObjectHeight`).
+   *
+   * 얹은 답과 구별해야 하는 자리가 하나 있다 — 「딛는 높이가 판에서 왔는가」를
+   * 묻는 칸이다(물가시티 체육관의 물). 얹은 답을 다시 넣으면 늘 판이 이긴다
+   */
+  bakedHeightAtWorld(x: number, z: number, near = 0): number | null {
     const i = this.chunkIndexAt(Math.floor(x), Math.floor(z))
     if (i < 0) return null
     const c = this.chunkByIndex.get(i)

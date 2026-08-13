@@ -10,6 +10,7 @@ import { obstacleAt, pushBoulder, STRENGTH_BOULDER } from './obstacles'
 import { bikeSpeedAt } from './bike'
 import { onElevatedBridge, trackBridge } from './bridge'
 import { distortionBridge } from '../world/distortion'
+import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR } from '../script/movement'
 
 export const WALK_SPEED = 4.5
@@ -63,6 +64,11 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     // 판 위가 아니면 null을 주고, 그때만 아래 평소 판정으로 내려간다
     const dw = distortionBridge.blockedAt?.(cx, y, cz)
     if (dw !== null && dw !== undefined) return dw
+    // 그 맵에만 있는 장치가 먼저다 (`DynamicMapFeatures_CheckCollision`) —
+    // 물가시티의 물바닥처럼 **같은 칸이 물 높이에 따라 열리고 닫히는** 자리는
+    // 격자에 안 적혀 있다. 안 보는 칸이면 null이 와서 아래로 내려간다
+    const feature = mapFeatureBridge.blocked?.(Math.floor(cx), Math.floor(cz), y)
+    if (feature !== null && feature !== undefined) return feature
     return (
       grid.isBlockedAtWorld(cx, cz) ||
       // ⚠️ **물인지 땅인지가 층에 달린 칸이 있다** — 물 위의 다리다 (PARITY §1.16).

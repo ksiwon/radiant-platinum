@@ -69,6 +69,10 @@ import { ChunkModels } from './ChunkModels'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
 import { DisguisePlates } from './DisguisePlates'
+import { FeatureProps } from './FeatureProps'
+import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
+import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
+import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
@@ -188,6 +192,14 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       matrix: number,
       /** 도착 높이를 부르는 쪽이 정할 때. 승강 발판만 쓴다 (PARITY §6.10) */
       atY?: number,
+      /**
+       * 워프 표가 적어 둔 **날것의** 도착 칸 (`fieldSystem->location`).
+       *
+       * 문 타일은 통행 불가라 씬이 한 칸 내려 세우는데(`walkOutOfDoor`) 원작의
+       * `location`은 안 내려간 값이다. 승강판이 이 z로 층을 가르므로 한 칸이
+       * 어긋나면 아래층으로 들어와도 위층으로 읽힌다
+       */
+      entered?: { x: number; z: number },
     ) => {
       // ⚠️ **갈아 끼우기 전에** 어디서 떠나는지를 적는다 (`Field_TrySetMapConnection`).
       // 신오 본판(행렬 0)에 있다가 아닌 맵으로 넘어가는 그 한 번만이고, 그 자리가
@@ -211,6 +223,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       world.grid = next
       world.mapId = mapId
       world.matrix = matrix
+      // 들어선 칸을 적어 둔다 (`fieldSystem->location`)
+      world.enteredX = Math.floor(entered?.x ?? x)
+      world.enteredZ = Math.floor(entered?.z ?? z)
       // 도착 높이를 여기서 맞춘다. 0으로 두면 실내 2층에 y=0으로 떨어졌다가
       // 플레이어 시스템이 따라 올라가는 게 한 프레임 보인다
       // ⚠️ 깨어진 세계는 걷는 면이 맵 격자가 아니라 떠 있는 판이다. 보통 맵처럼
@@ -227,6 +242,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       resetStepTile()
       // 다리 위에 선 채로 맵을 옮길 수는 없다 — 새 맵의 어귀를 다시 밟아야 한다
       resetBridge()
+      // 그 맵에만 있는 장치도 맵과 함께 없어진다 (`DynamicMapFeatures_Free`).
+      // ⚠️ **`enterMap`보다 먼저다** — 새 맵의 초기화 스크립트가 그 안에서 돌면서
+      // 다시 세우는데, 뒤에서 지우면 방금 세운 것을 지운다
+      resetPlatformLift()
+      resetPastoriaGym()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
@@ -536,8 +556,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
+    // 리그·강철섬의 승강판 (PARITY §7.12). 타는 동안은 판이 자리를 정한다
+    platformLiftTick(dt)
+    pastoriaTick(dt)
     worldState.player.riding = distortionRiding() || distortionBoulderFalling()
-      || distortionGhostRunning() || distortionJumping()
+      || distortionGhostRunning() || distortionJumping() || platformLiftBusy()
 
     const p = worldState.player.position
     const tx = Math.floor(p.x),
@@ -578,7 +601,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
             target.y === undefined
               ? walkOutOfDoor(next, target.x, target.z)
               : { x: target.x, z: target.z }
-          enter(next, target.to, at.x, at.z, target.matrix, target.y)
+          enter(next, target.to, at.x, at.z, target.matrix, target.y,
+            { x: target.x, z: target.z })
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간
           // 방향 그대로 나오는 것이 맞아서 안 건드린다
           if (target.facing !== undefined) worldState.player.facing = FACING_OF[target.facing] ?? 0
@@ -735,6 +759,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <NpcSprites grid={grid} layer={layer} standing={standing} />
       {/* 변장한 트레이너는 사람 대신 더미가 선다 (PARITY §1.15) */}
       <DisguisePlates grid={grid} layer={layer} />
+      {/* 장치가 움직이는 소품. 청크가 그리는 목록에서 빼고 여기서 세운다 (§7.12) */}
+      <FeatureProps />
       <InteractionPrompt grid={grid} layer={layer} />
     </group>
   )

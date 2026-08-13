@@ -132,6 +132,24 @@ export interface FieldServices {
   /** 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`). y는 이미 타일 단위다 */
   playerPos?: () => { x: number; y: number; z: number }
   /**
+   * 그 맵에만 있는 장치 (`dynamic_map_features.c`, PARITY §7.12).
+   *
+   * 승강판·체육관 장치가 여기로 온다. **한 번에 하나만** 산다 — 맵에 들어설 때
+   * 스크립트가 갈래를 못 박고, 그 뒤 통행 판정과 프레임 갱신이 그 갈래로 간다
+   */
+  mapFeatures?: {
+    /** 리그 승강기 다섯·챔피언방·강철섬 셋 */
+    initPlatformLift: () => void
+    triggerPlatformLift: () => boolean
+    platformLiftBusy: () => boolean
+    platformLiftNotUsedWhenEnteredMap: () => boolean
+    /** 물가시티 체육관의 물바닥 */
+    initPastoriaGym: () => void
+    /** 밟은 칸의 단추를 누른다. 물이 실제로 움직이면 true */
+    pressPastoriaButton: () => boolean
+    pastoriaBusy: () => boolean
+  }
+  /**
    * 귀혼동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
    *
    * 들어온 문만 빼고 **나머지 세 문의 목적지를 전부 같은 방으로** 돌린다

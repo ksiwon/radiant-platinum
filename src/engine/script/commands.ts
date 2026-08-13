@@ -2892,6 +2892,79 @@ on('ShakeObject', (ctx) => {
   return false
 })
 
+// ── 맵마다 움직이는 장치 (PARITY §7.12) ──────────────────────────────────────
+//
+// 원작이 맵에 들어설 때 「이 맵에는 이런 장치가 있다」를 못 박고
+// (`InitPersistedMapFeaturesForX`), 그 뒤로 통행 판정과 프레임 갱신이 그
+// 갈래로 간다 (`dynamic_map_features.c`). 갈래는 열하나인데 그중 여덟이
+// 길을 막는 자리다.
+
+/**
+ * 승강판이 있는 맵이다 (`PersistedMapFeatures_InitForPlatformLift`).
+ *
+ * ⚠️ **어느 층에 서 있는지를 들어온 z가 정한다.** 아래층 문의 z로 들어왔으면
+ * 아래층이고 아니면 위층이다 — 그래서 세이브에 층을 적을 필요가 없고, 저장했다
+ * 다시 켜도 선 자리에서 다시 계산되어 맞는다
+ */
+on('InitPersistedMapFeaturesForPlatformLift', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initPlatformLift()
+  return false
+})
+
+/**
+ * 판을 움직인다 (`PlatformLift_Trigger`).
+ *
+ * ⚠️ **이게 없으면 게임을 못 끝낸다.** 사천왕 넷과 챔피언에게 올라가는 길이
+ * 이 판뿐이고, 챔피언을 이긴 뒤 명예의 전당으로 가는 것도 같은 판이다.
+ * 다 올라갈 때까지 스크립트가 선다 — 원작도 필드 태스크가 끝나야 다음 줄로 간다
+ */
+on('TriggerPlatformLift', (ctx) => {
+  const moved = ctx.host.world.services.mapFeatures?.triggerPlatformLift() === true
+  if (!moved) return false
+  ctx.pause((c) => c.host.world.services.mapFeatures?.platformLiftBusy() !== true)
+  return true
+})
+
+/**
+ * 들어올 때 판이 아직 아래에 있었는가 (`PlatformLift_WasNotUsedWhenEnteredMap`).
+ *
+ * 리그의 다섯은 **한 번 오르면 안 내려온다.** 위층 문으로 들어오면 이 값이
+ * 거짓이 되고, 스크립트가 그것을 보고 판 칸의 좌표 트리거를 꺼 버린다 —
+ * 안 그러면 내려서자마자 그 자리에서 다시 탄다
+ */
+on('CheckPlatformLiftNotUsedWhenEnteredMap', (ctx) => {
+  const at = ctx.readHalfWord()
+  const notUsed = ctx.host.world.services.mapFeatures?.platformLiftNotUsedWhenEnteredMap() ?? true
+  ctx.host.vars.set(at, notUsed ? 1 : 0)
+  return false
+})
+
+/**
+ * 물가시티 체육관이다 (`PersistedMapFeatures_InitForPastoriaGym`).
+ *
+ * ⚠️ **들어설 때마다 물이 낮은 데서 다시 시작한다.** 원작이 이 자리를 통째로
+ * 0으로 지우고, 그 0이 주황 단추다 — 나갔다 들어오면 풀던 것이 처음으로 돌아간다
+ */
+on('InitPersistedMapFeaturesForPastoriaGym', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initPastoriaGym()
+  return false
+})
+
+/**
+ * 단추를 밟았다 (`PastoriaGym_PressButton`).
+ *
+ * ⚠️ **어느 단추인지는 인자가 아니라 밟은 칸이 말한다.** 스크립트는 셋으로
+ * 나뉘어 있는데 명령은 하나다 — 원작이 선 칸에 놓인 소품 모델을 보고 고른다
+ * (`FieldSystem_FindCollidingLoadedMapPropByModelIDs`). 물이 다 움직일 때까지
+ * 스크립트가 선다
+ */
+on('PressPastoriaGymButton', (ctx) => {
+  const moved = ctx.host.world.services.mapFeatures?.pressPastoriaButton() === true
+  if (!moved) return false
+  ctx.pause((c) => c.host.world.services.mapFeatures?.pastoriaBusy() !== true)
+  return true
+})
+
 // ── 표 만들기 ────────────────────────────────────────────────────────────────
 
 /**

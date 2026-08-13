@@ -170,6 +170,16 @@ export interface CollisionGrid {
    * 가르는 유일한 단서라 이동 코드가 반드시 넘겨야 한다 (DATA.md §2.2)
    */
   heightAtWorld(x: number, z: number, near?: number): number | null
+  /**
+   * 판을 얹기 **전**의 높이 (`CalculateObjectHeight`).
+   *
+   * 「딛는 높이가 움직이는 판에서 왔는가」를 묻는 칸이 있어서(물가시티
+   * 체육관의 물) 얹은 답과 구별해야 한다 (PARITY §7.12)
+   */
+  bakedHeightAtWorld(x: number, z: number, near?: number): number | null
+  /** 칸 좌표 기준. 장치의 통행 판정이 거동값으로 갈린다 */
+  behavior(tx: number, tz: number): number
+  isBlocked(tx: number, tz: number): boolean
 }
 
 export interface Building {
