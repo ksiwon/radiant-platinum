@@ -57,7 +57,7 @@ export interface TrainerInfo {
   /**
    * 통신에서 남에게 보이는 「모습」 (`TrainerInfo_Appearance`).
    *
-   * 트레이너 카드의 **그림 번호**지 분류 번호가 아니다. 무연시티
+   * 트레이너 카드의 **그림 번호**지 분류 번호가 아니다. 무쇠시티
    * 포켓몬센터에서 넷 중 하나를 고르고, 안 골랐으면 0이다
    */
   appearance: number

@@ -67,7 +67,7 @@ describe('무리', () => {
   it('스물두 곳이고 마지막 둘이 도로가 아니다', () => {
     expect(SWARM_MAPS).toHaveLength(22)
     expect(new Set(SWARM_MAPS).size).toBe(22)
-    // 무연시티 발전소 앞(200)과 영원의숲(203). 도로만 골라 만들면 이 둘이 빠진다
+    // 골짜기발전소(200)와 영원의 숲(203). 도로만 골라 만들면 이 둘이 빠진다
     expect(SWARM_MAPS.slice(-2)).toEqual([200, 203])
   })
 

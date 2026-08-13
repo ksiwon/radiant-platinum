@@ -532,7 +532,7 @@ const IDLE_COMMANDS = [
   // 자전거로드에 들어서는 자리는 206번도로의 문 안쪽이고, 그 앞이 자전거를
   // 가졌는지 보는 갈래라 훑기가 못 지나간다
   'ForceBicycling',
-  // ⚠️ **무연시티 포켓몬센터의 「모습」은 목록 메뉴 너머다.** 후보 넷을
+  // ⚠️ **무쇠시티 포켓몬센터의 「모습」은 목록 메뉴 너머다.** 후보 넷을
   // `LoadTrainerAppearances`로 만들고 `ShowMenu`로 고르게 하는데, 훑기는
   // 메뉴가 답하기를 기다리지 않으므로 고른 뒤의 가지에 못 든다
   'BufferTrainerClassFromAppearance',

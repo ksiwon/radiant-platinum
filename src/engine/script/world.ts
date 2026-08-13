@@ -354,7 +354,7 @@ export interface FieldServices {
     open: () => void
   }
   /**
-   * 트레이너의 「모습」 (`appearance.c`, 무연시티 포켓몬센터).
+   * 트레이너의 「모습」 (`appearance.c`, 무쇠시티 포켓몬센터).
    *
    * 통신 대전에서 남에게 보이는 겉모습이다. 후보 넷은 트레이너 번호로 정해지고
    * (`sAppearanceShuffleTable`), 고른 것이 리포트에 남는다

@@ -1,3 +1,14 @@
+// 방지턱의 단차 (PARITY §1.11)
+//
+// ⚠️ **원작 높이 자료에는 단차가 없다.** 턱 720칸이 720칸 다 양쪽이 같은
+// 높이고(실측: `.audit/probe/mapAudit.mjs`), 턱은 바닥에 그린 **그림**이다
+// (`allpeak`). 고장이 아니라 원작이 그렇다 — 고정 부감에서는 그림만으로
+// 「여기는 뛰어내리는 곳」이 읽혔다.
+//
+// 3인칭에서는 그 그림이 잔디에 그은 갈색 선으로만 보인다. 그래서 나무·바위와
+// 마찬가지로 **우리가 세운다** — 칸마다 얇은 판을 얹고 뛰어내리는 쪽에 앞면을
+// 붙인다. 뛰는 규칙(`actor/ledge`)은 손대지 않는다: 높이는 그림이고 통행은
+// 여전히 거동값이 정한다
 import { useEffect, useMemo, useRef } from 'react'
 import { InstancedMesh, Object3D } from 'three'
 import type { MapGrid } from '../engine/map/grid'
