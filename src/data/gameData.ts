@@ -7,7 +7,7 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
-  berriesSchema, distortionSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
+  berriesSchema, distortionSchema, moveAnimSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema,
@@ -15,6 +15,7 @@ import {
   type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type HiddenItems,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
+  type MoveAnimFile,
 } from './schema'
 
 /** 숨은 도구 한 줄 */
@@ -324,6 +325,16 @@ export function loadBerries(): Promise<Berries> {
 }
 
 /** 깨어진 세계의 판·뛰는 자리·카메라·사건 (PARITY §6.10) */
+/**
+ * 기술 연출 대본 (PARITY §7.3).
+ *
+ * 색인이 기술 번호고, 대본이 없는 자리는 null이다. 무거운 자료가 아니라
+ * (170KB) 배틀에 들어갈 때 한 번 받는다
+ */
+export function loadMoveAnims(): Promise<MoveAnimFile> {
+  return fetchJson('moveAnim.json', (v) => moveAnimSchema.parse(v))
+}
+
 export function loadDistortion(): Promise<DistortionData> {
   return fetchJson('distortion.json', (v) => distortionSchema.parse(v))
 }

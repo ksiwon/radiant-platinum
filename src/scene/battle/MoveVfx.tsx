@@ -12,12 +12,17 @@
 // 또렷한 도형이 오히려 맞는다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { AdditiveBlending, Color, Mesh, MeshBasicMaterial, type Group } from 'three'
-import { loadMoves } from '../../data/gameData'
+import {
+  AdditiveBlending, BackSide, Color, Mesh, MeshBasicMaterial,
+  type Group, type MeshBasicMaterial as BasicMaterial,
+} from 'three'
+import { loadMoveAnims, loadMoves } from '../../data/gameData'
 import { MOVE_FRAMES, archetypeFor, type Archetype } from '../../engine/battle/vfx'
 import { typeColor } from '../../engine/battle/typeColor'
 import { useBattleStore } from '../../state/battleStore'
 import type { SlotId } from '../../engine/battle/events'
+import { clearMoveImpact, moveImpact } from './stageRefs'
+import type { MoveAnim } from '../../data/schema'
 import {
   elementFamilyForType,
   moveVisualSignature,
@@ -30,6 +35,9 @@ const DURATION = MOVE_FRAMES / 60
 
 export interface Shot {
   kind: Archetype
+  /** 때린 쪽·맞은 쪽의 자리. 몸에 거는 것은 이 둘로 가른다 */
+  by: SlotId
+  at: SlotId
   family: ElementFamily
   color: string
   signature: MoveVisualSignature
@@ -53,6 +61,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
   const head = useRef<Mesh>(null)
   const tail = useRef<Mesh>(null)
   const particles = useRef<Group>(null)
+  const flash = useRef<Mesh>(null)
   const t = useRef(0)
   const particleIds = useMemo(
     () => Array.from({ length: shot.signature.particles }, (_, index) => index),
@@ -76,13 +85,29 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
     [material],
   )
 
+  // 도형이 사라져도 무대에 걸어 둔 것이 남으면 다음 턴까지 몸이 물든다
+  useEffect(() => clearMoveImpact, [])
+
   useFrame((_, delta) => {
     t.current += delta / DURATION
     const k = t.current
     if (k >= 1) {
+      clearMoveImpact()
       done()
       return
     }
+
+    // 무대가 읽을 것을 먼저 적는다 — 몸 떨림·눌림·물들임·사라짐과 화면 흔들림은
+    // 도형이 아니라 무대가 건다 (`stageRefs`)
+    const sig = shot.signature
+    moveImpact.t = k
+    moveImpact.attacker = shot.by
+    moveImpact.defender = shot.at
+    moveImpact.camera = sig.camera
+    moveImpact.shake = sig.shake
+    moveImpact.tint = sig.tint
+    moveImpact.squash = sig.squash
+    moveImpact.vanish = sig.vanish
     const h = head.current,
       l = tail.current
     if (!h || !l) return
@@ -96,7 +121,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
         // 달려가서 부딪고 돌아온다. 앞의 반은 가고 뒤의 반은 온다
         const go = k < 0.5 ? k * 2 : (1 - k) * 2
         h.position.set(fx + (tx - fx) * go, 1.1, fz + (tz - fz) * go)
-        h.scale.setScalar((0.55 + 0.5 * go) * shot.signature.scale)
+        h.scale.setScalar(0.55 + 0.5 * go)
         // 부딪는 순간에만 터진다
         const hit = pulse(Math.max(0, (k - 0.45) / 0.25))
         l.position.set(tx, 1.2, tz)
@@ -111,7 +136,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
           fz + (tz - fz) * k,
         )
         h.scale.setScalar(0.5)
-        const back = Math.max(0, k - 0.1 - (shot.signature.scale - 0.84) * 0.08)
+        const back = Math.max(0, k - 0.12)
         l.position.set(
           fx + (tx - fx) * back,
           1.2 + Math.sin(back * Math.PI) * shot.signature.lift,
@@ -152,13 +177,24 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
       }
     }
 
+    // 배경은 앞에서 훅 물들고 천천히 돌아온다 — 원작의 `startAlpha → endAlpha`
+    // 뒤에 되돌리는 짝이 붙는 것과 같은 모양이다
+    const wall = flash.current
+    const tone = shot.signature.flash
+    if (wall !== null && tone !== null) {
+      const mat = wall.material as BasicMaterial
+      mat.opacity = tone.strength * Math.sin(Math.min(1, k * 1.4) * Math.PI)
+    }
+
     const cloud = particles.current
     if (!cloud) return
     for (let index = 0; index < cloud.children.length; index += 1) {
       const particle = cloud.children[index]!
       const delay = index * 0.035
       const progress = Math.max(0, Math.min(1, (k - delay) / (1 - delay)))
-      const angle = progress * Math.PI * shot.signature.spin + index * 2.4 + shot.signature.phase
+      // 도는 정도는 대본의 공전 반지름에서 온다. 안 도는 기술은 제자리에서 퍼진다
+      const spin = shot.signature.orbit > 0 ? 2 + shot.signature.orbit * 6 : 4.1
+      const angle = progress * Math.PI * spin + index * 2.4
       const px = fx + (tx - fx) * progress
       const pz = fz + (tz - fz) * progress
       particle.visible = progress > 0 && progress < 1
@@ -256,6 +292,25 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
   const rod = shot.kind === 'beam'
   return (
     <group>
+      {/*
+        배경 물들임 (`Func_FadeBg`, 108개 · 색 13가지).
+
+        ⚠️ **무대 앞이 아니라 뒤다.** 원작이 물들이는 것은 배경 층이라 포켓몬은
+        그대로 보인다. 그래서 경기장(반지름 12)보다 큰 구를 안쪽 면으로 두른다 —
+        앞에 판을 깔면 몸까지 같이 죽어서 화면이 그냥 어두워진다
+      */}
+      {shot.signature.flash !== null && (
+        <mesh ref={flash}>
+          <sphereGeometry args={[40, 16, 12]} />
+          <meshBasicMaterial
+            color={shot.signature.flash.color}
+            side={BackSide}
+            transparent
+            depthWrite={false}
+            opacity={0}
+          />
+        </mesh>
+      )}
       <mesh ref={head} material={material}>
         {rod ? (
           <boxGeometry args={[1, 1, 1]} />
@@ -319,6 +374,8 @@ export function MoveVfx({
   const view = useBattleStore((s) => s.view)
   const [shot, setShot] = useState<Shot | null>(null)
   const [table, setTable] = useState<Awaited<ReturnType<typeof loadMoves>> | null>(null)
+  /** 기술 연출 대본. 색인이 기술 번호다 */
+  const [anims, setAnims] = useState<readonly (MoveAnim | null)[] | null>(null)
   const last = useRef<string | null>(null)
 
   useEffect(() => {
@@ -329,6 +386,13 @@ export function MoveVfx({
       })
       .catch(() => {
         /* 도형 없이 간다 */
+      })
+    void loadMoveAnims()
+      .then((a) => {
+        if (alive) setAnims(a.moves)
+      })
+      .catch(() => {
+        /* 대본이 없으면 밋밋한 한 벌로 간다 */
       })
     return () => {
       alive = false
@@ -349,14 +413,16 @@ export function MoveVfx({
     const kind = archetypeFor(move)
     setShot({
       kind,
+      by: cast.by,
+      at: cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a'),
       family: elementFamilyForType(move?.type ?? 0),
       color: typeColor(move?.type ?? 0),
-      signature: moveVisualSignature(cast.move ?? 0),
+      signature: moveVisualSignature(anims?.[cast.move ?? 0] ?? null),
       from: attacker,
       // 제 몸에 거는 것은 목표가 자기 자신이다
       to: kind === 'self-buff' ? attacker : target,
     })
-  }, [cast, table, spotAt])
+  }, [cast, table, anims, spotAt])
 
   if (!shot) return null
   return (

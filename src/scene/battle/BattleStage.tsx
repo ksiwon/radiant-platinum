@@ -30,7 +30,7 @@ import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
-import { battleStage, STAGE_ORIGIN } from './stageRefs'
+import { battleStage, impactHits, moveImpact, STAGE_ORIGIN } from './stageRefs'
 import { BattleBallEffects } from './BattleBallEffects'
 import { BattleTrainers } from './BattleTrainers'
 import { BattleWorldLabels } from './BattleWorldLabels'
@@ -401,9 +401,39 @@ function Slot({
     const hurt = flinch.current
     const shake = hurt > 0 ? Math.sin(hurt * Math.PI * 8) * 0.22 * hurt : 0
     const blink = hurt > 0 && Math.floor((1 - hurt) * FLINCH_BLINKS * 2) % 2 === 1
-    g.visible = t > 0.01 && caughtScale > 0.01 && !blink
 
-    g.position.x = (other.x - spot.x) * reach + shake
+    // ── 기술 대본이 이 몸에 거는 것 (`stageRefs.moveImpact` · PARITY §7.3) ──
+    //
+    // 떨림 279개 · 눌림 24개 · 사라짐 12개가 원작 대본에서 온다. 위력이나
+    // 타입으로 짐작한 것이 아니라 `res/moves/<이름>/anim.s`가 적어 둔 값이다
+    const running = moveImpact.t < 1
+    const fade = running ? 1 - moveImpact.t : 0
+    let castShake = 0
+    let squashX = 1
+    let squashY = 1
+    let hidden = false
+    if (running) {
+      const sh = moveImpact.shake
+      if (sh !== null && impactHits(sh.who, slot)) {
+        castShake = Math.sin(moveImpact.t * Math.PI * 2 * sh.hz) * sh.amount * fade
+      }
+      const sq = moveImpact.squash
+      if (sq !== null && impactHits(sq.who, slot)) {
+        // 대본은 끝 배율만 적는다. 갔다가 돌아오므로 산을 하나 그린다
+        const bell = Math.sin(moveImpact.t * Math.PI)
+        squashX = 1 + (sq.x - 1) * bell
+        squashY = 1 + (sq.y - 1) * bell
+      }
+      // 구멍파기·공중날기는 쓴 쪽이 정말 사라진다
+      hidden = moveImpact.vanish && slot === moveImpact.attacker
+    }
+
+    g.visible = t > 0.01 && caughtScale > 0.01 && !blink && !hidden
+    if (squashX !== 1 || squashY !== 1) {
+      g.scale.set(g.scale.x * squashX, g.scale.y * squashY, g.scale.z * squashX)
+    }
+
+    g.position.x = (other.x - spot.x) * reach + shake + castShake
     // ⚠️ **발이 땅에 닿아야 한다.** 예전엔 여기에 `spot.scale * 0.72`를 더해
     // 놓아서 포켓몬이 제 발판에서 1m 가까이 떠 있었다. `spriteFit`이 이미
     // 판을 맞춰 놓는다 — 칠해진 그림의 아래끝이 이 그룹의 원점이다
@@ -814,14 +844,20 @@ function useBattleCamera(fit: number): void {
         : sampleShot(shotFor('establish', 'p1'), 0)
     // 흔들림은 방향을 여기서 정한다 — 엔진이 난수를 들고 있을 이유가 없다
     const jitter = frame.shake === 0 ? 0 : Math.sin(performance.now() / 17) * frame.shake
+    // ⚠️ 대본이 배경을 흔들라고 적은 기술만 여기서 더 흔든다 (`Func_ShakeBg`,
+    // 30개). 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
+    // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
+    const quake = moveImpact.t < 1 && moveImpact.camera > 0
+      ? Math.sin(performance.now() / 11) * moveImpact.camera * (1 - moveImpact.t)
+      : 0
     // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 샷은 풀밭(반지름 12m) 기준으로
     // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖
     // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다
     const [lx, ly, lz] = frame.look
     battleStage.position
       .set(
-        lx + (frame.position[0] - lx) * fit + jitter,
-        ly + (frame.position[1] - ly) * fit + jitter * 0.6,
+        lx + (frame.position[0] - lx) * fit + jitter + quake,
+        ly + (frame.position[1] - ly) * fit + jitter * 0.6 + quake * 0.7,
         lz + (frame.position[2] - lz) * fit,
       )
       .add(STAGE_ORIGIN)

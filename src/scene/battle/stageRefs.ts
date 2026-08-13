@@ -57,3 +57,50 @@ export const cinematicStage = {
 
 /** 배틀·파트너 무대와 겹치지 않도록 더 아래에 둔다. */
 export const CINEMATIC_ORIGIN = new Vector3(0, -1000, 0)
+
+/**
+ * 지금 도는 기술 연출이 무대에 요구하는 것 (PARITY §7.3).
+ *
+ * 원작 대본은 입자만 뿌리는 것이 아니라 **몸을 흔들고 눌리게 하고 물들이고
+ * 감추고 화면을 흔든다.** 그건 도형을 그리는 `MoveVfx`가 아니라 무대가 할 일이라
+ * 여기로 넘긴다 — `sceneRefs`·`battleStage`와 같은 방식이다.
+ *
+ * ⚠️ **`t`가 1을 넘으면 아무것도 안 걸린 것이다.** 연출이 끝나고 값을 안 지우면
+ * 다음 턴까지 몸이 붉게 물든 채로 남는다
+ */
+export const moveImpact: {
+  /** 0~1 진행. 1 이상이면 도는 연출이 없다 */
+  t: number
+  /** 때린 쪽·맞은 쪽. 몸에 거는 것은 이 둘로 가른다 */
+  attacker: string | null
+  defender: string | null
+  /** 화면 흔들림 진폭(타일) */
+  camera: number
+  shake: { who: string; amount: number; hz: number } | null
+  tint: { who: string; color: string; strength: number } | null
+  squash: { who: string; x: number; y: number } | null
+  /** 쓴 쪽이 사라진다 (구멍파기·공중날기) */
+  vanish: boolean
+} = {
+  t: 1, attacker: null, defender: null,
+  camera: 0, shake: null, tint: null, squash: null, vanish: false,
+}
+
+/** 연출이 끝났다. 걸어 둔 것을 전부 놓는다 */
+export function clearMoveImpact(): void {
+  moveImpact.t = 1
+  moveImpact.attacker = null
+  moveImpact.defender = null
+  moveImpact.camera = 0
+  moveImpact.shake = null
+  moveImpact.tint = null
+  moveImpact.squash = null
+  moveImpact.vanish = false
+}
+
+/** 이 자리에 이 효과가 걸리는가 */
+export function impactHits(who: string, slot: string): boolean {
+  if (who === 'both') return slot === moveImpact.attacker || slot === moveImpact.defender
+  if (who === 'attacker') return slot === moveImpact.attacker
+  return slot === moveImpact.defender
+}
