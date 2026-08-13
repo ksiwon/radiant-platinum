@@ -187,9 +187,14 @@ export const playerSystem = {
     //
     // ⚠️ **벽에 서 있으면 안 따라간다.** 그 y는 지면 높이가 아니라 걷고 있는
     // 축이라, 지면으로 끌어내리면 벽에 붙는 순간 바닥까지 미끄러진다
+    // ⚠️ **깨어진 세계는 격자에 물으면 0이 온다.** 그 맵들은 BDHC 판이 없어서
+    // 지면 높이가 안 나오는데, 실제 지면은 그보다 위다 — 물어본 대로 끌어내리면
+    // 주인공이 판에 파묻힌 채로 걷는다. 그 세계에서는 판·배치표가 높이를 안다
+    // (`distortionBridge.groundY`)
     const ground = onWall
       ? null
-      : activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
+      : distortionBridge.groundY?.(p.position.x, p.position.z)
+        ?? activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
     if (ground !== null && ground !== undefined) {
       // 계단은 한 칸에 반 타일씩 오른다. 그대로 대입하면 판 경계에서 튀므로
       // 짧게 따라붙인다 — 시뮬레이션이 아니라 표현이라 눈에 맞추면 된다

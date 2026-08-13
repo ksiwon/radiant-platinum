@@ -213,7 +213,18 @@ export function distortionGroundY(mapId: number, x: number, z: number): number |
     const y = b.y + b.sy - map.offsetY
     if (best === null || y > best) best = y
   }
-  return best
+  if (best !== null) return best
+
+  // ⚠️ **판이 없는 층은 배치표에 물어본다.** 열 층 중 여섯이 판 없이 보통
+  // 격자로 걷는데, 그 격자에는 BDHC 판이 없어서 `heightAtWorld`가 0을 준다 —
+  // 그런데 실제 지면은 한 칸 위다. 그 높이를 아는 유일한 원작 자료가 이 층에
+  // 선 사람들의 y다 (`distortionAddObject`가 고정소수점에서 푸는 그 값).
+  // 지어낸 값이 아니라 롬이 「여기가 발 높이다」라고 적어 둔 것이다
+  const objects = data?.mapObjects.find((m) => m.map === mapId)?.objects
+  if (objects === undefined || objects.length === 0) return null
+  const heights = objects.map((o) => Math.round((o.y as number) / FX32_PER_TILE) - map.offsetY)
+  heights.sort((a, b2) => a - b2)
+  return heights[Math.floor(heights.length / 2)] ?? null
 }
 
 /**
@@ -949,6 +960,8 @@ export function distortionPlayerPos(): { x: number; y: number; z: number } {
 // 이동 시스템이 볼 수 있게 다리를 꽂는다 (`engine/world/distortion`의 머리말)
 distortionBridge.blockedAt = distortionBlockedAt
 distortionBridge.frame = distortionFrame
+distortionBridge.groundY = (x, z) =>
+  (floor === null ? null : distortionGroundY(floor.map, Math.floor(x), Math.floor(z)))
 distortionBridge.dropBoulder = dropBoulder
 
 /** 시험용 — 층을 나가면 사건 기억을 지운다 */

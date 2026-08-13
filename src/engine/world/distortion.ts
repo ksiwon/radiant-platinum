@@ -367,10 +367,16 @@ export const distortionBridge: {
    * 떨어뜨렸으면 true — 그러면 미는 쪽은 아무것도 안 한다. 이 세계의 바위는
    * 밀어서 옮기는 것이 아니라 **구멍에 빠뜨리는** 것이다 (`world/distortionBoulder`)
    */
+  /**
+   * 깨어진 세계의 지면 높이. 그 세계 밖이면 null.
+   *
+   * 이 세계의 맵에는 BDHC 판이 없어서 보통 격자로는 0이 온다
+   */
+  groundY: ((x: number, z: number) => number | null) | null
   dropBoulder:
     ((boulder: { localID: number; x: number; z: number },
       step: { x: number; z: number }) => boolean) | null
-} = { blockedAt: null, frame: null, dropBoulder: null }
+} = { blockedAt: null, frame: null, groundY: null, dropBoulder: null }
 
 /** 깨어진 세계의 맵인가 */
 export function isDistortionMap(data: Pick<DistortionData, 'maps'>, map: number): boolean {
