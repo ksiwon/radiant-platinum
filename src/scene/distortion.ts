@@ -13,15 +13,18 @@
 import { loadDistortion } from '../data/gameData'
 import type { DistortionData, DistortionMap } from '../data/schema'
 import {
-  ATTRS_INVALID, EVENT_CMD, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL, PLATFORM_FLOOR,
-  PLATFORM_NONE, PLATFORM_WEST_WALL, TELEPORT, blocked, cameraAt, connectionOf, findPlatform,
+  ATTRS_INVALID, CYNTHIA_BLOCK, EVENT_CMD, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL,
+  PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, PROGRESS, TELEPORT, blocked, cameraAt,
+  connectionOf, findPlatform,
   flagHolds, initialHiddenGroups, MAX_PERSISTED_PLATFORMS, distortionBridge, hasPlatformAt,
   jumpAt, mapOf,
-  tileAttributes, type DistortionFrame, type DistortionState,
+  tileAttributes, tileBehavior, type DistortionFrame, type DistortionState,
 } from '../engine/world/distortion'
+import { DIR } from '../engine/script/movement'
 import {
   ELEVATOR_DIR, changeMapFrame, cyrusB4FWalk, cyrusLeavesB4F, DIST_OBJ, downEndFlags, elevatorAt,
-  elevatorLegs, initialPlatformFlags, legFrames, passengerAfter, passengerLocalID, upStartFlags,
+  elevatorLegs, initialPlatformFlags, legFrames, passengerAfter, passengerLocalID,
+  platformFlagShown, upStartFlags,
   withFlag, type ElevatorLeg,
 } from '../engine/world/distortionElevator'
 import {
@@ -138,6 +141,37 @@ export function distortionBlockedAt(x: number, y: number, z: number): boolean | 
   const attrs = tileAttributes(p, data?.attrs[p?.attr ?? -1], wx, wy, wz)
   if (attrs === ATTRS_INVALID) return null
   return blocked(attrs)
+}
+
+/**
+ * 판 위 그 칸의 성질 (`DistWorld_GetTileBehaviorOnCurrentFloatingPlatform`).
+ *
+ * 판 위가 아니면 null이고, 그때는 부르는 쪽이 맵 격자의 성질을 본다 —
+ * 판이 없는 층이 열 중 여섯이라 실제로는 그쪽이 흔하다
+ */
+export function distortionBehaviorAt(x: number, y: number, z: number): number | null {
+  if (floor === null || platform < 0) return null
+  const p = floor.platforms[platform]
+  if (p === undefined) return null
+  const [wx, wy, wz] = toWorldTiles(x, y, z)
+  return tileBehavior(tileAttributes(p, data?.attrs[p.attr], wx, wy, wz))
+}
+
+/**
+ * 시로나가 막고 서서 못 뛰는 칸인가 (`DistWorld_IsBlockedByCynthia`).
+ *
+ * 기라티나를 이긴 **직후에만** 참이다 — 그 방에서 남쪽으로 뛰어 나가려는
+ * 것을 한 칸으로 막아 세운다. 다음 진행도로 넘어가면 풀린다.
+ *
+ * ⚠️ 원작은 셋째 인자를 `tileY`라 부르면서 `..._TILE_Y`(1)와 견주는데,
+ * 부르는 쪽은 거기에 **방향**을 넘긴다 (`PlayerAvatar_WillJumpTwice`).
+ * 그래서 실제로 걸리는 것은 남쪽(`DIR_SOUTH` = 1)뿐이다. 그대로 옮긴다
+ */
+export function distortionJumpBlocked(x: number, z: number, dir: number): boolean {
+  if (floor === null || floor.map !== MAP.giratinaRoom) return false
+  const [wx, , wz] = toWorldTiles(x, 0, z)
+  if (wx !== CYNTHIA_BLOCK.x || wz !== CYNTHIA_BLOCK.z || dir !== DIR.south) return false
+  return (distortionHooks.progress?.() ?? 0) === PROGRESS.battledGiratina
 }
 
 /**
@@ -325,6 +359,87 @@ export function distortionFloor(): DistortionMap | null {
   return floor
 }
 
+/**
+ * 화면에 세울 소품 하나. 세 갈래를 한 모양으로 모은다.
+ *
+ * ⚠️ **유령 소품만 그리면 길이 안 보인다.** 원작의 소품은 세 관리자가 나눠
+ * 든다 — 밟으면 나타나는 유령 소품(`InitGhostPropManager`), 층을 오르내리는
+ * 승강 발판(`InitMovingPlatformPropsForMap`), 그리고 문·폭포·덩굴처럼 늘
+ * 서 있는 것(`InitSimplePropsForMap`)이다. 뒤의 둘을 빼먹으면 **타야 할
+ * 발판이 통째로 안 보인다** — 1F에서 아래로 내려가는 그 판이 그것이다
+ */
+export interface DistortionPropPlace {
+  kind: number
+  /** 맵 안 타일 좌표 (보정 전) */
+  x: number
+  y: number
+  z: number
+  /** 유령 소품의 무리. 나머지는 −1 */
+  group: number
+  /** 승강 발판의 자리 비트. 없으면 −1이고 늘 보인다 */
+  flag: number
+  /** 늘 서 있는 소품의 조건 (`CheckFlagCondition`) */
+  cond: number
+  condVal: number
+  /** 승강 발판이면 표에서의 자리 번호. 아니면 −1 */
+  elevator: number
+}
+
+const NO_FLAG = -1
+
+/** 이번 층에 세울 소품 전부. 층이 바뀔 때 한 번만 부르면 된다 */
+export function distortionPropPlaces(mapId: number): DistortionPropPlace[] {
+  const map = data === null ? null : mapOf(data, mapId)
+  if (map === null || data === null) return []
+  const out: DistortionPropPlace[] = []
+  for (const p of map.props) {
+    out.push({
+      kind: p.kind, x: p.x - map.offsetX, y: p.y - map.offsetY, z: p.z - map.offsetZ,
+      group: p.group, flag: NO_FLAG, cond: 0, condVal: 0, elevator: -1,
+    })
+  }
+  for (const t of data.movingPlatforms.find((m) => m.map === mapId)?.platforms ?? []) {
+    out.push({
+      kind: t.propKind,
+      x: t.tileX - map.offsetX, y: t.tileY - map.offsetY, z: t.tileZ - map.offsetZ,
+      group: -1, flag: t.persistedFlag, cond: 0, condVal: 0, elevator: t.index,
+    })
+  }
+  for (const s of data.simpleProps.find((m) => m.map === mapId)?.props ?? []) {
+    out.push({
+      kind: s.propKind,
+      x: s.tileX - map.offsetX, y: s.tileY - map.offsetY, z: s.tileZ - map.offsetZ,
+      group: -1, flag: NO_FLAG, cond: s.flagCond, condVal: s.flagCondVal, elevator: -1,
+    })
+  }
+  return out
+}
+
+/** 그 소품이 지금 보이는가. 세 갈래가 각자 다른 것을 본다 */
+export function distortionPropShown(p: DistortionPropPlace): boolean {
+  const s = state()
+  if (p.group >= 0) return (s.hiddenGroups & (1 << p.group)) === 0
+  if (p.flag !== NO_FLAG) return platformFlagShown(p.flag, s.platformFlags)
+  return flagHolds(p.cond, p.condVal, {
+    progress: distortionHooks.progress?.() ?? 0,
+    state: s,
+    giratinaAnim: (n: number) => distortionHooks.giratinaAnim?.(n) ?? false,
+    cyrusAppearance: distortionHooks.cyrusAppearance?.() ?? 0,
+  })
+}
+
+/**
+ * 지금 타고 있는 발판의 자리 번호와 서 있는 칸 (맵 좌표).
+ *
+ * 타는 동안 그 발판은 주인공 발밑에 붙어 같이 간다 — 원작이 발판을 옮기고
+ * 주인공을 그 위에 얹는다. 우리는 주인공 자리가 먼저 정해지므로 뒤집어 붙인다
+ */
+export function distortionRideAt(): { index: number; x: number; y: number; z: number } | null {
+  if (ride === null) return null
+  const p = worldState.player.position
+  return { index: ride.platformIndex, x: p.x - 0.5, y: p.y, z: p.z - 0.5 }
+}
+
 // ── 한 칸 걸었다 ─────────────────────────────────────────────────────────────
 
 /** 스크립트를 돌려 달라고 밖에 부탁하는 자리. `MapStreamer`가 채운다 */
@@ -350,19 +465,34 @@ export const distortionHooks: {
 const ranEvents = new Set<string>()
 
 /**
- * 한 칸 옮겼다 (`DistWorld_HandlePlayerMoved` + `HandlePlayerPositionChanged`).
+ * **떠나려는 칸에서** 도는 것 (`DistWorld_HandlePlayerMoved`).
  *
- * 차례가 원작 그대로다 — 유령 소품 → 카메라 → 뛰는 자리 → **승강 발판** →
- * 사건 → 스크립트 칸. 뛰는 자리가 걸리면 거기서 끝나고, 승강 발판이 걸려도
- * 끝난다 (`HandlePlayerPositionChanged`가 발판을 제일 먼저 본다)
+ * ⚠️ **도착한 칸이 아니라 서 있던 칸이다.** 원작은 걸음을 시작하는 순간
+ * (`ov5_021DFE68`, 이동 상태가 `AVATAR_MOVE_STATE_MOVING`일 때) 지금 서 있는
+ * 칸과 **누른 방향**으로 이 셋을 돌린다. 도착한 칸에서 돌리면 「제자리에서
+ * 돌아서서 걷기」가 통째로 빠진다 — 방아쇠 칸에 서서 아래를 보고 걸으면
+ * 발판이 나타나야 하는데, 다음 칸에는 방아쇠가 없어서 아무 일도 안 일어난다.
+ * 실제로 그래서 밟아도 블록이 안 생겼다.
+ *
+ * 차례도 원작 그대로다 — 유령 소품 → 카메라 → 뛰는 자리. 뛰면 거기서 끝난다
+ */
+export function distortionMoved(x: number, y: number, z: number, dir: number): void {
+  if (floor === null || ride !== null) return
+  const [wx, wy, wz] = toWorldTiles(x, y, z)
+  applyTriggers(wx, wy, wz, dir)
+  applyCamera(wx, wy, wz, dir)
+  applyJump(wx, wy, wz, dir)
+}
+
+/**
+ * **닿은 칸에서** 도는 것 (`DistWorld_HandlePlayerPositionChanged`).
+ *
+ * 승강 발판 → 사건 → 스크립트 칸. 발판이 걸리면 거기서 끝난다 —
+ * 원작이 그것을 제일 먼저 본다
  */
 export function distortionStepped(x: number, y: number, z: number, dir: number): void {
   if (floor === null || ride !== null) return
   const [wx, wy, wz] = toWorldTiles(x, y, z)
-
-  applyTriggers(wx, wy, wz, dir)
-  applyCamera(wx, wy, wz, dir)
-  if (applyJump(wx, wy, wz, dir)) return
   if (startRide(wx, wy, wz)) return
   applyEvents(wx, wy, wz)
   applyTeleport(wx, wy, wz, dir)
@@ -962,6 +1092,8 @@ distortionBridge.blockedAt = distortionBlockedAt
 distortionBridge.frame = distortionFrame
 distortionBridge.groundY = (x, z) =>
   (floor === null ? null : distortionGroundY(floor.map, Math.floor(x), Math.floor(z)))
+distortionBridge.behaviorAt = distortionBehaviorAt
+distortionBridge.jumpBlocked = distortionJumpBlocked
 distortionBridge.dropBoulder = dropBoulder
 
 /** 시험용 — 층을 나가면 사건 기억을 지운다 */

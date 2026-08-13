@@ -34,8 +34,59 @@ export const HOP_TIME = 0.4
 /** 뛰는 높이(타일) */
 export const HOP_RISE = 0.55
 
+/**
+ * 깨어진 세계의 **두 칸 건너뛰기** (`TILE_BEHAVIOR_JUMP_*_TWICE`).
+ *
+ * 턱과 생김새는 같지만 규칙이 둘 다르다:
+ *
+ * · **세 칸을 간다.** 원작은 프레임마다 2/16타일씩 24프레임을 옮긴다
+ *   (`MovementAction_JumpDistortionWorldNorth`가 `InitJump`에 넘기는 값이
+ *   `FX32_CONST(2)`와 `8 * 3`이고, 한 타일이 `FX32_ONE * 16`이다) —
+ *   2 × 24 ÷ 16 = **3칸**이다. 턱은 같은 식으로 2칸이다
+ * · **양쪽으로 다 뛴다.** 두 칸이 한 쌍으로 놓여 있어서, 가까운 쪽 칸의
+ *   값이 곧 「이 방향으로 뛴다」다. 224칸을 다 훑어 보면 출발 칸과 착지 칸이
+ *   **224번 모두** 걸을 수 있는 자리다
+ */
+const JUMP_TWICE: Readonly<Record<number, readonly [number, number]>> = {
+  [Behavior.JUMP_TWICE_NORTH]: [0, -1],
+  [Behavior.JUMP_TWICE_SOUTH]: [0, 1],
+  [Behavior.JUMP_TWICE_WEST]: [-1, 0],
+  [Behavior.JUMP_TWICE_EAST]: [1, 0],
+}
+
+/** 두 칸 뛰기가 실제로 옮기는 칸 수 */
+export const HOP_TWICE_TILES = 3
+/** 두 칸 뛰기에 걸리는 시간(초). 원작 24프레임 */
+export const HOP_TWICE_TIME = 24 / 60
+
 export function ledgeJump(behavior: number): readonly [number, number] | null {
   return JUMP[behavior] ?? null
+}
+
+/** 이 값이 두 칸 뛰기면 뛰는 방향, 아니면 null */
+export function distortionJump(behavior: number): readonly [number, number] | null {
+  return JUMP_TWICE[behavior] ?? null
+}
+
+/**
+ * 지금 자리에서 이 방향으로 가면 두 칸을 건너뛰는가
+ * (`PlayerAvatar_WillJumpTwice` · `PlayerAvatar_WillJumpTwiceDistortion`).
+ *
+ * 원작은 **앞 칸의 값만** 본다 — 착지 칸이 걸을 수 있는지는 안 따진다.
+ * 자료가 늘 맞기 때문이고, 우리도 224칸을 다 재서 확인했다
+ */
+export function distortionHop(
+  behaviorAt: (tx: number, tz: number) => number,
+  x: number, z: number, vx: number, vz: number,
+): { x: number; z: number } | null {
+  const dx = Math.abs(vx) > Math.abs(vz) ? Math.sign(vx) : 0
+  const dz = dx === 0 ? Math.sign(vz) : 0
+  if (dx === 0 && dz === 0) return null
+
+  const tx = Math.floor(x), tz = Math.floor(z)
+  const jump = distortionJump(behaviorAt(tx + dx, tz + dz))
+  if (!jump || jump[0] !== dx || jump[1] !== dz) return null
+  return { x: tx + dx * HOP_TWICE_TILES + 0.5, z: tz + dz * HOP_TWICE_TILES + 0.5 }
 }
 
 /** 턱 판정에 필요한 것의 전부 */

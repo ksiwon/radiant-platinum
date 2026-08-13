@@ -59,10 +59,15 @@ export function initialPlatformFlags(map: number): number {
   return (1 << PLATFORM_FLAG.b4f1) | (1 << PLATFORM_FLAG.b5f1)
 }
 
+/** 그 자리 값이 지금 서 있는가. 「자리를 안 쓴다」면 늘 서 있다 */
+export function platformFlagShown(persistedFlag: number, flags: number): boolean {
+  if (persistedFlag === PLATFORM_FLAG_NONE) return true
+  return (flags & (1 << persistedFlag)) !== 0
+}
+
 /** 그 발판이 지금 보이는가 (`InitMovingPlatformPropsForMapEx`) */
 export function platformShown(t: DistortionMovingPlatform, flags: number): boolean {
-  if (t.persistedFlag === PLATFORM_FLAG_NONE) return true
-  return (flags & (1 << t.persistedFlag)) !== 0
+  return platformFlagShown(t.persistedFlag, flags)
 }
 
 /**

@@ -3,12 +3,13 @@ import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import { activeZone, isSurfable } from '../map/zone'
 import { MapGrid } from '../map/grid'
-import { HOP_RISE, HOP_TIME, ledgeHop } from './ledge'
+import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, STRENGTH_BOULDER } from './obstacles'
 import { bikeSpeedAt } from './bike'
 import { distortionBridge } from '../world/distortion'
+import { DIR } from '../script/movement'
 
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
@@ -101,12 +102,15 @@ export const playerSystem = {
 
     // 턱을 넘는 중이면 그것만 한다. 원작도 뛰는 동안은 조작이 안 먹는다
     if (p.hop.active) {
-      p.hop.t = Math.min(1, p.hop.t + dt / HOP_TIME)
+      p.hop.t = Math.min(1, p.hop.t + dt / p.hop.time)
       const k = p.hop.t
       p.position.x = p.hop.fromX + (p.hop.toX - p.hop.fromX) * k
       p.position.z = p.hop.fromZ + (p.hop.toZ - p.hop.fromZ) * k
       p.velocity.set(0, 0, 0)
-      const ground = activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
+      // ⚠️ 깨어진 세계는 격자에 물으면 0이 온다 (BDHC 판이 없다). 걸을 때와
+      // 같은 자리에 물어야 뛰는 동안만 발판 속으로 꺼지지 않는다
+      const ground = distortionBridge.groundY?.(p.position.x, p.position.z)
+        ?? activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
       // 포물선으로 뜬다. 4k(1−k)는 가운데서 1이고 양 끝에서 0이다
       p.position.y = (ground ?? p.position.y) + HOP_RISE * 4 * k * (1 - k)
       if (p.hop.t >= 1) p.hop.active = false
@@ -114,19 +118,49 @@ export const playerSystem = {
       return
     }
 
+    const startHop = (land: { x: number; z: number }, time: number) => {
+      p.hop = {
+        active: true, t: 0, time,
+        fromX: p.position.x, fromZ: p.position.z, toX: land.x, toZ: land.z,
+      }
+      p.facing = Math.atan2(land.x - p.position.x, land.z - p.position.z)
+    }
+
     const grid = activeZone.grid
     if (grid instanceof MapGrid) {
+      /**
+       * 깨어진 세계의 **두 칸 건너뛰기** (`PlayerAvatar_WillJumpTwice`).
+       *
+       * ⚠️ **이게 없으면 그 세계가 끊긴 섬들이 된다.** 발판 사이가 두 칸씩
+       * 비어 있고 그 두 칸은 통행 불가라, 걸어서는 어느 층에서도 다음 발판에
+       * 못 간다 — 1F에서 승강 발판까지 가는 길부터 막힌다.
+       *
+       * 성질은 판이 먼저다 (`..._WillJumpTwiceDistortion`이 판의 통행 자료를
+       * 본다). 판 위가 아니면 맵 격자로 내려간다 — 판이 없는 층이 더 많다
+       */
+      const frame = distortionBridge.frame?.() ?? null
+      // 서 있는 면이 바닥일 때만 뛴다 — 원작이 `AVATAR_DISTORTION_STATE_FLOOR`를
+      // 본다. 판이 아예 없는 층(열 중 여섯)은 보통 바닥이라 그대로 해당한다
+      const onFloor = frame === null || (frame.axis === 'x' && frame.sign === 1)
+      if (onFloor && distortionBridge.behaviorAt !== null) {
+        const behaviorAt = (tx: number, tz: number) =>
+          distortionBridge.behaviorAt?.(tx, p.position.y, tz) ?? grid.behavior(tx, tz)
+        const land = distortionHop(
+          behaviorAt, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
+        if (land !== null) {
+          const dir = land.z !== p.position.z
+            ? (land.z > p.position.z ? DIR.south : DIR.north)
+            : (land.x > p.position.x ? DIR.east : DIR.west)
+          if (distortionBridge.jumpBlocked?.(p.position.x, p.position.z, dir) !== true) {
+            startHop(land, HOP_TWICE_TIME)
+            return
+          }
+        }
+      }
+
       const land = ledgeHop(grid, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
       if (land) {
-        p.hop = {
-          active: true,
-          t: 0,
-          fromX: p.position.x,
-          fromZ: p.position.z,
-          toX: land.x,
-          toZ: land.z,
-        }
-        p.facing = Math.atan2(land.x - p.position.x, land.z - p.position.z)
+        startHop(land, HOP_TIME)
         return
       }
     }

@@ -17,7 +17,10 @@ import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { poketchStep } from './poketch'
-import { distortionActive, distortionRebindPlatform, distortionStepped } from './distortion'
+import {
+  distortionActive, distortionMoved, distortionRebindPlatform, distortionStepped,
+} from './distortion'
+import { pushDirection } from '../engine/input/move'
 import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
@@ -110,7 +113,23 @@ function typeOf(species: number): readonly [number, number] {
   return s ? [s.types[0], s.types[1]] : [-1, -1]
 }
 
+/**
+ * 지금 밀고 있는 방향. 안 밀고 있으면 −1.
+ *
+ * 원작은 누른 키를 그대로 읽지만 (`PlayerAvatar_CalcFaceDirection`) 우리는
+ * 이동이 연속이라 **미는 벡터**가 그 자리다 — 벽에 막혀 속도가 0이어도
+ * 밀고 있으면 방아쇠가 돈다 (원작도 부딪히는 걸음에서 돈다)
+ */
+function pushedDir(): number {
+  const { x, z } = pushDirection()
+  if (Math.abs(x) < 0.2 && Math.abs(z) < 0.2) return -1
+  if (Math.abs(x) > Math.abs(z)) return x > 0 ? DIR.east : DIR.west
+  return z > 0 ? DIR.south : DIR.north
+}
+
 let lastTile = -1
+/** 지난 프레임의 「칸 × 방향」. 같으면 떠나는 칸 처리를 다시 안 한다 */
+let lastMove = -1
 
 /**
  * 맵이 바뀌면 "같은 칸" 판정을 초기화한다.
@@ -120,6 +139,7 @@ let lastTile = -1
  */
 export function resetStepTile(): void {
   lastTile = -1
+  lastMove = -1
 }
 
 /**
@@ -179,14 +199,29 @@ export const stepSystem = {
     const p = worldState.player.position
     const tx = Math.floor(p.x), tz = Math.floor(p.z)
     const key = tz * grid.tileWidth + tx
+
+    // ⚠️ **떠나는 칸에서 도는 것이 따로 있다** (PARITY §6.10). 원작은 유령
+    // 소품 방아쇠·카메라 각·뛰는 자리를 걸음이 **시작될 때** 지금 서 있는
+    // 칸과 누른 방향으로 돌린다 (`DistWorld_HandlePlayerMoved`). 도착한 칸에서
+    // 돌리면 「방아쇠 칸에 서서 돌아선 뒤 걷기」가 빠져 블록이 안 나타난다.
+    // 칸이나 방향이 바뀐 프레임에만 본다 — 누르고 있는 동안 매번 돌면 안 된다
+    if (distortionActive()) {
+      const dir = pushedDir()
+      const moveKey = dir < 0 ? -1 : key * 4 + dir
+      if (moveKey !== lastMove) {
+        lastMove = moveKey
+        if (moveKey >= 0) distortionMoved(p.x, p.y, p.z, dir)
+      }
+    }
+
     if (key === lastTile) return
     const first = lastTile < 0
     lastTile = key
     // 맵에 막 들어선 칸은 세지 않는다 — 원작도 이동이 끝난 자리에서만 센다
     if (first) return
 
-    // 깨어진 세계는 칸이 바뀔 때마다 판·카메라·뛰는 자리·사건을 본다
-    // (`DistWorld_HandlePlayerMoved`, PARITY §6.10)
+    // 닿은 칸에서는 승강 발판·사건·스크립트 칸을 본다
+    // (`DistWorld_HandlePlayerPositionChanged`)
     if (distortionActive()) {
       distortionRebindPlatform(p.x, p.y, p.z)
       distortionStepped(p.x, p.y, p.z, facingDir())

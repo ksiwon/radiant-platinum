@@ -1,23 +1,30 @@
 // 깨어진 세계의 소품 (PARITY §6.10)
 //
-// 이 세계의 「블록」은 지형이 아니라 소품이다. 걷는 판정은 `tw_arc_attr`가
-// 주지만, **눈에 보이는 발판·바위·덩굴은 여기서 선다.**
+// 이 세계의 「블록」은 지형이 아니라 소품이다. 걷는 판정은 `tw_arc_attr`와 맵
+// 격자가 주지만, **눈에 보이는 발판·바위·덩굴·승강판은 여기서 선다.**
 //
-// ⚠️ **이게 없으면 허공을 걷는다.** 밟으면 나타나야 할 발판이 `hiddenGroups`
-// 상태로만 켜지고 화면에는 아무 일도 안 일어나서, 어디로 가야 하는지 알 수가
-// 없었다. 모델은 지어낸 것이 아니라 원작 NSBMD 스물다섯 개다
-// (`tools/extract/distortionProps.js`).
+// ⚠️ **세 갈래를 다 세워야 한다.** 원작은 관리자를 셋으로 나눠 든다 —
+// 밟으면 나타나는 유령 소품, 층을 오르내리는 승강 발판, 늘 서 있는 문·폭포·
+// 덩굴이다. 한동안 첫째만 그렸는데, 그러면 **타야 할 승강 발판이 통째로
+// 안 보인다** — 1F에서 아래로 내려가는 그 판이 그것이다.
 //
-// ⚠️ **무리를 켜고 끄는 것은 `visible`로만 한다.** 뺐다 넣으면 소품이
-// 나타날 때마다 GLB를 다시 세우게 되고, 무리 하나가 수십 개다
+// ⚠️ **자리 보정을 빼먹으면 한 칸 위에 뜬다.** 원작이 칸 한가운데(+0.5)에
+// `sPropInitialPosOffsetByKind`를 더해 세운다. 작은 발판은 y가 −1.5625라,
+// 모델 윗면(제 원점에서 +1)이 「선 높이 − 1/16」에 정확히 온다.
+//
+// ⚠️ **보임새는 프레임마다 본다.** 유령 소품은 무리 비트, 승강 발판은 자리
+// 비트, 늘 서 있는 것은 진행도 조건을 본다 — 마지막 하나가 스토어에 없어서
+// (스크립트 변수다) React 구독으로는 늦는다
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DoubleSide, FrontSide, Group, MeshBasicMaterial, type Material } from 'three'
-import type { DistortionMap } from '../data/schema'
-import { MAX_GHOST_PROP_GROUPS } from '../engine/world/distortion'
-import { distortionFloor, isDistortionFloor } from './distortion'
+import { useFrame } from '@react-three/fiber'
+import { DoubleSide, FrontSide, Mesh, MeshBasicMaterial, type Material } from 'three'
+import {
+  distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, isDistortionFloor,
+  type DistortionPropPlace,
+} from './distortion'
 import { useSaveStore } from '../state/saveStore'
 import {
-  loadDistortionPropMesh, loadDistortionPropSheet, sliceTexture,
+  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 
@@ -51,24 +58,26 @@ function materialsOf(mesh: ChunkMesh, sheet: TexSheet | null): Material[] {
 }
 
 export function DistortionProps({ mapId }: { mapId: number }) {
-  const hiddenGroups = useSaveStore((s) => s.distortion.hiddenGroups)
   // 층이 실제로 걸린 뒤에야 자료가 온다. 처음 들어설 때 `valid`가 서므로
   // 그때 한 번 더 본다 — 안 그러면 첫 층만 소품이 안 뜬다
   const valid = useSaveStore((s) => s.distortion.valid)
-  const [floor, setFloor] = useState<DistortionMap | null>(null)
+  const [places, setPlaces] = useState<readonly DistortionPropPlace[]>([])
   useEffect(() => {
-    setFloor(isDistortionFloor(mapId) ? distortionFloor() : null)
+    setPlaces(isDistortionFloor(mapId) && distortionFloor() !== null
+      ? distortionPropPlaces(mapId)
+      : [])
     // ⚠️ `valid`도 본다. 자료를 아직 안 받았을 때 처음 들어서면 층이 나중에
     // 걸리는데, 그때 서는 표가 이것뿐이다 — 빼면 첫 층만 소품이 안 뜬다
   }, [mapId, valid])
-  const groupRef = useRef<Group>(null)
+
   const [loaded, setLoaded] = useState<readonly Loaded[]>([])
+  const [offsets, setOffsets] = useState<readonly (readonly number[])[]>([])
 
   /** 이 층이 쓰는 소품 종류만 받는다. 스물다섯을 다 받을 이유가 없다 */
-  const kinds = useMemo(() => {
-    if (floor === null) return []
-    return [...new Set(floor.props.map((p) => p.kind))].sort((a, b) => a - b)
-  }, [floor])
+  const kinds = useMemo(
+    () => [...new Set(places.map((p) => p.kind))].sort((a, b) => a - b),
+    [places],
+  )
 
   useEffect(() => {
     let alive = true
@@ -76,15 +85,17 @@ export function DistortionProps({ mapId }: { mapId: number }) {
       setLoaded([])
       return
     }
-    void Promise.all(
-      kinds.map((kind) =>
+    void Promise.all([
+      loadDistortionPropOffsets(),
+      Promise.all(kinds.map((kind) =>
         Promise.all([loadDistortionPropMesh(kind), loadDistortionPropSheet(kind)])
           .then(([mesh, sheet]): Loaded => ({ kind, mesh, materials: materialsOf(mesh, sheet) }))
-          .catch(() => null),
-      ),
-    )
-      .then((got) => {
-        if (alive) setLoaded(got.filter((v): v is Loaded => v !== null))
+          .catch(() => null))),
+    ])
+      .then(([off, got]) => {
+        if (!alive) return
+        setOffsets(off)
+        setLoaded(got.filter((v): v is Loaded => v !== null))
       })
       .catch(() => {
         if (alive) setLoaded([])
@@ -95,27 +106,40 @@ export function DistortionProps({ mapId }: { mapId: number }) {
   }, [kinds])
 
   const byKind = useMemo(() => new Map(loaded.map((l) => [l.kind, l])), [loaded])
+  const meshes = useRef<(Mesh | null)[]>([])
 
-  if (floor === null) return null
+  useFrame(() => {
+    const ride = distortionRideAt()
+    for (const [i, place] of places.entries()) {
+      const mesh = meshes.current[i]
+      if (!mesh) continue
+      mesh.visible = distortionPropShown(place)
+      if (ride === null || place.elevator !== ride.index) continue
+      // 타고 가는 동안 발판은 주인공 발밑에 붙어 같이 움직인다
+      const off = offsets[place.kind] ?? [0, 0, 0]
+      mesh.position.set(
+        ride.x + 0.5 + off[0]!, ride.y + 0.5 + off[1]!, ride.z + 0.5 + off[2]!)
+    }
+  })
+
+  if (places.length === 0) return null
   return (
-    <group ref={groupRef}>
-      {floor.props.map((prop, i) => {
-        const got = byKind.get(prop.kind)
+    <group>
+      {places.map((place, i) => {
+        const got = byKind.get(place.kind)
         if (got === undefined) return null
-        // ⚠️ 무리 번호가 24 이상이면 표에 자리가 없다. 원작이 그런 것을 안 만들지만,
-        // 만들었다면 늘 보이는 것으로 친다 — 비트가 없으니 끌 수가 없다
-        const shown = prop.group >= MAX_GHOST_PROP_GROUPS
-          || (hiddenGroups & (1 << prop.group)) === 0
+        const off = offsets[place.kind] ?? [0, 0, 0]
         return (
           <mesh
             key={i}
-            visible={shown}
+            ref={(m) => { meshes.current[i] = m }}
+            visible={false}
             geometry={got.mesh.geometry}
             material={got.materials}
             position={[
-              prop.x - floor.offsetX + 0.5,
-              prop.y - floor.offsetY,
-              prop.z - floor.offsetZ + 0.5,
+              place.x + 0.5 + off[0]!,
+              place.y + 0.5 + off[1]!,
+              place.z + 0.5 + off[2]!,
             ]}
           />
         )

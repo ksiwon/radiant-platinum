@@ -373,10 +373,25 @@ export const distortionBridge: {
    * 이 세계의 맵에는 BDHC 판이 없어서 보통 격자로는 0이 온다
    */
   groundY: ((x: number, z: number) => number | null) | null
+  /**
+   * 그 칸의 성질. 판 위가 아니면 null — 그때는 부르는 쪽이 맵 격자를 본다.
+   *
+   * 두 칸 뛰기가 이걸 본다 (`DistWorld_GetTileBehaviorOnCurrentFloatingPlatform`)
+   */
+  behaviorAt: ((x: number, y: number, z: number) => number | null) | null
+  /**
+   * 시로나가 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
+   *
+   * 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
+   */
+  jumpBlocked: ((x: number, z: number, dir: number) => boolean) | null
   dropBoulder:
     ((boulder: { localID: number; x: number; z: number },
       step: { x: number; z: number }) => boolean) | null
-} = { blockedAt: null, frame: null, groundY: null, dropBoulder: null }
+} = {
+  blockedAt: null, frame: null, groundY: null, behaviorAt: null, jumpBlocked: null,
+  dropBoulder: null,
+}
 
 /** 깨어진 세계의 맵인가 */
 export function isDistortionMap(data: Pick<DistortionData, 'maps'>, map: number): boolean {

@@ -24,6 +24,7 @@ import { setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
 import { obstacleAt } from '../actor/obstacles'
+import { HOP_TIME } from '../actor/ledge'
 import {
   FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type Trainer,
@@ -821,7 +822,10 @@ export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
 
 function hopTo(x: number, z: number): void {
   const p = worldState.player
-  p.hop = { active: true, t: 0, fromX: p.position.x, fromZ: p.position.z, toX: x, toZ: z }
+  p.hop = {
+    active: true, t: 0, time: HOP_TIME,
+    fromX: p.position.x, fromZ: p.position.z, toX: x, toZ: z,
+  }
 }
 
 /**

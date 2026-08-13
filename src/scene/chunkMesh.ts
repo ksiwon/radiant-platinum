@@ -195,6 +195,18 @@ export function loadDistortionPropSheet(kind: number): Promise<TexSheet | null> 
 }
 
 /**
+ * 종류마다의 자리 보정 (`sPropInitialPosOffsetByKind`), 타일 단위.
+ *
+ * 원작이 칸 한가운데(`+0.5`)에 이 값을 더해 소품을 세운다. 빼먹으면 발판이
+ * 한 칸 위에 떠서 사람이 그 속을 걷는다 (`tools/extract/distortionProps.js`)
+ */
+export function loadDistortionPropOffsets(): Promise<readonly (readonly number[])[]> {
+  return (readJson(assets(), 'data/distortionProps/index.json') as Promise<{
+    offsets: number[][]
+  }>).then((idx) => idx.offsets)
+}
+
+/**
  * 파트너 고르는 장면의 모델 하나 (`graphic/ev_pokeselect.narc`).
  *
  * 소품·청크와 파일 형식이 같다. 번호는 원작 NARC 칸 번호 그대로다 —

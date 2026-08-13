@@ -629,9 +629,22 @@ export const distortionSchema = z.object({
     persistedFlagToSet: z.number().int().nonnegative(),
     persistedFlagToClear: z.number().int().nonnegative(),
   })).nonempty(),
+  /**
+   * 늘 서 있는 소품 (`sSimplePropsMapTemplates`) — 문·폭포·덩굴꽃.
+   *
+   * 유령 소품·승강 발판과 함께 화면에 세워야 하는 셋째 갈래다
+   * (`InitSimplePropsForMap`). 조건은 사건과 같은 `CheckFlagCondition`이다
+   */
   simpleProps: z.array(z.object({
     map: z.number().int().nonnegative(),
-    props: z.array(z.record(z.string(), z.unknown())),
+    props: z.array(z.object({
+      propKind: z.number().int().nonnegative(),
+      tileX: z.number().int(),
+      tileY: z.number().int(),
+      tileZ: z.number().int(),
+      flagCond: z.number().int().nonnegative(),
+      flagCondVal: z.number().int(),
+    })),
   })),
   mapObjects: z.array(z.object({
     map: z.number().int().nonnegative(),

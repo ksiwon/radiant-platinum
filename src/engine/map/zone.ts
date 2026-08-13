@@ -52,6 +52,22 @@ export const Behavior = {
   LEDGE_SOUTH: 0x003b,
   LEDGE_WEST: 0x0039,
   LEDGE_EAST: 0x0038,
+  /**
+   * **두 칸을 건너뛰는 자리** (`TILE_BEHAVIOR_JUMP_*_TWICE`).
+   *
+   * 깨어진 세계에만 있다 — 열 층에 224칸이고 그 밖의 맵에는 하나도 없다.
+   * 값은 이름에 16진수를 담은 항목들이 못 박는다: `UNUSED_x55` 다음이
+   * `PASTORIA_GYM_H_GROUND`(0x56)이고 `UNKNOWN_x60` 앞이
+   * `WARP_STAIRS_WEST`(0x5F)라, 그 사이 열 개가 한 칸씩 맞아떨어진다.
+   *
+   * ⚠️ **이게 없으면 깨어진 세계가 통째로 끊긴 섬이 된다.** 그 세계의 발판은
+   * 두 칸씩 떨어져 있고 사이는 통행 불가라, 뛰지 못하면 1F에서 승강 발판까지
+   * 가는 길부터 막힌다. 실제로 그랬다 — 걷는 칸 5,086개가 112군데에서 끊긴다
+   */
+  JUMP_TWICE_NORTH: 0x005a,
+  JUMP_TWICE_SOUTH: 0x005b,
+  JUMP_TWICE_WEST: 0x005c,
+  JUMP_TWICE_EAST: 0x005d,
 } as const
 
 /**
