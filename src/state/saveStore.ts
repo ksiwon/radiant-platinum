@@ -27,6 +27,7 @@ import { newDaycare, type DaycareState } from '../engine/pokemon/breeding'
 import {
   newRecentRoutes, newRoamers, type RecentRoutes, type Roamer,
 } from '../engine/world/roamer'
+import { seeUnownForm } from '../engine/pokemon/dex'
 import { newHoneyTrees, type HoneyTreesState } from '../engine/world/honeyTree'
 import {
   newRadarRecords, RADAR_BATTERY_STEPS, type RadarState,
@@ -150,7 +151,7 @@ export interface SaveData {
    * 본 종에게만 뜬다. `seen`으로는 못 가른다 — 지금 눈앞의 상대는 이미
    * 본 것이다
    */
-  pokedex: { seen: DexField; caught: DexField; battled: DexField }
+  pokedex: { seen: DexField; caught: DexField; battled: DexField; unownForms: number[] }
   /**
    * 전국도감을 켰는가 (`Pokedex_IsNationalDexObtained`).
    *
@@ -281,7 +282,7 @@ export interface SaveData {
   coins: number
 }
 
-export const SAVE_VERSION = 23
+export const SAVE_VERSION = 24
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -336,6 +337,7 @@ export function createNewSave(): SaveData {
       seen: new Uint8Array(DEX_BYTES),
       caught: new Uint8Array(DEX_BYTES),
       battled: new Uint8Array(DEX_BYTES),
+      unownForms: [],
     },
     nationalDex: false,
     flags: new Uint8Array(FLAG_BYTES),
@@ -382,6 +384,8 @@ interface SaveStore extends SaveData {
   markCaught: (dexNo: number) => void
   /** 쓰러뜨려 봤다고 적는다. 상성 표시가 이걸 본다 */
   markBattled: (dexNo: number) => void
+  /** 본 안농 글자를 적는다 (PARITY §6.8) */
+  markUnownForm: (form: number) => void
   /** 전국도감을 켠다 (`Pokedex_ObtainNationalDex`) */
   obtainNationalDex: () => void
   /** 스크립트 한 판이 끝날 때 그 결과를 통째로 받는다 */
@@ -610,6 +614,7 @@ export const useSaveStore = create<SaveStore>()(
       markCaught: (dexNo) =>
         set((s) => ({
           pokedex: {
+            ...s.pokedex,
             seen: dexSet(s.pokedex.seen, dexNo), // 잡았으면 본 것이기도 하다
             caught: dexSet(s.pokedex.caught, dexNo),
             // 잡은 것도 「상대해 봤다」다. BDSP의 상성 표시가 그 둘을 같이 본다
@@ -620,10 +625,20 @@ export const useSaveStore = create<SaveStore>()(
       markBattled: (dexNo) =>
         set((s) => ({
           pokedex: {
+            ...s.pokedex,
             seen: dexSet(s.pokedex.seen, dexNo),
-            caught: s.pokedex.caught,
             battled: dexSet(s.pokedex.battled, dexNo),
           },
+        })),
+
+      /**
+       * 안농 글자를 하나 봤다 (`SetUnownForm`).
+       *
+       * 야생으로 만난 순간에 적는다 — 잡을 필요가 없다. **본 차례가 남는다**
+       */
+      markUnownForm: (form) =>
+        set((s) => ({
+          pokedex: { ...s.pokedex, unownForms: [...seeUnownForm(s.pokedex.unownForms, form)] },
         })),
 
       // 복사해서 넣는다 — 엔진 쪽 배열은 프레임마다 제자리에서 바뀌므로

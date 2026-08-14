@@ -766,6 +766,7 @@ const services: FieldServices = {
       if (set) useSaveStore.getState().obtainNationalDex()
       return useSaveStore.getState().nationalDex
     },
+    unownFormsSeen: () => useSaveStore.getState().pokedex.unownForms.length,
   },
 
   labels: {

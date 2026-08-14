@@ -355,6 +355,12 @@ export interface FieldServices {
     giveBadge: (badge: number) => void
     /** 전국도감을 켰는가. `set`이면 켜고 답은 0이다 */
     nationalDex: (set: boolean) => boolean
+    /**
+     * 지금까지 본 안농 글자 수 (`Pokedex_NumFormsSeen_Unown`).
+     *
+     * 매니아터널의 비밀방이 이 수로 열린다 (PARITY §6.8)
+     */
+    unownFormsSeen: () => number
   }
   /** 이름표 — 글 칸을 채우는 데 쓴다 (`BufferMoveName` 등) */
   labels?: {

@@ -8,7 +8,7 @@
 // `party: [null]`이 통과하고, 그 값은 화면이 아니라 계산 한복판에서 터진다.
 // `data/schema.ts`가 롬 자료에 대해 하는 일과 같은 것을 세이브에 한다.
 import { z } from 'zod'
-import { DEX_BYTES } from '../../engine/pokemon/dex'
+import { DEX_BYTES, UNOWN_FORM_COUNT } from '../../engine/pokemon/dex'
 import { PARTY_MAX } from '../../engine/pokemon/instance'
 import { BOX_COUNT, BOX_SIZE } from '../../engine/pokemon/boxes'
 import { MAX_QUANTITY, POCKET_SIZE } from '../../engine/bag/bag'
@@ -213,6 +213,13 @@ export const saveSchema = z.object({
     // ⚠️ **맨 뒤에 붙인다.** 읽어들일 때 스키마 차례대로 다시 세우므로,
     // 사이에 끼우면 예전에 쓴 리포트와 바이트가 어긋난다
     battled: u8(DEX_BYTES),
+    /**
+     * 본 안농 글자를 **본 차례대로** (PARITY §6.8).
+     *
+     * ⚠️ 비트필드가 아니다 — 원작이 배열에 앞에서부터 채우고, 도감의 폼 쪽이
+     * 그 차례로 늘어선다. 스물여섯을 다 봐야 열리는 방이 이 길이를 본다
+     */
+    unownForms: z.array(int(0, UNOWN_FORM_COUNT - 1)).max(UNOWN_FORM_COUNT),
   }),
   nationalDex: z.boolean(),
   flags: u8(FLAG_BYTES),

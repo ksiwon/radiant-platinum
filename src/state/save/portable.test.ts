@@ -235,7 +235,10 @@ describe('버전 이전', () => {
       seen: dexSet(new Uint8Array(DEX_BYTES), 25),
       caught: dexSet(new Uint8Array(DEX_BYTES), 387),
     }
-    const got = migrateSave(old, 14)
+    // ⚠️ **지금 판까지 민다.** `migrateSave`는 끝에서 늘 **지금 스키마**로
+    // 검사하므로, 14에서 멈추면 그 뒤 판이 더한 칸(안농 글자 등)이 비어 있어
+    // 「낡은 리포트」가 아니라 「깨진 리포트」로 떨어진다
+    const got = migrateSave(old, SAVE_VERSION)
 
     expect(got.kind).toBe('ok')
     if (got.kind !== 'ok') return

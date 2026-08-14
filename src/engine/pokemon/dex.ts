@@ -35,3 +35,28 @@ export function dexSet(field: Uint8Array, dexNo: number): DexField {
   next[i >> 3]! |= 1 << (i & 7)
   return next
 }
+
+// ── 안농 글자 기록 (PARITY §6.8) ──────────────────────────────────────────────
+
+/** 글자 스물여덟 (`UNOWN_FORM_COUNT`) — 알파벳 26 + `!` + `?` */
+export const UNOWN_FORM_COUNT = 28
+
+/**
+ * 본 안농 글자를 적는다 (`SetUnownForm`).
+ *
+ * ⚠️ **비트필드가 아니라 「본 차례대로의 목록」이다.** 원작이 `unownFormsSeen`
+ * 배열에 앞에서부터 채우고 0xFF로 끝을 표시한다 — 그래서 도감의 폼 쪽이
+ * **처음 본 차례**로 늘어선다. 비트로 바꾸면 그 차례가 사라진다.
+ *
+ * 이미 본 글자면 그대로 돌려준다
+ */
+export function seeUnownForm(seen: readonly number[], form: number): readonly number[] {
+  if (seen.includes(form)) return seen
+  if (seen.length >= UNOWN_FORM_COUNT) return seen
+  return [...seen, form]
+}
+
+/** 지금까지 본 글자 수 (`Pokedex_NumFormsSeen_Unown`) */
+export function unownFormsSeen(seen: readonly number[]): number {
+  return seen.length
+}

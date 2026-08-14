@@ -268,6 +268,19 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 23,
     radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
   }),
+
+  /**
+   * 23 → 24. 본 안농 글자를 적기 시작했다 (PARITY §6.8).
+   *
+   * ⚠️ **빈 목록으로 시작한다.** 예전 리포트가 어느 글자를 봤는지는 아무 데도
+   * 안 남아 있다 — 도감의 「본 수」로 짐작하면 스물여섯을 다 본 것으로 꾸며져
+   * 비밀방이 공짜로 열린다
+   */
+  23: (data) => ({
+    ...data,
+    version: 24,
+    pokedex: { ...(data.pokedex as object), unownForms: [] },
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

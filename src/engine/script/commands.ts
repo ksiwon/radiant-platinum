@@ -2467,6 +2467,18 @@ on('UnloadAnimation', (ctx) => {
   return false
 })
 
+/**
+ * 본 안농 글자 수 (`ScrCmd_GetUnownFormsSeenCount`).
+ *
+ * 214번도로 매니아터널의 사람이 이 수를 묻는다 — 스물여섯을 다 봐야 비밀방이
+ * 열리고, 거기서만 「!」와 「?」가 나온다 (PARITY §6.8)
+ */
+on('GetUnownFormsSeenCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.unownFormsSeen() ?? 0)
+  return false
+})
+
 // ── 화석 (PARITY §4.9) ───────────────────────────────────────────────────────
 
 /** 가방의 화석을 다 센다 (`ScrCmd_GetFossilCount`) */

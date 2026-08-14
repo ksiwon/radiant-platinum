@@ -24,7 +24,7 @@ import { clampFriendship } from '../engine/pokemon/friendship'
 import { caughtAt, isOriginalTrainer, metToday, type TrainerIdentity } from '../engine/pokemon/origin'
 import { mapById, world } from '../engine/map/world'
 import { Terrain, terrainOf, type TerrainId } from '../engine/battle/terrain'
-import { burmyCloak, SPECIES_BURMY } from '../engine/pokemon/form'
+import { burmyCloak, SPECIES_BURMY, SPECIES_UNOWN } from '../engine/pokemon/form'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
 import type { BallId } from '../engine/battle/meta/capture'
@@ -639,6 +639,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         if (party.length < PARTY_MAX) party = [...party, mon]
         else boxes = storeInBox(boxes, save.currentBox, mon)?.boxes ?? boxes
         pokedex = {
+          ...pokedex,
           seen: dexSet(pokedex.seen, mon.species),
           caught: dexSet(pokedex.caught, mon.species),
           // 잡은 것도 상대해 본 것이다 (§2.22)
@@ -890,7 +891,12 @@ function trackDex(events: readonly BattleEvent[], roster: Record<string, RosterE
     if (e.kind === 'switch') {
       const at = roster[e.actor.name]
       if (!at) continue
-      if (at.side === 'p2') save.markSeen(at.species)
+      if (at.side === 'p2') {
+        save.markSeen(at.species)
+        // ⚠️ **안농은 글자까지 적는다** (`SetUnownForm`). 스물여섯을 다 본
+        // 사람에게만 열리는 방이 있어서(PARITY §6.8) 이 기록이 곧 열쇠다
+        if (at.species === SPECIES_UNOWN) save.markUnownForm(at.form)
+      }
       // ⚠️ **내 도롱충이는 「잡았다」로 적힌다** — 원작이 `Pokedex_Capture`를
       // 부른다. 배틀이 끝나면서 옷감이 바뀌므로(§3.4) 그 모습을 도감에
       // 남겨야 하기 때문이다
