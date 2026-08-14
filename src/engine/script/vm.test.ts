@@ -367,11 +367,16 @@ function argWidth(spec: string): number {
     for (let i = 0; i < vars.flags.length * 8; i++) if (vars.checkFlag(i)) set++
     expect(set).toBe(112)
 
-    // 변수 넷: 크기 대회의 첫 기록(33280) · 기타리스트 · 오르burgh 게이트
-    // 등산가 · 연승 보너스. 첫 기록은 `InitSizeContestRecord`가 넣는 값이라
-    // 새 게임에서 이미 0이 아니다 (`SystemVars_SetSizeContestRecord`)
+    // 크기 대회의 첫 기록(33280) · 기타리스트 · 오르burgh 게이트 등산가 ·
+    // 연승 보너스. 첫 기록은 `InitSizeContestRecord`가 넣는 값이라 새 게임에서
+    // 이미 0이 아니다 (`SystemVars_SetSizeContestRecord`).
+    //
+    // ⚠️ **복권 당첨 번호 둘이 난수라 수를 못 박을 수 없다** (PARITY §7.6) —
+    // `RandomizeJubilifeLottery`가 새 게임에서 한 번 돈다. 0이 나올 수도 있어서
+    // **여섯 이하**로만 잰다
     const nonZero = [...vars.saved].filter((v) => v !== 0)
-    expect(nonZero).toHaveLength(4)
+    expect(nonZero.length).toBeGreaterThanOrEqual(4)
+    expect(nonZero.length).toBeLessThanOrEqual(6)
     expect(nonZero).toContain(33_280)
   })
 
@@ -489,9 +494,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_395
+const RUNNING_SITES = 54_400
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 438
+const IMPLEMENTED_COMMANDS = 442
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.

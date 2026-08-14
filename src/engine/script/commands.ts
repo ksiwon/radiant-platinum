@@ -21,6 +21,9 @@ import { FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED } from './va
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { TREE_STATUS } from '../world/honeyTree'
+import {
+  gameCornerPrize, lotteryWinner, VAR_LOTTERY_ID_HIGH, VAR_LOTTERY_ID_LOW,
+} from '../world/gameCorner'
 import { SCORE_BADGE_EARNED, SCORE_HALL_OF_FAME_ENTRY } from '../world/gameRecords'
 import { fossilAtThreshold, fossilCount, speciesFromFossil } from '../world/fossil'
 import {
@@ -425,6 +428,56 @@ on('PokeMartDecor', openShop((ctx) => {
   const martID = ctx.readVar()
   return isDecorMart(martID) ? EVOLUTION_COUNTER_STOCK : []
 }))
+
+/**
+ * 경품 하나의 물건과 값 (`ScrCmd_GetGameCornerPrizeData` · PARITY §4.10).
+ *
+ * ⚠️ **목록 차례가 곧 번호다.** 스크립트가 줄 번호를 그대로 넘기므로
+ * 값싼 순으로 정렬하면 엉뚱한 물건이 나간다
+ */
+on('GetGameCornerPrizeData', (ctx) => {
+  const index = ctx.readVar()
+  const itemVar = ctx.readHalfWord()
+  const priceVar = ctx.readHalfWord()
+  const prize = gameCornerPrize(index)
+  ctx.host.vars.set(itemVar, prize?.item ?? 0)
+  ctx.host.vars.set(priceVar, prize?.coins ?? 0)
+  return false
+})
+
+/**
+ * 축복시티 복권 (PARITY §7.6).
+ *
+ * 날마다 뽑는 다섯 자리 번호를 파티와 박스의 **원트레이너 번호**와 맞춘다 —
+ * 끝자리부터 세고 한 자리라도 틀리면 그 자리에서 멈춘다.
+ *
+ * ⚠️ **당첨 번호가 시스템 변수 둘에 나뉘어 있다** (아래·위 16비트). 스크립트가
+ * 읽는 것은 아래 절반뿐이다 (`LO_HALF`)
+ */
+on('GetJubilifeLotteryTrainerID', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_LOTTERY_ID_LOW))
+  return false
+})
+
+/** 당첨 번호를 새로 뽑는다 (`ScrCmd_RandomizeJubilifeLottery`) */
+on('RandomizeJubilifeLottery', (ctx) => {
+  ctx.host.vars.set(VAR_LOTTERY_ID_LOW, Math.floor(Math.random() * 0x10000))
+  ctx.host.vars.set(VAR_LOTTERY_ID_HIGH, Math.floor(Math.random() * 0x10000))
+  return false
+})
+
+on('CheckForJubilifeLotteryWinner', (ctx) => {
+  const indexVar = ctx.readHalfWord()
+  const digitsVar = ctx.readHalfWord()
+  const inBoxVar = ctx.readHalfWord()
+  const winning = ctx.readVar()
+  const all = ctx.host.world.services.boxes?.lotteryEntries()
+  const got = lotteryWinner(winning, all?.party ?? [], all?.boxes ?? [])
+  ctx.host.vars.set(indexVar, got.index)
+  ctx.host.vars.set(digitsVar, got.digits)
+  ctx.host.vars.set(inBoxVar, got.inBox ? 1 : 0)
+  return false
+})
 
 /**
  * 배틀프런티어 교환 코너 (`ScrCmd_PokeMartFrontier`, PARITY §12.3).

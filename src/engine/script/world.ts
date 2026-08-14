@@ -18,6 +18,7 @@ import { MovementRunner, type Movable, type MovementStep, type MovementTable } f
 import { tickFade } from './fade'
 import { MessageSlots } from './text'
 import type { VarStore } from './vars'
+import type { LotteryEntry } from '../world/gameCorner'
 
 /** `constants/menu.h` */
 export const MENU_YES = 0
@@ -491,6 +492,13 @@ export interface FieldServices {
      * 빈 자리면 빈 글 (`ScrCmd_BufferMonNicknameFromPC`)
      */
     nickname: (boxSlot: number) => string
+    /**
+     * 복권을 맞춰 볼 모든 마리 (PARITY §7.6).
+     *
+     * 파티와 박스 540칸을 다 훑어야 해서 값만 뽑아 준다 — 스크립트가
+     * 「제일 많이 맞은 하나」만 알면 되기 때문이다
+     */
+    lotteryEntries: () => { party: LotteryEntry[], boxes: (LotteryEntry | null)[] }
   }
   /** 224번도로의 석판 (`MiscSaveBlock_TabletName`, PARITY §6.9) */
   tablet?: {

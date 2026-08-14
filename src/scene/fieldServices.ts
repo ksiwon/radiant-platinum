@@ -769,6 +769,16 @@ const services: FieldServices = {
         ?.[boxSlot % BOX_SIZE]
       return mon?.nickname ?? speciesNames[mon?.species ?? 0] ?? ''
     },
+    // 복권 (PARITY §7.6). 박스 540칸을 한 줄로 펴서 준다 —
+    // 원작도 `boxIndex * MAX_MONS_PER_BOX + monPosInBox`로 한 수를 만든다
+    lotteryEntries: () => {
+      const save = useSaveStore.getState()
+      return {
+        party: save.party.map((m) => ({ otId: m.otId, isEgg: m.isEgg })),
+        boxes: save.boxes.flatMap((box) =>
+          box.map((m) => (m ? { otId: m.otId, isEgg: m.isEgg } : null))),
+      }
+    },
   },
 
   tablet: {
