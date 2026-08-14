@@ -547,6 +547,16 @@ export interface FieldServices {
     subtract: (amount: number) => void
   }
   /**
+   * 게임 기록과 트레이너 스코어 (PARITY §7.5).
+   *
+   * ⚠️ **스크립트만 올리는 것이 아니다.** 걸음·야생전·잡은 수는 코드가 세고
+   * (`scene/records`), 스크립트는 그 밖의 자리를 올린다 — 둘이 같은 칸에 쌓인다
+   */
+  records?: {
+    add: (id: number, amount: number) => void
+    score: (event: number) => void
+  }
+  /**
    * 스크립트가 리포트를 쓴다 (`CommonScript_SaveGame` · PARITY §4.12).
    *
    * ⚠️ **묻고 답하는 것은 전부 원작 스크립트다.** "작성할까요?"도 "덮어써도

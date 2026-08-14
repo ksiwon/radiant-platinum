@@ -23,6 +23,7 @@ import { newBerryPatches } from '../../engine/world/berryPatches'
 import { newSafari, TRAM_START } from '../../engine/world/safari'
 import { newFashionCase } from '../../engine/world/fashionCase'
 import { newFactoryRecords } from '../../engine/frontier/records'
+import { newGameRecords } from '../../engine/world/gameRecords'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -340,6 +341,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     ...data,
     version: 30,
     registeredItem: 0,
+  }),
+
+  // 게임 기록 148칸 (PARITY §7.5). 옛 리포트에는 센 적이 없으므로 전부 0이다 —
+  // ⚠️ **지어내지 않는다.** 걸음 수도 잡은 수도 되짚을 근거가 리포트에 없다
+  30: (data) => ({
+    ...data,
+    version: 31,
+    records: newGameRecords(),
   }),
 }
 

@@ -4,7 +4,7 @@
 // 적으면 롬을 다시 뽑을 때 조용히 어긋나므로, 여기서는 **수와 성질만** 못 박는다
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { itemFileSchema } from '../../data/schema'
 import { DATA, withData } from '../../data/romData.testkit'
 

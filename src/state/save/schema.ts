@@ -34,6 +34,7 @@ import {
   MAX_TOTAL_ENTRIES,
 } from '../../engine/world/hallOfFame'
 import { MAX_COINS } from '../../engine/world/coins'
+import { HIGH_LIMIT_U32, MAX_RECORDS } from '../../engine/world/gameRecordsTable'
 import { MAX_BATTLE_POINTS } from '../../engine/bag/frontierMart'
 import {
   HONEY_TREE_COUNT, SLATHER_MINUTES as HONEY_SLATHER_MINUTES,
@@ -461,6 +462,17 @@ export const saveSchema = z.object({
 
   /** 게임코너의 코인. 상한이 `MAX_COINS`다 */
   coins: int(0, MAX_COINS),
+
+  /**
+   * 게임 기록 148칸 (PARITY §7.5 · `GameRecords`).
+   *
+   * ⚠️ **칸마다 상한이 다르다** — 999,999 · 999,999,999 · 9,999 · 65,535 넷이
+   * 섞여 있다. 여기서는 제일 큰 값만 막고, 어느 칸이 어디서 멈추는지는
+   * `engine/world/gameRecords`가 안다.
+   *
+   * ⚠️ **트레이너 스코어가 이 안에 있다**(1번 칸) — 따로 칸을 만들면 어긋난다
+   */
+  records: z.array(int(0, HIGH_LIMIT_U32)).length(MAX_RECORDS),
 
   /**
    * Y로 바로 쓰는 도구 하나 (PARITY §4.4 · `Bag.registeredItem`).

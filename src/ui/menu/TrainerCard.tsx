@@ -4,6 +4,7 @@
 // 기능이라 지금은 없다.
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
+import { RECORD_TRAINER_SCORE, recordValue } from '../../engine/world/gameRecords'
 import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -26,7 +27,7 @@ function debut(at: number): string {
 
 export function TrainerCard() {
   const back = useMenuStore((s) => s.back)
-  const { trainer, money, badges, pokedex } = useSaveStore()
+  const { trainer, money, badges, pokedex, records } = useSaveStore()
   useMenuKeys({ cancel: back, confirm: back })
 
   const caught = [...pokedex.caught].reduce((n, byte) => n + popcount(byte), 0)
@@ -50,6 +51,10 @@ export function TrainerCard() {
             <dt>소지금</dt><dd>{money.toLocaleString('ko-KR')}원</dd>
             <dt>도감</dt><dd>{caught}마리</dd>
             <dt>플레이 시간</dt><dd>{playtime(trainer.playtimeMs)}</dd>
+            {/* 트레이너 스코어 (PARITY §7.5). 기록 1번 칸이 곧 이 값이다 —
+                뱃지 하나가 30, 명예의 전당이 35, 전국도감 상장이 10,000이다 */}
+            <dt>스코어</dt>
+            <dd>{recordValue(records, RECORD_TRAINER_SCORE).toLocaleString('ko-KR')}</dd>
             {/* 원작 카드도 **이긴 뒤에만** 이 줄을 그린다 (`TrainerCase_SetDates`가
                 `gameCompleted`를 같이 받는다) */}
             {trainer.firstClearedAt !== null && (

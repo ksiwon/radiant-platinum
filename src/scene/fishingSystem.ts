@@ -15,6 +15,7 @@ import { facingFeebas, FEEBAS_LEVELS, MAP_MT_CORONET_B1F } from '../engine/world
 import { frontTile, scriptBusy } from '../engine/script/field'
 import { world as mapWorld } from '../engine/map/world'
 import { useSaveStore } from '../state/saveStore'
+import { addRecord, RECORD_CAUGHT_FISH } from '../engine/world/gameRecords'
 import { worldState } from '../state/worldState'
 
 export const fishing = {
@@ -94,6 +95,9 @@ export function castRod(rod: Rod): void {
 /** 화면이 결과 글을 다 보여 준 뒤에 부른다. 배틀로 갈지 여기서 갈린다 */
 export function endFishing(): WildEncounter | null {
   const got = fishing.state?.result === 'caught' ? fishing.catch : null
+  // 낚아 올린 수 (PARITY §7.5). ⚠️ **잡은 수가 아니라 물린 수다** —
+  // 원작도 배틀이 열리는 그 순간에 센다
+  if (got) useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_CAUGHT_FISH, 1) }))
   fishing.state = null
   fishing.catch = null
   encounters.suspended = false

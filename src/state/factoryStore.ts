@@ -24,6 +24,7 @@ import {
 import { TRAINER_THORTON_GOLD, TRAINER_THORTON_SILVER } from '../engine/frontier/factoryTables'
 import { addBattlePoints } from '../engine/bag/frontierMart'
 import { awardPrint, beginChallenge, factorySlot, finishChallenge } from '../engine/frontier/records'
+import { addTrainerScore, SCORE_BATTLE_FACTORY_ROUND } from '../engine/world/gameRecords'
 import { gameLocale } from './optionsStore'
 import { useSaveStore } from './saveStore'
 import { useBattleStore } from './battleStore'
@@ -256,6 +257,9 @@ export const useFactoryStore = create<FactoryState>((set, get) => ({
       useSaveStore.setState({
         factory: records,
         battlePoints: addBattlePoints(save.battlePoints, reward),
+        // 라운드 하나가 트레이너 스코어 7이다 (PARITY §7.5) — 원작도 로비
+        // 스크립트가 `IncrementTrainerScore`로 올린다
+        records: addTrainerScore(save.records, SCORE_BATTLE_FACTORY_ROUND),
       })
       set({ phase: 'result', outcome: 'win', reward, print, round: next })
       return

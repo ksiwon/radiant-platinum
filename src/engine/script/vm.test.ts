@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_285
+const RUNNING_SITES = 54_395
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 425
+const IMPLEMENTED_COMMANDS = 438
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -659,6 +659,10 @@ const IDLE_COMMANDS = [
   // 이름을 부르는 자리는 그 뒤다. 읽는 넷은 밟히므로 리본신드롬 들머리가
   // 실제로 0을 받아 제 대사로 닫힌다
   'CountPartyMonRibbons_Unused', 'SetPartyMonRibbon', 'BufferRibbonName',
+  // TV 인터뷰 (PARITY §7.5). 「인터뷰를 딸 수 있는가」가 늘 「아니오」라
+  // 부르는 자리에 닿지 않는다 — 만든 이유는 안 만들면 방송 스크립트가
+  // 인자를 명령으로 읽고 서기 때문이다
+  'CallTVInterview',
   'GetPartyMonType',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',
@@ -704,6 +708,10 @@ const IDLE_COMMANDS = [
   // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
   'ResetDistortionWorldPersistedCameraAngles',
   'CheckPartyHasHeldItem',
+  // 기록에 **얼마를 더하는** 판 (PARITY §7.5). 열세 자리가 다 안 닿는 갈래
+  // 안쪽이라 안 밟힌다 — 하나씩 올리는 판(`IncrementGameRecord`)과 큰 값을
+  // 더하는 판(`…BigValue`)은 밟힌다
+  'AddToGameRecord',
   // 위와 같은 자리다 — 전당 항목을 고른 **뒤에** 나오는 줄이라 더 못 닿는다
   'CheckIsHallOfFameCorrupted',
 ]

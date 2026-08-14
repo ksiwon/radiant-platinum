@@ -17,10 +17,11 @@ import {
 import { mapById, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
-import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
+import { FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { TREE_STATUS } from '../world/honeyTree'
+import { SCORE_BADGE_EARNED, SCORE_HALL_OF_FAME_ENTRY } from '../world/gameRecords'
 import { fossilAtThreshold, fossilCount, speciesFromFossil } from '../world/fossil'
 import {
   AMITY_GIFT_COUNT, amityFound, amityGiftId, amityGiftIsAccessory, VAR_AMITY_STEPS,
@@ -514,6 +515,149 @@ on('UseVistaLighthouseBinoculars', () => false)
 
 /** 들판시티 대습초원 전망대 (`ScrCmd_StartGreatMarshLookout`). 안 만든다 */
 on('StartGreatMarshLookout', () => false)
+
+
+// ── 게임 기록·트레이너 스코어·TV (PARITY §7.5) ───────────────────────────────
+
+/**
+ * 기록을 하나 올린다 (`ScrCmd_IncrementGameRecord`).
+ *
+ * ⚠️ **인자가 기록 번호다.** 값이 아니다 — 상한과 폭은 기록마다 다르고
+ * `engine/world/gameRecords`가 안다
+ */
+on('IncrementGameRecord', (ctx) => {
+  // ⚠️ **인자를 먼저 읽는다.** `services.records?.add(ctx.readVar(), 1)`로 쓰면
+  // 서비스가 없을 때 `?.`가 오른쪽을 아예 계산하지 않아 읽기 위치가 안 움직인다
+  const id = ctx.readVar()
+  ctx.host.world.services.records?.add(id, 1)
+  return false
+})
+
+/** 기록에 얼마를 더한다 (`ScrCmd_AddToGameRecord`) */
+on('AddToGameRecord', (ctx) => {
+  const id = ctx.readVar()
+  const amount = ctx.readVar()
+  ctx.host.world.services.records?.add(id, amount)
+  return false
+})
+
+/**
+ * 큰 값을 더한다 (`ScrCmd_AddToGameRecordBigValue`).
+ *
+ * ⚠️ **두 번째 인자가 4바이트다.** 변수로 못 담는 값(상금·걸음)이라 상수로 온다 —
+ * 2바이트로 읽으면 다음 명령이 남은 두 바이트를 명령으로 읽는다
+ */
+on('AddToGameRecordBigValue', (ctx) => {
+  const id = ctx.readVar()
+  const amount = ctx.readWord()
+  ctx.host.world.services.records?.add(id, amount)
+  return false
+})
+
+/**
+ * 트레이너 스코어를 올린다 (`ScrCmd_IncrementTrainerScore`).
+ *
+ * ⚠️ **인자는 「사건」 번호고 오르는 폭은 표가 정한다** — 나무열매 수확 1,
+ * 뱃지 30, 전국도감 상장 10,000이다. 번호를 값으로 쓰면 안 된다.
+ *
+ * `IncrementTrainerScore2`는 인자를 변수로 받는 판이다 (원작도 둘로 나뉜다)
+ */
+const incrementScore: CommandFn = (ctx) => {
+  const event = ctx.readVar()
+  ctx.host.world.services.records?.score(event)
+  return false
+}
+on('IncrementTrainerScore', incrementScore)
+on('IncrementTrainerScore2', incrementScore)
+
+/**
+ * TV 인터뷰를 딸 수 있는가 (`ScrCmd_CheckTVInterviewEligible`).
+ *
+ * ⚠️ **늘 「아니오」다.** TV 방송(`tv_segment.c`)은 낱말 고르기(`easy_chat`,
+ * §4.8)로 문장을 짜 맞추는 계통이라 그쪽이 서기 전에는 만들 수가 없다.
+ * 안 만든 것을 「된다」로 답하면 기자가 말을 걸고 빈 방송이 나간다.
+ *
+ * ⚠️ **그래도 명령은 만든다.** 안 만들면 결과 변수에 앞 갈래의 값이 남아
+ * 기자가 우연히 나타난다 — 리본에서 밟은 함정과 같다 (§9.2). 배틀프런티어
+ * 로비의 기자가 그 0으로 숨는다 (§9.3)
+ */
+on('CheckTVInterviewEligible', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/**
+ * TV 방송을 짜 넣는다 (`ScrCmd_CallTVBroadcast` · `…Interview` · `SaveTVSegment*`).
+ *
+ * ⚠️ **만들지 않는다.** 방송 한 편이 **낱말 고르기로 짜 맞춘 문장**이라
+ * (`easy_chat`, §4.8) 그 계통 없이는 내용이 빈다. 대사를 지어내는 대신
+ * 명령만 만들고 아무 일도 안 한다 — 「인터뷰를 딸 수 있는가」가 늘 「아니오」라
+ * 부르는 자리에 닿지도 않는다.
+ *
+ * ⚠️ **그래도 인자는 읽는다.** 안 읽으면 다음 명령이 인자를 명령으로 읽는다
+ */
+const tvNoop = (words: number): CommandFn => (ctx) => {
+  for (let i = 0; i < words; i++) ctx.readHalfWord()
+  return false
+}
+
+/**
+ * ⚠️ **인자 폭이 첫 값에 달렸다** (`CallTVBroadcast` 매크로의 `.if`).
+ *
+ * 표에 적힌 폭 2는 **첫 halfword까지**다 — 그 값이 갈래를 고르고, 갈래마다
+ * 뒤에 붙는 변수 수가 다르다. 고정 폭으로 읽으면 남은 바이트를 다음 명령으로
+ * 읽어서 스크립트가 통째로 어긋난다 (실측: `scripts_tv_broadcast`가 `0x800c`를
+ * 명령으로 읽고 섰다)
+ */
+const TV_BROADCAST_ARGS: Readonly<Record<number, number>> = {
+  0: 1, // 방송이 밀려 있는가 → 변수 하나
+  1: 3, // 인사·머리말 → 갈래 + 뱅크 + 줄
+  2: 0, // 프로그램 끝
+  3: 3, // 꼭지 하나 → 번호 + 뱅크 + 줄
+  4: 2, // 광고 → 뱅크 + 줄
+  5: 3, // 안 쓰인다
+  6: 1, // 다음 꼭지 번호
+}
+
+on('CallTVBroadcast', (ctx) => {
+  const call = ctx.readHalfWord()
+  const words = TV_BROADCAST_ARGS[call] ?? 0
+  // ⚠️ **결과 변수에 0을 적는다.** 안 적으면 앞 갈래의 값이 남아 방송이
+  // 우연히 시작한다 — 리본에서 밟은 함정과 같다 (§9.2)
+  for (let i = 0; i < words; i++) {
+    const at = ctx.readHalfWord()
+    if (at >= SCRIPT_LOCAL_VARS_START) ctx.host.vars.set(at, 0)
+  }
+  return false
+})
+
+/** 인터뷰도 첫 값이 갈래다 — 0은 변수 셋, 1도 변수 셋이다 */
+on('CallTVInterview', (ctx) => {
+  ctx.readHalfWord()
+  for (let i = 0; i < 3; i++) {
+    const at = ctx.readHalfWord()
+    if (at >= SCRIPT_LOCAL_VARS_START) ctx.host.vars.set(at, 0)
+  }
+  return false
+})
+
+on('SaveTVSegmentHiddenItem', tvNoop(1))
+on('SaveTVSegmentHomeAndManor', tvNoop(1))
+on('SaveTVSegmentHomeAndManorNoFurniture', tvNoop(0))
+on('SaveTVSegmentPokemonStorageBulletin', tvNoop(0))
+
+/**
+ * 랭킹 머신 (`ScrCmd_StartRankingsMachine`).
+ *
+ * ⚠️ **만들지 않는다.** 이 기계가 하는 일은 **남들과 줄 세우기**인데, 그 남들이
+ * 기록교환(`record_mixed_rng`)으로 들어온다 — 통신이라 §9다. 줄 세울 상대가
+ * 없으면 남는 것은 내 숫자뿐이고, 그건 트레이너 카드가 이미 보여 준다.
+ *
+ * ⚠️ **여섯 자리가 다 축복TV방송국의 랭킹 방 둘이다** (파일 16·17) — 그 방
+ * 자체가 통신 방이다. 기록 148칸은 만들었으므로, 통신이 열리면 화면만 붙이면 된다
+ */
+on('StartRankingsMachine', (ctx) => { ctx.readVar(); return false })
 
 
 // ── 스크립트가 리포트를 쓴다 (PARITY §4.12) ──────────────────────────────────
@@ -1477,6 +1621,8 @@ on('GiveBadge', (ctx) => {
   // 세이브가 안 붙었을 때 `?.`가 오른쪽을 아예 계산하지 않아 읽기 위치가 안 움직인다
   const badge = ctx.readVar()
   ctx.host.world.services.trainerInfo?.giveBadge(badge)
+  // 뱃지 하나가 트레이너 스코어 30이다 (PARITY §7.5) — 원작도 여기서 올린다
+  ctx.host.world.services.records?.score(SCORE_BADGE_EARNED)
   return false
 })
 
@@ -2512,6 +2658,8 @@ on('ShowDiplomaNationalDex', (ctx) => {
  * 실행되지 않는다. 우리도 타이틀로 나가면서 이 문맥이 통째로 사라진다
  */
 on('ClearGame', (ctx) => {
+  // 명예의 전당 한 번이 스코어 35다 (PARITY §7.5)
+  ctx.host.world.services.records?.score(SCORE_HALL_OF_FAME_ENTRY)
   ctx.host.world.services.hallOfFame?.clear()
   ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
   return true

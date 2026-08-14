@@ -42,6 +42,7 @@ import {
   type PokemonInstance,
 } from '../../engine/pokemon/instance'
 import { useEvolutionStore } from '../../state/evolutionStore'
+import { addRecord, RECORD_POKEMON_EVOLVED } from '../../engine/world/gameRecords'
 import { useMenuStore } from '../../state/menuStore'
 import { useCinematicStore } from '../../state/cinematicStore'
 import { useGameLocale } from '../../state/optionsStore'
@@ -214,7 +215,8 @@ export function EvolutionScreen() {
         lines.push(`${withSubject(tables.names[SPECIES_SHEDINJA] ?? '')} 나타났다!`)
       }
 
-      useSaveStore.setState({ party })
+      // 진화시킨 수 (PARITY §7.5)
+      useSaveStore.setState({ party, records: addRecord(store.records, RECORD_POKEMON_EVOLVED, 1) })
       if (shedinja) {
         store.removeItem(ballPocket, ITEM_POKE_BALL, 1)
         store.markSeen(SPECIES_SHEDINJA)

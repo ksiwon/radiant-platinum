@@ -18,6 +18,13 @@ import {
 } from '../data/gameData'
 import type { Item, Species } from '../data/schema'
 import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
+import {
+  addRecord, addTrainerScore, RECORD_CAUGHT_POKEMON, RECORD_FAINTED_IN_BATTLE,
+  RECORD_TRAINER_BATTLES_FOUGHT, RECORD_WILD_BATTLES_FOUGHT,
+  SCORE_CAPTURED_NATIONAL_MON, SCORE_CAPTURED_REGIONAL_MON,
+  SCORE_WON_TRAINER_BATTLE, SCORE_WON_WILD_BATTLE,
+} from '../engine/world/gameRecords'
+
 import type { ItemPlan } from '../engine/battle/meta/bagItem'
 import { friendshipGain, isEscapeItem } from '../engine/battle/meta/bagItem'
 import { clampFriendship } from '../engine/pokemon/friendship'
@@ -283,7 +290,7 @@ let participants = new Set<string>()
  */
 let leveledUp = new Set<number>()
 /** 종족 표. 보상 계산이 매번 다시 받지 않도록 들고 있는다 */
-let speciesTable: SpeciesLookup | null = null
+let speciesTable: SpeciesTable | null = null
 /**
  * 도구 표. **화면이 동기로 물어보기 때문에** 들고 있어야 한다 —
  * "이 상처약을 이 마리에게 쓰면 어떻게 되나"를 그릴 때마다 기다릴 수는 없다
@@ -717,6 +724,25 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         // 포켓치의 포켓몬히스토리에도 붙는다 (PARITY §7.3)
         poketchGotMon({ species: mon.species, form: mon.form })
       }
+      // 이기고 진 수와 트레이너 스코어 (PARITY §7.5)
+      const finished = get().outcome
+      let records = save.records
+      if (finished === 'loss') records = addRecord(records, RECORD_FAINTED_IN_BATTLE, 1)
+      if (finished === 'win') {
+        records = addTrainerScore(records,
+          get().kind === 'wild' ? SCORE_WON_WILD_BATTLE : SCORE_WON_TRAINER_BATTLE)
+      }
+      if (caught) {
+        records = addRecord(records, RECORD_CAUGHT_POKEMON, 1)
+        // ⚠️ **신오 도감 안이면 지역, 밖이면 전국이다** — 오르는 폭이 2와 3으로 다르다
+        // ⚠️ **신오도감 번호가 0이 아니면 지역이다** (`GetDexNumber(0, ...)`).
+        // 전국 번호로 자르면 안 된다 — 신오도감에 4세대 아닌 종이 잔뜩 있고
+        // 4세대 신규 중에도 신오도감에 없는 것이 있다
+        records = addTrainerScore(records, (speciesTable?.sinnohOf[caught.mon.species] ?? 0) > 0
+          ? SCORE_CAPTURED_REGIONAL_MON
+          : SCORE_CAPTURED_NATIONAL_MON)
+      }
+
       // 도롱마담은 싸운 땅의 옷감으로 갈아입는다 (PARITY §3.4)
       party = dressBurmy(party)
       // 포켓루스가 걸리고 옆으로 옮는 자리 (PARITY §3.9).
@@ -724,7 +750,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // ⚠️ **판이 어떻게 끝났든 돈다.** 원작은 `BattleControllerPlayer_EndFight`에서
       // 통신 배틀만 빼고 무조건 부른다 — 이겼는지 도망쳤는지를 안 본다
       party = pokerusAfterBattle(party, Math.random)
-      useSaveStore.setState({ party, boxes, pokedex })
+      useSaveStore.setState({ party, boxes, pokedex, records })
       // 배회는 여기서 자리를 옮기거나 지워진다 (PARITY §6.3).
       //
       // ⚠️ **만난 판이 아니어도 부른다.** 원작은 야생을 한 판 치를 때마다
@@ -1171,6 +1197,15 @@ async function open(
     // 따라가고 세이브 순서는 안 바뀐다 (`applyResults`가 키로 짝짓는다)
     const awake = team.findIndex((m) => m.mon.hp > 0)
     if (awake > 0) team.unshift(...team.splice(awake, 1))
+
+    // 몇 판 싸웠는가 (PARITY §7.5). ⚠️ **프론티어 판은 안 센다** — 원작의
+    // 기록도 시설 쪽에 따로 있다 (§9.3)
+    if (kind !== 'factory') {
+      useSaveStore.setState((st) => ({
+        records: addRecord(st.records,
+          kind === 'wild' ? RECORD_WILD_BATTLES_FOUGHT : RECORD_TRAINER_BATTLES_FOUGHT, 1),
+      }))
+    }
 
     const foe = buildFoe({ species, pp })
     foe.team.forEach((m, i) => {

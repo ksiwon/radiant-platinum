@@ -36,6 +36,7 @@ import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
 import { newSafari, TRAM_START, type SafariState } from '../engine/world/safari'
 import { newFashionCase, type FashionCase } from '../engine/world/fashionCase'
 import { newFactoryRecords, type FactoryRecords } from '../engine/frontier/records'
+import { newGameRecords } from '../engine/world/gameRecords'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -305,6 +306,12 @@ export interface SaveData {
    */
   coins: number
   /**
+   * 게임 기록 148칸 (PARITY §7.5).
+   *
+   * ⚠️ **트레이너 카드의 점수가 이 안에 있다**(1번 칸) — 따로 안 둔다
+   */
+  records: number[]
+  /**
    * Y로 바로 쓰는 도구 하나 (PARITY §4.4).
    *
    * ⚠️ **한 칸뿐이다** — 원작도 가방에 u16 하나다. 0이면 없다
@@ -325,7 +332,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 30
+export const SAVE_VERSION = 31
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -406,6 +413,7 @@ export function createNewSave(): SaveData {
     distortion: newDistortionState(),
     hallOfFame: newHallOfFame(),
     coins: 0,
+    records: newGameRecords(),
     registeredItem: 0,
     battlePoints: 0,
     factory: newFactoryRecords(),
@@ -641,6 +649,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     distortion: s.distortion,
     hallOfFame: s.hallOfFame,
     coins: s.coins,
+    records: s.records,
     registeredItem: s.registeredItem,
     battlePoints: s.battlePoints,
     factory: s.factory,

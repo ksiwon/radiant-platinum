@@ -26,6 +26,7 @@ import {
 } from '../engine/script/vars'
 import { useFactoryStore } from '../state/factoryStore'
 import { primeRegisteredItem } from './registeredItem'
+import { addRecord, addTrainerScore } from '../engine/world/gameRecords'
 import { ChallengeType } from '../engine/frontier/factory'
 import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTables'
 import { cameraSystem } from '../engine/actor/camera'
@@ -907,6 +908,16 @@ const services: FieldServices = {
     },
     subtract: (amount) => {
       useSaveStore.setState((s) => ({ battlePoints: spendBattlePoints(s.battlePoints, amount) }))
+    },
+  },
+
+  /** 게임 기록과 트레이너 스코어 (PARITY §7.5) */
+  records: {
+    add: (id, amount) => {
+      useSaveStore.setState((s) => ({ records: addRecord(s.records, id, amount) }))
+    },
+    score: (event) => {
+      useSaveStore.setState((s) => ({ records: addTrainerScore(s.records, event) }))
     },
   },
 

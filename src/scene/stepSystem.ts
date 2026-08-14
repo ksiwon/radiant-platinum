@@ -8,6 +8,7 @@
 // 롬의 공용 스크립트를 돌린다 — 독은 `SCRIPT_ID(COMMON_SCRIPTS, 3)`,
 // 리펠은 `…, 32`다. 그래야 글도 소리도 창 모양도 원작이다.
 import { step as stepOnce, Poison } from '../engine/actor/steps'
+import { addRecord, RECORD_EGGS_HATCHED, RECORD_STEPS } from '../engine/world/gameRecords'
 import { VAR_FRIENDSHIP_STEPS } from '../engine/actor/steps'
 import { HOLD_EFFECT_FRIENDSHIP_UP } from '../engine/pokemon/friendship'
 import { fieldScripts, scriptBusy, start } from '../engine/script/field'
@@ -289,6 +290,9 @@ export const stepSystem = {
     // 원작이 어느 맵에서든 한 칸마다 올리고, 광장에 들어설 때 스크립트가
     // 0으로 지운다 — 그래서 「들어온 뒤 몇 걸음」이 된다
     vars.set(VAR_AMITY_STEPS, amityStep(vars.get(VAR_AMITY_STEPS)))
+    // 걸은 수를 센다 (PARITY §7.5). ⚠️ **여기 말고 셀 자리가 없다** —
+    // 원작도 `Field_ProcessStep` 한 자리에서 올린다
+    useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_STEPS, 1) }))
     const got = stepOnce({
       party: save.party,
       label: mapById(mapWorld.mapId)?.label ?? 0,
@@ -334,7 +338,12 @@ export const stepSystem = {
     })
 
     // 알이 깼다. 원작도 여기서 걸음을 멈추고 부화 장면으로 넘어간다
-    if (bred.hatched >= 0) { useHatchStore.getState().open(bred.hatched); return }
+    if (bred.hatched >= 0) {
+      // 알을 깬 수 (PARITY §7.5)
+      useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_EGGS_HATCHED, 1) }))
+      useHatchStore.getState().open(bred.hatched)
+      return
+    }
 
     // 알리는 것은 하나뿐이다 — 원작도 `Field_ProcessStep`이 첫 참에서 돌아온다
     const scripts = mapById(mapWorld.mapId)?.scripts
