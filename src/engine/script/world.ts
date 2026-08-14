@@ -362,6 +362,45 @@ export interface FieldServices {
      */
     unownFormsSeen: () => number
   }
+  /**
+   * 나무열매 밭 118 (PARITY §4.6) — `berry_patch_manager.c`.
+   *
+   * ⚠️ **밭 번호를 스크립트가 안 준다.** 원작은 말을 건 객체의 `data[0]`을 쓴다
+   * (`MapObject_GetDataAt(mapObject, 0)`) — 간판 그림이 그랬던 자리와 같다
+   */
+  berryPatches?: {
+    /** `BERRY_STAGE.*` */
+    growthStage: (patch: number) => number
+    /** 심긴 열매의 **도구 번호**. 빈 밭이면 0 */
+    berryItem: (patch: number) => number
+    /** 뿌려 둔 비료의 **도구 번호**. 없으면 0 */
+    mulchItem: (patch: number) => number
+    /** `SOIL.*` */
+    moisture: (patch: number) => number
+    /** 지금 열려 있는 개수 */
+    yield: (patch: number) => number
+    setMulch: (patch: number, mulchItem: number) => void
+    plant: (patch: number, berryItem: number) => void
+    /** 딴다. 가방에 넣는 것까지 한다 (`Bag_TryAddItem`) */
+    harvest: (patch: number) => void
+    /**
+     * 물뿌리개를 들고 벗는다 (`BerryPatches_StartWatering`·`_EndWatering`).
+     *
+     * 드는 쪽이 앞의 밭에 물을 주고, 좌우를 누르고 있는 동안 옆 밭으로 이어 준다
+     */
+    water: (start: boolean) => void
+  }
+  /**
+   * 가방에서 도구 하나를 고르게 한다 (`FieldSystem_CreateBagContext`).
+   *
+   * ⚠️ **주머니 하나만 보여 준다.** 원작이 목록을 잘라 넘긴다 — 0이 도구
+   * 주머니고 4가 열매 주머니다
+   */
+  chooseItem?: {
+    open: (pocket: number) => void
+    /** 고른 도구 번호. **0이 「안 고르고 나갔다」**다 */
+    picked: () => number
+  }
   /** 이름표 — 글 칸을 채우는 데 쓴다 (`BufferMoveName` 등) */
   labels?: {
     move: (move: number) => string
@@ -389,6 +428,13 @@ export interface FieldServices {
     itemPlural: (item: number) => string
     speciesWithArticle: (species: number) => string
     trainerClassWithArticle: (trainerClass: number) => string
+    /**
+     * 나무열매의 이름 (`BerryData_AllocAndGetName`).
+     *
+     * ⚠️ **도구 이름과 다르다** — 도구는 「체리열매」고 이쪽은 「체리」다.
+     * 뱅크가 아예 따로다 (`UI_BANK.berryNames`)
+     */
+    berry: (item: number) => string
   }
   /** 보관 시스템. 스크립트가 박스 안을 들여다보는 자리가 몇 군데 있다 */
   boxes?: {

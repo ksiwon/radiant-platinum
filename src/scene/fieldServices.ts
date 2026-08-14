@@ -48,6 +48,7 @@ import { entryNumber } from '../engine/world/hallOfFame'
 import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
 import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
+import { itemChoice } from '../ui/menu/itemChoice'
 import { pushesLevel } from '../engine/battle/encounterLead'
 import {
   honeyTreeLevel, honeyTreeOf, honeyTreeSpecies, honeyTreeStatus, isMunchlaxTree,
@@ -148,6 +149,8 @@ import { playerTrainer, useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { naming as namingAnswer } from '../ui/menu/namingAnswer'
 import type { ItemTable } from '../data/gameData'
+import { FIRST_BERRY_ITEM } from '../engine/world/berryInit'
+import { berryPatchServices } from './berryPatches'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -196,6 +199,8 @@ let marts: MartTable | null = null
 let typeNames: readonly string[] = []
 /** 성격 25 (`TEXT_BANK_NATURE_NAMES`) */
 let natureNames: readonly string[] = []
+/** 나무열매 64 (`TEXT_BANK_BERRY_NAMES`). 차례가 도구 번호 − `FIRST_BERRY_ITEM`이다 */
+let berryNames: readonly string[] = []
 /** 트레이너 이름 928 · 분류 105 */
 let trainerNames: readonly string[] = []
 let trainerClassNames: readonly string[] = []
@@ -520,6 +525,9 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, UI_BANK.natureNames)
     .then((bank) => { natureNames = bank })
     .catch(() => { /* 성격 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.berryNames)
+    .then((bank) => { berryNames = bank })
+    .catch(() => { /* 열매 이름만 빈다 */ })
   // 아래 넷은 미국 롬에만 있다. 못 받는 것이 정상이라 조용히 넘긴다
   void loadDialogueBank(locale, UI_BANK.itemNamesWithArticles)
     .then((bank) => { itemArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
@@ -769,8 +777,21 @@ const services: FieldServices = {
     unownFormsSeen: () => useSaveStore.getState().pokedex.unownForms.length,
   },
 
+  berryPatches: berryPatchServices,
+
+  chooseItem: {
+    open: (pocket) => {
+      // 열기 전에 지운다 — 앞서 고른 도구가 남아 있으면 취소가 「그대로 심기」가 된다
+      itemChoice.item = 0
+      useMenuStore.getState().openBagToPick(pocket)
+    },
+    picked: () => itemChoice.item,
+  },
+
   labels: {
     move: (move) => moveNames[move] ?? '',
+    // ⚠️ 도구 표가 아니라 **열매 이름 뱅크**다 — 「체리열매」가 아니라 「체리」
+    berry: (item) => berryNames[item - FIRST_BERRY_ITEM] ?? '',
     pocket: (pocket) => pocketNames[pocket] ?? '',
     species: (species) => speciesNames[species] ?? '',
     type: (type) => typeNames[type] ?? '',

@@ -32,6 +32,7 @@ import { newHoneyTrees, type HoneyTreesState } from '../engine/world/honeyTree'
 import {
   newRadarRecords, RADAR_BATTERY_STEPS, type RadarState,
 } from '../engine/world/pokeRadar'
+import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -245,6 +246,13 @@ export interface SaveData {
   honeyTrees: HoneyTreesState
   radar: RadarState
   /**
+   * 나무열매 밭 128칸 (PARITY §4.6).
+   *
+   * ⚠️ **새 리포트에 이미 118곳이 심겨 있다.** 원작도 게임을 시작할 때 표를
+   * 부어 둔다 (`game_start.c`의 `BerryPatches_Init`)
+   */
+  berryPatches: BerryPatch[]
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -282,7 +290,7 @@ export interface SaveData {
   coins: number
 }
 
-export const SAVE_VERSION = 24
+export const SAVE_VERSION = 25
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -365,6 +373,7 @@ export function createNewSave(): SaveData {
     coins: 0,
     honeyTrees: newHoneyTrees(),
     radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
+    berryPatches: newBerryPatches(),
   }
 }
 
@@ -596,6 +605,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     // 키 차례가 다르면 다시 읽은 리포트가 「다르다」로 떨어진다
     honeyTrees: s.honeyTrees,
     radar: s.radar,
+    berryPatches: s.berryPatches,
   }
 }
 

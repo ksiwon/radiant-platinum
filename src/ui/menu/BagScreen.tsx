@@ -14,6 +14,7 @@ import {
 import { loadUiText } from '../../data/uiText'
 import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
+import { itemChoice } from './itemChoice'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
@@ -72,6 +73,7 @@ export function BagScreen() {
   const addItem = useSaveStore((s) => s.addItem)
   const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
   const giveTo = useMenuStore((s) => s.giveTo)
+  const pickPocket = useMenuStore((s) => s.pickPocket)
   const closeAll = useMenuStore((s) => s.closeAll)
   const push = useMenuStore((s) => s.push)
   const openBerryTag = useMenuStore((s) => s.openBerryTag)
@@ -89,7 +91,9 @@ export function BagScreen() {
     return () => { alive = false }
   }, [locale])
 
-  const slots = bag[pocket] ?? []
+  // 스크립트가 고르라고 열었으면 그 주머니에 못 박힌다 (`FieldSystem_CreateBagContext`)
+  const shown = pickPocket ?? pocket
+  const slots = bag[shown] ?? []
   const at = Math.min(cursor, Math.max(0, slots.length - 1))
   const selected = slots[at]
 
@@ -122,6 +126,14 @@ export function BagScreen() {
    */
   const use = (): void => {
     const id = selected?.item
+    // ⚠️ **고르라고 열린 가방은 쓰지 않는다.** 고른 번호만 남기고 닫는다 —
+    // 스크립트가 그 뒤에 `GetSelectedItem`으로 읽는다
+    if (pickPocket !== null) {
+      if (id === undefined) return
+      itemChoice.item = id
+      closeAll()
+      return
+    }
     if (id === undefined || !data) return
     const item = data.items.get(id)
     // 「건네준다」로 열린 가방이다 (`PartyMenu_SelectItemGive`). 쓰는 것이
@@ -209,8 +221,14 @@ export function BagScreen() {
   useMenuKeys({
     up: () => { setCursor((c) => clampCursor(c, -1, slots.length)) },
     down: () => { setCursor((c) => clampCursor(c, 1, slots.length)) },
-    left: () => { setPocket((p) => wrapCursor(p, -1, POCKET_SIZE.length)); setCursor(0) },
-    right: () => { setPocket((p) => wrapCursor(p, 1, POCKET_SIZE.length)); setCursor(0) },
+    left: () => {
+      if (pickPocket !== null) return
+      setPocket((p) => wrapCursor(p, -1, POCKET_SIZE.length)); setCursor(0)
+    },
+    right: () => {
+      if (pickPocket !== null) return
+      setPocket((p) => wrapCursor(p, 1, POCKET_SIZE.length)); setCursor(0)
+    },
     // ⚠️ **원작은 가방의 갈래 메뉴에서 태그를 연다** (「태그를 본다」).
     // 우리 가방에는 아직 갈래 메뉴가 없어서 Tab으로 연다 — 여는 길만 다르다
     tab: () => {
@@ -223,7 +241,13 @@ export function BagScreen() {
       openBerryTag(id)
     },
     confirm: use,
-    cancel: back,
+    // ⚠️ 고르라고 열린 가방은 취소도 **0을 남기고** 닫아야 한다 — 안 그러면
+    // 앞서 고른 도구가 그대로 남아 다시 심긴다
+    cancel: () => {
+      if (pickPocket === null) { back(); return }
+      itemChoice.item = 0
+      closeAll()
+    },
   })
 
   return (
@@ -231,18 +255,26 @@ export function BagScreen() {
       title="가방"
       note={`${money.toLocaleString('ko-KR')}원`}
       foot={denied
-        ?? `←→ 주머니 · ↑↓ 고르기 · Z 쓴다 · X 닫기`
-        + ` · ${String(slots.length)}/${String(POCKET_SIZE[pocket] ?? 0)}칸`}
+        ?? (pickPocket === null
+          ? `←→ 주머니 · ↑↓ 고르기 · Z 쓴다 · X 닫기`
+          : `↑↓ 고르기 · Z 고른다 · X 그만둔다`)
+        + ` · ${String(slots.length)}/${String(POCKET_SIZE[shown] ?? 0)}칸`}
     >
       <div className={css.tabs}>
         {(data?.pockets ?? []).map((name, i) => (
-          <span
-            key={name}
-            className={i === pocket ? css.tab.on : css.tab.off}
-            onPointerDown={() => { setPocket(i); setCursor(0) }}
-          >
-            {name}
-          </span>
+          // 고르라고 열린 가방은 그 주머니 하나만 보인다
+          pickPocket !== null && i !== pickPocket ? null : (
+            <span
+              key={name}
+              className={i === shown ? css.tab.on : css.tab.off}
+              onPointerDown={() => {
+                if (pickPocket !== null) return
+                setPocket(i); setCursor(0)
+              }}
+            >
+              {name}
+            </span>
+          )
         ))}
       </div>
 
@@ -277,7 +309,7 @@ export function BagScreen() {
                 <span className={own.heroText}>
                   <span className={own.heroName}>{data?.names[selected.item] ?? ''}</span>
                   <span className={own.heroSub}>
-                    {data?.pockets[pocket] ?? ''}
+                    {data?.pockets[shown] ?? ''}
                     {data?.items.get(selected.item).preventToss === 1 ? '' : ` · ${String(selected.count)}개`}
                   </span>
                 </span>

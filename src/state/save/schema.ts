@@ -40,6 +40,11 @@ import {
 import {
   RADAR_BATTERY_STEPS, RADAR_CHAIN_MAX, RADAR_RECORDS,
 } from '../../engine/world/pokeRadar'
+import {
+  BERRY_STAGE, MAX_BERRY_PATCHES, MAX_BERRY_YIELD, MAX_MOISTURE_RATING, MAX_REPLANT_COUNT,
+  MAX_STAGE_MINUTES, MAX_YIELD_RATING,
+} from '../../engine/world/berryPatches'
+import { BERRY_KINDS, MULCH_KINDS } from '../../engine/world/berryInit'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -493,6 +498,33 @@ export const saveSchema = z.object({
       .array(z.object({ species: int(0, 493), count: int(0, RADAR_CHAIN_MAX) }))
       .length(RADAR_RECORDS),
   }),
+
+  /**
+   * 나무열매 밭 128칸 (PARITY §4.6) — `MiscSaveBlock`의 `berryPatches`.
+   *
+   * ⚠️ **밭마다 열 칸을 다 적는다.** 심은 열매만 적어 두고 나머지를 다시 만들 수가
+   * 없다 — 남은 분·물기·수확 등급·다시 심긴 횟수가 전부 「지금까지 어떻게 흘렀는가」의
+   * 결과라서, 하나라도 빠지면 껐다 켜는 것만으로 밭이 되살아나거나 죽는다.
+   *
+   * ⚠️ **`isGrowing`도 적는다.** 이게 「이 밭을 눈으로 본 적이 있는가」다
+   * (`berryPatches`의 머리말). 껐다 켤 때마다 지워지면 밭이 영영 안 자란다
+   */
+  berryPatches: z
+    .array(
+      z.object({
+        berryID: int(0, BERRY_KINDS),
+        growthStage: int(0, BERRY_STAGE.fruit),
+        stageMinutesRemaining: int(0, MAX_STAGE_MINUTES),
+        moistureMinutesRemaining: int(0, 59),
+        replantCount: int(0, MAX_REPLANT_COUNT),
+        yield: int(0, MAX_BERRY_YIELD),
+        moistureRating: int(0, MAX_MOISTURE_RATING),
+        yieldRating: int(0, MAX_YIELD_RATING),
+        mulchType: int(0, MULCH_KINDS),
+        isGrowing: z.boolean(),
+      }),
+    )
+    .length(MAX_BERRY_PATCHES),
 })
 
 /**

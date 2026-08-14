@@ -14,6 +14,7 @@ import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
 import { fishingSystem } from './fishingSystem'
+import { berryWateringSystem } from './berryPatches'
 import { markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { spinBike } from './BikeModel'
@@ -50,6 +51,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 낚시도 발을 묶는다. 스크립트와 같은 이유로 이동 시스템 **앞**이다 —
       // 뒤에 두면 낚는 동안 그 프레임만큼 걸어가 물에서 멀어진다 (PARITY §1.5)
       gameLoop.register(fishingSystem)
+      // 물뿌리개도 발을 묶는다 (PARITY §4.6). 낚시와 같은 자리다 — 물을 주는
+      // 동안 방향키는 걸음이 아니라 **옆 밭으로 옮겨 서기**다
+      gameLoop.register(berryWateringSystem)
       gameLoop.register(npcSystem)
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)

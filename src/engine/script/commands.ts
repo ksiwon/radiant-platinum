@@ -3441,3 +3441,135 @@ on('TryRevertPokemonForm', (ctx) => {
   ctx.host.vars.set(dest, got)
   return false
 })
+
+// ── 가방에서 고르기 ─────────────────────────────────────────────────────────
+
+/**
+ * 가방을 열어 하나 고르게 한다 (`ScrCmd_OpenBag`).
+ *
+ * ⚠️ **인자가 주머니 번호가 아니다.** 0이면 도구 주머니고 **그 밖은 전부**
+ * 열매 주머니다 (`if (ReadByte(ctx) == 0) v1 = 0; else v1 = 1;`).
+ *
+ * ⚠️ **화면이 닫힐 때까지 선다** (`ScriptContext_WaitForApplicationExit`).
+ * 안 세우면 고르기도 전에 `GetSelectedItem`이 옛 값을 읽는다
+ */
+on('OpenBag', (ctx) => {
+  const mode = ctx.readByte()
+  ctx.host.world.services.chooseItem?.open(mode === 0 ? POCKET_ITEMS : POCKET_BERRIES)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+/** 방금 고른 도구 (`ScrCmd_GetSelectedItem`). 0이면 안 고르고 나갔다 */
+on('GetSelectedItem', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.chooseItem?.picked() ?? 0)
+  return false
+})
+
+/** `POCKET_ITEMS` · `POCKET_BERRIES` */
+const POCKET_ITEMS = 0
+const POCKET_BERRIES = 4
+
+// ── 나무열매 밭 118 (PARITY §4.6) ────────────────────────────────────────────
+
+/**
+ * 지금 손댄 밭의 번호 (`MapObject_GetDataAt(mapObject, 0)`).
+ *
+ * ⚠️ **스크립트가 안 준다.** 밭 아홉 자리 전부가 인자 없이 「이 밭」을 말하고,
+ * 원작은 말을 건 객체의 `data[0]`을 쓴다 — 배치표의 `raw[7]`이 그 자리다.
+ * 밭 객체 118개가 0~117을 하나씩 들고 있고 겹치지 않는다
+ */
+function berryPatchId(ctx: ScriptContext): number {
+  return ctx.host.world.target?.params?.[0] ?? 0
+}
+
+/** 지금 자란 정도 (`ScrCmd_GetBerryGrowthStage`). 0이면 빈 흙이다 */
+on('GetBerryGrowthStage', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.berryPatches?.growthStage(berryPatchId(ctx)) ?? 0)
+  return false
+})
+
+/** 심긴 열매의 도구 번호 (`ScrCmd_GetBerryItemID`) */
+on('GetBerryItemID', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.berryPatches?.berryItem(berryPatchId(ctx)) ?? 0)
+  return false
+})
+
+/** 뿌려 둔 비료의 도구 번호 (`ScrCmd_GetBerryMulchType`). **종류가 아니라 도구 번호다** */
+on('GetBerryMulchType', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.berryPatches?.mulchItem(berryPatchId(ctx)) ?? 0)
+  return false
+})
+
+/** 흙이 얼마나 말랐는가 (`ScrCmd_GetBerryMoisture`). 0 바싹 · 1 마름 · 2 촉촉 */
+on('GetBerryMoisture', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.berryPatches?.moisture(berryPatchId(ctx)) ?? 0)
+  return false
+})
+
+/** 열려 있는 개수 (`ScrCmd_GetBerryYield`). 스크립트가 이걸로 단수·복수를 가른다 */
+on('GetBerryYield', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.berryPatches?.yield(berryPatchId(ctx)) ?? 0)
+  return false
+})
+
+/** 비료를 뿌린다 (`ScrCmd_SetBerryMulch`). 도구를 빼는 것은 스크립트가 먼저 했다 */
+on('SetBerryMulch', (ctx) => {
+  const item = ctx.readVar()
+  ctx.host.world.services.berryPatches?.setMulch(berryPatchId(ctx), item)
+  return false
+})
+
+/** 심는다 (`ScrCmd_PlantBerry`) */
+on('PlantBerry', (ctx) => {
+  const item = ctx.readVar()
+  ctx.host.world.services.berryPatches?.plant(berryPatchId(ctx), item)
+  return false
+})
+
+/**
+ * 물뿌리개를 들고 벗는다 (`ScrCmd_SetBerryWateringState`).
+ *
+ * ⚠️ **인자가 변수가 아니라 상수다** — `ScriptContext_ReadHalfWord`다. 0이 들기,
+ * 1이 벗기.
+ *
+ * ⚠️ **한 프레임 쉰다** (`return TRUE`). 물 주는 일이 스크립트와 **나란히** 도는
+ * 태스크라, 여기서 안 쉬면 아래의 「참 좋아하네」가 물보다 먼저 뜬다
+ */
+on('SetBerryWateringState', (ctx) => {
+  const state = ctx.readHalfWord()
+  ctx.host.world.services.berryPatches?.water(state === 0)
+  return true
+})
+
+/**
+ * 딴다 (`ScrCmd_HarvestBerry`).
+ *
+ * ⚠️ **가방이 찼는지는 안 본다.** 스크립트가 `GoToIfCannotFitItem`으로 먼저
+ * 갈라 놓았기에 여기까지 왔으면 들어간다
+ */
+on('HarvestBerry', (ctx) => {
+  ctx.host.world.services.berryPatches?.harvest(berryPatchId(ctx))
+  return false
+})
+
+/**
+ * 나무열매의 이름을 글 칸에 넣는다 (`ScrCmd_BufferBerryName`).
+ *
+ * ⚠️ **도구 이름이 아니다** — 「체리열매」가 아니라 「체리」다. 싹·자람·꽃 단계의
+ * 대사가 이 이름을 쓴다.
+ *
+ * ⚠️ **인자가 셋인데 마지막은 원작도 안 쓴다** — 값을 읽어 버리기는 해야 한다
+ */
+on('BufferBerryName', (ctx) => {
+  const slot = ctx.readByte()
+  const item = ctx.readVar()
+  ctx.readVar() // 원작도 `unused`로만 받는다
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.berry(item) ?? '')
+  return false
+})

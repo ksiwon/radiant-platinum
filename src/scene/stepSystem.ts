@@ -25,6 +25,7 @@ import {
   dayNumber, elapseMinutes, minuteNumber, rollOver, swarmMap, trophySpecies,
 } from '../engine/world/daily'
 import { elapseHoneyTrees } from '../engine/world/honeyTree'
+import { berryPatchesStep, elapseBerries } from './berryPatches'
 import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
 import { radarStep } from './pokeRadar'
@@ -178,20 +179,21 @@ function checkDay(): void {
 /**
  * 분 단위로 흐르는 것 (`inline_020559DC` → `sub_02055B64`).
  *
- * 지금은 꿀 나무 스물한 그루뿐이다 (PARITY §6.6). **켜 둔 동안만 세지
- * 않는다** — 마지막으로 본 분을 리포트에 두고 그 차이를 쓴다. 원작이 DS의
- * 시계를 같은 방식으로 본다
+ * 꿀 나무 스물한 그루(PARITY §6.6)와 나무열매 밭 118곳(§4.6)이 여기서 흐른다.
+ * **켜 둔 동안만 세지 않는다** — 마지막으로 본 분을 리포트에 두고 그 차이를
+ * 쓴다. 원작이 DS의 시계를 같은 방식으로 본다
  */
 function checkMinutes(now: Date): void {
   const save = useSaveStore.getState()
   const stepped = elapseMinutes(save.daily, minuteNumber(now))
   if (stepped.state === save.daily) return
   const honeyTrees = elapseHoneyTrees(save.honeyTrees, stepped.minutes)
-  useSaveStore.setState(
-    honeyTrees === save.honeyTrees
-      ? { daily: stepped.state }
-      : { daily: stepped.state, honeyTrees },
-  )
+  const berryPatches = elapseBerries(save.berryPatches, stepped.minutes)
+  useSaveStore.setState({
+    daily: stepped.state,
+    ...(honeyTrees === save.honeyTrees ? {} : { honeyTrees }),
+    berryPatches,
+  })
 }
 
 /**
@@ -269,6 +271,10 @@ export const stepSystem = {
     // 레이더 배터리가 한 걸음 찬다 (`RadarChargeStep`) — 가방에 있을 때만.
     // 그리고 무더기가 화면 밖으로 나갔는지도 걸음마다 본다
     radarStep()
+
+    // 화면에 든 나무열매 밭이 자라기 시작한다 (`BerryPatches_UpdateGrowthStates`).
+    // 원작도 칸이 바뀔 때마다 절두체로 잰다 (PARITY §4.6)
+    berryPatchesStep()
 
     const save = useSaveStore.getState()
     const vars = fieldScripts.vars

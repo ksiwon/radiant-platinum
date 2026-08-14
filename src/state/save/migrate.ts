@@ -19,6 +19,7 @@ import { newDistortionState } from '../../engine/world/distortion'
 import { newHallOfFame } from '../../engine/world/hallOfFame'
 import { newHoneyTrees } from '../../engine/world/honeyTree'
 import { newRadarRecords, RADAR_BATTERY_STEPS } from '../../engine/world/pokeRadar'
+import { newBerryPatches } from '../../engine/world/berryPatches'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -281,6 +282,18 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 24,
     pokedex: { ...(data.pokedex as object), unownForms: [] },
   }),
+
+  /**
+   * 나무열매 밭 128칸 (PARITY §4.6).
+   *
+   * ⚠️ **새 리포트와 똑같이 심어 준다.** 옛 리포트에는 밭이 없었으니 「이미 딴
+   * 자리」와 구별할 길이 없고, 빈 밭으로 두면 심을 열매를 아직 못 구한 사람이
+   * 밭 118곳을 영영 못 쓴다. 원작이 게임을 시작할 때 붓는 그 표를 그대로 붓는다.
+   *
+   * ⚠️ **`isGrowing`은 서지 않는다** — 눈으로 본 적이 있는지는 아무 데도 안
+   * 남아 있다. 그 도로에 다시 가면 그때부터 자란다
+   */
+  24: (data) => ({ ...data, version: 25, berryPatches: newBerryPatches() }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

@@ -33,6 +33,7 @@
     "gen:spriteTable": "node tools/extract/spriteTableModule.cjs",
     "gen:trainerClasses": "node tools/extract/trainerClassModule.cjs",
     "gen:trainerBgm": "node tools/extract/trainerBgmModule.cjs",
+    "gen:berryInit": "node tools/extract/berryInitModule.cjs",
     "gen:trainerModels": "py -3.13 tools/extract/bdspTrainerModels.py",
     "gen:itemTable": "node tools/extract/itemTableModule.cjs",
     "gen:eggMoveTable": "node tools/extract/eggMoveTableModule.cjs",

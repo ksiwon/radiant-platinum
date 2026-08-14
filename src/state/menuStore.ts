@@ -89,6 +89,14 @@ interface MenuStore {
    */
   giveTo: number | null
   /**
+   * 스크립트가 고르라고 연 가방인가 (`ScrCmd_OpenBag`). 그 주머니 번호고
+   * null이면 평소의 가방이다.
+   *
+   * ⚠️ **주머니를 못 바꾼다.** 원작이 목록을 하나로 잘라 넘기므로 좌우로
+   * 넘길 다른 주머니가 아예 없다
+   */
+  pickPocket: number | null
+  /**
    * 기술 되살리기가 무엇을 누구에게 가르치려는가 (`MoveReminderData`).
    *
    * `tutor`가 참이면 기술가르침이라 목록이 한 줄뿐이다. 상점 재고와 같은
@@ -129,6 +137,13 @@ interface MenuStore {
   openSummary: (slot: number) => void
   /** 도구를 건네주려고 가방을 쌓는다 */
   openBagToGive: (slot: number) => void
+  /**
+   * 스크립트가 「가방에서 하나 골라라」로 연다 (`FieldSystem_CreateBagContext`).
+   *
+   * ⚠️ **주머니 하나만 보인다.** 원작이 주머니 목록을 하나로 잘라서 넘긴다 —
+   * 비료를 고를 때는 도구 주머니, 심을 것을 고를 때는 열매 주머니뿐이다
+   */
+  openBagToPick: (pocket: number) => void
   /** 기술 되살리기를 연다 */
   openReminder: (what: NonNullable<MenuStore['reminder']>) => void
   /** NPC 교환 장면을 연다 */
@@ -163,6 +178,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   usingItem: null,
   summarySlot: 0,
   giveTo: null,
+  pickPocket: null,
   reminder: null,
   reminderLearned: false,
   diplomaNational: false,
@@ -212,6 +228,13 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     const stack: MenuScreen[] = [...s.stack, 'bag']
     capture(stack)
     return { stack, top: 'bag' as const, giveTo: slot }
+  }),
+
+  openBagToPick: (pocket) => set(() => {
+    const stack: MenuScreen[] = ['bag']
+    capture(stack)
+    // 고른 답은 `itemChoice`가 든다 — 화면이 닫힌 뒤 스크립트가 읽는다
+    return { stack, top: 'bag' as const, pickPocket: pocket, giveTo: null }
   }),
 
   openSummary: (slot) => set((s) => {

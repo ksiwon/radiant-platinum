@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_114
+const RUNNING_SITES = 54_138
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 367
+const IMPLEMENTED_COMMANDS = 379
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -573,6 +573,15 @@ const IDLE_COMMANDS = [
   // ⚠️ **명예의 전당을 세우는 것은 스크립트가 아니다.** 전당 화면이 끝나면서
   // 코드가 켠다 (`hall_of_fame.c`). 스크립트에는 묻는 쪽만 있다
   'SetGameCompleted',
+  // ⚠️ **가방 화면 너머다.** 여는 것까지는 밟지만 그 뒤는 사람이 도구를
+  // 고르고 나와야 이어진다 — 훑기는 화면을 안 연다
+  'OpenBag',
+  'GetSelectedItem',
+  // 나무열매 밭 셋도 같은 이유다 (PARITY §4.6). 훑기는 밭이 늘 빈 흙이라
+  // 「싹이 텄다」와 「땄다」 쪽으로 안 간다 — 물기를 묻는 자리도 그 안이다
+  'BufferBerryName',
+  'GetBerryMoisture',
+  'HarvestBerry',
   // 남에게 받은 마리인지 묻는 자리도 파티 너머다
   'CheckIsPartyMonOutsider',
   // ⚠️ **육성가 여덟은 파티가 있어야 닿는다.** 아저씨·아주머니의 대사가 전부
