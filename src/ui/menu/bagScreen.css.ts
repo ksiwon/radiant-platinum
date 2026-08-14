@@ -40,3 +40,19 @@ export const heroSub = style({
   fontSize: 13,
   opacity: 0.6,
 })
+
+/**
+ * 등록 표식 (`BagUI_DrawRegisteredIcon`).
+ *
+ * 원작은 줄 오른쪽 끝에 작은 그림을 찍는다. 우리는 그 그림을 아직 안 굽고
+ * 있어서 키 이름을 그대로 쓴다 — **무슨 키로 쓰는지가 표식보다 쓸모 있다**
+ */
+export const registered = style({
+  marginLeft: 6,
+  padding: '0 5px',
+  borderRadius: 4,
+  fontSize: 11,
+  fontWeight: 700,
+  background: 'rgba(120, 160, 230, 0.9)',
+  color: '#101624',
+})

@@ -66,9 +66,12 @@ const NO_FISHING_LAST = 583
  * 없는 자리**다. 둘을 안 가르면 "이 게임은 원래 안 되는 것"과 "우리가 아직
  * 못 만든 것"이 화면에서 같은 말로 보인다.
  */
+/** 파티 화면이 무엇을 하러 열리는가. `menuStore`의 `usingItem.use`와 같은 값이다 */
+export type PartyItemUse = 'heal' | 'tmhm' | 'evoStone'
+
 export type FieldItemAction =
   /** 누구에게 쓸지 골라야 한다. 파티 화면이 열린다 */
-  | { kind: 'party'; use: 'heal' | 'tmhm' | 'evoStone' }
+  | { kind: 'party'; use: PartyItemUse }
   /** 리펠 부류. `steps`걸음 동안 약한 야생이 안 나온다 */
   | { kind: 'repel'; steps: number }
   /** 검은·하얀 피리. 이 맵을 벗어날 때까지 출현률이 바뀐다 */

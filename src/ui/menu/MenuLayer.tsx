@@ -4,6 +4,7 @@
 // 원작도 스크립트가 도는 동안에는 메뉴를 막는다.
 import { useEffect } from 'react'
 import { fieldScripts } from '../../engine/script/field'
+import { runRegisteredItem } from '../../scene/registeredItem'
 import { useBattleStore } from '../../state/battleStore'
 import { useMenuStore } from '../../state/menuStore'
 import { ChooseStarter } from '../field/ChooseStarter'
@@ -30,6 +31,8 @@ import { SummaryScreen } from './SummaryScreen'
 import { TrainerCard } from './TrainerCard'
 
 const OPEN_KEYS = new Set(['KeyX', 'Escape'])
+/** 등록한 도구를 바로 쓰는 키 (PARITY §4.4). 원작 DS의 Y다 */
+const REGISTERED_KEY = 'KeyY'
 
 export function MenuLayer() {
   const top = useMenuStore((s) => s.top)
@@ -39,7 +42,7 @@ export function MenuLayer() {
   useEffect(() => {
     if (stackDepth > 0) return
     const onKey = (e: KeyboardEvent): void => {
-      if (!OPEN_KEYS.has(e.code)) return
+      if (!OPEN_KEYS.has(e.code) && e.code !== REGISTERED_KEY) return
       // 스크립트가 도는 중이면 그쪽이 B를 먼저 쓴다
       if (fieldScripts.ctx !== null) return
       // ⚠️ **배틀 중에도 안 열린다.** 위 주석은 처음부터 그렇게 적혀 있었는데
@@ -48,6 +51,9 @@ export function MenuLayer() {
       if (useBattleStore.getState().phase !== 'off') return
       e.preventDefault()
       e.stopPropagation()
+      // ⚠️ **Y는 메뉴를 안 연다.** 등록한 도구를 그 자리에서 쓴다 — 아무것도
+      // 등록 안 했으면 원작처럼 조용히 아무 일도 안 한다
+      if (e.code === REGISTERED_KEY) { runRegisteredItem(); return }
       open('start')
     }
     window.addEventListener('keydown', onKey, true)

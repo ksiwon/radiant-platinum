@@ -15,22 +15,13 @@ import { loadUiText } from '../../data/uiText'
 import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
 import { itemChoice } from './itemChoice'
+import { fieldContextNow, performItemAction } from './itemAction'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
 import { clampCursor, scrollIntoView, useMenuKeys, wrapCursor } from './useMenuKeys'
-import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
-import { onElevatedBridge } from '../../engine/actor/bridge'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
 import { tradeEvolutionItems } from '../../engine/pokemon/evolution'
-import { castRod } from '../../scene/fishingSystem'
-import { turnOnRadar } from '../../scene/pokeRadar'
-import { isSurfable } from '../../engine/map/zone'
-import { fieldScripts, frontTile } from '../../engine/script/field'
-import { SYSTEM_FLAG } from '../../engine/script/commands'
-import { isRadarGrass } from '../../engine/battle/encounter'
-import { mapById, world } from '../../engine/map/world'
-import { worldState } from '../../state/worldState'
 import { itemIcon } from './itemIcon'
 import { withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
@@ -69,13 +60,13 @@ export function BagScreen() {
   const back = useMenuStore((s) => s.back)
   const bag = useSaveStore((s) => s.bag)
   const money = useSaveStore((s) => s.money)
-  const steps = useSaveStore((s) => s.steps)
   const removeItem = useSaveStore((s) => s.removeItem)
   const addItem = useSaveStore((s) => s.addItem)
   const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
   const giveTo = useMenuStore((s) => s.giveTo)
   const pickPocket = useMenuStore((s) => s.pickPocket)
   const closeAll = useMenuStore((s) => s.closeAll)
+  const registered = useSaveStore((s) => s.registeredItem)
   const push = useMenuStore((s) => s.push)
   const openBerryTag = useMenuStore((s) => s.openBerryTag)
 
@@ -154,84 +145,19 @@ export function BagScreen() {
     // 「건네준다」로 열린 가방이다 (`PartyMenu_SelectItemGive`). 쓰는 것이
     // 아니라 **붙이는 것**이라 도구표의 갈래를 아예 안 본다
     if (giveTo !== null) { giveItem(giveTo, id, item.pocket ?? 0); return }
-    const header = mapById(world.mapId)
-    const p = worldState.player
-    const grid = world.grid
-    const front = frontTile()
-    const action = fieldAction(item, {
-      mapId: world.mapId,
-      mapType: header?.mapType ?? 0,
-      escapeRopeAllowed: header?.escapeRope === 1,
-      repelSteps: steps.repel,
-      waterAhead: grid !== null && isSurfable(grid.behavior(front.x, front.z)),
-      onBridge: onElevatedBridge(),
-      // ⚠️ 레이더는 **선** 칸을 본다 — 낚싯대가 앞 칸을 보는 것과 다르다
-      inTallGrass: grid !== null
-        && isRadarGrass(grid.behaviorAtWorld(p.position.x, p.position.z)),
-      hasPartner: fieldScripts.vars?.checkFlag(SYSTEM_FLAG.hasPartner) === true,
-      onBike: p.cycling,
-      evoItems,
-    })
+    const action = fieldAction(item, fieldContextNow(evoItems))
 
-    switch (action.kind) {
-      case 'bike': {
-        const here = grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
-        const why = bikeBlock(header, here, p.surfing, p.cycling, isOnCyclingRoad())
-        if (why !== null) { setDenied(BIKE_WHY[why]); return }
-        p.cycling = !p.cycling
-        p.pedalling = 0
-        back()
-        return
-      }
-      case 'party':
-        openPartyWithItem({ item: id, use: action.use })
-        return
-      case 'repel':
-        // `TryUseRepel` — 걸음을 세우고 한 개를 쓴다
-        useSaveStore.setState({ steps: { ...steps, repel: action.steps } })
-        removeItem(item.pocket ?? 0, id, 1)
-        setDenied(`${data.names[id] ?? ''}을(를) 썼다!`)
-        return
-      case 'flute':
-        // 걸음을 안 센다. 이 맵을 벗어나면 풀린다 (`FieldSystem_InitFlagsWarp`)
-        useSaveStore.setState({ flute: action.factor })
-        removeItem(item.pocket ?? 0, id, 1)
-        setDenied(`${data.names[id] ?? ''}을(를) 불었다!`)
-        return
-      case 'escapeRope': {
-        const exit = useSaveStore.getState().exit
-        if (!exit) { setDenied('돌아갈 자리가 없다.'); return }
-        removeItem(item.pocket ?? 0, id, 1)
-        world.pending = {
-          to: exit.map, matrix: exit.matrix, x: exit.x, z: exit.z, facing: exit.facing,
-          // 문으로 나오는 것이 아니라 굴 밖에 툭 선다. 원작도 문 여닫는 연출이 없다
-          viaDoor: false,
-        }
-        closeAll()
-        return
-      }
-      case 'fish':
-        // 던지는 순간 가방을 닫는다. 원작도 낚싯대를 쓰면 가방이 사라지고
-        // 필드 과제(`FieldTask_Fishing`)가 화면을 가져간다
-        castRod(action.rod)
-        closeAll()
-        return
-      case 'screen':
-        // 여는 것이 전부인 도구. 쌓아 올려서 B로 가방으로 돌아온다
-        push(action.screen)
-        return
-      case 'missing':
-        setDenied(`${action.what}이(가) 아직 없다.`)
-        return
-      case 'radar':
-        // 켜는 순간 가방을 닫는다. 원작도 필드 과제(`RefreshRadarChain`)가
-        // 화면을 가져간다 — 배터리가 덜 찼는지는 그쪽이 롬의 대사로 말한다
-        turnOnRadar()
-        closeAll()
-        return
-      default:
-        setDenied(action.why)
-    }
+    performItemAction(action, {
+      item: id,
+      name: data.names[id] ?? '',
+      pocket: item.pocket ?? 0,
+      say: setDenied,
+      consume: removeItem,
+      back,
+      push,
+      closeAll,
+      openParty: (use) => { openPartyWithItem({ item: id, use }) },
+    })
   }
 
   useMenuKeys({
@@ -257,6 +183,20 @@ export function BagScreen() {
       openBerryTag(id)
     },
     confirm: use,
+    // ⚠️ **원작은 가방의 갈래 메뉴에서 「등록한다」를 고른다** (§4.4).
+    // 우리 가방에는 아직 갈래 메뉴가 없어서 Y로 켜고 끈다 — 태그를 Tab으로
+    // 여는 것과 같은 결정이고, 여는 길만 다르다
+    register: () => {
+      const id = selected?.item
+      if (id === undefined || !data) return
+      if (!data.items.get(id).canRegister) { setDenied('등록할 수 없는 물건이다'); return }
+      const now = useSaveStore.getState().registeredItem
+      const next = now === id ? 0 : id
+      useSaveStore.setState({ registeredItem: next })
+      setDenied(next === 0
+        ? `${data.names[id] ?? ''}의 등록을 해제했다.`
+        : `${data.names[id] ?? ''}을(를) Y에 등록했다!`)
+    },
     // ⚠️ 고르라고 열린 가방은 취소도 **0을 남기고** 닫아야 한다 — 안 그러면
     // 앞서 고른 도구가 그대로 남아 다시 심긴다
     cancel: () => {
@@ -272,7 +212,7 @@ export function BagScreen() {
       note={`${money.toLocaleString('ko-KR')}원`}
       foot={denied
         ?? (pickPocket === null
-          ? `←→ 주머니 · ↑↓ 고르기 · Z 쓴다 · X 닫기`
+          ? `←→ 주머니 · ↑↓ 고르기 · Z 쓴다 · Y 등록 · X 닫기`
           : `↑↓ 고르기 · Z 고른다 · X 그만둔다`)
         + ` · ${String(slots.length)}/${String(POCKET_SIZE[shown] ?? 0)}칸`}
     >
@@ -308,6 +248,8 @@ export function BagScreen() {
               <span className={css.face}>
                 <span className={css.icon} style={itemIcon(data?.icons, slot.item, LIST_ICON)} aria-hidden />
                 <span className={css.label}>{data?.names[slot.item] ?? ''}</span>
+                {/* 등록한 물건에 표식 하나 (`BagUI_DrawRegisteredIcon`) */}
+                {slot.item === registered && <span className={own.registered}>Y</span>}
                 {/* 중요한 물건은 개수를 안 붙인다 — 원작도 한 개뿐이라 안 센다 */}
                 {data?.items.get(slot.item).preventToss === 1
                   ? null

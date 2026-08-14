@@ -20,6 +20,8 @@ export interface MenuKeys {
   pageDown?: () => void
   /** 칸 옮기기 (Tab). 한 화면 안에 목록이 둘일 때 쓴다 */
   tab?: () => void
+  /** Y. 원작 DS의 Y 버튼 — 가방에서 도구를 등록한다 (PARITY §4.4) */
+  register?: () => void
 }
 
 const CODES: Record<string, keyof MenuKeys> = {
@@ -31,6 +33,7 @@ const CODES: Record<string, keyof MenuKeys> = {
   KeyX: 'cancel', Backspace: 'cancel', Escape: 'cancel',
   KeyQ: 'pageUp', KeyE: 'pageDown',
   Tab: 'tab',
+  KeyY: 'register',
 }
 
 /**

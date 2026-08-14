@@ -463,6 +463,14 @@ export const saveSchema = z.object({
   coins: int(0, MAX_COINS),
 
   /**
+   * Y로 바로 쓰는 도구 하나 (PARITY §4.4 · `Bag.registeredItem`).
+   *
+   * ⚠️ **한 칸뿐이다.** 원작이 가방에 u16 하나를 두고 등록할 때마다 덮어쓴다 —
+   * 여럿을 등록하는 갈래가 없다. 0이면 등록한 것이 없다
+   */
+  registeredItem: int(0, 0xffff),
+
+  /**
    * 배틀포인트 (PARITY §12.3). 상한이 원작 그대로 9,999다.
    *
    * ⚠️ **버는 길이 아직 없다** — 다섯 시설이 §9라 늘 0이다. 그래도 칸을

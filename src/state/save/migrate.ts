@@ -334,6 +334,13 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 29,
     factory: newFactoryRecords(),
   }),
+
+  // Y로 바로 쓰는 도구 (PARITY §4.4). 옛 리포트에는 등록할 길이 없었으므로 0이다
+  29: (data) => ({
+    ...data,
+    version: 30,
+    registeredItem: 0,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

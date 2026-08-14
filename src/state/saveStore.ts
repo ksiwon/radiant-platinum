@@ -305,6 +305,12 @@ export interface SaveData {
    */
   coins: number
   /**
+   * Y로 바로 쓰는 도구 하나 (PARITY §4.4).
+   *
+   * ⚠️ **한 칸뿐이다** — 원작도 가방에 u16 하나다. 0이면 없다
+   */
+  registeredItem: number
+  /**
    * 배틀포인트 (PARITY §12.3).
    *
    * ⚠️ **버는 길이 아직 없다** — 다섯 시설이 §9다. 교환 코너가 읽고 깎는
@@ -319,7 +325,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 29
+export const SAVE_VERSION = 30
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -400,6 +406,7 @@ export function createNewSave(): SaveData {
     distortion: newDistortionState(),
     hallOfFame: newHallOfFame(),
     coins: 0,
+    registeredItem: 0,
     battlePoints: 0,
     factory: newFactoryRecords(),
     honeyTrees: newHoneyTrees(),
@@ -634,6 +641,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     distortion: s.distortion,
     hallOfFame: s.hallOfFame,
     coins: s.coins,
+    registeredItem: s.registeredItem,
     battlePoints: s.battlePoints,
     factory: s.factory,
     // ⚠️ **스키마와 같은 자리에 둔다.** 검사합이 `JSON.stringify`라

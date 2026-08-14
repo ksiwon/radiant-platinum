@@ -25,6 +25,7 @@ import {
   VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
 } from '../engine/script/vars'
 import { useFactoryStore } from '../state/factoryStore'
+import { primeRegisteredItem } from './registeredItem'
 import { ChallengeType } from '../engine/frontier/factory'
 import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTables'
 import { cameraSystem } from '../engine/actor/camera'
@@ -520,6 +521,9 @@ function watchBattle(): () => void {
 
 /** 스크립트가 쓰는 바깥 세계를 붙인다. 정리 함수를 돌려준다 */
 export function installFieldServices(locale: DataLocale = 'ko'): () => void {
+  // Y로 바로 쓰는 도구 (PARITY §4.4). 키를 누른 뒤에 표를 받으면 첫 Y가
+  // 아무 일도 안 하고 지나가서 「등록이 안 됐다」로 보인다
+  primeRegisteredItem()
   void loadTrainers().then((table) => { trainers = table }).catch(() => { /* 이름만 빈다 */ })
   void loadDialogueBank(locale, TRAINER_MESSAGE_BANK)
     .then((bank) => { trainerMessages = bank })
