@@ -111,9 +111,9 @@ export async function readInstalledLight(want) {
 // 통과한다. 둘로 나눠 두는 것은 ⑨가 **BDSP 없이** 도는 시험이라, "Platinum
 // 쪽은 전부 나왔다"를 따로 못 박아야 하기 때문이다
 export const REQUIRED_PLATINUM_GROUPS = [
-  'text', 'species', 'moves', 'maps', 'chunks', 'scripts', 'marts', 'sound', 'pokegra',
-  'encounters', 'trainers', 'spawns', 'items', 'npcSprites', 'itemIcons', 'pokeIcons',
-  'boxWallpapers', 'signposts', 'starterScene', 'trainerSprites',
+  'text', 'species', 'moves', 'maps', 'chunks', 'scripts', 'marts', 'npcTrades', 'sound',
+  'pokegra', 'encounters', 'trainers', 'spawns', 'items', 'npcSprites', 'itemIcons',
+  'pokeIcons', 'boxWallpapers', 'signposts', 'starterScene', 'trainerSprites',
 ]
 
 export const REQUIRED_BDSP_GROUPS = ['npcModels', 'monModels', 'arenas', 'motionTiming']

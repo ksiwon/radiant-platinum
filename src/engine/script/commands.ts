@@ -1443,8 +1443,76 @@ on('GetSelectedPartySlot', (ctx) => {
   return false
 })
 
+/**
+ * 교환할 한 마리를 고른다 (`FieldSystem_OpenPartyMenu_SelectForTrade`).
+ *
+ * 원작이 여는 화면은 `PARTY_MENU_MODE_NPC_TRADE`고 위의 기술가르침 화면은
+ * `..._SELECT_NO_PROMPT`인데, **입력 처리가 같은 가지에 묶여 있다** — 둘 다
+ * 갈래 메뉴 없이 A가 곧 고르기다 (`PartyMenu_HandleInput`).
+ *
+ * ⚠️ 갈리는 곳이 딱 하나 있다. 교환 쪽은 고른 마리에 **볼 캡슐**이 붙어
+ * 있으면 "떼어집니다"를 묻고 뗀다 (`CheckForItemApplication`). 우리 개체에는
+ * 캡슐 칸이 없어서(PARITY §3.11) 그 가지가 영영 안 열린다 — 캡슐이 생기면
+ * 여기가 갈라져야 한다
+ */
+on('OpenPartyMenuForTrade', (ctx) => {
+  ctx.host.world.services.chooseMon?.open()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
 /** `constants/pokemon.h` — 안 고르고 나갔다 */
 const PARTY_SLOT_NONE = 0xff
+
+// ── NPC 교환 (PARITY §10 · `overlay006/npc_trade.c`) ────────────────────────
+//
+// 넷이 전부고 흐름도 넷이 같다:
+//
+//   SelectPokemonToTrade                 ← 매크로다. 위의 세 명령으로 풀린다
+//   GoToIfEq VAR_RESULT, 0xFF, …그만둔다
+//   InitNPCTrade <교환 번호>
+//   GetPartyMonSpecies <자리>, VAR_0x8005
+//   GetNPCTradeRequestedSpecies VAR_RESULT
+//   GoToIfNe VAR_0x8005, VAR_RESULT, …그건 아닌데
+//   StartNPCTrade <자리>
+//   FinishNPCTrade
+//
+// ⚠️ **`FinishNPCTrade`가 두 갈래에 다 있다.** 원작이 `NPCTrade_Init`으로 잡은
+// 것을 어느 쪽으로 끝나든 놓는다 — 안 놓으면 다음에 말을 걸었을 때 앞의 것이
+// 그대로 남는다
+
+on('InitNPCTrade', (ctx) => {
+  // ⚠️ **먼저 읽는다.** `services.npcTrade?.init(ctx.readByte())`로 쓰면 바깥
+  // 세계가 안 붙었을 때 `?.`가 앞에서 끊겨 인자 한 바이트를 안 읽는다 —
+  // 그다음 명령부터 통째로 밀린다
+  const tradeId = ctx.readByte()
+  ctx.host.world.services.npcTrade?.init(tradeId)
+  return false
+})
+
+on('GetNPCTradeSpecies', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.npcTrade?.species() ?? 0)
+  return false
+})
+
+on('GetNPCTradeRequestedSpecies', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.npcTrade?.requestedSpecies() ?? 0)
+  return false
+})
+
+on('StartNPCTrade', (ctx) => {
+  const slot = ctx.readVar()
+  ctx.host.world.services.npcTrade?.start(slot)
+  // 원작은 여기서 필드 작업으로 넘기고 화면이 다 끝나야 돌아온다
+  // (`FieldTask_StartNPCTrade` → `ScrCmd_StartNPCTrade`가 TRUE)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+on('FinishNPCTrade', (ctx) => {
+  ctx.host.world.services.npcTrade?.free()
+  return false
+})
 
 // ── 크기 대회 (`overlay005/size_contest.c`) ──────────────────────────────────
 //

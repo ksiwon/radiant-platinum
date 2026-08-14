@@ -8,11 +8,12 @@
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, moveAnimSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
-  martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, pokeIconsSchema,
+  martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
+  pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema,
   type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
-  type MartTable, type MotionTiming, type Move, type PokeIcons, type ScriptFile,
+  type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type HiddenItems,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
   type MoveAnimFile,
@@ -294,6 +295,15 @@ export function loadSignposts(): Promise<Signposts> {
 /** 상점 재고표. 롬이 아니라 디컴프 헤더에서 나온 것이다 (`tools/extract/marts.js`) */
 export function loadMarts(): Promise<MartTable> {
   return fetchJson('marts.json', (v) => martTableSchema.parse(v))
+}
+
+/**
+ * NPC 교환 넷 (PARITY §10).
+ *
+ * 이름 둘은 여기 없다 — `loadUiText('npcTradeNames')`가 뱅크에서 가져온다
+ */
+export function loadNpcTrades(): Promise<NpcTrades> {
+  return fetchJson('npcTrades.json', (v) => npcTradesSchema.parse(v))
 }
 
 /**

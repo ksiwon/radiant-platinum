@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group, Mesh, PointLight } from 'three'
-import { type EvolutionPhase, type HatchPhase, useCinematicStore } from '../state/cinematicStore'
+import {
+  type CinematicScene, type EvolutionPhase, type HatchPhase, type TradePhase, useCinematicStore,
+} from '../state/cinematicStore'
 import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
-import { cinematicScale, evolutionPose, hatchPose } from './cinematicMotion'
+import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
 
 function Model({
   species,
@@ -161,7 +163,14 @@ function HatchFragments({ active }: { active: boolean }) {
   )
 }
 
-/** 진화·부화를 별도 Canvas 없이 보여 주는 공용 3D 무대. */
+/** 무대 바닥의 고리 색. 장면마다 다르다 */
+const RING_COLOR: Partial<Record<CinematicScene, string>> = {
+  evolution: '#9ec6ff',
+  hatch: '#fff0a8',
+  trade: '#a8ffd4',
+}
+
+/** 진화·부화·교환을 별도 Canvas 없이 보여 주는 공용 3D 무대. */
 export function CinematicStage() {
   const scene = useCinematicStore((s) => s.scene)
   const phase = useCinematicStore((s) => s.phase)
@@ -199,13 +208,31 @@ export function CinematicStage() {
 
     if (scene === 'evolution') {
       const pose = evolutionPose(phase as EvolutionPhase, elapsed.current)
+      // ⚠️ **높이를 되돌린다.** 교환 장면이 몸을 띄워 놓고 끝나므로, 안 되돌리면
+      // 다음 진화가 공중에서 일어난다 — 무대가 한 벌뿐이라 상태가 남는다
       if (oldBody) {
         oldBody.visible = pose.beforeVisible
+        oldBody.position.y = 0
         oldBody.scale.setScalar(pose.beforeScale)
       }
       if (newBody) {
         newBody.visible = pose.afterVisible
+        newBody.position.y = 0
         newBody.scale.setScalar(pose.afterScale)
+      }
+      if (egg) egg.visible = false
+      if (lightRef.current) lightRef.current.intensity = pose.light
+    } else if (scene === 'trade') {
+      const pose = tradePose(phase as TradePhase, elapsed.current)
+      if (oldBody) {
+        oldBody.visible = pose.sendingVisible
+        oldBody.position.y = pose.lift
+        oldBody.scale.setScalar(pose.scale)
+      }
+      if (newBody) {
+        newBody.visible = pose.receivingVisible
+        newBody.position.y = pose.lift
+        newBody.scale.setScalar(pose.scale)
       }
       if (egg) egg.visible = false
       if (lightRef.current) lightRef.current.intensity = pose.light
@@ -219,6 +246,7 @@ export function CinematicStage() {
       if (oldBody) oldBody.visible = false
       if (newBody) {
         newBody.visible = phase === 'born'
+        newBody.position.y = 0
         newBody.scale.setScalar(phase === 'born' ? Math.min(1, 0.28 + elapsed.current * 1.8) : 0)
       }
       if (lightRef.current) lightRef.current.intensity = phase === 'born' ? 1.5 : 0.35
@@ -268,7 +296,7 @@ export function CinematicStage() {
       <mesh position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.05, 1.12, 64]} />
         <meshBasicMaterial
-          color={scene === 'evolution' ? '#9ec6ff' : '#fff0a8'}
+          color={RING_COLOR[scene] ?? '#fff0a8'}
           transparent
           opacity={0.5}
         />

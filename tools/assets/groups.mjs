@@ -117,6 +117,7 @@ export const GROUPS = [
     match: oneOf('data/encounters.json', 'data/encountersEx.json'),
   },
   { name: 'marts', make: 'pnpm extract:marts', match: oneOf('data/marts.json') },
+  { name: 'npcTrades', make: 'pnpm extract:npcTrades', match: oneOf('data/npcTrades.json') },
   { name: 'spawns', make: 'pnpm extract:spawns', match: oneOf('data/spawns.json') },
   {
     name: 'itemIcons',

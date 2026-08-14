@@ -18,6 +18,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'chunks',    // 지형 메시·프롭·텍스처
   'scripts',   // 이벤트·대화
   'marts',     // 상점 재고 (ARM9에서 읽는다 — DATA.md §2.13)
+  'npcTrades', // NPC 교환 넷. 없으면 교환해 주는 사람 넷이 다 그 자리에서 죽는다
   'sound',     // 음악·효과음
   'pokegra',   // 포켓몬 도트
   'encounters', // 야생 출현표. 없으면 풀숲에서 아무것도 안 나온다

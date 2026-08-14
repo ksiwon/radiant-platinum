@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_060
+const RUNNING_SITES = 54_084
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 350
+const IMPLEMENTED_COMMANDS = 356
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -619,6 +619,13 @@ const IDLE_COMMANDS = [
   // 명령 자체는 실제 스크립트에 있다 (§10 「기술가르침」 39자리)
   'CheckHasLearnableReminderMoves', 'OpenMoveReminderMenu', 'CheckLearnedReminderMove',
   'OpenMoveTutorMenu', 'CheckLearnedTutorMove',
+  // ⚠️ **NPC 교환 다섯도 같은 이유다.** 앞이 `SelectPokemonToTrade` 매크로고
+  // 그 끝의 `GetSelectedPartySlot`이 세이브 없는 훑기에서 0xFF(안 골랐다)를
+  // 답한다 — 그러면 바로 뒤의 `GoToIfEq …, 0xFF`가 "기다리고 있을게" 쪽으로
+  // 갈라져서 교환 본체에 못 든다. 화면을 여는 `OpenPartyMenuForTrade`까지는
+  // 밟힌다. 넷 다 실제 스크립트에 있다 (PARITY §10)
+  'InitNPCTrade', 'GetNPCTradeSpecies', 'GetNPCTradeRequestedSpecies',
+  'StartNPCTrade', 'FinishNPCTrade',
   'GetPartyMonType',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',

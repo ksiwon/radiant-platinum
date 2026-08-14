@@ -1,4 +1,4 @@
-import type { EvolutionPhase, HatchPhase } from '../state/cinematicStore'
+import type { EvolutionPhase, HatchPhase, TradePhase } from '../state/cinematicStore'
 
 export interface EvolutionPose {
   beforeVisible: boolean
@@ -37,6 +37,45 @@ export function hatchPose(phase: HatchPhase, elapsed: number): HatchPose {
     shellVisible: true,
   }
 }
+
+export interface TradePose {
+  sendingVisible: boolean
+  receivingVisible: boolean
+  /** 무대 위 높이. 보내는 마리는 올라가고 받는 마리는 내려앉는다 */
+  lift: number
+  scale: number
+  light: number
+}
+
+/**
+ * 교환 세 마디의 자세.
+ *
+ * ⚠️ **여기 숫자는 우리 것이다.** 원작의 대응물은 2D 통신관 애니메이션이라
+ * 옮길 좌표가 없다 — 지킨 것은 **마디의 차례와 길이**고(글 두 줄 사이가
+ * 60프레임, `overlay095`), 오르내리는 폭은 무대 크기에 맞춰 정했다
+ */
+export function tradePose(phase: TradePhase, elapsed: number): TradePose {
+  if (phase === 'transit') {
+    return { sendingVisible: false, receivingVisible: false, lift: 0, scale: 1, light: 2.4 }
+  }
+  if (phase === 'arriving') {
+    // 위에서 내려앉으며 커진다. 0.6초면 제자리다
+    const t = Math.min(1, elapsed / 0.6)
+    return {
+      sendingVisible: false, receivingVisible: true,
+      lift: (1 - t) * 2.6, scale: 0.45 + t * 0.55, light: 1.6 - t * 1.1,
+    }
+  }
+  // 보내는 마리. 글 두 줄을 읽는 동안은 가만히 서 있고 마지막에 떠오른다
+  const t = Math.max(0, elapsed - TRADE_SENDING_HOLD)
+  return {
+    sendingVisible: true, receivingVisible: false,
+    lift: t * t * 3.4, scale: Math.max(0.2, 1 - t * 0.7), light: 0.45 + t * 1.6,
+  }
+}
+
+/** 보내는 마리가 떠오르기 전까지 서 있는 시간(초) */
+export const TRADE_SENDING_HOLD = 1.6
 
 /** 아주 큰 포켓몬도 화면을 넘지 않게 하되 작은 종을 과장하지 않는다. */
 export function cinematicScale(tall: number): number {

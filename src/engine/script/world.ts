@@ -298,6 +298,31 @@ export interface FieldServices {
     open: () => void
     picked: () => number
   }
+  /**
+   * NPC 교환 넷 (PARITY §10 · `overlay006/npc_trade.c`).
+   *
+   * ⚠️ **이 넷이 「말 안 듣기」의 유일한 문이다.** 통신교환이 없으므로 남의
+   * 트레이너 번호를 단 포켓몬이 들어오는 길이 이것뿐이다. 안 붙어 있으면
+   * `species()`가 0을 주고 스크립트는 늘 "그건 내가 원하던 게 아닌데" 쪽으로
+   * 갈라진다 — 교환이 조용히 안 일어난다
+   */
+  npcTrade?: {
+    /** 표 한 벌을 집는다 (`NPCTrade_Init`) */
+    init: (tradeId: number) => void
+    /** 내주는 종 (`NPCTrade_GetSpecies`) */
+    species: () => number
+    /** 요구하는 종 (`NPCTrade_GetRequestedSpecies`) */
+    requestedSpecies: () => number
+    /**
+     * 교환 장면을 연다 (`FieldTask_StartNPCTrade`).
+     *
+     * 여기서 파티가 실제로 바뀐다 — 원작도 장면을 띄우기 **전에**
+     * `NPCTrade_ReceiveMon`으로 갈아 끼운다
+     */
+    start: (partySlot: number) => void
+    /** 잡은 것을 놓는다 (`NPCTrade_Free`) */
+    free: () => void
+  }
   /** 트레이너 정보 · 도감 (`scrcmd_system_flags.c`) */
   trainerInfo?: {
     /** 0 남 · 1 여 (`TrainerInfo_Gender`) */

@@ -229,6 +229,11 @@ const EXTRA_BANKS = [
   'TEXT_BANK_NATURE_NAMES',
   // 소지금 창의 이름표와 문장 틀 (`FieldMenu_CreateMoneyWindow` — 18·19번)
   'TEXT_BANK_UNK_0543',
+  // NPC 교환 (PARITY §10). 별명 넷과 트레이너 이름 넷이 한 뱅크에 0~3·4~7로
+  // 들어 있고(`NPCTrade_GetNickname`이 `MAX_NPC_TRADES + id`로 뒤쪽을 집는다),
+  // 교환 장면의 네 줄은 따로 있다. 둘 다 스크립트가 안 가리킨다 —
+  // 이름은 `overlay006/npc_trade.c`가, 장면은 `overlay095`가 직접 연다
+  'TEXT_BANK_NPC_TRADE_NAMES', 'TEXT_BANK_TRADE',
 ]
 
 function main() {

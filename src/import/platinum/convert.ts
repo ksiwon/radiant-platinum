@@ -29,6 +29,7 @@ import { convertStarterScene } from './starterScene'
 import { convertTrainers } from './trainers'
 import { convertTrainerSprites } from './trainerSprites'
 import { convertSpawns } from './spawns'
+import { convertNpcTrades } from './npcTrades'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -165,6 +166,7 @@ export const GROUPS: readonly GroupSpec[] = [
     convert: convertMoves,
   },
   { name: 'marts', outputs: ['data/marts.json'], converter: 1, convert: convertMarts },
+  { name: 'npcTrades', outputs: ['data/npcTrades.json'], converter: 1, convert: convertNpcTrades },
   {
     name: 'items',
     outputs: [

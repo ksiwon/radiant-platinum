@@ -441,6 +441,35 @@ export const martTableSchema = z.object({
 })
 
 /**
+ * NPC 교환 넷 (`fielddata/pokemon_trade/fld_trade.narc` · PARITY §10).
+ *
+ * 표에 **레벨이 없다** — 받는 마리의 레벨은 내가 준 마리의 것이다
+ * (`engine/pokemon/npcTrade.ts`). 이름 둘은 여기 없고 뱅크 370에 있다
+ */
+export const npcTradesSchema = z.object({
+  count: z.number().int().positive(),
+  trades: z.array(z.object({
+    species: z.number().int().positive(),
+    ivs: statsSchema,
+    otId: z.number().int().nonnegative(),
+    otSecretId: z.number().int().nonnegative(),
+    personality: z.number().int().nonnegative(),
+    heldItem: z.number().int().nonnegative(),
+    otGender: z.number().int().min(0).max(1),
+    language: z.number().int().nonnegative(),
+    requestedSpecies: z.number().int().positive(),
+    // 담을 칸이 아직 없다 (PARITY §3.11). 자료는 지키고 쓰는 자리만 없다
+    contest: z.object({
+      cool: z.number().int().nonnegative(),
+      beauty: z.number().int().nonnegative(),
+      cute: z.number().int().nonnegative(),
+      smart: z.number().int().nonnegative(),
+      tough: z.number().int().nonnegative(),
+    }),
+  })).nonempty(),
+})
+
+/**
  * 숨은 도구 257개 (`gHiddenItems`).
  *
  * `script`는 맵 BG 이벤트의 `script − 8000`이고, `range`는 다우징머신의
@@ -753,6 +782,7 @@ export type DistortionElevatorPath = DistortionData['elevatorPaths'][number]
 export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
+export type NpcTrades = z.infer<typeof npcTradesSchema>
 
 export type MoveAnimFile = z.infer<typeof moveAnimSchema>
 export type MoveAnim = NonNullable<MoveAnimFile['moves'][number]>

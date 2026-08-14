@@ -1,7 +1,9 @@
-// 진화 장면.
+// 연출 화면 셋이 함께 쓰는 판 — 진화·부화·교환.
 //
 // 화면에 있어야 할 것이 둘뿐이다 — **그림 하나와 글 한 줄**. 원작도 위 화면을
 // 통째로 포켓몬에게 주고 아래에 글만 놓는다. 목록도 판도 놓지 않는다.
+// 셋이 같은 판을 쓰는 이유가 그것이다: 다른 것은 무대 위 움직임과 글뿐이고
+// 그 둘은 여기 없다 (`cinematicMotion` · 각 화면).
 import { keyframes, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 

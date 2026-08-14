@@ -94,6 +94,31 @@ export const UI_BANK = {
   trainerClassNamesWithArticles: 620,
   /** `TEXT_BANK_UNK_0543` — 상점 말과 소지금 창. 18번이 이름표, 19번이 문장 틀 */
   shop: 543,
+  /** `TEXT_BANK_TRADE` — 교환 장면의 여섯 줄. 넷은 NPC 교환, 둘은 GTS 것이다 */
+  trade: 350,
+  /**
+   * `TEXT_BANK_NPC_TRADE_NAMES` — 여덟 줄이 **별명 넷 + 트레이너 이름 넷**이다.
+   * 뒤쪽 넷은 `MAX_NPC_TRADES + id`로 집는다 (`engine/pokemon/npcTrade.ts`)
+   */
+  npcTradeNames: 370,
+} as const
+
+/**
+ * 교환 장면의 네 줄 (`trade` 뱅크 · `overlay095`).
+ *
+ * 4·5번은 GTS(`TRADE_TYPE_*`가 `NORMAL`이 아닐 때)용이라 NPC 교환에서는 안 뜬다.
+ * 칸은 0 내가 주는 마리 · 1 받는 마리 · 2 상대 트레이너다
+ * (`StringTemplate_SetNickname` 두 번 + `_SetPlayerName`)
+ */
+export const TRADE_TEXT = {
+  /** "{0}을 {2}에게 보냅니다!" — 10프레임 뒤 */
+  willBeSent: 0,
+  /** "바이바이! {0}!" — 그 60프레임 뒤. 여기서 보내는 마리가 운다 */
+  byeBye: 1,
+  /** "{2}로부터 {1} 전송됐다!" — 도착. `SEQ_FANFA5`가 같이 울린다 */
+  sentOver: 2,
+  /** "{1} 귀여워해 줘!" — 그 60프레임 뒤 */
+  takeCare: 3,
 } as const
 
 /** 소지금 창 (`FieldMenu_CreateMoneyWindow` · `..._PrintMoneyToWindow`) */

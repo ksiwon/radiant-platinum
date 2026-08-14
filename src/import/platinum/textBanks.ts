@@ -426,6 +426,8 @@ export const TEXT_BANK_NAMES = [
   'species_name_with_articles', 'trainer_class_names_with_articles',
   // 상점 말과 소지금 창의 문장 틀
   'unk_0543',
+  // NPC 교환 — 장면의 네 줄과 별명·트레이너 이름 여덟 (PARITY §10)
+  'trade', 'npc_trade_names',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

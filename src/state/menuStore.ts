@@ -28,6 +28,8 @@ export type MenuScreen =
   | 'chooseStarter'
   // 진화. **스스로 뜬다** — 배틀이 닫힐 때 큐에 자리가 있으면 열린다
   | 'evolution'
+  // NPC 교환 장면. 스크립트가 `StartNPCTrade`로 열고 `trade`가 어느 교환인지를 든다
+  | 'trade'
   // 이름 짓기. 스크립트가 열고 `naming`이 무엇의 이름인지를 든다
   | 'naming'
   // 명예의 전당 장면. `ClearGame`이 열고 **끝나면 타이틀로 나간다** —
@@ -100,6 +102,12 @@ interface MenuStore {
   /** 태그를 볼 나무열매의 **도구 번호** */
   berryItem: number
   /**
+   * 지금 도는 NPC 교환 (`FieldTask_StartNPCTrade`).
+   *
+   * `slot`은 내가 건네는 파티 자리다 — 화면이 그 자리를 받는 마리로 갈아 끼운다
+   */
+  trade: { tradeId: number, slot: number } | null
+  /**
    * 스크립트가 「한 마리 골라」로 파티 화면을 열었는가
    * (`FieldSystem_OpenPartyMenu_SelectPokemon`).
    *
@@ -123,6 +131,8 @@ interface MenuStore {
   openBagToGive: (slot: number) => void
   /** 기술 되살리기를 연다 */
   openReminder: (what: NonNullable<MenuStore['reminder']>) => void
+  /** NPC 교환 장면을 연다 */
+  openTrade: (what: NonNullable<MenuStore['trade']>) => void
   /** 되살리기가 끝났다. 스크립트가 `reminderLearned`를 읽는다 */
   finishReminder: (learned: boolean) => void
   /** 상장을 연다 */
@@ -158,6 +168,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   diplomaNational: false,
   berryItem: 0,
   choosingMon: false,
+  trade: null,
 
   openPartyToChoose: () => set(() => {
     const stack: MenuScreen[] = ['party']
@@ -169,6 +180,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     const stack: MenuScreen[] = ['reminder']
     capture(stack)
     return { stack, top: 'reminder' as const, reminder: what, reminderLearned: false }
+  }),
+
+  openTrade: (what) => set(() => {
+    const stack: MenuScreen[] = ['trade']
+    capture(stack)
+    return { stack, top: 'trade' as const, trade: what }
   }),
 
   finishReminder: (learned) => { set({ reminderLearned: learned, reminder: null }) },

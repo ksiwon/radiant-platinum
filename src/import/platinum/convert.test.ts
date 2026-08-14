@@ -317,4 +317,5 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('signposts — 간판 50장', async () => { await parity('signposts') }, 60_000)
   it('starterScene — 모델 여섯과 애니 길이', async () => { await parity('starterScene') }, 60_000)
   it('trainerSprites — 갈래 105장', async () => { await parity('trainerSprites') }, 60_000)
+  it('npcTrades — 교환 넷', async () => { await parity('npcTrades') }, 60_000)
 })

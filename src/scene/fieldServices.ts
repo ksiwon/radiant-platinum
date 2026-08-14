@@ -8,9 +8,10 @@
 // 정해지는 순간 여기서 따로 받아 둔다.
 import {
   loadDialogueBank, loadItemNames, loadItems, loadLabels, loadLocationNames, loadMarts,
-  loadMoveNames, loadSpecies, loadSpeciesNames, loadMoves, loadTrainerClasses,
+  loadMoveNames, loadNpcTrades, loadSpecies, loadSpeciesNames, loadMoves, loadTrainerClasses,
   loadTrainerNames, loadTrainers,
 } from '../data/gameData'
+import type { NpcTrades } from '../data/schema'
 import { UI_BANK } from '../data/uiText'
 import type { DataLocale } from '../data/gameData'
 import {
@@ -217,6 +218,19 @@ function tmhmMove(item: number): number {
   if (at < 0 || at >= TMHM_COUNT) return 0
   return items?.tmMoves[at] ?? 0
 }
+
+/**
+ * NPC 교환 넷과 지금 말을 걸어 둔 번호 (PARITY §10).
+ *
+ * ⚠️ **`InitNPCTrade`와 `FinishNPCTrade`가 짝이다.** 원작이 힙에 한 벌을
+ * 잡았다 놓는 것을 우리는 번호 하나로 대신한다 — 끝나고 안 지우면 다음에
+ * 다른 사람에게 말을 걸어도 앞의 교환이 뜬다
+ */
+let npcTrades: NpcTrades['trades'] | null = null
+let npcTradeId: number | null = null
+
+const npcTradeRecord = (): NpcTrades['trades'][number] | null =>
+  (npcTradeId === null ? null : npcTrades?.[npcTradeId] ?? null)
 
 /** 종족값·기술 표. 개체를 만들려면 둘 다 있어야 한다 */
 let speciesTable: Awaited<ReturnType<typeof loadSpecies>> | null = null
@@ -478,6 +492,10 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadItems().then((table) => { items = table }).catch(() => { /* 주머니가 0으로 뭉친다 */ })
   void loadItemNames(locale).then((names) => { itemNames = names }).catch(() => { /* 이름만 빈다 */ })
   void loadMarts().then((table) => { marts = table }).catch(() => { /* 상점이 빈 채로 뜬다 */ })
+  // NPC 교환 넷. 못 받으면 `species()`가 0이라 스크립트가 늘 "그건 아닌데"로 간다 —
+  // 조용히 아무 종이나 주는 것보다 안 일어나는 편이 낫다 (PARITY §10)
+  void loadNpcTrades().then((table) => { npcTrades = table.trades })
+    .catch(() => { /* 교환이 안 열린다 */ })
   // 글 칸을 채우는 이름표들. 없으면 대사에 빈칸이 남는다
   void loadSpeciesNames(locale).then((names) => { speciesNames = names }).catch(() => { /* 이름만 빈다 */ })
   void loadMoveNames(locale).then((names) => { moveNames = names }).catch(() => { /* 이름만 빈다 */ })
@@ -680,6 +698,20 @@ const services: FieldServices = {
   chooseMon: {
     open: () => { useMenuStore.getState().openPartyToChoose() },
     picked: () => partyChoice.slot,
+  },
+
+  npcTrade: {
+    // ⚠️ **표를 못 받았어도 번호는 적어 둔다.** 그래야 화면 쪽이 나중에
+    // 표를 받아 같은 교환을 집는다 — 여기서 null로 눌러 버리면 그 사람만
+    // 조용히 말이 안 통한다
+    init: (tradeId) => { npcTradeId = tradeId },
+    species: () => npcTradeRecord()?.species ?? 0,
+    requestedSpecies: () => npcTradeRecord()?.requestedSpecies ?? 0,
+    start: (partySlot) => {
+      if (npcTradeId === null) return
+      useMenuStore.getState().openTrade({ tradeId: npcTradeId, slot: partySlot })
+    },
+    free: () => { npcTradeId = null },
   },
 
   boxes: {
