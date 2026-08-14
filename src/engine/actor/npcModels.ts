@@ -177,6 +177,52 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
   SCHOOL_KID_F: 'studentF',
   // 낚시꾼. fisherman과 angler가 같은 것을 가리킨다
   FISHERMAN: 'angler',
+
+  // ── 갈래가 없는 마을 사람 ────────────────────────────────────────────────
+  //
+  // 트레이너가 아니라 배치표가 갈래를 안 알려 준다. 그래서 **롬이 그림에 붙여
+  // 둔 텍스처 이름표**를 근거로 삼는다 (`res/graphics/field_sprites/meson.build`
+  // 의 `basename`) — 그림 이름과 따로 붙은 두 번째 이름이고, 이미 396칸을
+  // 대조하는 데 쓰고 있는 자료다 (`tools/extract/npcSprites.js`).
+  //
+  // ⚠️ **셋이 다 맞을 때만 적는다 — 성별 · 나이 · 하는 일.** 셋 다 두 이름표
+  // 에서 읽히는 성질이라 "비슷해 보인다"가 아니다. BDSP 쪽에 그 셋을 만족하는
+  // 사람이 **둘 이상이면 안 적는다.**
+
+  // `pcwoman2`. ⚠️ **`pc`는 포켓몬센터다** — 같은 자리에 `pcwoman1`(간호사)과
+  // `pcwoman3`(안 쓰는 접수원)이 있다. 센터 안 판매대에 선 점원이고, 신오
+  // 전체에서 101곳으로 **사람 그림 중 제일 많이 놓인 것**이다
+  TEALA: 'clerk',
+  // `shopw1` — 가게 여자. BDSP의 점원이 하나뿐이라 센터 점원과 같은 몸이다
+  CASHIER_F: 'clerk',
+  // `woman6` · 하는 일이 접수다. BDSP에 접수원이 둘이라 자리로 나눈다
+  RECEPTIONIST: 'reception01',
+  WIFI_PLAZA_ATTENDANT_F: 'reception02',
+  // `oldwoman1`·`oldwoman2` ↔ `grandmother01`·`grandmother02`. **번호까지 같다** —
+  // ⚠️ 그림 이름은 `EXPERT_F`지만 롬의 이름표가 「늙은 여자 1」이다
+  EXPERT_F: 'grandmother01',
+  OLD_WOMAN: 'grandmother02',
+  // `oldman2`. BDSP의 늙은 남자가 하나뿐이다 (`oldman1`은 엑스퍼트 남 → 베테랑)
+  OLD_MAN: 'grandpa',
+  // `middleman2`. `middleman1`은 포켓몬마니아 남이라 갈래로 이미 이어졌다 —
+  // 남은 어른 남자가 BDSP에도 하나뿐이다 (`father`·`fat`은 따로 있다)
+  MIDDLE_AGED_MAN: 'man',
+  // `assistantw` — 연구실 조수 여자. BDSP의 여자 연구원이 하나뿐이다
+  SCIENTIST_F: 'researcherF',
+  // `girl4`. `girl1`~`girl3`은 전부 트레이너 갈래로 이어졌다
+  SNOWPOINT_NPC_F: 'girl',
+  // `mama` ↔ `mother`
+  MOM: 'mother',
+  // `baby` ↔ `baby`
+  BABY_IN_PRAM: 'baby',
+
+  // ⚠️ **여기 없는 것들은 「짝이 없어서」가 아니라 「둘 중 어느 쪽인지 몰라서」다.**
+  // `KID_WITH_NDS`(`dsboy`)에 BDSP 아이가 `child`·`child2` 둘이고,
+  // `MIDDLE_AGED_WOMAN`(`middlewoman2`)에 어른 여자가 `women2`·`women3`·`madam`
+  // 셋이다. 어느 쪽인지 화면으로 확인하기 전에는 안 적는다 — 절반은 틀린다.
+  //
+  // `CASHIER_M`(`shopm1`)은 다르다. BDSP의 점원이 **여자 하나뿐**이라
+  // (`clerk` — 화면에서 확인했다) 남자 점원에 붙일 몸이 아예 없다.
 }
 
 /**

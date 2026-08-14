@@ -119,11 +119,14 @@ describe('짝 짓는 규칙', () => {
   })
 
   it('⚠️ 부분 일치로는 안 붙는다 — 그럴듯한 오답이 나오는 자리다', () => {
-    const vocab = ['parasollady', 'lady', 'man', 'women', 'bugcatcher']
+    const vocab = ['parasollady', 'lady', 'women', 'bugcatcher']
     // `PARASOL_LADY`가 `lady`에 붙으면 양산 든 사람 자리에 다른 사람이 선다
     expect(modelTagFor('PARASOL_LADY', vocab)).toBe('parasollady')
     expect(modelTagFor('MIDDLE_AGED_WOMAN', vocab)).toBeNull()
+    // ⚠️ **손으로 적은 짝도 낱말이 실제로 있어야 붙는다.** 없으면 null이고,
+    // 있으면 그 낱말 **하나**에만 붙는다 — `women`으로 새어 들지 않는다
     expect(modelTagFor('MIDDLE_AGED_MAN', vocab)).toBeNull()
+    expect(modelTagFor('MIDDLE_AGED_MAN', [...vocab, 'man'])).toBe('man')
   })
 })
 
@@ -293,8 +296,12 @@ maybe('구워 둔 표', () => {
     expect(all).toBe(3555)
     // 777 → 1508은 BDSP가 적어 둔 갈래표를 읽기 시작한 것이다. 이름이 같기를
     // 기다리던 자리가 통째로 붙었다 — 에이스 트레이너 135건, 갤럭시단 104건,
-    // 등산가 63건, 반바지 51건, 8관장·사천왕·난천이 그렇다
-    expect(hit).toBe(1508)
+    // 등산가 63건, 반바지 51건, 8관장·사천왕·난천이 그렇다.
+    //
+    // 1508 → 1766은 **갈래가 없는 마을 사람**을 이은 것이다. 트레이너가 아니라
+    // 배치표가 갈래를 안 알려 주므로 롬이 그림에 붙여 둔 텍스처 이름표를 쓴다 —
+    // 센터 판매대 점원 101건, 접수원 45건, 늙은 여자 32건이 그렇다
+    expect(hit).toBe(1761)
     // ⚠️ 여기 안 세어지는 자리가 또 있다. `OBJ_EVENT_GFX_VAR_*`(101~116)는
     // 배치표에 자리표시자로 적혀 있고 실제 그림은 변수로 정해지므로
     // (`actor/npcs`의 `resolveGfx`) `n.sprite`로는 안 걸린다. 그 62건에는
