@@ -204,8 +204,13 @@ export interface FieldServices {
     draw: (species: number, gender: number) => void
     remove: () => void
   }
-  /** 트레이너 자료 (더블 여부·대사 색인) */
-  trainer?: (id: number) => { double: boolean, msg: Record<string, number> } | null
+  /** 트레이너 자료 (더블 여부·대사 색인·갈래) */
+  trainer?: (id: number) => {
+    double: boolean
+    msg: Record<string, number>
+    /** 눈이 마주칠 때의 곡을 고르는 데 쓴다 (`trainerEncounterBgm`) */
+    class: number
+  } | null
   /** `TEXT_BANK_NPC_TRAINER_MESSAGES`의 글 하나 */
   trainerMessage?: (index: number) => string
   /** 싸울 수 있는 포켓몬 수 */
@@ -683,6 +688,19 @@ export interface FieldServices {
     /** 아직 도는 중인가. `WaitForAnimation`이 이걸 본다 */
     busy: (tag: number) => boolean
     unload: (tag: number) => void
+  }
+  /**
+   * 갤럭시단아지트의 감금장치 셋
+   * (`overlay006/lake_guardian_containment_units.c`).
+   *
+   * 맵에 들어설 때 `init`이 서고, 시로나가 풀어 주는 자리에서 `open`이 돈다.
+   * `settled`가 참이 될 때까지 스크립트가 선다
+   */
+  lakeGuardianUnits?: {
+    /** `freed`는 `FLAG_FREED_GALACTIC_HQ` — 이미 풀어 줬으면 열린 채로 선다 */
+    init: (freed: boolean) => void
+    open: () => void
+    settled: () => boolean
   }
   /**
    * 파트너를 고르는 장면 (`FieldSystem_LaunchChooseStarterApp`).

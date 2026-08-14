@@ -91,7 +91,7 @@ maybe('트레이너전', () => {
     fieldScripts.services = {
       startTrainerBattle: (id) => { started.push(id) },
       battleResult: () => result,
-      trainer: (id) => (id === GYM_TRAINER_ID ? { double: false, msg: { '0': 1164, '1': 1165, '2': 1166 } } : null),
+      trainer: (id) => (id === GYM_TRAINER_ID ? { double: false, msg: { '0': 1164, '1': 1165, '2': 1166 }, class: 4 } : null),
       trainerMessage: (index) => (index === 1164 ? GYM_TRAINER_LINE : `#${index}`),
       aliveMons: () => 3,
     }

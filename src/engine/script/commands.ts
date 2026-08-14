@@ -21,6 +21,8 @@ import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { TREE_STATUS } from '../world/honeyTree'
+import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
+import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
@@ -1881,6 +1883,19 @@ on('PlayMusic', setMusic)
 on('SetBGM', setMusic)
 on('SetSpecialBGM', setMusic)
 
+/**
+ * 눈이 마주칠 때의 곡 (`FieldBGM_GetEyesMeetForTrainer`).
+ *
+ * ⚠️ **트레이너 번호가 아니라 갈래가 곡을 정한다.** 사천왕 넷은 다 같은 곡이고
+ * 챔피언만 다르다 — 리그의 다섯 자리가 그것이다. 표에 없는 갈래는 `SEQ_EYE_KID`다
+ */
+on('PlayTrainerEncounterBGM', (ctx) => {
+  const id = ctx.readVar()
+  const found = ctx.host.world.services.trainer?.(id)
+  if (found != null) soundOf(ctx)?.setMusic(trainerEncounterBgm(found.class))
+  return true
+})
+
 on('StopMusic', (ctx) => {
   ctx.readHalfWord() // 원작도 안 쓴다 — 지금 곡을 끈다
   soundOf(ctx)?.setMusic('stop')
@@ -2122,6 +2137,8 @@ export const SYSTEM_FLAG = {
   gameCompleted: 2404,
   /** 포켓치를 잠깐 치웠는가 (`FLAG_POKETCH_HIDDEN`) — 연출이 세우고 지운다 */
   poketchHidden: 2428,
+  /** 갤럭시단아지트의 호수 삼신을 풀어 줬는가 (`FLAG_FREED_GALACTIC_HQ_POKEMON`) */
+  freedGalacticHQ: FLAG_FREED_GALACTIC_HQ,
 } as const
 
 /** 레지 셋 (`SPECIES_REGIROCK`·`REGICE`·`REGISTEEL`) */
@@ -2447,6 +2464,33 @@ on('UnloadAnimation', (ctx) => {
   const tag = ctx.readByte()
   ctx.host.world.services.door?.unload(tag)
   return false
+})
+
+// ── 갤럭시단아지트의 감금장치 ────────────────────────────────────────────────
+
+/**
+ * 통 셋을 세운다 (`LakeGuardianContainmentUnit_InitAnimations`).
+ *
+ * ⚠️ **이미 풀어 줬으면 열린 채로 세운다.** 원작이 플래그를 보고 여는 애니를
+ * 마지막 프레임으로 보내 놓는다 — 안 그러면 풀어 준 뒤 다시 들어왔을 때
+ * 통이 도로 닫혀 있다
+ */
+on('InitLakeGuardianContainmentUnits', (ctx) => {
+  const freed = ctx.host.vars.checkFlag(FLAG_FREED_GALACTIC_HQ)
+  ctx.host.world.services.lakeGuardianUnits?.init(freed)
+  return false
+})
+
+/**
+ * 푼다 (`LakeGuardianContainmentUnit_Deactivate`).
+ *
+ * 원작이 필드 태스크를 걸고 **끝날 때까지 스크립트를 세운다**(`return TRUE`).
+ * 안 세우면 통이 열리기 전에 삼신이 날아가 버린다
+ */
+on('DeactivateLakeGuardianContainmentUnits', (ctx) => {
+  ctx.host.world.services.lakeGuardianUnits?.open()
+  ctx.pause((c) => c.host.world.services.lakeGuardianUnits?.settled() !== false)
+  return true
 })
 
 // ── 처음 만나는 파트너 ───────────────────────────────────────────────────────

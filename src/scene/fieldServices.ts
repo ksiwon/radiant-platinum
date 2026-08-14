@@ -68,6 +68,10 @@ import {
 import { SUNYSHORE_GYM_MAPS, type SunyshoreButton } from '../engine/world/sunyshoreGym'
 import { advanceEternaClock, eternaBusy, eternaSound, initEternaGym } from './eternaGym'
 import { canalaveArrived, canalaveSound, canalaveStepped, initCanalaveGym } from './canalaveGym'
+import {
+  deactivateLakeGuardianUnits, initLakeGuardianUnits, lakeGuardianSound,
+  lakeGuardianUnitsSettled,
+} from './lakeGuardianUnits'
 import { hitVeilstoneBag, initVeilstoneGym, veilstoneSound } from './veilstoneGym'
 import { initHearthomeGym } from './hearthomeGym'
 
@@ -548,6 +552,7 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   canalaveSound.stop = (seq) => { music.stopEffect(seq) }
   veilstoneSound.play = (seq) => { void music.playEffect(seq) }
   veilstoneSound.stop = (seq) => { music.stopEffect(seq) }
+  lakeGuardianSound.play = (seq) => { void music.playEffect(seq) }
   // 판에서 내린 칸은 「방금 밟았다」로 친다 — 안 그러면 그 자리에서 다시 탄다
   canalaveArrived.settle = () => { resetStepFeatureTile() }
 
@@ -589,9 +594,11 @@ const services: FieldServices = {
     return waiting ? null : battleMask
   },
 
-  trainer(id: number): { double: boolean, msg: Record<string, number> } | null {
+  trainer(id: number): { double: boolean, msg: Record<string, number>, class: number } | null {
     const found = trainers?.get(id)
-    return found === undefined ? null : { double: found.double, msg: found.msg }
+    return found === undefined
+      ? null
+      : { double: found.double, msg: found.msg, class: found.class }
   },
 
   trainerMessage(index: number): string {
@@ -1163,6 +1170,12 @@ const services: FieldServices = {
     close: (tag) => { door.close(tag) },
     busy: (tag) => door.busy(tag),
     unload: (tag) => { door.unload(tag) },
+  },
+
+  lakeGuardianUnits: {
+    init: (freed) => { initLakeGuardianUnits(freed) },
+    open: () => { deactivateLakeGuardianUnits(performance.now()) },
+    settled: () => lakeGuardianUnitsSettled(performance.now()),
   },
 
   chooseStarter: {

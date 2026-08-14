@@ -153,7 +153,7 @@ const ALL_SERVICES = {
   startLegendaryBattle: () => {},
   startTagBattle: () => {},
   battleResult: () => 'win' as const,
-  trainer: () => ({ double: false, msg: {} }),
+  trainer: () => ({ double: false, msg: {}, class: 0 }),
   trainerMessage: () => '',
   aliveMons: () => 6,
   party: {

@@ -21,6 +21,7 @@ import { eternaProps } from './eternaGym'
 import { canalaveProps } from './canalaveGym'
 import { veilstoneProps } from './veilstoneGym'
 import { honeyTreeProp } from './honeyTree'
+import { lakeGuardianProps } from './lakeGuardianUnits'
 
 /** 지금 움직이고 있는 소품 하나 */
 export interface FeatureProp {
@@ -67,6 +68,9 @@ export function featureProps(): FeatureProp[] {
   // 빠지면 나무가 통째로 사라진다 — 스물한 맵에서는 늘 이쪽이 그린다
   const honey = honeyTreeProp()
   if (honey !== null) out.push({ key: '꿀나무', ...honey })
+  // ⚠️ **감금장치도 안 움직일 때 여기서 세운다.** 통 셋이 열리면 자리가 바뀌고,
+  // 청크가 그린 것과 겹치면 통이 둘로 보인다 — 꿀 나무와 같은 이유다
+  out.push(...lakeGuardianProps())
   return out
 }
 

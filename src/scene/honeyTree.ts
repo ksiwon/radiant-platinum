@@ -12,6 +12,7 @@
 //
 // ⚠️ **안 흔들릴 때도 우리가 그린다.** 청크는 소품을 들어설 때 한 번 세우고
 // 끝이라, 배틀이 끝나 목록에서 빠지면 나무가 사라진다 (`movingProps` 머리말)
+import { propPlacement } from '../engine/map/propPlacement'
 import { world as mapWorld } from '../engine/map/world'
 import {
   honeyTreeOf, HONEY_TREE_MODEL, honeyTreeStatus, shakeAnimation, TREE_STATUS,
@@ -73,9 +74,8 @@ export function honeyTreeProp(): HoneyTreeProp | null {
 /**
  * 배치 기록에서 그 나무를 찾는다.
  *
- * ⚠️ **행렬 전체가 아니라 지금 맵의 청크만 본다.** 신오 행렬 하나에 스무
- * 그루가 같이 들어 있어서, 모델 번호만으로 찾으면 늘 첫 그루(205번도로)가
- * 나온다 — 다른 도로에서 나무가 저 멀리 205번도로 자리에 선다.
+ * 고르는 규칙은 `map/propPlacement`에 있다 — 신오 행렬 하나가 스무 그루를 같이
+ * 담고 있는 것과, 제 행렬을 쓰는 맵의 표식이 −1인 것을 둘 다 봐야 한다.
  *
  * 맵마다 한 그루뿐이라 그 안에서는 모델 번호로 충분하다 — 스물한 맵을 다
  * 세어 봤고 두 그루인 곳이 없다 (`honeyTree.test.ts`)
@@ -83,13 +83,7 @@ export function honeyTreeProp(): HoneyTreeProp | null {
 function honeyTreePlacement(mapId: number): { x: number, y: number, z: number } | null {
   const grid = mapWorld.grid
   if (grid === null) return null
-  for (const chunk of grid.meta.chunks) {
-    if (chunk.zone !== mapId) continue
-    for (const b of grid.meta.buildings[String(chunk.i)] ?? []) {
-      if (b.model === HONEY_TREE_MODEL) return { x: b.x, y: b.y, z: b.z }
-    }
-  }
-  return null
+  return propPlacement(grid.meta, mapId, HONEY_TREE_MODEL)
 }
 
 /** 맵을 옮기면 멈춤 표시가 풀린다 — 다음 나무는 다시 흔들려야 한다 */
