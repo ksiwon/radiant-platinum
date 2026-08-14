@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_156
+const RUNNING_SITES = 54_163
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 384
+const IMPLEMENTED_COMMANDS = 390
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -630,6 +630,9 @@ const IDLE_COMMANDS = [
   // 쪽으로 빠진다. 셋 다 실제로 도는 것은 `script/fossil.test.ts`가 본다
   'GetFossilCount', 'GetSpeciesFromFossil', 'FindFossilAtThreshold',
   'CountPartyMonsBelowLevelThreshold', 'FindPartySlotWithNature',
+  // 우호광장 둘은 **따라다니는 마리가 있어야** 닿는다 (PARITY §7.8) — 훑기는
+  // 파티가 비어 있어서 광장에 들어가는 갈래 자체가 안 열린다
+  'ClearAmitySquareStepCount', 'CalcAmitySquareFoundAccessory',
   'EnableSwarms',
   // ⚠️ **기술 되살리기 다섯은 파티에서 한 마리를 고른 뒤에 온다.** 고르는
   // 명령(`SelectMoveTutorPokemon` 갈래)이 아직 없어서 훑기가 그 앞에서 멈춘다 —

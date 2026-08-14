@@ -27,6 +27,7 @@ import {
 import { elapseHoneyTrees } from '../engine/world/honeyTree'
 import { berryPatchesStep, elapseBerries } from './berryPatches'
 import { safariFieldStep } from './safari'
+import { amityStep, VAR_AMITY_STEPS } from '../engine/world/amity'
 import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
 import { radarStep } from './pokeRadar'
@@ -281,8 +282,13 @@ export const stepSystem = {
     // 볼이나 걸음이 떨어지면 롬의 스크립트가 안내원을 부른다
     safariFieldStep()
 
+
     const save = useSaveStore.getState()
     const vars = fieldScripts.vars
+    // ⚠️ **우호광장 걸음은 광장 안에서만 세는 것이 아니다** (PARITY §7.8).
+    // 원작이 어느 맵에서든 한 칸마다 올리고, 광장에 들어설 때 스크립트가
+    // 0으로 지운다 — 그래서 「들어온 뒤 몇 걸음」이 된다
+    vars.set(VAR_AMITY_STEPS, amityStep(vars.get(VAR_AMITY_STEPS)))
     const got = stepOnce({
       party: save.party,
       label: mapById(mapWorld.mapId)?.label ?? 0,

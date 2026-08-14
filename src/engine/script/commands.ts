@@ -22,6 +22,9 @@ import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { TREE_STATUS } from '../world/honeyTree'
 import { fossilAtThreshold, fossilCount, speciesFromFossil } from '../world/fossil'
+import {
+  AMITY_GIFT_COUNT, amityFound, amityGiftId, amityGiftIsAccessory, VAR_AMITY_STEPS,
+} from '../world/amity'
 import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
 import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
@@ -1082,11 +1085,14 @@ on('GetPlayerGender', (ctx) => {
   return false
 })
 
+/** `LCRNG_Next() % bound`. 상한이 0이면 나눗셈이 터지므로 막는다 */
+function randMod(bound: number): number {
+  return bound > 0 ? Math.floor(Math.random() * bound) : 0
+}
+
 on('GetRandom', (ctx) => {
   const dest = ctx.readHalfWord()
-  const bound = ctx.readVar()
-  // 원작은 `LCRNG_Next() % upperBound`다. 상한이 0이면 나눗셈이 터지므로 막는다
-  ctx.host.vars.set(dest, bound > 0 ? Math.floor(Math.random() * bound) : 0)
+  ctx.host.vars.set(dest, randMod(ctx.readVar()))
   return false
 })
 
@@ -3639,3 +3645,52 @@ on('CheckGreatMarshTramLocation', (ctx) => {
   return false
 })
 
+
+// ── 우호광장 (PARITY §7.8) ───────────────────────────────────────────────────
+
+/** 걸음을 0으로 지운다 (`ScrCmd_ClearAmitySquareStepCount`). 들어갈 때 돈다 */
+on('ClearAmitySquareStepCount', (ctx) => {
+  ctx.host.vars.set(VAR_AMITY_STEPS, 0)
+  return false
+})
+
+/** 지금까지 걸은 걸음 (`ScrCmd_GetAmitySquareStepCount`) */
+on('GetAmitySquareStepCount', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_AMITY_STEPS))
+  return false
+})
+
+/**
+ * 따라다니는 마리가 주워 온 장식 (`ScrCmd_CalcAmitySquareFoundAccessory`).
+ *
+ * ⚠️ **답이 먼저고 종족이 나중이다** — 원작이 변수 둘을 그 차례로 읽는다.
+ *
+ * ⚠️ **표에 없는 종은 0번 무리를 쓴다.** 우호광장에 못 들어가는 종이 여기 오면
+ * 불꽃숭이의 표가 나온다 — 원작의 `default`가 그렇다
+ */
+on('CalcAmitySquareFoundAccessory', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const species = ctx.readVar()
+  ctx.host.vars.set(dest, amityFound(species, randMod(100)))
+  return false
+})
+
+/** 아저씨가 무엇을 줄지 뽑는다 (`ScrCmd_CalcAmitySquareBerryAndAccessoryManOptionID`) */
+on('CalcAmitySquareBerryAndAccessoryManOptionID', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), randMod(AMITY_GIFT_COUNT))
+  return false
+})
+
+/** 그 선물이 장식인가 (`ScrCmd_CheckAmitySquareManGiftIsAccessory`). 앞의 아홉이 열매다 */
+on('CheckAmitySquareManGiftIsAccessory', (ctx) => {
+  const option = ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), amityGiftIsAccessory(option) ? 1 : 0)
+  return false
+})
+
+/** 그 선물의 도구·장식 번호 (`ScrCmd_GetAmitySquareBerryOrAccessoryIDFromMan`) */
+on('GetAmitySquareBerryOrAccessoryIDFromMan', (ctx) => {
+  const option = ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), amityGiftId(option))
+  return false
+})
