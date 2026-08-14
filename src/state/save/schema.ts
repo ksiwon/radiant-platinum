@@ -46,6 +46,7 @@ import {
 } from '../../engine/world/berryPatches'
 import { BERRY_KINDS, MULCH_KINDS } from '../../engine/world/berryInit'
 import { SAFARI_BALLS, SAFARI_STEPS, TRAM_STOP } from '../../engine/world/safari'
+import { NON_UNIQUE_WORDS, UNIQUE_WORDS } from '../../engine/world/fashionCase'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -544,6 +545,20 @@ export const saveSchema = z.object({
     caught: int(0, SAFARI_BALLS),
     /** 습초원 열차가 선 자리 (`GreatMarshTramState`) */
     tram: int(0, TRAM_STOP.area56),
+  }),
+
+  /**
+   * 장식 케이스 (PARITY §7.16) — `FashionCase`의 앞 두 배열.
+   *
+   * ⚠️ **비트로 담는다.** 겹치는 장식 61가지가 4비트씩(여덟 칸), 하나뿐인 39가지가
+   * 1비트씩(두 칸)이다. 개수 배열로 펴면 100칸이 되는데 원작 모양을 지키면
+   * 열 칸이다 — 그리고 그 폭이 곧 상한이라 따로 검사할 것이 줄어든다.
+   *
+   * ⚠️ **배경은 없다.** 원작 구조체에는 같이 있지만 콘테스트 전용이라 범위 밖이다 (§9)
+   */
+  fashionCase: z.object({
+    nonUnique: z.array(int(0, 0xffffffff)).length(NON_UNIQUE_WORDS),
+    unique: z.array(int(0, 0xffffffff)).length(UNIQUE_WORDS),
   }),
 })
 

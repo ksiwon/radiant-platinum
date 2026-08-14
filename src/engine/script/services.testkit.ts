@@ -46,6 +46,7 @@ export const stubParty: NonNullable<FieldServices['party']> = {
 
 export const stubLabels: NonNullable<FieldServices['labels']> = {
   berry: () => '',
+  accessory: () => '',
   move: () => '',
   pocket: () => '',
   species: () => '',

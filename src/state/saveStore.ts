@@ -34,6 +34,7 @@ import {
 } from '../engine/world/pokeRadar'
 import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
 import { newSafari, TRAM_START, type SafariState } from '../engine/world/safari'
+import { newFashionCase, type FashionCase } from '../engine/world/fashionCase'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -260,6 +261,13 @@ export interface SaveData {
    */
   safari: SafariState & { caught: number; tram: number }
   /**
+   * 장식 케이스 (PARITY §7.16).
+   *
+   * ⚠️ **콘테스트에서 떼어 낸 조각이다.** 대회는 범위 밖이지만(§9) 이것이 없으면
+   * 상호교류광장이 주워 온 장식을 넣을 곳이 없다
+   */
+  fashionCase: FashionCase
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -297,7 +305,7 @@ export interface SaveData {
   coins: number
 }
 
-export const SAVE_VERSION = 26
+export const SAVE_VERSION = 27
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -382,6 +390,7 @@ export function createNewSave(): SaveData {
     radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
     berryPatches: newBerryPatches(),
     safari: { ...newSafari(), caught: 0, tram: TRAM_START },
+    fashionCase: newFashionCase(),
   }
 }
 
@@ -615,6 +624,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     radar: s.radar,
     berryPatches: s.berryPatches,
     safari: s.safari,
+    fashionCase: s.fashionCase,
   }
 }
 

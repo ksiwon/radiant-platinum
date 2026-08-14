@@ -3694,3 +3694,54 @@ on('GetAmitySquareBerryOrAccessoryIDFromMan', (ctx) => {
   ctx.host.vars.set(ctx.readHalfWord(), amityGiftId(option))
   return false
 })
+
+
+// ── 장식 케이스 (PARITY §7.16) ────────────────────────────────────────────────
+//
+// 콘테스트는 범위 밖인데(§9) 케이스만 있다. 상호교류광장이 주워 온 장식을 넣을
+// 곳이 없으면 §7.8이 안 닫히기 때문이다.
+//
+// ⚠️ **여는 화면은 없다.** 원작의 옷 갈아입히기는 콘테스트 쪽이라 안 만든다 —
+// 모으는 것까지가 여기고, 무엇을 모았는지는 리포트에 남는다.
+
+/**
+ * 그만큼 더 들어가는가 (`ScrCmd_CanFitAccessory`).
+ *
+ * ⚠️ **이 답이 갈래를 가른다.** 상호교류광장은 장식이 안 들어가면 도구를 대신
+ * 주워 오고, 그것도 안 되면 아무것도 안 준다 — 케이스가 없을 때 답을 안 적으면
+ * 앞의 갈래가 쓴 묵은 값으로 갈린다. **그래서 없을 때 0을 적는다**
+ */
+on('CanFitAccessory', (ctx) => {
+  const accessory = ctx.readVar()
+  const count = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const fits = ctx.host.world.services.fashionCase?.canFit(accessory, count) ?? false
+  ctx.host.vars.set(dest, fits ? 1 : 0)
+  return false
+})
+
+/** 케이스에 넣는다 (`ScrCmd_AddAccessory`) */
+on('AddAccessory', (ctx) => {
+  // ⚠️ 인자를 **먼저** 읽는다 — `?.`가 인자 평가를 건너뛰면 4바이트가 안 읽히고
+  // 그 뒤가 전부 밀린다 (`BufferItemName`에서 이미 밟은 함정이다)
+  const accessory = ctx.readVar()
+  const amount = ctx.readVar()
+  ctx.host.world.services.fashionCase?.add(accessory, amount)
+  return false
+})
+
+/** 케이스에서 뺀다 (`ScrCmd_RemoveAccessory`) */
+on('ScrCmd_RemoveAccessory', (ctx) => {
+  const accessory = ctx.readVar()
+  const amount = ctx.readVar()
+  ctx.host.world.services.fashionCase?.remove(accessory, amount)
+  return false
+})
+
+/** 장식 이름을 칸에 채운다 (`ScrCmd_BufferAccessoryName`) */
+on('BufferAccessoryName', (ctx) => {
+  const slot = ctx.readByte()
+  const accessory = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.accessory(accessory) ?? '')
+  return false
+})

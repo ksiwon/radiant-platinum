@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_163
+const RUNNING_SITES = 54_179
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 390
+const IMPLEMENTED_COMMANDS = 394
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -617,6 +617,10 @@ const IDLE_COMMANDS = [
   // 모험노트는 **도감을 받은 뒤**라야 준다(`GoToIfSet FLAG_HAS_POKEDEX`).
   // 도감을 주는 명령을 아직 안 만들어서 그 플래그가 안 선다
   'GiveJournal',
+  // ⚠️ **케이스에 자리가 있는지 묻는 자리는 파티 너머다** (PARITY §7.16).
+  // 상호교류광장은 따라다니는 마리가 있어야 열리고, 팔파크 쪽은 GBA 연결이 있어야
+  // 한다 — 넣는 쪽(`AddAccessory`)과 이름 쪽은 훑기가 실제로 밟는다
+  'CanFitAccessory',
   // 상장 둘은 도감을 다 채운 사람에게만 오는 갈래라 훑기가 안 닿는다
   'ShowDiplomaSinnoh',
   'ShowDiplomaNationalDex',
@@ -659,6 +663,8 @@ const IDLE_COMMANDS = [
   // 그 장면인데, 그 앞이 레지 셋을 파티에서 세는 갈래라 훑기가 못 지나간다
   'ShakeObject',
   'HasCoinsFromValue', 'CheckCanAddCoins',
+  // 장식을 도로 빼는 자리는 원작 스크립트에 아예 없다 — 명령만 있다
+  'ScrCmd_RemoveAccessory',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다

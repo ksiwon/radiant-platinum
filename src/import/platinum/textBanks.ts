@@ -428,6 +428,8 @@ export const TEXT_BANK_NAMES = [
   'unk_0543',
   // NPC 교환 — 장면의 네 줄과 별명·트레이너 이름 여덟 (PARITY §10)
   'trade', 'npc_trade_names',
+  // 장식 100가지의 이름 (PARITY §7.16). 콘테스트는 범위 밖이지만 이름표는 쓴다
+  'contest_accessory_names',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

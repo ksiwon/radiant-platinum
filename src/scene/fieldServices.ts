@@ -152,6 +152,7 @@ import type { ItemTable } from '../data/gameData'
 import { FIRST_BERRY_ITEM } from '../engine/world/berryInit'
 import { berryPatchServices } from './berryPatches'
 import { safariServices } from './safari'
+import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -202,6 +203,7 @@ let typeNames: readonly string[] = []
 let natureNames: readonly string[] = []
 /** 나무열매 64 (`TEXT_BANK_BERRY_NAMES`). 차례가 도구 번호 − `FIRST_BERRY_ITEM`이다 */
 let berryNames: readonly string[] = []
+let accessoryNames: readonly string[] = []
 /** 트레이너 이름 928 · 분류 105 */
 let trainerNames: readonly string[] = []
 let trainerClassNames: readonly string[] = []
@@ -529,6 +531,9 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadDialogueBank(locale, UI_BANK.berryNames)
     .then((bank) => { berryNames = bank })
     .catch(() => { /* 열매 이름만 빈다 */ })
+  void loadDialogueBank(locale, UI_BANK.accessoryNames)
+    .then((bank) => { accessoryNames = bank })
+    .catch(() => { /* 장식 이름만 빈다 */ })
   // 아래 넷은 미국 롬에만 있다. 못 받는 것이 정상이라 조용히 넘긴다
   void loadDialogueBank(locale, UI_BANK.itemNamesWithArticles)
     .then((bank) => { itemArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
@@ -782,6 +787,20 @@ const services: FieldServices = {
 
   safari: safariServices,
 
+  // 장식 케이스 (PARITY §7.16). 리포트가 곧 케이스라 따로 둘 상태가 없다
+  fashionCase: {
+    canFit: (accessory, count) =>
+      canFitAccessory(useSaveStore.getState().fashionCase, accessory, count),
+    add: (accessory, amount) => {
+      const at = useSaveStore.getState().fashionCase
+      useSaveStore.setState({ fashionCase: addAccessory(at, accessory, amount) })
+    },
+    remove: (accessory, amount) => {
+      const at = useSaveStore.getState().fashionCase
+      useSaveStore.setState({ fashionCase: removeAccessory(at, accessory, amount) })
+    },
+  },
+
   chooseItem: {
     open: (pocket) => {
       // 열기 전에 지운다 — 앞서 고른 도구가 남아 있으면 취소가 「그대로 심기」가 된다
@@ -795,6 +814,7 @@ const services: FieldServices = {
     move: (move) => moveNames[move] ?? '',
     // ⚠️ 도구 표가 아니라 **열매 이름 뱅크**다 — 「체리열매」가 아니라 「체리」
     berry: (item) => berryNames[item - FIRST_BERRY_ITEM] ?? '',
+    accessory: (accessory) => accessoryNames[accessory] ?? '',
     pocket: (pocket) => pocketNames[pocket] ?? '',
     species: (species) => speciesNames[species] ?? '',
     type: (type) => typeNames[type] ?? '',

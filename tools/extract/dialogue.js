@@ -234,6 +234,11 @@ const EXTRA_BANKS = [
   // 교환 장면의 네 줄은 따로 있다. 둘 다 스크립트가 안 가리킨다 —
   // 이름은 `overlay006/npc_trade.c`가, 장면은 `overlay095`가 직접 연다
   'TEXT_BANK_NPC_TRADE_NAMES', 'TEXT_BANK_TRADE',
+  // 장식 100가지의 이름 (PARITY §7.16). 상호교류광장에서 주워 온 것의 이름을
+  // `BufferAccessoryName`이 여기서 읽는다 (`StringTemplate_SetContestAccessoryName`).
+  // ⚠️ **조사가 붙은 판(`…_WITH_ARTICLES`)은 한국어 롬에 없다** — 그 명령은
+  // 콘테스트 계통이라 안 만든다 (§9)
+  'TEXT_BANK_CONTEST_ACCESSORY_NAMES',
 ]
 
 function main() {

@@ -81,6 +81,13 @@ export const UI_BANK = {
   /** `TEXT_BANK_NATURE_NAMES` — 성격 25 (`StringTemplate_SetNatureName`) */
   natureNames: 202,
   /**
+   * `TEXT_BANK_CONTEST_ACCESSORY_NAMES` — 장식 100가지 (PARITY §7.16).
+   *
+   * 61번(컬러풀파라솔)부터가 하나뿐인 장식이다 — 디컴프의
+   * `NON_UNIQUE_ACCESSORY_COUNT`와 이 뱅크의 차례가 맞는다
+   */
+  accessoryNames: 386,
+  /**
    * 조사가 붙은 판과 복수형 (`StringTemplate_SetItemNameWithArticle` 등).
    *
    * ⚠️ **미국 롬에만 있다.** 한국·일본 롬의 뱅크 표에는 이 넷의 짝이 없어서

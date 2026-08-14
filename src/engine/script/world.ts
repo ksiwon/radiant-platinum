@@ -420,6 +420,20 @@ export interface FieldServices {
     /** 열차가 그 자리에 서 있는가 (`GreatMarshTram_CheckLocation`) */
     tramAt: (location: number) => boolean
   }
+  /**
+   * 장식 케이스 (PARITY §7.16).
+   *
+   * ⚠️ **콘테스트는 범위 밖인데 이것만 있다** (§9). 상호교류광장이 주워 온
+   * 장식을 넣을 곳이라 뗐다 — 대회·포핀·씰·배경은 없다
+   */
+  fashionCase?: {
+    /** 그만큼 더 들어가는가 (`FashionCase_CanFitAccessoryCount`) */
+    canFit: (accessory: number, count: number) => boolean
+    /** 넣는다. 넘치면 상한에서 멈춘다 (`FashionCase_AddAccessory`) */
+    add: (accessory: number, amount: number) => void
+    /** 뺀다 (`FashionCase_RemoveAccessory`) */
+    remove: (accessory: number, amount: number) => void
+  }
   /** 이름표 — 글 칸을 채우는 데 쓴다 (`BufferMoveName` 등) */
   labels?: {
     move: (move: number) => string
@@ -454,6 +468,13 @@ export interface FieldServices {
      * 뱅크가 아예 따로다 (`UI_BANK.berryNames`)
      */
     berry: (item: number) => string
+    /**
+     * 장식 100가지의 이름 (`TEXT_BANK_CONTEST_ACCESSORY_NAMES`).
+     *
+     * ⚠️ **조사가 붙은 판은 한국·일본 롬에 없다.** 그쪽을 쓰는
+     * `BufferAccessoryNameWithArticle`은 콘테스트 계통이라 안 만든다 (§9)
+     */
+    accessory: (accessory: number) => string
   }
   /** 보관 시스템. 스크립트가 박스 안을 들여다보는 자리가 몇 군데 있다 */
   boxes?: {

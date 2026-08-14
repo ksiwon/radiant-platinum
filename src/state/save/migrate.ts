@@ -21,6 +21,7 @@ import { newHoneyTrees } from '../../engine/world/honeyTree'
 import { newRadarRecords, RADAR_BATTERY_STEPS } from '../../engine/world/pokeRadar'
 import { newBerryPatches } from '../../engine/world/berryPatches'
 import { newSafari, TRAM_START } from '../../engine/world/safari'
+import { newFashionCase } from '../../engine/world/fashionCase'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -307,6 +308,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     ...data,
     version: 26,
     safari: { ...newSafari(), caught: 0, tram: TRAM_START },
+  }),
+
+  // 장식 케이스 (PARITY §7.16). 빈 케이스로 시작한다 — 옛 리포트에는 주워 온
+  // 장식이 애초에 없었으므로 되살릴 것이 없다
+  26: (data) => ({
+    ...data,
+    version: 27,
+    fashionCase: newFashionCase(),
   }),
 }
 
