@@ -33,6 +33,7 @@ import {
   newRadarRecords, RADAR_BATTERY_STEPS, type RadarState,
 } from '../engine/world/pokeRadar'
 import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
+import { newSafari, TRAM_START, type SafariState } from '../engine/world/safari'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -253,6 +254,12 @@ export interface SaveData {
    */
   berryPatches: BerryPatch[]
   /**
+   * 대습초원 사파리 (PARITY §7.7).
+   *
+   * ⚠️ **볼과 걸음이 깃발과 따로 논다** — 밖으로 나가면 깃발만 내려간다
+   */
+  safari: SafariState & { caught: number; tram: number }
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -290,7 +297,7 @@ export interface SaveData {
   coins: number
 }
 
-export const SAVE_VERSION = 25
+export const SAVE_VERSION = 26
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -374,6 +381,7 @@ export function createNewSave(): SaveData {
     honeyTrees: newHoneyTrees(),
     radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
     berryPatches: newBerryPatches(),
+    safari: { ...newSafari(), caught: 0, tram: TRAM_START },
   }
 }
 
@@ -606,6 +614,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     honeyTrees: s.honeyTrees,
     radar: s.radar,
     berryPatches: s.berryPatches,
+    safari: s.safari,
   }
 }
 

@@ -3573,3 +3573,69 @@ on('BufferBerryName', (ctx) => {
   ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.berry(item) ?? '')
   return false
 })
+
+// ── 대습초원 사파리 (PARITY §7.7) ────────────────────────────────────────────
+
+/**
+ * 놀이를 시작하거나 끝낸다 (`ScrCmd_StartEndSafariGame`).
+ *
+ * ⚠️ **인자가 변수가 아니라 상수다** — 0이 시작, 1이 끝이다
+ * (`SAFARI_GAME_ACTIVE` · `SAFARI_GAME_INACTIVE`).
+ *
+ * ⚠️ **끝낼 때 볼을 0으로 지운다.** 남은 볼을 들고 나가지 못한다 — 원작이
+ * 두 칸을 다 0으로 밀어 놓는다
+ */
+on('StartEndSafariGame', (ctx) => {
+  // ⚠️ 인자를 **먼저** 읽는다. `safari?.setActive(ctx.readByte())`로 쓰면 놀이가
+  // 안 붙어 있을 때 `?.`가 인자까지 건너뛰어 1바이트가 안 읽히고 그 뒤가 밀린다
+  const state = ctx.readByte()
+  ctx.host.world.services.safari?.setActive(state === SAFARI_GAME_ACTIVE)
+  return false
+})
+
+/** `SAFARI_GAME_ACTIVE` · `SAFARI_GAME_INACTIVE` (`constants/scrcmd.h`) */
+const SAFARI_GAME_ACTIVE = 0
+
+/** 이번 판에 잡은 마리 (`ScrCmd_GetCurrentSafariGameCaughtNum`) */
+on('GetCurrentSafariGameCaughtNum', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.safari?.caught() ?? 0)
+  return false
+})
+
+/**
+ * 습초원 열차를 세운다 (`ScrCmd_InitGreatMarshTram`).
+ *
+ * ⚠️ **이미 세워져 있으면 자리를 안 건드린다.** 원작이 갈래 번호를 먼저 보고
+ * 다르면 그때만 5·6구역으로 놓는다 — 매번 놓으면 열차가 맵에 들어설 때마다
+ * 제자리로 되돌아간다
+ */
+on('InitGreatMarshTram', (ctx) => {
+  ctx.host.world.services.safari?.initTram()
+  return false
+})
+
+/**
+ * 열차를 그 자리로 보낸다 (`ScrCmd_MoveGreatMarshTram`).
+ *
+ * ⚠️ **첫 인자가 변수고 둘째가 상수다.** 목적지는 변수에서 읽고 움직임 갈래는
+ * 스크립트에 박혀 있다 — 부르는 쪽이 「타고 간다」와 「불러온다」로 갈린다.
+ *
+ * 도착할 때까지 스크립트가 선다 (`return TRUE`)
+ */
+on('MoveGreatMarshTram', (ctx) => {
+  const to = ctx.readVar()
+  const movement = ctx.readHalfWord()
+  ctx.host.world.services.safari?.moveTram(to, movement)
+  ctx.pause((c) => c.host.world.services.safari?.tramSettled() !== false)
+  return true
+})
+
+/** 열차가 그 자리에 서 있는가 (`ScrCmd_CheckGreatMarshTramLocation`). 1이 「있다」 */
+on('CheckGreatMarshTramLocation', (ctx) => {
+  const location = ctx.readHalfWord()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.safari?.tramAt(location) === true ? 1 : 0)
+  return false
+})
+

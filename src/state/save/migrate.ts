@@ -20,6 +20,7 @@ import { newHallOfFame } from '../../engine/world/hallOfFame'
 import { newHoneyTrees } from '../../engine/world/honeyTree'
 import { newRadarRecords, RADAR_BATTERY_STEPS } from '../../engine/world/pokeRadar'
 import { newBerryPatches } from '../../engine/world/berryPatches'
+import { newSafari, TRAM_START } from '../../engine/world/safari'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -294,6 +295,19 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * 남아 있다. 그 도로에 다시 가면 그때부터 자란다
    */
   24: (data) => ({ ...data, version: 25, berryPatches: newBerryPatches() }),
+
+  /**
+   * 대습초원 사파리 (PARITY §7.7).
+   *
+   * ⚠️ **놀이 밖에서 시작한다.** 옛 리포트가 사파리 안에 있었을 리가 없다 —
+   * 그 놀이가 아예 없었으므로 깃발도 볼도 0이 맞는다. 열차는 원작이 처음
+   * 세우는 자리(5·6구역)에 둔다
+   */
+  25: (data) => ({
+    ...data,
+    version: 26,
+    safari: { ...newSafari(), caught: 0, tram: TRAM_START },
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

@@ -45,6 +45,7 @@ import {
   MAX_STAGE_MINUTES, MAX_YIELD_RATING,
 } from '../../engine/world/berryPatches'
 import { BERRY_KINDS, MULCH_KINDS } from '../../engine/world/berryInit'
+import { SAFARI_BALLS, SAFARI_STEPS, TRAM_STOP } from '../../engine/world/safari'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -525,6 +526,25 @@ export const saveSchema = z.object({
       }),
     )
     .length(MAX_BERRY_PATCHES),
+
+  /**
+   * 대습초원 사파리 (PARITY §7.7).
+   *
+   * ⚠️ **깃발과 두 수가 따로 논다.** 원작도 깃발은 시스템 플래그에, 볼과 걸음은
+   * `FieldOverworldState`에 둔다 — 밖으로 나가면 깃발만 내려가고 두 수는 남는다.
+   *
+   * ⚠️ **잡은 마리 수는 TV 방송 자료에 있다** (`TVBroadcast_GetSafariGameData`).
+   * 놀이가 끝난 뒤 안내원이 그 수를 묻는다
+   */
+  safari: z.object({
+    active: z.boolean(),
+    balls: int(0, SAFARI_BALLS),
+    steps: int(0, SAFARI_STEPS),
+    /** 이번 판에 잡은 마리. 시작할 때 0으로 지운다 */
+    caught: int(0, SAFARI_BALLS),
+    /** 습초원 열차가 선 자리 (`GreatMarshTramState`) */
+    tram: int(0, TRAM_STOP.area56),
+  }),
 })
 
 /**

@@ -151,6 +151,7 @@ import { naming as namingAnswer } from '../ui/menu/namingAnswer'
 import type { ItemTable } from '../data/gameData'
 import { FIRST_BERRY_ITEM } from '../engine/world/berryInit'
 import { berryPatchServices } from './berryPatches'
+import { safariServices } from './safari'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
 
@@ -778,6 +779,8 @@ const services: FieldServices = {
   },
 
   berryPatches: berryPatchServices,
+
+  safari: safariServices,
 
   chooseItem: {
     open: (pocket) => {

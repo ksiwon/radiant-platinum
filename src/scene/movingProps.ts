@@ -22,6 +22,7 @@ import { canalaveProps } from './canalaveGym'
 import { veilstoneProps } from './veilstoneGym'
 import { honeyTreeProp } from './honeyTree'
 import { lakeGuardianProps } from './lakeGuardianUnits'
+import { greatMarshTramProp } from './safari'
 
 /** 지금 움직이고 있는 소품 하나 */
 export interface FeatureProp {
@@ -57,6 +58,9 @@ export function featureProps(): FeatureProp[] {
   const out: FeatureProp[] = []
   const lift = platformLiftProp()
   if (lift !== null) out.push({ key: '승강판', ...lift })
+  // 습초원 열차 (PARITY §7.7). 배치 기록의 z만 갈아 끼운다
+  const tram = greatMarshTramProp()
+  if (tram !== null) out.push({ key: '습초원열차', ...tram })
   const water = pastoriaWaterProp()
   if (water !== null) out.push({ key: '물바닥', ...water })
   out.push(...sunyshoreProps())

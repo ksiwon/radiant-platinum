@@ -26,6 +26,7 @@ import {
 } from '../engine/world/daily'
 import { elapseHoneyTrees } from '../engine/world/honeyTree'
 import { berryPatchesStep, elapseBerries } from './berryPatches'
+import { safariFieldStep } from './safari'
 import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
 import { radarStep } from './pokeRadar'
@@ -275,6 +276,10 @@ export const stepSystem = {
     // 화면에 든 나무열매 밭이 자라기 시작한다 (`BerryPatches_UpdateGrowthStates`).
     // 원작도 칸이 바뀔 때마다 절두체로 잰다 (PARITY §4.6)
     berryPatchesStep()
+
+    // 사파리는 걸음 오백을 센다 (`Field_UpdateSafari`, PARITY §7.7).
+    // 볼이나 걸음이 떨어지면 롬의 스크립트가 안내원을 부른다
+    safariFieldStep()
 
     const save = useSaveStore.getState()
     const vars = fieldScripts.vars

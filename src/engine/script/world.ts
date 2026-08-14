@@ -401,6 +401,25 @@ export interface FieldServices {
     /** 고른 도구 번호. **0이 「안 고르고 나갔다」**다 */
     picked: () => number
   }
+  /**
+   * 대습초원 사파리 (PARITY §7.7).
+   *
+   * ⚠️ **끝낼 때 볼과 걸음을 지운다** — 남은 볼을 들고 나갈 수 없다
+   */
+  safari?: {
+    /** `SAFARI_GAME_ACTIVE`(0)면 시작, `_INACTIVE`(1)면 끝 */
+    setActive: (active: boolean) => void
+    /** 이번 판에 잡은 마리 (`TVBroadcast_GetSafariGameData`) */
+    caught: () => number
+    /** 열차를 처음 세운다 (`PersistedMapFeatures_InitForGreatMarsh`) */
+    initTram: () => void
+    /** 열차를 그 자리로 보낸다. 도착할 때까지 스크립트가 선다 */
+    moveTram: (to: number, movement: number) => void
+    /** 열차가 도착했는가 */
+    tramSettled: () => boolean
+    /** 열차가 그 자리에 서 있는가 (`GreatMarshTram_CheckLocation`) */
+    tramAt: (location: number) => boolean
+  }
   /** 이름표 — 글 칸을 채우는 데 쓴다 (`BufferMoveName` 등) */
   labels?: {
     move: (move: number) => string

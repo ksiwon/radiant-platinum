@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_138
+const RUNNING_SITES = 54_156
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 379
+const IMPLEMENTED_COMMANDS = 384
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.

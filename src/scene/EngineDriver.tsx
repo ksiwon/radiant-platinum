@@ -15,6 +15,7 @@ import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
 import { fishingSystem } from './fishingSystem'
 import { berryWateringSystem } from './berryPatches'
+import { stepTram } from './safari'
 import { markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { spinBike } from './BikeModel'
@@ -54,6 +55,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 물뿌리개도 발을 묶는다 (PARITY §4.6). 낚시와 같은 자리다 — 물을 주는
       // 동안 방향키는 걸음이 아니라 **옆 밭으로 옮겨 서기**다
       gameLoop.register(berryWateringSystem)
+      // 습초원 열차가 정거장 사이를 간다 (PARITY §7.7)
+      gameLoop.register({ fixedUpdate: stepTram })
       gameLoop.register(npcSystem)
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)
