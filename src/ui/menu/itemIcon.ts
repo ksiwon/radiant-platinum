@@ -10,14 +10,18 @@ import type { CSSProperties } from 'react'
 import type { ItemIcons } from '../../data/schema'
 import { ITEM_ICON_ATLAS } from '../../data/gameData'
 import { atlasUrl } from '../../data/providers/atlas'
+import { ICON_BORROWED_FROM } from '../../engine/bag/extraItems'
 
 /** 아이콘 한 칸을 `px` 크기로. 자료를 아직 못 받았으면 빈 칸이다 */
 export function itemIcon(
   icons: ItemIcons | undefined, id: number, px: number,
 ): CSSProperties {
   if (!icons) return { width: px, height: px }
-  const col = id % icons.cols
-  const rowAt = Math.floor(id / icons.cols)
+  // 롬 밖의 도구 둘은 남의 칸을 빌린다 (PARITY §12). 아틀라스가 **도구 번호로**
+  // 찾으므로 자료의 `icon` 칸을 고치는 것으로는 안 되고 여기서 갈아 끼운다
+  const at = ICON_BORROWED_FROM[id] ?? id
+  const col = at % icons.cols
+  const rowAt = Math.floor(at / icons.cols)
   return {
     width: px,
     height: px,

@@ -27,6 +27,9 @@ export type { Berry } from './schema'
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
 import { formSpeciesId } from '../engine/pokemon/form'
+import {
+  EXTRA_ITEM_DESCRIPTIONS, EXTRA_ITEM_NAMES, EXTRA_ITEMS, withExtraItems,
+} from '../engine/bag/extraItems'
 
 /**
  * 세션 내내 살아 있는 그림 넉 장 (`providers/atlas`).
@@ -237,15 +240,17 @@ export interface ItemTable {
 export function loadItems(): Promise<ItemTable> {
   return fetchJson('items.json', (v) => {
     const file = itemFileSchema.parse(v)
+    // 롬 밖의 둘을 표 뒤에 잇는다 (PARITY §12). 앞의 468줄은 안 건드린다
+    const items = withExtraItems(file.items, EXTRA_ITEMS)
     const byPocket = file.pockets.map(() => [] as number[])
-    file.items.forEach((it, id) => {
+    items.forEach((it, id) => {
       if (it.pocket !== undefined) byPocket[it.pocket]!.push(id)
     })
     return {
-      all: file.items,
+      all: items,
       pockets: file.pockets,
       get(id: number) {
-        const it = file.items[id]
+        const it = items[id]
         if (!it) throw new Error(`아이템 #${id}이(가) 데이터에 없다`)
         return it
       },
@@ -256,11 +261,15 @@ export function loadItems(): Promise<ItemTable> {
 }
 
 export function loadItemNames(locale: DataLocale): Promise<string[]> {
-  return fetchJson(`names/items.${locale}.json`, (v) => nameListSchema.parse(v))
+  return fetchJson(`names/items.${locale}.json`, (v) => withExtraItems(
+    nameListSchema.parse(v), EXTRA_ITEM_NAMES[locale] ?? EXTRA_ITEM_NAMES.en!,
+  ))
 }
 
 export function loadItemDescriptions(locale: DataLocale): Promise<string[]> {
-  return fetchJson(`names/itemDescriptions.${locale}.json`, (v) => nameListSchema.parse(v))
+  return fetchJson(`names/itemDescriptions.${locale}.json`, (v) => withExtraItems(
+    nameListSchema.parse(v), EXTRA_ITEM_DESCRIPTIONS[locale] ?? EXTRA_ITEM_DESCRIPTIONS.en!,
+  ))
 }
 
 /**

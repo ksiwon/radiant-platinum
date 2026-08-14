@@ -35,6 +35,7 @@ import { SCRIPT_EVENT_TYPES } from '../world/journal'
 import {
   HIDDEN_LOCATION_COUNT, HIDDEN_LOCATION_MAGIC, VAR_HIDDEN_LOCATION_FIRST,
 } from '../map/townMap'
+import { EVOLUTION_COUNTER_STOCK, isDecorMart } from '../bag/evolutionCounter'
 
 /**
  * 이름으로 등록한다.
@@ -407,6 +408,18 @@ on('PokeMartCommon', openShop((ctx) => {
 on('PokeMartSpecialties', openShop((ctx) => {
   const martID = ctx.readVar()
   return ctx.host.world.services.martStock?.specialties(martID) ?? []
+}))
+
+/**
+ * 장막백화점 4층의 계산대 (`ScrCmd_PokeMartDecor`, PARITY §12.1).
+ *
+ * ⚠️ **원작 재고는 별장 가구고 그 별장이 §9다.** 창구가 비었으므로 지하통로가
+ * 캐던 것들을 여기 얹는다 — 화석 일곱·진화의돌 아홉·롬 밖의 도구 둘.
+ * **대사는 한 줄도 안 지어낸다** — 상점 글이 전부 롬 것이다
+ */
+on('PokeMartDecor', openShop((ctx) => {
+  const martID = ctx.readVar()
+  return isDecorMart(martID) ? EVOLUTION_COUNTER_STOCK : []
 }))
 
 // ── 보관 시스템 ──────────────────────────────────────────────────────────────

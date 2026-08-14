@@ -9,6 +9,7 @@
 // 아니라 열다섯 개 헤더로 갈려 있다.
 import type { Evolution, Species } from '../../data/schema'
 import { genderOf, statsOf, type PokemonInstance } from './instance'
+import { ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from '../bag/extraItems'
 
 /**
  * `enum EvolutionMethod`. 줄 번호가 곧 값이다
@@ -242,11 +243,43 @@ function byTrade(list: readonly Evolution[], mon: PokemonInstance): EvoResult | 
   return null
 }
 
+/**
+ * 롬에 없는 도구 둘이 여는 길 (PARITY §12).
+ *
+ * ⚠️ **표를 안 고친다.** 종족 자료의 진화 갈래는 롬 것 그대로 두고, **거는 쪽만**
+ * 이 도구로 대신한다 — 표를 고치면 어느 줄이 원작인지가 사라진다.
+ *
+ * ⚠️ **연결의 끈도 지닌 도구는 그대로 본다.** `TRADE_WITH_HELD_ITEM`(핫삼의
+ * 금속코트 같은 것)은 원작에서 **교환 + 지님** 둘을 다 요구하므로, 끈이
+ * 대신하는 것은 「교환」 쪽뿐이다. 지님까지 없애면 조건 하나를 조용히 지우는 셈이다
+ */
+function byBorrowedItem(
+  list: readonly Evolution[], mon: PokemonInstance, item: number,
+): EvoResult | null {
+  if (item === ITEM_LINKING_CORD) {
+    for (const e of list) {
+      if (e.method === Evo.TRADE) return { to: e.to, method: Evo.TRADE }
+      if (e.method === Evo.TRADE_WITH_HELD_ITEM && e.param === mon.heldItem) {
+        return { to: e.to, method: Evo.TRADE_WITH_HELD_ITEM }
+      }
+    }
+    return null
+  }
+  if (item === ITEM_PRISM_SCALE) {
+    for (const e of list) {
+      if (e.method === Evo.LEVEL_BEAUTY) return { to: e.to, method: Evo.LEVEL_BEAUTY }
+    }
+  }
+  return null
+}
+
 function byItem(
   list: readonly Evolution[], mon: PokemonInstance, species: Species, ctx: EvoContext,
 ): EvoResult | null {
   const item = ctx.item
   if (item === undefined) return null
+  const borrowed = byBorrowedItem(list, mon, item)
+  if (borrowed !== null) return borrowed
   const gender = genderOf(mon.pid, species.genderRatio)
   for (const e of list) {
     if (e.param !== item) continue

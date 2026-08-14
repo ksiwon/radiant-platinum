@@ -8,9 +8,10 @@
 //      구현했다고 적어 놓고 아무도 안 지나가는 코드가 된다
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { speciesFileSchema, type Species } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
+import { ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from '../bag/extraItems'
 import type { PokemonInstance } from './instance'
 import { noOrigin } from './origin'
 import {
@@ -309,5 +310,52 @@ maybe('진화', () => {
       expect(of(p.to).learnset.some((e) => e.level === p.level && learned.includes(e.move)))
         .toBe(true)
     }
+  })
+
+  // ── 롬에 없는 도구 둘 (PARITY §12) ─────────────────────────────────────────
+
+  describe('연결의 끈과 고운 비늘', () => {
+    const use = (m: PokemonInstance, it: number) =>
+      evolutionTarget(EvoClass.ITEM, m, of(m.species), { item: it })
+
+    it('연결의 끈이 교환 진화를 건다 — 근육몬이 괴력몬이 된다', () => {
+      expect(use(mon(67), ITEM_LINKING_CORD)).toEqual({ to: 68, method: Evo.TRADE })
+    })
+
+    it('⚠️ 지닌 도구까지 요구하는 갈래는 그대로다 — 스라크는 금속코트가 있어야 한다', () => {
+      const scyther = of(123).evolutions
+        .find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)
+      expect(scyther, '스라크의 교환+지님 갈래').toBeDefined()
+      // 끈만으로는 안 걸린다 — 조건 하나를 조용히 지우지 않는다
+      expect(use(mon(123), ITEM_LINKING_CORD)).toBeNull()
+      expect(use({ ...mon(123), heldItem: scyther!.param }, ITEM_LINKING_CORD))
+        .toEqual({ to: scyther!.to, method: Evo.TRADE_WITH_HELD_ITEM })
+    })
+
+    it('고운 비늘이 빈티나를 밀로틱으로 만든다 — 아름다움이 0이라도', () => {
+      expect(use(mon(349), ITEM_PRISM_SCALE)).toEqual({ to: 350, method: Evo.LEVEL_BEAUTY })
+    })
+
+    it('⚠️ 서로 남의 길을 안 연다', () => {
+      expect(use(mon(349), ITEM_LINKING_CORD)).toBeNull()
+      expect(use(mon(67), ITEM_PRISM_SCALE)).toBeNull()
+    })
+
+    it('걸릴 갈래가 없는 종에는 아무 일도 안 난다', () => {
+      expect(use(mon(25), ITEM_LINKING_CORD)).toBeNull()
+      expect(use(mon(25), ITEM_PRISM_SCALE)).toBeNull()
+    })
+
+    it('교환으로 되는 신오도감 열둘이 전부 끈으로 열린다', () => {
+      const trade = all.flatMap((sp) => sp.evolutions
+        .filter((e) => e.method === Evo.TRADE || e.method === Evo.TRADE_WITH_HELD_ITEM)
+        .map((e) => ({ from: sp.id, e })))
+      expect(trade.length).toBeGreaterThanOrEqual(12)
+      for (const { from, e } of trade) {
+        const held = e.method === Evo.TRADE_WITH_HELD_ITEM ? e.param : 0
+        expect(use({ ...mon(from), heldItem: held }, ITEM_LINKING_CORD), `종족 ${String(from)}`)
+          .toEqual({ to: e.to, method: e.method })
+      }
+    })
   })
 })
