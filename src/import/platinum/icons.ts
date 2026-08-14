@@ -9,6 +9,7 @@ import { narcCount, narcEntry } from './nds'
 import { color, type Rgb } from './nitrotex'
 import { encodePng } from './png'
 import { ITEM_TABLE, ITEM_ICON_COUNT } from './itemTable'
+import { EXTRA_ITEMS } from '../../engine/bag/extraItems'
 import { ICON_PALETTE } from './pokeIconTable'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
 
@@ -91,7 +92,12 @@ export async function convertItemIcons(ctx: ConvertContext): Promise<Produced> {
     throw new Error(`아이콘 아카이브 ${String(narcCount(narc))}칸 ≠ 표 ${String(ITEM_ICON_COUNT)}칸`)
   }
 
-  const count = ITEM_TABLE.length
+  // ⚠️ **롬 밖의 둘도 제 칸을 받는다** (PARITY §12). 표 뒤에 이어 그리므로
+  // 앞의 468칸은 자리가 그대로다 — 남의 칸을 빌리면 가방에 같은 그림이 둘 뜬다
+  const extras = EXTRA_ITEMS.map((it) => ({
+    name: it.name, icon: it.icon ?? 0, palette: it.palette ?? 0,
+  }))
+  const count = ITEM_TABLE.length + extras.length
   const rows = Math.ceil(count / COLS)
   const width = COLS * ICON, height = rows * ICON
   const rgba = new Uint8Array(width * height * 4)
@@ -101,14 +107,23 @@ export async function convertItemIcons(ctx: ConvertContext): Promise<Produced> {
   const none = ITEM_TABLE[0]!
   if (none[1] === null || none[2] === null) throw new Error('none 아이콘이 표에 없다')
 
+  const cells = [
+    ...ITEM_TABLE.map((row) => {
+      const [, icon, pal] = row[1] === null ? none : row
+      return { name: row[0], icon: icon!, palette: pal! }
+    }),
+    ...extras,
+  ]
+
   const blank: string[] = []
   for (let id = 0; id < count; id++) {
-    const row = ITEM_TABLE[id]!
-    const [, icon, pal] = row[1] === null ? none : row
-    const sprite = narcEntry(narc, icon!)
-    const colors = narcEntry(narc, pal!)
-    if (!sprite || !colors) throw new Error(`${row[0]}: 아이콘 멤버 ${String(icon)}/${String(pal)}이 없다`)
-    if (blit(rgba, width, id, tiles(sprite), palette(colors)) === 0) blank.push(row[0])
+    const cell = cells[id]!
+    const sprite = narcEntry(narc, cell.icon)
+    const colors = narcEntry(narc, cell.palette)
+    if (!sprite || !colors) {
+      throw new Error(`${cell.name}: 아이콘 멤버 ${String(cell.icon)}/${String(cell.palette)}이 없다`)
+    }
+    if (blit(rgba, width, id, tiles(sprite), palette(colors)) === 0) blank.push(cell.name)
     if (id % 32 === 0) { check(ctx); ctx.onProgress?.(id, count); await breathe(ctx) }
   }
   // 전부 투명한 칸이 있으면 팔레트나 타일을 잘못 읽은 것이다

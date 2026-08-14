@@ -12,6 +12,7 @@ import {
   canLearnTm, fieldAction, FieldUse, MAP_TYPE_CAVE, repelStepsOf, tmIndex, tmMove,
   type FieldContext,
 } from './fieldUse'
+import { tradeEvolutionItems } from '../pokemon/evolution'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const maybe = withData('items.json', 'species.json')
@@ -53,6 +54,27 @@ maybe('필드 도구', () => {
       byUse.set(got.use, (byUse.get(got.use) ?? 0) + 1)
     }
     expect([...byUse].sort()).toEqual([['evoStone', 10], ['heal', 38], ['tmhm', 100]])
+  })
+
+  it('⚠️ 지닌 채 교환하던 열하나가 밖에서 열린다 — 표만 보면 다 막힌다', () => {
+    const ids = tradeEvolutionItems(species)
+    expect(ids.size).toBe(11)
+    const constants = new Set([...ids].map((id) => file.items[id]!.constant))
+    expect(constants).toContain('ITEM_METAL_COAT')
+
+    for (const constant of constants) {
+      const it = named(constant)
+      // 원작의 갈래는 0(밖에서 못 쓴다)이다. 그대로 두면 눌러도 아무 일이 없다
+      expect(it.fieldUseFunc ?? 0, constant).toBe(FieldUse.NONE)
+      expect(fieldAction(it, town()).kind, constant).toBe('blocked')
+      expect(fieldAction(it, town({ evoItems: constants })), constant)
+        .toEqual({ kind: 'party', use: 'evoStone' })
+    }
+    // 목록에 없는 도구까지 열리지는 않는다
+    expect(fieldAction(named('ITEM_POKE_BALL'), town({ evoItems: constants })).kind).toBe('blocked')
+    // 열하나가 더해져 묻는 갈래는 159종이 된다
+    const asks = file.items.filter((it) => fieldAction(it, town({ evoItems: constants })).kind === 'party')
+    expect(asks).toHaveLength(148 + 11)
   })
 
   it('리펠 셋만 걸음을 갖고, 그 값이 롬에서 온다', () => {

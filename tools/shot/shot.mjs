@@ -10,6 +10,7 @@
 //     pnpm shot center --give=479:30:2 --menu=party   파티에 넣고 화면을 연다
 //     pnpm shot center --give=... --hof=3 --menu=pcHallOfFame   전당 기록을 열어 본다
 //     pnpm shot center --currency=250            소지금·코인 창을 띄워 본다
+//     pnpm shot center --item=468:1 --menu=bag   가방에 넣고 목록을 열어 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
@@ -437,6 +438,18 @@ async function main() {
     if (currency) {
       const coins = currency.includes('=') ? Number(currency.split('=')[1]) : 1234
       await page.evaluate((c) => { globalThis.pt.currency(c) }, coins)
+    }
+    // 가방에 도구를 넣는다 — `--item=468:1,233:2`. 개수를 빼면 하나다.
+    // 이야기로 얻으려면 한참 걸어야 하는 물건을 목록에서 바로 보려고 쓴다
+    const items = flag('item')
+    if (items) {
+      for (const one of items.split(',').filter(Boolean)) {
+        const [id, count] = one.split(':').map(Number)
+        await page.evaluate(async ([i, n]) => {
+          await globalThis.pt.item(i, n ?? 1)
+        }, [id, count])
+      }
+      await page.waitForTimeout(300)
     }
     // 모험노트를 받고 오늘 쪽을 채운다 — `--note`.
     // 이야기로는 축복시티에서 받고 하루를 돌아다녀야 한 쪽이 찬다

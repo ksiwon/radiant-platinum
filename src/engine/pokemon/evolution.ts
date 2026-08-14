@@ -140,15 +140,30 @@ export function evolutionTarget(
   species: Species,
   ctx: EvoContext = {},
 ): EvoResult | null {
-  // 변함없는돌. 도구로 거는 진화는 못 막고, 케이시만 예외다
-  if (mon.species !== SPECIES_KADABRA
-    && ctx.holdEffect === HOLD_EFFECT_NO_EVOLVE
-    && cls !== EvoClass.ITEM) return null
-
   const list = species.evolutions
-  return cls === EvoClass.LEVEL ? byLevel(list, mon, species, ctx)
+  const hit = cls === EvoClass.LEVEL ? byLevel(list, mon, species, ctx)
     : cls === EvoClass.TRADE ? byTrade(list, mon)
       : byItem(list, mon, species, ctx)
+  if (hit === null) return null
+  return blockedByEverstone(hit.method, mon, ctx) ? null : hit
+}
+
+/** 원작이 도구로만 여는 갈래. 변함없는돌이 이 셋을 못 막는다 */
+const ITEM_METHODS: readonly EvoMethod[] = [Evo.USE_ITEM, Evo.USE_ITEM_MALE, Evo.USE_ITEM_FEMALE]
+
+/**
+ * 변함없는돌이 막는가 (`Pokemon_GetEvolutionTargetSpecies`).
+ *
+ * ⚠️ **부르는 갈래가 아니라 걸린 방법으로 판단한다.** 원작은
+ * `context != ITEM`으로 갈랐는데, 우리는 교환과 아름다움을 **도구로** 걸므로
+ * 갈래만 보면 변함없는돌이 통째로 힘을 잃는다 — 고오스에 돌을 물려 둔 사람이
+ * 연결의 끈에 진화당하면 그건 조건 하나를 조용히 지운 것이다 (PARITY §12.2).
+ * 케이시만 예외인 것은 원작이 이 종 하나를 따로 적어 뒀기 때문이다
+ */
+function blockedByEverstone(method: EvoMethod, mon: PokemonInstance, ctx: EvoContext): boolean {
+  if (ctx.holdEffect !== HOLD_EFFECT_NO_EVOLVE) return false
+  if (mon.species === SPECIES_KADABRA) return false
+  return !ITEM_METHODS.includes(method)
 }
 
 function byLevel(
@@ -244,24 +259,19 @@ function byTrade(list: readonly Evolution[], mon: PokemonInstance): EvoResult | 
 }
 
 /**
- * 롬에 없는 도구 둘이 여는 길 (PARITY §12).
+ * 롬에 없는 도구 둘이 여는 길 (PARITY §12.2).
  *
  * ⚠️ **표를 안 고친다.** 종족 자료의 진화 갈래는 롬 것 그대로 두고, **거는 쪽만**
  * 이 도구로 대신한다 — 표를 고치면 어느 줄이 원작인지가 사라진다.
  *
- * ⚠️ **연결의 끈도 지닌 도구는 그대로 본다.** `TRADE_WITH_HELD_ITEM`(핫삼의
- * 금속코트 같은 것)은 원작에서 **교환 + 지님** 둘을 다 요구하므로, 끈이
- * 대신하는 것은 「교환」 쪽뿐이다. 지님까지 없애면 조건 하나를 조용히 지우는 셈이다
+ * ⚠️ **연결의 끈은 「그냥 교환」 넷만 연다** (윤겔라·근육몬·데구리·고오스).
+ * 지닌 채 교환하던 열셋은 **그 도구를 쓰는 쪽**으로 갔다 — 금속코트로 핫삼을
+ * 만든다. 하나로 뭉치면 열한 가지 도구가 갈 곳을 잃는다
  */
-function byBorrowedItem(
-  list: readonly Evolution[], mon: PokemonInstance, item: number,
-): EvoResult | null {
+function byBorrowedItem(list: readonly Evolution[], item: number): EvoResult | null {
   if (item === ITEM_LINKING_CORD) {
     for (const e of list) {
       if (e.method === Evo.TRADE) return { to: e.to, method: Evo.TRADE }
-      if (e.method === Evo.TRADE_WITH_HELD_ITEM && e.param === mon.heldItem) {
-        return { to: e.to, method: Evo.TRADE_WITH_HELD_ITEM }
-      }
     }
     return null
   }
@@ -278,12 +288,17 @@ function byItem(
 ): EvoResult | null {
   const item = ctx.item
   if (item === undefined) return null
-  const borrowed = byBorrowedItem(list, mon, item)
+  const borrowed = byBorrowedItem(list, item)
   if (borrowed !== null) return borrowed
   const gender = genderOf(mon.pid, species.genderRatio)
   for (const e of list) {
     if (e.param !== item) continue
     if (e.method === Evo.USE_ITEM) return { to: e.to, method: Evo.USE_ITEM }
+    // ⚠️ **지님을 안 본다.** 가방에서 꺼내 쓰는 것이므로 그 도구가 이미 손에
+    // 있다 — 지님까지 요구하면 같은 물건을 둘 모아야 한다 (PARITY §12.2)
+    if (e.method === Evo.TRADE_WITH_HELD_ITEM) {
+      return { to: e.to, method: Evo.TRADE_WITH_HELD_ITEM }
+    }
     if (e.method === Evo.USE_ITEM_MALE && gender === 'male') {
       return { to: e.to, method: Evo.USE_ITEM_MALE }
     }
@@ -292,6 +307,27 @@ function byItem(
     }
   }
   return null
+}
+
+/**
+ * **지닌 채 교환**해야 하던 도구들 (PARITY §12.2).
+ *
+ * ⚠️ **목록을 손으로 적지 않는다.** 종족표에서 `TRADE_WITH_HELD_ITEM` 갈래의
+ * `param`을 모은다 — 열한 가지이고 열셋 갈래가 쓴다(심해의이빨·비늘이 씨카이저
+ * 하나에서 갈리고, 왕의징표석과 금속코트는 두 종씩 연다). 손으로 적으면
+ * 하나 빠져도 아무도 모른다.
+ *
+ * 가방이 이 값을 본다 — 원작의 `fieldUseFunc`가 0(밖에서 못 쓴다)이라
+ * 그것만 보면 눌러도 아무 일이 안 일어난다 (`bag/fieldUse`)
+ */
+export function tradeEvolutionItems(all: Iterable<Species>): Set<number> {
+  const out = new Set<number>()
+  for (const s of all) {
+    for (const e of s.evolutions) {
+      if (e.method === Evo.TRADE_WITH_HELD_ITEM) out.add(e.param)
+    }
+  }
+  return out
 }
 
 /**

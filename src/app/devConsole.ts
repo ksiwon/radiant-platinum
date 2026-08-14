@@ -9,8 +9,8 @@
 // 청크로도 나오지 않는다. 그러니 여기서 무엇을 import 하든 초기 청크는 안 는다.
 import { gameLocale } from '../state/optionsStore'
 import {
-  loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames, loadTrainerClasses, loadTrainerNames,
-  loadTrainers,
+  loadItems, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames, loadTrainerClasses,
+  loadTrainerNames, loadTrainers,
 } from '../data/gameData'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { world } from '../engine/map/world'
@@ -270,6 +270,16 @@ export function installDevConsole(): void {
     hour: (h: number) => {
       worldState.time.gameHour = ((h % 24) + 24) % 24
       return worldState.time.gameHour
+    },
+    /**
+     * 가방에 도구를 넣는다. 주머니는 도구표가 정한다.
+     *
+     * 이야기로 얻으려면 한참 걸어야 하는 물건을 화면에서 바로 보려면 이 길이
+     * 있어야 한다 — 롬 밖의 둘(468·469)이 실제로 목록에 뜨는지도 여기서 본다
+     */
+    item: async (id: number, count = 1) => {
+      const items = await loadItems()
+      return useSaveStore.getState().addItem(items.get(id).pocket ?? 0, id, count)
     },
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt

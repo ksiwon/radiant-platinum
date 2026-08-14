@@ -4,9 +4,12 @@
 // (DATA.md §2.12) 여기 둘은 플래티넘에 없는 물건이라 우리가 적는다.
 //
 // ⚠️ **왜 더하는가.** 원작이 열어 두었던 진화 길 둘이 §9 때문에 막혔다 —
-// 교환 진화 열둘은 통신이, 빈티나는 콘테스트가 열던 것이다. **문턱을 낮추거나
-// 없애는 대신** 시리즈가 나중에 같은 문제에 내놓은 답을 빌린다. 원작에 없던
-// 재미를 보태는 것이 아니다.
+// 교환 진화 열일곱 갈래는 통신이, 빈티나는 콘테스트가 열던 것이다. **문턱을
+// 낮추거나 없애는 대신** 시리즈가 나중에 같은 문제에 내놓은 답을 빌린다.
+// 원작에 없던 재미를 보태는 것이 아니다.
+//
+// ⚠️ **끈이 여는 것은 「그냥 교환」 넷뿐이다.** 지닌 채 교환하던 열셋은 그
+// 도구를 쓰는 쪽으로 갔다 (PARITY §12.2) — 금속코트로 핫삼을 만든다.
 //
 // ⚠️ **번호는 롬 표 뒤에 잇는다.** 468종이 0~467을 쓰므로 468부터다 — 롬 번호를
 // 덮어쓰면 그 자리의 진짜 도구가 사라진다.
@@ -51,9 +54,12 @@ export const EXTRA_ITEM_DESCRIPTIONS: Readonly<Record<string, readonly string[]>
 /**
  * 두 도구의 자료.
  *
- * ⚠️ **아이콘은 빌린 것이다.** 롬 아틀라스에 이 둘의 그림이 없으므로 뜻이 가까운
- * 것을 쓴다 — 연결의 끈은 이상한사탕 자리(끈 그림이 없다), 고운 비늘은
- * **하트비늘**(93번)의 것이다. 새 그림을 그리지 않는다.
+ * ⚠️ **아이콘은 롬에 있는 그림이고, 아틀라스에 제 칸이 있다.** 도구가
+ * 참조하지 않는 NCGR이 33개 남아 있는데(전부 3세대 잔재다) 연결의 끈은 그중
+ * **381번** — 초록 화면이 달린 손에 드는 기계다. 롬 안에서 GB플레이어에 가장
+ * 가깝고, 어느 도구도 안 쓰는 칸이라 가방에서 겹쳐 보이지 않는다.
+ * **롬에 GB플레이어 아이콘 자체는 없다** — 아이콘 328장의 이름을 다 훑었다.
+ * 고운 비늘은 하트비늘과 같은 그림(138)을 제 칸에 다시 그린다.
  *
  * ⚠️ **`fieldUseFunc`가 진화의돌과 같다** (`FieldUse.EVO_STONE` = 20). 그래야
  * 가방에서 고르면 파티 화면이 열리고, 그 자리에서 걸리는 마리에게 쓴다
@@ -63,9 +69,9 @@ export const EXTRA_ITEMS: readonly Item[] = [
     name: 'linking_cord',
     constant: 'ITEM_LINKING_CORD',
     dataID: ITEM_LINKING_CORD,
-    // 이상한사탕(50)의 아이콘·팔레트를 빌린다
-    icon: 90,
-    palette: 91,
+    // `item_icon.narc`의 안 쓰이는 자리 (디컴프 이름 `unused_381`)
+    icon: 381,
+    palette: 382,
     price: 2100,
     holdEffect: 0,
     effectParam: 0,
@@ -88,7 +94,7 @@ export const EXTRA_ITEMS: readonly Item[] = [
     name: 'prism_scale',
     constant: 'ITEM_PRISM_SCALE',
     dataID: ITEM_PRISM_SCALE,
-    // 하트비늘(93)의 아이콘·팔레트를 빌린다
+    // 하트비늘(93번 도구)과 같은 그림. 칸은 제 것이다
     icon: 138,
     palette: 139,
     price: 2100,
@@ -109,18 +115,6 @@ export const EXTRA_ITEMS: readonly Item[] = [
     param: null,
   },
 ]
-
-/**
- * 어느 도구의 아이콘 칸을 빌리는가.
- *
- * ⚠️ **아틀라스는 도구 번호로 찾는다** (`ui/menu/itemIcon`). 468·469 칸에는
- * 그림이 없으므로 그리는 자리에서 이 표로 갈아 끼운다 — 자료의 `icon` 칸을
- * 고치는 것으로는 안 된다
- */
-export const ICON_BORROWED_FROM: Readonly<Record<number, number>> = {
-  [ITEM_LINKING_CORD]: 50, // 이상한사탕
-  [ITEM_PRISM_SCALE]: 93, // 하트비늘
-}
 
 /** 롬 표 뒤에 두 줄을 잇는다. 앞의 468줄은 손대지 않는다 */
 export function withExtraItems<T>(rom: readonly T[], extra: readonly T[]): T[] {

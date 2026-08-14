@@ -13,6 +13,7 @@ const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
 const { encodePng } = require('./png')
+const { EXTRA_ITEM_ICONS, FIRST_EXTRA_ITEM } = require('./extraItemsModule.cjs')
 
 const ICON = 32
 const TILE = 8
@@ -52,7 +53,17 @@ function main() {
   const narc = rom.narc('/itemtool/itemdata/item_icon.narc')
   const items = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/data/items.json'), 'utf8')).items
 
-  const rows = Math.ceil(items.length / COLS)
+  // 롬 밖의 도구 둘은 표 **뒤에** 제 칸을 갖는다 (PARITY §12). 남의 칸을
+  // 빌리면 가방에서 같은 그림이 둘 나오고, 그리는 자리마다 번호를 갈아 끼워야 한다
+  if (items.length !== FIRST_EXTRA_ITEM) {
+    throw new Error(`롬 도구가 ${items.length}종인데 덧붙일 자리는 ${FIRST_EXTRA_ITEM}부터다`)
+  }
+  const cells = [
+    ...items.map((item, id) => ({ id, item })),
+    ...EXTRA_ITEM_ICONS.map((e) => ({ id: e.id, item: { name: `extra_${e.id}`, data: {}, ...e } })),
+  ]
+
+  const rows = Math.ceil(cells.length / COLS)
   const width = COLS * ICON, height = rows * ICON
   const rgba = new Uint8Array(width * height * 4)
 
@@ -62,7 +73,7 @@ function main() {
   let drawn = 0
   const opaque = new Map()
 
-  items.forEach((item, id) => {
+  cells.forEach(({ id, item }) => {
     const src = item.data === null ? none : item
     const px = tiles(narc[src.icon])
     const pal = palette(narc[src.palette])
@@ -83,16 +94,17 @@ function main() {
   })
 
   // 전부 투명한 칸이 있으면 팔레트나 타일을 잘못 읽은 것이다
-  const blank = [...opaque].filter(([, n]) => n === 0).map(([id]) => items[id].name)
+  const byId = new Map(cells.map((c) => [c.id, c.item.name]))
+  const blank = [...opaque].filter(([, n]) => n === 0).map(([id]) => byId.get(id))
   if (blank.length) throw new Error(`빈 아이콘 ${blank.length}개: ${blank.slice(0, 5).join(', ')}`)
 
   const png = encodePng(rgba, width, height)
   const file = path.join(ROOT, 'public/data/itemIcons.png')
   fs.writeFileSync(file, png)
 
-  const meta = writeJson('itemIcons.json', { size: ICON, cols: COLS, rows, count: items.length })
+  const meta = writeJson('itemIcons.json', { size: ICON, cols: COLS, rows, count: cells.length })
   console.log(
-    `아이콘 ${drawn}종 + 빈 자리 ${items.length - drawn}칸 → public/data/itemIcons.png ` +
+    `아이콘 ${drawn}종 + 빈 자리 ${cells.length - drawn}칸 → public/data/itemIcons.png ` +
     `(${width}×${height}, ${(png.length / 1024).toFixed(1)}KB) · ${meta.rel}`,
   )
   const filled = [...opaque.values()]

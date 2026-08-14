@@ -10,6 +10,7 @@ import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
 import { itemFileSchema, itemIconsSchema, POCKET_COUNT } from './schema'
 import { withData } from './romData.testkit'
+import { EXTRA_ITEMS } from '../engine/bag/extraItems'
 
 const DATA = resolve(__dirname, '../../public/data')
 const maybe = withData('items.json')
@@ -72,12 +73,16 @@ maybe('아이템', () => {
     expect(descriptions[17]).toContain('20')
   })
 
-  it('아이콘 칸이 아이템 수를 덮는다', () => {
+  it('아이콘 칸이 아이템 수를 덮는다 — 롬 468 + 우리 둘', () => {
     const icons = itemIconsSchema.parse(
       JSON.parse(readFileSync(resolve(DATA, 'itemIcons.json'), 'utf8')),
     )
-    expect(icons.count).toBe(468)
-    expect(icons.cols * icons.rows).toBeGreaterThanOrEqual(468)
+    // ⚠️ **가방이 보여 주는 전부**를 덮어야 한다. 롬 표만 세면 468·469가
+    // 빈 칸으로 뜨고, 그건 화면에서 "그림 없는 도구"로 보인다 (PARITY §12)
+    const total = file.items.length + EXTRA_ITEMS.length
+    expect(total).toBe(470)
+    expect(icons.count).toBe(total)
+    expect(icons.cols * icons.rows).toBeGreaterThanOrEqual(total)
     expect(existsSync(resolve(DATA, 'itemIcons.png'))).toBe(true)
   })
 })

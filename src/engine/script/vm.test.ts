@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_181
+const RUNNING_SITES = 54_219
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 395
+const IMPLEMENTED_COMMANDS = 402
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -650,6 +650,11 @@ const IDLE_COMMANDS = [
   // 밟힌다. 넷 다 실제 스크립트에 있다 (PARITY §10)
   'InitNPCTrade', 'GetNPCTradeSpecies', 'GetNPCTradeRequestedSpecies',
   'StartNPCTrade', 'FinishNPCTrade',
+  // ⚠️ **리본 일곱 중 셋은 훑기가 못 닿는다** (PARITY §9.2). 붙이는 자리는
+  // 파티가 있어야 하고(노력리본은 노력치 510, 발자국리본은 최대 친밀도),
+  // 이름을 부르는 자리는 그 뒤다. 읽는 넷은 밟히므로 리본신드롬 들머리가
+  // 실제로 0을 받아 제 대사로 닫힌다
+  'CountPartyMonRibbons_Unused', 'SetPartyMonRibbon', 'BufferRibbonName',
   'GetPartyMonType',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',

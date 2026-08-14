@@ -11,12 +11,12 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { speciesFileSchema, type Species } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
-import { ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from '../bag/extraItems'
+import { FIRST_EXTRA_ITEM, ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from '../bag/extraItems'
 import type { PokemonInstance } from './instance'
 import { noOrigin } from './origin'
 import {
   Evo, EvoClass, evolutionTarget, evolve, FRIENDSHIP_THRESHOLD, HOLD_EFFECT_NO_EVOLVE,
-  MAP_EVOLUTION, movesOnEvolve, spawnsShedinja, type EvoContext,
+  MAP_EVOLUTION, movesOnEvolve, spawnsShedinja, tradeEvolutionItems, type EvoContext,
 } from './evolution'
 
 const maybe = withData('species.json')
@@ -322,14 +322,26 @@ maybe('진화', () => {
       expect(use(mon(67), ITEM_LINKING_CORD)).toEqual({ to: 68, method: Evo.TRADE })
     })
 
-    it('⚠️ 지닌 도구까지 요구하는 갈래는 그대로다 — 스라크는 금속코트가 있어야 한다', () => {
+    it('⚠️ 지닌 채 교환하던 갈래는 **그 도구를 쓴다** — 스라크에 금속코트', () => {
       const scyther = of(123).evolutions
         .find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)
       expect(scyther, '스라크의 교환+지님 갈래').toBeDefined()
-      // 끈만으로는 안 걸린다 — 조건 하나를 조용히 지우지 않는다
+      // 끈은 이쪽을 안 연다. 열한 가지 도구가 갈 곳을 잃기 때문이다
       expect(use(mon(123), ITEM_LINKING_CORD)).toBeNull()
-      expect(use({ ...mon(123), heldItem: scyther!.param }, ITEM_LINKING_CORD))
+      expect(use({ ...mon(123), heldItem: scyther!.param }, ITEM_LINKING_CORD)).toBeNull()
+      // 금속코트를 **쓰면** 걸린다. 손에 든 것을 쓰는 것이라 지님은 안 본다
+      expect(use(mon(123), scyther!.param))
         .toEqual({ to: scyther!.to, method: Evo.TRADE_WITH_HELD_ITEM })
+    })
+
+    it('⚠️ 진주몽은 쓴 도구로 갈린다 — 이빨이면 헌테일, 비늘이면 분홍장이', () => {
+      const two = of(366).evolutions.filter((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)
+      expect(two, '심해의이빨·심해의비늘 두 갈래').toHaveLength(2)
+      expect(two[0]!.param).not.toBe(two[1]!.param)
+      for (const e of two) {
+        expect(use(mon(366), e.param), `도구 ${String(e.param)}`)
+          .toEqual({ to: e.to, method: Evo.TRADE_WITH_HELD_ITEM })
+      }
     })
 
     it('고운 비늘이 빈티나를 밀로틱으로 만든다 — 아름다움이 0이라도', () => {
@@ -346,16 +358,52 @@ maybe('진화', () => {
       expect(use(mon(25), ITEM_PRISM_SCALE)).toBeNull()
     })
 
-    it('교환으로 되는 신오도감 열둘이 전부 끈으로 열린다', () => {
-      const trade = all.flatMap((sp) => sp.evolutions
-        .filter((e) => e.method === Evo.TRADE || e.method === Evo.TRADE_WITH_HELD_ITEM)
-        .map((e) => ({ from: sp.id, e })))
-      expect(trade.length).toBeGreaterThanOrEqual(12)
-      for (const { from, e } of trade) {
-        const held = e.method === Evo.TRADE_WITH_HELD_ITEM ? e.param : 0
-        expect(use({ ...mon(from), heldItem: held }, ITEM_LINKING_CORD), `종족 ${String(from)}`)
-          .toEqual({ to: e.to, method: e.method })
+    it('⚠️ 교환으로 되던 갈래 열일곱이 하나도 안 막힌다 — 넷은 끈, 열셋은 제 도구', () => {
+      const plain = all.flatMap((sp) => sp.evolutions
+        .filter((e) => e.method === Evo.TRADE).map((e) => ({ from: sp.id, e })))
+      const held = all.flatMap((sp) => sp.evolutions
+        .filter((e) => e.method === Evo.TRADE_WITH_HELD_ITEM).map((e) => ({ from: sp.id, e })))
+      // 표가 주는 수를 그대로 못 박는다. 종이 빠지면 여기서 먼저 걸린다
+      expect(plain).toHaveLength(4)
+      expect(held).toHaveLength(13)
+
+      for (const { from, e } of plain) {
+        expect(use(mon(from), ITEM_LINKING_CORD), `종족 ${String(from)}`)
+          .toEqual({ to: e.to, method: Evo.TRADE })
       }
+      for (const { from, e } of held) {
+        expect(use(mon(from), e.param), `종족 ${String(from)}`)
+          .toEqual({ to: e.to, method: Evo.TRADE_WITH_HELD_ITEM })
+      }
+    })
+
+    it('⚠️ 필요한 도구는 열한 가지다 — 목록을 손으로 안 적는다', () => {
+      const items = tradeEvolutionItems(all)
+      expect(items.size).toBe(11)
+      // 왕의징표석과 금속코트는 두 종씩, 심해의 둘은 한 종에서 갈린다
+      const held = all.flatMap((sp) => sp.evolutions
+        .filter((e) => e.method === Evo.TRADE_WITH_HELD_ITEM))
+      expect(new Set(held.map((e) => e.param))).toEqual(items)
+      // 롬 도구 번호 안에 있다 — 우리가 더한 둘이 섞여 들면 안 된다
+      for (const id of items) expect(id).toBeLessThan(FIRST_EXTRA_ITEM)
+    })
+
+    it('⚠️ 변함없는돌은 교환을 대신하는 도구도 막는다 — 케이시만 예외다', () => {
+      const stone: EvoContext = { holdEffect: HOLD_EFFECT_NO_EVOLVE }
+      const held = (m: PokemonInstance, it: number) =>
+        evolutionTarget(EvoClass.ITEM, m, of(m.species), { ...stone, item: it })
+      // 고우스트는 끈으로도 안 된다. 원작에서도 이 돌이 교환을 막았다
+      expect(held(mon(93), ITEM_LINKING_CORD)).toBeNull()
+      // 스라크에 금속코트도 마찬가지다
+      const coat = of(123).evolutions.find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)!
+      expect(held(mon(123), coat.param)).toBeNull()
+      // 빈티나도 막힌다 — 고운 비늘이 대신하는 것은 레벨업 쪽이다
+      expect(held(mon(349), ITEM_PRISM_SCALE)).toBeNull()
+      // 윤겔라는 원작이 예외로 뒀다
+      expect(held(mon(64), ITEM_LINKING_CORD)).toEqual({ to: 65, method: Evo.TRADE })
+      // 진짜 진화의돌은 여전히 안 막힌다
+      const fire = of(133).evolutions.find((e) => e.method === Evo.USE_ITEM)!
+      expect(held(mon(133), fire.param)).not.toBeNull()
     })
   })
 })

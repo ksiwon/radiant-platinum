@@ -124,20 +124,30 @@ export function EvolutionScreen() {
     const save = useSaveStore.getState()
     const night = isNight(worldState.time.gameHour)
     for (;;) {
-      const slot = take()
-      if (slot === null) {
+      const entry = take()
+      if (entry === null) {
         useCinematicStore.getState().clear()
         closeAll()
         return
       }
+      const slot = entry.slot
       const mon = save.party[slot]
       if (!mon) continue
-      const evo = evolutionTarget(EvoClass.LEVEL, mon, tables.species.get(mon.species), {
-        party: save.party.map((m) => m.species),
-        night,
-        mapId,
-        holdEffect: mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect : undefined,
-      })
+      const holdEffect = mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect : undefined
+      // ⚠️ **건 것이 무엇이었는지를 그대로 다시 묻는다.** 도구로 건 자리를
+      // 레벨업으로 다시 보면 아무것도 안 걸리고, 그러면 가방에서 사라진 돌만
+      // 남는다 (PARITY §3.1)
+      const evo = entry.item === undefined
+        ? evolutionTarget(EvoClass.LEVEL, mon, tables.species.get(mon.species), {
+          party: save.party.map((m) => m.species),
+          night,
+          mapId,
+          holdEffect,
+        })
+        : evolutionTarget(EvoClass.ITEM, mon, tables.species.get(mon.species), {
+          item: entry.item,
+          holdEffect,
+        })
       if (!evo) continue
       useCinematicStore.getState().startEvolution(
         {

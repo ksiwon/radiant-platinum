@@ -117,6 +117,19 @@ export interface FieldContext {
    * (`CanUseFishingRod`). 밑을 지나갈 때는 같은 칸에서도 던질 수 있다
    */
   onBridge?: boolean
+  /**
+   * 지닌 채 교환해야 하던 도구들 (PARITY §12.2).
+   *
+   * ⚠️ **`fieldUseFunc`로는 못 찾는다.** 금속코트도 왕의징표석도 원작에서는
+   * 0(밖에서 못 쓴다)이다 — 교환이 걸어 주던 것이라 밖에서 쓸 일이 없었다.
+   * 교환이 없어졌으므로 이 열하나는 진화의돌과 같은 자리를 받는다. 목록은
+   * 종족표에서 뽑는다 (`pokemon/evolution`의 `tradeEvolutionItems`).
+   *
+   * ⚠️ 담기는 것은 **롬이 준 이름표**(`ITEM_METAL_COAT`)다. 도구표의 `dataID`는
+   * 아카이브 자리지 도구 번호가 아니라서(금속코트가 233번인데 211이다) 여기로
+   * 못 넘어온다 — 리펠·피리를 이름으로 가르는 것과 같은 이유다
+   */
+  evoItems?: ReadonlySet<string>
 }
 
 /** 아직 계통이 없는 갈래의 이름. 화면이 그대로 보여 준다 */
@@ -143,6 +156,9 @@ const MISSING: Partial<Record<number, string>> = {
  * 도구가 서른여덟인데 그걸 목록으로 만들면 하나 빠뜨려도 아무도 모른다
  */
 export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
+  // ⚠️ 표보다 **먼저** 본다. 이 열하나는 원작의 갈래가 0이라 표를 거치면
+  // "지금은 쓸 수 없다"로 떨어진다 (PARITY §12.2)
+  if (ctx.evoItems?.has(item.constant) === true) return { kind: 'party', use: 'evoStone' }
   switch (item.fieldUseFunc) {
     case FieldUse.HEALING:
       return { kind: 'party', use: 'heal' }

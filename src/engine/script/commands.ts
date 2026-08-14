@@ -3758,3 +3758,73 @@ on('BufferAccessoryName', (ctx) => {
   ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.accessory(accessory) ?? '')
   return false
 })
+
+
+// ── 리본 (PARITY §9.2) ───────────────────────────────────────────────────────
+//
+// **리본은 이 게임에 없다.** 콘테스트가 §9로 나가면서 같이 접혔고, 저장할 칸도
+// 보여 줄 화면도 안 만든다.
+//
+// ⚠️ **그래도 명령은 만든다.** 안 만들면 결과를 적는 변수가 **앞의 갈래가 쓴
+// 값 그대로** 남고, 스크립트는 그 묵은 값으로 갈라진다 — "리본이 몇 개냐"에
+// 우연히 10 이상이 들어 있으면 리본신드롬이 열린다. 읽는 쪽은 0을 적고 쓰는
+// 쪽은 아무 일도 안 하는 것이, 리본이 없는 세계의 **참값**이다.
+//
+// ⚠️ **리본신드롬은 이 0으로 닫힌다.** 1층 들머리가 `CountPartyRibbons`를
+// 10과 견주고 모자라면 제 대사로 돌려보낸다(`GoToIf <`) — 우리가 문을 막는
+// 것이 아니라 **원작이 제 말로 막는다.** 지어낸 글이 한 줄도 없다
+
+/** 파티가 가진 리본 종류 수 (`ScrCmd_CountPartyRibbons`). 늘 0이다 */
+on('CountPartyRibbons', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/** 한 마리가 가진 리본 수 (`ScrCmd_CountPartyMonRibbons_Unused`). 늘 0이다 */
+on('CountPartyMonRibbons_Unused', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.readVar()
+  ctx.host.vars.set(dest, 0)
+  return false
+})
+
+/** 그 마리가 그 리본을 가졌는가 (`ScrCmd_GetPartyMonRibbon`). 아무도 안 가졌다 */
+on('GetPartyMonRibbon', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.readVar()
+  ctx.readVar()
+  ctx.host.vars.set(dest, 0)
+  return false
+})
+
+/** 콘테스트가 묻는 자리 (`ScrCmd_CheckPlayerMonHasRibbon`) */
+on('CheckPlayerMonHasRibbon', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/** 붙인다 (`ScrCmd_SetPartyMonRibbon`). 저장할 곳이 없어서 아무 일도 안 한다 */
+on('SetPartyMonRibbon', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  return false
+})
+
+/** 콘테스트가 이름을 짓는 자리 (`ScrCmd_SetRibbonName`) */
+on('SetRibbonName', (ctx) => {
+  ctx.readVar()
+  return false
+})
+
+/**
+ * 리본 이름을 칸에 채운다 (`ScrCmd_BufferRibbonName`).
+ *
+ * ⚠️ **빈 글을 적는다.** 이름표가 없으니 지어내지 않고, 대신 앞의 명령이 그
+ * 칸에 넣어 둔 **남의 이름**이 그대로 뜨는 것을 막는다
+ */
+on('BufferRibbonName', (ctx) => {
+  const slot = ctx.readByte()
+  ctx.readVar()
+  ctx.host.world.slots.set(slot, '')
+  return false
+})

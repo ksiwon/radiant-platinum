@@ -6,7 +6,7 @@
 //
 // ⚠️ 설명칸에 **아이콘을 크게** 세운다. 목록의 28픽셀짜리로는 무엇을 고르고
 // 있는지가 안 보인다 — 원작도 위 화면에 고른 물건을 크게 띄운다.
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoves, loadSpecies,
   type ItemTable, type MoveTable, type SpeciesTable,
@@ -22,6 +22,7 @@ import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { onElevatedBridge } from '../../engine/actor/bridge'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
+import { tradeEvolutionItems } from '../../engine/pokemon/evolution'
 import { castRod } from '../../scene/fishingSystem'
 import { turnOnRadar } from '../../scene/pokeRadar'
 import { isSurfable } from '../../engine/map/zone'
@@ -91,6 +92,20 @@ export function BagScreen() {
     return () => { alive = false }
   }, [locale])
 
+  /**
+   * 지닌 채 교환해야 하던 도구들 (PARITY §12.2). 종족표에서 뽑아 롬 이름표로
+   * 바꾼다 — 도구표의 갈래(`fieldUseFunc`)로는 못 찾는다
+   */
+  const evoItems = useMemo(() => {
+    if (!data) return undefined
+    const out = new Set<string>()
+    for (const id of tradeEvolutionItems(data.species.all)) {
+      const constant = data.items.all[id]?.constant
+      if (constant !== undefined) out.add(constant)
+    }
+    return out
+  }, [data])
+
   // 스크립트가 고르라고 열었으면 그 주머니에 못 박힌다 (`FieldSystem_CreateBagContext`)
   const shown = pickPocket ?? pocket
   const slots = bag[shown] ?? []
@@ -155,6 +170,7 @@ export function BagScreen() {
         && isRadarGrass(grid.behaviorAtWorld(p.position.x, p.position.z)),
       hasPartner: fieldScripts.vars?.checkFlag(SYSTEM_FLAG.hasPartner) === true,
       onBike: p.cycling,
+      evoItems,
     })
 
     switch (action.kind) {

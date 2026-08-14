@@ -309,11 +309,19 @@ export function PartyScreen() {
       return
     }
 
-    // 진화의돌
-    const evo = evolutionTarget(EvoClass.ITEM, selected, info, { item: usingItem.item })
+    // 진화의돌, 그리고 교환을 대신하는 도구들 (PARITY §12.2)
+    //
+    // ⚠️ **지닌 것도 넘긴다.** 원작의 돌은 변함없는돌이 못 막지만 교환은 막았다 —
+    // 그 판단이 `evolutionTarget` 안에 있고, 지닌 것을 안 넘기면 아무것도 안 막는다
+    const evo = evolutionTarget(EvoClass.ITEM, selected, info, {
+      item: usingItem.item,
+      holdEffect: selected.heldItem > 0 ? tables.items.get(selected.heldItem).holdEffect : undefined,
+    })
     if (evo === null) { setNotice('효과가 없을 것 같다.'); return }
     removeItem(item.pocket ?? 0, usingItem.item, 1)
-    useEvolutionStore.getState().queue([at])
+    // ⚠️ **무엇으로 걸었는지 같이 넘긴다.** 안 넘기면 진화 화면이 「레벨이
+    // 올랐다」로만 다시 보고 아무것도 못 찾는다 — 도구만 사라진다
+    useEvolutionStore.getState().queue([at], usingItem.item)
     clearUsingItem()
     closeAll()
     open('evolution')
