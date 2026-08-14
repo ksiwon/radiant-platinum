@@ -17,6 +17,8 @@ import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
+import { useMenuStore } from '../state/menuStore'
+import { frontierStock } from '../engine/bag/frontierMart'
 import { activateRoamer } from '../scene/roamers'
 import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
 import { computeStats } from '../engine/pokemon/stats'
@@ -280,6 +282,17 @@ export function installDevConsole(): void {
     item: async (id: number, count = 1) => {
       const items = await loadItems()
       return useSaveStore.getState().addItem(items.get(id).pocket ?? 0, id, count)
+    },
+    /**
+     * 배틀프런티어 교환 코너를 연다 (PARITY §12.3).
+     *
+     * 이야기로 가려면 서바이벌에리어를 지나 섬까지 가야 하고, **BP를 벌 길이
+     * 아직 없다** — 화면을 확인하려면 이 길뿐이다
+     */
+    frontier: (martID = 1, bp = 500) => {
+      useSaveStore.setState({ battlePoints: bp })
+      useMenuStore.getState().openShop(frontierStock(martID), 'bp')
+      return frontierStock(martID).length
     },
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt

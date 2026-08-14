@@ -10,6 +10,7 @@ import { create } from 'zustand'
 // ⚠️ `keyboard`가 아니라 `keys`다. 그쪽은 worldState → three를 끌고 오는데
 // 타이틀 화면이 이 스토어를 잡으므로 초기 청크에 three가 실린다 (§10.4)
 import { setUiCapture } from '../engine/input/keys'
+import type { ShopCurrency } from '../engine/script/world'
 
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
@@ -53,6 +54,12 @@ interface MenuStore {
    * 스크립트가 값을 건넬 길이 없다
    */
   shopStock: number[]
+  /**
+   * 그 상점이 무엇으로 값을 받는가 (`enum MartType`).
+   *
+   * 배틀프런티어 교환 코너만 BP다 (PARITY §12.3) — 나머지는 돈이다
+   */
+  shopCurrency: ShopCurrency
   /**
    * 보관 시스템을 어느 갈래로 열었는가 (`OpenPokemonStorage`의 인자).
    *
@@ -125,8 +132,8 @@ interface MenuStore {
   choosingMon: boolean
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
-  /** 상점을 연다. 재고를 같이 받는다 */
-  openShop: (items: readonly number[]) => void
+  /** 상점을 연다. 재고와 **무엇으로 값을 받는지**를 같이 받는다 */
+  openShop: (items: readonly number[], currency?: ShopCurrency) => void
   /** 보관 시스템을 연다 */
   openBox: (mode: number) => void
   /** 이름 짓기 화면을 연다 */
@@ -173,6 +180,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   stack: [],
   top: null,
   shopStock: [],
+  shopCurrency: 'money',
   boxMode: 0,
   naming: null,
   usingItem: null,
@@ -251,10 +259,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
 
   clearUsingItem: () => { set({ usingItem: null }) },
 
-  openShop: (items) => set(() => {
+  openShop: (items, currency) => set(() => {
     const stack: MenuScreen[] = ['shop']
     capture(stack)
-    return { stack, top: 'shop' as const, shopStock: [...items] }
+    return {
+      stack, top: 'shop' as const, shopStock: [...items], shopCurrency: currency ?? 'money',
+    }
   }),
 
   openBox: (mode) => set(() => {

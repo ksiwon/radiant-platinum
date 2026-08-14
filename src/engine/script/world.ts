@@ -94,6 +94,14 @@ const UNNAMED: NameSource = {
  * 전부 선택이다 — 안 붙으면 그 명령이 조용히 아무 일도 안 하는 것이 아니라,
  * `unsupported`에 이름이 쌓여서 무엇이 빠졌는지 보인다
  */
+/**
+ * 상점이 무엇으로 값을 받는가 (`enum MartType`).
+ *
+ * 원작은 갈래가 넷인데(일반·프런티어·장식·씰) 우리에게 살아 있는 것은
+ * **돈과 BP** 둘이다 — 장식은 §12.1에서 돈으로 팔고 씰은 §9다
+ */
+export type ShopCurrency = 'money' | 'bp'
+
 export interface FieldServices {
   /** 트레이너전을 연다 */
   startTrainerBattle?: (trainerID: number) => void
@@ -528,6 +536,18 @@ export interface FieldServices {
     canAdd: (amount: number) => boolean
   }
   /**
+   * 배틀포인트 (PARITY §12.3).
+   *
+   * ⚠️ **버는 길이 아직 없다.** 다섯 시설이 §9라 `GiveBattlePoints`가
+   * 스크립트에 0회다 — 원작도 시설 코드가 직접 준다. 그래도 명령을 만드는
+   * 이유는, 안 만들면 교환 코너가 **묵은 변수 값**으로 갈라지기 때문이다
+   */
+  battlePoints?: {
+    get: () => number
+    add: (amount: number) => void
+    subtract: (amount: number) => void
+  }
+  /**
    * 소지금·코인 창 (`FieldMenu_CreateMoneyWindow` · `FieldMenu_DrawCoinWindow`).
    *
    * 자리는 **타일 좌표**다. ⚠️ 값은 `update`를 부를 때만 다시 찍는다 —
@@ -540,6 +560,9 @@ export interface FieldServices {
     showCoins: (left: number, top: number) => void
     hideCoins: () => void
     updateCoins: () => void
+    showBP: (left: number, top: number) => void
+    hideBP: () => void
+    updateBP: () => void
   }
   /** 시작 메뉴를 연다 (`ShowStartMenu`) */
   openStartMenu?: () => void
@@ -552,7 +575,7 @@ export interface FieldServices {
    * 코드에 박혀 있다 (`include/data/mart_items.h`). 그 표를 푸는 것은 붙이는
    * 쪽 일이다
    */
-  openShop?: (items: readonly number[]) => void
+  openShop?: (items: readonly number[], currency?: ShopCurrency) => void
   /**
    * 보관 시스템을 연다 (`ScrCmd_OpenPokemonStorage`).
    *

@@ -21,17 +21,23 @@ export interface CurrencyWindow {
 interface CurrencyStore {
   money: CurrencyWindow | null
   coins: CurrencyWindow | null
+  /** 배틀포인트 창 (`FieldMenu_DrawBPWindow`, PARITY §12.3) */
+  bp: CurrencyWindow | null
   showMoney: (left: number, top: number, value: number) => void
   hideMoney: () => void
   updateMoney: (value: number) => void
   showCoins: (left: number, top: number, value: number) => void
   hideCoins: () => void
   updateCoins: (value: number) => void
+  showBP: (left: number, top: number, value: number) => void
+  hideBP: () => void
+  updateBP: (value: number) => void
 }
 
 export const useCurrencyStore = create<CurrencyStore>()((set) => ({
   money: null,
   coins: null,
+  bp: null,
   showMoney: (left, top, value) => { set({ money: { left, top, value } }) },
   hideMoney: () => { set({ money: null }) },
   // 안 떠 있으면 아무 일도 안 한다 — 원작도 창 포인터가 비어 있으면 안 찍는다
@@ -42,5 +48,10 @@ export const useCurrencyStore = create<CurrencyStore>()((set) => ({
   hideCoins: () => { set({ coins: null }) },
   updateCoins: (value) => {
     set((s) => (s.coins === null ? {} : { coins: { ...s.coins, value } }))
+  },
+  showBP: (left, top, value) => { set({ bp: { left, top, value } }) },
+  hideBP: () => { set({ bp: null }) },
+  updateBP: (value) => {
+    set((s) => (s.bp === null ? {} : { bp: { ...s.bp, value } }))
   },
 }))

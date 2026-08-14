@@ -13,11 +13,12 @@ import { loadUiText } from '../../data/uiText'
 import type { ItemIcons } from '../../data/schema'
 import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
+import { addBattlePoints, bpPriceOf, spendBattlePoints } from '../../engine/bag/frontierMart'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { world } from '../../engine/map/world'
 import { journalShopped } from '../../scene/journal'
-import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { clampCursor, scrollIntoView, useMenuKeys } from './useMenuKeys'
 import { itemIcon } from './itemIcon'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -57,6 +58,19 @@ export function ShopScreen() {
   const stock = useMenuStore((s) => s.shopStock)
   const money = useSaveStore((s) => s.money)
   const bag = useSaveStore((s) => s.bag)
+  /**
+   * 배틀프런티어 교환 코너인가 (PARITY §12.3).
+   *
+   * ⚠️ **원작은 이 가게에 「판다」가 없다** — 갈래가 「산다·그만둔다」 둘뿐이다
+   * (`shop_menu.c`의 `maxOptions = 2`). BP는 되팔 수 없다
+   */
+  const isBP = useMenuStore((s) => s.shopCurrency) === 'bp'
+  const battlePoints = useSaveStore((s) => s.battlePoints)
+  const purse = isBP ? battlePoints : money
+  const priceOf = (item: number): number =>
+    isBP ? bpPriceOf(item) : data?.items.get(item).price ?? 0
+  const amount = (value: number): string =>
+    isBP ? `${String(value)} BP` : `${value.toLocaleString('ko-KR')}원`
 
   useEffect(() => {
     let alive = true
@@ -79,7 +93,7 @@ export function ShopScreen() {
   const rows: { item: number; price: number; have: number }[] = tab === 'buy'
     ? stock.map((item) => ({
       item,
-      price: data?.items.get(item).price ?? 0,
+      price: priceOf(item),
       have: bag.flat().find((s) => s.item === item)?.count ?? 0,
     }))
     : sellable.map((slot) => ({
@@ -94,7 +108,7 @@ export function ShopScreen() {
   /** 살 수 있는 최대 개수. 돈과 칸이 둘 다 막는다 */
   const max = row === undefined ? 0
     : tab === 'sell' ? row.have
-      : Math.max(0, Math.min(99, unit > 0 ? Math.floor(money / unit) : 99))
+      : Math.max(0, Math.min(99, unit > 0 ? Math.floor(purse / unit) : 99))
 
   const reset = (): void => { setCount(0); setNote(null) }
 
@@ -103,10 +117,16 @@ export function ShopScreen() {
     const save = useSaveStore.getState()
     const pocket = data?.items.get(row.item).pocket ?? 0
     if (tab === 'buy') {
-      if (!save.spendMoney(unit * count)) { setNote('돈이 모자랍니다'); return }
+      const cost = unit * count
+      if (isBP) {
+        if (battlePoints < cost) { setNote('BP가 모자랍니다'); return }
+        useSaveStore.setState((st) => ({ battlePoints: spendBattlePoints(st.battlePoints, cost) }))
+      } else if (!save.spendMoney(cost)) { setNote('돈이 모자랍니다'); return }
       if (!save.addItem(pocket, row.item, count)) {
-        // 칸이 없으면 돈을 되돌린다. 안 그러면 돈만 사라진다
-        save.addMoney(unit * count)
+        // 칸이 없으면 값을 되돌린다. 안 그러면 낸 것만 사라진다
+        if (isBP) {
+          useSaveStore.setState((st) => ({ battlePoints: addBattlePoints(st.battlePoints, cost) }))
+        } else save.addMoney(cost)
         setNote('가방이 가득 찼습니다')
         return
       }
@@ -116,7 +136,7 @@ export function ShopScreen() {
       if (!save.removeItem(pocket, row.item, count)) { setNote('팔 수 없습니다'); return }
       save.addMoney(unit * count)
       sold.current++
-      setNote(`${unit * count}원을 받았다`)
+      setNote(`${amount(unit * count)}을 받았다`)
     }
     setCount(0)
     setCursor(0)
@@ -125,8 +145,9 @@ export function ShopScreen() {
   useMenuKeys({
     up: () => { if (count > 0) setCount((c) => Math.min(max, c + 1)); else setCursor((c) => clampCursor(c, -1, rows.length)) },
     down: () => { if (count > 0) setCount((c) => Math.max(1, c - 1)); else setCursor((c) => clampCursor(c, 1, rows.length)) },
-    left: () => { if (count === 0) { setTab((t) => (t === 'buy' ? 'sell' : 'buy')); setCursor(0); reset() } },
-    right: () => { if (count === 0) { setTab((t) => (t === 'buy' ? 'sell' : 'buy')); setCursor(0); reset() } },
+    // BP 가게에는 「판다」가 없다 — 갈래를 안 바꾼다
+    left: () => { if (count === 0 && !isBP) { setTab((t) => (t === 'buy' ? 'sell' : 'buy')); setCursor(0); reset() } },
+    right: () => { if (count === 0 && !isBP) { setTab((t) => (t === 'buy' ? 'sell' : 'buy')); setCursor(0); reset() } },
     confirm: () => {
       if (count > 0) { settle(); return }
       if (max > 0) { setCount(1); setNote(null) }
@@ -143,28 +164,36 @@ export function ShopScreen() {
   return (
     <MenuScreen
       title={tab === 'buy' ? '산다' : '판다'}
-      note={`${data?.bag[78] ?? '용돈'} ${money.toLocaleString('ko-KR')}원`}
+      note={isBP ? `BP ${String(battlePoints)}` : `${data?.bag[78] ?? '용돈'} ${amount(money)}`}
       foot={count > 0
         ? `↑↓ 개수 (최대 ${String(max)}) · Z 결정 · X 그만둔다`
-        : `←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 나간다 · ${String(rows.length)}종`}
+        : isBP
+          ? `↑↓ 고르기 · Z 결정 · X 나간다 · ${String(rows.length)}종`
+          : `←→ 산다/판다 · ↑↓ 고르기 · Z 결정 · X 나간다 · ${String(rows.length)}종`}
     >
-      <div className={css.tabs}>
-        <span className={tab === 'buy' ? css.tab.on : css.tab.off}>산다</span>
-        <span className={tab === 'sell' ? css.tab.on : css.tab.off}>판다</span>
-      </div>
+      {!isBP && (
+        <div className={css.tabs}>
+          <span className={tab === 'buy' ? css.tab.on : css.tab.off}>산다</span>
+          <span className={tab === 'sell' ? css.tab.on : css.tab.off}>판다</span>
+        </div>
+      )}
 
       <div className={css.stage}>
         <div className={css.list}>
           {rows.length === 0 && <div className={css.empty}>아무것도 없다</div>}
           {rows.map((r, i) => (
-            <div key={`${r.item}-${String(i)}`} className={i === at ? css.rowOn : css.row}>
+            <div
+              key={`${r.item}-${String(i)}`}
+              className={i === at ? css.rowOn : css.row}
+              ref={i === at ? scrollIntoView : undefined}
+            >
               {i === at && <span className={css.caret} aria-hidden />}
               <span className={css.face}>
                 <span className={css.icon} style={itemIcon(data?.icons, r.item, LIST_ICON)} aria-hidden />
                 <span className={css.label}>{data?.names[r.item] ?? ''}</span>
                 <span className={css.count}>
                   {r.have > 0 && <span style={{ opacity: 0.6, marginRight: 10 }}>×{r.have}</span>}
-                  {r.price.toLocaleString('ko-KR')}원
+                  {amount(r.price)}
                 </span>
               </span>
             </div>
@@ -178,7 +207,7 @@ export function ShopScreen() {
                 <span className={hero.heroIcon} style={itemIcon(data?.icons, row.item, BIG_ICON)} aria-hidden />
                 <span className={hero.heroText}>
                   <span className={hero.heroName}>{data?.names[row.item] ?? ''}</span>
-                  <span className={hero.heroSub}>{unit.toLocaleString('ko-KR')}원</span>
+                  <span className={hero.heroSub}>{amount(unit)}</span>
                 </span>
               </div>
               <div className={css.detailText}>{data?.descriptions[row.item] ?? ''}</div>
@@ -188,7 +217,7 @@ export function ShopScreen() {
             <div className={own.prompt}>
               {data?.names[row.item]} {count}개
               <br />
-              {(unit * count).toLocaleString('ko-KR')}원
+              {amount(unit * count)}
             </div>
           )}
           {note !== null && <div className={own.help}>{note}</div>}

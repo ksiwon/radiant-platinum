@@ -317,6 +317,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 27,
     fashionCase: newFashionCase(),
   }),
+
+  // 배틀포인트 (PARITY §12.3). 0으로 시작한다 — 벌 길이 아직 없으므로
+  // 옛 리포트에도 있을 수가 없다
+  27: (data) => ({
+    ...data,
+    version: 28,
+    battlePoints: 0,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

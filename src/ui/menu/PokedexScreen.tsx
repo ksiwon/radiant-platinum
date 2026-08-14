@@ -29,7 +29,7 @@ import { formCount } from '../../engine/pokemon/form'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
-import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { clampCursor, scrollIntoView, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './pokedexScreen.css'
@@ -471,6 +471,4 @@ function Forms(
 }
 
 /** 커서가 화면 밖으로 나가면 따라간다. 210줄이라 스크롤이 반드시 생긴다 */
-function scrollIntoView(node: HTMLDivElement | null): void {
-  node?.scrollIntoView({ block: 'nearest' })
-}
+

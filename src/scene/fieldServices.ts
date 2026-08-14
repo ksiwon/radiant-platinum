@@ -46,6 +46,7 @@ import {
 } from '../engine/world/turnbackCave'
 import { entryNumber } from '../engine/world/hallOfFame'
 import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
+import { addBattlePoints, spendBattlePoints } from '../engine/bag/frontierMart'
 import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
 import { itemChoice } from '../ui/menu/itemChoice'
@@ -871,6 +872,23 @@ const services: FieldServices = {
     },
     hideCoins: () => { useCurrencyStore.getState().hideCoins() },
     updateCoins: () => { useCurrencyStore.getState().updateCoins(useSaveStore.getState().coins) },
+    showBP: (left, top) => {
+      useCurrencyStore.getState().showBP(left, top, useSaveStore.getState().battlePoints)
+    },
+    hideBP: () => { useCurrencyStore.getState().hideBP() },
+    updateBP: () => {
+      useCurrencyStore.getState().updateBP(useSaveStore.getState().battlePoints)
+    },
+  },
+
+  battlePoints: {
+    get: () => useSaveStore.getState().battlePoints,
+    add: (amount) => {
+      useSaveStore.setState((s) => ({ battlePoints: addBattlePoints(s.battlePoints, amount) }))
+    },
+    subtract: (amount) => {
+      useSaveStore.setState((s) => ({ battlePoints: spendBattlePoints(s.battlePoints, amount) }))
+    },
   },
 
   bike: {
@@ -904,7 +922,7 @@ const services: FieldServices = {
   openStartMenu: () => { useMenuStore.getState().open('start') },
   menuOpen: () => useMenuStore.getState().stack.length > 0,
 
-  openShop: (stock) => { useMenuStore.getState().openShop(stock) },
+  openShop: (stock, currency) => { useMenuStore.getState().openShop(stock, currency ?? 'money') },
 
   /** 보관 시스템 다섯 갈래 (`OpenPokemonStorage`) */
   openStorage: (mode) => {

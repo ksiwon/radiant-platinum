@@ -303,9 +303,16 @@ export interface SaveData {
    * 돈과 따로 센다. 상한이 50,000이고 그 위로는 안 늘어난다 (`MAX_COINS`)
    */
   coins: number
+  /**
+   * 배틀포인트 (PARITY §12.3).
+   *
+   * ⚠️ **버는 길이 아직 없다** — 다섯 시설이 §9다. 교환 코너가 읽고 깎는
+   * 쪽만 돈다
+   */
+  battlePoints: number
 }
 
-export const SAVE_VERSION = 27
+export const SAVE_VERSION = 28
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -386,6 +393,7 @@ export function createNewSave(): SaveData {
     distortion: newDistortionState(),
     hallOfFame: newHallOfFame(),
     coins: 0,
+    battlePoints: 0,
     honeyTrees: newHoneyTrees(),
     radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
     berryPatches: newBerryPatches(),
@@ -618,6 +626,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     distortion: s.distortion,
     hallOfFame: s.hallOfFame,
     coins: s.coins,
+    battlePoints: s.battlePoints,
     // ⚠️ **스키마와 같은 자리에 둔다.** 검사합이 `JSON.stringify`라
     // 키 차례가 다르면 다시 읽은 리포트가 「다르다」로 떨어진다
     honeyTrees: s.honeyTrees,

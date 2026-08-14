@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_219
+const RUNNING_SITES = 54_231
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 402
+const IMPLEMENTED_COMMANDS = 412
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -633,7 +633,11 @@ const IDLE_COMMANDS = [
   // 첫 갈래가 그 플래그로 갈리고, 훑기는 늘 깨끗한 플래그라 「아직 안 열렸다」
   // 쪽으로 빠진다. 셋 다 실제로 도는 것은 `script/fossil.test.ts`가 본다
   'GetFossilCount', 'GetSpeciesFromFossil', 'FindFossilAtThreshold',
-  'CountPartyMonsBelowLevelThreshold', 'FindPartySlotWithNature',
+  'CountPartyMonsBelowLevelThreshold',
+  // ⚠️ **대습초원 전망대는 안 만든다** (PARITY §7.7). 들판시티 전망대 안이라
+  // 훑기가 그 방까지 못 들어간다 — 길잡이등대 쌍안경 쪽은 밟힌다
+  'StartGreatMarshLookout',
+  'FindPartySlotWithNature',
   // 상호교류광장 둘은 **따라다니는 마리가 있어야** 닿는다 (PARITY §7.8) — 훑기는
   // 파티가 비어 있어서 광장에 들어가는 갈래 자체가 안 열린다
   'ClearAmitySquareStepCount', 'CalcAmitySquareFoundAccessory',
@@ -674,6 +678,10 @@ const IDLE_COMMANDS = [
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
   'SetInitialVolumeForSequence',
+  // ⚠️ **BP를 벌 곳이 없다** (PARITY §12.3). 다섯 시설이 §9라 주는 명령이
+  // 필드 스크립트에 0회고, 읽고 찍는 둘은 교환 코너의 목록 메뉴 너머다 —
+  // 창을 여는 `ShowBattlePoints`와 값을 견주는 `CheckBattlePoints`까지는 밟힌다
+  'UpdateBPDisplay', 'GetBattlePoints', 'GiveBattlePoints', 'RemoveBattlePoints',
   'SubtractCoinsFromVar',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',

@@ -18,7 +18,7 @@ import { itemChoice } from './itemChoice'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { ItemIcons } from '../../data/schema'
-import { clampCursor, useMenuKeys, wrapCursor } from './useMenuKeys'
+import { clampCursor, scrollIntoView, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { onElevatedBridge } from '../../engine/actor/bridge'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
@@ -298,8 +298,12 @@ export function BagScreen() {
         <div className={css.list}>
           {slots.length === 0 && <div className={css.empty}>아무것도 없다</div>}
           {slots.map((slot, i) => (
-            <div key={slot.item} className={i === at ? css.rowOn : css.row}
-              onPointerEnter={() => { setCursor(i) }}>
+            <div
+              key={slot.item}
+              className={i === at ? css.rowOn : css.row}
+              ref={i === at ? scrollIntoView : undefined}
+              onPointerEnter={() => { setCursor(i) }}
+            >
               {i === at && <span className={css.caret} aria-hidden />}
               <span className={css.face}>
                 <span className={css.icon} style={itemIcon(data?.icons, slot.item, LIST_ICON)} aria-hidden />

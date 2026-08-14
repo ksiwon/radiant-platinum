@@ -34,6 +34,7 @@ import {
   MAX_TOTAL_ENTRIES,
 } from '../../engine/world/hallOfFame'
 import { MAX_COINS } from '../../engine/world/coins'
+import { MAX_BATTLE_POINTS } from '../../engine/bag/frontierMart'
 import {
   HONEY_TREE_COUNT, SLATHER_MINUTES as HONEY_SLATHER_MINUTES,
 } from '../../engine/world/honeyTree'
@@ -460,6 +461,14 @@ export const saveSchema = z.object({
 
   /** 게임코너의 코인. 상한이 `MAX_COINS`다 */
   coins: int(0, MAX_COINS),
+
+  /**
+   * 배틀포인트 (PARITY §12.3). 상한이 원작 그대로 9,999다.
+   *
+   * ⚠️ **버는 길이 아직 없다** — 다섯 시설이 §9라 늘 0이다. 그래도 칸을
+   * 두는 이유는 교환 코너가 이 값을 읽고 깎기 때문이다
+   */
+  battlePoints: int(0, MAX_BATTLE_POINTS),
 
   /**
    * 꿀 나무 21그루 (PARITY §6.6) — `PlayerHoneyTreeStates`.

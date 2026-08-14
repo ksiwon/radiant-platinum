@@ -11,6 +11,7 @@
 //     pnpm shot center --give=... --hof=3 --menu=pcHallOfFame   전당 기록을 열어 본다
 //     pnpm shot center --currency=250            소지금·코인 창을 띄워 본다
 //     pnpm shot center --item=468:1 --menu=bag   가방에 넣고 목록을 열어 본다
+//     pnpm shot center --frontier=1              BP 교환 코너를 열어 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
@@ -450,6 +451,14 @@ async function main() {
         }, [id, count])
       }
       await page.waitForTimeout(300)
+    }
+    // 배틀프런티어 교환 코너를 연다 — `--frontier` 또는 `--frontier=0`(오른쪽 창구).
+    // 이야기로는 섬까지 가야 하고 BP를 벌 길이 아직 없다 (PARITY §12.3)
+    const frontier = args.find((a) => a === '--frontier' || a.startsWith('--frontier='))
+    if (frontier) {
+      const martID = frontier.includes('=') ? Number(frontier.split('=')[1]) : 1
+      await page.evaluate((m) => { globalThis.pt.frontier(m) }, martID)
+      await page.waitForTimeout(1200)
     }
     // 모험노트를 받고 오늘 쪽을 채운다 — `--note`.
     // 이야기로는 축복시티에서 받고 하루를 돌아다녀야 한 쪽이 찬다

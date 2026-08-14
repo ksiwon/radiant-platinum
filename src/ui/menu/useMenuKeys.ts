@@ -71,6 +71,18 @@ export function clampCursor(cursor: number, delta: number, length: number): numb
   return Math.max(0, Math.min(length - 1, cursor + delta))
 }
 
+/**
+ * 고른 줄을 화면 안으로 끌어온다. 커서가 놓인 `<div>`에 `ref`로 건다.
+ *
+ * ⚠️ **목록이 길면 이게 없을 때 커서가 사라진다.** 우리 목록은 CSS로만
+ * 굴러가는데(`overflow-y: auto`) 키로 옮긴 줄은 포커스를 안 받아서 브라우저가
+ * 안 따라온다 — 열일곱 줄이 넘는 목록(가방 78 · 교환 코너 30)에서 바로 보인다.
+ * 원작은 화면이 딱 여섯 줄이고 스스로 굴린다
+ */
+export function scrollIntoView(node: HTMLElement | null): void {
+  node?.scrollIntoView({ block: 'nearest' })
+}
+
 /** 주머니 전환처럼 **도는** 커서. 좌우로 넘기는 것은 원작도 돈다 */
 export function wrapCursor(cursor: number, delta: number, length: number): number {
   if (length === 0) return 0

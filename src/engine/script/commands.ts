@@ -27,7 +27,7 @@ import {
 } from '../world/amity'
 import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
 import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
-import { LIST_MENU_NO_SELECTION_YET } from './world'
+import { LIST_MENU_NO_SELECTION_YET, type ShopCurrency } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
 import { compareSize, SIZE_RECORD_INITIAL, SIZE_RESULT, sizeParts } from '../world/sizeContest'
@@ -36,6 +36,7 @@ import {
   HIDDEN_LOCATION_COUNT, HIDDEN_LOCATION_MAGIC, VAR_HIDDEN_LOCATION_FIRST,
 } from '../map/townMap'
 import { EVOLUTION_COUNTER_STOCK, isDecorMart } from '../bag/evolutionCounter'
+import { frontierStock } from '../bag/frontierMart'
 
 /**
  * 이름으로 등록한다.
@@ -391,10 +392,12 @@ on('ShowStartMenu', (ctx) => {
 // 재고는 스크립트가 안 준다. 일반 상점은 **뱃지 수**로 늘어나고(`ScrCmd_PokeMartCommon`)
 // 지역 상점은 번호로 목록을 고른다. 두 경우 다 실제 목록은 코드에 박힌 표라,
 // 여기서는 무엇을 열지만 정하고 표는 붙이는 쪽(`scene/fieldServices.ts`)이 푼다.
-const openShop = (stock: (ctx: ScriptContext) => readonly number[]): CommandFn => (ctx) => {
+const openShop = (
+  stock: (ctx: ScriptContext) => readonly number[], currency: ShopCurrency = 'money',
+): CommandFn => (ctx) => {
   // ⚠️ 인자를 **먼저** 읽는다. 서비스가 안 붙어 있어도 바이트는 지나가야 한다
   const items = stock(ctx)
-  ctx.host.world.services.openShop?.(items)
+  ctx.host.world.services.openShop?.(items, currency)
   ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
   return true
 }
@@ -421,6 +424,96 @@ on('PokeMartDecor', openShop((ctx) => {
   const martID = ctx.readVar()
   return isDecorMart(martID) ? EVOLUTION_COUNTER_STOCK : []
 }))
+
+/**
+ * 배틀프런티어 교환 코너 (`ScrCmd_PokeMartFrontier`, PARITY §12.3).
+ *
+ * ⚠️ **인자가 바이트 하나다** — 다른 상점 명령이 변수를 읽는 것과 다르다
+ * (`ScriptContext_ReadByte`). 변수로 읽으면 두 바이트를 먹고 그 뒤가 다 밀린다.
+ *
+ * ⚠️ **BP로 값을 받는다.** 재고와 값은 롬 코드에 박힌 표고, 조각 넷만 우리가
+ * 얹었다 (`bag/frontierMart`)
+ */
+on('PokeMartFrontier', openShop((ctx) => {
+  const martID = ctx.readByte()
+  return frontierStock(martID)
+}, 'bp'))
+
+
+// ── 배틀포인트 (PARITY §12.3) ────────────────────────────────────────────────
+//
+// ⚠️ **버는 길이 아직 없다.** 다섯 시설이 §9라 `GiveBattlePoints`가 필드
+// 스크립트에 0회다 — 원작도 시설 코드가 직접 준다. 그래도 만드는 이유는 안
+// 만들면 교환 코너가 **묵은 변수 값**으로 갈라지기 때문이다 (리본과 같은 함정).
+
+/** 지금 가진 BP (`ScrCmd_GetBattlePoints`) */
+on('GetBattlePoints', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battlePoints?.get() ?? 0)
+  return false
+})
+
+/** 준다 (`ScrCmd_GiveBattlePoints`). 상한 9,999에서 멈춘다 */
+on('GiveBattlePoints', (ctx) => {
+  const amount = ctx.readVar()
+  ctx.host.world.services.battlePoints?.add(amount)
+  return false
+})
+
+/** 깎는다 (`ScrCmd_RemoveBattlePoints`). 모자라면 0이 된다 */
+on('RemoveBattlePoints', (ctx) => {
+  const amount = ctx.readVar()
+  ctx.host.world.services.battlePoints?.subtract(amount)
+  return false
+})
+
+/**
+ * 그만큼 있는가 (`ScrCmd_CheckBattlePoints`).
+ *
+ * ⚠️ **서비스가 없을 때도 답을 적는다.** 안 적으면 앞 갈래가 쓴 값으로 갈려서
+ * 못 사는 물건을 산 것으로 지나간다
+ */
+on('CheckBattlePoints', (ctx) => {
+  const need = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const have = ctx.host.world.services.battlePoints?.get() ?? 0
+  ctx.host.vars.set(dest, have >= need ? 1 : 0)
+  return false
+})
+
+/** BP 창을 띄운다 (`ScrCmd_ShowBattlePoints`). 자리는 타일 좌표다 */
+on('ShowBattlePoints', (ctx) => {
+  const left = ctx.readByte()
+  const top = ctx.readByte()
+  ctx.host.world.services.currency?.showBP(left, top)
+  return false
+})
+
+on('HideBattlePoints', (ctx) => {
+  ctx.host.world.services.currency?.hideBP()
+  return false
+})
+
+/** ⚠️ 값은 이걸 부를 때만 다시 찍는다 — 소지금 창과 같다 */
+on('UpdateBPDisplay', (ctx) => {
+  ctx.host.world.services.currency?.updateBP()
+  return false
+})
+
+
+// ── 전망대 둘 — 안 만든다 (PARITY §7.7 · §1.23) ───────────────────────────────
+//
+// **경치를 보여 주는 것이 전부인 자리다.** 카메라를 옮기고 주인공을 숨겼다가
+// 되돌려 놓는다 (`binoculars_vista_lighthouse.c`) — 규칙도 진행도 안 건드린다.
+//
+// ⚠️ **그래도 명령은 만든다.** 안 만들면 「아직 못 만든 것」과 「안 만들기로 한
+// 것」이 계통표에서 같은 줄로 보인다. 둘 다 결과 변수가 없어서 아무 일도 안
+// 하는 것이 곧 원작의 흐름이다 — 말을 걸면 대사가 나오고 그대로 끝난다.
+
+/** 길잡이등대 쌍안경 (`ScrCmd_UseVistaLighthouseBinoculars`). 안 만든다 */
+on('UseVistaLighthouseBinoculars', () => false)
+
+/** 들판시티 대습초원 전망대 (`ScrCmd_StartGreatMarshLookout`). 안 만든다 */
+on('StartGreatMarshLookout', () => false)
 
 // ── 보관 시스템 ──────────────────────────────────────────────────────────────
 //
