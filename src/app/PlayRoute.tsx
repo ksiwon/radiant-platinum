@@ -10,6 +10,7 @@ import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { CurrencyWindow } from '../ui/field/CurrencyWindow'
+import { SaveInfoWindow } from '../ui/field/SaveInfoWindow'
 import { MessageBox } from '../ui/field/MessageBox'
 import { FishingBox } from '../ui/field/FishingBox'
 import { PokemonPreview } from '../ui/field/PokemonPreview'
@@ -68,6 +69,7 @@ export function PlayRoute() {
     <>
       <MessageBox />
       <CurrencyWindow />
+      <SaveInfoWindow />
       <FishingBox />
       <PokemonPreview />
       <HatchScreen />

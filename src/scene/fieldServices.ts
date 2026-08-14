@@ -195,6 +195,15 @@ let fanfare: number | null = null
 /** 배틀을 스크립트가 열었는가. 야생 조우까지 여기 걸리면 안 된다 */
 let waiting = false
 
+/** 리포트를 쓰는 중인가. 두 번 부르면 두 벌이 나간다 */
+let saveWriting = false
+/** 쓰기가 끝났으면 됐는지 아닌지. 아직이면 null */
+let saveOutcome: boolean | null = null
+
+/** `SAVE_TYPE_NO_DATA_EXISTS` · `SAVE_TYPE_FULL_SAVE` */
+const SAVE_TYPE_NO_DATA = 1
+const SAVE_TYPE_FULL = 2
+
 let trainers: { get(id: number): Trainer } | null = null
 let trainerMessages: string[] = []
 let items: ItemTable | null = null
@@ -895,6 +904,43 @@ const services: FieldServices = {
     subtract: (amount) => {
       useSaveStore.setState((s) => ({ battlePoints: spendBattlePoints(s.battlePoints, amount) }))
     },
+  },
+
+  /**
+   * 스크립트가 리포트를 쓴다 (PARITY §4.12).
+   *
+   * ⚠️ **묻는 것은 원작 스크립트다.** 여기는 밑바닥만 댄다 — 창을 켜고,
+   * 쓰고, 됐는지 답한다
+   */
+  saveGame: {
+    // ⚠️ **「빠른 저장」을 답하지 않는다.** 우리 리포트는 한 덩이라 늘 전체다
+    type: () => (useSaveStore.getState().loaded ? SAVE_TYPE_FULL : SAVE_TYPE_NO_DATA),
+    showInfo: () => { useSessionStore.getState().setSaveInfo(true) },
+    hideInfo: () => { useSessionStore.getState().setSaveInfo(false) },
+    showIcon: () => { useSessionStore.getState().setSavingIcon(true) },
+    hideIcon: () => { useSessionStore.getState().setSavingIcon(false) },
+    begin: () => {
+      if (saveWriting) return
+      saveWriting = true
+      saveOutcome = null
+      // ⚠️ **스크립트가 세운 플래그를 먼저 스토어로 끌어온다.** 안 그러면
+      // 방금 만난 NPC의 상태가 리포트에 안 들어간다 (`SaveScreen`과 같다)
+      const save = useSaveStore.getState()
+      save.commitScriptState(fieldScripts.vars.saved, fieldScripts.vars.flags)
+      const at = worldState.player.position
+      void save
+        .report({
+          map: mapWorld.mapId,
+          matrix: mapWorld.matrix,
+          x: at.x,
+          z: at.z,
+          facing: worldState.player.facing,
+        })
+        .then((got) => { saveOutcome = got.saved })
+        .catch(() => { saveOutcome = false })
+        .finally(() => { saveWriting = false })
+    },
+    result: () => saveOutcome,
   },
 
   /**

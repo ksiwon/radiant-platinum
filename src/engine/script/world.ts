@@ -547,6 +547,36 @@ export interface FieldServices {
     subtract: (amount: number) => void
   }
   /**
+   * 스크립트가 리포트를 쓴다 (`CommonScript_SaveGame` · PARITY §4.12).
+   *
+   * ⚠️ **묻고 답하는 것은 전부 원작 스크립트다.** "작성할까요?"도 "덮어써도
+   * 괜찮습니까?"도 공용 스크립트 0x7D6이 `ShowYesNoMenu`로 묻는다 — 여기
+   * 있는 것은 그 스크립트가 부르는 **밑바닥 넷**뿐이다.
+   *
+   * ⚠️ **여기가 없으면 배틀프런티어에 못 들어간다.** 로비가 도전 앞에서
+   * `Common_SaveGame`을 부르고 그 결과가 0이면 스스로 돌려보내기 때문이다
+   */
+  saveGame?: {
+    /**
+     * `SAVE_TYPE_*` — 0 덮어쓸 수 없음 · 1 자료 없음 · 2 전체 저장 · 3 빠른 저장.
+     *
+     * ⚠️ **우리는 1과 2만 답한다.** 원작의 「빠른 저장」은 플래시의 바뀐 블록만
+     * 쓰는 것인데 우리 리포트는 한 덩이라 늘 전체다 — 없는 갈래를 답하면
+     * 스크립트가 "조금만 저장합니다"라고 거짓말을 한다
+     */
+    type: () => number
+    /** 요약창 (`OpenSaveInfo` · `CloseSaveInfo`) */
+    showInfo: () => void
+    hideInfo: () => void
+    /** 「저장 중」 표시 (`ShowSavingIcon` · `HideSavingIcon`) */
+    showIcon: () => void
+    hideIcon: () => void
+    /** 쓰기를 시작한다. 이미 쓰는 중이면 아무 일도 안 한다 */
+    begin: () => void
+    /** 끝났으면 됐는지 아닌지, 아직이면 `null` */
+    result: () => boolean | null
+  }
+  /**
    * 배틀프런티어 시설 장면 (`ScrCmd_LaunchBattleFrontierScene` · PARITY §9.3).
    *
    * ⚠️ **여기서부터는 다른 VM이다.** 원작은 오버레이 104가 **자기 스크립트**를

@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_250
+const RUNNING_SITES = 54_285
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 414
+const IMPLEMENTED_COMMANDS = 425
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -685,6 +685,10 @@ const IDLE_COMMANDS = [
   'SubtractCoinsFromVar',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
+  // 저장 흐름의 **빠른 저장 갈래 안쪽**이라 안 밟힌다 (PARITY §4.12).
+  // 우리는 「빠른 저장」을 아예 답하지 않으므로 그 갈래로 안 간다 —
+  // 그래도 만들어 두는 이유는 안 만들면 결과 변수가 앞 갈래 값으로 남아서다
+  'CheckIsMiscSaveInit',
   'FindPartySlotWithSpecies',
   'ResetMoveSlot',
   // 트레이너 이름·타입 이름을 칸에 넣는 자리도 전부 파티나 메뉴 너머다

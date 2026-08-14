@@ -7,22 +7,18 @@
 // **여기가 디스크로 나가는 유일한 문이다.** 걸어다니는 동안에는 아무것도
 // 안 남는다 (`state/saveStore.ts` 머리말).
 import { useEffect, useState } from 'react'
-import { fillMenuText, loadUiText, SAVE_INFO, SAVE_TEXT, UI_BANK } from '../../data/uiText'
+import { fillMenuText, loadUiText, SAVE_TEXT, UI_BANK } from '../../data/uiText'
 import { loadDialogueBank } from '../../data/gameData'
 import { world } from '../../engine/map/world'
 import { fieldScripts } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
-import { dexHas, useSaveStore } from '../../state/saveStore'
+import { useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
 import { useMenuKeys } from './useMenuKeys'
+import { SaveInfo } from './SaveInfo'
 import * as css from './menuChrome.css'
 import * as own from './dialog.css'
-
-/** 전국도감 493종. 잡은 수를 세는 범위다 */
-const DEX_MAX = 493
-/** 배지 8개 */
-const BADGES = 8
 
 type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
 
@@ -36,7 +32,6 @@ type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
 type Backup = { started: boolean; fileName: string } | null
 
 export function SaveScreen() {
-  const [labels, setLabels] = useState<string[]>([])
   const [common, setCommon] = useState<string[]>([])
   const [phase, setPhase] = useState<Phase>('ask')
   const [failure, setFailure] = useState<string | null>(null)
@@ -51,9 +46,8 @@ export function SaveScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([loadUiText('saveInfo', locale), loadDialogueBank(locale, UI_BANK.common)])
-      .then(([info, strings]) => {
+      .then(([, strings]) => {
         if (!alive) return
-        setLabels(info)
         setCommon(strings)
         // 이미 리포트가 있으면 덮어쓸지부터 묻는다
         setPhase(useSaveStore.getState().loaded ? 'overwrite' : 'ask')
@@ -61,9 +55,6 @@ export function SaveScreen() {
       .catch(() => { /* 글을 못 받아도 기록은 된다 */ })
     return () => { alive = false }
   }, [locale])
-
-  const caught = countDex(save.pokedex.caught)
-  const badges = countBits(save.badges, BADGES)
 
   const write = (): void => {
     setPhase('writing')
@@ -119,16 +110,7 @@ export function SaveScreen() {
   return (
     <div className={css.overlay}>
       <div className={own.center}>
-        <dl className={own.info}>
-          <dt>{labels[SAVE_INFO.player] ?? '주인공'}</dt>
-          <dd>{save.trainer.name || '이름 없음'}</dd>
-          <dt>{labels[SAVE_INFO.badges] ?? '가진 배지'}</dt>
-          <dd>{badges}개</dd>
-          <dt>{labels[SAVE_INFO.pokedex] ?? '포켓몬 도감'}</dt>
-          <dd>{caught}마리</dd>
-          <dt>{labels[SAVE_INFO.playtime] ?? '플레이 시간'}</dt>
-          <dd>{clock(save.trainer.playtimeMs)}</dd>
-        </dl>
+        <SaveInfo />
 
         <div className={own.prompt}>{line}</div>
 
@@ -160,20 +142,3 @@ export function SaveScreen() {
   )
 }
 
-/** `HH:MM`. 원작 요약창도 시·분까지만 보여준다 */
-function clock(ms: number): string {
-  const minutes = Math.floor(ms / 60000)
-  return `${String(Math.floor(minutes / 60))}:${String(minutes % 60).padStart(2, '0')}`
-}
-
-function countDex(field: Uint8Array): number {
-  let n = 0
-  for (let i = 1; i <= DEX_MAX; i++) if (dexHas(field, i)) n++
-  return n
-}
-
-function countBits(mask: number, upTo: number): number {
-  let n = 0
-  for (let i = 0; i < upTo; i++) if (mask & (1 << i)) n++
-  return n
-}

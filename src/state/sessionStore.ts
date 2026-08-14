@@ -39,6 +39,16 @@ interface SessionState {
    */
   battleScreen: boolean
   setBattleScreen: (on: boolean) => void
+  /**
+   * 스크립트가 연 리포트 요약창과 「저장 중」 표시 (PARITY §4.12).
+   *
+   * ⚠️ **메뉴 스택이 아니다.** 원작도 이것은 화면이 아니라 필드 위에 얹은
+   * 창이고, 키를 안 받는다 — 묻는 쪽은 대사창이다
+   */
+  saveInfo: boolean
+  savingIcon: boolean
+  setSaveInfo: (on: boolean) => void
+  setSavingIcon: (on: boolean) => void
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
@@ -50,6 +60,10 @@ export const useSessionStore = create<SessionState>((set) => ({
   setZoneName: (zoneName) => set((s) => (s.zoneName === zoneName ? s : { zoneName })),
   mapId: -1,
   setMapId: (mapId) => set((s) => (s.mapId === mapId ? s : { mapId })),
+  saveInfo: false,
+  savingIcon: false,
+  setSaveInfo: (saveInfo) => set((s) => (s.saveInfo === saveInfo ? s : { saveInfo })),
+  setSavingIcon: (savingIcon) => set((s) => (s.savingIcon === savingIcon ? s : { savingIcon })),
   battleScreen: false,
   setBattleScreen: (battleScreen) =>
     set((s) => (s.battleScreen === battleScreen ? s : { battleScreen })),

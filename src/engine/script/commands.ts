@@ -516,6 +516,88 @@ on('UseVistaLighthouseBinoculars', () => false)
 on('StartGreatMarshLookout', () => false)
 
 
+// ── 스크립트가 리포트를 쓴다 (PARITY §4.12) ──────────────────────────────────
+//
+// **묻고 답하는 것은 전부 원작 스크립트다** — 공용 스크립트 0x7D6이 요약창을
+// 띄우고 `ShowYesNoMenu`로 두 번 묻고 결과에 따라 갈라진다. 여기 있는 것은
+// 그 스크립트가 부르는 밑바닥 여섯뿐이다.
+//
+// ⚠️ **이게 없으면 배틀프런티어에 못 들어간다** — 로비가 도전 앞에서
+// `Common_SaveGame`을 부르고 결과가 0이면 스스로 돌려보낸다 (§9.3).
+
+/** `SAVE_TYPE_NO_DATA_EXISTS` — 아직 리포트가 없다. 서비스가 없을 때의 답이다 */
+const SAVE_TYPE_NO_DATA = 1
+
+/**
+ * 어떤 저장인가 (`ScrCmd_CheckSaveType`).
+ *
+ * ⚠️ **「빠른 저장」은 답하지 않는다.** 원작의 그것은 플래시의 바뀐 블록만
+ * 쓰는 것인데 우리 리포트는 한 덩이다 — 없는 갈래를 답하면 스크립트가
+ * "조금만 저장합니다"라고 거짓말을 한다
+ */
+on('CheckSaveType', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.saveGame?.type() ?? SAVE_TYPE_NO_DATA)
+  return false
+})
+
+/** 요약창 넷 줄 (`ScrCmd_OpenSaveInfo`) */
+on('OpenSaveInfo', (ctx) => { ctx.host.world.services.saveGame?.showInfo(); return false })
+on('CloseSaveInfo', (ctx) => { ctx.host.world.services.saveGame?.hideInfo(); return false })
+
+/** 「저장 중」 표시 (`ScrCmd_ShowSavingIcon`) */
+on('ShowSavingIcon', (ctx) => { ctx.host.world.services.saveGame?.showIcon(); return false })
+on('HideSavingIcon', (ctx) => { ctx.host.world.services.saveGame?.hideIcon(); return false })
+
+/**
+ * 실제로 쓴다 (`ScrCmd_TrySaveGame`). 됐으면 1, 아니면 0.
+ *
+ * ⚠️ **여기서 선다.** 디스크로 나가는 일이라 한 프레임에 안 끝난다 —
+ * 원작은 플래시에 바로 써서 안 서지만, 우리는 기다려야 한다
+ */
+on('TrySaveGame', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const save = ctx.host.world.services.saveGame
+  if (!save) { ctx.host.vars.set(dest, 0); return false }
+  save.begin()
+  ctx.pause((c) => {
+    const got = c.host.world.services.saveGame?.result() ?? false
+    if (got === null) return false
+    c.host.vars.set(dest, got ? 1 : 0)
+    return true
+  })
+  return true
+})
+
+/**
+ * 저장 결과를 스크립트 관리자에 적어 둔다 (`ScrCmd_StoreSaveResult`).
+ *
+ * 부른 쪽이 나중에 꺼내 보는 칸인데 **우리에게는 그 칸이 없다** — 결과는
+ * `VAR_RESULT`에 이미 들어 있고 그것을 읽는 자리가 우리 쪽에는 없다.
+ * ⚠️ 그래도 인자는 읽는다
+ */
+on('StoreSaveResult', (ctx) => { ctx.readVar(); return false })
+
+/**
+ * 덤으로 딸린 블록 (`ScrCmd_SaveExtraData` · `ScrCmd_CheckIsMiscSaveInit`).
+ *
+ * DS 플래시가 리포트를 여러 블록으로 나눠 쓰고, 그중 하나가 비어 있으면
+ * 「전체 저장」으로 올라가는 장치다 — **우리 리포트는 한 덩이라 나눌 블록이
+ * 없다.** 늘 「이미 있다」로 답한다
+ */
+on('SaveExtraData', () => false)
+on('CheckIsMiscSaveInit', (ctx) => { ctx.host.vars.set(ctx.readHalfWord(), 1); return false })
+
+/**
+ * 저장하는 동안 주인공을 멈춘다 (`ScrCmd_258` · `ScrCmd_259`).
+ *
+ * 걷는 애니메이션을 세워 두는 작업 하나다 (`ov5_021E1000`). 우리 주인공은
+ * 스크립트가 도는 동안 이미 멈춰 있다 (`LockAll`) — 만드는 이유는 안 만들면
+ * 저장 흐름이 이 자리에서 서기 때문이다
+ */
+on('ScrCmd_258', () => false)
+on('ScrCmd_259', () => false)
+
+
 // ── 배틀프런티어 (PARITY §9.3) ────────────────────────────────────────────────
 
 /**
