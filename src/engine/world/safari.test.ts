@@ -114,9 +114,9 @@ describe('도망', () => {
     expect(safariFlees(50, 6, 51)).toBe(false)
   })
 
-  it('도망값이 0이면 영영 안 간다', () => {
+  it('⚠️ 도망값 0도 붙박이가 아니다 — 255분의 1로 달아난다', () => {
+    // 507종 중 474종이 0이다. 「0이면 안 간다」로 읽으면 이 한 칸을 놓친다
     for (const stage of [0, 6, 12]) expect(safariFlees(0, stage, 0)).toBe(true)
-    // 0은 「굴린 값 0 <= 0」이라 딱 한 칸만 걸린다
     expect(safariFlees(0, 6, 1)).toBe(false)
   })
 

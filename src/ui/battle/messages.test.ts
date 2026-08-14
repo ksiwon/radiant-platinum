@@ -1,7 +1,7 @@
 // 배틀 문구. 조사가 하나만 틀려도 화면에서 바로 보이는 종류의 버그라 문장을
 // 통째로 못박는다 — 조각으로 검사하면 "찌르꼬이(가)"가 그대로 지나간다.
 import { describe, it, expect } from 'vitest'
-import type { Actor, BattleEvent, BoostStat, Cause } from '../../engine/battle/events'
+import type { Actor, BattleEvent, BoostStat, Cause, SafariBeat } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
 import { battleText, type BattleNames, type TextContext } from './messages'
 
@@ -214,5 +214,21 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     expect(new Set(said).size).toBe(4)
     expect(said[0]).toBe('모부기는 빈둥거리고 있다!')
     expect(said[3]).toBe('모부기는 못 들은 척했다!')
+  })
+  it('사파리 일곱 마디 (PARITY §2.19)', () => {
+    // ⚠️ **「먹느라 정신이 없다」가 이득 본 판이다.** 뒤집혀 있으면 화면만
+    // 보고는 미끼가 좋은지 나쁜지를 영영 못 가린다
+    const beat = (b: SafariBeat) =>
+      say({ kind: 'safari', actor: FOE, beat: b })
+    const me: TextContext = { ...ctx, playerName: '빛나' }
+    expect(battleText({ kind: 'safari', actor: FOE, beat: 'bait' }, me))
+      .toBe('빛나는 야생의 팬텀에게 미끼를 던졌다!')
+    expect(beat('eating')).toBe('야생의 팬텀은 먹고 있다!')
+    expect(beat('busyEating')).toBe('야생의 팬텀은 먹느라 정신이 없다!')
+    expect(battleText({ kind: 'safari', actor: FOE, beat: 'mud' }, me))
+      .toBe('빛나는 야생의 팬텀에게 진흙을 던졌다!')
+    expect(beat('angry')).toBe('야생의 팬텀은 화가 났다!')
+    expect(beat('veryAngry')).toBe('야생의 팬텀은 몹시 화가 났다!')
+    expect(beat('watching')).toBe('야생의 팬텀은 주의깊게 보고 있다!')
   })
 })

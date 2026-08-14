@@ -93,14 +93,14 @@ export function markScript(on: boolean): void {
 }
 
 /**
- * 어느 갈래의 배틀인가 — `data-battle="wild"` · `"trainer"` · `"factory"`.
- * 없으면 지운다.
+ * 어느 갈래의 배틀인가 — `data-battle="wild"` · `"trainer"` · `"factory"` ·
+ * `"safari"`. 없으면 지운다.
  *
  * ⚠️ **`data-scene="battle"`만으로는 못 가른다.** 야생과 트레이너는 여는 길도
  * 규칙도 다른데(`battleStore`의 `startWild`·`startTrainer`) 밖에서는 똑같이
  * 보인다. 그러면 자동 검사가 "배틀 둘 다 됐다"를 증명할 수가 없다 —
  * 야생만 스무 번 나고도 통과한다
  */
-export function markBattle(kind: 'wild' | 'trainer' | 'factory' | null): void {
+export function markBattle(kind: 'wild' | 'trainer' | 'factory' | 'safari' | null): void {
   put('battle', kind)
 }

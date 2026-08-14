@@ -144,6 +144,30 @@ export interface Cause {
 }
 
 /**
+ * 사파리 판의 한 마디 (PARITY §2.19).
+ *
+ * ⚠️ **`eating`과 `busyEating`이 뒤집혀 있지 않은지 늘 확인한다.** 굴린 값이
+ * **0일 때** 도망 칸이 안 오르고, 그 판에만 「먹느라 정신이 없다」가 뜬다 —
+ * 즉 화면에 **드물게** 뜨는 쪽이 이득 본 판이다 (`subscript_safari_throw_bait`).
+ * 진흙 쪽도 같아서 「몹시 화가 났다」가 이득 본 판이다
+ */
+export type SafariBeat =
+  /** 미끼를 던졌다 */
+  | 'bait'
+  /** 먹고 있다 — 도망 칸도 같이 올랐다 */
+  | 'eating'
+  /** 먹느라 정신이 없다 — 도망 칸이 안 올랐다 */
+  | 'busyEating'
+  /** 진흙을 던졌다 */
+  | 'mud'
+  /** 화가 났다 — 잡히는 칸도 같이 내렸다 */
+  | 'angry'
+  /** 몹시 화가 났다 — 잡히는 칸이 안 내렸다 */
+  | 'veryAngry'
+  /** 주의깊게 보고 있다 — 이 턴에 안 달아났다 */
+  | 'watching'
+
+/**
  * 한 줄에서 뽑아낸 사건 하나.
  *
  * `other`는 아직 모양을 안 준 줄이다 — **버리지 않는다.** 조용히 사라지면 연출이
@@ -287,6 +311,14 @@ export type BattleEvent =
       reason: 'ignoredAsleep' | 'otherMove' | 'nap' | 'hitSelf' | 'nothing'
       flavor?: number
     }
+  /**
+   * 사파리 판에서만 나는 줄 (PARITY §2.19).
+   *
+   * 여기도 프로토콜에 없다 — 기술도 데미지도 없는 판이라 sim이 아예 안 돈다.
+   * `beat`가 원작 배틀 스크립트 넷의 한 마디씩이다
+   * (`subscript_safari_throw_bait` · `_rock` · `_escape`)
+   */
+  | { kind: 'safari'; actor: Actor; beat: SafariBeat }
 
 /** `p1a: 별명` → 자리와 이름. 자리 표기가 아니면 null */
 export function parseActor(raw: string): Actor | null {

@@ -10,6 +10,7 @@
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { BattleAction } from '../../engine/battle/choice'
+import type { SafariCommand } from '../../engine/battle/safariBattle'
 import type { Actor, SlotId } from '../../engine/battle/events'
 import { buildBeats } from '../../engine/battle/playback'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
@@ -147,6 +148,8 @@ export function BattleScreen() {
   const shiftAsk = useBattleStore((s) => s.shiftAsk)
   const answerShift = useBattleStore((s) => s.answerShift)
   const learnMove = useBattleStore((s) => s.learnMove)
+  const safari = useBattleStore((s) => s.safari)
+  const safariAct = useBattleStore((s) => s.safariAct)
   // ⚠️ **세이브를 본다.** 배틀 안의 기술 칸(`moveSlotsOf`)이 아니다 — 레벨업으로
   // 배운 기술은 세이브에 먼저 들어가고 sim은 그 판이 끝날 때까지 모른다
   const savedParty = useSaveStore((s) => s.party)
@@ -182,7 +185,8 @@ export function BattleScreen() {
     const entry: RosterEntry | undefined = roster[actor.name]
     const base = entry?.nickname ?? names?.species[entry?.species ?? -1] ?? actor.name
     if (entry?.side !== 'p2') return base
-    return kind === 'wild' ? `야생의 ${base}` : `상대 ${base}`
+    // 사파리도 야생이다 — 트레이너가 데리고 나온 마리만 「상대」다
+    return kind === 'trainer' ? `상대 ${base}` : `야생의 ${base}`
   }, [roster, names, kind])
 
   /** 자리 표시 없는 이름. 아직 안 나온 마리를 부를 때 쓴다 */
@@ -302,7 +306,7 @@ export function BattleScreen() {
             <MonCard
               key={i}
               mon={m} names={names} drainMs={script.holdMs}
-              prefix={kind === 'wild' ? '야생의 ' : '상대 '}
+              prefix={kind === 'trainer' ? '상대 ' : '야생의 '}
               caught={m.species !== null && dexHas(caughtDex, m.species)}
             />
           ))}
@@ -365,6 +369,11 @@ export function BattleScreen() {
                 question={`포켓몬을 교체하겠습니까?`}
                 onPick={(yes) => void answerShift(yes)}
               />
+            ) : kind === 'safari' ? (
+              // ⚠️ **`actions`를 안 본다** (PARITY §2.19). 사파리는 sim이 안 도는
+              // 갈래라 고를 기술도 교체할 마리도 없어서 그 목록이 늘 비어 있다 —
+              // 아래의 「비었으면 …」 갈래보다 먼저 와야 명령이 뜬다
+              <SafariMenu balls={safari?.balls ?? 0} onPick={safariAct} />
             ) : actions.length === 0 ? (
               <div className={css.waiting}>…</div>
             ) : forced || page === 'party' || page === 'bag' ? (
@@ -540,6 +549,54 @@ function RootMenu(
           style={{ ['--tint' as string]: entry.tint }}
           onClick={entry.go}
           disabled={!entry.on}
+        >
+          {i === cursor && <span className={css.caret} aria-hidden />}
+          <span className={css.face}>
+            <span className={css.dot} aria-hidden />
+            <span className={css.labelCol}>
+              <span className={css.label}>{entry.label}</span>
+              <span className={css.subLine}>{entry.sub}</span>
+            </span>
+          </span>
+        </button>
+      ))}
+    </>
+  )
+}
+
+/**
+ * 사파리의 명령 넷 (PARITY §2.19 · `PLAYER_INPUT_SAFARI_*`).
+ *
+ * 차례가 원작 그대로다 — 볼·미끼·진흙·도망. 원작은 아래 화면에 네 칸을 두고
+ * 남은 볼을 그 옆에 적는데, 우리는 한 화면이라 **볼 수를 첫 칸에 붙인다**.
+ *
+ * ⚠️ **미끼와 진흙이 서로 반대가 아니다.** 미끼는 잡히는 값을 올리면서 도망도
+ * 올리고, 진흙은 도망을 내리면서 잡히는 값도 내린다 — 어느 쪽도 공짜가 아니라
+ * 그 대가를 칸 밑에 적는다
+ */
+function SafariMenu(
+  { balls, onPick }: { balls: number; onPick: (command: SafariCommand) => void },
+) {
+  const entries: { label: string; sub: string; tint: string; go: SafariCommand }[] = [
+    { label: '사파리볼', sub: `남은 개수 ${String(balls)}`, tint: css.TINT.fight, go: 'ball' },
+    { label: '미끼', sub: '잡기 쉬워지고 잘 달아난다', tint: css.TINT.bag, go: 'bait' },
+    { label: '진흙', sub: '안 달아나지만 잡기 어려워진다', tint: css.TINT.party, go: 'mud' },
+    { label: '도망친다', sub: '이 판을 끝낸다', tint: css.TINT.run, go: 'run' },
+  ]
+  const cursor = useListCursor(entries.length, (i) => {
+    const entry = entries[i]
+    // 볼이 0이면 던질 수가 없다. 그래도 칸은 남긴다 — 왜 못 던지는지가 보인다
+    if (entry && !(entry.go === 'ball' && balls <= 0)) onPick(entry.go)
+  })
+  return (
+    <>
+      {entries.map((entry, i) => (
+        <button
+          key={entry.label}
+          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+          style={{ ['--tint' as string]: entry.tint }}
+          onClick={() => { onPick(entry.go) }}
+          disabled={entry.go === 'ball' && balls <= 0}
         >
           {i === cursor && <span className={css.caret} aria-hidden />}
           <span className={css.face}>

@@ -93,12 +93,21 @@ export interface CatchTarget {
  *
  * HP가 낮을수록, 상태이상이 있을수록 커진다. 최대 HP의 3배에서 현재 HP의 2배를
  * 빼는 모양이라 **HP를 1까지 깎아도 계수는 3배까지밖에 안 오른다** — 상태이상을
- * 거는 쪽이 더 크게 먹히는 이유다
+ * 거는 쪽이 더 크게 먹히는 이유다.
+ *
+ * ⚠️ **버리는 자리가 셋이고 차례가 정해져 있다** (`BattleScript_CalcCatchShakes`):
+ *
+ *     (포획률 × 볼보정 / 10) × (3max − 2cur) / (3max) × 상태보정 / 10
+ *
+ * 한 줄로 묶어 마지막에 한 번만 버리면 630가지 조합 중 51가지가 1씩 어긋난다 —
+ * 제일 크게 벌어지는 곳이 **포획률 3짜리를 빈사까지 깎았을 때**(3 대 4)라,
+ * 하필 전설을 잡는 자리에서 확률이 달라진다
  */
 export function catchValue(target: CatchTarget, bonus: number, status: number): number {
   const max = Math.max(1, target.maxHp)
   const cur = Math.max(1, Math.min(target.hp, max))
-  const a = Math.floor(((3 * max - 2 * cur) * target.catchRate * bonus) / (3 * max * 10))
+  const base = Math.floor((target.catchRate * bonus) / 10)
+  const a = Math.floor((base * (3 * max - 2 * cur)) / (3 * max))
   return Math.floor((a * status) / 10)
 }
 

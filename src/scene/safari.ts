@@ -12,6 +12,7 @@ import {
   startSafari, TRAM_STOP_Z, tramMove,
 } from '../engine/world/safari'
 import { fieldScripts, start } from '../engine/script/field'
+import { encounters } from '../engine/battle/encounterSystem'
 import { mapById } from '../engine/map/world'
 import { useSaveStore } from '../state/saveStore'
 
@@ -114,6 +115,25 @@ export function safariFieldStep(): void {
   if (got.kind === 'noBalls') { start(SCRIPT_SAFARI_OUT_OF_BALLS, mapFile); return }
   useSaveStore.setState({ safari: { ...save.safari, ...got.state } })
   if (got.kind === 'noSteps') start(SCRIPT_SAFARI_OUT_OF_STEPS, mapFile)
+}
+
+/**
+ * 마지막 볼을 헛던졌다 (PARITY §2.19).
+ *
+ * ⚠️ **걸음을 안 세고 그 자리에서 부른다.** 원작은 배틀이 닫히면서 곧바로
+ * 특별 자리로 되돌려 보내는데(`FieldTask_SafariEncounter`의 마디 3), 우리는
+ * 한 걸음 걸어야 나던 그 안내원 스크립트를 여기서 바로 돌린다 — 글도 워프도
+ * 롬의 스크립트가 갖고 있다
+ */
+export function safariOutOfBalls(): void {
+  if (!useSaveStore.getState().safari.active) return
+  start(SCRIPT_SAFARI_OUT_OF_BALLS, mapById(mapWorld.mapId)?.scripts ?? -1)
+}
+
+/** 조우 시스템에 사파리를 꽂는다. 필드가 뜰 때 한 번 */
+export function installSafari(): () => void {
+  encounters.safariOutOfBalls = safariOutOfBalls
+  return () => { encounters.safariOutOfBalls = null }
 }
 
 /**

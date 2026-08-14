@@ -99,10 +99,11 @@ export function safariCatchRate(speciesCatchRate: number, stage: number): number
  * 이번 턴에 도망가는가 (`Task_SafariPokemonSetCommandSelection`).
  *
  * ⚠️ **종족마다 다른 「도망값」을 쓴다** (`safariFleeRate`) — 포획값과 다른 칸이다.
- * 0인 종은 영영 안 도망간다.
  *
- * ⚠️ **`<=`다.** 굴린 값이 도망값과 **같아도** 도망간다 — `%255`라 0~254고,
- * 도망값 255면 늘 도망가는 셈이다
+ * ⚠️ **`<=`라서 도망값 0이어도 안 붙박이다.** 굴린 값이 도망값과 **같아도**
+ * 도망가고 `%255`라 0~254이므로, 0인 종도 굴린 값이 0인 턴에는 달아난다 —
+ * 255분의 1이다. 507종 중 474종이 0인데 「영영 안 간다」로 읽으면 그 한 칸을
+ * 놓친다. 반대쪽 끝은 150이고, 도망값 255면 늘 도망가는 셈이다
  *
  * @param roll `BattleSystem_RandNext() % 255`
  */

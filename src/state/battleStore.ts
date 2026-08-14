@@ -61,6 +61,10 @@ import { journalBeatTrainer, journalWildBattle } from '../scene/journal'
 import { poketchGotMon } from '../scene/poketch'
 import { store as storeInBox } from '../engine/pokemon/boxes'
 import { encounters } from '../engine/battle/encounterSystem'
+import {
+  safariTurn, type SafariCommand, type SafariOutcome, type SafariState as SafariRun,
+} from '../engine/battle/safariBattle'
+import { newSafariBattle } from '../engine/world/safari'
 import { LeadAbility, leadHas, wildGender, wildNature } from '../engine/battle/encounterLead'
 import { gameLocale, useOptionsStore } from './optionsStore'
 import { useSessionStore } from './sessionStore'
@@ -80,9 +84,12 @@ export type BattlePhase = 'off' | 'loading' | 'running' | 'over'
 
 /**
  * 야생전인가 트레이너전인가. 규칙이 갈리는 지점이 여럿이다 —
- * 볼·도망은 야생에서만 되고, 경험치는 트레이너전이 1.5배다
+ * 볼·도망은 야생에서만 되고, 경험치는 트레이너전이 1.5배다.
+ *
+ * ⚠️ **`safari`는 sim이 아예 안 도는 갈래다** (PARITY §2.19). 기술도 체력도
+ * 없어서 심판에게 넘길 것이 없고, `engine/battle/safariBattle`이 사건을 직접 낸다
  */
-export type BattleKind = 'wild' | 'trainer' | 'factory'
+export type BattleKind = 'wild' | 'trainer' | 'factory' | 'safari'
 
 /**
  * 이 판에만 붙는 규칙 (`FieldBattleDTO.battleStatusMask`).
@@ -94,6 +101,21 @@ export interface BattleRules {
   noCrit?: boolean
   /** 배회 포켓몬과의 판 (PARITY §6.3). 묶어 두지 않으면 상대가 달아난다 */
   roamer?: boolean
+}
+
+/**
+ * 사파리 판이 화면에 내주는 것 (PARITY §2.19).
+ *
+ * 칸 둘을 숨기지 않는다 — 미끼를 줬는지 진흙을 던졌는지가 화면에 안 남으면
+ * 넷 중 무엇을 고를지 판단할 근거가 사라진다. 원작은 아래 화면에 볼 수만
+ * 띄우지만 우리는 한 화면이라 그 자리가 없다
+ */
+export interface SafariHud {
+  balls: number
+  /** 잡히는 칸 0~12. 6이 한가운데다 */
+  catchStage: number
+  /** 도망 칸 0~12 */
+  escapeStage: number
 }
 
 /** 배틀팩토리 한 판의 양쪽 (PARITY §9.3) */
@@ -228,6 +250,17 @@ interface BattleState {
    * `trdata`에도 세이브에도 기댈 수 없다
    */
   startFactory: (bout: FactoryBout) => Promise<void>
+  /**
+   * 사파리 판을 연다 (PARITY §2.19).
+   *
+   * ⚠️ **내 쪽 자리가 빈 채로 선다.** 사파리에는 내보내는 마리가 없다 —
+   * 볼을 던지는 것은 사람이다
+   */
+  startSafari: (wild: WildStart) => Promise<void>
+  /** 사파리의 명령 넷. 다른 갈래에서는 아무 일도 안 한다 */
+  safariAct: (command: SafariCommand) => void
+  /** 남은 사파리볼과 지금 칸. 화면이 그린다. 사파리가 아니면 null */
+  safari: SafariHud | null
   choose: (action: BattleAction) => Promise<void>
   /** 볼을 던진다. 우리 턴을 쓴다 — 실패하면 야생이 반격한다 */
   throwBall: (ball?: BallId) => Promise<void>
@@ -329,6 +362,27 @@ function foeVitals(slot: number, maxHp: number | null): { hp: number; status: St
 let rentalParty: PokemonInstance[] | null = null
 
 /**
+ * 도는 중인 사파리 판 (PARITY §2.19). 컨트롤러가 없는 갈래라 여기가 그 자리다.
+ *
+ * ⚠️ **`mon`이 잡히면 그대로 리포트로 간다.** 다시 만들지 않는다 — 성격값도
+ * 개체값도 판이 열릴 때 이미 굴려졌고, 화면에 선 그 마리가 잡힌 그 마리다
+ */
+let safariRun: {
+  run: SafariRun
+  mon: PokemonInstance
+  species: Species
+  outcome: SafariOutcome
+} | null = null
+
+function hudOf(run: SafariRun): SafariHud {
+  return {
+    balls: run.balls,
+    catchStage: run.stage.catchStage,
+    escapeStage: run.stage.escapeStage,
+  }
+}
+
+/**
  * 전투용 사본.
  *
  * 세이브의 객체를 그대로 넘기면 안 된다 — sim이 안에서 손대면 영속 상태가 같이
@@ -394,6 +448,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   outcome: null,
   error: null,
   shiftAsk: null,
+  safari: null,
 
   startWild: async (wild) => {
     set({ trainerId: null, trainerClass: null })
@@ -536,6 +591,119 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     )
   },
 
+  startSafari: async (wild) => {
+    if (get().phase !== 'off') return
+    set({
+      phase: 'loading', kind: 'safari', foeName: null, prize: 0,
+      trainerId: null, trainerClass: null,
+      view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
+      atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
+      shiftAsk: null, safari: null,
+    })
+    try {
+      const species = await loadSpecies()
+      speciesTable = species
+      participants = new Set()
+      roamerMet = null
+      metTrainer = null
+      battleTerrain = terrainOf(
+        world.grid?.behaviorAtWorld(
+          worldState.player.position.x, worldState.player.position.z) ?? null,
+        mapById(world.mapId)?.battleBg ?? -1,
+      )
+
+      const base = species.get(wild.species)
+      const mon = createWild({
+        species: base, level: wild.level, rng: Math.random, otId: 0, otSecretId: 0,
+      })
+      mon.form = wild.form ?? 0
+      const data = species.of(mon)
+      mon.hp = statsOf(mon, data).hp
+
+      // 사파리도 야생전으로 센다 (`FieldTask_SafariEncounter`)
+      useSaveStore.setState((st) => ({
+        records: addRecord(st.records, RECORD_WILD_BATTLES_FOUGHT, 1),
+      }))
+
+      const save = useSaveStore.getState()
+      safariRun = {
+        run: { stage: newSafariBattle(), balls: save.safari.balls },
+        mon,
+        species: data,
+        outcome: null,
+      }
+      const actor = { slot: 'p2a' as const, side: 'p2' as const, name: foeKey(0) }
+      const events: BattleEvent[] = [
+        { kind: 'start' },
+        {
+          kind: 'switch',
+          actor,
+          species: mon.species,
+          form: mon.form,
+          speciesName: String(mon.species),
+          level: mon.level,
+          gender: genderOf(mon.pid, data.genderRatio),
+          shiny: false,
+          condition: { hp: mon.hp, maxHp: mon.hp, status: 'ok' },
+          forced: false,
+        },
+      ]
+      set({
+        phase: 'running',
+        truth: applyEvents(emptyView(), events),
+        view: emptyView(),
+        events,
+        roster: {
+          [foeKey(0)]: {
+            side: 'p2', species: mon.species, form: mon.form, nickname: null, level: mon.level,
+          },
+        },
+        safari: hudOf(safariRun.run),
+      })
+    } catch (e) {
+      console.error('사파리 판을 못 열었다', e)
+      safariRun = null
+      set({ phase: 'off', error: e instanceof Error ? e.message : String(e) })
+    }
+  },
+
+  safariAct: (command) => {
+    const run = safariRun
+    if (!run || get().phase !== 'running') return
+    const turn = safariTurn({
+      state: run.run,
+      command,
+      foe: {
+        catchRate: run.species.catchRate,
+        fleeRate: run.species.safariFlee,
+        hp: run.mon.hp,
+        maxHp: run.mon.hp,
+      },
+      actor: { slot: 'p2a', side: 'p2', name: foeKey(0) },
+      rng: Math.random,
+    })
+    run.run = turn.state
+    run.outcome = turn.outcome
+    // 볼은 **던진 그 자리에서** 리포트에 적힌다. 판이 끝나기를 기다리면
+    // 도중에 창을 닫는 길에서 한 개가 되살아난다
+    if (command === 'ball') {
+      useSaveStore.setState((st) => ({
+        safari: { ...st.safari, balls: turn.state.balls },
+      }))
+    }
+    const events = [...get().events, ...turn.events]
+    set({
+      events,
+      truth: applyEvents(get().truth ?? emptyView(), turn.events),
+      safari: hudOf(turn.state),
+      phase: turn.outcome === null ? 'running' : 'over',
+      // 볼이 떨어진 것은 사람이 도망친 것으로 친다 (`BATTLE_RESULT_PLAYER_FLED`)
+      outcome: turn.outcome === null ? null
+        : turn.outcome === 'caught' ? 'caught'
+          : turn.outcome === 'foeFled' ? 'foeFled' : 'fled',
+    })
+  },
+
   answerShift: async (change) => {
     if (!current?.shiftAsk) return
     await advance(set, get, (c) => c.answerShift(change))
@@ -662,6 +830,69 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   close: () => {
     const controller = current
+    // ⚠️ **사파리는 파티를 통째로 건너뛴다** (PARITY §2.19). 내보낸 마리가
+    // 없으니 되돌릴 체력도 PP도 없고, 경험치·상금·포켓루스·도롱마담도 안 돈다
+    // (`BATTLE_TYPE_NO_EXPERIENCE`). 잡은 것만 리포트로 넘긴다
+    if (safariRun) {
+      const run = safariRun
+      safariRun = null
+      const save = useSaveStore.getState()
+      if (run.outcome === 'caught') {
+        const level = run.mon.level
+        const mon: PokemonInstance = {
+          ...run.mon,
+          otId: save.trainer.id,
+          otSecretId: save.trainer.secretId,
+          ball: Ball.SAFARI,
+          origin: caughtAt(
+            playerTrainer(save.trainer),
+            mapById(useSessionStore.getState().mapId)?.label ?? 0,
+            level,
+            metToday(),
+          ),
+        }
+        const party = save.party.length < PARTY_MAX ? [...save.party, mon] : save.party
+        const boxes = party === save.party
+          ? storeInBox(save.boxes, save.currentBox, mon)?.boxes ?? save.boxes
+          : save.boxes
+        useSaveStore.setState({
+          party,
+          boxes,
+          pokedex: {
+            ...save.pokedex,
+            seen: dexSet(save.pokedex.seen, mon.species),
+            caught: dexSet(save.pokedex.caught, mon.species),
+            battled: dexSet(save.pokedex.battled, mon.species),
+          },
+          records: addTrainerScore(
+            addRecord(save.records, RECORD_CAUGHT_POKEMON, 1),
+            (speciesTable?.sinnohOf[mon.species] ?? 0) > 0
+              ? SCORE_CAPTURED_REGIONAL_MON
+              : SCORE_CAPTURED_NATIONAL_MON),
+          // 안내원이 물어보는 수 (`TVBroadcast_UpdateSafariGameData`)
+          safari: { ...useSaveStore.getState().safari, caught: save.safari.caught + 1 },
+        })
+        poketchGotMon({ species: mon.species, form: mon.form })
+        journalWildBattle({
+          result: 'caught',
+          species: mon.species,
+          gender: genderOf(mon.pid, run.species.genderRatio),
+          timeOfDay: timeOfDayForHour(worldState.time.gameHour),
+          playtimeMs: save.trainer.playtimeMs,
+        })
+      }
+      const spent = run.outcome === 'outOfBalls'
+      set({
+        phase: 'off', kind: 'wild', foeName: null, prize: 0, trainerId: null, trainerClass: null,
+        view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
+        roster: {}, outcome: null, shiftAsk: null, safari: null,
+      })
+      // ⚠️ **볼이 떨어졌으면 놀이가 그 자리에서 끝난다** (`FieldTask_SafariEncounter`의
+      // 마지막 마디가 특별 자리로 되돌려 보낸다). 우리는 롬의 안내원 스크립트를
+      // 돌린다 — 글도 워프도 그쪽이 갖고 있다
+      if (spent) encounters.safariOutOfBalls?.()
+      return
+    }
     // ⚠️ **팩토리는 리포트에 아무것도 안 남긴다.** 빌린 셋이라 체력도 PP도
     // 다음 판 앞에서 원작이 통째로 회복시키고(`Party_HealAllMembers`), 도감·
     // 노트·포켓루스·도롱마담 옷감도 프론티어 판에서는 안 돈다. 여기를 안

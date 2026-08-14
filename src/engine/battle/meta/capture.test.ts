@@ -67,6 +67,13 @@ describe('포획 공식', () => {
     expect(shakeThreshold(0)).toBe(0)
   })
 
+  it('⚠️ 버리는 자리가 셋이다 — 한 줄로 묶으면 전설이 더 잘 잡힌다', () => {
+    // `(3 × 15 / 10)`이 4.5에서 **4로 버려지고** 나서 HP 비율이 곱해진다.
+    // 한 줄로 묶어 마지막에 한 번만 버리면 여기서 4가 나온다
+    const legend = target({ catchRate: 3, maxHp: 20, hp: 1 })
+    expect(catchValue(legend, 15, 10)).toBe(3)
+  })
+
   it('실패한 자리에서 멈춘다 — 흔들림 횟수가 화면에 나간다', () => {
     const hard = target({ catchRate: 3 })
     // 첫 판정만 통과시키고 두 번째에서 떨어뜨린다

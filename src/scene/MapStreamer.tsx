@@ -40,6 +40,7 @@ import { setGameActive } from '../engine/input/keyboard'
 import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
+import { installSafari, safariActive } from './safari'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
 import { resetStepFeatureTile } from '../engine/script/field'
@@ -168,6 +169,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 세션에도 남긴다 — 배틀 스토어처럼 `world`를 못 보는 쪽이 읽는다
   const publishMap = useSessionStore((s) => s.setMapId)
   const startWild = useBattleStore((s) => s.startWild)
+  const startSafari = useBattleStore((s) => s.startSafari)
   const [grid, setGrid] = useState(initial)
   const [chunkIndex, setChunkIndex] = useState(() =>
     initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)),
@@ -434,6 +436,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 배회 포켓몬을 조우 시스템에 꽂는다 (PARITY §6.3)
   useEffect(() => installRoamers(), [])
   useEffect(() => installRadar(), [])
+  // 마지막 볼을 헛던졌을 때 안내원 스크립트를 돌린다 (PARITY §2.19)
+  useEffect(() => installSafari(), [])
 
   useEffect(() => {
     loadGenericNames(locale)
@@ -682,13 +686,19 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       const e = encounters.pending
       encounters.pending = null
       encounters.suspended = true
-      void startWild({
-        species: e.species,
-        level: e.level,
-        form: e.form,
-        roamer: e.roamer,
-        shiny: e.shiny,
-      })
+      // ⚠️ **사파리 깃발이 서 있으면 딴 판이 열린다** (PARITY §2.19).
+      // 원작도 조우 자리에서 `BATTLE_TYPE_SAFARI`로 갈라 놓는다
+      // (`wild_encounters.c` — 볼 수를 그 자리에서 읽는다)
+      if (safariActive()) void startSafari({ species: e.species, level: e.level, form: e.form })
+      else {
+        void startWild({
+          species: e.species,
+          level: e.level,
+          form: e.form,
+          roamer: e.roamer,
+          shiny: e.shiny,
+        })
+      }
     }
   })
 

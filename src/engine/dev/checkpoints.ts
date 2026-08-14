@@ -52,6 +52,13 @@ export type Spot =
 export type DevBattle =
   | { kind: 'trainer'; id: number }
   | { kind: 'wild'; species: number; level: number }
+  /**
+   * 사파리 판 (PARITY §2.19).
+   *
+   * ⚠️ **깃발도 같이 세운다.** 대습초원 안내원을 거치지 않고 뛰어들면
+   * 볼이 0이라 첫 칸이 잠긴 채로 뜬다
+   */
+  | { kind: 'safari'; species: number; level: number }
 
 export interface Checkpoint {
   id: string
@@ -871,6 +878,21 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     map: 505,
     spot: { kind: 'grass' },
     ...STAGE.badge5,
+  },
+  {
+    id: 'safari',
+    label: '사파리 배틀 (볼·미끼·진흙·도망)',
+    env: '배틀 · 사파리 (내 쪽 자리가 빈다) · 배지 5개',
+    try: [
+      '명령이 넷인지 본다 — 기술도 가방도 교체도 없다',
+      '내 쪽 무대와 체력판이 비어 있는지 본다',
+      '미끼를 주면 「먹고 있다」, 진흙을 던지면 「화가 났다」가 뜨는지 본다',
+      '볼을 던지면 남은 개수가 줄어드는지 본다',
+    ],
+    map: 505,
+    spot: { kind: 'grass' },
+    ...STAGE.badge5,
+    battle: { kind: 'safari', species: 194, level: 22 }, // 우파
   },
   {
     id: 'canalave',

@@ -85,6 +85,13 @@ export const encounters = {
     status: Status
     outcome: 'win' | 'caught' | 'other'
   }) => void) | null,
+  /**
+   * 사파리 판에서 **마지막 볼을 헛던졌다** (PARITY §2.19).
+   *
+   * 원작은 배틀이 끝나면서 곧바로 특별 자리로 돌려보내는데, 그 「밖으로
+   * 나가는 글과 워프」는 롬의 안내원 스크립트가 갖고 있다 — 씬이 그것을 돌린다
+   */
+  safariOutOfBalls: null as (() => void) | null,
   /** 씬이 처리해야 할 조우. 처리 후 null로 되돌린다 */
   pending: null as WildEncounter | null,
   /** 판정을 멈추는 스위치 — 전투 중이거나 워프 전이 중일 때 */

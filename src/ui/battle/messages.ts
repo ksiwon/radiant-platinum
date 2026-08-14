@@ -250,6 +250,23 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       return `${withTopic(who)} ${IDLE_FLAVOR[e.flavor ?? 0] ?? IDLE_FLAVOR[0]!}`
     }
 
+    case 'safari': {
+      const who = ctx.label(e.actor)
+      const me = ctx.playerName ?? '나'
+      switch (e.beat) {
+        // `BattleStrings_Text_PlayerThrewSomeBaitAtThePokemon`
+        case 'bait': return `${withTopic(me)} ${who}에게 미끼를 던졌다!`
+        case 'eating': return `${withTopic(who)} 먹고 있다!`
+        case 'busyEating': return `${withTopic(who)} 먹느라 정신이 없다!`
+        // `BattleStrings_Text_PlayerThrewMudAtThePokemon`
+        case 'mud': return `${withTopic(me)} ${who}에게 진흙을 던졌다!`
+        case 'angry': return `${withTopic(who)} 화가 났다!`
+        case 'veryAngry': return `${withTopic(who)} 몹시 화가 났다!`
+        // `subscript_safari_escape` — 이름이 「도망」이지만 **안 달아난** 턴의 줄이다
+        default: return `${withTopic(who)} 주의깊게 보고 있다!`
+      }
+    }
+
     case 'tie':
       return '무승부다!'
 

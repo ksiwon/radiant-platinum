@@ -13,6 +13,8 @@ import { mapById, walkOutOfDoor, warpsOf } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { abortScript } from '../engine/script/field'
 import { useBattleStore } from '../state/battleStore'
+import { useSaveStore } from '../state/saveStore'
+import { startSafari } from '../engine/world/safari'
 import { gridFor } from './worldData'
 import { distortionSpawn, isDistortionFloor } from './distortion'
 import type { Checkpoint } from '../engine/dev/checkpoints'
@@ -63,7 +65,15 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
       // 배틀 화면 위에 그 대사창이 겹쳐 뜬다 (실측: 배틀 중에 `data-talk=1`)
       abortScript()
       if (waiting.kind === 'trainer') void useBattleStore.getState().startTrainer(waiting.id)
-      else void useBattleStore.getState().startWild({ species: waiting.species, level: waiting.level })
+      else if (waiting.kind === 'safari') {
+        // 안내원을 거치지 않고 뛰어들므로 깃발과 볼을 여기서 세운다 (PARITY §2.19)
+        const save = useSaveStore.getState()
+        if (!save.safari.active) {
+          useSaveStore.setState({ safari: { ...save.safari, ...startSafari() } })
+        }
+        void useBattleStore.getState().startSafari(
+          { species: waiting.species, level: waiting.level })
+      } else void useBattleStore.getState().startWild({ species: waiting.species, level: waiting.level })
       return
     }
     const cp = dev?.devWarp.pending
