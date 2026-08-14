@@ -108,6 +108,13 @@ export const UI_BANK = {
    * 뒤쪽 넷은 `MAX_NPC_TRADES + id`로 집는다 (`engine/pokemon/npcTrade.ts`)
    */
   npcTradeNames: 370,
+  /**
+   * `TEXT_BANK_UNK_0548` — 크레딧 237줄 (PARITY §8.12).
+   *
+   * ⚠️ **어느 언어 롬에서도 스태프 이름은 영문 그대로다.** 색 부호(`{COLOR 1}`)와
+   * 앞의 빈칸 넷까지 롬의 것이라 손대지 않는다
+   */
+  credits: 548,
 } as const
 
 /**

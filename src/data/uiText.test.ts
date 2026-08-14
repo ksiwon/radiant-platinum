@@ -58,6 +58,7 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   shop: 'unk_0543',
   trade: 'trade',
   npcTradeNames: 'npc_trade_names',
+  credits: 'unk_0548',
 }
 
 /**

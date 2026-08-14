@@ -36,9 +36,11 @@ export type MenuScreen =
   | 'trade'
   // 이름 짓기. 스크립트가 열고 `naming`이 무엇의 이름인지를 든다
   | 'naming'
-  // 명예의 전당 장면. `ClearGame`이 열고 **끝나면 타이틀로 나간다** —
+  // 명예의 전당 장면. `ClearGame`이 열고 **끝나면 크레딧으로 넘어간다** —
   // 그래서 물러날 자리가 없다
   | 'hallOfFame'
+  // 크레딧. 전당이 리포트를 다 쓰면 열리고 **다 흐르면 타이틀로 나간다**
+  | 'credits'
   // PC의 「명예의 전당」. `OpenPCHallOfFameScreen`이 연다
   | 'pcHallOfFame'
   // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
@@ -164,6 +166,8 @@ interface MenuStore {
   openDiploma: (national: boolean) => void
   /** 명예의 전당 장면을 연다 (`ClearGame`) */
   openHallOfFame: () => void
+  /** 크레딧으로 넘어간다. 전당이 리포트를 다 쓰면 스스로 부른다 (PARITY §8.12) */
+  openCredits: () => void
   /** 스크립트가 한 마리를 고르라고 파티 화면을 연다 */
   openPartyToChoose: () => void
   /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다 */
@@ -221,6 +225,18 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     const stack: MenuScreen[] = ['hallOfFame']
     capture(stack)
     return { stack, top: 'hallOfFame' as const }
+  }),
+
+  /**
+   * 크레딧으로 넘어간다 (PARITY §8.12).
+   *
+   * ⚠️ **전당을 갈아 끼운다.** 스택에 쌓으면 크레딧이 끝나고 전당이 다시
+   * 드러난다 — 원작은 그 자리에서 전당을 닫고 오버레이 99로 넘어간다
+   */
+  openCredits: () => set(() => {
+    const stack: MenuScreen[] = ['credits']
+    capture(stack)
+    return { stack, top: 'credits' as const }
   }),
 
   openDiploma: (national) => set(() => {

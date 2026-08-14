@@ -405,6 +405,21 @@ export const townMapSchema = z.object({
   })),
 })
 
+/** 크레딧 배경 세 장 (DATA.md §2.26) */
+export const creditsSchema = z.object({
+  count: z.number().int().positive(),
+  /**
+   * 장마다의 크기. 화면(256×192)보다 큰 것은 **흐르라고** 그렇다.
+   *
+   * 그림은 `data/credits<n>.png` — 한 장에 모으지 않는 이유는 화면이 이 그림을
+   * 감아 돌려야 하기 때문이다 (PARITY §8.12)
+   */
+  scenes: z.array(z.object({
+    w: z.number().int().positive(),
+    h: z.number().int().positive(),
+  })),
+})
+
 export const boxWallpapersSchema = z.object({
   count: z.number().int().positive(),
   cols: z.number().int().positive(),
@@ -794,6 +809,7 @@ export type ItemIcons = z.infer<typeof itemIconsSchema>
 export type PokeIcons = z.infer<typeof pokeIconsSchema>
 export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
+export type CreditsAtlas = z.infer<typeof creditsSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
 export type HiddenItems = z.infer<typeof hiddenItemsSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>

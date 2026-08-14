@@ -40,7 +40,7 @@ maybe('대사', () => {
     // 장식 이름 100(386 — PARITY §7.16),
     // 배틀팩토리 다섯(21 프런티어 트레이너 이름 315·614 그 대사 945·
     // 364 고르는 화면·365 복도와 배틀룸·363 빌린 개체의 원트레이너 — PARITY §9.3)
-    expect(index.banks.length).toBe(481)
+    expect(index.banks.length).toBe(482)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -72,7 +72,10 @@ maybe('대사', () => {
    * 담아서(`しゅじんこう {STRVAR_1 3, 1}`) 값만 따로 있는 5~8이 없다
    */
   const SHORTER: Record<string, Record<number, number> | undefined> = {
-    ja: { 397: 35, 534: 5, 697: 125 },
+    // ⚠️ **크레딧(548)이 일본 롬에서 184줄이다** — 현지화 인원이 없어서 그렇다.
+    // 흐르는 차례 표(237줄)는 미국 오버레이의 것이라, 화면이 **뱅크 길이에서
+    // 끊어야** 뒤쪽 53줄이 빈 줄로 흐르지 않는다 (PARITY §8.12)
+    ja: { 397: 35, 534: 5, 697: 125, 548: 184 },
   }
 
   it('모든 뱅크가 로케일마다 있고 항목 수가 같다', () => {
@@ -100,6 +103,10 @@ maybe('대사', () => {
       expect(ja).toHaveLength(short)
       // `save_info_window`는 일본판이 이름표와 값을 합쳐 놔서 얼개가 다르다
       if (Number(at) === 534) continue
+      // ⚠️ **크레딧(548)은 「짧은」 것이 아니라 아예 다른 목록이다.** 현지화
+      // 인원이 통째로 빠져서 29번째부터 줄이 밀린다 — 흐르는 차례 표가 미국
+      // 오버레이의 것이라 일본 롬에서는 자리가 안 맞는다 (PARITY §8.12)
+      if (Number(at) === 548) continue
       for (let i = 0; i < short; i++) expect(shape(ja[i]!), `${at}/${String(i)}`).toBe(shape(ko[i]!))
     }
   })
@@ -121,7 +128,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 5024, ko: 3134, ja: 3348 })
+    expect(counted).toEqual({ en: 5114, ko: 3216, ja: 3422 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

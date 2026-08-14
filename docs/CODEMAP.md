@@ -116,9 +116,9 @@
 
 아카이브가 아니라 C 소스에 박힌 표는 추출기가 못 센다. `pnpm gen:*` 꼴로
 **소스에 구워 넣는다** (`tools/extract/*Module.cjs` → `src/…Table.ts`).
-지금 그렇게 굽는 것 일곱: `gen:amity`(상호교류광장) · `gen:records`(게임 기록) ·
-`gen:charmap`(문자표) · `gen:scriptMeta` · `gen:spriteTable` ·
-`gen:trainerClasses` · `gen:trainerBgm`.
+지금 그렇게 굽는 것 여덟: `gen:amity`(상호교류광장) · `gen:records`(게임 기록) ·
+`gen:credits`(크레딧 흐르는 차례) · `gen:charmap`(문자표) · `gen:scriptMeta` ·
+`gen:spriteTable` · `gen:trainerClasses` · `gen:trainerBgm`.
 
 굽는 파일 머리에 **「손으로 고치지 않는다」**를 적는다. 담기는 것은 번호와
 수뿐이고 이름도 글도 한 바이트도 안 담는다 (COPYRIGHT §5).

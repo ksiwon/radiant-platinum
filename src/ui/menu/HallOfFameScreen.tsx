@@ -15,11 +15,10 @@
 // `ClearGame` 명령이 화면을 열기 전에 한다 — 화면이 중간에 닫혀도 그 값들이
 // 이미 저장돼 있어야 하기 때문이다.
 //
-// ⚠️ **크레딧(스태프롤)은 아직 없다.** 원작은 리포트를 쓴 뒤 오버레이 99를
-// 띄우고 그것이 끝나야 타이틀로 간다. 그림이 `graphic/ending.narc` 85칸이라
-// 아직 안 굽는다 — 우리는 곧바로 타이틀로 돌아간다 (PARITY §8.11)
+// ⚠️ **끝나면 크레딧으로 넘어간다** (PARITY §8.12). 원작도 리포트를 쓴 뒤
+// 오버레이 99를 띄우고 그것이 끝나야 타이틀로 간다 — 타이틀로 가는 것은
+// `CreditsScreen`이 맡는다
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
 import { music } from '../../engine/audio/music'
 import { SFX } from '../../engine/audio/sfx'
 import { genderOf, isShiny, type PokemonInstance } from '../../engine/pokemon/instance'
@@ -129,9 +128,8 @@ interface Tables {
 }
 
 export function HallOfFameScreen() {
-  const navigate = useNavigate()
   const locale = useGameLocale()
-  const closeAll = useMenuStore((s) => s.closeAll)
+  const openCredits = useMenuStore((s) => s.openCredits)
   const [tables, setTables] = useState<Tables | null>(null)
   const [beat, setBeat] = useState<Beat>('fadeIn')
   const [at, setAt] = useState(0)
@@ -291,11 +289,12 @@ export function HallOfFameScreen() {
     if (beat === 'saving') finish()
   }, [beat, finish])
 
+  // 크레딧으로 넘어간다. 원작의 차례가 전당 → 리포트 → 크레딧 → 리셋이라
+  // 타이틀로 가는 것은 크레딧이 맡는다 (PARITY §8.12)
   const leave = useCallback((): void => {
     music.stop()
-    closeAll()
-    navigate('/')
-  }, [closeAll, navigate])
+    openCredits()
+  }, [openCredits])
 
   // A·B로 파티 장면을 끝낸다 (`gSystem.pressedKeys & (PAD_BUTTON_A | PAD_BUTTON_B)`),
   // 그리고 리포트를 다 쓴 뒤에도 한 번 더 누르면 타이틀로 간다

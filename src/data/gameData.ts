@@ -6,14 +6,14 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, creditsSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, moveAnimSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema,
-  type BoxWallpapers, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
+  type BoxWallpapers, type CreditsAtlas, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type HiddenItems,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
@@ -41,6 +41,8 @@ import {
 export const ITEM_ICON_ATLAS = 'data/itemIcons.png'
 export const POKE_ICON_ATLAS = 'data/pokeIcons.png'
 export const BOX_WALLPAPER_ATLAS = 'data/boxWallpapers.png'
+/** 크레딧 배경 한 장의 자리 (PARITY §8.12). 장마다 크기가 달라 파일도 따로다 */
+export const creditsImage = (at: number): string => `data/credits${String(at)}.png`
 export const SIGNPOST_ATLAS = 'data/signposts.png'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
@@ -294,6 +296,15 @@ export function loadPokeIcons(): Promise<PokeIcons> {
 export function loadBoxWallpapers(): Promise<BoxWallpapers> {
   return fetchJson('boxWallpapers.json', (v) => boxWallpapersSchema.parse(v))
     .then(async (walls) => { await pinAtlas(BOX_WALLPAPER_ATLAS); return walls })
+}
+
+/** 크레딧 배경. 그림 세 장을 다 받아 둔다 — 흐르는 중에 받으면 그 자리가 빈다 */
+export function loadCreditsAtlas(): Promise<CreditsAtlas> {
+  return fetchJson('credits.json', (v) => creditsSchema.parse(v))
+    .then(async (meta) => {
+      for (let i = 0; i < meta.count; i++) await pinAtlas(creditsImage(i))
+      return meta
+    })
 }
 
 /** 간판 판 그림 아틀라스. 그림은 `data/signposts.png`다 */

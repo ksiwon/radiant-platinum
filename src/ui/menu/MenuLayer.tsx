@@ -22,6 +22,7 @@ import { JournalScreen } from './JournalScreen'
 import { MoveReminderScreen } from './MoveReminderScreen'
 import { DiplomaScreen } from './DiplomaScreen'
 import { HallOfFameScreen } from './HallOfFameScreen'
+import { CreditsScreen } from './CreditsScreen'
 import { PCHallOfFameScreen } from './PCHallOfFameScreen'
 import { BerryTagScreen } from './BerryTagScreen'
 import { SaveScreen } from './SaveScreen'
@@ -82,6 +83,7 @@ export function MenuLayer() {
     case 'trade': return <TradeScreen />
     case 'naming': return <NameScreen />
     case 'hallOfFame': return <HallOfFameScreen />
+    case 'credits': return <CreditsScreen />
     case 'pcHallOfFame': return <PCHallOfFameScreen />
     // 'devWarp'은 여기서 안 그린다 — 시험용이라 배포 빌드에 들어오면 안 되고,
     // 스택에는 키를 가져가려고 올라가 있을 뿐이다 (`App`이 그린다)

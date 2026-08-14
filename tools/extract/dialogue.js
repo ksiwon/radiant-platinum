@@ -247,6 +247,9 @@ const EXTRA_BANKS = [
   // 프런티어 트레이너 315명의 이름과 대사 945줄(= 315 × 인사·이김·짐).
   // 필드 트레이너와 표가 아예 다르다 (`pl_btdtr.narc`)
   'TEXT_BANK_FRONTIER_TRAINER_NAMES', 'TEXT_BANK_FRONTIER_TRAINER_MESSAGES',
+  // 크레딧 237줄 (PARITY §8.12). 오버레이 99가 직접 여는 뱅크라 스크립트가
+  // 안 가리킨다. 흐르는 차례는 코드 안의 표에 따로 있다 (`pnpm gen:credits`)
+  'TEXT_BANK_UNK_0548',
 ]
 
 function main() {
