@@ -5,12 +5,15 @@
 > BDSP `AssetAssistant/`를 브라우저가 변환해 OPFS에 설치한다. Node/Python
 > 추출기는 기존 `raw/`를 쓰는 **개발 정본**으로 유지한다.
 >
-> ⚠️ 두 경로가 같은 것을 내야 한다. 지금 그것을 바이트로 확인한 그룹은
-> `moves` 하나다 (`src/import/platinum/convert.test.ts`) — 나머지는 아직
-> 노드 쪽만 있다. 무엇이 왜 안 옮겨졌는지는 `convert.ts`의 `GROUPS` 표에 있다.
+> ⚠️ 두 경로가 같은 것을 내야 한다. 지금 그것을 **바이트로** 확인한 그룹은
+> 열이다 — `moves` · `items` · `npcSprites` · `itemIcons` · `pokeIcons` ·
+> `boxWallpapers` · `signposts` · `starterScene` · `trainerSprites` ·
+> `npcTrades` (`src/import/platinum/convert.test.ts`). 나머지는 아직 노드
+> 쪽만 있다. 무엇이 왜 안 옮겨졌는지는 `convert.ts`의 `GROUPS` 표에 있다.
 >
 > 사용자 단계는 [IMPORT.md](IMPORT.md), 정책은 [COPYRIGHT.md](COPYRIGHT.md),
-> 구현 우선순위는 [PLAN.md](PLAN.md)를 따른다.
+> 구현 우선순위는 [PLAN.md](PLAN.md)를 따르고, **어디를 고치는가**는
+> [CODEMAP.md](CODEMAP.md)에 있다.
 
 플래티넘 롬에서 무엇을 어떻게 꺼내는지에 대한 정본. [PLAN.md](PLAN.md)가 "무엇을 만들 것인가"라면 이 문서는 "원본이 어떻게 생겼는가"다.
 

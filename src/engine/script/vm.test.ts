@@ -687,9 +687,10 @@ const IDLE_COMMANDS = [
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
   'SetInitialVolumeForSequence',
-  // ⚠️ **BP를 벌 곳이 없다** (PARITY §12.3). 다섯 시설이 §9라 주는 명령이
-  // 필드 스크립트에 0회고, 읽고 찍는 둘은 교환 코너의 목록 메뉴 너머다 —
-  // 창을 여는 `ShowBattlePoints`와 값을 견주는 `CheckBattlePoints`까지는 밟힌다
+  // ⚠️ **BP를 주는 명령이 필드 스크립트에 0회다** (PARITY §12.3) — 원작도
+  // 시설 코드가 직접 준다. 배틀팩토리는 스크립트가 아니라 우리 쪽 흐름이
+  // 준다 (§9.3). 읽고 찍는 둘은 교환 코너의 목록 메뉴 너머다 — 창을 여는
+  // `ShowBattlePoints`와 값을 견주는 `CheckBattlePoints`까지는 밟힌다
   'UpdateBPDisplay', 'GetBattlePoints', 'GiveBattlePoints', 'RemoveBattlePoints',
   'SubtractCoinsFromVar',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
