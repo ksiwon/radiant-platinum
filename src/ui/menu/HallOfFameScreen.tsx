@@ -1,7 +1,8 @@
 // 명예의 전당 장면 (PARITY §7.11 · §8.11) — `cutscenes/hall_of_fame.c` · `clear_game.c`
 //
-// 리그를 이기면 이 화면이 뜨고, 끝나면 **게임이 타이틀로 돌아간다**
-// (`OS_ResetSystem(RESET_CLEAN)`). 그 사이에 리포트가 한 번 자동으로 쓰인다.
+// 리그를 이기면 이 화면이 뜨고, 끝나면 **크레딧으로 넘어간다** (§8.12).
+// 타이틀로 돌아가는 것(`OS_ResetSystem(RESET_CLEAN)`)은 그 뒤다 —
+// 그 사이에 리포트가 한 번 자동으로 쓰인다.
 //
 // 원작의 상태 다섯을 그대로 따라간다 (`hallOfFameStates[]`):
 //
