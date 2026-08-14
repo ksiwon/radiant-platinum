@@ -3646,7 +3646,7 @@ on('CheckGreatMarshTramLocation', (ctx) => {
 })
 
 
-// ── 우호광장 (PARITY §7.8) ───────────────────────────────────────────────────
+// ── 상호교류광장 (PARITY §7.8) ───────────────────────────────────────────────────
 
 /** 걸음을 0으로 지운다 (`ScrCmd_ClearAmitySquareStepCount`). 들어갈 때 돈다 */
 on('ClearAmitySquareStepCount', (ctx) => {
@@ -3665,7 +3665,7 @@ on('GetAmitySquareStepCount', (ctx) => {
  *
  * ⚠️ **답이 먼저고 종족이 나중이다** — 원작이 변수 둘을 그 차례로 읽는다.
  *
- * ⚠️ **표에 없는 종은 0번 무리를 쓴다.** 우호광장에 못 들어가는 종이 여기 오면
+ * ⚠️ **표에 없는 종은 0번 무리를 쓴다.** 상호교류광장에 못 들어가는 종이 여기 오면
  * 불꽃숭이의 표가 나온다 — 원작의 `default`가 그렇다
  */
 on('CalcAmitySquareFoundAccessory', (ctx) => {

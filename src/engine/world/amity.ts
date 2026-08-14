@@ -1,4 +1,4 @@
-// 우호광장 (PARITY §7.8) — `scrcmd_amity_square.c`
+// 상호교류광장 (PARITY §7.8) — `scrcmd_amity_square.c`
 //
 // 연고시티 옆의 작은 공원. 파티에서 **한 마리만** 데리고 들어가 함께 걷고,
 // 그 마리가 걷다가 장식을 주워 온다.

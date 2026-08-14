@@ -630,7 +630,7 @@ const IDLE_COMMANDS = [
   // 쪽으로 빠진다. 셋 다 실제로 도는 것은 `script/fossil.test.ts`가 본다
   'GetFossilCount', 'GetSpeciesFromFossil', 'FindFossilAtThreshold',
   'CountPartyMonsBelowLevelThreshold', 'FindPartySlotWithNature',
-  // 우호광장 둘은 **따라다니는 마리가 있어야** 닿는다 (PARITY §7.8) — 훑기는
+  // 상호교류광장 둘은 **따라다니는 마리가 있어야** 닿는다 (PARITY §7.8) — 훑기는
   // 파티가 비어 있어서 광장에 들어가는 갈래 자체가 안 열린다
   'ClearAmitySquareStepCount', 'CalcAmitySquareFoundAccessory',
   'EnableSwarms',

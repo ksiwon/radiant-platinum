@@ -5,7 +5,7 @@
 // 아래를 이 차례로 돌린다:
 //
 //   포켓치 만보계 → 독 → 사파리 → 육아방 → VS시커 → 레이더 → 리펠 → 친밀도
-//   → 우호광장 걸음 수
+//   → 상호교류광장 걸음 수
 //
 // 여기 있는 것은 그중 **우리에게 계통이 있는 셋**이다: 독·리펠·친밀도. 나머지
 // 넷은 그 계통이 붙는 날 이 차례 그대로 끼워 넣는다 — 순서가 자료다.
@@ -44,7 +44,7 @@ export const POISON_STEPS = 4
  */
 export const VAR_FRIENDSHIP_STEPS = 76
 
-/** `VAR_AMITY_SQUARE_STEP_COUNT`. 우호광장이 붙으면 이 칸이 쓰인다 */
+/** `VAR_AMITY_SQUARE_STEP_COUNT`. 상호교류광장이 붙으면 이 칸이 쓰인다 */
 export const VAR_AMITY_STEPS = 60
 
 /** 지금 친밀도가 몇 번째 구간인가 (0·1·2) */

@@ -1,4 +1,4 @@
-// 우호광장 (PARITY §7.8)
+// 상호교류광장 (PARITY §7.8)
 import { describe, expect, it } from 'vitest'
 import {
   AMITY_GIFT_COUNT, AMITY_STEP_MAX, amityFindIndex, amityFound, amityGiftId,

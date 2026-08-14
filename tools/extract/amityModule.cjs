@@ -1,5 +1,5 @@
 'use strict'
-// 우호광장의 표 둘 → src/engine/world/amityTables.ts (DATA.md §2.12.2)
+// 상호교류광장의 표 둘 → src/engine/world/amityTables.ts (DATA.md §2.12.2)
 //
 //     pnpm gen:amity
 //
@@ -105,7 +105,7 @@ function main() {
   }
   if (gifts.length !== 16) throw new Error(`선물이 ${gifts.length}개다 — 열여섯이어야 한다`)
 
-  const out = `// 우호광장의 표 둘 (DATA.md §2.12.2)
+  const out = `// 상호교류광장의 표 둘 (DATA.md §2.12.2)
 //
 // ⚠️ **손으로 고치지 않는다** — \`pnpm gen:amity\`가 디컴프에서 다시 만든다
 // (\`tools/extract/amityModule.cjs\`).
@@ -126,7 +126,7 @@ export const AMITY_FIND_WEIGHTS: readonly number[] = [${FIND_WEIGHTS.join(', ')}
 /**
  * 종족 → 무리 번호. **표에 없는 종족은 0번 무리**다 (원작의 \`default\`).
  *
- * 우호광장에 들어갈 수 있는 스무 종이 여섯 무리로 갈린다
+ * 상호교류광장에 들어갈 수 있는 스무 종이 여섯 무리로 갈린다
  */
 export const AMITY_POOL_OF: readonly (readonly [number, number])[] = [
 ${byMon.map(([s, p]) => `  [${s}, ${p}],`).join('\n')}
