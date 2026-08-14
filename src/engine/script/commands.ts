@@ -515,6 +515,37 @@ on('UseVistaLighthouseBinoculars', () => false)
 /** 들판시티 대습초원 전망대 (`ScrCmd_StartGreatMarshLookout`). 안 만든다 */
 on('StartGreatMarshLookout', () => false)
 
+
+// ── 배틀프런티어 (PARITY §9.3) ────────────────────────────────────────────────
+
+/**
+ * 시설 안으로 들어간다 (`ScrCmd_LaunchBattleFrontierScene`).
+ *
+ * ⚠️ **여기서부터 다른 VM이다.** 원작은 오버레이 104가 자기 스크립트를 들고
+ * 복도와 배틀룸을 굴린다 — 필드 스크립트는 장면 번호 하나를 넘기고 **끝날
+ * 때까지 선다**. 우리는 그 안을 네이티브 흐름으로 만들었다.
+ *
+ * ⚠️ **안 만든 시설이면 그냥 지나간다.** 다섯 중 배틀팩토리 하나만 있고
+ * 나머지 넷은 §9다 — `busy()`가 거짓이면 그 자리에서 다음 줄로 간다
+ */
+on('LaunchBattleFrontierScene', (ctx) => {
+  const scene = ctx.readByte()
+  ctx.host.world.services.frontier?.openScene(scene)
+  ctx.pause((c) => c.host.world.services.frontier?.busy() !== true)
+  return true
+})
+
+/**
+ * 힙이 새는지 본다 (`ScrCmd_CheckHeapMemory`).
+ *
+ * 원작의 **디버그 확인**이다 — 스크립트 앞에서 빈 힙을 적어 두고 뒤에서
+ * 같은지 본다. 인자가 0이면 적고, 1이면 견준다. 우리에게는 그 힙이 없다.
+ *
+ * ⚠️ **그래도 인자는 읽는다.** 안 읽으면 다음 명령이 인자 두 바이트를
+ * 명령으로 읽는다
+ */
+on('CheckHeapMemory', (ctx) => { ctx.readVar(); return false })
+
 // ── 보관 시스템 ──────────────────────────────────────────────────────────────
 //
 // PC 앞에서 "포켓몬을 맡긴다"를 고르면 이 명령이 돈다. 화면이 닫힐 때까지 서고,

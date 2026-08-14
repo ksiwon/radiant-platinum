@@ -19,6 +19,9 @@ import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { useMenuStore } from '../state/menuStore'
 import { frontierStock } from '../engine/bag/frontierMart'
+import { useFactoryStore } from '../state/factoryStore'
+import { ChallengeType } from '../engine/frontier/factory'
+import { factorySlot } from '../engine/frontier/records'
 import { activateRoamer } from '../scene/roamers'
 import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
 import { computeStats } from '../engine/pokemon/stats'
@@ -293,6 +296,22 @@ export function installDevConsole(): void {
       useSaveStore.setState({ battlePoints: bp })
       useMenuStore.getState().openShop(frontierStock(martID), 'bp')
       return frontierStock(martID).length
+    },
+    /**
+     * 배틀팩토리 도전을 연다 (PARITY §9.3).
+     *
+     * 이야기로 가려면 배틀프런티어 섬까지 걸어야 한다. 연승을 주면 그
+     * 라운드에서 시작한다 — 높은 층의 개체와 소튼을 볼 수 있다
+     */
+    factory: (streak = 0, openLevel = false, double = false) => {
+      const save = useSaveStore.getState()
+      const slot = factorySlot(openLevel, double ? ChallengeType.DOUBLE : ChallengeType.SINGLE)
+      const records = save.factory.records.map((r, i) =>
+        (i === slot ? { ...r, streak, trades: 0, active: streak > 0 } : r))
+      useSaveStore.setState({ factory: { ...save.factory, records } })
+      void useFactoryStore.getState()
+        .begin(double ? ChallengeType.DOUBLE : ChallengeType.SINGLE, openLevel)
+      return `연승 ${String(streak)}에서 시작`
     },
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt

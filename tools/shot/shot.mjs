@@ -12,6 +12,7 @@
 //     pnpm shot center --currency=250            소지금·코인 창을 띄워 본다
 //     pnpm shot center --item=468:1 --menu=bag   가방에 넣고 목록을 열어 본다
 //     pnpm shot center --frontier=1              BP 교환 코너를 열어 본다
+//     pnpm shot center --factory=21              배틀팩토리 도전을 열어 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
@@ -454,6 +455,13 @@ async function main() {
     }
     // 배틀프런티어 교환 코너를 연다 — `--frontier` 또는 `--frontier=0`(오른쪽 창구).
     // 이야기로는 섬까지 가야 하고 BP를 벌 길이 아직 없다 (PARITY §12.3)
+    // 배틀팩토리 도전을 연다 — `--factory` 또는 `--factory=21`(그 연승에서 시작).
+    const factory = args.find((a) => a === '--factory' || a.startsWith('--factory='))
+    if (factory) {
+      const streak = factory.includes('=') ? Number(factory.split('=')[1]) : 0
+      await page.evaluate((n) => { globalThis.pt.factory(n) }, streak)
+      await page.waitForTimeout(1200)
+    }
     const frontier = args.find((a) => a === '--frontier' || a.startsWith('--frontier='))
     if (frontier) {
       const martID = frontier.includes('=') ? Number(frontier.split('=')[1]) : 1

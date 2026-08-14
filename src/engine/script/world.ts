@@ -538,14 +538,27 @@ export interface FieldServices {
   /**
    * 배틀포인트 (PARITY §12.3).
    *
-   * ⚠️ **버는 길이 아직 없다.** 다섯 시설이 §9라 `GiveBattlePoints`가
-   * 스크립트에 0회다 — 원작도 시설 코드가 직접 준다. 그래도 명령을 만드는
-   * 이유는, 안 만들면 교환 코너가 **묵은 변수 값**으로 갈라지기 때문이다
+   * ⚠️ **버는 곳은 배틀팩토리 하나뿐이다** (§9.3). 나머지 넷은 §9라
+   * `GiveBattlePoints`가 스크립트에 0회다 — 원작도 시설 코드가 직접 준다
    */
   battlePoints?: {
     get: () => number
     add: (amount: number) => void
     subtract: (amount: number) => void
+  }
+  /**
+   * 배틀프런티어 시설 장면 (`ScrCmd_LaunchBattleFrontierScene` · PARITY §9.3).
+   *
+   * ⚠️ **여기서부터는 다른 VM이다.** 원작은 오버레이 104가 **자기 스크립트**를
+   * 들고 시설 안을 굴린다 — 필드 스크립트는 장면 번호 하나를 넘기고 끝날
+   * 때까지 선다. 우리는 그 안을 네이티브 흐름으로 만들었다
+   * (`state/factoryStore`), 그래서 필드 쪽 약속은 이 둘뿐이다
+   */
+  frontier?: {
+    /** `FRONTIER_SCENE_*`. 안 만든 시설이면 아무 일도 안 한다 */
+    openScene: (scene: number) => void
+    /** 장면이 아직 떠 있는가. 참인 동안 스크립트가 선다 */
+    busy: () => boolean
   }
   /**
    * 소지금·코인 창 (`FieldMenu_CreateMoneyWindow` · `FieldMenu_DrawCoinWindow`).

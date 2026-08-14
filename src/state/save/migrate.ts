@@ -22,6 +22,7 @@ import { newRadarRecords, RADAR_BATTERY_STEPS } from '../../engine/world/pokeRad
 import { newBerryPatches } from '../../engine/world/berryPatches'
 import { newSafari, TRAM_START } from '../../engine/world/safari'
 import { newFashionCase } from '../../engine/world/fashionCase'
+import { newFactoryRecords } from '../../engine/frontier/records'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -324,6 +325,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     ...data,
     version: 28,
     battlePoints: 0,
+  }),
+
+  // 배틀팩토리 기록 (PARITY §9.3). 넉 줄이 다 0이고 표식이 꺼져 있다 —
+  // 옛 리포트에는 시설 자체가 없었으므로 이어 갈 연승도 없다
+  28: (data) => ({
+    ...data,
+    version: 29,
+    factory: newFactoryRecords(),
   }),
 }
 

@@ -118,6 +118,9 @@ export const GROUPS = [
   },
   { name: 'marts', make: 'pnpm extract:marts', match: oneOf('data/marts.json') },
   { name: 'npcTrades', make: 'pnpm extract:npcTrades', match: oneOf('data/npcTrades.json') },
+  // 배틀프런티어의 개체 형 951과 트레이너 315 (PARITY §9.3). 배틀팩토리에
+  // 들어갈 때만 읽는다 — 138KB라 첫 왕복에 실을 것이 아니다
+  { name: 'frontier', make: 'pnpm extract:frontier', match: oneOf('data/frontier.json') },
   { name: 'spawns', make: 'pnpm extract:spawns', match: oneOf('data/spawns.json') },
   {
     name: 'itemIcons',

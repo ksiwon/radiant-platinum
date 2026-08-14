@@ -471,6 +471,28 @@ export const saveSchema = z.object({
   battlePoints: int(0, MAX_BATTLE_POINTS),
 
   /**
+   * 배틀팩토리 기록 (PARITY §9.3) — `BattleFactorySave` + `BattleFrontierStats`.
+   *
+   * ⚠️ **넉 줄이 `(오픈레벨 ? 2 : 0) + 도전 종류`다.** 원작은 여덟 줄이고
+   * (`(isOpenLevel * 4) + challengeType`) 뒤 넷이 멀티인데, 멀티는 §9라 안 둔다.
+   *
+   * ⚠️ **`active`가 연승을 잇는 유일한 고리다.** 라운드를 마치면 1이 서고 지면
+   * 0이 된다 — 다음 도전이 저장된 연승을 이어받을지 0부터 갈지를 이 비트가
+   * 정한다. 안 두면 라운드마다 연승이 끊긴다
+   */
+  factory: z.object({
+    records: z.array(z.object({
+      streak: int(0, MAX_BATTLE_POINTS),
+      trades: int(0, MAX_BATTLE_POINTS),
+      best: int(0, MAX_BATTLE_POINTS),
+      bestTrades: int(0, MAX_BATTLE_POINTS),
+      active: z.boolean(),
+    })).length(4),
+    /** 인쇄 — 0 없음 · 1 은 · 2 금. 은을 받은 뒤 금을 받으면 2가 된다 */
+    print: int(0, 2),
+  }),
+
+  /**
    * 꿀 나무 21그루 (PARITY §6.6) — `PlayerHoneyTreeStates`.
    *
    * ⚠️ **맨 뒤에 붙인다.** 검사합이 `JSON.stringify`라 칸 차례가 스토어의

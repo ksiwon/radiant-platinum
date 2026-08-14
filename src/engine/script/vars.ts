@@ -25,6 +25,18 @@ export const VAR_DISTORTION_WORLD_PROGRESS = 16469
 /** 깨어진 세계의 태홍이 어느 자리에 서 있는가 (`…_CYRUS_APPEARANCE`) */
 export const VAR_DISTORTION_CYRUS = 16475
 /**
+ * 배틀팩토리에 어느 도전으로 들어가는가 (PARITY §9.3).
+ *
+ * 로비 스크립트가 여기에 적고 `LaunchBattleFrontierScene`으로 넘어간다 —
+ * 종류 0 싱글 · 1 더블, 레벨 0 레벨50 · 1 오픈레벨.
+ *
+ * ⚠️ **줄 번호가 아니라 C 열거형 값이다** (`VAR_DISTORTION_WORLD_PROGRESS`와
+ * 같은 계산기). `vars_flags.txt`에 `VAR_MAP_LOCAL_0x00 = …` 같은 별명 줄이
+ * 있어서 줄로 세면 하나씩 밀린다
+ */
+export const VAR_BATTLE_FACTORY_CHALLENGE_TYPE = 16568
+export const VAR_BATTLE_FACTORY_CHALLENGE_LEVEL = 16569
+/**
  * 바위 수수께끼를 풀었는가 (`FLAG_DISTORTION_WORLD_PUZZLE_FINISHED`).
  *
  * 이 자리 하나가 다시 들어왔을 때의 바위 자리를 통째로 정한다 —

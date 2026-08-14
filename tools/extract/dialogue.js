@@ -239,6 +239,14 @@ const EXTRA_BANKS = [
   // ⚠️ **조사가 붙은 판(`…_WITH_ARTICLES`)은 한국어 롬에 없다** — 그 명령은
   // 콘테스트 계통이라 안 만든다 (§9)
   'TEXT_BANK_CONTEST_ACCESSORY_NAMES',
+  // 배틀팩토리 (PARITY §9.3). 시설 안은 필드 스크립트가 아니라 **다른 VM**이
+  // 도는 자리라(`overlay104`) 스크립트에서 이 뱅크들이 안 보인다 —
+  // 고르는 화면 27줄 · 복도와 배틀룸 40줄 · 빌린 개체의 원트레이너 이름 한 줄
+  'TEXT_BANK_BATTLE_FACTORY_APP', 'TEXT_BANK_BATTLE_FACTORY_SCENE',
+  'TEXT_BANK_BATTLE_FACTORY_OT_NAME',
+  // 프런티어 트레이너 315명의 이름과 대사 945줄(= 315 × 인사·이김·짐).
+  // 필드 트레이너와 표가 아예 다르다 (`pl_btdtr.narc`)
+  'TEXT_BANK_FRONTIER_TRAINER_NAMES', 'TEXT_BANK_FRONTIER_TRAINER_MESSAGES',
 ]
 
 function main() {

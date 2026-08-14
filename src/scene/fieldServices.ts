@@ -21,6 +21,12 @@ import {
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import { fieldMoveFromMenu, fieldScripts, resetStepFeatureTile } from '../engine/script/field'
+import {
+  VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
+} from '../engine/script/vars'
+import { useFactoryStore } from '../state/factoryStore'
+import { ChallengeType } from '../engine/frontier/factory'
+import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTables'
 import { cameraSystem } from '../engine/actor/camera'
 import { setOnCyclingRoad } from '../engine/actor/bike'
 import { FIELD_MOVES } from '../engine/script/fieldMoves'
@@ -889,6 +895,26 @@ const services: FieldServices = {
     subtract: (amount) => {
       useSaveStore.setState((s) => ({ battlePoints: spendBattlePoints(s.battlePoints, amount) }))
     },
+  },
+
+  /**
+   * 배틀프런티어 시설 (PARITY §9.3).
+   *
+   * ⚠️ **다섯 중 배틀팩토리 하나뿐이다.** 나머지 넷은 §9라 장면 번호를
+   * 받아도 아무 일도 안 하고 스크립트가 그대로 지나간다 — 안 만든 것을
+   * 「열렸다가 곧 닫힌 것」으로 꾸미지 않는다
+   */
+  frontier: {
+    openScene: (scene) => {
+      if (scene !== FRONTIER_SCENE_FACTORY_CORRIDOR) return
+      const level = fieldScripts.ctx?.host.vars.get(VAR_BATTLE_FACTORY_CHALLENGE_LEVEL) ?? 0
+      const type = fieldScripts.ctx?.host.vars.get(VAR_BATTLE_FACTORY_CHALLENGE_TYPE) ?? 0
+      void useFactoryStore.getState().begin(
+        type === 1 ? ChallengeType.DOUBLE : ChallengeType.SINGLE,
+        level === 1,
+      )
+    },
+    busy: () => useFactoryStore.getState().phase !== 'off',
   },
 
   bike: {

@@ -35,6 +35,7 @@ import {
 import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
 import { newSafari, TRAM_START, type SafariState } from '../engine/world/safari'
 import { newFashionCase, type FashionCase } from '../engine/world/fashionCase'
+import { newFactoryRecords, type FactoryRecords } from '../engine/frontier/records'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -310,9 +311,15 @@ export interface SaveData {
    * 쪽만 돈다
    */
   battlePoints: number
+  /**
+   * 배틀팩토리 기록 (PARITY §9.3).
+   *
+   * ⚠️ **`active`가 연승을 잇는 고리다** — 라운드를 마치면 서고 지면 꺼진다
+   */
+  factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 28
+export const SAVE_VERSION = 29
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -394,6 +401,7 @@ export function createNewSave(): SaveData {
     hallOfFame: newHallOfFame(),
     coins: 0,
     battlePoints: 0,
+    factory: newFactoryRecords(),
     honeyTrees: newHoneyTrees(),
     radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
     berryPatches: newBerryPatches(),
@@ -627,6 +635,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     hallOfFame: s.hallOfFame,
     coins: s.coins,
     battlePoints: s.battlePoints,
+    factory: s.factory,
     // ⚠️ **스키마와 같은 자리에 둔다.** 검사합이 `JSON.stringify`라
     // 키 차례가 다르면 다시 읽은 리포트가 「다르다」로 떨어진다
     honeyTrees: s.honeyTrees,

@@ -8,6 +8,7 @@
 import {
   boxWallpapersSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, moveAnimSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
+  frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
   scriptFileSchema,
@@ -16,7 +17,7 @@ import {
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type HiddenItems,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
-  type MoveAnimFile,
+  type MoveAnimFile, type FrontierData,
 } from './schema'
 
 /** 숨은 도구 한 줄 */
@@ -304,6 +305,16 @@ export function loadSignposts(): Promise<Signposts> {
 /** 상점 재고표. 롬이 아니라 디컴프 헤더에서 나온 것이다 (`tools/extract/marts.js`) */
 export function loadMarts(): Promise<MartTable> {
   return fetchJson('marts.json', (v) => martTableSchema.parse(v))
+}
+
+/**
+ * 배틀프런티어의 개체 형 951과 트레이너 315 (PARITY §9.3).
+ *
+ * ⚠️ **배틀팩토리에 들어갈 때만 읽는다.** 138KB라 첫 왕복에 실을 것이 아니다 —
+ * 시설 문 앞에서 부른다
+ */
+export function loadFrontier(): Promise<FrontierData> {
+  return fetchJson('frontier.json', (v) => frontierSchema.parse(v))
 }
 
 /**

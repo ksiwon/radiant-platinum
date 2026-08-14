@@ -10,6 +10,7 @@ import { ChooseStarter } from '../field/ChooseStarter'
 import { BagScreen } from './BagScreen'
 import { BoxScreen } from './BoxScreen'
 import { EvolutionScreen } from './EvolutionScreen'
+import { FactoryScreen } from './FactoryScreen'
 import { TradeScreen } from './TradeScreen'
 import { NameScreen } from './NameScreen'
 import { OptionsScreen } from './OptionsScreen'
@@ -71,6 +72,7 @@ export function MenuLayer() {
     case 'berryTag': return <BerryTagScreen />
     case 'chooseStarter': return <ChooseStarter />
     case 'evolution': return <EvolutionScreen />
+    case 'factory': return <FactoryScreen />
     case 'trade': return <TradeScreen />
     case 'naming': return <NameScreen />
     case 'hallOfFame': return <HallOfFameScreen />

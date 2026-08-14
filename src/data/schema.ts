@@ -470,6 +470,34 @@ export const npcTradesSchema = z.object({
 })
 
 /**
+ * 배틀프런티어의 개체 형 951과 트레이너 315 (`pl_btdpm` · `pl_btdtr` · PARITY §9.3).
+ *
+ * ⚠️ **0번 형은 자리표시자다** — 기술이 하나도 없다. 뽑는 구간이 전부 1부터라
+ * 걸릴 일이 없지만, 표를 세는 쪽이 951을 950으로 착각하면 자리가 하나 밀린다.
+ *
+ * ⚠️ **트레이너의 `sets`는 배틀타워 것이다.** 배틀팩토리는 상대가 데리고 나올
+ * 것을 **그 자리에서 형 표에서 뽑는다** (`ov104_0223AB0C`) — 시설장 소튼
+ * (309·310)이 세트를 0개 가진 것이 그 증거다
+ */
+export const frontierSchema = z.object({
+  count: z.number().int().positive(),
+  sets: z.array(z.object({
+    species: z.number().int().nonnegative(),
+    moves: z.array(z.number().int().positive()).max(4),
+    /** 노력치를 넣을 능력 비트 — HP·공격·방어·스피드·특공·특방 차례다 */
+    evFlags: z.number().int().min(0).max(0x3f),
+    nature: z.number().int().min(0).max(24),
+    item: z.number().int().positive().optional(),
+    form: z.number().int().positive().optional(),
+  })).nonempty(),
+  trainers: z.array(z.object({
+    /** `TRAINER_CLASS_*`. 배틀 화면이 이걸로 그림과 이름표를 고른다 */
+    type: z.number().int().nonnegative(),
+    sets: z.array(z.number().int().nonnegative()),
+  })).nonempty(),
+})
+
+/**
  * 숨은 도구 257개 (`gHiddenItems`).
  *
  * `script`는 맵 BG 이벤트의 `script − 8000`이고, `range`는 다우징머신의
@@ -783,6 +811,9 @@ export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
 export type NpcTrades = z.infer<typeof npcTradesSchema>
+export type FrontierData = z.infer<typeof frontierSchema>
+export type FrontierSet = FrontierData['sets'][number]
+export type FrontierTrainer = FrontierData['trainers'][number]
 
 export type MoveAnimFile = z.infer<typeof moveAnimSchema>
 export type MoveAnim = NonNullable<MoveAnimFile['moves'][number]>

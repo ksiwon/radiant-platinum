@@ -75,7 +75,7 @@ export type BattlePhase = 'off' | 'loading' | 'running' | 'over'
  * 야생전인가 트레이너전인가. 규칙이 갈리는 지점이 여럿이다 —
  * 볼·도망은 야생에서만 되고, 경험치는 트레이너전이 1.5배다
  */
-export type BattleKind = 'wild' | 'trainer'
+export type BattleKind = 'wild' | 'trainer' | 'factory'
 
 /**
  * 이 판에만 붙는 규칙 (`FieldBattleDTO.battleStatusMask`).
@@ -87,6 +87,18 @@ export interface BattleRules {
   noCrit?: boolean
   /** 배회 포켓몬과의 판 (PARITY §6.3). 묶어 두지 않으면 상대가 달아난다 */
   roamer?: boolean
+}
+
+/** 배틀팩토리 한 판의 양쪽 (PARITY §9.3) */
+export interface FactoryBout {
+  /** 빌린 셋. 이미 `fillPp`·`statsOf`까지 끝난 개체여야 한다 */
+  readonly team: readonly PokemonInstance[]
+  readonly foe: readonly PokemonInstance[]
+  /** "배틀걸 미나미" 같은 한 줄. 분류와 이름을 붙인 것이다 */
+  readonly label: string
+  /** 트레이너 AI 비트 (`BattleFactory_GetAIMask`) */
+  readonly ai: number
+  readonly doubles: boolean
 }
 
 /** 키로 찾는 개체 정보. 화면이 이름·모델을 고르는 데 쓴다 */
@@ -202,6 +214,13 @@ interface BattleState {
   startWild: (wild: WildStart) => Promise<void>
   /** 트레이너전을 연다. `trainerId`는 trdata 번호다 */
   startTrainer: (trainerId: number, options?: BattleRules) => Promise<void>
+  /**
+   * 배틀팩토리의 한 판 (PARITY §9.3).
+   *
+   * ⚠️ **양쪽 파티를 다 받는다.** 내 쪽이 리포트의 파티가 아니라 **빌린 셋**이라
+   * `trdata`에도 세이브에도 기댈 수 없다
+   */
+  startFactory: (bout: FactoryBout) => Promise<void>
   choose: (action: BattleAction) => Promise<void>
   /** 볼을 던진다. 우리 턴을 쓴다 — 실패하면 야생이 반격한다 */
   throwBall: (ball?: BallId) => Promise<void>
@@ -294,6 +313,15 @@ function foeVitals(slot: number, maxHp: number | null): { hp: number; status: St
 }
 
 /**
+ * 배틀팩토리가 빌려 준 셋 (PARITY §9.3).
+ *
+ * ⚠️ **여기가 차 있으면 리포트의 파티를 아예 안 본다.** 경험치도 상금도 도감도
+ * 노트도 안 남는다 — 원작의 프론티어 판이 그렇다(`BATTLE_TYPE_FRONTIER_*`).
+ * 레벨이 50이나 100으로 고정인 판에 경험치를 주면 그 자리에서 규칙이 무너진다
+ */
+let rentalParty: PokemonInstance[] | null = null
+
+/**
  * 전투용 사본.
  *
  * 세이브의 객체를 그대로 넘기면 안 된다 — sim이 안에서 손대면 영속 상태가 같이
@@ -316,6 +344,8 @@ function ready(mon: PokemonInstance, species: Species, key: string): SideMon {
  * 아니게 된다. 회복은 포켓몬센터가 한다 (`scene/pokecenter`)
  */
 function ensureParty(table: SpeciesLookup, pp: (move: number) => number): PokemonInstance[] {
+  // 배틀팩토리는 **빌린 셋**으로 싸운다. 리포트의 파티는 시설에 맡겨 두었다
+  if (rentalParty) return rentalParty
   const save = useSaveStore.getState()
   let party = save.party
 
@@ -477,6 +507,28 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     )
   },
 
+  startFactory: async ({ team, foe, label, ai, doubles }) => {
+    rentalParty = team.map((m) => ({ ...m }))
+    metTrainer = null
+    set({ trainerId: null, trainerClass: null })
+    await open(
+      set,
+      get,
+      'factory',
+      label,
+      // 상금이 없다. 프론티어는 BP로 셈한다
+      0,
+      ({ species }) => ({
+        name: label,
+        team: foe.map((mon, i) => ready(mon, species.get(mon.species), foeKey(i))),
+      }),
+      ai,
+      undefined,
+      undefined,
+      doubles,
+    )
+  },
+
   answerShift: async (change) => {
     if (!current?.shiftAsk) return
     await advance(set, get, (c) => c.answerShift(change))
@@ -603,6 +655,23 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   close: () => {
     const controller = current
+    // ⚠️ **팩토리는 리포트에 아무것도 안 남긴다.** 빌린 셋이라 체력도 PP도
+    // 다음 판 앞에서 원작이 통째로 회복시키고(`Party_HealAllMembers`), 도감·
+    // 노트·포켓루스·도롱마담 옷감도 프론티어 판에서는 안 돈다. 여기를 안
+    // 막으면 **빌린 마리가 내 파티를 덮어쓴다**
+    if (controller && rentalParty) {
+      controller.destroy()
+      current = null
+      rentalParty = null
+      participants = new Set()
+      leveledUp = new Set()
+      set({
+        phase: 'off', kind: 'wild', foeName: null, prize: 0, trainerId: null, trainerClass: null,
+        view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
+        roster: {}, outcome: null, shiftAsk: null,
+      })
+      return
+    }
     if (controller) {
       // 결과를 먼저 꺼낸다 — destroy 뒤에는 배틀 객체가 사라진다
       const results = controller.results('p1')
@@ -886,6 +955,9 @@ function trackParticipants(events: readonly BattleEvent[]): void {
  * 「쓰러뜨려 봤다」(`battled`)는 원작에 없는 칸이다 — BDSP의 상성 표시가 본다.
  */
 function trackDex(events: readonly BattleEvent[], roster: Record<string, RosterEntry>): void {
+  // ⚠️ **프론티어 판은 도감에 안 적는다.** 원작이 그렇게 거른다 —
+  // 빌린 마리로 만난 것은 내가 만난 것이 아니다
+  if (rentalParty) return
   const save = useSaveStore.getState()
   for (const e of events) {
     if (e.kind === 'switch') {
@@ -937,6 +1009,8 @@ function grantRewards(
       .filter((r) => r.fainted)
       .map((r) => r.key),
   )
+  // ⚠️ **팩토리는 한 점도 안 준다.** 레벨이 고정인 판이라 원작도 안 준다
+  if (state.kind === 'factory') return []
   const party = [...useSaveStore.getState().party]
   const me = myIdentity()
   const hold = (mon: PokemonInstance): number =>
