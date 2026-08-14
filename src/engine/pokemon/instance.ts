@@ -149,6 +149,37 @@ export function isShiny(pid: number, otId: number, otSecretId: number): boolean 
   return ((otId ^ otSecretId ^ hi ^ lo) & 0xffff) < 8
 }
 
+/**
+ * **반드시 색이 다른** 성격값을 만든다 (`Pokemon_FindShinyPersonality`).
+ *
+ * ⚠️ **다시 굴리는 것이 아니라 지어내는 것이다.** 원작은 색이 나올 때까지
+ * 굴리지 않고, 트레이너 번호에서 답을 거꾸로 짓는다:
+ *
+ * 1. 트레이너 번호 32비트의 위·아래를 xor하고 **아래 세 비트를 버린다**(13비트)
+ * 2. 성격값 위·아래의 **아래 세 비트는 아무 값**이나 넣는다 — `< 8` 판정이
+ *    그 세 비트를 안 보기 때문이다
+ * 3. 남은 13비트는, 트레이너 쪽 비트가 1이면 성격값 **둘 중 하나만** 1로,
+ *    0이면 **둘 다 같게** 놓는다. 그러면 네 값의 xor이 0이 된다
+ *
+ * 레이더 사슬이 색을 못 박는 자리에서만 쓴다 (PARITY §6.5)
+ */
+export function shinyPersonality(otId32: number, rand: (n: number) => number): number {
+  const xored = ((((otId32 & 0xffff0000) >>> 16) ^ (otId32 & 0xffff)) >>> 3) & 0x1fff
+  let low = rand(8)
+  let high = rand(8)
+  for (let i = 0; i < 13; i++) {
+    const bit = 1 << (i + 3)
+    if ((xored & (1 << i)) !== 0) {
+      if (rand(2) === 1) low |= bit
+      else high |= bit
+    } else if (rand(2) === 1) {
+      low |= bit
+      high |= bit
+    }
+  }
+  return ((low | (high << 16)) >>> 0)
+}
+
 /** 개체의 최대 HP를 포함한 여섯 실능력치 */
 export function statsOf(mon: PokemonInstance, species: Species): Stats {
   return computeStats({

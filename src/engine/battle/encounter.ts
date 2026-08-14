@@ -6,6 +6,7 @@
 // RNG를 주입받는 이유: 테스트에서 결과를 고정해야 하고, 나중에 저장 파일 기반
 // 재현 가능한 시드로 바꿀 여지를 남겨 둔다.
 import { Behavior } from '../map/zone'
+import { RADAR_SLOTS } from '../world/pokeRadar'
 import { SPECIES_GASTRODON, SPECIES_SHELLOS, SPECIES_UNOWN } from '../pokemon/form'
 import { TimeOfDay, type TimeOfDayId } from '../map/timeOfDay'
 
@@ -85,6 +86,14 @@ export interface WildEncounter {
    * 이 파일은 세이브를 안 본다 — 배틀을 여는 쪽이 그 자리를 펴서 쓴다
    */
   roamer: number | null
+  /**
+   * 색이 다른 개체로 **만들어야 하는가** (PARITY §6.5).
+   *
+   * 레이더 사슬만 이 값을 세운다 — 원작이 그 자리에서 성격값을 다시 굴려
+   * 색이 다르게 나올 때까지 찾는다 (`CreateWildMonShinyWithGenderOrNature`).
+   * 다른 조우는 늘 undefined이고, 색은 성격값이 알아서 정한다
+   */
+  shiny?: boolean
 }
 
 export type Rng = () => number
@@ -260,6 +269,16 @@ export interface LandSwaps {
   pick?: (land: readonly LandSlot[]) => number | null
   /** 같은 종의 더 높은 레벨 칸으로 옮긴다 (의욕·의기양양·프레셔) */
   bump?: (land: readonly LandSlot[], slot: number) => number
+  /**
+   * 레이더가 **강하게 흔들린** 자리인가 (PARITY §6.5).
+   *
+   * 참이면 칸 4·5·10·11의 **종만** 그 맵의 레이더 넷으로 갈린다 — 레벨은
+   * 원래 칸 것을 그대로 쓴다 (`TryGenerateGrassEncounter_WithRadar`).
+   *
+   * ⚠️ 이 자리는 시간대·무리와 **겹친다** — 2·3(시간대)과는 안 겹치지만
+   * 트로피가든 6·7과도 다르고, 원작이 갈아 끼우기를 다 끝낸 표 위에 덮는다
+   */
+  radarHard?: boolean
 }
 
 /** 육상 조우 하나를 굴린다. 표가 비었으면 null */
@@ -271,6 +290,7 @@ export function rollLand(
   let land = timedLand(table, time)
   if (swaps.swarming) land = swarmLand(table, land)
   if (swaps.trophy) land = trophyLand(land, swaps.trophy)
+  if (swaps.radarHard === true) land = radarLand(table, land)
   // ⚠️ 특성이 집으면 가중치를 **안 굴린다**. 원작도 `if (!forcedSlot)` 안에서만
   // `GetGroundEncounterSlot()`을 부른다
   const forced = swaps.pick?.(land) ?? null
@@ -279,6 +299,21 @@ export function rollLand(
   const s = land[slot]
   if (!s || s.species <= 0) return null
   return { species: s.species, level: s.level, slot, form: 0, roamer: null }
+}
+
+/**
+ * 강하게 흔들린 자리의 표 (`TryGenerateGrassEncounter_WithRadar`).
+ *
+ * 칸 넷의 **종만** 갈아 끼운다. 레이더 종이 0인 맵(열둘)에서는 그 칸이 0이
+ * 되어 뽑혀도 조우가 안 된다 — 원작도 그 값을 그대로 넣는다
+ */
+function radarLand(table: EncounterTable, land: readonly LandSlot[]): LandSlot[] {
+  const out = land.map((s) => ({ ...s }))
+  for (const [i, slot] of RADAR_SLOTS.entries()) {
+    const at = out[slot]
+    if (at) at.species = table.radar[i] ?? 0
+  }
+  return out
 }
 
 /** 물 조우에 끼어드는 것들 */
@@ -405,6 +440,16 @@ export function encounterKind(behavior: number): 'land' | 'surf' | null {
 /** 풀숲인가 — 흔들리는 풀 연출과 발소리가 이걸 본다. 동굴 바닥은 아니다 */
 export function isGrassTile(behavior: number): boolean {
   return behavior === Behavior.TALL_GRASS || behavior === Behavior.VERY_TALL_GRASS
+}
+
+/**
+ * 레이더 무더기가 설 수 있는 칸인가 (`TileBehavior_IsTallGrass`).
+ *
+ * ⚠️ **`isGrassTile`보다 좁다** — 긴 풀(`VERY_TALL_GRASS` 0x03)은 안 된다.
+ * 원작의 그 함수가 `behavior == TILE_BEHAVIOR_TALL_GRASS` 한 줄이다
+ */
+export function isRadarGrass(behavior: number): boolean {
+  return behavior === Behavior.TALL_GRASS
 }
 
 /**

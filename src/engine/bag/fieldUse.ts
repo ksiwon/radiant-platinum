@@ -81,6 +81,8 @@ export type FieldItemAction =
   | { kind: 'fish'; rod: Rod }
   /** 화면 하나를 연다. 모험노트처럼 **여는 것이 전부인** 도구다 */
   | { kind: 'screen'; screen: 'journal' }
+  /** 포켓몬레이더를 켠다 (PARITY §6.5) */
+  | { kind: 'radar' }
   /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
   | { kind: 'blocked'; why: string }
   /** 그 계통이 아직 없다 */
@@ -99,6 +101,16 @@ export interface FieldContext {
   /** 앞 칸이 물인가 — 낚싯대는 물을 봐야 던진다 */
   waterAhead: boolean
   /**
+   * 지금 **선** 칸이 큰 풀인가. 레이더는 풀 위에서만 켜진다
+   * (`CanUsePokeRadar`의 `TileBehavior_IsTallGrass`) — 낚싯대가 **앞** 칸을 보는
+   * 것과 다르다
+   */
+  inTallGrass?: boolean
+  /** 누가 따라다니는가. 동행이 있으면 레이더를 못 쓴다 */
+  hasPartner?: boolean
+  /** 자전거를 탔는가 (`PlayerAvatar_GetPlayerState == 0x1`). 타고는 못 쓴다 */
+  onBike?: boolean
+  /**
    * 지금 다리 **위**에 서 있는가 (`MapObject_IsStatusOnElevatedBridge`).
    *
    * 다리 위에서는 밑의 물에 낚싯대를 못 던진다 — 원작이 그 한 줄로 막는다
@@ -115,7 +127,6 @@ const MISSING: Partial<Record<number, string>> = {
   [FieldUse.BERRY]: '나무열매 밭',
   [FieldUse.POFFIN_CASE]: '포핀',
   [FieldUse.PAL_PAD]: '친구수첩',
-  [FieldUse.POKE_RADAR]: '포켓몬레이더',
   [FieldUse.SPRAYDUCK]: '나무열매 밭',
   [FieldUse.MULCH]: '나무열매 밭',
   [FieldUse.HONEY]: '꿀나무',
@@ -162,6 +173,14 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
         rod: item.fieldUseFunc === FieldUse.OLD_ROD ? 'old'
           : item.fieldUseFunc === FieldUse.GOOD_ROD ? 'good' : 'super',
       }
+
+    // `CanUsePokeRadar` — 동행이 없고, 자전거를 안 탔고, **선 칸이 큰 풀**이어야
+    // 한다. 배터리가 덜 찼는지는 여기서 안 본다 — 원작도 켠 다음에 대사로 말한다
+    case FieldUse.POKE_RADAR:
+      if (ctx.hasPartner === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (ctx.onBike === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      if (ctx.inTallGrass !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      return { kind: 'radar' }
 
     case FieldUse.ESCAPE_ROPE:
       // `CanUseEscapeRope` — 동굴이고 그 맵이 허락해야 한다

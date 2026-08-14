@@ -37,6 +37,9 @@ import { MAX_COINS } from '../../engine/world/coins'
 import {
   HONEY_TREE_COUNT, SLATHER_MINUTES as HONEY_SLATHER_MINUTES,
 } from '../../engine/world/honeyTree'
+import {
+  RADAR_BATTERY_STEPS, RADAR_CHAIN_MAX, RADAR_RECORDS,
+} from '../../engine/world/pokeRadar'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -467,6 +470,21 @@ export const saveSchema = z.object({
       .length(HONEY_TREE_COUNT),
     /** 마지막으로 바른 그루. 아직 없으면 −1 */
     lastSlathered: int(-1, HONEY_TREE_COUNT - 1),
+  }),
+
+  /**
+   * 포켓몬레이더 (PARITY §6.5).
+   *
+   * ⚠️ **사슬은 여기 없다.** 원작도 `RadarChain`을 필드 쪽에 두고 리포트에는
+   * 배터리와 기록 셋만 적는다 — 리포트를 열면 사슬이 풀리는 것이 원작의 모습이다
+   */
+  radar: z.object({
+    /** 걸음으로 차는 배터리. 다 차야 다시 쓴다 */
+    charge: int(0, RADAR_BATTERY_STEPS),
+    /** 제일 길었던 사슬 셋. 종이 0이면 빈 칸이다 */
+    records: z
+      .array(z.object({ species: int(0, 493), count: int(0, RADAR_CHAIN_MAX) }))
+      .length(RADAR_RECORDS),
   }),
 })
 

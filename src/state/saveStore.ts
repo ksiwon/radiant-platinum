@@ -28,6 +28,9 @@ import {
   newRecentRoutes, newRoamers, type RecentRoutes, type Roamer,
 } from '../engine/world/roamer'
 import { newHoneyTrees, type HoneyTreesState } from '../engine/world/honeyTree'
+import {
+  newRadarRecords, RADAR_BATTERY_STEPS, type RadarState,
+} from '../engine/world/pokeRadar'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -239,6 +242,7 @@ export interface SaveData {
    * 그래서 남은 분만이 아니라 무리·자리·표·흔들림을 다 들고 있어야 한다
    */
   honeyTrees: HoneyTreesState
+  radar: RadarState
   /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
@@ -277,7 +281,7 @@ export interface SaveData {
   coins: number
 }
 
-export const SAVE_VERSION = 22
+export const SAVE_VERSION = 23
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -358,6 +362,7 @@ export function createNewSave(): SaveData {
     hallOfFame: newHallOfFame(),
     coins: 0,
     honeyTrees: newHoneyTrees(),
+    radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
   }
 }
 
@@ -586,6 +591,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     // ⚠️ **스키마와 같은 자리에 둔다.** 검사합이 `JSON.stringify`라
     // 키 차례가 다르면 다시 읽은 리포트가 「다르다」로 떨어진다
     honeyTrees: s.honeyTrees,
+    radar: s.radar,
   }
 }
 

@@ -13,6 +13,7 @@ import type { Status } from '../pokemon/instance'
 import { timeOfDayForHour } from '../map/timeOfDay'
 import { MAP_TROPHY_GARDEN } from '../world/daily'
 import { dateGate } from '../world/specialDates'
+import type { PatchStep as RadarStep } from '../world/pokeRadar'
 import {
   Flute, NO_LEAD, forcedSlot, higherLevelSlot, leadScaresOff, repelBlocks,
   speciesOf, walkRate, waterLevel, waterSpeciesOf, type FieldMods,
@@ -54,6 +55,22 @@ export const encounters = {
    * (PLAN §3.2). 빈 채로 두면 배회가 없는 게임이 되고, 그래도 풀숲은 돈다
    */
   roamerHere: null as ((mapId: number, rng: Rng) => WildEncounter | null) | null,
+  /**
+   * 지금 선 칸이 레이더 무더기인가 (PARITY §6.5). 씬이 사슬을 보고 답한다.
+   *
+   * 답이 오면 그 걸음은 **관문을 안 보고** 반드시 조우가 되고, 배회도 안 나온다
+   */
+  radarStep: null as ((x: number, z: number) => RadarStep | null) | null,
+  /**
+   * 뽑은 조우를 사슬이 손본다 (`CreateWildMon_FromRadar*`).
+   *
+   * 이을 판이면 묶어 둔 종·레벨을 그대로 내고, 아니면 뽑은 것으로 사슬을
+   * 다시 묶는다. 색이 다른 개체도 여기서 정해진다
+   */
+  radarEncounter: null as
+    ((step: RadarStep, got: WildEncounter | null) => WildEncounter | null) | null,
+  /** 야생전이 끝났다. 사슬이 살았으면 무더기를 다시 뿌린다 */
+  radarAfterBattle: null as ((result: 'win' | 'captured' | 'other') => void) | null,
   /**
    * 야생전이 끝났다. 배회의 남은 체력을 적고 자리를 흩는다 (PARITY §6.3).
    *
@@ -115,7 +132,11 @@ export const encounterSystem = {
       cycling: worldState.player.cycling,
       date: (gate: number) => dateGate(gate, mods.month, mods.day),
     }
-    if (!shouldEncounter(rate, state, encounters.rng, where)) return
+    // ⚠️ **무더기를 밟으면 관문을 안 본다** (PARITY §6.5). 원작이
+    // `gettingEncounter = TRUE`로 덮어쓴다 — 흔들리는 풀은 반드시 나온다.
+    // 그리고 그 판에서는 배회도 안 물어본다
+    const radar = kind === 'land' ? encounters.radarStep?.(tx, tz) ?? null : null
+    if (radar === null && !shouldEncounter(rate, state, encounters.rng, where)) return
     // ⚠️ **관문을 지난 순간 유예 구간이 다시 열린다.** 뒤에서 리펠이나 특성이
     // 막아도 마찬가지다 — 원작도 `encounterAttempts = 0`을 막힌 길에서까지
     // 지나간다. 안 그러면 리펠을 뿌린 동안 유예가 안 닫혀서, 리펠이 끝나는
@@ -127,7 +148,7 @@ export const encounterSystem = {
     // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
     // 표의 칸을 아예 안 굴린다. 뒤에 두면 배회는 「가끔 야생 대신」이 아니라
     // 「야생을 다 뽑고 나서 덮어쓰는 것」이 되어 확률이 달라진다
-    const roam = encounters.roamerHere?.(world.mapId, rng) ?? null
+    const roam = radar === null ? encounters.roamerHere?.(world.mapId, rng) ?? null : null
     if (roam) {
       // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —
       // 뒤의 야생으로 넘어가지 않는다
@@ -146,7 +167,16 @@ export const encounterSystem = {
         trophy: world.mapId === MAP_TROPHY_GARDEN ? encounters.trophy ?? undefined : undefined,
         pick: (land) => forcedSlot(speciesOf(land), lead, typeOf, rng),
         bump: (land, slot) => higherLevelSlot(land, lead, slot, rng),
+        radarHard: radar?.shake === 1,
       })
+
+    // 레이더 판은 사슬이 뒤를 맡는다 — 같은 종이면 이어 내고, 다른 종이면
+    // 사슬이 끊긴다. **리펠도 특성도 이 판은 못 막는다**(원작이 레이더 갈래에서
+    // 그 둘을 안 부른다)
+    if (radar !== null) {
+      encounters.pending = encounters.radarEncounter?.(radar, got) ?? got
+      return
+    }
 
     // ⚠️ **레벨을 뽑은 다음에 막는다.** 날카로운눈·위협도 리펠도 야생의 레벨을
     // 봐야 판정이 된다 — 원작도 `TryGenerateWildMon` 안, 칸과 레벨을 정한

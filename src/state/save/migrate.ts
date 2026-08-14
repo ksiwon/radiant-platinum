@@ -18,6 +18,7 @@ import { newPoketch } from '../../engine/world/poketch'
 import { newDistortionState } from '../../engine/world/distortion'
 import { newHallOfFame } from '../../engine/world/hallOfFame'
 import { newHoneyTrees } from '../../engine/world/honeyTree'
+import { newRadarRecords, RADAR_BATTERY_STEPS } from '../../engine/world/pokeRadar'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -254,6 +255,18 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     // 꿀 나무 타이머의 기준이 되는 「마지막으로 본 분」. **지금으로 세운다** —
     // 0으로 두면 다음에 켤 때 수백만 분이 지난 것으로 읽힌다
     daily: { ...(data.daily as object), minute: minuteNumber(new Date()) },
+  }),
+
+  /**
+   * 22 → 23. 포켓몬레이더가 생겼다 (PARITY §6.5).
+   *
+   * ⚠️ **배터리를 다 채워 준다.** 0으로 두면 예전 리포트가 오십 걸음을 다시
+   * 걸어야 처음 켤 수 있다 — 그 걸음은 이미 걸은 것이다. 기록 셋은 빈 칸이다
+   */
+  22: (data) => ({
+    ...data,
+    version: 23,
+    radar: { charge: RADAR_BATTERY_STEPS, records: newRadarRecords() },
   }),
 }
 

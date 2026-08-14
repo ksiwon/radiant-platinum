@@ -22,8 +22,11 @@ import { BIKE_WHY, bikeBlock, isOnCyclingRoad } from '../../engine/actor/bike'
 import { onElevatedBridge } from '../../engine/actor/bridge'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
 import { castRod } from '../../scene/fishingSystem'
+import { turnOnRadar } from '../../scene/pokeRadar'
 import { isSurfable } from '../../engine/map/zone'
-import { frontTile } from '../../engine/script/field'
+import { fieldScripts, frontTile } from '../../engine/script/field'
+import { SYSTEM_FLAG } from '../../engine/script/commands'
+import { isRadarGrass } from '../../engine/battle/encounter'
 import { mapById, world } from '../../engine/map/world'
 import { worldState } from '../../state/worldState'
 import { itemIcon } from './itemIcon'
@@ -135,6 +138,11 @@ export function BagScreen() {
       repelSteps: steps.repel,
       waterAhead: grid !== null && isSurfable(grid.behavior(front.x, front.z)),
       onBridge: onElevatedBridge(),
+      // ⚠️ 레이더는 **선** 칸을 본다 — 낚싯대가 앞 칸을 보는 것과 다르다
+      inTallGrass: grid !== null
+        && isRadarGrass(grid.behaviorAtWorld(p.position.x, p.position.z)),
+      hasPartner: fieldScripts.vars?.checkFlag(SYSTEM_FLAG.hasPartner) === true,
+      onBike: p.cycling,
     })
 
     switch (action.kind) {
@@ -186,6 +194,12 @@ export function BagScreen() {
         return
       case 'missing':
         setDenied(`${action.what}이(가) 아직 없다.`)
+        return
+      case 'radar':
+        // 켜는 순간 가방을 닫는다. 원작도 필드 과제(`RefreshRadarChain`)가
+        // 화면을 가져간다 — 배터리가 덜 찼는지는 그쪽이 롬의 대사로 말한다
+        turnOnRadar()
+        closeAll()
         return
       default:
         setDenied(action.why)

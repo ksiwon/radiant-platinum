@@ -80,6 +80,8 @@ import { resetVeilstoneGym, veilstoneBusy, veilstoneTick } from './veilstoneGym'
 import { resetHearthomeGym } from './hearthomeGym'
 import { resetHoneyShake } from './honeyTree'
 import { resetLakeGuardianUnits } from './lakeGuardianUnits'
+import { clearRadar, installRadar } from './pokeRadar'
+import { RadarPatches } from './RadarPatches'
 import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
@@ -267,6 +269,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 감금장치는 맵에 들어설 때 스크립트가 다시 세운다 — 여기서 지워 두지
       // 않으면 열어 놓고 나갔다 온 통이 옛 상태로 한 프레임 그려진다
       resetLakeGuardianUnits()
+      // 맵을 옮기면 사슬이 끊긴다 (`FieldMapChange`의 `RadarChain_Clear`)
+      clearRadar()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
@@ -428,6 +432,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   // 배회 포켓몬을 조우 시스템에 꽂는다 (PARITY §6.3)
   useEffect(() => installRoamers(), [])
+  useEffect(() => installRadar(), [])
 
   useEffect(() => {
     loadGenericNames(locale)
@@ -681,6 +686,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         level: e.level,
         form: e.form,
         roamer: e.roamer,
+        shiny: e.shiny,
       })
     }
   })
@@ -764,6 +770,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       */}
       <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
       <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} />
+      {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
+      <RadarPatches grid={grid} />
       <DoorAnimations grid={grid} />
       <DistortionProps mapId={mapId} />
       <FieldWeather kind={weather} />

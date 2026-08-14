@@ -44,6 +44,7 @@ import {
   fillPp,
   genderOf,
   PARTY_MAX,
+  shinyPersonality,
   statsOf,
   type PokemonInstance,
   type Status,
@@ -113,6 +114,12 @@ export interface WildStart {
    * 안 넘기고, 그러면 기본 모습이다
    */
   form?: number
+  /**
+   * 색이 다른 개체로 만들어야 하는가 (PARITY §6.5).
+   *
+   * 레이더 사슬만 세운다. 다른 조우는 성격값이 알아서 정한다
+   */
+  shiny?: boolean
   /**
    * 「운명적인 만남」인가 (`MON_DATA_FATEFUL_ENCOUNTER`).
    *
@@ -381,6 +388,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         })
         foe.form = wild.form ?? 0
         if (wild.fateful === true) foe.origin = { ...foe.origin, fateful: true }
+        // ⚠️ **레이더 사슬만 색을 못 박는다** (PARITY §6.5). 원작이 그 자리에서
+        // 색이 다르게 나올 때까지 성격값을 다시 굴린다
+        // (`CreateWildMonShinyWithGenderOrNature`) — 우리도 같은 자리에서 찾는다
+        if (wild.shiny === true) {
+          const me = useSaveStore.getState().trainer
+          foe.pid = shinyPersonality(
+            ((me.secretId << 16) | me.id) >>> 0, (n) => Math.floor(Math.random() * n))
+        }
         const foeSpecies = species.of(foe)
         foe.hp = statsOf(foe, foeSpecies).hp
         // ⚠️ **배회는 그때그때 만드는 개체가 아니다** (PARITY §6.3). 성격값과
@@ -662,6 +677,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
             playtimeMs: save.trainer.playtimeMs,
           })
         }
+        // 레이더 사슬은 **잡거나 쓰러뜨린 판만** 산다 (PARITY §6.5).
+        // 도망쳤거나 졌으면 끊긴다 — 원작이 `Encounter_ProcessResult`에서
+        // 그 둘만 통과시킨다
+        encounters.radarAfterBattle?.(
+          get().outcome === 'caught' ? 'captured' : get().outcome === 'win' ? 'win' : 'other')
         encounters.roamerAfterBattle?.({
           met: roamerMet,
           mapId: world.mapId,

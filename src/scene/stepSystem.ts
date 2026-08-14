@@ -27,6 +27,7 @@ import {
 import { elapseHoneyTrees } from '../engine/world/honeyTree'
 import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
+import { radarStep } from './pokeRadar'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
 import { daycareStep } from '../engine/pokemon/breeding'
 import {
@@ -264,6 +265,10 @@ export const stepSystem = {
     // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
     // `poketchStep`이 앞에서 막는다
     poketchStep()
+
+    // 레이더 배터리가 한 걸음 찬다 (`RadarChargeStep`) — 가방에 있을 때만.
+    // 그리고 무더기가 화면 밖으로 나갔는지도 걸음마다 본다
+    radarStep()
 
     const save = useSaveStore.getState()
     const vars = fieldScripts.vars

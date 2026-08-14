@@ -142,6 +142,12 @@ maybe('인카운터 표', () => {
     return tables[m.encounters!]!
   }
 
+  /** 그 칸이 뽑히는 `rng()` 값. 가중치를 앞에서부터 더한 자리다 */
+  const pick = (slot: number): number => {
+    const before = LAND_SLOT_RATES.slice(0, slot).reduce((n, r) => n + r, 0)
+    return (before + 0.5) / 100
+  }
+
   it('183개 표가 있다', () => expect(tables.length).toBe(183))
 
   it('201번도로가 원작과 일치한다', () => {
@@ -161,6 +167,27 @@ maybe('인카운터 표', () => {
     expect(names[t.surf.slots[0]!.species]).toBe('고라파덕')
     expect(t.surf.slots[0]!.min).toBe(20)
     expect(t.surf.slots[0]!.max).toBe(30)
+  })
+
+  it('⚠️ 강하게 흔들리면 칸 4·5·10·11의 **종만** 갈린다 (PARITY §6.5)', () => {
+    const t = table('R201')
+    // 레이더 종이 넷 다 있는 표라야 견줄 수 있다
+    expect(t.radar.filter((s) => s > 0)).toHaveLength(4)
+    for (const [i, slot] of [4, 5, 10, 11].entries()) {
+      const got = rollLand(t, seq(pick(slot)), undefined, { radarHard: true })
+      expect(got?.species, `칸 ${String(slot)}`).toBe(t.radar[i])
+      // ⚠️ 레벨은 원래 칸 것이다 — 종만 갈아 끼운다
+      expect(got?.level).toBe(t.land[slot]!.level)
+    }
+    // 나머지 칸은 그대로다
+    const other = rollLand(t, seq(pick(0)), undefined, { radarHard: true })
+    expect(other?.species).toBe(t.land[0]!.species)
+  })
+
+  it('약하게 흔들린 자리는 표를 안 건드린다', () => {
+    const t = table('R201')
+    const got = rollLand(t, seq(pick(4)), undefined, { radarHard: false })
+    expect(got?.species).toBe(t.land[4]!.species)
   })
 
   it('슬롯 0을 지목하면 그 슬롯이 나온다', () => {
