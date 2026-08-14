@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_105
+const RUNNING_SITES = 54_109
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 363
+const IMPLEMENTED_COMMANDS = 366
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -616,6 +616,10 @@ const IDLE_COMMANDS = [
   // `AddTrophyGardenMon`은 포켓몬저택 사무실, `EnableSwarms`는 신오방송국이다
   'AddTrophyGardenMon', 'GetTrophyGardenSlot1Species',
   // 레벨을 세거나 성격으로 찾는 자리도 파티가 있어야 열린다
+  // ⚠️ **화석 셋은 플래그 121이 서 있어야 닿는다.** 탄갱박물관 안쪽 사람의
+  // 첫 갈래가 그 플래그로 갈리고, 훑기는 늘 깨끗한 플래그라 「아직 안 열렸다」
+  // 쪽으로 빠진다. 셋 다 실제로 도는 것은 `script/fossil.test.ts`가 본다
+  'GetFossilCount', 'GetSpeciesFromFossil', 'FindFossilAtThreshold',
   'CountPartyMonsBelowLevelThreshold', 'FindPartySlotWithNature',
   'EnableSwarms',
   // ⚠️ **기술 되살리기 다섯은 파티에서 한 마리를 고른 뒤에 온다.** 고르는

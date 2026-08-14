@@ -21,6 +21,7 @@ import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { TREE_STATUS } from '../world/honeyTree'
+import { fossilAtThreshold, fossilCount, speciesFromFossil } from '../world/fossil'
 import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
 import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
@@ -2463,6 +2464,43 @@ on('WaitForAnimation', (ctx) => {
 on('UnloadAnimation', (ctx) => {
   const tag = ctx.readByte()
   ctx.host.world.services.door?.unload(tag)
+  return false
+})
+
+// ── 화석 (PARITY §4.9) ───────────────────────────────────────────────────────
+
+/** 가방의 화석을 다 센다 (`ScrCmd_GetFossilCount`) */
+on('GetFossilCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const bag = ctx.host.world.services.bag
+  ctx.host.vars.set(dest, bag === undefined ? 0 : fossilCount((item) => bag.quantity(item)))
+  return false
+})
+
+/** 그 화석이 무엇이 되는가 (`ScrCmd_GetSpeciesFromFossil`) */
+on('GetSpeciesFromFossil', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const item = ctx.readVar()
+  ctx.host.vars.set(dest, speciesFromFossil(item))
+  return false
+})
+
+/**
+ * 목록의 N번째 화석 (`ScrCmd_FindFossilAtThreshold`).
+ *
+ * ⚠️ **답이 둘이다** — 도구 번호와 표에서의 차례. 원작이 변수 둘을 잇달아
+ * 읽으므로 순서를 바꾸면 그 뒤 인자가 통째로 밀린다
+ */
+on('FindFossilAtThreshold', (ctx) => {
+  const destItem = ctx.readHalfWord()
+  const destIndex = ctx.readHalfWord()
+  const threshold = ctx.readVar()
+  const bag = ctx.host.world.services.bag
+  const got = bag === undefined
+    ? { item: 0, index: 0 }
+    : fossilAtThreshold((item) => bag.quantity(item), threshold)
+  ctx.host.vars.set(destItem, got.item)
+  ctx.host.vars.set(destIndex, got.index)
   return false
 })
 
