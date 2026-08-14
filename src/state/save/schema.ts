@@ -34,6 +34,9 @@ import {
   MAX_TOTAL_ENTRIES,
 } from '../../engine/world/hallOfFame'
 import { MAX_COINS } from '../../engine/world/coins'
+import {
+  HONEY_TREE_COUNT, SLATHER_MINUTES as HONEY_SLATHER_MINUTES,
+} from '../../engine/world/honeyTree'
 import { POCKET_COUNT } from '../../data/schema'
 import type { SaveData } from '../saveStore'
 
@@ -271,6 +274,8 @@ export const saveSchema = z.object({
     rand: int(0, 0xffffffff),
     /** 마지막으로 넘긴 날. 지역 자정 기준의 일련번호다 */
     day: z.number().int(),
+    /** 마지막으로 본 분. 꿀 나무·나무열매 밭 타이머의 기준이다 */
+    minute: z.number().int(),
     /** 무리가 열렸는가 (`SpecialEncounter_EnableSwarms`) */
     swarms: z.boolean(),
     /** 트로피가든 두 자리. 표(16종)의 자리 번호고 없으면 -1 */
@@ -438,6 +443,31 @@ export const saveSchema = z.object({
 
   /** 게임코너의 코인. 상한이 `MAX_COINS`다 */
   coins: int(0, MAX_COINS),
+
+  /**
+   * 꿀 나무 21그루 (PARITY §6.6) — `PlayerHoneyTreeStates`.
+   *
+   * ⚠️ **맨 뒤에 붙인다.** 검사합이 `JSON.stringify`라 칸 차례가 스토어의
+   * `snapshot()`과 같아야 한다.
+   *
+   * ⚠️ **바르는 순간 무엇이 붙을지가 정해진다.** 그루마다 남은 분·무리·자리·
+   * 표·흔들림을 다 적어 두지 않으면 여섯 시간 뒤에 그 답을 다시 만들 수가 없다
+   */
+  honeyTrees: z.object({
+    trees: z
+      .array(
+        z.object({
+          minutesRemaining: int(0, HONEY_SLATHER_MINUTES),
+          group: int(0, 3),
+          slot: int(0, 5),
+          table: int(0, 2),
+          shakes: int(0, 3),
+        }),
+      )
+      .length(HONEY_TREE_COUNT),
+    /** 마지막으로 바른 그루. 아직 없으면 −1 */
+    lastSlathered: int(-1, HONEY_TREE_COUNT - 1),
+  }),
 })
 
 /**

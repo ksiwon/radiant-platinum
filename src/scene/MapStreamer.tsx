@@ -78,6 +78,7 @@ import { eternaTick, resetEternaGym } from './eternaGym'
 import { canalaveBusy, canalaveTick, resetCanalaveGym } from './canalaveGym'
 import { resetVeilstoneGym, veilstoneBusy, veilstoneTick } from './veilstoneGym'
 import { resetHearthomeGym } from './hearthomeGym'
+import { resetHoneyShake } from './honeyTree'
 import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
 import { NpcModels } from './NpcModels'
@@ -259,6 +260,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       resetCanalaveGym()
       resetVeilstoneGym()
       resetHearthomeGym()
+      // 배틀이 끝나 멈춰 둔 꿀 나무 표시도 맵과 함께 풀린다 — 다음 나무는
+      // 자기 상태대로 다시 흔들려야 한다 (PARITY §6.6)
+      resetHoneyShake()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()

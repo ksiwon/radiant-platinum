@@ -21,7 +21,10 @@ import {
   distortionActive, distortionMoved, distortionRebindPlatform, distortionStepped,
 } from './distortion'
 import { pushDirection } from '../engine/input/move'
-import { dayNumber, rollOver, swarmMap, trophySpecies } from '../engine/world/daily'
+import {
+  dayNumber, elapseMinutes, minuteNumber, rollOver, swarmMap, trophySpecies,
+} from '../engine/world/daily'
+import { elapseHoneyTrees } from '../engine/world/honeyTree'
 import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
@@ -152,7 +155,8 @@ export function resetStepTile(): void {
  */
 function checkDay(): void {
   const save = useSaveStore.getState()
-  const today = dayNumber(new Date())
+  const now = new Date()
+  const today = dayNumber(now)
   const daily = rollOver(save.daily, today)
   if (daily !== save.daily) {
     // 포켓루스는 **하루에 한 칸씩** 낫는다 (`Party_UpdatePokerusStatus`).
@@ -167,6 +171,26 @@ function checkDay(): void {
   encounters.swarmAt = swarmMap(daily)
   const garden = encounters.ex?.trophyGarden
   encounters.trophy = garden ? trophySpecies(daily, garden, save.nationalDex) : null
+  checkMinutes(now)
+}
+
+/**
+ * 분 단위로 흐르는 것 (`inline_020559DC` → `sub_02055B64`).
+ *
+ * 지금은 꿀 나무 스물한 그루뿐이다 (PARITY §6.6). **켜 둔 동안만 세지
+ * 않는다** — 마지막으로 본 분을 리포트에 두고 그 차이를 쓴다. 원작이 DS의
+ * 시계를 같은 방식으로 본다
+ */
+function checkMinutes(now: Date): void {
+  const save = useSaveStore.getState()
+  const stepped = elapseMinutes(save.daily, minuteNumber(now))
+  if (stepped.state === save.daily) return
+  const honeyTrees = elapseHoneyTrees(save.honeyTrees, stepped.minutes)
+  useSaveStore.setState(
+    honeyTrees === save.honeyTrees
+      ? { daily: stepped.state }
+      : { daily: stepped.state, honeyTrees },
+  )
 }
 
 /**

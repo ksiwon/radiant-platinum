@@ -48,12 +48,33 @@ export function dayNumber(at: Date): number {
   )
 }
 
+/**
+ * 이 순간이 몇 분째인가 — 날 수와 같은 기준의 분 일련번호.
+ *
+ * 원작은 마지막으로 본 날짜·시각을 리포트에 통째로 두고
+ * (`GameTime.date`·`.time`) 지금과의 초 차이를 60으로 나눈다
+ * (`inline_020559DC`). 지나간 분이 필요한 것은 꿀 나무와 나무열매 밭이고,
+ * 둘 다 **게임을 꺼 둔 동안에도 흐른다** — 그래서 「켜 있는 동안 세기」로는
+ * 못 만든다
+ */
+export function minuteNumber(at: Date): number {
+  return Math.floor((at.getTime() - at.getTimezoneOffset() * 60_000) / 60_000)
+}
+
 /** 세이브가 들고 있는 날짜 상태 */
 export interface DailyState {
   /** 지금 굴려져 있는 값. 빈티나·무리·대습초원이 이걸 본다 */
   rand: number
   /** 마지막으로 넘긴 날 (`dayNumber`) */
   day: number
+  /**
+   * 마지막으로 본 분 (`minuteNumber`). 꿀 나무·나무열매 밭이 이 차이를 쓴다.
+   *
+   * ⚠️ **날과 따로 든다.** 날은 하루에 한 번 굴리는 씨앗의 기준이고 이쪽은
+   * 분 단위로 흐르는 타이머의 기준이다 — 한 칸으로 합치면 자정을 안 넘긴
+   * 여섯 시간을 못 잰다
+   */
+  minute: number
   /** 무리가 열렸는가 (`SpecialEncounter_EnableSwarms`) */
   swarms: boolean
   /**
@@ -65,8 +86,27 @@ export interface DailyState {
 
 export const TROPHY_SLOT_NONE = -1
 
-export function newDaily(seed: number, day: number): DailyState {
-  return { rand: seedRand(seed), day, swarms: false, trophy: [TROPHY_SLOT_NONE, TROPHY_SLOT_NONE] }
+export function newDaily(seed: number, day: number, minute = day * 1440): DailyState {
+  return {
+    rand: seedRand(seed), day, minute, swarms: false,
+    trophy: [TROPHY_SLOT_NONE, TROPHY_SLOT_NONE],
+  }
+}
+
+/**
+ * 마지막으로 본 뒤 몇 분이 지났는가 (`inline_020559DC`).
+ *
+ * ⚠️ **시계를 뒤로 돌리면 0이다.** 원작이 그 자리에서 지나간 시간을 안 세고
+ * 기준만 지금으로 옮긴다 — 안 그러면 시계를 돌려 가며 꿀 나무를 익힐 수 있다
+ *
+ * @returns 지나간 분과, 그만큼을 반영한 새 상태
+ */
+export function elapseMinutes(
+  state: DailyState, now: number,
+): { minutes: number, state: DailyState } {
+  if (now === state.minute) return { minutes: 0, state }
+  if (now < state.minute) return { minutes: 0, state: { ...state, minute: now } }
+  return { minutes: now - state.minute, state: { ...state, minute: now } }
 }
 
 /**

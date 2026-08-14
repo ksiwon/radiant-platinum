@@ -48,6 +48,12 @@ import { entryNumber } from '../engine/world/hallOfFame'
 import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
 import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
+import { pushesLevel } from '../engine/battle/encounterLead'
+import {
+  honeyTreeLevel, honeyTreeOf, honeyTreeSpecies, honeyTreeStatus, isMunchlaxTree,
+  slatherTree, TREE_STATUS, unslatherTree, type HoneyTreeState,
+} from '../engine/world/honeyTree'
+import { honeyShake } from './honeyTree'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import {
   initPlatformLift, liftSound, platformLiftBusy, platformLiftNotUsedWhenEnteredMap,
@@ -75,12 +81,13 @@ function propModelUnderPlayer(): number {
   const grid = mapWorld.grid
   if (grid === null) return -1
   const p = worldState.player.position
-  const tx = Math.floor(p.x), tz = Math.floor(p.z)
-  const chunk = grid.chunkIndexAt(tx, tz)
-  for (const b of grid.meta.buildings[String(chunk)] ?? []) {
-    if (Math.floor(b.x) === tx && Math.floor(b.z) === tz) return b.model
-  }
-  return -1
+  return grid.propModelAt(Math.floor(p.x), Math.floor(p.z))
+}
+
+/** 지금 선 맵의 꿀 나무. 나무가 없는 맵이면 null */
+function honeyTreeHere(): HoneyTreeState | null {
+  const at = honeyTreeOf(mapWorld.mapId)
+  return at < 0 ? null : useSaveStore.getState().honeyTrees.trees[at] ?? null
 }
 
 /** 그 파티 자리가 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`) */
@@ -1210,6 +1217,58 @@ const services: FieldServices = {
     waiting = true
     void useBattleStore.getState().startWild({ species, level, form: GIRATINA_ORIGIN })
       .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+  },
+
+  /**
+   * 꿀 나무 (PARITY §6.6).
+   *
+   * 지금 선 맵이 스물한 그루 중 하나라는 것은 스크립트가 열린 것으로 이미
+   * 정해져 있다 (`tryHoneyTree`가 소품을 보고 연다)
+   */
+  honeyTree: {
+    status: () => {
+      const tree = honeyTreeHere()
+      return tree === null ? TREE_STATUS.bare : honeyTreeStatus(tree)
+    },
+    slather: () => {
+      const at = honeyTreeOf(mapWorld.mapId)
+      if (at < 0) return
+      const save = useSaveStore.getState()
+      // ⚠️ **트레이너 번호를 32비트로 넘긴다.** 보이는 다섯 자리만 주면
+      // 먹이몬 나무 넷 중 둘이 늘 0·1번으로 굳는다 (`munchlaxTrees`)
+      const id32 = ((save.trainer.secretId << 16) | save.trainer.id) >>> 0
+      const roll = (): number => Math.floor(Math.random() * 100)
+      useSaveStore.setState({
+        honeyTrees: slatherTree(save.honeyTrees, at, isMunchlaxTree(id32, at), {
+          keep: roll(), group: roll(), slot: roll(), shakes: roll(),
+        }),
+      })
+    },
+    startBattle: () => {
+      const at = honeyTreeOf(mapWorld.mapId)
+      const tree = honeyTreeHere()
+      const tables = encounters.ex?.honeyTree
+      if (at < 0 || tree === null || !tables) return
+      const species = honeyTreeSpecies(tree, tables)
+      if (species === 0) return
+      // ⚠️ **싸우기 전에 떼어 낸다** (`HoneyTree_Unslather`가
+      // `CreateWildMon_HoneyTree` 안에 있다) — 도망쳐도 그 나무는 비었다
+      useSaveStore.setState({
+        honeyTrees: unslatherTree(useSaveStore.getState().honeyTrees, at),
+      })
+      // 선두 특성은 `stepSystem`이 프레임마다 넘겨 둔 것을 쓴다 —
+      // 여기서 다시 세면 같은 규칙이 두 벌이 된다
+      const boost = pushesLevel(encounters.mods.lead)
+      const level = honeyTreeLevel(
+        Math.floor(Math.random() * 11), boost, Math.floor(Math.random() * 2),
+      )
+      battleResult = null
+      battleMask = null
+      waiting = true
+      void useBattleStore.getState().startWild({ species, level })
+        .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+    },
+    stopShaking: () => { honeyShake.stop?.(honeyTreeOf(mapWorld.mapId)) },
   },
 
   /** 「운명적인 만남」 (`Encounter_NewFatefulVsSpeciesAtLevel`) */

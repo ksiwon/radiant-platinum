@@ -11,12 +11,13 @@
 // ⚠️ **없는 과거를 지어내지 않는다.** 1~6으로 저장된 리포트는 세상에 없다 —
 // 판이 7에서 처음 올랐고, 그래서 표가 7에서 시작한다.
 import { newDaycare } from '../../engine/pokemon/breeding'
-import { dayNumber, newDaily } from '../../engine/world/daily'
+import { dayNumber, minuteNumber, newDaily } from '../../engine/world/daily'
 import { newRecentRoutes, newRoamers } from '../../engine/world/roamer'
 import { newJournal } from '../../engine/world/journal'
 import { newPoketch } from '../../engine/world/poketch'
 import { newDistortionState } from '../../engine/world/distortion'
 import { newHallOfFame } from '../../engine/world/hallOfFame'
+import { newHoneyTrees } from '../../engine/world/honeyTree'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -238,6 +239,22 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
    * (`Pokemon_ApplyPokerus`), 65536분의 3이라 그 희소함이 이 규칙의 전부다
    */
   20: (data) => ({ ...data, version: 21, ...stampMons(data, { pokerus: 0 }) }),
+
+  /**
+   * 21 → 22. 꿀 나무 21그루가 생겼다 (PARITY §6.6).
+   *
+   * ⚠️ **스물한 그루가 다 맨 나무다.** 예전 리포트가 어느 나무에 언제 꿀을
+   * 발랐는지는 아무 데도 안 남아 있다 — 남은 분을 지어내면 여섯 시간 뒤에
+   * 없던 포켓몬이 붙는다. 마지막으로 바른 그루도 −1(아직 없다)이다
+   */
+  21: (data) => ({
+    ...data,
+    version: 22,
+    honeyTrees: newHoneyTrees(),
+    // 꿀 나무 타이머의 기준이 되는 「마지막으로 본 분」. **지금으로 세운다** —
+    // 0으로 두면 다음에 켤 때 수백만 분이 지난 것으로 읽힌다
+    daily: { ...(data.daily as object), minute: minuteNumber(new Date()) },
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

@@ -20,6 +20,7 @@ import { DIR, parseMovements } from './movement'
 import { FLAG_HAS_POKEDEX, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
+import { TREE_STATUS } from '../world/honeyTree'
 import { LIST_MENU_NO_SELECTION_YET } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
@@ -2014,6 +2015,37 @@ on('StartTrainerBattle', (ctx) => {
   // 화면이 배틀로 넘어간다. 돌아올 때까지 이 자리에 선다
   ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
   return true
+})
+
+// ── 꿀 나무 (PARITY §6.6 · `overlay005/honey_tree.c`) ───────────────────────
+//
+// 공용 스크립트 8번 하나가 네 명령을 다 쓴다. 나무 앞에서 A를 누르면
+// 「꿀이 발라져 있다」·「달콤한 냄새」·붙은 마리와의 배틀 셋으로 갈린다
+
+on('SlatherHoneyTree', (ctx) => {
+  ctx.host.world.services.honeyTree?.slather()
+  return false
+})
+
+on('GetHoneyTreeStatus', (ctx) => {
+  // 안 붙어 있으면 「맨 나무」다. 0을 주면 스크립트가 세 갈래를 다 놓치고
+  // 아무 말도 없이 끝난다 (`TREE_STATUS_BARE`가 1이지 0이 아니다)
+  ctx.host.vars.set(
+    ctx.readHalfWord(), ctx.host.world.services.honeyTree?.status() ?? TREE_STATUS.bare,
+  )
+  return false
+})
+
+on('StartHoneyTreeBattle', (ctx) => {
+  ctx.host.world.services.honeyTree?.startBattle()
+  // 트레이너전과 같다 — 화면이 배틀로 넘어가고 결과가 올 때까지 선다
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+on('StopHoneyTreeShaking', (ctx) => {
+  ctx.host.world.services.honeyTree?.stopShaking()
+  return false
 })
 
 on('CheckWonBattle', (ctx) => {

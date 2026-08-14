@@ -4,6 +4,8 @@
 // 맵에서는 소품이 움직인다 — 승강판이 올라가고, 물가시티의 물바닥이 오르내리고,
 // 선단시티의 톱니가 돌고, 영원시티의 시곗바늘이 돈다.
 //
+// 꿀 나무도 같은 자리에 있다 (PARITY §6.6) — 여섯 시간이 지난 나무가 흔들린다.
+//
 // 그 소품들만 여기로 모은다. 규칙은 둘이다:
 //
 //   ① 배치 기록에 있으면 **청크가 안 그린다** (`isFeaturePlacement`)
@@ -18,6 +20,7 @@ import { sunyshoreProps } from './sunyshoreGym'
 import { eternaProps } from './eternaGym'
 import { canalaveProps } from './canalaveGym'
 import { veilstoneProps } from './veilstoneGym'
+import { honeyTreeProp } from './honeyTree'
 
 /** 지금 움직이고 있는 소품 하나 */
 export interface FeatureProp {
@@ -40,6 +43,8 @@ export interface FeatureProp {
   rotY?: number
   /** x축 회전(라디안). 벽에 붙은 톱니만 쓴다 */
   rotX?: number
+  /** z축 회전(라디안). 밑동을 축으로 흔들리는 꿀 나무만 쓴다 */
+  rotZ?: number
 }
 
 /**
@@ -57,6 +62,11 @@ export function featureProps(): FeatureProp[] {
   out.push(...eternaProps())
   out.push(...canalaveProps())
   out.push(...veilstoneProps())
+  // ⚠️ **꿀 나무는 흔들리지 않을 때도 여기서 세운다.** 청크는 소품 목록을
+  // 들어설 때 한 번 만들고 끝이라, 배틀이 끝나 흔들림이 멎는 순간 목록에서
+  // 빠지면 나무가 통째로 사라진다 — 스물한 맵에서는 늘 이쪽이 그린다
+  const honey = honeyTreeProp()
+  if (honey !== null) out.push({ key: '꿀나무', ...honey })
   return out
 }
 

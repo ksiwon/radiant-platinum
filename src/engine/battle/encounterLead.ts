@@ -99,8 +99,13 @@ export function leadHas(lead: Lead, ability: number): boolean {
   return !lead.isEgg && lead.ability === ability
 }
 
-/** 레벨을 밀어 올리는 셋 — 의욕·의기양양·프레셔가 같은 자리에 있다 */
-function pushesLevel(lead: Lead): boolean {
+/**
+ * 레벨을 밀어 올리는 셋 — 의욕·의기양양·프레셔가 같은 자리에 있다.
+ *
+ * 야생 조우(`higherLevelSlot`)와 꿀나무(`world/honeyTree`)가 같이 본다 —
+ * 원작도 `CreateWildMon_HoneyTree`가 이 셋을 그대로 늘어놓는다
+ */
+export function pushesLevel(lead: Lead): boolean {
   return leadHas(lead, LeadAbility.HUSTLE)
     || leadHas(lead, LeadAbility.VITAL_SPIRIT)
     || leadHas(lead, LeadAbility.PRESSURE)

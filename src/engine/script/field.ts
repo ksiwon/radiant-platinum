@@ -25,6 +25,7 @@ import {
 import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
+import { HONEY_TREE_MODEL } from '../world/honeyTree'
 import { obstacleAt } from '../actor/obstacles'
 import { HOP_TIME } from '../actor/ledge'
 import {
@@ -694,9 +695,35 @@ function tryTalk(): void {
   const sign = signAt(mapWorld.mapId, front.x, front.z, quarterOf(p.facing), vars)
   if (sign) { start(sign.script, header.scripts); return }
 
+  // ⚠️ **꿀 나무가 타일 판정보다 먼저다** (`field_control.c` 293줄) — 사람과
+  // 간판 다음, `Field_TileBehaviorToScript` 앞이다
+  if (tryHoneyTree(front, header.scripts)) return
+
   // 그래도 없으면 타일이 하는 말을 본다 (`Field_TileBehaviorToScript`)
   if (tryPC(front, header.scripts)) return
   tryFieldMove(front)
+}
+
+/** `SCRIPT_ID(COMMON_SCRIPTS, 8)` — `CommonScript_HoneyTree` */
+export const COMMON_SCRIPT_HONEY_TREE = 2008
+
+/**
+ * 앞의 꿀 나무에 A를 누른다 (`HoneyTree_TryInteract`).
+ *
+ * ⚠️ **북쪽을 볼 때만이다.** 원작이 `playerDir == DIR_NORTH`를 먼저 보고
+ * 그다음에야 앞 칸의 소품을 찾는다 — 나무는 칸 하나를 통째로 채워서 옆이나
+ * 위에서는 손이 안 닿는다. 이 조건이 없으면 나무 옆을 지나다 A를 눌러도
+ * 「꿀을 바를까?」가 뜬다.
+ *
+ * ⚠️ **간판이 아니라 소품이다.** 스물한 그루에는 BG 이벤트가 하나도 안 붙어
+ * 있고 배치표의 모델 번호(`honey_tree.nsbmd`)만이 나무를 가린다
+ */
+function tryHoneyTree(front: { x: number; z: number }, mapFile: number): boolean {
+  const grid = mapWorld.grid
+  if (!grid) return false
+  if (QUARTER_TO_DIR[quarterOf(worldState.player.facing)] !== DIR.north) return false
+  if (grid.propModelAt(front.x, front.z) !== HONEY_TREE_MODEL) return false
+  return start(COMMON_SCRIPT_HONEY_TREE, mapFile)
 }
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 18)` — 공용 스크립트 표의 `CommonScript_PC` */

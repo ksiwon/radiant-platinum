@@ -129,6 +129,22 @@ export interface FieldServices {
     /** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */
     resetCamera: () => void
   }
+  /**
+   * 꿀 나무 (PARITY §6.6 · `overlay005/honey_tree.c`).
+   *
+   * 공용 스크립트 8번이 쓰는 넷이다. 지금 선 맵이 스물한 곳 중 하나라는 것은
+   * 부르는 쪽이 안다 — 나무가 없는 맵에서는 스크립트 자체가 안 열린다
+   */
+  honeyTree?: {
+    /** `TREE_STATUS_*` — 1 맨 나무 · 2 발라 둠 · 3 붙었다 */
+    status: () => number
+    /** 꿀을 바른다 (`HoneyTree_SlatherTree`). 무엇이 붙을지가 여기서 정해진다 */
+    slather: () => void
+    /** 붙은 마리와 싸운다 (`Encounter_NewVsHoneyTree`) */
+    startBattle: () => void
+    /** 흔들림을 멈춘다 (`HoneyTree_StopShaking`) */
+    stopShaking: () => void
+  }
   /** 주인공의 세 좌표 (`ScrCmd_GetPlayer3DPos`). y는 이미 타일 단위다 */
   playerPos?: () => { x: number; y: number; z: number }
   /**

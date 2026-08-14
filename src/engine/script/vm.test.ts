@@ -489,9 +489,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_084
+const RUNNING_SITES = 54_089
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 356
+const IMPLEMENTED_COMMANDS = 360
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -546,6 +546,10 @@ const IDLE_COMMANDS = [
   // (`EnableSwarms`가 먼저다). 훑기는 깨끗한 세이브로 도니 그 가지에 못 든다
   'GetSwarmMapAndSpecies',
   'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
+  // ⚠️ **꿀 나무 셋은 가방에 꿀이 있어야 열린다.** 훑기의 가방은 비어 있어서
+  // `CheckItem ITEM_HONEY`가 0을 주고, 그러면 「맨 나무」 대사로 끝난다 —
+  // 상태를 묻는 `GetHoneyTreeStatus`까지는 밟힌다 (PARITY §6.6)
+  'SlatherHoneyTree', 'StartHoneyTreeBattle', 'StopHoneyTreeShaking',
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
   'BlackOutFromBattle2',

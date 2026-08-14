@@ -27,6 +27,7 @@ import { newDaycare, type DaycareState } from '../engine/pokemon/breeding'
 import {
   newRecentRoutes, newRoamers, type RecentRoutes, type Roamer,
 } from '../engine/world/roamer'
+import { newHoneyTrees, type HoneyTreesState } from '../engine/world/honeyTree'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
 import { newPoketch, type PoketchState } from '../engine/world/poketch'
 import { newDistortionState, type DistortionState } from '../engine/world/distortion'
@@ -232,6 +233,13 @@ export interface SaveData {
   /** 방금 떠나온 맵. 배회가 그리로는 안 간다 (`PlayerRecentRoutes`) */
   recentRoutes: RecentRoutes
   /**
+   * 꿀 나무 21그루 (PARITY §6.6).
+   *
+   * 무엇이 붙을지는 **바르는 순간** 정해지고 여섯 시간 뒤에 드러난다 —
+   * 그래서 남은 분만이 아니라 무리·자리·표·흔들림을 다 들고 있어야 한다
+   */
+  honeyTrees: HoneyTreesState
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -269,7 +277,7 @@ export interface SaveData {
   coins: number
 }
 
-export const SAVE_VERSION = 21
+export const SAVE_VERSION = 22
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -349,6 +357,7 @@ export function createNewSave(): SaveData {
     distortion: newDistortionState(),
     hallOfFame: newHallOfFame(),
     coins: 0,
+    honeyTrees: newHoneyTrees(),
   }
 }
 
@@ -574,6 +583,9 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     distortion: s.distortion,
     hallOfFame: s.hallOfFame,
     coins: s.coins,
+    // ⚠️ **스키마와 같은 자리에 둔다.** 검사합이 `JSON.stringify`라
+    // 키 차례가 다르면 다시 읽은 리포트가 「다르다」로 떨어진다
+    honeyTrees: s.honeyTrees,
   }
 }
 

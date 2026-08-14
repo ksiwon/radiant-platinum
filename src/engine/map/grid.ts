@@ -126,6 +126,21 @@ export class MapGrid implements CollisionGrid {
     return i < 0 ? -1 : this.zoneOfChunk[i]!
   }
 
+  /**
+   * 그 칸에 놓인 소품의 모델 번호 (`FieldSystem_FindCollidingLoadedMapProp*`).
+   *
+   * 없으면 −1이다. 물가시티 체육관의 단추가 어느 색인지, 앞에 선 나무가 꿀
+   * 나무인지를 이걸로 가른다 — 배치표에는 모델 번호만 있고 이름이 없다
+   */
+  propModelAt(tx: number, tz: number): number {
+    const i = this.chunkIndexAt(tx, tz)
+    if (i < 0) return -1
+    for (const b of this.meta.buildings[String(i)] ?? []) {
+      if (Math.floor(b.x) === tx && Math.floor(b.z) === tz) return b.model
+    }
+    return -1
+  }
+
   /** 렌더 창: 주어진 청크를 중심으로 반경 r 이내의 실제 청크들 */
   chunksAround(centerIndex: number, r: number): MatrixChunk[] {
     if (centerIndex < 0) return []
