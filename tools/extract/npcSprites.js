@@ -67,7 +67,44 @@ function graphicsIds() {
     out.set(m[1], id)
     next = id + 1
   }
+  addBerryIds(out)
   return out
+}
+
+/**
+ * 나무열매 밭의 그림 번호 193개 (`constants/berry_tree_obj_event_gfx.h`).
+ *
+ * ⚠️ **여기만 열거형이 아니라 산술이다.** `OBJ_EVENT_GFX_BERRY_SPROUT`(4096)에서
+ * `열매 번호 × 3 + 단계`를 더한다 — 1 자람 · 2 꽃 · 3 열림. 그래서
+ * `object_events_gfx.txt`에는 싹 하나만 있고 나머지 192개가 안 나온다
+ */
+function addBerryIds(out) {
+  const base = out.get('OBJ_EVENT_GFX_BERRY_SPROUT')
+  if (base === undefined) throw new Error('OBJ_EVENT_GFX_BERRY_SPROUT를 못 찾았다')
+
+  const items = new Map()
+  let next = 0
+  for (const line of fs.readFileSync(
+    path.join(DECOMP, 'generated/items.txt'), 'utf8').split(/\r?\n/)) {
+    const t = line.trim()
+    if (t === '') continue
+    items.set(t, next)
+    next++
+  }
+  const firstBerry = items.get('ITEM_CHERI_BERRY')
+  if (firstBerry === undefined) throw new Error('ITEM_CHERI_BERRY를 못 찾았다')
+
+  const src = fs.readFileSync(
+    path.join(DECOMP, 'include/constants/berry_tree_obj_event_gfx.h'), 'utf8')
+  const re = /#define (OBJ_EVENT_GRAPHICS_\w+)\s+\(OBJ_EVENT_GFX_BERRY_SPROUT \+ BERRY_ID\((\w+)\) \* 3 \+ (\d)\)/g
+  let found = 0
+  for (const m of src.matchAll(re)) {
+    const item = items.get(`ITEM_${m[2]}_BERRY`)
+    if (item === undefined) throw new Error(`모르는 열매: ${m[2]}`)
+    out.set(m[1], base + (item - firstBerry) * 3 + Number(m[3]))
+    found++
+  }
+  if (found !== 64 * 3) throw new Error(`열매 그림이 ${found}개다 — 192여야 한다`)
 }
 
 /** `field_sprites.order` 줄 번호 = NARC 멤버 번호 */
@@ -197,7 +234,7 @@ function main() {
   const sprites = new Map()
   for (const [gfxName, sym] of pairTable(src, 'const UnkStruct_ov5_021ED2D0 Unk_ov5_021FC9B4')) {
     const gfx = ids.get(gfxName)
-    if (gfx === undefined) continue // 열매나무는 번호 공간이 다르다
+    if (gfx === undefined) continue // 파수꾼 등 표 밖의 이름
     const file = `${sym.replace(/_nsbtx$/, '')}.nsbtx`
     const at = order.map.get(file)
     if (at === undefined) continue // 파수꾼 줄
@@ -238,6 +275,12 @@ function main() {
   for (const n of ['OBJ_EVENT_GFX_PLAYER_M', 'OBJ_EVENT_GFX_PLAYER_F']) {
     const id = ids.get(n)
     if (id !== undefined && !used.has(id)) used.set(id, 0)
+  }
+  // 나무열매 밭 그림 193개도 배치표에 없다 (PARITY §4.6) — 배치되는 것은
+  // 흙(100번) 하나고 그 위의 싹·자람·꽃·열매는 자란 정도에 따라 코드가 갈아
+  // 끼운다. 번호는 싹 4096에서 열매마다 셋씩이다
+  for (let gfx = 4096; gfx <= 4096 + 64 * 3; gfx++) {
+    if (sprites.has(gfx) && !used.has(gfx)) used.set(gfx, 0)
   }
   // 깨어진 세계 사람들도 배치표에 없다 (`DIST_WORLD_ONLY`)
   for (const n of DIST_WORLD_ONLY) {
@@ -314,7 +357,7 @@ function main() {
     }
 
     manifest[gfx] = {
-      name: info.gfxName.replace(/^OBJ_EVENT_GFX_/, ''),
+      name: info.gfxName.replace(/^OBJ_EVENT_(GFX|GRAPHICS)_/, ''),
       w, h, frames: frames.length,
       seq,
       anims: info.anim,

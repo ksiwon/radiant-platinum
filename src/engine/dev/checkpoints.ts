@@ -40,6 +40,13 @@ export type Spot =
    * 이어져 있어서 문이 없다
    */
   | { kind: 'open' }
+  /**
+   * 그 칸에 그 쪽을 보고 선다.
+   *
+   * 워프에서도 풀에서도 못 잡는 자리를 위한 것이다 — 나무열매 밭이 그렇다.
+   * 밭 넷이 도로 한복판에 있어서 「풀 아무 데나」로는 영영 안 걸린다
+   */
+  | { kind: 'tile'; x: number; z: number; facing: number }
 
 /** 도착하자마자 열 배틀 */
 export type DevBattle =
@@ -431,6 +438,24 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 342,
     spot: { kind: 'grass' },
+    ...STAGE.pokedex,
+  },
+  {
+    id: 'berry',
+    label: '209번도로 나무열매 밭',
+    env: '야외 · 밭 넷이 나란히 (PARITY §4.6)',
+    try: [
+      '흙 위에 자란 것이 서 있다 — 새 리포트는 넷 다 열려 있다',
+      '북쪽을 보고 말을 걸면 딸지 묻는다',
+      '물뿌리개를 들면 좌우로 옮겨 서며 넷을 다 적신다',
+    ],
+    // ⚠️ **배치표 파일 번호가 아니라 맵 헤더 번호다.** 밭은 배치표 342번에
+    // 있는데 그 파일을 쓰는 헤더는 356(209번도로)이다 — 둘을 헷갈리면
+    // 지역명도 인카운터도 엉뚱한 맵의 것이 된다
+    map: 356,
+    // 밭 둘이 (566, 697)·(567, 697)에 있다. 그 바로 남쪽에서 북쪽을 본다 —
+    // 물뿌리개가 북쪽을 볼 때만 나오므로 이 방향이어야 한다
+    spot: { kind: 'tile', x: 566, z: 698, facing: Math.PI },
     ...STAGE.pokedex,
   },
   {
@@ -1309,6 +1334,7 @@ export function resolveSpot(
   grid: MapGrid, mapId: number, spot: Spot, warps: readonly Warp[],
 ): Placement | null {
   if (spot.kind === 'grass') return grassSpot(grid, mapId)
+  if (spot.kind === 'tile') return center(spot.x, spot.z, spot.facing)
   if (spot.kind === 'open') return openSpot(grid, mapId)
 
   const w = warps[spot.index]

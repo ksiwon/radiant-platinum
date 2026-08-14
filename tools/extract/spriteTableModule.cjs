@@ -94,9 +94,59 @@ function frameSeqFiles(src) {
     .map(([tag, sym]) => [tag, `${sym.replace(/_bin$/, '')}.bin`]))
 }
 
+/**
+ * 나무열매 밭의 그림 번호 (`constants/berry_tree_obj_event_gfx.h`).
+ *
+ * ⚠️ **여기만 열거형이 아니라 산술이다.** `OBJ_EVENT_GFX_BERRY_SPROUT`(4096)에서
+ * `열매 번호 × 3 + 단계`를 더한다 — 단계는 1 자람 · 2 꽃 · 3 열림. 그래서
+ * `object_events_gfx.txt`에는 싹 하나만 있고 나머지 192개가 안 나온다
+ */
+function berryGraphicsIds(ids) {
+  const base = ids.get('OBJ_EVENT_GFX_BERRY_SPROUT')
+  if (base === undefined) throw new Error('OBJ_EVENT_GFX_BERRY_SPROUT를 못 찾았다')
+  const items = enumValues('generated/items.txt')
+  const firstBerry = items.get('ITEM_CHERI_BERRY')
+  if (firstBerry === undefined) throw new Error('ITEM_CHERI_BERRY를 못 찾았다')
+
+  const src = fs.readFileSync(
+    path.join(DECOMP, 'include/constants/berry_tree_obj_event_gfx.h'), 'utf8')
+  const out = new Map()
+  const re = /#define (OBJ_EVENT_GRAPHICS_\w+)\s+\(OBJ_EVENT_GFX_BERRY_SPROUT \+ BERRY_ID\((\w+)\) \* 3 \+ (\d)\)/g
+  for (const m of src.matchAll(re)) {
+    const item = items.get(`ITEM_${m[2]}_BERRY`)
+    if (item === undefined) throw new Error(`모르는 열매: ${m[2]}`)
+    out.set(m[1], base + (item - firstBerry) * 3 + Number(m[3]))
+  }
+  if (out.size !== 64 * 3) throw new Error(`열매 그림이 ${out.size}개다 — 192여야 한다`)
+  return out
+}
+
+/** `generated/*.txt`를 C 열거형으로 푼다 (`berryInitModule.cjs`와 같은 식이다) */
+function enumValues(file) {
+  const out = new Map()
+  let next = 0
+  for (const raw of fs.readFileSync(path.join(DECOMP, file), 'utf8').split(/\r?\n/)) {
+    const line = raw.trim()
+    if (line === '' || line.startsWith('//')) continue
+    const eq = line.indexOf('=')
+    if (eq < 0) { out.set(line, next); next++; continue }
+    const name = line.slice(0, eq).trim()
+    const expr = line.slice(eq + 1).trim()
+    const value = /^-?\d+$/.test(expr) ? Number(expr)
+      : /^0x/i.test(expr) ? Number.parseInt(expr, 16)
+        : out.get(expr)
+    if (value === undefined) throw new Error(`열거형을 못 푼다: ${line}`)
+    out.set(name, value)
+    next = value + 1
+  }
+  return out
+}
+
 function main() {
   const src = fs.readFileSync(path.join(DECOMP, 'src/overlay005/ov5_021FAF40.c'), 'utf8')
   const ids = graphicsIds()
+  // 열매 밭 192개는 번호 공간이 달라 따로 푼다
+  for (const [name, id] of berryGraphicsIds(ids)) ids.set(name, id)
   const order = memberIndex()
   const basenames = textureBasenames()
   const motion = frameSeqOf(src)
@@ -107,7 +157,7 @@ function main() {
   const rows = []
   for (const [gfxName, sym] of pairTable(src, 'const UnkStruct_ov5_021ED2D0 Unk_ov5_021FC9B4')) {
     const gfx = ids.get(gfxName)
-    if (gfx === undefined) continue // 열매나무는 번호 공간이 다르다
+    if (gfx === undefined) continue // 파수꾼 등 표 밖의 이름
     const file = `${sym.replace(/_nsbtx$/, '')}.nsbtx`
     const at = order.map.get(file)
     if (at === undefined) continue // 파수꾼 줄
@@ -116,7 +166,7 @@ function main() {
     const seqAt = seqName === null ? undefined : order.map.get(seqName)
     rows.push({
       id: gfx,
-      name: gfxName.replace(/^OBJ_EVENT_GFX_/, ''),
+      name: gfxName.replace(/^OBJ_EVENT_(GFX|GRAPHICS)_/, ''),
       member: at,
       seq: seqAt === undefined ? null : seqAt,
       anims: (m === undefined ? null : anims.get(m.anim) ?? null),

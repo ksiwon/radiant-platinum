@@ -24,6 +24,19 @@ const DIRS = 4
 const PLAYERS = ['PLAYER_M', 'PLAYER_F']
 
 /**
+ * 나무열매 밭이 쓰는 그림 193개 (PARITY §4.6).
+ *
+ * ⚠️ **배치표에 안 나온다.** 배치되는 것은 흙(`BERRY_SOIL`, 100번) 하나고,
+ * 그 위에 서는 싹·자람·꽃·열매는 자란 정도에 따라 코드가 갈아 끼운다
+ * (`BerryPatchGraphics_GetGraphicsResourceID`). 배치표만 훑으면 통째로 빠져서
+ * **밭에 아무것도 안 자란 것처럼 보인다**.
+ *
+ * 번호는 산술이다 — 싹이 4096이고 그 뒤로 열매마다 자람·꽃·열림 셋씩이다
+ */
+const BERRY_GFX_FIRST = 4096
+const BERRY_GFX_LAST = BERRY_GFX_FIRST + 64 * 3
+
+/**
  * **깨어진 세계에만 서는 사람들.**
  *
  * ⚠️ 그 층의 사람과 바위는 맵 헤더의 배치표(`events.narc`)가 아니라 `tw_arc`의
@@ -143,6 +156,11 @@ export async function convertNpcSprites(ctx: ConvertContext): Promise<Produced> 
   for (const who of [...PLAYERS, ...DIST_WORLD_ONLY]) {
     const row = SPRITE_TABLE.find((r) => r[1] === who)
     if (row && !used.has(row[0])) used.set(row[0], 0)
+  }
+  // 밭 그림은 배치표에 없다 — 흙 위에 코드가 세운다
+  for (const row of SPRITE_TABLE) {
+    if (row[0] < BERRY_GFX_FIRST || row[0] > BERRY_GFX_LAST) continue
+    if (!used.has(row[0])) used.set(row[0], 0)
   }
 
   const out: Produced = new Map()
