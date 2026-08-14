@@ -124,6 +124,14 @@ export interface Checkpoint {
    * 화면이 이 둘을 다른 묶음으로 보여야 해서 여기에 적는다 (`stageOf`)
    */
   postGame?: boolean
+  /**
+   * VS시커가 바로 도는 판인가 (PARITY §7.9).
+   *
+   * 배터리를 가득 채우고, 첫 단계를 열고, **이 맵의 트레이너를 다 이긴 것으로**
+   * 적는다. 배지와 같은 갈래다 — 걸어서 채우려면 100걸음이고, 다 이겨 놓지
+   * 않으면 느낌표가 하나 뜨고 끝이라 재대결을 한 번도 못 본다
+   */
+  vsSeeker?: boolean
 }
 
 /**
@@ -159,6 +167,8 @@ const POTION = 17, SUPER_POTION = 26, HYPER_POTION = 25, FULL_RESTORE = 24
 const REVIVE = 28
 /** 영원시티 사이클숍 */
 const BICYCLE = 450
+/** 207번도로에서 라이벌이 준다 (`Route207_GiveVsSeeker`) */
+const VS_SEEKER = 443
 /** 비전머신 01·02·03·04 — 풀베기 · 공중날기 · 파도타기 · 괴력 */
 const HM_CUT = 420, HM_FLY = 421, HM_SURF = 422, HM_STRENGTH = 423
 
@@ -785,6 +795,25 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     battle: { kind: 'trainer', id: 318 },
   },
   {
+    id: 'vsseeker',
+    label: '209번도로 VS시커 (이긴 트레이너가 다섯)',
+    env: '야외 · 도로 (트레이너 열 중 다섯이 훑기 범위 안) · 배지 3개',
+    try: [
+      '가방에서 VS시커를 쓴다 — 배터리가 가득이라 바로 돈다',
+      '머리 위에 느낌표 둘이 뜨고 그 사람이 돌기 시작하는지 본다',
+      '⚠️ 절반씩 굴리므로 아무도 안 뜰 수 있다 — 100걸음 걸어 다시 채워 쓴다',
+      '돌고 있는 사람에게 말을 걸면 재대결이 시작되는지 본다',
+      '⚠️ 시작 방향에 닿으면 **반대로** 도는지 본다 — 보통 회전과 그것이 다르다',
+    ],
+    map: 356,
+    // 트레이너 열 중 다섯이 훑는 네모(가로 15 · 세로 14) 안에 드는 자리다.
+    // 자리마다 세어서 고른 값이라 여기서 한 칸만 옮겨도 넷으로 준다
+    spot: { kind: 'tile', x: 547, z: 717, facing: Math.PI },
+    ...STAGE.badge3,
+    items: [...STAGE.badge3.items, [VS_SEEKER, 1]],
+    vsSeeker: true,
+  },
+  {
     // ⚠️ **`C06`이 들판시티(Pastoria)이고 `C07`이 장막시티(Veilstone)다.**
     // 여기가 한동안 뒤바뀌어 있었다 — 백화점·게임코너를 보러 들어간 자리가
     // 습지 옆 마을이었고, 화면은 멀쩡한 도시라 아무도 안 걸렸다. 근거는 롬의
@@ -1236,6 +1265,24 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     map: 457,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'siwon',
+    label: '시원의 방 (축복시티 콘도미니엄 2층)',
+    env: '실내 · 원작에 없는 사람 하나 · 전당등록 뒤',
+    try: [
+      '시원이 서 있는지, 게임 디렉터 모델로 뜨는지 본다',
+      '말을 걸어 첫 선물(비밀의 열쇠)을 받아 본다 — 우리 글이 대사창에 뜬다',
+      '다시 말을 걸면 「아직 안 써 봤다」로 갈리는지 본다 (SIWON.md §5)',
+    ],
+    map: 25,
+    // 시원이 (16, 5)에 남쪽을 보고 선다. 그 한 칸 아래에서 북쪽을 본다 —
+    // 말을 거는 자리다 (`siwonPlace`)
+    spot: { kind: 'tile', x: 16, z: 6, facing: Math.PI },
+    ...STAGE.badge8,
+    // 밤에 뛰어들면 방이 너무 어두워 사람이 안 보인다. 확인하러 오는 자리다
+    hour: 12,
     postGame: true,
   },
   {

@@ -13,6 +13,8 @@ import { warpSystem } from '../engine/map/world'
 import { scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
+import { emoteFrame } from './emotes'
+import { vsSeekerFrame } from './vsSeeker'
 import { fishingSystem } from './fishingSystem'
 import { berryWateringSystem } from './berryPatches'
 import { stepTram } from './safari'
@@ -58,6 +60,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 습초원 열차가 정거장 사이를 간다 (PARITY §7.7)
       gameLoop.register({ fixedUpdate: stepTram })
       gameLoop.register(npcSystem)
+      // 머리 위 느낌표와 VS시커 훑기 (PARITY §1.13 · §7.9). 둘 다 프레임 수로
+      // 재는 연출이라 고정 스텝에서 밀어야 기계 속도와 무관하게 같은 길이가 된다
+      gameLoop.register({ fixedUpdate: emoteFrame })
+      gameLoop.register({ fixedUpdate: vsSeekerFrame })
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)
       // 한 칸을 밟은 뒤에 도는 것들 — 독·리펠·친밀도 (PARITY §1.1).

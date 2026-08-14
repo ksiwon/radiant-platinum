@@ -86,6 +86,8 @@ export type FieldItemAction =
   | { kind: 'screen'; screen: 'journal' }
   /** 포켓몬레이더를 켠다 (PARITY §6.5) */
   | { kind: 'radar' }
+  /** VS시커로 둘레를 훑는다 (PARITY §7.9) */
+  | { kind: 'vsSeeker' }
   /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
   | { kind: 'blocked'; why: string }
   /** 그 계통이 아직 없다 */
@@ -113,6 +115,13 @@ export interface FieldContext {
   hasPartner?: boolean
   /** 자전거를 탔는가 (`PlayerAvatar_GetPlayerState == 0x1`). 타고는 못 쓴다 */
   onBike?: boolean
+  /**
+   * 이 맵이 신오 본판 위인가 (`MapHeader_IsOnMainMatrix` — 행렬 번호가 0).
+   *
+   * VS시커가 이것 하나로 막힌다. 건물 안·굴·지하는 행렬이 따로라 못 쓴다 —
+   * 훑는 네모(가로 15 · 세로 14칸)가 실내에서는 벽 너머까지 닿기 때문이다
+   */
+  mainMatrix?: boolean
   /**
    * 지금 다리 **위**에 서 있는가 (`MapObject_IsStatusOnElevatedBridge`).
    *
@@ -146,7 +155,6 @@ const MISSING: Partial<Record<number, string>> = {
   [FieldUse.SPRAYDUCK]: '나무열매 밭',
   [FieldUse.MULCH]: '나무열매 밭',
   [FieldUse.HONEY]: '꿀나무',
-  [FieldUse.VS_SEEKER]: '배틀서처',
   [FieldUse.AZURE_FLUTE]: '천계의피리',
   [FieldUse.VS_RECORDER]: '배틀레코더',
   [FieldUse.GRACIDEA]: '폼 체인지',
@@ -200,6 +208,12 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       if (ctx.onBike === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       if (ctx.inTallGrass !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       return { kind: 'radar' }
+
+    // `CanUseVsSeeker` — **신오 본판 위에서만** 쓴다. 배터리가 덜 찼는지는
+    // 여기서 안 본다 (레이더와 같다) — 원작도 켠 다음에 롬의 대사로 말한다
+    case FieldUse.VS_SEEKER:
+      if (ctx.mainMatrix !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      return { kind: 'vsSeeker' }
 
     case FieldUse.ESCAPE_ROPE:
       // `CanUseEscapeRope` — 동굴이고 그 맵이 허락해야 한다

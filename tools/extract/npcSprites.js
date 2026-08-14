@@ -372,8 +372,12 @@ function main() {
   const hide = disguises(rom)
   fs.writeFileSync(path.join(OUT_DIR, 'disguise.png'), hide.png)
 
+  const marks = emotes(rom)
+  fs.writeFileSync(path.join(OUT_DIR, 'emote.png'), marks.png)
+
   const json = writeJson('npcSprites.json', manifest)
   console.log(`변장 더미 ${hide.count}장 · ${hide.size}×${hide.size}`)
+  console.log(`머리 위 표시 ${marks.count}장 · ${marks.size}×${marks.size}`)
   console.log(`mmodel.narc ${files.length}칸 = field_sprites.order ${order.count}줄`)
   console.log(`텍스처 이름 대조 ${named}/${named} — 어긋남 0`)
   console.log(`배치 ${placed}건 중 ${covered}건이 그림으로 떨어진다`)
@@ -424,6 +428,45 @@ function disguises(rom) {
     if (size === 0) size = tex.width
     if (tex.width !== size || tex.height !== size) {
       throw new Error(`변장 더미 ${member}가 ${tex.width}×${tex.height}다 — 표가 밀렸다`)
+    }
+    sheets.push(decode(tex0, tex, pal.offset))
+  }
+  const strip = new Uint8Array(size * sheets.length * size * 4)
+  for (let k = 0; k < sheets.length; k++) {
+    for (let y = 0; y < size; y++) {
+      const from = y * size * 4
+      strip.set(sheets[k].subarray(from, from + size * 4), (y * size * sheets.length + k * size) * 4)
+    }
+  }
+  return { png: encodePng(strip, size * sheets.length, size), count: sheets.length, size }
+}
+
+/**
+ * 머리 위에 뜨는 느낌표 둘 (PARITY §1.13 · §7.9).
+ *
+ * ⚠️ **`ov5_021F5C18`의 `{ 1, 12 }`는 NARC 번호가 아니라 자원 슬롯이다.**
+ * 슬롯에 무엇이 실리는지는 등록하는 쪽이 정한다 (`ov5_021F5AB4`·`ov5_021F5B00`) —
+ * 텍스처는 `ov5_021DFA3C(…, 4, …)`와 `(…, 13, …)`, 즉 `fldeff.narc`의 4·13번이다.
+ * 롬 안의 이름이 그걸 다시 확인해 준다: `sisen_ef`(시선)와 `saisen_ef`(재전).
+ *
+ * 눈이 마주친 트레이너가 앞엣것, VS시커에 응한 트레이너가 뒤엣것을 쓴다.
+ *
+ * ⚠️ **모델은 안 굽는다.** 변장 더미와 같은 이유다 — 한 칸짜리 평면 하나가
+ * 껍데기의 전부고 남는 것은 그림뿐이다.
+ */
+function emotes(rom) {
+  const narc = rom.narc('/data/mmodel/fldeff.narc')
+  const members = [4, 13]
+  const sheets = []
+  let size = 0
+  for (const member of members) {
+    const buf = narc[member]
+    const tex0 = parseTex0(buf, texBlock(buf))
+    const tex = tex0.textures[0]
+    const pal = tex0.palettes[0]
+    if (size === 0) size = tex.width
+    if (tex.width !== size || tex.height !== size) {
+      throw new Error(`느낌표 ${member}가 ${tex.width}×${tex.height}다 — 표가 밀렸다`)
     }
     sheets.push(decode(tex0, tex, pal.offset))
   }

@@ -263,16 +263,17 @@ export const scriptFileSchema = z.object({
    * 배치표의 이동 유형 (`events.json`의 `move`가 이 표의 번호다).
    *
    * `kind`가 갈래다 — `look` 두리번거린다 · `wander` 아무 데나 한 칸 · `face`
-   * 한 쪽만 본다 · `rotate` 시계/반시계로 돈다 · `pace` 왔다 갔다 ·
+   * 한 쪽만 본다 · `rotate` 시계/반시계로 돈다 · `spin` 돌다 시작 방향에서
+   * 되돌아 돈다 (VS시커에 응한 사람) · `pace` 왔다 갔다 ·
    * `route` 네 방향을 차례로 · `other` 아직 안 옮겼다.
    *
    * `dirs`의 뜻이 갈래마다 다르다. `look`·`wander`는 **고를 수 있는 방향들**,
-   * `rotate`·`route`는 **도는 차례**, `face`는 볼 방향 하나다
+   * `rotate`·`spin`·`route`는 **도는 차례**, `face`는 볼 방향 하나다
    */
   movementTypes: z.array(z.object({
     name: z.string(),
     kind: z.enum([
-      'look', 'wander', 'face', 'rotate', 'pace', 'route',
+      'look', 'wander', 'face', 'rotate', 'spin', 'pace', 'route',
       // 남을 보고 움직이거나(따라가기 둘) 아예 안 움직이는 갈래(변장 넷)
       'follow', 'partner', 'disguise', 'other',
     ]),

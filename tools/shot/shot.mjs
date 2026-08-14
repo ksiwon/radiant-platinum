@@ -2,6 +2,7 @@
 //
 //     pnpm shot forest                 확인 지점 하나
 //     pnpm shot forest --keys=z,z,z    뛰어든 뒤 키를 더 누른다
+//     pnpm shot vsseeker --keys=z --keysAfter=120   마지막 키 뒤를 짧게 (짧은 연출)
 //     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
 //     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
@@ -502,9 +503,13 @@ async function main() {
       }, menu)
       await page.waitForTimeout(Number(flag('menuAfter', 4000)))
     }
-    for (const k of (flag('keys', '') || '').split(',').filter(Boolean)) {
+    // ⚠️ **마지막 키 뒤의 기다림을 따로 준다** (`--keysAfter`). 짧은 연출은
+    // 기본 600ms 안에 이미 끝난다 — 머리 위 느낌표가 37프레임(0.6초)이라
+    // 그대로 두면 화면에 한 번도 안 잡힌다
+    const keys = (flag('keys', '') || '').split(',').filter(Boolean)
+    for (const [i, k] of keys.entries()) {
       await page.keyboard.press(k.length === 1 ? `Key${k.toUpperCase()}` : k)
-      await page.waitForTimeout(600)
+      await page.waitForTimeout(i === keys.length - 1 ? Number(flag('keysAfter', 600)) : 600)
     }
 
     // 무엇이 화면을 막고 있는지 씬에 직접 묻는다.

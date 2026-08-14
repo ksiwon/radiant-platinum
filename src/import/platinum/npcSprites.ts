@@ -228,8 +228,10 @@ export async function convertNpcSprites(ctx: ConvertContext): Promise<Produced> 
 
   ctx.onProgress?.(ids.length, ids.length)
   out.set('data/npcSprites.json', json(manifest))
-  const hide = await convertDisguises(ctx)
+  const hide = await convertStrip(ctx, [103, 104, 105, 106])
   if (hide) out.set('data/npc/disguise.png', hide)
+  const marks = await convertStrip(ctx, [4, 13])
+  if (marks) out.set('data/npc/emote.png', marks)
   return out
 }
 
@@ -245,12 +247,15 @@ const FLDEFF = '/data/mmodel/fldeff.narc'
  *
  * ⚠️ **모델을 안 굽는다.** 넷 다 꼭짓점 넷·삼각형 둘짜리 **한 칸 크기의 평면**
  * 하나가 전부고(y = 0.1875, 앞뒤 양면), 그 값은 롬에서 실측했다. 껍데기가
- * 고정이라 남는 것은 16×16 그림 넷뿐이라, 가로로 이어 붙인 한 줄로 낸다
+ * 고정이라 남는 것은 16×16 그림 넷뿐이라, 가로로 이어 붙인 한 줄로 낸다.
+ *
+ * 머리 위 느낌표 둘도 같은 아카이브의 같은 모양이라 이 함수를 나눠 쓴다 —
+ * 4번이 시선(`sisen_ef`), 13번이 재전(`saisen_ef`)이다 (PARITY §1.13 · §7.9)
  */
-async function convertDisguises(ctx: ConvertContext): Promise<Uint8Array | null> {
+async function convertStrip(ctx: ConvertContext, members: readonly number[]):
+Promise<Uint8Array | null> {
   const narc = await ctx.fs.read(FLDEFF)
   if (!narc) return null
-  const members = [103, 104, 105, 106]
   const sheets: Uint8Array[] = []
   let size = 0
   for (const member of members) {
@@ -263,7 +268,7 @@ async function convertDisguises(ctx: ConvertContext): Promise<Uint8Array | null>
     const tex = tex0.textures[0]
     const pal = tex0.palettes[0]
     if (!tex || !pal) return null
-    // 넷이 같은 크기여야 한 줄로 이어 붙일 수 있다. 다르면 표가 밀린 것이다
+    // 다 같은 크기여야 한 줄로 이어 붙일 수 있다. 다르면 표가 밀린 것이다
     if (size === 0) size = tex.width
     if (tex.width !== size || tex.height !== size) return null
     sheets.push(decode(tex0, tex, pal.offset))

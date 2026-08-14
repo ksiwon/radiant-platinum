@@ -161,6 +161,7 @@ import type { ItemTable } from '../data/gameData'
 import { FIRST_BERRY_ITEM } from '../engine/world/berryInit'
 import { berryPatchServices } from './berryPatches'
 import { safariServices } from './safari'
+import { vsSeekerServices } from './vsSeeker'
 import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
@@ -283,7 +284,7 @@ let moveTable: Awaited<ReturnType<typeof loadMoves>> | null = null
  * 우리 `createWild`가 같은 일을 하는데 **가진 도구까지 굴린다** — 그건 야생
  * 규칙이라 스크립트가 준 것으로 덮어쓴다
  */
-function giveMon(species: number, level: number, heldItem: number): boolean {
+function giveMon(species: number, level: number, heldItem: number, fateful = false): boolean {
   const table = speciesTable
   const moves = moveTable
   if (!table || !moves) return false
@@ -303,7 +304,14 @@ function giveMon(species: number, level: number, heldItem: number): boolean {
     hp: statsOf(mon, info).hp,
     // 받은 것도 잡은 것과 같은 갈래다 (`sel = 0`). 자리는 지금 서 있는 곳의
     // 지역명 번호 — 연구소에서 받은 파트너는 "무성시티에서 만났다"가 된다
-    origin: caughtAt(playerTrainer(save.trainer), hereLabel(), level, metToday()),
+    //
+    // ⚠️ **시원이 준 마리도 자리는 여기다.** 원작 배포는 3000번대의 이벤트
+    // 자리를 쓰지만(`SpecialMetLoc_GetId(2, …)`) 우리 것은 배포로 온 것이 아니라
+    // **게임 안에서 받은 것**이라 받은 자리가 맞다. 지어내지 않는다 (SIWON.md)
+    origin: {
+      ...caughtAt(playerTrainer(save.trainer), hereLabel(), level, metToday()),
+      fateful,
+    },
   })
   return true
 }
@@ -662,6 +670,7 @@ const services: FieldServices = {
     aliveExcept: (slot) =>
       useSaveStore.getState().party.filter((m, i) => i !== slot && m.hp > 0).length,
     give: giveMon,
+    giveFateful: (species, level) => giveMon(species, level, 0, true),
     level: (slot) => useSaveStore.getState().party[slot]?.level ?? 0,
     // 성격은 개체값에서 나온다 (`Pokemon_GetNature` = PID % 25). 빈 자리는
     // 원작이 `NATURE_HARDY`(0)를 준다
@@ -817,6 +826,8 @@ const services: FieldServices = {
   berryPatches: berryPatchServices,
 
   safari: safariServices,
+
+  vsSeeker: vsSeekerServices,
 
   // 장식 케이스 (PARITY §7.16). 리포트가 곧 케이스라 따로 둘 상태가 없다
   fashionCase: {
@@ -1170,6 +1181,14 @@ const services: FieldServices = {
    * 이야기에서 받는 알(라이리의 리오르, 마나피)이 이 길로 온다.
    * 그동안 이 자리가 비어 있어서 **말은 걸리는데 알이 안 들어왔다**
    */
+  // 시원의 배포 (SIWON.md). 리포트의 두 칸을 읽고 쓰는 것이 전부다
+  siwon: {
+    given: () => useSaveStore.getState().siwonGiven,
+    gave: () => { useSaveStore.getState().giveSiwonGift() },
+    met: () => useSaveStore.getState().siwonMet,
+    meet: () => { useSaveStore.getState().meetSiwon() },
+  },
+
   giveEgg: (species, giver) => {
     // `giver`가 알 받은 자리를 고른다 (`SpecialMetLoc_GetId(1, giver)`) —
     // 9 여행하는 남자(마나피) · 10 라이리(리오르) · 11 난천(토게피)

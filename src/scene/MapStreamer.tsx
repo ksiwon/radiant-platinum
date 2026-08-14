@@ -71,6 +71,7 @@ import { ChunkModels } from './ChunkModels'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
 import { DisguisePlates } from './DisguisePlates'
+import { EmoteMarks } from './EmoteMarks'
 import { FeatureProps } from './FeatureProps'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
@@ -82,6 +83,7 @@ import { resetHearthomeGym } from './hearthomeGym'
 import { resetHoneyShake } from './honeyTree'
 import { resetLakeGuardianUnits } from './lakeGuardianUnits'
 import { clearRadar, installRadar } from './pokeRadar'
+import { resetVsSeeker } from './vsSeeker'
 import { RadarPatches } from './RadarPatches'
 import { BerryPatchProps } from './BerryPatchProps'
 import './mapFeatureCollision'
@@ -274,6 +276,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       resetLakeGuardianUnits()
       // 맵을 옮기면 사슬이 끊긴다 (`FieldMapChange`의 `RadarChain_Clear`)
       clearRadar()
+      // VS시커의 느낌표도 맵과 함께 사라진다 (`SystemVars_ResetVsSeeker`, §7.9).
+      // ⚠️ **배터리는 안 지운다** — 걸어 채운 것이 맵 하나로 날아가면 안 된다
+      resetVsSeeker()
       // 기울기는 굴리지 않고 그대로 잡는다 — 깨어진 세계의 벽에서 밖으로 나갈 때
       // 새 맵 첫 화면이 90도를 굴러 들어오면 안 된다
       cameraSystem.snap()
@@ -805,6 +810,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <NpcSprites grid={grid} layer={layer} standing={standing} />
       {/* 변장한 트레이너는 사람 대신 더미가 선다 (PARITY §1.15) */}
       <DisguisePlates grid={grid} layer={layer} />
+      {/* 머리 위 느낌표. VS시커가 세운다 (§7.9) */}
+      <EmoteMarks grid={grid} layer={layer} />
       {/* 장치가 움직이는 소품. 청크가 그리는 목록에서 빼고 여기서 세운다 (§7.12) */}
       <FeatureProps />
       <InteractionPrompt grid={grid} layer={layer} />

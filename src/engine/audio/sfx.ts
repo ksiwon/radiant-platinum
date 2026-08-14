@@ -65,6 +65,14 @@ export const SFX = {
    * (`fishing.c`의 `FishingTask_CastRod`, 던지고 10프레임째)
    */
   CAST_ROD: 1616,
+  /**
+   * `SEQ_SE_DP_VS_SEEKER_BEEP`. VS시커가 둘레를 훑는 소리
+   * (`vs_seeker.c`의 `VS_SEEKER_STATE_START`).
+   *
+   * ⚠️ **이 소리가 끝날 때까지 스크립트가 선다** — 원작이 소리 하나로 연출
+   * 길이를 잰다 (`VS_SEEKER_STATE_WAIT_FOR_VS_SEEKER_SFX`)
+   */
+  VS_SEEKER: 1568,
 } as const
 
 export type SfxName = keyof typeof SFX

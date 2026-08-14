@@ -31,6 +31,10 @@ import {
 } from '../world/amity'
 import { FLAG_FREED_GALACTIC_HQ } from '../world/lakeGuardianUnits'
 import { trainerEncounterBgm } from '../world/trainerEncounterBgm'
+import { rematchTrainerID, VsSeekerResult } from '../world/vsSeeker'
+import {
+  FLAG_UNLOCKED_VS_SEEKER_LVL_1, MOVEMENT_TYPE_LOOK, MOVEMENT_TYPE_VS_SEEKER_SPIN,
+} from '../world/vsSeekerTable'
 import { LIST_MENU_NO_SELECTION_YET, type ShopCurrency } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
@@ -2435,7 +2439,7 @@ const TRMSG = {
   pre: 0, defeat: 1, post: 2,
   preDouble1: 3, postDouble1: 5, notEnough1: 6,
   preDouble2: 7, postDouble2: 9, notEnough2: 10,
-  rematch: 17,
+  rematch: 17, rematchDouble1: 18, rematchDouble2: 19,
 }
 
 on('PrintTrainerDialogue', (ctx) => {
@@ -2524,13 +2528,106 @@ on('GetMovementType', (ctx) => {
 /** `generated/movement_types.txt`의 마지막 값. 대상이 없을 때 쓴다 */
 const MOVEMENT_TYPE_NONE = 0xff
 
+// ── VS시커 (PARITY §7.9) ─────────────────────────────────────────────────────
+
+on('StartVsSeeker', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const seeker = ctx.host.world.services.vsSeeker
+  if (!seeker) {
+    // 계통이 안 붙어 있으면 원작이 "주위에 아무도 없다"로 닫는 자리와 같다
+    ctx.host.vars.set(dest, VsSeekerResult.noTrainers)
+    return false
+  }
+  ctx.host.vars.set(dest, seeker.scan())
+  // ⚠️ **삑 소리가 끝날 때까지 스크립트가 선다** (`VS_SEEKER_STATE_WAIT_FOR_VS_SEEKER_SFX`).
+  // 느낌표가 뜨는 것이 이 사이라, 안 세우면 대사창이 표시 위로 겹쳐 뜬다
+  ctx.pause(() => !seeker.busy())
+  return true
+})
+
 on('GetRematchTrainerID', (ctx) => {
-  // 재대결은 VS시커가 있어야 성립한다. 없으면 `TRAINER_NONE`이고,
-  // 스크립트는 그걸 보고 "이미 이긴 사람" 대사로 간다
-  ctx.readVar()
-  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  const trainerID = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  // ⚠️ **말을 건 사람이 돌고 있어야 한다.** 느낌표가 안 뜬 사람은 `TRAINER_NONE`이고,
+  // 스크립트는 그걸 보고 "이미 이긴 사람" 대사로 간다 — 이 한 줄이 재대결의 문이다
+  const target = ctx.host.world.target
+  ctx.host.vars.set(dest, rematchTrainerID({
+    spinning: target?.movementType === MOVEMENT_TYPE_VS_SEEKER_SPIN,
+    trainerID,
+    defeated: (id) => ctx.host.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + id),
+    // 단계 다섯이 이어진 플래그라 번호로 더한다 (`SystemFlag_CheckUnlockedVsSeekerLevel`)
+    unlocked: (level) => level >= 1 && level <= 5
+      && ctx.host.vars.checkFlag(FLAG_UNLOCKED_VS_SEEKER_LVL_1 + level - 1),
+  }))
   return false
 })
+
+/**
+ * 재대결 대사 번호 (`ScrCmd_GetTrainerRematchMessageTypes`).
+ *
+ * `GetTrainerMessageTypes`와 같은 자리인데 **싸움 전 글만 다르다** — 뒤 글은
+ * 0이다. 재대결에서 진 트레이너는 할 말이 따로 없고, 다음에 또 말을 걸면
+ * 보통 「이미 이긴 사람」 대사로 돌아간다
+ */
+on('GetTrainerRematchMessageTypes', (ctx) => {
+  const before = ctx.readHalfWord()
+  const after = ctx.readHalfWord()
+  const notEnough = ctx.readHalfWord()
+  const world = ctx.host.world
+  const double = world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true
+  const second = world.scriptID >= SCRIPT_ID_OFFSET_DOUBLE_BATTLES
+    && trainerIdOf(world.scriptID) % 2 === 0
+  ctx.host.vars.set(before, double
+    ? (second ? TRMSG.rematchDouble2 : TRMSG.rematchDouble1)
+    : TRMSG.rematch)
+  ctx.host.vars.set(after, 0)
+  ctx.host.vars.set(notEnough, double
+    ? (second ? TRMSG.notEnough2 : TRMSG.notEnough1)
+    : 0)
+  return false
+})
+
+/**
+ * 지금 보는 쪽으로 이동 유형을 굳힌다 (`VsSeeker_SetMoveCodeForFacingDirection`).
+ *
+ * ⚠️ **재대결 전용 명령이 아니다.** 트레이너전이 시작될 때마다 돈다
+ * (`Battles_DoTrainerBattle`) — 그 순간 도는 사람이 멈춰 서고, 배틀에서
+ * 돌아왔을 때 그 자리 그대로 나를 보고 있다. 회전이 풀리는 자리도 여기다.
+ *
+ * 더블이면 짝도 같이 굳힌다 — 한쪽만 멈추면 배틀 뒤에 하나는 서 있고 하나는 돈다
+ */
+on('SetMoveCodeForFacingDirection', (ctx) => {
+  const world = ctx.host.world
+  const target = world.target
+  if (target === null) return false
+  // ⚠️ 원작의 `if` 넷은 북·남·서를 이름으로 고르고 **나머지를 전부 동쪽으로** 친다
+  const move = MOVEMENT_TYPE_LOOK[target.dir] ?? MOVEMENT_TYPE_LOOK[DIR.east] ?? 0
+  const localID = ctx.host.vars.get(VAR_LAST_TALKED)
+  if (world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true) {
+    const mate = secondDoubleObject(localID)
+    if (mate !== null) switchMovementType(mate, move)
+  }
+  switchMovementType(localID, move)
+  return false
+})
+
+/**
+ * 더블 배틀의 다른 한 사람 (`VsSeeker_GetSecondDoubleBattleTrainer`).
+ *
+ * 배치표에서 **스크립트 번호만 다르고 트레이너 번호가 같은** 객체다.
+ * 여기서는 `Script_GetTrainerID`와 같은 셈(스크립트 번호 → 트레이너 번호)을 쓴다
+ */
+function secondDoubleObject(localID: number): number | null {
+  const me = npcActors.byLocalID.get(localID)
+  if (!me) return null
+  const mine = trainerIdOf(me.info.script)
+  for (const other of npcActors.list) {
+    if (other.localID === localID || other.info.script === me.info.script) continue
+    if (other.info.script < SCRIPT_ID_OFFSET_DOUBLE_BATTLES) continue
+    if (trainerIdOf(other.info.script) === mine) return other.localID
+  }
+  return null
+}
 
 // ── 세이브에 켜지는 스위치 ───────────────────────────────────────────────────
 //
@@ -2568,6 +2665,9 @@ export const SYSTEM_FLAG = {
 
 /** 레지 셋 (`SPECIES_REGIROCK`·`REGICE`·`REGISTEEL`) */
 const LEGENDARY_TITANS = [377, 378, 379] as const
+
+/** `SPECIES_REGIGIGAS`. 유적 셋의 석상이 이 마리의 「운명적 만남」만 본다 */
+const SPECIES_REGIGIGAS = 486
 
 /** `BATTLE_RESULT_CAPTURED_MON`. ⚠️ 도망 둘이 이 비트를 **같이 쓴다** */
 const BATTLE_RESULT_CAPTURED = 4
@@ -3417,6 +3517,25 @@ on('CheckHasAllLegendaryTitansInParty', (ctx) => {
   const party = ctx.host.world.services.party
   const all = LEGENDARY_TITANS.every((s) => party?.hasSpecies(s) === true)
   ctx.host.vars.set(ctx.readHalfWord(), all ? 1 : 0)
+  return false
+})
+
+/**
+ * 파티에 **운명적 만남** 레지기가스가 있는가
+ * (`ScrCmd_CheckPartyHasFatefulEncounterRegigigas`).
+ *
+ * 유적 셋의 석상이 이것만 본다 — 이 답이 거짓이면 레지락·레지아이스·레지스틸이
+ * 한 마리도 안 나온다.
+ *
+ * ⚠️ **눈설신전에서 잡은 레지기가스로는 안 열린다.** 그쪽은
+ * `StartLegendaryBattle`로 나와서 운명적 만남 표시가 안 붙는다 — 원작이 그렇고,
+ * 그래서 원작에서 이 문을 여는 길은 배포 한 가지뿐이었다 (SIWON.md §1).
+ * 알은 건너뛴다 — `findFateful`이 원작대로 먼저 거른다
+ */
+on('CheckPartyHasFatefulEncounterRegigigas', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.host.world.services.party?.findFateful(SPECIES_REGIGIGAS) ?? FIND_SLOT_NONE
+  ctx.host.vars.set(dest, slot === FIND_SLOT_NONE ? 0 : 1)
   return false
 })
 

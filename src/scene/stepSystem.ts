@@ -32,6 +32,7 @@ import { amityStep, VAR_AMITY_STEPS } from '../engine/world/amity'
 import { elapseDays } from '../engine/pokemon/pokerus'
 import { encounters } from '../engine/battle/encounterSystem'
 import { radarStep } from './pokeRadar'
+import { vsSeekerFieldStep } from './vsSeeker'
 import { loadItems, loadSpecies, type ItemTable, type SpeciesTable } from '../data/gameData'
 import { daycareStep } from '../engine/pokemon/breeding'
 import {
@@ -270,6 +271,11 @@ export const stepSystem = {
     // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
     // `poketchStep`이 앞에서 막는다
     poketchStep()
+
+    // VS시커 배터리가 한 걸음 찬다 (`VsSeeker_UpdateStepCount`, PARITY §7.9) —
+    // 가방에 있을 때만. 느낌표가 서 있으면 그 100걸음도 여기서 센다.
+    // ⚠️ **레이더보다 먼저다** — 원작 `Field_ProcessStep`의 차례가 그렇다
+    vsSeekerFieldStep()
 
     // 레이더 배터리가 한 걸음 찬다 (`RadarChargeStep`) — 가방에 있을 때만.
     // 그리고 무더기가 화면 밖으로 나갔는지도 걸음마다 본다

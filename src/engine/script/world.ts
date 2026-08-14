@@ -248,6 +248,18 @@ export interface FieldServices {
      * @returns 넣었으면 true
      */
     give: (species: number, level: number, heldItem: number) => boolean
+    /**
+     * 「운명적 만남」 표시를 붙여서 한 마리 준다 (SIWON.md).
+     *
+     * ⚠️ **원작 스크립트는 이 길을 안 쓴다** — 원작에서 그 표시가 붙는 것은
+     * 배포로 온 개체와 꽃의 낙원의 쉐이미뿐이다. 배포가 닫혀서 우리가 대신
+     * 여는 자리(레지기가스)가 이 길로 온다.
+     *
+     * 그 표시가 곧 열쇠다 — 유적 셋의 석상과 신수마을의 그라시데아가 그것만 본다
+     *
+     * @returns 넣었으면 true. 가득 차면 못 준다
+     */
+    giveFateful: (species: number, level: number) => boolean
     level: (slot: number) => number
     /** 성격 번호 (`Pokemon_GetNature`). 자리가 비었으면 0(노력) */
     nature: (slot: number) => number
@@ -428,6 +440,19 @@ export interface FieldServices {
     tramSettled: () => boolean
     /** 열차가 그 자리에 서 있는가 (`GreatMarshTram_CheckLocation`) */
     tramAt: (location: number) => boolean
+  }
+  /**
+   * VS시커 (PARITY §7.9 · `overlay005/vs_seeker.c`).
+   *
+   * 재대결 자체는 스크립트가 낸다 — 이 둘은 **훑는 순간**만 맡는다.
+   * 표에서 상대를 고르는 일은 명령이 직접 한다(자리 표시가 이동 유형 하나라
+   * 바깥에 물어볼 것이 없다)
+   */
+  vsSeeker?: {
+    /** 화면 안을 훑고 느낌표를 세운다. 결과는 `VS_SEEKER_USE_RESULT_*` */
+    scan: () => number
+    /** 삑 소리와 느낌표 연출이 아직 도는가 */
+    busy: () => boolean
   }
   /**
    * 장식 케이스 (PARITY §7.16).
@@ -949,6 +974,20 @@ export interface FieldServices {
    * `giver`는 특수 만남장소 번호를 고르는 값이다 (`SpecialMetLoc_GetId(1, …)`)
    */
   giveEgg?: (species: number, giver: number) => void
+  /**
+   * 시원의 배포 (SIWON.md). **원작에 없는 서비스다** — 이 저장소가 덧붙인
+   * 사람 하나가 리포트의 두 칸을 읽고 쓴다
+   */
+  siwon?: {
+    /** 여태 준 개수 */
+    given: () => number
+    /** 하나 줬다 */
+    gave: () => void
+    /** 리그 복도에서 이미 만났는가 */
+    met: () => boolean
+    /** 만났다고 적는다. 그 연출은 한 번만 돈다 */
+    meet: () => void
+  }
   /**
    * 독으로 쓰러지기 직전 1로 버틴다 (`Pokemon_TrySurvivePoison`).
    *

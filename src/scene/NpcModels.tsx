@@ -58,6 +58,8 @@ interface Slot {
   /** 지난 프레임 자리. 걷는 속도를 여기서 잰다 — 배우는 속도를 안 들고 있다 */
   lastX: number
   lastZ: number
+  /** 실제로 선 키 (타일). 머리 위에 무엇을 얹는 쪽이 본다 */
+  height: number
 }
 
 interface Props {
@@ -110,6 +112,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       }
       n++
       seen.add(actor)
+      bodyHeights.set(actor, slot.height)
 
       const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
       slot.outer.position.set(actor.x + 0.5, y, actor.z + 0.5)
@@ -130,7 +133,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     }
 
     for (const [actor, slot] of slots) {
-      if (!seen.has(actor)) slot.outer.visible = false
+      if (!seen.has(actor)) { slot.outer.visible = false; bodyHeights.delete(actor) }
     }
     // 판때기 쪽에 알린다. **집합이 바뀔 때만** — 매 프레임 부르면 R3F가 죽는다
     const before = standing.current
@@ -157,6 +160,20 @@ function fetchModel(tag: string, done: () => void): void {
     .finally(() => { loading.delete(tag) })
 }
 
+/**
+ * 실제로 선 사람의 **키** (타일).
+ *
+ * ⚠️ **판때기 그림의 높이와 다르다.** 판때기는 32텍셀 = 두 칸짜리 네모인데
+ * 사람은 그 아래쪽만 차지하고, 모델은 아예 제 비율로 선다. 머리 위에 무엇을
+ * 얹으려면(느낌표 — `EmoteMarks`) 그림이 아니라 **선 몸**을 봐야 한다
+ */
+const bodyHeights = new WeakMap<NpcActor, number>()
+
+/** 그 사람이 모델로 서 있으면 그 키(타일), 판때기면 null */
+export function npcBodyHeight(actor: NpcActor): number | null {
+  return bodyHeights.get(actor) ?? null
+}
+
 /** 모델 하나를 복제해 한 칸으로 만든다 */
 function build(scene: Object3D): Slot {
   const outer = new Group()
@@ -171,9 +188,10 @@ function build(scene: Object3D): Slot {
   // 원본 키를 먼저 재고, 거기에 BDSP 단위 배수를 곱한 키로 다시 맞춘다.
   // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다
   const { nativeHeight } = normalizeModel(inner, body, 1)
-  normalizeModel(inner, body, nativeHeight * BDSP_TO_WORLD)
+  const height = nativeHeight * BDSP_TO_WORLD
+  normalizeModel(inner, body, height)
   // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
   // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
   const rig = createRig(body, inner)
-  return { outer, rig, lastX: 0, lastZ: 0 }
+  return { outer, rig, lastX: 0, lastZ: 0, height }
 }

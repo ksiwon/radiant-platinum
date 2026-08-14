@@ -58,6 +58,7 @@
 | 가방·도구 쓰기 | `engine/bag/` (무엇을 할지) · `ui/menu/itemAction.ts` (실제로 밟기) |
 | 맵·격자·워프 | `engine/map/` · `scene/` |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
+| **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
 | 배틀프런티어 | `engine/frontier/` · `state/factoryStore.ts` · `ui/menu/FactoryScreen.tsx` |
 | 리포트(세이브) | `state/saveStore.ts` · `state/save/` |
 | 메뉴 화면 | `ui/menu/` (`MenuLayer.tsx`가 스택 맨 위 하나를 그린다) |
@@ -116,9 +117,10 @@
 
 아카이브가 아니라 C 소스에 박힌 표는 추출기가 못 센다. `pnpm gen:*` 꼴로
 **소스에 구워 넣는다** (`tools/extract/*Module.cjs` → `src/…Table.ts`).
-지금 그렇게 굽는 것 여덟: `gen:amity`(상호교류광장) · `gen:records`(게임 기록) ·
-`gen:credits`(크레딧 흐르는 차례) · `gen:charmap`(문자표) · `gen:scriptMeta` ·
-`gen:spriteTable` · `gen:trainerClasses` · `gen:trainerBgm`.
+지금 그렇게 굽는 것 아홉: `gen:amity`(상호교류광장) · `gen:records`(게임 기록) ·
+`gen:credits`(크레딧 흐르는 차례) · `gen:vsseeker`(재대결표 240줄) ·
+`gen:charmap`(문자표) · `gen:scriptMeta` · `gen:spriteTable` ·
+`gen:trainerClasses` · `gen:trainerBgm`.
 
 굽는 파일 머리에 **「손으로 고치지 않는다」**를 적는다. 담기는 것은 번호와
 수뿐이고 이름도 글도 한 바이트도 안 담는다 (COPYRIGHT §5).
@@ -136,6 +138,11 @@
 **한 글자도 짓지 않는다.** 롬의 대사 뱅크에서 온다
 (`public/data/dialogue/<로케일>/<미국뱅크번호>.json`). 스크립트가 안 가리키는
 화면의 글은 `tools/extract/dialogue.js`의 `EXTRA_BANKS`에 이름을 적어야 실린다.
+
+⚠️ **예외가 하나 있고 하나뿐이다 — 시원**(`engine/world/siwonText.ts`). 원작
+사람이 아니라 **우리가 덧붙인 사람**이라 원작인 척할 위험이 없고, 우리 글이라
+배포물에도 실린다. 왜 그 하나만인지는 [SIWON.md](SIWON.md) §4가 정본이다.
+**여기를 근거로 다른 자리에 글을 짓지 않는다.**
 
 ---
 

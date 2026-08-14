@@ -186,6 +186,11 @@ const TYPE_STEPS = {
   sub_02064690: 'wander',
   sub_02064918: 'face',
   sub_020649A8: 'rotate',
+  // VS시커에 응한 사람만 쓰는 회전 (`MOVEMENT_TYPE_VS_SEEKER_SPIN`).
+  // 보통 회전과 상태 넷이 같은 모양인데 **두 군데가 다르다** — 도는 중에
+  // 주인공을 안 찾고(`sub_02064B5C`가 시선 검사를 빼먹은 것이 아니라 아예 없다),
+  // 시작 방향으로 돌아오면 **반대로 돌기 시작한다** (`sub_02064B74`)
+  sub_02064AFC: 'spin',
   sub_02064C48: 'pace',
   sub_02064EC8: 'route',
   sub_020650DC: 'route',
@@ -311,7 +316,7 @@ function movementTypeTable() {
     if (kind === 'wander') return { name, kind, dirs: dirsOf(init.args[1]) }
     if (kind === 'face') return { name, kind, dirs: [init.args[0]] }
     // 회전 방향 두 줄은 `sub_02064A58`에 박혀 있다 — 2가 {0,2,1,3}, 3이 {0,3,1,2}
-    if (kind === 'rotate') {
+    if (kind === 'rotate' || kind === 'spin') {
       return { name, kind, dirs: init.args[0] === 2 ? [0, 2, 1, 3] : [0, 3, 1, 2] }
     }
     if (kind === 'route') return { name, kind, dirs: dirsOf(init.args[2]), axis: init.args[1] }

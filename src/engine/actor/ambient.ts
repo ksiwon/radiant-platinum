@@ -14,6 +14,7 @@
 //   wander  기다렸다 아무 쪽이나 골라 **한 칸 걷는다**. 막히면 돌기만 한다
 //   face    시작 방향만 본다 — 할 일이 없다
 //   rotate  24프레임마다 시계/반시계로 한 칸씩 돈다
+//   spin    같은 회전인데 **시작 방향에 닿으면 반대로 돈다** (VS시커에 응한 사람)
 //   pace    시작 방향으로 걷다 막히면 되돌아온다
 //   route   방향 넷을 차례로 돈다. 한 바퀴는 시작 자리로 돌아오는 것으로 센다
 //   follow  주인공이 **방금 떠난 칸**으로 한 칸 걷는다 (동행 여덟 자리)
@@ -233,6 +234,24 @@ function stepActor(actor: NpcActor, type: MovementType): void {
       const at = dirs.indexOf(actor.dir)
       // 표에 없는 방향에서 시작했으면 표의 첫 칸부터 돈다
       actor.dir = dirs[(at + 1) % dirs.length] ?? actor.dir
+      return
+    }
+    // VS시커에 응한 사람 (`sub_02064B74`, PARITY §7.9).
+    //
+    // ⚠️ **시작 방향으로 돌아오면 반대로 돌기 시작한다.** 그래서 한 바퀴 돌고
+    // 되돌아오는 「두리번거리는 것보다 급한」 몸짓이 된다 — 보통 회전은
+    // 한 방향으로만 계속 돈다. 눈으로 그 둘을 가르는 것이 이 한 줄이다
+    case 'spin': {
+      state.wait = npcAmbient.rotateFrames
+      const at = dirs.indexOf(actor.dir)
+      const step = state.back ? -1 : 1
+      const next = dirs[(at + step + dirs.length) % dirs.length]
+      if (next === undefined) return
+      actor.dir = next
+      // ⚠️ **되돌아오는 기준은 배치표의 방향이다** (`MapObject_GetInitialDir`).
+      // 지금 서 있던 방향이 아니다 — 두리번거리다 응한 사람은 시작 방향이
+      // 제각각이라, 그걸 기준으로 잡으면 사람마다 되돌아오는 자리가 달라진다
+      if (next === actor.info.facing) state.back = !state.back
       return
     }
     case 'wander': return stepWander(actor, state, dirs)

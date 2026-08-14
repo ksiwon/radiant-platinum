@@ -14,9 +14,10 @@ import { isRadarGrass } from '../../engine/battle/encounter'
 import { isSurfable } from '../../engine/map/zone'
 import { mapById, world } from '../../engine/map/world'
 import { SYSTEM_FLAG } from '../../engine/script/commands'
-import { fieldScripts, frontTile } from '../../engine/script/field'
+import { fieldScripts, frontTile, start as startScript } from '../../engine/script/field'
 import { castRod } from '../../scene/fishingSystem'
 import { turnOnRadar } from '../../scene/pokeRadar'
+import { SCRIPT_VS_SEEKER } from '../../scene/vsSeeker'
 import type { MenuScreen as MenuScreenName } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
@@ -44,6 +45,8 @@ export function fieldContextNow(evoItems: ReadonlySet<string> | undefined): Fiel
       && isRadarGrass(grid.behaviorAtWorld(p.position.x, p.position.z)),
     hasPartner: fieldScripts.vars?.checkFlag(SYSTEM_FLAG.hasPartner) === true,
     onBike: p.cycling,
+    // VS시커는 신오 본판 위에서만 쓴다 (`MapHeader_IsOnMainMatrix`)
+    mainMatrix: header?.matrix === 0,
     ...(evoItems === undefined ? {} : { evoItems }),
   }
 }
@@ -133,6 +136,13 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       // 켜는 순간 가방을 닫는다. 원작도 필드 과제(`RefreshRadarChain`)가
       // 화면을 가져간다 — 배터리가 덜 찼는지는 그쪽이 롬의 대사로 말한다
       turnOnRadar()
+      deps.closeAll()
+      return true
+    case 'vsSeeker':
+      // ⚠️ **여기서는 아무것도 안 정한다.** 배터리도, 주위에 누가 있는지도
+      // 롬의 스크립트(`SCRIPT_ID(VS_SEEKER, 0)`)가 묻고 제 대사로 답한다 —
+      // 우리가 여는 것은 그 스크립트 하나뿐이다 (PARITY §7.9)
+      startScript(SCRIPT_VS_SEEKER, mapById(world.mapId)?.scripts ?? -1)
       deps.closeAll()
       return true
     default:
