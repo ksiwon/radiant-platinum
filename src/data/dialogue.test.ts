@@ -39,8 +39,10 @@ maybe('대사', () => {
     // 소지금 창(543), NPC 교환 둘(350 장면·370 별명과 트레이너 이름),
     // 장식 이름 100(386 — PARITY §7.16),
     // 배틀팩토리 다섯(21 프런티어 트레이너 이름 315·614 그 대사 945·
-    // 364 고르는 화면·365 복도와 배틀룸·363 빌린 개체의 원트레이너 — PARITY §9.3)
-    expect(index.banks.length).toBe(482)
+    // 364 고르는 화면·365 복도와 배틀룸·363 빌린 개체의 원트레이너 — PARITY §9.3),
+    // 우편과 낱말 고르기 열하나(408 우편함·409 편지 화면·436 무리 이름·
+    // 437 화면 글, 그리고 **낱말이 든 뱅크 일곱** 439~445 — PARITY §4.8)
+    expect(index.banks.length).toBe(493)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -128,7 +130,7 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 5114, ko: 3216, ja: 3422 })
+    expect(counted).toEqual({ en: 5115, ko: 3217, ja: 3423 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

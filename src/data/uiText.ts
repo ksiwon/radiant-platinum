@@ -115,6 +115,22 @@ export const UI_BANK = {
    * 앞의 빈칸 넷까지 롬의 것이라 손대지 않는다
    */
   credits: 548,
+  /** `TEXT_BANK_MAIL` — 편지 화면의 네 줄. 「결정」·「그만둔다」·「단어를 넣어 주십시오」 */
+  mail: 409,
+  /** `TEXT_BANK_MAILBOX` — 우편함의 열두 줄 */
+  mailbox: 408,
+  /** `TEXT_BANK_EASY_CHAT` — 낱말 고르기 화면의 열세 줄. 끝 둘이 모드 이름이다 */
+  easyChat: 437,
+  /** `TEXT_BANK_EASY_CHAT_GROUPS` — 무리 이름 열넷. 앞 열둘이 무리고 뒤 둘은 「???」·「되돌아간다」 */
+  easyChatGroups: 436,
+  /** 낱말이 든 뱅크 일곱. 종족·기술·타입·특성은 이름표에서 온다 */
+  trainerWords: 439,
+  peopleWords: 440,
+  greetings: 441,
+  lifestyleWords: 442,
+  feelings: 443,
+  toughWords: 444,
+  unionWords: 445,
 } as const
 
 /**

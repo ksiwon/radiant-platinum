@@ -10,19 +10,26 @@
 // 있게 만들면 걸어 다니는 키와 부딪친다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  loadHiddenItems, loadLabels, loadSpecies, loadSpeciesNames, type SpeciesLookup,
+  loadHiddenItems, loadLabels, loadPoketchMap, loadSpecies, loadSpeciesNames,
+  POKETCH_MAP_ATLAS, type SpeciesLookup,
 } from '../../data/gameData'
+import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { loadUiText } from '../../data/uiText'
 import { typeMultiplier } from '../../engine/battle/ai/typeChart'
-import { BG_EVENT_TYPE, signsOf, world } from '../../engine/map/world'
+import { BG_EVENT_TYPE, mapById, signsOf, world } from '../../engine/map/world'
 import { fieldScripts, HIDDEN_ITEM_FLAG_BASE, HIDDEN_ITEM_SCRIPT_BASE } from '../../engine/script/field'
 import { statsOf } from '../../engine/pokemon/instance'
 import {
   DOTART_HEIGHT, DOTART_WIDTH, MOVE_TESTER_TYPE_ORDER, POKETCH_COLOR_COUNT,
-  POKETCH_MARKER_COUNT, POKETCH_PALETTE, PoketchApp, dotArtGet, dotArtSet, dowsingInRange,
-  applyCalcKey, CALC_KEYS, friendshipTier, modifyDotArt, moveTesterExclamations, setMarker,
-  setScreenColor, type CalcState,
+  POKETCH_MARKER_COUNT, PoketchApp, dotArtGet, dotArtSet, dowsingInRange,
+  applyCalcKey, CALC_KEYS, friendshipTier, modifyDotArt,
+  moveTesterExclamations, poketchShades, setMarker, setScreenColor, type CalcState,
 } from '../../engine/world/poketch'
+import {
+  POKETCH_MAP_VIEW, hiddenSpots, mapCell, mapPoint, readyBerrySpots,
+} from '../../engine/world/poketchMap'
+import { poketchLastCell, poketchMarkCell } from '../../scene/poketch'
+import { radarChain } from '../../scene/pokeRadar'
 import { gameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
@@ -568,45 +575,183 @@ function DotGrid(
 
 // ── 지도 둘 ──────────────────────────────────────────────────────────────────
 
+/** 아틀라스의 가로 차례. `poketchMap.json`의 `maps`와 같은 순서다 */
+const MAP_VARIANT = { marking: 0, berry: 1 } as const
+
+/**
+ * 신오 지도 한 장. 마킹맵과 나무열매탐색기가 나눠 쓴다.
+ *
+ * ⚠️ **그림이 이미 액정 색이다** — 롬 아틀라스가 색 여덟을 다 들고 있어서
+ * 지금 색의 줄을 오려 내기만 하면 된다. 자료가 아직 없으면 지도 없이
+ * 표식만 뜬다 — 빈 화면보다는 자리라도 보이는 편이 낫다.
+ */
+function PoketchMapView(
+  { variant, large, children }:
+  { variant: keyof typeof MAP_VARIANT, large: boolean, children?: React.ReactNode },
+) {
+  const color = useSaveStore((s) => s.poketch.screenColor)
+  const sheet = useAssetImage(POKETCH_MAP_ATLAS)
+  const [meta, setMeta] = useState<{ width: number, height: number, themes: number } | null>(null)
+  useEffect(() => {
+    let live = true
+    void loadPoketchMap()
+      .then((file) => { if (live) setMeta({ width: file.width, height: file.height, themes: file.themes }) })
+      .catch(() => { /* 지도 없이 표식만 */ })
+    return () => { live = false }
+  }, [])
+
+  const w = meta?.width ?? POKETCH_MAP_VIEW.width
+  const h = meta?.height ?? POKETCH_MAP_VIEW.height
+  const scale = (large ? 168 : 92) / w
+  const at = ((color % (meta?.themes ?? 8)) + (meta?.themes ?? 8)) % (meta?.themes ?? 8)
+
+  return (
+    <div className={css.mapBox} style={{ width: w * scale, height: h * scale }}>
+      {sheet && meta && (
+        <img
+          className={css.mapSheet}
+          src={sheet}
+          alt=""
+          style={{
+            transform: `scale(${String(scale)}) translate(${String(-MAP_VARIANT[variant] * w)}px, ${String(-at * h)}px)`,
+          }}
+        />
+      )}
+      <div className={css.mapSheet} style={{ width: w * scale, height: h * scale }}>{children}</div>
+    </div>
+  )
+}
+
+/** 지도 위 픽셀 → 화면 자리. 접힌 시계와 펼친 시계의 배율이 다르다 */
+const mapAt = (point: { x: number, y: number }, large: boolean): { left: number, top: number } => {
+  const scale = (large ? 168 : 92) / POKETCH_MAP_VIEW.width
+  return { left: point.x * scale, top: point.y * scale }
+}
+
+/** 지금 서 있는 칸. 밖이면 새로 적고, 안이면 마지막으로 밖이었던 칸이다 */
+function hereCell(): { x: number, y: number } | null {
+  if (mapById(world.mapId)?.matrix === 0) {
+    const cell = mapCell(worldState.player.position.x, worldState.player.position.z)
+    poketchMarkCell(cell)
+    return cell
+  }
+  return poketchLastCell()
+}
+
 /**
  * 마킹맵 — 신오 지도 위에 표식 여섯.
  *
- * 지금 서 있는 자리는 빈 동그라미로, 찍어 둔 표식은 채운 점으로 그린다
+ * 지금 서 있는 자리는 빈 동그라미로, 찍어 둔 표식은 채운 점으로 그린다.
+ *
+ * ⚠️ **격자 한 칸이 맵 한 장이다** (`PoketchMap_GetPlayerLocation`이 타일
+ * 좌표를 32로 나눈다) — 마을 안을 걸어 다니는 동안 점이 안 움직이는 것이 원작이다
  */
-export function MarkingMap({ x, y, press, large }: Nav) {
+export function MarkingMap({ x, press, large }: Nav) {
   const poketch = useSaveStore((s) => s.poketch)
   const at = ((x % POKETCH_MARKER_COUNT) + POKETCH_MARKER_COUNT) % POKETCH_MARKER_COUNT
   useOnPress(press, () => {
     if (!large) return
     // 커서가 가리키는 표식을 **지금 서 있는 자리**로 옮긴다. 원작은 터치로
     // 끌어다 놓는데 우리는 키보드라, "여기에 꽂는다"가 같은 일을 한다
+    const cell = hereCell()
+    if (!cell) return
+    const point = mapPoint(cell.x, cell.y)
+    if (!point) return
     const p = useSaveStore.getState().poketch
-    const px = Math.round((worldState.player.position.x / 960) * 255)
-    const pz = Math.round((worldState.player.position.z / 960) * 255)
-    useSaveStore.setState({ poketch: setMarker(p, at, px, pz) })
+    useSaveStore.setState({ poketch: setMarker(p, at, point.x, point.y) })
   })
-  const size = large ? 150 : 80
-  const here = {
-    x: (worldState.player.position.x / 960) * size,
-    y: (worldState.player.position.z / 960) * size,
-  }
+  const cell = hereCell()
+  const here = cell ? mapPoint(cell.x, cell.y) : null
   return (
     <div className={css.center}>
-      <div style={{ position: 'relative', width: size, height: size, border: '1px solid currentColor' }}>
-        <span className={css.here} style={{ left: here.x, top: here.y }} />
+      <PoketchMapView variant="marking" large={large}>
+        {here && <span className={css.here} style={mapAt(here, large)} />}
         {poketch.markers.map((m, i) => (
           <span
             key={i}
             className={css.marker}
             style={{
-              left: (m.x / 255) * size,
-              top: (m.y / 255) * size,
+              ...mapAt(m, large),
               outline: large && i === at ? '1px solid currentColor' : 'none',
             }}
           />
         ))}
+      </PoketchMapView>
+      {large && <div className={css.small}>←→ 표식 {at + 1} · Z 여기에 꽂는다</div>}
+    </div>
+  )
+}
+
+/**
+ * 나무열매탐색기 — 열매가 **열린** 밭이 지도에 뜬다 (`berry_searcher`).
+ *
+ * ⚠️ **밭 118개가 점 서른여섯이다.** 한 마을에 밭이 넷씩 붙어 있어서 원작이
+ * 이어진 같은 자리를 건너뛴다 (`GetReadyBerryPatches`) — 안 뭉치면 같은 점을
+ * 네 번 찍는다.
+ *
+ * ⚠️ **본 적 없는 밭은 안 뜬다.** 화면에 한 번도 안 들어온 밭은 시간이 안
+ * 흐르므로 열릴 수가 없다 (PARITY §4.6).
+ *
+ * ⚠️ **숨은 자리 넷도 여기서 뜬다** — 만월도·신월도·봄의길·바다이음길이고,
+ * 이야기가 변수에 정해진 값을 적어야 나온다 (`SystemVars_CheckHiddenLocation`).
+ */
+export function BerrySearcher({ large }: Nav) {
+  const patches = useSaveStore((s) => s.berryPatches)
+  const dots = useMemo(() => readyBerrySpots(patches), [patches])
+  const hidden = hiddenSpots((id) => fieldScripts.vars.get(id))
+  const cell = hereCell()
+  const here = cell ? mapPoint(cell.x, cell.y) : null
+  return (
+    <div className={css.center}>
+      <PoketchMapView variant="berry" large={large}>
+        {here && <span className={css.here} style={mapAt(here, large)} />}
+        {dots.map((d, i) => (
+          <span key={`b${String(i)}`} className={css.mapBerry} style={mapAt(d, large)} />
+        ))}
+        {hidden.map((s) => (
+          <span key={s.name} className={css.mapHidden} style={mapAt(s, large)} />
+        ))}
+      </PoketchMapView>
+      {large && <div className={css.small}>열린 밭 {dots.length}곳</div>}
+    </div>
+  )
+}
+
+/**
+ * 포켓트레카운터 — **포켓몬레이더**의 사슬이다 (`trainer_counter`).
+ *
+ * ⚠️ **VS시커와 아무 상관이 없다.** 이름의 「포켓트레」가 ポケトレ,
+ * 곧 포켓몬레이더다 — 원작 코드가 보는 것도 지금 잇는 사슬과 기록 셋뿐이다
+ * (`RadarChainRecords_*`). 디컴프의 「trainer counter」라는 이름이 오래
+ * 오해를 만들었다.
+ *
+ * ⚠️ **기록 셋은 늘 긴 차례로 줄 세워 보여 준다** (`SortChainRecords`) —
+ * 리포트에 적힌 차례가 아니다.
+ *
+ * ⚠️ **원작은 아이콘을 세 마리 띄운다.** 우리 액정은 글자라 이름으로 적는다.
+ */
+export function TrainerCounter() {
+  const records = useSaveStore((s) => s.radar.records)
+  const { names } = useSpeciesNames()
+  const chain = radarChain()
+  const best = [...records].filter((r) => r.species !== 0 && r.count > 0)
+    .sort((a, b) => b.count - a.count)
+  const nameOf = (species: number): string => names[species] ?? `#${String(species)}`
+  return (
+    <div className={css.rows} style={{ fontSize: 10 }}>
+      <div className={css.row}>
+        <span className={css.name}>
+          {chain.species === 0 ? '지금 잇는 사슬 없음' : nameOf(chain.species)}
+        </span>
+        <span>{chain.species === 0 ? '' : chain.count}</span>
       </div>
-      {large && <div className={css.small}>←→ 표식 {at + 1} · Z 여기에 꽂는다 · {y === 0 ? '' : ''}</div>}
+      {best.map((r, i) => (
+        <div key={i} className={css.row}>
+          <span className={css.name}>{nameOf(r.species)}</span>
+          <span>{r.count}</span>
+        </div>
+      ))}
+      {best.length === 0 && <div className={css.small}>기록 없음</div>}
     </div>
   )
 }
@@ -705,6 +850,16 @@ export function Calendar({ x, y, press, large }: Nav) {
 export function ColorChanger({ x, press, large }: Nav) {
   const color = useSaveStore((s) => s.poketch.screenColor)
   const at = ((x % POKETCH_COLOR_COUNT) + POKETCH_COLOR_COUNT) % POKETCH_COLOR_COUNT
+  // 칸에 그리는 색은 그 액정의 **바탕**이다. 그게 화면의 86%를 덮는 색이라
+  // 골랐을 때 무슨 색이 되는지를 가장 잘 말한다
+  const [shades, setShades] = useState<readonly (readonly string[])[] | null>(null)
+  useEffect(() => {
+    let live = true
+    void loadPoketchMap()
+      .then((file) => { if (live) setShades(file.shades) })
+      .catch(() => { /* 자료가 아직 없으면 우리 색으로 */ })
+    return () => { live = false }
+  }, [])
   useOnPress(press, () => {
     if (!large) return
     const p = useSaveStore.getState().poketch
@@ -713,11 +868,11 @@ export function ColorChanger({ x, press, large }: Nav) {
   return (
     <div className={css.center}>
       <div className={css.swatches}>
-        {POKETCH_PALETTE.map((c, i) => (
+        {Array.from({ length: POKETCH_COLOR_COUNT }, (_, i) => (
           <span
             key={i}
             className={large && i === at ? css.swatchOn : css.swatch}
-            style={{ background: c.lit, opacity: i === color ? 1 : 0.55 }}
+            style={{ background: poketchShades(i, shades).ground, opacity: i === color ? 1 : 0.55 }}
           />
         ))}
       </div>
@@ -731,16 +886,8 @@ export function ColorChanger({ x, press, large }: Nav) {
 // ⚠️ **빈 화면으로 두지 않는다.** 아무것도 안 그리면 「고장」과 「원래 이렇다」가
 // 화면에서 같아진다. 무엇이 없어서 안 도는지를 그 자리에서 말한다.
 
-export function BerrySearcher() {
-  return <div className={css.missing}>나무열매 밭이<br />아직 없다 (§4.6)</div>
-}
-
 export function LinkSearcher() {
   return <div className={css.missing}>통신은<br />범위 밖이다 (§9)</div>
-}
-
-export function TrainerCounter() {
-  return <div className={css.missing}>VS시커가<br />아직 없다 (§7.9)</div>
 }
 
 /** 앱 번호 → 그리는 것 */

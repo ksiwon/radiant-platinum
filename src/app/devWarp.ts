@@ -19,6 +19,9 @@ import {
 import {
   FLAG_UNLOCKED_VS_SEEKER_LVL_1, VAR_VS_SEEKER_BATTERY, VS_SEEKER_MAX_BATTERY,
 } from '../engine/world/vsSeekerTable'
+import { BERRY_STAGE } from '../engine/world/berryPatches'
+import { POKETCH_APP_COUNT, registerApp } from '../engine/world/poketch'
+import { usePoketchStore } from '../state/poketchStore'
 import {
   fliesAlongTheWay, HM_CARRIER, HM_TEACHES, seenAlongTheWay,
 } from '../engine/dev/checkpoints'
@@ -133,6 +136,11 @@ async function applySetup(cp: Checkpoint): Promise<void> {
   // 걸어서 채우려면 100걸음이고, 재대결은 그 사람들을 **이미 이겨 놨어야** 뜬다
   if (cp.vsSeeker === true) await readyVsSeeker(cp)
 
+  // 포켓치를 켜고 앱을 다 등록한다 (PARITY §7.3). 걸어서 모으려면 스물다섯
+  // 자리를 돌아야 해서, 지도 화면 하나를 보려고 게임을 통째로 깨야 한다
+  if (cp.poketchApp !== undefined) readyPoketch(cp.poketchApp)
+  if (cp.ripeBerries === true) ripenBerries()
+
   // 지나온 마을은 공중날기가 열려 있다. 안 열면 타운맵이 통째로 회색이다.
   // ⚠️ `spawnTable`을 안 본다 — 타이틀에서 뛰어들면 아직 안 채워져 있다
   try {
@@ -233,6 +241,29 @@ async function readyVsSeeker(cp: Checkpoint): Promise<void> {
     // 배치표를 못 읽으면 느낌표 하나짜리만 뜬다. 뛰어드는 것 자체는 안 막는다
   }
   useSaveStore.setState({ vars: Uint16Array.from(vars.saved) })
+}
+
+/** 포켓치를 켜고 앱 스물다섯을 다 등록한 뒤 하나를 연다 */
+function readyPoketch(app: number): void {
+  const p = useSaveStore.getState().poketch
+  let next = { ...p, enabled: true }
+  for (let i = 0; i < POKETCH_APP_COUNT; i++) next = registerApp(next, i)
+  useSaveStore.setState({ poketch: { ...next, appIndex: app } })
+  usePoketchStore.getState().setView('large')
+}
+
+/**
+ * 밭을 다 열린 채로 놓는다.
+ *
+ * ⚠️ **`isGrowing`도 같이 세운다.** 그게 「본 적이 있는가」라, 안 세우면
+ * 단계만 올려 놔도 나무열매탐색기가 그 밭을 안 센다 (`GetReadyBerryPatches`)
+ */
+function ripenBerries(): void {
+  useSaveStore.setState({
+    berryPatches: useSaveStore.getState().berryPatches.map((p) => (
+      p.berryID === 0 ? p : { ...p, growthStage: BERRY_STAGE.fruit, isGrowing: true }
+    )),
+  })
 }
 
 /** 같은 이유로 **두 군데에** 세운다. 한쪽만 세우면 맵을 갈아탈 때 사라진다 */

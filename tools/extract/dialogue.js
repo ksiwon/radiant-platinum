@@ -250,6 +250,19 @@ const EXTRA_BANKS = [
   // 크레딧 237줄 (PARITY §8.12). 오버레이 99가 직접 여는 뱅크라 스크립트가
   // 안 가리킨다. 흐르는 차례는 코드 안의 표에 따로 있다 (`pnpm gen:credits`)
   'TEXT_BANK_UNK_0548',
+  // 우편 (PARITY §4.8). 편지지 이름 열둘과 우편함 화면의 말 — 둘 다 따로 도는
+  // 응용 프로그램이다 (`applications/mail.c` · `mail_viewer.c`)
+  'TEXT_BANK_MAIL', 'TEXT_BANK_MAILBOX',
+  // 낱말 고르기 (PARITY §4.8). 화면의 말 열셋과 무리 이름 열넷,
+  // 그리고 **낱말 자체가 들어 있는 뱅크 일곱**이다.
+  // ⚠️ **나머지 넷은 이미 다른 이름으로 싣고 있다** — 종족명·기술명·타입·특성.
+  // 원작은 그 넷을 **대문자 뱅크**로 읽는데(`move_names_uppercase` 따위)
+  // **한국어·일본어 롬에는 그 뱅크가 아예 없다.** 그래서 우리는 세 로케일 다
+  // 보통 이름표를 쓴다 — 로케일마다 다른 낱말 목록이 생기는 편이 더 나쁘다
+  'TEXT_BANK_EASY_CHAT', 'TEXT_BANK_EASY_CHAT_GROUPS',
+  'TEXT_BANK_TRAINER_WORDS', 'TEXT_BANK_PEOPLE_WORDS', 'TEXT_BANK_GREETINGS',
+  'TEXT_BANK_LIFESTYLE_WORDS', 'TEXT_BANK_FEELINGS', 'TEXT_BANK_TOUGH_WORDS',
+  'TEXT_BANK_UNION_WORDS',
 ]
 
 function main() {

@@ -385,6 +385,21 @@ export const motionTimingSchema = z.object({
  * `cells`가 격자 칸마다의 이름표다 (`tmap_block.dat`) — 그림만으로는 커서 아래가
  * 어느 도로인지 알 수 없다
  */
+/**
+ * 포켓치 지도 화면 (`tools/extract/poketchMap.js`).
+ *
+ * `maps`가 아틀라스의 가로 차례(마킹맵 · 나무열매탐색기)고 세로가 액정 색
+ * 여덟이다. `shades`는 그 색의 명암 넷을 **밝은 쪽부터** 적는다 — 화면 전체를
+ * 이 넷으로 칠한다
+ */
+export const poketchMapSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  themes: z.number().int().positive(),
+  maps: z.array(z.string()).nonempty(),
+  shades: z.array(z.array(z.string()).length(4)).nonempty(),
+})
+
 export const townMapSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -812,6 +827,7 @@ export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type CreditsAtlas = z.infer<typeof creditsSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
+export type PoketchMapFile = z.infer<typeof poketchMapSchema>
 export type HiddenItems = z.infer<typeof hiddenItemsSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>
 export type PokedexHabitat = z.infer<typeof pokedexHabitatSchema>

@@ -7,6 +7,7 @@
 // 저장 크기도 덤이다. u32 하나가 네 값을 대신한다.
 import type { Species, Stats } from '../../data/schema'
 import { noOrigin, type Origin, type Trainer } from './origin'
+import type { Mail } from '../world/mail'
 import { computeStats } from './stats'
 import { expForLevel, levelForExp } from './exp'
 import { NATURE_COUNT } from './stats'
@@ -82,9 +83,16 @@ export interface PokemonInstance {
    *
    * 아래 니블이 남은 날, 위 니블이 균주다. 0이면 한 번도 안 걸린 것이다.
    *
-   * ⚠️ **여기가 마지막 칸이다.** `save/schema.ts`의 차례와 같아야 검사합이 맞는다
+   * ⚠️ **`save/schema.ts`의 차례와 같아야 한다** — 새 칸은 양쪽 다 끝에 붙인다
    */
   pokerus: number
+  /**
+   * 지니고 있는 편지 (PARITY §4.8).
+   *
+   * ⚠️ **지닌 도구와 따로다.** 편지지는 `heldItem`으로도 잡히지만 **글은
+   * 여기 있다** — 원작도 `Pokemon` 구조체에 `Mail`을 통째로 넣는다
+   */
+  mail: Mail | null
 }
 
 /** 데리고 다닐 수 있는 수 (`MAX_PARTY_SIZE`). 넘치면 박스로 간다 */
@@ -330,6 +338,8 @@ export function createWild(
     form: 0,
     // 야생은 포켓루스를 안 달고 나온다. 걸리는 자리는 배틀이 끝나는 순간뿐이다
     pokerus: 0,
+    // 편지는 사람이 써서 붙이는 것뿐이다 — 야생이 들고 나오는 길이 없다
+    mail: null,
   }
 }
 

@@ -61,19 +61,71 @@ export const PoketchColor = {
 export const POKETCH_COLOR_COUNT = 8
 
 /**
- * 화면 색 여덟. 원작은 팔레트를 갈아 끼우고 우리는 CSS 색을 갈아 끼운다 —
- * 어느 쪽이든 **바탕과 켜진 점** 두 색이면 액정 하나가 된다
+ * 액정 한 색의 명암 네 단계. **밝은 쪽부터**다 — 바탕이 제일 밝고 글씨가 제일
+ * 어둡다 (실측: 지도 한 장 49,152픽셀 중 제일 밝은 단계가 42,180개).
  */
-export const POKETCH_PALETTE: readonly { readonly dim: string; readonly lit: string }[] = [
-  { dim: '#476b30', lit: '#9bbc4a' }, // 초록
-  { dim: '#6b6423', lit: '#ccc04a' }, // 노랑
-  { dim: '#6b4a23', lit: '#cc8f4a' }, // 주황
-  { dim: '#6b2f2f', lit: '#cc5a5a' }, // 빨강
-  { dim: '#553063', lit: '#a586c4' }, // 보라
-  { dim: '#2f4a6b', lit: '#5a8fcc' }, // 파랑
-  { dim: '#236b64', lit: '#4accc0' }, // 청록
-  { dim: '#585858', lit: '#c8c8c8' }, // 하양
+export interface PoketchShades {
+  /** 바탕 */
+  readonly ground: string
+  readonly mid: string
+  readonly dark: string
+  /** 글씨·선 */
+  readonly ink: string
+}
+
+/**
+ * 색이 안 붙었을 때 쓰는 여덟 색 — **우리가 고른 것이다.**
+ *
+ * ⚠️ **원작 팔레트가 아니다.** 진짜는 롬의 `graphic/poketch.narc` 0번에 있고
+ * 설치본이 `data/poketchMap.json`으로 들고 온다 (`poketchShades`). 여기 값은
+ * 자료가 아직 없을 때 화면이 비지 않게 하는 몫이고, 그래서 **한 색에서
+ * 밝기만 깎아** 만든다 — 원작 값을 흉내 내 적어 두면 나중에 어느 쪽이
+ * 근거인지 구분이 안 된다.
+ *
+ * ⚠️ **명암이 한때 뒤집혀 있었다** — 어두운 바탕에 밝은 글씨로 그렸는데
+ * 원작 액정은 그 반대다. 롬 팔레트를 재고 나서야 보였다.
+ */
+const FALLBACK_HUES: readonly (readonly [number, number, number])[] = [
+  [0x73, 0xb5, 0x73], // 초록
+  [0xbd, 0xb5, 0x73], // 노랑
+  [0xc6, 0x94, 0x6b], // 주황
+  [0xde, 0x73, 0x73], // 빨강
+  [0xa5, 0x73, 0xb5], // 보라
+  [0x8c, 0x8c, 0xff], // 파랑
+  [0x5a, 0xbd, 0xc6], // 청록
+  [0xa5, 0xa5, 0xa5], // 하양
 ]
+
+/** 바탕에서 얼마나 어두워지는가. 네 단계의 밝기 비율이다 */
+const FALLBACK_STEPS = [1, 0.72, 0.48, 0.2]
+
+const hex = (rgb: readonly [number, number, number], k: number): string =>
+  `#${rgb.map((c) => Math.round(c * k).toString(16).padStart(2, '0')).join('')}`
+
+/** 색이 안 붙었을 때의 명암 넷 */
+export function fallbackShades(color: number): PoketchShades {
+  const rgb = FALLBACK_HUES[((color % POKETCH_COLOR_COUNT) + POKETCH_COLOR_COUNT) % POKETCH_COLOR_COUNT]
+    ?? FALLBACK_HUES[0]!
+  const [ground, mid, dark, ink] = FALLBACK_STEPS.map((k) => hex(rgb, k))
+  return { ground: ground!, mid: mid!, dark: dark!, ink: ink! }
+}
+
+/**
+ * 액정 색 여덟 (`enum PoketchScreenColor`).
+ *
+ * 설치본의 `shades`가 있으면 그것이 이긴다 — 원작 팔레트다. 없으면 위의
+ * 우리 색으로 떨어진다.
+ */
+export function poketchShades(
+  color: number, installed?: readonly (readonly string[])[] | null,
+): PoketchShades {
+  const at = ((color % POKETCH_COLOR_COUNT) + POKETCH_COLOR_COUNT) % POKETCH_COLOR_COUNT
+  const row = installed?.[at]
+  if (row && row.length === 4) {
+    return { ground: row[0]!, mid: row[1]!, dark: row[2]!, ink: row[3]! }
+  }
+  return fallbackShades(at)
+}
 
 export interface PoketchMarker { x: number; y: number }
 

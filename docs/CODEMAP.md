@@ -118,8 +118,9 @@
 
 아카이브가 아니라 C 소스에 박힌 표는 추출기가 못 센다. `pnpm gen:*` 꼴로
 **소스에 구워 넣는다** (`tools/extract/*Module.cjs` → `src/…Table.ts`).
-지금 그렇게 굽는 것 아홉: `gen:amity`(상호교류광장) · `gen:records`(게임 기록) ·
+지금 그렇게 굽는 것 열하나: `gen:amity`(상호교류광장) · `gen:records`(게임 기록) ·
 `gen:credits`(크레딧 흐르는 차례) · `gen:vsseeker`(재대결표 240줄) ·
+`gen:poketchmap`(포켓치 지도 위의 자리) · `gen:easychat`(낱말 1,495개의 무리) ·
 `gen:charmap`(문자표) · `gen:scriptMeta` · `gen:spriteTable` ·
 `gen:trainerClasses` · `gen:trainerBgm`.
 

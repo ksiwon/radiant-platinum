@@ -10,6 +10,7 @@
 //
 //   0 없음 214 · 1 회복 38 · 6 기술머신 100 · 8 나무열매 64 · 19 알림 9 ·
 //   20 진화의돌 10 · 13 비료 4 · 7 편지 12 · 나머지는 하나씩
+import { mailTypeOfConstant } from '../world/mail'
 import type { Item } from '../../data/schema'
 import type { Rod } from '../battle/encounter'
 import type { ItemPlan, ItemTarget } from '../battle/meta/bagItem'
@@ -67,7 +68,18 @@ const NO_FISHING_LAST = 583
  * 못 만든 것"이 화면에서 같은 말로 보인다.
  */
 /** 파티 화면이 무엇을 하러 열리는가. `menuStore`의 `usingItem.use`와 같은 값이다 */
-export type PartyItemUse = 'heal' | 'tmhm' | 'evoStone'
+export type PartyItemUse = 'heal' | 'tmhm' | 'evoStone' | 'mail' | 'gracidea'
+
+/**
+ * `SCRIPT_ID(COMMON_SCRIPTS, 39)` — `CommonScript_TryUseAzureFlute`.
+ *
+ * ⚠️ **천계의피리는 우리가 판정할 것이 하나도 없다.** 원작의 공용 스크립트가
+ * 자리(창의기둥 셋)·칸(31,52)·전당등록·전국도감·배포 표식·이미 잡았는가를 다
+ * 물어보고, 안 맞으면 제 대사(「써 봐도 뜻이 없을 것 같다」)로 닫는다.
+ * 맞으면 곡을 틀고 화면을 하얗게 지운 뒤 시작의 방으로 워프한다 —
+ * **그 계단은 롬이 놓는다.** 우리가 하는 일은 이 번호를 거는 것뿐이다
+ */
+export const COMMON_SCRIPT_AZURE_FLUTE = 2039
 
 export type FieldItemAction =
   /** 누구에게 쓸지 골라야 한다. 파티 화면이 열린다 */
@@ -88,6 +100,15 @@ export type FieldItemAction =
   | { kind: 'radar' }
   /** VS시커로 둘레를 훑는다 (PARITY §7.9) */
   | { kind: 'vsSeeker' }
+  /**
+   * 공용 스크립트 하나를 건다.
+   *
+   * ⚠️ **쓸 수 있는지도 그 스크립트가 묻는다.** 여기서 미리 걸러내면 못 쓰는
+   * 자리에서 원작의 대사 대신 우리 말이 나간다 — VS시커와 같은 길이다
+   */
+  | { kind: 'commonScript'; id: number }
+  /** 편지를 쓴다 (PARITY §4.8). `type`이 편지지 번호다 */
+  | { kind: 'mail'; type: number }
   /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
   | { kind: 'blocked'; why: string }
   /** 그 계통이 아직 없다 */
@@ -148,16 +169,13 @@ export interface FieldContext {
 const MISSING: Partial<Record<number, string>> = {
   [FieldUse.TOWN_MAP]: '타운맵',
   [FieldUse.EXPLORER_KIT]: '지하통로',
-  [FieldUse.MAIL]: '편지',
   [FieldUse.BERRY]: '나무열매 밭',
   [FieldUse.POFFIN_CASE]: '포핀',
   [FieldUse.PAL_PAD]: '친구수첩',
   [FieldUse.SPRAYDUCK]: '나무열매 밭',
   [FieldUse.MULCH]: '나무열매 밭',
   [FieldUse.HONEY]: '꿀나무',
-  [FieldUse.AZURE_FLUTE]: '천계의피리',
   [FieldUse.VS_RECORDER]: '배틀레코더',
-  [FieldUse.GRACIDEA]: '폼 체인지',
 }
 
 /**
@@ -214,6 +232,26 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     case FieldUse.VS_SEEKER:
       if (ctx.mainMatrix !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       return { kind: 'vsSeeker' }
+
+    // 천계의피리 (`UseAzureFluteInField`). 조건 여섯을 롬이 다 묻는다 — 위의
+    // 상수 설명 참고. **여기서 아무것도 안 막는다**
+    case FieldUse.AZURE_FLUTE:
+      return { kind: 'commonScript', id: COMMON_SCRIPT_AZURE_FLUTE }
+
+    // 그라시데아꽃 (`UseGracideaInField`). 누구에게 쓸지부터 고른다 —
+    // 스카이가 될 수 있는지(운명적인 만남·낮·안 얼었음)는 파티 화면이
+    // `canShayminSky`로 본다 (PARITY §3.4)
+    case FieldUse.GRACIDEA:
+      return { kind: 'party', use: 'gracidea' }
+
+    // `ItemUseFunc_Mail` — 편지지를 고르면 **누구에게 지니게 할지**부터 묻는다.
+    // 글을 다 쓴 뒤가 아니라 앞에서 고르는 것이 원작이고, 그래야 편지에 새길
+    // 아이콘 셋(그 자리부터 파티 끝까지)이 정해진다
+    case FieldUse.MAIL: {
+      const type = mailTypeOfConstant(item.constant)
+      if (type === null) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      return { kind: 'mail', type }
+    }
 
     case FieldUse.ESCAPE_ROPE:
       // `CanUseEscapeRope` — 동굴이고 그 맵이 허락해야 한다

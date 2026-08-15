@@ -59,6 +59,17 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   trade: 'trade',
   npcTradeNames: 'npc_trade_names',
   credits: 'unk_0548',
+  mail: 'mail',
+  mailbox: 'mailbox',
+  easyChat: 'easy_chat',
+  easyChatGroups: 'easy_chat_groups',
+  trainerWords: 'trainer_words',
+  peopleWords: 'people_words',
+  greetings: 'greetings',
+  lifestyleWords: 'lifestyle_words',
+  feelings: 'feelings',
+  toughWords: 'tough_words',
+  unionWords: 'union_words',
 }
 
 /**

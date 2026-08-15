@@ -12,10 +12,10 @@ import {
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
   scriptFileSchema,
-  speciesFileSchema, trainerFileSchema, townMapSchema,
+  speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BoxWallpapers, type CreditsAtlas, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
-  type Species, type Trainer, type TownMapFile, type HiddenItems,
+  type Species, type Trainer, type TownMapFile, type PoketchMapFile, type HiddenItems,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
   type MoveAnimFile, type FrontierData,
 } from './schema'
@@ -44,6 +44,8 @@ export const BOX_WALLPAPER_ATLAS = 'data/boxWallpapers.png'
 /** 크레딧 배경 한 장의 자리 (PARITY §8.12). 장마다 크기가 달라 파일도 따로다 */
 export const creditsImage = (at: number): string => `data/credits${String(at)}.png`
 export const SIGNPOST_ATLAS = 'data/signposts.png'
+/** 포켓치 지도. 가로가 지도 갈래 둘, 세로가 액정 색 여덟이다 */
+export const POKETCH_MAP_ATLAS = 'data/poketchMap.png'
 
 export type DataLocale = 'en' | 'ko' | 'ja'
 
@@ -387,6 +389,11 @@ export function loadLabels(locale: DataLocale): Promise<Labels> {
 /** 타운맵의 격자 표. 그림은 `data/townMap.png`로 따로 받는다 */
 export function loadTownMap(): Promise<TownMapFile> {
   return fetchJson('townMap.json', (v) => townMapSchema.parse(v))
+}
+
+/** 포켓치 지도 아틀라스의 크기와 액정 팔레트. 그림은 `POKETCH_MAP_ATLAS`다 */
+export function loadPoketchMap(): Promise<PoketchMapFile> {
+  return fetchJson('poketchMap.json', (v) => poketchMapSchema.parse(v))
 }
 
 // ── 스크립트·대사 (DATA.md §2.10, §2.11) ──────────────────────────────────────

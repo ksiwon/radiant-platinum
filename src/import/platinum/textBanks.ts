@@ -432,6 +432,11 @@ export const TEXT_BANK_NAMES = [
   'contest_accessory_names',
   // 크레딧 237줄 (PARITY §8.12). 디컴프도 이름을 못 붙인 뱅크라 번호로 부른다
   'unk_0548',
+  // 우편과 낱말 고르기 (PARITY §4.8). 화면 글 넷과 **낱말이 든 뱅크 일곱**이다 —
+  // 종족·기술·타입·특성은 이미 이름표로 싣고 있어서 여기 없다
+  'mail', 'mailbox', 'easy_chat', 'easy_chat_groups',
+  'trainer_words', 'people_words', 'greetings',
+  'lifestyle_words', 'feelings', 'tough_words', 'union_words',
 ] as const
 
 export type TextBankName = (typeof TEXT_BANK_NAMES)[number]

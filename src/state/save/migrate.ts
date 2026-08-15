@@ -24,6 +24,8 @@ import { newSafari, TRAM_START } from '../../engine/world/safari'
 import { newFashionCase } from '../../engine/world/fashionCase'
 import { newFactoryRecords } from '../../engine/frontier/records'
 import { newGameRecords } from '../../engine/world/gameRecords'
+import { newMailbox } from '../../engine/world/mail'
+import { newEasyChatUnlocks } from '../../engine/world/easyChat'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -358,6 +360,17 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 32,
     siwonGiven: 0,
     siwonMet: false,
+  }),
+
+  // 우편과 낱말 고르기 (PARITY §4.8). 옛 리포트에는 편지가 있을 수 없으므로
+  // 우편함이 비고 개체의 `mail`도 전부 `null`이다 — 편지지를 지닌 마리가
+  // 있었더라도 그건 도구일 뿐 글이 아니다
+  32: (data) => ({
+    ...data,
+    ...stampMons(data, { mail: null }),
+    version: 33,
+    mailbox: newMailbox(),
+    easyChatUnlocks: newEasyChatUnlocks(),
   }),
 }
 

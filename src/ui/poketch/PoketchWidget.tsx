@@ -15,7 +15,8 @@ import { useEffect, useRef, useState } from 'react'
 import { assignInlineVars } from '@vanilla-extract/dynamic'
 import { loadUiText } from '../../data/uiText'
 import { isUiCaptured, setUiCapture } from '../../engine/input/keys'
-import { POKETCH_PALETTE, stepApp } from '../../engine/world/poketch'
+import { loadPoketchMap } from '../../data/gameData'
+import { poketchShades, stepApp } from '../../engine/world/poketch'
 import { clearPoketchMemory, usePoketchStore } from '../../state/poketchStore'
 import { useSaveStore } from '../../state/saveStore'
 import { POKETCH_APPS, type Nav } from './apps'
@@ -29,6 +30,8 @@ export function PoketchWidget() {
   const view = usePoketchStore((s) => s.view)
   const setView = usePoketchStore((s) => s.setView)
   const [names, setNames] = useState<readonly string[]>([])
+  // 액정 팔레트는 롬에서 온다. 아직 안 붙었으면 우리 색으로 뜬다 (`poketchShades`)
+  const [shades, setShades] = useState<readonly (readonly string[])[] | null>(null)
   const [cursor, setCursor] = useState({ x: 0, y: 0 })
   const [press, setPress] = useState(0)
 
@@ -37,6 +40,9 @@ export function PoketchWidget() {
     void loadUiText('poketchApps')
       .then((list) => { if (live) setNames(list) })
       .catch(() => { /* 이름 없이도 액정은 뜬다 */ })
+    void loadPoketchMap()
+      .then((file) => { if (live) setShades(file.shades) })
+      .catch(() => { /* 자료가 아직 없으면 우리 색으로 */ })
     return () => { live = false }
   }, [])
 
@@ -118,12 +124,16 @@ export function PoketchWidget() {
 
   const App = POKETCH_APPS[poketch.appIndex] ?? POKETCH_APPS[0]
   const nav: Nav = { x: cursor.x, y: cursor.y, press, large }
-  const palette = POKETCH_PALETTE[poketch.screenColor] ?? POKETCH_PALETTE[0]!
+  const palette = poketchShades(poketch.screenColor, shades)
 
   return (
     <div
       className={css.root}
-      style={assignInlineVars({ [css.dim]: palette.dim, [css.lit]: palette.lit })}
+      style={assignInlineVars({
+        [css.ground]: palette.ground,
+        [css.mid]: palette.mid,
+        [css.ink]: palette.ink,
+      })}
     >
       <div className={`${css.body} ${large ? css.size.large : css.size.small}`}>
         <div className={css.deck}>

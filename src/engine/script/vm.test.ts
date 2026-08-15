@@ -261,7 +261,7 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
-  it('닿는 자리의 98.4%가 돈다 — DATA.md §2.10의 그 수', () => {
+  it('닿는 자리의 98.5%가 돈다 — DATA.md §2.10의 그 수', () => {
     // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.
     // 쓰는 눈금은 스크립트가 **실제로 밟는 자리**고, 문서가 그 수를 적고
     // 있으므로 여기서 같은 방법으로 세어 못 박는다 — 안 그러면 문서만 낡는다.
@@ -489,14 +489,14 @@ const LOOPING_ENTRIES_YES = 31
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
  *
- * DATA.md §2.10이 이 둘의 비를 적는다(98.4%). 문서에만 적어 두면 명령을 붙일
+ * DATA.md §2.10이 이 둘의 비를 적는다(98.5%). 문서에만 적어 두면 명령을 붙일
  * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_570
+const RUNNING_SITES = 54_650
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 479
+const IMPLEMENTED_COMMANDS = 505
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -616,7 +616,7 @@ const IDLE_COMMANDS = [
   'BufferPartyMonNicknameReturnSpecies',
   'StorePartyMonIntoDaycare',
   // 친밀도를 올리고 기술칸을 읽는 자리도 파티 너머다
-  'IncreasePartyMonFriendship',
+  'ScrCmd_1B3', 'CountMailInMailbox',
   'GetDaycareCompatibilityLevel',
   // ⚠️ **크기 대회 넷은 총어를 데리고 있어야 닿는다.** 222번도로 동쪽 집의
   // 첫 갈래가 `CheckPartyHasSpecies SPECIES_REMORAID`라, 파티가 빈 훑기는
@@ -638,6 +638,7 @@ const IDLE_COMMANDS = [
   // 상호교류광장은 따라다니는 마리가 있어야 열리고, 팔파크 쪽은 GBA 연결이 있어야
   // 한다 — 넣는 쪽(`AddAccessory`)과 이름 쪽은 훑기가 실제로 밟는다
   'CanFitAccessory',
+  'CheckNationalDexCompleted',
   // 상장 둘은 도감을 다 채운 사람에게만 오는 갈래라 훑기가 안 닿는다
   'ShowDiplomaSinnoh',
   'ShowDiplomaNationalDex',
@@ -680,7 +681,9 @@ const IDLE_COMMANDS = [
   // 부르는 자리에 닿지 않는다 — 만든 이유는 안 만들면 방송 스크립트가
   // 인자를 명령으로 읽고 서기 때문이다
   'CallTVInterview',
+  'BufferCustomMessageWord',
   'GetPartyMonType',
+  'PlayPCShutDownAnimation',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',
   'CheckHasEnoughMonForCatchingShow',
@@ -725,6 +728,7 @@ const IDLE_COMMANDS = [
   // 하나에 다 모여 있고, 그 앞이 `GetPartyRotomCountAndFirst`로 파티를 세는
   // 갈래다 — 세이브 없는 훑기는 0마리로 답해서 「아무 일도 안 일어났다」로 빠진다
   'GetRotomFormsInSave', 'SetRotomForm', 'GetPartyMonForm2',
+  'GetOverworldWeather',
   // ⚠️ **기라티나를 이긴 뒤에만 도는 줄이다** (`…_RemoveGiratina`). 그 방의
   // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
   'ResetDistortionWorldPersistedCameraAngles',

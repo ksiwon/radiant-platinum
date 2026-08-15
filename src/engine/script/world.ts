@@ -382,6 +382,17 @@ export interface FieldServices {
      * 매니아터널의 비밀방이 이 수로 열린다 (PARITY §6.8)
      */
     unownFormsSeen: () => number
+    /**
+     * 도감을 센다 (`Pokedex_CountSeen_*` · `Pokedex_CountCaught_*`).
+     *
+     * ⚠️ **신오 도감은 목록이 정한다** — 210종의 목록이 `pokedexSort.json`에
+     * 있고 그 안에 든 것만 센다. 전국은 493종 전부다
+     */
+    dexCount: (national: boolean, caught: boolean) => number
+    /** 그 도감이 다 찼는가 (`Pokedex_LocalDexCompleted` · `..._NationalDexCompleted`) */
+    dexCompleted: (national: boolean) => boolean
+    /** 폼과 언어를 도감이 세기 시작한다 (`Pokedex_TurnOn*Detection`) */
+    turnOnDetection: (kind: 'form' | 'language') => void
   }
   /**
    * 나무열매 밭 118 (PARITY §4.6) — `berry_patch_manager.c`.
@@ -786,6 +797,32 @@ export interface FieldServices {
   }
   /** 도감 완성 상장 (PARITY §5 `diploma`) */
   diploma?: { show: (national: boolean) => void }
+  /** 방금 있던 맵의 헤더 번호 (`FieldOverworldState_GetPrevLocation`) */
+  previousMap?: () => number
+  /**
+   * 낱말 고르기 (PARITY §4.8).
+   *
+   * ⚠️ **글자는 여기서만 나온다.** 규칙은 `engine/world/easyChat`가 갖고
+   * 있지만 낱말의 글자는 롬 뱅크라, 붙이는 쪽이 그 뱅크를 들고 있다
+   */
+  easyChat?: {
+    allToughUnlocked: () => boolean
+    /** 하나를 풀고 그 글자를 준다. 다 풀렸으면 `null` */
+    unlockTough: () => { entry: number, text: string } | null
+    wordText: (word: number) => string
+  }
+  /** 지금 이 맵의 날씨 번호 (`FieldOverworldState_GetWeather`) */
+  weather?: () => number
+  /** 오늘이 무슨 요일인가. 0이 일요일이다 (`RTCDate.week`) */
+  dayOfWeek?: () => number
+  /** 지금 몇 시인가 0~23 (`FieldSystem_GetHour`) */
+  hour?: () => number
+  /** 우편함 (PARITY §4.8). PC의 갈래에서 연다 (`ScrCmd_1B3`) */
+  mailbox?: {
+    /** 지금 든 편지 수 (`Mailbox_CountMail`) */
+    count: () => number
+    open: () => void
+  }
   /** 명예의 전당 (PARITY §7.11) — `ClearGame` · `OpenPCHallOfFameScreen` */
   hallOfFame?: {
     /**

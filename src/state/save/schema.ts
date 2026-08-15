@@ -36,6 +36,10 @@ import {
 import { MAX_COINS } from '../../engine/world/coins'
 import { HIGH_LIMIT_U32, MAX_RECORDS } from '../../engine/world/gameRecordsTable'
 import { SIWON_GIFTS } from '../../engine/world/siwon'
+import {
+  MAIL_ICONS, MAIL_LINES, MAIL_TYPE_COUNT, MAIL_TYPE_NONE, MAIL_WORDS_PER_LINE, MAILBOX_SIZE,
+} from '../../engine/world/mail'
+import { EASY_CHAT_WORD_COUNT, EASY_CHAT_WORD_NONE } from '../../engine/world/easyChatTable'
 import { MAX_BATTLE_POINTS } from '../../engine/bag/frontierMart'
 import {
   HONEY_TREE_COUNT, SLATHER_MINUTES as HONEY_SLATHER_MINUTES,
@@ -127,7 +131,31 @@ const originSchema = z.object({
   fateful: z.boolean(),
 })
 
-export const monSchema = z.object({
+/**
+ * 편지 한 장 (PARITY §4.8 · `Mail`).
+ *
+ * ⚠️ **쓴 사람이 새겨진다** — 남의 편지는 지운 뒤에야 다시 쓸 수 있다.
+ * ⚠️ **아이콘 셋은 「그때 파티에 있던 마리」다** — 나중에 파티가 바뀌어도 안 바뀐다
+ */
+export const mailSchema = z.object({
+  /** 편지지 0~11. `MAIL_TYPE_NONE`(0xFFFF)이면 빈 칸이다 */
+  type: z.union([int(0, MAIL_TYPE_COUNT - 1), z.literal(MAIL_TYPE_NONE)]),
+  trainerId: int(0, 0xffff),
+  trainerName: z.string().max(16),
+  trainerGender: int(0, 1),
+  icons: z.array(z.object({
+    species: int(0, 493),
+    form: int(0, 27),
+    isEgg: z.boolean(),
+  })).max(MAIL_ICONS),
+  /** 줄 셋 × 낱말 둘. 안 쓴 칸은 `EASY_CHAT_WORD_NONE`(0xFFFF)이다 */
+  lines: z
+    .array(z.array(z.union([int(0, EASY_CHAT_WORD_COUNT - 1), z.literal(EASY_CHAT_WORD_NONE)]))
+      .length(MAIL_WORDS_PER_LINE))
+    .length(MAIL_LINES),
+})
+
+const monSchema = z.object({
   species: int(1, 493),
   pid: int(0, 0xffffffff),
   nickname: z.string().max(24).nullable(),
@@ -158,6 +186,14 @@ export const monSchema = z.object({
    * 검사합이 맞는다 — 새 칸은 양쪽 다 끝에 붙인다
    */
   pokerus: int(0, 255),
+  /**
+   * 지니고 있는 편지 (PARITY §4.8). 없으면 `null`.
+   *
+   * ⚠️ **도구 칸과 따로다.** 편지지는 지닌 도구로도 잡히지만(`heldItem`),
+   * **글은 여기 있다** — 원작도 `Pokemon` 구조체에 `Mail`을 통째로 넣는다.
+   * 우편함으로 옮기는 것은 이 칸을 비우고 그쪽에 넣는 일이다
+   */
+  mail: mailSchema.nullable(),
 })
 
 const bagSlotSchema = z.object({
@@ -621,6 +657,23 @@ export const saveSchema = z.object({
   siwonGiven: int(0, SIWON_GIFTS.length),
   /** 리그 복도에서 시원을 만났는가. 그 연출은 한 번만 돈다 */
   siwonMet: z.boolean(),
+  /**
+   * 우편함 스무 칸 (PARITY §4.8 · `Mailbox`).
+   *
+   * ⚠️ **포켓몬이 지닌 편지는 여기 없다** — 그건 개체의 `mail` 칸이다.
+   * 여기는 **떼어 놓은** 편지만이고, 꽉 차면 더 못 뗀다
+   */
+  mailbox: z.array(mailSchema).length(MAILBOX_SIZE),
+  /**
+   * 낱말 고르기에서 풀어 둔 것 (`UnlockedEasyChatWords`).
+   *
+   * ⚠️ **두 벌이 따로다.** 다른 나라 말 인사와 어려운 낱말은 여는 사람이
+   * 달라서 비트도 따로 센다
+   */
+  easyChatUnlocks: z.object({
+    greetings: int(0, 0xffffffff),
+    tough: int(0, 0xffffffff),
+  }),
 })
 
 /**

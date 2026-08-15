@@ -35,6 +35,8 @@ import {
 import { newBerryPatches, type BerryPatch } from '../engine/world/berryPatches'
 import { newSafari, TRAM_START, type SafariState } from '../engine/world/safari'
 import { newFashionCase, type FashionCase } from '../engine/world/fashionCase'
+import { newMailbox, type Mail } from '../engine/world/mail'
+import { newEasyChatUnlocks, type EasyChatUnlocks } from '../engine/world/easyChat'
 import { newFactoryRecords, type FactoryRecords } from '../engine/frontier/records'
 import { newGameRecords } from '../engine/world/gameRecords'
 import { newJournal, type JournalEntry } from '../engine/world/journal'
@@ -279,6 +281,15 @@ export interface SaveData {
   /** 리그 복도에서 시원을 만났는가. 그 연출은 한 번만 돈다 */
   siwonMet: boolean
   /**
+   * 우편함 스무 칸 (PARITY §4.8).
+   *
+   * ⚠️ **포켓몬이 지닌 편지는 여기 없다** — 그건 개체의 `mail` 칸이다.
+   * 여기는 **떼어 놓은** 편지만이고, 꽉 차면 더 못 뗀다
+   */
+  mailbox: Mail[]
+  /** 낱말 고르기에서 풀어 둔 것 (`UnlockedEasyChatWords`) */
+  easyChatUnlocks: EasyChatUnlocks
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -340,7 +351,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 32
+export const SAVE_VERSION = 33
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -432,6 +443,8 @@ export function createNewSave(): SaveData {
     fashionCase: newFashionCase(),
     siwonGiven: 0,
     siwonMet: false,
+    mailbox: newMailbox(),
+    easyChatUnlocks: newEasyChatUnlocks(),
   }
 }
 
@@ -676,6 +689,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     fashionCase: s.fashionCase,
     siwonGiven: s.siwonGiven,
     siwonMet: s.siwonMet,
+    mailbox: s.mailbox,
+    easyChatUnlocks: s.easyChatUnlocks,
   }
 }
 

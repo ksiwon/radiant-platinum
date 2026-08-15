@@ -122,5 +122,7 @@ export function createFactoryMon(
     origin: noOrigin({ name: otName, gender: 'male' }),
     form: set.form ?? 0,
     pokerus: 0,
+    // 빌린 마리는 편지를 안 지닌다
+    mail: null,
   }
 }

@@ -314,6 +314,7 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('itemIcons — 가방 아틀라스', async () => { await parity('itemIcons') }, 60_000)
   it('pokeIcons — 파티·박스 아틀라스', async () => { await parity('pokeIcons') }, 60_000)
   it('boxWallpapers — 벽지 32장', async () => { await parity('boxWallpapers') }, 60_000)
+  it('poketchMap — 지도 둘 × 액정 색 여덟', async () => { await parity('poketchMap') }, 60_000)
   it('signposts — 간판 50장', async () => { await parity('signposts') }, 60_000)
   it('starterScene — 모델 여섯과 애니 길이', async () => { await parity('starterScene') }, 60_000)
   it('trainerSprites — 갈래 105장', async () => { await parity('trainerSprites') }, 60_000)

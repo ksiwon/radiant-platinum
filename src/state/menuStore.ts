@@ -11,6 +11,7 @@ import { create } from 'zustand'
 // 타이틀 화면이 이 스토어를 잡으므로 초기 청크에 three가 실린다 (§10.4)
 import { setUiCapture } from '../engine/input/keys'
 import type { ShopCurrency } from '../engine/script/world'
+import type { PartyItemUse } from '../engine/bag/fieldUse'
 
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
@@ -43,6 +44,13 @@ export type MenuScreen =
   | 'credits'
   // PC의 「명예의 전당」. `OpenPCHallOfFameScreen`이 연다
   | 'pcHallOfFame'
+  // 편지 (PARITY §4.8). 가방에서 편지지를 골라 파티에서 마리를 고르면 열리고,
+  // 지닌 편지에 말을 걸어도 열린다. `mail`이 무엇을 쓰고 있는지를 든다
+  | 'mail'
+  // 낱말 고르기. 편지 화면이 한 줄을 고를 때 그 위에 쌓인다
+  | 'easyChat'
+  // 우편함 스무 칸. PC의 갈래에서 연다 (`mail_viewer.c`)
+  | 'mailbox'
   // 시험용 확인 지점 화면(백틱). 스택에 올려 두는 이유는 그림이 아니라 **키** 때문이다 —
   // 스택이 비어 있지 않아야 필드 입력이 멈추고 X가 시작 메뉴를 열지 않는다.
   // 그림은 `App`이 DEV에서만 동적으로 받아 그린다
@@ -85,7 +93,7 @@ interface MenuStore {
    * 파티 화면이 이 값을 보고 "쓴다" 모드로 뜬다. 상점 재고와 같은 이유로
    * 여기 있다 — 화면을 여는 인자라 컴포넌트가 못 받는다
    */
-  usingItem: { item: number; use: 'heal' | 'tmhm' | 'evoStone' } | null
+  usingItem: { item: number; use: PartyItemUse } | null
   /**
    * 요약 화면이 보여 줄 파티 자리.
    *
@@ -115,6 +123,18 @@ interface MenuStore {
    * 이유로 여기 있다 — 화면을 여는 인자라 컴포넌트가 못 받는다
    */
   reminder: { slot: number; moves: number[]; tutor: boolean } | null
+  /**
+   * 지금 쓰거나 읽고 있는 편지 (PARITY §4.8).
+   *
+   * ⚠️ **쓰는 길과 읽는 길이 한 화면이다** — 원작도 `writeMode` 하나로 가른다.
+   * `slot`이 파티 자리이고, 쓰는 중이면 `item`이 가방에서 뺄 편지지다
+   */
+  mail:
+    | { mode: 'write'; type: number; item: number; slot: number; lines: number[][] }
+    | { mode: 'read'; slot: number }
+    | null
+  /** 낱말 고르기가 채울 자리. 편지의 몇째 줄 몇째 낱말인가 */
+  easyChatAt: { line: number; word: number } | null
   /** 마지막 되살리기가 실제로 가르쳤는가 (`keepOldMove`). 스크립트가 이 값으로 갈린다 */
   reminderLearned: boolean
   /** 상장이 전국도감판인가 (`ShowDiplomaNationalDex`) */
@@ -147,6 +167,12 @@ interface MenuStore {
   openPartyWithItem: (what: NonNullable<MenuStore['usingItem']>) => void
   /** 요약 화면을 쌓는다. B로 파티 화면으로 돌아간다 */
   openSummary: (slot: number) => void
+  /** 편지를 쓰거나 읽는다 (PARITY §4.8) */
+  openMail: (what: NonNullable<MenuStore['mail']>) => void
+  /** 편지의 한 칸을 채우러 낱말 고르기를 쌓는다 */
+  openEasyChat: (at: NonNullable<MenuStore['easyChatAt']>) => void
+  /** 고른 낱말을 그 칸에 넣는다. `null`이면 비운다 */
+  setMailWord: (word: number) => void
   /** 도구를 건네주려고 가방을 쌓는다 */
   openBagToGive: (slot: number) => void
   /**
@@ -192,6 +218,8 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   naming: null,
   usingItem: null,
   summarySlot: 0,
+  mail: null,
+  easyChatAt: null,
   giveTo: null,
   pickPocket: null,
   reminder: null,
@@ -269,6 +297,29 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     capture(stack)
     return { stack, top: 'summary' as const, summarySlot: slot }
   }),
+
+  openMail: (what) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'mail']
+    capture(stack)
+    return { stack, top: 'mail' as const, mail: what }
+  }),
+
+  openEasyChat: (at) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'easyChat']
+    capture(stack)
+    return { stack, top: 'easyChat' as const, easyChatAt: at }
+  }),
+
+  // ⚠️ **쓰는 중일 때만 받는다.** 읽는 화면에서 낱말이 바뀌면 남의 편지가
+  // 고쳐진다 — 원작은 읽기에서 낱말 칸에 커서가 아예 안 간다
+  setMailWord: (word) => { set((s) => {
+    const at = s.easyChatAt
+    if (!at || s.mail?.mode !== 'write') return {}
+    const lines = s.mail.lines.map((line, i) => (
+      i === at.line ? line.map((w, j) => (j === at.word ? word : w)) : line
+    ))
+    return { mail: { ...s.mail, lines } }
+  }) },
 
   openPartyWithItem: (what) => set((s) => {
     const stack: MenuScreen[] = [...s.stack, 'party']

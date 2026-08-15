@@ -5,13 +5,17 @@
 // 안으로 파인 액정 · 옆구리에 붙은 버튼 둘 · 아래에 찍힌 앱 이름 —
 // 그 넷이 시계를 만든다.
 //
-// 색은 CSS 변수 둘로만 바꾼다 (`--dim`·`--lit`). 컬러체인저가 여덟 색을
-// 갈아 끼우는데, 규칙마다 색을 적어 두면 여덟 벌이 생긴다.
+// 색은 CSS 변수 셋으로만 바꾼다. 컬러체인저가 여덟 색을 갈아 끼우는데,
+// 규칙마다 색을 적어 두면 여덟 벌이 생긴다.
+//
+// ⚠️ **액정은 밝은 바탕에 어두운 글씨다.** 원작 팔레트를 재기 전에는 반대로
+// 그리고 있었다 — 롬의 네 단계 중 제일 밝은 것이 화면의 86%를 덮는다.
 import { createVar, globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
 
-/** 액정의 바탕색과 켜진 점 색. `POKETCH_PALETTE`가 값을 준다 */
-export const dim = createVar()
-export const lit = createVar()
+/** 액정의 명암 네 단계 중 셋. `poketchShades`가 값을 준다 */
+export const ground = createVar()
+export const mid = createVar()
+export const ink = createVar()
 
 const wake = keyframes({
   from: { opacity: 0, transform: 'translateY(-8px) scale(0.96)' },
@@ -83,8 +87,8 @@ export const screen = style({
   borderRadius: 6,
   padding: 8,
   overflow: 'hidden',
-  background: dim,
-  color: lit,
+  background: ground,
+  color: ink,
   border: '1px solid rgba(0,0,0,0.45)',
   boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.55)',
   fontVariantNumeric: 'tabular-nums',
@@ -208,15 +212,55 @@ export const cell = style({
   background: 'currentColor',
 })
 
-/** 지도 (마킹맵·나무열매탐색기). 그림 위에 표식을 얹는다 */
+/**
+ * 지도 (마킹맵·나무열매탐색기). 그림 위에 표식을 얹는다.
+ *
+ * ⚠️ **그림이 이미 액정 색이다** — 롬이 명암 네 단계로 그려 두었고 색 여덟이
+ * 아틀라스에 다 들어 있다. 그래서 여기서 색을 누르지 않는다. 한때
+ * `grayscale(1) contrast(1.4)`로 눌렀는데 그건 지도가 없던 시절의 대역이다
+ */
 export const mapBox = style({
   position: 'relative',
   margin: 'auto',
-  // 액정이라 지도도 두 색으로 눌러 본다
-  filter: 'grayscale(1) contrast(1.4)',
-  mixBlendMode: 'luminosity',
-  opacity: 0.75,
+  imageRendering: 'pixelated',
+  overflow: 'hidden',
 })
+
+/**
+ * 아틀라스에서 한 장을 오려 낸다. 가로가 지도 갈래(마킹·열매), 세로가 색 여덟이다.
+ *
+ * 크기를 CSS 변수로 받는 것은 접힌 시계와 펼친 시계에서 배율이 다르기 때문이다
+ */
+export const mapSheet = style({
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  transformOrigin: '0 0',
+  maxWidth: 'none',
+})
+
+/** 열매가 열린 밭. 한 점이 마을 하나다 */
+export const mapBerry = style({
+  position: 'absolute',
+  width: 5,
+  height: 5,
+  marginLeft: -2.5,
+  marginTop: -2.5,
+  borderRadius: '50%',
+  background: 'currentColor',
+  // 지도 그림 위에 얹히므로 바탕색으로 한 겹 두른다 — 안 두르면 지형에 묻힌다
+  boxShadow: `0 0 0 1px ${ground}`,
+})
+
+/** 숨은 자리 넷. 이야기가 열어야 뜬다 */
+export const mapHidden = style([mapBerry, {
+  borderRadius: 0,
+  width: 4,
+  height: 4,
+  marginLeft: -2,
+  marginTop: -2,
+  transform: 'rotate(45deg)',
+}])
 
 export const marker = style({
   position: 'absolute',
@@ -273,7 +317,7 @@ export const dayToday = style([day, {
   opacity: 1,
   fontWeight: 800,
   background: 'currentColor',
-  color: dim,
+  color: ground,
 }])
 
 /** 색 여덟 칸 (컬러체인저) */

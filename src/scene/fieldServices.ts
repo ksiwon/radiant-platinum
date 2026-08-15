@@ -30,6 +30,21 @@ import { addRecord, addTrainerScore } from '../engine/world/gameRecords'
 import { ChallengeType } from '../engine/frontier/factory'
 import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTables'
 import { cameraSystem } from '../engine/actor/camera'
+import { dexHas } from '../engine/pokemon/dex'
+import { allToughWordsUnlocked, unlockToughWord } from '../engine/world/easyChat'
+import { loadWordLookup, type WordLookup } from '../ui/menu/easyChatWords'
+import { loadPokedexSort } from '../data/gameData'
+/** 종족 번호의 끝. 전국도감이 이 수만큼이다 */
+const NATIONAL_DEX_COUNT = 493
+/**
+ * 전국도감을 「다 찼다」로 볼 때 빼는 종.
+ *
+ * ⚠️ **원작도 셋을 뺀다** — 다크라이·아르세우스·쉐이미는 배포로만 오므로
+ * 넣어 두면 아무도 상장을 못 받는다 (`Pokedex_NationalDexCompleted`)
+ */
+const NATIONAL_DEX_EXEMPT = new Set([491, 492, 493])
+/** 난수. 원작 LCRNG와 같은 자리에서 쓴다 */
+const randMod = (bound: number): number => (bound <= 1 ? 0 : Math.floor(Math.random() * bound))
 import { setOnCyclingRoad } from '../engine/actor/bike'
 import { FIELD_MOVES } from '../engine/script/fieldMoves'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
@@ -154,6 +169,7 @@ import { useDoorVisualStore } from './doorVisualStore'
 import { useBattleStore } from '../state/battleStore'
 import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
+import { mailboxCount } from '../engine/world/mail'
 import { playerTrainer, useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
 import { naming as namingAnswer } from '../ui/menu/namingAnswer'
@@ -269,6 +285,27 @@ let npcTradeId: number | null = null
 
 const npcTradeRecord = (): NpcTrades['trades'][number] | null =>
   (npcTradeId === null ? null : npcTrades?.[npcTradeId] ?? null)
+
+/**
+ * 신오도감 210종의 목록 (`pokedexSort.json`).
+ *
+ * ⚠️ **번호 범위로 못 센다** — 신오도감은 종족 번호가 연달아 있지 않다.
+ * 목록이 없으면 0을 준다 (전국 수로 대신하면 마박사가 없는 상장을 준다)
+ */
+let sinnohList: readonly number[] | null = null
+
+/** 어려운 낱말 서른둘의 글자. 낱말 하나를 배울 때 대사에 끼워 넣는다 */
+let toughWordNames: readonly string[] = []
+/** 낱말 번호 → 글자. 낱말 고르기가 채운 칸을 대사가 읽는다 */
+let easyChatWordText: WordLookup = () => ''
+
+/** 방금 있던 맵 (`FieldOverworldState_GetPrevLocation`) */
+let previousMapId = 0
+
+/** 워프할 때마다 적는다. `MapStreamer`가 맵을 갈아 끼우기 **직전에** 부른다 */
+export function rememberPreviousMap(mapId: number): void {
+  if (mapId >= 0) previousMapId = mapId
+}
 
 /** 종족값·기술 표. 개체를 만들려면 둘 다 있어야 한다 */
 let speciesTable: Awaited<ReturnType<typeof loadSpecies>> | null = null
@@ -577,6 +614,17 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   // 스크립트가 주는 포켓몬도 같은 표로 만든다. 못 받으면 `GivePokemon`이
   // 실패를 돌려준다 — 반쯤 만들어진 개체를 파티에 넣지 않는다
   void loadSpecies().then((table) => { speciesTable = table }).catch(() => { /* 못 준다 */ })
+  // 신오도감 목록 210종. 없으면 마박사의 평가가 0으로 뜬다
+  void loadPokedexSort(locale)
+    .then((file) => { sinnohList = file.lists.sinnoh ?? null })
+    .catch(() => { /* 신오 도감 수만 0이다 */ })
+  // 낱말 고르기 (PARITY §4.8). 어려운 낱말은 대사에 끼워 넣을 글자가 필요하다
+  void loadDialogueBank(locale, UI_BANK.toughWords)
+    .then((bank) => { toughWordNames = bank })
+    .catch(() => { /* 낱말 이름만 빈다 */ })
+  void loadWordLookup(locale)
+    .then((get) => { easyChatWordText = get })
+    .catch(() => { /* 낱말 글자만 빈다 */ })
   void loadMoves().then((table) => { moveTable = table }).catch(() => { /* 못 준다 */ })
   // 포켓치 앱 이름 25개. 스크립트가 대사에 끼워 넣는다 (PARITY §7.3)
   void loadDialogueBank(locale, POKETCH_APP_NAME_BANK)
@@ -810,6 +858,17 @@ const services: FieldServices = {
     },
   },
 
+  easyChat: {
+    allToughUnlocked: () => allToughWordsUnlocked(useSaveStore.getState().easyChatUnlocks),
+    unlockTough: () => {
+      const got = unlockToughWord(useSaveStore.getState().easyChatUnlocks, randMod)
+      if (!got) return null
+      useSaveStore.setState({ easyChatUnlocks: got.unlocks })
+      return { entry: got.entry, text: toughWordNames[got.entry] ?? '' }
+    },
+    wordText: (word) => easyChatWordText(word),
+  },
+
   trainerInfo: {
     // 원작 번호는 남 0 · 여 1이다 (`TrainerInfo_Gender`)
     gender: () => (useSaveStore.getState().trainer.gender === 'girl' ? 1 : 0),
@@ -821,7 +880,53 @@ const services: FieldServices = {
       return useSaveStore.getState().nationalDex
     },
     unownFormsSeen: () => useSaveStore.getState().pokedex.unownForms.length,
+    dexCount: (national, caught) => {
+      const dex = useSaveStore.getState().pokedex
+      const field = caught ? dex.caught : dex.seen
+      // ⚠️ **신오는 목록이 정한다** — 210종 안에 든 것만 센다. 그 목록을 아직
+      // 못 받았으면 0이다(전국 수로 대신하면 마박사가 없는 상장을 준다)
+      if (!national) {
+        return sinnohList === null ? 0 : sinnohList.filter((n: number) => dexHas(field, n)).length
+      }
+      let n = 0
+      for (let species = 1; species <= NATIONAL_DEX_COUNT; species++) if (dexHas(field, species)) n++
+      return n
+    },
+    dexCompleted: (national) => {
+      const dex = useSaveStore.getState().pokedex
+      // ⚠️ **신오는 「본 것」, 전국은 「잡은 것」이다** (`Pokedex_*DexCompleted`)
+      if (national) {
+        for (let s = 1; s <= NATIONAL_DEX_COUNT; s++) {
+          if (!dexHas(dex.caught, s) && !NATIONAL_DEX_EXEMPT.has(s)) return false
+        }
+        return true
+      }
+      return sinnohList !== null && sinnohList.every((n: number) => dexHas(dex.seen, n))
+    },
+    // ⚠️ **우리는 늘 폼을 적는다** (`form` 칸이 개체에 있다) — 켜고 끄는 비트가
+    // 없다. 언어는 아예 안 든다 (PARITY §1.24). 그래서 아무 일도 안 한다
+    turnOnDetection: () => { /* 늘 켜져 있는 것과 같다 */ },
   },
+
+  /**
+   * 방금 있던 맵 (`FieldOverworldState_GetPrevLocation`).
+   *
+   * ⚠️ **워프할 때마다 적는다** — 안 적으면 「어디서 들어왔는가」로 갈리는
+   * 스크립트가 늘 한쪽으로 간다
+   */
+  previousMap: () => previousMapId,
+
+  /**
+   * 지금 날씨 (`FieldOverworldState_GetWeather`).
+   *
+   * ⚠️ **맵 헤더의 값이다.** 원작은 리포트 쪽에 따로 들고 있어서 스크립트가
+   * 바꾼 날씨도 읽히는데, 우리는 아직 바꾸는 길이 없다 (PARITY §8.3)
+   */
+  weather: () => mapById(mapWorld.mapId)?.weather ?? 0,
+  // ⚠️ **요일은 진짜 달력에서 온다** — 게임 시계는 시·분만 든다. 원작도
+  // `GetCurrentDate`로 기계의 날짜를 본다
+  dayOfWeek: () => new Date().getDay(),
+  hour: () => Math.floor(worldState.time.gameHour) % 24,
 
   berryPatches: berryPatchServices,
 
@@ -1312,6 +1417,17 @@ const services: FieldServices = {
   },
 
   diploma: { show: (national) => { useMenuStore.getState().openDiploma(national) } },
+
+  /**
+   * 우편함 (PARITY §4.8). PC의 갈래가 연다 (`CommonScript_Mailbox`).
+   *
+   * ⚠️ **비어 있으면 화면을 안 연다** — 스크립트가 `CountMailInMailbox`로
+   * 먼저 묻고 0이면 「메일이 없다」로 되돌린다
+   */
+  mailbox: {
+    count: () => mailboxCount(useSaveStore.getState().mailbox),
+    open: () => { useMenuStore.getState().push('mailbox') },
+  },
 
   /**
    * 명예의 전당 (PARITY §7.11) — `ClearGame`.

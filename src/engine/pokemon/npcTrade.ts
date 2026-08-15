@@ -134,6 +134,8 @@ export function createTradedMon(
     origin: tradedOrigin(record, names, level, today),
     form: 0,
     pokerus: 0,
+    // 교환으로 오는 마리는 편지를 안 지닌다 — 통신교환이 아니라 NPC다
+    mail: null,
   }
 }
 

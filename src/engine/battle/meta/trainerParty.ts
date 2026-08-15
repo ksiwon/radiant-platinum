@@ -75,5 +75,7 @@ export function trainerMonToInstance(
     form: 0,
     // 상대 개체에는 포켓루스가 안 붙는다. 노력치를 안 쌓으므로 쓸 자리도 없다
     pokerus: 0,
+    // 트레이너의 마리는 편지를 안 지닌다 — 붙이는 길이 사람 손뿐이다
+    mail: null,
   }
 }

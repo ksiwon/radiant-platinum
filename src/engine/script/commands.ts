@@ -35,7 +35,7 @@ import { rematchTrainerID, VsSeekerResult } from '../world/vsSeeker'
 import {
   FLAG_UNLOCKED_VS_SEEKER_LVL_1, MOVEMENT_TYPE_LOOK, MOVEMENT_TYPE_VS_SEEKER_SPIN,
 } from '../world/vsSeekerTable'
-import { LIST_MENU_NO_SELECTION_YET, type ShopCurrency } from './world'
+import { LIST_MENU_NO_SELECTION_YET, MENU_CANCEL, type ShopCurrency } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
 import { compareSize, SIZE_RECORD_INITIAL, SIZE_RESULT, sizeParts } from '../world/sizeContest'
@@ -2825,6 +2825,256 @@ on('ClearGame', (ctx) => {
   return true
 })
 
+/**
+ * 우편함에 든 편지 수 (`ScrCmd_CountMailInMailbox`).
+ *
+ * ⚠️ **PC의 갈래가 이 수로 갈린다** — 0이면 「메일이 없다」로 되돌리고,
+ * 하나라도 있어야 화면이 열린다
+ */
+on('CountMailInMailbox', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.mailbox?.count() ?? 0)
+  return false
+})
+
+/**
+ * 우편함을 연다 (`ScrCmd_1B3`).
+ *
+ * ⚠️ **디컴프도 이름을 못 붙인 명령이다.** 부르는 자리가 하나뿐이고
+ * (`CommonScript_Mailbox`) 바로 앞이 `CountMailInMailbox`라 무엇인지가 정해진다
+ */
+on('ScrCmd_1B3', (ctx) => {
+  ctx.host.world.services.mailbox?.open()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+/**
+ * PC 화면이 켜지고 꺼지는 연출 (`LoadPCAnimation` · `PlayPCBootUpAnimation` ·
+ * `PlayPCShutDownAnimation`).
+ *
+ * ⚠️ **우리는 화면이 하나다.** 원작은 **위 화면**에 PC 모니터를 그려 두고
+ * 켜지는 그림을 돌린다 — 아래 화면은 그동안 메뉴다. 원 스크린에서는 그
+ * 모니터가 갈 자리가 없어서, 명령을 만들어 **아무 일도 안 하게** 뒀다.
+ * 안 만들면 스크립트가 그 자리에서 선다.
+ *
+ * ⚠️ **인자 한 바이트는 그래도 읽는다** — 안 읽으면 그 바이트를 다음 명령으로
+ * 읽어서 스크립트가 통째로 어긋난다
+ */
+on('LoadPCAnimation', (ctx) => { ctx.readByte(); return false })
+on('PlayPCBootUpAnimation', (ctx) => { ctx.readByte(); return false })
+on('PlayPCShutDownAnimation', (ctx) => { ctx.readByte(); return false })
+
+
+// ── 시계와 날씨 (PARITY §8.3) ────────────────────────────────────────────────
+//
+// 시간대는 이미 있고(`GetTimeOfDay`), 여기 셋은 **더 잘게** 묻는 것이다.
+
+/**
+ * 오늘 무슨 요일인가 (`ScrCmd_GetDayOfWeek`).
+ *
+ * ⚠️ **0이 일요일이다** (`RTCDate.week`). 월요일부터 세면 요일마다 다른
+ * 사람이 하루씩 밀린다 — 218번도로의 낚시왕과 백화점 특매가 그 표를 쓴다
+ */
+on('GetDayOfWeek', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.dayOfWeek?.() ?? 0)
+  return false
+})
+
+/** 지금 몇 시인가 0~23 (`ScrCmd_GetHour`) */
+on('GetHour', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.hour?.() ?? 12)
+  return false
+})
+
+/**
+ * 이 맵의 날씨 번호 (`ScrCmd_GetOverworldWeather`).
+ *
+ * ⚠️ **맵 헤더의 값이 아니라 지금 걸린 값이다** — 원작이 리포트 쪽
+ * (`FieldOverworldState`)에 들고 있어서 스크립트가 바꾼 날씨도 여기서 읽힌다.
+ * 우리는 아직 스크립트가 날씨를 못 바꾸므로 늘 맵 헤더의 값이다
+ */
+on('GetOverworldWeather', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.weather?.() ?? 0)
+  return false
+})
+
+// ── 도감을 세는 것 (PARITY §6.2) ─────────────────────────────────────────────
+//
+// 마박사(신오)와 오박사(전국)의 평가, 그리고 상장이 이 수로 갈린다.
+
+/** 신오도감에서 본 수 (`ScrCmd_GetLocalDexSeenCount`) */
+on('GetLocalDexSeenCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.dexCount(false, false) ?? 0)
+  return false
+})
+
+/** 전국도감에서 본 수 */
+on('GetNationalDexSeenCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.dexCount(true, false) ?? 0)
+  return false
+})
+
+/** 전국도감에서 잡은 수 */
+on('GetNationalDexCaughtCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.dexCount(true, true) ?? 0)
+  return false
+})
+
+/**
+ * 신오도감이 다 찼는가 (`ScrCmd_CheckLocalDexCompleted`).
+ *
+ * ⚠️ **신오는 「본 것」으로 센다** — 잡을 필요가 없다. 전국은 반대로 **잡은
+ * 것**이라야 한다 (`Pokedex_NationalDexCompleted`)
+ */
+on('CheckLocalDexCompleted', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.dexCompleted(false) === true ? 1 : 0)
+  return false
+})
+
+on('CheckNationalDexCompleted', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.dexCompleted(true) === true ? 1 : 0)
+  return false
+})
+
+/**
+ * 도감이 폼·언어를 세기 시작한다 (`ScrCmd_TurnOnPokedex*Detection`).
+ *
+ * ⚠️ **켠 뒤에 만난 것부터다.** 그전에 본 개체의 폼은 안 세어진다 — 원작도
+ * 비트를 하나 세울 뿐 앞의 기록을 되짚지 않는다
+ */
+on('TurnOnPokedexFormDetection', (ctx) => {
+  ctx.host.world.services.trainerInfo?.turnOnDetection('form')
+  return false
+})
+
+on('TurnOnPokedexLanguageDetection', (ctx) => {
+  ctx.host.world.services.trainerInfo?.turnOnDetection('language')
+  return false
+})
+
+// ── 낱말 고르기가 여는 것 (PARITY §4.8) ──────────────────────────────────────
+
+/** 어려운 낱말이 다 풀렸는가 (`ScrCmd_CheckAllToughWordsUnlocked`) */
+on('CheckAllToughWordsUnlocked', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.easyChat?.allToughUnlocked() === true ? 1 : 0)
+  return false
+})
+
+/**
+ * 어려운 낱말 하나를 풀고 그 글자를 칸에 넣는다
+ * (`ScrCmd_TryBufferAndUnlockRandomToughWord`).
+ *
+ * ⚠️ **다 풀렸으면 −1이다.** 0이 아니라 −1이라 그 사람이 「더 알려 줄 것이
+ * 없다」로 닫는다 — 0으로 두면 첫 낱말을 또 알려 준다
+ */
+on('TryBufferAndUnlockRandomToughWord', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  const got = ctx.host.world.services.easyChat?.unlockTough()
+  if (got === undefined || got === null) { ctx.host.vars.set(dest, 0xffff); return false }
+  ctx.host.vars.set(dest, got.entry)
+  ctx.host.world.slots.set(slot, got.text)
+  return false
+})
+
+/**
+ * 고른 낱말을 글 칸에 넣는다 (`ScrCmd_BufferCustomMessageWord`).
+ *
+ * ⚠️ **낱말 번호는 변수에 들어 있다** — 무엇을 골랐는지는 낱말 고르기 화면이
+ * 그 변수에 적어 두고 나간다
+ */
+on('BufferCustomMessageWord', (ctx) => {
+  // ⚠️ **칸 번호도 변수다.** 다른 `Buffer*`는 칸이 한 바이트인데 이것만
+  // 둘 다 변수라 4바이트다 — 한 바이트로 읽으면 그 뒤가 통째로 밀린다
+  const slot = ctx.readVar()
+  const word = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.easyChat?.wordText(word) ?? '')
+  return false
+})
+
+// ── 낱개 (PARITY §10 「기타」) ───────────────────────────────────────────────
+
+/**
+ * 난수 (`ScrCmd_GetRandom2`).
+ *
+ * ⚠️ **`GetRandom`과 인자 차례가 뒤바뀌어 있다** — 이쪽이 「담을 곳, 상한」이고
+ * 저쪽이 「담을 곳, 상한」으로 같지만 **한 프레임 쉰다**(`return TRUE`).
+ * 난수를 쓰는 자리가 같은 프레임에 몰리지 않게 하는 것이다
+ */
+on('GetRandom2', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const bound = ctx.readVar()
+  ctx.host.vars.set(dest, randMod(bound))
+  return true
+})
+
+/**
+ * 그 도구가 플레이트인가 (`ScrCmd_CheckItemIsPlate`).
+ *
+ * ⚠️ **번호 범위로 가른다** — 이름이 아니라 불꽃플레이트(303)부터
+ * 강철플레이트(319)까지다. 아르세우스의 폼을 정하는 열일곱 장이다
+ */
+on('CheckItemIsPlate', (ctx) => {
+  const item = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, item >= ITEM_FIRST_PLATE && item <= ITEM_LAST_PLATE ? 1 : 0)
+  return false
+})
+
+/** 방금 있던 맵 (`ScrCmd_GetPreviousMapID`) */
+on('GetPreviousMapID', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.previousMap?.() ?? 0)
+  return false
+})
+
+/**
+ * 승강기가 오르내리는 연출 (`ScrCmd_PlayElevatorAnimation`).
+ *
+ * ⚠️ **우리에게는 그 그림이 없다.** 원작은 위 화면에 층수판을 그려 두고
+ * 흐르는 무늬를 돌린다 — 원 스크린에서 갈 자리가 없다. 대신 **인자는 다 읽고**
+ * 스크립트를 한 프레임 쉬게 한다(원작도 `return TRUE`다). 안 만들면 그 자리에서 선다
+ */
+on('PlayElevatorAnimation', (ctx) => {
+  ctx.readVar() // 오르는가 내리는가
+  ctx.readVar() // 몇 번 돌리는가
+  return true
+})
+
+/**
+ * 지금 층을 알려 주는 작은 창 (`ScrCmd_ShowCurrentFloor`).
+ *
+ * ⚠️ **인자가 넷이고 마지막 하나는 원작도 안 쓴다** — 창의 왼쪽·위 자리,
+ * 고른 답을 담을 변수, 그리고 안 쓰는 변수 하나다
+ */
+on('ShowCurrentFloor', (ctx) => {
+  ctx.readByte() // 창의 왼쪽
+  ctx.readByte() // 창의 위
+  const dest = ctx.readHalfWord()
+  ctx.readVar() // 원작도 안 쓴다
+  // 층을 고르는 것이 아니라 보여 주는 창이라 답이 늘 0이다
+  ctx.host.vars.set(dest, 0)
+  return false
+})
+
+/**
+ * 아르세우스의 플레이트 열여섯 (`ITEM_FLAME_PLATE`~`ITEM_IRON_PLATE`).
+ *
+ * ⚠️ **번호는 도구표에서 잰 것이다** — 손으로 적으면 한 칸 밀려도 안 보인다
+ */
+const ITEM_FIRST_PLATE = 298
+const ITEM_LAST_PLATE = 313
+
 /** PC의 「명예의 전당」 (`ScrCmd_OpenPCHallOfFameScreen`) */
 on('OpenPCHallOfFameScreen', (ctx) => {
   ctx.host.world.services.hallOfFame?.openPC()
@@ -4545,3 +4795,63 @@ on('ScrCmd_2B2', () => false)
  * 상관없는 자리에서 「나쁜 알이 있다」는 대사가 뜬다
  */
 on('CheckPartyHasBadEgg', answers(0))
+
+
+// ── 배틀홀의 기록 기계 (PARITY §9.3) ─────────────────────────────────────────
+//
+// 시설 넷은 안 만들었고 접수원은 제 대사로 돌려보내는데, **안쪽 벽의 기록
+// 기계는 아니었다.** 배틀프런티어에서 다섯 건물이 다 워프로 열려 있어서 걸어
+// 들어가 이 기계를 읽을 수 있고, 읽으면 이렇게 돈다:
+//
+//     SelectPokemonWithStartingLetter:
+//       ShowBattleHallRecordMonSelectionMenu …, VAR_0x8003, …
+//       GoToIfEq VAR_0x8003, MENU_CANCEL, SelectStartingLetters
+//       Call OpenRecordDisplay          ← 화면을 어둡게 → 앱 → 밝게
+//       Message WhichPokemon
+//       GoTo SelectPokemonWithStartingLetter
+//
+// 고른 값을 아무도 안 적으면 `VAR_0x8003`이 바로 앞에서 넣은 0으로 남아
+// **영영 돈다** (실측: 6,000프레임에 6,042보). 밖에서 보면 화면만 껌뻑이고
+// 발이 묶인 채 굳는다 — 통신에서 본 것과 같은 덫이다 (§9.4).
+
+/**
+ * 기록이 있는 포켓몬 고르기 (`ScrCmd_ShowBattleHallRecordMonSelectionMenu`).
+ *
+ * ⚠️ **「그만둔다」로 답한다.** 원작도 기록이 하나도 없으면 목록에 그 한 줄만
+ * 남기므로(`MenuEntries_Text_ListMenu_Exit` → `MENU_CANCEL`), 이 답이 곧 원작이
+ * 세워 주는 목록의 유일한 답이다. 그러면 글자 고르기 메뉴로 돌아가고, 거기
+ * 「그만둔다」로 기계를 닫을 수 있다 — **우리가 막는 것이 아니다**
+ */
+on('ShowBattleHallRecordMonSelectionMenu', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  const result = ctx.readHalfWord()
+  const listPos = ctx.readHalfWord()
+  const cursorPos = ctx.readHalfWord()
+  ctx.host.vars.set(result, MENU_CANCEL)
+  // 자리 기억 칸 둘도 적어 둔다. 안 적으면 다음 바퀴에 묵은 값으로 갈라진다
+  ctx.host.vars.set(listPos, 0)
+  ctx.host.vars.set(cursorPos, 0)
+  return false
+})
+
+/**
+ * 배틀홀 로비가 묻는 것들 (`ScrCmd_CallBattleHallLobbyFunction`).
+ *
+ * 파티가 자격이 되는가 · 이어 가던 도전이 있는가 · 그 종이 무엇인가.
+ * **셋 다 「없다」가 참이다** — 배틀홀을 안 만들었으니 이어 갈 도전이 없다
+ */
+on('CallBattleHallLobbyFunction', (ctx) => {
+  ctx.readHalfWord()
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/** 기록 화면을 띄운다 (`ScrCmd_OpenFrontierRecordsApp`). 띄울 화면이 없다 */
+on('OpenFrontierRecordsApp', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  ctx.readVar()
+  return false
+})

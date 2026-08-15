@@ -19,6 +19,9 @@ import { PartyScreen } from './PartyScreen'
 import { PokedexScreen } from './PokedexScreen'
 import { FlyScreen } from './FlyScreen'
 import { JournalScreen } from './JournalScreen'
+import { MailScreen } from './MailScreen'
+import { EasyChatScreen } from './EasyChatScreen'
+import { MailboxScreen } from './MailboxScreen'
 import { MoveReminderScreen } from './MoveReminderScreen'
 import { DiplomaScreen } from './DiplomaScreen'
 import { HallOfFameScreen } from './HallOfFameScreen'
@@ -74,6 +77,9 @@ export function MenuLayer() {
     case 'shop': return <ShopScreen />
     case 'box': return <BoxScreen />
     case 'journal': return <JournalScreen />
+    case 'mail': return <MailScreen />
+    case 'easyChat': return <EasyChatScreen />
+    case 'mailbox': return <MailboxScreen />
     case 'reminder': return <MoveReminderScreen />
     case 'diploma': return <DiplomaScreen />
     case 'berryTag': return <BerryTagScreen />

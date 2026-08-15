@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_MARKERS, DOTART_HEIGHT, DOTART_WIDTH, FRIENDSHIP_TIERS, MOVE_TESTER_TYPE_ORDER,
   POKETCH_APP_COUNT, POKETCH_COLOR_COUNT, POKETCH_DOTART_BYTES, POKETCH_HISTORY_MAX,
-  POKETCH_MARKER_COUNT, POKETCH_PALETTE, POKETCH_REGISTRY_SIZE, PoketchApp,
+  POKETCH_MARKER_COUNT, POKETCH_REGISTRY_SIZE, PoketchApp, fallbackShades, poketchShades,
   appCount, calendarMarked, clearCalendarMark, dotArtGet, dotArtSet, dowsingInRange,
   friendshipTier, historyEnqueue, isAppRegistered, modifyDotArt, moveTesterExclamations,
   newPoketch, registerApp, setAlarm, setCalendarMark, setMarker, setScreenColor,
@@ -73,12 +73,27 @@ describe('화면 색', () => {
     expect(setScreenColor(p, -1)).toBe(p)
   })
 
-  it('색마다 바탕과 켜진 점 두 색이 있다', () => {
-    expect(POKETCH_PALETTE).toHaveLength(POKETCH_COLOR_COUNT)
-    for (const c of POKETCH_PALETTE) {
-      expect(c.dim).toMatch(/^#[0-9a-f]{6}$/)
-      expect(c.lit).toMatch(/^#[0-9a-f]{6}$/)
+  it('색마다 명암 넷이 있고 바탕이 제일 밝다', () => {
+    for (let i = 0; i < POKETCH_COLOR_COUNT; i++) {
+      const s = fallbackShades(i)
+      for (const c of [s.ground, s.mid, s.dark, s.ink]) expect(c).toMatch(/^#[0-9a-f]{6}$/)
+      // 밝기가 단조로 떨어져야 한다 — 안 그러면 글씨가 바탕보다 밝아진다
+      const lum = (hex: string): number =>
+        Number.parseInt(hex.slice(1, 3), 16) + Number.parseInt(hex.slice(3, 5), 16)
+        + Number.parseInt(hex.slice(5, 7), 16)
+      expect(lum(s.ground)).toBeGreaterThan(lum(s.mid))
+      expect(lum(s.mid)).toBeGreaterThan(lum(s.dark))
+      expect(lum(s.dark)).toBeGreaterThan(lum(s.ink))
     }
+  })
+
+  it('⚠️ 설치본의 팔레트가 우리 색을 이긴다 — 원작 값이 있으면 그쪽이다', () => {
+    const rom = Array.from({ length: POKETCH_COLOR_COUNT }, () =>
+      ['#73b573', '#528452', '#395231', '#102918'])
+    expect(poketchShades(0, rom).ground).toBe('#73b573')
+    expect(poketchShades(0, null)).toEqual(fallbackShades(0))
+    // 넷이 아니면 안 믿는다 — 잘린 자료로 화면을 칠하지 않는다
+    expect(poketchShades(0, [['#fff']])).toEqual(fallbackShades(0))
   })
 })
 

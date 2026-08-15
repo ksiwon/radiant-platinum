@@ -151,7 +151,7 @@ describe('쉐이미', () => {
   const shaymin = (over: Record<string, unknown> = {}) => ({
     species: SPECIES_SHAYMIN,
     form: 0,
-    pokerus: 0,
+    pokerus: 0, mail: null,
     hp: 100,
     status: 'ok',
     origin: { ...noOrigin({ name: '나', gender: 'male' as const }), fateful: true },
@@ -204,7 +204,7 @@ describe('갈아입기', () => {
     moves: moves.map((move) => ({ move, pp: 5, ppUps: 0 })),
     hp: HP, status: 'ok', statusTurns: 0, heldItem: 0, friendship: 70, isEgg: false,
     otId: 0, otSecretId: 0, ball: 4,
-    origin: noOrigin({ name: '나', gender: 'male' }), form: 0, pokerus: 0,
+    origin: noOrigin({ name: '나', gender: 'male' }), form: 0, pokerus: 0, mail: null,
   })
   const THUNDER_WAVE = 86
 

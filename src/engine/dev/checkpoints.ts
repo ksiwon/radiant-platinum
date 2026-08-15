@@ -132,6 +132,22 @@ export interface Checkpoint {
    * 않으면 느낌표가 하나 뜨고 끝이라 재대결을 한 번도 못 본다
    */
   vsSeeker?: boolean
+  /**
+   * 포켓치를 켜고 앱 스물다섯을 다 등록한 뒤 이 앱을 연다 (PARITY §7.3).
+   *
+   * ⚠️ **앱 번호다. 0(디지털시계)도 뜻이 있으므로 `undefined`와 갈린다.**
+   * 걸어서 모으려면 스물다섯 자리를 다 돌아야 해서, 지도 화면 하나를 보려고
+   * 게임을 통째로 깨야 하는 것을 막는 손잡이다
+   */
+  poketchApp?: number
+  /**
+   * 밭 118개를 **열린 채로** 놓는다 (PARITY §4.6).
+   *
+   * ⚠️ **새 리포트는 심겨만 있고 열려 있지 않다.** 게다가 `isGrowing`은
+   * 「그 밭을 화면에서 본 적이 있는가」라 걸어 다니기 전에는 시간도 안 흐른다 —
+   * 나무열매탐색기가 무엇을 찍는지 보려면 스무 마을을 다 돌아야 한다
+   */
+  ripeBerries?: boolean
 }
 
 /**
@@ -474,6 +490,21 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     // 물뿌리개가 북쪽을 볼 때만 나오므로 이 방향이어야 한다
     spot: { kind: 'tile', x: 566, z: 698, facing: Math.PI },
     ...STAGE.pokedex,
+  },
+  {
+    id: 'poketch',
+    label: '209번도로 포켓치 (나무열매탐색기)',
+    env: '야외 · 액정을 펼친 채 (PARITY §7.3)',
+    try: [
+      '지도가 롬 그림이다 — 밝은 바탕에 어두운 지형이고 액정 색 여덟이 다 있다',
+      'Q E로 앱을 넘기면 마킹맵·포켓트레카운터도 같은 지도를 쓴다',
+      '점 하나가 마을 하나다 — 밭 118개가 자리 서른여섯으로 뭉친다',
+    ],
+    map: 356,
+    spot: { kind: 'tile', x: 566, z: 698, facing: Math.PI },
+    ...STAGE.pokedex,
+    poketchApp: 7,
+    ripeBerries: true,
   },
   {
     id: 'grass-night',

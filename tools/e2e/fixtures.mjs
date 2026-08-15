@@ -113,7 +113,7 @@ export async function readInstalledLight(want) {
 export const REQUIRED_PLATINUM_GROUPS = [
   'text', 'species', 'moves', 'maps', 'chunks', 'scripts', 'marts', 'npcTrades', 'sound',
   'pokegra', 'encounters', 'trainers', 'spawns', 'items', 'npcSprites', 'itemIcons',
-  'pokeIcons', 'boxWallpapers', 'signposts', 'starterScene', 'trainerSprites',
+  'pokeIcons', 'boxWallpapers', 'poketchMap', 'signposts', 'starterScene', 'trainerSprites',
 ]
 
 export const REQUIRED_BDSP_GROUPS = ['npcModels', 'monModels', 'arenas', 'motionTiming']

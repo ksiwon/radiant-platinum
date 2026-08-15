@@ -59,3 +59,28 @@ export function poketchGotMon(entry: PoketchHistoryEntry): void {
 export function poketchShow(show: boolean): void {
   usePoketchStore.getState().setView(show ? 'small' : 'hidden')
 }
+
+// ── 지도 위의 지금 자리 ──────────────────────────────────────────────────────
+//
+// ⚠️ **밖에 있을 때만 새로 적는다.** 동굴·건물 안의 좌표는 신오 지도 위에 뜻이
+// 없다 — 원작도 본 행렬을 벗어나면 `ExitLocation`(마지막으로 밖에 있던 자리)을
+// 대신 본다 (`PoketchMap_GetPlayerLocation`). 우리는 그 자리를 따로 안 적어
+// 두므로 **마지막으로 본 칸**을 여기 남긴다. 뜻이 같고, 안 남기면 굴 안에서
+// 점이 지도 왼쪽 위 구석으로 튄다.
+
+let lastCell: { x: number, y: number } | null = null
+
+/** 밖을 걷는 동안 부른다. 본 행렬이 아니면 아무 일도 안 한다 */
+export function poketchMarkCell(cell: { x: number, y: number } | null): void {
+  if (cell) lastCell = cell
+}
+
+/** 지도에 찍을 칸. 아직 밖에 한 번도 안 나갔으면 `null`이다 */
+export function poketchLastCell(): { x: number, y: number } | null {
+  return lastCell
+}
+
+/** 새 판을 열면 잊는다 — 앞 판의 자리가 남으면 엉뚱한 마을에 점이 선다 */
+export function resetPoketchCell(): void {
+  lastCell = null
+}

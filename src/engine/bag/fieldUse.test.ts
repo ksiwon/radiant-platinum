@@ -42,18 +42,19 @@ maybe('필드 도구', () => {
     expect(fieldAction(named('ITEM_FIRE_STONE'), town())).toEqual({ kind: 'party', use: 'evoStone' })
   })
 
-  it('묻는 갈래가 정확히 148종이다 — 회복 38 · 기술머신 100 · 돌 10', () => {
+  it('묻는 갈래가 정확히 149종이다 — 회복 38 · 기술머신 100 · 돌 10 · 그라시데아 1', () => {
     // ⚠️ 숫자를 세는 이유: 갈래를 하나 빠뜨리면 그 도구들이 조용히 "못 쓴다"가
     // 된다. 눈으로는 안 보이고 세면 보인다
     const asks = file.items.filter((it) => fieldAction(it, town()).kind === 'party')
-    expect(asks).toHaveLength(148)
+    expect(asks).toHaveLength(149)
     const byUse = new Map<string, number>()
     for (const it of asks) {
       const got = fieldAction(it, town())
       if (got.kind !== 'party') continue
       byUse.set(got.use, (byUse.get(got.use) ?? 0) + 1)
     }
-    expect([...byUse].sort()).toEqual([['evoStone', 10], ['heal', 38], ['tmhm', 100]])
+    expect([...byUse].sort())
+      .toEqual([['evoStone', 10], ['gracidea', 1], ['heal', 38], ['tmhm', 100]])
   })
 
   it('⚠️ 지닌 채 교환하던 열하나가 밖에서 열린다 — 표만 보면 다 막힌다', () => {
@@ -72,9 +73,9 @@ maybe('필드 도구', () => {
     }
     // 목록에 없는 도구까지 열리지는 않는다
     expect(fieldAction(named('ITEM_POKE_BALL'), town({ evoItems: constants })).kind).toBe('blocked')
-    // 열하나가 더해져 묻는 갈래는 159종이 된다
+    // 열하나가 더해져 묻는 갈래는 160종이 된다
     const asks = file.items.filter((it) => fieldAction(it, town({ evoItems: constants })).kind === 'party')
-    expect(asks).toHaveLength(148 + 11)
+    expect(asks).toHaveLength(149 + 11)
   })
 
   it('리펠 셋만 걸음을 갖고, 그 값이 롬에서 온다', () => {

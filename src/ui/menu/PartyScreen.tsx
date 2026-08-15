@@ -23,6 +23,8 @@ import { hpColor } from '../../engine/battle/healthbar'
 import { FIELD_MOVES, type FieldMoveId } from '../../engine/script/fieldMoves'
 import { fieldMoveFromMenu } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
+import { MAIL_LINES, MAIL_WORDS_PER_LINE, mailTypeOfItem, toMailbox } from '../../engine/world/mail'
+import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import type { PokemonInstance } from '../../engine/pokemon/instance'
@@ -78,8 +80,8 @@ const DENIAL: Record<string, string> = {
  */
 const P = {
   askMon: 37, askItem: 38,
-  switch_: 145, summary: 146, item: 147, cancel: 152,
-  give: 160, take: 161,
+  switch_: 145, summary: 146, item: 147, mail: 148, mailRead: 149, mailTake: 150,
+  cancel: 152, give: 160, take: 161,
 } as const
 
 /** 갈래 하나 */
@@ -92,6 +94,11 @@ interface Choice {
 function plainText(raw: string | undefined): string {
   return fillMenuText(raw ?? '', [])
 }
+
+/** 아직 아무것도 안 쓴 편지 — 줄 셋 × 낱말 둘 */
+const emptyMailLines = (): number[][] =>
+  Array.from({ length: MAIL_LINES }, () =>
+    Array.from({ length: MAIL_WORDS_PER_LINE }, () => EASY_CHAT_WORD_NONE))
 
 export function PartyScreen() {
   const [species, setSpecies] = useState<SpeciesTable | null>(null)
@@ -108,7 +115,7 @@ export function PartyScreen() {
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   /** 떠 있는 갈래 메뉴. null이면 카드를 고르는 중이다 */
-  const [menu, setMenu] = useState<'root' | 'item' | null>(null)
+  const [menu, setMenu] = useState<'root' | 'item' | 'mail' | null>(null)
   const [menuAt, setMenuAt] = useState(0)
   /** 파티 뱅크의 글. 갈래 메뉴의 낱말이 전부 여기서 온다 */
   const [partyText, setPartyText] = useState<string[]>([])
@@ -143,6 +150,7 @@ export function PartyScreen() {
   const addItem = useSaveStore((s) => s.addItem)
   const open = useMenuStore((s) => s.open)
   const openSummary = useMenuStore((s) => s.openSummary)
+  const openMail = useMenuStore((s) => s.openMail)
   const openBagToGive = useMenuStore((s) => s.openBagToGive)
 
   useEffect(() => {
@@ -216,7 +224,12 @@ export function PartyScreen() {
     }
     out.push({ label: text(P.switch_), run: () => { setMenu(null); setHeld(at) } })
     if (selected && !selected.isEgg) {
-      out.push({ label: text(P.item), run: () => { setMenu('item'); setMenuAt(0) } })
+      // ⚠️ **편지를 지니고 있으면 도구 갈래가 편지 갈래로 바뀐다** —
+      // 원작이 `Item_IsMail(heldItem)`으로 가른다. 둘이 같이 뜨지 않는다
+      const holdsMail = mailTypeOfItem(selected.heldItem) !== null
+      out.push(holdsMail
+        ? { label: text(P.mail), run: () => { setMenu('mail'); setMenuAt(0) } }
+        : { label: text(P.item), run: () => { setMenu('item'); setMenuAt(0) } })
     }
     out.push({ label: text(P.cancel), run: () => { setMenu(null) } })
     return out
@@ -232,6 +245,30 @@ export function PartyScreen() {
     ]
   }
 
+  /** 편지 갈래 (`PartyMenu_SelectMail`) — 읽는다 · 받는다 · 그만둔다 */
+  const mailChoices = (): Choice[] => {
+    const text = (id: number): string => partyText[id] ?? ''
+    return [
+      { label: text(P.mailRead), run: () => { setMenu(null); openMail({ mode: 'read', slot: at }) } },
+      { label: text(P.mailTake), run: () => { setMenu(null); takeMail() } },
+      { label: text(P.cancel), run: () => { setMenu('root'); setMenuAt(0) } },
+    ]
+  }
+
+  /**
+   * 편지를 떼어 우편함에 넣는다 (`PartyMenuCB_TakeMail_Transfer`).
+   *
+   * ⚠️ **우편함이 꽉 차면 안 뗀다.** 떼고 나서 넣을 데가 없으면 편지가 사라진다
+   */
+  const takeMail = (): void => {
+    if (!selected?.mail) { setNotice('편지를 안 지니고 있다.'); return }
+    const moved = toMailbox(useSaveStore.getState().mailbox, selected.mail)
+    if (!moved) { setNotice('메일박스가 가득 차 있다.'); return }
+    const next = [...party]
+    next[at] = withHeldItem({ ...selected, heldItem: 0, mail: null }, species, tables?.moves)
+    useSaveStore.setState({ party: next, mailbox: moved.box })
+  }
+
   /** 들고 있던 것을 가방으로 돌려받는다 (`PartyMenu_SelectItemTake`) */
   const takeItem = (): void => {
     if (!selected || selected.heldItem === 0) { setNotice('아무것도 안 들고 있다.'); return }
@@ -243,7 +280,9 @@ export function PartyScreen() {
     addItem(tables?.items.get(held).pocket ?? 0, held, 1)
   }
 
-  const choices = menu === 'root' ? rootChoices() : menu === 'item' ? itemChoices() : []
+  const choices = menu === 'root' ? rootChoices()
+    : menu === 'item' ? itemChoices()
+      : menu === 'mail' ? mailChoices() : []
 
   /**
    * 들고 온 도구를 고른 마리에게 쓴다 (`item_use_pokemon.c`).
@@ -274,6 +313,19 @@ export function PartyScreen() {
       // ⚠️ **꽃은 안 없어진다.** 원작도 그라시데아를 소모하지 않는다
       clearUsingItem()
       back()
+      return
+    }
+
+    // 편지지를 들고 왔다 (PARITY §4.8).
+    //
+    // ⚠️ **지닌 도구가 비어 있어야 한다** — 편지도 지닌 도구 자리를 쓴다.
+    // ⚠️ **알에게는 못 준다** — 알은 아무것도 안 지닌다
+    if (usingItem.use === 'mail') {
+      const type = mailTypeOfItem(usingItem.item)
+      if (type === null) { setNotice('지금은 쓸 수 없다.'); return }
+      if (selected.isEgg) { setNotice('알에게는 지니게 할 수 없다.'); return }
+      if (selected.heldItem !== 0) { setNotice('이미 도구를 지니고 있다.'); return }
+      openMail({ mode: 'write', type, item: usingItem.item, slot: at, lines: emptyMailLines() })
       return
     }
 

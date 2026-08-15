@@ -69,7 +69,10 @@ export const stubTrainerInfo: NonNullable<FieldServices['trainerInfo']> = {
   hasBadge: () => false,
   giveBadge: () => { /* 안 본다 */ },
   nationalDex: () => false,
-    unownFormsSeen: () => 0,
+  unownFormsSeen: () => 0,
+  dexCount: () => 0,
+  dexCompleted: () => false,
+  turnOnDetection: () => { /* 안 본다 */ },
 }
 
 export const stubFieldMoves: NonNullable<FieldServices['fieldMoves']> = {

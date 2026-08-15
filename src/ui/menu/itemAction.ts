@@ -145,6 +145,18 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       startScript(SCRIPT_VS_SEEKER, mapById(world.mapId)?.scripts ?? -1)
       deps.closeAll()
       return true
+    case 'commonScript':
+      // 천계의피리가 이 길이다. VS시커와 같다 — **쓸 수 있는지까지 롬이
+      // 묻는다.** 창의기둥이 아니면 원작이 「뜻이 없을 것 같다」로 닫는다
+      startScript(action.id, mapById(world.mapId)?.scripts ?? -1)
+      deps.closeAll()
+      return true
+    case 'mail':
+      // ⚠️ **누구에게 지니게 할지부터 고른다** (`ItemUseFunc_Mail`). 글을 다
+      // 쓴 뒤가 아니라 앞에서 고르는 것이 원작이고, 그래야 편지에 새길
+      // 아이콘 셋(**고른 자리부터 파티 끝까지**)이 정해진다
+      deps.openParty('mail')
+      return true
     default:
       deps.say(action.why)
       return false

@@ -40,7 +40,7 @@ maybe('알과 육성가', () => {
     evs: { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 },
     moves: [], hp: 30, status: 'ok', statusTurns: 0, heldItem: 0,
     origin: noOrigin({ name: '', gender: 'male' }),
-    friendship: 70, isEgg: false, otId: 1, otSecretId: 1, ball: 4, form: 0, pokerus: 0, ...over,
+    friendship: 70, isEgg: false, otId: 1, otSecretId: 1, ball: 4, form: 0, pokerus: 0, mail: null, ...over,
   })
   /** 암컷이 되는 PID — 성비 문턱보다 낮은 하위 바이트 */
   const female = 0

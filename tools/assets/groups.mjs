@@ -138,6 +138,11 @@ export const GROUPS = [
     match: oneOf('data/boxWallpapers.json', 'data/boxWallpapers.png'),
   },
   {
+    name: 'poketchMap',
+    make: 'pnpm extract:poketchMap',
+    match: oneOf('data/poketchMap.json', 'data/poketchMap.png'),
+  },
+  {
     name: 'credits',
     make: 'pnpm extract:credits',
     match: (p) => p === 'data/credits.json' || /^data\/credits\d+\.png$/.test(p),

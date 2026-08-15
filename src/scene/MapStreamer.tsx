@@ -29,7 +29,7 @@ import {
   VAR_DISTORTION_CYRUS,
   VAR_DISTORTION_WORLD_PROGRESS,
 } from '../engine/script/vars'
-import { installFieldServices } from './fieldServices'
+import { installFieldServices, rememberPreviousMap } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
 import { textSpeedFrames, useGameLocale, useOptionsStore } from '../state/optionsStore'
@@ -236,6 +236,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       setGrid(next)
       activeZone.grid = next
       world.grid = next
+      // 갈아 끼우기 **직전에** 적는다 (`FieldOverworldState_GetPrevLocation`) —
+      // 뒤에 적으면 「방금 있던 맵」이 늘 지금 맵이 된다
+      if (world.mapId !== mapId) rememberPreviousMap(world.mapId)
       world.mapId = mapId
       world.matrix = matrix
       // 들어선 칸을 적어 둔다 (`fieldSystem->location`)
