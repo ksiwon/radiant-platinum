@@ -98,6 +98,44 @@ const deep = await fetch(new URL('play', base), { redirect: 'follow' })
 if (!deep.ok) problems.push(`SPA fallback이 없다: /play → HTTP ${deep.status}`)
 else if (!/<div id="root">/.test(await deep.text())) problems.push('/play가 index.html이 아니다')
 
+// ── ⑤ 올라간 것이 **이 빌드인가** ───────────────────────────────────────────
+//
+// ⚠️ **이게 없으면 검사 결과가 영원히 산다.** 한 번 통과시켜 놓고 소스를 고친
+// 뒤 다시 재지 않아도 `.audit/deploy-verified.json`은 그대로 남아, 다음
+// `release:check`가 **다른 빌드의 통과 도장**을 읽는다. 그래서 무엇을 쟀는지를
+// 결과에 같이 적는다 (`run.mjs`의 ⑯이 이 값을 지금 빌드와 맞춰 본다).
+//
+// 신원은 **묶음 파일 이름**으로 잰다. 해시가 박혀 있어 내용이 1바이트만 달라도
+// 이름이 바뀌고, 런타임에 표식을 심지 않아도 밖에서 읽을 수 있다
+const entryOf = (html) => {
+  const hit = [...html.matchAll(/<script[^>]+src=["']([^"']+\.js)["']/g)].map((m) => m[1])
+  return hit.map((h) => h.replace(/^https?:\/\/[^/]+/, '')).sort()
+}
+const servedEntry = entryOf(await (await fetch(base)).text())
+if (servedEntry.length === 0) problems.push('index.html에 묶음 스크립트가 없다')
+
+let localEntry = []
+try {
+  const { readFileSync } = await import('node:fs')
+  localEntry = entryOf(readFileSync(resolve(ROOT, 'dist/index.html'), 'utf8'))
+} catch {
+  notes.push('여기 dist/가 없다 — 올라간 것이 이 나무의 빌드인지 대조하지 못했다')
+}
+if (localEntry.length > 0 && servedEntry.join() !== localEntry.join()) {
+  problems.push(
+    `올라간 묶음이 여기 dist/와 다르다 — 올라간 것: ${servedEntry.join(' · ')} / 여기: ${localEntry.join(' · ')}`,
+  )
+}
+
+/** 이 검사가 **어느 빌드**를 잰 것인지. 없으면 null이고, null은 "모른다"다 */
+let buildId = null
+try {
+  const { readFileSync } = await import('node:fs')
+  buildId = JSON.parse(readFileSync(resolve(ROOT, '.audit/build.json'), 'utf8')).buildId ?? null
+} catch {
+  notes.push('.audit/build.json이 없다 — 어느 빌드를 쟀는지 적을 수 없다')
+}
+
 // ── 결과 ────────────────────────────────────────────────────────────────────
 console.log(`검사한 곳: ${base}`)
 console.log(`정본 CSP: ${cspHeader()}\n`)
@@ -110,6 +148,8 @@ if (!browserChecked) console.log('  · ⚠️ 브라우저 검사를 못 했다.
 mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 writeFileSync(resolve(ROOT, '.audit/deploy-verified.json'), `${JSON.stringify({
   url: base, ok: problems.length === 0 && browserChecked, browserChecked, problems,
+  // 무엇을 쟀는지. `run.mjs`의 ⑯과 `blockers.mjs`가 지금 빌드와 맞춰 본다
+  buildId, entry: servedEntry, at: new Date().toISOString(),
 }, null, 1)}\n`)
 
 if (problems.length === 0) {

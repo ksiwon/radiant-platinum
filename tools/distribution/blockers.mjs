@@ -144,6 +144,36 @@ export const BLOCKERS = [
     },
   },
   {
+    id: 'story-sweep',
+    why: '처음부터 엔딩까지가 통과 상태가 아니다',
+    where: 'tools/e2e/story.mjs',
+    resolved() {
+      // ⚠️ **`browser-e2e`가 이걸 안 잰다.** 그쪽은 설치·저장·헤더처럼 껍데기를
+      // 재고, 이야기가 실제로 **진행되는가**는 `pnpm story`만 잰다. 그래서 한때
+      // story가 4개 떨어진 채로 release:check가 초록일 수 있었다 — 게임이 엔딩까지
+      // 안 가는데 "공개 가능"이라고 적히는 자리였다
+      const at = read('.audit/story.json')
+      if (!at) return { ok: false, detail: 'pnpm story를 돌린 적이 없다' }
+      const { rows, ran } = JSON.parse(at)
+      if (!Array.isArray(rows) || rows.length === 0) {
+        return { ok: false, detail: '결과가 비었다 — 다시 돌려야 한다' }
+      }
+      // ⚠️ **부분만 돌린 결과를 통과로 세지 않는다.** `--only`나 `--from`으로
+      // 몇 장면만 돌리면 나머지는 **재지 않은 것**이지 통과가 아니다
+      if (ran?.only?.length) {
+        return { ok: false, detail: `--only=${ran.only.join(',')}로 일부만 돌렸다 — 전체가 아니다` }
+      }
+      if (ran?.from) return { ok: false, detail: `--from=${ran.from}으로 중간부터 돌렸다 — 전체가 아니다` }
+      for (const act of ['1', '2', '3']) {
+        if (!ran?.acts?.includes(act)) return { ok: false, detail: `${act}막을 안 돌렸다 — 전체가 아니다` }
+      }
+      const bad = rows.filter((r) => r.status !== 'PASS')
+      return bad.length === 0
+        ? { ok: true }
+        : { ok: false, detail: `${String(bad.length)}개가 떨어졌다: ${bad.map((r) => r.id).join(' · ')}` }
+    },
+  },
+  {
     id: 'release-build',
     why: '이 배포물이 어느 커밋에서 나왔는지 말할 수 없다',
     where: 'state/save/contract.ts',

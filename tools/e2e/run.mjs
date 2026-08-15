@@ -62,6 +62,19 @@ const NODE_SHA = (() => {
 
 const mb = (n) => `${(n / (1 << 20)).toFixed(1)}MB`
 
+/**
+ * `.audit/`에 남은 결과 하나를 읽는다. 없거나 깨졌으면 null이다.
+ *
+ * ⚠️ **null을 통과로 세지 않는다.** 부르는 쪽이 "안 돌린 것"으로 적어야 한다
+ */
+function readAudit(name) {
+  try {
+    return JSON.parse(readFileSync(resolve(ROOT, '.audit', name), 'utf8'))
+  } catch {
+    return null
+  }
+}
+
 const results = []
 const record = (id, what, status, detail) => { results.push({ id, what, status, detail }) }
 const skip = (id, what) => {
@@ -1382,9 +1395,42 @@ await ((haveRom && haveBdsp) ? run : () => {})(
   },
 )
 
-record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
-  '호스트를 안 정했다 (blocker 2). 이 하네스는 우리가 띄운 서버라 증거가 안 된다 — '
-  + 'pnpm verify:deploy <url>')
+// ⑯ 실제 호스트의 CSP 응답 헤더.
+//
+// ⚠️ **여기서는 못 잰다.** 이 하네스가 띄운 서버는 우리가 헤더를 붙인 것이라
+// 호스트가 실제로 무엇을 돌려주는지의 증거가 안 된다. 재는 것은
+// `pnpm verify:deploy <url>`이고, 여기서는 **그 결과를 읽기만** 한다.
+//
+// ⚠️ **한때 이 줄이 `'BLOCKED'` 상수였다.** 그래서 verify:deploy가 통과해도
+// `pnpm e2e`를 다시 돌리면 ⑯이 도로 BLOCKED가 되고, `browser-e2e` blocker가
+// BLOCKED를 세는 탓에 **정상 절차만으로는 release:check가 초록이 될 수 없었다.**
+// 이제는 결과 파일을 읽어 판정한다 — 없으면 BLOCKED, 있으면 그 내용대로.
+//
+// ⚠️ **다른 빌드의 도장을 읽지 않는다.** 통과 기록은 파일로 남아 소스를 고쳐도
+// 그대로 살아 있으므로, 잰 빌드(`buildId`)가 지금 빌드와 같을 때만 PASS다
+{
+  const at = readAudit('deploy-verified.json')
+  const now = readAudit('build.json')?.buildId ?? null
+  if (!at) {
+    record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
+      'pnpm verify:deploy <url>을 돌린 적이 없다 — .audit/deploy-verified.json이 없다')
+  } else if (!at.browserChecked) {
+    record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
+      `${at.url}: 브라우저를 못 띄워 약한 갈래로 갔다 — 외부 요청을 실제로 세지 못했다`)
+  } else if (at.problems?.length) {
+    record('16', '실제 호스트의 CSP 응답 헤더', 'FAIL',
+      `${at.url}: ${at.problems.slice(0, 3).join(' · ')}`)
+  } else if (now === null || at.buildId === null || at.buildId === undefined) {
+    record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
+      `${at.url}는 통과했지만 어느 빌드를 잰 것인지 모른다 — 다시 재야 한다`)
+  } else if (at.buildId !== now) {
+    record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
+      `${at.url}는 ${at.buildId}를 쟀다. 지금 빌드는 ${now}다 — 다시 재야 한다`)
+  } else {
+    record('16', '실제 호스트의 CSP 응답 헤더', 'PASS',
+      `${at.url} · 빌드 ${at.buildId} · 헤더·SPA fallback·외부 요청 0 (pnpm verify:deploy)`)
+  }
+}
 
 await browser.close()
 server.close()
