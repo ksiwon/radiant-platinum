@@ -147,7 +147,7 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       return true
     case 'commonScript':
       // 천계의피리가 이 길이다. VS시커와 같다 — **쓸 수 있는지까지 롬이
-      // 묻는다.** 창의기둥이 아니면 원작이 「뜻이 없을 것 같다」로 닫는다
+      // 묻는다.** 창기둥이 아니면 원작이 「뜻이 없을 것 같다」로 닫는다
       startScript(action.id, mapById(world.mapId)?.scripts ?? -1)
       deps.closeAll()
       return true
