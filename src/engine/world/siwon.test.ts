@@ -12,7 +12,17 @@ import {
 } from './siwon'
 import { siwonLines } from './siwonText'
 import { planSiwonTalk } from '../script/siwonScene'
-import { withDecomp } from '../../data/romData.testkit'
+import { withData, withDecomp } from '../../data/romData.testkit'
+import { buildCommands } from '../script/commands'
+import { parseScriptMeta } from '../script/data'
+import {
+  enterMap, fieldScripts, makeWorld, resetTriggerTile, scriptBusy, scriptSystem,
+} from '../script/field'
+import { printedText } from '../script/printer'
+import { VarStore } from '../script/vars'
+import { world as mapWorld, type EventFile, type MapHeader } from '../map/world'
+import { worldState } from '../../state/worldState'
+import { siwonNpcOf, SIWON_MAP } from './siwonPlace'
 
 const FLAG_CAUGHT_ARCEUS = 286
 const FLAG_CAUGHT_SHAYMIN = 291
@@ -311,5 +321,95 @@ magic('마법의 수 넷이 롬의 표 그대로다', () => {
     const found = [...src.matchAll(/\[DISTRIBUTION_EVENT_(\w+)\] = (0x[0-9A-Fa-f]+)/g)]
       .map(([, , value]) => Number(value))
     expect(found).toEqual([...DISTRIBUTION_MAGIC])
+  })
+})
+
+/**
+ * 선물이 **실제로 가방에 들어가는가** (`field.ts`의 `talkToSiwon`).
+ *
+ * ⚠️ **화면에서 잡은 것이다.** 계획을 세우는 쪽 시험은 다 초록인데, 시원에게
+ * 말을 걸어 첫 선물을 받으면 「**없음**을 손에 넣었다!」가 뜨고 가방은 그대로였다.
+ * 물건을 건네는 일은 원작의 공용 스크립트(`CommonScript_AddItemQuantity`)가
+ * 하고, 그 스크립트는 **지역 칸** 0x8004·0x8005를 읽는다
+ * (`AddItem VAR_0x8004, VAR_0x8005` · `BufferItemName 1, VAR_0x8004`).
+ * 그런데 `start()`는 첫머리에서 `resetLocals()`로 지역 칸을 통째로 비운다 —
+ * 먼저 적어 두면 시작하는 그 순간 0이 된다.
+ *
+ * 여기서 재는 것은 **말이 끝난 뒤 그 물건이 가방에 있는가**다.
+ */
+const handOff = withData('scripts.json', 'scripts.bin', 'maps.json', 'events.json',
+  'dialogue/ko/213.json', 'names/items.ko.json')
+
+handOff('시원이 건넨 것이 가방에 들어간다', () => {
+  const DATA = resolve(__dirname, '../../../public/data')
+  const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+  /** `TEXT_BANK_COMMON_STRINGS` — 2000번대 구역이 읽는 뱅크 */
+  const COMMON_STRINGS_BANK = 213
+  /** `generated/bag_pockets.txt` — 소중한 물건 */
+  const POCKET_KEY_ITEMS = 7
+  const names = read('names/items.ko.json') as string[]
+
+  /** 시원에게 말을 걸고 끝까지 간다. 가방에 들어온 것을 돌려준다 */
+  function talk(): { got: number[]; said: string[] } {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = SIWON_MAP
+    mapWorld.grid = null
+    mapWorld.pending = null
+
+    const got: number[] = []
+    let given = 0
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.services = {
+      siwon: { given: () => given, gave: () => { given += 1 } },
+      party: { rotomForms: () => 0, count: () => 1, giveFateful: () => {} },
+      // 도구표를 안 읽고 답한다 — 여기 넷은 다 소중한 물건이다 (`POCKET_KEY_ITEMS`)
+      bag: {
+        pocketOf: () => POCKET_KEY_ITEMS,
+        add: (item: number) => { got.push(item); return true },
+        remove: () => true,
+        canFit: () => true,
+        quantity: () => 0,
+        pocketHasItems: () => false,
+        name: (item: number) => names[item] ?? '없음',
+      },
+    } as never
+    fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    fieldScripts.banks = new Map([[COMMON_STRINGS_BANK, read('dialogue/ko/213.json') as string[]]])
+    enterMap(SIWON_MAP)
+    fieldScripts.vars.setFlag(FLAG_GAME_COMPLETED)
+
+    const npc = siwonNpcOf(SIWON_MAP)!
+    worldState.player.position.set(npc.x + 0.5, 0, npc.z + 1.5)
+    // 북쪽을 본다 — 시원이 그 앞 칸에 서 있다
+    worldState.player.facing = Math.PI
+    resetTriggerTile()
+
+    const said: string[] = []
+    for (let frame = 0; frame < 600; frame++) {
+      worldState.input.interact = frame % 4 === 0
+      scriptSystem.fixedUpdate()
+      const printer = fieldScripts.world?.printer
+      if (printer?.finished === true) {
+        const line = printedText(printer)
+        if (line !== '' && line !== said[said.length - 1]) said.push(line)
+      }
+      if (frame > 8 && !scriptBusy()) break
+    }
+    worldState.input.interact = false
+    return { got, said }
+  }
+
+  it('⚠️ 첫 선물이 진짜로 들어간다 — 이름이 「없음」이면 지역 칸이 비워진 것이다', () => {
+    const { got, said } = talk()
+    expect(got).toEqual([SIWON_ITEM.secretKey])
+    expect(said.join(' / ')).toContain('비밀의열쇠')
+    expect(fieldScripts.lastError).toBeNull()
   })
 })

@@ -18,7 +18,10 @@ import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld } from './world'
 import { DIR } from './movement'
-import { world as mapWorld, type MapHeader } from '../map/world'
+import { mapById, world as mapWorld, type EventFile, type MapHeader } from '../map/world'
+import { worldState } from '../../state/worldState'
+import { printedText } from './printer'
+import { enterMap, fieldScripts, makeWorld, scriptBusy, scriptSystem, start } from './field'
 import { DATA, withData } from '../../data/romData.testkit'
 import { stubFieldMoves, stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
 import { COMMON_SCRIPT_AZURE_FLUTE, fieldAction, FieldUse } from '../bag/fieldUse'
@@ -139,5 +142,103 @@ maybe('천계의피리', () => {
     const got = blow(setup)
     expect(got.ended).toBe(true)
     expect(got.warpedTo).toBeNull()
+  })
+})
+
+/**
+ * 워프를 건너뛴 스크립트의 **글 뱅크** (`field.ts`의 `switchBank`).
+ *
+ * ⚠️ **화면에서 잡은 것이다.** 시험은 다 초록인데 시작의 방에 올라가면
+ * 아르세우스의 「구콰-쾅!!」 자리에 **「안녕하세요! 포켓몬센터입니다」**가 떴다.
+ * 피리가 2000번대 공용 스크립트라 창에 뱅크 213을 얹는데, ① 그 스크립트가
+ * 도중에 워프해서 `enterMap`이 **장부(`activeBank`)만** 비우고 창에 얹힌 것은
+ * 그대로 두었고, ② 스크립트가 끝날 때 걷는 자리가 없었다 — `endCommon`은
+ * **불린** 공용 스크립트만 걷는다. 그래서 다음 스크립트가 남의 뱅크에서 같은
+ * 번호를 읽었다. 글자는 멀쩡히 나오므로 눈으로만 보면 그냥 지나간다.
+ *
+ * 여기서 재는 것은 둘이다 — **워프 뒤에도 그 스크립트의 글이 나오는가**와
+ * **끝나면 맵 뱅크로 돌아오는가**.
+ */
+const bankMaybe = withData('scripts.json', 'scripts.bin', 'maps.json', 'events.json',
+  'dialogue/ko/213.json')
+
+bankMaybe('피리가 지나간 뒤의 글 뱅크', () => {
+  const meta = parseScriptMeta(JSON.parse(readFileSync(resolve(DATA, 'scripts.json'), 'utf8')))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+  /** `TEXT_BANK_COMMON_STRINGS`. 2000번대 구역이 읽는 뱅크다 */
+  const COMMON_STRINGS_BANK = 213
+
+  /** 피리를 불고 **끝까지** 돌린다. 워프는 씬이 하는 일을 우리가 대신한다 */
+  function run(): { printed: string[]; mapId: number } {
+    mapWorld.maps = (JSON.parse(readFileSync(resolve(DATA, 'maps.json'), 'utf8')) as
+      { maps: MapHeader[] }).maps
+    mapWorld.events = (JSON.parse(readFileSync(resolve(DATA, 'events.json'), 'utf8')) as
+      { events: Record<string, EventFile> }).events
+    mapWorld.mapId = SPEAR_PILLAR
+    mapWorld.grid = null
+    mapWorld.pending = null
+
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.services = {
+      ...stubFieldMoves && {},
+      trainerInfo: { ...stubTrainerInfo, nationalDex: () => true },
+    } as never
+    fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    // 미리 넣어 두면 fetch가 없다. 맵 뱅크는 없는 채로 두고 아래에서 우리가 넣는다
+    fieldScripts.banks = new Map([[COMMON_STRINGS_BANK,
+      JSON.parse(readFileSync(resolve(DATA, 'dialogue/ko/213.json'), 'utf8')) as string[]]])
+    enterMap(SPEAR_PILLAR)
+
+    fieldScripts.vars.setFlag(FLAG_GAME_COMPLETED)
+    fieldScripts.vars.set(
+      VAR_DISTRIBUTION_EVENT_FIRST + DISTRIBUTION_EVENT.arceus,
+      DISTRIBUTION_MAGIC[DISTRIBUTION_EVENT.arceus]!)
+    worldState.player.position.set(SPOT.x + 0.5, 0, SPOT.z + 0.5)
+    worldState.player.facing = Math.PI
+
+    start(COMMON_SCRIPT_AZURE_FLUTE, mapById(SPEAR_PILLAR)?.scripts ?? -1)
+    const printed: string[] = []
+    for (let frame = 0; frame < 4000 && scriptBusy(); frame++) {
+      worldState.input.interact = frame % 4 === 0
+      scriptSystem.fixedUpdate()
+      const world = fieldScripts.world
+      if (world?.menu) world.choose(world.menu.entries[0]?.value ?? 0)
+      if (world?.printer?.finished === true) {
+        const line = printedText(world.printer)
+        if (line !== '' && line !== printed[printed.length - 1]) printed.push(line)
+      }
+      // 씬이 하는 일 — 워프가 걸리면 맵을 갈아 끼우고 `enterMap`을 부른다
+      const { pending } = mapWorld as { pending: { to: number } | null }
+      if (pending !== null) {
+        mapWorld.mapId = pending.to
+        mapWorld.pending = null
+        enterMap(pending.to)
+      }
+    }
+    worldState.input.interact = false
+    return { printed, mapId: mapWorld.mapId }
+  }
+
+  it('⚠️ 워프 뒤에도 그 스크립트의 뱅크로 말한다', () => {
+    const got = run()
+    expect(got.mapId).toBe(HALL_OF_ORIGIN)
+    // 이 문장은 맵 뱅크가 아니라 `common_strings`에 있다. 워프가 뱅크를 걷어
+    // 버리면 같은 번호의 엉뚱한 문장이 찍힌다
+    expect(got.printed).toContain('빛의 계단이 나타났다!')
+    expect(fieldScripts.lastError).toBeNull()
+  })
+
+  it('⚠️ 끝나면 맵 뱅크로 돌아온다 — 남기면 다음 스크립트가 남의 글을 읽는다', () => {
+    run()
+    expect(scriptBusy()).toBe(false)
+    const world = fieldScripts.world!
+    world.setMessages(['시작의 방 0번'])
+    world.showMessage(0)
+    world.printer!.finish()
+    expect(printedText(world.printer!)).toBe('시작의 방 0번')
   })
 })

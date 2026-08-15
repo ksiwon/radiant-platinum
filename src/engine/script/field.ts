@@ -315,9 +315,14 @@ function talkToSiwon(mapFile: number): void {
     // 가방에 넣는 것과 「받았다」는 **원작 공용 스크립트**가 한다. 그래야 그
     // 한 줄이 롬의 글 그대로다 (SIWON.md §4)
     if (plan.giveItem !== null) {
-      vars.set(VAR_GIVE_ITEM, plan.giveItem)
-      vars.set(VAR_GIVE_COUNT, 1)
-      start(COMMON_SCRIPT_GIVE_ITEM, mapFile)
+      // ⚠️ **문맥을 세운 뒤에 적는다.** 0x8004·0x8005는 스크립트 **지역** 칸이고
+      // `start()`가 첫머리에서 `resetLocals()`로 지역 칸을 통째로 비운다 — 먼저
+      // 적어 두면 시작하는 그 순간 0이 된다. 실측: 시원에게 첫 선물을 받으면
+      // 「**없음**을 손에 넣었다!」가 뜨고 가방에는 아무것도 안 들어갔다
+      if (start(COMMON_SCRIPT_GIVE_ITEM, mapFile)) {
+        vars.set(VAR_GIVE_ITEM, plan.giveItem)
+        vars.set(VAR_GIVE_COUNT, 1)
+      }
     }
   })
 }
@@ -470,7 +475,17 @@ export function enterMap(mapId: number): void {
   // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
   endCommon()
   bankPending = false
-  activeBank = null
+  // ⚠️ **도는 스크립트가 있으면 그 뱅크는 그대로 둔다.** `Warp`는 스크립트
+  // 한복판에서 걸리고(천계의피리가 그렇다) 워프 뒤에도 같은 스크립트가 제
+  // 뱅크로 말을 이어간다 — 여기서 걷으면 「빛의 계단이 나타났다!」가 맵 뱅크의
+  // 엉뚱한 문장으로 갈린다.
+  //
+  // ⚠️ **장부만 비우면 안 된다.** 창에 얹힌 뱅크는 그대로인데 `activeBank`만
+  // 비면 다음 `switchBank(null)`이 "이미 맵 뱅크다"라고 보고 그냥 지나간다.
+  // 실측: 피리로 시작의 방에 올라가면 아르세우스의 「구콰-쾅!!」 자리에
+  // **포켓몬센터 접수원의 인사**가 떴다 (뱅크 213의 0번). 걷는 자리는
+  // `finish()`다 — 스크립트가 끝날 때 제 뱅크를 내려놓는다
+  if (fieldScripts.ctx === null) switchBank(null)
   // ⚠️ **순서가 뜻을 가진다.** 앞 맵의 배치표 수정을 버리고 → 이 맵의
   // `OnTransition`을 돌려 배치표를 고치고 → 그 결과로 사람을 세운다. 원작도
   // 이 순서다 (`field_map_change.c`가 맵을 올리기 전에 `ON_TRANSITION`을 돈다)
@@ -711,6 +726,11 @@ function endCommon(): void {
 
 function finish(): void {
   endCommon()
+  // ⚠️ **끝난 스크립트의 뱅크를 창에 남겨 두지 않는다.** `endCommon`은 **부른**
+  // 공용 스크립트만 걷는다 — 도구나 좌표 사건처럼 공용 스크립트를 **바로**
+  // 시작한 판은 안 걷힌다. 남으면 다음 스크립트가 남의 뱅크에서 같은 번호를
+  // 읽고, 글자는 멀쩡히 나오므로 눈으로는 그냥 지나간다
+  switchBank(null)
   fieldScripts.ctx = null
   fieldScripts.world?.closeBox(true)
   fieldScripts.world?.reset()
