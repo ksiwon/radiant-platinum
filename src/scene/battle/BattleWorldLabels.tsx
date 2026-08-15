@@ -24,7 +24,7 @@ function roundedRect(
   ctx.roundRect(x, y, width, height, radius)
 }
 
-function labelTexture(mon: ViewMon): CanvasTexture {
+function labelTexture(mon: ViewMon, name: string): CanvasTexture {
   const canvas = document.createElement('canvas')
   canvas.width = 512
   canvas.height = 128
@@ -42,7 +42,7 @@ function labelTexture(mon: ViewMon): CanvasTexture {
   ctx.fillStyle = '#ffffff'
   ctx.font = '700 48px system-ui, sans-serif'
   ctx.textBaseline = 'middle'
-  ctx.fillText(mon.speciesName, 34, 64, 340)
+  ctx.fillText(name, 34, 64, 340)
   ctx.textAlign = 'right'
   ctx.font = '700 35px system-ui, sans-serif'
   ctx.fillStyle = '#dcecff'
@@ -92,8 +92,10 @@ function damageTexture(view: BattleView): CanvasTexture | null {
   return texture
 }
 
-function Nameplate({ mon, at }: { mon: ViewMon; at: readonly [number, number] }) {
-  const texture = useMemo(() => labelTexture(mon), [mon])
+function Nameplate(
+  { mon, at, name }: { mon: ViewMon; at: readonly [number, number]; name: string },
+) {
+  const texture = useMemo(() => labelTexture(mon, name), [mon, name])
   useEffect(
     () => () => {
       texture.dispose()
@@ -143,13 +145,38 @@ function DamagePopup({ view, at }: { view: BattleView; at: readonly [number, num
   )
 }
 
-export function BattleWorldLabels({ view, spotAt }: { view: BattleView; spotAt: SpotAt }) {
+/**
+ * 무대 위에 뜨는 이름표.
+ *
+ * ⚠️ **`mon.speciesName`을 그대로 쓰면 안 된다.** 그것은 시뮬레이터 프로토콜의
+ * `Turtwig, L5, F`에서 잘라 온 **영어 이름**이라, 화면의 다른 데가 다 「메가자리」인데
+ * 무대 위 이름표 하나만 `yanmega`로 뜬다 (`pnpm story`가 사천왕 장면 그림에서
+ * 잡았다). 이름은 롬에서 온 것을 쓰고, 별명이 있으면 별명이 먼저다 —
+ * 2D 쪽 이름표(`BattleScreen`의 `label`)와 같은 차례다
+ */
+export function BattleWorldLabels(
+  { view, spotAt, nameOf }: {
+    view: BattleView
+    spotAt: SpotAt
+    /** 롬 이름표. 아직 못 받았으면 프로토콜 이름으로 떨어진다 */
+    nameOf?: (mon: ViewMon) => string
+  },
+) {
   const hit = view.lastHit
   return (
     <>
       {SLOTS.map((slot) => {
         const mon = view.active[slot]
-        return mon && !mon.fainted ? <Nameplate key={slot} mon={mon} at={spotAt(slot)} /> : null
+        return mon && !mon.fainted
+          ? (
+            <Nameplate
+              key={slot}
+              mon={mon}
+              at={spotAt(slot)}
+              name={nameOf?.(mon) ?? mon.speciesName}
+            />
+          )
+          : null
       })}
       {hit && <DamagePopup key={hit.seq} view={view} at={spotAt(hit.slot)} />}
     </>

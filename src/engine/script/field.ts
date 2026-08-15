@@ -652,6 +652,12 @@ export const scriptSystem = {
       step(ctx, world)
       return
     }
+    // ⚠️ **배틀 위에서는 새 스크립트를 시작하지 않는다.** 원작은 배틀에 들어가며
+    // 필드를 내리는데 우리 루프는 계속 돌아서, 눈 마주침도 `OnFrame`도 살아 있다 —
+    // 그러면 관장의 인사 대사창이 배틀 화면 **위에** 떠서 키를 먹는다
+    // (`FieldServices.battleUp`이 실측을 적어 뒀다). 위의 `ctx` 갈래는 안 막는다:
+    // 배틀을 연 것이 그 스크립트고, 끝나기를 기다리는 것도 그것이다
+    if (fieldScripts.services.battleUp?.() === true) return
     // ⚠️ **우리 사람이 원작 연출보다 먼저다** (SIWON.md §6). 복도의 `OnFrame`이
     // 시작하면 그 안에는 못 끼어든다
     if (trySiwonCameo()) return

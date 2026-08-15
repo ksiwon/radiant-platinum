@@ -169,6 +169,16 @@ function cspMetaTag(): Plugin {
 }
 
 export default defineConfig({
+  /**
+   * 미리 묶어 둔 의존성을 어디에 두는가.
+   *
+   * ⚠️ **개발 서버 둘이 같은 자리를 쓰면 서로를 무효로 만든다.** 기본값
+   * (`node_modules/.vite`)을 두 서버가 나눠 쓰면 한쪽이 다시 묶을 때마다 다른
+   * 쪽 페이지가 `504 Outdated Optimize Dep`으로 죽는다 — 실측으로 하네스가
+   * 빈 화면 앞에서 2분을 서 있었고, 원인은 옆에서 돌던 다른 개발 서버였다.
+   * 하네스는 이 환경변수로 자기 자리를 따로 잡는다 (`tools/devServer.mjs`)
+   */
+  cacheDir: process.env.VITE_CACHE_DIR,
   plugins: [
     // ⚠️ `pkmnDiet`이 먼저다 — `enforce: 'pre'`로 `resolveId`를 먼저 잡아야
     // 데이터 모듈이 그래프에 들어오기 전에 껍데기로 바뀐다

@@ -9,7 +9,7 @@
 // 한 장이었고 오래 그렇게 세워 왔는데, 무대를 BDSP의 진짜 3D로 갈아 끼우고 나니
 // 그 한 장만 화면에서 튀었다. 지어낸 것이 아니라 공식 리메이크가 같은 493마리를
 // 3D로 다시 만들어 둔 것을 가져온다. 모델을 못 받은 종은 도트로 떨어진다.
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import {
   BackSide,
@@ -26,8 +26,9 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
-import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
+import { loadMotionTiming, loadMoves, loadSpecies, loadSpeciesNames } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
+import { useGameLocale } from '../../state/optionsStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN } from './stageRefs'
@@ -615,6 +616,22 @@ function Flat({ look }: { look: TimeLook }) {
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
+  // 무대 위 이름표에 쓸 **롬 이름**. 못 받으면 프로토콜의 영어 이름으로 떨어진다
+  // (`BattleWorldLabels`가 왜인지를 적는다)
+  const locale = useGameLocale()
+  const [speciesNames, setSpeciesNames] = useState<readonly string[] | null>(null)
+  useEffect(() => {
+    let alive = true
+    void loadSpeciesNames(locale)
+      .then((names) => { if (alive) setSpeciesNames(names) })
+      .catch(() => { /* 이름표만 영어로 뜬다 */ })
+    return () => { alive = false }
+  }, [locale])
+  const nameOf = useCallback((mon: ViewMon) => {
+    const entry = roster[mon.key]
+    const id = mon.species ?? entry?.species ?? -1
+    return entry?.nickname ?? speciesNames?.[id] ?? mon.speciesName
+  }, [roster, speciesNames])
   // 오버월드와 **같은 하늘·같은 조명**을 쓴다. 두 화면의 톤이 어긋나면
   // 배틀에 들어갈 때마다 다른 게임처럼 보인다 — 해질녘에 걸어 들어왔는데
   // 배틀만 대낮이면 그 순간 다른 게임이 된다
@@ -757,6 +774,7 @@ export function BattleStage() {
       {view && (
         <BattleWorldLabels
           view={view}
+          nameOf={nameOf}
           spotAt={(id) => {
             const p = spotOf(id)
             return [p.x, p.z]

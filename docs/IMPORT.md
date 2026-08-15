@@ -1,20 +1,18 @@
 # 로컬 Import·설치·세이브 안내와 구현 계약
 
-> 상태: **일부 구현** (2026-08-10). 이 문서는 공개 배포판이 도달해야 할 계약이며,
+> 상태: **변환은 끝났다.** 이 문서는 공개 배포판이 도달해야 할 계약이며,
 > §14 완료 조건을 통과하기 전 현재 빌드를 공개판으로 간주하지 않는다.
 >
-> ⚠️ **지금 막혀 있는 것은 변환이다.** 경계·리포트·Provider·부팅·Worker·설치·
-> 무결성 검증은 섰지만 Platinum 변환은 그룹 아홉 중 **둘**(`moves`·`marts`)만
-> 옮겨졌고, BDSP 변환은 **컨테이너까지만** 된다 — UnityFS를 열어 안에 무엇이
-> 몇 개 있는지 세는 데까지고(UnityPy와 208개 일치) 정점도 픽셀도 아직 안 읽는다.
-> 무엇이 왜 막혔는지는 `src/import/platinum/convert.ts`의 `GROUPS` 표와
-> `src/import/bdsp/unityfs.ts`의 `SPIKE_BLOCKERS`에 있다.
+> 브라우저가 사용자의 롬과 BDSP 폴더를 읽어 필수 그룹
+> (`src/import/install/required.ts`)을 **전부** 만든다. 실측으로 파일 7,007개
+> 700.3MB를 6.5분에 옮기고 상태가 `ready`가 되며, 두 번째 실행은 아무것도 다시
+> 만들지 않고 101ms 만에 갈래를 정해 186ms에 타이틀을 띄운다
+> (`pnpm e2e --only=15`). Platinum 쪽 산출물은 개발 추출기가 만든 바이트와
+> 해시가 같고(`--only=09`), `src/import/bdsp/unityfs.ts`의 `SPIKE_BLOCKERS`는
+> 비어 있다.
 >
-> ⚠️ **그래서 공개판은 아직 `ready`에 도달할 수 없다.** 필수 그룹
-> (`src/import/install/required.ts`)이 열둘인데 둘만 만들 수 있다. 설치를 끝내도
-> 상태는 `partial`이고, `partial`로는 게임이 안 열린다 — 그것이 설계다.
->
-> 공개 배포를 막고 있는 것 전체는 [DEPLOY.md](DEPLOY.md) §1.
+> ⚠️ **그래도 공개판이 아니다.** 남은 것은 변환이 아니라 배포 경계다 —
+> 무엇이 막고 있는지는 [DEPLOY.md](DEPLOY.md) §1.
 >
 > 정책 경계는 [COPYRIGHT.md](COPYRIGHT.md), 포맷은 [DATA.md](DATA.md),
 > 작업 순서는 [PLAN.md](PLAN.md)를 따른다.

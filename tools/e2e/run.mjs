@@ -29,7 +29,9 @@ import { platinumRoms, sourceDir } from '../raw/sources.cjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const DIST = resolve(ROOT, 'dist')
+/** `--only=09` 하나거나 `--only=09,15,25` 여럿. 비면 전부 돈다 */
 const only = (process.argv.find((a) => a.startsWith('--only=')) ?? '').slice(7)
+  .split(',').map((s) => s.trim()).filter((s) => s !== '')
 
 if (!existsSync(resolve(DIST, 'index.html'))) {
   console.error('dist/가 없다 — pnpm build 먼저')
@@ -104,7 +106,9 @@ async function waitBoot(page) {
 }
 
 async function run(id, what, fn) {
-  if (only && !id.startsWith(only)) { record(id, what, 'NOT RUN', '--only로 걸렀다'); return }
+  if (only.length > 0 && !only.some((p) => id.startsWith(p))) {
+    record(id, what, 'NOT RUN', '--only로 걸렀다'); return
+  }
   const box = await fresh()
   try {
     const detail = await fn(box)
@@ -798,6 +802,111 @@ await run('22', '사이트 데이터를 지우면 설치 화면으로 돌아간�
   const tag = await waitBoot(again)
   assert(tag === 'install:none', `지웠는데 ${tag}로 떴다`)
   return 'OPFS 삭제 → install:none (Wizard 복귀)'
+})
+
+// ── ㉗ 리포트와 에셋이 **따로** 산다 (IMPORT.md §8·§11) ─────────────────────
+//
+// ⚠️ **한 창고에 같이 두면 하나를 지울 때 둘 다 사라진다.** 그래서 에셋은
+// OPFS(`radiant-platinum/assets/`)에, 리포트는 IndexedDB(`radiant-platinum`
+// 데이터베이스의 `save` 창고)에 둔다. 설치 화면의 단추도 그렇게 약속한다 —
+// **「에셋 다시 설치 (리포트는 남습니다)」**.
+//
+// ⚠️ **약속을 화면 글자로만 두지 않는다.** 저 단추가 부르는 `clearAssets`는
+// OPFS만 만지는데, 언젠가 "깨끗하게 지우자"며 IndexedDB를 한 줄 더 지우면
+// 그 순간 사용자의 진행이 사라지고 **아무 시험도 안 선다.** 여기서 양쪽을
+// 다 눌러 본다: 에셋을 지워도 리포트가 남고, 리포트를 지워도 에셋이 남는다.
+
+/** idb-keyval이 쓰는 자리에 그대로 심는다 (`state/report.ts`의 `createStore`) */
+const PLANT_REPORT = (mark) => new Promise((ok, no) => {
+  const open = indexedDB.open('radiant-platinum', 1)
+  open.onupgradeneeded = () => { open.result.createObjectStore('save') }
+  open.onerror = () => { no(new Error('IndexedDB를 못 열었다')) }
+  open.onsuccess = () => {
+    const tx = open.result.transaction('save', 'readwrite')
+    tx.objectStore('save').put({ planted: mark }, 'report')
+    tx.oncomplete = () => { open.result.close(); ok(true) }
+    tx.onerror = () => { no(new Error('리포트를 못 심었다')) }
+  }
+})
+
+const READ_REPORT = () => new Promise((ok) => {
+  const open = indexedDB.open('radiant-platinum', 1)
+  open.onupgradeneeded = () => { open.result.createObjectStore('save') }
+  open.onerror = () => { ok(null) }
+  open.onsuccess = () => {
+    const tx = open.result.transaction('save', 'readonly')
+    const got = tx.objectStore('save').get('report')
+    got.onsuccess = () => { open.result.close(); ok(got.result?.planted ?? null) }
+    got.onerror = () => { open.result.close(); ok(null) }
+  }
+})
+
+/** OPFS에 설치본이 남아 있는가 */
+const ASSETS_LEFT = async () => {
+  try {
+    const root = await navigator.storage.getDirectory()
+    const mine = await root.getDirectoryHandle('radiant-platinum')
+    let files = 0
+    const walk = async (dir) => {
+      for await (const [, h] of dir.entries()) {
+        if (h.kind === 'directory') await walk(h)
+        else files++
+      }
+    }
+    await walk(mine)
+    return files
+  } catch { return 0 }
+}
+
+await run('27', '에셋을 지워도 리포트가 남고, 리포트를 지워도 에셋이 남는다', async ({ context, page }) => {
+  const MARK = 'siwon-27'
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  // 설치 화면이 뜨는 자리에 세운다 — 단추가 거기 있다
+  await page.evaluate(SYNTHETIC, { state: 'partial', groups: REQUIRED_PLATINUM_GROUPS })
+  await page.evaluate(PLANT_REPORT, MARK)
+  await page.reload({ waitUntil: 'load' })
+  assert((await waitBoot(page)).startsWith('install:'), '설치 화면으로 안 갔다')
+  const before = await page.evaluate(ASSETS_LEFT)
+  assert(before > 0, 'OPFS에 심은 설치본이 없다')
+
+  // 사람이 누르는 그 단추다. 안에서 `clearAssets(stores())`가 돈다
+  await page.getByRole('button', { name: /에셋 다시 설치/ }).click({ timeout: 60_000 })
+  await page.getByText('리포트는 그대로입니다').first().waitFor({ timeout: 30_000 })
+  const afterAssets = await page.evaluate(ASSETS_LEFT)
+  const kept = await page.evaluate(READ_REPORT)
+  assert(kept === MARK, `에셋을 지웠더니 리포트가 ${String(kept)}가 됐다`)
+
+  // 껐다 켜도 그대로인가. 여기서 사라지면 사용자에게는 "지워졌다"와 같다
+  await page.close()
+  const again = await context.newPage()
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  assert(await waitBoot(again) === 'install:none', '에셋을 지웠는데 설치본이 남았다')
+  assert(await again.evaluate(READ_REPORT) === MARK, '다시 열었더니 리포트가 없다')
+
+  // ── 반대쪽 ──
+  await again.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await again.reload({ waitUntil: 'load' })
+  assert(await waitBoot(again) === 'play:opfs', '설치본을 다시 못 심었다')
+  const withAssets = await again.evaluate(ASSETS_LEFT)
+  // `clearReport()`가 지우는 그 자리 하나만 지운다
+  await again.evaluate(() => new Promise((ok) => {
+    const open = indexedDB.open('radiant-platinum', 1)
+    open.onupgradeneeded = () => { open.result.createObjectStore('save') }
+    open.onsuccess = () => {
+      const tx = open.result.transaction('save', 'readwrite')
+      tx.objectStore('save').delete('report')
+      tx.oncomplete = () => { open.result.close(); ok(true) }
+    }
+    open.onerror = () => { ok(false) }
+  }))
+  await again.reload({ waitUntil: 'load' })
+  assert(await waitBoot(again) === 'play:opfs', '리포트를 지웠더니 설치본까지 사라졌다')
+  assert(await again.evaluate(ASSETS_LEFT) === withAssets, '리포트를 지웠더니 에셋 개수가 달라졌다')
+  assert(await again.evaluate(READ_REPORT) === null, '리포트가 안 지워졌다')
+
+  return `에셋 ${String(before)}개 삭제 → 리포트 남음 (reload 뒤에도) · `
+    + `리포트 삭제 → 에셋 ${String(withAssets)}개 그대로 · play:opfs 유지`
 })
 
 await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 바꾼다', async ({ page }) => {

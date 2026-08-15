@@ -681,6 +681,11 @@ const services: FieldServices = {
     return waiting ? null : battleResult
   },
 
+  /** 배틀 화면이 떠 있는가. 떠 있는 동안은 필드가 새 스크립트를 안 시작한다 */
+  battleUp(): boolean {
+    return useBattleStore.getState().phase !== 'off'
+  },
+
   battleMask(): number | null {
     return waiting ? null : battleMask
   },

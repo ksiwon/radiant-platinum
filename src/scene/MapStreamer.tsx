@@ -337,6 +337,18 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
 
   const devWarp = useDevWarp(enter)
 
+  /**
+   * 이 effect가 **다시 돌 때** 돌아갈 자리.
+   *
+   * ⚠️ **다시 도는 일이 있다.** 뒤에서 무엇이 Suspense로 멈췄다 풀리면 React가
+   * 이 경계의 effect를 정리했다가 다시 부른다. 그때 아래가 무조건 「세이브가
+   * 적어 둔 자리」로 가면 **걷던 사람이 리포트 자리로 끌려간다** — 확인 지점으로
+   * 뛰어든 판에서 실측으로 잡았다: 체육관에 섰다가 주인공 방으로 되돌아가
+   * 있었고, 배틀 화면만 체육관 것이었다. 처음 도는 것과 다시 도는 것은 다른
+   * 일이라 여기 적어 두고 가른다
+   */
+  const resume = useRef<{ map: number; matrix: number; x: number; z: number } | null>(null)
+
   // 세이브가 적어 둔 자리에서 시작한다. 새 판이면 그것이 주인공 방이고
   // (`START_LOCATION`) 이어하기면 리포트를 쓴 자리다.
   //
@@ -348,16 +360,26 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 확인 지점으로 뛰어든 판에서도 세이브가 가리키는 곳이어야 한다
     journalEnterMap(useSaveStore.getState().position.map)
     enter(initial, spawn.map, spawn.x, spawn.z, 0)
+    // 두 번째부터는 **서 있던 자리**로 돌아간다. 세이브 자리가 아니다
+    const back = resume.current
     // 시험용 확인 지점으로 들어온 판이면 세이브 자리를 안 들른다. 잠깐이라도
     // 주인공 방을 비추고 가면 무엇을 보고 있는지 헷갈린다 — 곧 `devWarp.tick`이
     // 목적지로 옮긴다
-    if (!devWarp.claimed()) {
-      const at = useSaveStore.getState().position
-      worldState.player.facing = at.facing
+    if (back !== null || !devWarp.claimed()) {
+      const at = back ?? useSaveStore.getState().position
+      if (back === null) worldState.player.facing = useSaveStore.getState().position.facing
       if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
       else {
+        // ⚠️ **그 사이에 누가 자리를 가져갔으면 덮어쓰지 않는다.** 격자를 받는
+        // 동안 다른 것이 맵을 갈아 끼울 수 있다 — 확인 지점이 그렇다. 실측:
+        // 209번도로로 뛰어들었는데 주인공 방에 서 있었고, `devWarp`의 동적
+        // import가 이 effect보다 늦게 도착한 실행에서만 그랬다. 그러면
+        // `claimed()`가 아직 false라 여기까지 오고, 늦게 온 이 `enter`가
+        // **이미 옮겨 놓은 자리를 세이브 자리로 되돌린다**
+        const from = world.mapId
         void gridFor(at.matrix)
           .then((next) => {
+            if (world.mapId !== from) return
             enter(next, at.map, at.x, at.z, at.matrix)
           })
           .catch(() => {
@@ -366,6 +388,14 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       }
     }
     return () => {
+      // 어디까지 왔는지를 남긴다. 실제로 떠나는 것이면 다음 마운트에서 새
+      // `MapStreamer`가 서므로 이 ref는 함께 사라진다
+      resume.current = world.mapId < 0 ? null : {
+        map: world.mapId,
+        matrix: world.matrix,
+        x: worldState.player.position.x,
+        z: worldState.player.position.z,
+      }
       activeZone.grid = null
       world.grid = null
       world.mapId = -1

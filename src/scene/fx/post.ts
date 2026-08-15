@@ -1,10 +1,13 @@
-// 포스트 체인 (PLAN §2.4) — TSL PostProcessing.
+// 포스트 체인 (PLAN §2.4) — TSL RenderPipeline.
 //
 // 실패해도 게임은 돌아야 하므로 방어적으로 초기화한다. 노드 그래프 하나가
 // 안 되면 화면이 통째로 검게 나가기 때문에, 윤곽이 실패하면 블룸만으로,
 // 그것도 실패하면 기본 렌더로 두 단계 물러난다.
 import { PerspectiveCamera, type Camera, type Scene } from 'three'
-import { PostProcessing, type WebGPURenderer } from 'three/webgpu'
+// ⚠️ **`PostProcessing`이 아니라 `RenderPipeline`이다.** r183에서 이름이
+// 바뀌었고 옛 이름은 남아 있지만 부를 때마다 콘솔에 경고를 찍는다 —
+// 화면을 훑는 하네스(`pnpm story`)가 장면마다 그 경고를 주워 왔다
+import { RenderPipeline, type WebGPURenderer } from 'three/webgpu'
 import { float, pass, perspectiveDepthToViewZ, uv, vec2 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 
@@ -49,7 +52,7 @@ function withOutline(
   if (!(camera instanceof PerspectiveCamera)) return null
   const cam = camera
   try {
-    const post = new PostProcessing(renderer)
+    const post = new RenderPipeline(renderer)
     const scenePass = pass(scene, camera)
     const color = scenePass.getTextureNode('output')
     const depthTex = scenePass.getTextureNode('depth')
@@ -85,12 +88,12 @@ function withOutline(
 
 function bloomOnly(renderer: WebGPURenderer, scene: Scene, camera: Camera): PostChain | null {
   try {
-    const post = new PostProcessing(renderer)
+    const post = new RenderPipeline(renderer)
     const color = pass(scene, camera).getTextureNode('output')
     post.outputNode = color.add(bloom(color, 0.3, 0.4, 0.9))
     return { render: () => post.render() }
   } catch (e) {
-    console.warn('[post] TSL PostProcessing 초기화 실패 — 기본 렌더로 폴백', e)
+    console.warn('[post] TSL RenderPipeline 초기화 실패 — 기본 렌더로 폴백', e)
     return null
   }
 }

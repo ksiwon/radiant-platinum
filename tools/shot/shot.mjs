@@ -27,20 +27,19 @@
 // **까만 그림이 성공으로 찍히는 것**이다. 그래서 픽셀 통계를 같이 내고, 거의
 // 한 색이면 종료 코드를 1로 준다 — 그림만 보고 "됐다"고 하지 않기 위해서다.
 //
-// ⚠️ **가끔 확인 지점으로 안 뛴다.** 열 번에 한두 번은 주인공 방에서 찍힌다
-// (TV 대사가 떠 있으면 그것이다). 청크도 6초 안에 다 안 붙는 일이 있어서 삼각형
-// 수가 뚝 떨어진다. **한 번 찍고 판단하지 말고 수치가 이상하면 다시 돌린다.**
+// ⚠️ **청크가 6초 안에 다 안 붙는 일이 있어서 삼각형 수가 뚝 떨어진다.**
+// 한 번 찍고 판단하지 말고 수치가 이상하면 다시 돌린다.
 //
 // ⚠️ **WebGPU는 없다.** 헤드리스 크로미움에 없어서 앱이 WebGL2로 폴백한다
 // (SwiftShader, 소프트웨어 래스터라이저). 그래서 **화면 배치·모델·텍스처는
 // 그대로지만 속도는 실제와 전혀 다르다.** 성능은 여기서 재면 안 된다.
-import { spawn } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { deflateSync, inflateSync } from 'node:zlib'
-import { createServer } from 'node:net'
+import { deflateSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
+import { decodePng, looksFlat, statsOf } from './png.mjs'
+import { freePort, startVite } from '../devServer.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const OUT = resolve(ROOT, 'shots')
@@ -82,99 +81,8 @@ async function checkpointsOf(page) {
   })
 }
 
-async function freePort() {
-  return new Promise((ok) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const { port } = s.address()
-      s.close(() => { ok(port) })
-    })
-  })
-}
 
-/**
- * vite 개발 서버를 띄우고 주소가 뜰 때까지 기다린다.
- *
- * ⚠️ **`npx`가 아니라 vite의 js를 노드로 바로 부른다.** 윈도우에서 `.cmd`를
- * 셸 없이 spawn하면 EINVAL이고, 셸을 끼우면 이번에는 손자 프로세스가 남아
- * 개발 서버가 안 죽는다
- */
-async function startVite(port) {
-  const child = spawn(
-    process.execPath,
-    [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
-    { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
-  // ⚠️ 출력에서 주소를 긁지 않는다 — vite가 포트에 굵게 표시하는 색 코드를 끼워
-  // 넣어서 `localhost:5199`가 통째로 안 잡힌다. 포트는 우리가 정했으니 **열렸는지만**
-  // 두드려 본다
-  let log = ''
-  child.stdout.on('data', (b) => { log += b })
-  child.stderr.on('data', (b) => { log += b })
-  let dead = null
-  child.on('exit', (code) => { dead = code })
 
-  // ⚠️ 127.0.0.1이 아니라 localhost다 — 윈도우에서 vite가 ::1에만 붙는다
-  const url = `http://localhost:${String(port)}`
-  const until = Date.now() + 180_000
-  for (;;) {
-    if (dead !== null) throw new Error(`vite가 죽었다 (${String(dead)})\n${log}`)
-    try {
-      // ⚠️ **두드리는 시간이 넉넉해야 한다.** 첫 요청은 vite가 index.html을
-      // 변환하면서 답하므로 기계가 바쁘면 몇 초가 걸린다 — 2초에서 끊으면
-      // 서버는 멀쩡히 떠 있는데 3분 내내 "안 떴다"로 돌다가 죽는다
-      const r = await fetch(url, { signal: AbortSignal.timeout(20_000) })
-      if (r.ok) break
-    } catch { /* 아직 안 떴다 */ }
-    if (Date.now() > until) throw new Error(`vite가 안 떴다 (3분)\n${log}`)
-    await new Promise((ok) => setTimeout(ok, 400))
-  }
-  return { child, url }
-}
-
-/** 8비트 PNG를 편다. 필터 다섯 가지를 다 푼다 */
-function decodePng(buf) {
-  let at = 8, w = 0, h = 0, depth = 0, kind = 0
-  const idat = []
-  while (at < buf.length) {
-    const len = buf.readUInt32BE(at)
-    const type = buf.subarray(at + 4, at + 8).toString('latin1')
-    const data = buf.subarray(at + 8, at + 8 + len)
-    if (type === 'IHDR') {
-      w = data.readUInt32BE(0); h = data.readUInt32BE(4); depth = data[8]; kind = data[9]
-    } else if (type === 'IDAT') idat.push(data)
-    else if (type === 'IEND') break
-    at += 12 + len
-  }
-  const bpp = kind === 6 ? 4 : kind === 2 ? 3 : 0
-  if (depth !== 8 || bpp === 0) throw new Error(`못 읽는 PNG (depth ${depth} · type ${kind})`)
-  const raw = inflateSync(Buffer.concat(idat))
-  const stride = w * bpp
-  const out = Buffer.alloc(h * stride)
-  let p = 0
-  for (let y = 0; y < h; y++) {
-    const filter = raw[p++]
-    for (let x = 0; x < stride; x++) {
-      const cur = raw[p + x]
-      const a = x >= bpp ? out[y * stride + x - bpp] : 0
-      const b = y > 0 ? out[(y - 1) * stride + x] : 0
-      const c = x >= bpp && y > 0 ? out[(y - 1) * stride + x - bpp] : 0
-      let v
-      switch (filter) {
-        case 0: v = cur; break
-        case 1: v = cur + a; break
-        case 2: v = cur + b; break
-        case 3: v = cur + ((a + b) >> 1); break
-        default: {
-          const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c)
-          v = cur + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)
-        }
-      }
-      out[y * stride + x] = v & 0xff
-    }
-    p += stride
-  }
-  return { w, h, bpp, pixels: out }
-}
 
 const CRC = (() => {
   const table = new Int32Array(256)
@@ -233,32 +141,6 @@ function cropPng(src, x0, y0, w, h, zoom) {
   ])
 }
 
-/**
- * 찍힌 그림이 정말 그려진 것인가.
- *
- * ⚠️ **캔버스를 `drawImage`로 읽으면 안 된다.** three는
- * `preserveDrawingBuffer: false`라 프레임이 끝나면 버퍼가 비고, 그 캔버스를
- * 2D로 옮기면 **까맣게 나온다.** 실제로 화면이 멀쩡한데 통계만 "색 1 · 밝기 0"이
- * 나왔다 — 하마터면 그린 화면을 못 그렸다고 적을 뻔했다.
- *
- * 그래서 **찍은 PNG를 편다.** 플레이라이트의 스크린샷은 합성기가 뜨는 것이라
- * 그 문제가 없다
- */
-function statsOf(png) {
-  const { w, h, bpp, pixels } = decodePng(png)
-  const colors = new Set()
-  let sum = 0, sum2 = 0
-  const n = w * h
-  for (let i = 0; i < n; i++) {
-    const o = i * bpp
-    const r = pixels[o], g = pixels[o + 1], b = pixels[o + 2]
-    const l = (r * 299 + g * 587 + b * 114) / 1000
-    sum += l; sum2 += l * l
-    colors.add((r >> 3 << 10) | (g >> 3 << 5) | (b >> 3))
-  }
-  const mean = sum / n
-  return { colors: colors.size, mean, stdev: Math.sqrt(sum2 / n - mean * mean) }
-}
 
 async function main() {
   if (targets.length === 0 && !listing) {
@@ -771,7 +653,7 @@ async function main() {
     const stats = statsOf(png)
     const file = resolve(OUT, `${id}.png`)
     writeFileSync(file, png)
-    const flat = stats.colors < 64 || stats.stdev < 3
+    const flat = looksFlat(stats)
     if (flat) bad++
     console.log(
       `${flat ? '⚠️' : '  '} ${id.padEnd(12)} 색 ${String(stats.colors ?? 0).padStart(5)}`
