@@ -15,6 +15,7 @@ import {
   DEFAULT_OPTIONS, MessagePrinter, type PrinterInput, type PrinterOptions,
 } from './printer'
 import { MovementRunner, type Movable, type MovementStep, type MovementTable } from './movement'
+import type { ApproachingTrainer } from '../actor/approach'
 import { tickFade } from './fade'
 import { MessageSlots } from './text'
 import type { VarStore } from './vars'
@@ -1101,6 +1102,16 @@ export class FieldWorld {
 
   /** 주인공. `FacePlayer`가 어느 쪽인지 알려면 필요하다 */
   player: Movable | null = null
+
+  /**
+   * 지금 다가오고 있는 사람 둘 (`ScriptManager`의 `trainers[2]`).
+   *
+   * ⚠️ **둘이다.** 더블 배틀 한 쌍과, 서로 다른 둘이 동시에 볼 때(VS2)가
+   * 여기 들어간다 — 슬롯 하나로 두면 두 번째 사람이 안 걸어온다.
+   * ⚠️ **`reset()`이 안 지운다.** 눈이 마주친 것을 적고 나서 스크립트를
+   * 시작하는데, 시작이 `reset()`을 부른다
+   */
+  approaching: (ApproachingTrainer | null)[] = [null, null]
 
   /**
    * 스크립트가 요청해 둔 주인공 자세 (`PlayerAvatar_TurnOnRequestStateBit`).

@@ -17,6 +17,7 @@ import {
 import { mapById, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
+import { APPROACH_TYPE, approachMovements, dirBetween } from '../actor/approach'
 import { FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
@@ -46,8 +47,11 @@ import {
 import { EVOLUTION_COUNTER_STOCK, isDecorMart } from '../bag/evolutionCounter'
 import { frontierStock } from '../bag/frontierMart'
 import {
-  COMM_CLUB_RET, FLAG_COMMUNICATION_CLUB_ACCESSIBLE, GBA_CARTRIDGE_NONE,
+  COMM_CLUB_RET, GBA_CARTRIDGE_NONE, SCRIPT_UNION_ROOM_ATTENDANT,
 } from '../world/comm'
+// ⚠️ **두 벌로 두지 않는다.** 여기가 읽고 시원이 쓰는 같은 칸이라, 한쪽만
+// 고치면 「배포를 받았는데 안 열린다」가 된다 (`world/siwon.ts`가 정본)
+import { DISTRIBUTION_MAGIC, VAR_DISTRIBUTION_EVENT_FIRST } from '../world/siwon'
 
 /**
  * 이름으로 등록한다.
@@ -760,10 +764,10 @@ on('HideSavingIcon', (ctx) => { ctx.host.world.services.saveGame?.hideIcon(); re
  */
 on('TrySaveGame', (ctx) => {
   const dest = ctx.readHalfWord()
-  // ⚠️ **통신에 넘겨주기 직전의 저장은 「안 됐다」로 답한다** (PARITY §9.4).
+  // ⚠️ **유니온룸 접수원이 부른 저장은 「안 됐다」로 답한다** (PARITY §9.4).
   // 리포트는 진짜로 쓴다 — 거짓말하는 것은 저장이 아니라 **넘겨주기**다.
   // 이 답으로 유니온룸이 원작의 「또 오세요」 갈래로 닫힌다 (`world/comm.ts`)
-  const toComm = ctx.host.vars.checkFlag(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)
+  const toComm = ctx.host.world.scriptID === SCRIPT_UNION_ROOM_ATTENDANT
   const save = ctx.host.world.services.saveGame
   if (!save) { ctx.host.vars.set(dest, 0); return false }
   save.begin()
@@ -2679,17 +2683,6 @@ const SPECIES_REGIGIGAS = 486
 /** `BATTLE_RESULT_CAPTURED_MON`. ⚠️ 도망 둘이 이 비트를 **같이 쓴다** */
 const BATTLE_RESULT_CAPTURED = 4
 
-/** `VAR_DISTRIBUTION_EVENT_DARKRAI`. 뒤로 쉐이미·아르세우스·로토무가 붙는다 */
-const VAR_DISTRIBUTION_EVENT_FIRST = 16451
-
-/**
- * 배포 이벤트가 열렸는지 재는 「마법의 수」 (`sDistributionEventMagicNumbers`).
- *
- * ⚠️ 0/1이 아니다. 변수에 딱 이 값이 들어 있어야 열린다 — 배포 없이는 못 여는
- * 자리라는 뜻이고, 우리도 값을 지어내지 않는다
- */
-const DISTRIBUTION_MAGIC = [0x1209, 0x1112, 0x1123, 0x1103] as const
-
 /** 플래그 하나를 세우고/지우고/묻는 명령 셋을 한 번에 등록한다 */
 function systemFlag(flag: number, names: { set?: string, clear?: string, check?: string }): void {
   if (names.set !== undefined) on(names.set, (ctx) => { ctx.host.vars.setFlag(flag); return false })
@@ -2865,6 +2858,68 @@ on('LoadPCAnimation', (ctx) => { ctx.readByte(); return false })
 on('PlayPCBootUpAnimation', (ctx) => { ctx.readByte(); return false })
 on('PlayPCShutDownAnimation', (ctx) => { ctx.readByte(); return false })
 
+
+// ── 다가오는 트레이너 (PARITY §1.13) ────────────────────────────────────────
+//
+// 눈이 마주치면 공용 스크립트 3928이 돈다. 그 안에서 이 넷이 쓰인다:
+// 어느 갈래인지 묻고 → 누구인지 묻고 → 걷게 하고 → 다 왔는지 기다린다.
+
+/**
+ * 다가오는 갈래 (`ScrCmd_GetApproachingTrainerType`).
+ *
+ * ⚠️ **늘 0번 자리를 본다** — 둘이 와도 갈래는 하나다
+ */
+on('GetApproachingTrainerType', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.approaching[0]?.type ?? APPROACH_TYPE.singles)
+  return false
+})
+
+/** 다가오는 사람의 트레이너 번호 (`ScrCmd_GetApproachingTrainerID`) */
+on('GetApproachingTrainerID', (ctx) => {
+  const slot = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.approaching[slot]?.trainerID ?? 0)
+  return false
+})
+
+/**
+ * 걸어오게 한다 (`ScrCmd_StartApproachingTrainerTask`).
+ *
+ * ⚠️ **한 칸을 남긴다** — `sightRange − 1`칸만 걷는다. 바로 앞에서 마주쳤으면
+ * 아예 안 움직인다. 안 남기면 주인공 칸으로 걸어 들어간다.
+ *
+ * ⚠️ **주인공은 첫 사람만 돌아본다** (`approachNum == 0 || VS2`) — 둘이 동시에
+ * 볼 때 두 번째 사람 쪽으로는 안 돈다
+ */
+on('StartApproachingTrainerTask', (ctx) => {
+  const slot = ctx.readVar()
+  const at = ctx.host.world.approaching[slot]
+  if (!at) return false
+  ctx.host.world.applyMovement(at.localID, approachMovements(at.direction, at.sightRange))
+  // 주인공이 돌아본다. 원작은 다 걸어온 뒤에 도는데 우리는 걷는 목록을
+  // 걸어 둔 참이라 여기서 돌린다 — 화면에서는 걸어오는 동안 이쪽이 먼저
+  // 돌아보는 것으로 보이고, 다 온 뒤에 도는 것과 몇 프레임 차이다
+  const player = ctx.host.world.player
+  const walker = ctx.host.world.objects(at.localID)
+  if (player !== null && walker !== null && (slot === 0 || at.type === APPROACH_TYPE.vs2)) {
+    player.dir = dirBetween(player.x, player.z, walker.x, walker.z)
+  }
+  return false
+})
+
+/**
+ * 다 왔는가 (`ScrCmd_CheckIsApproachingTrainerTaskDone`).
+ *
+ * ⚠️ **한 프레임 쉰다**(`return TRUE`) — 원작이 그렇다. 안 쉬면 스크립트가
+ * 같은 프레임에서 되물어 영영 돈다
+ */
+on('CheckIsApproachingTrainerTaskDone', (ctx) => {
+  ctx.readVar() // 어느 자리인지. 우리는 움직이는 것이 하나도 없을 때가 「다 왔다」다
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.moving ? 0 : 1)
+  return true
+})
 
 // ── 시계와 날씨 (PARITY §8.3) ────────────────────────────────────────────────
 //

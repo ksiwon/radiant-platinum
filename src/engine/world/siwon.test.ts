@@ -3,6 +3,8 @@
 // **가장 중요한 것은 「막히지 않는가」다.** 여섯을 한 줄로 이어 놓았으므로
 // 어느 한 칸이라도 판정이 너무 엄하면 그 뒤가 통째로 안 열린다 — 특히 레지를
 // 놓친 사람이 마지막 선물을 못 받는 자리가 실제로 있었다 (§5의 ⚠️)
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   distributionVarOf, DISTRIBUTION_MAGIC, FLAG_GAME_COMPLETED, SIWON_GIFTS, SIWON_ITEM,
@@ -10,6 +12,7 @@ import {
 } from './siwon'
 import { siwonLines } from './siwonText'
 import { planSiwonTalk } from '../script/siwonScene'
+import { withDecomp } from '../../data/romData.testkit'
 
 const FLAG_CAUGHT_ARCEUS = 286
 const FLAG_CAUGHT_SHAYMIN = 291
@@ -219,5 +222,94 @@ describe('세 나라 말', () => {
         }
       }
     }
+  })
+})
+
+// ── 롬에서 베낀 수를 표와 맞춰 본다 ─────────────────────────────────────────
+//
+// ⚠️ **이 파일의 모든 판정이 이 수들 위에 서 있다.** 하나라도 어긋나면
+// 「받았는데 다음이 안 나온다」로만 보이고 왜인지는 안 보인다. 손으로 적어 둔
+// 번호라 디컴프가 한 줄만 바뀌어도 조용히 틀리므로 여기서 못 박는다
+// (`script/varsFlags.test.ts`와 같은 장치다).
+//
+// ⚠️ `raw/`는 리포에 안 들어간다. 표가 있을 때만 돌린다 — 없다고 통과시키는
+// 것이 아니라 **건너뛴다**.
+
+const decomp = withDecomp('generated/vars_flags.txt')
+
+/**
+ * `vars_flags.txt`를 C 열거형처럼 센다.
+ *
+ * 이름만 있는 줄은 앞 값에서 하나 올라가고, `A = B` 줄은 B의 값을 받는다 —
+ * **그 줄도 하나 올라간다**. 줄 번호로 세면 어긋난다
+ */
+function readVarsFlags(): Map<string, number> {
+  const table = resolve(__dirname, '../../../raw/decomp/generated/vars_flags.txt')
+  const out = new Map<string, number>()
+  let value = 0
+  for (const raw of readFileSync(table, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim()
+    if (line === '') continue
+    const eq = line.indexOf('=')
+    if (eq >= 0) {
+      const rhs = line.slice(eq + 1).trim()
+      value = out.get(rhs) ?? Number(rhs)
+      out.set(line.slice(0, eq).trim(), value)
+    } else out.set(line, value)
+    value += 1
+  }
+  return out
+}
+
+decomp('시원이 읽는 롬의 수', () => {
+  const table = readVarsFlags()
+
+  it('먼저 세는 법이 맞는지 본다 — 이름에 번호가 박힌 것들이 그 번호다', () => {
+    const named = [...table].filter(([name]) => /^FLAG_UNUSED_0x[0-9A-F]{4}$/.test(name))
+    expect(named.length).toBeGreaterThan(100)
+    expect(named.filter(([name, value]) => Number(`0x${name.slice(-4)}`) !== value)).toEqual([])
+  })
+
+  it('「썼다」를 재는 깃발 넷', () => {
+    expect(table.get('FLAG_GAME_COMPLETED')).toBe(FLAG_GAME_COMPLETED)
+    expect(table.get('FLAG_CAUGHT_DARKRAI')).toBe(FLAG_CAUGHT_DARKRAI)
+    expect(table.get('FLAG_CAUGHT_SHAYMIN')).toBe(FLAG_CAUGHT_SHAYMIN)
+    expect(table.get('FLAG_CAUGHT_ARCEUS')).toBe(FLAG_CAUGHT_ARCEUS)
+  })
+
+  it('⚠️ 배포 변수 넷이 잇달아 붙어 있다 — 첫 칸에 번호를 더해 쓴다', () => {
+    expect(table.get('VAR_DISTRIBUTION_EVENT_DARKRAI')).toBe(VAR_DISTRIBUTION_EVENT_FIRST)
+    expect(table.get('VAR_DISTRIBUTION_EVENT_SHAYMIN')).toBe(VAR_DISTRIBUTION_EVENT_FIRST + 1)
+    expect(table.get('VAR_DISTRIBUTION_EVENT_ARCEUS')).toBe(VAR_DISTRIBUTION_EVENT_FIRST + 2)
+    expect(table.get('VAR_DISTRIBUTION_EVENT_ROTOM')).toBe(VAR_DISTRIBUTION_EVENT_FIRST + 3)
+  })
+
+  it('⚠️ 유적 셋의 상태 칸이 셋 다 맞다 — 하나만 봐도 다섯째가 안 열린다', () => {
+    expect(table.get('VAR_IRON_RUINS_STATE')).toBe(16_489)
+    expect(table.get('VAR_ICEBERG_RUINS_STATE')).toBe(16_490)
+    expect(table.get('VAR_ROCK_PEAK_RUINS_STATE')).toBe(VAR_ROCK_PEAK_RUINS_STATE)
+  })
+})
+
+const regi = withDecomp('include/constants/regi_ruins.h')
+
+regi('석상을 깨운 값이 270이다 — 잡은 값(290)으로 재면 막힌다', () => {
+  it('표와 같다', () => {
+    const header = readFileSync(
+      resolve(__dirname, '../../../raw/decomp/include/constants/regi_ruins.h'), 'utf8')
+    expect(header).toMatch(/RUINS_STATE_ACTIVATED_STATUE\s+270/)
+    expect(header).toMatch(/RUINS_STATE_DID_NOT_CATCH_REGI\s+280/)
+  })
+})
+
+const magic = withDecomp('src/system_vars.c')
+
+magic('마법의 수 넷이 롬의 표 그대로다', () => {
+  it('표와 같다', () => {
+    const src = readFileSync(
+      resolve(__dirname, '../../../raw/decomp/src/system_vars.c'), 'utf8')
+    const found = [...src.matchAll(/\[DISTRIBUTION_EVENT_(\w+)\] = (0x[0-9A-Fa-f]+)/g)]
+      .map(([, , value]) => Number(value))
+    expect(found).toEqual([...DISTRIBUTION_MAGIC])
   })
 })

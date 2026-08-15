@@ -30,12 +30,11 @@ export const COMM_CLUB_RET = {
 } as const
 
 /**
- * `FLAG_COMMUNICATION_CLUB_ACCESSIBLE` (2406).
+ * 유니온룸 접수원의 scriptID (`SCRIPT_ID(POKEMON_CENTER_2F_COMMON, 3)`).
  *
- * ⚠️ **유니온룸 입장 한 갈래에만 답할 명령이 없다.** 콜로세움은
- * `StartBattleClient`가, GTS는 `TryStartGTSApp`이, 팔파크는
- * `GetGBACartridgeVersion`이 「안 된다」를 말할 자리인데, 유니온룸은
- * 문 여는 조건이 **저장이 끝났는가**뿐이다:
+ * ⚠️ **여기 한 자리만 답할 명령이 없다.** 콜로세움은 `StartBattleClient`가,
+ * GTS는 `TryStartGTSApp`이, 팔파크는 `GetGBACartridgeVersion`이 「안 된다」를
+ * 말할 자리인데, 유니온룸은 문 여는 조건이 **저장이 끝났는가**뿐이다:
  *
  *     SetFlag FLAG_COMMUNICATION_CLUB_ACCESSIBLE
  *     Common_SaveGame
@@ -45,15 +44,17 @@ export const COMM_CLUB_RET = {
  *     ClearFlag FLAG_COMMUNICATION_CLUB_ACCESSIBLE
  *     GoTo Exit                                ← 「또 오세요」
  *
- * 그래서 이 깃발이 서 있는 동안의 저장은 **저장은 하되 0으로 답한다.**
- * 리포트는 진짜로 쓰이고(거짓말이 아니다), 넘겨주지 않는 것만 「안 됐다」로
- * 답한다 — 그러면 원작이 깃발을 스스로 내리고 제 대사로 돌려보낸다.
+ * 그래서 **이 스크립트가 부른 저장만** 「안 됐다」로 답한다 (`TrySaveGame`).
+ * 리포트는 진짜로 쓴다 — 거짓말이 아니라 넘겨주지 않는 것이다. 그러면 원작이
+ * 깃발을 스스로 내리고 제 대사로 돌려보낸다.
  *
- * 원작에서 이 깃발이 서는 자리는 셋뿐이고(`scripts_pokemon_center_2f_common`
- * 311·412·422), 311만 저장보다 앞이다. 나머지 둘은 통신이 이미 붙은 뒤라
- * 우리에게는 닿지 않는다.
+ * ⚠️ **깃발로 재지 않는다.** 바로 위의 `SetFlag`를 보면 될 것 같지만,
+ * 깃발은 **리포트에 남는 상태**라 어디선가 세워 둔 채 끝나면 그때부터 저장이
+ * 통째로 막힌다 — 통신 콘테스트 문도 같은 깃발을 세운다
+ * (`scripts_contests.s`의 `Contests_LinkContestDoor`). 지금 도는 스크립트
+ * 번호는 남지 않으므로 그런 사고가 날 수 없다.
  */
-export const FLAG_COMMUNICATION_CLUB_ACCESSIBLE = 2406
+export const SCRIPT_UNION_ROOM_ATTENDANT = 9003
 
 /**
  * 통신 전용 맵 — 우리가 절대 안 들어가는 곳.

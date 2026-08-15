@@ -37,7 +37,8 @@ import {
   FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type Trainer,
 } from './fieldMoves'
-import { trainerInSight } from '../actor/sight'
+import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
+import { APPROACH_TYPE, type ApproachingTrainer } from '../actor/approach'
 import { DIR, type Movable, type MovementTable } from './movement'
 import { TEXT_SPEED, type PrinterInput } from './printer'
 import { VarStore, VAR_LAST_TALKED } from './vars'
@@ -1168,9 +1169,10 @@ function tryTrigger(): void {
  * 절반이다. 규칙은 `engine/actor/sight`가 들고 있고 여기서는 밟은 칸이 바뀔
  * 때마다 한 번 묻는다.
  *
- * 다가오는 연출(`ScrCmd_StartApproachingTrainerTask`)은 아직 없다. 지금은 눈이
- * 마주친 자리에서 그 트레이너의 스크립트가 곧바로 돈다 — 대사와 배틀은 원작
- * 바이트코드가 그대로 낸다.
+ * ⚠️ **그 사람의 스크립트를 바로 돌리지 않는다.** 원작은 다가오는 자리를
+ * 적어 두고 **공용 스크립트**(`SCRIPT_ID(SINGLE_BATTLES, MAX_TRAINERS)` = 3928)를
+ * 돌린다 — 그 안에서 곡이 깔리고, 걸어오고, 그다음에 대사가 뜬다.
+ * 말을 걸어서 시작하는 길(`Battles_Trainer`)과 **다른 스크립트**다.
  */
 function trySight(): void {
   const header = mapById(mapWorld.mapId)
@@ -1193,7 +1195,53 @@ function trySight(): void {
       || fieldScripts.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + trainerIdOf(npc.script)),
   )
   if (!seen) return
-  start(seen.npc.script, header.scripts, seen.npc.localID)
+
+  // ⚠️ **더블 트레이너는 짝과 함께 온다** — 짝을 못 찾으면 혼자 온다.
+  // 원작의 `FindTrainerPartner`는 같은 트레이너 번호를 가리키는 다른 객체를
+  // 찾는데, 우리 배치표에서는 `trainerType`이 같고 아직 안 이긴 이웃이다
+  const world = fieldScripts.world
+  if (world === null) return
+  const double = fieldScripts.services.trainer?.(trainerIdOf(seen.npc.script))?.double === true
+  const first: ApproachingTrainer = {
+    localID: seen.npc.localID,
+    trainerID: trainerIdOf(seen.npc.script),
+    direction: seen.facing,
+    sightRange: seen.distance,
+    type: double ? APPROACH_TYPE.doubles : APPROACH_TYPE.singles,
+  }
+  // ⚠️ **적는 것이 스크립트를 시작한 뒤다.** 시작이 `world.reset()`을
+  // 부르는데 그 안에서 지우면 첫 명령이 빈 자리를 읽는다
+  start(APPROACHING_TRAINER_SCRIPT, header.scripts, seen.npc.localID)
+  world.approaching[0] = first
+  // ⚠️ **짝은 트레이너 번호가 같은 다른 사람이다** (`FindTrainerPartner`) —
+  // 더블 한 쌍은 표에 트레이너 하나로 있고 맵에만 둘이 서 있다. 짝을 못
+  // 찾으면 혼자 온다 (원작은 그 자리에서 `GF_ASSERT`로 선다)
+  world.approaching[1] = double ? partnerOf(seen.npc, first) : null
+}
+
+/**
+ * 눈이 마주쳤을 때 도는 공용 스크립트 (`SCRIPT_ID(SINGLE_BATTLES, MAX_TRAINERS)`).
+ *
+ * ⚠️ **트레이너 번호가 아니다.** 928은 트레이너 표의 끝(`MAX_TRAINERS`)이고,
+ * 그 자리에 「다가오는 트레이너」 스크립트가 놓여 있다
+ */
+const APPROACHING_TRAINER_SCRIPT = SCRIPT_ID_OFFSET_SINGLE_BATTLES + 928
+
+/**
+ * 더블 한 쌍의 나머지 하나 (`FindTrainerPartner`).
+ *
+ * ⚠️ **같은 스크립트를 가리키는 다른 객체**다 — 트레이너 번호가 같다.
+ * 시야 거리와 방향은 **첫 사람 것을 그대로 쓴다** (`ApproachingTrainer_Init`)
+ */
+function partnerOf(npc: Npc, first: ApproachingTrainer): ApproachingTrainer | null {
+  for (const actor of npcActors.list) {
+    if (actor.info.localID === npc.localID) continue
+    if (actor.info.script !== npc.script) continue
+    const type = actor.info.trainerType
+    if (type !== TRAINER_TYPE.normal && type !== TRAINER_TYPE.viewAllDirections) continue
+    return { ...first, localID: actor.info.localID }
+  }
+  return null
 }
 
 let lastSightTile = { x: Number.NaN, z: Number.NaN }

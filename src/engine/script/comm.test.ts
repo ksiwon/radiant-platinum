@@ -21,7 +21,7 @@ import { FieldWorld } from './world'
 import { DIR } from './movement'
 import { DATA, withData, withDecomp } from '../../data/romData.testkit'
 import { stubFieldMoves, stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
-import { COMM_CLUB_RET, COMM_MAPS, FLAG_COMMUNICATION_CLUB_ACCESSIBLE } from '../world/comm'
+import { COMM_CLUB_RET, COMM_MAPS, SCRIPT_UNION_ROOM_ATTENDANT } from '../world/comm'
 import { TILE_BEHAVIOR_SCRIPT_ONLY_WARP } from '../map/world'
 
 const maybe = withData('scripts.json', 'scripts.bin')
@@ -69,6 +69,12 @@ maybe('통신', () => {
    * 전부 밟는다. 저장은 **진짜로 되는 것으로** 답한다: 안 그러면 통신 앞의
    * 저장 갈래를 못 밟아서 시험이 무엇도 안 재게 된다
    */
+  /**
+   * `start()`가 세우는 값. 공용 구역 9000번대는 **진입점 번호가 곧 끝자리**다
+   * (`SCRIPT_ID_OFFSET_POKEMON_CENTER_2F_COMMON`) — 저장 갈래가 이걸 본다
+   */
+  const POKECENTER_2F_BASE = 9000
+
   function talk(file: number, entry: number, pick: number) {
     const vars = new VarStore()
     // ⚠️ 통신이 「성공」으로 읽힐 값을 미리 부어 둔다. 명령이 답을 안 적으면
@@ -89,6 +95,11 @@ maybe('통신', () => {
       },
     })
     world.player = { x: 8, z: 6, visible: true, dir: DIR.north }
+    // ⚠️ **`start()`가 하는 일을 여기서도 한다.** 유니온룸의 저장 갈래가
+    // 「누가 부른 저장인가」로 갈리므로, 이게 없으면 시험이 헛돈다
+    if (meta.files[file]?.name === 'scripts_pokemon_center_2f_common') {
+      world.scriptID = POKECENTER_2F_BASE + entry
+    }
     const ran: string[] = []
     const traced = new Map(map)
     for (const [op, fn] of map) {
@@ -160,14 +171,58 @@ maybe('통신', () => {
   })
 
   it('⚠️ 유니온룸은 저장을 마쳐도 안 열린다 — 원작이 제 대사로 닫는다', () => {
+    expect(SCRIPT_UNION_ROOM_ATTENDANT).toBe(POKECENTER_2F_BASE + 3)
     const UNION = 3
     const { ran, saved, vars } = talk(fileOf('scripts_pokemon_center_2f_common'), UNION, 0)
     // 리포트는 **진짜로 쓴다**. 거짓말하는 것은 저장이 아니라 넘겨주기다
     expect(saved).toBe(true)
     // 문을 여는 갈래(`EnterUnionRoom`)만 문을 그린다. 거기 안 갔다는 뜻이다
     expect(ran).not.toContain('LoadDoorAnimation')
-    // 원작이 스스로 치운 자국: 깃발이 도로 내려가 있다
-    expect(vars.checkFlag(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)).toBe(false)
+    // 원작이 스스로 치운 자국: 깃발이 도로 내려가 있다 (2406)
+    expect(vars.checkFlag(2406)).toBe(false)
+  })
+
+  it('⚠️ 딴 자리의 저장은 안 막힌다 — 막는 것은 유니온룸 한 자리뿐이다', () => {
+    // 공용 저장 스크립트(0x7D6)를 곧바로 돌려서 **부른 사람만 바꿔 본다**.
+    // 이게 안 갈리면 저장이 온 게임에서 막힌다
+    const COMMON_SAVE = 0x7d6
+    /** `VAR_MAP_LOCAL_0x00` — 공용 저장 스크립트가 결과를 적는 칸 */
+    const VAR_MAP_LOCAL_0 = 16_384
+
+    const saveAs = (scriptID: number): { saved: boolean; answer: number } => {
+      const vars = new VarStore()
+      let saved = false
+      const world = new FieldWorld({
+        vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+        movements: meta.movements,
+        services: {
+          party: stubParty, labels: stubLabels, trainerInfo: stubTrainerInfo,
+          fieldMoves: stubFieldMoves,
+          saveGame: {
+            type: () => 2, showInfo: () => undefined, hideInfo: () => undefined,
+            showIcon: () => undefined, hideIcon: () => undefined,
+            begin: () => { saved = true }, result: () => true,
+          },
+        },
+      })
+      world.player = { x: 0, z: 0, visible: true, dir: DIR.north }
+      world.scriptID = scriptID
+      const target = resolveScript(meta, COMMON_SAVE, -1)!
+      const ctx = new ScriptContext(
+        { vars, world, commands: map }, fileBytes(data, target.file), target.file)
+      ctx.start(entryOffset(data, target.file, target.entry))
+      for (let frame = 0; frame < 2000; frame++) {
+        if (!ctx.step(200_000)) break
+        world.tick()
+        if (world.menu !== null) world.choose(world.menu.entries[0]?.value ?? 0)
+      }
+      return { saved, answer: vars.get(VAR_MAP_LOCAL_0) }
+    }
+
+    // 아무 데서나 저장하면 「됐다」
+    expect(saveAs(0)).toEqual({ saved: true, answer: 1 })
+    // 유니온룸 접수원이 부르면 **쓰기는 하고** 「안 됐다」로 답한다
+    expect(saveAs(SCRIPT_UNION_ROOM_ATTENDANT)).toEqual({ saved: true, answer: 0 })
   })
 
   it('⚠️ 통신 대전은 원작의 「통신 오류」로 닫힌다', () => {
@@ -199,7 +254,7 @@ maybe('통신', () => {
 const decomp = withDecomp('generated/vars_flags.txt')
 
 decomp('통신 깃발 번호', () => {
-  it('`FLAG_COMMUNICATION_CLUB_ACCESSIBLE`이 디컴프 표와 같다', () => {
+  it('접수원이 세우는 깃발이 2406이다 — 저장 갈래가 이 자리를 설명한다', () => {
     const table = resolve(__dirname, '../../../raw/decomp/generated/vars_flags.txt')
     const out = new Map<string, number>()
     let value = 0
@@ -213,7 +268,7 @@ decomp('통신 깃발 번호', () => {
       } else out.set(line, value)
       value += 1
     }
-    expect(out.get('FLAG_COMMUNICATION_CLUB_ACCESSIBLE')).toBe(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)
+    expect(out.get('FLAG_COMMUNICATION_CLUB_ACCESSIBLE')).toBe(2406)
   })
 })
 
