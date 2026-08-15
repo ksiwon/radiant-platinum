@@ -19,8 +19,10 @@
 import { get, set, del, createStore } from 'idb-keyval'
 import type { SaveData } from './saveStore'
 import { checksum, encodePayload } from './save/codec'
-import { migrateSave, type MigrateResult } from './save/migrate'
-import { safeParseSave } from './save/schema'
+// ⚠️ **스키마와 이주기를 정적으로 안 잡는다.** 둘 다 zod를 끌고 오는데 타이틀이
+// 이 파일을 정적으로 닿아서 그대로 첫 화면 예산에 얹힌다 (실측 gzip 19.4kB ·
+// DEPLOY.md §2). 읽고 쓰는 자리가 전부 async라 그때 받으면 된다
+import type { MigrateResult } from './save/migrate'
 
 const dbStore = createStore('radiant-platinum', 'save')
 /** 슬롯 하나. 원작도 세이브가 한 벌이다 */
@@ -77,6 +79,7 @@ export async function readReportDetailed(expectVersion: number): Promise<ReportR
   const data: unknown = await get(SLOT, dbStore)
   if (data === undefined || data === null) return { kind: 'none' }
 
+  const { migrateSave } = await import('./save/migrate')
   const got = migrateSave(data, expectVersion)
   if (got.kind === 'ok') return { kind: 'ok', save: got.save, migrated: got.migrated }
   return { kind: 'unreadable', reason: got, raw: data }
@@ -102,6 +105,7 @@ export type WriteResult =
  */
 export async function writeReportVerified(data: SaveData): Promise<WriteResult> {
   // 디스크를 건드리기 전에 먼저 본다. 못 쓸 것을 임시 슬롯에라도 남길 이유가 없다
+  const { safeParseSave } = await import('./save/schema')
   const before = safeParseSave(data)
   if (!before.ok) return { ok: false, why: `쓰려는 리포트가 스키마를 어긴다 — ${before.why}` }
 

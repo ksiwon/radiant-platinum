@@ -114,6 +114,11 @@ async function applySetup(cp: Checkpoint): Promise<void> {
     useSaveStore.setState({ bag })
   }
 
+  // ⚠️ **이야기 칸이 배지보다 먼저다.** 매 프레임 표(`OnFrameTable`)가 이 값을
+  // 보고 스크립트를 거는데, 안 채우면 그 스크립트가 `LockAll`만 하고 끝나서
+  // 주인공이 영영 묶인다 (`Checkpoint.story`의 실측)
+  if (cp.story) for (const [id, value] of cp.story) giveVar(id, value)
+
   if (cp.money !== undefined) useSaveStore.setState({ money: cp.money })
   if (cp.badges !== undefined) useSaveStore.setState({ badges: cp.badges })
   // 신발이 없으면 Shift를 눌러도 걷는다 (`actor/player`). 도감과 같은 갈래라
@@ -264,6 +269,15 @@ function ripenBerries(): void {
       p.berryID === 0 ? p : { ...p, growthStage: BERRY_STAGE.fruit, isGrowing: true }
     )),
   })
+}
+
+/**
+ * 이야기 칸 하나를 세운다. 플래그와 같은 이유로 **두 군데에** 적는다 —
+ * VM(`fieldScripts.vars`)과 세이브가 따로 들고 있다
+ */
+function giveVar(id: number, value: number): void {
+  forceVar(id, value)
+  useSaveStore.setState({ vars: Uint16Array.from(fieldScripts.vars.saved) })
 }
 
 /** 같은 이유로 **두 군데에** 세운다. 한쪽만 세우면 맵을 갈아탈 때 사라진다 */

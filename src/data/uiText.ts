@@ -9,7 +9,10 @@
 // 않으려고 필요한 번호만 여기 적는다.
 import { formatMessage, MESSAGE_SLOTS, MessageSlots } from '../engine/script/text'
 import { gameLocale } from '../state/optionsStore'
-import { loadDialogueBank, type DataLocale } from './gameData'
+// ⚠️ **`gameData`를 정적으로 안 잡는다.** 그 모듈이 `data/schema`(zod)를 끌고
+// 오는데, 타이틀이 이 파일을 정적으로 닿아서 그대로 첫 화면 예산에 얹힌다
+// (실측 gzip 19.4kB · DEPLOY.md §2). 글은 어차피 비동기로 받는다
+import type { DataLocale } from './gameData'
 
 export const UI_BANK = {
   /** `TEXT_BANK_START_MENU` — 도감·포켓몬·가방·리포트·설정·닫는다 */
@@ -194,7 +197,10 @@ export type UiBank = keyof typeof UI_BANK
  * 언어를 안 적으면 **설정에 있는 언어**다. 화면마다 손으로 적게 두면 한 곳만
  * 빠뜨려도 그 화면만 옛 언어로 남는다
  */
-export function loadUiText(bank: UiBank, locale: DataLocale = gameLocale()): Promise<string[]> {
+export async function loadUiText(
+  bank: UiBank, locale: DataLocale = gameLocale(),
+): Promise<string[]> {
+  const { loadDialogueBank } = await import('./gameData')
   return loadDialogueBank(locale, UI_BANK[bank])
 }
 

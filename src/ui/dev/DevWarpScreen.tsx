@@ -74,8 +74,16 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
     return () => { useMenuStore.getState().back() }
   }, [])
 
-  const jump = (): void => {
-    if (!cp || busy) return
+  /**
+   * ⚠️ **어디로 뛸지를 인자로 받는다.** 예전에는 늘 `cursor`가 가리키는 것으로
+   * 뛰었는데, 칸을 누르면 `onPointerEnter`가 커서를 옮기고 그 다음 렌더에서야
+   * 이 함수의 `cp`가 바뀐다 — 그 사이에 눌리면 **엉뚱한 지점으로 뛴다.**
+   * 화면은 멀쩡히 나오므로 하네스가 다른 맵을 찍어 놓고 통과로 읽는다
+   * (실측: 209번도로로 뛰라고 눌렀는데 두 번 다 주인공 방에 섰다).
+   * 누른 칸이 곧 목적지다. 키보드로 고를 때만 커서를 쓴다
+   */
+  const jump = (to: Checkpoint | undefined = cp): void => {
+    if (!to || busy) return
     setBusy(true)
     void (async () => {
       // 타이틀에서 들어왔으면 판이 없다. 인트로 건너뛰기와 **같은 이름**으로
@@ -85,7 +93,7 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
         const { introSkipChoice } = await import('../../engine/intro/skip')
         startNewGame(await introSkipChoice(gameLocale()))
       }
-      await warpTo(cp)
+      await warpTo(to)
       onClose()
       if (!inPlay) navigate('/play')
     })().catch((e: unknown) => {
@@ -155,7 +163,7 @@ export function DevWarpScreen({ onClose }: { onClose: () => void }) {
                     // 올려놓기만 하면 오른쪽이 바뀐다 — 누르지 않아도 읽을 수 있다
                     onPointerEnter={() => { setCursor(at) }}
                     onFocus={() => { setCursor(at) }}
-                    onClick={jump}
+                    onClick={() => { jump(item) }}
                   >
                     {item.label}
                     {/*

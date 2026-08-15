@@ -7,14 +7,9 @@
 //
 // 여기서 걸리면 결론은 하나다 — **다시 설치.** 리포트는 안 건드린다.
 import { z } from 'zod'
+import { CONTRACT_VERSION } from './installContract'
 
-/**
- * **기록의 모양** 판. 다르면 그 기록을 못 읽으니 다시 설치한다.
- *
- * ⚠️ 산출물의 모양은 이것이 아니라 `ASSET_FORMAT`이 센다 (`assetFormat.ts`).
- * 둘을 하나로 두면 기록에 필드 하나 늘 때마다 사용자의 600MB가 날아간다
- */
-export const CONTRACT_VERSION = 3
+export { CONTRACT_VERSION }
 
 const FileRecord = z.object({
   path: z.string().min(1),

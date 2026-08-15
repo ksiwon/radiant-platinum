@@ -11,8 +11,15 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync, statSync } from 'node:fs'
 import { dirname, resolve, relative } from 'node:path'
 
-/** 이 이름으로 시작하는 모듈이 초기 그래프에 있으면 안 된다 */
-const FORBIDDEN = /^(three|@react-three|@pkmn)/
+/**
+ * 이 이름으로 시작하는 모듈이 초기 그래프에 있으면 안 된다.
+ *
+ * ⚠️ **zod가 여기 든 것은 크기 때문이다.** 혼자 gzip 19.4kB고, 세 갈래로
+ * 부팅 그래프에 들어와 첫 화면을 149.4kB까지 밀어 올리고 있었다 (실측 —
+ * 빼고 121.6kB). 스키마는 **읽을 때** 받으면 되고, 상수 하나 때문에 딸려
+ * 오던 자리는 상수를 따로 뺐다 (`data/pockets.ts` · `import/install/installContract.ts`)
+ */
+const FORBIDDEN = /^(three|@react-three|@pkmn|zod)/
 
 /**
  * `import type ...`은 컴파일에서 지워지므로 그래프에 안 남는다.
@@ -58,7 +65,7 @@ describe('초기 청크', () => {
   const entry = resolve('src/main.tsx')
   const { seen, hits } = walk(entry)
 
-  it('타이틀 그래프에 three·R3F·sim이 없다', () => {
+  it('타이틀 그래프에 three·R3F·sim·zod가 없다', () => {
     // 실패하면 어느 길로 들어왔는지가 그대로 나온다
     expect(hits.map((h) => h.join(' → '))).toEqual([])
   })

@@ -14,7 +14,7 @@ import {
   buildPortable, buildPortableRaw, explainFailure, parsePortable, type PortableSave,
 } from './save/portable'
 import { compareContract, type Compatibility } from './save/contract'
-import { migrateSave } from './save/migrate'
+
 
 // 도감 비트필드는 엔진이 갖는다 — 세이브 스키마가 그 크기를 알아야 하는데
 // 여기서 가져가면 `saveStore → report → slots → schema → saveStore` 고리가
@@ -569,7 +569,12 @@ interface SaveStore extends SaveData {
    */
   exportReport: () => Promise<ExportOutcome>
   /** 파일을 열어 보기만 한다. 아직 아무것도 안 바꾼다 */
-  previewImport: (text: string) => ImportPreview
+  /**
+   * ⚠️ **비동기다.** 이주기(`save/migrate`)가 zod를 끌고 오는데 타이틀이 이
+   * 스토어를 정적으로 닿아서 그대로 첫 화면 예산에 얹힌다 (실측 gzip 19.4kB ·
+   * DEPLOY.md §2). 파일을 고른 뒤에 도는 자리라 그때 받으면 된다
+   */
+  previewImport: (text: string) => Promise<ImportPreview>
   /** 미리 본 것을 실제로 들인다. 실패하면 기존 리포트는 그대로다 */
   commitImport: (preview: ImportPreview & { ok: true }) => Promise<ImportOutcome>
   /**
@@ -912,10 +917,11 @@ export const useSaveStore = create<SaveStore>()(
         }
       },
 
-      previewImport: (text) => {
+      previewImport: async (text) => {
         const parsed = parsePortable(text)
         if (!parsed.ok) return { ok: false, why: explainFailure(parsed.fail) }
 
+        const { migrateSave } = await import('./save/migrate')
         const moved = migrateSave(parsed.data, SAVE_VERSION)
         if (moved.kind === 'too-new') {
           return { ok: false, why: '더 새로운 판에서 만든 리포트입니다. 그 판에서 열어 주세요' }

@@ -169,7 +169,7 @@ describe('파일에서 불러오기', () => {
 
   it('미리 보고 나서 들인다', async () => {
     const incoming = saveWith('바깥에서온', 7777)
-    const preview = useSaveStore.getState().previewImport(fileOf(incoming))
+    const preview = await useSaveStore.getState().previewImport(fileOf(incoming))
 
     expect(preview.ok).toBe(true)
     if (!preview.ok) return
@@ -188,7 +188,7 @@ describe('파일에서 불러오기', () => {
     await useSaveStore.getState().report(where)
     grabbed = []
 
-    const preview = useSaveStore.getState().previewImport(fileOf(saveWith('새것', 2222)))
+    const preview = await useSaveStore.getState().previewImport(fileOf(saveWith('새것', 2222)))
     expect(preview.ok).toBe(true)
     if (!preview.ok) return
     await useSaveStore.getState().commitImport(preview)
@@ -213,7 +213,7 @@ describe('파일에서 불러오기', () => {
       buildPortableRaw({ ...saveWith('x'), money: -9 }, SAVE_VERSION, AT))
 
     for (const bad of ['그냥 글', '{}', schemaBreaker]) {
-      const preview = useSaveStore.getState().previewImport(bad)
+      const preview = await useSaveStore.getState().previewImport(bad)
       expect(preview.ok, bad.slice(0, 20)).toBe(false)
       if (!preview.ok && bad === schemaBreaker) expect(preview.why).toContain('money')
     }
@@ -223,20 +223,20 @@ describe('파일에서 불러오기', () => {
     if (stored.kind === 'ok') expect(stored.save.money).toBe(1111)
   })
 
-  it('더 새 판이 만든 파일은 이유를 말하고 물러선다', () => {
+  it('더 새 판이 만든 파일은 이유를 말하고 물러선다', async () => {
     const next = SAVE_VERSION + 1
     const text = serializePortable(
       buildPortableRaw({ ...saveWith('미래'), version: next }, next, AT))
-    const preview = useSaveStore.getState().previewImport(text)
+    const preview = await useSaveStore.getState().previewImport(text)
     expect(preview.ok).toBe(false)
     // 손상이 아니라 **판**이 문제라는 것을 말해야 한다 — "이 파일이 이상하다"와
     // "이 앱이 아직 못 읽는다"는 사용자가 할 일이 다르다
     if (!preview.ok) expect(preview.why).toContain('더 새로운 판')
   })
 
-  it('너무 옛 판은 버리지 말라고 말한다', () => {
+  it('너무 옛 판은 버리지 말라고 말한다', async () => {
     const text = serializePortable(buildPortableRaw({ ...saveWith('옛것'), version: 2 }, 2, AT))
-    const preview = useSaveStore.getState().previewImport(text)
+    const preview = await useSaveStore.getState().previewImport(text)
     expect(preview.ok).toBe(false)
     if (!preview.ok) expect(preview.why).toContain('보관')
   })

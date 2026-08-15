@@ -4,6 +4,7 @@
 // 이미 두 번 겪었다(charmap 오프바이원, BDSP 채널 매핑). 스키마는 그게 게임
 // 코드까지 조용히 흘러드는 것을 막는 마지막 방어선이다. 범위까지 좁게 잡는다.
 import { z } from 'zod'
+import { POCKET_COUNT } from './pockets'
 
 /** 4세대 타입 18종: 0 노말 … 9 ??? … 17 악 */
 export const TYPE_COUNT = 18
@@ -306,8 +307,8 @@ export const dialogueIndexSchema = z.object({
 
 // ── 아이템 (DATA.md §2.12) ────────────────────────────────────────────────────
 
-/** 주머니 8칸. 순서가 곧 번호다 (POCKET_ITEMS 0 … POCKET_KEY_ITEMS 7) */
-export const POCKET_COUNT = 8
+// 칸 수는 zod를 안 쓰는 자리에서도 필요하다 (`pockets.ts`의 머리말)
+export { POCKET_COUNT }
 
 /**
  * 사용 효과. 40칸 중 0이 아닌 것만 실려 온다 — 상처약이면 `hpRestored: 20` 하나다.

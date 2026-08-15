@@ -37,6 +37,31 @@ export const VAR_DISTORTION_CYRUS = 16475
 export const VAR_BATTLE_FACTORY_CHALLENGE_TYPE = 16568
 export const VAR_BATTLE_FACTORY_CHALLENGE_LEVEL = 16569
 /**
+ * 물가시티가 어디까지 왔는가 (`VAR_SUNYSHORE_CITY_STATE` = 0x407E).
+ *
+ * 0이면 `SunyshoreCity_OnFrame_Flint`가 매 프레임 걸린다 — 그 스크립트는
+ * `LockAll` 뒤에 z가 790이나 791일 때만 갈라지고, 아니면 `ReleaseAll` 없이
+ * 끝난다. 원작에서는 222번도로 관문으로 들어오는 길밖에 없어서 그 z가
+ * 보장되지만, 다른 자리에 세우면 **영영 묶인다** (`dev/checkpoints`)
+ */
+export const VAR_SUNYSHORE_CITY_STATE = 0x407e
+/**
+ * 파이트에리어가 어디까지 왔는가 (`VAR_FIGHT_AREA_STATE` = 0x4081).
+ *
+ * 0이면 배에서 내리는 장면(`FightArea_OnFrame_Rival`)이 걸린다. 1은 라이벌이
+ * 배틀프런티어 관문 앞에 선 사이, 2가 그 장면이 다 끝난 자리다
+ */
+export const VAR_FIGHT_AREA_STATE = 0x4081
+/**
+ * 시작의 방 계단이 무장했는가 (`VAR_HALL_OF_ORIGIN_STATE` = 0x4118).
+ *
+ * 세우는 것은 피리가 아니라 **창기둥의 진입 스크립트**다 —
+ * `SpearPillar_TryEnableHallOfOrigin`이 전당등록·전국도감·천계의피리·배포를
+ * 다 보고 1을 세운다. 그 한 칸이 (30~32, 35)의 좌표 사건을 무장시킨다
+ * (`events_hall_of_origin.json`)
+ */
+export const VAR_HALL_OF_ORIGIN_STATE = 0x4118
+/**
  * 바위 수수께끼를 풀었는가 (`FLAG_DISTORTION_WORLD_PUZZLE_FINISHED`).
  *
  * 이 자리 하나가 다시 들어왔을 때의 바위 자리를 통째로 정한다 —

@@ -9,7 +9,7 @@
 //     번호순으로 정렬되고, 나머지는 주운 순서 그대로다
 //
 // 이 셋이 가방 화면의 생김새를 정하므로 자료 구조부터 원작을 따른다.
-import { POCKET_COUNT } from '../../data/schema'
+import { POCKET_COUNT } from '../../data/pockets'
 
 /** `bag.h`. 자리는 `POCKET_*` 번호 순서다 */
 export const POCKET_SIZE: readonly number[] = [

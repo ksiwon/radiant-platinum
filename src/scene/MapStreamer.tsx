@@ -349,6 +349,25 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    */
   const resume = useRef<{ map: number; matrix: number; x: number; z: number } | null>(null)
 
+  /** 이 effect를 정리한다. 어디까지 왔는지를 `resume`에 남기고 세계를 비운다 */
+  const forget = useCallback(() => {
+    // 실제로 떠나는 것이면 다음 마운트에서 새 `MapStreamer`가 서므로 이 ref는
+    // 함께 사라진다
+    resume.current = world.mapId < 0 ? null : {
+      map: world.mapId,
+      matrix: world.matrix,
+      x: worldState.player.position.x,
+      z: worldState.player.position.z,
+    }
+    activeZone.grid = null
+    world.grid = null
+    world.mapId = -1
+    world.pending = null
+    encounters.pending = null
+    setZone(null)
+    publishMap(-1)
+  }, [setZone, publishMap])
+
   // 세이브가 적어 둔 자리에서 시작한다. 새 판이면 그것이 주인공 방이고
   // (`START_LOCATION`) 이어하기면 리포트를 쓴 자리다.
   //
@@ -359,9 +378,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // ⚠️ **맵을 세우기 전이다** — 머리글의 자리는 리포트에 적힌 그 자리고,
     // 확인 지점으로 뛰어든 판에서도 세이브가 가리키는 곳이어야 한다
     journalEnterMap(useSaveStore.getState().position.map)
-    enter(initial, spawn.map, spawn.x, spawn.z, 0)
     // 두 번째부터는 **서 있던 자리**로 돌아간다. 세이브 자리가 아니다
     const back = resume.current
+    // ⚠️ **확인 지점이 이미 옮겨 놨으면 여기서 아무 데도 안 들른다.** 이 effect가
+    // 첫 프레임보다 늦게 도는 실행이 있다 — 그때 아래를 그대로 돌면 방금 뛰어든
+    // 자리를 기본 스폰과 세이브 자리로 **두 번 덮는다** (`useDevWarp.moved`의
+    // 실측). 다시 도는 것(`back !== null`)은 다르다: 정리에서 격자를 비웠으므로
+    // 반드시 다시 세워야 한다
+    if (back === null && devWarp.moved()) return () => { forget() }
+    enter(initial, spawn.map, spawn.x, spawn.z, 0)
     // 시험용 확인 지점으로 들어온 판이면 세이브 자리를 안 들른다. 잠깐이라도
     // 주인공 방을 비추고 가면 무엇을 보고 있는지 헷갈린다 — 곧 `devWarp.tick`이
     // 목적지로 옮긴다
@@ -387,24 +412,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
           })
       }
     }
-    return () => {
-      // 어디까지 왔는지를 남긴다. 실제로 떠나는 것이면 다음 마운트에서 새
-      // `MapStreamer`가 서므로 이 ref는 함께 사라진다
-      resume.current = world.mapId < 0 ? null : {
-        map: world.mapId,
-        matrix: world.matrix,
-        x: worldState.player.position.x,
-        z: worldState.player.position.z,
-      }
-      activeZone.grid = null
-      world.grid = null
-      world.mapId = -1
-      world.pending = null
-      encounters.pending = null
-      setZone(null)
-      publishMap(-1)
-    }
-  }, [initial, spawn, enter, setZone, publishMap, devWarp])
+    return () => { forget() }
+  }, [initial, spawn, enter, setZone, publishMap, devWarp, forget])
 
   // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
   // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다

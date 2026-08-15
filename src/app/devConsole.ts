@@ -261,9 +261,9 @@ export function installDevConsole(): void {
       return save.report(here)
     },
     /** 파일 글을 그대로 들인다. 화면의 "리포트 파일 불러오기"와 같은 길이다 */
-    bringIn: (text: string) => {
-      const preview = useSaveStore.getState().previewImport(text)
-      if (!preview.ok) return Promise.resolve({ ok: false as const, why: preview.why })
+    bringIn: async (text: string) => {
+      const preview = await useSaveStore.getState().previewImport(text)
+      if (!preview.ok) return { ok: false as const, why: preview.why }
       return useSaveStore.getState().commitImport(preview)
     },
     /**

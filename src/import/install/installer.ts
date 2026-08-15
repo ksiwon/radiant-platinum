@@ -28,9 +28,12 @@ import type { Release } from '../platinum/validate'
 import { APP_VERSION, BUILD_ID } from '../../state/save/contract'
 import { ASSET_FORMAT, groupFormat, needsSource, planAssets } from './assetFormat'
 import { checkFile, recordOf, type Broken, type FileRecord } from './integrity'
-import {
-  CONTRACT_VERSION, parseJournal, parseManifest,
-  type GroupRecord, type InstallJournal, type InstallManifest, type ReadResult,
+import { CONTRACT_VERSION } from './installContract'
+// ⚠️ **스키마는 정적으로 안 잡는다.** `manifestSchema`가 zod를 끌고 오는데,
+// 이 모듈은 부팅이 정적으로 닿는 자리라 그것이 그대로 첫 화면 예산에 얹힌다
+// (실측 gzip 19.4kB · DEPLOY.md §2). 읽는 자리가 전부 async라 그때 받으면 된다
+import type {
+  GroupRecord, InstallJournal, InstallManifest, ReadResult,
 } from './manifestSchema'
 import { missingRequired } from './required'
 
@@ -140,6 +143,7 @@ export async function readInstall(store: WritablePackStore): Promise<ReadResult<
   const raw = await readJson(store, INSTALL_FILE)
   if (raw === undefined) return { kind: 'none' }
   if (raw === null) return { kind: 'invalid', why: 'install.json이 JSON이 아니다' }
+  const { parseManifest } = await import('./manifestSchema')
   return parseManifest(raw)
 }
 
@@ -147,6 +151,7 @@ async function readJournal(store: WritablePackStore): Promise<InstallJournal> {
   const empty: InstallJournal = { contractVersion: CONTRACT_VERSION, done: [], running: null }
   const raw = await readJson(store, JOURNAL_FILE)
   if (raw === undefined || raw === null) return empty
+  const { parseJournal } = await import('./manifestSchema')
   const got = parseJournal(raw)
   // 모양이 다른 저널은 없는 것으로 친다 — 그러면 전부 다시 만든다. 안전한 쪽이다
   return got.kind === 'ok' ? got.value : empty

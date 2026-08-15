@@ -14,6 +14,12 @@ import type { MapGrid } from '../map/grid'
 import type { Warp } from '../map/world'
 import type { EncounterTable } from '../battle/encounter'
 import { isLandEncounterTile } from '../battle/encounter'
+import {
+  VAR_FIGHT_AREA_STATE, VAR_HALL_OF_ORIGIN_STATE, VAR_SUNYSHORE_CITY_STATE,
+} from '../script/vars'
+import {
+  DISTRIBUTION_EVENT, DISTRIBUTION_MAGIC, VAR_DISTRIBUTION_EVENT_FIRST,
+} from '../world/siwon'
 
 /** 파티에 넣을 한 마리 */
 export interface PartySpec {
@@ -148,6 +154,25 @@ export interface Checkpoint {
    * 나무열매탐색기가 무엇을 찍는지 보려면 스무 마을을 다 돌아야 한다
    */
   ripeBerries?: boolean
+  /**
+   * 이야기 칸을 미리 채운다 — `[변수 번호, 값]`.
+   *
+   * ⚠️ **없으면 매 프레임 스크립트가 주인공을 영영 묶는 자리가 있다.** 맵마다
+   * 「이 변수가 이 값이면 이 스크립트를 매 프레임 건다」는 표가 붙어 있고
+   * (`InitScriptEntry_OnFrameTable`), 그 스크립트는 대개 `LockAll`로 시작해
+   * **좌표를 보고** 갈라진다. 원작에서는 그 값일 때 설 수 있는 자리가 하나뿐이라
+   * 늘 갈래에 맞지만, 뛰어들면 아무 데나 설 수 있어서 어느 갈래에도 안 맞고
+   * `ReleaseAll` 없이 끝난다 — 그러면 다음 프레임에 표가 또 걸고, 그렇게 영영
+   * 묶인다.
+   *
+   * 배지·도감과 같은 갈래다: **이야기를 꾸며 내는 것이 아니라 그 자리에
+   * 서려면 이미 지나 있어야 하는 칸**을 채우는 것이다.
+   *
+   * 실측으로 잡았다 — 물가시티(맵 150)에서 `0x407E == 0`이 걸려 칸 (849,763)에
+   * 묶였고, 파이트에리어(맵 188)에서 `0x4081 == 0`이 걸려 대사창이 뜬 채로
+   * 멈췄다
+   */
+  story?: readonly (readonly [number, number])[]
 }
 
 /**
@@ -1147,6 +1172,9 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 150,
     spot: { kind: 'atWarp', index: 0 },
+    // 배지 7개면 이미 대엽을 만난 뒤다. 안 채우면 그 장면이 매 프레임 걸려
+    // 주인공이 영영 묶인다 (`Checkpoint.story`)
+    story: [[VAR_SUNYSHORE_CITY_STATE, 1]],
     ...STAGE.badge7,
   },
   {
@@ -1253,6 +1281,9 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 188,
     spot: { kind: 'atWarp', index: 0 },
+    // 배에서 내리는 장면이 다 끝난 자리다 — 「배틀파크 문으로 들어가 본다」가
+    // 그 뒤이고, 2가 되어야 길을 막은 둘이 사라진다 (`FightArea_RemoveBlockade`)
+    story: [[VAR_FIGHT_AREA_STATE, 2]],
     ...STAGE.badge8,
     postGame: true,
   },
@@ -1314,6 +1345,28 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge8,
     // 밤에 뛰어들면 방이 너무 어두워 사람이 안 보인다. 확인하러 오는 자리다
     hour: 12,
+    postGame: true,
+  },
+  {
+    id: 'origin',
+    label: '시작의 방',
+    env: '실내 · 계단 위 (배포 이벤트 · 전당등록 뒤)',
+    try: [
+      '한 칸 남쪽으로 걸으면 아르세우스 좌표 사건이 걸리는지 본다',
+      '「구콰-쾅!!」이 **아르세우스 뱅크의 글**로 뜨는지 본다 (DATA §2.10)',
+      'Lv.80 전설 배틀이 실제로 열리는지 본다',
+    ],
+    map: 510,
+    // 좌표 사건이 (30~32, 35) 한 줄이다. 그 **북쪽** 한 칸에 남쪽을 보고 세운다 —
+    // 하네스가 제일 먼저 누르는 것이 ↓라 그 한 걸음이 곧 사건이다
+    spot: { kind: 'tile', x: 31, z: 34, facing: Math.PI },
+    // 계단을 무장시키는 것은 창기둥의 진입 스크립트고, 아르세우스가 서는 것은
+    // 배포 이벤트다 — 여기로 바로 뛰어들면 둘 다 안 지나오므로 채워 준다
+    story: [
+      [VAR_HALL_OF_ORIGIN_STATE, 1],
+      [VAR_DISTRIBUTION_EVENT_FIRST + DISTRIBUTION_EVENT.arceus, DISTRIBUTION_MAGIC[DISTRIBUTION_EVENT.arceus]],
+    ],
+    ...STAGE.badge8,
     postGame: true,
   },
   {

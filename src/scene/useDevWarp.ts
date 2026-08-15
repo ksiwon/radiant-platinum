@@ -45,16 +45,30 @@ if (import.meta.env.DEV) {
 export interface DevWarpHooks {
   /** 마운트할 때 세이브 자리 대신 확인 지점으로 갈 것인가 */
   claimed: () => boolean
+  /**
+   * 이 마운트에서 **이미** 확인 지점으로 옮겼는가.
+   *
+   * ⚠️ **`claimed`만으로는 모자란다.** 그건 "올라온 것이 있는가"라 옮기고 나면
+   * 다시 false가 된다. 마운트 effect가 프레임보다 늦게 도는 실행이 있어서
+   * (실측: 확인 지점이 12,926ms에 209번도로로 옮겼는데 27ms 뒤에 마운트
+   * effect가 411로, 다시 440ms 뒤에 세이브 자리 415로 덮었다) 그때 `claimed`는
+   * 이미 false다. 옮겼다는 사실 자체를 남겨야 그 자리를 안 덮는다
+   */
+  moved: () => boolean
   /** 프레임마다. 올라온 확인 지점이 있으면 옮긴다 */
   tick: () => void
 }
 
 export function useDevWarp(enter: EnterFn): DevWarpHooks {
+  // 마운트마다 새 ref다. 다시 마운트되면 false로 돌아가는 것이 맞다 —
+  // 그때는 `MapStreamer`의 `resume`이 서 있던 자리를 들고 있다
+  const warped = useRef(false)
   // 배틀은 도착한 **다음 프레임**에 연다. 같은 프레임에 열면 맵 진입 스크립트와
   // 겹쳐서, 무엇이 배틀을 막았는지 알 수 없게 된다
   const battle = useRef<Checkpoint['battle']>(undefined)
 
   const claimed = useCallback(() => dev?.devWarp.pending != null, [])
+  const moved = useCallback(() => warped.current, [])
 
   const tick = useCallback(() => {
     const waiting = battle.current
@@ -79,6 +93,9 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
     const cp = dev?.devWarp.pending
     if (!cp || !dev) return
     dev.devWarp.pending = null
+    // ⚠️ **격자를 받기 전에 적는다.** 아래는 비동기라, 받는 동안 마운트
+    // effect가 돌면 그쪽이 세이브 자리로 덮어 버린다
+    warped.current = true
 
     const header = mapById(cp.map)
     if (!header) { console.error(`확인 지점 ${cp.id}: 맵 ${cp.map}이 없다`); return }
@@ -111,5 +128,5 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
   }, [enter])
 
   // 돌려주는 것이 매번 새 객체면 이것을 의존성에 적은 effect가 프레임마다 다시 돈다
-  return useMemo(() => ({ claimed, tick }), [claimed, tick])
+  return useMemo(() => ({ claimed, moved, tick }), [claimed, moved, tick])
 }

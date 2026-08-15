@@ -148,8 +148,8 @@ export function TitleScreen() {
 
   const pickFile = (file: File): void => {
     setNotice(null)
-    void file.text().then((raw) => {
-      const preview = useSaveStore.getState().previewImport(raw)
+    void file.text().then(async (raw) => {
+      const preview = await useSaveStore.getState().previewImport(raw)
       if (!preview.ok) { setPending(null); setNotice(preview.why); return }
       setPending(preview)
     }).catch(() => { setNotice('파일을 읽지 못했습니다') })

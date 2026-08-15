@@ -36,7 +36,8 @@ import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import * as css from './credits.css'
 
-/** 원작 화면 높이. 자리를 백분율로 옮기는 데 쓴다 */
+/** 원작 화면 크기. 자리를 백분율로 옮기는 데 쓴다 */
+const VIEW_W = 256
 const VIEW_H = 192
 
 /**
@@ -92,23 +93,33 @@ function runsOf(raw: string): Run[] {
  *
  * ⚠️ **화면(256×192)보다 큰 그림을 「덮어 늘리지」 않는다.** 원작은 그 큰 판을
  * 그대로 두고 **창을 민다**(BG 오프셋) — 늘려서 맞추면 흐르는 폭이 사라진다.
- * 그래서 배율은 세로 192에 맞추고, 남는 폭은 흐르는 값이 먹는다.
+ * 그래서 그림 한 도트가 화면 한 도트가 되게 두고, 남는 폭은 흐르는 값이 먹는다.
  *
- * ⚠️ **감아 돌린다.** DS의 BG도 판 크기로 반복하므로 여기서도 `repeat`다 —
- * 그러려면 그림이 한 장에 하나여야 한다(아틀라스면 옆 장이 딸려 나온다)
+ * ⚠️ **가로와 세로의 자가 다르다.** `%` 배경 크기는 가로가 요소 **폭**의,
+ * 세로가 요소 **높이**의 백분율인데 요소는 256×192다 — 둘 다 192로 나누면
+ * 가로만 4/3배로 늘어난다. 실제로 그렇게 나가 있었다
  */
 function sceneStyle(at: number, size: { w: number; h: number }, frame: number): CSSProperties {
   const pan = CREDIT_SCENE_PAN[at] ?? { x: 0, y: 0 }
-  // 원작의 BG 오프셋은 「창이 움직인다」라 그림은 반대로 간다
-  const wrap = (v: number, n: number): number => ((v % n) + n) % n
-  const dx = -wrap(pan.x * frame, size.w)
-  const dy = -wrap(pan.y * frame, size.h)
-  // 화면 높이(192)를 1로 잡은 배율. `%` 단위라 창 크기가 바뀌어도 따라간다
-  const k = 100 / VIEW_H
+  // 원작의 BG 오프셋은 「창이 움직인다」라 그림은 반대로 간다.
+  //
+  // ⚠️ **판 크기로 감아 돌리지 않는다.** 원작 BG도 판 크기로 반복하지만,
+  // 흐르는 값이 워낙 작아서(0x40/4096 = 한 프레임에 0.0156도트) 크레딧이 끝날
+  // 때까지 판 한 장을 못 넘긴다 — 이음매를 한 번도 안 지나간다는 뜻이다.
+  // 감아 돌리면 **음수 오프셋이 곧바로 판 오른쪽 끝으로 튀어서**, 첫 프레임부터
+  // 창이 이음매를 물고 있게 된다. 실측: `credits0.png`(512×256)는 좌우 끝
+  // 색 차이가 채널당 평균 16.0인데 바로 옆 칸끼리는 0.0이다 — 가로로 안 이어진
+  // 그림이고, 그래서 크레딧 배경에 세로선이 하나 그어져 있었다.
+  // CSS `repeat`는 음수 자리도 알아서 채우므로 그냥 두면 된다
+  const dx = -pan.x * frame
+  const dy = -pan.y * frame
+  // 원작 화면(256×192)을 1로 잡은 배율. `%` 단위라 창 크기가 바뀌어도 따라간다
+  const kx = 100 / VIEW_W
+  const ky = 100 / VIEW_H
   return {
     backgroundImage: `url(${atlasUrl(creditsImage(at))})`,
-    backgroundSize: `${String(size.w * k)}% ${String(size.h * k)}%`,
-    backgroundPosition: `${String(dx * k)}% ${String(dy * k)}%`,
+    backgroundSize: `${String(size.w * kx)}% ${String(size.h * ky)}%`,
+    backgroundPosition: `${String(dx * kx)}% ${String(dy * ky)}%`,
     backgroundRepeat: 'repeat',
   }
 }
