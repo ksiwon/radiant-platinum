@@ -14,8 +14,9 @@
 // 대신 **서 있는 사람도 `updateLocomotion`을 돌려야 한다** — 안 돌리면 바인드
 // 포즈, 즉 팔을 벌린 T 자세로 서 있는다.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Group, type Object3D } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { MapGrid } from '../engine/map/grid'
@@ -28,6 +29,7 @@ import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
+import { addWhenWarm } from './warmPipelines'
 import { assets, onProviderSwap } from '../data/providers/assetProvider'
 
 /**
@@ -60,6 +62,10 @@ interface Slot {
   lastZ: number
   /** 실제로 선 키 (타일). 머리 위에 무엇을 얹는 쪽이 본다 */
   height: number
+  /** 맵을 떠서 버린 칸. 굽기가 늦게 끝나도 이러면 안 세운다 */
+  dropped: boolean
+  /** 어느 갈래에서 나왔나. 자리를 뜨면 이 이름의 통으로 돌아간다 */
+  tag: string
 }
 
 interface Props {
@@ -73,17 +79,36 @@ interface Props {
 
 export function NpcModels({ grid, layer, table, onStanding }: Props) {
   const groupRef = useRef<Group>(null)
+  // 미리 굽는 데 쓴다 — 빛과 환경은 진짜 씬에서, 절두체는 진짜 카메라에서 온다
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
+  const root = useThree((s) => s.scene)
+  const cam = useThree((s) => s.camera)
   /** 배우마다 한 칸. 배치표 번호가 아니라 배우로 잡는다 — 맵을 옮기면 새 배우다 */
   const slots = useMemo(() => new Map<NpcActor, Slot>(), [])
+  /**
+   * 자리를 뜬 사람이 두고 간 칸. 같은 갈래의 다음 사람이 그대로 쓴다.
+   *
+   * ⚠️ **버리고 새로 복제하면 셰이더가 하나씩 쌓인다.** `SkeletonUtils.clone`이
+   * 뼈를 새로 짓는데, three는 뼈 행렬 버퍼 이름에 노드 id를 박으므로
+   * **복제 하나에 정점 프로그램 하나**다 (`warmPipelines`). 209번도로에서
+   * 셰이더 원문을 떠 보니 프로그램 250개 중 133개가 스킨이었고, 그 링크 확인에
+   * 22.4초가 들어갔다 — 한때 이 통이 없어서 길을 걷는 내내 쌓인 값이다
+   */
+  const spare = useMemo(() => new Map<string, Slot[]>(), [])
   /** 모델이 도착하면 올린다. 값은 안 쓰고 다시 그리게 하는 데만 쓴다 */
   const [, bump] = useState(0)
   const standing = useRef<ReadonlySet<NpcActor>>(new Set())
 
   useEffect(() => () => {
     const group = groupRef.current
-    for (const slot of slots.values()) group?.remove(slot.outer)
+    for (const slot of [...slots.values(), ...[...spare.values()].flat()]) {
+      // 아직 굽는 중인 칸도 있다 — 다 구워졌을 때 세우지 말라고 표시해 둔다
+      slot.dropped = true
+      group?.remove(slot.outer)
+    }
     slots.clear()
-  }, [slots])
+    spare.clear()
+  }, [slots, spare])
 
   useFrame((_, delta) => {
     const group = groupRef.current
@@ -104,11 +129,25 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
 
       let slot = slots.get(actor)
       if (!slot) {
-        const scene = scenes.get(tag)
-        if (!scene) { fetchModel(tag, () => { bump((v) => v + 1) }); continue }
-        slot = build(scene)
-        group.add(slot.outer)
+        // 두고 간 칸이 있으면 그것을 쓴다 — 이미 구워져 있어 공짜다
+        slot = spare.get(tag)?.pop()
+        if (!slot) {
+          const source = scenes.get(tag)
+          if (!source) { fetchModel(tag, () => { bump((v) => v + 1) }); continue }
+          slot = build(source, tag)
+          // ⚠️ **바로 안 붙인다.** 붙는 순간 그 프레임이 이 사람의 셰이더를 굽고,
+          // 그 링크 확인이 ANGLE에서 한 명당 100ms 넘게 막는다 (`warmPipelines`).
+          // 사람 하나에 프로그램 하나라 여럿이 같은 프레임에 붙으면 그대로 쌓인다 —
+          // 실측으로 리그 로비의 제일 긴 프레임이 1,233ms였다.
+          // 씬 밖에서 미리 구우면 병렬 갈래로 가서 **0ms**다
+          const mine = slot
+          addWhenWarm(gl, root, cam, group, slot.outer, () => !mine.dropped)
+        }
         slots.set(actor, slot)
+        // 새 주인 자리에서 시작한다 — 안 그러면 지난 주인과의 거리가 속도로
+        // 읽혀서, 선 사람이 한 프레임 달리는 자세를 낸다
+        slot.lastX = actor.x
+        slot.lastZ = actor.z
       }
       n++
       seen.add(actor)
@@ -133,9 +172,25 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     }
 
     for (const [actor, slot] of slots) {
-      if (!seen.has(actor)) { slot.outer.visible = false; bodyHeights.delete(actor) }
+      if (seen.has(actor)) continue
+      slot.outer.visible = false
+      bodyHeights.delete(actor)
+      // 통에 넣어 둔다. 씬에는 그대로 두고 안 그리기만 한다 — 떼었다 붙이면
+      // 그만큼 다시 굽는다
+      slots.delete(actor)
+      const pool = spare.get(slot.tag) ?? []
+      pool.push(slot)
+      spare.set(slot.tag, pool)
     }
-    // 판때기 쪽에 알린다. **집합이 바뀔 때만** — 매 프레임 부르면 R3F가 죽는다
+    // 판때기 쪽에 알린다. **집합이 바뀔 때만** — 매 프레임 부르면 R3F가 죽는다.
+    //
+    // ⚠️ **칸이 생긴 그 프레임에 가져간다. 다 구워질 때까지 미루지 마라.**
+    // 미리 굽기를 넣으면서 「아직 안 붙었으면 판때기가 그 자리를 지키게」
+    // 해 봤는데, 그러면 이 집합이 **모델이 붙는 박자에 맞춰 흔들린다** —
+    // `NpcMonModels`가 그 틈에 같은 배치를 가져갔다가 도로 내주고, 그 왕복이
+    // 부모의 상태를 프레임마다 밀었다. 실측으로 68자리를 통째로 훑을 때
+    // 배틀 여덟 자리가 **끝나고도 화면이 안 닫혔고**(`phase`는 `off`인데
+    // `data-scene`이 `battle`), 하나씩 돌리면 다 통과했다 — React가 선 것이다
     const before = standing.current
     if (before.size !== seen.size || [...seen].some((a) => !before.has(a))) {
       standing.current = seen
@@ -175,7 +230,7 @@ export function npcBodyHeight(actor: NpcActor): number | null {
 }
 
 /** 모델 하나를 복제해 한 칸으로 만든다 */
-function build(scene: Object3D): Slot {
+function build(scene: Object3D, tag: string): Slot {
   const outer = new Group()
   const inner = new Group()
   outer.add(inner)
@@ -193,5 +248,5 @@ function build(scene: Object3D): Slot {
   // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
   // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
   const rig = createRig(body, inner)
-  return { outer, rig, lastX: 0, lastZ: 0, height }
+  return { outer, rig, lastX: 0, lastZ: 0, height, dropped: false, tag }
 }
