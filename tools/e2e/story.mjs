@@ -417,6 +417,14 @@ async function settle() {
  * 원작 그대로 대사 여섯에 걸음 여덟이 든 장면이라 15초로는 원래 안 끝난다.
  * 그래서 **시간이 아니라 멈춤으로 판정한다**: 지문이 안 바뀐 채로 `FREEZE_MS`가
  * 지나야 얼었다고 적는다
+ *
+ * ⚠️ **컷신이 배틀을 연다. 그동안 `beat()`는 못 움직인다.** 스크립트는
+ * `StartTrainerBattle`·`StartLegendaryBattle`에서 「끝날 때까지」 서 있으므로
+ * 포인터도 칸도 사람 좌표도 다 그대로다 — 곧 **멀쩡히 도는 배틀이 20초마다
+ * 「얼었다」로 적힌다.** 실측으로 리그 로비가 93번, 시작의 방이 162번에서
+ * 그렇게 떨어졌는데, 역어셈블로 보니 둘 다 배틀 명령 **바로 다음**에 선
+ * 정상이었다 (맵 175 스크립트 4 포인터 509 · 맵 510 스크립트 2 포인터 141).
+ * 그래서 배틀이 열리면 **배틀을 미는 쪽으로 넘긴다** — 사람이 하는 그대로다
  */
 const CUTSCENE_MS = 180_000
 const FREEZE_MS = 20_000
@@ -425,18 +433,29 @@ async function runScripts(budgetMs = CUTSCENE_MS) {
   let seen = await beat()
   let changed = Date.now()
   let taps = 0
+  /** 컷신 안에서 치른 배틀. 몇 판이든 마지막 것을 남긴다 */
+  let fought = null
   while (Date.now() < till) {
     const at = await marks(page)
-    if (!at.talk && !at.script) return { done: true, taps }
+    if (at.scene === 'battle') {
+      fought = await pushBattle(till - Date.now())
+      taps += fought.taps
+      if (fought.frozen) return { done: false, frozen: true, taps, at: fought.at, fought }
+      // 배틀이 끝나면 스크립트가 이어 달린다. 지문을 새로 잡고 다시 민다
+      seen = await beat()
+      changed = Date.now()
+      continue
+    }
+    if (!at.talk && !at.script) return { done: true, taps, fought }
     await tap(page, 'Space', 50)
     taps++
     const now = await beat()
     if (now !== seen) { seen = now; changed = Date.now() }
     else if (Date.now() - changed > FREEZE_MS) {
-      return { done: false, frozen: true, taps, at: seen }
+      return { done: false, frozen: true, taps, at: seen, fought }
     }
   }
-  return { done: false, taps, at: seen }
+  return { done: false, taps, at: seen, fought }
 }
 
 /**
@@ -453,6 +472,38 @@ const grabbed = () => page.evaluate(async () => {
     const p = await import('/src/state/poketchStore.ts')
     return { ui: k.isUiCaptured(), poketch: p.usePoketchStore.getState().view }
   } catch { return { ui: false, poketch: 'hidden' } }
+})
+
+/**
+ * 못 걸었을 때 **왜인지**를 그 자리에서 받아 적는다.
+ *
+ * ⚠️ 「네 방향 다 못 걸었다」 한 줄만 남으면 발이 묶인 것인지 사방이 막힌 것인지
+ * 키를 누가 들고 있는 것인지가 표에서 안 갈린다 — 주인공 방이 한 번은 떨어지고
+ * 한 번은 통과해서, 다시 돌려 보는 것 말고는 알 길이 없었다
+ */
+const whyStuck = () => page.evaluate(async () => {
+  try {
+    const f = await import('/src/engine/script/field.ts')
+    const k = await import('/src/engine/input/keys.ts')
+    const z = await import('/src/engine/map/zone.ts')
+    const o = await import('/src/engine/actor/obstacles.ts')
+    const w = await import('/src/state/worldState.ts')
+    const p = w.worldState.player
+    const grid = z.activeZone.grid
+    const at = (dx, dz) => {
+      if (!grid) return '격자없음'
+      const x = Math.floor(p.position.x) + dx
+      const zz = Math.floor(p.position.z) + dz
+      return (grid.isBlocked(x, zz) ? '막힘' : '열림')
+        + (o.obstacleAt(x, zz) === null ? '' : '+객체')
+    }
+    return {
+      busy: f.scriptBusy(), id: f.fieldScripts.world?.scriptID ?? null,
+      at: f.fieldScripts.ctx?.pointer ?? null, ui: k.isUiCaptured(),
+      pos: `${p.position.x.toFixed(2)},${p.position.z.toFixed(2)}`,
+      N: at(0, -1), S: at(0, 1), W: at(-1, 0), E: at(1, 0),
+    }
+  } catch (e) { return { why: String(e).slice(0, 120) } }
 })
 
 /** 네 방향 중 하나로라도 걸어지는가 */
@@ -473,17 +524,28 @@ async function canWalk() {
     // (두 칸 걸어 내려가면 배지를 보는 스크립트가 붙잡는다). 그러면 앞뒤가
     // 같아서 「네 방향 다 못 걸었다」로 적히는데, 실제로는 걸었다.
     // 누르고 있는 **동안**을 본다
+    // ⚠️ **야생이 나오면 거기서 손을 뗀다.** 조우는 걸음이 끝나야 굴러가므로
+    // 배틀이 떴다는 것 자체가 「걸었다」의 증거다. 그런데 그때 `data-tile`이
+    // 멎어서 여기가 「못 걸었다」로 읽고 **남은 세 방향을 배틀 화면에다** 눌렀다 —
+    // 명령 창의 커서가 「도구」로 가고 거기서 A가 가방을 열어, 진실호수의 야생전이
+    // 144번을 눌러도 `running|4|1`에서 안 움직였다 (실측)
+    // ⚠️ **성기게 보면 놓친다.** 한 걸음은 ~250ms인데 그사이 밟은 장면이 사람을
+    // 제자리로 되돌리면 `data-tile`이 잠깐만 달랐다가 돌아온다. 110ms로 넷만
+    // 보다가 주인공 방을 「못 걸었다」로 떨어뜨린 적이 있다 — 촘촘히, 좀 더 길게
     let saw = null
-    for (let i = 0; i < 4; i++) {
-      await page.waitForTimeout(110)
-      const now = (await marks(page)).tile
-      if (now !== before && now !== '') { saw = now; break }
+    let met = false
+    for (let i = 0; i < 9; i++) {
+      await page.waitForTimeout(70)
+      const now = await marks(page)
+      if (now.scene === 'battle') { met = true; break }
+      if (now.tile !== before && now.tile !== '') { saw = now.tile; break }
     }
     await page.keyboard.up(key)
     await page.waitForTimeout(100)
+    if (met) return { moved: true, from: before, to: before, encounter: true }
     if (saw !== null) return { moved: true, from: before, to: saw }
   }
-  return { moved: false, from: before, to: before }
+  return { moved: false, from: before, to: before, stuck: await whyStuck() }
 }
 
 /** X로 시작 메뉴가 열리고 X로 닫히는가 */
@@ -652,11 +714,28 @@ if (ACTS.has('2')) {
       // ⚠️ **걸음이 야생을 부르기도 한다.** 파이트에리어처럼 풀 위를 걷는 지점은
       // 걷다가 배틀이 열리는 것이 **맞는 동작**인데, 그 자리에서 판정하면
       // 「오버월드가 아니다」로 떨어진다. 배틀이면 끝까지 밀고 나서 본다
-      if (cp.battle === null && (await marks(page)).scene === 'battle') {
-        extra.wildOnWalk = await pushBattle(120_000)
+      // ⚠️ **얼었으면 얼었다고 적는다.** 한동안 이 값을 받아만 두고 안 봤더니
+      // 진실호수의 야생전이 「오버월드가 아니다」 한 줄로만 떨어져서, 임자가
+      // 장면인지 배틀인지가 표에서 안 보였다.
+      // 그리고 **끝나면 걷기를 다시 잰다** — 안 그러면 풀 위 지점에서만 걷기
+      // 확인이 조용히 빠진다. 다시 걷다 또 만나는 것도 풀 위에서는 정상이다
+      for (let round = 0; round < 3 && cp.battle === null; round++) {
+        if ((await marks(page)).scene !== 'battle') break
+        const wild = await pushBattle(120_000)
+        extra.wildOnWalk = { ...wild, round: round + 1 }
+        if (wild.frozen) {
+          trouble.push(`걸어서 열린 야생전이 얼었다 (${wild.taps}번 눌렀다 · ${wild.at})`)
+          break
+        }
+        if (!wild.ended || walk.encounter !== true) break
+        walk = await canWalk()
       }
       const afterWalk = cp.battle === null ? await runScripts() : { done: true, taps: 0 }
-      if (afterWalk.frozen) trouble.push(`걸음이 연 컷신이 얼었다 (${afterWalk.taps}번 눌렀다)`)
+      if (afterWalk.frozen) {
+        trouble.push(afterWalk.fought?.frozen === true
+          ? `컷신이 연 배틀이 얼었다 (${afterWalk.taps}번 눌렀다 · ${afterWalk.at})`
+          : `걸음이 연 컷신이 얼었다 (${afterWalk.taps}번 눌렀다)`)
+      }
       extra.cutscene = { onArrive, afterWalk }
 
       const at = await marks(page)
@@ -687,7 +766,14 @@ if (ACTS.has('2')) {
         }
       } else {
         if (at.scene !== 'overworld') trouble.push(`오버월드가 아니다 (${at.scene})`)
-        if (walk.moved === false) trouble.push(`네 방향 다 못 걸었다 (칸 ${walk.from})`)
+        if (walk.moved === false) {
+          extra.walkStuck = walk.stuck
+          const s = walk.stuck ?? {}
+          trouble.push(`네 방향 다 못 걸었다 (칸 ${walk.from}`
+            + ` · ${s.busy === true ? `스크립트 ${String(s.id)}가 잡고 있다` : '스크립트 없다'}`
+            + `${s.ui === true ? ' · UI가 키를 들었다' : ''}`
+            + ` · 북${String(s.N)} 남${String(s.S)} 서${String(s.W)} 동${String(s.E)})`)
+        }
         // UI가 키를 들고 있는 자리는 **걷는 것을 안 잰다.** 못 잰 것을 실패로
         // 세지 않는다 — 대신 무엇이 들고 있었는지를 줄에 적는다
         if (walk.why) extra.grabbed = walk.why
@@ -722,9 +808,12 @@ if (ACTS.has('2')) {
         + `${fps} · 색 ${pix.colors}`
         + (cp.battle !== null
           ? ` · 배틀 ${extra.battle?.ended ? '끝났다' : `${extra.battle?.taps ?? 0}번 눌렀다`}`
-          : ` · ${walk.why ?? (walk.moved ? `걷기 ${walk.from}→${walk.to}` : '못 걸었다')}`)
+          : ` · ${walk.why ?? (walk.encounter === true ? `걷다 야생을 만났다 (칸 ${walk.from})`
+            : walk.moved ? `걷기 ${walk.from}→${walk.to}` : '못 걸었다')}`)
         + (onArrive.taps + afterWalk.taps > 0
           ? ` · 컷신 ${String(onArrive.taps + afterWalk.taps)}번 눌러 끝냈다` : '')
+        + ((afterWalk.fought ?? onArrive.fought)
+          ? ` · 컷신이 연 배틀 ${(afterWalk.fought ?? onArrive.fought).ended ? '끝냈다' : '안 끝났다'}` : '')
         + (extra.rewarped === undefined ? '' : ` · ⚠️ 맵 ${extra.rewarped}으로 밀려나 다시 뛰었다`)
       extra = { ...extra, load, steady, pix, seconds: Math.round((Date.now() - t0) / 1000) }
     } catch (e) {
