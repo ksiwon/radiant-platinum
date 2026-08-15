@@ -405,6 +405,15 @@ export const TILE_BEHAVIOR_TABLE = 0x80
 export const TILE_BEHAVIOR_PC = 0x83
 
 /**
+ * `TILE_BEHAVIOR_UNKNOWN_x60` — 밟아도 안 뛰는 워프 칸.
+ *
+ * 디컴프도 이름을 못 붙였지만 하는 일은 잰다: 워프 판정 함수 열둘 중
+ * 어느 것도 이 값을 안 받는다. 즉 **스크립트의 `Warp` 명령으로만** 지나간다.
+ * 온 게임에서 이 성질의 워프는 팔파크 문 하나뿐이다 (PARITY §9.4).
+ */
+export const TILE_BEHAVIOR_SCRIPT_ONLY_WARP = 0x60
+
+/**
  * 말을 걸 칸.
  *
  * 앞 칸이 계산대면 **한 칸 더** 본다 (`sub_0203C9D4`). 이게 없으면 계산대 뒤에
@@ -527,8 +536,14 @@ export const warpSystem = {
       ? doorEntry(world.grid, warps, { x: p.position.x, z: p.position.z, facing: p.facing },
         pushDirection())
       : null
-    // ② 밟고 선 칸이다 — 계단·워프판이 그렇다
-    const here = warps.find((w) => w.x === tx && w.z === tz)
+    // ② 밟고 선 칸이다 — 계단·워프판이 그렇다.
+    // ⚠️ **0x60은 밟아도 안 뛴다** (PARITY §9.4). 원작의 밟기 판정은 성질을
+    // 보고 고르는데(`TileBehavior_IsWarpPanel` 따위) 0x60은 그 어디에도 없다 —
+    // 스크립트의 `Warp` 명령으로만 지나가는 칸이다. **온 게임에 하나뿐이고 그
+    // 하나가 팔파크 문**이라(실측: 1,124개 워프 중 1개), 이걸 안 빼면
+    // 접수원을 지나쳐 걸어 들어가 통신(§9) 자리가 열린다
+    const here = warps.find((w) => w.x === tx && w.z === tz
+      && world.grid?.behavior(w.x, w.z) !== TILE_BEHAVIOR_SCRIPT_ONLY_WARP)
 
     // 워프에서 손을 떼야 다시 걸린다. 북쪽 문으로 들어가면 도착하자마자 **그 문을
     // 다시 마주 보고 서게 되므로**, 이게 없으면 안팎을 무한히 오간다

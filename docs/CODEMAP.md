@@ -59,6 +59,7 @@
 | 맵·격자·워프 | `engine/map/` · `scene/` |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
 | **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
+| **통신을 닫아 둔 자리** | `engine/world/comm.ts` — 「안 된다」의 값 한 벌. 왜 문을 안 잠그고 답을 하는지는 [PARITY](PARITY.md) §9.4 |
 | 배틀프런티어 | `engine/frontier/` · `state/factoryStore.ts` · `ui/menu/FactoryScreen.tsx` |
 | 리포트(세이브) | `state/saveStore.ts` · `state/save/` |
 | 메뉴 화면 | `ui/menu/` (`MenuLayer.tsx`가 스택 맨 위 하나를 그린다) |

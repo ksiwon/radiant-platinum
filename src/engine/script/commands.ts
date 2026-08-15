@@ -45,6 +45,9 @@ import {
 } from '../map/townMap'
 import { EVOLUTION_COUNTER_STOCK, isDecorMart } from '../bag/evolutionCounter'
 import { frontierStock } from '../bag/frontierMart'
+import {
+  COMM_CLUB_RET, FLAG_COMMUNICATION_CLUB_ACCESSIBLE, GBA_CARTRIDGE_NONE,
+} from '../world/comm'
 
 /**
  * 이름으로 등록한다.
@@ -757,13 +760,17 @@ on('HideSavingIcon', (ctx) => { ctx.host.world.services.saveGame?.hideIcon(); re
  */
 on('TrySaveGame', (ctx) => {
   const dest = ctx.readHalfWord()
+  // ⚠️ **통신에 넘겨주기 직전의 저장은 「안 됐다」로 답한다** (PARITY §9.4).
+  // 리포트는 진짜로 쓴다 — 거짓말하는 것은 저장이 아니라 **넘겨주기**다.
+  // 이 답으로 유니온룸이 원작의 「또 오세요」 갈래로 닫힌다 (`world/comm.ts`)
+  const toComm = ctx.host.vars.checkFlag(FLAG_COMMUNICATION_CLUB_ACCESSIBLE)
   const save = ctx.host.world.services.saveGame
   if (!save) { ctx.host.vars.set(dest, 0); return false }
   save.begin()
   ctx.pause((c) => {
     const got = c.host.world.services.saveGame?.result() ?? false
     if (got === null) return false
-    c.host.vars.set(dest, got ? 1 : 0)
+    c.host.vars.set(dest, got && !toComm ? 1 : 0)
     return true
   })
   return true
@@ -4354,3 +4361,187 @@ on('BufferRibbonName', (ctx) => {
   ctx.host.world.slots.set(slot, '')
   return false
 })
+
+// ── 통신은 실패한다 (PARITY §9.4) ────────────────────────────────────────────
+//
+// 왜 「안 만든다」가 아니라 「안 된다고 답한다」인지는 `world/comm.ts`에 적었다.
+// 요약하면 **안 만들면 우연히 열린다** — 결과 변수에 앞 갈래가 쓴 값이 남고,
+// 거기 「성공」에 해당하는 수가 들어 있으면 스크립트가 문을 연다. 리본과 같다
+// (§9.2). 다른 점은 리본은 열려도 대사 하나로 끝나는데 **통신은 열리면
+// 주인공이 카운터 뒤에 갇힌다**는 것이다.
+//
+// 아래는 전부 「없다·못 한다·오류」다. 화면에 뜨는 글은 한 줄도 우리 것이 아니다.
+
+/** 답 하나짜리 명령. 답을 **적어야** 앞 갈래의 값이 안 남는다 */
+const answers = (value: number): CommandFn => (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), value)
+  return false
+}
+
+/**
+ * 통신 대전 — 손님으로 붙기 · 방장으로 열기
+ * (`ScrCmd_StartBattleClient` · `ScrCmd_StartBattleServer`).
+ *
+ * 셋을 읽고 답을 적는다. **`COMM_CLUB_RET_ERROR`가 우리 답이다** — 바로 다음
+ * 줄의 `GoToIfEq`가 그 값을 잡아 원작의 「통신 오류. 처음부터 다시 등록해
+ * 주세요」로 간다. 그 대사가 창을 닫고 발을 풀어 준다.
+ */
+const startCommBattle: CommandFn = (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), COMM_CLUB_RET.error)
+  return false
+}
+
+on('StartBattleClient', startCommBattle)
+on('StartBattleServer', startCommBattle)
+
+/** 붙은 뒤에야 도는 것들. 여기까지 오지 않지만 **답을 안 하면 밀린다** */
+on('StartLinkBattle', () => false)
+on('FieldCommEnterBattleRoom', () => false)
+on('EndCommunication', () => false)
+on('InitCommFieldCmd', () => false)
+on('SetCommPlayerDir', (ctx) => { ctx.readHalfWord(); return false })
+on('ClearReceivedTempDataAllPlayers', () => false)
+on('DestroyNetworkIcon', () => false)
+on('LogLinkInfoInWiFiHistory', () => false)
+/** 유니온룸에 실제로 넘겨주는 자리 (`sub_02054708`). 넘겨줄 데가 없다 */
+on('ScrCmd_153', () => false)
+
+/**
+ * 대전 규칙 고르기 (`ScrCmd_OpenBattleRegulationMenu`).
+ *
+ * 원작은 화면을 띄우고 고른 규칙을 적는다. 1과 3만 「골랐다」로 치고
+ * 나머지는 취소다 — **0을 적어 취소로 만든다.** 콜로세움 접수원이 그 값으로
+ * 「또 오세요」에 간다.
+ */
+on('OpenBattleRegulationMenu', answers(0))
+
+/**
+ * GTS 앱을 띄운다 (`ScrCmd_TryStartGTSApp`).
+ *
+ * 원작도 **Wi-Fi 로그인이 없으면 FALSE를 적고 앱을 안 띄운다.** 우리 답이 그
+ * 갈래다 — 글로벌 터미널이 스스로 화면을 되돌리고, 주인공을 방 밖으로 걸어
+ * 내보내고, 「또 오세요」로 닫는다 (`GlobalTerminal1F_ExitAndEnd`).
+ */
+on('TryStartGTSApp', (ctx) => {
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/** GTS 방으로 들어가기 직전의 준비 (`ScrCmd_0B3` · `sub_0207DDE0`) */
+on('ScrCmd_0B3', answers(0))
+/** 그 방에서 나올 때 (`ScrCmd_0A3` · `sub_0207DDC0`) */
+on('ScrCmd_0A3', () => false)
+
+/**
+ * Wi-Fi 친구 목록 (`WiFiList_*`).
+ *
+ * 로그인이 없고 친구도 0명이다. 이 답이 GTS·Wi-Fi 광장 갈래를 다 닫는다.
+ */
+on('CheckHasWiFiListValidLogin', answers(0))
+on('GetWiFListValidFriendsCount', answers(0))
+/** 광장에 다시 들어가기까지 남은 시간. 「들어가도 된다」를 안 답한다 */
+on('CheckNoWiFiPlazaCooldown', answers(0))
+/** 붙은 상대가 플래티넘인가 (`ScrCmd_IsCommGameCodePlatinum`). 상대가 없다 */
+on('IsCommGameCodePlatinum', answers(0))
+
+/**
+ * 유니온룸 (`overlay007/union_room.c`).
+ *
+ * 맵 466은 걸어서 닿을 수 없다 — 포켓몬센터 2층의 그 문은 **통행 불가인
+ * 카운터 줄 너머**에 있고, 접수원 갈래는 저장 답으로 닫힌다 (`world/comm.ts`).
+ * 그래도 명령을 만드는 이유는 위와 같다: 답을 안 하면 묵은 값으로 갈라진다.
+ */
+on('ShowUnionRoomMenu', () => false)
+on('OpenUnionRoomTrainerCase', () => false)
+on('OpenPartyMenuForUnionRoomBattle', () => false)
+on('GetUnionRoomTealaMessage', answers(0))
+on('GetUnionRoomMessage', (ctx) => {
+  ctx.readHalfWord()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+on('DoUnionRoomGreeting', (ctx) => { ctx.readHalfWord(); return false })
+
+/**
+ * 미스터리기프트 (`scrcmd_mystery_gift.c`).
+ *
+ * 배포 서버가 닫힌 지 오래고 우리에게는 받을 길이 없다. 배포로만 나오던
+ * 것들은 **시원이 손으로 건넨다** ([SIWON.md](../../../docs/SIWON.md)) —
+ * 여기를 되살려서가 아니다.
+ *
+ * ⚠️ **길이가 첫 인자에 달렸다.** `generated/mystery_gift_delivery_stages.txt`의
+ * 차례가 답 칸 수를 가른다 — 셋(1·2·3)은 한 칸, 둘(5·6)은 **두 칸**(글 뱅크와
+ * 글 번호)이고 나머지 넷은 없다. 한 칸만 읽으면 그 뒤가 통째로 밀려서,
+ * 배달원 스크립트가 변수 번호(`0x40ED`)를 명령으로 읽는다 (실측)
+ */
+const MYSTERY_GIFT_ONE_ANSWER = [1, 2, 3]
+const MYSTERY_GIFT_TWO_ANSWERS = [5, 6]
+
+on('MysteryGiftGive', (ctx) => {
+  const stage = ctx.readHalfWord()
+  // 「받을 것이 있는가」에 0을 답하면 배달원이 숨고, 뒤의 갈래는 안 열린다.
+  // 두 칸짜리(받았다는 글 고르기)는 그래서 닿지 않지만 **길이는 맞춰 둔다**
+  if (MYSTERY_GIFT_ONE_ANSWER.includes(stage)) ctx.host.vars.set(ctx.readHalfWord(), 0)
+  else if (MYSTERY_GIFT_TWO_ANSWERS.includes(stage)) {
+    ctx.host.vars.set(ctx.readHalfWord(), 0)
+    ctx.host.vars.set(ctx.readHalfWord(), 0)
+  }
+  return false
+})
+
+/** 타이틀에 「신비한 선물」 줄을 여는 암호. 그 말이 아니다 */
+on('CheckIsMysteryGiftPhrase', (ctx) => {
+  ctx.readVar()
+  ctx.readVar()
+  ctx.readVar()
+  ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
+  return false
+})
+
+/** 그래서 열 것도 없다 (`ScrCmd_UnlockMysteryGift`) */
+on('UnlockMysteryGift', () => false)
+
+/**
+ * 팔파크 (`scrcmd_catching_show.c`).
+ *
+ * 3세대 팩을 꽂아야 열린다. **꽂힌 팩이 없다**고 답하면 접수원이 제 대사로
+ * 돌려보낸다 — 우리가 문을 잠그는 것이 아니다.
+ */
+on('GetGBACartridgeVersion', answers(GBA_CARTRIDGE_NONE))
+
+/**
+ * 옮겨 온 여섯 마리가 다 있는가 (`ScrCmd_CheckHasEnoughMonForCatchingShow`).
+ *
+ * 팔파크 접수원이 「참가한다」 다음에 이걸 묻는다. 옮겨 온 것이 없으니
+ * 「모자란다」가 참이고, 원작이 제 대사(`NotEnoughPokemonMigrated`)로
+ * 돌려보낸다 — **접수원을 지나쳐 문으로 걸어가는 길은 따로 막았다**
+ * (`map/world`의 밟는 워프에서 0x60을 뺀 자리)
+ */
+on('CheckHasEnoughMonForCatchingShow', answers(0))
+
+/**
+ * 트레이너 카드에 사인을 받는 화면 (`FieldSystem_LaunchSignatureApp`).
+ *
+ * 교환할 상대에게 보여 주는 것이라 통신에 딸린 화면이다. 원작은 앱을 띄우고
+ * 돌아올 때까지 서는데, 우리는 그냥 지나간다 — 스크립트가 앞뒤로 화면을
+ * 어둡게 했다 밝히는 것까지는 원작 그대로 돈다
+ */
+on('StartSignatureApp', () => false)
+
+/** 통신 아이콘을 띄우기 전에 사람들을 저장해 둔다 (`FieldSystem_SaveObjects`) */
+on('ScrCmd_2B2', () => false)
+
+/**
+ * 파티에 「나쁜 알」이 있는가 (`ScrCmd_CheckPartyHasBadEgg`).
+ *
+ * 통신 접수원 넷이 **말을 꺼내기 전에** 이걸 묻는다. 나쁜 알은 통신으로
+ * 깨진 알이 들어왔을 때 생기는 것이라 우리에게는 만들어질 길이 없다 —
+ * 「없다」가 참이다. ⚠️ 답을 안 하면 앞 갈래의 값으로 갈라져서, 통신과
+ * 상관없는 자리에서 「나쁜 알이 있다」는 대사가 뜬다
+ */
+on('CheckPartyHasBadEgg', answers(0))

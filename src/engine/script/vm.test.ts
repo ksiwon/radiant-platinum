@@ -261,7 +261,7 @@ maybe('스크립트 VM', () => {
     expect(handledSeen.length).toBe(implemented - IDLE_COMMANDS.length)
   })
 
-  it('닿는 자리의 96.4%가 돈다 — DATA.md §2.10의 그 수', () => {
+  it('닿는 자리의 98.4%가 돈다 — DATA.md §2.10의 그 수', () => {
     // ⚠️ **"몇 개를 만들었나"는 눈금이 못 된다.** 안 쓰이는 명령이 태반이다.
     // 쓰는 눈금은 스크립트가 **실제로 밟는 자리**고, 문서가 그 수를 적고
     // 있으므로 여기서 같은 방법으로 세어 못 박는다 — 안 그러면 문서만 낡는다.
@@ -489,14 +489,14 @@ const LOOPING_ENTRIES_YES = 31
 /**
  * 진입점에서 제어 흐름을 따라가 **닿는** 명령 자리와, 그중 **도는** 자리.
  *
- * DATA.md §2.10이 이 둘의 비를 적는다(96.4%). 문서에만 적어 두면 명령을 붙일
+ * DATA.md §2.10이 이 둘의 비를 적는다(98.4%). 문서에만 적어 두면 명령을 붙일
  * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_412
+const RUNNING_SITES = 54_570
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 446
+const IMPLEMENTED_COMMANDS = 479
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -530,10 +530,15 @@ const IDLE_COMMANDS = [
   // 재대결은 **이미 이긴 트레이너**에게 다시 말을 걸어야 나온다. 훑기는 늘
   // 깨끗한 플래그로 시작하므로 그 가지에 안 들어간다
   'GetRematchTrainerID',
+  // ⚠️ **통신 명령은 만들었는데 훑기에 안 든다** (PARITY §9.4). 「안 된다」를
+  // 답해야 원작이 제 대사로 닫히므로 만들었고, 그 답까지 가려면 접수원 메뉴에서
+  // 「예」를 골라야 하는데 훑기는 안 고른다. **만들었다고 통신이 생긴 것이 아니다**
+  'OpenUnionRoomTrainerCase',
   // ⚠️ **PC의 「명예의 전당」은 목록 메뉴 너머다.** 주인공 집 PC 메뉴가
   // `FLAG_GAME_COMPLETED`가 서야 그 줄을 붙이고(`CommonScript_InitPlayersPCMenu`),
   // 훑기는 깨끗한 플래그로 도니 그 항목이 아예 안 생긴다
   'OpenPCHallOfFameScreen',
+  'TryStartGTSApp',
   // 자전거로드에 들어서는 자리는 206번도로의 문 안쪽이고, 그 앞이 자전거를
   // 가졌는지 보는 갈래라 훑기가 못 지나간다
   'ForceBicycling',
@@ -554,13 +559,16 @@ const IDLE_COMMANDS = [
   // 깨끗한 세이브로 돌아서 재대결이 걸린 트레이너가 하나도 없다
   'GetTrainerRematchMessageTypes',
   'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
+  'StartBattleClient', 'StartBattleServer',
   // ⚠️ **꿀 나무 셋은 가방에 꿀이 있어야 열린다.** 훑기의 가방은 비어 있어서
   // `CheckItem ITEM_HONEY`가 0을 주고, 그러면 「맨 나무」 대사로 끝난다 —
   // 상태를 묻는 `GetHoneyTreeStatus`까지는 밟힌다 (PARITY §6.6)
   'SlatherHoneyTree', 'StartHoneyTreeBattle', 'StopHoneyTreeShaking',
+  'ClearReceivedTempDataAllPlayers', 'GetUnionRoomTealaMessage', 'InitCommFieldCmd',
   // 전멸 명령이 둘인데 스크립트가 쓰는 것은 앞의 하나뿐이다. 뒤엣것은 통신
   // 대전방에서만 나가는 갈래라 훑기가 못 닿는다
   'BlackOutFromBattle2',
+  'ScrCmd_153',
   // 도감을 가졌는지 **묻는** 자리는 스크립트에 0회다. 주는 자리만 있다 —
   // 갈래를 가르는 것은 `FLAG_HAS_POKEDEX` 쪽이고 그건 보통 플래그다
   'CheckPokedexAcquired',
@@ -590,6 +598,7 @@ const IDLE_COMMANDS = [
   'BufferBerryName',
   'GetBerryMoisture',
   'HarvestBerry',
+  'OpenPartyMenuForUnionRoomBattle',
   // 남에게 받은 마리인지 묻는 자리도 파티 너머다
   'CheckIsPartyMonOutsider',
   // ⚠️ **육성가 여덟은 파티가 있어야 닿는다.** 아저씨·아주머니의 대사가 전부
@@ -674,6 +683,7 @@ const IDLE_COMMANDS = [
   'GetPartyMonType',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',
+  'CheckHasEnoughMonForCatchingShow',
   // ⚠️ **테오키스는 배포 이벤트다** (§9). 축복시티의 유성이 폼을 갈아 끼우는데
   // (`scripts_veilstone_city.s`), 그 앞이 파티에 테오키스가 있는지 보는 갈래다
   'ChangeDeoxysForm',
@@ -696,8 +706,10 @@ const IDLE_COMMANDS = [
   // `ShowBattlePoints`와 값을 견주는 `CheckBattlePoints`까지는 밟힌다
   'UpdateBPDisplay', 'GetBattlePoints', 'GiveBattlePoints', 'RemoveBattlePoints',
   'SubtractCoinsFromVar',
+  'CheckIsMysteryGiftPhrase', 'UnlockMysteryGift',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
+  'ScrCmd_2B2', 'IsCommGameCodePlatinum',
   // 저장 흐름의 **빠른 저장 갈래 안쪽**이라 안 밟힌다 (PARITY §4.12).
   // 우리는 「빠른 저장」을 아예 답하지 않으므로 그 갈래로 안 간다 —
   // 그래도 만들어 두는 이유는 안 만들면 결과 변수가 앞 갈래 값으로 남아서다
@@ -717,6 +729,7 @@ const IDLE_COMMANDS = [
   // `OnLoad`가 「없애라」 플래그를 보고 갈리는데 훑기는 늘 깨끗한 플래그다
   'ResetDistortionWorldPersistedCameraAngles',
   'CheckPartyHasHeldItem',
+  'LogLinkInfoInWiFiHistory',
   // 기록에 **얼마를 더하는** 판 (PARITY §7.5). 열세 자리가 다 안 닿는 갈래
   // 안쪽이라 안 밟힌다 — 하나씩 올리는 판(`IncrementGameRecord`)과 큰 값을
   // 더하는 판(`…BigValue`)은 밟힌다
