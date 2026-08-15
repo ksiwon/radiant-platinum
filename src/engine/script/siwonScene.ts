@@ -50,8 +50,15 @@ export interface SiwonDeps {
   canFitItem: (item: number) => boolean
   /** 파티에 자리가 있는가 */
   hasPartyRoom: () => boolean
-  /** 「운명적 만남」으로 한 마리 준다 */
+  /**
+   * 「운명적 만남」으로 한 마리 준다.
+   *
+   * ⚠️ **레지기가스만 이 길이다.** 유적 셋의 석상이 그 표시만 보기 때문이고,
+   * 그 표시는 리본과 만난 자리도 같이 바꾼다 — 아무 데나 붙이면 안 된다
+   */
   giveFateful: (species: number, level: number) => void
+  /** 그냥 한 마리 준다. 잡은 것과 같은 갈래다 (화강돌) */
+  giveMon: (species: number, level: number) => void
   /** 알을 준다. 자리 번호는 원작의 「여행하는 남자」와 같다 */
   giveEgg: (species: number) => void
   /** 배포 변수를 세운다 */
@@ -112,7 +119,8 @@ export function planSiwonTalk(deps: SiwonDeps): SiwonPlan {
     return {
       text: say,
       commit: () => {
-        deps.giveFateful(gift.species, gift.level)
+        if (gift.fateful) deps.giveFateful(gift.species, gift.level)
+        else deps.giveMon(gift.species, gift.level)
         deps.countGiven()
       },
       giveItem: null,

@@ -105,7 +105,7 @@ describe('이야기 길목', () => {
     let over = false
     const GIRATINA = 487
     const r = run('StartLegendaryBattle', [...u16(GIRATINA), ...u16(47)], {
-      startLegendaryBattle: (species, level) => { got = [species, level] },
+      startScriptedWildBattle: (species, level) => { got = [species, level] },
       battleResult: () => (over ? 'win' : null),
     })
     expect(got).toEqual([GIRATINA, 47])

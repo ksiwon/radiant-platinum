@@ -250,3 +250,45 @@ export function argWidths(spec: ScriptCommand['args']): { size: number, rel: boo
   if (spec === '') return []
   return spec.split(' ').map((s) => ({ size: Number(s[0]), rel: s.endsWith('*') }))
 }
+
+/**
+ * 첫 인자 값에 따라 **뒤에 더 붙는** 인자 (`ScriptCommand.cases`).
+ *
+ * 여섯 명령이 그렇다 — `DoStrengthFunc`·`DoFlashFunc`·`DoDefogFunc`는 첫 인자가
+ * 2면 2바이트가 더 붙고, `DoGroupConnectionAction`·`CallTVBroadcast`·
+ * `MysteryGiftGive`도 값마다 다르다
+ */
+export function extraArgs(cmd: ScriptCommand, values: readonly number[]): ScriptCommand['args'] {
+  if (cmd.cases === undefined || cmd.on === undefined) return ''
+  const on = values[cmd.on]
+  if (on === undefined) return ''
+  return cmd.cases.find((c) => c.v.includes(on))?.args ?? ''
+}
+
+/**
+ * 그 자리에 선 명령의 피연산자가 몇 바이트인가.
+ *
+ * ⚠️ **`args`만 더하면 안 된다.** 위의 여섯은 값을 봐야 폭이 나온다 — 안 보면
+ * 그 뒤가 통째로 밀려서, 대개 다음 바이트가 우연히 유효한 명령으로 읽히고
+ * 조용히 이상해진다. 엔진의 건너뛰기와 감사 도구가 **이 함수 하나**를 같이
+ * 쓴다 (같은 계산이 두 벌이면 또 갈린다).
+ *
+ * @param at opcode **바로 뒤** — 첫 피연산자의 자리
+ */
+export function operandWidth(cmd: ScriptCommand, view: DataView, at: number): number {
+  const values: number[] = []
+  let width = 0
+  for (const { size } of argWidths(cmd.args)) {
+    values.push(peek(view, at + width, size))
+    width += size
+  }
+  for (const { size } of argWidths(extraArgs(cmd, values))) width += size
+  return width
+}
+
+/** 범위를 벗어나면 0이다 — 잘린 파일에서 폭을 재다 터지지 않게 한다 */
+function peek(view: DataView, at: number, size: number): number {
+  if (at < 0 || at + size > view.byteLength) return 0
+  return size === 1 ? view.getUint8(at)
+    : size === 2 ? view.getUint16(at, true) : view.getUint32(at, true)
+}

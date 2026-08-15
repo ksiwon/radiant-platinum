@@ -1,6 +1,6 @@
 // 시원의 배포 (SIWON.md)
 //
-// **가장 중요한 것은 「막히지 않는가」다.** 여섯을 한 줄로 이어 놓았으므로
+// **가장 중요한 것은 「막히지 않는가」다.** 일곱을 한 줄로 이어 놓았으므로
 // 어느 한 칸이라도 판정이 너무 엄하면 그 뒤가 통째로 안 열린다 — 특히 레지를
 // 놓친 사람이 마지막 선물을 못 받는 자리가 실제로 있었다 (§5의 ⚠️)
 import { readFileSync } from 'node:fs'
@@ -43,6 +43,15 @@ function probe(over: Partial<{
 
 const CLEARED = [FLAG_GAME_COMPLETED]
 
+/** 글 한 칸에서 문장을 꺼낸다. 낱개 · 배열(`gift`) · 표(`wait`) 셋이 섞여 있다 */
+function textsOf(value: unknown): string[] {
+  if (Array.isArray(value)) return value as string[]
+  if (typeof value === 'object' && value !== null) {
+    return Object.values(value as Record<number, string>)
+  }
+  return [String(value)]
+}
+
 describe('시원의 차례', () => {
   it('전당등록 전에는 하나도 안 준다', () => {
     expect(siwonTurn(0, probe()).kind).toBe('locked')
@@ -50,34 +59,41 @@ describe('시원의 차례', () => {
     expect(siwonTurn(0, probe({ flags: [FLAG_CAUGHT_DARKRAI], rotom: 1 })).kind).toBe('locked')
   })
 
-  it('전당등록 뒤 첫 번째는 비밀의 열쇠다', () => {
+  it('⚠️ 전당등록 뒤 첫 번째는 화강돌이다 — 배가 필요 없는 자리라 맨 앞이다', () => {
     const turn = siwonTurn(0, probe({ flags: CLEARED }))
     expect(turn.kind).toBe('gift')
     if (turn.kind !== 'gift') return
     expect(turn.entry.gift).toEqual({
-      kind: 'item', item: SIWON_ITEM.secretKey, event: 3,
+      kind: 'mon', species: SIWON_SPECIES.spiritomb, level: 25, fateful: false,
     })
   })
 
-  it('앞의 것을 안 쓰면 다음을 안 준다', () => {
+  it('화강돌은 받자마자 다음이 나온다 — 「썼는가」를 잴 신호가 없다', () => {
     const turn = siwonTurn(1, probe({ flags: CLEARED }))
-    expect(turn).toEqual({ kind: 'wait', at: 0 })
+    expect(turn.kind).toBe('gift')
+    if (turn.kind !== 'gift') return
+    expect(turn.entry.gift).toEqual({ kind: 'item', item: SIWON_ITEM.secretKey, event: 3 })
+  })
+
+  it('앞의 것을 안 쓰면 다음을 안 준다', () => {
+    const turn = siwonTurn(2, probe({ flags: CLEARED }))
+    expect(turn).toEqual({ kind: 'wait', at: 1 })
   })
 
   it('로토무 폼을 하나라도 바꾸면 다음으로 넘어간다', () => {
-    const turn = siwonTurn(1, probe({ flags: CLEARED, rotom: 0b00001 }))
+    const turn = siwonTurn(2, probe({ flags: CLEARED, rotom: 0b00001 }))
     expect(turn.kind).toBe('gift')
     if (turn.kind !== 'gift') return
     expect(turn.entry.gift).toEqual({ kind: 'item', item: SIWON_ITEM.memberCard, event: 0 })
   })
 
-  it('여섯을 다 주면 끝난다', () => {
+  it('일곱을 다 주면 끝난다', () => {
     expect(siwonTurn(SIWON_GIFTS.length, probe({ flags: CLEARED }))).toEqual({ kind: 'done' })
   })
 
-  it('여섯이 아이템 넷 · 포켓몬 하나 · 알 하나다', () => {
+  it('일곱이 아이템 넷 · 포켓몬 둘 · 알 하나다', () => {
     const kinds = SIWON_GIFTS.map((g) => g.gift.kind)
-    expect(kinds).toEqual(['item', 'item', 'item', 'item', 'mon', 'egg'])
+    expect(kinds).toEqual(['mon', 'item', 'item', 'item', 'egg', 'mon', 'item'])
     // 배포로만 열리던 자리를 전부 덮는가 — 쉐이미와 아르세우스는 아이템이 데려온다
     expect(SIWON_GIFTS.filter((g) => g.gift.kind === 'item').map((g) => (
       g.gift.kind === 'item' ? g.gift.item : 0
@@ -86,29 +102,40 @@ describe('시원의 차례', () => {
     ])
   })
 
-  it('레지기가스는 운명적 만남으로 준다 — 그것만이 유적을 연다', () => {
-    const gift = SIWON_GIFTS[4]!.gift
-    expect(gift).toEqual({ kind: 'mon', species: SIWON_SPECIES.regigigas, level: 1 })
+  it('⚠️ 자리 번호가 표의 차례와 같다 — 어긋나면 대사가 딴 선물의 것이 된다', () => {
+    expect(SIWON_GIFTS.map((g) => g.at)).toEqual([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('레지기가스만 운명적 만남이다 — 그것만이 유적을 연다', () => {
+    expect(SIWON_GIFTS[5]!.gift).toEqual({
+      kind: 'mon', species: SIWON_SPECIES.regigigas, level: 1, fateful: true,
+    })
+    // ⚠️ 화강돌에 붙이면 리본과 만난 자리가 원작과 달라진다
+    expect(SIWON_GIFTS.filter((g) => g.gift.kind === 'mon' && g.gift.fateful)).toHaveLength(1)
+  })
+
+  it('⚠️ 마지막은 피리다 — 아르세우스가 끝이라야 「닫힌 문은 다 열었다」가 맞는다', () => {
+    expect(SIWON_GIFTS[SIWON_GIFTS.length - 1]!.gift)
+      .toEqual({ kind: 'item', item: SIWON_ITEM.azureFlute, event: 2 })
   })
 })
 
 describe('막히지 않는다', () => {
   const cleared = { flags: [...CLEARED] }
 
-  /** 다섯째까지 받으려면 밟아야 하는 것들 */
+  /** N번째를 받으려면 밟아야 하는 것들 */
   function upTo(n: number): SiwonProbe {
     const flags = [...CLEARED]
-    if (n >= 2) flags.push(FLAG_CAUGHT_DARKRAI)
-    if (n >= 3) flags.push(FLAG_CAUGHT_SHAYMIN)
-    if (n >= 4) flags.push(FLAG_CAUGHT_ARCEUS)
+    if (n >= 3) flags.push(FLAG_CAUGHT_DARKRAI)
+    if (n >= 4) flags.push(FLAG_CAUGHT_SHAYMIN)
     return probe({
       flags,
-      rotom: n >= 1 ? 0b00001 : 0,
-      vars: n >= 5 ? { [VAR_ROCK_PEAK_RUINS_STATE]: 270 } : {},
+      rotom: n >= 2 ? 0b00001 : 0,
+      vars: n >= 6 ? { [VAR_ROCK_PEAK_RUINS_STATE]: 270 } : {},
     })
   }
 
-  it('차례대로 밟으면 여섯이 다 나온다', () => {
+  it('차례대로 밟으면 일곱이 다 나온다', () => {
     for (let given = 0; given < SIWON_GIFTS.length; given++) {
       expect(siwonTurn(given, upTo(given)).kind, `${given}번째`).toBe('gift')
     }
@@ -117,30 +144,33 @@ describe('막히지 않는다', () => {
   it('⚠️ 레지를 놓쳐도 마지막 선물을 받는다', () => {
     // 석상은 깨웠는데(270) 못 잡은 상태(280). 이 자리에서 그 레지는 다시 안
     // 나오므로, 「잡았다」로 재면 여기서 영영 막힌다
-    const missed = probe({ flags: upTo(4) && [...CLEARED, FLAG_CAUGHT_DARKRAI,
-      FLAG_CAUGHT_SHAYMIN, FLAG_CAUGHT_ARCEUS], rotom: 1,
-    vars: { [VAR_ROCK_PEAK_RUINS_STATE]: 280 } })
-    expect(siwonTurn(5, missed).kind).toBe('gift')
+    const missed = probe({
+      flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
+      rotom: 1,
+      vars: { [VAR_ROCK_PEAK_RUINS_STATE]: 280 },
+    })
+    expect(siwonTurn(6, missed).kind).toBe('gift')
   })
 
   it('석상을 안 깨웠으면 아직 기다린다', () => {
     const untouched = probe({
-      flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN, FLAG_CAUGHT_ARCEUS],
+      flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
       rotom: 1,
       vars: { [VAR_ROCK_PEAK_RUINS_STATE]: 260 },
     })
-    expect(siwonTurn(5, untouched)).toEqual({ kind: 'wait', at: 4 })
+    expect(siwonTurn(6, untouched)).toEqual({ kind: 'wait', at: 5 })
   })
 
   it('가방이 가득 차도 세는 수는 안 올라간다', () => {
     let counted = 0
     const plan = planSiwonTalk({
       locale: 'ko',
-      given: 0,
+      given: 1,
       probe: probe(cleared),
       canFitItem: () => false,
       hasPartyRoom: () => true,
       giveFateful: () => { throw new Error('주면 안 된다') },
+      giveMon: () => { throw new Error('주면 안 된다') },
       giveEgg: () => { throw new Error('주면 안 된다') },
       setVar: () => { throw new Error('세우면 안 된다') },
       countGiven: () => { counted++ },
@@ -154,11 +184,14 @@ describe('막히지 않는다', () => {
   it('파티가 가득 차면 레지기가스를 안 준다', () => {
     const plan = planSiwonTalk({
       locale: 'ko',
-      given: 4,
-      probe: probe({ flags: [...CLEARED, FLAG_CAUGHT_ARCEUS] }),
+      given: 5,
+      probe: probe({
+        flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN], rotom: 1,
+      }),
       canFitItem: () => true,
       hasPartyRoom: () => false,
       giveFateful: () => { throw new Error('주면 안 된다') },
+      giveMon: () => { throw new Error('주면 안 된다') },
       giveEgg: () => { throw new Error('주면 안 된다') },
       setVar: () => { throw new Error('세우면 안 된다') },
       countGiven: () => { throw new Error('세면 안 된다') },
@@ -185,11 +218,12 @@ describe('배포 변수', () => {
     let counted = 0
     const plan = planSiwonTalk({
       locale: 'ko',
-      given: 0,
+      given: 1,
       probe: probe({ flags: CLEARED }),
       canFitItem: () => true,
       hasPartyRoom: () => true,
       giveFateful: () => { throw new Error('아이템이다') },
+      giveMon: () => { throw new Error('아이템이다') },
       giveEgg: () => { throw new Error('아이템이다') },
       setVar: (id, value) => { set.push({ id, value }) },
       countGiven: () => { counted++ },
@@ -208,9 +242,15 @@ describe('세 나라 말', () => {
     for (const locale of ['ko', 'en', 'ja'] as const) {
       const lines = siwonLines(locale)
       expect(lines.gift.length, locale).toBe(SIWON_GIFTS.length)
-      expect(lines.wait.length, locale).toBe(SIWON_GIFTS.length - 1)
+      // ⚠️ **기다림은 뜰 수 있는 자리에만 있다.** `used`가 늘 참인 선물(화강돌 ·
+      // 마나피 알)과 마지막(피리)은 이 말이 영영 안 뜬다 — 자리를 채우면 안 뜨는
+      // 글을 지어내게 된다
+      const shows = SIWON_GIFTS.slice(0, -1)
+        .filter((g) => !g.used(probe()))
+        .map((g) => g.at)
+      expect(Object.keys(lines.wait).map(Number).sort((a, b) => a - b), locale).toEqual(shows)
       for (const [key, text] of Object.entries(lines)) {
-        for (const one of Array.isArray(text) ? text : [text]) {
+        for (const one of textsOf(text)) {
           expect(String(one).trim().length, `${locale}/${key}`).toBeGreaterThan(0)
         }
       }
@@ -225,7 +265,7 @@ describe('세 나라 말', () => {
     // 대사창이 두 줄이다. `\r`·`\f`가 쪽을 나누고 그 안에서는 `\n` 하나뿐이다
     for (const locale of ['ko', 'en', 'ja'] as const) {
       const lines = siwonLines(locale)
-      const all = Object.values(lines).flatMap((v) => (Array.isArray(v) ? v : [v]))
+      const all = Object.values(lines).flatMap(textsOf)
       for (const text of all) {
         for (const page of String(text).split(/[\r\f]/)) {
           expect(page.split('\n').length, `${locale}: ${page}`).toBeLessThanOrEqual(2)
@@ -360,13 +400,15 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
     mapWorld.pending = null
 
     const got: number[] = []
-    let given = 0
+    // 첫 선물은 화강돌(포켓몬)이라 가방을 안 거친다 — 물건이 실제로 들어가는
+    // 것을 재는 시험이므로 둘째(비밀의열쇠)부터 시작한다
+    let given = 1
     fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
     fieldScripts.commands = buildCommands(meta.commands)
     fieldScripts.vars = new VarStore()
     fieldScripts.services = {
       siwon: { given: () => given, gave: () => { given += 1 } },
-      party: { rotomForms: () => 0, count: () => 1, giveFateful: () => {} },
+      party: { rotomForms: () => 0, count: () => 1, giveFateful: () => {}, give: () => {} },
       // 도구표를 안 읽고 답한다 — 여기 넷은 다 소중한 물건이다 (`POCKET_KEY_ITEMS`)
       bag: {
         pocketOf: () => POCKET_KEY_ITEMS,

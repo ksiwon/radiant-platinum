@@ -6,7 +6,7 @@ import { MapGrid } from '../map/grid'
 import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
-import { obstacleAt, pushBoulder, STRENGTH_BOULDER } from './obstacles'
+import { obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
 import { bikeSpeedAt } from './bike'
 import { onElevatedBridge, trackBridge } from './bridge'
 import { distortionBridge } from '../world/distortion'
@@ -75,7 +75,10 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
       // 위를 건널 때는 걸어갈 땅이고 밑을 지날 때는 파도를 탈 물이다
       (!surfing && isOnWater(grid.behaviorAtWorld(cx, cz), onElevatedBridge())) ||
       // 벨 나무·깰 바위·밀 바위는 지형이 아니라 객체다 (`actor/obstacles`)
-      obstacleAt(Math.floor(cx), Math.floor(cz)) !== null
+      obstacleAt(Math.floor(cx), Math.floor(cz)) !== null ||
+      // 나머지 사람·물체도 막는다 (`sub_02063F00`) — 210번도로의 골덕 넷과
+      // 선단 체육관의 눈덩이 열아홉이 이 줄이 없어서 통과됐다
+      solidNpcAt(cx, cz, y) !== null
     )
   }
   // 캐릭터를 점이 아니라 반지름 있는 원으로 본다

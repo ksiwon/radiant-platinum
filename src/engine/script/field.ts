@@ -305,6 +305,8 @@ function talkToSiwon(mapFile: number): void {
     canFitItem: (item) => bag.canFit(item, 1),
     hasPartyRoom: () => party.count() < PARTY_SLOTS,
     giveFateful: (species, level) => { party.giveFateful(species, level) },
+    // 화강돌은 원작에서 그냥 잡는 마리라 표시를 안 붙인다 (`world/siwon`)
+    giveMon: (species, level) => { party.give(species, level, 0) },
     giveEgg: (species) => { services.giveEgg?.(species, EGG_GIVER_TRAVELING_MAN) },
     setVar: (id, value) => { vars.set(id, value) },
     countGiven: () => { siwon.gave() },

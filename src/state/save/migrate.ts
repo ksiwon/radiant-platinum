@@ -372,6 +372,21 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     mailbox: newMailbox(),
     easyChatUnlocks: newEasyChatUnlocks(),
   }),
+
+  // 시원의 차례 맨 앞에 화강돌이 들어갔다 (SIWON.md §5) — `siwonGiven`이
+  // 세는 자리가 한 칸씩 밀린다. 0이면 아직 아무것도 안 받은 것이라 그대로 두고,
+  // 1 이상이면 비밀의 열쇠부터 받았다는 뜻이라 한 칸 민다.
+  //
+  // ⚠️ **이미 하나라도 받은 옛 리포트는 화강돌을 못 받는다.** 아직 배포 전이라
+  // 실제 리포트가 없어서 넘어가는 것이고, 만들 수 있는 다른 길이 없다 — 0으로
+  // 되돌리면 이미 받은 것을 한 번 더 주게 된다
+  33: (data) => ({
+    ...data,
+    version: 34,
+    siwonGiven: typeof data.siwonGiven === 'number' && data.siwonGiven >= 1
+      ? data.siwonGiven + 1
+      : 0,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

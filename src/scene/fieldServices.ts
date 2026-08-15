@@ -811,6 +811,19 @@ const services: FieldServices = {
     picked: () => partyChoice.slot,
   },
 
+  /**
+   * 요약 화면을 기술 고르기로 연다 (`FieldSystem_OpenSummaryScreenSelectMove`).
+   *
+   * ⚠️ **`picked()`가 화면이 닫힌 뒤에 불린다.** 여는 명령이 `pause`로 서 있고
+   * 값을 읽는 것은 그 다음 명령이라, 답을 스토어에 남겨 둬야 한다
+   */
+  selectMove: {
+    open: (slot, move) => {
+      useMenuStore.getState().openSummaryToSelectMove({ slot, teach: move ?? null })
+    },
+    picked: () => useMenuStore.getState().selectedMoveSlot,
+  },
+
   npcTrade: {
     // ⚠️ **표를 못 받았어도 번호는 적어 둔다.** 그래야 화면 쪽이 나중에
     // 표를 받아 같은 교환을 집는다 — 여기서 null로 눌러 버리면 그 사람만
@@ -1500,13 +1513,14 @@ const services: FieldServices = {
   },
 
   /**
-   * 전설 조우 (`Encounter_NewVsSpeciesAtLevel`).
+   * 스크립트가 세우는 야생 조우 (`Encounter_NewVsSpeciesAtLevel`).
    *
    * 인카운터 표를 안 거치고 종과 레벨을 스크립트가 준다. 곡은 야생과 같은
    * 길로 갈린다 — `wildSongFor`가 종족 번호를 보고 기라티나면 플래티넘
-   * 전용 곡을 고른다 (`audio/songs`)
+   * 전용 곡을 고른다 (`audio/songs`). 그래서 `StartWildBattle`과
+   * `StartLegendaryBattle`이 한 길을 쓴다 (`script/world`에 근거를 적어 뒀다)
    */
-  startLegendaryBattle: (species, level) => {
+  startScriptedWildBattle: (species, level) => {
     battleResult = null
     battleMask = null
     waiting = true

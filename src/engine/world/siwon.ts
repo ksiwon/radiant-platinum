@@ -1,7 +1,8 @@
 // 시원의 배포 (SIWON.md)
 //
 // **이 파일은 원작의 재현이 아니다.** 플래티넘에는 배포를 받지 않고는 영영 못
-// 여는 것이 여섯 있고 서버는 2014년에 닫혔다. 그 여섯을 게임 안에서 열어 주는
+// 여는 것이 여섯 있고 서버는 2014년에 닫혔다. 거기에 지하통로가 범위 밖이라
+// 길이 끊긴 화강돌 하나가 붙어 일곱이다. 그 일곱을 게임 안에서 열어 주는
 // 사람이 시원이고, 여기는 그 사람이 무엇을 어떤 차례로 주는지의 표다.
 //
 // 지어낸 것은 **차례와 판정 기준**뿐이고, 물건도 플래그도 변수도 전부 원작 것을
@@ -22,6 +23,7 @@ export const SIWON_ITEM = {
 
 /** 종족 번호 (`generated/species.txt`) */
 export const SIWON_SPECIES = {
+  spiritomb: 442,
   regigigas: 486,
   manaphy: 490,
 } as const
@@ -71,7 +73,14 @@ const RUINS_STATE_ACTIVATED_STATUE = 270
 /** 선물 하나가 하는 일 */
 export type SiwonGift =
   | { kind: 'item'; item: number; event: number }
-  | { kind: 'mon'; species: number; level: number }
+  /**
+   * 한 마리.
+   *
+   * ⚠️ **`fateful`은 레지기가스만이다.** 유적 셋의 석상이 그 표시만 보므로
+   * (`CheckPartyHasFatefulEncounterRegigigas`) 거기는 꼭 붙어야 하는데,
+   * 화강돌은 원작에서 **그냥 잡는 마리**라 붙이면 리본과 만난 자리가 달라진다
+   */
+  | { kind: 'mon'; species: number; level: number; fateful: boolean }
   | { kind: 'egg'; species: number }
 
 /** 리포트와 세계에게 묻는 것. 시원은 이것만 본다 */
@@ -98,43 +107,65 @@ interface SiwonEntry {
 /**
  * 주는 차례 (SIWON.md §5).
  *
- * 쉐이미와 아르세우스는 따로 안 준다 — ③과 ④가 데려온다. 그래서 여섯이면
- * 배포로만 열리는 것이 전부 열린다
+ * 쉐이미와 아르세우스는 따로 안 준다 — 편지와 피리가 데려온다. 그래서 일곱이면
+ * 배포로만 열리는 것과 지하통로로만 열리던 것이 전부 열린다.
+ *
+ * ⚠️ **화강돌이 맨 앞인 데에 이유가 있다.** `siwonTurn()`은 선물 N을 주기 전에
+ * N−1이 「쓰였는가」를 보므로, 뒤에 두면 그 앞을 다 통과해야 한다. 그런데 그
+ * 사슬 안에 **배를 타야 하는 자리가 둘**(다크라이=신월섬, 레지기가스=배틀존
+ * 유적) 있어서 사실상 게임을 다 끝낸 뒤가 된다 — 원작에서는 중반에 잡는 마리다.
+ *
+ * ⚠️ **피리가 맨 뒤인 데에도 이유가 있다.** 아르세우스가 이 배포의 끝이라야
+ * `done`의 「닫힌 문은 다 열었다」가 맞는 말이 된다
  */
 export const SIWON_GIFTS: readonly SiwonEntry[] = [
   {
     at: 0,
+    // ⚠️ **운명적 만남을 안 붙인다.** 원작에서 화강돌은 209번도로 무덤에서
+    // **그냥 잡는 마리**다 — 표시를 붙이면 리본과 만난 자리가 원작과 달라진다.
+    // 레벨 25는 그 무덤의 `StartWildBattle SPECIES_SPIRITOMB, 25`와 같다
+    gift: { kind: 'mon', species: SIWON_SPECIES.spiritomb, level: 25, fateful: false },
+    // 받자마자 다음 차례다. 「썼는가」를 잴 신호가 원작에 없다 —
+    // 무덤을 여는 것이 지하통로 인사 수인데 그 계통이 범위 밖이다 (PARITY §9)
+    used: () => true,
+  },
+  {
+    at: 1,
     gift: { kind: 'item', item: SIWON_ITEM.secretKey, event: DISTRIBUTION_EVENT.rotom },
     // 로토무의 방에서 가전에 한 번이라도 들어갔는가
     used: (p) => p.rotomForms() !== 0,
   },
   {
-    at: 1,
+    at: 2,
     gift: { kind: 'item', item: SIWON_ITEM.memberCard, event: DISTRIBUTION_EVENT.darkrai },
     used: (p) => p.flag(FLAG_CAUGHT_DARKRAI),
   },
   {
-    at: 2,
+    at: 3,
     gift: { kind: 'item', item: SIWON_ITEM.oaksLetter, event: DISTRIBUTION_EVENT.shaymin },
     used: (p) => p.flag(FLAG_CAUGHT_SHAYMIN),
   },
   {
-    at: 3,
-    gift: { kind: 'item', item: SIWON_ITEM.azureFlute, event: DISTRIBUTION_EVENT.arceus },
-    used: (p) => p.flag(FLAG_CAUGHT_ARCEUS),
-  },
-  {
     at: 4,
-    // ⚠️ **운명적 만남으로 줘야 유적이 열린다** (`CheckPartyHasFatefulEncounter
-    // Regigigas`). 눈설신전에서 잡는 마리로는 안 열린다 — 원작도 그렇다.
-    // 레벨 1은 원작 배포(TRU 레지기가스)와 같다
-    gift: { kind: 'mon', species: SIWON_SPECIES.regigigas, level: 1 },
-    used: (p) => VAR_RUINS_STATE.some((v) => p.variable(v) >= RUINS_STATE_ACTIVATED_STATUE),
+    gift: { kind: 'egg', species: SIWON_SPECIES.manaphy },
+    // 알은 걷다 보면 깨어난다 — 막을 것이 없어서 늘 참이다.
+    // ⚠️ **이 값이 이제 실제로 불린다** — 마지막이 아니게 됐기 때문이다
+    used: () => true,
   },
   {
     at: 5,
-    gift: { kind: 'egg', species: SIWON_SPECIES.manaphy },
-    used: () => true,
+    // ⚠️ **운명적 만남으로 줘야 유적이 열린다** (`CheckPartyHasFatefulEncounter
+    // Regigigas`). 눈설신전에서 잡는 마리로는 안 열린다 — 원작도 그렇다.
+    // 레벨 1은 원작 배포(TRU 레지기가스)와 같다
+    gift: { kind: 'mon', species: SIWON_SPECIES.regigigas, level: 1, fateful: true },
+    used: (p) => VAR_RUINS_STATE.some((v) => p.variable(v) >= RUINS_STATE_ACTIVATED_STATUE),
+  },
+  {
+    at: 6,
+    // 마지막이라 `used`를 아무도 안 부른다 — 그래서 `FLAG_CAUGHT_ARCEUS`는
+    // 이제 어디서도 안 읽는다. 잡았는지는 이야기가 끝난 뒤의 일이다
+    gift: { kind: 'item', item: SIWON_ITEM.azureFlute, event: DISTRIBUTION_EVENT.arceus },
+    used: (p) => p.flag(FLAG_CAUGHT_ARCEUS),
   },
 ]
 
@@ -146,7 +177,7 @@ export type SiwonTurn =
   | { kind: 'gift'; entry: SiwonEntry }
   /** 앞의 것을 아직 안 썼다. `at`은 그 안 쓴 선물의 자리다 */
   | { kind: 'wait'; at: number }
-  /** 여섯을 다 줬다 */
+  /** 일곱을 다 줬다 */
   | { kind: 'done' }
 
 /**

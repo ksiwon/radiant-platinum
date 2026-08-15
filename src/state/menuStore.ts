@@ -155,6 +155,23 @@ interface MenuStore {
    * 뒤에 스크립트가 묻기 때문이다
    */
   choosingMon: boolean
+  /**
+   * 스크립트가 요약 화면을 **기술 고르기**로 열었는가
+   * (`FieldSystem_OpenSummaryScreenSelectMove` · `…TeachMove`).
+   *
+   * `teach`가 기술 번호면 「가르침」이다 — 목록 끝에 그 새 기술이 한 줄 더 붙고,
+   * 그 줄을 고르면 **아무것도 안 바꾼다**(원작이 그 자리에 `LEARNED_MOVES_MAX`를
+   * 준다). `null`이면 기술 삭제사 쪽이라 네 칸만 보인다
+   */
+  selectMove: { slot: number; teach: number | null } | null
+  /**
+   * 방금 고른 기술 칸. 화면이 닫힌 **뒤에** 스크립트가 읽는다.
+   *
+   * ⚠️ **안 고른 것과 4를 가려야 한다.** 원작은 삭제사 쪽에 `MOVE_NOT_SELECTED`
+   * (0xFF), 가르침 쪽에 `LEARNED_MOVES_MAX`(4)를 주는데 그 갈래는 명령이 지고,
+   * 여기는 **네 칸을 벗어난 자리(4)면 그만둔 것**이라는 한 가지 뜻만 든다
+   */
+  selectedMoveSlot: number | null
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
   /** 상점을 연다. 재고와 **무엇으로 값을 받는지**를 같이 받는다 */
@@ -196,6 +213,10 @@ interface MenuStore {
   openCredits: () => void
   /** 스크립트가 한 마리를 고르라고 파티 화면을 연다 */
   openPartyToChoose: () => void
+  /** 스크립트가 요약 화면을 기술 고르기로 연다 */
+  openSummaryToSelectMove: (what: NonNullable<MenuStore['selectMove']>) => void
+  /** 기술 고르기가 끝났다. 스크립트가 `selectedMoveSlot`을 읽는다 */
+  finishSelectMove: (slot: number) => void
   /** 나무열매 태그를 쌓는다. B로 가방으로 돌아간다 */
   openBerryTag: (item: number) => void
   /** 도구 쓰기를 끝낸다 */
@@ -228,12 +249,25 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   berryItem: 0,
   choosingMon: false,
   trade: null,
+  selectMove: null,
+  selectedMoveSlot: null,
 
   openPartyToChoose: () => set(() => {
     const stack: MenuScreen[] = ['party']
     capture(stack)
     return { stack, top: 'party' as const, choosingMon: true, usingItem: null }
   }),
+
+  openSummaryToSelectMove: (what) => set(() => {
+    const stack: MenuScreen[] = ['summary']
+    capture(stack)
+    return {
+      stack, top: 'summary' as const, summarySlot: what.slot,
+      selectMove: what, selectedMoveSlot: null,
+    }
+  }),
+
+  finishSelectMove: (slot) => { set({ selectedMoveSlot: slot, selectMove: null }) },
 
   openReminder: (what) => set(() => {
     const stack: MenuScreen[] = ['reminder']

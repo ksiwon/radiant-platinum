@@ -39,17 +39,31 @@ export const FOSSILS = [99, 100, 101, 102, 103, 104, 105] as const
 export const EVOLUTION_STONES = [80, 81, 82, 83, 84, 85, 107, 108, 109] as const
 
 /**
+ * 날씨를 늘리는 바위 넷 (`ITEM_ICY_ROCK` … `ITEM_DAMP_ROCK`).
+ *
+ * ⚠️ **원작은 이 넷도 지하통로에서만 준다.** 특산 표에도 숨은 도구에도 없어서
+ * 그쪽을 접은 순간 얻을 길이 하나도 안 남았다 — 진화의 돌과 같은 처지다.
+ *
+ * ⚠️ **`dataID`와 헷갈리지 마라.** `items.json`의 `items` 배열은 **0부터 세는
+ * 자리가 곧 도구 번호**고(`items[282].constant === 'ITEM_ICY_ROCK'`), 같은
+ * 항목의 `dataID`는 롬 자료 NARC의 자리라 다른 수다(얼음바위는 260). 여기 적는
+ * 것은 배열 자리 쪽이고, 그 수는 `generated/items.txt`의 **줄 번호 − 1**이다
+ */
+export const WEATHER_ROCKS = [282, 283, 284, 285] as const
+
+/**
  * 이 창구가 파는 것.
  *
  * ⚠️ **값은 롬의 도구 자료에 있는 것을 쓴다** — 우리가 정하지 않는다.
  * 롬 밖의 둘만 값이 없어서 진화의돌과 같은 2,100원으로 적어 두었다
- * (`bag/extraItems`)
+ * (`bag/extraItems`). 날씨 바위 넷은 롬에 200원으로 적혀 있다
  */
 export const EVOLUTION_COUNTER_STOCK: readonly number[] = [
   ...FOSSILS,
   ...EVOLUTION_STONES,
   ITEM_LINKING_CORD,
   ITEM_PRISM_SCALE,
+  ...WEATHER_ROCKS,
 ]
 
 /** 그 번호가 이 창구인가. 원작이 넘기는 값은 둘뿐이다 */

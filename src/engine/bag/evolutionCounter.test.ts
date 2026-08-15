@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   DECOR_MART_IDS, EVOLUTION_COUNTER_STOCK, EVOLUTION_STONES, FOSSILS, isDecorMart,
+  WEATHER_ROCKS,
 } from './evolutionCounter'
 import { FIRST_EXTRA_ITEM, ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from './extraItems'
 import { buildCommands } from '../script/commands'
@@ -16,12 +17,20 @@ import { DIR } from '../script/movement'
 import { DATA, withData } from '../../data/romData.testkit'
 
 describe('재고', () => {
-  it('화석 일곱 · 진화의돌 아홉 · 롬 밖의 둘이다', () => {
+  it('화석 일곱 · 진화의돌 아홉 · 롬 밖의 둘 · 날씨 바위 넷이다', () => {
     expect(FOSSILS).toHaveLength(7)
     expect(EVOLUTION_STONES).toHaveLength(9)
-    expect(EVOLUTION_COUNTER_STOCK).toHaveLength(18)
+    expect(WEATHER_ROCKS).toHaveLength(4)
+    expect(EVOLUTION_COUNTER_STOCK).toHaveLength(22)
     expect(EVOLUTION_COUNTER_STOCK).toContain(ITEM_LINKING_CORD)
     expect(EVOLUTION_COUNTER_STOCK).toContain(ITEM_PRISM_SCALE)
+    for (const rock of WEATHER_ROCKS) expect(EVOLUTION_COUNTER_STOCK).toContain(rock)
+  })
+
+  it('⚠️ 날씨 바위 넷의 번호가 롬 표와 같다 — `dataID`를 적으면 딴 물건이 선다', () => {
+    // `generated/items.txt`의 줄 번호 − 1 (얼음 283 · 매끄러운 284 · 열탕 285 ·
+    // 축축한 286번 줄). `items.json`의 `dataID`는 260~263이라 다른 수다
+    expect([...WEATHER_ROCKS]).toEqual([282, 283, 284, 285])
   })
 
   it('⚠️ 롬 밖의 둘 말고는 전부 롬 번호다', () => {

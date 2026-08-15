@@ -16,7 +16,7 @@ import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
 import { parseScriptMeta, countEntries, entryOffset, fileBytes, resolveScript } from './data'
 import { buildCommands } from './commands'
-import { ScriptContext, ScriptError, type CommandFn } from './context'
+import { operandWidth, ScriptContext, ScriptError, type CommandFn } from './context'
 import { MessagePrinter, printedText, TEXT_SPEED, type PrinterOptions } from './printer'
 import { MessageSlots } from './text'
 import { VarStore, VAR_RESULT } from './vars'
@@ -287,7 +287,7 @@ maybe('스크립트 VM', () => {
           if (!cmd) break
           reached++
           if (!unhandled.has(op)) ran++
-          const width = argWidth(cmd.args)
+          const width = operandWidth(cmd, view, at + 2)
           // 분기는 마지막 인자가 PC 상대 오프셋이다
           if (/^(GoTo|Call)/.test(cmd.name) && width >= 4) {
             stack.push(at + 2 + width + view.getInt32(at + 2 + width - 4, true))
@@ -333,7 +333,7 @@ maybe('스크립트 VM', () => {
           const cmd = meta.commands[op]
           if (!cmd) break
           if (unhandled.has(op)) missing.push(`${info.name}: ${cmd.name}`)
-          const width = argWidth(cmd.args)
+          const width = operandWidth(cmd, view, at + 2)
           if (/^(GoTo|Call)/.test(cmd.name) && width >= 4) {
             stack.push(at + 2 + width + view.getInt32(at + 2 + width - 4, true))
           }
@@ -345,10 +345,6 @@ maybe('스크립트 VM', () => {
     expect([...new Set(missing)]).toEqual([])
   })
 
-/** `"1 2 4*"` → 7. 가변 길이 명령은 첫 피연산자만큼만 센다 */
-function argWidth(spec: string): number {
-  return spec === '' ? 0 : spec.split(' ').reduce((n, s) => n + Number(s[0]), 0)
-}
 
   it('새 게임 초기화가 원작 표를 그대로 세운다', () => {
     // `FieldSystem_InitNewGameState`가 도는 스크립트다. 하는 일은 아직 안 나온
@@ -493,10 +489,10 @@ const LOOPING_ENTRIES_YES = 30
  * 때마다 조용히 낡으므로 여기서 못 박는다 — 값이 바뀌면 왜 바뀌었는지
  * 설명하고 문서를 같이 고친다
  */
-const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_675
+const REACHED_SITES = 55_778
+const RUNNING_SITES = 54_990
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 509
+const IMPLEMENTED_COMMANDS = 521
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -560,6 +556,10 @@ const IDLE_COMMANDS = [
   'GetTrainerRematchMessageTypes',
   'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
   'StartBattleClient', 'StartBattleServer',
+  // ⚠️ **로토무와 화강돌 둘뿐이라 이 훑기로는 안 닿는다.** 양옥집 TV는
+  // `GetTimeOfDay`가 밤일 때만 열리고(훑기의 시계는 낮이다), 209번도로 무덤은
+  // 지하통로 인사 수를 세는 `GetSpiritombCounter` 뒤에 있다 (PARITY §6.11)
+  'StartWildBattle',
   // ⚠️ **꿀 나무 셋은 가방에 꿀이 있어야 열린다.** 훑기의 가방은 비어 있어서
   // `CheckItem ITEM_HONEY`가 0을 주고, 그러면 「맨 나무」 대사로 끝난다 —
   // 상태를 묻는 `GetHoneyTreeStatus`까지는 밟힌다 (PARITY §6.6)
@@ -625,6 +625,12 @@ const IDLE_COMMANDS = [
   'UpdateSizeContestRecord',
   'BufferPartyPokemonSize',
   'BufferSizeContestRecord',
+  // ⚠️ **기술 삭제사와 조각 교사도 파티 너머다.** 앞줄의 `GetSelectedPartySlot`이
+  // 파티 고르는 화면 없이는 `PARTY_SLOT_NONE`을 주고, 스크립트가 그 자리에서
+  // 「또 오라」 가지로 빠진다. 손으로 몰아 보는 시험이 따로 있다
+  // (`script/tutor.test.ts`)
+  'SelectPartyMonMove',
+  'GetSelectedPartyMonMove',
   // 기술 칸을 세고 비우는 자리도 파티 너머다 — 기술가르침 세 집이 전부
   // 「가르칠 포켓몬을 골라」 다음이다
   'GetPartyMonMoveCount',
@@ -718,7 +724,15 @@ const IDLE_COMMANDS = [
   // 그래도 만들어 두는 이유는 안 만들면 결과 변수가 앞 갈래 값으로 남아서다
   'CheckIsMiscSaveInit',
   'FindPartySlotWithSpecies',
+  // 조각 교사의 나머지도 같은 자리다. ⚠️ **`ShowMoveTutorMoveSelectionMenu`만
+  // 여기 없다** — 공용 스크립트의 「값을 보여 준다」 갈래가 파티를 안 고르고
+  // 그 목록을 열어서, 그 한 줄은 훑기에도 밟힌다
+  'CheckHasLearnableTutorMoves',
+  'OpenSummaryScreenTeachMove',
+  'GetSummarySelectedMoveSlot',
   'ResetMoveSlot',
+  'CheckCanAffordMove',
+  'PayShardCost',
   // 트레이너 이름·타입 이름을 칸에 넣는 자리도 전부 파티나 메뉴 너머다
   'BufferTrainerName',
   'BufferTypeName',

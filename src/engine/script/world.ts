@@ -810,6 +810,23 @@ export interface FieldServices {
     /** 실제로 배웠는가 (`keepOldMove`) */
     learned: () => boolean
   }
+  /**
+   * 요약 화면을 **기술 고르기**로 연다
+   * (`FieldSystem_OpenSummaryScreenSelectMove` · `…TeachMove`).
+   *
+   * 되살리기(`reminder`)와 다르다 — 저쪽은 **배울 기술을 고르는** 목록이고
+   * 이쪽은 **이 마리의 네 칸 중 하나를 짚는** 화면이다. 기술 삭제사는 지울
+   * 칸을, 조각 교사는 덮어쓸 칸을 여기서 고른다
+   */
+  selectMove?: {
+    /** 연다. `move`를 주면 「가르침」이라 목록 끝에 그 기술이 한 줄 더 붙는다 */
+    open: (partySlot: number, move?: number) => void
+    /**
+     * 고른 칸. 아직 안 닫혔으면 `null`이고, 그만뒀으면 네 칸 밖의 자리
+     * (`LEARNED_MOVES_MAX`)다 — 그 값의 뜻은 부르는 명령이 진다
+     */
+    picked: () => number | null
+  }
   /** 도감 완성 상장 (PARITY §5 `diploma`) */
   diploma?: { show: (national: boolean) => void }
   /** 방금 있던 맵의 헤더 번호 (`FieldOverworldState_GetPrevLocation`) */
@@ -975,12 +992,18 @@ export interface FieldServices {
    */
   startFirstBattle?: (trainerID: number) => void
   /**
-   * 전설 조우 (`Encounter_NewVsSpeciesAtLevel`).
+   * 스크립트가 세우는 야생 조우 (`Encounter_NewVsSpeciesAtLevel`).
    *
    * 야생과 같은 배틀인데 **종과 레벨을 스크립트가 준다.** 인카운터 표를 안
-   * 거치므로 기라티나·디아루가처럼 표에 없는 것이 여기로 나온다
+   * 거치므로 기라티나·디아루가처럼 표에 없는 것이 여기로 나온다.
+   *
+   * ⚠️ **`StartWildBattle`과 `StartLegendaryBattle` 둘 다 여기로 온다.** 원작에서
+   * 그 둘의 차이는 마지막 인자 하나(`isLegendary`)뿐이고, 그것이 바꾸는 것은
+   * `BATTLE_STATUS_LEGENDARY` → 컷인 연출과 곡이다. 우리는 곡을 **종족 번호로**
+   * 고르므로(`audio/songs`의 `WILD_SONG`, 롬의 `enc_effects.c`에서 뽑은 표)
+   * 한 길로 둬도 결과가 원작과 같다 — 이름을 「전설」로 두면 그것이 안 보인다
    */
-  startLegendaryBattle?: (species: number, level: number) => void
+  startScriptedWildBattle?: (species: number, level: number) => void
   /**
    * 태그 배틀 (`Encounter_NewVsTrainer`에 파트너를 붙인 것).
    *
@@ -1291,6 +1314,18 @@ export class FieldWorld {
       value,
       alt: altID === null ? null : bank[altID] ?? null,
     })
+  }
+
+  /**
+   * 글을 뱅크가 아니라 **그대로** 받는 항목.
+   *
+   * ⚠️ **뱅크 밖에서 오는 글이 있다.** 기술가르침 목록의 항목이 기술 이름인데
+   * 그것은 스크립트 뱅크에도 메뉴 뱅크에도 없고 기술 이름표에 있다 —
+   * 원작도 그 자리에서 로더를 갈아 끼운다 (`MoveTutorManager_SetMessageLoader`)
+   */
+  addMenuEntryText(text: string, value: number): void {
+    if (this.builder === null) return
+    this.builder.entries.push({ text, value, alt: null })
   }
 
   /** `ShowMenu` · `ShowListMenu` 계열. 여기서부터 답을 기다린다 */

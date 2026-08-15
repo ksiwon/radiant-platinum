@@ -9,7 +9,8 @@
 // 된다.
 import type { ScriptCommand } from '../../data/schema'
 import {
-  compare, conditionHolds, type CommandFn, type ResumeFn, type ScriptContext,
+  argWidths, compare, conditionHolds, extraArgs,
+  type CommandFn, type ResumeFn, type ScriptContext,
 } from './context'
 import {
   addNpc, npcActors, removeNpc, setNpcPlacement, switchMovementType,
@@ -46,6 +47,9 @@ import {
 } from '../map/townMap'
 import { EVOLUTION_COUNTER_STOCK, isDecorMart } from '../bag/evolutionCounter'
 import { frontierStock } from '../bag/frontierMart'
+import { badgeCount } from '../bag/mart'
+import { SHARDS } from '../bag/shards'
+import { learnableTutorMoves, shardCostOf, tutorMovesAt } from '../world/tutorMoves'
 import {
   COMM_CLUB_RET, GBA_CARTRIDGE_NONE, SCRIPT_UNION_ROOM_ATTENDANT,
 } from '../world/comm'
@@ -1844,9 +1848,21 @@ on('FindPartySlotWithFatefulEncounterSpecies', (ctx) => {
   return false
 })
 
+/** 기술 네 칸 (`LEARNED_MOVES_MAX`) */
+const LEARNED_MOVES_MAX = 4
+
+/**
+ * 기술 한 칸을 지운다 (`ScrCmd_ClearMoveSlot`).
+ *
+ * ⚠️ **칸 번호를 반드시 본다.** 운하시티 기술 삭제사의 스크립트는 같은 var
+ * (`VAR_0x8001`)에 종족 번호를 담았다가 고른 칸으로 덮어쓴다. 고르는 화면이 없던
+ * 동안에는 덮어쓰기가 일어나지 않아 **종족 번호가 칸 번호 자리로 흘러들었다.**
+ * 화면이 생긴 지금도 그 자리는 남겨 둔다 — 범위 밖이면 아무것도 안 지운다
+ */
 on('ClearPartyMonMoveSlot', (ctx) => {
   const slot = ctx.readVar()
   const moveSlot = ctx.readVar()
+  if (moveSlot < 0 || moveSlot >= LEARNED_MOVES_MAX) return false
   ctx.host.world.services.party?.clearMoveSlot(slot, moveSlot)
   return false
 })
@@ -1885,6 +1901,139 @@ on('GetSelectedPartySlot', (ctx) => {
   ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.chooseMon?.picked() ?? PARTY_SLOT_NONE)
   return false
 })
+
+// ── 요약 화면을 「기술 고르기」로 연다 ───────────────────────────────────────
+//
+// 원작은 같은 화면 하나를 모드만 바꿔 두 번 쓴다
+// (`FieldSystem_OpenSummaryScreenSelectMove` · `FieldSystem_OpenSummaryScreenTeachMove`)
+// 그리고 답을 `SCRIPT_MANAGER_PARTY_MANAGEMENT_DATA`에서 꺼낸다.
+//
+// ⚠️ **안 고른 값이 명령마다 다르다.** 삭제사 쪽은 `MOVE_NOT_SELECTED`(0xFF),
+// 가르침 쪽은 `LEARNED_MOVES_MAX`(4)다. 스크립트가 그 값을 그대로 견주므로
+// (`GoToIfEq VAR_0x8001, MOVE_NOT_SELECTED` · `GoToIfEq VAR_0x8002, LEARNED_MOVES_MAX`)
+// 하나로 맞추면 안 된다.
+
+/** `MOVE_NOT_SELECTED` — 기술 삭제사가 「안 골랐다」로 쓰는 값 */
+const MOVE_NOT_SELECTED = 0xff
+
+/** `MenuEntries_Text_Exit` — 메뉴 뱅크(`TEXT_BANK_MENU_ENTRIES`)의 「그만둔다」 */
+const MENU_ENTRY_EXIT = 5
+
+on('SelectPartyMonMove', (ctx) => {
+  const slot = ctx.readVar()
+  ctx.host.world.services.selectMove?.open(slot)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+on('GetSelectedPartyMonMove', (ctx) => {
+  const picked = ctx.host.world.services.selectMove?.picked() ?? null
+  // 네 칸 밖이면 그만둔 것이다 — 원작도 `LEARNED_MOVES_MAX`를 0xFF로 바꿔 준다
+  const answer = picked === null || picked >= LEARNED_MOVES_MAX ? MOVE_NOT_SELECTED : picked
+  ctx.host.vars.set(ctx.readHalfWord(), answer)
+  return false
+})
+
+on('OpenSummaryScreenTeachMove', (ctx) => {
+  const slot = ctx.readVar()
+  const move = ctx.readVar()
+  ctx.host.world.services.selectMove?.open(slot, move)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+on('GetSummarySelectedMoveSlot', (ctx) => {
+  const picked = ctx.host.world.services.selectMove?.picked() ?? null
+  // 이쪽은 그만둔 값이 곧 `LEARNED_MOVES_MAX`다
+  const answer = picked === null || picked >= LEARNED_MOVES_MAX ? LEARNED_MOVES_MAX : picked
+  ctx.host.vars.set(ctx.readHalfWord(), answer)
+  return false
+})
+
+// ── 기술가르침 — 조각 교사 셋 (`overlay005/scrcmd_move_tutor.c`) ────────────
+//
+// 선단시티 동쪽 집 · 212번도로 집 · 서바이벌에리어 북쪽 집. 값은 돈이 아니라
+// **조각 넷**이고 표는 `world/tutorMoves`가 든다 (디컴프에서 굽는다).
+
+on('CheckHasLearnableTutorMoves', (ctx) => {
+  const slot = ctx.readVar()
+  const at = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, tutorChoices(ctx, slot, at).length > 0 ? 1 : 0)
+  return false
+})
+
+/**
+ * 배울 기술을 고르는 목록 메뉴 (`ScrCmd_ShowMoveTutorMoveSelectionMenu`).
+ *
+ * ⚠️ **답이 자리 번호가 아니라 기술 번호다.** 원작이 `MoveTutorManager_AddMenuEntry`
+ * 의 `index`에 기술 번호를 그대로 넣고, 스크립트가 그 값을 `CheckCanAffordMove`와
+ * `PayShardCost`에 다시 넘긴다.
+ *
+ * ⚠️ **파티 자리가 `PARTY_SLOT_NONE`이면 그 교사의 기술을 전부 세운다** — 값만
+ * 보러 온 자리다 (공용 스크립트의 조각 값 창).
+ *
+ * ⚠️ **항목 글을 뱅크에서 안 읽는다.** 기술 이름은 스크립트 뱅크가 아니라
+ * 기술 이름표(`TEXT_BANK_MOVE_NAMES`)에 있어서 `labels.move`로 직접 넣는다
+ */
+on('ShowMoveTutorMoveSelectionMenu', (ctx) => {
+  const slot = ctx.readVar()
+  const at = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const world = ctx.host.world
+  world.initMenu(dest, 0, true, 'global')
+  for (const move of tutorChoices(ctx, slot, at)) {
+    world.addMenuEntryText(world.services.labels?.move(move) ?? '', move)
+  }
+  // 마지막 줄은 「그만둔다」 (`MenuEntries_Text_Exit`) — 원작도 전역 뱅크에서 읽는다
+  world.addMenuEntry(MENU_ENTRY_EXIT, MENU_CANCEL)
+  world.showMenu('list')
+  ctx.scratch[0] = dest
+  ctx.pause((c) => c.host.world.vars.get(c.scratch[0]!) !== LIST_MENU_NO_SELECTION_YET)
+  return true
+})
+
+on('CheckCanAffordMove', (ctx) => {
+  const move = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const cost = shardCostOf(move)
+  const bag = ctx.host.world.services.bag
+  // 표에 없는 기술이면 원작도 단언에 걸리고 「못 산다」로 떨어진다
+  const can = cost !== null
+    && SHARDS.every((item, i) => (cost[i] ?? 0) === 0 || (bag?.quantity(item) ?? 0) >= cost[i]!)
+  ctx.host.vars.set(dest, can ? 1 : 0)
+  return false
+})
+
+on('PayShardCost', (ctx) => {
+  const move = ctx.readVar()
+  const cost = shardCostOf(move)
+  if (cost === null) return false
+  const bag = ctx.host.world.services.bag
+  // ⚠️ **값이 0인 조각도 원작은 그대로 부른다** — 0개를 빼는 것은 아무 일도
+  // 안 하므로 결과가 같다. 여기서는 부르지 않아 가방 로그가 안 더러워진다
+  for (const [i, item] of SHARDS.entries()) {
+    const need = cost[i] ?? 0
+    if (need > 0) bag?.remove(item, need)
+  }
+  return false
+})
+
+/**
+ * 그 자리에서 이 마리가 배울 수 있는 것들.
+ *
+ * 파티 자리가 없으면(`PARTY_SLOT_NONE`) 그 교사의 기술을 전부 준다 — 원작이
+ * 같은 갈래로 값만 보여 준다
+ */
+function tutorChoices(ctx: ScriptContext, slot: number, at: number): number[] {
+  if (slot === PARTY_SLOT_NONE) return tutorMovesAt(at)
+  const party = ctx.host.world.services.party
+  const species = party?.species(slot) ?? 0
+  // 알은 종족이 0으로 온다 (`GetPartyMonSpecies`) — 아무것도 못 배운다
+  if (species === 0) return []
+  const known = [0, 1, 2, 3].map((i) => party?.move(slot, i) ?? 0)
+  return learnableTutorMoves(species, party?.form(slot) ?? 0, known, at)
+}
 
 /**
  * 교환할 한 마리를 고른다 (`FieldSystem_OpenPartyMenu_SelectForTrade`).
@@ -2040,6 +2189,23 @@ on('CheckBadgeAcquired', (ctx) => {
     ctx.readHalfWord(),
     ctx.host.world.services.trainerInfo?.hasBadge(badge) === true ? 1 : 0,
   )
+  return false
+})
+
+/**
+ * 가진 뱃지 수를 센다 (`ScrCmd_CountBadgesAcquired`).
+ *
+ * ⚠️ **없으면 조용히 「뱃지가 없구나」가 된다.** 포켓치 컴퍼니 1층 사장이 이 수로
+ * 앱을 나눠 주는데(1개 → 메모장, 3개 → 마킹맵, 5개 → 링크서처, 7개 → 기술확인기),
+ * 답 var가 안 세워지면 `GoToIfEq VAR_0x8000, 0`이 늘 참이라 **앱 넷을 영영 못 받는다**
+ *
+ * 원작은 `sBadgeIDs` 여덟(`BADGE_ID_COAL` … `BADGE_ID_BEACON`)을 돌며
+ * `TrainerInfo_HasBadge`를 묻는다. 우리는 같은 여덟 칸을 세는 `badgeCount`를 쓴다 —
+ * 상점 재고 계단이 이미 쓰는 그 함수다. 세는 법이 두 벌이면 언젠가 갈린다
+ */
+on('CountBadgesAcquired', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, badgeCount(ctx.host.world.services.fieldMoves?.badges() ?? 0))
   return false
 })
 
@@ -2224,6 +2390,39 @@ on('Warp', (ctx) => {
   // 칸 가운데에 세운다(격자 좌표는 칸의 왼쪽 위 모서리다)
   mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
   return false
+})
+
+/**
+ * 배를 타고 건너간다 (`ScrCmd_PlayBoatCutscene` → `FieldSystem_PlayBoatCutscene`).
+ *
+ * ⚠️ **이 명령 하나가 배 그 자체다.** 원작에서 배를 타는 워프는 워프 타일도
+ * `Warp`도 아니고 이것뿐이라, 안 만들면 대사만 끝나고 제자리에 선다. 그러면
+ * **맵 63개**가 통째로 닫힌다 — 싸움·서바이벌·리조트에리어와 그 안의 건물,
+ * 배틀타워·프런티어, 스타크산, 강철섬, 풍만·신월섬, 225~230번도로, 레지 유적 셋.
+ * 그 63개에만 사는 33종도 같이 닫히고 그중에 리오르·히드런·레지락·레지스틸이 있다.
+ *
+ * ⚠️ **`readVar()`를 쓰면 안 된다.** `Warp`는 인자가 전부 var 참조지만 이쪽 매크로는
+ * `.byte .byte .short .short .short` **리터럴**이다. 한 칸이라도 어긋나면 그 뒤
+ * 스크립트가 통째로 밀린다.
+ *
+ * `travelDir`는 배가 어느 쪽으로 가는가(`BOAT_TRAVEL_DIR_*`)로, **연출에만** 쓰인다 —
+ * 어느 배 모델을 찾고 운하 다리를 올릴지가 그 값으로 갈린다. 우리는 아직 배가
+ * 뜨는 장면이 없어서 읽고 버린다 (PARITY §1.26). 자리는 `scene/CinematicStage`다.
+ * 목적지는 원작도 `FieldTask_ChangeMapToLocation(…, x, z, exitDir)` 한 줄이라
+ * `Warp`와 같은 길로 보낸다
+ */
+on('PlayBoatCutscene', (ctx) => {
+  ctx.readByte() // travelDir — 연출용이라 우리는 안 쓴다
+  const facing = ctx.readByte()
+  const to = ctx.readHalfWord()
+  const x = ctx.readHalfWord()
+  const z = ctx.readHalfWord()
+  const dest = mapById(to)
+  if (!dest) return false
+  mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
+  // 원작이 `TRUE`를 돌려준다 — 연출이 화면을 가져가므로 그 프레임은 거기서
+  // 끝난다. 우리는 연출이 없지만 자리는 그대로 둔다
+  return true
 })
 
 /**
@@ -3425,7 +3624,32 @@ on('StartFirstBattle', (ctx) => {
 on('StartLegendaryBattle', (ctx) => {
   const species = ctx.readVar()
   const level = ctx.readVar()
-  ctx.host.world.services.startLegendaryBattle?.(species, level)
+  ctx.host.world.services.startScriptedWildBattle?.(species, level)
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
+/**
+ * 스크립트가 세우는 야생 조우 (`ScrCmd_StartWildBattle`).
+ *
+ * 위와 **마지막 인자 하나만** 다르다 —
+ * `Encounter_NewVsSpeciesAtLevel(…, isLegendary)`가 `FALSE`고, 그것이 가르는 것은
+ * `BATTLE_STATUS_LEGENDARY`가 켜는 컷인과 곡뿐이다. 우리는 곡을 종족 번호로
+ * 고르므로 같은 서비스를 쓴다 (`world.ts`의 `startScriptedWildBattle`).
+ *
+ * 쓰는 자리는 저장소에 둘뿐이고 그 둘이 곧 못 잡던 두 종이다 —
+ * 숲의 양옥집 중서쪽 방의 **로토무**(밤에만)와 209번도로 무덤의 **화강돌**.
+ *
+ * ⚠️ **없는 동안 살아 있던 해악이 하나 같이 사라진다.** 양옥집 TV에 「예」를
+ * 고르면 배틀이 안 돌고 바로 `CheckWonBattle`로 내려갔는데, 그 값은 배틀이
+ * 시작될 때만 지워지므로 **직전 배틀의 결과**가 판정에 쓰였다 — 직전이 없거나
+ * 졌으면 `BlackOutFromBattle`(전멸), 포획으로 끝났으면 로토무가 없는데
+ * `SetFlag 329`(잡았다)가 섰다
+ */
+on('StartWildBattle', (ctx) => {
+  const species = ctx.readVar()
+  const level = ctx.readVar()
+  ctx.host.world.services.startScriptedWildBattle?.(species, level)
   ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
   return true
 })
@@ -3514,6 +3738,18 @@ on('GetGameVersion', (ctx) => {
 on('HideObject', (ctx) => {
   const target = ctx.host.world.objects(ctx.readVar())
   if (target) target.visible = false
+  return false
+})
+
+/**
+ * 숨긴 사람을 다시 세운다 (`ScrCmd_ShowObject`). 위의 거울이고, 원작도
+ * `MapObjMan_LocalMapObjByIndex` 하나로 같은 자리를 집는다.
+ *
+ * 쓰는 자리: 글로벌 터미널 · 배틀타워 넷
+ */
+on('ShowObject', (ctx) => {
+  const target = ctx.host.world.objects(ctx.readVar())
+  if (target) target.visible = true
   return false
 })
 
@@ -4160,16 +4396,15 @@ function skipper(cmd: ScriptCommand): CommandFn {
   const fixed = widths(cmd.args)
   return (ctx) => {
     const values = fixed.map((size) => read(ctx, size))
-    if (cmd.cases !== undefined && cmd.on !== undefined) {
-      const hit = cmd.cases.find((c) => c.v.includes(values[cmd.on!]!))
-      if (hit) for (const size of widths(hit.args)) read(ctx, size)
-    }
+    // 값에 달린 여벌 인자. 재는 규칙은 `context`가 혼자 든다 —
+    // 감사 도구도 같은 함수를 쓴다 (`operandWidth`)
+    for (const size of widths(extraArgs(cmd, values))) read(ctx, size)
     return false
   }
 }
 
-const widths = (spec: string): number[] =>
-  spec === '' ? [] : spec.split(' ').map((s) => Number(s[0]))
+const widths = (spec: ScriptCommand['args']): number[] =>
+  argWidths(spec).map((a) => a.size)
 
 const read = (ctx: ScriptContext, size: number): number =>
   size === 1 ? ctx.readByte() : size === 2 ? ctx.readHalfWord() : ctx.readWord()

@@ -10,6 +10,11 @@
 // 안에 무엇이 들었는지가 새어 나간다.
 //
 // 글은 한 줄도 우리가 안 짓는다. 이름표도 문장 틀도 요약 뱅크(455)의 것이다.
+//
+// ⚠️ **스크립트가 이 화면을 「기술 고르기」로도 연다** (`SelectPartyMonMove` ·
+// `OpenSummaryScreenTeachMove`). 원작도 같은 화면 하나를 모드만 바꿔 쓴다 —
+// 기술 쪽으로 고정하고, 마리를 넘기는 ↑↓를 **칸 고르기**로 돌리고, Z가 곧 답이다.
+// 기술 삭제사와 조각 교사 셋이 이 모드 없이는 한 발짝도 못 나간다.
 import { useEffect, useMemo, useState } from 'react'
 import {
   loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpecies,
@@ -58,6 +63,9 @@ const T = {
   pageMoves: 128, labelPower: 147, labelAccuracy: 148,
 } as const
 
+/** 기술 네 칸 (`LEARNED_MOVES_MAX`). 그 **다음** 자리가 「그만둔다」다 */
+const MOVES_MAX = 4
+
 /** 파티에서 열었을 때 보이는 쪽. 원작 `enum SummaryPage`의 앞 넷이다 */
 const PAGES = ['info', 'memo', 'skills', 'moves'] as const
 type Page = (typeof PAGES)[number]
@@ -94,8 +102,11 @@ export function SummaryScreen() {
   const trainer = useSaveStore((s) => s.trainer)
   const back = useMenuStore((s) => s.back)
   const opened = useMenuStore((s) => s.summarySlot)
+  // 스크립트가 기술을 고르라고 열었으면 이 화면은 그 일만 한다
+  const picking = useMenuStore((s) => s.selectMove)
+  const finishPick = useMenuStore((s) => s.finishSelectMove)
   const [at, setAt] = useState(opened)
-  const [page, setPage] = useState<Page>('info')
+  const [page, setPage] = useState<Page>(picking === null ? 'info' : 'moves')
   const [moveAt, setMoveAt] = useState(0)
 
   useEffect(() => {
@@ -126,14 +137,21 @@ export function SummaryScreen() {
   const info = mon && t ? t.species.of(mon) : undefined
   // 알은 메모 쪽만 볼 수 있다 (`PokemonSummaryScreen_PageIsVisble`)
   const isEgg = mon?.isEgg ?? false
-  const pages: readonly Page[] = useMemo(() => (isEgg ? ['memo'] : PAGES), [isEgg])
+  const pages: readonly Page[] = useMemo(
+    () => (picking !== null ? ['moves'] : isEgg ? ['memo'] : PAGES), [isEgg, picking])
   const pageAt = Math.max(0, pages.indexOf(page))
   const shown = pages[pageAt] ?? 'memo'
 
   useEffect(() => { if (!pages.includes(page)) setPage(pages[0] ?? 'memo') }, [pages, page])
 
   const moves = mon?.moves ?? []
-  const moveOn = Math.min(moveAt, Math.max(0, moves.length - 1))
+  /**
+   * 고를 수 있는 줄 수. 「가르침」 모드는 배울 기술이 **한 줄 더** 붙는다 —
+   * 그 줄을 고르면 아무것도 안 바꾼다 (`MOVE_TO_LEARN_SLOT`)
+   */
+  const rows = picking === null ? moves.length
+    : picking.teach === null ? moves.length : moves.length + 1
+  const moveOn = Math.min(moveAt, Math.max(0, rows - 1))
 
   const stepPage = (d: number) => () => {
     const next = pages[(pageAt + d + pages.length) % pages.length]
@@ -141,29 +159,50 @@ export function SummaryScreen() {
   }
   /** ↑↓는 **다른 마리**로 옮긴다 — 원작도 위아래가 파티를 넘긴다 */
   const stepMon = (d: number) => () => {
-    if (shown === 'moves' && moves.length > 0) {
-      setMoveAt((c) => clampCursor(c, d, moves.length))
+    if (shown === 'moves' && rows > 0) {
+      setMoveAt((c) => clampCursor(c, d, rows))
       return
     }
     setAt((c) => clampCursor(c, d, party.length))
   }
 
-  useMenuKeys({
-    left: stepPage(-1),
-    right: stepPage(1),
-    up: stepMon(-1),
-    down: stepMon(1),
-    tab: () => { setAt((c) => clampCursor(c, 1, party.length)) },
-    confirm: back,
-    cancel: back,
-  })
+  /**
+   * 고른 칸을 스크립트에 넘기고 닫는다.
+   *
+   * ⚠️ **그만둔 것도 답이다.** 원작이 네 칸 밖의 자리(`LEARNED_MOVES_MAX`)를
+   * 돌려주고 스크립트가 그 값으로 갈라진다 — 안 넘기면 스크립트가 영영 선다
+   */
+  const answer = (slot: number): void => {
+    finishPick(slot)
+    back()
+  }
+
+  useMenuKeys(picking !== null
+    ? {
+      up: () => { setMoveAt((c) => clampCursor(c, -1, Math.max(1, rows))) },
+      down: () => { setMoveAt((c) => clampCursor(c, 1, Math.max(1, rows))) },
+      confirm: () => { answer(moveOn) },
+      // B는 「그만둔다」다. 원작도 네 칸 밖의 자리를 돌려준다
+      cancel: () => { answer(MOVES_MAX) },
+    }
+    : {
+      left: stepPage(-1),
+      right: stepPage(1),
+      up: stepMon(-1),
+      down: stepMon(1),
+      tab: () => { setAt((c) => clampCursor(c, 1, party.length)) },
+      confirm: back,
+      cancel: back,
+    })
 
   const text = (id: number): string => t?.summary[id] ?? ''
   const name = mon ? mon.nickname ?? t?.speciesNames[mon.species] ?? '' : ''
 
-  const foot = shown === 'moves' && moves.length > 0
-    ? '←→ 쪽 · ↑↓ 기술 · Tab 다음 포켓몬 · X 닫기'
-    : '←→ 쪽 · ↑↓ 포켓몬 · X 닫기'
+  const foot = picking !== null
+    ? '↑↓ 기술 · Z 고른다 · X 그만둔다'
+    : shown === 'moves' && moves.length > 0
+      ? '←→ 쪽 · ↑↓ 기술 · Tab 다음 포켓몬 · X 닫기'
+      : '←→ 쪽 · ↑↓ 포켓몬 · X 닫기'
 
   return (
     <MenuScreen
@@ -171,7 +210,7 @@ export function SummaryScreen() {
       note={party.length > 1 ? `${String(at + 1)} / ${String(party.length)}` : undefined}
       foot={foot}
     >
-      <div className={css.tabs}>
+      <div className={css.tabs} hidden={picking !== null}>
         {pages.map((p) => (
           <button
             key={p}
@@ -193,7 +232,7 @@ export function SummaryScreen() {
                 : shown === 'skills' ? <SkillsPage mon={mon} t={t} />
                   : (
                     <MovesPage
-                      mon={mon} t={t} at={moveOn}
+                      mon={mon} t={t} at={moveOn} teach={picking?.teach ?? null}
                       onPick={(i) => { setMoveAt(i) }}
                     />
                   )
@@ -387,17 +426,31 @@ function SkillsPage({ mon, t }: { mon: PokemonInstance; t: Tables }) {
 
 /** 기술 쪽 — 넉 칸과 고른 기술의 위력·명중·설명 (`DrawBattleMovesPageWindows`) */
 function MovesPage(
-  { mon, t, at, onPick }: {
-    mon: PokemonInstance; t: Tables; at: number; onPick: (i: number) => void
+  { mon, t, at, teach, onPick }: {
+    mon: PokemonInstance; t: Tables; at: number
+    /** 「가르침」 모드에서 목록 끝에 한 줄 더 붙는 새 기술. 아니면 null */
+    teach: number | null
+    onPick: (i: number) => void
   },
 ) {
-  const chosen = mon.moves[at]
+  /**
+   * 화면에 서는 줄 — 아는 기술 넷 뒤에 배울 기술이 붙을 수 있다.
+   *
+   * 아직 안 배운 기술이라 PP는 그 기술의 최대치로 세운다 — 개체에 없는 값이다
+   */
+  const list = [
+    ...mon.moves,
+    ...(teach === null
+      ? []
+      : [{ move: teach, pp: t.moves.byId.get(teach)?.pp ?? 0, ppUps: 0 }]),
+  ]
+  const chosen = list[at]
   const data = chosen ? t.moves.byId.get(chosen.move) : undefined
 
   return (
     <>
       <div className={own.moves}>
-        {mon.moves.map((slot, i) => {
+        {list.map((slot, i) => {
           const info = t.moves.byId.get(slot.move)
           return (
             <div
