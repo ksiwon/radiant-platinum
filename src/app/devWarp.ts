@@ -11,8 +11,14 @@ import { playerTrainer, useSaveStore, type PokemonInstance } from '../state/save
 import { addItem } from '../engine/bag/bag'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { caughtAt, metToday } from '../engine/pokemon/origin'
-import { abortScript, fieldScripts } from '../engine/script/field'
+import { abortScript, fieldScripts, forceFlag, forceVar } from '../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../engine/script/vars'
+import {
+  SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG, TRAINER_DEFEATED_FLAGS_START, trainerIdOf,
+} from '../engine/script/commands'
+import {
+  FLAG_UNLOCKED_VS_SEEKER_LVL_1, VAR_VS_SEEKER_BATTERY, VS_SEEKER_MAX_BATTERY,
+} from '../engine/world/vsSeekerTable'
 import {
   fliesAlongTheWay, HM_CARRIER, HM_TEACHES, seenAlongTheWay,
 } from '../engine/dev/checkpoints'
@@ -116,6 +122,17 @@ async function applySetup(cp: Checkpoint): Promise<void> {
     await markSeenAlongTheWay(cp)
   }
 
+  // ⚠️ **전당등록 뒤의 자리는 그 플래그도 세워 준다.** 배지와 같은 갈래다 —
+  // 이야기를 꾸며 내는 것이 아니라 **그 자리를 볼 조건**을 채우는 것이다.
+  // 안 세우면 전당등록 뒤에만 도는 것들이(하늘빛 피리·시원의 배포) 뛰어든
+  // 자리에서 한 번도 안 열린다
+  if (cp.postGame === true) giveFlag(SYSTEM_FLAG.gameCompleted)
+
+  // VS시커를 쓸 수 있는 판으로 맞춘다 (PARITY §7.9). 배지·도감과 같은 갈래다 —
+  // 이야기를 꾸며 내는 것이 아니라 **그 자리를 볼 조건**을 채우는 것이다.
+  // 걸어서 채우려면 100걸음이고, 재대결은 그 사람들을 **이미 이겨 놨어야** 뜬다
+  if (cp.vsSeeker === true) await readyVsSeeker(cp)
+
   // 지나온 마을은 공중날기가 열려 있다. 안 열면 타운맵이 통째로 회색이다.
   // ⚠️ `spawnTable`을 안 본다 — 타이틀에서 뛰어들면 아직 안 채워져 있다
   try {
@@ -184,10 +201,48 @@ async function markSeenAlongTheWay(cp: Checkpoint): Promise<void> {
  * VM에 부어 준다. 한쪽만 세우면 맵을 한 번 갈아탄 뒤에 도감이 사라진다
  */
 function giveDex(): void {
+  giveFlag(FLAG_HAS_POKEDEX)
+}
+
+/**
+ * VS시커가 바로 도는 판으로 (PARITY §7.9).
+ *
+ * 셋을 채운다 — 배터리를 가득(100걸음), 첫 단계를 열고(207번도로에서 받는
+ * `FLAG_UNLOCKED_VS_SEEKER_LVL_1`), **이 맵의 트레이너를 다 이긴 것으로** 적는다.
+ *
+ * ⚠️ **다 이겨 놓지 않으면 재대결이 안 뜬다.** 안 싸운 사람에게는 느낌표가
+ * 하나 뜨고 끝이라, 이게 없으면 이 지점에서 볼 수 있는 것이 절반이다
+ */
+async function readyVsSeeker(cp: Checkpoint): Promise<void> {
+  giveFlag(FLAG_UNLOCKED_VS_SEEKER_LVL_1)
+  const vars = fieldScripts.vars
+  // 플래그와 같은 이유로 `forceVar`다 — 새 판의 초기화가 `vars.reset()`으로
+  // 지우고 그 결과를 세이브에 덮어쓴다
+  forceVar(VAR_VS_SEEKER_BATTERY, VS_SEEKER_MAX_BATTERY)
+  try {
+    const events = await readJson(assets(), 'data/events.json') as {
+      events: { npcs: { script: number; trainerType: number }[] }[]
+    }
+    const maps = await readJson(assets(), 'data/maps.json') as { maps: { events: number }[] }
+    const file = maps.maps[cp.map]?.events
+    for (const npc of (file === undefined ? undefined : events.events[file])?.npcs ?? []) {
+      if (npc.trainerType <= 0 || npc.script < SCRIPT_ID_OFFSET_SINGLE_BATTLES) continue
+      giveFlag(TRAINER_DEFEATED_FLAGS_START + trainerIdOf(npc.script))
+    }
+  } catch {
+    // 배치표를 못 읽으면 느낌표 하나짜리만 뜬다. 뛰어드는 것 자체는 안 막는다
+  }
+  useSaveStore.setState({ vars: Uint16Array.from(vars.saved) })
+}
+
+/** 같은 이유로 **두 군데에** 세운다. 한쪽만 세우면 맵을 갈아탈 때 사라진다 */
+function giveFlag(flag: number): void {
   const flags = Uint8Array.from(useSaveStore.getState().flags)
-  flags[FLAG_HAS_POKEDEX >> 3]! |= 1 << (FLAG_HAS_POKEDEX & 7)
+  flags[flag >> 3]! |= 1 << (flag & 7)
   useSaveStore.setState({ flags })
-  fieldScripts.vars.setFlag(FLAG_HAS_POKEDEX)
+  // ⚠️ VM에는 `forceFlag`로 세운다 — 새 판의 초기화가 `vars.reset()`으로
+  // 지우고 나서 그 결과를 세이브에 덮어쓰기 때문이다
+  forceFlag(flag)
 }
 
 /**

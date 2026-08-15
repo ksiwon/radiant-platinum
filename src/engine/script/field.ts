@@ -26,6 +26,11 @@ import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
 import { HONEY_TREE_MODEL } from '../world/honeyTree'
+import {
+  COMMON_SCRIPT_GIVE_ITEM, EGG_GIVER_TRAVELING_MAN, planSiwonTalk, siwonCameoText,
+  VAR_GIVE_COUNT, VAR_GIVE_ITEM,
+} from './siwonScene'
+import { SIWON_CAMEO_MAP, SIWON_SCRIPT } from '../world/siwonPlace'
 import { obstacleAt } from '../actor/obstacles'
 import { HOP_TIME } from '../actor/ledge'
 import {
@@ -179,6 +184,29 @@ function switchBank(msg: number | null): void {
  *
  * @returns 돌렸으면 true. 스크립트를 아직 못 받았으면 false
  */
+/**
+ * 새 판을 열 때도 살아남아야 하는 플래그 (시험용).
+ *
+ * 확인 지점이 「전당등록 뒤」처럼 **이야기 단계**를 세워 두는데, 새 판의
+ * 초기화가 `vars.reset()`으로 그것을 지운다. 지우면 안 되는 것만 여기 담는다
+ */
+const forcedFlags = new Set<number>()
+
+/** 플래그와 같은 이유로 살아남아야 하는 변수 (시험용). VS시커 배터리가 그렇다 */
+const forcedVars = new Map<number, number>()
+
+/** 확인 지점이 세운 플래그를 새 판 초기화 뒤에도 남긴다 */
+export function forceFlag(flag: number): void {
+  forcedFlags.add(flag)
+  fieldScripts.vars.setFlag(flag)
+}
+
+/** 확인 지점이 세운 변수도 같이 남긴다 */
+export function forceVar(id: number, value: number): void {
+  forcedVars.set(id, value)
+  fieldScripts.vars.set(id, value)
+}
+
 export function initNewGame(): boolean {
   const { data, commands, vars } = fieldScripts
   if (data === null || commands === null) return false
@@ -193,6 +221,12 @@ export function initNewGame(): boolean {
   ctx.start(entryOffset(data, file, 0))
   // 대사도 이동도 없는 스크립트라 한 번에 끝난다. 상한은 되돌아 도는 것을 막는 자리다
   ctx.step(STEP_CAP)
+  // ⚠️ **확인 지점이 미리 세워 둔 플래그를 여기서 되살린다.** 위의
+  // `vars.reset()`이 그것까지 지우는데, 이 함수는 세이브를 만든 **뒤에** 도는
+  // 프레임에서 불린다 — 그래서 전당등록 뒤의 자리로 뛰어들어도 그 플래그가
+  // 없는 채로 떴다 (시원이 「아직」이라고 했다). 시험용이고 평소에는 비어 있다
+  for (const flag of forcedFlags) vars.setFlag(flag)
+  for (const [id, value] of forcedVars) vars.set(id, value)
   // ⚠️ **가방은 스크립트가 안 준다.** 새 판을 여는 코드가 직접 켠다
   // (`game_start.c`의 `StartNewSave`). 스크립트에도 `GiveBag`이 있기는 한데
   // 그 자리는 원본이 안 쓰는 `…_Unused2` 안이라 어디서도 안 불린다 — 이 줄이
@@ -209,7 +243,101 @@ export function loadVars(saved: Uint16Array, flags: Uint8Array): void {
 
 /** 스크립트가 돌고 있는가. 이동·조우 시스템이 이걸 보고 비켜선다 */
 export function scriptBusy(): boolean {
-  return fieldScripts.ctx !== null
+  return fieldScripts.ctx !== null || native !== null
+}
+
+// ── 우리 글로 도는 대사 (SIWON.md) ──────────────────────────────────────────
+//
+// 롬 바이트코드가 아닌 말을 창에 올리는 유일한 길이다. 창을 살리고 인쇄기를
+// 굴리는 것은 원작 대사와 **똑같은 부품**을 쓴다 — `showText`는 원작에도 있는
+// 길이고(트레이너 대사) 쪽 넘김(`\r`)도 인쇄기가 알아서 한다.
+//
+// ⚠️ **발을 묶는 것을 잊으면 안 된다.** 스크립트가 도는 동안 원작이 `LockAll`로
+// 세워 두는 것과 같은 일을 여기서도 해야 한다 — 안 하면 대사창을 띄운 채로
+// 걸어 나갈 수 있다
+
+/** 지금 도는 우리 대사. 끝나면 `after`가 한 번 돈다 */
+let native: { after: (() => void) | null } | null = null
+
+/**
+ * 우리 글 한 덩이를 창에 올리고, 다 읽고 버튼을 누르면 `after`를 부른다.
+ *
+ * 여러 쪽은 글 안의 `\r`이 나눈다 — 덩이를 쪼개 놓고 여기서 세지 않는다.
+ * 그래야 넘기는 규칙이 원작 대사와 한 벌이다
+ */
+function showOurText(text: string, after: (() => void) | null): void {
+  const { world } = fieldScripts
+  if (world === null) { after?.(); return }
+  native = { after }
+  world.showText(text)
+}
+
+/** 우리 대사 한 프레임. 스크립트 VM 자리에서 대신 돈다 */
+function stepOurText(world: FieldWorld): void {
+  worldState.input.move.set(0, 0)
+  worldState.player.velocity.set(0, 0, 0)
+  world.tick()
+  if (!world.printed || !frameInput.pressed) return
+  const done = native
+  native = null
+  world.closeBox(true)
+  done?.after?.()
+}
+
+/** 시원이 이번에 할 일을 세우고 밟는다 */
+function talkToSiwon(mapFile: number): void {
+  const { world, vars, services } = fieldScripts
+  if (world === null) return
+  const siwon = services.siwon
+  const party = services.party
+  const bag = services.bag
+  if (!siwon || !party || !bag) return
+
+  const plan = planSiwonTalk({
+    locale,
+    given: siwon.given(),
+    probe: {
+      flag: (id) => vars.checkFlag(id),
+      variable: (id) => vars.get(id),
+      rotomForms: () => party.rotomForms(),
+    },
+    canFitItem: (item) => bag.canFit(item, 1),
+    hasPartyRoom: () => party.count() < PARTY_SLOTS,
+    giveFateful: (species, level) => { party.giveFateful(species, level) },
+    giveEgg: (species) => { services.giveEgg?.(species, EGG_GIVER_TRAVELING_MAN) },
+    setVar: (id, value) => { vars.set(id, value) },
+    countGiven: () => { siwon.gave() },
+  })
+
+  showOurText(plan.text, () => {
+    plan.commit?.()
+    // 가방에 넣는 것과 「받았다」는 **원작 공용 스크립트**가 한다. 그래야 그
+    // 한 줄이 롬의 글 그대로다 (SIWON.md §4)
+    if (plan.giveItem !== null) {
+      vars.set(VAR_GIVE_ITEM, plan.giveItem)
+      vars.set(VAR_GIVE_COUNT, 1)
+      start(COMMON_SCRIPT_GIVE_ITEM, mapFile)
+    }
+  })
+}
+
+/** 파티 자리 수. `PARTY_MAX`와 같은 수인데 엔진 안에서 다시 부르지 않는다 */
+const PARTY_SLOTS = 6
+
+/**
+ * 전당등록 직전, 리그 복도에서의 기습 등장 (SIWON.md §6).
+ *
+ * ⚠️ **원작 스크립트보다 먼저 선다.** 복도의 `OnFrame`이 시로나와 마박사를
+ * 부르는데 그 한복판에는 못 끼우므로(롬 바이트코드다) 그 앞에 세운다
+ *
+ * @returns 이번 프레임을 우리가 가져갔으면 true
+ */
+function trySiwonCameo(): boolean {
+  const siwon = fieldScripts.services.siwon
+  if (!siwon || mapWorld.mapId !== SIWON_CAMEO_MAP || siwon.met()) return false
+  siwon.meet()
+  showOurText(siwonCameoText(locale), null)
+  return true
 }
 
 let locale: DataLocale = 'ko'
@@ -496,7 +624,9 @@ export const scriptSystem = {
     // 스크립트가 도는 중인지를 문서에 적어 둔다 — 읽기 전용이고 `data-boot`과
     // 같은 자리다 (`sceneMark.ts`). 이게 없으면 **발이 묶인 것과 벽에 막힌
     // 것이 밖에서 똑같이 보인다** — 둘 다 대사도 없고 걸음도 없다
-    markScript(ctx !== null)
+    markScript(ctx !== null || native !== null)
+    // 우리 글이 도는 중이면 그것이 먼저다. 원작 스크립트와 **같이 돌지 않는다**
+    if (native !== null && world !== null) { stepOurText(world); return }
     if (ctx !== null && world !== null) {
       // 스크립트가 도는 동안은 발이 묶인다. 입력 시스템 다음에 돌아야
       // 이 지우기가 이동 시스템보다 먼저다
@@ -506,6 +636,9 @@ export const scriptSystem = {
       step(ctx, world)
       return
     }
+    // ⚠️ **우리 사람이 원작 연출보다 먼저다** (SIWON.md §6). 복도의 `OnFrame`이
+    // 시작하면 그 안에는 못 끼어든다
+    if (trySiwonCameo()) return
     // 맵이 스스로 거는 것이 제일 먼저다 (`FieldInput_Process`)
     tryFrameTable()
     // ⚠️ **운하시티 체육관의 판이 좌표 트리거보다 먼저다** (`Field_ProcessStep`의
@@ -686,6 +819,9 @@ function tryTalk(): void {
 
   const npc = npcAt(mapWorld.mapId, reach.x, reach.z, vars)
   if (npc && npc.script !== NO_SCRIPT) {
+    // 우리가 얹은 사람은 롬 스크립트가 없다 (SIWON.md). 번호가 표시일 뿐이라
+    // `start()`에 넘기면 엉뚱한 자리를 밟는다
+    if (npc.script === SIWON_SCRIPT) { talkToSiwon(header.scripts); return }
     const id = npc.trainerType === TRAINER_TYPE_NO_TALK ? 0 : npc.script
     start(id, header.scripts, npc.localID)
     return

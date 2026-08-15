@@ -494,9 +494,9 @@ const LOOPING_ENTRIES_YES = 31
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_463
-const RUNNING_SITES = 54_400
+const RUNNING_SITES = 54_412
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 442
+const IMPLEMENTED_COMMANDS = 446
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -550,6 +550,9 @@ const IDLE_COMMANDS = [
   // 무리를 알려 주는 신오방송국 사람은 **무리가 열린 뒤**에만 그 말을 한다
   // (`EnableSwarms`가 먼저다). 훑기는 깨끗한 세이브로 도니 그 가지에 못 든다
   'GetSwarmMapAndSpecies',
+  // 재대결 대사 종류를 묻는 자리는 **기어의 재대결 목록 너머**다. 훑기는
+  // 깨끗한 세이브로 돌아서 재대결이 걸린 트레이너가 하나도 없다
+  'GetTrainerRematchMessageTypes',
   'SetTargetTrainerDefeated', 'GoToIfTargetTrainerDefeated',
   // ⚠️ **꿀 나무 셋은 가방에 꿀이 있어야 열린다.** 훑기의 가방은 비어 있어서
   // `CheckItem ITEM_HONEY`가 0을 주고, 그러면 「맨 나무」 대사로 끝난다 —

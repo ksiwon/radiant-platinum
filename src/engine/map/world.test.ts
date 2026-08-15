@@ -21,6 +21,7 @@ import {
 } from './world'
 import { worldState } from '../../state/worldState'
 import { resolveScript } from '../script/data'
+import { SIWON_SCRIPT } from '../world/siwonPlace'
 import type { ScriptFile } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 
@@ -280,6 +281,9 @@ maybe('워프 그래프', () => {
     let ok = 0, over = 0, silent = 0
     for (const m of world.maps!) {
       for (const npc of npcsOf(m.id)) {
+        // 우리가 얹은 사람은 롬 스크립트가 없다 (SIWON.md) — 그 번호는
+        // 진입점이 아니라 표시다. 세는 데서 뺀다
+        if (npc.script === SIWON_SCRIPT) continue
         if (npc.script === 0 || npc.script === NO_SCRIPT) { silent++; continue }
         const target = resolveScript(meta, npc.script, m.scripts)
         const file = target && meta.files[target.file]

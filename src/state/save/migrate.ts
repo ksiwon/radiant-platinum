@@ -350,6 +350,15 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 31,
     records: newGameRecords(),
   }),
+
+  // 시원의 배포 두 칸 (SIWON.md). 옛 리포트에는 시원이 없었으므로 0과 거짓이다 —
+  // 이미 잡은 것이 있어도 시원이 준 것은 아니다
+  31: (data) => ({
+    ...data,
+    version: 32,
+    siwonGiven: 0,
+    siwonMet: false,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

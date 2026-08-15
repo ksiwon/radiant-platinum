@@ -15,6 +15,7 @@ export const stubParty: NonNullable<FieldServices['party']> = {
   hasSpecies: () => false,
   aliveExcept: () => 0,
   give: () => false,
+  giveFateful: () => false,
   level: () => 0,
   nature: () => 0,
   friendship: () => 0,

@@ -35,6 +35,7 @@ import {
 } from '../../engine/world/hallOfFame'
 import { MAX_COINS } from '../../engine/world/coins'
 import { HIGH_LIMIT_U32, MAX_RECORDS } from '../../engine/world/gameRecordsTable'
+import { SIWON_GIFTS } from '../../engine/world/siwon'
 import { MAX_BATTLE_POINTS } from '../../engine/bag/frontierMart'
 import {
   HONEY_TREE_COUNT, SLATHER_MINUTES as HONEY_SLATHER_MINUTES,
@@ -611,6 +612,15 @@ export const saveSchema = z.object({
     nonUnique: z.array(int(0, 0xffffffff)).length(NON_UNIQUE_WORDS),
     unique: z.array(int(0, 0xffffffff)).length(UNIQUE_WORDS),
   }),
+  /**
+   * 시원이 여태 몇 개까지 줬는가 (SIWON.md §5).
+   *
+   * ⚠️ **여기가 세는 것은 「준 것」뿐이다.** 「썼는가」는 원작 플래그와 변수를
+   * 그때그때 읽어서 판정한다 — 두 벌로 세면 어긋난다
+   */
+  siwonGiven: int(0, SIWON_GIFTS.length),
+  /** 리그 복도에서 시원을 만났는가. 그 연출은 한 번만 돈다 */
+  siwonMet: z.boolean(),
 })
 
 /**

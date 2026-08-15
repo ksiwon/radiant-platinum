@@ -9,6 +9,7 @@
 import type { MapGrid } from './grid'
 import { worldState } from '../../state/worldState'
 import { pushDirection } from '../input/move'
+import { siwonNpcOf } from '../world/siwonPlace'
 
 export interface MapHeader {
   id: number
@@ -314,7 +315,12 @@ export function warpsOf(mapId: number): Warp[] {
 }
 
 export function npcsOf(mapId: number): Npc[] {
-  return eventsOf(mapId)?.npcs ?? []
+  const placed = eventsOf(mapId)?.npcs ?? []
+  // 배치표에 없는 사람 하나를 얹는다 (SIWON.md). 여기서 얹어야 **세우는 쪽과
+  // 말 거는 쪽이 같은 목록**을 본다 — 한쪽에만 넣으면 보이는데 말이 안 걸리거나
+  // 그 반대가 된다
+  const siwon = siwonNpcOf(mapId)
+  return siwon === null ? placed : [...placed, siwon]
 }
 
 /**

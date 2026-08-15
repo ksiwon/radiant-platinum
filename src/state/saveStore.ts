@@ -270,6 +270,15 @@ export interface SaveData {
    */
   fashionCase: FashionCase
   /**
+   * 시원이 여태 몇 개까지 줬는가 (SIWON.md §5).
+   *
+   * ⚠️ **원작에 없는 칸이다.** 이 저장소가 덧붙인 사람 하나가 쓰는 두 칸이고,
+   * 그 밖의 판정은 전부 원작 플래그와 변수를 읽는다
+   */
+  siwonGiven: number
+  /** 리그 복도에서 시원을 만났는가. 그 연출은 한 번만 돈다 */
+  siwonMet: boolean
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -331,7 +340,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 31
+export const SAVE_VERSION = 32
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -421,6 +430,8 @@ export function createNewSave(): SaveData {
     berryPatches: newBerryPatches(),
     safari: { ...newSafari(), caught: 0, tram: TRAM_START },
     fashionCase: newFashionCase(),
+    siwonGiven: 0,
+    siwonMet: false,
   }
 }
 
@@ -467,6 +478,10 @@ interface SaveStore extends SaveData {
    * 돌려주고 스크립트가 그 값으로 갈라진다 — 박스로 넘기지 않는다
    */
   addToParty: (mon: PokemonInstance) => void
+  /** 시원이 하나를 줬다 (SIWON.md §5). 세는 것은 「준 것」뿐이다 */
+  giveSiwonGift: () => void
+  /** 리그 복도에서 시원을 만났다. 그 연출은 한 번만 돈다 */
+  meetSiwon: () => void
   /**
    * 친밀도를 올린다. 0~255에서 멈춘다 (`MAX_FRIENDSHIP_VALUE`).
    *
@@ -659,6 +674,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     berryPatches: s.berryPatches,
     safari: s.safari,
     fashionCase: s.fashionCase,
+    siwonGiven: s.siwonGiven,
+    siwonMet: s.siwonMet,
   }
 }
 
@@ -776,6 +793,9 @@ export const useSaveStore = create<SaveStore>()(
       addToParty: (mon) => {
         set((st) => (st.party.length >= PARTY_MAX ? st : { party: [...st.party, mon] }))
       },
+
+      giveSiwonGift: () => { set((st) => ({ siwonGiven: st.siwonGiven + 1 })) },
+      meetSiwon: () => { set({ siwonMet: true }) },
 
       renameMon: (slot, nickname) => {
         set((st) => ({

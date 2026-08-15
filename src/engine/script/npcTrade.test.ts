@@ -146,6 +146,7 @@ const STUB_PARTY: NonNullable<FieldServices['party']> = {
   hasSpecies: () => false,
   aliveExcept: () => 0,
   give: () => false,
+  giveFateful: () => false,
   level: () => 20,
   nature: () => 0,
   friendship: () => 0,
