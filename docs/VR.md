@@ -1,0 +1,439 @@
+# VR로 볼 수 있는가 — 이식 검토
+
+**이것은 계획이 아니라 검토다.** 아무것도 정하지 않았고 코드도 한 줄 안 고쳤다.
+"하면 무엇이 드는가"를 재 둔 것이고, 나중에 하기로 하면 여기가 출발점이다.
+
+**수치의 출처를 갈라 적는다** — 이 문서에서 제일 중요한 규칙이다:
+
+| 표시 | 뜻 |
+|---|---|
+| 🟢 **확인** | 이 저장소나 `node_modules`의 코드를 실제로 읽고 확인했다. 줄 번호가 있다 |
+| 🟡 **실측** | [DEPLOY.md](DEPLOY.md)·[IMPORT.md](IMPORT.md)·[3D_GAP_AUDIT.md](3D_GAP_AUDIT.md)에 적힌 우리 실측값을 옮겼다 |
+| 🔴 **추정** | **우리가 짐작한 것이다.** 공수와 지연이 전부 여기다. 근거로 쓰지 않는다 |
+
+---
+
+## 1. 한 줄 판정
+
+**"걸어다니는 것"까지는 놀랄 만큼 가깝고, "게임을 하는 것"까지는 UI 전면
+재작성이다.** 다만 아래 §7의 경로에 따라 그 재작성이 필요 없어지기도 한다 —
+거기가 이 검토의 핵심이다.
+
+---
+
+## 2. 이미 되어 있어서 공짜로 얻는 것
+
+우연히 VR에 유리한 결정을 여러 개 내려 둔 상태다.
+
+| | 근거 |
+|---|---|
+| **1인칭이 이미 있다** | 🟢 [`engine/actor/camera.ts`](../src/engine/actor/camera.ts) — `EYE_HEIGHT 1.38`(25줄) · `EYE_FORWARD 0.12`(27) · `FIRST_DAMPING 12`(29). 시선 제한 `PITCH_LIMIT` 75°는 [`engine/input/mouse.ts:28`](../src/engine/input/mouse.ts#L28)에 따로 있다. 주석이 이미 "늦게 따라오면 멀미가 난다"로 튜닝 근거를 적고 있다 |
+| **월드가 미터 단위다** | 🟢 `PLAYER_HEIGHT = 1.5` ([`engine/model/normalize.ts:9`](../src/engine/model/normalize.ts#L9)), 1타일 = 1유닛. **VR에서 스케일 재조정이 필요 없다.** 이게 안 맞으면 난이도가 한 단계 올라간다 |
+| **카메라를 쓰는 곳이 한 군데** | 🟢 **전수 검사로 확인** — 카메라에 값을 쓰는 자리가 `src/` 전체에 [`scene/EngineDriver.tsx:138-141`](../src/scene/EngineDriver.tsx#L138-L141)의 **세 줄뿐이다** (`position.copy` · `up.copy` · `lookAt`). 나머지는 전부 읽기다. [`scene/battle/stageRefs.ts`](../src/scene/battle/stageRefs.ts)가 "누가 카메라를 갖는가"를 한 곳에 모으는 불변식을 이미 강제한다 → **리그 전환이 국소 수정으로 끝난다.** 이 검토에서 제일 큰 행운이다 |
+| **입력이 추상화돼 있다** | 🟢 `worldState.input.{move, run, interact, cancel}` 구조체 하나. [`engine/input/keyboard.ts`](../src/engine/input/keyboard.ts)가 30줄. 게임패드는 이 구조체를 채우는 모듈 하나 |
+| **이동이 격자 고정이 아니다** | 🟢 연속 이동 + 축별 충돌. 시선 기준 이동(`moveByYaw`)까지 이미 있다 |
+| **판때기 두께 작업이 진행 중** | 🟢 [`scene/cards.ts`](../src/scene/cards.ts)·[`scene/plates.ts`](../src/scene/plates.ts)·[`scene/roomWalls.ts`](../src/scene/roomWalls.ts). "1인칭으로 울타리를 따라 걸으면 담이 있다 없다 한다", "실내에는 앞벽이 없다" — VR에서 제일 먼저 터질 것을 이미 막고 있다 |
+| **영속 Canvas** | 🟢 [`scene/Stage.tsx`](../src/scene/Stage.tsx)가 라우트 트리 위에 있어 언마운트되지 않는다. 세션 중 컨텍스트가 안 날아간다 |
+
+---
+
+## 3. 확인한 걸림돌 — three와 R3F 쪽
+
+three는 **0.185.1**이다. 🟢
+
+### 3.1 R3F v9 + WebGPURenderer의 XR 루프가 안 맞물린다
+
+R3F는 세션 시작 시 `state.gl.xr.setAnimationLoop(...)`를 부른다
+(🟢 `@react-three/fiber/dist/events-156d8d12.esm.js:15852`).
+
+그런데 우리가 쓰는 `WebGPURenderer`(🟢 [`scene/Stage.tsx:70`](../src/scene/Stage.tsx#L70))의
+`renderer.xr`은 `three/src/renderers/common/XRManager.js`인데 **공개
+`setAnimationLoop`가 없다** — 내부에서 `renderer._animation.setAnimationLoop`만
+부른다 (🟢 `XRManager.js:1376`). 그 메서드를 가진 것은 WebGL 전용 레거시
+`WebXRManager`뿐이다 (🟢 `WebXRManager.js:1091`).
+
+⚠️ **WebGL 백엔드로 떨어져도 해결 안 된다.** `WebGPURenderer`는 백엔드와 무관하게
+공통 `XRManager`를 쓴다. `@react-three/xr`도 `WebGLRenderer` 전제라 그대로는 못 쓴다.
+
+→ 심(shim) 한 겹을 끼우거나 루프를 직접 몰아야 한다. **작지만 확실한 사전 작업이고,
+여기서 막히면 §7의 A안이 통째로 무의미하므로 제일 먼저 재야 한다.**
+
+### 3.2 포스트 체인이 XR에서 무력화된다
+
+[`scene/fx/post.ts`](../src/scene/fx/post.ts)의 깊이 윤곽 + 블룸은 TSL
+`RenderPipeline`이다. three 본체가 `RenderPipeline.render()` 안에서 **명시적으로
+`renderer.xr.enabled = false`를 걸고** 풀스크린 쿼드를 그린다
+(🟢 `RenderPipeline.js:137-142`). `pass(scene, camera)`도 모노로 한 번만 돈다.
+
+→ **WebXR 경로에서는 윤곽선(`EDGE_STRENGTH 0.45`)과 블룸을 끄고 시작해야 한다.**
+그 윤곽은 상자 지형의 절벽 단차를 읽히게 하려고 넣은 것이라 미술적으로 손해다.
+⚠️ **§7 B안(SBS)에서는 이 문제가 없다** — WebXR을 안 타므로 포스트가 그대로 산다.
+
+### 3.3 WebGPU XR은 멀티뷰가 없다
+
+🟢 `XRManager.js:797` — `WebGPU XR does not support multiview yet. Disabling
+multiview for this XR session.` 멀티뷰(`OVR_multiview2`)는 WebGL 백엔드에만 있다
+(🟢 `XRManager.js:1270`).
+
+→ WebGPU로 XR을 하면 드로우콜이 **두 배로 나간다.** 우리 무거운 자리가 340콜이니
+680콜이 된다. 🟡 그리고 WebGPU XR 세션은 `webgpu` 세션 기능을 요구한다
+(🟢 `XRManager.js:746`) — 브라우저 지원이 아직 좁다.
+
+⚠️ **이 하나 때문에 "VR은 WebGL 백엔드로"가 답일 수 있다.** 재 봐야 안다.
+
+### 3.4 반대로, SBS(좌우 분할)에 필요한 것은 다 있다
+
+| 필요한 것 | 확인 |
+|---|---|
+| 좌우 눈 카메라 | 🟢 `StereoCamera` 존재 (`Three.Core.js:67`) |
+| 한 번의 render로 두 뷰포트 | 🟢 `ArrayCamera`가 WebGPU 공통 렌더러에서 완전 지원 (`Renderer.js:949, 3458, 3480, 3500`) — **XR이 쓰는 바로 그 메커니즘** |
+| 뷰포트/시저 수동 제어 | 🟢 `setViewport`/`setScissor`/`setScissorTest` (`Renderer.js:2124-2178`) |
+| 배럴 왜곡 | 🟢 [`scene/fx/post.ts`](../src/scene/fx/post.ts)에 TSL 포스트 체인이 이미 있다. 방사 왜곡 + 색수차 보정 노드 하나 추가 |
+
+⚠️ 깊이 윤곽 커널이 화면 **중앙 이음매를 넘지 않게** 막아야 아티팩트가 안 생긴다.
+
+---
+
+## 4. 성능 예산
+
+🟡 [DEPLOY.md §5](DEPLOY.md) 실측 (2026-08-16, 960×640, ANGLE Intel Arc 140V D3D11,
+`WebGLBackend`, 68장면 전수):
+
+- **p95 16.7~16.8ms · 53~60fps · 한 자리도 예외 없음**
+- 무거운 자리: 들판시티 234.0k삼각형/156콜 · 떡잎마을 203.8k/190 ·
+  영원의 숲 200.9k/159 · 209번도로 나무열매 밭 199.6k/333 · VS시커 188.9k/340
+- ⚠️ **끊김(100ms 초과)이 아홉 자리에 한두 번씩 남는다**
+- ⚠️ **맵을 나가는 창의 p95가 3,833~3,883ms** (여섯 자리)
+
+VR 요구치와 대면 —
+
+| | 지금 | VR |
+|---|---|---|
+| 해상도 | 960×640 | 눈당 ~2000² |
+| 주사율 | 60 | 72~90 |
+| 뷰 | 1 | 2 (WebGPU면 멀티뷰 없이 2배 드로우콜) |
+
+🔴 픽셀 기준 5~10배, 드로우콜 2배. **그리고 4초 프리즈는 화면 게임에서는 로딩이지만
+헤드셋에서는 가드레일이 튀어나오는 사고다.** [`scene/warmPipelines.ts`](../src/scene/warmPipelines.ts)가
+셰이더 컴파일 스톨을 이미 다루고 있지만, VR 기준으로는 **전부** XR 프레임 루프
+밖으로 밀어내야 한다.
+
+**성능은 이 검토에서 제일 불확실한 칸이다.** 실측 없이 판단하지 않는다 — §10-0.
+
+### 4.1 아직 안 당긴 지렛대
+
+재기 전에 포기할 필요가 없다. 손댈 곳이 남아 있다:
+
+| 지렛대 | 지금 | 비고 |
+|---|---|---|
+| **포비에이션** | 안 씀 | 🟢 `XRManager.setFoveation(0~1)` (`XRManager.js:483`) — 가장자리를 낮은 해상도로 그린다. **A안(WebXR)에만 해당** |
+| 해상도 배율 | 🟢 `dpr={[1, 2]}` ([`scene/Stage.tsx:65`](../src/scene/Stage.tsx#L65)) | VR에서는 눈 버퍼 배율로 바로 환산된다 |
+| 그림자 | 🟢 `PCFSoftShadowMap` ([`scene/Stage.tsx:82-83`](../src/scene/Stage.tsx#L82-L83)) | 끄거나 낮추면 크게 준다. ⚠️ 다만 나무가 서 있어 보이는 근거가 그림자다 (`chunkMesh` 주석) |
+| 렌더 창 | 5×5청크(160타일) + 안개 | 이미 좁다. 더 좁히면 안개가 눈앞으로 온다 |
+| 백엔드 | WebGPU | §3.3에 비추면 **VR에서는 WebGL이 유리할 수 있다** (멀티뷰) |
+
+---
+
+## 5. UI가 전부 DOM이다 — 그리고 경로에 따라 문제가 아니다
+
+🟢 규모:
+
+```
+src/ui/**/*.tsx      11,330줄
+src/ui/**/*.css.ts    5,804줄
+메뉴 화면              26개 (MenuLayer.tsx의 switch)
+필드 오버레이           8개 (PlayRoute.tsx)
+keydown 리스너         12곳
+```
+
+[PLAN.md §2.5](PLAN.md)가 메뉴·대화·배틀 HUD를 DOM으로 정했고
+[3D_GAP_AUDIT.md](3D_GAP_AUDIT.md)가 그것을 "의도적 2D — 결함으로 안 센다"로
+판정한다. **그 설계 결정을 뒤집는 것이 WebXR 이식의 절반이다.**
+
+### 5.1 WebXR 경로에서는 — 전면 재작성
+
+`immersive-vr` 세션에서 **DOM 오버레이는 헤드셋에 합성되지 않는다.**
+(`dom-overlay` 기능은 `immersive-ar` 전용이다.) 대사창·가방·파티·도감·배틀 UI가
+전부 안 보인다. 17,000줄을 인월드 패널로 다시 지어야 한다.
+
+### 5.2 SBS 경로에서는 — **거의 공짜다**
+
+캔버스 위에 얹힌 DOM이 그대로 있다. 그리고 우리 UI는 **zustand를 읽는 표현
+컴포넌트**라 좌/우 절반에 두 벌 렌더해도 같은 그림이 나온다 — 스토어가 하나라
+상태가 안 갈린다.
+
+손볼 것은 `keydown` 리스너 12곳이 두 번 발화하지 않게 복제본 쪽을 죽이는 것.
+다행히 전부 [`ui/menu/useMenuKeys.ts`](../src/ui/menu/useMenuKeys.ts)의 `CODES`
+표를 통과한다.
+
+⚠️ 배럴 왜곡이 DOM에는 안 걸려서 UI만 안 휜다. 실용적으로는 넘어갈 만하다.
+
+🔴 **3~5일.** — 이 한 칸이 §7의 경로 선택을 거의 혼자 결정한다.
+
+---
+
+## 6. 설계를 다시 해야 하는 것 (코드가 아니라 게임 문법)
+
+| 자리 | 왜 |
+|---|---|
+| **배틀** | 🟢 [`scene/battle/stageRefs.ts`](../src/scene/battle/stageRefs.ts)가 카메라를 `STAGE_ORIGIN (0,-500,0)`으로 순간이동시키고 **화각을 30°로 바꾼다**. VR에서는 앱이 화각을 못 정한다 — 헤드셋이 투영행렬 주인이다. 카메라 컷 + 강제 이동은 멀미의 교과서다 |
+| **컷신 전부** | `CinematicStage`(fov 38) · `StarterStage`(fov 44, `STARTER_ORIGIN (0,500,0)`) · `IntroStage` · `HallOfFameStage` · `flyTransition` — 전부 카메라를 끌고 다닌다 |
+| **깨어진 세계** | 🟢 `surfaceQuaternion`이 벽/천장으로 뛸 때 **16프레임에 걸쳐 중력을 90°/180° 돌린다** (`FLIP_TIME = 16/60`). 앉은 사람의 세계를 통째로 굴리는 것 — VR에서 할 수 있는 가장 나쁜 짓이다. 페이드 컷 같은 편의 옵션이 필요 |
+| **이동 속도** | 🟢 `WALK_SPEED 4.5` · `RUN_SPEED 8` (m/s, [`engine/actor/player.ts:16-17`](../src/engine/actor/player.ts#L16-L17)). **8m/s는 시속 28.8km다.** 실제 걷기가 1.4m/s. 자전거는 더 빠르다. VR 속도 배율 옵션이 필요 |
+| **편의 기능 전무** | 스냅 턴 · 이동 시 비네트 · 높이 조절 · 리센터 — 지금 하나도 없다 |
+| **판때기 NPC** | 🟡 배치의 50.5%가 아직 2D 컷아웃 ([3D_GAP_AUDIT](3D_GAP_AUDIT.md), 사람 기준으로는 94.5%가 모델). 스테레오에서 1m 앞의 평면은 스티커로 보인다 |
+| **카메라 바라보기 쿼드** | 🟢 [`scene/InteractionPrompt.tsx:72`](../src/scene/InteractionPrompt.tsx#L72)가 `camera.quaternion`을 복사. `EmoteMarks`·`BerryPatchProps`·`NpcSprites`도 같은 계열. XR 카메라 기준으로 고쳐야 한다 |
+| **`PropFade`** | 🟢 [`scene/PropFade.tsx:139-143`](../src/scene/PropFade.tsx#L139-L143)이 `camera.position`에서 레이를 쏜다 → 리그 위치 기준으로 |
+| **공간 음향이 없다** | §6.1 — 별도로 적는다 |
+| **배틀 도트 폴백** | 🟢 [`scene/battle/BattleStage.tsx:280-285`](../src/scene/battle/BattleStage.tsx#L280-L285) — 3D 모델이 **우선**이고, 없으면 원작 80×80 도트 한 장으로 떨어진다 (`MON_TALL 1.2`m). 🟡 GLB가 557개라 폴백은 드물지만, 걸리면 **눈앞 1m에 종잇장**이 선다 |
+
+### 6.1 공간 음향이 전혀 없다
+
+🟢 **전수 검사로 확인** — `PannerNode`·`createPanner`·`PositionalAudio`·
+`AudioListener`가 `src/` 전체에 **0건**이다. 소리는
+[`engine/audio/music.ts:115`](../src/engine/audio/music.ts#L115)에서
+`master.connect(ctx.destination)`로 곧장 나간다. 평면 스테레오다.
+[`engine/audio/sfx.ts`](../src/engine/audio/sfx.ts)는 번호표(78줄)일 뿐 배치를 안 갖는다.
+
+원작이 DS 2채널이었으니 **화면 게임으로서는 결함이 아니다** — [3D_GAP_AUDIT](3D_GAP_AUDIT.md)의
+"의도적 2D"와 같은 성격이다. 하지만 VR에서는 다르다: 시야가 덮인 상태에서 모든
+소리가 머리 한가운데서 나면 **자기가 어디 있는지가 소리로는 전혀 안 잡힌다.**
+NPC·문·물·울음소리가 전부 그렇다.
+
+⚠️ **원작 충실도와 정면으로 부딪히는 첫 자리다.** 소리에 자리를 주는 것은
+"원작에 없는 것을 더하는" 일이라, [COPYRIGHT](COPYRIGHT.md)·[PARITY](PARITY.md)
+관점에서 **할지 말지가 먼저 결정되어야 한다.** 기술 문제가 아니다.
+🔴 하기로 하면 `PannerNode` 배선 자체는 크지 않아 보인다.
+
+---
+
+## 7. 경로 셋
+
+### A안 — 풀 WebXR (Quest 등 실제 헤드셋)
+
+| | |
+|---|---|
+| 필요 | 헤드셋 실물 |
+| 막는 것 | §3.1 R3F 루프 · §3.2 포스트 상실 · §3.3 멀티뷰 없음 · §5.1 UI 17k줄 · §6 전부 |
+| 얻는 것 | 6DoF 위치 추적. 제대로 된 VR |
+| 🔴 공수 | **4~7개월** (1인 기준 추정) |
+
+단계별 🔴 추정: 스파이크 1~3주 → 컨트롤러 1주 → UI 6~10주 → 배틀·컷신 4~8주 →
+성능 4주~상시.
+
+### B안 — SBS(좌우 분할) + 배럴 왜곡, 폰을 통에 넣어 본다
+
+| | |
+|---|---|
+| 필요 | 폰 + 카드보드류 통 (싸다) |
+| **피하는 것** | §3.1 (WebXR 안 씀) · §3.2 (포스트가 산다) · §5.1 (**UI 재작성 불필요**) |
+| 남는 것 | §6 전부 + 3DoF뿐(위치 추적 없음) + 발열 |
+| 🔴 공수 | **2~3주** |
+
+⚠️ **버려지는 작업이 아니다.** `ArrayCamera` + 눈별 뷰포트는 three의 XR이 쓰는
+것과 **동일한 메커니즘**이라, 나중에 A안으로 갈 때 그대로 쓴다. PC 모니터에서
+옵션 하나로 켜서 입체감을 확인할 수도 있다.
+
+### C안 — SBS를 만들어 두고 나중에 PC VR 헤드셋으로
+
+B안을 먼저 만들고, 헤드셋이 생기면 XR 경로만 갈아 끼운다. **지금 조건에서는
+이게 제일 합리적인 순서로 보인다.**
+
+---
+
+## 8. 화면을 폰에 어떻게 보내는가
+
+**이 절의 결론 한 줄: 픽셀과 자이로가 같은 기기에 있어야 한다.**
+
+### 8.1 ❌ 폰을 보조 모니터로 (픽셀을 보낸다)
+
+USB 디스플레이 앱 (SuperDisplay·Duet Display·spacedesk) 또는 무선 미러링.
+
+🔴 지연 추정: USB 20~60ms · 무선 100~300ms. 여기에 게임 프레임 16.7ms가 더해진다.
+
+⚠️ **선을 써도 안 고쳐지는 것:** 선은 픽셀을 폰으로 보내는 방향이지 **폰의
+센서를 PC로 가져오는 게 아니다.** 머리 추적이 없으면 고개를 돌릴 때 세상이 따라
+돈다 — 시야가 덮인 상태에서 이건 **평면 모니터보다 나쁘다.**
+
+자이로만 되돌려받는 컴패니언 페이지(WebSocket)를 붙일 수도 있지만, 왕복 지연이
+쌓여 오히려 최악이 된다. **머리 추적 지연은 화면 지연보다 훨씬 잔인하다.**
+
+→ **채택하지 않는다.**
+
+### 8.2 ✅ 폰이 게임을 직접 돌린다
+
+지연 0, 자이로는 바로 옆에 있다. 컨트롤러도 폰에 직접 블루투스로 붙인다.
+
+전달 경로 세 가지 —
+
+| 경로 | 상태 | 비고 |
+|---|---|---|
+| **USB 테더링 + `pnpm dev --host`** | ✅ | RNDIS/NCM으로 같은 서브넷. 🔴 대역폭 100~400Mbps |
+| **같은 와이파이 + `pnpm dev --host`** | ✅ | **USB가 필요 없다.** 초기 로딩만 조금 느림 |
+| **배포판 URL** | ✅ | **PC 자체가 필요 없다.** §8.4 참조 |
+
+🟢 **개발 서버에는 CSP가 안 걸린다** — [`vite.config.ts`](../vite.config.ts)의
+`cspMetaTag()`가 `apply: 'build'`다. 그리고 개발 서버는 `public/` 전체(이미 변환된
+에셋)를 그대로 준다.
+
+⚠️ 🟢 [`vite.config.ts`](../vite.config.ts)에 **`server` 항목이 아예 없다.**
+`--host` 플래그를 붙이거나 설정을 추가해야 폰에서 접속된다.
+
+### 8.3 폰 실행의 걸림돌
+
+1. ⚠️ **`DeviceOrientationEvent`는 보안 컨텍스트가 필요하다.** `http://192.168.x.x`는
+   secure context가 아니라 자이로가 막힌다.
+   - 폰 크롬 `chrome://flags/#unsafely-treat-insecure-origin-as-secure`에 등록 ← 개발용 최선
+   - 또는 `server.https` + 자체 서명 인증서
+   - **배포판(HTTPS)에서는 저절로 풀린다** — §8.4
+2. **안드로이드를 권한다.** iOS는 `DeviceOrientationEvent.requestPermission()`을
+   사용자 제스처 안에서 불러야 하고 테더링 구조도 다르다.
+3. **WebGPU**는 안드로이드 크롬 121+. 안 되면 `WebGPURenderer`가 WebGL2로
+   내려앉는다 (🟡 DEPLOY.md가 헤드리스에서 같은 폴백을 기록).
+   ⚠️ §3.3에 비추면 **VR에서는 WebGL 백엔드가 오히려 유리할 수 있다.**
+4. **성능과 발열은 안 풀린다.** 플라스틱 통 안에서 두 뷰를 렌더하면
+   🔴 10~15분 안에 스로틀링이 걸릴 것으로 본다.
+5. ⚠️ **"모바일은 범위 밖" 결정과 부딪힌다.** 다만 배포 대상을 늘리는 게 아니라
+   개발용 실험 경로라면 결정을 안 뒤집고도 해볼 수 있다.
+
+### 8.4 배포판과 와이파이 — 무엇이 되고 무엇이 막히는가
+
+🟡 배포 형태 ([IMPORT.md](IMPORT.md)):
+- 배포물은 **642.0MB → 11.9MB** (`copyPublicDir: false`). **롬 에셋이 한 바이트도 없다**
+- 사용자가 자기 롬을 넣으면 브라우저가 변환 → OPFS. 실측 **700.3MB를 6.5분** (데스크톱)
+
+| 하고 싶은 것 | 되나 | 근거 |
+|---|---|---|
+| 배포 후 폰에서 플레이 | ✅ | 배포 URL만 열면 된다. **PC 불필요.** HTTPS라 §8.3-1 자이로 문제도 공짜로 해결 |
+| 폰에서 롬 설치 | ⚠️ | 🟡 [IMPORT.md](IMPORT.md)가 이미 적어 둠 — *"모바일은 수 GB 폴더 선택, 변환 시간, 메모리, 발열 때문에 첫 공개 목표가 아니다"* |
+| **PC 에셋을 와이파이로 폰에** | ❌ | 아래 |
+| 개발 서버를 와이파이로 | ✅ | §8.2. 개발엔 CSP 없음 |
+| 세이브 기기 간 이동 | ✅ | 🟢 [`state/save/portable.ts`](../src/state/save/portable.ts)의 `.rpsave`. 상한 8MB, 실측 540마리 세이브가 200KB. **파일이라 네트워크가 아니다** |
+
+⚠️ **"PC가 변환해 둔 에셋을 LAN으로 폰에 준다"는 세 겹으로 막혀 있다:**
+
+1. 🟢 [`tools/distribution/csp.mjs`](../tools/distribution/csp.mjs)의
+   `connect-src 'self' blob:` — 그 파일이 직접 적고 있다:
+   *"⚠️ **여기가 무전송 경계다.** 바깥 오리진이 없으므로 사용자가 고른 롬 바이트가
+   나갈 곳이 없다"*
+2. 혼합 콘텐츠 — HTTPS 배포 페이지는 `http://192.168.x.x`를 못 부른다. CSP와 무관
+3. **그리고 이건 뚫으면 안 되는 벽이다.** `connect-src 'self'`는 성능 설정이 아니라
+   [COPYRIGHT.md](COPYRIGHT.md)의 근거다. VR 테스트 편하자고 낼 비용이 아니다
+
+→ 정 필요해지면 **파일 경로**가 있다 (OPFS 팩을 파일로 내보내 폰에서 불러오기).
+네트워크가 아니라 무전송 경계를 안 건드린다. 단 성능 결과가 나온 다음 이야기다.
+
+---
+
+## 9. 컨트롤러 (조이콘 · 프로콘)
+
+**코드 쪽은 싸다.** 🔴 3~5일.
+
+`inputSystem.fixedUpdate`에 게임패드 폴링을 넣고 왼스틱 → `input.move`,
+오른스틱 → `cam.yaw/pitch`(스냅 턴), ZR → run, A/B → interact/cancel.
+🟢 [`engine/input/keys.ts`](../src/engine/input/keys.ts)의 `BINDINGS` 표 옆에 표
+하나 더 놓는 수준이다. 메뉴는 게임패드 → 합성 `KeyboardEvent` 디스패처 하나로
+26개 화면이 한꺼번에 조작된다 (§5.2와 같은 이유).
+
+⚠️ 🟢 포인터 락([`engine/input/mouse.ts`](../src/engine/input/mouse.ts)의
+`requestLook`/`exitLook`, 휠 시점 전환)은 VR에서 우회해야 한다.
+
+**하드웨어 쪽이 복병이고, 어디서 도는지로 갈린다:**
+
+| 환경 | 프로콘 | 조이콘 |
+|---|---|---|
+| **PC (Chrome/Windows)** | ✅ Gamepad API. ⚠️ 닌텐도 A/B 배치가 Xbox와 반대라 리매핑 필요 | ⚠️ **두 개가 별개 장치로 잡히고 브라우저에 "L+R 합체 모드"가 없다** (그건 스위치 본체가 하는 일). 좌우 매핑 표를 따로 만들거나 드라이버 의존. 옆으로 눕히면 축이 90° 돈다 |
+| **안드로이드 폰** | ✅ 블루투스 페어링 후 크롬 Gamepad API | 🔴 각각 잡히나 매핑은 확인 필요 |
+| **Quest 브라우저 (몰입 세션 중)** | 🔴 **불확실.** 일반 BT 패드가 `navigator.getGamepads()`로 잡히는지 기기/버전마다 다름 | 🔴 같음 |
+
+⚠️ HD 진동은 어느 경로에서도 노출되지 않는다.
+
+→ **B안(폰 실행)이면 폰에 직접 페어링하는 것이 제일 깔끔하다.** A안(Quest)이면
+XR 컨트롤러(`XRInputSource.gamepad`) 경로를 따로 만드는 편이 안전하다.
+
+---
+
+## 10. 하기로 하면 이 순서
+
+### 0. **먼저 30분짜리 사전 확인** ← 다른 무엇보다 먼저
+
+```
+vite.config.ts에 server: { host: true } 추가
+폰에서 같은 와이파이로 접속
+지금 상태 그대로 fps 확인
+```
+
+**여기서 20fps가 나오면 SBS를 만들 이유가 없다.** §4가 이 검토에서 제일 불확실한
+칸이고, 이 확인이 그것을 반나절 만에 실측으로 바꾼다. 🟡 우리 문화가 "측정으로
+검증한다"인 이상 이게 첫 칸이다.
+
+### 그 다음
+
+1. **SBS + 배럴 왜곡 렌더 모드** — 🔴 2~3주.
+   [`scene/EngineDriver.tsx:138-153`](../src/scene/EngineDriver.tsx#L138-L153)의 렌더
+   구간에 `ArrayCamera` 갈래를 내고 옵션(`view: 2`)으로 켠다. 기존 3인칭/1인칭
+   경로를 안 건드리고 붙는다. 화각 55° → 90~100°로 확대 필요
+   (🟢 [`scene/Stage.tsx:67`](../src/scene/Stage.tsx#L67)).
+2. **DOM UI 두 벌 복제 + 리스너 억제** — 🔴 3~5일 (§5.2)
+3. **자이로 → `camera.yaw/pitch`** — 🔴 3~5일. 엔진이 이미 그 값을 받게 돼 있다
+4. **게임패드** — 🔴 3~5일 (§9)
+5. **폰 + 프로콘으로 실측** — 성능·발열의 진짜 답
+6. 헤드셋이 생기면 → §3.1 심을 끼우고 XR 경로로 (§7 C안)
+
+---
+
+## 11. 무엇을 건드리면 어느 시험이 깨지나
+
+[CODEMAP §3](CODEMAP.md)과 같은 자리다. VR 작업은 아래 경계를 반드시 밟는다.
+
+### ⚠️ 제일 조용한 함정 — 타이틀 화면에 VR 진입 버튼을 두면 안 된다
+
+🟢 [`app/initialChunk.test.ts`](../src/app/initialChunk.test.ts)가 `main.tsx`에서
+**정적으로 닿는 모든 파일**을 걸으며 `/^(three|@react-three|@pkmn|zod)/`를 막는다.
+XR 세션을 열려면 렌더러가 필요하고, 그것이 `three`를 초기 그래프로 끌어온다.
+
+**이 경계는 이미 한 번 깨진 적이 있다.** 시험 머리말이 그 사고를 적고 있다 —
+타이틀에 설정 화면을 붙이면서 `menuStore`를 잡았는데 그것이
+`input/keyboard` → `worldState` → three로 이어졌고,
+*"빌드는 통과하고 화면도 멀쩡하니 아무 데서도 안 걸린다."*
+
+→ **VR 진입은 `/play` 쪽에 둔다.** 타이틀에 두고 싶으면 `import.meta.env.DEV`
+안의 동적 import 수법을 써야 한다 (`App.tsx`의 `DevWarpHost`가 그 본보기다).
+
+### 그 밖의 경계
+
+| 건드리면 | 깨지는 것 | 비고 |
+|---|---|---|
+| `optionsStore`에 시점 값 추가 | `OptionsScreen` · 설정 시험 | 🟢 `ViewMode`가 지금 **0·1 두 값**이다 (`optionsStore.ts:22`), 기본값 `view: 0`(119줄). ✅ **설정은 localStorage라 `SAVE_VERSION`을 안 건드린다** — CODEMAP §2.2의 네 곳 절차가 필요 없다 |
+| 카메라를 리그로 바꾸기 | `pnpm story` 68장면 전부 | 배틀·컷신·파트너 무대가 같은 카메라를 쓴다 (§6) |
+| 포스트 체인 | `pnpm shot` 화면 | §3.2 |
+| 새 입력 모듈 | `initialChunk.test.ts` | `keys.ts`와 `keyboard.ts`를 나눠 둔 이유가 이 경계다. 게임패드도 **같은 편에 놓아야 한다** |
+
+⚠️ **XR 세션은 사용자 제스처 안에서만 열린다** (포인터 락과 같은 제약이라
+[`engine/input/mouse.ts`](../src/engine/input/mouse.ts)의 `requestLook`이 이미 같은
+모양을 하고 있다). 그리고 보안 컨텍스트(HTTPS)가 필요하다 — §8.3과 같은 조건이다.
+
+---
+
+## 12. 검증 수단이 없다
+
+⚠️ **이것을 가볍게 보면 안 된다.** 우리 안전망은 `pnpm story`(68장면 스윕)와
+`pnpm shot`인데 **둘 다 Playwright 헤드리스라 WebXR을 못 돈다.** 🟡 게다가
+헤드리스는 이미 WebGL2로 폴백 중이라 성능 수치도 대리값이다 (DEPLOY.md §5).
+
+→ VR 경로는 **회귀를 잡아 줄 하네스가 없는 상태로** 만들게 된다.
+
+⚠️ **다만 SBS(§7 B안)는 다르다.** WebXR을 안 타므로 `pnpm shot`으로 **찍을 수 있다** —
+좌우 분할 화면이 그냥 캔버스에 나온다. 이것도 B안을 먼저 하는 근거 하나다.
+
+---
+
+## 13. 안 하기로 본 것과 이유
+
+| 안 함 | 이유 |
+|---|---|
+| 폰을 USB/무선 보조 모니터로 | §8.1 — 머리 추적이 없고 지연이 겹친다. **선을 써도 안 고쳐진다** |
+| 자이로만 WebSocket으로 되돌려받기 | §8.1 — 왕복 지연이 쌓여 오히려 최악 |
+| LAN에서 에셋 서빙 | §8.4 — 무전송 경계. **뚫으면 안 되는 벽** |
+| `@react-three/xr` 도입 | §3.1 — `WebGLRenderer` 전제라 우리 렌더러에 안 맞는다 |
+| 폰용 WebXR (`immersive-vr`) | 구글이 Cardboard 지원을 접었고 안드로이드 크롬의 WebXR은 `immersive-ar`만 있다. 폰 VR은 표준 경로가 없어 SBS를 직접 짜야 한다 |
