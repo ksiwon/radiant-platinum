@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { resolve } from 'node:path'
 import { PUBLIC_SHELL, collectShell, unlistedShellFiles } from './appShell.mjs'
 import { SHELL_ART, missingArt, unlistedArt } from './shellArt.mjs'
-import { openBlockers } from './blockers.mjs'
+import { acceptedRisks, openBlockers } from './blockers.mjs'
 import {
   TRACKED_TABLES, bannedTablesPresent, missingTables, tablesLeakedInto, trackedContentLeaks,
   unlistedTables,
@@ -327,6 +327,10 @@ const scan = stage === 'post' || stage === 'both' ? checkPost() : null
 // 공개 배포를 막고 있는 것. 손으로 적은 목록이 아니라 각자 직접 잰다
 for (const b of openBlockers()) releaseBlockers.push(`${b.why} — ${b.state.detail} (${b.where})`)
 
+// 잰 사실은 남아 있는데 사람이 감수하기로 한 것. blocker에서는 빠지지만
+// **여기서는 매번 찍는다** — 조용히 사라지면 다음 사람은 없어진 줄 안다
+const accepted = acceptedRisks()
+
 for (const n of notes) console.log(`  · ${n}`)
 if (scan) console.log(`  · dist 파일 ${String(scan.files.length)}개 · ${mb(scan.bytes)}`)
 
@@ -334,7 +338,17 @@ if (scan) console.log(`  · dist 파일 ${String(scan.files.length)}개 · ${mb(
 if (stage === 'post' || stage === 'both') {
   mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
   writeFileSync(resolve(ROOT, '.audit/release-blockers.json'),
-    `${JSON.stringify({ blockers: releaseBlockers, violations: problems.length }, null, 1)}\n`)
+    `${JSON.stringify({ blockers: releaseBlockers, accepted, violations: problems.length }, null, 1)}\n`)
+}
+
+if (accepted.length > 0) {
+  console.log(`\n감수하기로 한 위험 ${String(accepted.length)}건 — 없어진 것이 아니다`)
+  for (const a of accepted) {
+    console.log(`  ▲ ${a.what} (${a.where})`)
+    // 이름에 조사를 붙이지 않는다 — 받침에 따라 은/는·이/가가 갈려서 틀린다
+    console.log(`      ${a.on} · ${a.by} · 근거: ${a.because}`)
+    console.log(`      알고 있는 것: ${a.knowing}`)
+  }
 }
 
 if (releaseBlockers.length > 0) {

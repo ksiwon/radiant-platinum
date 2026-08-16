@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { forbiddenIn } from './provenance.mjs'
-import { brandRisks } from './shellArt.mjs'
+import { ACCEPTED_BRAND_RISK, brandRisks } from './shellArt.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const read = (rel) => (existsSync(resolve(ROOT, rel)) ? readFileSync(resolve(ROOT, rel), 'utf8') : null)
@@ -40,11 +40,14 @@ export const BLOCKERS = [
     resolved() {
       // ⚠️ 바이트 검사가 절대 못 잡는 자리다 — 전부 우리가 그린 PNG라 출처
       // 검사도 매직바이트도 다 통과한다. 화면을 열어야 보인다 (tools/shot/title.mjs).
-      // 대장(`shellArt.mjs`)에 적힌 사실로 판정하고, 그림을 바꾸면 스스로 풀린다
+      // 대장(`shellArt.mjs`)에 적힌 사실로 판정하고, 그림을 바꾸면 목록이 빈다
       const risks = brandRisks()
-      return risks.length === 0
-        ? { ok: true }
-        : { ok: false, detail: risks.map((r) => `${r.path} (${r.why})`).join(' · ') }
+      if (risks.length === 0) return { ok: true }
+      // ⚠️ 사실은 그대로 있는데 **만든 사람이 알고 감수하기로 했다.** 바뀌는 것은
+      // 판정뿐이고 무엇을 안고 가는지는 `acceptedRisks()`가 공개 판정마다 찍는다 —
+      // 대장을 고쳐서 통과시키는 것과는 다른 자리다 (shellArt.mjs 주석)
+      if (ACCEPTED_BRAND_RISK !== null) return { ok: true }
+      return { ok: false, detail: risks.map((r) => `${r.path} (${r.why})`).join(' · ') }
     },
   },
   {
@@ -220,4 +223,25 @@ export function openBlockers() {
   return BLOCKERS
     .map((b) => ({ ...b, state: b.resolved() }))
     .filter((b) => !b.state.ok)
+}
+
+/**
+ * 잰 사실은 그대로인데 **사람이 감수하기로 한 것.**
+ *
+ * ⚠️ **blocker에서 빠져도 여기서는 안 빠진다.** 감수한 위험이 목록에서 조용히
+ * 사라지면 다음 사람은 그것이 없어진 줄 안다. 공개 판정마다 무엇을 안고 가는지
+ * 다시 읽게 한다 — 잊힌 결정은 결정이 아니다.
+ *
+ * 그림을 실제로 바꾸면 `brandRisks()`가 비고, 그때는 감수할 것도 없어 빈 배열이다
+ */
+export function acceptedRisks() {
+  if (ACCEPTED_BRAND_RISK === null) return []
+  const risks = brandRisks()
+  if (risks.length === 0) return []
+  return [{
+    id: 'brand-art',
+    where: 'COPYRIGHT.md §11',
+    what: risks.map((r) => `${r.path} (${r.why})`).join(' · '),
+    ...ACCEPTED_BRAND_RISK,
+  }]
 }
