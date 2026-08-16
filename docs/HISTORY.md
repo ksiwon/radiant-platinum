@@ -1,18 +1,27 @@
-# Git 히스토리 정리 계획
+# Git 히스토리 정리
 
-지금 나무에서 지운 것이 히스토리에는 그대로 있다. 이 문서는 **무엇을 지워야
-하는지, 어떻게 지우는지, 지운 뒤에 무엇을 확인하는지**를 적는다.
+나무에서 지운 것이 히스토리에는 그대로 남아 있었다. 이 문서는 **무엇을 지웠고,
+어떻게 지웠고, 지운 뒤에 무엇을 확인했는지**를 적는다.
 
-> ⚠️ **아직 아무것도 실행하지 않았다.** `git filter-repo`·rebase·ref 삭제·
-> reflog 만료·gc·force-push 중 어느 것도 돌리지 않았다. 이 문서는 계획이고,
-> 실행은 사용자가 별도 메시지에서 `HISTORY_REWRITE_APPROVED`라고 명시한 뒤에만
-> 한다. 승인이 없는 동안 `git-history` blocker는 열려 있다 (DEPLOY.md §1).
+> ✅ **2026-08-17에 실행했다.** 만든 사람이 승인했고, 그때 리모트가 하나도 없어서
+> `--force-push`도 협업자 조율도 필요 없었다 (§5 — 이 정리를 그때 한 이유다).
+>
+> | | 전 | 후 |
+> |---|---:|---:|
+> | 히스토리 블롭 | 6,371개 · 110.1MB | **3,785개 · 92.3MB** |
+> | 지워야 할 것 | 2,586개 · 17.8MB | **0** |
+> | pack | 10.06MB | **8.27MB** |
+> | 커밋 | 308 | **308** (빈 커밋이 안 생겼다) |
+>
+> 판정은 `pnpm audit:history`가 한다 — 경로 목록이 아니라 **블롭 3,785개를 다시
+> 전부 열어** 머리 바이트를 보고 "걸리는 종류 없음"을 냈다. 그 뒤 `git-history`
+> blocker는 스스로 빠졌다 (DEPLOY.md §1).
 
 숫자는 전부 `pnpm audit:history`의 실측이다. 다시 돌리면 갱신된다.
 
 ---
 
-## 1. 지워야 할 것
+## 1. 지웠던 것
 
 ### 경로로 찾은 것
 
@@ -55,18 +64,30 @@ blocker가 따로 다룬다 (COPYRIGHT.md §11). 히스토리 정리와 별개�
 
 ## 2. 백업과 복구
 
-**먼저 한다.** 다시 쓰기는 되돌릴 수 없고, 잘못되면 167개 커밋이 사라진다.
+**먼저 한다.** 다시 쓰기는 되돌릴 수 없고, 잘못되면 커밋 308개가 사라진다.
 
 ```sh
 # ① 번들 하나로 전부 (브랜치·태그·객체)
 git bundle create ../radiant-platinum-backup.bundle --all
 
-# ② 폴더째 한 벌 더. `.git`을 포함해야 한다
-cp -r radiant-platinum ../radiant-platinum-before-rewrite
+# ② `.git`을 한 벌 더
+cp -r .git ../radiant-platinum-git-before-rewrite
 
-# ③ 번들이 실제로 읽히는지 확인한다 — 안 열리는 백업은 백업이 아니다
+# ③ 둘 다 실제로 열리는지 확인한다 — 안 열리는 백업은 백업이 아니다
 git bundle verify ../radiant-platinum-backup.bundle
+git --git-dir=../radiant-platinum-git-before-rewrite rev-parse HEAD
 ```
+
+실측 (2026-08-17): 번들 12MB · `.git` 사본 41MB · 둘 다 `a89195d` · 커밋 308개.
+번들은 "완전한 히스토리"로 확인됐다.
+
+⚠️ **폴더째가 아니라 `.git`만 복사한다.** 지금 나무에는 `raw/roms`와
+`raw/AssetAssistant`가 있어 폴더째 뜨면 수 GB다. 추적되는 것은 전부 `.git`
+안에 있고, 밖에 있는 것(`raw`·`public/data`·`public/models`·`dist`)은 애초에
+ignore라 다시 쓰기가 건드리지 않는다.
+
+⚠️ **다시 쓰기 직전에 한 번 더 뜬다.** 처음 뜬 뒤에 커밋을 두 개 더 올렸는데,
+그대로 갔으면 백업이 최신 둘을 안 담고 있었다.
 
 복구:
 
@@ -88,15 +109,21 @@ git clone ../radiant-platinum-backup.bundle radiant-platinum-restored
 pip install git-filter-repo        # 또는 배포판 패키지
 
 git status --short                 # 깨끗해야 한다
-git worktree list                  # 지금 하나뿐인 것을 확인했다
+git worktree list                  # 하나뿐이어야 한다
 git stash list                     # 비어 있어야 한다
 
-git filter-repo \
+git filter-repo --force \
   --invert-paths \
   --path public/data \
   --path assets-manifest.json \
   --path src/data/textBanks.json
 ```
+
+⚠️ **`--force`가 필요하다.** filter-repo는 갓 클론한 나무에서만 그냥 돈다 —
+여기는 원래 있던 나무라 그 안전장치에 걸린다. 그래서 §2의 백업이 안전장치를
+대신하는 것이고, 백업 없이 이 깃발을 쓰면 안 된다.
+
+실측 (2026-08-17): 커밋 308개를 0.88초에 다시 쓰고 8.69초에 다시 묶었다.
 
 `--invert-paths`는 "이 경로들만 빼고 나머지를 남긴다"다. 한 번에 셋을 넘기는
 이유는 **패스마다 따로 돌리면 그때마다 모든 커밋 해시가 다시 바뀌기** 때문이다.
@@ -124,32 +151,42 @@ git filter-repo \
 # ① 브랜치와 태그
 git branch -a                      # master 하나
 git tag                            # 0개 (지금 태그가 없다)
-git log --oneline | wc -l          # 커밋 수. 빈 커밋이 지워져 167보다 줄 수 있다
+git rev-list --count HEAD          # 커밋 수. 빈 커밋이 지워져 308보다 줄 수 있다
 
 # ② 옛 객체가 ref에 안 붙어 있는지
 git for-each-ref --format='%(refname)'   # refs/heads/master 만 남아야 한다
 ls .git/refs/original 2>/dev/null        # filter-repo는 안 만든다. 있으면 지운다
+git count-objects -vH                    # 느슨한 객체(count)가 0이어야 한다
 
-# ③ reflog와 느슨한 객체를 실제로 버린다
-#    ⚠️ 이걸 안 하면 로컬에는 옛 블롭이 그대로 남는다
-git reflog expire --expire=now --all
-git gc --prune=now --aggressive
-
-# ④ 내용으로 다시 감사한다 — 경로만 보면 이름 바꾼 것을 놓친다
+# ③ 내용으로 다시 감사한다 — 경로만 보면 이름 바꾼 것을 놓친다
 pnpm audit:history                 # 대상 전부 ✓ · 내용 훑기에서 JSON표·PNG 0
 
-# ⑤ 배포 경계도 다시
+# ④ 배포 경계도 다시. 커밋 해시가 전부 바뀌었으니 buildId도 다시 잡는다
 pnpm build && pnpm release:check
 ```
 
-④가 **판정이다.** 스크립트가 블롭을 다시 전부 열어 머리 바이트를 보므로,
+③이 **판정이다.** 스크립트가 블롭을 다시 전부 열어 머리 바이트를 보므로,
 경로를 놓쳤거나 이름이 다른 사본이 남아 있으면 거기서 걸린다.
+
+실측 (2026-08-17): 브랜치 `master` 하나 · 태그 0 · 커밋 **308개 그대로**(빈 커밋이
+안 생겼다) · 느슨한 객체 0 · pack 10.06MB → **8.27MB** · 감사 **"지워야 할 것 없음"** ·
+남은 가장 큰 블롭은 우리가 그린 `intro.png`(2.3MB)와 `icon.png`(1.2MB)다.
+
+⚠️ **reflog 만료와 gc를 따로 안 돌렸다.** filter-repo가 다시 쓴 뒤 스스로
+`Repacking your repo and cleaning out old unneeded objects`를 하고, 그 결과가
+느슨한 객체 0으로 확인됐다. 다른 도구로 다시 썼다면 그때는 직접 돌려야 한다 —
+안 하면 로컬에 옛 블롭이 그대로 남는다.
+
+⚠️ **문서에 옛 커밋 해시를 적어 두지 않았던 것이 여기서 값을 했다.** 다시 쓰면
+해시가 전부 바뀌므로 그런 참조는 통째로 가리킬 곳을 잃는다. 실행 전에 추적 파일과
+커밋 메시지를 전수로 훑었고 **참조가 0건**이라 고칠 곳이 없었다.
 
 ---
 
 ## 5. 리모트와 협업자
 
-지금 **리모트가 하나도 없다.** 이것이 이 정리를 지금 하는 이유다.
+다시 쓸 때 **리모트가 하나도 없었다.** 이것이 이 정리를 그때 한 이유다 —
+`filter-repo`가 `origin`을 지우는 안전장치도 지울 것이 없어 그냥 지나갔다.
 
 - 한 번 push된 객체는 GitHub의 캐시와 남의 클론에 남는다. 나중에 지워도
   `https://github.com/<owner>/<repo>/commit/<옛해시>`로 한동안 열린다
