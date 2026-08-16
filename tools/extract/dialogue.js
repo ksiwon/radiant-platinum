@@ -18,7 +18,7 @@
 'use strict'
 const fs = require('fs')
 const path = require('path')
-const { writeJson, ROOT } = require('./rom')
+const { writeJson, ROOT, messageNarc } = require('./rom')
 const { parseNarc } = require('../spike/gen4text')
 const { loadCharmap, decodeBank, toString } = require('./message')
 const { readBankNames, alignByCount } = require('./dialogue-verify')
@@ -120,10 +120,9 @@ function bankMap(from, to, locale) {
   return exact
 }
 
-function decodeAll(extracted, charmap) {
-  const file = path.join(sources.requireDir('platinum.extracted'), extracted, 'pl_msg.narc')
-  if (!fs.existsSync(file)) throw new Error(`메시지 아카이브가 없다: ${file}`)
-  return parseNarc(fs.readFileSync(file)).map((bank) =>
+/** 그 지역판 롬의 뱅크를 통째로 푼다. 아카이브는 롬에서 바로 꺼낸다 */
+function decodeAll(locale, charmap) {
+  return parseNarc(messageNarc(locale)).map((bank) =>
     decodeBank(bank).map((codes) => toString(codes, charmap)))
 }
 
@@ -268,7 +267,7 @@ const EXTRA_BANKS = [
 function main() {
   const charmap = loadCharmap(CHARMAP)
   const names = readBankNames()
-  const en = decodeAll(ROMS.en.extracted, charmap)
+  const en = decodeAll('en', charmap)
   if (en.length !== names.length) {
     throw new Error(`뱅크 이름 ${names.length}개, 미국 롬 ${en.length}개 — 안 맞는다`)
   }
@@ -284,7 +283,7 @@ function main() {
 
   const written = {}
   for (const [locale, info] of Object.entries(ROMS)) {
-    const banks = locale === 'en' ? en : decodeAll(info.extracted, charmap)
+    const banks = locale === 'en' ? en : decodeAll(locale, charmap)
     const map = bankMap(en, banks, locale === 'en' ? 'us' : locale)
     let bytes = 0
     let missing = 0

@@ -26,6 +26,28 @@ const LOCALES = ['en', 'ko', 'ja']
 /** textBanks.json은 US 롬 기준이라 로케일 키가 us다 */
 const BANK_KEY = { en: 'us', ko: 'ko', ja: 'ja' }
 
+/** 메시지 아카이브가 롬 안에 놓인 자리. 세 지역판이 다 같다 (CPUE·CPUK·CPUJ) */
+const MSG_IN_ROM = '/msgdata/pl_msg.narc'
+
+/**
+ * 그 지역판 롬에서 메시지 아카이브를 **직접** 꺼낸다.
+ *
+ * ⚠️ **미리 풀어 둔 폴더에 기대지 않는다.** 여기와 `textbanks.js` ·
+ * `dialogue.js` 셋이 `raw/extracted/{us,ko,ja}/pl_msg.narc`를 읽고 있었는데,
+ * **그 폴더를 만드는 코드가 리포에 없었다** — 누가 한 번 손으로 풀어 둔 것이라
+ * 지우면 `pnpm extract`가 첫 단계에서 선다. 실제로 지우고 돌려서 확인했다.
+ * 롬 FAT에 그대로 들어 있으므로 꺼내 오면 되고, 그러면 사용자가 가진 것
+ * (롬 하나)만으로 파이프라인이 처음부터 돈다
+ */
+function fromRom(pathInRom, locale = 'en') {
+  const at = sources.requirePlatinumRom(locale)
+  const got = readRom(at).read(pathInRom)
+  if (got === null) throw new Error(`${locale} 롬에 ${pathInRom}이 없다: ${at}`)
+  return got
+}
+
+const messageNarc = (locale) => fromRom(MSG_IN_ROM, locale)
+
 function openRom(romPath = sources.requirePlatinumRom('en')) {
   if (!fs.existsSync(romPath)) throw new Error(`롬이 없다: ${romPath}`)
   const rom = readRom(romPath)
@@ -63,9 +85,9 @@ function overlay(rom, id) {
 }
 
 /**
- * 로케일별 메시지 뱅크 접근자.
- * raw/extracted/{us,ko,ja}/pl_msg.narc — 3개 롬에서 각각 뽑아둔 것이다.
- * 뱅크 인덱스 표는 `pnpm extract:textbanks`가 굽는다 (PLAN §4.2.1).
+ * 로케일별 메시지 뱅크 접근자. 아카이브는 세 롬에서 그때그때 꺼낸다
+ * (`messageNarc`). 뱅크 인덱스 표는 `pnpm extract:textbanks`가 굽는다
+ * (PLAN §4.2.1).
  *
  * ⚠️ **리포 안이 아니라 `raw/work/`다.** 한때 `src/data/textBanks.json`을
  * 추적했는데 그 표에 롬에서 읽은 키가 들어 있어서 빼냈고(COPYRIGHT.md §5),
@@ -80,11 +102,7 @@ function openText() {
   const banks = JSON.parse(fs.readFileSync(table, 'utf8'))
   const charmap = loadCharmap(path.join(ROOT, 'tools/spike/charmap.txt'))
   const narcs = {}
-  for (const loc of LOCALES) {
-    const p = path.join(sources.requireDir('platinum.extracted'), BANK_KEY[loc], 'pl_msg.narc')
-    if (!fs.existsSync(p)) throw new Error(`메시지 아카이브가 없다: ${p}`)
-    narcs[loc] = parseNarc(fs.readFileSync(p))
-  }
+  for (const loc of LOCALES) narcs[loc] = parseNarc(messageNarc(loc))
   return {
     /** @returns {string[]} 뱅크 전체를 문자열 배열로 */
     bank(name, locale) {
@@ -113,4 +131,4 @@ function writeJson(relPath, data) {
 }
 
 // 은 없어졌다 — 롬 자리는 어댑터가 헤더로 찾는다 ()
-module.exports = { openRom, openText, writeJson, ROOT, LOCALES, sources }
+module.exports = { openRom, openText, fromRom, messageNarc, writeJson, ROOT, LOCALES, sources }

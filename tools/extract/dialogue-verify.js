@@ -14,7 +14,7 @@
 'use strict'
 const fs = require('fs')
 const path = require('path')
-const { ROOT } = require('./rom')
+const { ROOT, messageNarc } = require('./rom')
 const { parseNarc } = require('../spike/gen4text')
 const { loadCharmap, decodeBank, toString } = require('./message')
 
@@ -31,10 +31,9 @@ function readBankNames() {
     .filter(Boolean)
 }
 
+/** 지역판 롬에서 바로 꺼낸다 — 미리 풀어 둔 폴더에 안 기댄다 (`rom.js`) */
 function openNarc(locale) {
-  const file = path.join(require('../raw/sources.cjs').requireDir('platinum.extracted'), locale, 'pl_msg.narc')
-  if (!fs.existsSync(file)) throw new Error(`메시지 아카이브가 없다: ${file}`)
-  return parseNarc(fs.readFileSync(file))
+  return parseNarc(messageNarc(locale === 'us' ? 'en' : locale))
 }
 
 /**

@@ -60,12 +60,8 @@ def tags_of(path):
     return sorted(found)
 
 
-def main():
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    from tools.raw.sources import require_dir
-    root = sys.argv[1] if len(sys.argv) > 1 else str(require_dir('bdsp.characters') / 'persons/field')
-    out = sys.argv[2] if len(sys.argv) > 2 else 'raw/work/fcTags.json'
-
+def scan(root):
+    """폴더 하나를 훑어 `{번들 이름: 이름표들}`을 만든다."""
     table = {}
     for name in sorted(os.listdir(root)):
         path = os.path.join(root, name)
@@ -76,22 +72,39 @@ def main():
             print(f'  {name}: 못 열었다')
             continue
         table[name] = tags
+    return table
 
-    named = {b: t for b, t in table.items() if t}
-    vocab = sorted({t for ts in named.values() for t in ts})
-    counts = collections.Counter(t for ts in named.values() for t in ts)
 
-    json.dump(
-        {'bundles': table, 'vocabulary': vocab},
-        open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1,
-    )
-    print(f'번들 {len(table)} · 이름표가 붙은 것 {len(named)} · 낱말 {len(vocab)}')
-    blank = [b for b, t in table.items() if not t]
-    if blank:
-        print(f'이름표가 없는 번들 {len(blank)}: {blank}')
-    # 한 낱말이 번들 여럿에 걸리면 옷 갈아입은 같은 사람이다 (fc0001_00 ~ _22)
-    many = [(t, n) for t, n in counts.most_common() if n > 1]
-    print(f'번들 여럿에 걸친 낱말 {len(many)}: {many[:10]}')
+def main():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from tools.raw.sources import require_dir
+    persons = Path(sys.argv[1]) if len(sys.argv) > 1 else require_dir('bdsp.characters') / 'persons'
+    out = sys.argv[2] if len(sys.argv) > 2 else 'public/data/bdspNpc.json'
+
+    # ⚠️ **두 뭉치를 따로 센다 — 등신(battle)과 치비(field).** 한동안 여기가
+    # `persons/field` 한 벌만 훑어 `{bundles, vocabulary}`를 뱉었는데, 읽는 쪽
+    # (`engine/actor/npcModels`의 `NpcModelTable`)은 그 사이에 두 벌로 갈렸다.
+    # 그래서 이 스크립트가 만든 파일로는 `npcModels`가 `table.field`에서 죽는다 —
+    # 개발 산출물을 다 지우고 다시 구워 보고서야 드러난 자리다. 규칙은 한 벌이고
+    # (`import/bdsp/convert.ts`의 `scanPersons`와 같은 모양) 재료만 각자 만든다
+    out_table = {}
+    for build in ('battle', 'field'):
+        bundles = scan(str(persons / build))
+        named = {b: t for b, t in bundles.items() if t}
+        vocab = sorted({t for ts in named.values() for t in ts})
+        counts = collections.Counter(t for ts in named.values() for t in ts)
+        out_table[build] = {'bundles': bundles, 'vocabulary': vocab}
+
+        print(f'{build}: 번들 {len(bundles)} · 이름표가 붙은 것 {len(named)} · 낱말 {len(vocab)}')
+        blank = [b for b, t in bundles.items() if not t]
+        if blank:
+            print(f'  이름표가 없는 번들 {len(blank)}: {blank}')
+        # 한 낱말이 번들 여럿에 걸리면 옷 갈아입은 같은 사람이다 (fc0001_00 ~ _22)
+        many = [(t, n) for t, n in counts.most_common() if n > 1]
+        print(f'  번들 여럿에 걸친 낱말 {len(many)}: {many[:10]}')
+
+    json.dump(out_table, open(out, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    print(f'→ {out}')
 
 
 if __name__ == '__main__':

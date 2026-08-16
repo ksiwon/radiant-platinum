@@ -17,9 +17,11 @@
 const fs = require('fs')
 const path = require('path')
 const { parseNarc } = require('../spike/gen4text')
-const { ROOT } = require('./rom')
+const { ROOT, messageNarc } = require('./rom')
 
 const LOCALES = ['us', 'ko', 'ja']
+/** 이 표의 로케일 키 → 롬을 찾는 키. 미국판만 이름이 다르다 */
+const ROM_LOCALE = { us: 'en', ko: 'ko', ja: 'ja' }
 // 자리는 어댑터가 정한다 (`tools/raw/sources`) — raw를 정리해도 여기가 안 바뀐다
 const DECOMP = require('../raw/sources.cjs').requireDir('references.decomp')
 
@@ -93,11 +95,9 @@ function decompKeys() {
 
 function main() {
   const narcs = {}
-  for (const loc of LOCALES) {
-    const p = path.join(require('../raw/sources.cjs').requireDir('platinum.extracted'), loc, 'pl_msg.narc')
-    if (!fs.existsSync(p)) throw new Error(`메시지 아카이브가 없다: ${p}`)
-    narcs[loc] = parseNarc(fs.readFileSync(p))
-  }
+  // 아카이브는 지역판 롬에서 그때그때 꺼낸다 — 미리 풀어 둔 폴더에 안 기댄다
+  // (`rom.js`의 `messageNarc`에 왜인지 적어 두었다)
+  for (const loc of LOCALES) narcs[loc] = parseNarc(messageNarc(ROM_LOCALE[loc]))
 
   const order = fs.readFileSync(path.join(DECOMP, 'generated/text_banks.txt'), 'utf8')
     .split('\n').map((s) => s.trim()).filter(Boolean)

@@ -173,12 +173,18 @@ export const GROUPS = [
   },
   {
     name: 'bdspNpcTable',
-    make: 'py -3.13 tools/extract/bdspNpc.py <persons/field> public/data/bdspNpc.json',
+    // 인자 없이 돌면 `persons/`의 두 뭉치를 다 훑어 제자리에 쓴다
+    make: 'py -3.13 tools/extract/bdspNpc.py',
     match: oneOf('data/bdspNpc.json'),
   },
   {
     name: 'player',
-    make: 'py -3.13 tools/extract/dawn_to_glb.py',
+    // ⚠️ **`py`로 못 돌린다.** 이 스크립트는 `bpy`를 쓰므로 Blender 안에서
+    // 돈다 (Collada 임포트가 5.0에서 빠져 4.2 LTS여야 한다). 여기에 `py -3.13`
+    // 이라고 적혀 있어서 그대로 따라 하면 `ModuleNotFoundError: bpy`가 난다 —
+    // 산출물을 다 지우고 다시 굽다가 드러났다. 공개 경로는 이 스크립트를
+    // 안 쓴다: 브라우저가 BDSP 덤프에서 바로 굽는다 (`import/bdsp/convert.ts`)
+    make: 'blender -b --factory-startup --python tools/extract/dawn_to_glb.py',
     match: oneOf('models/dawn.glb'),
   },
   {

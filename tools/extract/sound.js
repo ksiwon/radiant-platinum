@@ -14,19 +14,18 @@
 'use strict'
 const fs = require('fs')
 const path = require('path')
-const { writeJson, ROOT } = require('./rom')
+const { writeJson, ROOT, fromRom } = require('./rom')
 
-// 자리는 어댑터가 정한다 (`tools/raw/sources`) — 폴더를 옮겨도 여기가 안 바뀐다
-const SDAT = path.join(
-  require('../raw/sources.cjs').requireDir('platinum.extracted'), 'us/pl_sound_data.sdat')
+// 소리 아카이브가 롬 안에 놓인 자리. 미리 풀어 둔 폴더에 안 기댄다 —
+// 그 폴더를 만드는 코드가 리포에 없어서, 지우면 여기서 섰다 (`rom.js`의 `fromRom`)
+const SDAT_IN_ROM = '/data/sound/pl_sound_data.sdat'
 const OUT_DIR = path.join(ROOT, 'public/data/sound')
 /** SSEQ 헤더 뒤 악보가 시작하는 자리. 트랙 오프셋의 기준점이다 */
 const SEQ_BASE = 0x1c // `sseq.ts`의 `SEQ_BASE`와 같은 값이다
 
 // ── SDAT 껍데기 ──────────────────────────────────────────────────────────────
 
-function openSdat(file) {
-  const buf = fs.readFileSync(file)
+function openSdat(buf) {
   if (buf.toString('latin1', 0, 4) !== 'SDAT') throw new Error('SDAT가 아니다')
   const blocks = {}
   for (let i = 0; i < 4; i++) {
@@ -150,8 +149,7 @@ function walkSeq(data) {
 }
 
 function main() {
-  if (!fs.existsSync(SDAT)) throw new Error(`SDAT가 없다: ${SDAT}`)
-  const sdat = openSdat(SDAT)
+  const sdat = openSdat(fromRom(SDAT_IN_ROM))
   const seqs = sdat.records(0)
 
   // ── 전곡 확인 ──
@@ -172,7 +170,11 @@ function main() {
   console.log(`곡 ${songs} · 푼 명령 ${commands.toLocaleString()} · 음표 ${notes.toLocaleString()}`)
   console.log(`  모르는 명령 ${unknown.size}종 · 세기 127 넘는 음표 ${loud} · 템포 ${tempoLo}~${tempoHi}`)
   if (unknown.size > 0) {
-    console.log('  ' + [...unknown].map(([op, n]) => `0x${op.toString(16)}×${n}`).join(' '))
+    // ⚠️ `op`가 undefined일 수 있다 — 트랙 시작이 NaN이면 `data[NaN]`이 그것이다.
+    // 여기서 죽으면 무엇이 걸렸는지 못 보고 끝난다
+    console.log('  ' + [...unknown]
+      .map(([op, n]) => `${op === undefined ? '없는 자리' : `0x${op.toString(16)}`}×${n}`)
+      .join(' '))
   }
 
   // ── 웹이 받을 것 ──
