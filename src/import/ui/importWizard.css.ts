@@ -21,7 +21,10 @@ export const wrap = style({
  *
  * ⚠️ **이 그림은 앱 셸이라 설치 전에도 있다** (`tools/distribution/appShell.mjs`).
  * `/data`·`/models`가 아니므로 「미설치에서 콘텐츠 요청 0건」(e2e ①)도 그대로다.
- * 글이 얹히는 자리라 원래 타이틀보다 훨씬 어둡게 깐다
+ *
+ * ⚠️ **글을 위해 그림을 더 죽이지 않는다.** 읽히게 하는 일은 `sheet`의 판이
+ * 맡는다. 여기서 더 어둡게 깔면 판 바깥까지 같이 어두워져 그림을 넣은 뜻이
+ * 없어진다 — 판이 덮지 않는 가장자리에서만 보이면 된다
  */
 export const sky = style({
   position: 'fixed',
@@ -32,8 +35,8 @@ export const sky = style({
   backgroundRepeat: 'no-repeat',
   backgroundSize: 'cover',
   backgroundImage: [
-    'linear-gradient(180deg, rgba(7, 12, 22, 0.86) 0%, rgba(7, 12, 22, 0.93) 55%,'
-    + ' rgba(5, 8, 15, 0.97) 100%)',
+    'linear-gradient(180deg, rgba(7, 12, 22, 0.58) 0%, rgba(7, 12, 22, 0.70) 55%,'
+    + ' rgba(5, 8, 15, 0.86) 100%)',
     "url('/assets/radiant-platinum-intro.png')",
   ].join(', '),
 })
@@ -107,15 +110,32 @@ export const disclaimer = style({
   margin: 0,
   fontSize: 11.5,
   lineHeight: 1.7,
-  opacity: 0.74,
+  // 흐리게 두지 않는다 — 이건 **보여야 하는** 고지다 (COPYRIGHT.md §11)
+  opacity: 0.85,
 })
 
+/**
+ * 글이 얹히는 판.
+ *
+ * ⚠️ **판이 없으면 못 읽는다.** 한동안 배경 그림 위에 글을 그대로 올렸는데,
+ * 상자를 두른 것(준비물·배너)만 읽히고 상자 없는 긴 문단과 맨 위 고지가
+ * 워드마크의 밝은 금속 부분과 겹쳐 사라졌다 — 실제 배포에서 눈으로 확인했다.
+ * 그림을 더 어둡게 덮는 길도 있지만 그러면 그림이 없는 것과 같아진다.
+ * **글에는 판을 주고 그림은 판 바깥에서 보이게** 한다
+ */
 export const sheet = style({
+  position: 'relative',
   maxWidth: 760,
   margin: '0 auto',
   display: 'flex',
   flexDirection: 'column',
   gap: 18,
+  padding: 'clamp(18px, 3vh, 30px) clamp(16px, 3vw, 30px)',
+  borderRadius: 16,
+  border: '1px solid rgba(255, 255, 255, 0.10)',
+  background: 'rgba(6, 10, 18, 0.90)',
+  backdropFilter: 'blur(10px)',
+  boxShadow: '0 24px 64px rgba(0, 0, 0, 0.55)',
 })
 
 export const title = style({

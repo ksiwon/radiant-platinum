@@ -12,13 +12,13 @@
 //
 // ⚠️ **이 서버는 배포가 아니다.** 여기서 CSP 헤더가 붙는다고 실제 호스트에서
 // 붙는 것이 아니다 — release blocker 2번은 이걸로 안 풀린다 (DEPLOY.md §3).
-import { spawn } from 'node:child_process'
 import { createServer as netServer } from 'node:net'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
+import { startVite } from '../devServer.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
 import { driveStory, playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
@@ -222,11 +222,27 @@ async function withDev(fn) {
   // 그 자리를 잡고 있어서 `--strictPort`가 exit 1로 죽었고, 그 예외가
   // 하네스 전체를 끌어내렸다 — 검사 셋이 아니라 **스무 개가 통째로** 안 돌았다
   const port = await freePort()
-  const spawnDev = () => spawn('npx.cmd', ['vite', '--port', String(port), '--strictPort'],
-    { cwd: ROOT, shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
-  const proc = spawnDev()
-  const at = `http://localhost:${String(port)}`
-  let live = proc
+  /**
+   * ⚠️ **공용 `startVite`를 쓴다.** 여기에 `spawn('npx.cmd', …, { shell: true })`을
+   * 따로 두고 있었는데, 그러면 `kill()`이 셸만 죽이고 **손자 vite가 남는다** —
+   * `devServer.mjs` 머리말이 경고해 둔 바로 그 자리다.
+   *
+   * ⚠️ **실측으로 잡았다.** e2e를 돌릴 때마다 개발 서버가 하나씩 새고 있었다.
+   * 유령 셋이 각각 1코어 넘게 먹은 채로 다음 실행이 돌았고(8코어에서 부하 99%),
+   * **그 위에서 잰 값이 기준선 행세를 하고 있었다.** 하네스가 스스로 재는 것을
+   * 방해하는 자리라, 숫자가 아니라 이걸 먼저 고쳐야 했다.
+   *
+   * 뜰 때까지 기다리는 일도 그쪽이 한다 — 여기 있던 `ready()`가 하던 것이고,
+   * 그쪽은 실측으로 정한 10분을 기다린다 (3분에서 끊었더니 로그에는
+   * `ready in 46s`가 찍혀 있었다)
+   */
+  let vite = null
+  try {
+    vite = await startVite(port)
+  } catch (e) {
+    throw new DevServerDown(String(e.message ?? e))
+  }
+  const at = vite.url
   /**
    * 지금 살아 있는가. 죽었으면 다시 띄운다.
    *
@@ -234,20 +250,17 @@ async function withDev(fn) {
    * 그건 앱이 아니라 하네스의 실패다. 실제로 ⑫와 ⑬ 사이에서 한 번 죽었다
    */
   const ensure = async () => {
-    if (live.exitCode === null) return
-    live = spawnDev()
-    await ready(live, at)
+    if (vite.child.exitCode === null) return
+    vite = await startVite(port)
   }
   try {
-    await ready(proc, at)
     await fn(at, ensure)
   } catch (e) {
     // ⚠️ **하네스의 실패가 앱의 실패를 가리면 안 되고, 나머지를 멈춰서도 안 된다.**
     // 개발 서버가 안 뜨는 것은 이 셋을 못 쟀다는 뜻이지 앱이 틀렸다는 뜻이 아니다
     throw new DevServerDown(String(e.message ?? e))
   } finally {
-    live.kill()
-    if (live !== proc) proc.kill()
+    vite.child.kill()
   }
 }
 
@@ -263,33 +276,9 @@ function freePort() {
   })
 }
 
-/**
- * 개발 서버가 **실제로 요청을 받을 때까지** 기다린다.
- *
- * ⚠️ **"ready in"은 준비됐다는 뜻이 아니다.** 그 뒤에 의존성 미리 묶기가
- * 시작되고 그동안 첫 요청이 몇 분씩 붙들린다 — 처음엔 그 시간이 ⑫의
- * navigation timeout으로 잡혔다. 재려던 것과 상관없는 실패다.
- *
- * ⚠️ **그리고 죽을 수 있다.** 진짜 롬 설치를 셋 돌린 뒤라 메모리가 눌려 있고,
- * 실제로 ⑫와 ⑬ 사이에서 한 번 죽어 `ERR_CONNECTION_RESET`이 났다. 그것도
- * 앱의 실패가 아니다 — 살아 있는지 보고, 죽었으면 그렇게 말한다
- */
-async function ready(proc, at) {
-  await new Promise((done) => {
-    proc.stdout.on('data', (b) => { if (String(b).includes('ready in')) done() })
-    setTimeout(done, 60_000)
-  })
-  const until = Date.now() + 300_000
-  for (;;) {
-    if (proc.exitCode !== null) throw new Error(`개발 서버가 죽었다 (exit ${String(proc.exitCode)})`)
-    try {
-      const got = await fetch(`${at}/`, { signal: AbortSignal.timeout(20_000) })
-      if (got.ok) { await got.text(); return }
-    } catch { /* 아직 안 떴거나 미리 묶는 중 */ }
-    if (Date.now() > until) throw new Error('개발 서버가 300초 안에 응답하지 않았다')
-    await new Promise((r) => setTimeout(r, 1_000))
-  }
-}
+// 개발 서버가 실제로 요청을 받을 때까지 기다리는 일은 `devServer.mjs`의
+// `startVite`가 한다 — 여기 같은 것이 한 벌 더 있었고, 그 사본이 셸을 끼워
+// 띄우는 바람에 vite가 안 죽고 샜다 (`withDev` 주석)
 
 /** 원본 유래 나무를 부른 요청 */
 const contentRequests = (requests) =>
