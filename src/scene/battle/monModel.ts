@@ -29,6 +29,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { assets, onProviderSwap, readJson } from '../../data/providers/assetProvider'
+import { unifySkeletons } from '../unifySkeleton'
 
 /** 한 종의 모델 정보 */
 export interface MonEntry {
@@ -200,6 +201,10 @@ export function loadMonModel(
         const url = await provider.objectUrl(path)
         try {
           const gltf = await loader.loadAsync(url)
+          // ⚠️ **복제 전에, 갈래마다 한 번.** 조각마다 뼈 수가 다르면 그 수만큼
+          // 셰이더가 갈린다 (`scene/unifySkeleton`). 이 장면은 `cache`가 들고
+          // 여럿이 복제해 쓰므로 여기가 「복제 전」의 자리다
+          unifySkeletons(gltf.scene)
           const shiny = appearance.shiny && !exactEntry ? variants.shiny[resolvedKey] : undefined
           const maps = shiny ? await loadMaps(shiny.textures) : undefined
           return { scene: gltf.scene, clips: gltf.animations, entry, maps }

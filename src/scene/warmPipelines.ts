@@ -45,12 +45,22 @@
 // 있었다. 그래서 훑기를 버리고, 모델이 **씬에 붙기 전** — 아직 아무도 그릴 수
 // 없는 그 순간 — 에 굽는다. 숨길 필요도, 시한을 걸 필요도 없다.
 //
-// ⚠️ **지형·소품까지 넓히려다 또 물렸다.** 화면 밖의 것은 진짜 렌더가 안 굽는
-// 자리라(`!frustumCulled || frustum.intersectsObject`) 숨기지 않고도 미리 구울
-// 수 있다 — 잘라내기를 동기 구간에서만 껐다 되돌리면 된다. 이치는 맞는데
-// **값이 나빠졌다**: 209번도로에서 걷는 창 p95가 2,633ms → 4,166ms, 붙기가
-// 6.0초 → 10.6초. 미리 굽는 일이 렌더와 드라이버를 놓고 다툰다. 그래서 넓히지
-// 않고 **모델만** 굽는다.
+// ⚠️ **후처리를 켜 두는 한 미리 굽기가 진짜 렌더와 겹치지 못한다.** 세상은
+// 화면에 바로 안 그려진다 — `pass(scene, camera)`가 만든 `PassNode`가 제 타깃에
+// 그리고 윤곽·블룸이 그것을 받아 올린다 (`fx/post`). 그런데 렌더 컨텍스트 열쇠는
+// `attachmentState-mrt-**callDepth**`이고 (`RenderContexts.get`), 그 `context.id`가
+// 파이프라인 열쇠에 들어간다 (`RenderObject.getMaterialCacheKey`).
+//
+//     진짜 렌더: `RenderPipeline` → 쿼드 render(깊이 0) → PassNode → **세상 render(깊이 1)**
+//     compileAsync: `_renderContexts.get(renderTarget, mrt)` — **깊이는 늘 0**
+//
+// 그래서 렌더 타깃을 억지로 맞춰도 안 겹친다. 실측 A/B(209번도로 포켓치):
+// 타깃을 씌운 것 **48개 1,255ms**, 안 씌운 것 **51개 1,304ms** — 실행 편차 안이라
+// **아무 값도 안 움직였다.** 밖에서 `callDepth`를 줄 길이 없으므로 여기서는
+// 안 건드린다. 위의 「훑어서 굽기」가 되레 나빠졌던 것도 같은 자리다.
+//
+// 굽는 양 자체를 줄이는 쪽이 실제로 들었다 — 조각마다 갈리던 뼈 개수를 하나로
+// 묶어서(`unifySkeleton`) 209번도로 링크가 **5,817ms → 1,255ms**가 됐다.
 import type { Camera, Object3D, Scene } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 

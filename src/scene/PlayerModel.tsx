@@ -14,6 +14,7 @@ import { useAssetUrl } from '../data/providers/useAssetUrl'
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
 import { useSaveStore } from '../state/saveStore'
 import { playerModelPath } from './playerModelPath'
+import { unifySkeletons } from './unifySkeleton'
 const ALT_OUTFIT = ['hair2', 'shoes2']
 
 export function PlayerModel() {
@@ -26,6 +27,10 @@ export function PlayerModel() {
   const gltf = useLoader(GLTFLoader, useAssetUrl(modelPath))
 
   useEffect(() => {
+    // ⚠️ **조각마다 뼈 수가 다르면 그 수만큼 셰이더가 갈린다** (`unifySkeleton`).
+    // 주인공은 조각 열하나에 스킨 여섯이라 혼자서 프로그램을 여섯 개 쓴다.
+    // 여기 씬은 `useLoader`가 캐시해 세션 내내 하나뿐이라 두 번 걸릴 일이 없다
+    unifySkeletons(gltf.scene)
     gltf.scene.traverse((o) => {
       if (ALT_OUTFIT.some((n) => o.name.includes(n))) o.visible = false
       const mesh = o as Mesh

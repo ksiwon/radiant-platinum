@@ -30,6 +30,7 @@ import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
 import { addWhenWarm } from './warmPipelines'
+import { unifySkeletons } from './unifySkeleton'
 import { assets, onProviderSwap } from '../data/providers/assetProvider'
 
 /**
@@ -210,7 +211,14 @@ function fetchModel(tag: string, done: () => void): void {
   const provider = assets()
   provider.objectUrl(path)
     .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
-    .then((gltf) => { scenes.set(tag, gltf.scene); done() })
+    .then((gltf) => {
+      // ⚠️ **복제 전에, 갈래마다 한 번.** 조각마다 뼈 수가 다르면 그 수만큼
+      // 셰이더가 갈린다 (`unifySkeleton`). 복제본에 걸면 지오메트리를 참조로
+      // 물려받아 이미 고친 `skinIndex`를 또 고친다
+      unifySkeletons(gltf.scene)
+      scenes.set(tag, gltf.scene)
+      done()
+    })
     .catch(() => { /* 못 받으면 그 사람은 판때기로 남는다 */ })
     .finally(() => { loading.delete(tag) })
 }
