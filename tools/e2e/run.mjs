@@ -651,34 +651,85 @@ try {
     // 잰다. 한때 되읽기가 `.arrayBuffer()`라 두 벌이었다
     await page.goto(`${dev}/`, { waitUntil: 'load' })
     await waitBoot(page)
-    const m = await page.evaluate(async () => {
+    /**
+     * ⚠️ **첫 쓰기를 재면 안 된다. 기계값이 섞인다.**
+     *
+     * 한동안 「만들고 → 쓰고」의 힙 차이를 원본 크기로 나눠 판정했다. 그런데 그
+     * 차이에는 **원본 크기와 무관한 고정 비용**이 들어 있다 — 큰 버퍼를 쓰기
+     * 스트림에 처음 넘길 때 한 번 잡히고 그 뒤로는 재사용된다. 실측(같은 코드,
+     * 크기만 바꿔서 · GC 강제 후):
+     *
+     *     48MB → +45MB (0.94배)   96MB → +44MB (0.46배)   192MB → +42MB (0.22배)
+     *
+     * 남는 양이 셋 다 42~45MB로 같다. 즉 **복사본이 아니라 상수**인데, 그것을
+     * 원본 크기로 나누니 판정이 `SIZE` 상수에 휘둘렸다. 96MB에서 0.46이라 문턱
+     * 0.5를 스치고 있었고, 앞에 다른 시험이 하나만 있어도 넘어갔다.
+     *
+     * 그래서 **같은 크기로 한 번 써서 그 값을 미리 치르고, 두 번째 쓰기를 잰다.**
+     * 복사본은 부를 때마다 새로 생기므로 두 번째에도 그대로 잡히고, 기계값은
+     * 이미 치러졌다. 멀쩡하면 48·96·192MB 전부 **0.00배**다.
+     *
+     * ⚠️ **GC를 돌린 뒤에 잰다.** `usedJSHeapSize`는 아직 안 걷힌 쓰레기까지 센다.
+     *
+     * 이 검사가 **무는지 확인했다.** 되읽기를 JS 힙으로 끌어올리던 옛 버그를
+     * 흉내내(`bytes.slice()`를 원본과 함께 살려 둔다) 재니 96MB에서 1.00배,
+     * 48MB에서 1.32배가 나왔다. 멀쩡할 때 0.00~0.19배와 갈린다
+     */
+    const cdp = await page.context().newCDPSession(page)
+    const settled = async () => {
+      await cdp.send('HeapProfiler.collectGarbage')
+      return page.evaluate(() => performance.memory?.usedJSHeapSize ?? 0)
+    }
+    const SIZE = 96 << 20
+    const empty = await settled()
+    await page.evaluate(async (size) => {
       const { opfsPackStore } = await import('/src/data/providers/packStore.ts')
       const { sha256 } = await import('/src/import/install/integrity.ts')
-      const heap = () => performance.memory?.usedJSHeapSize ?? 0
-      const store = opfsPackStore('radiant-platinum-e2e-mem')
-      const SIZE = 96 << 20
-      const before = heap()
-      const bytes = new Uint8Array(SIZE)
+      const bytes = new Uint8Array(size)
       // 압축이 안 되는 내용으로 채운다 — 0으로 두면 OPFS가 얼마나 아끼는지에
       // 결과가 휘둘린다
-      for (let i = 0; i < SIZE; i += 4096) bytes[i] = i & 0xff
-      const made = heap()
-      await store.write('big.bin', bytes)
-      const wrote = heap()
-      const hash = await sha256(bytes)
-      const hashed = heap()
-      const back = await store.read('big.bin')
-      const ok = back?.byteLength === SIZE
-      await store.clear('')
-      return { SIZE, before, made, wrote, hashed, ok, hash: hash.slice(0, 8) }
+      for (let i = 0; i < size; i += 4096) bytes[i] = i & 0xff
+      // 원본을 붙들어 둔다 — **또 한 벌**이 생기는지를 재는 것이므로 이건 살아야 한다
+      const store = opfsPackStore('radiant-platinum-e2e-mem')
+      globalThis.__mem = { store, bytes, sha256 }
+      // 기계값을 미리 치른다 (위 ⚠️). 잰 것은 다음 쓰기다
+      await store.write('warm.bin', bytes)
+    }, SIZE)
+    const made = await settled()
+
+    const peak = await page.evaluate(async () => {
+      const m = globalThis.__mem
+      const heap = () => performance.memory?.usedJSHeapSize ?? 0
+      let top = heap()
+      const tick = setInterval(() => { top = Math.max(top, heap()) }, 10)
+      await m.store.write('big.bin', m.bytes)
+      clearInterval(tick)
+      return top
     })
-    assert(m.ok, '되읽은 길이가 다르다')
-    const grew = (m.wrote - m.made) / m.SIZE
-    // 쓰는 동안 **원본 한 벌 말고** 또 한 벌이 통째로 생기면 안 된다
-    assert(grew < 0.5, `쓰는 동안 ${grew.toFixed(2)}배가 더 늘었다 — 복사본이 산다`)
+    const wrote = await settled()
+    const hash = await page.evaluate(async () =>
+      (await globalThis.__mem.sha256(globalThis.__mem.bytes)).slice(0, 8))
+    const hashed = await settled()
+    const ok = await page.evaluate(async () => {
+      const m = globalThis.__mem
+      const back = await m.store.read('big.bin')
+      const good = back?.byteLength === m.bytes.byteLength
+      await m.store.clear('')
+      return good
+    })
+
+    assert(ok, '되읽은 길이가 다르다')
+    // 쓰는 **동안** 원본 한 벌 말고 또 한 벌이 동시에 살면 안 된다 (옛 버그의 모양)
+    const top = (peak - made) / SIZE
+    assert(top < 0.5, `쓰는 동안 ${top.toFixed(2)}배가 더 살았다 — 복사본이 동시에 산다`)
+    // 그리고 쓰고 나서 남지도 않아야 한다
+    const left = (wrote - made) / SIZE
+    assert(left < 0.5, `쓰고 나서 ${left.toFixed(2)}배가 남았다 — 복사본이 산다`)
     const fmt = (n) => `${(n / (1 << 20)).toFixed(0)}MB`
-    return `원본 ${fmt(m.SIZE)} → 만들고 ${fmt(m.made - m.before)} · `
-      + `쓰는 동안 +${fmt(m.wrote - m.made)} · 해시 +${fmt(m.hashed - m.wrote)}`
+    return `원본 ${fmt(SIZE)} (한 번 써서 기계값을 치른 뒤) → `
+      + `봉우리 +${fmt(peak - made)} (${top.toFixed(2)}배) · `
+      + `남은 것 +${fmt(wrote - made)} (${left.toFixed(2)}배) · `
+      + `해시 +${fmt(hashed - wrote)} · 원본 ${fmt(made - empty)} · ${hash}`
     })
   })
 } catch (e) {
