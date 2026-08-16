@@ -34,6 +34,7 @@ import { chromium } from 'playwright'
 import { freePort, startVite } from '../devServer.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { playOpening } from './drive.mjs'
+import { missingData } from './route.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const OUT = resolve(ROOT, 'shots/story')
@@ -183,6 +184,19 @@ async function probeGpu(page) {
 }
 
 // ── 화면 열기 ────────────────────────────────────────────────────────────────
+
+// ⚠️ **없는 자료를 브라우저 앞에서 만나지 않는다.** 이 하네스는 길을
+// `route.mjs`가 계산한 대로 걷고, 그 재료는 `pnpm extract`가 굽는 개발
+// 산출물이다. 없으면 크로미움을 띄우고 몇 분 걸은 뒤에야 죽으므로, 여기서
+// 무엇이 없는지 적고 선다 — "돌렸는데 실패"와 "못 쟀다"는 다른 것이다
+{
+  const gone = missingData()
+  if (gone.length > 0) {
+    console.error(`길을 계산할 자료가 없다 — public/data/{${gone.join(' · ')}}`)
+    console.error('`pnpm extract`로 구운 뒤에 다시 돌린다. 이야기는 안 쟀다.')
+    process.exit(2)
+  }
+}
 
 let vite = null
 let url = flag('url')

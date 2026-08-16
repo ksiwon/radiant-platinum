@@ -21,6 +21,7 @@ import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
 import { driveStory, playOpening } from './drive.mjs'
+import { missingData } from './route.mjs'
 import {
   fakeBdsp, readInstalled, readInstalledLight,
   REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS, SYNTHETIC,
@@ -59,6 +60,23 @@ const NODE_SHA = (() => {
   }
   return { moves: of('moves.json'), marts: of('marts.json') }
 })()
+
+/**
+ * 견줄 노드 산출물이 있는가. `public/data`는 `pnpm extract`가 굽는 **개발**
+ * 산출물이라, 배포된 사용자가 가진 것(롬 하나와 `AssetAssistant`)에는 없다.
+ *
+ * ⚠️ **없는 것을 「다르다」고 적지 않는다.** 해시가 `null`인 채로 그냥 견주면
+ * "브라우저가 만든 moves.json이 다르다"가 되어 **앱의 실패**로 읽힌다. 실제로
+ * `public/data`를 지우고 돌려서 본 자리고, ⑨·⑩·⑮가 그렇게 셋 다 붉었다.
+ * 못 잰 것은 못 잰 것으로 적는다 (§5의 "null을 통과로 세지 않는다"와 같은 줄)
+ */
+const haveNodeSha = NODE_SHA.moves !== null && NODE_SHA.marts !== null
+/** 같은가. 견줄 것이 없으면 이 축은 안 재고 지나간다 */
+const sameAsNode = (got, key) => NODE_SHA[key] === null || got === NODE_SHA[key]
+/** 결과 줄에 그대로 붙일 말. 안 잰 것을 잰 것처럼 안 적는다 */
+const NODE_SAID = haveNodeSha
+  ? '노드 산출물과 해시 일치'
+  : '⚠️ 노드 산출물이 없어 해시는 못 견줬다 (pnpm extract로 굽는다)'
 
 const mb = (n) => `${(n / (1 << 20)).toFixed(1)}MB`
 
@@ -473,9 +491,9 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   assert(got.groups.sort().join(',') === WANT,
     `그룹이 다르다: ${got.groups.sort().join(',')} (기대 ${WANT})`)
   // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다
-  assert(got.sha['data/moves.json'] === NODE_SHA.moves,
+  assert(sameAsNode(got.sha['data/moves.json'], 'moves'),
     `moves.json이 노드 산출물과 다르다: ${got.sha['data/moves.json']}`)
-  assert(got.sha['data/marts.json'] === NODE_SHA.marts,
+  assert(sameAsNode(got.sha['data/marts.json'], 'marts'),
     `marts.json이 노드 산출물과 다르다: ${got.sha['data/marts.json']}`)
   // 128MB를 읽는 내내 바깥으로도, /data로도 아무것도 안 나갔다
   const leaked = [...contentRequests(requests.slice(before)), ...outsideRequests(requests.slice(before))]
@@ -483,7 +501,7 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   return `Platinum 필수 ${String(REQUIRED_PLATINUM_GROUPS.length)}그룹 · `
     + `파일 ${String(Object.keys(got.sha).length)}개 · `
     + `${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
-    + `노드 산출물과 해시 일치 · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
+    + `${NODE_SAID} · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
 
 await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜 설치기)', async ({ page }) => {
@@ -509,9 +527,19 @@ await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜
   await page.getByRole('button', { name: '설치 시작' }).click()
   await page.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 900_000 })
   const got = await page.evaluate(readInstalled)
-  assert(got.sha['data/moves.json'] === NODE_SHA.moves,
+  // 견줄 노드 해시가 없어도 **다시 만들었는지**는 잰다 — 0바이트가 아니면 된다
+  assert(sameAsNode(got.sha['data/moves.json'], 'moves'),
     `다시 안 만들었다: ${JSON.stringify(got.sha)}`)
-  return `0바이트로 자른 뒤 재실행 → 해시 복구 (${NODE_SHA.moves.slice(0, 12)}…)`
+  const back = await page.evaluate(async () => {
+    const root = await navigator.storage.getDirectory()
+    const data = await (await (await root.getDirectoryHandle('radiant-platinum'))
+      .getDirectoryHandle('assets')).getDirectoryHandle('data')
+    return (await (await data.getFileHandle('moves.json')).getFile()).size
+  })
+  assert(back > 0, '자른 파일이 0바이트 그대로다')
+  return haveNodeSha
+    ? `0바이트로 자른 뒤 재실행 → 해시 복구 (${NODE_SHA.moves.slice(0, 12)}…)`
+    : `0바이트로 자른 뒤 재실행 → ${String(back)}바이트로 복구 · ${NODE_SAID}`
 })
 
 await (haveRom ? run : skip)('11', '취소가 진짜 Worker에서 먹고, 하다 만 것이 안 남는다', async ({ page }) => {
@@ -680,7 +708,7 @@ await (haveRom ? run : skip)('17', '두 번째 실행에서 다시 변환하지 
   await first.getByRole('button', { name: '설치 시작' }).click()
   await first.getByText(/옮겨진 그룹은 설치됐지만/).waitFor({ timeout: 300_000 })
   const made = await first.evaluate(readInstalled)
-  assert(made.sha['data/moves.json'] === NODE_SHA.moves, '첫 설치가 틀렸다')
+  assert(sameAsNode(made.sha['data/moves.json'], 'moves'), '첫 설치가 틀렸다')
 
   // **페이지를 완전히 닫는다.** 같은 컨텍스트·같은 오리진이라 OPFS는 남는다
   await first.close()
@@ -1016,8 +1044,8 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     assert(made.state === 'ready', `상태가 ready가 아니다: ${made.state}`)
     const missing = REQUIRED_GROUPS.filter((g) => !made.groups.includes(g))
     assert(missing.length === 0, `필수 그룹이 빠졌다: ${missing.join(' · ')}`)
-    assert(made.sha['data/moves.json'] === NODE_SHA.moves, '브라우저가 만든 moves.json이 다르다')
-    assert(made.sha['data/marts.json'] === NODE_SHA.marts, '브라우저가 만든 marts.json이 다르다')
+    assert(sameAsNode(made.sha['data/moves.json'], 'moves'), '브라우저가 만든 moves.json이 다르다')
+    assert(sameAsNode(made.sha['data/marts.json'], 'marts'), '브라우저가 만든 marts.json이 다르다')
     // 모델이 진짜 들어왔는지는 개수로 본다. 493마리 + 무대 + 사람이다
     assert((made.counts.monModels ?? 0) > 400,
       `포켓몬 모델이 ${String(made.counts.monModels ?? 0)}개뿐이다`)
@@ -1060,7 +1088,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     return `필수 ${String(REQUIRED_GROUPS.length)}그룹 · 파일 ${made.files.toLocaleString()}개 · `
       + `${mb(made.bytes)} · 설치 ${(took / 1000 / 60).toFixed(1)}분 · `
       + `두 번째 실행: 갈래 ${String(decided)}ms · 타이틀 ${String(title)}ms · `
-      + `변환기 0회 · OPFS 쓰기 0회 · /data 0건 · 외부 0건`
+      + `변환기 0회 · OPFS 쓰기 0회 · /data 0건 · 외부 0건 · ${NODE_SAID}`
   },
 )
 
@@ -1355,12 +1383,26 @@ await ((haveRom && haveBdsp) ? run : () => {})(
 
 const STORY_NAME = 'TESTER'
 
-if (!(haveRom && haveBdsp)) {
+/**
+ * ㉖만 길을 미리 계산한다 (`route.mjs`). 그 재료는 개발 산출물이라, 롬과
+ * `AssetAssistant`만 있는 기계에는 없다 — 배포된 사용자가 가진 것이 딱 그
+ * 둘이다.
+ *
+ * ⚠️ **없다고 다 같이 죽지 않는다.** 한때 `route.mjs`가 불러오는 자리에서
+ * 여섯 개를 읽어서, `public/data`를 지운 기계에서는 `import` 하나에 스물일곱이
+ * 통째로 죽었다 — ⑮처럼 그 자료가 아예 필요 없는 검사까지 같이 죽었다
+ */
+const routeGone = missingData()
+const haveRoute = routeGone.length === 0
+
+if (!(haveRom && haveBdsp && haveRoute)) {
   record('26', '야생 배틀 · 트레이너 배틀 · 상점', 'NOT RUN',
-    ROM === null ? '이 기계에 Platinum 롬이 없다' : '이 기계에 BDSP 덤프가 없다')
+    ROM === null ? '이 기계에 Platinum 롬이 없다'
+      : !haveBdsp ? '이 기계에 BDSP 덤프가 없다'
+        : `길을 계산할 자료가 없다 — public/data/{${routeGone.join(' · ')}}`)
 }
 
-await ((haveRom && haveBdsp) ? run : () => {})(
+await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
   '26', '야생 배틀 · 트레이너 배틀 · 상점',
   async ({ page, requests, errors }) => {
     page.setDefaultTimeout(60_000)

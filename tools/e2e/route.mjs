@@ -13,7 +13,7 @@
 //
 // ⚠️ **글은 안 읽는다.** 여기서 만지는 것은 좌표와 맵 번호뿐이다
 // (COPYRIGHT.md §6).
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const DATA = resolve(import.meta.dirname, '../../public/data')
@@ -29,13 +29,44 @@ const IMPASSABLE = 0x8000
  */
 export const TILE_TABLE = 0x80
 
-const maps = json('maps.json').maps
-const events = json('events.json').events
-const overworldMeta = json('matrices/0.json')
-const interiorMeta = json('matrices/interiors.json')
+/**
+ * 길 계산이 읽는 **개발 산출물**이다. 앱이 읽는 자리가 아니다 — 게임은 설치본
+ * (OPFS)에서 읽고, 여기서는 하네스가 "어디로 걸어야 하는가"를 미리 알려고 읽는다.
+ *
+ * ⚠️ **불러오는 자리에서 읽지 않는다.** 한때 이 여섯을 모듈 맨 위에서 그냥
+ * 읽었는데, 그러면 자료를 아직 안 구운 기계에서 `import` 한 번에 e2e 스물일곱이
+ * **통째로** 죽었다 — 롬과 `AssetAssistant`만 있으면 되는 ⑮까지 같이 죽는다.
+ * 실제로 `public/data`를 지우고 돌려서 확인한 자리다. 못 재는 것은 못 잰다고
+ * 적어야 하고(DEPLOY.md §5), 그러려면 죽지 말고 살아서 대답할 수 있어야 한다
+ */
+const NEEDS = [
+  'maps.json', 'events.json', 'matrices/0.json', 'matrices/interiors.json',
+  'matrices/0.bin', 'matrices/interiors.bin',
+]
 
-const overworldBin = readFileSync(resolve(DATA, 'matrices/0.bin'))
-const interiorBin = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+/** 없는 것들. 비어 있으면 길을 계산할 수 있다 */
+export const missingData = () => NEEDS.filter((rel) => !existsSync(resolve(DATA, rel)))
+
+let loaded = null
+/** 여섯을 처음 쓸 때 읽는다. 없으면 무엇이 없는지 적어서 선다 */
+function data() {
+  if (loaded !== null) return loaded
+  const gone = missingData()
+  if (gone.length > 0) {
+    throw new Error(
+      `길을 계산할 자료가 없다 — public/data/{${gone.join(' · ')}}. \`pnpm extract\`로 굽는다`,
+    )
+  }
+  loaded = {
+    maps: json('maps.json').maps,
+    events: json('events.json').events,
+    overworldMeta: json('matrices/0.json'),
+    interiorMeta: json('matrices/interiors.json'),
+    overworldBin: readFileSync(resolve(DATA, 'matrices/0.bin')),
+    interiorBin: readFileSync(resolve(DATA, 'matrices/interiors.bin')),
+  }
+  return loaded
+}
 
 /** 행렬 번호 → `{ meta, tiles }`. 한 번 만든 것은 다시 쓴다 */
 const gridCache = new Map()
@@ -43,6 +74,7 @@ const gridCache = new Map()
 export function gridOf(matrixId) {
   const hit = gridCache.get(matrixId)
   if (hit) return hit
+  const { overworldMeta, interiorMeta, overworldBin, interiorBin } = data()
   let meta
   let tiles
   if (matrixId === 0) {
@@ -82,9 +114,15 @@ export function gridOf(matrixId) {
   return grid
 }
 
-export const matrixOf = (mapId) => maps[mapId]?.matrix ?? -1
-export const warpsOf = (mapId) => events[String(maps[mapId]?.events)]?.warps ?? []
-export const npcsOf = (mapId) => events[String(maps[mapId]?.events)]?.npcs ?? []
+export const matrixOf = (mapId) => data().maps[mapId]?.matrix ?? -1
+export const warpsOf = (mapId) => {
+  const { maps, events } = data()
+  return events[String(maps[mapId]?.events)]?.warps ?? []
+}
+export const npcsOf = (mapId) => {
+  const { maps, events } = data()
+  return events[String(maps[mapId]?.events)]?.npcs ?? []
+}
 
 /**
  * 트레이너로 서 있는 사람들.
@@ -239,4 +277,6 @@ function sameMatrixNeighbours(mapId) {
   return [...out]
 }
 
-export { maps, events }
+/** 맵 헤더 표와 이벤트 표. 읽는 자리에서 부른다 — 자료가 없으면 여기서 선다 */
+export const allMaps = () => data().maps
+export const allEvents = () => data().events
