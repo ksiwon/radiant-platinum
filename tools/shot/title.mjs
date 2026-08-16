@@ -69,6 +69,62 @@ const DISCLAIMER = () => {
   return { 맨위층: top, 보임: onTop.every((s) => s.inView && s.painted), seen }
 }
 
+/**
+ * 글이 실제로 읽히는가 — **색을 재서 판정한다.**
+ *
+ * ⚠️ **그림만 보고는 놓친다. 실제로 놓쳤다.** 배포된 첫 화면에서 테마 변수가
+ * 하나도 안 풀려 글자색과 글꼴이 통째로 기본값이었다 — `dayTheme`이 그 변수를
+ * 정의하는 유일한 자리인데 `App`에만 붙어 있었고, 설치 화면은 `App` **대신**
+ * 그려지기 때문이다. 개발에서는 마법사를 `App` 안에서 열어 보므로 멀쩡했다.
+ *
+ * WCAG 대비비로 잰다. 본문 기준이 4.5:1, 큰 글자는 3:1이다.
+ * ⚠️ `opacity`는 안 친다 — 여기서 재는 것은 **색이 풀렸는가**이고, 흐리기는
+ * 우리가 일부러 준 값이다
+ */
+const CONTRAST = () => {
+  const nums = (css) => (css.match(/[\d.]+/g) ?? []).map(Number)
+  const lum = (css) => {
+    const [r, g, b] = nums(css)
+    const f = (v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4 }
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+  }
+  /** 이 글 뒤에 실제로 깔린 색. 투명한 조상은 건너뛴다 */
+  const groundOf = (el) => {
+    for (let n = el; n; n = n.parentElement) {
+      const bg = getComputedStyle(n).backgroundColor
+      const a = nums(bg)
+      if (a.length >= 3 && (a.length < 4 || a[3] > 0.5)) return bg
+    }
+    return 'rgb(0,0,0)'
+  }
+  const ratio = (el) => {
+    const a = lum(getComputedStyle(el).color)
+    const b = lum(groundOf(el))
+    const [hi, lo] = a > b ? [a, b] : [b, a]
+    return Math.round(((hi + 0.05) / (lo + 0.05)) * 10) / 10
+  }
+  /**
+   * 그 글을 든 것 중 **가장 안쪽**.
+   *
+   * ⚠️ 바깥 것을 집으면 조상의 배경과 그 조상의 색을 견주게 되어 엉뚱한 값이
+   * 나온다 — 실제로 본문이 1.1로 찍혔는데 글은 멀쩡했다
+   */
+  const find = (tag, has) => {
+    const all = [...document.querySelectorAll(tag)].filter((n) => n.textContent?.includes(has))
+    return all.find((n) => !all.some((m) => m !== n && n.contains(m))) ?? null
+  }
+  const of = (el) => (el ? ratio(el) : null)
+
+  const h1 = document.querySelector('h1')
+  return {
+    제목: of(h1),
+    고지: of(find('p', '비공식·비제휴')),
+    본문: of(find('div', '고른 파일은 이 기기')),
+    // 변수가 안 풀리면 글꼴도 같이 안 풀린다 — 한 축을 더 본다
+    글꼴: h1 ? getComputedStyle(h1).fontFamily.split(',')[0].replace(/["']/g, '') : null,
+  }
+}
+
 /** 차림표에 무엇이 몇 개 서 있는가. 눌리는지도 같이 본다 */
 const MENU = () => [...document.querySelectorAll('button')]
   .filter((b) => b.offsetParent !== null)
@@ -95,6 +151,7 @@ const main = async () => {
   writeFileSync(resolve(OUT, 'title.png'), await page.screenshot())
   console.log(`타이틀 고지  ${JSON.stringify(await page.evaluate(DISCLAIMER))}`)
   console.log(`타이틀 차림표 ${JSON.stringify(await page.evaluate(MENU))}`)
+  console.log(`타이틀 대비  ${JSON.stringify(await page.evaluate(CONTRAST))}`)
   console.log('→ shots/title.png')
 
   await page.close()
@@ -118,6 +175,7 @@ const main = async () => {
   const tag = await first.evaluate(() => document.documentElement.dataset.boot ?? null)
   writeFileSync(resolve(OUT, 'install.png'), await first.screenshot())
   console.log(`설치 고지  ${JSON.stringify(await first.evaluate(DISCLAIMER))}  갈래 ${tag}`)
+  console.log(`설치 대비  ${JSON.stringify(await first.evaluate(CONTRAST))}`)
   console.log('→ shots/install.png')
 
   // 물음표를 눌러 설명이 실제로 펼쳐지는지. 안 펼쳐지면 그건 없는 것과 같다
