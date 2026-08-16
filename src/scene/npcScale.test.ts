@@ -1,9 +1,13 @@
 // 사람 키 (DATA.md §2.16)
 //
-// ⚠️ **NPC가 주인공 허리춤에 서 있었다.** 주인공만 `.dae`를 거쳐 오고
-// (`dawn_to_glb.py`) 나머지 사람은 BDSP 번들에서 바로 굽는데(`bdspGlb.py`)
-// **두 길의 단위가 다르다.** 그런데 "주인공이 원본 키에서 줄어든 배수"를
-// `dawn.glb`의 키로 재서 NPC에 곱했다 — 신사가 1.05m로 섰다.
+// ⚠️ **NPC가 주인공 허리춤에 서 있었다.** 한동안 주인공만 받아 온 `.dae`를
+// Blender로 물려 왔고(`dawn_to_glb.py`) 나머지 사람은 BDSP 번들에서 바로
+// 구웠는데(`bdspGlb.py`) **두 길의 단위가 달랐다.** 그런데 "주인공이 원본
+// 키에서 줄어든 배수"를 `dawn.glb`의 키(2.5095)로 재서 NPC에 곱했다 —
+// 신사가 1.05m로 섰다.
+//
+// **지금은 주인공도 번들에서 굽는다** — `.dae` 길은 은퇴했고 두 길이 한 길이다.
+// 그래도 이 시험은 남긴다: 단위가 다시 갈리면 여기서 걸린다.
 //
 // 그래서 여기서는 **구운 파일을 실제로 열어 재고**, 그 배수로 섰을 때 사람 키가
 // 사람 키인지 본다. 상수만 비교하면 파일이 바뀌었을 때 조용히 통과한다.
@@ -84,11 +88,12 @@ maybe('사람 키', () => {
     .filter((f) => f.endsWith('.glb'))
     .map((f) => [f.replace('.glb', ''), heightIn(resolve(MODELS, 'npc', f))] as const)
 
-  it('주인공 파일과 번들 사람은 단위가 다르다 — 이 시험이 성립하는 근거다', () => {
-    // 두 길이 같은 단위였다면 아래 시험들이 저절로 통과한다. 실제로는 두 배 가까이
-    // 벌어져 있고, 그 차이가 곧 NPC가 60%로 줄어든 이유였다
-    expect(heightIn(resolve(MODELS, 'dawn.glb'))).toBeCloseTo(2.5095, 3)
-    // 번들에서 바로 구운 같은 사람(`pc0002_00`)의 키. `bdspGlb.py`가 굽는 자리에서
+  it('주인공 파일이 번들 사람과 같은 단위다 — 갈리면 여기서 걸린다', () => {
+    // 한동안 이 둘이 2.5095 대 1.4725로 갈려 있었고, 그 차이가 곧 NPC가 60%로
+    // 줄어든 이유였다. 주인공도 번들에서 굽게 되면서 한 단위가 됐다 —
+    // 다시 다른 계통의 파일이 들어오면 이 줄이 먼저 깨진다
+    expect(heightIn(resolve(MODELS, 'dawn.glb'))).toBeCloseTo(BDSP_PLAYER_HEIGHT, 3)
+    // 번들에서 구운 주인공(`pc0002_00`)의 키. `bdspGlb.py`가 굽는 자리에서
     // 찍어 준다 (`height 1.4725260734558105`)
     expect(BDSP_PLAYER_HEIGHT).toBeCloseTo(1.4725, 4)
     expect(BDSP_TO_WORLD).toBeCloseTo(PLAYER_HEIGHT / BDSP_PLAYER_HEIGHT, 10)
@@ -120,10 +125,14 @@ maybe('사람 키', () => {
     expect(at('tr1044_00')).toBeLessThan(PLAYER_HEIGHT)
   })
 
-  it('주인공 파일 키를 분모로 쓰면 어른이 주인공보다 작아진다 — 그게 그 버그였다', () => {
+  it('`.dae` 시절 키를 분모로 쓰면 어른이 주인공보다 작아진다 — 그게 그 버그였다', () => {
     // 이 시험이 없으면 위 조건은 "지금 값으로는 맞다"밖에 못 말한다. 틀린 배수를
-    // 직접 넣어 보고 **실제로 깨지는지** 본다
-    const wrong = PLAYER_HEIGHT / heightIn(resolve(MODELS, 'dawn.glb'))
+    // 직접 넣어 보고 **실제로 깨지는지** 본다.
+    //
+    // 2.5095는 은퇴한 `.dae` 길의 주인공 키다. 파일에서 못 읽으므로 상수로 적는다 —
+    // 이 값은 이제 아무 파일에서도 안 나오고, 나오면 단위가 다시 갈린 것이다
+    const DAE_ERA_HEIGHT = 2.5095
+    const wrong = PLAYER_HEIGHT / DAE_ERA_HEIGHT
     const gentleman = npcs.find(([n]) => n === GENTLEMAN)![1]
     expect(gentleman * wrong).toBeLessThan(PLAYER_HEIGHT)
     expect(gentleman * wrong).toBeCloseTo(1.049, 2)

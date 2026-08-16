@@ -388,11 +388,11 @@ BDSP 모델 그룹이 붙으면 이 한 벌 한 벌이 그대로 설치 실패�
 | 현재 경로 | 역할 | 공개 사용자의 입력과 같은가 |
 |---|---|---|
 | `raw/roms/` | 개발 Platinum 원본 | 개념상 같지만 파일명에 의존하면 안 됨 |
-| `raw/extracted/{us,ko,ja}/` | 언어별 선추출 캐시 | 아니오. 공개판은 선택 ROM에서 생성 |
+| (은퇴) `raw/extracted/{us,ko,ja}/` | 언어별 선추출 캐시 | 아니오. 개발도 이제 롬 FAT에서 바로 꺼낸다 |
 | `raw/decomp/` | 구조·상수 대조 참조 | 아니오. Import 입력이 아님 |
 | `raw/decomp-derived/` | 개발 검증 중간표 | 아니오 |
 | `raw/AssetAssistant/` | BDSP 원천 | **그렇다.** 공개 사용자가 고르는 것과 같은 폴더를 개발도 그대로 읽는다 |
-| `raw/models/` | 모델 실험·중간물 | 아니오 |
+| (은퇴) `raw/models/` | 받아 온 `Dawn.dae` 작업물 | 아니오. 주인공도 BDSP 번들에서 굽는다 |
 
 목표 구조는 [COPYRIGHT.md §5](COPYRIGHT.md#5-개발용-raw-정책)의
 `sources/references/work/dev-assets/legacy` 분리다. 자동 재배치는 하지 않는다.

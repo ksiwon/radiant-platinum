@@ -9,9 +9,9 @@
 // 전부 훑었다. 그리고 `manifest.mjs`가 **아무에게도 안 물린 파일이 하나라도
 // 있으면 선다.** 그래서 추출기가 새 파일을 뱉기 시작하면 조용히 빠지지 않는다.
 //
-// ⚠️ **`pnpm extract` 체인에 없는 것이 셋 있다.** 사람 그림(`npcSprites.js`)은
-// pnpm 스크립트 자체가 없고, BDSP에서 오는 셋(주인공·배틀 무대·사람 표)은
-// 파이썬이라 별도로 돌린다. 이 표는 그 사실을 감추지 않고 그대로 적는다.
+// ⚠️ **`pnpm extract`가 다 굽지 않는다.** 롬에서 오는 것은 그 체인이 굽고,
+// BDSP 번들에서 오는 것(주인공·사람 모델·포켓몬·변형·배틀 무대·사람 표·
+// 타격 프레임)은 `pnpm extract:models`가 굽는다. 둘 다 돌려야 다 찬다.
 
 const under = (prefix) => (p) => p.startsWith(prefix)
 const oneOf = (...names) => (p) => names.includes(p)
@@ -158,10 +158,9 @@ export const GROUPS = [
     match: oneOf('data/signposts.json', 'data/signposts.png'),
   },
 
-  // ⚠️ pnpm 스크립트가 없다. `extract` 체인에도 안 들어 있어서 손으로 돌려야 한다
   {
     name: 'npcSprites',
-    make: 'node tools/extract/npcSprites.js',
+    make: 'pnpm extract:npcSprites',
     match: (p) => p === 'data/npcSprites.json' || under('data/npc/')(p),
   },
 
@@ -179,15 +178,12 @@ export const GROUPS = [
   },
   {
     name: 'player',
-    // ⚠️ **Blender를 부르지 않는다.** 여기 `py -3.13 dawn_to_glb.py`라고 적혀
-    // 있었는데 그 스크립트는 `bpy`를 쓰므로 그대로 따라 하면
-    // `ModuleNotFoundError: bpy`가 난다 (Collada 임포트가 5.0에서 빠져 4.2 LTS를
-    // 따로 깔아야 한다). 산출물을 다 지우고 다시 굽다가 드러났다.
-    //
-    // 그럴 필요가 없다 — **브라우저가 이미 다른 길로 굽고 있다**:
-    // `persons/battle/pc0002_00`(heroine)을 `exportModel`로 내보낸다
-    // (`import/bdsp/convert.ts`). 개발 쪽도 같은 번들을 같은 옵션으로 굽는다.
-    // 그러면 개발이 보는 것과 사용자가 받는 것이 같아진다
+    // ⚠️ **`dawn_to_glb.py`는 은퇴했다.** 그것은 받아 온 `raw/models/Dawn/Dawn.dae`를
+    // Blender 4.2로 물리는 길이었고, 재료를 리포가 만들지 못한다. 무엇보다
+    // **사용자는 그 몸을 한 번도 못 봤다** — 브라우저는 처음부터 번들에서 구웠다
+    // (`import/bdsp/convert.ts`가 `persons/battle/pc0002_00`을 내보낸다).
+    // 개발만 다른 몸을 보고 있었고, 그래서 팔 내림 상수가 사용자가 안 쓰는 몸에
+    // 맞춰져 있었다 (`actor/gait`의 `armDrop`). 지금은 둘이 같은 것을 굽는다
     make: 'pnpm extract:player',
     match: oneOf('models/dawn.glb'),
   },
@@ -203,8 +199,10 @@ export const GROUPS = [
     match: under('models/arena/'),
   },
   {
+    // 종·폼 본체는 `extract:pokemon`이, 이로치 팔레트와 여성 개체는
+    // `extract:pokemonVariants`가 굽는다 — 한 그룹이지만 명령이 둘이다
     name: 'pokemon3d',
-    make: 'pnpm extract:pokemon',
+    make: 'pnpm extract:pokemon && pnpm extract:pokemonVariants',
     match: under('models/pokemon/'),
   },
   {

@@ -2238,13 +2238,21 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 사람 사이 크기 차이가 원작 그대로 남는다 — 꼬맹이 0.98 · 곤충소년 1.26 ·
 신사 1.76 · 일꾼 1.95다.
 
-⚠️ **그 배수를 `dawn.glb`에서 재면 안 된다.** 주인공만 `.dae`를 거쳐 오고
-(`dawn_to_glb.py`) 나머지는 번들에서 바로 굽는데(`bdspGlb.py`) **두 길의 단위가
-다르다.** three가 재는 바인드 포즈 키가 `dawn.glb` 2.5095, 같은 사람을 번들에서
-바로 구운 `pc0002_00` 1.4725다. 앞의 것을 분모로 쓰면 배수가 0.598이 되어
-**신사가 1.05m로 선다** — 1.5m인 주인공보다 작다. 실제로 그렇게 서 있었다.
-분모는 1.4725고, 그래서 BDSP 단위 하나가 우리 타일 1.019다
-(`engine/model/normalize`).
+분모는 **번들에서 구운 주인공(`pc0002_00`)의 바인드 포즈 키 1.4725**고, 그래서
+BDSP 단위 하나가 우리 타일 1.019다 (`engine/model/normalize`).
+
+⚠️ **한동안 주인공만 다른 길로 왔다.** 받아 온 `Dawn.dae`를 Blender로 물려
+`dawn.glb`를 만들었는데(`dawn_to_glb.py`) 그 파일의 바인드 키가 2.5095라
+번들과 단위가 달랐다. 그것을 분모로 쓰면 배수가 0.598이 되어 **신사가 1.05m로
+선다** — 1.5m인 주인공보다 작다. 실제로 그렇게 서 있었다.
+
+**지금은 주인공도 번들에서 굽는다.** 남자는 원래 그랬고(`pc0001_00`), 여자만
+`.dae`였다. 그런데 **브라우저는 처음부터 번들에서 구웠다** —
+`import/bdsp/convert.ts`가 `persons/battle/pc0002_00`을 내보낸다. 즉 그
+`.dae` 몸은 **개발 기계에서만 서 있었고 사용자는 한 번도 못 봤다.** 개발과
+배포가 다른 몸을 보고 있으면 자세 상수가 어느 쪽에 맞는지 알 수 없다 —
+실제로 팔 내림이 그 몸에 맞춰져 있어서, 배포판에서는 팔이 옆구리를 파고들었다
+(§4.2.2). `.dae` 길은 은퇴했고 `raw/models/`도 안 쓴다.
 
 ⚠️ 스킨드 메시는 `Object3D.clone()`으로 복제하면 안 된다 — 뼈가 원본을 가리켜서
 여럿이 **같은 자세로 함께** 움직인다. `SkeletonUtils.clone`이 뼈까지 새로 짓는다.
@@ -3220,19 +3228,26 @@ NNS_SndArcPlayerStartSeqEx(handle, -1, waveID, -1, SEQ_PV);   // waveID = specie
 
 ### 3.0 현재 감사 결과
 
-2026-08-10에 실제 폴더와 호출부를 다시 셌다.
+2026-08-17에 **산출물을 전부 지우고 다시 구운 뒤** 셌다. 남긴 것은 롬과
+`AssetAssistant` 둘뿐이다 — 배포된 사용자가 가진 것이 그 둘이므로, 그 둘로
+안 되면 잘못된 것이다.
 
-| 로컬 경로 | 파일 수 | 대략 크기 | 역할 |
-|---|---:|---:|---|
-| `raw/roms` | 6 | 4.67GB | 개발 원본·기존 보관물 |
-| `raw/extracted` | 22 | 61MB | us·ko·ja Platinum 선추출 |
-| `raw/decomp` | 27,109 | 125MB | 포맷·상수 대조 참조 |
-| `raw/decomp-derived` | 4 | 매우 작음 | 명령 폭 등 개발 중간표 |
-| `raw/AssetAssistant` | 12,691 | 4.05GB | BDSP 원천. 공개 사용자가 고르는 것과 같은 구조 |
-| `raw/models` | 70 | 19MB | 모델 작업물 |
-| `public/data` | 6,516 | 50.4MB | 현재 개발 런타임 데이터 |
-| `public/models` | 570 | 579.6MB | 현재 개발 GLB |
-| 기존 `dist/data·models` | 7,084 | 약 628MB | Vite가 복사한 공개 금지 산출물 |
+| 로컬 경로 | 파일 수 | 대략 크기 | 역할 | 없으면 |
+|---|---:|---:|---|---|
+| `raw/roms` | 6 | 4.7GB | 개발 원본 (Platinum 3지역판 · BDSP NSP·키) | **못 되살린다** |
+| `raw/AssetAssistant` | 12,691 | 3.8GB | BDSP 원천. 공개 사용자가 고르는 것과 같은 구조 | **리포 밖 도구**로 NSP를 다시 푼다 |
+| `raw/decomp` | 27,297 | 256MB | 포맷·상수 대조 참조 | `git clone --filter=blob:none pret/pokeplatinum` |
+| `raw/decomp-derived` | 1 | 180KB | 명령 폭 표 | `node tools/extract/scrcmd-table.js` |
+| `public/data` | 7,149 | 66MB | 개발 런타임 데이터 | `pnpm extract` |
+| `public/models` | 4,071 | 901MB | 개발 GLB | `pnpm extract:models` |
+| `dist` | 56 | 7.6MB | 배포물 | `pnpm build` |
+
+⚠️ **`raw/extracted`와 `raw/models`는 이제 안 쓴다.** 전자는 롬을 손으로 푼
+폴더였고 **만드는 코드가 리포에 없었다** — 추출기 넷이 그것을 읽고 있어서,
+지우면 `pnpm extract`가 첫 단계에서 섰다. `pl_msg.narc`도
+`pl_sound_data.sdat`도 롬 FAT에 그대로 있으므로 지금은 거기서 바로 꺼낸다
+(`tools/extract/rom.js`의 `fromRom`). 후자는 받아 온 `Dawn.dae`가 있던 자리고
+그 길은 은퇴했다 (§4.2.1).
 
 BDSP 쪽은 이제 **정본이 하나다.** 공개 사용자가 고르는 `AssetAssistant`를
 개발도 그대로 읽는다 — 골라 옮긴 하위 집합을 따로 두면 개발만 그 재배치에
@@ -3244,7 +3259,7 @@ adapter(`tools/raw/sources.cjs`)가 정한다.
 | 의존 | 현재 용도 | 공개판에서의 처리 |
 |---|---|---|
 | Platinum `.nds` | NDS FS·NARC·오버레이·SDAT | 사용자가 선택, File.slice로 로컬 파싱 |
-| `raw/extracted/{us,ko,ja}` | 3지역판 텍스트·SDAT 캐시 | 선택 지역판에서 브라우저가 생성 |
+| 지역판 롬 안의 `/msgdata/pl_msg.narc` · `/data/sound/pl_sound_data.sdat` | 3지역판 텍스트·소리 | 선택 지역판에서 브라우저가 생성 |
 | `raw/decomp` | 상점·스폰·스크립트 폭·검증 원문 등 | ROM 파싱, 배포 가능한 최소 호환 메타데이터, 개발 검증 전용으로 항목별 분리 |
 | ~~`src/data/textBanks.json`~~ | **지웠다.** 뱅크 724개의 암호화 키(u16)와 로케일별 인덱스였다 | 자리는 `src/import/platinum/textBanks.ts`가 이름 순서에서 계산하고 사용자의 롬으로 검산한다 (COPYRIGHT.md §6) |
 | ~~BDSP 재배치 하위 폴더~~ | **안 본다.** 한때 필요한 것만 골라 다른 이름으로 옮긴 폴더를 같이 봤다 | 정본은 `AssetAssistant` 하나다 (`tools/raw/sources.cjs`) — 개발도 공개도 같은 구조를 읽는다 |

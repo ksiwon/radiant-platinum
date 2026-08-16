@@ -120,10 +120,10 @@ Platinum 같은 패치 배포와 동일하지도 않다. 이 프로젝트는 독
 현재 `raw/`는 40,258개 · 8.78GB이며 다음 종류가 이미 나뉘어 있다.
 
 - `raw/roms/`: 개발자가 보유한 Platinum 입력
-- `raw/extracted/`: 지역판별 Platinum 선추출물
+- (은퇴) `raw/extracted/`: 지역판별 Platinum 선추출물. 이제 롬 FAT에서 바로 꺼낸다
 - `raw/decomp/`, `raw/decomp-derived/`: 포맷 대조용 참조와 파생 표
 - `raw/AssetAssistant/`: BDSP 원천. **공개 사용자가 고르는 것과 같은 구조 그대로다**
-- `raw/models/`: 개발용 모델 작업물
+- (은퇴) `raw/models/`: 받아 온 `Dawn.dae` 작업물. 주인공도 BDSP 번들에서 굽는다
 
 ⚠️ **BDSP 정본은 `AssetAssistant` 하나다.** 필요한 번들만 골라 다른 이름으로
 옮겨 둔 폴더를 개발용으로 두지 않는다 — 그러면 개발이 그 재배치에 기대게 되고

@@ -1,4 +1,4 @@
-// 리그 계층 검증 — **dawn.glb의 실제 노드 트리를 그대로 세워서** 확인한다.
+// 리그 계층 검증 — **주인공 번들의 실제 노드 트리를 그대로 세워서** 확인한다.
 //
 // 처음엔 이름만 같은 합성 골격으로 테스트했는데 그건 아무것도 검증하지 못했다:
 // 합성 본은 회전이 전부 항등이라 "월드 축을 본 로컬로 옮긴다"는 유도 자체가
@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest'
 import { Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { createRig, resetRig, updateLocomotion } from './locomotion'
 import { BIKE, pedalPoint } from './bike'
-import { BDSP_TO_WORLD, PLAYER_HEIGHT } from '../model/normalize'
+import { BDSP_TO_WORLD } from '../model/normalize'
 
 interface GlbNode {
   name?: string
@@ -29,7 +29,14 @@ interface GlbNode {
   scale?: [number, number, number]
 }
 
-const GLB = resolve(__dirname, '../../../public/models/dawn.glb')
+/**
+ * 주인공 여자 몸. **번들에서 구운 것**이다 (`persons/battle/pc0002_00`).
+ *
+ * ⚠️ 한동안 `models/dawn.glb`를 읽었는데 그것은 받아 온 `.dae`를 Blender로
+ * 물린 것이고 **단위가 다르다** — 바인드 키 2.5095 대 1.4725. 남자는 이미
+ * 번들이었으므로 자세 계산이 성별에 따라 다른 계통을 상대하고 있었다
+ */
+const GLB = resolve(__dirname, '../../../public/models/npc/pc0002_00.glb')
 
 /** glb의 JSON 청크와 BIN 청크 */
 function chunks() {
@@ -42,9 +49,24 @@ function chunks() {
   }
 }
 
+/**
+ * 몸을 움직이는 스킨. **관절이 제일 많은 것**이다.
+ *
+ * ⚠️ **`skins[0]`을 쓰면 안 된다.** 번들마다 스킨이 여럿이고 순서가 다르다 —
+ * `pc0002_00`은 첫 스킨이 관절 둘짜리 손목시계라, 그것으로 재면 "LThigh가
+ * 모델에 없다"가 된다. 몸에 붙은 옷·소품도 각자 스킨을 갖는다
+ */
+function bodySkinIndex(g: { skins: { joints: number[] }[] }): number {
+  let at = 0
+  for (let i = 1; i < g.skins.length; i++) {
+    if (g.skins[i]!.joints.length > g.skins[at]!.joints.length) at = i
+  }
+  return at
+}
+
 /** glb의 노드 트리를 Object3D로 그대로 복원한다 (메시·스킨은 빼고 변환만) */
 function loadSkeleton() {
-  const buf = readFileSync(resolve(__dirname, '../../../public/models/dawn.glb'))
+  const buf = readFileSync(GLB)
   const json = JSON.parse(buf.toString('utf8', 20, 20 + buf.readUInt32LE(12))) as {
     nodes: GlbNode[]; scenes: { nodes: number[] }[]; skins: { joints: number[] }[]
   }
@@ -63,7 +85,12 @@ function loadSkeleton() {
   const root = new Object3D()
   for (const i of json.scenes[0]!.nodes) root.add(build(i))
   root.updateMatrixWorld(true)
-  const jointNames = json.skins[0]!.joints.map((i) => json.nodes[i]!.name!)
+  // ⚠️ **스킨 하나만 보면 안 된다.** `pc0002_00`은 스킨이 여섯이고 관절이
+  // 2·9·9·23·24·140으로 갈려 있다 — 제일 큰 것에도 `LFoot`이 없다. 리그는
+  // 이름으로 노드를 찾으므로 판정도 **모든 스킨의 합집합**이어야 한다
+  const jointNames = [...new Set(
+    json.skins.flatMap((sk) => sk.joints.map((i) => json.nodes[i]!.name!)),
+  )]
   return { root, nodes, jointNames }
 }
 
@@ -117,7 +144,14 @@ function bodyProfile() {
   for (const i of g.scenes[0].nodes as number[]) root.add(build(i))
   root.updateMatrixWorld(true)
 
-  const skin = g.skins[0]
+  const skinAt = bodySkinIndex(g)
+  const skin = g.skins[skinAt]
+  // 그 스킨이 움직이는 메시만 잰다 — 다른 스킨의 관절 번호는 뜻이 다르다
+  const bodyMeshes = new Set<number>(
+    (g.nodes as { mesh?: number, skin?: number }[])
+      .filter((n) => n.skin === skinAt && n.mesh !== undefined)
+      .map((n) => n.mesh!),
+  )
   const ibm = read(skin.inverseBindMatrices)
   const names: string[] = skin.joints.map((i: number) => g.nodes[i].name)
   const bindMat = (skin.joints as number[]).map((ni, k) =>
@@ -127,7 +161,10 @@ function bodyProfile() {
   const ARM = new Set(['LArm', 'LArmEX', 'LForeArm', 'LForeArmEX'])
   const torso: Vector3[] = []
   const arm: Vector3[] = []
-  for (const m of g.meshes) for (const p of m.primitives) {
+  interface Prim { attributes: Record<string, number> }
+  for (const [mi, m] of (g.meshes as { primitives: Prim[] }[]).entries()) {
+    if (!bodyMeshes.has(mi)) continue
+    for (const p of m.primitives) {
     if (p.attributes.JOINTS_0 === undefined) continue
     const pos = read(p.attributes.POSITION)
     const jt = read(p.attributes.JOINTS_0)
@@ -139,6 +176,7 @@ function bodyProfile() {
       if (!TORSO.has(nm) && !ARM.has(nm)) continue
       const v = new Vector3().fromArray(pos[k]!).applyMatrix4(bindMat[bi]!)
       ;(TORSO.has(nm) ? torso : arm).push(v)
+      }
     }
   }
 
@@ -160,7 +198,7 @@ function bodyProfile() {
   }
 }
 
-describe('dawn.glb 스켈레톤', () => {
+describe('주인공 스켈레톤', () => {
   it('리그가 요구하는 본이 실제 모델에 전부 있다', () => {
     for (const n of ['LThigh', 'RThigh', 'LLeg', 'RLeg', 'LFoot', 'RFoot',
       'LArm', 'RArm', 'LForeArm', 'RForeArm', 'Spine1', 'Hips']) {
@@ -169,10 +207,13 @@ describe('dawn.glb 스켈레톤', () => {
   })
 
   it('본이 항등 회전이 아니다 — 축 유도가 실제로 시험된다', () => {
+    // 합성 골격은 회전이 전부 항등이라 "월드 축을 본 로컬로 옮긴다"는 유도가
+    // 항등 변환이 되어 아무것도 안 잰다. 그래서 **재료가 사소하지 않은지**를
+    // 여기서 못 박는다. 번들 모델 실측: Hips 3.1416rad(180°) · LArm 0.6184rad(35.4°)
     const { nodes } = loadSkeleton()
     const identity = new Quaternion()
-    expect(nodes.get('Hips')!.quaternion.angleTo(identity)).toBeGreaterThan(1)
-    expect(nodes.get('LArm')!.quaternion.angleTo(identity)).toBeGreaterThan(1)
+    expect(nodes.get('Hips')!.quaternion.angleTo(identity)).toBeGreaterThan(3)
+    expect(nodes.get('LArm')!.quaternion.angleTo(identity)).toBeGreaterThan(0.5)
   })
 })
 
@@ -547,16 +588,17 @@ describe('포즈 적용', () => {
  * 팔다리 길이는 우리 모델이 정한 값이라, 맞았는지 아닌지는 "발이 페달 위에
  * 있는가"로만 답할 수 있다.
  *
- * ⚠️ **정규화한 리그로 재야 한다.** `dawn.glb`는 원본이 2.5095유닛이고 화면에
- * 서는 것은 1.5m로 줄인 것이다 — 안 줄이고 재면 다리가 자전거보다 커서 어떤
- * 각도로도 페달에 못 닿는다.
+ * ⚠️ **정규화한 리그로 재야 한다.** 번들 원본이 1.4725유닛이고 화면에 서는 것은
+ * 1.5m로 키운 것이다 — 안 맞추고 재면 다리와 자전거의 크기가 어긋나서 어떤
+ * 각도로도 페달에 못 닿는다. 배수는 `BDSP_TO_WORLD` 한 벌뿐이고, 자전거 자리도
+ * 같은 배수로 옮긴다(`bikePoint`) — 두 값이 같은 자에서 나와야 「닿았다」가 뜻이 있다
  */
 function seated(speed: number, ticks: number) {
   const { root, nodes } = loadSkeleton()
   const group = new Object3D()
   const wrapper = new Object3D()
-  // `normalizeModel`이 하는 일과 같다. 원본 키는 §4.3의 실측값이다
-  wrapper.scale.setScalar(PLAYER_HEIGHT / 2.5095)
+  // `normalizeModel`이 하는 일과 같다. 배수는 실측한 번들 키에서 나온다
+  wrapper.scale.setScalar(BDSP_TO_WORLD)
   group.add(wrapper)
   wrapper.add(root)
   const rig = createRig(root, wrapper)!
