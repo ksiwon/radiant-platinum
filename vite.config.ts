@@ -52,10 +52,24 @@ function appVersion(): string {
  *   `a1b2c3d-dirty`   커밋 안 한 변경이 섞인 빌드 — 재현이 안 된다
  *
  * `-dirty`는 릴리스에서 막는다 (`check.mjs --release`). 어느 소스에서 나왔는지
- * 말할 수 없는 것을 공개하면 나중에 "그 빌드"를 다시 만들 수가 없다
+ * 말할 수 없는 것을 공개하면 나중에 "그 빌드"를 다시 만들 수가 없다.
+ *
+ * ⚠️ **호스트가 말해 주면 그것을 믿는다. `git status`로 되묻지 않는다.**
+ * 호스트는 그 커밋 하나만 받아 온 작업 폴더에서 굽는데, 빌드 시스템이 거기에
+ * 제 파일을 만들어 두므로 `git status --porcelain`이 비어 있지 않다. 그래서
+ * 소스가 그 커밋 그대로인데도 `-dirty`가 붙는다 — 실측: 올라간 묶음과 여기서
+ * 같은 커밋으로 구운 묶음이 **이 문자열 하나만** 달랐다(`f4ac353-dirty` ↔
+ * `f4ac353`, 나머지 청크는 바이트까지 같음). 그 한 글자가 청크 해시를 바꿔
+ * `verifyDeploy`의 「올라간 것이 이 나무의 빌드인가」를 영영 못 넘게 한다.
+ * 호스트가 준 커밋 SHA가 그 폴더의 신원에 대한 정본이다
  */
 function buildId(): string {
-  const ci = process.env.GITHUB_SHA ?? process.env.CI_COMMIT_SHA ?? process.env.APP_BUILD_ID
+  const ci = process.env.GITHUB_SHA // GitHub Actions
+    ?? process.env.COMMIT_REF // Netlify
+    ?? process.env.CF_PAGES_COMMIT_SHA // Cloudflare Pages
+    ?? process.env.VERCEL_GIT_COMMIT_SHA // Vercel
+    ?? process.env.CI_COMMIT_SHA // GitLab CI
+    ?? process.env.APP_BUILD_ID // 손으로 지정
   if (ci?.trim()) return ci.trim().slice(0, 7)
   try {
     const sha = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], { encoding: 'utf8' }).trim()
