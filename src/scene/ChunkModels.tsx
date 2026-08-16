@@ -18,14 +18,17 @@ import {
 } from './chunkMesh'
 import {
   cachedSplit, canBorrowFloor, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites,
-  grassColors,
-  plateColors, plateLumps, rockSites, shiftFloors, treeSites, trunkNudge, waterColors,
-  type FloorPatch, type FloorSource, type FloorTri, type LumpSet,
+  grassColors, groundRank, pickGround,
+  plateColors, plateLumps, rockSites, shiftFloors, treeSites, trunkNudge, tuftTextures,
+  waterColors,
+  type FloorPatch, type FloorSource, type FloorTri, type GroundArea, type LumpSet,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Rocks, plateBands, type RockGroup } from './Rocks'
 import { Flowers, type FlowerField } from './Flowers'
 import { Grass, grassSpots, type GrassField } from './Grass'
+// 어디가 풀숲인지는 그림이 아니라 거동값이 말한다 — `Grass`와 같은 잣대를 쓴다
+import { isTuftTile } from '../engine/battle/encounter'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
@@ -149,6 +152,48 @@ function cachedFloors(
 }
 
 /**
+ * 풀숲 그림 보관함. 같은 청크가 같은 자리에 놓이면 늘 같은 답이다 —
+ * 거동값은 영역이 바뀌지 않는 한 안 변한다
+ */
+const tuftCache = new Map<string, Set<string>>()
+
+/** 이 청크가 풀숲을 그리는 데 쓴 그림 이름들 (`plates.tuftTextures`) */
+function cachedTufts(p: Piece, grid: MapGrid): Set<string> {
+  const key = `${String(p.c.land)}/${String(p.originX)},${String(p.originZ)}`
+  const hit = tuftCache.get(key)
+  if (hit) return hit
+  const made = tuftTextures(
+    p.split,
+    (g) => p.mesh.materials[g]?.tex ?? '',
+    // 판 좌표가 청크 로컬이라 청크가 놓인 자리를 더해야 격자에 물을 수 있다
+    (tx, tz) => isTuftTile(grid.behavior(tx + p.originX, tz + p.originZ)))
+  tuftCache.set(key, made)
+  return made
+}
+
+const areaCache = new Map<string, Map<string, number>>()
+
+/**
+ * 이 청크 바닥이 **그림마다 얼마나 넓은지.**
+ *
+ * ⚠️ **등급은 여기서 안 매긴다.** 무엇이 풀숲 그림인지는 창 전체를 모아야
+ * 정해지는데(`tufts`), 창은 걸을 때마다 바뀐다. 넓이는 청크만 보면 정해지므로
+ * 이것만 갈무리하고 등급은 쓸 때 매긴다
+ */
+function cachedArea(p: Piece): Map<string, number> {
+  const key = `${String(p.c.land)}/${String(p.originX)},${String(p.originZ)}`
+  const hit = areaCache.get(key)
+  if (hit) return hit
+  const made = new Map<string, number>()
+  for (const f of p.source.floors) {
+    const name = p.mesh.materials[f.group]?.tex ?? ''
+    made.set(name, (made.get(name) ?? 0) + Math.abs(f.ux * f.vz - f.vx * f.uz) / 2)
+  }
+  areaCache.set(key, made)
+  return made
+}
+
+/**
  * 청크 하나 몫의 재료. 빌려 오기가 이웃의 재질까지 봐야 해서 한 번에 들고 있는다
  */
 interface Piece {
@@ -179,15 +224,23 @@ interface Piece {
 function borrowFloors(
   self: Piece, all: readonly Piece[], sheet: TexSheet,
   materials: Material[], cache: Map<string, Material>,
+  pick?: string,
 ): FloorTri[] {
+  /** 찾는 그림의 삼각형만. 통째로 베끼면 쓰지도 않을 것을 수만 개 옮긴다 */
+  const only = (p: Piece): readonly FloorTri[] => (pick === undefined
+    ? p.source.floors
+    : p.source.floors.filter((f) => (p.mesh.materials[f.group]?.tex ?? '') === pick))
   for (let ring = 1; ring <= 4; ring++) {
+    // ⚠️ **아무 이웃이나 잡으면 안 된다.** 찾는 그림을 가진 이웃이 이 고리에
+    // 없으면 다음 고리로 넘어간다 — 안 그러면 절벽뿐인 옆 청크에서 절벽을
+    // 빌려 와 놓고 「빌려 왔다」고 끝내 버린다
     const near = all.filter((p) =>
-      p !== self && p.source.floors.length > 0
+      p !== self && only(p).length > 0
       && Math.max(Math.abs(p.c.mx - self.c.mx), Math.abs(p.c.my - self.c.my)) === ring)
     if (near.length === 0) continue
     const added = new Map<string, number>()
     return near.flatMap((p) => shiftFloors(
-      p.source.floors, p.originX - self.originX, p.originZ - self.originZ,
+      only(p), p.originX - self.originX, p.originZ - self.originZ,
       (from) => {
         const spec = p.mesh.materials[from]!
         const key = materialKey(spec, false)
@@ -321,6 +374,45 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
           }
         })
+        /**
+         * 원작이 풀숲을 그리는 데 쓴 그림들 (`plates.tuftTextures`).
+         *
+         * ⚠️ **창 전체에서 한 번에 모은다.** 이웃에서 빌려 온 바닥은 이 청크의
+         * 서브메시가 아니어서, 청크마다 따로 세면 빌려 온 풀숲이 그대로 통과한다
+         */
+        const tufts = new Set<string>()
+        for (const p of pieces) {
+          for (const name of cachedTufts(p, grid)) tufts.add(name)
+        }
+        /**
+         * 청크마다 나무 밑에 깔 **땅 한 가지** (`plates.pickGround`).
+         *
+         * ⚠️ **자기 청크만 보고 고르면 청크 선이 그대로 드러난다.** 예진호수
+         * (0,0)은 제 바닥이 절벽뿐이라 분홍 바위로 792칸을 깔았고 바로 옆
+         * (0,1)은 풀로 616칸을 깔았다 — 숲 한복판에 직선 경계가 그어진다.
+         * 그래서 **자기 + 이웃 한 겹**(3×3)을 합쳐서 고른다. 맞닿은 두 청크는
+         * 아홉 칸 중 여섯을 같이 보므로 답이 거의 늘 같아진다.
+         *
+         * 창 전체로 넓히지 않는 것은 설원과 초원이 한 창에 같이 실릴 때
+         * 한쪽이 통째로 남의 땅이 되기 때문이다
+         */
+        const rankOf = (name: string): number =>
+          (tufts.has(name) ? 0 : groundRank(sheet, name))
+        const picked = new Map<Piece, string | null>()
+        for (const p of pieces) {
+          const area: GroundArea = new Map()
+          for (const q of pieces) {
+            if (Math.max(Math.abs(q.c.mx - p.c.mx), Math.abs(q.c.my - p.c.my)) > 1) continue
+            for (const [name, a] of cachedArea(q)) {
+              const rank = rankOf(name)
+              if (rank === 0) continue
+              const had = area.get(name)
+              if (had) had.area += a
+              else area.set(name, { rank, area: a })
+            }
+          }
+          picked.set(p, pickGround(area))
+        }
         const next = pieces.map((p) => {
           const { c, mesh, split, originX, originZ } = p
           for (const raw of treeSites(split)) {
@@ -384,16 +476,23 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             }
           }
           const materials = materialsFor(mesh, sheet, cache, p.cutout)
-          // 바닥이 아예 없는 청크는 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다.
+          // 깔 땅이 제 청크에 없으면 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다.
           //
           // ⚠️ **물·턱만 있는 청크도 "없는 것"으로 친다** (`plates.floorSource`).
           // 그 그림을 숲 밑에 깔면 잔디에 파란 마름모와 갈색 턱 띠가 그어진다.
+          //
+          // ⚠️ **「바닥이 하나도 없을 때만」으로 두었던 것이 고장이었다.** 예진호수
+          // (0,0)에는 바닥이 있긴 있었다 — 절벽뿐이었을 뿐이다. 그래서 안 빌려
+          // 오고 분홍 바위로 숲을 792칸 깔았다. 이제는 **고른 땅이 없으면** 빌린다.
           // 이웃에서도 못 빌려 오면 그때 마지막 보루를 쓴다 — 발밑이 뚫리는
           // 것보다는 낫다
-          const borrowed = p.source.floors.length > 0
-            ? []
-            : borrowFloors(p, pieces, sheet, materials, cache)
-          const floors = borrowed.length > 0 ? borrowed : p.source.fallback ?? []
+          const pick = picked.get(p) ?? undefined
+          const mine = pick !== undefined
+            && p.source.floors.some((f) => (mesh.materials[f.group]?.tex ?? '') === pick)
+          const borrowed = mine ? [] : borrowFloors(p, pieces, sheet, materials, cache, pick)
+          const floors = borrowed.length > 0
+            ? borrowed
+            : p.source.floors.length > 0 ? [] : p.source.fallback ?? []
           return {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,
             index: c.land,
@@ -403,10 +502,19 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             geometry: split.geometry,
             materials,
             // 원작 숲에는 바닥이 없다 — 잎에 가려 보일 일이 없어서 안 만든 것이다.
-            // 칸마다 제일 가까운 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓴다
+            // 그 칸에 깔 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓰되,
+            // **한 그림으로 통일한다** (`plates.oneGround`) — 칸마다 제일 가까운
+            // 것을 집으면 나무 밑이 눈·절벽·모래 누더기가 된다
             floor: floorPatch(
               split, (x, z, near) => groundAt(x + originX, z + originZ, near),
-              floors, p.source),
+              floors, p.source,
+              // 풀숲 그림은 아예 후보에서 뺀다 — 깔면 숲 바닥이 통째로
+              // 풀숲으로 보이는데 정작 인카운터 칸은 거기가 아니다
+              (g) => {
+                const name = materials[g]?.name ?? ''
+                return { name, rank: rankOf(name) }
+              },
+              pick),
             shells: cachedShells(
               `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet, p.lumps),
           }

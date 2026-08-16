@@ -56,6 +56,67 @@ const GRASS_NAME = /grass|kusa|shiba/
  */
 const WATER_NAME = /^(sea|lake|asasea|dun_sea)/
 
+/**
+ * 나무 밑 바닥으로 삼기에 좋은 정도를 가르는 잣대.
+ *
+ * ⚠️ **이름으로 가르면 안 된다.** 롬 이름에는 오타가 있고(눈 그림 하나가
+ * `s_sonwp`다) 뜻을 못 읽는 이름이 태반이다(`nectgr`·`criffp`·`fenter`).
+ * 그림 조각의 **불투명 텍셀 평균색**으로 가른다. 실측(그림 1,133가지):
+ *
+ *     풀   nectgr 초록 130 · ngrass 98 · nhana 95 · fenter 78
+ *     흙   nsandp 26 · ckado 7 · criffp −27 · criff −36 · wcliff −31
+ *     눈   s_snow04 밝기 253.6 색기 0.006 · s_sonwp 246.6 0.008 · c09_ice2 248.6 0.037
+ *     모래 beach 밝기 240인데 **색기 0.108** — 눈과 갈리는 자리가 밝기가 아니라 색기다
+ *
+ * 문턱은 그 사이의 빈 구간에 놓는다: 초록은 26과 78 사이, 색기는 0.037과 0.108 사이
+ */
+const GROUND_GREEN = 40
+const SNOW_LUMA = 240
+const SNOW_SAT = 0.05
+
+/** 그림 한 장을 두 번 재지 않는다. 시트가 바뀌면 통째로 사라진다 */
+const rankCache = new WeakMap<TexSheet, Map<string, number>>()
+
+/**
+ * 이 그림을 **나무 밑에 깔** 바닥으로 삼기에 좋은 정도. 클수록 먼저 고른다.
+ *
+ * `2` 풀·눈 — 나무가 서 있어도 어색하지 않은 땅
+ * `1` 그 밖의 땅 — 풀도 눈도 없는 청크(모래사장·포장된 도시·동굴)에서 쓴다
+ * `0` 물 — 절대 안 쓴다 (`NOT_FLOOR`)
+ */
+export function groundRank(sheet: TexSheet | null, tex: string | null): number {
+  if (tex === null || tex === '') return 1
+  if (NOT_FLOOR.test(tex)) return 0
+  if (!sheet) return 1
+  let per = rankCache.get(sheet)
+  if (!per) { per = new Map(); rankCache.set(sheet, per) }
+  const had = per.get(tex)
+  if (had !== undefined) return had
+  const rank = measureRank(sheet, tex)
+  per.set(tex, rank)
+  return rank
+}
+
+function measureRank(sheet: TexSheet, tex: string): number {
+  const item = sheet.items.find((s) => s.tex === tex)
+  if (!item) return 1
+  let r = 0, g = 0, b = 0, n = 0
+  for (let y = 0; y < item.h; y++) {
+    const row = ((item.y + y) * sheet.width + item.x) * 4
+    for (let x = 0; x < item.w; x++) {
+      const o = row + x * 4
+      if (sheet.pixels[o + 3]! < ALPHA_CUT) continue
+      r += sheet.pixels[o]!; g += sheet.pixels[o + 1]!; b += sheet.pixels[o + 2]!; n++
+    }
+  }
+  if (n === 0) return 1
+  r /= n; g /= n; b /= n
+  if (g - Math.max(r, b) >= GROUND_GREEN) return 2
+  const max = Math.max(r, g, b)
+  const sat = max === 0 ? 0 : (max - Math.min(r, g, b)) / max
+  return r * 0.3 + g * 0.6 + b * 0.1 >= SNOW_LUMA && sat <= SNOW_SAT ? 2 : 1
+}
+
 /** 격자 칸 열쇠. 청크 로컬 좌표가 −48~+48이라 128을 더해 음수를 없앤다 */
 const KEY_BIAS = 128
 const KEY_SPAN = 512
@@ -654,6 +715,11 @@ export interface FloorSource {
  */
 export const LEVEL_SLACK = 0.5
 
+/** 이웃 칸이 이만큼 낮으면 턱으로 보고 옆면을 세운다 (`floorPatch`의 `skirt`) */
+const SKIRT_MIN = 0.3
+
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
+
 /**
  * **물은 메울 바닥이 못 된다.**
  *
@@ -855,11 +921,156 @@ const NEIGHBORS: readonly (readonly [number, number])[] = [
   [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1],
 ]
 
+/** 그 그림이 덮은 칸의 절반 넘게가 풀숲이면 「풀숲 그림」이다 */
+const TUFT_SHARE = 0.5
+
+/**
+ * 원작이 **풀숲을 그리는 데 쓴 그림들.**
+ *
+ * ⚠️ **나무 밑에 이 그림을 깔면 안 된다.** 색으로만 고르면 이게 제일 초록이라
+ * 자주 이기는데, 깔고 나면 숲 바닥이 통째로 풀숲으로 보인다 — 정작 인카운터가
+ * 나는 칸은 거기가 아닌데도. 사용자가 "나무가 풀숲 위에 있으면 안 돼"라고 한
+ * 화면이 그것이다.
+ *
+ * 어디가 풀숲인지는 그림이 아니라 **타일 거동값**이 말한다 (`Grass.tsx`).
+ * 그림마다 그것이 덮은 칸 중 풀숲 칸의 비율을 세면 딱 갈린다 — 실측:
+ *
+ *     영원의숲  nectgr 244칸 중 **100.0%** · ngrass 6,220칸 중 0.5%
+ *     209번도로 l_grass_u 22칸 · l_grass_m 89칸 · nectgr 60칸이 다 **100.0%**
+ *               ngrass는 18,820칸 중 **0.0%**
+ *
+ * 0.5%와 100% 사이라 문턱을 어디에 놓아도 같은 답이 나온다.
+ *
+ * ⚠️ **번호가 아니라 이름을 돌려준다.** 이웃에서 빌려 온 바닥은 재질 번호가
+ * 이 청크의 것이 아니어서, 번호로 거르면 빌려 온 풀숲이 그대로 통과한다
+ *
+ * @param isTuft 청크 로컬 타일이 풀숲인가 (부르는 쪽이 청크 자리를 더한다)
+ */
+export function tuftTextures(
+  split: Split, nameOf: (group: number) => string, isTuft: (tx: number, tz: number) => boolean,
+): Set<string> {
+  const pos = (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array
+  const index = split.geometry.getIndex()!.array
+  const out = new Set<string>()
+  for (const [start, count, group] of split.groups) {
+    const cells = new Set<number>()
+    for (let t = 0; t < count; t += 3) {
+      const a = index[start + t]!, b = index[start + t + 1]!, c = index[start + t + 2]!
+      const ax = pos[a * 3]!, ay = pos[a * 3 + 1]!, az = pos[a * 3 + 2]!
+      const ux = pos[b * 3]! - ax, uy = pos[b * 3 + 1]! - ay, uz = pos[b * 3 + 2]! - az
+      const vx = pos[c * 3]! - ax, vy = pos[c * 3 + 1]! - ay, vz = pos[c * 3 + 2]! - az
+      const ny = uz * vx - ux * vz
+      const len = Math.hypot(uy * vz - uz * vy, ny, ux * vy - uy * vx)
+      // 누워 있는 면만 본다 — 벽에 걸린 그림은 바닥 후보가 아니다
+      if (len < 1e-9 || Math.abs(ny) / len < FLOOR_NORMAL) continue
+      cells.add(cellKey(Math.floor(ax + (ux + vx) / 3), Math.floor(az + (uz + vz) / 3)))
+    }
+    if (cells.size === 0) continue
+    let tuft = 0
+    for (const k of cells) if (isTuft(cellX(k), cellZ(k))) tuft++
+    if (tuft / cells.size > TUFT_SHARE) out.add(nameOf(group))
+  }
+  return out
+}
+
+/** 서브메시가 어떤 바닥인가. 이름이 같으면 같은 그림이다 */
+export interface GroundKind {
+  /** 그림 이름. 같은 이름끼리 넓이를 합친다 */
+  name: string
+  /** `groundRank`의 값 */
+  rank: number
+}
+
+/** 삼각형마다 다시 묻지 않는다 — 청크 하나에 수만 번이다 */
+function cached(kindOf: (group: number) => GroundKind): (group: number) => GroundKind {
+  const seen = new Map<number, GroundKind>()
+  return (group) => {
+    let k = seen.get(group)
+    if (!k) { k = kindOf(group); seen.set(group, k) }
+    return k
+  }
+}
+
+/** 그림 이름마다 등급과 깔린 넓이 */
+export type GroundArea = Map<string, { rank: number, area: number }>
+
+/** 바닥 삼각형들을 그림 이름별로 모아 넓이를 합친다. 등급 0(물·풀숲)은 뺀다 */
+export function groundArea(
+  floors: readonly FloorTri[], kind: (group: number) => GroundKind, into: GroundArea = new Map(),
+): GroundArea {
+  for (const f of floors) {
+    const k = kind(f.group)
+    if (k.rank === 0) continue
+    const a = Math.abs(f.ux * f.vz - f.vx * f.uz) / 2
+    const had = into.get(k.name)
+    if (had) had.area += a
+    else into.set(k.name, { rank: k.rank, area: a })
+  }
+  return into
+}
+
+/** 등급이 먼저고, 같은 등급이면 넓은 것이 이긴다. 고를 것이 없으면 `null` */
+export function pickGround(area: GroundArea): string | null {
+  let best: string | null = null
+  let top = { rank: -1, area: -1 }
+  for (const [name, v] of area) {
+    if (v.rank > top.rank || (v.rank === top.rank && v.area > top.area)) { best = name; top = v }
+  }
+  return best
+}
+
+/**
+ * 메울 바닥을 **한 가지로 통일한다.**
+ *
+ * ⚠️ **칸마다 제일 가까운 것을 베끼면 숲 바닥이 누더기가 된다.** 그 자리에 뭐가
+ * 가깝든 상관없이 나무 밑에는 나무가 설 만한 땅이 깔려야 하는데, 「제일 가까운
+ * 것」은 절벽·모래·눈·물가를 그대로 집어 온다. 실측으로 줄기가 밟고 선 그림:
+ *
+ *     떡잎마을 111그루 중 **63그루가 눈**(`s_sonwp`·`s_snow04`) — 초록 마을인데
+ *     영원의숲 107그루 중 **33그루가 절벽**(`criffp`)
+ *     예진호수  84그루 중 **68그루가 풀이 아니다**(`nectgr` 39 · `criffp` 29)
+ *     209번도로 113그루 중 16그루가 절벽·모래·바다
+ *
+ * 그래서 **하나**를 고르고 그것만 쓴다. 고르는 잣대는 `groundRank`가 색으로
+ * 매긴 등급이 먼저고, 같은 등급 안에서는 제일 넓게 깔린 것이 이긴다 — 숲은
+ * 풀이 이기고 설원은 눈이 이긴다.
+ *
+ * ⚠️ **누가 고르는지가 중요하다.** 이 함수 혼자 청크마다 고르게 두면 **청크
+ * 선이 그대로 드러난다.** 자기 청크만 보므로 옆 청크와 답이 갈리기 때문이다.
+ * 실측(창 하나 안에서):
+ *
+ *     예진호수 청크 (0,0)·(1,0)은 제 바닥이 절벽뿐이라 **분홍 바위 `criff`로
+ *       792칸**을 깔았는데, 바로 옆 (0,1)은 풀 `ngrass`로 616칸을 깔았다 —
+ *       숲 바닥에 칼로 그은 듯한 직선 경계가 생긴다
+ *     눈꽃마을 (9,5)·(9,6)·(10,6)은 `criff`, 나머지는 `ngrass`. 둘 다 흰 눈인데
+ *       경계 130자리가 드러난다
+ *
+ * 그래서 고르는 것은 **밖에서** 한다(`groundArea`+`pickGround`로 자기 + 이웃 한
+ * 겹을 합쳐서). 여기서는 받은 이름(`want`)을 쓰고, 그 그림이 이 무더기에 없을
+ * 때만 제 힘으로 고른다.
+ *
+ * ⚠️ **고를 것이 없으면 거르지 않는다.** 발밑이 뚫리는 것이 누더기보다 나쁘다
+ */
+function oneGround(
+  floors: readonly FloorTri[], kind: (group: number) => GroundKind, want?: string,
+): readonly FloorTri[] {
+  if (want !== undefined && want !== '') {
+    const asked = floors.filter((f) => kind(f.group).name === want && kind(f.group).rank > 0)
+    if (asked.length > 0) return asked
+  }
+  const best = pickGround(groundArea(floors, kind))
+  if (best === null) return floors
+  const only = floors.filter((f) => kind(f.group).name === best)
+  return only.length > 0 ? only : floors
+}
+
 export function floorPatch(
   split: Split,
   ground: (x: number, z: number, near: number) => number | null,
   borrowed: readonly FloorTri[] = [],
   source?: FloorSource,
+  kindOf?: (group: number) => GroundKind,
+  want?: string,
 ): FloorPatch | null {
   const src = source ?? floorSource(split)
   const { floors: own, levels } = src
@@ -874,6 +1085,10 @@ export function floorPatch(
    */
   const spare = src.fallback ?? []
   if (floors.length === 0 && spare.length === 0) return null
+  // 나무 밑에는 **한 가지 바닥**만 깐다 (`oneGround`). 갈래를 못 받으면 예전대로
+  const kind = kindOf === undefined ? null : cached(kindOf)
+  const pool = kind ? oneGround(floors, kind, want) : floors
+  const sparePool = kind ? oneGround(spare, kind, want) : spare
 
   // ⚠️ **"덮였는가"가 아니라 "그 층에 바닥이 있는가"를 본다.** 층이 겹친 자리에서
   // 잎이 걸린 층에 바닥이 없으면 그 칸은 그대로 뚫린다 (`FloorSource.levels`)
@@ -885,15 +1100,22 @@ export function floorPatch(
     if (here && (want === null || here.some((y) => Math.abs(y - want) <= LEVEL_SLACK))) continue
     bare.push(key)
   }
-  const nearest = floors.length > 0 ? nearestFloors(bare, floors) : new Map<number, FloorTri>()
+  const nearest = pool.length > 0 ? nearestFloors(bare, pool) : new Map<number, FloorTri>()
   // 진짜 바닥으로 못 닿은 칸만 마지막 보루로 다시 찾는다
   const missed = bare.filter((k) => !nearest.has(k))
-  if (missed.length > 0 && spare.length > 0) {
-    for (const [k, f] of nearestFloors(missed, spare)) nearest.set(k, f)
+  if (missed.length > 0 && sparePool.length > 0) {
+    for (const [k, f] of nearestFloors(missed, sparePool)) nearest.set(k, f)
   }
 
   /** 서브메시별로 모은다. 재질이 서브메시 순서라 그대로 그룹이 된다 */
-  const bucket = new Map<number, { position: number[]; uv: number[]; color: number[] }>()
+  const bucket = new Map<number, {
+    position: number[]; uv: number[]; color: number[]; normal: number[]
+  }>()
+  const into = (group: number) => {
+    let b = bucket.get(group)
+    if (!b) { b = { position: [], uv: [], color: [], normal: [] }; bucket.set(group, b) }
+    return b
+  }
 
   /**
    * 칸 하나를 삼각형 판 하나로 깐다. 그림은 `src`의 타일을 그대로 한 장 베낀다.
@@ -914,21 +1136,24 @@ export function floorPatch(
    * 쓴다. `at`이 아핀이라 정수 칸만큼 옮기는 것은 곧 그 타일을 그대로 한 장
    * 복사하는 것이고, 메운 칸이 원본 칸과 **똑같이** 보인다
    */
-  const lay = (src: FloorTri, tx: number, tz: number, y: number): void => {
+  /** 그 삼각형의 UV 평면 위에서 칸 좌표를 그림 좌표로 옮기는 아핀 */
+  const uvOf = (src: FloorTri): ((x: number, z: number) => [number, number]) => {
     const { ax, az, ux, uz, vx, vz, au, av, du, dv, eu, ev } = src
     const area = ux * vz - vx * uz
-    const at = (x: number, z: number): [number, number] => {
+    return (x, z) => {
       if (Math.abs(area) < 1e-9) return [0, 0]
       const px = x - ax, pz = z - az
       const w1 = (px * vz - vx * pz) / area
       const w2 = (ux * pz - px * uz) / area
       return [au + w1 * du + w2 * eu, av + w1 * dv + w2 * ev]
     }
+  }
+
+  const lay = (src: FloorTri, tx: number, tz: number, y: number): void => {
+    const at = uvOf(src)
     const shiftX = Math.floor(src.cx) - tx
     const shiftZ = Math.floor(src.cz) - tz
-
-    let into = bucket.get(src.group)
-    if (!into) { into = { position: [], uv: [], color: [] }; bucket.set(src.group, into) }
+    const bin = into(src.group)
     // 칸 하나를 살짝 넘겨 깐다 — 딱 맞추면 이웃 칸과의 사이에 실금이 보인다
     const e = 0.01
     // ⚠️ **위를 보게 감는다.** 법선 배열만 +Y로 채우고 감는 방향을 안 맞추면
@@ -940,13 +1165,73 @@ export function floorPatch(
       [tx - e, tz - e], [tx - e, tz + 1 + e], [tx + 1 + e, tz + 1 + e],
     ]
     for (const [x, z] of quad) {
-      into.position.push(x, y, z)
-      into.uv.push(...at(x + shiftX, z + shiftZ))
+      bin.position.push(x, y, z)
+      bin.uv.push(...at(x + shiftX, z + shiftZ))
       // 베껴 온 삼각형의 그늘을 같이 가져온다 — 안 그러면 이 칸만 하얗게 뜬다
-      into.color.push(src.r, src.g, src.b)
+      bin.color.push(src.r, src.g, src.b)
+      bin.normal.push(0, 1, 0)
     }
   }
 
+  /**
+   * 턱 **옆면**을 세운다.
+   *
+   * ⚠️ **원작 지형에는 세로면이 아예 없다.** 4세대는 카메라가 위에서 비스듬히
+   * 한 방향만 보므로 땅을 **높이가 다른 가로 판**만 쌓아 만들고 옆은 안 만든다.
+   * 절벽조차 「절벽처럼 보이는 그림(`criffp`)을 깐 가로 판」이다. 실측 —
+   * 217번도로 창 전체에서 세로 삼각형은 82개뿐이고 그나마 부두(`seaside3`)·
+   * 난간(`c2_rale_b`)·계단(`newstep`) 소품이다. **땅에서 나온 것은 0개**다.
+   * 예진호수는 세로 삼각형이 아예 하나도 없다.
+   *
+   * 1인칭으로 돌면 그 턱마다 **밑이 훤히 보인다**. 실측으로 이웃 칸보다 0.3
+   * 넘게 높은 자리 중 옆이 막힌 곳: 217번도로 **0/243** · 눈꽃마을 514/1007 ·
+   * 예진호수 371/519 (막힌 것은 나무·소품이 우연히 가린 것이다).
+   *
+   * 베낄 벽이 없으므로 **윗면 그림을 그대로 접어 내린다.** 칸 하나를 옆으로
+   * 한 칸 더 간 것처럼 물려서, 위에서 아래로 그림이 이어진다 — 눈밭 턱은 눈,
+   * 잔디 턱은 잔디가 된다. 원작에 없는 면이라 「원작대로」가 없는 자리다
+   */
+  const skirt = (src: FloorTri, tx: number, tz: number, y: number, drop: number,
+    dx: number, dz: number): void => {
+    const at = uvOf(src)
+    const shiftX = Math.floor(src.cx) - tx
+    const shiftZ = Math.floor(src.cz) - tz
+    const bin = into(src.group)
+    // 벽이 설 모서리의 두 끝. 바깥을 보게 감는다
+    const [p0x, p0z] = dx !== 0
+      ? [tx + (dx > 0 ? 1 : 0), tz + (dx > 0 ? 0 : 1)]
+      : [tx + (dz > 0 ? 1 : 0), tz + (dz > 0 ? 1 : 0)]
+    const [p1x, p1z] = dx !== 0
+      ? [tx + (dx > 0 ? 1 : 0), tz + (dx > 0 ? 1 : 0)]
+      : [tx + (dz > 0 ? 0 : 1), tz + (dz > 0 ? 1 : 0)]
+    // 한 칸(1단위)씩 끊어서 쌓는다. 통째로 늘리면 UV가 타일 밖으로 나가
+    // 가장자리 텍셀로 눌린 **민무늬 띠**가 된다 (`lay`의 경고와 같은 고장)
+    for (let done = 0; done < drop; done += 1) {
+      const h = Math.min(1, drop - done)
+      const yTop = y - done, yBot = yTop - h
+      const [a0, a1] = [at(p0x + shiftX, p0z + shiftZ), at(p1x + shiftX, p1z + shiftZ)]
+      // ⚠️ **타일 안쪽으로 되짚는다.** 바깥으로 한 칸 더 가면 UV가 타일을 벗어나
+      // 가장자리 텍셀로 눌린다. 안쪽으로 가면 같은 타일이 뒤집혀 내려가는데,
+      // 눈·잔디처럼 결이 고른 그림에서는 티가 안 나고 윗면과 이어진다
+      const [b0, b1] = [
+        at(p0x + shiftX - dx * h, p0z + shiftZ - dz * h),
+        at(p1x + shiftX - dx * h, p1z + shiftZ - dz * h)]
+      // 바깥(dx,dz)을 보게 감는다 — 뒤집히면 턱 안쪽에서만 보이고 밖에선 그대로 뚫린다
+      const face: [number, number, number, [number, number]][] = [
+        [p0x, yTop, p0z, a0], [p1x, yTop, p1z, a1], [p1x, yBot, p1z, b1],
+        [p0x, yTop, p0z, a0], [p1x, yBot, p1z, b1], [p0x, yBot, p0z, b0],
+      ]
+      for (const [x, yy, z, uv] of face) {
+        bin.position.push(x, yy, z)
+        bin.uv.push(uv[0], uv[1])
+        bin.color.push(src.r, src.g, src.b)
+        bin.normal.push(dx, 0, dz)
+      }
+    }
+  }
+
+  /** 칸마다 **맨 위 바닥의 높이와 베낀 삼각형**. 옆면은 이걸 보고 세운다 */
+  const top = new Map<number, { y: number, src: FloorTri }>()
   for (const key of bare) {
     const cell = split.cells.get(key)!
     const tx = cellX(key), tz = cellZ(key)
@@ -957,26 +1242,67 @@ export function floorPatch(
     // 칸을 건너뛰었는데, 그러면 943칸이 그대로 뚫린 채 남는다
     const y = ground(cx, cz, cell.minY) ?? best.cy
     lay(best, tx, tz, y)
+    top.set(key, { y, src: best })
+  }
+
+  // 원작 바닥이 멀쩡히 있는 칸도 **턱은 그대로 뚫려 있다**. 그 칸을 덮은
+  // 삼각형을 찾아 같이 세운다. 층이 겹친 칸은 **맨 위 층**을 쓴다 — 밖에서
+  // 보이는 것이 그것이고, 그 밑을 지나는 아랫길은 이웃 칸의 맨 위 층과
+  // 견주므로 막히지 않는다 (영원의숲 위단 y=2.813 / 아랫길 y=1)
+  //
+  // ⚠️ **`split.cells`를 돌면 안 된다.** 그것은 「잎이 덮은 칸」이라 청크의
+  // 일부일 뿐이다 — 그걸로 돌았더니 영원의숲 턱 336자리가 그대로 남았다.
+  // 턱은 숲 밖에도 있으므로 **바닥이 있는 칸 전부**(`levels`)를 돈다
+  const solid = [...levels.keys()].filter((k) => !top.has(k))
+  if (solid.length > 0 && floors.length > 0) {
+    for (const [k, f] of nearestFloors(solid, floors)) top.set(k, { y: Math.max(...levels.get(k)!), src: f })
+  }
+  /**
+   * 이웃 칸에 **그려진** 바닥의 높이.
+   *
+   * ⚠️ **걷는 높이(`ground`)로 견주면 안 된다.** 둘이 늘 같지 않다 — 예진호수
+   * 지형 1,295칸 중 986칸이 걷는 높이와 어긋나 있고 흔한 차이가 −2.5다. 걷는
+   * 높이로 재면 눈에 보이는 0.5짜리 턱 148자리가 「턱이 아니다」로 넘어간다.
+   * 메울 것은 **보이는 틈**이므로 그린 높이끼리 견준다. 청크 밖은 그릴 높이를
+   * 모르니 그때만 걷는 높이를 쓴다
+   */
+  const drawnAt = (tx: number, tz: number, near: number): number | null => {
+    const k = cellKey(tx, tz)
+    const t = top.get(k)
+    if (t) return t.y
+    const lv = levels.get(k)
+    if (lv !== undefined && lv.length > 0) return Math.max(...lv)
+    return ground(tx + 0.5, tz + 0.5, near)
+  }
+  for (const [key, t] of top) {
+    const tx = cellX(key), tz = cellZ(key)
+    for (const [dx, dz] of SIDES) {
+      const down = drawnAt(tx + dx, tz + dz, t.y)
+      if (down === null || t.y - down <= SKIRT_MIN) continue
+      skirt(t.src, tx, tz, t.y, t.y - down, dx, dz)
+    }
   }
   if (bucket.size === 0) return null
 
   const position: number[] = []
   const texcoord: number[] = []
   const color: number[] = []
+  const normal: number[] = []
   const groups: [number, number, number][] = []
   for (const [group, part] of bucket) {
     groups.push([position.length / 3, part.position.length / 3, group])
     position.push(...part.position)
     texcoord.push(...part.uv)
     color.push(...part.color)
+    // 바닥은 위를, 턱 옆면은 바깥을 본다 — 한꺼번에 +Y로 채우면 옆면이
+    // 위에서 오는 빛만 받아 바닥과 똑같이 밝아진다
+    normal.push(...part.normal)
   }
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(new Float32Array(position), 3))
   geometry.setAttribute('uv', new BufferAttribute(new Float32Array(texcoord), 2))
   geometry.setAttribute('color', new BufferAttribute(new Float32Array(color), 3))
-  const normal = new Float32Array(position.length)
-  for (let i = 1; i < normal.length; i += 3) normal[i] = 1
-  geometry.setAttribute('normal', new BufferAttribute(normal, 3))
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normal), 3))
   for (const [start, count, group] of groups) geometry.addGroup(start, count, group)
   geometry.computeBoundingSphere()
   return { geometry, groups }

@@ -6,14 +6,16 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { it, expect } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import {
   BufferAttribute, BufferGeometry, CylinderGeometry, MultiplyBlending, Vector3,
 } from 'three'
 import {
-  canBorrowFloor, cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, isBakedShadow, isFoliage,
-  leaning, LEVEL_SLACK, plateColors, shiftFloors, splitFoliage, treeSites, trunkNudge,
-  type FloorSource, type FloorTri, type Split,
+  canBorrowFloor, cellKey, cellX, cellZ, cutoutGroups, floorPatch, floorSource, groundArea,
+  groundRank, isBakedShadow, isFoliage,
+  leaning, LEVEL_SLACK, pickGround, plateColors, shiftFloors, splitFoliage, treeSites, trunkNudge,
+  tuftTextures,
+  type FloorSource, type FloorTri, type GroundKind, type Split,
 } from './plates'
 import {
   BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK, TRUNK_R,
@@ -313,9 +315,12 @@ maybe('잎 걷어내기', () => {
     expect(p.getX(0)).toBeCloseTo(1, 1)
     expect(p.getY(0), '윗단 높이에 깐다').toBe(1)
 
-    // 그 칸에 윗단이 이미 있으면 안 깐다
-    const covered = floorPatch(splitFoliage(mesh, [true, false, false]), () => 0)
-    expect(covered, '아랫단 높이로 걸으면 아랫단이 곧 그 층이다').toBeNull()
+    // 그 칸에 윗단이 이미 있으면 **바닥은** 안 깐다. 다만 윗단(y=1)과
+    // 아랫단(y=0) 사이의 턱에는 옆면이 선다 — 그건 바닥이 아니라 벽이다
+    const covered = floorPatch(splitFoliage(mesh, [true, false, false]), () => 0)!
+    const n = covered.geometry.getAttribute('normal') as BufferAttribute
+    const laid = [...Array(n.count).keys()].filter((i) => n.getY(i) !== 0)
+    expect(laid, '아랫단 높이로 걸으면 아랫단이 곧 그 층이다 — 깔 바닥이 없다').toEqual([])
   })
 
   it('덮인 칸에는 안 깐다 — 원작 지형과 겹치면 깜빡인다', () => {
@@ -977,8 +982,21 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
         if (borrowed.length === 0) borrowed = source.fallback ?? []
       }
 
+      // ⚠️ **화면과 같은 길로 불러야 뜻이 있다.** `ChunkModels`는 갈래를 넘겨서
+      // 메울 바닥을 **한 그림으로 좁히는데**(`oneGround`), 좁히고 나면 씨앗이
+      // 줄어 너비 우선이 못 닿는 칸이 생길 수 있다 — 이 시험이 잡을 것이 그것이다.
+      //
+      // 빌려 온 삼각형은 여기서 번호를 그대로 두므로(`shiftFloors(…, (g) => g)`)
+      // 이웃 그림의 이름이 이 청크 것으로 잘못 붙을 수 있다. 어느 그림이
+      // 이기는지는 위의 통일 시험이 보고, **여기서 보는 것은 빈 칸이 0이냐**다
+      const mine = meshOf(c.land)
+      const sheet = sheetFor(texOf(c.zone))
       const patch = floorPatch(
-        split, (x, z, near) => groundAt(x + originX, z + originZ, near), borrowed, source)
+        split, (x, z, near) => groundAt(x + originX, z + originZ, near), borrowed, source,
+        (g) => {
+          const name = mine.materials[g]?.tex ?? ''
+          return { name, rank: groundRank(sheet, name) }
+        })
       const done = new Set<number>()
       if (patch) {
         const pos = patch.geometry.getAttribute('position') as BufferAttribute
@@ -1122,4 +1140,460 @@ maybe('밑동이 길을 안 밟는다', () => {
     expect(deep).toBe(3)
     expect(atRisk - nudged).toBe(deep)
   }, 600_000)
+})
+
+/**
+ * **나무 밑에는 한 가지 바닥만 깐다** (사용자 요청: "나무 아래 타일은 그냥 풀,
+ * 아니면 그냥 눈으로 통일하자").
+ *
+ * 칸마다 제일 가까운 삼각형을 베끼면 그 자리에 뭐가 가깝든 그대로 딸려 와서
+ * 숲 바닥이 누더기가 된다 — 실측으로 떡잎마을 줄기 111그루 중 63그루가 눈 위,
+ * 영원의숲 107그루 중 33그루가 절벽 위에 서 있었다.
+ */
+describe('나무 밑 바닥을 한 가지로 통일한다', () => {
+  /** 그림마다 한 텍셀짜리 시트. 색이 곧 그 그림의 정체다 */
+  function sheetOf(colors: [string, number, number, number][]): TexSheet {
+    const pixels = new Uint8ClampedArray(colors.length * 4)
+    colors.forEach(([, r, g, b], i) => {
+      pixels[i * 4] = r; pixels[i * 4 + 1] = g; pixels[i * 4 + 2] = b; pixels[i * 4 + 3] = 255
+    })
+    return {
+      width: colors.length,
+      height: 1,
+      items: colors.map(([tex], i) => ({ tex, pal: '', x: i, y: 0, w: 1, h: 1 })),
+      pixels,
+    }
+  }
+
+  /**
+   * 실측한 롬 그림의 평균색 (`.audit/groundTint.mjs` · 그림 1,133가지).
+   * 잣대를 우리가 지어내지 않았다는 것이 이 표의 뜻이다
+   */
+  const REAL = sheetOf([
+    ['nectgr', 60, 192, 62],    // 풀 — 초록 130
+    ['ngrass', 92, 246, 148],   // 풀 — 초록 98
+    ['fenter', 71, 205, 126],   // 풀 — 초록 78
+    ['nsandp', 203, 228, 148],  // 흙 — 초록 26 (풀이 아니다)
+    ['criffp', 120, 93, 91],    // 절벽 — 초록 −27
+    ['criff', 192, 156, 145],   // 절벽 — 초록 −36
+    ['s_sonwp', 246, 246, 248], // 눈 — 밝기 246.6 · 색기 0.008 (이름이 오타다)
+    ['s_snow04', 253, 253, 255],// 눈 — 밝기 253.6 · 색기 0.006
+    ['beach', 243, 243, 216],   // 모래 — 밝기 240인데 **색기 0.108**
+    ['sea', 57, 127, 231],      // 물
+  ])
+
+  it('풀과 눈만 2등급이다 — 이름이 아니라 색으로 가른다', () => {
+    // ⚠️ 롬 이름은 못 믿는다. 눈 그림 하나가 `s_sonwp`고, `nectgr`·`fenter`는
+    // 이름만 봐서는 풀인지 알 수 없다 — 실제로 둘 다 풀이다
+    expect(groundRank(REAL, 'nectgr')).toBe(2)
+    expect(groundRank(REAL, 'ngrass')).toBe(2)
+    expect(groundRank(REAL, 'fenter')).toBe(2)
+    expect(groundRank(REAL, 's_sonwp')).toBe(2)
+    expect(groundRank(REAL, 's_snow04')).toBe(2)
+    // 흙·절벽은 땅이긴 하지만 나무 밑에 골라 깔 것은 아니다
+    expect(groundRank(REAL, 'nsandp')).toBe(1)
+    expect(groundRank(REAL, 'criffp')).toBe(1)
+    expect(groundRank(REAL, 'criff')).toBe(1)
+    // ⚠️ **모래사장이 눈으로 새면 안 된다.** 밝기는 눈과 같은 240인데 색기가
+    // 0.108로 열 배 넘게 높다 — 갈리는 자리가 밝기가 아니라 색기다
+    expect(groundRank(REAL, 'beach')).toBe(1)
+    // 물은 아예 안 쓴다
+    expect(groundRank(REAL, 'sea')).toBe(0)
+  })
+
+  /**
+   * 칸 (0,0)에 잎만 있고 바닥이 없는 청크. 가까운 데 `near`가 한 칸,
+   * 먼 데 `far`가 다섯 칸 깔려 있다 — 「제일 가까운 것」과 「제일 넓은 것」이
+   * 서로 다른 답을 내도록 일부러 그렇게 놓았다
+   */
+  function forestChunk(near: string, far: string): Split {
+    const pos: number[] = [
+      // 잎 판 — 칸 (0,0)을 덮는다. 서 있는 판이라 걷어내진다
+      0, 2, 0, 1, 2, 0, 1, 3, 1, 0, 3, 1,
+      // `near` — 칸 (1,0) 하나
+      1, 1, 0, 2, 1, 0, 2, 1, 1, 1, 1, 1,
+    ]
+    const uv: number[] = [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1]
+    const index: number[] = [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]
+    // `far` — 칸 (5,0)부터 다섯 칸. 넓이가 다섯 배다
+    for (let i = 0; i < 5; i++) {
+      const v = 8 + i * 4
+      const x = 5 + i
+      pos.push(x, 1, 0, x + 1, 1, 0, x + 1, 1, 1, x, 1, 1)
+      uv.push(0, 0, 1, 0, 1, 1, 0, 1)
+      index.push(v, v + 1, v + 2, v, v + 2, v + 3)
+    }
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
+    geometry.setIndex(index)
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [
+        { tex: 'tree01', pal: '', rep: 0, a: 31, f: 0 },
+        { tex: near, pal: '', rep: 0, a: 31, f: 0 },
+        { tex: far, pal: '', rep: 0, a: 31, f: 0 },
+      ],
+      groups: [[0, 0, 6], [1, 6, 6], [2, 12, 30]],
+    }
+    return splitFoliage(mesh, [true, false, false])
+  }
+
+  /** 서브메시 번호 → 그 그림의 이름·등급 */
+  const kindFrom = (names: string[]) => (g: number): GroundKind => {
+    const name = names[g] ?? ''
+    return { name, rank: groundRank(REAL, name) }
+  }
+
+  /** 메운 판이 실제로 어느 서브메시로 들어갔나 */
+  const filledWith = (split: Split, names: string[]): number[] => {
+    const patch = floorPatch(split, () => 1, [], undefined, kindFrom(names))
+    return patch === null ? [] : patch.groups.map(([, , g]) => g)
+  }
+
+  it('가까운 눈이 아니라 넓은 풀로 메운다 — 떡잎마을이 눈밭이 됐던 자리다', () => {
+    // ⚠️ 실측으로 떡잎마을 줄기 111그루 중 **63그루가 눈**(`s_sonwp`) 위에
+    // 서 있었다. 초록 마을인데 그렇다 — 그 청크에서 눈은 바닥 넓이의 2.9%다
+    const split = forestChunk('s_sonwp', 'ngrass')
+    expect([...split.cells.keys()]).toEqual([cellKey(0, 0)])
+    // 통일 전이라면 한 칸 옆의 눈을 집는다
+    expect(floorPatch(split, () => 1)!.groups.map(([, , g]) => g)).toEqual([1])
+    // 통일하면 다섯 칸짜리 풀이 이긴다
+    expect(filledWith(split, ['tree01', 's_sonwp', 'ngrass'])).toEqual([2])
+  })
+
+  it('설원이면 눈이 이긴다 — 풀을 억지로 깔지 않는다', () => {
+    // 같은 2등급끼리는 **그 청크에 실제로 넓게 깔린 쪽**이 이긴다
+    expect(filledWith(forestChunk('ngrass', 's_snow04'), ['tree01', 'ngrass', 's_snow04']))
+      .toEqual([2])
+  })
+
+  it('가까운 절벽 대신 먼 풀을 깐다 — 영원의숲이 절벽 위였던 자리다', () => {
+    // 실측으로 영원의숲 줄기 107그루 중 33그루가 `criffp`(절벽) 위에 있었다
+    expect(filledWith(forestChunk('criffp', 'nectgr'), ['tree01', 'criffp', 'nectgr']))
+      .toEqual([2])
+  })
+
+  it('풀이 좁아도 절벽보다 먼저다 — 등급이 넓이를 이긴다', () => {
+    // 풀이 한 칸(가까운 쪽), 절벽이 다섯 칸. 넓이만 보면 절벽이 이긴다
+    expect(filledWith(forestChunk('ngrass', 'criff'), ['tree01', 'ngrass', 'criff']))
+      .toEqual([1])
+  })
+
+  it('풀도 눈도 없으면 제일 넓은 땅으로 통일한다 — 모래사장·포장 도시', () => {
+    // ⚠️ **모래사장 나무를 억지로 풀로 만들지 않는다.** 고를 것이 없으면
+    // 그 청크를 실제로 이루는 땅이 답이다. 다만 **하나로** 통일하는 것은 같다
+    expect(filledWith(forestChunk('criffp', 'beach'), ['tree01', 'criffp', 'beach']))
+      .toEqual([2])
+  })
+
+  it('통일해도 발밑이 안 뚫린다 — 고를 것이 없으면 안 거른다', () => {
+    // ⚠️ 누더기보다 하늘 구멍이 나쁘다. 물뿐이라 다 걸러지면 거르기를 포기한다
+    const split = forestChunk('sea', 'sea')
+    const patch = floorPatch(split, () => 1, [], undefined, kindFrom(['tree01', 'sea', 'sea']))
+    expect(patch, '메울 것이 물뿐이어도 칸은 메운다').not.toBeNull()
+    expect(patch!.geometry.getAttribute('position').count / 3).toBe(2)
+  })
+
+  it('갈래를 안 주면 예전 그대로다 — 부르는 쪽이 안 바뀌면 안 바뀐다', () => {
+    const split = forestChunk('s_sonwp', 'ngrass')
+    expect(floorPatch(split, () => 1)!.groups.map(([, , g]) => g)).toEqual([1])
+  })
+})
+
+/**
+ * **풀숲 그림은 나무 밑에 안 깐다** (사용자: "나무가 풀숲 위에 있으면 안돼").
+ *
+ * 색으로만 고르면 원작이 풀숲을 그리는 데 쓴 그림이 제일 초록이라 자주 이긴다.
+ * 그러면 숲 바닥이 통째로 풀숲으로 보이는데, 정작 인카운터가 나는 칸은
+ * 거기가 아니다 — 어디가 풀숲인지는 **거동값**이 말한다 (`Grass.tsx`).
+ */
+describe('풀숲 그림을 가려낸다', () => {
+  /** 칸 (x,0)마다 한 장씩, 서브메시를 나눠 깐 바닥 */
+  function strip(spans: [string, number, number][]): { split: Split, mesh: ChunkMesh } {
+    const pos: number[] = []
+    const index: number[] = []
+    const groups: [number, number, number][] = []
+    let at = 0
+    spans.forEach(([, from, to], g) => {
+      const start = at
+      for (let x = from; x < to; x++) {
+        const v = pos.length / 3
+        pos.push(x, 1, 0, x + 1, 1, 0, x + 1, 1, 1, x, 1, 1)
+        index.push(v, v + 1, v + 2, v, v + 2, v + 3)
+        at += 6
+      }
+      groups.push([g, start, at - start])
+    })
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array((pos.length / 3) * 2), 2))
+    geometry.setIndex(index)
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: spans.map(([tex]) => ({ tex, pal: '', rep: 0, a: 31, f: 0 })),
+      groups,
+    }
+    return { split: splitFoliage(mesh, spans.map(() => false)), mesh }
+  }
+
+  const nameOf = (mesh: ChunkMesh) => (g: number) => mesh.materials[g]?.tex ?? ''
+
+  it('덮은 칸이 다 풀숲이면 풀숲 그림이다', () => {
+    // ⚠️ 실측: 영원의숲 `nectgr`은 244칸 중 **100.0%**가 거동 0x02·0x03이고
+    // `ngrass`는 6,220칸 중 0.5%다. 두 값 사이라 문턱을 어디 놓아도 같다
+    const { split, mesh } = strip([['ngrass', 0, 10], ['nectgr', 10, 14]])
+    const found = tuftTextures(split, nameOf(mesh), (tx) => tx >= 10)
+
+    expect([...found]).toEqual(['nectgr'])
+  })
+
+  it('풀숲 칸이 조금 섞였다고 풀숲 그림이 되지는 않는다', () => {
+    // 열 칸 중 하나만 풀숲인 일반 땅. 이걸 빼면 깔 바닥이 사라진다
+    const { split, mesh } = strip([['ngrass', 0, 10]])
+
+    expect([...tuftTextures(split, nameOf(mesh), (tx) => tx === 3)]).toEqual([])
+  })
+
+  it('벽에 걸린 그림은 안 센다 — 바닥 후보가 아니다', () => {
+    // 세워 둔 판. 누운 면이 없으면 칸을 하나도 안 모은다
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([
+      0, 1, 0, 1, 1, 0, 1, 2, 0, 0, 2, 0,
+    ]), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(8), 2))
+    geometry.setIndex([0, 1, 2, 0, 2, 3])
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [{ tex: 'nectgr', pal: '', rep: 0, a: 31, f: 0 }],
+      groups: [[0, 0, 6]],
+    }
+
+    expect([...tuftTextures(splitFoliage(mesh, [false]), nameOf(mesh), () => true)]).toEqual([])
+  })
+
+  it('풀숲 그림을 0등급으로 주면 그 다음 풀이 이긴다', () => {
+    // ⚠️ **여기가 사용자가 본 화면이다.** `nectgr`이 제일 초록이라(초록 133)
+    // 색만으로는 늘 이기는데, 그걸 나무 밑에 깔면 숲 바닥이 풀숲이 된다
+    const REAL = {
+      width: 2, height: 1,
+      items: [
+        { tex: 'nectgr', pal: '', x: 0, y: 0, w: 1, h: 1 },
+        { tex: 'ngrass', pal: '', x: 1, y: 0, w: 1, h: 1 },
+      ],
+      pixels: new Uint8ClampedArray([58, 192, 59, 255, 85, 253, 150, 255]),
+    }
+    // 잎 칸 하나 · 풀숲 그림 다섯 칸 · 일반 풀 두 칸. 둘 다 2등급이고
+    // 안 거르면 **넓은 쪽인 풀숲 그림**이 이긴다
+    const pos: number[] = []
+    const index: number[] = []
+    /** 칸 [from, to)에 바닥을 깐다. 돌려주는 것은 `[색인 시작, 개수]` */
+    const lay = (from: number, to: number): [number, number] => {
+      const start = index.length
+      for (let x = from; x < to; x++) {
+        const v = pos.length / 3
+        pos.push(x, 1, 0, x + 1, 1, 0, x + 1, 1, 1, x, 1, 1)
+        index.push(v, v + 1, v + 2, v, v + 2, v + 3)
+      }
+      return [start, index.length - start]
+    }
+    // 서 있는 잎 판 — 칸 (20,0)을 덮는다. 밑에 바닥이 없으니 메울 칸이 된다
+    pos.push(20, 2, 0, 21, 2, 0, 21, 3, 1, 20, 3, 1)
+    index.push(0, 1, 2, 0, 2, 3)
+    const leaf: [number, number] = [0, 6]
+    const tall = lay(0, 5)
+    const plain = lay(10, 12)
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array((pos.length / 3) * 2), 2))
+    geometry.setIndex(index)
+    const names = ['tree01', 'nectgr', 'ngrass']
+    const split = splitFoliage({
+      geometry,
+      materials: names.map((tex) => ({ tex, pal: '', rep: 0, a: 31, f: 0 })),
+      groups: [[0, ...leaf], [1, ...tall], [2, ...plain]],
+    }, [true, false, false])
+    const kind = (tuft: boolean) => (g: number) => ({
+      name: names[g] ?? '',
+      rank: tuft && names[g] === 'nectgr' ? 0 : groundRank(REAL, names[g] ?? ''),
+    })
+
+    // 안 거르면 더 넓은 `nectgr`(서브메시 1)이 이긴다
+    expect(floorPatch(split, () => 1, [], undefined, kind(false))!.groups.map(([, , g]) => g))
+      .toEqual([1])
+    // 풀숲 그림으로 걸러 내면 `ngrass`(서브메시 2)가 깔린다
+    expect(floorPatch(split, () => 1, [], undefined, kind(true))!.groups.map(([, , g]) => g))
+      .toEqual([2])
+  })
+})
+
+describe('땅은 청크 혼자 못 고른다', () => {
+  const kind = (name: string, rank: number): GroundKind => ({ name, rank })
+
+  /** 삼각형 하나를 흉내 낸다. `groundArea`가 보는 것은 서브메시 번호와 넓이뿐이다 */
+  const tri = (group: number, size: number): FloorTri => ({
+    group, ax: 0, az: 0, au: 0, av: 0,
+    ux: size, uz: 0, du: 1, dv: 0,
+    vx: 0, vz: size, eu: 0, ev: 1,
+    r: 1, g: 1, b: 1, cx: 0.5, cz: 0.5, cy: 0,
+  })
+
+  it('이름별로 넓이를 합치고 물·풀숲(0등급)은 뺀다', () => {
+    const area = groundArea(
+      [tri(0, 2), tri(0, 2), tri(1, 4), tri(2, 8)],
+      (g) => [kind('ngrass', 2), kind('criff', 1), kind('sea', 0)][g]!)
+    expect([...area.keys()]).toEqual(['ngrass', 'criff'])
+    expect(area.get('ngrass')!.area).toBe(4)
+    expect(area.get('criff')!.area).toBe(8)
+  })
+
+  it('등급이 먼저고 그다음이 넓이다', () => {
+    // 절벽이 두 배 넓어도 풀이 이긴다
+    expect(pickGround(groundArea([tri(0, 2), tri(1, 4)],
+      (g) => [kind('ngrass', 2), kind('criff', 1)][g]!))).toBe('ngrass')
+    // 같은 등급이면 넓은 쪽
+    expect(pickGround(groundArea([tri(0, 2), tri(1, 4)],
+      (g) => [kind('ngrass', 2), kind('s_snow04', 2)][g]!))).toBe('s_snow04')
+    expect(pickGround(new Map())).toBeNull()
+  })
+
+  /**
+   * 이 청크에는 절벽밖에 없다. 이웃이 준 풀을 함께 받는다.
+   *
+   * ⚠️ 예진호수 청크 (0,0)이 정확히 이 꼴이었다 — 제 바닥이 `criff`(분홍 바위)
+   * 뿐이라 숲 바닥 792칸을 통째로 분홍으로 깔았고, 바로 옆 (0,1)은 풀로 깔았다.
+   * 「바닥이 하나도 없을 때만 빌려 온다」였던 것이 원인이다
+   */
+  function cliffOnly(): Split {
+    const pos = [
+      // 잎 판 — 칸 (0,0)
+      0, 2, 0, 1, 2, 0, 1, 3, 1, 0, 3, 1,
+      // 절벽 바닥 — 칸 (1,0)
+      1, 1, 0, 2, 1, 0, 2, 1, 1, 1, 1, 1,
+    ]
+    const uv = [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1]
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
+    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [
+        { tex: 'tree01', pal: '', rep: 0, a: 31, f: 0 },
+        { tex: 'criff', pal: '', rep: 0, a: 31, f: 0 },
+      ],
+      groups: [[0, 0, 6], [1, 6, 6]],
+    }
+    return splitFoliage(mesh, [true, false])
+  }
+
+  it('이웃이 준 풀이 제 절벽을 이긴다 — 예진호수 분홍 바위 판', () => {
+    const split = cliffOnly()
+    const named = (g: number): GroundKind =>
+      (g === 1 ? kind('criff', 1) : kind('ngrass', 2))
+    // 빌려 온 풀 삼각형. 서브메시 2번으로 뒤에 붙여 준다 (`ChunkModels.borrowFloors`)
+    const lent = [{ ...tri(2, 1), ax: 3, az: 0, cx: 3.5, cz: 0.5 }]
+    expect(floorPatch(split, () => 1, [], undefined, named)!.groups.map(([, , g]) => g))
+      .toEqual([1])
+    expect(floorPatch(split, () => 1, lent, undefined, named)!.groups.map(([, , g]) => g))
+      .toEqual([2])
+  })
+
+  it('밖에서 고른 그림(`want`)이 제 넓이를 이긴다 — 청크선이 드러나던 자리', () => {
+    const split = cliffOnly()
+    const named = (g: number): GroundKind =>
+      (g === 1 ? kind('criff', 2) : kind('ngrass', 2))
+    const lent = [{ ...tri(2, 1), ax: 3, az: 0, cx: 3.5, cz: 0.5 }]
+    // 둘 다 2등급이면 이 청크에 넓은 `criff`가 이긴다 — 옆 청크와 답이 갈린다
+    expect(floorPatch(split, () => 1, lent, undefined, named)!.groups.map(([, , g]) => g))
+      .toEqual([1])
+    // 이름을 받으면 그것을 쓴다. 맞닿은 청크가 같은 이름을 받으므로 경계가 사라진다
+    expect(floorPatch(split, () => 1, lent, undefined, named, 'ngrass')!
+      .groups.map(([, , g]) => g)).toEqual([2])
+    // 그 이름이 이 무더기에 없으면 제 힘으로 고른다 — 빈 자리를 만들지 않는다
+    expect(floorPatch(split, () => 1, lent, undefined, named, 's_snow04')!
+      .groups.map(([, , g]) => g)).toEqual([1])
+  })
+})
+
+describe('턱에 옆면을 세운다', () => {
+  /**
+   * 칸 (0,0)은 y=`high`, 칸 (1,0)은 y=0. 잎은 없다.
+   *
+   * ⚠️ 원작 지형에는 세로면이 **아예 없다** — 4세대는 위에서만 보므로 높이가
+   * 다른 가로 판만 쌓는다. 실측: 217번도로 창 전체의 세로 삼각형 82개가 전부
+   * 부두·난간·계단 소품이고 땅에서 나온 것은 0개, 예진호수는 하나도 없다.
+   * 1인칭으로 돌면 그 턱마다 밑이 훤히 보였다 (217번도로 243자리 중 243자리)
+   */
+  function terrace(high: number): Split {
+    const pos = [
+      1, high, 0, 0, high, 0, 0, high, 1, 1, high, 1, // 칸 (0,0) — 높은 쪽
+      2, 0, 0, 1, 0, 0, 1, 0, 1, 2, 0, 1, // 칸 (1,0) — 낮은 쪽
+    ]
+    const uv = [0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1]
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
+    geometry.setIndex([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
+    const mesh: ChunkMesh = {
+      geometry,
+      materials: [{ tex: 'ngrass', pal: '', rep: 0, a: 31, f: 0 }],
+      groups: [[0, 0, 12]],
+    }
+    return splitFoliage(mesh, [false])
+  }
+
+  /** 그 판의 삼각형들을 (높이, 법선)으로 읽는다 */
+  function facesOf(high: number) {
+    // 걷는 높이도 그린 높이와 맞춰 준다 — 청크 밖 이웃은 이것으로 견준다
+    const patch = floorPatch(terrace(high), (x) => (x < 1 ? high : 0))
+    if (patch === null) return []
+    const pos = patch.geometry.getAttribute('position')
+    const nor = patch.geometry.getAttribute('normal')
+    const out: { y: number[], n: [number, number, number] }[] = []
+    for (let t = 0; t < pos.count; t += 3) {
+      out.push({
+        y: [pos.getY(t), pos.getY(t + 1), pos.getY(t + 2)],
+        n: [nor.getX(t), nor.getY(t), nor.getZ(t)],
+      })
+    }
+    return out
+  }
+
+  it('한 칸 낮은 이웃 쪽에만 세로면이 선다', () => {
+    const faces = facesOf(1)
+    // 잎이 없으니 바닥 판은 안 깔린다. 나온 것은 옆면 넉 장(사각 하나)뿐이다
+    expect(faces.length).toBe(2)
+    for (const f of faces) {
+      // 바깥(+x)을 본다 — 뒤집히면 턱 안쪽에서만 보이고 밖에선 그대로 뚫린다
+      expect(f.n).toEqual([1, 0, 0])
+      expect(Math.min(...f.y)).toBe(0)
+      expect(Math.max(...f.y)).toBe(1)
+    }
+  })
+
+  it('평평하면 아무것도 안 세운다', () => {
+    expect(facesOf(0)).toEqual([])
+  })
+
+  it('두 칸 떨어지면 한 칸씩 끊어 두 층으로 쌓는다', () => {
+    // ⚠️ 통째로 늘리면 UV가 타일 밖으로 나가 가장자리 텍셀로 눌린 **민무늬
+    // 띠**가 된다 — `lay`가 겪은 것과 같은 고장이다
+    const faces = facesOf(2)
+    expect(faces.length).toBe(4)
+    const spans = faces.map((f) => [Math.min(...f.y), Math.max(...f.y)])
+    expect(spans).toContainEqual([1, 2])
+    expect(spans).toContainEqual([0, 1])
+  })
+
+  it('UV가 타일 밖으로 안 나간다 — 안쪽으로 되짚는다', () => {
+    const patch = floorPatch(terrace(2), (x) => (x < 1 ? 2 : 0))!
+    const uv = patch.geometry.getAttribute('uv')
+    for (let i = 0; i < uv.count; i++) {
+      expect(uv.getX(i)).toBeGreaterThanOrEqual(0)
+      expect(uv.getX(i)).toBeLessThanOrEqual(1)
+      expect(uv.getY(i)).toBeGreaterThanOrEqual(0)
+      expect(uv.getY(i)).toBeLessThanOrEqual(1)
+    }
+  })
 })
