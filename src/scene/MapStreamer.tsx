@@ -55,6 +55,8 @@ import {
   distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
+  distortionEventRunning,
+  distortionEventTick,
   distortionJumpTick,
   distortionJumping,
   distortionHooks,
@@ -633,6 +635,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
+    // 밟으면 통째로 미끄러지는 발판 (`EVENT_CMD_MOVE_PLATFORM`) — B2F의 길이다
+    distortionEventTick(dt)
     // 리그·강철섬의 승강판 (PARITY §7.12). 타는 동안은 판이 자리를 정한다
     platformLiftTick(dt)
     pastoriaTick(dt)
@@ -641,7 +645,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     canalaveTick(dt)
     veilstoneTick(dt)
     worldState.player.riding = distortionRiding() || distortionBoulderFalling()
-      || distortionGhostRunning() || distortionJumping() || platformLiftBusy()
+      || distortionGhostRunning() || distortionJumping() || distortionEventRunning()
+      || platformLiftBusy()
       || canalaveBusy() || veilstoneBusy()
 
     const p = worldState.player.position

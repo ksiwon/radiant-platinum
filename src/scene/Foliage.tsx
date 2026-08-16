@@ -174,6 +174,14 @@ const RADIUS_MAX = 1.40
 const RADIUS_JITTER = 0.12
 
 /**
+ * 잎이 옆으로 뻗는 제일 먼 거리 (나무 반지름 배수). `BLOBS`에서 나온 값이다 —
+ * `max(|x| + r)`가 둘째 덩이의 0.42 + 0.55 = 0.97이다.
+ *
+ * 나무가 소품·울타리에 얼마나 가까이 설 수 있는지를 이 값이 정한다
+ */
+export const CROWN_REACH = 0.97
+
+/**
  * 키를 반지름과 **따로** 흔드는 폭.
  *
  * ⚠️ **이게 없으면 숲이 카펫이 된다.** 크기를 균등 배율 하나로만 주면 짙은 숲에서
@@ -568,6 +576,14 @@ export function treeGeometry(leaf: number[], trunk: number, far = false): Buffer
 export type GroundAt = (x: number, z: number, near: number) => number | null
 
 /**
+ * 그 자리에서 제일 가까운 **막힌 것**까지의 거리 (타일). 없으면 `Infinity`.
+ *
+ * 막힌 것은 집·간판 같은 소품과, 원작 청크에 세워져 있는 판(울타리·표지판)이다
+ * (`ChunkModels`의 `solidCells`)
+ */
+export type ClearAt = (x: number, z: number) => number
+
+/**
  * 칸 하나에 나무를 세울 자리. 자리는 **밑동**이다.
  *
  * `STRIDE` 간격의 칸만 대표로 세운다. 이러면 원작 판이 몇 겹이든, 눕든 서든,
@@ -585,6 +601,19 @@ export type GroundAt = (x: number, z: number, near: number) => number | null
  */
 export function treeAt(
   key: number, cell: Cell, ground?: GroundAt, site?: { x: number; z: number },
+  /**
+   * 소품·울타리까지의 거리. 주면 **그 안으로는 안 자란다.**
+   *
+   * ⚠️ **원작 판은 겹쳐도 안 보였다.** 나무는 위에서 본 그림 한 장이라 집
+   * 옆에 걸쳐 있어도 화면에서는 집이 덮었다. 그걸 입체로 세우면 **줄기가
+   * 벽을 뚫고 잎이 지붕에 박힌다** — 실측으로 마을 열 곳에서 98그루가 그랬고
+   * (연고시티 29 · 선단시티 22 · 잔모래마을 19), 제일 깊은 것은 2.17타일이었다.
+   *
+   * 지우지 않고 **줄인다.** 원작 판이 거기 있었다는 것은 사실이라, 나무를
+   * 통째로 빼면 집 둘레에 민둥한 고리가 생긴다. 최소 크기(`RADIUS_MIN`)로도
+   * 안 들어가는 자리만 비운다
+   */
+  clear?: ClearAt,
 ): Matrix4 | null {
   const tx = cellX(key), tz = cellZ(key)
   if (!site) {
@@ -597,9 +626,9 @@ export function treeAt(
   // 숲은 크게 자라 서로 닿아 벽이 되고 길가 나무는 작게 남는다
   const want = (cell.maxY - cell.minY) / CROWN_H
   const jitter = (hash(tx, tz, 9) - 0.5) * 2 * RADIUS_JITTER
-  const r = Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, want)) + jitter
+  const grown = Math.min(RADIUS_MAX, Math.max(RADIUS_MIN, want)) + jitter
   // 키는 따로 흔든다. 균등 배율만 주면 우듬지가 한 높이에 늘어서 카펫이 된다
-  const h = r * (1 + (hash(tx, tz, 11) - 0.5) * 2 * HEIGHT_JITTER)
+  const tall = 1 + (hash(tx, tz, 11) - 0.5) * 2 * HEIGHT_JITTER
   // ⚠️ **흩지 않는다.** 예전엔 칸 한가운데에서 ±0.9타일 흩었는데, 그러면
   // 원작이 나무 밑에 깔아 둔 그림자 판(`tshadow`)에서 나무가 벗어난다 — 홀로
   // 선 나무 1,022그루가 **1,022그루 다** 그 동그라미 밖에 있었고 중앙값이
@@ -608,6 +637,11 @@ export function treeAt(
   // 자리는 `treeSites`가 정한다 — 그림자 판이 있으면 그 한가운데, 없으면 격자
   const x = site ? site.x : tx + STRIDE / 2
   const z = site ? site.z : tz + STRIDE / 2
+  // 소품·울타리 안으로는 안 자란다. 최소 크기로도 안 들어가면 아예 안 세운다
+  const room = clear?.(x, z) ?? Infinity
+  if (room < RADIUS_MIN * CROWN_REACH) return null
+  const r = Math.min(grown, room / CROWN_REACH)
+  const h = r * tall
   // 높이 자료가 없는 칸이 6%다(48,525 중 2,970). 그때만 잎 아래끝으로 물러선다
   const foot = ground?.(x, z, cell.minY) ?? cell.minY
   return new Matrix4().compose(
@@ -714,7 +748,9 @@ function stemMatrix(tree: Matrix4, into: Matrix4): Matrix4 {
   return into.compose(place, spin, size.set(TRUNK_R, size.y, TRUNK_R))
 }
 
-export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: GroundAt }) {
+export function Foliage(
+  { groups, ground, clear }: { groups: FoliageGroup[]; ground?: GroundAt; clear?: ClearAt },
+) {
   const camera = useThree((s) => s.camera)
 
   const meshes = useMemo(() => groups.map((g) => {
@@ -724,7 +760,8 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
       // 있고, 그때는 옆 청크의 판이 답이다
       const m = treeAt(site.key, site.cell, ground
         ? (x, z, near) => ground(x + originX, z + originZ, near)
-        : undefined, site)
+        : undefined, site,
+      clear ? (x, z) => clear(x + originX, z + originZ) : undefined)
       if (!m) continue
       // 판 좌표가 청크 로컬이라 청크가 놓인 자리를 더해야 월드가 된다.
       // 높이는 청크가 이미 갖고 있어서 안 더한다 — 밑동이 곧 월드 높이다
@@ -768,7 +805,7 @@ export function Foliage({ groups, ground }: { groups: FoliageGroup[]; ground?: G
       stemNear: make(false, true), stemFar: make(true, true),
       shade, matrices, stems, spots, radius,
     }
-  }), [groups, ground])
+  }), [groups, ground, clear])
 
   /**
    * 프레임마다 그루를 셋으로 가른다: 화면 밖 · 가까운 것 · 먼 것.

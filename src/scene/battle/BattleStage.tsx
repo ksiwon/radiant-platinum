@@ -9,8 +9,8 @@
 // 한 장이었고 오래 그렇게 세워 왔는데, 무대를 BDSP의 진짜 3D로 갈아 끼우고 나니
 // 그 한 장만 화면에서 튀었다. 지어낸 것이 아니라 공식 리메이크가 같은 493마리를
 // 3D로 다시 만들어 둔 것을 가져온다. 모델을 못 받은 종은 도트로 떨어진다.
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame, useLoader } from '@react-three/fiber'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { useFrame, useLoader, useThree } from '@react-three/fiber'
 import {
   BackSide,
   Box3,
@@ -22,13 +22,14 @@ import {
   type Texture,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import type { WebGPURenderer } from 'three/webgpu'
+import { warmBeforeShow } from '../warmPipelines'
 import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
-import { loadMotionTiming, loadMoves, loadSpecies, loadSpeciesNames } from '../../data/gameData'
+import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
-import { useGameLocale } from '../../state/optionsStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN } from './stageRefs'
@@ -245,6 +246,9 @@ function Slot({
   // 몸은 종이 바뀔 때만 받는다. 같은 종을 여럿 데리고 있어도 한 벌이면 된다.
   // **3D 모델이 먼저고 도트가 대신**이다 — 493종 중 모델이 없는 종만 그림으로 선다
   const species = mon?.species ?? null
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
+  const r3fScene = useThree((s) => s.scene)
+  const camera = useThree((s) => s.camera)
   useEffect(() => {
     let alive = true
     setModel(null)
@@ -258,9 +262,18 @@ function Slot({
         if (!alive) return null
         if (loaded) {
           const body = makeBody(loaded)
-          setModel(body)
-          onBody(body.tall)
-          return null
+          // ⚠️ **굽고 나서 세운다.** 그냥 `setModel`하면 R3F가 이번 프레임에
+          // 씬에 붙이고, 그리는 그 프레임 안에서 파이프라인이 컴파일된다 —
+          // ANGLE은 그 링크 확인에서 막히고(`warmPipelines`), 스킨 모델은
+          // **한 마리에 정점 프로그램 하나**다. 실측으로 배틀 장면에서만
+          // 제일 긴 프레임이 216~600ms였고 오버월드는 전부 16.8ms였다
+          return warmBeforeShow(gl, r3fScene, camera, body.root)
+            .then(() => {
+              if (!alive) return null
+              setModel(body)
+              onBody(body.tall)
+              return null
+            })
         }
         onBody(0)
         // 모델이 없다 — 원작 도트로 떨어진다
@@ -616,22 +629,6 @@ function Flat({ look }: { look: TimeLook }) {
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
-  // 무대 위 이름표에 쓸 **롬 이름**. 못 받으면 프로토콜의 영어 이름으로 떨어진다
-  // (`BattleWorldLabels`가 왜인지를 적는다)
-  const locale = useGameLocale()
-  const [speciesNames, setSpeciesNames] = useState<readonly string[] | null>(null)
-  useEffect(() => {
-    let alive = true
-    void loadSpeciesNames(locale)
-      .then((names) => { if (alive) setSpeciesNames(names) })
-      .catch(() => { /* 이름표만 영어로 뜬다 */ })
-    return () => { alive = false }
-  }, [locale])
-  const nameOf = useCallback((mon: ViewMon) => {
-    const entry = roster[mon.key]
-    const id = mon.species ?? entry?.species ?? -1
-    return entry?.nickname ?? speciesNames?.[id] ?? mon.speciesName
-  }, [roster, speciesNames])
   // 오버월드와 **같은 하늘·같은 조명**을 쓴다. 두 화면의 톤이 어긋나면
   // 배틀에 들어갈 때마다 다른 게임처럼 보인다 — 해질녘에 걸어 들어왔는데
   // 배틀만 대낮이면 그 순간 다른 게임이 된다
@@ -774,7 +771,6 @@ export function BattleStage() {
       {view && (
         <BattleWorldLabels
           view={view}
-          nameOf={nameOf}
           spotAt={(id) => {
             const p = spotOf(id)
             return [p.x, p.z]

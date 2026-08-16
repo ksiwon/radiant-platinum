@@ -136,6 +136,58 @@ describe.runIf(real)('층에 들어서면 그 층 사람이 선다', () => {
     expect(rocks.map((r) => r.localID).sort((a, b) => a - b)).toEqual([128, 129, 130])
   })
 
+  /**
+   * **같은 사람이 두 자리에 서면 안 된다** (사용자 지적: "깨어진 세계에서
+   * 난천이 두 명 같이 보이는데?").
+   *
+   * 1F 배치표에는 시로나가 둘이다 — 스크립트가 부르는 「차원문 앞」(#128
+   * @55,40)과 늘 서 있는 「승강판」(#129 @39,52, 진행도 ≤ 2). 원작 스크립트도
+   * 둘을 같이 세우는데(`scripts_distortion_world_1f.s`), 원작 화면은 위에서
+   * 내려다보는 두 화면이라 16타일 떨어진 저쪽이 안 보인다
+   */
+  it('스크립트가 시로나를 부르면 저쪽 시로나는 비켜서고, 지우면 돌아온다', () => {
+    const vars = new VarStore()
+    mod.distortionHooks.vars = () => vars
+    mod.distortionHooks.progress = () => PROGRESS.none
+    useSaveStore.setState({
+      distortion: { ...useSaveStore.getState().distortion, valid: false },
+    })
+    mod.distortionEnter(MAP.f1, 20, 1, 25)
+    // 들어서면 승강판 시로나만 선다 (`manualAddOnly`인 #128은 안 선다)
+    expect(npcActors.byLocalID.has(129)).toBe(true)
+    expect(npcActors.byLocalID.has(128)).toBe(false)
+
+    mod.distortionAddObject(128, vars)
+    const cynthias = npcActors.list.filter((a) => a.info.sprite === 138)
+    expect(cynthias.map((a) => a.localID), '한 사람이 두 자리에 섰다').toEqual([128])
+
+    mod.distortionRemoveObject(128)
+    const after = npcActors.list.filter((a) => a.info.sprite === 138)
+    expect(after.map((a) => a.localID), '연출이 끝나면 승강판 쪽이 돌아온다').toEqual([129])
+  })
+
+  // ⚠️ **바위에는 안 걸어야 한다.** B6F의 바위 아홉은 그림이 셋뿐이라
+  // 그림으로 지우면 수수께끼가 통째로 사라진다
+  it('바위를 부를 때는 같은 그림의 다른 바위가 안 사라진다', () => {
+    const vars = new VarStore()
+    mod.distortionHooks.vars = () => vars
+    mod.distortionHooks.progress = () => PROGRESS.finishedBoulderPuzzle
+    useSaveStore.setState({
+      distortion: {
+        ...useSaveStore.getState().distortion, valid: true,
+        puzzleFlags: (1 << 3) | (1 << 4) | (1 << 5),
+      },
+    })
+    npcActors.list = []
+    npcActors.byLocalID.clear()
+    mod.distortionEnter(MAP.b6f, 20, 1, 25)
+    const before = npcActors.list.filter((a) => a.info.sprite === 84).length
+    expect(before).toBeGreaterThan(1)
+    mod.distortionAddObject(144, vars)
+    expect(npcActors.list.filter((a) => a.info.sprite === 84).length)
+      .toBeGreaterThanOrEqual(before)
+  })
+
   // ⚠️ **좌표가 세계 좌표다.** 층 오프셋을 안 빼면 사람이 맵 밖에 선다
   it('세운 자리가 그 층의 지역 좌표다', () => {
     mod.distortionHooks.progress = () => PROGRESS.giratinaArrived

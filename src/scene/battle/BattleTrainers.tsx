@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import { Group, Mesh, type Object3D } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
+import type { WebGPURenderer } from 'three/webgpu'
+import { warmBeforeShow } from '../warmPipelines'
 import { assets, type AssetPath } from '../../data/providers/assetProvider'
 import { normalizeModel, PLAYER_HEIGHT } from '../../engine/model/normalize'
 import type { BattleView } from '../../engine/battle/view'
@@ -90,6 +92,10 @@ function TrainerActor({
     gestureStarted.current = performance.now() / 1000
   }, [key])
 
+  const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
+  const r3fScene = useThree((s) => s.scene)
+  const camera = useThree((s) => s.camera)
+
   useEffect(() => {
     let alive = true
     setModel(null)
@@ -109,6 +115,11 @@ function TrainerActor({
             if (SECONDARY_OUTFIT.some((part) => object.name.includes(part))) object.visible = false
             if (object instanceof Mesh) object.castShadow = true
           })
+          // ⚠️ **굽고 나서 세운다.** 스킨 사람 하나에 정점 프로그램 하나고, 그
+          // 링크 확인이 ANGLE에서 100ms 넘게 막는다 (`warmPipelines`). 트레이너전은
+          // 둘이 한꺼번에 서므로 그대로 두면 두 배로 쌓인다
+          await warmBeforeShow(gl, r3fScene, camera, root)
+          if (!alive) return
           setModel(root)
         } finally {
           provider.releaseObjectUrl(path)
@@ -120,7 +131,7 @@ function TrainerActor({
     return () => {
       alive = false
     }
-  }, [path])
+  }, [path, gl, r3fScene, camera])
 
   useLayoutEffect(() => {
     if (wrapper.current && model) normalizeModel(wrapper.current, model, PLAYER_HEIGHT)

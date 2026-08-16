@@ -74,6 +74,23 @@ const GROUND_GREEN = 40
 const SNOW_LUMA = 240
 const SNOW_SAT = 0.05
 
+/**
+ * 바닥으로 쓸 수 있는 최소 **불투명 비율**.
+ *
+ * ⚠️ **평균색만 보면 덧그림이 눈으로 뽑힌다.** 원작은 잔디·바위 **위에** 겹쳐
+ * 까는 한 겹을 따로 갖고 있다 — 눈(`s_snow` 49.2% · `s_snow02` 29.7% ·
+ * `s_sonwp` 23.6%)과 얼음(`c09_ice` 55.2% · `c09_ice2` 48.2%)이 그것이다.
+ * 나머지 텍셀이 투명이라 **불투명한 것만 세면 새하얀 눈**이고, 그래서 2등급을
+ * 받아 숲 바닥으로 뽑혔다. 그걸 깔면 알파 컷에 잘려 **발밑이 통째로 뚫린다** —
+ * 사용자가 「투명 타일」이라 한 것이 이것이다.
+ *
+ * 문턱을 고를 자리는 실측이 비워 준다 (그림 1,140가지): 진짜 바닥 그림은
+ * `ngrass`·`nectgr`·`nhana`·`fenter`·`nsandp`·`ckado`·`criff`·`criffp`·
+ * `wcliff`·`s_snow04`·`beach`·`beachp`가 **전부 100.0%**이고, 그 아래는
+ * 98.8%(`temp_05`·`mroom_09`)부터다. 그 빈 구간에 놓는다
+ */
+const GROUND_OPAQUE = 0.995
+
 /** 그림 한 장을 두 번 재지 않는다. 시트가 바뀌면 통째로 사라진다 */
 const rankCache = new WeakMap<TexSheet, Map<string, number>>()
 
@@ -82,7 +99,7 @@ const rankCache = new WeakMap<TexSheet, Map<string, number>>()
  *
  * `2` 풀·눈 — 나무가 서 있어도 어색하지 않은 땅
  * `1` 그 밖의 땅 — 풀도 눈도 없는 청크(모래사장·포장된 도시·동굴)에서 쓴다
- * `0` 물 — 절대 안 쓴다 (`NOT_FLOOR`)
+ * `0` 물과 **속이 빈 그림** — 절대 안 쓴다 (`NOT_FLOOR` · `GROUND_OPAQUE`)
  */
 export function groundRank(sheet: TexSheet | null, tex: string | null): number {
   if (tex === null || tex === '') return 1
@@ -109,7 +126,9 @@ function measureRank(sheet: TexSheet, tex: string): number {
       r += sheet.pixels[o]!; g += sheet.pixels[o + 1]!; b += sheet.pixels[o + 2]!; n++
     }
   }
-  if (n === 0) return 1
+  if (n === 0) return 0
+  // 속이 빈 그림은 깔아도 뚫린다 — 색을 보기 전에 먼저 떨어뜨린다
+  if (n < item.w * item.h * GROUND_OPAQUE) return 0
   r /= n; g /= n; b /= n
   if (g - Math.max(r, b) >= GROUND_GREEN) return 2
   const max = Math.max(r, g, b)
@@ -1028,7 +1047,7 @@ export function pickGround(area: GroundArea): string | null {
  *
  *     떡잎마을 111그루 중 **63그루가 눈**(`s_sonwp`·`s_snow04`) — 초록 마을인데
  *     영원의숲 107그루 중 **33그루가 절벽**(`criffp`)
- *     예진호수  84그루 중 **68그루가 풀이 아니다**(`nectgr` 39 · `criffp` 29)
+ *     예지호수  84그루 중 **68그루가 풀이 아니다**(`nectgr` 39 · `criffp` 29)
  *     209번도로 113그루 중 16그루가 절벽·모래·바다
  *
  * 그래서 **하나**를 고르고 그것만 쓴다. 고르는 잣대는 `groundRank`가 색으로
@@ -1039,10 +1058,10 @@ export function pickGround(area: GroundArea): string | null {
  * 선이 그대로 드러난다.** 자기 청크만 보므로 옆 청크와 답이 갈리기 때문이다.
  * 실측(창 하나 안에서):
  *
- *     예진호수 청크 (0,0)·(1,0)은 제 바닥이 절벽뿐이라 **분홍 바위 `criff`로
+ *     예지호수 청크 (0,0)·(1,0)은 제 바닥이 절벽뿐이라 **분홍 바위 `criff`로
  *       792칸**을 깔았는데, 바로 옆 (0,1)은 풀 `ngrass`로 616칸을 깔았다 —
  *       숲 바닥에 칼로 그은 듯한 직선 경계가 생긴다
- *     눈꽃마을 (9,5)·(9,6)·(10,6)은 `criff`, 나머지는 `ngrass`. 둘 다 흰 눈인데
+ *     선단시티 (9,5)·(9,6)·(10,6)은 `criff`, 나머지는 `ngrass`. 둘 다 흰 눈인데
  *       경계 130자리가 드러난다
  *
  * 그래서 고르는 것은 **밖에서** 한다(`groundArea`+`pickGround`로 자기 + 이웃 한
@@ -1181,11 +1200,11 @@ export function floorPatch(
    * 절벽조차 「절벽처럼 보이는 그림(`criffp`)을 깐 가로 판」이다. 실측 —
    * 217번도로 창 전체에서 세로 삼각형은 82개뿐이고 그나마 부두(`seaside3`)·
    * 난간(`c2_rale_b`)·계단(`newstep`) 소품이다. **땅에서 나온 것은 0개**다.
-   * 예진호수는 세로 삼각형이 아예 하나도 없다.
+   * 예지호수는 세로 삼각형이 아예 하나도 없다.
    *
    * 1인칭으로 돌면 그 턱마다 **밑이 훤히 보인다**. 실측으로 이웃 칸보다 0.3
-   * 넘게 높은 자리 중 옆이 막힌 곳: 217번도로 **0/243** · 눈꽃마을 514/1007 ·
-   * 예진호수 371/519 (막힌 것은 나무·소품이 우연히 가린 것이다).
+   * 넘게 높은 자리 중 옆이 막힌 곳: 217번도로 **0/243** · 선단시티 514/1007 ·
+   * 예지호수 371/519 (막힌 것은 나무·소품이 우연히 가린 것이다).
    *
    * 베낄 벽이 없으므로 **윗면 그림을 그대로 접어 내린다.** 칸 하나를 옆으로
    * 한 칸 더 간 것처럼 물려서, 위에서 아래로 그림이 이어진다 — 눈밭 턱은 눈,
@@ -1253,14 +1272,21 @@ export function floorPatch(
   // ⚠️ **`split.cells`를 돌면 안 된다.** 그것은 「잎이 덮은 칸」이라 청크의
   // 일부일 뿐이다 — 그걸로 돌았더니 영원의숲 턱 336자리가 그대로 남았다.
   // 턱은 숲 밖에도 있으므로 **바닥이 있는 칸 전부**(`levels`)를 돈다
+  //
+  // ⚠️ **속이 빈 그림으로는 옆면을 못 세운다.** 여기서 고르는 것은 「제일 가까운
+  // 바닥 삼각형」이라 깔 땅과 달리 한 그림으로 묶지 않는데, 그러다 원작이 잔디
+  // 위에 겹쳐 깐 얼음 한 겹(`c09_ice` 55% · `c09_ice2` 48%)을 집었다 —
+  // 세워 놓으면 반이 비쳐서 턱을 메우기는커녕 창문이 된다 (선단시티·217번도로
+  // 실측 각 104삼각형). 등급 0은 물·풀숲·속 빈 그림이다 (`groundRank`)
+  const walls = kind ? floors.filter((f) => kind(f.group).rank > 0) : floors
   const solid = [...levels.keys()].filter((k) => !top.has(k))
-  if (solid.length > 0 && floors.length > 0) {
-    for (const [k, f] of nearestFloors(solid, floors)) top.set(k, { y: Math.max(...levels.get(k)!), src: f })
+  if (solid.length > 0 && walls.length > 0) {
+    for (const [k, f] of nearestFloors(solid, walls)) top.set(k, { y: Math.max(...levels.get(k)!), src: f })
   }
   /**
    * 이웃 칸에 **그려진** 바닥의 높이.
    *
-   * ⚠️ **걷는 높이(`ground`)로 견주면 안 된다.** 둘이 늘 같지 않다 — 예진호수
+   * ⚠️ **걷는 높이(`ground`)로 견주면 안 된다.** 둘이 늘 같지 않다 — 예지호수
    * 지형 1,295칸 중 986칸이 걷는 높이와 어긋나 있고 흔한 차이가 −2.5다. 걷는
    * 높이로 재면 눈에 보이는 0.5짜리 턱 148자리가 「턱이 아니다」로 넘어간다.
    * 메울 것은 **보이는 틈**이므로 그린 높이끼리 견준다. 청크 밖은 그릴 높이를
@@ -1497,7 +1523,7 @@ export function grassColors(sheet: TexSheet | null): [number, number] {
  * 물 색 두 가지 — 마루와 골.
  *
  * 그 영역의 물 그림에서 제일 많이 쓰인 색을 밝기로 세운다. 아무 파랑이나 칠하면
- * 예진호수와 바다가 같은 색이 된다. 물 그림이 없는 묶음은 물도 없지만, 그래도
+ * 예지호수와 바다가 같은 색이 된다. 물 그림이 없는 묶음은 물도 없지만, 그래도
  * 파랑 한 쌍은 돌려준다
  */
 export function waterColors(sheet: TexSheet | null): [number, number] {

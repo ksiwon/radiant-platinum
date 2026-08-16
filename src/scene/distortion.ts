@@ -31,6 +31,10 @@ import {
   FALL_DEST, fallDestination, fallLocationAt, fellIntoPit, fellIntoWrongPit, fellToB6F,
   initialPuzzleFlags, puzzleSolved,
 } from '../engine/world/distortionBoulder'
+import {
+  HOP_FRAMES, HOP_TILES, VIBRATION, hopDirOf, hopLift, platformFrames,
+} from '../engine/world/distortionMovePlatform'
+import { DIR_STEP } from '../engine/script/movement'
 import { addNpcFrom, npcActors, removeNpc } from '../engine/actor/npcs'
 import { world, type Npc } from '../engine/map/world'
 import type { VarStore } from '../engine/script/vars'
@@ -301,6 +305,11 @@ export function groundYAt(
 }
 
 export function distortionEnter(mapId: number, x: number, y: number, z: number): void {
+  // 발판 자리 번호는 **층마다** 다시 센다 — 앞 층에서 밀려 있던 값을 들고
+  // 오면 다음 층의 엉뚱한 판이 그만큼 옆으로 나가 서 있는다
+  running = null
+  slid.clear()
+  stoodAside.clear()
   if (data === null) { floor = null; platform = -1; return }
   floor = mapOf(data, mapId)
   if (floor === null) { platform = -1; return }
@@ -339,6 +348,9 @@ export function distortionLeave(): void {
   platform = -1
   ride = null
   jumping = null
+  running = null
+  slid.clear()
+  stoodAside.clear()
 }
 
 /** 지금 깨어진 세계 안인가 */
@@ -471,7 +483,7 @@ const ranEvents = new Set<string>()
  * 차례도 원작 그대로다 — 유령 소품 → 카메라 → 뛰는 자리. 뛰면 거기서 끝난다
  */
 export function distortionMoved(x: number, y: number, z: number, dir: number): void {
-  if (floor === null || ride !== null) return
+  if (floor === null || ride !== null || running !== null) return
   const [wx, wy, wz] = toWorldTiles(x, y, z)
   applyTriggers(wx, wy, wz, dir)
   applyCamera(wx, wy, wz, dir)
@@ -485,7 +497,7 @@ export function distortionMoved(x: number, y: number, z: number, dir: number): v
  * 원작이 그것을 제일 먼저 본다
  */
 export function distortionStepped(x: number, y: number, z: number, dir: number): void {
-  if (floor === null || ride !== null) return
+  if (floor === null || ride !== null || running !== null) return
   const [wx, wy, wz] = toWorldTiles(x, y, z)
   if (startRide(wx, wy, wz)) return
   applyEvents(wx, wy, wz)
@@ -616,16 +628,74 @@ function applyEvents(wx: number, wy: number, wz: number): void {
   }
 }
 
+type EventCmd = { kind: number; params: Record<string, unknown> | null }
+
 /**
  * 사건 프로그램 (`RunEventCommands`).
  *
- * ⚠️ **여기서 하는 것은 「상태를 바꾸는 명령」뿐이다.** 원작은 이 표로 발판을
- * 움직이고 폭포를 타고 카메라를 돌리는 연출까지 하는데, 그 연출들은 프레임마다
- * 도는 것이라 걸음 한 번에 끝나지 않는다. 진행도·바위 자리·스크립트 시작처럼
- * **다음에 무엇이 열리는가**를 정하는 것만 여기서 처리하고, 나머지는 아직 없다
+ * ⚠️ **명령은 차례로, 프레임을 두고 돈다.** 원작의 명령 하나하나가 제 상태
+ * 기계라(`sMovePlatformHandlers`) 한 걸음에 끝나지 않는다 — 발판이 떨고,
+ * 미끄러지고, 주인공이 뛰어내리고, 빈 판이 돌아오기까지가 한 사건이다.
+ * 예전엔 전부 같은 프레임에 실행했는데, 그러면 판은 가만히 있고 사람만
+ * 여덟 칸 순간이동한다 (사용자가 「바닥이 이동하는 모션이 없다」고 한 것).
+ *
+ * 상태만 바꾸는 명령(진행도·바위 자리·스크립트 시작)은 그 자리에서 끝내고
+ * 다음 명령으로 넘어간다
  */
-function runEvent(cmds: readonly { kind: number; params: Record<string, unknown> | null }[]): void {
-  for (const cmd of cmds) {
+function runEvent(cmds: readonly EventCmd[]): void {
+  running = { cmds, at: 0, frame: 0, slide: null, hop: null }
+  advanceEvent()
+}
+
+/** 지금 도는 사건. 도는 동안은 조작이 안 먹는다 */
+interface EventRun {
+  cmds: readonly EventCmd[]
+  /** 다음에 실행할 명령 */
+  at: number
+  /** 지금 명령이 시작한 뒤 흐른 프레임 */
+  frame: number
+  slide: {
+    /** 움직이는 발판의 자리 번호 (`movingPlatforms`의 `index`) */
+    index: number
+    /** 다 가면 얼마나 밀리는가 (타일) */
+    final: [number, number, number]
+    /** 이 명령이 시작할 때 그 발판이 이미 밀려 있던 만큼 */
+    from: [number, number, number]
+    total: number
+    movePlayer: boolean
+    /** 태우고 갈 때 주인공이 서 있던 자리 */
+    rider: [number, number, number]
+  } | null
+  hop: { dir: number; from: [number, number, number] } | null
+}
+
+let running: EventRun | null = null
+
+/**
+ * 지금 밀려나 있는 발판. 자리 번호 → 타일 어긋남.
+ *
+ * 사건 하나가 판을 보냈다가 되돌리므로 끝나면 0으로 돌아온다. 그림을 그리는
+ * 쪽(`DistortionProps`)이 프레임마다 이걸 본다
+ */
+const slid = new Map<number, [number, number, number]>()
+
+/** 사건 연출이 도는 중인가 */
+export function distortionEventRunning(): boolean {
+  return running !== null
+}
+
+/** 그 발판이 지금 얼마나 밀려 있는가 (타일). 안 밀렸으면 null */
+export function distortionSlideAt(index: number): readonly [number, number, number] | null {
+  return slid.get(index) ?? null
+}
+
+/** 다음 명령으로 넘어간다. 연출이 걸리면 거기서 멈추고 프레임을 기다린다 */
+function advanceEvent(): void {
+  while (running !== null) {
+    const cmd = running.cmds[running.at]
+    if (cmd === undefined) { running = null; return }
+    running.at += 1
+    running.frame = 0
     const p = cmd.params ?? {}
     switch (cmd.kind) {
       case EVENT_CMD.startScript:
@@ -641,7 +711,10 @@ function runEvent(cmds: readonly { kind: number; params: Record<string, unknown>
         setState({ puzzleFlags: state().puzzleFlags & ~(1 << (p.flagIndex as number)) })
         break
       case EVENT_CMD.movePlatform:
-        movePlatform(p)
+        if (beginSlide(p)) return
+        break
+      case EVENT_CMD.setMapObjectAnimation:
+        if (beginHop(p)) return
         break
       // ⚠️ **이 둘을 「연출」로 넘기면 기라티나 방에서 길이 안 생긴다.**
       // 발판 무리 1~3을 한 무리씩 세우는 것이 이 명령이고, 그게 없으면
@@ -659,24 +732,107 @@ function runEvent(cmds: readonly { kind: number; params: Record<string, unknown>
   }
 }
 
-/**
- * 발판이 움직인다 (`EVENT_CMD_MOVE_PLATFORM`).
- *
- * 태우고 가는 발판이면 주인공도 같이 옮긴다. 원작은 프레임마다 조금씩 밀지만
- * 닿는 자리는 `finalTile*Offset`이 정해 둔 그 칸이다
- */
-function movePlatform(p: Record<string, unknown>): void {
-  if (p.movePlayer !== 1) return
+/** 발판이 움직이기 시작한다 (`EventCmdMovePlatform_BeginMovement`) */
+function beginSlide(p: Record<string, unknown>): boolean {
+  if (running === null) return false
+  const index = (p.platformIndex as number | undefined) ?? -1
+  const final: [number, number, number] = [
+    (p.finalTileXOffset as number | undefined) ?? 0,
+    (p.finalTileYOffset as number | undefined) ?? 0,
+    (p.finalTileZOffset as number | undefined) ?? 0,
+  ]
+  const delta = (p.posDelta as [number, number, number] | undefined) ?? [0, 0, 0]
+  const total = platformFrames(final, delta)
+  if (index < 0 || total <= 0) return false
   const pos = worldState.player.position
-  pos.x += (p.finalTileXOffset as number) || 0
-  pos.y += (p.finalTileYOffset as number) || 0
-  pos.z += (p.finalTileZOffset as number) || 0
-  worldState.player.prevPosition.copy(pos)
-  // 닿은 자리에서 발밑의 판을 다시 잡는다 (`FindAndPrepareNewCurrentFloatingPlatform`).
-  // 이걸 빼면 옮겨진 자리가 앞 판의 격자 밖이라 그 자리에서 못 움직인다
-  if (floor === null) return
-  const [wx, wy, wz] = toWorldTiles(pos.x, pos.y, pos.z)
-  bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
+  running.slide = {
+    index,
+    final,
+    from: [...(slid.get(index) ?? [0, 0, 0])] as [number, number, number],
+    total,
+    movePlayer: p.movePlayer === 1,
+    rider: [pos.x, pos.y, pos.z],
+  }
+  worldState.player.velocity.set(0, 0, 0)
+  return true
+}
+
+/** 주인공이 판에서 뛰어내린다 (`EVENT_CMD_SET_MAP_OBJECT_ANIMATION`) */
+function beginHop(p: Record<string, unknown>): boolean {
+  if (running === null) return false
+  // 자료에 있는 것은 주인공(`LOCALID_PLAYER` = 255)의 뛰기 넷뿐이다
+  const dir = hopDirOf((p.movementAction as number | undefined) ?? -1)
+  if (dir === null || (p.mapObjLocalID as number | undefined) !== 255) return false
+  const pos = worldState.player.position
+  running.hop = { dir, from: [pos.x, pos.y, pos.z] }
+  worldState.player.facing = FACING_YAW[dir] ?? worldState.player.facing
+  worldState.player.velocity.set(0, 0, 0)
+  return true
+}
+
+/**
+ * 한 프레임 (`CallLoadedEventHandler`).
+ *
+ * 떨림 열두 프레임 → 미끄러짐 → 뜀 스물네 프레임이 차례로 돈다
+ */
+export function distortionEventTick(dt: number): void {
+  const run = running
+  if (run === null) return
+  run.frame += dt * 60
+  if (run.slide !== null) tickSlide(run, run.slide)
+  else if (run.hop !== null) tickHop(run, run.hop)
+  else advanceEvent()
+}
+
+function place(x: number, y: number, z: number): void {
+  const p = worldState.player.position
+  p.set(x, y, z)
+  worldState.player.prevPosition.copy(p)
+  worldState.player.velocity.set(0, 0, 0)
+}
+
+function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>): void {
+  const shake = run.frame < VIBRATION.length
+  if (shake) {
+    const y = VIBRATION[Math.floor(run.frame)] ?? 0
+    slid.set(s.index, [s.from[0], s.from[1] + y, s.from[2]])
+    if (s.movePlayer) place(s.rider[0], s.rider[1] + y, s.rider[2])
+    return
+  }
+  const k = Math.min(1, (run.frame - VIBRATION.length) / s.total)
+  const at: [number, number, number] = [
+    s.from[0] + s.final[0] * k, s.from[1] + s.final[1] * k, s.from[2] + s.final[2] * k,
+  ]
+  slid.set(s.index, at)
+  if (s.movePlayer) {
+    place(s.rider[0] + s.final[0] * k, s.rider[1] + s.final[1] * k, s.rider[2] + s.final[2] * k)
+  }
+  if (k < 1) return
+  // 다 갔다 (`EventCmdMovePlatform_EndMovement`) — 닿은 칸에서 발밑의 판을
+  // 다시 잡는다. 이걸 빼면 옮겨진 자리가 앞 판의 격자 밖이라 못 움직인다
+  if (s.movePlayer && floor !== null) {
+    const p = worldState.player.position
+    const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
+    bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
+  }
+  run.slide = null
+  advanceEvent()
+}
+
+function tickHop(run: EventRun, h: NonNullable<EventRun['hop']>): void {
+  const step = DIR_STEP[h.dir] ?? { x: 0, z: 0 }
+  const f = Math.min(HOP_FRAMES, run.frame)
+  const along = (f / HOP_FRAMES) * HOP_TILES
+  place(h.from[0] + step.x * along, h.from[1] + hopLift(f), h.from[2] + step.z * along)
+  if (run.frame < HOP_FRAMES) return
+  place(h.from[0] + step.x * HOP_TILES, h.from[1], h.from[2] + step.z * HOP_TILES)
+  if (floor !== null) {
+    const p = worldState.player.position
+    const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
+    bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
+  }
+  run.hop = null
+  advanceEvent()
 }
 
 // ── 승강 발판 ────────────────────────────────────────────────────────────────
@@ -1130,11 +1286,39 @@ const FX32_PER_TILE = 4096 * 16
  * ⚠️ **좌표가 세계 좌표고 높이는 고정소수점이다.** x·z는 층의 오프셋을 빼야
  * 우리 맵 좌표가 되고, y는 `타일 × 4096 × 16`이라 그만큼 나눠야 한다
  */
+/**
+ * 스크립트가 부른 사람 때문에 **비켜선** 사람들. 부른 번호 → 비켜선 번호들.
+ *
+ * ⚠️ **같은 사람이 두 자리에 서 있었다.** 1F 배치표에는 시로나가 둘 있다 —
+ * 스크립트가 부르는 「차원문 앞 시로나」(#128 @55,40)와 늘 서 있는 「승강판
+ * 시로나」(#129 @39,52, 진행도 ≤ 2)다. 원작 스크립트도 둘을 같이 세우지만
+ * (`scripts_distortion_world_1f.s`의 `OnFrame_FirstEntry`), 원작 화면은 위에서
+ * 내려다보는 두 화면이라 16타일 떨어진 저쪽이 안 보인다. 우리 3인칭 화면에는
+ * 둘이 같이 잡힌다 — 사용자가 「난천이 두 명」이라 한 것이 이것이다.
+ *
+ * 그래서 부른 쪽이 서 있는 동안 **같은 그림의 다른 사람은 비켜선다.** 스크립트가
+ * 그 사람을 지우면(`DeleteDistortionWorldMapObject`) 비켜섰던 쪽이 돌아온다
+ */
+const stoodAside = new Map<number, number[]>()
+
 export function distortionAddObject(localID: number, vars: VarStore): void {
   if (floor === null || data === null) return
   const table = data.mapObjects.find((m) => m.map === floor?.map)
   const row = table?.objects.find((o) => o.localID === localID)
   if (row === undefined) return
+  // ⚠️ **바위에는 안 건다.** B6F의 바위 아홉은 그림이 셋뿐이라(84·84·84…)
+  // 그림으로 지우면 수수께끼가 통째로 사라진다. 조건이 `manualAddOnly`인
+  // 줄만 이 규칙을 탄다 — 자료 전체에서 여덟 줄이고 전부 사람이다
+  if ((row.flagCond as number) === FLAG_COND.manualAddOnly) {
+    const twins = (table?.objects ?? [])
+      .filter((o) => o.graphicsID === row.graphicsID && o.localID !== localID)
+      .map((o) => o.localID as number)
+      .filter((id) => npcActors.byLocalID.has(id))
+    if (twins.length > 0) {
+      for (const id of twins) removeNpc(id)
+      stoodAside.set(localID, twins)
+    }
+  }
   addObjectRow(row, vars)
 }
 
@@ -1197,6 +1381,28 @@ function spawnFloorObjects(mapId: number): void {
 
 export function distortionRemoveObject(localID: number): void {
   removeNpc(localID)
+  // 이 사람 때문에 비켜섰던 쪽을 도로 세운다. 조건은 그때 다시 본다 —
+  // 이야기가 넘어가서 이제 서면 안 되는 사람은 안 선다
+  const back = stoodAside.get(localID)
+  if (back === undefined) return
+  stoodAside.delete(localID)
+  const vars = distortionHooks.vars?.()
+  if (floor === null || data === null || vars === undefined || vars === null) return
+  const table = data.mapObjects.find((m) => m.map === floor?.map)
+  const ctx = {
+    progress: distortionHooks.progress?.() ?? 0,
+    state: state(),
+    giratinaAnim: (n: number) => distortionHooks.giratinaAnim?.(n) ?? false,
+    cyrusAppearance: distortionHooks.cyrusAppearance?.() ?? 0,
+  }
+  for (const id of back) {
+    const row = table?.objects.find((o) => o.localID === id)
+    if (row === undefined) continue
+    if (!flagHolds(row.flagCond as number, row.flagCondVal as number, ctx)) continue
+    const hidden = row.hiddenFlag as number
+    if (hidden !== 0 && vars.checkFlag(hidden)) continue
+    addObjectRow(row, vars)
+  }
 }
 
 /** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */

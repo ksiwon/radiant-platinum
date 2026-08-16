@@ -26,6 +26,7 @@
     "assets:favicon": "py -3.13 tools/assets/faviconSvg.py",
     "shot": "node tools/shot/shot.mjs",
     "look": "node tools/shot/look.mjs",
+    "holes": "node tools/audit/holes.mjs",
     "check": "pnpm typecheck && pnpm lint && pnpm test:strict && pnpm test:shimmed",
     "spike:extract": "node tools/spike/extract.js",
     "spike:text": "node tools/spike/text-test4.js",

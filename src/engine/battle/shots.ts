@@ -73,10 +73,36 @@ export const BATTLE_FOV = 30
  * 밖으로 밀려서 무대가 안 보였다. 높은 카메라 자체는 BDSP도 쓴다 —
  * 더블배틀이 (−4.0, 3.3, 7.2)다
  */
+/**
+ * 샷 안에서 도는 각(도).
+ *
+ * ⚠️ **밀고 들어가지 않는다.** 예전에는 샷마다 `from`에서 `to`로 **가까이**
+ * 갔다 — 임팩트가 1.98m, 기절이 2.14m로 기본 샷(5.79m)의 3분의 1까지 당겼다.
+ * 그러면 기술 한 번에 화면이 확 당겨졌다 풀리는데, 원작 DS는 카메라가 아예 안
+ * 움직이고 BDSP도 배율까지 흔들지는 않는다 — 플레이해 보면 그 줌만 도드라진다.
+ * 그래서 **각도만 바꾼다**: 거리는 `atReach`가 모든 샷에서 같게 잡고, 샷 안의
+ * 움직임은 이만큼 도는 선회와 높이 변화로만 준다
+ */
+const ORBIT_DEG = 2.6
+
+/** `look`을 축으로 `deg`만큼 돌리고 `lift`만큼 올린다. **반지름은 그대로다** */
+function orbit(pos: Vec3, look: Vec3, deg: number, lift = 0): Vec3 {
+  const t = (deg * Math.PI) / 180
+  const dx = pos[0] - look[0], dz = pos[2] - look[2]
+  return [
+    look[0] + dx * Math.cos(t) + dz * Math.sin(t),
+    pos[1] + lift,
+    look[2] - dx * Math.sin(t) + dz * Math.cos(t),
+  ]
+}
+
+const EST_FROM: Vec3 = [2.7, 1.5, 5.0]
+const EST_LOOK: Vec3 = [0, 0.4, 0]
+
 const ESTABLISH: Shot = {
-  from: [2.7, 1.5, 5.0],
-  to: [2.6, 1.47, 4.78],
-  look: [0, 0.4, 0],
+  from: EST_FROM,
+  to: orbit(EST_FROM, EST_LOOK, -ORBIT_DEG, -0.03),
+  look: EST_LOOK,
   hold: 0,
   shake: 0,
 }
@@ -204,6 +230,26 @@ const SHOULDER = 0.62
 export const SHOT_REACH = 5.68
 
 /**
+ * 보는 자리에서 **늘 같은 거리**에 세운다 — 배율을 고정하는 자리다.
+ *
+ * 수평 반지름만 맞추고 **높이는 적힌 그대로 둔다.** 셋을 다 맞추면 낮은 샷이
+ * 땅으로 가라앉는다 — 기절 샷은 눈높이보다 아래에서 올려다보는 각이라, 3차원
+ * 거리로 늘리면 카메라가 y 0.11m, 곧 지면에 파묻힌다. 수평만 맞추면 샷마다
+ * 실제 거리가 5.68~5.79m로 2% 안에 들어와서 화면에 뜨는 크기는 그대로다:
+ *
+ *     기본 5.79 · 때리기 5.76 · 임팩트 5.70 · 반응 5.75 · 기절 5.68 · 등판 5.79
+ *
+ * `clampSwing`이 각도만 건드리고 거리·높이를 안 건드리는 것과 같은 잣대다
+ */
+function atReach(pos: Vec3, look: Vec3): Vec3 {
+  const dx = pos[0] - look[0], dz = pos[2] - look[2]
+  const flat = Math.hypot(dx, dz)
+  if (flat < 1e-6) return pos
+  const k = SHOT_REACH / flat
+  return [look[0] + dx * k, pos[1], look[2] + dz * k]
+}
+
+/**
  * 카메라 자리를 기준 각도 안으로 접는다.
  *
  * 무대 한가운데를 축으로 재고, `MAX_SWING`을 넘으면 그 각도로 되돌린다.
@@ -229,6 +275,14 @@ export function clampSwing(position: Vec3, look: Vec3): Vec3 {
  * `faint`는 맞는 쪽, `switchIn`은 나오는 쪽
  */
 export function shotFor(name: ShotName, side: Side): Shot {
+  const shot = framing(name, side)
+  // ⚠️ **여기 한 자리에서 배율을 잡는다.** 샷마다 적힌 깊이는 「어느 쪽에서
+  // 보는가」를 정할 뿐이고, 얼마나 크게 보이는가는 안 정한다
+  return { ...shot, from: atReach(shot.from, shot.look), to: atReach(shot.to, shot.look) }
+}
+
+/** 각 샷의 **방향**. 거리는 `shotFor`가 맞춘다 */
+function framing(name: ShotName, side: Side): Shot {
   if (name === 'establish') return ESTABLISH
 
   // 때리는 샷만 상대를 본다. 나머지는 `side`가 곧 주인공이다
@@ -238,13 +292,9 @@ export function shotFor(name: ShotName, side: Side): Shot {
     // 물러나면, 상대가 때릴 때 카메라가 맞는 쪽 **앞**에 서서 뒤를 돌아본다
     const behind = Math.max(depthOf(side), depthOf(foe))
     const lateral = latOf(foe) + SHOULDER * (latOf(side) - latOf(foe))
-    return {
-      from: place(behind + 1.94, lateral, 1.43),
-      to: place(behind + 1.6, lateral, 1.25),
-      look: eyeOf(foe),
-      hold: 0.9,
-      shake: 0,
-    }
+    const look = eyeOf(foe)
+    const from = place(behind + 1.94, lateral, 1.43)
+    return { from, to: orbit(from, look, -ORBIT_DEG, -0.18), look, hold: 0.9, shake: 0 }
   }
 
   const depth = depthOf(side)
@@ -252,42 +302,28 @@ export function shotFor(name: ShotName, side: Side): Shot {
   const look = eyeOf(side)
 
   switch (name) {
-    // 맞는 순간. 바짝 붙고 흔든다
-    case 'impact':
-      return {
-        from: place(depth + 1.82, lateral + 0.51, 1.08),
-        to: place(depth + 1.65, lateral + 0.46, 1.03),
-        look: [look[0], EYE + 0.09, look[2]],
-        hold: 0.5,
-        shake: 0.13,
-      }
-    // 맞고 난 뒤. 반대쪽으로 한 걸음 물러나 반응을 본다
-    case 'reaction':
-      return {
-        from: place(depth + 2.51, lateral - 0.57, 1.37),
-        to: place(depth + 2.85, lateral - 0.68, 1.48),
-        look,
-        hold: 0.8,
-        shake: 0,
-      }
+    // 맞는 순간. 어깨 너머로 붙어 서서 흔든다 — 당기는 것은 흔들림이지 배율이 아니다
+    case 'impact': {
+      const eye: Vec3 = [look[0], EYE + 0.09, look[2]]
+      const from = place(depth + 1.82, lateral + 0.51, 1.08)
+      return { from, to: orbit(from, eye, -ORBIT_DEG, -0.05), look: eye, hold: 0.5, shake: 0.13 }
+    }
+    // 맞고 난 뒤. 반대쪽으로 돌아 들어가며 반응을 본다
+    case 'reaction': {
+      const from = place(depth + 2.51, lateral - 0.57, 1.37)
+      return { from, to: orbit(from, look, -ORBIT_DEG, 0.11), look, hold: 0.8, shake: 0 }
+    }
     // 쓰러진다. **아래에서 올려다본다** — 원작에 없는 각도지만 3D의 문법이다
-    case 'faint':
-      return {
-        from: place(depth + 2.05, lateral, 0.51),
-        to: place(depth + 2.34, lateral + 0.11, 0.68),
-        look: [look[0], EYE + 0.23, look[2]],
-        hold: 1.2,
-        shake: 0,
-      }
-    // 등판. 옆 위에서 내려오며 들어온다
-    case 'switchIn':
-      return {
-        from: place(depth + 2.39, lateral + 1.03, 1.6),
-        to: place(depth + 2.39, lateral + 0.17, 0.91),
-        look,
-        hold: 0.9,
-        shake: 0,
-      }
+    case 'faint': {
+      const eye: Vec3 = [look[0], EYE + 0.23, look[2]]
+      const from = place(depth + 2.05, lateral, 0.51)
+      return { from, to: orbit(from, eye, ORBIT_DEG, 0.17), look: eye, hold: 1.2, shake: 0 }
+    }
+    // 등판. 옆 위에서 돌아 내려오며 들어온다
+    case 'switchIn': {
+      const from = place(depth + 2.39, lateral + 1.03, 1.6)
+      return { from, to: orbit(from, look, -ORBIT_DEG * 2, -0.69), look, hold: 0.9, shake: 0 }
+    }
   }
 }
 

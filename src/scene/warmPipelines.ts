@@ -1,4 +1,5 @@
-// 사람 모델은 **다 구워진 뒤에** 씬에 붙인다.
+// 스킨 모델은 **다 구워진 뒤에** 씬에 붙인다 — 오버월드 사람도, 배틀에 등판하는
+// 포켓몬과 트레이너도 같다.
 //
 // ⚠️ **여기서 아끼는 것은 우리 코드가 아니다.** ANGLE은 `linkProgram`에서 아무
 // 일도 안 하고(실측 45회 0.6ms) HLSL 번역을 `getProgramParameter(LINK_STATUS)`에서
@@ -108,22 +109,45 @@ export function addWhenWarm(
   child: Object3D,
   wanted: () => boolean = () => true,
 ): void {
+  void warmBeforeShow(gl, scene, camera, child).then(() => {
+    if (wanted()) parent.add(child)
+  })
+}
+
+/**
+ * `root`를 **아직 씬 밖일 때** 구워 두고, 다 되면 풀린다.
+ *
+ * `addWhenWarm`은 붙일 자리를 `Object3D`로 받는데, 붙이는 쪽이 React면 그 자리가
+ * 없다 — 배틀 무대는 `<primitive object={…} />`로 세운다. 그래서 「굽기」만
+ * 떼어 둔다: 이 약속이 풀린 **뒤에** 상태를 세우면 R3F가 붙이는 그 프레임에는
+ * 이미 구워져 있다.
+ *
+ * ⚠️ **시한이 있어야 한다.** 굽기가 실패하거나 약속이 안 풀리면 포켓몬이 영영
+ * 안 선다 — 한 프레임 막히는 편이 낫다 (`MAX_WAIT_MS`)
+ */
+export function warmBeforeShow(
+  gl: WebGPURenderer,
+  scene: Scene,
+  camera: Camera,
+  root: Object3D,
+): Promise<void> {
   // ⚠️ **잘라내기를 끈다.** 아직 자리를 못 잡아 원점에 서 있는데, 카메라
   // 절두체가 원점을 안 담으면 `_projectObject`가 걸러서 **아무것도 안 구워진다**
   const was: { at: Object3D, culled: boolean }[] = []
-  child.traverse((o) => { was.push({ at: o, culled: o.frustumCulled }); o.frustumCulled = false })
+  root.traverse((o) => { was.push({ at: o, culled: o.frustumCulled }); o.frustumCulled = false })
 
-  let placed = false
-  const put = (): void => {
-    if (placed) return
-    placed = true
-    for (const w of was) w.at.frustumCulled = w.culled
-    if (wanted()) parent.add(child)
-  }
-
-  const timer = setTimeout(put, MAX_WAIT_MS)
-  void gl.compileAsync(child, camera, scene)
-    // 못 구워도 세운다 — 안 세우는 것이 더 나쁘다
-    .catch(() => { /* 그대로 붙인다 */ })
-    .finally(() => { clearTimeout(timer); put() })
+  return new Promise<void>((resolve) => {
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      for (const w of was) w.at.frustumCulled = w.culled
+      resolve()
+    }
+    const timer = setTimeout(finish, MAX_WAIT_MS)
+    void gl.compileAsync(root, camera, scene)
+      // 못 구워도 세운다 — 안 세우는 것이 더 나쁘다
+      .catch(() => { /* 그대로 붙인다 */ })
+      .finally(() => { clearTimeout(timer); finish() })
+  })
 }

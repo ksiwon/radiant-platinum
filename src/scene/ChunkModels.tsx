@@ -32,6 +32,8 @@ import { isTuftTile } from '../engine/battle/encounter'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
+import { roomWalls, type RoomWalls } from './roomWalls'
+import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
 import { PropFade } from './PropFade'
 import { isFeaturePlacement } from './movingProps'
 
@@ -67,6 +69,8 @@ interface Land extends Placed {
   floor: FloorPatch | null
   /** 울타리·표지판의 옆면. 원작은 판 한 장이라 옆에서 사라진다 (`cards.ts`) */
   shells: CardShells | null
+  /** 원작이 안 만든 실내 앞벽. 출입구만 비우고 세운다 (`roomWalls.ts`) */
+  room: RoomWalls | null
 }
 
 interface Prop extends Placed {
@@ -119,6 +123,73 @@ function materialKey(spec: ChunkMesh['materials'][number], twoSided: boolean): s
  * 바닥 삼각형 보관함. 쪼갠 결과와 마찬가지로 청크마다 늘 같으므로 한 번만 센다
  */
 const floorCache = new Map<string, FloorSource>()
+
+/** 막힌 칸 열쇠. 월드 타일이 0~1023이라 넉넉히 잡는다 */
+const SOLID_SPAN = 4096
+const solidKey = (tx: number, tz: number): number => tx * SOLID_SPAN + tz
+
+/**
+ * 나무가 들어가면 안 되는 칸.
+ *
+ * 두 갈래를 같이 담는다 — 배치 기록이 세우는 **소품**(집·간판·다리)과, 원작
+ * 청크에 세워져 있는 **판**(울타리·표지판). 판은 소품이 아니라 청크 지오메트리라
+ * 배치 기록에 없다 (`shell.ts`가 실루엣을 밀어 두께를 준다)
+ */
+function markBox(
+  into: Set<number>, x0: number, x1: number, z0: number, z1: number,
+): void {
+  if (!Number.isFinite(x0) || !Number.isFinite(z0)) return
+  for (let tz = Math.floor(z0); tz <= Math.floor(z1 - 1e-6); tz += 1) {
+    for (let tx = Math.floor(x0); tx <= Math.floor(x1 - 1e-6); tx += 1) {
+      into.add(solidKey(tx, tz))
+    }
+  }
+}
+
+/**
+ * 세워 놓은 판이 덮은 칸. 판 한 장(정점 6개)씩 잘라 그 칸을 적는다.
+ *
+ * ⚠️ **통짜 상자로 보면 안 된다.** 이 지오메트리는 청크 하나의 판을 전부 모아
+ * 둔 것이라, 하나의 상자로 보면 청크 전체가 막힌 것이 된다
+ */
+function markShells(into: Set<number>, shells: CardShells, originX: number, originZ: number): void {
+  const pos = shells.geometry.getAttribute('position') as BufferAttribute
+  const at = pos.array as ArrayLike<number>
+  for (let i = 0; i + 6 <= pos.count; i += 6) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+    for (let k = 0; k < 6; k += 1) {
+      const x = at[(i + k) * 3]!, z = at[(i + k) * 3 + 2]!
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (z < z0) z0 = z
+      if (z > z1) z1 = z
+    }
+    markBox(into, x0 + originX, x1 + originX, z0 + originZ, z1 + originZ)
+  }
+}
+
+/**
+ * 그 자리에서 제일 가까운 막힌 칸까지의 거리 (타일). 없으면 `Infinity`.
+ *
+ * 잎이 제일 멀리 뻗는 것이 1.4타일이라 ±2칸만 보면 된다
+ */
+const SOLID_LOOK = 2
+
+function clearance(solid: ReadonlySet<number>, x: number, z: number): number {
+  if (solid.size === 0) return Infinity
+  let best = Infinity
+  const cx = Math.floor(x), cz = Math.floor(z)
+  for (let tz = cz - SOLID_LOOK; tz <= cz + SOLID_LOOK; tz += 1) {
+    for (let tx = cx - SOLID_LOOK; tx <= cx + SOLID_LOOK; tx += 1) {
+      if (!solid.has(solidKey(tx, tz))) continue
+      const dx = Math.max(tx - x, 0, x - (tx + 1))
+      const dz = Math.max(tz - z, 0, z - (tz + 1))
+      const d = Math.hypot(dx, dz)
+      if (d < best) best = d
+    }
+  }
+  return best
+}
 
 /**
  * 오려 낸 판의 옆면 보관함. 쪼갠 결과와 마찬가지로 청크마다 늘 같다 —
@@ -204,6 +275,8 @@ interface Piece {
   lumps: LumpSet
   split: ReturnType<typeof cachedSplit>
   source: FloorSource
+  /** 세워 놓은 판(울타리·표지판). 나무가 비켜설 자리를 여기서도 받는다 */
+  shells: CardShells | null
   originX: number
   originZ: number
 }
@@ -337,6 +410,24 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   const [flowers, setFlowers] = useState<FlowerField | null>(null)
   const [water, setWater] = useState<WaterField | null>(null)
   const [props, setProps] = useState<Prop[]>([])
+  /**
+   * 나무가 못 들어가는 칸. **두 걸음으로 나눠 받는다.**
+   *
+   * ⚠️ **한 걸음에 받으려다 로딩을 통째로 늦췄다.** 소품 상자를 알려면 소품
+   * 모델을 받아야 하는데, 그걸 청크 effect에서 같이 기다리게 했더니 **지형이
+   * 건물 다운로드를 기다렸다** — 뜨는 시간이 1.6초에서 3.1~21.9초가 됐고
+   * 축복시티는 아예 시간 초과였다 (`pnpm story` 실측).
+   *
+   * 그래서 청크가 아는 것(세운 판)은 청크 effect가, 소품은 소품 effect가 따로
+   * 적는다. 소품 쪽이 늦게 와도 나무가 한 번 더 서는 것으로 끝난다
+   */
+  const [plateSolid, setPlateSolid] = useState<ReadonlySet<number>>(() => new Set())
+  const [propSolid, setPropSolid] = useState<ReadonlySet<number>>(() => new Set())
+  // 자리 하나에 최대 스물다섯 칸을 보므로 프레임마다 부를 것은 아니다 — 나무를
+  // 세울 때 한 번씩만 쓴다 (`Foliage`의 `useMemo`)
+  const clearAt = useCallback(
+    (x: number, z: number) => Math.min(clearance(plateSolid, x, z), clearance(propSolid, x, z)),
+    [plateSolid, propSolid])
 
   useEffect(() => {
     let alive = true
@@ -370,10 +461,41 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           return {
             c, mesh, cutout, lumps, split,
             source: cachedFloors(key, mesh, split),
+            shells: cachedShells(key, mesh, cutout, split, sheet, lumps),
             originX: c.mx * CHUNK_TILES + CHUNK_TILES / 2,
             originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
           }
         })
+        /**
+         * 나무가 못 들어가는 칸 (`clearance`).
+         *
+         * ⚠️ **줄기를 막힌 칸 쪽으로 미는 것만으로는 모자랐다** (`trunkNudge`).
+         * 그것은 「길 위에 서지 마라」는 규칙이라, 집도 울타리도 막힌 칸이니
+         * 오히려 **집 안쪽으로** 밀어 넣었다 — 사용자가 찍어 보낸 포켓몬 센터
+         * 앞의 나무가 그것이다
+         */
+        /**
+         * 실내인가, 그리고 어느 칸이 출입구인가.
+         *
+         * 워프 칸에 벽을 세우면 못 나가고 문이 벽으로 덮인다. 문 앞은 한 칸이
+         * 아니라 **문 폭만큼** 비워야 해서 워프의 양옆도 같이 비운다 — 원작 문이
+         * 두 칸짜리다
+         */
+        const header = mapById(world.mapId ?? -1)
+        const indoor = header !== null && !isOutdoors(header)
+        const doors = new Set<number>()
+        if (indoor) {
+          for (const w of warpsOf(world.mapId ?? -1)) {
+            for (let dx = -1; dx <= 1; dx += 1) doors.add(solidKey(w.x + dx, w.z))
+          }
+        }
+        const isDoor = (tx: number, tz: number): boolean => doors.has(solidKey(tx, tz))
+
+        const plates = new Set<number>()
+        for (const p of pieces) {
+          if (p.shells) markShells(plates, p.shells, p.originX, p.originZ)
+        }
+        setPlateSolid(plates)
         /**
          * 원작이 풀숲을 그리는 데 쓴 그림들 (`plates.tuftTextures`).
          *
@@ -515,8 +637,14 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
                 return { name, rank: rankOf(name) }
               },
               pick),
-            shells: cachedShells(
-              `${String(c.land)}/${String(texSet)}`, mesh, p.cutout, split, sheet, p.lumps),
+            shells: p.shells,
+            // 원작 실내는 카메라가 고정이라 **안 보이는 쪽 벽을 안 만들었다** —
+            // 문이 있는 앞벽이 그렇다. 출입구만 비우고 세운다 (`roomWalls.ts`).
+            // 실외에는 안 건다: 거기서 바닥이 끝나는 자리는 맵 가장자리라
+            // 벽을 세우면 세계가 상자 안에 갇힌다
+            room: indoor
+              ? roomWalls(split, isDoor, { x: originX, z: originZ })
+              : null,
           }
         })
         setPlaced(next)
@@ -555,6 +683,31 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       .then((loaded) => {
         if (!alive) return
         const byId = new Map(loaded.filter((x) => x !== null).map((x) => [x.id, x]))
+        // 나무가 비켜설 자리. 모델을 이미 받았으므로 상자를 여기서 찍는다
+        const blockers = new Set<number>()
+        for (const b of spots) {
+          const got = byId.get(b.model)
+          if (!got) continue
+          if (!got.mesh.geometry.boundingBox) got.mesh.geometry.computeBoundingBox()
+          const box = got.mesh.geometry.boundingBox
+          if (!box) continue
+          // 오버월드 배치는 실측으로 회전 0 · 크기 1이지만, 던전·실내에 0이 아닌
+          // 값이 있으므로 Y축 회전만큼 네 귀퉁이를 돌려 상자를 다시 잡는다
+          const a = b.rot?.[1] ?? 0
+          const [sx, sz] = [b.scale?.[0] ?? 1, b.scale?.[2] ?? 1]
+          const cos = Math.cos(a), sin = Math.sin(a)
+          let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity
+          for (const [px, pz] of [
+            [box.min.x, box.min.z], [box.max.x, box.min.z],
+            [box.min.x, box.max.z], [box.max.x, box.max.z]] as const) {
+            const rx = (px * sx) * cos + (pz * sz) * sin
+            const rz = -(px * sx) * sin + (pz * sz) * cos
+            x0 = Math.min(x0, rx); x1 = Math.max(x1, rx)
+            z0 = Math.min(z0, rz); z1 = Math.max(z1, rz)
+          }
+          markBox(blockers, b.x + x0, b.x + x1, b.z + z0, b.z + z1)
+        }
+        setPropSolid(blockers)
         setProps(spots.flatMap((b, i) => {
           const got = byId.get(b.model)
           if (!got) return []
@@ -635,13 +788,20 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           {p.shells && (
             <mesh name="판 옆면" geometry={p.shells.geometry} material={p.materials} castShadow receiveShadow />
           )}
+          {/*
+            원작이 안 만든 실내 앞벽. 카메라가 도는 화면에서는 그 자리가
+            통째로 검게 뚫려 보인다 (`roomWalls.ts`)
+          */}
+          {p.room && (
+            <mesh name="방 벽" geometry={p.room.geometry} material={p.materials} receiveShadow />
+          )}
         </group>
       ))}
       {/*
         나무. 원작은 판때기 한 장이라 옆·뒤에서 종잇장이 된다 — 자리와 폭과
         색만 가져와 입체로 세운다 (`plates.ts`)
       */}
-      <Foliage groups={foliage} ground={groundAt} />
+      <Foliage groups={foliage} ground={groundAt} clear={clearAt} />
       {/*
         물가의 바위. 원작은 45°로 눕힌 판 한 장이라(실측 1,001장이 전부 그렇다)
         세우면 새까만 달걀이 물 위에 늘어선다 — 자리와 폭만 가져온다 (`Rocks.tsx`)

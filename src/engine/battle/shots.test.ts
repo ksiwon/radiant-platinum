@@ -5,7 +5,7 @@
 // 돌려 놔도 어색해진다. 그래서 시험의 절반이 "얼마나 도는가"를 잰다.
 import { describe, it, expect } from 'vitest'
 import {
-  BASE_AZIMUTH, MAX_SWING, SLOT, ShotDirector, clampSwing, ease, sampleShot, shotFor,
+  BASE_AZIMUTH, MAX_SWING, SHOT_REACH, SLOT, ShotDirector, clampSwing, ease, sampleShot, shotFor,
   type ShotName, type Side, type Vec3,
 } from './shots'
 
@@ -135,6 +135,30 @@ describe('샷', () => {
     expect(sampleShot(shot, shot.hold * 0.5).shake).toBe(0)
     for (const name of ['establish', 'oncoming', 'reaction', 'faint', 'switchIn'] as ShotName[]) {
       expect(sampleShot(shotFor(name, 'p1'), 0).shake, name).toBe(0)
+    }
+  })
+
+  /**
+   * ⚠️ **여기가 「기술 모션이 어색하다」의 자리다.**
+   *
+   * 예전에는 샷마다 피사체까지의 거리가 달랐다 — 기본 5.79m인데 임팩트가
+   * 1.98m, 기절이 2.14m였다. 곧 기술 한 번에 화면이 3배 가까이 당겨졌다
+   * 풀렸고, 그 줌이 연출보다 먼저 보였다. 각도는 마음껏 바꾸되 **크기는
+   * 안 바꾼다** — 원작 DS는 카메라가 아예 안 움직인다
+   */
+  it('어느 샷에서도 피사체가 같은 크기로 보인다 — 각도만 바뀐다', () => {
+    for (const name of ALL) {
+      for (const side of SIDES) {
+        const shot = shotFor(name, side)
+        for (const [what, p] of [['from', shot.from], ['to', shot.to]] as const) {
+          const flat = Math.hypot(p[0] - shot.look[0], p[2] - shot.look[2])
+          expect(flat, `${name}/${side} ${what}`).toBeCloseTo(SHOT_REACH, 6)
+        }
+        // 높이까지 넣은 실제 거리도 2% 안이다 (높이는 샷마다 다르게 둔다)
+        const far = Math.hypot(
+          shot.from[0] - shot.look[0], shot.from[1] - shot.look[1], shot.from[2] - shot.look[2])
+        expect(far / SHOT_REACH, `${name}/${side} 실제 거리`).toBeLessThan(1.02)
+      }
     }
   })
 

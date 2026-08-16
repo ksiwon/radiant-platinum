@@ -18,7 +18,7 @@ import {
   type FloorSource, type FloorTri, type GroundKind, type Split,
 } from './plates'
 import {
-  BARE, CONTACT_DARK, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK, TRUNK_R,
+  BARE, CONTACT_DARK, CROWN_REACH, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK, TRUNK_R,
   crownGeometry, trunkGeometry,
   contactGeometry, contactMaterial, contactTexture, merge, nearScale, paint, treeAt,
   treeGeometry,
@@ -706,6 +706,34 @@ maybe('잎 걷어내기', () => {
     expect(treeAt(cellKey(10, 12), cell)!.elements).not.toEqual(a.elements)
   })
 
+  /**
+   * **집·울타리 안으로는 안 자란다** (사용자 지적: "울타리랑 나무랑 겹쳐있지?
+   * 포켓몬센터랑 겹쳐있는 나무도 있고").
+   *
+   * 원작 나무는 위에서 본 그림 한 장이라 집에 걸쳐 있어도 화면에서는 집이
+   * 덮었다. 그걸 입체로 세우니 줄기가 벽을 뚫고 잎이 지붕에 박혔다 — 실측으로
+   * 마을 열 곳에서 98그루, 제일 깊은 것이 2.17타일이었다
+   */
+  it('소품·울타리에 가까우면 줄어들고, 최소 크기로도 안 들어가면 안 선다', () => {
+    const cell = { minY: 1, maxY: 4, group: 0 }
+    const key = cellKey(8, 12)
+    const full = new Vector3().setFromMatrixScale(treeAt(key, cell)!)
+    // 넉넉하면 그대로다
+    const far = new Vector3().setFromMatrixScale(treeAt(key, cell, undefined, undefined, () => 9)!)
+    expect(far.x).toBeCloseTo(full.x, 6)
+    // 1.0타일밖에 안 남으면 잎이 그 안에 들어오도록 줄인다 (`CROWN_REACH` 0.97)
+    const tight = treeAt(key, cell, undefined, undefined, () => 1.0)!
+    const small = new Vector3().setFromMatrixScale(tight)
+    expect(small.x).toBeLessThan(full.x)
+    expect(small.x * CROWN_REACH).toBeLessThanOrEqual(1.0 + 1e-6)
+    // 세로도 같이 줄어야 한다 — 가로만 줄이면 납작해진다
+    expect(small.y / small.x).toBeCloseTo(full.y / full.x, 6)
+    // 최소 크기로도 안 들어가면 아예 안 세운다
+    expect(treeAt(key, cell, undefined, undefined, () => RADIUS_MIN * CROWN_REACH - 0.01))
+      .toBeNull()
+    expect(treeAt(key, cell, undefined, undefined, () => 0)).toBeNull()
+  })
+
   it('색은 그림에서 제일 많이 쓰인 것으로 나오고 밝은 것이 앞에 온다', () => {
     // **어두운 잎을 더 많이** 둔다(8칸) — 세는 것만으로 고르면 어두운 것이 앞에
     // 오므로, 밝은 것이 앞에 오면 그것은 밝기로 다시 세운 것이다
@@ -1199,6 +1227,34 @@ describe('나무 밑 바닥을 한 가지로 통일한다', () => {
     expect(groundRank(REAL, 'beach')).toBe(1)
     // 물은 아예 안 쓴다
     expect(groundRank(REAL, 'sea')).toBe(0)
+  })
+
+  /**
+   * 속이 빈 그림은 바닥이 못 된다 — **사용자가 「투명 타일」이라 한 것이다.**
+   *
+   * 원작은 잔디·바위 **위에** 겹쳐 까는 한 겹을 따로 갖고 있다. 눈(`s_snow`
+   * 불투명 49.2% · `s_snow02` 29.7% · `s_sonwp` 23.6%)과 얼음(`c09_ice` 55.2% ·
+   * `c09_ice2` 48.2%)이 그것인데, 불투명한 텍셀만 세면 새하얘서 **눈으로
+   * 2등급**을 받았다. 그걸 숲 바닥에 깔면 알파 컷에 잘려 발밑이 뚫린다.
+   *
+   * 실측(그림 1,140가지)이 문턱을 비워 준다: 진짜 바닥 그림은 `ngrass`·
+   * `nectgr`·`criff`·`s_snow04`·`beach`까지 **전부 100.0%**이고 그 아래는
+   * 98.8%부터다
+   */
+  it('절반이 투명한 덧그림은 바닥으로 안 쓴다', () => {
+    // 텍셀 넷 중 둘만 불투명한 새하얀 그림 — 눈과 색이 똑같다
+    const pixels = new Uint8ClampedArray(4 * 4)
+    for (let i = 0; i < 4; i++) {
+      pixels[i * 4] = 253; pixels[i * 4 + 1] = 253; pixels[i * 4 + 2] = 255
+      pixels[i * 4 + 3] = i < 2 ? 255 : 0
+    }
+    const holed: TexSheet = {
+      width: 4, height: 1,
+      items: [{ tex: 's_snow', pal: '', x: 0, y: 0, w: 4, h: 1 }],
+      pixels,
+    }
+    expect(groundRank(holed, 's_snow'),
+      '불투명한 텍셀만 보면 눈이라 2등급이 나온다 — 그걸 깔면 뚫린다').toBe(0)
   })
 
   /**

@@ -19,7 +19,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { DoubleSide, FrontSide, Mesh, MeshBasicMaterial, type Material } from 'three'
 import {
-  distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, isDistortionFloor,
+  distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, distortionSlideAt,
+  isDistortionFloor,
   type DistortionPropPlace,
 } from './distortion'
 import { useSaveStore } from '../state/saveStore'
@@ -120,10 +121,14 @@ export function DistortionProps({ mapId }: { mapId: number }) {
       // ⚠️ **내린 뒤에는 제자리로 돌려놓는다.** 안 돌려놓으면 그 발판이 내린
       // 자리에 남아, 다음에 그 층에 왔을 때 엉뚱한 칸에 판이 하나 떠 있다
       const on = ride !== null && place.elevator === ride.index
+      // 밟으면 통째로 미끄러지는 발판. **판이 실제로 움직여야 한다** — 예전엔
+      // 사건이 사람만 여덟 칸 옮겨서, 판은 제자리에 두고 주인공만 허공을
+      // 건너갔다 (`distortion.distortionEventTick`)
+      const slide = distortionSlideAt(place.elevator) ?? [0, 0, 0]
       mesh.position.set(
-        (on ? ride.x : place.x) + 0.5 + off[0]!,
-        (on ? ride.y : place.y) + 0.5 + off[1]!,
-        (on ? ride.z : place.z) + 0.5 + off[2]!,
+        (on ? ride.x : place.x) + 0.5 + off[0]! + slide[0],
+        (on ? ride.y : place.y) + 0.5 + off[1]! + slide[1],
+        (on ? ride.z : place.z) + 0.5 + off[2]! + slide[2],
       )
     }
   })
