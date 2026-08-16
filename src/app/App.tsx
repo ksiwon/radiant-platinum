@@ -63,7 +63,15 @@ export function App() {
           <Stage />
         </Suspense>
       )}
-      <PerfOverlay />
+      {/*
+        계기판은 **개발 빌드에만** 뜬다 (PLAN §10.5 「개발 빌드에 상시 오버레이」).
+        조건 없이 그리고 있어서 배포된 타이틀 왼쪽 위에 `FPS 0 · backend ?`가
+        영구히 앉아 있었다 — 사람이 처음 보는 화면에 앉은 개발 계기다.
+        ⚠️ 성능 계측은 이걸 안 본다. `story.mjs`·`shot.mjs`는 DOM이 아니라
+        `sceneRefs`의 `perfSnapshot`을 직접 읽으므로 꺼도 그대로 잰다.
+        실기 프레임률을 눈으로 볼 일이 있으면 `pnpm dev`로 연다
+      */}
+      {import.meta.env.DEV && <PerfOverlay />}
       <ZoneBanner />
       {battleUp && (
         <Suspense fallback={null}>
