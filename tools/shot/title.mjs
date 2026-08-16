@@ -11,11 +11,18 @@
 // `BootGate`가 설치 전에는 `<App/>`을 아예 안 그리기 때문이다(그리면 타이틀
 // 음악·UI 글·맵 미리받기가 그 자리에서 요청으로 나간다). 그래서 그 사람이
 // 실제로 보는 첫 화면은 설치 화면이고, 고지는 **거기에도** 있어야 한다.
-// 개발 서버는 `play:dev`로 뜨므로 설치 화면은 「에셋 다시 설치」로 연다.
+//
+// ⚠️ **설치 화면은 개발 서버가 아니라 `dist`에서 연다.** 개발 서버는 늘
+// `play:dev`로 뜨고, 밖에서 갈래를 바꾸는 뒷문은 **일부러 없다**(e2e ㉓ —
+// 쿼리·해시·저장소를 만져도 안 바뀐다). 한동안 타이틀의 「에셋 다시 설치」를
+// 눌러 열었는데 그 단추가 평소에는 안 서게 됐고, 애초에 그건 설치를 마친
+// 사람이 보는 화면이지 처음 오는 사람이 보는 화면이 아니었다. 빈 프로필로
+// `dist`에 들어가면 그것이 곧 배포된 사용자의 첫 화면이다.
 import { chromium } from 'playwright'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { freePort, startVite } from '../devServer.mjs'
+import { serveDist } from '../e2e/serve.mjs'
 
 const OUT = resolve(import.meta.dirname, '../../shots')
 const VIEW = { width: 1280, height: 720 }
@@ -90,18 +97,33 @@ const main = async () => {
   console.log(`타이틀 차림표 ${JSON.stringify(await page.evaluate(MENU))}`)
   console.log('→ shots/title.png')
 
-  // ── 설치 화면 — 설치 전 사람이 실제로 보는 첫 화면 ────────────────────────
-  await page.getByRole('button', { name: '에셋 다시 설치' }).click()
-  await page.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 30_000 })
-  await page.waitForTimeout(800)
-  writeFileSync(resolve(OUT, 'install.png'), await page.screenshot())
-  console.log(`설치 고지  ${JSON.stringify(await page.evaluate(DISCLAIMER))}`)
+  await page.close()
+
+  // ── 설치 화면 — 설치 전 사람이 **실제로** 보는 첫 화면 ────────────────────
+  const dist = resolve(import.meta.dirname, '../../dist')
+  if (!existsSync(resolve(dist, 'index.html'))) {
+    console.log('설치 화면은 못 찍었다 — dist가 없다. `pnpm build`로 굽는다')
+    await browser.close()
+    vite?.child.kill()
+    return
+  }
+  // 빈 프로필이라 OPFS에 설치본이 없다 → `install:none` → 설치 화면.
+  // 개발 서버가 아니라 `dist`인 것이 요점이다 (머리말)
+  const server = await serveDist(dist, await freePort())
+  const fresh = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 })
+  const first = await fresh.newPage()
+  await first.goto(`${server.url}/`, { waitUntil: 'load' })
+  await first.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 30_000 })
+  await first.waitForTimeout(800)
+  const tag = await first.evaluate(() => document.documentElement.dataset.boot ?? null)
+  writeFileSync(resolve(OUT, 'install.png'), await first.screenshot())
+  console.log(`설치 고지  ${JSON.stringify(await first.evaluate(DISCLAIMER))}  갈래 ${tag}`)
   console.log('→ shots/install.png')
 
   // 물음표를 눌러 설명이 실제로 펼쳐지는지. 안 펼쳐지면 그건 없는 것과 같다
-  await page.getByRole('button', { name: 'AssetAssistant 폴더 설명' }).first().click()
-  await page.waitForTimeout(300)
-  const help = await page.evaluate(() => {
+  await first.getByRole('button', { name: 'AssetAssistant 폴더 설명' }).first().click()
+  await first.waitForTimeout(300)
+  const help = await first.evaluate(() => {
     const hit = [...document.querySelectorAll('[role="note"]')]
       .find((n) => n.textContent?.includes('StreamingAssets'))
     if (!hit) return { open: false }
@@ -109,10 +131,11 @@ const main = async () => {
     return { open: true, w: Math.round(box.width), h: Math.round(box.height) }
   })
   console.log(`물음표  ${JSON.stringify(help)}`)
-  writeFileSync(resolve(OUT, 'install-help.png'), await page.screenshot())
+  writeFileSync(resolve(OUT, 'install-help.png'), await first.screenshot())
   console.log('→ shots/install-help.png')
 
   await browser.close()
+  server.close()
   vite?.child.kill()
 }
 

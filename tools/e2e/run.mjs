@@ -136,6 +136,20 @@ async function waitBoot(page) {
   return bootTag(page)
 }
 
+/**
+ * 타이틀에 닿았는가 — **타이틀에만 있는 것**으로 잰다.
+ *
+ * ⚠️ **고지 글로 재면 안 된다.** 한동안 `'비공식·비제휴'`가 표식이었다. 그 글이
+ * 타이틀에만 있었기 때문인데, 설치 화면에도 같은 고지가 서면서(COPYRIGHT.md §11 —
+ * 설치 전 사용자는 타이틀에 못 가므로 거기가 그 고지의 유일한 자리다) 표식이
+ * 유일하지 않게 됐다. 그러자 ⑮가 「설치 시작」을 누른 **직후에** 경주를 이겼다고
+ * 보고, 아무것도 안 깔린 채로 OPFS를 읽어 `NotFoundError`로 죽었다.
+ *
+ * ⚠️ **`exact: true`가 필요하다.** 플레이라이트 기본은 부분 일치라 설치 화면의
+ * 「설치 시작」이 「시작」에 걸린다 — 그러면 표식이 또 유일하지 않다
+ */
+const atTitle = (page) => page.getByRole('button', { name: '시작', exact: true })
+
 async function run(id, what, fn) {
   if (only.length > 0 && !only.some((p) => id.startsWith(p))) {
     record(id, what, 'NOT RUN', '--only로 걸렀다'); return
@@ -767,7 +781,7 @@ await run('18', '설치가 끝나 있으면 파일을 안 묻고 바로 연다',
   const decided = Date.now() - t0
   assert(tag === 'play:opfs', `설치본을 안 읽었다: ${tag}`)
   // 타이틀 글자가 실제로 뜰 때까지
-  await again.getByText('비공식·비제휴').first().waitFor({ timeout: 60_000 })
+  await atTitle(again).waitFor({ timeout: 60_000 })
   const title = Date.now() - t0
   const nav = await again.evaluate(() => {
     const e = performance.getEntriesByType('navigation')[0]
@@ -1033,7 +1047,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 완주하면 화면이 **다시 켜지 않고** 그 자리에서 게임으로 넘어간다
     // (`activateInstall` → `onReady`). 둘 중 먼저 오는 쪽을 잡는다
     await Promise.race([
-      first.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 }),
+      atTitle(first).waitFor({ timeout: 2_400_000 }),
       first.getByText(/옮겨진 그룹은 설치됐지만/).first().waitFor({ timeout: 2_400_000 })
         .then(() => { throw new Error('필수 그룹이 모자라 partial에서 섰다') }),
     ])
@@ -1073,7 +1087,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // 설치 화면이 **뜨지 않는 것**이 계약이다. 뜬 뒤에 사라지는 것과 다르다
     assert(await again.getByRole('heading', { name: '에셋 설치' }).count() === 0,
       '설치 화면이 다시 떴다')
-    await again.getByText('비공식·비제휴').first().waitFor({ timeout: 60_000 })
+    await atTitle(again).waitFor({ timeout: 60_000 })
     const title = Date.now() - t1
 
     const writes = await again.evaluate(() => globalThis.__writes ?? -1)
@@ -1115,7 +1129,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     await waitBoot(page)
     await armWizard(page, BDSP, 300_000)
     await page.getByRole('button', { name: '설치 시작' }).click()
-    await page.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 })
+    await atTitle(page).waitFor({ timeout: 2_400_000 })
     const mark = requests.length
 
     // ── 새 게임 ──
@@ -1410,7 +1424,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     await waitBoot(page)
     await armWizard(page, BDSP, 300_000)
     await page.getByRole('button', { name: '설치 시작' }).click()
-    await page.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 })
+    await atTitle(page).waitFor({ timeout: 2_400_000 })
     const mark = requests.length
 
     await page.getByRole('button', { name: '시작', exact: true }).click()
