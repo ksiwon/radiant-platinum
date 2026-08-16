@@ -138,7 +138,15 @@ function walkSeq(data) {
         if (op === 0x94) return // 뛰기는 안 돌아온다
         continue
       }
-      if (w === 'prefix') { p += op === 0xa2 ? 1 : 3; continue }
+      // ⚠️ **엔진과 같은 폭이어야 한다** (`engine/audio/render`의 같은 세 줄).
+      // 여기 한동안 `w === 'prefix'` 하나로 적혀 있었는데, 폭 표가 그 사이에
+      // `random`·`fromVar`·`if` 셋으로 갈렸다. 그러면 이 가지가 안 잡혀
+      // `p += 1 + 'random'`이 되고, p가 문자열이 되면 `p >= data.length`가
+      // 거짓이라 다음 바퀴에 `data['1random']` → undefined를 "모르는 명령"으로
+      // 적고 그 트랙을 버린다. 곡 넷(#1223·#1224·#1225·#1393)이 그렇게 끊겼다
+      if (w === 'random') { p += 6; continue }
+      if (w === 'fromVar') { p += 3; continue }
+      if (w === 'if') { p += 1; continue }
       if (op === 0xe1) out.tempos.push(data[p + 1] | (data[p + 2] << 8))
       if (op === 0xff) return
       p += 1 + w
@@ -155,6 +163,8 @@ function main() {
   // ── 전곡 확인 ──
   let songs = 0, commands = 0, notes = 0, loud = 0
   const unknown = new Map()
+  /** 모르는 명령이 나온 곡. `#번호(개수)` */
+  const badSongs = []
   let tempoLo = Infinity, tempoHi = -Infinity
   for (let i = 0; i < seqs.length; i++) {
     if (!seqs[i]) continue
@@ -164,11 +174,15 @@ function main() {
     commands += r.commands
     notes += r.notes
     loud += r.loudNotes
+    // ⚠️ **어느 곡인지 적는다.** 「모르는 명령 1종」만 찍히면 어디를 열어 봐야
+    // 하는지 알 수가 없다. 표를 고칠 때 필요한 것은 종류가 아니라 자리다
+    if (r.unknown.length > 0) badSongs.push(`#${String(i)}(${String(r.unknown.length)})`)
     for (const op of r.unknown) unknown.set(op, (unknown.get(op) ?? 0) + 1)
     for (const t of r.tempos) { tempoLo = Math.min(tempoLo, t); tempoHi = Math.max(tempoHi, t) }
   }
   console.log(`곡 ${songs} · 푼 명령 ${commands.toLocaleString()} · 음표 ${notes.toLocaleString()}`)
   console.log(`  모르는 명령 ${unknown.size}종 · 세기 127 넘는 음표 ${loud} · 템포 ${tempoLo}~${tempoHi}`)
+  if (badSongs.length > 0) console.log(`  걸린 곡 ${badSongs.length}: ${badSongs.join(' ')}`)
   if (unknown.size > 0) {
     // ⚠️ `op`가 undefined일 수 있다 — 트랙 시작이 NaN이면 `data[NaN]`이 그것이다.
     // 여기서 죽으면 무엇이 걸렸는지 못 보고 끝난다

@@ -179,12 +179,16 @@ export const GROUPS = [
   },
   {
     name: 'player',
-    // ⚠️ **`py`로 못 돌린다.** 이 스크립트는 `bpy`를 쓰므로 Blender 안에서
-    // 돈다 (Collada 임포트가 5.0에서 빠져 4.2 LTS여야 한다). 여기에 `py -3.13`
-    // 이라고 적혀 있어서 그대로 따라 하면 `ModuleNotFoundError: bpy`가 난다 —
-    // 산출물을 다 지우고 다시 굽다가 드러났다. 공개 경로는 이 스크립트를
-    // 안 쓴다: 브라우저가 BDSP 덤프에서 바로 굽는다 (`import/bdsp/convert.ts`)
-    make: 'blender -b --factory-startup --python tools/extract/dawn_to_glb.py',
+    // ⚠️ **Blender를 부르지 않는다.** 여기 `py -3.13 dawn_to_glb.py`라고 적혀
+    // 있었는데 그 스크립트는 `bpy`를 쓰므로 그대로 따라 하면
+    // `ModuleNotFoundError: bpy`가 난다 (Collada 임포트가 5.0에서 빠져 4.2 LTS를
+    // 따로 깔아야 한다). 산출물을 다 지우고 다시 굽다가 드러났다.
+    //
+    // 그럴 필요가 없다 — **브라우저가 이미 다른 길로 굽고 있다**:
+    // `persons/battle/pc0002_00`(heroine)을 `exportModel`로 내보낸다
+    // (`import/bdsp/convert.ts`). 개발 쪽도 같은 번들을 같은 옵션으로 굽는다.
+    // 그러면 개발이 보는 것과 사용자가 받는 것이 같아진다
+    make: 'pnpm extract:player',
     match: oneOf('models/dawn.glb'),
   },
   {

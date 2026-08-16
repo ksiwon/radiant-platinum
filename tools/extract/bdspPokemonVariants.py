@@ -203,8 +203,13 @@ def main() -> int:
             dex, _, form = key.partition("-")
             entry.setdefault("scale", scales.get(scale_key(int(dex), int(form or 0)), 1.0))
 
+    # ⚠️ **키 순서를 못 박는다.** 이 표는 넣은 순서로 쓰이는데, `existing_manifest()`
+    # 가 있던 파일을 이어받으므로 **언제 무엇을 구웠는지가 바이트에 남는다.** 한 번에
+    # 다 구운 것과 나눠 구운 것이 내용은 같고 바이트만 달라져서, 산출물을 지우고
+    # 다시 구웠을 때 목차 해시가 이 파일 하나에서만 어긋났다 (크기는 212,808로 같다).
+    # 읽는 쪽은 키로 찾으므로(`scene/battle/monModel`) 순서에 기대는 데가 없다
     VARIANT_INDEX.write_text(
-        json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
         encoding="utf-8",
     )
     print(

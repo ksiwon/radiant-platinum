@@ -43,7 +43,10 @@ function fromRom(pathInRom, locale = 'en') {
   const at = sources.requirePlatinumRom(locale)
   const got = readRom(at).read(pathInRom)
   if (got === null) throw new Error(`${locale} 롬에 ${pathInRom}이 없다: ${at}`)
-  return got
+  // ⚠️ **복사해서 준다.** `read`는 롬 버퍼의 뷰(subarray)라 `byteOffset`이 0이
+  // 아니고 `.buffer`가 롬 전체다. 받는 쪽은 `readFileSync`가 주던 것을 기대하며
+  // 짜여 있어서, 뷰를 그대로 주면 `.buffer`를 만지는 자리에서 조용히 어긋난다
+  return Buffer.from(got)
 }
 
 const messageNarc = (locale) => fromRom(MSG_IN_ROM, locale)
