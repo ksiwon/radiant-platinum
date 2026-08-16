@@ -1,11 +1,18 @@
-// 타이틀 — 이어할지 새로 시작할지.
+// 타이틀 — 설치가 끝난 사람이 보는 화면.
 //
-// 고를 것을 둘로 줄였다. 리포트가 있으면 첫 칸이 "모험 계속하기"가 되고 없으면
-// "새로운 모험 시작하기"가 된다 — **없는 것을 흐리게 두지 않는다.** 흐리게 두면
-// 눌러 보고 나서야 없다는 걸 알게 된다.
+// 고를 것 넷이 한 줄에 놓인다: 시작 · 이어하기 · 세이브 파일 내보내기 ·
+// 세이브 파일 불러오기. 설정과 다시 설치는 그 뒤에 작게 붙는다 — 빼면 그리로
+// 가는 길이 이 화면에서 통째로 사라진다.
 //
-// 리포트가 있을 때만 "처음부터 다시 시작하기"가 요약 아래에 글자로 붙는다.
-// 버튼으로 두면 이어하기 옆에서 잘못 눌리는데, 그건 되돌릴 수 없는 일이다.
+// ⚠️ **없는 것을 말없이 흐리게 두지 않는다.** 리포트가 없으면 「이어하기」가
+// 안 눌리는데, 흐리기만 하면 눌러 보고 나서야 없다는 걸 알게 된다. 그래서
+// **왜 못 누르는지를 그 옆에 글로 적는다.**
+//
+// ⚠️ **「시작」은 되돌릴 수 없다.** 하던 리포트를 지운다. 한동안 이것을 버튼이
+// 아니라 요약 아래 작은 글자로 두었는데, 이어하기 옆에 같은 크기로 두면 잘못
+// 눌리기 때문이었다. 지금은 넷이 나란히 서므로 대신 **확인을 한 번 받는다** —
+// 크기로 막던 것을 걸음으로 막는다. 지우기 전에 파일로 받아 두는 것은 그대로다
+// (`resetSave`).
 //
 // 요약 넷(주인공·플레이 시간·도감·배지)의 글은 원작 `main_menu_options` 뱅크에서
 // 온다. 우리가 이름을 새로 짓지 않는다.
@@ -57,6 +64,8 @@ export function TitleScreen() {
   const [unreadable, setUnreadable] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [pending, setPending] = useState<(ImportPreview & { ok: true }) | null>(null)
+  /** 「시작」을 눌렀는데 하던 리포트가 있다. 지우기 전에 한 번 묻는다 */
+  const [confirmNew, setConfirmNew] = useState(false)
   /** 에셋 설치 화면이 떠 있는가 */
   const [importing, setImporting] = useState(false)
   /** 한가할 때 훑은 설치본에서 어긋난 것이 나왔는가 */
@@ -172,26 +181,79 @@ export function TitleScreen() {
    * ⚠️ 예전에는 리포트 단추 둘이 따로 떠 있었고 커서는 셋만 돌았다 — 화면에는
    * 다섯이 보이는데 키보드로는 셋만 닿는 상태였다
    */
-  const entries: { key: string, label: string, tone: 'main' | 'plain' | 'ghost', go: () => void }[] = [
-    hasSave
-      ? { key: 'continue', label: at(MAIN_MENU.continue_, '모험 계속하기'), tone: 'main', go: () => { go(false) } }
-      : { key: 'new', label: '새로운 모험 시작하기', tone: 'main', go: () => { go(true) } },
-    { key: 'options', label: '설정', tone: 'plain', go: () => { useMenuStore.getState().open('options') } },
-    // ⚠️ **아직 완성되지 않은 것을 완성된 것처럼 두지 않는다.** 변환 그룹이
-    // 하나만 옮겨져 있어서, 여기서 설치를 끝내도 게임은 시작되지 않는다
-    { key: 'import', label: '에셋 설치', tone: 'plain', go: () => { setImporting(true) } },
+  const entries: {
+    key: string
+    label: string
+    tone: 'main' | 'plain' | 'ghost'
+    go: () => void
+    /** 눌러도 할 일이 없는 것. 감추지 않고 **왜 못 누르는지**를 보인다 */
+    off?: boolean
+  }[] = [
+    // ⚠️ **「시작」과 「이어하기」를 하나로 묶지 않는다.** 예전에는 리포트가
+    // 있으면 「모험 계속하기」만, 없으면 「새로운 모험 시작하기」만 떴다 —
+    // 그래서 리포트가 있는 사람에게는 **처음부터 다시 하는 길이 화면에 없었다.**
+    // 지우기 전에 백업을 뜨므로(`go`) 새로 시작해도 옛 리포트는 남는다
+    //
+    // ⚠️ **하던 것이 있으면 곧바로 안 지운다.** 예전에는 이 일이 요약 아래
+    // 작은 글자였다 — 크기로 잘못 눌리는 것을 막고 있었다. 넷이 나란히 서는
+    // 지금은 크기가 아니라 **걸음**으로 막는다
+    {
+      key: 'new',
+      label: '시작',
+      tone: 'main',
+      go: () => { if (hasSave) setConfirmNew(true); else go(true) },
+    },
+    {
+      key: 'continue',
+      // ⚠️ **여기만 롬 글을 안 쓴다.** 한동안 `MAIN_MENU.continue_`를 썼는데,
+      // 나란히 선 넷 중 하나만 롬에서 오면 **그 칸만 롬 지역판을 따라간다** —
+      // 일본어 롬으로 설치한 사람의 차림표에 「冒険をつづける」 하나가 섞인다.
+      // 요약 넷(주인공·시간·도감·배지)은 그대로 롬 글이다. 그쪽은 게임 안의
+      // 말이고 이쪽은 앱 껍데기의 말이다
+      label: '이어하기',
+      tone: hasSave ? 'main' : 'plain',
+      off: !hasSave,
+      go: () => { if (hasSave) go(false) },
+    },
     // ⚠️ **리포트가 없어도 보인다.** 새 브라우저·새 기계에서 파일을 들고 온
     // 사람에게는 이 둘이 유일한 입구인데, "리포트가 있을 때만"으로 두면
     // 그 사람에게는 아무 데도 없다 (IMPORT.md §11)
-    { key: 'backup', label: '리포트 백업 받기', tone: 'ghost', go: backup },
-    { key: 'load', label: '리포트 파일 불러오기', tone: 'ghost', go: () => { filePicker.current?.click() } },
+    //
+    // ⚠️ **이름은 「리포트」가 아니라 「세이브 파일」이다.** 게임 안에서는 원작
+    // 말대로 리포트지만, 이 둘이 다루는 것은 디스크에 놓이는 `.rpsave` **파일**
+    // 이고 여기는 아직 게임 밖이다 — 처음 온 사람에게는 그쪽이 읽힌다
+    { key: 'backup', label: '세이브 파일 내보내기', tone: 'ghost', go: backup },
+    { key: 'load', label: '세이브 파일 불러오기', tone: 'ghost', go: () => { filePicker.current?.click() } },
+    // 아래 둘은 앞의 넷보다 뒤다. **빼지는 않는다** — 빼면 설정과 다시 설치로
+    // 가는 길이 이 화면에서 통째로 사라진다
+    { key: 'options', label: '설정', tone: 'ghost', go: () => { useMenuStore.getState().open('options') } },
+    { key: 'import', label: '에셋 다시 설치', tone: 'ghost', go: () => { setImporting(true) } },
   ]
 
   const [cursor, setCursor] = useState(0)
+  /** 사람이 커서를 한 번이라도 옮겼는가. 옮겼으면 우리가 도로 뺏지 않는다 */
+  const moved = useRef(false)
+  /**
+   * 리포트가 있으면 커서를 「이어하기」에 둔다.
+   *
+   * ⚠️ **첫 칸이 「시작」이라 그렇다.** 타이틀이 뜨자마자 Enter를 누르는 사람이
+   * 있는데, 그 자리에 「시작」이 있으면 하던 모험이 지워진다 — 지우기 전에
+   * 백업을 뜨긴 하지만(`go`) 그건 되돌리는 길이지 안 겪는 것이 아니다.
+   * 리포트는 비동기로 오므로 온 뒤에 옮긴다
+   */
+  useEffect(() => {
+    if (!hasSave || moved.current) return
+    const at = entries.findIndex((e) => e.key === 'continue')
+    if (at >= 0) setCursor(at)
+    // entries는 매 렌더 새로 만들어지므로 의존성에 넣지 않는다 — 넣으면 사람이
+    // 커서를 옮긴 직후에도 이 효과가 다시 돌아 도로 끌어온다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSave])
   // ⚠️ **버튼이 가로로 놓인다** (`titleScreen.css`의 `menu`가 `flex-direction: row`).
   // 한동안 ↑↓만 묶여 있어서, 나란히 놓인 것을 보고 ←→를 누르면 아무 일도 안
   // 일어났다. 네 방향을 다 받는다
   const move = (delta: number): void => {
+    moved.current = true
     setCursor((c) => clampCursor(c, delta, entries.length))
   }
   // 설정이 떠 있는 동안에는 타이틀이 키를 안 듣는다 — 그쪽이 먼저다
@@ -246,8 +308,10 @@ export function TitleScreen() {
                 entry.tone === 'ghost' ? css.buttonGhost : '',
                 i === cursor ? css.buttonOn : '',
               ].filter(Boolean).join(' ')}
+              disabled={entry.off}
               onClick={entry.go}
               onPointerEnter={() => {
+                moved.current = true
                 setCursor(i)
                 if (entry.tone === 'main') prefetchGameChunk()
               }}
@@ -270,6 +334,15 @@ export function TitleScreen() {
             }}
           />
         </div>
+
+        {/* ⚠️ **왜 못 누르는지를 적는다.** 흐리게만 두면 눌러 보고 나서야 없다는
+            걸 알게 된다. `undefined`는 아직 읽는 중이라 아무 말도 하지 않는다 */}
+        {report === null && (
+          <p className={css.hint}>
+            이어할 세이브가 없습니다 — 「시작」으로 새 모험을 열거나,
+            「세이브 파일 불러오기」로 갖고 있는 파일을 들이세요
+          </p>
+        )}
 
         {/*
           ⚠️ **눈에 띄는 자리여야 한다** (COPYRIGHT.md §11). `crest`와 `foot`은
@@ -313,21 +386,34 @@ export function TitleScreen() {
             </div>
           )}
 
+          {/* ⚠️ **되돌릴 수 없는 일 앞에 걸음을 하나 둔다.** 지우기 전에 파일로
+              받아 두긴 하지만(`resetSave`), 그건 되돌리는 길이지 안 겪는 것이
+              아니다 — 브라우저가 그 받기를 막을 수도 있다 */}
+          {confirmNew && (
+            <div className={css.notice}>
+              {'하던 모험이 있습니다 — '}
+              {`${report?.trainer.name || '이름 없음'} · ${clock(report?.trainer.playtimeMs ?? 0)}\n`}
+              {'처음부터 시작하면 지금 리포트가 지워집니다. 지우기 전에 세이브 파일로 받아 둡니다.'}
+              <div className={css.files}>
+                <button
+                  className={css.fileButton}
+                  onClick={() => { setConfirmNew(false); go(true) }}
+                >
+                  처음부터 시작하기
+                </button>
+                <button className={css.fileButton} onClick={() => { setConfirmNew(false) }}>
+                  그만두기
+                </button>
+              </div>
+            </div>
+          )}
+
           {notice !== null && <div className={css.notice}>{notice}</div>}
           {/* 뒤에서 훑다 어긋난 것을 만났을 때. 화면을 막지 않는다 — 멀쩡한
               그룹은 그대로 열리고, 깨진 그룹을 실제로 읽을 때 그 자리에서 선다 */}
           {assetWarning !== null && <div className={css.notice}>{assetWarning}</div>}
         </div>
 
-        {/*
-          리포트가 있을 때만. 버튼이 아니라 글자인 것은 **되돌릴 수 없는 일**이라서다 —
-          이어하기 바로 옆에 같은 크기로 두면 잘못 눌린다
-        */}
-        {report && (
-          <button className={css.restart} onClick={() => { go(true) }}>
-            처음부터 다시 시작하기 (지우기 전에 백업 파일을 받습니다)
-          </button>
-        )}
       </div>
 
       <div className={css.foot}>

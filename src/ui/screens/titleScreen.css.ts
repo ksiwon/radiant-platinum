@@ -151,6 +151,10 @@ export const button = style({
   transition: 'transform 90ms ease-out, border-color 120ms linear, box-shadow 120ms linear',
   selectors: {
     '&:active': { transform: 'translateY(1px)' },
+    // 눌러도 할 일이 없는 것. **왜 못 누르는지는 차림표 아래에 글로 적는다** —
+    // 흐리기만 하면 눌러 보고 나서야 없다는 걸 알게 된다 (`TitleScreen` 머리말)
+    '&:disabled': { opacity: 0.42, cursor: 'default', boxShadow: 'none' },
+    '&:disabled:active': { transform: 'none' },
   },
 })
 
@@ -335,32 +339,4 @@ export const notice = style({
   backdropFilter: 'blur(4px)',
   pointerEvents: 'auto',
   whiteSpace: 'pre-line',
-})
-
-/** 리포트가 있을 때만 뜨는 "처음부터". 실수로 누르면 안 되므로 글자로만 둔다 */
-export const restart = style({
-  position: 'absolute',
-  right: 'clamp(12px, 2vw, 24px)',
-  bottom: 'clamp(16px, 2.3vh, 28px)',
-  appearance: 'none',
-  padding: '6px 10px',
-  fontFamily: vars.font.ui,
-  fontSize: 11,
-  color: vars.panel.text,
-  background: 'rgba(8, 13, 23, 0.54)',
-  border: '1px solid rgba(255,255,255,0.1)',
-  borderRadius: 999,
-  opacity: 0.68,
-  backdropFilter: 'blur(4px)',
-  cursor: 'pointer',
-  pointerEvents: 'auto',
-  selectors: {
-    '&:hover': { opacity: 1 },
-  },
-  '@media': {
-    'screen and (max-width: 980px)': {
-      top: 12,
-      bottom: 'auto',
-    },
-  },
 })

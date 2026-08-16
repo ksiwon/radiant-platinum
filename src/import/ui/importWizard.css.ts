@@ -12,6 +12,104 @@ export const wrap = style({
   fontFamily: vars.font.ui,
 })
 
+/**
+ * 타이틀 그림 — **이 화면이 곧 첫 화면이다.**
+ *
+ * 설치 전에는 `BootGate`가 `<App/>`을 아예 안 그리므로(그리면 타이틀 음악·UI
+ * 글·맵 미리받기가 그 자리에서 요청으로 나간다) 사용자가 처음 만나는 것은
+ * 타이틀이 아니라 여기다. 그러니 여기가 타이틀처럼 보여야 한다.
+ *
+ * ⚠️ **이 그림은 앱 셸이라 설치 전에도 있다** (`tools/distribution/appShell.mjs`).
+ * `/data`·`/models`가 아니므로 「미설치에서 콘텐츠 요청 0건」(e2e ①)도 그대로다.
+ * 글이 얹히는 자리라 원래 타이틀보다 훨씬 어둡게 깐다
+ */
+export const sky = style({
+  position: 'fixed',
+  inset: 0,
+  zIndex: -2,
+  backgroundColor: '#070c16',
+  backgroundPosition: 'center',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundImage: [
+    'linear-gradient(180deg, rgba(7, 12, 22, 0.86) 0%, rgba(7, 12, 22, 0.93) 55%,'
+    + ' rgba(5, 8, 15, 0.97) 100%)',
+    "url('/assets/radiant-platinum-intro.png')",
+  ].join(', '),
+})
+
+/** 화면에 보이는 제목. 비공식 고지가 바로 아래 붙는다 (COPYRIGHT.md §11) */
+export const crest = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+})
+
+export const crestName = style({
+  margin: 0,
+  fontSize: 30,
+  letterSpacing: '0.03em',
+  fontWeight: 700,
+})
+
+export const crestNote = style({
+  fontSize: 12,
+  opacity: 0.72,
+  letterSpacing: '0.02em',
+})
+
+/**
+ * 준비물 둘.
+ *
+ * ⚠️ **맨 앞에 둔다.** 이 화면에서 사람이 제일 먼저 알아야 하는 것은 단계
+ * 목록이 아니라 **무엇을 미리 갖고 와야 하는가**다. 그것이 없으면 아래를
+ * 아무리 읽어도 할 수 있는 것이 없다
+ */
+export const lead = style({
+  padding: '14px 16px',
+  borderRadius: 12,
+  border: '1px solid rgba(110, 168, 255, 0.42)',
+  background: 'rgba(18, 30, 54, 0.72)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+})
+
+export const leadHead = style({
+  fontSize: 15,
+  fontWeight: 700,
+})
+
+export const needs = style({
+  margin: 0,
+  padding: 0,
+  listStyle: 'none',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  fontSize: 13,
+  lineHeight: 1.7,
+})
+
+/** 준비됐는가. ● 이 초록이면 그 하나는 끝난 것이다 */
+export const needMark = style({
+  marginRight: 8,
+  fontSize: 11,
+})
+
+/**
+ * 비공식 고지 — 설치 전 사용자는 타이틀을 못 보므로 **여기가 유일한 자리다**.
+ *
+ * ⚠️ 제목 바로 아래다. 아래쪽 끝에 두었더니 세 화면쯤 스크롤해야 나왔다 —
+ * 문서에 있는 것과 눈에 띄는 것은 다르다 (COPYRIGHT.md §11)
+ */
+export const disclaimer = style({
+  margin: 0,
+  fontSize: 11.5,
+  lineHeight: 1.7,
+  opacity: 0.74,
+})
+
 export const sheet = style({
   maxWidth: 760,
   margin: '0 auto',

@@ -342,7 +342,7 @@ if (ACTS.has('1')) {
   const t0 = Date.now()
   try {
     noise = []
-    const start = page.getByRole('button', { name: '새로운 모험 시작하기' })
+    const start = page.getByRole('button', { name: '시작', exact: true })
     // 롬 글이라 판마다 다르다. 못 찾으면 타이틀의 첫 버튼을 누른다
     const button = await start.count() > 0 ? start : page.getByRole('button').first()
     await button.click({ timeout: 60_000 })

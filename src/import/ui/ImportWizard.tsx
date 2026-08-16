@@ -28,7 +28,41 @@ import {
 import { REQUIRED_BDSP_GROUPS, missingRequired } from '../install/required'
 import { opfsAvailable, opfsPackStore, OPFS_ASSETS, OPFS_ROOT } from '../../data/providers/packStore'
 import { activateInstall } from '../../app/boot'
+import { Hint, HintCaveat, HintTree } from '../../ui/common/Hint'
 import * as css from './importWizard.css'
+
+/**
+ * `AssetAssistant`가 무엇이고 어디 있는가.
+ *
+ * ⚠️ **어디 있는지는 적고, 어떻게 얻는지는 안 적는다** (COPYRIGHT.md §4).
+ * 앞은 사용자가 이미 가진 자기 덤프 안의 **경로**고, 뒤는 취득·복호화 안내라
+ * 이 프로젝트가 하지 않기로 한 것이다. 여기가 사람들이 "그럼 그건 어디서
+ * 구하나요"를 묻는 자리라, 그 자리에서 안 한다고 말한다
+ */
+function AssetAssistantHelp() {
+  return (
+    <Hint label="AssetAssistant 폴더">
+      {'BDSP(브릴리언트 다이아몬드 · 샤이닝 펄)의 에셋이 들어 있는 폴더입니다. '}
+      {'사람과 포켓몬의 3D 모델과 동작, 배틀 무대가 여기서 나옵니다.\n'}
+      {'게임을 풀면 romfs 안 이 자리에 생깁니다:'}
+      <HintTree>
+        {'romfs/\n'
+          + '└─ Data/\n'
+          + '   └─ StreamingAssets/\n'
+          + '      └─ AssetAssistant/   ← 이것을 고릅니다\n'
+          + '         ├─ Characters/    사람 · 포켓몬 · 소품\n'
+          + '         ├─ Pokemon/       종 · 폼별 모델\n'
+          + '         └─ Environments/  배틀 무대'}
+      </HintTree>
+      {'romfs · Data · StreamingAssets 중 위쪽 폴더를 골라도 앱이 아래에서 '}
+      {'AssetAssistant를 찾아 내려갑니다.'}
+      <HintCaveat>
+        {'파일을 구하는 방법, 콘솔 개조, 키 획득, 복호화는 안내하지 않습니다. '}
+        {'원천 컨테이너나 키를 요구하지도 않습니다.'}
+      </HintCaveat>
+    </Hint>
+  )
+}
 
 /** 못 만든 그룹을 몇 줄까지 적을지. Worker가 죽으면 남은 것이 줄줄이 같은 말을 한다 */
 const FAILURES_SHOWN = 6
@@ -248,8 +282,55 @@ export function ImportWizard({ onClose, onReady }: {
 
   return (
     <div className={css.wrap}>
+      {/* 타이틀 그림. 설치 전에는 이 화면이 곧 첫 화면이다 (`importWizard.css`) */}
+      <div className={css.sky} />
       <div className={css.sheet}>
-        <h1 className={css.title}>에셋 설치</h1>
+        <header className={css.crest}>
+          <h1 className={css.crestName}>Radiant Platinum</h1>
+          <span className={css.crestNote}>비공식 팬 프로젝트 · 비영리</span>
+        </header>
+
+        {/* ⚠️ **여기가 이 고지의 유일한 자리다** (COPYRIGHT.md §11). 설치 전
+            사용자는 타이틀에 못 간다 — `BootGate`가 설치 전에는 `<App/>`을 아예
+            안 그리기 때문이다. 타이틀에만 두면 정작 처음 오는 사람은 못 본다.
+            ⚠️ **첫 화면 안에 둔다.** 아래쪽 끝에 두었더니 세 화면쯤 스크롤해야
+            나왔다 — 문서에 있는 것과 눈에 띄는 것은 다르다 */}
+        <p className={css.disclaimer}>
+          비공식·비제휴 팬 프로젝트입니다. 관련 상표와 저작물은 각 권리자의 것이며,
+          무료·비영리·BYOR는 권리자의 허가를 뜻하지 않습니다.
+          적법하게 보유한 게임 데이터만 고르세요 — 서버는 원본도 변환 결과도
+          받거나 저장하지 않습니다.
+        </p>
+
+        {/* ⚠️ **준비물을 맨 앞에 둔다.** 여기서 사람이 제일 먼저 알아야 하는 것은
+            단계 목록이 아니라 무엇을 미리 갖고 와야 하는가다. 그것이 없으면
+            아래를 아무리 읽어도 할 수 있는 것이 없다 */}
+        <div className={css.lead}>
+          <div className={css.leadHead}>시작하려면 준비물 둘이 먼저 필요합니다</div>
+          <ul className={css.needs}>
+            <li>
+              <span className={`${css.needMark} ${platinum?.ok ? css.ok : css.bad}`} aria-hidden>
+                {platinum?.ok ? '●' : '○'}
+              </span>
+              <b>Platinum .nds 파일</b>
+              {' — 본인이 적법하게 보유한 것. 영어 · 한국어 · 일본어판을 받습니다'}
+            </li>
+            <li>
+              <span className={`${css.needMark} ${bdsp?.ok ? css.ok : css.bad}`} aria-hidden>
+                {bdsp?.ok ? '●' : '○'}
+              </span>
+              <b>AssetAssistant 폴더</b>
+              {' — BDSP에서 이미 추출해 둔 것 '}
+              <AssetAssistantHelp />
+            </li>
+          </ul>
+          <div className={css.body}>
+            {'둘을 아래에서 이 기기에서 고르면 브라우저가 그 자리에서 변환해 설치합니다. '}
+            {'설치가 끝나면 이 화면이 스스로 게임으로 넘어가고, 다음부터는 파일을 다시 묻지 않습니다.'}
+          </div>
+        </div>
+
+        <h2 className={css.title}>에셋 설치</h2>
 
         {/* ⚠️ **여기 적힌 것이 사실이어야 한다.** 한때 "설치를 끝내도 아직 게임은
             시작할 수 없습니다"가 박혀 있었는데, 그 말이 참이 아니게 된 뒤에도
@@ -339,6 +420,7 @@ export function ImportWizard({ onClose, onReady }: {
         <section className={css.step}>
           <div className={css.stepHead}>
             ② BDSP 폴더
+            <AssetAssistantHelp />
             <span className={css.stepNote}>이미 추출된 AssetAssistant (또는 그 상위)</span>
           </div>
           <div className={css.row}>

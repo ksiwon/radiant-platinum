@@ -1119,7 +1119,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     const mark = requests.length
 
     // ── 새 게임 ──
-    await page.getByRole('button', { name: '새로운 모험 시작하기' }).click()
+    await page.getByRole('button', { name: '시작', exact: true }).click()
     await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
 
     // 오프닝은 글 → 몬스터볼 → 이름 → 고르기가 섞여 있고 길이가 롬 글에 달렸다.
@@ -1316,7 +1316,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     // ── .rpsave 내보내고, 지우고, 파일만으로 되살린다 ──
     const [download] = await Promise.all([
       page.waitForEvent('download', { timeout: 60_000 }),
-      page.getByRole('button', { name: '리포트 백업 받기' }).click(),
+      page.getByRole('button', { name: '세이브 파일 내보내기' }).click(),
     ])
     const at = resolve(ROOT, '.audit/e2e.tmp', download.suggestedFilename())
     mkdirSync(resolve(ROOT, '.audit/e2e.tmp'), { recursive: true })
@@ -1413,7 +1413,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     await page.getByText('비공식·비제휴').first().waitFor({ timeout: 2_400_000 })
     const mark = requests.length
 
-    await page.getByRole('button', { name: '새로운 모험 시작하기' }).click()
+    await page.getByRole('button', { name: '시작', exact: true }).click()
     await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
     const after = await playOpening(page, STORY_NAME)
     assert(after === '/play', `오프닝이 안 끝났다 — ${after}`)
