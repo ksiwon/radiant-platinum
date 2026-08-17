@@ -97,8 +97,14 @@ function main() {
   const BAKER = resolve(ROOT, 'tools/extract/bdspGlb.py')
   // ⚠️ **굽는 쪽이 바뀌면 다시 굽는다.** 번들 날짜만 보면 굽는 규칙을 고쳐도
   // 전부 "그대로 둔 것"이 되어 낡은 glb가 남는다 — 실제로 스킨 폭을 고친 뒤에
-  // 0개가 다시 구워졌다
-  const bakerAt = statSync(BAKER).mtimeMs
+  // 0개가 다시 구워졌다.
+  //
+  // ⚠️ **딸린 파일까지 본다.** `bdspGlb.py` 하나만 보면 색을 굽는
+  // `bdsp_bake_albedo.py`나 리타깃을 고쳐도 아무것도 안 다시 구워진다 —
+  // 엄마 얼굴의 파란 가면(ColorVariation 채널 순서)을 고치고도 106개가 전부
+  // 건너뛰어졌다
+  const bakerAt = Math.max(...['bdspGlb.py', 'bdsp_bake_albedo.py', 'bdspRetarget.py']
+    .map((f) => statSync(resolve(ROOT, 'tools/extract', f)).mtimeMs))
   const done = new Set()
   const broken = new Set()
   let made = 0, skipped = 0, bytes = 0

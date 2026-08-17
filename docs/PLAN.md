@@ -682,14 +682,11 @@ albedo = _MainTex(음영) × 레이어색[_MaskTex 채널]
   🔴 R → _SkinColor   🟢 G → _PrimaryColor   🔵 B → _SecondaryColor   ⬛ 검정 → 틴트 없음
 ```
 
-⚠️ **채널 매핑이 두 개다. 하나로 묶으면 안 된다.** `_MaskTex`의 RGB 채널 순서와 `ColorVariation`의 `channel` 인덱스 순서가 다르다:
+⚠️ **`ColorVariation`의 `channel` 인덱스도 같은 순서다** — 0 `_SkinColor` · 1 `_PrimaryColor` · 2 `_SecondaryColor`.
 
-| 매핑 | 0 | 1 | 2 |
-|---|---|---|---|
-| `_MaskTex` RGB | `_SkinColor` | `_PrimaryColor` | `_SecondaryColor` |
-| `ColorVariation.channel` | `_PrimaryColor` | `_SecondaryColor` | `_SkinColor` |
+근거: `ColorIndex`가 가리키는 프리셋은 그 인물의 **기본 외형**이므로 색이 머티리얼 기본값과 같아야 한다. 인물 108명을 훑어 `ColorVariation`을 가진 여섯(`fc1085`·`fc2005`·`pc0001`·`pc0002`)의 40건을 대조했다 — ch0→`_SkinColor` 14/14, ch1→`_PrimaryColor` 19/24(나머지 다섯은 주인공 커스터마이즈 프리셋이라 기본값과 다른 것이 맞다), ch2→`_SecondaryColor` 2/2.
 
-같은 상수로 처리하면 **의상을 맞추는 순간 머리·눈·얼굴이 깨진다.** 실제로 한 번 그렇게 만들었다가 "채널 순서는 프로퍼티 선언 순서가 맞다"는 잘못된 결론에 도달했다. 게임 화면과 대조해서야 분리해야 한다는 것이 드러났다.
+한동안 이 순서를 한 칸 돌려(`_Primary`·`_Secondary`·`_Skin`) 읽었다. 그러면 **엄마 얼굴이 파랗게 칠해진다** — `fc2005_00`의 face는 `_MaskTex`가 92% R(=`_SkinColor` 자리)인데 ch2의 머리색 (0.275, 0.388, 0.549)이 그 자리에 들어가 눈가에 파란 가면이 씌워졌다. `ColorVariation`이 없는 102명은 기본값 그대로라 아무 표시도 안 나서, 고칠 때까지 한 사람만 이상한 것으로 보였다.
 
 - **마스크는 한 장이다.** `_MaskTex` 하나의 RGB 채널이 세 색을 고른다. Models Resource 립의 `_msk`/`_msk2`/`_msk3`는 그 채널을 분리해 저장한 것이었다
 - **`_SkinColor`는 피부 전용이 아니라 세 번째 범용 레이어 색이다.** 가방엔 노랑(#eedfa7), 모자엔 분홍이 들어간다
