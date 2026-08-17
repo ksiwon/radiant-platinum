@@ -66,11 +66,11 @@ describe.runIf(existsSync(INDEX))('소품 자리 보정', () => {
   // 보정을 빼면 발판이 한 칸 넘게 떠서 사람이 그 속을 걷는다
   it('스물다섯 종류에 값이 있고 작은 발판이 −25/16이다', () => {
     const idx = JSON.parse(readFileSync(INDEX, 'utf8')) as { offsets: number[][] }
-    // ⚠️ **뒤의 넷은 깨어진 세계 것이 아니다** — 장막시티 체육관의 샌드백과
-    // 타이어 둘, 그리고 나무열매 밭의 흙인데(PARITY §4.6) 같은 `fldeff.narc`에
-    // 있고 굽는 길도 같아서 이어 붙였다. 원작 표(`sPropInitialPosOffsetByKind`)는
-    // 스물다섯까지다
-    expect(idx.offsets).toHaveLength(25 + 4)
+    // ⚠️ **뒤의 열넷은 깨어진 세계 것이 아니다** — 장막시티 체육관의 샌드백과
+    // 타이어 둘, 나무열매 밭의 흙(PARITY §4.6), 그리고 **안 그려지던 물체 열
+    // 종**(§1.27)인데 같은 `fldeff.narc`에 있고 굽는 길도 같아서 이어 붙였다.
+    // 원작 표(`sPropInitialPosOffsetByKind`)는 스물다섯까지다
+    expect(idx.offsets).toHaveLength(25 + 4 + 10)
     expect(idx.offsets[0]).toEqual([0, -25 / 16, -6 / 16])
     // 큰 승강 발판 셋만 x·z가 다르다 (8 · 16 · 18)
     const shifted = idx.offsets
@@ -78,7 +78,10 @@ describe.runIf(existsSync(INDEX))('소품 자리 보정', () => {
       .filter((i) => i >= 0)
     expect(shifted).toEqual([8, 16, 18])
     // 이어 붙인 넷은 원작에 자리 보정이 없다 — 지도 객체라 칸 한가운데 그대로다
-    expect(idx.offsets.slice(25)).toEqual([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+    expect(idx.offsets.slice(25, 29)).toEqual([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+    // 간판 여섯(29~34)만 칸 뒤쪽으로 −2/16 물러선다 (`Unk_ov5_021FB51C`)
+    expect(idx.offsets.slice(29, 35)).toEqual(Array.from({ length: 6 }, () => [0, 0, -2 / 16]))
+    expect(idx.offsets.slice(35)).toEqual([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
     // 문은 혼자 위로 올라오고 z가 반 칸 남쪽이다
     expect(idx.offsets[24]).toEqual([0, -14 / 16, 8 / 16])
   })

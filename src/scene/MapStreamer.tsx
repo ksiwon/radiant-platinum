@@ -90,6 +90,7 @@ import { RadarPatches } from './RadarPatches'
 import { BerryPatchProps } from './BerryPatchProps'
 import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
+import { ObjectProps } from './ObjectProps'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
 import { Ledges } from './Ledges'
@@ -862,6 +863,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <BerryPatchProps grid={grid} layer={layer} />
       <DoorAnimations grid={grid} />
       <DistortionProps mapId={mapId} />
+      {/*
+        간판·눈덩이·책·방문 (PARITY §1.27). 배치표에 있는데 원작에 판때기가
+        없어서 **아무것도 안 서던** 열 종이다 — 원작에서 3D 오브젝트라 같은
+        아카이브(`fldeff.narc`)에서 온다
+      */}
+      <ObjectProps grid={grid} layer={layer} mapId={mapId} />
       <FieldWeather kind={weather} />
 
       {/*
