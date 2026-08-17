@@ -170,7 +170,8 @@ pnpm build && pnpm release:check
 
 실측 (2026-08-17): 브랜치 `master` 하나 · 태그 0 · 커밋 **308개 그대로**(빈 커밋이
 안 생겼다) · 느슨한 객체 0 · pack 10.06MB → **8.27MB** · 감사 **"지워야 할 것 없음"** ·
-남은 가장 큰 블롭은 우리가 그린 `intro.png`(2.3MB)와 `icon.png`(1.2MB)다.
+남은 가장 큰 블롭은 우리가 그린 `art/intro.png`(2.3MB)와 `art/icon.png`(1.2MB)다 —
+마스터라 저장소에 남고, 배포물에는 그것을 구운 403KB·254KB가 나간다.
 
 ⚠️ **reflog 만료와 gc를 따로 안 돌렸다.** filter-repo가 다시 쓴 뒤 스스로
 `Repacking your repo and cleaning out old unneeded objects`를 하고, 그 결과가
