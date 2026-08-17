@@ -111,6 +111,37 @@ const marks = (page) => page.evaluate(() => {
   }
 })
 
+/**
+ * **몸이 시뮬을 따라와 있는가, 그리고 팔이 제자리인가.**
+ *
+ * ⚠️ **`data-tile`은 이걸 못 잡는다.** 그 표식은 시뮬이 선 칸이라, 그림이 통째로
+ * 뒤에 남아도 칸은 멀쩡히 바뀐다 — 실제로 「몸은 제자리에서 팔만 젓는데 카메라만
+ * 따라간다」는 보고를 받고서야 알았고, 그때 이 막은 PASS였다. 그림이 붙는 자리는
+ * `sceneRefs.player` 하나뿐이니 그것을 직접 읽는다.
+ *
+ * 자세도 같이 본다. 리그를 몸이 돌아 있는 채로 만들면 축이 그만큼 어긋나서
+ * **팔이 머리 위로 올라간다** (`locomotion.createRig`). 손이 머리보다 위면 그것이다.
+ */
+const body = (page) => page.evaluate(async () => {
+  const refs = (await import('/src/scene/sceneRefs.ts')).sceneRefs
+  const ws = (await import('/src/state/worldState.ts')).worldState
+  const p = refs.player
+  if (!p) return { ref: null }
+  const bones = {}
+  for (const n of ['Head', 'LHand', 'RHand']) {
+    let hit = null
+    // ⚠️ **주인공 그룹 안에서만 찾는다** — 씬 전체를 훑으면 옆 NPC의 `Head`를 집는다
+    p.traverse((o) => { if (!hit && o.name === n) hit = o })
+    // 월드 행렬은 이번 프레임에 이미 갱신됐다. 그 넷째 열이 월드 위치고 [13]이 y다
+    bones[n] = hit ? +hit.matrixWorld.elements[13].toFixed(3) : null
+  }
+  return {
+    ref: p.children.some((c) => c.geometry?.type === 'CapsuleGeometry') ? '캡슐' : '모델',
+    gap: +Math.hypot(p.position.x - ws.player.position.x, p.position.z - ws.player.position.z).toFixed(3),
+    ...bones,
+  }
+})
+
 /** 지금 무대가 무엇을 그리고 있나 (`scene/sceneRefs.ts`의 `perfSnapshot`) */
 const perf = (page) => page.evaluate(async () => {
   try {
@@ -368,10 +399,22 @@ if (ACTS.has('1')) {
       if ((await marks(page)).tile !== before) { moved = true; break }
     }
     if (!moved) throw new Error(`네 방향 다 못 걸었다 — 칸 ${before}`)
+    // ⚠️ **칸이 바뀐 것만으로 「걸었다」고 하지 않는다.** 칸은 시뮬이고, 몸이
+    // 뒤에 남아도 그건 바뀐다. 성별을 고르면 모델을 다시 읽는데 그때 자리를
+    // 놓치면 **몸은 제자리에서 팔만 젓는다** (`PlayerModel`·`GreyBox`)
+    const b = await body(page)
+    if (b.ref === null) throw new Error('몸이 씬에 안 붙어 있다 — sceneRefs.player가 null이다')
+    if (b.ref === '캡슐') throw new Error('폴백 캡슐이 주인공 자리에 남아 있다')
+    // 보간 지연은 한 프레임어치다. 실측 0.04m — 반 칸이면 안 따라온 것이다
+    if (b.gap > 0.5) throw new Error(`몸이 시뮬에서 ${b.gap}m 떨어져 있다`)
+    if (b.Head !== null && b.LHand !== null && (b.LHand > b.Head || b.RHand > b.Head)) {
+      throw new Error(`손이 머리 위로 올라갔다 — 머리 ${b.Head} 왼손 ${b.LHand} 오른손 ${b.RHand}`)
+    }
     const bad = noise.slice(0, 3)
     if (bad.length > 0) throw new Error(`콘솔: ${bad.join(' / ')}`)
     add('①', 'open', '새 게임 → 오프닝 → 오버월드 → 걷기', 'PASS',
       `오프닝 ${((Date.now() - intro) / 1000).toFixed(0)}초 · 맵 ${at.map} 칸 ${at.tile} · `
+      + `몸이 시뮬에서 ${b.gap}m · 손 ${b.LHand}/머리 ${b.Head} · `
       + `모두 ${((Date.now() - t0) / 1000).toFixed(0)}초 · 콘솔 0건`)
   } catch (e) {
     add('①', 'open', '새 게임 → 오프닝 → 오버월드 → 걷기', 'FAIL',

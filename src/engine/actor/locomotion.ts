@@ -114,10 +114,16 @@ function store(name: string, q: Quaternion) {
   slot.copy(q)
 }
 
-function makeJoint(node: Object3D): Joint {
+function makeJoint(node: Object3D, frameInv: Quaternion): Joint {
   node.updateWorldMatrix(true, false)
   const parentQ = new Quaternion()
   if (node.parent) node.parent.getWorldQuaternion(parentQ)
+  // ⚠️ **월드가 아니라 틀 안에서 잰다.** `apply`가 거는 축(`AXIS_PITCH` 등)은
+  // 이 사람의 틀 — 정규화 래퍼의 부모, 곧 주인공/NPC 그룹 — 기준이다. 월드
+  // 회전을 그대로 두면 **리그를 만든 순간 몸이 돌아 있던 각도가 축에 섞인다**.
+  // 실측으로 그 각이 0°일 때 손 y가 0.864인데 90°면 1.261(머리 1.189보다 위)이
+  // 되고, 45°에서는 발이 0.267에서 0.517로 떠오른다.
+  parentQ.premultiply(frameInv)
   return {
     node,
     rest: node.quaternion.clone(),
@@ -129,18 +135,26 @@ function makeJoint(node: Object3D): Joint {
 /**
  * 스켈레톤에서 리그를 만든다. 필요한 본이 없으면 null —
  * 모델을 갈아 끼웠을 때 조용히 이상한 포즈가 나오는 것보다 아무것도 안 하는 편이 낫다.
+ *
+ * ⚠️ **어느 방향을 보고 있든 같은 리그가 나와야 한다.** 그래서 각도와 길이를
+ * 전부 `bobTarget`의 부모(그 사람의 틀) 기준으로 잰다 — 주인공은 모델을 갈아
+ * 끼울 때 이미 걷던 방향으로 돌아 있고, 그때 만든 리그가 곧 그 사람의 자세다.
  */
 export function createRig(root: Object3D, bobTarget: Object3D): Rig | null {
   const found = new Map<string, Object3D>()
+  // 틀부터 조상까지 먼저 갱신한다 — 뼈의 월드 회전이 이 사슬 위에 얹힌다
+  const frame = bobTarget.parent ?? bobTarget
+  bobTarget.updateWorldMatrix(true, false)
   root.updateMatrixWorld(true)
   root.traverse((o) => { if (o.name && !found.has(o.name)) found.set(o.name, o) })
 
   if (REQUIRED.some((n) => !found.has(n))) return null
 
+  const frameInv = frame.getWorldQuaternion(new Quaternion()).invert()
   const joints: Record<string, Joint> = {}
   for (const name of [...REQUIRED, ...OPTIONAL]) {
     const node = found.get(name)
-    if (node) joints[name] = makeJoint(node)
+    if (node) joints[name] = makeJoint(node, frameInv)
   }
 
   // 팔꿈치 경첩 축. 상완이 뻗은 방향은 자식의 위치에서 잰다 — 본의 로컬 축을
@@ -150,15 +164,15 @@ export function createRig(root: Object3D, bobTarget: Object3D): Rig | null {
   for (const [arm, tip] of [['LArm', 'LForeArm'], ['RArm', 'RForeArm']]) {
     const a = found.get(arm!), b = found.get(tip!)
     if (!a || !b) continue
+    // 관절각과 같은 틀에서 뽑는다 — `FACING`(+Z)이 그 틀의 정면이다
     const dir = b.getWorldPosition(new Vector3()).sub(a.getWorldPosition(new Vector3()))
+      .applyQuaternion(frameInv)
     const axis = dir.cross(FACING)
     if (axis.lengthSq() > 1e-10) hinge[arm!] = axis.normalize()
   }
 
   // 팔다리 길이. **발밑을 원점으로 재야 한다** — 그룹이 이미 맵 어딘가에 가
   // 있을 수 있으므로 월드 좌표를 그 그룹의 로컬로 되돌린다
-  const frame = bobTarget.parent ?? bobTarget
-  frame.updateWorldMatrix(true, false)
   const at = (name: string): Vector3 => {
     const node = found.get(name)
     const p = node ? node.getWorldPosition(new Vector3()) : new Vector3()

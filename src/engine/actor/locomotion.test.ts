@@ -665,3 +665,51 @@ describe('자전거 자세', () => {
     expect(rig.bobTarget.position.z).toBe(rig.bobBaseZ)
   })
 })
+
+// ⚠️ **여기까지 오는 동안 리그를 늘 항등 틀에서 만들었다.** 위 시험들이 넘기는
+// `new Object3D()`는 부모가 없어 월드 = 로컬이다. 그래서 「몸이 돌아 있을 때
+// 만든 리그」라는 경우가 한 번도 안 돌았고, 실제 게임에서 그 일이 났다 —
+// 오프닝에서 성별을 고르면 모델을 다시 읽는데, 그때 주인공은 이미 걷던 방향으로
+// 돌아 있다. 화면에서는 팔이 머리 위로 올라가 있었다.
+describe('틀이 돌아 있어도 같은 자세가 나온다', () => {
+  /** 사람 하나를 `deg`만큼 돌려 세우고, **그 상태에서** 리그를 만들어 걷힌다 */
+  function posed(deg: number) {
+    const { root, nodes } = loadSkeleton()
+    // 씬에서 쓰는 구조 그대로 — 바깥이 그 사람의 틀, 안이 정규화 래퍼다
+    const frame = new Object3D()
+    const wrap = new Object3D()
+    frame.add(wrap)
+    wrap.add(root)
+    frame.rotation.y = (deg * Math.PI) / 180
+    frame.updateMatrixWorld(true)
+    const rig = createRig(root, wrap)!
+    for (let i = 0; i < 30; i++) updateLocomotion(rig, 1 / 60, 4.5, 4.5, 8)
+    frame.updateMatrixWorld(true)
+    // **틀 안에서** 읽는다 — 몸을 돌렸으니 월드 좌표는 당연히 다르다.
+    // 같아야 하는 것은 「그 사람이 보기에」 팔다리가 어디 있는가다
+    const at = (name: string) => frame.worldToLocal(nodes.get(name)!.getWorldPosition(new Vector3()))
+    return { LHand: at('LHand'), RHand: at('RHand'), Head: at('Head'), LToe: at('LToe') }
+  }
+
+  const base = posed(0)
+
+  for (const deg of [45, 90, 135, 180, 270]) {
+    it(`${deg}°로 서서 만든 리그가 0°와 같다`, () => {
+      const got = posed(deg)
+      for (const bone of ['LHand', 'RHand', 'Head', 'LToe'] as const) {
+        // 1mm. 회전 하나가 섞이면 실측으로 수십 cm가 어긋났다
+        expect(got[bone].distanceTo(base[bone]), `${bone}가 ${deg}°에서 어긋났다`)
+          .toBeLessThan(0.001)
+      }
+    })
+  }
+
+  it('손은 어느 방향에서도 머리 아래에 있다', () => {
+    // 실측된 증상 그 자체다 — 90°에서 오른손 y가 1.261, 머리가 1.189였다
+    for (const deg of [0, 45, 90, 135, 180, 270]) {
+      const got = posed(deg)
+      expect(got.LHand.y, `${deg}°에서 왼손이 머리 위로 올라갔다`).toBeLessThan(got.Head.y)
+      expect(got.RHand.y, `${deg}°에서 오른손이 머리 위로 올라갔다`).toBeLessThan(got.Head.y)
+    }
+  })
+})

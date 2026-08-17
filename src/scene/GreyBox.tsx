@@ -16,8 +16,13 @@ export function PlayerCapsule() {
   const groupRef = useRef<Group>(null)
 
   useEffect(() => {
-    sceneRefs.player = groupRef.current
-    return () => { sceneRefs.player = null }
+    const node = groupRef.current
+    sceneRefs.player = node
+    // ⚠️ **내가 넣은 것일 때만 뺀다.** 폴백은 붙었다 떨어지기를 되풀이하는데
+    // (모델을 갈아 끼우면 경계가 다시 서스펜드한다), 무조건 `null`로 지우면
+    // 그때 이미 등록을 마친 **진짜 모델의 자리를 대신 비워 버린다** —
+    // 그러면 몸이 제자리에 선 채 팔다리만 움직인다 (`PlayerModel` 참고)
+    return () => { if (sceneRefs.player === node) sceneRefs.player = null }
   }, [])
 
   return (

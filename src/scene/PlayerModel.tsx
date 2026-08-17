@@ -68,10 +68,18 @@ export function PlayerModel() {
     return () => { sceneRefs.playerRig = null }
   }, [gltf, modelPath])
 
+  // ⚠️ **모델이 바뀔 때마다 다시 등록한다.** `useAssetUrl`은 `use(promise)`라
+  // 서스펜드하는데, 오프닝에서 성별을 고르면 `modelPath`가 바뀌어 경계가 **한 번
+  // 더** 서스펜드한다. 그 사이 폴백(`PlayerCapsule`)이 다시 붙었다 떨어지면서
+  // 자리를 비우므로, 한 번만(`[]`) 거는 등록은 영영 안 돌아온다 — 엔진이 위치를
+  // 쓸 곳이 없어져 **몸은 제자리에 선 채 팔다리만 움직인다**. 실측한 순서는
+  // 캡슐 등록 38.0초 → 캡슐 해제(null) 38.6초 → 리그만 다시 섬 38.6초였다.
   useEffect(() => {
-    sceneRefs.player = groupRef.current
-    return () => { sceneRefs.player = null }
-  }, [])
+    const node = groupRef.current
+    sceneRefs.player = node
+    // 내가 넣은 것일 때만 뺀다 — 나보다 늦게 온 쪽의 등록을 지우지 않는다
+    return () => { if (sceneRefs.player === node) sceneRefs.player = null }
+  }, [gltf, modelPath])
 
   return (
     // 바깥 그룹은 엔진이 매 프레임 위치·방향을 쓴다. 안쪽 그룹은 정규화 전용이라 서로 간섭하지 않는다.
