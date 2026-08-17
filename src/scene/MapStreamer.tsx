@@ -568,6 +568,15 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const weather = useMemo(() => fieldWeatherKind(mapById(mapId)?.weather ?? 0), [mapId])
 
   const [look, setLook] = useState<TimeLook>(() => currentLook())
+  /**
+   * **빛**을 정하는 시간대. 안개·하늘색을 정하는 `look`과 다르다.
+   *
+   * ⚠️ **실내는 시간대를 안 탄다.** 안개 쪽에는 그 규칙이 이미 걸려 있었는데
+   * 정작 조명 셋이 `look`을 그대로 써서, 밤에 들어간 방이 바깥 밤값(반구광 0.80 ·
+   * 태양 0.45 · 필 0.32에 밤하늘색까지 곱해져)으로 캄캄했다 — 화면에서 벽이
+   * 통째로 검게 나왔다. 창문 하나 없는 방이 밖을 따라 어두워질 이유가 없다
+   */
+  const lit = outdoors ? look : TIME_LOOKS[1]!
   useFrame(() => {
     const next = currentLook()
     // 색 하나만 비교하면 된다. 같은 시간대 안에서는 값이 그대로다
@@ -783,7 +792,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         rgb(34,30,21)까지 죽어서 단차가 검은 덩어리로 뭉친다(실측). 지면에서
         튀는 빛이라 생각하고 흙 계열로 밝게 잡는다
       */}
-      <hemisphereLight args={[look.skyColor, look.groundColor, look.ambient]} />
+      <hemisphereLight args={[lit.skyColor, lit.groundColor, lit.ambient]} />
       {/*
         태양. 그림자를 던지는 것은 이 하나뿐이다 — 나무가 땅에 그림자를 안
         떨어뜨리면 아무리 면을 나눠 칠해도 서 있는 것으로 안 보인다.
@@ -792,8 +801,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <directionalLight
         ref={sunRef}
         position={[...SUN_DIR]}
-        intensity={look.sun}
-        color={look.sunColor}
+        intensity={lit.sun}
+        color={lit.sunColor}
         castShadow
         shadow-mapSize={[SHADOW_MAP, SHADOW_MAP]}
         shadow-camera-left={-SHADOW_SPAN}
@@ -807,7 +816,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         shadow-normalBias={0.03}
       />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
-      <directionalLight position={[...FILL_DIR]} intensity={look.fill} color={look.skyColor} />
+      <directionalLight position={[...FILL_DIR]} intensity={lit.fill} color={lit.skyColor} />
       {/*
         해 반대편에서 넣는 되비침. **태양도 필도 남쪽에서 와서** 북쪽을 보는
         면에는 방향광이 하나도 안 닿는다 — 반구광만 받아 남쪽 벽의 42.8%다.
