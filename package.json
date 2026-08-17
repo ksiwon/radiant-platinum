@@ -27,7 +27,7 @@
     "extract:motionTiming": "py -3.13 tools/extract/bdspMotionTiming.py",
     "assets:manifest": "node tools/assets/manifest.mjs",
     "assets:check": "node tools/assets/manifest.mjs --check",
-    "assets:favicon": "py -3.13 tools/assets/faviconSvg.py",
+    "assets:art": "py -3.13 tools/assets/shellArt.py",
     "shot": "node tools/shot/shot.mjs",
     "look": "node tools/shot/look.mjs",
     "holes": "node tools/audit/holes.mjs",

@@ -420,9 +420,9 @@ BYOR가 줄이는 것은 **원본 바이트 배포**다. 공개 앱 셸이 공�
 
 | 그림 | 워드마크 | 캐릭터 |
 |---|---|---|
-| `assets/radiant-platinum-intro.png` (2.3MB) | ⚠️ 있다 | ⚠️ 기라티나(오리진 폼)로 보이는 형상 |
-| `assets/radiant-platinum-icon.png` (1.2MB) | 없다 | ⚠️ 같은 형상의 머리 |
-| `assets/radiant-platinum-favicon.svg` (102KB) | 없다 | ⚠️ 위 아이콘의 픽셀 그대로 |
+| `assets/radiant-platinum-intro.webp` (403KB) | ⚠️ 있다 | ⚠️ 기라티나(오리진 폼)로 보이는 형상 |
+| `assets/radiant-platinum-icon.png` (254KB) | 없다 | ⚠️ 같은 형상의 머리 |
+| `assets/radiant-platinum-favicon.svg` (31KB) | 없다 | ⚠️ 위 아이콘의 픽셀 그대로 |
 | `assets/radiant-platinum-favicon.png` | 없다 | ⚠️ 위의 축소판 |
 
 ### 감수하기로 한 위험 (2026-08-17)
@@ -453,7 +453,7 @@ Pokémon Uranium(2016)은 페이크몬과 아트를 **전부 새로 그렸는데
 
 ```
 감수하기로 한 위험 1건 — 없어진 것이 아니다
-  ▲ assets/radiant-platinum-intro.png (워드마크 · 캐릭터: …) (COPYRIGHT.md §11)
+  ▲ assets/radiant-platinum-intro.webp (워드마크 · 캐릭터: …) (COPYRIGHT.md §11)
       만든 사람이 2026-08-17에 정했다 — 근거: …
       알고 있는 것: …
 ```

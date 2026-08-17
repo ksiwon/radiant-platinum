@@ -32,7 +32,7 @@ export const PUBLIC_SHELL = [
   { path: 'assets/radiant-platinum-favicon.svg', origin: '자체', note: '파비콘 (아이콘 원본 픽셀을 담은 SVG)' },
   { path: 'assets/radiant-platinum-favicon.png', origin: '자체', note: '파비콘 — SVG를 안 받는 브라우저용' },
   { path: 'assets/radiant-platinum-icon.png', origin: '자체', note: '앱 아이콘 · apple-touch-icon' },
-  { path: 'assets/radiant-platinum-intro.png', origin: '자체', note: '타이틀 배경' },
+  { path: 'assets/radiant-platinum-intro.webp', origin: '자체', note: '타이틀 배경' },
 ]
 
 /** 목록에 없는 파일이 있으면 안 되는 나무. 여기만 전수 대조한다 */

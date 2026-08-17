@@ -26,11 +26,13 @@ const SHELL_FILES = [
   './manifest.webmanifest',
   './assets/radiant-platinum-favicon.svg',
   './assets/radiant-platinum-favicon.png',
-  './assets/radiant-platinum-icon.png',
 ]
-// ⚠️ 타이틀 배경(`radiant-platinum-intro.png`, 2.3MB)은 **여기 안 적는다.**
-// 설치할 때 받는 것이 셋에서 넷으로 늘면서 3.6MB가 된다. 오프라인에서 그림이
-// 안 오면 `titleScreen.css`의 그라디언트가 그대로 보인다 — 화면은 안 비어 있다
+// ⚠️ **타이틀 배경과 앱 아이콘은 여기 안 적는다.** 앱이 도는 데 필요한 것만
+// 미리 받는다. 배경(`radiant-platinum-intro.webp`, 403KB)이 안 오면
+// `titleScreen.css`의 그라디언트가 그대로 보이고 — 화면은 안 비어 있다 —
+// 아이콘(254KB)은 **설치를 물어볼 때** 브라우저가 읽는 그림이라 오프라인에서
+// 쓸 일이 없다. 아이콘이 이 목록에 있던 동안은 1.2MB짜리였고, 그때는 처음
+// 오는 사람마다 화면에 한 번도 안 뜨는 그림을 통째로 받아 갔다
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

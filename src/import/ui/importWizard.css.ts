@@ -37,7 +37,7 @@ export const sky = style({
   backgroundImage: [
     'linear-gradient(180deg, rgba(7, 12, 22, 0.58) 0%, rgba(7, 12, 22, 0.70) 55%,'
     + ' rgba(5, 8, 15, 0.86) 100%)',
-    "url('/assets/radiant-platinum-intro.png')",
+    "url('/assets/radiant-platinum-intro.webp')",
   ].join(', '),
 })
 

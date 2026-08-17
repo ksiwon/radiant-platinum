@@ -25,34 +25,40 @@
  */
 export const SHELL_ART = [
   {
-    path: 'assets/radiant-platinum-intro.png',
-    what: '타이틀 배경',
+    path: 'assets/radiant-platinum-intro.webp',
+    what: '타이틀 배경 · 설치 화면 배경',
     drawnBy: '이 프로젝트 — 만든 사람이 그린 그림. 롬에서 나온 바이트가 없다',
     wordmark: true,
     depicts: '기라티나(오리진 폼)로 보이는 형상',
     note:
-      '1672×941 · 2.3MB. 금속 질감의 `POKEMON RADIANT PLATINUM` 로고가 화면 '
-      + '가운데에 있고 그 뒤에 뿔 달린 형상이 선다. 첫 화면 예산(gzip 150KB)에는 '
-      + '안 들어간다 — js·css만 세고 이 그림은 CSS가 나중에 받는다.',
+      '1672×941 · 403KB. 금속 질감의 `POKEMON RADIANT PLATINUM` 로고가 화면 '
+      + '가운데에 있고 그 뒤에 뿔 달린 형상이 선다. 마스터는 `art/`의 PNG(2.3MB)이고 '
+      + '`pnpm assets:art`가 q=95로 굽는다 — 평균 오차 0.97/255 · p99 5/255. '
+      + '첫 화면 예산(gzip 150KB)에는 안 들어간다 — js·css만 세고 이 그림은 CSS가 '
+      + '나중에 받는다.',
   },
   {
     path: 'assets/radiant-platinum-icon.png',
-    what: '앱 아이콘 · apple-touch-icon · 파비콘 SVG의 원본',
+    what: '앱 아이콘 · apple-touch-icon · 파비콘의 원본',
     drawnBy: '이 프로젝트 — 만든 사람이 그린 그림',
     wordmark: false,
     depicts: '기라티나(오리진 폼)의 머리로 보이는 형상',
-    note: '1254×1254 · 1.2MB. 배경 그림의 그 형상을 머리만 크게 그린 것.',
+    note:
+      '512×512 · 254KB. 배경 그림의 그 형상을 머리만 크게 그린 것. 마스터는 '
+      + '`art/`의 1254px PNG(1.2MB)이고 여기 있는 것은 그것을 줄인 무손실 PNG다 — '
+      + '설치 아이콘이 실제로 읽는 제일 큰 자리가 512다. **손실 압축을 안 쓴다**: '
+      + '알파가 있어서 WebP 손실로 구우면 투명한 자리가 최대 238/255 어긋난다(실측).',
   },
   {
     path: 'assets/radiant-platinum-favicon.svg',
     what: '탭 아이콘 (기본)',
-    drawnBy: '이 프로젝트 — `tools/assets/faviconSvg.py`가 위 아이콘에서 굽는다',
+    drawnBy: '이 프로젝트 — `tools/assets/shellArt.py`가 아이콘 마스터에서 굽는다',
     wordmark: false,
     depicts: '기라티나(오리진 폼)의 머리로 보이는 형상',
     note:
-      '같은 그림이다. **선으로 따라 그린 벡터가 아니라** 아이콘을 256px로 줄인 '
+      '같은 그림이다. **선으로 따라 그린 벡터가 아니라** 아이콘을 128px로 줄인 '
       + '무손실 픽셀을 SVG 안에 담은 것이다 — 금빛 기울기를 벡터로 추적하면 색 띠가 '
-      + '생기고, 색을 256단계로 눌러도 픽셀당 최대 60/255 어긋난다. 102KB.',
+      + '생기고, 색을 256단계로 눌러도 픽셀당 최대 60/255 어긋난다. 31KB.',
   },
   {
     path: 'assets/radiant-platinum-favicon.png',
@@ -60,7 +66,7 @@ export const SHELL_ART = [
     drawnBy: '이 프로젝트 — 위 아이콘의 64px 축소판',
     wordmark: false,
     depicts: '기라티나(오리진 폼)의 머리로 보이는 형상',
-    note: '64×64 · 7.6KB.',
+    note: '64×64 · 7.4KB.',
   },
 ]
 

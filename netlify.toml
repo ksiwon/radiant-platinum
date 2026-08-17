@@ -44,6 +44,34 @@
 # ⚠️ **`Cross-Origin-Embedder-Policy`는 안 켠다.** `SharedArrayBuffer`를 안 쓰고,
 # 켜면 blob:/data: 로딩 규칙이 까다로워져 OPFS 경로가 흔들린다 (DEPLOY.md §3)
 
+# ── 이름에 해시가 붙은 것만 영구 캐시 ────────────────────────────────────────
+#
+# Netlify 기본값은 `public,max-age=0,must-revalidate`라 다시 오는 사람이
+# 파일마다 조건부 요청을 한 번씩 보낸다. 실측으로 재방문 한 번에 **304가 26개,
+# 7.9kB**다 (`.audit/wire.mjs` — 서버 쪽에서 나간 바이트를 센다). 바이트는
+# 얼마 안 되지만 첫 그림이 뜨기 전에 왕복이 스물여섯 번 끼어든다.
+#
+# ⚠️ **`/assets/*`로 뭉뚱그리면 안 된다.** 그 폴더에는 Vite가 해시를 붙여 낸
+# js·css와 **이름이 안 변하는 셸 그림 넷**(`radiant-platinum-*`)이 같이 산다.
+# 그림에 1년 immutable을 걸면 그림을 고쳐도 이미 다녀간 사람에게는 1년 동안
+# 옛 그림이 뜬다 — 되돌릴 방법이 없는 쪽이다.
+#
+# 그래서 **확장자로 가른다.** `/assets` 아래의 `.js`·`.css`는 예외 없이 Vite가
+# 낸 것이고 이름에 내용 해시가 들어 있다 (`sw.js`와 매니페스트는 뿌리에 있고
+# 그림은 `.png`·`.svg`·`.webp`다). 내용이 바뀌면 이름이 바뀌므로 영구 캐시가
+# 안전하다. 그림 넷은 기본값 그대로 두어 언제든 갈아 끼울 수 있게 남긴다
+[[headers]]
+  for = "/assets/*.js"
+
+  [headers.values]
+    Cache-Control = "public,max-age=31536000,immutable"
+
+[[headers]]
+  for = "/assets/*.css"
+
+  [headers.values]
+    Cache-Control = "public,max-age=31536000,immutable"
+
 # ── SPA fallback ─────────────────────────────────────────────────────────────
 #
 # 없는 경로는 `index.html`이다. 하네스가 띄우는 서버(`tools/e2e/serve.mjs`)도

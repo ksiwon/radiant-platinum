@@ -47,7 +47,7 @@ export const sky = style({
   backgroundRepeat: 'no-repeat',
   backgroundSize: 'cover',
   backgroundImage: [
-    "url('/assets/radiant-platinum-intro.png')",
+    "url('/assets/radiant-platinum-intro.webp')",
     // 위쪽에서 비스듬히 드는 차가운 빛
     'radial-gradient(120% 90% at 50% -18%, rgba(126, 168, 214, 0.42), transparent 62%)',
     // 지평선 쪽 옅은 온기

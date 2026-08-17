@@ -53,8 +53,8 @@ ignore였다. 확인했다.
 
 | 경로 | 크기 | 왜 남기나 |
 |---|---:|---|
-| `public/assets/radiant-platinum-intro.png` | 2.3MB | 우리가 만든 그림 |
-| `public/assets/radiant-platinum-icon.png` | 1.2MB | 같음 |
+| `art/radiant-platinum-intro.png` | 2.3MB | 우리가 만든 그림 (마스터) |
+| `art/radiant-platinum-icon.png` | 1.2MB | 같음 |
 
 ⚠️ 이 둘은 **저작권 문제로 남기는 것이지 안전해서 남기는 것이 아니다.** 그림
 안에 워드마크가 있고 원작 캐릭터로 보이는 형상이 있다 — 그건 `brand-art`
