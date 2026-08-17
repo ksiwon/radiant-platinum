@@ -33,6 +33,7 @@ import {
 import { SIWON_CAMEO_MAP, SIWON_SCRIPT } from '../world/siwonPlace'
 import { obstacleAt } from '../actor/obstacles'
 import { HOP_TIME } from '../actor/ledge'
+import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import {
   FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
@@ -508,6 +509,10 @@ export function enterMap(mapId: number): void {
   // 얼음에서 미끄러지던 중에 워프하면 도착한 맵에서도 그 방향으로 밀린다
   // (`actor/ice`). 선단신전은 층마다 얼음이라 실제로 걸리는 자리다
   clearIceSlide()
+  // ⚠️ **도는 판도 같이 푼다** (`actor/slidePanel`). 안 풀면 골풀무제철소를
+  // 나간 뒤에도 「미끄러지는 중」이 서 있어서, 다음 맵에서 첫 프레임에
+  // 「칸이 끝났다」로 읽고 **속도를 0으로 덮어 사람이 안 움직인다**
+  clearPanelSlide()
   resetTriggerTile()
   // 맵에 들어선 그 칸에서 곧바로 눈이 마주치면 안 된다 — 문에서 나오자마자
   // 배틀이 시작되면 어디서 걸린 것인지 화면에서 안 보인다

@@ -138,3 +138,17 @@ describe('도는 판', () => {
     expect(near.vx).toBeLessThanOrEqual(0.01 * 60 + 1e-9)
   })
 })
+
+describe('맵을 옮기면 푼다', () => {
+  it('⚠️ 안 풀면 다음 맵에서 사람이 안 움직인다', () => {
+    // 판 위에서 워프하면 「미끄러지는 중」이 선 채로 넘어간다. 그러면 도착한
+    // 맵의 첫 프레임에서 `reached`가 참이 되고, 돌아간 쪽이 막혀 있으면
+    // 속도를 0으로 덮는다 — 밖에서는 「얼었다」로만 보인다
+    const view = world({ '0,0': SLIDE_BEHAVIOR.east, '1,0': 0 })
+    panelStep(view, { x: 0.5, z: 0.5 }, 4.5)
+    expect(panelSlide.active).toBe(true)
+    clearPanelSlide()
+    // 판이 아닌 맵에서는 이제 아무것도 안 가져간다
+    expect(panelStep(world({ '0,0': 0 }), { x: 0.5, z: 0.5 }, 4.5)).toBeNull()
+  })
+})
