@@ -26,6 +26,7 @@ import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotio
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
+import { isChibi, shapeChibi } from '../engine/model/chibi'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
@@ -237,97 +238,6 @@ export function npcBodyHeight(actor: NpcActor): number | null {
   return bodyHeights.get(actor) ?? null
 }
 
-/**
- * 필드 번들(`fc####`)의 머리를 줄이는 배수.
- *
- * ⚠️ **엄마가 머리만 큰 사람으로 서 있었다.** BDSP는 필드에 세울 사람을 머리
- * 큰 치비로 따로 만들어 두었다. 우리는 주인공과 트레이너를 **배틀용 등신
- * 모델**로 세우므로 나란히 서면 계통이 어긋난다 — 실제로 「엄마 얼굴이
- * 이상하다」는 보고를 받았다. 배틀용이 아예 없는 사람이 열넷이라(이야기 인물)
- * 판때기로 되돌리면 오프닝 바로 다음 장면의 엄마가 종잇장이 된다.
- *
- * 그래서 **머리뼈만 줄이고 키는 그대로 둔다.** 머리는 목 관절을 원점으로
- * 줄어드니 이음매가 안 벌어지고, 줄어든 만큼 아래 정규화가 몸을 키운다.
- *
- * 값의 근거 — 뼈로 잰 목 높이가 기준이다. 엄마 `fc2005_00`은 목이 키의 44%라
- * **머리가 키의 56%**고, 주인공 `dawn`은 목이 75%라 머리가 25%다. 머리를 ×k로
- * 줄이고 키를 도로 맞추면 머리 비중은 `0.56k / (0.44 + 0.56k)`가 된다:
- *
- *   ×1    56%      ×0.4  27%      **×0.2  20%**   ← 여기 (주인공 25%)
- */
-const CHIBI_HEAD = 0.2
-
-/**
- * 머리를 줄인 만큼 늘어나는 배율을 **굵기에는 얼마나 줄까** (0~1).
- *
- * ⚠️ **몸이 굵어지는 자리다.** 머리를 줄이면 그만큼 키가 줄고, 정규화가 키를
- * 도로 맞추려고 몸 전체를 키운다 — ×0.2면 배율이 1.02에서 1.84로 뛴다. 균등
- * 배율이라 굵기도 같이 1.8배가 되어, 주인공 옆에 서면 「몸이 너무 굵다」.
- *
- * 그래서 **늘리는 것은 키 쪽에만 준다.** 굵기(가로·세로 두께)는 BDSP가 만든
- * 그대로 두면(`1`) 몸만 길어져 날렵해진다. `0`이면 예전처럼 균등이다.
- *
- * 실측 — 몸 길이(발~목) 대비 굵기, 주인공과의 배수:
- *
- *              엄마 치비   주인공   배수
- *   허벅지 폭    30.0%     14.6%   2.05
- *   종아리 폭    32.9%     14.8%   2.22
- *
- * 즉 치비는 다리가 두 배 굵다. `1`이면 최종 굵기가 원본 배율(1.02)로 돌아가
- * 주인공의 1.2배가 된다 — 어른이라 이 정도가 맞다.
- *
- * ⚠️ **길이가 아니라 축을 눌러서 얻은 날렵함이다.** 가로·세로를 누르므로
- * 가로로 뻗은 부위는 그만큼 짧아진다 — 걸을 때 앞뒤로 흔드는 보폭이 좁아 보인다.
- * 팔다리 뼈를 늘려 제대로 등신으로 만드는 것은 리타깃이라 여기서는 안 한다
- */
-const CHIBI_SLIM = 1
-
-/**
- * 손뼈를 줄이는 배수.
- *
- * ⚠️ **날렵하게 만들면 손이 커진다.** 위의 세로 늘림(×1.745)이 **아래로 뻗은
- * 것을 다 늘인다** — 팔을 내리고 선 자세에서 손은 길이축이 아래를 향하므로
- * 그대로 1.7배 길어진다. 게다가 치비 손은 원래 벙어리장갑이라 손목보다 넓다.
- * 둘이 겹쳐 「손이 진짜 크다」는 보고를 받았다.
- *
- * 값의 근거 — **스킨을 먹인 정점**(손뼈와 손가락뼈에 매달린 1,580개)을 훑어
- * 화면에 선 채로 왼손 상자를 재고, 같은 방법으로 잰 주인공(`pc0001_00`)의
- * 왼손 `0.116 × 0.144 × 0.113`과 견줬다. 팔을 내린 자세라 **세로가 손 길이**다.
- * 몸(발~목) 길이가 1.09와 1.13으로 거의 같아 그대로 견줄 수 있다:
- *
- *   손뼈    가로 × 세로 × 앞뒤        주인공 대비 (세로·가로·앞뒤)
- *   ×1      0.148 0.346 0.212        2.40  1.28  1.88
- *   ×0.6    0.089 0.207 0.129        1.44  0.77  1.14
- *   **×0.5**  0.074 0.173 0.109      1.20  0.64  0.96
- *   ×0.4    0.059 0.138 0.088        0.96  0.51  0.78
- *
- * 세 축을 곱해 세제곱근을 내면 ×0.557이 주인공 손과 같은 크기다. 어른이라
- * 그보다 조금 크게 잡을 수도 있는데(×0.6이면 1.08배), **눈에 걸리는 것은
- * 길이**라 ×0.5로 둔다 — 길이가 1.20배, 크기 전체로는 0.90배다.
- *
- * ⚠️ **한 손씩 재야 한다.** 두 손을 한 상자에 넣으면 가로가 손 폭이 아니라
- * 두 손 사이 거리가 되어 주인공 손이 2.76타일로 나온다.
- *
- * ⚠️ **균등 배율이라 자세가 바뀌어도 안 틀어진다.** 머리처럼 축을 갈라
- * 보정하면 팔을 든 자세에서 반대로 눌린다 — 손뼈의 로컬 축은 팔을 따라 돈다.
- *
- * ⚠️ **손목이 원뿔로 좁아진다.** 손은 제 원점(손목)을 중심으로 줄어드는데
- * 팔뚝은 그대로다. 다만 스킨 가중치가 넓게 번져 있어서(손뼈 가중치가 손목
- * 앞뒤 0.08 구간에 걸쳐 0→0.76으로 오른다, 몸 길이의 12%) 단차가 아니라
- * 완만한 테이퍼로 나온다
- */
-const CHIBI_HAND = 0.5
-
-/** 이 번들이 치비인가 — 필드용(`fc`)만 그렇다 */
-const isChibi = (tag: string): boolean => /^fc\d/.test(tag)
-
-/** 이 이름을 가진 뼈들. 같은 이름의 메시가 있을 수 있어 뼈만 고른다 */
-function bonesNamed(body: Object3D, ...names: readonly string[]): Object3D[] {
-  const out: Object3D[] = []
-  body.traverse((o) => { if (o.type === 'Bone' && names.includes(o.name)) out.push(o) })
-  return out
-}
-
 /** 모델 하나를 복제해 한 칸으로 만든다 */
 function build(scene: Object3D, tag: string): Slot {
   const outer = new Group()
@@ -343,31 +253,10 @@ function build(scene: Object3D, tag: string): Slot {
   // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다
   const { nativeHeight } = normalizeModel(inner, body, 1)
   const height = nativeHeight * BDSP_TO_WORLD
-  if (!isChibi(tag)) {
-    normalizeModel(inner, body, height)
-  } else {
-    // ⚠️ **키를 잰 다음에 머리를 줄인다.** 순서를 바꾸면 줄어든 머리만큼 그 사람이
-    // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다. 키는 그대로 두고 아래 정규화가
-    // 남은 몸을 그 키에 맞춰 키우게 한다
-    const heads = bonesNamed(body, 'Head')
-    for (const bone of heads) bone.scale.setScalar(CHIBI_HEAD)
-    // 손은 균등하게 줄인다. 손가락은 자식이라 따라온다
-    for (const bone of bonesNamed(body, 'LHand', 'RHand')) bone.scale.setScalar(CHIBI_HAND)
-    const fit = normalizeModel(inner, body, height)
-    // 머리를 줄인 만큼 몸이 짧아졌고, 정규화가 그만큼 통째로 키웠다. 그 늘림을
-    // 굵기에서 도로 뺀다 (`CHIBI_SLIM`)
-    const left = fit.nativeHeight / nativeHeight
-    const girth = fit.scale * (1 - CHIBI_SLIM * (1 - left))
-    inner.scale.x = girth
-    inner.scale.z = girth
-    // 눌린 만큼 머리는 도로 둥글게 편다.
-    // ⚠️ **머리뼈의 로컬 축은 X가 위, Y가 좌우, Z가 앞이다** — 실측했다
-    // (바인드에서 X축이 월드 +Y를 가리킨다). 그래서 가로 보정이 y·z로 간다
-    const round = (CHIBI_HEAD * fit.scale) / girth
-    for (const bone of heads) bone.scale.set(CHIBI_HEAD, round, round)
-    // 리그가 뼈 자리를 월드에서 재므로 바뀐 배율을 먼저 반영한다
-    inner.updateMatrixWorld(true)
-  }
+  // ⚠️ **키를 잰 다음에 치비를 고친다.** 순서를 바꾸면 줄어든 머리만큼 그 사람이
+  // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다
+  if (isChibi(tag)) shapeChibi(inner, body, nativeHeight, height)
+  else normalizeModel(inner, body, height)
   // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
   // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
   const rig = createRig(body, inner)
