@@ -20,14 +20,37 @@ export class AlbedoError extends Error {
 }
 
 /**
- * ⚠️ 두 매핑은 **별개다.** 하나로 묶으면 의상을 맞추는 순간 머리·눈·얼굴이 깨진다.
+ * ① `_MaskTex`의 RGB 채널 → 셰이더 색 프로퍼티.
  *
- * ① `_MaskTex`의 RGB 채널 → 셰이더 색 프로퍼티. 실제 화면과 대조해 확정했다
+ * 실제 게임 화면과 대조해 확정: 조끼(R)=검정 `_Skin`, 치마(G)=분홍 `_Primary`,
+ * 목도리·비니몸통(B)=빨강·흰색 `_Secondary`, 비니 엠블럼(R)=분홍 `_Skin`.
  */
-const MASK_CHANNEL_PROPS = ['_SkinColor', '_PrimaryColor', '_SecondaryColor'] as const
+export const MASK_CHANNEL_PROPS = ['_SkinColor', '_PrimaryColor', '_SecondaryColor'] as const
 
-/** ② `ColorVariation` 컴포넌트의 channel 번호 → 색 프로퍼티. 선언 순서를 따른다 */
-const VARIATION_CHANNEL_PROPS = ['_PrimaryColor', '_SecondaryColor', '_SkinColor'] as const
+/**
+ * ② `ColorVariation` 컴포넌트의 channel 번호 → 같은 프로퍼티. **①과 순서가 같다.**
+ *
+ * 근거 — `ColorIndex`가 가리키는 프리셋은 그 인물의 **기본 외형**이므로 그 색은
+ * 머티리얼에 박힌 기본값과 같아야 한다. 그러면 채널이 어느 프로퍼티인지가 색으로
+ * 정해진다. 인물 108명을 훑어 `ColorVariation`을 가진 여섯(`fc1085`·`fc2005`·
+ * `pc0001`·`pc0002`)의 40건을 대조했다:
+ *
+ *   ch0 → `_SkinColor`       14/14
+ *   ch1 → `_PrimaryColor`    19/24  (나머지 다섯은 주인공 커스터마이즈 프리셋이라
+ *                                    기본값과 다른 것이 맞다)
+ *   ch2 → `_SecondaryColor`   2/2
+ *
+ * ⚠️ **여기가 엄마 얼굴을 파랗게 칠하던 자리다.** `fc2005_00`의 face는
+ * `_MaskTex`가 92% R(=`_SkinColor`)인데, 순서를 한 칸 돌려 읽으면 ch2의 머리색
+ * (0.275, 0.388, 0.549)이 `_SkinColor` 자리에 들어간다 — 눈가에 파란 가면이
+ * 씌워졌다. `ColorVariation`이 없는 인물 102명은 기본값 그대로라 아무 표시도
+ * 안 났고, 그래서 오래 안 잡혔다.
+ *
+ * ⚠️ **개발 추출기와 여기가 갈리면 배포판만 파래진다.** 사람 모델은 배포물에
+ * 안 들어가고 **사용자 브라우저가 굽는다**(IMPORT.md §8). 파이썬 쪽만 고쳤을 때
+ * 개발 기계에서는 멀쩡했고 공개판만 옛 색이었다 — 배포 직전에 잡았다
+ */
+export const VARIATION_CHANNEL_PROPS = MASK_CHANNEL_PROPS
 
 /** Unity 반복 방식 → glTF 샘플러 상수. `MirrorOnce`(3)는 glTF에 없어 거울로 본다 */
 const GLTF_WRAP: Readonly<Record<number, number>> = { 0: 10497, 1: 33071, 2: 33648, 3: 33648 }
