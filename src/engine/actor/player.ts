@@ -4,6 +4,7 @@ import { worldState } from '../../state/worldState'
 import { activeZone, isOnWater } from '../map/zone'
 import { MapGrid } from '../map/grid'
 import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
+import { clearIceSlide, iceStep, type IceView } from './ice'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
@@ -65,7 +66,7 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     const dw = distortionBridge.blockedAt?.(cx, y, cz)
     if (dw !== null && dw !== undefined) return dw
     // 그 맵에만 있는 장치가 먼저다 (`DynamicMapFeatures_CheckCollision`) —
-    // 물가시티의 물바닥처럼 **같은 칸이 물 높이에 따라 열리고 닫히는** 자리는
+    // 들판시티의 물바닥처럼 **같은 칸이 물 높이에 따라 열리고 닫히는** 자리는
     // 격자에 안 적혀 있다. 안 보는 칸이면 null이 와서 아래로 내려간다
     const feature = mapFeatureBridge.blocked?.(Math.floor(cx), Math.floor(cz), y)
     if (feature !== null && feature !== undefined) return feature
@@ -88,6 +89,19 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     shut(x - RADIUS, z + RADIUS) ||
     shut(x + RADIUS, z + RADIUS)
   )
+}
+
+/**
+ * 얼음 판정이 세계에 묻는 것 (`actor/ice`).
+ *
+ * ⚠️ **`blocked()`를 그대로 쓴다.** 얼음이 따로 격자를 보면 눈덩이 열아홉과
+ * 사람이 안 걸린다 — 선단 체육관에서 멈추게 하는 것이 바로 그 눈덩이다
+ */
+const iceView: IceView = {
+  behaviorAt: (tx, tz) => activeZone.grid?.behavior(tx, tz) ?? 0,
+  blockedAt: (tx, tz) => blocked(tx + 0.5, tz + 0.5),
+  heightAt: (tx, tz) =>
+    activeZone.grid?.heightAtWorld(tx + 0.5, tz + 0.5, worldState.player.position.y) ?? 0,
 }
 
 export const playerSystem = {
@@ -147,6 +161,24 @@ export const playerSystem = {
         toX: land.x, toZ: land.z,
       }
       p.facing = Math.atan2(land.x - p.position.x, land.z - p.position.z)
+    }
+
+    /**
+     * 얼음 위에서는 **조작이 안 먹는다** (`PlayerAvatar_TileMove_Ice`).
+     *
+     * 선단시티 체육관의 기믹이 이것이고, 선단신전 여섯 층도 같은 값이다.
+     * 잡히면 잠긴 방향으로 부딪힐 때까지 미끄러지므로 위에서 만든 입력 속도를
+     * 통째로 갈아 끼운다 — 가감속도 안 태운다 (원작은 한 칸이 한 동작이라
+     * 붙었다 떨어지는 것이 없다).
+     *
+     * ⚠️ **뛰는 판정보다 먼저 두지 않는다.** 뛰는 동안은 자리를 `hop`이 정하고
+     * 그때 격자에 물으면 얼음이 아니라고 나와 상태가 풀린다
+     */
+    if (activeZone.grid) {
+      const slid = iceStep(iceView, p.position, { vx: p.velocity.x, vz: p.velocity.z }, RUN_SPEED)
+      if (slid !== null) p.velocity.set(slid.vx, 0, slid.vz)
+    } else {
+      clearIceSlide()
     }
 
     const grid = activeZone.grid

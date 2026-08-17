@@ -6,6 +6,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { gameLoop } from '../engine/loop/GameLoop'
 import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
+import { isSliding } from '../engine/actor/ice'
 import { npcSystem } from '../engine/actor/ambient'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
@@ -118,8 +119,11 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       const speed = Math.hypot(p.velocity.x, p.velocity.y, p.velocity.z)
       // 턱을 넘는 중이면 그 진행을 넘긴다 — 걷기 대신 도약 자세가 나간다
       const hop = worldState.player.hop
+      // ⚠️ **얼음 위에서는 발을 멈춘다.** 원작이 미끄러지는 동안 그림을 세운다
+      // (`MAP_OBJ_STATUS_PAUSE_ANIMATION`). 안 세우면 달리기 자세로 미끄러져서
+      // 발이 땅 위를 헛돈다 — `gait`가 보폭에서 위상을 유도하는 이유와 같다
       updateLocomotion(
-        sceneRefs.playerRig, delta, speed, WALK_SPEED, RUN_SPEED,
+        sceneRefs.playerRig, delta, isSliding() ? 0 : speed, WALK_SPEED, RUN_SPEED,
         hop.active ? hop.t : null, p.cycling,
       )
       // 자전거는 사람이 앉은 자세와 한 몸이라 같은 위상으로 돈다

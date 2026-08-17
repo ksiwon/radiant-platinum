@@ -33,6 +33,7 @@ import {
 import { SIWON_CAMEO_MAP, SIWON_SCRIPT } from '../world/siwonPlace'
 import { obstacleAt } from '../actor/obstacles'
 import { HOP_TIME } from '../actor/ledge'
+import { clearIceSlide } from '../actor/ice'
 import {
   FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
   type FieldMoveId, type FieldSpot, type Trainer,
@@ -504,6 +505,9 @@ export function enterMap(mapId: number): void {
   resetFade()
   // 괴력은 맵마다 다시 쓴다 — 원작도 맵을 옮기면 풀린다
   worldState.player.strength = false
+  // 얼음에서 미끄러지던 중에 워프하면 도착한 맵에서도 그 방향으로 밀린다
+  // (`actor/ice`). 선단신전은 층마다 얼음이라 실제로 걸리는 자리다
+  clearIceSlide()
   resetTriggerTile()
   // 맵에 들어선 그 칸에서 곧바로 눈이 마주치면 안 된다 — 문에서 나오자마자
   // 배틀이 시작되면 어디서 걸린 것인지 화면에서 안 보인다

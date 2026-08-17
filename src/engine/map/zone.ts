@@ -39,6 +39,17 @@ export const Behavior = {
    */
   MUD_WITH_GRASS: 0x00a6,
   MUD_DEEP_WITH_GRASS: 0x00a7,
+  /**
+   * 얼음판. 밟으면 조작이 안 먹고 부딪힐 때까지 미끄러진다 (`actor/ice`).
+   *
+   * 값은 바로 앞의 `TILE_BEHAVIOR_UNUSED_x1F`가 못 박고, 다음이 `SAND`(0x21)라
+   * 양쪽에서 가둔다 — `battle/arena`가 무대를 고를 때 쓰는 그 값이다.
+   *
+   * 깔린 자리는 **835칸 일곱 맵**뿐이다: 선단시티 체육관 497 · 선단신전 여섯
+   * 층 338(1F 7 · B1F 14 · B2F 2 · B3F 106 · B4F 1 · B5F 208).
+   * 재는 법은 `.audit/iceScan.mjs`
+   */
+  ICE: 0x0020,
   /** 넓은 수면. 수로(W) 존을 채운다 — W231에만 6912칸 */
   WATER_OPEN: 0x0015,
   /** 작은 물. 13개 존에 1114칸뿐이고 트윈리프의 연못이 여기다 */
