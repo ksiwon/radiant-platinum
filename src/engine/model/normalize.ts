@@ -43,10 +43,19 @@ export interface NormalizeResult {
 
 const box = new Box3()
 const size = new Vector3()
+const here = new Vector3()
+const under = new Vector3()
 
 /**
  * `model`을 감싼 `wrapper`의 스케일·위치를 조정해 목표 키에 맞추고 발밑을 원점에 정렬한다.
  * 바운딩박스는 렌더 포즈가 아니라 바인드 포즈 기준이므로 애니메이션 중에 호출해도 값이 흔들리지 않는다.
+ *
+ * ⚠️ **상자는 월드 좌표로 나온다.** `Box3.setFromObject`는 부모 사슬을 다 먹인
+ * 값을 주므로, 무대가 월드 원점에 없으면 그 자리가 `min.y`에 통째로 섞여
+ * 들어온다. 한동안 그 값을 그대로 발밑 보정에 넣었고, 그래서 **오프닝 무대
+ * (월드 y −1000)에서 나무박사가 하늘 855m에 서 있었다** — 화면에는 발밑 고리만
+ * 남았다. 배틀 무대(−500)·전당 무대도 같은 자리다. 그래서 무대의 자리와 배율을
+ * 빼고 **제 자리(local) 기준**으로 잰다
  */
 export function normalizeModel(
   wrapper: Object3D,
@@ -60,12 +69,20 @@ export function normalizeModel(
 
   box.setFromObject(model, true)
   box.getSize(size)
+  // 래퍼 자신의 배율은 방금 1로 돌렸으므로 이것은 **무대에 걸린 배율**이다.
+  // 남녀 고르는 창이 안 고른 쪽을 0.88로 세우는 것처럼, 그 배율은 살려야 한다 —
+  // 안 그러면 정규화가 도로 키워서 둘이 같은 크기가 된다
+  wrapper.getWorldPosition(here)
+  wrapper.getWorldScale(under)
+  const outer = Math.abs(under.y) > 1e-6 ? under.y : 1
 
-  const nativeHeight = size.y
+  const nativeHeight = size.y / outer
   const scale = nativeHeight > 1e-6 ? targetHeight / nativeHeight : 1
+  /** 모델 발밑이 래퍼 원점에서 얼마나 떨어져 있나 (제 자리 기준) */
+  const feet = (box.min.y - here.y) / outer
 
   wrapper.scale.setScalar(scale)
-  wrapper.position.y = -box.min.y * scale
+  wrapper.position.y = -feet * scale
   wrapper.updateMatrixWorld(true)
 
   return { scale, feetOffset: wrapper.position.y, nativeHeight }

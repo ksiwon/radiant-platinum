@@ -3,6 +3,8 @@ import { useFrame } from '@react-three/fiber'
 import { Group, Mesh, MeshStandardMaterial, type Object3D } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
+import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
+import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { assets, type AssetPath } from '../data/providers/assetProvider'
 import { useIntroStageStore } from '../state/introStageStore'
@@ -27,6 +29,14 @@ function Person({
   const wrapper = useRef<Group>(null)
   const host = useRef<Group>(null)
   const [model, setModel] = useState<Group | null>(null)
+  /**
+   * 서 있는 자세.
+   *
+   * ⚠️ **안 돌리면 T 자로 선다.** 사람 모델에는 클립을 안 싣고(`NpcModels`
+   * 머리말) 걷기도 서기도 뼈를 직접 돌려 만든다. 오프닝은 그것을 안 돌려서
+   * 나무박사가 팔을 벌린 채 서 있었다 — 필드 NPC와 같은 것을 돌린다
+   */
+  const rig = useRef<Rig | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -63,10 +73,16 @@ function Person({
   }, [path])
 
   useLayoutEffect(() => {
-    if (wrapper.current && model) normalizeModel(wrapper.current, model, PLAYER_HEIGHT)
+    if (!wrapper.current || !model) return
+    normalizeModel(wrapper.current, model, PLAYER_HEIGHT)
+    // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 축을 뽑기 때문에
+    // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
+    rig.current = createRig(model, wrapper.current)
+    return () => { rig.current = null }
   }, [model])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
+    if (rig.current) updateLocomotion(rig.current, delta, 0, WALK_SPEED, RUN_SPEED)
     if (!host.current) return
     host.current.position.y = Math.sin(clock.elapsedTime * 1.5 + position[0]) * 0.018
   })
@@ -164,13 +180,19 @@ function Buneary({ visible }: { visible: boolean }) {
 function IntroBall({ opened }: { opened: boolean }) {
   const top = useRef<Group>(null)
   const bottom = useRef<Group>(null)
-  useFrame((_, delta) => {
+  const button = useRef<MeshStandardMaterial>(null)
+  useFrame(({ clock }, delta) => {
     const target = opened ? 1 : 0
     if (top.current)
       top.current.rotation.x += (target * -1.18 - top.current.rotation.x) * Math.min(1, delta * 7)
     if (bottom.current)
       bottom.current.rotation.x +=
         (target * 0.48 - bottom.current.rotation.x) * Math.min(1, delta * 7)
+    // 누를 곳이라는 것이 보여야 한다 — 닫혀 있는 동안 버튼이 숨을 쉰다
+    if (button.current)
+      button.current.emissiveIntensity = opened
+        ? 1.6
+        : 0.35 + Math.sin(clock.elapsedTime * 3.4) * 0.25
   })
   return (
     <group position={[0, 0.72, 0]} scale={0.72}>
@@ -190,6 +212,27 @@ function IntroBall({ opened }: { opened: boolean }) {
         <torusGeometry args={[0.93, 0.1, 8, 28]} />
         <meshStandardMaterial color="#16191d" roughness={0.5} />
       </mesh>
+      {/*
+        ⚠️ **누를 것이 화면에 없었다.** 나무박사는 「몬스터볼 가운데의 버튼을
+        눌러보도록 하거라!」라고 하는데 볼에는 빨강·하양·띠뿐이라 어디를 누르라는
+        말인지 알 수가 없었다. 띠에 붙여 두므로 뚜껑이 열려도 제자리에 남는다
+      */}
+      <group position={[0, 0, 0.95]} rotation={[Math.PI / 2, 0, 0]}>
+        <mesh castShadow>
+          <cylinderGeometry args={[0.3, 0.3, 0.16, 28]} />
+          <meshStandardMaterial color="#16191d" roughness={0.5} />
+        </mesh>
+        <mesh position={[0, 0.09, 0]}>
+          <cylinderGeometry args={[0.2, 0.2, 0.06, 28]} />
+          <meshStandardMaterial
+            ref={button}
+            color="#f4f5f0"
+            emissive="#ffe9a8"
+            emissiveIntensity={0.4}
+            roughness={0.35}
+          />
+        </mesh>
+      </group>
       <pointLight
         position={[0, 0.5, 1.2]}
         color="#fff2b2"
@@ -205,14 +248,23 @@ export function IntroStage() {
   const scene = useIntroStageStore((state) => state.scene)
   const gender = useIntroStageStore((state) => state.gender)
 
+  /**
+   * ⚠️ **발이 대사창에 가려 있었다.** 화면 한가운데를 사람의 가슴(1.05m)에
+   * 두었더니 발밑이 창 뒤로 들어갔다 — 원작은 사람을 **위 화면**에 통째로
+   * 놓으므로 가리는 것이 없다. 우리는 한 화면이니 겨눔과 눈높이를 같이 0.5m
+   * 내려서 사람을 창 위로 올린다(기울기는 그대로다).
+   *
+   * 실측: 거리 7.4 · 화각 38°면 화면 반높이가 2.55m다. 0.5m를 내리면 사람이
+   * 61px 올라가고, 발밑(창 위 378px)이 창에 안 닿는다
+   */
   useEffect(() => {
     cinematicStage.active = true
     cinematicStage.position.set(
       CINEMATIC_ORIGIN.x,
-      CINEMATIC_ORIGIN.y + 3.1,
+      CINEMATIC_ORIGIN.y + 2.6,
       CINEMATIC_ORIGIN.z + 7.4,
     )
-    cinematicStage.target.set(CINEMATIC_ORIGIN.x, CINEMATIC_ORIGIN.y + 1.05, CINEMATIC_ORIGIN.z)
+    cinematicStage.target.set(CINEMATIC_ORIGIN.x, CINEMATIC_ORIGIN.y + 0.55, CINEMATIC_ORIGIN.z)
     cinematicStage.fov = 38
     return () => {
       cinematicStage.active = false

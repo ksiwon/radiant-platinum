@@ -237,6 +237,35 @@ export function npcBodyHeight(actor: NpcActor): number | null {
   return bodyHeights.get(actor) ?? null
 }
 
+/**
+ * 필드 번들(`fc####`)의 머리를 줄이는 배수.
+ *
+ * ⚠️ **엄마가 머리만 큰 사람으로 서 있었다.** BDSP는 필드에 세울 사람을 머리
+ * 큰 치비로 따로 만들어 두었다(엄마 `fc2005_00`은 머리가 키의 60%다). 우리는
+ * 주인공과 트레이너를 **배틀용 등신 모델**로 세우므로 나란히 서면 계통이
+ * 어긋난다 — 실제로 「엄마 얼굴이 이상하다」는 보고를 받았다. 배틀용이 아예
+ * 없는 사람이 열넷이라(이야기 인물) 판때기로 되돌리면 오프닝 바로 다음 장면의
+ * 엄마가 종잇장이 된다.
+ *
+ * 그래서 **머리뼈만 줄이고 키는 그대로 둔다.** 머리는 목 관절을 원점으로
+ * 줄어드니 이음매가 안 벌어지고, 줄어든 만큼 아래 정규화가 몸을 키운다.
+ *
+ * 값의 근거 — 줄인 만큼 키를 도로 맞추므로 머리 비중은 배수만큼 안 내려간다.
+ * 실측(엄마 `fc2005_00`, 키 1.44):
+ *
+ *   ×1     머리가 키의 60% · 몸 배율 1.019
+ *   ×0.62  48% · 1.270
+ *   **×0.4   37% · 1.481**   ← 여기
+ *
+ * ⚠️ **등신이 되지는 않는다.** 몸통과 팔다리도 BDSP가 필드용으로 짧게 만든
+ * 것이라 머리만 줄여서는 사람 비율(13%)에 못 간다. 더 줄이면 이번에는 짧은
+ * 팔다리 위에 작은 머리가 얹혀 더 이상해진다 — 여기가 눈으로 고른 자리다
+ */
+const CHIBI_HEAD = 0.4
+
+/** 이 번들이 치비인가 — 필드용(`fc`)만 그렇다 */
+const isChibi = (tag: string): boolean => /^fc\d/.test(tag)
+
 /** 모델 하나를 복제해 한 칸으로 만든다 */
 function build(scene: Object3D, tag: string): Slot {
   const outer = new Group()
@@ -252,6 +281,14 @@ function build(scene: Object3D, tag: string): Slot {
   // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다
   const { nativeHeight } = normalizeModel(inner, body, 1)
   const height = nativeHeight * BDSP_TO_WORLD
+  // ⚠️ **키를 잰 다음에 머리를 줄인다.** 순서를 바꾸면 줄어든 머리만큼 그 사람이
+  // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다. 키는 그대로 두고 아래 정규화가
+  // 남은 몸을 그 키에 맞춰 키우게 한다
+  if (isChibi(tag)) {
+    for (const bone of body.getObjectsByProperty('name', 'Head')) {
+      if (bone.type === 'Bone') bone.scale.setScalar(CHIBI_HEAD)
+    }
+  }
   normalizeModel(inner, body, height)
   // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
   // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)

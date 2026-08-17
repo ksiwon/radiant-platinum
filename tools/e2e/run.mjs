@@ -1442,6 +1442,13 @@ await ((haveRom && haveBdsp) ? run : () => {})(
       '리포트를 다 썼다는 표시가 안 뜬다')
     const wrote = await page.locator('body').innerText()
     assert(wrote.includes(NAME), `다 쓴 화면에 이름이 없다: ${wrote.replace(/\s+/g, ' ').slice(0, 120)}`)
+    // ⚠️ **다 썼다는 줄이 도로 사라지면 안 된다.** 늦게 도착한 글 로딩이 화면을
+    // 물음으로 되돌리던 자리다 — 리포트는 이미 남았는데 「덮어써도 괜찮습니까?」가
+    // 다시 떠서 사람이 또 답하게 됐다. 뜬 것만 보고 넘어가면 그 되돌아감을 못 잡는다
+    await page.waitForTimeout(2_000)
+    const held = await page.locator('body').innerText()
+    assert(/백업 파일도 받았다|백업 파일 다운로드를 막았다/.test(held),
+      `다 썼다는 줄이 도로 사라졌다: ${held.replace(/\s+/g, ' ').slice(0, 160)}`)
     await page.keyboard.press('Space')
 
     // ── 다시 열면 진행이 보인다 ──

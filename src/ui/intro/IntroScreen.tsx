@@ -424,6 +424,9 @@ export function IntroScreen() {
 
   useMenuKeys(
     {
+      // ⚠️ **고르는 줄은 가로다.** 칸이 옆으로 늘어서 있는데 위아래 키로만
+      // 움직였다 — 화면 생김새와 손이 어긋난다. 좌우가 임자고, 위아래는 같은
+      // 일을 하는 딴 이름으로 남긴다(십자키·WASD를 쓰는 사람이 있다)
       up: () => {
         if (choices) setCursor((c) => clampCursor(c, -1, choices.length))
       },
@@ -431,10 +434,10 @@ export function IntroScreen() {
         if (choices) setCursor((c) => clampCursor(c, 1, choices.length))
       },
       left: () => {
-        if (choices && choices.length === 2) setCursor(0)
+        if (choices) setCursor((c) => clampCursor(c, -1, choices.length))
       },
       right: () => {
-        if (choices && choices.length === 2) setCursor(1)
+        if (choices) setCursor((c) => clampCursor(c, 1, choices.length))
       },
       confirm: () => {
         if (choices) pick()
@@ -506,8 +509,19 @@ export function IntroScreen() {
         )}
       </div>
 
+      {/*
+        ⚠️ **무엇을 누를지가 화면에 있어야 한다.** 한 줄로 「↑↓ 고르기 · Z·Enter
+        넘기기」만 띄웠더니 볼 앞에서 「뭘 눌러야 할지 감도 안 온다」는 말을
+        들었다. 지금 화면이 무엇을 기다리는지에 따라 다르게 적는다
+      */}
       <div className={css.hint}>
-        {typing ? `${String(NAME_MAX)}글자까지 · Enter 결정` : '↑↓ 고르기 · Z·Enter 넘기기'}
+        {typing
+          ? `${String(NAME_MAX)}글자까지 · Enter 결정`
+          : stage.kind === 'pokeBall' && !stage.opened
+            ? '볼 가운데의 버튼을 누른다 — 클릭 · Z·Enter'
+            : choices
+              ? '←→ 고르기 · Z·Enter 결정'
+              : 'Z·Enter 넘기기'}
       </div>
     </div>
   )

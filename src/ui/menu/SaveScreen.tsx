@@ -33,7 +33,19 @@ type Backup = { started: boolean; fileName: string } | null
 
 export function SaveScreen() {
   const [common, setCommon] = useState<string[]>([])
-  const [phase, setPhase] = useState<Phase>('ask')
+  /**
+   * 이미 리포트가 있으면 덮어쓸지부터 묻는다.
+   *
+   * ⚠️ **물음은 열 때 정해진다.** 한때 이것을 글 받는 `then` 안에서 정했다.
+   * 그런데 대사 뱅크는 설치본에서 꺼내느라 늦게 오고, 그 사이에 사람은 이미
+   * 답할 수 있다. 그러면 다 쓰고 난 **뒤에** 늦게 온 `then`이 화면을 물음으로
+   * 되돌렸다 — 리포트는 남았는데 「꼼꼼히 기록했다!」가 사라지고 「덮어써도
+   * 괜찮습니까?」가 다시 떴다. 실측으로 ㉕가 여기서 60초를 섰다.
+   * `loaded`는 스토어에서 바로 읽히므로 기다릴 이유가 없다
+   */
+  const [phase, setPhase] = useState<Phase>(
+    () => (useSaveStore.getState().loaded ? 'overwrite' : 'ask'),
+  )
   const [failure, setFailure] = useState<string | null>(null)
   const [backup, setBackup] = useState<Backup>(null)
   const [yes, setYes] = useState(true)
@@ -46,12 +58,7 @@ export function SaveScreen() {
   useEffect(() => {
     let alive = true
     void Promise.all([loadUiText('saveInfo', locale), loadDialogueBank(locale, UI_BANK.common)])
-      .then(([, strings]) => {
-        if (!alive) return
-        setCommon(strings)
-        // 이미 리포트가 있으면 덮어쓸지부터 묻는다
-        setPhase(useSaveStore.getState().loaded ? 'overwrite' : 'ask')
-      })
+      .then(([, strings]) => { if (alive) setCommon(strings) })
       .catch(() => { /* 글을 못 받아도 기록은 된다 */ })
     return () => { alive = false }
   }, [locale])

@@ -51,8 +51,26 @@ export function isUiCaptured(): boolean {
   return uiCapture
 }
 
+/**
+ * 지금 **글자를 치고 있는가.**
+ *
+ * ⚠️ **백스페이스가 안 먹었다.** 게임이 켜져 있으면 위 `GAME_KEYS`의 기본
+ * 동작을 막는데, 그 안에 `Backspace`가 있다(뒤로 가기를 막으려고 넣었다).
+ * 그런데 이름 칸도 같은 창에 있어서 **이름을 지우는 것까지 막혔다** — 실제로
+ * 오프닝에서 이름을 못 지운다는 보고를 받았다. 별명 짓는 칸도 같은 자리다.
+ *
+ * 글자 칸으로 간 키는 게임 키가 아니다. 눌린 것으로 세지도 않는다 — 안 그러면
+ * 이름에 스페이스를 넣을 때 대사가 넘어가고, 화살표로 주인공이 걷는다
+ */
+export function typingInto(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+}
+
 export function attachKeyboard(target: Window = window) {
   target.addEventListener('keydown', (e) => {
+    if (typingInto(e.target)) return
     if (gameActive && GAME_KEYS.has(e.code)) e.preventDefault()
     pressed.add(e.code)
   })

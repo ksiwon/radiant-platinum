@@ -5,6 +5,7 @@
 // 그래서 여기는 DOM 이벤트를 그대로 쓴다.
 import { useEffect, useRef } from 'react'
 import { menuBeep } from '../../engine/audio/lazy'
+import { typingInto } from '../../engine/input/keys'
 
 export interface MenuKeys {
   up?: () => void
@@ -49,6 +50,11 @@ export function useMenuKeys(handlers: MenuKeys, enabled = true): void {
   useEffect(() => {
     if (!enabled) return
     const onKey = (e: KeyboardEvent): void => {
+      // ⚠️ **글자 칸으로 간 키는 안 가져간다.** 여기는 X와 Backspace도 "물러난다"로
+      // 잡고 `preventDefault`까지 하는데, 그러면 이름에 x를 못 넣고 지우지도
+      // 못한다. 화면마다 `enabled`로 끄고 있었지만 하나라도 빠뜨리면 그 칸이
+      // 죽는다 — 칸이 임자인 키는 여기서 통째로 비켜 준다
+      if (typingInto(e.target)) return
       const action = CODES[e.code]
       if (action === undefined) return
       const fn = ref.current[action]

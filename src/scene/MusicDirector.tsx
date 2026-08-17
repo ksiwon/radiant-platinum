@@ -16,12 +16,23 @@ import { SFX } from '../engine/audio/sfx'
 import { TRAINER_BATTLE, songForMap, wildSongFor } from '../engine/audio/songs'
 import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
+import { useIntroStageStore } from '../state/introStageStore'
 import { useOptionsStore } from '../state/optionsStore'
 
 /** 몇 초마다 곡을 다시 고를지. 맵과 시간대만 보므로 자주 볼 이유가 없다 */
 const CHECK_SECONDS = 1
 
 export function MusicDirector() {
+  /**
+   * 오프닝이 서 있는 동안은 곡을 안 고른다.
+   *
+   * ⚠️ **오프닝 곡이 1초 만에 필드 곡에 덮였다.** 이 지휘자는 화면이 무엇이든
+   * 맵 헤더만 보고 고르는데, 오프닝 뒤에서는 세계가 이미 흐르고 있어서
+   * (`WorldLoader`는 같은 캔버스에 계속 떠 있다) **박사가 말하는 동안 그 맵의
+   * 곡이 흘렀다.** 맵이 바뀔 때마다 또 갈아탔다 — 「배경음이 자꾸 바뀐다」는
+   * 보고가 이것이다. 오프닝의 곡은 오프닝이 정한다 (`SEQ_OPENING`)
+   */
+  const intro = useIntroStageStore((s) => s.scene !== 'off')
   const phase = useBattleStore((s) => s.phase)
   const kind = useBattleStore((s) => s.kind)
   // 야생은 **누가 나왔는지**가 곡을 정한다. 기라티나는 전용 곡이다 (`songs.ts`)
@@ -37,6 +48,9 @@ export function MusicDirector() {
   useEffect(() => { void music.prewarm([SFX.MENU]) }, [])
 
   useFrame((_, delta) => {
+    // 오프닝이 끝나면 필드 곡을 **다시 고르게** 남겨 둔다 — 마지막에 고른 것을
+    // 그대로 들고 있으면 같은 곡이라는 이유로 안 틀고 오프닝 곡이 계속 흐른다
+    if (intro) { last.current = null; return }
     since.current += delta
     if (since.current < CHECK_SECONDS) return
     since.current = 0
