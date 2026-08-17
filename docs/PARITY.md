@@ -279,7 +279,7 @@
 | `title_screen` | ✅ | `ui/screens/TitleScreen` |
 | `main_menu` (새로하기/이어하기) | ✅ | |
 | `naming_screen` | ✅ | `ui/menu/NameScreen` — NDS 터치 자판은 안 옮긴다 |
-| `rowan_intro` | ✅ | 오프닝 |
+| `rowan_intro` | ◐ | 오프닝. ⚠️ **마박사의 소개는 안 튼다** — 만든 사람이 정한 것이다 (`engine/intro/beats`). 인사 한 번(`welcomeText` — 세계의 이름 · 만든 사람과 siwon.it.kr · 명예의 전당 뒤에 열리는 배포 · 비영리 팬게임) 하고 바로 성별·이름으로 간다. 되묻기·몬스터볼·뱅크의 말줄은 화면 쪽에 그대로 있어서 박자표에 도로 넣으면 돈다 — 다만 볼에서 이어롭이 나오는 장면은 포켓몬 그림을 못 뽑아 볼과 빛만 돈다 |
 | `choose_starter` | ✅ | 원작 3D 모델 |
 | `bag` | ✅ | `ui/menu/BagScreen` |
 | `party_menu` | ✅ | `ui/menu/PartyScreen`. Z가 **갈래 메뉴**를 연다 — 차례가 `GetContextMenuEntriesForPartyMon` 그대로다(요약 → 아는 비전기술 → 자리바꾸기 → 지닌물건 → 그만둔다). 알은 요약과 자리바꾸기 둘뿐. 낱말은 전부 파티 뱅크(453)의 것이다 |
