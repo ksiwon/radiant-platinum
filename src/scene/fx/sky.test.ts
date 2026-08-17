@@ -107,10 +107,12 @@ describe('밤의 밝기', () => {
   })
 
   it('그래도 지형이 검은 덩어리로 뭉치지는 않는다', () => {
-    // 예전 값은 밤 15.2% · 심야 8.5%였다. 그 정도면 밤인 줄은 아는데
-    // 무엇이 있는지가 안 보인다
-    expect(pct(NIGHT)).toBeGreaterThan(0.28)
-    expect(pct(LATE)).toBeGreaterThan(0.18)
+    // 땅이 낮의 15.2%(밤) · 8.5%(심야)이던 시절에는 밤인 줄은 아는데 무엇이
+    // 있는지가 안 보였다. 바닥은 `NIGHT_FLOOR`다 — 사람에게 준 것과 같은 값을
+    // **키 라이트가 없는 지형에도** 준다. 눈으로 고른 숫자가 아니다
+    expect(pct(NIGHT)).toBeGreaterThanOrEqual(NIGHT_FLOOR)
+    // 심야는 밤 아래 같은 비율(0.66)을 지킨다
+    expect(pct(LATE)).toBeGreaterThan(pct(NIGHT) * 0.6)
   })
 
   it('밤은 색으로도 밤이다 — 하늘빛이 낮보다 훨씬 파랗다', () => {
@@ -141,6 +143,37 @@ describe('시간대 섞기', () => {
     expect(prev).toBeCloseTo(characterKey(NIGHT), 10)
     // 한 칸 사이 변화가 끝값의 1/8을 안 넘는다. 켜지는 순간에도 계단이 없다
     expect(jump).toBeLessThan(characterKey(NIGHT) / 8)
+  })
+
+  it('빛의 항마다 시간 순으로 줄기만 한다 — 반올림된 색의 계단 사이가 안 뒤집힌다', () => {
+    // ⚠️ `mixHex`가 8비트로 **반올림**해서 섞인 색의 휘도는 계단이다. 태양 항이
+    // 그 계단으로 내려오는 동안 반구 항이 매끄럽게 오르면, 계단 사이에서 반구가
+    // 이겨 몸빛이 도로 오른다 — 키 라이트가 세졌다 약해진다. 계단을 없앨 수는
+    // 없으니(색은 16진 문자열이다) **항마다** 줄기만 하게 프리셋을 잡는다
+    const hemi = (l: typeof DAY) => l.ambient * luminance(l.skyColor)
+    const solar = (l: typeof DAY) => l.sun * luminance(l.sunColor)
+    for (let i = 2; i + 1 < TIME_LOOKS.length; i++) {
+      const a = TIME_LOOKS[i]!, b = TIME_LOOKS[i + 1]!
+      expect(hemi(b), `반구 항 ${String(i)}→${String(i + 1)}`).toBeLessThan(hemi(a))
+      expect(solar(b), `태양 항 ${String(i)}→${String(i + 1)}`).toBeLessThan(solar(a))
+    }
+  })
+
+  it('중간이 양끝보다 어두워지지 않는다', () => {
+    // ⚠️ 세기와 색을 따로 섞으면 **곱이 이차식이라 중간이 팬다.** 해질녘
+    // 반구광이 0.66이던 때, 밤(0.96)으로 넘어가는 사이에 양끝보다 1.3% 어두운
+    // 구간이 있었다 — 저녁에 걷다 보면 어두워졌다 도로 밝아졌다.
+    // 태양 쪽이 반구광보다 빨리 꺼져서 생기는 일이라 프리셋으로만 막을 수 있다
+    for (let i = 0; i + 1 < TIME_LOOKS.length; i++) {
+      const a = TIME_LOOKS[i]!, b = TIME_LOOKS[i + 1]!
+      for (const at of [groundLight, bodyLight]) {
+        const floor = Math.min(at(a), at(b))
+        for (let s = 0; s <= 40; s++) {
+          expect(at(blendLooks(a, b, s / 40)), `${String(i)}→${String(i + 1)} k=${String(s / 40)}`)
+            .toBeGreaterThanOrEqual(floor - 1e-12)
+        }
+      }
+    }
   })
 
   it('색도 섞는다', () => {

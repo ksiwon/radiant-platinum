@@ -572,9 +572,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * **빛**을 정하는 시간대. 안개·하늘색을 정하는 `look`과 다르다.
    *
    * ⚠️ **실내는 시간대를 안 탄다.** 안개 쪽에는 그 규칙이 이미 걸려 있었는데
-   * 정작 조명 셋이 `look`을 그대로 써서, 밤에 들어간 방이 바깥 밤값(반구광 0.80 ·
-   * 태양 0.45 · 필 0.32에 밤하늘색까지 곱해져)으로 캄캄했다 — 화면에서 벽이
-   * 통째로 검게 나왔다. 창문 하나 없는 방이 밖을 따라 어두워질 이유가 없다
+   * 정작 조명이 `look`을 그대로 써서, 밤에 들어간 방이 바깥 밤값(태양 0.45에
+   * 밤하늘색까지 곱해져)으로 캄캄했다 — 화면에서 벽이 통째로 검게 나왔다.
+   * 창문 하나 없는 방이 밖을 따라 어두워질 이유가 없다.
+   *
+   * 빛을 내는 것은 **전부** 이걸 봐야 한다 — 반구광·태양·필·되비침, 그리고
+   * 인물 키 라이트까지. 하나라도 `look`으로 남으면 실내에서 밤이 새어 든다
    */
   const lit = outdoors ? look : TIME_LOOKS[1]!
   useFrame(() => {
@@ -823,20 +826,24 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         마을에서 내 남쪽에 선 집은 늘 그 면을 보이므로 벽이 늘 검게 뭉쳤다.
         세기는 상수가 아니라 **모자란 만큼**이다 (`fx/sky`의 `backFill`)
       */}
-      <directionalLight position={[...BACK_DIR]} intensity={backFill(look)} color={look.skyColor} />
+      <directionalLight position={[...BACK_DIR]} intensity={backFill(lit)} color={lit.skyColor} />
 
       {/*
         인물 키 라이트. **밤에 사람이 배경에 묻히는 것**을 막는다 — 심야의 몸빛은
-        낮의 20.9%까지 내려간다(`fx/sky`의 `bodyLight`로 잰 값이다).
+        낮의 25.6%까지 내려간다(`fx/sky`의 `bodyLight`로 잰 값이다).
 
         세기는 고정 상수가 아니라 **모자란 만큼**이라 낮에는 0이 되어 꺼진다.
         색을 푸른 밤하늘색으로 두면 색이 세기를 다시 깎으므로 차가운 흰색을 쓴다 —
         밝기는 `characterKey`가 이미 정했다.
-        그림자는 안 던진다: 그림자 맵을 하나 더 굽는 값에 비해 얻는 것이 없다
+        그림자는 안 던진다: 그림자 맵을 하나 더 굽는 값에 비해 얻는 것이 없다.
+
+        ⚠️ `look`이 아니라 `lit`이다 — 실내는 낮값으로 켜지므로 여기서도 0이
+        되어야 한다. 안 그러면 밤에 들어간 방에서 **낮처럼 밝은 방 안에 키
+        라이트까지** 얹혀 주인공만 허옇게 뜬다
       */}
       <pointLight
         ref={charKeyRef}
-        intensity={characterKey(look)}
+        intensity={characterKey(lit)}
         distance={CHAR_KEY_RANGE}
         decay={2}
         color={CHAR_KEY_COLOR}
