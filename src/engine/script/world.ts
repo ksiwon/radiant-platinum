@@ -16,6 +16,7 @@ import {
 } from './printer'
 import { MovementRunner, type Movable, type MovementStep, type MovementTable } from './movement'
 import type { ApproachingTrainer } from '../actor/approach'
+import type { EmoteKind } from '../actor/emote'
 import { tickFade } from './fade'
 import { MessageSlots } from './text'
 import type { VarStore } from './vars'
@@ -107,6 +108,13 @@ export type ShopCurrency = 'money' | 'bp'
 export interface FieldServices {
   /** 트레이너전을 연다 */
   startTrainerBattle?: (trainerID: number) => void
+  /**
+   * 머리 위에 표시를 띄운다 (`ov5_021F5D8C`).
+   *
+   * 눈이 마주친 트레이너의 느낌표가 이 길로 나온다. 화면이 없는 시험에서는
+   * 안 붙고, 그때는 표시만 안 뜨고 나머지 차례는 그대로 돈다
+   */
+  emote?: (localID: number, kind: EmoteKind) => void
   /** 배틀이 끝났으면 결과, 아직이면 `null` */
   battleResult?: () => 'win' | 'loss' | null
   /**

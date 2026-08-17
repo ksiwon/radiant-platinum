@@ -9,14 +9,11 @@ import type { Npc } from '../map/world'
 import { DIR } from '../script/movement'
 import { withData } from '../../data/romData.testkit'
 
-const flat = {
-  blocked: () => false,
-  heightAt: (_x: number, _z: number, from: number) => from,
-}
+const flat = { blocked: () => false, heightAt: () => 0 }
 /** (5,3)에 벽이 하나 */
 const walled = {
   blocked: (x: number, z: number) => x === 5 && z === 3,
-  heightAt: (_x: number, _z: number, from: number) => from,
+  heightAt: () => 0,
 }
 
 function npc(over: Partial<Npc> = {}): Npc {
@@ -38,7 +35,7 @@ const at = (over: Partial<Watcher & { range: number }> = {}): Watcher => {
   raw[7] = over.range ?? 4
   return {
     npc: over.npc ?? npc({ raw }),
-    x: over.x ?? 5, z: over.z ?? 5, facing: over.facing ?? DIR.south, y: over.y ?? 0,
+    x: over.x ?? 5, z: over.z ?? 5, facing: over.facing ?? DIR.south,
   }
 }
 
@@ -129,9 +126,10 @@ describe('지금 선 칸에서 본다 — 배치표 자리가 아니다', () => 
 })
 
 describe('단차와 사람이 시선을 끊는다', () => {
+  /** z가 7 이상인 칸만 `rise`만큼 높다 */
   const step = (rise: number) => ({
     blocked: () => false,
-    heightAt: (_x: number, z: number, from: number) => (z >= 7 ? from + rise : from),
+    heightAt: (_x: number, z: number) => (z >= 7 ? rise : 0),
   })
 
   it(`${String(SIGHT_STEP_LIMIT)}칸 이상 차이 나면 그 너머를 못 본다`, () => {
@@ -149,7 +147,7 @@ describe('단차와 사람이 시선을 끊는다', () => {
   it('앞에 사람이 서 있으면 그 뒤는 못 본다 (`sub_02063F00`)', () => {
     const crowd = {
       blocked: (x: number, z: number) => x === 5 && z === 7,
-      heightAt: (_x: number, _z: number, from: number) => from,
+      heightAt: () => 0,
     }
     expect(seesPlayer(at(), 5, 6, crowd)).toBe(1)
     expect(seesPlayer(at(), 5, 9, crowd)).toBeNull()

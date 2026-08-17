@@ -78,14 +78,6 @@ export interface Watcher {
   z: number
   /** 지금 보는 방향 (`MapObject_GetFacingDir`). `DIR` 규약이다 */
   facing: number
-  /**
-   * 서 있는 **층**(`MapObject_GetY`) — 배치표가 준 번호다.
-   *
-   * ⚠️ **세계 높이가 아니다.** 다리와 그 밑처럼 판이 겹치는 자리에서 어느
-   * 판을 읽을지 가르는 단서일 뿐이라(`heightAtWorld`의 `near`), 이 값끼리
-   * 빼면 안 된다 — 단차는 격자에 물어서 잰다
-   */
-  y: number
 }
 
 export interface Sighted {
@@ -105,14 +97,17 @@ export interface SightWorld {
    */
   blocked(x: number, z: number): boolean
   /**
-   * 그 칸의 바닥 높이(타일 단위). `layer`는 보는 사람이 선 층이다 — 판이
-   * 겹치는 자리에서 어느 판을 읽을지 가른다.
+   * 그 칸의 바닥 높이 (타일 단위).
    *
-   * ⚠️ **기준도 여기서 받아 온다.** 보는 사람이 선 칸의 높이를 같은 함수로
-   * 물어서 그것과 견준다 — 배치표의 층 번호와 세계 높이는 단위가 달라서,
-   * 둘을 빼면 평지에서도 늘 시선이 끊긴다(실제로 그랬다)
+   * ⚠️ **기준도 이 함수로 받아 온다** — 보는 사람이 선 칸의 높이를 같은
+   * 함수에 물어서 그것과 견준다. 배치표가 들고 있는 `height`는 층 번호도
+   * 타일 높이도 아닌 값이 섞여 있어서(같은 체육관에서 0·10·20), 그걸 세계
+   * 높이와 빼면 **평지에서도 늘 시선이 끊긴다** — 실제로 그랬다.
+   *
+   * 판이 겹치는 자리(다리와 그 밑)에서 어느 판을 읽을지는 부르는 쪽이
+   * 이미 골라 둔다 (`heightAtWorld`의 `near`)
    */
-  heightAt(x: number, z: number, layer: number): number
+  heightAt(x: number, z: number): number
 }
 
 /**
@@ -128,7 +123,7 @@ export function seesPlayer(
   if (!step) return null
 
   // 단차의 기준은 **보는 사람이 선 칸의 바닥**이다 (`objectPosition->y`)
-  const base = world.heightAt(who.x, who.z, who.y)
+  const base = world.heightAt(who.x, who.z)
 
   // 거리는 1부터 센다. 그래서 시야 0인 트레이너(446명 중 56명)는 이 고리를
   // 한 번도 안 돈다 — 원작에서도 `IsPathInterrupted`가 거리 0을 곧바로 막는다
@@ -136,7 +131,7 @@ export function seesPlayer(
   for (let d = 1; d <= range; d++) {
     x += step.x
     z += step.z
-    const rise = Math.abs(world.heightAt(x, z, who.y) - base)
+    const rise = Math.abs(world.heightAt(x, z) - base)
     // ⚠️ **사람이 선 칸도 단차는 본다.** 원작이 마지막 칸에서
     // `collisionFlags == (1 << 2)`를 요구한다 — 「사람만 있고 지형도 단차도
     // 없다」는 뜻이라, 턱 위에서 아래를 내려다보는 것은 시선이 아니다

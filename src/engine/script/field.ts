@@ -1221,7 +1221,7 @@ function trySight(): void {
     // 30칸 넘게 떠나 있었고, 그 넷은 배치표 자리에서 허공을 보고 있었다.
     // 칸 사이를 걷는 중이면 반올림한다(`ambient`의 `partnerTile`과 같은 규약)
     npcActors.list.map((a) => ({
-      npc: a.info, x: Math.round(a.x), z: Math.round(a.z), facing: a.dir, y: a.y,
+      npc: a.info, x: Math.round(a.x), z: Math.round(a.z), facing: a.dir,
     })),
     x, z,
     {
@@ -1230,8 +1230,11 @@ function trySight(): void {
         || obstacleAt(bx, bz) !== null
         || npcActors.list.some((a) =>
           a.visible && Math.round(a.x) === bx && Math.round(a.z) === bz),
-      // 높이 자료가 없는 맵이면 단차도 없다 — `from`을 그대로 돌려 차를 0으로 만든다
-      heightAt: (bx, bz, from) => grid.heightAtWorld(bx + 0.5, bz + 0.5, from) ?? from,
+      // ⚠️ **판을 고르는 단서는 주인공의 지금 높이다** — 다리와 그 밑처럼
+      // 판이 겹치는 자리에서 어느 층을 읽을지 가른다. 씬이 층을 세는 자리도
+      // 같은 값이다 (`MapStreamer`의 `Math.round(p.y)`).
+      // 높이 자료가 없는 맵이면 온통 0이라 차도 0이 된다
+      heightAt: (bx, bz) => grid.heightAtWorld(bx + 0.5, bz + 0.5, p.y) ?? 0,
     },
     // ⚠️ **이미 이긴 트레이너는 안 덤빈다.** 원작이 `Script_IsTrainerDefeated`로
     // 거른다 — 이게 없으면 이긴 사람 앞을 지날 때마다 다시 싸우게 된다.
@@ -1263,6 +1266,13 @@ function trySight(): void {
   // 더블 한 쌍은 표에 트레이너 하나로 있고 맵에만 둘이 서 있다. 짝을 못
   // 찾으면 혼자 온다 (원작은 그 자리에서 `GF_ASSERT`로 선다)
   world.approaching[1] = double ? partnerOf(seen.npc, first) : null
+  // ⚠️ **머리 위 느낌표가 이 자리에서 뜬다** (`ApproachingTrainerTask_Unk_05`의
+  // `ov5_021F5D8C`). 그리는 장치는 진작 있었는데 아무도 안 불러서, 눈이 마주친
+  // 트레이너가 말없이 걸어왔다. 걷는 동작 목록이 이 표시의 길이만큼 앞에서
+  // 멈춰 서 있다 (`actor/approach`의 `delaySteps(EMOTE_FRAMES)`)
+  fieldScripts.services.emote?.(first.localID, 'exclaim')
+  const partner = world.approaching[1]
+  if (partner !== null) fieldScripts.services.emote?.(partner.localID, 'exclaim')
 }
 
 /**

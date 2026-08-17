@@ -8,7 +8,7 @@
 // `Battles_WaitTrainerSinglesTaskDone`이 제 답을 보고 자기를 다시 부른다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta, resolveScript } from './data'
@@ -17,7 +17,8 @@ import { VarStore } from './vars'
 import { FieldWorld, type FieldServices } from './world'
 import { DIR } from './movement'
 import { addNpcFrom, clearNpcs, npcActors } from '../actor/npcs'
-import { APPROACH_TYPE, approachSteps } from '../actor/approach'
+import { APPROACH_TYPE, approachMovements, approachSteps, delaySteps } from '../actor/approach'
+import { EMOTE_FRAMES } from '../actor/emote'
 import type { Npc } from '../map/world'
 import { DATA, withData } from '../../data/romData.testkit'
 
@@ -172,5 +173,41 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
     const log = play(3, true)
     expect(log.messages).toEqual([MSG.preDouble1, MSG.preDouble2])
     expect(log.battle).toBe(TRAINER)
+  })
+})
+
+// ⚠️ **느낌표는 여기가 아니라 `trySight`가 띄운다** (`FieldServices.emote`).
+// 이 시험은 스크립트를 직접 돌리므로 그 자리를 안 지난다 — 여기서 볼 수 있는
+// 것은 **걷기 전에 그만큼 멈춰 서는가**다. 안 멈추면 느낌표가 걸어오는 사람을
+// 따라다닌다
+describe('쉬는 길이', () => {
+  const frames = (steps: { action: number, count: number }[]): number => {
+    const table: Record<number, number> = { 60: 1, 61: 2, 62: 4, 63: 8, 64: 15, 65: 16, 66: 32 }
+    return steps.reduce((n, s) => n + (table[s.action] ?? 0) * s.count, 0)
+  }
+
+  it('표에 있는 칸만 써서 원하는 프레임을 정확히 채운다', () => {
+    for (const want of [0, 1, 3, 8, 30, 37, 100]) {
+      expect(frames(delaySteps(want)), `${String(want)}프레임`).toBe(want)
+    }
+  })
+
+  it('큰 칸부터 담는다 — 37은 32+4+1이다', () => {
+    expect(delaySteps(37)).toEqual([
+      { action: 66, count: 1 }, { action: 62, count: 1 }, { action: 60, count: 1 },
+    ])
+  })
+
+  it('⚠️ 걷기 전에 느낌표만큼 멈춘다 — 원작이 그것이 끝나기를 기다린다', () => {
+    // 돌아보기(1) + 느낌표(37) + 원작의 30을 옮긴 32 = 70프레임을 서 있는다
+    const still = approachMovements(DIR.south, 4).slice(0, -2)
+    expect(frames(still)).toBe(EMOTE_FRAMES + 32)
+  })
+
+  it('바로 앞에서 마주쳐도 느낌표는 기다린다 — 안 걸을 뿐이다', () => {
+    const near = approachMovements(DIR.south, 1)
+    // 돌아보기 · 느낌표 셋 · DELAY_32 · DELAY_8 = 여섯. 걸음은 없다
+    expect(near).toHaveLength(6)
+    expect(frames(near)).toBe(EMOTE_FRAMES + 32 + 8)
   })
 })

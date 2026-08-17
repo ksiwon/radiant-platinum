@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   AdditiveBlending, CanvasTexture, Group, LinearFilter, SRGBColorSpace,
@@ -73,6 +73,10 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
     tex.magFilter = LinearFilter
     return tex
   }, [])
+
+  // 이 컴포넌트는 격자가 갈릴 때마다 다시 설 수 있다 — 놓아 주지 않으면
+  // 맵을 옮길 때마다 128×128 하나가 GPU에 쌓인다
+  useEffect(() => () => { cloud.dispose() }, [cloud])
 
   useFrame(({ camera, clock }) => {
     const node = root.current
