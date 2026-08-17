@@ -95,6 +95,8 @@ import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
 import { Ledges } from './Ledges'
 import { fieldWeatherKind, weatherFogProfile } from './weatherVisual'
+import { enterMapWeather } from '../engine/world/overworldWeather'
+import { SYSTEM_FLAG } from '../engine/script/commands'
 import { DoorAnimations } from './DoorAnimations'
 import { useDoorVisualStore } from './doorVisualStore'
 import { InteractionPrompt } from './InteractionPrompt'
@@ -566,7 +568,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 챔피언로드가 파란 하늘 위의 판때기로 찍혔고 천관산 위에도 하늘이 걸렸다
    */
   const outdoors = isOutdoors(mapById(mapId))
-  const weather = useMemo(() => fieldWeatherKind(mapById(mapId)?.weather ?? 0), [mapId])
+  /**
+   * ⚠️ **헤더 값이 아니라 지금 걸린 값이다** (PARITY §8.3).
+   *
+   * 맵에 들어설 때 헤더 값으로 덮되, **안개 + 안개제거**와 **어둠 + 플래시**만
+   * 맑음이 된다 (`field_map_change.c`). 이게 없으면 안개제거를 써도 화면이
+   * 그대로라 그 비전기술이 아무 일도 안 하는 기술이 된다
+   */
+  const weather = useMemo(() => {
+    const flags = fieldScripts.vars
+    return fieldWeatherKind(enterMapWeather(mapById(mapId)?.weather ?? 0, {
+      flash: flags.checkFlag(SYSTEM_FLAG.flashActive),
+      defog: flags.checkFlag(SYSTEM_FLAG.defogActive),
+    }))
+  }, [mapId])
 
   const [look, setLook] = useState<TimeLook>(() => currentLook())
   /**

@@ -23,6 +23,7 @@ import { FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED } from './va
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { TREE_STATUS } from '../world/honeyTree'
+import { clearOverworldWeather, overworldWeather } from '../world/overworldWeather'
 import {
   gameCornerPrize, lotteryWinner, VAR_LOTTERY_ID_HIGH, VAR_LOTTERY_ID_LOW,
 } from '../world/gameCorner'
@@ -2867,6 +2868,18 @@ export const SYSTEM_FLAG = {
   step: 2405,
   /** 명예의 전당에 들어가 봤는가 (`FLAG_GAME_COMPLETED`) */
   gameCompleted: 2404,
+  /**
+   * 플래시·안개제거를 지금 쓰고 있는가 (`FLAG_FLASH_ACTIVE`·`FLAG_DEFOG_ACTIVE`).
+   *
+   * ⚠️ **이 둘은 표식만이 아니라 날씨를 바꾼다** — 맵에 들어설 때 안개는
+   * 안개제거가, 어둠은 플래시가 맑음으로 덮는다 (`world/overworldWeather`).
+   *
+   * 번호는 두 갈래로 확인했다: 목록에서 `FLAG_GAME_COMPLETED`(2404)와
+   * `FLAG_STEP`(2405)이 줄 번호 −7이고, 바로 뒤의 `FLAG_POKETCH_HIDDEN`이
+   * 우리 표의 2428과 맞는다
+   */
+  flashActive: 2426,
+  defogActive: 2427,
   /** 포켓치를 잠깐 치웠는가 (`FLAG_POKETCH_HIDDEN`) — 연출이 세우고 지운다 */
   poketchHidden: 2428,
   /** 갤럭시단아지트의 호수 삼신을 풀어 줬는가 (`FLAG_FREED_GALACTIC_HQ_POKEMON`) */
@@ -3152,9 +3165,41 @@ on('GetHour', (ctx) => {
  */
 on('GetOverworldWeather', (ctx) => {
   const dest = ctx.readHalfWord()
-  ctx.host.vars.set(dest, ctx.host.world.services.weather?.() ?? 0)
+  ctx.host.vars.set(dest, overworldWeather.value)
   return false
 })
+
+/**
+ * 날씨를 맑음으로 되돌린다 (`ScrCmd_0C3` · `ScrCmd_0C4`).
+ *
+ * ⚠️ **바꾸는 명령이 이 둘뿐이고 둘이 똑같다.** 디컴프에서 이름조차 안 붙은
+ * 명령인데 속은 `FieldOverworldState_SetWeather(…, CLEAR)` 한 줄이다 —
+ * 날씨에 **다른 값**을 넣는 스크립트 명령은 원작에 없다. 그래서 「스크립트가
+ * 날씨를 갈아 끼운다」는 곧 「맑게 되돌린다」다
+ */
+for (const name of ['ScrCmd_0C3', 'ScrCmd_0C4']) {
+  on(name, () => { clearOverworldWeather(); return false })
+}
+
+/**
+ * 플래시·안개제거의 표식 (`ScrCmd_DoFlashFunc` · `ScrCmd_DoDefogFunc`).
+ *
+ * ⚠️ **한 명령이 셋을 겸한다** — 뒤에 오는 바이트가 갈래다
+ * (`FIELD_MOVE_FUNC_*`: 0 지우기 · 1 세우기 · **2 묻기**). 묻는 갈래에서만
+ * 변수 자리를 한 번 더 읽으므로, 고정으로 읽으면 그 뒤가 통째로 밀린다
+ */
+function fieldMoveFlag(name: string, flag: number): void {
+  on(name, (ctx) => {
+    const which = ctx.readByte()
+    if (which === 0) ctx.host.vars.clearFlag(flag)
+    else if (which === 1) ctx.host.vars.setFlag(flag)
+    else ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.checkFlag(flag) ? 1 : 0)
+    return false
+  })
+}
+
+fieldMoveFlag('DoFlashFunc', SYSTEM_FLAG.flashActive)
+fieldMoveFlag('DoDefogFunc', SYSTEM_FLAG.defogActive)
 
 // ── 도감을 세는 것 (PARITY §6.2) ─────────────────────────────────────────────
 //
