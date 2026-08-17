@@ -5,9 +5,10 @@ BDSP 캐릭터 셰이더는 색을 텍스처가 아니라 머티리얼 파라미
     albedo = _MainTex(그레이스케일 음영) × 레이어색[_MaskTex 채널]
 
 _MaskTex는 순수 R/G/B/검정 영역으로 칠해진 선택자다:
-    R → _PrimaryColor,  G → _SecondaryColor,  B → _SkinColor,  검정 → 틴트 없음
+    R → _SkinColor,  G → _PrimaryColor,  B → _SecondaryColor,  검정 → 틴트 없음
 
-(_SkinColor는 피부 전용이 아니라 세 번째 범용 레이어 색이다 — 가방은 노랑, 모자는 분홍이 들어간다.)
+(_SkinColor는 피부 전용이 아니라 첫 번째 범용 레이어 색이다 — 가방은 노랑, 모자는 분홍이 들어간다.)
+차례의 근거는 아래 MASK_CHANNEL_PROPS에 적어 두었다.
 
 이 스크립트는 위 식을 오프라인에서 계산해 평범한 알베도 PNG로 굽는다. 런타임에서
 BDSP 셰이더를 재현할 필요가 없어지고, KTX2 압축(§4.4)에도 그대로 태울 수 있다.
