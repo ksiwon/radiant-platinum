@@ -18,6 +18,7 @@ import {
   RIVAL_NAME_CHOICES,
   type IntroStep,
 } from '../../engine/intro/beats'
+import { introWelcome } from '../../engine/intro/welcomeText'
 import { music } from '../../engine/audio/music'
 import { OPENING_SONG } from '../../engine/audio/songIds'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
@@ -31,6 +32,16 @@ import * as css from './intro.css'
 
 /** 원작 이름 칸이 7글자다 (`TrainerInfo`의 이름 버퍼) */
 const NAME_MAX = 7
+
+/**
+ * 라이벌이 화면에 서기 시작하는 박자.
+ *
+ * 「…라고 하는가! 여기 있는 이 소년은 자네의 친구였지?」(`soYoure`)가 그 자리라
+ * 번호가 아니라 **그 줄을 찾아서** 정한다
+ */
+const RIVAL_ENTERS = INTRO.findIndex(
+  (s) => s.kind === 'say' && s.line === INTRO_TEXT.soYoure,
+)
 
 type Stage =
   | { kind: 'say'; at: number }
@@ -85,7 +96,11 @@ export function IntroScreen() {
     else if (
       stage.kind === 'rivalChoice' ||
       ((stage.kind === 'nameEntry' || stage.kind === 'nameConfirm') && stage.who === 'rival') ||
-      (stage.kind === 'say' && stage.at >= 9)
+      // ⚠️ **자리 번호로 세지 않는다.** 「자네 친구인 이 소년은…」(`soYoure`)부터
+      // 라이벌이 서는데, 그 앞에 박자를 하나라도 끼우면 번호가 통째로 밀린다 —
+      // 실제로 우리 인사(`ours`)를 맨 앞에 넣으면서 한 칸 밀렸다. 무엇을 찍는
+      // 박자인지로 판정하면 순서를 바꿔도 안 깨진다
+      (stage.kind === 'say' && stage.at >= RIVAL_ENTERS)
     )
       visual.show('rival')
     else visual.show('rowan')
@@ -181,6 +196,9 @@ export function IntroScreen() {
     switch (stage.kind) {
       case 'say': {
         const step = INTRO[stage.at]
+        // 첫 박자만 우리 글이다 (`engine/intro/welcomeText`). 뱅크가 fetch로
+        // 오는 것과 달리 이건 묶음 안에 있어서 **글을 기다리지 않고 바로 뜬다**
+        if (step?.kind === 'ours') return introWelcome(locale)
         return step?.kind === 'say' ? line(step.line) : null
       }
       case 'infoMenu':
@@ -206,7 +224,8 @@ export function IntroScreen() {
           ? line(boy ? INTRO_TEXT.confirmNameMale : INTRO_TEXT.confirmNameFemale)
           : line(INTRO_TEXT.confirmRivalName)
     }
-  }, [stage, line, naming, boy])
+    // `locale`은 우리 인사가 본다 — 뱅크 쪽은 `line`이 이미 그 언어로 받아 온다
+  }, [stage, line, naming, boy, locale])
 
   useEffect(() => {
     if (showing === null) {
@@ -276,6 +295,8 @@ export function IntroScreen() {
       setCursor(0)
       setDraft('')
       switch (next.kind) {
+        // 우리 글도 창에 올리는 방식이 같다 — 뱅크 대신 `welcomeText`에서 온다
+        case 'ours':
         case 'say':
           setStage({ kind: 'say', at: at + 1 })
           break

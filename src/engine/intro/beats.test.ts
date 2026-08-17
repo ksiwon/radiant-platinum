@@ -13,6 +13,7 @@ describe('인트로 박자', () => {
   it('되묻는 자리와 이름 짓기가 원작 순서로 들어 있다', () => {
     const kinds = INTRO.map((s) => s.kind)
     expect(kinds).toEqual([
+      'ours', // 우리 인사 — 이 세계가 무엇이고 누가 만들었는지 (`welcomeText`)
       'say', 'say', // 흐음!! 잘 왔다 / 내 이름은 마박사
       'infoMenu',
       'say', // 이 세계에는 포켓몬스터…

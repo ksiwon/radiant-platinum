@@ -2,8 +2,12 @@
 //
 // 원작에서 이 장면은 필드 스크립트가 아니라 따로 도는 응용 프로그램이다
 // (`applications/rowan_intro/rowan_intro_app.c`). 그래서 바이트코드가 없고,
-// 상태 기계를 여기 옮긴다. **글은 한 자도 짓지 않는다** — 전부 `rowan_intro`
-// 뱅크(us#389)의 45줄이고 이 파일은 그 번호만 든다.
+// 상태 기계를 여기 옮긴다. **원작의 글은 한 자도 짓지 않는다** — 전부
+// `rowan_intro` 뱅크(us#389)의 45줄이고 이 파일은 그 번호만 든다.
+//
+// 딱 하나, **맨 앞의 인사만 우리 글이다** (`welcomeText.ts`) — 이 세계가
+// 무엇이고 누가 만들었는지를 처음 시작하는 사람이 게임 안에서 듣는 유일한
+// 자리다. 그 파일 머리말이 왜 예외인지를 적는다.
 //
 // 원작 상태 이름을 그대로 남긴다(`RI_STATE_…`). 나중에 무엇을 빠뜨렸는지
 // 대조할 수 있어야 한다.
@@ -20,6 +24,8 @@ import { INTRO_TEXT } from '../../data/uiText'
 export type IntroStep =
   /** 글 한 줄. `line`은 `rowan_intro` 뱅크의 자리다 */
   | { kind: 'say'; line: number }
+  /** **우리 글**. 뱅크가 아니라 `welcomeText.ts`에서 온다 */
+  | { kind: 'ours' }
   /** 무엇을 더 알고 싶은지 (조작 · 모험 · 괜찮다) */
   | { kind: 'infoMenu' }
   /** 몬스터볼을 누르는 자리. 클릭하면 열린다 */
@@ -38,6 +44,9 @@ export type IntroStep =
  * 다룬다. 이 목록은 "무엇을 어떤 순서로"만 정한다.
  */
 export const INTRO: readonly IntroStep[] = [
+  // ⚠️ **원작의 첫 줄보다 앞이다.** 「이 세계가 무엇인가」를 「포켓몬의 세계에
+  // 오신 것을 환영합니다」보다 먼저 들어야, 원작이라고 오해할 틈이 없다
+  { kind: 'ours' },
   // RI_STATE_DIALOGUE_WELCOME · ROWAN_INTRO
   { kind: 'say', line: INTRO_TEXT.hello },
   { kind: 'say', line: INTRO_TEXT.myName },
