@@ -6,8 +6,9 @@
 //   - 기술을 고를 수 있는 턴이면 → 점수를 매겨 가장 높은 것
 //   - 쓰러져서 교체만 골라야 하면 → 다음 마리 고르기
 //
-// 원작에는 "이 판이 불리하니 교체하자"는 판단도 있다(`TrainerAI_ShouldSwitch`).
-// 그건 아직 안 옮겼다 — 지금 AI는 **쓰러지기 전에는 안 바꾼다**.
+// "이 판이 불리하니 교체하자"는 판단(`TrainerAI_ShouldSwitch`)은 `ai/switching`에
+// 있고 `sim/brain`이 `wantsSwitch`·`chooseSwitch`로 물려 준다. **여기는 그 둘을
+// 안 주면 안 바꾼다** — 시험이 기술 고르기만 보려고 부를 때가 그 자리다.
 import type { BattleAction } from '../choice'
 import { legalActions } from '../choice'
 import type { BattleRequest } from '../events'
