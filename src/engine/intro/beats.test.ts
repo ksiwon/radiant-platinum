@@ -10,23 +10,21 @@ import { INFO_CHOICES, infoLines, INTRO, RIVAL_NAME_CHOICES } from './beats'
 import { withData } from '../../data/romData.testkit'
 
 describe('인트로 박자', () => {
-  it('되묻는 자리와 이름 짓기가 원작 순서로 들어 있다', () => {
+  it('인사 한 번 하고 바로 성별·이름이다', () => {
+    // ⚠️ 마박사의 소개는 안 튼다 (`beats.ts` 머리말). 화면 쪽에는 되묻기·
+    // 몬스터볼이 그대로 남아 있으므로, **여기 목록이 곧 판정**이다
     const kinds = INTRO.map((s) => s.kind)
     expect(kinds).toEqual([
-      'ours', // 우리 인사 — 이 세계가 무엇이고 누가 만들었는지 (`welcomeText`)
-      'say', 'say', // 흐음!! 잘 왔다 / 내 이름은 마박사
-      'infoMenu',
-      'say', // 이 세계에는 포켓몬스터…
-      'pokeBall',
-      'say', // 우리 인간은 포켓몬과 사이좋게…
-      'say', // 이제 슬슬 자네에 대해…
+      'ours', // 우리 인사 — 세계의 이름 · 만든 사람 · 배포 · 비영리 (`welcomeText`)
       'gender',
       'name', // 주인공
-      'say', // 흐음… 라고 하는가! 이 소년은 자네의 친구였지?
       'name', // 라이벌
-      'say', // 이제부터 너만의 이야기가 시작된다!
       'done',
     ])
+  })
+
+  it('원작 뱅크의 말줄은 한 줄도 안 튼다', () => {
+    expect(INTRO.filter((s) => s.kind === 'say')).toHaveLength(0)
   })
 
   it('이름을 묻는 순서가 주인공 먼저다', () => {

@@ -35,6 +35,20 @@ describe('인트로 인사', () => {
     }
   })
 
+  it('만든 사람의 자리를 알려 준다', () => {
+    // 인트로에서 마박사의 소개를 걷어냈으므로(`beats.ts`), 게임 안에서 이 말을
+    // 하는 자리가 여기 하나뿐이다
+    for (const l of LOCALES) expect(introWelcome(l)).toContain('siwon.it.kr')
+  })
+
+  it('명예의 전당 뒤에 열리는 배포를 알려 준다', () => {
+    // 만든 사람이 축복시티 콘도미니엄 2층에서 일곱을 건넨다 (`world/siwonText`).
+    // 그 말을 아무 데서도 안 하면, 원작에 없는 이 이벤트는 아무도 못 찾는다
+    expect(introWelcome('ko')).toMatch(/명예의 전당/)
+    expect(introWelcome('en')).toMatch(/Hall of Fame/i)
+    expect(introWelcome('ja')).toMatch(/でんどういり/)
+  })
+
   it('비공식·비영리라는 말이 세 언어에 다 있다', () => {
     expect(introWelcome('ko')).toMatch(/비공식/)
     expect(introWelcome('ko')).toMatch(/비영리/)

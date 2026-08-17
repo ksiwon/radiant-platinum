@@ -34,10 +34,13 @@ import * as css from './intro.css'
 const NAME_MAX = 7
 
 /**
- * 라이벌이 화면에 서기 시작하는 박자.
+ * 라이벌이 화면에 서기 시작하는 박자. 그런 말줄이 없으면 −1이다.
  *
  * 「…라고 하는가! 여기 있는 이 소년은 자네의 친구였지?」(`soYoure`)가 그 자리라
- * 번호가 아니라 **그 줄을 찾아서** 정한다
+ * 번호가 아니라 **그 줄을 찾아서** 정한다. 지금 박자표에는 그 줄이 없어서
+ * (`beats.ts` — 마박사의 소개를 안 튼다) 라이벌은 제 이름을 물을 때만 선다.
+ * ⚠️ **−1을 그대로 견주면 안 된다** — 첫 박자부터 `at >= -1`이라 우리 인사에
+ * 라이벌이 서 버린다
  */
 const RIVAL_ENTERS = INTRO.findIndex(
   (s) => s.kind === 'say' && s.line === INTRO_TEXT.soYoure,
@@ -100,7 +103,7 @@ export function IntroScreen() {
       // 라이벌이 서는데, 그 앞에 박자를 하나라도 끼우면 번호가 통째로 밀린다 —
       // 실제로 우리 인사(`ours`)를 맨 앞에 넣으면서 한 칸 밀렸다. 무엇을 찍는
       // 박자인지로 판정하면 순서를 바꿔도 안 깨진다
-      (stage.kind === 'say' && stage.at >= RIVAL_ENTERS)
+      (RIVAL_ENTERS >= 0 && stage.kind === 'say' && stage.at >= RIVAL_ENTERS)
     )
       visual.show('rival')
     else visual.show('rowan')
