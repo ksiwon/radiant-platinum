@@ -503,6 +503,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 다시 세운다** — 숨김 플래그가 등장 조건이라, 먼저 세워 두면 아직 안 나올
   // 사람이 방 안에 서 있다
   const hydrated = useSaveStore((s) => s.hydrated)
+  // ⚠️ **`pendingInit`을 구독해야 한다.** `startNewGame`은 이것과 `hydrated`를
+  // 같이 세우는데, 타이틀을 띄우면서 `hydrated`는 **이미 true**다 — 의존 목록에
+  // 이것이 없으면 바뀐 값이 하나도 없어서 효과가 다시 안 돌고, 그러면 초기화
+  // 스크립트가 영영 안 돈다. 실측으로 오프닝을 지나온 뒤에도 `pendingInit`이
+  // true고 켜진 플래그가 **0개**였다(110여 개여야 한다) — 그래서 나중에 나올
+  // 사람들이 처음부터 다 서 있었다. 용식이 침실·마을·제 방에 동시에 섰다
+  const pendingInit = useSaveStore((s) => s.pendingInit)
   const [scriptsReady, setScriptsReady] = useState(false)
   useEffect(() => {
     if (!hydrated || !scriptsReady) return
@@ -515,7 +522,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       loadVars(save.vars, save.flags)
     }
     if (world.mapId >= 0) enterMap(world.mapId)
-  }, [hydrated, scriptsReady])
+  }, [hydrated, scriptsReady, pendingInit])
 
   // 러닝슈즈는 세이브에 있고 이동 시스템은 프레임 상태만 본다. 그 사이를
   // 여기서 잇는다 — 엄마가 주는 순간 다음 프레임부터 뛸 수 있어야 한다
