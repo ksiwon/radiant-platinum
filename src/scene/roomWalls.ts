@@ -43,6 +43,14 @@ const WALL_NORMAL = 0.7
 const MIN_HEIGHT = 3
 
 /**
+ * 원작 면과 같은 평면에 세울 때 방 안쪽으로 물리는 폭 (타일).
+ *
+ * 겹치면 깊이가 다투어 화면에 얼룩이 진다. 타일이 1이므로 이것은 그 50분의 1로,
+ * 눈으로는 안 보이고 사람이 지나갈 틈도 아니다 — 통행은 원작 거동값이 정한다
+ */
+const SHIFT = 0.02
+
+/**
  * 판이 맞닿은 자리의 부동소수 오차. 이보다 얇은 틈은 구멍이 아니다.
  *
  * 실측으로 제일 얇은 **진짜** 구멍이 무쇠탄갱의 0.2타일이었다 (벽이 바닥+2.8에서
@@ -180,6 +188,70 @@ function gapsOn(
   }
   if (at < hi - SEAM) out.push([at, hi])
   return out
+}
+
+/**
+ * 그 구멍 **너머에 원작 벽이 서 있는가**. 서 있으면 방의 끝은 거기다.
+ *
+ * ⚠️ **바닥이 끝났다고 다 방의 끝은 아니다.** 계단이 그렇다 — 주인공 방(맵 415)
+ * 은 원작이 `z=4` 선에 `x 6~11`, 높이 `-0.13~4.25`짜리 세로면을 세워 뒀는데,
+ * 계단이 내려가느라 그 앞 `(9,4)·(10,4)` 두 칸에 바닥 삼각형이 없다. 그것을
+ * 「바닥이 끝나는 자리」로 읽으면 **한 칸 안쪽인 `z=5`에** 바닥부터 천장까지
+ * 세우게 된다 — 계단 소품(`z 3.75~5.63`)을 가로질러 방 안으로 튀어나온 벽이다.
+ *
+ * 그렇다고 그냥 안 세우면 안 된다. 실측으로 빼 보니 1인칭 광선이 9발에서
+ * 66발로 늘고 `(9,5)` 북쪽에 빈 높이 2.38이 남았다 — 원작 세로면이 거기 있어도
+ * **안에서는 안 그려진다.** 그래서 **자리만 옮긴다**: 구멍 너머 그 선에 세운다.
+ *
+ * 한 칸만 본다. 더 멀리 보면 옆방 벽을 제 방 벽으로 오인해서 정작 뚫린 자리를
+ * 안 메운다 — 실측으로 계단은 한 칸이면 닿는다
+ */
+const REACH = 1
+
+function closedBeyond(
+  cover: Map<string, Band[]>,
+  tx: number, tz: number, dx: number, dz: number, y: number,
+): number {
+  for (let step = 1; step <= REACH; step++) {
+    const key = edgeKey(tx + dx * step, tz + dz * step, dx, dz)
+    if (kindOf(cover.get(key), y) === 'crossing') return step
+  }
+  return 0
+}
+
+/**
+ * **구멍을 방바닥으로 메운다.** 메운 칸을 돌려준다.
+ *
+ * 자리를 옮겨 세우는 것만으로는 모자랐다 — 계단 벽을 `z=5`에서 `z=4`로 물렸더니
+ * 옆벽은 `z=5`에서 시작한 채라 **모서리 `x 11 · z 4~5`가 열렸고**, 45°로 나간
+ * 광선 65발이 그리로 비껴 나갔다. 구멍을 방의 일부로 세면 옆벽이 따라 올라와
+ * 그 모서리가 닫힌다.
+ *
+ * 메우는 자리는 둘을 다 채워야 한다:
+ *
+ *   ① **구멍 너머에 원작 세로면이 선다.** 「이 구멍은 방 밖이 아니라 방 안이다」의
+ *      증거다 — 밖이라면 그 너머에 벽이 있을 까닭이 없다
+ *   ② **안쪽 모서리에는 원작 면이 하나도 없다.** 원작이 여기에 무언가 그려 뒀다면
+ *      그것이 이 자리의 생김새다. 발치에만 있는 것(단)도 그렇다 —
+ *      깨어진 세계의 뜬 발판이 그 갈래고, 그것까지 메우면 발판마다 상자가 씌워진다
+ *
+ * ②를 안 걸었을 때 실측으로 깨어진 세계 둘레의 「벽이 없는 쪽」이 174에서 189로
+ * 늘고, 27자리 전체 시점 광선이 51발에서 53발로 늘었다
+ */
+function fillHoles(floor: Map<number, number>, cover: Map<string, Band[]>): Set<number> {
+  const added = new Set<number>()
+  for (const [key, y] of [...floor]) {
+    const tx = cellX(key), tz = cellZ(key)
+    for (const [dx, dz] of SIDES) {
+      const at = cellKey(tx + dx, tz + dz)
+      if (floor.has(at) || added.has(at)) continue
+      if (kindOf(cover.get(edgeKey(tx, tz, dx, dz)), y) !== 'none') continue
+      if (closedBeyond(cover, tx, tz, dx, dz, y) === 0) continue
+      added.add(at)
+      floor.set(at, y)
+    }
+  }
+  return added
 }
 
 /** 베낄 벽 삼각형 하나. UV 평면까지 펴 둔다 (`plates.FloorTri`와 같은 꼴) */
@@ -340,6 +412,7 @@ export function roomWalls(
 ): RoomWalls | null {
   const { floor, cover, tris, top } = survey(split)
   if (floor.size === 0 || tris.length === 0) return null
+  const holes = fillHoles(floor, cover)
 
   const bucket = new Map<number, {
     position: number[]; uv: number[]; color: number[]; normal: number[]
@@ -374,9 +447,21 @@ export function roomWalls(
     const tx = cellX(key), tz = cellZ(key)
     for (const [dx, dz] of SIDES) {
       if (floor.has(cellKey(tx + dx, tz + dz))) continue
+      /**
+       * 메운 구멍의 바깥쪽은 **원작 세로면이 있어도 세운다.**
+       *
+       * 거기 원작 면이 있다는 것은 `fillHoles`가 이미 확인한 사실이다. 그런데도
+       * 방 안에서 보면 뚫려 있었다 — 실측으로 계단 자리를 안 세워 봤더니 1인칭
+       * 광선이 9발에서 66발로 늘었다. 그 면은 있어도 **안에서는 안 그려진다.**
+       * 같은 평면이 되므로 방 안쪽으로 `SHIFT`만큼 물려 깊이 다툼을 피한다
+       */
+      const filled = holes.has(key)
+      const back = filled ? SHIFT : 0
       // 이 **모서리**를 세로 면이 어디까지 덮는가. 안 덮인 띠만 메운다
-      const key = edgeKey(tx, tz, dx, dz)
-      const gaps = gapsOn(cover.get(key), y, top, besideKeys(key).some(stands))
+      const edge = edgeKey(tx, tz, dx, dz)
+      const gaps = filled
+        ? [[y, y + Math.max(MIN_HEIGHT, top - y)] as Band]
+        : gapsOn(cover.get(edge), y, top, besideKeys(edge).some(stands))
       if (gaps.length === 0) continue
       // 출입구는 비운다 — 막으면 못 나가고 문이 벽으로 덮인다
       if (door(tx + origin.x, tz + origin.z)) continue
@@ -393,12 +478,14 @@ export function roomWalls(
       //
       // 아랫변 방향을 `d = p1 - p0`라 하면 기하 법선이 `(-d.z, 0, d.x)`이므로,
       // 안쪽 `(-dx, 0, -dz)`와 같으려면 **`d = (-dz, 0, dx)`** 여야 한다
+      const lineX = tx + (dx > 0 ? 1 : 0) - dx * back
+      const lineZ = tz + (dz > 0 ? 1 : 0) - dz * back
       const [p0x, p0z] = dx !== 0
-        ? [tx + (dx > 0 ? 1 : 0), tz + (dx > 0 ? 0 : 1)]
-        : [tx + (dz > 0 ? 1 : 0), tz + (dz > 0 ? 1 : 0)]
+        ? [lineX, tz + (dx > 0 ? 0 : 1)]
+        : [tx + (dz > 0 ? 1 : 0), lineZ]
       const [p1x, p1z] = dx !== 0
-        ? [tx + (dx > 0 ? 1 : 0), tz + (dx > 0 ? 1 : 0)]
-        : [tx + (dz > 0 ? 0 : 1), tz + (dz > 0 ? 1 : 0)]
+        ? [lineX, tz + (dx > 0 ? 1 : 0)]
+        : [tx + (dz > 0 ? 0 : 1), lineZ]
       const bin = into(src.group)
       // ⚠️ **UV는 베껴 온 벽의 자리로 되짚는다.** 목표 칸 좌표를 그대로 넣으면
       // 그 벽에서 멀어진 만큼 UV가 타일을 벗어나 가장자리 텍셀로 눌린다.

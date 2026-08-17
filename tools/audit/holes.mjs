@@ -452,6 +452,15 @@ const inspect = (want) => page.evaluate(async ([doWalls, doFloors]) => {
           const edge = edgeOf(tx, tz, dx, dz)
           const gap = gapOf(walled.get(edge), floorY.get(key))
           if (gap <= SEAM) continue
+          /**
+           * ⚠️ **벽이 이 모서리에 서 있어야만 닫히는 것은 아니다.** 계단이
+           * 그렇다 — 주인공 방(415)은 `(9,4)·(10,4)`가 계단이라 바닥 삼각형이
+           * 없고, 방 벽은 그 **너머** `z=4`에 선다. 여기만 보면 `(9,5)` 북쪽이
+           * 뚫린 것으로 찍히는데, 실제 광선은 한 발도 안 샌다(시점 검사 9발은
+           * 이 자리와 무관한 북서쪽이다). `roomWalls.closedBeyond`와 같은
+           * 잣대로 한 칸 너머까지 본다
+           */
+          if (gapOf(walled.get(edgeOf(tx + dx, tz + dz, dx, dz)), floorY.get(key)) <= SEAM) continue
           if (doors.has(key)) { doorway++; continue }
           if (kinds.get(edge) === 'foot' && !besides(edge).some(stands)) { ledge++; continue }
           open++
