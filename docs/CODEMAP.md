@@ -39,7 +39,7 @@
 
 | 폴더 | 기대는 것 | 안 기대는 것 |
 |---|---|---|
-| `src/engine/` | 값과 표뿐. 순수 함수 | 스토어 (0파일). ⚠️ **three는 다섯 곳만** — 카메라·이동·주인공 셋과 모델 정규화다. 벡터 계산이 실제로 three의 것이라 그렇고, 그 밖은 안 쓴다 |
+| `src/engine/` | 값과 표뿐. 순수 함수 | zustand 스토어 (0파일). ⚠️ **`state/worldState`만 예외** — 프레임 상태 mutable 싱글톤이라 열 곳이 직접 읽고 쓴다. ⚠️ **three는 여섯 곳만** — 카메라·이동·깨어진 세계 표면·주인공 넷과 모델 둘(정규화·치비)이다. 벡터 계산이 실제로 three의 것이라 그렇고, 그 밖은 안 쓴다 |
 | `src/state/` | zustand 스토어. 엔진을 부른다 | React (0파일). three는 `worldState` 하나 — 주인공 좌표가 실제로 벡터다 |
 | `src/scene/` | three·R3F 씬과 시스템. 스토어를 읽고 쓴다 | — |
 | `src/ui/` | React 화면. 스토어를 읽고 쓴다 | three (0파일 — 씬이 따로 그린다) |
@@ -63,6 +63,7 @@
 | 개체·진화·번식·능력치 | `engine/pokemon/` |
 | 가방·도구 쓰기 | `engine/bag/` (무엇을 할지) · `ui/menu/itemAction.ts` (실제로 밟기) |
 | 맵·격자·워프 | `engine/map/` · `scene/` |
+| 사람 모델을 세우는 비율 | `engine/model/` — `normalize.ts`가 키를 맞추고, `chibi.ts`가 배틀 몸이 없어 필드 번들로 서는 열일곱의 머리·손을 줄인다 (DATA §2.16) |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
 | **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
 | **통신을 닫아 둔 자리** | `engine/world/comm.ts` — 「안 된다」의 값 한 벌. 왜 문을 안 잠그고 답을 하는지는 [PARITY](PARITY.md) §9.4 |

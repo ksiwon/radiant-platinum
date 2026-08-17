@@ -24,7 +24,7 @@
 export const TITLE_SONG = 1173
 
 /**
- * 나무박사 인트로의 곡 (`SEQ_OPENING`).
+ * 마박사 인트로의 곡 (`SEQ_OPENING`).
  *
  * `rowan_intro_app.c`가 `Sound_SetSceneAndPlayBGM(SOUND_SCENE_2, SEQ_OPENING, 1)`을
  * 부른다. 같은 셈으로 `sdat.txt` 1084줄 − 55 = 1029이고 `SYMB`도 1029를

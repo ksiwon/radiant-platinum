@@ -2323,7 +2323,7 @@ BDSP 단위 하나가 우리 타일 1.019다 (`engine/model/normalize`).
 `.dae` 몸은 **개발 기계에서만 서 있었고 사용자는 한 번도 못 봤다.** 개발과
 배포가 다른 몸을 보고 있으면 자세 상수가 어느 쪽에 맞는지 알 수 없다 —
 실제로 팔 내림이 그 몸에 맞춰져 있어서, 배포판에서는 팔이 옆구리를 파고들었다
-(§4.2.2). `.dae` 길은 은퇴했고 `raw/models/`도 안 쓴다.
+(DEPLOY.md §5.3 ⑩). `.dae` 길은 은퇴했고 `raw/models/`도 안 쓴다.
 
 ⚠️ 스킨드 메시는 `Object3D.clone()`으로 복제하면 안 된다 — 뼈가 원본을 가리켜서
 여럿이 **같은 자세로 함께** 움직인다. `SkeletonUtils.clone`이 뼈까지 새로 짓는다.
@@ -3089,7 +3089,7 @@ SDAT의 `SYMB`가 1116을 `SEQ_BA_POKE`, 1119를 `SEQ_BA_TRAIN`이라 부르고 
 야생 포켓몬이 나올 때마다 보스 곡이 흐를 뻔했다.
 
 맵이 없는 화면은 원작 코드가 곡을 부른다. 타이틀은 `title_screen.c`의
-`Sound_SetSceneAndPlayBGM(SOUND_SCENE_TITLE_SCREEN, SEQ_TITLE01, 1)`이고 나무박사
+`Sound_SetSceneAndPlayBGM(SOUND_SCENE_TITLE_SCREEN, SEQ_TITLE01, 1)`이고 마박사
 인트로는 `rowan_intro_app.c`의 `SEQ_OPENING`이다. 번호는 `sdat.txt`가 색인보다
 줄 번호가 55 큰 것으로 풀린다(`SEQ_OPENING` 1084/1029 · `SEQ_OPENING2` 1153/1098 ·
 `SEQ_TITLE00` 1227/1172로 셋 다 55) — **`SEQ_TITLE01` = 1173 · `SEQ_OPENING` = 1029**이고

@@ -125,7 +125,7 @@ export function IntroScreen() {
   const holding = useRef(false)
 
   /**
-   * 나무박사의 인트로 곡 (`SEQ_OPENING`).
+   * 마박사의 인트로 곡 (`SEQ_OPENING`).
    *
    * 원작 `rowan_intro_app.c`가 `Sound_SetSceneAndPlayBGM(SOUND_SCENE_2,
    * SEQ_OPENING, 1)`을 부른다. **여기서 안 갈아타면 타이틀 곡이 그대로
