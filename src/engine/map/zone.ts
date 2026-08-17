@@ -80,6 +80,21 @@ export const Behavior = {
   JUMP_TWICE_SOUTH: 0x005b,
   JUMP_TWICE_WEST: 0x005c,
   JUMP_TWICE_EAST: 0x005d,
+  /**
+   * **밟으면 도는 판** (`TILE_BEHAVIOR_SLIDE_*`, `actor/slidePanel`).
+   *
+   * 골풀무제철소 한 맵에만 깔려 있다. 밟으면 그 판이 가리키는 쪽으로 한 칸씩
+   * 밀리고 **몸이 90도씩 돈다** — 멈추는 자리의 거동값이 다음 방향을 정하므로
+   * 판을 이어 붙여 길을 만든다 (`ov5_021E1154.c`).
+   *
+   * ⚠️ **차례가 이름 그대로다** — 거동표에서 `SLIDE_EASTWARD` · `WESTWARD` ·
+   * `NORTHWARD` · `SOUTHWARD` 순으로 붙어 있다 (`map_tile_behaviors.h:75`).
+   * 방위 차례(북·남·서·동)가 아니라 **표의 차례**라, 산술로 짐작하면 어긋난다
+   */
+  SLIDE_EAST: 0x0040,
+  SLIDE_WEST: 0x0041,
+  SLIDE_NORTH: 0x0042,
+  SLIDE_SOUTH: 0x0043,
 } as const
 
 /**

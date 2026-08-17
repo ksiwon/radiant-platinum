@@ -4,7 +4,8 @@ import { worldState } from '../../state/worldState'
 import { activeZone, isOnWater } from '../map/zone'
 import { MapGrid } from '../map/grid'
 import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
-import { clearIceSlide, iceStep, type IceView } from './ice'
+import { clearIceSlide, iceStep, isSliding, type IceView } from './ice'
+import { clearPanelSlide, panelStep } from './slidePanel'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
@@ -179,6 +180,23 @@ export const playerSystem = {
       if (slid !== null) p.velocity.set(slid.vx, 0, slid.vz)
     } else {
       clearIceSlide()
+    }
+
+    /**
+     * **밟으면 도는 판** (PARITY §1.30 · `ov5_021E1154`).
+     *
+     * 골풀무제철소 한 맵뿐이라 얼음 뒤에 둔다 — 두 거동값이 한 칸에 같이 있는
+     * 자리는 없다. 얼음과 달리 **몸이 진행 방향과 따로 돈다**, 그래서 속도만
+     * 갈아 끼우는 것이 아니라 얼굴도 여기서 정한다
+     */
+    if (activeZone.grid && !isSliding()) {
+      const spun = panelStep(iceView, p.position, WALK_SPEED)
+      if (spun !== null) {
+        p.velocity.set(spun.vx, 0, spun.vz)
+        p.facing = spun.facing
+      }
+    } else if (!activeZone.grid) {
+      clearPanelSlide()
     }
 
     const grid = activeZone.grid
