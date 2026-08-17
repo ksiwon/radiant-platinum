@@ -77,7 +77,7 @@
     "extract:hiddenItems": "node tools/extract/hiddenItems.js",
     "extract:berries": "node tools/extract/berries.js",
     "extract:moveAnim": "node tools/extract/moveAnim.js",
-    "extract:distortionProps": "node tools/extract/distortionProps.js",
+    "extract:distortionProps": "node --experimental-strip-types tools/extract/distortionProps.mjs",
     "extract:distortion": "node tools/extract/distortion.js",
     "extract:pokedexSort": "node tools/extract/pokedexSort.js",
     "extract:pokedexHabitat": "node tools/extract/pokedexHabitat.js",

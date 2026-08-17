@@ -27,6 +27,7 @@ import { convertBoxWallpapers } from './boxWallpapers'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
 import { convertStarterScene } from './starterScene'
+import { convertDistortionProps } from './distortionProps'
 import { convertTrainers } from './trainers'
 import { convertTrainerSprites } from './trainerSprites'
 import { convertSpawns } from './spawns'
@@ -273,6 +274,18 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/starter/{번호}.bin', 'data/starter/{번호}.png', 'data/starter/index.json'],
     converter: 1,
     convert: convertStarterScene,
+  },
+  {
+    // ⚠️ **이름만 깨어진 세계다.** 필드 이펙트 아카이브의 소품 서른아홉이고,
+    // 깨어진 세계 발판·장막 체육관 샌드백·나무열매 밭 흙·안 그려지던 물체 열
+    // 종이 다 여기서 온다 (`fldeffProps.ts`)
+    name: 'distortionProps',
+    outputs: [
+      'data/distortionProps/{종류}.bin', 'data/distortionProps/{종류}.png',
+      'data/distortionProps/index.json',
+    ],
+    converter: 1,
+    convert: convertDistortionProps,
   },
   {
     name: 'pokegra',

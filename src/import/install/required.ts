@@ -32,6 +32,9 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'poketchMap', // 포켓치 지도 화면과 액정 팔레트
   'signposts',  // 마을 이름표·도로 표지판 그림
   'starterScene', // 파트너 고르는 장면. 새 게임이 여기서 막힌다
+  // ⚠️ **없으면 깨어진 세계를 못 지난다.** 그 세계의 발판은 지형이 아니라
+  // 소품이라, 이 그룹이 비면 밟아야 할 판이 하나도 안 보인다 (PARITY §6.10)
+  'distortionProps',
   'trainerSprites', // 트레이너 그림. 명예의 전당이 주인공을 여기서 꺼낸다
 ] as const
 

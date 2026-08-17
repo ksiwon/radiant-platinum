@@ -59,17 +59,22 @@ withManifest('에셋 목차', () => {
   it('그룹마다 다시 만드는 명령이 실제로 있다', () => {
     expect(groups.length).toBeGreaterThan(20)
     for (const [name, g] of groups) {
-      const pnpm = /^pnpm ([\w:]+)$/.exec(g.make)
-      if (pnpm) {
-        // ⚠️ 없는 스크립트를 적어 두면 그게 제일 나쁘다 — 시키는 대로 쳤는데
-        // "command not found"가 나면 자료를 만드는 길이 있는지조차 알 수 없다
-        expect(pkg.scripts, `${name}: ${g.make}`).toHaveProperty(pnpm[1]!)
-        continue
+      // ⚠️ **한 그룹이 명령 둘일 수 있다** — `pokemon3d`가 본체와 이로치·여성
+      // 개체를 따로 굽는다. `&&`로 이은 것을 통째로 정규식에 물리면 못 읽고
+      // 「도구 경로가 없다」로 떨어진다. **토막마다** 본다
+      for (const step of g.make.split('&&').map((s) => s.trim()).filter(Boolean)) {
+        const pnpm = /^pnpm ([\w:]+)$/.exec(step)
+        if (pnpm) {
+          // ⚠️ 없는 스크립트를 적어 두면 그게 제일 나쁘다 — 시키는 대로 쳤는데
+          // "command not found"가 나면 자료를 만드는 길이 있는지조차 알 수 없다
+          expect(pkg.scripts, `${name}: ${step}`).toHaveProperty(pnpm[1]!)
+          continue
+        }
+        // 파이썬·node 직접 호출. 첫 번째 `tools/…` 조각이 실재해야 한다
+        const file = step.split(' ').find((w) => w.startsWith('tools/'))
+        expect(file, `${name}: ${step}에 도구 경로가 없다`).toBeDefined()
+        expect(() => statSync(resolve(ROOT, file!)), `${name}: ${file!}`).not.toThrow()
       }
-      // 파이썬·node 직접 호출. 첫 번째 `tools/…` 조각이 실재해야 한다
-      const file = g.make.split(' ').find((w) => w.startsWith('tools/'))
-      expect(file, `${name}: ${g.make}에 도구 경로가 없다`).toBeDefined()
-      expect(() => statSync(resolve(ROOT, file!)), `${name}: ${file!}`).not.toThrow()
     }
   })
 

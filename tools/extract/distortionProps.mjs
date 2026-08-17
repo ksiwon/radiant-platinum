@@ -1,118 +1,32 @@
-// 깨어진 세계의 소품 모델 (PARITY §6.10) — `/data/mmodel/fldeff.narc`
+// 필드 이펙트 소품 모델 — 노드 쪽 (PARITY §6.10 · §1.27 · §4.6)
 //
-// 이 세계의 「블록」은 지형이 아니라 **소품**이다. 판 위를 걷는 통행 자료는
-// `tw_arc_attr`가 주지만, 눈에 보이는 발판·바위·덩굴은 필드 이펙트 아카이브의
-// NSBMD 스물다섯 개다. 어느 종류가 몇 번인지는 오버레이의 표가 정한다
-// (`sProp3DModelNARCIndexByKind`, `ov9_02249960.c`).
+//     node --experimental-strip-types tools/extract/distortionProps.mjs
 //
-// ⚠️ **이게 없으면 판이 안 보인다.** 밟으면 나타나야 할 발판이 상태로만 켜지고
-// 화면에는 아무 일도 안 일어나서, 허공을 걷다가 길을 잃는다. 실제로 그랬다.
+// `/data/mmodel/fldeff.narc`의 NSBMD 서른아홉 칸을 굽는다. 어느 종류가 몇
+// 번이고 어디에 서는지는 **여기서 다시 적지 않는다** — 브라우저 변환기
+// (`src/import/platinum/distortionProps.ts`)와 같은 표를 봐야 개발 서버와
+// 설치본이 안 갈린다. 그 표가 `import/platinum/fldeffProps.ts`고, 노드가
+// 타입만 벗겨 준다.
 //
 // 굽는 형식은 건물 소품과 같은 `PT3C`다 (`props.js`) — 읽는 쪽이 하나면 된다.
-'use strict'
-const fs = require('fs')
-const path = require('path')
+import { createRequire } from 'node:module'
+import fs from 'node:fs'
+import path from 'node:path'
+import { PROP_MODEL_INDEX, PROP_POS_OFFSET } from '../../src/import/platinum/fldeffProps.ts'
+
+const require = createRequire(import.meta.url)
 const { openRom, writeJson, ROOT } = require('./rom')
 const { readDict, parseModel, parsePolygons } = require('../spike/nsbmd')
-const { parseTex0, decode } = require('../spike/nitrotex')
+const { parseTex0, decode } = require('./../spike/nitrotex')
 const { readSbc, parseMaterials, buildMesh, VERTEX_BYTES, POS_SCALE } = require('./chunks')
 const { encodePng } = require('./png')
 
 const SHEET_WIDTH = 256
 
-/**
- * 소품 종류 → `fldeff.narc` 파일 번호.
- *
- * `sProp3DModelNARCIndexByKind`를 그대로 옮긴 것이다. 색인이 종류 번호고
- * (`tw_arc`의 소품 기록이 그 번호를 든다), 값이 아카이브 자리다
- */
-const MODEL_INDEX = [
-  0x7c, // 0  작은 발판
-  0x7d, // 1  떠 있는 푸른 바위
-  0x7e, // 2  중간 승강 발판 1
-  0x7f, // 3  중간 승강 발판 2
-  0x80, // 4  중간 승강 발판 (남서)
-  0x81, // 5  중간 움직이는 발판 1
-  0x82, // 6  중간 움직이는 발판 2
-  0x83, // 7  중간 승강 발판 3
-  0x84, // 8  큰 승강 발판 1
-  0x85, // 9  중간 승강 발판 4
-  0x86, // 10 가로 발판 1
-  0x87, // 11 세로 발판 1
-  0x88, // 12 세로 발판 2
-  0x89, // 13 가로 발판 2
-  0x8a, // 14 돌린 발판 (동)
-  0x8b, // 15 돌린 발판 (서)
-  0x8c, // 16 큰 승강 발판 2
-  0x8d, // 17 큰 승강 발판 3
-  0x8e, // 18 큰 승강 발판 4
-  0x8f, // 19 중간 승강 발판 5
-  0x90, // 20 기라티나 그림자
-  0x91, // 21 폭포
-  0x92, // 22 덩굴꽃
-  0x93, // 23 바위
-  0x94, // 24 문
-  // ⚠️ **아래 셋은 깨어진 세계 것이 아니다.** 장막시티 체육관의 샌드백과
-  // 타이어 더미인데(`sVeilstoneGymObjectModelIDs`) 같은 `fldeff.narc`에 있고
-  // 굽는 길도 같아서 여기 이어 붙인다 — 그 방만을 위해 파이프라인을 하나 더
-  // 만들 이유가 없다. `MODEL_IDX_*` 차례 그대로다
-  112, // 25 무너진 타이어 더미
-  114, // 26 서 있는 타이어 더미
-  113, // 27 샌드백
-  // ⚠️ **나무열매 밭의 흙**도 여기 붙인다 (PARITY §4.6). 밭 객체 118개의
-  // 그림 번호는 100(`OBJ_EVENT_GFX_BERRY_SOIL`)인데 판때기가 아니라 3D 모델이라
-  // `mmodel.narc`가 아니라 이 아카이브에 있다 — 원작도 필드 이펙트 17번을
-  // 통째로 읽어 세운다 (`BerryPatchManager_Init3DRendering`)
-  17, // 28 나무열매 밭의 흙
-]
+/** 표 둘은 브라우저 변환기와 같은 자리에서 온다 */
+const MODEL_INDEX = PROP_MODEL_INDEX
+const POS_OFFSET = PROP_POS_OFFSET
 
-/**
- * 종류마다의 **자리 보정** (`sPropInitialPosOffsetByKind`), 타일 단위.
- *
- * 원작이 소품을 세울 때 좌표를 칸 한가운데(`MAP_OBJECT_COORD_CENTER_TO_FX32`,
- * 곧 `+0.5`)로 잡은 다음 이 값을 더한다. 원본은 고정소수점이고 한 타일이
- * `FX32_ONE * 16`이라 16으로 나눈 값을 적는다 — 예를 들어 `-FX32_ONE * 25`가
- * −25/16 = −1.5625다.
- *
- * ⚠️ **빼먹으면 소품이 한 칸 위에 뜬다.** 작은 발판(0)의 모델은 제 원점에서
- * 위로 1타일까지 올라가는데, y가 `+0.5 − 1.5625`라 윗면이 정확히 「선 높이 −
- * 1/16」에 온다. 보정을 안 하면 그 윗면이 발보다 한 칸 넘게 높아서, 걷는
- * 사람이 발판 **속**을 지나간다. 실제로 그랬다
- */
-const POS_OFFSET = [
-  [0, -25 / 16, -6 / 16], // 0  작은 발판
-  [0, -25 / 16, -6 / 16], // 1  떠 있는 푸른 바위
-  [0, -25 / 16, -6 / 16], // 2  중간 승강 발판 1
-  [0, -25 / 16, -6 / 16], // 3  중간 승강 발판 2
-  [0, -25 / 16, -6 / 16], // 4  중간 승강 발판 (남서)
-  [0, -25 / 16, -6 / 16], // 5  중간 움직이는 발판 1
-  [0, -25 / 16, -6 / 16], // 6  중간 움직이는 발판 2
-  [0, -25 / 16, -6 / 16], // 7  중간 승강 발판 3
-  [-8 / 16, -25 / 16, 2 / 16], // 8  큰 승강 발판 1
-  [0, -25 / 16, -6 / 16], // 9  중간 승강 발판 4
-  [0, -25 / 16, -6 / 16], // 10 가로 발판 1
-  [0, -25 / 16, -6 / 16], // 11 세로 발판 1
-  [0, -25 / 16, -6 / 16], // 12 세로 발판 2
-  [0, -25 / 16, -6 / 16], // 13 가로 발판 2
-  [0, -25 / 16, -6 / 16], // 14 돌린 발판 (동)
-  [0, -25 / 16, -6 / 16], // 15 돌린 발판 (서)
-  [-8 / 16, -25 / 16, 2 / 16], // 16 큰 승강 발판 2
-  [0, -25 / 16, -6 / 16], // 17 큰 승강 발판 3
-  [-8 / 16, -25 / 16, 10 / 16], // 18 큰 승강 발판 4
-  [0, -25 / 16, -6 / 16], // 19 중간 승강 발판 5
-  [0, -2, -6 / 16], // 20 기라티나 그림자
-  [0, -2, -6 / 16], // 21 폭포
-  [0, -2, -6 / 16], // 22 덩굴꽃
-  [0, -2, -6 / 16], // 23 바위
-  [0, -14 / 16, 8 / 16], // 24 문
-  // 장막시티 체육관 셋은 원작이 소품이 아니라 **지도 객체**로 세워서
-  // `sPropInitialPosOffsetByKind`에 자리가 없다. 칸 한가운데 그대로다
-  [0, 0, 0], // 25 무너진 타이어 더미
-  [0, 0, 0], // 26 서 있는 타이어 더미
-  [0, 0, 0], // 27 샌드백
-  // 흙도 지도 객체 자리에 그대로 선다 — 칸 한가운데다
-  [0, 0, 0], // 28 나무열매 밭의 흙
-]
 
 function pack(items) {
   const sorted = [...items].sort((a, b) => b.height - a.height || b.width - a.width)
