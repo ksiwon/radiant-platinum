@@ -43,7 +43,7 @@ const GAP = 0.15
  * 아래쪽만 차지한다 — 원작 판때기 그림을 재면 위쪽 네 줄이 늘 비어 있어서,
  * 32짜리는 28텍셀이 몸이다
  */
-function spriteHeight(gfx: number): number {
+export function spriteHeight(gfx: number): number {
   return ((npcSprite(gfx)?.h ?? TEXELS_PER_TILE) - SPRITE_HEADROOM) / TEXELS_PER_TILE
 }
 
