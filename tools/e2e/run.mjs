@@ -1217,7 +1217,23 @@ await ((haveRom && haveBdsp) ? run : () => {})(
         for (let d = 0; d < choices - 1; d++) await page.keyboard.press('ArrowDown')
         await page.waitForTimeout(80)
       }
-      await page.keyboard.press('Space')
+      // ⚠️ **톡톡 두드리면 안 된다 — 누르고 있어야 한다.** 인쇄기는 누르고
+      // 있는 동안 글자 사이 대기를 0으로 만든다(`speedUp`). 두드리기만 하면
+      // 한 걸음이 글자 몇 개고, 그러면 **걸음 수가 그 언어의 글자 수**가 된다:
+      // 실측으로 같은 오프닝이 한국어 176걸음 · 일본어 208 · **영어 396**이었다
+      // (영어 뱅크가 2,990자로 한국어 1,401자의 2.1배다. 쪽 수는 79·79·80으로
+      // 셋이 같다 — 갈리는 것은 길이뿐이다). 아래 400은 **되돌아오는 고리**를
+      // 잡으려고 둔 값인데, 그 값이 언어를 타면 고리가 아니라 번역 길이를 잰다.
+      // 다 찍힐 때까지 누르고 있으면 걸음이 쪽 수가 되어 43·59·45로 모인다
+      await page.keyboard.down('Space')
+      let printed = ''
+      for (let w = 0; w < 10; w++) {
+        await page.waitForTimeout(100)
+        const now = await page.locator('body').innerText().catch(() => '')
+        if (now === printed) break
+        printed = now
+      }
+      await page.keyboard.up('Space')
       await page.waitForTimeout(120)
     }
     if (new URL(page.url()).pathname !== '/play') {

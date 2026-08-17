@@ -6,6 +6,8 @@ import {
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { NO_SCRIPT, quarterOf, talkTile } from '../engine/map/world'
+import { isGameActive, isUiCaptured } from '../engine/input/keys'
+import { scriptBusy } from '../engine/script/field'
 import { npcActors } from '../engine/actor/npcs'
 import { worldState } from '../state/worldState'
 import { npcBodyHeight } from './NpcModels'
@@ -97,6 +99,13 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
     const show = (on: boolean, breath = 1): void => {
       if (art.current) art.current.visible = on
       if (glow.current) glow.current.intensity = on ? GLOW * breath : 0
+    }
+    // ⚠️ **이미 이야기 중이면 안 밝아진다.** 「말을 걸 수 있다」는 아직 안 걸었을
+    // 때만 할 말이다 — 대사창이 뜬 뒤에도 켜 두면 창 뒤에서 사람이 계속 빛나고,
+    // 눈이 마주쳐 저쪽이 걸어오는 동안에도 켜진다. 배틀·메뉴가 덮은 동안도 같다
+    if (!isGameActive() || isUiCaptured() || scriptBusy()) {
+      show(false)
+      return
     }
     const player = worldState.player
     const moving = Math.hypot(player.velocity.x, player.velocity.y, player.velocity.z) > 0.04
