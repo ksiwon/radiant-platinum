@@ -1216,9 +1216,23 @@ function trySight(): void {
   lastSightTile = { x, z }
 
   const seen = trainerInSight(
-    npcActors.list.map((a) => ({ npc: a.info, facing: a.dir })),
+    // ⚠️ **배치표가 아니라 지금 선 칸이다** (`MapObject_GetX`). 순회·배회
+    // 유형은 걸어 다니므로 처음 섰던 자리에 없다 — 217번도로 아홉 중 넷이
+    // 30칸 넘게 떠나 있었고, 그 넷은 배치표 자리에서 허공을 보고 있었다.
+    // 칸 사이를 걷는 중이면 반올림한다(`ambient`의 `partnerTile`과 같은 규약)
+    npcActors.list.map((a) => ({
+      npc: a.info, x: Math.round(a.x), z: Math.round(a.z), facing: a.dir, y: a.y,
+    })),
     x, z,
-    { blocked: (bx, bz) => grid.isBlocked(bx, bz) },
+    {
+      // 지형·물체·사람이 다 막는다 (`sub_02063E94`의 1·2번 비트)
+      blocked: (bx, bz) => grid.isBlocked(bx, bz)
+        || obstacleAt(bx, bz) !== null
+        || npcActors.list.some((a) =>
+          a.visible && Math.round(a.x) === bx && Math.round(a.z) === bz),
+      // 높이 자료가 없는 맵이면 단차도 없다 — `from`을 그대로 돌려 차를 0으로 만든다
+      heightAt: (bx, bz, from) => grid.heightAtWorld(bx + 0.5, bz + 0.5, from) ?? from,
+    },
     // ⚠️ **이미 이긴 트레이너는 안 덤빈다.** 원작이 `Script_IsTrainerDefeated`로
     // 거른다 — 이게 없으면 이긴 사람 앞을 지날 때마다 다시 싸우게 된다.
     // 배틀 스크립트가 아닌 사람(3000 미만)은 애초에 트레이너가 아니다

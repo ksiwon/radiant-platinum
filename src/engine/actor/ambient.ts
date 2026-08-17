@@ -12,7 +12,7 @@
 //
 //   look    n프레임 기다렸다 정해진 방향 중 아무 쪽이나 **돌아본다**
 //   wander  기다렸다 아무 쪽이나 골라 **한 칸 걷는다**. 막히면 돌기만 한다
-//   face    시작 방향만 본다 — 할 일이 없다
+//   face    세우자마자 **한 번** 그쪽으로 돌아서고 그 뒤로는 아무것도 안 한다
 //   rotate  24프레임마다 시계/반시계로 한 칸씩 돈다
 //   spin    같은 회전인데 **시작 방향에 닿으면 반대로 돈다** (VS시커에 응한 사람)
 //   pace    시작 방향으로 걷다 막히면 되돌아온다
@@ -98,8 +98,13 @@ export const npcAmbient = {
       if (!actor.visible) continue
       const type = npcAmbient.types[actor.movementType]
       if (type === undefined) continue
-      // 변장은 **가만히 있는 것**이 하는 일의 전부다 — 굴릴 것이 없다
-      if (type.kind === 'other' || type.kind === 'face' || type.kind === 'disguise') continue
+      // 변장은 **가만히 있는 것**이 하는 일의 전부다 — 굴릴 것이 없다.
+      //
+      // ⚠️ **`face`는 여기서 빠지면 안 된다.** 「서쪽을 본다」 유형은 세우면서
+      // 한 번 돌려세우는 일이 있다 (`sub_02064918`이 `MapObject_TryFace`를
+      // 부른다) — 배치표의 방향과 다른 사람이 519명 중 12명이고, 빼 두면 그
+      // 열둘이 엉뚱한 쪽을 보고 서서 시선이 안 걸린다
+      if (type.kind === 'other' || type.kind === 'disguise') continue
       stepActor(actor, type)
     }
   },
@@ -223,6 +228,16 @@ function stepActor(actor: NpcActor, type: MovementType): void {
 
   const dirs = type.dirs ?? []
   switch (type.kind) {
+    // `MapObject_TryFace` — **한 번만 돈다.** 원작도 상태를 하나 올려 두 번째
+    // 프레임부터는 빈 갈래로 빠진다. 매 프레임 돌려세우면 스크립트가
+    // `ApplyMovement`로 돌려놓은 얼굴을 곧바로 도로 뺏는다
+    case 'face': {
+      if (state.index !== 0) return
+      state.index = 1
+      const dir = dirs[0]
+      if (dir !== undefined) actor.dir = dir
+      return
+    }
     case 'look': {
       state.wait = pick(npcAmbient.delays) ?? 16
       const dir = pick(dirs)

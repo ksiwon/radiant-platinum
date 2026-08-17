@@ -106,11 +106,32 @@ maybe('혼자 하는 짓', () => {
     expect(npcAmbient.types[TYPE.route]).toMatchObject({ kind: 'route', dirs: [0, 3, 2, 1] })
   })
 
-  it('한 쪽만 보는 사람은 아무것도 안 한다', () => {
+  it('한 쪽만 보는 사람은 걷지 않는다', () => {
     const npc = actor(TYPE.lookSouth, 3, 3, 1)
     npcActors.list = [npc]
     run(200)
     expect({ x: npc.x, z: npc.z, dir: npc.dir }).toEqual({ x: 3, z: 3, dir: 1 })
+  })
+
+  // ⚠️ **이 갈래를 통째로 건너뛰고 있었다.** 「할 일이 없다」로 봤는데
+  // 원작은 세우면서 `MapObject_TryFace`를 한 번 부른다 — 배치표의 방향이
+  // 유형과 다른 사람이 655명 중 14명이고, 그 열넷이 엉뚱한 쪽을 보고 서 있었다.
+  // 트레이너면 그대로 시선이 안 걸린다 (`actor/sight`)
+  it('⚠️ 배치 방향이 유형과 다르면 세우면서 돌려세운다 (`MapObject_TryFace`)', () => {
+    const npc = actor(TYPE.lookSouth, 3, 3, 2) // 서쪽을 보고 서 있다
+    npcActors.list = [npc]
+    run(1)
+    expect(npc.dir).toBe(1)
+  })
+
+  it('돌려세우는 것은 **한 번뿐이다** — 스크립트가 돌려놓은 얼굴을 안 뺏는다', () => {
+    const npc = actor(TYPE.lookSouth, 3, 3, 2)
+    npcActors.list = [npc]
+    run(1)
+    // 스크립트가 `ApplyMovement`로 북쪽을 보게 했다고 하자
+    npc.dir = 0
+    run(200)
+    expect(npc.dir).toBe(0)
   })
 
   it('두리번거리는 사람은 제자리에서 방향만 바꾼다', () => {
