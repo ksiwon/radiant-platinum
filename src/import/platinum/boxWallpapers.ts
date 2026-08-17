@@ -20,7 +20,9 @@
 import { narcEntry } from './nds'
 import { encodePng } from './png'
 import { lz77, palettes, chars, screen, drawTile, TILE, TILE_BYTES } from './ntrgfx'
-import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+import {
+  breathe, check, json, readRomFile, type ConvertContext, type Produced,
+} from './convertTypes'
 
 const NARC = '/graphic/box.narc'
 /** 벽지 장수와 첫 파일 번호. 셋씩 묶여 있다 */
@@ -34,8 +36,8 @@ const HFLIP = 0x400
 const VFLIP = 0x800
 
 export async function convertBoxWallpapers(ctx: ConvertContext): Promise<Produced> {
-  const narc = await ctx.fs.read(NARC)
-  if (!narc) throw new Error(`${NARC}을 못 읽었다`)
+  // ⚠️ 한국판은 이 파일이 `/resource/kor/box/box.narc`에 있다 (`localePaths`)
+  const narc = await readRomFile(ctx, NARC)
 
   const take = (at: number): Uint8Array => {
     const buf = narcEntry(narc, at)

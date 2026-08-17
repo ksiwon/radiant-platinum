@@ -4,6 +4,7 @@
 // 부르면 순환 import가 되므로 **양쪽이 쓰는 것만** 여기 둔다 — 문맥·취소·숨쉬기.
 import type { NdsFileSystem } from './nds'
 import type { Release } from './validate'
+import { localePath } from './localePaths'
 
 /** 한 그룹이 만드는 것 — 논리 경로 → 바이트 */
 export type Produced = Map<string, Uint8Array>
@@ -78,6 +79,23 @@ export function requireBdsp(ctx: ConvertContext): BdspSource {
 export function put(ctx: ConvertContext, out: Produced, path: string, data: Uint8Array): void {
   if (ctx.emit) ctx.emit(path, data)
   else out.set(path, data)
+}
+
+/**
+ * 롬에서 파일 하나를 읽는다 — **지역판 자리를 거쳐서.**
+ *
+ * ⚠️ **`ctx.fs.read`를 그대로 부르면 안 되는 파일이 서른둘 있다** (`localePaths`).
+ * 한국판은 글자가 그려진 그림을 전부 `/resource/kor/…`로 옮겨 뒀고, 미국판도
+ * 일곱을 옮겼다. 자리를 하나만 박아 둔 변환기 셋이 실제로 한국판에서만 죽었다.
+ *
+ * 실패 문구에 **찾아본 자리와 판**을 같이 적는다 — "box.narc을 못 읽었다"만
+ * 봐서는 롬이 잘린 것인지 자리가 틀린 것인지 알 수가 없었다
+ */
+export async function readRomFile(ctx: ConvertContext, path: string): Promise<Uint8Array> {
+  const at = localePath(path, ctx.locale)
+  const bytes = await ctx.fs.read(at)
+  if (!bytes) throw new Error(`${at}을 못 읽었다 (${ctx.locale} 판)`)
+  return bytes
 }
 
 /**

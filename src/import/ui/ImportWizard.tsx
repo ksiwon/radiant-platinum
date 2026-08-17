@@ -26,6 +26,7 @@ import {
   type GroupFailure, type InstallEvent, type InstallStores, type Producer,
 } from '../install/installer'
 import { REQUIRED_BDSP_GROUPS, missingRequired } from '../install/required'
+import { describeWipe, wipeSiteData } from '../install/wipe'
 import { opfsAvailable, opfsPackStore, OPFS_ASSETS, OPFS_ROOT } from '../../data/providers/packStore'
 import { activateInstall } from '../../app/boot'
 import { Hint, HintCaveat, HintTree } from '../../ui/common/Hint'
@@ -111,6 +112,15 @@ export function ImportWizard({ onClose, onReady }: {
   const [missing, setMissing] = useState<string[]>([])
   /** 죽은 그룹과 그 이유. **이름만 적지 않는다** — 왜 죽었는지가 다음 걸음이다 */
   const [failed, setFailed] = useState<GroupFailure[]>([])
+  /**
+   * 「전부 지우기」를 한 번 눌렀는가.
+   *
+   * ⚠️ **한 번에 안 지운다.** 이 단추는 리포트까지 지운다 — 되돌릴 자리가 없다.
+   * 그래서 누르면 확인 단추로 바뀌고, 그때 한 번 더 눌러야 실제로 지운다
+   */
+  const [wipeArmed, setWipeArmed] = useState(false)
+  /** 지난번 설치가 남긴 것이 OPFS에 있는가. 있으면 지울 길을 보여 준다 */
+  const [leftover, setLeftover] = useState(false)
   const romPicker = useRef<HTMLInputElement>(null)
   const dirPicker = useRef<HTMLInputElement>(null)
   /**
@@ -127,6 +137,15 @@ export function ImportWizard({ onClose, onReady }: {
   // ⚠️ Worker를 화면 수명에 묶는다. 안 끝내면 탭에 스레드가 쌓인다
   const client = useRef<ImportClient | null>(null)
   useEffect(() => () => { client.current?.close(); client.current = null }, [])
+
+  // 남은 것이 있는지 한 번 본다. `parts`까지 세는 것이 요점이다 — 쓰다 만 조각만
+  // 남은 상태가 정확히 "지우고 싶은데 지울 길이 없는" 그 상태다
+  useEffect(() => {
+    if (!caps.opfs) return
+    void stores().root.list('', { parts: true })
+      .then((all) => { setLeftover(all.length > 0) })
+      .catch(() => { /* 못 읽으면 그 자체가 정상은 아니지만, 여기서 할 말은 없다 */ })
+  }, [caps.opfs])
 
   /**
    * 필요할 때 만든다. **화면이 떴다는 것만으로 스레드를 띄우지 않는다.**
@@ -272,6 +291,59 @@ export function ImportWizard({ onClose, onReady }: {
       setFailed([])
     })
   }
+
+  /**
+   * 지우기 전에 리포트를 파일로 받아 둔다 (IMPORT.md §8).
+   *
+   * ⚠️ **여기 오는 사람은 게임 안에서 못 받는다.** 설치가 반쯤이라 타이틀에
+   * 못 가고, 그래서 「리포트 → 백업」 화면도 못 연다. 지우기 직전이 마지막
+   * 기회다.
+   *
+   * ⚠️ **정적으로 안 끌어온다.** `saveStore`는 이주기(zod)를 달고 오고, 이
+   * 화면은 첫 화면 예산에 그대로 얹히는 자리다 (DEPLOY.md §2). 누른 뒤에
+   * 받으면 된다 — 타이틀 화면이 `previewImport`에서 쓰는 것과 같은 길이다
+   */
+  const backupReportFile = (): void => {
+    void import('../../state/saveStore')
+      .then(async ({ useSaveStore }) => useSaveStore.getState().exportReport())
+      .then((got) => {
+        if (got.kind === 'none') { say('받을 리포트가 없습니다'); return }
+        say(got.outcome.started
+          ? `${got.fileName}${got.raw ? ' (이 판이 못 읽는 리포트라 원본 그대로 담았습니다)' : ''}`
+          : '브라우저가 다운로드를 막았습니다. 한 번 더 눌러 주세요')
+      })
+      .catch(() => { say('리포트를 못 읽었습니다') })
+  }
+
+  /**
+   * 브라우저에 남은 것을 전부 지우고 화면을 새로 연다.
+   *
+   * ⚠️ **다시 그리는 것으로 안 끝난다.** 방금 지운 자리를 가리키는 것들이
+   * 메모리에 그대로 있다 — 활성 Provider, 열린 OPFS 핸들, idb-keyval의 연결.
+   * 그래서 지운 뒤에는 화면을 통째로 새로 연다
+   */
+  const wipeAll = (): void => {
+    setWipeArmed(false)
+    say('브라우저에 남은 것을 지우는 중…')
+    void wipeSiteData().then((got) => {
+      say(describeWipe(got))
+      // 못 지운 것이 있으면 그 문구를 읽을 틈을 준다 — 바로 새로 열면 사라진다
+      setTimeout(() => { location.reload() }, got.failed.length > 0 ? 2500 : 400)
+    })
+  }
+
+  /**
+   * 「전부 지우기」를 보일 자리인가.
+   *
+   * ⚠️ **처음 오는 사람에게는 안 보인다.** 아무것도 없는 브라우저에 "전부
+   * 지웁니다"를 띄우면 지울 것도 없는데 겁부터 준다. 그래서 조건은 둘이다 —
+   * 이번에 무언가 죽었거나(`failed`·`failed` 상태), **지난번 것이 남아 있거나**.
+   *
+   * ⚠️ **`failed`만 보면 안 된다.** 설치가 도중에 멈춘 채로 탭을 닫은 사람은
+   * 다시 왔을 때 `phase`가 `idle`이다 — 화면에는 아무 실패도 안 적혀 있는데
+   * OPFS에는 반쯤 쓴 나무가 있다. 정작 이 단추가 제일 필요한 사람이 그 사람이다
+   */
+  const broke = phase === 'failed' || failed.length > 0 || leftover
 
   const ready = groupsReady()
   const blocked = groupsBlocked()
@@ -515,6 +587,44 @@ export function ImportWizard({ onClose, onReady }: {
               에셋 다시 설치 (리포트는 남습니다)
             </button>
           </div>
+          {/* ⚠️ **하다 죽었을 때만 보인다.** 늘 띄워 두면 리포트를 지우는 단추가
+              설치가 잘된 사람 눈앞에도 있게 된다. 여기 오는 사람은 이미 같은
+              자리에서 두 번 막힌 사람이고, 그때 브라우저 설정을 뒤지게 두는
+              대신 이 자리에서 끝내게 한다 */}
+          {broke && (
+            <div className={css.row}>
+              {wipeArmed ? (
+                <>
+                  {/* 지우기 전에 받아 둘 마지막 기회다 — 위 ⚠️ 참고 */}
+                  <button className={css.button} onClick={backupReportFile}>
+                    먼저 리포트를 파일로 받기
+                  </button>
+                  <button className={`${css.button} ${css.bad}`} onClick={wipeAll}>
+                    정말 전부 지웁니다
+                  </button>
+                  <button className={css.button} onClick={() => { setWipeArmed(false) }}>
+                    그만두기
+                  </button>
+                </>
+              ) : (
+                <button
+                  className={css.button}
+                  disabled={phase === 'installing'}
+                  onClick={() => { setWipeArmed(true) }}
+                >
+                  전부 지우고 처음부터 (리포트도 사라집니다)
+                </button>
+              )}
+            </div>
+          )}
+          {broke && wipeArmed && (
+            <div className={`${css.body} ${css.bad}`}>
+              {'이 사이트가 이 브라우저에 남긴 것을 전부 지웁니다 — '}
+              {'에셋 · 설치 기록 · 설정, 그리고 리포트까지.\n'}
+              {'진행이 있으면 먼저 파일로 받아 두세요 — 여기서는 게임 안 백업 화면에 못 갑니다.\n'}
+              {'에셋만 다시 만들 거라면 「에셋 다시 설치」를 쓰세요. 지운 뒤에는 화면이 새로 열립니다.'}
+            </div>
+          )}
           {!canInstall && phase !== 'installing' && (
             <div className={css.body}>
               {'설치를 시작하려면 — '}

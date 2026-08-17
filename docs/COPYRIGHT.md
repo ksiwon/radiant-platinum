@@ -465,7 +465,7 @@ Pokémon Uranium(2016)은 페이크몬과 아트를 **전부 새로 그렸는데
 
 | 무엇 | 전 | 후 |
 |---|---|---|
-| `<title>` | `Pokémon Radiant Platinum` | `Radiant Platinum — 비공식 팬 프로젝트` |
+| `<title>` | `Pokémon Radiant Platinum` | `Radiant Platinum` |
 | manifest `name` | 같음 | `Radiant Platinum (비공식 팬 프로젝트)` |
 | 타이틀 제목 위 | `POKÉMON` 워드마크 (숨겨져 있었지만 문서에 있었다) | 뺐다 |
 | 비공식 고지 | 없었다 | 타이틀 화면 위쪽에 **눈에 보이게** |

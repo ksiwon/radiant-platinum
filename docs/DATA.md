@@ -3311,6 +3311,37 @@ interface LogicalAsset {
 체크섬은 로컬 산출물 손상과 parity를 찾는 용도다. 공개 서버에 사용자의 원본 지문을
 보내는 용도가 아니다.
 
+#### 지역판마다 자리가 다른 파일 서른둘
+
+⚠️ **한국판은 글자가 그려진 그림을 통째로 옮겨 뒀다.** 일본판(CPUJ)이 원래
+자리고, 한국판(CPUK)은 서른둘을 전부 `/resource/kor/…` 밑으로 옮겼다. 미국판
+(CPUE)은 그중 **일곱만** `/resource/eng/…`로 옮기고 나머지는 일본판 자리에
+그대로 뒀다. 그래서 자리를 하나만 박아 두면 어느 판에서는 반드시 틀린다.
+
+| 일본판(원래) | 미국판 | 한국판 |
+|---|---|---|
+| `/graphic/box.narc` | 같음 | `/resource/kor/box/box.narc` |
+| `/graphic/poketch.narc` | 같음 | `/resource/kor/poketch/poketch.narc` |
+| `/fielddata/pokemon_trade/fld_trade.narc` | 같음 | `/resource/kor/pokemon_trade/fld_trade.narc` |
+| `/graphic/zukan.narc` | `/resource/eng/zukan/zukan.narc` | `/resource/kor/zukan/zukan.narc` |
+| … 서른둘 (`import/platinum/localePaths.ts`) | | |
+
+실제로 틀렸다. `box` · `poketch` · `fld_trade` 셋이 미국판 자리로 박혀 있어서
+**한국판 롬으로 설치하면 그 세 그룹만 죽었다.** 수입기가 읽는 롬 자리 37개를 세
+판에 대조하니 어긋나는 것이 정확히 그 셋이었고, 나머지 34자리는 세 판이 같다.
+
+칸 차례는 판이 달라도 같다 — 한국판 narc도 `fld_trade` 4칸 · `box` 145칸 ·
+`poketch` 126칸으로 미국판과 개수가 같고 크기도 글자 박힌 칸만 다르다. 그러니
+고칠 것은 자리지 파서가 아니었다.
+
+읽는 자리는 `readRomFile(ctx, path)` 하나로 모았다. 표에는 세 판의 자리가 다
+열쇠로 들어 있어서, 미국판 덤프를 보고 `/resource/eng/…`라고 적은 사람도 같은
+줄로 들어온다 — 그러지 않으면 또 한국판에서만 죽는다.
+
+두 겹으로 잰다. `localePaths.test.ts`가 세 롬을 열어 서른두 줄과 **수입기가 코드에
+적어 둔 자리 전부**를 대조하고(싸다, `pnpm check`에 들어 있다), `pnpm verify:locales`가
+22그룹을 세 판으로 실제 변환한다(십몇 초 × 3, 따로 부를 때만).
+
 ### 3.2 현재 개발 추출기
 
 `tools/spike/`는 포맷 연구용이고 `tools/extract/`만 정식 개발 산출물을 만든다.

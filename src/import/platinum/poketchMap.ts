@@ -20,7 +20,9 @@ import { narcEntry } from './nds'
 import { encodePng } from './png'
 import { lz77, palettes, chars, screen, drawTile, TILE, TILE_BYTES } from './ntrgfx'
 import type { Rgb } from './nitrotex'
-import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+import {
+  breathe, check, json, readRomFile, type ConvertContext, type Produced,
+} from './convertTypes'
 
 const NARC = '/graphic/poketch.narc'
 /** `poketch.order`의 줄 번호 − 1이다 */
@@ -39,8 +41,8 @@ const VFLIP = 0x800
 const hex = (c: Rgb): string => `#${c.map((n) => n.toString(16).padStart(2, '0')).join('')}`
 
 export async function convertPoketchMap(ctx: ConvertContext): Promise<Produced> {
-  const narc = await ctx.fs.read(NARC)
-  if (!narc) throw new Error(`${NARC}을 못 읽었다`)
+  // ⚠️ 한국판은 이 파일이 `/resource/kor/poketch/poketch.narc`에 있다 (`localePaths`)
+  const narc = await readRomFile(ctx, NARC)
 
   const take = (at: number): Uint8Array => {
     const buf = narcEntry(narc, at)

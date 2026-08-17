@@ -12,7 +12,9 @@
 // 디컴프 `res/npc_trades/*.json`과 대조까지 하고, 이쪽은 디컴프가 없어서 못
 // 한다 — 그래서 칸 차례를 여기 다시 적는 대신 같은 상수 이름을 쓴다
 import { narcCount, narcEntry } from './nds'
-import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+import {
+  breathe, check, json, readRomFile, type ConvertContext, type Produced,
+} from './convertTypes'
 
 const NARC = '/fielddata/pokemon_trade/fld_trade.narc'
 
@@ -42,8 +44,9 @@ const AT = {
 } as const
 
 export async function convertNpcTrades(ctx: ConvertContext): Promise<Produced> {
-  const narc = await ctx.fs.read(NARC)
-  if (!narc) throw new Error(`${NARC}을 못 읽었다`)
+  // ⚠️ **`fs.read`를 직접 안 부른다** — 한국판은 이 파일이 `/resource/kor/` 밑에
+  // 있다 (`localePaths`). 그것 때문에 한국판 설치에서 이 그룹이 죽었다
+  const narc = await readRomFile(ctx, NARC)
   const count = narcCount(narc)
   if (count !== COUNT) {
     throw new Error(`${NARC}이 ${String(COUNT)}개가 아니라 ${String(count ?? 0)}개다`)

@@ -39,9 +39,20 @@ if (!existsSync(resolve(DIST, 'index.html'))) {
   process.exit(1)
 }
 
+/**
+ * 어느 지역판으로 잴 것인가.
+ *
+ * ⚠️ **한국판은 파일이 딴 자리에 있다** (`import/platinum/localePaths.ts`).
+ * 세 판을 다 재지 않으면 그 차이가 사용자의 브라우저에서 처음 드러난다 —
+ * 실제로 그렇게 드러났다. 한 판씩:
+ *
+ *     PT_E2E_LOCALE=ko node tools/e2e/run.mjs --only=09
+ */
+const ROM_LOCALE = process.env.PT_E2E_LOCALE ?? 'en'
+
 /** 개발 기계에 있으면 진짜 롬으로도 잰다. 없으면 그 줄은 NOT RUN이다 */
 const ROM = (() => {
-  try { return platinumRoms().en ?? null } catch { return null }
+  try { return platinumRoms()[ROM_LOCALE] ?? null } catch { return null }
 })()
 
 /**
@@ -493,18 +504,25 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   const WANT = [...REQUIRED_PLATINUM_GROUPS].sort().join(',')
   assert(got.groups.sort().join(',') === WANT,
     `그룹이 다르다: ${got.groups.sort().join(',')} (기대 ${WANT})`)
-  // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다
-  assert(sameAsNode(got.sha['data/moves.json'], 'moves'),
-    `moves.json이 노드 산출물과 다르다: ${got.sha['data/moves.json']}`)
-  assert(sameAsNode(got.sha['data/marts.json'], 'marts'),
-    `marts.json이 노드 산출물과 다르다: ${got.sha['data/marts.json']}`)
+  // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다.
+  //
+  // ⚠️ **미국판일 때만 견준다.** 노드 산출물(`public/data`)은 미국판 롬으로
+  // 구운 것이라, 한국판·일본판 결과를 거기 대면 "다르다"가 나오는 것이 맞다.
+  // 그 판들에서 재려는 것은 **그룹이 다 들어왔는가**이고 그건 위에서 봤다
+  if (ROM_LOCALE === 'en') {
+    assert(sameAsNode(got.sha['data/moves.json'], 'moves'),
+      `moves.json이 노드 산출물과 다르다: ${got.sha['data/moves.json']}`)
+    assert(sameAsNode(got.sha['data/marts.json'], 'marts'),
+      `marts.json이 노드 산출물과 다르다: ${got.sha['data/marts.json']}`)
+  }
   // 128MB를 읽는 내내 바깥으로도, /data로도 아무것도 안 나갔다
   const leaked = [...contentRequests(requests.slice(before)), ...outsideRequests(requests.slice(before))]
   assert(leaked.length === 0, `변환 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
-  return `Platinum 필수 ${String(REQUIRED_PLATINUM_GROUPS.length)}그룹 · `
+  return `${ROM_LOCALE} 판 · Platinum 필수 ${String(REQUIRED_PLATINUM_GROUPS.length)}그룹 · `
     + `파일 ${String(Object.keys(got.sha).length)}개 · `
     + `${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
-    + `${NODE_SAID} · 설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
+    + `${ROM_LOCALE === 'en' ? NODE_SAID : '노드 대조는 미국판에서만'} · `
+    + `설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
 
 await (haveRom ? run : skip)('10', '손상된 파일을 다시 만든다 (진짜 설치기)', async ({ page }) => {
@@ -1002,6 +1020,73 @@ await run('27', '에셋을 지워도 리포트가 남고, 리포트를 지워도
 
   return `에셋 ${String(before)}개 삭제 → 리포트 남음 (reload 뒤에도) · `
     + `리포트 삭제 → 에셋 ${String(withAssets)}개 그대로 · play:opfs 유지`
+})
+
+// ── ㉘ 하다 막히면 **화면 안에서** 전부 지울 수 있다 (IMPORT.md §8) ──────────
+//
+// ⚠️ **㉗과 반대쪽 시험이다.** 「에셋 다시 설치」는 리포트를 남기고, 이 단추는
+// 리포트까지 지운다. 둘 다 있어야 하는 이유는, 반쯤 쓰다 죽은 설치본을 물고
+// 있는 사람에게 남은 길이 "브라우저 설정에서 사이트 데이터 지우기"뿐이었기
+// 때문이다 — 그 화면은 브라우저마다 다르고, 찾는 법을 우리가 안내할 수도 없다.
+//
+// ⚠️ **한 번에 안 지워지는 것까지 잰다.** 처음 누르면 확인 단추로 바뀌고,
+// 그때 한 번 더 눌러야 지워진다. 이 두 걸음이 사라지면 리포트가 클릭 한 번에
+// 사라지는 단추가 남는다
+await run('28', '하다 막힌 설치를 화면에서 통째로 지운다 (리포트까지)', async ({ context, page }) => {
+  const MARK = 'siwon-28'
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  await waitBoot(page)
+  // 반쯤 설치된 채로 남은 자리. 여기서는 게임에 못 가고 설치 화면이 뜬다
+  await page.evaluate(SYNTHETIC, { state: 'partial', groups: REQUIRED_PLATINUM_GROUPS })
+  await page.evaluate(PLANT_REPORT, MARK)
+  await page.reload({ waitUntil: 'load' })
+  assert((await waitBoot(page)).startsWith('install:'), '설치 화면으로 안 갔다')
+  const before = await page.evaluate(ASSETS_LEFT)
+  assert(before > 0, 'OPFS에 심은 설치본이 없다')
+
+  // 한 번 누르면 아직 안 지운다 — 확인이 뜬다
+  await page.getByRole('button', { name: /전부 지우고 처음부터/ }).click({ timeout: 60_000 })
+  await page.getByText('리포트까지').first().waitFor({ timeout: 10_000 })
+  assert(await page.evaluate(ASSETS_LEFT) === before, '확인도 안 했는데 지웠다')
+  assert(await page.evaluate(READ_REPORT) === MARK, '확인도 안 했는데 리포트가 사라졌다')
+
+  // ⚠️ **지우기 전에 받아 둘 길이 여기 있어야 한다.** 이 사람은 설치가 반쯤이라
+  // 게임 안 백업 화면에 못 간다 — 이 단추가 마지막 기회다 (IMPORT.md §8).
+  // 심어 둔 것은 이 판이 못 읽는 모양이라 **원본 그대로** 담기는 갈래를 지난다
+  const got = page.waitForEvent('download', { timeout: 30_000 })
+  await page.getByRole('button', { name: '먼저 리포트를 파일로 받기' }).click()
+  const file = await got
+  const text = await readDownload(file)
+  assert(file.suggestedFilename().endsWith('.rpsave'),
+    `받은 이름이 .rpsave가 아니다: ${file.suggestedFilename()}`)
+  assert(text.includes(MARK), '받은 파일에 심어 둔 리포트가 없다')
+
+  // 그만두면 그대로 있다
+  await page.getByRole('button', { name: '그만두기' }).click()
+  assert(await page.evaluate(ASSETS_LEFT) === before, '그만뒀는데 지웠다')
+
+  // 이제 정말 지운다. 지운 뒤에는 화면이 **스스로 새로 열린다** — 방금 지운
+  // 자리를 가리키는 것들이 메모리에 남아 있어서 다시 그리는 것으로는 모자란다
+  await page.getByRole('button', { name: /전부 지우고 처음부터/ }).click()
+  const reloaded = page.waitForEvent('load', { timeout: 60_000 })
+  await page.getByRole('button', { name: '정말 전부 지웁니다' }).click()
+  await reloaded
+  assert(await waitBoot(page) === 'install:none', '지운 뒤에도 설치본이 남았다')
+  assert(await page.evaluate(ASSETS_LEFT) === 0, '새로 열었더니 에셋이 남아 있다')
+
+  await page.close()
+  const again = await context.newPage()
+  await again.goto(`${origin}/`, { waitUntil: 'load' })
+  const tag = await waitBoot(again)
+  assert(tag === 'install:none', `전부 지웠는데 ${tag}로 떴다`)
+  assert(await again.evaluate(ASSETS_LEFT) === 0, '에셋이 남았다')
+  assert(await again.evaluate(READ_REPORT) === null, '리포트가 남았다')
+  // 처음 오는 사람에게는 이 단추가 안 보인다 — 지울 것이 없기 때문이다
+  assert(await again.getByRole('button', { name: /전부 지우고 처음부터/ }).count() === 0,
+    '지울 것이 없는데 단추가 떠 있다')
+  return `에셋 ${String(before)}개 + 리포트 → 한 번 눌러서는 안 지워짐 · `
+    + `지우기 전에 ${file.suggestedFilename()} 받아 둠 · `
+    + '확인 뒤 전부 삭제 → install:none · 첫 방문자에게는 단추 없음'
 })
 
 await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 바꾼다', async ({ page }) => {

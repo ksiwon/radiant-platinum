@@ -23,8 +23,9 @@ import { checksum, encodePayload } from './save/codec'
 // 이 파일을 정적으로 닿아서 그대로 첫 화면 예산에 얹힌다 (실측 gzip 19.4kB ·
 // DEPLOY.md §2). 읽고 쓰는 자리가 전부 async라 그때 받으면 된다
 import type { MigrateResult } from './save/migrate'
+import { LEGACY_REPORT_DB, REPORT_DB } from './storageNames'
 
-const dbStore = createStore('radiant-platinum', 'save')
+const dbStore = createStore(REPORT_DB, 'save')
 /** 슬롯 하나. 원작도 세이브가 한 벌이다 */
 const SLOT = 'report'
 /** 검증을 통과하기 전까지 머무는 자리. 여기 남아 있으면 지난번 쓰기가 죽은 것이다 */
@@ -33,13 +34,11 @@ const TMP = 'report.tmp'
 const BACKUP = 'report.bak'
 
 /**
- * 이름을 바꾸기 전에 쓰던 데이터베이스.
- *
  * ⚠️ **이름만 바꾸면 이미 저장된 리포트를 못 찾는다.** IndexedDB는 데이터베이스
  * 이름이 곧 주소라, 새 이름으로 열면 빈 창고가 하나 더 생길 뿐이고 옛 리포트는
  * 그대로 남아 영영 안 읽힌다. 그래서 처음 읽을 때 한 번 옮긴다
  */
-const OLD_DB = 'pt-3d'
+const OLD_DB = LEGACY_REPORT_DB
 let migrated = false
 
 async function migrate(): Promise<void> {

@@ -9,6 +9,7 @@
 import { create } from 'zustand'
 import { TEXT_SPEED } from '../engine/script/printer'
 import type { DataLocale } from '../data/gameData'
+import { LEGACY_OPTIONS_KEY, OPTIONS_KEY } from './storageNames'
 
 /** `options_menu`의 10·11·12번 — 느리게 · 보통 · 빠르게 */
 export type TextSpeed = 0 | 1 | 2 | 3
@@ -119,15 +120,13 @@ const DEFAULTS: Options = {
   speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1, language: 0,
 }
 
-const KEY = 'radiant-platinum.options'
+const KEY = OPTIONS_KEY
 /**
- * 이름을 바꾸기 전 키.
- *
  * ⚠️ **키만 갈면 이미 맞춰 둔 설정이 통째로 기본값으로 돌아간다.** 글자 속도나
  * 시점처럼 한 번 맞추고 잊는 것들이라 되돌아간 것을 눈치채기도 어렵다.
  * 처음 읽을 때 옛 키를 한 번 본다
  */
-const OLD_KEY = 'pt3d.options'
+const OLD_KEY = LEGACY_OPTIONS_KEY
 
 function load(): Options {
   try {

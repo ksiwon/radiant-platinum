@@ -101,6 +101,7 @@
     "release:check": "node tools/distribution/check.mjs --stage=post --release",
     "provenance": "node tools/distribution/reportProvenance.mjs",
     "verify:deploy": "node tools/distribution/verifyDeploy.mjs",
+    "verify:locales": "node tools/test/localeSweep.mjs",
     "audit:history": "node tools/distribution/auditHistory.mjs",
     "check:worker": "node tools/shot/workerCheck.mjs",
     "e2e": "node tools/e2e/run.mjs",
