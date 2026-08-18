@@ -8,6 +8,7 @@
 // 롬의 공용 스크립트를 돌린다 — 독은 `SCRIPT_ID(COMMON_SCRIPTS, 3)`,
 // 리펠은 `…, 32`다. 그래야 글도 소리도 창 모양도 원작이다.
 import { step as stepOnce, Poison } from '../engine/actor/steps'
+import { StepTrace } from '../engine/actor/stepTrace'
 import { addRecord, RECORD_EGGS_HATCHED, RECORD_STEPS } from '../engine/world/gameRecords'
 import { VAR_FRIENDSHIP_STEPS } from '../engine/actor/steps'
 import { HOLD_EFFECT_FRIENDSHIP_UP } from '../engine/pokemon/friendship'
@@ -137,7 +138,14 @@ function pushedDir(): number {
   return z > 0 ? DIR.south : DIR.north
 }
 
-let lastTile = -1
+/**
+ * 지나온 거리와 지나온 칸을 세는 자 (PARITY §1.1).
+ *
+ * ⚠️ **걸음은 칸 변화가 아니라 거리다.** 칸으로 세면 45도로 걸을 때 x와 z가
+ * 따로 경계를 넘어 같은 거리에 √2배가 세어진다 — 독·친밀도·알 부화·만보기가
+ * 그만큼 빨라졌다 (실측 1.444, `node .audit/diagonalSteps.mjs`)
+ */
+const trace = new StepTrace()
 /** 지난 프레임의 「칸 × 방향」. 같으면 떠나는 칸 처리를 다시 안 한다 */
 let lastMove = -1
 
@@ -148,7 +156,8 @@ let lastMove = -1
  * 걸음이 한 번도 안 세어진다
  */
 export function resetStepTile(): void {
-  lastTile = -1
+  const p = worldState.player.position
+  trace.reset(p.x, p.z)
   lastMove = -1
 }
 
@@ -240,6 +249,7 @@ export const stepSystem = {
     const p = worldState.player.position
     const tx = Math.floor(p.x), tz = Math.floor(p.z)
     const key = tz * grid.tileWidth + tx
+    const moved = trace.advance(p.x, p.z)
 
     // ⚠️ **떠나는 칸에서 도는 것이 따로 있다** (PARITY §6.10). 원작은 유령
     // 소품 방아쇠·카메라 각·뛰는 자리를 걸음이 **시작될 때** 지금 서 있는
@@ -255,106 +265,116 @@ export const stepSystem = {
       }
     }
 
-    if (key === lastTile) return
-    const first = lastTile < 0
-    lastTile = key
-    // 맵에 막 들어선 칸은 세지 않는다 — 원작도 이동이 끝난 자리에서만 센다
-    if (first) return
-
     // 닿은 칸에서는 승강 발판·사건·스크립트 칸을 본다
-    // (`DistWorld_HandlePlayerPositionChanged`)
-    if (distortionActive()) {
+    // (`DistWorld_HandlePlayerPositionChanged`).
+    //
+    // ⚠️ **칸이 바뀐 틱에 한 번이다.** 지나온 칸이 여럿이어도 넘길 좌표는 지금
+    // 자리 하나뿐이라, 칸마다 부르면 같은 자리를 되풀이해 묻게 된다
+    if (moved.tiles.length > 0 && distortionActive()) {
       distortionRebindPlatform(p.x, p.y, p.z)
       distortionStepped(p.x, p.y, p.z, facingDir())
     }
 
-    // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
-    // `poketchStep`이 앞에서 막는다
-    poketchStep()
+    // ⚠️ **여기부터가 「한 걸음」이다.** 「칸이 바뀌었는가」가 아니라 **1칸을
+    // 지나왔는가**로 센다. 한 틱에 두 걸음이 나는 일은 거의 없지만, 나면 난 만큼 돈다
+    for (let i = 0; i < moved.steps; i++) if (oneStep()) return
+  },
+}
 
-    // VS시커 배터리가 한 걸음 찬다 (`VsSeeker_UpdateStepCount`, PARITY §7.9) —
-    // 가방에 있을 때만. 느낌표가 서 있으면 그 100걸음도 여기서 센다.
-    // ⚠️ **레이더보다 먼저다** — 원작 `Field_ProcessStep`의 차례가 그렇다
-    vsSeekerFieldStep()
+/**
+ * 한 걸음 (`Field_ProcessStep`).
+ *
+ * 참을 돌려주면 이 틱은 거기서 끝난다 — 알이 깼거나 스크립트가 걸린 것이고,
+ * 원작도 첫 참에서 돌아온다
+ */
+function oneStep(): boolean {
+  // 포켓치 만보기가 한 걸음 는다 (PARITY §7.3). 만보기를 안 받았으면
+  // `poketchStep`이 앞에서 막는다
+  poketchStep()
 
-    // 레이더 배터리가 한 걸음 찬다 (`RadarChargeStep`) — 가방에 있을 때만.
-    // 그리고 무더기가 화면 밖으로 나갔는지도 걸음마다 본다
-    radarStep()
+  // VS시커 배터리가 한 걸음 찬다 (`VsSeeker_UpdateStepCount`, PARITY §7.9) —
+  // 가방에 있을 때만. 느낌표가 서 있으면 그 100걸음도 여기서 센다.
+  // ⚠️ **레이더보다 먼저다** — 원작 `Field_ProcessStep`의 차례가 그렇다
+  vsSeekerFieldStep()
 
-    // 화면에 든 나무열매 밭이 자라기 시작한다 (`BerryPatches_UpdateGrowthStates`).
-    // 원작도 칸이 바뀔 때마다 절두체로 잰다 (PARITY §4.6)
-    berryPatchesStep()
+  // 레이더 배터리가 한 걸음 찬다 (`RadarChargeStep`) — 가방에 있을 때만.
+  // 그리고 무더기가 화면 밖으로 나갔는지도 걸음마다 본다
+  radarStep()
 
-    // 사파리는 걸음 오백을 센다 (`Field_UpdateSafari`, PARITY §7.7).
-    // 볼이나 걸음이 떨어지면 롬의 스크립트가 안내원을 부른다
-    safariFieldStep()
+  // 화면에 든 나무열매 밭이 자라기 시작한다 (`BerryPatches_UpdateGrowthStates`).
+  // 원작도 칸이 바뀔 때마다 절두체로 잰다 (PARITY §4.6)
+  berryPatchesStep()
+
+  // 사파리는 걸음 오백을 센다 (`Field_UpdateSafari`, PARITY §7.7).
+  // 볼이나 걸음이 떨어지면 롬의 스크립트가 안내원을 부른다
+  safariFieldStep()
 
 
-    const save = useSaveStore.getState()
-    const vars = fieldScripts.vars
-    // ⚠️ **상호교류광장 걸음은 광장 안에서만 세는 것이 아니다** (PARITY §7.8).
-    // 원작이 어느 맵에서든 한 칸마다 올리고, 광장에 들어설 때 스크립트가
-    // 0으로 지운다 — 그래서 「들어온 뒤 몇 걸음」이 된다
-    vars.set(VAR_AMITY_STEPS, amityStep(vars.get(VAR_AMITY_STEPS)))
-    // 걸은 수를 센다 (PARITY §7.5). ⚠️ **여기 말고 셀 자리가 없다** —
-    // 원작도 `Field_ProcessStep` 한 자리에서 올린다
-    useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_STEPS, 1) }))
-    const got = stepOnce({
-      party: save.party,
-      label: mapById(mapWorld.mapId)?.label ?? 0,
-      poisonSteps: save.steps.poison,
-      repelSteps: save.steps.repel,
-      friendshipSteps: vars.get(VARS_START + VAR_FRIENDSHIP_STEPS),
-      soothing: (mon) => mon.heldItem > 0
-        && items?.get(mon.heldItem).holdEffect === HOLD_EFFECT_FRIENDSHIP_UP,
-      // 원작의 `LCRNG_Next() & 1`. 우리 난수로는 같은 수열을 못 만들지만
-      // **절반을 버린다**는 성질이 이 규칙의 전부다
-      coin: () => Math.random() < 0.5,
-    })
+  const save = useSaveStore.getState()
+  const vars = fieldScripts.vars
+  // ⚠️ **상호교류광장 걸음은 광장 안에서만 세는 것이 아니다** (PARITY §7.8).
+  // 원작이 어느 맵에서든 한 칸마다 올리고, 광장에 들어설 때 스크립트가
+  // 0으로 지운다 — 그래서 「들어온 뒤 몇 걸음」이 된다
+  vars.set(VAR_AMITY_STEPS, amityStep(vars.get(VAR_AMITY_STEPS)))
+  // 걸은 수를 센다 (PARITY §7.5). ⚠️ **여기 말고 셀 자리가 없다** —
+  // 원작도 `Field_ProcessStep` 한 자리에서 올린다
+  useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_STEPS, 1) }))
+  const got = stepOnce({
+    party: save.party,
+    label: mapById(mapWorld.mapId)?.label ?? 0,
+    poisonSteps: save.steps.poison,
+    repelSteps: save.steps.repel,
+    friendshipSteps: vars.get(VARS_START + VAR_FRIENDSHIP_STEPS),
+    soothing: (mon) => mon.heldItem > 0
+      && items?.get(mon.heldItem).holdEffect === HOLD_EFFECT_FRIENDSHIP_UP,
+    // 원작의 `LCRNG_Next() & 1`. 우리 난수로는 같은 수열을 못 만들지만
+    // **절반을 버린다**는 성질이 이 규칙의 전부다
+    coin: () => Math.random() < 0.5,
+  })
 
-    // 육성가와 알도 같은 한 걸음에 돈다 (`Daycare_Update`)
-    const now = new Date()
-    const table = speciesTable
-    if (!table) {
-      vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
-      useSaveStore.setState({
-        party: got.party,
-        steps: { poison: got.poisonSteps, repel: got.repelSteps },
-        vars: Uint16Array.from(vars.saved),
-      })
-      return
-    }
-    const bred = daycareStep({
-      daycare: save.daycare,
-      party: got.party,
-      month: now.getMonth() + 1,
-      day: now.getDate(),
-      abilityOf: monAbility,
-      dataOf: (id) => table.get(id),
-      rng: Math.random,
-      coin: () => Math.random() < 0.5,
-    })
-
+  // 육성가와 알도 같은 한 걸음에 돈다 (`Daycare_Update`)
+  const now = new Date()
+  const table = speciesTable
+  if (!table) {
     vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
     useSaveStore.setState({
-      party: bred.party,
-      daycare: bred.daycare,
+      party: got.party,
       steps: { poison: got.poisonSteps, repel: got.repelSteps },
       vars: Uint16Array.from(vars.saved),
     })
+    return false
+  }
+  const bred = daycareStep({
+    daycare: save.daycare,
+    party: got.party,
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+    abilityOf: monAbility,
+    dataOf: (id) => table.get(id),
+    rng: Math.random,
+    coin: () => Math.random() < 0.5,
+  })
 
-    // 알이 깼다. 원작도 여기서 걸음을 멈추고 부화 장면으로 넘어간다
-    if (bred.hatched >= 0) {
-      // 알을 깬 수 (PARITY §7.5)
-      useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_EGGS_HATCHED, 1) }))
-      useHatchStore.getState().open(bred.hatched)
-      return
-    }
+  vars.set(VARS_START + VAR_FRIENDSHIP_STEPS, got.friendshipSteps)
+  useSaveStore.setState({
+    party: bred.party,
+    daycare: bred.daycare,
+    steps: { poison: got.poisonSteps, repel: got.repelSteps },
+    vars: Uint16Array.from(vars.saved),
+  })
 
-    // 알리는 것은 하나뿐이다 — 원작도 `Field_ProcessStep`이 첫 참에서 돌아온다
-    const scripts = mapById(mapWorld.mapId)?.scripts
-    if (scripts === undefined) return
-    if (got.poison !== Poison.NONE) { start(COMMON_SCRIPT_POISON, scripts); return }
-    if (got.repelExpired) start(COMMON_SCRIPT_REPEL, scripts)
-  },
+  // 알이 깼다. 원작도 여기서 걸음을 멈추고 부화 장면으로 넘어간다
+  if (bred.hatched >= 0) {
+    // 알을 깬 수 (PARITY §7.5)
+    useSaveStore.setState((st) => ({ records: addRecord(st.records, RECORD_EGGS_HATCHED, 1) }))
+    useHatchStore.getState().open(bred.hatched)
+    return true
+  }
+
+  // 알리는 것은 하나뿐이다 — 원작도 `Field_ProcessStep`이 첫 참에서 돌아온다
+  const scripts = mapById(mapWorld.mapId)?.scripts
+  if (scripts === undefined) return false
+  if (got.poison !== Poison.NONE) { start(COMMON_SCRIPT_POISON, scripts); return true }
+  if (got.repelExpired) { start(COMMON_SCRIPT_REPEL, scripts); return true }
+  return false
 }

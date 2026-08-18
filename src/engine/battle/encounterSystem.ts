@@ -3,6 +3,7 @@
 // 판정은 "타일이 바뀔 때"만 한다. 프레임마다 굴리면 같은 칸에 서 있어도 계속
 // 판정이 돌아 60fps에서 초당 60번이 된다 — 원작의 걸음 단위와 전혀 다르다.
 import { worldState } from '../../state/worldState'
+import { StepTrace } from '../actor/stepTrace'
 import { world } from '../map/world'
 import {
   encounterKind, newEncounterState, rollLand, rollWater, shouldEncounter, wildForm,
@@ -99,7 +100,14 @@ export const encounters = {
   rng: Math.random as Rng,
 }
 
-let lastTile = -1
+/**
+ * 지나온 칸을 세는 자 (PARITY §1.1).
+ *
+ * ⚠️ **「그 틱의 칸 하나」만 보면 안 된다.** 달리면 한 틱에 축마다 0.094칸을
+ * 가므로 x와 z 경계를 같은 틱에 넘으면 가운데 칸은 판정 자체가 안 돈다 —
+ * 대각선으로 풀숲 모서리를 스치면 그 칸의 조우가 통째로 빠졌다
+ */
+const trace = new StepTrace()
 /** 조우 직후·맵 이동 직후의 유예 구간을 세는 곳 */
 let state = newEncounterState()
 
@@ -116,85 +124,90 @@ export const encounterSystem = {
     if (!grid || encounters.suspended || encounters.pending || world.pending) return
 
     const p = worldState.player.position
-    const tx = Math.floor(p.x), tz = Math.floor(p.z)
-    const key = tz * grid.tileWidth + tx
-    if (key === lastTile) return
-    lastTile = key
-
-    const behavior = grid.behavior(tx, tz)
-    const kind = encounterKind(behavior)
-    if (kind === null) return
-    const table = tableForCurrentMap()
-    if (!table) return
-    // 물 위에서는 파도타기 표와 그 출현률을 본다. 걷는 표와 출현률이 따로라
-    // `landRate`만 보면 육상 조우가 없는 호수 위에서는 아무것도 안 나온다
-    const raw = kind === 'surf' ? table.surf.rate : table.landRate
-    // 선두 특성·피리·클리어부적이 출현률을 여기서 바꾼다 (PARITY §1.22)
-    const mods = encounters.mods
-    const rate = walkRate(raw, mods)
-    // 긴 풀 위에서는 관문이 40에서 70으로 올라간다 — 원작이 그렇게 만든 자리라
-    // 210번도로가 다른 도로보다 훨씬 자주 나온다
-    const where = {
-      veryTallGrass: behavior === Behavior.VERY_TALL_GRASS,
-      cycling: worldState.player.cycling,
-      date: (gate: number) => dateGate(gate, mods.month, mods.day),
+    // ⚠️ **칸마다 한 번씩이다.** 지나온 칸이 여럿이면 여럿을 묻되, 하나가
+    // 나오면 거기서 멈춘다 — 한 틱에 조우를 두 번 굴리면 원작과 어긋난다
+    for (const tile of trace.advance(p.x, p.z).tiles) {
+      rollAt(grid, tile.x, tile.z)
+      if (encounters.pending) return
     }
-    // ⚠️ **무더기를 밟으면 관문을 안 본다** (PARITY §6.5). 원작이
-    // `gettingEncounter = TRUE`로 덮어쓴다 — 흔들리는 풀은 반드시 나온다.
-    // 그리고 그 판에서는 배회도 안 물어본다
-    const radar = kind === 'land' ? encounters.radarStep?.(tx, tz) ?? null : null
-    if (radar === null && !shouldEncounter(rate, state, encounters.rng, where)) return
-    // ⚠️ **관문을 지난 순간 유예 구간이 다시 열린다.** 뒤에서 리펠이나 특성이
-    // 막아도 마찬가지다 — 원작도 `encounterAttempts = 0`을 막힌 길에서까지
-    // 지나간다. 안 그러면 리펠을 뿌린 동안 유예가 안 닫혀서, 리펠이 끝나는
-    // 순간 다음 걸음에 곧바로 튀어나온다
-    state = newEncounterState()
-
-    const rng = encounters.rng
-    // ⚠️ **배회가 야생보다 먼저다.** 원작도 칸을 뽑기 전에 물어본다
-    // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
-    // 표의 칸을 아예 안 굴린다. 뒤에 두면 배회는 「가끔 야생 대신」이 아니라
-    // 「야생을 다 뽑고 나서 덮어쓰는 것」이 되어 확률이 달라진다
-    const roam = radar === null ? encounters.roamerHere?.(world.mapId, rng) ?? null : null
-    if (roam) {
-      // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —
-      // 뒤의 야생으로 넘어가지 않는다
-      if (!repelBlocks(mods.repelLevel, roam.level)) encounters.pending = roam
-      return
-    }
-    const lead = mods.lead
-    const typeOf = encounters.typeOf
-    const got = kind === 'surf'
-      ? rollWater(table.surf, rng, undefined, {
-        pick: (t) => forcedSlot(waterSpeciesOf(t), lead, typeOf, rng),
-        level: (min, max) => waterLevel(min, max, lead, rng),
-      })
-      : rollLand(table, rng, timeOfDayForHour(worldState.time.gameHour), {
-        swarming: encounters.swarmAt === world.mapId,
-        trophy: world.mapId === MAP_TROPHY_GARDEN ? encounters.trophy ?? undefined : undefined,
-        pick: (land) => forcedSlot(speciesOf(land), lead, typeOf, rng),
-        bump: (land, slot) => higherLevelSlot(land, lead, slot, rng),
-        radarHard: radar?.shake === 1,
-      })
-
-    // 레이더 판은 사슬이 뒤를 맡는다 — 같은 종이면 이어 내고, 다른 종이면
-    // 사슬이 끊긴다. **리펠도 특성도 이 판은 못 막는다**(원작이 레이더 갈래에서
-    // 그 둘을 안 부른다)
-    if (radar !== null) {
-      encounters.pending = encounters.radarEncounter?.(radar, got) ?? got
-      return
-    }
-
-    // ⚠️ **레벨을 뽑은 다음에 막는다.** 날카로운눈·위협도 리펠도 야생의 레벨을
-    // 봐야 판정이 된다 — 원작도 `TryGenerateWildMon` 안, 칸과 레벨을 정한
-    // 뒤에서 둘을 부른다 (`wild_encounters.c` 1136·1140)
-    if (got && (leadScaresOff(lead, got.level, rng) || repelBlocks(mods.repelLevel, got.level))) {
-      return
-    }
-    // 모습은 맨 마지막에 정한다 — 원작도 개체를 다 만든 뒤 파티에 넣기 직전이다
-    if (got) got.form = wildForm(table, got.species, rng)
-    encounters.pending = got
   },
+}
+
+/** 그 칸을 밟았다. 조우가 났으면 `encounters.pending`에 담긴다 */
+function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): void {
+  const behavior = grid.behavior(tx, tz)
+  const kind = encounterKind(behavior)
+  if (kind === null) return
+  const table = tableForCurrentMap()
+  if (!table) return
+  // 물 위에서는 파도타기 표와 그 출현률을 본다. 걷는 표와 출현률이 따로라
+  // `landRate`만 보면 육상 조우가 없는 호수 위에서는 아무것도 안 나온다
+  const raw = kind === 'surf' ? table.surf.rate : table.landRate
+  // 선두 특성·피리·클리어부적이 출현률을 여기서 바꾼다 (PARITY §1.22)
+  const mods = encounters.mods
+  const rate = walkRate(raw, mods)
+  // 긴 풀 위에서는 관문이 40에서 70으로 올라간다 — 원작이 그렇게 만든 자리라
+  // 210번도로가 다른 도로보다 훨씬 자주 나온다
+  const where = {
+    veryTallGrass: behavior === Behavior.VERY_TALL_GRASS,
+    cycling: worldState.player.cycling,
+    date: (gate: number) => dateGate(gate, mods.month, mods.day),
+  }
+  // ⚠️ **무더기를 밟으면 관문을 안 본다** (PARITY §6.5). 원작이
+  // `gettingEncounter = TRUE`로 덮어쓴다 — 흔들리는 풀은 반드시 나온다.
+  // 그리고 그 판에서는 배회도 안 물어본다
+  const radar = kind === 'land' ? encounters.radarStep?.(tx, tz) ?? null : null
+  if (radar === null && !shouldEncounter(rate, state, encounters.rng, where)) return
+  // ⚠️ **관문을 지난 순간 유예 구간이 다시 열린다.** 뒤에서 리펠이나 특성이
+  // 막아도 마찬가지다 — 원작도 `encounterAttempts = 0`을 막힌 길에서까지
+  // 지나간다. 안 그러면 리펠을 뿌린 동안 유예가 안 닫혀서, 리펠이 끝나는
+  // 순간 다음 걸음에 곧바로 튀어나온다
+  state = newEncounterState()
+
+  const rng = encounters.rng
+  // ⚠️ **배회가 야생보다 먼저다.** 원작도 칸을 뽑기 전에 물어본다
+  // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
+  // 표의 칸을 아예 안 굴린다. 뒤에 두면 배회는 「가끔 야생 대신」이 아니라
+  // 「야생을 다 뽑고 나서 덮어쓰는 것」이 되어 확률이 달라진다
+  const roam = radar === null ? encounters.roamerHere?.(world.mapId, rng) ?? null : null
+  if (roam) {
+    // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —
+    // 뒤의 야생으로 넘어가지 않는다
+    if (!repelBlocks(mods.repelLevel, roam.level)) encounters.pending = roam
+    return
+  }
+  const lead = mods.lead
+  const typeOf = encounters.typeOf
+  const got = kind === 'surf'
+    ? rollWater(table.surf, rng, undefined, {
+      pick: (t) => forcedSlot(waterSpeciesOf(t), lead, typeOf, rng),
+      level: (min, max) => waterLevel(min, max, lead, rng),
+    })
+    : rollLand(table, rng, timeOfDayForHour(worldState.time.gameHour), {
+      swarming: encounters.swarmAt === world.mapId,
+      trophy: world.mapId === MAP_TROPHY_GARDEN ? encounters.trophy ?? undefined : undefined,
+      pick: (land) => forcedSlot(speciesOf(land), lead, typeOf, rng),
+      bump: (land, slot) => higherLevelSlot(land, lead, slot, rng),
+      radarHard: radar?.shake === 1,
+    })
+
+  // 레이더 판은 사슬이 뒤를 맡는다 — 같은 종이면 이어 내고, 다른 종이면
+  // 사슬이 끊긴다. **리펠도 특성도 이 판은 못 막는다**(원작이 레이더 갈래에서
+  // 그 둘을 안 부른다)
+  if (radar !== null) {
+    encounters.pending = encounters.radarEncounter?.(radar, got) ?? got
+    return
+  }
+
+  // ⚠️ **레벨을 뽑은 다음에 막는다.** 날카로운눈·위협도 리펠도 야생의 레벨을
+  // 봐야 판정이 된다 — 원작도 `TryGenerateWildMon` 안, 칸과 레벨을 정한
+  // 뒤에서 둘을 부른다 (`wild_encounters.c` 1136·1140)
+  if (got && (leadScaresOff(lead, got.level, rng) || repelBlocks(mods.repelLevel, got.level))) {
+    return
+  }
+  // 모습은 맨 마지막에 정한다 — 원작도 개체를 다 만든 뒤 파티에 넣기 직전이다
+  if (got) got.form = wildForm(table, got.species, rng)
+  encounters.pending = got
 }
 
 /**
@@ -203,6 +216,7 @@ export const encounterSystem = {
  * 유예 구간도 같이 연다. 원작도 맵 이동 직후 몇 걸음은 조우를 억누른다
  */
 export function resetEncounterTile() {
-  lastTile = -1
+  const p = worldState.player.position
+  trace.reset(p.x, p.z)
   state = newEncounterState()
 }

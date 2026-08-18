@@ -9,7 +9,8 @@ import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } fr
 import { markScript } from '../../app/sceneMark'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
-  signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld, type Npc, type Sign,
+  signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld,
+  type MapHeader, type Npc, type Sign,
 } from '../map/world'
 import { worldState, type FieldActionFxKind } from '../../state/worldState'
 import {
@@ -17,6 +18,7 @@ import {
   TRAINER_DEFEATED_FLAGS_START, trainerIdOf, type CommandTable,
 } from './commands'
 import { ScriptContext, ScriptError, type CommonScripts } from './context'
+import { StepTrace } from '../actor/stepTrace'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
 import { resetFade } from './fade'
 import {
@@ -1175,8 +1177,15 @@ export { HIDDEN_ITEM_FLAGS_START as HIDDEN_ITEM_FLAG_BASE }
 
 // ── 좌표 트리거 ──────────────────────────────────────────────────────────────
 
-/** 마지막으로 판정한 칸. 한 칸에 여러 번 돌지 않게 한다 */
-let lastTile = { x: Number.NaN, z: Number.NaN }
+/**
+ * 지나온 칸을 세는 자 (PARITY §1.1).
+ *
+ * ⚠️ **「그 틱의 칸 하나」만 보면 새 나간다.** 좌표 트리거는 186자리이고
+ * **그중 114자리가 1×1**이다. 달리면 한 틱에 축마다 0.094칸을 가므로 x와 z
+ * 경계를 같은 틱에 넘으면 가운데 칸은 판정 자체가 안 돌았다 — 대각선으로
+ * 모서리를 스치면 1×1 트리거를 그대로 지나칠 수 있었다
+ */
+const triggerTrace = new StepTrace()
 
 /**
  * 도착한 칸을 "방금 밟았다"로 친다.
@@ -1186,7 +1195,7 @@ let lastTile = { x: Number.NaN, z: Number.NaN }
  */
 export function resetTriggerTile(): void {
   const p = worldState.player.position
-  lastTile = { x: Math.floor(p.x), z: Math.floor(p.z) }
+  triggerTrace.reset(p.x, p.z)
 }
 
 /**
@@ -1213,32 +1222,35 @@ export function triggerAt(mapId: number, x: number, z: number, vars: VarStore): 
  */
 function tryStepFeature(): void {
   const p = worldState.player.position
-  const x = Math.floor(p.x), z = Math.floor(p.z)
-  if (x === lastStepTile.x && z === lastStepTile.z) return
-  lastStepTile = { x, z }
+  // ⚠️ **칸이 바뀐 틱에 한 번이다.** `stepOnFeature`는 좌표를 안 받고 「지금
+  // 밟았다」만 뜻하므로, 지나온 칸이 여럿이어도 여러 번 부를 것이 아니다
+  if (stepFeatureTrace.advance(p.x, p.z).tiles.length === 0) return
   fieldScripts.services.mapFeatures?.stepOnFeature?.()
 }
 
-let lastStepTile = { x: Number.NaN, z: Number.NaN }
+const stepFeatureTrace = new StepTrace()
 
 /** 도착한 칸을 「방금 밟았다」로 친다. 판을 타고 내린 자리에서도 부른다 */
 export function resetStepFeatureTile(): void {
   const p = worldState.player.position
-  lastStepTile = { x: Math.floor(p.x), z: Math.floor(p.z) }
+  stepFeatureTrace.reset(p.x, p.z)
 }
 
 function tryTrigger(): void {
   const header = mapById(mapWorld.mapId)
   if (!header) return
   const p = worldState.player.position
-  const x = Math.floor(p.x), z = Math.floor(p.z)
-  if (x === lastTile.x && z === lastTile.z) return
-  lastTile = { x, z }
+  const tiles = triggerTrace.advance(p.x, p.z).tiles
+  if (tiles.length === 0) return
   // 한 칸 움직였으면 "그 자리에 서 있다" 표시를 지운다
   // (`FieldInput_Process`가 걸음마다 `SystemFlag_ClearStep`을 부른다)
   fieldScripts.vars.clearFlag(SYSTEM_FLAG.step)
-  const script = triggerAt(mapWorld.mapId, x, z, fieldScripts.vars)
-  if (script !== null) start(script, header.scripts)
+  // ⚠️ **지나온 칸을 전부 차례로 묻는다.** 하나가 걸리면 거기서 멈춘다 —
+  // 한 틱에 스크립트를 둘 돌릴 수는 없다
+  for (const tile of tiles) {
+    const script = triggerAt(mapWorld.mapId, tile.x, tile.z, fieldScripts.vars)
+    if (script !== null) { start(script, header.scripts); return }
+  }
 }
 
 /**
@@ -1259,10 +1271,18 @@ function trySight(): void {
   const grid = mapWorld.grid
   if (!header || !grid) return
   const p = worldState.player.position
-  const x = Math.floor(p.x), z = Math.floor(p.z)
-  if (x === lastSightTile.x && z === lastSightTile.z) return
-  lastSightTile = { x, z }
+  // ⚠️ **지나온 칸을 전부 묻는다.** 대각선으로 시야의 모서리를 스치면 그 칸에서
+  // 눈이 마주칠 자리인데도 판정이 아예 안 돌았다 (좌표 트리거와 같은 갈래)
+  for (const tile of sightTrace.advance(p.x, p.z).tiles) {
+    if (sightAt(header, grid, tile.x, tile.z)) return
+  }
+}
 
+/** 그 칸에서 눈이 마주쳤나. 마주쳤으면 다가오는 연출을 걸고 참을 준다 */
+function sightAt(
+  header: MapHeader, grid: NonNullable<typeof mapWorld.grid>, x: number, z: number,
+): boolean {
+  const p = worldState.player.position
   const seen = trainerInSight(
     // ⚠️ **배치표가 아니라 지금 선 칸이다** (`MapObject_GetX`). 순회·배회
     // 유형은 걸어 다니므로 처음 섰던 자리에 없다 — 217번도로 아홉 중 넷이
@@ -1291,13 +1311,13 @@ function trySight(): void {
       || npc.script < SCRIPT_ID_OFFSET_SINGLE_BATTLES
       || fieldScripts.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + trainerIdOf(npc.script)),
   )
-  if (!seen) return
+  if (!seen) return false
 
   // ⚠️ **더블 트레이너는 짝과 함께 온다** — 짝을 못 찾으면 혼자 온다.
   // 원작의 `FindTrainerPartner`는 같은 트레이너 번호를 가리키는 다른 객체를
   // 찾는데, 우리 배치표에서는 `trainerType`이 같고 아직 안 이긴 이웃이다
   const world = fieldScripts.world
-  if (world === null) return
+  if (world === null) return false
   const double = fieldScripts.services.trainer?.(trainerIdOf(seen.npc.script))?.double === true
   const first: ApproachingTrainer = {
     localID: seen.npc.localID,
@@ -1321,6 +1341,7 @@ function trySight(): void {
   fieldScripts.services.emote?.(first.localID, 'exclaim')
   const partner = world.approaching[1]
   if (partner !== null) fieldScripts.services.emote?.(partner.localID, 'exclaim')
+  return true
 }
 
 /**
@@ -1348,10 +1369,11 @@ function partnerOf(npc: Npc, first: ApproachingTrainer): ApproachingTrainer | nu
   return null
 }
 
-let lastSightTile = { x: Number.NaN, z: Number.NaN }
+const sightTrace = new StepTrace()
 
 export function resetSightTile(): void {
-  lastSightTile = { x: Number.NaN, z: Number.NaN }
+  const p = worldState.player.position
+  sightTrace.reset(p.x, p.z)
 }
 
 /**

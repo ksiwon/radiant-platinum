@@ -190,6 +190,7 @@
 | 대사 뱅크 | `data/dialogue.test.ts` · `engine/script/text.test.ts` | — |
 | 추출 산출물 추가 | `data/assetManifest.test.ts` | DATA |
 | 게임이 읽는 논리 경로 · 그룹의 `outputs` | `data/assetContract.test.ts` | IMPORT §6 |
+| 걸음을 세는 자 · 지나온 칸 | `engine/actor/stepTrace.test.ts` | PARITY §1.1 |
 | 리포트 스키마 | `state/saveStore.test.ts` · `save/migrate` 시험 | — |
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
