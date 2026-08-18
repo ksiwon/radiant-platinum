@@ -152,10 +152,12 @@ export class MessagePrinter {
       case 'cursorX':
         this.lines[this.lines.length - 1]!.indent = token.x
         return
-      // `{PAUSE n}`은 글자를 한 자씩 찍던 때의 뜸이다. 쪽을 통째로 올리는
-      // 지금은 뜻이 없다 — 쉬는 동안 이미 다 보이기 때문이다
+      // 글을 안 바꾸고 자리만 지나가는 것들.
+      //
+      // `{PAUSE n}`은 글자를 한 자씩 찍던 때의 뜸이라 쪽을 통째로 올리는 지금은
+      // 뜻이 없다 — 쉬는 동안 이미 다 보이기 때문이다. 화면 표시자와 콜백은
+      // 원래부터 글을 안 바꾼다
       case 'pause':
-      // 화면 표시자와 콜백은 글을 안 바꾼다. 자리만 지나간다
       case 'callback':
       case 'screen':
       case 'arg':

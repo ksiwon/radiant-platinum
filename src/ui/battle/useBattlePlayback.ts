@@ -3,8 +3,8 @@
 // 박자를 만드는 것은 `engine/battle/playback.ts`고 여기는 그것을 시간에 얹기만
 // 한다. 한 박자의 계약은 **글 → 화면 → 쉼** 세 걸음이고 이 파일이 그 순서를 지킨다.
 //
-// 글자 인쇄기는 필드 대사창이 쓰는 것을 그대로 쓴다. 글자 속도와 A로 빨리 감기가
-// 이미 원작대로 맞춰져 있다.
+// 글창은 필드가 쓰는 인쇄기를 그대로 쓴다. 한 자씩 찍지 않고 통째로 올라간다
+// (`engine/script/printer`).
 //
 // 원작은 `WaitButtonABTime`이라 **A를 안 눌러도 스스로 넘어간다.** 그래서 배틀이
 // 저 혼자 흘러가고 A는 빨리 감기일 뿐이다 — 줄마다 눌러야 하는 것이 아니다.
@@ -28,8 +28,35 @@ import { battlePaceScale } from '../../state/optionsStore'
 const READ_FRAMES = 4
 
 /** 설정의 배틀 빠르기를 곱한다. 0은 0으로 두고 나머지는 한 프레임을 남긴다 */
-const paced = (frames: number): number =>
-  (frames === 0 ? 0 : Math.max(1, Math.round(frames * battlePaceScale())))
+const paced = (frames: number, scale: number): number =>
+  (frames === 0 ? 0 : Math.max(1, Math.round(frames * scale)))
+
+/**
+ * 이 박자가 **무대의 연출을 덮고 있는가.**
+ *
+ * 기술 박자만 그렇다. 그 쉼은 `MOVE_FRAMES`인데 무대도 **같은 상수로** 그만큼
+ * 돈다 — `BattleStage`의 `LUNGE`와 `MoveVfx`의 `DURATION`이 둘 다
+ * `MOVE_FRAMES / 60`초다. 그러니 이 쉼은 「읽는 시간」이 아니라 **연출의 길이**다
+ */
+const animates = (beat: Beat): boolean => beat.events.some((e) => e.kind === 'move')
+
+/**
+ * 한 박자가 쓰는 프레임 — 게이지가 닳는 길이(`hold`)와 박자 전체 길이(`wait`).
+ *
+ * ⚠️ **연출이 도는 박자는 안 줄인다.** 설정의 빠르기는 「머무름·게이지·기절」에
+ * 거는 값이고(`optionsStore`의 `BATTLE_PACE` 머리말), 연출 길이는 무대가 도는
+ * 시간이라 여기만 줄이면 **연출이 끝나기도 전에** 게이지가 닳고 다음 글이 뜬다.
+ * 기본값이 0.5라서 40프레임짜리 연출이 20프레임에 잘리고 있었다 — 포켓몬이
+ * 아직 때리러 나가 있는데 「효과가 굉장했다!」가 떴다.
+ *
+ * ⚠️ **읽는 시간은 `hold`에 안 든다.** 그 값은 게이지가 닳는 길이라 원작 프레임
+ * 수 그대로여야 한다. 더하는 곳은 박자의 길이뿐이다
+ */
+export function beatFrames(beat: Beat, scale: number): { hold: number, wait: number } {
+  const hold = animates(beat) ? beat.hold : paced(beat.hold, scale)
+  const read = beat.text === null ? 0 : paced([...beat.text].length * READ_FRAMES, scale)
+  return { hold, wait: hold + read }
+}
 
 export interface Playback {
   /** 지금 찍힌 만큼 */
@@ -131,13 +158,11 @@ export function useBattlePlayback(
           // 쉼에만 설정의 빠르기를 곱한다 — `beat.hold`는 원작이 정한 프레임 수고
           // (`playback.ts`) 그 값은 자료라서 안 건드린다. 0으로 접히지 않게 1프레임은
           // 남긴다: 0이면 체력바 전환 시간이 사라져 게이지가 순간이동한다
-          const hold = paced(beat.hold)
+          const { hold, wait } = beatFrames(beat, battlePaceScale())
           setHoldMs(hold * FRAME_MS)
           fold(beat.events)
           r.applied = true
-          // ⚠️ **읽는 시간은 `setHoldMs`에 안 더한다.** 그 값은 게이지가 닳는
-          // 길이고 원작 프레임 수 그대로여야 한다. 더하는 곳은 박자의 길이뿐이다
-          r.wait = hold + (beat.text === null ? 0 : paced([...beat.text].length * READ_FRAMES))
+          r.wait = wait
           // 쉬거나 글을 띄운 박자는 여기서 이 프레임을 끝낸다. 아무것도 안 남긴
           // 박자만 다음 것으로 이어 붙는다
           if (hold > 0 || beat.text !== null) return
@@ -163,13 +188,12 @@ export function useBattlePlayback(
 
   const advance = useCallback(() => {
     const r = runner.current
-    const p = r.printer
-    if (p !== null && !p.finished) {
-      // 찍는 중이면 먼저 다 채운다. 화면은 다음 프레임에 바뀐다
-      p.finish()
-      setText(printedText(p))
-      return
-    }
+    // ⚠️ **연출은 안 건너뛴다.** 원작에서 A로 넘기는 것은 글이고
+    // (`WaitButtonABTime`), `PlayMoveAnimation`은 눌러도 끝까지 돈다. 여기서
+    // 재우면 포켓몬이 때리러 나가 있는 채로 게이지가 닳는다 — 빠르기 설정에서
+    // 같은 자리를 이미 한 번 겪었다 (`beatFrames`의 머리말)
+    const beat = latest.current.beats[r.at]
+    if (beat !== undefined && animates(beat)) return
     r.wait = 0
   }, [])
 
