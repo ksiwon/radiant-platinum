@@ -11,7 +11,6 @@ import { expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld, MENU_NO, MENU_YES, type FieldServices } from './world'
 import { DIR } from './movement'
@@ -24,7 +23,6 @@ import { DATA, withData } from '../../data/romData.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
 
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 const ALWAYS_PRESSED = () => ({ pressed: true, held: true })
 
 /** `scripts_berry_tree_interaction`. `ranges`가 2800을 이리로 보낸다 */
@@ -130,7 +128,7 @@ maybe('나무열매 밭 — 실제 스크립트', () => {
       battleResult: () => 'win',
     }
     const world = new FieldWorld({
-      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements, services,
+      vars, input: ALWAYS_PRESSED, movements: meta.movements, services,
     })
     world.player = {
       x: 0, z: 0, visible: true,

@@ -13,15 +13,12 @@ import { expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld, MENU_YES, type FieldServices } from './world'
 import { DATA, withData } from '../../data/romData.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
 
-/** 훑을 때는 기다리지 않는다 */
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 const ALWAYS_PRESSED = () => ({ pressed: true, held: true })
 /** 안 골랐다 (`PARTY_SLOT_NONE`) */
 const NONE = 0xff
@@ -92,7 +89,7 @@ maybe('NPC 교환 — 스크립트 넷', () => {
       battleResult: () => 'win',
     }
     const world = new FieldWorld({
-      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements, services,
+      vars, input: ALWAYS_PRESSED, movements: meta.movements, services,
     })
     const ctx = new ScriptContext({ vars, world, commands: map }, fileBytes(data, site.file), site.file)
     ctx.start(entryOffset(data, site.file, site.entry))

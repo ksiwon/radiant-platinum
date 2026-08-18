@@ -42,7 +42,7 @@ import {
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
 import { APPROACH_TYPE, type ApproachingTrainer } from '../actor/approach'
 import { DIR, type Movable, type MovementTable } from './movement'
-import { TEXT_SPEED, type PrinterInput } from './printer'
+import type { PrinterInput } from './printer'
 import { VarStore, VAR_LAST_TALKED } from './vars'
 import { FieldWorld, MENU_CANCEL, MENU_NO, type FieldServices, type NameSource } from './world'
 
@@ -78,13 +78,6 @@ export const fieldScripts = {
     rival: () => '',
     counterpart: () => '',
   } as NameSource,
-  /**
-   * 설정의 글자 속도(글자당 프레임). 설정 화면이 갈아 끼운다.
-   *
-   * 함수인 이유는 이름과 같다 — 세계가 만들어진 뒤에 설정이 바뀌어도 다음
-   * 대사부터 바로 먹어야 한다
-   */
-  textSpeed: (() => TEXT_SPEED.normal) as () => number,
   /**
    * 스크립트 한 판이 끝날 때 불린다. 세이브에 밀어 넣는 자리다.
    *
@@ -422,7 +415,6 @@ export function makeWorld(
       if (localID === LOCALID_FOLLOWER) return npcByMovementType(MOVEMENT_FOLLOW_PLAYER)
       return npcActors.byLocalID.get(localID) ?? null
     },
-    options: { speed: TEXT_SPEED.normal, canSkip: true, autoScroll: false },
     input: () => frameInput,
     // 이름은 세이브가 복원되면 바뀌므로 그때그때 물어본다. 여기서 값을
     // 붙잡아 두면 세이브보다 먼저 만들어진 세계가 영영 빈 이름을 쓴다
@@ -433,7 +425,6 @@ export function makeWorld(
     },
     services: fieldScripts.services,
   })
-  world.speed = () => fieldScripts.textSpeed()
   world.player = playerMovable
   return world
 }

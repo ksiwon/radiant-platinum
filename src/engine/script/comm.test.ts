@@ -15,7 +15,6 @@ import { describe, expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext, type CommonScripts } from './context'
 import { entryOffset, fileBytes, parseScriptMeta, resolveScript } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld } from './world'
 import { DIR } from './movement'
@@ -25,7 +24,6 @@ import { COMM_CLUB_RET, COMM_MAPS, SCRIPT_UNION_ROOM_ATTENDANT } from '../world/
 import { TILE_BEHAVIOR_SCRIPT_ONLY_WARP } from '../map/world'
 
 const maybe = withData('scripts.json', 'scripts.bin')
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 
 /** 통신을 여는 자리들. 파일 이름과 진입점은 디컴프의 `ScriptEntry` 차례다 */
 const DOORS = [
@@ -82,7 +80,7 @@ maybe('통신', () => {
     for (let id = 0x8000; id < 0x8010; id++) vars.set(id, 1)
     let saved = false
     const world = new FieldWorld({
-      vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+      vars, input: () => ({ pressed: true, held: true }),
       movements: meta.movements,
       services: {
         party: stubParty, labels: stubLabels, trainerInfo: stubTrainerInfo,
@@ -193,7 +191,7 @@ maybe('통신', () => {
       const vars = new VarStore()
       let saved = false
       const world = new FieldWorld({
-        vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+        vars, input: () => ({ pressed: true, held: true }),
         movements: meta.movements,
         services: {
           party: stubParty, labels: stubLabels, trainerInfo: stubTrainerInfo,
@@ -229,7 +227,7 @@ maybe('통신', () => {
     const op = meta.commands.findIndex((c) => c?.name === 'StartBattleClient')
     const vars = new VarStore()
     const world = new FieldWorld({
-      vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+      vars, input: () => ({ pressed: true, held: true }),
       movements: meta.movements, services: {},
     })
     world.player = { x: 0, z: 0, visible: true, dir: DIR.north }

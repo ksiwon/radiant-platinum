@@ -6,30 +6,27 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { TEXT_SPEED } from '../engine/script/printer'
 import {
-  BATTLE_PACE, battlePaceScale, gameLocale, LANGUAGES, SPEED_FRAMES, textSpeedFrames,
+  BATTLE_PACE, battlePaceScale, gameLocale, LANGUAGES,
   useOptionsStore,
 } from './optionsStore'
 
 beforeEach(() => { useOptionsStore.getState().reset() })
 
-describe('글자 속도 — 원작 값', () => {
-  it('앞 셋이 `Options_TextFrameDelay` 그대로다', () => {
-    // 느림 8 · 보통 4 · 빠름 1. `include/text.h`
-    expect(SPEED_FRAMES.slice(0, 3)).toEqual([TEXT_SPEED.slow, TEXT_SPEED.normal, TEXT_SPEED.fast])
+describe('글자 속도 — 없앤 자리', () => {
+  it('⚠️ 설정에 글자 속도가 없다', () => {
+    // 값이 있다는 것은 **글자를 한 자씩 찍는 길이 살아 있다**는 뜻이었다.
+    // 그 길에 「한 번 누른 것이 여러 쪽을 민다」가 붙어 대사가 속사포로
+    // 지나갔다 (`engine/script/printer`)
+    expect(Object.keys(useOptionsStore.getState())).not.toContain('speed')
   })
 
-  it('네 번째도 지어낸 값이 아니라 `TEXT_SPEED_INSTANT`다', () => {
-    expect(SPEED_FRAMES[3]).toBe(TEXT_SPEED.instant)
-    expect(TEXT_SPEED.instant).toBe(0)
-  })
-
-  it('설정을 바꾸면 인쇄기가 받는 값이 바뀐다', () => {
-    for (let i = 0; i < SPEED_FRAMES.length; i++) {
-      useOptionsStore.getState().set('speed', i as 0 | 1 | 2 | 3)
-      expect(textSpeedFrames()).toBe(SPEED_FRAMES[i])
-    }
+  it('저장하는 항목에도 속도가 없다', () => {
+    // ⚠️ 남겨 두면 옛 값이 되살아나 인쇄기에 다시 흘러든다. `save()`가 적는
+    // 목록에서도 빠져 있어야 한다
+    const { set, reset, ...saved } = useOptionsStore.getState()
+    void set; void reset
+    expect(Object.keys(saved)).not.toContain('speed')
   })
 })
 
@@ -124,19 +121,13 @@ describe('기본값', () => {
     const o = useOptionsStore.getState()
     expect(o.language).toBe(0)
     expect(gameLocale()).toBe('ko')
-    // 원작 기본은 보통·원작대로다. 느리다고 오래 비판받은 값이라 우리는 한 칸씩
-    // 당겨 두고, 원작대로 보고 싶으면 설정에서 되돌릴 수 있게 남긴다
-    expect(o.speed).toBe(2)
-    expect(textSpeedFrames()).toBe(TEXT_SPEED.fast)
     expect(o.battlePace).toBe(1)
     expect(battlePaceScale()).toBe(0.5)
   })
 
   it('원작대로 되돌릴 수 있다', () => {
     const o = useOptionsStore.getState()
-    o.set('speed', 1)
     o.set('battlePace', 0)
-    expect(textSpeedFrames()).toBe(TEXT_SPEED.normal)
     expect(battlePaceScale()).toBe(1)
   })
 })

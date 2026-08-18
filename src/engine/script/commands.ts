@@ -255,8 +255,9 @@ on('MessageVar', (ctx) => {
 })
 
 on('MessageNoSkip', (ctx) => {
-  // A/B로 빨리 감지 못한다 — 놓치면 안 되는 안내에 쓴다
-  ctx.host.world.showMessage(ctx.readVar() & 0xff, false)
+  // 원작에서는 A/B로 인쇄를 빨리 감지 못하는 글이다. 우리는 쪽을 통째로
+  // 올리고 버튼 하나로만 넘어가므로 (`printer.ts`) 보통 글과 결과가 같다
+  ctx.host.world.showMessage(ctx.readVar() & 0xff)
   ctx.pause(printed)
   return true
 })
@@ -282,6 +283,9 @@ on('WaitABPress', (ctx) => {
 })
 
 on('WaitButton', (ctx) => {
+  // ⚠️ **바로 앞 `Message`가 이미 누름을 받았으면 그것이 이 기다림이다.**
+  // 안 그러면 같은 창에서 두 번 눌러야 한다 (`world.takeAck`)
+  if (ctx.host.world.takeAck()) return false
   ctx.pause(abPressed)
   return true
 })

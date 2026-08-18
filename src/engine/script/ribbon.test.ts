@@ -12,14 +12,12 @@ import { expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld } from './world'
 import { DIR } from './movement'
 import { DATA, withData } from '../../data/romData.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 
 /** `T07R0101` — 리조트에리어 리본신드롬 1층 */
 const SYNDICATE = 1109
@@ -58,7 +56,7 @@ maybe('리본신드롬', () => {
     vars.set(VAR_RESULT, RIBBONS_NEEDED)
 
     const world = new FieldWorld({
-      vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+      vars, input: () => ({ pressed: true, held: true }),
       movements: meta.movements, services: {},
     })
     world.player = { x: 0, z: 0, visible: true, dir: DIR.north }

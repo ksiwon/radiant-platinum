@@ -15,7 +15,6 @@ import {
 } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta, resolveScript } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld, type FieldServices } from './world'
 import { DIR } from './movement'
@@ -29,7 +28,6 @@ import { DATA, withData } from '../../data/romData.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
 
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 const ALWAYS_PRESSED = () => ({ pressed: true, held: true })
 
 /**
@@ -109,7 +107,7 @@ maybe('재대결 — 실제 스크립트', () => {
       aliveMons: () => 2,
     }
     const world = new FieldWorld({
-      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements, services,
+      vars, input: ALWAYS_PRESSED, movements: meta.movements, services,
       objects: (id) => npcActors.byLocalID.get(id) ?? null,
     })
     world.scriptID = SCRIPT

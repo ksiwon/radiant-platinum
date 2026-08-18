@@ -25,7 +25,7 @@ import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
 import { useSessionStore } from '../../state/sessionStore'
 import { useIntroStageStore } from '../../state/introStageStore'
-import { textSpeedFrames, useGameLocale } from '../../state/optionsStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { startNewGame } from '../../state/saveStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import * as css from './intro.css'
@@ -186,7 +186,8 @@ export function IntroScreen() {
    * 뱅크 한 줄을 이름까지 채워서.
    *
    * 끝의 새 쪽 표지(CR·FF)는 떼어 낸다. 그것은 "버튼을 기다렸다가 창을 닫아라"는
-   * 뜻이지 새 쪽이 아니다 — 그대로 두면 마지막에 빈 창이 한 번 더 뜬다
+   * 뜻인데, 이 화면에서 **창을 닫는 것은 다음 박자로 가는 것**이라 그 일을
+   * 아래 `advance`가 이미 한다. 두면 같은 줄에서 두 번 눌러야 한다
    */
   const line = useCallback(
     (at: number): string => fillMenuText(bank[at] ?? '', [player, rival]).replace(/[\r\f]+$/, ''),
@@ -237,11 +238,7 @@ export function IntroScreen() {
       setReady(true)
       return
     }
-    printer.current = new MessagePrinter(showing, slots.current, {
-      speed: textSpeedFrames(),
-      canSkip: true,
-      autoScroll: false,
-    })
+    printer.current = new MessagePrinter(showing, slots.current)
     setText('')
     setReady(false)
   }, [showing])
@@ -261,7 +258,10 @@ export function IntroScreen() {
         last = now
         setText(now)
       }
-      setReady((r) => (r === p.finished ? r : p.finished))
+      // 다 보여 준 상태면 고를 것을 띄운다. **끝에서 기다리는 중도 다 보여 준
+      // 것이다** — 그 마지막 누름은 인쇄기가 아니라 `advance`가 받는다
+      const shown = p.finished || p.waiting === 'end'
+      setReady((r) => (r === shown ? r : shown))
     }
     raf = requestAnimationFrame(frame)
     return () => {
@@ -276,7 +276,9 @@ export function IntroScreen() {
    */
   const rush = (): boolean => {
     const p = printer.current
-    if (p === null || p.finished) return false
+    // ⚠️ **끝에서 기다리는 중이면 더 보여 줄 것이 없다.** 그 누름을 인쇄기에
+    // 넘기면 한 줄에 두 번 눌러야 한다 — 인쇄기가 한 번, 박자 넘김이 한 번
+    if (p === null || p.finished || p.waiting === 'end') return false
     pressed.current = true
     return true
   }

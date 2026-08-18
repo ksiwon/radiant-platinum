@@ -13,7 +13,6 @@ import { describe, expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld } from './world'
 import { DIR } from './movement'
@@ -21,7 +20,6 @@ import { DATA, withData } from '../../data/romData.testkit'
 import { stubFieldMoves, stubLabels, stubParty, stubTrainerInfo } from './services.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 
 /** 기계 다섯. 진입점 차례는 디컴프의 `ScriptEntry`다 */
 const MACHINES = [
@@ -50,7 +48,7 @@ maybe('배틀프런티어 기록 기계', () => {
   function read(entry: number, pick: number) {
     const vars = new VarStore()
     const world = new FieldWorld({
-      vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+      vars, input: () => ({ pressed: true, held: true }),
       movements: meta.movements,
       services: {
         party: stubParty, labels: stubLabels, trainerInfo: stubTrainerInfo,

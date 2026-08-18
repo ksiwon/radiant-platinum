@@ -19,7 +19,6 @@ import { buildCommands, VAR_PLAYER_STARTER, type CommandTable } from './commands
 import { entryOffset, fileBytes, parseScriptMeta, type ScriptData } from './data'
 import { ScriptContext } from './context'
 import { MENU_YES, FieldWorld, type FieldServices } from './world'
-import { TEXT_SPEED } from './printer'
 import { VarStore } from './vars'
 import type { MapHeader } from '../map/world'
 import { withData } from '../../data/romData.testkit'
@@ -108,7 +107,6 @@ maybe('오프닝 — 서류가방', () => {
     const world = new FieldWorld({
       vars,
       messages: [],
-      options: { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false },
       input: () => ({ pressed: true, held: true }),
       movements: meta.movements,
       services,

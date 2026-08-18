@@ -32,7 +32,7 @@ import {
 import { installFieldServices, rememberPreviousMap } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
 import { useSaveStore } from '../state/saveStore'
-import { textSpeedFrames, useGameLocale, useOptionsStore } from '../state/optionsStore'
+import { useGameLocale, useOptionsStore } from '../state/optionsStore'
 import { worldState } from '../state/worldState'
 import { useSessionStore } from '../state/sessionStore'
 import { useBattleStore } from '../state/battleStore'
@@ -443,8 +443,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       counterpart: () =>
         fallback(useSaveStore.getState().trainer.gender === 'girl' ? 'playerMale' : 'playerFemale'),
     }
-    // 설정의 글자 속도. 여기서 붙여야 엔진이 상태 계층을 안 import 한다
-    fieldScripts.textSpeed = textSpeedFrames
     // 플래그 하나가 NPC의 등장 조건이라, 저장이 안 되면 다음에 켤 때
     // 이야기가 통째로 되감긴다
     fieldScripts.onScriptEnd = (vars) => {

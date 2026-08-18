@@ -28,7 +28,7 @@ import { fieldScripts } from '../../engine/script/field'
 import { SFX } from '../../engine/audio/sfx'
 import { setStarterChoice } from '../../scene/fieldServices'
 import { resetStarterScene, starterScene } from '../../scene/field/starterRefs'
-import { textSpeedFrames, useGameLocale } from '../../state/optionsStore'
+import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { STARTER_BANK, STARTER_TEXT as TEXT, STARTERS } from './starterChoice'
@@ -113,11 +113,7 @@ export function ChooseStarter() {
   }, [step, pick, bank])
 
   useEffect(() => {
-    printer.current = new MessagePrinter(showing, slots.current, {
-      speed: textSpeedFrames(),
-      canSkip: true,
-      autoScroll: false,
-    })
+    printer.current = new MessagePrinter(showing, slots.current)
     setText('')
     setReady(false)
   }, [showing])
@@ -191,7 +187,10 @@ export function ChooseStarter() {
         last = shown
         setText(shown)
       }
-      setReady((r) => (r === p.finished ? r : p.finished))
+      // ⚠️ **이 화면은 인쇄기에 누름을 안 넘긴다.** 그래서 `finished`만 보면
+      // 끝에서 기다리는 상태에서 영영 안 열린다 — 다 보여 준 것도 「다 됐다」다
+      const done = p.finished || p.waiting === 'end'
+      setReady((r) => (r === done ? r : done))
     }
     raf = requestAnimationFrame(frame)
     return () => {

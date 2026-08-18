@@ -17,7 +17,7 @@ import { expect, it } from 'vitest'
 import { parseScriptMeta, countEntries, entryOffset, fileBytes, resolveScript } from './data'
 import { buildCommands } from './commands'
 import { operandWidth, ScriptContext, ScriptError, type CommandFn } from './context'
-import { MessagePrinter, printedText, TEXT_SPEED, type PrinterOptions } from './printer'
+import { MessagePrinter, printedText } from './printer'
 import { MessageSlots } from './text'
 import { VarStore, VAR_RESULT } from './vars'
 import { FieldWorld, MENU_NO, type FieldServices } from './world'
@@ -40,8 +40,6 @@ const STEP_CAP = 100_000
  */
 const FRAME_CAP = 70_000
 
-/** 훑을 때는 기다리지 않는다. 글자는 즉시 나오고 버튼은 늘 눌려 있다 */
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 const ALWAYS_PRESSED = () => ({ pressed: true, held: true })
 
 interface RunOptions {
@@ -151,7 +149,6 @@ maybe('스크립트 VM', () => {
     const world = new FieldWorld({
       vars,
       messages: opts.messages,
-      options: SWEEP,
       input: ALWAYS_PRESSED,
       movements: meta.movements,
       // 배틀은 늘 이긴 것으로 친다. 지는 쪽만 훑으면 이긴 뒤 가지(플래그를
@@ -406,7 +403,7 @@ maybe('스크립트 VM', () => {
     const vars = new VarStore()
     vars.setFlag(FLAG_HAS_POKEDEX)
     const world = run(file, 2, { vars, messages: TWINLEAF })
-    const printer = new MessagePrinter(TWINLEAF[world.lastMessage!]!, new MessageSlots(), SWEEP)
+    const printer = new MessagePrinter(TWINLEAF[world.lastMessage!]!, new MessageSlots())
     printer.finish()
     expect(printedText(printer)).toBe('모두 모험을 떠나면서\n어른이 되어가는 것이지')
   })
@@ -419,7 +416,7 @@ maybe('스크립트 VM', () => {
     const file = meta.files.findIndex((f) => f.name === 'scripts_veilstone_store_elevator')
     const vars = new VarStore()
     const world = new FieldWorld({
-      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements,
+      vars, input: ALWAYS_PRESSED, movements: meta.movements,
     })
     world.menuEntryTexts = MENU_ENTRIES
     const ctx = new ScriptContext({ vars, world, commands: map }, fileBytes(data, file), file)

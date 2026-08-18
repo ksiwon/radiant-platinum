@@ -13,7 +13,6 @@ import { expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext, type CommonScripts } from './context'
 import { entryOffset, fileBytes, parseScriptMeta, resolveScript } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld, MENU_NO, MENU_YES, type FieldServices } from './world'
 import { DIR } from './movement'
@@ -27,7 +26,6 @@ import { DATA, withData } from '../../data/romData.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
 
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 const ALWAYS_PRESSED = () => ({ pressed: true, held: true })
 
 /** `scripts_amity_square` — D11R0101이 쓰는 파일 */
@@ -79,7 +77,7 @@ maybe('상호교류광장 — 실제 스크립트', () => {
       },
     }
     const world = new FieldWorld({
-      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements, services,
+      vars, input: ALWAYS_PRESSED, movements: meta.movements, services,
     })
     // 이름이 칸에 들어가는 것을 지켜본다 — 빈 글이면 「받았다」 줄에 구멍이 난다
     const set = world.slots.set.bind(world.slots)

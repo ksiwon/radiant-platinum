@@ -217,24 +217,21 @@ maybe('떡잎마을에서 말 걸기', () => {
     expect(npcAt(TWINLEAF_MAP, npc.x, npc.z, new VarStore())).toBe(npc)
   })
 
-  it('A를 누르면 대사가 한 자씩 나오고 버튼으로 닫힌다', () => {
+  it('A를 누르면 대사가 통째로 뜨고, 누르기 전에는 아무것도 안 지나간다', () => {
     fieldScripts.vars.setFlag(FLAG_HAS_POKEDEX) // 한 쪽으로 끝나는 가지를 고른다
     standInFrontOfGuitarist()
     expect(scriptBusy()).toBe(false)
 
     run(1, true) // 눌린 순간에 걸린다
     expect(scriptBusy()).toBe(true)
-
-    // 보통 속도는 다섯 프레임에 한 자다. 22자면 아직 한참 남았다
-    run(20)
-    const partial = printed()
-    expect(partial.length).toBeGreaterThan(0)
-    expect(GUITARIST_LINE.startsWith(partial)).toBe(true)
-    expect(partial).not.toBe(GUITARIST_LINE)
-
-    run(200)
+    // 한 자씩이 아니다 — 창이 뜼는 그 프레임에 이미 다 있다
+    run(2) // 누른 프레임에 대본이 걸리고 다음 프레임에 `Message`가 도는다
     expect(printed()).toBe(GUITARIST_LINE)
-    // 다 찍고 나면 `WaitButton`에서 선다 — 창은 그대로 떠 있다
+
+    // ⚠️ **여기서 오래 둬도 스스로 안 넘어간다.** 이 줄이 「속사포」를 막는
+    // 자리다 — 예전에는 마지막 글자를 찍는 순간 스크립트가 다음으로 갔다
+    run(600)
+    expect(printed()).toBe(GUITARIST_LINE)
     expect(fieldScripts.world!.boxOpen).toBe(true)
     expect(scriptBusy()).toBe(true)
 

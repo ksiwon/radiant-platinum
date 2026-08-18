@@ -13,15 +13,7 @@ import type { BattleEvent } from '../../engine/battle/events'
 import type { Beat, LearnPrompt } from '../../engine/battle/playback'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
-import { battlePaceScale, textSpeedFrames } from '../../state/optionsStore'
-
-/**
- * 배틀 글은 인쇄기가 스스로 버튼을 묻지 않는다. 빨리 감기는 `advance`가 시킨다.
- *
- * 속도는 **글을 띄울 때마다** 물어본다 — 여기서 값을 붙잡아 두면 설정에서
- * 바꿔도 배틀만 옛 속도로 남는다
- */
-const options = () => ({ speed: textSpeedFrames(), canSkip: true, autoScroll: false })
+import { battlePaceScale } from '../../state/optionsStore'
 
 export interface Playback {
   /** 지금 찍힌 만큼 */
@@ -101,17 +93,21 @@ export function useBattlePlayback(
         if (!beat) { setCaughtUp((c) => (c ? c : true)); return }
         setCaughtUp((c) => (c ? false : c))
 
-        // ① 글. 다 찍기 전에는 화면이 안 바뀐다
+        // ① 글. 통째로 올라간다
+        //
+        // ⚠️ **배틀 글은 버튼이 아니라 `beat.hold`가 넘긴다** — 원작이
+        // `WaitButtonABTime 30`으로 정해 둔 프레임 수고 그 값이 자료다. 필드
+        // 대사처럼 누름을 기다리게 하면 한 턴에 예닐곱 번을 눌러야 한다.
+        // 그래서 여기서는 쪽 넘김까지 `finish()`로 다 푼다
         if (!r.applied) {
           if (beat.text !== null && r.printer === null) {
-            r.printer = new MessagePrinter(beat.text, slots.current, options())
+            r.printer = new MessagePrinter(beat.text, slots.current)
+            r.printer.finish()
           }
           const p = r.printer
           if (p !== null) {
-            p.tick({ pressed: false, held: false })
             const now = printedText(p)
             if (now !== latest.current.text) setText(now)
-            if (!p.finished) return
             r.printer = null
           }
           // ② 화면. 체력바 전환 길이를 같은 렌더에 실어 보낸다.

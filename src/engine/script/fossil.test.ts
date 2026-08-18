@@ -16,7 +16,6 @@ import { expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld, MENU_YES, type FieldServices } from './world'
 import { FOSSILS } from '../world/fossil'
@@ -24,7 +23,6 @@ import { DATA, withData } from '../../data/romData.testkit'
 
 const maybe = withData('scripts.json', 'scripts.bin')
 
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 const ALWAYS_PRESSED = () => ({ pressed: true, held: true })
 
 /** 탄갱박물관. 되살려 주는 사람이 여기 있다 */
@@ -64,7 +62,7 @@ maybe('화석 — 탄갱박물관 스크립트', () => {
       battleResult: () => 'win',
     }
     const world = new FieldWorld({
-      vars, options: SWEEP, input: ALWAYS_PRESSED, movements: meta.movements, services,
+      vars, input: ALWAYS_PRESSED, movements: meta.movements, services,
     })
     const info = meta.files[FILE]!
     for (let e = 0; e < info.entries; e++) {

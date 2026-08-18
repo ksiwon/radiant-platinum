@@ -7,12 +7,9 @@
 // 아니라 따로 있는 값이라 리포트를 안 써도 남는다. 그래서 `localStorage`로
 // 충분하다 — 타입드 배열이 없어서 JSON으로 나가도 잃는 것이 없다.
 import { create } from 'zustand'
-import { TEXT_SPEED } from '../engine/script/printer'
 import type { DataLocale } from '../data/gameData'
 import { LEGACY_OPTIONS_KEY, OPTIONS_KEY } from './storageNames'
 
-/** `options_menu`의 10·11·12번 — 느리게 · 보통 · 빠르게 */
-export type TextSpeed = 0 | 1 | 2 | 3
 /** 13·14번 — 본다 · 보지 않는다 */
 export type BattleScene = 0 | 1
 /** 15·16번 — 교체 · 토너먼트 */
@@ -74,7 +71,6 @@ export function setAvailableLocales(locales: readonly string[]): void {
 }
 
 export interface Options {
-  speed: TextSpeed
   battleScene: BattleScene
   battleRule: BattleRule
   sound: SoundMode
@@ -87,18 +83,16 @@ export interface Options {
 }
 
 /**
- * 설정의 속도 → 인쇄기의 글자당 프레임.
+ * ⚠️ **글자 속도 항목은 없앴다.**
  *
- * 앞 셋은 `Options_TextFrameDelay`가 주는 그대로다 — 느림 8 · 보통 4 · 빠름 1.
- * 원작 기본값이 "보통"이고 화면에 뜨는 것도 이 셋뿐이다.
+ * 원작에는 느림·보통·빠름 셋이 있었고 우리는 즉시까지 넷을 걸어 두었는데,
+ * 그 값이 있다는 것은 **글자를 한 자씩 찍는 길이 살아 있다**는 뜻이었다.
+ * 그 길에 「한 번 누른 것이 여러 쪽을 민다」가 붙어 있어 대사가 속사포로
+ * 지나갔다. 지금은 쪽을 통째로 올리고 버튼 하나로만 넘어간다
+ * (`engine/script/printer`) — 고를 값이 없다.
  *
- * **네 번째는 우리가 연 자리다.** 값 자체는 지어낸 것이 아니라 `include/text.h`의
- * `TEXT_SPEED_INSTANT`(0)이고, 원작도 알림창 같은 데서 쓴다 — 설정 화면에만
- * 안 걸려 있었다. 대기 없이 프레임마다 한 자씩이라 60자/초다
+ * 옛 설정에 남아 있는 `speed` 값은 읽을 때 그냥 버려진다 (`load`).
  */
-export const SPEED_FRAMES: readonly number[] = [
-  TEXT_SPEED.slow, TEXT_SPEED.normal, TEXT_SPEED.fast, TEXT_SPEED.instant,
-]
 
 /**
  * 배틀 박자의 쉼에 곱하는 값.
@@ -113,11 +107,8 @@ export const SPEED_FRAMES: readonly number[] = [
  */
 export const BATTLE_PACE: readonly number[] = [1, 0.5, 0.25]
 
-// 기본 글자 속도를 "빠름"으로 둔다. 원작 기본은 "보통"이지만 그건 원작이 느리다고
-// 오래 비판받은 바로 그 값이고, 셋 다 원작이 내놓는 값이라 무엇을 기본으로 삼든
-// 지어낸 속도는 아니다. 원작대로 보고 싶으면 설정에서 한 칸 왼쪽이다
 const DEFAULTS: Options = {
-  speed: 2, battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1, language: 0,
+  battleScene: 0, battleRule: 0, sound: 0, view: 0, battlePace: 1, language: 0,
 }
 
 const KEY = OPTIONS_KEY
@@ -132,8 +123,11 @@ function load(): Options {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY)
     if (!raw) return DEFAULTS
-    // 모르는 항목은 기본값으로 둔다. 옛 설정이 남아 있어도 화면이 안 깨진다
-    return { ...DEFAULTS, ...(JSON.parse(raw) as Partial<Options>) }
+    // 모르는 항목은 기본값으로 둔다. 옛 설정이 남아 있어도 화면이 안 깨진다 —
+    // 없어진 `speed`도 여기서 조용히 떨어진다
+    const saved = JSON.parse(raw) as Partial<Options> & { speed?: unknown }
+    delete saved.speed
+    return { ...DEFAULTS, ...saved }
   } catch {
     return DEFAULTS
   }
@@ -159,19 +153,14 @@ export const useOptionsStore = create<OptionsStore>()((set, get) => ({
 }))
 
 function save(o: Options): void {
-  const { speed, battleScene, battleRule, sound, view, battlePace, language } = o
+  const { battleScene, battleRule, sound, view, battlePace, language } = o
   try {
     localStorage.setItem(KEY, JSON.stringify({
-      speed, battleScene, battleRule, sound, view, battlePace, language,
+      battleScene, battleRule, sound, view, battlePace, language,
     }))
     // 새 키로 한 번 쓰고 나면 옛 키는 헷갈리게만 한다
     localStorage.removeItem(OLD_KEY)
   } catch { /* 사생활 보호 모드면 못 쓴다. 이번 판만 유지된다 */ }
-}
-
-/** 인쇄기에 넘길 글자 속도. 화면 여러 곳이 같은 값을 봐야 한다 */
-export function textSpeedFrames(): number {
-  return SPEED_FRAMES[useOptionsStore.getState().speed] ?? TEXT_SPEED.normal
 }
 
 /** 배틀 박자의 쉼에 곱할 값 */

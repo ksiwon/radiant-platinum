@@ -1,22 +1,26 @@
-// 대사창 인쇄기 (DATA.md §2.11) — `src/render_text.c`의 상태기계를 옮긴 것.
+// 대사창 인쇄기 (DATA.md §2.11).
 //
-// 글자를 한 번에 다 뿌리지 않는다. 프레임마다 하나씩 나오고, 제어 부호를 만나면
-// 거기서 무언가 한다. 원작의 상태 넷이 그대로 필요하다:
+// **글자를 한 자씩 찍지 않는다.** 한 쪽을 통째로 올리고 거기서 버튼을
+// 기다린다. 그래서 상태가 둘뿐이다 — *올렸다* 와 *기다린다*.
 //
-//   HANDLE_CHAR   글자 하나 찍고 `delay`만큼 쉰다
-//   CLEAR         \r — 버튼을 기다렸다가 **창을 비우고** 첫 줄로
-//   START_SCROLL  \f — 버튼을 기다렸다가 **한 줄 올리고** 이어서
-//   PAUSE         {PAUSE n} — n 프레임 그냥 쉰다
+//   \r  쪽 넘김 — 버튼을 기다렸다가 **창을 비우고** 첫 줄로
+//   \f  쪽 넘김 — 버튼을 기다렸다가 **한 줄 올리고** 이어서
+//   끝  버튼을 기다렸다가 창을 닫는다
 //
 // 창은 두 줄이다(`Window_Add(…, 27, 4, …)` — 27×4타일, 글꼴 높이로 두 줄).
 // 그래서 \r과 \f가 다르다. \r은 두 줄을 다 지우고, \f는 아랫줄을 윗줄로 올린다.
+//
+// ⚠️ **버튼 없이 넘어가는 길이 하나도 없어야 한다.** 원작에는 글자 사이 대기를
+// 줄이는 길(`speedUp`)과 스스로 넘어가는 길(`autoScroll`)이 있었는데, 둘 다
+// 「누르지 않았는데 다음이 진행된다」로 새는 자리였다 — 한 번 누른 것이 여러
+// 쪽을 밀어 버려 대사가 속사포로 지나갔다. **그래서 두 길을 다 없앴다.**
+// 넘어가는 자리는 `tick()`의 `input.pressed` 하나뿐이다.
+//
+// ⚠️ **끝에서 기다리는 것이 이 파일의 핵심이다.** 예전에는 마지막 글자를 찍는
+// 순간 `finished`가 참이 되어서, 스크립트가 곧바로 다음 명령으로 갔다. 원작은
+// 글 끝에 `\r`이 붙어 있어 거기서 멎었는데 그 부호가 없는 글도 많아
+// (`res/text/…json`에서 실측) 그런 글은 창이 뜨자마자 사라졌다.
 import { fillSlots, parseMessage, type MessageSlots, type MessageToken } from './text'
-
-/** 글자 하나에 걸리는 프레임 (`include/text.h`). 설정의 문자속도가 이걸 고른다 */
-export const TEXT_SPEED = { instant: 0, fast: 1, quick: 2, normal: 4, slow: 8 } as const
-
-/** 자동 넘김이 켜졌을 때 버튼 대신 기다리는 프레임 (`TextPrinter_WaitAutoMode`) */
-const AUTO_SCROLL_FRAMES = 100
 
 /** 창에 보이는 줄 수. 넘치는 줄은 원작에서도 창 밖으로 나간다 */
 export const BOX_LINES = 2
@@ -35,22 +39,7 @@ export interface Line {
   indent: number
 }
 
-export interface PrinterOptions {
-  /** 글자당 프레임. `TEXT_SPEED` 참조 */
-  speed: number
-  /** A/B로 인쇄를 빨리 감을 수 있나 (`canSkipDelay`) */
-  canSkip: boolean
-  /** 버튼 없이 스스로 넘어간다 (`autoScroll`) */
-  autoScroll: boolean
-}
-
-export const DEFAULT_OPTIONS: PrinterOptions = {
-  speed: TEXT_SPEED.normal,
-  canSkip: true,
-  autoScroll: false,
-}
-
-/** 한 프레임의 입력. `pressed`는 이번 프레임에 새로 눌린 것이다 */
+/** 한 프레임의 입력. `pressed`는 **이번 프레임에 새로 눌린 것**이다 */
 export interface PrinterInput {
   pressed: boolean
   held: boolean
@@ -58,156 +47,125 @@ export interface PrinterInput {
 
 const NO_INPUT: PrinterInput = { pressed: false, held: false }
 
-type Waiting = 'clear' | 'scroll' | null
+/**
+ * 무엇을 기다리는가.
+ *
+ * `end`가 글 전체의 끝이다. 셋 다 **버튼 하나**로 풀린다
+ */
+type Waiting = 'clear' | 'scroll' | 'end' | null
 
 export class MessagePrinter {
   /** 지금 창에 보이는 것 */
   readonly lines: Line[] = [emptyLine()]
 
-  /** 다음 줄 바꿈을 기다리는 중인가. 화면에 화살표를 띄우는 신호이기도 하다 */
+  /** 무엇을 기다리는 중인가. 화면에 화살표를 띄우는 신호이기도 하다 */
   waiting: Waiting = null
   private done = false
 
   private readonly tokens: MessageToken[]
   private index = 0
-  /** 지금 글자 토큰에서 몇 자까지 찍었나 */
-  private offset = 0
-
-  private delay = 0
-  private pauseFrames = 0
-  private autoFrames = 0
-  /** A/B를 한 번 누르면 그 글이 끝날 때까지 빨라진다 (`substruct->speedUp`) */
-  private speedUp = false
 
   private color = 0
   private size = 100
 
-  constructor(raw: string, slots: MessageSlots, readonly options: PrinterOptions = DEFAULT_OPTIONS) {
+  constructor(raw: string, slots: MessageSlots) {
     this.tokens = fillSlots(parseMessage(raw), slots)
+    // 만들자마자 첫 쪽이 올라간다 — 창이 뜨는 프레임에 이미 다 보여야 한다
+    this.fill()
   }
 
-  /** 글을 끝까지 찍었나. `Message`가 이걸 기다린다 */
+  /** 글을 다 보여 주고 **버튼까지 받았나.** `Message`가 이걸 기다린다 */
   get finished(): boolean {
     return this.done
   }
 
-  /** 한 프레임 진행한다 */
+  /** 한 프레임 진행한다. 하는 일은 **누름을 받는 것**뿐이다 */
   tick(input: PrinterInput = NO_INPUT): void {
-    if (this.done) return
-
-    if (this.waiting !== null) {
-      if (!this.release(input)) return
-      if (this.waiting === 'clear') this.clearBox()
-      else this.scrollBox()
+    if (this.done || this.waiting === null) return
+    if (!input.pressed) return
+    if (this.waiting === 'end') {
       this.waiting = null
+      this.done = true
       return
     }
-
-    if (this.pauseFrames > 0) {
-      this.pauseFrames--
-      return
-    }
-
-    // A/B를 누르고 있으면 쉬지 않는다 — 원작은 여기서 `delayCounter`를 0으로 만든다
-    if (input.held && this.speedUp) this.delay = 0
-
-    if (this.delay > 0 && this.options.speed > 0) {
-      this.delay--
-      if (this.options.canSkip && input.pressed) {
-        this.speedUp = true
-        this.delay = 0
-      }
-      return
-    }
-    this.delay = this.options.speed
-
-    // 글자를 안 내는 부호는 프레임을 안 쓴다 (원작의 `RENDER_REPEAT`)
-    while (this.consume() === 'repeat') { /* 다음 부호까지 이어서 */ }
-  }
-
-  /** 남은 것을 전부 찍는다. `MessageInstant`와 시험이 쓴다 */
-  finish(): void {
-    let guard = 0
-    while (!this.done) {
-      if (guard++ > this.tokens.length + totalChars(this.tokens) + 8) {
-        throw new Error('인쇄가 안 끝난다 — 제어 부호가 제자리를 돈다')
-      }
-      if (this.waiting !== null) {
-        if (this.waiting === 'clear') this.clearBox()
-        else this.scrollBox()
-        this.waiting = null
-        continue
-      }
-      this.pauseFrames = 0
-      this.consume()
-    }
-  }
-
-  /** 기다림을 풀어도 되는가 */
-  private release(input: PrinterInput): boolean {
-    if (!this.options.autoScroll) return input.pressed
-    if (this.autoFrames >= AUTO_SCROLL_FRAMES) {
-      this.autoFrames = 0
-      return true
-    }
-    this.autoFrames++
-    return false
+    if (this.waiting === 'clear') this.clearBox()
+    else this.scrollBox()
+    this.waiting = null
+    this.fill()
   }
 
   /**
-   * 다음 한 조각.
+   * 기다리지 않고 끝까지 간다. `MessageInstant`와 시험이 쓴다.
    *
-   * @returns 프레임을 써 버렸으면 `spent`, 글자를 안 냈으면 `repeat`
+   * ⚠️ **사람이 누르는 자리에는 쓰지 않는다** — 이걸 대사에 쓰면 그 창은
+   * 버튼을 안 받고 지나간다
    */
-  private consume(): 'spent' | 'repeat' {
-    const token = this.tokens[this.index]
-    if (token === undefined) {
-      this.done = true
-      return 'spent'
-    }
-    switch (token.kind) {
-      case 'text': {
-        const ch = [...token.text][this.offset]
-        if (ch === undefined) {
-          this.index++
-          this.offset = 0
-          return 'repeat'
-        }
-        this.offset++
-        this.append(ch)
-        return 'spent'
+  finish(): void {
+    let guard = 0
+    while (!this.done) {
+      if (guard++ > this.tokens.length + 8) {
+        throw new Error('인쇄가 안 끝난다 — 제어 부호가 제자리를 돈다')
       }
+      if (this.waiting === 'end') { this.waiting = null; this.done = true; break }
+      if (this.waiting === 'clear') this.clearBox()
+      else if (this.waiting === 'scroll') this.scrollBox()
+      this.waiting = null
+      this.fill()
+    }
+  }
+
+  /**
+   * 다음 멈춤까지 통째로 올린다.
+   *
+   * 멈춤은 쪽 넘김이거나 글의 끝이다. ⚠️ **끝에서 창이 비어 있으면 안 기다린다** —
+   * 글이 `\r`로 끝나는 자리(원작에 흔하다)에서 그 부호가 이미 한 번 버튼을
+   * 받았기 때문이다. 그걸 안 가르면 빈 창이 한 번 더 뜨고 또 눌러야 한다
+   */
+  private fill(): void {
+    while (this.waiting === null && !this.done) {
+      const token = this.tokens[this.index]
+      if (token === undefined) {
+        if (this.pageEmpty()) this.done = true
+        else this.waiting = 'end'
+        return
+      }
+      this.index++
+      this.consume(token)
+    }
+  }
+
+  private consume(token: MessageToken): void {
+    switch (token.kind) {
+      case 'text':
+        for (const ch of token.text) this.append(ch)
+        return
       case 'break':
-        this.index++
-        if (token.how === 'line') {
-          this.lines.push(emptyLine())
-          return 'repeat'
-        }
-        this.waiting = token.how
-        return 'spent'
-      case 'pause':
-        this.index++
-        this.pauseFrames = token.frames
-        return 'spent'
+        if (token.how === 'line') this.lines.push(emptyLine())
+        else this.waiting = token.how
+        return
       case 'color':
-        this.index++
         this.color = token.color
-        return 'repeat'
+        return
       case 'size':
-        this.index++
         this.size = token.percent
-        return 'repeat'
+        return
       case 'cursorX':
-        this.index++
         this.lines[this.lines.length - 1]!.indent = token.x
-        return 'repeat'
+        return
+      // `{PAUSE n}`은 글자를 한 자씩 찍던 때의 뜸이다. 쪽을 통째로 올리는
+      // 지금은 뜻이 없다 — 쉬는 동안 이미 다 보이기 때문이다
+      case 'pause':
       // 화면 표시자와 콜백은 글을 안 바꾼다. 자리만 지나간다
       case 'callback':
       case 'screen':
       case 'arg':
-        this.index++
-        return 'repeat'
+        return
     }
+  }
+
+  /** 창에 보이는 글자가 하나도 없는가 */
+  private pageEmpty(): boolean {
+    return this.lines.every((l) => l.runs.every((r) => r.text === ''))
   }
 
   private append(ch: string): void {
@@ -237,10 +195,6 @@ export class MessagePrinter {
 
 function emptyLine(): Line {
   return { runs: [], indent: 0 }
-}
-
-function totalChars(tokens: readonly MessageToken[]): number {
-  return tokens.reduce((n, t) => n + (t.kind === 'text' ? [...t.text].length : 0), 0)
 }
 
 /** 창에 보이는 글. 시험과 접근성 문자열에 쓴다 */

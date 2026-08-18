@@ -14,7 +14,6 @@ import { expect, it } from 'vitest'
 import { buildCommands } from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta, resolveScript } from './data'
-import { TEXT_SPEED, type PrinterOptions } from './printer'
 import { VarStore } from './vars'
 import { FieldWorld } from './world'
 import { DIR } from './movement'
@@ -30,7 +29,6 @@ import {
 } from '../world/siwon'
 
 const maybe = withData('scripts.json', 'scripts.bin', 'maps.json')
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 
 /** `MAP_HEADER_SPEAR_PILLAR` · 딸린 둘. 셋 다 같은 자리다 */
 const SPEAR_PILLAR = 220
@@ -87,7 +85,7 @@ maybe('천계의피리', () => {
         DISTRIBUTION_MAGIC[DISTRIBUTION_EVENT.arceus]!)
     }
     const world = new FieldWorld({
-      vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+      vars, input: () => ({ pressed: true, held: true }),
       movements: meta.movements,
       services: {
         party: stubParty, labels: stubLabels, fieldMoves: stubFieldMoves,

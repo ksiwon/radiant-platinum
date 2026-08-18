@@ -23,7 +23,7 @@ import { useMenuStore } from '../../state/menuStore'
 import {
   availableLanguages, LANGUAGE_NAMES, LANGUAGES, useGameLocale, useOptionsStore,
   type BattlePace, type BattleRule, type BattleScene,
-  type Language, type Options, type SoundMode, type TextSpeed, type ViewMode,
+  type Language, type Options, type SoundMode, type ViewMode,
 } from '../../state/optionsStore'
 import { APP_ROOT } from '../../data/assetBase'
 import { useSaveStore } from '../../state/saveStore'
@@ -80,13 +80,8 @@ export function OptionsScreen() {
   const here = LANGUAGES[options.language] ?? langs[0]!
 
   const rows: Row[] = [
-    {
-      key: 'speed', label: at(OPTIONS_TEXT.labels.speed),
-      // 앞 셋은 원작 글이고 "즉시"는 우리가 연 자리다. 값은 원작의
-      // `TEXT_SPEED_INSTANT`라 새로 지어낸 속도는 아니다
-      values: [...pick(OPTIONS_TEXT.speed), '즉시'], at: options.speed,
-      help: at(OPTIONS_TEXT.help.speed),
-    },
+    // ⚠️ **글자 속도 항목은 없앴다.** 대사가 쪽 단위로 통째로 올라가고 버튼
+    // 하나로만 넘어가므로 고를 값이 없다 (`engine/script/printer`)
     {
       key: 'battleScene', label: at(OPTIONS_TEXT.labels.battleScene),
       values: pick(OPTIONS_TEXT.battleScene), at: options.battleScene,
@@ -202,7 +197,7 @@ export function OptionsScreen() {
     // `LANGUAGES` 기준 번호라 되돌려 준다
     const value = row.key === 'language' ? LANGUAGES.indexOf(langs[next]!) : next
     options.set(row.key,
-      value as TextSpeed & BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
+      value as BattleScene & BattleRule & SoundMode & ViewMode & BattlePace & Language)
   }
 
   useMenuKeys({

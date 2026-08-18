@@ -10,7 +10,6 @@ import { FIRST_EXTRA_ITEM, ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from './extraIt
 import { buildCommands } from '../script/commands'
 import { ScriptContext } from '../script/context'
 import { entryOffset, fileBytes, parseScriptMeta } from '../script/data'
-import { TEXT_SPEED, type PrinterOptions } from '../script/printer'
 import { VarStore } from '../script/vars'
 import { FieldWorld, type FieldServices } from '../script/world'
 import { DIR } from '../script/movement'
@@ -51,7 +50,6 @@ describe('재고', () => {
 })
 
 const maybe = withData('scripts.json', 'scripts.bin')
-const SWEEP: PrinterOptions = { speed: TEXT_SPEED.instant, canSkip: true, autoScroll: false }
 
 /** `C07R0204` — 장막백화점 4층 */
 const FILE = 145
@@ -76,7 +74,7 @@ maybe('창구가 실제로 열린다', () => {
         menuOpen: () => { closed = !closed; return !closed },
       }
       const world = new FieldWorld({
-        vars, options: SWEEP, input: () => ({ pressed: true, held: true }),
+        vars, input: () => ({ pressed: true, held: true }),
         movements: meta.movements, services,
       })
       world.player = { x: 0, z: 0, visible: true, dir: DIR.north }

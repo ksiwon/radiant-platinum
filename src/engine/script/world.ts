@@ -11,9 +11,7 @@
 // 한 프레임의 흐름은 이렇다. `ctx.step()`이 명령을 돌리다 `Message`에서 멈추고,
 // `world.tick()`이 글자를 한 자 찍고, 다음 프레임에 다시 `step()`이 "다 찍었나"를
 // 묻는다. 그래서 이 객체는 **프레임마다 정확히 한 번** tick 되어야 한다.
-import {
-  DEFAULT_OPTIONS, MessagePrinter, type PrinterInput, type PrinterOptions,
-} from './printer'
+import { MessagePrinter, type PrinterInput } from './printer'
 import { MovementRunner, type Movable, type MovementStep, type MovementTable } from './movement'
 import type { ApproachingTrainer } from '../actor/approach'
 import type { EmoteKind } from '../actor/emote'
@@ -1104,7 +1102,6 @@ export interface WorldInit {
   vars: VarStore
   /** 지금 스크립트가 읽는 뱅크. 없는 번호는 빈 글로 나온다 */
   messages?: readonly string[]
-  options?: PrinterOptions
   /** 이번 프레임의 A/B. 대사창이 이걸로 넘어간다 */
   input?: () => PrinterInput
   names?: NameSource
@@ -1198,19 +1195,13 @@ export class FieldWorld {
   private messages: readonly string[]
   /** 구역 스크립트가 얹은 뱅크. null이면 맵 뱅크다 */
   private override: readonly string[] | null = null
-  /**
-   * 인쇄기 기본값. **글자 속도는 여기 안 굳는다** — 설정에서 바꾼 값이 다음
-   * 대사부터 바로 먹어야 하므로 창을 열 때마다 `speed()`에 물어본다
-   */
-  private readonly options: PrinterOptions
-  /** 지금 설정의 글자당 프레임. 설정 화면이 이걸 갈아 끼운다 */
-  speed: () => number = () => this.options.speed
   private readonly input: () => PrinterInput
+  /** 지금 창이 닫는 누름을 받았는가. `takeAck`가 한 번만 가져간다 */
+  private acked = false
 
   constructor(init: WorldInit) {
     this.vars = init.vars
     this.messages = init.messages ?? []
-    this.options = init.options ?? DEFAULT_OPTIONS
     this.input = init.input ?? NO_INPUT
     this.names = init.names ?? UNNAMED
     this.movements = init.movements ?? []
@@ -1263,18 +1254,32 @@ export class FieldWorld {
    * 창이 닫혀 있으면 **먼저 연다** — `OpenMessage` 없이 `Message`만 쓰는
    * 스크립트가 훨씬 많다
    */
-  showMessage(id: number, canSkip = true): void {
+  showMessage(id: number): void {
     this.boxOpen = true
     this.lastMessage = id
-    this.printer = new MessagePrinter(this.bank[id] ?? '', this.slots, {
-      ...this.options, speed: this.speed(), canSkip,
-    })
+    this.acked = false
+    this.printer = new MessagePrinter(this.bank[id] ?? '', this.slots)
   }
 
   /** 트레이너 대사처럼 뱅크가 아니라 다른 데서 온 글을 올린다 */
   showText(text: string): void {
     this.boxOpen = true
-    this.printer = new MessagePrinter(text, this.slots, { ...this.options, speed: this.speed() })
+    this.acked = false
+    this.printer = new MessagePrinter(text, this.slots)
+  }
+
+  /**
+   * 방금 대사창의 **닫는 누름**을 받았는가. 받았으면 그 표를 가져간다.
+   *
+   * ⚠️ **원작은 `Message`가 인쇄만 끝나면 곧바로 돌아온다.** 누름을 받는 것은
+   * 뒤따르는 `WaitButton`이다. 우리는 `Message`가 직접 받으므로(`printer.ts`)
+   * 그대로 두면 `Message` + `WaitButton`이 붙은 자리에서 **같은 창을 두 번**
+   * 눌러야 한다 — 이 한 번짜리 표가 그 겹침을 없앤다
+   */
+  takeAck(): boolean {
+    const had = this.acked
+    this.acked = false
+    return had
   }
 
   /** `MessageInstant` — 한 프레임에 다 찍는다 */
@@ -1295,6 +1300,7 @@ export class FieldWorld {
   /** @param erase 창 안의 글까지 지우는가 (`CloseMessageWithoutErasing`은 안 지운다) */
   closeBox(erase: boolean): void {
     this.boxOpen = false
+    this.acked = false
     if (erase) this.printer = null
   }
 
@@ -1400,7 +1406,12 @@ export class FieldWorld {
   tick(): void {
     // 페이드도 세계와 같은 시계를 쓴다 — 원작 인자가 프레임 수다
     tickFade()
-    this.printer?.tick(this.input())
+    if (this.printer !== null) {
+      const before = this.printer.finished
+      this.printer.tick(this.input())
+      // 이번 프레임에 **닫는 누름**을 받았다면 표시해 둔다 (`takeAck`)
+      if (!before && this.printer.finished) this.acked = true
+    }
     for (let i = this.runners.length - 1; i >= 0; i--) {
       const runner = this.runners[i]!
       runner.tick()
