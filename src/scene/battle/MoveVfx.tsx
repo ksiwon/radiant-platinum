@@ -23,7 +23,7 @@ import { useBattleStore } from '../../state/battleStore'
 import type { SlotId } from '../../engine/battle/events'
 import { clearMoveImpact, moveImpact, tallOf } from './stageRefs'
 import { GIRTH, muzzleY, shapeSpan, torsoY } from './moveAnchor'
-import type { MoveAnim } from '../../data/schema'
+import type { MoveAnim } from '../../engine/battle/moveAnimTable'
 import {
   elementFamilyForType,
   moveVisualSignature,
@@ -405,7 +405,7 @@ export function MoveVfx({
       })
     void loadMoveAnims()
       .then((a) => {
-        if (alive) setAnims(a.moves)
+        if (alive) setAnims(a)
       })
       .catch(() => {
         /* 대본이 없으면 밋밋한 한 벌로 간다 */

@@ -5,15 +5,14 @@
 // 채로 화면은 전부 같은 연출이었다. 이제 실제 자료를 읽고 **아는 기술의 값**과
 // 맞춘다 — 다른지가 아니라 맞는지를 본다
 import { describe, expect, it } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
-import { moveAnimSchema, type MoveAnim } from '../../data/schema'
+import { MOVE_ANIMS, type MoveAnim } from '../../engine/battle/moveAnimTable'
 import { elementFamilyForType, moveVisualSignature } from './moveElements'
 
-const FILE = 'public/data/moveAnim.json'
-const real = existsSync(FILE)
-const anims: readonly (MoveAnim | null)[] = real
-  ? moveAnimSchema.parse(JSON.parse(readFileSync(FILE, 'utf8'))).moves
-  : []
+// ⚠️ **자료가 없는 기계에서도 돈다.** 표가 소스에 굽혀 있어서(`pnpm gen:moveAnim`)
+// `public/data`가 비어 있어도 이 시험은 건너뛰지 않는다 — 예전에는 파일이 없으면
+// 빈 배열로 조용히 통과했다
+const anims: readonly (MoveAnim | null)[] = MOVE_ANIMS
+const real = true
 
 /** 4세대 기술 번호. 원작 표 그대로다 */
 const MOVE = {

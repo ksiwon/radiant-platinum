@@ -530,22 +530,6 @@ export const frontierSchema = z.object({
 })
 
 /**
- * 숨은 도구 257개 (`gHiddenItems`).
- *
- * `script`는 맵 BG 이벤트의 `script − 8000`이고, `range`는 다우징머신의
- * 탐지 반경 0~2다 (PARITY §7.3)
- */
-export const hiddenItemsSchema = z.object({
-  count: z.number().int().positive(),
-  items: z.array(z.object({
-    script: z.number().int().nonnegative(),
-    item: z.number().int().nonnegative(),
-    qty: z.number().int().positive(),
-    range: z.number().int().min(0).max(2),
-  })).nonempty(),
-})
-
-/**
  * 도감의 정렬·거르기 목록 마흔일곱 벌 (`zukan_data.narc`).
  *
  * 원작이 미리 정렬해 구워 둔 것을 그대로 쓴다 — 무게·키로 다시 정렬하면
@@ -765,59 +749,6 @@ export type Labels = z.infer<typeof labelsSchema>
 export type TrainerMon = z.infer<typeof trainerMonSchema>
 export type Trainer = z.infer<typeof trainerSchema>
 export type BdhcFile = z.infer<typeof bdhcFileSchema>
-/**
- * 기술 연출 대본에서 뽑은 값 (`tools/extract/moveAnim.js` · PARITY §7.3).
- *
- * 원작 `res/moves/<이름>/anim.s`가 기술마다 배경 색·흔들림·달려 나감·입자
- * 자리를 적어 둔 것을 그대로 옮긴다. 색인이 기술 번호다 — 대본이 없는 자리는
- * null이다(표의 꼬리 세 칸).
- */
-const rgbSchema = z.tuple([z.number().int().min(0).max(255),
-  z.number().int().min(0).max(255), z.number().int().min(0).max(255)])
-const whoSchema = z.enum(['attacker', 'defender', 'both'])
-
-export const moveAnimSchema = z.object({
-  moves: z.array(z.object({
-    /** 입자 자원 이름. 무엇을 그릴지는 화면이 정하고, 이건 갈래를 가르는 데 쓴다 */
-    particle: z.string().nullable(),
-    /** 화면 전체가 물드는 색과 진하기(0~16) */
-    flash: z.object({ color: rgbSchema, alpha: z.number().int().min(0).max(16) }).nullable(),
-    /** 맞는 쪽·쓴 쪽의 몸이 물드는 색 */
-    tint: z.object({ who: whoSchema, color: rgbSchema, alpha: z.number().int().min(0).max(16) })
-      .nullable(),
-    /** 몸이 떨린다. `power`는 진폭×횟수라 세기 비교에 쓴다 */
-    shake: z.object({
-      who: whoSchema, x: z.number(), y: z.number(),
-      interval: z.number(), cycles: z.number(), power: z.number(),
-    }).nullable(),
-    /** 화면(배경)이 통째로 흔들린다 */
-    camera: z.object({
-      x: z.number(), y: z.number(), interval: z.number(), power: z.number(),
-    }).nullable(),
-    /** 쓴 쪽이 달려 나간다. 원작 픽셀 단위다 */
-    lunge: z.object({ dx: z.number(), dy: z.number(), frames: z.number() }).nullable(),
-    /** 입자가 포물선을 그린다 */
-    arc: z.object({ frames: z.number(), radius: z.number() }).nullable(),
-    /** 입자가 상대 둘레를 돈다 */
-    orbit: z.object({ rx: z.number(), ry: z.number(), frames: z.number() }).nullable(),
-    /** 몸이 눌리거나 부푼다. 1이 원래 크기다 */
-    squash: z.object({ who: whoSchema, x: z.number(), y: z.number() }).nullable(),
-    /** 입자가 곧게 날아간다 */
-    straight: z.boolean(),
-    /** 배경이 흑백이 된다 */
-    gray: z.boolean(),
-    /** 입자를 붙이는 자리와 그 시점(프레임) */
-    emitters: z.array(z.object({
-      at: z.enum(['attacker', 'defender', 'center', 'generic']),
-      at_frame: z.number(),
-    })),
-    /** 대본이 쉬는 프레임의 합. 연출 길이의 아래끝이다 */
-    frames: z.number(),
-    /** 쓴 쪽이 화면에서 사라진다 (구멍파기·공중날기) */
-    vanish: z.boolean(),
-  }).nullable()),
-})
-
 export type ScriptFile = z.infer<typeof scriptFileSchema>
 export type ScriptCommand = ScriptFile['commands'][number]
 export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
@@ -829,7 +760,6 @@ export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type CreditsAtlas = z.infer<typeof creditsSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
 export type PoketchMapFile = z.infer<typeof poketchMapSchema>
-export type HiddenItems = z.infer<typeof hiddenItemsSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>
 export type PokedexHabitat = z.infer<typeof pokedexHabitatSchema>
 export type Berries = z.infer<typeof berriesSchema>
@@ -848,6 +778,3 @@ export type NpcTrades = z.infer<typeof npcTradesSchema>
 export type FrontierData = z.infer<typeof frontierSchema>
 export type FrontierSet = FrontierData['sets'][number]
 export type FrontierTrainer = FrontierData['trainers'][number]
-
-export type MoveAnimFile = z.infer<typeof moveAnimSchema>
-export type MoveAnim = NonNullable<MoveAnimFile['moves'][number]>

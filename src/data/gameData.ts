@@ -7,7 +7,7 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   boxWallpapersSchema, creditsSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
-  berriesSchema, distortionSchema, moveAnimSchema, hiddenItemsSchema, pokedexHabitatSchema, pokedexSortSchema,
+  berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
@@ -15,13 +15,15 @@ import {
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BoxWallpapers, type CreditsAtlas, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
-  type Species, type Trainer, type TownMapFile, type PoketchMapFile, type HiddenItems,
+  type Species, type Trainer, type TownMapFile, type PoketchMapFile,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
-  type MoveAnimFile, type FrontierData,
+  type FrontierData,
 } from './schema'
+import type { HiddenItem } from '../engine/world/hiddenItemTable'
+import type { MoveAnim } from '../engine/battle/moveAnimTable'
 
 /** 숨은 도구 한 줄 */
-export type HiddenItemRow = HiddenItems['items'][number]
+export type HiddenItemRow = HiddenItem
 
 export type { PokedexHabitat, PokedexSort, Berries }
 export type { Berry } from './schema'
@@ -343,13 +345,15 @@ export function loadNpcTrades(): Promise<NpcTrades> {
  * 숨은 도구 표 (PARITY §7.3). 다우징머신이 탐지 반경을 여기서 읽는다.
  *
  * 자리 번호(`script`)로 바로 짚을 수 있게 표로 만들어 준다 — 257개를
- * 매 프레임 훑으면 안 된다
+ * 매 프레임 훑으면 안 된다.
+ *
+ * ⚠️ **롬에서 안 온다.** 이 표는 오버레이 코드 안에 굳어 있어서 사용자의 롬
+ * 하나로는 못 꺼낸다 — `pnpm gen:hiddenItems`가 디컴프에서 TS 모듈로 굽는다
+ * (`engine/world/hiddenItemTable.ts`). 그래서 `fetchJson`이 아니라 동적 import다
  */
-export function loadHiddenItems(): Promise<Map<number, HiddenItemRow>> {
-  return fetchJson('hiddenItems.json', (v) => {
-    const file = hiddenItemsSchema.parse(v)
-    return new Map(file.items.map((row) => [row.script, row]))
-  })
+export async function loadHiddenItems(): Promise<Map<number, HiddenItemRow>> {
+  const { HIDDEN_ITEMS } = await import('../engine/world/hiddenItemTable')
+  return new Map(HIDDEN_ITEMS.map((row) => [row.script, row]))
 }
 
 /** 도감 정렬 목록 (PARITY §5). **로케일마다 다르다** — 가나다순이 언어에 매인다 */
@@ -369,13 +373,19 @@ export function loadBerries(): Promise<Berries> {
 
 /** 깨어진 세계의 판·뛰는 자리·카메라·사건 (PARITY §6.10) */
 /**
- * 기술 연출 대본 (PARITY §7.3).
+ * 기술 연출 대본 468개 (PARITY §7.3). 색인이 기술 번호고, 대본이 없는 자리는 null이다.
  *
- * 색인이 기술 번호고, 대본이 없는 자리는 null이다. 무거운 자료가 아니라
- * (170KB) 배틀에 들어갈 때 한 번 받는다
+ * ⚠️ **롬에서 안 온다.** 대본은 빌드 때 오버레이 코드로 굳어서 사용자의 롬
+ * 하나로는 못 꺼낸다 — `pnpm gen:moveAnim`이 디컴프에서 TS 모듈로 굽는다.
+ *
+ * ⚠️ **정적으로 import 하면 안 된다.** 표 하나가 178KB라 첫 청크에 얹히면 앱 셸
+ * 예산(첫 청크 gzip 150kB)을 그 자리에서 깬다. 부르는 자리가 `MoveVfx` 하나이고
+ * **배틀에 들어갈 때 한 번**이므로 동적 import로 배틀 청크에 붙인다
+ * (`@pkmn/sim`을 배틀 진입에서 집는 것과 같은 자리다 — PLAN §14)
  */
-export function loadMoveAnims(): Promise<MoveAnimFile> {
-  return fetchJson('moveAnim.json', (v) => moveAnimSchema.parse(v))
+export async function loadMoveAnims(): Promise<readonly (MoveAnim | null)[]> {
+  const { MOVE_ANIMS } = await import('../engine/battle/moveAnimTable')
+  return MOVE_ANIMS
 }
 
 export function loadDistortion(): Promise<DistortionData> {

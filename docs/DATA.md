@@ -4818,7 +4818,12 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 
 디컴프의 `res/moves/<이름>/anim.s` 468개, 12,514줄. 기술 번호는
 `generated/moves.txt`의 줄 번호다(0~467이 전부 짝이 맞고 빠지는 것이 없다).
-→ `data/moveAnim.json` 174KB (`tools/extract/moveAnim.js`).
+→ `src/engine/battle/moveAnimTable.ts` 178KB (`pnpm gen:moveAnim`).
+
+⚠️ **롬에서 안 온다.** 대본은 빌드 때 오버레이 코드로 굳어서 사용자의 롬
+하나로는 못 꺼낸다 — 그래서 브라우저 변환기 대신 소스에 굽는다 (CODEMAP §2.4).
+한때 `public/data/moveAnim.json`으로 굽고 있었고, 그러는 동안 **설치본에는 이
+자료가 아예 없어서** 기술 468개가 밋밋한 한 벌로 나왔다.
 
 ```
 LoadParticleResource 0, flamethrower_spa

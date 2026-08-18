@@ -5,11 +5,11 @@
 // 서로 다르기는 했지만 **맞지는 않았다** — 불꽃세례가 붉게 물드는 것도,
 // 파괴광선이 제일 세게 흔드는 것도 그 산술에는 없다.
 //
-// 지금은 원작 대본(`res/moves/<이름>/anim.s`)에서 뽑은 `moveAnim.json`을 읽는다
-// (`tools/extract/moveAnim.js`). 실측: 배경 물들임 108개(색 13가지) · 몸
-// 물들임 153개 · 흔들림 279개 · 화면 흔들림 30개 · 달려 나감 36개 ·
-// 포물선 22개 · 눌림 24개 · 사라짐 12개 · 입자 붙임 1,742자리.
-import type { MoveAnim } from '../../data/schema'
+// 지금은 원작 대본(`res/moves/<이름>/anim.s`)에서 뽑은 표를 읽는다
+// (`engine/battle/moveAnimTable.ts` · `pnpm gen:moveAnim`). 실측: 배경 물들임
+// 108개(색 13가지) · 몸 물들임 153개 · 흔들림 279개 · 화면 흔들림 30개 ·
+// 달려 나감 36개 · 포물선 22개 · 눌림 24개 · 사라짐 12개 · 입자 붙임 1,742자리.
+import type { MoveAnim } from '../../engine/battle/moveAnimTable'
 
 export type ElementFamily =
   'neutral' | 'flame' | 'water' | 'spark' | 'frost' | 'leaf' | 'stone' | 'spirit' | 'wind' | 'venom'

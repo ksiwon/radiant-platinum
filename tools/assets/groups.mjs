@@ -53,11 +53,6 @@ export const GROUPS = [
     match: (p) => p === 'data/items.json' || nameIn('data/names', 'items.', 'itemDescriptions.')(p),
   },
   {
-    name: 'hiddenItems',
-    make: 'pnpm extract:hiddenItems',
-    match: oneOf('data/hiddenItems.json'),
-  },
-  {
     name: 'berries',
     make: 'pnpm extract:berries',
     match: oneOf('data/berries.json'),
@@ -86,11 +81,6 @@ export const GROUPS = [
     name: 'distortionProps',
     make: 'pnpm extract:distortionProps',
     match: (p) => p.startsWith('data/distortionProps/'),
-  },
-  {
-    name: 'moveAnim',
-    make: 'pnpm extract:moveAnim',
-    match: oneOf('data/moveAnim.json'),
   },
   {
     name: 'species',
