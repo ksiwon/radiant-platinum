@@ -15,6 +15,22 @@ import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
 import { battlePaceScale } from '../../state/optionsStore'
 
+/**
+ * 글 한 자에 주는 **읽는 시간** (프레임).
+ *
+ * ⚠️ 원작에서 글이 화면에 머무는 시간은 **찍는 시간(글자수 × 문자속도) +
+ * `WaitButtonABTime 30`** 둘을 더한 것이다. 한 자씩 찍는 길을 걷어내면서
+ * (`engine/script/printer`) 앞쪽이 통째로 0이 됐고, 그러면 「효과가 굉장했다!」가
+ * 250ms만 떠 있어서 읽을 수가 없다 — 찍지는 않되 **그 시간만큼 머문다**.
+ *
+ * 값은 원작 기본 문자속도 그대로다 (`Options_TextFrameDelay`의 보통 = 4).
+ */
+const READ_FRAMES = 4
+
+/** 설정의 배틀 빠르기를 곱한다. 0은 0으로 두고 나머지는 한 프레임을 남긴다 */
+const paced = (frames: number): number =>
+  (frames === 0 ? 0 : Math.max(1, Math.round(frames * battlePaceScale())))
+
 export interface Playback {
   /** 지금 찍힌 만큼 */
   text: string
@@ -115,11 +131,13 @@ export function useBattlePlayback(
           // 쉼에만 설정의 빠르기를 곱한다 — `beat.hold`는 원작이 정한 프레임 수고
           // (`playback.ts`) 그 값은 자료라서 안 건드린다. 0으로 접히지 않게 1프레임은
           // 남긴다: 0이면 체력바 전환 시간이 사라져 게이지가 순간이동한다
-          const hold = beat.hold === 0 ? 0 : Math.max(1, Math.round(beat.hold * battlePaceScale()))
+          const hold = paced(beat.hold)
           setHoldMs(hold * FRAME_MS)
           fold(beat.events)
           r.applied = true
-          r.wait = hold
+          // ⚠️ **읽는 시간은 `setHoldMs`에 안 더한다.** 그 값은 게이지가 닳는
+          // 길이고 원작 프레임 수 그대로여야 한다. 더하는 곳은 박자의 길이뿐이다
+          r.wait = hold + (beat.text === null ? 0 : paced([...beat.text].length * READ_FRAMES))
           // 쉬거나 글을 띄운 박자는 여기서 이 프레임을 끝낸다. 아무것도 안 남긴
           // 박자만 다음 것으로 이어 붙는다
           if (hold > 0 || beat.text !== null) return

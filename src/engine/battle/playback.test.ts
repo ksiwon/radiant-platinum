@@ -310,4 +310,43 @@ describe('타격 정보 — 소리가 이걸 보고 난다', () => {
     }
     expect(buildBeats([reward], say).some((b) => b.ask !== undefined)).toBe(false)
   })
+  it('한 턴이 빠른 쪽 → 느린 쪽으로 통째로 돈다', () => {
+    // 사람이 화면에서 보는 차례 그대로 못 박는다:
+    //   기술 대사 → 모션 → 게이지 → 효과 → (느린 쪽) 기술 대사 → 모션 → 게이지 → 효과
+    const beats = buildBeats([
+      { kind: 'turn', number: 1 },
+      { kind: 'move', actor: p1, moveName: '몸통박치기', move: 33 },
+      { kind: 'effectiveness', actor: p2, level: 'super' },
+      hit(p2, 22, 40),
+      { kind: 'move', actor: p2, moveName: '할퀴기', move: 10 },
+      hit(p1, 31, 40),
+    ] as BattleEvent[], say)
+
+    const shape = beats.map((b) => (b.text !== null ? `글:${b.text}` : `연출:${b.events[0]?.kind ?? '—'}`))
+    expect(shape).toEqual([
+      '연출:turn',
+      '글:party-0의 몸통박치기!', // 빠른 쪽이 먼저 말하고
+      '연출:move', //                 그 위에서 연출이 돌고
+      '연출:damage', //               게이지가 닳고
+      '글:효과가 굉장했다!', //          그러고 나서 효과를 말한다
+      '연출:effectiveness',
+      '글:foe-0의 할퀴기!', //         이제 느린 쪽이 같은 차례를 밟는다
+      '연출:move',
+      '연출:damage',
+    ])
+  })
+
+  it('⚠️ 효과 줄은 때린 뒤에 온다 — 앞에 오면 결과를 미리 말한다', () => {
+    // 시뮬레이터는 효과를 데미지보다 **먼저** 내보낸다. 그대로 화면에 올리면
+    // 「효과가 굉장했다」가 체력이 닳기 전에 떠서 김이 샌다
+    const beats = buildBeats([
+      { kind: 'move', actor: p1, moveName: '몸통박치기', move: 33 },
+      { kind: 'effectiveness', actor: p2, level: 'super' },
+      hit(p2, 22, 40),
+    ] as BattleEvent[], say)
+    const damageAt = beats.findIndex((b) => b.events[0]?.kind === 'damage')
+    const effectAt = beats.findIndex((b) => b.text === '효과가 굉장했다!')
+    expect(effectAt).toBeGreaterThan(damageAt)
+  })
+
 })
