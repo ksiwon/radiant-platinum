@@ -388,8 +388,18 @@ export async function loadMoveAnims(): Promise<readonly (MoveAnim | null)[]> {
   return MOVE_ANIMS
 }
 
-export function loadDistortion(): Promise<DistortionData> {
-  return fetchJson('distortion.json', (v) => distortionSchema.parse(v))
+/**
+ * 깨어진 세계 (PARITY §6.10).
+ *
+ * ⚠️ **자료가 반씩 갈린다.** 판·통행 격자는 롬에서 오고(`data/distortion.json`),
+ * 층 이음·사건·발판·승강 경로 일곱 칸은 오버레이 코드 표라 롬에 없다 —
+ * `pnpm gen:distortionTables`가 소스에 굽는다. 합치는 자리는
+ * `distortionFile.ts` 하나이고, 표는 이 세계에 들어설 때만 집어 온다
+ */
+export async function loadDistortion(): Promise<DistortionData> {
+  const rom = await fetchJson('distortion.json', (v) => distortionSchema.parse(v))
+  const { withDistortionTables } = await import('./distortionFile')
+  return withDistortionTables(rom)
 }
 
 export function loadLabels(locale: DataLocale): Promise<Labels> {

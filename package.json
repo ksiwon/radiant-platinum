@@ -47,6 +47,7 @@
     "gen:poketchmap": "node tools/extract/poketchMapModule.cjs",
     "gen:easychat": "node tools/extract/easyChatModule.cjs",
     "gen:trainerModels": "py -3.13 tools/extract/bdspTrainerModels.py",
+    "gen:distortionTables": "node tools/extract/distortionTablesModule.cjs",
     "gen:hiddenItems": "node tools/extract/hiddenItemsModule.cjs",
     "gen:moveAnim": "node tools/extract/moveAnimModule.cjs",
     "gen:itemTable": "node tools/extract/itemTableModule.cjs",

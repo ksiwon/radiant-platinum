@@ -11,7 +11,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { MAP, PLATFORM_CEILING, tileAttributes, tileBehavior } from '../engine/world/distortion'
-import type { DistortionData } from '../data/schema'
+import type { DistortionData, DistortionRom } from '../data/schema'
+import { withDistortionTables } from '../data/distortionFile'
 
 /** `TILE_BEHAVIOR_WATER_SEA` */
 const WATER_SEA = 21
@@ -19,7 +20,9 @@ const WATER_SEA = 21
 let data: DistortionData
 
 beforeAll(() => {
-  data = JSON.parse(readFileSync('public/data/distortion.json', 'utf8')) as DistortionData
+  data = withDistortionTables(
+    JSON.parse(readFileSync('public/data/distortion.json', 'utf8')) as DistortionRom,
+  )
 })
 
 describe('B4F 천장의 물', () => {

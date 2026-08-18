@@ -7,12 +7,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../data/schema'
+import { withDistortionTables } from '../data/distortionFile'
 
 const FILE = 'public/data/distortion.json'
 const INDEX = 'public/data/distortionProps/index.json'
 const real = existsSync(FILE)
 const data: DistortionData | null = real
-  ? distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8')))
+  ? withDistortionTables(distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8'))))
   : null
 
 vi.mock('../data/gameData', () => ({

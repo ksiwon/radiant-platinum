@@ -33,6 +33,7 @@ import { convertTrainerSprites } from './trainerSprites'
 import { convertSpawns } from './spawns'
 import { convertNpcTrades } from './npcTrades'
 import { convertBerries } from './berries'
+import { convertDistortion } from './distortion'
 import { convertCredits } from './credits'
 import { convertFrontier } from './frontier'
 import { convertPokedex } from './pokedex'
@@ -329,5 +330,14 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/townMap.json', 'data/townMap.png'],
     converter: 1,
     convert: convertTownMap,
+  },
+  {
+    // ⚠️ **자료가 반씩 갈린다.** 판·통행 격자만 롬에서 온다 — 층 잇는 차례·
+    // 사건·발판·승강 경로는 오버레이 코드 표라 `gen:distortionTables`가 굽는다
+    // (`distortion.ts` 머리말)
+    name: 'distortion',
+    outputs: ['data/distortion.json'],
+    converter: 1,
+    convert: convertDistortion,
   },
 ]

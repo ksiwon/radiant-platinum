@@ -69,14 +69,43 @@ let floor: DistortionMap | null = null
 /** `floor.platforms`의 몇 번째. 판 위가 아니면 −1 */
 let platform = -1
 
-/** 자료를 받는다. 깨어진 세계에 처음 들어설 때 한 번이면 된다 */
+/** 자료가 안 왔다. 판이 없는 세계는 지날 수가 없다 */
+let unavailable = false
+
+/**
+ * 자료를 받는다. 깨어진 세계에 처음 들어설 때 한 번이면 된다.
+ *
+ * ⚠️ **거부된 약속을 캐시에 남기지 않는다.** `loading`을 그대로 두면 한 번
+ * 실패한 세션은 다시 켤 때까지 영영 못 받는다. 그리고 실패를 **삼키지 않는다** —
+ * 조용히 넘기면 판이 하나도 없는 세계를 평범한 격자로 걷게 되고, 그것은
+ * 「지나갈 수 있는 것처럼」 보이는 쪽이라 못 지나는 것보다 나쁘다
+ */
 export function distortionPreload(): Promise<void> {
-  loading ??= loadDistortion().then((d) => { data = d })
+  loading ??= loadDistortion()
+    .then((d) => { data = d; unavailable = false })
+    .catch((e: unknown) => {
+      loading = null
+      unavailable = true
+      throw e
+    })
   return loading
 }
 
 export function distortionLoaded(): boolean {
   return data !== null
+}
+
+/**
+ * 지금 깨어진 세계에 서 있는데 **자료가 없다.**
+ *
+ * 이러면 걸음을 막는다 (`MapStreamer`가 `player.riding`에 얹는다). 설치본에서는
+ * 여기까지 안 온다 — `distortion`이 필수 그룹이라 그 그룹이 없으면 설치가
+ * `ready`가 안 되고 부팅이 설치 화면으로 가서 **빠진 그룹 이름을 적어 준다**
+ * (`install/required.ts` · `import/ui`). 개발 서버에서 자료를 안 구웠을 때가
+ * 남는 갈래이고, 그때는 콘솔에 적힌다 (`MapStreamer`)
+ */
+export function distortionUnavailable(): boolean {
+  return unavailable && floor === null && data === null
 }
 
 /** 그 맵이 깨어진 세계인가. 자료가 없으면 **맵 번호만** 보고 답한다 */

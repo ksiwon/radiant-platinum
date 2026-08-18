@@ -510,10 +510,14 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   const got = await page.evaluate(readInstalled)
   assert(got.state === 'partial', `상태가 partial이 아니다: ${got.state}`)
   // Platinum 쪽 필수가 **다** 들어와야 한다. 이 목록이 줄면 시험이 선다 —
-  // 한때 `marts,moves` 둘이었고, 그때는 이 줄이 "다 됐다"처럼 읽혔다
-  const WANT = [...REQUIRED_PLATINUM_GROUPS].sort().join(',')
-  assert(got.groups.sort().join(',') === WANT,
-    `그룹이 다르다: ${got.groups.sort().join(',')} (기대 ${WANT})`)
+  // 한때 `marts,moves` 둘이었고, 그때는 이 줄이 "다 됐다"처럼 읽혔다.
+  //
+  // ⚠️ **같은가가 아니라 다 들어왔는가다.** 한동안 두 목록이 우연히 같아서
+  // 등호로 재고 있었는데, 필수가 아닌 그룹(나무열매·크레딧·프런티어·도감·
+  // 타운맵)이 브라우저로 옮겨 오자 그 등호가 **더 많이 만들었다는 이유로** 섰다
+  const absent = [...REQUIRED_PLATINUM_GROUPS].filter((g) => !got.groups.includes(g))
+  assert(absent.length === 0,
+    `Platinum 필수가 빠졌다: ${absent.join(',')} (나온 것 ${got.groups.sort().join(',')})`)
   // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다.
   //
   // ⚠️ **`maps.json`은 세 판에서 다 같아야 한다.** 맵 헤더 24바이트 중 지역판마다

@@ -289,11 +289,17 @@ function main() {
   }
   // ⚠️ **그 목록이 자료와 맞는지 여기서 못 박는다.** 늘리기만 하고 확인을
   // 안 하면 나중에 한 종이 늘었을 때 조용히 안 보이는 사람이 생긴다
-  const dwFile = path.join(ROOT, 'public/data/distortion.json')
-  if (fs.existsSync(dwFile)) {
-    const dw = JSON.parse(fs.readFileSync(dwFile, 'utf8'))
+  //
+  // ⚠️ **`distortion.json`이 아니라 코드 표에서 읽는다.** 그 세계의 맵 물체는
+  // 롬이 아니라 오버레이의 C 배열이라 소스에 굽는다 (`gen:distortionTables`).
+  // 디컴프가 없는 기계에서는 이 대조만 건너뛴다 — 굽는 것 자체는 롬으로 된다
+  let mapObjects = null
+  try {
+    mapObjects = require('./distortionTablesModule.cjs').extract().mapObjects
+  } catch { /* 디컴프가 없다 */ }
+  if (mapObjects) {
     const miss = new Set()
-    for (const table of dw.mapObjects ?? []) {
+    for (const table of mapObjects) {
       for (const row of table.objects) {
         if (row.graphicsID === NO_GRAPHICS || used.has(row.graphicsID)) continue
         miss.add(row.graphicsID)

@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../../data/schema'
+import { withDistortionTables } from '../../data/distortionFile'
 import {
   groupHidden, hideGroup, initialHiddenGroups, MAX_GHOST_PROP_GROUPS, newDistortionState, showGroup,
 } from './distortion'
@@ -14,7 +15,7 @@ import {
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
 const data: DistortionData | null = real
-  ? distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8')))
+  ? withDistortionTables(distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8'))))
   : null
 
 describe('유령 소품 무리', () => {

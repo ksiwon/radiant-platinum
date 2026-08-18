@@ -4749,7 +4749,23 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 
 `fielddata/tornworld/tw_arc.narc`의 0번이 맵 표고 1~10번이 층마다의 구역이다.
 같이 있는 `tw_arc_attr.narc`가 통행 격자 12벌(u16 × 1024)을 든다.
-→ `data/distortion.json` 105KB (`tools/extract/distortion.js`).
+→ `data/distortion.json` **70.3KB** (`tools/extract/distortion.js` ·
+`import/platinum/distortion.ts`).
+
+⚠️ **이 세계의 자료는 반씩 갈린다.** 롬에 있는 것은 위 두 NARC뿐이고, 나머지
+일곱 칸은 **오버레이의 C 배열**이라 사용자의 롬 하나로는 못 꺼낸다:
+
+| 칸 | 어디서 | 크기 |
+|---|---|---:|
+| `maps`(판·점프·카메라·소품·방아쇠) | 롬 `tw_arc.narc` | 29.5KB |
+| `attrs`(통행 격자 열두 벌) | 롬 `tw_arc_attr.narc` | 40.8KB |
+| `connections` · `events` · `movingPlatforms` · `elevatorPaths` · `simpleProps` · `mapObjects` · `giratinaShadows` | 원작 코드 `ov9_02249960.c` | 34.7KB |
+
+그래서 한 그룹으로 못 만든다. 뒤 일곱은
+`src/engine/world/distortionTables.ts`(`pnpm gen:distortionTables`)가 들고,
+둘을 합치는 자리는 **`src/data/distortionFile.ts` 하나**다 — 읽는 쪽 스무
+군데는 합쳐진 것만 본다. `distortionSchema`도 롬에서 오는 두 칸만 검사한다
+(코드 표는 TS 타입이 곧 계약이라 런타임 검사가 할 일이 없다).
 
 ⚠️ **눈에 보이는 「블록」은 지형이 아니라 소품이다.** 걷는 판정은
 `tw_arc_attr`가 주지만 발판·바위·덩굴은 필드 이펙트 아카이브의 NSBMD

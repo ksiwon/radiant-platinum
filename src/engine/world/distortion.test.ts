@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DistortionData, DistortionPlatform } from '../../data/schema'
 import { distortionSchema } from '../../data/schema'
+import { withDistortionTables } from '../../data/distortionFile'
 import {
   ATTRS_INVALID, ATTRS_OUT_OF_BOUNDS, CYNTHIA_BLOCK, EVENT_CMD, FLAG_COND,
   MAX_GHOST_PROP_GROUPS, MAX_PERSISTED_PLATFORMS, PLATFORM_CEILING, PLATFORM_EAST_WALL,
@@ -182,7 +183,7 @@ describe('감춘 무리', () => {
 
 const FILE = resolve(__dirname, '../../../public/data/distortion.json')
 const real: DistortionData | null = existsSync(FILE)
-  ? distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8')))
+  ? withDistortionTables(distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8'))))
   : null
 
 /** 그 판이 쓰는 통행 격자 */

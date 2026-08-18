@@ -128,14 +128,15 @@
 없다. 그래서 `pnpm gen:*` 꼴로 **소스에 구워 넣는다**
 (`tools/extract/*Module.cjs` → `src/…Table.ts`).
 
-지금 그렇게 굽는 것 스물하나(`package.json`의 `gen:*`): `gen:amity`(상호교류광장) ·
+지금 그렇게 굽는 것 스물둘(`package.json`의 `gen:*`): `gen:amity`(상호교류광장) ·
 `gen:records`(게임 기록) · `gen:credits`(크레딧 흐르는 차례) ·
 `gen:vsseeker`(재대결표 240줄) · `gen:poketchmap`(포켓치 지도 위의 자리) ·
 `gen:easychat`(낱말 1,495개의 무리) · `gen:charmap`(문자표) · `gen:scriptMeta` ·
 `gen:spriteTable` · `gen:trainerClasses` · `gen:trainerBgm` · `gen:berryInit` ·
 `gen:itemTable` · `gen:eggMoveTable` · `gen:pokeIconTable` · `gen:otherpokeTable` ·
 `gen:spawnTable` · `gen:tutorMoves` · `gen:hiddenItems`(숨은 도구 257개) ·
-`gen:moveAnim`(기술 연출 대본 468개) · `gen:trainerModels`(BDSP 쪽, 파이썬).
+`gen:moveAnim`(기술 연출 대본 468개) · `gen:distortionTables`(깨어진 세계의 코드 표
+일곱 칸) · `gen:trainerModels`(BDSP 쪽, 파이썬).
 
 ⚠️ **큰 표는 정적 import 하면 안 된다.** `moveAnimTable.ts` 하나가 178KB라 첫
 청크에 얹히면 앱 셸 예산(첫 청크 gzip 150kB)을 그 자리에서 깬다 — 부르는 자리

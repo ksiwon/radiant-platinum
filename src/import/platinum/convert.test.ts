@@ -330,4 +330,5 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('frontier — 개체 951과 트레이너 315', async () => { await parity('frontier') }, 60_000)
   it('pokedex — 정렬 목록과 서식지', async () => { await parity('pokedex') }, 120_000)
   it('townMap — 신오 지도 한 장', async () => { await parity('townMap') }, 60_000)
+  it('distortion — 판 열 층과 통행 격자 열두 벌', async () => { await parity('distortion') }, 60_000)
 })

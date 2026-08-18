@@ -10,13 +10,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../data/schema'
+import { withDistortionTables } from '../data/distortionFile'
 import { FLAG_COND, MAP, PLATFORM_FLOOR, PROGRESS } from '../engine/world/distortion'
 import { VarStore } from '../engine/script/vars'
 
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
 const data: DistortionData | null = real
-  ? distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8')))
+  ? withDistortionTables(distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8'))))
   : null
 
 vi.mock('../data/gameData', () => ({

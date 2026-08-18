@@ -8,12 +8,15 @@ import { readFileSync } from 'node:fs'
 import {
   CAMERA_UNIT, cameraDegrees, cameraDelta, cameraTurnAngles, cameraTurnDone,
 } from './distortionCamera'
-import type { DistortionData } from '../../data/schema'
+import type { DistortionData, DistortionRom } from '../../data/schema'
+import { withDistortionTables } from '../../data/distortionFile'
 
 let data: DistortionData
 
 beforeAll(() => {
-  data = JSON.parse(readFileSync('public/data/distortion.json', 'utf8')) as DistortionData
+  data = withDistortionTables(
+    JSON.parse(readFileSync('public/data/distortion.json', 'utf8')) as DistortionRom,
+  )
 })
 
 describe('각의 단위', () => {

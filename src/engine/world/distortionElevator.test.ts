@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import { distortionSchema, type DistortionData } from '../../data/schema'
+import { withDistortionTables } from '../../data/distortionFile'
 import { MAP, connectionOf } from './distortion'
 import {
   ELEVATOR_DIR, ELEVATOR_PATH_NONE, PLATFORM_FLAG, PLATFORM_FLAG_NONE, TILE_FX,
@@ -14,7 +15,7 @@ import {
 const FILE = 'public/data/distortion.json'
 const real = existsSync(FILE)
 const data: DistortionData | null = real
-  ? distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8')))
+  ? withDistortionTables(distortionSchema.parse(JSON.parse(readFileSync(FILE, 'utf8'))))
   : null
 
 function platformsOf(map: number) {

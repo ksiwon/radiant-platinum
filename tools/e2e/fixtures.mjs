@@ -131,7 +131,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'text', 'species', 'moves', 'maps', 'chunks', 'scripts', 'marts', 'npcTrades', 'sound',
   'pokegra', 'encounters', 'trainers', 'spawns', 'items', 'npcSprites', 'itemIcons',
   'pokeIcons', 'boxWallpapers', 'poketchMap', 'signposts', 'starterScene', 'distortionProps',
-  'trainerSprites',
+  'distortion', 'trainerSprites',
 ]
 
 export const REQUIRED_BDSP_GROUPS = ['npcModels', 'monModels', 'arenas', 'motionTiming']

@@ -1927,13 +1927,13 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 | Platinum 브라우저 변환 | ⚠️ **그룹 아홉 중 둘**(`moves`·`marts`). 셋 다 노드 산출물과 바이트로 같다 |
 | Import Worker | ✅ 진짜 module Worker. `Blob`만 넘기고 산출물은 transferable · 취소 · job 번호 |
 | 부팅 배선 | ✅ 개발=HTTP · 공개+ready=OPFS · 공개+미설치=설치 화면(**HTTP로 안 돌아간다**) |
-| 설치 상태 구분 | ✅ `installing`/`partial`/`ready`. 필수 26그룹이 다 있어야 `ready` |
+| 설치 상태 구분 | ✅ `installing`/`partial`/`ready`. 필수 28그룹이 다 있어야 `ready` |
 | 파일 무결성 | ✅ 파일마다 길이 + SHA-256. 재개가 깨진 그룹만 다시 만든다 |
 | 언어 목록 | ✅ 설치 manifest에서 온다. 없는 언어를 고른 상태면 되돌린다 |
 | BDSP 폴더 검증 | ✅ `AssetAssistant` 자동 탐색 · 그룹 다섯 · 표본 종 |
 | BDSP TS/WASM 변환 | ✅ 네 그룹이 다 돈다. 무대 g001이 메시 158 · 정점 141,918 · 픽셀 1,196,032까지 개발 추출기와 **모두 같다** (IMPORT.md §12) |
 | OPFS 설치·저널·재개 | ✅ quota·persist·임시 파일·검증 후 commit·재개·에셋/리포트 분리 |
-| Import Wizard | ✅ Worker로 돈다. 진짜 롬과 `AssetAssistant`만으로 **필수 26그룹 · 파일 7,007개 · 700.3MB**를 3.6분에 옮기고 `ready`가 된다 (e2e ⑮) |
+| Import Wizard | ✅ Worker로 돈다. 진짜 롬과 `AssetAssistant`만으로 **필수 28그룹 · 파일 7,096개 · 700.9MB**를 4.9분에 옮기고 `ready`가 된다 (e2e ⑮) |
 | 번들 출처 검사 | ✅ 청크별 모듈 출처. 그 검사가 찾아낸 8,881kB가 지금 **0바이트**다 (DEPLOY.md §4) |
 | 번들 안의 `eval(` | ✅ **0건.** `>eval` 디버그 명령을 빌드에서 지운다 — CSP를 열 이유가 없어졌다 |
 | 앱 셸 그림 심사 | ▲ **감수하기로 했다.** 타이틀 배경에 워드마크, 아이콘에 원작 캐릭터로 보이는 형상 — 사실은 그대로고 대장이 매번 다시 찍는다 (COPYRIGHT.md §11) |

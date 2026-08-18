@@ -66,6 +66,7 @@ import {
   distortionLeave,
   distortionLoaded,
   distortionPreload,
+  distortionUnavailable,
   distortionRideTick,
   distortionRiding,
   isDistortionFloor,
@@ -340,9 +341,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         const y = atY ?? next.heightAtWorld(x, z, 0) ?? 0
         if (distortionLoaded()) distortionEnter(mapId, x, y, z)
         else
-          void distortionPreload().then(() => {
-            distortionEnter(mapId, x, y, z)
-          })
+          void distortionPreload()
+            .then(() => {
+              distortionEnter(mapId, x, y, z)
+            })
+            // ⚠️ **실패를 삼키지 않는다.** `.catch`가 없던 동안은 거부된 약속이
+            // 캐시에 남고 화면은 판 하나 없는 세계를 평범한 격자로 걷게 뒀다.
+            // 지금은 걸음을 막는다 (`distortionUnavailable`) — 설치본은 여기까지
+            // 안 온다(필수 그룹이라 설치 화면이 이름을 적어 준다)
+            .catch((e: unknown) => {
+              console.error('깨어진 세계 자료를 못 받았다 — 그 세계를 지날 수 없다', e)
+            })
       } else {
         distortionLeave()
       }
@@ -714,7 +723,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     eternaTick(dt)
     canalaveTick(dt)
     veilstoneTick(dt)
-    worldState.player.riding = distortionRiding() || distortionBoulderFalling()
+    // ⚠️ `distortionUnavailable`이 여기 있는 이유는 연출이 아니다 — 판이 없는
+    // 세계에서 격자로 걷게 두지 않으려는 것이다 (REPAIR §1.3)
+    worldState.player.riding = distortionUnavailable()
+      || distortionRiding() || distortionBoulderFalling()
       || distortionGhostRunning() || distortionJumping() || distortionEventRunning()
       || distortionCascading()
       || platformLiftBusy()

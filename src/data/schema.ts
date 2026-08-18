@@ -4,6 +4,7 @@
 // 이미 두 번 겪었다(charmap 오프바이원, BDSP 채널 매핑). 스키마는 그게 게임
 // 코드까지 조용히 흘러드는 것을 막는 마지막 방어선이다. 범위까지 좁게 잡는다.
 import { z } from 'zod'
+import type { DistortionTables } from '../engine/world/distortionTables'
 import { POCKET_COUNT } from './pockets'
 
 /** 4세대 타입 18종: 0 노말 … 9 ??? … 17 악 */
@@ -600,6 +601,12 @@ const distortionBoundsSchema = z.object({
   sz: z.number().int().nonnegative(),
 })
 
+/**
+ * ⚠️ **롬에서 오는 두 칸만 검사한다.** 층 잇는 차례·사건·발판·승강 경로·소품·
+ * 맵 물체·기라티나 그림자 일곱은 오버레이 코드 표라 롬에 없고, 소스에 굽혀
+ * 있으므로(`engine/world/distortionTables.ts`) **TS 타입이 곧 계약이다** —
+ * 런타임 검사가 할 일이 없다. 둘을 합치는 자리는 `data/distortionFile.ts` 하나다
+ */
 export const distortionSchema = z.object({
   maps: z.array(z.object({
     map: z.number().int().nonnegative(),
@@ -650,86 +657,6 @@ export const distortionSchema = z.object({
   })).nonempty(),
   /** 판마다의 통행 격자. u16 하나가 한 칸이고 0x8000이 막힘이다 */
   attrs: z.array(z.array(z.number().int().nonnegative())).nonempty(),
-  connections: z.array(z.object({
-    currID: z.number().int().nonnegative(),
-    prevID: z.number().int().nonnegative(),
-    nextID: z.number().int().nonnegative(),
-  })).nonempty(),
-  events: z.array(z.object({
-    map: z.number().int().nonnegative(),
-    events: z.array(z.object({
-      x: z.number().int(), y: z.number().int(), z: z.number().int(),
-      flagCond: z.number().int().nonnegative(),
-      flagVal: z.number().int(),
-      cmds: z.array(z.object({
-        kind: z.number().int().nonnegative(),
-        params: z.record(z.string(), z.unknown()).nullable(),
-      })),
-    })),
-  })),
-  /**
-   * 층을 잇는 **움직이는 발판** (`sMovingPlatformsMapTemplates`).
-   *
-   * 좌표는 세계 좌표고, 그 칸에 서면 승강이 시작된다. `persistedFlag`가
-   * 세이브의 발판 자리 열하나 중 하나이며 `PLATFORM_FLAG_INVALID`(11)이면
-   * 늘 있다는 뜻이다 (`engine/world/distortionElevator`)
-   */
-  movingPlatforms: z.array(z.object({
-    map: z.number().int().nonnegative(),
-    platforms: z.array(z.object({
-      index: z.number().int().nonnegative(),
-      tileX: z.number().int(), tileY: z.number().int(), tileZ: z.number().int(),
-      elevatorPathIndex: z.number().int().nonnegative(),
-      /** 0 위 · 1 아래 · 2 승강이 아니다 (그냥 떠 있는 발판) */
-      elevatorDir: z.number().int().min(0).max(2),
-      /** 닿는 층에서 이 발판이 몇 번인가 */
-      destIndex: z.number().int().nonnegative(),
-      propKind: z.number().int().nonnegative(),
-      persistedFlag: z.number().int().nonnegative(),
-    })),
-  })),
-  /**
-   * 승강 경로 (`sElevatorPlatformPaths`).
-   *
-   * `posDelta`가 한 프레임에 움직이는 고정소수점 양이고 `final*Offset`이
-   * 닿는 칸까지의 차다. `changeMaps*Offset`만큼 왔을 때 층이 바뀐다.
-   * `nextIndex`가 표 길이(22)면 거기서 끝이다
-   */
-  elevatorPaths: z.array(z.object({
-    index: z.number().int().nonnegative(),
-    nextIndex: z.number().int().nonnegative(),
-    finalTileXOffset: z.number().int(),
-    finalTileYOffset: z.number().int(),
-    finalTileZOffset: z.number().int(),
-    changeMapsTileXOffset: z.number().int(),
-    changeMapsTileYOffset: z.number().int(),
-    changeMapsTileZOffset: z.number().int(),
-    posDelta: z.array(z.number().int()).length(3),
-    persistedFlagToSet: z.number().int().nonnegative(),
-    persistedFlagToClear: z.number().int().nonnegative(),
-  })).nonempty(),
-  /**
-   * 늘 서 있는 소품 (`sSimplePropsMapTemplates`) — 문·폭포·덩굴꽃.
-   *
-   * 유령 소품·승강 발판과 함께 화면에 세워야 하는 셋째 갈래다
-   * (`InitSimplePropsForMap`). 조건은 사건과 같은 `CheckFlagCondition`이다
-   */
-  simpleProps: z.array(z.object({
-    map: z.number().int().nonnegative(),
-    props: z.array(z.object({
-      propKind: z.number().int().nonnegative(),
-      tileX: z.number().int(),
-      tileY: z.number().int(),
-      tileZ: z.number().int(),
-      flagCond: z.number().int().nonnegative(),
-      flagCondVal: z.number().int(),
-    })),
-  })),
-  mapObjects: z.array(z.object({
-    map: z.number().int().nonnegative(),
-    objects: z.array(z.record(z.string(), z.unknown())),
-  })),
-  giratinaShadows: z.array(z.record(z.string(), z.unknown())),
 })
 
 export const nameListSchema = z.array(z.string())
@@ -763,14 +690,16 @@ export type PoketchMapFile = z.infer<typeof poketchMapSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>
 export type PokedexHabitat = z.infer<typeof pokedexHabitatSchema>
 export type Berries = z.infer<typeof berriesSchema>
-export type DistortionData = z.infer<typeof distortionSchema>
-export type DistortionMap = DistortionData['maps'][number]
+/** 롬에서 오는 절반 — 판과 통행 격자 */
+export type DistortionRom = z.infer<typeof distortionSchema>
+/** 읽는 쪽 스무 군데가 보는 것. 롬 절반 + 코드 표 일곱 칸 */
+export type DistortionData = DistortionRom & DistortionTables
+export type DistortionMap = DistortionRom['maps'][number]
 export type DistortionBounds = DistortionMap['platforms'][number]['bounds']
 export type DistortionPlatform = DistortionMap['platforms'][number]
 export type DistortionJump = DistortionMap['jumps'][number]
 export type DistortionCamera = DistortionMap['cameras'][number]
-export type DistortionMovingPlatform = DistortionData['movingPlatforms'][number]['platforms'][number]
-export type DistortionElevatorPath = DistortionData['elevatorPaths'][number]
+export type { DistortionMovingPlatform, DistortionElevatorPath } from '../engine/world/distortionTables'
 export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type MartTable = z.infer<typeof martTableSchema>
