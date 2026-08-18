@@ -66,7 +66,14 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
     // 깨어진 세계는 맵 격자가 아니라 **서 있는 판**이 정한다 (PARITY §6.10).
     // 판 위가 아니면 null을 주고, 그때만 아래 평소 판정으로 내려간다
     const dw = distortionBridge.blockedAt?.(cx, y, cz)
-    if (dw !== null && dw !== undefined) return dw
+    if (dw !== null && dw !== undefined) {
+      if (dw) return true
+      // ⚠️ **이 세계에도 물이 있다** — B4F 천장의 50칸이 `TILE_BEHAVIOR_WATER_SEA`고,
+      // 폭포가 그 웅덩이에 있다. 맵 격자에는 안 적혀 있어서 판에 물어야 한다.
+      // 파도타기 없이는 못 들어간다 (`player_move.c` 248줄과 같은 규칙)
+      const beh = distortionBridge.behaviorAt?.(cx, y, cz)
+      return !surfing && beh !== null && beh !== undefined && isOnWater(beh, false)
+    }
     // 그 맵에만 있는 장치가 먼저다 (`DynamicMapFeatures_CheckCollision`) —
     // 들판시티의 물바닥처럼 **같은 칸이 물 높이에 따라 열리고 닫히는** 자리는
     // 격자에 안 적혀 있다. 안 보는 칸이면 null이 와서 아래로 내려간다
@@ -330,9 +337,13 @@ export const playerSystem = {
     }
 
     const here = activeZone.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null
+    // 깨어진 세계에서는 **서 있는 판**이 성질을 준다. 맵 격자를 보면 천장의
+    // 물 위에서도 뭍으로 읽혀 타자마자 내려 버린다
+    const standing =
+      distortionBridge.behaviorAt?.(p.position.x, p.position.y, p.position.z) ?? here
     // 뭍에 올라서면 내린다. 원작도 물 밖으로 나가는 순간 상태가 풀린다 —
     // 타는 것은 A를 눌러야 하지만 내리는 것은 걸어 나오면 된다
-    if (p.surfing && here !== null && !isOnWater(here, onElevatedBridge())) {
+    if (p.surfing && standing !== null && !isOnWater(standing, onElevatedBridge())) {
       p.surfing = false
     }
     // 다리 어귀를 밟았는가 · 다리에서 내려섰는가 (PARITY §1.16).

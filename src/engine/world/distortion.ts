@@ -430,6 +430,14 @@ export const distortionBridge: {
    */
   behaviorAt: ((x: number, y: number, z: number) => number | null) | null
   /**
+   * 판 위에서 바라보는 **앞 칸**. 판 위가 아니면 null.
+   *
+   * ⚠️ **천장에서는 좌표의 앞뒤가 뒤집혀 있다** — 로컬 각을 판의 기저로
+   * 되돌려야 한다 (`scene/distortion`의 `distortionFrontTile`)
+   */
+  frontTile: ((x: number, y: number, z: number, facing: number)
+    => { x: number, y: number, z: number } | null) | null
+  /**
    * 시로나가 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
    *
    * 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
@@ -440,7 +448,7 @@ export const distortionBridge: {
       step: { x: number; z: number }) => boolean) | null
 } = {
   blockedAt: null, frame: null, inWorld: null, behaviorAt: null, jumpBlocked: null,
-  dropBoulder: null,
+  frontTile: null, dropBoulder: null,
 }
 
 /** 깨어진 세계의 맵인가 */

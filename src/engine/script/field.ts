@@ -25,6 +25,7 @@ import {
 import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
+import { distortionBridge } from '../world/distortion'
 import { HONEY_TREE_MODEL } from '../world/honeyTree'
 import {
   COMMON_SCRIPT_GIVE_ITEM, EGG_GIVER_TRAVELING_MAN, planSiwonTalk, siwonCameoText,
@@ -940,7 +941,10 @@ function spotAt(front: { x: number; z: number }): FieldSpot | null {
   const grid = mapWorld.grid
   if (!grid) return null
   return {
-    frontBehavior: grid.behavior(front.x, front.z),
+    // 깨어진 세계의 물은 맵 격자가 아니라 판에 적혀 있다 (PARITY §6.10)
+    frontBehavior:
+      distortionBridge.behaviorAt?.(front.x, p.position.y, front.z)
+      ?? grid.behavior(front.x, front.z),
     frontSprite: obstacleAt(front.x, front.z)?.gfx ?? null,
     quarter: quarterOf(p.facing),
     surfing: p.surfing,
@@ -955,9 +959,17 @@ function trainerNow(): Trainer {
   }
 }
 
-/** 지금 서 있는 자리에서 앞 칸 */
+/**
+ * 지금 서 있는 자리에서 앞 칸.
+ *
+ * ⚠️ **깨어진 세계에서는 판이 앞을 정한다** — 바라보는 각이 판 위의 로컬
+ * 각이라(`surfaceHeading`), 천장에서 x·z로 세면 등 뒤 칸을 집는다. 바닥 판과
+ * 판 밖에서는 값이 같다
+ */
 export function frontTile(): { x: number; z: number } {
   const p = worldState.player
+  const dw = distortionBridge.frontTile?.(p.position.x, p.position.y, p.position.z, p.facing)
+  if (dw !== null && dw !== undefined) return { x: dw.x, z: dw.z }
   return tileInFront(p.position.x, p.position.z, p.facing)
 }
 

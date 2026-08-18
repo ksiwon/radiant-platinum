@@ -10,6 +10,8 @@
 // ⚠️ **자료의 좌표는 세계 좌표다.** 맵마다 (offsetX, offsetY, offsetZ)를 더해
 // 여덟 층을 하나의 세로 통로로 쌓아 놓았다 — 1F가 y=289, B7F가 y=65다.
 // 우리 맵 격자는 층마다 0에서 시작하므로 오갈 때마다 이 값을 더하고 뺀다.
+import { Vector3 } from 'three'
+import { surfaceVector } from '../engine/actor/distortionSurface'
 import { loadDistortion } from '../data/gameData'
 import type { DistortionData, DistortionMap } from '../data/schema'
 import {
@@ -175,6 +177,36 @@ export function distortionBehaviorAt(x: number, y: number, z: number): number | 
   const [wx, wy, wz] = toWorldTiles(x, y, z)
   return tileBehavior(tileAttributes(p, data?.attrs[p.attr], wx, wy, wz))
 }
+
+/** 바라보는 각 넷의 로컬 걸음 (`FACING_STEP`과 같은 차례) */
+const FACE_STEP = [[0, 1], [1, 0], [0, -1], [-1, 0]] as const
+
+/**
+ * 판 위에서 **앞 칸** (`tileInFront`의 깨어진 세계 몫).
+ *
+ * ⚠️ **바라보는 각은 판 위의 로컬 각이다** (`surfaceHeading`). 좌표는 세계
+ * 축이라, 로컬 걸음을 판의 기저로 되돌려야 앞 칸이 나온다 — 천장에서는
+ * 앞뒤가 좌표의 z와 **뒤집혀** 있어서, 그냥 x·z로 세면 등 뒤 칸을 집는다.
+ * 판 위가 아니면 null이고 그때는 부르는 쪽이 평소대로 센다.
+ *
+ * 바닥 판에서는 기저가 항등이라 값이 안 바뀐다
+ */
+export function distortionFrontTile(
+  x: number, y: number, z: number, facing: number,
+): { x: number, y: number, z: number } | null {
+  const frame = distortionFrame()
+  if (frame === null) return null
+  const step = FACE_STEP[((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4]
+  if (step === undefined) return null
+  surfaceVector(frame, step[0], 0, step[1], frontStep)
+  return {
+    x: Math.floor(x) + Math.round(frontStep.x),
+    // 벽에서는 앞뒤가 **오르내림**이라 y도 바뀐다
+    y: Math.round(y) + Math.round(frontStep.y),
+    z: Math.floor(z) + Math.round(frontStep.z),
+  }
+}
+const frontStep = new Vector3()
 
 /**
  * 시로나가 막고 서서 못 뛰는 칸인가 (`DistWorld_IsBlockedByCynthia`).
@@ -1585,6 +1617,7 @@ export function distortionPlayerPos(): { x: number; y: number; z: number } {
 
 // 이동 시스템이 볼 수 있게 다리를 꽂는다 (`engine/world/distortion`의 머리말)
 distortionBridge.blockedAt = distortionBlockedAt
+distortionBridge.frontTile = distortionFrontTile
 distortionBridge.frame = distortionFrame
 distortionBridge.inWorld = () => floor !== null
 distortionBridge.behaviorAt = distortionBehaviorAt
