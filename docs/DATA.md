@@ -5,12 +5,16 @@
 > BDSP `AssetAssistant/`를 브라우저가 변환해 OPFS에 설치한다. Node/Python
 > 추출기는 기존 `raw/`를 쓰는 **개발 정본**으로 유지한다.
 >
-> ⚠️ 두 경로가 같은 것을 내야 한다. 지금 그것을 **바이트로** 확인한 그룹은
-> 열둘이다 — `moves` · `items` · `npcSprites` · `itemIcons` · `pokeIcons` ·
-> `boxWallpapers` · `signposts` · `starterScene` · `trainerSprites` ·
-> `npcTrades` (`src/import/platinum/convert.test.ts`) · `text` · `maps`
-> (`text.test.ts` · `maps.test.ts`). 나머지는 아직 노드 쪽만 있다. 무엇이 왜
-> 안 옮겨졌는지는 `convert.ts`의 `GROUPS` 표에 있다.
+> ⚠️ 두 경로가 같은 것을 내야 한다. Platinum 그룹 **스물여덟** 중 산출물을
+> **바이트(그림은 픽셀)로** 맞대 본 것이 **스물셋**이다 — `moves` · `marts` ·
+> `items` · `npcSprites` · `itemIcons` · `pokeIcons` · `boxWallpapers` ·
+> `poketchMap` · `signposts` · `starterScene` · `trainerSprites` · `npcTrades` ·
+> `berries` · `credits` · `frontier` · `pokedex` · `townMap`
+> (`src/import/platinum/convert.test.ts`) · `text` · `maps` · `chunks` ·
+> `pokegra` · `scripts` · `sound` (같은 이름의 `*.test.ts`).
+>
+> 아직 안 맞대 본 다섯은 `species` · `encounters` · `trainers` · `spawns` ·
+> `distortionProps`다. 변환기는 있고 노드 산출물과 견주는 시험만 없다.
 >
 > ⚠️ **`text`·`maps`는 세 지역판에서 다 잰다.** 미국판만 재던 동안 한국판·
 > 일본판에서만 어긋나는 것은 게임 안에서만 보였다 — 실제로 §2.11의 뱅크 번호가
@@ -3516,7 +3520,7 @@ interface LogicalAsset {
 
 두 겹으로 잰다. `localePaths.test.ts`가 세 롬을 열어 서른두 줄과 **수입기가 코드에
 적어 둔 자리 전부**를 대조하고(싸다, `pnpm check`에 들어 있다), `pnpm verify:locales`가
-22그룹을 세 판으로 실제 변환한다(십몇 초 × 3, 따로 부를 때만).
+스물여덟 그룹을 세 판으로 실제 변환한다(십몇 초 × 3, 따로 부를 때만).
 
 ### 3.2 현재 개발 추출기
 
@@ -4879,7 +4883,8 @@ Func_Shake 2, 0, 1, 14, BATTLE_ANIM_BATTLER_SPRITE_ATTACKER
 ### 2.25 pl_btdpm · pl_btdtr — 프론티어의 개체 「형」과 트레이너
 
 `battle/b_pl_tower/pl_btdpm.narc` **951 × 16B**, `pl_btdtr.narc` **315개**(가변).
-→ `data/frontier.json` 138KB (`tools/extract/frontier.js` · PARITY §9.3).
+→ `data/frontier.json` 138KB (`tools/extract/frontier.js` ·
+`import/platinum/frontier.ts` · PARITY §9.3).
 
 ```
 종족2 기술2×4 노력치플래그1 성격1 도구2 폼2      ← 16B가 한 바이트도 안 남는다
@@ -4908,7 +4913,8 @@ Func_Shake 2, 0, 1, 14, BATTLE_ANIM_BATTLER_SPRITE_ATTACKER
 ### 2.26 graphic/ending.narc — 크레딧 배경 세 장
 
 `graphic/ending.narc` **103칸** 1.85MB → `data/credits0..2.png` 9.6KB +
-`data/credits.json` (`tools/extract/credits.js` · PARITY §8.12).
+`data/credits.json` (`tools/extract/credits.js` ·
+`import/platinum/credits.ts` · PARITY §8.12).
 
 파일 셋이 배경 반 장이고, 셋씩 묶여 여섯이 한 장면이다
 (`overlay099/ov99_021D1A54.c`):

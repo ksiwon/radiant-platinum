@@ -44,6 +44,17 @@ export function lz77(src: Uint8Array): Uint8Array {
 }
 
 /**
+ * 눌려 있으면 펴고, 아니면 그대로 준다.
+ *
+ * 한 아카이브 안에서 멤버마다 압축 여부가 다른 자리가 있다 — 타운맵의
+ * `tmap_gra.narc`이 그렇고, 크레딧의 `ending.narc`도 그렇다. 머리 한 바이트를
+ * 보고 고른다
+ */
+export function maybeLz77(src: Uint8Array): Uint8Array {
+  return src[0] === 0x10 ? lz77(src) : src
+}
+
+/**
  * NCLR — 팔레트가 **여러 벌 이어져 있을 수 있다.**
  *
  * TTLP 절의 0x20이 색 자료 크기라 그것으로 벌 수가 나온다. 간판은 종류 번호가
@@ -84,16 +95,20 @@ export function screen(buf: Uint8Array): Screen {
  * 타일 하나를 찍는다.
  *
  * 한 바이트가 픽셀 둘이고 **아래 니블이 왼쪽**이다. `alphaZero`면 0번 색을
- * 뚫는다 — 스프라이트는 그것이 규칙이고, 배경으로 깔리는 판은 안 뚫는다
+ * 뚫는다 — 스프라이트는 그것이 규칙이고, 배경으로 깔리는 판은 안 뚫는다.
+ *
+ * `skipZero`면 0번 색 픽셀을 **아예 안 건드린다.** 판 둘을 겹쳐 그리는 자리가
+ * 그렇다 (`townMap.ts`) — 알파만 0으로 두면 앞 판의 검정이 뒤 판을 덮는다
  */
 export function drawTile(
   rgba: Uint8Array, sheetW: number, ox: number, oy: number,
   data: Uint8Array, tile: number, pal: readonly Rgb[],
-  { hflip = false, vflip = false, alphaZero = false } = {},
+  { hflip = false, vflip = false, alphaZero = false, skipZero = false } = {},
 ): void {
   for (let i = 0; i < TILE * TILE; i++) {
     const byte = data[tile * TILE_BYTES + (i >> 1)] ?? 0
     const idx = i & 1 ? byte >> 4 : byte & 0xf
+    if (idx === 0 && skipZero) continue
     const px = i & 7, py = i >> 3
     const x = hflip ? TILE - 1 - px : px
     const y = vflip ? TILE - 1 - py : py

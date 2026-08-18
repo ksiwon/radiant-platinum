@@ -319,4 +319,15 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('starterScene — 모델 여섯과 애니 길이', async () => { await parity('starterScene') }, 60_000)
   it('trainerSprites — 갈래 105장', async () => { await parity('trainerSprites') }, 60_000)
   it('npcTrades — 교환 넷', async () => { await parity('npcTrades') }, 60_000)
+
+  // ── 설치본에만 없던 다섯 (REPAIR §1.1) ────────────────────────────────────
+  //
+  // ⚠️ **여덟 파일이 조용히 비어 있었다.** 읽는 쪽이 전부 `.catch`로 감싸 두어서
+  // 화면은 뜨고 내용만 없었다 — 「고장」이 아니라 「이 게임에는 그 기능이 없나
+  // 보다」로 보인다. 여기서 개발 산출물과 다시 맞댄다
+  it('berries — 나무열매 64종', async () => { await parity('berries') }, 60_000)
+  it('credits — 배경 세 장', async () => { await parity('credits') }, 60_000)
+  it('frontier — 개체 951과 트레이너 315', async () => { await parity('frontier') }, 60_000)
+  it('pokedex — 정렬 목록과 서식지', async () => { await parity('pokedex') }, 120_000)
+  it('townMap — 신오 지도 한 장', async () => { await parity('townMap') }, 60_000)
 })

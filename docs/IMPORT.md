@@ -572,8 +572,10 @@ SemVer에서 `+` 뒤는 빌드 메타데이터라 우선순위를 안 바꾼다 
    DevAssetProvider가 기존 게임의 동작을 그대로 보존한다.
 4. ⚠️ **raw source adapter**: 경로 매핑은 끝났다. **출력은 아직 `public/` 안이다** —
    배포물로는 안 나가지만 목표는 `raw/dev-assets`다. 기존 raw 파일은 한 개도 안 옮겼다.
-5. ⚠️ **Platinum 변환**: 입력 검증·단일 설치 언어·Worker는 끝났고, 변환은
-   `moves`와 `marts`가 노드 산출물과 바이트로 같다. 나머지 일곱이 남았다.
+5. ⚠️ **Platinum 변환**: 입력 검증·단일 설치 언어·Worker는 끝났고, 그룹
+   **스물여덟**이 다 변환기를 갖는다. 그중 **스물셋**이 노드 산출물과 바이트로
+   (그림은 픽셀로) 같다 — 남은 다섯(`species`·`encounters`·`trainers`·`spawns`·
+   `distortionProps`)은 변환기는 있고 견주는 시험이 없다 (DATA.md 머리말).
 6. ✅ **BDSP 디렉터리 스캐너**: 상위 폴더 자동 탐색, 그룹 다섯 검증, 표본 종, 누락 진단.
 7. ⚠️ **BDSP 브라우저 변환**: spike가 컨테이너까지 갔다 — UnityFS 헤더·LZ4·블록·
    디렉터리·SerializedFile 오브젝트 표. 실측으로 UnityPy와 오브젝트 208개와 클래스별

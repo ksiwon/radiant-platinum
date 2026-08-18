@@ -32,6 +32,11 @@ import { convertTrainers } from './trainers'
 import { convertTrainerSprites } from './trainerSprites'
 import { convertSpawns } from './spawns'
 import { convertNpcTrades } from './npcTrades'
+import { convertBerries } from './berries'
+import { convertCredits } from './credits'
+import { convertFrontier } from './frontier'
+import { convertPokedex } from './pokedex'
+import { convertTownMap } from './townMap'
 import {
   breathe, check, json, BREATH,
   type ConvertContext, type GroupSpec, type Produced,
@@ -300,5 +305,29 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/trainers/{갈래}.png', 'data/trainers/index.json'],
     converter: 1,
     convert: convertTrainerSprites,
+  },
+  { name: 'berries', outputs: ['data/berries.json'], converter: 1, convert: convertBerries },
+  {
+    name: 'credits',
+    outputs: [
+      'data/credits.json', 'data/credits0.png', 'data/credits1.png', 'data/credits2.png',
+    ],
+    converter: 1,
+    convert: convertCredits,
+  },
+  { name: 'frontier', outputs: ['data/frontier.json'], converter: 1, convert: convertFrontier },
+  {
+    // ⚠️ **정렬 목록은 설치한 판 하나만 나온다.** 노드 쪽은 롬 셋을 열어 세 벌을
+    // 굽지만 설치본에는 롬이 하나뿐이다 (`pokedex.ts` 머리말)
+    name: 'pokedex',
+    outputs: ['data/pokedexSort.*.json', 'data/pokedexHabitat.json'],
+    converter: 1,
+    convert: convertPokedex,
+  },
+  {
+    name: 'townMap',
+    outputs: ['data/townMap.json', 'data/townMap.png'],
+    converter: 1,
+    convert: convertTownMap,
   },
 ]
