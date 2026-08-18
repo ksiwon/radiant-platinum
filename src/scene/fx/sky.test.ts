@@ -1,9 +1,9 @@
 // 시간대 조명과 인물 키 라이트 (PLAN §6.2)
 import { describe, it, expect } from 'vitest'
 import {
-  CHAR_KEY_COLOR, CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, NIGHT_FLOOR, TIME_LOOKS,
-  backFill, blendLooks, bodyLight, characterKey, faceLight, groundLight, litBody, luminance,
-  mixHex,
+  CHAR_KEY_COLOR, CHAR_KEY_GAIN, CHAR_KEY_OFFSET, CHAR_KEY_RANGE, DOWN_DIR, NIGHT_FLOOR,
+  TIME_LOOKS, backFill, blendLooks, bodyLight, characterKey, downFill, faceLight, groundLight,
+  litBody, luminance, mixHex,
 } from './sky'
 
 /** 사방을 보는 세로면 넷 — 건물의 네 벽 */
@@ -11,6 +11,18 @@ const WALLS: readonly (readonly [number, number, number])[] = [
   [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1],
 ]
 const UP: readonly [number, number, number] = [0, 1, 0]
+/** 아래를 보는 면 — 깨어진 세계의 천장 판이 걷는 면 */
+const DOWN: readonly [number, number, number] = [0, -1, 0]
+
+/** 밑빛까지 얹은 면빛. `faceLight`는 되비침만 받으므로 여기서 더한다 */
+function withDown(
+  look: (typeof TIME_LOOKS)[number], normal: readonly [number, number, number],
+): number {
+  const len = Math.hypot(...DOWN_DIR)
+  const dot = (DOWN_DIR[0] * normal[0] + DOWN_DIR[1] * normal[1] + DOWN_DIR[2] * normal[2]) / len
+  return faceLight(look, normal, backFill(look))
+    + luminance(look.skyColor) * downFill(look) * (dot > 0 ? dot : 0)
+}
 
 // 색인이 `TimeOfDay` 값이다 — 아침 · 낮 · 해질녘 · 밤 · 심야
 const MORNING = TIME_LOOKS[0]!, DAY = TIME_LOOKS[1]!, DUSK = TIME_LOOKS[2]!
@@ -239,6 +251,43 @@ describe('벽마다 다른 밝기', () => {
     for (const [i, look] of TIME_LOOKS.entries()) {
       const lit = walls(look, backFill(look))
       expect(Math.min(...lit) / Math.max(...lit), `시간대 ${String(i)}`).toBeGreaterThan(0.6)
+    }
+  })
+})
+
+describe('밑빛 — 깨어진 세계', () => {
+  it('아래를 보는 면은 빛을 거의 못 받는다 — 그래서 필요하다', () => {
+    // 광원 넷이 전부 위에서 온다. 아랫면에는 방향광 셋이 하나도 안 닿는다
+    const down = faceLight(DAY, DOWN, backFill(DAY))
+    expect(down / faceLight(DAY, UP, backFill(DAY))).toBeCloseTo(0.118, 3)
+    expect(down).toBeCloseTo(faceLight({ ...DAY, sun: 0, fill: 0 }, DOWN), 10)
+  })
+
+  it('밑빛을 넣으면 볕 드는 벽까지 올라온다', () => {
+    // `backFill`과 같은 잣대다 — 우리가 고른 숫자가 아니라 해가 이미 만들어 둔 대비
+    for (const look of TIME_LOOKS) {
+      const bright = Math.max(...WALLS.map((n) => faceLight(look, n)))
+      expect(withDown(look, DOWN), `밑빛 ${downFill(look).toFixed(2)}`)
+        .toBeGreaterThanOrEqual(bright - 1e-9)
+    }
+  })
+
+  it('지붕은 안 건드린다 — 밑에서 쏘기 때문이다', () => {
+    expect(withDown(DAY, UP)).toBeCloseTo(faceLight(DAY, UP, backFill(DAY)), 10)
+  })
+
+  it('그늘지는 쪽이 안 바뀐다 — 태양을 수평면에 비춘 방향이다', () => {
+    // 위아래만 뒤집고 좌우·앞뒤는 그대로라, 볕 드는 벽과 그늘진 벽이 안 뒤바뀐다
+    const sun = [24, 42, 18] as const
+    expect(DOWN_DIR[0]).toBe(sun[0])
+    expect(DOWN_DIR[1]).toBe(-sun[1])
+    expect(DOWN_DIR[2]).toBe(sun[2])
+  })
+
+  it('시간대 다섯 벌 전부에서 아랫면이 윗면의 절반은 넘는다', () => {
+    for (const [i, look] of TIME_LOOKS.entries()) {
+      const ratio = withDown(look, DOWN) / withDown(look, UP)
+      expect(ratio, `시간대 ${String(i)}`).toBeGreaterThan(0.5)
     }
   })
 })

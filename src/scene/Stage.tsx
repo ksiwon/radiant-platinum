@@ -10,6 +10,7 @@ import { WorldLoader } from './WorldLoader'
 import { BattleStage } from './battle/BattleStage'
 import { StarterStage } from './field/StarterStage'
 import { DAY } from './fx/sky'
+import { FIELD_FOV } from '../engine/actor/camera'
 import { CinematicStage } from './CinematicStage'
 import { PokemonPreviewStage } from './PokemonPreviewStage'
 import { HallOfFameStage } from './HallOfFameStage'
@@ -64,7 +65,7 @@ export function Stage() {
       <Canvas
         dpr={[1, 2]}
         frameloop="always"
-        camera={{ fov: 55, near: 0.1, far: 200, position: [0, 6, 9] }}
+        camera={{ fov: FIELD_FOV, near: 0.1, far: 200, position: [0, 6, 9] }}
         gl={async (props) => {
           // R3F v9: WebGPURenderer 수동 초기화 (PLAN §2.4). WebGL2 자동 폴백 내장
           const renderer = new WebGPURenderer({

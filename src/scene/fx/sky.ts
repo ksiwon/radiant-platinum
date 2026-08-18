@@ -140,6 +140,24 @@ export const FILL_DIR: readonly [number, number, number] = [-14, 12, 26]
  */
 export const BACK_DIR: readonly [number, number, number] = [-24, 8, -18]
 
+/**
+ * **밑에서 올려 쏘는 빛.** 깨어진 세계에서만 켠다 (`MapStreamer`).
+ *
+ * ⚠️ 여기 광원 셋이 **전부 위에서 온다.** 보통 맵에서는 아래를 보는 면을 볼
+ * 일이 없으니 그래도 됐는데, 깨어진 세계는 **천장 판 밑면을 걸어 다닌다** —
+ * 그 면의 법선이 (0,−1,0)이라 태양·필·되비침이 하나도 안 닿고 반구광의
+ * 아래쪽 색만 받는다. `faceLight`로 재면 윗면의 **11.8%**다 (되비침까지 켠 값이다 —
+ * 되비침을 빼면 12.6%인데, 그건 화면에 없는 상태다).
+ *
+ * 화면으로도 그렇게 나왔다: B4F 천장 평균휘도 0.023 — 같은 잣대로 연고시티가
+ * 0.198이라 **1/8.5**고, 화면의 76%가 순수 검정이었다. 주인공만 배경의
+ * 5.9배로 떠서 붙여 놓은 그림처럼 보였다.
+ *
+ * 방향은 **태양을 수평면에 비춘 것**이다 — 같은 빛이 밑에서 되비쳐 오는
+ * 셈이라 그늘지는 쪽이 안 바뀐다
+ */
+export const DOWN_DIR: readonly [number, number, number] = [24, -42, 18]
+
 /** sRGB 한 채널을 선형으로. 밝기는 선형에서 재야 뜻이 있다 */
 function toLinear(c: number): number {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
@@ -230,6 +248,28 @@ export function backFill(look: TimeLook): number {
   const gain = luminance(look.skyColor) * lambert(BACK_DIR, at)
   if (gain <= 0) return 0
   const short = want * bright - dark
+  return short <= 0 ? 0 : short / gain
+}
+
+/** 아래를 보는 면 — 깨어진 세계의 천장 판이 걷는 면이다 */
+const DOWN: readonly [number, number, number] = [0, -1, 0]
+
+/**
+ * 밑빛 세기 (`DOWN_DIR`). **깨어진 세계에서만 켠다.**
+ *
+ * `backFill`과 같은 방식이다 — 고른 숫자가 아니라 **모자란 만큼**이라, 프리셋을
+ * 다시 손보면 이 값도 따라 움직인다.
+ *
+ * 목표치도 `backFill`이 쓰는 것과 같은 잣대다: **해가 벽과 지붕 사이에 이미
+ * 만들어 둔 비율**(낮 64.7%)까지 아랫면을 올린다. 아랫면을 윗면과 같게 만들면
+ * 명암이 사라져 판때기가 납작해지고, 그냥 두면 천장 판이 검게 뭉친다
+ */
+export function downFill(look: TimeLook): number {
+  // 볕 드는 벽이 지붕의 몇 할인지 — 그 자리까지 아랫면을 끌어올린다
+  const bright = Math.max(...WALL_NORMALS.map((n) => faceLight(look, n)))
+  const gain = luminance(look.skyColor) * lambert(DOWN_DIR, DOWN)
+  if (gain <= 0) return 0
+  const short = bright - faceLight(look, DOWN)
   return short <= 0 ? 0 : short / gain
 }
 

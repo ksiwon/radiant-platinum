@@ -21,6 +21,29 @@ const DEG = Math.PI / 180
 
 const THIRD = { distance: 8, height: 4, damping: 5 }
 
+/** 필드 화각(도). `Stage`의 카메라도 이 값으로 선다 */
+export const FIELD_FOV = 55
+
+/**
+ * **깨어진 세계의 렌즈** (`ov9_02249960`의 `DISTORTION_WORLD_CAMERA_BASE_*`).
+ *
+ * `BASE_DISTANCE 0x29AEC1` = 666.92units ÷ 16 = **41.683칸**,
+ * `baseAngle.x -10750` = **−59.0515도**, `BASE_FOVY 1473` = **8.0914도**.
+ * 피치와 거리를 풀면 뒤로 21.436칸 · 위로 35.748칸이다.
+ *
+ * ⚠️ 이 값은 깨어진 세계 전용이 아니라 **원작 필드의 기본 카메라**다
+ * (`field_camera.c`의 `CAMERA_TYPE_DEFAULT`가 같은 셋을 쓴다). 우리는 온 신오를
+ * 8칸·55도로 보기로 했고 그건 그대로 둔다 — 여기만 원작 렌즈로 돌리는 이유는
+ * **이 세계가 허공에 뜬 널판으로 지어졌기** 때문이다. 8칸·55도로 보면 널판이
+ * 부채처럼 벌어져 무엇이 어디 붙었는지가 안 읽힌다. 화면으로도 그렇게 나왔다:
+ * B4F 천장에서 검은 칸이 **76.8% → 34.9%**로 떨어진다.
+ *
+ * 세로로 보이는 칸은 5.90(원작) 대 8.33(우리)이라 오히려 인물이 커진다 —
+ * 멀어지는 것이 아니라 **좁고 멀리서** 보는 것이다
+ */
+const DISTORTION_THIRD = { distance: 21.436, height: 35.748, damping: 5 }
+const DISTORTION_FOV = 8.0914
+
 /**
  * 1인칭 눈높이(미터).
  *
@@ -59,8 +82,18 @@ const FLIP_TIME = 16 / 60
 const tilt = new Quaternion()
 const tiltGoal = new Quaternion()
 let tiltReady = false
+/** 화각도 첫 프레임에는 앉힌다 — 안 그러면 맵을 열 때마다 렌즈가 빨려 들어간다 */
+let fovReady = false
 
 export const cameraSystem = {
+  /**
+   * 지금 화면의 **화각(도)**. `EngineDriver`가 렌더 직전에 읽는다.
+   *
+   * 자리와 같이 **따라간다** — 깨어진 세계에 들어서는 순간 55도에서 8도로
+   * 뚝 끊기면 화면이 확 빨려 들어간다. 맵이 갈릴 때는 `snap`이 그냥 앉힌다
+   */
+  fov: FIELD_FOV,
+
   /**
    * 스크립트가 카메라를 주인공에게서 떼어 놓은 자리 (`AddFreeCamera`).
    *
@@ -83,6 +116,7 @@ export const cameraSystem = {
    */
   snap() {
     tiltReady = false
+    fovReady = false
   },
 
   update(delta: number) {
@@ -93,6 +127,8 @@ export const cameraSystem = {
       : free.set(at.x, worldState.player.position.y, at.z)
     const first = cam.mode === 'first'
     const frame = distortionBridge.frame?.() ?? null
+    // 1인칭은 눈이 사람 머리에 붙어 있다 — 8도로 보면 코앞만 보인다
+    const inDistortion = !first && distortionBridge.inWorld?.() === true
 
     // 목표 기울기로 **돌려서** 간다. 90도에 16프레임이라 천장(180도)은 그 두 배다
     surfaceQuaternion(frame, 0, tiltGoal)
@@ -117,14 +153,15 @@ export const cameraSystem = {
       tilted(fx, fy, fz, view).multiplyScalar(LOOK_AHEAD)
       look.copy(goal).add(view)
     } else {
-      // 이 세계에는 카메라가 홱 도는 자리가 스물여섯 곳 있다 (PARITY §6.10).
-      // ⚠️ **더하는 값만 옮긴다** — 원작은 41.7칸 떨어져 화각 8.1도로 보는데
-      // 우리는 8칸에 보통 화각이라, 밑각까지 옮기면 이 세계만 딴 게임이 된다
+      // 깨어진 세계는 **렌즈부터 갈아 낀다** (`DISTORTION_THIRD`). 그 위에
+      // 카메라가 홱 도는 자리 스물여섯 곳이 각을 더한다 (PARITY §6.10) —
+      // 원작도 `baseAngle`에 구역 각을 더하는 꼴이라 밑각이 맞아야 이것도 맞는다
+      const lens = inDistortion ? DISTORTION_THIRD : THIRD
       const swing = distortionBridge.cameraSwing?.() ?? null
       if (swing === null || (swing.x === 0 && swing.y === 0)) {
-        tilted(0, THIRD.height, THIRD.distance, offset)
+        tilted(0, lens.height, lens.distance, offset)
       } else {
-        offset.set(0, THIRD.height, THIRD.distance)
+        offset.set(0, lens.height, lens.distance)
           .applyAxisAngle(X_AXIS, swing.x * DEG)
           .applyAxisAngle(Y_AXIS, swing.y * DEG)
           .applyQuaternion(tilt)
@@ -137,5 +174,9 @@ export const cameraSystem = {
     const t = 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
     cam.position.lerp(goal, t)
     cam.target.lerp(look, t)
+
+    const wantFov = inDistortion ? DISTORTION_FOV : FIELD_FOV
+    if (!fovReady) { cameraSystem.fov = wantFov; fovReady = true }
+    cameraSystem.fov += (wantFov - cameraSystem.fov) * t
   },
 }

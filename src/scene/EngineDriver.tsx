@@ -40,9 +40,6 @@ const WORLD_UP = new Vector3(0, 1, 0)
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   const { gl, scene, camera } = useThree()
   const postRef = useRef<PostChain | null>(null)
-  // 필드 화각. 다른 장면이 화각을 가져갔다가 돌려줄 때 여기로 돌아온다 —
-  // 상수로 적어 두면 `Stage`의 값과 조용히 갈린다
-  const fieldFov = useRef((camera as PerspectiveCamera).fov)
 
   useEffect(() => {
     if (!systemsRegistered) {
@@ -157,9 +154,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       ? WORLD_UP : worldState.camera.up)
     state.camera.lookAt(shot.target)
     const lens = state.camera as PerspectiveCamera
+    // 필드 화각은 **카메라 시스템**이 낸다 — 깨어진 세계는 8.09도로 갈아 낀다
     const fov = cinematicStage.active ? cinematicStage.fov
       : starterStage.active ? starterStage.fov
-        : battleStage.active ? battleStage.fov : fieldFov.current
+        : battleStage.active ? battleStage.fov : cameraSystem.fov
     if (lens.isPerspectiveCamera && lens.fov !== fov) {
       lens.fov = fov
       lens.updateProjectionMatrix()

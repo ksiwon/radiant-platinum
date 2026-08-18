@@ -109,12 +109,14 @@ import {
   CHAR_KEY_COLOR,
   CHAR_KEY_OFFSET,
   CHAR_KEY_RANGE,
+  DOWN_DIR,
   FILL_DIR,
   SUN_DIR,
   TIME_LOOKS,
   backFill,
   blendLooks,
   characterKey,
+  downFill,
   makeSkyTexture,
   type TimeLook,
 } from './fx/sky'
@@ -143,6 +145,24 @@ const INDOOR_VOID = '#05070a'
  */
 const INDOOR_FOG_NEAR = 24
 const INDOOR_FOG_FAR = 64
+
+/**
+ * 깨어진 세계의 안개 거리(타일).
+ *
+ * ⚠️ **원작은 이 맵에 안개가 없다.** 필드 안개는 날씨가 거는 것인데
+ * (`ov5_021D5EB8`의 `FogManager_ApplyParameters`) 이 세계는 헤더가
+ * `weather: 0` = `OVERWORLD_WEATHER_CLEAR`이고, 맑음 경로는 fog를 끈 채 둔다.
+ *
+ * 우리도 껐다. 실내 값(24~64)을 그대로 쓰면 **주인공이 안개 한가운데 선다** —
+ * 이 세계의 카메라는 41.7칸 밖이라(`camera`의 `DISTORTION_THIRD`) 발밑이
+ * 근·원 사이 46% 자리다. 실측으로 평균휘도가 0.131이던 것이 안개를 밀자
+ * 0.195로 올랐다.
+ *
+ * 맵 끝이 검정으로 안 녹아도 되는 이유: **이 세계는 원래 허공이 배경이다.**
+ * 동굴처럼 "벽 너머가 안 보여야" 하는 곳이 아니다
+ */
+const DISTORTION_FOG_NEAR = 400
+const DISTORTION_FOG_FAR = 600
 
 /**
  * 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → `facing` 라디안.
@@ -569,6 +589,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 챔피언로드가 파란 하늘 위의 판때기로 찍혔고 천관산 위에도 하늘이 걸렸다
    */
   const outdoors = isOutdoors(mapById(mapId))
+  /** 깨어진 세계인가 — 여기만 아래를 보는 면을 걸어 다닌다 (`DOWN_DIR`) */
+  const distortion = isDistortionFloor(mapId)
   /**
    * ⚠️ **헤더 값이 아니라 지금 걸린 값이다** (PARITY §8.3).
    *
@@ -620,13 +642,21 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 그게 더 이상하고, 무엇보다 **맵 밖이 안 보여야 한다**
     if (fog instanceof Fog) {
       fog.color.copy(fogColor)
-      fog.near = outdoors ? look.fogNear * atmosphere.nearScale : INDOOR_FOG_NEAR
-      fog.far = outdoors ? look.fogFar * atmosphere.farScale : INDOOR_FOG_FAR
+      if (outdoors) {
+        fog.near = look.fogNear * atmosphere.nearScale
+        fog.far = look.fogFar * atmosphere.farScale
+      } else if (distortion) {
+        fog.near = DISTORTION_FOG_NEAR
+        fog.far = DISTORTION_FOG_FAR
+      } else {
+        fog.near = INDOOR_FOG_NEAR
+        fog.far = INDOOR_FOG_FAR
+      }
     }
     if (scene.background instanceof Color) {
       scene.background.copy(background)
     }
-  }, [scene, look, outdoors, weather])
+  }, [scene, look, outdoors, distortion, weather])
 
   /**
    * 그림 번호 → BDSP 갈래. 추출기가 **구워 낸 것만** 담아 준다
@@ -849,6 +879,21 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         세기는 상수가 아니라 **모자란 만큼**이다 (`fx/sky`의 `backFill`)
       */}
       <directionalLight position={[...BACK_DIR]} intensity={backFill(lit)} color={lit.skyColor} />
+
+      {/*
+        밑에서 올려 쏘는 빛. **깨어진 세계에서만** 켠다 (PARITY §6.10).
+
+        위 광원 넷이 전부 위에서 온다. 보통 맵은 아래를 보는 면을 볼 일이 없으니
+        그래도 됐는데, 이 세계는 **천장 판 밑면을 걸어 다닌다** — 그 면은 넷 중
+        하나도 못 받아 윗면의 11.8%다(`faceLight`). 밑빛을 붙이면 60.9%가 된다. 화면으로 B4F 천장이 평균휘도
+        0.023, 같은 잣대로 연고시티가 0.198이었다.
+
+        ⚠️ **빛 하나가 늘면 씬의 모든 재질이 다시 키를 딴다**(DEPLOY §5.1 ③).
+        맵이 갈릴 때 한 번이라 받아들일 값이다 — 대신 세계 밖에서는 아예 안 단다
+      */}
+      {distortion && (
+        <directionalLight position={[...DOWN_DIR]} intensity={downFill(lit)} color={lit.skyColor} />
+      )}
 
       {/*
         인물 키 라이트. **밤에 사람이 배경에 묻히는 것**을 막는다 — 심야의 몸빛은
