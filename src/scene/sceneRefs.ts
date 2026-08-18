@@ -22,4 +22,13 @@ export const perfSnapshot = {
   drawCalls: 0,
   triangles: 0,
   backend: '?',
+  /**
+   * 이번 판에 터진 스크립트 수와 마지막 한 줄 (`engine/script/field`).
+   *
+   * ⚠️ **개발 HUD에만 뜬다.** 배포판은 이 수를 세기만 하고 화면에 아무것도
+   * 안 띄운다 — 원작에 없는 창을 만들지 않는다 (CODEMAP §2.6). 세이브에도
+   * 안 적는다: 리포트 스키마를 건드리면 `SAVE_VERSION`이 오른다
+   */
+  scriptErrors: 0,
+  lastScriptError: null as string | null,
 }

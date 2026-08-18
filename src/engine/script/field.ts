@@ -56,6 +56,32 @@ import { FieldWorld, MENU_CANCEL, MENU_NO, type FieldServices, type NameSource }
  */
 const STEP_CAP = 200_000
 
+/**
+ * 스크립트가 터졌다. **삼키지 않고 세되, 배포판에 창을 띄우지는 않는다.**
+ *
+ * 명령 840종 중 만든 것이 530종이라 남은 자리에서 `ScriptError`가 난다.
+ * 오버월드는 계속 돌지만 그 스크립트가 하려던 일은 전부 안 일어난다 —
+ * 그래서 **어디서 터졌는지가 보여야** 한다. 갈래를 셋으로 나눈다:
+ *
+ *   개발 서버  `console.error` + 개발 HUD의 마지막 오류 한 줄
+ *   배포판     화면에 아무것도 안 띄운다. **수만 센다**
+ *   리포트     안 적는다 (`errors` 머리말)
+ *
+ * ⚠️ **원작에 없는 창을 만들지 않는다.** 「스크립트 오류」 같은 말은 원작
+ * 어디에도 없다 (CODEMAP §2.6). 배포판에서 할 수 있는 것은 **막히지 않게
+ * 하는 것**이지 사과문을 띄우는 것이 아니다
+ */
+function noteScriptError(e: unknown, where: string): void {
+  const message = e instanceof ScriptError ? e.message : String(e)
+  fieldScripts.lastError = message
+  fieldScripts.errors += 1
+  // ⚠️ `DEV`가 아니라 `MODE`다 — `DEV`로 재면 시험 수천 벌이 이 줄을 찍는다
+  // (`battle/sim/bridge.ts`가 같은 자리에서 같은 판단을 한다)
+  if (import.meta.env.MODE === 'development') {
+    console.error(`[script] ${where}: ${message}`, e)
+  }
+}
+
 export const fieldScripts = {
   data: null as ScriptData | null,
   commands: null as CommandTable | null,
@@ -64,8 +90,22 @@ export const fieldScripts = {
   vars: new VarStore(),
   /** 지금 도는 스크립트. null이면 오버월드가 자유롭다 */
   ctx: null as ScriptContext | null,
-  /** 화면에 띄운 마지막 오류. 스크립트가 터져도 게임은 계속 돌아야 한다 */
+  /**
+   * 마지막 오류. 스크립트가 터져도 게임은 계속 돌아야 한다.
+   *
+   * ⚠️ **이 값을 읽는 자리가 하나뿐이었다** — `tools/e2e/story.mjs`. 게임 안에는
+   * 없었고, 화면에는 대사창이 그냥 사라지는 것으로만 보였다. 그 스크립트가
+   * 세우려던 플래그·워프·사람 움직임은 전부 안 일어나는데도 아무 흔적이 없다
+   */
   lastError: null as string | null,
+  /**
+   * 이번 판에 터진 스크립트 수.
+   *
+   * ⚠️ **세이브에 안 적는다.** 리포트 스키마를 건드리면 `SAVE_VERSION`이 오르고
+   * 그 값은 사용자의 리포트에 영영 남는다 — 이건 그럴 값이 아니다. 켠 뒤로 몇
+   * 번인지만 세고, 다시 켜면 0이다
+   */
+  errors: 0,
   /** 지금 받아 둔 대사 뱅크 번호 (맵 헤더의 `msg`) */
   bank: -1,
   /**
@@ -580,7 +620,7 @@ function runFixedInit(mapId: number, type: number): void {
   try {
     ctx.step(STEP_CAP)
   } catch (e) {
-    fieldScripts.lastError = e instanceof ScriptError ? e.message : String(e)
+    noteScriptError(e, `초기 스크립트 파일 ${String(target.file)}#${String(target.entry)}`)
   }
   vars.resetLocals()
 }
@@ -716,7 +756,7 @@ function step(ctx: ScriptContext, world: FieldWorld): void {
     world.tick()
   } catch (e) {
     // 한 스크립트가 터졌다고 오버월드까지 멎으면 안 된다. 창을 닫고 놓아준다
-    fieldScripts.lastError = e instanceof ScriptError ? e.message : String(e)
+    noteScriptError(e, `맵 ${String(mapWorld.mapId)}`)
     finish()
   }
 }
