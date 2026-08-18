@@ -31,6 +31,17 @@ export const ASSET_FORMAT = 1
 export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
+  /**
+   * 2 — 맵 헤더의 글 뱅크 번호를 us 번호로 되돌린다.
+   *
+   * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 한국판·일본판 롬으로 설치한 사람의
+   * `maps.json`은 593개 맵이 전부 자기 롬의 뱅크 번호를 들고 있고, 대사 파일
+   * 이름은 us 번호라서 맵마다 이웃 뱅크가 나온다. 바이트가 달라지므로 판을 올려
+   * 이 그룹만 다시 만들게 한다
+   */
+  maps: 2,
+  /** 2 — 일본판 게임코너 뱅크(us #147)가 빠져 있었다. 그 파일이 늘어난다 */
+  text: 2,
 }
 
 export function groupFormat(name: string): number {

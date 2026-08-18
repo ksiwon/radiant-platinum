@@ -152,7 +152,8 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     name: 'text',
     outputs: TEXT_OUTPUTS,
-    converter: 1,
+    // 2 — 일본판 게임코너 뱅크를 "없다"고 적고 있었다 (`textBanks.ts`의 `JA_ABSENT`)
+    converter: 2,
     convert: convertText,
   },
   {
@@ -185,7 +186,8 @@ export const GROUPS: readonly GroupSpec[] = [
       'data/matrices/interiors.bin', 'data/matrices/interiors.json',
       'data/bdhc.bin', 'data/bdhc.json',
     ],
-    converter: 1,
+    // 2 — 헤더의 글 뱅크 번호를 us 번호로 되돌린다 (`maps.ts`의 `toUsBank`)
+    converter: 2,
     convert: convertMaps,
   },
   {

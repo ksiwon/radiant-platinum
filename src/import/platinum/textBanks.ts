@@ -13,7 +13,8 @@
 //   ① `BANK_ORDER` — 디컴프 `generated/text_banks.txt`의 줄 순서 그대로인 식별자
 //      목록. us 롬의 뱅크 순서가 이 순서다. 줄 번호가 곧 인덱스라 숫자가 없다
 //   ② `KO_ABSENT`·`JA_ABSENT` — CJK 롬에 아예 없는 뱅크 이름
-//   ③ `INSERTED_BEFORE` — CJK 롬이 자기 뱅크를 하나 끼워 넣는 자리의 이름
+//   ③ `INSERTED_BEFORE` — 그 롬이 자기 뱅크를 하나 끼워 넣는 자리의 이름
+//      (한국어판뿐이다)
 //
 // 이 셋으로 로케일별 인덱스를 **계산**한다. 계산이 맞는지는 사용자의 롬이 직접
 // 답한다 — `readBankLayout`이 narc의 실제 뱅크 수와 대조하고 어긋나면 던진다.
@@ -251,10 +252,18 @@ const KO_ABSENT: readonly string[] = [
   'move_names_uppercase',
 ]
 
-/** 일본어판에 없는 뱅크. 문법용에 더해 게임코너·달 이름 몇 개가 더 빠진다 */
+/**
+ * 일본어판에 없는 뱅크. 문법용에 더해 달 이름이 더 빠진다.
+ *
+ * ⚠️ **`game_corner`는 여기 없다.** 예전에는 "일본판에 없는 뱅크"로 적고 대신
+ * 같은 자리(ja #146)를 이름 없는 끼워 넣기로 셌다. 열어 보면 그 뱅크가 곧
+ * 게임코너다 — 「트바리 게임코너입니다」로 시작하는 26줄이고, 미국판이 28줄이라
+ * 문장 수가 달라서 (키, 엔트리 수)로 짝을 짓는 표가
+ * 못 알아본 것뿐이다. 이름이 없으면 **트바리 게임코너 맵(#136)이 가리키는
+ * 뱅크에 us 번호가 없어서** 그 맵의 대사가 통째로 사라진다
+ */
 const JA_ABSENT: readonly string[] = [
   'ball_seal_names_plural',
-  'game_corner',
   'contest_accessory_names_with_articles',
   'item_names_with_articles',
   'item_names_plural',
@@ -274,21 +283,22 @@ const JA_ABSENT: readonly string[] = [
 const ABSENT: Record<Exclude<Locale, 'us'>, readonly string[]> = { ko: KO_ABSENT, ja: JA_ABSENT }
 
 /**
- * CJK 롬이 자기 뱅크를 하나 끼워 넣는 자리. **이 이름부터 뒤가 한 칸씩 밀린다.**
+ * 그 롬이 자기 뱅크를 하나 끼워 넣는 자리. **이 이름부터 뒤가 한 칸씩 밀린다.**
  *
- * 한국어판은 인사말이 en·fr·de·it·jp 다음에 하나 더 붙는다. 끼워 넣기는 로케일당
- * 딱 하나뿐이라 이름 하나로 족하고, 둘 이상이면 `bankLayout`의 검산이 어긋나서
- * 즉시 드러난다
+ * 한국어판은 인사말이 en·fr·de·it·jp 다음에 하나 더 붙는다(ko #657). 그 뱅크는
+ * 우리 목록에 이름이 없고 어느 맵도 가리키지 않는다.
+ *
+ * 일본어판에는 끼워 넣기가 **없다.** 예전에는 하나 있다고 적었는데 그것이
+ * 게임코너였다 (`JA_ABSENT` 참조)
  */
-const INSERTED_BEFORE: Record<Exclude<Locale, 'us'>, string> = {
+const INSERTED_BEFORE: Partial<Record<Exclude<Locale, 'us'>, string>> = {
   ko: 'greetings_es',
-  ja: 'veilstone_store_1f',
 }
 
 /** 그 로케일 롬에 뱅크가 몇 개 있어야 하는가 */
 export function bankCount(locale: Locale): number {
   if (locale === 'us') return BANK_ORDER.length
-  return BANK_ORDER.length - ABSENT[locale].length + 1
+  return BANK_ORDER.length - ABSENT[locale].length + (INSERTED_BEFORE[locale] ? 1 : 0)
 }
 
 const layouts = new Map<Locale, ReadonlyMap<string, number>>()
@@ -322,6 +332,27 @@ export function bankLayout(locale: Locale): ReadonlyMap<string, number> {
   layouts.set(locale, out)
   return out
 }
+
+/**
+ * 그 로케일 롬의 뱅크 번호 → **us 번호**. 짝이 없으면 null.
+ *
+ * ⚠️ **맵 헤더의 `msg`가 이것을 거쳐야 한다.** 헤더 표는 로케일마다 따로 있고
+ * `msg` 열은 **그 롬의 번호**다 — 세 판의 헤더 24바이트를 견주면 다른 자리가
+ * 8·9번(= `msg`) 하나뿐이고 593줄 전부 다르다. 우리가 굽는 대사 파일 이름은
+ * us 번호라서(`text.ts`), 되돌리지 않으면 맵마다 이웃 뱅크를 읽는다
+ */
+export function usBankIndex(index: number, locale: Locale): number | null {
+  if (locale === 'us') return index < BANK_ORDER.length ? index : null
+  let rev = reverse.get(locale)
+  if (!rev) {
+    rev = new Map()
+    for (const [name, at] of bankLayout(locale)) rev.set(at, bankLayout('us').get(name)!)
+    reverse.set(locale, rev)
+  }
+  return rev.get(index) ?? null
+}
+
+const reverse = new Map<Locale, Map<number, number>>()
 
 /** 이름 → 인덱스. 그 롬에 없는 뱅크면 null. 모르는 이름이면 던진다 */
 export function bankIndex(name: string, locale: Locale): number | null {

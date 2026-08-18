@@ -24,7 +24,7 @@ import { driveStory, playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
 import {
   fakeBdsp, readInstalled, readInstalledLight,
-  REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS, SYNTHETIC,
+  REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS, SYNTHETIC, GROUP_FORMAT,
 } from './fixtures.mjs'
 import { platinumRoms, sourceDir } from '../raw/sources.cjs'
 
@@ -69,7 +69,7 @@ const NODE_SHA = (() => {
     const at = resolve(ROOT, 'public/data', rel)
     return existsSync(at) ? createHash('sha256').update(readFileSync(at)).digest('hex') : null
   }
-  return { moves: of('moves.json'), marts: of('marts.json') }
+  return { moves: of('moves.json'), marts: of('marts.json'), maps: of('maps.json') }
 })()
 
 /**
@@ -90,6 +90,16 @@ const NODE_SAID = haveNodeSha
   : '⚠️ 노드 산출물이 없어 해시는 못 견줬다 (pnpm extract로 굽는다)'
 
 const mb = (n) => `${(n / (1 << 20)).toFixed(1)}MB`
+
+/**
+ * 설치 기록을 심는다. **판은 지금 앱이 보는 것으로 채운다** — 안 그러면
+ * 변환기 판을 올릴 때마다 심어 둔 기록이 `install:outdated`가 되고, 그건
+ * 앱의 실패가 아니라 재료가 낡은 것이다. 일부러 낡게 하려면 `groupFormat`을 준다
+ */
+const seed = (page, opts) => page.evaluate(SYNTHETIC, {
+  ...opts,
+  groupFormat: { ...GROUP_FORMAT, ...(opts.groupFormat ?? {}) },
+})
 
 /**
  * `.audit/`에 남은 결과 하나를 읽는다. 없거나 깨졌으면 null이다.
@@ -365,7 +375,7 @@ await run('05', 'partial 상태에서 게임 시작 차단', async ({ page }) =>
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
   // 필수 12개 중 2개만 있는 기록 — 지금 변환기가 실제로 만들 수 있는 그대로다
-  await page.evaluate(SYNTHETIC, { state: 'partial', groups: ['moves', 'marts'] })
+  await seed(page, { state: 'partial', groups: ['moves', 'marts'] })
   await page.reload({ waitUntil: 'load' })
   const tag = await waitBoot(page)
   assert(tag === 'install:partial', `막지 않았다: ${tag}`)
@@ -376,7 +386,7 @@ await run('05', 'partial 상태에서 게임 시작 차단', async ({ page }) =>
 await run('06', 'reload 후 ready install 복구 · HTTP로 안 되돌아간다', async ({ page, requests }) => {
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
-  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await seed(page, { state: 'ready', groups: REQUIRED_GROUPS })
   const before = requests.length
   await page.reload({ waitUntil: 'load' })
   const tag = await waitBoot(page)
@@ -391,7 +401,7 @@ await run('06', 'reload 후 ready install 복구 · HTTP로 안 되돌아간다'
 await run('07', '손상된 OPFS 파일을 완료로 안 세고 다시 만든다', async ({ page }) => {
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
-  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await seed(page, { state: 'ready', groups: REQUIRED_GROUPS })
   // 파일 하나를 0바이트로 잘라 둔다. 길이만 봐도 걸려야 하고, 길이를 맞춰
   // 놔도 해시에서 걸려야 한다 — 둘 다 잰다
   const verdict = await page.evaluate(async () => {
@@ -445,7 +455,7 @@ await run('08', '설치 기록이 ready가 되면 reload 없이 OPFS로 전환',
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   assert(await waitBoot(page) === 'install:none', '설치 화면으로 안 떴다')
   await page.getByRole('heading', { name: '에셋 설치' }).waitFor({ timeout: 20_000 })
-  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await seed(page, { state: 'ready', groups: REQUIRED_GROUPS })
   const before = requests.length
   // 화면을 안 새로 켠다. 설치 화면이 스스로 부팅을 다시 물을 때 갈래가 바뀐다
   await page.getByRole('button', { name: '타이틀로 돌아가기' }).click()
@@ -506,9 +516,14 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
     `그룹이 다르다: ${got.groups.sort().join(',')} (기대 ${WANT})`)
   // 브라우저가 만든 바이트가 노드 산출물과 같은가. 경계를 다 지난 뒤의 값이다.
   //
-  // ⚠️ **미국판일 때만 견준다.** 노드 산출물(`public/data`)은 미국판 롬으로
-  // 구운 것이라, 한국판·일본판 결과를 거기 대면 "다르다"가 나오는 것이 맞다.
-  // 그 판들에서 재려는 것은 **그룹이 다 들어왔는가**이고 그건 위에서 봤다
+  // ⚠️ **`maps.json`은 세 판에서 다 같아야 한다.** 맵 헤더 24바이트 중 지역판마다
+  // 다른 자리는 글 뱅크 번호(`msg`) 하나고, 그것을 us 번호로 되돌린 것이
+  // 산출물이기 때문이다. 되돌리지 않던 동안에는 한국판 설치본의 593개 맵이 전부
+  // 이웃 뱅크를 읽었다 — 파일이 있으니 화면은 멀쩡히 뜨고 글만 딴 것이 나왔다
+  assert(sameAsNode(got.sha['data/maps.json'], 'maps'),
+    `${ROM_LOCALE} maps.json이 노드 산출물과 다르다: ${got.sha['data/maps.json']}`)
+  // 나머지는 미국판일 때만 견준다 — 노드 산출물(`public/data`)이 미국판 롬으로
+  // 구운 것이라, 한국판·일본판 결과를 거기 대면 "다르다"가 나오는 것이 맞다
   if (ROM_LOCALE === 'en') {
     assert(sameAsNode(got.sha['data/moves.json'], 'moves'),
       `moves.json이 노드 산출물과 다르다: ${got.sha['data/moves.json']}`)
@@ -521,7 +536,7 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
   return `${ROM_LOCALE} 판 · Platinum 필수 ${String(REQUIRED_PLATINUM_GROUPS.length)}그룹 · `
     + `파일 ${String(Object.keys(got.sha).length)}개 · `
     + `${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
-    + `${ROM_LOCALE === 'en' ? NODE_SAID : '노드 대조는 미국판에서만'} · `
+    + `${ROM_LOCALE === 'en' ? NODE_SAID : 'maps.json은 세 판이 같다'} · `
     + `설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
 
@@ -825,7 +840,7 @@ await run('18', '설치가 끝나 있으면 파일을 안 묻고 바로 연다',
   // **부팅 순서**를 잰다. 둘을 합쳐야 계약 전체가 덮이고, 진짜 `ready`는 ⑮다
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
-  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await seed(page, { state: 'ready', groups: REQUIRED_GROUPS })
   await page.close()
 
   const again = await context.newPage()
@@ -859,7 +874,7 @@ await run('19', '앱 판·빌드가 달라져도 설치본을 그대로 쓴다',
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
   // 다른 판이 찍은 도장. 산출물 모양은 그대로다 — 다시 만들 이유가 없다
-  await page.evaluate(SYNTHETIC, {
+  await seed(page, {
     state: 'ready', groups: REQUIRED_GROUPS,
     commit: { appVersion: '0.0.1', buildId: 'aaaaaaa' },
   })
@@ -873,7 +888,7 @@ await run('19', '앱 판·빌드가 달라져도 설치본을 그대로 쓴다',
 await run('20', '산출물 판이 낡으면 그 그룹만 다시 만들라고 한다', async ({ context, page }) => {
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
-  await page.evaluate(SYNTHETIC, {
+  await seed(page, {
     state: 'ready', groups: REQUIRED_GROUPS, groupFormat: { chunks: 99 },
   })
   await page.close()
@@ -888,7 +903,7 @@ await run('21', '도장이 없으면 ready라고 적혀 있어도 안 연다', a
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
   // 마지막 검증 전에 죽은 설치가 남긴 모양이다
-  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS, commit: false })
+  await seed(page, { state: 'ready', groups: REQUIRED_GROUPS, commit: false })
   await page.close()
   const again = await context.newPage()
   await again.goto(`${origin}/`, { waitUntil: 'load' })
@@ -900,7 +915,7 @@ await run('21', '도장이 없으면 ready라고 적혀 있어도 안 연다', a
 await run('22', '사이트 데이터를 지우면 설치 화면으로 돌아간다', async ({ context, page }) => {
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
-  await page.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await seed(page, { state: 'ready', groups: REQUIRED_GROUPS })
   await page.reload({ waitUntil: 'load' })
   assert(await waitBoot(page) === 'play:opfs', '심은 설치본을 안 읽었다')
 
@@ -976,7 +991,7 @@ await run('27', '에셋을 지워도 리포트가 남고, 리포트를 지워도
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
   // 설치 화면이 뜨는 자리에 세운다 — 단추가 거기 있다
-  await page.evaluate(SYNTHETIC, { state: 'partial', groups: REQUIRED_PLATINUM_GROUPS })
+  await seed(page, { state: 'partial', groups: REQUIRED_PLATINUM_GROUPS })
   await page.evaluate(PLANT_REPORT, MARK)
   await page.reload({ waitUntil: 'load' })
   assert((await waitBoot(page)).startsWith('install:'), '설치 화면으로 안 갔다')
@@ -998,7 +1013,7 @@ await run('27', '에셋을 지워도 리포트가 남고, 리포트를 지워도
   assert(await again.evaluate(READ_REPORT) === MARK, '다시 열었더니 리포트가 없다')
 
   // ── 반대쪽 ──
-  await again.evaluate(SYNTHETIC, { state: 'ready', groups: REQUIRED_GROUPS })
+  await seed(again, { state: 'ready', groups: REQUIRED_GROUPS })
   await again.reload({ waitUntil: 'load' })
   assert(await waitBoot(again) === 'play:opfs', '설치본을 다시 못 심었다')
   const withAssets = await again.evaluate(ASSETS_LEFT)
@@ -1037,7 +1052,7 @@ await run('28', '하다 막힌 설치를 화면에서 통째로 지운다 (리�
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
   // 반쯤 설치된 채로 남은 자리. 여기서는 게임에 못 가고 설치 화면이 뜬다
-  await page.evaluate(SYNTHETIC, { state: 'partial', groups: REQUIRED_PLATINUM_GROUPS })
+  await seed(page, { state: 'partial', groups: REQUIRED_PLATINUM_GROUPS })
   await page.evaluate(PLANT_REPORT, MARK)
   await page.reload({ waitUntil: 'load' })
   assert((await waitBoot(page)).startsWith('install:'), '설치 화면으로 안 갔다')

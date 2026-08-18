@@ -56,6 +56,26 @@ function parseLand(buf) {
   return { sizes, perm, objects, bdhc }
 }
 
+/**
+ * 지역판이 서로 다르게 적어 둔 통행 칸 — **한 값으로 맞춘다.**
+ *
+ * 브라우저 쪽 `src/import/platinum/maps.ts`의 `TILE_PATCHES`와 **같은 표**여야
+ * 한다. 근거와 판단은 그쪽 주석에 적어 두었다 (225번도로의 잔디 4칸, 한국판만
+ * 열려 있다). 두 굽는 쪽이 갈리면 개발판과 설치본의 지형이 달라진다
+ */
+const TILE_PATCHES = [
+  { land: 164, tiles: [[26, 16], [27, 16], [26, 17], [27, 17]], from: IMPASSABLE, to: 0 },
+]
+
+/** 그 칸의 최종 통행값. 표에 없거나 기대한 값이 아니면 롬 값 그대로 */
+function patchTile(land, tx, tz, value) {
+  for (const p of TILE_PATCHES) {
+    if (p.land !== land || value !== p.from) continue
+    if (p.tiles.some(([x, z]) => x === tx && z === tz)) return p.to
+  }
+  return value
+}
+
 /** 건물 배치: i32 modelId, pos×3, rot×3, scale×3 (전부 20.12 고정소수점) */
 function parseObjects(buf) {
   const out = []
@@ -102,7 +122,10 @@ function exportZone(rom, zoneName) {
   const chunks = cells.map((c) => {
     const L = parseLand(lands[c.chunk])
     const tiles = []
-    for (let i = 0; i < CHUNK_TILES * CHUNK_TILES; i++) tiles.push(L.perm.readUInt16LE(i * 2))
+    for (let i = 0; i < CHUNK_TILES * CHUNK_TILES; i++) {
+      const tx = i % CHUNK_TILES, tz = (i / CHUNK_TILES) | 0
+      tiles.push(patchTile(c.chunk, tx, tz, L.perm.readUInt16LE(i * 2)))
+    }
     return {
       id: c.chunk,
       matrix: { x: c.mx, y: c.my },
@@ -153,4 +176,7 @@ function main() {
 }
 
 if (require.main === module) main()
-module.exports = { exportZone, parseMatrix, parseLand, parseObjects, CHUNK_TILES, IMPASSABLE }
+module.exports = {
+  exportZone, parseMatrix, parseLand, parseObjects, patchTile, TILE_PATCHES,
+  CHUNK_TILES, IMPASSABLE,
+}

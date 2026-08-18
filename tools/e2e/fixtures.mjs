@@ -14,10 +14,27 @@
 // 심는 것은 **앱이 실제로 읽는 모양 그대로**다 — `install.json`의 스키마도,
 // SHA-256도, 두 저장소로 나뉜 자리도. 모양을 대충 맞추면 통과가 거짓이 된다.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '../..')
+
+/**
+ * 지금 앱이 보는 그룹별 산출물 판 (`src/import/install/assetFormat.ts`).
+ *
+ * ⚠️ **손으로 베끼지 않는다.** 여기가 1로 굳어 있던 동안, 변환기를 고쳐 판을
+ * 올리면 심어 둔 기록이 통째로 `install:outdated`가 되어 ⑥⑧⑲㉒가 한꺼번에
+ * 붉어졌다 — 앱이 잘못된 것이 아니라 재료가 낡은 것이었다. 그래서 표를 읽는다
+ */
+export const GROUP_FORMAT = (() => {
+  const src = readFileSync(resolve(ROOT, 'src/import/install/assetFormat.ts'), 'utf8')
+  const block = /GROUP_FORMAT:[^=]*=\s*\{([\s\S]*?)\n\}/.exec(src)
+  if (!block) throw new Error('assetFormat.ts에서 GROUP_FORMAT을 못 찾았다')
+  const out = {}
+  for (const m of block[1].matchAll(/^\s{2}(\w+):\s*(\d+),/gm)) out[m[1]] = Number(m[2])
+  if (Object.keys(out).length === 0) throw new Error('GROUP_FORMAT이 비었다 — 파싱이 어긋났다')
+  return out
+})()
 
 /**
  * 최소 모양의 `AssetAssistant/` 폴더를 만든다.

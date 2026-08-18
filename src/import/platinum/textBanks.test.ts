@@ -6,7 +6,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   BANK_ORDER, LOCALES, TEXT_BANK_NAMES, bankCount, bankHead, bankIndex, bankLayout,
-  duplicatePairs, readBankLayout, BankLayoutError, MSG_NARC, type BankHead, type Locale,
+  duplicatePairs, readBankLayout, usBankIndex, BankLayoutError, MSG_NARC,
+  type BankHead, type Locale,
 } from './textBanks'
 import { narcCount, narcEntry } from './nds'
 
@@ -83,17 +84,37 @@ describe('뱅크 자리 계산', () => {
       expect(seen).toEqual([...seen].sort((a, b) => a - b))
       expect(new Set(seen).size).toBe(seen.length)
       expect(Math.max(...seen)).toBe(bankCount(locale) - 1)
-      // 딱 한 자리가 비어 있다. 그것이 그 롬이 끼워 넣은 뱅크다
+      // 이름 없는 자리 — 한국어판은 인사말 하나, 일본어판은 없다
       const empty = Array.from({ length: bankCount(locale) }, (_, i) => i).filter((i) => !seen.includes(i))
-      expect(empty).toHaveLength(1)
+      expect(empty).toHaveLength(locale === 'ko' ? 1 : 0)
     }
+  })
+
+  /**
+   * ⚠️ 이 줄이 배포된 게임의 대사를 통째로 어긋나게 했던 자리다. 맵 헤더의
+   * `msg`는 **그 롬의 번호**인데 대사 파일 이름은 us 번호다
+   */
+  it('로케일 번호를 us 번호로 되돌린다', () => {
+    for (const locale of ['ko', 'ja'] as const) {
+      for (const [name, at] of bankLayout(locale)) {
+        expect(usBankIndex(at, locale), name).toBe(bankLayout('us').get(name))
+      }
+    }
+    // 한국어판이 끼워 넣은 뱅크는 us에 짝이 없다 — 0으로 뭉개지 않는다
+    const koTaken = new Set(bankLayout('ko').values())
+    const inserted = Array.from({ length: bankCount('ko') }, (_, i) => i).find((i) => !koTaken.has(i))!
+    expect(usBankIndex(inserted, 'ko')).toBeNull()
+    expect(usBankIndex(0, 'us')).toBe(0)
   })
 
   it('CJK에 없는 뱅크는 null이고 0으로 뭉개지 않는다', () => {
     expect(bankIndex('move_names_uppercase', 'us')).toBeGreaterThan(0)
     expect(bankIndex('move_names_uppercase', 'ko')).toBeNull()
     expect(bankIndex('game_corner', 'ko')).not.toBeNull()
-    expect(bankIndex('game_corner', 'ja')).toBeNull()
+    // ⚠️ 일본어판에도 게임코너는 **있다.** 미국판과 문장 수가 달라서 (키, 엔트리
+    // 수)로 짝짓는 표가 못 알아봤을 뿐이다 — 없다고 적었더니 트바리 게임코너의
+    // 대사가 통째로 사라졌다
+    expect(bankIndex('game_corner', 'ja')).not.toBeNull()
   })
 
   it('로케일마다 자리가 실제로 달라진다 — 인덱스 직접 참조가 위험한 이유', () => {

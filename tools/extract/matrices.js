@@ -12,7 +12,9 @@
 const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
-const { parseMatrix, parseLand, parseObjects, CHUNK_TILES, IMPASSABLE } = require('./maps')
+const {
+  parseMatrix, parseLand, parseObjects, patchTile, CHUNK_TILES, IMPASSABLE,
+} = require('./maps')
 const { extractHeaders } = require('./headers')
 
 const OVERWORLD = 0
@@ -41,7 +43,7 @@ function buildMatrix(matrixBuf, lands, id) {
     for (let ty = 0; ty < CHUNK_TILES; ty++) {
       const row = (oz + ty) * tileWidth + ox
       for (let tx = 0; tx < CHUNK_TILES; tx++) {
-        tiles[row + tx] = L.perm.readUInt16LE((ty * CHUNK_TILES + tx) * 2)
+        tiles[row + tx] = patchTile(land, tx, ty, L.perm.readUInt16LE((ty * CHUNK_TILES + tx) * 2))
       }
     }
     const objs = parseObjects(L.objects)

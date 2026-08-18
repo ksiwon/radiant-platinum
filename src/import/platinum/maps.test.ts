@@ -9,7 +9,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { openNds, type NdsFileSystem } from './nds'
 import {
-  findHeaderTable, tableFits, parseObjects, parseMatrix, parseBdhc,
+  findHeaderTable, tableFits, parseObjects, parseMatrix, parseBdhc, parseHeader, toUsBank, patchTile,
   HEADER_SIZE, MAP_COUNT, CHUNK_TILES, IMPASSABLE,
 } from './maps'
 import { GROUPS } from './convert'
@@ -113,6 +113,83 @@ async function tableCounts(fs: NdsFileSystem): Promise<{ events: number, matrice
     encounters: await count('/fielddata/encountdata/pl_enc_data.narc'),
   }
 }
+
+/**
+ * ⚠️ **배포된 게임의 대사가 통째로 어긋났던 자리다.**
+ *
+ * 헤더 24바이트를 세 판에서 견주면 다른 자리가 `msg`(8·9번) 하나뿐이고 593줄이
+ * **전부** 다르다 — 각 롬이 자기 뱅크 번호를 적기 때문이다. 우리가 굽는 대사
+ * 파일 이름은 us 번호라, 되돌리지 않으면 맵마다 이웃 뱅크를 읽는다. 파일은 있으니
+ * 화면은 멀쩡히 뜨고 글만 딴 것이 나온다 — 그래서 개발판에서는 안 보였다
+ */
+withRom('en', 'ko', 'ja')('맵이 가리키는 글 뱅크가 세 판에서 같은 것이다', () => {
+  const banksOf = async (locale: 'en' | 'ko' | 'ja'): Promise<number[]> => {
+    const fs = await openNds(fileSource(romPath(locale)!))
+    if (!fs) throw new Error('롬을 못 열었다')
+    const arm9 = await fs.arm9(0, fs.header.arm9Size)
+    const at = findHeaderTable(arm9!, await tableCounts(fs))
+    const view = new DataView(arm9!.buffer, arm9!.byteOffset, arm9!.byteLength)
+    return Array.from({ length: MAP_COUNT }, (_, id) => {
+      const raw = parseHeader(view, at + id * HEADER_SIZE, id).msg
+      return toUsBank(raw, locale === 'en' ? 'us' : locale, id)
+    })
+  }
+
+  it('ko·ja 롬의 번호를 되돌리면 us 열과 593/593 같다', async () => {
+    const us = await banksOf('en')
+    for (const locale of ['ko', 'ja'] as const) {
+      const got = await banksOf(locale)
+      const off = us.map((v, i) => (v === got[i] ? -1 : i)).filter((i) => i >= 0)
+      expect(off, `${locale}: ${String(off.length)}개 맵이 어긋난다 — ${off.slice(0, 5).join(', ')}`)
+        .toEqual([])
+    }
+  }, 300_000)
+
+  it('세 판이 같은 것을 낸다 — maps.json도 통행 격자도 바이트로 같다', async () => {
+    const runFor = async (locale: 'en' | 'ko' | 'ja'): Promise<Map<string, Uint8Array>> => {
+      const release = SUPPORTED.releases.find((r) => r.locale === locale)!
+      const fs = await openNds(fileSource(romPath(locale)!))
+      return GROUPS.find((g) => g.name === 'maps')!.convert!({ fs: fs!, locale, release })
+    }
+    // ⚠️ **`0.bin`은 글 뱅크와 다른 이유로 갈렸다.** 한국판이 225번도로의 잔디
+    // 4칸을 열어 뒀다 — 롬 셋에서 지형이 다른 자리는 그것뿐이고, `TILE_PATCHES`가
+    // 세 판을 그 열린 값으로 맞춘다
+    const want = ['data/maps.json', 'data/matrices/0.bin', 'data/matrices/interiors.bin']
+    const us = await runFor('en')
+    for (const locale of ['ko', 'ja'] as const) {
+      const got = await runFor(locale)
+      for (const path of want) {
+        expect(Buffer.from(got.get(path)!).equals(Buffer.from(us.get(path)!)), `${locale} ${path}`)
+          .toBe(true)
+      }
+    }
+  }, 300_000)
+
+  it('통행 칸 보정은 기대한 값일 때만 먹는다 — 다른 값이면 롬을 그대로 둔다', () => {
+    // 225번도로(청크 164)의 그 네 칸만, 통행 불가일 때만 연다
+    expect(patchTile(164, 26, 16, IMPASSABLE)).toBe(0)
+    expect(patchTile(164, 27, 17, IMPASSABLE)).toBe(0)
+    // 이미 열려 있으면(한국판) 그대로. 우리가 모르는 값이면 손대지 않는다
+    expect(patchTile(164, 26, 16, 0)).toBe(0)
+    expect(patchTile(164, 26, 16, 0x0015)).toBe(0x0015)
+    // 이웃 칸과 다른 청크는 안 건드린다
+    expect(patchTile(164, 26, 18, IMPASSABLE)).toBe(IMPASSABLE)
+    expect(patchTile(163, 26, 16, IMPASSABLE)).toBe(IMPASSABLE)
+  })
+
+  it('되돌리기 전에는 593개가 다 어긋나 있다 — 시험이 무엇을 잡는지', async () => {
+    const fsEn = await openNds(fileSource(romPath('en')!))
+    const fsKo = await openNds(fileSource(romPath('ko')!))
+    const raw = async (fs: NonNullable<Awaited<ReturnType<typeof openNds>>>): Promise<number[]> => {
+      const arm9 = await fs.arm9(0, fs.header.arm9Size)
+      const at = findHeaderTable(arm9!, await tableCounts(fs))
+      const view = new DataView(arm9!.buffer, arm9!.byteOffset, arm9!.byteLength)
+      return Array.from({ length: MAP_COUNT }, (_, id) => parseHeader(view, at + id * HEADER_SIZE, id).msg)
+    }
+    const [us, ko] = [await raw(fsEn!), await raw(fsKo!)]
+    expect(us.filter((v, i) => v === ko[i])).toHaveLength(0)
+  }, 300_000)
+})
 
 withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
   const EN = SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!

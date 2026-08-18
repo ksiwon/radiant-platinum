@@ -93,6 +93,42 @@ function decompKeys() {
   return { pairs: out, generated }
 }
 
+/**
+ * 키로 못 짚은 뱅크를 **자리**로 메운다.
+ *
+ * ⚠️ **없는 뱅크와 내용이 바뀐 뱅크는 다르다.** (키, 엔트리 수)로 짝짓는 것은
+ * 그 지역판이 뱅크를 **다시 쓴** 경우를 못 잡는다 — 일본판 게임코너가 그렇다.
+ * 미국판 28줄, 일본판 26줄이라 쌍도 키도 안 맞아서 "일본판에 없음"으로 떨어졌는데,
+ * 열어 보면 「いらっしゃいませ！
+トバリ　ゲ－ムコ－ナ－　です！」다. 없다고 적으면
+ * 트바리 게임코너 맵의 대사가 통째로 사라진다.
+ *
+ * 순서는 보존된다(빠지거나 끼어들 뿐 뒤집히지 않는다). 그래서 앞뒤로 이미 확정된
+ * 뱅크 사이에 **남은 자리가 딱 하나**면 그것이 답이다. 둘 이상이면 근거가 부족한
+ * 것이므로 null로 남긴다 — 정말 없는 뱅크(문법용·달 이름)는 사이에 빈자리가
+ * 없어서 여기서 안 걸린다.
+ */
+function fillByPosition(table, narcs, loc) {
+  const taken = new Set(table.map((t) => t.bank[loc]).filter((v) => v !== null && v !== undefined))
+  const at = (i) => (table[i] ? table[i].bank[loc] : null)
+  const filled = []
+  for (let i = 0; i < table.length; i++) {
+    if (at(i) !== null) continue
+    let prev = -1
+    for (let j = i - 1; j >= 0; j--) { if (at(j) !== null) { prev = at(j); break } }
+    let next = narcs[loc].length
+    for (let j = i + 1; j < table.length; j++) { if (at(j) !== null) { next = at(j); break } }
+    const free = []
+    for (let k = prev + 1; k < next; k++) if (!taken.has(k)) free.push(k)
+    if (free.length !== 1) continue
+    table[i].bank[loc] = free[0]
+    table[i].entries[loc] = head(narcs[loc][free[0]]).count
+    taken.add(free[0])
+    filled.push(table[i].name)
+  }
+  return filled
+}
+
 function main() {
   const narcs = {}
   // 아카이브는 지역판 롬에서 그때그때 꺼낸다 — 미리 풀어 둔 폴더에 안 기댄다
@@ -151,6 +187,14 @@ function main() {
     }
     table.push(entry)
   })
+
+  // 키로 못 짚은 것을 **자리로** 메운다. 아래 설명 참조
+  const filled = { ko: fillByPosition(table, narcs, 'ko'), ja: fillByPosition(table, narcs, 'ja') }
+  for (const loc of ['ko', 'ja']) {
+    if (!filled[loc].length) continue
+    stats.absent[loc] -= filled[loc].length
+    console.log(`${loc}: 키로 못 짚은 뱅크 ${filled[loc].length}개를 자리로 메웠다 — ${filled[loc].join(', ')}`)
+  }
 
   const clash = []
   for (const [name, want] of Object.entries(HEURISTIC)) {

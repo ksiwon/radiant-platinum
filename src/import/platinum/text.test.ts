@@ -241,6 +241,38 @@ withRom('ko')('ko 롬 — 밀린 뱅크 자리를 계산으로 찾는다', () =>
   }, 180_000)
 })
 
+/**
+ * ⚠️ **로케일별 대사가 노드 산출물과 바이트로 같다.**
+ *
+ * 미국판만 견주던 동안, 한국판·일본판에서만 어긋나는 것은 게임 안에서만 보였다.
+ * 파일 이름은 세 판 모두 **us 번호**이고 알맹이는 그 롬의 뱅크다 — 여기가 밀리면
+ * 맵마다 이웃 뱅크의 글이 나온다
+ */
+withRom('ko', 'ja')('parity — 한국판·일본판 대사도 노드 산출물과 같다', () => {
+  it.each(['ko', 'ja'] as const)('%s 뱅크가 한 자도 안 다르다', async (loc) => {
+    const fs = await openNds(fileSource(romPath(loc)!))
+    const release = SUPPORTED.releases.find((r) => r.locale === loc)!
+    const out = await convertText({ fs: fs!, locale: loc, release })
+    let same = 0
+    const diff: string[] = []
+    for (const [path, bytes] of out) {
+      // 목차는 일부러 다르다 — 노드 쪽은 골라 싣는다
+      if (path === 'data/dialogue/index.json') continue
+      const file = resolve(DATA, path.replace(/^data\//, ''))
+      if (!existsSync(file)) continue
+      if (decoder.decode(bytes) === readFileSync(file, 'utf8')) same++
+      else diff.push(path)
+    }
+    expect(diff, `어긋난 파일: ${diff.slice(0, 5).join(', ')}`).toEqual([])
+    expect(same).toBeGreaterThan(450)
+    // 일본판 뱅크 709개에 이름이 다 붙는다. 한국판은 자기만 가진 인사말 하나가
+    // us 번호를 못 받아 713개다
+    const re = new RegExp(String.raw`^data/dialogue/${loc}/\d+\.json$`)
+    const banks = [...out.keys()].filter((p) => re.test(p))
+    expect(banks).toHaveLength(loc === 'ko' ? 713 : 709)
+  }, 180_000)
+})
+
 describe('NARC 엔트리', () => {
   it('범위 밖 인덱스는 null이다', () => {
     // NARC가 아닌 바이트에서도 조용히 null이어야 한다 — 사용자가 아무 파일이나 고른다

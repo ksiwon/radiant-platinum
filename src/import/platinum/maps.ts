@@ -9,12 +9,16 @@
 // 그 성질을 만족하는 자리가 하나뿐이라는 것이 애초에 노드 쪽이 주소를 확정한
 // 방법이었다. 상수 대신 그 방법 자체를 옮기면 세 판이 다 열린다.
 import { narcEntry, type NdsFileSystem } from './nds'
+import { usBankIndex, type Locale } from './textBanks'
+import { bankLocale } from './text'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
 
 export const HEADER_SIZE = 24
 export const MAP_COUNT = 593
 /** 인카운터 없음 */
 const NO_ENCOUNTER = 0xffff
+/** 글 뱅크 없음 — 593줄에는 안 나오지만 헤더 구조가 허용하는 값이다 */
+const NO_BANK = 0xffff
 export const CHUNK_TILES = 32
 const LAND_HEADER = 16
 const OBJECT_SIZE = 48
@@ -76,7 +80,12 @@ export function parseHeader(view: DataView, at: number, id: number): MapHeader {
     matrix: view.getUint16(at + 2, true),
     scripts: view.getUint16(at + 4, true),
     initScripts: view.getUint16(at + 6, true),
-    /** pl_msg.narc 뱅크 번호 (US 기준) */
+    /**
+     * pl_msg.narc 뱅크 번호 — **읽은 롬의 번호 그대로다.**
+     *
+     * ⚠️ us 번호가 아니다. 헤더 표는 로케일마다 따로 있고 `msg` 열만 그 롬의
+     * 뱅크 자리를 가리킨다. us 번호로 바꾸는 것은 `convertMaps`가 한다
+     */
     msg: view.getUint16(at + 8, true),
     bgmDay: view.getUint16(at + 10, true),
     bgmNight: view.getUint16(at + 12, true),
@@ -171,6 +180,38 @@ export function findHeaderTable(arm9: Uint8Array, n: TableCounts): number {
 }
 
 // ── 행렬·청크 ────────────────────────────────────────────────────────────────
+
+/**
+ * 지역판이 서로 다르게 적어 둔 통행 칸 — **한 값으로 맞춘다.**
+ *
+ * 롬 셋의 `land_data` 666청크를 통째로 견주면 다른 자리가 **여기 4칸뿐**이다
+ * (한국판만 다르고 미국판·일본판은 한 바이트도 안 다르다). 청크 164 =
+ * 225번도로, 청크 안 (26~27, 16~17). 미국판·일본판은 통행 불가, 한국판은 평지다.
+ *
+ * 어느 쪽으로 맞출지는 화면을 보고 정했다 — 그 4칸은 **그려져 있는 평평한
+ * 잔디**이고(광선이 `ngrass`를 맞힌다) 절벽 텍스처(`criffp2`)는 3~4칸 더
+ * 남쪽에서 시작한다. 높이도 이웃 통행 칸과 같은 3이고, 그 자리에 워프도 도구도
+ * 사람도 없다 — `zone_event` 534개는 세 판이 바이트로 같다. 곧 **막아도 아무것도
+ * 안 지키고, 열어도 아무 데도 안 통하는** 자리이고, 눈에는 계속 이어진 잔디다.
+ * 나중에 나온 한국판이 연 쪽을 따른다.
+ *
+ * ⚠️ **롬 값을 덮는 자리다.** 그래서 기대한 값일 때만 바꾼다 — 다른 값이면
+ * 우리가 아는 판이 아니므로 손대지 않고 그대로 둔다
+ */
+export const TILE_PATCHES: readonly {
+  land: number, tiles: readonly (readonly [number, number])[], from: number, to: number
+}[] = [
+  { land: 164, tiles: [[26, 16], [27, 16], [26, 17], [27, 17]], from: IMPASSABLE, to: 0 },
+]
+
+/** 그 칸의 최종 통행값. 표에 없으면 롬 값 그대로 */
+export function patchTile(land: number, tx: number, tz: number, value: number): number {
+  for (const p of TILE_PATCHES) {
+    if (p.land !== land || value !== p.from) continue
+    if (p.tiles.some(([x, z]) => x === tx && z === tz)) return p.to
+  }
+  return value
+}
 
 export interface Matrix {
   width: number
@@ -287,7 +328,7 @@ function buildMatrix(matrixBuf: Uint8Array, lands: Uint8Array[], id: number): Bu
     for (let ty = 0; ty < CHUNK_TILES; ty++) {
       const row = (oz + ty) * tileWidth + ox
       for (let tx = 0; tx < CHUNK_TILES; tx++) {
-        tiles[row + tx] = perm.getUint16((ty * CHUNK_TILES + tx) * 2, true)
+        tiles[row + tx] = patchTile(land, tx, ty, perm.getUint16((ty * CHUNK_TILES + tx) * 2, true))
       }
     }
     const objs = parseObjects(L.objects)
@@ -449,7 +490,24 @@ function readMapNames(bin: Uint8Array): string[] {
   return out
 }
 
+/**
+ * 헤더의 뱅크 번호를 us 번호로. 짝이 없으면 던진다.
+ *
+ * ⚠️ **조용히 원래 값을 두지 않는다.** 그것이 이 버그가 반년을 산 방식이다 —
+ * ko 롬으로 설치하면 593개 맵이 전부 이웃 뱅크를 읽는데 파일이 있으니 화면은
+ * 멀쩡히 뜨고 글만 딴 것이었다
+ */
+export function toUsBank(msg: number, locale: Locale, id: number): number {
+  if (msg === NO_BANK) return msg
+  const us = usBankIndex(msg, locale)
+  if (us === null) {
+    throw new Error(`맵 ${String(id)}의 글 뱅크 #${String(msg)}에 us 번호가 없다`)
+  }
+  return us
+}
+
 export async function convertMaps(ctx: ConvertContext): Promise<Produced> {
+  const locale = bankLocale(ctx.locale)
   const STEPS = 6
   ctx.onProgress?.(0, STEPS)
   const events = await readNarcAll(ctx.fs, '/fielddata/eventdata/zone_event.narc')
@@ -469,10 +527,16 @@ export async function convertMaps(ctx: ConvertContext): Promise<Produced> {
   const tableAt = findHeaderTable(arm9, counts)
   const view = new DataView(arm9.buffer, arm9.byteOffset, arm9.byteLength)
   const names = readMapNames(nameBin)
-  const maps = Array.from({ length: MAP_COUNT }, (_, id) => ({
-    ...parseHeader(view, tableAt + id * HEADER_SIZE, id),
-    name: names[id] ?? `#${String(id)}`,
-  }))
+  const maps = Array.from({ length: MAP_COUNT }, (_, id) => {
+    const header = parseHeader(view, tableAt + id * HEADER_SIZE, id)
+    return {
+      ...header,
+      // 대사 파일 이름이 us 번호다. 사용자의 롬이 ko·ja면 헤더의 번호가 그 롬의
+      // 자리라 여기서 되돌려야 한다 (`usBankIndex`)
+      msg: toUsBank(header.msg, locale, id),
+      name: names[id] ?? `#${String(id)}`,
+    }
+  })
   await breathe(ctx)
   ctx.onProgress?.(2, STEPS)
 
