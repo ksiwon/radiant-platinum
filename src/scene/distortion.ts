@@ -21,9 +21,11 @@ import {
   tileAttributes, tileBehavior, type DistortionFrame, type DistortionState,
 } from '../engine/world/distortion'
 import { DIR } from '../engine/script/movement'
+import { SFX } from '../engine/audio/sfx'
+import { music } from '../engine/audio/music'
 import {
-  CASCADE_UNIT, cascadeAt, cascadeFrames, cascadeLoadFrame, cascadeOffset,
-  type CascadeSite,
+  CASCADE_UNIT, cascadeAt, cascadeBob, cascadeBobFix, cascadeCameraAt, cascadeFrames,
+  cascadeLoadFrame, cascadeOffset, cascadeRoll, type CascadeSite,
 } from '../engine/world/distortionCascade'
 
 /**
@@ -526,6 +528,21 @@ export function distortionCascading(): boolean {
 }
 
 /**
+ * 폭포를 타는 동안의 **몸짓** — 화면이 읽는다.
+ *
+ * `roll`은 몸이 돌아 있는 각(도)이고 `bob`은 옆으로 밀린 양(칸)이다.
+ * 흔들림은 물살의 삼각파와 카메라가 갈릴 때 옮겨지는 중심을 더한 것이다.
+ * 폭포를 안 타면 null이라 부르는 쪽은 아무것도 안 한다
+ */
+export function distortionCascadePose(): { roll: number, bob: number } | null {
+  if (cascade === null) return null
+  return {
+    roll: cascadeRoll(cascade.site, cascade.frame),
+    bob: cascadeBob(cascade.site, cascade.frame) + cascadeBobFix(cascade.site, cascade.frame),
+  }
+}
+
+/**
  * 폭포에 뛰어든다 (`DistWorld_HandlePlayerMoved`의 `sMapEvent*_Waterfall`).
  *
  * 원작은 사건 명령 하나(`EVENT_CMD_CASCADE_DOWN`/`UP`)로 돌리는데, 그 명령은
@@ -545,6 +562,8 @@ function applyCascade(wx: number, wy: number, wz: number, dir: number): boolean 
     loaded: false,
   }
   worldState.player.velocity.set(0, 0, 0)
+  // 물소리가 타는 내내 난다 (`Sound_PlayEffect(SEQ_SE_PL_FW463)`)
+  void music.playEffect(SFX.WATERFALL)
   // 원작이 몸을 돌려 물살을 등진다 (`MapObject_TryFace(FACE_LEFT)`)
   worldState.player.facing = FACING_YAW[DIR.west] ?? worldState.player.facing
   return true
@@ -572,6 +591,13 @@ export function distortionCascadeTick(dt: number): void {
   worldState.player.prevPosition.copy(p)
   worldState.player.velocity.set(0, 0, 0)
 
+  // 카메라가 물살을 따라 돈다 (`UpdateCascadeDownCamera` · `UpdateCascadeUpCamera`)
+  // — ⚠️ **프레임이 아니라 몇 칸 떨어졌는가로 갈린다**
+  const cam = cascadeCameraAt(run.site, run.frame)
+  if (cam !== null) {
+    setState({ cameraAngleX: cam.angleX, cameraAngleY: cam.angleY, cameraAngleZ: cam.angleZ })
+  }
+
   if (!run.loaded && run.frame >= run.loadAt) {
     run.loaded = true
     changeFloorTo(run.site.down)
@@ -595,6 +621,14 @@ function endCascade(run: Cascading): void {
   // 갈래를 안 가린다. 판이 없는 층이면 그대로 판 밖이다
   const [nwx, nwy, nwz] = toWorldTiles(p.x, p.y, p.z)
   bindPlatform(findPlatform(floor.platforms, nwx, nwy, nwz))
+  // 다 내려선 자리에서 물소리를 끈다 (`Sound_StopEffect`)
+  music.stopEffect(SFX.WATERFALL)
+  // 물살에서 서쪽으로 걸어 나온다 (`..._MoveAway`) — 원작도 폭포 칸 위에 서 있지
+  // 않는다. ⚠️ **내려간 뒤는 두 걸음, 올라간 뒤는 세 걸음이다**
+  const step = DIR_STEP[DIR.west]
+  const away = run.site.moveAway
+  if (step !== undefined) p.set(p.x + step.x * away, p.y, p.z + step.z * away)
+  worldState.player.prevPosition.copy(p)
   // 내려간 쪽만 B5F의 승강 발판을 세운다 (`SetPersistedMovingPlatformFlag`)
   if (run.site.down) {
     setState({ platformFlags: state().platformFlags | (1 << CASCADE_B5F_FLAG) })

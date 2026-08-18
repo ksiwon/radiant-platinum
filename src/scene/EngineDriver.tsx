@@ -27,10 +27,14 @@ import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
 import { distortionBridge } from '../engine/world/distortion'
 import { surfaceHeading, surfaceQuaternion } from '../engine/actor/distortionSurface'
+import { distortionCascadePose } from './distortion'
 
 let systemsRegistered = false
 const interpolated = new Vector3()
 const playerRotation = new Quaternion()
+/** 폭포에서 몸이 눕는 회전. 앞뒤 축(로컬 +Z) 둘레로 돈다 */
+const cascadeRoll = new Quaternion()
+const FORWARD_AXIS = new Vector3(0, 0, 1)
 const WORLD_UP = new Vector3(0, 1, 0)
 
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
@@ -107,6 +111,15 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       const frame = distortionBridge.frame?.() ?? null
       const heading = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
       surfaceQuaternion(frame, heading, playerRotation)
+      // 폭포를 타는 동안은 **물살에 눕는다** (`RotateMapObject`) — 몸이 앞뒤 축
+      // 둘레로 돌고, 다 눕고 나면 물살에 좌우로 흔들린다(`InitBobbing`).
+      // 각은 원작이 준 도 그대로다 — 내려갈 때 90 → 58 → 90 → 180
+      const pose = distortionCascadePose()
+      if (pose !== null) {
+        cascadeRoll.setFromAxisAngle(FORWARD_AXIS, pose.roll * Math.PI / 180)
+        playerRotation.multiply(cascadeRoll)
+        sceneRefs.player.position.x += pose.bob
+      }
       sceneRefs.player.quaternion.slerp(playerRotation, Math.min(1, delta * 12))
       // 1인칭에서는 자기 몸이 화면을 가린다. 눈이 머리 안쪽에 있어서
       // 안 끄면 얼굴 텍스처가 통째로 보인다

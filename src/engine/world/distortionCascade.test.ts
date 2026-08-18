@@ -9,7 +9,8 @@
 // 목적지인지**를 본다 — 자기일치가 안 맞으면 단위가 틀린 것이다.
 import { describe, expect, it } from 'vitest'
 import {
-  CASCADES, CASCADE_UNIT, cascadeAt, cascadeFrames, cascadeLoadFrame, cascadeOffset,
+  CASCADES, CASCADE_UNIT, cascadeAt, cascadeBob, cascadeBobFix, cascadeCameraAt, cascadeFinishFrame,
+  cascadeFrames, cascadeLoadFrame, cascadeOffset, cascadeRoll, cascadeRotationFrame,
 } from './distortionCascade'
 import { MAP } from './distortion'
 import { DIR } from '../script/movement'
@@ -94,5 +95,106 @@ describe('올라가기 — 훨씬 빠르다', () => {
 
   it('내려가는 것보다 일곱 배 넘게 빠르다', () => {
     expect(cascadeFrames(down) / cascadeFrames(up)).toBeGreaterThan(7)
+  })
+})
+
+describe('물살에 눕고 흔들린다', () => {
+  it('⚠️ 몸은 한 번 돌고 마는 것이 아니다', () => {
+    // 원작이 `RotateMapObject`를 넷 부르고 목표에 각을 **더한다**
+    expect(cascadeRoll(down, 0)).toBe(0)
+    expect(cascadeRoll(down, 16)).toBeCloseTo(45)
+    expect(cascadeRoll(down, 32)).toBe(90)
+    // 카메라가 갈리기 전까지는 90도 그대로다
+    const first = cascadeRotationFrame(down, -20)
+    expect(cascadeRoll(down, first)).toBe(90)
+    // 첫 전환에 −32도, 둘째 전환에 +32도, 마지막 한 칸에서 +90도
+    expect(cascadeRoll(down, first + 72)).toBeCloseTo(58)
+    const second = cascadeRotationFrame(down, -36)
+    expect(cascadeRoll(down, second + 31)).toBeCloseTo(90)
+    expect(cascadeRoll(down, cascadeFrames(down))).toBeCloseTo(180)
+  })
+
+  it('올라갈 때는 반대로 돈다', () => {
+    expect(cascadeRoll(up, 4)).toBe(-90)
+    expect(cascadeRoll(up, cascadeFrames(up))).toBeCloseTo(-180)
+  })
+
+  it('마지막 회전은 한 칸 남았을 때 켜진다', () => {
+    // `CASCADE_FINISHING_THRESHOLD`가 16/16칸이다
+    for (const site of [down, up]) {
+      const f = cascadeFinishFrame(site)
+      expect(Math.abs(site.final - cascadeOffset(site, f))).toBe(CASCADE_UNIT)
+      // 남은 프레임이 그 회전의 길이와 맞는다 — 다 돌기 전에 끝나면 안 된다
+      const last = site.rotations[site.rotations.length - 1]!
+      expect(cascadeFrames(site) - f).toBeGreaterThanOrEqual(last.steps)
+    }
+  })
+
+  it('⚠️ 흔들림은 다 누운 뒤에 시작한다', () => {
+    // `InitBobbing`이 `..._RotatePlayer`의 끝에 있다
+    expect(cascadeBob(down, 0)).toBe(0)
+    expect(cascadeBob(down, down.rotations[0]!.steps)).toBe(0)
+    expect(cascadeBob(down, down.rotations[0]!.steps + 1)).toBeGreaterThan(0)
+  })
+
+  it('1/16칸과 4/16칸 사이를 오간다', () => {
+    let lo = Infinity
+    let hi = -Infinity
+    for (let f = down.rotations[0]!.steps + 1; f < down.rotations[0]!.steps + 200; f++) {
+      const b = cascadeBob(down, f)
+      lo = Math.min(lo, b)
+      hi = Math.max(hi, b)
+    }
+    expect(lo).toBeGreaterThanOrEqual(1 / CASCADE_UNIT)
+    expect(hi).toBeLessThanOrEqual(down.bobMax / CASCADE_UNIT)
+    // 실제로 끝까지 갔다 온다 — 폭이 좁으면 눈에 안 보인다
+    expect(hi).toBeCloseTo(down.bobMax / CASCADE_UNIT)
+  })
+
+  it('카메라는 프레임이 아니라 몇 칸 떨어졌는가로 갈린다', () => {
+    // 원작이 `(currPosOffset.y >> 4) / FX32_ONE`을 본다. 내려갈 때 앞 32프레임이
+    // 절반 속도라, 프레임으로 세면 20칸 자리가 열두 프레임 늦게 잡힌다
+    const fired: { frame: number, at: number }[] = []
+    for (let f = 0; f <= cascadeFrames(down); f += 1) {
+      const cam = cascadeCameraAt(down, f)
+      if (cam !== null) fired.push({ frame: f, at: cam.atTiles })
+    }
+    expect(fired.map((x) => x.at)).toEqual([-20, -36])
+    // −305/16도 내림하면 −20이다 — 딱 −320이 되는 프레임이 아니다
+    expect(cascadeOffset(down, fired[0]!.frame)).toBe(-305)
+    expect(fired[0]!.frame).toBeLessThan(fired[1]!.frame)
+  })
+
+  it('올라갈 때는 한 번만 갈린다', () => {
+    const fired: number[] = []
+    for (let f = 0; f <= cascadeFrames(up); f += 1) {
+      if (cascadeCameraAt(up, f) !== null) fired.push(f)
+    }
+    expect(fired).toHaveLength(1)
+    expect(cascadeOffset(up, fired[0]!)).toBeGreaterThanOrEqual(20 * CASCADE_UNIT)
+  })
+
+  it('흔들림의 중심이 밀렸다 되돌아온다', () => {
+    // −4/16칸으로 밀렸다 +4/16칸으로 되돌아오니 다 지나면 처음 자리다
+    expect(cascadeBobFix(down, 0)).toBe(0)
+    const first = cascadeRotationFrame(down, -20)
+    expect(cascadeBobFix(down, first + 70)).toBeCloseTo(-4 / CASCADE_UNIT)
+    expect(cascadeBobFix(down, cascadeFrames(down))).toBeCloseTo(0)
+    // 올라갈 때는 안 밀린다
+    expect(cascadeBobFix(up, cascadeFrames(up))).toBe(0)
+  })
+
+  it('⚠️ 물살에서 걸어 나오는 칸 수가 둘이 다르다', () => {
+    // 내려가면 `WALK_SLOW_WEST` · `WALK_SLOWER_WEST` 둘,
+    // 올라가면 151 · 147 · 115 셋이다 — 셋 다 −x고 8 → 4 → 2로 느려진다
+    expect(down.moveAway).toBe(2)
+    expect(up.moveAway).toBe(3)
+  })
+
+  it('카메라 각은 원작 표 그대로다', () => {
+    expect(down.cameras.map((c) => [c.angleX, c.angleY, c.angleZ, c.steps]))
+      .toEqual([[245, 239, 0, 72], [0, 0, 0, 32]])
+    expect(up.cameras.map((c) => [c.angleX, c.angleY, c.angleZ, c.steps]))
+      .toEqual([[55, 240, 0, 16]])
   })
 })
