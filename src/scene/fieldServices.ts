@@ -294,6 +294,9 @@ const npcTradeRecord = (): NpcTrades['trades'][number] | null =>
  * ⚠️ **번호 범위로 못 센다** — 신오도감은 종족 번호가 연달아 있지 않다.
  * 목록이 없으면 0을 준다 (전국 수로 대신하면 마박사가 없는 상장을 준다)
  */
+/** `SPECIES_PIKACHU`. 본 것이 없을 때 원작이 두는 값이다 */
+const SPECIES_PIKACHU = 25
+
 let sinnohList: readonly number[] | null = null
 
 /** 어려운 낱말 서른둘의 글자. 낱말 하나를 배울 때 대사에 끼워 넣는다 */
@@ -928,6 +931,23 @@ const services: FieldServices = {
       }
       return sinnohList !== null && sinnohList.every((n: number) => dexHas(dex.seen, n))
     },
+    hasSeen: (species) => dexHas(useSaveStore.getState().pokedex.seen, species),
+    /**
+     * 본 적 있는 신오 도감 종 하나 (`ScrCmd_GetRandomSeenSpecies`).
+     *
+     * ⚠️ **신오 목록 안의 것만 고른다** — 원작이 `Pokemon_SinnohDexNumber`가
+     * 0이 아닌 종만 센다. 전국 도감만 채운 종이 섞이면 그 사람이 못 본 것을
+     * 말한다.
+     *
+     * ⚠️ **하나도 없으면 피카츄다** — 원작이 그 값을 먼저 넣고 못 찾으면
+     * 그대로 둔다. 안 그러면 나눗셈이 0으로 갈린다
+     */
+    randomSeen: () => {
+      const seen = useSaveStore.getState().pokedex.seen
+      const pool = (sinnohList ?? []).filter((n: number) => dexHas(seen, n))
+      if (pool.length === 0) return SPECIES_PIKACHU
+      return pool[Math.floor(Math.random() * pool.length)] ?? SPECIES_PIKACHU
+    },
     // ⚠️ **우리는 늘 폼을 적는다** (`form` 칸이 개체에 있다) — 켜고 끄는 비트가
     // 없다. 언어는 아예 안 든다 (PARITY §1.24). 그래서 아무 일도 안 한다
     turnOnDetection: () => { /* 늘 켜져 있는 것과 같다 */ },
@@ -995,6 +1015,7 @@ const services: FieldServices = {
     trainerClass: (c) => trainerClassNames[c] ?? '',
     map: (mapHeaderId) => locationNames[mapById(mapHeaderId)?.label ?? 0] ?? '',
     tmMove: (item) => moveNames[tmhmMove(item)] ?? '',
+    item: (item) => itemNames[item] ?? '',
     itemWithArticle: (item) => orPlain(itemArticleNames, itemNames, item),
     itemPlural: (item) => orPlain(itemPluralNames, itemNames, item),
     speciesWithArticle: (s) => orPlain(speciesArticleNames, speciesNames, s),

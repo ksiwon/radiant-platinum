@@ -4,7 +4,7 @@
 // zustand를 안 쓰는 이유: 글자가 프레임 단위로 늘어나는데 그걸 스토어에 밀어
 // 넣으면 매 프레임 리렌더가 트리 전체로 번진다. 대신 rAF로 들여다보고 **글이
 // 실제로 바뀐 프레임에만** setState 한다 — 보통 속도면 초당 12번쯤이다.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { markTalk } from '../../app/sceneMark'
 import { fieldScripts } from '../../engine/script/field'
 import type { Line } from '../../engine/script/printer'
@@ -23,6 +23,12 @@ interface View {
   /** 대사창이 떠 있을 때만 있다. 목록 메뉴는 창 없이 뜨기도 한다 */
   text: { lines: Line[], waiting: boolean } | null
   menu: MenuView | null
+  /**
+   * 조각 값 창 (PARITY §10). 기술 교사가 값을 물을 때만 있다.
+   *
+   * ⚠️ **글이 아니라 수다** — 도구 번호와 개수라, 이름은 화면이 붙인다
+   */
+  shardCost: readonly { name: string, need: number, have: number }[] | null
   /**
    * 간판 판이면 그 종류와 그림 번호 (`generated/signpost_types.txt`).
    *
@@ -47,7 +53,8 @@ function digest(view: View | null): string {
   const sign = view.signpost === null
     ? ''
     : `${String(view.signpost.type)}/${String(view.signpost.picture)}`
-  return `${lines}#${String(view.text?.waiting)}#${menu}#${sign}`
+  const shard = view.shardCost?.map((c) => `${c.name}:${String(c.need)}/${String(c.have)}`).join(',') ?? ''
+  return `${lines}#${String(view.text?.waiting)}#${menu}#${sign}#${shard}`
 }
 
 function snapshot(): View | null {
@@ -64,6 +71,7 @@ function snapshot(): View | null {
       ? null
       : { kind: menu.kind, entries: menu.entries, cursor: world.menuCursor, columns: menu.columns },
     signpost: world.signpost,
+    shardCost: world.shardCost,
   }
 }
 
@@ -129,6 +137,18 @@ export function MessageBox() {
         <div className={board ? css.signBox : css.box}>
           {picture !== null && <div className={css.signPicture} style={picture} aria-hidden />}
           {board ? <div className={css.signText}>{lines}</div> : lines}
+        </div>
+      )}
+      {view.shardCost !== null && (
+        <div className={css.shardCost} aria-label="조각 값">
+          {view.shardCost.map((c) => (
+            <Fragment key={c.name}>
+              <span>{c.name}</span>
+              <span className={c.have < c.need ? css.shardShort : undefined}>
+                {c.need} / {c.have}
+              </span>
+            </Fragment>
+          ))}
         </div>
       )}
       {view.menu !== null && view.menu.entries.length > 0 && (

@@ -198,3 +198,44 @@ describe('조각 교사', () => {
     expect(taken).toEqual([])
   })
 })
+
+describe('조각 값 창 (PARITY §10)', () => {
+  it('값과 가진 수를 나란히 내놓고 예/아니오를 연다', () => {
+    // `ScrCmd_ShowShardCost`는 창이자 물음이다 — 원작이 답 변수 자리를 같이
+    // 넘긴다. **앞의 두 바이트는 창 자리**라 읽고 버린다
+    const vars = new VarStore()
+    const MOVE_VAR = 0x4000
+    vars.set(MOVE_VAR, MOVE_FIRE_PUNCH)
+    const services: FieldServices = {
+      bag: { quantity: (item: number) => (item === ITEM_RED_SHARD ? 1 : 99) } as
+        unknown as NonNullable<FieldServices['bag']>,
+      labels: { item: (item: number) => `조각${String(item)}` } as
+        unknown as NonNullable<FieldServices['labels']>,
+    }
+    const r = run('ShowShardCost', [0, 0, ...u16(MOVE_VAR), ...u16(DEST)], services, vars)
+    expect(r.world.shardCost).toHaveLength(SHARDS.length)
+    expect(r.world.shardCost![0]!.name).toBe(`조각${String(ITEM_RED_SHARD)}`)
+    // 빨강만 하나뿐이라 모자란 줄이 화면에서 갈린다
+    expect(r.world.shardCost![0]!.have).toBe(1)
+    expect(r.world.shardCost![1]!.have).toBe(99)
+    // 값이 있는 기술이라 필요한 수가 0이 아니다
+    expect(r.world.shardCost!.some((c) => c.need > 0)).toBe(true)
+    expect(r.world.menu?.kind).toBe('yesno')
+    expect(r.world.menu?.dest).toBe(DEST)
+  })
+
+  it('닫으면 창이 사라진다', () => {
+    const vars = new VarStore()
+    vars.set(0x4000, MOVE_FIRE_PUNCH)
+    const r = run('ShowShardCost', [0, 0, ...u16(0x4000), ...u16(DEST)], {}, vars)
+    expect(r.world.shardCost).not.toBeNull()
+    // 같은 세계에서 닫아야 한다 — `run`이 세계를 새로 만드므로 손으로 부른다
+    const fn = HANDLERS.get('CloseShardCostWindow')!
+    const bytes = new Uint8Array(2)
+    const ctx = new ScriptContext({ vars, world: r.world, commands: new Map() }, bytes, 0)
+    ctx.start(0)
+    ctx.readHalfWord()
+    fn(ctx)
+    expect(r.world.shardCost).toBeNull()
+  })
+})

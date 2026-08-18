@@ -184,3 +184,22 @@ export const signText = style({
   flex: '1 1 auto',
   textAlign: 'center',
 })
+
+/**
+ * 조각 값 창 (PARITY §10 · `FieldMenuManager_NewMoveTutorCostWindow`).
+ *
+ * 예/아니오 왼쪽에 붙는다 — 원작도 값 창과 물음이 나란히 뜬다. 자리는 우리
+ * 해상도에 맞춘 것이고, 보여 주는 값은 조각 넷의 「필요 / 가진 수」다
+ */
+export const shardCost = style([menu, {
+  right: 'auto',
+  left: 0,
+  display: 'grid',
+  gridTemplateColumns: 'max-content max-content',
+  gap: '0 14px',
+  fontSize: 16,
+  lineHeight: '26px',
+}])
+
+/** 가진 것이 모자란 줄. 살 수 없다는 것이 한눈에 보여야 한다 */
+export const shardShort = style({ color: '#b3261e', fontWeight: 700 })

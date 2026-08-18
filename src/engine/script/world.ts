@@ -414,6 +414,15 @@ export interface FieldServices {
     dexCount: (national: boolean, caught: boolean) => number
     /** 그 도감이 다 찼는가 (`Pokedex_LocalDexCompleted` · `..._NationalDexCompleted`) */
     dexCompleted: (national: boolean) => boolean
+    /** 이 종을 본 적이 있는가 (`Pokedex_HasSeenSpecies`) */
+    hasSeen: (species: number) => boolean
+    /**
+     * 본 적 있는 **신오 도감** 종 하나를 아무거나 (`ScrCmd_GetRandomSeenSpecies`).
+     *
+     * ⚠️ **본 것이 하나도 없으면 피카츄다** — 원작이 그 값을 먼저 넣고
+     * 못 찾으면 그대로 둔다. 나눗셈이 0으로 갈리는 자리이기도 하다
+     */
+    randomSeen: () => number
     /** 폼과 언어를 도감이 세기 시작한다 (`Pokedex_TurnOn*Detection`) */
     turnOnDetection: (kind: 'form' | 'language') => void
   }
@@ -519,6 +528,8 @@ export interface FieldServices {
     map: (mapHeaderId: number) => string
     /** 기술머신이 가르치는 기술의 이름 (`Item_MoveForTMHM`). 머신이 아니면 빈 글 */
     tmMove: (item: number) => string
+    /** 도구 이름 그대로. 조사가 안 붙은 판이다 (`TEXT_BANK_ITEM_NAMES`) */
+    item: (item: number) => string
     /**
      * 조사가 붙은 판과 복수형.
      *
@@ -1286,6 +1297,15 @@ export class FieldWorld {
     this.boxOpen = false
     if (erase) this.printer = null
   }
+
+  /**
+   * 조각 값 창 (`FieldMenuManager_NewMoveTutorCostWindow` · PARITY §10).
+   *
+   * ⚠️ **글이 아니라 수다.** 원작 창은 조각 넷의 값을 아이콘과 숫자로 보여
+   * 준다 — 우리가 지어낸 문장이 아니라 도구 번호와 개수라, 화면 쪽이 이름을
+   * 붙여 그린다. `null`이면 창이 없다
+   */
+  shardCost: readonly { name: string, need: number, have: number }[] | null = null
 
   openYesNo(dest: number): void {
     this.menu = {

@@ -1994,6 +1994,40 @@ on('ShowMoveTutorMoveSelectionMenu', (ctx) => {
   return true
 })
 
+/**
+ * 조각 값 창 (`ScrCmd_ShowShardCost`).
+ *
+ * ⚠️ **창이자 물음이다.** 원작이 `FieldMenuManager_NewMoveTutorCostWindow`에
+ * **답 변수 자리**를 같이 넘긴다 — 값을 보여 주고 그 자리에서 「배우겠나」를
+ * 받는다. 그래서 값만 띄우는 것이 아니라 예/아니오를 같이 연다.
+ *
+ * ⚠️ **인자 넷 중 앞의 둘은 창 자리다** (`1 1`). 원작이 창을 놓을 칸을
+ * 받는데 우리 창은 대사창에 붙으므로 읽고 버린다.
+ *
+ * ⚠️ **가진 개수도 같이 넘긴다.** 원작 창이 「필요한 수 / 가진 수」를 나란히
+ * 보여 준다 — 값만 보면 살 수 있는지가 안 보인다
+ */
+on('ShowShardCost', (ctx) => {
+  ctx.readByte()
+  ctx.readByte()
+  const move = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const cost = shardCostOf(move)
+  const bag = ctx.host.world.services.bag
+  const labels = ctx.host.world.services.labels
+  ctx.host.world.shardCost = SHARDS.map((item, i) => ({
+    name: labels?.item(item) ?? '', need: cost?.[i] ?? 0, have: bag?.quantity(item) ?? 0,
+  }))
+  ctx.host.world.openYesNo(dest)
+  return false
+})
+
+/** 조각 값 창을 닫는다 (`ScrCmd_CloseShardCostWindow`) */
+on('CloseShardCostWindow', (ctx) => {
+  ctx.host.world.shardCost = null
+  return false
+})
+
 on('CheckCanAffordMove', (ctx) => {
   const move = ctx.readVar()
   const dest = ctx.readHalfWord()
@@ -2889,6 +2923,9 @@ export const SYSTEM_FLAG = {
 /** 레지 셋 (`SPECIES_REGIROCK`·`REGICE`·`REGISTEEL`) */
 const LEGENDARY_TITANS = [377, 378, 379] as const
 
+/** `SPECIES_PIKACHU`. 본 도감이 비었을 때 원작이 두는 값이다 */
+const SPECIES_PIKACHU = 25
+
 /** `SPECIES_REGIGIGAS`. 유적 셋의 석상이 이 마리의 「운명적 만남」만 본다 */
 const SPECIES_REGIGIGAS = 486
 
@@ -3204,6 +3241,51 @@ fieldMoveFlag('DoDefogFunc', SYSTEM_FLAG.defogActive)
 // ── 도감을 세는 것 (PARITY §6.2) ─────────────────────────────────────────────
 //
 // 마박사(신오)와 오박사(전국)의 평가, 그리고 상장이 이 수로 갈린다.
+
+/**
+ * 이 종을 본 적이 있는가 (`ScrCmd_CheckHasSeenSpecies`).
+ *
+ * ⚠️ **인자 둘이 다 변수 자리다** — 앞은 읽고 뒤는 쓴다. 선단시티 동쪽 집의
+ * 기술 교사가 이걸로 「그 포켓몬을 본 적 있나」를 묻는다
+ */
+on('CheckHasSeenSpecies', (ctx) => {
+  const species = ctx.host.vars.get(ctx.readHalfWord())
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.hasSeen(species) === true ? 1 : 0)
+  return false
+})
+
+/**
+ * 본 적 있는 신오 도감 종 하나를 아무거나 (`ScrCmd_GetRandomSeenSpecies`).
+ *
+ * ⚠️ **신오 목록 안의 것만 고른다** — 원작이 `Pokemon_SinnohDexNumber`가 0이
+ * 아닌 종만 셈에 넣는다. 하나도 없으면 피카츄를 그대로 둔다
+ */
+on('GetRandomSeenSpecies', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.randomSeen() ?? SPECIES_PIKACHU)
+  return false
+})
+
+/**
+ * 파티 한 마리의 **발자국** (`ScrCmd_GetPartyMonFootprintType`).
+ *
+ * ⚠️ **인자 차례가 「답 · 답 · 물음」이다** — 앞의 둘이 쓰는 자리고 마지막이
+ * 파티 칸이다. 앞에서부터 읽으면 칸 번호를 답 자리에 쓴다.
+ *
+ * ⚠️ **발자국 그림은 아직 없다.** 원작은 `FootprintType_SpeciesHasPrint`가
+ * 종·폼마다 「찍힌 발자국이 있는가」를 답하는데 그 표를 아직 안 굽는다.
+ * 그래서 **늘 「없다」**고 답한다 — 물어보는 자리(모래사장 발자국 안내)가
+ * 제 대사로 닫힌다. 갈래는 종 번호에서 나온다
+ */
+on('GetPartyMonFootprintType', (ctx) => {
+  const hasPrint = ctx.readHalfWord()
+  const type = ctx.readHalfWord()
+  const slot = ctx.readVar()
+  ctx.host.vars.set(hasPrint, 0)
+  ctx.host.vars.set(type, ctx.host.world.services.party?.species(slot) ?? 0)
+  return false
+})
 
 /** 신오도감에서 본 수 (`ScrCmd_GetLocalDexSeenCount`) */
 on('GetLocalDexSeenCount', (ctx) => {
