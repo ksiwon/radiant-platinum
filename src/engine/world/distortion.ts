@@ -438,6 +438,13 @@ export const distortionBridge: {
   frontTile: ((x: number, y: number, z: number, facing: number)
     => { x: number, y: number, z: number } | null) | null
   /**
+   * 카메라가 밑각에서 얼마나 돌아 있는가 (**도**). 이 세계 밖이면 null.
+   *
+   * 층마다 카메라가 홱 도는 자리가 스물여섯 곳이다
+   * (`DistWorld_UpdateCameraAngle` · `world/distortionCamera`)
+   */
+  cameraSwing: (() => { x: number, y: number, z: number } | null) | null
+  /**
    * 시로나가 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
    *
    * 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
@@ -448,7 +455,7 @@ export const distortionBridge: {
       step: { x: number; z: number }) => boolean) | null
 } = {
   blockedAt: null, frame: null, inWorld: null, behaviorAt: null, jumpBlocked: null,
-  frontTile: null, dropBoulder: null,
+  frontTile: null, cameraSwing: null, dropBoulder: null,
 }
 
 /** 깨어진 세계의 맵인가 */

@@ -14,6 +14,11 @@ import { worldState } from '../../state/worldState'
 import { distortionBridge } from '../world/distortion'
 import { surfaceQuaternion } from './distortionSurface'
 
+/** 카메라 각을 도는 축 둘. 판 좌표라 기울이기 **전에** 돌린다 */
+const X_AXIS = new Vector3(1, 0, 0)
+const Y_AXIS = new Vector3(0, 1, 0)
+const DEG = Math.PI / 180
+
 const THIRD = { distance: 8, height: 4, damping: 5 }
 
 /**
@@ -112,7 +117,18 @@ export const cameraSystem = {
       tilted(fx, fy, fz, view).multiplyScalar(LOOK_AHEAD)
       look.copy(goal).add(view)
     } else {
-      tilted(0, THIRD.height, THIRD.distance, offset)
+      // 이 세계에는 카메라가 홱 도는 자리가 스물여섯 곳 있다 (PARITY §6.10).
+      // ⚠️ **더하는 값만 옮긴다** — 원작은 41.7칸 떨어져 화각 8.1도로 보는데
+      // 우리는 8칸에 보통 화각이라, 밑각까지 옮기면 이 세계만 딴 게임이 된다
+      const swing = distortionBridge.cameraSwing?.() ?? null
+      if (swing === null || (swing.x === 0 && swing.y === 0)) {
+        tilted(0, THIRD.height, THIRD.distance, offset)
+      } else {
+        offset.set(0, THIRD.height, THIRD.distance)
+          .applyAxisAngle(X_AXIS, swing.x * DEG)
+          .applyAxisAngle(Y_AXIS, swing.y * DEG)
+          .applyQuaternion(tilt)
+      }
       goal.copy(p).add(offset)
       look.copy(p)
     }

@@ -55,6 +55,7 @@ import {
   distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
+  distortionCameraTick,
   distortionCascadeTick,
   distortionCascading,
   distortionEventRunning,
@@ -669,6 +670,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionRideTick(dt)
     // 폭포 — B4F와 B5F를 잇는다. 이쪽도 도중에 층이 바뀐다 (PARITY §6.10)
     distortionCascadeTick(dt)
+    // 카메라가 홱 도는 자리 스물여섯 곳 (`DistWorldCameraTransition`)
+    distortionCameraTick(dt)
     distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
