@@ -89,6 +89,7 @@ pnpm dev
 |---|---|
 | [PLAN.md](docs/PLAN.md) | 무엇을 어떻게 만들었나 |
 | [PARITY.md](docs/PARITY.md) | 원작에 있는 것 / 우리에게 있는 것 |
+| [REPAIR.md](docs/REPAIR.md) | 우리가 만든 자리가 어긋난 것 — 무엇을 어떻게 고치나 |
 | [IMPORT.md](docs/IMPORT.md) | 사용자가 자료를 가져오는 흐름 |
 | [DATA.md](docs/DATA.md) | 롬·번들 → 우리 포맷 변환 계약 |
 | [COPYRIGHT.md](docs/COPYRIGHT.md) · [DEPLOY.md](docs/DEPLOY.md) | 무엇을 안 싣는가, 무엇이 아직 막혀 있는가 |
