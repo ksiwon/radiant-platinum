@@ -109,15 +109,15 @@ export function distortionFrame(): DistortionFrame | null {
   const p = floor.platforms[platform]
   if (p === undefined) return null
   const [lx, ly] = toLocalTiles(p.bounds.x, p.bounds.y, 0)
+  // 벽은 x가 판에 붙고, 바닥·천장은 y가 붙는다. 걷는 축과 회전은 갈래에서
+  // 나오므로 여기서 따로 안 적는다 (`platformBasis`)
   switch (p.kind) {
     case PLATFORM_FLOOR:
-      return { axis: 'x', sign: 1, lock: ly, lockAxis: 'y' }
     case PLATFORM_CEILING:
-      return { axis: 'x', sign: -1, lock: ly, lockAxis: 'y' }
+      return { kind: p.kind, lock: ly, lockAxis: 'y' }
     case PLATFORM_WEST_WALL:
-      return { axis: 'y', sign: -1, lock: lx, lockAxis: 'x' }
     case PLATFORM_EAST_WALL:
-      return { axis: 'y', sign: 1, lock: lx, lockAxis: 'x' }
+      return { kind: p.kind, lock: lx, lockAxis: 'x' }
     default:
       return null
   }

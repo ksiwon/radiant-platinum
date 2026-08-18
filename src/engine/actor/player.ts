@@ -11,7 +11,8 @@ import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
 import { bikeSpeedAt } from './bike'
 import { onElevatedBridge, trackBridge } from './bridge'
-import { distortionBridge } from '../world/distortion'
+import { distortionBridge, PLATFORM_FLOOR } from '../world/distortion'
+import { surfaceHeading, surfaceVector } from './distortionSurface'
 import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR } from '../script/movement'
 
@@ -130,7 +131,12 @@ export const playerSystem = {
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
     const dir = pushDirection()
-    desired.set(dir.x, 0, dir.z).multiplyScalar(speed)
+    // ⚠️ **깨어진 세계에서는 누른 방향이 서 있는 판을 지나 세계 축이 된다**
+    // (PARITY §6.10 · `player_move.c`의 걸음 표 넷). 벽에서는 북남이 오르내림이
+    // 되고 서동이 z가 된다 — 좌우를 오르내림에 매면 서쪽 벽에서 오른쪽을 눌러
+    // 벽을 타고 내려가고 아래를 눌러 벽에서 떨어진다 (`.audit/distortionWalk.mjs`)
+    surfaceVector(distortionBridge.frame?.() ?? null, dir.x, 0, dir.z, desired)
+      .multiplyScalar(speed)
 
     // 간단한 가감속 (스파이크 수준)
     p.velocity.lerp(desired, 1 - Math.exp(-12 * dt))
@@ -214,7 +220,7 @@ export const playerSystem = {
       const frame = distortionBridge.frame?.() ?? null
       // 서 있는 면이 바닥일 때만 뛴다 — 원작이 `AVATAR_DISTORTION_STATE_FLOOR`를
       // 본다. 판이 아예 없는 층(열 중 여섯)은 보통 바닥이라 그대로 해당한다
-      const onFloor = frame === null || (frame.axis === 'x' && frame.sign === 1)
+      const onFloor = frame === null || frame.kind === PLATFORM_FLOOR
       if (onFloor && distortionBridge.behaviorAt !== null) {
         const behaviorAt = (tx: number, tz: number) =>
           distortionBridge.behaviorAt?.(tx, p.position.y, tz) ?? grid.behavior(tx, tz)
@@ -241,13 +247,13 @@ export const playerSystem = {
     /**
      * 깨어진 세계에서 **벽에 서 있는가** (PARITY §6.10).
      *
-     * 벽에서는 x가 판에 붙고 y가 걷는 축이 된다 — 화면의 좌우가 세계의 위아래다.
-     * 부호는 판의 갈래가 준다(서쪽 벽과 동쪽 벽이 서로 뒤집혀 있다)
+     * 벽에서는 x가 판에 붙고 걷는 축이 y와 z가 된다. 속도는 위에서 이미 판의
+     * 기저를 지나왔으므로 여기서는 **붙는 축만 붙여 둔다** — 반올림 오차로
+     * 조금씩 밀려 판에서 떨어지는 것을 막는 자리다
      */
     const frame = distortionBridge.frame?.() ?? null
-    const onWall = frame !== null && frame.axis === 'y'
+    const onWall = frame !== null && frame.lockAxis === 'x'
     if (onWall) {
-      p.velocity.y = p.velocity.x * frame.sign
       p.velocity.x = 0
       p.position.x = frame.lock + 0.5
     }
@@ -318,9 +324,9 @@ export const playerSystem = {
     if (worldState.camera.mode === 'first') {
       p.facing = facingFromYaw(worldState.camera.yaw)
     } else if (p.velocity.lengthSq() > 0.01) {
-      // 벽에서는 월드 y가 화면의 좌우 축이다. yaw는 계속 표면 로컬 좌표로 둔다.
-      const lateral = onWall ? p.velocity.y * (frame?.sign ?? 1) : p.velocity.x
-      p.facing = Math.atan2(lateral, p.velocity.z)
+      // yaw는 **판 위의 로컬 좌표**로 둔다 — 세계 속도를 판의 기저로 되돌리면
+      // 벽에서도 천장에서도 같은 식이 된다 (`surfaceHeading`)
+      p.facing = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
     }
 
     const here = activeZone.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null

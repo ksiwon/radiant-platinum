@@ -204,6 +204,53 @@ export function tileBehavior(attrs: number): number | null {
   return validTile(attrs) ? attrs & BEHAVIOR_MASK : null
 }
 
+/**
+ * 판마다 다른 **걸음 표** (`player_move.c`의 `sDistortionStepDirection*` 넷).
+ *
+ * ⚠️ **이 세계의 이동이 다른 맵과 다른 자리가 여기다.** 원작은 판 갈래마다
+ * 이동 함수를 따로 두고(`PlayerAvatar_SetMovement_Distortion{Floor,WestWall,
+ * EastWall,Ceiling}`), 누른 방향 넷을 이 표로 세계 축에 옮긴다. 줄 번호는
+ * `DIR`(북0 · 남1 · 서2 · 동3)이고 값은 세계 칸의 증분이다.
+ *
+ * 읽는 법 — **벽에서는 북남이 오르내림이다.** 좌우가 아니다:
+ *
+ *   서쪽 벽 · 동쪽 벽  북 → y+1 (타고 올라간다) · 남 → y−1
+ *   두 벽의 차이는 y가 아니라 **z**다 (서쪽은 서 → z+1, 동쪽은 서 → z−1)
+ *   천장            북 → z+1 · 남 → z−1 (바닥과 z가 뒤집힌다). x는 그대로다
+ *
+ * 한동안 벽에서 **좌우를 오르내림에 매어** 두었다. 실측하면 서쪽 벽에서 오른쪽을
+ * 누르면 벽을 타고 내려가고 아래를 누르면 벽에서 떨어졌다 (`.audit/distortionWalk.mjs`).
+ */
+export const STEP: readonly (readonly (readonly [number, number, number])[])[] = [
+  /* PLATFORM_FLOOR     */ [[0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]],
+  /* PLATFORM_WEST_WALL */ [[0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]],
+  /* PLATFORM_EAST_WALL */ [[0, 1, 0], [0, -1, 0], [0, 0, -1], [0, 0, 1]],
+  /* PLATFORM_CEILING   */ [[0, 0, 1], [0, 0, -1], [-1, 0, 0], [1, 0, 0]],
+]
+
+/**
+ * 그 판 위에서 **화면의 오른쪽·앞·위**가 향하는 세계 방향.
+ *
+ * 셋 다 위의 걸음 표에서 나온다 — 오른쪽은 「동」 줄, 앞은 「남」 줄이고, 위는
+ * 그 둘의 외적이다(`앞 × 오른쪽`). 법선을 따로 적어 두면 표와 어긋날 수 있어
+ * **적지 않고 만든다**
+ */
+export function platformBasis(kind: number): {
+  right: readonly [number, number, number]
+  up: readonly [number, number, number]
+  forward: readonly [number, number, number]
+} {
+  const table = STEP[kind] ?? STEP[PLATFORM_FLOOR]!
+  const right = table[DIR.east] ?? [1, 0, 0]
+  const forward = table[DIR.south] ?? [0, 0, 1]
+  const up: [number, number, number] = [
+    forward[1] * right[2] - forward[2] * right[1],
+    forward[2] * right[0] - forward[0] * right[2],
+    forward[0] * right[1] - forward[1] * right[0],
+  ]
+  return { right, up, forward }
+}
+
 /** 뛰는 자리 (`FindFloatingPlatformJumpPointAt`). 방향이 먼저다 */
 export function jumpAt(
   jumps: readonly DistortionJump[], x: number, y: number, z: number, dir: number,
@@ -341,10 +388,8 @@ export function mapOf(data: Pick<DistortionData, 'maps'>, map: number): Distorti
  * 축이 줄어드는 쪽이다. 안 맞추면 벽에서 좌우가 뒤집힌 채로 걷는다
  */
 export interface DistortionFrame {
-  /** 걷는 첫째 축 (둘째는 늘 z다) */
-  axis: 'x' | 'y'
-  /** 그 축이 화면 오른쪽과 같은 방향인가 */
-  sign: 1 | -1
+  /** 서 있는 판의 갈래 (`PLATFORM_*`). 걸음도 회전도 이것 하나에서 나온다 */
+  kind: number
   /** 고정되는 축의 값 (맵 좌표) */
   lock: number
   lockAxis: 'x' | 'y'
