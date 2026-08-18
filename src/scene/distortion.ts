@@ -22,6 +22,19 @@ import {
 } from '../engine/world/distortion'
 import { DIR } from '../engine/script/movement'
 import {
+  CASCADE_UNIT, cascadeAt, cascadeFrames, cascadeLoadFrame, cascadeOffset,
+  type CascadeSite,
+} from '../engine/world/distortionCascade'
+
+/**
+ * `DIST_WORLD_PLATFORM_FLAG_B5F_1` — 폭포로 내려가면 서는 B5F의 승강 발판.
+ *
+ * 원작이 폭포 끝에서 이 플래그를 세우고 그 발판을 세운다
+ * (`InitSpecificMovingPlatformPropForMap(..., B5F, 0)`) — 없으면 내려가 놓고
+ * 다음 층으로 갈 발판이 안 보인다
+ */
+const CASCADE_B5F_FLAG = 7
+import {
   ELEVATOR_DIR, changeMapFrame, cyrusB4FWalk, cyrusLeavesB4F, DIST_OBJ, downEndFlags, elevatorAt,
   elevatorLegs, initialPlatformFlags, legFrames, passengerAfter, passengerLocalID,
   platformFlagShown, upStartFlags,
@@ -483,11 +496,130 @@ const ranEvents = new Set<string>()
  * 차례도 원작 그대로다 — 유령 소품 → 카메라 → 뛰는 자리. 뛰면 거기서 끝난다
  */
 export function distortionMoved(x: number, y: number, z: number, dir: number): void {
-  if (floor === null || ride !== null || running !== null) return
+  if (floor === null || ride !== null || running !== null || cascade !== null) return
   const [wx, wy, wz] = toWorldTiles(x, y, z)
   applyTriggers(wx, wy, wz, dir)
   applyCamera(wx, wy, wz, dir)
-  applyJump(wx, wy, wz, dir)
+  if (applyJump(wx, wy, wz, dir)) return
+  applyCascade(wx, wy, wz, dir)
+}
+
+// ── 폭포 ─────────────────────────────────────────────────────────────────────
+
+interface Cascading {
+  site: CascadeSite
+  /** 지난 프레임 수 */
+  frame: number
+  total: number
+  loadAt: number
+  /** 뛰어들 때의 세계 칸 */
+  from: [number, number, number]
+  /** 층을 이미 불렀는가 */
+  loaded: boolean
+}
+
+let cascade: Cascading | null = null
+
+/** 폭포를 타는 중인가. 그동안은 조작이 안 먹는다 */
+export function distortionCascading(): boolean {
+  return cascade !== null
+}
+
+/**
+ * 폭포에 뛰어든다 (`DistWorld_HandlePlayerMoved`의 `sMapEvent*_Waterfall`).
+ *
+ * 원작은 사건 명령 하나(`EVENT_CMD_CASCADE_DOWN`/`UP`)로 돌리는데, 그 명령은
+ * **자료가 아니라 코드에 박힌 표**를 물고 있어 우리 사건 표에는 없다. 그래서
+ * 방아쇠도 규칙도 `world/distortionCascade`가 든다
+ */
+function applyCascade(wx: number, wy: number, wz: number, dir: number): boolean {
+  if (floor === null) return false
+  const site = cascadeAt(floor.map, wx, wy, wz, dir)
+  if (site === null) return false
+  cascade = {
+    site,
+    frame: 0,
+    total: cascadeFrames(site),
+    loadAt: cascadeLoadFrame(site),
+    from: [wx, wy, wz],
+    loaded: false,
+  }
+  worldState.player.velocity.set(0, 0, 0)
+  // 원작이 몸을 돌려 물살을 등진다 (`MapObject_TryFace(FACE_LEFT)`)
+  worldState.player.facing = FACING_YAW[DIR.west] ?? worldState.player.facing
+  return true
+}
+
+/**
+ * 한 프레임 (`CmdRunDataCascadeBase_Update`).
+ *
+ * ⚠️ **층을 부르는 자리가 도중이다.** 다 떨어지고 나서 부르면 사람이 앞 층의
+ * 좌표계로 41.5칸을 내려가 허공에 선다 — 원작은 21칸째에 갈아 끼우고 나머지
+ * 20.5칸을 **새 층에서** 마저 내려간다
+ */
+export function distortionCascadeTick(dt: number): void {
+  const run = cascade
+  if (run === null || floor === null) return
+  // 층을 받아 오는 동안은 멈춘다 (`IsFloorLoaderActive`)
+  if (world.pending !== null) return
+  run.frame = Math.min(run.total, run.frame + dt * 60)
+
+  const moved = cascadeOffset(run.site, run.frame) / CASCADE_UNIT
+  const p = worldState.player.position
+  const [, wy] = run.from
+  const [, ly] = toLocalTiles(0, wy + moved, 0)
+  p.y = ly
+  worldState.player.prevPosition.copy(p)
+  worldState.player.velocity.set(0, 0, 0)
+
+  if (!run.loaded && run.frame >= run.loadAt) {
+    run.loaded = true
+    changeFloorTo(run.site.down)
+    return
+  }
+  if (run.frame >= run.total) endCascade(run)
+}
+
+/** 폭포가 끝났다 (`..._FinishCascading`) */
+function endCascade(run: Cascading): void {
+  cascade = null
+  if (floor === null) return
+  const [wx, wy, wz] = run.from
+  const [lx, ly, lz] = toLocalTiles(wx, wy + run.site.finishY, wz)
+  const p = worldState.player.position
+  p.set(lx + 0.5, ly, lz + 0.5)
+  worldState.player.prevPosition.copy(p)
+  worldState.player.velocity.set(0, 0, 0)
+  worldState.player.facing = FACING_YAW[DIR.west] ?? worldState.player.facing
+  // 닿은 자리의 판을 잡는다 (`FindAndPrepareNewCurrentFloatingPlatform`) —
+  // 갈래를 안 가린다. 판이 없는 층이면 그대로 판 밖이다
+  const [nwx, nwy, nwz] = toWorldTiles(p.x, p.y, p.z)
+  bindPlatform(findPlatform(floor.platforms, nwx, nwy, nwz))
+  // 내려간 쪽만 B5F의 승강 발판을 세운다 (`SetPersistedMovingPlatformFlag`)
+  if (run.site.down) {
+    setState({ platformFlags: state().platformFlags | (1 << CASCADE_B5F_FLAG) })
+  }
+}
+
+/** 폭포가 층을 간다 (`LoadFloor(FLOOR_LOAD_NEXT | PREVIOUS)`) */
+function changeFloorTo(down: boolean): void {
+  if (floor === null || data === null) return
+  const conn = connectionOf(data, floor.map)
+  const dest = down ? conn?.next : conn?.prev
+  if (dest === undefined) return
+  const target = mapOf(data, dest)
+  if (target === null) return
+  const p = worldState.player.position
+  const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
+  world.pending = {
+    to: dest,
+    matrix: world.maps?.[dest]?.matrix ?? 0,
+    x: wx - target.offsetX,
+    z: wz - target.offsetZ,
+    y: wy - target.offsetY,
+    viaDoor: false,
+    silent: true,
+  }
 }
 
 /**

@@ -55,6 +55,8 @@ import {
   distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
+  distortionCascadeTick,
+  distortionCascading,
   distortionEventRunning,
   distortionEventTick,
   distortionJumpTick,
@@ -665,6 +667,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 깨어진 세계의 승강 발판. 층이 바뀌는 것도 여기서 나므로 워프보다 먼저
     // 돈다 (PARITY §6.10)
     distortionRideTick(dt)
+    // 폭포 — B4F와 B5F를 잇는다. 이쪽도 도중에 층이 바뀐다 (PARITY §6.10)
+    distortionCascadeTick(dt)
     distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
@@ -679,6 +683,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     veilstoneTick(dt)
     worldState.player.riding = distortionRiding() || distortionBoulderFalling()
       || distortionGhostRunning() || distortionJumping() || distortionEventRunning()
+      || distortionCascading()
       || platformLiftBusy()
       || canalaveBusy() || veilstoneBusy()
 

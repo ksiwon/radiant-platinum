@@ -1162,6 +1162,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge7,
   },
   {
+    id: 'distortion-b4f',
+    label: '깨어진 세계 B4F',
+    env: '떠 있는 판 · 동벽 10칸 + 천장 6×23 · 폭포로 B5F에 내려간다 · 배지 7개',
+    try: [
+      '동벽에 올라 **북쪽으로** 타고 올라가 본다 — 벽에서는 북남이 오르내림이다',
+      '벽 꼭대기에서 천장으로 건너가 본다. 천장은 바닥과 앞뒤가 뒤집혀 있다',
+      '천장 끝 폭포 자리(지역 47,10,42~45)에서 동쪽을 보고 걸어 B5F로 내려가 본다',
+    ],
+    map: 577,
+    spot: { kind: 'open' },
+    ...STAGE.badge7,
+  },
+  {
     id: 'sunyshore',
     label: '물가시티',
     env: '야외 · 바닷가 도시 (태양판 길이 높다) · 배지 7개',
