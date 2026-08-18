@@ -18,198 +18,62 @@
 
 | | 무엇이 어긋났나 | 값 | 순서 |
 |---|---|---|---|
-| §1 | 설치본에 **없는 자료 15개 파일**(550KB) — 브라우저 변환기에 짝이 없다 | 크다 | **1** |
-| §2 | 두 굽는 쪽이 갈렸는지 보는 문지기가 없다 | 작다 | **2** |
-| §3 | 못 만든 명령을 만나면 스크립트가 조용히 멎는다 | 작다 | 3 |
-| §4 | 대각선으로 걸으면 걸음이 1.43배로 세어진다 · 1×1 트리거를 스칠 수 있다 | 중간 | 4 |
-| §5 | 실내에서 카메라가 방 밖에 서서 화면의 절반이 검다 | 중간 | 5 |
-| §6 | 인물 GLB 106개에 동작 클립이 0개다 | 크다 | 7 |
-| §7 | 배틀 AI가 도구·특성·무게 보정을 안 본다 | 중간 | 6 |
-| §8 | 맵을 옮길 때 4초 멈춘다 · 드로우콜이 예산을 넘는다 | 중간 | 8 |
+| §1.4 | 포켓몬 변형 3,375개(231MB)를 굽는 브라우저 변환기가 없다 | 크다 | **사람이 정한다** |
+| §2 | 두 굽는 쪽이 갈렸는지 보는 문지기가 없다 | 작다 | **1** |
+| §3 | 못 만든 명령을 만나면 스크립트가 조용히 멎는다 | 작다 | 2 |
+| §4 | 대각선으로 걸으면 걸음이 1.43배로 세어진다 · 1×1 트리거를 스칠 수 있다 | 중간 | 3 |
+| §5 | 실내에서 카메라가 방 밖에 서서 화면의 절반이 검다 | 중간 | 4 |
+| §7 | 배틀 AI가 도구·특성·무게 보정을 안 본다 | 중간 | 5 |
+| §6 | 인물 GLB 106개에 동작 클립이 0개다 | 크다 | 6 |
+| §8 | 맵을 옮길 때 4초 멈춘다 · 드로우콜이 예산을 넘는다 | 중간 | 7 |
 | §9 | 문서가 구워진 파일과 어긋난 줄 하나 | 아주 작다 | 아무 때나 |
 
-순서를 정한 잣대는 하나다 — **배포본에서 게임이 안 끝나는 것부터.** §1의
-`distortion.json` 하나로 깨어진 세계를 못 지난다.
+순서를 정한 잣대는 하나다 — **배포본에서 게임이 안 끝나는 것부터.**
 
 ---
 
-## 1. 설치본에 없는 자료 — 열다섯 파일
+## 1.4 포켓몬 변형 3,375개 (231MB) — **사람이 정한다**
 
-### 무엇이 어긋났나
+§1의 나머지는 끝났다. 롬에서 오는 다섯 그룹(`berries` · `credits` ·
+`frontier` · `pokedex` · `townMap`)과 깨어진 세계의 롬 절반은 브라우저
+변환기로 옮겼고, 원작 코드에 박힌 표 셋(`hiddenItems` · `moveAnim` ·
+`distortionTables`)은 `pnpm gen:*`이 소스에 굽는다. `distortion`이 필수
+그룹이 되어 이미 설치한 사람도 그 그룹만 다시 굽는다.
 
-굽는 쪽이 둘이다. 노드 추출기(`tools/extract/*` → `public/data/`, 개발 서버)와
-브라우저 변환기(`src/import/platinum/convert.ts`의 `GROUPS` → OPFS, 배포본).
-`dist/`에는 자료가 한 조각도 안 실리므로(COPYRIGHT §6) **배포본이 갖는 것은
-브라우저 변환기가 만든 것뿐**이다.
+**남은 것은 이 하나다.** `models/pokemon/variants/**`(이로치 텍스처 3,186 ·
+암컷 프리팹 188 · 목차 1)를 굽는 브라우저 변환기가 없다. 읽는 쪽
+(`scene/battle/monModel.ts`의 `loadMonVariantIndex`)이 `.catch`로 빈 목차를
+쓰므로 터지지는 않고, 대신 **설치본에서는 이로치를 잡아도 배틀에 평범한 색으로
+선다**(색 판정 자체는 원작 그대로 잘 돈다 — `isShiny`).
 
-두 목록을 맞대면 브라우저 쪽에 짝이 없는 것이 아홉 그룹 · 파일 열다섯이다.
-`src/import` 전체를 훑어 이 파일 이름이 한 번도 안 나오는 것을 확인했다.
+### 왜 여기서 안 정하는가
 
-| 노드 그룹 | 파일 | 크기 | 원천 | 설치본에서 |
-|---|---|---:|---|---|
-| `distortion` | `distortion.json` | 105KB | **롬 70.3KB + 원작 코드 표 34.7KB** | 깨어진 세계를 못 지난다 |
-| `moveAnim` | `moveAnim.json` | 174KB | 원작 코드(디컴프 `res/moves/*/anim.s`) | 기술 468개가 밋밋한 한 벌 |
-| `frontier` | `frontier.json` | 138KB | 롬 `pl_btdpm`·`pl_btdtr.narc` | 배틀팩토리가 `error`로 닫힌다 |
-| `pokedexSort` | `pokedexSort.{en,ko,ja}.json` | 60KB | 롬 `zukan_data.narc` | 도감이 빈 목록 |
-| `pokedexHabitat` | `pokedexHabitat.json` | 27KB | 롬 `zukan_enc_platinum.narc` | 서식지 지도가 빈다 |
-| `townMap` | `townMap.json` · `.png` | 18KB | 롬 `tmap_gra.narc` + 맵 행렬 | 공중날기 지도가 빈 판 |
-| `hiddenItems` | `hiddenItems.json` | 11KB | 원작 코드(`include/data/field/hidden_items.h`) | 다우징머신이 아무것도 못 짚는다 |
-| `credits` | `credits.json` + `credits0~2.png` | 10KB | 롬 `graphic/ending.narc` | 크레딧 배경이 빈다 |
-| `berries` | `berries.json` | 9KB | 롬 `nuts_data.narc` | 나무열매 태그가 빈다 |
+231MB이고 **지금 설치 총량이 700.9MB · 4.9분**이다(2026-08-19 실측,
+`node tools/e2e/run.mjs --only=15`). 굽기로 하면 그 둘이 3분의 1씩 는다 —
+값이 다른 것들과 갈래가 달라서 사람이 정한다. 세 갈래:
 
-⚠️ **여덟은 조용히 빈다.** 읽는 쪽이 전부 `.catch`로 감싸 두어서 화면은 뜨고
-내용만 없다 — 「고장」이 아니라 「이 게임에는 그 기능이 없나 보다」로 보인다.
-**`distortion.json`만 예외**로, `scene/MapStreamer.tsx`의
-`void distortionPreload().then(…)`에 `.catch`가 없어 거부된 약속이 캐시에 남는다.
-
-실측 (`node .audit/installGaps.mjs` — 디스크는 안 건드리고 브라우저 앞에서 그
-요청만 끊는다):
-
-| 갈래 | `distortionLoaded()` |
-|---|---|
-| 개발 서버 | `true` |
-| 설치본과 같게 | **`false`** (`distortion` · `distortion-b3f` 둘 다) |
-
-### 1.1 롬에서 오는 여섯 — 브라우저 변환기 그룹으로 옮긴다
-
-`berries` · `credits` · `frontier` · `pokedexHabitat` · `pokedexSort` ·
-`townMap`. 여섯 다 **디컴프를 안 본다**(추출기 소스에서 확인 — `sources.cjs`를
-부르는 것은 `pokedexSort` 하나이고 그것도 롬 셋을 열려고 부르는 것뿐이다).
-그러므로 사용자의 롬 하나만으로 만들 수 있다.
-
-새로 만들 파일은 그룹마다 하나씩, 이미 있는 그룹과 같은 모양이다:
-
-```
-src/import/platinum/berries.ts        convertBerries
-src/import/platinum/credits.ts        convertCredits
-src/import/platinum/frontier.ts       convertFrontier
-src/import/platinum/pokedex.ts        convertPokedex   (sort + habitat 한 그룹)
-src/import/platinum/townMap.ts        convertTownMap
-```
-
-**이미 있는 것을 다시 만들지 않는다.** 브라우저 쪽에 다 있다:
-
-| 필요한 것 | 이미 있는 자리 |
-|---|---|
-| NARC 열기 | `nds.ts`의 `narcCount` · `narcEntry` |
-| 지역판 자리 보정 | `convertTypes.ts`의 `readRomFile` (⚠️ `ctx.fs.read`를 직접 부르지 않는다) |
-| LZ77 · 팔레트 · 타일 · 화면 | `ntrgfx.ts`의 `lz77` · `palettes` · `chars` · `screen` · `drawTile` |
-| PNG로 굽기 | `png.ts`의 `encodePng` |
-| 맵 행렬 · 맵 헤더 | `maps.ts`의 `parseMatrix` · `parseHeader` · `findHeaderTable` |
-| 산출물 내보내기 · 취소 · 숨쉬기 | `convertTypes.ts`의 `put` · `check` · `breathe`(`BREATH`) |
-
-⚠️ **`pokedexSort`는 설치한 판의 것 하나만 만든다.** 노드 쪽은 롬 셋을 열어 세
-벌을 굽지만, 설치본에는 롬이 하나뿐이고 화면이 고를 수 있는 언어도 그 하나로
-제한된다(`installer.ts`의 `availableLocales: [locale]` → `optionsStore`의
-`setAvailableLocales`). 그러므로 브라우저 쪽 산출물은 `pokedexSort.<그 판>.json`
-하나이고, **없는 두 벌을 「빠졌다」로 세면 안 된다.**
-
-⚠️ **`townMap`은 맵 헤더 표를 다시 읽는다.** 노드 쪽은 `extractHeaders()`를
-불러 오는데 브라우저 쪽에서는 `maps.ts`가 이미 그 일을 한다 —
-`convertMaps`와 같은 표를 두 번 파싱하는 대신, `townMap.ts`가 `findHeaderTable`
-+ `parseHeader`를 부르는 쪽으로 맞춘다(그룹 사이의 산출물 의존을 만들지 않는다.
-설치 순서가 바뀌면 그때부터 그룹이 서로를 기다리게 된다).
-
-### 1.2 원작 코드 안의 표 — `pnpm gen:*`로 소스에 굽는다
-
-`hiddenItems` · `moveAnim`, 그리고 `distortion`의 절반은 **NARC이 아니라 원작
-코드에 박힌 표**다. 롬에서는 오버레이 바이너리 안에 굳어 있어서 사용자의 롬
-하나로는 못 꺼낸다. 이런 표를 다루는 길은 이 리포에 이미 있다 — `pnpm gen:*`이
-디컴프에서 **TS 모듈**로 굽는다(`gen:itemTable` · `gen:spawnTable` ·
-`gen:tutorMoves` · `gen:poketchmap` · `gen:easychat` … 열여섯 자리).
-
-| 새로 굽는 것 | 명령 | 나가는 자리 | 크기 |
-|---|---|---|---:|
-| 숨은 도구 257개 | `pnpm gen:hiddenItems` | `src/engine/world/hiddenItemTable.ts` | 11KB |
-| 기술 연출 대본 468개 | `pnpm gen:moveAnim` | `src/engine/battle/moveAnimTable.ts` | 174KB |
-| 깨어진 세계의 코드 표 | `pnpm gen:distortionTables` | `src/engine/world/distortionTables.ts` | 35KB |
-
-⚠️ **담기는 것은 번호와 수뿐이다.** 다른 `gen:*`이 지키는 규율과 같다
-(`tutorMoveModule.cjs` 머리말) — 기술 이름도 대사도 한 바이트도 안 담는다.
-`moveAnim`이 담는 것은 색 번호 · 프레임 수 · 흔들림 세기다.
-
-⚠️ **`moveAnim`은 정적 import 하면 안 된다.** 174KB가 첫 청크에 얹히면 앱 셸
-예산(첫 청크 gzip 150kB)을 그 자리에서 깬다. 지금 `loadMoveAnims()`를 부르는
-자리가 `scene/battle/MoveVfx.tsx` 하나이고 **배틀에 들어갈 때 한 번**이므로,
-`await import('…/moveAnimTable')`로 바꾸면 배틀 청크에 붙는다
-(`@pkmn/sim`을 배틀 진입에서 동적 import 하는 것과 같은 자리다 — PLAN §14).
-바뀐 뒤 `pnpm provenance`로 어느 청크에 얼마가 붙었는지 확인한다.
-
-⚠️ **`.json`으로 두지 않는다.** `src/**/*.json`은 경로 검사가 못 보므로
-`tools/distribution/dataTables.mjs`의 `TRACKED_TABLES`에 등록해야 빌드가 안
-선다(COPYRIGHT §6). TS 모듈로 구우면 다른 `gen:*`과 같은 갈래가 되고 번들
-출처는 `pnpm provenance`가 본다.
-
-### 1.3 깨어진 세계는 반씩 갈린다
-
-`distortion.json` 한 파일이 두 원천에서 온다. 잰 값:
-
-| 칸 | 어디서 | 크기 |
-|---|---|---:|
-| `maps`(판·점프·카메라·소품·방아쇠) | 롬 `tw_arc.narc` | 29.5KB |
-| `attrs`(통행 격자 열두 벌) | 롬 `tw_arc_attr.narc` | 40.8KB |
-| `connections` · `events` · `movingPlatforms` · `elevatorPaths` · `simpleProps` · `mapObjects` · `giratinaShadows` | 원작 코드(`overlay009/ov9_02249960.c`) | 34.7KB |
-
-그래서 **한 그룹으로 못 만든다.** 갈라 놓는다:
-
-- `distortion` **그룹**(브라우저 변환기)이 `data/distortion.json`을 만들되
-  `maps`·`attrs` 둘만 담는다.
-- 나머지 일곱 칸은 `distortionTables.ts`에서 온다.
-- `src/scene/distortion.ts`의 `loadDistortion()`이 둘을 합쳐 지금과 같은 모양의
-  `DistortionData`를 만든다. **읽는 쪽(스무 군데)은 안 고친다** — 합치는 자리를
-  로더 하나로 좁힌다.
-- `src/data/schema.ts`의 `distortionSchema`는 롬에서 오는 두 칸만 검사하도록
-  좁힌다. 코드 표는 TS 타입이 곧 계약이라 런타임 검사가 필요 없다.
-
-⚠️ **`.catch`를 같이 붙인다.** `MapStreamer.tsx`의 `distortionPreload()` 호출에
-`.catch`가 없어서 지금은 자료가 없으면 조용히 격자로 걷는다. 자료가 안 오면
-**그 세계에 못 들어가게 막고** 그 사실을 화면에 말해야 한다 — 못 지나는 것을
-「지나갈 수 있는 것처럼」 보여 주는 쪽이 더 나쁘다.
-
-### 1.4 포켓몬 변형 3,375개 (231MB)
-
-`models/pokemon/variants/**`(이로치 텍스처 3,186 · 암컷 프리팹 188 · 목차 1)를
-굽는 브라우저 변환기가 없다. 읽는 쪽(`scene/battle/monModel.ts`의
-`loadMonVariantIndex`)이 `.catch`로 빈 목차를 쓰므로 터지지는 않고, 대신
-**설치본에서는 이로치를 잡아도 배틀에 평범한 색으로 선다**(색 판정 자체는 원작
-그대로 잘 돈다 — `isShiny`).
-
-이것은 §1의 다른 것들과 **값이 다르다.** 231MB이고 지금 설치 총량이 700MB다.
-그래서 여기서 결정하지 않고 셋을 나란히 적어 둔다:
-
-1. 다 굽는다 — 설치가 930MB가 되고 시간도 그만큼 는다.
+1. **다 굽는다** — 설치가 약 932MB가 되고 시간도 그만큼 는다. 원작 외형이
+   전부 맞는다.
 2. **이로치 텍스처만** 굽는다 — 암컷 프리팹 188을 뺀다. 화면에서 갈리는 종이
-   94종이라 그쪽이 값이 작다(3D_GAP §2에서 잰 수).
-3. 지금대로 둔다 — 대신 **빈 목차로 조용히 떨어지지 않게** 하고, 설치 화면과
-   리포트에 「이로치 외형은 이 설치본에 없다」를 적는다.
+   94종이라 그쪽이 값이 작다(3D_GAP §2에서 잰 수). 설치가 900MB대.
+3. **지금대로 둔다** — 대신 **빈 목차로 조용히 떨어지지 않게** 하고, 설치
+   화면과 리포트에 「이로치 외형은 이 설치본에 없다」를 적는다.
 
 ⚠️ 어느 쪽이든 **`.catch`가 사실을 삼키지 않게** 하는 것이 먼저다.
 
-### 1.5 같이 건드려야 하는 자리
+⚠️ **§6과 배포 시점을 맞춘다.** §6이 `npcModels`의 `GROUP_FORMAT`을 올리므로
+사용자가 롬을 한 번 다시 고른다. 이것을 같이 올리면 그 한 번에 묻어간다 —
+나눠 올리면 두 번 고른다 (DEPLOY.md의 배포 예산과 같은 줄).
 
-한 그룹을 옮길 때마다 아래를 **같이** 본다. 하나만 빠져도 조용한 실패가 된다.
+### 하기로 하면 같이 건드릴 자리
 
 | 자리 | 무엇을 |
 |---|---|
-| `src/import/platinum/convert.ts` | `GROUPS`에 줄 추가 (`name` · `outputs` · `converter` · `convert`) |
-| `src/import/install/required.ts` | 게임이 그 파일 없이 못 도는 것만 `REQUIRED_PLATINUM_GROUPS`에 |
+| `src/import/bdsp/convert.ts` | `BDSP_GROUPS`에 줄 추가 |
+| `src/import/install/required.ts` | 게임이 그 파일 없이 못 도는 것만 |
 | `src/import/install/assetFormat.ts` | 기존 그룹의 산출물이 바뀌면 `GROUP_FORMAT` 올림 |
-| `tools/assets/groups.mjs` | 노드 쪽 그룹이 없어지면(§1.2) 그 줄도 지운다 — `manifest.mjs`가 짝 없는 파일에서 선다 |
-| `package.json` | `extract` 체인에서 뺀 명령, 새로 넣은 `gen:*` |
-| `src/data/gameData.ts` | `fetchJson` → 동적 import로 바뀌는 로더 |
-| `docs/DATA.md` | 그 자료가 어디서 오는지 (§2.x) |
-| `docs/IMPORT.md` | 필수 그룹 수 · 설치 파일 수·크기 |
-
-⚠️ **새 필수 그룹은 이미 설치한 사람에게 롬을 다시 묻는다.** `installReady`가
-`missingRequired`로 걸러 `null`을 돌려주면 부팅이 설치 쪽으로 간다. 그때
-**빠진 그룹만** 굽는다(`resumableGroups`가 온전한 그룹을 `skip`에 담는다) —
-전부 다시 만들지 않는다. 이 사실을 설치 화면 문구가 말해야 한다.
-
-### 재는 법
-
-- `pnpm test`에 §2의 문지기 시험이 붙으면 그것이 곧 회귀 검사다.
-- 진짜 롬으로 `node tools/e2e/run.mjs --only=09,15` — 그룹 수와 파일 수가 는다.
-- `node .audit/installGaps.mjs` — 끊고 들어가도 `distortionLoaded()`가 `true`.
+| `docs/IMPORT.md` | 설치 파일 수·크기·시간 (⑮로 다시 잰다) |
+| `docs/DATA.md` · `docs/3D_GAP_AUDIT.md` | 그 자료가 어디서 오는지 |
 
 ---
 
@@ -596,16 +460,15 @@ weightHg: number
 
 | 순서 | 무엇 | 왜 이 자리인가 | 값 |
 |---|---|---|---|
-| 1 | §1.1·§1.2·§1.3 — 설치본에 없는 자료 | 배포본에서 게임이 안 끝난다 | 그룹 다섯 + `gen:*` 셋 |
-| 2 | §2.1 — 게임이 읽는 파일 ↔ 설치가 만드는 파일 | **1을 다시 안 겪는다.** 시험 한 벌 | 작다 |
-| 3 | §3 — 스크립트 오류를 보이게 | 남은 779자리가 어디서 터지는지 알아야 한다 | 작다 |
-| 4 | §4 — 걸음·트리거 | 규칙이 조용히 다르다. 고치는 자리는 한 곳 | 중간 |
-| 5 | §5 — 실내 카메라 | 화면 절반이 검다. 값 셋과 순수 함수 하나 | 작다 |
-| 6 | §7 — AI 보정 | 자료가 이미 있다 | 중간 |
-| 7 | §6 — 인물 클립 | 값이 제일 크다(+75MiB). 굽는 쪽 둘 + 이어 붙이기 | 크다 |
-| 8 | §8 — 성능 | **재고 나서** 고친다 | 모름 |
+| 1 | §2.1 — 게임이 읽는 파일 ↔ 설치가 만드는 파일 | **§1을 다시 안 겪는다.** 시험 한 벌 | 작다 |
+| 2 | §3 — 스크립트 오류를 보이게 | 남은 779자리가 어디서 터지는지 알아야 한다 | 작다 |
+| 3 | §4 — 걸음·트리거 | 규칙이 조용히 다르다. 고치는 자리는 한 곳 | 중간 |
+| 4 | §5 — 실내 카메라 | 화면 절반이 검다. 값 셋과 순수 함수 하나 | 작다 |
+| 5 | §7 — AI 보정 | 자료가 이미 있다 | 중간 |
+| 6 | §6 — 인물 클립 | 값이 제일 크다(+75MiB). 굽는 쪽 둘 + 이어 붙이기 | 크다 |
+| 7 | §8 — 성능 | **재고 나서** 고친다 | 모름 |
 | — | §1.4 — 포켓몬 변형 231MB · §2.2 · §2.3 · §9 | 위와 같이 가거나 따로 | — |
 
-⚠️ **§1과 §6은 둘 다 `GROUP_FORMAT`을 올린다.** 같이 올리면 사용자가 롬을 한 번만
-다시 고른다. 나눠 올리면 두 번 고른다 — **배포 시점을 맞추는 것이 값을 아끼는
-길이다** (DEPLOY.md의 배포 예산과 같은 줄).
+⚠️ **§1.4와 §6은 둘 다 `GROUP_FORMAT`을 올린다.** 같이 올리면 사용자가 롬을 한
+번만 다시 고른다. 나눠 올리면 두 번 고른다 — **배포 시점을 맞추는 것이 값을
+아끼는 길이다** (DEPLOY.md의 배포 예산과 같은 줄).
