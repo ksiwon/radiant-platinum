@@ -110,12 +110,24 @@
 
 ### 2.3 롬에서 자료 하나
 
+**굽는 쪽이 둘이다.** 노드 추출기(`tools/extract/*` → `public/data/`, 개발
+서버)와 브라우저 변환기(`src/import/platinum/*` → OPFS, 배포본). `dist/`에는
+자료가 한 조각도 안 실리므로 **배포본이 갖는 것은 브라우저 쪽이 만든 것뿐**이다
+— 한쪽만 만들면 개발 서버에서는 멀쩡하고 설치본에서만 빈다.
+
 1. `tools/extract/<이름>.js` — `openRom()`으로 NARC을 읽고 `writeJson()`
-2. `src/data/schema.ts`에 zod 스키마, `src/data/gameData.ts`에 `load*()`
-3. `tools/assets/groups.mjs`에 **어느 추출기가 만드는지** 적는다 —
+2. `src/import/platinum/<이름>.ts` — 같은 것을 브라우저에서.
+   `convert.ts`의 `GROUPS`에 줄을 더한다. **선택이 아니다**
+3. `src/data/schema.ts`에 zod 스키마, `src/data/gameData.ts`에 `load*()`
+4. `tools/assets/groups.mjs`에 **어느 추출기가 만드는지** 적는다 —
    안 적으면 `pnpm assets:manifest`가 「임자 없는 에셋」으로 선다
-4. `package.json`의 `extract:*`와 `extract` 사슬에 넣는다
-5. 사용자가 자기 롬으로 설치하는 길도 필요하면 `src/import/platinum/`에 같이
+5. `package.json`의 `extract:*`와 `extract` 사슬에 넣는다
+6. 게임이 그 파일 없이 못 돌면 `src/import/install/required.ts`에도
+
+⚠️ **2를 빼먹어도 개발판은 초록이다.** 그래서 `src/data/assetContract.test.ts`가
+`gameData.ts`를 **글자로 읽어** 무엇을 읽는지 모으고 `ALL_GROUPS`의 산출물과
+맞댄다. 짝이 없으면 그 파일 이름을 찍고 선다 — 한때 열다섯 파일이 그렇게
+설치본에서만 비어 있었다.
 
 **크기가 배치를 증명하게 짠다.** 항목 수 × 항목 크기가 파일 크기와 안 맞으면
 그 자리에서 선다 — 조용히 어긋난 채로 나가는 것보다 낫다.
@@ -177,6 +189,7 @@
 | 도구 아이콘 아틀라스 | `data/items.test.ts` · `import/platinum/convert.test.ts` | DATA §2.12 |
 | 대사 뱅크 | `data/dialogue.test.ts` · `engine/script/text.test.ts` | — |
 | 추출 산출물 추가 | `data/assetManifest.test.ts` | DATA |
+| 게임이 읽는 논리 경로 · 그룹의 `outputs` | `data/assetContract.test.ts` | IMPORT §6 |
 | 리포트 스키마 | `state/saveStore.test.ts` · `save/migrate` 시험 | — |
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
