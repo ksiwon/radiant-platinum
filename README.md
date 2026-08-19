@@ -85,11 +85,28 @@ pnpm dev
 
 ## 문서
 
-| | |
+**[STATUS.md](docs/STATUS.md) — 남은 일이 한 장에 있다.** 손으로 적는 목록이
+아니라 아래 문서들의 표식을 긁어 만든 것이라(`pnpm status`) 임자 문서에서 일이
+끝나면 저절로 빠진다.
+
+문서마다 **답하는 물음이 하나씩**이다. 물음이 겹치는 문서는 없다 — 그래서
+안 합친다.
+
+| | 무엇에 답하나 |
 |---|---|
+| [STATUS.md](docs/STATUS.md) | **지금 뭐가 남았나** (생성물) |
 | [PLAN.md](docs/PLAN.md) | 무엇을 어떻게 만들었나 |
 | [PARITY.md](docs/PARITY.md) | 원작에 있는 것 / 우리에게 있는 것 |
-| [REPAIR.md](docs/REPAIR.md) | 우리가 만든 자리가 어긋난 것 — 무엇을 어떻게 고치나 |
-| [IMPORT.md](docs/IMPORT.md) | 사용자가 자료를 가져오는 흐름 |
+| [BUGS.md](docs/BUGS.md) | 원작에 있는데 **옮기면 안 되는** 것 |
+| [3D_GAP_AUDIT.md](docs/3D_GAP_AUDIT.md) | 화면에 실제로 **3D로 서는가** |
+| [REPAIR.md](docs/REPAIR.md) | 우리가 만든 자리가 어긋난 것 |
+| [CODEMAP.md](docs/CODEMAP.md) | **어디를** 고치나 · 고치면 어느 시험이 깨지나 |
 | [DATA.md](docs/DATA.md) | 롬·번들 → 우리 포맷 변환 계약 |
-| [COPYRIGHT.md](docs/COPYRIGHT.md) · [DEPLOY.md](docs/DEPLOY.md) | 무엇을 안 싣는가, 무엇이 아직 막혀 있는가 |
+| [IMPORT.md](docs/IMPORT.md) | 사용자가 자료를 가져오는 흐름 |
+| [DEPLOY.md](docs/DEPLOY.md) | 무엇을 올리고, 올리기 전에 무엇을 통과하나 |
+| [APP_SHELL.md](docs/APP_SHELL.md) | 배포물에 실리는 파일 하나하나의 **출처** |
+| [COPYRIGHT.md](docs/COPYRIGHT.md) | 무엇을 안 싣는가 · 남는 위험은 무엇인가 |
+| [TAKEDOWN.md](docs/TAKEDOWN.md) | 신고를 받으면 **어떤 순서로 멈추나** |
+| [HISTORY.md](docs/HISTORY.md) | Git 히스토리에서 무엇을 지웠나 (끝난 일) |
+| [SIWON.md](docs/SIWON.md) | 원작 재현이 **아닌** 것 — 우리가 덧붙인 배포 |
+| [VR.md](docs/VR.md) | VR로 옮기면 무엇이 드나 (**검토**, 아무것도 안 정했다) |

@@ -25,6 +25,7 @@
     "extract:player": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/persons/battle/pc0002_00\" -o public/models/dawn.glb --max-texture 256 --no-clips",
     "spike:texDump": "py -3.13 tools/spike/bdspTexDump.py",
     "extract:motionTiming": "py -3.13 tools/extract/bdspMotionTiming.py",
+    "status": "node tools/docs/status.mjs",
     "assets:manifest": "node tools/assets/manifest.mjs",
     "assets:check": "node tools/assets/manifest.mjs --check",
     "assets:art": "py -3.13 tools/assets/shellArt.py",

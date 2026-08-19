@@ -484,8 +484,10 @@ USB 디스플레이 앱 (SuperDisplay·Duet Display·spacedesk) 또는 무선 �
 ### 8.4 배포판과 와이파이 — 무엇이 되고 무엇이 막히는가
 
 🟡 배포 형태 ([IMPORT.md](IMPORT.md)):
-- 배포물은 **642.0MB → 11.9MB** (`copyPublicDir: false`). **롬 에셋이 한 바이트도 없다**
-- 사용자가 자기 롬을 넣으면 브라우저가 변환 → OPFS. 실측 **700.3MB를 6.5분** (데스크톱)
+- 배포물에 **롬 에셋이 한 바이트도 없다** (`copyPublicDir: false`). 크기는
+  [DEPLOY.md](DEPLOY.md) §3이 임자다
+- 사용자가 자기 롬을 넣으면 브라우저가 변환 → OPFS. 데스크톱 실측치는
+  [DEPLOY.md](DEPLOY.md) §5의 ⑮가 임자다 — 여기 옮겨 적으면 낡는다
 
 | 하고 싶은 것 | 되나 | 근거 |
 |---|---|---|

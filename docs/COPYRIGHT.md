@@ -193,11 +193,12 @@ Python/UnityPy 결과와 동등하지 않으면 해당 기능은 배포 완료�
 ⚠️ **`.gitignore`는 이걸 못 막는다.** Vite는 Git 추적 여부를 아예 안 보고
 `public/`을 통째로 `dist/`로 복사한다 — 리포에 한 바이트도 없는
 `public/data`(64MB)와 `public/models`(581MB)가 그렇게 나가 있었다.
-실측 `dist` 642.0MB · 파일 7,110개.
+그때 잰 값이 `dist` 642.0MB · 파일 7,110개였다. 지금 잰 값은
+[DEPLOY.md](DEPLOY.md) §3이 임자다 — 매 빌드 `boundary:post`가 다시 센다.
 
 지금은 **허용 목록으로 뒤집었다.** `copyPublicDir: false`로 복사를 끄고
 `tools/distribution/appShell.mjs`의 목록만 손으로 옮긴다 — 금지 목록은 새 폴더가
-생길 때마다 뚫리지만 허용 목록은 안 뚫린다. 지금 `dist`는 11.9MB · 파일 27개다.
+생길 때마다 뚫리지만 허용 목록은 안 뚫린다.
 
 `tools/distribution/check.mjs`가 빌드 **앞뒤로** 선다. 뒤 검사는 계획이 아니라
 **실제로 나온 파일 목록을 다시 훑는다**:
