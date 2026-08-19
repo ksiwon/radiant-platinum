@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Group, Mesh, type Object3D } from 'three'
+import {
+  AnimationMixer, Group, LoopOnce, Mesh, type AnimationClip, type Object3D,
+} from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { WebGPURenderer } from 'three/webgpu'
@@ -12,7 +14,7 @@ import { useBattleStore } from '../../state/battleStore'
 import { useSaveStore } from '../../state/saveStore'
 import { playerModelPath } from '../playerModelPath'
 import { trainerThrowOrigin } from './battleBallMotion'
-import { trainerFallbackPalette } from './battleTrainerVisual'
+import { TRAINER_CLIP, trainerFallbackPalette, trainerLost } from './battleTrainerVisual'
 import { trainerModelBundle } from '../../engine/actor/npcModels'
 
 const loader = new GLTFLoader()
@@ -80,17 +82,51 @@ function TrainerActor({
   const host = useRef<Group>(null)
   const wrapper = useRef<Group>(null)
   const [model, setModel] = useState<Group | null>(null)
+  /**
+   * 구운 클립을 도는 자. 클립이 없는 몸이면 null이고, 그때는 아래 절차형
+   * 몸짓이 그대로 돈다 — **절차형을 지우지 않는다** (인물 106벌 중 치비로
+   * 떨어지는 사람과, 몸을 아예 못 구운 사람이 계속 그것을 쓴다)
+   */
+  const clips = useRef<{ mixer: AnimationMixer, by: Map<string, AnimationClip> } | null>(null)
   const seen = useRef('')
   const gestureStarted = useRef(-100)
+  /** 내 쪽에서 본 결말. 누가 진 동작을 하는지는 `trainerLost`가 가른다 */
+  const outcome = useBattleStore((state) => state.outcome)
   const origin = trainerThrowOrigin(mine ? 'p1a' : 'p2a')
   const facing = Math.atan2(-origin[0], -origin[2])
   const key = throwKey(view, mine)
 
+  /**
+   * 클립 하나를 **한 번만** 돌리고 마지막 자세에서 멈춘다.
+   *
+   * 쉬는 동작(`wait_b`)은 안 구웠으므로 끝나고 돌아갈 자리가 없다 —
+   * 마지막 자세로 두는 것이 서 있는 모습이 된다. 클립이 없으면 false를
+   * 돌려주고, 부르는 쪽이 절차형으로 떨어진다
+   */
+  const playClip = (name: string): boolean => {
+    const set = clips.current
+    const clip = set?.by.get(name)
+    if (!set || !clip) return false
+    set.mixer.stopAllAction()
+    const action = set.mixer.clipAction(clip)
+    action.reset()
+    action.setLoop(LoopOnce, 1)
+    action.clampWhenFinished = true
+    action.play()
+    return true
+  }
+
   useEffect(() => {
     if (!key || key === seen.current) return
     seen.current = key
-    gestureStarted.current = performance.now() / 1000
+    // 공을 던지며 지시한다. 클립이 없는 몸이면 절차형 팔이 그 자리를 맡는다
+    if (!playClip(TRAINER_CLIP.order)) gestureStarted.current = performance.now() / 1000
   }, [key])
+
+  // 졌으면 진 동작. 이겼거나 잡기·도망이면 아무것도 안 한다
+  useEffect(() => {
+    if (trainerLost(outcome, mine)) playClip(TRAINER_CLIP.lose)
+  }, [outcome, mine])
 
   const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
   const r3fScene = useThree((s) => s.scene)
@@ -111,6 +147,15 @@ function TrainerActor({
           const gltf = await loader.loadAsync(url)
           if (!alive) return
           const root = cloneSkinned(gltf.scene) as Group
+          // ⚠️ **클립은 복제본에 다시 걸어야 한다.** `cloneSkinned`가 뼈를 새로
+          // 만들므로 원본 씬에 건 자는 아무 뼈도 못 찾는다. 이름은 그대로라
+          // 복제본을 뿌리로 삼은 자가 같은 길을 찾는다
+          clips.current = gltf.animations.length > 0
+            ? {
+                mixer: new AnimationMixer(root),
+                by: new Map(gltf.animations.map((c) => [c.name, c])),
+              }
+            : null
           root.traverse((object: Object3D) => {
             if (SECONDARY_OUTFIT.some((part) => object.name.includes(part))) object.visible = false
             if (object instanceof Mesh) object.castShadow = true
@@ -130,6 +175,8 @@ function TrainerActor({
       })
     return () => {
       alive = false
+      clips.current?.mixer.stopAllAction()
+      clips.current = null
     }
   }, [path, gl, r3fScene, camera])
 
@@ -137,12 +184,23 @@ function TrainerActor({
     if (wrapper.current && model) normalizeModel(wrapper.current, model, PLAYER_HEIGHT)
   }, [model])
 
-  useFrame(({ clock }) => {
+  // 몸이 서면 배틀에 들어서는 동작부터. 없으면 아무것도 안 한다 (선 자세 그대로)
+  useEffect(() => {
+    if (model) playClip(TRAINER_CLIP.advent)
+  }, [model])
+
+  useFrame(({ clock }, delta) => {
+    clips.current?.mixer.update(delta)
     const node = host.current
     if (!node) return
+    // 숨쉬는 흔들림은 클립이 있어도 둔다 — 쉬는 동작(`wait_b`)을 안 구워서
+    // 클립이 끝난 뒤에는 몸이 완전히 굳는다
+    node.position.y = Math.sin(clock.elapsedTime * 1.2 + (mine ? 0 : 2.1)) * 0.012
+    // ⚠️ **던지는 몸짓은 둘 중 하나만.** 클립이 있으면 `order_b`가 팔을
+    // 돌리므로 여기서 몸통까지 기울이면 두 번 움직인다
+    if (clips.current) return
     const elapsed = performance.now() / 1000 - gestureStarted.current
     const throwAmount = elapsed >= 0 && elapsed < 0.72 ? Math.sin((elapsed / 0.72) * Math.PI) : 0
-    node.position.y = Math.sin(clock.elapsedTime * 1.2 + (mine ? 0 : 2.1)) * 0.012
     node.rotation.x = -throwAmount * 0.2
     node.rotation.z = (mine ? -1 : 1) * throwAmount * 0.14
   })

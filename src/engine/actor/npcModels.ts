@@ -284,6 +284,22 @@ export function buildOf(bundle: string): 'battle' | 'field' {
 }
 
 /**
+ * 등신 몸(`tr*`·`pc*`)에서 실을 클립.
+ *
+ * 몸 하나에 여덟이 오는데 배틀에서 이어 붙일 자리가 있는 것은 셋이다 —
+ * 등장 · 지시 · 패배(`scene/battle/BattleTrainers`). 나머지 다섯은 안 싣는다:
+ * `wait_b`·`wait02_b`·`speak01_b`·`eye01_b`는 이어 붙일 자리가 없고
+ * `advent02_b`는 **움직이는 채널이 0**이라 실어도 아무것도 안 한다
+ * (PLAN.md의 클립 표가 여덟을 다 재 두었다).
+ *
+ * ⚠️ **굽는 쪽 둘이 이것을 같이 본다.** `tools/extract/npcModels.mjs`는
+ * `.source`를 파이썬 `re`에 그대로 넘기고(`bdspGlb.py --clip-filter`),
+ * `src/import/bdsp/convert.ts`는 이 정규식을 그대로 쓴다. 따로 적으면
+ * 개발 서버와 설치본이 다른 클립을 싣는다
+ */
+export const TRAINER_CLIPS = /^(advent_b|order_b|lose01_b)$/
+
+/**
  * 이름이 붙은 번들 몇 개.
  *
  * 번호만 있는 이름이라 코드에서 안 읽히므로 여기 한 번 적어 둔다. 값은

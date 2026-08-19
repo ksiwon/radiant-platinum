@@ -17,7 +17,9 @@ import {
   type BdspSource, type ConvertContext, type GroupSpec, type Produced,
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
-import { NPC_BUNDLE, buildOf, modelFor, type NpcModelTable } from '../../engine/actor/npcModels'
+import {
+  NPC_BUNDLE, TRAINER_CLIPS, buildOf, modelFor, type NpcModelTable,
+} from '../../engine/actor/npcModels'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { openEnvironment, type Environment } from './environment'
 import { exportModel } from './model'
@@ -201,11 +203,15 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
     const env = path ? await environmentOf(src, [path]) : null
     if (!env) { broken.add(bundle); return false }
     try {
+      // ⚠️ **등신과 치비가 싣는 것이 다르다.** 걷기는 `actor/locomotion`이
+      // 뼈를 직접 돌려 만들어서 치비(`fc*`)의 클립 쉰여섯은 쓸 자리가 없다 —
+      // 다 실으면 한 명이 1.06MB에서 2.58MB가 된다. 등신(`tr*`·`pc*`)은
+      // 배틀에서 이어 붙는 셋만 싣는다 (`TRAINER_CLIPS`)
+      const battle = buildOf(bundle) === 'battle'
       const { glb } = await exportModel(env, encodePng, {
         maxSize: MAX_TEXTURE,
-        // 걷기는 `actor/locomotion`이 뼈를 직접 돌려서 만든다 — 클립을 실을
-        // 자리가 없고, 실으면 한 명이 1.06MB에서 2.58MB가 된다
-        keepClips: false,
+        keepClips: battle,
+        ...(battle ? { clipFilter: TRAINER_CLIPS } : {}),
       })
       put(ctx, out, `models/npc/${bundle}.glb`, glb)
       made.add(bundle)
@@ -244,7 +250,10 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
     const path = lookup(at, `${PERSONS}/battle/${NPC_BUNDLE.heroine}`)
     const env = path ? await environmentOf(src, [path]) : null
     if (env) {
-      const { glb } = await exportModel(env, encodePng, { maxSize: MAX_TEXTURE, keepClips: false })
+      // 빛나는 등신 몸이다 — 배틀 트레이너와 같은 셋을 싣는다
+      const { glb } = await exportModel(env, encodePng, {
+        maxSize: MAX_TEXTURE, keepClips: true, clipFilter: TRAINER_CLIPS,
+      })
       put(ctx, out, 'models/dawn.glb', glb)
     }
   }

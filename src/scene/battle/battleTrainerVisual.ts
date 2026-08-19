@@ -5,6 +5,8 @@
 // 눈 지방 에이스 트레이너가 평지 에이스 트레이너로 섰다(이름표 `eliteM`을
 // 두 번들이 나눠 써서 먼저 구운 것이 나중 것을 덮었다). 정본은 BDSP가 적어 둔
 // `TrainerTable`이고 `engine/actor/npcModels`가 그것을 읽는다
+import type { BattleFinish } from '../../engine/battle/sim/controller'
+
 export interface TrainerPalette {
   cloth: string
   accent: string
@@ -23,4 +25,30 @@ export function trainerFallbackPalette(trainerClass: number | null): TrainerPale
     accent: ACCENT[(seed * 3 + 1) % ACCENT.length]!,
     hair: HAIR[(seed * 5 + 2) % HAIR.length]!,
   }
+}
+
+/**
+ * 등신 몸에 실린 배틀 클립.
+ *
+ * 굽는 쪽이 이 셋만 싣는다 (`engine/actor/npcModels`의 `TRAINER_CLIPS`).
+ * 길이는 PLAN.md의 클립 표에서 잰 값이다
+ */
+export const TRAINER_CLIP = {
+  /** 배틀에 들어서는 동작. 4.13초 */
+  advent: 'advent_b',
+  /** 공을 던지며 지시하는 동작. 2.33초 */
+  order: 'order_b',
+  /** 진 동작. 5.50초 */
+  lose: 'lose01_b',
+} as const
+
+/**
+ * 이 편 트레이너가 졌는가.
+ *
+ * `outcome`은 **내 쪽에서 본 결말**이다 — 내가 지면(`loss`) 내 트레이너가,
+ * 내가 이기면(`win`) 상대 트레이너가 진 동작을 한다. 잡기·도망(`caught`·
+ * `fled`·`foeFled`)은 진 것이 아니라 아무도 안 한다
+ */
+export function trainerLost(outcome: BattleFinish, mine: boolean): boolean {
+  return mine ? outcome === 'loss' : outcome === 'win'
 }

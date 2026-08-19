@@ -26,7 +26,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildOf, modelFor } from '../../src/engine/actor/npcModels.ts'
+import { buildOf, modelFor, TRAINER_CLIPS } from '../../src/engine/actor/npcModels.ts'
 import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
 import { createRequire } from 'node:module'
 
@@ -124,9 +124,19 @@ function main() {
       return true
     }
     try {
+      // ⚠️ **등신과 치비가 싣는 것이 다르다.** 오버월드 걷기는
+      // `actor/locomotion`이 뼈를 직접 돌려 만드는 것이라 치비(`fc*`)의 클립
+      // 쉰여섯은 쓸 자리가 없다. 등신(`tr*`·`pc*`)의 여덟 중에서는 배틀에서
+      // 실제로 도는 셋만 싣는다 — 나머지 다섯(`wait_b`·`wait02_b`·`speak01_b`·
+      // `eye01_b`·`advent02_b`)은 이어 붙일 자리가 없고, `advent02_b`는 채널이
+      // 0이라 아무것도 안 한다 (PLAN.md의 클립 표)
+      const clips = buildOf(bundle) === 'battle'
+        // 파이썬 `re`가 이 정규식을 그대로 받는다 — `^(a|b|c)$`는 두 문법에서 같다
+        ? ['--clip-filter', TRAINER_CLIPS.source]
+        : ['--no-clips']
       execFileSync('py', [
         '-3.13', BAKER, src, '-o', out,
-        '--max-texture', String(MAX_TEXTURE), '--no-clips',
+        '--max-texture', String(MAX_TEXTURE), ...clips,
       ], { stdio: ['ignore', 'ignore', 'pipe'] })
     } catch {
       broken.add(bundle)

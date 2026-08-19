@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { trainerFallbackPalette } from './battleTrainerVisual'
-import { trainerModelBundle } from '../../engine/actor/npcModels'
+import { TRAINER_CLIP, trainerFallbackPalette, trainerLost } from './battleTrainerVisual'
+import { TRAINER_CLIPS, trainerModelBundle } from '../../engine/actor/npcModels'
 import { TRAINER_CLASS_NAMES } from '../../import/platinum/trainerClasses'
 
 const cls = (name: string): number => {
@@ -41,5 +41,42 @@ describe('배틀 트레이너의 몸', () => {
     expect(trainerModelBundle(frontier)).toBeNull()
     expect(trainerFallbackPalette(frontier)).toEqual(trainerFallbackPalette(frontier))
     expect(trainerFallbackPalette(frontier)).not.toEqual(trainerFallbackPalette(frontier + 1))
+  })
+})
+
+describe('진 동작은 진 쪽만 한다', () => {
+  // `outcome`은 **내 쪽에서 본 결말**이다. 여기를 뒤집으면 이긴 트레이너가
+  // 주저앉는다 — 눈으로는 배틀이 끝난 뒤 한 번뿐이라 놓치기 쉽다
+  it('내가 지면 내 트레이너가 진다', () => {
+    expect(trainerLost('loss', true)).toBe(true)
+    expect(trainerLost('loss', false)).toBe(false)
+  })
+
+  it('내가 이기면 상대가 진다', () => {
+    expect(trainerLost('win', false)).toBe(true)
+    expect(trainerLost('win', true)).toBe(false)
+  })
+
+  it('잡기·도망은 아무도 안 진다', () => {
+    for (const outcome of ['caught', 'fled', 'foeFled', null] as const) {
+      expect(trainerLost(outcome, true), `${outcome} 내 쪽`).toBe(false)
+      expect(trainerLost(outcome, false), `${outcome} 상대 쪽`).toBe(false)
+    }
+  })
+})
+
+describe('굽는 쪽 둘이 같은 클립을 싣는다', () => {
+  // ⚠️ **여기가 갈리면 개발 서버와 설치본이 다르다.** 화면이 부르는 이름이
+  // 굽는 규칙에 안 맞으면 클립이 있어도 안 돈다 — 조용히 절차형으로 떨어진다
+  it('화면이 부르는 이름 셋이 굽는 규칙에 맞는다', () => {
+    for (const name of Object.values(TRAINER_CLIP)) {
+      expect(TRAINER_CLIPS.test(name), name).toBe(true)
+    }
+  })
+
+  it('안 굽기로 한 다섯은 규칙에서 걸린다', () => {
+    for (const name of ['wait_b', 'wait02_b', 'speak01_b', 'eye01_b', 'advent02_b']) {
+      expect(TRAINER_CLIPS.test(name), name).toBe(false)
+    }
   })
 })

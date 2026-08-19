@@ -42,6 +42,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   maps: 2,
   /** 2 — 일본판 게임코너 뱅크(us #147)가 빠져 있었다. 그 파일이 늘어난다 */
   text: 2,
+  /**
+   * 2 — 등신 몸에 배틀 클립 셋을 싣는다 (`TRAINER_CLIPS`).
+   *
+   * 그전에는 인물 106벌이 전부 클립 0개로 구워졌다. glb 바이트가 달라지므로
+   * 이미 깔린 사람도 이 그룹만 다시 굽게 한다 — 안 올리면 설치본의 트레이너가
+   * 계속 절차형 몸짓만 한다
+   */
+  npcModels: 2,
 }
 
 export function groupFormat(name: string): number {

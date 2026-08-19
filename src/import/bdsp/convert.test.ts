@@ -19,7 +19,8 @@ import { arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
-import { modelFor } from '../../engine/actor/npcModels'
+import { TRAINER_CLIPS, modelFor } from '../../engine/actor/npcModels'
+import { TRAINER_CLIP } from '../../scene/battle/battleTrainerVisual'
 import { TRAINER_MODELS } from './trainerModels'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
 
@@ -85,6 +86,28 @@ suite('인물', () => {
     expect(stat.outward).toBeGreaterThan(0.5)
     expect(stat.problems).toEqual([])
     expect(verifyGlb(glb)).toEqual([])
+  }, 120_000)
+
+  // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기가 셋을
+  // 실어도 이쪽이 안 실으면 설치본의 트레이너만 안 움직인다 — 개발 서버에서는
+  // 멀쩡히 보이므로 눈으로는 절대 안 걸린다
+  it('등신 몸에 배틀 클립 셋만 실린다', async () => {
+    const env = openEnvironment([bytes(person('battle', 'tr0002_00')!)])
+    const { glb, stat } = await exportModel(env, encodePng, {
+      maxSize: 256, keepClips: true, clipFilter: TRAINER_CLIPS,
+    })
+    expect(stat.anim.clips).toBe(3)
+    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 셋이 나올 리 없다
+    expect(stat.anim.skipped).toBeGreaterThan(0)
+    expect(stat.anim.channels).toBeGreaterThan(500)
+    expect(verifyGlb(glb)).toEqual([])
+    // 실린 이름이 화면이 부르는 이름과 같아야 한다. glb의 JSON 청크는
+    // 12바이트 머리 뒤 8바이트 청크 머리 다음부터다
+    const head = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+    const json = new TextDecoder().decode(glb.subarray(20, 20 + head.getUint32(12, true)))
+    const clipNames = (JSON.parse(json) as { animations?: { name: string }[] }).animations ?? []
+    expect(new Set(clipNames.map((a) => a.name)))
+      .toEqual(new Set(Object.values(TRAINER_CLIP)))
   }, 120_000)
 
   it('그림 번호가 BDSP 번들로 이어진다', () => {

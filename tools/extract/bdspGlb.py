@@ -834,10 +834,14 @@ def main() -> int:
                     help="텍스처 긴 변의 상한. 오버월드 NPC를 줄이는 데 쓴다")
     ap.add_argument("--only", default="",
                     help="옮겨 올 클립 이름들, 쉼표로 나눈다. 비우면 전부")
+    ap.add_argument("--clip-filter", default="",
+                    help="이 정규식에 맞는 클립만 싣는다. 비우면 전부. "
+                         "배틀 트레이너는 '^(advent_b|order_b|lose01_b)$'")
     args = ap.parse_args()
     stat = export(
         args.bundle, args.out, args.color_index, args.clips_from,
         {n for n in args.only.split(",") if n}, args.max_texture, not args.no_clips,
+        clip_filter=re.compile(args.clip_filter) if args.clip_filter else None,
     )
     print(f"{args.bundle.name} → {args.out}")
     for k, v in stat.items():
