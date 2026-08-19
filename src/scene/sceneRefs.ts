@@ -7,11 +7,20 @@ export const sceneRefs: {
   player: Object3D | null
   /** 절차적 보행용 리그. 모델이 로드되면 PlayerModel이 채운다 */
   playerRig: Rig | null
+  /**
+   * 지금 구운 클립이 주인공의 뼈를 몰고 있는가 (`engine/actor/heroClips`).
+   *
+   * ⚠️ **켜져 있으면 절차형이 손을 뗀다.** 둘 다 같은 뼈에 쓰는데 `EngineDriver`가
+   * 나중(우선순위 1)이라, 안 비키면 낚싯대를 던지는 동안에도 팔이 걷는 자세로
+   * 덮인다. 클립이 없는 설치본에서는 늘 false라 절차형이 그대로 돈다
+   */
+  playerClip: boolean
   /** 자전거. 주인공 그룹의 자식이고, 안 탈 때는 `visible`만 꺼 둔다 */
   bike: Object3D | null
 } = {
   player: null,
   playerRig: null,
+  playerClip: false,
   bike: null,
 }
 

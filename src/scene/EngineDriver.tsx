@@ -130,7 +130,10 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
 
     // 보행 포즈. 시뮬레이션이 아니라 표현이라 고정 스텝이 아닌 렌더 델타로 돈다 —
     // 60fps가 아니어도 위상 속도가 속도에 묶여 있어 발이 미끄러지지 않는다
-    if (sceneRefs.playerRig) {
+    // ⚠️ **구운 클립이 돌면 절차형은 손을 뗀다.** 둘 다 같은 뼈에 쓰고 여기가
+    // 나중이라, 안 비키면 낚싯대를 던지는 동안 팔이 걷는 자세로 덮인다
+    // (`scene/PlayerModel`의 `playerClip`)
+    if (sceneRefs.playerRig && !sceneRefs.playerClip) {
       const speed = Math.hypot(p.velocity.x, p.velocity.y, p.velocity.z)
       // 턱을 넘는 중이면 그 진행을 넘긴다 — 걷기 대신 도약 자세가 나간다
       const hop = worldState.player.hop

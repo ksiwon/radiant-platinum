@@ -64,6 +64,7 @@
 | 가방·도구 쓰기 | `engine/bag/` (무엇을 할지) · `ui/menu/itemAction.ts` (실제로 밟기) |
 | 맵·격자·워프 | `engine/map/` · `scene/` |
 | 사람 모델을 세우는 비율 | `engine/model/` — `normalize.ts`가 키를 맞추고, `chibi.ts`가 배틀 몸이 없어 필드 번들로 서는 열일곱의 머리·손을 줄인다 (DATA §2.16) |
+| 주인공의 자세 | 걷기·서기는 `engine/actor/locomotion`이 뼈를 직접 돌린다. 낚시·폭포·물주기 같은 필드 동작은 **구운 클립**이고 어느 것을 언제 돌릴지는 `engine/actor/heroClips`가 정한다. ⚠️ **둘이 같은 뼈에 쓴다** — 클립이 돌면 `sceneRefs.playerClip`이 서고 `scene/EngineDriver`가 절차형을 건너뛴다 |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
 | **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
 | **통신을 닫아 둔 자리** | `engine/world/comm.ts` — 「안 된다」의 값 한 벌. 왜 문을 안 잠그고 답을 하는지는 [PARITY](PARITY.md) §9.4 |

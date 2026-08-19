@@ -1,11 +1,19 @@
 // 플레이어 캐릭터 모델 (PLAN §4.3) — BDSP 풀비율 모델을 glb로 변환한 것
 // 모델 전방은 +Z. playerSystem의 facing = atan2(vx, vz) 규약과 그대로 일치한다.
 import { Suspense, useEffect, useRef } from 'react'
-import { useLoader } from '@react-three/fiber'
+import { useFrame, useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { Mesh, type MeshStandardMaterial, type Group } from 'three'
+import {
+  AnimationMixer, LoopOnce, LoopRepeat, Mesh, Quaternion,
+  type AnimationClip, type MeshStandardMaterial, type Group, type Object3D,
+} from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
+import { HERO_CLIP_NONE, tickHeroClip, type HeroClipState } from '../engine/actor/heroClips'
+import { worldState } from '../state/worldState'
+import { fishing } from './fishingSystem'
+import { flyTransitionPhase } from './flyTransition'
+import { wateringActive } from './berryPatches'
 import { BikeModel } from './BikeModel'
 import { FieldActionEffects } from './FieldActionEffects'
 import { sceneRefs } from './sceneRefs'
@@ -17,9 +25,25 @@ import { playerModelPath } from './playerModelPath'
 import { unifySkeletons } from './unifySkeleton'
 const ALT_OUTFIT = ['hair2', 'shoes2']
 
+/** 구운 클립을 도는 자. 클립이 없는 설치본에서는 `null`이고 절차형이 그대로 돈다 */
+interface ClipSet {
+  mixer: AnimationMixer
+  by: Map<string, AnimationClip>
+  /**
+   * 클립을 걸기 전 뼈의 로컬 회전.
+   *
+   * ⚠️ **끝났다고 저절로 돌아오지 않는다.** `clampWhenFinished`가 마지막 자세를
+   * 붙들고 있고, 절차형(`locomotion`)이 다시 쓰는 것은 제가 아는 관절 열둘뿐이라
+   * 손가락·가방끈·목도리는 낚싯대를 던진 자세로 굳는다
+   */
+  rest: Map<Object3D, Quaternion>
+}
+
 export function PlayerModel() {
   const groupRef = useRef<Group>(null)
   const normRef = useRef<Group>(null)
+  const clips = useRef<ClipSet | null>(null)
+  const playing = useRef<HeroClipState>(HERO_CLIP_NONE)
   // 주소를 Provider에서 받는다 — 공개판에서는 OPFS Blob URL이다 (IMPORT.md §7).
   const gender = useSaveStore((state) => state.trainer.gender)
   const modelPath = playerModelPath(gender)
@@ -65,8 +89,65 @@ export function PlayerModel() {
     if (import.meta.env.DEV && !rig) {
       console.warn('[model] 보행 리그를 만들지 못했다 — 필요한 본이 없다. 바인드 포즈로 둔다')
     }
-    return () => { sceneRefs.playerRig = null }
+
+    // ⚠️ **여기서 뜬다.** 절차형이 뼈에 쓰기 전에 바인드 자세를 떠 놓아야
+    // 클립이 끝났을 때 돌아갈 자리가 남는다
+    if (gltf.animations.length > 0) {
+      const rest = new Map<Object3D, Quaternion>()
+      gltf.scene.traverse((o) => rest.set(o, o.quaternion.clone()))
+      clips.current = {
+        mixer: new AnimationMixer(gltf.scene),
+        by: new Map(gltf.animations.map((c) => [c.name, c])),
+        rest,
+      }
+    } else if (import.meta.env.DEV) {
+      // 설치본의 `npcModels` 판이 낡으면 여기로 온다 (`assetFormat`의 `GROUP_FORMAT`)
+      console.info('[model] 주인공 몸에 클립이 없다 — 필드 동작은 절차형으로 돈다')
+    }
+    playing.current = HERO_CLIP_NONE
+    return () => {
+      sceneRefs.playerRig = null
+      clips.current?.mixer.stopAllAction()
+      clips.current = null
+      sceneRefs.playerClip = false
+    }
   }, [gltf, modelPath])
+
+  /**
+   * 구운 필드 동작을 돌린다 (`engine/actor/heroClips`).
+   *
+   * ⚠️ **우선순위를 안 준다.** 기본값 0이라 `EngineDriver`(1)보다 먼저 돌고,
+   * 그쪽이 `sceneRefs.playerClip`을 보고 절차형을 건너뛴다 — 순서가 뒤집히면
+   * 클립이 매 프레임 걷는 자세로 덮인다
+   */
+  useFrame((_, delta) => {
+    const set = clips.current
+    if (!set) return
+    const want = tickHeroClip(playing.current, {
+      fishing: fishing.state,
+      fly: flyTransitionPhase(),
+      action: worldState.player.fieldAction,
+      watering: wateringActive(),
+    }, delta)
+    const clip = want.name !== null ? set.by.get(want.name) : undefined
+    if (want.name !== playing.current.name) {
+      set.mixer.stopAllAction()
+      if (clip) {
+        const action = set.mixer.clipAction(clip)
+        action.reset()
+        action.setLoop(want.loop ? LoopRepeat : LoopOnce, want.loop ? Infinity : 1)
+        action.clampWhenFinished = !want.loop
+        action.play()
+      } else {
+        // 돌 것이 없다 — 뼈를 바인드로 되돌려 절차형에 넘긴다
+        for (const [node, q] of set.rest) node.quaternion.copy(q)
+      }
+    }
+    playing.current = want
+    set.mixer.update(delta)
+    // 클립을 못 찾았으면(낡은 설치본) 켜지 않는다. 그때는 절차형이 그 자리다
+    sceneRefs.playerClip = clip !== undefined
+  })
 
   // ⚠️ **모델이 바뀔 때마다 다시 등록한다.** `useAssetUrl`은 `use(promise)`라
   // 서스펜드하는데, 오프닝에서 성별을 고르면 `modelPath`가 바뀌어 경계가 **한 번
