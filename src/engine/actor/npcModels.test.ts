@@ -19,6 +19,7 @@ import {
 } from './npcModels'
 import { TRAINER_MODELS } from '../../import/bdsp/trainerModels'
 import { SPRITE_TRAINER_CLASS, TRAINER_CLASS_NAMES } from '../../import/platinum/trainerClasses'
+import { SPRITE_NAMES } from '../../import/platinum/spriteTable'
 import { OVERWORLD_MON_NAMES } from './overworldMon'
 import { withData } from '../../data/romData.testkit'
 
@@ -255,12 +256,17 @@ maybe('구워 둔 표', () => {
   const table = (): Record<string, string> =>
     JSON.parse(readFileSync(TABLE, 'utf8')) as Record<string, string>
 
+  // ⚠️ **이름표는 디컴프 표에서 본다 — 롬 산출물이 아니다.** 두 굽는 쪽이 다
+  // `SPRITE_NAMES`로 짝을 짓기 때문이다(`import/bdsp/convert.ts` ·
+  // `tools/extract/npcModels.mjs`). 롬 산출물(`npcSprites.json`)에는 **플래티넘에
+  // 있는 그림만** 있어서, 디컴프에만 있는 252·253(다이아·펄 시절 주인공
+  // `DP_PLAYER_M`·`DP_PLAYER_F`)이 「이름이 없다」로 걸린다 — 규칙이 짝지어 준
+  // 자리인데 시험이 다른 표를 보고 있던 것이다
   it('표의 짝이 규칙이 내는 후보 안에 있다', () => {
     if (!has) return
     const rules = models()
-    const names = sprites()
     for (const [sprite, bundle] of Object.entries(table())) {
-      const name = names[sprite]?.name
+      const name = SPRITE_NAMES[Number(sprite)]
       expect(name, sprite).toBeTruthy()
       expect(modelFor(name!, rules, Number(sprite))?.bundles, name).toContain(bundle)
     }

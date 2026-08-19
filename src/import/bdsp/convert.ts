@@ -381,6 +381,31 @@ function sharedMesh(at: Map<string, string>, name: string): string | null {
   return found.length > 0 ? lookup(at, `${POKEMON_COMMON}/${found[0]!}`) : null
 }
 
+/**
+ * 같은 종의 **세 토막짜리 텍스처 번들 전부** (`pm0115_51_00` 꼴).
+ *
+ * ⚠️ **색 그림이 다른 판의 번들에 있는 종이 있다.** 캥카(`pm0115_00_00`)의 몸
+ * 재질은 `_Col0Tex`로 `pm0115_51_00_BodyA_col`을 가리키는데 그 그림은
+ * `common/pm0115_51_00`에 있다 — 셋만 열면 그 재질이 통째로 안 구워지고 조각이
+ * **흰색으로 남는다.** 안농도 같다(판 12~38이 판 11의 그림을 나눠 쓴다).
+ *
+ * ⚠️ **두 토막(`pm0115_00`)은 안 연다.** 그쪽에는 메시가 있어서 다른 판의 몸이
+ * 섞인다. 세 토막은 실측으로 `Texture2D`만 들었다.
+ *
+ * ⚠️ **노드 추출기가 같은 것을 한다** (`tools/extract/bdspPokemon.py`의 `trio`).
+ * 여기만 빠져 있어서 설치본의 서른여덟 마리가 흰 조각으로 구워졌고,
+ * `run.mjs` ⑮의 넓힌 대조가 그것을 잡았다 (REPAIR §2.2)
+ */
+function kinTextures(at: Map<string, string>, name: string): string[] {
+  const want = new RegExp(`^${name.slice(0, 6)}_\\d\\d_\\d\\d$`)
+  return childrenOf(at, POKEMON_COMMON)
+    .map((p) => p.slice(p.lastIndexOf('/') + 1))
+    .filter((n) => want.test(n))
+    .sort()
+    .map((n) => lookup(at, `${POKEMON_COMMON}/${n}`))
+    .filter((p): p is string => p !== null)
+}
+
 /** 바인드 포즈에서 잰 키(m). 종마다 크기가 다른 것을 이걸로 옮긴다 */
 function glbHeight(glb: Uint8Array): number {
   const view = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
@@ -428,11 +453,13 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
     // 조개무지·트리토돈이 그렇다 — `common/pm0493_12`가 아예 없고 열여덟 판이
     // `common/pm0493_11` 하나를 나눠 쓴다. 제 것이 없으면 그 종의 첫 판을 연다
     const mesh = lookup(at, `${POKEMON_COMMON}/${stem}`) ?? sharedMesh(at, name)
-    const paths = [
+    const paths = [...new Set([
       lookup(at, `${POKEMON_BATTLE}/${name}`),
       mesh,
       lookup(at, `${POKEMON_COMMON}/${name}`),
-    ].filter((p): p is string => p !== null)
+      // 색 그림이 다른 판에 있는 종이 있다 — 노드와 같은 규칙으로 같이 연다
+      ...kinTextures(at, name),
+    ].filter((p): p is string => p !== null))]
     const env = await environmentOf(src, paths)
     if (env) {
       try {

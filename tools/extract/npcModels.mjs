@@ -32,6 +32,7 @@ import {
   buildOf, fieldClipDonor, modelFor, HERO_FIELD_CLIPS, TRAINER_CLIPS,
 } from '../../src/engine/actor/npcModels.ts'
 import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
+import { SPRITE_NAMES } from '../../src/import/platinum/spriteTable.ts'
 import { createRequire } from 'node:module'
 
 const rawSources = createRequire(import.meta.url)('../raw/sources.cjs')
@@ -177,8 +178,26 @@ function main() {
 
   // 화면이 볼 표. **구워 낸 것만** 담는다 — 없는 glb를 받으러 가면 그 사람이
   // 판때기로도 안 서고 사라진다
+  // ⚠️ **표는 배치가 아니라 규칙이 정한다 — 그리고 두 굽는 쪽이 같은 표를 본다.**
+  //
+  // 굽는 것은 실제로 서는 사람만 굽지만(`used`), 표에는 **규칙이 짝지어 주는
+  // 그림 번호 전부**를 담는다. 담는 값이 이미 구운 번들뿐이라 늘어나는 파일이
+  // 없고, 배치가 0인 번호도 스크립트가 변수로 세울 수 있다.
+  //
+  // 여기서 롬 산출물(`npcSprites.json`)을 훑으면 안 된다. 그쪽은 **플래티넘에
+  // 있는 그림만** 담는데 브라우저 변환기는 디컴프 표(`SPRITE_NAMES`)를 훑기
+  // 때문이다 — 252·253(다이아·펄 시절 주인공 `DP_PLAYER_M`·`DP_PLAYER_F`)이
+  // 디컴프 표에만 있어서 두 표가 딱 그 두 줄만큼 갈렸고, `run.mjs` ⑮가 그것을
+  // 잡았다 (REPAIR §2.2). 규칙과 같은 표를 보게 해서 갈릴 자리를 없앤다
   const table_out = {}
-  for (const [sprite, model] of [...bySprite].sort((a, b) => a[0] - b[0])) {
+  const forTable = new Map(bySprite)
+  for (const [id, name] of Object.entries(SPRITE_NAMES)) {
+    const sprite = Number(id)
+    if (forTable.has(sprite)) continue
+    const model = modelFor(name, table, sprite)
+    if (model) forTable.set(sprite, model)
+  }
+  for (const [sprite, model] of [...forTable].sort((a, b) => a[0] - b[0])) {
     const bundle = model.bundles.find((b) => done.has(b))
     if (bundle !== undefined) table_out[sprite] = bundle
   }

@@ -703,7 +703,28 @@ export async function exportModel(
 
     const matNames: string[] = []
     for (const m of (v.m_Materials as Props[] | undefined) ?? []) {
-      const mv = env.read(num(m.m_PathID)) as Props | null
+      // ⚠️ **가리키는데 못 찾으면 굽기를 그만둔다.**
+      //
+      // 못 찾는 것은 대개 그 재질이 **다른 파일**에 있어서다(PPtr의 `m_FileID`가
+      // 0이 아니다). 우리 `Environment`는 넘겨준 번들을 하나로 합치므로
+      // (`environment.ts`) 그 파일을 같이 열었으면 풀리고, 안 열었으면 안 풀린다.
+      //
+      // 안 풀린 것을 빈 이름으로 넘기면 **재질 없는 몸이 조용히 구워진다.**
+      // `convert.ts`의 `bake`는 이 실패를 전제로 다음 후보(같은 번호의 치비
+      // 번들)로 넘어가게 되어 있는데, 여기서 안 세우면 그 되돌림이 영영 안
+      // 걸린다 — 실측으로 `tr1026_00`·`tr1078_00`·`tr1085_00` 셋이 그렇게
+      // 재질 없이 구워져 **설치본에만** 섰다. 노드 추출기는 같은 자리에서
+      // 파이썬 UnityPy가 `FileNotFoundError`로 서서 치비로 떨어진다.
+      //
+      // ⚠️ **`m_FileID`만 보고 세우면 안 된다.** 그렇게 했더니 여러 벌을 같이
+      // 여는 포켓몬 쪽에서 **풀리는 참조까지 막혀** 목차가 29,438에서
+      // 27,420바이트로 줄었다(모델 서른여덟쯤). 세울 자리는 「바깥이다」가
+      // 아니라 **「못 찾았다」**다
+      const pathId = num(m.m_PathID)
+      const mv = pathId === 0 ? null : (env.read(pathId) as Props | null)
+      if (pathId !== 0 && mv === null) {
+        throw new Error(`재질을 못 찾았다 (FileID ${String(num(m.m_FileID))} · PathID ${String(pathId)})`)
+      }
       matNames.push((mv?.m_Name as string | undefined) ?? '')
     }
 

@@ -222,3 +222,116 @@ export async function SYNTHETIC({ state, groups, groupFormat, commit }) {
   })
   return groups.length
 }
+
+/**
+ * 설치된 것을 **그룹째로** 돌려준다 (REPAIR.md §2.2).
+ *
+ * `readInstalled`는 파일을 다 읽어 해싱하느라 7,000개에서 몇 분이 가고,
+ * `readInstalledLight`는 이름 댄 몇 개만 본다. 이것은 그 사이다 —
+ * **목차만 읽어 그룹마다 개수·바이트·경로**를 주고, 무거운 해싱은 그룹마다
+ * **대표 한 파일씩**만 한다.
+ *
+ * ⚠️ **대표를 손으로 안 고른다.** 그룹 안에서 경로를 정렬해 첫 번째를 쓴다 —
+ * 손으로 고른 표는 변환기가 파일 이름을 바꾸면 조용히 낡는다. 그림과 그 밖의
+ * 것을 따로 하나씩 뽑는 이유는 아래 `readPixelSha`와 같다
+ *
+ * ⚠️ **그림은 펴서 픽셀을 해싱한다.** deflate가 같은 픽셀에서 여러 정답을
+ * 내므로 바이트로는 노드 산출물과 영영 안 맞는다 (`import/platinum/png.ts`).
+ * 캔버스를 안 쓰는 이유는 색 관리 때문이다 — `createImageBitmap`을 거치면
+ * 브라우저가 색공간을 바꿔 놓을 수 있어서, 그러면 **픽셀이 달라도 우리 탓인지
+ * 캔버스 탓인지 못 가른다.** 그래서 여기서 직접 편다
+ */
+export async function readInstalledGroups(known = []) {
+  const root = await navigator.storage.getDirectory()
+  const rp = await root.getDirectoryHandle('radiant-platinum')
+  const assets = await rp.getDirectoryHandle('assets')
+  const manifest = JSON.parse(await (await (await rp.getFileHandle('install.json')).getFile()).text())
+  const hex = (b) => [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('')
+
+  const fileAt = async (path) => {
+    const parts = path.split('/')
+    let dir = assets
+    for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p)
+    return (await dir.getFileHandle(parts.at(-1))).getFile()
+  }
+
+  // ⚠️ **그림은 여기서 안 편다 — 바이트를 그대로 내보낸다.**
+  //
+  // 처음에는 페이지 안에서 펴서 픽셀을 해싱했는데, 그러면 펴는 자가 둘이 되고
+  // (노드 `decodePng`과 여기) **둘이 어긋나면 멀쩡한 변환기가 붉어진다.** 게다가
+  // 정본 CSP에는 `unsafe-eval`이 없어서 소스를 넘겨 다시 세우는 길도 막힌다
+  // (`page.evaluate: EvalError … script-src 'self'` — 실제로 여기서 떨어졌다).
+  //
+  // 그래서 대표 그림 **한 장의 바이트**만 실어 보내고, 펴서 견주는 일은 노드가
+  // 제 `decodePng` 하나로 양쪽 다 한다. 자가 하나가 되고 CSP도 안 건드린다
+  const base64 = (bytes) => {
+    let s = ''
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      s += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+    }
+    return btoa(s)
+  }
+  /** 대표 한 장이라 크지 않다. 그래도 상한을 둔다 — 넘으면 「못 잼」이다 */
+  const PIXEL_CAP = 8 << 20
+
+  const groups = {}
+  const reps = {}
+  for (const [name, group] of Object.entries(manifest.groups)) {
+    const paths = group.files
+      .map((rec) => [rec.path, rec.bytes ?? 0])
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    groups[name] = {
+      files: paths.length,
+      bytes: paths.reduce((s, [, n]) => s + n, 0),
+      paths,
+    }
+    // ⚠️ **일부러 다른 것을 대표로 뽑지 않는다.** 뽑으면 그 그룹의 대표 축이
+    // 늘 붉거나 늘 「못 잼」이라, 그룹 하나가 통째로 안 재진다
+    const pick = (test) => paths.find(([p]) => test(p) && !known.includes(p))?.[0] ?? null
+    const pngPath = pick((p) => p.endsWith('.png'))
+    const glbPath = pick((p) => p.endsWith('.glb'))
+    const bytePath = pick((p) => !p.endsWith('.png') && !p.endsWith('.glb'))
+    reps[name] = { byte: null, pixel: null, model: null }
+    if (bytePath) {
+      const buf = await (await fileAt(bytePath)).arrayBuffer()
+      reps[name].byte = { path: bytePath, sha: hex(await crypto.subtle.digest('SHA-256', buf)) }
+    }
+    if (pngPath) {
+      const buf = new Uint8Array(await (await fileAt(pngPath)).arrayBuffer())
+      reps[name].pixel = buf.byteLength > PIXEL_CAP
+        ? { path: pngPath, tooBig: buf.byteLength }
+        : { path: pngPath, png: base64(buf) }
+    }
+    // 모델도 같은 까닭으로 바이트를 그대로 보낸다 — 노드가 구조로 견준다
+    if (glbPath) {
+      const buf = new Uint8Array(await (await fileAt(glbPath)).arrayBuffer())
+      reps[name].model = buf.byteLength > PIXEL_CAP
+        ? { path: glbPath, tooBig: buf.byteLength }
+        : { path: glbPath, glb: base64(buf) }
+    }
+  }
+  return { state: manifest.state, groups, reps }
+}
+
+/**
+ * 이름 댄 파일 몇 개의 **알맹이**를 읽어 온다.
+ *
+ * ⚠️ **크기만 적힌 실패는 다시 몰게 만든다.** 「브라우저 1744 ≠ 노드 1708」로는
+ * 무엇이 늘었는지 몰라서 ⑮를 한 번 더 돌려야 하는데, 그 한 번이 몇십 분이다.
+ * 어긋난 것을 발견한 그 자리에서 알맹이를 받아 **무엇이 다른지까지** 적는다
+ */
+export async function readFiles(paths) {
+  const root = await navigator.storage.getDirectory()
+  const rp = await root.getDirectoryHandle('radiant-platinum')
+  const assets = await rp.getDirectoryHandle('assets')
+  const out = {}
+  for (const path of paths) {
+    try {
+      const parts = path.split('/')
+      let dir = assets
+      for (const p of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(p)
+      out[path] = await (await (await dir.getFileHandle(parts.at(-1))).getFile()).text()
+    } catch (e) { out[path] = null }
+  }
+  return out
+}

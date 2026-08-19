@@ -23,9 +23,12 @@ import { compareHeader } from '../distribution/csp.mjs'
 import { driveStory, playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
 import {
-  fakeBdsp, readInstalled, readInstalledLight,
+  fakeBdsp, readFiles, readInstalled, readInstalledGroups, readInstalledLight,
   REQUIRED_GROUPS, REQUIRED_PLATINUM_GROUPS, SYNTHETIC, GROUP_FORMAT,
 } from './fixtures.mjs'
+import {
+  compareBytes, compareGroups, compareReps, KNOWN_DIFFERENT, sayJsonDiff, saySpread,
+} from './parity.mjs'
 import { platinumRoms, sourceDir } from '../raw/sources.cjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -494,6 +497,52 @@ async function armWizard(page, bdsp = fakeBdsp(), timeout = 60_000) {
 
 const haveRom = ROM !== null
 
+/**
+ * 브라우저가 구운 것을 노드 산출물과 **넓게** 견준다 (REPAIR.md §2.2).
+ *
+ * 세 축이다. 앞의 둘은 늘 보고, 셋째는 이미 잰 해시가 있을 때만 본다 —
+ * 파일 7,000개를 다시 읽어 SHA-256을 뜨는 데만 몇 분이 가기 때문이다.
+ *
+ *   ① 그룹마다 파일 **개수와 총 바이트** (넓은 그물)
+ *   ② 그룹마다 **대표 한 파일** — 그림은 픽셀로, 나머지는 바이트로
+ *   ③ `sha`를 주면 **그림이 아닌 전부**를 바이트로
+ *
+ * ⚠️ **못 잰 것을 통과로 세지 않는다.** `public/`은 `pnpm extract`가 굽는 개발
+ * 산출물이라 없을 수 있고, 미국판이 아니면 견주는 것 자체가 틀렸다 — 둘 다
+ * 「안 잼」으로 적고 지나간다 (`sameAsNode`와 같은 규율)
+ *
+ * @param sha 이미 잰 `{경로: sha256}`. 없으면 ①②만 본다
+ */
+async function widen(page, sha = null) {
+  if (ROM_LOCALE !== 'en') return `⚠️ ${ROM_LOCALE}판이라 노드 산출물과 안 견줬다`
+  const shape = await page.evaluate(readInstalledGroups, [...KNOWN_DIFFERENT.keys()])
+  const rows = compareGroups(shape.groups)
+  const off = rows.filter((r) => r.mismatched > 0)
+  if (off.length > 0) {
+    // ⚠️ **크기만 적고 끝내지 않는다.** 무엇이 다른지까지 적어야 이 한 번으로
+    // 끝난다 — 다시 모는 데 몇십 분이 간다. JSON만 열쇠로 갈라 보여 준다
+    const json = off.flatMap((r) => r.off.map((f) => f.path)).filter((p) => p.endsWith('.json'))
+    const text = json.length > 0 ? await page.evaluate(readFiles, json.slice(0, 6)) : {}
+    throw new Error('크기가 어긋난 파일이 있다: ' + off.flatMap((r) => r.off.slice(0, 4).map(
+      (f) => `${r.group} ${f.path} 브라우저 ${String(f.mine)} ≠ 노드 ${String(f.node)}`
+        + (f.path in text ? ` [${sayJsonDiff(f.path, text[f.path])}]` : ''))).join(' · '))
+  }
+  const reps = compareReps(shape.reps)
+  assert(reps.bad.length === 0,
+    `대표 파일이 노드 산출물과 다르다: ${reps.bad.slice(0, 4).join(' · ')}`)
+  let said = `${saySpread(rows)} · 대표 ${String(reps.ok.length)}개 일치(그림은 픽셀로)`
+  if (reps.noNode.length > 0) said += ` · 대표 ${String(reps.noNode.length)}개는 노드에 없어 못 잼`
+  if (sha !== null) {
+    const cmp = compareBytes(sha)
+    assert(cmp.differ.length === 0,
+      `노드 산출물과 바이트가 다른 파일 ${String(cmp.differ.length)}개: `
+      + cmp.differ.slice(0, 4).map((d) => d.path).join(' · '))
+    said = `바이트 ${cmp.same.length.toLocaleString()}개 일치`
+      + `(못 잼 ${String(cmp.noNode.length)} · 그림 ${String(cmp.skipped.length)}은 픽셀로) · ${said}`
+  }
+  return said
+}
+
 await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한다', async ({ page, requests }) => {
   await page.goto(`${origin}/`, { waitUntil: 'load' })
   await waitBoot(page)
@@ -534,13 +583,21 @@ await (haveRom ? run : skip)('09', '진짜 롬으로 변환해 OPFS에 설치한
     assert(sameAsNode(got.sha['data/marts.json'], 'marts'),
       `marts.json이 노드 산출물과 다르다: ${got.sha['data/marts.json']}`)
   }
+  // ── 셋만 보던 것을 넓힌다 (REPAIR §2.2) ──
+  //
+  // 위의 셋은 **이름을 대서** 골랐다. 이름을 안 댄 나머지가 갈려도 여기서는
+  // 「만들어졌다」로만 보였다 — §1의 증상이 정확히 그렇게 지나갔다.
+  //
+  // ⚠️ **지역판이 다르면 안 견준다.** `public/data`는 미국판 롬으로 구운 것이라
+  // 한국판·일본판 결과를 거기 대면 "다르다"가 나오는 것이 맞다
+  const wide = await widen(page, got.sha)
   // 128MB를 읽는 내내 바깥으로도, /data로도 아무것도 안 나갔다
   const leaked = [...contentRequests(requests.slice(before)), ...outsideRequests(requests.slice(before))]
   assert(leaked.length === 0, `변환 중 요청이 나갔다: ${leaked.slice(0, 3).join(' · ')}`)
   return `${ROM_LOCALE} 판 · Platinum 필수 ${String(REQUIRED_PLATINUM_GROUPS.length)}그룹 · `
     + `파일 ${String(Object.keys(got.sha).length)}개 · `
     + `${(took / 1000).toFixed(1)}초 · 힙 ${mb(base)} → ${mb(peak)} · `
-    + `${ROM_LOCALE === 'en' ? NODE_SAID : 'maps.json은 세 판이 같다'} · `
+    + `${ROM_LOCALE === 'en' ? NODE_SAID : 'maps.json은 세 판이 같다'} · ${wide} · `
     + `설치 중 요청 ${String(requests.length - before)}건 전부 앱 셸`
 })
 
@@ -1208,6 +1265,11 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     assert((made.counts.monModels ?? 0) > 400,
       `포켓몬 모델이 ${String(made.counts.monModels ?? 0)}개뿐이다`)
     assert((made.counts.arenas ?? 0) > 1, `무대가 ${String(made.counts.arenas ?? 0)}개뿐이다`)
+    // ⚠️ **여기서만 스물여덟 그룹이 다 있다.** ⑨는 Platinum 쪽만 굽는다 —
+    // BDSP 넷(사람·포켓몬·무대·타격 프레임)이 노드 산출물과 갈렸는지는 이
+    // 자리에서만 잴 수 있다. 파일 7,000개를 다시 해싱하지는 않는다: 그룹마다
+    // 개수·총 바이트와 대표 한 파일씩이다 (REPAIR §2.2)
+    const wide = await widen(first)
 
     // ── 두 번째 실행 ──
     await first.close()
@@ -1244,7 +1306,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     assert(outside.length === 0, `바깥으로 나갔다: ${outside[0]}`)
 
     return `필수 ${String(REQUIRED_GROUPS.length)}그룹 · 파일 ${made.files.toLocaleString()}개 · `
-      + `${mb(made.bytes)} · 설치 ${(took / 1000 / 60).toFixed(1)}분 · `
+      + `${mb(made.bytes)} · 설치 ${(took / 1000 / 60).toFixed(1)}분 · ${wide} · `
       + `두 번째 실행: 갈래 ${String(decided)}ms · 타이틀 ${String(title)}ms · `
       + `변환기 0회 · OPFS 쓰기 0회 · /data 0건 · 외부 0건 · ${NODE_SAID}`
   },

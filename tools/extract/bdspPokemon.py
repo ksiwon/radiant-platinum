@@ -267,7 +267,20 @@ def write_index(outdir: Path) -> dict:
             "scale": scales.get(scale_key(dex, form), scales.get(scale_key(dex, 0), 1.0)),
         }
     INDEX.parent.mkdir(parents=True, exist_ok=True)
-    INDEX.write_text(json.dumps({"pokemon": index}, ensure_ascii=False), encoding="utf-8")
+    # ⚠️ **바이트까지 브라우저 변환기와 같아야 한다** (REPAIR §2.2 · `run.mjs` ⑮).
+    # 두 자리가 갈렸다:
+    #   · 구분자 — 파이썬 기본은 ", "·": "이고 `JSON.stringify`는 빈칸을 안 넣는다
+    #     (실측 3,943바이트 차이)
+    #   · 정수인 실수 — 파이썬은 `1.0`, JS는 `1`로 찍는다 (실측 스물둘 · 44바이트)
+    # 알맹이가 같은데 파일만 달라지면 그 대조가 쓸모없어지므로 여기서 맞춘다
+    def like_js(v: float) -> float | int:
+        return int(v) if isinstance(v, float) and v.is_integer() else v
+
+    flat = {k: {kk: like_js(vv) for kk, vv in row.items()} for k, row in index.items()}
+    INDEX.write_text(
+        json.dumps({"pokemon": flat}, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
     return index
 
 
