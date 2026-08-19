@@ -745,11 +745,25 @@ if (ACTS.has('2')) {
       // p95 50ms로 통과하고 한 번은 183ms 끊김 셋으로 떨어졌다. 돌기 시작한
       // 뒤에 잰다
       if (cp.battle !== null) {
+        // ⚠️ **`!== 'loading'`으로는 못 기다린다 — 「아직 시작도 안 함」이 통과한다.**
+        // `phase`는 `off → loading → running → over`인데(`state/battleStore.ts`),
+        // 여기 닿는 시점에 배틀은 대개 아직 `off`다. 그래서 이 조건은 **곧바로
+        // 참이 되고**, 배틀이 빨리 열린 실행에서만 우연히 제 일을 했다.
+        // 실측(`.audit/battleStream.mjs`) — 뛰어들고 나서 `running`까지:
+        //   `gym8` 7.9초 · `elite` 3.7초. 그 사이를 안 기다리고 잰 값이
+        //   `gym8` 삼각형 0.6k · `elite` 0.6k였다
         await page.waitForFunction(async () => {
           const m = await import('/src/state/battleStore.ts')
-          return m.useBattleStore.getState().phase !== 'loading'
+          const p = m.useBattleStore.getState().phase
+          return p === 'running' || p === 'over'
         }, null, { timeout: 60_000 }).catch(() => { /* 안 열리면 아래에서 떨어진다 */ })
-        await page.waitForTimeout(1_500)
+        // ⚠️ **돌기 시작해도 세계는 계속 붙는다.** `Stage`가 배틀 밑에
+        // `WorldLoader`를 그대로 두므로(`scene/Stage.tsx`) 신오 청크·소품·사람이
+        // 배틀 위에 겹쳐 계속 도착한다 — 같은 실측에서 `running` 뒤로도
+        // `gym8`이 7.9→11.7초 동안 78.1k에서 90.4k로, `elite`가 3.7→4.4초 동안
+        // 139.3k로 올랐다. **1.5초를 못 박지 않고** 다른 장면과 같은 잣대로
+        // 붙기가 멎은 것을 보고 넘어간다
+        extra.battleReady = await settle()
       }
 
       // 뛰어든 자리에서 곧바로 컷신이 도는 장면이 있다. 끝까지 밀어 준다 —
