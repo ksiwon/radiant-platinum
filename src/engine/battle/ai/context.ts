@@ -27,6 +27,22 @@ export interface AiMon {
   /** 랭크 보정 전 실능력치 */
   stats: Stats
   heldItem: number
+  /**
+   * 그 도구의 홀드 효과 번호와 값 (`items.json`의 `holdEffect`·`effectParam`).
+   *
+   * ⚠️ **`ai/`는 표를 안 읽는다.** 표를 읽는 쪽(`sim/brain`)이 값을 채워 넘긴다 —
+   * 그 성질이 이 묶음의 시험을 판 없이 돌게 하는 것이라 깨면 안 된다
+   */
+  itemEffect: number
+  itemParam: number
+  /**
+   * 지닌 열매의 자연의은혜 위력과 타입. 열매가 아니면 0과 −1이다
+   * (`ITEM_PARAM_NATURAL_GIFT_POWER`·`…_TYPE`)
+   */
+  naturalGiftPower: number
+  naturalGiftType: number
+  /** 헥토그램. 안다리걸기·풀묶기가 본다 (`species.json`의 `weightHg`) */
+  weightHg: number
   gender: Gender
   /** 아직 안 쓰러진 후발 주자 수. 자폭·날려버리기 판단이 쓴다 */
   bench: number

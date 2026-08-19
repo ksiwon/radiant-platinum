@@ -4,7 +4,9 @@
 // 여러 테스트가 "실전 배틀을 굴려서 확인한다"는 같은 준비를 하므로 여기 모은다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { moveFileSchema, speciesFileSchema, type Move, type Species } from '../../../data/schema'
+import {
+  itemFileSchema, moveFileSchema, speciesFileSchema, type Item, type Move, type Species,
+} from '../../../data/schema'
 import { createWild, statsOf } from '../../pokemon/instance'
 import type { SideMon } from './session'
 
@@ -17,6 +19,11 @@ export const speciesById = new Map<number, Species>(
 export const movesById = new Map<number, Move>(
   load('moves.json', (v) => moveFileSchema.parse(v)).moves.map((m) => [m.id, m]),
 )
+/** 도구 468종. AI가 홀드 효과·자연의은혜 값을 여기서 읽는다 */
+export const itemsById = new Map<number, Item>(
+  load('items.json', (v) => itemFileSchema.parse(v)).items.map((it, id) => [id, it]),
+)
+
 export const speciesNames = JSON.parse(
   readFileSync(resolve(__dirname, '../../../../public/data/names/species.en.json'), 'utf8'),
 ) as string[]

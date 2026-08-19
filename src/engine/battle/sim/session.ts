@@ -11,7 +11,7 @@ import type { BattleRequest, FinalMon, SideId } from '../events'
 import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { abilityOf, genderOf, maxPpOf, natureOf } from '../../pokemon/instance'
-import { romMove, simAbility, simMove, simSpecies } from './bridge'
+import { romMove, simAbility, simItem, simMove, simSpecies } from './bridge'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
 const NATURE_NAMES = [
@@ -85,7 +85,7 @@ function idleOf(mon: { moveSlots: IdleSlot[] }): IdleSlot | null {
  * 그 값이 우리 `computeStats`와 같다는 것은 `stats.test.ts`가 3000건으로 확인한다.
  * 계산된 값을 넘기려 하면 sim이 그것을 무시하거나 이중 적용해서 더 위험하다.
  */
-function toSet(side: SideMon, idle: boolean) {
+function toSet(side: SideMon, idle: boolean, itemName?: (id: number) => string | undefined) {
   const { mon, species } = side
   // ⚠️ **폼까지 넘긴다.** 종 번호만 넘기면 도롱마담 쓰레기가 풀 옷감의
   // 종족값·타입으로 싸우고, 기라티나 오리진이 어나더로 선다 (PARITY §3.4)
@@ -111,7 +111,17 @@ function toSet(side: SideMon, idle: boolean) {
     moves,
     // 빈 문자열이면 sim이 종족의 첫 특성을 쓴다 — 절반이 조용히 틀리므로 반드시 잇는다
     ability: simAbility(abilityId) ?? '',
-    item: '',
+    /**
+     * 지닌 도구.
+     *
+     * ⚠️ **여기가 빈 문자열로 못 박혀 있었다.** 그동안 지닌 도구는 배틀에서
+     * 아무 일도 안 했다 — 트레이너 개체 1,878 중 59가 열매를 들고 있는데
+     * 한 번도 안 터졌고, 구애머리띠·목탄 같은 위력 보정도 통째로 없었다.
+     *
+     * 이름을 못 찾으면 빈 문자열이다. 배틀에서 아무 일도 안 하는 아홉
+     * (학습장치·럭키에그…)이 거기 해당한다 (`simItem`)
+     */
+    item: (mon.heldItem > 0 ? simItem(itemName?.(mon.heldItem) ?? '') : null) ?? '',
     // ⚠️ **비워 두면 sim이 자기가 굴린다.** 우리 개체의 성별은 이미 PID로
     // 정해져 있는데(`(pid & 0xff) < 성비`) 그것과 따로 굴리면 화면에 ♀로 뜨는
     // 애가 배틀 안에서는 ♂가 되고, 매혹·헤롱헤롱·투쟁심이 반대로 돈다
@@ -141,6 +151,14 @@ export interface BattleOptions {
    * 안 주면 sim이 정한 최대치로 싸운다 — 규칙은 맞지만 PP가 늘 가득이다
    */
   basePp?: (move: number) => number
+  /**
+   * 롬 도구 번호 → **우리 도구 이름** (`items.json`의 `name`). 주면 지닌 도구가
+   * 배틀에 들어간다.
+   *
+   * ⚠️ **안 주면 아무도 도구를 안 든다.** 그것이 오래 기본값이었고, 그래서
+   * 열매가 한 번도 안 터졌다 — 도구를 쓰는 배틀은 반드시 이걸 넘긴다
+   */
+  itemName?: (id: number) => string | undefined
   /**
    * 급소가 안 난다 (`BATTLE_STATUS_FIRST_BATTLE`).
    *
@@ -215,7 +233,7 @@ export class BattleSession {
     this.write(`>start ${JSON.stringify(spec)}`)
     this.write(`>player p1 ${JSON.stringify({
       name: options.player.name,
-      team: Teams.pack(options.player.team.map((m) => toSet(m, true))),
+      team: Teams.pack(options.player.team.map((m) => toSet(m, true, options.itemName))),
     })}`)
     // p2가 들어오는 순간 배틀이 시작되고 첫 `|request|`가 나간다. PP는 그 전에
     // 맞춰야 요청에 실린 숫자부터 우리 값이다 (실측으로 확인했다)
@@ -231,7 +249,7 @@ export class BattleSession {
     const foeIdle = options.foeIdle === true
     this.write(`>player p2 ${JSON.stringify({
       name: options.foe.name,
-      team: Teams.pack(options.foe.team.map((m) => toSet(m, foeIdle))),
+      team: Teams.pack(options.foe.team.map((m) => toSet(m, foeIdle, options.itemName))),
     })}`)
     if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
     // 상대 쪽도 맞춘다 — 배회 포켓몬이 맞은 채로 다시 나온다 (PARITY §6.3)

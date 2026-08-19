@@ -38,6 +38,14 @@ export interface BrainOptions {
   /** 트레이너 데이터의 AI 비트 */
   flags: number
   moves: MoveTable
+  /**
+   * 도구 한 줄. **`ai/`가 표를 안 읽으므로 여기서 값을 뽑아 넘긴다** —
+   * 그 성질이 AI 시험을 판 없이 돌게 하는 것이라 깨면 안 된다.
+   *
+   * 안 주면 도구 보정만 안 붙고 나머지는 그대로 돈다 (야생전에는 AI가 없다)
+   */
+  item?: (id: number) => { holdEffect?: number, effectParam?: number,
+    naturalGiftPower?: number, naturalGiftType?: number } | undefined
   random: () => number
   /** AI가 조종하는 쪽. 지금은 늘 p2다 */
   side: SideId
@@ -144,6 +152,24 @@ export class TrainerBrain {
     return a || b
   }
 
+  /**
+   * 그 도구의 보정 값들 (`items.json`).
+   *
+   * ⚠️ **31은 「없음」이다** — 자연의은혜 타입이 5비트를 전부 세운 값이라,
+   * 그대로 타입 번호로 쓰면 없는 타입이 된다
+   */
+  private itemFacts(id: number): Pick<AiMon,
+  'itemEffect' | 'itemParam' | 'naturalGiftPower' | 'naturalGiftType'> {
+    const it = id > 0 ? this.options.item?.(id) : undefined
+    const ngType = it?.naturalGiftType ?? 31
+    return {
+      itemEffect: it?.holdEffect ?? 0,
+      itemParam: it?.effectParam ?? 0,
+      naturalGiftPower: it?.naturalGiftPower ?? 0,
+      naturalGiftType: ngType === 31 ? -1 : ngType,
+    }
+  }
+
   /** 배틀에 나와 있는 한 마리를 AI가 보는 모습으로 */
   private toAiMon(mon: SideMon, seen: ViewMon, view: BattleView, mine: boolean): AiMon {
     const team = mine ? this.options.team : this.options.foeTeam
@@ -158,6 +184,8 @@ export class TrainerBrain {
       ability: this.abilityOf(mon, mine),
       stats: statsOf(mon.mon, mon.species),
       heldItem: mon.mon.heldItem,
+      ...this.itemFacts(mon.mon.heldItem),
+      weightHg: mon.species.weightHg,
       gender: genderOf(mon.mon.pid, mon.species.genderRatio),
       bench: team.filter((m) => m.key !== mon.key && m.mon.hp > 0).length,
       volatiles: seen.volatiles,
@@ -268,6 +296,8 @@ export class TrainerBrain {
           ability: this.abilityOf(side, true),
           stats: statsOf(side.mon, side.species),
           heldItem: side.mon.heldItem,
+          ...this.itemFacts(side.mon.heldItem),
+          weightHg: side.species.weightHg,
           gender: genderOf(side.mon.pid, side.species.genderRatio),
           bench: 0,
           volatiles: new Set<string>(),

@@ -188,6 +188,8 @@ export class BattleController {
       ? new TrainerBrain({
         flags: options.ai.flags,
         moves: options.ai.moves,
+        // 도구 보정을 AI가 보려면 표가 필요하다. 트레이너전에는 늘 있다
+        item: options.items?.item,
         random: this.random,
         side: 'p2',
         team: this.foeTeam,

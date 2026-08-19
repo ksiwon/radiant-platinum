@@ -1455,6 +1455,9 @@ async function open(
       foe,
       // 기술 칸에 남은 PP를 띄우려면 최대치를 알아야 한다. sim 값은 못 쓴다
       basePp: pp,
+      // ⚠️ **지닌 도구가 배틀에 들어가는 자리다.** 안 넘기면 오랭열매도
+      // 구애머리띠도 아무 일을 안 한다 (`sim/session`의 `item`)
+      itemName: (id) => itemTable?.get(id).name,
       // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
       ...(rules?.noCrit === true ? { noCrit: true } : {}),

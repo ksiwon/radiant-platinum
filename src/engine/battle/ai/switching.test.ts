@@ -12,6 +12,7 @@ function mon(types: number[], over: Partial<AiMon> = {}): AiMon {
   return {
     species: 1, types, level: 50, hp: 100, maxHp: 100, status: 'ok',
     boosts: { ...noBoosts }, ability: 0, stats, heldItem: 0, gender: 'genderless',
+    itemEffect: 0, itemParam: 0, naturalGiftPower: 0, naturalGiftType: -1, weightHg: 100,
     bench: 0, volatiles: new Set(), side: new Map(), ...over,
   }
 }

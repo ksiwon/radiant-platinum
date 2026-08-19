@@ -12,7 +12,7 @@ import type { AiMon, AiMove } from '../ai/context'
 import { noBoosts } from '../view'
 import { statsOf } from '../../pokemon/instance'
 import { BattleController } from './controller'
-import { movesById, rng, spawn } from './fixtures.testkit'
+import { itemsById, movesById, rng, spawn } from './fixtures.testkit'
 import type { SideMon } from './session'
 
 /** 물장구 — 아무 일도 안 일어나는 기술. 상대가 방해하지 않게 이것만 들려 보낸다 */
@@ -24,8 +24,17 @@ function withMove(side: SideMon, move: number): SideMon {
   return { ...side, mon: { ...side.mon, moves: [{ move, pp, ppUps: 0 }] } }
 }
 
+/** 도구를 들려 보낸다. 0이면 안 든다 */
+function withItem(side: SideMon, item: number): SideMon {
+  return item === 0 ? side : { ...side, mon: { ...side.mon, heldItem: item } }
+}
+
 function toAiMon(side: SideMon): AiMon {
   const stats = statsOf(side.mon, side.species)
+  // ⚠️ **`sim/brain`이 채우는 것과 같은 값을 같은 자리에서 뽑는다.** 여기서
+  // 0으로 두면 도구를 들려 보내 놓고 어림은 안 든 셈으로 재게 된다
+  const it = side.mon.heldItem > 0 ? itemsById.get(side.mon.heldItem) : undefined
+  const ngType = it?.naturalGiftType ?? 31
   return {
     species: side.species.id,
     types: side.species.types,
@@ -36,7 +45,12 @@ function toAiMon(side: SideMon): AiMon {
     boosts: noBoosts(),
     ability: side.species.abilities[0],
     stats,
-    heldItem: 0,
+    heldItem: side.mon.heldItem,
+    itemEffect: it?.holdEffect ?? 0,
+    itemParam: it?.effectParam ?? 0,
+    naturalGiftPower: it?.naturalGiftPower ?? 0,
+    naturalGiftType: ngType === 31 ? -1 : ngType,
+    weightHg: side.species.weightHg,
     gender: 'male',
     bench: 0,
     volatiles: new Set(),
@@ -77,16 +91,19 @@ async function oneHit(
   defenderId: number,
   move: number,
   seed: number,
+  item = 0,
 ): Promise<Sample | null> {
   // 레벨을 벌려 놓는다. 한 방에 쓰러지면 깎인 HP가 최대치에서 잘려서, 어림값이
   // 얼마나 큰지와 무관하게 "최대 HP만큼 깎였다"로만 보인다 — 비교가 성립하지 않는다
-  const attacker = withMove(spawn(attackerId, 35, seed, 'a'), move)
+  const attacker = withItem(withMove(spawn(attackerId, 35, seed, 'a'), move), item)
   const defender = withMove(spawn(defenderId, 70, seed + 7, 'd'), SPLASH)
 
   const { controller, step } = await BattleController.start({
     player: { name: '공격', team: [attacker] },
     foe: { name: '방어', team: [defender] },
     random: rng(seed),
+    // 도구를 든 판을 재려면 sim에도 도구가 들어가야 한다
+    itemName: (id) => itemsById.get(id)?.name,
   })
   try {
     const maxHp = step.view.active.p2a?.maxHp ?? 0
@@ -126,6 +143,21 @@ const CASES: [number, number, number, string][] = [
   [59, 95, 52, '윈디 불꽃세례 → 롱스톤(반감·자속)'],
 ]
 
+/**
+ * 도구를 든 판 (REPAIR §7).
+ *
+ * ⚠️ **여기 있는 것은 전부 `BattleSystem_CalcMoveDamage` **안**에서 곱해지는
+ * 도구다.** 생명의구슬(계산이 끝난 뒤 ×1.3)과 달인의띠(효과가 굉장할 때 ×1.2)는
+ * 그 함수 밖이라 **원작 AI도 안 본다** — 넣으면 어림이 sim보다 커진다
+ */
+const ITEM_CASES: [number, number, number, number, string][] = [
+  [130, 387, 44, 220, '갸라도스 + 구애머리띠 (공격 ×1.5, 물기)'],
+  [59, 387, 53, 249, '윈디 + 목탄 (불꽃 위력 ×1.2, 화염방사)'],
+  [95, 63, 89, 266, '롱스톤 + 힘의머리띠 (물리 위력 ×1.1, 지진)'],
+  [63, 95, 94, 297, '캐이시 + 구애안경 (특공 ×1.5, 사이코키네시스)'],
+  [59, 95, 52, 249, '윈디 + 목탄 (반감 자속, 불꽃세례)'],
+]
+
 describe('AI의 데미지 어림', () => {
   it('sim이 실제로 깎는 값이 어림한 85~100% 구간 안에 들어온다', async () => {
     const samples: Sample[] = []
@@ -151,4 +183,38 @@ describe('AI의 데미지 어림', () => {
       expect(s.high / Math.max(1, s.low), `${s.label}: 구간이 너무 넓다`).toBeLessThanOrEqual(1.5)
     }
   }, 60_000)
+
+  // ⚠️ **도구를 든 판이 없으면 §7의 고침이 아무것도 못 지킨다.** 도구 보정을
+  // 통째로 빼도 위 시험은 그대로 초록이다 — 거기 쓰이는 개체가 아무것도 안 들기
+  // 때문이다
+  it('⚠️ 도구를 든 판도 어림한 구간 안에 들어온다', async () => {
+    const samples: Sample[] = []
+    for (const [atk, def, move, item, label] of ITEM_CASES) {
+      // 급소·빗나감·쓰러짐으로 버려지는 판이 있어 씨앗을 여럿 굴린다
+      for (let s = 0; s < 12; s++) {
+        const got = await oneHit(atk, def, move, 8800 + s * 17 + atk, item)
+        if (got) { samples.push({ ...got, label }); break }
+      }
+    }
+    expect(samples.length, '한 턴도 못 재봤다').toBe(ITEM_CASES.length)
+
+    const bad = samples
+      .filter((s) => s.observed < s.low || s.observed > s.high)
+      .map((s) => `${s.label}: 실제 ${s.observed} ∉ [${s.low}, ${s.high}]`)
+    expect(bad, bad.join(' / ')).toEqual([])
+  }, 60_000)
+
+  // ⚠️ **이빨이 있는지 여기서 본다.** 위 시험은 「구간 안에 든다」라, 어림이
+  // 도구를 아예 안 봐도 넉넉한 구간에 우연히 들어올 수 있다. 도구를 든 어림이
+  // 안 든 어림보다 **실제로 더 큰지**를 따로 못 박는다
+  it('⚠️ 도구를 들면 어림값이 커진다 — 안 그러면 보정이 안 걸린 것이다', () => {
+    const bare = spawn(130, 35, 4242, 'a')
+    const band = withItem(bare, 220)
+    const foe = spawn(387, 70, 4249, 'd')
+    const bite = toAiMove(44)
+    const without = estimateDamage(bite, toAiMon(bare), toAiMon(foe), null, 100)
+    const with_ = estimateDamage(bite, toAiMon(band), toAiMon(foe), null, 100)
+    expect(without).toBeGreaterThan(0)
+    expect(with_).toBeGreaterThan(without)
+  })
 })
