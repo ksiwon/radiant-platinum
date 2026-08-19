@@ -548,11 +548,22 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (!hydrated || !scriptsReady) return
     const save = useSaveStore.getState()
     if (save.pendingInit) {
+      // ⚠️ 새 판이면 값이 아직 하나도 안 섰다. 앞 판에서 켜 둔 `varsReady`가
+      // 남아 있으면 초기화 전에 표가 한 번 돈다
+      fieldScripts.varsReady = false
       if (!initNewGame()) return
       useSaveStore.setState({ pendingInit: false })
       save.commitScriptState(fieldScripts.vars.saved, fieldScripts.vars.flags)
-    } else {
+    } else if (save.loaded) {
       loadVars(save.vars, save.flags)
+    } else {
+      // ⚠️ **아직 이 판의 값이 없다.** `hydrated`는 「리포트를 찾아봤다」는
+      // 뜻이라 세이브가 없어도 참이 되고, `pendingInit`은 오프닝이 이름을 받은
+      // **뒤에야** 선다. 그 사이에 0으로 가득 찬 값을 부으면 `varsReady`가
+      // 열려서 매 프레임 표가 「아직 안 본 컷신」을 오프닝 화면 뒤에서 돌린다 —
+      // 실측으로 주인공 방 TV 방송이 +7.9초에 한 번 돌고, +17.7초의
+      // `vars.reset()`이 그것을 지운 뒤 방에서 또 돌았다
+      return
     }
     if (world.mapId >= 0) enterMap(world.mapId)
   }, [hydrated, scriptsReady, pendingInit])

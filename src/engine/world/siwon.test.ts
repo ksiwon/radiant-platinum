@@ -421,6 +421,8 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
       },
     } as never
     fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    // 세이브가 이미 선 판을 흉내 낸다 — 거짓이면 엔진이 아무 스크립트도 안 건다
+    fieldScripts.varsReady = true
     fieldScripts.ctx = null
     fieldScripts.lastError = null
     fieldScripts.banks = new Map([[COMMON_STRINGS_BANK, read('dialogue/ko/213.json') as string[]]])

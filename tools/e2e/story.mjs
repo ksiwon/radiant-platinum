@@ -28,12 +28,13 @@
 // ⚠️ **뒷문이 아니다.** 확인 지점은 개발 빌드에만 있고(`import.meta.env.DEV`로
 // 감싼 동적 import), 프로덕션 번들에는 청크로도 안 나온다. 여기서 밖에서 읽는
 // 것은 `<html>`의 읽기 전용 표식뿐이다 (`app/sceneMark.ts`).
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { freePort, startVite } from '../devServer.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { playOpening } from './drive.mjs'
+import { installSceneWatch, readSceneWatch, takeSceneWatch } from './sceneWatch.mjs'
 import { missingData } from './route.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -79,6 +80,20 @@ const FRAME_WINDOW_MS = 2_000
 
 /** 무대가 실제로 어느 길로 그렸나 (`WebGPUBackend`인가 `WebGLBackend`인가) */
 let backend = null
+
+/**
+ * 그림이 실제로 있는 사람 번호 (`data/npc/<번호>.png`가 나오는 자리).
+ *
+ * 컷신에 선 사람의 번호가 여기 없으면 판때기가 통째로 안 서서 **사람 하나가
+ * 화면에서 사라진다** — 자리표시자 번호(`OBJ_EVENT_GFX_VAR_*`)를 못 풀면
+ * 그렇게 된다 (`engine/actor/npcs.ts`)
+ */
+const SPRITES = (() => {
+  try {
+    const raw = readFileSync(resolve(ROOT, 'public/data/npcSprites.json'), 'utf8')
+    return new Set(Object.keys(JSON.parse(raw)).map(Number))
+  } catch { return null }
+})()
 
 const rows = []
 const add = (act, id, what, status, detail, extra = {}) => {
@@ -379,7 +394,7 @@ if (ACTS.has('1')) {
     await button.click({ timeout: 60_000 })
     await page.waitForFunction(() => location.pathname === '/intro', null, { timeout: 60_000 })
     const intro = Date.now()
-    const after = await playOpening(page, 'TESTER')
+    const after = await playOpening(page)
     if (after !== '/play') throw new Error(`오프닝이 안 끝났다 — ${after}`)
     await page.waitForSelector('canvas', { timeout: 120_000 })
     // 오버월드가 실제로 서고, 걸을 수 있는가
@@ -720,6 +735,9 @@ if (ACTS.has('2')) {
     let extra = {}
     try {
       if (FRESH || n === 0) await openTitle()
+      // ⚠️ **뛰어들기 전에 건다.** 뛰어든 자리에서 곧바로 도는 컷신이 있어서,
+      // 뒤에 걸면 첫 창들을 놓친다. 세계가 서는 순간 스스로 붙는다
+      await installSceneWatch(page)
       await warpTo(cp)
       const arrived = Date.now() - t0
 
@@ -809,6 +827,13 @@ if (ACTS.has('2')) {
       }
       extra.cutscene = { onArrive, afterWalk }
 
+      // ⚠️ **여기까지는 「안 멈춘다」만 잰 것이다** (REPAIR §9). 컷신이 실제로
+      // 무엇을 보여 줬는지 — 누가 말했고 롬이 적어 둔 쪽이 다 지나갔는지는
+      // 이 자가 본다
+      const watched = readSceneWatch(await takeSceneWatch(page), SPRITES)
+      if (watched.say !== null) extra.scene = watched.say
+      trouble.push(...watched.trouble)
+
       const at = await marks(page)
       const png = await page.screenshot()
       const pix = statsOf(png)
@@ -883,6 +908,7 @@ if (ACTS.has('2')) {
             : walk.moved ? `걷기 ${walk.from}→${walk.to}` : '못 걸었다')}`)
         + (onArrive.taps + afterWalk.taps > 0
           ? ` · 컷신 ${String(onArrive.taps + afterWalk.taps)}번 눌러 끝냈다` : '')
+        + (watched.say === null ? '' : ` · ${watched.say}`)
         + ((afterWalk.fought ?? onArrive.fought)
           ? ` · 컷신이 연 배틀 ${(afterWalk.fought ?? onArrive.fought).ended ? '끝냈다' : '안 끝났다'}` : '')
         + (extra.rewarped === undefined ? '' : ` · ⚠️ 맵 ${extra.rewarped}으로 밀려나 다시 뛰었다`)

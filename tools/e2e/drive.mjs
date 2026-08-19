@@ -641,16 +641,34 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
 }
 
 /**
+ * 오프닝이 묻는 이름칸의 차례. 첫 칸이 주인공이고 둘째 칸이 라이벌이다.
+ *
+ * ⚠️ **둘을 같은 이름으로 채우면 안 된다.** 대사의 이름 자리는 스크립트가
+ * 채워 넣는 **칸 번호**로 갈린다 (`{STRVAR_1 3, 0, …}`은 라이벌,
+ * `{STRVAR_1 3, 1, …}`은 주인공 — 주인공 방 장면이 그렇다). 두 이름이 같으면
+ * 그 칸이 뒤바뀌어도 화면 글자가 똑같아서 **아무도 못 잡는다.** 실측으로
+ * 라이벌의 첫 대사가 주인공 이름으로 뜬 것처럼 보였는데, 알고 보니 하네스가
+ * 두 칸을 같은 글자로 채우고 있었다 (`.audit/rivalScene.mjs`)
+ */
+export const OPENING_NAMES = ['TESTER', 'RIVALIS']
+
+/**
  * 오프닝을 끝까지 넘긴다 (`/intro` → `/play`).
  *
  * 글이 사용자 롬에서 오므로 **모양을 보고 대응한다**: 이름 칸이 뜨면 적고,
- * 몬스터볼이 뜨면 누르고, 고르는 줄이 셋 이상이면 마지막 칸을 고른다
+ * 몬스터볼이 뜨면 누르고, 고르는 줄이 셋 이상이면 마지막 칸을 고른다.
+ *
+ * @param names 이름칸을 채울 차례. 문자열 하나를 주면 그것만 쓰는 옛 방식이라
+ *   **이름 자리가 뒤바뀌어도 못 잡는다** — 되도록 `OPENING_NAMES`를 그대로 준다
  */
-export async function playOpening(page, name) {
+export async function playOpening(page, names = OPENING_NAMES) {
+  const list = typeof names === 'string' ? [names] : names
+  let filled = 0
   for (let i = 0; i < 900 && new URL(page.url()).pathname === '/intro'; i++) {
     const input = page.getByLabel('이름')
     if (await input.count() > 0) {
-      await input.fill(name)
+      await input.fill(list[Math.min(filled, list.length - 1)])
+      filled += 1
       await page.getByRole('button', { name: '결정' }).click()
       await page.waitForTimeout(200); continue
     }

@@ -90,6 +90,24 @@ export const fieldScripts = {
   world: null as FieldWorld | null,
   /** 세이브에 남을 변수·플래그. 지금은 이 자리에만 있다 */
   vars: new VarStore(),
+  /**
+   * 위의 변수에 **세이브 값이 들어왔는가.** 그전에는 전부 0이다.
+   *
+   * ⚠️ **0은 「아직 안 봤다」로 읽힌다.** 매 프레임 표도 좌표 트리거도 「이
+   * 변수가 0이면 걸어라」 꼴이라, 값이 붓기 전 한 프레임이라도 표를 보면
+   * **이미 지나간 컷신이 다시 돈다.**
+   *
+   * 실측(`.audit/rivalScene.mjs`, 처음 화면부터 사람이 하는 그대로 밟아서):
+   * 주인공 방의 TV 방송(`OnFrame` 표, `VAR_PLAYER_HOUSE_SPECIAL_PROGRAM_STATE`가
+   * 0이면 3번)이 **오프닝 화면 뒤에서** +7.50초에 한 번 돌아 그 변수를 1로
+   * 세웠고, +17.33초에 `initNewGame()`의 `vars.reset()`이 그것을 지웠고,
+   * 방이 뜬 +20.04초에 표가 다시 0을 읽어 **두 번째로 돌았다.** 첫 실행은
+   * 오프닝에 가려 안 보이지만 `PlayFanfare`가 그 위에서 울고, 순서가 조금만
+   * 밀리면(초기화가 먼저 돌면) 방송이 통째로 안 나온다.
+   *
+   * 세우는 자리는 `initNewGame()`과 `loadVars()` — 값을 세우는 길이 둘뿐이다
+   */
+  varsReady: false,
   /** 지금 도는 스크립트. null이면 오버월드가 자유롭다 */
   ctx: null as ScriptContext | null,
   /**
@@ -271,6 +289,7 @@ export function initNewGame(): boolean {
   // 그 자리는 원본이 안 쓰는 `…_Unused2` 안이라 어디서도 안 불린다 — 이 줄이
   // 없으면 시작 메뉴에 가방이 영영 안 뜬다
   vars.setFlag(SYSTEM_FLAG.bagAcquired)
+  fieldScripts.varsReady = true
   return true
 }
 
@@ -278,6 +297,7 @@ export function loadVars(saved: Uint16Array, flags: Uint8Array): void {
   const target = fieldScripts.vars
   target.saved.set(saved.subarray(0, target.saved.length))
   target.flags.set(flags.subarray(0, target.flags.length))
+  fieldScripts.varsReady = true
 }
 
 /** 스크립트가 돌고 있는가. 이동·조우 시스템이 이걸 보고 비켜선다 */
@@ -703,6 +723,10 @@ export const scriptSystem = {
     // (`FieldServices.battleUp`이 실측을 적어 뒀다). 위의 `ctx` 갈래는 안 막는다:
     // 배틀을 연 것이 그 스크립트고, 끝나기를 기다리는 것도 그것이다
     if (fieldScripts.services.battleUp?.() === true) return
+    // ⚠️ **세이브 값이 붓기 전에는 아무것도 안 건다** (`varsReady`). 그전에는
+    // 모든 변수가 0이라 표와 트리거가 전부 「아직 안 봤다」로 읽힌다.
+    // 위의 `ctx` 갈래는 안 막는다 — 이미 도는 것은 끝까지 가야 한다
+    if (!fieldScripts.varsReady) return
     // ⚠️ **우리 사람이 원작 연출보다 먼저다** (SIWON.md §6). 복도의 `OnFrame`이
     // 시작하면 그 안에는 못 끼어든다
     if (trySiwonCameo()) return

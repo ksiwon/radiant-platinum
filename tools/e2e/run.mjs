@@ -20,7 +20,7 @@ import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
 import { startVite } from '../devServer.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
-import { driveStory, playOpening } from './drive.mjs'
+import { driveStory, OPENING_NAMES, playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
 import {
   fakeBdsp, readFiles, readInstalled, readInstalledGroups, readInstalledLight,
@@ -1624,7 +1624,6 @@ await ((haveRom && haveBdsp) ? run : () => {})(
 // 보고 말을 건다** — 우리 게임은 사람이 이동을 안 막아서 그 칸을 목적지로
 // 잡으면 사람 위로 올라서 버린다 (`actor/obstacles.ts`)
 
-const STORY_NAME = 'TESTER'
 
 /**
  * ㉖만 길을 미리 계산한다 (`route.mjs`). 그 재료는 개발 산출물이라, 롬과
@@ -1658,7 +1657,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
 
     await page.getByRole('button', { name: '시작', exact: true }).click()
     await where(page, () => location.pathname === '/intro', '새 게임을 눌렀는데 오프닝이 안 뜬다')
-    const after = await playOpening(page, STORY_NAME)
+    const after = await playOpening(page, OPENING_NAMES)
     assert(after === '/play', `오프닝이 안 끝났다 — ${after}`)
 
     const story = await driveStory(page, { totalMs: 900_000 })

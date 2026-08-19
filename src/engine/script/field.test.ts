@@ -16,7 +16,7 @@ import { worldState } from '../../state/worldState'
 import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
 import {
-  enterMap, fieldScripts, initScriptsOf, makeWorld, npcAt, resetTriggerTile, scriptBusy,
+  enterMap, fieldScripts, initScriptsOf, loadVars, makeWorld, npcAt, resetTriggerTile, scriptBusy,
   scriptSystem, signAt, start, tileInFront, triggerAt,
 } from './field'
 import { frameTableScript } from './initScripts'
@@ -96,6 +96,9 @@ maybe('트레이너전', () => {
       aliveMons: () => 3,
     }
     fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    // 세이브가 이미 선 판을 흉내 낸다 — `varsReady`가 거짓이면 엔진이
+    // 표도 트리거도 안 본다 (`field.ts`의 그 주석이 까닭을 적어 뒀다)
+    fieldScripts.varsReady = true
     fieldScripts.ctx = null
     fieldScripts.lastError = null
     // 트레이너 스크립트는 3000번대라 **글 뱅크가 맵이 아니라 공용 문자열**이다.
@@ -179,6 +182,7 @@ maybe('떡잎마을에서 말 걸기', () => {
     fieldScripts.commands = buildCommands(meta.commands)
     fieldScripts.vars = new VarStore()
     fieldScripts.world = makeWorld(fieldScripts.vars, bank)
+    fieldScripts.varsReady = true
     fieldScripts.ctx = null
     fieldScripts.lastError = null
     fieldScripts.names = { player: () => '', rival: () => '', counterpart: () => '' }
@@ -402,6 +406,7 @@ maybe('포켓몬센터 간호사', () => {
     fieldScripts.vars = new VarStore()
     fieldScripts.services = { healParty: () => { healed++ } }
     fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+    fieldScripts.varsReady = true
     fieldScripts.ctx = null
     fieldScripts.lastError = null
     // 2000번대 구역은 `TEXT_BANK_COMMON_STRINGS`를 읽는다. 미리 넣어 두면 fetch가 없다
@@ -538,6 +543,7 @@ maybe('간판 판', () => {
     fieldScripts.commands = buildCommands(meta.commands)
     fieldScripts.vars = new VarStore()
     fieldScripts.world = makeWorld(fieldScripts.vars, bank)
+    fieldScripts.varsReady = true
     fieldScripts.ctx = null
     fieldScripts.lastError = null
     worldState.input.interact = false
@@ -611,6 +617,7 @@ maybe('맵 초기화 스크립트', () => {
     fieldScripts.vars = new VarStore()
     fieldScripts.services = {}
     fieldScripts.world = makeWorld(fieldScripts.vars, [])
+    fieldScripts.varsReady = true
     fieldScripts.ctx = null
   })
 
@@ -649,5 +656,22 @@ maybe('맵 초기화 스크립트', () => {
     // 걸린 스크립트가 **스스로** 이 변수를 1로 바꾼다. 그래서 한 번만 돈다
     vars.set(VAR_LAKE_VERITY_PROF_ROWAN_STATE, 1)
     expect(frameTableScript(init, (id) => vars.get(id))).toBeNull()
+  })
+
+  it('세이브 값이 붓기 전에는 표를 안 본다', () => {
+    enterMap(LAKE_VERITY)
+    // 갓 켠 판이라 변수가 전부 0이다 — 표의 조건(`… == 0`)이 그대로 맞는다
+    expect(frameTableScript(initScriptsOf(LAKE_VERITY)!, (id) => fieldScripts.vars.get(id)))
+      .toBe(LAKE_VERITY_ON_FRAME)
+    fieldScripts.varsReady = false
+    scriptSystem.fixedUpdate()
+    // 여기서 걸면 오프닝 화면 뒤에서 컷신이 한 번 돌고, 새 판 초기화가 그
+    // 결과를 지운 뒤 **또 한 번** 돈다 (`field.ts`의 `varsReady` 주석)
+    expect(fieldScripts.ctx).toBeNull()
+
+    loadVars(fieldScripts.vars.saved, fieldScripts.vars.flags)
+    expect(fieldScripts.varsReady).toBe(true)
+    scriptSystem.fixedUpdate()
+    expect(fieldScripts.ctx).not.toBeNull()
   })
 })
