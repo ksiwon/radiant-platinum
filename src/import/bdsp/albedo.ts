@@ -245,6 +245,134 @@ export interface BakeOptions {
   mainProps?: readonly string[]
 }
 
+/** 불꽃·연기의 모양을 내는 자리. 앞에서부터 있는 것을 쓴다 */
+const EFFECT_SHAPE_PROPS = ['_Blend0Tex', '_LerpTex', '_Mask0Tex'] as const
+/** 두 색을 섞는 비율 */
+const EFFECT_MIX_PROPS = ['_Blend1Tex', '_LerpTex'] as const
+
+/**
+ * PIL `Image.convert("L")`과 같은 회색조.
+ *
+ * ⚠️ **평균이 아니다.** ITU-R 601-2 광도이고 PIL은 정수로 자른다
+ * (`Convert.c`의 `rgb2l`) — 노드 추출기가 그 함수를 쓰므로 여기도 같아야
+ * 픽셀이 맞는다
+ */
+function luma(pixels: Uint8Array, count: number): Uint8Array {
+  const out = new Uint8Array(count)
+  for (let i = 0; i < count; i++) {
+    out[i] = Math.floor(
+      (pixels[i * 4]! * 299 + pixels[i * 4 + 1]! * 587 + pixels[i * 4 + 2]! * 114) / 1000,
+    )
+  }
+  return out
+}
+
+/** 회색 한 장을 다른 크기로. `resize`가 채널마다 따로 도므로 넷에 같은 값을 넣는다 */
+function resizeGray(gray: Uint8Array, w: number, h: number, tw: number, th: number): Uint8Array {
+  if (w === tw && h === th) return gray
+  const rgba = new Uint8Array(w * h * 4)
+  for (let i = 0; i < w * h; i++) {
+    rgba[i * 4] = gray[i]!; rgba[i * 4 + 1] = gray[i]!
+    rgba[i * 4 + 2] = gray[i]!; rgba[i * 4 + 3] = gray[i]!
+  }
+  const big = resize(rgba, w, h, tw, th)
+  const out = new Uint8Array(tw * th)
+  for (let i = 0; i < tw * th; i++) out[i] = big[i * 4]!
+  return out
+}
+
+/**
+ * 불꽃·연기·오라처럼 **색이 재질에 적혀 있는** 조각을 굽는다.
+ *
+ * ⚠️ **이걸 안 하면 하얀 덩어리가 붙는다.** BDSP의 불·연기는 색 텍스처가 없다 —
+ * 리자몽 꼬리불은 `_BaseColor`와 `_LayerColor`가, 또가스 연기는 `_BaseColor`가
+ * 재질에 그대로 적혀 있고 모양은 마스크 그림이 낸다. 밑그림 자리
+ * (`_Col0Tex`·`_MainTex`)가 없다고 통째로 건너뛰면 그 조각에 재질이 안 붙고,
+ * 세는 재질 없는 조각을 **기본 흰색**으로 그린다. 실측으로 54종 233조각이다.
+ *
+ * ⚠️ **마스크는 굽지 않는다.** `FireMask`·`SmokeMask`에는 `_BaseColor`가 없다 —
+ * 스텐실로 깎아 내는 도구지 보이는 면이 아니다. `null`을 주면 `model.ts`가 그
+ * 조각을 통째로 뺀다.
+ *
+ * ⚠️ **노드 추출기가 임자다** (`tools/extract/bdsp_bake_albedo.py`의
+ * `effect_albedo`). 한쪽만 고치면 설치본에만 흰 덩어리가 붙는다 — 실측으로
+ * 이 함수가 없던 동안 목차의 키가 열여섯 자리에서 노드보다 낮게 나왔다
+ * (예: 파이어 2.619 대 3.724m — 불꽃이 통째로 빠진 만큼이다)
+ */
+function effectAlbedo(
+  name: string,
+  colors: ReadonlyMap<string, UnityValue>,
+  slots: ReadonlyMap<string, number>,
+  uvs: ReadonlyMap<string, [number, number, number, number]>,
+  textureAt: ReadonlyMap<number, () => Texture>,
+  maxSize: number | null,
+): BakedMaterial | null {
+  const rgbOf = (prop: string): [number, number, number] | null => {
+    const c = colors.get(prop) as Record<string, number> | undefined
+    return c ? [c.r ?? 0, c.g ?? 0, c.b ?? 0] : null
+  }
+  // ⚠️ 유니티가 적어 둔 색은 이미 선형이다 — 다시 안 편다 (`to_linear`가 항등이다)
+  const base = rgbOf('_BaseColor')
+  if (base === null) return null
+  const top = rgbOf('_LayerColor') ?? base
+
+  // ⚠️ **자를 때 반올림하지 않는다.** 노드가 `astype(np.uint8)`로 버리므로
+  // 여기서 반올림하면 픽셀이 1씩 갈린다. 위쪽 밑그림 길과 일부러 다르다
+  const byte = (v: number): number => Math.trunc(Math.min(1, Math.max(0, v)) * 255)
+
+  let width = 1
+  let height = 1
+  let pixels: Uint8Array
+  let look: MaterialLook = {
+    uv: [1, 1, 0, 0], wrap: [10497, 10497], alpha: 'BLEND', double: true,
+  }
+
+  const shapeKey = EFFECT_SHAPE_PROPS.find((p) => slots.has(p))
+  if (shapeKey === undefined) {
+    // 마스크가 아예 없는 재질(또가스 연기)은 제 색으로 꽉 찬 한 점이다
+    pixels = Uint8Array.from([
+      byte(linearToSrgb(base[0])), byte(linearToSrgb(base[1])), byte(linearToSrgb(base[2])), 255,
+    ])
+  } else {
+    const tex = textureAt.get(slots.get(shapeKey)!)!()
+    width = tex.width
+    height = tex.height
+    const n = width * height
+    const mask = luma(tex.pixels, n)
+    const mixKey = EFFECT_MIX_PROPS.find((p) => slots.has(p))
+    let blend = mask
+    if (mixKey !== undefined) {
+      const m = textureAt.get(slots.get(mixKey)!)!()
+      blend = resizeGray(luma(m.pixels, m.width * m.height), m.width, m.height, width, height)
+    }
+    pixels = new Uint8Array(n * 4)
+    for (let i = 0; i < n; i++) {
+      const k = blend[i]! / 255
+      for (let c = 0; c < 3; c++) {
+        pixels[i * 4 + c] = byte(linearToSrgb(base[c]! * (1 - k) + top[c]! * k))
+      }
+      pixels[i * 4 + 3] = mask[i]!
+    }
+    look = {
+      uv: uvs.get(shapeKey)!,
+      wrap: [GLTF_WRAP[tex.wrapU] ?? 10497, GLTF_WRAP[tex.wrapV] ?? 10497],
+      // 불빛은 뒤가 비쳐야 한다. 원판은 가산인데 glTF에 없어서 반투명으로 얹는다
+      alpha: 'BLEND',
+      double: true,
+    }
+  }
+
+  if (maxSize !== null && Math.max(width, height) > maxSize) {
+    const k = maxSize / Math.max(width, height)
+    const w = Math.max(1, Math.trunc(width * k))
+    const h = Math.max(1, Math.trunc(height * k))
+    pixels = resize(pixels, width, height, w, h)
+    width = w
+    height = h
+  }
+  return { name, look, width, height, pixels }
+}
+
 /**
  * 번들 하나의 재질을 전부 굽는다.
  *
@@ -294,8 +422,13 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
     }
 
     const found = mainProps.find((p) => slots.has(p))
-    // 그림이 없는 재질이 있다 (`FireMask*` 같은 것). 지어내지 않고 건너뛴다
-    if (found === undefined) continue
+    if (found === undefined) {
+      // 밑그림이 없는 재질이 둘로 갈린다 — 색이 재질에 적힌 불꽃·연기는 굽고
+      // (`effectAlbedo`), 색도 없는 `FireMask*`는 지어내지 않고 건너뛴다
+      const effect = effectAlbedo(name, colors, slots, uvs, textureAt, maxSize)
+      if (effect) out.push(effect)
+      continue
+    }
 
     const main = textureAt.get(slots.get(found)!)!()
     const width = main.width

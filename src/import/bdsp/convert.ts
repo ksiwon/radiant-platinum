@@ -441,7 +441,12 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
   const todo = speciesBundles(at)
   if (todo.length === 0) throw new Error('BDSP 포켓몬 배틀 번들을 하나도 못 찾았습니다')
 
-  const index2: Record<string, { file: string, height: number, scale: number }> = {}
+  // ⚠️ **평범한 객체에 담으면 차례가 갈린다.** JS는 `JSON.stringify`에서
+  // **정수처럼 생긴 열쇠를 먼저** 오름차순으로 내보내고 나머지를 넣은 차례로
+  // 내보낸다 — `201`·`202`…를 다 쓴 뒤에야 `201-1`(안농 판 하나)이 나온다.
+  // 파이썬 dict는 넣은 차례 그대로라 `201` 다음이 `201-1`이다. 알맹이는 같은데
+  // **바이트만 갈려서** ⑮가 붉어졌다. 넣은 차례를 들고 직접 엮는다
+  const index2: [string, { file: string, height: number, scale: number }][] = []
   let done = 0
   for (const { dex, form, name } of todo) {
     check(ctx)
@@ -473,21 +478,22 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
         const key = form === 0 ? String(dex) : `${String(dex)}-${String(form)}`
         const file = `${key}.glb`
         put(ctx, out, `models/pokemon/${file}`, glb)
-        index2[key] = {
+        index2.push([key, {
           file,
           height: glbHeight(glb),
           // 폼 배율이 없으면 기본 모습 것으로 떨어진다
           scale: scales.get(scaleKey(dex, form)) ?? scales.get(scaleKey(dex, 0)) ?? 1,
-        }
+        }])
       } catch { /* 이 종은 못 구웠다. 다음으로 */ }
     }
     done++
     ctx.onProgress?.(done, todo.length)
     await breathe(ctx)
   }
-  if (Object.keys(index2).length === 0) throw new Error('BDSP 포켓몬 모델을 하나도 못 구웠습니다')
+  if (index2.length === 0) throw new Error('BDSP 포켓몬 모델을 하나도 못 구웠습니다')
 
-  put(ctx, out, 'models/pokemon/index.json', json({ pokemon: index2 }))
+  const rows = index2.map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',')
+  put(ctx, out, 'models/pokemon/index.json', new TextEncoder().encode(`{"pokemon":{${rows}}}`))
   return out
 }
 

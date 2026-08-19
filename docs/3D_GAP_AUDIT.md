@@ -302,8 +302,10 @@ NPC 3D 상한을 올릴 때 CPU 스키닝과 VRAM을 따로 잰다.
       (`FileNotFoundError: cab-… not found`). 다른 셋(`tr1026_00`·`tr1078_00`·
       `tr1085_00`)은 같은 까닭으로 등신이 막히지만 **같은 번호의 치비로 떨어져서**
       사람은 선다 — 이 하나만 떨어질 자리가 없다. 여는 쪽을 고치려면 번들 하나가
-      아니라 **가리키는 CAB까지 같이 열어야** 한다 (`import/bdsp/model.ts`의
-      `m_FileID` 문지기 · `tools/extract/bdspGlb.py`).
+      아니라 **가리키는 CAB까지 같이 열어야** 한다 — 우리 `SerializedFile`은
+      바깥 파일표(externals)를 아예 안 읽는다 (`import/bdsp/unityfs.ts` ·
+      재질을 못 찾은 껍데기를 버리는 자리는 `import/bdsp/model.ts` ·
+      `tools/extract/bdspGlb.py`).
 - [ ] 기술 입자 `.spa`를 읽는다 (§3.3).
 - [x] 트레이너·몬스터볼·포획·교체 연출이 있다.
 - [x] 인트로·진화·부화·전설·명예의 전당이 3D 장면으로 이어진다.

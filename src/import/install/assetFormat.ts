@@ -43,6 +43,9 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   /** 2 — 일본판 게임코너 뱅크(us #147)가 빠져 있었다. 그 파일이 늘어난다 */
   text: 2,
   /**
+   * 4 — 재질 없는 조각을 안 그린다. 세가 기본 흰색으로 칠하던 자리다
+   * (`import/bdsp/model.ts` · 노드 추출기가 같은 일을 한다). glb 바이트가 준다.
+   *
    * 3 — 주인공 둘에 치비에서 옮겨 온 필드 동작 열여섯을 얹는다
    * (`HERO_FIELD_CLIPS` · `import/bdsp/retarget.ts`). 주인공 둘이 합쳐 2.14MiB 는다.
    *
@@ -50,7 +53,20 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 달라지므로 이미 깔린 사람도 이 그룹만 다시 굽게 한다 — 안 올리면 설치본의
    * 주인공이 계속 절차형으로만 낚시한다
    */
-  npcModels: 3,
+  npcModels: 4,
+  /**
+   * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
+   *
+   * 옛 판으로 깔린 설치본에는 **포켓몬 쉰 종·판이 아예 없다** — 껍데기 하나가
+   * 바깥 파일의 재질을 가리키면 그 종이 통째로 빠졌다(독침붕·리자몽·강챙이·
+   * 캐스퐁 셋·테오키스 넷·기라티나…). 목차가 27,420바이트로 노드의 29,438과
+   * 갈렸고, 그 쉰은 배틀에 서지 않았다.
+   *
+   * 같은 판에서 **재질 없는 조각을 안 그리게** 됐다 — 세 셰이더의 기본 흰색이
+   * 리자몽 꼬리·또가스 연기·로토무 오라에 흰 덩어리로 붙던 자리다. glb 바이트가
+   * 달라지므로 이미 깔린 사람도 이 그룹만 다시 굽는다 (`import/bdsp/model.ts`)
+   */
+  monModels: 2,
 }
 
 export function groupFormat(name: string): number {

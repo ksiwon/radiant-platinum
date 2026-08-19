@@ -14,7 +14,7 @@
 // 붙는 것이 아니다 — release blocker 2번은 이걸로 안 풀린다 (DEPLOY.md §3).
 import { createServer as netServer } from 'node:net'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
@@ -40,6 +40,31 @@ const only = (process.argv.find((a) => a.startsWith('--only=')) ?? '').slice(7)
 if (!existsSync(resolve(DIST, 'index.html'))) {
   console.error('dist/가 없다 — pnpm build 먼저')
   process.exit(1)
+}
+
+// ⚠️ **낡은 `dist/`로 재면 고친 것을 안 잰다.** 여기가 띄우는 것은 소스가 아니라
+// 구운 결과물이라, `src/`를 고치고 안 구우면 **옛 앱을 재고 새 소스로 판정한다.**
+// 실측으로 그 조합이 케이스 다섯을 한꺼번에 빨갛게 만들었다 — ⑮는 고친 변환기
+// 대신 옛 것을 돌려 옛 값을 냈고, ⑱·⑲·㉒·㉗은 **지금 소스**의 그룹 판으로 심은
+// 설치본을 **옛 판**을 든 앱이 「낡았다」고 버렸다. 둘 다 "고쳤는데 안 고쳐졌다"로
+// 보여서 원인을 앱에서 찾게 된다
+{
+  const newest = (dir) => {
+    let at = 0
+    for (const e of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+      if (e.isDirectory()) continue
+      const t = statSync(resolve(e.parentPath ?? e.path, e.name)).mtimeMs
+      if (t > at) at = t
+    }
+    return at
+  }
+  const src = newest(resolve(ROOT, 'src'))
+  const built = statSync(resolve(DIST, 'index.html')).mtimeMs
+  if (src > built) {
+    const mins = Math.round((src - built) / 60_000)
+    console.error(`dist/가 src/보다 ${String(mins)}분 낡았다 — pnpm build 먼저`)
+    process.exit(1)
+  }
 }
 
 /**

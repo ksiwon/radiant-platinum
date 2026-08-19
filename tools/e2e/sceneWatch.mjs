@@ -30,6 +30,11 @@ export async function installSceneWatch(page) {
     const f = await import('/src/engine/script/field.ts')
     const printer = await import('/src/engine/script/printer.ts')
     const npcs = await import('/src/engine/actor/npcs.ts')
+    // ⚠️ **소품은 사람이 아니다.** 배치표에 사람과 같이 들어 있지만 간판 여섯·
+    // 눈덩이·책·사천왕 방문·로토무 방 벽 열 종은 원작에서 **3D 오브젝트**라
+    // 2D 그림표에 아예 없다 (`scene/ObjectProps` 머리말). 안 거르면 「그림이
+    // 없는 사람이 섰다」가 현관 앞(91·92·94)과 갤럭시단(262)에서 헛돈다
+    const props = await import('/src/import/platinum/fldeffProps.ts')
 
     const arm = () => {
       const state = {
@@ -81,9 +86,13 @@ export async function installSceneWatch(page) {
         state.boxes.push({
           script: world.scriptID ?? null,
           msg,
-          talker: who ? { localID: who.localID, gfx: who.gfx } : null,
+          // `prop`이면 그림이 없는 것이 맞다 — 간판·게시판이 말을 거는 자리다
+          talker: who
+            ? { localID: who.localID, gfx: who.gfx, prop: props.PROP_KIND_BY_GFX.has(who.gfx) }
+            : null,
         })
         for (const a of npcs.npcActors.list) {
+          if (props.PROP_KIND_BY_GFX.has(a.gfx)) continue
           if (!state.gfx.includes(a.gfx)) state.gfx.push(a.gfx)
         }
       }
@@ -156,14 +165,19 @@ export function readSceneWatch(seen, sprites) {
 
   // ① 누가 말하는가. 컷신에 선 사람과 말을 건 상대의 그림 번호가 **실제로 있는
   // 번호인가.** 없으면 판때기가 통째로 안 서서 사람 하나가 화면에서 사라진다 —
-  // 자리표시자 번호(`OBJ_EVENT_GFX_VAR_*`)를 못 푸는 것이 그 길이다
+  // 자리표시자 번호(`OBJ_EVENT_GFX_VAR_*`)를 못 푸는 것이 그 길이다.
+  //
+  // ⚠️ **소품은 여기 안 온다.** 간판 여섯·눈덩이·책·사천왕 방문·로토무 방 벽
+  // 열 종은 원작에서 3D 오브젝트라 2D 그림표에 아예 없고(`PROP_KIND_BY_GFX`),
+  // 그림이 없는 것이 **맞다.** 안 거르니 현관 앞이 91·92·94로, 갤럭시단이
+  // 262로 헛돌았다 — 이 자가 처음 잡은 둘이 둘 다 그것이었다
   if (sprites !== null) {
     const missing = seen.gfx.filter((g) => !sprites.has(g))
     if (missing.length > 0) {
       trouble.push(`그림이 없는 사람이 컷신에 섰다 — 번호 ${missing.join('·')}`)
     }
     for (const box of seen.boxes) {
-      if (box.talker !== null && !sprites.has(box.talker.gfx)) {
+      if (box.talker !== null && box.talker.prop !== true && !sprites.has(box.talker.gfx)) {
         trouble.push(`말을 건 상대의 그림이 없다 — 스크립트 ${String(box.script)} `
           + `· 사람 ${String(box.talker.localID)} · 번호 ${String(box.talker.gfx)}`)
       }

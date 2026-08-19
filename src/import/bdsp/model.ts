@@ -508,6 +508,8 @@ export interface ExportStat {
   triangles: number
   bones: number
   materials: number
+  /** 재질이 없어 안 그린 조각의 이름. 노드 추출기의 `noMaterial`과 같은 것이다 */
+  noMaterial: string[]
   bytes: number
   outward: number
   height: number
@@ -592,6 +594,7 @@ export async function exportModel(
   const skins: Record<string, unknown>[] = []
   const seenMesh = new Set<number>()
   let dropped = 0
+  const noMaterial: string[] = []
   let vertexTotal = 0
   let triangleTotal = 0
   let outwardSum = 0
@@ -604,6 +607,40 @@ export async function exportModel(
     // 벌이 같은 메시를 두 번 가리킨다 — 두 번 쓰면 정점이 두 배가 된다
     const meshPid = num((v.m_Mesh as Props | undefined)?.m_PathID)
     if (meshPid && seenMesh.has(meshPid)) { dropped++; continue }
+
+    // ⚠️ **재질을 못 찾으면 그 껍데기만 버린다 — 종을 버리지 않는다.**
+    //
+    // 못 찾는 것은 그 재질이 **다른 파일**에 있어서다(PPtr의 `m_FileID`가 0이
+    // 아니다). 우리 `Environment`는 넘겨준 번들을 하나로 합칠 뿐 바깥 파일표를
+    // 안 읽으므로(`unityfs.ts`의 `SerializedFile`에 externals가 없다) 그 참조는
+    // 안 풀린다.
+    //
+    // 한동안 여기서 **종 전체를 세웠다.** 그랬더니 목차가 29,438에서
+    // 27,420바이트로 줄었다 — 실측(`.audit/monFail.mjs`)으로 종·판 557 중
+    // **쉰**이 그렇게 통째로 빠졌고(독침붕·야도란·쁘사이돈·강챙이·리자몽·
+    // 캐스퐁 셋·테오키스 넷·기라티나…), 쉰 다 **성한 껍데기가 둘 이상 남아
+    // 있었다.** 노드 추출기는 같은 자리에서 껍데기 하나만 버리고 넘어간다
+    // (`tools/extract/bdspGlb.py` — `smr.m_Materials[0].read()`의 try/except).
+    //
+    // ⚠️ **그래도 트레이너 되돌림은 안 깨진다.** 등신은 껍데기가 `baseSkin`
+    // 하나뿐이라 그것이 버려지면 아래 「쓸 만한 메시가 하나도 없다」가 그대로
+    // 서고, `convert.ts`의 `bake`가 같은 번호의 치비로 떨어진다 — 실측으로
+    // `tr1026_00`·`tr1078_00`·`tr1085_00` 셋이 그 길이다.
+    //
+    // ⚠️ **첫 재질만 보는 노드보다 넓게 본다.** 노드는 `m_Materials[0]`만
+    // 읽어 보고, 둘째 이후가 안 풀리면 나중에 통째로 선다. 이 덤프에서는
+    // 노드가 557을 다 구우므로 「둘째 이후만 안 풀리는 껍데기」가 없다는
+    // 뜻이고, 그래서 전부 보는 것과 첫째만 보는 것이 같은 답을 낸다
+    const matNames: string[] = []
+    let lostMaterial = false
+    for (const m of (v.m_Materials as Props[] | undefined) ?? []) {
+      const pathId = num(m.m_PathID)
+      const mv = pathId === 0 ? null : (env.read(pathId) as Props | null)
+      if (pathId !== 0 && mv === null) { lostMaterial = true; break }
+      matNames.push((mv?.m_Name as string | undefined) ?? '')
+    }
+    if (lostMaterial) { dropped++; continue }
+
     const meshEntry = env.entryOf(meshPid)
     if (!meshEntry || meshEntry.type !== 'Mesh') { dropped++; continue }
     const meshValue = env.read(meshPid) as Props | null
@@ -668,9 +705,20 @@ export async function exportModel(
 
     // ⚠️ **JOINTS_0을 노드 번호로 바꾸면 안 된다.** glTF에서 이 값은 노드가 아니라
     // **그 스킨의 `joints` 배열 안 자리**다. 옮겨야 하는 것은 `joints` 쪽이다
+    //
+    // ⚠️ **못 찾은 뼈를 0번으로 떨어뜨리면 안 된다.** 그러면 그 자리에 실린
+    // 정점이 **뿌리에 묶여** 몸에서 떨어져 나가는데, 화면에서는 "저 사람 팔이
+    // 좀 이상하다"로만 보인다. 실측으로 `tr1078_00`의 껍데기가 **PathID 0짜리
+    // 빈 뼈 자리**를 들고 있다 — 노드 추출기는 거기서 선다
+    // (`ValueError: PPtr can't deref with m_PathID == 0!`, `bdspGlb.py`의
+    // `smr.m_Bones`) 그리고 `convert.ts`의 `bake`가 **같은 번호의 치비**로
+    // 떨어져서 온전한 몸이 선다. 여기서 안 세우면 그 되돌림이 안 걸리고,
+    // 설치본에만 뼈가 어긋난 등신이 선다 (sprite 131)
     const remap: number[] = []
     for (const b of (v.m_Bones as Props[] | undefined) ?? []) {
-      remap.push(boneAt.get(num(b.m_PathID)) ?? 0)
+      const at = boneAt.get(num(b.m_PathID))
+      if (at === undefined) throw new ModelError(`뼈를 못 찾았다 (PathID ${String(num(b.m_PathID))})`)
+      remap.push(at)
     }
     if (remap.length === 0) remap.push(roots[0] ?? 0)
     const maxJoint = remap.length - 1
@@ -701,36 +749,10 @@ export async function exportModel(
       return got
     }
 
-    const matNames: string[] = []
-    for (const m of (v.m_Materials as Props[] | undefined) ?? []) {
-      // ⚠️ **가리키는데 못 찾으면 굽기를 그만둔다.**
-      //
-      // 못 찾는 것은 대개 그 재질이 **다른 파일**에 있어서다(PPtr의 `m_FileID`가
-      // 0이 아니다). 우리 `Environment`는 넘겨준 번들을 하나로 합치므로
-      // (`environment.ts`) 그 파일을 같이 열었으면 풀리고, 안 열었으면 안 풀린다.
-      //
-      // 안 풀린 것을 빈 이름으로 넘기면 **재질 없는 몸이 조용히 구워진다.**
-      // `convert.ts`의 `bake`는 이 실패를 전제로 다음 후보(같은 번호의 치비
-      // 번들)로 넘어가게 되어 있는데, 여기서 안 세우면 그 되돌림이 영영 안
-      // 걸린다 — 실측으로 `tr1026_00`·`tr1078_00`·`tr1085_00` 셋이 그렇게
-      // 재질 없이 구워져 **설치본에만** 섰다. 노드 추출기는 같은 자리에서
-      // 파이썬 UnityPy가 `FileNotFoundError`로 서서 치비로 떨어진다.
-      //
-      // ⚠️ **`m_FileID`만 보고 세우면 안 된다.** 그렇게 했더니 여러 벌을 같이
-      // 여는 포켓몬 쪽에서 **풀리는 참조까지 막혀** 목차가 29,438에서
-      // 27,420바이트로 줄었다(모델 서른여덟쯤). 세울 자리는 「바깥이다」가
-      // 아니라 **「못 찾았다」**다
-      const pathId = num(m.m_PathID)
-      const mv = pathId === 0 ? null : (env.read(pathId) as Props | null)
-      if (pathId !== 0 && mv === null) {
-        throw new Error(`재질을 못 찾았다 (FileID ${String(num(m.m_FileID))} · PathID ${String(pathId)})`)
-      }
-      matNames.push((mv?.m_Name as string | undefined) ?? '')
-    }
-
     const wideIndex = false
     void wideIndex
     const primitives: Record<string, unknown>[] = []
+    const meshName = (meshValue.m_Name as string | undefined) ?? ''
     mesh.subMeshes.forEach((sub, i) => {
       // 시작 위치가 **인덱스 번호가 아니라 바이트 오프셋**이다
       const stride = num(meshValue.m_IndexFormat) === 1 ? 4 : 2
@@ -755,10 +777,20 @@ export async function exportModel(
         indices: buf.add(tri, 'SCALAR', UINT, ELEMENT_BUFFER),
         mode: 4,
       }
+      // ⚠️ **재질이 없으면 그리지 않는다.** three는 재질 없는 조각을 **기본
+      // 흰색**으로 그린다 — 리자몽 꼬리·또가스 연기·로토무 오라에 흰 덩어리가
+      // 붙는다. 색이 있는 것은 알베도가 구워 주고, 여기 남는 것은 스텐실로
+      // 깎아 내는 `*Mask` 조각뿐이라 안 그리는 것이 맞다. 노드 추출기가 같은
+      // 자리에서 같은 일을 한다 (`bdspGlb.py`의 `noMaterial` — 54종 233조각)
       const mat = materialOf.get(name)
-      if (mat !== undefined) prim.material = mat
+      if (mat === undefined) { noMaterial.push(name || meshName); return }
+      prim.material = mat
       primitives.push(prim)
     })
+
+    // 조각이 하나도 안 남았다 — 스텐실 마스크만 든 껍데기다. glTF는 조각 없는
+    // 메시를 안 받으므로 껍데기째 뺀다 (`verifyGlb`가 잡아 준다)
+    if (primitives.length === 0) { dropped++; continue }
 
     // X 뒤집기를 역바인드 행렬에도 옮긴다: S·M·S (S = diag(-1,1,1,1))
     const boneCount = mesh.bindPose.length / 16
@@ -776,7 +808,7 @@ export async function exportModel(
       }
     }
 
-    meshes.push({ name: (meshValue.m_Name as string | undefined) ?? '', primitives })
+    meshes.push({ name: meshName, primitives })
     skins.push({
       inverseBindMatrices: buf.add(ibm, 'MAT4', FLOAT),
       joints: remap,
@@ -827,6 +859,7 @@ export async function exportModel(
       triangles: triangleTotal,
       bones: bones.length,
       materials: materials.length,
+      noMaterial,
       bytes: glb.byteLength,
       outward: outwardCount ? outwardSum / outwardCount : 0,
       height: highest > lowest ? highest - lowest : 0,
