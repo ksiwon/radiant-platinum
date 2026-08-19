@@ -300,6 +300,48 @@ export function buildOf(bundle: string): 'battle' | 'field' {
 export const TRAINER_CLIPS = /^(advent_b|order_b|lose01_b)$/
 
 /**
+ * 주인공 몸에 **치비에서 옮겨 실을** 필드 동작 클립 열여섯.
+ *
+ * 등신 몸(`pc0001_00`·`pc0002_00`)에 붙은 스물 몇은 전부 배틀 동작이라 낚시도
+ * 폭포도 없다. 필드 동작은 치비(`fc0001_00`·`fc0002_00`)에만 있고, 쉬는 자세가
+ * 서로 다른 두 리그라 **로컬 회전을 복사하면 안 된다** — 옮기는 수식은
+ * `import/bdsp/retarget.ts`에 있다.
+ *
+ * 걷기·뛰기는 여기 없다. `actor/locomotion`이 뼈를 직접 돌려 만드는 것이고
+ * (걸음이 속도에 묶여야 발이 안 미끄러진다), 그 자리를 클립으로 바꾸는 것은
+ * 이 줄의 몫이 아니다.
+ *
+ * ⚠️ **굽는 쪽 둘이 이것을 같이 본다.** `tools/extract/npcModels.mjs`가
+ * `bdspGlb.py --only`에 쉼표로 넘기고, `src/import/bdsp/convert.ts`가 같은
+ * 목록을 `borrowOnly`로 넘긴다. 따로 적으면 개발 서버와 설치본이 다른 클립을
+ * 싣는다
+ */
+export const HERO_FIELD_CLIPS = [
+  // 낚시 (`engine/actor/fishing`의 단계와 짝이 맞는다)
+  'fishing_start_f', 'fishing_loop_f', 'fishing_hit_f', 'fishing_hit_loop_f',
+  'fishing_finish_f', 'fishing_finish_success_f', 'fishing_finish_success_loop_f',
+  // 폭포오르기
+  'waterfall_in_f', 'waterfall_loop_f', 'waterfall_end_f',
+  // 락클라임. ⚠️ **`climb_down_f`는 안 싣는다** — 원작에서 `climb_up_f`와 키
+  // 140개까지 바이트로 같은 자료다. 오르내림은 몸이 도는 것으로 갈린다
+  'climb_up_f',
+  // 공중날기
+  'fly_on_f', 'fly_off_f',
+  // 물주기 (`scene/berryPatches`)
+  'watering_f', 'watering_loop_f', 'watering_end_f',
+] as const
+
+/**
+ * 이 번들에 필드 동작을 꿔 줄 치비 번들. 없으면 `null`.
+ *
+ * 주인공 둘만이다 — 다른 사람은 오버월드에서 낚시도 폭포도 안 한다
+ */
+export function fieldClipDonor(bundle: string): string | null {
+  if (bundle !== NPC_BUNDLE.hero && bundle !== NPC_BUNDLE.heroine) return null
+  return `fc${bundle.slice(2)}`
+}
+
+/**
  * 이름이 붙은 번들 몇 개.
  *
  * 번호만 있는 이름이라 코드에서 안 읽히므로 여기 한 번 적어 둔다. 값은

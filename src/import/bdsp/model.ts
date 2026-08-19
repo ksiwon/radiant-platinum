@@ -16,6 +16,7 @@ import {
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
 import { resource } from './texture'
+import { Rig, retarget, roundTripError, type Quat, type RigBone } from './retarget'
 import type { Entry, Environment } from './environment'
 import type { UnityValue } from './typetree'
 
@@ -329,6 +330,160 @@ function buildAnimations(
   return { animations, stat }
 }
 
+// ── 빌려 온 클립 ─────────────────────────────────────────────────────────────
+
+export interface BorrowStat {
+  /** 옮겨 온 클립 수 */
+  borrowed: number
+  /** 그 클립들이 모는 채널을 다 더한 것 */
+  channels: number
+  /** 한 클립이 몬 뼈의 최대 수 */
+  bones: number
+  /** 왕복 오차. 0에서 멀어지면 수식이 틀린 것이다 */
+  roundTrip: number
+  /** 이름이 겹쳐서 어느 뼈인지 모를 자리. **짐작하지 않고 빼고 센다** */
+  ambiguous: number
+}
+
+/** 경로의 마지막 칸. 짝을 짓는 이름이다 */
+const leafOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1)
+
+/** 경로의 첫 칸. 클립이 어느 갈래를 모는지 가른다 */
+const topOf = (path: string): string => {
+  const cut = path.indexOf('/')
+  return cut === -1 ? path : path.slice(0, cut)
+}
+
+/** 뼈들을 경로로 색인한 리그로. 회전은 **X 뒤집기 전**으로 되돌린다 */
+function rigOf(bones: readonly Bone[]): { rig: Rig, pathOf: Map<number, string> } {
+  const pathOf = transformPaths(bones)
+  const parentOf = new Map<number, number>()
+  bones.forEach((b, i) => { for (const c of b.children) parentOf.set(c, i) })
+  const map = new Map<string, RigBone>()
+  bones.forEach((b, i) => {
+    const path = pathOf.get(b.pathId)
+    if (path === undefined) return
+    const up = parentOf.get(i)
+    const parent = up !== undefined ? pathOf.get(bones[up]!.pathId) ?? null : null
+    // ⚠️ `flipQuat`는 제 자신이 역이다 — `readBones`가 이미 뒤집어 둔 것을 한 번
+    // 더 걸어 유니티 원래 값으로 돌려놓는다. 클립 커브가 원시 값이라 둘을 같은
+    // 자리에서 섞어야 하고, 뒤집기는 **마지막에 한 번만** 건다
+    map.set(path, { parent, rest: flipQuat(b.rotation) })
+  })
+  return { rig: new Rig(map), pathOf }
+}
+
+/**
+ * 다른 몸의 클립을 이 몸으로 옮겨 온다 (`retarget.ts` 머리말).
+ *
+ * 이름이 같은 뼈만 옮기고 나머지는 타깃의 쉬는 자세로 둔다 — **지어내지 않는다.**
+ *
+ * ⚠️ **짝을 지을 때 클립이 실제로 모는 갈래로 좁힌다.** 치비 번들은 자전거·
+ * 낚싯대·탈것이 제 안에 사람 뼈대를 한 벌씩 더 들고 있어서, 이름만 보면
+ * `RItem1`처럼 쉬는 자세까지 다른 뼈를 집는다 (실측: 겹치는 117쌍 중 116쌍은
+ * 자세가 같고 한 쌍이 1.0000 다르다). 클립 56개의 바인딩 16,305건이 전부
+ * `Origin` 갈래 하나에 떨어지고 그 안에서는 이름이 126종에 126개라, 그 갈래로
+ * 좁히면 짝짓기가 확정된다
+ */
+function borrowedClips(
+  donor: Environment, buf: GlbBuffer, bones: readonly Bone[],
+  boneAt: ReadonlyMap<number, number>, only: ReadonlySet<string>,
+): { animations: Record<string, unknown>[], stat: BorrowStat } {
+  const source = rigOf(readBones(donor))
+  const target = rigOf(bones)
+  const hashOf = new Map<number, string>()
+  for (const path of source.pathOf.values()) hashOf.set(crc32(path), path)
+
+  /** 타깃 이름 → 그 뼈의 경로와 glTF 노드 번호 */
+  const targetByName = new Map<string, { path: string, node: number }>()
+  for (const b of bones) {
+    const path = target.pathOf.get(b.pathId)
+    const node = boneAt.get(b.pathId)
+    if (path === undefined || path === '' || node === undefined) continue
+    const leaf = leafOf(path)
+    if (!targetByName.has(leaf)) targetByName.set(leaf, { path, node })
+  }
+
+  const animations: Record<string, unknown>[] = []
+  const stat: BorrowStat = { borrowed: 0, channels: 0, bones: 0, roundTrip: 0, ambiguous: 0 }
+  for (const e of donor.ofType('AnimationClip')) {
+    const clip = donor.readEntry(e) as Props | null
+    if (!clip) continue
+    const name = (clip.m_Name as string | undefined) ?? ''
+    if (only.size > 0 && !only.has(name)) continue
+    const { curves } = clipCurves(clip)
+
+    /** 소스 경로 → 회전 커브 넷 */
+    const rots = new Map<string, Curve[]>()
+    /** 이 클립이 실제로 모는 갈래 */
+    const branches = new Set<string>()
+    for (const { hash, attr, first } of bindingsByCurve(clip)) {
+      const path = hashOf.get(hash)
+      if (path === undefined) continue
+      branches.add(topOf(path))
+      if (attr !== ROTATION) continue
+      const parts: Curve[] = []
+      for (let c = 0; c < 4; c++) parts.push(curves.get(first + c) ?? [])
+      rots.set(path, parts)
+    }
+    const stamps = new Set<number>()
+    for (const parts of rots.values()) for (const p of parts) for (const k of p) stamps.add(k.time)
+    const times = [...stamps].sort((a, b) => a - b)
+    if (times.length < 2) continue
+
+    // 그 갈래 안에서만 이름을 짝짓는다. 같은 이름이 둘이면 **버린다**
+    const byName = new Map<string, string | null>()
+    for (const path of source.rig.bones.keys()) {
+      if (path === '' || !branches.has(topOf(path))) continue
+      const leaf = leafOf(path)
+      byName.set(leaf, byName.has(leaf) ? null : path)
+    }
+    /** 타깃 경로 → 소스 경로 */
+    const pairs = new Map<string, string>()
+    for (const [leaf, from] of byName) {
+      if (from === null) { stat.ambiguous++; continue }
+      const to = targetByName.get(leaf)
+      if (to) pairs.set(to.path, from)
+    }
+    if (pairs.size === 0) continue
+
+    const frames = times.map((t) => {
+      const frame = new Map<string, Quat>()
+      for (const [path, parts] of rots) {
+        frame.set(path, [
+          sampleCurve(parts[0]!, t), sampleCurve(parts[1]!, t),
+          sampleCurve(parts[2]!, t), sampleCurve(parts[3]!, t),
+        ])
+      }
+      return frame
+    })
+    const { moved, shared } = retarget(source.rig, target.rig, pairs, frames)
+    // 첫 네 프레임이면 넉넉하다 — 수식이 틀리면 한 프레임에서 바로 벌어진다
+    stat.roundTrip = Math.max(
+      stat.roundTrip, roundTripError(source.rig, target.rig, pairs, frames.slice(0, 4)),
+    )
+
+    const samplers: Record<string, unknown>[] = []
+    const channels: Record<string, unknown>[] = []
+    const aTime = buf.add(Float32Array.from(times), 'SCALAR', FLOAT)
+    for (const path of shared) {
+      const node = targetByName.get(leafOf(path))?.node
+      if (node === undefined) continue
+      const values: number[] = []
+      for (const frame of moved) values.push(...flipQuat(frame.get(path) ?? [0, 0, 0, 1]))
+      const aVal = buf.add(Float32Array.from(values), 'VEC4', FLOAT)
+      samplers.push({ input: aTime, output: aVal, interpolation: 'LINEAR' })
+      channels.push({ sampler: samplers.length - 1, target: { node, path: 'rotation' } })
+    }
+    if (channels.length === 0) continue
+    animations.push({ name, samplers, channels })
+    stat.borrowed++
+    stat.channels += channels.length
+    stat.bones = Math.max(stat.bones, channels.length)
+  }
+  return { animations, stat }
+}
+
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
 
 export interface ExportOptions extends BakeOptions {
@@ -336,6 +491,14 @@ export interface ExportOptions extends BakeOptions {
   keepClips?: boolean
   /** 이름이 맞는 클립만. 포켓몬은 배틀용(`^ba`)만 쓴다 */
   clipFilter?: RegExp | null
+  /**
+   * 이 번들의 클립을 뼈 이름으로 옮겨 온다 (치비 → 등신).
+   *
+   * 주인공의 필드 동작이 등신 몸에 없어서 쓴다 — 수식은 `retarget.ts`에 있다
+   */
+  clipsFrom?: Environment | null
+  /** 옮겨 올 클립 이름들. 비우면 전부 */
+  borrowOnly?: ReadonlySet<string> | null
 }
 
 export interface ExportStat {
@@ -349,6 +512,8 @@ export interface ExportStat {
   outward: number
   height: number
   anim: AnimStat
+  /** 다른 몸에서 옮겨 온 클립. 안 옮겼으면 없다 */
+  borrow?: BorrowStat
   problems: string[]
 }
 
@@ -607,6 +772,11 @@ export async function exportModel(
   const { animations, stat: anim } = options.keepClips === false
     ? { animations: [], stat: { clips: 0, channels: 0, unresolved: 0, keys: 0, skipped: 0 } }
     : buildAnimations(env, buf, nodeOfHash, options.clipFilter ?? null)
+  // 빌려 온 것은 제 클립 **뒤에** 붙는다 — 이름이 안 겹치므로 차례가 뜻을 안 바꾼다
+  const borrow = options.clipsFrom
+    ? borrowedClips(options.clipsFrom, buf, bones, boneAt, options.borrowOnly ?? new Set())
+    : null
+  if (borrow) animations.push(...borrow.animations)
 
   const gltf: Gltf = {
     asset: { version: '2.0', generator: 'radiant-platinum bdsp' },
@@ -640,6 +810,7 @@ export async function exportModel(
       outward: outwardCount ? outwardSum / outwardCount : 0,
       height: highest > lowest ? highest - lowest : 0,
       anim,
+      ...(borrow ? { borrow: borrow.stat } : {}),
       problems: verifyGlb(glb),
     },
   }

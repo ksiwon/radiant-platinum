@@ -19,7 +19,7 @@ import { arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { encodePng } from '../platinum/png'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
-import { TRAINER_CLIPS, modelFor } from '../../engine/actor/npcModels'
+import { HERO_FIELD_CLIPS, TRAINER_CLIPS, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
 import { TRAINER_CLIP } from '../../scene/battle/battleTrainerVisual'
 import { TRAINER_MODELS } from './trainerModels'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
@@ -109,6 +109,42 @@ suite('인물', () => {
     expect(new Set(clipNames.map((a) => a.name)))
       .toEqual(new Set(Object.values(TRAINER_CLIP)))
   }, 120_000)
+
+  // ⚠️ **여기도 굽는 쪽 둘이다.** 필드 동작은 치비 번들에만 있어서 옮겨 와야
+  // 하는데, 옮기는 도구가 한동안 파이썬에만 있었다 — 그러면 개발 서버에서는
+  // 주인공이 낚싯대를 던지고 설치본에서는 안 던진다
+  it('주인공 몸에 치비의 필드 동작 열여섯이 실린다', async () => {
+    const hero = 'pc0001_00'
+    const donor = fieldClipDonor(hero)
+    expect(donor).toBe('fc0001_00')
+    const env = openEnvironment([bytes(person('battle', hero)!)])
+    // ⚠️ **치비 번들 하나만 연다.** 메시는 다른 번들에 나가 있지만(PLAN §16.9)
+    // 여기서 쓰는 것은 Transform 계층과 AnimationClip뿐이고 그 둘은 이 안에 있다
+    const from = openEnvironment([bytes(person('field', donor!)!)])
+    expect(from.ofType('AnimationClip').length).toBe(56)
+    expect(from.ofType('Transform').length).toBe(276)
+
+    const { glb, stat } = await exportModel(env, encodePng, {
+      maxSize: 256, keepClips: true, clipFilter: TRAINER_CLIPS,
+      clipsFrom: from, borrowOnly: new Set(HERO_FIELD_CLIPS),
+    })
+    // 제 클립은 둘뿐이다 — 주인공에게는 `lose01_b`가 아예 없다 (원작이 안 만들었다)
+    expect(stat.anim.clips).toBe(2)
+    expect(stat.borrow?.borrowed).toBe(HERO_FIELD_CLIPS.length)
+    expect(stat.borrow?.channels).toBe(1088)
+    // 이름이 겹쳐 버린 뼈가 하나라도 있으면 그 자리가 조용히 안 움직인다
+    expect(stat.borrow?.ambiguous).toBe(0)
+    // 대수가 맞는가. 켤레를 잘못 걸면 0.1 단위로 벌어진다
+    expect(stat.borrow?.roundTrip).toBeLessThan(1e-12)
+    expect(verifyGlb(glb)).toEqual([])
+
+    const head = new DataView(glb.buffer, glb.byteOffset, glb.byteLength)
+    const json = new TextDecoder().decode(glb.subarray(20, 20 + head.getUint32(12, true)))
+    const clips = (JSON.parse(json) as { animations?: { name: string }[] }).animations ?? []
+    for (const name of HERO_FIELD_CLIPS) {
+      expect(clips.some((c) => c.name === name), name).toBe(true)
+    }
+  }, 180_000)
 
   it('그림 번호가 BDSP 번들로 이어진다', () => {
     // 규칙은 `engine/actor/npcModels`가 임자다. 여기서는 **그 규칙이 가리키는

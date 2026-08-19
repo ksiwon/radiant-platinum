@@ -18,7 +18,8 @@ import {
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
 import {
-  NPC_BUNDLE, TRAINER_CLIPS, buildOf, modelFor, type NpcModelTable,
+  HERO_FIELD_CLIPS, NPC_BUNDLE, TRAINER_CLIPS, buildOf, fieldClipDonor, modelFor,
+  type NpcModelTable,
 } from '../../engine/actor/npcModels'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { openEnvironment, type Environment } from './environment'
@@ -171,6 +172,27 @@ async function scanPersons(
 
 // ── npcModels ────────────────────────────────────────────────────────────────
 
+/**
+ * 주인공이면 치비에서 필드 동작을 꿔 온다 (`engine/actor/npcModels`의
+ * `HERO_FIELD_CLIPS`). 다른 사람이면 빈 것을 돌려준다.
+ *
+ * ⚠️ **치비 번들을 통째로 안 연다.** 메시는 다른 번들에 나가 있어서 폴더를 다
+ * 열어야 풀리지만(PLAN §16.9), 여기서 쓰는 것은 **Transform 계층과
+ * AnimationClip뿐**이고 그 둘은 번들 하나에 다 들어 있다 — 실측으로
+ * `fc0001_00` 하나에서 Transform 276개와 클립 56개가 나온다
+ */
+async function heroFieldClips(
+  ctx: ConvertContext, src: BdspSource, at: Map<string, string>, bundle: string,
+): Promise<{ clipsFrom?: Environment, borrowOnly?: ReadonlySet<string> }> {
+  const donor = fieldClipDonor(bundle)
+  if (donor === null) return {}
+  const path = lookup(at, `${PERSONS}/field/${donor}`)
+  const env = path ? await environmentOf(src, [path]) : null
+  await breathe(ctx)
+  if (!env) return {}
+  return { clipsFrom: env, borrowOnly: new Set(HERO_FIELD_CLIPS) }
+}
+
 async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   const src = requireBdsp(ctx)
   const at = await index(src)
@@ -212,6 +234,7 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
         maxSize: MAX_TEXTURE,
         keepClips: battle,
         ...(battle ? { clipFilter: TRAINER_CLIPS } : {}),
+        ...(await heroFieldClips(ctx, src, at, bundle)),
       })
       put(ctx, out, `models/npc/${bundle}.glb`, glb)
       made.add(bundle)
@@ -250,9 +273,12 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
     const path = lookup(at, `${PERSONS}/battle/${NPC_BUNDLE.heroine}`)
     const env = path ? await environmentOf(src, [path]) : null
     if (env) {
-      // 빛나는 등신 몸이다 — 배틀 트레이너와 같은 셋을 싣는다
+      // ⚠️ **클립을 안 싣는다.** 이 파일을 읽는 화면이 없다 — 배틀에도 필드에도
+      // 서는 것은 `models/npc/pc0002_00.glb`다 (`playerModelPath`). 노드
+      // 추출기(`extract:player`)도 `--no-clips`로 굽는다. 여기만 셋을 실으면
+      // 아무도 안 보는 자리에 설치본마다 몇백 KB가 더 실린다
       const { glb } = await exportModel(env, encodePng, {
-        maxSize: MAX_TEXTURE, keepClips: true, clipFilter: TRAINER_CLIPS,
+        maxSize: MAX_TEXTURE, keepClips: false,
       })
       put(ctx, out, 'models/dawn.glb', glb)
     }

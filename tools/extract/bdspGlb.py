@@ -34,7 +34,9 @@ import UnityPy
 from UnityPy.helpers import MeshHelper
 
 from bdsp_bake_albedo import bake
-from bdspRetarget import build_rig, retarget, round_trip_error
+from bdspRetarget import (
+    build_rig, leaf_of, pair_by_name, retarget, round_trip_error, top_of,
+)
 
 GLB_MAGIC = 0x46546C67
 JSON_CHUNK = 0x4E4F534A
@@ -340,27 +342,28 @@ def borrowed_clips(
     """
     다른 몸의 클립을 이 몸으로 옮겨 온다 (`bdspRetarget` 머리말).
 
-    등신 몸에는 걷는 동작이 없다 — 원작에서 이 몸은 배틀에만 선다. 치비 쪽에
-    있는 걷기를 뼈 이름으로 짝지어 옮긴다. 이름이 같은 뼈만 옮기고 나머지는
-    타깃의 쉬는 자세로 둔다: **지어내지 않는다.**
+    등신 몸에는 필드 동작이 없다 — 원작에서 이 몸은 배틀에만 선다. 치비 쪽에
+    있는 낚시·폭포·물주기를 뼈 이름으로 짝지어 옮긴다. 이름이 같은 뼈만
+    옮기고 나머지는 타깃의 쉬는 자세로 둔다: **지어내지 않는다.**
+
+    ⚠️ **치비 번들을 통째로 안 연다.** 메시는 다른 번들에 나가 있지만
+    (PLAN §16.9) 여기서 쓰는 것은 Transform 계층과 AnimationClip뿐이고 그
+    둘은 번들 하나에 다 들어 있다 — 실측으로 `fc0001_00` 하나에서 Transform
+    276개와 클립 56개가 나온다.
     """
     donor_env = UnityPy.load(str(donor))
     source, source_hash = build_rig(donor_env, bone_name, transform_paths)
-    target, _ = build_rig(env, bone_name, transform_paths)
-    name_of_node = {}
-    for h, node in node_of_hash.items():
-        name_of_node[h] = node
-    target_hash = {
-        h: node for h, node in node_of_hash.items()
-    }
-    # 타깃 쪽은 이름 → 노드 번호가 필요하다
+    target, target_hash = build_rig(env, bone_name, transform_paths)
+    # 타깃은 경로 → glTF 노드 번호가 필요하다
+    node_of_path = {p: node_of_hash[h] for h, p in target_hash.items() if h in node_of_hash}
     node_of_name: dict[str, int] = {}
-    _, target_hashes = build_rig(env, bone_name, transform_paths)
-    for h, n in target_hashes.items():
-        if h in target_hash:
-            node_of_name[n] = target_hash[h]
+    for path, node in node_of_path.items():
+        node_of_name.setdefault(leaf_of(path), node)
 
-    animations, stat = [], {"borrowed": 0, "borrowedBones": 0, "roundTrip": 0.0}
+    animations, stat = [], {
+        "borrowed": 0, "borrowedChannels": 0, "borrowedBones": 0,
+        "roundTrip": 0.0, "ambiguous": 0,
+    }
     for obj in donor_env.objects:
         if obj.type.name != "AnimationClip":
             continue
@@ -369,31 +372,39 @@ def borrowed_clips(
             continue
         curves, stop = clip_curves(clip)
         rots: dict[str, list] = {}
+        branches: set[str] = set()
         for path_hash, attr, first in bindings_by_curve(clip):
+            path = source_hash.get(path_hash)
+            if path is None:
+                continue
+            branches.add(top_of(path))
             if attr != ROTATION:
                 continue
-            n = source_hash.get(path_hash)
-            if n is not None:
-                rots[n] = [curves.get(first + c, []) for c in range(4)]
+            rots[path] = [curves.get(first + c, []) for c in range(4)]
         times = sorted({t for parts in rots.values() for p in parts for t, _ in p})
         if len(times) < 2:
+            continue
+        pairs, ambiguous = pair_by_name(source, target, branches)
+        stat["ambiguous"] += ambiguous
+        if not pairs:
             continue
         frames = [
             {n: np.array([sample(p, t) for p in parts]) for n, parts in rots.items()}
             for t in times
         ]
-        moved, shared = retarget(source, target, frames)
+        moved, shared = retarget(source, target, pairs, frames)
+        # 첫 네 프레임이면 넉넉하다 — 수식이 틀리면 한 프레임에서 바로 벌어진다
         stat["roundTrip"] = max(
-            stat["roundTrip"], round_trip_error(source, target, frames[:4]),
+            stat["roundTrip"], round_trip_error(source, target, pairs, frames[:4]),
         )
 
         samplers, channels = [], []
         a_time = buf.add(np.array(times, dtype=np.float32).reshape(-1, 1), "SCALAR", FLOAT)
-        for bone in shared:
-            node = node_of_name.get(bone)
+        for path in shared:
+            node = node_of_name.get(leaf_of(path))
             if node is None:
                 continue
-            values = [quat_flip_x(tuple(f[bone])) for f in moved]
+            values = [quat_flip_x(tuple(f[path])) for f in moved]
             a_val = buf.add(np.array(values, dtype=np.float32), "VEC4", FLOAT)
             samplers.append({"input": a_time, "output": a_val, "interpolation": "LINEAR"})
             channels.append({
@@ -406,7 +417,8 @@ def borrowed_clips(
             "name": clip["m_Name"], "samplers": samplers, "channels": channels,
         })
         stat["borrowed"] += 1
-        stat["borrowedBones"] = len(channels)
+        stat["borrowedChannels"] += len(channels)
+        stat["borrowedBones"] = max(stat["borrowedBones"], len(channels))
     return animations, stat
 
 

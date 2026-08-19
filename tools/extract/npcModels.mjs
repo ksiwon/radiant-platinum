@@ -15,7 +15,9 @@
 // ⚠️ **텍스처와 클립을 줄여서 굽는다.** 그냥 구우면 한 명이 5.07MB고
 // 마흔둘이면 213MB다. 그 중 절반이 애니메이션 클립인데 걷기는
 // `actor/locomotion`이 뼈를 직접 돌려서 만들므로(주인공도 그렇다) 쓸 자리가
-// 없다. 텍스처는 긴 변 256으로 줄인다:
+// 없다. 싣는 것은 배틀에서 이어 붙는 셋(`TRAINER_CLIPS`)과, 주인공 둘에만
+// 치비에서 옮겨 오는 필드 동작 열여섯(`HERO_FIELD_CLIPS`)뿐이다.
+// 텍스처는 긴 변 256으로 줄인다:
 //
 //   그대로            5.07MB
 //   텍스처 256        2.58MB
@@ -26,7 +28,9 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildOf, modelFor, TRAINER_CLIPS } from '../../src/engine/actor/npcModels.ts'
+import {
+  buildOf, fieldClipDonor, modelFor, HERO_FIELD_CLIPS, TRAINER_CLIPS,
+} from '../../src/engine/actor/npcModels.ts'
 import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
 import { createRequire } from 'node:module'
 
@@ -103,8 +107,15 @@ function main() {
   // `bdsp_bake_albedo.py`나 리타깃을 고쳐도 아무것도 안 다시 구워진다 —
   // 엄마 얼굴의 파란 가면(ColorVariation 채널 순서)을 고치고도 106개가 전부
   // 건너뛰어졌다
-  const bakerAt = Math.max(...['bdspGlb.py', 'bdsp_bake_albedo.py', 'bdspRetarget.py']
-    .map((f) => statSync(resolve(ROOT, 'tools/extract', f)).mtimeMs))
+  //
+  // ⚠️ **규칙이 든 소스도 본다.** 어느 클립을 실을지는 `engine/actor/npcModels`가
+  // 정하는데(`TRAINER_CLIPS`·`HERO_FIELD_CLIPS`) 그 파일을 안 보면, 목록을 고쳐도
+  // 106벌이 전부 "그대로 둔 것"이 되어 낡은 클립을 실은 glb가 남는다
+  const bakerAt = Math.max(
+    ...['bdspGlb.py', 'bdsp_bake_albedo.py', 'bdspRetarget.py']
+      .map((f) => statSync(resolve(ROOT, 'tools/extract', f)).mtimeMs),
+    statSync(resolve(ROOT, 'src/engine/actor/npcModels.ts')).mtimeMs,
+  )
   const done = new Set()
   const broken = new Set()
   let made = 0, skipped = 0, bytes = 0
@@ -134,9 +145,17 @@ function main() {
         // 파이썬 `re`가 이 정규식을 그대로 받는다 — `^(a|b|c)$`는 두 문법에서 같다
         ? ['--clip-filter', TRAINER_CLIPS.source]
         : ['--no-clips']
+      // ⚠️ **주인공만 치비에서 필드 동작을 꿔 온다.** 등신 몸에는 낚시도 폭포도
+      // 없다 — 원작에서 이 몸은 배틀에만 서기 때문이다. 어느 클립을 옮기는지는
+      // `HERO_FIELD_CLIPS`가 임자고 브라우저 변환기도 같은 줄을 본다
+      const donorName = fieldClipDonor(bundle)
+      const donor = donorName ? resolve(PERSONS, buildOf(donorName), donorName) : null
+      const borrow = donor && existsSync(donor)
+        ? ['--clips-from', donor, '--only', HERO_FIELD_CLIPS.join(',')]
+        : []
       execFileSync('py', [
         '-3.13', BAKER, src, '-o', out,
-        '--max-texture', String(MAX_TEXTURE), ...clips,
+        '--max-texture', String(MAX_TEXTURE), ...clips, ...borrow,
       ], { stdio: ['ignore', 'ignore', 'pipe'] })
     } catch {
       broken.add(bundle)
