@@ -46,6 +46,20 @@ export interface BootEnv {
   dev: boolean
   opfs: boolean
   /**
+   * 개발판인데도 **설치본으로** 열라는 요청 (`?assets=opfs`).
+   *
+   * ⚠️ **뒷문이 아니다.** 프로덕션에서는 `import.meta.env.DEV`가 `false`라
+   * `bootEnv()`가 이 칸을 아예 안 채운다 — 번들에서도 접혀 사라진다. 배포본의
+   * 갈래는 그대로 「설치했으면 OPFS, 아니면 설치 화면」이고 그것을 ㉓이 잰다.
+   *
+   * ⚠️ **이게 없으면 설치본을 확인 지점으로 못 몬다.** 확인 지점은 개발
+   * 빌드에만 있는데(`import.meta.env.DEV`) 개발 빌드는 무조건 HTTP를 꽂았다.
+   * 그래서 ㉕·㉖이 설치본으로 야생·트레이너·상점까지밖에 못 갔고, 깨어진
+   * 세계·도감·타운맵·나무열매·프런티어·크레딧은 **설치본에서 한 번도 안
+   * 열려 봤다** (REPAIR §2.3)
+   */
+  preferOpfs?: boolean
+  /**
    * 설치 기록이 있는 저장소. 안 주면 OPFS에서 연다.
    *
    * 노드에는 OPFS가 없다 — 여기를 못 바꾸면 부팅 갈래를 한 줄도 못 잰다.
@@ -57,7 +71,15 @@ export interface BootEnv {
 }
 
 export function bootEnv(): BootEnv {
-  return { dev: import.meta.env.DEV, opfs: opfsAvailable() }
+  return {
+    dev: import.meta.env.DEV,
+    opfs: opfsAvailable(),
+    // 프로덕션에서는 `import.meta.env.DEV`가 상수 `false`라 이 줄이 통째로 접힌다
+    ...(import.meta.env.DEV && typeof location !== 'undefined'
+      && new URLSearchParams(location.search).get('assets') === 'opfs'
+      ? { preferOpfs: true }
+      : {}),
+  }
 }
 
 /**
@@ -85,7 +107,7 @@ function mark(state: BootState): BootState {
 }
 
 async function decide(env: BootEnv): Promise<BootState> {
-  if (env.dev) {
+  if (env.dev && env.preferOpfs !== true) {
     // 개발판은 기존 raw 산출물을 그대로 쓴다 (COPYRIGHT.md §5). 이 동작을
     // 보존하는 것이 전환의 첫 조건이다
     setAssetProvider(httpAssetProvider())

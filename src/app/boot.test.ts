@@ -71,6 +71,29 @@ describe('개발판', () => {
     expect(state).toEqual({ kind: 'play', source: 'dev', manifest: null })
     expect(assets().kind).toBe('dev-http')
   })
+
+  // ⚠️ **확인 지점은 개발 빌드에만 있다.** 그래서 설치본을 확인 지점으로 몰려면
+  // 개발 서버 + OPFS 조합이 필요한데, 그 손잡이가 없어서 ㉕·㉖이 야생·트레이너·
+  // 상점까지밖에 못 갔다 (REPAIR §2.3)
+  it('`?assets=opfs`를 주면 개발판도 설치본을 읽는다', async () => {
+    const s = await installed('en')
+    const state = await boot({
+      dev: true, opfs: true, preferOpfs: true, rootStore: s.root, assetStore: s.assets,
+    })
+    expect(state.kind).toBe('play')
+    expect(state.kind === 'play' && state.source).toBe('opfs')
+    expect(assets().kind).not.toBe('dev-http')
+  })
+
+  // ⚠️ **설치가 없으면 설치 화면이다** — 개발판이라고 HTTP로 안 되돌아간다.
+  // 되돌아가면 "설치본으로 몰았다"가 조용히 거짓이 된다
+  it('`?assets=opfs`인데 설치가 없으면 HTTP로 안 되돌아간다', async () => {
+    const state = await boot({
+      dev: true, opfs: true, preferOpfs: true, rootStore: memoryPackStore(),
+    })
+    expect(state.kind).toBe('install')
+    expect(assets().kind).not.toBe('dev-http')
+  })
 })
 
 describe('공개판 + 설치본', () => {

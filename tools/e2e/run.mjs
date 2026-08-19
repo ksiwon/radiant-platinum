@@ -1204,6 +1204,13 @@ await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 �
   await page.reload({ waitUntil: 'load' })
   assert(await waitBoot(page) === 'install:none', '저장소로 갈래가 바뀌었다')
 
+  // ⚠️ **개발판에만 있는 손잡이도 여기서는 안 먹는다.** `?assets=opfs`는
+  // `import.meta.env.DEV`가 참일 때만 `bootEnv()`가 채우는 칸이라
+  // (`app/boot.ts`의 `preferOpfs`) 배포본에서는 번들에서 통째로 접혀 사라진다.
+  // 그 손잡이가 배포본에 새면 여기 있는 판정이 전부 무의미해지므로 같이 눌러 본다
+  await page.goto(`${origin}/?assets=opfs`, { waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '개발판 손잡이가 배포본에서 먹었다')
+
   // 표식을 손으로 바꿔도 앱은 안 따라간다 — 쓰기 전용이 아니라 **읽기 전용**이다
   await page.evaluate(() => { document.documentElement.dataset.boot = 'play:opfs' })
   await page.reload({ waitUntil: 'load' })
@@ -1220,7 +1227,8 @@ await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 �
     }
     return hits
   })
-  return `쿼리·해시·저장소·표식 조작 전부 install:none · 진입 청크의 표식 참조 ${String(reads)}건(쓰기만)`
+  return `쿼리·해시·저장소·표식·?assets=opfs 전부 install:none`
+    + ` · 진입 청크의 표식 참조 ${String(reads)}건(쓰기만)`
 })
 
 await run('24', 'persist가 거부돼도 설치는 되고 경고가 뜬다', async ({ page }) => {
@@ -1738,6 +1746,236 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
   } else {
     record('16', '실제 호스트의 CSP 응답 헤더', 'PASS',
       `${at.url} · 빌드 ${at.buildId} · 헤더·SPA fallback·외부 요청 0 (pnpm verify:deploy)`)
+  }
+}
+
+// ── ㉙ 설치본으로 확인 지점을 연다 (REPAIR §2.3) ─────────────────────────────
+//
+// ⚠️ **㉕·㉖은 설치본으로 야생·트레이너·상점까지만 간다.** 그 뒤로 깨어진 세계·
+// 도감·타운맵·나무열매·프런티어·크레딧에 안 들르는데, **이번에 빠진 자리가 정확히
+// 거기다** — 설치본에만 없는 그룹은 개발 서버에서 멀쩡히 보인다.
+//
+// ⚠️ **확인 지점은 개발 빌드에만 있다** (`import.meta.env.DEV`). 그래서 이 케이스만
+// **개발 서버 + OPFS** 조합으로 돈다 (`?assets=opfs` · `app/boot.ts`의 `preferOpfs`).
+// 그 손잡이가 배포본에 새지 않는 것은 ㉓이 같이 잰다.
+//
+// ⚠️ **「화면이 떴다」가 아니라 「내용이 있다」를 본다.** 빈 화면도 뜨기는 뜬다.
+if (!(haveRom && haveBdsp)) {
+  record('29', '설치본으로 확인 지점과 화면을 연다 (개발 서버 + OPFS)', 'NOT RUN',
+    ROM === null ? '이 기계에 Platinum 롬이 없다' : '이 기계에 BDSP 덤프가 없다')
+} else {
+  try {
+    await withDev(async (dev, ensure) => {
+      await run('29', '설치본으로 확인 지점과 화면을 연다 (개발 서버 + OPFS)',
+        async ({ page, errors }) => {
+          await ensure()
+          page.setDefaultTimeout(60_000)
+          await page.goto(`${dev}/?assets=opfs`, { waitUntil: 'load' })
+          const boot0 = await waitBoot(page)
+          assert(boot0.startsWith('install:'),
+            `개발 서버인데 설치 화면이 아니다: ${boot0} — \`?assets=opfs\`가 안 먹었다`)
+
+          await armWizard(page, BDSP, 300_000)
+          await page.getByRole('button', { name: '설치 시작' }).click()
+          await atTitle(page).waitFor({ timeout: 2_400_000 })
+          const boot1 = await page.evaluate(() => document.documentElement.dataset.boot)
+          assert(boot1 === 'play:opfs', `설치본으로 안 떴다: ${String(boot1)}`)
+
+          // ⚠️ **설치를 마친 그 화면에서 곧바로 누르면 확인 지점 표가 안 열린다.**
+          // 스윕은 늘 **새로 연 화면**에서 누른다 (`story.mjs`의 `openTitle`) —
+          // 같게 맞춘다. 다시 열어도 설치본이 그대로 열리는지가 여기서 같이 잰다
+          await page.goto(`${dev}/?assets=opfs`, { waitUntil: 'load' })
+          const boot2 = await waitBoot(page)
+          assert(boot2 === 'play:opfs', `다시 열었더니 설치본이 아니다: ${boot2}`)
+          await atTitle(page).waitFor({ timeout: 120_000 })
+
+          // ── 확인 지점 — 설치본으로 실제로 그 맵에 선다 ──
+          //
+          // ⚠️ **어느 맵인지를 못 박고 기다린다.** 「맵 번호가 0보다 크다」로
+          // 기다렸더니 **앞 맵이 아직 살아 있는 채로** 그 조건을 만족해서, 값이
+          // 한 칸씩 밀렸다 — 배틀타워 줄에 깨어진 세계의 573이, 나무열매 줄에
+          // 배틀타워의 326이 적혔다. 표가 적어 둔 맵 번호를 받아 그것과 같아질
+          // 때까지 기다린다 (`story.mjs`의 `warpTo`가 같은 일을 한다)
+          const wantMap = await page.evaluate(async () => {
+            const m = await import('/src/engine/dev/checkpoints.ts')
+            return Object.fromEntries(m.CHECKPOINTS.map((c) => [c.id, c.map]))
+          })
+          const seen = []
+          for (const id of ['distortion', 'battletower', 'berry']) {
+            // ⚠️ **백틱은 토글인데, 뛴 직후에는 표가 「닫히는 중」이다.**
+            // 그래서 「열려 있나」를 보고 누를지 정하면 그 틈에 걸린다 — 실측으로
+            // (`.audit/warpRows.mjs`) 둘째 확인 지점에서 뛴 직후가 `열려 있다:
+            // true`였고, 셋째에서 그걸 믿고 안 눌렀더니 곧 닫혀서 서른 초를
+            // 기다렸다. **닫힌 것을 먼저 보고 한 번만 누른다**
+            const table = page.getByText('확인 지점').first()
+            await table.waitFor({ state: 'hidden', timeout: 30_000 }).catch(() => {})
+            await page.keyboard.press('Backquote')
+            try {
+              await table.waitFor({ timeout: 30_000 })
+            } catch (e) {
+              // ⚠️ **왜 안 열렸는지를 남긴다.** 「30초 지났다」만 적히면 다음 사람이
+              // 여덟 분짜리 설치를 다시 돌려야 그 자리에 닿는다
+              const why = await page.evaluate(() => ({
+                boot: document.documentElement.dataset.boot ?? '(없다)',
+                url: location.pathname + location.search,
+                text: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 200),
+              }))
+              throw new Error(`확인 지점 표가 안 열렸다 (${id}) — 갈래 ${why.boot}`
+                + ` · 자리 ${why.url} · 화면 「${why.text}」`
+                + ` · 콘솔 ${String(errors.length)}건 ${errors.slice(0, 2).join(' / ')}`
+                + ` · ${String(e.message ?? e).slice(0, 80)}`)
+            }
+            const row = page.locator(`[data-checkpoint="${id}"]`).first()
+            await row.hover()
+            await page.waitForTimeout(150)
+            await row.click()
+            await page.waitForURL('**/play', { timeout: 60_000 })
+            // ⚠️ **맵 번호만 보면 안 된다.** 3D가 하나도 안 붙어도 번호는 맞는다
+            // ⚠️ **기다린 것과 적는 것이 같은 값이어야 한다.**
+            // `waitForFunction`으로 기다리고 값은 따로 읽었더니, **통과시킨 값이
+            // 아니라 그 뒤의 값**이 결과 줄에 적혔다 — 실측으로 `distortion 맵 -1
+            // 삼각형 0.0k`(전환 중)에 `berry`가 배틀타워의 맵 326을 달고 초록으로
+            // 지나갔다. **초록인 채로 거짓을 적는 자**라 문지기보다 나쁘다.
+            // 직접 굴리면서 문턱을 넘긴 그 값을 들고 나온다
+            let shape = { map: -1, tri: 0 }
+            const till = Date.now() + 120_000
+            while (Date.now() < till) {
+              shape = await page.evaluate(async () => {
+                const w = await import('/src/engine/map/world.ts')
+                const m = await import('/src/scene/sceneRefs.ts')
+                return { map: w.world.mapId, tri: m.perfSnapshot?.triangles ?? 0 }
+              })
+              if (shape.map === wantMap[id] && shape.tri > 1000) break
+              await page.waitForTimeout(500)
+            }
+            // ⚠️ **문턱을 갓 넘은 수를 적으면 오해를 산다.** 실측으로 `berry`가
+            // 2.0k로 적혔는데 스윕에서 다 붙은 값은 199.6k다 — 백 배다. 붙기를
+            // 멈출 때까지 두고 그 값을 적는다 (`story.mjs`의 `settle`과 같은 뜻)
+            let same = 0
+            for (let i = 0; i < 60 && same < 3; i++) {
+              await page.waitForTimeout(400)
+              const now = await page.evaluate(async () => {
+                const w = await import('/src/engine/map/world.ts')
+                const m = await import('/src/scene/sceneRefs.ts')
+                return { map: w.world.mapId, tri: m.perfSnapshot?.triangles ?? 0 }
+              })
+              same = now.tri === shape.tri ? same + 1 : 0
+              shape = now
+            }
+            assert(shape.map === wantMap[id] && shape.tri > 1000,
+              `${id}이 설치본에서 안 섰다 — 맵 ${String(shape.map)}`
+              + ` (표에는 ${String(wantMap[id])}) · 삼각형 ${String(shape.tri)}`)
+            seen.push(`${id} 맵 ${String(shape.map)} 삼각형 ${(shape.tri / 1000).toFixed(1)}k`)
+          }
+
+          // ── 화면 — 설치본이 실어 온 자료로 실제로 그려지는가 ──
+          //
+          // ⚠️ **글자 수로 잰다.** 「열렸다」는 빈 화면도 통과시킨다. 화면마다
+          // 자기 자료가 없으면 글이 통째로 안 나오므로, 실제로 뜬 글의 양이
+          // 그 자료가 왔다는 증거다
+          // ── 화면 — 설치본이 실어 온 자료로 실제로 그려지는가 ──
+          //
+          // ⚠️ **글자 수 하나로 다섯을 다 못 잰다.** 구석 HUD가 늘 57자를 찍고
+          // 있고, 메뉴가 뜨면 그 HUD가 **가려져서 오히려 줄어든다** — 실측으로
+          // (`.audit/menuChars.mjs`, `play:dev`) 도감 2,795 · 공중날기 109 ·
+          // 나무열매 71 · 크레딧 75 · **프런티어 51(바탕 57보다 적다)**이다.
+          // 빈 화면도 HUD만으로 57자를 내므로, 글로 갈리는 것은 도감 하나뿐이다.
+          const screens = []
+          for (const [name, least] of [['pokedex', 1000]]) {
+            await page.evaluate(async (n) => {
+              const m = await import('/src/state/menuStore.ts')
+              m.useMenuStore.getState().open(n)
+            }, name)
+            const chars = await page.waitForFunction((want) => {
+              const t = (document.body.innerText ?? '').replace(/\s+/g, '')
+              return t.length >= want ? t.length : false
+            }, least, { timeout: 60_000 })
+              // ⚠️ **넘긴 그 순간을 적으면 「1,001자」가 된다.** 문턱을 넘자마자
+              // 읽으면 아직 그리는 중이라, 개발 서버의 2,795자와 나란히 놓고
+              // 볼 수 없다. 잠깐 두고 다 그린 것을 적는다
+              .then(async () => {
+                await page.waitForTimeout(1500)
+                return page.evaluate(
+                  () => (document.body.innerText ?? '').replace(/\s+/g, '').length)
+              }).catch(() => 0)
+            if (chars < least) {
+              // ⚠️ **「0자였다」만 적으면 다음 사람이 여덟 분을 다시 기다린다.**
+              // 자료가 없는 것인지 화면이 안 뜬 것인지를 그 자리에서 갈라 적는다
+              const why = await page.evaluate(async () => {
+                const m = await import('/src/state/menuStore.ts')
+                let dex = '?'
+                try {
+                  const g = await import('/src/data/gameData.ts')
+                  const got = await g.loadPokedexSort('en')
+                  dex = `열쇠 ${String(Object.keys(got ?? {}).length)}개`
+                } catch (e) { dex = `못 읽었다(${String(e).slice(0, 80)})` }
+                return {
+                  stack: JSON.stringify(m.useMenuStore.getState().stack ?? null),
+                  text: (document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 120),
+                  dex,
+                }
+              })
+              assert(false, `${name} 화면에 글이 ${String(chars)}자뿐이다`
+                + ` (개발 서버에서 2,795자다) · 메뉴 스택 ${why.stack}`
+                + ` · 도감 정렬표 ${why.dex} · 화면 「${why.text}」`
+                + ` · 콘솔 ${String(errors.length)}건 ${errors.slice(0, 2).join(' / ')}`)
+            }
+            screens.push(`${name} ${String(chars)}자`)
+            await page.evaluate(async () => {
+              const m = await import('/src/state/menuStore.ts')
+              m.useMenuStore.getState().closeAll()
+            }).catch(() => {})
+            await page.waitForTimeout(200)
+          }
+
+          // ⚠️ **나머지 넷은 자료로 잰다 — 그리고 그것이 화면 확인이 아니라는
+          // 것을 결과 줄에 적는다.** 화면은 열어서 터지지 않는 것까지만 보고,
+          // 「내용이 있다」는 그 화면이 읽는 파일이 설치본에 **실제로 들어와
+          // 있는가**로 가른다. 못 잰 것을 잰 것처럼 세지 않는다
+          const data = await page.evaluate(async () => {
+            const g = await import('/src/data/gameData.ts')
+            const size = (v) => (Array.isArray(v) ? v.length
+              : (v && typeof v === 'object' ? Object.keys(v).length : 0))
+            const out = {}
+            for (const [k, call] of [
+              ['타운맵', () => g.loadTownMap()],
+              ['나무열매', () => g.loadBerries()],
+              ['프런티어', () => g.loadFrontier()],
+              ['크레딧', () => g.loadCreditsAtlas()],
+            ]) {
+              try { out[k] = size(await call()) } catch (e) { out[k] = `못 읽었다(${String(e)})` }
+            }
+            return out
+          })
+          for (const [k, n] of Object.entries(data)) {
+            assert(typeof n === 'number' && n > 0, `설치본에 ${k} 자료가 없다: ${String(n)}`)
+          }
+
+          // 화면 넷은 열어서 **터지지 않는 것**까지만 본다
+          for (const name of ['fly', 'berryTag', 'factory', 'credits']) {
+            await page.evaluate(async (n) => {
+              const m = await import('/src/state/menuStore.ts')
+              m.useMenuStore.getState().open(n)
+            }, name)
+            await page.waitForTimeout(1500)
+            await page.evaluate(async () => {
+              const m = await import('/src/state/menuStore.ts')
+              m.useMenuStore.getState().closeAll()
+            }).catch(() => {})
+          }
+
+          assert(errors.length === 0, `콘솔 오류 ${String(errors.length)}건: ${errors[0] ?? ''}`)
+          const said = Object.entries(data).map(([k, n]) => `${k} ${String(n)}`).join(' · ')
+          return `${seen.join(' · ')} · ${screens.join(' · ')}`
+            + ` · 화면 넷(fly·berryTag·factory·credits)은 열어서 안 터지는 것까지만 봤다`
+            + ` — 내용은 **자료로** 갈랐다: ${said} · 콘솔 오류 0건`
+        })
+    })
+  } catch (e) {
+    if (!results.some((r) => r.id === '29')) {
+      record('29', '설치본으로 확인 지점과 화면을 연다 (개발 서버 + OPFS)', 'NOT RUN',
+        `개발 서버가 안 떴다 — ${e.message}`)
+    }
   }
 }
 
