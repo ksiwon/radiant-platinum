@@ -32,8 +32,9 @@ import { isTuftTile } from '../engine/battle/encounter'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
-import { roomWalls, type RoomWalls } from './roomWalls'
+import { floorExtent, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
+import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
 import { isFeaturePlacement } from './movingProps'
 
@@ -647,6 +648,31 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               : null,
           }
         })
+        // ⚠️ **카메라가 방 밖에 서지 않게 테두리를 넘긴다** (REPAIR §5).
+        //
+        // 3인칭이 여덟 칸 뒤에서 보므로 작은 방에서는 카메라가 바닥 밖으로
+        // 나가고, 그러면 화면 아래가 통째로 검어진다 — 포켓몬센터가 7.5칸,
+        // 들판 체육관이 7.5칸 밖이었다 (`node .audit/roomBox.mjs`).
+        //
+        // ⚠️ **방을 아는 자료가 이것뿐이다.** 통행 격자는 방 밖도 「안 막힘」으로
+        // 두고 높이 판은 행렬 전체를 덮는 맵이 있다 — **그려진 바닥**만이 방이다.
+        // 그 칸은 `roomWalls`가 벽 세울 자리를 찾느라 이미 세고 있다.
+        //
+        // ⚠️ **실외에는 안 넘긴다.** 거기서 바닥이 끝나는 자리는 맵 가장자리라
+        // 물리면 신오 끝에서 화면이 갇힌다 (`roomWalls`를 실외에 안 거는 것과 같다)
+        let box: RoomBox | null = null
+        if (indoor) {
+          for (const p2 of pieces) {
+            const got = floorExtent(p2.split, { x: p2.originX, z: p2.originZ })
+            if (got === null) continue
+            box = box === null ? got : {
+              minX: Math.min(box.minX, got.minX), minZ: Math.min(box.minZ, got.minZ),
+              maxX: Math.max(box.maxX, got.maxX), maxZ: Math.max(box.maxZ, got.maxZ),
+            }
+          }
+        }
+        cameraSystem.room = box
+
         setPlaced(next)
         setFoliage([...byTexture.values()])
         setRocks([...byRock.values()])

@@ -68,9 +68,16 @@ const WANT_SHOTS = args.includes('--shots')
 const JSON_OUT = flag('json', '.audit/holes.json')
 const SETTLE_MS = Number(flag('settle', 7000))
 
-/** 1인칭 눈높이·앞으로 나온 만큼, 3인칭 거리·높이, 화각 — 전부 실제 값이다 */
+/** 1인칭 눈높이 — 실제 값이다 (`actor/camera`의 `EYE_HEIGHT`) */
 const EYE_HEIGHT = 1.38
-const FOV = 55
+/**
+ * 화각을 **베껴 적지 않는다.**
+ *
+ * 여기 `55`가 박혀 있었는데 렌즈가 늘어났다 — 깨어진 세계는 8.09도이고
+ * 실내는 거리·높이가 다르다. 베껴 둔 수는 렌즈가 하나일 때만 맞고, 늘어난
+ * 뒤로는 **화면에 안 보이는 자리를 「보인다」고 세게** 된다. 그래서 살아 있는
+ * `cameraSystem.fov`를 그 자리에서 읽는다 (자리·목표·위쪽은 진작 그렇게 한다)
+ */
 const VIEW = { width: 960, height: 640 }
 /** 고개를 돌리는 각. 45도씩 여덟 방향 × 위아래 셋 */
 const YAWS = [0, 45, 90, 135, 180, 225, 270, 315]
@@ -642,10 +649,10 @@ const surveyRoom = () => page.evaluate(async () => {
  * 지금 카메라 그대로 **화면 격자마다** 광선을 쏜다.
  *
  * 카메라는 `EngineDriver`가 프레임마다 만드는 것과 같게 짓는다 —
- * `worldState.camera`의 자리·목표·위쪽에 화각 55도다. 그래야 「화면 이 픽셀에
+ * `worldState.camera`의 자리·목표·위쪽에 `cameraSystem.fov`의 화각이다. 그래야 「화면 이 픽셀에
  * 무엇이 있나」를 묻는 것이 된다
  */
-const shoot = () => page.evaluate(async ([fov, vw, vh]) => {
+const shoot = () => page.evaluate(async ([vw, vh]) => {
   const THREE = await import('/node_modules/three/build/three.webgpu.js')
   const refs = await import('/src/scene/sceneRefs.ts')
   const ws = await import('/src/state/worldState.ts')
@@ -657,7 +664,9 @@ const shoot = () => page.evaluate(async ([fov, vw, vh]) => {
   const outdoor = header?.mapType === 1 || header?.mapType === 2
 
   const c = ws.worldState.camera
-  const cam = new THREE.PerspectiveCamera(fov, vw / vh, 0.1, 200)
+  // 살아 있는 화각. 렌즈가 셋이라(들·실내·깨어진 세계) 여기서 읽어야 맞는다
+  const camMod = await import('/src/engine/actor/camera.ts')
+  const cam = new THREE.PerspectiveCamera(camMod.cameraSystem.fov, vw / vh, 0.1, 200)
   cam.position.copy(c.position)
   cam.up.copy(c.up)
   cam.lookAt(c.target)
@@ -800,7 +809,7 @@ const shoot = () => page.evaluate(async ([fov, vw, vh]) => {
   const worst = Object.entries(spots).sort((a, b) => b[1] - a[1]).slice(0, 6)
     .map(([k, n]) => `${k}×${String(n)}`)
   return { mapId: worldMod.world.mapId ?? -1, outdoor, rays, hit, pierced, ...tally, at, worst }
-}, [FOV, VIEW.width, VIEW.height])
+}, [VIEW.width, VIEW.height])
 
 /**
  * 카메라를 그 시점에 두고 추적이 붙기를 기다린다.

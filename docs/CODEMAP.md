@@ -191,10 +191,11 @@
 | 추출 산출물 추가 | `data/assetManifest.test.ts` | DATA |
 | 게임이 읽는 논리 경로 · 그룹의 `outputs` | `data/assetContract.test.ts` | IMPORT §6 |
 | 걸음을 세는 자 · 지나온 칸 | `engine/actor/stepTrace.test.ts` | PARITY §1.1 |
+| 방 안으로 물리는 카메라 | `engine/actor/camera.test.ts` · `scene/roomWalls.test.ts` | PARITY §6.2 |
 | 리포트 스키마 | `state/saveStore.test.ts` · `save/migrate` 시험 | — |
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
-| 필드 카메라 거리·화각 | — (시험이 없다. `.audit/distortionLook.mjs`로 화면을 잰다) | PARITY §6.10 |
+| 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/voidShots.mjs` · `.audit/distortionLook.mjs` | PARITY §6.2 · §6.10 |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은
 **한 번 재보는 자**다 — 명령이 어느 파일에서 몇 자리를 먹는지

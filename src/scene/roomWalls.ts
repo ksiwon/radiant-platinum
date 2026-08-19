@@ -277,6 +277,34 @@ export interface RoomWalls {
 
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
 
+/** 칸 테두리 (월드 타일). 양끝을 포함한다 */
+export interface FloorExtent { minX: number, minZ: number, maxX: number, maxZ: number }
+
+/**
+ * 이 청크에서 **바닥이 실제로 그려진** 칸의 테두리. 한 칸도 없으면 `null`.
+ *
+ * ⚠️ **통행 격자도 BDHC 판도 방의 크기가 아니다.** 실내 행렬은 32×32인데 방은
+ * 그 일부이고, 통행 자료는 방 밖도 「안 막힘」으로 두고(포켓몬센터 1,024칸 중
+ * 901칸이 열려 있다), 높이 판은 아예 행렬 전체를 덮는 맵이 넷 중 넷이다
+ * (`node .audit/roomBox.mjs`). **그려진 바닥만이 방이다** — 그리고 그것을 이미
+ * `survey`가 세고 있다 (벽을 세울 자리를 찾느라).
+ *
+ * 카메라가 이 상자 밖으로 나가면 화면 아래가 통째로 검어진다 (`actor/camera`)
+ */
+export function floorExtent(split: Split, origin: { x: number, z: number }): FloorExtent | null {
+  const { floor } = survey(split)
+  if (floor.size === 0) return null
+  let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
+  for (const key of floor.keys()) {
+    const x = cellX(key) + origin.x, z = cellZ(key) + origin.z
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (z < minZ) minZ = z
+    if (z > maxZ) maxZ = z
+  }
+  return { minX, minZ, maxX: maxX + 1, maxZ: maxZ + 1 }
+}
+
 /**
  * 이 청크의 바닥과 벽을 훑는다.
  *

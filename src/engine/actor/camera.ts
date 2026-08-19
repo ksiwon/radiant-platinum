@@ -11,6 +11,7 @@
 // 두 시점 다 크리티컬 댐프드로 따라간다. 즉시 붙이면 계단에서 화면이 튄다.
 import { Quaternion, Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
+import { mapById, world as mapWorld } from '../map/world'
 import { distortionBridge } from '../world/distortion'
 import { surfaceQuaternion } from './distortionSurface'
 
@@ -20,6 +21,79 @@ const Y_AXIS = new Vector3(0, 1, 0)
 const DEG = Math.PI / 180
 
 const THIRD = { distance: 8, height: 4, damping: 5 }
+
+/**
+ * **실내 렌즈.** 방이 작아서 여덟 칸 밖에 서면 카메라가 바닥 밖으로 나간다.
+ *
+ * 원작 DS는 고정 부감이라 맵 바깥이 화면에 든 적이 없다. 우리 3인칭은 여덟 칸
+ * 뒤·네 칸 위에서 보므로 방의 남쪽 가장자리 너머가 그대로 화면에 든다 — 먼 쪽은
+ * 실내 안개(24~64칸)가 녹이지만 **카메라와 가까운 쪽은 그냥 잘린다.**
+ *
+ * 실측(`node .audit/roomBox.mjs`, 바닥 높이 자료가 있는 칸의 테두리):
+ *
+ *   포켓몬센터  바닥 z 2~13인데 카메라가 z 20.5 — **7.5칸 밖**
+ *   주인공 방   바닥 z 3~11인데 카메라가 z 13.5 — **2.5칸 밖**
+ *   들판 체육관 바닥 z 2~43인데 카메라가 z 50.5 — **7.5칸 밖**
+ *
+ * 그 결과가 `pnpm story` 그림의 검은 화소다 — 실내 열여덟 장면이 30%를 넘고,
+ * 화면 아래 40%가 통째로 검은 장면이 여럿이다 (`node .audit/voidPixels.mjs`).
+ *
+ * ⚠️ **화각은 안 건드린다.** 55도를 좁히면 온 신오가 같이 좁아진다. 고칠 것은
+ * **어디에 서느냐**다.
+ *
+ * ⚠️ **1인칭은 안 건드린다.** 눈이 방 안에 있으므로 이 문제가 없다.
+ */
+const INDOOR = { distance: 5.5, height: 3.2, damping: 5 }
+
+/** 방의 테두리 (월드 타일). 씬이 그려진 바닥에서 재어 넘겨 준다 */
+export interface RoomBox { minX: number, minZ: number, maxX: number, maxZ: number }
+
+/**
+ * 카메라가 방 안에서 물러설 수 있는 여유(타일).
+ *
+ * 0으로 두면 바닥의 맨 끝 칸에 서므로 그 칸 너머 반 칸이 화면 아래에 걸린다.
+ * 한 칸을 남기면 발밑이 바닥이다
+ */
+const ROOM_MARGIN = 1
+
+/**
+ * 목표 자리를 방의 상자 안으로 **물린다.** 상자가 없으면(실외) 그대로.
+ *
+ * ⚠️ **주인공이 화면 가운데에서 벗어난다. 그것이 맞다** — 원작도 맵 경계에서는
+ * 주인공이 가운데가 아니다 (`field_camera.c`가 같은 일을 한다). 가운데를 지키려면
+ * 방 밖을 보여 주는 수밖에 없고, 그쪽이 더 나쁘다.
+ *
+ * ⚠️ **방이 여유의 두 배보다 좁으면 가운데에 놓는다.** 안 그러면 양쪽에서
+ * 물려 카메라가 상자 밖으로 튕겨 나간다
+ */
+export function clampToRoom(goal: Vector3, box: RoomBox | null, margin: number): Vector3 {
+  if (box === null) return goal
+  const span = (lo: number, hi: number, v: number): number => {
+    const a = lo + margin, b = hi - margin
+    return a > b ? (lo + hi) / 2 : Math.min(b, Math.max(a, v))
+  }
+  goal.x = span(box.minX, box.maxX, goal.x)
+  goal.z = span(box.minZ, box.maxZ, goal.z)
+  return goal
+}
+
+/**
+ * 지금 맵이 **방**인가 (`MapHeader.mapType` 4 실내 · 5 포켓몬센터).
+ *
+ * ⚠️ **`!isOutdoors`가 아니다.** 그 함수는 동굴(3)과 지하(6)까지 「실외가 아님」에
+ * 넣는데, 그 둘은 방이 아니라 넓은 굴이다 — 강철섬에 이 렌즈를 물리면 검은
+ * 화소가 **71.6% → 93.1%로 늘었다**(`node .audit/voidShots.mjs`). 가까이 당길수록
+ * 화면에 드는 것이 불 켜진 자리가 아니라 어두운 굴 바닥이기 때문이다.
+ *
+ * ⚠️ **깨어진 세계도 아니다.** 그쪽은 제 렌즈가 따로 있고(원작 필드의 기본
+ * 카메라다) 방이 아니라 허공에 뜬 널판이라 잣대가 다르다
+ */
+const MAP_TYPE_INDOOR = 4
+const MAP_TYPE_POKEMON_CENTER = 5
+const inRoom = (): boolean => {
+  const type = mapById(mapWorld.mapId)?.mapType
+  return type === MAP_TYPE_INDOOR || type === MAP_TYPE_POKEMON_CENTER
+}
 
 /** 필드 화각(도). `Stage`의 카메라도 이 값으로 선다 */
 export const FIELD_FOV = 55
@@ -108,6 +182,15 @@ export const cameraSystem = {
   free: null as { x: number, z: number } | null,
 
   /**
+   * 지금 방의 테두리. 씬이 지형을 세울 때마다 넣어 준다 (`scene/ChunkModels`).
+   *
+   * ⚠️ **실내에서만 찬다.** 실외에서 바닥이 끝나는 자리는 맵 가장자리이고,
+   * 거기서 카메라를 물리면 신오 끝에서 화면이 갇힌다 — `roomWalls`를 실외에
+   * 안 거는 것과 같은 이유다
+   */
+  room: null as RoomBox | null,
+
+  /**
    * 다음 프레임의 기울기를 **돌리지 말고 그대로** 잡는다.
    *
    * 맵이 바뀔 때 부른다 — 벽에 붙어 있다가 밖으로 나가면 새 맵 첫 화면이
@@ -156,7 +239,7 @@ export const cameraSystem = {
       // 깨어진 세계는 **렌즈부터 갈아 낀다** (`DISTORTION_THIRD`). 그 위에
       // 카메라가 홱 도는 자리 스물여섯 곳이 각을 더한다 (PARITY §6.10) —
       // 원작도 `baseAngle`에 구역 각을 더하는 꼴이라 밑각이 맞아야 이것도 맞는다
-      const lens = inDistortion ? DISTORTION_THIRD : THIRD
+      const lens = inDistortion ? DISTORTION_THIRD : inRoom() ? INDOOR : THIRD
       const swing = distortionBridge.cameraSwing?.() ?? null
       if (swing === null || (swing.x === 0 && swing.y === 0)) {
         tilted(0, lens.height, lens.distance, offset)
@@ -167,6 +250,9 @@ export const cameraSystem = {
           .applyQuaternion(tilt)
       }
       goal.copy(p).add(offset)
+      // ⚠️ **바라보는 점은 안 물린다.** 물리는 것은 **어디에 서느냐**뿐이라
+      // 주인공은 늘 화면 안에 있고, 방 가장자리에서만 가운데를 벗어난다
+      clampToRoom(goal, inDistortion ? null : cameraSystem.room, ROOM_MARGIN)
       look.copy(p)
     }
     tilted(0, 1, 0, cam.up)
