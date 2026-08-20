@@ -265,6 +265,13 @@ interface WallTri {
   cx: number; cz: number
   /** 이 벽이 서 있는 높이 범위 */
   y0: number; y1: number
+  /**
+   * 이 삼각형이 놓인 **선** — 얇은 축과 그 값. 비스듬한 벽은 `null`.
+   *
+   * 같은 벽이 층으로 겹쳐 있어서 필요하다 (`nearestWall`)
+   */
+  axis: 'x' | 'z' | null
+  line: number
 }
 
 export interface RoomWalls {
@@ -385,6 +392,8 @@ function survey(split: Split): {
         r: col ? col[a * 3]! : 1, g: col ? col[a * 3 + 1]! : 1, b: col ? col[a * 3 + 2]! : 1,
         cx: ax + (ux + vx) / 3, cz: az + (uz + vz) / 3,
         y0, y1,
+        axis: bx1 - bx0 < 0.35 ? 'x' : (bz1 - bz0 < 0.35 ? 'z' : null),
+        line: bx1 - bx0 < 0.35 ? (bx0 + bx1) / 2 : (bz0 + bz1) / 2,
       })
     }
   }
@@ -416,13 +425,52 @@ function uvOnWall(src: WallTri): (x: number, y: number, z: number) => [number, n
   }
 }
 
-/** 그 칸에서 제일 가까운 벽 삼각형 */
+/**
+ * 세로로 1타일 올라갈 때 **UV가 움직이는 거리.** 무늬가 실린 층일수록 크다
+ *
+ * ⚠️ 원작 실내 벽은 한 장이 아니라 **여러 층이 같은 평면에 겹쳐** 있다.
+ * 주인공 방(맵 415)의 `z=3.6` 벽을 재면 네 층이다:
+ *
+ * | 높이 | UV의 v | 1타일당 UV | 그림의 어디 |
+ * |---|---|---:|---|
+ * | -0.1~0.1 | .875~.881 | 0.030 | 회색 띠 |
+ * | 0.1~0.8 | .594~.705 | 0.159 | 크림색 굽도리 |
+ * | 0.8~4.3 | .781~.969 | 0.054 | **회색 띠** |
+ * | 0.8~3.8 | .027~.594 | 0.189 | **크림색 벽지** |
+ *
+ * 회색 띠는 벽지 뒤에 깔린 **받침**이고 눈에 보이는 것은 벽지다.
+ * 그런데 네 층의 무게중심이 xz에서 똑같아서 「제일 가까운 것」이 그냥 처음
+ * 만난 것으로 갈렸고, 실제로 회색 받침이 뽑혔다 — 계단 옆에 **바닥부터
+ * 천장까지 새까만 판때기**가 섰다 (`.audit/wallSource.mjs`).
+ */
+function uvPerHeight(t: WallTri): number {
+  const at = uvOnWall(t)
+  const [u0, v0] = at(t.ax, t.ay, t.az)
+  const [u1, v1] = at(t.ax, t.ay + 1, t.az)
+  return Math.hypot(u1 - u0, v1 - v0)
+}
+
+/**
+ * 그 칸에서 제일 가까운 벽 삼각형. **같은 선 위에 층이 겹치면 무늬가 실린 층**을
+ * 고른다 (`uvPerHeight`)
+ */
 function nearestWall(tris: readonly WallTri[], x: number, z: number): WallTri | null {
-  let best: WallTri | null = null
+  let near: WallTri | null = null
   let far = Infinity
   for (const t of tris) {
     const d = (t.cx - x) ** 2 + (t.cz - z) ** 2
-    if (d < far) { far = d; best = t }
+    if (d < far) { far = d; near = t }
+  }
+  if (!near || near.axis === null) return near
+  let best = near
+  let dense = uvPerHeight(near)
+  for (const t of tris) {
+    // ⚠️ **높이가 겹치는 것만 보면 안 된다.** 제일 가까운 것이 바닥에 붙은
+    // 0.2 높이짜리 회색 조각이면 벽지(0.8~3.8)와 안 겹쳐서 아무것도 안 걸린다.
+    // 같은 선 위면 UV를 그 판 자리로 되짚으므로(`shiftX`/`shiftZ`) 멀어도 된다
+    if (t.axis !== near.axis || Math.abs(t.line - near.line) > 0.05) continue
+    const k = uvPerHeight(t)
+    if (k > dense) { dense = k; best = t }
   }
   return best
 }

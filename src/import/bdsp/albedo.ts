@@ -374,6 +374,99 @@ function effectAlbedo(
 }
 
 /**
+ * **깎개가 깊이로 깎아 내는 알맹이**의 이름 — 우리는 그 깎기를 못 한다.
+ *
+ * ⚠️ 또도가스(`pm0110`)의 연기가 **몸을 통째로 가리는 크림색 구**로 섰다
+ * (`.audit/mon/before-110.png`). 굽는 쪽 둘이 갈린 것이 아니라 둘 다 그렇게
+ * 그렸다 — 원판에서 연기의 모양을 내는 것이 색 그림이 아니라 **깊이 버퍼로
+ * 깎아 내는 짝**(`SmokeMask*`)인데, glTF에는 그 단계가 없다.
+ *
+ * 재질이 스스로 무엇인지 적어 뒀다 (`.audit/maskRule.mjs`가 종·판 557개를 훑었다):
+ *
+ * | 깎개 | `m_ShaderKeywords` | `_ZWrite` | 화면 |
+ * |---|---|---|---|
+ * | 고오스 `SmokeMask` | `MASK_FIRST_UV_ZERO` | 0 | 가스가 비친다 — 멀쩡 |
+ * | 리자몽 `FireMask` | `MASK_CALC_MODE_ADD …` | 1 | 꼬리불 멀쩡 |
+ * | 파이어 `FireMaskA00` | `MASK_CALC_MODE_MULTIPLY …` | 1 | 불꽃 멀쩡 |
+ * | 또가스·또도가스·코터스 `SmokeMask*` | `MASK_FIRST_UV_ZERO _ZWRITE_ON` | 1 | 통짜 구 |
+ *
+ * `MASK_CALC_MODE_*`가 붙은 깎개는 **색을 섞는** 도구고, 그것 없이 깊이만 켠
+ * 깎개가 **깎아 내는** 도구다. 후자를 짝으로 둔 알맹이는 우리 손에서 안 깎인다.
+ *
+ * ⚠️ **그렇다고 다 빼면 안 된다.** 같은 잣대에 코터스(`pm0324`)도 걸리는데 그
+ * 연기는 등딱지 **옆·위**에 떠 있어서 몸을 안 가린다 (`.audit/mon/before-324.png`
+ * — 몸이 다 보인다). 그래서 **몸을 통째로 감싸는 것만** 뺀다. 감싸는지는
+ * 렌더러가 적어 둔 `m_AABB`로 가른다 (`.audit/effectWrap.mjs`):
+ *
+ *   또가스   알맹이 [-0.87 -0.33 -0.87]~[0.87 1.14 0.87] ⊃ 몸 → 뺀다
+ *   또도가스 알맹이 [-1.27 -1.12 -1.12]~[0.98 1.12 1.13] ⊃ 몸 → 뺀다
+ *   코터스   알맹이가 몸의 x 아래끝(-0.75)을 안 덮는다 → 남긴다
+ *
+ * ⚠️ **노드 추출기와 같아야 한다** (`tools/extract/bdsp_bake_albedo.py`의
+ * `carved_shells`). 한쪽만 고치면 개발 서버에서만 연기가 사라진다
+ */
+function carvedShells(env: Environment, mainProps: readonly string[]): Set<string> {
+  /** 깎개가 깊이로 깎는 알맹이 이름 */
+  const carved = new Set<string>()
+  /** 밑그림이 없는 재질 = 이펙트 조각. 몸의 크기를 잴 때 빼야 한다 */
+  const effect = new Set<string>()
+  for (const e of env.ofType('Material')) {
+    const v = env.readEntry(e) as Props | null
+    if (!v) continue
+    const name = (v.m_Name as string | undefined) ?? ''
+    const saved = (v.m_SavedProperties ?? {}) as Props
+    const texEnvs = pairs(saved.m_TexEnvs)
+    const has = (prop: string): boolean =>
+      num(((texEnvs.get(prop) as Props | undefined)?.m_Texture as Props | undefined)?.m_PathID) !== 0
+    if (!mainProps.some(has)) effect.add(name)
+    // 알맹이에는 `_BaseColor`가 있고 깎개에는 없다
+    if (pairs(saved.m_Colors).has('_BaseColor')) continue
+    const words = ((v.m_ShaderKeywords as string | undefined) ?? '').split(' ').filter(Boolean)
+    if (!words.includes('_ZWRITE_ON')) continue
+    if (words.some((w) => w.startsWith('MASK_CALC_MODE_'))) continue
+    const at = name.lastIndexOf('Mask')
+    if (at < 0) continue
+    carved.add(`${name.slice(0, at)}Core${name.slice(at + 4)}`)
+  }
+  if (carved.size === 0) return carved
+
+  /** 렌더러 하나가 적어 둔 상자와 그것이 쓰는 재질 이름 */
+  const boxes: { min: number[], max: number[], names: string[] }[] = []
+  for (const type of ['SkinnedMeshRenderer', 'MeshRenderer']) {
+    for (const e of env.ofType(type)) {
+      const v = env.readEntry(e) as Props | null
+      const aabb = v?.m_AABB as Props | undefined
+      if (!aabb) continue
+      const c = (aabb.m_Center ?? {}) as Props
+      const x = (aabb.m_Extent ?? {}) as Props
+      const names = ((v?.m_Materials as Props[] | undefined) ?? []).map((m) => {
+        const pid = num(m.m_PathID)
+        return ((pid === 0 ? null : (env.read(pid) as Props | null))?.m_Name as string | undefined) ?? ''
+      })
+      const mid = [num(c.x), num(c.y), num(c.z)]
+      const half = [num(x.x), num(x.y), num(x.z)]
+      boxes.push({
+        min: mid.map((m, i) => m - half[i]!),
+        max: mid.map((m, i) => m + half[i]!),
+        names,
+      })
+    }
+  }
+  const body = boxes.filter((b) => b.names.length > 0 && b.names.every((n) => !effect.has(n)))
+  if (body.length === 0) return new Set()
+  const bmin = [0, 1, 2].map((i) => Math.min(...body.map((b) => b.min[i]!)))
+  const bmax = [0, 1, 2].map((i) => Math.max(...body.map((b) => b.max[i]!)))
+
+  const out = new Set<string>()
+  for (const b of boxes) {
+    const wraps = [0, 1, 2].every((i) => b.min[i]! <= bmin[i]! && b.max[i]! >= bmax[i]!)
+    if (!wraps) continue
+    for (const n of b.names) if (carved.has(n)) out.add(n)
+  }
+  return out
+}
+
+/**
  * 번들 하나의 재질을 전부 굽는다.
  *
  * 돌려주는 것은 **재질 이름 → 그림과 그 그림을 어떻게 읽어야 하는가**다.
@@ -383,6 +476,7 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
   const mainProps = options.mainProps ?? ['_MainTex']
   const maxSize = options.maxSize ?? null
   const overrides = colorOverrides(env, options.colorIndex ?? null)
+  const carved = carvedShells(env, mainProps)
 
   const textureAt = new Map<number, () => Texture>()
   for (const e of env.ofType('Texture2D')) {
@@ -423,8 +517,10 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
 
     const found = mainProps.find((p) => slots.has(p))
     if (found === undefined) {
-      // 밑그림이 없는 재질이 둘로 갈린다 — 색이 재질에 적힌 불꽃·연기는 굽고
+      // 밑그림이 없는 재질이 셋으로 갈린다 — 깊이로 깎여야 하는데 우리가 못 깎는
+      // 껍데기는 통째로 빼고(`carvedShells`), 색이 재질에 적힌 불꽃·연기는 굽고
       // (`effectAlbedo`), 색도 없는 `FireMask*`는 지어내지 않고 건너뛴다
+      if (carved.has(name)) continue
       const effect = effectAlbedo(name, colors, slots, uvs, textureAt, maxSize)
       if (effect) out.push(effect)
       continue

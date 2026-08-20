@@ -260,6 +260,95 @@ def effect_albedo(name, colors, slots, uvs, spec: dict, outdir: Path,
     return True
 
 
+def carved_shells(env, main_props: tuple[str, ...]) -> set[str]:
+    """**깎개가 깊이로 깎아 내는 알맹이**의 이름 — 우리는 그 깎기를 못 한다.
+
+    ⚠️ 또도가스(`pm0110`)의 연기가 **몸을 통째로 가리는 크림색 구**로 섰다
+    (`.audit/mon/before-110.png`). 굽는 쪽 둘이 갈린 것이 아니라 둘 다 그렇게
+    그렸다 — 원판에서 연기의 모양을 내는 것이 색 그림이 아니라 **깊이 버퍼로
+    깎아 내는 짝**(`SmokeMask*`)인데, glTF에는 그 단계가 없다.
+
+    재질이 스스로 무엇인지 적어 뒀다 (`.audit/maskRule.mjs`가 종·판 557개를 훑었다):
+
+        고오스 `SmokeMask`            `MASK_FIRST_UV_ZERO`             _ZWrite=0
+        리자몽 `FireMask`             `MASK_CALC_MODE_ADD …`           _ZWrite=1
+        파이어 `FireMaskA00`          `MASK_CALC_MODE_MULTIPLY …`      _ZWrite=1
+        또가스·또도가스·코터스        `MASK_FIRST_UV_ZERO _ZWRITE_ON`  _ZWrite=1
+
+    앞 셋은 화면이 멀쩡하고 넷째만 통짜 구가 된다. `MASK_CALC_MODE_*`가 붙은
+    깎개는 **색을 섞는** 도구고, 그것 없이 깊이만 켠 깎개가 **깎아 내는** 도구다.
+
+    ⚠️ **그렇다고 다 빼면 안 된다.** 같은 잣대에 코터스(`pm0324`)도 걸리는데 그
+    연기는 등딱지 옆·위에 떠 있어서 몸을 안 가린다 (`.audit/mon/before-324.png`).
+    그래서 **몸을 통째로 감싸는 것만** 뺀다 — 렌더러가 적어 둔 `m_AABB`로
+    가른다 (`.audit/effectWrap.mjs`).
+
+    ⚠️ **브라우저 변환기와 같아야 한다** (`src/import/bdsp/albedo.ts`의
+    `carvedShells`). 한쪽만 고치면 설치본에만 연기가 남는다
+    """
+    carved: set[str] = set()
+    effect: set[str] = set()
+    for obj in env.objects:
+        if obj.type.name != "Material":
+            continue
+        d = obj.read_typetree()
+        name = d.get("m_Name", "?")
+        props = d.get("m_SavedProperties", {})
+        tex = dict(prop_pairs(props.get("m_TexEnvs", [])))
+
+        def has(prop: str) -> bool:
+            v = tex.get(prop)
+            return isinstance(v, dict) and v.get("m_Texture", {}).get("m_PathID", 0) != 0
+
+        if not any(has(p) for p in main_props):
+            effect.add(name)
+        # 알맹이에는 `_BaseColor`가 있고 깎개에는 없다
+        if "_BaseColor" in dict(prop_pairs(props.get("m_Colors", []))):
+            continue
+        words = str(d.get("m_ShaderKeywords") or "").split()
+        if "_ZWRITE_ON" not in words:
+            continue
+        if any(w.startswith("MASK_CALC_MODE_") for w in words):
+            continue
+        at = name.rfind("Mask")
+        if at < 0:
+            continue
+        carved.add(name[:at] + "Core" + name[at + 4:])
+    if not carved:
+        return carved
+
+    names_of = {}
+    for obj in env.objects:
+        if obj.type.name == "Material":
+            names_of[obj.path_id] = obj.read_typetree().get("m_Name", "")
+    boxes = []
+    for obj in env.objects:
+        if obj.type.name not in ("SkinnedMeshRenderer", "MeshRenderer"):
+            continue
+        d = obj.read_typetree()
+        aabb = d.get("m_AABB")
+        if not aabb:
+            continue
+        c, x = aabb["m_Center"], aabb["m_Extent"]
+        mid = (c["x"], c["y"], c["z"])
+        half = (x["x"], x["y"], x["z"])
+        used = [names_of.get(m.get("m_PathID", 0), "") for m in d.get("m_Materials", [])]
+        boxes.append((tuple(m - h for m, h in zip(mid, half)),
+                      tuple(m + h for m, h in zip(mid, half)), used))
+    body = [b for b in boxes if b[2] and all(n not in effect for n in b[2])]
+    if not body:
+        return set()
+    bmin = tuple(min(b[0][i] for b in body) for i in range(3))
+    bmax = tuple(max(b[1][i] for b in body) for i in range(3))
+
+    out: set[str] = set()
+    for lo, hi, used in boxes:
+        if not all(lo[i] <= bmin[i] and hi[i] >= bmax[i] for i in range(3)):
+            continue
+        out.update(n for n in used if n in carved)
+    return out
+
+
 def bake(bundle, outdir: Path, color_index: int | None = None,
          max_size: int | None = None,
          main_props: tuple[str, ...] = ("_MainTex",)) -> dict[str, dict]:
@@ -285,6 +374,7 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
     env = UnityPy.load(*[str(p) for p in paths])
     textures = {o.path_id: o for o in env.objects if o.type.name == "Texture2D"}
     overrides = color_overrides(env, color_index)
+    carved = carved_shells(env, main_props)
     if overrides:
         print(f"  ColorVariation: 머티리얼 {len(overrides)}개에 채널 색 오버라이드 적용")
 
@@ -313,6 +403,10 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
 
         found = next((p for p in main_props if p in slots), None)
         if found is None:
+            # 깊이로 깎여야 하는데 우리가 못 깎는 껍데기는 통째로 뺀다
+            if name in carved:
+                print(f"  {name}: 깎개가 깊이로 깎는 껍데기 — 통째로 뺌")
+                continue
             if effect_albedo(name, colors, slots, uvs, spec, outdir, max_size):
                 continue
             print(f"  {name}: {'·'.join(main_props)} 없음 — 건너뜀")

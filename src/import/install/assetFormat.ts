@@ -65,8 +65,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 같은 판에서 **재질 없는 조각을 안 그리게** 됐다 — 세 셰이더의 기본 흰색이
    * 리자몽 꼬리·또가스 연기·로토무 오라에 흰 덩어리로 붙던 자리다. glb 바이트가
    * 달라지므로 이미 깔린 사람도 이 그룹만 다시 굽는다 (`import/bdsp/model.ts`)
+   *
+   * 3 — **깎개가 깊이로 깎아 내는 연기 껍데기를 안 굽는다.** 또가스·또도가스가
+   * 몸을 통째로 가리는 크림색 구로 섰다 — 원판은 `SmokeMask*`가 깊이 버퍼로
+   * 그 구를 깎아 연기 가닥을 만드는데 glTF에 그 단계가 없다. 몸을 감싸는
+   * 여섯 껍데기가 빠지면서 두 종의 glb 바이트가 달라진다
+   * (`import/bdsp/albedo.ts`의 `carvedShells`)
    */
-  monModels: 2,
+  monModels: 3,
 }
 
 export function groupFormat(name: string): number {

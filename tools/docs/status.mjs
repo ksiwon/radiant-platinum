@@ -74,10 +74,9 @@ function blockers() {
 function repair() {
   let text
   try { text = read('REPAIR.md') } catch { return [] }
-  return tableAfter(text, '| | 무엇이 어긋났나 | 값 | 순서 |')
-    .map(([id, what, size, order]) => ({
-      id: plain(id), what: plain(what), size: plain(size), order: plain(order),
-    }))
+  // ⚠️ **`순서` 칸은 남은 것이 둘 이상일 때만 있다.** 하나로 줄면 순서가 없다
+  return tableAfter(text, '| | 무엇이 어긋났나 | 값 |')
+    .map(([id, what, size]) => ({ id: plain(id), what: plain(what), size: plain(size) }))
 }
 
 /** 원작에 있는데 우리는 반쯤이거나 없는 것 (PARITY.md) */
@@ -172,8 +171,8 @@ function render() {
   )
   if (r.length === 0) say('다 했다 — 임자 문서를 지웠다.')
   else {
-    say('| | 무엇이 어긋났나 | 값 | 순서 |', '|---|---|---|---|')
-    for (const x of r) say(`| ${x.id} | ${x.what} | ${x.size} | ${x.order} |`)
+    say('| | 무엇이 어긋났나 | 값 |', '|---|---|---|')
+    for (const x of r) say(`| ${x.id} | ${x.what} | ${x.size} |`)
   }
 
   say(
