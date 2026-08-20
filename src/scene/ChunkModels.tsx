@@ -21,7 +21,7 @@ import {
   grassColors, groundRank, pickGround,
   plateColors, plateLumps, rockSites, shiftFloors, treeSites, trunkNudge, tuftTextures,
   waterColors,
-  type FloorPatch, type FloorSource, type FloorTri, type GroundArea, type LumpSet,
+  type FloorSource, type FloorTri, type GroundArea, type LumpSet,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
 import { Rocks, plateBands, type RockGroup } from './Rocks'
@@ -36,6 +36,7 @@ import { floorExtent, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
+import { mergeByMaterial } from './mergeGroups'
 import { isFeaturePlacement } from './movingProps'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
@@ -66,10 +67,13 @@ interface Placed {
 
 /** 청크 지형. 소품과 달리 숲 바닥을 메울 판을 하나 더 갖는다 */
 interface Land extends Placed {
-  /** 원작이 땅을 안 만든 숲 바닥. 둘레 지형의 타일로 메운다 (`plates.floorPatch`) */
-  floor: FloorPatch | null
-  /** 울타리·표지판의 옆면. 원작은 판 한 장이라 옆에서 사라진다 (`cards.ts`) */
-  shells: CardShells | null
+  /**
+   * 지형·메운 바닥·판 옆면을 **한 기하로** 합친 것 (`mergeGroups`).
+   *
+   * 셋이 같은 재질 배열을 쓰는데 메시가 셋이라 드로우콜도 셋 몫이 나갔다.
+   * 합치면 재질 하나가 콜 하나다. 배치마다 새로 만드니 **버려야 한다**
+   */
+  merged: BufferGeometry | null
   /** 원작이 안 만든 실내 앞벽. 출입구만 비우고 세운다 (`roomWalls.ts`) */
   room: RoomWalls | null
 }
@@ -78,13 +82,6 @@ interface Prop extends Placed {
   y: number
   rot: [number, number, number]
   scale: [number, number, number]
-  /**
-   * 빠진 면을 채운 판. 원작 소품은 면이 통째로 없다 (`shell.ts`).
-   *
-   * 재질은 따로 없다 — **소품이 쓰는 그 배열을 그대로 쓴다.** 판에 서브메시
-   * 그룹이 달려 있어서 번호가 그대로 맞는다
-   */
-  back: BufferGeometry | null
 }
 
 /**
@@ -386,6 +383,25 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
   return made
 }
 
+/**
+ * 소품 몸통과 「채운 면」을 합친 기하. **모델마다 한 번만** 만든다.
+ *
+ * 재질 배열은 배치마다 새것이지만(`PropFade`가 배치 하나만 흐리게 하려고
+ * 그렇게 한다) **같은 칸이 같은 재질로 풀리는 짜임은 늘 같다** — 합친 결과가
+ * 배치와 무관하므로 여기 담아 둔다
+ */
+const mergedPropCache = new Map<number, BufferGeometry | null>()
+
+function cachedMergedProp(
+  id: number, mesh: BufferGeometry, back: BufferGeometry | null, materials: Material[],
+): BufferGeometry | null {
+  const hit = mergedPropCache.get(id)
+  if (hit !== undefined) return hit
+  const made = back === null ? null : mergeByMaterial([mesh, back], materials)
+  mergedPropCache.set(id, made)
+  return made
+}
+
 /** 배치가 저 혼자 갖고 있던 재질을 버린다. `MISSING`은 모두가 함께 쓰므로 뺀다 */
 function disposeProps(list: readonly Prop[]): void {
   const seen = new Set<Material>()
@@ -623,6 +639,20 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           const floors = borrowed.length > 0
             ? borrowed
             : p.source.floors.length > 0 ? [] : p.source.fallback ?? []
+          // 원작 숲에는 바닥이 없다 — 잎에 가려 보일 일이 없어서 안 만든 것이다.
+          // 그 칸에 깔 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓰되,
+          // **한 그림으로 통일한다** (`plates.oneGround`) — 칸마다 제일 가까운
+          // 것을 집으면 나무 밑이 눈·절벽·모래 누더기가 된다
+          const floor = floorPatch(
+            split, (x, z, near) => groundAt(x + originX, z + originZ, near),
+            floors, p.source,
+            // 풀숲 그림은 아예 후보에서 뺀다 — 깔면 숲 바닥이 통째로
+            // 풀숲으로 보이는데 정작 인카운터 칸은 거기가 아니다
+            (g) => {
+              const name = materials[g]?.name ?? ''
+              return { name, rank: rankOf(name) }
+            },
+            pick)
           return {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,
             index: c.land,
@@ -631,21 +661,6 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             mesh,
             geometry: split.geometry,
             materials,
-            // 원작 숲에는 바닥이 없다 — 잎에 가려 보일 일이 없어서 안 만든 것이다.
-            // 그 칸에 깔 바닥 삼각형의 **서브메시와 UV 평면**을 이어 쓰되,
-            // **한 그림으로 통일한다** (`plates.oneGround`) — 칸마다 제일 가까운
-            // 것을 집으면 나무 밑이 눈·절벽·모래 누더기가 된다
-            floor: floorPatch(
-              split, (x, z, near) => groundAt(x + originX, z + originZ, near),
-              floors, p.source,
-              // 풀숲 그림은 아예 후보에서 뺀다 — 깔면 숲 바닥이 통째로
-              // 풀숲으로 보이는데 정작 인카운터 칸은 거기가 아니다
-              (g) => {
-                const name = materials[g]?.name ?? ''
-                return { name, rank: rankOf(name) }
-              },
-              pick),
-            shells: p.shells,
             // 원작 실내는 카메라가 고정이라 **안 보이는 쪽 벽을 안 만들었다** —
             // 문이 있는 앞벽이 그렇다. 출입구만 비우고 세운다 (`roomWalls.ts`).
             // 실외에는 안 건다: 거기서 바닥이 끝나는 자리는 맵 가장자리라
@@ -653,6 +668,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             room: indoor
               ? roomWalls(split, isDoor, { x: originX, z: originZ })
               : null,
+            // ⚠️ **방 벽은 안 합친다.** 나머지 셋은 그림자를 던지는데 방 벽은
+            // 받기만 한다 — 합치면 안 보이는 앞벽이 방 안에 그림자를 드리운다
+            merged: mergeByMaterial(
+              [split.geometry, floor?.geometry, p.shells?.geometry], materials),
           }
         })
         // ⚠️ **카메라가 방 밖에 서지 않게 테두리를 넘긴다** (REPAIR §5).
@@ -770,9 +789,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             x: b.x, y: b.y, z: b.z,
             rot: b.rot, scale: b.scale,
             mesh: got.mesh,
-            geometry: got.mesh.geometry,
+            // 몸통과 채운 면을 합친 것. 합칠 것이 없으면 몸통 그대로다
+            geometry: cachedMergedProp(got.id, got.mesh.geometry, back.geometry, materials)
+              ?? got.mesh.geometry,
             materials,
-            back: back.geometry,
           }]
         }))
       })
@@ -793,6 +813,22 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   }, [props])
   useEffect(() => () => { disposeProps(shown.current) }, [])
 
+  // 합친 청크 기하는 **배치마다 새것이다** — 메운 바닥이 이웃 지형에서 타일을
+  // 빌려 오느라 자리에 매여 있어서 청크 번호로 나눠 쓸 수가 없다. 창이 옮겨
+  // 가면 앞 창의 것을 버려야 GPU에 쌓인다.
+  //
+  // **그린 다음에** 버린다 — 새 목록이 붙은 뒤라야 방금 버린 것을 한 프레임
+  // 더 그리는 일이 없다 (소품 재질과 같은 차례다)
+  const standing = useRef<Land[]>([])
+  useEffect(() => {
+    const old = standing.current
+    standing.current = placed
+    for (const p of old) p.merged?.dispose()
+  }, [placed])
+  useEffect(() => () => {
+    for (const p of standing.current) p.merged?.dispose()
+  }, [])
+
   return (
     <group>
       {/*
@@ -802,25 +838,30 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       {placed.map((p) => (
         <group key={p.key} position={[p.x, 0, p.z]}>
           {/*
-            ⚠️ **이름은 장식이 아니다.** `pnpm shot --hit`이 화면의 한 점에 광선을
-            쏘아 "무엇이 거기 있느냐"를 되묻는데, 답이 `Mesh`뿐이면 지형인지
-            메운 바닥인지 옆면인지 못 가른다
+            지형 + 숲 바닥의 구멍을 메운 판 + 울타리·표지판의 옆면.
+
+            셋이 **같은 재질 배열**을 쓰는데 메시가 셋이라 청크마다 콜이 세
+            몫 나갔다 — `poketch`에서 지형 230칸 · 메운 바닥 226칸 · 판 옆면
+            109칸이다. 재질별로 색인을 다시 모아 하나로 합친다 (`mergeGroups`):
+
+              메운 바닥 — 원작은 서 있는 잎 판이 제 바닥 판보다 옆으로 더 나가
+                있어서, 걷어내고 나면 잎 칸의 15.6%가 발밑이 뚫린다
+              판 옆면 — 원작 판 한 장은 옆에서 보면 선 하나로 사라진다.
+                그림의 실루엣을 그대로 밀어내 두께를 준다
+
+            ⚠️ **이름은 장식이 아니다.** `pnpm shot --hit`이 화면의 한 점에
+            광선을 쏘아 "무엇이 거기 있느냐"를 되묻는다. 합치면서 셋을 가르는
+            이름은 잃었고, 대신 방 벽은 그대로 제 이름으로 선다.
+
+            ⚠️ 합치면 **메운 바닥도 그림자를 던진다.** 원래는 받기만 했다
           */}
-          <mesh name="지형" geometry={p.geometry} material={p.materials} castShadow receiveShadow />
-          {/*
-            숲 바닥의 구멍. 원작은 서 있는 잎 판이 제 바닥 판보다 옆으로 더
-            나가 있어서, 걷어내고 나면 잎 칸의 15.6%가 발밑이 뚫린다
-          */}
-          {p.floor && (
-            <mesh name="메운 바닥" geometry={p.floor.geometry} material={p.materials} receiveShadow />
-          )}
-          {/*
-            울타리·표지판의 옆면. 원작 판 한 장을 세워 놔도 옆에서 보면 선
-            하나로 사라진다 — 그림의 실루엣을 그대로 밀어내 두께를 준다
-          */}
-          {p.shells && (
-            <mesh name="판 옆면" geometry={p.shells.geometry} material={p.materials} castShadow receiveShadow />
-          )}
+          <mesh
+            name="지형"
+            geometry={p.merged ?? p.geometry}
+            material={p.materials}
+            castShadow
+            receiveShadow
+          />
           {/*
             원작이 안 만든 실내 앞벽. 카메라가 도는 화면에서는 그 자리가
             통째로 검게 뚫려 보인다 (`roomWalls.ts`)
@@ -866,16 +907,16 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             3인칭에서 카메라와 플레이어 사이에 든 건물은 흐려진다. 나무는 이미
             비켜 주는데 집은 안 비켜서 화면의 절반이 지붕이 됐다 (`PropFade`)
           */}
-          <PropFade geometry={p.mesh.geometry} materials={p.materials}>
-            <mesh name="소품" geometry={p.mesh.geometry} material={p.materials} castShadow receiveShadow />
+          <PropFade geometry={p.geometry} materials={p.materials}>
             {/*
-              빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준 −Z가 64% ·
-              −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면 반대편 벽의
-              **안쪽**이 보인다 (`shell.ts`)
+              몸통 + 빠진 면. 원작 소품은 면이 통째로 없다 — 배치 501개 기준
+              −Z가 64% · −X가 40% · +Y가 31% · +X가 22%다. 그쪽으로 돌아가면
+              반대편 벽의 **안쪽**이 보인다 (`shell.ts`).
+
+              둘이 같은 재질 배열을 쓰므로 한 기하로 합쳐 둔다 (`mergeGroups`) —
+              `poketch`에서 소품 124칸 + 채운 면 113칸이 따로 나가던 자리다
             */}
-            {p.back && (
-              <mesh name="소품 채운 면" geometry={p.back} material={p.materials} castShadow receiveShadow />
-            )}
+            <mesh name="소품" geometry={p.geometry} material={p.materials} castShadow receiveShadow />
           </PropFade>
         </group>
       ))}
