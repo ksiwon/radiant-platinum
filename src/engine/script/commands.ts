@@ -22,6 +22,8 @@ import { APPROACH_TYPE, approachMovements, dirBetween } from '../actor/approach'
 import { FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
+import { SFX } from '../audio/sfx'
+import { flickerDone, shakeDone, startFlicker, startShake } from '../actor/objectFx'
 import { TREE_STATUS } from '../world/honeyTree'
 import { clearOverworldWeather, overworldWeather } from '../world/overworldWeather'
 import {
@@ -3424,15 +3426,39 @@ on('GetPreviousMapID', (ctx) => {
 })
 
 /**
- * 승강기가 오르내리는 연출 (`ScrCmd_PlayElevatorAnimation`).
+ * 승강기가 오르내린다 (`overlay006/elevator_animation.c`).
  *
- * ⚠️ **우리에게는 그 그림이 없다.** 원작은 위 화면에 층수판을 그려 두고
- * 흐르는 무늬를 돌린다 — 원 스크린에서 갈 자리가 없다. 대신 **인자는 다 읽고**
- * 스크립트를 한 프레임 쉬게 한다(원작도 `return TRUE`다). 안 만들면 그 자리에서 선다
+ * 백화점·TV국·전망대·배틀타워·리본신디케이트·연고시티의 두 집, 일곱 자리다.
+ * 원작의 다섯 걸음 중 **소리 둘이 연출의 길이를 정한다** —
+ * `SEQ_SE_DP_ELEBETA2`가 흐르는 동안 층수판 불빛이 돌고, 다 돌면 그 소리를
+ * 끊고 `SEQ_SE_DP_PINPON`을 울린 뒤 **그 소리가 끝나야** 문이 열린다.
+ *
+ * ⚠️ **불빛 자체는 아직 없다.** 원작이 `elevator_lights` 맵 소품의 nsbca를
+ * `loopCount`번 돌리는데, 우리는 맵을 통째로 구운 청크라 그 소품만 따로
+ * 못 돌린다. 그래서 **길이를 소리에서 잰다** — 지어낸 프레임 수를 두지 않는다.
+ *
+ * ⚠️ 소리가 안 붙어 있으면 여기서 서면 안 된다 (`WaitSE`와 같은 이유)
  */
 on('PlayElevatorAnimation', (ctx) => {
-  ctx.readVar() // 오르는가 내리는가
-  ctx.readVar() // 몇 번 돌리는가
+  ctx.readVar() // 오르는가 내리는가 — 원작도 양쪽에 같은 소리를 적었다
+  ctx.readVar() // 몇 번 돌리는가 — 불빛의 바퀴 수다
+  const sound = soundOf(ctx)
+  if (sound === undefined) return true
+  sound.playEffect(SFX.ELEVATOR)
+  ctx.scratch[0] = 0
+  ctx.pause((c) => {
+    const s = soundOf(c)
+    if (s === undefined) return true
+    if (c.scratch[0] === 0) {
+      // 아직 오르는 중 — 소리가 멎으면 다 온 것이다
+      if (s.effectPlaying(SFX.ELEVATOR)) return false
+      s.stopEffect(SFX.ELEVATOR)
+      s.playEffect(SFX.ELEVATOR_DING)
+      c.scratch[0] = 1
+      return false
+    }
+    return !s.effectPlaying(SFX.ELEVATOR_DING)
+  })
   return true
 })
 
@@ -4108,16 +4134,24 @@ on('DeleteDistortionWorldMapObject', (ctx) => {
 /**
  * 기라티나의 그림자가 지나간다 (`DistWorld_StartGiratinaShadowEvent`).
  *
- * ⚠️ **연출만이다.** 그림자가 날아가는 것 자체는 스크립트의 갈래를 안 바꾸고,
- * 「봤다」는 사실은 바로 뒤의 `SetVar VAR_DISTORTION_WORLD_PROGRESS`가 적는다.
- * 그래서 이 둘이 비어 있어도 이야기는 끝까지 흐른다 — 없는 것은 그림뿐이다
+ * 1F에서 신오와 함께 올려다보는 그 자리 하나다. 번호가 고르는 표는
+ * `sGiratinaShadowExternal` 한 줄뿐이고(`distortionTables`의 `giratinaShadows`),
+ * 뜬 그림자는 **스크립트가 거둔다** — 그 사이에 주인공과 신오가 놀라는 몸짓을
+ * 하고 30프레임을 쉰다.
+ *
+ * ⚠️ **여기서 서지 않는다.** 원작도 `return FALSE`다 — 그림자는 필드 연출로
+ * 따로 돌고 스크립트는 그대로 흘러간다
  */
 on('StartDistortionWorldGiratinaShadowEvent', (ctx) => {
-  ctx.readVar()
+  const index = ctx.readVar()
+  ctx.host.world.services.distortion?.startShadow(index)
   return false
 })
 
-on('FinishDistortionWorldGiratinaShadowEvent', () => false)
+on('FinishDistortionWorldGiratinaShadowEvent', (ctx) => {
+  ctx.host.world.services.distortion?.finishShadow()
+  return false
+})
 
 /** `ScrCmd_2B5` — 깨어진 세계의 이름 없는 연출 하나. 인자 셋을 읽고 지나간다 */
 on('ScrCmd_2B5', (ctx) => {
@@ -4297,19 +4331,42 @@ on('RemovePokemonPreview', (ctx) => {
 })
 
 /**
- * 사람이 깜빡인다 · 흔들린다 (`MapObject_Flicker` · `MapObject_Shake`).
+ * 사람이 깜빡인다 (`MapObject_Flicker`).
  *
- * ⚠️ **연출뿐이라 값을 읽고 지나간다.** 원작은 애니메이션이 끝날 때까지 서
- * 있는데, 우리가 안 서도 스크립트의 갈래는 안 바뀐다 — 없는 것은 흔들림 하나다
+ * 만월섬 숲의 크레세리아 한 자리다 — `6, 8`이라 8프레임마다 뒤집기를 일곱 번
+ * 하고 **사라진 채로** 끝난다. 규칙은 `actor/objectFx`가 든다.
+ *
+ * ⚠️ **끝날 때까지 선다** (원작도 `return TRUE`다). 안 서면 크레세리아가
+ * 깜빡이는 동안 다음 대사가 겹쳐 나온다
  */
 on('FlickerObject', (ctx) => {
-  ctx.readVar(); ctx.readVar(); ctx.readVar()
-  return false
+  const localID = ctx.readVar()
+  const times = ctx.readVar()
+  const delay = ctx.readVar()
+  const target = ctx.host.world.objects(localID)
+  if (target === null) return false
+  startFlicker(target, times, delay)
+  ctx.pause(() => flickerDone())
+  return true
 })
 
+/**
+ * 사람이 흔들린다 (`MapObject_Shake`).
+ *
+ * 선단신전 B5F의 레지기가스 한 자리다 — `8, 90, 3, 0`이라 한 프레임에 90도씩
+ * 돌아 네 프레임이 한 바퀴고, 여덟 바퀴를 x로만 ±3/16타일 떤다
+ */
 on('ShakeObject', (ctx) => {
-  ctx.readVar(); ctx.readVar(); ctx.readVar(); ctx.readVar(); ctx.readVar()
-  return false
+  const localID = ctx.readVar()
+  const times = ctx.readVar()
+  const speed = ctx.readVar()
+  const xOffset = ctx.readVar()
+  const zOffset = ctx.readVar()
+  const target = ctx.host.world.objects(localID)
+  if (target === null) return false
+  startShake(target, times, speed, xOffset, zOffset)
+  ctx.pause(() => shakeDone())
+  return true
 })
 
 // ── 맵마다 움직이는 장치 (PARITY §7.12) ──────────────────────────────────────

@@ -89,6 +89,9 @@ function readSbc(buf, at, end) {
  * 재질이 자기 텍스처 이름을 들고 있는 게 아니라, 텍스처마다 "나를 쓰는 재질들"
  * 목록이 붙어 있다. 그래서 뒤집어서 읽어야 한다
  */
+/** RGB5 → 8비트. 위 3비트를 되붙인다 (정점색을 늘릴 때와 같은 식이다) */
+const rgb5 = (v) => [v & 31, (v >> 5) & 31, (v >> 10) & 31].map((x) => (x << 3) | (x >> 2))
+
 function parseMaterials(buf, modelAt, header) {
   const setAt = modelAt + header.materialsOffset
   const texDictOff = buf.readUInt16LE(setAt)
@@ -102,6 +105,7 @@ function parseMaterials(buf, modelAt, header) {
     const at = setAt + buf.readUInt32LE(e.at)
     const texImageParam = buf.readUInt32LE(at + 20)
     const polyAttr = buf.readUInt32LE(at + 12)
+    const diffAmb = buf.readUInt32LE(at + 4)
     return {
       name: e.name,
       // 형식·크기는 TEX0 쪽이 정본이고, 재질은 UV를 나눌 원본 크기를 갖는다
@@ -115,6 +119,14 @@ function parseMaterials(buf, modelAt, header) {
       flipT: (texImageParam & 0x80000) !== 0,
       /** 0 투명 · 31 불투명. 반투명 판(물·그림자)이 여기서 갈린다 */
       alpha: (polyAttr >> 16) & 0x1f,
+      /**
+       * 확산색 (`diffAmb`의 아래 15비트, RGB5).
+       *
+       * 텍스처가 있는 재질에서는 텍스처가 색을 주므로 굽는 쪽이 안 쓴다.
+       * **텍스처가 없는 재질에서는 이것이 유일한 색이다** — 깨어진 세계
+       * 소품이 그 쓰임새다 (`extract/distortionProps.mjs`의 `untexturedDiffuse`)
+       */
+      diffuse: rgb5(diffAmb & 0x7fff),
       /** 6~7비트가 어느 면을 그리는가다: 1 뒷면 · 2 앞면 · 3 양면 */
       faces: (polyAttr >> 6) & 3,
       texture: null,

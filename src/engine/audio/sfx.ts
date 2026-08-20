@@ -40,6 +40,29 @@ export const SFX = {
    * 뛰어들 때 켜고 다 내려간 자리에서 끈다(8429·8726줄) — 11초를 흐른다
    */
   WATERFALL: 1488,
+  /**
+   * `SEQ_SE_DP_ELEBETA2`. 승강기가 오르내리는 소리
+   * (`overlay006/elevator_animation.c`의 `..._STATE_PLAY_WITH_SOUND`).
+   *
+   * ⚠️ **오르든 내리든 같은 소리다.** 원작이 `if (dir == UP) … else …`로 갈라
+   * 놓고 양쪽에 같은 번호를 적었다 — 방향으로 소리를 나누면 원작에 없는 것을 짓는 셈이다
+   */
+  ELEVATOR: 1554,
+  /** `SEQ_SE_DP_PINPON`. 승강기가 다 왔을 때의 「띵동」. 이 소리가 끝나야 문이 열린다 */
+  ELEVATOR_DING: 1521,
+  /**
+   * `SEQ_SE_DP_FW019`. 기라티나 그림자가 **달아날 때**
+   * (`ov9_02249960.c`의 `GIRATINA_SHADOW_PROP_SFX_KIND_FLEE`).
+   *
+   * 그림자 넷 중 소리가 갈린다 — 1F와 B4F 셋은 울음소리(`SFX_KIND_CRY`)고,
+   * 기라티나 방 둘째만 이 소리다. 첫째는 소리가 없다
+   */
+  GIRATINA_FLEE: 1609,
+  /**
+   * `SEQ_SE_PL_GIRA`. 기라티나가 하늘에서 내려설 때
+   * (`EventCmdPlayGiratinaArrival_InitSpriteAndSky`)
+   */
+  GIRATINA_ARRIVE: 1489,
 
   /**
    * 기술이 맞는 소리 셋. **효과에 따라 다른 소리다** —

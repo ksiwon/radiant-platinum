@@ -24,7 +24,15 @@ export interface ChunkFormat {
 interface ChunkMeta {
   verts: number
   indices: number
-  materials: { tex: string | null, pal: string | null, rep: number, a: number, f: number }[]
+  materials: {
+    tex: string | null, pal: string | null, rep: number, a: number, f: number,
+    /**
+     * 텍스처가 없는 재질의 확산색 (`diffAmb`). **텍스처가 있으면 없다** —
+     * 그때는 텍스처가 색을 준다 (`import/platinum/chunks.ts`의 `untexturedDiffuse`).
+     * 지금 이 값을 싣는 것은 깨어진 세계 소품뿐이다
+     */
+    d?: [number, number, number],
+  }[]
   /** [재질 번호, 색인 시작, 색인 개수] */
   submeshes: [number, number, number][]
 }

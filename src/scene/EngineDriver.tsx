@@ -8,6 +8,7 @@ import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { isSliding } from '../engine/actor/ice'
 import { npcSystem } from '../engine/actor/ambient'
+import { objectFxTick } from '../engine/actor/objectFx'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
@@ -66,6 +67,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 재는 연출이라 고정 스텝에서 밀어야 기계 속도와 무관하게 같은 길이가 된다
       gameLoop.register({ fixedUpdate: emoteFrame })
       gameLoop.register({ fixedUpdate: vsSeekerFrame })
+      // 사람 하나가 깜빡이거나 흔들리는 연출 둘 (`actor/objectFx`) — 이쪽도
+      // 프레임 수로 재므로 고정 스텝이다
+      gameLoop.register({ fixedUpdate: objectFxTick })
       gameLoop.register(playerSystem)
       gameLoop.register(warpSystem)
       // 한 칸을 밟은 뒤에 도는 것들 — 독·리펠·친밀도 (PARITY §1.1).

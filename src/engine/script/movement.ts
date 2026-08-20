@@ -69,6 +69,16 @@ export interface Movable {
   /** 원작 방향 번호 */
   dir: number
   visible: boolean
+  /**
+   * 그림만 어긋나는 만큼 (타일) — `MapObject_SetSpritePosOffset`.
+   *
+   * **서 있는 칸은 그대로다.** 연출이 프레임마다 고쳐 쓰고 그림을 세우는 쪽이
+   * 자리에 더한다. 흔들림·깜빡임(`actor/objectFx`)과 기라티나가 하늘에서
+   * 내려오는 것(`scene/distortion`)이 같은 이 한 자리를 쓴다
+   */
+  offsetX?: number
+  offsetY?: number
+  offsetZ?: number
   /** `generated/movement_types.txt`의 번호. 주인공은 없다 */
   readonly movementType?: number
   /**

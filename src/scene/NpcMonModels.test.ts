@@ -22,13 +22,23 @@ describe('오버월드 포켓몬 모델', () => {
     expect(missing).toEqual([])
   })
 
-  it('종족 번호가 4세대 범위 안이고 폼은 로토무만 0이 아니다', () => {
+  it('종족 번호가 4세대 범위 안이고 폼이 0이 아닌 것은 둘뿐이다', () => {
+    // 로토무 다섯(479)과 기라티나 오리진(487)이다. 그림 이름이 폼까지
+    // 말해 주는 종족이 이 둘뿐이라, 굽는 모델도 `479-1`·`487-1`처럼 갈린다
+    const FORMED = new Set([479, 487])
     for (const name of OVERWORLD_MON_NAMES) {
       const ref = overworldMon(name)!
       expect(ref[0]).toBeGreaterThanOrEqual(1)
       expect(ref[0]).toBeLessThanOrEqual(493)
-      if (ref[1] !== 0) expect(ref[0]).toBe(479)
+      if (ref[1] !== 0) expect(FORMED.has(ref[0])).toBe(true)
     }
+  })
+
+  it('기라티나는 오리진과 어나더가 그림부터 갈린다', () => {
+    // 깨어진 세계에서 마주치는 그것이 오리진이다 (`graphicsID 230`). 어나더는
+    // 귀혼동굴 쪽(`graphicsID 160`)이라 같은 표에서 폼 번호로만 갈린다
+    expect(overworldMon('GIRATINA_ORIGIN')).toEqual([487, 1])
+    expect(overworldMon('GIRATINA_ALTERED')).toEqual([487, 0])
   })
 
   it('모르는 그림은 모델을 안 만든다 — 판때기로 남는다', () => {

@@ -55,6 +55,7 @@ import {
   distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
+  distortionShadowTick,
   distortionCameraTick,
   distortionCascadeTick,
   distortionCascading,
@@ -725,6 +726,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
+    // 지나가는 기라티나 그림자 넷 (`DistWorldGiratinaShadowProp`)
+    distortionShadowTick(dt)
     // 밟으면 통째로 미끄러지는 발판 (`EVENT_CMD_MOVE_PLATFORM`) — B2F의 길이다
     distortionEventTick(dt)
     // 리그·강철섬의 승강판 (PARITY §7.12). 타는 동안은 판이 자리를 정한다

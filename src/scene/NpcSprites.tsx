@@ -193,7 +193,12 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       }
 
       const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
-      slot.mesh.position.set(actor.x + 0.5, y, actor.z + 0.5)
+      // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
+      slot.mesh.position.set(
+        actor.x + 0.5 + (actor.offsetX ?? 0),
+        y + (actor.offsetY ?? 0),
+        actor.z + 0.5 + (actor.offsetZ ?? 0),
+      )
       slot.mesh.scale.set(sprite.w / TEXELS_PER_TILE, sprite.h / TEXELS_PER_TILE, 1)
       // 판때기가 카메라를 본다. 좌우로만 돈다 — 위아래로도 눕히면 발이 뜬다
       slot.mesh.rotation.set(0, Math.atan2(

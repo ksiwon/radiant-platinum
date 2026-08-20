@@ -123,7 +123,12 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
       seen.add(actor)
 
       const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
-      slot.outer.position.set(actor.x + 0.5, y, actor.z + 0.5)
+      // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
+      slot.outer.position.set(
+        actor.x + 0.5 + (actor.offsetX ?? 0),
+        y + (actor.offsetY ?? 0),
+        actor.z + 0.5 + (actor.offsetZ ?? 0),
+      )
       const step = DIR_STEP[actor.dir & 3]!
       slot.outer.rotation.y = Math.atan2(step.x, step.z)
       slot.outer.visible = true

@@ -399,8 +399,16 @@ function flatten(row) {
   return { ...plain(rest), ...(objEvent === undefined ? {} : plain(objEvent)) }
 }
 
+/**
+ * 스크립트가 부르는 기라티나 그림자 (`sGiratinaShadowExternal`).
+ *
+ * ⚠️ **이름을 `sGiratinaShadowTemplates`로 짚어서 오래 0개였다.** 표는 있는데
+ * 못 찾으니 조용히 빈 배열이 나갔고, 1F에서 기라티나가 지나가는 연출이
+ * 통째로 비었다. 여기 있는 하나를 `StartDistortionWorldGiratinaShadowEvent`가
+ * 번호로 집는다 (`GIRATINA_SHADOW_EXTERNAL_COUNT` = 1)
+ */
 function readGiratinaShadows(tables, values) {
-  const table = tables.get('sGiratinaShadowTemplates')
+  const table = tables.get('sGiratinaShadowExternal')
   if (!table) return []
   return tableEntries(table, values).map(plain)
 }

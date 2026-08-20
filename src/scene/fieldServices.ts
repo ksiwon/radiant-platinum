@@ -64,6 +64,7 @@ import { poketchEnable, poketchEnabled, poketchHasApp, poketchRegister, poketchS
 import { relearnableMoves } from '../engine/pokemon/relearn'
 import {
   distortionAddObject, distortionPlayerPos, distortionRemoveObject, distortionResetCamera,
+  finishDistortionShadow, startDistortionShadow,
 } from './distortion'
 import { usePreviewStore } from '../state/previewStore'
 import {
@@ -173,6 +174,7 @@ import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
 import { mailboxCount } from '../engine/world/mail'
 import { playerTrainer, useSaveStore } from '../state/saveStore'
+import { DISTORTION_TABLES } from '../engine/world/distortionTables'
 import { useSessionStore } from '../state/sessionStore'
 import { naming as namingAnswer } from '../ui/menu/namingAnswer'
 import type { ItemTable } from '../data/gameData'
@@ -1661,6 +1663,12 @@ const services: FieldServices = {
     addObject: (localID) => { distortionAddObject(localID, fieldScripts.vars) },
     removeObject: (localID) => { distortionRemoveObject(localID) },
     resetCamera: () => { distortionResetCamera() },
+    // ⚠️ 표가 비어 있으면 **띄우지 않는다.** 원작은 `GF_ASSERT`로 잡는 자리다
+    startShadow: (index) => {
+      const t = DISTORTION_TABLES.giratinaShadows[index]
+      if (t !== undefined) startDistortionShadow(t)
+    },
+    finishShadow: () => { finishDistortionShadow() },
   },
 
   /**

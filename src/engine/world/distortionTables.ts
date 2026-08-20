@@ -11,7 +11,7 @@
 //
 // 실측 — 층 이음 10 · 사건 45자리(명령 111) ·
 // 움직이는 발판 34 · 승강 경로 22 · 늘 서 있는 소품 4 ·
-// 맵 물체 45 · 기라티나 그림자 0
+// 맵 물체 45 · 기라티나 그림자 1
 //
 // ⚠️ **손으로 고치지 않는다** — `pnpm gen:distortionTables`가 디컴프에서 다시
 // 만든다 (`tools/extract/distortionTablesModule.cjs`).
@@ -173,6 +173,6 @@ export const DISTORTION_TABLES: DistortionTables = {
   {"map":583,"objects":[{"flagCond":0,"flagCondVal":0,"rotated":0,"rotationAngle":0,"localID":128,"graphicsID":8192,"movementType":0,"trainerType":0,"hiddenFlag":0,"script":2,"dir":0,"data":[0,0,0],"movementRangeX":0,"movementRangeZ":0,"x":116,"z":74,"y":4259840},{"flagCond":0,"flagCondVal":0,"rotated":0,"rotationAngle":0,"localID":129,"graphicsID":87,"movementType":0,"trainerType":0,"hiddenFlag":1336,"script":7321,"dir":0,"data":[0,0,0],"movementRangeX":0,"movementRangeZ":0,"x":89,"z":55,"y":4259840}]},
   ],
   giratinaShadows: [
-
+  {"initialTileX":6,"initialTileY":297,"initialTileZ":42,"rotAnglesIndex":3,"soundKind":1,"scale":[4096,4096,4096],"posDelta":[196608,0,0],"movementAnimSteps":64},
   ],
 }

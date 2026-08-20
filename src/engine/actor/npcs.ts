@@ -10,6 +10,7 @@ import { hideFlagOf, isCloneNpc, npcByLocalID, npcsOf, type Npc } from '../map/w
 import type { Movable } from '../script/movement'
 import type { VarStore } from '../script/vars'
 import type { AmbientState } from './ambient'
+import { clearObjectFx } from './objectFx'
 
 /**
  * 그림 번호가 **변수로 정해지는** 자리 (`OBJ_EVENT_GFX_VAR_0` ~ `VAR_F`).
@@ -179,6 +180,8 @@ export function addNpcFrom(info: Npc, vars: VarStore): void {
 }
 
 export function spawnNpcs(mapId: number, vars: VarStore): void {
+  // 앞 맵에서 깜빡이거나 흔들리던 사람은 이미 없다 (`actor/objectFx`)
+  clearObjectFx()
   npcActors.list = []
   npcActors.byLocalID.clear()
   npcActors.mapId = mapId
@@ -215,6 +218,7 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
 }
 
 export function clearNpcs(): void {
+  clearObjectFx()
   npcActors.list = []
   npcActors.byLocalID.clear()
   npcActors.mapId = -1

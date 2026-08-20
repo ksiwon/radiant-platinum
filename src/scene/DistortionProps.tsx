@@ -19,8 +19,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { DoubleSide, FrontSide, Mesh, MeshBasicMaterial, type Material } from 'three'
 import {
-  distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, distortionSlideAt,
-  isDistortionFloor,
+  distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, distortionShadowAt,
+  distortionSlideAt, GIRATINA_SHADOW_KIND, isDistortionFloor,
   type DistortionPropPlace,
 } from './distortion'
 import { useSaveStore } from '../state/saveStore'
@@ -39,12 +39,16 @@ function materialsOf(mesh: ChunkMesh, sheet: TexSheet | null): Material[] {
   const cache = new Map<string, Material>()
   return mesh.materials.map((spec) => {
     const key = `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
+      + `/${(spec.d ?? []).join(',')}`
     const hit = cache.get(key)
     if (hit) return hit
     const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
     const translucent = spec.a < 31
     const made = new MeshBasicMaterial({
       map: item && sheet ? sliceTexture(sheet, item, spec.rep) : null,
+      // ⚠️ **텍스처가 없는 재질은 확산색이 유일한 색이다.** 정점색이 흰색
+      // 하나뿐이라 이걸 안 곱하면 새까만 기라티나 그림자가 하얗게 뜬다
+      ...(spec.d ? { color: (spec.d[0] << 16) | (spec.d[1] << 8) | spec.d[2] } : {}),
       vertexColors: true,
       // 4세대 텍스처는 색 0을 투명으로 쓴다
       alphaTest: translucent ? 0 : 0.5,
@@ -74,9 +78,16 @@ export function DistortionProps({ mapId }: { mapId: number }) {
   const [loaded, setLoaded] = useState<readonly Loaded[]>([])
   const [offsets, setOffsets] = useState<readonly (readonly number[])[]>([])
 
-  /** 이 층이 쓰는 소품 종류만 받는다. 스물다섯을 다 받을 이유가 없다 */
+  /**
+   * 이 층이 쓰는 소품 종류만 받는다. 스물다섯을 다 받을 이유가 없다.
+   *
+   * ⚠️ **기라티나 그림자만 예외다.** 그것은 자리표에 없고 사건이 부를 때에야
+   * 뜨는데, 그때 받기 시작하면 48프레임짜리 연출이 다 지나간 뒤에 도착한다.
+   * 4.3KB짜리 하나라 이 세계에 들어설 때 미리 받아 둔다
+   */
   const kinds = useMemo(
-    () => [...new Set(places.map((p) => p.kind))].sort((a, b) => a - b),
+    () => [...new Set([...places.map((p) => p.kind), ...(places.length > 0 ? [GIRATINA_SHADOW_KIND] : [])])]
+      .sort((a, b) => a - b),
     [places],
   )
 
@@ -108,8 +119,22 @@ export function DistortionProps({ mapId }: { mapId: number }) {
 
   const byKind = useMemo(() => new Map(loaded.map((l) => [l.kind, l])), [loaded])
   const meshes = useRef<(Mesh | null)[]>([])
+  const shadowRef = useRef<Mesh | null>(null)
 
   useFrame(() => {
+    // 지나가는 기라티나. 자리·크기·방향이 프레임마다 온다
+    const ghost = shadowRef.current
+    if (ghost) {
+      const at = distortionShadowAt()
+      ghost.visible = at !== null
+      if (at !== null) {
+        ghost.position.set(at.x + 0.5, at.y + 0.5, at.z + 0.5)
+        ghost.rotation.set(
+          (at.rot[0] * Math.PI) / 180, (at.rot[1] * Math.PI) / 180, (at.rot[2] * Math.PI) / 180,
+        )
+        ghost.scale.setScalar(at.scale)
+      }
+    }
     const ride = distortionRideAt()
     for (const [i, place] of places.entries()) {
       const mesh = meshes.current[i]
@@ -133,6 +158,7 @@ export function DistortionProps({ mapId }: { mapId: number }) {
     }
   })
 
+  const shadowMesh = byKind.get(GIRATINA_SHADOW_KIND)
   if (places.length === 0) return null
   return (
     <group>
@@ -155,6 +181,14 @@ export function DistortionProps({ mapId }: { mapId: number }) {
           />
         )
       })}
+      {shadowMesh === undefined ? null : (
+        <mesh
+          ref={(m) => { shadowRef.current = m }}
+          visible={false}
+          geometry={shadowMesh.mesh.geometry}
+          material={shadowMesh.materials}
+        />
+      )}
     </group>
   )
 }

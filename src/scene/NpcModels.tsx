@@ -156,7 +156,12 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       bodyHeights.set(actor, slot.height)
 
       const y = groundYAt(grid, world.mapId, actor.x + 0.5, actor.z + 0.5, layer, actor.y)
-      slot.outer.position.set(actor.x + 0.5, y, actor.z + 0.5)
+      // 연출이 걸려 있으면 그림만 그만큼 어긋난다 (`MapObject_SetSpritePosOffset`)
+      slot.outer.position.set(
+        actor.x + 0.5 + (actor.offsetX ?? 0),
+        y + (actor.offsetY ?? 0),
+        actor.z + 0.5 + (actor.offsetZ ?? 0),
+      )
       // 모델 정면이 +Z다. `DIR_STEP`이 그 방향의 걸음이라 그대로 각이 된다
       const step = DIR_STEP[actor.dir & 3]!
       slot.outer.rotation.y = Math.atan2(step.x, step.z)

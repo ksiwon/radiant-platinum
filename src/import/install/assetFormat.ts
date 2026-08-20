@@ -73,6 +73,15 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * (`import/bdsp/albedo.ts`의 `carvedShells`)
    */
   monModels: 3,
+  /**
+   * 2 — **텍스처 없는 재질에 확산색을 실어 준다.**
+   *
+   * 기라티나 그림자(갈래 20)가 화면에 **하얗게** 떴다. 텍스처가 없고 정점색이
+   * 흰색 하나뿐인데 확산색 (0,0,0)을 안 실었기 때문이다. 텍스처 없는 재질
+   * 넷(갈래 20·27·38)에만 `d`가 붙어서 `.bin` 셋의 바이트가 달라진다
+   * (`import/platinum/chunks.ts`의 `untexturedDiffuse`)
+   */
+  distortionProps: 2,
 }
 
 export function groupFormat(name: string): number {

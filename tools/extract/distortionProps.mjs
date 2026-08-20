@@ -23,6 +23,27 @@ const { encodePng } = require('./png')
 
 const SHEET_WIDTH = 256
 
+/**
+ * 텍스처가 없는 재질에만 **확산색**을 실어 준다 (`diffAmb`의 아래 15비트).
+ *
+ * ⚠️ **텍스처가 없으면 색을 줄 것이 그것뿐이다.** 기라티나 그림자(갈래 20)는
+ * 텍스처가 없고 정점색이 흰색 하나뿐인데 확산색이 (0,0,0)이라, 이 값을 안
+ * 실으면 **새까매야 할 그림자가 하얗게** 뜬다. 실측으로 깨어진 세계 소품
+ * 재질 118개 중 텍스처가 없는 것은 넷뿐이다 — 갈래 20·27·38 (`.audit/propDiffuse.mjs`).
+ *
+ * ⚠️ **텍스처가 있는 재질에는 안 붙인다.** 붙이면 확산색 (200,200,200)이
+ * 텍스처를 한 번 더 어둡게 곱해서 소품 서른여섯이 다 죽는다. 그리고 굽는 바이트가
+ * 바뀌는 파일이 셋에서 서른아홉으로 늘어난다.
+ *
+ * 📌 같은 자리가 맵 청크(재질 7346개 중 170개)와 건물 소품(1333개 중 117개)에도
+ * 있다 — 거기도 텍스처 없는 재질이 지금 전부 흰색으로 뜬다. 그쪽은 다시 구우면
+ * 청크 140벌·소품 109벌이 바뀌어 설치본이 통째로 다시 받아야 해서 손대지 않았다
+ */
+function untexturedDiffuse(spec, material) {
+  if (spec.tex !== null) return spec
+  return { ...spec, d: material.diffuse }
+}
+
 /** 표 둘은 브라우저 변환기와 같은 자리에서 온다 */
 const MODEL_INDEX = PROP_MODEL_INDEX
 const POS_OFFSET = PROP_POS_OFFSET
@@ -136,11 +157,11 @@ function main() {
     const meta = {
       verts: verts.length,
       indices: indices.length,
-      materials: materials.map((m) => ({
+      materials: materials.map((m) => untexturedDiffuse({
         tex: m.texture, pal: m.palette,
         rep: (m.repeatS ? 1 : 0) | (m.repeatT ? 2 : 0) | (m.flipS ? 4 : 0) | (m.flipT ? 8 : 0),
         a: m.alpha, f: m.faces,
-      })),
+      }, m)),
       submeshes,
     }
     const json = Buffer.from(JSON.stringify(meta), 'utf8')

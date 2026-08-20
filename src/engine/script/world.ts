@@ -158,6 +158,10 @@ export interface FieldServices {
     removeObject: (localID: number) => void
     /** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */
     resetCamera: () => void
+    /** 기라티나 그림자를 띄운다. 번호는 `sGiratinaShadowExternal`의 자리다 */
+    startShadow: (index: number) => void
+    /** 띄운 그림자를 거둔다 (`DistWorld_FinishGiratinaShadowEvent`) */
+    finishShadow: () => void
   }
   /**
    * 꿀 나무 (PARITY §6.6 · `overlay005/honey_tree.c`).
