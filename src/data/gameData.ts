@@ -6,14 +6,14 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
-  boxWallpapersSchema, creditsSchema, dialogueIndexSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, creditsSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
-  type BoxWallpapers, type CreditsAtlas, type DialogueIndex, type Signposts, type Item, type ItemIcons, type Labels,
+  type BoxWallpapers, type CreditsAtlas, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type PoketchMapFile,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
@@ -440,10 +440,6 @@ export function loadScriptBytes(): Promise<Uint8Array> {
     })
   cache.set('scripts.bin', promise)
   return promise
-}
-
-export function loadDialogueIndex(): Promise<DialogueIndex> {
-  return fetchJson('dialogue/index.json', (v) => dialogueIndexSchema.parse(v))
 }
 
 /**

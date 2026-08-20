@@ -20,6 +20,7 @@
 |---|---|---|
 | §8 | 맵을 나갈 때 5.5초 멎는다 — 링크 1.0초 · R3F 재조정 1.1초 · 나머지는 네이티브 | 중간 |
 | §9 | 같은 것을 그리는 코드가 아직 세 자리에서 여러 벌이다 — 한쪽만 고치면 화면이 갈린다 | 작음 |
+| §10 | 구현해 놓고 안 이어 붙인 자리 다섯 — 죽은 코드가 아니라 하다 만 것이다 | 작음 |
 
 ---
 
@@ -174,15 +175,52 @@ three는 물체를 그리기 직전에 `object.onBeforeRender`를 부르고 **�
 
 ---
 
-## 10. 남은 것
+## 10. 구현해 놓고 안 이어 붙인 자리
 
-**§8과 §9 둘이다.**
+아무도 안 부르는 `export`를 훑다가 나온 것들이다. **죽은 코드가 아니라 하다 만
+것**이라 지우지 않고 여기 적는다 — 지우면 다음 사람이 처음부터 다시 만든다.
+재는 자는 `.audit/deadExports.mjs`다.
+
+⚠️ **「누가 쓴다」고 적힌 주석을 믿지 않는다.** 그렇게 적힌 여섯 중 넷이
+거짓이었고 그 넷은 지웠다 — `journalGymTooTough`의 「개발 콘솔과 시험이 본다」
+(콘솔은 다른 일곱만 가져오고 시험은 엔진 쪽을 직접 쓴다) · `roamerMaps`의
+「개발 콘솔이 본다」 · `localProducer`의 「시험과 노드 parity가 이 길로 간다」
+(시험은 제 것을 따로 만든다) · `sheetTexture`의 「`shell.ts`가 쓴다」
+(`shell.ts`는 `shellColors`로 픽셀을 읽는다).
+
+| 무엇이 안 이어졌나 | 서 있는 코드 | 무슨 일이 나나 |
+|---|---|---|
+| 이어하기에서 모험노트가 저절로 안 펼쳐진다 (`Journal_CheckOpenOnContinue`) | `scene/journal.ts`의 `journalOpensOnContinue` | 엔진의 `checkOpenOnContinue`도 그 시험도 있는데 **부르는 자리가 없다**. [PARITY.md](PARITY.md) §7.4는 ✅다 |
+| 순간이동으로 돌아온 것이 노트에 안 적힌다 | `scene/journal.ts`의 `journalWarpedByMove` | 하늘을날기는 적힌다(`journalFlew` ← `FlyScreen`). 텔레포트가 필드 기술 아홉에 없어서 부를 자리가 아직 없는 것이다 |
+| 지우기 직전 백업을 **되읽는 길이 없다** | `state/report.ts`의 `readBackup` | `backupBeforeOverwrite`가 파일과 IndexedDB 슬롯 **두 벌**을 남긴다고 적어 놨는데, 슬롯을 읽는 자리가 없어 지금은 쓰기 전용이다 ([IMPORT.md](IMPORT.md) §11-8) |
+| 맵을 떠날 때 맵 기능이 안 지워진다 (`DynamicMapFeatures_Free`) | `engine/world/mapFeatures.ts`의 `clearMapFeature` | 앞 맵의 기능이 `active`에 남는다. 새 맵의 스크립트가 `initPlatformLift`를 부르면 덮이지만, 그 명령이 없는 맵으로 가면 남는다 |
+| 더블에서 정책 없는 상대의 턴을 안 고른다 | `engine/battle/choice.ts`의 `chooseRandomTurn` | 27줄이 서 있고 「야생·정책 없는 상대가 쓴다」고 적혀 있는데 부르는 자리가 없다 |
+
+⚠️ **이건 사고가 아니다.** 물뿌리개 안전장치(`scene/berryPatches.ts`의
+`berryWateringCancel`)도 안 이어져 있지만 **타이머가 이미 막는다** — 주석은
+「물뿌리개를 든 채로 남으면 발이 영영 묶인다」고 하는데 `WATER_HOLD_TICKS`가
+90(원작 `task->timer > 30 * 3`)이라 아무 키도 안 눌러도 스스로 끝난다. 이어
+붙일지는 그 몇 초를 없앨 값이 있는가의 문제다.
+
+⚠️ **`import/bdsp`의 여섯도 안 지웠다** — `readIseAt`·`iseInfo`·`weightTable`은
+머리말이 「조사 도구용」이라 하는데 그 도구는 `.audit/`에 있고 **`.audit/`은
+저장소에 없다**. 안 쓴다는 근거가 기계마다 다르다는 뜻이라 손대지 않았다.
+`meshesOf`·`texturesOf`·`textureObjects`는 아직 안 끝난 BDSP 브라우저 변환의
+발판이다 ([IMPORT.md](IMPORT.md) §12 — 공개 배포를 막는 자리다).
+
+---
+
+## 11. 남은 것
+
+**§8 · §9 · §10 셋이다.**
 
 - **§8**은 맵을 나가는 5.5초를 갈라 놨다 — 링크 1.0초 · R3F 재조정 1.1초 ·
   나머지는 네이티브. 남은 셋 다 **화면을 보며 판단할 사람**이 필요하다.
 - **§9**는 크기가 작고 무엇을 할지가 이미 정해져 있다. §8보다 **먼저** 한다 —
   §8은 붙일 때마다 재고 안 줄면 되돌리는 자리라 끝이 안 보이는데, §9는 세 자리를
   합치면 끝나고 **다음 결함 하나를 미리 막는다**.
+- **§10**은 다섯이 서로 남남이라 하나씩 떼어 할 수 있다. 코드는 이미 서 있고
+  부르는 한 줄이 없을 뿐이라, **어디서 불러야 맞는지**만 정하면 끝난다.
 
 ⚠️ **포켓몬 이로치·암컷 외형(231MB)은 보류하기로 정했다** (2026-08-19) —
 [PLAN.md](PLAN.md) §16.10으로 옮겼다. 되살릴 때 `npcModels`의 `GROUP_FORMAT`을

@@ -104,9 +104,6 @@ export const rowOn = style({
   transform: 'translateX(4px)',
 })
 
-/** 지금은 못 쓰는 것 — 트레이너에게 볼을 던지려 할 때 */
-export const rowOut = style({ opacity: 0.42 })
-
 export const icon = style({ flex: '0 0 auto' })
 
 export const label = style({

@@ -33,10 +33,6 @@ export const mon = style({
   transform: 'translate(-50%, -50%)',
   transition: 'opacity 0.15s linear, filter 0.15s linear',
 })
-
-export const monOn = style([mon, { opacity: 1 }])
-export const monOff = style([mon, { opacity: 0.45, filter: 'saturate(0.6)' }])
-
 /** 위쪽 이름표 — 「제 n회 전당등록 년/월/일」 */
 export const title = style({
   position: 'absolute',

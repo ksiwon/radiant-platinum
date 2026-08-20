@@ -292,32 +292,7 @@ export const nextArrow = style({
   fontSize: 13,
   opacity: 0.85,
   animation: `${blink} 0.7s steps(1, end) infinite`,
-})
-
-/** 배틀 가방의 갈래 줄 */
-export const bagTabs = style({
-  display: 'flex',
-  gap: 6,
-  fontSize: 12,
-  flex: '0 0 auto',
-})
-
-const bagTab = style({
-  padding: '3px 10px',
-  borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.18)',
-  opacity: 0.55,
-})
-
-export const bagTabOn = style([bagTab, {
-  opacity: 1,
-  background: 'rgba(255,255,255,0.9)',
-  color: '#111827',
-  fontWeight: 700,
-  borderColor: 'transparent',
-}])
-
-/** 아이템 아이콘 32×32. 아틀라스를 배경 위치로 잘라 쓴다 */
+})/** 아이템 아이콘 32×32. 아틀라스를 배경 위치로 잘라 쓴다 */
 export const itemIcon = style({
   width: 28,
   height: 28,

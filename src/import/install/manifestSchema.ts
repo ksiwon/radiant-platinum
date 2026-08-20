@@ -27,8 +27,6 @@ const FileRecord = z.object({
  * 종족 표가 없다
  */
 const InstallStateSchema = z.enum(['installing', 'partial', 'ready'])
-export type InstallState = z.infer<typeof InstallStateSchema>
-
 const GroupRecordSchema = z.object({
   files: z.array(FileRecord),
   bytes: z.int().nonnegative(),
@@ -59,9 +57,6 @@ const CommitSchema = z.object({
   /** 이때의 산출물 모양 판. 부팅이 이것부터 본다 */
   assetFormat: z.int().positive(),
 })
-
-export type InstallCommit = z.infer<typeof CommitSchema>
-
 export const InstallManifestSchema = z.object({
   contractVersion: z.literal(CONTRACT_VERSION),
   state: InstallStateSchema,

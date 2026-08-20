@@ -77,8 +77,3 @@ export function downloadPortable(env: PortableSave, fileName: string): DownloadO
     return { started: false, why: 'blocked', detail: e instanceof Error ? e.message : String(e) }
   }
 }
-
-/** 사용자가 고른 파일을 글로 읽는다. 크기 검사는 `parsePortable`이 한다 */
-export function readTextFile(file: Blob): Promise<string> {
-  return file.text()
-}

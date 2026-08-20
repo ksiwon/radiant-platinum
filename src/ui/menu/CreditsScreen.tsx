@@ -30,7 +30,6 @@ import { parseMessage } from '../../engine/script/text'
 import {
   creditsAt, creditsFrames, creditsRows, creditsScene, CREDIT_SCENE_PAN,
 } from '../../engine/world/credits'
-import { CREDIT_LINES } from '../../engine/world/creditsTable'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -227,6 +226,3 @@ export function CreditsScreen() {
     </div>
   )
 }
-
-/** 뱅크가 표와 같은 줄 수인지 — 시험이 본다 */
-export const CREDITS_EXPECTED_LINES = CREDIT_LINES

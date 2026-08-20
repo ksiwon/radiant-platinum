@@ -78,27 +78,6 @@ export const pane = style({
   overflow: 'hidden',
 })
 
-/** 포켓몬 그림. 원작이 80×80 한 컷을 판 가운데에 놓는다 */
-export const monArt = style({
-  position: 'absolute',
-  width: pctX(80),
-  height: pctY(80),
-  objectFit: 'contain',
-  imageRendering: 'pixelated',
-  transition: 'left 0.47s linear',
-})
-
-/** 주인공 그림. 아래에서 올라온다 */
-export const playerArt = style({
-  position: 'absolute',
-  left: pctX(128 - 40),
-  width: pctX(80),
-  height: pctY(80),
-  objectFit: 'contain',
-  imageRendering: 'pixelated',
-  transition: 'top 0.47s linear',
-})
-
 /**
  * 글 한 줄.
  *

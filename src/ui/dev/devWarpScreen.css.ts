@@ -13,13 +13,6 @@ export const badge = style({
   color: '#241a02',
 })
 
-export const rowNote = style({
-  marginLeft: 'auto',
-  fontSize: 13,
-  opacity: 0.7,
-  fontVariantNumeric: 'tabular-nums',
-})
-
 // ── 왼쪽: 단계로 묶은 칸들 ───────────────────────────────────────────────────
 //
 // ⚠️ **세로 한 줄로 늘어놓지 않는다.** 지점이 쉰 개를 넘으면 훑는 데만 한참

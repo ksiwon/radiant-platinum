@@ -22,9 +22,7 @@ import type { WritablePackStore } from '../../data/providers/packStore'
 // (`scriptMeta.ts` 하나가 91KB다) `boot.ts`가 이 파일을 읽으므로 그것이 전부
 // **첫 화면 청크**로 딸려 들어온다. 실제로 그렇게 gzip이 145kB → 185kB가 됐다.
 // 계약만 있는 `convertTypes.ts`에서 가져온다 — 값은 `Cancelled` 하나뿐이다
-import { Cancelled, type BdspSource, type GroupSpec, type Produced } from '../platinum/convertTypes'
-import type { NdsFileSystem } from '../platinum/nds'
-import type { Release } from '../platinum/validate'
+import { Cancelled, type GroupSpec, type Produced } from '../platinum/convertTypes'
 import { APP_VERSION, BUILD_ID } from '../../state/save/contract'
 import { ASSET_FORMAT, groupFormat, needsSource, planAssets } from './assetFormat'
 import { checkFile, recordOf, type Broken, type FileRecord } from './integrity'
@@ -98,15 +96,6 @@ export type Producer = (
     onFile: (path: string, data: Uint8Array) => void
   },
 ) => Promise<Produced>
-
-/** 같은 스레드에서 만든다. 시험과 노드 parity가 이 길로 간다 */
-export function localProducer(fs: NdsFileSystem, release: Release, locale: string,
-  signal?: { aborted: boolean }, bdsp?: BdspSource): Producer {
-  return (spec, hooks) => spec.convert!({
-    fs, release, locale, signal, bdsp, emit: hooks.onFile, onProgress: hooks.onProgress,
-  })
-}
-
 interface InstallOptions extends InstallStores {
   locale: string
   groups: readonly GroupSpec[]

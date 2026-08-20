@@ -125,7 +125,7 @@ interface JournalTrainer {
   mapId: number
 }
 
-export interface JournalOnline {
+interface JournalOnline {
   /** `OnlineEvent` */
   type: number
   /** 콘테스트 등수 같은 곁값 */

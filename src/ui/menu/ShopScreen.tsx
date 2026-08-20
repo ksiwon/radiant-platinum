@@ -11,7 +11,6 @@ import {
 } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import type { ItemIcons } from '../../data/schema'
-import { POCKET_SIZE } from '../../engine/bag/bag'
 import { useMenuStore } from '../../state/menuStore'
 import { addBattlePoints, bpPriceOf, spendBattlePoints } from '../../engine/bag/frontierMart'
 import { useGameLocale } from '../../state/optionsStore'
@@ -226,6 +225,3 @@ export function ShopScreen() {
     </MenuScreen>
   )
 }
-
-/** 가방 칸 수 상한. 상점이 "가득 찼습니다"를 낼 자리를 아는 데 쓴다 */
-export const POCKET_LIMIT = POCKET_SIZE

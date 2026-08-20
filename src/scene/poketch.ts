@@ -79,8 +79,3 @@ export function poketchMarkCell(cell: { x: number, y: number } | null): void {
 export function poketchLastCell(): { x: number, y: number } | null {
   return lastCell
 }
-
-/** 새 판을 열면 잊는다 — 앞 판의 자리가 남으면 엉뚱한 마을에 점이 선다 */
-export function resetPoketchCell(): void {
-  lastCell = null
-}

@@ -4,7 +4,7 @@
 // 통째로 포켓몬에게 주고 아래에 글만 놓는다. 목록도 판도 놓지 않는다.
 // 셋이 같은 판을 쓰는 이유가 그것이다: 다른 것은 무대 위 움직임과 글뿐이고
 // 그 둘은 여기 없다 (`cinematicMotion` · 각 화면).
-import { keyframes, style } from '@vanilla-extract/css'
+import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 export const stage = style({
@@ -29,23 +29,6 @@ export const art = style({
   width: 220,
   height: 220,
 })
-
-/**
- * 모습이 바뀌는 동안. 원작은 두 그림을 번갈아 줄였다 키우는데, 우리는 아직
- * 진화 전후를 겹쳐 그릴 자리가 없으므로 **줄었다 커지는 것만** 옮긴다.
- *
- * ⚠️ 빛나는 효과를 지어내지 않는다 — 원작에 없는 것을 넣으면 그 화면은
- * 우리 것이지 플래티넘이 아니다
- */
-const pulse = keyframes({
-  '0%': { transform: 'scale(1)', filter: 'brightness(1)' },
-  '50%': { transform: 'scale(0.55)', filter: 'brightness(2.2) saturate(0)' },
-  '100%': { transform: 'scale(1)', filter: 'brightness(1)' },
-})
-
-export const artPulse = style([art, {
-  animation: `${pulse} 0.55s ease-in-out infinite`,
-}])
 
 export const image = style({
   maxWidth: '100%',

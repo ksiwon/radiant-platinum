@@ -249,16 +249,6 @@ export const abilityText = style({
   opacity: 0.85,
   whiteSpace: 'pre-line',
 })
-
-export const hintRow = style({
-  display: 'flex',
-  gap: 8,
-  alignItems: 'center',
-  fontSize: 12,
-  opacity: 0.8,
-  marginTop: 2,
-})
-
 export const empty = style({
   padding: '18px 14px',
   borderRadius: 14,

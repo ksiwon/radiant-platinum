@@ -34,26 +34,3 @@ export function PlayerCapsule() {
     </group>
   )
 }
-
-export function GreyBox() {
-  return (
-    <group>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[10, 20, 8]} intensity={1.4} />
-
-      {/* 지면 */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-        <planeGeometry args={[40, 40]} />
-        <meshStandardMaterial color="#3b4254" />
-      </mesh>
-
-      {/* 장애물 */}
-      {OBSTACLES.map(([x, y, z], i) => (
-        <mesh key={i} position={[x, y, z]}>
-          <boxGeometry args={[1.5, 1.5, 1.5]} />
-          <meshStandardMaterial color={i % 3 === 0 ? '#5b8266' : '#4a5570'} />
-        </mesh>
-      ))}
-    </group>
-  )
-}

@@ -18,9 +18,9 @@ import { fieldScripts } from '../engine/script/field'
 import { mapById } from '../engine/map/world'
 import { flyUnlockedAt } from '../engine/map/spawns'
 import {
-  LocationEvent, MonResult, TrainerKind, checkOpenOnContinue, gymTooTough, journalDate,
-  mapTransitionEvent, monVariant, rollPage, saveLocationEvent, saveMon, saveOnline, saveTitle,
-  saveTrainer, trainerKind, type JournalEntry, type JournalOnline,
+  LocationEvent, MonResult, TrainerKind, checkOpenOnContinue, journalDate,
+  mapTransitionEvent, monVariant, rollPage, saveLocationEvent, saveMon, saveTitle,
+  saveTrainer, trainerKind, type JournalEntry,
 } from '../engine/world/journal'
 import { useSaveStore } from '../state/saveStore'
 
@@ -237,12 +237,6 @@ export function journalBeatTrainer(mapId: number, trainerId: number): void {
   }
   write((e) => saveTrainer(e, { standard: 1, trainerId, mapId }))
 }
-
-/** 콘테스트 등수처럼 통신 칸을 쓰는 일 */
-export function journalOnline(ev: JournalOnline): void {
-  write((e) => saveOnline(e, ev))
-}
-
 /**
  * 노트를 받는다 (`ScrCmd_GiveJournal`).
  *
@@ -255,12 +249,4 @@ export function journalGiven(mapId: number, now: Date = new Date()): void {
   const journal = rollPage(save.journal, today, true).journal
   journal[0] = saveTitle(journal[0]!, { ...today, mapId })
   useSaveStore.setState({ journal })
-}
-
-/**
- * 지금 맵이 아직 못 이긴 체육관인가. 개발 콘솔과 시험이 본다 —
- * 화면에서 확인하려면 뱃지 없이 체육관에 들어가 봐야 해서 길이 하나 필요하다
- */
-export function journalGymTooTough(mapId: number): number {
-  return gymTooTough(mapId, useSaveStore.getState().badges)
 }

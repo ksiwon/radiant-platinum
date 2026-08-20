@@ -163,12 +163,6 @@ export function readBackup(): Promise<unknown> {
 export function clearReport(): Promise<void> {
   return del(SLOT, dbStore)
 }
-
-/** 이어하기를 띄울지 정하는 데만 쓴다 */
-export async function hasReport(expectVersion: number): Promise<boolean> {
-  return (await readReport(expectVersion)) !== null
-}
-
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }

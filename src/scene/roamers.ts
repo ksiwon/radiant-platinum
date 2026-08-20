@@ -17,7 +17,7 @@ import { encounters } from '../engine/battle/encounterSystem'
 import type { Status } from '../engine/pokemon/instance'
 import { fieldScripts } from '../engine/script/field'
 import {
-  activate, afterBattle, moveAll, randomizeAll, roamerHere, ROAMER_LEVEL, ROAMER_ROUTES,
+  activate, afterBattle, moveAll, randomizeAll, roamerHere, ROAMER_LEVEL,
   ROAMER_SPECIES, ROAMER_STATE_VAR, trackRoute, type Rng,
 } from '../engine/world/roamer'
 import type { Stats } from '../data/schema'
@@ -129,14 +129,6 @@ export function activateRoamer(
       { pid, ivs, maxHp },
     ),
   })
-}
-
-/** 지금 배회가 서 있는 맵들. 개발 콘솔이 본다 */
-export function roamerMaps(): { slot: number; species: number; map: number }[] {
-  return useSaveStore.getState().roamers
-    .map((r, slot) => ({ slot, species: r.species, map: ROAMER_ROUTES[r.at] ?? -1, active: r.active }))
-    .filter((r) => r.active)
-    .map(({ slot, species, map }) => ({ slot, species, map }))
 }
 
 /** 조우 시스템에 배회를 물어보는 길을 꽂는다. 필드가 뜰 때 한 번 */

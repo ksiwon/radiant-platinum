@@ -706,4 +706,3 @@ export type MartTable = z.infer<typeof martTableSchema>
 export type NpcTrades = z.infer<typeof npcTradesSchema>
 export type FrontierData = z.infer<typeof frontierSchema>
 export type FrontierSet = FrontierData['sets'][number]
-export type FrontierTrainer = FrontierData['trainers'][number]

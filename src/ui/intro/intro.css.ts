@@ -46,18 +46,6 @@ const ballBase = style({
 
 export const ball = style([ballBase, {}])
 
-/**
- * 열린 볼. 원작은 여기서 이어롭이 나온다 — 우리는 포켓몬 그림을 아직 못 뽑아서
- * 빛만 남는다 (`engine/intro/beats.ts` 머리말)
- */
-export const ballOpen = style([
-  ballBase,
-  {
-    transform: 'scale(1.15)',
-    boxShadow: '0 0 90px 30px rgba(255, 246, 200, 0.75), 0 12px 40px rgba(0, 0, 0, 0.6)',
-  },
-])
-
 /** Transparent hit target; the visible ball is rendered by IntroStage. */
 export const ballHit = style({
   width: 150,
