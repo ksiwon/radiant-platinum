@@ -1,7 +1,7 @@
 // 움직이는 바닥 (`DynamicTerrainHeightManager` · `terrain_collision_manager.c`)
 //
 // BDHC는 **구워진 판**이라 높이가 안 바뀐다. 그런데 원작에는 딛는 면이
-// 움직이는 자리가 여럿 있다 — 리그의 승강판, 물가시티 체육관의 물바닥,
+// 움직이는 자리가 여럿 있다 — 리그의 승강판, 들판시티 체육관의 물바닥,
 // 운하시티 체육관의 뜨는 판. 그 자리들을 위해 원작이 BDHC **위에** 얹는
 // 직사각형 한 겹을 따로 들고 있고, 이 파일이 그것이다.
 //
@@ -96,7 +96,7 @@ export function resolveDynamicHeight(
 /**
  * 딛는 높이가 **판에서 왔는가** (`CALCULATED_HEIGHT_SOURCE_DYNAMIC`).
  *
- * 이 한 값이 물가시티 체육관의 물이다 — 거동값 `0x59`인 칸은 딛는 높이가
+ * 이 한 값이 들판시티 체육관의 물이다 — 거동값 `0x59`인 칸은 딛는 높이가
  * 판에서 왔을 때만 막힌다 (`TerrainCollisionManager_WillPlayerCollide`).
  * 물이 바닥까지 내려가면 구워진 높이가 이겨서 그 칸을 걸어 지나갈 수 있고,
  * 물이 오르면 판이 이겨서 막힌다

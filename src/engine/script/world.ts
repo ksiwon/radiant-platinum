@@ -193,12 +193,12 @@ export interface FieldServices {
     triggerPlatformLift: () => boolean
     platformLiftBusy: () => boolean
     platformLiftNotUsedWhenEnteredMap: () => boolean
-    /** 물가시티 체육관의 물바닥 */
+    /** 들판시티 체육관의 물바닥 */
     initPastoriaGym: () => void
     /** 밟은 칸의 단추를 누른다. 물이 실제로 움직이면 true */
     pressPastoriaButton: () => boolean
     pastoriaBusy: () => boolean
-    /** 선단시티 체육관의 톱니. 방은 셋이고 스크립트가 번호를 준다 */
+    /** 물가시티 체육관의 톱니. 방은 셋이고 스크립트가 번호를 준다 */
     initSunyshoreGym: (room: number) => void
     pressSunyshoreButton: (button: number) => boolean
     sunyshoreBusy: () => boolean

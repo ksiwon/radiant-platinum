@@ -4417,7 +4417,7 @@ on('CheckPlatformLiftNotUsedWhenEnteredMap', (ctx) => {
 })
 
 /**
- * 물가시티 체육관이다 (`PersistedMapFeatures_InitForPastoriaGym`).
+ * 들판시티 체육관이다 (`PersistedMapFeatures_InitForPastoriaGym`).
  *
  * ⚠️ **들어설 때마다 물이 낮은 데서 다시 시작한다.** 원작이 이 자리를 통째로
  * 0으로 지우고, 그 0이 주황 단추다 — 나갔다 들어오면 풀던 것이 처음으로 돌아간다
@@ -4443,7 +4443,7 @@ on('PressPastoriaGymButton', (ctx) => {
 })
 
 /**
- * 선단시티 체육관이다 (`PersistedMapFeatures_InitForSunyshoreGym`).
+ * 물가시티 체육관이다 (`PersistedMapFeatures_InitForSunyshoreGym`).
  *
  * ⚠️ **처음 회전 상태가 방마다 다르고 들어온 문이 그것을 뒤집는다.** 앞 방에서
  * 걸어 들어오면 0이고, 뒤에서 돌아오면 방마다 2·1·0으로 선다 — 되돌아 나가는

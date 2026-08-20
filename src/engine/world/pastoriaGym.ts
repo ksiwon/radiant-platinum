@@ -1,4 +1,4 @@
-// 물가시티 체육관 — 물바닥 (`gym_features.c`의 `PastoriaGym_*`)
+// 들판시티 체육관 — 물바닥 (`gym_features.c`의 `PastoriaGym_*`)
 //
 // 다섯째 뱃지의 방이다. 바닥 전체가 물이고 **단추 셋이 물 높이를 정한다** —
 // 낮음(0칸) · 가운데(2칸) · 높음(4칸). 물이 오르내리는 것에 따라 딛을 수 있는
@@ -76,7 +76,7 @@ export const PASTORIA_BEHAVIOR = {
  * 「높이판에서 온 높이면 못 지나간다」는 칸
  * (`TILE_BEHAVIOR_DYNAMIC_HEIGHT_COLLISION`).
  *
- * 물가시티 체육관에만 445칸 있다(실측). 물이 바닥까지 내려가면 딛는 높이가
+ * 들판시티 체육관에만 445칸 있다(실측). 물이 바닥까지 내려가면 딛는 높이가
  * 구워진 바닥에서 오므로 지나갈 수 있고, 물이 오르면 물판에서 오므로 막힌다 —
  * 그 한 값이 이 방의 물이다
  */
@@ -129,5 +129,5 @@ export const PASTORIA_WATER_STEP = 1 / 16
 /** `SEQ_SE_DP_FW056` — 물이 오르내리는 동안 난다 */
 export const PASTORIA_WATER_SFX = 1626
 
-/** 물가시티 체육관의 맵 헤더 번호 */
+/** 들판시티 체육관의 맵 헤더 번호 */
 export const PASTORIA_GYM_MAP = 122

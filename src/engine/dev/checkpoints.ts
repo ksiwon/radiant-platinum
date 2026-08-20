@@ -496,24 +496,11 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 342,
     spot: { kind: 'grass' },
-    ...STAGE.pokedex,
-  },
-  {
-    id: 'berry',
-    label: '209번도로 나무열매 밭',
-    env: '야외 · 밭 넷이 나란히 (PARITY §4.6)',
-    try: [
-      '흙 위에 자란 것이 서 있다 — 새 리포트는 넷 다 열려 있다',
-      '북쪽을 보고 말을 걸면 딸지 묻는다',
-      '물뿌리개를 들면 좌우로 옮겨 서며 넷을 다 적신다',
-    ],
-    // ⚠️ **배치표 파일 번호가 아니라 맵 헤더 번호다.** 밭은 배치표 342번에
-    // 있는데 그 파일을 쓰는 헤더는 356(209번도로)이다 — 둘을 헷갈리면
-    // 지역명도 인카운터도 엉뚱한 맵의 것이 된다
-    map: 356,
-    // 밭 둘이 (566, 697)·(567, 697)에 있다. 그 바로 남쪽에서 북쪽을 본다 —
-    // 물뿌리개가 북쪽을 볼 때만 나오므로 이 방향이어야 한다
-    spot: { kind: 'tile', x: 566, z: 698, facing: Math.PI },
+    // ⚠️ **낮을 못 박는다.** 안 박으면 `startHour()`가 실제 시각을 읽어서
+    // (`state/worldState.ts`) 밤에 훑으면 이 자리가 `grass-night`와 **통째로 같은
+    // 그림**이 된다 — 실측으로 22시에 돌렸더니 밝기 82·흔어짐 43.5·삼각형
+    // 182.8k·드로우콜 275가 둘 다 같았다. 낮과 밤을 견줌다는 뜻이 사라진다
+    hour: 11,
     ...STAGE.pokedex,
   },
   {
@@ -691,6 +678,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.oreburgh,
   },
   {
+    id: 'oreburgh-gate',
+    label: '무쇠게이트 (흐림)',
+    env: '실내 취급 · 도로 사이 굴 (밖이 흐리다) · 배지 0개',
+    try: [
+      '흐림 안개가 실제로 끼는지 본다 — 훑기에서 이 날씨가 나오는 자리가 여기뿐이다',
+      '굴 안 인카운터가 도는지 본다',
+      '양쪽 입구로 나가 본다 — 굴이 도로 둘을 잇는다',
+    ],
+    map: 259,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.oreburgh,
+  },
+  {
     id: 'mine-deep',
     label: '무쇠탄갱 지하 (동굴 야생)',
     env: '실내 · 동굴 안쪽 (어둡고 인카운터가 돈다)',
@@ -722,6 +722,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     battle: { kind: 'trainer', id: 246 },
   },
   {
+    id: 'floaroma',
+    label: '꽃향기마을',
+    env: '야외 · 꽃밭 마을 (땅이 온통 꽃이다) · 배지 1개',
+    try: [
+      '꽃 타일이 깔린 넓은 바닥에서 프레임이 버티는지 본다',
+      '꽃가게와 사람들에게 말을 건다',
+      '타운맵에 이 마을이 열렸는지 본다',
+    ],
+    map: 426,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge1,
+  },
+  {
     id: 'forest',
     label: '영원의 숲',
     env: '실내 취급 · 숲 (나무가 빽빽하고 어둡다) · 배지 1개',
@@ -732,6 +745,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 203,
     spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge1,
+  },
+  {
+    id: 'chateau',
+    label: '숲의 양옥집',
+    env: '실내 · 버려진 양옥 (제일 어두운 실내) · 배지 1개',
+    try: [
+      '어두운 복도에서 3인칭 카메라가 벽을 뚫는지 본다',
+      '방을 오갈 때 스트리밍이 따라오는지 본다',
+      '집 안에서 인카운터가 도는지 본다 — 야생이 실내에서 나오는 드문 자리다',
+    ],
+    map: 296,
+    spot: { kind: 'open' },
     ...STAGE.badge1,
   },
   {
@@ -818,6 +844,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge2,
   },
   {
+    id: 'gts',
+    label: '글로벌 터미널',
+    env: '실내 · 층이 트인 큰 홀 (가운데가 뚫려 있다) · 배지 2개',
+    try: [
+      '뚫린 가운데 너머로 아래층이 겹쳐 그려지는지 본다',
+      '층을 오가며 카메라가 따라오는지 본다',
+      'NPC 열넷이 한 방에 선 채로 프레임이 버티는지 본다',
+    ],
+    map: 28,
+    spot: { kind: 'open' },
+    ...STAGE.badge2,
+  },
+  {
     id: 'contest',
     label: '콘테스트회장',
     env: '실내 · 큰 홀 (NPC 11명 · 안쪽 방에 31명)',
@@ -868,6 +907,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge3,
     items: [...STAGE.badge3.items, [VS_SEEKER, 1]],
     vsSeeker: true,
+  },
+  {
+    id: 'solaceon',
+    label: '신수마을',
+    env: '야외 · 언덕 마을 (육아방과 유적 입구가 있다) · 배지 3개',
+    try: [
+      '육아방에 들어가 본다',
+      '언덕 높이가 지는 자리에서 주인공이 계단을 제대로 타는지 본다',
+      '타운맵에 이 마을이 열렸는지 본다',
+    ],
+    map: 433,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge3,
   },
   {
     // ⚠️ **`C06`이 들판시티(Pastoria)이고 `C07`이 장막시티(Veilstone)다.**
@@ -978,6 +1030,32 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     spot: { kind: 'grass' },
     ...STAGE.badge5,
     battle: { kind: 'safari', species: 194, level: 22 }, // 우파
+  },
+  {
+    id: 'route213',
+    label: '213번도로 (비)',
+    env: '야외 · 바닷가 도로 (비가 온다) · 배지 5개',
+    try: [
+      '빗줄기 파티클이 실제로 떨어지는지 본다 — 훑기에서 비가 오는 자리가 여기뿐이다',
+      '비가 오는 동안 안개 색과 밝기가 갈리는지 본다',
+      '물가에서 야생을 만나 본다 — 이 자리의 배틀 배경도 여기서만 나온다',
+    ],
+    map: 373,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge5,
+  },
+  {
+    id: 'celestic',
+    label: '봉신마을',
+    env: '야외 · 신전이 있는 오래된 마을 · 배지 5개',
+    try: [
+      '신전 앞 계단과 낮은 담이 겹치는 자리에서 카메라를 본다',
+      '마을 안에서 인카운터가 도는지 본다 — 마을에 풀이 있는 드문 자리다',
+      '타운맵에 이 마을이 열렸는지 본다',
+    ],
+    map: 442,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge5,
   },
   {
     id: 'canalave',
@@ -1097,16 +1175,16 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge6,
   },
   {
-    id: 'coronet-deep',
-    label: '천관산 안쪽',
-    env: '실내 · 큰 동굴 안쪽 (제일 어둡고 층이 많다) · 배지 6개',
+    id: 'coronet-peak',
+    label: '천관산 윗길',
+    env: '실내 취급 · 산 윗길 (바깥이 열려 있다) · 배지 6개',
     try: [
-      '동굴 안 높이 변화가 실제로 걸리는지 본다',
-      '어두운 자리의 조명과 안개를 본다',
-      '층을 여러 번 오가며 스트리밍이 버티는지 본다',
+      '바깥이 열린 굴에서 하늘과 안개가 어떻게 섞이는지 본다',
+      '이 자리만 쓰는 카메라 각도가 실제로 다른지 본다',
+      '층을 오르내리며 스트리밍이 따라오는지 본다',
     ],
-    map: 208,
-    spot: { kind: 'atWarp', index: 0 },
+    map: 212,
+    spot: { kind: 'open' },
     ...STAGE.badge6,
   },
   {
@@ -1191,16 +1269,20 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge7,
   },
   {
-    id: 'acuity',
-    label: '입지호수',
-    env: '야외 · 눈 덮인 호수 (밝은 배경) · 배지 7개',
+    id: 'galactic-hq',
+    label: '갤럭시단아지트 · 집회장',
+    env: '실내 · 단원 서른여섯이 줄 맞춰 선 방 · 배지 7개',
     try: [
-      '눈과 물이 붙은 자리의 색을 본다',
-      '밝은 배경 위에서 UI 글자가 읽히는지 본다',
-      '눈 위를 걷는 소리를 듣는다',
+      '사람 서른여섯이 한 화면에 서는데 프레임이 버티는지 본다 — 제일 붐비는 방이다',
+      '가까이 선 판때기가 카메라를 밀고 들어올 때 잘리는지 본다',
+      '단원에게 말을 건다',
     ],
-    map: 315,
-    spot: { kind: 'grass' },
+    map: 569,
+    // ⚠️ **아지트는 방마다 보이는 것이 크게 다르다.** 실측 — 305는 색 290·
+    // 삼각형 13.8k로 화면이 거의 검었고, 310은 색 605에 아래 70%가 바닥
+    // 아랫면이었다. 방이 좁고 벽이 높아 3인칭 카메라가 지형에 먹는다 —
+    // 569만 색 1232·삼각형 151.9k로 방이 제대로 나왔다
+    spot: { kind: 'open' },
     ...STAGE.badge7,
   },
   {
@@ -1338,6 +1420,76 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       '레벨이 통째로 높은 야생을 본다',
     ],
     map: 457,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'survival',
+    label: '서바이벌에리어',
+    env: '야외 · 엔딩 뒤 산기슭 마을 · 배지 8개',
+    try: [
+      '높이가 크게 지는 마을이라 카메라가 지형을 타는지 본다',
+      '하드마운틴으로 가는 길이 열려 있는지 본다',
+      '타운맵에 이 마을이 열렸는지 본다',
+    ],
+    map: 450,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'route227',
+    label: '227번도로 (화산재)',
+    env: '야외 · 화산재가 내리는 자갈길 · 엔딩 뒤',
+    try: [
+      '화산재 파티클이 실제로 내리는지 본다 — 훑기에서 이 날씨가 나오는 자리가 여기뿐이다',
+      '재가 내리는 동안 안개 색이 갈리는지 본다',
+      '좁은 길에서 트레이너를 지나쳐 본다',
+    ],
+    map: 403,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'route228',
+    label: '228번도로 (모래바람)',
+    env: '야외 · 사막 도로 (모래바람이 분다) · 엔딩 뒤',
+    try: [
+      '모래바람 파티클이 옆으로 흐르는지 본다 — 훑기에서 이 날씨가 나오는 자리가 여기뿐이다',
+      '모래로 시야가 얼마나 닫히는지 본다',
+      '모래 위를 걸어 본다',
+    ],
+    map: 406,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'stark',
+    label: '하드마운틴',
+    env: '실내 · 엔딩 뒤 화산 동굴 (사람 서른하나) · 배지 8개',
+    try: [
+      '용암 빛이 도는 동굴에서 조명이 제대로 서는지 본다',
+      '이 자리만 쓰는 카메라 각도가 실제로 다른지 본다',
+      '동굴 안 인카운터가 도는지 본다',
+    ],
+    map: 264,
+    spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge8,
+    postGame: true,
+  },
+  {
+    id: 'frontier',
+    label: '배틀프런티어',
+    env: '야외 · 엔딩 뒤 시설 마당 (워프 열여섯) · 배지 8개',
+    try: [
+      '시설 건물 다섯이 한 화면에 서는데 프레임이 버티는지 본다',
+      '워프가 열여섯인 자리라 문 앞에서 밀려나지 않는지 본다',
+      '배틀타워 말고 나머지 시설에 들어가 본다',
+    ],
+    map: 559,
     spot: { kind: 'atWarp', index: 0 },
     ...STAGE.badge8,
     postGame: true,

@@ -108,7 +108,7 @@ export class MapGrid implements CollisionGrid {
    * 판을 얹기 **전**의, 구워진 높이만 (`CalculateObjectHeight`).
    *
    * 얹은 답과 구별해야 하는 자리가 하나 있다 — 「딛는 높이가 판에서 왔는가」를
-   * 묻는 칸이다(물가시티 체육관의 물). 얹은 답을 다시 넣으면 늘 판이 이긴다
+   * 묻는 칸이다(들판시티 체육관의 물). 얹은 답을 다시 넣으면 늘 판이 이긴다
    */
   bakedHeightAtWorld(x: number, z: number, near = 0): number | null {
     const i = this.chunkIndexAt(Math.floor(x), Math.floor(z))
@@ -129,7 +129,7 @@ export class MapGrid implements CollisionGrid {
   /**
    * 그 칸에 놓인 소품의 모델 번호 (`FieldSystem_FindCollidingLoadedMapProp*`).
    *
-   * 없으면 −1이다. 물가시티 체육관의 단추가 어느 색인지, 앞에 선 나무가 꿀
+   * 없으면 −1이다. 들판시티 체육관의 단추가 어느 색인지, 앞에 선 나무가 꿀
    * 나무인지를 이걸로 가른다 — 배치표에는 모델 번호만 있고 이름이 없다
    */
   propModelAt(tx: number, tz: number): number {

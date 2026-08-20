@@ -439,10 +439,51 @@ if (ACTS.has('1')) {
 
 // ── ② 장면 예순여덟 ──────────────────────────────────────────────────────────
 
+/**
+ * 백틱을 눌렀는데 표가 안 열린 판. 비어 있지 않으면 표 끝에 찍는다 —
+ * **조용히 다시 누르고 넘어가지 않는다.** 잦아지면 여기서 보여야 한다
+ */
+const warpRetries = []
+
 /** 확인 지점 하나로 뛰어든다. 표가 뜨고, 그 줄을 눌러, 그 맵에 설 때까지 */
 async function warpTo(cp) {
+  const table = page.getByText('확인 지점').first()
   await page.keyboard.press('Backquote')
-  await page.getByText('확인 지점').first().waitFor({ timeout: 30_000 })
+  // ⚠️ **한 번 누르고 30초를 기다리기만 하면, 안 열렸을 때 남는 것이
+  // `Timeout 30000ms exceeded` 한 줄뿐이다.** 실제로 훑기 71줄 중 ③이 그 한
+  // 줄로 떨어졌는데, 그것만으로는 **키를 못 들은 것**과 **화면이 안 온 것**을
+  // 못 가른다 — 고칠 자리가 서로 다르다. 재현은 스무 판을 몰아도 안 됐다
+  // (`.audit/warpRace.mjs`·`warpRace2.mjs` — 타이틀만 열 판, ③과 같은 조건으로
+  // 열 판, 전부 한 번에 열렸다). 그래서 **왜 안 열렸는지를 같이 던진다**
+  for (let tries = 0; ; tries++) {
+    try {
+      await table.waitFor({ timeout: 10_000 })
+      break
+    } catch {
+      // `DevWarpScreen`을 부르기라도 했으면 keydown은 들렸다는 뜻이다 —
+      // 손잡이가 그 자리에서 동적 import를 걸기 때문이다 (`app/App.tsx`)
+      const why = await page.evaluate(() => ({
+        boot: document.documentElement.dataset.boot ?? '(없다)',
+        scene: document.documentElement.dataset.scene ?? '(없다)',
+        heard: performance.getEntriesByType('resource')
+          .some((r) => r.name.includes('DevWarpScreen')),
+      }))
+      if (tries >= 2) {
+        throw new Error(`확인 지점 표가 30초 안에 안 열렸다 (${cp.id}) — 갈래 ${why.boot}`
+          + ` · 화면 ${why.scene} · 백틱을 ${why.heard ? '들었다' : '못 들었다'}`
+          + (noise.length > 0 ? ` · 콘솔: ${noise.slice(0, 2).join(' / ')}` : ' · 콘솔 조용함'))
+      }
+      warpRetries.push(`${cp.id}(${why.heard ? '들었는데 안 떴다' : '못 들었다'})`)
+      // 못 들었으면 한 번 더 누르면 열린다. 들었는데 안 떴으면 지금 `open`이
+      // 이미 켜져 있으므로, 한 번은 닫는 데 쓰고 다시 눌러야 한다 — 손잡이가
+      // 여닫는 토글이라 그렇다
+      await page.keyboard.press('Backquote')
+      if (why.heard) {
+        await page.waitForTimeout(300)
+        await page.keyboard.press('Backquote')
+      }
+    }
+  }
   // ⚠️ **↓를 세어서 고르지 않는다.** 목록이 뜬 직후에는 키가 몇 개 흘러서 엉뚱한
   // 줄에서 뛰어드는데, 그래도 화면은 멀쩡히 나오므로 다른 맵을 찍어 놓고 맞다고
   // 하기 십상이다 (`shot.mjs`에서 두 번 헛돌았다). 줄을 직접 누른다
@@ -1043,6 +1084,12 @@ if (known.size > 0) {
   console.log(`  거른 소리 (우리 것이 아니다): ${[...known]
     .map(([k, n]) => `${k.slice(0, 60)}×${String(n)}`).join(' · ')}`)
 }
+// ⚠️ **다시 누른 것을 숨기지 않는다.** 백틱이 한 번에 안 먹히는 판은 드물고
+// 스무 판을 몰아도 재현이 안 됐다 — 그러니 더욱, 나오면 보여야 한다. 안 적으면
+// 재시도가 흔들림을 가려 주고 표는 늘 초록이 된다
+if (warpRetries.length > 0) {
+  console.log(`  ⚠️ 확인 지점 표가 한 번에 안 열려 다시 눌렀다: ${warpRetries.join(' · ')}`)
+}
 if (gpu.software) console.log('  ⚠️ 소프트웨어 래스터라이저라 프레임 시간은 안 쟀다')
 else {
   console.log(`  프레임 시간은 이 기계의 GPU에서 잰 것이다 — 무대 백엔드 ${backend ?? '?'}`)
@@ -1057,7 +1104,7 @@ mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 // ⚠️ **무엇을 걸렀는지를 같이 적는다.** `--only`로 셋만 돌린 기록이 파일에서는
 // 「다 돌렸다」와 똑같이 보이면, 나중에 그것을 근거로 「전부 통과」라고 쓰게 된다
 writeFileSync(resolve(ROOT, '.audit/story.json'), `${JSON.stringify({
-  gpu, view: VIEW, backend, known: [...known],
+  gpu, view: VIEW, backend, known: [...known], warpRetries,
   ran: { acts: [...ACTS], only: ONLY, from: FROM ?? null, fight: FIGHT, fresh: FRESH },
   scenes: { all: CHECKPOINTS.length, ran: targets.length },
   rows,

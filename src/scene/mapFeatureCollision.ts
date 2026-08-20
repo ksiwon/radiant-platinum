@@ -26,7 +26,7 @@ function featureBlocked(tileX: number, tileZ: number, height: number): boolean |
   const behavior = grid.behavior(tileX, tileZ)
 
   // ⚠️ **딛는 높이가 판에서 왔을 때만 막는 칸이 있다**
-  // (`TILE_BEHAVIOR_DYNAMIC_HEIGHT_COLLISION`). 물가시티 체육관의 물이 그것이다 —
+  // (`TILE_BEHAVIOR_DYNAMIC_HEIGHT_COLLISION`). 들판시티 체육관의 물이 그것이다 —
   // 물이 바닥까지 내려가면 구워진 높이가 이겨서 그 칸을 걸어 지나갈 수 있고,
   // 물이 오르면 판이 이겨서 막힌다. 원작은 이걸 장치 표가 아니라 엔진 쪽
   // (`TerrainCollisionManager_WillPlayerCollide`)에 두었고, 격자가 안 막은

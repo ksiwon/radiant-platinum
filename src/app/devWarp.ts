@@ -38,12 +38,6 @@ export const devWarp = {
 const HURT_FRACTION = 1 / 3
 
 /**
- * 확인 지점의 조건을 세이브에 채운다.
- *
- * 파티는 야생 개체를 만드는 길을 그대로 쓴다 — 기술도 PP도 종족 표가 정하는
- * 대로 붙는다. 우리가 손으로 기술을 골라 넣으면 그건 원작에 없는 편성이다
- */
-/**
  * 그 시점에 가진 비전머신을 **뮤 한 마리에게** 들려 보낸다.
  *
  * 확인 지점은 도구를 주는데, **도구만으로는 아무것도 안 열린다** — 원작이 보는
@@ -67,6 +61,12 @@ function withHmCarrier(
   return [...party.slice(0, 5), fillPp({ ...mew, moves }, pp)]
 }
 
+/**
+ * 확인 지점의 조건을 세이브에 채운다.
+ *
+ * 파티는 야생 개체를 만드는 길을 그대로 쓴다 — 기술도 PP도 종족 표가 정하는
+ * 대로 붙는다. 우리가 손으로 기술을 골라 넣으면 그건 원작에 없는 편성이다
+ */
 async function applySetup(cp: Checkpoint): Promise<void> {
   const save = useSaveStore.getState()
 
@@ -291,10 +291,16 @@ function giveFlag(flag: number): void {
 }
 
 /**
- * 이 판 위에서 바로 옮겨 간다. `/play`가 이미 떠 있을 때 쓴다.
+ * 그 지점으로 뛰어든다. 타이틀에서도, `/play`가 이미 떠 있을 때도 이 길이다.
  *
- * 이야기 플래그는 안 건드린다 — 순간이동은 길 막은 사람을 그냥 지나치는 것이라
- * 진행도를 꾸며 낼 이유가 없고, 꾸며 내면 여기서 본 판이 진짜와 달라진다
+ * ⚠️ **조건은 채우고, 이야기는 꾸며 내지 않는다.** 둘이 다르다 — `applySetup`은
+ * 도감·배지·전당등록 플래그와 이야기 칸을 실제로 세운다. 그것은 **그 자리에
+ * 서려면 이미 지나 있어야 하는 칸**이다 — 안 채우면 매 프레임 표가 건 스크립트가
+ * `ReleaseAll` 없이 끝나 주인공이 영영 묶이고(`Checkpoint.story`), 만들어 둔 화면을
+ * 여는 길이 아예 없다.
+ *
+ * 반대로 **그 지점까지 오면서 지나오지 않았을 칸은 안 세운다.** 세우면 길 막은
+ * 사람이 사라져 여기서 본 판이 진짜와 달라진다
  */
 export async function warpTo(cp: Checkpoint): Promise<void> {
   await applySetup(cp)

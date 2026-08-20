@@ -106,7 +106,7 @@ import { initHearthomeGym } from './hearthomeGym'
 /**
  * 지금 선 칸에 놓인 소품의 모델 번호 (`FieldSystem_FindCollidingLoadedMapProp*`).
  *
- * 물가시티 체육관의 단추가 이걸로 갈린다 — 스크립트는 색깔마다 나뉘어 있는데
+ * 들판시티 체육관의 단추가 이걸로 갈린다 — 스크립트는 색깔마다 나뉘어 있는데
  * 명령은 하나라, 어느 단추인지는 **밟은 칸**이 말한다. 없으면 −1이다
  */
 function propModelUnderPlayer(): number {
