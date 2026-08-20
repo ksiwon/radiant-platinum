@@ -79,9 +79,26 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 기라티나 그림자(갈래 20)가 화면에 **하얗게** 떴다. 텍스처가 없고 정점색이
    * 흰색 하나뿐인데 확산색 (0,0,0)을 안 실었기 때문이다. 텍스처 없는 재질
    * 넷(갈래 20·27·38)에만 `d`가 붙어서 `.bin` 셋의 바이트가 달라진다
-   * (`import/platinum/chunks.ts`의 `untexturedDiffuse`)
+   * (`import/platinum/chunks.ts`의 `packChunk`)
    */
   distortionProps: 2,
+  /**
+   * 2 — 같은 확산색을 **맵 청크에도** 싣는다.
+   *
+   * 그림자 재질이 깨어진 세계에만 있는 것이 아니었다. 청크 재질 7346개 중
+   * 170개가 텍스처 없이 확산색만 들고 있고(청크 140벌), 지금까지 그 삼각형
+   * 6,900개가 전부 흰색으로 그려졌다 — 체육관 바닥의 `kage`(확산 (0,0,0),
+   * 알파 10/31)가 어두운 그림자가 아니라 **흰 안개**였다.
+   * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
+   * (`.audit/whiteMaterials.mjs`)
+   */
+  chunks: 2,
+  /**
+   * 2 — 건물 소품도 같다. 재질 1333개 중 117개(소품 109벌)가 텍스처 없이
+   * 확산색만 든다. `shade`·`lm*`(확산 (66,82,107))가 건물 밑 그림자고,
+   * `house`(57,156,165)는 지붕 색이다
+   */
+  props: 2,
 }
 
 export function groupFormat(name: string): number {

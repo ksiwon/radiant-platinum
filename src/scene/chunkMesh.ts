@@ -28,8 +28,7 @@ interface ChunkMeta {
     tex: string | null, pal: string | null, rep: number, a: number, f: number,
     /**
      * 텍스처가 없는 재질의 확산색 (`diffAmb`). **텍스처가 있으면 없다** —
-     * 그때는 텍스처가 색을 준다 (`import/platinum/chunks.ts`의 `untexturedDiffuse`).
-     * 지금 이 값을 싣는 것은 깨어진 세계 소품뿐이다
+     * 그때는 텍스처가 색을 준다 (`import/platinum/chunks.ts`의 `packChunk`)
      */
     d?: [number, number, number],
   }[]
@@ -366,6 +365,10 @@ export function makeMaterial(
     // 두 맵에서 보고도 무엇인지 몰라 손을 못 댔다. three가 무시하는 표시라 값이 없다
     name: spec.tex ?? '(그림 없음)',
     map: texture,
+    // ⚠️ **텍스처가 없는 재질은 확산색이 유일한 색이다.** 정점색이 흰색
+    // 하나뿐이라 이걸 안 곱하면 그림자(`kage`·`shade`, 확산 (0,0,0))가
+    // 화면에 **흰 안개**로 깔린다. 텍스처가 있으면 `d`가 아예 없다
+    ...(spec.d ? { color: (spec.d[0] << 16) | (spec.d[1] << 8) | spec.d[2] } : {}),
     vertexColors: true,
     // 4세대 텍스처는 색 0을 투명으로 쓴다. 알파 테스트로 잘라 내야 나무·풀이
     // 사각형으로 안 보인다 — 다만 그림이 알파를 **번지게** 쓰면 자를 것이 아니라

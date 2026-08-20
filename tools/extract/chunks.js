@@ -123,8 +123,7 @@ function parseMaterials(buf, modelAt, header) {
        * 확산색 (`diffAmb`의 아래 15비트, RGB5).
        *
        * 텍스처가 있는 재질에서는 텍스처가 색을 주므로 굽는 쪽이 안 쓴다.
-       * **텍스처가 없는 재질에서는 이것이 유일한 색이다** — 깨어진 세계
-       * 소품이 그 쓰임새다 (`extract/distortionProps.mjs`의 `untexturedDiffuse`)
+       * **텍스처가 없는 재질에서는 이것이 유일한 색이다** (`materialSpec`)
        */
       diffuse: rgb5(diffAmb & 0x7fff),
       /** 6~7비트가 어느 면을 그리는가다: 1 뒷면 · 2 앞면 · 3 양면 */
@@ -229,6 +228,28 @@ function chunkModel(buf) {
   return { model, modelAt, header: parseModel(model, modelAt) }
 }
 
+/**
+ * 구운 파일에 담을 재질 한 줄.
+ *
+ * ⚠️ **텍스처가 없으면 확산색이 유일한 색이다.** 안 실으면 정점색 흰색만
+ * 남아 화면에 **하얗게** 뜬다 — 그림자 재질(`kage`·`shade`·`lm*`, 확산
+ * (0,0,0)~(66,82,107))이 전부 흰 안개로 깔렸던 자리다. 실측으로 맵 청크
+ * 재질 7346개 중 170개, 건물 소품 1333개 중 117개, 깨어진 세계 소품 118개
+ * 중 4개가 여기 해당한다 (`.audit/whiteMaterials.mjs`).
+ *
+ * ⚠️ **텍스처가 있는 재질에는 안 붙인다.** 붙이면 확산색이 텍스처를 한 번 더
+ * 곱해 온 신오가 어두워지고, 바이트가 달라지는 파일이 전부로 늘어난다
+ */
+function materialSpec(m) {
+  return {
+    tex: m.texture, pal: m.palette,
+    // 반복·뒤집기는 텍스처를 만들 때 필요하고, 알파·면은 재질을 만들 때 쓴다
+    rep: (m.repeatS ? 1 : 0) | (m.repeatT ? 2 : 0) | (m.flipS ? 4 : 0) | (m.flipT ? 8 : 0),
+    a: m.alpha, f: m.faces,
+    ...(m.texture === null ? { d: m.diffuse } : {}),
+  }
+}
+
 function main() {
   const rom = openRom()
   const narc = rom.narc('/fielddata/land_data/land_data.narc')
@@ -265,12 +286,7 @@ function main() {
     const meta = {
       verts: verts.length,
       indices: indices.length,
-      materials: materials.map((m) => ({
-        tex: m.texture, pal: m.palette,
-        // 반복·뒤집기는 텍스처를 만들 때 필요하고, 알파·면은 재질을 만들 때 쓴다
-        rep: (m.repeatS ? 1 : 0) | (m.repeatT ? 2 : 0) | (m.flipS ? 4 : 0) | (m.flipT ? 8 : 0),
-        a: m.alpha, f: m.faces,
-      })),
+      materials: materials.map(materialSpec),
       submeshes: submeshes.map((s) => [s.material, s.start, s.count]),
     }
 
@@ -315,6 +331,9 @@ function main() {
   )
 }
 
-module.exports = { readSbc, parseMaterials, buildMesh, chunkModel, VERTEX_BYTES, POS_SCALE, UV_SCALE, UNITS_PER_TILE }
+module.exports = {
+  readSbc, parseMaterials, buildMesh, chunkModel, materialSpec,
+  VERTEX_BYTES, POS_SCALE, UV_SCALE, UNITS_PER_TILE,
+}
 
 if (require.main === module) main()

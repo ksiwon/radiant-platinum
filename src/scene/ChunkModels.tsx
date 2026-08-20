@@ -99,7 +99,7 @@ export function materialsFor(
 ): Material[] {
   return mesh.materials.map((spec, i) => {
     const twoSided = cutout[i] === true
-    const key = `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}/${String(twoSided)}`
+    const key = materialKey(spec, twoSided)
     const hit = cache.get(key)
     if (hit) return hit
     const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
@@ -115,9 +115,16 @@ export function materialsFor(
   })
 }
 
-/** 재질 명세 하나의 열쇠. `materialsFor`와 같은 꼴이라 보관함을 함께 쓴다 */
+/**
+ * 재질 명세 하나의 열쇠. `materialsFor`가 이것으로 보관함을 나눈다.
+ *
+ * ⚠️ **확산색도 열쇠에 든다.** 텍스처가 없는 재질은 그것만으로 색이 갈리는데
+ * (`kage`는 (0,0,0), 옆의 `lambert1`은 (99,99,99)) 빼면 한 청크의 흰 재질
+ * 둘이 먼저 만들어진 하나로 뭉쳐서 그림자와 판이 같은 색이 된다
+ */
 function materialKey(spec: ChunkMesh['materials'][number], twoSided: boolean): string {
-  return `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}/${String(twoSided)}`
+  return `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
+    + `/${(spec.d ?? []).join(',')}/${String(twoSided)}`
 }
 
 /**

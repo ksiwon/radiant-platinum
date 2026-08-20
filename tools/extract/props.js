@@ -13,7 +13,7 @@ const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
 const { readDict, parseModel, parsePolygons } = require('../spike/nsbmd')
 const { parseTex0, decode } = require('../spike/nitrotex')
-const { readSbc, parseMaterials, buildMesh, VERTEX_BYTES, POS_SCALE } = require('./chunks')
+const { readSbc, parseMaterials, buildMesh, materialSpec, VERTEX_BYTES, POS_SCALE } = require('./chunks')
 const { encodePng } = require('./png')
 
 const SHEET_WIDTH = 256
@@ -111,11 +111,7 @@ function main() {
     const meta = {
       verts: verts.length,
       indices: indices.length,
-      materials: materials.map((m) => ({
-        tex: m.texture, pal: m.palette,
-        rep: (m.repeatS ? 1 : 0) | (m.repeatT ? 2 : 0) | (m.flipS ? 4 : 0) | (m.flipT ? 8 : 0),
-        a: m.alpha, f: m.faces,
-      })),
+      materials: materials.map(materialSpec),
       submeshes,
     }
     const json = Buffer.from(JSON.stringify(meta), 'utf8')

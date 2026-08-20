@@ -100,7 +100,7 @@ export interface Material {
    * 확산색 (`diffAmb`의 아래 15비트, RGB5 → 8비트).
    *
    * 텍스처가 있으면 텍스처가 색을 주므로 굽는 쪽이 안 쓴다. **텍스처가 없으면
-   * 이것이 유일한 색이다** — `packChunk`의 `untexturedDiffuse`를 보라
+   * 이것이 유일한 색이다** — `packChunk`가 그때만 `d`로 싣는다
    */
   diffuse: [number, number, number]
   texture: string | null
@@ -251,24 +251,8 @@ const rgb5 = (v: number): [number, number, number] => [
   (((v >> 10) & 31) << 3) | (((v >> 10) & 31) >> 2),
 ]
 
-/**
- * **텍스처가 없는 재질에만** 확산색을 실어 준다.
- *
- * ⚠️ 켜는 쪽은 깨어진 세계 소품 하나뿐이다 (`untexturedDiffuse: true`).
- * 텍스처가 없으면 색을 줄 것이 확산색뿐인데, 기라티나 그림자(갈래 20)가
- * 확산 (0,0,0)에 정점색은 흰색 하나라 **새까매야 할 그림자가 하얗게** 떴다.
- *
- * ⚠️ **맵 청크와 건물 소품은 아직 안 켠다.** 켜면 굽는 바이트가 바뀌어
- * (청크 140벌 · 소품 109벌) 설치본이 그 둘을 통째로 다시 받는다.
- * 거기도 텍스처 없는 재질 287개가 흰색으로 뜨고 있다 — 남은 일이다
- */
-export interface PackOptions {
-  untexturedDiffuse?: boolean
-}
-
 export function packChunk(
   verts: Vertex[], indices: number[], materials: Material[], submeshes: [number, number, number][],
-  opts: PackOptions = {},
 ): Uint8Array {
   const meta = {
     verts: verts.length,
@@ -278,7 +262,11 @@ export function packChunk(
       // 반복·뒤집기는 텍스처를 만들 때 필요하고, 알파·면은 재질을 만들 때 쓴다
       rep: (m.repeatS ? 1 : 0) | (m.repeatT ? 2 : 0) | (m.flipS ? 4 : 0) | (m.flipT ? 8 : 0),
       a: m.alpha, f: m.faces,
-      ...(opts.untexturedDiffuse === true && m.texture === null ? { d: m.diffuse } : {}),
+      // ⚠️ **텍스처가 없으면 확산색이 유일한 색이다.** 안 실으면 정점색
+      // 흰색만 남아 화면에 하얗게 뜬다 — 그림자 재질(`kage`·`shade`·`lm*`)이
+      // 흰 안개로 깔렸던 자리다. 텍스처가 있는 재질에는 안 붙인다.
+      // 확산색이 텍스처를 한 번 더 곱해 온 신오가 어두워진다
+      ...(m.texture === null ? { d: m.diffuse } : {}),
     })),
     submeshes,
   }

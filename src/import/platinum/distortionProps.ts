@@ -66,7 +66,7 @@ export async function convertDistortionProps(ctx: ConvertContext): Promise<Produ
     }
     out.set(
       `data/distortionProps/${String(kind)}.bin`,
-      packChunk(verts, indices, materials, submeshes, { untexturedDiffuse: true }),
+      packChunk(verts, indices, materials, submeshes),
     )
 
     let baked: { png: Uint8Array, sheet: Sheet } | null = null
