@@ -17,50 +17,14 @@
 // (스크립트 변수다) React 구독으로는 늦는다
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { DoubleSide, FrontSide, Mesh, MeshBasicMaterial, type Material } from 'three'
+import { Mesh } from 'three'
 import {
   distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, distortionShadowAt,
   distortionSlideAt, GIRATINA_SHADOW_KIND, isDistortionFloor,
   type DistortionPropPlace,
 } from './distortion'
 import { useSaveStore } from '../state/saveStore'
-import {
-  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, sliceTexture,
-  type ChunkMesh, type TexSheet,
-} from './chunkMesh'
-
-interface Loaded {
-  kind: number
-  mesh: ChunkMesh
-  materials: Material[]
-}
-
-function materialsOf(mesh: ChunkMesh, sheet: TexSheet | null): Material[] {
-  const cache = new Map<string, Material>()
-  return mesh.materials.map((spec) => {
-    const key = `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
-      + `/${(spec.d ?? []).join(',')}`
-    const hit = cache.get(key)
-    if (hit) return hit
-    const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
-    const translucent = spec.a < 31
-    const made = new MeshBasicMaterial({
-      map: item && sheet ? sliceTexture(sheet, item, spec.rep) : null,
-      // ⚠️ **텍스처가 없는 재질은 확산색이 유일한 색이다.** 정점색이 흰색
-      // 하나뿐이라 이걸 안 곱하면 새까만 기라티나 그림자가 하얗게 뜬다
-      ...(spec.d ? { color: (spec.d[0] << 16) | (spec.d[1] << 8) | spec.d[2] } : {}),
-      vertexColors: true,
-      // 4세대 텍스처는 색 0을 투명으로 쓴다
-      alphaTest: translucent ? 0 : 0.5,
-      transparent: translucent,
-      opacity: translucent ? spec.a / 31 : 1,
-      depthWrite: !translucent,
-      side: spec.f === 3 ? DoubleSide : FrontSide,
-    })
-    cache.set(key, made)
-    return made
-  })
-}
+import { useLoadedProps } from './propMeshes'
 
 export function DistortionProps({ mapId }: { mapId: number }) {
   // 층이 실제로 걸린 뒤에야 자료가 온다. 처음 들어설 때 `valid`가 서므로
@@ -75,9 +39,6 @@ export function DistortionProps({ mapId }: { mapId: number }) {
     // 걸리는데, 그때 서는 표가 이것뿐이다 — 빼면 첫 층만 소품이 안 뜬다
   }, [mapId, valid])
 
-  const [loaded, setLoaded] = useState<readonly Loaded[]>([])
-  const [offsets, setOffsets] = useState<readonly (readonly number[])[]>([])
-
   /**
    * 이 층이 쓰는 소품 종류만 받는다. 스물다섯을 다 받을 이유가 없다.
    *
@@ -90,34 +51,8 @@ export function DistortionProps({ mapId }: { mapId: number }) {
       .sort((a, b) => a - b),
     [places],
   )
+  const { byKind, offsets } = useLoadedProps(kinds)
 
-  useEffect(() => {
-    let alive = true
-    if (kinds.length === 0) {
-      setLoaded([])
-      return
-    }
-    void Promise.all([
-      loadDistortionPropOffsets(),
-      Promise.all(kinds.map((kind) =>
-        Promise.all([loadDistortionPropMesh(kind), loadDistortionPropSheet(kind)])
-          .then(([mesh, sheet]): Loaded => ({ kind, mesh, materials: materialsOf(mesh, sheet) }))
-          .catch(() => null))),
-    ])
-      .then(([off, got]) => {
-        if (!alive) return
-        setOffsets(off)
-        setLoaded(got.filter((v): v is Loaded => v !== null))
-      })
-      .catch(() => {
-        if (alive) setLoaded([])
-      })
-    return () => {
-      alive = false
-    }
-  }, [kinds])
-
-  const byKind = useMemo(() => new Map(loaded.map((l) => [l.kind, l])), [loaded])
   const meshes = useRef<(Mesh | null)[]>([])
   const shadowRef = useRef<Mesh | null>(null)
 

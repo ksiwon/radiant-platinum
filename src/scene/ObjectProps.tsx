@@ -17,13 +17,10 @@
 // (§1.28) — 눈덩이 미는 것도 얼음 미끄럼도 그대로 돌고 있었다. 없던 것은 몸뿐이다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { DoubleSide, FrontSide, Mesh, MeshBasicMaterial, type Material } from 'three'
+import { Mesh } from 'three'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { PROP_KIND_BY_GFX } from '../import/platinum/fldeffProps'
-import {
-  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, sliceTexture,
-  type ChunkMesh, type TexSheet,
-} from './chunkMesh'
+import { useLoadedProps } from './propMeshes'
 import { groundYAt } from './distortion'
 import { world } from '../engine/map/world'
 import type { MapGrid } from '../engine/map/grid'
@@ -31,35 +28,6 @@ import type { MapGrid } from '../engine/map/grid'
 /** 이 그림이 판때기가 아니라 소품인가 */
 export function propKindOf(gfx: number): number | null {
   return PROP_KIND_BY_GFX.get(gfx) ?? null
-}
-
-interface Loaded {
-  kind: number
-  mesh: ChunkMesh
-  materials: Material[]
-}
-
-function materialsOf(mesh: ChunkMesh, sheet: TexSheet | null): Material[] {
-  const cache = new Map<string, Material>()
-  return mesh.materials.map((spec) => {
-    const key = `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
-    const hit = cache.get(key)
-    if (hit) return hit
-    const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
-    const translucent = spec.a < 31
-    const made = new MeshBasicMaterial({
-      map: item && sheet ? sliceTexture(sheet, item, spec.rep) : null,
-      vertexColors: true,
-      // 4세대 텍스처는 색 0을 투명으로 쓴다
-      alphaTest: translucent ? 0 : 0.5,
-      transparent: translucent,
-      opacity: translucent ? spec.a / 31 : 1,
-      depthWrite: !translucent,
-      side: spec.f === 3 ? DoubleSide : FrontSide,
-    })
-    cache.set(key, made)
-    return made
-  })
 }
 
 interface Props {
@@ -86,42 +54,13 @@ export function ObjectProps({ grid, layer, mapId }: Props) {
     setPlaced(out)
   }, [mapId])
 
-  const [loaded, setLoaded] = useState<readonly Loaded[]>([])
-  const [offsets, setOffsets] = useState<readonly (readonly number[])[]>([])
-
   /** 이 맵이 쓰는 종류만 받는다. 열을 다 받을 이유가 없다 */
   const kinds = useMemo(
     () => [...new Set(placed.map((p) => p.kind))].sort((a, b) => a - b),
     [placed],
   )
+  const { byKind, offsets } = useLoadedProps(kinds)
 
-  useEffect(() => {
-    let alive = true
-    if (kinds.length === 0) {
-      setLoaded([])
-      return
-    }
-    void Promise.all([
-      loadDistortionPropOffsets(),
-      Promise.all(kinds.map((kind) =>
-        Promise.all([loadDistortionPropMesh(kind), loadDistortionPropSheet(kind)])
-          .then(([mesh, sheet]): Loaded => ({ kind, mesh, materials: materialsOf(mesh, sheet) }))
-          .catch(() => null))),
-    ])
-      .then(([off, got]) => {
-        if (!alive) return
-        setOffsets(off)
-        setLoaded(got.filter((v): v is Loaded => v !== null))
-      })
-      .catch(() => {
-        if (alive) setLoaded([])
-      })
-    return () => {
-      alive = false
-    }
-  }, [kinds])
-
-  const byKind = useMemo(() => new Map(loaded.map((l) => [l.kind, l])), [loaded])
   const meshes = useRef<(Mesh | null)[]>([])
 
   useFrame(() => {
