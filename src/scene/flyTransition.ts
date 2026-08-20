@@ -12,7 +12,7 @@ interface FlyTransitionState {
 
 const state: FlyTransitionState = { phase: 'off', elapsed: 0, target: null }
 
-export interface FlyPose {
+interface FlyPose {
   visible: boolean
   playerLift: number
   birdLift: number

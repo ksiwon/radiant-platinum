@@ -13,7 +13,7 @@
 import { create } from 'zustand'
 
 /** BDSP의 R 버튼이 도는 세 자리 */
-export type PoketchView = 'hidden' | 'small' | 'large'
+type PoketchView = 'hidden' | 'small' | 'large'
 
 interface PoketchStore {
   view: PoketchView

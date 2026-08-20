@@ -45,7 +45,7 @@ const magic = (b: Uint8Array): string => String.fromCharCode(b[0]!, b[1]!, b[2]!
  * 트레이너 팔레트는 256색 한 판인데 그림이 4비트라 **16색씩 열여섯 묶음**으로
  * 쓰인다 — `pokegra`의 것은 늘 첫 묶음이라 이쪽이 따로 있다
  */
-export function subPalette(
+function subPalette(
   file: Uint8Array, group: number,
 ): [number, number, number][] | null {
   if (file.byteLength < 0x40 || magic(file) !== 'RLCN') return null

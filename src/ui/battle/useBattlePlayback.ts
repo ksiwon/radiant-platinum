@@ -58,7 +58,7 @@ export function beatFrames(beat: Beat, scale: number): { hold: number, wait: num
   return { hold, wait: hold + read }
 }
 
-export interface Playback {
+interface Playback {
   /** 지금 찍힌 만큼 */
   text: string
   /** 박자를 다 소화했는가. 명령 메뉴는 이때만 뜬다 */

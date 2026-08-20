@@ -63,7 +63,7 @@ export function mailItemOfType(type: number): number {
 }
 
 /** 편지에 새겨지는 아이콘 하나 — 그때 파티에 있던 마리다 */
-export interface MailIcon {
+interface MailIcon {
   species: number
   form: number
   isEgg: boolean
@@ -120,7 +120,7 @@ export function emptyMailSlot(box: readonly Mail[]): number {
   return box.findIndex((m) => !hasMail(m))
 }
 
-export interface MailWriter {
+interface MailWriter {
   trainerId: number
   trainerName: string
   trainerGender: number
@@ -152,7 +152,7 @@ export function mailHasWords(mail: Mail): boolean {
   return mail.lines.some((line) => line.some((w) => w !== EASY_CHAT_WORD_NONE))
 }
 
-export interface MailboxMove {
+interface MailboxMove {
   box: Mail[]
   slot: number
 }

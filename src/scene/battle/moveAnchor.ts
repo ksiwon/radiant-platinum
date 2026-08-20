@@ -15,7 +15,7 @@ import { tallOf } from './stageRefs'
  * 네발도 두발도 함께 담아야 해서 사람 몸 비율을 그대로 못 쓴다. 입은 어깨
  * 위쯤, 맞는 자리는 몸통 한가운데, 몸 둘레는 키의 절반이 안 되게 잡았다
  */
-export const MUZZLE = 0.78
+const MUZZLE = 0.78
 export const TORSO = 0.55
 export const GIRTH = 0.45
 

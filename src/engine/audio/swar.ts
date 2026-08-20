@@ -48,7 +48,7 @@ const norm = 1 / 32768
  * 앞 4바이트가 초기 상태다 — s16 예측값과 u16 단계 색인. 그 뒤로 니블 하나가
  * 표본 하나이고 **아래 니블이 먼저**다
  */
-export function decodeAdpcm(raw: Uint8Array): Float32Array {
+function decodeAdpcm(raw: Uint8Array): Float32Array {
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
   let sample = view.getInt16(0, true)
   let index = view.getUint16(2, true) & 0x7f
@@ -76,14 +76,14 @@ export function decodeAdpcm(raw: Uint8Array): Float32Array {
 }
 
 /** 부호 있는 8비트 */
-export function decodePcm8(raw: Uint8Array): Float32Array {
+function decodePcm8(raw: Uint8Array): Float32Array {
   const out = new Float32Array(raw.length)
   for (let i = 0; i < raw.length; i++) out[i] = ((raw[i]! << 24) >> 24) / 128
   return out
 }
 
 /** 부호 있는 16비트. 이 롬엔 없지만 형식에는 있다 */
-export function decodePcm16(raw: Uint8Array): Float32Array {
+function decodePcm16(raw: Uint8Array): Float32Array {
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
   const out = new Float32Array(raw.length >> 1)
   for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) * norm

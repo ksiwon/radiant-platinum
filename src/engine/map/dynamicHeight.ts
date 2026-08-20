@@ -20,7 +20,7 @@
 // (= 16 << 12)인데, 우리 세계 좌표는 한 칸이 1이라 그냥 칸으로 적는다
 
 /** 판 하나. 원작 `DynamicTerrainHeightPlate` 그대로다 */
-export interface HeightPlate {
+interface HeightPlate {
   startTileX: number
   startTileZ: number
   sizeX: number

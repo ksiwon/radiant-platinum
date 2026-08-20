@@ -12,7 +12,7 @@
 export const STRIDE_LENGTH = 0.85
 
 /** 관절 각도(라디안). 부호는 리그 축에 매이지 않는다 — locomotion.ts가 축을 정한다 */
-export interface Gait {
+interface Gait {
   /** 넓적다리 앞뒤 스윙. 양수가 앞 */
   thighL: number
   thighR: number

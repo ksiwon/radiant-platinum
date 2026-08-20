@@ -185,7 +185,7 @@ export interface BattleOptions {
 }
 
 /** 한 번 정산에서 각 쪽이 받은 줄 */
-export type SideLines = Record<SideId, string[]>
+type SideLines = Record<SideId, string[]>
 
 /**
  * 한 배틀의 수명을 감싼다.

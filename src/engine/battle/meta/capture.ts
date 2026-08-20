@@ -122,7 +122,7 @@ export function shakeThreshold(a: number): number {
   return Math.floor(1048560 / Math.sqrt(Math.sqrt(16711680 / a)))
 }
 
-export interface CatchResult {
+interface CatchResult {
   caught: boolean
   /** 화면에 보여 줄 흔들림 횟수 0~3. 잡히면 4 */
   shakes: number

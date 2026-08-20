@@ -31,7 +31,7 @@ export const VsSeekerResult = {
   /** 화면에는 있었는데 아무도 안 응했다 */
   noneReady: 3,
 } as const
-export type VsSeekerResultValue = (typeof VsSeekerResult)[keyof typeof VsSeekerResult]
+type VsSeekerResultValue = (typeof VsSeekerResult)[keyof typeof VsSeekerResult]
 
 /**
  * 훑기가 보는 트레이너 하나.
@@ -106,13 +106,13 @@ export function batteryMissing(battery: number): number {
 }
 
 /** 머리 위에 뜨는 표시 */
-export type SeekerMark =
+type SeekerMark =
   /** 느낌표 하나 — **아직 안 싸운 사람**이다. 재대결이 아니다 */
   | 'single'
   /** 느낌표 둘 — 재대결에 응했다 */
   | 'double'
 
-export interface SeekerPick {
+interface SeekerPick {
   /** 머리 위에 띄울 표시 */
   marks: { localID: number; mark: SeekerMark }[]
   /** 이동 유형을 회전으로 갈아 끼울 사람들 */
@@ -121,7 +121,7 @@ export interface SeekerPick {
   any: boolean
 }
 
-export interface PickInput {
+interface PickInput {
   /** 훑기에 든 사람들 (`viableTrainers`) */
   visible: readonly SeekerTrainer[]
   /** 그 트레이너를 이미 이겼는가 (`Script_IsTrainerDefeated`) */
@@ -197,7 +197,7 @@ function secondDoubleTrainer(
 
 // ── 걸음 ─────────────────────────────────────────────────────────────────────
 
-export interface SeekerStepResult {
+interface SeekerStepResult {
   battery: number
   steps: number
   /** 이번 걸음에 느낌표가 다 꺼졌는가. 회전하던 사람을 되돌린다 */
@@ -278,7 +278,7 @@ export function adjustRematchLevel(
   return 0
 }
 
-export interface RematchInput {
+interface RematchInput {
   /** 이 사람이 지금 회전하고 있는가 (`VsSeeker_IsTrainerDoingRematchAnimation`) */
   spinning: boolean
   /** 배치표가 들고 있는 트레이너 번호 */

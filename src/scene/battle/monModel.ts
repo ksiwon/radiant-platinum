@@ -44,9 +44,9 @@ export interface MonIndex {
   pokemon: Record<string, MonEntry>
 }
 
-export type MonModelGender = 'male' | 'female' | 'genderless'
+type MonModelGender = 'male' | 'female' | 'genderless'
 
-export interface MonAppearance {
+interface MonAppearance {
   gender?: MonModelGender
   shiny?: boolean
 }
@@ -70,14 +70,14 @@ export function posedHeight(entry: MonEntry): number {
 let index: Promise<MonIndex> | null = null
 let variantIndex: Promise<MonVariantIndex> | null = null
 
-export function loadMonIndex(): Promise<MonIndex> {
+function loadMonIndex(): Promise<MonIndex> {
   index ??= (readJson(assets(), 'models/pokemon/index.json') as Promise<MonIndex>).catch(() => ({
     pokemon: {},
   }))
   return index
 }
 
-export function loadMonVariantIndex(): Promise<MonVariantIndex> {
+function loadMonVariantIndex(): Promise<MonVariantIndex> {
   variantIndex ??= (
     readJson(assets(), 'models/pokemon/variants/index.json') as Promise<MonVariantIndex>
   ).catch(() => ({
@@ -96,7 +96,7 @@ export function loadMonVariantIndex(): Promise<MonVariantIndex> {
  * `ba01` 등판(착지) · `ba02` 울음 · `ba10` 대기 · `ba20` 물리 · `ba21` 특수 ·
  * `ba30` 피격. 종마다 A·B·C 변주가 있어서 앞자리로만 고른다
  */
-export const MOTION = {
+const MOTION = {
   enter: /_ba01_/,
   cry: /_ba02_/,
   wait: /_ba10_/,
@@ -108,7 +108,7 @@ export const MOTION = {
 export type MotionName = keyof typeof MOTION
 
 /** 그 동작의 클립. 없으면 대기, 그것도 없으면 첫 클립 */
-export function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationClip | null {
+function clipFor(clips: readonly AnimationClip[], want: MotionName): AnimationClip | null {
   return (
     clips.find((c) => MOTION[want].test(c.name)) ??
     clips.find((c) => MOTION.wait.test(c.name)) ??

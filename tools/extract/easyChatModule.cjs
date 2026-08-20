@@ -240,7 +240,7 @@ export const EASY_CHAT_WORD_COUNT = ${WORD_COUNT}
 export type EasyChatBankKey =
 ${BANKS.map((b) => `  | '${b.key}'`).join('\n')}
 
-export interface EasyChatBank {
+interface EasyChatBank {
   readonly key: EasyChatBankKey
   /** 이 뱅크의 첫 낱말 번호 */
   readonly base: number
@@ -258,7 +258,7 @@ ${bankLines}
 ]
 
 /** 무리를 여는 조건 (\`EasyChatWordList_Process*\`) */
-export type EasyChatGate = 'always' | 'seen' | 'completed' | 'tough' | 'greeting'
+type EasyChatGate = 'always' | 'seen' | 'completed' | 'tough' | 'greeting'
 
 export interface EasyChatGroup {
   readonly name: string

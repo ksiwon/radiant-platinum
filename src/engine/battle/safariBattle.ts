@@ -32,7 +32,7 @@ export interface SafariState {
   balls: number
 }
 
-export interface SafariTurnInput {
+interface SafariTurnInput {
   state: SafariState
   command: SafariCommand
   /** 상대의 종족 포획값·도망값과 지금 체력 */
@@ -52,7 +52,7 @@ export interface SafariFoe {
   maxHp: number
 }
 
-export interface SafariTurn {
+interface SafariTurn {
   state: SafariState
   events: BattleEvent[]
   outcome: SafariOutcome

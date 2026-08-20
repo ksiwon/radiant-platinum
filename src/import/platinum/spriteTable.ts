@@ -10,7 +10,7 @@
 // 틱 숫자뿐이다 (COPYRIGHT.md §2).
 
 /** `[시작 틱, 끝 틱, 0=되풀이 1=한 번]` */
-export type BillboardAnim = readonly [number, number, number]
+type BillboardAnim = readonly [number, number, number]
 
 /** `[그림 번호, 이름표, mmodel 멤버, 프레임 차례 멤버, 동작표, nsbtx 텍스처 이름]` */
 export type SpriteRow = readonly [

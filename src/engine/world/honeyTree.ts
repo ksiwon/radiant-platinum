@@ -56,7 +56,7 @@ export interface HoneyTreeState {
   shakes: number
 }
 
-export function newHoneyTree(): HoneyTreeState {
+function newHoneyTree(): HoneyTreeState {
   return { minutesRemaining: 0, group: TREE_GROUP.none, slot: 0, table: 0, shakes: 0 }
 }
 
@@ -225,7 +225,7 @@ export function shakeAnimation(shakes: number): number | null {
 }
 
 /** 꿀을 바를 때 굴리는 세 값. 부르는 쪽이 `LCRNG_RandMod(100)` 셋을 준다 */
-export interface SlatherRolls {
+interface SlatherRolls {
   /** 같은 나무에 연달아 바를 때의 90% 판정 */
   keep: number
   group: number
@@ -289,7 +289,7 @@ export function unslatherTree(state: HoneyTreesState, treeId: number): HoneyTree
 // ── 붙는 마리 ────────────────────────────────────────────────────────────────
 
 /** 표 세 벌의 차례. `encountersEx.honeyTree`의 키와 같다 */
-export const HONEY_TABLES = ['common', 'uncommon', 'rare'] as const
+const HONEY_TABLES = ['common', 'uncommon', 'rare'] as const
 
 /** 그 나무에 붙은 종족 (`HoneyTree_GetSpecies`) */
 export function honeyTreeSpecies(

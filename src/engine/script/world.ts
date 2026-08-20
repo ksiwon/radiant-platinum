@@ -23,7 +23,7 @@ import type { LotteryEntry } from '../world/gameCorner'
 /** `constants/menu.h` */
 export const MENU_YES = 0
 export const MENU_NO = 1
-export const MENU_NOTHING_CHOSEN = -1
+const MENU_NOTHING_CHOSEN = -1
 export const MENU_CANCEL = -2
 
 /**
@@ -44,7 +44,7 @@ export interface MenuEntry {
 }
 
 /** 지금 답을 기다리는 메뉴 */
-export interface PendingMenu {
+interface PendingMenu {
   /** `yesno`는 창 안에 붙고, `list`는 따로 뜬다 */
   kind: 'yesno' | 'list'
   /** 고른 값이 들어갈 변수 번호 */
@@ -1102,7 +1102,7 @@ export interface FieldServices {
   }
 }
 
-export interface WorldInit {
+interface WorldInit {
   vars: VarStore
   /** 지금 스크립트가 읽는 뱅크. 없는 번호는 빈 글로 나온다 */
   messages?: readonly string[]

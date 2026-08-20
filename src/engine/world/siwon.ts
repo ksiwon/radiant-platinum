@@ -71,7 +71,7 @@ const VAR_RUINS_STATE = [16489, 16490, 16491] as const
 const RUINS_STATE_ACTIVATED_STATUE = 270
 
 /** 선물 하나가 하는 일 */
-export type SiwonGift =
+type SiwonGift =
   | { kind: 'item'; item: number; event: number }
   /**
    * 한 마리.
@@ -170,7 +170,7 @@ export const SIWON_GIFTS: readonly SiwonEntry[] = [
 ]
 
 /** 말을 걸었을 때 시원이 할 일 */
-export type SiwonTurn =
+type SiwonTurn =
   /** 전당등록 전이다. 다시 오라고만 한다 */
   | { kind: 'locked' }
   /** 이번에 이것을 준다 */

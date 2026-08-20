@@ -20,9 +20,9 @@ const WOTBL_END = 0xffff
 const MOVE_MASK = 0x1ff
 
 export const STAT_ORDER = ['hp', 'atk', 'def', 'spe', 'spa', 'spd'] as const
-export type StatName = (typeof STAT_ORDER)[number]
+type StatName = (typeof STAT_ORDER)[number]
 
-export interface Personal {
+interface Personal {
   stats: Record<StatName, number>
   types: [number, number]
   catchRate: number

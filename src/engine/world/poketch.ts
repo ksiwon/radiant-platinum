@@ -55,7 +55,7 @@ export const DOTART_WIDTH = 24
 export const DOTART_HEIGHT = 20
 
 /** `enum PoketchScreenColor` */
-export const PoketchColor = {
+const PoketchColor = {
   GREEN: 0, YELLOW: 1, ORANGE: 2, RED: 3, PURPLE: 4, BLUE: 5, TEAL: 6, WHITE: 7,
 } as const
 export const POKETCH_COLOR_COUNT = 8
@@ -64,7 +64,7 @@ export const POKETCH_COLOR_COUNT = 8
  * 액정 한 색의 명암 네 단계. **밝은 쪽부터**다 — 바탕이 제일 밝고 글씨가 제일
  * 어둡다 (실측: 지도 한 장 49,152픽셀 중 제일 밝은 단계가 42,180개).
  */
-export interface PoketchShades {
+interface PoketchShades {
   /** 바탕 */
   readonly ground: string
   readonly mid: string
@@ -127,7 +127,7 @@ export function poketchShades(
   return fallbackShades(at)
 }
 
-export interface PoketchMarker { x: number; y: number }
+interface PoketchMarker { x: number; y: number }
 
 /** `sDefaultMapMarkers` — 여섯 개가 지도 아래쪽에 나란히 놓여 있다 */
 export const DEFAULT_MARKERS: readonly PoketchMarker[] = [
@@ -391,11 +391,11 @@ export const MOVE_TESTER_TYPE_ORDER: readonly number[] = [
 // ── 다우징머신 ───────────────────────────────────────────────────────────────
 
 /** 화면에 잡히는 칸 범위 (`FieldSystem_GetNearbyHiddenItems`) */
-export const DOWSING_MIN_DX = -7
-export const DOWSING_MAX_DX = 7
-export const DOWSING_MIN_DZ = -7
+const DOWSING_MIN_DX = -7
+const DOWSING_MAX_DX = 7
+const DOWSING_MIN_DZ = -7
 /** ⚠️ **뒤쪽만 6이다.** 원작이 `playerZ + 6`으로 적어 두어서 앞뒤가 안 맞는다 */
-export const DOWSING_MAX_DZ = 6
+const DOWSING_MAX_DZ = 6
 
 /** 숨은 도구가 이 칸에 잡히는가 */
 export function dowsingInRange(dx: number, dz: number): boolean {
@@ -450,7 +450,7 @@ export function applyCalcKey(state: CalcState, key: string): CalcState {
 }
 
 /** 액정이 담는 자릿수 */
-export const CALC_DIGITS = 12
+const CALC_DIGITS = 12
 
 function calcApply(a: number, b: number, op: string): number {
   if (op === '+') return a + b
@@ -460,7 +460,7 @@ function calcApply(a: number, b: number, op: string): number {
   return b === 0 ? 0 : a / b
 }
 
-export function calcText(n: number): string {
+function calcText(n: number): string {
   if (!Number.isFinite(n)) return '0'
   return Number(n.toFixed(6)).toString().slice(0, CALC_DIGITS)
 }

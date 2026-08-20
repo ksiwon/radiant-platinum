@@ -60,7 +60,7 @@ export interface Condition {
 }
 
 /** `|request|`의 기술 한 칸 */
-export interface RequestMove {
+interface RequestMove {
   id: string
   move: string
   pp: number
@@ -77,7 +77,7 @@ export interface RequestMove {
 }
 
 /** `|request|`의 파티 한 마리 */
-export interface RequestMon {
+interface RequestMon {
   ident: string
   details: string
   condition: string

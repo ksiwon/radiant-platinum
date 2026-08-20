@@ -14,7 +14,7 @@
 // ⚠️ **HDR은 안 푼다.** BDSP가 쓰는 것은 `ASTC_RGB_*`(LDR)뿐이고, HDR 끝점 모드
 // (2·3·7·11·14·15)는 색 계산이 통째로 다르다. 짐작으로 채우지 않고 세운다.
 
-export class AstcError extends Error {
+class AstcError extends Error {
   constructor(message: string) { super(message); this.name = 'AstcError' }
 }
 
@@ -538,7 +538,7 @@ export function fitQuant(n: number, bits: number): number {
   return -1
 }
 
-export interface AstcBlockInfo { hdr: boolean }
+interface AstcBlockInfo { hdr: boolean }
 
 /**
  * 블록 하나를 4채널 색 `bw × bh`개로 편다.

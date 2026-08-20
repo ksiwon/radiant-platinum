@@ -30,7 +30,7 @@ import { setContentContract } from '../state/save/contract'
 import { setAvailableLocales } from '../state/optionsStore'
 
 /** 왜 설치 화면인가. 화면이 할 말이 갈린다 */
-export type InstallReason =
+type InstallReason =
   | 'none'         // 아직 안 했다
   | 'partial'      // 하다 말았다. 이어서 할 수 있다
   | 'invalid'      // 기록이 깨졌다. 다시 설치해야 한다 (리포트는 그대로)
@@ -70,7 +70,7 @@ export interface BootEnv {
   assetStore?: PackStore
 }
 
-export function bootEnv(): BootEnv {
+function bootEnv(): BootEnv {
   return {
     dev: import.meta.env.DEV,
     opfs: opfsAvailable(),

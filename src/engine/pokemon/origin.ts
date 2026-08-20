@@ -32,7 +32,7 @@ export interface MetDate {
  * (`ResetMetLocationAndDate`), 이름을 찾을 때 "수수께끼의 장소"로 떨어뜨린다
  * (`StringTemplate_SetMetLocationName`)
  */
-export interface MetPlace {
+interface MetPlace {
   location: number
   date: MetDate | null
 }
@@ -226,7 +226,7 @@ export function natureLine(nature: number): number {
  * 다섯 맛 차례. 성격이 올리는 능력에 붙은 맛을 좋아한다
  * (`sNatureFlavorAffinities`가 이 짝으로 되어 있다)
  */
-export const FLAVOR_STATS = ['atk', 'spa', 'spe', 'spd', 'def'] as const
+const FLAVOR_STATS = ['atk', 'spa', 'spe', 'spd', 'def'] as const
 
 /**
  * 좋아하는 맛 한 줄 (`InitializeFlavorAffinityString`).
@@ -244,7 +244,7 @@ export function flavorLine(up: string | null): number {
  * ⚠️ **스피드가 셋째다.** 능력 화면 차례(HP·공격·방어·특공·특방·스피드)가
  * 아니라 개체값 저장 차례다 — 잘못 놓으면 특공이 높은 개체에게 스피드 개성이 붙는다
  */
-export const CHARACTERISTIC_STATS = ['hp', 'atk', 'def', 'spe', 'spa', 'spd'] as const
+const CHARACTERISTIC_STATS = ['hp', 'atk', 'def', 'spe', 'spa', 'spd'] as const
 
 /**
  * 개성 한 줄.

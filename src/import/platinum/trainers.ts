@@ -113,7 +113,7 @@ function occurrences(haystack: Uint8Array, needle: Uint8Array): number {
   return hits
 }
 
-export function prizeTable(overlay: Uint8Array): number[] {
+function prizeTable(overlay: Uint8Array): number[] {
   const table = overlay.subarray(PRIZE_OFFSET, PRIZE_OFFSET + CLASS_COUNT)
   if (table.byteLength !== CLASS_COUNT) {
     throw new Error(`상금 배수표가 오버레이 밖으로 나간다 (${String(table.byteLength)}B)`)

@@ -295,7 +295,7 @@ export function bindPlatform(index: number): void {
  * 그건 서쪽 벽을 타고 올라가야 닿는 위층이고, 바닥은 지역 1이다 (실측:
  * 걸을 수 있는 196칸 중 170칸의 그림이 지역 1, 지역 9에는 셋뿐)
  */
-export const DISTORTION_STAND_Y = 1
+const DISTORTION_STAND_Y = 1
 
 export function distortionGroundY(mapId: number): number | null {
   // ⚠️ 지금 걸린 층(`floor`)도, 받아 놓은 자료도 보지 않는다. 워프는 자리를

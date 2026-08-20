@@ -148,8 +148,8 @@ export function journalPlain(type: number): void {
  * **맵 번호**로 뺀다 — 원작이 그 셋을 손으로 골라 냈다. 백화점만 지역명인 것은
  * 층이 여럿이라 맵이 여러 개이기 때문이다
  */
-export const NO_JOURNAL_SHOP_LABEL = 101
-export const NO_JOURNAL_SHOP_MAPS: ReadonlySet<number> = new Set([81, 446])
+const NO_JOURNAL_SHOP_LABEL = 101
+const NO_JOURNAL_SHOP_MAPS: ReadonlySet<number> = new Set([81, 446])
 
 /**
  * 상점에서 나왔다 (`overlay007/shop_menu.c`).
@@ -181,9 +181,9 @@ let wildWins = 0
 export function journalResetWildWins(): void { wildWins = 0 }
 
 /** 다섯째부터 적는다는 것을 시험이 확인할 수 있게 열어 둔다 */
-export const WILD_WINS_BEFORE_ENTRY = 5
+const WILD_WINS_BEFORE_ENTRY = 5
 
-export type JournalGender = 'male' | 'female' | 'genderless'
+type JournalGender = 'male' | 'female' | 'genderless'
 
 const GENDER_ID: Record<JournalGender, number> = { male: 0, female: 1, genderless: 2 }
 

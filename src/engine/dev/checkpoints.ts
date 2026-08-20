@@ -35,7 +35,7 @@ export interface PartySpec {
  *   "문 앞에 서서 나가 보기"가 이것이다
  * · `grass` — 그 맵 안 풀숲 한가운데. 야생을 확인하는 자리다
  */
-export type Spot =
+type Spot =
   | { kind: 'warp'; index: number }
   | { kind: 'atWarp'; index: number }
   | { kind: 'grass' }
@@ -55,7 +55,7 @@ export type Spot =
   | { kind: 'tile'; x: number; z: number; facing: number }
 
 /** 도착하자마자 열 배틀 */
-export type DevBattle =
+type DevBattle =
   | { kind: 'trainer'; id: number }
   | { kind: 'wild'; species: number; level: number }
   /**

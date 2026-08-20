@@ -9,7 +9,7 @@
 /** `MAX_NUMBER_REMINDER_MOVES` */
 export const MAX_REMINDER_MOVES = 25
 
-export interface LearnEntry { level: number; move: number }
+interface LearnEntry { level: number; move: number }
 
 /**
  * 되살릴 수 있는 기술 (`MoveReminderData_GetMoves`).

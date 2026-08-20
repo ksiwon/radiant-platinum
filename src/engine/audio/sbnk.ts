@@ -33,7 +33,7 @@ export interface Bank {
   programs: (Program | null)[]
 }
 
-export type Program =
+type Program =
   | { type: 'single'; note: NoteDef }
   /** 음 높이 `lo`~`hi`가 각각 제 정의를 갖는다 */
   | { type: 'drums'; lo: number; hi: number; notes: (NoteDef | null)[] }

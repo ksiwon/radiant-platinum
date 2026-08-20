@@ -13,7 +13,7 @@ import { decodeAstc } from './astc'
 import { className, type Bundle, type SerializedFile, type UnityObject } from './unityfs'
 import type { UnityValue } from './typetree'
 
-export class TextureError extends Error {
+class TextureError extends Error {
   constructor(message: string) { super(message); this.name = 'TextureError' }
 }
 

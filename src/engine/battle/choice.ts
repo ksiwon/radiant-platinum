@@ -29,10 +29,10 @@ export function needsTarget(targetType: string | undefined): boolean {
  * 우리 쪽 자리에서 보는 값이라 `p1`이 고르든 `p2`가 고르든 같은 규칙이다 —
  * 「상대 첫 자리」가 늘 1이다
  */
-export const TARGET_FOE_A = 1
-export const TARGET_FOE_B = 2
-export const TARGET_ALLY_A = -1
-export const TARGET_ALLY_B = -2
+const TARGET_FOE_A = 1
+const TARGET_FOE_B = 2
+const TARGET_ALLY_A = -1
+const TARGET_ALLY_B = -2
 
 export type BattleAction =
   /** 기술 칸 번호. `|request|`의 순서대로 1부터 */
@@ -77,9 +77,9 @@ export type BattleAction =
   | { type: 'pass'; at?: number }
 
 /** 기술 이름 → 롬 번호. sim을 아는 쪽만 줄 수 있어서 밖에서 받는다 */
-export type MoveResolver = (name: string) => number | null
+type MoveResolver = (name: string) => number | null
 
-export interface ActionOptions {
+interface ActionOptions {
   moveId?: MoveResolver
   /**
    * 몇 번째 자리의 명령을 뽑는가 (0·1). 싱글은 0.

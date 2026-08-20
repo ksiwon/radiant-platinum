@@ -14,7 +14,7 @@
  * 아이콘이 `null`이면 자료가 없는 자리다(`ITEM_UNUSED_*`) — NARC에 파일이
  * 아예 없어서 뒤 아이템들의 번호가 그만큼 당겨진다
  */
-export type ItemRow = readonly [constant: string, icon: number | null, palette: number | null]
+type ItemRow = readonly [constant: string, icon: number | null, palette: number | null]
 
 export const ITEM_TABLE: readonly ItemRow[] = [
   ["ITEM_NONE", 707, 708],

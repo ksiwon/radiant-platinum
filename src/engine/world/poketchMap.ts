@@ -34,7 +34,7 @@ export const POKETCH_MAX_BERRY_DOTS = 64
  */
 export const POKETCH_MAP_VIEW = { width: 256, height: 192 } as const
 
-export interface MapPoint { x: number, y: number }
+interface MapPoint { x: number, y: number }
 
 /**
  * 격자 칸 → 그림 위 픽셀 (`PoketchMap_GetPositionOnMap`).

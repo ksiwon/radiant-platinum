@@ -216,7 +216,7 @@ export function withRom(...locales: readonly string[]): SuiteFn {
  * 시험은 노드라 Blob URL이 없다. `objectUrl`은 `file://` 주소를 준다 — 실제로
  * 그림을 그리지는 않지만 "주소가 나온다"는 계약은 지킨다
  */
-export function nodeAssetProvider(): AssetProvider {
+function nodeAssetProvider(): AssetProvider {
   const PUBLIC = resolve(__dirname, '../../public')
   const at = (path: string): string => {
     if (!/^(data|models)\//.test(path)) {

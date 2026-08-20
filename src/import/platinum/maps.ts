@@ -104,7 +104,7 @@ export function parseHeader(view: DataView, at: number, id: number): MapHeader {
 
 export interface TableCounts { events: number, matrices: number, encounters: number }
 
-export class HeaderTableError extends Error {
+class HeaderTableError extends Error {
   constructor(message: string) { super(message); this.name = 'HeaderTableError' }
 }
 
@@ -390,7 +390,7 @@ const BDHC_HEADER = 16
 const CENTER_TILES = 16
 const CENTER = CENTER_TILES * FX * UNITS_PER_TILE
 
-export interface Plate {
+interface Plate {
   x1: number, z1: number, x2: number, z2: number
   normal: [number, number, number]
   d: number

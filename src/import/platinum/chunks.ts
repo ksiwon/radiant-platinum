@@ -56,7 +56,7 @@ function sbcOperands(op: number, flags: number): number {
   }
 }
 
-export interface Pair { material: number, polygon: number }
+interface Pair { material: number, polygon: number }
 
 /**
  * SBC에서 (재질, 폴리곤) 짝을 뽑는다.
@@ -291,7 +291,7 @@ export function packChunk(
   return out
 }
 
-export interface BuiltChunk {
+interface BuiltChunk {
   bytes: Uint8Array
   verts: number
   headerVerts: number

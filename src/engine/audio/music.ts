@@ -56,7 +56,7 @@ const RING_CAP_MS = 15_000
 const CACHE = 3
 const SHORT_CACHE = 32
 
-export interface SoundIndex {
+interface SoundIndex {
   songs: ({ name: string | null; bank: number; volume: number } | null)[]
   banks: ({ wars: (number | null)[] } | null)[]
 }

@@ -7,7 +7,7 @@
 // **밑수**가 여기 있는 `char`·`pal`이고, 등록 차례대로 폼 수만큼 쌓아서 센 값이다.
 // **여기 담기는 것은 색인 번호뿐이다** — 그림도 색도 이름도 없다 (COPYRIGHT.md §2).
 
-export interface OtherpokeRow {
+interface OtherpokeRow {
   species: number
   /** 기본형까지 센 폼 수 */
   forms: number

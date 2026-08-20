@@ -15,7 +15,7 @@ import {
 import { assets, onProviderSwap, readJson } from '../../data/providers/assetProvider'
 
 /** 그림에서 실제로 칠해진 자리. 이것이 없으면 발밑이 안 맞는다 */
-export interface SpriteBox { x: number; y: number; w: number; h: number }
+interface SpriteBox { x: number; y: number; w: number; h: number }
 export interface SpriteIndex {
   /** 한 컷의 변 (픽셀). 80이다 */
   size: number

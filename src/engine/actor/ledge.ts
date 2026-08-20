@@ -90,7 +90,7 @@ export function distortionHop(
 }
 
 /** 턱 판정에 필요한 것의 전부 */
-export interface LedgeGrid {
+interface LedgeGrid {
   behavior(tx: number, tz: number): number
   isBlocked(tx: number, tz: number): boolean
 }

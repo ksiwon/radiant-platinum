@@ -19,7 +19,7 @@ import { resource } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
 
-export class ArenaError extends Error {
+class ArenaError extends Error {
   constructor(message: string) { super(message); this.name = 'ArenaError' }
 }
 
@@ -124,7 +124,7 @@ function alphaOf(kind: string): Record<string, unknown> {
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
 
-export interface ArenaOptions {
+interface ArenaOptions {
   /** 무대 한가운데에서 이보다 먼 메시는 버린다 (m). null이면 전부 */
   far?: number | null
   /**
@@ -139,7 +139,7 @@ export interface ArenaOptions {
   name?: string
 }
 
-export interface ArenaStat {
+interface ArenaStat {
   meshes: number
   dropped: number
   vertices: number

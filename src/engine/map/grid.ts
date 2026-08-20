@@ -8,7 +8,7 @@ import { BEHAVIOR_MASK, IMPASSABLE, type Building, type CollisionGrid } from './
 import { heightInChunk } from './height'
 import { resolveDynamicHeight } from './dynamicHeight'
 
-export interface MatrixChunk {
+interface MatrixChunk {
   /** 행렬 안 선형 인덱스. buildings의 키다 */
   i: number
   mx: number

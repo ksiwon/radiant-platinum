@@ -13,7 +13,7 @@
  *
  * 열여덟 자리다. 목록에 없으면 0이다 — 원작의 `default`가 그렇다
  */
-export const FLOORS_ABOVE: Readonly<Record<number, number>> = {
+const FLOORS_ABOVE: Readonly<Record<number, number>> = {
   103: 1, // 연고시티 남동쪽 집 1F
   104: 0, // 연고시티 남동쪽 집 2F
   164: 0, // 전망대

@@ -84,7 +84,7 @@ export interface DailyState {
   trophy: readonly [number, number]
 }
 
-export const TROPHY_SLOT_NONE = -1
+const TROPHY_SLOT_NONE = -1
 
 export function newDaily(seed: number, day: number, minute = day * 1440): DailyState {
   return {

@@ -107,7 +107,7 @@ export function localProducer(fs: NdsFileSystem, release: Release, locale: strin
   })
 }
 
-export interface InstallOptions extends InstallStores {
+interface InstallOptions extends InstallStores {
   locale: string
   groups: readonly GroupSpec[]
   produce: Producer
@@ -184,7 +184,7 @@ export async function installReady(store: WritablePackStore): Promise<InstallMan
 
 // ── 검증 ─────────────────────────────────────────────────────────────────────
 
-export interface VerifyResult {
+interface VerifyResult {
   /** 파일까지 온전한 그룹 */
   ok: string[]
   /** 어긋난 것이 있는 그룹 → 무엇이 어긋났는가 */

@@ -22,7 +22,7 @@ export type EasyChatBankKey =
   | 'toughWords'
   | 'unionWords'
 
-export interface EasyChatBank {
+interface EasyChatBank {
   readonly key: EasyChatBankKey
   /** 이 뱅크의 첫 낱말 번호 */
   readonly base: number
@@ -50,7 +50,7 @@ export const EASY_CHAT_BANKS: readonly EasyChatBank[] = [
 ]
 
 /** 무리를 여는 조건 (`EasyChatWordList_Process*`) */
-export type EasyChatGate = 'always' | 'seen' | 'completed' | 'tough' | 'greeting'
+type EasyChatGate = 'always' | 'seen' | 'completed' | 'tough' | 'greeting'
 
 export interface EasyChatGroup {
   readonly name: string

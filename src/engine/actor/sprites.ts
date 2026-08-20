@@ -15,7 +15,7 @@
 const LOOP = 0
 
 /** 동작 하나: [시작 틱, 끝 틱, 종류] */
-export type Anim = readonly [number, number, number]
+type Anim = readonly [number, number, number]
 
 export interface NpcSprite {
   /** `OBJ_EVENT_GFX_` 를 뗀 이름. 사람이 읽으려고 둔다 */

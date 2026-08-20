@@ -24,7 +24,7 @@ export interface HeroClipInput {
   watering: boolean
 }
 
-export interface HeroClip {
+interface HeroClip {
   /** 돌릴 클립. `null`이면 절차형이 그 자리를 맡는다 */
   name: string | null
   /** 되풀이할 것인가. 아니면 한 번 돌고 마지막 자세에서 멈춘다 */
@@ -60,7 +60,7 @@ export const WATERING_START_SECONDS = 0.33
 export const WATERING_TAIL_SECONDS = 0.83
 
 /** 「!」가 뜬 뒤 몸이 채는 동작의 길이. 클립 `fishing_hit_f`의 실측 길이다 */
-export const HIT_SECONDS = 0.33
+const HIT_SECONDS = 0.33
 
 /** 낚시 단계 → 클립. 일곱을 다 쓴다 */
 function fishingClip(s: FishingState): HeroClip | null {

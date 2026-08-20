@@ -27,7 +27,7 @@ export const OVERWORLD_WEATHER = {
 export const overworldWeather: { value: number } = { value: OVERWORLD_WEATHER.clear }
 
 /** 비전기술이 세워 둔 표식. `SystemFlag_Check{Flash,Defog}Active`가 읽는 그 둘 */
-export interface FieldMoveActive {
+interface FieldMoveActive {
   flash: boolean
   defog: boolean
 }

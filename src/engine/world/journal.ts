@@ -62,7 +62,7 @@ export const LocationEvent = {
 export type LocationEventId = (typeof LocationEvent)[keyof typeof LocationEvent]
 
 /** `journal_online_events.txt`. 대부분 통신이라 §9지만 콘테스트 순위는 혼자서도 난다 */
-export const OnlineEvent = {
+const OnlineEvent = {
   NONE: 0,
   PLACED_IN_CONTEST: 13,
   MADE_POFFINS: 14,
@@ -85,7 +85,7 @@ export const SCRIPT_EVENT_TYPES: readonly number[] = [
   LocationEvent.BATTLE_HALL, LocationEvent.BATTLE_ARCADE,
 ]
 
-export interface JournalDate {
+interface JournalDate {
   /** 2000을 뺀 값 0~99 (원작 `RTCDate.year`) */
   year: number
   /** 1~12 */
@@ -96,12 +96,12 @@ export interface JournalDate {
   week: number
 }
 
-export interface JournalTitle extends JournalDate {
+interface JournalTitle extends JournalDate {
   /** 그 쪽이 열릴 때 서 있던 맵 */
   mapId: number
 }
 
-export interface JournalMon {
+interface JournalMon {
   /** `MonResult` */
   result: number
   /**
@@ -118,7 +118,7 @@ export interface JournalMon {
   species: number
 }
 
-export interface JournalTrainer {
+interface JournalTrainer {
   /** 보통 트레이너를 이긴 적이 있는가. 0이면 이 줄을 안 그린다 */
   standard: number
   trainerId: number
@@ -414,7 +414,7 @@ export function monVariant(playtimeMinutes: number): number {
 }
 
 /** 체육관 여덟 (`sGymsInfo`) — 관장 번호 · 체육관 맵 · 뱃지 비트 */
-export interface GymInfo { trainerId: number; mapId: number; badge: number }
+interface GymInfo { trainerId: number; mapId: number; badge: number }
 
 /**
  * ⚠️ **연고체육관은 입구 방이다.** 나머지 일곱은 체육관 맵 자체인데 연고만
@@ -518,7 +518,7 @@ export const JOURNAL_BUILDINGS: ReadonlyMap<number, boolean> = new Map([
  */
 export const CAVES_USING_DEPARTED: ReadonlySet<number> = new Set([47, 64, 49])
 
-export interface MapInfoForJournal {
+interface MapInfoForJournal {
   /** `MapHeader.mapType` */
   type: number
   /** `MapHeader.label` — 지역명 번호 */

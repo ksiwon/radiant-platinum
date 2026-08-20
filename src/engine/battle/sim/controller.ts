@@ -46,9 +46,9 @@ export interface BattleStep {
 }
 
 /** 상대의 수를 정하는 것. 야생은 무작위, 트레이너는 AI가 들어온다 (PLAN §7.7) */
-export type FoePolicy = (request: BattleRequest, at?: number) => BattleAction | null
+type FoePolicy = (request: BattleRequest, at?: number) => BattleAction | null
 
-export interface ControllerOptions extends BattleOptions {
+interface ControllerOptions extends BattleOptions {
   /** 안 주면 무작위 — 원작의 야생 포켓몬과 같다 */
   foePolicy?: FoePolicy
   /** 무작위 정책이 쓸 난수. 안 주면 Math.random */

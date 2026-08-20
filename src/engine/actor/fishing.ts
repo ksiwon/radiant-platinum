@@ -22,8 +22,8 @@ export const CAST_SOUND_FRAME = 10
  *
  * 30·60·90·120 넷 중 하나다. 0.5초에서 2초 사이
  */
-export const BITE_DELAY_STEP = 30
-export const BITE_DELAY_CHOICES = 4
+const BITE_DELAY_STEP = 30
+const BITE_DELAY_CHOICES = 4
 
 /**
  * 「!」가 뜬 뒤 A를 받아 주는 창 (`sRodTypeHookTimingWindow`).

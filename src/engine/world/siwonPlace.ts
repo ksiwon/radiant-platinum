@@ -22,7 +22,7 @@ export const SIWON_CAMEO_MAP = 186
  * ⚠️ 스크립트가 `VAR_LAST_TALKED`로 읽는 번호이기도 한데, 시원의 대화는 롬
  * 스크립트를 안 거치므로 부딪힐 자리가 없다
  */
-export const SIWON_LOCAL_ID = 200
+const SIWON_LOCAL_ID = 200
 
 /**
  * 말을 걸면 이 번호가 나온다. 롬 스크립트 번호가 아니라 **우리 표시**다 —

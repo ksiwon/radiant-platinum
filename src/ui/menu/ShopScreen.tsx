@@ -30,7 +30,7 @@ const LIST_ICON = 28
 const BIG_ICON = 96
 
 /** `Item_SellPrice` — 사는 값의 절반으로 쳐 준다 */
-export const sellPrice = (price: number): number => Math.floor(price / 2)
+const sellPrice = (price: number): number => Math.floor(price / 2)
 
 interface Loaded {
   items: ItemTable

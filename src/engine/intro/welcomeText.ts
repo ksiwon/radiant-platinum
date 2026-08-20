@@ -19,7 +19,7 @@
 // `\r`이 「눌러서 창을 비우고 다음」이다. 마박사의 말투(~일세/~라네 · ~じゃ)를
 // 따르되 **내용은 우리 것**이라 이름도 우리 이름으로 적는다.
 
-export type IntroLocale = 'ko' | 'en' | 'ja'
+type IntroLocale = 'ko' | 'en' | 'ja'
 
 const KO =
   '레디언트 플래티넘의 세계에 온 것을\n'

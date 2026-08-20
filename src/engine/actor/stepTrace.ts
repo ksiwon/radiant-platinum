@@ -24,7 +24,7 @@
 //   트리거  칸 단위 판정을 그대로 두되, **지나온 칸을 전부 차례로** 묻는다.
 //           한 틱에 두 칸을 지났으면 두 번 묻는다
 
-export interface Tile { x: number, z: number }
+interface Tile { x: number, z: number }
 
 /**
  * 한 틱에 지날 수 있는 칸 수의 위끝.

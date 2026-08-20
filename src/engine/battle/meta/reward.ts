@@ -18,7 +18,7 @@ export const EV_TOTAL = 510
  * ⚠️ **학습장치를 든 마리가 하나라도 있으면 절반이 통째로 그쪽으로 간다.**
  * 나간 마리들이 나머지 절반을 나눠 갖는 것이지, 학습장치가 따로 얹히는 게 아니다
  */
-export interface ExpPool {
+interface ExpPool {
   /** 배틀에 나갔던 마리 하나가 받는 몫 */
   gained: number
   /** 학습장치를 든 마리 하나가 받는 몫. 든 마리가 없으면 0 */
@@ -63,7 +63,7 @@ export function expPool(
 }
 
 /** 한 마리가 경험치를 받을 때 걸리는 것들 */
-export interface ExpBonus {
+interface ExpBonus {
   /** 배틀에 나갔는가 — 나갔어야 `gained` 몫을 받는다 */
   participant: boolean
   /** 학습장치를 들었는가 — 들었어야 `shared` 몫을 받는다 */
@@ -130,13 +130,13 @@ export function addEvs(
   return next
 }
 
-export interface LevelUp {
+interface LevelUp {
   level: number
   /** 그 레벨에서 배우는 기술 번호 */
   moves: number[]
 }
 
-export interface RewardResult {
+interface RewardResult {
   mon: PokemonInstance
   gainedExp: number
   /** 오른 레벨마다 하나씩. 안 올랐으면 빈 배열 */
@@ -180,7 +180,7 @@ export function applyReward(
 /** 기술 네 칸 */
 export const MOVE_SLOTS = 4
 
-export interface LearnResult {
+interface LearnResult {
   mon: PokemonInstance
   /** 실제로 들어간 기술 */
   learned: number[]
@@ -232,12 +232,12 @@ export const HOLD_EFFECT_EXP_UP = 66
  * ⚠️ **차례가 능력치 열거와 다르다.** 공격·방어·특공·특방·스피드·HP 순으로
  * 붙어 있다 — 능력치 순으로 짐작해 매기면 파워앵클이 HP를 올린다
  */
-export const POWER_ITEM_STAT: Readonly<Record<number, StatKey>> = {
+const POWER_ITEM_STAT: Readonly<Record<number, StatKey>> = {
   117: 'atk', 118: 'def', 119: 'spa', 120: 'spd', 121: 'spe', 122: 'hp',
 }
 
 /** 노력치가 얼마나 들어가는지를 바꾸는 것들 */
-export interface EvBonus {
+interface EvBonus {
   /** 든 도구의 홀드 효과 (`ItemData.holdEffect`) */
   holdEffect?: number
   /** 그 도구의 `effectParam`. 파워 아이템이 더해 주는 값(4)이다 */

@@ -18,7 +18,7 @@ import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
 
 /** `OBJ_EVENT_GFX_BERRY_SOIL` — 밭 객체의 그림 번호 (`BerryPatchGraphics_IsBerryPatch`) */
-export const BERRY_SOIL_GFX = 100
+const BERRY_SOIL_GFX = 100
 
 /** `POCKET_BERRIES`. 열매는 늘 이 주머니라 도구 표를 안 기다린다 */
 const POCKET_BERRIES = 4
@@ -83,7 +83,7 @@ export function elapseBerries(list: readonly BerryPatch[], minutes: number): Ber
 // ── 물뿌리개 (`BerryPatches_TaskMain`) ───────────────────────────────────────
 
 /** `task->timer > 30 * 3` — 아무 키도 안 누르고 이만큼 지나면 끝난다 */
-export const WATER_HOLD_TICKS = 90
+const WATER_HOLD_TICKS = 90
 
 /**
  * 옆 밭으로 옮겨 서는 데 걸리는 시간.
@@ -92,7 +92,7 @@ export const WATER_HOLD_TICKS = 90
  * 기다리는데(`MapObject_HasAnimationEnded`) 그 길이가 그림 자료 안에 있다.
  * 한 칸을 옮기는 걸음이라 보통 걸음과 같은 속도로 둔다
  */
-export const WATER_SIDESTEP_SECONDS = 0.25
+const WATER_SIDESTEP_SECONDS = 0.25
 
 type WaterState = 'watering' | 'input' | 'animation'
 

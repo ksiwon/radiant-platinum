@@ -137,7 +137,7 @@ const originSchema = z.object({
  * ⚠️ **쓴 사람이 새겨진다** — 남의 편지는 지운 뒤에야 다시 쓸 수 있다.
  * ⚠️ **아이콘 셋은 「그때 파티에 있던 마리」다** — 나중에 파티가 바뀌어도 안 바뀐다
  */
-export const mailSchema = z.object({
+const mailSchema = z.object({
   /** 편지지 0~11. `MAIL_TYPE_NONE`(0xFFFF)이면 빈 칸이다 */
   type: z.union([int(0, MAIL_TYPE_COUNT - 1), z.literal(MAIL_TYPE_NONE)]),
   trainerId: int(0, 0xffff),
@@ -215,7 +215,7 @@ const bagSchema = z
 
 const boxSchema = z.array(monSchema.nullable()).length(BOX_SIZE)
 
-export const saveSchema = z.object({
+const saveSchema = z.object({
   version: int(1, 1000),
   trainer: z.object({
     name: z.string().max(24),

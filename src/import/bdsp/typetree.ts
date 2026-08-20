@@ -120,7 +120,7 @@ export function readNodes(
 
 // ── 값 읽기 ──────────────────────────────────────────────────────────────────
 
-export interface PPtr { fileId: number, pathId: number }
+interface PPtr { fileId: number, pathId: number }
 
 export type UnityValue =
   | number | boolean | string | Uint8Array | PPtr

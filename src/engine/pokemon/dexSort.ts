@@ -100,7 +100,7 @@ export function isPlain(q: DexQuery): boolean {
     && q.shape === 0
 }
 
-export interface DexEntry {
+interface DexEntry {
   species: number
   /** 안 본 자리. 번호순일 때만 생긴다 */
   blank: boolean

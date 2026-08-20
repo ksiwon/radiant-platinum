@@ -9,9 +9,9 @@
 // (`sAppearanceShuffleTable`).
 
 /** 성별 하나가 가진 모습 수 (`APPEARANCES_COUNT`) */
-export const APPEARANCES = 8
+const APPEARANCES = 8
 /** 한 사람에게 보여 주는 후보 수 (`VARIANTS_COUNT`) */
-export const VARIANTS = 4
+const VARIANTS = 4
 
 /**
  * 모습 하나 — 그림 번호와 트레이너 분류.

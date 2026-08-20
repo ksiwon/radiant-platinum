@@ -92,7 +92,7 @@ const linearToSrgb = (x: number): number =>
 /** 0..255 → 선형. 256칸이라 표로 두면 곱셈마다 pow를 안 부른다 */
 const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(f32(i / 255)))
 
-export interface MaterialLook {
+interface MaterialLook {
   /** 밑그림 UV 배율·오프셋 (sx, sy, ox, oy) */
   uv: [number, number, number, number]
   /** glTF 샘플러 상수 둘 */
@@ -101,7 +101,7 @@ export interface MaterialLook {
   double: boolean
 }
 
-export interface BakedMaterial {
+interface BakedMaterial {
   name: string
   look: MaterialLook
   width: number

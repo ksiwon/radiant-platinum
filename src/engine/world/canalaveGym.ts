@@ -42,7 +42,7 @@ export const CANALAVE_FLOOR_MODELS: readonly number[] = [300, 301, 302]
 /** 층 바닥이 서는 자리. `FX32_CONST(256)` / 16 = 16칸이다 */
 export const CANALAVE_FLOOR_POS = { x: 16, z: 16 } as const
 
-export interface CanalavePlatform {
+interface CanalavePlatform {
   /** 'y'는 층을 오가고 'x'·'z'는 같은 층 안에서 미끄러진다. 'red'도 위아래다 */
   axis: 'red' | 'y' | 'x' | 'z'
   model: number

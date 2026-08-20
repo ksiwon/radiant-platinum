@@ -608,7 +608,7 @@ function scorePrioritizeExtremes(turn: AiTurn, move: AiMove): number {
 // 합산
 // ═════════════════════════════════════════════════════════════════════════════
 
-export interface ScoredMove {
+interface ScoredMove {
   move: AiMove
   score: number
 }
@@ -634,7 +634,7 @@ export function scoreMoves(turn: AiTurn, flags: number, expert?: ExpertScorer): 
 }
 
 /** EXPERT 루틴. 순환 import를 피하려고 밖에서 넣는다 */
-export type ExpertScorer = (
+type ExpertScorer = (
   turn: AiTurn,
   move: AiMove,
   damages: readonly number[],

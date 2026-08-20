@@ -52,7 +52,7 @@ export const REQUIRED_GROUPS = [
  */
 export const SAMPLE_SPECIES = ['pm0387', 'pm0001'] as const
 
-export interface GroupState {
+interface GroupState {
   name: string
   why: string
   /** `<그룹>.bin` 색인이 있는가 */

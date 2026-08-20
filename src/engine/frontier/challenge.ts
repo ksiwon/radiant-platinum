@@ -15,7 +15,7 @@ import {
 import { BATTLES_PER_ROUND } from './factoryTables'
 
 /** 표를 읽는 자리 하나 — 시험이 가짜 표를 끼울 수 있게 좁게 둔다 */
-export type SetLookup = (id: number) => SetShape
+type SetLookup = (id: number) => SetShape
 
 export interface FactoryRound {
   readonly challenge: ChallengeType
@@ -39,7 +39,7 @@ export interface FactoryRound {
   readonly swapPool: readonly DrawnSet[]
 }
 
-export interface OpenOptions {
+interface OpenOptions {
   readonly challenge: ChallengeType
   readonly openLevel: boolean
   readonly streak: number

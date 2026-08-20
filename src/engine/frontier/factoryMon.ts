@@ -50,7 +50,7 @@ const PID_TRIES = 1000
  * 맞추는 것이라 평균 25번이면 나오지만, **상한을 두고 마지막 값을 쓴다** —
  * `createWild`의 `biasedPid`와 같은 약속이다
  */
-export function factoryPid(nature: number, otId: number, otSecretId: number, rng: Rng): number {
+function factoryPid(nature: number, otId: number, otSecretId: number, rng: Rng): number {
   let pid = randomPid(rng)
   for (let i = 0; i < PID_TRIES; i++) {
     if (natureOf(pid) === nature % NATURE_COUNT && !isShiny(pid, otId, otSecretId)) return pid
@@ -60,7 +60,7 @@ export function factoryPid(nature: number, otId: number, otSecretId: number, rng
 }
 
 /** `evFlags`가 켠 능력에 나눠 넣은 노력치 */
-export function factoryEvs(evFlags: number): PokemonInstance['evs'] {
+function factoryEvs(evFlags: number): PokemonInstance['evs'] {
   const evs = { hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 }
   const on = EV_BITS.filter((_, i) => (evFlags & (1 << i)) !== 0)
   if (on.length === 0) return evs
@@ -69,7 +69,7 @@ export function factoryEvs(evFlags: number): PokemonInstance['evs'] {
   return evs
 }
 
-export interface FactoryMonOptions {
+interface FactoryMonOptions {
   readonly set: FrontierSet
   readonly species: Species
   readonly level: number

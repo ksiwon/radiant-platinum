@@ -345,13 +345,13 @@ function main() {
 // (\`tools/extract/moveAnimModule.cjs\`).
 
 /** 0~255 RGB. 헤더가 BGR555 옆에 적어 둔 \`// RGB(r, g, b)\` 주석에서 왔다 */
-export type MoveAnimRgb = readonly [number, number, number]
+type MoveAnimRgb = readonly [number, number, number]
 
 /** 흔들기·물들이기의 대상 */
-export type MoveAnimWho = 'attacker' | 'defender' | 'both'
+type MoveAnimWho = 'attacker' | 'defender' | 'both'
 
 /** 입자를 어디에 붙이는가 (\`EMITTER_CB_*\`) */
-export type MoveAnimAnchor = 'attacker' | 'defender' | 'center' | 'generic'
+type MoveAnimAnchor = 'attacker' | 'defender' | 'center' | 'generic'
 
 export interface MoveAnim {
   /** 입자 자원 이름. 무엇을 그릴지는 화면이 정하고, 이건 갈래를 가르는 데 쓴다 */

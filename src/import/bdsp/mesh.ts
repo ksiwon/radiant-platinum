@@ -13,7 +13,7 @@ import { className, type SerializedFile, type UnityObject } from './unityfs'
 import type { UnityValue } from './typetree'
 
 /** `m_Channels`의 형식 번호 → 읽는 법 */
-export const VertexFormat = {
+const VertexFormat = {
   Float: 0,
   Float16: 1,
   UNorm8: 2,
@@ -41,7 +41,7 @@ export const CHANNEL = {
 
 export interface Channel { stream: number, offset: number, format: number, dimension: number }
 
-export interface SubMesh {
+interface SubMesh {
   firstByte: number
   indexCount: number
   topology: number

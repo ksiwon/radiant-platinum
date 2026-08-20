@@ -80,7 +80,7 @@ export function bikeSpeedAt(t: number): number {
 }
 
 /** 왜 못 타는가. `null`이면 탈 수 있다 */
-export type BikeBlock = 'grass' | 'surf' | 'map' | 'stuck'
+type BikeBlock = 'grass' | 'surf' | 'map' | 'stuck'
 
 // 타일 거동값 (`map_tile_behaviors.h`, §2.2)
 const VERY_TALL_GRASS = 0x03

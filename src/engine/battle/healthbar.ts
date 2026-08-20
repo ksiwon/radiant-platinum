@@ -13,11 +13,11 @@
 // 파티 화면 아이콘용이다.
 
 /** `HEALTHBOX_HP_CELL_COUNT`. 칸 하나가 8픽셀이다 */
-export const HP_CELLS = 6
+const HP_CELLS = 6
 /** 게이지 전체 픽셀 수 */
 export const HP_PIXELS = 8 * HP_CELLS
 
-export type BarColor = 'empty' | 'red' | 'yellow' | 'green'
+type BarColor = 'empty' | 'red' | 'yellow' | 'green'
 
 /**
  * `App_PixelCount` 그대로.

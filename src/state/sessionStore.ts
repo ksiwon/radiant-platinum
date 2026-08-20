@@ -1,7 +1,7 @@
 // 세션 상태 — 저빈도 UI 상태만 (PLAN §3.2 ②)
 import { create } from 'zustand'
 
-export type GamePhase = 'title' | 'overworld'
+type GamePhase = 'title' | 'overworld'
 
 interface SessionState {
   phase: GamePhase

@@ -20,7 +20,7 @@ import { Rig, retarget, roundTripError, type Quat, type RigBone } from './retarg
 import type { Entry, Environment } from './environment'
 import type { UnityValue } from './typetree'
 
-export class ModelError extends Error {
+class ModelError extends Error {
   constructor(message: string) { super(message); this.name = 'ModelError' }
 }
 
@@ -70,7 +70,7 @@ const flipQuat = (q: readonly number[]): [number, number, number, number] =>
  * ⚠️ 유니티는 **ZXY** 차례로 돌린다 (`Quaternion.Euler`가 그렇다) — 차례를 바꾸면
  * 같은 각도가 다른 자세가 된다
  */
-export function eulerToQuat(deg: readonly number[]): [number, number, number, number] {
+function eulerToQuat(deg: readonly number[]): [number, number, number, number] {
   const hx = (deg[0]! * Math.PI) / 360
   const hy = (deg[1]! * Math.PI) / 360
   const hz = (deg[2]! * Math.PI) / 360
@@ -181,7 +181,7 @@ const asFloat = (word: number): number => {
  * 넣어 두는데 시각이 음수이거나 클립 길이를 넘는다. 그대로 쓰면 애니메이션이
  * 시작 전부터 튄다
  */
-export function readStreamed(words: readonly number[]): Map<number, Curve> {
+function readStreamed(words: readonly number[]): Map<number, Curve> {
   const frames: { time: number, keys: { index: number, value: number }[] }[] = []
   let i = 0
   const n = words.length
@@ -272,7 +272,7 @@ function sampleCurve(points: Curve, t: number): number {
   return a.value + (b.value - a.value) * k
 }
 
-export interface AnimStat {
+interface AnimStat {
   clips: number
   channels: number
   unresolved: number
@@ -332,7 +332,7 @@ function buildAnimations(
 
 // ── 빌려 온 클립 ─────────────────────────────────────────────────────────────
 
-export interface BorrowStat {
+interface BorrowStat {
   /** 옮겨 온 클립 수 */
   borrowed: number
   /** 그 클립들이 모는 채널을 다 더한 것 */
@@ -486,7 +486,7 @@ function borrowedClips(
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
 
-export interface ExportOptions extends BakeOptions {
+interface ExportOptions extends BakeOptions {
   /** 애니메이션을 실을 것인가. 오버월드 NPC는 안 싣는다 (걷기는 엔진이 만든다) */
   keepClips?: boolean
   /** 이름이 맞는 클립만. 포켓몬은 배틀용(`^ba`)만 쓴다 */
@@ -501,7 +501,7 @@ export interface ExportOptions extends BakeOptions {
   borrowOnly?: ReadonlySet<string> | null
 }
 
-export interface ExportStat {
+interface ExportStat {
   meshes: number
   dropped: number
   vertices: number
@@ -519,7 +519,7 @@ export interface ExportStat {
   problems: string[]
 }
 
-export interface ExportResult {
+interface ExportResult {
   glb: Uint8Array
   stat: ExportStat
 }

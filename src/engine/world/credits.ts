@@ -22,7 +22,7 @@ export const CREDITS_BANK = 548
  * `y`는 **화면 위에서 잰 픽셀**이다 — 표의 자리에서 두루마리 위치를 뺀 값이라
  * 화면 밖으로 나간 줄은 여기 안 든다
  */
-export interface CreditLine {
+interface CreditLine {
   /** 대사 뱅크의 줄 번호 */
   index: number
   y: number

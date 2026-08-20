@@ -147,9 +147,9 @@ ${locationNames.map(([n, id]) => `  ${n.slice('TUTOR_LOCATION_'.length).toLowerC
 } as const
 
 /** 값 넷의 차례 — 빨강 · 파랑 · 노랑 · 초록 (\`sTeachableMoves\`의 칸 차례) */
-export type ShardCost = readonly [number, number, number, number]
+type ShardCost = readonly [number, number, number, number]
 
-export interface TutorMove {
+interface TutorMove {
   /** 기술 번호 */
   move: number
   cost: ShardCost

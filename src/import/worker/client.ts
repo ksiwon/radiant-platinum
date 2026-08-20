@@ -11,7 +11,7 @@ import type { Produced } from '../platinum/convert'
 import type { BdspScan } from '../bdsp/scan'
 import type { FromWorker, JobId, ToWorker, ValidationReport } from './protocol'
 
-export interface ConvertHooks {
+interface ConvertHooks {
   onProgress?: (done: number, total: number) => void
   onWrote?: (path: string, bytes: number) => void
   /**
@@ -25,7 +25,7 @@ export interface ConvertHooks {
   onFile?: (path: string, data: Uint8Array) => void
 }
 
-export class WorkerFailed extends Error {
+class WorkerFailed extends Error {
   constructor(name: string, message: string) { super(message); this.name = name }
 }
 
@@ -57,7 +57,7 @@ export interface ImportClient {
 }
 
 /** 협조적 취소를 이만큼 기다린 뒤 스레드를 끊는다 */
-export const HARD_CANCEL_MS = 2_000
+const HARD_CANCEL_MS = 2_000
 
 /** 진짜 Worker를 띄운다. Vite가 `new URL(...)`을 보고 청크를 만든다 */
 export function spawnImportWorker(): ImportClient {

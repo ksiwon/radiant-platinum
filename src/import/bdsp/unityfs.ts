@@ -17,7 +17,7 @@ import { buildTree, readNodes, readObject, type TypeNode, type UnityValue } from
 
 const MAGIC = 'UnityFS\0'
 
-export interface UnityFsHeader {
+interface UnityFsHeader {
   version: number
   unityVersion: string
   unityRevision: string
@@ -29,10 +29,10 @@ export interface UnityFsHeader {
   dataStart: number
 }
 
-export interface BlockInfo { uncompressed: number; compressed: number; flags: number }
-export interface DirectoryNode { offset: number; size: number; flags: number; path: string }
+interface BlockInfo { uncompressed: number; compressed: number; flags: number }
+interface DirectoryNode { offset: number; size: number; flags: number; path: string }
 
-export type Compression = 'none' | 'lzma' | 'lz4' | 'lz4hc'
+type Compression = 'none' | 'lzma' | 'lz4' | 'lz4hc'
 
 const COMPRESSION: Record<number, Compression> = { 0: 'none', 1: 'lzma', 2: 'lz4', 3: 'lz4hc' }
 
@@ -211,7 +211,7 @@ export interface SerializedFile {
 }
 
 /** 우리가 알아볼 클래스만. 나머지는 번호로 남는다 */
-export const CLASS_NAMES: Readonly<Record<number, string>> = {
+const CLASS_NAMES: Readonly<Record<number, string>> = {
   1: 'GameObject', 4: 'Transform', 21: 'Material', 23: 'MeshRenderer', 28: 'Texture2D',
   33: 'MeshFilter', 43: 'Mesh', 48: 'Shader', 74: 'AnimationClip', 91: 'AnimatorController',
   95: 'Animator', 111: 'Animation', 114: 'MonoBehaviour', 115: 'MonoScript',

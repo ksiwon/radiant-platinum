@@ -41,7 +41,7 @@ export const ICE_MAX_SPEED = 3
 const MAX_RUN = 64
 
 /** `enum PlayerHeightChange` */
-export type HeightChange = 'none' | 'increase' | 'decrease'
+type HeightChange = 'none' | 'increase' | 'decrease'
 
 /** 얼음 판정이 세계에 묻는 것 전부. 시험이 이 모양만 채우면 된다 */
 export interface IceView {
@@ -54,7 +54,7 @@ export interface IceView {
 }
 
 /** 미끄러지는 동안의 상태. 한 번에 하나뿐이라 모듈에 둔다 */
-export interface IceSlide {
+interface IceSlide {
   active: boolean
   /** 잠긴 방향. 사방 중 하나라 한 축만 ±1이다 */
   dx: number
@@ -165,7 +165,7 @@ export function iceRunEnd(view: IceView, tileX: number, tileZ: number,
 }
 
 /** 얼음이 지금 이 걸음을 가져갔는가, 가져갔으면 어떤 속도인가 */
-export interface IceStep {
+interface IceStep {
   /** 미끄러지는 속도 벡터(타일/초). 둘 다 0이면 멈춘 것이다 */
   vx: number
   vz: number

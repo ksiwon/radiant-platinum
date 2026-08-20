@@ -23,7 +23,7 @@ const SEQ = 0
 const BANK = 2
 const WAVEARC = 3
 
-export interface Sdat {
+interface Sdat {
   buf: Uint8Array
   view: DataView
   names: Record<string, (string | null)[]>
@@ -97,7 +97,7 @@ function varLen(buf: Uint8Array, at: number): [number, number] {
   return [v, n]
 }
 
-export interface SeqWalk {
+interface SeqWalk {
   commands: number
   notes: number
   unknown: number[]

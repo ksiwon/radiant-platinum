@@ -9,7 +9,7 @@
 // 따로 고르며, direct는 팔레트가 없다. 하나만 빠뜨려도 그 텍스처만 조용히 깨진다.
 import { readDict } from './nsbmd'
 
-export interface TexParams {
+interface TexParams {
   repeatS: boolean
   repeatT: boolean
   flipS: boolean
@@ -52,7 +52,7 @@ export function color(v: number): Rgb {
 }
 
 export interface TexEntry extends TexParams { name: string, offset: number, bytes: number }
-export interface PalEntry { name: string, offset: number }
+interface PalEntry { name: string, offset: number }
 
 export interface Tex0 {
   textures: TexEntry[]

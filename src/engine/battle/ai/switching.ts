@@ -27,7 +27,7 @@ export interface BenchMon {
   moves: readonly AiMove[]
 }
 
-export interface SwitchContext {
+interface SwitchContext {
   self: AiMon
   foe: AiMon
   moves: readonly AiMove[]

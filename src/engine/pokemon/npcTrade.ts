@@ -48,10 +48,10 @@ export const NPC_TRADE_COUNT = 4
  * `NPCTrade_GetOTName`이 `NPCTrade_GetNickname(heapID, MAX_NPC_TRADES + id)`를
  * 부른다 — 앞 넷이 별명, 뒤 넷이 트레이너 이름이다
  */
-export const NPC_TRADE_OT_NAME_BASE = NPC_TRADE_COUNT
+const NPC_TRADE_OT_NAME_BASE = NPC_TRADE_COUNT
 
 /** `fld_trade.narc` 한 벌 (`NPCTradeMon`). 쓰지 않는 칸 둘은 안 담는다 */
-export interface NpcTradeRecord {
+interface NpcTradeRecord {
   species: number
   ivs: { hp: number, atk: number, def: number, spa: number, spd: number, spe: number }
   /** 보이는 다섯 자리 번호. 표의 u32 아래 16비트다 */
@@ -148,7 +148,7 @@ const ITEM_POKE_BALL = 4
  * 알 자리를 지우고 만난 자리에 **통신교환**을 넣는다. 만난 레벨은 그 순간의
  * 레벨이다 (`BoxPokemon_SetMetLevelToCurrentLevel`)
  */
-export function tradedOrigin(
+function tradedOrigin(
   record: NpcTradeRecord, names: NpcTradeNames, level: number, today: MetDate,
 ): Origin {
   return {

@@ -260,7 +260,7 @@ export function wildMoves(species: Species, level: number): MoveSlot[] {
  * 두 칸이 같으면 100%, 다르면 「없음 45 · 흔한 것 50 · 귀한 것 5」다.
  * `eyed`(복안)면 「20 · 60 · 20」으로 바뀐다
  */
-export function wildHeldItem(species: Species, rng: Rng, eyed = false): number {
+function wildHeldItem(species: Species, rng: Rng, eyed = false): number {
   const [common, rare] = species.heldItems
   if (common === 0 && rare === 0) return 0
   if (common === rare) return common
@@ -276,7 +276,7 @@ export function wildHeldItem(species: Species, rng: Rng, eyed = false): number {
  * 싱크로는 성격을, 헤롱헤롱바디는 성별을 정한다. **둘이 같이 걸릴 일은 없다** —
  * 한 마리에 특성이 하나뿐이라, 원작도 `else if`로 갈라 둔다
  */
-export interface PidBias {
+interface PidBias {
   nature: number | null
   gender: 'male' | 'female' | null
 }
@@ -290,7 +290,7 @@ export interface PidBias {
  */
 const PID_TRIES = 1000
 
-export interface WildOptions {
+interface WildOptions {
   species: Species
   level: number
   rng: Rng

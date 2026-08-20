@@ -81,7 +81,7 @@ export interface CascadeSite {
  * `(currPosOffset.y >> 4) / FX32_ONE`, 곧 옮겨진 양을 칸으로 내린 값을 본다.
  * 내려갈 때는 절반 속도 구간이 있어서 프레임으로 세면 자리가 어긋난다
  */
-export interface CascadeCamera {
+interface CascadeCamera {
   /** 떨어진(오른) 칸 수가 이 값이 되면 켜진다 */
   atTiles: number
   /** 그때의 각 (`DistWorldCameraAngleTemplate`) */
@@ -100,7 +100,7 @@ export interface CascadeCamera {
 }
 
 /** 몸이 한 번 도는 것 (`RotateMapObject(system, playerMapObj, angle, steps)`) */
-export interface CascadeRotation {
+interface CascadeRotation {
   /**
    * 언제 켜지는가 — `'start'`는 뛰어들 때, 숫자는 **떨어진 칸 수**,
    * `'finish'`는 마지막 한 칸이 남았을 때(`CASCADE_FINISHING_THRESHOLD`)다

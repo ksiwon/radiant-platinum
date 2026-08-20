@@ -1,4 +1,4 @@
-export interface PromptNpc {
+interface PromptNpc {
   x: number
   z: number
   visible: boolean

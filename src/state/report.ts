@@ -63,7 +63,7 @@ async function migrate(): Promise<void> {
  * 없는 것은 다른 일이고, 못 읽을 때 해야 할 일도 다르다 — **원본을 파일로
  * 돌려주는 것**이다 (IMPORT.md §11 끝)
  */
-export type ReportRead =
+type ReportRead =
   | { kind: 'none' }
   | { kind: 'ok'; save: SaveData; migrated: boolean }
   | {
@@ -90,7 +90,7 @@ export async function readReport(expectVersion: number): Promise<SaveData | null
   return got.kind === 'ok' ? got.save : null
 }
 
-export type WriteResult =
+type WriteResult =
   | { ok: true }
   | { ok: false; why: string }
 

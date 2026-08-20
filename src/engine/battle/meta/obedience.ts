@@ -41,7 +41,7 @@ export function badgeCount(mask: number): number {
  * · `hitSelf` 명령을 안 듣고 **자기를 때렸다**
  * · `nothing` 빈둥거렸다 / 명령을 안 듣는다 / 외면했다 / 못 들은 척했다
  */
-export type ObeyResult = 'obey' | 'ignoredAsleep' | 'otherMove' | 'nap' | 'hitSelf' | 'nothing'
+type ObeyResult = 'obey' | 'ignoredAsleep' | 'otherMove' | 'nap' | 'hitSelf' | 'nothing'
 
 export interface ObeyContext {
   /** 명령을 받은 마리의 레벨 */
@@ -60,7 +60,7 @@ export interface ObeyContext {
   otherSlots: readonly number[]
 }
 
-export interface ObeyCheck {
+interface ObeyCheck {
   result: ObeyResult
   /** `otherMove`일 때 실제로 쓰는 기술 칸(1부터) */
   slot?: number
@@ -129,7 +129,7 @@ export function idleFlavor(rng: Rng): number {
 }
 
 /** 자기를 때리는 데미지의 위력 (`CALC_SELF_HIT(MOVE_POUND, 40)`) */
-export const SELF_HIT_POWER = 40
+const SELF_HIT_POWER = 40
 
 /**
  * 안 듣고 자기를 때렸을 때의 데미지 (흔들림 전).

@@ -37,7 +37,7 @@ export interface HallOfFameMon {
 }
 
 /** 한 줄 (`HallOfFameEntry`) */
-export interface HallOfFameEntry {
+interface HallOfFameEntry {
   pokemon: HallOfFameMon[]
   /** 2000년부터 몇 해. `RTCDate.year`가 0~99다 */
   year: number

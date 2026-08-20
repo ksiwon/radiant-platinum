@@ -14,7 +14,7 @@
 import { create } from 'zustand'
 
 /** 큐에 든 한 자리. `item`이 있으면 그 도구가 건 것이다 */
-export interface EvolutionPending {
+interface EvolutionPending {
   slot: number
   /** 도구로 걸었으면 그 번호. 레벨업이면 없다 */
   item?: number

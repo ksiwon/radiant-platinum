@@ -23,7 +23,7 @@ const WATER_BASES = {
 /** 4세대 종족 번호의 위쪽 끝. 넘으면 표가 밀린 것이다 */
 const LAST_SPECIES = 507
 
-export interface WaterBand {
+interface WaterBand {
   rate: number
   slots: { max: number, min: number, species: number }[]
 }
@@ -120,7 +120,7 @@ export interface EncountersEx {
   greatMarsh: { natdex: number[], local: number[], spots: { x: number, y: number }[] }
 }
 
-export function parseEncountersEx(members: readonly Uint8Array[]): EncountersEx {
+function parseEncountersEx(members: readonly Uint8Array[]): EncountersEx {
   if (members.length !== EX_MEMBERS) {
     throw new Error(`encdata_ex 칸이 ${String(members.length)}개다 (12이어야 한다)`)
   }

@@ -28,7 +28,7 @@ const POCKETS = [
 const ICON_MAGIC = 'RGCN'
 const PALETTE_MAGIC = 'RLCN'
 
-export interface ItemParam { [field: string]: number }
+interface ItemParam { [field: string]: number }
 
 /**
  * `ItemPartyParam` 20B. 비트 하나짜리가 줄줄이라 자리를 세어 읽는다.
@@ -69,7 +69,7 @@ export function trim(param: ItemParam): ItemParam | null {
   return Object.keys(out).length ? out : null
 }
 
-export interface ItemData {
+interface ItemData {
   price: number
   holdEffect: number
   effectParam: number

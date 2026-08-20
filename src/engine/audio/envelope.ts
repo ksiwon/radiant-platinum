@@ -22,7 +22,7 @@ export const SUSTAIN = 2
 export const RELEASE = 3
 
 /** 감쇠값의 소수부 비트 수. 드라이버는 `env >> 7`로 0.1dB를 낸다 */
-export const ENV_SHIFT = 7
+const ENV_SHIFT = 7
 /** 시작이자 바닥. `−723 << 7` */
 export const ENV_FLOOR = DECIBEL_FLOOR << ENV_SHIFT
 

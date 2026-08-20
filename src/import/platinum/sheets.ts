@@ -37,7 +37,7 @@ export function pack(items: SheetItem[]): { width: number, height: number } {
 }
 
 /** 목차 한 줄: [그림 이름, 팔레트 이름, x, y, 너비, 높이] */
-export type SheetEntry = [string, string, number, number, number, number]
+type SheetEntry = [string, string, number, number, number, number]
 
 export interface Sheet { w: number, h: number, items: SheetEntry[] }
 

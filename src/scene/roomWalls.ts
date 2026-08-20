@@ -285,7 +285,7 @@ export interface RoomWalls {
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
 
 /** 칸 테두리 (월드 타일). 양끝을 포함한다 */
-export interface FloorExtent { minX: number, minZ: number, maxX: number, maxZ: number }
+interface FloorExtent { minX: number, minZ: number, maxX: number, maxZ: number }
 
 /**
  * 이 청크에서 **바닥이 실제로 그려진** 칸의 테두리. 한 칸도 없으면 `null`.

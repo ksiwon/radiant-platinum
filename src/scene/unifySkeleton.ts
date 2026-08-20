@@ -28,7 +28,7 @@ const SAME = 1e-4
 /** 두 번 걸지 않으려고 남기는 표식 */
 const MARK = '__skeletonUnified'
 
-export interface UnifyResult {
+interface UnifyResult {
   /** 뼈대를 같이 쓰게 된 조각 수 */
   meshes: number
   /** 합친 뼈대의 뼈 수 */

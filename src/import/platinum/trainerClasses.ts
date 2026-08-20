@@ -124,7 +124,7 @@ export const TRAINER_CLASS_NAMES: readonly string[] = [
  *
  * `[그림 번호, 트레이너 갈래, 그 갈래로 선 배치 수, 전체 배치 수]`
  */
-export type SpriteClassRow = readonly [number, number, number, number]
+type SpriteClassRow = readonly [number, number, number, number]
 
 export const SPRITE_TRAINER_CLASS: readonly SpriteClassRow[] = [
   [1, 28, 10, 10],

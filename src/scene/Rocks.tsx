@@ -105,7 +105,7 @@ export function plateBands(
  * 확인했다). 오버월드에 1,003개뿐이라(실측) 아낄 자리도 아니다 —
  * 한 화면에 수십 개면 2천 삼각형이다
  */
-export function rockGeometry(bands: readonly number[]): BufferGeometry {
+function rockGeometry(bands: readonly number[]): BufferGeometry {
   const geo = new IcosahedronGeometry(0.5, 1)
   lumpy(geo, 0.5, ROCK_LUMP)
   // 눌러서 바위 비율로. 밑을 조금 묻고 나머지를 땅 위로 올린다

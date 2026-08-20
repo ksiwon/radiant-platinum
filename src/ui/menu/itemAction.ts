@@ -52,7 +52,7 @@ export function fieldContextNow(evoItems: ReadonlySet<string> | undefined): Fiel
 }
 
 /** 밟는 쪽이 대야 하는 바깥 세계 */
-export interface ItemActionDeps {
+interface ItemActionDeps {
   /** 도구 번호와 그 이름·주머니 */
   readonly item: number
   readonly name: string

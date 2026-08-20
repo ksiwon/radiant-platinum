@@ -59,7 +59,7 @@ const VIEW_RADIUS = 0.5
  *
  * 빈 흙과 **심은 직후**에는 아무것도 안 선다 — 원작이 둘 다 0xffff를 준다
  */
-export function berryStageGfx(berryID: number, growthStage: number): number | null {
+function berryStageGfx(berryID: number, growthStage: number): number | null {
   if (berryID === 0) return null
   if (growthStage === BERRY_STAGE.sprouted) return BERRY_GFX_SPROUT
   const at = growthStage === BERRY_STAGE.growing ? 1

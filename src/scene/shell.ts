@@ -346,7 +346,7 @@ export interface ShellPaint {
  *
  * 지붕은 안 바꾼다. 위를 보는 삼각형은 제 UV가 곧 지붕 그림이다
  */
-export interface WallSource {
+interface WallSource {
   group: number
   /** 그 벽이 쓰는 **그림 칸**의 가로 범위 */
   u0: number
@@ -476,7 +476,7 @@ export function wallSource(mesh: ChunkMesh, paint: ShellPaint): WallSource | nul
  * 남는 것은 높이 방향 결이다: 기단이 아래에, 널판이 그 위에, 처마 색이 꼭대기에.
  * 원작이 벽에 준 구성이 그것이고, 세로 줄무늬는 원작에 없던 것이다
  */
-export interface WallStrip {
+interface WallStrip {
   /** RGBA. 아래(`yLow`)에서 위로 `h`줄 */
   pixels: Uint8Array
   h: number

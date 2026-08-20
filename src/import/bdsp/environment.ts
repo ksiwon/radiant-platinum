@@ -11,7 +11,7 @@
 import { className, openBundle, readSerializedFile, type Bundle, type SerializedFile, type UnityObject } from './unityfs'
 import type { UnityValue } from './typetree'
 
-export class EnvironmentError extends Error {
+class EnvironmentError extends Error {
   constructor(message: string) { super(message); this.name = 'EnvironmentError' }
 }
 

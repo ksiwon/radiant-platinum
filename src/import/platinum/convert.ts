@@ -57,7 +57,7 @@ export const CATEGORY = ['physical', 'special', 'status'] as const
 const FLAG_CONTACT = 0x01
 const FLAG_PROTECT = 0x02
 
-export interface MoveRow {
+interface MoveRow {
   id: number
   effect: number
   category: string

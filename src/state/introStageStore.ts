@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type IntroVisualScene = 'off' | 'rowan' | 'ball' | 'buneary' | 'gender' | 'player' | 'rival'
+type IntroVisualScene = 'off' | 'rowan' | 'ball' | 'buneary' | 'gender' | 'player' | 'rival'
 
 interface IntroStageStore {
   scene: IntroVisualScene

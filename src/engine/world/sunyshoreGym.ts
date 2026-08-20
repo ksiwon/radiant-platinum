@@ -32,7 +32,7 @@ export const SUNYSHORE_GYM_MAPS: readonly number[] = [154, 155, 156]
  * `turn`은 처음 각(90도 단위), `cw`면 시계 방향으로 돈다. `vertical`인 톱니는
  * 벽에 붙어 있어서 y가 아니라 **x축**으로 돈다
  */
-export interface SunyshoreGear {
+interface SunyshoreGear {
   model: number
   x: number
   y: number

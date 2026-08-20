@@ -38,7 +38,7 @@ export type FieldMoveId =
   | 'cut' | 'fly' | 'surf' | 'strength' | 'defog'
   | 'rockSmash' | 'waterfall' | 'rockClimb' | 'flash'
 
-export interface FieldMoveSpec {
+interface FieldMoveSpec {
   /** 기술 번호 (`generated/moves.txt`) */
   move: number
   /** 요구 뱃지 (`FieldMoves_Check*`). 플래시만 뱃지를 안 본다 */
@@ -125,7 +125,7 @@ export interface Trainer {
   knows: (move: number) => boolean
 }
 
-export type FieldMoveDenial = 'badge' | 'party'
+type FieldMoveDenial = 'badge' | 'party'
 
 /** 못 쓰는 이유. 쓸 수 있으면 null */
 export function whyNot(id: FieldMoveId, who: Trainer): FieldMoveDenial | null {

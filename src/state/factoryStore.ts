@@ -52,7 +52,7 @@ function aiMaskFor(round: number, trainer: number): number {
   return AI_FULL
 }
 
-export type FactoryPhase = 'off' | 'loading' | 'rental' | 'preview' | 'battle' | 'swap' | 'result'
+type FactoryPhase = 'off' | 'loading' | 'rental' | 'preview' | 'battle' | 'swap' | 'result'
 
 interface Tables {
   frontier: FrontierData

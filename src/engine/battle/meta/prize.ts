@@ -8,7 +8,7 @@
 // 원작과 같다는 것으로 공식과 표를 함께 확인했다.
 import type { Trainer } from '../../../data/schema'
 
-export interface PrizeInput {
+interface PrizeInput {
   /** 그 트레이너 분류의 상금 배수 */
   mul: number
   /** 파티 마지막 칸의 레벨 */

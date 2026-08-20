@@ -144,7 +144,7 @@ export function leaveSafari(at: SafariState): SafariState {
 }
 
 /** 한 걸음 뒤에 무슨 일이 일어나는가 (`Field_UpdateSafari`) */
-export type SafariStep =
+type SafariStep =
   | { kind: 'off' }
   | { kind: 'walk'; state: SafariState }
   /** 볼이 떨어졌다 — `SCRIPT_ID(SAFARI_GAME, 2)` */
@@ -172,7 +172,7 @@ export function useSafariBall(at: SafariState): SafariState {
 }
 
 /** `SCRIPT_ID_OFFSET_SAFARI_GAME` */
-export const SCRIPT_SAFARI_BASE = 8800
+const SCRIPT_SAFARI_BASE = 8800
 /** 걸음을 다 썼을 때 도는 스크립트 */
 export const SCRIPT_SAFARI_OUT_OF_STEPS = SCRIPT_SAFARI_BASE + 1
 /** 볼을 다 썼을 때 도는 스크립트 */
@@ -194,7 +194,7 @@ export const TRAM_STOP_Z: readonly number[] = [32 * 1 + 8, 32 * 2 + 18, 32 * 3 +
  *
  * 가운데 정거장만 둘이다 — 북쪽에서 올 때와 남쪽에서 올 때가 다르다
  */
-export const TRAM_SLOW_Z = {
+const TRAM_SLOW_Z = {
   area12: 32 * 1 + 14,
   area34North: 32 * 2 + 10,
   area34South: 32 * 2 + 24,

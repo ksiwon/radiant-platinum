@@ -17,7 +17,7 @@ import {
 } from './chunkMesh'
 
 /** 받아 놓은 소품 한 갈래 */
-export interface LoadedProp {
+interface LoadedProp {
   kind: number
   mesh: ChunkMesh
   materials: Material[]

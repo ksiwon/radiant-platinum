@@ -19,7 +19,7 @@ import {
   LEGACY_OPTIONS_KEY, LEGACY_REPORT_DB, OPTIONS_KEY, REPORT_DB,
 } from '../../state/storageNames'
 
-export interface WipeReport {
+interface WipeReport {
   /** OPFS 나무를 지웠는가 (애초에 없었으면 지운 것으로 친다) */
   opfs: boolean
   /** 지운 IndexedDB 이름 */

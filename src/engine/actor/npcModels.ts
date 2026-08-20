@@ -122,7 +122,7 @@ export function classOfSprite(spriteName: string, spriteID?: number): number | n
 }
 
 /** 번들 뭉치 하나 */
-export interface BundleSet {
+interface BundleSet {
   /** 번들 → 그 안에 든 갈래 낱말들 */
   bundles: Readonly<Record<string, readonly string[]>>
   vocabulary: readonly string[]
@@ -136,7 +136,7 @@ export interface NpcModelTable {
 }
 
 /** 어느 번들을 구울 것인가 */
-export interface NpcModelRef {
+interface NpcModelRef {
   /**
    * 구울 번들. **앞엣것이 임자**고, 열다 끊기면 다음 것으로 넘어간다.
    *

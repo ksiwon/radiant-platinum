@@ -29,7 +29,7 @@ export {
 /** 한 문장에 들어가는 낱말 (`MAX_EASY_CHAT_WORDS`는 둘이지만 우편은 문장 셋이다) */
 export const MAIL_WORDS_PER_LINE = 2
 
-export interface WordSlot {
+interface WordSlot {
   readonly bank: EasyChatBankKey
   /** 그 뱅크 안의 몇 번째 글인가 */
   readonly entry: number
@@ -69,7 +69,7 @@ export function newEasyChatUnlocks(): EasyChatUnlocks {
   return { greetings: 0, tough: 0 }
 }
 
-export interface EasyChatContext {
+interface EasyChatContext {
   /** 도감에서 본 적이 있는가 */
   seen: (species: number) => boolean
   /** 명예의 전당에 올랐는가 */

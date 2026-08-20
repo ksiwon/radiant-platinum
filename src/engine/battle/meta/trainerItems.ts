@@ -12,7 +12,7 @@ import type { Item } from '../../../data/schema'
 import type { Status } from '../../pokemon/instance'
 
 /** 트레이너 하나가 들 수 있는 도구 칸. `MAX_TRAINER_ITEMS` */
-export const MAX_TRAINER_ITEMS = 4
+const MAX_TRAINER_ITEMS = 4
 
 /**
  * 무엇을 쓰기로 했는가 (`ITEM_AI_CATEGORY_*`).
@@ -20,7 +20,7 @@ export const MAX_TRAINER_ITEMS = 4
  * `kind`는 **조건이 걸린 칸**이 정하고 `item`은 **마지막으로 지운 칸**이 정한다.
  * 원본이 그 둘을 따로 들고 있어서다 (`decide` 참조)
  */
-export interface ItemUse {
+interface ItemUse {
   /** 회복약 · 상처약 계열 · 상태이상 치료 */
   kind: 'fullRestore' | 'hp' | 'status'
   item: number

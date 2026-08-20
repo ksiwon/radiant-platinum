@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type DoorPhase = 'closed' | 'opening' | 'open' | 'closing'
+type DoorPhase = 'closed' | 'opening' | 'open' | 'closing'
 
 export interface DoorVisual {
   tag: number

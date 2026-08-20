@@ -30,7 +30,7 @@ const ENTRY_SIZE = 12
 const FIRMNESS_MIN = 1
 const FIRMNESS_MAX = 5
 
-export interface BerryRow {
+interface BerryRow {
   size: number
   firmness: number
   baseYield: number
@@ -45,7 +45,7 @@ export interface BerryRow {
 }
 
 /** 칸 차례는 노드 쪽과 같다 — 키 순서가 곧 바이트라 바꾸면 parity가 깨진다 */
-export function parseBerry(b: Uint8Array): BerryRow {
+function parseBerry(b: Uint8Array): BerryRow {
   const view = new DataView(b.buffer, b.byteOffset, b.byteLength)
   return {
     size: view.getUint16(0, true),

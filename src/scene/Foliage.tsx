@@ -474,7 +474,7 @@ export function trunkGeometry(rgb: number, far = false): BufferGeometry {
  * 맺힌다. 그루마다 크기가 다르고(행렬이 그대로 곱해진다) 가장자리에서 풀린다 —
  * 원작이 깔았던 **크기 무관한 하드한 동그라미**(`tshadow`)와 다른 점이 그것이다
  */
-export const CONTACT_R = 1.15
+const CONTACT_R = 1.15
 export const CONTACT_DARK = 0.5
 /** 땅에서 띄우는 높이. 0이면 지형과 같은 깊이라 얼룩진다 */
 const CONTACT_Y = 0.02
@@ -573,7 +573,7 @@ export function treeGeometry(leaf: number[], trunk: number, far = false): Buffer
  * **잎에 제일 가까운 판**이 그 나무가 자란 땅이다. 플레이어가 층을 가르는 규칙과
  * 같은 것을 쓴다 (`map/height`)
  */
-export type GroundAt = (x: number, z: number, near: number) => number | null
+type GroundAt = (x: number, z: number, near: number) => number | null
 
 /**
  * 그 자리에서 제일 가까운 **막힌 것**까지의 거리 (타일). 없으면 `Infinity`.
@@ -581,7 +581,7 @@ export type GroundAt = (x: number, z: number, near: number) => number | null
  * 막힌 것은 집·간판 같은 소품과, 원작 청크에 세워져 있는 판(울타리·표지판)이다
  * (`ChunkModels`의 `solidCells`)
  */
-export type ClearAt = (x: number, z: number) => number
+type ClearAt = (x: number, z: number) => number
 
 /**
  * 칸 하나에 나무를 세울 자리. 자리는 **밑동**이다.

@@ -46,7 +46,7 @@ export interface SetShape {
 }
 
 /** 뽑을 때 피해야 하는 것 (이미 판에 있는 종족·도구) */
-export interface Exclusion {
+interface Exclusion {
   readonly species: readonly number[]
   readonly items: readonly number[]
 }
@@ -125,7 +125,7 @@ export function opponentTierIndex(tiers: readonly SetTier[], trainerID: number):
   return at < 0 ? tiers.length - 1 : at
 }
 
-export interface DrawOptions {
+interface DrawOptions {
   readonly tiers: readonly SetTier[]
   readonly tierIndex: number
   readonly count: number

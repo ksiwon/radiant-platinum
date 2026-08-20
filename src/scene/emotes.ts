@@ -7,7 +7,7 @@
 import { emoteAlive, type EmoteKind } from '../engine/actor/emote'
 import { npcActors } from '../engine/actor/npcs'
 
-export interface LiveEmote {
+interface LiveEmote {
   localID: number
   kind: EmoteKind
   /** 뜬 지 몇 프레임 됐는가. 60fps 기준이다 */

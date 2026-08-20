@@ -466,17 +466,17 @@ function main() {
  * 값은 번호이거나 번호 벡터(\`posDelta\` · \`scale\`)이거나 null이다 — 못 푼
  * 가리킴이 남으면 굽는 쪽이 그 자리에서 세운다 (\`plain\`)
  */
-export type DistortionParams = Readonly<Record<string, number | number[] | null>>
+type DistortionParams = Readonly<Record<string, number | number[] | null>>
 
 /** 층 하나가 위아래로 무엇에 붙는가 (\`sDistWorldMapConnectionList\`) */
-export interface DistortionConnection {
+interface DistortionConnection {
   currID: number
   prevID: number
   nextID: number
 }
 
 /** 칸을 밟으면 도는 사건 하나 (\`DistWorldEvent\`) */
-export interface DistortionEvent {
+interface DistortionEvent {
   x: number
   y: number
   z: number
@@ -521,7 +521,7 @@ export interface DistortionElevatorPath {
 }
 
 /** 늘 서 있는 소품 (\`sSimplePropsMapTemplates\`) — 문·폭포·덩굴꽃 */
-export interface DistortionSimpleProp {
+interface DistortionSimpleProp {
   propKind: number
   tileX: number
   tileY: number

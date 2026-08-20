@@ -79,7 +79,7 @@ function gameClock(): { hour: number; minute: number } {
 
 // ── 시계 셋 ──────────────────────────────────────────────────────────────────
 
-export function DigitalWatch() {
+function DigitalWatch() {
   useTicker(true, 1000)
   const { hour, minute } = gameClock()
   return (
@@ -89,7 +89,7 @@ export function DigitalWatch() {
   )
 }
 
-export function AnalogWatch({ large }: Nav) {
+function AnalogWatch({ large }: Nav) {
   useTicker(true, 1000)
   const { hour, minute } = gameClock()
   const size = large ? 130 : 70
@@ -118,7 +118,7 @@ export function AnalogWatch({ large }: Nav) {
  *
  * ⚠️ **맞춘 시각은 리포트에 남는다** — 원작이 `Poketch` 구조체에 넣어 두었다
  */
-export function AlarmClock({ x, press, large }: Nav) {
+function AlarmClock({ x, press, large }: Nav) {
   const poketch = useSaveStore((s) => s.poketch)
   useTicker(true, 1000)
   const { hour, minute } = gameClock()
@@ -157,7 +157,7 @@ export function AlarmClock({ x, press, large }: Nav) {
 }
 
 /** 스톱워치. 실제 시간으로 돈다 — 게임 시계가 아니다 */
-export function Stopwatch({ press, large }: Nav) {
+function Stopwatch({ press, large }: Nav) {
   const [state, setState] = usePoketchMemory<{ running: boolean; base: number; acc: number }>(
     PoketchApp.STOPWATCH, { running: false, base: 0, acc: 0 },
   )
@@ -180,7 +180,7 @@ export function Stopwatch({ press, large }: Nav) {
 }
 
 /** 키친타이머. 위아래로 분을 맞추고 Z로 센다 */
-export function KitchenTimer({ y, press, large }: Nav) {
+function KitchenTimer({ y, press, large }: Nav) {
   const [state, setState] = usePoketchMemory<{ minutes: number; until: number | null }>(
     PoketchApp.KITCHEN_TIMER, { minutes: 3, until: null },
   )
@@ -207,7 +207,7 @@ export function KitchenTimer({ y, press, large }: Nav) {
 // ── 숫자 넷 ──────────────────────────────────────────────────────────────────
 
 /** 계산기. 4×4 자판을 방향키로 짚고 Z로 누른다 */
-export function Calculator({ x, y, press, large }: Nav) {
+function Calculator({ x, y, press, large }: Nav) {
   const [state, setState] = usePoketchMemory<CalcState>(
     PoketchApp.CALCULATOR, { shown: '0', acc: null, op: null, fresh: true },
   )
@@ -244,7 +244,7 @@ export function Calculator({ x, y, press, large }: Nav) {
 }
 
 /** 카운터. Z로 하나씩 올리고 아래쪽 버튼으로 0으로 되돌린다 */
-export function Counter({ y, press, large }: Nav) {
+function Counter({ y, press, large }: Nav) {
   const [count, setCount] = usePoketchMemory<number>(PoketchApp.COUNTER, 0)
   useOnPress(press, () => {
     if (!large) return
@@ -265,7 +265,7 @@ export function Counter({ y, press, large }: Nav) {
 }
 
 /** 만보기. 걸음은 세이브에 쌓인다 */
-export function Pedometer({ y, press, large }: Nav) {
+function Pedometer({ y, press, large }: Nav) {
   const steps = useSaveStore((s) => s.poketch.stepCount)
   useOnPress(press, () => {
     if (!large || y !== 1) return
@@ -286,7 +286,7 @@ export function Pedometer({ y, press, large }: Nav) {
 }
 
 /** 동전던지기. 잉어킹 동전을 던진다 */
-export function CoinToss({ press, large }: Nav) {
+function CoinToss({ press, large }: Nav) {
   const [heads, setHeads] = usePoketchMemory<boolean>(PoketchApp.COIN_TOSS, true)
   useOnPress(press, () => { if (large) setHeads(Math.random() < 0.5) })
   return (
@@ -321,7 +321,7 @@ function useSpeciesNames(): { names: string[]; maxHp: (i: number) => number } {
 }
 
 /** 포켓몬리스트 — 이름과 체력 막대 */
-export function PartyStatus({ large }: Nav) {
+function PartyStatus({ large }: Nav) {
   const party = useSaveStore((s) => s.party)
   const { names, maxHp } = useSpeciesNames()
   if (!party.length) return <div className={css.missing}>포켓몬이 없다</div>
@@ -344,7 +344,7 @@ export function PartyStatus({ large }: Nav) {
 }
 
 /** 친밀도체커 — 하트 0~6 */
-export function FriendshipChecker() {
+function FriendshipChecker() {
   const party = useSaveStore((s) => s.party)
   const { names } = useSpeciesNames()
   if (!party.length) return <div className={css.missing}>포켓몬이 없다</div>
@@ -364,7 +364,7 @@ export function FriendshipChecker() {
 }
 
 /** 상성체커 — 파티가 든 타입과 상대 타입을 맞대 본다 */
-export function MatchupChecker({ x, large }: Nav) {
+function MatchupChecker({ x, large }: Nav) {
   const party = useSaveStore((s) => s.party)
   const [table, setTable] = useState<SpeciesLookup | null>(null)
   const [types, setTypes] = useState<readonly string[]>([])
@@ -400,7 +400,7 @@ export function MatchupChecker({ x, large }: Nav) {
 }
 
 /** 키우미집체커 — 맡긴 둘과 알 */
-export function DaycareChecker() {
+function DaycareChecker() {
   const daycare = useSaveStore((s) => s.daycare)
   const { names } = useSpeciesNames()
   const slots = daycare.slots.filter((s) => s !== null)
@@ -424,7 +424,7 @@ export function DaycareChecker() {
 }
 
 /** 포켓몬히스토리 — 손에 넣은 열둘 */
-export function PokemonHistory() {
+function PokemonHistory() {
   const history = useSaveStore((s) => s.poketch.history)
   const { names } = useSpeciesNames()
   if (!history.length) return <div className={css.missing}>아직 없다</div>
@@ -441,7 +441,7 @@ export function PokemonHistory() {
 
 // ── 기술효과체커 ─────────────────────────────────────────────────────────────
 
-export function MoveTester({ x, y, large }: Nav) {
+function MoveTester({ x, y, large }: Nav) {
   const [types, setTypes] = useState<readonly string[]>([])
   const [says, setSays] = useState<readonly string[]>([])
   useEffect(() => {
@@ -468,7 +468,7 @@ export function MoveTester({ x, y, large }: Nav) {
 // ── 그리는 셋 ────────────────────────────────────────────────────────────────
 
 /** 메모용지 — 24×20 두 색. 앱을 넘기면 사라진다 */
-export function MemoPad({ x, y, press, large }: Nav) {
+function MemoPad({ x, y, press, large }: Nav) {
   const [data, setData] = usePoketchMemory<Uint8Array>(
     PoketchApp.MEMO_PAD, new Uint8Array(DOTART_WIDTH * DOTART_HEIGHT),
   )
@@ -485,7 +485,7 @@ export function MemoPad({ x, y, press, large }: Nav) {
 }
 
 /** 도트아트 — 밝기 넷. **이것만 리포트에 남는다** */
-export function DotArtist({ x, y, press, large }: Nav) {
+function DotArtist({ x, y, press, large }: Nav) {
   const poketch = useSaveStore((s) => s.poketch)
   const cx = ((x % DOTART_WIDTH) + DOTART_WIDTH) % DOTART_WIDTH
   const cy = ((y % DOTART_HEIGHT) + DOTART_HEIGHT) % DOTART_HEIGHT
@@ -504,7 +504,7 @@ export function DotArtist({ x, y, press, large }: Nav) {
  * ⚠️ **원작도 원반을 손으로 그린다** (`RouletteData.pixels`). 칸을 미리
  * 나눠 주지 않는다 — 몇 등분으로 쓸지는 그리는 사람이 정한다
  */
-export function Roulette({ x, y, press, large }: Nav) {
+function Roulette({ x, y, press, large }: Nav) {
   const [state, setState] = usePoketchMemory<{ pixels: Uint8Array; angle: number; spinning: boolean }>(
     PoketchApp.ROULETTE, { pixels: new Uint8Array(DOTART_WIDTH * DOTART_HEIGHT), angle: 0, spinning: false },
   )
@@ -646,7 +646,7 @@ function hereCell(): { x: number, y: number } | null {
  * ⚠️ **격자 한 칸이 맵 한 장이다** (`PoketchMap_GetPlayerLocation`이 타일
  * 좌표를 32로 나눈다) — 마을 안을 걸어 다니는 동안 점이 안 움직이는 것이 원작이다
  */
-export function MarkingMap({ x, press, large }: Nav) {
+function MarkingMap({ x, press, large }: Nav) {
   const poketch = useSaveStore((s) => s.poketch)
   const at = ((x % POKETCH_MARKER_COUNT) + POKETCH_MARKER_COUNT) % POKETCH_MARKER_COUNT
   useOnPress(press, () => {
@@ -695,7 +695,7 @@ export function MarkingMap({ x, press, large }: Nav) {
  * ⚠️ **숨은 자리 넷도 여기서 뜬다** — 만월도·신월도·봄의길·바다이음길이고,
  * 이야기가 변수에 정해진 값을 적어야 나온다 (`SystemVars_CheckHiddenLocation`).
  */
-export function BerrySearcher({ large }: Nav) {
+function BerrySearcher({ large }: Nav) {
   const patches = useSaveStore((s) => s.berryPatches)
   const dots = useMemo(() => readyBerrySpots(patches), [patches])
   const hidden = hiddenSpots((id) => fieldScripts.vars.get(id))
@@ -730,7 +730,7 @@ export function BerrySearcher({ large }: Nav) {
  *
  * ⚠️ **원작은 아이콘을 세 마리 띄운다.** 우리 액정은 글자라 이름으로 적는다.
  */
-export function TrainerCounter() {
+function TrainerCounter() {
   const records = useSaveStore((s) => s.radar.records)
   const { names } = useSpeciesNames()
   const chain = radarChain()
@@ -763,7 +763,7 @@ export function TrainerCounter() {
  * 가운데 두고 그 창을 통째로 보여 준다 — 잡히는 도구는 같고, 찍어 보는
  * 손짓만 없다. 탐지 반경(0·1·2)은 점 크기로 남긴다
  */
-export function DowsingMachine({ large }: Nav) {
+function DowsingMachine({ large }: Nav) {
   const [ranges, setRanges] = useState<Map<number, { range: number }> | null>(null)
   useEffect(() => {
     let live = true
@@ -807,7 +807,7 @@ export function DowsingMachine({ large }: Nav) {
 
 // ── 캘린더 · 색 ──────────────────────────────────────────────────────────────
 
-export function Calendar({ x, y, press, large }: Nav) {
+function Calendar({ x, y, press, large }: Nav) {
   const poketch = useSaveStore((s) => s.poketch)
   const now = new Date()
   const month = now.getMonth() + 1
@@ -847,7 +847,7 @@ export function Calendar({ x, y, press, large }: Nav) {
   )
 }
 
-export function ColorChanger({ x, press, large }: Nav) {
+function ColorChanger({ x, press, large }: Nav) {
   const color = useSaveStore((s) => s.poketch.screenColor)
   const at = ((x % POKETCH_COLOR_COUNT) + POKETCH_COLOR_COUNT) % POKETCH_COLOR_COUNT
   // 칸에 그리는 색은 그 액정의 **바탕**이다. 그게 화면의 86%를 덮는 색이라
@@ -886,7 +886,7 @@ export function ColorChanger({ x, press, large }: Nav) {
 // ⚠️ **빈 화면으로 두지 않는다.** 아무것도 안 그리면 「고장」과 「원래 이렇다」가
 // 화면에서 같아진다. 무엇이 없어서 안 도는지를 그 자리에서 말한다.
 
-export function LinkSearcher() {
+function LinkSearcher() {
   return <div className={css.missing}>통신은<br />범위 밖이다 (§9)</div>
 }
 

@@ -15,7 +15,7 @@
 import type { MatrixMeta } from './grid'
 
 /** 배치 하나. `Building`에서 우리가 쓰는 칸만 */
-export interface PropPlacement {
+interface PropPlacement {
   x: number
   y: number
   z: number

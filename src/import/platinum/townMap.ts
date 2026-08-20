@@ -70,7 +70,7 @@ export interface TownMapCell {
  * ⚠️ 이게 없으면 커서 아래에 **이름을 못 띄운다.** 지도 그림만으로는 그 칸이
  * 어느 도로인지 알 수 없다 — 원작도 이 표를 보고 이름을 찾는다
  */
-export function parseBlocks(buf: Uint8Array): TownMapCell[] {
+function parseBlocks(buf: Uint8Array): TownMapCell[] {
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
   const count = view.getInt32(0, true)
   const out: TownMapCell[] = []

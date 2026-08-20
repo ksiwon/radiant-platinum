@@ -7,8 +7,8 @@ import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 /** 원작 위 화면 크기. 지도 좌표가 전부 이 안의 픽셀이다 */
-export const MAP_W = 256
-export const MAP_H = 192
+const MAP_W = 256
+const MAP_H = 192
 /**
  * 정수배로만 키운다. 2배가 512×384 — 창 높이에 머리·바닥을 빼고 남는 자리다.
  *

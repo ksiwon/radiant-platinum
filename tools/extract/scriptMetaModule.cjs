@@ -97,7 +97,7 @@ function main() {
 // 어긋나면 그 뒤가 전부 밀리는데 대개 다음 명령이 우연히 유효하다.
 
 /** 명령 하나. \`args\`는 \`"2 4*"\`처럼 폭을 적고 상대 오프셋에 \`*\`를 붙인다 */
-export interface CommandSpec {
+interface CommandSpec {
   name: string
   args: string
   /** 길이가 조건부인 명령 여섯 개. 이 피연산자 값에 따라 뒤가 달라진다 */
@@ -119,11 +119,11 @@ export const SCRIPT_NAMES: readonly string[] = ${json(order)}
 export const INIT_FILES: readonly number[] = ${json(initFiles)}
 
 /** scriptID 구역. 큰 값부터 내려오며 처음 걸리는 구역이 답이다 */
-export interface ScriptRange { from: number, file: number | null, bank: string }
+interface ScriptRange { from: number, file: number | null, bank: string }
 export const RANGES: readonly ScriptRange[] = ${json(ranges)}
 
 /** \`ApplyMovement\`가 가리키는 이동 동작 */
-export interface Movement {
+interface Movement {
   name: string
   kind: string
   dir?: number

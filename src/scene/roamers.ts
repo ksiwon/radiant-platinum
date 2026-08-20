@@ -73,7 +73,7 @@ function roamerEncounter(mapId: number, rng: Rng): WildEncounter | null {
  * 배틀을 나온 상태다. 잡았거나 쓰러뜨렸으면 자리를 지우고 이야기 변수에
  * 결말을 적는다 — **그래야 「이미 잡았다」를 스크립트가 안다**
  */
-export function roamersAfterBattle(
+function roamersAfterBattle(
   { met, mapId, hp, status, outcome, rng = Math.random }: {
     met: number | null
     mapId: number

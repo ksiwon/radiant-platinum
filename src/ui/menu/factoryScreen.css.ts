@@ -40,7 +40,7 @@ export const columnTitle = style({
   opacity: 0.7,
 })
 
-export const monRow = style({
+const monRow = style({
   display: 'grid',
   gridTemplateColumns: '32px minmax(0, 1fr) auto',
   alignItems: 'center',

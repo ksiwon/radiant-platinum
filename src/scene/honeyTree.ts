@@ -37,7 +37,7 @@ export const honeyShake = {
   stop(treeId: number): void { honeyShake.stopped = treeId },
 }
 
-export interface HoneyTreeProp {
+interface HoneyTreeProp {
   model: number
   x: number
   y: number

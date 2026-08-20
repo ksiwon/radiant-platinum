@@ -7,7 +7,7 @@
 // `TrainerTable`이고 `engine/actor/npcModels`가 그것을 읽는다
 import type { BattleFinish } from '../../engine/battle/sim/controller'
 
-export interface TrainerPalette {
+interface TrainerPalette {
   cloth: string
   accent: string
   hair: string

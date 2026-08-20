@@ -31,7 +31,7 @@ export const bankLocale = (locale: string): Locale => (locale === 'en' ? 'us' : 
  * 한 뱅크를 두 파일이 쓰는 경우가 있고(`bag`은 상점 화면도 읽는다) 724개를 두 번
  * 푸는 것은 몇 초짜리 낭비다
  */
-export class BankReader {
+class BankReader {
   private readonly cache = new Map<string, string[]>()
   private readonly map = charmap()
 

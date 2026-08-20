@@ -74,7 +74,7 @@ export const SCRIPT_LOCAL_VARS_START = 0x8000
 /** 세이브에 남는 변수 개수 (`VARS_END - VARS_START` = 16672 - 16384) */
 export const SAVED_VAR_COUNT = 288
 /** 스크립트 지역 변수 0x8000~0x800D */
-export const LOCAL_VAR_COUNT = 14
+const LOCAL_VAR_COUNT = 14
 /** 세이브에 남는 플래그 개수. `vars_flags.txt`에서 VARS_START 앞까지가 플래그다 */
 export const FLAG_COUNT = 4106
 

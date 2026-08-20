@@ -378,7 +378,7 @@ export class BankLayoutError extends Error {
 }
 
 /** NARC를 읽는 두 함수. 시험이 인공 narc를 끼울 수 있게 인자로 받는다 */
-export interface NarcReader {
+interface NarcReader {
   count(bytes: Uint8Array): number | null
   entry(bytes: Uint8Array, index: number): Uint8Array | null
 }

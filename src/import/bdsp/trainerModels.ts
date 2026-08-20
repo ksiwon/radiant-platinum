@@ -11,7 +11,7 @@
 // **표지 게임 자료가 아니다** — 갈래 번호와 번들 이름표뿐이다 (COPYRIGHT.md §2).
 
 /** `[플래티넘 갈래 번호, BDSP 번들, 0=남 1=여 2=둘, 짝을 확인해 준 근거]` */
-export type TrainerModelRow = readonly [number, string, number, string]
+type TrainerModelRow = readonly [number, string, number, string]
 
 export const TRAINER_MODELS: readonly TrainerModelRow[] = [
   [0, "pc0001_00", 0, "DP_PLAYER_MALE"],

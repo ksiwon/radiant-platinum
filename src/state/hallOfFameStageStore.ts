@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 
-export type HallOfFameStageMode = 'off' | 'ceremony' | 'archive'
+type HallOfFameStageMode = 'off' | 'ceremony' | 'archive'
 export type HallOfFameStagePhase = 'hidden' | 'solo' | 'player' | 'party' | 'confetti'
 
-export interface HallOfFameVisualMon {
+interface HallOfFameVisualMon {
   species: number
   form: number
   gender?: 'male' | 'female' | 'genderless'

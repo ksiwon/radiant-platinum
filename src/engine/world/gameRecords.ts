@@ -43,7 +43,7 @@ export const SCORE_BADGE_EARNED = 23
 export const SCORE_HALL_OF_FAME_ENTRY = 24
 export const SCORE_BATTLE_FACTORY_ROUND = 38
 
-export type GameRecordsState = readonly number[]
+type GameRecordsState = readonly number[]
 
 export function newGameRecords(): number[] {
   return new Array<number>(MAX_RECORDS).fill(0)

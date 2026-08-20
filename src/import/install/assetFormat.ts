@@ -128,7 +128,7 @@ export function migrationFor(group: string, from: number): Migration | null {
   return MIGRATIONS[group]?.[from] ?? null
 }
 
-export interface AssetPlan {
+interface AssetPlan {
   /** 그대로 쓴다 */
   reuse: string[]
   /** 원본 없이 옮길 수 있다 */

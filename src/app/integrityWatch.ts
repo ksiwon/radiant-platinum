@@ -18,7 +18,7 @@
 import { installedStore } from './boot'
 import type { Broken } from '../import/install/integrity'
 
-export interface WatchResult {
+interface WatchResult {
   ok: number
   broken: Broken[]
   groups: string[]

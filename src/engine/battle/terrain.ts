@@ -50,7 +50,7 @@ export type TerrainId = (typeof Terrain)[keyof typeof Terrain]
  * 배경 열여덟 가지 중 실내 셋이 다 `BUILDING`이고 굴 셋이 다 `CAVE`다 —
  * 원작이 그렇게 접어 둔 것이라 여기서 더 가르지 않는다
  */
-export const TERRAIN_OF_BACKGROUND: readonly TerrainId[] = [
+const TERRAIN_OF_BACKGROUND: readonly TerrainId[] = [
   Terrain.PLAIN, Terrain.WATER, Terrain.BUILDING, Terrain.GRASS,
   Terrain.MOUNTAIN, Terrain.SNOW,
   Terrain.BUILDING, Terrain.BUILDING, Terrain.BUILDING,

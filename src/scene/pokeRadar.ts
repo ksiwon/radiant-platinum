@@ -25,12 +25,12 @@ import { worldState } from '../state/worldState'
 let chain: RadarChain = clearChain()
 
 /** 소리를 내는 자리. 씬이 꽂아 준다 */
-export const radarSound: {
+const radarSound: {
   music: ((seq: number | null) => void) | null
 } = { music: null }
 
 /** `SEQ_POKERADAR`. 무더기가 떠 있는 동안 나온다 */
-export const SEQ_POKERADAR = 1150
+const SEQ_POKERADAR = 1150
 
 export function radarChain(): RadarChain { return chain }
 
@@ -58,7 +58,7 @@ export function clearRadar(): void {
  * 고리마다 한 칸씩 뽑고, **큰 풀이고 높이와 맵이 주인공과 같아야** 산다.
  * 넷 다 죽으면 사슬이 풀린다
  */
-export function spawnPatches(
+function spawnPatches(
   playerX: number, playerZ: number, rand: (n: number) => number,
 ): { x: number, z: number }[] {
   const grid = mapWorld.grid
@@ -84,7 +84,7 @@ export function spawnPatches(
  * 쓴다(원작이 `SetupGrassPatches(fieldSystem, 0x1, ...)`로 `BATTLE_RESULT_WIN`을
  * 넘긴다)
  */
-export function startRadar(
+function startRadar(
   playerX: number, playerZ: number, rand: (n: number) => number,
   result: 'win' | 'captured' = 'win',
 ): boolean {
@@ -103,7 +103,7 @@ export function startRadar(
  *
  * 조우표를 뽑는 쪽이 이걸 먼저 묻는다 — 답이 오면 그 판은 레이더 조우다
  */
-export function stepRadar(x: number, z: number): PatchStep | null {
+function stepRadar(x: number, z: number): PatchStep | null {
   const patch = patchAt(chain, x, z)
   if (patch === null) return null
   const step = stepOnPatch(chain, patch)
@@ -165,9 +165,9 @@ function hasRadarInBag(bag: readonly { item: number, count: number }[][]): boole
 }
 
 /** `SCRIPT_ID(POKE_RADAR, 0)` — 「아직 충전되지 않았다」 */
-export const SCRIPT_POKE_RADAR_NOT_CHARGED = 8970
+const SCRIPT_POKE_RADAR_NOT_CHARGED = 8970
 /** `SCRIPT_ID(POKE_RADAR, 1)` — 풀 무더기가 하나도 안 섰다 */
-export const SCRIPT_POKE_RADAR_NO_GRASS = 8971
+const SCRIPT_POKE_RADAR_NO_GRASS = 8971
 /** `SCRIPT_DATA_PARAMETER_0`. 남은 걸음이 여기로 들어간다 */
 const SCRIPT_PARAM_0 = 0x8000
 
@@ -239,7 +239,7 @@ export function radarAfterBattle(result: 'win' | 'captured' | 'other'): void {
  * 원작은 카메라 절두체로 재는데 우리는 **주인공과의 거리**로 본다 — 무더기가
  * 9×9 상자 안에서 나므로, 그 상자를 벗어나면 화면에도 없다
  */
-export function radarCheckView(playerX: number, playerZ: number): void {
+function radarCheckView(playerX: number, playerZ: number): void {
   if (chain.patches.length === 0) return
   const half = Math.floor(9 / 2)
   const alive = chain.patches.filter(

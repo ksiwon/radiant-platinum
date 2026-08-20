@@ -9,7 +9,7 @@
 import { MAX_STREAK } from './factoryTables'
 import { ChallengeType } from './factory'
 
-export interface FactoryRecord {
+interface FactoryRecord {
   /** 지금 이어 가는 연승 */
   readonly streak: number
   /** 그 연승 동안 바꾼 횟수 */

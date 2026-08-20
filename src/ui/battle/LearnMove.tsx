@@ -18,7 +18,7 @@ import { useListCursor } from './listCursor'
 import type { Move } from '../../data/schema'
 import * as css from './battleScreen.css'
 
-export interface LearnMoveProps {
+interface LearnMoveProps {
   /** 배우려는 기술 번호 */
   move: number
   /** 이 마리를 뭐라고 부르는가 */

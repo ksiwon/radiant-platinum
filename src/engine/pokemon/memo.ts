@@ -16,7 +16,7 @@ import {
 import type { PokemonInstance } from './instance'
 
 /** 메모 한 줄 — 몇 째 줄에 놓을지와 뱅크의 글 번호 */
-export interface MemoLine {
+interface MemoLine {
   /** 1부터. 원작은 `(줄 - 1) * 16`픽셀에 찍는다 */
   at: number
   message: number
@@ -96,7 +96,7 @@ export function monthText(month: number, names: MemoNames): string {
 }
 
 /** 아홉 칸을 채운다 (`InitializePokemonMetInfoString`) */
-export function memoSlots(origin: Origin, names: MemoNames): string[] {
+function memoSlots(origin: Origin, names: MemoNames): string[] {
   const met = origin.met.date ?? BLANK_DATE
   const egg = origin.egg.date ?? BLANK_DATE
   return [
@@ -117,7 +117,7 @@ const BLANK_DATE: MetDate = { year: 0, month: 0, day: 0 }
  * `template`은 문장 틀의 번호고 `slots`가 그 빈칸이다. 나머지 넷은 빈칸이 없는
  * 한 줄짜리 글이라 번호만 있으면 된다
  */
-export interface Memo {
+interface Memo {
   lines: MemoLine[]
   /** 만난 자리 줄에 채워 넣을 아홉 칸 */
   slots: string[]

@@ -34,7 +34,7 @@ export const RADAR_CHAIN_MAX = 999
 
 /** 흔들림 (`enum PatchShakeType`) */
 export const PATCH_SHAKE = { soft: 0, hard: 1 } as const
-export type PatchShake = (typeof PATCH_SHAKE)[keyof typeof PATCH_SHAKE]
+type PatchShake = (typeof PATCH_SHAKE)[keyof typeof PATCH_SHAKE]
 
 /** 상자 한 변. 주인공이 한가운데다 */
 export const RADAR_BOX = 9
@@ -256,7 +256,7 @@ export function lockSpecies(
 export const RADAR_SLOTS: readonly number[] = [4, 5, 10, 11]
 
 /** 사슬 기록 한 줄 */
-export interface RadarRecord {
+interface RadarRecord {
   species: number
   count: number
 }

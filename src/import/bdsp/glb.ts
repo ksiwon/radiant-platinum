@@ -18,21 +18,21 @@ export const UINT = 5125
 export const ARRAY_BUFFER = 34962
 export const ELEMENT_BUFFER = 34963
 
-export type AccessorType = 'SCALAR' | 'VEC2' | 'VEC3' | 'VEC4' | 'MAT4'
+type AccessorType = 'SCALAR' | 'VEC2' | 'VEC3' | 'VEC4' | 'MAT4'
 
 const PARTS: Readonly<Record<AccessorType, number>> = {
   SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16,
 }
 const BYTES: Readonly<Record<number, number>> = { [FLOAT]: 4, [USHORT]: 2, [UINT]: 4 }
 
-export interface BufferView {
+interface BufferView {
   buffer: number
   byteOffset: number
   byteLength: number
   target?: number
 }
 
-export interface Accessor {
+interface Accessor {
   bufferView: number
   componentType: number
   count: number
@@ -41,7 +41,7 @@ export interface Accessor {
   max?: number[]
 }
 
-export class GlbError extends Error {
+class GlbError extends Error {
   constructor(message: string) { super(message); this.name = 'GlbError' }
 }
 

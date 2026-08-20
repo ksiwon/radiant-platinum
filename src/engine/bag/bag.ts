@@ -30,7 +30,7 @@ export const POCKET_BERRIES = 4
 export const MAX_QUANTITY = 999
 export const MAX_QUANTITY_TMHM = 99
 
-export interface BagSlot {
+interface BagSlot {
   item: number
   count: number
 }

@@ -9,7 +9,7 @@
 import { CanvasTexture, LinearFilter, SRGBColorSpace } from 'three'
 
 /** 하늘 한 벌. `stops`는 위(0)에서 아래(1)로 간다 */
-export interface SkyPreset {
+interface SkyPreset {
   stops: readonly (readonly [number, string])[]
   /** 안개 색. 지평선 색과 같아야 먼 지형이 하늘로 녹아든다 */
   fog: string

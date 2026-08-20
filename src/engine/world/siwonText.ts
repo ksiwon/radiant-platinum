@@ -12,9 +12,9 @@
 //   `\n` 줄 바꿈 · `\r` 기다렸다 창을 비움 · `\f` 기다렸다 한 줄 올림
 // 물건 이름은 여기 안 적는다. 「받았다」는 말은 롬의 글이 한다
 
-export type SiwonLocale = 'ko' | 'en' | 'ja'
+type SiwonLocale = 'ko' | 'en' | 'ja'
 
-export interface SiwonLines {
+interface SiwonLines {
   /** 전당등록 전에 말을 걸었다 */
   locked: string
   /** 전당등록 직전, 리그 복도에서의 기습 등장 */

@@ -16,7 +16,7 @@ export const NATURE_STATS = ['atk', 'def', 'spe', 'spa', 'spd'] as const satisfi
 /** 성격 25종 */
 export const NATURE_COUNT = 25
 
-export interface NatureEffect {
+interface NatureEffect {
   /** 1.1배가 되는 능력치. 무보정 성격이면 null */
   up: (typeof NATURE_STATS)[number] | null
   down: (typeof NATURE_STATS)[number] | null
@@ -84,7 +84,7 @@ export function otherStat(
  */
 const SHEDINJA = 292
 
-export interface StatInput {
+interface StatInput {
   base: Stats
   ivs: Stats
   evs: Stats

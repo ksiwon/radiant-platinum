@@ -19,7 +19,7 @@ export interface ScriptData {
 /** 아무 일도 안 하는 자리표시자. scriptID 0이 여기로 온다 */
 const IDLE_FILE = 'scripts_unk_0402'
 
-export interface Resolved {
+interface Resolved {
   /** `scripts.json`의 파일 번호 */
   file: number
   /** 그 파일의 몇 번째 진입점인가 */

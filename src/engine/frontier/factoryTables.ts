@@ -34,7 +34,7 @@ export const MAX_STREAK = 9999
  * 마지막 판**(일곱 번째)은 `[last, lastEnd)`에서 뽑는다 — 끝판대장을 따로
  * 두려는 것이다. 마지막 줄은 둘이 같아서 라운드 8 이후로는 구별이 없어진다
  */
-export interface TrainerRange {
+interface TrainerRange {
   readonly normal: number
   readonly normalEnd: number
   readonly last: number

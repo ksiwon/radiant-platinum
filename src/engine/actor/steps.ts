@@ -68,7 +68,7 @@ export function walkFriendship(
 }
 
 /** 독으로 1까지 깎인 마리가 잃는 친밀도 (`FRIENDSHIP_EVENT_POISON_SURVIVE`) */
-export function poisonSurviveFriendship(mon: PokemonInstance): number {
+function poisonSurviveFriendship(mon: PokemonInstance): number {
   return POISON_SURVIVE_CHANGE[tierOf(mon.friendship)] ?? 0
 }
 
@@ -80,9 +80,9 @@ export const Poison = {
   /** 누군가 1까지 내려갔다 — 원작은 여기서 스크립트를 하나 건다 */
   FAINTED: 2,
 } as const
-export type PoisonOutcome = (typeof Poison)[keyof typeof Poison]
+type PoisonOutcome = (typeof Poison)[keyof typeof Poison]
 
-export interface PoisonResult {
+interface PoisonResult {
   party: PokemonInstance[]
   outcome: PoisonOutcome
 }
@@ -131,7 +131,7 @@ export interface StepWorld {
   coin: () => boolean
 }
 
-export interface StepResult {
+interface StepResult {
   party: PokemonInstance[]
   poisonSteps: number
   repelSteps: number

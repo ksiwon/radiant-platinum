@@ -431,7 +431,7 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
 }
 
 /** `TEXT_BANK_MENU_ENTRIES` — 전역 메뉴가 쓰는 항목 글 280개 (미국 번호) */
-export const MENU_ENTRIES_BANK = 361
+const MENU_ENTRIES_BANK = 361
 
 /**
  * 언어가 바뀌었다.
@@ -441,7 +441,7 @@ export const MENU_ENTRIES_BANK = 361
  * 여기서 할 일이다 — 안 그러면 설정에서 바꾼 뒤에도 말을 걸 때까지 옛 언어가
  * 남아 있다가, 맵을 옮기는 순간 갑자기 바뀐다
  */
-export function setFieldLocale(which: DataLocale): void {
+function setFieldLocale(which: DataLocale): void {
   if (which === locale) return
   locale = which
   loadDialogueBank(which, MENU_ENTRIES_BANK)
@@ -937,7 +937,7 @@ function tryTalk(): void {
 }
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 8)` — `CommonScript_HoneyTree` */
-export const COMMON_SCRIPT_HONEY_TREE = 2008
+const COMMON_SCRIPT_HONEY_TREE = 2008
 
 /**
  * 앞의 꿀 나무에 A를 누른다 (`HoneyTree_TryInteract`).
@@ -959,7 +959,7 @@ function tryHoneyTree(front: { x: number; z: number }, mapFile: number): boolean
 }
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 18)` — 공용 스크립트 표의 `CommonScript_PC` */
-export const COMMON_SCRIPT_PC = 2018
+const COMMON_SCRIPT_PC = 2018
 
 /**
  * PC 앞에서 A를 누르면 보관 시스템이 열린다 (`Field_TileBehaviorToScript`).
@@ -1099,7 +1099,7 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
 }
 
 /** 기술 창에서 골랐을 때 어떻게 되는가 */
-export type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere'
+type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere'
 
 /**
  * 파티 화면의 기술 칸에서 쓴다 (`FieldMoves_Set*Task`).

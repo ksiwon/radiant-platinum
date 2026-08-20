@@ -38,7 +38,7 @@ export interface Release {
  * 그대로 쓰면 0x4000만큼 어긋난 자리를 읽는다. 이름 하나로 갈리는 값이라
  * 둘 다 적고 **차이를 사용자 롬의 헤더와 맞춰 본다** (`martLocator`)
  */
-export interface MartSite {
+interface MartSite {
   /** 롬 파일 처음부터 (16진 문자열) */
   romOffset: string
   /** ARM9 이미지 시작부터 (16진 문자열). 실제로 쓰는 값은 이쪽이다 */
@@ -93,7 +93,7 @@ function hexAt(s: string, gameCode: string, what: string): number {
   return n
 }
 
-export type ValidationStep =
+type ValidationStep =
   | 'size' | 'header' | 'release' | 'files' | 'samples'
 
 export type Validation =

@@ -4,7 +4,7 @@
 // (`scrcmd_game_corner_prize.c` · `scrcmd_jubilife_lottery.c`).
 
 /** 경품 하나 — 무엇을 코인 몇에 주는가 */
-export interface GameCornerPrize {
+interface GameCornerPrize {
   readonly item: number
   readonly coins: number
 }
@@ -75,7 +75,7 @@ export interface LotteryEntry {
   readonly isEgg: boolean
 }
 
-export interface LotteryResult {
+interface LotteryResult {
   /** 파티 자리 번호, 또는 박스 전체를 한 줄로 센 자리 */
   readonly index: number
   readonly digits: number

@@ -26,10 +26,10 @@ const FileRecord = z.object({
  * `moves` 하나만 굽고 `ready`를 적었는데, 그 설치로 게임을 켜면 첫 화면부터
  * 종족 표가 없다
  */
-export const InstallStateSchema = z.enum(['installing', 'partial', 'ready'])
+const InstallStateSchema = z.enum(['installing', 'partial', 'ready'])
 export type InstallState = z.infer<typeof InstallStateSchema>
 
-export const GroupRecordSchema = z.object({
+const GroupRecordSchema = z.object({
   files: z.array(FileRecord),
   bytes: z.int().nonnegative(),
   /** 이 그룹을 만든 변환기 판. 올라가면 그 그룹만 다시 만든다 */
@@ -51,7 +51,7 @@ export const GroupRecordSchema = z.object({
  * `packStore.write`가 임시 이름에 쓰고 길이를 확인한 뒤 제자리로 옮기므로,
  * 이 필드가 보인다는 것은 곧 그 앞의 모든 검증이 끝났다는 뜻이다
  */
-export const CommitSchema = z.object({
+const CommitSchema = z.object({
   at: z.string().min(1),
   /** 도장을 찍은 앱 판·빌드. **호환 판정에 안 쓴다** — 기록용이다 */
   appVersion: z.string().min(1),
@@ -84,7 +84,7 @@ export const InstallManifestSchema = z.object({
 export type InstallManifest = z.infer<typeof InstallManifestSchema>
 export type GroupRecord = z.infer<typeof GroupRecordSchema>
 
-export const InstallJournalSchema = z.object({
+const InstallJournalSchema = z.object({
   contractVersion: z.literal(CONTRACT_VERSION),
   /** 끝났다고 적힌 그룹. **적혔다고 믿지 않는다** — 파일을 실제로 읽어 본다 */
   done: z.array(z.string()),

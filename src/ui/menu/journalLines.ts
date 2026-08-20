@@ -111,7 +111,7 @@ function placeOf(names: JournalNames, mapId: number): string {
 }
 
 /** 트레이너 이름. 라이벌은 주인공이 지은 이름이다 */
-export function trainerNameOf(names: JournalNames, id: number): string {
+function trainerNameOf(names: JournalNames, id: number): string {
   return names.trainerClass(id) === TRAINER_CLASS_RIVAL
     ? names.rivalName
     : at(names.trainers, id)
@@ -209,7 +209,7 @@ export function trainerLine(entry: JournalEntry, names: JournalNames): string | 
 }
 
 /** 통신 칸 한 줄. 지금 날 수 있는 것은 콘테스트 등수와 포핀뿐이다 */
-export function onlineLine(
+function onlineLine(
   ev: { type: number; result: number }, names: JournalNames,
 ): string | null {
   if (ev.type === 0) return null

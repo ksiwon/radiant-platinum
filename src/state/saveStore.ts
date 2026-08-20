@@ -47,7 +47,7 @@ import { newHallOfFame, type HallOfFameRecord } from '../engine/world/hallOfFame
 /** 스크립트 플래그 4106개를 담는 바이트 수 */
 export const FLAG_BYTES = Math.ceil(FLAG_COUNT / 8)
 
-export interface TrainerInfo {
+interface TrainerInfo {
   name: string
   gender: 'boy' | 'girl'
   id: number
@@ -101,7 +101,7 @@ import { FLAG_COUNT, SAVED_VAR_COUNT } from '../engine/script/vars'
  * 볼과 알 자리는 개체에 있지만 지금 어느 맵인지와 소지품의 홀드 효과는
  * 세이브 스토어가 알 수 없다 — 도구표도 월드도 여기서 안 본다
  */
-export interface FriendshipContext {
+interface FriendshipContext {
   /** 지금 맵 헤더 번호. 알을 받은 자리와 같으면 +1 */
   mapId?: number
   /** 평온의방울(`HOLD_EFFECT_FRIENDSHIP_UP`)을 들고 있는가 — 1.5배 */
@@ -128,8 +128,8 @@ import {
  * `SetFlag 342`처럼 번호로 쓰고, 그 번호가 NPC의 등장 조건이기도 하다 —
  * 우리가 이름을 새로 지으면 그 고리가 끊긴다.
  */
-export type SaveFlags = Uint8Array<ArrayBuffer>
-export type SaveVars = Uint16Array<ArrayBuffer>
+type SaveFlags = Uint8Array<ArrayBuffer>
+type SaveVars = Uint16Array<ArrayBuffer>
 
 export interface SaveData {
   version: number
@@ -587,7 +587,7 @@ interface SaveStore extends SaveData {
 }
 
 /** 리포트 한 번의 결과. **내부 저장과 파일 백업이 따로다** (IMPORT.md §10) */
-export interface ReportOutcome {
+interface ReportOutcome {
   saved: boolean
   /** 내부 저장이 실패한 이유. 성공이면 없다 */
   why?: string
@@ -596,7 +596,7 @@ export interface ReportOutcome {
   fileName: string
 }
 
-export type ExportOutcome =
+type ExportOutcome =
   | { kind: 'none' }
   | { kind: 'done'; outcome: DownloadOutcome; fileName: string; raw: boolean }
 
@@ -610,7 +610,7 @@ export type ImportPreview =
       contract: Compatibility
     }
 
-export type ImportOutcome =
+type ImportOutcome =
   | { ok: true; backedUp: DownloadOutcome }
   | { ok: false; why: string }
 

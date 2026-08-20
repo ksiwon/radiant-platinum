@@ -23,7 +23,7 @@ export const VAR_GIVE_ITEM = 0x8004
 export const VAR_GIVE_COUNT = 0x8005
 
 /** 시원이 이번에 할 일. `field.ts`가 이 계획을 밟는다 */
-export interface SiwonPlan {
+interface SiwonPlan {
   /** 대사창에 올릴 시원의 말. 원작 규칙대로 `\r`이 쪽을 넘긴다 */
   text: string
   /**
@@ -41,7 +41,7 @@ export interface SiwonPlan {
 }
 
 /** 계획을 세우는 데 필요한 바깥 세계 */
-export interface SiwonDeps {
+interface SiwonDeps {
   locale: string
   /** 여태 준 개수 (`siwonGiven`) */
   given: number

@@ -28,7 +28,7 @@ export const LIFT_PLATE = 0
 
 /** `enum PlatformLiftKind` — 소리와 오르는 속도가 여기서 갈린다 */
 export const LIFT_KIND = { ironIsland: 0, pokemonLeague: 1 } as const
-export type LiftKind = typeof LIFT_KIND[keyof typeof LIFT_KIND]
+type LiftKind = typeof LIFT_KIND[keyof typeof LIFT_KIND]
 
 /** `enum PlatformLiftFloorID` */
 export const LIFT_FLOOR = { bottom: 0, top: 1 } as const

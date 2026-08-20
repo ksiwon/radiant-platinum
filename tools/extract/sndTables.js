@@ -107,7 +107,7 @@ export const DECIBEL_FLOOR = -723
  * 값이 \`round(127·sin(i/32·π/2))\`과 33칸 다 같다. 자리(ARM7+0xe8e8)는
  * **데시벨제곱표 바로 앞**이라 이미 확정된 표가 이웃으로 붙들어 준다
  */
-export const SIN_QUARTER: readonly number[] = [
+const SIN_QUARTER: readonly number[] = [
   ${list(sin)},
 ]
 

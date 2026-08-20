@@ -5,8 +5,8 @@ export type Point3 = readonly [number, number, number]
 export const CAPTURE_THROW_TIME = 0.52
 export const CAPTURE_SEAL_TIME = 0.74
 export const CAPTURE_SHAKE_START = 0.92
-export const CAPTURE_SHAKE_STEP = 0.46
-export const CAPTURE_RELEASE_TIME = 0.28
+const CAPTURE_SHAKE_STEP = 0.46
+const CAPTURE_RELEASE_TIME = 0.28
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -63,7 +63,7 @@ export function captureBodyScale(elapsed: number, shakes: number, caught: boolea
   return clamp01((elapsed - resolve) / CAPTURE_RELEASE_TIME)
 }
 
-export interface BallPalette {
+interface BallPalette {
   top: string
   bottom: string
   accent: string

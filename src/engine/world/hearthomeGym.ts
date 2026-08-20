@@ -18,7 +18,7 @@
 // 자리까지는 여기서 정해 두므로 붙일 때 이어 쓰면 된다
 
 /** `HEARTHOME_DOOR_ID_*` */
-export const HEARTHOME_DOOR = {
+const HEARTHOME_DOOR = {
   circle: 0, square: 1, triangle: 2,
   sun: 3, donut: 4, moon: 5, star: 6, heart: 7,
   exit: 8,
@@ -30,7 +30,7 @@ export const HEARTHOME_ENTRANCE_ROOM = 88
 /** 되돌려질 때 나오는 입구 방의 워프 번호 (`SetWarpEventDestWarpID(…, 1)`) */
 export const HEARTHOME_ENTRANCE_ANCHOR = 1
 
-export interface HearthomeRoom {
+interface HearthomeRoom {
   map: number
   /** 이 방의 첫 문 번호 */
   firstDoor: number
@@ -50,7 +50,7 @@ export const HEARTHOME_ROOMS: readonly HearthomeRoom[] = [
 ]
 
 /** `sTrainerRoom{1,2}Doors` — 문 번호와 그 문이 놓인 칸 */
-export const HEARTHOME_DOORS: readonly (readonly { id: number; x: number; z: number }[])[] = [
+const HEARTHOME_DOORS: readonly (readonly { id: number; x: number; z: number }[])[] = [
   [
     { id: HEARTHOME_DOOR.circle, x: 4, z: 2 },
     { id: HEARTHOME_DOOR.square, x: 8, z: 2 },

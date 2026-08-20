@@ -36,7 +36,7 @@ export function setMouseActive(on: boolean): void {
   if (!on) exitLook()
 }
 
-export function isLooking(): boolean {
+function isLooking(): boolean {
   return element !== null && document.pointerLockElement === element
 }
 

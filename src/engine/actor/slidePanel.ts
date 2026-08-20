@@ -72,7 +72,7 @@ export function turned(dir: number): number {
 export const SPINS_PER_TILE = 3
 
 /** 미끄러지는 동안의 상태. 한 번에 하나뿐이라 모듈에 둔다 */
-export interface PanelSlide {
+interface PanelSlide {
   active: boolean
   /** 진행 방향 (`DIR`) */
   dir: number
@@ -108,7 +108,7 @@ export function nextDir(behavior: number, dir: number): number {
 export type PanelView = IceView
 
 /** 이 걸음을 판이 가져갔는가 */
-export interface PanelStep {
+interface PanelStep {
   vx: number
   vz: number
   /** 몸이 보는 쪽 (라디안). 진행 방향과 다르다 */
@@ -191,7 +191,7 @@ function progress(pos: { x: number, z: number }): number {
 }
 
 /** `DIR`을 우리 각으로. 걷기와 같은 규약이다 (남쪽이 0) */
-export function facingRad(dir: number): number {
+function facingRad(dir: number): number {
   const { dx, dz } = dirStep(dir)
   return Math.atan2(dx, dz)
 }

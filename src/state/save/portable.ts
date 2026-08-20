@@ -20,7 +20,7 @@ import type { SaveData } from '../saveStore'
 
 export const PORTABLE_MAGIC = 'RADIANT_PLATINUM_SAVE'
 /** 봉투 자체의 판. `saveVersion`(세이브 내용의 판)과 다른 축이다 */
-export const PORTABLE_FORMAT = 1
+const PORTABLE_FORMAT = 1
 export const PORTABLE_EXT = '.rpsave'
 
 /**
@@ -93,7 +93,7 @@ export function serializePortable(env: PortableSave): string {
   return JSON.stringify(env, null, 1)
 }
 
-export type ParseFailure =
+type ParseFailure =
   | { kind: 'too-big'; bytes: number; limit: number }
   | { kind: 'not-json' }
   | { kind: 'not-ours' }
@@ -102,7 +102,7 @@ export type ParseFailure =
   | { kind: 'checksum'; expected: string; found: string }
   | { kind: 'payload' }
 
-export type ParseResult =
+type ParseResult =
   | { ok: true; envelope: PortableSave; data: unknown }
   | { ok: false; fail: ParseFailure }
 

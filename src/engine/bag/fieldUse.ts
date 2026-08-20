@@ -301,7 +301,7 @@ export function repelStepsOf(item: Item): number | null {
  * 같은 칸에 다른 단위로 들어 있다. 원작도 가방에서 **도구 번호로** 가른다
  * (`UseItemInBag`의 `item == ITEM_BLACK_FLUTE`). 여기서는 롬이 준 이름표를 본다
  */
-export function fluteFactorOf(item: Item): number | null {
+function fluteFactorOf(item: Item): number | null {
   if (item.constant === 'ITEM_BLACK_FLUTE') return 1
   if (item.constant === 'ITEM_WHITE_FLUTE') return 2
   return null
@@ -319,7 +319,7 @@ export function tmMove(item: Item, tmMoves: readonly number[]): number | null {
  * 비전머신은 기술머신 92개 **뒤에** 이어 붙는다 — 원작의 `tmhm.narc`가 한 줄로
  * 100개다
  */
-export const TM_COUNT = 92
+const TM_COUNT = 92
 
 export function tmIndex(item: Item): number | null {
   const tm = /^ITEM_TM(\d\d)$/.exec(item.constant)

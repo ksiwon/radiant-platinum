@@ -55,7 +55,7 @@ export const CHIBI_HEAD = 0.2
  * ⚠️ **길이가 아니라 축을 눌러서 얻은 날렵함이다.** 가로·앞뒤를 누르므로
  * 가로로 뻗은 부위는 그만큼 짧아진다 — 걸을 때 앞뒤로 흔드는 보폭이 좁아 보인다
  */
-export const CHIBI_SLIM = 1
+const CHIBI_SLIM = 1
 
 /**
  * 손뼈를 줄이는 배수.

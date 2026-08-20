@@ -27,7 +27,7 @@ export const BOX_CAPACITY = BOX_COUNT * BOX_SIZE
  * 박스는 18개인데 벽지는 16장이라 **마지막 둘이 처음 둘과 같은 벽지로 시작한다**
  * (`PCBoxes_InitInternal`이 16에서 0으로 되감는다). 원작이 그렇다
  */
-export const DEFAULT_WALLPAPERS = 16
+const DEFAULT_WALLPAPERS = 16
 
 /**
  * 보관 시스템을 여는 갈래 (`OpenPokemonStorage`의 인자).

@@ -26,7 +26,7 @@ import { typeColor } from './typeColor'
 import * as css from './switchScreen.css'
 
 /** 이름·타입·특성 이름을 푸는 데 필요한 것 */
-export interface SwitchNames extends BattleNames {
+interface SwitchNames extends BattleNames {
   types: string[]
   /** 특성 설명. 특성 이름과 같은 색인 */
   abilityText: string[]

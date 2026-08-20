@@ -25,7 +25,7 @@ export const MAX_BERRY_PATCHES = 128
 /** `BASE_HARVEST_STAGES` — 열린 채로 버티는 단계 수 */
 export const BASE_HARVEST_STAGES = 4
 /** `BASE_MAX_REPLANT_COUNT` — 저절로 다시 심기는 횟수 */
-export const BASE_MAX_REPLANT_COUNT = 10
+const BASE_MAX_REPLANT_COUNT = 10
 /** `MAX_MOISTURE_RATING` */
 export const MAX_MOISTURE_RATING = 100
 /** `MAX_YIELD_RATING` */
@@ -204,7 +204,7 @@ export function soilMoisture(patch: BerryPatch): number {
 }
 
 /** 열리는 개수 (`CalcBerryYield`) */
-export function berryYield(patch: BerryPatch, growth: BerryGrowth): number {
+function berryYield(patch: BerryPatch, growth: BerryGrowth): number {
   return growth.baseYield * patch.yieldRating
 }
 

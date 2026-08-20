@@ -32,7 +32,7 @@ export const BDSP_PLAYER_HEIGHT = 1.4725
 /** BDSP 번들 단위 → 게임 단위. NPC 모델은 이 배수 하나만 곱하면 된다 */
 export const BDSP_TO_WORLD = PLAYER_HEIGHT / BDSP_PLAYER_HEIGHT
 
-export interface NormalizeResult {
+interface NormalizeResult {
   /** 적용된 균등 스케일 배수 */
   scale: number
   /** 발밑을 원점에 맞추기 위한 y 오프셋 */

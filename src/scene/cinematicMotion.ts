@@ -1,6 +1,6 @@
 import type { EvolutionPhase, HatchPhase, TradePhase } from '../state/cinematicStore'
 
-export interface EvolutionPose {
+interface EvolutionPose {
   beforeVisible: boolean
   afterVisible: boolean
   beforeScale: number
@@ -26,7 +26,7 @@ export function evolutionPose(phase: EvolutionPhase, elapsed: number): Evolution
   }
 }
 
-export interface HatchPose { rock: number; lift: number; shellVisible: boolean }
+interface HatchPose { rock: number; lift: number; shellVisible: boolean }
 
 export function hatchPose(phase: HatchPhase, elapsed: number): HatchPose {
   if (phase === 'born') return { rock: 0, lift: 0, shellVisible: false }
@@ -38,7 +38,7 @@ export function hatchPose(phase: HatchPhase, elapsed: number): HatchPose {
   }
 }
 
-export interface TradePose {
+interface TradePose {
   sendingVisible: boolean
   receivingVisible: boolean
   /** 무대 위 높이. 보내는 마리는 올라가고 받는 마리는 내려앉는다 */
@@ -75,7 +75,7 @@ export function tradePose(phase: TradePhase, elapsed: number): TradePose {
 }
 
 /** 보내는 마리가 떠오르기 전까지 서 있는 시간(초) */
-export const TRADE_SENDING_HOLD = 1.6
+const TRADE_SENDING_HOLD = 1.6
 
 /** 아주 큰 포켓몬도 화면을 넘지 않게 하되 작은 종을 과장하지 않는다. */
 export function cinematicScale(tall: number): number {

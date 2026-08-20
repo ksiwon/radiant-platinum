@@ -28,7 +28,7 @@ const MON_SIZE = 16
 const MON_COUNT = 951
 const TRAINER_COUNT = 315
 
-export interface FrontierMon {
+interface FrontierMon {
   species: number
   moves: number[]
   evFlags: number

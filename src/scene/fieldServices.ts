@@ -138,7 +138,7 @@ function relearnFor(slot: number): number[] {
  * 필드가 뜰 때 한 번 받아 둔다 — 스크립트 명령은 동기라 그 자리에서 못 기다린다
  */
 let poketchAppNames: readonly string[] = []
-export function setPoketchAppNames(names: readonly string[]): void { poketchAppNames = names }
+function setPoketchAppNames(names: readonly string[]): void { poketchAppNames = names }
 
 /**
  * 스크립트가 여는 노트 일 중 **맵 번호를 곁값으로 받는** 것들

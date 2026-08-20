@@ -302,7 +302,7 @@ export const bagTabs = style({
   flex: '0 0 auto',
 })
 
-export const bagTab = style({
+const bagTab = style({
   padding: '3px 10px',
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.18)',

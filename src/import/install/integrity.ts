@@ -36,7 +36,7 @@ export async function recordOf(path: string, data: Uint8Array): Promise<FileReco
   return { path, bytes: data.byteLength, sha256: await sha256(data) }
 }
 
-export type BrokenWhy = 'missing' | 'length' | 'hash'
+type BrokenWhy = 'missing' | 'length' | 'hash'
 
 export interface Broken {
   path: string

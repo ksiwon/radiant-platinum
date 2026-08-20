@@ -208,8 +208,8 @@ function matchingSlot(
 }
 
 /** 강철 · 전기 (`constants/pokemon.h`의 `TYPE_*`) */
-export const TYPE_ELECTRIC = 13
-export const TYPE_STEEL = 8
+const TYPE_ELECTRIC = 13
+const TYPE_STEEL = 8
 
 /**
  * 자력·정전기가 칸을 고른다 (`TryGetSlotForTypeMatchAbility`).

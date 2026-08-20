@@ -35,11 +35,11 @@ export const APPROACH_TURN_DELAY = 30
 export const APPROACH_ARRIVE_DELAY = 8
 
 /** `movements` 표의 번호. 방향 넷이 나란히 있다 */
-export const MOVEMENT_FACE_NORTH = 0
-export const MOVEMENT_WALK_NORMAL_NORTH = 12
+const MOVEMENT_FACE_NORTH = 0
+const MOVEMENT_WALK_NORMAL_NORTH = 12
 /** `DELAY_32`·`DELAY_8` — 원작의 30·8과 가장 가까운 칸이다 */
-export const MOVEMENT_DELAY_32 = 66
-export const MOVEMENT_DELAY_8 = 63
+const MOVEMENT_DELAY_32 = 66
+const MOVEMENT_DELAY_8 = 63
 
 /**
  * 쉬는 동작과 그 프레임 수 (`movements` 표의 `DELAY_*`), 긴 것부터.
@@ -73,7 +73,7 @@ export function delaySteps(frames: number): MovementStepLike[] {
  * ⚠️ **표가 북·남·서·동 차례로 붙어 있다** — 원작이 기준 동작에 방향 번호를
  * 그냥 더한다. 그래서 「북쪽 것 + 방향」이 곧 그 방향의 동작이다
  */
-export function actionTowards(base: number, dir: number): number {
+function actionTowards(base: number, dir: number): number {
   return base + (((dir % 4) + 4) % 4)
 }
 
@@ -85,7 +85,7 @@ export function dirBetween(fromX: number, fromZ: number, toX: number, toZ: numbe
   return dx < 0 ? DIR.west : DIR.east
 }
 
-export interface MovementStepLike { action: number, count: number }
+interface MovementStepLike { action: number, count: number }
 
 /**
  * 다가오는 한 사람의 동작 목록.

@@ -23,7 +23,7 @@ import type { HiddenItem } from '../engine/world/hiddenItemTable'
 import type { MoveAnim } from '../engine/battle/moveAnimTable'
 
 /** 숨은 도구 한 줄 */
-export type HiddenItemRow = HiddenItem
+type HiddenItemRow = HiddenItem
 
 export type { PokedexHabitat, PokedexSort, Berries }
 export type { Berry } from './schema'
@@ -145,7 +145,7 @@ export function loadMoves(): Promise<MoveTable> {
   return fetchJson('moves.json', (v) => indexed(moveFileSchema.parse(v).moves, '기술'))
 }
 
-export interface MotionTimingTable {
+interface MotionTimingTable {
   /** 그 동작이 **몇 초 뒤에 꽂히는가**. 표에 없는 종은 null */
   at(species: number, form: number, motion: string): number | null
 }

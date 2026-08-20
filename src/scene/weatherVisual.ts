@@ -25,7 +25,7 @@ export function fieldWeatherKind(weather: number): FieldWeatherKind {
   }
 }
 
-export interface WeatherProfile {
+interface WeatherProfile {
   count: number
   fall: number
   drift: number
@@ -48,7 +48,7 @@ export function weatherProfile(kind: FieldWeatherKind): WeatherProfile | null {
   }
 }
 
-export interface WeatherFogProfile {
+interface WeatherFogProfile {
   nearScale: number
   farScale: number
   tint: string

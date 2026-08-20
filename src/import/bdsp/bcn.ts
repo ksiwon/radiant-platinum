@@ -8,7 +8,7 @@
 // 특히 BC1의 c0 ≤ c1 갈래는 "3색 + 투명"이고, BC3 안에 든 색 블록은 **언제나**
 // 4색이다. 이 둘을 같은 함수로 처리하면 알파가 있는 텍스처가 조용히 뚫린다.
 
-export class BlockError extends Error {
+class BlockError extends Error {
   constructor(message: string) { super(message); this.name = 'BlockError' }
 }
 

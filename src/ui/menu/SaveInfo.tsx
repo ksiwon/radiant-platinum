@@ -20,7 +20,7 @@ export function countDex(bits: Uint8Array): number {
   return n
 }
 
-export function countBits(value: number, upTo: number): number {
+function countBits(value: number, upTo: number): number {
   let n = 0
   for (let i = 0; i < upTo; i++) if ((value >> i) & 1) n++
   return n

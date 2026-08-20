@@ -48,7 +48,7 @@ const AIM_HEIGHT = 1.2
 
 
 /** 가리는 선까지의 거리 → 불투명도. 1이면 손대지 않은 것이다 */
-export function fadeFor(distance: number): number {
+function fadeFor(distance: number): number {
   return Math.min(1, Math.max(0, (distance - BLOCK_R) / FADE_SPAN))
 }
 

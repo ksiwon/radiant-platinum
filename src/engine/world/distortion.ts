@@ -335,7 +335,7 @@ export function showGroup(state: DistortionState, group: number): void {
   state.hiddenGroups &= ~(1 << group)
 }
 
-export function puzzleFlag(state: DistortionState, flag: number): boolean {
+function puzzleFlag(state: DistortionState, flag: number): boolean {
   return (state.puzzleFlags & (1 << flag)) !== 0
 }
 

@@ -39,7 +39,7 @@ export function quatMul(a: Quat, b: Quat): Quat {
 }
 
 /** 단위 사원수의 역. 켤레와 같다 */
-export function quatConj(q: Quat): Quat {
+function quatConj(q: Quat): Quat {
   return [-q[0], -q[1], -q[2], q[3]]
 }
 

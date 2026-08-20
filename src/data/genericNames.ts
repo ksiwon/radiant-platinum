@@ -12,7 +12,7 @@ import { loadDialogueBank, type DataLocale } from './gameData'
 export const GENERIC_NAMES_BANK = 427
 
 /** [첫 항목, 끝 항목] — 양끝을 포함한다 */
-export const NAME_RANGE = {
+const NAME_RANGE = {
   playerMale: [0, 17],
   playerFemale: [18, 35],
   rival: [88, 89],

@@ -63,7 +63,7 @@ const MOVED: Readonly<Record<string, Moved>> = {
 }
 
 /** 한 파일이 세 판에서 놓인 자리 */
-export interface MovedFile {
+interface MovedFile {
   ja: string
   en: string
   ko: string

@@ -189,7 +189,7 @@ export const BERRY_TAG = {
   firmness: 11,
 } as const
 
-export type UiBank = keyof typeof UI_BANK
+type UiBank = keyof typeof UI_BANK
 
 /**
  * 뱅크 하나를 받는다. 이름으로 부르므로 번호를 틀릴 자리가 없다.

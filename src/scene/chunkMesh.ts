@@ -14,7 +14,7 @@ import {
 import { assets, readJson } from '../data/providers/assetProvider'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
-export interface ChunkFormat {
+interface ChunkFormat {
   posScale: number
   vertexBytes: number
   unitsPerTile: number
@@ -61,7 +61,7 @@ const starterCache = new Map<number, Promise<ChunkMesh>>()
 const starterSheetCache = new Map<number, Promise<TexSheet | null>>()
 let format: Promise<ChunkFormat> | null = null
 
-export function loadChunkFormat(): Promise<ChunkFormat> {
+function loadChunkFormat(): Promise<ChunkFormat> {
   // 주소를 만들지 않는다 — 공개판에서 이 자료는 OPFS에서 온다 (IMPORT.md §7)
   format ??= readJson(assets(), 'data/chunks/index.json') as Promise<ChunkFormat>
   return format

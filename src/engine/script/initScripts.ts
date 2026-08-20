@@ -32,7 +32,7 @@ export const INIT_SCRIPT = {
 } as const
 
 /** 매 프레임 표의 한 줄. 두 값이 같으면 그 스크립트를 건다 */
-export interface FrameCheck {
+interface FrameCheck {
   /** 왼쪽 — 대개 변수 번호다 */
   left: number
   /** 오른쪽 — 대개 상수다 */

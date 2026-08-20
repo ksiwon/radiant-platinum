@@ -14,7 +14,7 @@ export const fx32 = (v: number): number => v / 4096
 /** 1.3.12 고정소수점 (정점 좌표) */
 const fx16 = (v: number): number => v / 4096
 
-export interface DictEntry { name: string, at: number, itemSize: number }
+interface DictEntry { name: string, at: number, itemSize: number }
 
 const ascii = (b: Uint8Array): string => {
   let s = ''
@@ -190,7 +190,7 @@ export function parseModel(buf: Uint8Array, view: DataView, at: number): ModelHe
   }
 }
 
-export interface Polygon { name: string, dl: Uint8Array }
+interface Polygon { name: string, dl: Uint8Array }
 
 /** 폴리곤 목록 → 디스플레이 리스트들 */
 export function parsePolygons(

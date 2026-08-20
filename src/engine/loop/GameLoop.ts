@@ -2,14 +2,14 @@
 const FIXED_DT = 1 / 60
 const MAX_DELTA = 0.25 // 탭 복귀·GC 스파이크 방어 클램프
 
-export interface System {
+interface System {
   /** 물리·이동·판정 — 고정 스텝 */
   fixedUpdate?(dt: number): void
   /** 카메라·애니메이션 — 가변 스텝 */
   update?(delta: number, alpha: number): void
 }
 
-export class GameLoop {
+class GameLoop {
   private accumulator = 0
   private systems: System[] = []
   paused = false

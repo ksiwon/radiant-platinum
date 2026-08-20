@@ -24,7 +24,7 @@ interface Held {
  * 직접 고를 수도, 그 위 아무 폴더를 고를 수도 있다 (`scan.ts`). 그 차이는
  * 여기서 한 번만 흡수한다
  */
-export function rootedBdspSource(dir: DirSource, root: string): BdspSource {
+function rootedBdspSource(dir: DirSource, root: string): BdspSource {
   const prefix = root === '' ? '' : `${root}/`
   return {
     async list() {

@@ -44,7 +44,7 @@ export const Evo = {
   LEVEL_MOSS_ROCK: 25,
   LEVEL_ICE_ROCK: 26,
 } as const
-export type EvoMethod = (typeof Evo)[keyof typeof Evo]
+type EvoMethod = (typeof Evo)[keyof typeof Evo]
 
 /** 무엇이 진화를 걸었는가 (`enum EvolutionClass`) */
 export const EvoClass = {
@@ -55,7 +55,7 @@ export const EvoClass = {
   /** 도구를 썼다 */
   ITEM: 3,
 } as const
-export type EvoClassId = (typeof EvoClass)[keyof typeof EvoClass]
+type EvoClassId = (typeof EvoClass)[keyof typeof EvoClass]
 
 /** `EVOLVE_FRIENDSHIP_THRESHOLD` (`include/constants/pokemon.h`) */
 export const FRIENDSHIP_THRESHOLD = 220

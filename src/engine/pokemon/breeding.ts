@@ -37,7 +37,7 @@ export const Compatibility = {
   MED: 50,
   MAX: 70,
 } as const
-export type CompatibilityScore = (typeof Compatibility)[keyof typeof Compatibility]
+type CompatibilityScore = (typeof Compatibility)[keyof typeof Compatibility]
 
 /** 물려받는 개체값 수 (`NUM_INHERITED_IVS`) */
 export const INHERITED_IVS = 3
@@ -82,7 +82,7 @@ export const INCENSE_BABIES: readonly (readonly [number, number, number])[] = [
 ]
 
 /** 육성가에 맡긴 한 마리. 개체 그대로에 맡긴 뒤의 걸음이 붙는다 */
-export interface DaycareMon {
+interface DaycareMon {
   mon: PokemonInstance
   /** 맡긴 뒤 걸은 수. 경험치와 요금이 이걸 본다 */
   steps: number
@@ -207,7 +207,7 @@ export function incenseSpecies(species: number, state: DaycareState): number {
  * ⚠️ **변함없는돌을 들고 있어도 반쯤이다.** 4세대는 5세대와 달라서, 돌을
  * 들려도 동전을 한 번 더 던진다. 그 한 줄을 빼면 성격 유전이 100%가 된다
  */
-export function natureParent(state: DaycareState, coin: () => boolean): number {
+function natureParent(state: DaycareState, coin: () => boolean): number {
   const mons = state.slots.map((s) => s?.mon ?? null)
   if (!mons[0] || !mons[1]) return -1
   let slot = -1
@@ -287,7 +287,7 @@ function addMove(moves: MoveSlot[], move: number, pp: number): void {
   moves.push(slot)
 }
 
-export interface MovesetInput {
+interface MovesetInput {
   /** 알에서 나올 종의 자료 */
   baby: Species
   mother: PokemonInstance
@@ -376,11 +376,11 @@ export function hatchStep(
  * 발렌타인, 그리고 시리즈의 발매일들을 넣어 두었다 — 그날은 알이 조금 빨리
  * 깬다. 지어낸 값이 아니라 `sEggCycleSpecialDates` 그대로다
  */
-export const EGG_CYCLE_STEPS = 255
-export const EGG_CYCLE_STEPS_SPECIAL = 230
+const EGG_CYCLE_STEPS = 255
+const EGG_CYCLE_STEPS_SPECIAL = 230
 
 /** `[달, 일]`. 원작 주석의 뜻까지 옮긴다 */
-export const EGG_SPECIAL_DATES: readonly (readonly [number, number])[] = [
+const EGG_SPECIAL_DATES: readonly (readonly [number, number])[] = [
   [1, 12], // 정월
   [2, 14], // 발렌타인
   [3, 3],
@@ -452,19 +452,19 @@ export function makeEgg(
 }
 
 /** 알이 생길 판정을 하는 걸음인가 — 둘째 자리의 걸음이 256의 배수일 때 */
-export function eggCheckDue(state: DaycareState): boolean {
+function eggCheckDue(state: DaycareState): boolean {
   return (state.slots[1]?.steps ?? 0) % 256 === 255
 }
 
 /** 한 걸음의 결과. 부화한 자리는 화면이 처리한다 */
-export interface DaycareStep {
+interface DaycareStep {
   daycare: DaycareState
   party: PokemonInstance[]
   /** 부화할 준비가 된 파티 자리. 없으면 -1 */
   hatched: number
 }
 
-export interface DaycareWorld {
+interface DaycareWorld {
   daycare: DaycareState
   party: PokemonInstance[]
   /** 오늘 날짜. 알 주기 길이가 열두 날에만 짧다 */
@@ -525,7 +525,7 @@ export function daycareStep(world: DaycareWorld): DaycareStep {
 // ── 맡기고 찾는다 ───────────────────────────────────────────────────────────
 
 /** `constants/daycare.h`의 `DAYCARE_*`. 스크립트가 이 수로 갈라진다 */
-export const DaycareState_ = {
+const DaycareState_ = {
   NO_MONS: 0,
   EGG_WAITING: 1,
   ONE_MON: 2,

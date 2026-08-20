@@ -19,9 +19,9 @@
 import type { NdsFileSystem } from './nds'
 
 /** 일반 상점 줄 수. 롬마다 같다 — 다르면 자리를 잘못 짚은 것이다 */
-export const COMMON_ROWS = 19
+const COMMON_ROWS = 19
 /** 지역 상점 수 */
-export const SPECIALTY_COUNT = 20
+const SPECIALTY_COUNT = 20
 /** 배열 끝 표지 */
 const END = 0xffff
 /**
@@ -33,7 +33,7 @@ const END = 0xffff
 const MAX_STOCK = 64
 
 /** 지역별 자리. **ROM 파일 오프셋이 아니라 ARM9 시작 기준 상대다** */
-export interface MartLocator {
+interface MartLocator {
   /** 일반 상점 표 */
   common: number
   /** 지역 상점 포인터 표 */

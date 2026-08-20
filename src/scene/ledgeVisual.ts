@@ -1,6 +1,6 @@
 import { ledgeJump } from '../engine/actor/ledge'
 
-export interface LedgeFacing { dx: number; dz: number; yaw: number }
+interface LedgeFacing { dx: number; dz: number; yaw: number }
 
 /** 턱 행동값을 3D 앞면의 방향으로 바꾼다. */
 export function ledgeFacing(behavior: number): LedgeFacing | null {

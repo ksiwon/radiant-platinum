@@ -33,19 +33,19 @@ const evSchema = z.object({
   spe: z.number().int().min(0).max(3),
 })
 
-export const evolutionSchema = z.object({
+const evolutionSchema = z.object({
   /** 1 친밀도 · 4 레벨 · 5 통신교환 · 7 도구사용 · 20 기술습득 … (DATA.md §2.6) */
   method: z.number().int().min(1).max(26),
   param: z.number().int().min(0),
   to: z.number().int().min(1),
 })
 
-export const learnMoveSchema = z.object({
+const learnMoveSchema = z.object({
   level: z.number().int().min(1).max(100),
   move: z.number().int().min(1),
 })
 
-export const speciesSchema = z.object({
+const speciesSchema = z.object({
   id: z.number().int().min(1),
   stats: statsSchema,
   types: z.tuple([typeId, typeId]),
@@ -85,7 +85,7 @@ export const speciesSchema = z.object({
 })
 
 /** 신오도감 210마리. 0번은 비워 두므로 표는 211칸이다 */
-export const REGIONAL_DEX_COUNT = 210
+const REGIONAL_DEX_COUNT = 210
 
 export const speciesFileSchema = z.object({
   count: z.number().int().positive(),
@@ -103,7 +103,7 @@ export const speciesFileSchema = z.object({
   sinnohDex: z.array(z.number().int().min(0)).length(REGIONAL_DEX_COUNT + 1),
 })
 
-export const moveSchema = z.object({
+const moveSchema = z.object({
   id: z.number().int().min(0),
   effect: z.number().int().min(0),
   category: z.enum(['physical', 'special', 'status']),
@@ -133,7 +133,7 @@ export const moveFileSchema = z.object({
  * `moves`가 비어 있으면 "그 레벨의 레벨업 기술을 쓴다"는 뜻이다 — 빈 배열과
  * 네 칸이 다 0인 것은 롬에서도 다른 상태다
  */
-export const trainerMonSchema = z.object({
+const trainerMonSchema = z.object({
   /** 난이도 바이트 0~255. 실제 개체값은 `ivs × 31 / 255`다 */
   ivs: z.number().int().min(0).max(255),
   level: z.number().int().min(1).max(100),
@@ -148,7 +148,7 @@ export const trainerMonSchema = z.object({
   unknown1: z.number().int().min(1).optional(),
 })
 
-export const trainerSchema = z.object({
+const trainerSchema = z.object({
   id: z.number().int().min(0),
   /** 분류. 상금 배수와 화면 표시("체육관 관장")가 이걸로 정해진다 */
   class: z.number().int().min(0),
@@ -315,9 +315,9 @@ export { POCKET_COUNT }
  * 사용 효과. 40칸 중 0이 아닌 것만 실려 온다 — 상처약이면 `hpRestored: 20` 하나다.
  * 없는 칸은 0으로 본다
  */
-export const itemParamSchema = z.record(z.string(), z.number().int())
+const itemParamSchema = z.record(z.string(), z.number().int())
 
-export const itemSchema = z.object({
+const itemSchema = z.object({
   name: z.string(),
   constant: z.string().regex(/^ITEM_/),
   /** ITEM_UNUSED_* 22종은 아카이브에 자료가 없다 */

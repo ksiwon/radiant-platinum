@@ -22,12 +22,12 @@ import { pickBest, scoreMoves } from './score'
  * `moves`는 `AiTurn.moves`와 달리 **요청에 실제로 담긴 순서**여야 한다 —
  * 골라 낸 뒤 `slot`을 그대로 명령으로 보내기 때문이다
  */
-export type TurnBuilder = (request: BattleRequest) => AiTurn | null
+type TurnBuilder = (request: BattleRequest) => AiTurn | null
 
 /** 교체할 때 다음 마리를 고르는 것. 안 주면 첫 번째 후보 */
-export type SwitchChooser = (options: BattleAction[], request: BattleRequest) => BattleAction
+type SwitchChooser = (options: BattleAction[], request: BattleRequest) => BattleAction
 
-export interface PolicyOptions {
+interface PolicyOptions {
   /** 트레이너 데이터의 AI 비트 (`trainers.json`의 `ai`) */
   flags: number
   build: TurnBuilder

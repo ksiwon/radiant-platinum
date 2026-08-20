@@ -34,7 +34,7 @@ export interface MoveTable {
 /** 방어·판별의 기술 효과 번호. 연속 사용 횟수를 세는 데만 쓴다 */
 const PROTECT_EFFECT = 111
 
-export interface BrainOptions {
+interface BrainOptions {
   /** 트레이너 데이터의 AI 비트 */
   flags: number
   moves: MoveTable

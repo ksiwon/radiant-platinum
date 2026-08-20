@@ -1,7 +1,7 @@
 import type { AssetPath } from '../data/providers/assetProvider'
 import { NPC_BUNDLE } from '../engine/actor/npcModels'
 
-export type PlayerGender = 'boy' | 'girl'
+type PlayerGender = 'boy' | 'girl'
 
 /**
  * 세이브 성별에 대응하는 필드용 등신 모델.

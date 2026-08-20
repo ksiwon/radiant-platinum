@@ -21,7 +21,7 @@ function unit(i: number, salt: number): number {
   return x - Math.floor(x)
 }
 
-export function weatherParticle(i: number): Particle {
+function weatherParticle(i: number): Particle {
   return {
     x: (unit(i, 1) * 2 - 1) * RANGE,
     y: unit(i, 2) * HEIGHT,

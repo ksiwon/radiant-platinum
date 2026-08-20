@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react'
 import { menuBeep } from '../../engine/audio/lazy'
 import { typingInto } from '../../engine/input/keys'
 
-export interface MenuKeys {
+interface MenuKeys {
   up?: () => void
   down?: () => void
   left?: () => void

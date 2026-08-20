@@ -99,7 +99,7 @@ export interface AiTurn {
 }
 
 /** 랭크 → 배수. 4세대는 능력치와 명중/회피의 표가 다르다 */
-export function stageMultiplier(stage: number): number {
+function stageMultiplier(stage: number): number {
   const s = stage < -6 ? -6 : stage > 6 ? 6 : stage
   return s >= 0 ? (2 + s) / 2 : 2 / (2 - s)
 }

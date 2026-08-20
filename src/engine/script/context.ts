@@ -21,7 +21,7 @@ import type { FieldWorld } from './world'
 /** 원작의 스택 크기. 넘치면 `Call`이 조용히 무시된다 */
 const STACK_SIZE = 20
 
-export type ScriptState = 'stopped' | 'running' | 'waiting'
+type ScriptState = 'stopped' | 'running' | 'waiting'
 
 /** 참을 돌려주면 이번 프레임은 거기서 끝난다 */
 export type CommandFn = (ctx: ScriptContext) => boolean
@@ -41,7 +41,7 @@ export interface CommonScripts {
   running(): boolean
 }
 
-export interface ScriptHost {
+interface ScriptHost {
   vars: VarStore
   /** 명령 하나가 감당할 수 없는 일을 바깥에 맡긴다 (대화창·이동·배틀) */
   readonly world: FieldWorld

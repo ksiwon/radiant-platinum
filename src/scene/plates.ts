@@ -241,7 +241,7 @@ export function isBakedShadow(mesh: ChunkMesh, group: number): boolean {
  */
 const ROCK_NAME = /^(searock|dun_srock)$/
 
-export function isRock(mesh: ChunkMesh, group: number): boolean {
+function isRock(mesh: ChunkMesh, group: number): boolean {
   return ROCK_NAME.test(mesh.materials[group]?.tex ?? '')
 }
 
@@ -574,7 +574,7 @@ function standCard(pos: Float32Array, verts: number[], n: [number, number, numbe
  * 판마다 따로 세워야 한다 — 울타리 한 줄이 한 서브메시에 다 들어 있고, 판이
  * 저마다 다른 자리에서 시작한다. 그래서 정점을 함께 쓰는 삼각형끼리 묶는다
  */
-export function standCutouts(
+function standCutouts(
   mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array, lumps?: LumpSet,
 ): Float32Array {
   const index = mesh.geometry.getIndex()!.array
@@ -657,7 +657,7 @@ export function standCutouts(
  * 청크에 바닥이 있다**(고리 1). 그래서 없으면 이웃에서 빌려 온다 —
  * `shiftFloors`가 삼각형을 이쪽 좌표계로 밀고, UV는 좌표의 아핀 함수라 따라온다
  */
-export interface FloorPatch {
+interface FloorPatch {
   geometry: BufferGeometry
   /** `[시작, 개수, 서브메시]`. 청크 재질 배열을 그대로 쓴다 */
   groups: [number, number, number][]
@@ -1404,7 +1404,7 @@ export interface TreeSite {
 }
 
 /** 몇 타일마다 한 그루. 원작 개별 나무가 폭 2.06타일이라 그것이 원작 밀도다 */
-export const TREE_STRIDE = 2
+const TREE_STRIDE = 2
 
 /**
  * 나무를 세울 자리들.
@@ -1567,7 +1567,7 @@ function brownish(rgb: number): boolean {
 const FLOWER_NAME = /^[nsr]hana$|_fl_[a-z]/
 
 /** 꽃이 깔린 자리. 청크 로컬 타일 좌표와 그 판의 높이 */
-export interface FlowerSite {
+interface FlowerSite {
   x: number
   z: number
   y: number

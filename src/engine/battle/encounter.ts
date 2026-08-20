@@ -32,7 +32,7 @@ export const ROD_SLOT_RATES: Readonly<Record<Rod, readonly number[]>> = {
 }
 
 export interface LandSlot { level: number; species: number }
-export interface WaterSlot { min: number; max: number; species: number }
+interface WaterSlot { min: number; max: number; species: number }
 export interface WaterTable { rate: number; slots: WaterSlot[] }
 
 export interface EncounterTable {
@@ -114,7 +114,7 @@ function pickSlot(rates: readonly number[], rng: Rng): number {
  * 둔다. 걸음마다 독립적으로 굴리면 그 구간이 사라져서, 방금 배틀을 끝내고
  * 나오자마자 또 튀어나온다
  */
-export interface EncounterState {
+interface EncounterState {
   /** 유예 구간에서 판정한 횟수. 원작의 `wildBattleMetadata.encounterAttempts` */
   attempts: number
 }
@@ -175,7 +175,7 @@ export function shouldEncounter(
 }
 
 /** 지금 무엇을 밟고 있고 무엇을 타고 있는가. 관문의 높이가 여기서 갈린다 */
-export interface Footing {
+interface Footing {
   /** 긴 풀(0x03) 위인가 */
   veryTallGrass?: boolean
   /** 자전거를 타고 있는가 */
@@ -225,7 +225,7 @@ export function timedLand(table: EncounterTable, time: TimeOfDayId): LandSlot[] 
  * ⚠️ 시간대와 **다른 칸**이다 — 무리는 0·1, 시간대는 2·3. 겹치지 않아서
  * 둘이 같이 걸릴 수 있다
  */
-export function swarmLand(table: EncounterTable, land: LandSlot[]): LandSlot[] {
+function swarmLand(table: EncounterTable, land: LandSlot[]): LandSlot[] {
   return land.map((s, i) => {
     if (i !== 0 && i !== 1) return s
     const species = table.swarm[i]
@@ -240,7 +240,7 @@ export function swarmLand(table: EncounterTable, land: LandSlot[]): LandSlot[] {
  * 자리가 안 정해졌으면(`null`) 그 칸은 표 그대로다 — 원작도
  * `TROPHY_GARDEN_SLOT_NONE`이면 손대지 않는다
  */
-export function trophyLand(
+function trophyLand(
   land: LandSlot[], pair: readonly (number | null)[],
 ): LandSlot[] {
   return land.map((s, i) => {
@@ -256,7 +256,7 @@ export function trophyLand(
  * 갈아 끼우는 세 자리가 **안 겹친다** — 무리 0·1, 시간대 2·3, 트로피가든 6·7.
  * 한 번에 다 걸릴 수 있다
  */
-export interface LandSwaps {
+interface LandSwaps {
   /** 오늘 무리가 뜬 자리인가 — 슬롯 0·1 */
   swarming?: boolean
   /** 트로피가든 두 자리 — 슬롯 6·7 */
@@ -317,7 +317,7 @@ function radarLand(table: EncounterTable, land: readonly LandSlot[]): LandSlot[]
 }
 
 /** 물 조우에 끼어드는 것들 */
-export interface WaterSwaps {
+interface WaterSwaps {
   /** 선두 특성이 칸을 집는가 (자력·정전기) */
   pick?: (t: WaterTable) => number | null
   /** 레벨을 어떻게 뽑는가. 없으면 min~max 균등 */
@@ -346,7 +346,7 @@ export function rollWater(
 }
 
 /** 낚싯대가 보는 칸. 이름이 곧 표의 이름이다 */
-export function rodTable(table: EncounterTable, rod: Rod): WaterTable {
+function rodTable(table: EncounterTable, rod: Rod): WaterTable {
   return rod === 'old' ? table.oldRod : rod === 'good' ? table.goodRod : table.superRod
 }
 

@@ -1,5 +1,5 @@
-export const PREVIEW_BOTTOM = 108
-export const PREVIEW_SIZE = 132
+const PREVIEW_BOTTOM = 108
+const PREVIEW_SIZE = 132
 
 /** CSS 미리보기 창의 중심을 WebGL 카메라 NDC Y로 바꾼다. */
 export function previewNdcY(viewHeight: number): number {

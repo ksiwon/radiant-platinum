@@ -10,8 +10,8 @@
 /** `TOWN_MAP_GRID_SPACING` (`applications/town_map/defs.h`) */
 export const GRID = 7
 /** `TOWN_MAP_GRID_X_OFFSET` · `TOWN_MAP_GRID_Y_OFFSET` */
-export const GRID_X0 = 25
-export const GRID_Y0 = -34
+const GRID_X0 = 25
+const GRID_Y0 = -34
 
 /** 격자 칸 → 지도 그림 안의 픽셀 */
 export function gridX(x: number): number {
@@ -27,7 +27,7 @@ export function gridY(z: number): number {
  * 도시는 두 칸을 차지하고 마을은 한 칸이다. 모양이 다르면 표식 크기가 달라서,
  * 다 같은 네모로 그리면 무성시티가 떡잎마을만 해진다
  */
-export const FlyShape = {
+const FlyShape = {
   SQUARE_1X1: 0,
   VERTICAL: 1,
   SQUARE_2X2: 2,
@@ -36,7 +36,7 @@ export const FlyShape = {
   HORIZONTAL: 5,
   SMALL_RECTANGLE: 6,
 } as const
-export type FlyShapeId = (typeof FlyShape)[keyof typeof FlyShape]
+type FlyShapeId = (typeof FlyShape)[keyof typeof FlyShape]
 
 /** 모양별 표식 크기 (픽셀). 한 칸이 7px이고 두 칸짜리는 그 두 배 남짓이다 */
 export const SHAPE_SIZE: Readonly<Record<number, readonly [number, number]>> = {
@@ -60,7 +60,7 @@ export const SHAPE_SIZE: Readonly<Record<number, readonly [number, number]>> = {
  * 따로 있고, 원작은 커서 칸으로 가른다 (`specialFlyLocationID`). 맵 번호로
  * 접으면 둘 중 하나가 사라진다
  */
-export interface FlySpot {
+interface FlySpot {
   /**
    * `spawns.json`의 몇 번째 자리인가.
    *

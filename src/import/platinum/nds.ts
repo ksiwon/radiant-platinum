@@ -36,7 +36,7 @@ export function bytesSource(bytes: Uint8Array): ByteSource {
 }
 
 /** 헤더 (`nitro` 카트리지 헤더). 우리가 보는 자리만 */
-export interface NdsHeader {
+interface NdsHeader {
   title: string
   gameCode: string
   makerCode: string
@@ -60,7 +60,7 @@ export interface NdsHeader {
 }
 
 /** 헤더 최소 길이. 여기까지 없으면 NDS라고 부를 수도 없다 */
-export const HEADER_BYTES = 0x200
+const HEADER_BYTES = 0x200
 
 const latin1 = (bytes: Uint8Array): string =>
   String.fromCharCode(...bytes).replace(/\0+$/, '')
@@ -86,7 +86,7 @@ export async function readHeader(src: ByteSource): Promise<NdsHeader | null> {
   }
 }
 
-export interface FatEntry { start: number; end: number }
+interface FatEntry { start: number; end: number }
 
 export interface NdsFileSystem {
   header: NdsHeader

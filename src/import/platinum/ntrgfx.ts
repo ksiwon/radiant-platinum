@@ -68,7 +68,7 @@ export function palettes(buf: Uint8Array): Rgb[][] {
     Array.from({ length: COLORS }, (_, i) => color(view.getUint16(0x28 + (p * COLORS + i) * 2, true))))
 }
 
-export interface Chars { tilesX: number, tilesY: number, data: Uint8Array }
+interface Chars { tilesX: number, tilesY: number, data: Uint8Array }
 
 /** NCGR 4bpp 타일. RAHC 절이 타일 수와 자료 크기를 들고 있다 */
 export function chars(buf: Uint8Array): Chars {

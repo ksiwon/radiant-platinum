@@ -333,7 +333,7 @@ export function ease(t: number): number {
   return k * k * (3 - 2 * k)
 }
 
-export interface CameraFrame {
+interface CameraFrame {
   position: Vec3
   look: Vec3
   /** 이 프레임에 실을 흔들림. 무대가 자기 난수로 방향을 정한다 */

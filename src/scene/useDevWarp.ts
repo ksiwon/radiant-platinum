@@ -19,7 +19,7 @@ import { gridFor } from './worldData'
 import { distortionSpawn, isDistortionFloor } from './distortion'
 import type { Checkpoint } from '../engine/dev/checkpoints'
 
-export type EnterFn = (
+type EnterFn = (
   grid: MapGrid, mapId: number, x: number, z: number, matrix: number,
   /** 도착 높이. 깨어진 세계처럼 격자에서 못 받는 데서만 준다 */
   atY?: number,
@@ -42,7 +42,7 @@ if (import.meta.env.DEV) {
   ]).then(([w, c]) => { dev = { devWarp: w.devWarp, resolveSpot: c.resolveSpot } })
 }
 
-export interface DevWarpHooks {
+interface DevWarpHooks {
   /** 마운트할 때 세이브 자리 대신 확인 지점으로 갈 것인가 */
   claimed: () => boolean
   /**

@@ -80,7 +80,7 @@ type ControllerItems = NonNullable<Parameters<(typeof BattleController)['start']
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
 
-export type BattlePhase = 'off' | 'loading' | 'running' | 'over'
+type BattlePhase = 'off' | 'loading' | 'running' | 'over'
 
 /**
  * 야생전인가 트레이너전인가. 규칙이 갈리는 지점이 여럿이다 —
@@ -89,7 +89,7 @@ export type BattlePhase = 'off' | 'loading' | 'running' | 'over'
  * ⚠️ **`safari`는 sim이 아예 안 도는 갈래다** (PARITY §2.19). 기술도 체력도
  * 없어서 심판에게 넘길 것이 없고, `engine/battle/safariBattle`이 사건을 직접 낸다
  */
-export type BattleKind = 'wild' | 'trainer' | 'factory' | 'safari'
+type BattleKind = 'wild' | 'trainer' | 'factory' | 'safari'
 
 /**
  * 이 판에만 붙는 규칙 (`FieldBattleDTO.battleStatusMask`).
@@ -97,7 +97,7 @@ export type BattleKind = 'wild' | 'trainer' | 'factory' | 'safari'
  * 지금은 하나뿐이다 — 라이벌과의 **첫 배틀**은 급소가 안 난다
  * (`BATTLE_STATUS_FIRST_BATTLE` → `BtlCmd_CalcCrit`)
  */
-export interface BattleRules {
+interface BattleRules {
   noCrit?: boolean
   /** 배회 포켓몬과의 판 (PARITY §6.3). 묶어 두지 않으면 상대가 달아난다 */
   roamer?: boolean
@@ -110,7 +110,7 @@ export interface BattleRules {
  * 넷 중 무엇을 고를지 판단할 근거가 사라진다. 원작은 아래 화면에 볼 수만
  * 띄우지만 우리는 한 화면이라 그 자리가 없다
  */
-export interface SafariHud {
+interface SafariHud {
   balls: number
   /** 잡히는 칸 0~12. 6이 한가운데다 */
   catchStage: number
@@ -119,7 +119,7 @@ export interface SafariHud {
 }
 
 /** 배틀팩토리 한 판의 양쪽 (PARITY §9.3) */
-export interface FactoryBout {
+interface FactoryBout {
   /** 빌린 셋. 이미 `fillPp`·`statsOf`까지 끝난 개체여야 한다 */
   readonly team: readonly PokemonInstance[]
   readonly foe: readonly PokemonInstance[]
@@ -145,7 +145,7 @@ export interface RosterEntry {
   level: number
 }
 
-export interface WildStart {
+interface WildStart {
   species: number
   level: number
   /**

@@ -33,7 +33,7 @@ import { obstacleAt } from './obstacles'
 import { npcActors, type NpcActor } from './npcs'
 import { playerSpeed } from './player'
 
-export type MovementTypeTable = ScriptFile['movementTypes']
+type MovementTypeTable = ScriptFile['movementTypes']
 type MovementType = MovementTypeTable[number]
 
 /** `MOVEMENT_ACTION_WALK_NORMAL_NORTH`. 방향 번호를 더하면 그쪽 걸음이다 */

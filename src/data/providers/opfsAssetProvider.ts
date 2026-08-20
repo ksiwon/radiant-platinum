@@ -15,13 +15,13 @@ interface Held {
   refs: number
 }
 
-export interface OpfsProviderStats {
+interface OpfsProviderStats {
   /** 지금 살아 있는 Blob URL 수. soak test가 이걸 본다 */
   liveUrls: number
   refs: Record<string, number>
 }
 
-export interface OpfsAssetProvider extends AssetProvider {
+interface OpfsAssetProvider extends AssetProvider {
   stats(): OpfsProviderStats
   /** 화면을 통째로 접을 때. 남은 참조를 무시하고 전부 거둔다 */
   releaseAll(): void

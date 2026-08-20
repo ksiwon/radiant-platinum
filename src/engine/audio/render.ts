@@ -186,7 +186,7 @@ export interface RenderOptions {
   transpose?: number
 }
 
-export interface Rendered {
+interface Rendered {
   left: Float32Array
   right: Float32Array
   sampleRate: number

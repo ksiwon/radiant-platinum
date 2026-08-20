@@ -80,7 +80,7 @@ export interface Watcher {
   facing: number
 }
 
-export interface Sighted {
+interface Sighted {
   npc: Npc
   /** 트레이너가 보고 있던 방향 (`DIR` 규약) */
   facing: number
@@ -88,7 +88,7 @@ export interface Sighted {
   distance: number
 }
 
-export interface SightWorld {
+interface SightWorld {
   /**
    * 그 칸이 막혀 있는가 (`sub_02063E94`의 1·2번 비트).
    *

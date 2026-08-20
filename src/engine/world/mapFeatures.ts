@@ -31,7 +31,7 @@ export const MAP_FEATURE = {
   villa: 10,
 } as const
 
-export type MapFeatureId = typeof MAP_FEATURE[keyof typeof MAP_FEATURE]
+type MapFeatureId = typeof MAP_FEATURE[keyof typeof MAP_FEATURE]
 
 let active: MapFeatureId = MAP_FEATURE.none
 

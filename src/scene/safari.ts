@@ -17,7 +17,7 @@ import { mapById } from '../engine/map/world'
 import { useSaveStore } from '../state/saveStore'
 
 /** `great_marsh_train.nsbmd`의 소품 번호 (`meson.build` 줄 번호 − 2) */
-export const TRAM_MODEL = 475
+const TRAM_MODEL = 475
 
 /**
  * 열차가 한 타일을 가는 데 걸리는 시간.
@@ -26,7 +26,7 @@ export const TRAM_MODEL = 475
  * 움직이는데(`sRidingTramNorthMovements` 넷) 그 단계값이 그림 자료 쪽에 있다.
  * 걷는 속도(한 칸 0.25초)의 두 배로 잡아 「타고 가는」 느낌을 남긴다
  */
-export const TRAM_SECONDS_PER_TILE = 0.125
+const TRAM_SECONDS_PER_TILE = 0.125
 
 /** 지금 움직이고 있는 열차. 안 움직이면 null */
 let moving: { fromZ: number; toZ: number; elapsed: number; seconds: number } | null = null

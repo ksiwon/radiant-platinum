@@ -66,7 +66,7 @@ interface Joint {
  * 자전거 자세가 이걸 쓴다 — 안장과 페달은 롬(번들)이 정한 자리라, 거기에
  * 닿으려면 우리 팔다리가 실제로 몇 센티인지를 알아야 한다.
  */
-export interface Limbs {
+interface Limbs {
   /** 왼쪽 넓적다리 뿌리 */
   hip: Vector3
   thigh: number
