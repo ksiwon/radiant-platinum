@@ -9,7 +9,7 @@
 // 서고, 그러면 화면 아래가 통째로 검어진다.
 import { describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
-import { clampToRoom, type RoomBox } from './camera'
+import { clampToRoom, roomAt, type RoomBox } from './camera'
 
 /** 포켓몬센터의 실측 상자 (`node .audit/roomBox.mjs`) */
 const CENTER: RoomBox = { minX: 1, minZ: 2, maxX: 17, maxZ: 14 }
@@ -55,5 +55,35 @@ describe('방 안으로 물린다', () => {
 
   it('높이는 안 건드린다 — 물리는 것은 평면 자리뿐이다', () => {
     expect(clampToRoom(at(99, 99), CENTER, 1).y).toBe(4)
+  })
+})
+
+// **어느 방으로 물릴지 고른다** (REPAIR §13)
+//
+// 그려진 바닥이 방마다 갈려 오므로(`scene/roomWalls`의 `floorRegions`) 주인공이
+// 선 방을 골라야 한다. 상자끼리 **겹친다** — 맵 89는 방 밖 바닥이 방을 빙 둘러
+// 있어서 그 테두리 상자가 방을 통째로 품는다.
+describe('주인공이 선 방을 고른다', () => {
+  /** 맵 89 실측 (`node .audit/roomRegions.mjs`) — 바깥 테두리가 방을 품는다 */
+  const OUTSIDE: RoomBox = { minX: -1, minZ: 0, maxX: 24, maxZ: 19 }
+  const ROOM: RoomBox = { minX: 7, minZ: 2, maxX: 17, maxZ: 12 }
+
+  it('방이 없으면 안 물린다', () => {
+    expect(roomAt([], 8, 5)).toBeNull()
+  })
+
+  it('⚠️ 둘 다 품으면 작은 쪽이다 — 먼저 찾은 것을 집으면 조인 것이 헛일이다', () => {
+    expect(roomAt([OUTSIDE, ROOM], 8.5, 5.5)).toBe(ROOM)
+    expect(roomAt([ROOM, OUTSIDE], 8.5, 5.5)).toBe(ROOM)
+  })
+
+  it('어느 방에도 안 들면 두 칸 안의 제일 가까운 방이다', () => {
+    expect(roomAt([ROOM], 6, 5)).toBe(ROOM)
+  })
+
+  // ⚠️ 강철섬(맵 293)에서 주인공이 x 38.5에 섰는데 x 43~53짜리 조각이 뽑혀
+  // 카메라가 x 44로 밀렸다. 멀면 아예 안 물리는 편이 낫다
+  it('⚠️ 두 칸보다 멀면 안 물린다', () => {
+    expect(roomAt([{ minX: 43, minZ: 0, maxX: 53, maxZ: 32 }], 38.5, 4.5)).toBeNull()
   })
 })

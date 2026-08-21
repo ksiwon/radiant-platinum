@@ -32,12 +32,13 @@ import { isTuftTile } from '../engine/battle/encounter'
 import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
-import { floorExtent, roomWalls, type RoomWalls } from './roomWalls'
+import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
 import { mergeByMaterial } from './mergeGroups'
 import { isFeaturePlacement } from './movingProps'
+import { isDistortionFloor } from './distortionCore'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -506,7 +507,17 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          * 두 칸짜리다
          */
         const header = mapById(world.mapId ?? -1)
+        /**
+         * ⚠️ **깨어진 세계는 실내로 세면 안 된다.** 헤더는 실내라고 적혀 있지만
+         * 거기는 방이 아니라 **허공에 뜬 널판**이다 — 판마다 네 변이 전부
+         * 「바닥이 끝나는데 벽이 없다」라, 세우면 판마다 상자가 씌워진다.
+         *
+         * 실측: 1F(573)에 벽 삼각형 292개 · B4F(577)에 330개가 섰고, 원작
+         * 렌즈(8.09도)로 보면 그 판들이 화면을 가로지르는 검은 띠와 세로 실선으로
+         * 찍힌다 (`node .audit/distortionWalls.mjs` · REPAIR §15)
+         */
         const indoor = header !== null && !isOutdoors(header)
+          && !isDistortionFloor(world.mapId ?? -1)
         const doors = new Set<number>()
         if (indoor) {
           for (const w of warpsOf(world.mapId ?? -1)) {
@@ -686,18 +697,20 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         //
         // ⚠️ **실외에는 안 넘긴다.** 거기서 바닥이 끝나는 자리는 맵 가장자리라
         // 물리면 신오 끝에서 화면이 갇힌다 (`roomWalls`를 실외에 안 거는 것과 같다)
-        let box: RoomBox | null = null
+        //
+        // ⚠️ **하나로 감싸면 안 된다.** 방에서 떨어진 바닥 한 칸이 상자를 통째로
+        // 부풀린다 — 연고시티 체육관 문 방(89)이 방은 x 1~15 · z 3~10인데 상자는
+        // x −2~24 · z 0~19였고, 그 여유만큼 카메라가 벽을 지나 밖으로 나가
+        // 화면의 73.1%가 검었다 (REPAIR §13). **이어진 것끼리** 갈라 넘긴다
+        let rooms: RoomBox[] = []
         if (indoor) {
+          const tiles: number[] = []
           for (const p2 of pieces) {
-            const got = floorExtent(p2.split, { x: p2.originX, z: p2.originZ })
-            if (got === null) continue
-            box = box === null ? got : {
-              minX: Math.min(box.minX, got.minX), minZ: Math.min(box.minZ, got.minZ),
-              maxX: Math.max(box.maxX, got.maxX), maxZ: Math.max(box.maxZ, got.maxZ),
-            }
+            tiles.push(...floorTiles(p2.split, { x: p2.originX, z: p2.originZ }))
           }
+          rooms = floorRegions(tiles, (x, z) => grid.isBlocked(x, z))
         }
-        cameraSystem.room = box
+        cameraSystem.rooms = rooms
 
         setPlaced(next)
         setFoliage([...byTexture.values()])

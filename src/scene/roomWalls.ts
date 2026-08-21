@@ -288,28 +288,86 @@ const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
 interface FloorExtent { minX: number, minZ: number, maxX: number, maxZ: number }
 
 /**
- * 이 청크에서 **바닥이 실제로 그려진** 칸의 테두리. 한 칸도 없으면 `null`.
+ * 월드 타일 열쇠.
+ *
+ * `plates.cellKey`는 청크 로컬(−48~+48)용이라 못 쓴다 — 여기 오는 것은 청크가
+ * 놓인 자리를 더한 월드 좌표고, 판이 청크 밖으로 삐져나가면 음수도 된다
+ * (맵 89가 x −2까지 간다)
+ */
+const TILE_BIAS = 512
+const TILE_SPAN = 4096
+export const tileKey = (x: number, z: number): number =>
+  (x + TILE_BIAS) * TILE_SPAN + (z + TILE_BIAS)
+const tileX = (key: number): number => Math.floor(key / TILE_SPAN) - TILE_BIAS
+const tileZ = (key: number): number => (key % TILE_SPAN) - TILE_BIAS
+
+/**
+ * 이 청크에서 **바닥이 실제로 그려진** 칸들 (월드 타일 열쇠).
  *
  * ⚠️ **통행 격자도 BDHC 판도 방의 크기가 아니다.** 실내 행렬은 32×32인데 방은
  * 그 일부이고, 통행 자료는 방 밖도 「안 막힘」으로 두고(포켓몬센터 1,024칸 중
  * 901칸이 열려 있다), 높이 판은 아예 행렬 전체를 덮는 맵이 넷 중 넷이다
  * (`node .audit/roomBox.mjs`). **그려진 바닥만이 방이다** — 그리고 그것을 이미
  * `survey`가 세고 있다 (벽을 세울 자리를 찾느라).
- *
- * 카메라가 이 상자 밖으로 나가면 화면 아래가 통째로 검어진다 (`actor/camera`)
  */
-export function floorExtent(split: Split, origin: { x: number, z: number }): FloorExtent | null {
+export function floorTiles(split: Split, origin: { x: number, z: number }): number[] {
   const { floor } = survey(split)
-  if (floor.size === 0) return null
-  let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
-  for (const key of floor.keys()) {
-    const x = cellX(key) + origin.x, z = cellZ(key) + origin.z
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (z < minZ) minZ = z
-    if (z > maxZ) maxZ = z
+  const out: number[] = []
+  for (const key of floor.keys()) out.push(tileKey(cellX(key) + origin.x, cellZ(key) + origin.z))
+  return out
+}
+
+/**
+ * 그려진 바닥을 **방마다 갈라** 방마다 테두리를 낸다.
+ *
+ * ⚠️ **테두리 상자 하나로는 안 된다.** 방에서 떨어진 바닥 한 칸이 상자를 통째로
+ * 부풀린다 — 연고시티 체육관 문 방(맵 89)은 걸어 다니는 자리가 x 1~16 · z 2~10인데
+ * 그려진 바닥을 통째로 감싸면 x −2~24 · z 0~19가 된다. 그 여유만큼 카메라가 벽을
+ * 지나 밖으로 나가고, 밖에는 아무것도 없어서 화면의 73.1%가 검었다 (REPAIR §13).
+ *
+ * ⚠️ **「이어진 바닥」만으로는 안 갈라진다.** 실측으로 맵 89의 바닥 371칸이
+ * **한 덩어리**다 — 벽 밑에도 바닥이 깔려 있어서 방 안과 방 밖이 그 벽을 지나
+ * 붙는다(`node .audit/roomFloorMap.mjs`).
+ *
+ * 그래서 **걸어 다닐 수 있는 칸으로만 번진다.** 막힌 칸은 번지지 않고 테두리에만
+ * 든다 — 벽 밑 한 겹은 방의 일부라 카메라가 그 위에 서도 발밑이 바닥이지만,
+ * 그 너머로는 못 넘어간다.
+ *
+ * 카메라는 주인공이 선 방을 골라 쓴다 (`actor/camera`의 `roomAt`)
+ */
+export function floorRegions(
+  tiles: readonly number[], blocked: (x: number, z: number) => boolean,
+): FloorExtent[] {
+  const floor = new Set(tiles)
+  const left = new Set<number>()
+  for (const k of floor) if (!blocked(tileX(k), tileZ(k))) left.add(k)
+  const out: FloorExtent[] = []
+  const stack: number[] = []
+  for (const seed of tiles) {
+    if (!left.delete(seed)) continue
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
+    const grow = (x: number, z: number): void => {
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (z < minZ) minZ = z
+      if (z > maxZ) maxZ = z
+    }
+    stack.push(seed)
+    while (stack.length > 0) {
+      const key = stack.pop()!
+      const x = tileX(key), z = tileZ(key)
+      grow(x, z)
+      for (const [dx, dz] of SIDES) {
+        const nx = x + dx, nz = z + dz
+        const nk = tileKey(nx, nz)
+        // 막힌 칸은 벽 밑이다 — 테두리에는 넣되 그 너머로는 안 번진다
+        if (left.delete(nk)) stack.push(nk)
+        else if (floor.has(nk)) grow(nx, nz)
+      }
+    }
+    out.push({ minX, minZ, maxX: maxX + 1, maxZ: maxZ + 1 })
   }
-  return { minX, minZ, maxX: maxX + 1, maxZ: maxZ + 1 }
+  return out
 }
 
 /**

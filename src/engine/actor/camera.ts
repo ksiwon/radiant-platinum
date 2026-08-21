@@ -78,6 +78,43 @@ export function clampToRoom(goal: Vector3, box: RoomBox | null, margin: number):
 }
 
 /**
+ * 주인공이 선 자리를 조금이라도 벗어나 있으면 물리지 않는다 (타일).
+ *
+ * 주인공이 그려진 바닥이 없는 칸에 설 수가 있다 — 소품 위·계단, 그리고 굴처럼
+ * 바닥이 조각조각인 데다. 그런 자리에서 **멀리 있는 방**을 집으면 카메라가
+ * 주인공을 두고 그리로 끌려간다: 실측으로 강철섬(맵 293)에서 주인공이 x 38.5에
+ * 섰는데 x 43~53짜리 조각이 뽑혀 카메라가 x 44로 밀렸다. 두 칸까지만 봐준다
+ */
+const ROOM_REACH = 2
+
+/**
+ * 그 자리가 든 방. 어디에도 안 들면 두 칸 안의 제일 가까운 방, 그것도 없으면
+ * `null`(안 물린다).
+ *
+ * ⚠️ **드는 방이 여럿이면 제일 작은 것이다.** 상자끼리 겹친다 — 맵 89에서 방
+ * 밖 바닥이 방을 **빙 둘러** 있어서 그 테두리 상자가 방을 통째로 품는다. 먼저
+ * 찾은 것을 집으면 25×19가 뽑혀 조인 것이 아무 소용이 없다 (실측: 10×10)
+ */
+export function roomAt(rooms: readonly RoomBox[], x: number, z: number): RoomBox | null {
+  let best: RoomBox | null = null
+  let near = ROOM_REACH * ROOM_REACH
+  let small = Infinity
+  for (const r of rooms) {
+    const dx = Math.max(r.minX - x, 0, x - r.maxX)
+    const dz = Math.max(r.minZ - z, 0, z - r.maxZ)
+    const d = dx * dx + dz * dz
+    if (d === 0) {
+      const size = (r.maxX - r.minX) * (r.maxZ - r.minZ)
+      if (size < small) { small = size; best = r }
+      near = 0
+      continue
+    }
+    if (near > 0 && d < near) { near = d; best = r }
+  }
+  return best
+}
+
+/**
  * 지금 맵이 **방**인가 (`MapHeader.mapType` 4 실내 · 5 포켓몬센터).
  *
  * ⚠️ **`!isOutdoors`가 아니다.** 그 함수는 동굴(3)과 지하(6)까지 「실외가 아님」에
@@ -182,13 +219,18 @@ export const cameraSystem = {
   free: null as { x: number, z: number } | null,
 
   /**
-   * 지금 방의 테두리. 씬이 지형을 세울 때마다 넣어 준다 (`scene/ChunkModels`).
+   * 지금 맵의 방들. 씬이 지형을 세울 때마다 넣어 준다 (`scene/ChunkModels`).
+   *
+   * ⚠️ **하나가 아니라 여럿이다.** 그려진 바닥을 통째로 감싸면 방에서 떨어진
+   * 바닥 한 칸이 상자를 부풀린다 — 연고시티 체육관 문 방이 x 1~15인데 상자가
+   * x −2~24였다 (REPAIR §13). **이어진 것끼리** 갈라 두고 주인공이 선 덩어리를
+   * 그때그때 고른다 (`roomAt`).
    *
    * ⚠️ **실내에서만 찬다.** 실외에서 바닥이 끝나는 자리는 맵 가장자리이고,
    * 거기서 카메라를 물리면 신오 끝에서 화면이 갇힌다 — `roomWalls`를 실외에
    * 안 거는 것과 같은 이유다
    */
-  room: null as RoomBox | null,
+  rooms: [] as readonly RoomBox[],
 
   /**
    * 다음 프레임의 기울기를 **돌리지 말고 그대로** 잡는다.
@@ -252,7 +294,10 @@ export const cameraSystem = {
       goal.copy(p).add(offset)
       // ⚠️ **바라보는 점은 안 물린다.** 물리는 것은 **어디에 서느냐**뿐이라
       // 주인공은 늘 화면 안에 있고, 방 가장자리에서만 가운데를 벗어난다
-      clampToRoom(goal, inDistortion ? null : cameraSystem.room, ROOM_MARGIN)
+      // ⚠️ **방은 카메라가 아니라 주인공으로 고른다.** 카메라로 고르면 방
+      // 밖으로 나간 순간 아무 방에도 안 들어 물릴 곳이 사라진다
+      clampToRoom(
+        goal, inDistortion ? null : roomAt(cameraSystem.rooms, p.x, p.z), ROOM_MARGIN)
       look.copy(p)
     }
     tilted(0, 1, 0, cam.up)

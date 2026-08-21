@@ -74,7 +74,7 @@ type Spot =
   | { kind: 'feature'; of: FeatureKind }
 
 /** `feature` 자리가 가리킬 수 있는 장치 */
-export type FeatureKind =
+type FeatureKind =
   | 'eternaClock' | 'hearthomeDoors' | 'veilstoneBag' | 'pastoriaButton'
   | 'canalaveFloat' | 'sunyshoreGear'
 

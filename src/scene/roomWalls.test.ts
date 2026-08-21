@@ -6,7 +6,7 @@
 // 베낄 벽이 없으면 **안 지어내는가**.
 import { describe, expect, it } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
-import { roomWalls, type RoomWalls } from './roomWalls'
+import { floorRegions, roomWalls, tileKey, type RoomWalls } from './roomWalls'
 import { cellKey, type Split } from './plates'
 
 /**
@@ -310,5 +310,73 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
   it('셀 열쇠가 청크 로컬 좌표 범위를 벗어나지 않는다', () => {
     // `cellKey`는 −128~383만 담는다. 방이 그 밖으로 나가면 열쇠가 겹친다
     expect(cellKey(0, 0)).not.toBe(cellKey(1, 0))
+  })
+})
+
+// **방 상자는 걸어 다니는 칸으로 가른다** (REPAIR §13)
+//
+// 카메라를 방 안으로 물리는 상자다. 그려진 바닥을 통째로 감싸면 방에서 떨어진
+// 바닥 한 칸이 상자를 부풀리고, 그 여유만큼 카메라가 벽을 지나 밖으로 나간다.
+describe('방 나누기', () => {
+  /** `#`는 막힌 칸, `.`는 걸어 다니는 칸, 빈칸은 바닥이 없는 자리 */
+  const parse = (rows: string[]): { tiles: number[], blocked: (x: number, z: number) => boolean } => {
+    const wall = new Set<number>()
+    const tiles: number[] = []
+    rows.forEach((row, z) => {
+      [...row].forEach((ch, x) => {
+        if (ch === ' ') return
+        tiles.push(tileKey(x, z))
+        if (ch === '#') wall.add(tileKey(x, z))
+      })
+    })
+    return { tiles, blocked: (x, z) => wall.has(tileKey(x, z)) }
+  }
+  const boxes = (rows: string[]): number[][] => {
+    const { tiles, blocked } = parse(rows)
+    return floorRegions(tiles, blocked)
+      .map((r) => [r.minX, r.minZ, r.maxX, r.maxZ])
+      .sort((a, b) => (a[0]! - b[0]!) || (a[1]! - b[1]!))
+  }
+
+  it('벽으로 갈린 두 방은 따로 잡힌다', () => {
+    expect(boxes([
+      '#####',
+      '#.#.#',
+      '#.#.#',
+      '#####',
+    ])).toEqual([[0, 0, 3, 4], [2, 0, 5, 4]])
+  })
+
+  it('⚠️ 벽 밑에도 바닥이 있어서 「이어진 바닥」만으로는 안 갈라진다', () => {
+    // 맵 89가 이 꼴이다 — 방 밖 바닥 371칸이 벽 밑을 지나 방과 한 덩어리로
+    // 이어져서, 막힌 칸을 안 보면 상자가 25×19가 된다
+    const rows = [
+      '.......',
+      '.#####.',
+      '.#...#.',
+      '.#...#.',
+      '.#####.',
+      '.......',
+    ]
+    const { tiles, blocked } = parse(rows)
+    // 막힌 칸을 안 보면 (= 옛 잣대) 통째로 한 덩어리다
+    expect(floorRegions(tiles, () => false)).toHaveLength(1)
+    // 보면 방과 바깥이 갈린다. 방 상자는 벽 한 겹까지다 (x 1~5 · z 1~5)
+    expect(floorRegions(tiles, blocked).map((r) => [r.minX, r.minZ, r.maxX, r.maxZ]))
+      .toContainEqual([1, 1, 6, 5])
+  })
+
+  it('막힌 칸은 테두리에만 들고 그 너머로는 안 번진다', () => {
+    // 벽 한 겹은 방의 일부다 — 카메라가 그 위에 서도 발밑이 바닥이다.
+    // 하지만 벽 **너머**의 바닥은 이 방이 아니다
+    const [room] = boxes([
+      '.#.',
+      '.#.',
+    ])
+    expect(room).toEqual([0, 0, 2, 2])
+  })
+
+  it('바닥이 하나도 없으면 방도 없다', () => {
+    expect(floorRegions([], () => false)).toEqual([])
   })
 })

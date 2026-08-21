@@ -501,20 +501,34 @@ async function main() {
           const refs = await import('/src/scene/sceneRefs.ts')
           const ws = await import('/src/state/worldState.ts')
           const stage = await import('/src/scene/battle/stageRefs.ts')
+          const camsys = await import('/src/engine/actor/camera.ts')
           let root = refs.sceneRefs.player
           while (root?.parent) root = root.parent
           if (!root) return { err: '무대가 없다' }
           // ⚠️ **배틀 중에는 카메라가 다른 데 있다.** 오버월드 카메라로 쏘면
           // 배틀 화면을 찍어 놓고 신오 한복판의 지형을 되돌려 준다 — 실제로
           // 체육관 배틀 그림에 대고 쏘았더니 문과 길바닥이 나왔다
-          const eye = stage.battleStage.active
-            ? stage.battleStage : ws.worldState.camera
-          const look = stage.battleStage.active
-            ? stage.battleStage.target : ws.worldState.camera.target
+          // 차례는 `EngineDriver`가 렌더 직전에 고르는 것과 같아야 한다
+          const eye = stage.cinematicStage.active ? stage.cinematicStage
+            : stage.starterStage.active ? stage.starterStage
+              : stage.battleStage.active ? stage.battleStage : ws.worldState.camera
+          const look = eye.target
           // 카메라를 씬에서 찾을 수 없으므로(R3F는 기본 카메라를 씬에 안 넣는다)
-          // 자리·겨눈 곳·화각으로 직접 세운다. 화각은 `Stage.tsx`가 정한 55다
-          const cam = new THREE.PerspectiveCamera(55, w / h, 0.1, 400)
+          // 자리·겨눈 곳·화각·머리 방향으로 직접 세운다.
+          //
+          // ⚠️ **화각을 55로 박아 두면 안 된다.** `EngineDriver`가 렌더 직전에
+          // `cameraSystem.fov`를 먹이고, **깨어진 세계는 8.09도**다(PARITY §6.10).
+          // 55로 쏘면 화면의 가운데 8도만 빼고 전부 빗나가서, 벽돌이 그려진
+          // 픽셀에 대고 「하늘이다」라고 답한다 — 실제로 그렇게 답했다.
+          // ⚠️ **머리 방향도 그렇다.** 그 세계는 벽과 천장을 걷느라 `up`이 돈다
+          const fov = stage.cinematicStage.active ? stage.cinematicStage.fov
+            : stage.starterStage.active ? stage.starterStage.fov
+              : stage.battleStage.active ? stage.battleStage.fov : camsys.cameraSystem.fov
+          const cam = new THREE.PerspectiveCamera(fov, w / h, 0.1, 400)
           cam.position.copy(eye.position)
+          cam.up.copy(stage.cinematicStage.active || stage.starterStage.active
+            || stage.battleStage.active
+            ? new THREE.Vector3(0, 1, 0) : ws.worldState.camera.up)
           cam.lookAt(look)
           cam.updateMatrixWorld()
           const ray = new THREE.Raycaster()
@@ -549,11 +563,14 @@ async function main() {
                 at: [+it.point.x.toFixed(1), +it.point.y.toFixed(1), +it.point.z.toFixed(1)],
               }
             }),
+            // 어떤 렌즈로 쏘았는지 같이 낸다 — 빗나갔을 때 여기부터 본다
+            fov: +fov.toFixed(2),
           }
         }, [px, py, VIEWPORT.width, VIEWPORT.height])
         const o = (py * shot.w + px) * shot.bpp
         const pixel = `#${[0, 1, 2].map((k) => shot.pixels[o + k].toString(16).padStart(2, '0')).join('')}`
-        console.log(`  ${id} (${String(px)},${String(py)}) 화면 ${pixel} ${found.err ?? ''}`)
+        console.log(`  ${id} (${String(px)},${String(py)}) 화면 ${pixel}`
+          + ` 화각 ${String(found.fov ?? '?')} ${found.err ?? ''}`)
         for (const r of found.rows ?? []) {
           console.log(`     ${String(r.d).padStart(6)}  ${r.mesh.padEnd(16)}`
             + ` ${r.mat.padEnd(18)} ${r.map} ${r.rgb} 불투명 ${String(r.op)}`
