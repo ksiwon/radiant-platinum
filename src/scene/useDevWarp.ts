@@ -9,7 +9,7 @@
 // `engine/dev/*`는 청크로도 나오지 않는다. 이 파일에 남는 것은 빈 함수 셋이다.
 import { useCallback, useMemo, useRef } from 'react'
 import type { MapGrid } from '../engine/map/grid'
-import { mapById, walkOutOfDoor, warpsOf } from '../engine/map/world'
+import { mapById, npcsOf, walkOutOfDoor, warpsOf } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { abortScript } from '../engine/script/field'
 import { useBattleStore } from '../state/battleStore'
@@ -102,7 +102,7 @@ export function useDevWarp(enter: EnterFn): DevWarpHooks {
     const resolveSpot = dev.resolveSpot
     gridFor(header.matrix)
       .then((next) => {
-        const at = resolveSpot(next, cp.map, cp.spot, warpsOf(cp.map))
+        const at = resolveSpot(next, cp.map, cp.spot, warpsOf(cp.map), npcsOf(cp.map))
         if (!at) { console.error(`확인 지점 ${cp.id}: 설 자리를 못 찾았다`); return }
         // 문 위면 통행 불가라 한 칸 내려 세운다 — 워프가 지나는 길과 같다
         const out = walkOutOfDoor(next, at.x, at.z)

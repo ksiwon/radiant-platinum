@@ -70,6 +70,9 @@ maybe('확인 지점', () => {
   })
 
   const warpsOf = (mapId: number) => events[String(maps[mapId]!.events)]?.warps ?? []
+  // 사람도 같이 넘긴다 — 화면이 그렇게 부른다(`scene/useDevWarp`). 안 넘기면
+  // `open` 자리의 울타리가 안 서서 **시험과 화면이 다른 칸을 고른다**
+  const npcsOf = (mapId: number) => events[String(maps[mapId]!.events)]?.npcs ?? []
 
   it('번호가 겹치지 않고 맵이 전부 실재한다', () => {
     expect(new Set(CHECKPOINTS.map((c) => c.id)).size).toBe(CHECKPOINTS.length)
@@ -80,7 +83,7 @@ maybe('확인 지점', () => {
     const grid = grids.get(maps[c.map]!.matrix)
     expect(grid, `행렬 ${maps[c.map]!.matrix}이 없다`).toBeDefined()
 
-    const at = resolveSpot(grid!, c.map, c.spot, warpsOf(c.map))
+    const at = resolveSpot(grid!, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))
     expect(at, '자리를 못 찾았다').not.toBeNull()
 
     // 씬이 하는 것과 같은 손질. 문 위는 통행 불가라 한 칸 내려 세운다
@@ -133,7 +136,7 @@ maybe('확인 지점', () => {
     expect(grass.length).toBeGreaterThan(0)
     for (const c of grass) {
       const grid = grids.get(maps[c.map]!.matrix)!
-      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map))!
+      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
       expect(isLandEncounterTile(grid.behavior(Math.floor(at.x), Math.floor(at.z))), c.label).toBe(true)
       // 야생이 나오려면 그 맵에 인카운터 표가 붙어 있어야 한다
       expect(maps[c.map]!.encounters, c.label).not.toBeNull()
@@ -145,7 +148,7 @@ maybe('확인 지점', () => {
       if (c.spot.kind !== 'atWarp') continue
       const grid = grids.get(maps[c.map]!.matrix)!
       const w = warpsOf(c.map)[c.spot.index]!
-      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map))!
+      const at = resolveSpot(grid, c.map, c.spot, warpsOf(c.map), npcsOf(c.map))!
       // 붙어 있는 칸이다 — 맨해튼 거리 1
       expect(Math.abs(Math.floor(at.x) - w.x) + Math.abs(Math.floor(at.z) - w.z), c.label).toBe(1)
       // 한 걸음 앞이 그 워프다. `facing`은 atan2(dx, dz)라 0이 남쪽이다

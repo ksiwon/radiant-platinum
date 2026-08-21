@@ -1650,10 +1650,12 @@ function look(fromX: number, fromZ: number, toX: number, toZ: number): number {
  */
 export function resolveSpot(
   grid: MapGrid, mapId: number, spot: Spot, warps: readonly Warp[],
+  /** 그 맵에 선 사람들. 문과 함께 **방이 어디까지인가**를 알려 준다 */
+  people: readonly { x: number, z: number }[] = [],
 ): Placement | null {
   if (spot.kind === 'grass') return grassSpot(grid, mapId)
   if (spot.kind === 'tile') return center(spot.x, spot.z, spot.facing)
-  if (spot.kind === 'open') return openSpot(grid, mapId)
+  if (spot.kind === 'open') return openSpot(grid, mapId, [...warps, ...people])
 
   const w = warps[spot.index]
   if (!w) return null
@@ -1678,17 +1680,38 @@ export function resolveSpot(
  * 있는 모양이라 한가운데가 대개 빈 곳이고, 거기 세우면 화면이 새까맣게 나온다
  * (실측: B1F·B2F 둘 다). 그래서 **둘레에 걸어갈 칸이 제일 많은** 자리를 고른다
  */
-function openSpot(grid: MapGrid, mapId: number): Placement | null {
+function openSpot(
+  grid: MapGrid, mapId: number, marks: readonly { x: number, z: number }[],
+): Placement | null {
   const n = grid.chunkTiles
   const mine = grid.meta.chunks.filter((c) => c.zone === mapId)
   const boxes = mine.length > 0 ? mine : grid.meta.chunks.filter((c) => c.zone < 0)
   /** 둘레를 세는 반지름. 발판 한 장이 대개 이보다 넓다 */
   const R = 3
+  // ⚠️ **통행 격자만 보면 방 밖에 선다.** 격자는 그려진 바닥 밖도 「안
+  // 막힘」으로 두는데(`scene/ChunkModels` — 방을 아는 자료는 그려진 바닥뿐이다),
+  // 방보다 바깥이 더 트인 맵에서는 둘레 점수가 **방 밖에서 제일 높다.**
+  // 실측 — 갤럭시단아지트(맵 305)에서 z=27.5를 골랐는데 그려진 바닥은
+  // z 3~23이라 주인공이 허공에 섰고, 화면이 밝기 36·색 487로 거의 검었다.
+  //
+  // 문과 사람은 **방 안에** 있다. 셋 이상이면 그 테두리로 후보를 가둔다.
+  // 셋 미만이면 안 가둔다 — **깨어진 세계가 그렇다.** 거기는 문도 사람도
+  // 없어서(실측: B3F·B4F·기라티나 방이 셋 다 0) 가두면 후보가 통째로 사라진다
+  const fence = marks.length >= 3
+    ? {
+        minX: Math.min(...marks.map((m) => m.x)) - 1,
+        maxX: Math.max(...marks.map((m) => m.x)) + 1,
+        minZ: Math.min(...marks.map((m) => m.z)) - 1,
+        maxZ: Math.max(...marks.map((m) => m.z)) + 1,
+      }
+    : null
   let best: [number, number] | null = null
   let bestScore = -1
   for (const c of boxes) {
     for (let tz = c.my * n; tz < (c.my + 1) * n; tz++) {
+      if (fence !== null && (tz < fence.minZ || tz > fence.maxZ)) continue
       for (let tx = c.mx * n; tx < (c.mx + 1) * n; tx++) {
+        if (fence !== null && (tx < fence.minX || tx > fence.maxX)) continue
         if (grid.isBlocked(tx, tz)) continue
         let score = 0
         for (let dz = -R; dz <= R; dz++) {
