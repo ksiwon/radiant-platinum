@@ -119,14 +119,16 @@ export function veilstoneProps(): FeatureProp[] {
     }
     out.push({
       key: `샌드백${String(i)}`, model: VEILSTONE_MODEL.bag, from: 'fldeff',
-      x: fx + 0.5, y: 0, z: fz + 0.5,
+      x: fx + 0.5 + VEILSTONE_NODE.bag[0], y: VEILSTONE_NODE.bag[1],
+      z: fz + 0.5 + VEILSTONE_NODE.bag[2],
     })
   }
   for (const key of now.stacks) {
     const [x, z] = key.split(',').map(Number)
     out.push({
       key: `타이어${key}`, model: VEILSTONE_MODEL.stack, from: 'fldeff',
-      x: (x ?? 0) + 0.5, y: 0, z: (z ?? 0) + 0.5,
+      x: (x ?? 0) + 0.5 + VEILSTONE_NODE.stack[0], y: VEILSTONE_NODE.stack[1],
+      z: (z ?? 0) + 0.5 + VEILSTONE_NODE.stack[2],
     })
   }
   return out
@@ -140,6 +142,38 @@ export function veilstoneProps(): FeatureProp[] {
  * 소품과 같은 아카이브·같은 형식이라 그쪽 파이프라인에 이어 붙였고, 번호는
  * 그 목록에서의 자리다 (`tools/extract/distortionProps.js`)
  */
+/**
+ * 모델이 제 노드에 적어 둔 이동. **한 타일이 16유닛**이라 그 값을 16으로 나눈 것이다.
+ *
+ * ⚠️ **없으면 샌드백이 통째로 바닥 밑에 그려진다.** 우리 SBC 리더가 노드 명령을
+ * 안 읽고 재질·폴리곤 짝만 가져와서(`import/platinum/chunks`의 `readSbc`),
+ * 노드에 붙은 이동이 통째로 사라진다. 자리 표에 없는 값이라 아무도 안 잡았다 —
+ * 스무 개가 `visible: true`로 제자리에 서 있는데 화면에는 하나도 안 나왔다.
+ *
+ * 실측(`fldeff.narc`의 노드 사전):
+ *
+ *   샌드백(113)      polySurface26  t = (0, 71.600, 0)   → y +4.475
+ *   서 있는 타이어(114) pCube1         t = (0, 8.000, −6.000) → y +0.5 · z −0.375
+ *
+ * 견줘 보면 맞는다: 샌드백 기하가 y −4.48~−0.31이라 4.475를 올리면 밑동이
+ * 바닥에 닿고, 타이어는 −0.52~0.33이라 0.5를 올리면 −0.02~0.83이 된다.
+ *
+ * ⚠️ **높이는 화면으로 봤고 z는 못 봤다.** 샌드백을 올리니 받침이 바닥에 닿은
+ * 빨간 자루가 실제로 떴다(실측). 타이어의 z −0.375는 표에서 온 값이고, 그 방은
+ * 카메라가 벽에 껴서 아직 눈으로 확인 못 했다 — 축 방향이 롬과 같은지도 안 쟀다.
+ * 한 칸의 3/8이라 틀려도 제 칸을 벗어나지는 않는다
+ *
+ * ⚠️ **여기서만 고친다.** 노드 이동을 굽는 쪽에서 제대로 붙이면 소품 서른아홉 중
+ * **열넷**이 같이 움직이는데(깨어진 세계의 발판 여덟 · 폭포 · 덩굴꽃 · 바위 · 문이
+ * 거기 든다), 그것들은 지금 화면에서 제대로 서 있다 — `PROP_POS_OFFSET`이
+ * 손으로 맞춰 놓은 값으로 이미 벌충하고 있기 때문이다. 통째로 고치려면 그 표를
+ * 다시 뽑고 열넷을 전부 눈으로 봐야 한다 ([REPAIR.md](../../docs/REPAIR.md) §12)
+ */
+const VEILSTONE_NODE = {
+  stack: [0, 8 / 16, -6 / 16],
+  bag: [0, 71.6 / 16, 0],
+} as const
+
 const VEILSTONE_MODEL = { toppled: 25, stack: 26, bag: 27 } as const
 
 /** 한 프레임 (`VeilstoneGym_AnimationState_MovePunchingBag`) */
