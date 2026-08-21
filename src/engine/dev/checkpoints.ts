@@ -1810,6 +1810,16 @@ function featureSpot(grid: MapGrid, mapId: number, of: FeatureKind): Placement |
     // 가운데 문. 문은 전부 한 줄에 있어서 그 앞에 서면 다 보인다
     const doors = hearthomeWrongDoors(room, -1)
     const mid = doors[Math.floor(doors.length / 2)]
+    // ⚠️ **이 방은 세 칸이 딱 맞고 더도 덜도 안 된다.** 세로가 여덟 칸(z 3~10)뿐이라
+    // 같은 줄에서 세 자리를 찍어 재고 골랐다 — z4는 색 421에 유령 소품이 카메라를
+    // 덮어 주인공이 안 보이고, z5는 **742**로 방과 주인공이 같이 들고, z6은 414에
+    // 밝기 편차 18.7이다.
+    //
+    // ⚠️ **스윕 그림은 이보다 나쁘다.** 스윕이 한 걸음 걷고 찍어서 z6이 되고,
+    // 그 화면은 73.1%가 검다. 그래도 z5를 고른 것은 **뛰어든 사람이 보는 첫
+    // 화면**이 여기이기 때문이다 — 스윕 그림은 되돌아보는 기록이다. 걸어 나가면
+    // 카메라가 그려진 바닥 밖으로 나가는 것 자체는 따로 적어 뒀다
+    // ([REPAIR.md](../../../docs/REPAIR.md) §13)
     return mid === undefined ? null : inFrontOf(onGrid, mid.x, mid.z, FRAMING)
   }
 
