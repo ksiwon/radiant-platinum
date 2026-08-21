@@ -30,6 +30,7 @@ const SPOT_NOTE: Record<Checkpoint['spot']['kind'], string> = {
   grass: '풀숲',
   open: '빈 칸',
   tile: '정한 칸',
+  feature: '장치 앞',
 }
 
 /** 시각 → 원작 시간대 이름 (`map/timeOfDay`의 경계) */

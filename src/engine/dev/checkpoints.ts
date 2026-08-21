@@ -20,6 +20,12 @@ import {
 import {
   DISTRIBUTION_EVENT, DISTRIBUTION_MAGIC, VAR_DISTRIBUTION_EVENT_FIRST,
 } from '../world/siwon'
+import { ETERNA_CLOCK_CENTER_X, ETERNA_CLOCK_CENTER_Z } from '../world/eternaGym'
+import { hearthomeRoomOf, hearthomeWrongDoors } from '../world/hearthomeGym'
+import { VEILSTONE_BAGS, VEILSTONE_STACKS } from '../world/veilstoneGym'
+import { PASTORIA_BUTTON_MODEL, PASTORIA_PLATE_BOX } from '../world/pastoriaGym'
+import { CANALAVE_COLLISION, CANALAVE_PLATFORMS } from '../world/canalaveGym'
+import { SUNYSHORE_GEARS, sunyshoreRoomOf } from '../world/sunyshoreGym'
 
 /** 파티에 넣을 한 마리 */
 export interface PartySpec {
@@ -53,6 +59,24 @@ type Spot =
    * 밭 넷이 도로 한복판에 있어서 「풀 아무 데나」로는 영영 안 걸린다
    */
   | { kind: 'tile'; x: number; z: number; facing: number }
+  /**
+   * 그 맵의 **장치 앞** — 체육관의 꽃시계·문·샌드백·물바닥.
+   *
+   * ⚠️ **좌표를 손으로 안 적는다.** 장치가 제 표에 적어 둔 자리를 읽고, 밟는
+   * 것이면 그 위에 · 치는 것이면 그 옆에 서서 그쪽을 본다.
+   *
+   * ⚠️ **여기 없는 둘은 이유가 있다.** 운하시티의 뜨는 판과 물가시티의 톱니는
+   * **걷는 바닥이 장치 자신**이라 통행 판정이 맵 격자가 아니라 장치의 표에
+   * 있다(`CANALAVE_COLLISION` · `SUNYSHORE_BLOCKED`). 격자만 보는 이 함수는
+   * 그 방을 통째로 「안 막힘」으로 읽어서 허공을 고른다 — 실측으로 맵 35의
+   * (16,9)와 그 이웃 넷이 전부 「뚫림」이었다. 그 둘은 문간에 세운다
+   */
+  | { kind: 'feature'; of: FeatureKind }
+
+/** `feature` 자리가 가리킬 수 있는 장치 */
+export type FeatureKind =
+  | 'eternaClock' | 'hearthomeDoors' | 'veilstoneBag' | 'pastoriaButton'
+  | 'canalaveFloat' | 'sunyshoreGear'
 
 /** 도착하자마자 열 배틀 */
 type DevBattle =
@@ -800,6 +824,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge1,
   },
   {
+    id: 'eterna-clock',
+    label: '영원 체육관 · 꽃시계',
+    env: '실내 · 체육관 장치 (13칸짜리 꽃 판과 바늘 둘) · 배지 1개',
+    try: [
+      '시계 한가운데를 밟고 서서 바늘 둘이 제자리에 있는지 본다',
+      '바늘이 만드는 길을 걸어 관장 쪽으로 갈 수 있는지 본다',
+      '⚠️ 시계는 다섯 상태를 스크립트가 넘긴다 — 바늘 각이 그 상태와 맞는지 본다',
+    ],
+    map: 67,
+    spot: { kind: 'feature', of: 'eternaClock' },
+    ...STAGE.badge1,
+  },
+  {
     id: 'gym2',
     label: '영원 체육관 · 유채 (풀)',
     env: '실내 · 체육관 (풀) · 배지 1개에서 2개로',
@@ -867,6 +904,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 117,
     spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge2,
+  },
+  {
+    id: 'hearthome-doors',
+    label: '연고 체육관 · 문 고르기 (첫째 방)',
+    env: '실내 · 체육관 장치 (같아 보이는 문 셋 · 유령 소품이 매달린 방) · 배지 2개',
+    try: [
+      '문 셋이 한 줄에 서 있고 생김새가 같은지 본다',
+      '⚠️ 아무 문으로나 나가 본다 — 하나만 앞으로 가고 나머지는 입구로 되돌린다',
+      '되돌려진 뒤 다시 들어오면 답이 바뀌어 있는지 본다',
+    ],
+    map: 89,
+    spot: { kind: 'feature', of: 'hearthomeDoors' },
     ...STAGE.badge2,
   },
   {
@@ -965,6 +1015,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge3,
   },
   {
+    id: 'veilstone-bags',
+    label: '장막 체육관 · 샌드백',
+    env: '실내 · 체육관 장치 (샌드백 아홉 · 타이어 열하나) · 배지 3개',
+    try: [
+      '⚠️ 앞 칸에 샌드백이 **보이는가** — 지금은 바닥 밑에 그려져 안 보인다 (REPAIR §12)',
+      '앞 칸을 A로 친다 — 안 보여도 밀리기는 한다. 말이 걸리면 안 된다',
+      '샌드백이 미끄러지는 동안 조작이 멈추는지 본다',
+    ],
+    map: 133,
+    spot: { kind: 'feature', of: 'veilstoneBag' },
+    ...STAGE.badge3,
+  },
+  {
     id: 'gym4',
     label: '장막 체육관 · 자두 (격투)',
     env: '실내 · 체육관 (격투) · 배지 3개에서 4개로',
@@ -988,6 +1051,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 120,
     spot: { kind: 'atWarp', index: 0 },
+    ...STAGE.badge4,
+  },
+  {
+    id: 'pastoria-water',
+    label: '들판 체육관 · 물바닥 단추',
+    env: '실내 · 체육관 장치 (높이가 세 칸으로 갈리는 물) · 배지 4개',
+    try: [
+      '선 자리가 파란 단추다 — 밟으면 물이 오르는지 본다',
+      '물이 오르내리는 동안 딛는 높이가 따라오는지 본다',
+      '⚠️ 초록 단추는 지금 물이 어디 있느냐로 오르거나 내린다',
+    ],
+    map: 122,
+    spot: { kind: 'feature', of: 'pastoriaButton' },
     ...STAGE.badge4,
   },
   {
@@ -1120,6 +1196,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 311,
     spot: { kind: 'grass' },
+    ...STAGE.badge5,
+  },
+  {
+    id: 'canalave-floats',
+    label: '운하 체육관 · 뜨는 판',
+    env: '실내 · 체육관 장치 (바닥이 없고 판 스물넷이 떠 있다) · 배지 5개',
+    try: [
+      '0층 판 앞에 선다 — 판 스물넷이 층마다 떠 있는 것을 본다',
+      '판을 밟아 탄다 — 빨간 판 둘은 세 층을 한 번에 오간다',
+      '판에 붙어 올라가는 동안 주인공이 같이 뜨는지 본다',
+    ],
+    map: 35,
+    spot: { kind: 'feature', of: 'canalaveFloat' },
     ...STAGE.badge5,
   },
   {
@@ -1296,6 +1385,19 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ],
     map: 164,
     spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge7,
+  },
+  {
+    id: 'sunyshore-gears',
+    label: '물가 체육관 · 톱니 (첫째 방)',
+    env: '실내 · 체육관 장치 (톱니 셋이 도는 방) · 배지 7개',
+    try: [
+      '가운데 톱니 앞에 선다 — 셋이 어느 쪽으로 도는지 본다',
+      '단추를 눌러 상태 넷을 돌린다 — 도는 동안 길이 갈린다',
+      '⚠️ 방 셋이 톱니 수도 회전도 다르다. 여기는 첫째 방이다',
+    ],
+    map: 154,
+    spot: { kind: 'feature', of: 'sunyshoreGear' },
     ...STAGE.badge7,
   },
   {
@@ -1656,6 +1758,7 @@ export function resolveSpot(
   if (spot.kind === 'grass') return grassSpot(grid, mapId)
   if (spot.kind === 'tile') return center(spot.x, spot.z, spot.facing)
   if (spot.kind === 'open') return openSpot(grid, mapId, [...warps, ...people])
+  if (spot.kind === 'feature') return featureSpot(grid, mapId, spot.of)
 
   const w = warps[spot.index]
   if (!w) return null
@@ -1669,6 +1772,153 @@ export function resolveSpot(
     return center(tx, tz, look(tx, tz, w.x, w.z))
   }
   return null
+}
+
+/**
+ * 장치 앞에 세운다.
+ *
+ * ⚠️ **확인 지점 여덟이 전부 문간에서 관장전을 곧바로 열어**, 만들어 둔 장치
+ * 여섯을 화면에서 한 번도 안 보고 있었다. 여기가 그 자리다 — 배틀 없이 장치
+ * 앞에 세워 두면 밟고 치고 눌러 볼 수 있다.
+ *
+ * ⚠️ **「걸을 수 있다」를 맵 격자에만 물으면 안 되는 장치가 둘이다.** 운하시티의
+ * 뜨는 판과 물가시티의 톱니는 통행 판정이 제 표에 있어서(`CANALAVE_COLLISION` ·
+ * `SUNYSHORE_REGIONS`) 맵 격자가 그 방을 통째로 「안 막힘」으로 둔다 — 실측으로
+ * 맵 35의 (16,9)와 이웃 넷, 맵 154의 (3,8)과 이웃 넷이 전부 뚫려 있었다.
+ * 그래서 갈래마다 **무엇에 묻는가**를 따로 준다.
+ */
+function featureSpot(grid: MapGrid, mapId: number, of: FeatureKind): Placement | null {
+  /** 맵 격자에 묻는다. 장치가 얹는 것이 없는 방은 이것으로 충분하다 */
+  const onGrid = (x: number, z: number): boolean => !grid.isBlocked(x, z)
+
+  if (of === 'eternaClock') {
+    // 시계 한가운데를 **밟고** 선다. 꽃 판과 바늘 둘이 발밑에서 도는 자리다
+    const x = ETERNA_CLOCK_CENTER_X, z = ETERNA_CLOCK_CENTER_Z
+    return onGrid(x, z) ? center(x, z, look(x, z, x, z - 1)) : null
+  }
+
+  if (of === 'pastoriaButton') {
+    // 단추도 **밟는** 것이다. 파란 단추를 고른다 — 처음 상태가 주황이라
+    // 그 자리에서 누르면 물이 실제로 움직인다 (`pressPastoriaButton`)
+    const at = pastoriaButtonTile(grid)
+    return at === null ? null : center(at[0], at[1], look(at[0], at[1], at[0], at[1] - 1))
+  }
+
+  if (of === 'hearthomeDoors') {
+    const room = hearthomeRoomOf(mapId)
+    if (room === null) return null
+    // 가운데 문. 문은 전부 한 줄에 있어서 그 앞에 서면 다 보인다
+    const doors = hearthomeWrongDoors(room, -1)
+    const mid = doors[Math.floor(doors.length / 2)]
+    return mid === undefined ? null : inFrontOf(onGrid, mid.x, mid.z, FRAMING)
+  }
+
+  if (of === 'sunyshoreGear') {
+    const room = sunyshoreRoomOf(mapId)
+    if (room === null) return null
+    const gears = SUNYSHORE_GEARS[room] ?? []
+    const mid = gears[Math.floor(gears.length / 2)]
+    // ⚠️ 톱니는 **바닥을 안 판다** — 막는 것은 톱니 상자뿐이고 바닥은 통짜다.
+    // 그래서 여기만은 맵 격자로 물어도 허공에 안 선다
+    return mid === undefined ? null : inFrontOf(onGrid, mid.x, mid.z, FRAMING)
+  }
+
+  if (of === 'canalaveFloat') {
+    // ⚠️ **이 방은 바닥이 없다.** 딛는 자리가 판과 층 표뿐이라 맵 격자에
+    // 물으면 허공을 고른다. 0층 표에 묻는다
+    const floor0 = CANALAVE_COLLISION[0]
+    if (floor0 === undefined) return null
+    const onFloor0 = (x: number, z: number): boolean =>
+      x >= 0 && x < 32 && z >= 0 && z < 32 && floor0[z * 32 + x] === 0
+    for (const p of CANALAVE_PLATFORMS) {
+      // 뛰어들면 판은 제 처음 자리에 있다. 0층에서 출발하는 판만 본다
+      if (p.startB || p.floorA !== 0) continue
+      const at = inFrontOf(onFloor0, p.a[0], p.a[2], FRAMING)
+      if (at !== null) return at
+    }
+    return null
+  }
+
+  // 샌드백은 **치는** 것이라 바로 옆에 서야 한다 — 물러설 수가 없다.
+  //
+  // ⚠️ **어느 샌드백이냐로 화면이 갈린다.** 이 방은 링이 솟아 있고 경사가
+  // 있어서, 통행 격자로 「제일 트인」 자리를 고르면 그려진 것 속으로 카메라가
+  // 들어간다(`openSpot`이 갤럭시단아지트에서 겪은 것과 같은 자리다). 아홉을
+  // 전부 찍어 재고 고른다 — 옆 칸의 색 수다:
+  //
+  //   0(3,10) 121   1(4,22) 649   2(8,7)   94   3(8,20) 675   4(15,26) 654
+  //   5(16,10) 720  6(20,17) 805  7(21,24) 289  8(23,11) 626
+  //
+  // 그중 다섯(2·3·5·6·8)은 그림도 봤다. **색 수 하나로는 못 고른다** — 제일
+  // 큰 6번은 카메라가 벽에 껴서 갈색 판만 찍혔고, 3번은 링만 나오고 주인공이
+  // 안 보이고, 5번은 카메라가 트레이너 머리 속이었다. 본 다섯 중 **8번만
+  // 주인공과 방이 같이 든다.** 0·1·4·7은 수만 재고 그림은 안 봤다
+  const CHOSEN_BAG = 8
+  const props = new Set(
+    [...VEILSTONE_BAGS, ...VEILSTONE_STACKS].map(([x, z]) => `${String(x)},${String(z)}`))
+  const free = (x: number, z: number): boolean =>
+    onGrid(x, z) && !props.has(`${String(x)},${String(z)}`)
+  // 표가 바뀌어 그 자리가 없어지면 앞에서부터 아무 데나 — 「샌드백 옆」이라는
+  // 뜻만 지키면 되고, 예쁜지는 그때 다시 찍어 보면 된다
+  const order = [CHOSEN_BAG, ...VEILSTONE_BAGS.keys()]
+  for (const i of order) {
+    const bag = VEILSTONE_BAGS[i]
+    if (bag === undefined) continue
+    const at = beside(free, bag[0], bag[1])
+    if (at !== null) return at
+  }
+  return null
+}
+
+/** 그 칸의 네 이웃 중 걸을 수 있는 칸에서 그 칸을 본다 */
+function beside(
+  ok: (x: number, z: number) => boolean, tx: number, tz: number,
+): Placement | null {
+  for (const [dx, dz] of AROUND) {
+    const x = tx + dx, z = tz + dz
+    if (!ok(x, z)) continue
+    return center(x, z, look(x, z, tx, tz))
+  }
+  return null
+}
+
+/**
+ * 장치에서 몇 칸 물러서서 볼 것인가.
+ *
+ * ⚠️ **바로 앞에 서면 카메라가 벽을 뚫는다.** 연고시티 문 앞(z=3)에 세우니
+ * 카메라가 천장 너머로 나가 색 456 · 밝기 44.7짜리 어두운 화면이 찍혔고,
+ * 문간에 세운 운하·물가는 아예 카메라가 바닥을 내려다봤다(실측). 세 칸이면
+ * 장치와 그 둘레가 같이 든다 — 영원시계가 그 거리다
+ */
+const FRAMING = 3
+
+/**
+ * 그 칸을 **남쪽으로 물러서서** 본다. 실내 장치는 대개 방의 북쪽에 있고
+ * 문이 남쪽이라, 물러서는 쪽이 곧 방 안이다.
+ *
+ * 걸을 수 없는 칸을 만나면 거기서 멈춘다 — 한 칸도 못 물러서면 null이다
+ */
+function inFrontOf(
+  ok: (x: number, z: number) => boolean, tx: number, tz: number, back: number,
+): Placement | null {
+  let z = tz
+  for (let i = 0; i < back && ok(tx, z + 1); i++) z++
+  return z === tz ? null : center(tx, z, look(tx, z, tx, tz))
+}
+
+/** 물바닥 방의 단추 한 칸. 파란 것이 있으면 그것, 없으면 아무 단추나 */
+function pastoriaButtonTile(grid: MapGrid): [number, number] | null {
+  const box = PASTORIA_PLATE_BOX
+  let any: [number, number] | null = null
+  for (let z = box.startTileZ; z < box.startTileZ + box.sizeZ; z++) {
+    for (let x = box.startTileX; x < box.startTileX + box.sizeX; x++) {
+      const model = grid.propModelAt(x, z)
+      if (model === PASTORIA_BUTTON_MODEL.blue) return [x, z]
+      if (any === null && (model === PASTORIA_BUTTON_MODEL.green
+        || model === PASTORIA_BUTTON_MODEL.orange)) any = [x, z]
+    }
+  }
+  return any
 }
 
 /**

@@ -10,6 +10,12 @@ import { MapGrid, type MatrixMeta } from '../map/grid'
 import { walkOutOfDoor, type EventFile, type MapHeader } from '../map/world'
 import { isLandEncounterTile, type EncounterTable } from '../battle/encounter'
 import { CHECKPOINTS, HM_CARRIER, HM_TEACHES, resolveSpot, seenAlongTheWay } from './checkpoints'
+import { ETERNA_CLOCK_CENTER_X, ETERNA_CLOCK_CENTER_Z } from '../world/eternaGym'
+import { hearthomeRoomOf, hearthomeWrongDoors } from '../world/hearthomeGym'
+import { VEILSTONE_BAGS, VEILSTONE_STACKS } from '../world/veilstoneGym'
+import { PASTORIA_BUTTON_MODEL } from '../world/pastoriaGym'
+import { CANALAVE_COLLISION, CANALAVE_PLATFORMS } from '../world/canalaveGym'
+import { SUNYSHORE_GEARS, sunyshoreRoomOf } from '../world/sunyshoreGym'
 import { withData } from '../../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../../public/data')
@@ -282,5 +288,151 @@ describe('확인 지점의 진행도', () => {
     }
     // 표에 없는 id를 물으면 빈손이다
     expect(seenAlongTheWay('없는지점', table)).toEqual([])
+  })
+})
+
+maybe('장치 앞에 서는 지점', () => {
+  // ⚠️ **여덟 자리가 전부 문간에서 관장전을 곧바로 열고 있었다.** 만들어 둔
+  // 장치 여섯을 화면에서 한 번도 안 보던 자리다. 여기서 재는 것은 그 지점이
+  // **정말 장치 위나 옆인가** — 걸을 수 있는 칸인지는 위의 시험이 이미 본다.
+  let maps: MapHeader[]
+  let events: Record<string, EventFile>
+  const grids = new Map<number, MapGrid>()
+
+  beforeAll(() => {
+    maps = read('maps.json').maps as MapHeader[]
+    events = read('events.json').events as Record<string, EventFile>
+    const idx = read('matrices/interiors.json') as {
+      matrices: Record<string, MatrixMeta & { byteOffset: number }>
+    }
+    const blob = detach('matrices/interiors.bin')
+    for (const [id, meta] of Object.entries(idx.matrices)) {
+      const count = meta.tileWidth * meta.tileHeight
+      grids.set(Number(id), new MapGrid(meta, new Uint16Array(blob, meta.byteOffset, count)))
+    }
+  })
+
+  /** 그 지점이 실제로 선 칸 */
+  function tileOf(id: string): [number, number] {
+    const cp = CHECKPOINTS.find((c) => c.id === id)
+    expect(cp, `${id}이 표에 없다`).toBeDefined()
+    const grid = grids.get(maps[cp!.map]!.matrix)
+    expect(grid, `${id}의 행렬이 없다`).toBeDefined()
+    const ev = events[String(maps[cp!.map]!.events)]
+    const at = resolveSpot(grid!, cp!.map, cp!.spot, ev?.warps ?? [], ev?.npcs ?? [])
+    expect(at, `${id}의 자리를 못 찾았다`).not.toBeNull()
+    return [Math.floor(at!.x), Math.floor(at!.z)]
+  }
+
+  /** 그 칸에서 그 칸을 보고 있는가 */
+  function facesTile(id: string, tx: number, tz: number): void {
+    const cp = CHECKPOINTS.find((c) => c.id === id)!
+    const grid = grids.get(maps[cp.map]!.matrix)!
+    const ev = events[String(maps[cp.map]!.events)]
+    const at = resolveSpot(grid, cp.map, cp.spot, ev?.warps ?? [], ev?.npcs ?? [])!
+    const want = Math.atan2(tx + 0.5 - at.x, tz + 0.5 - at.z)
+    expect(at.facing, `${id}이 (${String(tx)},${String(tz)})을 안 본다`).toBeCloseTo(want, 6)
+  }
+
+  it('영원 — 꽃시계 한가운데를 밟고 선다', () => {
+    expect(tileOf('eterna-clock')).toEqual([ETERNA_CLOCK_CENTER_X, ETERNA_CLOCK_CENTER_Z])
+  })
+
+  it('연고 — 가운데 문 앞에 서서 문을 본다', () => {
+    // ⚠️ 맵 번호를 여기 안 적는다 — 지점이 어느 방을 가리키든 따라가야 한다
+    const map = CHECKPOINTS.find((c) => c.id === 'hearthome-doors')!.map
+    const room = hearthomeRoomOf(map)
+    expect(room, `맵 ${String(map)}이 문 방이 아니다`).not.toBeNull()
+    const doors = hearthomeWrongDoors(room!, -1)
+    const mid = doors[Math.floor(doors.length / 2)]!
+    const [x, z] = tileOf('hearthome-doors')
+    // 같은 줄에서 남쪽으로 물러선다 — 문이 한 줄이라 여기서 다 보인다
+    expect(x, '가운데 문과 같은 줄이 아니다').toBe(mid.x)
+    expect(z, '문 남쪽이 아니다').toBeGreaterThan(mid.z)
+    facesTile('hearthome-doors', mid.x, mid.z)
+  })
+
+  it('장막 — 샌드백 옆에 서서 샌드백을 본다', () => {
+    const [x, z] = tileOf('veilstone-bags')
+    const near = VEILSTONE_BAGS.filter(([bx, bz]) => Math.abs(x - bx) + Math.abs(z - bz) === 1)
+    expect(near.length, '샌드백 옆이 아니다').toBeGreaterThan(0)
+    // ⚠️ **샌드백·타이어가 선 칸에는 안 선다.** 그 칸들은 맵 격자에 안 적혀
+    // 있어서(장치가 얹는다) 격자만 보면 그 위에 서게 된다
+    const taken = [...VEILSTONE_BAGS, ...VEILSTONE_STACKS]
+    expect(taken.some(([tx, tz]) => tx === x && tz === z), '소품 위에 섰다').toBe(false)
+    // ⚠️ **지금 자료로는 저 거르개가 한 번도 안 걸린다.** 어느 샌드백도 네
+    // 이웃에 소품을 두고 있지 않다 — 그래서 위 한 줄만으로는 거르개를 지울
+    // 수 있는지 없는지 못 가른다. 「아직 안 걸린다」는 사실을 여기서 붙든다:
+    // 자리 표가 바뀌어 이 값이 참이 되면 거르개가 그때부터 일을 한다
+    const touching = VEILSTONE_BAGS.filter(([bx, bz]) => taken.some(
+      ([tx, tz]) => Math.abs(tx - bx) + Math.abs(tz - bz) === 1))
+    expect(touching, '소품이 맞닿은 샌드백이 생겼다').toEqual([])
+    facesTile('veilstone-bags', near[0]![0], near[0]![1])
+  })
+
+  it('들판 — 단추를 밟고 선다', () => {
+    const [x, z] = tileOf('pastoria-water')
+    const cp = CHECKPOINTS.find((c) => c.id === 'pastoria-water')!
+    const grid = grids.get(maps[cp.map]!.matrix)!
+    expect(Object.values(PASTORIA_BUTTON_MODEL), '단추 위가 아니다')
+      .toContain(grid.propModelAt(x, z))
+  })
+
+  it('운하 — 0층 판 앞에 서고 그 판을 본다', () => {
+    // ⚠️ **이 방은 바닥이 없다.** 맵 격자는 통째로 「안 막힘」이라(실측:
+    // (16,9)와 이웃 넷) 격자로 고르면 허공에 선다. 0층 표에 물어야 한다
+    const [x, z] = tileOf('canalave-floats')
+    const floor0 = CANALAVE_COLLISION[0]!
+    expect(floor0[z * 32 + x], `(${String(x)},${String(z)})이 0층 바닥이 아니다`).toBe(0)
+    // 본 쪽에 판이 있다
+    const ahead = CANALAVE_PLATFORMS.find(
+      (p) => !p.startB && p.floorA === 0 && p.a[0] === x && p.a[2] < z)
+    expect(ahead, '앞에 0층 판이 없다').toBeDefined()
+    facesTile('canalave-floats', ahead!.a[0], ahead!.a[2])
+  })
+
+  it('물가 — 가운데 톱니 앞에 서고 그 톱니를 본다', () => {
+    const room = sunyshoreRoomOf(154)
+    expect(room, '맵 154가 톱니 방이 아니다').not.toBeNull()
+    const gears = SUNYSHORE_GEARS[room!]!
+    const mid = gears[Math.floor(gears.length / 2)]!
+    const [x, z] = tileOf('sunyshore-gears')
+    expect(x, '톱니와 같은 줄이 아니다').toBe(mid.x)
+    expect(z, '톱니 남쪽이 아니다').toBeGreaterThan(mid.z)
+    facesTile('sunyshore-gears', mid.x, mid.z)
+  })
+
+  it('⚠️ 장치에 코를 박고 서지 않는다', () => {
+    // 바로 앞에 세우면 카메라가 벽을 뚫는다 — 연고 문 앞(z=3)에서 색 456 ·
+    // 밝기 44.7짜리 어두운 화면이 찍혔다(실측). 물러설 수 있는 자리는 물러선다.
+    // 샌드백만 빠진다 — **치려면 바로 옆이어야** 한다
+    for (const [id, tx, tz] of [
+      ['hearthome-doors', ...(() => {
+        const map = CHECKPOINTS.find((c) => c.id === 'hearthome-doors')!.map
+        const doors = hearthomeWrongDoors(hearthomeRoomOf(map)!, -1)
+        const mid = doors[Math.floor(doors.length / 2)]!
+        return [mid.x, mid.z] as const
+      })()],
+      ['sunyshore-gears', ...(() => {
+        const gears = SUNYSHORE_GEARS[sunyshoreRoomOf(154)!]!
+        const mid = gears[Math.floor(gears.length / 2)]!
+        return [mid.x, mid.z] as const
+      })()],
+    ] as const) {
+      const [x, z] = tileOf(id)
+      expect(Math.abs(x - tx) + Math.abs(z - tz), `${id}이 장치에 붙어 있다`)
+        .toBeGreaterThan(1)
+    }
+  })
+
+  it('장치 지점에는 배틀이 안 달린다', () => {
+    // 달리면 뛰어드는 순간 배틀이 열려서 **장치를 또 못 본다.** 이 표가
+    // 생긴 이유가 그것이다
+    for (const id of [
+      'eterna-clock', 'hearthome-doors', 'veilstone-bags',
+      'pastoria-water', 'canalave-floats', 'sunyshore-gears',
+    ]) {
+      expect(CHECKPOINTS.find((c) => c.id === id)?.battle, id).toBeUndefined()
+    }
   })
 })
