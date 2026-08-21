@@ -218,6 +218,7 @@
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
 | 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/voidShots.mjs` · `.audit/distortionLook.mjs` | PARITY §6.2 · §6.10 |
+| 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.10 |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은
 **한 번 재보는 자**다 — 명령이 어느 파일에서 몇 자리를 먹는지
