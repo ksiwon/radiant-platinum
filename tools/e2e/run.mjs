@@ -1793,7 +1793,7 @@ if (!(haveRom && haveBdsp)) {
           //
           // ⚠️ **어느 맵인지를 못 박고 기다린다.** 「맵 번호가 0보다 크다」로
           // 기다렸더니 **앞 맵이 아직 살아 있는 채로** 그 조건을 만족해서, 값이
-          // 한 칸씩 밀렸다 — 배틀타워 줄에 깨어진 세계의 573이, 나무열매 줄에
+          // 한 칸씩 밀렸다 — 배틀타워 줄에 깨어진 세계의 573이, 209번도로 줄에
           // 배틀타워의 326이 적혔다. 표가 적어 둔 맵 번호를 받아 그것과 같아질
           // 때까지 기다린다 (`story.mjs`의 `warpTo`가 같은 일을 한다)
           const wantMap = await page.evaluate(async () => {
@@ -1801,7 +1801,20 @@ if (!(haveRom && haveBdsp)) {
             return Object.fromEntries(m.CHECKPOINTS.map((c) => [c.id, c.map]))
           })
           const seen = []
-          for (const id of ['distortion', 'battletower', 'berry']) {
+          /**
+           * 깨어진 세계 · 실내 무거운 것 · 야외 무거운 것 셋을 연다.
+           *
+           * ⚠️ **표에서 없어진 이름을 부르면 여기까지 와서야 안다.** 확인 지점은
+           * 「무엇을 못 보는가」로 다시 골라지는 표라 이름이 없어질 수 있는데, 그때
+           * `locator`가 60초를 기다리다 죽으면 그 앞의 **설치 8분을 다시 돌려야**
+           * 이 자리에 닿는다. 그러니 누르기 전에 표에 있는지부터 보고 선다
+           */
+          const WANT = ['distortion', 'battletower', 'poketch']
+          const gone = WANT.filter((id) => wantMap[id] === undefined)
+          assert(gone.length === 0,
+            `확인 지점 표에 없는 이름을 부른다: ${gone.join(' · ')}`
+            + ` — 표에 있는 것은 ${String(Object.keys(wantMap).length)}개다`)
+          for (const id of WANT) {
             // ⚠️ **백틱은 토글인데, 뛴 직후에는 표가 「닫히는 중」이다.**
             // 그래서 「열려 있나」를 보고 누를지 정하면 그 틈에 걸린다 — 실측으로
             // (`.audit/warpRows.mjs`) 둘째 확인 지점에서 뛴 직후가 `열려 있다:
@@ -1834,7 +1847,7 @@ if (!(haveRom && haveBdsp)) {
             // ⚠️ **기다린 것과 적는 것이 같은 값이어야 한다.**
             // `waitForFunction`으로 기다리고 값은 따로 읽었더니, **통과시킨 값이
             // 아니라 그 뒤의 값**이 결과 줄에 적혔다 — 실측으로 `distortion 맵 -1
-            // 삼각형 0.0k`(전환 중)에 `berry`가 배틀타워의 맵 326을 달고 초록으로
+            // 삼각형 0.0k`(전환 중)에 209번도로가 배틀타워의 맵 326을 달고 초록으로
             // 지나갔다. **초록인 채로 거짓을 적는 자**라 문지기보다 나쁘다.
             // 직접 굴리면서 문턱을 넘긴 그 값을 들고 나온다
             let shape = { map: -1, tri: 0 }
@@ -1848,7 +1861,7 @@ if (!(haveRom && haveBdsp)) {
               if (shape.map === wantMap[id] && shape.tri > 1000) break
               await page.waitForTimeout(500)
             }
-            // ⚠️ **문턱을 갓 넘은 수를 적으면 오해를 산다.** 실측으로 `berry`가
+            // ⚠️ **문턱을 갓 넘은 수를 적으면 오해를 산다.** 실측으로 209번도로가
             // 2.0k로 적혔는데 스윕에서 다 붙은 값은 199.6k다 — 백 배다. 붙기를
             // 멈출 때까지 두고 그 값을 적는다 (`story.mjs`의 `settle`과 같은 뜻)
             let same = 0
