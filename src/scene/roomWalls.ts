@@ -330,8 +330,11 @@ export function floorTiles(split: Split, origin: { x: number, z: number }): numb
  * 붙는다(`node .audit/roomFloorMap.mjs`).
  *
  * 그래서 **걸어 다닐 수 있는 칸으로만 번진다.** 막힌 칸은 번지지 않고 테두리에만
- * 든다 — 벽 밑 한 겹은 방의 일부라 카메라가 그 위에 서도 발밑이 바닥이지만,
- * 그 너머로는 못 넘어간다.
+ * 든다 — 벽 밑 한 겹은 방의 일부라 카메라가 그 위에 서도 발밑이 바닥이다.
+ *
+ * ⚠️ **벽 한 겹을 빼면 문간에서 카메라가 주인공에게 붙는다.** 빼 봤더니
+ * 포켓몬센터(맵 420)의 상자가 z 13에서 끝나 문 앞(z 12.5)에 선 주인공과
+ * 카메라 사이가 **반 칸**이 됐다 — 정수리만 찍히고 화면 위 30%가 검었다.
  *
  * 카메라는 주인공이 선 방을 골라 쓴다 (`actor/camera`의 `roomAt`)
  */
@@ -376,7 +379,7 @@ export function floorRegions(
  * `floor`는 칸마다 **제일 높은 바닥 높이**, `cover`는 모서리마다 세로 면이
  * 덮는 **높이 구간들**, `tris`는 베낄 수 있는 벽 삼각형이다
  */
-function survey(split: Split): {
+function survey(split: Split, paint?: (group: number) => boolean): {
   floor: Map<number, number>
   cover: Map<string, Band[]>
   tris: WallTri[]
@@ -441,6 +444,13 @@ function survey(split: Split): {
       }
       if (y1 > top) top = y1
       if (!uv) continue
+      // ⚠️ **오려 낸 그림에서 벽을 베끼면 안 된다.**
+      //
+      // `standCutouts`가 세워 놓은 판(울타리·표지판·장식)도 세로면이라 여기
+      // 걸린다. 그중에서 베끼면 **벽이 그 장식으로 도배된다** — 연고시티 체육관
+      // 문 방에서 다크펫 그림(`yomawaru.1`)이 방 벽 재질로 뽑혀 나왔다.
+      // 벽은 속이 찬 그림이다
+      if (paint?.(group) === false) continue
       tris.push({
         group,
         ax, ay, az, ux, uy, uz, vx, vy, vz,
@@ -543,8 +553,10 @@ export function roomWalls(
   split: Split,
   door: (tx: number, tz: number) => boolean,
   origin: { x: number, z: number } = { x: 0, z: 0 },
+  /** 이 서브메시에서 벽 그림을 베껴도 되는가. 안 주면 다 된다 */
+  paint?: (group: number) => boolean,
 ): RoomWalls | null {
-  const { floor, cover, tris, top } = survey(split)
+  const { floor, cover, tris, top } = survey(split, paint)
   if (floor.size === 0 || tris.length === 0) return null
   const holes = fillHoles(floor, cover)
 

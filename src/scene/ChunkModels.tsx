@@ -571,7 +571,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           picked.set(p, pickGround(area))
         }
         const next = pieces.map((p) => {
-          const { c, mesh, split, originX, originZ } = p
+          const { c, cutout, mesh, split, originX, originZ } = p
           for (const raw of treeSites(split)) {
             // ⚠️ **걸어 다니는 칸에는 밑동을 안 세우거나 비켜 세운다.** 원작
             // 나무는 판 한 장이라 통행 가능한 칸 위에 걸쳐 있어도 그림으로만
@@ -677,7 +677,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 실외에는 안 건다: 거기서 바닥이 끝나는 자리는 맵 가장자리라
             // 벽을 세우면 세계가 상자 안에 갇힌다
             room: indoor
-              ? roomWalls(split, isDoor, { x: originX, z: originZ })
+              ? roomWalls(split, isDoor, { x: originX, z: originZ },
+                (g) => cutout[g] !== true)
               : null,
             // ⚠️ **방 벽은 안 합친다.** 나머지 셋은 그림자를 던지는데 방 벽은
             // 받기만 한다 — 합치면 안 보이는 앞벽이 방 안에 그림자를 드리운다

@@ -357,6 +357,22 @@ export function plateLumps(
       if (len < 1e-9) continue
       // 원작이 눕혀 놓은 각인 것만 본다 — 나머지는 원래 그 각으로 놓인 지형이다
       if (!leaning(Math.abs(ny) / len)) continue
+      // ⚠️ **키가 폭보다 크면 덩이가 아니라 서 있는 그림이다.**
+      //
+      // 연고시티 체육관 문 방의 다크펫(`yomawaru.1`) 32장이 이 그물에 걸렸다 —
+      // 1타일 폭에 2타일 키인 **billboard**인데 입체로 부풀리니 방이 유령
+      // 덩어리로 메워졌다. **같은 그림이 같은 청크에서 갈렸다**: 여럿이 이어진
+      // `gm05_yomawaru`(3·5타일 폭)는 좌우 끝이 차 있어 담으로 남고, 홀로 선
+      // 쪽만 덩이가 됐다.
+      //
+      // 실측 (`node .audit/lumpSizes.mjs`, 오버월드+실내 열두 자리의 덩이 8,957장):
+      //
+      //   덩이  `imped` 1×1 7,295 · 2×2 880 · 3×1 41 · 4×1 38 · 8×1 38 …
+      //         **키/폭이 하나도 1.00을 안 넘는다**
+      //   그림  `yomawaru.1` 1×2 (2.00) · `area07_hei_h2` 0.94×2.03 (**2.16**)
+      //
+      // 1.00과 2.00 사이가 통째로 비어 있어서 그 한가운데를 문턱으로 잡는다
+      if (slopeOver(position, vs, ux, uy, uz, vx, vy, vz) > TALL_PLATE) continue
       let u0 = Infinity, u1 = -Infinity, v0 = Infinity, v1 = -Infinity
       for (const i of vs) {
         const tu = uv[i * 2]!, tv = uv[i * 2 + 1]!
@@ -369,6 +385,39 @@ export function plateLumps(
     }
   })
   return out
+}
+
+/**
+ * 덩이로 안 볼 **키/폭**. 1.00(덩이의 최댓값)과 2.00(그림의 최솟값) 사이다
+ */
+const TALL_PLATE = 1.5
+
+/**
+ * 눕힌 사각형의 **키를 폭으로 나눈 값**.
+ *
+ * 축에 나란한 상자로는 못 잰다 — 눕힌 각 때문에 깊이가 폭에 섞여 들어와,
+ * 1타일 폭에 2타일 키인 판이 「1.41 × 1.41」로 나온다. 두 변 중 **수평인 것이
+ * 폭**이고, 키는 그 축에서 제일 멀리 떨어진 꼭짓점까지의 거리다
+ */
+function slopeOver(
+  position: Float32Array, vs: number[],
+  ux: number, uy: number, uz: number, vx: number, vy: number, vz: number,
+): number {
+  const flat = Math.abs(uy) < 1e-4 ? [ux, uy, uz] : [vx, vy, vz]
+  const w = Math.hypot(flat[0]!, flat[2]!)
+  if (w < 1e-6) return Infinity
+  const fx = flat[0]! / w, fz = flat[2]! / w
+  const a = vs[0]!
+  const ax = position[a * 3]!, ay = position[a * 3 + 1]!, az = position[a * 3 + 2]!
+  let far = 0
+  for (const i of vs) {
+    const px = position[i * 3]! - ax, py = position[i * 3 + 1]! - ay
+    const pz = position[i * 3 + 2]! - az
+    const along = px * fx + pz * fz
+    const d = Math.hypot(px - fx * along, py, pz - fz * along)
+    if (d > far) far = d
+  }
+  return far / w
 }
 
 /** 그 그림 칸의 **왼쪽 끝과 오른쪽 끝이 둘 다** 불투명한가 — 담의 표시다 */

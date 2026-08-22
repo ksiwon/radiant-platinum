@@ -361,13 +361,14 @@ describe('방 나누기', () => {
     const { tiles, blocked } = parse(rows)
     // 막힌 칸을 안 보면 (= 옛 잣대) 통째로 한 덩어리다
     expect(floorRegions(tiles, () => false)).toHaveLength(1)
-    // 보면 방과 바깥이 갈린다. 방 상자는 벽 한 겹까지다 (x 1~5 · z 1~5)
+    // 보면 방과 바깥이 갈린다. 방 상자는 벽 한 겹까지다 (x 1~5 · z 1~4)
     expect(floorRegions(tiles, blocked).map((r) => [r.minX, r.minZ, r.maxX, r.maxZ]))
       .toContainEqual([1, 1, 6, 5])
   })
 
   it('막힌 칸은 테두리에만 들고 그 너머로는 안 번진다', () => {
     // 벽 한 겹은 방의 일부다 — 카메라가 그 위에 서도 발밑이 바닥이다.
+    // ⚠️ 빼 봤더니 포켓몬센터 문 앞에서 카메라와 주인공 사이가 반 칸이 됐다.
     // 하지만 벽 **너머**의 바닥은 이 방이 아니다
     const [room] = boxes([
       '.#.',
