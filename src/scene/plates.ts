@@ -450,6 +450,16 @@ function edgeToEdge(
  */
 export function splitFoliage(
   mesh: ChunkMesh, cutout: readonly boolean[], lumps?: LumpSet,
+  /**
+   * 잎 판을 **걷어내지 않고 그대로 둔다.**
+   *
+   * ⚠️ **깨어진 세계가 그 자리다.** 그곳은 원작의 필드 카메라를 **그대로**
+   * 쓴다 — 41.683칸 뒤 · 화각 8.0914도 · 내려보는 각 −59.0515도
+   * (`camera.DISTORTION_FOV`, PARITY §6.10). 원작이 45°로 눕혀 둔 판은
+   * **바로 그 렌즈에서** 나무로 보이라고 그린 것이라, 그 카메라를 쓰면서
+   * 판을 세우면 화면에는 검고 각진 파편만 흩어진다.
+   */
+  keepFoliage = false,
 ): Split {
   const src = mesh.geometry
   const source = (src.getAttribute('position') as BufferAttribute).array as Float32Array
@@ -464,10 +474,12 @@ export function splitFoliage(
 
   mesh.groups.forEach(([, start, count], group) => {
     const begin = kept.length
-    const foliage = isFoliage(mesh, group, cutout)
+    const foliage = !keepFoliage && isFoliage(mesh, group, cutout)
     // 구운 그림자는 그리지 않는다 — 입체 나무가 진짜 그림자를 던진다.
-    // 대신 **어디 있었는지는 적어 둔다**: 그 자리가 원작 나무의 자리다
-    const shadow = isBakedShadow(mesh, group)
+    // 대신 **어디 있었는지는 적어 둔다**: 그 자리가 원작 나무의 자리다.
+    // 잎을 남기는 자리에서는 그림자도 원작 그대로 둔다 — 세울 나무가 없으니
+    // 걷어내면 원작에 있던 그늘만 사라진다
+    const shadow = !keepFoliage && isBakedShadow(mesh, group)
     if (shadow) { soloShadows(position, index, start, count, shadows); groups.push([begin, 0, group]); return }
     // 세워 놓은 바위 판도 걷어낸다 — `Rocks`가 입체로 다시 세운다.
     // 서브메시가 통째로 45°짜리 판이라(실측 1,001/1,001) 고를 것이 없다
@@ -1514,11 +1526,14 @@ const splitCache = new Map<string, Split>()
 
 export function cachedSplit(
   key: string, mesh: ChunkMesh, cutout: readonly boolean[], lumps?: LumpSet,
+  keepFoliage = false,
 ): Split {
-  const hit = splitCache.get(key)
+  // 잎을 남기는지가 결과를 통째로 바꾸므로 열쇠에 든다
+  const full = keepFoliage ? `${key}/잎` : key
+  const hit = splitCache.get(full)
   if (hit) return hit
-  const made = splitFoliage(mesh, cutout, lumps)
-  splitCache.set(key, made)
+  const made = splitFoliage(mesh, cutout, lumps, keepFoliage)
+  splitCache.set(full, made)
   return made
 }
 

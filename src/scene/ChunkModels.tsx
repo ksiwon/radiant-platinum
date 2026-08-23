@@ -507,13 +507,25 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         const petals: number[] = []
         const tints = new Set<number>()
         // 빌려 오기가 이웃의 바닥과 재질을 봐야 해서 두 걸음으로 나눈다
+        /**
+         * ⚠️ **깨어진 세계에서는 잎 판을 세우지 않는다.**
+         *
+         * 그곳은 원작의 필드 카메라를 **그대로** 쓴다 — 41.683칸 뒤 · 화각
+         * 8.0914도 · −59.0515도(PARITY §6.10). 원작이 45°로 눕혀 둔 판은 바로
+         * 그 렌즈에서 나무로 보이라고 그린 것이다. 그 카메라를 쓰면서 판만
+         * 세우면 원작이 맞춰 둔 짝이 깨져 **검고 각진 파편**이 흩어진다 —
+         * B4F에서 여든한 그루가 그렇게 나왔다 (REPAIR §15).
+         *
+         * 다른 맵은 우리 3인칭·1인칭으로 보므로 세우는 것이 맞다. 여기만 다르다.
+         */
+        const keepFoliage = isDistortionFloor(world.mapId ?? -1)
         const pieces: Piece[] = loaded.map(({ c, mesh }) => {
           const cutout = cutoutGroups(mesh, sheet)
           const key = `${String(c.land)}/${String(texSet)}`
           const lumps = plateLumps(
             mesh, sheet, cutout,
             (mesh.geometry.getAttribute('position') as BufferAttribute).array as Float32Array)
-          const split = cachedSplit(key, mesh, cutout, lumps)
+          const split = cachedSplit(key, mesh, cutout, lumps, keepFoliage)
           return {
             c, mesh, cutout, lumps, split,
             source: cachedFloors(key, mesh, split),
@@ -603,7 +615,9 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         }
         const next = pieces.map((p) => {
           const { c, cutout, mesh, split, originX, originZ } = p
-          for (const raw of treeSites(split)) {
+          // 잎을 남긴 자리에는 세울 나무가 없다 — `treeSites`도 빈 배열이지만
+          // 뜻을 여기서 한 번 더 적어 둔다
+          for (const raw of keepFoliage ? [] : treeSites(split)) {
             // ⚠️ **걸어 다니는 칸에는 밑동을 안 세우거나 비켜 세운다.** 원작
             // 나무는 판 한 장이라 통행 가능한 칸 위에 걸쳐 있어도 그림으로만
             // 보였다. 그걸 그대로 입체로 세우면 **길 한복판에 나무가 서고 몸이
