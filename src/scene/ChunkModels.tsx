@@ -97,7 +97,7 @@ export function materialsFor(
 ): Material[] {
   return mesh.materials.map((spec, i) => {
     const twoSided = cutout[i] === true
-    const key = materialKey(spec, twoSided)
+    const key = materialKey(spec, twoSided, i)
     const hit = cache.get(key)
     if (hit) return hit
     const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
@@ -108,9 +108,33 @@ export function materialsFor(
     const made = item && sheet
       ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep), twoSided)
       : spec.tex === null ? makeMaterial(spec, null, twoSided) : MISSING
+    if (made !== MISSING) depthPriority(made, i)
     cache.set(key, made)
     return made
   })
+}
+
+/**
+ * 서브메시 차례를 **깊이 우선순위**로 쓴다 (z-파이팅).
+ *
+ * ⚠️ **원작은 같은 평면에 두 겹을 겹쳐 놓는다.** 연고시티 관문에서 실측했다 —
+ * 한 픽셀에 광선을 쏘면 `area4_gate_a`와 `ngrass`가 **거리 8.55로 똑같이**
+ * 잡히고 월드 좌표도 (458.5, 5.1, 684)로 같다. 둘 다 z=684 한 평면에 놓인
+ * 세로 판이고, 관문 띠가 잔디 벽 위에 덧그려진 것이다. 바로 위(y 78)와
+ * 아래(y 108) 픽셀에서는 `ngrass` 하나만 잡히니 겹친 띠가 좁다.
+ *
+ * DS는 폴리곤을 **목록 차례대로** 그려서 나중 것이 이겼다. 우리는 깊이 버퍼로
+ * 그리므로 깊이가 같으면 픽셀마다 승자가 갈려 **가로 줄무늬**가 된다.
+ *
+ * ⚠️ **자리를 옮겨서 고치지 않는다.** 정점을 법선 방향으로 밀면 그 판이
+ * 옆면에서 떠 보이고, 얼마나 밀지도 거리마다 다르다. 깊이 값만 눈금
+ * 한 칸씩 당기면 **깊이가 같을 때만** 순서가 갈린다 — 그 밖에는 아무 영향이 없다.
+ */
+function depthPriority(material: Material, submesh: number): void {
+  material.polygonOffset = true
+  material.polygonOffsetFactor = 0
+  // 음수가 카메라 쪽이다. 차례가 뒤일수록 더 앞으로 — 원작의 그리는 차례다
+  material.polygonOffsetUnits = -(submesh + 1)
 }
 
 /**
@@ -120,9 +144,13 @@ export function materialsFor(
  * (`kage`는 (0,0,0), 옆의 `lambert1`은 (99,99,99)) 빼면 한 청크의 흰 재질
  * 둘이 먼저 만들어진 하나로 뭉쳐서 그림자와 판이 같은 색이 된다
  */
-function materialKey(spec: ChunkMesh['materials'][number], twoSided: boolean): string {
+function materialKey(
+  spec: ChunkMesh['materials'][number], twoSided: boolean, submesh: number,
+): string {
   return `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
-    + `/${(spec.d ?? []).join(',')}/${String(twoSided)}`
+    // ⚠️ **서브메시 차례도 열쇠다.** `depthPriority`가 차례마다 다른 깊이 눈금을
+    // 주므로, 이것을 빼면 먼저 만들어진 하나가 공유되어 그 눈금이 통째로 사라진다
+    + `/${(spec.d ?? []).join(',')}/${String(twoSided)}/${String(submesh)}`
 }
 
 /**
@@ -322,13 +350,16 @@ function borrowFloors(
       only(p), p.originX - self.originX, p.originZ - self.originZ,
       (from) => {
         const spec = p.mesh.materials[from]!
-        const key = materialKey(spec, false)
+        // 빌려 온 바닥도 **원래 청크에서의 차례**를 그대로 쓴다 — 그래야
+        // 깊이 우선순위(`depthPriority`)가 저쪽에서와 같은 순서로 갈린다
+        const key = materialKey(spec, false, from)
         const had = added.get(key)
         if (had !== undefined) return had
         const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
         let made = cache.get(key)
         if (!made) {
           made = item ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep)) : MISSING
+          if (made !== MISSING) depthPriority(made, from)
           cache.set(key, made)
         }
         const at = materials.length
