@@ -4,8 +4,8 @@
 // 갈 곳을 씬에 **올려 둔다**. 실제로 격자를 갈아 끼우고 세우는 것은 `MapStreamer`가
 // 이미 워프를 위해 하고 있는 그 길이다 — 새 길을 내면 그 길만 시험되지 않는다.
 //
-// **배포 번들에 들어가면 안 된다.** 부르는 쪽이 전부 `import.meta.env.DEV`로 감싼
-// 동적 import라, 프로덕션 빌드에서는 이 가지가 통째로 접히고 청크로도 안 나온다.
+// **안 켠 사람은 이 청크를 안 받는다.** 부르는 쪽이 전부 `devToolsOn()` 뒤의 동적
+// import라, `?dev=1`을 켜야 그때 받아 온다 (`app/devTools`).
 import { loadItems, loadMoves, loadSpecies } from '../data/gameData'
 import { playerTrainer, useSaveStore, type PokemonInstance } from '../state/saveStore'
 import { addItem } from '../engine/bag/bag'

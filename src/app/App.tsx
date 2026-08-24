@@ -6,13 +6,13 @@
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router'
 import { TitleScreen } from '../ui/screens/TitleScreen'
-import { PerfOverlay } from '../ui/hud/PerfOverlay'
 import { ZoneBanner } from '../ui/hud/ZoneBanner'
 import { dayTheme } from '../ui/theme/day.css'
 import { installAudioUnlock } from '../engine/audio/unlock'
 import { useMenuStore } from '../state/menuStore'
 import { useSessionStore } from '../state/sessionStore'
 import { markMap, markMenu, markScene } from './sceneMark'
+import { devToolsOn } from './devTools'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
 // ⚠️ **배틀 화면도 지연이다.** 늘 그려 두면(안에서 null을 내더라도) 배틀 UI
@@ -31,6 +31,8 @@ let bootstrapped = false
 export function App() {
   const stageMounted = useSessionStore((s) => s.stageMounted)
   const battleUp = useSessionStore((s) => s.battleScreen)
+  // 한 번 읽고 굳힌 값이다 (`app/devTools`). 계기판과 백틱이 같은 답을 봐야 한다
+  const devTools = devToolsOn()
 
   // 지금 무엇이 떠 있는지를 `<html>`에 적어 둔다 — 읽기 전용이고 `data-boot`과
   // 같은 자리다 (`sceneMark.ts`가 왜인지를 적는다)
@@ -51,9 +53,9 @@ export function App() {
     // 오디오 언락은 three를 끌고 오지 않으므로 초기 청크에 남긴다.
     // 타이틀의 "게임 시작" 클릭이 첫 제스처가 되도록 일찍 설치해야 한다 (§11.1).
     installAudioUnlock()
-    // 개발용 손잡이. 이 가지는 프로덕션 빌드에서 `false`로 접혀 사라지므로
-    // devConsole은 청크로도 나오지 않는다
-    if (import.meta.env.DEV) void import('./devConsole').then((m) => { m.installDevConsole() })
+    // 개발용 손잡이(`window.pt`). 꺼져 있으면 이 청크를 아예 안 받는다 —
+    // `devToolsOn()`은 `?dev=1`로만 참이 된다 (`app/devTools`)
+    if (devToolsOn()) void import('./devConsole').then((m) => { m.installDevConsole() })
   }, [])
 
   return (
@@ -64,14 +66,16 @@ export function App() {
         </Suspense>
       )}
       {/*
-        계기판은 **개발 빌드에만** 뜬다 (PLAN §10.5 「개발 빌드에 상시 오버레이」).
+        계기판은 **개발 손잡이가 켜졌을 때만** 뜬다 (PLAN §10.5).
         조건 없이 그리고 있어서 배포된 타이틀 왼쪽 위에 `FPS 0 · backend ?`가
         영구히 앉아 있었다 — 사람이 처음 보는 화면에 앉은 개발 계기다.
         ⚠️ 성능 계측은 이걸 안 본다. `story.mjs`·`shot.mjs`는 DOM이 아니라
         `sceneRefs`의 `perfSnapshot`을 직접 읽으므로 꺼도 그대로 잰다.
-        실기 프레임률을 눈으로 볼 일이 있으면 `pnpm dev`로 연다
+        ⚠️ **정적 import로 두면 안 된다.** 그러면 이 조각이 타이틀 초기 청크에
+        늘 실린다 — 예전에는 `import.meta.env.DEV`가 상수 `false`라 통째로
+        흔들려 나갔지만, 이제 조건이 런타임 값이라 안 흔들린다
       */}
-      {import.meta.env.DEV && <PerfOverlay />}
+      {devTools && <PerfOverlayHost />}
       <ZoneBanner />
       {battleUp && (
         <Suspense fallback={null}>
@@ -100,24 +104,42 @@ export function App() {
         </Routes>
         {/*
           ` — 확인 지점. 라우터 **안**에 두는 이유는 타이틀에서 고르면
-          `/play`로 넘어가야 하기 때문이다. 프로덕션에서는 이 가지가 접힌다
+          `/play`로 넘어가야 하기 때문이다. `?dev=1`로 켜야 붙는다
         */}
-        {import.meta.env.DEV && <DevWarpHost />}
+        {devTools && <DevWarpHost />}
       </BrowserRouter>
     </div>
   )
 }
 
 /**
- * 확인 지점 화면을 백틱(`)으로 여닫는다 — **시험용이고 배포 빌드에 없다.**
+ * 확인 지점 화면을 백틱(`)으로 여닫는다 — **`?dev=1`로 켰을 때만 붙는다.**
  *
- * 화면은 `import.meta.env.DEV` 안에서만 부르는 동적 import로 받는다. 그래서
- * 프로덕션에서는 `ui/dev/*`가 청크로도 나오지 않는다 — `lazy()`를 모듈 꼭대기에
- * 두면 그 가지가 늘 살아 있어서 이렇게 못 한다 (devConsole과 같은 수법).
+ * 화면은 눌렀을 때 받는 동적 import다. 그래서 안 켜면 `ui/dev/*`를 **한 바이트도
+ * 안 받는다** — `lazy()`를 모듈 꼭대기에 두면 그 가지가 늘 살아 있어서 이렇게
+ * 못 한다 (devConsole과 같은 수법).
  *
  * 이 껍데기가 아무것도 정적으로 안 끌어오는 것이 중요하다. 여기서 메뉴 스토어를
  * import 하면 그것이 타이틀 청크에 남는다 — 스택에 올리는 일은 화면이 직접 한다
  */
+/**
+ * 계기판을 **받아서** 붙인다.
+ *
+ * ⚠️ **`lazy()`도 정적 import도 안 된다.** 둘 다 모듈 꼭대기에서 그래프를
+ * 살려 두므로 타이틀 초기 청크에 늘 실린다. 예전에는 `import.meta.env.DEV`가
+ * 상수라 rollup이 통째로 흔들어 냈지만, 이제 조건이 런타임 값이다 —
+ * 안 켠 사람은 이 조각을 한 바이트도 안 받아야 한다
+ */
+function PerfOverlayHost() {
+  const [Overlay, setOverlay] = useState<ComponentType | null>(null)
+  useEffect(() => {
+    void import('../ui/hud/PerfOverlay')
+      .then((m) => { setOverlay(() => m.PerfOverlay) })
+      .catch((err: unknown) => { console.error('계기판을 못 받았다', err) })
+  }, [])
+  return Overlay ? <Overlay /> : null
+}
+
 type DevWarp = ComponentType<{ onClose: () => void }>
 
 function DevWarpHost() {

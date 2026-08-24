@@ -1211,6 +1211,15 @@ await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 �
   await page.goto(`${origin}/?assets=opfs`, { waitUntil: 'load' })
   assert(await waitBoot(page) === 'install:none', '개발판 손잡이가 배포본에서 먹었다')
 
+  // ⚠️ **`?dev=1`은 화면에 개발 UI를 붙일 뿐 갈래는 안 건드린다** (`app/devTools`).
+  // 그 둘이 한 손잡이가 되면 「주소로 에셋 갈래를 바꾼다」가 되어 여기 있는 판정이
+  // 전부 무의미해진다. 켠 채로도 install:none이어야 한다
+  await page.goto(`${origin}/?dev=1`, { waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '?dev=1이 에셋 갈래를 바꿨다')
+  await page.goto(`${origin}/?dev=1&assets=opfs`, { waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '?dev=1이 ?assets=opfs를 열어 줬다')
+  await page.goto(`${origin}/?dev=0`, { waitUntil: 'load' })
+
   // 표식을 손으로 바꿔도 앱은 안 따라간다 — 쓰기 전용이 아니라 **읽기 전용**이다
   await page.evaluate(() => { document.documentElement.dataset.boot = 'play:opfs' })
   await page.reload({ waitUntil: 'load' })
@@ -1227,7 +1236,7 @@ await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 �
     }
     return hits
   })
-  return `쿼리·해시·저장소·표식·?assets=opfs 전부 install:none`
+  return `쿼리·해시·저장소·표식·?assets=opfs·?dev=1 전부 install:none`
     + ` · 진입 청크의 표식 참조 ${String(reads)}건(쓰기만)`
 })
 

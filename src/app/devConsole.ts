@@ -4,9 +4,9 @@
 // 스크립트 VM이 필요한데(PLAN §6.5) 아직 없다. 그렇다고 다 만들 때까지 AI를
 // 손으로 확인할 수 없으면 안 되므로, 여기서 직접 부를 수 있게 열어 둔다.
 //
-// **배포 번들에 들어가면 안 된다.** 호출부가 `import.meta.env.DEV`로 감싼
-// 동적 import 하나뿐이라, 프로덕션 빌드에서는 그 가지가 통째로 죽고 이 모듈은
-// 청크로도 나오지 않는다. 그러니 여기서 무엇을 import 하든 초기 청크는 안 는다.
+// **안 켠 사람은 이 청크를 안 받는다.** 호출부가 `devToolsOn()` 뒤의 동적 import
+// 하나뿐이라(`app/devTools`), `?dev=1`을 켜야 그때 받아 온다. 그러니 여기서 무엇을
+// import 하든 초기 청크는 안 는다.
 import { gameLocale, useOptionsStore } from '../state/optionsStore'
 import {
   loadItems, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames, loadTrainerClasses,
