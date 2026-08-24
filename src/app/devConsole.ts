@@ -139,6 +139,14 @@ export function installDevConsole(): void {
         map: world.mapId,
         x: +p.x.toFixed(2), z: +p.z.toFixed(2), facing: +worldState.player.facing.toFixed(2),
         view: cam.mode, yaw: +cam.yaw.toFixed(3), pitch: +cam.pitch.toFixed(3),
+        // 3인칭 카메라가 **어디에 섰나**. 실내에서는 방 상자에 물려(`clampToRoom`)
+        // 주인공 바로 위로 올라붙을 수 있는데, 그러면 화면에 바닥밖에 안 남는다.
+        // 그 자리를 그림으로만 보면 「어두운 방」과 구별이 안 되므로 수로 남긴다
+        eye: [+cam.position.x.toFixed(2), +cam.position.y.toFixed(2), +cam.position.z.toFixed(2)],
+        /** 카메라에서 주인공까지의 가로 거리와 내려보는 각(도) */
+        far: +Math.hypot(cam.position.x - p.x, cam.position.z - p.z).toFixed(2),
+        down: +((Math.atan2(cam.position.y - p.y,
+          Math.hypot(cam.position.x - p.x, cam.position.z - p.z)) * 180) / Math.PI).toFixed(1),
         fps: Math.round(perfSnapshot.fps), frameMs: +perfSnapshot.frameMs.toFixed(2),
         tri: perfSnapshot.triangles, calls: perfSnapshot.drawCalls,
         backend: perfSnapshot.backend,
