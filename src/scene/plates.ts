@@ -91,6 +91,21 @@ const SNOW_SAT = 0.05
  */
 const GROUND_OPAQUE = 0.995
 
+/**
+ * 이보다 어두우면 **그림이 아니라 그늘·메움**이다 (0~255 밝기).
+ *
+ * ⚠️ 세워 놓으면 구멍과 구별이 안 된다. 글로벌터미널 뒷벽이 그랬다 — 원작이
+ * 그 칸 위 y4.38에 `black`(8×8, 평균 0,0,0)을 한 장 깔아 두었고, 그것을 접어
+ * 내리니 **세로 삼각형 344장이 새까맣게** 서서 화면 위쪽이 통째로 검은 구멍이
+ * 됐다.
+ *
+ * 문턱은 잴 것도 없이 비어 있다: 그림 칸 2,736가지의 평균 밝기를 재면 **0.0인
+ * 여섯 가지**(`h_kage`·`black`·`m_4ten_kage`·`m_lhouse01_03`·`ume`·
+ * `m_dun06_kage` — 셋은 이름이 그늘이다)와 16 위가 전부이고 사이가 없다.
+ * 제일 어두운 진짜 땅은 굴 바닥이고 그보다 한참 밝다
+ */
+const PITCH_BLACK = 16
+
 /** 그림 한 장을 두 번 재지 않는다. 시트가 바뀌면 통째로 사라진다 */
 const rankCache = new WeakMap<TexSheet, Map<string, number>>()
 
@@ -99,7 +114,8 @@ const rankCache = new WeakMap<TexSheet, Map<string, number>>()
  *
  * `2` 풀·눈 — 나무가 서 있어도 어색하지 않은 땅
  * `1` 그 밖의 땅 — 풀도 눈도 없는 청크(모래사장·포장된 도시·동굴)에서 쓴다
- * `0` 물과 **속이 빈 그림** — 절대 안 쓴다 (`NOT_FLOOR` · `GROUND_OPAQUE`)
+ * `0` 물 · **속이 빈 그림** · **새까만 그림** — 절대 안 쓴다
+ *     (`NOT_FLOOR` · `GROUND_OPAQUE` · `PITCH_BLACK`)
  */
 export function groundRank(sheet: TexSheet | null, tex: string | null): number {
   if (tex === null || tex === '') return 1
@@ -130,6 +146,8 @@ function measureRank(sheet: TexSheet, tex: string): number {
   // 속이 빈 그림은 깔아도 뚫린다 — 색을 보기 전에 먼저 떨어뜨린다
   if (n < item.w * item.h * GROUND_OPAQUE) return 0
   r /= n; g /= n; b /= n
+  // 새까만 그림은 세워도 **구멍과 구별이 안 된다**
+  if (r * 0.3 + g * 0.6 + b * 0.1 < PITCH_BLACK) return 0
   if (g - Math.max(r, b) >= GROUND_GREEN) return 2
   const max = Math.max(r, g, b)
   const sat = max === 0 ? 0 : (max - Math.min(r, g, b)) / max
@@ -785,6 +803,14 @@ export interface FloorSource {
    * 기울기 0.64짜리 절벽면뿐이고, 걸어 다니는 y=1에는 아무것도 없었다
    */
   levels: Map<number, Level[]>
+  /**
+   * **원작이 세로면을 그려 둔 칸.**
+   *
+   * 4세대 땅에는 세로면이 없다시피 하지만 아주 없지는 않다 — 연고시티 성문
+   * (`area4_gate_a`·`_b` 37삼각형)이 그렇다. 그런 칸에 우리가 판을 하나 더
+   * 세우면 원작 벽 앞에 딴 그림이 겹친다
+   */
+  standing: Set<number>
 }
 
 /**
@@ -869,6 +895,7 @@ function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSou
   const index = split.geometry.getIndex()!.array
   const floors: FloorTri[] = []
   const covered = new Set<number>()
+  const standing = new Set<number>()
   const levels = new Map<number, Level[]>()
   for (const [start, count, group] of split.groups) {
     if (keep && !keep(group)) continue
@@ -885,6 +912,13 @@ function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSou
       const bz0 = Math.min(az, az + uz, az + vz), bz1 = Math.max(az, az + uz, az + vz)
       const area = ux * vz - vx * uz
       const flat = Math.abs(ny) / len >= FLOOR_NORMAL
+      // **원작 세로면이 선 칸.** 위에서 보면 넓이가 0이라 아래 칸 훑기에 안
+      // 걸린다 — 상자로 찍는다. 그 칸에 우리가 판을 또 세우면 겹친다
+      if (!flat && Math.abs(ny) / len < 0.5) {
+        for (let tz = Math.floor(bz0); tz <= Math.floor(bz1); tz++) {
+          for (let tx = Math.floor(bx0); tx <= Math.floor(bx1); tx++) standing.add(cellKey(tx, tz))
+        }
+      }
       // 바닥 삼각형을 **칸을 찍기 전에** 만든다. 층마다 그 층을 그린 삼각형을
       // 같이 적어야 하는데(`Level`), 나중에 만들면 적을 것이 없다
       let tri: FloorTri | null = null
@@ -921,7 +955,7 @@ function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSou
       }
     }
   }
-  return { floors, covered, levels }
+  return { floors, covered, standing, levels }
 }
 
 /**
@@ -1409,12 +1443,15 @@ export function floorPatch(
     const shut = blocked?.(tx + 0.5, tz + 0.5) ?? false
     const pick = standLevel(here, ground(tx + 0.5, tz + 0.5, highest(here)), shut)
     if (kind === null || kind(pick.src.group).rank > 0) top.set(key, { y: pick.y, src: pick.src })
-    // ⚠️ **막힌 칸에서는 남의 그림을 빌리지 않는다.** 그 판은 벽이고, 벽에
-    // 땅 그림을 발라 세우면 그것이 곧 잔디 커튼이다 — 연고시티 성문 옆기둥
-    // (`area4_gate_b`는 불투명 58%라 등급 0)이 `ngrass`로 칠해져 4.63타일짜리
-    // 잔디 벽이 됐다. 원작이 그 자리에 세로면을 이미 갖고 있기도 하다
-    // (청크 57의 `area4_gate_a`·`_b` 37삼각형이 그 청크의 유일한 세로면이다)
-    else if (!shut) { orphanY.set(key, pick.y); orphan.push(key) }
+    // ⚠️ **원작이 이미 세로면을 그려 둔 칸에는 안 세운다.** 연고시티 성문
+    // 옆기둥이 그 자리다 — 원작 벽(`area4_gate_a`·`_b` 37삼각형)이 서 있는데
+    // 그 그림이 불투명 58%라 등급 0이고, 이웃에서 `ngrass`를 빌려 오면 진짜
+    // 벽 앞에 4.63타일짜리 **잔디 커튼**이 한 겹 더 선다.
+    //
+    // ⚠️ 반대로 **원작 세로면이 없는 칸에서는 빌려야 한다.** 글로벌터미널
+    // 뒷벽이 그 자리다 — 그 칸 맨 위가 `black`(평균 밝기 0)이라 등급 0인데,
+    // 안 빌리면 4.38타일이 통째로 뚫려 화면 위쪽이 검은 구멍이 된다
+    else if (!shut || !src.standing.has(key)) { orphanY.set(key, pick.y); orphan.push(key) }
   }
   if (orphan.length > 0 && walls.length > 0) {
     for (const [k, f] of nearestFloors(orphan, walls)) top.set(k, { y: orphanY.get(k)!, src: f })
