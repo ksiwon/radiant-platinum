@@ -7,7 +7,7 @@
 // **배포 번들에 들어가면 안 된다.** 호출부가 `import.meta.env.DEV`로 감싼
 // 동적 import 하나뿐이라, 프로덕션 빌드에서는 그 가지가 통째로 죽고 이 모듈은
 // 청크로도 나오지 않는다. 그러니 여기서 무엇을 import 하든 초기 청크는 안 는다.
-import { gameLocale } from '../state/optionsStore'
+import { gameLocale, useOptionsStore } from '../state/optionsStore'
 import {
   loadItems, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames, loadTrainerClasses,
   loadTrainerNames, loadTrainers,
@@ -30,6 +30,7 @@ import { POKETCH_APP_COUNT } from '../engine/world/poketch'
 import { poketchEnable, poketchRegister } from '../scene/poketch'
 import { usePoketchStore } from '../state/poketchStore'
 import { fieldScripts } from '../engine/script/field'
+import { perfSnapshot } from '../scene/sceneRefs'
 import { addHallOfFameEntry } from '../engine/world/hallOfFame'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import { useCurrencyStore } from '../state/currencyStore'
@@ -117,6 +118,57 @@ async function show() {
 
 export function installDevConsole(): void {
   const pt = {
+    /**
+     * 지금 화면을 **읽기만** 한다 — 자리 · 시점 · 창 · 프레임.
+     *
+     * ⚠️ **`pt.report()`로 대신하면 안 된다.** 그것은 리포트에 **쓴다.** 한
+     * 지점에서 여러 번 물어야 하는 확인(`.audit/fpTour.mjs`)이 그때마다
+     * 세이브를 바꾸면 무엇을 재고 있는지 알 수 없게 된다.
+     *
+     * ⚠️ **굽힌 번들을 몰아 보려면 이 손잡이가 있어야 한다.** 개발 서버에서는
+     * 하네스가 `await import('/src/engine/map/world.ts')`로 속을 들여다보는데,
+     * 번들에는 그 길이 없다 — 실측으로 `.audit/dist-dev`에서 같은 import가
+     * "Failed to fetch dynamically imported module"로 떨어진다. 그런데 백틱
+     * 표로 여든여섯 곳을 도는 확인은 **번들에서** 해야 한다: 사람이 받는 것이
+     * 그것이다
+     */
+    probe: () => {
+      const p = worldState.player.position
+      const cam = worldState.camera
+      return {
+        map: world.mapId,
+        x: +p.x.toFixed(2), z: +p.z.toFixed(2), facing: +worldState.player.facing.toFixed(2),
+        view: cam.mode, yaw: +cam.yaw.toFixed(3), pitch: +cam.pitch.toFixed(3),
+        fps: Math.round(perfSnapshot.fps), frameMs: +perfSnapshot.frameMs.toFixed(2),
+        tri: perfSnapshot.triangles, calls: perfSnapshot.drawCalls,
+        backend: perfSnapshot.backend,
+        battle: useBattleStore.getState().phase,
+        menu: useMenuStore.getState().stack.length,
+        script: fieldScripts.ctx !== null,
+      }
+    },
+    /**
+     * 시점을 바꾼다 — 0이 3인칭, 1이 1인칭. V와 **같은 값**을 만진다.
+     *
+     * ⚠️ **`worldState.camera.mode`를 직접 쓰면 안 된다.** 그 칸은 설정을 보고
+     * `MapStreamer`가 매번 다시 채우는 자리라 다음 렌더에 되돌아간다
+     */
+    view: (mode: 0 | 1) => {
+      useOptionsStore.getState().set('view', mode)
+      return mode === 1 ? '1인칭' : '3인칭'
+    },
+    /**
+     * 1인칭 시선을 **도(度)로** 돌린다 — 0이 북, 90이 동, 180이 남, 270이 서.
+     *
+     * 마우스로도 되지만 포인터를 가둬야 하고 픽셀을 각도로 환산해야 한다
+     * (`input/mouse.ts`의 `SENSITIVITY` 0.0025 rad/px). 확인에서는 **어느 쪽을
+     * 보는지가 값으로 남아야** 하므로 각도를 직접 준다
+     */
+    look: (deg: number, pitchDeg = 0) => {
+      worldState.camera.yaw = (deg * Math.PI) / 180
+      worldState.camera.pitch = (pitchDeg * Math.PI) / 180
+      return { yaw: +worldState.camera.yaw.toFixed(3), pitch: +worldState.camera.pitch.toFixed(3) }
+    },
     /** 트레이너전을 연다. 번호는 `pt.find()`로 찾는다 */
     trainer: (id: number) => useBattleStore.getState().startTrainer(id),
     /** 야생전을 연다. 셋째 값은 폼이다 (PARITY §3.4) */
@@ -326,6 +378,9 @@ export function installDevConsole(): void {
     '  pt.heal()            파티 회복\n' +
     '  pt.party()           파티 상태\n' +
     '  pt.reset()           세이브 초기화\n' +
+    '  pt.probe()           지금 자리·시점·프레임 (읽기만 한다)\n' +
+    '  pt.view(1)           시점 — 0이 3인칭, 1이 1인칭 (V와 같다)\n' +
+    '  pt.look(90)          1인칭 시선을 도(度)로 (0 북 · 90 동 · 180 남)\n' +
     '\n' +
     '  ` (백틱)             확인 지점 — 보고 싶은 자리로 바로 뛰어든다',
     'font-weight:bold', 'font-weight:normal',
