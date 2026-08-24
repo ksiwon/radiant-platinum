@@ -796,7 +796,7 @@ export interface FloorSource {
  * 습지 풀로 덮였고, 연고시티 성문은 지붕 높이(6.63)에 잔디(`ngrass`)가 발려
  * 4.6타일짜리 잔디 커튼이 아치를 막았다
  */
-export interface Level {
+interface Level {
   y: number
   /** 그 층을 그린 바닥 삼각형. 옆면은 이 그림을 접어 내린다 */
   src: FloorTri
