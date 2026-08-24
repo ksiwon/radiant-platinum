@@ -580,10 +580,20 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       maskH = m.height
     }
 
+    /**
+     * 마스크 채널이 고르는 **레이어 색**. 머티리얼에 박힌 값은 **감마(sRGB)**라
+     * 선형으로 내려서 곱한다 — 노드 추출기와 같은 자리다
+     * (`tools/extract/bdsp_bake_albedo.py`의 `to_linear`).
+     *
+     * ⚠️ **한동안 그대로 곱했다.** 그러면 색이 통째로 바랜다. 주인공 pc0001로
+     * 실측하면 모자 `_PrimaryColor` (0.750,0.364,0.274)가 살구색 (224,162,143)이
+     * 되어 **민머리로 보였고**, 머리 (0.240,0.275,0.370)는 회백색 (137,145,166)이
+     * 됐다. 내려서 곱하면 각각 붉은색 (191,93,70) · 남색 (61,70,94)이다
+     */
     const layerColor = (prop: string): [number, number, number] => {
       const c = colors.get(prop) as Record<string, number> | undefined
       if (!c) return [1, 1, 1]
-      return [c.r ?? 1, c.g ?? 1, c.b ?? 1]
+      return [srgbToLinear(c.r ?? 1), srgbToLinear(c.g ?? 1), srgbToLinear(c.b ?? 1)]
     }
     const layers = MASK_CHANNEL_PROPS.map(layerColor)
 

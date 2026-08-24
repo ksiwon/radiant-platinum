@@ -7,7 +7,8 @@ BDSP 캐릭터 셰이더는 색을 텍스처가 아니라 머티리얼 파라미
 _MaskTex는 순수 R/G/B/검정 영역으로 칠해진 선택자다:
     R → _SkinColor,  G → _PrimaryColor,  B → _SecondaryColor,  검정 → 틴트 없음
 
-(_SkinColor는 피부 전용이 아니라 첫 번째 범용 레이어 색이다 — 가방은 노랑, 모자는 분홍이 들어간다.)
+(_SkinColor는 피부 전용이 아니라 첫 번째 범용 레이어 색이다 — 가방에는 노랑이 들어간다.)
+레이어 색은 **감마(sRGB)**로 저장돼 있다. 근거는 to_linear에 적어 두었다.
 차례의 근거는 아래 MASK_CHANNEL_PROPS에 적어 두었다.
 
 이 스크립트는 위 식을 오프라인에서 계산해 평범한 알베도 PNG로 굽는다. 런타임에서
@@ -28,8 +29,26 @@ from PIL import Image
 
 
 def to_linear(v: float) -> float:
-    """Unity가 저장한 색은 선형이다. sRGB 텍스처와 곱하려면 공간을 맞춰야 한다."""
-    return v
+    """머티리얼에 박힌 레이어 색은 **감마(sRGB)**다. 선형으로 내려서 곱한다.
+
+    ⚠️ **한동안 「선형이다」라고 적고 그대로 곱했다.** 그러면 색이 통째로
+    바래서, 주인공 pc0001로 재면 이렇게 된다 (`.audit/bake-ab.png`):
+
+        모자  _PrimaryColor (0.750,0.364,0.274)
+              선형으로 보면 (224,162,143) 살구색 · sRGB로 보면 (191,93,70) 붉은색
+        머리  _PrimaryColor (0.240,0.275,0.370)
+              선형으로 보면 (137,145,166) 회백색 · sRGB로 보면 (61,70,94) 남색
+        피부  _SkinColor    (0.949,0.769,0.664)
+              선형으로 보면 (252,227,212) 거의 흰색 · sRGB로 보면 (242,196,169)
+
+    셋 다 뒤쪽이 원작이다 — 주인공은 붉은 모자에 남색 머리다. 앞쪽으로 구운
+    화면에서는 **모자가 살색이라 민머리로 보였다**(`.audit/head-dist.png`).
+    """
+    return srgb_to_linear_scalar(v)
+
+
+def srgb_to_linear_scalar(v: float) -> float:
+    return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
 
 
 def linear_to_srgb(x: np.ndarray) -> np.ndarray:
@@ -465,7 +484,8 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
             c = colors.get(prop)
             if not c:
                 return np.ones(3, dtype=np.float32)
-            return np.array([c["r"], c["g"], c["b"]], dtype=np.float32)
+            # 레이어 색은 감마다 — `to_linear`에 근거를 적어 뒀다
+            return srgb_to_linear(np.array([c["r"], c["g"], c["b"]], dtype=np.float32))
 
         tint = sum(
             mask[..., i : i + 1] * layer(prop) for i, prop in enumerate(MASK_CHANNEL_PROPS)
