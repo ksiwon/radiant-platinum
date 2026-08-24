@@ -708,7 +708,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               const name = materials[g]?.name ?? ''
               return { name, rank: rankOf(name) }
             },
-            pick)
+            pick,
+            // 머리 위를 덮은 판이 **벽인지 지붕인지**는 통행값이 가른다
+            // (`plates.standLevel`) — 막힌 칸의 판은 건물 외벽이고, 걸어
+            // 다니는 칸의 판은 성문 아치처럼 그 밑을 지나가는 것이다
+            (x, z) => grid.isBlockedAtWorld(x + originX, z + originZ))
           return {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,
             index: c.land,

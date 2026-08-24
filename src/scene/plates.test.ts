@@ -315,12 +315,13 @@ maybe('잎 걷어내기', () => {
     expect(p.getX(0)).toBeCloseTo(1, 1)
     expect(p.getY(0), '윗단 높이에 깐다').toBe(1)
 
-    // 그 칸에 윗단이 이미 있으면 **바닥은** 안 깐다. 다만 윗단(y=1)과
-    // 아랫단(y=0) 사이의 턱에는 옆면이 선다 — 그건 바닥이 아니라 벽이다
-    const covered = floorPatch(splitFoliage(mesh, [true, false, false]), () => 0)!
-    const n = covered.geometry.getAttribute('normal') as BufferAttribute
-    const laid = [...Array(n.count).keys()].filter((i) => n.getY(i) !== 0)
-    expect(laid, '아랫단 높이로 걸으면 아랫단이 곧 그 층이다 — 깔 바닥이 없다').toEqual([])
+    // 아랫단 높이로 걸으면 그 칸에서 나올 것이 아무것도 없다.
+    //
+    // 깔 바닥이 없는 것은 아랫단이 곧 그 층이기 때문이고, **턱 옆면도 안 서는
+    // 것**은 윗단(y=1)이 발밑에서 보면 턱이 아니라 **머리 위 지붕**이기
+    // 때문이다 (`standLevel`). 예전에는 여기서 옆면이 섰는데, 같은 규칙이
+    // 연고시티 성문 아치를 4.63타일짜리 잔디 커튼으로 막았다
+    expect(floorPatch(splitFoliage(mesh, [true, false, false]), () => 0)).toBeNull()
   })
 
   it('덮인 칸에는 안 깐다 — 원작 지형과 겹치면 깜빡인다', () => {
@@ -1041,7 +1042,7 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
         const want = groundAt(cellX(key) + originX + 0.5, cellZ(key) + originZ + 0.5, cell.minY)
         const here = source.levels.get(key)
         const onLevel = here !== undefined
-          && (want === null || here.some((y) => Math.abs(y - want) <= LEVEL_SLACK))
+          && (want === null || here.some((l) => Math.abs(l.y - want) <= LEVEL_SLACK))
         if (onLevel) t.covered++
         else if (done.has(key)) { t.filled++; if (borrowed.length > 0) t.borrowed++ }
         else t.bare++

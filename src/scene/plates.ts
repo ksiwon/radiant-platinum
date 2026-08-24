@@ -784,7 +784,22 @@ export interface FloorSource {
    * 구멍**이 그렇게 남아 있었다: 그 칸을 덮은 것은 y=0의 아랫단 잔디와
    * 기울기 0.64짜리 절벽면뿐이고, 걸어 다니는 y=1에는 아무것도 없었다
    */
-  levels: Map<number, number[]>
+  levels: Map<number, Level[]>
+}
+
+/**
+ * 한 칸의 한 층 — 높이와 **그 높이를 그린 삼각형**.
+ *
+ * ⚠️ **둘을 따로 고르면 안 된다.** 한동안 그랬다 — 높이는 그 칸의 제일 높은
+ * 층에서, 그림은 「제일 가까운 넓은 바닥」에서 따로 가져왔다. 그러면 턱 옆면이
+ * 엉뚱한 그림으로 칠해진다: 대습초원 전망대는 위가 콘크리트인데 옆면이
+ * 습지 풀로 덮였고, 연고시티 성문은 지붕 높이(6.63)에 잔디(`ngrass`)가 발려
+ * 4.6타일짜리 잔디 커튼이 아치를 막았다
+ */
+export interface Level {
+  y: number
+  /** 그 층을 그린 바닥 삼각형. 옆면은 이 그림을 접어 내린다 */
+  src: FloorTri
 }
 
 /**
@@ -854,7 +869,7 @@ function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSou
   const index = split.geometry.getIndex()!.array
   const floors: FloorTri[] = []
   const covered = new Set<number>()
-  const levels = new Map<number, number[]>()
+  const levels = new Map<number, Level[]>()
   for (const [start, count, group] of split.groups) {
     if (keep && !keep(group)) continue
     for (let t = 0; t < count; t += 3) {
@@ -870,6 +885,23 @@ function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSou
       const bz0 = Math.min(az, az + uz, az + vz), bz1 = Math.max(az, az + uz, az + vz)
       const area = ux * vz - vx * uz
       const flat = Math.abs(ny) / len >= FLOOR_NORMAL
+      // 바닥 삼각형을 **칸을 찍기 전에** 만든다. 층마다 그 층을 그린 삼각형을
+      // 같이 적어야 하는데(`Level`), 나중에 만들면 적을 것이 없다
+      let tri: FloorTri | null = null
+      if (flat) {
+        const au = uv ? uv[a * 2]! : 0, av = uv ? uv[a * 2 + 1]! : 0
+        const mid = (k: number): number => (col
+          ? (col[a * 3 + k]! + col[b * 3 + k]! + col[c * 3 + k]!) / 3 : 1)
+        tri = {
+          group,
+          r: mid(0), g: mid(1), b: mid(2),
+          ax, az, au, av,
+          ux, uz, du: uv ? uv[b * 2]! - au : 0, dv: uv ? uv[b * 2 + 1]! - av : 0,
+          vx, vz, eu: uv ? uv[c * 2]! - au : 0, ev: uv ? uv[c * 2 + 1]! - av : 0,
+          cx: ax + (ux + vx) / 3, cz: az + (uz + vz) / 3, cy: ay + (uy + vy) / 3,
+        }
+        floors.push(tri)
+      }
       if (Math.abs(area) > 1e-9) {
         for (let tz = Math.floor(bz0); tz <= Math.floor(bz1); tz++) {
           for (let tx = Math.floor(bx0); tx <= Math.floor(bx1); tx++) {
@@ -879,26 +911,14 @@ function gatherFloors(split: Split, keep?: (group: number) => boolean): FloorSou
             if (w1 < 0 || w2 < 0 || w1 + w2 > 1) continue
             const key = cellKey(tx, tz)
             covered.add(key)
-            if (!flat) continue
-            const y = ay + w1 * uy + w2 * vy
+            if (tri === null) continue
+            const level = { y: ay + w1 * uy + w2 * vy, src: tri }
             const here = levels.get(key)
-            if (here) here.push(y)
-            else levels.set(key, [y])
+            if (here) here.push(level)
+            else levels.set(key, [level])
           }
         }
       }
-      if (!flat) continue
-      const au = uv ? uv[a * 2]! : 0, av = uv ? uv[a * 2 + 1]! : 0
-      const mid = (k: number): number => (col
-        ? (col[a * 3 + k]! + col[b * 3 + k]! + col[c * 3 + k]!) / 3 : 1)
-      floors.push({
-        group,
-        r: mid(0), g: mid(1), b: mid(2),
-        ax, az, au, av,
-        ux, uz, du: uv ? uv[b * 2]! - au : 0, dv: uv ? uv[b * 2 + 1]! - av : 0,
-        vx, vz, eu: uv ? uv[c * 2]! - au : 0, ev: uv ? uv[c * 2 + 1]! - av : 0,
-        cx: ax + (ux + vx) / 3, cz: az + (uz + vz) / 3, cy: ay + (uy + vy) / 3,
-      })
     }
   }
   return { floors, covered, levels }
@@ -1144,6 +1164,46 @@ function oneGround(
   return only.length > 0 ? only : floors
 }
 
+/** 그 칸의 제일 높은 층 */
+function highest(here: readonly Level[]): number {
+  let y = -Infinity
+  for (const l of here) if (l.y > y) y = l.y
+  return y
+}
+
+/**
+ * 그 칸에서 **턱 옆면을 세울 층**.
+ *
+ * 원작 맵 모델에는 머리 위를 덮은 **누운 면**이 들어 있다 — 4세대는 벽도
+ * 지붕도 「높이 띄운 가로 판」으로 그리기 때문이다. 실측으로 층이 1.5타일 넘게
+ * 벌어진 칸이 청크 666개에 10,249개(바닥 있는 칸의 3.8%)다. 그 판 밑을 메우는
+ * 것이 옳을 때와 틀릴 때가 갈리는데, **갈라 주는 것은 통행값**이다:
+ *
+ *   막힌 칸 — 그 판은 **벽**이다. 축복시티 건물(`c1_o02` y5.69 / 바닥 y2.16)과
+ *     포켓몬리그 로비(`leag_kabe02` y9 / 바닥 y−0.13)가 그렇고, 연고시티
+ *     성문도 옆기둥 자리(z678·681)는 막혀 있다. 여기서 맨 위를 안 쓰면
+ *     건물 외벽이 통째로 사라진다
+ *   걸어 다니는 칸 — 그 판은 **지붕**이다. 연고시티 성문 아치 밑(z684)이
+ *     그것이고, 거기서 맨 위(y8.69)를 쓰면 4.63타일짜리 잔디 커튼이 내려와
+ *     걸어 들어가야 할 문을 막는다
+ *
+ * 걸어 다니는 칸에서 고르는 잣대는 이 함수가 위에서 이미 쓰는 것과 같다 —
+ * **걷는 높이에 제일 가까운 층**이다. `near`로 맨 위를 넘겨 주므로 층이 진짜로
+ * 겹친 자리(영원의숲 위단 y=2.813 / 아랫길 y=1)에서는 여전히 윗단이 나온다.
+ *
+ * 걷는 높이를 모르면(청크 밖·높이 자료 없음) 예전대로 맨 위를 쓴다
+ */
+function standLevel(here: readonly Level[], walk: number | null, blocked: boolean): Level {
+  let best = here[0]!
+  for (const l of here) {
+    const better = blocked || walk === null
+      ? l.y > best.y
+      : Math.abs(l.y - walk) < Math.abs(best.y - walk)
+    if (better) best = l
+  }
+  return best
+}
+
 export function floorPatch(
   split: Split,
   ground: (x: number, z: number, near: number) => number | null,
@@ -1151,6 +1211,8 @@ export function floorPatch(
   source?: FloorSource,
   kindOf?: (group: number) => GroundKind,
   want?: string,
+  /** 그 칸이 통행 불가인가. 머리 위 판이 벽인지 지붕인지를 이것이 가른다 */
+  blocked?: (x: number, z: number) => boolean,
 ): FloorPatch | null {
   const src = source ?? floorSource(split)
   const { floors: own, levels } = src
@@ -1177,7 +1239,7 @@ export function floorPatch(
     const want = ground(cellX(key) + 0.5, cellZ(key) + 0.5, cell.minY)
     const here = levels.get(key)
     // 높이 자료가 없는 칸은 예전대로 "덮였으면 됐다"로 본다 — 견줄 값이 없다
-    if (here && (want === null || here.some((y) => Math.abs(y - want) <= LEVEL_SLACK))) continue
+    if (here && (want === null || here.some((l) => Math.abs(l.y - want) <= LEVEL_SLACK))) continue
     bare.push(key)
   }
   const nearest = pool.length > 0 ? nearestFloors(bare, pool) : new Map<number, FloorTri>()
@@ -1325,24 +1387,37 @@ export function floorPatch(
     top.set(key, { y, src: best })
   }
 
-  // 원작 바닥이 멀쩡히 있는 칸도 **턱은 그대로 뚫려 있다**. 그 칸을 덮은
-  // 삼각형을 찾아 같이 세운다. 층이 겹친 칸은 **맨 위 층**을 쓴다 — 밖에서
-  // 보이는 것이 그것이고, 그 밑을 지나는 아랫길은 이웃 칸의 맨 위 층과
-  // 견주므로 막히지 않는다 (영원의숲 위단 y=2.813 / 아랫길 y=1)
+  // 원작 바닥이 멀쩡히 있는 칸도 **턱은 그대로 뚫려 있다**. 그 칸이 선 층을
+  // 찾아 같이 세운다 (`standLevel`).
   //
   // ⚠️ **`split.cells`를 돌면 안 된다.** 그것은 「잎이 덮은 칸」이라 청크의
   // 일부일 뿐이다 — 그걸로 돌았더니 영원의숲 턱 336자리가 그대로 남았다.
   // 턱은 숲 밖에도 있으므로 **바닥이 있는 칸 전부**(`levels`)를 돈다
   //
-  // ⚠️ **속이 빈 그림으로는 옆면을 못 세운다.** 여기서 고르는 것은 「제일 가까운
-  // 바닥 삼각형」이라 깔 땅과 달리 한 그림으로 묶지 않는데, 그러다 원작이 잔디
-  // 위에 겹쳐 깐 얼음 한 겹(`c09_ice` 55% · `c09_ice2` 48%)을 집었다 —
+  // ⚠️ **속이 빈 그림으로는 옆면을 못 세운다.** 그 칸을 그린 것이 원작이 잔디
+  // 위에 겹쳐 깐 얼음 한 겹(`c09_ice` 55% · `c09_ice2` 48%)일 수 있다 —
   // 세워 놓으면 반이 비쳐서 턱을 메우기는커녕 창문이 된다 (선단시티·217번도로
   // 실측 각 104삼각형). 등급 0은 물·풀숲·속 빈 그림이다 (`groundRank`)
   const walls = kind ? floors.filter((f) => kind(f.group).rank > 0) : floors
-  const solid = [...levels.keys()].filter((k) => !top.has(k))
-  if (solid.length > 0 && walls.length > 0) {
-    for (const [k, f] of nearestFloors(solid, walls)) top.set(k, { y: Math.max(...levels.get(k)!), src: f })
+  /** 제 층을 그린 삼각형으로는 못 세우는 칸. 그때만 이웃에서 그림을 빌린다 */
+  const orphan: number[] = []
+  /** 빌려 올 칸의 **높이**. 그림만 남에게서 가져오고 높이는 제 것을 쓴다 */
+  const orphanY = new Map<number, number>()
+  for (const [key, here] of levels) {
+    if (top.has(key) || here.length === 0) continue
+    const tx = cellX(key), tz = cellZ(key)
+    const shut = blocked?.(tx + 0.5, tz + 0.5) ?? false
+    const pick = standLevel(here, ground(tx + 0.5, tz + 0.5, highest(here)), shut)
+    if (kind === null || kind(pick.src.group).rank > 0) top.set(key, { y: pick.y, src: pick.src })
+    // ⚠️ **막힌 칸에서는 남의 그림을 빌리지 않는다.** 그 판은 벽이고, 벽에
+    // 땅 그림을 발라 세우면 그것이 곧 잔디 커튼이다 — 연고시티 성문 옆기둥
+    // (`area4_gate_b`는 불투명 58%라 등급 0)이 `ngrass`로 칠해져 4.63타일짜리
+    // 잔디 벽이 됐다. 원작이 그 자리에 세로면을 이미 갖고 있기도 하다
+    // (청크 57의 `area4_gate_a`·`_b` 37삼각형이 그 청크의 유일한 세로면이다)
+    else if (!shut) { orphanY.set(key, pick.y); orphan.push(key) }
+  }
+  if (orphan.length > 0 && walls.length > 0) {
+    for (const [k, f] of nearestFloors(orphan, walls)) top.set(k, { y: orphanY.get(k)!, src: f })
   }
   /**
    * 이웃 칸에 **그려진** 바닥의 높이.
@@ -1358,7 +1433,7 @@ export function floorPatch(
     const t = top.get(k)
     if (t) return t.y
     const lv = levels.get(k)
-    if (lv !== undefined && lv.length > 0) return Math.max(...lv)
+    if (lv !== undefined && lv.length > 0) return highest(lv)
     return ground(tx + 0.5, tz + 0.5, near)
   }
   for (const [key, t] of top) {
