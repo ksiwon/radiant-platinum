@@ -23,6 +23,7 @@
     "extract:npcSprites": "node tools/extract/npcSprites.js",
     "extract:bdspNpc": "py -3.13 tools/extract/bdspNpc.py",
     "extract:bike": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/objects/ob1003_00\" -o public/models/bike.glb --max-texture 256 --no-clips",
+    "extract:pokeball": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/objects/ob0201_00\" -o public/models/pokeball.glb --max-texture 256 --no-clips",
     "extract:player": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/persons/battle/pc0002_00\" -o public/models/dawn.glb --max-texture 256 --no-clips",
     "spike:texDump": "py -3.13 tools/spike/bdspTexDump.py",
     "extract:motionTiming": "py -3.13 tools/extract/bdspMotionTiming.py",

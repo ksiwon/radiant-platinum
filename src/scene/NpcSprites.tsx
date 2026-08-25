@@ -200,11 +200,20 @@ export function NpcSprites({ grid, layer, standing }: Props) {
         actor.z + 0.5 + (actor.offsetZ ?? 0),
       )
       slot.mesh.scale.set(sprite.w / TEXELS_PER_TILE, sprite.h / TEXELS_PER_TILE, 1)
-      // 판때기가 카메라를 본다. 좌우로만 돈다 — 위아래로도 눕히면 발이 뜬다
-      slot.mesh.rotation.set(0, Math.atan2(
-        camera.position.x - slot.mesh.position.x,
-        camera.position.z - slot.mesh.position.z,
-      ), 0)
+      // **판때기가 카메라를 통째로 본다** (원작 SBC의 `BB` — 좌우만 도는 것은
+      // `BBY`다). 좌우로만 돌리면 세로가 내려보는 각만큼 눌린다: 실내 렌즈가
+      // 50.09도라 키가 **cos 50.09 = 64%**로 찌그러졌고, 갤럭시단 집회장에서
+      // 조무래기 판때기가 바닥에 누운 것처럼 보였다.
+      //
+      // ⚠️ **발은 안 뜬다.** 판의 원점이 아래 모서리라(`makeSlot`이 y로 0.5를
+      // 밀어 둔다) X축 회전이 그 모서리를 축으로 돈다. 도는 차례는 `YXZ`여야
+      // 한다 — 좌우를 먼저 돌고 그 자리에서 뒤로 눕는다
+      const toCamX = camera.position.x - slot.mesh.position.x
+      const toCamZ = camera.position.z - slot.mesh.position.z
+      const toCamY = camera.position.y - slot.mesh.position.y
+      slot.mesh.rotation.set(
+        -Math.atan2(toCamY, Math.hypot(toCamX, toCamZ)),
+        Math.atan2(toCamX, toCamZ), 0, 'YXZ')
       slot.mesh.visible = true
     }
     for (let i = n; i < slots.length; i++) {

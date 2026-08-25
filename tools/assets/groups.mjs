@@ -184,6 +184,12 @@ export const GROUPS = [
     match: oneOf('models/bike.glb'),
   },
   {
+    // 길에 떨어진 도구로 서는 몬스터볼 하나 (`scene/ItemBalls`)
+    name: 'pokeball',
+    make: 'pnpm extract:pokeball',
+    match: oneOf('models/pokeball.glb'),
+  },
+  {
     name: 'arena',
     make: 'pnpm extract:arenas',
     match: under('models/arena/'),

@@ -36,6 +36,13 @@ const ARENA_GROUND = 'Environments/bg/arenas/ground'
 const MASTERDATAS = 'Dpr/masterdatas'
 /** 자전거. 오버월드에서 타는 물건이라 인물과 같은 자리에서 굽는다 */
 const BIKE = 'Characters/objects/ob1003_00'
+/**
+ * 길에 떨어진 도구로 서는 몬스터볼 (`scene/ItemBalls`).
+ *
+ * 번들 128개 중 볼을 든 것은 `ob02xx_00` 줄이고, 그 첫째가 기본 몬스터볼이다
+ * (번들 안 이름 `openball02` · `ob0201_00_ballupperSkin`)
+ */
+const POKEBALL = 'Characters/objects/ob0201_00'
 
 /**
  * 텍스처 긴 변의 상한.
@@ -286,12 +293,13 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   ctx.onProgress?.(jobs.length + 1, jobs.length + 2)
   await breathe(ctx)
 
-  // 자전거
-  const bike = lookup(at, BIKE)
-  const bikeEnv = bike ? await environmentOf(src, [bike]) : null
-  if (bikeEnv) {
-    const { glb } = await exportModel(bikeEnv, encodePng, { maxSize: MAX_TEXTURE, keepClips: false })
-    put(ctx, out, 'models/bike.glb', glb)
+  // 자전거와 몬스터볼
+  for (const [bundle, name] of [[BIKE, 'models/bike.glb'], [POKEBALL, 'models/pokeball.glb']] as const) {
+    const found = lookup(at, bundle)
+    const env = found ? await environmentOf(src, [found]) : null
+    if (!env) continue
+    const { glb } = await exportModel(env, encodePng, { maxSize: MAX_TEXTURE, keepClips: false })
+    put(ctx, out, name, glb)
   }
   ctx.onProgress?.(jobs.length + 2, jobs.length + 2)
   return out
@@ -634,7 +642,8 @@ async function convertMotionTiming(ctx: ConvertContext): Promise<Produced> {
 export const BDSP_GROUPS: readonly GroupSpec[] = [
   {
     name: 'npcModels',
-    outputs: ['models/npc/{번들}.glb', 'models/dawn.glb', 'models/bike.glb', 'data/npcModels.json'],
+    outputs: ['models/npc/{번들}.glb', 'models/dawn.glb', 'models/bike.glb', 'models/pokeball.glb',
+      'data/npcModels.json'],
     converter: 1,
     convert: convertNpcModels,
   },

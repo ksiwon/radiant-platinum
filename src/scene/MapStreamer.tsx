@@ -77,6 +77,7 @@ import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
+import { ItemBalls } from './ItemBalls'
 import { DisguisePlates } from './DisguisePlates'
 import { EmoteMarks } from './EmoteMarks'
 import { FeatureProps } from './FeatureProps'
@@ -703,9 +704,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   /** 실제 모델로 선 오버월드 포켓몬 */
   const [standingMons, setStandingMons] = useState<ReadonlySet<NpcActor>>(() => new Set())
   /** 입체가 이미 맡은 배치 전부. 판때기는 여기 든 사람을 안 세운다 */
+  const [standingBalls, setStandingBalls] = useState<ReadonlySet<NpcActor>>(() => new Set())
   const standing = useMemo(
-    () => new Set([...standingPeople, ...standingMons]),
-    [standingPeople, standingMons],
+    () => new Set([...standingPeople, ...standingMons, ...standingBalls]),
+    [standingPeople, standingMons, standingBalls],
   )
 
   // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
@@ -976,6 +978,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       */}
       <NpcModels grid={grid} layer={layer} table={npcModels} onStanding={setStandingPeople} />
       <NpcMonModels grid={grid} layer={layer} taken={standingPeople} onStanding={setStandingMons} />
+      {/* 길에 떨어진 도구는 판때기가 아니라 진짜 몬스터볼이다 (`ItemBalls`) */}
+      <ItemBalls grid={grid} layer={layer} onStanding={setStandingBalls} />
       <NpcSprites grid={grid} layer={layer} standing={standing} />
       {/* 변장한 트레이너는 사람 대신 더미가 선다 (PARITY §1.15) */}
       <DisguisePlates grid={grid} layer={layer} />

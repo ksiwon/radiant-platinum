@@ -43,6 +43,45 @@ import { assets, onProviderSwap } from '../data/providers/assetProvider'
 const MAX = 24
 /** 그리는 거리(타일). 판때기(48)보다 짧다 — 멀면 어차피 몇 픽셀이다 */
 const RANGE = 24
+
+/**
+ * **한 배치에 여럿이 그려진 판때기.** 그 수만큼 세운다.
+ *
+ * 갤럭시단 집회장(맵 522)에는 사람 하나가 아니라 **넷·셋이 한 장에 그려진**
+ * 그림이 있다 — `GRUNTS_GROUP_OF_4`(그림 248, 128×32텍셀 = 8×2칸)와
+ * `GRUNTS_GROUP_OF_3`(249, 64×32 = 4×2칸)이고, 그 방에 열 장과 여덟 장이
+ * 서 있다. 판때기 한 장에 사람 넷이라 짝지을 모델이 없어서 이 둘만 종잇장으로
+ * 남아 있었다.
+ *
+ * **자리는 그림에서 잰다.** 알파가 찬 세로줄을 세면 248은 0~15 · 16~32 ·
+ * 47~62 · 63~79텍셀, 249는 0~15 · 16~32 · 47~63이다. 판이 배치 칸에 가운데로
+ * 서므로(`NpcSprites`가 `w/16`칸으로 늘인다) 각 사람의 가운데를 칸으로 옮기면
+ * 아래 값이다 — **그려진 사람이 선 그 자리에 그대로 선다.**
+ *
+ * 몸은 남자 조무래기(그림 124 → `tr1073_00`)다. 원작 그림도 같은 제복이다
+ */
+const GROUP_BODIES: Readonly<Record<number, { tag: string, offsets: readonly number[] }>> = {
+  248: { tag: 'tr1073_00', offsets: [-3.531, -2.5, -0.594, 0.438] },
+  249: { tag: 'tr1073_00', offsets: [-1.531, -0.5, 1.438] },
+}
+
+/** 사람 하나짜리 배치의 자리 — 칸 가운데 */
+const ALONE: readonly number[] = [0]
+
+/**
+ * 여럿이 그려진 판때기가 쓸 수 있는 **따로 잡은 몫**.
+ *
+ * ⚠️ **사람 몫(`MAX`)에 같이 넣으면 안 된다.** 갤럭시단 집회장 하나 때문에
+ * 상한을 80으로 올리면 사람 많은 거리도 전부 그만큼 세운다. 이 그림 둘은
+ * **게임 전체에서 그 방 하나에만** 있으므로(맵 522 배치표) 값이 커져도
+ * 무거워지는 것은 그 방뿐이다.
+ *
+ * ⚠️ **값이 싸지 않다.** 그 방을 다 세우면 삼각형이 **151.8k → 715.0k**로 늘고
+ * 순회 하네스에서 **60fps → 36fps(최저 33)**다 (`FP_ONLY=galactic-hq node
+ * .audit/fpTour.mjs`). 다만 그 하네스는 WebGL2 폴백이라(`backend xG`) 이
+ * 수가 사용자가 받는 성능은 아니다 — 설치본은 WebGPU로 돈다
+ */
+const GROUP_MAX = 64
 /** 걷는 중인지 가르는 문턱(타일/초). 이 아래는 서 있는 것으로 친다 */
 const MOVING = 0.05
 
@@ -58,7 +97,8 @@ onProviderSwap(() => { scenes.clear(); loading.clear() })
 interface Slot {
   /** 엔진이 자리와 방향을 쓰는 바깥 그룹 */
   outer: Group
-  rig: Rig | null
+  /** 이 칸에 선 몸들. 여럿이 그려진 판때기는 그 수만큼이다 (`GROUP_BODIES`) */
+  rigs: (Rig | null)[]
   /** 지난 프레임 자리. 걷는 속도를 여기서 잰다 — 배우는 속도를 안 들고 있다 */
   lastX: number
   lastZ: number
@@ -119,24 +159,33 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
     const p = worldState.player.position
     const seen = new Set<NpcActor>()
     let n = 0
+    /** 여럿짜리 판때기가 세운 몸 수 (`GROUP_MAX`) */
+    let crowd = 0
 
     for (const actor of npcActors.list) {
-      if (n >= MAX) break
+      if (n >= MAX && crowd >= GROUP_MAX) break
       if (!actor.visible) continue
       // 변장 중이면 사람이 아니라 더미가 선다 (`DisguisePlates`)
       if (disguiseOf(actor) !== null) continue
       if (Math.abs(actor.x - p.x) > RANGE || Math.abs(actor.z - p.z) > RANGE) continue
-      const tag = table[String(actor.gfx)]
-      if (tag === undefined) continue
+      const many = GROUP_BODIES[actor.gfx]
+      const bundle = many?.tag ?? table[String(actor.gfx)]
+      if (bundle === undefined) continue
+      const offsets = many?.offsets ?? ALONE
+      // 통은 **선 몸 수까지 갈라** 잡는다 — 넷짜리 칸에 혼자를 앉히면 셋이 남는다
+      const tag = offsets.length === 1 ? bundle : `${bundle}×${String(offsets.length)}`
+      // 여럿짜리 판때기는 제 몫에서 센다 (`GROUP_MAX`)
+      if (many) { if (crowd + offsets.length > GROUP_MAX) continue }
+      else if (n + offsets.length > MAX) continue
 
       let slot = slots.get(actor)
       if (!slot) {
         // 두고 간 칸이 있으면 그것을 쓴다 — 이미 구워져 있어 공짜다
         slot = spare.get(tag)?.pop()
         if (!slot) {
-          const source = scenes.get(tag)
-          if (!source) { fetchModel(tag, () => { bump((v) => v + 1) }); continue }
-          slot = build(source, tag)
+          const source = scenes.get(bundle)
+          if (!source) { fetchModel(bundle, () => { bump((v) => v + 1) }); continue }
+          slot = build(source, bundle, tag, offsets)
           // ⚠️ **바로 안 붙인다.** 붙는 순간 그 프레임이 이 사람의 셰이더를 굽고,
           // 그 링크 확인이 ANGLE에서 한 명당 100ms 넘게 막는다 (`warmPipelines`).
           // 사람 하나에 프로그램 하나라 여럿이 같은 프레임에 붙으면 그대로 쌓인다 —
@@ -151,7 +200,7 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
         slot.lastX = actor.x
         slot.lastZ = actor.z
       }
-      n++
+      if (many) crowd += offsets.length; else n += offsets.length
       seen.add(actor)
       bodyHeights.set(actor, slot.height)
 
@@ -172,9 +221,9 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       slot.lastX = actor.x
       slot.lastZ = actor.z
       const speed = delta > 0 ? moved / delta : 0
-      if (slot.rig) {
+      for (const rig of slot.rigs) {
         // 서 있는 사람도 돌려야 한다 — 안 돌리면 바인드 포즈로 굳는다
-        updateLocomotion(slot.rig, delta, speed < MOVING ? 0 : speed, WALK_SPEED, RUN_SPEED)
+        if (rig) updateLocomotion(rig, delta, speed < MOVING ? 0 : speed, WALK_SPEED, RUN_SPEED)
       }
     }
 
@@ -244,26 +293,33 @@ export function npcBodyHeight(actor: NpcActor): number | null {
 }
 
 /** 모델 하나를 복제해 한 칸으로 만든다 */
-function build(scene: Object3D, tag: string): Slot {
+function build(
+  scene: Object3D, bundle: string, tag: string, offsets: readonly number[],
+): Slot {
   const outer = new Group()
-  const inner = new Group()
-  outer.add(inner)
-  // ⚠️ 스킨드 메시는 `Object3D.clone()`으로 복제하면 안 된다 — 뼈가 원본을
-  // 가리켜서 여럿이 같은 자세로 함께 움직인다. `SkeletonUtils.clone`이 뼈까지
-  // 새로 짓고 스킨을 다시 묶는다
-  const body = cloneSkinned(scene)
-  body.traverse((o) => { o.castShadow = true })
-  inner.add(body)
-  // 원본 키를 먼저 재고, 거기에 BDSP 단위 배수를 곱한 키로 다시 맞춘다.
-  // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다
-  const { nativeHeight } = normalizeModel(inner, body, 1)
-  const height = nativeHeight * BDSP_TO_WORLD
-  // ⚠️ **키를 잰 다음에 치비를 고친다.** 순서를 바꾸면 줄어든 머리만큼 그 사람이
-  // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다
-  if (isChibi(tag)) shapeChibi(inner, body, nativeHeight, height)
-  else normalizeModel(inner, body, height)
-  // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
-  // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
-  const rig = createRig(body, inner)
-  return { outer, rig, lastX: 0, lastZ: 0, height, dropped: false, tag }
+  const rigs: (Rig | null)[] = []
+  let height = 0
+  for (const dx of offsets) {
+    const inner = new Group()
+    inner.position.x = dx
+    outer.add(inner)
+    // ⚠️ 스킨드 메시는 `Object3D.clone()`으로 복제하면 안 된다 — 뼈가 원본을
+    // 가리켜서 여럿이 같은 자세로 함께 움직인다. `SkeletonUtils.clone`이 뼈까지
+    // 새로 짓고 스킨을 다시 묶는다
+    const body = cloneSkinned(scene)
+    body.traverse((o) => { o.castShadow = true })
+    inner.add(body)
+    // 원본 키를 먼저 재고, 거기에 BDSP 단위 배수를 곱한 키로 다시 맞춘다.
+    // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다
+    const { nativeHeight } = normalizeModel(inner, body, 1)
+    height = nativeHeight * BDSP_TO_WORLD
+    // ⚠️ **키를 잰 다음에 치비를 고친다.** 순서를 바꾸면 줄어든 머리만큼 그 사람이
+    // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다
+    if (isChibi(bundle)) shapeChibi(inner, body, nativeHeight, height)
+    else normalizeModel(inner, body, height)
+    // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
+    // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
+    rigs.push(createRig(body, inner))
+  }
+  return { outer, rigs, lastX: 0, lastZ: 0, height, dropped: false, tag }
 }
