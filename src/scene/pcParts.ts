@@ -10,7 +10,7 @@
 //
 // ⚠️ **파도타기에는 클립이 없다.** 원작도 안 쓴다 — 이 몸 위에 앉은 자세를
 // 얹는 방식이라 돌릴 것이 애초에 없다. 그래서 굽는 쪽도 `--no-clips`다.
-import type { Object3D } from 'three'
+import { Group, type Object3D } from 'three'
 
 /** 번들 안의 이름. 이 이름으로 골라 쓴다 */
 export const PC_PART = {
@@ -198,3 +198,63 @@ export function flyTurnAt(keys: readonly FlyTurn[], t: number): FlyTurn {
   const len = Math.hypot(x, y, z, w) || 1
   return { t, x: x / len, y: y / len, z: z / len, w: w / len }
 }
+
+/**
+ * 손에 무엇을 거는 자리 — **번들이 만들어 둔 빈 부착 뼈**다.
+ *
+ * ⚠️ **치비에도 등신에도 같은 이름으로 있다.** 실측으로 `fc0001_00`과
+ * `pc0001_00`·`pc0002_00` 넷 다 `LItem1`·`RItem1`을 들고 있고, 바인드 세계
+ * 회전이 왼쪽은 그대로·오른쪽은 z −180°다 (`.audit/handRuler.mjs`). 오른쪽에
+ * 그냥 걸면 소품이 좌우로 뒤집히므로 `spin`으로 되돌린다.
+ *
+ * `x`·`y`·`z`는 **치비 쪽** 자리다. `pc_parts`의 소품 정점이 그 자리를 원점
+ * 삼아 찍혀 있어서, 이만큼 빼야 부착 뼈에 맞는다.
+ *
+ * ⚠️ **치비→등신 배수를 안 준다.** 소품은 몸이 아니라 물건이고, BDSP 번들
+ * 단위는 그대로 우리 타일이다(`model/normalize`의 `BDSP_PLAYER_HEIGHT` 머리말) —
+ * 파도타기 몸도 새도 그렇게 세운다. 몸(발~목)으로 늘려 보면 실측으로 배수가
+ * 광휘 1.995·빛나 1.858이고, 그러면 **낚싯대가 3.43타일(3.4m)이 되고 물뿌리개가
+ * 0.73타일**이 된다 — 치비 손에 맞춘 크기라 등신 손에는 안 맞는다. 안 늘리면
+ * 낚싯대 1.77타일 · 물뿌리개 0.27×0.37×0.46타일로 실물 크기에 든다
+ */
+interface HandAttach {
+  /** 부착 뼈 이름 */
+  name: string
+  /** 뼈의 바인드 세계 회전을 되돌리는 z 각 */
+  spin: number
+  x: number
+  y: number
+  z: number
+}
+
+export const ITEM_HAND: Readonly<Record<'left' | 'right', HandAttach>> = {
+  /** 물뿌리개가 걸리는 왼손 */
+  left: { name: 'LItem1', spin: 0, x: 0.4482, y: 0.5613, z: -0.0057 },
+  /** 낚싯대가 걸리는 오른손 */
+  right: { name: 'RItem1', spin: Math.PI, x: -0.4482, y: 0.5613, z: -0.0057 },
+}
+
+/** 낚싯대 세 가지의 메시 이름 */
+export const PC_ROD = {
+  old: PC_PART.rodOld,
+  good: PC_PART.rodGood,
+  super: PC_PART.rodSuper,
+} as const
+
+/** 낚싯대 끝 뼈. 낚싯줄이 여기서 나간다 */
+export const ROD_TIP = 'PartsA6'
+
+/**
+ * 소품 하나를 손 부착 뼈에 걸 수 있게 감싼다.
+ *
+ * 겉 그룹이 뼈의 바인드 회전을 되돌린다(`spin`). 속의 씬은 치비 부착 자리만큼
+ * 물러나 앉는다 — 소품 정점이 그 자리를 원점으로 찍혀 있기 때문이다
+ */
+export function handMount(scene: Object3D, hand: HandAttach): Object3D {
+  const holder = new Group()
+  holder.rotation.z = hand.spin
+  scene.position.set(-hand.x, -hand.y, -hand.z)
+  holder.add(scene)
+  return holder
+}
+

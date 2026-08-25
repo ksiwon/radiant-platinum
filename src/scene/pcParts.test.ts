@@ -7,7 +7,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { it, expect } from 'vitest'
 import { Box3, Matrix4, Quaternion, Vector3 } from 'three'
-import { FLY_MOUNT, FLY_PATH, PC_PART, SURF_MOUNT, flyAt, flyTurnAt } from './pcParts'
+import {
+  FLY_MOUNT, FLY_PATH, ITEM_HAND, PC_PART, ROD_TIP, SURF_MOUNT, flyAt, flyTurnAt,
+} from './pcParts'
 import { withModels } from '../data/romData.testkit'
 
 const GLB = resolve(__dirname, '../../public/models/pcParts.glb')
@@ -70,6 +72,31 @@ maybe('주인공이 타고 드는 것들', () => {
 
     // 여섯이 다 들어 있다
     for (const name of Object.values(PC_PART)) expect(byName.has(name), name).toBe(true)
+
+    /** 스킨을 실제로 먹여 잰 상자 */
+    const boxOf = (at: number): Box3 => {
+      const s = json.skins[json.nodes[at]!.skin!]!
+      const inv = read(s.inverseBindMatrices)
+      const bones = s.joints.map((j, k) => world(j).clone()
+        .multiply(new Matrix4().fromArray(Array.from(inv).slice(k * 16, k * 16 + 16))))
+      const prim = json.meshes[json.nodes[at]!.mesh!]!.primitives[0]!
+      const pos = read(prim.attributes.POSITION!)
+      const joint = read(prim.attributes.JOINTS_0!)
+      const weight = read(prim.attributes.WEIGHTS_0!)
+      const out = new Box3()
+      const a = new Vector3(), b = new Vector3(), acc = new Vector3()
+      for (let i = 0; i < pos.length / 3; i++) {
+        a.set(pos[i * 3]!, pos[i * 3 + 1]!, pos[i * 3 + 2]!)
+        acc.set(0, 0, 0)
+        for (let k = 0; k < 4; k++) {
+          const w = weight[i * 4 + k]!
+          if (w === 0) continue
+          acc.addScaledVector(b.copy(a).applyMatrix4(bones[joint[i * 4 + k]!]!), w)
+        }
+        out.expandByPoint(acc)
+      }
+      return out
+    }
 
     // 스킨을 먹인 뒤의 상자 — 정점을 실제로 옮겨서 잰다
     const at = byName.get(PC_PART.surf)!
@@ -146,6 +173,36 @@ maybe('주인공이 타고 드는 것들', () => {
     // 그 자리가 몸 안이다 — 위로 벗어나면 사람이 뜨고 밑이면 파묻힌다
     expect(perch.y).toBeGreaterThan(bird.min.y)
     expect(perch.y).toBeLessThan(bird.max.y)
+
+    // ── 손에 드는 것 넷 ─────────────────────────────────────────────────
+    // ⚠️ **번들 단위 그대로 걸므로 여기 크기가 곧 화면 크기다** (×1.019).
+    // 치비 배수를 다시 곱하면 낚싯대가 3.4m가 된다 — `ITEM_HAND` 머리말
+    const can = boxOf(byName.get(PC_PART.wateringCan)!)
+    const canSize = can.getSize(new Vector3())
+    expect(canSize.x).toBeCloseTo(0.2649, 3)
+    expect(canSize.y).toBeCloseTo(0.3609, 3)
+    expect(canSize.z).toBeCloseTo(0.4467, 3)
+    // 왼손 부착 자리가 물뿌리개 안이다
+    expect(ITEM_HAND.left.x).toBeGreaterThan(can.min.x)
+    expect(ITEM_HAND.left.x).toBeLessThan(can.max.x)
+    expect(ITEM_HAND.left.y).toBeGreaterThan(can.min.y)
+    expect(ITEM_HAND.left.y).toBeLessThan(can.max.y)
+
+    for (const [tag, name, long] of [
+      ['낡은', PC_PART.rodOld, 1.7379],
+      ['좋은', PC_PART.rodGood, 1.7973],
+      ['대단한', PC_PART.rodSuper, 1.7083],
+    ] as const) {
+      const rod = boxOf(byName.get(name)!)
+      expect(rod.getSize(new Vector3()).x, tag).toBeCloseTo(long, 3)
+      // 낚싯대는 −x로 뻗고 오른손 부착 자리가 손잡이 쪽 끝 안이다
+      expect(rod.max.x, tag).toBeLessThan(0)
+      expect(ITEM_HAND.right.x, tag).toBeLessThan(rod.max.x)
+      expect(ITEM_HAND.right.x - rod.min.x, tag).toBeGreaterThan(0)
+    }
+    // 줄이 나가는 끝 뼈가 손 반대쪽 끝에 있다
+    const tip = new Vector3().setFromMatrixPosition(world(byName.get(ROD_TIP)!))
+    expect(tip.x).toBeLessThan(ITEM_HAND.right.x - 1.3)
   })
 
   it('원작 길이 새를 뒤에서 앞으로 옮긴다 — 채는 때가 그 사이다', () => {

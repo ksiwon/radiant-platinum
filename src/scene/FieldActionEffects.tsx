@@ -8,8 +8,12 @@ import { CAST_FRAMES, REEL_FRAMES, type FishingPhase } from '../engine/actor/fis
 import { worldState, type FieldActionFxKind } from '../state/worldState'
 import { tickFlyTransition } from './flyTransition'
 import { fishing } from './fishingSystem'
+import { wateringActive } from './berryPatches'
 import { BDSP_TO_WORLD } from '../engine/model/normalize'
-import { FLY_MOUNT, PC_PART, SURF_MOUNT, keepOnly } from './pcParts'
+import {
+  FLY_MOUNT, ITEM_HAND, PC_PART, PC_ROD, ROD_TIP, SURF_MOUNT,
+  handMount, keepOnly,
+} from './pcParts'
 import { assets } from '../data/providers/assetProvider'
 
 interface Props {
@@ -97,6 +101,13 @@ export function FieldActionEffects({ bodyRef }: Props) {
   const waveBRef = useRef<Mesh>(null)
   const fishingRef = useRef<Group>(null)
   const rodRef = useRef<Group>(null)
+  /** 원작 낚싯대 셋. 손 뼈에 걸려 있고 든 것만 보인다 */
+  const rodModelRef = useRef<Object3D | null>(null)
+  /** 그 낚싯대의 끝 뼈 — 줄이 여기서 나간다 */
+  const rodTipRef = useRef<Object3D | null>(null)
+  const canModelRef = useRef<Object3D | null>(null)
+  /** 지금 보이게 해 둔 낚싯대. 바뀔 때만 다시 고른다 */
+  const rodShownRef = useRef<string | null>(null)
   const lineRef = useRef<Mesh>(null)
   const bobberRef = useRef<Group>(null)
   const biteRef = useRef<Group>(null)
@@ -170,6 +181,45 @@ export function FieldActionEffects({ bodyRef }: Props) {
     }
   }, [])
 
+  // 손에 드는 것 둘 — 낚싯대 셋과 물뿌리개. **번들이 만들어 둔 부착 뼈에 건다**
+  // (`pcParts`의 `ITEM_HAND`). 그전에는 낚싯대가 몸에서 0.38칸 떨어진 고정
+  // 자리에 서 있어서 손이 움직여도 안 따라갔다
+  useEffect(() => {
+    let alive = true
+    const hung: Object3D[] = []
+    const hang = (part: 'rod' | 'can') => {
+      void loadPcParts().then((scene) => {
+        const body = bodyRef.current
+        if (!alive || !scene || !body) return
+        const hand = part === 'rod' ? ITEM_HAND.right : ITEM_HAND.left
+        const bone = body.getObjectByName(hand.name)
+        if (!bone) return
+        if (part === 'can') keepOnly(scene, PC_PART.wateringCan)
+        scene.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = true })
+        const holder = handMount(scene, hand)
+        holder.visible = false
+        bone.add(holder)
+        hung.push(holder)
+        if (part === 'rod') {
+          rodModelRef.current = holder
+          rodTipRef.current = scene.getObjectByName(ROD_TIP) ?? null
+          if (rodRef.current) rodRef.current.visible = false
+        } else {
+          canModelRef.current = holder
+        }
+      })
+    }
+    hang('rod')
+    hang('can')
+    return () => {
+      alive = false
+      for (const o of hung) o.removeFromParent()
+      rodModelRef.current = null
+      rodTipRef.current = null
+      canModelRef.current = null
+    }
+  }, [bodyRef])
+
   useFrame(({ clock }, delta) => {
     const time = clock.elapsedTime
     const surfing = worldState.player.surfing
@@ -223,6 +273,18 @@ export function FieldActionEffects({ bodyRef }: Props) {
     const state = fishing.state
     const showingRod = state !== null && state.phase !== 'message' && state.phase !== 'done'
     if (fishingRef.current) fishingRef.current.visible = showingRod
+    const rodModel = rodModelRef.current
+    if (rodModel) {
+      rodModel.visible = showingRod
+      // 든 낚싯대만 보인다 — 셋이 한 파일에 같이 들어 있다
+      const want = state === null ? null : PC_ROD[state.rod]
+      if (showingRod && want !== null && rodShownRef.current !== want) {
+        keepOnly(rodModel, want)
+        rodShownRef.current = want
+      }
+    }
+    const can = canModelRef.current
+    if (can) can.visible = wateringActive()
     if (state && showingRod) {
       const pitch = fishingRodPitch(state.phase, state.frames)
       if (rodRef.current) rodRef.current.rotation.x = pitch
@@ -236,7 +298,14 @@ export function FieldActionEffects({ bodyRef }: Props) {
         bobberRef.current.rotation.y = time * 1.5
       }
       if (lineRef.current) {
-        start.set(0.38, 1.02 + Math.cos(pitch) * 0.88, 0.02 + Math.sin(pitch) * 0.88)
+        const tip = rodTipRef.current
+        if (tip && fishingRef.current) {
+          // 원작 낚싯대가 걸려 있으면 그 끝에서 나간다 — 손을 따라 움직인다
+          tip.getWorldPosition(start)
+          fishingRef.current.worldToLocal(start)
+        } else {
+          start.set(0.38, 1.02 + Math.cos(pitch) * 0.88, 0.02 + Math.sin(pitch) * 0.88)
+        }
         end.set(0.38, bobberY + 0.08, bobberZ)
         alignCylinder(lineRef.current, start, end)
       }
