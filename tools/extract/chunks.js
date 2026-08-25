@@ -303,6 +303,54 @@ function placeByNode(verts, node) {
   }
 }
 
+
+/**
+ * **원작이 위를 가리려고 깔아 둔 새까만 천장을 안 굽는다.**
+ *
+ * 굴에는 불투명·그림 없음·확산 (0,0,0)짜리 **납작한 검은 판**이 바닥 위에
+ * 떠 있다. 원작 카메라는 그 위에서 내려다보지 않으므로 그것이 「위쪽을 가리는
+ * 뚜껑」 노릇만 한다. 우리 3인칭은 주인공보다 네 칸 위에 서므로 **그 뚜껑을
+ * 위에서 본다** — 강철섬(맵 293, 청크 504~507)에서 y 10에 깔린 판이 화면의
+ * 92%를 검게 덮었다 (`node .audit/blackWhat.mjs ironisle`).
+ *
+ * **아래에서 보면 없애도 똑같다** — 검은 판이든 아무것도 없는 허공이든 검정이다.
+ *
+ * 실측으로 이 잣대에 걸리는 것이 청크 51개에 서브메시 51개·삼각형 527개고,
+ * **전부 바닥에서 2칸 넘게 떠 있으며 대개 그 청크의 제일 높은 자리**다.
+ * 바닥에 깔린 검은 판(그림자)은 하나도 안 걸린다
+ */
+const CEILING_LIFT = 1.5
+
+function dropBlackCeilings(verts, indices, submeshes, materials) {
+  let minY = Infinity
+  for (const v of verts) if (v.pos[1] < minY) minY = v.pos[1]
+  const keep = []
+  let dropped = 0
+  for (const s of submeshes) {
+    const m = materials[s.material]
+    const black = m.texture === null && m.alpha === 31
+      && m.diffuse[0] + m.diffuse[1] + m.diffuse[2] === 0
+    let lo = Infinity, hi = -Infinity
+    if (black) {
+      for (let t = 0; t < s.count; t++) {
+        const y = verts[indices[s.start + t]].pos[1]
+        if (y < lo) lo = y
+        if (y > hi) hi = y
+      }
+    }
+    if (black && hi - lo <= 0.05 && lo >= minY + CEILING_LIFT) { dropped += s.count / 3; continue }
+    keep.push(s)
+  }
+  if (dropped === 0) return { indices, submeshes, dropped }
+  const out = []
+  const packed = []
+  for (const s of keep) {
+    packed.push({ material: s.material, start: out.length, count: s.count })
+    for (let t = 0; t < s.count; t++) out.push(indices[s.start + t])
+  }
+  return { indices: out, submeshes: packed, dropped }
+}
+
 function main() {
   const rom = openRom()
   const narc = rom.narc('/fielddata/land_data/land_data.narc')
@@ -312,6 +360,7 @@ function main() {
   const index = []
   let totalVerts = 0, totalTris = 0, totalBytes = 0
   let mismatched = 0
+  let ceilings = 0
 
   for (let i = 0; i < narc.length; i++) {
     const { model, modelAt, header } = chunkModel(narc[i])
@@ -324,8 +373,8 @@ function main() {
     const nodes = parseNodes(model, modelAt)
 
     const verts = []
-    const indices = []
-    const submeshes = []
+    let indices = []
+    let submeshes = []
     for (const pair of pairs) {
       const poly = polygons[pair.polygon]
       const mesh = buildMesh(poly.dl, header.upScale, materials[pair.material])
@@ -336,6 +385,10 @@ function main() {
       for (const idx of mesh.indices) indices.push(base + idx)
     }
     if (verts.length !== header.verts) mismatched++
+    const cut = dropBlackCeilings(verts, indices, submeshes, materials)
+    indices = cut.indices
+    submeshes = cut.submeshes
+    ceilings += cut.dropped
 
     // 쓰는 재질만 남긴다. 청크가 안 그리는 재질도 목록에는 들어 있다
     const meta = {
@@ -381,7 +434,8 @@ function main() {
     `${(totalBytes / 1024 / 1024).toFixed(1)}MB (평균 ${(totalBytes / narc.length / 1024).toFixed(0)}KB)`,
   )
   console.log(
-    `  헤더 정점 수와 어긋난 청크 ${mismatched}개 · 한 청크 최대 정점 ${Math.max(...index)}개` +
+    `  헤더 정점 수와 어긋난 청크 ${mismatched}개 · 한 청크 최대 정점 ${Math.max(...index)}개`
+    + ` · 안 구운 검은 천장 ${ceilings}삼각형` +
     ` · 색인 ${out.rel} (${out.kb}KB)`,
   )
 }

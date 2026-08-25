@@ -357,6 +357,59 @@ export function placeByNode(verts: Vertex[], node: NodeXform | undefined): void 
   }
 }
 
+/**
+ * 굴 천장이 바닥에서 이만큼 넘게 떠 있으면 뚜껑으로 본다 (타일)
+ */
+const CEILING_LIFT = 1.5
+
+/**
+ * **원작이 위를 가리려고 깔아 둔 새까만 천장을 안 굽는다.**
+ *
+ * 굴에는 불투명·그림 없음·확산 (0,0,0)짜리 **납작한 검은 판**이 바닥 위에
+ * 떠 있다. 원작 카메라는 그 위에서 내려다보지 않으므로 그것이 「위쪽을 가리는
+ * 뚜껑」 노릇만 한다. 우리 3인칭은 주인공보다 네 칸 위에 서므로 **그 뚜껑을
+ * 위에서 본다** — 강철섬(맵 293, 청크 504~507)에서 y 10에 깔린 판이 화면의
+ * 92%를 검게 덮었다 (`node .audit/blackWhat.mjs ironisle`).
+ *
+ * **아래에서 보면 없애도 똑같다** — 검은 판이든 허공이든 검정이다.
+ *
+ * 실측으로 이 잣대에 걸리는 것이 청크 51개에 서브메시 51개·삼각형 527개고,
+ * 전부 바닥에서 2칸 넘게 떠 있으며 대개 그 청크의 제일 높은 자리다. 바닥에
+ * 깔린 검은 판(그림자)은 하나도 안 걸린다
+ */
+function dropBlackCeilings(
+  verts: readonly Vertex[], indices: number[],
+  submeshes: [number, number, number][], materials: readonly Material[],
+): { indices: number[], submeshes: [number, number, number][] } {
+  let minY = Infinity
+  for (const v of verts) if (v.pos[1] < minY) minY = v.pos[1]
+  const keep: [number, number, number][] = []
+  let dropped = 0
+  for (const s of submeshes) {
+    const m = materials[s[0]]!
+    const black = m.texture === null && m.alpha === 31
+      && m.diffuse[0]! + m.diffuse[1]! + m.diffuse[2]! === 0
+    let lo = Infinity, hi = -Infinity
+    if (black) {
+      for (let t = 0; t < s[2]; t++) {
+        const y = verts[indices[s[1] + t]!]!.pos[1]
+        if (y < lo) lo = y
+        if (y > hi) hi = y
+      }
+    }
+    if (black && hi - lo <= 0.05 && lo >= minY + CEILING_LIFT) { dropped += 1; continue }
+    keep.push(s)
+  }
+  if (dropped === 0) return { indices, submeshes }
+  const out: number[] = []
+  const packed: [number, number, number][] = []
+  for (const s of keep) {
+    packed.push([s[0], out.length, s[2]])
+    for (let t = 0; t < s[2]; t++) out.push(indices[s[1] + t]!)
+  }
+  return { indices: out, submeshes: packed }
+}
+
 export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
   const { buf, view, modelAt, header } = openModel(chunk)
   const pairs = readSbc(buf, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
@@ -384,8 +437,9 @@ export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
     submeshes.push([pair.material, indices.length, mesh.indices.length])
     for (const idx of mesh.indices) indices.push(base + idx)
   }
+  const cut = dropBlackCeilings(verts, indices, submeshes, materials)
   return {
-    bytes: packChunk(verts, indices, materials, submeshes),
+    bytes: packChunk(verts, cut.indices, materials, cut.submeshes),
     verts: verts.length,
     headerVerts: header.verts,
     materials,
