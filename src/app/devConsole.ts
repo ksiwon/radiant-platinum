@@ -14,6 +14,7 @@ import {
 } from '../data/gameData'
 import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { world } from '../engine/map/world'
+import { cameraSystem, roomAt } from '../engine/actor/camera'
 import { useBattleStore } from '../state/battleStore'
 import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
@@ -145,6 +146,14 @@ export function installDevConsole(): void {
         eye: [+cam.position.x.toFixed(2), +cam.position.y.toFixed(2), +cam.position.z.toFixed(2)],
         /** 카메라에서 주인공까지의 가로 거리와 내려보는 각(도) */
         far: +Math.hypot(cam.position.x - p.x, cam.position.z - p.z).toFixed(2),
+        /** 카메라가 겨눈 점. 실내에서는 주인공보다 앞이다 (`actor/camera.aimPitch`) */
+        aim: [+cam.target.x.toFixed(2), +cam.target.y.toFixed(2), +cam.target.z.toFixed(2)],
+        /** 카메라를 물린 방 상자. 없으면 null (`actor/camera.roomAt`) */
+        room: (() => {
+          const r = roomAt(cameraSystem.rooms, p.x, p.z)
+          return r === null ? null : [r.minX, r.minZ, r.maxX, r.maxZ]
+        })(),
+        rooms: cameraSystem.rooms.length,
         down: +((Math.atan2(cam.position.y - p.y,
           Math.hypot(cam.position.x - p.x, cam.position.z - p.z)) * 180) / Math.PI).toFixed(1),
         fps: Math.round(perfSnapshot.fps), frameMs: +perfSnapshot.frameMs.toFixed(2),

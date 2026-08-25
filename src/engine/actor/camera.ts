@@ -23,47 +23,132 @@ const DEG = Math.PI / 180
 const THIRD = { distance: 8, height: 4, damping: 5 }
 
 /**
- * **실내 렌즈.** 방이 작아서 여덟 칸 밖에 서면 카메라가 바닥 밖으로 나간다.
+ * **실내 렌즈** — 원작이 실내에 쓰는 **내림각 그대로**, 거리는 우리 것.
  *
- * 원작 DS는 고정 부감이라 맵 바깥이 화면에 든 적이 없다. 우리 3인칭은 여덟 칸
- * 뒤·네 칸 위에서 보므로 방의 남쪽 가장자리 너머가 그대로 화면에 든다 — 먼 쪽은
- * 실내 안개(24~64칸)가 녹이지만 **카메라와 가까운 쪽은 그냥 잘린다.**
+ * 원작 실내 카메라는 `CAMERA_TYPE_INTERIOR_ORTHOGRAPHIC`이다 — 맵 표의
+ * `camera` 칸이 4인 맵이 **300개**고 포켓몬센터(맵 420)도 그중 하나다.
+ * `overlay005/field_camera.c`의 값은 거리 1563.538units(÷16 = **97.7칸**) ·
+ * `cameraAngle.x −50.0867도` · 정사영 · `verticalFov 3.5211도`다. 정사영이라
+ * 보이는 높이는 `tan(fovY) × distance` = 96.22units = **6.01칸**
+ * (`camera.c`의 `Camera_ComputeProjectionMatrix`), 곧 세로 12.03칸이 든다.
  *
- * 실측(`node .audit/roomBox.mjs`, 바닥 높이 자료가 있는 칸의 테두리):
+ * ⚠️ **거리와 투영은 안 따라간다.** 97.7칸 정사영은 우리 55도 원근과 섞이지
+ * 않고, 온 신오를 8칸·55도로 보기로 한 결정과도 어긋난다. **따라가는 것은
+ * 내림각뿐이다** — 지금 슬랜트(√(5.5²+3.2²) = 6.363칸)를 그대로 두고 각만
+ * 50.0867도로 돌린다.
  *
- *   포켓몬센터  바닥 z 2~13인데 카메라가 z 20.5 — **7.5칸 밖**
- *   주인공 방   바닥 z 3~11인데 카메라가 z 13.5 — **2.5칸 밖**
- *   들판 체육관 바닥 z 2~43인데 카메라가 z 50.5 — **7.5칸 밖**
+ * ⚠️ **각이 왜 문제였나.** 5.5·3.2는 **내림각 30.2도**다. 원작보다 20도 눕다
+ * 보니 실내에서 **벽 위 허공이 화면에 든다** — 실측으로 스무 곳의 화면 위
+ * 3분의 1이 평균 68.4% 검었고 포켓몬센터·자전거가게·길잡이등대는 85%를
+ * 넘었다 (`node .audit/roomFit.mjs`). 실내에는 천장이 없다: 원작 자료를 세면
+ * 벽 높이에서 **아래를 보는 면이 0개**다 (`node .audit/ceilingCheck.mjs`,
+ * 맵 420·89·116). 원작은 50도로 내려다봐서 그 허공을 안 보는 것이다.
  *
- * 그 결과가 `pnpm story` 그림의 검은 화소다 — 실내 열여덟 장면이 30%를 넘고,
- * 화면 아래 40%가 통째로 검은 장면이 여럿이다 (`node .audit/voidPixels.mjs`).
- *
- * ⚠️ **화각은 안 건드린다.** 55도를 좁히면 온 신오가 같이 좁아진다. 고칠 것은
- * **어디에 서느냐**다.
+ * 50.0867도면 방 하나가 화면에 딱 든다 — 문 앞에서 바닥 끝이 62.1도,
+ * 벽 꼭대기가 6.4도라 그 사이가 55.7도이고 화면이 55도다.
  *
  * ⚠️ **1인칭은 안 건드린다.** 눈이 방 안에 있으므로 이 문제가 없다.
  */
-const INDOOR = { distance: 5.5, height: 3.2, damping: 5 }
+const INDOOR = { distance: 4.083, height: 4.881, damping: 5 }
 
 /** 방의 테두리 (월드 타일). 씬이 그려진 바닥에서 재어 넘겨 준다 */
-export interface RoomBox { minX: number, minZ: number, maxX: number, maxZ: number }
+export interface RoomBox {
+  minX: number, minZ: number, maxX: number, maxZ: number
+  /** 세로줄마다 바닥이 남쪽으로 끝나는 자리 (`scene/roomWalls`의 `floorRegions`) */
+  southEdge: ReadonlyMap<number, number>
+}
 
 /**
- * 카메라가 방 안에서 물러설 수 있는 여유(타일).
+ * 카메라 밑에서 **바닥이 끝나는 자리**. 옆줄까지 보아 제일 가까운 끝을 쓴다.
  *
- * 0으로 두면 바닥의 맨 끝 칸에 서므로 그 칸 너머 반 칸이 화면 아래에 걸린다.
- * 한 칸을 남기면 발밑이 바닥이다
+ * ⚠️ **상자의 `maxZ` 하나로는 못 잰다.** 포켓몬센터(맵 420)는 문간이 남쪽으로
+ * 한 칸 파여 있어 상자가 z 14인데 나머지 줄은 z 13에서 끝난다 — 그 한 칸이
+ * 화면 아래 12%를 검게 남겼다.
+ *
+ * ⚠️ **주인공 줄 하나로도 못 잰다.** 문 앞에 선 주인공이 밟고 선 것이 바로 그
+ * 파인 문간이라, 제 줄만 보면 상자와 같은 답이 나온다.
+ *
+ * 프레임 아랫변에 드는 폭만큼 본다: 그 자리 바닥이 카메라에서 5.53칸이고
+ * (높이 4.881 · 앞으로 2.588), 960×640에서 가로 반각이 37.98도이므로
+ * **4.31칸**이다 (`atan(1.5 × tan27.5°)`)
+ */
+const EDGE_SPREAD = 4
+function floorEnd(box: RoomBox, x: number): number {
+  let near = Infinity
+  const at = Math.floor(x)
+  for (let c = at - EDGE_SPREAD; c <= at + EDGE_SPREAD; c++) {
+    const z = box.southEdge.get(c)
+    if (z !== undefined && z < near) near = z
+  }
+  return near === Infinity ? box.maxZ : near
+}
+
+/** 화면 세로 절반(도). `FIELD_FOV`가 세로 화각이다 (three의 `PerspectiveCamera.fov`) */
+const HALF_FOV = 27.5
+
+/**
+ * 겨눔을 낮춰 **주인공을 화면 아래로 내릴 수 있는 한계**(도).
+ *
+ * 대사창 윗변이 화면의 **81.25%**다 (960×640에서 y 520). 발밑이 그보다 내려가면
+ * 주인공이 대사창에 잘리므로 거기까지만 내린다. 화면 세로 절반이 27.5도이므로
+ * (0.8125 − 0.5) × 55 = **17.19도**
+ */
+const AIM_DROP = 17.19
+
+/**
+ * 겨눔을 아무리 낮춰도 이보다 눕히지 않는다(도). 0에 가까우면 겨눔점이
+ * 무한히 멀어져 `lerp`가 화면을 홱 돌린다
+ */
+const MIN_AIM = 6
+
+/**
+ * **바닥 끝을 프레임 밖으로 밀어내는 내림각**(도).
+ *
+ * 실내 3인칭은 주인공 뒤 5.5칸·위 3.2칸에서 본다. 그런데 **건물에 들어서면
+ * 주인공은 늘 앞벽에 붙어 선다** — 실측으로 스무 곳 전부 방의 남쪽 끝이고
+ * 뒤에 남은 바닥이 1.5칸뿐이다 (`node .audit/roomFit.mjs`). 카메라가 갈 5.5칸
+ * 뒤는 그려진 바닥 밖이라 **화면 아래 33%가 통째로 검다.**
+ *
+ * 예전에는 카메라를 방 상자 안으로 **물렸다**. 그러면 검은 자리는 사라지지만
+ * 붐이 0.5칸으로 줄어 **내려보는 각이 81.1도**가 된다 — 스무 곳 전부 정수리만
+ * 보였다. 물리는 쪽으로는 답이 없다: 1.5칸 뒤에서 1.5칸 키를 담으려면 화각이
+ * 54도를 넘게 든다.
+ *
+ * 그래서 **자리는 그대로 두고 겨눈 곳을 앞으로 민다.** 화면이 위로 밀려
+ * 바닥 끝이 프레임 아래로 빠지고, 주인공은 가운데가 아니라 아래쪽에 선다 —
+ * 원작 DS도 맵 가장자리에서는 주인공이 가운데가 아니다.
+ *
+ * @param height   카메라가 주인공보다 높은 만큼 (타일)
+ * @param arm      카메라에서 주인공까지의 가로 거리 (타일)
+ * @param overhang 카메라가 그려진 바닥 끝을 넘어선 거리. 0 이하면 바닥 위다
+ */
+export function aimPitch(height: number, arm: number, overhang: number): number {
+  const want = (Math.atan2(height, arm) * 180) / Math.PI
+  if (overhang <= 0) return want
+  // 프레임 아랫변이 바닥 끝**보다 앞**에 떨어지게 하는 내림각
+  const edge = (Math.atan2(height, overhang) * 180) / Math.PI - HALF_FOV
+  return Math.min(want, Math.max(edge, want - AIM_DROP, MIN_AIM))
+}
+
+/**
+ * 카메라가 굴 조각 안에서 물러설 수 있는 여유(타일).
+ *
+ * 0으로 두면 조각의 맨 끝 칸에 서므로 그 칸 너머 반 칸이 화면 아래에 걸린다
  */
 const ROOM_MARGIN = 1
 
 /**
- * 목표 자리를 방의 상자 안으로 **물린다.** 상자가 없으면(실외) 그대로.
+ * 목표 자리를 조각 안으로 **물린다** — **굴에서만 쓴다.**
+ *
+ * 방(`mapType` 4·5)에서는 이렇게 물리면 붐이 0.5칸으로 줄어 정수리만 보인다
+ * (`aimPitch` 머리말). 그런데 굴에서는 이쪽이 낫다: 어긋난 동굴(맵 209)에서
+ * 안 물리면 화면의 **89.3%**가 검고 물리면 **41.6%**다. 굴은 방 렌즈를 안 걸어
+ * 여덟 칸 뒤에서 보는데, 그 여덟 칸 뒤가 통로 밖 허공이기 때문이다.
  *
  * ⚠️ **주인공이 화면 가운데에서 벗어난다. 그것이 맞다** — 원작도 맵 경계에서는
- * 주인공이 가운데가 아니다 (`field_camera.c`가 같은 일을 한다). 가운데를 지키려면
- * 방 밖을 보여 주는 수밖에 없고, 그쪽이 더 나쁘다.
+ * 주인공이 가운데가 아니다 (`field_camera.c`가 같은 일을 한다).
  *
- * ⚠️ **방이 여유의 두 배보다 좁으면 가운데에 놓는다.** 안 그러면 양쪽에서
+ * ⚠️ **조각이 여유의 두 배보다 좁으면 가운데에 놓는다.** 안 그러면 양쪽에서
  * 물려 카메라가 상자 밖으로 튕겨 나간다
  */
 export function clampToRoom(goal: Vector3, box: RoomBox | null, margin: number): Vector3 {
@@ -292,13 +377,29 @@ export const cameraSystem = {
           .applyQuaternion(tilt)
       }
       goal.copy(p).add(offset)
-      // ⚠️ **바라보는 점은 안 물린다.** 물리는 것은 **어디에 서느냐**뿐이라
-      // 주인공은 늘 화면 안에 있고, 방 가장자리에서만 가운데를 벗어난다
-      // ⚠️ **방은 카메라가 아니라 주인공으로 고른다.** 카메라로 고르면 방
-      // 밖으로 나간 순간 아무 방에도 안 들어 물릴 곳이 사라진다
-      clampToRoom(
-        goal, inDistortion ? null : roomAt(cameraSystem.rooms, p.x, p.z), ROOM_MARGIN)
       look.copy(p)
+      // **카메라는 안 물린다 — 겨눔점을 앞으로 민다** (`aimPitch`).
+      //
+      // ⚠️ **방은 카메라가 아니라 주인공으로 고른다.** 카메라로 고르면 방
+      // 밖으로 나간 순간 아무 방에도 안 들어 잴 것이 사라진다.
+      //
+      // ⚠️ **기울어진 세계에서는 안 한다.** 바닥 끝을 z 한 축으로 재는데
+      // 깨어진 세계는 벽과 천장이 바닥이라 그 축이 없다
+      // ⚠️ **방과 굴은 다루는 법이 다르다.** `cameraSystem.rooms`는 실외가
+      // 아닌 맵이면 다 채워지는데(`scene/ChunkModels`의 `indoor`) 굴에서 뽑히는
+      // 조각은 방이 아니라 **통로 토막**이라 바닥 끝이 엉터리로 잡힌다 —
+      // 어긋난 동굴(맵 209)에서 6×4 조각이 뽑혀 겨눔이 16칸이나 밀렸고 화면의
+      // 89.2%가 검었다. 굴에서는 예전처럼 **자리를 물리는** 편이 낫다(41.6%)
+      const box = inDistortion ? null : roomAt(cameraSystem.rooms, p.x, p.z)
+      if (box !== null && swing === null && inRoom()) {
+        const height = goal.y - p.y
+        const arm = Math.hypot(goal.x - p.x, goal.z - p.z)
+        const pitch = aimPitch(height, arm, goal.z - floorEnd(box, p.x))
+        look.z = goal.z - height / Math.tan((pitch * Math.PI) / 180)
+        look.x = goal.x
+      } else if (!inDistortion && !inRoom()) {
+        clampToRoom(goal, box, ROOM_MARGIN)
+      }
     }
     tilted(0, 1, 0, cam.up)
 

@@ -285,7 +285,18 @@ export interface RoomWalls {
 const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
 
 /** 칸 테두리 (월드 타일). 양끝을 포함한다 */
-interface FloorExtent { minX: number, minZ: number, maxX: number, maxZ: number }
+interface FloorExtent {
+  minX: number, minZ: number, maxX: number, maxZ: number
+  /**
+   * 세로줄마다 **바닥이 남쪽으로 끝나는 자리**.
+   *
+   * 상자의 `maxZ` 하나로는 모자란다 — 포켓몬센터(맵 420)는 문간이 남쪽으로
+   * 한 칸 파여 있어서 상자가 z 14인데 주인공이 선 줄(x 8)의 바닥은 z 13에서
+   * 끝난다. 그 한 칸 차이가 화면 아래 12%를 검게 남겼다 (`node .audit/roomFit.mjs`).
+   * 카메라는 이 표를 보고 겨눔을 민다 (`actor/camera`의 `aimPitch`)
+   */
+  southEdge: ReadonlyMap<number, number>
+}
 
 /**
  * 월드 타일 열쇠.
@@ -349,17 +360,26 @@ export function floorRegions(
   for (const seed of tiles) {
     if (!left.delete(seed)) continue
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity
+    const southEdge = new Map<number, number>()
     const grow = (x: number, z: number): void => {
       if (x < minX) minX = x
       if (x > maxX) maxX = x
       if (z < minZ) minZ = z
       if (z > maxZ) maxZ = z
     }
+    // ⚠️ **벽 밑 바닥은 안 센다.** 그 줄은 바깥에서 보면 벽에 가려 안 보이는데
+    // 상자에는 든다 — 포켓몬센터가 그래서 z 14로 잡혔고, 실제로 그려진 마지막
+    // 줄은 z 13이라 화면 아래 12%가 검게 남았다 (`node .audit/roomFit.mjs`)
+    const edge = (x: number, z: number): void => {
+      const was = southEdge.get(x)
+      if (was === undefined || z + 1 > was) southEdge.set(x, z + 1)
+    }
     stack.push(seed)
     while (stack.length > 0) {
       const key = stack.pop()!
       const x = tileX(key), z = tileZ(key)
       grow(x, z)
+      edge(x, z)
       for (const [dx, dz] of SIDES) {
         const nx = x + dx, nz = z + dz
         const nk = tileKey(nx, nz)
@@ -368,7 +388,7 @@ export function floorRegions(
         else if (floor.has(nk)) grow(nx, nz)
       }
     }
-    out.push({ minX, minZ, maxX: maxX + 1, maxZ: maxZ + 1 })
+    out.push({ minX, minZ, maxX: maxX + 1, maxZ: maxZ + 1, southEdge })
   }
   return out
 }
