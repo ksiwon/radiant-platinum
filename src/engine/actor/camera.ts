@@ -23,33 +23,72 @@ const DEG = Math.PI / 180
 const THIRD = { distance: 8, height: 4, damping: 5 }
 
 /**
- * **실내 렌즈** — 원작이 실내에 쓰는 **내림각 그대로**, 거리는 우리 것.
+ * **원작 필드 카메라의 내림각**(도) — 갈래 열일곱 (`overlay005/field_camera.c`).
  *
- * 원작 실내 카메라는 `CAMERA_TYPE_INTERIOR_ORTHOGRAPHIC`이다 — 맵 표의
- * `camera` 칸이 4인 맵이 **300개**고 포켓몬센터(맵 420)도 그중 하나다.
- * `overlay005/field_camera.c`의 값은 거리 1563.538units(÷16 = **97.7칸**) ·
- * `cameraAngle.x −50.0867도` · 정사영 · `verticalFov 3.5211도`다. 정사영이라
- * 보이는 높이는 `tan(fovY) × distance` = 96.22units = **6.01칸**
- * (`camera.c`의 `Camera_ComputeProjectionMatrix`), 곧 세로 12.03칸이 든다.
+ * 맵 표의 `camera` 칸이 이 표를 가리킨다 (`MapHeader.camera`). 원작은 갈래마다
+ * 거리·화각·투영까지 다르지만 **우리는 각만 따라간다** — 97칸 정사영이나
+ * 8도 망원은 우리 55도 원근과 안 섞이고, 온 신오를 8칸·55도로 보기로 한
+ * 결정과도 어긋난다.
  *
- * ⚠️ **거리와 투영은 안 따라간다.** 97.7칸 정사영은 우리 55도 원근과 섞이지
- * 않고, 온 신오를 8칸·55도로 보기로 한 결정과도 어긋난다. **따라가는 것은
- * 내림각뿐이다** — 지금 슬랜트(√(5.5²+3.2²) = 6.363칸)를 그대로 두고 각만
- * 50.0867도로 돌린다.
+ * 각을 따라가는 까닭은 **실내에서 그것이 무엇을 보여 줄지를 정하기** 때문이다.
+ * 우리 기본값 26.57도(8칸·4칸)로 방을 보면 천장 없는 벽 위 허공이 화면에
+ * 든다 — 원작은 50~68도로 내려다봐서 그 허공을 안 본다.
+ */
+const FIELD_CAMERA_PITCH: readonly number[] = [
+  59.051513671875, // 0  기본
+  68.367919921875, // 1  들판 체육관
+  54.656982421875, // 2  당겨 본다
+  59.051513671875, // 3  강철 체육관
+  50.086669921875, // 4  실내 (정사영) — 맵 300개가 이것이다
+  59.0460205078125, // 5  창단의 기둥
+  73.1085205078125, // 6  천관산 밖 남쪽
+  59.0460205078125, // 7  천관산 밖 북쪽
+  70.4718017578125, // 8  스타크산 둘째 방
+  40.5889892578125, // 9  검은겨울 체육관
+  60.8038330078125, // 10 장막 체육관
+  57.8155517578125, // 11 조금 물러선다
+  63.2647705078125, // 12 굴
+  47.7960205078125, // 13 강철섬 굴
+  78.37646484375, // 14 시작의 언덕
+  54.656982421875, // 15 예지호수
+  59.051513671875, // 16 안 쓰는 갈래
+]
+
+/**
+ * 3인칭이 주인공에게서 떨어진 거리 (타일). 렌즈를 돌려도 이 값은 안 바뀐다.
  *
- * ⚠️ **각이 왜 문제였나.** 5.5·3.2는 **내림각 30.2도**다. 원작보다 20도 눕다
- * 보니 실내에서 **벽 위 허공이 화면에 든다** — 실측으로 스무 곳의 화면 위
- * 3분의 1이 평균 68.4% 검었고 포켓몬센터·자전거가게·길잡이등대는 85%를
- * 넘었다 (`node .audit/roomFit.mjs`). 실내에는 천장이 없다: 원작 자료를 세면
- * 벽 높이에서 **아래를 보는 면이 0개**다 (`node .audit/ceilingCheck.mjs`,
- * 맵 420·89·116). 원작은 50도로 내려다봐서 그 허공을 안 보는 것이다.
+ * 예전 실내 렌즈(거리 5.5 · 높이 3.2)의 빗변이다 — 각만 갈아 끼우려면
+ * 기준 길이가 하나 있어야 하고, 그 값이 이미 화면에서 쓰이던 것이다
+ */
+const INDOOR_SLANT = 6.3632
+
+/**
+ * **방에 쓸 렌즈** — 원작이 그 맵에 쓰는 내림각에 우리 빗변을 건다.
+ * 방이 아니면 `null`.
  *
- * 50.0867도면 방 하나가 화면에 딱 든다 — 문 앞에서 바닥 끝이 62.1도,
- * 벽 꼭대기가 6.4도라 그 사이가 55.7도이고 화면이 55도다.
+ * ⚠️ **`mapType`만 보면 안 된다.** 구저택(맵 296)은 `mapType` 3(굴)인데
+ * `camera` 4(실내)다 — 원작 자신이 방으로 다룬다. 반대로 검은겨울 체육관은
+ * `mapType` 4인데 `camera` 9라 40.59도다. **둘 중 하나라도 방이면** 방으로
+ * 보고, 각은 언제나 `camera` 칸이 준다.
+ *
+ * 실측 (`node .audit/roomFit.mjs`): 이 규칙이 닿는 맵이 357개다 —
+ * 둘 다인 맵 277 · `mapType`만 57 · `camera`만 23.
  *
  * ⚠️ **1인칭은 안 건드린다.** 눈이 방 안에 있으므로 이 문제가 없다.
  */
-const INDOOR = { distance: 4.083, height: 4.881, damping: 5 }
+const MAP_TYPE_INDOOR = 4
+const MAP_TYPE_POKEMON_CENTER = 5
+const CAMERA_INTERIOR = 4
+function roomLens(): { distance: number, height: number, damping: number } | null {
+  const header = mapById(mapWorld.mapId)
+  if (header === null) return null
+  const room = header.mapType === MAP_TYPE_INDOOR || header.mapType === MAP_TYPE_POKEMON_CENTER
+    || header.camera === CAMERA_INTERIOR
+  if (!room) return null
+  const deg = FIELD_CAMERA_PITCH[header.camera] ?? FIELD_CAMERA_PITCH[CAMERA_INTERIOR]!
+  const rad = (deg * Math.PI) / 180
+  return { distance: INDOOR_SLANT * Math.cos(rad), height: INDOOR_SLANT * Math.sin(rad), damping: 5 }
+}
 
 /** 방의 테두리 (월드 타일). 씬이 그려진 바닥에서 재어 넘겨 준다 */
 export interface RoomBox {
@@ -200,22 +239,14 @@ export function roomAt(rooms: readonly RoomBox[], x: number, z: number): RoomBox
 }
 
 /**
- * 지금 맵이 **방**인가 (`MapHeader.mapType` 4 실내 · 5 포켓몬센터).
- *
- * ⚠️ **`!isOutdoors`가 아니다.** 그 함수는 동굴(3)과 지하(6)까지 「실외가 아님」에
- * 넣는데, 그 둘은 방이 아니라 넓은 굴이다 — 강철섬에 이 렌즈를 물리면 검은
- * 화소가 **71.6% → 93.1%로 늘었다**(`node .audit/voidShots.mjs`). 가까이 당길수록
- * 화면에 드는 것이 불 켜진 자리가 아니라 어두운 굴 바닥이기 때문이다.
+ * ⚠️ **굴에는 방 렌즈를 안 건다.** `!isOutdoors`는 동굴(3)과 지하(6)까지
+ * 「실외가 아님」에 넣는데 그 둘은 방이 아니라 넓은 굴이다 — 강철섬에 방 렌즈를
+ * 물리면 검은 화소가 **71.6% → 93.1%로 늘었다** (`node .audit/voidShots.mjs`).
+ * 그래서 `roomLens`는 `mapType` 4·5나 `camera` 4만 방으로 본다.
  *
  * ⚠️ **깨어진 세계도 아니다.** 그쪽은 제 렌즈가 따로 있고(원작 필드의 기본
  * 카메라다) 방이 아니라 허공에 뜬 널판이라 잣대가 다르다
  */
-const MAP_TYPE_INDOOR = 4
-const MAP_TYPE_POKEMON_CENTER = 5
-const inRoom = (): boolean => {
-  const type = mapById(mapWorld.mapId)?.mapType
-  return type === MAP_TYPE_INDOOR || type === MAP_TYPE_POKEMON_CENTER
-}
 
 /** 필드 화각(도). `Stage`의 카메라도 이 값으로 선다 */
 export const FIELD_FOV = 55
@@ -366,7 +397,8 @@ export const cameraSystem = {
       // 깨어진 세계는 **렌즈부터 갈아 낀다** (`DISTORTION_THIRD`). 그 위에
       // 카메라가 홱 도는 자리 스물여섯 곳이 각을 더한다 (PARITY §6.10) —
       // 원작도 `baseAngle`에 구역 각을 더하는 꼴이라 밑각이 맞아야 이것도 맞는다
-      const lens = inDistortion ? DISTORTION_THIRD : inRoom() ? INDOOR : THIRD
+      const room = inDistortion ? null : roomLens()
+      const lens = inDistortion ? DISTORTION_THIRD : room ?? THIRD
       const swing = distortionBridge.cameraSwing?.() ?? null
       if (swing === null || (swing.x === 0 && swing.y === 0)) {
         tilted(0, lens.height, lens.distance, offset)
@@ -391,13 +423,13 @@ export const cameraSystem = {
       // 어긋난 동굴(맵 209)에서 6×4 조각이 뽑혀 겨눔이 16칸이나 밀렸고 화면의
       // 89.2%가 검었다. 굴에서는 예전처럼 **자리를 물리는** 편이 낫다(41.6%)
       const box = inDistortion ? null : roomAt(cameraSystem.rooms, p.x, p.z)
-      if (box !== null && swing === null && inRoom()) {
+      if (box !== null && swing === null && room !== null) {
         const height = goal.y - p.y
         const arm = Math.hypot(goal.x - p.x, goal.z - p.z)
         const pitch = aimPitch(height, arm, goal.z - floorEnd(box, p.x))
         look.z = goal.z - height / Math.tan((pitch * Math.PI) / 180)
         look.x = goal.x
-      } else if (!inDistortion && !inRoom()) {
+      } else if (!inDistortion && room === null) {
         clampToRoom(goal, box, ROOM_MARGIN)
       }
     }

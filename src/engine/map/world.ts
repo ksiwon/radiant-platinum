@@ -50,6 +50,17 @@ export interface MapHeader {
    */
   mapType: number
   /**
+   * 원작 필드 카메라 갈래 (`MapHeader.camera`, `enum CameraType` 0~16).
+   *
+   * 갈래마다 거리·내림각·화각·투영이 다르다 (`overlay005/field_camera.c`).
+   * 우리는 **내림각만** 따라간다 (`actor/camera`의 `FIELD_CAMERA_PITCH`) —
+   * 4번(실내 정사영)이 300개로 제일 많고, 체육관 몇은 제 갈래를 따로 쓴다.
+   *
+   * ⚠️ **`mapType`과 안 겹친다.** 구저택은 `mapType` 3(굴)인데 `camera` 4고,
+   * 검은겨울 체육관은 `mapType` 4인데 `camera` 9(40.59도)다
+   */
+  camera: number
+  /**
    * 배틀 배경 번호 (`MapHeader.battleBG`, 5비트).
    *
    * 원작 DS는 이 번호로 배틀 2D 배경을 고른다. 593개 맵이 열여덟 가지를 쓴다 —

@@ -103,6 +103,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   distortionProps: 3,
   /**
+   * 4 — **원작이 안 보이는 면에 칠해 둔 검정을 되돌린다.** 그림 없는 재질의
+   * 정점색이 (0,0,0)이면 확산색을 곱해도 검정이라, 벽 꼭대기 띠가 화면에
+   * 검은 쐐기로 떴다 — 콘테스트회장은 화면 왼쪽 29%였다. 확산색이 있는
+   * 61개(714삼각형)만 흰 정점색으로 되돌린다(확산까지 검은 59개는 그림자다).
+   *
    * 3 — **노드 변환을 먹인다.** 청크 모델은 조각을 제자리에 놓는 일을 노드
    * 행렬에 맡기는데 굽는 쪽이 그것을 세기만 하고 안 썼다. 실측으로 노드 917개
    * 중 **이동 207 · 회전 41 · 크기 22**가 있고 노드가 여럿인 청크가 33개다
@@ -120,8 +125,10 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
    * (`.audit/whiteMaterials.mjs`)
    */
-  chunks: 3,
+  chunks: 4,
   /**
+   * 4 — 그림 없는 재질의 검은 정점색을 되돌린다 (청크와 같은 고침).
+   *
    * 3 — **노드 변환을 먹인다** (청크와 같은 고침). 소품 590개에 노드 650개고
    * 그중 **이동 84 · 회전 10 · 크기 12**, 노드가 여럿인 소품이 25개다.
    *
@@ -129,7 +136,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 확산색만 든다. `shade`·`lm*`(확산 (66,82,107))가 건물 밑 그림자고,
    * `house`(57,156,165)는 지붕 색이다
    */
-  props: 3,
+  props: 4,
 }
 
 export function groupFormat(name: string): number {
