@@ -24,8 +24,8 @@ describe('SBC', () => {
     // MAT 4 · SHP 13 · MAT 0 · SHP 9 · RET
     const b = Uint8Array.from([0x04, 4, 0x05, 13, 0x04, 0, 0x05, 9, 0x01])
     expect(readSbc(b, 0, b.length)).toEqual([
-      { material: 4, polygon: 13 },
-      { material: 0, polygon: 9 },
+      { material: 4, polygon: 13, node: 0 },
+      { material: 0, polygon: 9, node: 0 },
     ])
   })
 
@@ -37,10 +37,21 @@ describe('SBC', () => {
   it('NODEDESC는 깃발에 따라 폭이 다르다', () => {
     // 깃발 없는 NODEDESC(2바이트) → 그 뒤 SHP가 제대로 읽힌다
     const plain = Uint8Array.from([0x06, 1, 2, 0x05, 7, 0x01])
-    expect(readSbc(plain, 0, plain.length)).toEqual([{ material: 0, polygon: 7 }])
+    expect(readSbc(plain, 0, plain.length)).toEqual([{ material: 0, polygon: 7, node: 0 }])
     // 깃발이 선 NODEDESC(4바이트)
     const flagged = Uint8Array.from([0x26, 1, 2, 3, 4, 0x05, 7, 0x01])
-    expect(readSbc(flagged, 0, flagged.length)).toEqual([{ material: 0, polygon: 7 }])
+    expect(readSbc(flagged, 0, flagged.length)).toEqual([{ material: 0, polygon: 7, node: 0 }])
+  })
+
+  // ⚠️ **조각이 어느 노드에 매달렸는지가 자리를 정한다.** 안 적으면 노드가
+  // 여럿인 청크 33개에서 조각이 전부 원점에 겹쳐 쌓인다 (`nsbmd.parseNodes`)
+  it('⚠️ NODE가 그 뒤 조각의 노드를 정한다', () => {
+    // NODE 3 · MAT 1 · SHP 2 · NODE 5 · SHP 4 · RET
+    const b = Uint8Array.from([0x02, 3, 1, 0x04, 1, 0x05, 2, 0x02, 5, 1, 0x05, 4, 0x01])
+    expect(readSbc(b, 0, b.length)).toEqual([
+      { material: 1, polygon: 2, node: 3 },
+      { material: 1, polygon: 4, node: 5 },
+    ])
   })
 })
 

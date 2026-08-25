@@ -21,10 +21,10 @@
 //
 // ⚠️ **노드 쪽(`tools/extract/starterScene.js`)과 한 줄씩 같아야 한다.**
 import { narcEntry } from './nds'
-import { readDict, parseModel, parsePolygons } from './nsbmd'
+import { readDict, parseModel, parseNodes, parsePolygons } from './nsbmd'
 import { parseTex0 } from './nitrotex'
 import {
-  blocks, readSbc, parseMaterials, buildMesh, packChunk, wantedItems, type Vertex,
+  blocks, readSbc, parseMaterials, buildMesh, packChunk, placeByNode, wantedItems, type Vertex,
 } from './chunks'
 import { bakeSheet, type Sheet } from './sheets'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
@@ -69,6 +69,7 @@ export async function convertStarterScene(ctx: ConvertContext): Promise<Produced
     const materials = parseMaterials(file, view, modelAt, header)
     const polygons = parsePolygons(file, view, modelAt, header)
     const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
+    const nodes = parseNodes(file, view, modelAt)
 
     const verts: Vertex[] = []
     const indices: number[] = []
@@ -78,6 +79,7 @@ export async function convertStarterScene(ctx: ConvertContext): Promise<Produced
       const mat = materials[pair.material]
       if (!poly || !mat) throw new Error(`모델 ${String(id)}: SBC가 없는 것을 가리킨다`)
       const mesh = buildMesh(poly.dl, header.upScale, mat)
+      placeByNode(mesh.verts, nodes[pair.node])
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

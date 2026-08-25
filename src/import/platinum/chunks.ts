@@ -8,7 +8,8 @@
 // 것과 한 개도 안 틀려야 한다 (666/666).
 import { narcEntry } from './nds'
 import {
-  fx32, readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, openModel,
+  fx32, readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, parseNodes, openModel,
+  type NodeXform,
   type ModelHeader, type Vec3,
 } from './nsbmd'
 import { parseTex0, type Tex0 } from './nitrotex'
@@ -56,7 +57,12 @@ function sbcOperands(op: number, flags: number): number {
   }
 }
 
-interface Pair { material: number, polygon: number }
+interface Pair {
+  material: number
+  polygon: number
+  /** 이 조각이 매달린 노드. `NODE(id, 보임)`이 정한다 (`nsbmd.parseNodes`) */
+  node: number
+}
 
 /**
  * SBC에서 (재질, 폴리곤) 짝을 뽑는다.
@@ -67,6 +73,9 @@ interface Pair { material: number, polygon: number }
 export function readSbc(buf: Uint8Array, at: number, end: number): Pair[] {
   const pairs: Pair[] = []
   let material = 0
+  // ⚠️ **어느 노드에 매달렸는지도 같이 적는다.** `NODE(id, 보임)`이 그 뒤 조각의
+  // 행렬을 갈아 끼운다 — 백화점 바닥이 노드 하나에 매달려 z로 12칸 옮겨져 있다
+  let node = 0
   let p = at
   while (p < end) {
     const raw = buf[p++]!
@@ -76,7 +85,8 @@ export function readSbc(buf: Uint8Array, at: number, end: number): Pair[] {
     const args: number[] = []
     for (let i = 0; i < n; i++) args.push(buf[p++]!)
     if (op === 0x04) material = args[0]!
-    else if (op === 0x05) pairs.push({ material, polygon: args[0]! })
+    else if (op === 0x02) node = args[0]!
+    else if (op === 0x05) pairs.push({ material, polygon: args[0]!, node })
     else if (op === 0x01) break
   }
   return pairs
@@ -298,6 +308,36 @@ interface BuiltChunk {
   materials: Material[]
 }
 
+/**
+ * 조각을 **제 노드 자리로 옮긴다** (`nsbmd.parseNodes`).
+ *
+ * ⚠️ **이동은 유닛이고 정점은 이미 타일이다.** `buildMesh`가 `pos × upScale ÷ 16`
+ * 으로 타일로 옮겨 놓았으므로 노드 이동도 16으로 나눈다. 원작이 조각에
+ * `upScale`을 먼저 먹이고(`POSSCALE`) 노드 행렬을 바깥에 두는 차례라 그렇다
+ */
+export function placeByNode(verts: Vertex[], node: NodeXform | undefined): void {
+  if (!node) return
+  const still = node.t.every((v) => v === 0) && node.s.every((v) => v === 1)
+    && node.m.every((v, i) => v === (i % 4 === 0 ? 1 : 0))
+  if (still) return
+  const m = node.m
+  for (const v of verts) {
+    const sx = v.pos[0] * node.s[0], sy = v.pos[1] * node.s[1], sz = v.pos[2] * node.s[2]
+    v.pos = [
+      m[0]! * sx + m[1]! * sy + m[2]! * sz + node.t[0] / UNITS_PER_TILE,
+      m[3]! * sx + m[4]! * sy + m[5]! * sz + node.t[1] / UNITS_PER_TILE,
+      m[6]! * sx + m[7]! * sy + m[8]! * sz + node.t[2] / UNITS_PER_TILE,
+    ]
+    // 법선은 회전만 먹인다 — 이동은 방향을 안 바꾼다
+    const n = [
+      m[0]! * v.normal[0] + m[1]! * v.normal[1] + m[2]! * v.normal[2],
+      m[3]! * v.normal[0] + m[4]! * v.normal[1] + m[5]! * v.normal[2],
+      m[6]! * v.normal[0] + m[7]! * v.normal[1] + m[8]! * v.normal[2],
+    ]
+    v.normal = n.map((c) => Math.max(-127, Math.min(127, Math.round(c)))) as Vec3
+  }
+}
+
 export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
   const { buf, view, modelAt, header } = openModel(chunk)
   const pairs = readSbc(buf, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
@@ -308,6 +348,7 @@ export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
   }
   const materials = parseMaterials(buf, view, modelAt, header)
   const polygons = parsePolygons(buf, view, modelAt, header)
+  const nodes = parseNodes(buf, view, modelAt)
 
   const verts: Vertex[] = []
   const indices: number[] = []
@@ -318,6 +359,7 @@ export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
     const mat = materials[pair.material]
     if (!mat) throw new Error(`청크 ${String(id)}: 재질 ${String(pair.material)}이 없다`)
     const mesh = buildMesh(poly.dl, header.upScale, mat)
+    placeByNode(mesh.verts, nodes[pair.node])
     const base = verts.length
     verts.push(...mesh.verts)
     submeshes.push([pair.material, indices.length, mesh.indices.length])
@@ -388,12 +430,16 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
     const materials = parseMaterials(file, view, modelAt, header)
     const polygons = parsePolygons(file, view, modelAt, header)
     const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
+    // 소품도 조각을 노드 행렬로 놓는다 — 590개에 노드 650개, 그중 이동 84 ·
+    // 회전 10 · 크기 12이고 노드가 여럿인 소품이 25개다 (`nsbmd.parseNodes`)
+    const nodes = parseNodes(file, view, modelAt)
 
     const verts: Vertex[] = []
     const indices: number[] = []
     const submeshes: [number, number, number][] = []
     for (const pair of pairs) {
       const mesh = buildMesh(polygons[pair.polygon]!.dl, header.upScale, materials[pair.material]!)
+      placeByNode(mesh.verts, nodes[pair.node])
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

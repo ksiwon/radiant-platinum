@@ -14,7 +14,7 @@ const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
 const {
-  readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, fx32,
+  readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, parseNodes, applyNode, fx32,
 } = require('../spike/nsbmd')
 
 /**
@@ -68,6 +68,10 @@ function sbcOperands(op, flags) {
 function readSbc(buf, at, end) {
   const pairs = []
   let material = 0
+  // ⚠️ **어느 노드에 매달렸는지도 같이 적는다.** `NODE(id, 보임)`이 그 뒤 조각의
+  // 행렬을 갈아 끼운다 — 백화점 바닥이 노드 하나에 매달려 z로 12칸 옮겨져 있다.
+  // 이것을 안 적으면 조각이 전부 원점에 겹쳐 쌓인다 (`nsbmd.parseNodes`)
+  let node = 0
   let p = at
   while (p < end) {
     const raw = buf[p++]
@@ -77,7 +81,8 @@ function readSbc(buf, at, end) {
     const args = []
     for (let i = 0; i < n; i++) args.push(buf[p++])
     if (op === 0x04) material = args[0]
-    else if (op === 0x05) pairs.push({ material, polygon: args[0] })
+    else if (op === 0x02) node = args[0]
+    else if (op === 0x05) pairs.push({ material, polygon: args[0], node })
     else if (op === 0x01) break
   }
   return pairs
@@ -250,6 +255,35 @@ function materialSpec(m) {
   }
 }
 
+/**
+ * 조각을 **제 노드 자리로 옮긴다** (`nsbmd.parseNodes`).
+ *
+ * ⚠️ **이동은 유닛이고 정점은 이미 타일이다.** `buildMesh`가 `pos × upScale ÷ 16`
+ * 으로 타일로 옮겨 놓았으므로 노드 이동도 16으로 나눠야 한다. 원작이 조각에
+ * `upScale`을 먼저 먹이고(`POSSCALE`) 노드 행렬을 바깥에 두는 차례라 그렇다
+ */
+function placeByNode(verts, node) {
+  if (!node) return
+  const still = node.t[0] === 0 && node.t[1] === 0 && node.t[2] === 0
+    && node.s.every((v) => v === 1)
+    && node.m.every((v, i) => v === (i % 4 === 0 ? 1 : 0))
+  if (still) return
+  for (const v of verts) {
+    const p = applyNode(
+      { t: node.t.map((c) => c / UNITS_PER_TILE), m: node.m, s: node.s },
+      v.pos[0], v.pos[1], v.pos[2])
+    v.pos = p
+    // 법선은 회전만 먹인다 — 이동은 방향을 안 바꾸고 크기는 되돌린다
+    const m = node.m
+    const n = [
+      m[0] * v.normal[0] + m[1] * v.normal[1] + m[2] * v.normal[2],
+      m[3] * v.normal[0] + m[4] * v.normal[1] + m[5] * v.normal[2],
+      m[6] * v.normal[0] + m[7] * v.normal[1] + m[8] * v.normal[2],
+    ]
+    v.normal = n.map((c) => Math.max(-127, Math.min(127, Math.round(c))))
+  }
+}
+
 function main() {
   const rom = openRom()
   const narc = rom.narc('/fielddata/land_data/land_data.narc')
@@ -268,6 +302,7 @@ function main() {
     }
     const materials = parseMaterials(model, modelAt, header)
     const polygons = parsePolygons(model, modelAt, header)
+    const nodes = parseNodes(model, modelAt)
 
     const verts = []
     const indices = []
@@ -275,6 +310,7 @@ function main() {
     for (const pair of pairs) {
       const poly = polygons[pair.polygon]
       const mesh = buildMesh(poly.dl, header.upScale, materials[pair.material])
+      placeByNode(mesh.verts, nodes[pair.node])
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push({ material: pair.material, start: indices.length, count: mesh.indices.length })
@@ -332,7 +368,7 @@ function main() {
 }
 
 module.exports = {
-  readSbc, parseMaterials, buildMesh, chunkModel, materialSpec,
+  readSbc, parseMaterials, buildMesh, placeByNode, chunkModel, materialSpec,
   VERTEX_BYTES, POS_SCALE, UV_SCALE, UNITS_PER_TILE,
 }
 

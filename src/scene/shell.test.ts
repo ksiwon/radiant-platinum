@@ -266,8 +266,8 @@ maybe('소품 빠진 면', () => {
     // 개수로는 "있다"인데 실루엣의 절반만 덮는 경우가 있고, 반대로 개수로는
     // "없다"인데 실제로는 안 뚫린 경우도 있다. 덮어 보고 세야 맞다
     expect([...byDir].sort().map(([d, n]) => `${d}${String(n)}`).join(' '))
-      .toBe('+X40 +Y7 +Z17 −X45 −Z335')
-    expect(dirs).toBe(444)
+      .toBe('+X40 +Y8 +Z21 −X47 −Z337')
+    expect(dirs).toBe(453)
     // ⚠️ **0이 아니다.** 남는 것은 소품 19번의 −Z에서 6칸이고, 실루엣 칸
     // 7,129,214개 대비 0.00008%다. 0으로 못 박으면 눈금(64×64)이 바뀔 때마다
     // 깨지므로 **실측한 자리를 그대로** 적는다 — 늘어나면 그게 회귀다.
@@ -276,10 +276,10 @@ maybe('소품 빠진 면', () => {
     // 물리면 189종·469,175칸이 뚫려 있었다
     expect(bad).toEqual(['19−Z:6'])
     expect(open, `뚫린 칸 ${String(open)}/${String(seenAll)}`).toBe(6)
-    expect(seenAll).toBe(7129214)
-    expect(filled).toBe(350)
+    expect(seenAll).toBe(7144176)
+    expect(filled).toBe(352)
     // 한 장짜리라 건너뛴 방향
-    expect(sheets).toBe(111)
+    expect(sheets).toBe(110)
   // 590종을 방향 다섯으로 64×64 래스터라이즈한다. 5초 기본값으로는 모자란다
   }, 30_000)
 
@@ -364,7 +364,7 @@ maybe('소품 빠진 면', () => {
         }
       }
     }
-    expect(verts).toBe(89991)
+    expect(verts).toBe(94878)
 
     // 주인공 집(23)과 이웃집(22)의 뒤판. **여기가 화면에서 보이던 자리다** —
     // 앞벽에 붙으면 뒤판 뒤로 옆벽만 남아 면이 따로 노는 것으로 보인다

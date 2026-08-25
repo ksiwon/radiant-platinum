@@ -159,6 +159,92 @@ function parseModel(buf, at) {
   return header
 }
 
+/**
+ * **노드(오브젝트) 하나의 변환.**
+ *
+ * 청크 모델은 조각을 제자리에 놓는 일을 노드 행렬에 맡긴다 — 백화점(청크 249)은
+ * 바닥 전체가 노드 하나에 매달려 z로 **−192유닛(−12칸)** 옮겨져 있고, 잃어버린
+ * 탑(286)은 열세 조각이 저마다 다른 자리에 놓인다. 이 변환을 안 쓰면 조각이
+ * 전부 원점에 겹쳐 쌓인다.
+ *
+ * 실측: 청크 666개에 노드 917개 · **이동 207 · 회전 41(그중 피벗꼴 40) ·
+ * 크기 22**, 노드가 여럿인 청크가 33개다 (`node .audit/nodeXform.mjs`).
+ *
+ * ⚠️ **회전 첫 칸이 머리에 끼어 있다.** `flag` 바로 뒤 u16이 남는 자리가 아니라
+ * **회전행렬의 `m00`**이다. 나머지 여덟은 이동 뒤에 따라온다 — NSBMD가 12바이트
+ * 정렬을 맞추느라 한 칸을 앞으로 뺐다. 그것을 빈칸으로 읽으면 회전이 통째로
+ * 한 칸씩 밀린다
+ */
+function parseNodes(buf, modelAt) {
+  const dictAt = modelAt + 0x40
+  return readDict(buf, dictAt).map((e) => {
+    const at = dictAt + buf.readUInt32LE(e.at)
+    const flag = buf.readUInt16LE(at)
+    const m00 = fx16(buf.readInt16LE(at + 2))
+    let p = at + 4
+    let t = [0, 0, 0]
+    if ((flag & 1) === 0) {
+      t = [0, 4, 8].map((o) => fx32(buf.readInt32LE(p + o)))
+      p += 12
+    }
+    let m = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    if ((flag & 8) !== 0) {
+      const a = fx16(buf.readInt16LE(p)), b = fx16(buf.readInt16LE(p + 2))
+      p += 4
+      m = pivotMatrix((flag >> 4) & 0xf, flag, a, b)
+    } else if ((flag & 2) === 0) {
+      const rest = []
+      for (let i = 0; i < 8; i++) rest.push(fx16(buf.readInt16LE(p + i * 2)))
+      p += 16
+      m = [m00, ...rest]
+    }
+    let s = [1, 1, 1]
+    if ((flag & 4) === 0) {
+      s = [0, 4, 8].map((o) => fx32(buf.readInt32LE(p + o)))
+      // 역수 셋이 뒤에 붙지만 우리는 안 쓴다
+      p += 24
+    }
+    return { name: e.name, flag, t, m, s }
+  })
+}
+
+/**
+ * **피벗꼴 회전** — 한 칸이 ±1이고 나머지 넷이 2×2 회전인 행렬.
+ *
+ * 축에 나란한 90도 회전에 남은 평면의 회전을 얹은 꼴이라 NSBMD가 아홉 값 대신
+ * **A·B 둘과 깃발**로 적는다. `idx`가 ±1이 앉는 칸(행 우선 0~8)이고, 그 행과
+ * 열을 뺀 2×2에 `[A B; C D]`가 들어간다 (기본값 `C = −B` · `D = A`).
+ *
+ * 깃발 세 개가 부호를 뒤집는다 — 0x0100이 C, 0x0200이 D, 0x0400이 ±1이다.
+ * (0xF800은 청크 917노드 **전부**에 서 있어 뜻이 없다)
+ */
+function pivotMatrix(idx, flag, a, b) {
+  const m = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+  const row = Math.floor(idx / 3), col = idx % 3
+  m[idx] = (flag & 0x0400) !== 0 ? -1 : 1
+  const rows = [0, 1, 2].filter((r) => r !== row)
+  const cols = [0, 1, 2].filter((c) => c !== col)
+  let c = -b, d = a
+  if ((flag & 0x0100) !== 0) c = -c
+  if ((flag & 0x0200) !== 0) d = -d
+  m[rows[0] * 3 + cols[0]] = a
+  m[rows[0] * 3 + cols[1]] = b
+  m[rows[1] * 3 + cols[0]] = c
+  m[rows[1] * 3 + cols[1]] = d
+  return m
+}
+
+/** 노드 변환을 점 하나에 먹인다. 크기 → 회전 → 이동 차례다 */
+function applyNode(node, x, y, z) {
+  const sx = x * node.s[0], sy = y * node.s[1], sz = z * node.s[2]
+  const m = node.m
+  return [
+    m[0] * sx + m[1] * sy + m[2] * sz + node.t[0],
+    m[3] * sx + m[4] * sy + m[5] * sz + node.t[1],
+    m[6] * sx + m[7] * sy + m[8] * sz + node.t[2],
+  ]
+}
+
 /** 폴리곤 목록 → 디스플레이 리스트들 */
 function parsePolygons(buf, modelAt, header) {
   const dictAt = modelAt + header.polygonsOffset
@@ -195,7 +281,10 @@ function countGeometry(dl) {
   return counts
 }
 
-module.exports = { readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, countGeometry, PARAMS, PRIM, fx32, fx16 }
+module.exports = {
+  readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, parseNodes, applyNode,
+  countGeometry, PARAMS, PRIM, fx32, fx16,
+}
 
 if (require.main === module) {
   const { openRom } = require('../extract/rom')

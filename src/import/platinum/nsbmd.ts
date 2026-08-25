@@ -193,6 +193,91 @@ export function parseModel(buf: Uint8Array, view: DataView, at: number): ModelHe
 interface Polygon { name: string, dl: Uint8Array }
 
 /** 폴리곤 목록 → 디스플레이 리스트들 */
+/** 노드 하나의 변환 — 크기·회전(3×3, 행 우선)·이동 */
+export interface NodeXform {
+  name: string
+  /** 이동 (유닛). 정점은 이미 타일이므로 쓰는 쪽이 16으로 나눈다 */
+  t: Vec3
+  /** 3×3 회전, 행 우선 아홉 값 */
+  m: readonly number[]
+  s: Vec3
+}
+
+/**
+ * **노드(오브젝트) 변환들.**
+ *
+ * 청크 모델은 조각을 제자리에 놓는 일을 노드 행렬에 맡긴다 — 백화점(청크 249)은
+ * 바닥이 노드 하나에 매달려 z로 **−192유닛(−12칸)** 옮겨져 있고, 잃어버린 탑
+ * (286)은 열세 조각이 저마다 다른 자리에 놓인다. 이 변환을 안 쓰면 조각이
+ * 전부 원점에 겹쳐 쌓여서, 실측으로 **실내 27곳의 출입구가 그려진 바닥 밖**에
+ * 있었다.
+ *
+ * 실측: 청크 666개에 노드 917개 · **이동 207 · 회전 41(그중 피벗꼴 40) ·
+ * 크기 22** (`node .audit/nodeXform.mjs`).
+ *
+ * ⚠️ **회전 첫 칸이 머리에 끼어 있다.** `flag` 바로 뒤 u16이 남는 자리가 아니라
+ * **회전행렬의 `m00`**이고, 나머지 여덟은 이동 뒤에 온다
+ */
+export function parseNodes(buf: Uint8Array, view: DataView, modelAt: number): NodeXform[] {
+  const dictAt = modelAt + 0x40
+  return readDict(buf, view, dictAt).map((e) => {
+    const at = dictAt + view.getUint32(e.at, true)
+    const flag = view.getUint16(at, true)
+    const m00 = fx16(view.getInt16(at + 2, true))
+    let p = at + 4
+    let t: Vec3 = [0, 0, 0]
+    if ((flag & 1) === 0) {
+      t = [0, 4, 8].map((o) => fx32(view.getInt32(p + o, true))) as Vec3
+      p += 12
+    }
+    let m: number[] = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    if ((flag & 8) !== 0) {
+      const a = fx16(view.getInt16(p, true)), b = fx16(view.getInt16(p + 2, true))
+      p += 4
+      m = pivotMatrix((flag >> 4) & 0xf, flag, a, b)
+    } else if ((flag & 2) === 0) {
+      const rest: number[] = []
+      for (let i = 0; i < 8; i++) rest.push(fx16(view.getInt16(p + i * 2, true)))
+      p += 16
+      m = [m00, ...rest]
+    }
+    let s: Vec3 = [1, 1, 1]
+    if ((flag & 4) === 0) {
+      s = [0, 4, 8].map((o) => fx32(view.getInt32(p + o, true))) as Vec3
+      // 역수 셋이 뒤에 붙지만 안 쓴다
+      p += 24
+    }
+    return { name: e.name, t, m, s }
+  })
+}
+
+/**
+ * **피벗꼴 회전** — 한 칸이 ±1이고 나머지 넷이 2×2 회전인 행렬.
+ *
+ * 축에 나란한 90도 회전에 남은 평면의 회전을 얹은 꼴이라 NSBMD가 아홉 값 대신
+ * **A·B 둘과 깃발**로 적는다. `idx`가 ±1이 앉는 칸(행 우선 0~8)이고, 그 행과
+ * 열을 뺀 2×2에 `[A B; C D]`가 들어간다 (기본 `C = −B` · `D = A`).
+ *
+ * 부호 깃발 셋: 0x0100이 C, 0x0200이 D, 0x0400이 ±1이다. (0xF800은 청크
+ * 노드 917개 **전부**에 서 있어 뜻이 없다)
+ */
+function pivotMatrix(idx: number, flag: number, a: number, b: number): number[] {
+  const m = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+  const row = Math.floor(idx / 3), col = idx % 3
+  m[idx] = (flag & 0x0400) !== 0 ? -1 : 1
+  const rows = [0, 1, 2].filter((r) => r !== row)
+  const cols = [0, 1, 2].filter((c) => c !== col)
+  let c = -b
+  let d = a
+  if ((flag & 0x0100) !== 0) c = -c
+  if ((flag & 0x0200) !== 0) d = -d
+  m[rows[0]! * 3 + cols[0]!] = a
+  m[rows[0]! * 3 + cols[1]!] = b
+  m[rows[1]! * 3 + cols[0]!] = c
+  m[rows[1]! * 3 + cols[1]!] = d
+  return m
+}
+
 export function parsePolygons(
   buf: Uint8Array, view: DataView, modelAt: number, header: ModelHeader,
 ): Polygon[] {

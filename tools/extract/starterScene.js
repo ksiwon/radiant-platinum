@@ -22,9 +22,11 @@
 const fs = require('fs')
 const path = require('path')
 const { openRom, writeJson, ROOT } = require('./rom')
-const { readDict, parseModel, parsePolygons } = require('../spike/nsbmd')
+const { readDict, parseModel, parseNodes, parsePolygons } = require('../spike/nsbmd')
 const { parseTex0, decode } = require('../spike/nitrotex')
-const { readSbc, parseMaterials, buildMesh, VERTEX_BYTES, POS_SCALE } = require('./chunks')
+const {
+  readSbc, parseMaterials, buildMesh, placeByNode, VERTEX_BYTES, POS_SCALE,
+} = require('./chunks')
 const { encodePng } = require('./png')
 
 /** 구울 칸. `Make3DGraphics`가 부르는 모델 번호 그대로다 */
@@ -79,12 +81,14 @@ function bake(file, outDir, id) {
   const materials = parseMaterials(file, modelAt, header)
   const polygons = parsePolygons(file, modelAt, header)
   const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
+  const nodes = parseNodes(file, modelAt)
 
   const verts = []
   const indices = []
   const submeshes = []
   for (const pair of pairs) {
     const mesh = buildMesh(polygons[pair.polygon].dl, header.upScale, materials[pair.material])
+    placeByNode(mesh.verts, nodes[pair.node])
     const base = verts.length
     verts.push(...mesh.verts)
     submeshes.push([pair.material, indices.length, mesh.indices.length])
