@@ -59,7 +59,13 @@ export function ItemBalls({ grid, layer, onStanding }: Props) {
    */
   const fitted = useMemo(() => {
     const outer = new Group()
-    const body = gltf.scene.clone(true)
+    // ⚠️ **`clone`이 아니라 `cloneSkinned`다.** three의 `clone`은 스킨드 메시의
+    // 뼈대를 **참조로** 베껴서 복제본의 뼈가 원본 트리를 가리킨다. 그 상태에서
+    // 다시 `cloneSkinned`를 걸면 이름으로 뼈를 찾는데 복제본 트리에는 그 뼈가
+    // 없어서 **뼈대가 통째로 `undefined` 셋**이 된다. 그리기는 뼈 텍스처를
+    // 쓰므로 조용히 넘어가고, 광선을 쏘면 `applyBoneTransform`에서 터진다 —
+    // `pnpm shot --hit`이 볼이 있는 맵에서 다 죽어 있었다 (`.audit/skinCheck.mjs`)
+    const body = cloneSkinned(gltf.scene) as Group
     outer.add(body)
     const box = new Box3().setFromObject(body)
     const tall = Math.max(box.max.y - box.min.y, box.max.x - box.min.x, 1e-6)

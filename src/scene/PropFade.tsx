@@ -53,6 +53,35 @@ function fadeFor(distance: number): number {
   return Math.min(1, Math.max(0, (distance - BLOCK_R) / FADE_SPAN))
 }
 
+/**
+ * 이 상자가 카메라와 사람 사이를 얼마나 막고 있나 → 남길 불투명도.
+ * 1이면 안 막는다.
+ *
+ * ⚠️ **플레이어보다 멀리 있는 것은 안 건드린다.** 이게 없으면 플레이어가 마주
+ * 보고 선 집이 반쯤 비친다 — 집은 겨눈 자리 바로 너머에 있는데 흐려짐 구간이
+ * 거기까지 닿아서, 떡잎마을 주인공 집이 42%로 비치고 문짝만 또렷하게 남았다.
+ *
+ * ⚠️ **사람을 품은 상자는 가리는 것이 아니다.** 배틀프런티어의 배틀타워는
+ * 상자가 17.3 × 21.6 × 20.4타일이라 광장을 통째로 덮는다 — 카메라도 사람도 그
+ * 안에 서므로 선이 상자 속을 지나 거리가 0이 되고, **건물이 통째로 사라졌다.**
+ * 남은 것은 따로 배치된 문짝(`gym_door00`) 하나라 파란 판이 허공에 떠 있었다.
+ * 사람이 그 안에 서 있으면 그것은 사람을 둘러싼 배경이지 사이에 든 것이 아니다
+ * (`.audit/fadeBox.mjs`)
+ */
+export function blockedBy(box: Box3, eye: Vector3, aim: Vector3): number {
+  if (box.containsPoint(aim)) return 1
+  const reach = eye.distanceTo(aim) - BLOCK_R
+  if (box.distanceToPoint(eye) >= reach) return 1
+  let closest = Infinity
+  for (let i = 0; i <= STEPS; i++) {
+    probe.lerpVectors(eye, aim, i / STEPS)
+    const d = box.distanceToPoint(probe)
+    if (d < closest) closest = d
+    if (closest === 0) break
+  }
+  return fadeFor(closest)
+}
+
 interface Props {
   /** 흐려질 소품의 지오메트리. 상자를 여기서 잰다 */
   geometry: BufferGeometry
@@ -132,23 +161,7 @@ export function PropFade({ geometry, materials, children }: Props) {
       const world = box.current.copy(local).applyMatrix4(node.matrixWorld)
       const p = worldState.player.position
       aim.set(p.x, p.y + AIM_HEIGHT, p.z)
-      // ⚠️ **플레이어보다 멀리 있는 것은 안 건드린다.**
-      //
-      // 이게 없으면 플레이어가 마주 보고 선 집이 반쯤 비친다 — 집은 겨눈 자리
-      // 바로 너머에 있는데 흐려짐 구간이 거기까지 닿아서, 떡잎마을 주인공 집이
-      // 42%로 비치고 문짝만 또렷하게 남았다. 카메라에서 그 상자까지가 카메라에서
-      // 플레이어까지보다 멀면 가릴 수가 없다
-      const reach = camera.position.distanceTo(aim) - BLOCK_R
-      if (world.distanceToPoint(camera.position) < reach) {
-        let closest = Infinity
-        for (let i = 0; i <= STEPS; i++) {
-          probe.lerpVectors(camera.position, aim, i / STEPS)
-          const d = world.distanceToPoint(probe)
-          if (d < closest) closest = d
-          if (closest === 0) break
-        }
-        want = fadeFor(closest)
-      }
+      want = blockedBy(world, camera.position, aim)
     }
 
     const next = at.current + (want - at.current) * EASE
