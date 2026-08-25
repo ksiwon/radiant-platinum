@@ -209,6 +209,64 @@ maybe('원작 자료', () => {
     return t
   }
 
+  /**
+   * ⚠️ **`matrices/0`은 오버월드뿐이다.** 그 표만 훑으면 방 안의 판때기가
+   * 두께를 얻는지 알 수 없다 — 고스트 체육관의 해골몽 판이 그 자리다.
+   * 방은 맵마다 제 행렬을 쓰고(`matrices/interiors`), 그림 묶음도 맵의 영역이
+   * 정한다(`MapStreamer`의 `texSet`)
+   */
+  function sweepInteriors(): Tally {
+    const fmt = read('chunks/index.json') as Fmt
+    const maps = read('maps.json') as {
+      maps: { area: number, matrix: number }[], areas: { tex: number }[]
+    }
+    const inside = read('matrices/interiors.json') as { matrices: Record<string, MatrixMeta> }
+
+    const seen = new Set<string>()
+    const t: Tally = { tris: 0, byTexture: new Map() }
+    for (const m of maps.maps) {
+      const mat = inside.matrices[String(m.matrix)]
+      if (mat === undefined) continue
+      const tex = maps.areas[m.area]?.tex ?? 0
+      for (const c of mat.chunks) {
+        const key = `${String(c.land)}/${String(tex)}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        const mesh = readChunk(c.land, fmt)
+        const sheet = sheetFor(tex)
+        const cutout = cutoutGroups(mesh, sheet)
+        const lumps = plateLumps(
+          mesh, sheet, cutout,
+          (mesh.geometry.getAttribute('position') as BufferAttribute).array as Float32Array)
+        const split = splitFoliage(mesh, cutout, lumps)
+        const shells = cardShells(
+          mesh, cutout,
+          (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array,
+          sheet, lumps)
+        if (!shells) continue
+        t.tris += shells.geometry.getAttribute('position').count / 3
+        for (const [, count, g] of shells.groups) {
+          const tx = mesh.materials[g]!.tex ?? ''
+          t.byTexture.set(tx, (t.byTexture.get(tx) ?? 0) + count / 3)
+        }
+      }
+    }
+    return t
+  }
+
+  it('방 안의 판때기도 두께를 얻는다 — 해골몽 판이 그 자리다', () => {
+    const t = sweepInteriors()
+    // 방 청크 × 그림묶음 조합 전체. 그림 58장이 여기서 두께를 얻는다
+    expect(t.tris).toBe(91_620)
+    // **해골몽(ヨマワル)이다.** 연고시티 체육관 벽에 선 판이 `gm05_yomawaru`,
+    // 굴에 선 것이 `yomawaru.1`이고 둘 다 오려 낸 그림 한 장이라 옆에서 보면
+    // 선으로 사라졌다. 두께가 붙는 것을 여기서 잰다
+    expect(t.byTexture.get('gm05_yomawaru')).toBe(16_596)
+    expect(t.byTexture.get('yomawaru.1')).toBe(3_264)
+    // 제일 많이 쓰는 것은 굴 벽면(`dun_sside`)이다
+    expect(t.byTexture.get('dun_sside')).toBe(36_592)
+  }, 900_000)
+
   it('서 있는 판에는 붙고 땅에 깔린 지형에는 안 붙는다', () => {
     const t = sweep()
     // 청크 × 그림묶음 조합 전체의 합.
