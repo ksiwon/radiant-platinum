@@ -3,7 +3,7 @@
 // 실패해도 게임은 돌아야 하므로 방어적으로 초기화한다. 노드 그래프 하나가
 // 안 되면 화면이 통째로 검게 나가기 때문에, 윤곽이 실패하면 블룸만으로,
 // 그것도 실패하면 기본 렌더로 두 단계 물러난다.
-import { PerspectiveCamera, type Camera, type Scene } from 'three'
+import { PerspectiveCamera, RedFormat, UnsignedByteType, type Camera, type Scene } from 'three'
 // ⚠️ **`PostProcessing`이 아니라 `RenderPipeline`이다.** r183에서 이름이
 // 바뀌었고 옛 이름은 남아 있지만 부를 때마다 콘솔에 경고를 찍는다 —
 // 화면을 훑는 하네스(`pnpm story`)가 장면마다 그 경고를 주워 왔다
@@ -61,6 +61,12 @@ function withOutline(
     const color = scenePass.getTextureNode('output')
     const depthTex = scenePass.getTextureNode('depth')
     const cover = scenePass.getTextureNode(COVER)
+    // ⚠️ **첨부는 색 화면의 복제로 만들어진다** — RGBA 반정밀도에 MSAA 4배다
+    // (`antialias: true`). 덮은 정도는 0~1 하나뿐이라 그 여덟 배를 쓸 이유가
+    // 없다. R8로 내린다 — `r8unorm`은 섞기가 되므로 반투명 합성은 그대로다
+    const coverTex = scenePass.getTexture(COVER)
+    coverTex.format = RedFormat
+    coverTex.type = UnsignedByteType
 
     const w = 1.4 / Math.max(1, renderer.domElement.width)
     const h = 1.4 / Math.max(1, renderer.domElement.height)
