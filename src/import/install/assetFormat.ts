@@ -43,6 +43,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   /** 2 — 일본판 게임코너 뱅크(us #147)가 빠져 있었다. 그 파일이 늘어난다 */
   text: 2,
   /**
+   * 7 — 파도타기 몸이 늘어난다 (`models/pcParts.glb`). 지금까지 파도타기는
+   * **비버통(400) 모델**을 태워 두고 있었는데 그것은 우리가 고른 것이다.
+   * 원작은 전용 몸 `naminori_00_00_BodySkin`을 쓰고, 그것이 물뿌리개·낚싯대
+   * 셋·공중날기 몸과 함께 `persons/field/pc_parts` 한 번들에 들어 있다
+   * (`.audit/fieldClipCensus.mjs`). 안 올리면 이미 깔린 사람은 그 파일이 없어
+   * 옛 몸을 그대로 탄다.
+   *
    * 6 — 몬스터볼(`models/pokeball.glb`)이 늘어난다. 길에 떨어진 도구가
    * 판때기가 아니라 입체로 선다 (`scene/ItemBalls`). 이 변환기가 자전거와
    * 같은 자리에서 굽는다 — 안 올리면 이미 깔린 사람은 그 파일이 없어서
@@ -71,7 +78,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 달라지므로 이미 깔린 사람도 이 그룹만 다시 굽게 한다 — 안 올리면 설치본의
    * 주인공이 계속 절차형으로만 낚시한다
    */
-  npcModels: 6,
+  npcModels: 7,
   /**
    * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
    *

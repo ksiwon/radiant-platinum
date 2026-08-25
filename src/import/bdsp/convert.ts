@@ -43,6 +43,15 @@ const BIKE = 'Characters/objects/ob1003_00'
  * (번들 안 이름 `openball02` · `ob0201_00_ballupperSkin`)
  */
 const POKEBALL = 'Characters/objects/ob0201_00'
+/**
+ * 주인공이 **들고 타는 것들**이 한 번들에 같이 있다.
+ *
+ * 필드 번들 161벌의 메시 이름을 전수로 훑어 나온 자리다
+ * (`.audit/fieldClipCensus.mjs`): 파도타기 몸 `naminori_00_00_BodySkin` ·
+ * 공중날기 몸 `sora_00_00_BodyASkin` · 물뿌리개 `fo1013_00_wateringcanSkin` ·
+ * 낚싯대 셋 `fo1005~1007_00_roadSkin`. 지금 쓰는 것은 파도타기뿐이다
+ */
+const PC_PARTS = 'Characters/persons/field/pc_parts'
 
 /**
  * 텍스처 긴 변의 상한.
@@ -294,7 +303,10 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   await breathe(ctx)
 
   // 자전거와 몬스터볼
-  for (const [bundle, name] of [[BIKE, 'models/bike.glb'], [POKEBALL, 'models/pokeball.glb']] as const) {
+  for (const [bundle, name] of [
+    [BIKE, 'models/bike.glb'], [POKEBALL, 'models/pokeball.glb'],
+    [PC_PARTS, 'models/pcParts.glb'],
+  ] as const) {
     const found = lookup(at, bundle)
     const env = found ? await environmentOf(src, [found]) : null
     if (!env) continue
@@ -643,7 +655,7 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
   {
     name: 'npcModels',
     outputs: ['models/npc/{번들}.glb', 'models/dawn.glb', 'models/bike.glb', 'models/pokeball.glb',
-      'data/npcModels.json'],
+      'models/pcParts.glb', 'data/npcModels.json'],
     converter: 1,
     convert: convertNpcModels,
   },

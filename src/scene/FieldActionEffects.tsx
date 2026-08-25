@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { MeshStandardMaterial, Quaternion, Vector3, type Group, type Mesh } from 'three'
+import {
+  MeshStandardMaterial, Quaternion, Vector3, type Group, type Mesh, type Object3D,
+} from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { CAST_FRAMES, REEL_FRAMES, type FishingPhase } from '../engine/actor/fishing'
 import { worldState, type FieldActionFxKind } from '../state/worldState'
 import { tickFlyTransition } from './flyTransition'
 import { fishing } from './fishingSystem'
 import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
+import { BDSP_TO_WORLD } from '../engine/model/normalize'
+import { PC_PART, SURF_MOUNT, keepOnly } from './pcParts'
+import { assets } from '../data/providers/assetProvider'
 
 interface Props {
   /** 정규화된 주인공 본체. 서핑 중 탈것 위로 살짝 들어 올린다. */
@@ -54,6 +60,22 @@ function alignCylinder(mesh: Mesh, from: Vector3, to: Vector3): void {
 }
 
 /**
+ * 파도타기 몸을 한 번만 받는다.
+ *
+ * ⚠️ **주소를 만들지 않는다** — 공개판에서 이 파일은 OPFS에서 온다
+ * (IMPORT.md §7). `assets().bytes`로 받아 blob 주소로 연다
+ */
+let surfMount: Promise<Object3D | null> | null = null
+function loadSurfMount(): Promise<Object3D | null> {
+  surfMount ??= assets().bytes('models/pcParts.glb')
+    .then((buffer) => new Promise<Object3D | null>((done) => {
+      new GLTFLoader().parse(buffer, '', (gltf) => { done(gltf.scene) }, () => { done(null) })
+    }))
+    .catch(() => null)
+  return surfMount
+}
+
+/**
  * 필드 행동을 화면 위 기호가 아니라 플레이어와 같은 3D 공간에 그린다.
  * 실제 규칙은 기존 시스템에 남고, 이 컴포넌트는 짧은 시각 피드백만 소비한다.
  */
@@ -61,7 +83,6 @@ export function FieldActionEffects({ bodyRef }: Props) {
   const surfRef = useRef<Group>(null)
   const surfFallbackRef = useRef<Group>(null)
   const surfModelHostRef = useRef<Group>(null)
-  const surfBodyRef = useRef<MonBody | null>(null)
   const flyRef = useRef<Group>(null)
   const flyFallbackRef = useRef<Group>(null)
   const flyModelHostRef = useRef<Group>(null)
@@ -98,27 +119,26 @@ export function FieldActionEffects({ bodyRef }: Props) {
     [actionMaterial],
   )
 
+  // 파도타기 몸. **원작 것이다** (`pcParts`의 `naminori_00_00_BodySkin`) —
+  // 오래 비버통(400) 모델을 태워 두었는데 그건 우리가 고른 것이었다
   useEffect(() => {
     let alive = true
-    void loadMonModel(400).then((loaded) => {
-      if (!alive || !loaded || !surfModelHostRef.current) return
-      const body = makeBody(loaded)
-      body.root.scale.setScalar(0.76 / Math.max(0.1, body.tall))
-      body.root.position.set(0, 0.08, -0.12)
-      body.root.rotation.y = Math.PI
-      surfModelHostRef.current.add(body.root)
-      surfBodyRef.current = body
+    let mount: Object3D | null = null
+    void loadSurfMount().then((scene) => {
+      if (!alive || !scene || !surfModelHostRef.current) return
+      keepOnly(scene, PC_PART.surf)
+      // 번들 단위 → 게임 단위. 드는 높이도 그 안에서 잰 값이라 같이 곱한다
+      scene.scale.setScalar(BDSP_TO_WORLD)
+      scene.position.y = SURF_MOUNT.lift * BDSP_TO_WORLD
+      scene.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = true })
+      surfModelHostRef.current.add(scene)
+      mount = scene
       if (surfFallbackRef.current) surfFallbackRef.current.visible = false
-      play(body, 'wait')
     })
     return () => {
       alive = false
-      const body = surfBodyRef.current
-      if (body) {
-        body.mixer.stopAllAction()
-        body.root.removeFromParent()
-      }
-      surfBodyRef.current = null
+      mount?.removeFromParent()
+      mount = null
     }
   }, [])
 
@@ -168,11 +188,12 @@ export function FieldActionEffects({ bodyRef }: Props) {
     if (surf) surf.visible = surfing
     const body = bodyRef.current
     if (body) {
-      const targetY = flyPose.visible ? flyPose.playerLift : surfing ? 0.43 : 0
+      // ⚠️ **앉는 높이를 지어내지 않는다.** 번들이 `scaffold_Attach`로 적어 둔
+      // 자리다 (`pcParts`의 `SURF_MOUNT.seat`) — 오래 0.43을 쓰고 있었다
+      const targetY = flyPose.visible ? flyPose.playerLift
+        : surfing ? SURF_MOUNT.seat * BDSP_TO_WORLD : 0
       body.position.y += (targetY - body.position.y) * Math.min(1, delta * 9)
     }
-    const surfBody = surfBodyRef.current
-    if (surfBody && surfing) surfBody.mixer.update(delta)
     if (waveARef.current) {
       const phase = (time * 0.85) % 1
       waveARef.current.scale.setScalar(0.75 + phase * 0.65)

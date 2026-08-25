@@ -190,6 +190,15 @@ export const GROUPS = [
     match: oneOf('models/pokeball.glb'),
   },
   {
+    // 주인공이 **들고 타는 것들**이 한 번들에 같이 있다
+    // (`Characters/persons/field/pc_parts`): 파도타기 몸 `naminori_00_00` ·
+    // 공중날기 몸 `sora_00_00` · 물뿌리개 · 낚싯대 셋(`fo1005~1007`).
+    // 지금 쓰는 것은 파도타기뿐이지만 한 파일이라 따로 자를 것이 없다
+    name: 'pcParts',
+    make: 'pnpm extract:pcParts',
+    match: oneOf('models/pcParts.glb'),
+  },
+  {
     name: 'arena',
     make: 'pnpm extract:arenas',
     match: under('models/arena/'),
