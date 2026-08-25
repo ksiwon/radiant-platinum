@@ -5,7 +5,7 @@
 //
 // 청크 좌표계: 모델이 −16~+16 타일로 **가운데 정렬**돼 있으므로 행렬 칸의
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ClampToEdgeWrapping, DataTexture, DoubleSide, MeshBasicMaterial, NearestFilter,
   SRGBColorSpace,
@@ -14,6 +14,7 @@ import {
 import type { MapGrid } from '../engine/map/grid'
 import {
   loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sliceTexture,
+  splitShadow,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import {
@@ -64,6 +65,31 @@ interface Placed {
   /** 판때기 나무를 뺀 지오메트리. 나무는 `Foliage`가 입체로 세운다 */
   geometry: BufferGeometry
   materials: Material[]
+}
+
+/**
+ * 지형이나 소품 하나. **그림자를 던지는 면과 안 던지는 면을 갈라 그린다.**
+ *
+ * ⚠️ **섞는 면이 검은 그림자를 지고 있었다.** `castShadow`는 오브젝트마다라
+ * 재질 무리별로 못 끄는데, 빛기둥·물·연기는 `alphaTest: 0`이라 깊이 패스에서
+ * 꽉 찬 실루엣으로 찍힌다 (`chunkMesh`의 `castsShadow`). 실측으로 천관산에서
+ * 화면의 0.15%가 달라졌고 그중 610화소가 그 자국이다.
+ *
+ * ⚠️ **드로우콜은 안 는다.** three가 재질 무리마다 콜 하나를 내므로, 무리를
+ * 두 메시에 나눠 담아도 총 콜 수는 같다. 정점 버퍼도 나눠 쓴다
+ */
+function TerrainMesh({ geometry, materials, name = '지형' }: {
+  geometry: BufferGeometry, materials: Material[], name?: string,
+}) {
+  const split = useMemo(() => splitShadow(geometry, materials), [geometry, materials])
+  return (
+    <>
+      <mesh name={name} geometry={split.solid} material={materials} castShadow receiveShadow />
+      {split.soft && (
+        <mesh name={`${name} 반투명`} geometry={split.soft} material={materials} receiveShadow />
+      )}
+    </>
+  )
 }
 
 /** 청크 지형. 소품과 달리 숲 바닥을 메울 판을 하나 더 갖는다 */
@@ -918,13 +944,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
 
             ⚠️ 합치면 **메운 바닥도 그림자를 던진다.** 원래는 받기만 했다
           */}
-          <mesh
-            name="지형"
-            geometry={p.merged ?? p.geometry}
-            material={p.materials}
-            castShadow
-            receiveShadow
-          />
+          <TerrainMesh geometry={p.merged ?? p.geometry} materials={p.materials} />
           {/*
             원작이 안 만든 실내 앞벽. 카메라가 도는 화면에서는 그 자리가
             통째로 검게 뚫려 보인다 (`roomWalls.ts`)
@@ -979,7 +999,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               둘이 같은 재질 배열을 쓰므로 한 기하로 합쳐 둔다 (`mergeGroups`) —
               `poketch`에서 소품 124칸 + 채운 면 113칸이 따로 나가던 자리다
             */}
-            <mesh name="소품" geometry={p.geometry} material={p.materials} castShadow receiveShadow />
+            <TerrainMesh geometry={p.geometry} materials={p.materials} name="소품" />
           </PropFade>
         </group>
       ))}

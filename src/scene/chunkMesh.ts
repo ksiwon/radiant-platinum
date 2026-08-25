@@ -390,3 +390,51 @@ export function makeMaterial(
   markSeeThrough(made, translucent)
   return made
 }
+
+/**
+ * 이 재질이 **그림자를 던져도 되는가**.
+ *
+ * ⚠️ **three는 알파를 섞는 면도 통째로 불투명한 그림자를 만든다.** 깊이 재질이
+ * 가져가는 것은 `alphaTest`와 `map`뿐이라, `alphaTest: 0`으로 섞는 면은
+ * 텍셀 알파와 상관없이 그림자에 꽉 찬 실루엣으로 찍힌다 — 천관산 빛기둥
+ * (`dun_light`)이 바닥에 **검은 자국**을 남기고 있었다
+ */
+export function castsShadow(material: Material): boolean {
+  const m = material as Material & { transparent?: boolean, alphaTest?: number }
+  return !(m.transparent === true && (m.alphaTest ?? 0) === 0)
+}
+
+/**
+ * 한 기하를 **그림자를 던지는 쪽과 안 던지는 쪽**으로 가른다.
+ *
+ * `castShadow`는 오브젝트마다라 재질 무리별로 끌 수가 없다. 그래서 메시를
+ * 둘로 나눈다 — 정점과 색인은 **그대로 나눠 쓰고** 무리만 갈라 담으므로
+ * GPU 버퍼가 늘지 않고, three가 무리마다 한 콜을 내므로 **드로우콜도 그대로**다.
+ *
+ * ⚠️ **여기서 나온 기하는 버리지 마라.** 정점 버퍼를 원본과 나눠 쓰기 때문에
+ * `dispose()`하면 아직 쓰는 원본의 버퍼까지 없앤다. 버리는 것은 원본 하나다.
+ *
+ * 섞는 무리가 없으면 `soft`가 `null`이고 `solid`는 원본 그대로다 — 대부분의
+ * 청크가 그렇다
+ */
+export function splitShadow(
+  geometry: BufferGeometry, materials: readonly Material[],
+): { solid: BufferGeometry, soft: BufferGeometry | null } {
+  const groups = geometry.groups
+  const soft = groups.filter((g) => materials[g.materialIndex ?? 0] !== undefined
+    && !castsShadow(materials[g.materialIndex ?? 0]!))
+  if (soft.length === 0) return { solid: geometry, soft: null }
+  const share = (keep: typeof groups): BufferGeometry => {
+    const made = new BufferGeometry()
+    for (const [name, attribute] of Object.entries(geometry.attributes)) {
+      made.setAttribute(name, attribute)
+    }
+    if (geometry.index) made.setIndex(geometry.index)
+    made.boundingBox = geometry.boundingBox
+    made.boundingSphere = geometry.boundingSphere
+    for (const g of keep) made.addGroup(g.start, g.count, g.materialIndex)
+    return made
+  }
+  const hard = groups.filter((g) => !soft.includes(g))
+  return { solid: share(hard), soft: share(soft) }
+}

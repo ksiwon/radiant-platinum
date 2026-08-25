@@ -8,8 +8,9 @@
 // 밀리면서 삼각형이 가시처럼 찢어지는데, 개수는 그대로 맞는다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { expect, it } from 'vitest'
-import { softAlpha } from './chunkMesh'
+import { describe, expect, it } from 'vitest'
+import { BufferAttribute, BufferGeometry, MeshLambertMaterial, type Material } from 'three'
+import { castsShadow, softAlpha, splitShadow } from './chunkMesh'
 import { decodePng, withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data/chunks')
@@ -185,5 +186,44 @@ maybeTex('알파가 번지는 그림', () => {
     // 4세대 팔레트 그림은 색 0만 투명이라 알파가 0 아니면 255다 — 나무·울타리가
     // 여기 걸리면 숲이 통째로 반투명이 된다
     expect(softAlpha(new Uint8Array([1, 2, 3, 255, 4, 5, 6, 0])), '잘라 낸 그림').toBe(false)
+  })
+})
+
+describe('그림자를 던질 면 가르기', () => {
+  /** 무리 넷짜리 기하 하나 — 재질은 밖에서 준다 */
+  function land(): BufferGeometry {
+    const g = new BufferGeometry()
+    g.setAttribute('position', new BufferAttribute(new Float32Array(36), 3))
+    for (let i = 0; i < 4; i++) g.addGroup(i * 3, 3, i)
+    return g
+  }
+  const opaque = (): Material => new MeshLambertMaterial({ alphaTest: 0.5 })
+  const soft = (): Material => new MeshLambertMaterial({ transparent: true, alphaTest: 0 })
+
+  it('섞는 면이 없으면 나누지 않는다 — 대부분의 청크가 그렇다', () => {
+    const g = land()
+    const out = splitShadow(g, [opaque(), opaque(), opaque(), opaque()])
+    expect(out.solid).toBe(g)
+    expect(out.soft).toBe(null)
+  })
+
+  it('섞는 무리만 빼내고 나머지는 그림자를 던진다', () => {
+    const g = land()
+    const mats = [opaque(), soft(), opaque(), soft()]
+    const out = splitShadow(g, mats)
+    expect(out.solid.groups.map((x) => x.materialIndex)).toEqual([0, 2])
+    expect(out.soft?.groups.map((x) => x.materialIndex)).toEqual([1, 3])
+    // ⚠️ **정점을 나눠 쓴다.** 복사하면 청크마다 버퍼가 두 벌 된다
+    expect(out.solid.attributes.position).toBe(g.attributes.position)
+    expect(out.soft?.attributes.position).toBe(g.attributes.position)
+    // 무리를 하나도 안 잃는다 — 잃으면 화면에서 그 면이 사라진다
+    expect(out.solid.groups.length + (out.soft?.groups.length ?? 0)).toBe(g.groups.length)
+  })
+
+  it('알파를 자르는 면은 그림자를 던진다 — 나무와 울타리가 그렇다', () => {
+    expect(castsShadow(new MeshLambertMaterial({ alphaTest: 0.5 }))).toBe(true)
+    expect(castsShadow(new MeshLambertMaterial({ transparent: true, alphaTest: 0.5 }))).toBe(true)
+    // 빛기둥·물·연기는 안 던진다 (`castsShadow` 머리말)
+    expect(castsShadow(new MeshLambertMaterial({ transparent: true, alphaTest: 0 }))).toBe(false)
   })
 })
