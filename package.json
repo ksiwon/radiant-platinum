@@ -22,7 +22,7 @@
     "extract:pokemonVariants": "py -3.13 tools/extract/bdspPokemonVariants.py",
     "extract:npcSprites": "node tools/extract/npcSprites.js",
     "extract:bdspNpc": "py -3.13 tools/extract/bdspNpc.py",
-    "extract:bike": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/objects/ob1003_00\" -o public/models/bike.glb --max-texture 256 --no-clips",
+    "extract:bike": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/objects/ob1004_00\" -o public/models/bike.glb --max-texture 256 --no-clips",
     "extract:pokeball": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/objects/ob0201_00\" -o public/models/pokeball.glb --max-texture 256 --no-clips",
     "extract:pcParts": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/persons/field/pc_parts\" -o public/models/pcParts.glb --max-texture 256 --no-clips",
     "extract:player": "py -3.13 tools/extract/bdspGlb.py \"raw/AssetAssistant/Characters/persons/battle/pc0002_00\" -o public/models/dawn.glb --max-texture 256 --no-clips",

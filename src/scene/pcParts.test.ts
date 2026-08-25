@@ -126,14 +126,12 @@ maybe('주인공이 타고 드는 것들', () => {
     expect(-lifted.min).toBeCloseTo(SURF_MOUNT.draft, 3)
     expect(lifted.max - lifted.min).toBeCloseTo(SURF_MOUNT.height, 3)
 
-    // 사람이 앉는 자리는 번들이 적어 둔 것이다
-    const seat = new Vector3().setFromMatrixPosition(world(byName.get('scaffold_Attach')!))
-    expect(seat.y + SURF_MOUNT.lift).toBeCloseTo(SURF_MOUNT.seat, 3)
-
-    // ⚠️ **앉는 자리가 몸 안이어야 한다.** 위로 벗어나면 사람이 뜨고, 밑으로
-    // 벗어나면 몸에 파묻힌다
-    expect(seat.y + SURF_MOUNT.lift).toBeGreaterThan(lifted.min)
-    expect(seat.y + SURF_MOUNT.lift).toBeLessThan(lifted.max)
+    // ⚠️ **사람은 등판 **위**에 선다.** 몸 속으로 들어가면 다리가 파묻힌다
+    expect(SURF_MOUNT.stand).toBeCloseTo(lifted.max, 3)
+    // 번들이 적어 둔 `scaffold_Attach`는 몸 속이라 사람 자리가 아니다
+    const scaffold = new Vector3().setFromMatrixPosition(world(byName.get('scaffold_Attach')!))
+    expect(scaffold.y + SURF_MOUNT.lift).toBeLessThan(SURF_MOUNT.stand)
+    expect(scaffold.y + SURF_MOUNT.lift).toBeGreaterThan(lifted.min)
 
     // 앞이 +z다 — 우리 사람과 같은 쪽이라 돌릴 것이 없다
     expect(box.max.z).toBeGreaterThan(0)

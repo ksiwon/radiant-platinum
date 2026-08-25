@@ -1,4 +1,4 @@
-// 자전거 (DATA.md §4.2.1) — BDSP의 `Characters/objects/ob1003_00`
+// 자전거 (DATA.md §4.2.1) — BDSP의 `Characters/objects/ob1004_00`
 //
 // 타면 몸만 빨라지고 밑에 아무것도 없던 자리를 메운다. 자리를 맞출 것이 없다:
 // 번들이 붙이는 자리로 적어 둔 `loc_attach`가 (0, 0, 0)이고 메시 바닥도 거기라,
@@ -16,7 +16,16 @@ import { sceneRefs } from './sceneRefs'
 import { useAssetUrl } from '../data/providers/useAssetUrl'
 
 /** 돌려야 하는 뼈들. 앞뒤 바퀴는 바퀴 반지름, 크랭크는 그 물린 비율로 돈다 */
-const SPIN = ['FTire', 'BTire', 'Gear', 'LPedal1', 'RPedal1'] as const
+const SPIN = ['FTire', 'BTire', 'Gear'] as const
+
+/**
+ * 크랭크에 매달려 도는 발판. **크랭크와 반대로 같은 각을 돌려 수평을 지킨다.**
+ *
+ * ⚠️ **`ob1004_00`은 페달이 `Gear`의 자식이다** (`Gear/LPedal`·`Gear/RPedal`).
+ * 크랭크를 돌리면 발판도 같이 돌아 발이 뒤집힌 판을 밟는다 — 그전에 굽던
+ * `ob1003_00`은 크랭크 팔과 발판이 따로였다
+ */
+const LEVEL = ['LPedal', 'RPedal'] as const
 
 const AXIS = new Vector3(1, 0, 0)
 const turn = new Quaternion()
@@ -27,10 +36,13 @@ export function spinBike(bike: Object3D, phase: number) {
     const node = bike.getObjectByName(name)
     const rest = node?.userData.rest as Quaternion | undefined
     if (!node || !rest) continue
-    // ⚠️ **페달 발판은 안 돌린다.** 크랭크가 돌아도 발판은 수평을 지킨다 —
-    // 같이 돌리면 발이 뒤집힌 발판을 밟는다
-    const angle = name === 'RPedal1' ? phase + Math.PI : phase
-    node.quaternion.copy(rest).premultiply(turn.setFromAxisAngle(AXIS, -angle))
+    node.quaternion.copy(rest).premultiply(turn.setFromAxisAngle(AXIS, -phase))
+  }
+  for (const name of LEVEL) {
+    const node = bike.getObjectByName(name)
+    const rest = node?.userData.rest as Quaternion | undefined
+    if (!node || !rest) continue
+    node.quaternion.copy(rest).premultiply(turn.setFromAxisAngle(AXIS, phase))
   }
 }
 
@@ -41,7 +53,7 @@ export function BikeModel() {
   useEffect(() => {
     gltf.scene.traverse((o) => {
       // 돌릴 뼈의 바인드 회전을 기억해 둔다. 매 프레임 여기서 다시 출발한다
-      if ((SPIN as readonly string[]).includes(o.name)) o.userData.rest = o.quaternion.clone()
+      if (([...SPIN, ...LEVEL] as string[]).includes(o.name)) o.userData.rest = o.quaternion.clone()
       const mesh = o as Mesh
       if (!mesh.isMesh) return
       mesh.castShadow = true

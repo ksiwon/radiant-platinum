@@ -18,7 +18,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { createRig, resetRig, updateLocomotion } from './locomotion'
-import { BIKE, pedalPoint } from './bike'
+import { BIKE, BIKE_GEARS, pedalPoint } from './bike'
 import { BDSP_TO_WORLD } from '../model/normalize'
 
 interface GlbNode {
@@ -612,9 +612,18 @@ function seated(speed: number, ticks: number) {
 const bikePoint = (p: { x: number, y: number, z: number }): Vector3 =>
   new Vector3(p.x, p.y, p.z).multiplyScalar(BDSP_TO_WORLD)
 
+/**
+ * 자전거로 실제 나는 속도 (`actor/player`의 `WALK_SPEED * bikeSpeedAt`).
+ *
+ * ⚠️ **걷는 속도로 재면 안 된다.** 상체가 숙는 각이 단에 따라 달라서
+ * (`bikeLean`), 원작에 없는 느린 속도로 재면 덜 숙은 자세가 나온다 — 그러면
+ * 어깨가 안 나가서 손이 손잡이에 7cm 모자란다
+ */
+const BIKE_SPEED = 4.5 * BIKE_GEARS[0]!
+
 describe('자전거 자세', () => {
   it('골반이 안장에 앉는다', () => {
-    const { at } = seated(0, 1)
+    const { at } = seated(BIKE_SPEED, 1)
     const hips = at('LThigh')
     const seat = bikePoint({ x: 0, y: BIKE.saddle.y, z: BIKE.saddle.z })
     expect(Math.abs(hips.y - seat.y)).toBeLessThan(0.02)
@@ -624,7 +633,7 @@ describe('자전거 자세', () => {
   it('두 발이 페달에서 안 떨어진다 — 한 바퀴 내내', () => {
     let worst = 0
     for (let k = 0; k < 12; k++) {
-      const { rig, at } = seated(4, 0)
+      const { rig, at } = seated(BIKE_SPEED, 0)
       rig.phase = (k / 12) * Math.PI * 2
       updateLocomotion(rig, 0, 0, 4.5, 8, null, true)
       rig.bobTarget.parent!.updateMatrixWorld(true)
@@ -639,29 +648,47 @@ describe('자전거 자세', () => {
     expect(worst).toBeLessThan(0.05)
   })
 
-  it('두 손이 손잡이를 잡는다', () => {
-    const { at } = seated(4, 1)
+  /**
+   * ⚠️ **손이 손잡이 끝에 5.2cm 모자란다 — 그것이 지금 맞는 값이다.**
+   *
+   * 원작 자전거(`ob1004_00`)는 손잡이가 낮고(y 0.659) 안장에서 24cm밖에 안
+   * 나가 있다. 우리 등신은 골반에서 어깨까지가 0.34인데 원작 치비는 0.076이라,
+   * 같은 각으로 숙여도 어깨가 훨씬 높은 데서 출발한다 — 팔(0.396)로는 그
+   * 거리(0.448)가 안 닿는다.
+   *
+   * **원작도 안 닿는다.** 실측으로 치비의 손이 손잡이 끝보다 14cm 안쪽 허공에
+   * 있다(`.audit/bikePose.py`). 우리가 9cm 더 가까이 잡는 셈이다.
+   *
+   * 그전에 굽던 `ob1003_00`은 손잡이가 y 0.90 · z 0.10이라 조금만 숙여도
+   * 닿았다 — 닿았던 것이 자전거가 달랐기 때문이다
+   */
+  it('두 손이 손잡이 끝에 붙는다 — 원작 몸이 닿는 것보다 가깝다', () => {
+    const { at } = seated(BIKE_SPEED, 1)
     const grip = bikePoint(BIKE.grip)
     for (const [bone, side] of [['LHand', 1], ['RHand', -1]] as const) {
       const got = at(bone)
       const d = Math.hypot(got.x - side * grip.x, got.y - grip.y, got.z - grip.z)
-      expect(d).toBeLessThan(0.005)
+      expect(d).toBeLessThan(0.06)
+      // 원작 치비가 벌리는 14cm보다는 가깝다
+      expect(d).toBeLessThan(0.14 * BDSP_TO_WORLD)
     }
   })
 
   it('페달은 바퀴가 구른 만큼만 돈다 — 굴러가지 않으면 안 돈다', () => {
     const { rig } = seated(0, 60)
     expect(rig.phase).toBe(0)
-    const moving = seated(4, 60)
-    // 1초에 4m, 바퀴 반지름 0.254m → 15.7rad ≈ 2.5바퀴
+    const moving = seated(BIKE_SPEED, 60)
     expect(moving.rig.phase).toBeGreaterThan(0)
   })
 
   it('내리면 걷기로 돌아온다 — 몸이 안장에 남지 않는다', () => {
-    const { rig } = seated(4, 30)
+    const { rig } = seated(BIKE_SPEED, 30)
     const seatDrop = rig.bobTarget.position.y
+    // 안장이 선 골반보다 낮아서 탈 때 몸이 내려앉는다 (`BIKE.saddle`)
+    expect(seatDrop).toBeLessThan(rig.bobBase)
     for (let i = 0; i < 30; i++) updateLocomotion(rig, 1 / 60, 4, 4.5, 8)
-    expect(rig.bobTarget.position.y).toBeGreaterThan(seatDrop + 0.1)
+    expect(rig.bobTarget.position.y).toBeGreaterThan(seatDrop)
+    expect(Math.abs(rig.bobTarget.position.y - rig.bobBase)).toBeLessThan(0.05)
     expect(rig.bobTarget.position.z).toBe(rig.bobBaseZ)
   })
 })

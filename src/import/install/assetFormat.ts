@@ -78,7 +78,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 달라지므로 이미 깔린 사람도 이 그룹만 다시 굽게 한다 — 안 올리면 설치본의
    * 주인공이 계속 절차형으로만 낚시한다
    */
-  npcModels: 7,
+  npcModels: 8,
   /**
    * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
    *

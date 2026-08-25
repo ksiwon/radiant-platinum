@@ -10,35 +10,77 @@ import { isBikeBridge, onElevatedBridge } from './bridge'
 export const BIKE_ITEM = 450
 
 /**
- * BDSP 자전거(`Characters/objects/ob1003_00`)의 자리들 — **번들의 뼈를 잰 값**이다.
+ * BDSP 자전거(`Characters/objects/ob1004_00`)의 자리들 — **번들에서 잰 값**이다.
  * 단위는 BDSP 것이라 게임 단위로 쓰려면 `BDSP_TO_WORLD`를 곱한다.
  *
+ * ⚠️ **오래 다른 자전거를 굽고 있었다.** `ob1003_00`은 안장·손잡이·경적이 따로
+ * 달린 상세한 것이고 뼈가 54개라 자리를 집기 편했는데, **원작이 주인공을 태우는
+ * 것은 `ob1004_00`**이다 — 주인공 옷 번들 `fc0001_11`이 그 메시
+ * (`ob1004_00_bicycleSkin`)를 제 리그에 묶어 들고 클립 `bike_wait/walk/run_f`가
+ * 그 둘을 함께 돌린다. 실측으로 둘은 다른 물건이다:
+ *
+ * |            | ob1003 | ob1004 |
+ * |---|---:|---:|
+ * | 키          | 0.9364 | 0.7661 |
+ * | 손잡이 높이  | 0.9037 | 0.6770 |
+ * | 앞바퀴 z    | 0.4458 | 0.5738 |
+ * | 크랭크 반지름 | 0.17  | 0.084  |
+ *
  * ⚠️ **원점이 땅이다.** 붙이는 자리를 가리키는 `loc_attach`가 (0, 0, 0)이고
- * 메시의 제일 아래도 −0.0006이라, **주인공 발밑에 그대로 놓으면 된다** —
+ * 메시의 제일 아래도 0.0013이라, **주인공 발밑에 그대로 놓으면 된다** —
  * 자리를 눈으로 맞출 것이 없다.
  *
- * 앞은 +Z다(앞바퀴 z +0.446 · 뒷바퀴 −0.433). 우리 사람도 +Z를 보므로 자전거를
+ * 앞은 +Z다(앞바퀴 z +0.574 · 뒷바퀴 −0.293). 우리 사람도 +Z를 보므로 자전거를
  * 돌릴 일이 없다.
  */
 export const BIKE = {
-  /** 안장. 여기에 골반이 앉는다 */
-  saddle: { y: 0.56, z: -0.20 },
+  /**
+   * 골반이 갈 자리. **원작이 앉힌 자리 그대로다.**
+   *
+   * ⚠️ **`ob1004_00`에는 안장 뼈가 없다.** 대신 원작이 `bike_walk_f`에서 골반을
+   * 어디에 두는지를 잰다 — 여덟 점 평균으로 y 0.6498 · z 0.0212다
+   * (`.audit/bikePose.py`). 메시의 안장 꼭대기는 y 0.5722 · z −0.0200이라
+   * 그 위 7.8cm이고, 사람 골반은 방석 위에 그만큼 뜨는 것이 맞다.
+   *
+   * 단마다 조금씩 다르다 — `bike_run_f`가 y 0.6650 · z 0.0305고, 멈춰 선
+   * `bike_wait_f`는 y 0.5352다. 멈춤 자세는 **한 발을 땅에 내리고 안장에서
+   * 엉덩이를 떼는 것**이라 우리 자세(두 발이 페달에 남는다)와 다른 물건이다.
+   * 그래서 달리는 쪽 하나로 둔다
+   */
+  saddle: { y: 0.6498, z: 0.0212 },
   /**
    * 크랭크 축(`Gear`)과 반지름. 반지름은 페달 둘의 자리에서 나온다 —
-   * `LPedal2`가 z −0.256, `RPedal2`가 +0.084이고 축이 −0.086이라 둘 다 0.17이고
+   * `LPedal`이 z −0.014, `RPedal`이 +0.154이고 축이 +0.070이라 둘 다 0.084이고
    * **서로 반대편**이다
    */
-  crank: { x: 0.095, y: 0.2907, z: -0.086, r: 0.17 },
-  /** 손잡이 끝(`EndLHandle2`). 여기를 잡는다 */
-  grip: { x: 0.3768, y: 0.8803, z: 0.1008 },
-  /** 바퀴 축과 반지름. 축 높이가 곧 반지름이다 (땅이 y = 0) */
-  wheel: { front: 0.4458, back: -0.4332, y: 0.2494, r: 0.2494 },
+  crank: { x: 0.1020, y: 0.2100, z: 0.0700, r: 0.084 },
+  /**
+   * 손잡이 끝. 여기를 잡는다.
+   *
+   * ⚠️ **끝 뼈가 없다.** `Handle` 뼈에 매달린 정점 중 제일 바깥을 잰다 —
+   * x 0.3481 언저리 18점이 y 0.6345~0.6863 · z 0.2542~0.2797에 모여 있다
+   * (`.audit/bikeAnchor.mjs`). **손잡이가 뒤로 휜다** — 뼈 `Handle` 자체는
+   * z 0.393인데 끝은 0.265다.
+   *
+   * ⚠️ **원작 치비는 여기까지 못 잡는다.** 실측으로 그 손이 x 0.207 · y 0.673 ·
+   * z 0.210에 있어 손잡이 끝보다 14cm 안쪽이다 — 팔이 짧아서다. 우리 등신은
+   * 팔이 닿으므로 진짜 끝을 잡는다
+   */
+  grip: { x: 0.3481, y: 0.6588, z: 0.2653 },
+  /**
+   * 바퀴 축과 반지름.
+   *
+   * 반지름은 축 높이(0.2673·0.2670)가 아니라 **뼈에 매달린 정점의 위아래 절반**
+   * 이다 — 앞 0.2648 · 뒤 0.2661. 굴러가는 것은 뒷바퀴라 그쪽을 쓴다
+   */
+  wheel: { front: 0.5738, back: -0.2930, y: 0.2670, r: 0.2661 },
 } as const
 
 /**
  * 페달 한쪽의 자리. `phase`는 크랭크가 돈 각(라디안)이고 `side`는 왼쪽이 +1이다.
  *
- * 0에서 왼쪽 페달이 **뒤**에 있다 — 번들이 그 자세로 서 있다(`LPedal2` z −0.256).
+ * 0에서 왼쪽 페달이 **뒤**에 있다 — 번들이 그 자세로 서 있다(`LPedal` z −0.014,
+ * 크랭크 축이 +0.070이다).
  */
 export function pedalPoint(phase: number, side: 1 | -1): { x: number, y: number, z: number } {
   const a = side > 0 ? phase : phase + Math.PI
@@ -136,3 +178,37 @@ let onCyclingRoad = false
 
 export function setOnCyclingRoad(on: boolean): void { onCyclingRoad = on }
 export function isOnCyclingRoad(): boolean { return onCyclingRoad }
+
+/**
+ * 상체가 앞으로 숙는 각(라디안). **원작은 단마다 다르게 숙인다.**
+ *
+ * 골반→목 벡터가 곧게 선 데서 얼마나 기울었나를 클립 셋에서 여덟 점씩 재서
+ * 평균했다 (`.audit/bikePose.py`):
+ *
+ * | 클립 | 기울기 | 폭 |
+ * |---|---:|---|
+ * | `bike_wait_f` | 0.2438rad (14.0°) | 0.2433~0.2461 |
+ * | `bike_walk_f` | 0.5307rad (30.4°) | 0.4341~0.5895 |
+ * | `bike_run_f`  | 0.7110rad (40.7°) | 0.6051~0.7695 |
+ *
+ * ⚠️ **오래 0.30 하나로 돌고 있었다.** 그 값으로는 `ob1004_00`의 낮고 먼
+ * 손잡이(y 0.60 · z 0.36)에 손이 10.9cm 모자란다 — 어깨가 안 나가기 때문이다
+ */
+const BIKE_LEAN = { still: 0.2438, walk: 0.5307, run: 0.7110 } as const
+
+/**
+ * 지금 속도에서 숙일 각. `walkSpeed`는 걷는 속도(m/s)다.
+ *
+ * 단은 걷기의 몇 배인가로 정해진다(`BIKE_GEARS`) — 1단이 2배, 3단이 4배다.
+ * 그 사이를 곧게 잇는다
+ */
+export function bikeLean(speed: number, walkSpeed: number): number {
+  const first = BIKE_GEARS[0]!
+  const last = BIKE_GEARS[BIKE_GEARS.length - 1]!
+  const times = walkSpeed > 1e-6 ? speed / walkSpeed : 0
+  const at = (a: number, b: number, k: number): number =>
+    a + (b - a) * Math.max(0, Math.min(1, k))
+  return times <= first
+    ? at(BIKE_LEAN.still, BIKE_LEAN.walk, times / first)
+    : at(BIKE_LEAN.walk, BIKE_LEAN.run, (times - first) / (last - first))
+}

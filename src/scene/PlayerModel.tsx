@@ -42,6 +42,8 @@ interface ClipSet {
 export function PlayerModel() {
   const groupRef = useRef<Group>(null)
   const normRef = useRef<Group>(null)
+  /** 타는 것이 몸을 드는 높이. 정규화와 갈라 둔다 — 아래 그림 부분의 경고 */
+  const mountRef = useRef<Group>(null)
   const clips = useRef<ClipSet | null>(null)
   const playing = useRef<HeroClipState>(HERO_CLIP_NONE)
   // 주소를 Provider에서 받는다 — 공개판에서는 OPFS Blob URL이다 (IMPORT.md §7).
@@ -165,12 +167,21 @@ export function PlayerModel() {
   return (
     // 바깥 그룹은 엔진이 매 프레임 위치·방향을 쓴다. 안쪽 그룹은 정규화 전용이라 서로 간섭하지 않는다.
     <group ref={groupRef}>
-      <group ref={normRef}>
-        <primitive object={gltf.scene} />
+      {/*
+        ⚠️ **타는 것이 드는 높이는 여기 건다.** 정규화 그룹은 `locomotion`이
+        매 프레임 `bobTarget.position.y = bobBase + bob`으로 덮어쓰고,
+        `EngineDriver`가 우선순위 1이라 `FieldActionEffects`(0)보다 **나중에**
+        돈다 — 그쪽에 들어 올린 값을 쓰면 같은 프레임 안에서 지워진다.
+        실측으로 파도타기 몸은 물에 떠 있는데 사람은 물 높이에 선 채였다
+      */}
+      <group ref={mountRef}>
+        <group ref={normRef}>
+          <primitive object={gltf.scene} />
+        </group>
       </group>
       {/* 자전거는 정규화 밖이다 — 번들 단위 그대로고 발밑이 원점이다 */}
       <Suspense fallback={null}><BikeModel /></Suspense>
-      <FieldActionEffects bodyRef={normRef} />
+      <FieldActionEffects bodyRef={mountRef} />
     </group>
   )
 }

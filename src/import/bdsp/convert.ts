@@ -35,7 +35,9 @@ const POKEMON_COMMON = 'Pokemon Database/pokemons/common'
 const ARENA_GROUND = 'Environments/bg/arenas/ground'
 const MASTERDATAS = 'Dpr/masterdatas'
 /** 자전거. 오버월드에서 타는 물건이라 인물과 같은 자리에서 굽는다 */
-const BIKE = 'Characters/objects/ob1003_00'
+// ⚠️ **`ob1003_00`이 아니다** — 원작이 주인공을 태우는 자전거는 이쪽이다
+// (`engine/actor/bike`의 `BIKE` 머리말)
+const BIKE = 'Characters/objects/ob1004_00'
 /**
  * 길에 떨어진 도구로 서는 몬스터볼 (`scene/ItemBalls`).
  *

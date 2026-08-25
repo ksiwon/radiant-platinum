@@ -17,7 +17,11 @@ import {
 import { assets } from '../data/providers/assetProvider'
 
 interface Props {
-  /** 정규화된 주인공 본체. 서핑 중 탈것 위로 살짝 들어 올린다. */
+  /**
+   * 타는 것이 드는 높이를 거는 그룹 (`PlayerModel`의 `mountRef`).
+   *
+   * ⚠️ **정규화 그룹이 아니다.** 그쪽은 `locomotion`이 매 프레임 덮어쓴다
+   */
   bodyRef: RefObject<Group | null>
 }
 
@@ -246,14 +250,13 @@ export function FieldActionEffects({ bodyRef }: Props) {
     if (surf) surf.visible = surfing
     const body = bodyRef.current
     if (body) {
-      // ⚠️ **앉는 높이를 지어내지 않는다.** 번들이 `scaffold_Attach`로 적어 둔
-      // 자리다 (`pcParts`의 `SURF_MOUNT.seat`) — 오래 0.43을 쓰고 있었다
       if (flyPose.visible) {
         // 새에 실려 가는 동안은 **따라잡지 않고 그 자리에 둔다** — 원작 키가
         // 0.017초 간격이라 사이를 늦추면 새를 놓친다
         body.position.set(flyPose.rider.x, flyPose.rider.y, flyPose.rider.z)
       } else {
-        const targetY = surfing ? SURF_MOUNT.seat * BDSP_TO_WORLD : 0
+        // 서는 높이는 몸 등판 꼭대기다 (`pcParts`의 `SURF_MOUNT.stand`)
+        const targetY = surfing ? SURF_MOUNT.stand * BDSP_TO_WORLD : 0
         body.position.y += (targetY - body.position.y) * Math.min(1, delta * 9)
         body.position.x += (0 - body.position.x) * Math.min(1, delta * 9)
         body.position.z += (0 - body.position.z) * Math.min(1, delta * 9)
@@ -358,49 +361,6 @@ export function FieldActionEffects({ bodyRef }: Props) {
   return (
     <>
       <group ref={surfRef} visible={false} position={[0, -0.03, 0]}>
-        <group ref={flyRef} visible={false}>
-          <group ref={flyModelHostRef} />
-          <group ref={flyFallbackRef} position={[0, -0.18, 0]}>
-            <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
-              <capsuleGeometry args={[0.28, 0.9, 7, 16]} />
-              <meshStandardMaterial color="#6e7481" roughness={0.82} />
-            </mesh>
-            <mesh castShadow position={[0, 0.18, 0.52]}>
-              <sphereGeometry args={[0.26, 16, 11]} />
-              <meshStandardMaterial color="#e5e0d4" roughness={0.75} />
-            </mesh>
-            <mesh castShadow position={[0, 0.17, 0.8]} rotation={[Math.PI / 2, 0, 0]}>
-              <coneGeometry args={[0.1, 0.3, 10]} />
-              <meshStandardMaterial color="#e4be54" roughness={0.62} />
-            </mesh>
-            <mesh ref={flyWingLeftRef} position={[-0.58, 0.02, 0]} castShadow>
-              <boxGeometry args={[0.95, 0.08, 0.42]} />
-              <meshStandardMaterial color="#3f4653" roughness={0.86} />
-            </mesh>
-            <mesh ref={flyWingRightRef} position={[0.58, 0.02, 0]} castShadow>
-              <boxGeometry args={[0.95, 0.08, 0.42]} />
-              <meshStandardMaterial color="#3f4653" roughness={0.86} />
-            </mesh>
-            <mesh position={[0, -0.05, -0.62]} rotation={[Math.PI / 2, 0, 0]}>
-              <coneGeometry args={[0.25, 0.7, 4]} />
-              <meshStandardMaterial color="#f1eee5" roughness={0.82} />
-            </mesh>
-          </group>
-          <mesh ref={flyRingRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.35, 0]}>
-            <torusGeometry args={[0.62, 0.035, 8, 36]} />
-            <meshBasicMaterial color="#d7f4ff" transparent opacity={0.68} depthWrite={false} />
-          </mesh>
-          {[-1, 0, 1].map((offset) => (
-            <mesh
-              key={offset}
-              position={[offset * 0.5, -0.2, -0.35 + Math.abs(offset) * 0.18]}
-              rotation={[-Math.PI / 2, 0, 0]}
-            >
-              <torusGeometry args={[0.24 + Math.abs(offset) * 0.08, 0.018, 6, 24]} />
-              <meshBasicMaterial color="#a7eaff" transparent opacity={0.46} depthWrite={false} />
-            </mesh>
-          ))}
-        </group>
         <group ref={surfModelHostRef} />
         <group ref={surfFallbackRef} position={[0, 0.16, -0.08]}>
           <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
@@ -424,6 +384,52 @@ export function FieldActionEffects({ bodyRef }: Props) {
           <torusGeometry args={[0.38, 0.022, 8, 28]} />
           <meshStandardMaterial color="#d2f8ff" emissive="#64ddff" emissiveIntensity={0.35} />
         </mesh>
+      </group>
+
+      {/* ⚠️ **파도타기 그룹 안에 있으면 안 된다.** 그쪽은 물에 뜬 동안만
+          켜지므로, 안에 두면 공중날기 새가 **파도를 탈 때만** 보인다 */}
+      <group ref={flyRef} visible={false}>
+        <group ref={flyModelHostRef} />
+        <group ref={flyFallbackRef} position={[0, -0.18, 0]}>
+          <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
+            <capsuleGeometry args={[0.28, 0.9, 7, 16]} />
+            <meshStandardMaterial color="#6e7481" roughness={0.82} />
+          </mesh>
+          <mesh castShadow position={[0, 0.18, 0.52]}>
+            <sphereGeometry args={[0.26, 16, 11]} />
+            <meshStandardMaterial color="#e5e0d4" roughness={0.75} />
+          </mesh>
+          <mesh castShadow position={[0, 0.17, 0.8]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.1, 0.3, 10]} />
+            <meshStandardMaterial color="#e4be54" roughness={0.62} />
+          </mesh>
+          <mesh ref={flyWingLeftRef} position={[-0.58, 0.02, 0]} castShadow>
+            <boxGeometry args={[0.95, 0.08, 0.42]} />
+            <meshStandardMaterial color="#3f4653" roughness={0.86} />
+          </mesh>
+          <mesh ref={flyWingRightRef} position={[0.58, 0.02, 0]} castShadow>
+            <boxGeometry args={[0.95, 0.08, 0.42]} />
+            <meshStandardMaterial color="#3f4653" roughness={0.86} />
+          </mesh>
+          <mesh position={[0, -0.05, -0.62]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.25, 0.7, 4]} />
+            <meshStandardMaterial color="#f1eee5" roughness={0.82} />
+          </mesh>
+        </group>
+        <mesh ref={flyRingRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.35, 0]}>
+          <torusGeometry args={[0.62, 0.035, 8, 36]} />
+          <meshBasicMaterial color="#d7f4ff" transparent opacity={0.68} depthWrite={false} />
+        </mesh>
+        {[-1, 0, 1].map((offset) => (
+          <mesh
+            key={offset}
+            position={[offset * 0.5, -0.2, -0.35 + Math.abs(offset) * 0.18]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          >
+            <torusGeometry args={[0.24 + Math.abs(offset) * 0.08, 0.018, 6, 24]} />
+            <meshBasicMaterial color="#a7eaff" transparent opacity={0.46} depthWrite={false} />
+          </mesh>
+        ))}
       </group>
 
       <group ref={fishingRef} visible={false}>

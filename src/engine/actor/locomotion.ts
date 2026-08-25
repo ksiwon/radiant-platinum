@@ -17,7 +17,7 @@
 // 스윙 축이 내린 각만큼 함께 돌아가 앞뒤가 아니라 좌우로 흔들린다.
 import { Object3D, Quaternion, Vector3 } from 'three'
 import { BDSP_TO_WORLD } from '../model/normalize'
-import { BIKE, pedalPoint } from './bike'
+import { BIKE, bikeLean, pedalPoint } from './bike'
 import { hopGait, idleBreath, phaseRate, sampleGait } from './gait'
 
 /** 캐릭터는 +Z를 본다. 앞뒤 스윙은 월드 X축, 좌우 벌림은 Z축, 비틀림은 Y축이다 */
@@ -310,9 +310,6 @@ const SHOULDER_SHARE = 0.15
 
 const clamp = (x: number, lo: number, hi: number): number => (x < lo ? lo : x > hi ? hi : x)
 
-/** 자전거에서 상체가 앞으로 숙는 각 */
-const BIKE_LEAN = 0.30
-
 /**
  * 평면 두 마디 역기구학. 뿌리에서 목표까지 닿는 **뿌리 각**과 **굽힘량**을 낸다.
  *
@@ -343,8 +340,9 @@ function reach(
  * 페달에서 몇 센티 떨어졌는지를 시험이 잰다.
  *
  * @param scale BDSP 단위 → 게임 단위 (`BDSP_TO_WORLD`)
+ * @param lean  상체가 숙는 각. 원작이 단마다 다르게 숙인다 (`bikeLean`)
  */
-function bikePose(rig: Rig, scale: number) {
+function bikePose(rig: Rig, scale: number, lean: number) {
   const j = rig.joints
   const seatY = BIKE.saddle.y * scale, seatZ = BIKE.saddle.z * scale
   // 몸통째로 안장으로 옮긴다. 발밑 기준으로 잰 골반이 안장에 가 앉는다
@@ -363,10 +361,10 @@ function bikePose(rig: Rig, scale: number) {
   }
 
   // 상체는 손잡이 쪽으로 숙인다. 세 마디에 나눠 건다 — 걷기와 같은 이유다
-  apply(j.Spine1, 'Spine1', FORWARD_UP * BIKE_LEAN * 0.4)
-  apply(j.Spine2, 'Spine2', FORWARD_UP * BIKE_LEAN * 0.3)
-  apply(j.Spine3, 'Spine3', FORWARD_UP * BIKE_LEAN * 0.3)
-  apply(j.Neck, 'Neck', -FORWARD_UP * BIKE_LEAN * 0.8)
+  apply(j.Spine1, 'Spine1', FORWARD_UP * lean * 0.4)
+  apply(j.Spine2, 'Spine2', FORWARD_UP * lean * 0.3)
+  apply(j.Spine3, 'Spine3', FORWARD_UP * lean * 0.3)
+  apply(j.Neck, 'Neck', -FORWARD_UP * lean * 0.8)
 
   // 팔은 손잡이를 **잡는다**. 손이 손잡이에 닿으려면 굴린 각(roll)과 흔든 각
   // (pitch)을 따로 풀 수가 없다 — 팔꿈치를 굽히는 순간 손이 팔 방향에서 벗어나기
@@ -447,7 +445,7 @@ export function updateLocomotion(
     // 크랭크는 바퀴와 물려 있다. 한 바퀴에 바퀴 둘레만큼 나아간다고 두면
     // 페달이 땅과 어긋나지 않는다 (기어비는 원작에 없다)
     rig.phase = (rig.phase + (speed * dt) / (BIKE.wheel.r * BDSP_TO_WORLD)) % (Math.PI * 2)
-    bikePose(rig, BDSP_TO_WORLD)
+    bikePose(rig, BDSP_TO_WORLD, bikeLean(speed, walkSpeed))
     return
   }
   // 아주 느린 속도까지 걷게 하면 제자리에서 발을 떠는 것처럼 보인다
