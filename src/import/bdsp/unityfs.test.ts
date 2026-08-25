@@ -150,7 +150,10 @@ withBundle('진짜 BDSP 번들', () => {
     const mine: Record<string, number> = {}
     for (const [id, n] of Object.entries(file.counts)) mine[className(Number(id))] = n
     expect(mine).toEqual(oracle.counts)
-  })
+    // ⚠️ **파이썬을 띄우는 시간이 기본 5초를 넘는다.** 실측으로 이 기계에서
+    // 5.8초라 `pnpm check`가 여기서만 떨어졌다 — 대조가 틀려서가 아니라
+    // UnityPy를 부르는 값이다
+  }, 60_000)
 
   it('이제 자리뿐 아니라 안까지 읽는다 — 타입 트리가 실려 있다', () => {
     const bundle = openBundle(bytes)
