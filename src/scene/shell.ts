@@ -48,6 +48,9 @@ export const FILLABLE: readonly (readonly [number, number])[] = [
  */
 export const GRID = 64
 
+/** 격자에서 잇닿은 네 칸 (`hullDepth`가 빈 칸을 번져 채울 때 쓴다) */
+const NEXT_TO = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const
+
 /** 축 방향의 두께. 0이면 그 축에 수직인 **한 장짜리**라 붙일 뒤가 없다 */
 function extent(pos: ArrayLike<number>, axis: number): number {
   let lo = Infinity, hi = -Infinity
@@ -197,6 +200,8 @@ function hullDepth(
   const flat = a1 - a0
   const edge = sign > 0 ? a1 : a0
   const map = new Float64Array(GRID * GRID)
+  const known = new Uint8Array(GRID * GRID)
+  const queue: number[] = []
   for (let cu = 0; cu < GRID; cu++) {
     for (let cv = 0; cv < GRID; cv++) {
       let found = -1
@@ -207,8 +212,34 @@ function hullDepth(
         found = ca
         break
       }
-      // 헐이 비면 그 자리를 아무것도 안 덮은 것이다 — 상자 끝으로 물러선다
-      map[cu * GRID + cv] = found < 0 ? edge : a0 + ((found + 0.5) / GRID) * flat
+      if (found < 0) continue
+      const at = cu * GRID + cv
+      map[at] = a0 + ((found + 0.5) / GRID) * flat
+      known[at] = 1
+      queue.push(at)
+    }
+  }
+  // ⚠️ **헐이 빈 칸을 상자 끝으로 물러세우면 안 된다 — 그것이 가시였다.**
+  // 삼각형 하나가 찬 칸과 빈 칸에 걸치면 한 꼭짓점만 상자 끝까지 날아가 길고
+  // 가느다란 쐐기가 된다. 실측으로 배틀타워 소품(맵 559)에서 삼각형 835개 중
+  // **162개**가 그 꼴이었고 제일 긴 모서리가 **15.3칸**이었다
+  // (`node .audit/spikeHunt.mjs frontier`) — 상자 두께가 그만큼이다.
+  //
+  // 빈 칸은 **이웃에서 번져 채운다.** 헐이 비었다는 것은 그 자리를 덮는 면이
+  // 없다는 뜻이지 「저 끝에 있다」는 뜻이 아니다 — 옆 칸과 같은 깊이가 맞다.
+  // 한 칸도 안 찼으면(실루엣이 통째로 비었다) 그때만 상자 끝이다
+  if (queue.length === 0) map.fill(edge)
+  for (let head = 0; head < queue.length; head++) {
+    const at = queue[head]!
+    const cu = Math.floor(at / GRID), cv = at % GRID
+    for (const [du, dv] of NEXT_TO) {
+      const nu = cu + du, nv = cv + dv
+      if (nu < 0 || nu >= GRID || nv < 0 || nv >= GRID) continue
+      const to = nu * GRID + nv
+      if (known[to] === 1) continue
+      known[to] = 1
+      map[to] = map[at]!
+      queue.push(to)
     }
   }
   const at = (cu: number, cv: number) =>
