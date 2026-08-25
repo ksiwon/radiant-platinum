@@ -18,6 +18,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Box3, Vector3, type BufferGeometry, type Group, type Material } from 'three'
 import { worldState } from '../state/worldState'
+import { markSeeThrough } from './fx/seeThrough'
 
 /** 이보다 선에 가까이 서 있으면 다 지운다 (타일) */
 const BLOCK_R = 0.7
@@ -118,6 +119,7 @@ export function PropFade({ geometry, materials, children }: Props) {
       m.transparent = b.transparent
       m.opacity = b.opacity
       m.depthWrite = b.depthWrite
+      markSeeThrough(m, !b.depthWrite)
     })
   }, [materials, base])
 
@@ -163,6 +165,10 @@ export function PropFade({ geometry, materials, children }: Props) {
       m.opacity = b.opacity * next
       // 원래 반투명이던 것은 되돌아와도 반투명이다
       const blend = b.transparent || !solid
+      // ⚠️ **흐려지는 동안 깊이를 안 쓰므로 윤곽이 집을 투과한다.** 87%짜리
+      // 집은 눈에 멀쩡한 벽인데 그 위에 **뒤 마을의 실루엣**이 선으로 그려졌다.
+      // 후처리에 「여긴 깊이를 안 썼다」를 알려 그만큼 선을 지운다
+      markSeeThrough(m, !(b.depthWrite && solid))
       // ⚠️ `transparent`를 바꾸면 파이프라인이 다시 서야 한다. 값이 실제로
       // 뒤집힐 때만 표시를 세운다 — 프레임마다 세우면 WebGPU에서 매번 다시 굽는다
       if (m.transparent !== blend) {

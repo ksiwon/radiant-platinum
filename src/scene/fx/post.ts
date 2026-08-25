@@ -8,8 +8,9 @@ import { PerspectiveCamera, type Camera, type Scene } from 'three'
 // 바뀌었고 옛 이름은 남아 있지만 부를 때마다 콘솔에 경고를 찍는다 —
 // 화면을 훑는 하네스(`pnpm story`)가 장면마다 그 경고를 주워 왔다
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu'
-import { float, pass, perspectiveDepthToViewZ, uv, vec2 } from 'three/tsl'
+import { float, mrt, output, pass, perspectiveDepthToViewZ, uv, vec2 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
+import { COVER } from './seeThrough'
 
 export interface PostChain {
   render(): void
@@ -54,8 +55,12 @@ function withOutline(
   try {
     const post = new RenderPipeline(renderer)
     const scenePass = pass(scene, camera)
+    // 색 말고 **덮은 정도**를 하나 더 받는다. 기본이 1이고, 깊이를 안 쓰는
+    // 면만 0을 적는다 (`seeThrough`의 `markSeeThrough`)
+    scenePass.setMRT(mrt({ output, [COVER]: float(1) }))
     const color = scenePass.getTextureNode('output')
     const depthTex = scenePass.getTextureNode('depth')
+    const cover = scenePass.getTextureNode(COVER)
 
     const w = 1.4 / Math.max(1, renderer.domElement.width)
     const h = 1.4 / Math.max(1, renderer.domElement.height)
@@ -75,7 +80,10 @@ function withOutline(
       .max(at(w, 0).sub(c).abs())
       .max(at(0, -h).sub(c).abs())
       .max(at(0, h).sub(c).abs())
-    const edge = diff.smoothstep(EDGE_NEAR, EDGE_FAR).mul(float(EDGE_STRENGTH))
+    // ⚠️ **덮은 정도를 곱하지 않으면 건물을 투과해 뒤의 선이 보인다.** 깊이
+    // 텍스처에는 반투명 면 **뒤**의 깊이가 적혀 있어서, 그 자리의 윤곽은 뒤에
+    // 있는 것의 실루엣이다. 흐려진 집 위에 마을이 선으로 그려졌다
+    const edge = diff.smoothstep(EDGE_NEAR, EDGE_FAR).mul(float(EDGE_STRENGTH)).mul(cover.r)
 
     const shaded = color.mul(float(1).sub(edge))
     post.outputNode = shaded.add(bloom(shaded, 0.28, 0.4, 0.92))

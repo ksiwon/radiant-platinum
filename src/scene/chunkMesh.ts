@@ -12,6 +12,7 @@ import {
   NearestFilter, RepeatWrapping, SRGBColorSpace, type Material, type Texture,
 } from 'three'
 import { assets, readJson } from '../data/providers/assetProvider'
+import { markSeeThrough } from './fx/seeThrough'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
 interface ChunkFormat {
@@ -359,7 +360,7 @@ export function makeMaterial(
 ): Material {
   const data = (texture as DataTexture | null)?.image as { data?: Uint8Array } | undefined
   const translucent = spec.a < 31 || (data?.data !== undefined && softAlpha(data.data))
-  return new MeshLambertMaterial({
+  const made = new MeshLambertMaterial({
     // 화면에 뜬 판때기가 무엇인지 **씬에 직접 물어보기 위해서다**(`pnpm shot --hit`).
     // 그림만 보고는 지형인지 소품인지 옆면인지 못 가른다 — 실제로 흰 판때기 하나를
     // 두 맵에서 보고도 무엇인지 몰라 손을 못 댔다. three가 무시하는 표시라 값이 없다
@@ -384,4 +385,8 @@ export function makeMaterial(
     // 뒤집어 주므로 빛도 제대로 받는다
     side: spec.f === 3 || doubleSided ? DoubleSide : FrontSide,
   })
+  // 깊이를 안 쓰는 면은 윤곽 후처리에 알려 준다 — 안 그러면 이 면을 **투과해서**
+  // 뒤에 있는 것의 실루엣이 선으로 그려진다 (`fx/seeThrough`)
+  markSeeThrough(made, translucent)
+  return made
 }

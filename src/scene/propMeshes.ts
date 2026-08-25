@@ -15,6 +15,7 @@ import {
   loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
+import { markSeeThrough } from './fx/seeThrough'
 
 /** 받아 놓은 소품 한 갈래 */
 interface LoadedProp {
@@ -52,6 +53,8 @@ export function propMaterials(mesh: ChunkMesh, sheet: TexSheet | null): Material
       depthWrite: !translucent,
       side: spec.f === 3 ? DoubleSide : FrontSide,
     })
+    // 깊이를 안 쓰는 면은 윤곽 후처리에 알려 준다 (`fx/seeThrough`)
+    markSeeThrough(made, translucent)
     cache.set(key, made)
     return made
   })

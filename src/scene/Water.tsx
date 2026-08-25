@@ -20,6 +20,7 @@ import {
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { isWater } from '../engine/map/zone'
+import { markSeeThrough } from './fx/seeThrough'
 
 /**
  * 물결 둘. `[진폭(타일), 파장(타일), 초당 마루 수, 방향]`.
@@ -106,6 +107,8 @@ const material = new MeshLambertMaterial({
   side: DoubleSide,
   depthWrite: false,
 })
+// 깊이를 안 쓰므로 윤곽이 **물 밑 지형의 실루엣**을 물 위에 그린다 (`fx/seeThrough`)
+markSeeThrough(material, true)
 
 export function Water({ field }: { field: WaterField | null }) {
   const mesh = useRef<Mesh>(null)
