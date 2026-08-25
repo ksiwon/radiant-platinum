@@ -8,9 +8,8 @@ import { CAST_FRAMES, REEL_FRAMES, type FishingPhase } from '../engine/actor/fis
 import { worldState, type FieldActionFxKind } from '../state/worldState'
 import { tickFlyTransition } from './flyTransition'
 import { fishing } from './fishingSystem'
-import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 import { BDSP_TO_WORLD } from '../engine/model/normalize'
-import { PC_PART, SURF_MOUNT, keepOnly } from './pcParts'
+import { FLY_MOUNT, PC_PART, SURF_MOUNT, keepOnly } from './pcParts'
 import { assets } from '../data/providers/assetProvider'
 
 interface Props {
@@ -60,19 +59,22 @@ function alignCylinder(mesh: Mesh, from: Vector3, to: Vector3): void {
 }
 
 /**
- * 파도타기 몸을 한 번만 받는다.
+ * 주인공이 타고 드는 것들의 파일. **바이트는 한 번만 받고 씬은 부를 때마다 뜬다.**
+ *
+ * ⚠️ **씬 하나를 둘이 나눠 쓸 수 없다.** `keepOnly`가 무엇을 보일지 정하는데,
+ * 파도타기와 공중날기가 같은 씬을 잡으면 나중 것이 앞의 것을 끈다. 스킨드
+ * 메시라 `clone`도 뼈를 새로 이어야 하므로, 그냥 바이트를 다시 읽는다.
  *
  * ⚠️ **주소를 만들지 않는다** — 공개판에서 이 파일은 OPFS에서 온다
  * (IMPORT.md §7). `assets().bytes`로 받아 blob 주소로 연다
  */
-let surfMount: Promise<Object3D | null> | null = null
-function loadSurfMount(): Promise<Object3D | null> {
-  surfMount ??= assets().bytes('models/pcParts.glb')
-    .then((buffer) => new Promise<Object3D | null>((done) => {
+let pcPartsBytes: Promise<ArrayBuffer | null> | null = null
+function loadPcParts(): Promise<Object3D | null> {
+  pcPartsBytes ??= assets().bytes('models/pcParts.glb').catch(() => null)
+  return pcPartsBytes.then((buffer) => buffer === null ? null : new Promise<Object3D | null>(
+    (done) => {
       new GLTFLoader().parse(buffer, '', (gltf) => { done(gltf.scene) }, () => { done(null) })
     }))
-    .catch(() => null)
-  return surfMount
 }
 
 /**
@@ -86,7 +88,8 @@ export function FieldActionEffects({ bodyRef }: Props) {
   const flyRef = useRef<Group>(null)
   const flyFallbackRef = useRef<Group>(null)
   const flyModelHostRef = useRef<Group>(null)
-  const flyBodyRef = useRef<MonBody | null>(null)
+  /** 새를 기울이는 뼈 (`Waist_mf`). 원작 클립이 미는 유일한 새 뼈다 */
+  const flyTurnRef = useRef<Object3D | null>(null)
   const flyWingLeftRef = useRef<Mesh>(null)
   const flyWingRightRef = useRef<Mesh>(null)
   const flyRingRef = useRef<Mesh>(null)
@@ -124,7 +127,7 @@ export function FieldActionEffects({ bodyRef }: Props) {
   useEffect(() => {
     let alive = true
     let mount: Object3D | null = null
-    void loadSurfMount().then((scene) => {
+    void loadPcParts().then((scene) => {
       if (!alive || !scene || !surfModelHostRef.current) return
       keepOnly(scene, PC_PART.surf)
       // 번들 단위 → 게임 단위. 드는 높이도 그 안에서 잰 값이라 같이 곱한다
@@ -142,26 +145,28 @@ export function FieldActionEffects({ bodyRef }: Props) {
     }
   }, [])
 
+  // 공중날기 새. **원작 것이다** (`pcParts`의 `sora_00_00_BodyASkin`) — 오래
+  // 찌르호크(398) 모델을 태워 두었는데 그건 우리가 고른 것이었다
   useEffect(() => {
     let alive = true
-    void loadMonModel(398).then((loaded) => {
-      if (!alive || !loaded || !flyModelHostRef.current) return
-      const body = makeBody(loaded)
-      body.root.scale.setScalar(1.35 / Math.max(0.1, body.tall))
-      body.root.position.set(0, -0.18, 0)
-      flyModelHostRef.current.add(body.root)
-      flyBodyRef.current = body
+    let mount: Object3D | null = null
+    void loadPcParts().then((scene) => {
+      if (!alive || !scene || !flyModelHostRef.current) return
+      keepOnly(scene, PC_PART.fly)
+      // `Origin_mf`를 호스트 원점에 맞춘다 — 바인드에서 땅 위 `hover`에 있다
+      scene.scale.setScalar(BDSP_TO_WORLD)
+      scene.position.y = -FLY_MOUNT.hover * BDSP_TO_WORLD
+      scene.traverse((o) => { if ((o as Mesh).isMesh) (o as Mesh).castShadow = true })
+      flyModelHostRef.current.add(scene)
+      mount = scene
+      flyTurnRef.current = scene.getObjectByName('Waist_mf') ?? null
       if (flyFallbackRef.current) flyFallbackRef.current.visible = false
-      play(body, 'wait')
     })
     return () => {
       alive = false
-      const body = flyBodyRef.current
-      if (body) {
-        body.mixer.stopAllAction()
-        body.root.removeFromParent()
-      }
-      flyBodyRef.current = null
+      mount?.removeFromParent()
+      mount = null
+      flyTurnRef.current = null
     }
   }, [])
 
@@ -171,8 +176,13 @@ export function FieldActionEffects({ bodyRef }: Props) {
     const flyPose = tickFlyTransition(delta)
     if (flyRef.current) {
       flyRef.current.visible = flyPose.visible
-      flyRef.current.position.y = flyPose.birdLift
-      flyRef.current.rotation.z = Math.sin(time * 3.2) * 0.035
+      // ⚠️ **한 축이 아니라 세 축이다.** 원작 새는 뒤에서 날아와 사람을 채고
+      // 앞으로 빠진다 — 머리 위에 떠 있는 것이 아니다 (`pcParts`의 `FLY_PATH`)
+      flyRef.current.position.set(flyPose.bird.x, flyPose.bird.y, flyPose.bird.z)
+    }
+    if (flyTurnRef.current) {
+      const q = flyPose.turn
+      flyTurnRef.current.quaternion.set(q.x, q.y, q.z, q.w)
     }
     if (flyWingLeftRef.current) flyWingLeftRef.current.rotation.z = 0.35 + flyPose.wing
     if (flyWingRightRef.current) flyWingRightRef.current.rotation.z = -0.35 - flyPose.wing
@@ -181,8 +191,6 @@ export function FieldActionEffects({ bodyRef }: Props) {
       flyRingRef.current.scale.setScalar(0.4 + flyPose.ring * 1.6)
       flyRingRef.current.rotation.z = time * 1.8
     }
-    const flyBody = flyBodyRef.current
-    if (flyBody && flyPose.visible) flyBody.mixer.update(delta)
 
     const surf = surfRef.current
     if (surf) surf.visible = surfing
@@ -190,9 +198,16 @@ export function FieldActionEffects({ bodyRef }: Props) {
     if (body) {
       // ⚠️ **앉는 높이를 지어내지 않는다.** 번들이 `scaffold_Attach`로 적어 둔
       // 자리다 (`pcParts`의 `SURF_MOUNT.seat`) — 오래 0.43을 쓰고 있었다
-      const targetY = flyPose.visible ? flyPose.playerLift
-        : surfing ? SURF_MOUNT.seat * BDSP_TO_WORLD : 0
-      body.position.y += (targetY - body.position.y) * Math.min(1, delta * 9)
+      if (flyPose.visible) {
+        // 새에 실려 가는 동안은 **따라잡지 않고 그 자리에 둔다** — 원작 키가
+        // 0.017초 간격이라 사이를 늦추면 새를 놓친다
+        body.position.set(flyPose.rider.x, flyPose.rider.y, flyPose.rider.z)
+      } else {
+        const targetY = surfing ? SURF_MOUNT.seat * BDSP_TO_WORLD : 0
+        body.position.y += (targetY - body.position.y) * Math.min(1, delta * 9)
+        body.position.x += (0 - body.position.x) * Math.min(1, delta * 9)
+        body.position.z += (0 - body.position.z) * Math.min(1, delta * 9)
+      }
     }
     if (waveARef.current) {
       const phase = (time * 0.85) % 1
