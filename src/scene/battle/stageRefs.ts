@@ -126,3 +126,21 @@ export function impactHits(who: string, slot: string): boolean {
   if (who === 'attacker') return slot === moveImpact.attacker
   return slot === moveImpact.defender
 }
+
+/**
+ * 자리마다 **볼이 열리는 시각**(초, `performance.now()/1000`).
+ *
+ * ⚠️ **몸이 볼보다 먼저 나오면 안 된다.** 등판 연출은 「누가 그 자리에 섰다」를
+ * 보고 시작하는데(`BattleBallEffects`가 `view.active`의 열쇠가 바뀌면 던진다),
+ * 몸을 그리는 쪽은 같은 값을 보고 **그 프레임에 바로** 나타났다 — 그래서 포켓몬이
+ * 먼저 서 있고 그 뒤에 볼이 날아와 터졌다.
+ *
+ * 던지는 쪽이 **볼이 열리는 시각**을 여기 적고, 몸은 그때까지 안 나온다.
+ * 적힌 것이 없으면(연출이 안 도는 자리) 곧바로 나온다
+ */
+export const ballOpen: Record<string, number> = {}
+
+/** 배틀이 끝나면 놓는다 — 안 지우면 다음 배틀 첫 몸이 옛 시각을 기다린다 */
+export function clearBallOpen(): void {
+  for (const key of Object.keys(ballOpen)) delete ballOpen[key]
+}

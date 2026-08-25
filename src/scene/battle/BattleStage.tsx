@@ -32,7 +32,9 @@ import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
-import { battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN } from './stageRefs'
+import {
+  ballOpen, battleStage, impactHits, moveImpact, slotBody, STAGE_ORIGIN,
+} from './stageRefs'
 import { BattleBallEffects } from './BattleBallEffects'
 import { BattleTrainers } from './BattleTrainers'
 import { BattleWorldLabels } from './BattleWorldLabels'
@@ -383,7 +385,12 @@ function Slot({
   useFrame((_, delta) => {
     const g = body.current
     if (!g) return
-    const want = mon && !fainted ? 1 : 0
+    // ⚠️ **볼이 열리기 전에는 안 나온다** (`stageRefs.ballOpen`). 등판 연출과
+    // 몸이 같은 값(`view.active`)을 보고 같은 프레임에 시작하던 탓에, 포켓몬이
+    // 먼저 서 있고 그 뒤에 볼이 날아와 터졌다
+    const opensAt = ballOpen[slot] ?? 0
+    const waiting = performance.now() / 1000 < opensAt
+    const want = mon && !fainted && !waiting ? 1 : 0
     shown.current +=
       Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     const t = shown.current

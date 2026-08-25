@@ -3,6 +3,8 @@ import { useFrame } from '@react-three/fiber'
 import type { Group } from 'three'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import type { BattleView } from '../../engine/battle/view'
+import { ballOpen, clearBallOpen } from './stageRefs'
+import { useBattleStore } from '../../state/battleStore'
 import {
   CAPTURE_SEAL_TIME,
   CAPTURE_SHAKE_START,
@@ -222,6 +224,9 @@ export function BattleBallEffects({
   view: BattleView | null
   spotAt: (slot: SlotId) => [number, number]
 }) {
+  // 야생·사파리는 상대 쪽에 트레이너가 없다 (`state/battleStore`의 `kind`)
+  const kind = useBattleStore((s) => s.kind)
+  const wildFoe = kind === 'wild' || kind === 'safari'
   const [shots, setShots] = useState<BallShot[]>([])
   const activeKeys = useRef<Record<SlotId, string | null> | null>(null)
   const seenBall = useRef(0)
@@ -229,6 +234,7 @@ export function BattleBallEffects({
   useEffect(() => {
     if (!view) {
       activeKeys.current = null
+      clearBallOpen()
       return
     }
     const current: Record<SlotId, string | null> = {
@@ -242,6 +248,8 @@ export function BattleBallEffects({
     const started = nowSeconds()
     const added = SLOTS.flatMap((slot): BallShot[] => {
       if (!current[slot] || current[slot] === previous?.[slot]) return []
+      // ⚠️ **야생은 볼에서 안 나온다.** 던질 사람이 없다 — 풀숲에서 튀어나온다
+      if (wildFoe && slot.startsWith('p2')) return []
       return [
         {
           id: nextShotId++,
@@ -255,12 +263,17 @@ export function BattleBallEffects({
         },
       ]
     })
+    // **몸은 볼이 열릴 때까지 기다린다** (`stageRefs.ballOpen`). 안 적으면
+    // 포켓몬이 먼저 서 있고 그 뒤에 볼이 날아온다
+    for (const shot of added) {
+      ballOpen[shot.slot] = started + (shot.replacement ? SEND_RECALL_TIME : 0) + SEND_THROW_TIME
+    }
     if (added.length > 0) {
       setShots((old) =>
         [...old.filter((shot) => started - shot.started < shotDuration(shot)), ...added].slice(-12),
       )
     }
-  }, [view])
+  }, [view, wildFoe])
 
   useEffect(() => {
     const event = view?.lastBall
