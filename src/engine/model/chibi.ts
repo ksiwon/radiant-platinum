@@ -178,6 +178,29 @@ const HELD = 1 / CHIBI_HAND
  */
 const ARM_ROOT = ['LArm', 'RArm'] as const
 
+/**
+ * 팔 **단면**도 되돌린다 — 길이만 늘이면 소매가 굵은 채로 남는다.
+ *
+ * ⚠️ **가로로 누운 팔은 굵기가 세로로 잡힌다.** 다리는 세로라 단면이 가로·앞뒤
+ * 둘 다 `girth`를 받는데, 팔은 단면이 **세로·앞뒤**라 세로 쪽이 키 늘림
+ * (`fit.scale`)을 그대로 맞는다. 실측하면 소매 상자의 세로가 키의 13.2~15.2%인데
+ * 등신은 5.6%다 — 앞뒤는 6.2 ↔ 6.0%로 이미 맞는다 (`.audit/armAxis.mjs`).
+ *
+ * 팔뼈의 로컬 축은 쉬는 자세에서 **월드와 그대로 맞는다** — `LArm`의 로컬 X·Y·Z가
+ * 월드 X·Y·Z를 보고 배율이 그 축의 값 그대로 (0.994 · 2.09 · 0.994) 나온다.
+ * 그래서 로컬 Y를 `girth / fit.scale`로 누르면 월드 세로가 `girth`가 되어
+ * 앞뒤와 같아진다.
+ *
+ * ⚠️ **맨 위 뼈에만 건다.** 아래팔·손은 자식이라 그 눌림을 물려받는다 — 마디마다
+ * 걸면 사슬을 따라 제곱으로 눌린다. 손이 세로로만 눌려 있던 것도 이걸로 같이
+ * 풀린다(손은 `CHIBI_HAND`로 균등하게 줄어든 뒤 이 눌림을 받는다).
+ *
+ * ⚠️ **쉬는 자세에서만 정확하다.** 팔이 돌면 눌리는 방향도 같이 돈다 — 팔을
+ * 앞뒤로 흔드는 동안은 맞고, 옆으로 들어 올리면 어긋난다. 머리뼈 보정도 같은
+ * 성질이고(`round`), 오버월드에서 팔을 옆으로 드는 사람은 없다
+ */
+const ARM_FLAT = true
+
 /** 늘이기 전의 마디 자리를 적어 두는 자리. 두 번 불려도 안 쌓이게 한다 */
 const PRISTINE = 'chibiArmRest'
 
@@ -246,7 +269,18 @@ export function shapeChibi(
       if (child.type === 'Bone') lengthen(child)
     }
   }
-  for (const arm of bonesNamed(body, ...ARM_ROOT)) lengthen(arm)
+  const flat = fit.scale > 1e-6 ? girth / fit.scale : 1
+  for (const arm of bonesNamed(body, ...ARM_ROOT)) {
+    // ⚠️ **어깨 관절 자리는 안 건드린다.** `LArm.position`은 어깨에서 위팔이
+    // 붙는 자리라 몸통 쪽 값이다 — 그것까지 늘이면 어깨가 위로·옆으로 밀려
+    // 사람이 통째로 커진다. 늘일 것은 그 아래 마디들, 곧 **위팔 길이**
+    // (`LForeArm.position`)와 **아래팔 길이**(`LHand.position`)다
+    for (const child of arm.children) {
+      if (child.type === 'Bone') lengthen(child)
+    }
+    // 단면만 되돌린다 — 길이축(로컬 X)과 앞뒤(로컬 Z)는 이미 `girth`다
+    if (ARM_FLAT) arm.scale.set(1, flat, 1)
+  }
   // 부르는 쪽이 뼈 자리를 월드에서 재므로 바뀐 배율을 먼저 반영한다
   inner.updateMatrixWorld(true)
   return height
