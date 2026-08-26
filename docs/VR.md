@@ -242,7 +242,7 @@ keydown 리스너         12곳
 | **깨어진 세계** | 🟢 `surfaceQuaternion`이 벽/천장으로 뛸 때 **16프레임에 걸쳐 중력을 90°/180° 돌린다** (`FLIP_TIME = 16/60`). 앉은 사람의 세계를 통째로 굴리는 것 — VR에서 할 수 있는 가장 나쁜 짓이다. 페이드 컷 같은 편의 옵션이 필요 |
 | **이동 속도** | 🟢 `WALK_SPEED 4.5` · `RUN_SPEED 8` (m/s, [`engine/actor/player.ts:16-17`](../src/engine/actor/player.ts#L16-L17)). **8m/s는 시속 28.8km다.** 실제 걷기가 1.4m/s. 자전거는 더 빠르다. VR 속도 배율 옵션이 필요 |
 | **편의 기능 전무** | 스냅 턴 · 이동 시 비네트 · 높이 조절 · 리센터 — 지금 하나도 없다 |
-| **판때기 NPC** | 🟡 배치의 50.5%가 아직 2D 컷아웃 ([3D_GAP_AUDIT](3D_GAP_AUDIT.md), 사람 기준으로는 94.5%가 모델). 스테레오에서 1m 앞의 평면은 스티커로 보인다 |
+| **판때기 NPC** | 🟡 배치의 47.1%가 아직 2D 컷아웃 ([3D_GAP_AUDIT](3D_GAP_AUDIT.md), 사람 기준으로는 99.2%가 모델이고 남은 것은 바위·볼 같은 물건이다). 스테레오에서 1m 앞의 평면은 스티커로 보인다 |
 | **카메라 바라보기 쿼드** | 🟢 [`scene/InteractionPrompt.tsx:72`](../src/scene/InteractionPrompt.tsx#L72)가 `camera.quaternion`을 복사. `EmoteMarks`·`BerryPatchProps`·`NpcSprites`도 같은 계열. XR 카메라 기준으로 고쳐야 한다 |
 | **`PropFade`** | 🟢 [`scene/PropFade.tsx:139-143`](../src/scene/PropFade.tsx#L139-L143)이 `camera.position`에서 레이를 쏜다 → 리그 위치 기준으로 |
 | **공간 음향이 없다** | §6.1 — 별도로 적는다 |

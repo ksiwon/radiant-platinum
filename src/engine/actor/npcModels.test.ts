@@ -14,7 +14,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
-  NPC_BUNDLE, NPC_MODEL_ALIAS, SPRITE_CLASS_ALIAS, bundlesByTag, buildOf, classOfSprite,
+  NPC_BUNDLE, NPC_MODEL_ALIAS, NPC_MODEL_BUNDLE, SPRITE_CLASS_ALIAS, bundlesByTag, buildOf,
+  classOfSprite,
   modelFor, modelTagFor, normalize, trainerModelBundle, type NpcModelTable,
 } from './npcModels'
 import { TRAINER_MODELS } from '../../import/bdsp/trainerModels'
@@ -207,11 +208,12 @@ maybe('실제 자료', () => {
       .map(([id, s]) => modelFor(s.name, table, Number(id)))
       .filter((m) => m !== null)
     // ⚠️ 이 수가 떨어지면 근거표나 번들 목록이 어긋난 것이다
-    expect(found.length).toBeGreaterThanOrEqual(87)
+    expect(found.length).toBeGreaterThanOrEqual(100)
     expect(found.length).toBeLessThan(list.length)
-    // 대부분이 등신이다. 치비로 내려가는 것은 트레이너가 아닌 사람들뿐이다
+    // 대부분이 등신이다. 치비로 내려가는 것은 트레이너가 아닌 사람들뿐이라,
+    // 그림 354칸 중 붙는 것 112에 치비가 28이다 (`.audit/countNow.mjs`)
     const chibi = found.filter((m) => buildOf(m.bundles[0]!) === 'field')
-    expect(chibi.length).toBeLessThan(found.length / 4)
+    expect(chibi.length).toBeLessThan(found.length / 3)
   })
 
   it('번들 이름의 뒤 두 자리는 옷이다', () => {
@@ -304,15 +306,65 @@ maybe('구워 둔 표', () => {
     // 기다리던 자리가 통째로 붙었다 — 에이스 트레이너 135건, 갤럭시단 104건,
     // 등산가 63건, 반바지 51건, 8관장·사천왕·난천이 그렇다.
     //
-    // 1508 → 1766은 **갈래가 없는 마을 사람**을 이은 것이다. 트레이너가 아니라
+    // 1508 → 1761은 **갈래가 없는 마을 사람**을 이은 것이다. 트레이너가 아니라
     // 배치표가 갈래를 안 알려 주므로 롬이 그림에 붙여 둔 텍스처 이름표를 쓴다 —
-    // 센터 판매대 점원 101건, 접수원 45건, 늙은 여자 32건이 그렇다
-    expect(hit).toBe(1761)
+    // 센터 판매대 점원 101건, 접수원 45건, 늙은 여자 32건이 그렇다.
+    //
+    // 1761 → 1879는 **이름표로도 못 고르던 자리를 눈으로 고른** 것이다
+    // (`NPC_MODEL_BUNDLE` · 118건). 남는 사람 판때기는 열여섯 — 핸섬 12와
+    // 플루토 4고, 둘 다 BDSP에 몸이 아예 없다
+    expect(hit).toBe(1879)
     // ⚠️ 여기 안 세어지는 자리가 또 있다. `OBJ_EVENT_GFX_VAR_*`(101~116)는
     // 배치표에 자리표시자로 적혀 있고 실제 그림은 변수로 정해지므로
     // (`actor/npcs`의 `resolveGfx`) `n.sprite`로는 안 걸린다. 그 62건에는
     // 주인공 둘이 서고, 표에도 둘 다 들어 있다
     expect(map[String(0)]).toBe(NPC_BUNDLE.hero)
     expect(map[String(97)]).toBe(NPC_BUNDLE.heroine)
+  })
+})
+
+describe('눈으로 고른 짝', () => {
+  const names = new Set(Object.values(SPRITE_NAMES))
+
+  it('그림 이름이 실제로 있는 것이다', () => {
+    for (const name of Object.keys(NPC_MODEL_BUNDLE)) expect(names, name).toContain(name)
+  })
+
+  // ⚠️ **BDSP가 제 답을 적어 둔 자리를 눈으로 덮지 않는다.** 갈래로 이어지는
+  // 그림을 여기 적으면 근거가 갈래표에서 사람 눈으로 내려앉는다
+  it('갈래로 이어지는 그림은 여기 없다', () => {
+    for (const name of Object.keys(NPC_MODEL_BUNDLE)) {
+      const id = Object.entries(SPRITE_NAMES).find(([, n]) => n === name)?.[0]
+      expect(classOfSprite(name, id === undefined ? undefined : Number(id)), name).toBeNull()
+    }
+  })
+})
+
+maybe('눈으로 고른 짝 — 실제 자료', () => {
+  it('고른 번들이 BDSP에 다 있다', () => {
+    const table = models()
+    for (const [name, bundle] of Object.entries(NPC_MODEL_BUNDLE)) {
+      expect(table[buildOf(bundle)].bundles, `${name} → ${bundle}`).toHaveProperty(bundle)
+    }
+  })
+
+  it('고른 그대로 세운다 — 낱말이 겹쳐도', () => {
+    const table = models()
+    for (const [name, bundle] of Object.entries(NPC_MODEL_BUNDLE)) {
+      expect(modelFor(name, table)?.bundles, name).toEqual([bundle])
+    }
+    // ⚠️ **낱말로는 못 고른다.** `madam`이 셋에 붙어 있고 배틀을 먼저 보므로
+    // 낱말 짝을 적었으면 트레이너 마담(`tr0047_00`)이 왔다
+    expect(bundlesByTag(table.battle).get('madam')).toEqual(['tr0047_00'])
+    expect(bundlesByTag(table.field).get('madam')).toEqual(['fc0047_00', 'fc2023_00'])
+  })
+
+  // ⚠️ **핸섬·플루토는 BDSP에 몸이 없다.** 플래티넘에만 나오는 사람이라
+  // 필드 161벌·배틀 124벌 어느 쪽에도 그 사람을 가리키는 이름표가 없다
+  it('핸섬·플루토는 판때기로 남는다', () => {
+    const table = models()
+    for (const name of ['LOOKER', 'CHARON']) {
+      expect(modelFor(name, table), name).toBeNull()
+    }
   })
 })

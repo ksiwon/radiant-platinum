@@ -4,12 +4,14 @@
 // **낡아도 낡은 그룹만 다시 만드는가**.
 import { describe, it, expect } from 'vitest'
 import {
-  ASSET_FORMAT, MIGRATIONS, groupFormat, migrationFor, needsSource, planAssets,
+  ASSET_FORMAT, GROUP_FORMAT, MIGRATIONS, groupFormat, migrationFor, needsSource, planAssets,
 } from './assetFormat'
 import { CONTRACT_VERSION, InstallManifestSchema } from './manifestSchema'
 import { installReady, runInstall, INSTALL_FILE, type InstallStores } from './installer'
 import { memoryPackStore } from '../../data/providers/packStore'
 import { REQUIRED_GROUPS } from './required'
+import { GROUPS } from '../platinum/convert'
+import { BDSP_GROUPS } from '../bdsp/convert'
 import type { GroupSpec } from '../platinum/convert'
 
 const encoder = new TextEncoder()
@@ -157,5 +159,24 @@ describe('설치 기록이 원본을 안 기억한다', () => {
     // 기록 전체를 글자로 훑어도 롬 냄새가 안 나야 한다
     const text = JSON.stringify(manifest)
     expect(text).not.toMatch(/\.nds|romfs|AssetAssistant|FileSystemFileHandle/i)
+  })
+})
+
+
+// ⚠️ **판은 그룹 이름으로만 맞춰 본다** (`planAssets`가 설치 기록의 키로 찾는다).
+// 이름이 한 글자만 어긋나면 판을 올린 쪽은 조용히 아무 일도 안 하고, 이미 깔린
+// 사람은 낡은 산출물을 그대로 쓴다. 그래서 임자 목록과 맞대 본다 — 설치 기록에
+// 들어가는 이름은 **변환기의 `GroupSpec.name`**이지 노드 추출기 쪽 그룹이
+// 아니다 (`tools/assets/groups.mjs`는 더 잘게 쪼개져 있고 이름도 다르다)
+describe('판을 붙인 이름이 실제 그룹이다', () => {
+  const names = new Set([...GROUPS, ...BDSP_GROUPS].map((g) => g.name))
+
+  it('변환기 목록을 읽었다', () => {
+    expect(names.size).toBeGreaterThan(20)
+  })
+
+  it('GROUP_FORMAT의 키가 다 그 목록에 있다', () => {
+    const stray = Object.keys(GROUP_FORMAT).filter((g) => !names.has(g))
+    expect(stray).toEqual([])
   })
 })

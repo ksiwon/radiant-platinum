@@ -216,13 +216,65 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
   // `baby` ↔ `baby`
   BABY_IN_PRAM: 'baby',
 
-  // ⚠️ **여기 없는 것들은 「짝이 없어서」가 아니라 「둘 중 어느 쪽인지 몰라서」다.**
-  // `KID_WITH_NDS`(`dsboy`)에 BDSP 아이가 `child`·`child2` 둘이고,
-  // `MIDDLE_AGED_WOMAN`(`middlewoman2`)에 어른 여자가 `women2`·`women3`·`madam`
-  // 셋이다. 어느 쪽인지 화면으로 확인하기 전에는 안 적는다 — 절반은 틀린다.
-  //
-  // `CASHIER_M`(`shopm1`)은 다르다. BDSP의 점원이 **여자 하나뿐**이라
-  // (`clerk` — 화면에서 확인했다) 남자 점원에 붙일 몸이 아예 없다.
+  // ⚠️ **둘 중 어느 쪽인지 몰라 비워 둔 자리는 `NPC_MODEL_BUNDLE`로 간다.**
+  // 여기는 여전히 낱말이 같은 것만 적는다
+}
+
+/**
+ * **눈으로 고른 짝** — 그림 이름 → 번들을 곧바로 적는다.
+ *
+ * 앞의 세 길(갈래 이름 · 배치표 · 낱말)이 다 못 답하는 자리가 있다. 트레이너가
+ * 아니라 갈래가 없고, 같은 낱말을 달고 있는 사람이 BDSP 쪽에 여럿이라 낱말만
+ * 보고는 절반을 틀린다 — `MIDDLE_AGED_WOMAN`의 `madam`이 `tr0047_00`(트레이너
+ * 마담) · `fc0047_00` · `fc2023_00` 셋에 다 붙어 있다.
+ *
+ * 그래서 근거가 **후보를 다 3D로 찍어 나란히 놓고 사람이 고른 것**이다
+ * (`.audit/plateReview.html` · `.audit/renderCands.mjs`가 만든다). 짐작이 아니라
+ * 본 것이므로 낱말보다 세고, 줄마다 무엇을 보고 골랐는지 적는다.
+ *
+ * ⚠️ **갈래가 있는 그림은 여기 적지 않는다.** BDSP가 제 답을 적어 둔 자리를
+ * 눈으로 덮으면 근거가 약해진다 — `npcModels.test`가 이 줄을 지킨다
+ */
+export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
+  // 남자 점원. BDSP에 점원은 여자 하나뿐이라(`clerk`) 점원을 **다 여자로
+  // 통일한다** — 자리가 같은 `TEALA`·`CASHIER_F`와 같은 몸이 된다
+  CASHIER_M: 'fc2024_00',
+  // 체육관 안내원. 갈색 머리·둥근 색안경·베이지 조끼에 보라 소매까지 같다
+  GYM_GUIDE: 'fc2014_00',
+  // 갤럭시단 무리. 원작은 넷·셋이 **그림 한 장**인데 그 자리에 단원을
+  // **한 명만** 세운다. `galacticM`은 갈래로 이미 서 있는 그 단원이다
+  GRUNTS_GROUP_OF_4: 'fc1073_00',
+  GRUNTS_GROUP_OF_3: 'fc1073_00',
+  // 프런티어 안내원 셋. 원작 이름표가 `bfsm`(남)·`bfsw1`·`bfsw2`(여)로
+  // 갈리는데 그림으로는 갈래가 안 읽힌다. **다른 안내원을 가져다 세운다** —
+  // 이미 서 있는 접수원 둘로 나눈다
+  FRONTIER_BOOTH_ATTENDANT: 'fc2015_00',
+  FRONTIER_SINGLE_ATTENDANT: 'fc2015_00',
+  FRONTIER_MULTI_ATTENDANT: 'fc2012_00',
+  // 마박사. 흰 머리·콧수염·갈색 코트에 **서류가방**까지 들고 있다.
+  // `doctor00`·`doctor01`·`doctor02` 셋 중 어느 쪽인지 못 짚던 자리다 —
+  // 열어 보니 `doctor01`(`fc2003_01`)은 키 0.106짜리라 **사람이 아니다**
+  PROF_ROWAN: 'fc2003_00',
+  // 오박사. 남은 흰 가운 박사다
+  PROF_OAK: 'fc2004_00',
+  // 신비한 선물 배달원. 원작은 초록 모자에 초록 제복이고, BDSP에서
+  // 모자 쓴 제복은 `police` 하나다
+  MYSTERY_GIFT_DELIVERYMAN: 'fc0039_00',
+  // NDS 든 아이. `child`·`child2` 중 못 고르겠다던 자리인데, 열어 보니
+  // `child`가 **게임기를 들고 있다** — 든 물건까지 같은 자리다
+  KID_WITH_NDS: 'fc2017_00',
+  // 중년 여자. 보라 올림머리에 보라 옷 — 머리 모양까지 같다.
+  // ⚠️ `madam` 낱말은 `tr0047_00`에도 붙어 있어서 낱말로 찾으면 트레이너
+  // 마담이 온다. 번들을 곧바로 적는 이유가 이것이다
+  MIDDLE_AGED_WOMAN: 'fc2023_00',
+  // 눈설탕시티 남자
+  SNOWPOINT_NPC_M: 'fc2028_00',
+
+  // ⚠️ **핸섬(`LOOKER`)과 플루토(`CHARON`)는 여기 없다.** 둘 다 플래티넘에만
+  // 나오는 사람이라 **BDSP에 몸이 아예 없다** — 필드 161벌·배틀 124벌을 다
+  // 세었고, 이름표가 안 붙은 셋(`fc1008_01`·`fc2039_00`·`fc2044_00`)까지 열어
+  // 봤다 (`.audit/lookerCharonCands.mjs`). 비슷한 몸을 가져다 세우는 것보다
+  // 판때기로 두는 편이 낫다는 것이 사람의 결정이다
 }
 
 /**
@@ -257,11 +309,16 @@ function tagOrder(set: BundleSet, tag: string): string[] {
  *
  * 갈래로 이어지면 **BDSP가 적어 둔 그 번들**을 쓴다. 갈래가 없는 사람만
  * 낱말로 찾고, 그때는 등신을 먼저 보고 없으면 치비로 내려간다 — 판때기보다는
- * 낫기 때문이다
+ * 낫기 때문이다. 셋 다 못 답하는 자리는 눈으로 고른 표(`NPC_MODEL_BUNDLE`)가
+ * 받는다
  */
 export function modelFor(
   spriteName: string, table: NpcModelTable, spriteID?: number,
 ): NpcModelRef | null {
+  const picked = NPC_MODEL_BUNDLE[spriteName]
+  if (picked !== undefined && picked in table[buildOf(picked)].bundles) {
+    return { bundles: [picked], via: '화면으로 골랐다' }
+  }
   const cls = classOfSprite(spriteName, spriteID)
   const bundle = cls === null ? undefined : BUNDLE_BY_CLASS.get(cls)
   if (bundle !== undefined) {
