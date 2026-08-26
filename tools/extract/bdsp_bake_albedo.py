@@ -59,6 +59,16 @@ def srgb_to_linear(x: np.ndarray) -> np.ndarray:
     return np.where(x <= 0.04045, x / 12.92, np.power((x + 0.055) / 1.055, 2.4))
 
 
+def hex_color(text: str) -> dict:
+    """`#rrggbb` → 셰이더가 쓰는 색 딕셔너리. **감마 값 그대로 넣는다** —
+    `layer()`가 읽을 때 선형으로 돌리므로 여기서 미리 돌리면 두 번 된다."""
+    t = text.lstrip("#")
+    if len(t) != 6:
+        raise SystemExit(f"색은 #rrggbb 꼴이어야 한다: {text}")
+    r, g, b = (int(t[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+    return {"r": r, "g": g, "b": b, "a": 1.0}
+
+
 def prop_pairs(entries):
     for e in entries:
         k, v = e if isinstance(e, (list, tuple)) else (e["first"], e["second"])
@@ -370,7 +380,8 @@ def carved_shells(env, main_props: tuple[str, ...]) -> set[str]:
 
 def bake(bundle, outdir: Path, color_index: int | None = None,
          max_size: int | None = None,
-         main_props: tuple[str, ...] = ("_MainTex",)) -> dict[str, dict]:
+         main_props: tuple[str, ...] = ("_MainTex",),
+         recolor: dict | None = None) -> dict[str, dict]:
     """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
 
     돌려주는 것은 **머티리얼 이름 → 그 그림을 어떻게 읽어야 하는가**다:
@@ -384,6 +395,12 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
 
     `bundle`은 여러 개일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹에 머티리얼이
     있고 메시·텍스처는 `pokemons/common` 쪽 번들 둘에 있다.
+
+    `recolor`는 `{머티리얼: {프로퍼티: '#rrggbb'}}`다. **레이어 색을 갈아 끼운다** —
+    틴트를 덧칠하는 것이 아니라 셰이더가 원래 곱하는 그 값을 바꾸는 것이라,
+    음영이 그대로 살아 있는 채로 부위 색만 바뀐다. 플래티넘에만 있어서 BDSP에
+    몸이 없는 사람을 다른 몸으로 세울 때 쓴다 (`engine/actor/npcModels`의
+    `NPC_RECOLOR` — 굽는 쪽 둘이 그 표 하나를 같이 본다).
 
     `main_props`는 알베도를 찾을 자리다. 인물·무대는 `_MainTex`지만 포켓몬
     셰이더는 `_Col0Tex`에 색을 싣는다 — 이름만 다르고 하는 일은 같다
@@ -412,6 +429,9 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         for ch, col in overrides.get(obj.path_id, {}).items():
             if 0 <= ch < len(VARIATION_CHANNEL_PROPS):
                 colors[VARIATION_CHANNEL_PROPS[ch]] = col
+        # 우리가 적어 둔 색이 제일 세다 — 사람이 정한 것이라 원본을 이긴다
+        for prop, hexcol in (recolor or {}).get(name, {}).items():
+            colors[prop] = hex_color(hexcol)
         slots, uvs = {}, {}
         for k, v in prop_pairs(props.get("m_TexEnvs", [])):
             pid = v.get("m_Texture", {}).get("m_PathID", 0) if isinstance(v, dict) else 0

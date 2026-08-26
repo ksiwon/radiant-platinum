@@ -14,10 +14,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
-  NPC_BUNDLE, NPC_MODEL_ALIAS, NPC_MODEL_BUNDLE, SPRITE_CLASS_ALIAS, bundlesByTag, buildOf,
-  classOfSprite,
+  NPC_BUNDLE, NPC_MODEL_ALIAS, NPC_MODEL_BUNDLE, NPC_RECOLOR, SPRITE_CLASS_ALIAS, baseBundle,
+  bundlesByTag, buildOf, classOfSprite,
   modelFor, modelTagFor, normalize, trainerModelBundle, type NpcModelTable,
 } from './npcModels'
+import { MASK_CHANNEL_PROPS } from '../../import/bdsp/albedo'
 import { TRAINER_MODELS } from '../../import/bdsp/trainerModels'
 import { SPRITE_TRAINER_CLASS, TRAINER_CLASS_NAMES } from '../../import/platinum/trainerClasses'
 import { SPRITE_NAMES } from '../../import/platinum/spriteTable'
@@ -310,10 +311,10 @@ maybe('구워 둔 표', () => {
     // 배치표가 갈래를 안 알려 주므로 롬이 그림에 붙여 둔 텍스처 이름표를 쓴다 —
     // 센터 판매대 점원 101건, 접수원 45건, 늙은 여자 32건이 그렇다.
     //
-    // 1761 → 1879는 **이름표로도 못 고르던 자리를 눈으로 고른** 것이다
-    // (`NPC_MODEL_BUNDLE` · 118건). 남는 사람 판때기는 열여섯 — 핸섬 12와
-    // 플루토 4고, 둘 다 BDSP에 몸이 아예 없다
-    expect(hit).toBe(1879)
+    // 1761 → 1895는 **이름표로도 못 고르던 자리를 눈으로 고른** 것이다
+    // (`NPC_MODEL_BUNDLE` · 134건). 그중 열여섯은 BDSP에 몸이 없어서 남의 몸을
+    // 다시 칠해 세운다 (`NPC_RECOLOR`) — 이제 **사람 그림은 하나도 안 남는다**
+    expect(hit).toBe(1895)
     // ⚠️ 여기 안 세어지는 자리가 또 있다. `OBJ_EVENT_GFX_VAR_*`(101~116)는
     // 배치표에 자리표시자로 적혀 있고 실제 그림은 변수로 정해지므로
     // (`actor/npcs`의 `resolveGfx`) `n.sprite`로는 안 걸린다. 그 62건에는
@@ -341,10 +342,11 @@ describe('눈으로 고른 짝', () => {
 })
 
 maybe('눈으로 고른 짝 — 실제 자료', () => {
-  it('고른 번들이 BDSP에 다 있다', () => {
+  it('고른 번들이 BDSP에 다 있다 — 다시 칠한 판은 꼬리를 뗀 것이', () => {
     const table = models()
     for (const [name, bundle] of Object.entries(NPC_MODEL_BUNDLE)) {
-      expect(table[buildOf(bundle)].bundles, `${name} → ${bundle}`).toHaveProperty(bundle)
+      const base = baseBundle(bundle)
+      expect(table[buildOf(bundle)].bundles, `${name} → ${bundle}`).toHaveProperty(base)
     }
   })
 
@@ -360,11 +362,60 @@ maybe('눈으로 고른 짝 — 실제 자료', () => {
   })
 
   // ⚠️ **핸섬·플루토는 BDSP에 몸이 없다.** 플래티넘에만 나오는 사람이라
-  // 필드 161벌·배틀 124벌 어느 쪽에도 그 사람을 가리키는 이름표가 없다
-  it('핸섬·플루토는 판때기로 남는다', () => {
+  // 필드 161벌·배틀 124벌 어느 쪽에도 그 사람을 가리키는 이름표가 없다 —
+  // 그래서 남의 몸을 다시 칠해 세운다
+  it('핸섬·플루토는 다시 칠한 몸으로 선다', () => {
     const table = models()
     for (const name of ['LOOKER', 'CHARON']) {
-      expect(modelFor(name, table), name).toBeNull()
+      const bundle = modelFor(name, table)?.bundles[0]
+      expect(bundle, name).toBeDefined()
+      expect(NPC_RECOLOR, name).toHaveProperty(bundle!)
+    }
+  })
+
+  it('사람 그림에 판때기가 안 남는다', () => {
+    const table = models()
+    const left = Object.entries(sprites())
+      .filter(([id, s]) => modelFor(s.name, table, Number(id)) === null)
+      .map(([, s]) => s.name)
+      // 사람이 아닌 것만 남아야 한다 — 바위·볼·환풍구·문·가방 같은 물건이다
+      .filter((n) => /^(LOOKER|CHARON|[A-Z_]*(MAN|WOMAN|BOY|GIRL|KID|NPC)[A-Z_]*)$/.test(n))
+    expect(left).toEqual([])
+  })
+})
+
+describe('다시 칠하기', () => {
+  it('키가 `번들-꼬리` 꼴이고 꼬리를 떼면 진짜 번들이다', () => {
+    for (const key of Object.keys(NPC_RECOLOR)) {
+      expect(key, key).toMatch(/^(fc|tr|pc)\d{4}_\d{2}-[a-z]+$/)
+      expect(baseBundle(key), key).toBe(key.split('-')[0])
+    }
+  })
+
+  it('꼬리 없는 이름은 그대로 돌려준다', () => {
+    expect(baseBundle('fc2033_01')).toBe('fc2033_01')
+    expect(baseBundle('tr1073_00')).toBe('tr1073_00')
+  })
+
+  it('색이 `#rrggbb`고 근거가 붙어 있다', () => {
+    for (const [key, spec] of Object.entries(NPC_RECOLOR)) {
+      expect(spec.why.length, key).toBeGreaterThan(8)
+      const props = Object.values(spec.paint).flatMap((m) => Object.entries(m))
+      expect(props.length, key).toBeGreaterThan(0)
+      for (const [prop, hex] of props) {
+        expect(MASK_CHANNEL_PROPS, `${key} ${prop}`).toContain(prop)
+        expect(hex, `${key} ${prop}`).toMatch(/^#[0-9a-f]{6}$/)
+      }
+    }
+  })
+
+  // ⚠️ **원래 번들을 덮어쓰지 않는다.** `fc2033_01`은 게임디렉터가 쓰고 있어서,
+  // 같은 이름으로 구우면 그 사람까지 핸섬 색이 된다
+  it('원래 번들을 그대로 쓰는 사람이 있으면 이름이 안 겹친다', () => {
+    const plain = new Set(Object.values(NPC_MODEL_BUNDLE).map(baseBundle))
+    for (const key of Object.keys(NPC_RECOLOR)) {
+      expect(key, key).not.toBe(baseBundle(key))
+      expect(plain.has(baseBundle(key)) ? key : 'ok').not.toBe(baseBundle(key))
     }
   })
 })

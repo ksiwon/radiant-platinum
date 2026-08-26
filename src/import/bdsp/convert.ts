@@ -18,7 +18,8 @@ import {
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
 import {
-  HERO_FIELD_CLIPS, NPC_BUNDLE, TRAINER_CLIPS, buildOf, fieldClipDonor, modelFor,
+  HERO_FIELD_CLIPS, NPC_BUNDLE, NPC_RECOLOR, TRAINER_CLIPS, baseBundle, buildOf, fieldClipDonor,
+  modelFor,
   type NpcModelTable,
 } from '../../engine/actor/npcModels'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
@@ -239,7 +240,8 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   const bake = async (bundle: string): Promise<boolean> => {
     if (made.has(bundle)) return true
     if (broken.has(bundle)) return false
-    const path = lookup(at, `${PERSONS}/${buildOf(bundle)}/${bundle}`)
+    // 다시 칠한 판은 이름에 꼬리가 붙어 있다 — 원본은 꼬리 뗀 그 번들이다
+    const path = lookup(at, `${PERSONS}/${buildOf(bundle)}/${baseBundle(bundle)}`)
     const env = path ? await environmentOf(src, [path]) : null
     if (!env) { broken.add(bundle); return false }
     try {
@@ -248,10 +250,14 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
       // 다 실으면 한 명이 1.06MB에서 2.58MB가 된다. 등신(`tr*`·`pc*`)은
       // 배틀에서 이어 붙는 셋만 싣는다 (`TRAINER_CLIPS`)
       const battle = buildOf(bundle) === 'battle'
+      // ⚠️ **레이어 색을 갈아 끼우는 표도 노드 추출기와 같이 본다**
+      // (`NPC_RECOLOR`). 따로 적으면 개발 서버와 설치본의 사람 색이 갈린다
+      const paint = NPC_RECOLOR[bundle]?.paint
       const { glb } = await exportModel(env, encodePng, {
         maxSize: MAX_TEXTURE,
         keepClips: battle,
         ...(battle ? { clipFilter: TRAINER_CLIPS } : {}),
+        ...(paint ? { recolor: paint } : {}),
         ...(await heroFieldClips(ctx, src, at, bundle)),
       })
       put(ctx, out, `models/npc/${bundle}.glb`, glb)

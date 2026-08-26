@@ -270,11 +270,71 @@ export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
   // 눈설탕시티 남자
   SNOWPOINT_NPC_M: 'fc2028_00',
 
-  // ⚠️ **핸섬(`LOOKER`)과 플루토(`CHARON`)는 여기 없다.** 둘 다 플래티넘에만
-  // 나오는 사람이라 **BDSP에 몸이 아예 없다** — 필드 161벌·배틀 124벌을 다
-  // 세었고, 이름표가 안 붙은 셋(`fc1008_01`·`fc2039_00`·`fc2044_00`)까지 열어
-  // 봤다 (`.audit/lookerCharonCands.mjs`). 비슷한 몸을 가져다 세우는 것보다
-  // 판때기로 두는 편이 낫다는 것이 사람의 결정이다
+  // ⚠️ **핸섬과 플루토는 BDSP에 몸이 없다** — 필드 161벌·배틀 124벌을 다 세었고
+  // 이름표가 안 붙은 셋(`fc1008_01`·`fc2039_00`·`fc2044_00`)까지 열어 봤다
+  // (`.audit/lookerCharonCands.mjs`). 그래서 남의 몸을 **다시 칠해서** 세운다 —
+  // 아래 `NPC_RECOLOR`가 임자고, 이름 뒤에 붙는 꼬리가 그 판을 가리킨다
+  LOOKER: 'fc2033_01-looker',
+  CHARON: 'fc1041_00-charon',
+}
+
+/** 다시 칠한 판 하나 */
+interface Recolor {
+  /** 머티리얼 → 레이어 프로퍼티 → 감마 `#rrggbb` */
+  paint: Readonly<Record<string, Readonly<Record<string, string>>>>
+  /** 왜 이 값인가 */
+  why: string
+}
+
+/**
+ * **레이어 색을 갈아 끼워 만드는 몸.** 키는 `번들-꼬리` 꼴이다.
+ *
+ * BDSP 인물은 색을 텍스처가 아니라 머티리얼에 둔다 —
+ * `albedo = _MainTex(음영) × 레이어색[_MaskTex 채널]`(IMPORT의 `GROUP_FORMAT`
+ * `npcModels` 5판). 그래서 레이어 색만 바꾸면 **음영이 그대로 살아 있는 채로**
+ * 부위 색이 바뀐다. 위에 물감을 덧칠하는 것이 아니다.
+ *
+ * ⚠️ **색을 눈으로 고르지 않는다.** 목표는 롬 그림 앞모습에서 그 부위 픽셀의
+ * 선형 평균이고(`.audit/spriteRegions.py`), 넣는 값은
+ * **목표 ÷ 그 채널의 음영 평균**을 푼 것이다(`.audit/recolorSolve.py`). 그래서
+ * 줄마다 「넣는 값 → 화면에 나올 색」이 적혀 있고 뒤엣것이 롬에서 잰 값이다.
+ *
+ * ⚠️ **원래 번들은 그대로 남는다.** `fc2033_01`은 게임디렉터(그림 242)가 쓰고
+ * 있어서, 다시 칠한 것을 같은 이름으로 구우면 그 사람까지 바뀐다. 그래서 꼬리
+ * 붙은 이름으로 따로 굽는다 — `baseBundle`이 원본 자리를 되돌려 준다
+ */
+export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
+  // 핸섬 — 국제경찰. 겉옷이 있는 남자가 이 사람뿐이라 여기서 뜬다.
+  // `wear`의 세 채널이 겉옷(Primary) · 속셔츠(Skin) · 신발(Secondary)이다
+  // (마스크를 열어 봤다: `.audit/mask-fc2033-wear.png`)
+  'fc2033_01-looker': {
+    paint: {
+      hair: { _PrimaryColor: '#707064' },   // → #46463f 검은 머리
+      wear: {
+        _PrimaryColor: '#8e7144',           // → #594628 갈색 트렌치코트
+        _SkinColor: '#ee8684',              // → #7b4242 속셔츠
+        _SecondaryColor: '#5a5a5b',         // → #424242 검은 구두
+      },
+    },
+    why: '롬 그림 213 앞모습에서 잰 부위 평균색',
+  },
+  // 플루토 — 갤럭시단 간부. 흰 가운에 안경 쓴 노인이라 연구원 몸에서 뜬다.
+  // `hair`는 마스크가 100% Primary라 한 값으로 통째로 바뀐다
+  'fc1041_00-charon': {
+    paint: { hair: { _PrimaryColor: '#9b93d0' } },  // → #8b83bb 연보라 머리
+    why: '롬 그림 214 앞모습에서 잰 머리 픽셀 88개의 평균색',
+  },
+}
+
+/**
+ * 꼬리를 뗀 진짜 번들 이름. 다시 칠한 판도 원본은 BDSP의 그 번들이다.
+ *
+ * ⚠️ **BDSP 번들 이름에는 `-`가 없다** (`fc0001_00`처럼 밑줄뿐이다). 그래서
+ * 꼬리를 가르는 글자로 쓸 수 있다
+ */
+export function baseBundle(bundle: string): string {
+  const cut = bundle.indexOf('-')
+  return cut < 0 ? bundle : bundle.slice(0, cut)
 }
 
 /**
@@ -316,8 +376,9 @@ export function modelFor(
   spriteName: string, table: NpcModelTable, spriteID?: number,
 ): NpcModelRef | null {
   const picked = NPC_MODEL_BUNDLE[spriteName]
-  if (picked !== undefined && picked in table[buildOf(picked)].bundles) {
-    return { bundles: [picked], via: '화면으로 골랐다' }
+  if (picked !== undefined && baseBundle(picked) in table[buildOf(picked)].bundles) {
+    const paint = NPC_RECOLOR[picked]
+    return { bundles: [picked], via: paint ? `다시 칠했다 · ${paint.why}` : '화면으로 골랐다' }
   }
   const cls = classOfSprite(spriteName, spriteID)
   const bundle = cls === null ? undefined : BUNDLE_BY_CLASS.get(cls)
@@ -335,7 +396,7 @@ export function modelFor(
   return null
 }
 
-/** BDSP 번들 → 굽는 자리. `tr`·`pc`는 등신, `fc`는 치비다 */
+/** BDSP 번들 → 굽는 자리. `tr`·`pc`는 등신, `fc`는 치비다 (꼬리는 안 본다) */
 export function buildOf(bundle: string): 'battle' | 'field' {
   return bundle.startsWith('fc') ? 'field' : 'battle'
 }

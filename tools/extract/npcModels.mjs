@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  buildOf, fieldClipDonor, modelFor, HERO_FIELD_CLIPS, TRAINER_CLIPS,
+  baseBundle, buildOf, fieldClipDonor, modelFor, NPC_RECOLOR, HERO_FIELD_CLIPS, TRAINER_CLIPS,
 } from '../../src/engine/actor/npcModels.ts'
 import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
 import { SPRITE_NAMES } from '../../src/import/platinum/spriteTable.ts'
@@ -125,7 +125,8 @@ function main() {
   const bake = (bundle) => {
     if (done.has(bundle)) return true
     if (broken.has(bundle)) return false
-    const src = resolve(PERSONS, buildOf(bundle), bundle)
+    // 다시 칠한 판은 이름에 꼬리가 붙어 있다 — 원본은 꼬리 뗀 그 번들이다
+    const src = resolve(PERSONS, buildOf(bundle), baseBundle(bundle))
     if (!existsSync(src)) { broken.add(bundle); return false }
     const out = resolve(OUT, `${bundle}.glb`)
     const fresh = Math.max(statSync(src).mtimeMs, bakerAt)
@@ -154,9 +155,18 @@ function main() {
       const borrow = donor && existsSync(donor)
         ? ['--clips-from', donor, '--only', HERO_FIELD_CLIPS.join(',')]
         : []
+      // ⚠️ **레이어 색을 갈아 끼우는 표도 굽는 쪽 둘이 같이 본다**
+      // (`NPC_RECOLOR`). 여기서 따로 적으면 개발 서버와 설치본의 사람 색이 갈린다
+      const paint = NPC_RECOLOR[bundle]?.paint
+      const recolor = paint
+        ? ['--recolor', Object.entries(paint)
+            .flatMap(([mat, props]) => Object.entries(props)
+              .map(([prop, hex]) => `${mat}:${prop}=${hex}`))
+            .join(',')]
+        : []
       execFileSync('py', [
         '-3.13', BAKER, src, '-o', out,
-        '--max-texture', String(MAX_TEXTURE), ...clips, ...borrow,
+        '--max-texture', String(MAX_TEXTURE), ...clips, ...borrow, ...recolor,
       ], { stdio: ['ignore', 'ignore', 'pipe'] })
     } catch {
       broken.add(bundle)

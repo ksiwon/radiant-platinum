@@ -243,6 +243,23 @@ export interface BakeOptions {
   maxSize?: number | null
   /** 밑그림을 찾을 프로퍼티. 인물·무대는 `_MainTex`, 포켓몬은 `_Col0Tex` */
   mainProps?: readonly string[]
+  /**
+   * 레이어 색을 갈아 끼운다 — `{머티리얼: {프로퍼티: '#rrggbb'}}`.
+   *
+   * 위에 물감을 덧칠하는 것이 아니라 셰이더가 원래 곱하는 그 값을 바꾸는
+   * 것이라 음영이 그대로 살아 있다. BDSP에 몸이 없는 사람을 남의 몸으로 세울
+   * 때 쓴다 — 표는 `engine/actor/npcModels`의 `NPC_RECOLOR`고 **노드 추출기가
+   * 같은 표를 본다** (`tools/extract/npcModels.mjs`)
+   */
+  recolor?: Readonly<Record<string, Readonly<Record<string, string>>>>
+}
+
+/** `#rrggbb` → 셰이더 색. **감마 값 그대로** 넣는다 — 읽을 때 선형으로 돈다 */
+function hexColor(text: string): { r: number, g: number, b: number, a: number } {
+  const t = text.replace('#', '')
+  if (!/^[0-9a-fA-F]{6}$/.test(t)) throw new Error(`색은 #rrggbb 꼴이어야 합니다: ${text}`)
+  const at = (i: number): number => parseInt(t.slice(i, i + 2), 16) / 255
+  return { r: at(0), g: at(2), b: at(4), a: 1 }
 }
 
 /** 불꽃·연기의 모양을 내는 자리. 앞에서부터 있는 것을 쓴다 */
@@ -501,6 +518,10 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
       if (ch >= 0 && ch < VARIATION_CHANNEL_PROPS.length) {
         colors.set(VARIATION_CHANNEL_PROPS[ch]!, col as unknown as UnityValue)
       }
+    }
+    // 우리가 적어 둔 색이 제일 세다 — 사람이 정한 것이라 원본을 이긴다
+    for (const [prop, hex] of Object.entries(options.recolor?.[name] ?? {})) {
+      colors.set(prop, hexColor(hex) as unknown as UnityValue)
     }
     const floats = pairs(saved.m_Floats)
     const slots = new Map<string, number>()

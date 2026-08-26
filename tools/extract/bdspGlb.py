@@ -431,7 +431,10 @@ def export(bundle, out: Path, color_index: int | None = None,
            # 안고 서 있다. `_MainTex`만 보면 그 열두 조각에 재질이 안 붙어
            # 우리가 하얀 덩어리가 된다
            main_props: tuple[str, ...] = ("_MainTex", "_Col0Tex"),
-           clip_filter: "re.Pattern | None" = None) -> dict:
+           clip_filter: "re.Pattern | None" = None,
+           # `{머티리얼: {프로퍼티: '#rrggbb'}}`. 레이어 색을 갈아 끼운다 —
+           # 근거는 `bdsp_bake_albedo.bake`의 머리말에 있다
+           recolor: dict | None = None) -> dict:
     # 번들이 여럿일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹(재질·뼈대·동작)과
     # `pokemons/common`의 메시·텍스처 둘을 한 환경에 같이 올려야 풀린다
     paths = [bundle] if isinstance(bundle, (str, Path)) else list(bundle)
@@ -462,7 +465,7 @@ def export(bundle, out: Path, color_index: int | None = None,
 
     # 알베도는 번들 통째로 한 번만 굽는다
     albedo = out.parent / f".{out.stem}_albedo"
-    spec = bake(paths, albedo, color_index, max_texture, main_props)
+    spec = bake(paths, albedo, color_index, max_texture, main_props, recolor)
     images, textures, materials, by_name = [], [], [], {}
     samplers: list[dict] = []
     for png in sorted(albedo.glob("*_albedo.png")):
@@ -849,11 +852,23 @@ def main() -> int:
     ap.add_argument("--clip-filter", default="",
                     help="이 정규식에 맞는 클립만 싣는다. 비우면 전부. "
                          "배틀 트레이너는 '^(advent_b|order_b|lose01_b)$'")
+    ap.add_argument("--recolor", default="",
+                    help="레이어 색을 갈아 끼운다. "
+                         "'머티리얼:프로퍼티=#rrggbb' 를 쉼표로 잇는다 "
+                         "(예: 'hair:_PrimaryColor=#9b93d0,wear:_SkinColor=#ee8684')")
     args = ap.parse_args()
+    recolor: dict = {}
+    for item in (x for x in args.recolor.split(",") if x):
+        where, _, value = item.partition("=")
+        mat, _, prop = where.partition(":")
+        if not (mat and prop and value):
+            raise SystemExit(f"--recolor 조각을 못 읽었다: {item}")
+        recolor.setdefault(mat, {})[prop] = value
     stat = export(
         args.bundle, args.out, args.color_index, args.clips_from,
         {n for n in args.only.split(",") if n}, args.max_texture, not args.no_clips,
         clip_filter=re.compile(args.clip_filter) if args.clip_filter else None,
+        recolor=recolor or None,
     )
     print(f"{args.bundle.name} → {args.out}")
     for k, v in stat.items():
