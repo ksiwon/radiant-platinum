@@ -12,7 +12,7 @@
 //
 // ⚠️ **뼈를 늘리는 리타깃이 아니다.** 축을 눌러서 얻은 비율이라 팔다리 길이는
 // 그대로다. 아래 각 상수에 무엇이 남는지 적어 둔다.
-import { type Object3D } from 'three'
+import { type Object3D, type Vector3 } from 'three'
 import { normalizeModel } from './normalize'
 
 /**
@@ -30,8 +30,13 @@ import { normalizeModel } from './normalize'
  * 상수 하나로 족하다 — ×0.2면 전부 주인공(25%) 언저리로 온다:
  *
  *   fc2030 52.2% · fc2005 55.6% · fc2038 60.7%   ← 가장 작은·엄마·가장 큰
+ *
+ * ⚠️ **화면에 세워 놓고 다시 쟀다.** ×0.2는 머리가 **너무 작았다** — 스킨을
+ * 먹인 정점으로 재면 머리 높이가 키의 17.1%인데 등신 셋은 16.0·20.7·21.4%로
+ * 평균 19.4%다 (`.audit/chibiFit.mjs`). 배수를 훑어 19.6%가 되는 **×0.24**로
+ * 올린다 (`.audit/chibiSweep.mjs`)
  */
-export const CHIBI_HEAD = 0.2
+export const CHIBI_HEAD = 0.24
 
 /**
  * 머리를 줄인 만큼 늘어나는 배율을 **굵기에는 얼마나 줄까** (0~1).
@@ -49,13 +54,16 @@ export const CHIBI_HEAD = 0.2
  *   허벅지 폭    30.0%     14.6%   2.05
  *   종아리 폭    32.9%     14.8%   2.22
  *
- * 즉 치비는 다리가 두 배 굵다. `1`이면 최종 굵기가 원본 배율(1.019)로 돌아가
- * 주인공의 1.2배가 된다 — 어른이라 이 정도가 맞다.
+ * 즉 치비는 다리가 두 배 굵다.
+ *
+ * ⚠️ **`1`로는 모자랐다.** 화면에 세워 놓고 스킨 정점으로 재면 허벅지가 키의
+ * 13.6%인데 등신 셋은 8.2·9.3·11.3%다 (`.audit/chibiFit.mjs`). 훑어서 허벅지
+ * 8.2% · 발 16.0%로 등신과 맞는 **1.4**를 쓴다 (`.audit/chibiSweep.mjs`).
  *
  * ⚠️ **길이가 아니라 축을 눌러서 얻은 날렵함이다.** 가로·앞뒤를 누르므로
  * 가로로 뻗은 부위는 그만큼 짧아진다 — 걸을 때 앞뒤로 흔드는 보폭이 좁아 보인다
  */
-const CHIBI_SLIM = 1
+const CHIBI_SLIM = 1.4
 
 /**
  * 손뼈를 줄이는 배수.
@@ -96,6 +104,34 @@ const CHIBI_SLIM = 1
  */
 export const CHIBI_HAND = 0.5
 
+/**
+ * 머리를 줄이고 난 키를 **몇 배로 세울까.**
+ *
+ * ⚠️ **여태 키를 머리카락이 정하고 있었다.** 목표 키가 `상자 높이 ×
+ * BDSP_TO_WORLD`였는데 치비의 상자는 머리와 머리카락이 반을 넘게 차지한다 —
+ * 그래서 쪽찐 할머니(`fc2016_00`)가 1.525로 제일 크고 어른들은 1.36~1.44로
+ * 주인공(1.564)보다도 작았다. 사람의 키를 그 사람의 머리 모양이 정한 것이다.
+ *
+ * **머리를 줄인 뒤에 재면 그 흔들림이 사라진다.** 실측하면 그 키가
+ * 핸섬 0.835 · 엄마 0.854 · 마박사 0.852 · 아이 0.842 · 할머니 0.874로 한
+ * 무리다 (`.audit/chibiGrow.mjs`). BDSP 필드 치비는 **몸을 한 벌만 만들어
+ * 돌려 쓰고 머리만 갈아 끼우기 때문**이다 — 목 높이가 0.6383·0.6387·0.6409로
+ * 소수점 셋째 자리까지 같다. 그래서 그 키에 **상수 하나**를 곱하면 된다.
+ *
+ * 값의 근거 — 등신 어른 둘(리오 1.749 · 신사 1.788)과 주인공(1.564)의 평균
+ * 1.769에 맞춘다: `1.769 / 0.847(어른 셋 평균) = 2.09`. 그러면 어깨선도
+ * 등신 어른의 1.368 언저리로 온다.
+ *
+ * ⚠️ **아기만 몸이 따로다** (목 높이 0.441 · 다리 0.236). 상수를 곱하는 것이라
+ * 아기는 어른의 0.75배로 남는다 — 절대 키를 맞추면 아기가 어른이 된다.
+ *
+ * ⚠️ **아이는 어른과 같은 키로 선다.** BDSP가 아이에게 따로 몸을 안 만들었다 —
+ * 아이 치비의 목 높이·다리 길이가 어른과 **같은 값**이고 머리만 크다. 원본에
+ * 없는 정보라 여기서는 못 만든다. 아이를 낮추려면 그림마다 키를 적은 표가
+ * 따로 있어야 한다 (3D_GAP_AUDIT §3.1)
+ */
+export const CHIBI_GROW = 2.09
+
 /** 이 번들이 치비인가 — 필드용(`fc`)만 그렇다 */
 export const isChibi = (tag: string): boolean => /^fc\d/.test(tag)
 
@@ -120,6 +156,34 @@ const FINGER = /^[LR]Finger/
  */
 const HELD = 1 / CHIBI_HAND
 
+/**
+ * 팔 마디를 늘여서 **굵기 누름이 팔에서 가져간 길이를 되돌린다.**
+ *
+ * ⚠️ **위의 날렵함은 축을 눌러서 얻은 것이라 가로로 뻗은 것을 짧게 만든다.**
+ * 다리는 세로라 키 늘림(`fit.scale`)을 그대로 받는데, 팔은 T자세에서 가로로
+ * 누워 있어 굵기(`girth`)만 받는다. 실측하면 그 차이가 그대로 나온다 —
+ * 어깨~손이 키의 **30.0%**(주인공)여야 하는데 치비 보정 뒤 **20.0%**다
+ * (`.audit/armSpan.mjs`). 다리는 47.1% ↔ 46.2%로 맞으니 어긋난 것은 팔뿐이다.
+ *
+ * 되돌리는 값은 지어내지 않는다 — **누른 만큼**이다: `fit.scale / girth`.
+ * 그러면 팔이 이 사람의 원래 비율로 돌아온다(어깨~손 ÷ 골반~발 = 0.691).
+ *
+ * ⚠️ **배율이 아니라 마디 위치를 늘인다.** 뼈에 비균등 배율을 걸면 팔꿈치가
+ * 굽었을 때 아래팔이 밀린다(전단). 마디 위치는 부모 좌표계에서 축을 따라
+ * 옮기는 것이라 어느 자세에서도 안 틀어지고, 스킨이 마디 사이에서 늘어나
+ * 팔이 길고 가늘어진다 — 어른 팔이 그렇다.
+ *
+ * ⚠️ **손에서 멈춘다.** 손가락 마디까지 늘이면 손이 `CHIBI_HAND`로 줄어든
+ * 안에서 도로 길어져 거미손이 된다
+ */
+const ARM_ROOT = ['LArm', 'RArm'] as const
+
+/** 늘이기 전의 마디 자리를 적어 두는 자리. 두 번 불려도 안 쌓이게 한다 */
+const PRISTINE = 'chibiArmRest'
+
+/** 마디를 늘이다가 여기서 멈춘다 */
+const ARM_TIP = /^[LR]Hand$/
+
 /** 이 이름을 가진 뼈들. 같은 이름의 메시가 있을 수 있어 뼈만 고른다 */
 function bonesNamed(body: Object3D, ...names: readonly string[]): Object3D[] {
   const out: Object3D[] = []
@@ -130,14 +194,17 @@ function bonesNamed(body: Object3D, ...names: readonly string[]): Object3D[] {
 /**
  * 치비 하나를 등신 옆에 설 비율로 세운다. `inner`의 배율과 뼈 배율을 바꾼다.
  *
+ * ⚠️ **세울 키를 여기서 정한다.** 부르는 쪽이 잰 상자 높이는 머리카락이 절반을
+ * 넘게 차지해서 키로 못 쓴다 (`CHIBI_GROW`). 돌려주는 값이 실제로 선 키다.
+ *
  * @param inner        모델을 감싼 래퍼. 정규화가 여기 배율을 건다
  * @param body         복제된 모델 루트
- * @param nativeHeight 손대기 **전에** 잰 원본 키 (게임 단위)
- * @param height       세우고 싶은 키 (게임 단위)
+ * @param nativeHeight 손대기 **전에** 잰 원본 키. 굵기를 되돌릴 때만 쓴다
+ * @returns            실제로 선 키 (게임 단위)
  */
 export function shapeChibi(
-  inner: Object3D, body: Object3D, nativeHeight: number, height: number,
-): void {
+  inner: Object3D, body: Object3D, nativeHeight: number,
+): number {
   const heads = bonesNamed(body, 'Head')
   for (const bone of heads) bone.scale.setScalar(CHIBI_HEAD)
   for (const hand of bonesNamed(body, 'LHand', 'RHand')) {
@@ -147,6 +214,9 @@ export function shapeChibi(
       if (child.type === 'Bone' && !FINGER.test(child.name)) child.scale.setScalar(HELD)
     }
   }
+  // 머리를 줄인 **뒤에** 키를 잰다 — 그래야 머리카락이 키를 안 정한다
+  const shrunk = normalizeModel(inner, body, 1).nativeHeight
+  const height = shrunk * CHIBI_GROW
   const fit = normalizeModel(inner, body, height)
   // 머리를 줄인 만큼 몸이 짧아졌고, 정규화가 그만큼 통째로 키웠다. 그 늘림을
   // 굵기에서 도로 뺀다 (`CHIBI_SLIM`)
@@ -159,6 +229,25 @@ export function shapeChibi(
   // (바인드에서 X축이 월드 +Y를 가리킨다). 그래서 가로 보정이 y·z로 간다
   const round = (CHIBI_HEAD * fit.scale) / girth
   for (const bone of heads) bone.scale.set(CHIBI_HEAD, round, round)
+  // 굵기 누름이 팔에서 가져간 길이를 마디로 되돌린다 (`ARM_ROOT`).
+  //
+  // ⚠️ **곱하지 말고 원래 마디에서 다시 잡는다.** 배율과 달리 마디 위치는
+  // 덮어쓰는 것이 아니라 옮기는 것이라, 두 번 부르면 두 번 늘어난다 — 핫리로드나
+  // 모델 교체로 이 함수는 실제로 두 번 불린다. 처음 만졌을 때의 자리를 뼈에
+  // 적어 두고 늘 거기서 잰다
+  const reach = girth > 1e-6 ? fit.scale / girth : 1
+  const lengthen = (bone: Object3D): void => {
+    const kept = bone.userData[PRISTINE] as Vector3 | undefined
+    const from = kept ?? bone.position.clone()
+    if (!kept) bone.userData[PRISTINE] = from
+    bone.position.copy(from).multiplyScalar(reach)
+    if (ARM_TIP.test(bone.name)) return
+    for (const child of bone.children) {
+      if (child.type === 'Bone') lengthen(child)
+    }
+  }
+  for (const arm of bonesNamed(body, ...ARM_ROOT)) lengthen(arm)
   // 부르는 쪽이 뼈 자리를 월드에서 재므로 바뀐 배율을 먼저 반영한다
   inner.updateMatrixWorld(true)
+  return height
 }

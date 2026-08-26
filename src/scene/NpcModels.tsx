@@ -314,8 +314,10 @@ function build(
     const { nativeHeight } = normalizeModel(inner, body, 1)
     height = nativeHeight * BDSP_TO_WORLD
     // ⚠️ **키를 잰 다음에 치비를 고친다.** 순서를 바꾸면 줄어든 머리만큼 그 사람이
-    // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다
-    if (isChibi(bundle)) shapeChibi(inner, body, nativeHeight, height)
+    // 통째로 작아진다 — 엄마가 1.47m에서 1.2m가 된다.
+    // ⚠️ **치비는 세울 키를 제가 정한다** — 상자 높이는 머리카락이 절반을 넘게
+    // 차지해서 키로 못 쓴다 (`CHIBI_GROW`). 돌려주는 값이 실제로 선 키다
+    if (isChibi(bundle)) height = shapeChibi(inner, body, nativeHeight)
     else normalizeModel(inner, body, height)
     // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
