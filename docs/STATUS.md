@@ -83,8 +83,8 @@
 
 「기능이 있는가」가 아니라 **「플레이 중 화면에 실제로 3D로 서는가」**다.
 
-- 주요 이야기 동선에서 사람 NPC 판때기가 남지 않는다 — 사람 그림의 94.5%가 모델인데 마박사(15건)가 아직 판때기다. BDSP의 `doctor00~02` 셋 중 어느 쪽인지 못 짚었다 (§3.1).
-- 드래곤사역사(`Dragon Tamer`)가 판때기로 남는다 — 후보 둘이 다 안 열린다: `tr1029_00`도 `fc1029_00`도 재질이 그 번들 밖 CAB을 가리킨다 (`FileNotFoundError: cab-… not found`). 다른 셋(`tr1026_00`·`tr1078_00`· `tr1085_00`)은 같은 까닭으로 등신이 막히지만 같은 번호의 치비로 떨어져서 사람은 선다 — 이 하나만 떨어질 자리가 없다. 여는 쪽을 고치려면 번들 하나가 아니라 가리키는 CAB까지 같이 열어야 한다 — 우리 `SerializedFile`은 바깥 파일표(externals)를 아예 안 읽는다 (`import/bdsp/unityfs.ts` · 재질을 못 찾은 껍데기를 버리는 자리는 `import/bdsp/model.ts` · `tools/extract/bdspGlb.py`).
+- 주요 이야기 동선에서 사람 NPC 판때기가 남지 않는다 — 사람 그림의 92.9%가 모델이고 134건이 판때기로 남는다 (§3.1). 후보는 다 찾아서 화면으로 늘어놓았다 (`node .audit/renderCands.mjs && node .audit/buildReview.mjs` → `.audit/plateReview.html`) — 어느 몸을 세울지는 사람이 보고 정할 일이다. 열어 보고 알게 된 것 셋: `doctor00`이 마박사 그 사람이고(흰 머리·콧수염· 서류가방), `child`가 게임기를 든 아이이며, `doctor01`은 키 0.106짜리라 사람이 아니다.
+- 드래곤사역사(`Dragon Tamer`) 열여섯이 절차형 마네킹으로 선다 — 판때기가 아니다. 오버월드에는 그 그림이 아예 없는 배틀 전용 갈래고, 몸을 못 찾으면 `BattleTrainers`가 캡슐 사람을 세운다. 후보 둘이 다 안 열린다: `tr1029_00`도 `fc1029_00`도 재질이 그 번들 밖 CAB을 가리킨다 (`FileNotFoundError: cab-… not found`). 다른 셋(`tr1026_00`·`tr1078_00`· `tr1085_00`)은 같은 까닭으로 등신이 막히지만 같은 번호의 치비로 떨어져서 사람은 선다 — 이 하나만 떨어질 자리가 없다. 여는 쪽을 고치려면 번들 하나가 아니라 가리키는 CAB까지 같이 열어야 한다 — 우리 `SerializedFile`은 바깥 파일표(externals)를 아예 안 읽는다 (`import/bdsp/unityfs.ts` · 재질을 못 찾은 껍데기를 버리는 자리는 `import/bdsp/model.ts` · `tools/extract/bdspGlb.py`).
 - 기술 입자 `.spa`를 읽는다 (§3.3).
 
 ## 5. 알고 남겨 둔 것
