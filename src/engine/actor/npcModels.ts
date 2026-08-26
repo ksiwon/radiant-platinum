@@ -274,7 +274,7 @@ export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
   // 이름표가 안 붙은 셋(`fc1008_01`·`fc2039_00`·`fc2044_00`)까지 열어 봤다
   // (`.audit/lookerCharonCands.mjs`). 그래서 남의 몸을 **다시 칠해서** 세운다 —
   // 아래 `NPC_RECOLOR`가 임자고, 이름 뒤에 붙는 꼬리가 그 판을 가리킨다
-  LOOKER: 'fc2009_00-looker',
+  LOOKER: 'fc1051_00-looker',
   CHARON: 'fc1041_00-charon',
 }
 
@@ -306,20 +306,27 @@ interface Recolor {
  * 붙은 이름으로 따로 굽는다 — `baseBundle`이 원본 자리를 되돌려 준다
  */
 export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
-  // 핸섬 — 국제경찰. **무릎까지 오는 코트를 입은 남자**가 BDSP에 리오와
-  // 갬블러 둘뿐이고, 그중 모자가 따로 떨어지는 것이 리오다 (갬블러의 중절모는
-  // `wear`에 붙어 있어 못 뗀다). `wear`의 두 채널이 코트 위(Skin 56%)와
-  // 아래(Primary 38%)라 둘 다 코트 색으로 간다
-  // (마스크를 열어 봤다: `.audit/mask-fc2009-wear.png`)
-  'fc2009_00-looker': {
-    drop: ['hat'],                          // 리오의 챙 넓은 모자. 원작에 없다
+  // 핸섬 — 국제경찰. **무릎까지 오는 코트를 입은 남자**가 BDSP에 갬블러와
+  // 리오 둘뿐이고, 그중 **앞이 열린 긴 트렌치코트**는 갬블러다 — 넓은 라펠 ·
+  // 허리 벨트 · 무릎 아래 자락까지 원작 일러스트와 같은 옷차림이다.
+  // `wear`의 세 채널이 코트+모자(Skin 77%) · **바지와 장갑**(Primary 19%) ·
+  // 작은 어두운 부분(Secondary 4%)이다 — Primary는 가슴의 정장 띠가 아니라
+  // 다리라서 목표가 롬 그림의 바지색(#424242)이지 정장색(#7b4242)이 아니다
+  // (마스크를 열어 봤다: `.audit/mask-fc1051-wear.png`)
+  //
+  // ⚠️ **중절모는 못 뗀다.** 리오(`fc2009_00`)는 모자가 `hat`이라는 독립
+  // 재질이라 조각째 뺄 수 있지만, 갬블러의 모자는 코트와 **한 조각**에 들어
+  // 있어서 재질 이름으로는 못 가른다. 모자를 포기하고 옷차림을 얻는 쪽이
+  // 낫다는 것이 사람의 결정이다 (`.audit/lookerAB.png`에서 둘을 견줬다)
+  'fc1051_00-looker': {
     paint: {
-      hair: { _PrimaryColor: '#57564b' },   // → #4a4a43 검은 머리
+      hair: { _PrimaryColor: '#57574f' },   // → #4a4a43 검은 머리
       wear: {
-        _SkinColor: '#a48651',              // → #846b42 낙타색 트렌치코트 (위)
-        _PrimaryColor: '#9d804f',           // → #846b42 같은 코트 (아래·자락)
-        _SecondaryColor: '#484847',         // → #424242 구두
+        _SkinColor: '#d1ab6c',              // → #846b42 낙타색 트렌치코트
+        _PrimaryColor: '#5a5a5a',           // → #424242 바지·장갑
+        _SecondaryColor: '#b6b6b6',         // → #424242 구두
       },
+      metal: { _SkinColor: '#c36c6c' },     // → #7b4242 벨트 버클
     },
     // ⚠️ **코트는 두 톤의 평균이 아니라 밝은 쪽을 목표로 잡는다.** 32px 그림의
     // 어두운 톤(#423118)은 음영이고 모델은 제 음영을 따로 갖고 있다 — 평균
