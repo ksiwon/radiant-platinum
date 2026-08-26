@@ -219,6 +219,8 @@
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
 | 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/voidShots.mjs` · `.audit/distortionLook.mjs` | PARITY §6.2 · §6.10 |
 | 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.10 |
+| 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
+| 기하 추출기 (`tools/extract/chunks·props·distortionProps·starterScene`) | `import/platinum/chunks.test.ts` · `distortionProps.test.ts` (**브라우저 변환기와 바이트로 같은가**) | DATA §2.2 |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은
 **한 번 재보는 자**다 — 명령이 어느 파일에서 몇 자리를 먹는지
@@ -239,6 +241,7 @@
 | 공용 스크립트에 **지역 칸을 먼저** 적기 | `start()`가 첫머리에서 지운다 — 문맥을 세운 **뒤에** 적는다. 「없음을 손에 넣었다!」가 그 증상이다 (SIWON §7) |
 | 끝난 스크립트의 **글 뱅크를 안 내려놓기** | 다음 스크립트가 남의 뱅크에서 같은 번호를 읽는다. 글자는 멀쩡히 나와서 눈으로 지나간다 (DATA §2.10) |
 | 두 추출기 중 하나만 고치기 | 자기 롬으로 설치한 사람에게만 빈 화면 (§1) |
+| 추출기를 고치고 **`pnpm extract:*`를 안 돌리기** | 개발 나무의 산출물만 낡는다. 브라우저 변환기와 어긋나는데 `pnpm check`는 통과하고 **e2e(25분)에서야** 잡힌다 — 그 그룹에 바이트 대조 시험이 있어야 vitest가 본다 (REPAIR §21) |
 | **같은 것을 그리는 코드를 두 벌로 두기** | 한쪽만 고쳐져서 화면이 갈린다. 소품 재질이 두 벌이라 로토무 방 벽이 회색 대신 **흰색**으로 섰고, 시험 3,543개가 그걸 다 통과했다 — 재질 색은 화면이라 vitest가 안 본다 (REPAIR §9 · DATA §2.2) |
 | 제 파일 안에서만 쓰는데 `export` 붙이기 | `noUnusedLocals`가 **못 본다** — 「밖에서 쓸지도 모른다」라 영원히 안 잡히고, 그 이름이 죽어도 아무도 안 선다. `pnpm exports:check`가 그 자리를 지킨다 (`--write`로 낱말만 뗀다) |
 | 능력 차례 뒤집기 | 저장 차례는 HP·공격·방어·**스피드**·특공·특방이다 (DATA §2.24) |
