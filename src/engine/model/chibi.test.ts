@@ -9,13 +9,16 @@ import {
   Uint16BufferAttribute, Vector3,
 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { CHIBI_GROW, CHIBI_HAND, CHIBI_HEAD, isChibi, shapeChibi } from './chibi'
+import { CHIBI_GROW, CHIBI_HAND, CHIBI_HEAD, CHIBI_LEG, isChibi, shapeChibi } from './chibi'
 
 /** 발밑 0 · 목 1 · 머리끝 2인 사람 하나. 머리는 목 관절을 원점으로 줄어든다 */
 const NATIVE = 2
 
 function rig() {
   const hips = new Bone(); hips.name = 'Hips'
+  // 다리 사슬 — 굵은 것이 여기뿐이라 따로 조인다
+  const thigh = new Bone(); thigh.name = 'LThigh'; thigh.position.set(0.1, 0, 0)
+  const shin = new Bone(); shin.name = 'LLeg'; shin.position.set(0.4, 0, 0)
   const neck = new Bone(); neck.name = 'Neck'; neck.position.y = 1
   const head = new Bone(); head.name = 'Head'
   // ⚠️ 머리뼈의 로컬 X가 월드 +Y다 — 번들에서 잰 규칙이다
@@ -29,6 +32,7 @@ function rig() {
   const finger = new Bone(); finger.name = 'LFingerA1'; finger.position.x = 0.05
   const held = new Bone(); held.name = 'Tray'; held.position.x = 0.06
   hips.add(neck); neck.add(head)
+  hips.add(thigh); thigh.add(shin)
   hips.add(arm); arm.add(fore); fore.add(hand); hand.add(finger); hand.add(held)
 
   const pos = [
@@ -36,7 +40,7 @@ function rig() {
     0.25, 1, 0.25, -0.25, NATIVE, -0.25,   // 머리 — Head
     0.45, 0.55, 0.05, 0.35, 0.45, -0.05,   // 손 — LHand
   ]
-  const bones = [hips, neck, head, arm, fore, hand, finger, held]
+  const bones = [hips, neck, head, arm, fore, hand, finger, held, thigh, shin]
   // 정점 여섯: 몸 둘(Hips=0) · 머리 둘(Head=2) · 손 둘(LHand=5)
   const idx = [0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0]
   const w = [1, 0, 0, 0]
@@ -53,7 +57,7 @@ function rig() {
   inner.add(body)
   inner.updateMatrixWorld(true)
   mesh.bind(new Skeleton(bones))
-  return { inner, body, head, arm, fore, hand, finger, held }
+  return { inner, body, head, arm, fore, hand, finger, held, thigh, shin }
 }
 
 
@@ -85,48 +89,21 @@ describe('shapeChibi', () => {
     expect(inner.scale.y).toBeGreaterThan(inner.scale.x * 1.5)
   })
 
-  // ⚠️ **가로로 뻗은 것은 굵기 누름을 맞는다.** 다리는 세로라 키 늘림을 받는데
-  // 팔은 T자세에서 누워 있어 짧아진다 — 실측으로 어깨~손이 키의 30.0%여야
-  // 하는데 20.0%였다 (`.audit/armSpan.mjs`)
-  it('팔 마디를 늘여 굵기 누름이 가져간 길이를 되돌린다', () => {
+  // ⛔ **팔은 손대지 않는다.** T자세로 재면 짧아 보이지만 화면에서 사람은
+  // 팔을 내리고 서고(`updateLocomotion`), 그러면 팔의 길이축이 세로가 되어
+  // 다리와 같은 대접을 받는다 — 길이는 키 늘림, 단면은 굵기다. 실측으로
+  // 위팔관절~손이 24.2%로 등신 24.7~26.1% 안이다 (`.audit/armSpan.mjs`)
+  it('팔 마디와 팔뼈 배율을 안 건드린다', () => {
     const { inner, body, arm, fore, hand } = rig()
     const was = { arm: arm.position.clone(), fore: fore.position.x, hand: hand.position.x }
     shapeChibi(inner, body, NATIVE)
-    const reach = inner.scale.y / inner.scale.x
-    expect(reach).toBeGreaterThan(1.5)
-    // ⚠️ **어깨 관절 자리는 그대로다** — 그것까지 늘이면 어깨가 밀려 올라간다
     expect(arm.position.x).toBeCloseTo(was.arm.x, 6)
     expect(arm.position.y).toBeCloseTo(was.arm.y, 6)
-    // 늘어나는 것은 위팔 길이와 아래팔 길이다
-    expect(fore.position.x).toBeCloseTo(was.fore * reach, 6)
-    expect(hand.position.x).toBeCloseTo(was.hand * reach, 6)
-  })
-
-  // ⚠️ **길이만 늘이면 소매가 굵은 채로 남는다.** 가로로 누운 팔은 단면이
-  // 세로·앞뒤라 세로 쪽이 키 늘림을 그대로 맞는다 — 실측으로 소매 세로가 키의
-  // 13.2%였다(등신 5.6~7.2%). 팔뼈 로컬 Y를 눌러 월드에서 둥글게 만든다
-  it('팔 단면을 되돌린다 — 소매가 세로로 늘어나지 않는다', () => {
-    const { inner, body, arm, fore } = rig()
-    shapeChibi(inner, body, NATIVE)
-    inner.updateMatrixWorld(true)
-    const world = arm.getWorldScale(new Vector3())
-    expect(world.y).toBeCloseTo(world.x, 6)
-    expect(world.z).toBeCloseTo(world.x, 6)
-    expect(world.x).toBeCloseTo(inner.scale.x, 6)
-    // 아래팔은 자식이라 물려받는다 — 마디마다 걸면 제곱으로 눌린다
+    expect(fore.position.x).toBeCloseTo(was.fore, 6)
+    expect(hand.position.x).toBeCloseTo(was.hand, 6)
+    expect(arm.scale.x).toBeCloseTo(1, 6)
+    expect(arm.scale.y).toBeCloseTo(1, 6)
     expect(fore.scale.y).toBeCloseTo(1, 6)
-    const below = fore.getWorldScale(new Vector3())
-    expect(below.y).toBeCloseTo(below.x, 6)
-  })
-
-  // ⚠️ **손에서 멈춘다.** 손가락까지 늘이면 `CHIBI_HAND`로 줄어든 손 안에서
-  // 도로 길어져 거미손이 된다
-  it('손가락 마디는 안 늘인다', () => {
-    const { inner, body, finger, held } = rig()
-    const was = { finger: finger.position.x, held: held.position.x }
-    shapeChibi(inner, body, NATIVE)
-    expect(finger.position.x).toBeCloseTo(was.finger, 6)
-    expect(held.position.x).toBeCloseTo(was.held, 6)
   })
 
   it('머리는 눌린 만큼 도로 편다 — 세로 배율과 가로 배율이 같다', () => {
@@ -165,16 +142,27 @@ describe('shapeChibi', () => {
     expect(head.scale.y).toBeCloseTo(first.head, 6)
     expect(hand.scale.x).toBeCloseTo(CHIBI_HAND, 6)
     expect(held.scale.x).toBeCloseTo(1 / CHIBI_HAND, 6)
-    // ⚠️ **마디 늘이기가 제일 쌓이기 쉽다** — 배율과 달리 덮어쓰는 것이 아니라
-    // 곱하는 것이라, 안 막으면 두 번째에 팔이 두 배로 길어진다
-    const reach = inner.scale.y / inner.scale.x
     expect(arm.position.x).toBeCloseTo(0.15, 6)
-    expect(fore.position.x).toBeCloseTo(0.15 * reach, 6)
+    expect(fore.position.x).toBeCloseTo(0.15, 6)
+  })
+
+  // ⚠️ **굵은 것은 다리뿐이다.** 몸 전체를 조여서 맞추면 목과 어깨까지 좁아져
+  // 머리가 가느다란 목 위에 얹힌 꼴이 된다 — 실측으로 목 둘레가 키의 5.2%까지
+  // 내려갔다(등신 5.8~7.0%). 그래서 다리 사슬에만 따로 건다
+  it('다리만 따로 조인다 — 길이축은 그대로, 단면만', () => {
+    const { inner, body, thigh, shin } = rig()
+    shapeChibi(inner, body, NATIVE)
+    expect(thigh.scale.x).toBeCloseTo(1, 6)
+    expect(thigh.scale.y).toBeCloseTo(CHIBI_LEG, 6)
+    expect(thigh.scale.z).toBeCloseTo(CHIBI_LEG, 6)
+    // 종아리는 자식이라 물려받는다 — 마디마다 걸면 제곱으로 조인다
+    expect(shin.scale.y).toBeCloseTo(1, 6)
   })
 
   it('상수가 정한 자리에 있다', () => {
     expect(CHIBI_HEAD).toBeGreaterThan(0.2)
     expect(CHIBI_GROW).toBeGreaterThan(1.5)
+    expect(CHIBI_LEG).toBeLessThan(1)
   })
 })
 

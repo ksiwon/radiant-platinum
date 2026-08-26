@@ -12,7 +12,7 @@
 //
 // ⚠️ **뼈를 늘리는 리타깃이 아니다.** 축을 눌러서 얻은 비율이라 팔다리 길이는
 // 그대로다. 아래 각 상수에 무엇이 남는지 적어 둔다.
-import { type Object3D, type Vector3 } from 'three'
+import { type Object3D } from 'three'
 import { normalizeModel } from './normalize'
 
 /**
@@ -56,14 +56,37 @@ export const CHIBI_HEAD = 0.24
  *
  * 즉 치비는 다리가 두 배 굵다.
  *
- * ⚠️ **`1`로는 모자랐다.** 화면에 세워 놓고 스킨 정점으로 재면 허벅지가 키의
- * 13.6%인데 등신 셋은 8.2·9.3·11.3%다 (`.audit/chibiFit.mjs`). 훑어서 허벅지
- * 8.2% · 발 16.0%로 등신과 맞는 **1.4**를 쓴다 (`.audit/chibiSweep.mjs`).
+ * ⚠️ **여기를 더 조이면 목과 어깨까지 같이 조인다.** 굵은 것은 다리뿐인데
+ * 이 값은 몸 전체에 걸린다 — 1.4로 올렸더니 허벅지는 맞았지만 목 둘레가 키의
+ * 5.2%(등신 5.8~7.0%)가 되고 어깨 너비가 3.5%(등신 5.0%)로 좁아져서, 머리가
+ * 가느다란 목 위에 얹힌 꼴이 됐다. 그래서 **몸통은 `1`로 두고 다리만 따로
+ * 조인다** (`CHIBI_LEG`).
  *
  * ⚠️ **길이가 아니라 축을 눌러서 얻은 날렵함이다.** 가로·앞뒤를 누르므로
  * 가로로 뻗은 부위는 그만큼 짧아진다 — 걸을 때 앞뒤로 흔드는 보폭이 좁아 보인다
  */
-const CHIBI_SLIM = 1.4
+const CHIBI_SLIM = 1
+
+/**
+ * **다리만 더 조이는 배수** — 굵은 것이 다리뿐이라서.
+ *
+ * BDSP 치비는 허벅지·종아리가 주인공의 두 배 굵다(위 표). 몸 전체를 조여서
+ * 맞추면 목과 어깨까지 같이 좁아지므로(`CHIBI_SLIM`), 다리 사슬에만 따로 건다.
+ *
+ * ⚠️ **뼈의 로컬 단면축에 건다 — 월드 축이 아니다.** 그래야 다리가 앞뒤로
+ * 흔들려도 조이는 방향이 다리를 따라 돈다. 다리뼈의 로컬 X가 길이축이고
+ * (실측) 단면이 Y·Z다.
+ *
+ * ⚠️ **맨 위 뼈(`LThigh`)에만 건다.** 종아리·발·발가락은 자식이라 물려받는다 —
+ * 마디마다 걸면 사슬을 따라 제곱으로 조인다.
+ *
+ * 값의 근거 — 허벅지 폭을 등신 셋(8.2·9.3·11.3%)의 한가운데로 가져오는 값이다
+ * (`.audit/chibiFit.mjs`가 선 자세로 잰다)
+ */
+export const CHIBI_LEG = 0.7
+
+/** 다리 사슬의 맨 위 */
+const LEG_ROOT = ['LThigh', 'RThigh'] as const
 
 /**
  * 손뼈를 줄이는 배수.
@@ -157,55 +180,26 @@ const FINGER = /^[LR]Finger/
 const HELD = 1 / CHIBI_HAND
 
 /**
- * 팔 마디를 늘여서 **굵기 누름이 팔에서 가져간 길이를 되돌린다.**
+ * ⛔ **팔은 손대지 않는다.** 한 번 늘였다가 되돌린 자리라 근거를 남긴다.
  *
- * ⚠️ **위의 날렵함은 축을 눌러서 얻은 것이라 가로로 뻗은 것을 짧게 만든다.**
- * 다리는 세로라 키 늘림(`fit.scale`)을 그대로 받는데, 팔은 T자세에서 가로로
- * 누워 있어 굵기(`girth`)만 받는다. 실측하면 그 차이가 그대로 나온다 —
- * 어깨~손이 키의 **30.0%**(주인공)여야 하는데 치비 보정 뒤 **20.0%**다
- * (`.audit/armSpan.mjs`). 다리는 47.1% ↔ 46.2%로 맞으니 어긋난 것은 팔뿐이다.
+ * 바인드 포즈(T자세)로 재면 팔이 짧아 보인다 — 어깨~손이 키의 20.0%인데 등신은
+ * 30.0·33.1%다. 가로로 누운 팔이 굵기 누름만 받기 때문이다. 그래서 마디를
+ * 늘이고 단면을 눌렀는데, **화면에서 사람은 T자세로 안 선다.**
+ * `updateLocomotion`이 팔을 내리고(`scene/NpcModels`), 그러면 팔의 길이축이
+ * 세로가 되어 받는 배율이 통째로 뒤바뀐다:
  *
- * 되돌리는 값은 지어내지 않는다 — **누른 만큼**이다: `fit.scale / girth`.
- * 그러면 팔이 이 사람의 원래 비율로 돌아온다(어깨~손 ÷ 골반~발 = 0.691).
+ *   자세      팔 길이축   길이가 받는 배율   단면이 받는 배율
+ *   T자세     가로        굵기 0.99          세로 2.09 · 앞뒤 0.99
+ *   **선 자세**   **세로**    **키 2.09**        **가로·앞뒤 0.99**
  *
- * ⚠️ **배율이 아니라 마디 위치를 늘인다.** 뼈에 비균등 배율을 걸면 팔꿈치가
- * 굽었을 때 아래팔이 밀린다(전단). 마디 위치는 부모 좌표계에서 축을 따라
- * 옮기는 것이라 어느 자세에서도 안 틀어지고, 스킨이 마디 사이에서 늘어나
- * 팔이 길고 가늘어진다 — 어른 팔이 그렇다.
+ * 선 자세에서는 팔이 다리와 같은 대접을 받는다 — 길이는 키 늘림, 단면은 굵기.
+ * 그것이 맞는 대접이고, 실측으로 위팔관절~손이 **24.2%**로 등신
+ * 24.7~26.1% 안에 든다. 손대면 오히려 어긋난다 — 마디를 2.1배 늘였더니
+ * **47.4~49.1%**가 됐다 (`.audit/armSpan.mjs`가 두 자세를 다 잰다).
  *
- * ⚠️ **손에서 멈춘다.** 손가락 마디까지 늘이면 손이 `CHIBI_HAND`로 줄어든
- * 안에서 도로 길어져 거미손이 된다
+ * ⚠️ **비율을 잴 때는 반드시 `updateLocomotion`을 돌리고 재라.** 바인드 포즈로
+ * 재면 가로로 뻗은 것이 전부 짧고 굵게 보인다
  */
-const ARM_ROOT = ['LArm', 'RArm'] as const
-
-/**
- * 팔 **단면**도 되돌린다 — 길이만 늘이면 소매가 굵은 채로 남는다.
- *
- * ⚠️ **가로로 누운 팔은 굵기가 세로로 잡힌다.** 다리는 세로라 단면이 가로·앞뒤
- * 둘 다 `girth`를 받는데, 팔은 단면이 **세로·앞뒤**라 세로 쪽이 키 늘림
- * (`fit.scale`)을 그대로 맞는다. 실측하면 소매 상자의 세로가 키의 13.2~15.2%인데
- * 등신은 5.6%다 — 앞뒤는 6.2 ↔ 6.0%로 이미 맞는다 (`.audit/armAxis.mjs`).
- *
- * 팔뼈의 로컬 축은 쉬는 자세에서 **월드와 그대로 맞는다** — `LArm`의 로컬 X·Y·Z가
- * 월드 X·Y·Z를 보고 배율이 그 축의 값 그대로 (0.994 · 2.09 · 0.994) 나온다.
- * 그래서 로컬 Y를 `girth / fit.scale`로 누르면 월드 세로가 `girth`가 되어
- * 앞뒤와 같아진다.
- *
- * ⚠️ **맨 위 뼈에만 건다.** 아래팔·손은 자식이라 그 눌림을 물려받는다 — 마디마다
- * 걸면 사슬을 따라 제곱으로 눌린다. 손이 세로로만 눌려 있던 것도 이걸로 같이
- * 풀린다(손은 `CHIBI_HAND`로 균등하게 줄어든 뒤 이 눌림을 받는다).
- *
- * ⚠️ **쉬는 자세에서만 정확하다.** 팔이 돌면 눌리는 방향도 같이 돈다 — 팔을
- * 앞뒤로 흔드는 동안은 맞고, 옆으로 들어 올리면 어긋난다. 머리뼈 보정도 같은
- * 성질이고(`round`), 오버월드에서 팔을 옆으로 드는 사람은 없다
- */
-const ARM_FLAT = true
-
-/** 늘이기 전의 마디 자리를 적어 두는 자리. 두 번 불려도 안 쌓이게 한다 */
-const PRISTINE = 'chibiArmRest'
-
-/** 마디를 늘이다가 여기서 멈춘다 */
-const ARM_TIP = /^[LR]Hand$/
 
 /** 이 이름을 가진 뼈들. 같은 이름의 메시가 있을 수 있어 뼈만 고른다 */
 function bonesNamed(body: Object3D, ...names: readonly string[]): Object3D[] {
@@ -252,34 +246,9 @@ export function shapeChibi(
   // (바인드에서 X축이 월드 +Y를 가리킨다). 그래서 가로 보정이 y·z로 간다
   const round = (CHIBI_HEAD * fit.scale) / girth
   for (const bone of heads) bone.scale.set(CHIBI_HEAD, round, round)
-  // 굵기 누름이 팔에서 가져간 길이를 마디로 되돌린다 (`ARM_ROOT`).
-  //
-  // ⚠️ **곱하지 말고 원래 마디에서 다시 잡는다.** 배율과 달리 마디 위치는
-  // 덮어쓰는 것이 아니라 옮기는 것이라, 두 번 부르면 두 번 늘어난다 — 핫리로드나
-  // 모델 교체로 이 함수는 실제로 두 번 불린다. 처음 만졌을 때의 자리를 뼈에
-  // 적어 두고 늘 거기서 잰다
-  const reach = girth > 1e-6 ? fit.scale / girth : 1
-  const lengthen = (bone: Object3D): void => {
-    const kept = bone.userData[PRISTINE] as Vector3 | undefined
-    const from = kept ?? bone.position.clone()
-    if (!kept) bone.userData[PRISTINE] = from
-    bone.position.copy(from).multiplyScalar(reach)
-    if (ARM_TIP.test(bone.name)) return
-    for (const child of bone.children) {
-      if (child.type === 'Bone') lengthen(child)
-    }
-  }
-  const flat = fit.scale > 1e-6 ? girth / fit.scale : 1
-  for (const arm of bonesNamed(body, ...ARM_ROOT)) {
-    // ⚠️ **어깨 관절 자리는 안 건드린다.** `LArm.position`은 어깨에서 위팔이
-    // 붙는 자리라 몸통 쪽 값이다 — 그것까지 늘이면 어깨가 위로·옆으로 밀려
-    // 사람이 통째로 커진다. 늘일 것은 그 아래 마디들, 곧 **위팔 길이**
-    // (`LForeArm.position`)와 **아래팔 길이**(`LHand.position`)다
-    for (const child of arm.children) {
-      if (child.type === 'Bone') lengthen(child)
-    }
-    // 단면만 되돌린다 — 길이축(로컬 X)과 앞뒤(로컬 Z)는 이미 `girth`다
-    if (ARM_FLAT) arm.scale.set(1, flat, 1)
+  // 다리만 따로 조인다. 길이축(로컬 X)은 그대로 두고 단면만 줄인다
+  for (const thigh of bonesNamed(body, ...LEG_ROOT)) {
+    thigh.scale.set(1, CHIBI_LEG, CHIBI_LEG)
   }
   // 부르는 쪽이 뼈 자리를 월드에서 재므로 바뀐 배율을 먼저 반영한다
   inner.updateMatrixWorld(true)
