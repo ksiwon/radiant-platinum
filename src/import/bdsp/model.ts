@@ -487,6 +487,12 @@ function borrowedClips(
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
 
 interface ExportOptions extends BakeOptions {
+  /**
+   * 아예 안 그릴 재질 이름들. **모자를 벗길 때 쓴다** — 남의 몸을 빌려 다른
+   * 사람을 세울 때 눈에 걸리는 것이 모자다 (`engine/actor/npcModels`의
+   * `NPC_RECOLOR`). 노드 추출기의 `--drop`과 같은 것이다
+   */
+  drop?: readonly string[]
   /** 애니메이션을 실을 것인가. 오버월드 NPC는 안 싣는다 (걷기는 엔진이 만든다) */
   keepClips?: boolean
   /** 이름이 맞는 클립만. 포켓몬은 배틀용(`^ba`)만 쓴다 */
@@ -754,6 +760,11 @@ export async function exportModel(
     const primitives: Record<string, unknown>[] = []
     const meshName = (meshValue.m_Name as string | undefined) ?? ''
     mesh.subMeshes.forEach((sub, i) => {
+      const name = matNames[i] ?? ''
+      // 사람이 빼라고 적어 둔 재질은 **아무것도 하기 전에** 건너뛴다 — 모자가
+      // 그렇다. 여기서 안 걸러 내면 안 그릴 조각의 인덱스가 버퍼에 들어가고
+      // 삼각형 수·법선 통계도 같이 어긋난다 (`bdspGlb.py`가 같은 자리에서 같이 한다)
+      if (options.drop?.includes(name)) return
       // 시작 위치가 **인덱스 번호가 아니라 바이트 오프셋**이다
       const stride = num(meshValue.m_IndexFormat) === 1 ? 4 : 2
       const first = Math.floor(sub.firstByte / stride)
@@ -767,7 +778,6 @@ export async function exportModel(
       triangleTotal += Math.floor(sub.indexCount / 3)
       outwardSum += outwardRatio(verts, tri)
       outwardCount++
-      const name = matNames[i] ?? ''
       const st = lookOf.get(name)?.uv ?? [1, 1, 0, 0]
       const prim: Record<string, unknown> = {
         attributes: {

@@ -157,16 +157,17 @@ function main() {
         : []
       // ⚠️ **레이어 색을 갈아 끼우는 표도 굽는 쪽 둘이 같이 본다**
       // (`NPC_RECOLOR`). 여기서 따로 적으면 개발 서버와 설치본의 사람 색이 갈린다
-      const paint = NPC_RECOLOR[bundle]?.paint
-      const recolor = paint
-        ? ['--recolor', Object.entries(paint)
+      const spec = NPC_RECOLOR[bundle]
+      const recolor = spec?.paint
+        ? ['--recolor', Object.entries(spec.paint)
             .flatMap(([mat, props]) => Object.entries(props)
               .map(([prop, hex]) => `${mat}:${prop}=${hex}`))
             .join(',')]
         : []
+      const drop = spec?.drop?.length ? ['--drop', spec.drop.join(',')] : []
       execFileSync('py', [
         '-3.13', BAKER, src, '-o', out,
-        '--max-texture', String(MAX_TEXTURE), ...clips, ...borrow, ...recolor,
+        '--max-texture', String(MAX_TEXTURE), ...clips, ...borrow, ...recolor, ...drop,
       ], { stdio: ['ignore', 'ignore', 'pipe'] })
     } catch {
       broken.add(bundle)

@@ -434,7 +434,9 @@ def export(bundle, out: Path, color_index: int | None = None,
            clip_filter: "re.Pattern | None" = None,
            # `{머티리얼: {프로퍼티: '#rrggbb'}}`. 레이어 색을 갈아 끼운다 —
            # 근거는 `bdsp_bake_albedo.bake`의 머리말에 있다
-           recolor: dict | None = None) -> dict:
+           recolor: dict | None = None,
+           # 아예 안 그릴 재질 이름들. 모자를 벗길 때 쓴다
+           drop: set[str] | None = None) -> dict:
     # 번들이 여럿일 수 있다. **포켓몬이 그렇다** — 배틀 프리팹(재질·뼈대·동작)과
     # `pokemons/common`의 메시·텍스처 둘을 한 환경에 같이 올려야 풀린다
     paths = [bundle] if isinstance(bundle, (str, Path)) else list(bundle)
@@ -605,12 +607,17 @@ def export(bundle, out: Path, color_index: int | None = None,
         for i, sub in enumerate(mesh.m_SubMeshes):
             # 시작 위치가 **인덱스 번호가 아니라 바이트 오프셋**이다(`firstByte`).
             # 16비트 버퍼라 2로 나눠야 몇 번째 인덱스인지가 나온다
+            mat_name = mats[i].m_Name if i < len(mats) else ""
+            # 사람이 빼라고 적어 둔 재질은 **아무것도 하기 전에** 건너뛴다 —
+            # 모자가 그렇다. 여기서 안 걸러 내면 안 그릴 조각의 인덱스가
+            # 버퍼에 들어가고 삼각형 수·법선 통계도 같이 어긋난다
+            if drop and mat_name in drop:
+                continue
             first = sub.firstByte // (2 if mesh.m_IndexFormat == 0 else 4)
             tri = indices[first: first + sub.indexCount].reshape(-1, 3)
             # X를 뒤집었으므로 감기 순서를 되돌린다. 안 하면 안팎이 뒤집힌다
             tri = tri[:, ::-1].copy()
             written.append((verts, tri))
-            mat_name = mats[i].m_Name if i < len(mats) else ""
             st = tuple(spec.get(mat_name, {}).get("uv", (1.0, 1.0, 0.0, 0.0)))
             prim = {
                 "attributes": {
@@ -852,6 +859,8 @@ def main() -> int:
     ap.add_argument("--clip-filter", default="",
                     help="이 정규식에 맞는 클립만 싣는다. 비우면 전부. "
                          "배틀 트레이너는 '^(advent_b|order_b|lose01_b)$'")
+    ap.add_argument("--drop", default="",
+                    help="이 이름의 재질은 아예 안 그린다. 쉼표로 잇는다 (예: 'hat')")
     ap.add_argument("--recolor", default="",
                     help="레이어 색을 갈아 끼운다. "
                          "'머티리얼:프로퍼티=#rrggbb' 를 쉼표로 잇는다 "
@@ -869,6 +878,7 @@ def main() -> int:
         {n for n in args.only.split(",") if n}, args.max_texture, not args.no_clips,
         clip_filter=re.compile(args.clip_filter) if args.clip_filter else None,
         recolor=recolor or None,
+        drop={n for n in args.drop.split(",") if n} or None,
     )
     print(f"{args.bundle.name} → {args.out}")
     for k, v in stat.items():

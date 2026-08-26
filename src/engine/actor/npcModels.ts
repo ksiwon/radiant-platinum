@@ -274,7 +274,7 @@ export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
   // 이름표가 안 붙은 셋(`fc1008_01`·`fc2039_00`·`fc2044_00`)까지 열어 봤다
   // (`.audit/lookerCharonCands.mjs`). 그래서 남의 몸을 **다시 칠해서** 세운다 —
   // 아래 `NPC_RECOLOR`가 임자고, 이름 뒤에 붙는 꼬리가 그 판을 가리킨다
-  LOOKER: 'fc2033_01-looker',
+  LOOKER: 'fc2009_00-looker',
   CHARON: 'fc1041_00-charon',
 }
 
@@ -282,6 +282,8 @@ export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
 interface Recolor {
   /** 머티리얼 → 레이어 프로퍼티 → 감마 `#rrggbb` */
   paint: Readonly<Record<string, Readonly<Record<string, string>>>>
+  /** 아예 안 그릴 재질. 모자를 벗길 때 쓴다 */
+  drop?: readonly string[]
   /** 왜 이 값인가 */
   why: string
 }
@@ -304,16 +306,18 @@ interface Recolor {
  * 붙은 이름으로 따로 굽는다 — `baseBundle`이 원본 자리를 되돌려 준다
  */
 export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
-  // 핸섬 — 국제경찰. 겉옷이 있는 남자가 이 사람뿐이라 여기서 뜬다.
-  // `wear`의 세 채널이 겉옷(Primary) · 속셔츠(Skin) · 신발(Secondary)이다
-  // (마스크를 열어 봤다: `.audit/mask-fc2033-wear.png`)
-  'fc2033_01-looker': {
+  // 핸섬 — 국제경찰. **무릎까지 오는 코트를 입은 남자**가 BDSP에 리오와
+  // 갬블러 둘뿐이고, 그중 모자가 따로 떨어지는 것이 리오다 (갬블러의 중절모는
+  // `wear`에 붙어 있어 못 뗀다). `wear`의 두 채널이 코트 위(Skin 56%)와
+  // 아래(Primary 38%)라 둘 다 코트 색으로 간다
+  // (마스크를 열어 봤다: `.audit/mask-fc2009-wear.png`)
+  'fc2009_00-looker': {
+    drop: ['hat'],                          // 리오의 챙 넓은 모자. 원작에 없다
     paint: {
-      hair: { _PrimaryColor: '#707064' },   // → #46463f 검은 머리
+      hair: { _PrimaryColor: '#525247' },   // → #46463f 검은 머리
       wear: {
-        _PrimaryColor: '#8e7144',           // → #594628 갈색 트렌치코트
-        _SkinColor: '#ee8684',              // → #7b4242 속셔츠
-        _SecondaryColor: '#5a5a5b',         // → #424242 검은 구두
+        _SkinColor: '#6f5932',              // → #594628 갈색 트렌치코트 (위)
+        _PrimaryColor: '#6f5932',           // → #594628 같은 코트 (아래·자락)
       },
     },
     why: '롬 그림 213 앞모습에서 잰 부위 평균색',

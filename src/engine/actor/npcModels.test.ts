@@ -397,6 +397,12 @@ describe('다시 칠하기', () => {
     expect(baseBundle('tr1073_00')).toBe('tr1073_00')
   })
 
+  it('빼는 재질은 이름만 적는다', () => {
+    for (const [key, spec] of Object.entries(NPC_RECOLOR)) {
+      for (const mat of spec.drop ?? []) expect(mat, key).toMatch(/^[a-zA-Z][a-zA-Z0-9]*$/)
+    }
+  })
+
   it('색이 `#rrggbb`고 근거가 붙어 있다', () => {
     for (const [key, spec] of Object.entries(NPC_RECOLOR)) {
       expect(spec.why.length, key).toBeGreaterThan(8)

@@ -252,12 +252,12 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
       const battle = buildOf(bundle) === 'battle'
       // ⚠️ **레이어 색을 갈아 끼우는 표도 노드 추출기와 같이 본다**
       // (`NPC_RECOLOR`). 따로 적으면 개발 서버와 설치본의 사람 색이 갈린다
-      const paint = NPC_RECOLOR[bundle]?.paint
+      const spec = NPC_RECOLOR[bundle]
       const { glb } = await exportModel(env, encodePng, {
         maxSize: MAX_TEXTURE,
         keepClips: battle,
         ...(battle ? { clipFilter: TRAINER_CLIPS } : {}),
-        ...(paint ? { recolor: paint } : {}),
+        ...(spec ? { recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}) } : {}),
         ...(await heroFieldClips(ctx, src, at, bundle)),
       })
       put(ctx, out, `models/npc/${bundle}.glb`, glb)
