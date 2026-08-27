@@ -13,6 +13,11 @@ import { SFX } from '../../engine/audio/sfx'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
 import { useBattleStore } from '../../state/battleStore'
 
+/**
+ * 지형 번쩍임 둘째 소리까지 (ms). **원작이 스물세 프레임에 낸다** —
+ * `battle_display.c` 5342줄의 `frameCount == 23`이 그대로 이 값이다
+ */
+const FLASH2_DELAY = (23 / 60) * 1000
 /** 쓰러진 뒤 울음소리를 얼마나 늦출지 (ms). 소리 둘이 겹치면 둘 다 안 들린다 */
 const FAINT_CRY_DELAY = 220
 
@@ -33,6 +38,25 @@ export function BattleSound() {
 
   useEffect(() => {
     if (phase === 'off') seen.current = blank()
+  }, [phase])
+
+  /**
+   * 배틀이 열릴 때의 지형 번쩍임 둘 (`battle_display.c`의 `SysTask_SetupUI`).
+   *
+   * 원작이 화면을 세우면서 `PASA2`를 내고(5311줄) **스물세 프레임 뒤에**
+   * `PASA3`을 낸다(5343줄이 `frameCount == 23`을 그대로 적어 두었다).
+   *
+   * ⚠️ **체력 바 소리가 아니다.** `Task_UpdateHPGauge`(4896줄)에는 `Sound_*`가
+   * 한 줄도 없다 — 바가 줄어드는 소리를 붙이면 원작에 없는 것을 짓는 셈이다.
+   *
+   * ⚠️ **`off → loading`에서만이다.** 원작도 화면을 **세울 때** 한 번이고,
+   * `running`으로 넘어갈 때 또 내면 한 판에 두 번 난다
+   */
+  useEffect(() => {
+    if (phase !== 'loading') return
+    void music.playEffect(SFX.BATTLE_FLASH)
+    const id = setTimeout(() => { void music.playEffect(SFX.BATTLE_FLASH2) }, FLASH2_DELAY)
+    return () => { clearTimeout(id) }
   }, [phase])
 
   useEffect(() => {
