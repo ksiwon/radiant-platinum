@@ -14,6 +14,7 @@ import {
   clearWarpOverrides,
   doorEntry,
   setWarpEventPos,
+  standableSpot,
   walkOutOfDoor,
   disarmWarp,
   warpSystem,
@@ -171,6 +172,62 @@ maybe('워프 그래프', () => {
       }
       // 실내외 합쳐 177개가 전부 남쪽으로 나온다 — 동·서로 열린 문은 하나도 없다
       expect(doors).toBe(36)
+    })
+
+    it('도착 칸이 막혀 있으면 옆으로 비켜 세운다 — 안 그러면 갇힌다', () => {
+      // 축복시티 콘도 3층(맵 21)에서 계단을 내려오면 맵 20의 워프 1 = (0,0)이다.
+      // 그 칸은 문도 아니고 막혀 있다 — 그대로 세우면 네 귀퉁이가 다 막혀 못 나온다
+      const index = read('matrices/interiors.json') as {
+        matrices: Record<string, MatrixMeta & { byteOffset: number }>
+      }
+      const buf = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      const meta = index.matrices['208']!
+      const inner = new MapGrid(meta, new Uint16Array(
+        buf.buffer, buf.byteOffset + meta.byteOffset, meta.tileWidth * meta.tileHeight,
+      ))
+      expect(inner.isBlocked(0, 0)).toBe(true)
+      const at = standableSpot(inner, 0.5, 0.5)
+      expect(inner.isBlocked(Math.floor(at.x), Math.floor(at.z)), `(${at.x},${at.z})`).toBe(false)
+    })
+
+    it('**모든 워프 도착 칸**에 설 수 있다', () => {
+      const index = read('matrices/interiors.json') as {
+        matrices: Record<string, MatrixMeta & { byteOffset: number }>
+      }
+      const buf = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
+      const gridOf = new Map<number, MapGrid>([[0, grid]])
+      const stuck: string[] = []
+      let checked = 0
+      for (const m of (world.maps ?? [])) {
+        for (const w of warpsOf(m.id)) {
+          const out = resolveWarp(w)
+          if (!out) continue
+          let g = gridOf.get(out.matrix)
+          if (!g) {
+            const meta = index.matrices[String(out.matrix)]
+            if (!meta) continue
+            g = new MapGrid(meta, new Uint16Array(
+              buf.buffer, buf.byteOffset + meta.byteOffset, meta.tileWidth * meta.tileHeight,
+            ))
+            gridOf.set(out.matrix, g)
+          }
+          checked++
+          const door = walkOutOfDoor(g, out.x, out.z)
+          const at = standableSpot(g, door.x, door.z)
+          if (g.isBlocked(Math.floor(at.x), Math.floor(at.z))) {
+            stuck.push(`맵 ${String(m.id)} → ${String(out.to)} (${String(at.x)},${String(at.z)})`)
+          }
+        }
+      }
+      expect(checked).toBeGreaterThan(1000)
+      // ⚠️ **둘은 못 구한다 — 갈 수도 없다.** 축복시티 북서쪽 (128~129,736)은
+      // 걸을 수 있는 칸이 여덟 칸 안에 하나도 없는 통짜 벽이다. 거기로 내보내는
+      // 맵 31·32는 축복시티 워프 10·11로만 들어가는데 **그 두 칸도 막혀 있어**
+      // 밟을 수가 없다. 억지로 멀리 옮기면 엉뚱한 데 떨어뜨리는 것이라 안 한다
+      expect(stuck, `갇히는 자리 ${String(stuck.length)}개`).toEqual([
+        '맵 31 → 3 (129.5,736.5)',
+        '맵 32 → 3 (128.5,736.5)',
+      ])
     })
 
     it('문이 아닌 칸은 손대지 않는다', () => {

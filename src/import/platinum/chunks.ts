@@ -325,6 +325,133 @@ interface BuiltChunk {
   verts: number
   headerVerts: number
   materials: Material[]
+  /** 32×32 비트 — 그 칸 밑에 그려진 삼각형이 있는가 (`coverBits`) */
+  cover: Uint8Array
+}
+
+/** 칸 하나를 4×4로 찍어 본다. 반 칸짜리 바닥도 바닥이다 */
+const COVER_SUB = 4
+/** 그중 몇 개가 걸려야 바닥인가 — 반 칸 */
+const COVER_MIN = 8
+
+/**
+ * **발밑에 그려진 것이 있는가** — 청크 32×32 칸마다 한 비트.
+ *
+ * 통행표(perm)는 방 밖 빈 자리를 0x0000(걸을 수 있음)으로 두고, 원작은 거기
+ * 갈 일이 없어서 그냥 둔다. 우리는 3인칭이라 그 자리에 들어서면 **그린 것이
+ * 없는 허공을 걷는다** — 사천왕 방 넷에서 803칸씩, 연고 체육관에서 788칸이
+ * 그렇다 (`.audit/reachAudit.mjs`). 그걸 막으려면 「여기 바닥이 그려져
+ * 있는가」를 알아야 하고, 그 답이 이 비트다. 막는 것은 `engine/map/floorSeal`.
+ *
+ * ⚠️ **정수로만 잰다.** 굽는 쪽이 둘이라(`tools/extract/chunks.js`) 부동소수점
+ * 끝자리가 갈리면 바이트가 달라진다. 그래서 파일에 실제로 들어가는 값
+ * (`Math.round(pos × POS_SCALE)`)을 그대로 쓰고, 안팎 판정도 정수 외적으로 한다 —
+ * 좌표가 2^24 안이라 곱이 2^48이고 double이 정확히 담는다.
+ *
+ * ⚠️ **세로로 선 면은 뺀다.** XZ로 누르면 넓이가 0이라 바닥이 아니다.
+ *
+ * ⚠️ **한 표본만 걸려도 바닥으로 치면 안 된다.** 사천왕 방(land 260)에서 방
+ * 동쪽 벽의 **꼭대기**(y=3, 방 바닥은 y=-0.13)가 x=17에 0.18칸만 걸치는데,
+ * 그것 하나로 한 칸이 통째로 「바닥」이 되고 이어 붙이는 규칙이 거기까지 열 칸을
+ * 뚫었다. 그래서 **열여섯 표본 중 여덟(반 칸)** 이상일 때만 바닥으로 친다 —
+ * 배틀팩토리 아래 줄처럼 판이 반 칸인 자리는 딱 여덟이라 그대로 남는다.
+ *
+ * ⚠️ **벽을 바닥으로 세지 않는다.** XZ로 눌러 넓이가 0인 면(정확히 수직인 벽)은
+ * 빠지지만, 조금이라도 기운 벽은 얇은 띠로 남아 4×4 표본에 걸린다. 실제로
+ * 사천왕 방(land 260)에서 방 동쪽 벽의 바깥 면이 x=17에 **한 칸짜리 바닥**으로
+ * 찍혔고, 이어 붙이는 규칙이 거기까지 열 칸을 뚫었다. 그래서 면의 법선이
+ * **수평에서 60° 안**일 때만 바닥으로 친다 (`3·ny² ≥ nx² + nz²`).
+ */
+export function coverBits(verts: Vertex[], indices: readonly number[]): Uint8Array {
+  const bits = new Uint8Array(32 * 32 / 8)
+  const n = verts.length
+  const px = new Int32Array(n)
+  const py = new Int32Array(n)
+  const pz = new Int32Array(n)
+  // 정점은 청크 **중심** 기준이다. 16칸을 더하면 청크 안 칸 좌표가 된다
+  const mid = 16 * POS_SCALE
+  for (let i = 0; i < n; i++) {
+    px[i] = Math.round(verts[i]!.pos[0] * POS_SCALE) + mid
+    py[i] = Math.round(verts[i]!.pos[1] * POS_SCALE)
+    pz[i] = Math.round(verts[i]!.pos[2] * POS_SCALE) + mid
+  }
+  const step = POS_SCALE / (COVER_SUB * 2)
+  // 칸마다 표본을 **몇 개** 덮었는지 센다. 삼각형이 여럿이면 합쳐서 센다
+  const hits = new Uint8Array(32 * 32 * COVER_SUB * COVER_SUB / 8)
+  const mark = (tile: number, s: number): void => {
+    const at = tile * COVER_SUB * COVER_SUB + s
+    hits[at >> 3]! |= 1 << (at & 7)
+  }
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = indices[t]!, b = indices[t + 1]!, c = indices[t + 2]!
+    const ax = px[a]!, az = pz[a]!, bx = px[b]!, bz = pz[b]!, cx = px[c]!, cz = pz[c]!
+    const area = (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
+    if (area === 0) continue
+    if (!flatEnough(px, py, pz, a, b, c)) continue
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx) / POS_SCALE))
+    const x1 = Math.min(31, Math.floor(Math.max(ax, bx, cx) / POS_SCALE))
+    const z0 = Math.max(0, Math.floor(Math.min(az, bz, cz) / POS_SCALE))
+    const z1 = Math.min(31, Math.floor(Math.max(az, bz, cz) / POS_SCALE))
+    for (let tz = z0; tz <= z1; tz++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const at = tz * 32 + tx
+        for (let sz = 0; sz < COVER_SUB; sz++) {
+          for (let sx = 0; sx < COVER_SUB; sx++) {
+            const qx = tx * POS_SCALE + step + sx * 2 * step
+            const qz = tz * POS_SCALE + step + sz * 2 * step
+            const w0 = (bx - ax) * (qz - az) - (bz - az) * (qx - ax)
+            const w1 = (cx - bx) * (qz - bz) - (cz - bz) * (qx - bx)
+            const w2 = (ax - cx) * (qz - cz) - (az - cz) * (qx - cx)
+            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+              mark(at, sz * COVER_SUB + sx)
+            }
+          }
+        }
+      }
+    }
+  }
+  for (let tile = 0; tile < 32 * 32; tile++) {
+    let n = 0
+    for (let s = 0; s < COVER_SUB * COVER_SUB; s++) {
+      const at = tile * COVER_SUB * COVER_SUB + s
+      if ((hits[at >> 3]! & (1 << (at & 7))) !== 0) n++
+    }
+    if (n >= COVER_MIN) bits[tile >> 3]! |= 1 << (tile & 7)
+  }
+  return bits
+}
+
+/**
+ * 딛을 만큼 누운 면인가 — 법선이 수평에서 60° 안인가 (`3·ny² ≥ nx² + nz²`).
+ *
+ * 정수 좌표로 외적을 내면 값이 2^53을 넘을 수 있어 나눠서 double로 잰다.
+ * 두 굽는 쪽이 같은 정수에 같은 식을 쓰므로 끝자리까지 같다
+ */
+function flatEnough(
+  px: Int32Array, py: Int32Array, pz: Int32Array, a: number, b: number, c: number,
+): boolean {
+  const ux = (px[b]! - px[a]!) / POS_SCALE, uy = (py[b]! - py[a]!) / POS_SCALE
+  const uz = (pz[b]! - pz[a]!) / POS_SCALE
+  const vx = (px[c]! - px[a]!) / POS_SCALE, vy = (py[c]! - py[a]!) / POS_SCALE
+  const vz = (pz[c]! - pz[a]!) / POS_SCALE
+  const nx = uy * vz - uz * vy
+  const ny = uz * vx - ux * vz
+  const nz = ux * vy - uy * vx
+  return 3 * ny * ny >= nx * nx + nz * nz
+}
+
+/** 소품 모델의 XZ 상자 — `POS_SCALE` 단위 정수 넷. 그린 것이 없으면 null */
+export function coverBox(verts: Vertex[]): [number, number, number, number] | null {
+  if (verts.length === 0) return null
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+  for (const v of verts) {
+    const x = Math.round(v.pos[0] * POS_SCALE), z = Math.round(v.pos[2] * POS_SCALE)
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (z < z0) z0 = z
+    if (z > z1) z1 = z
+  }
+  return [x0, z0, x1, z1]
 }
 
 /**
@@ -443,6 +570,8 @@ export function buildChunk(chunk: Uint8Array, id: number): BuiltChunk {
     verts: verts.length,
     headerVerts: header.verts,
     materials,
+    // 걷어낸 천장은 바닥이 아니다 — 남은 색인으로만 찍는다
+    cover: coverBits(verts, cut.indices),
   }
 }
 
@@ -488,6 +617,8 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
   if (!narc) throw new Error('build_model.narc을 못 읽었다')
 
   const sheets: (Sheet | null)[] = []
+  /** 모델마다 XZ 상자 (`POS_SCALE` 단위). 바닥을 소품이 까는 방이 있다 */
+  const boxes: ([number, number, number, number] | null)[] = []
   let count = 0
   for (let i = 0; ; i++) {
     const file = narcEntry(narc, i)
@@ -519,6 +650,9 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
       for (const idx of mesh.indices) indices.push(base + idx)
     }
     out.set(`data/props/${String(i)}.bin`, packChunk(verts, indices, materials, submeshes))
+    // 소품이 바닥을 대신 까는 방이 있다 — 챔피언 방은 청크 메시가 정점 넷뿐이고
+    // 방 바닥이 소품 110이다. 상자만 실어 두면 `floorSeal`이 그 방을 안 막는다
+    boxes.push(coverBox(verts))
 
     // 자기 텍스처를 갖고 있으면 시트로 굽는다
     const texAt = found.TEX0
@@ -533,7 +667,7 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
 
     if (i % 16 === 0) { check(ctx); await breathe(ctx) }
   }
-  out.set('data/props/index.json', json({ count, sheets }))
+  out.set('data/props/index.json', json({ count, sheets, boxes }))
 }
 
 // ── 맵 텍스처 ────────────────────────────────────────────────────────────────
@@ -594,16 +728,23 @@ export async function convertChunks(ctx: ConvertContext): Promise<Produced> {
   const out: Produced = new Map()
   // 청크 재질이 쓰는 (그림, 팔레트) 쌍. 텍스처 묶음은 이 목록만 굽는다
   const wanted = new Set<string>()
+  const covers: Uint8Array[] = []
   let count = 0
   for (let i = 0; ; i++) {
     const entry = narcEntry(narc, i)
     if (!entry) break
     const built = buildChunk(entry, i)
     out.set(`data/chunks/${String(i)}.bin`, built.bytes)
+    covers.push(built.cover)
     for (const m of built.materials) if (m.texture) wanted.add(`${m.texture} ${m.palette ?? ''}`)
     count = i + 1
     if (i % 16 === 0) { check(ctx); ctx.onProgress?.(i, TOTAL); await breathe(ctx) }
   }
+  // 청크마다 128B — 666개라 85KB다. 한 파일로 두는 이유는 **충돌이 스트리밍을
+  // 기다리면 안 되기 때문**이다 (`engine/map/grid` 머리말). 처음에 통째로 받는다
+  const coverBin = new Uint8Array(covers.length * 128)
+  covers.forEach((c, i) => { coverBin.set(c, i * 128) })
+  out.set('data/chunks/cover.bin', coverBin)
   out.set('data/chunks/index.json', json({
     posScale: POS_SCALE, uvScale: UV_SCALE, vertexBytes: VERTEX_BYTES,
     unitsPerTile: UNITS_PER_TILE, count,

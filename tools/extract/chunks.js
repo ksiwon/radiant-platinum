@@ -319,6 +319,118 @@ function placeByNode(verts, node) {
  * **전부 바닥에서 2칸 넘게 떠 있으며 대개 그 청크의 제일 높은 자리**다.
  * 바닥에 깔린 검은 판(그림자)은 하나도 안 걸린다
  */
+
+/** 칸 하나를 4×4로 찍어 본다. 반 칸짜리 바닥도 바닥이다 */
+const COVER_SUB = 4
+/** 그중 몇 개가 걸려야 바닥인가 — 반 칸 */
+const COVER_MIN = 8
+
+/**
+ * **발밑에 그려진 것이 있는가** — 청크 32×32 칸마다 한 비트.
+ *
+ * ⚠️ **`src/import/platinum/chunks.ts`의 `coverBits`와 한 글자도 다르면 안 된다.**
+ * 굽는 쪽이 둘이라(IMPORT.md) 여기와 저기가 갈리면 설치본과 개발 서버가 다른
+ * 벽을 갖는다. e2e ⑨·⑮가 두 산출물을 바이트로 견주므로 갈리면 빨갛게 난다.
+ *
+ * 정수로만 잰다 — 파일에 실제로 들어가는 값(`Math.round(pos × POS_SCALE)`)을
+ * 쓰고 안팎 판정도 정수 외적이라, 부동소수점 끝자리가 갈릴 자리가 없다.
+ *
+ * ⚠️ **한 표본만 걸려도 바닥으로 치면 안 된다.** 사천왕 방(land 260)에서 방
+ * 동쪽 벽의 **꼭대기**(y=3, 방 바닥은 y=-0.13)가 x=17에 0.18칸만 걸치는데,
+ * 그것 하나로 한 칸이 통째로 「바닥」이 되고 이어 붙이는 규칙이 거기까지 열 칸을
+ * 뚫었다. 그래서 **열여섯 표본 중 여덟(반 칸)** 이상일 때만 바닥으로 친다 —
+ * 배틀팩토리 아래 줄처럼 판이 반 칸인 자리는 딱 여덟이라 그대로 남는다.
+ *
+ * ⚠️ **벽을 바닥으로 세지 않는다.** XZ로 눌러 넓이가 0인 면(정확히 수직인 벽)은
+ * 빠지지만, 조금이라도 기운 벽은 얇은 띠로 남아 4×4 표본에 걸린다. 실제로
+ * 사천왕 방(land 260)에서 방 동쪽 벽의 바깥 면이 x=17에 **한 칸짜리 바닥**으로
+ * 찍혔고, 이어 붙이는 규칙이 거기까지 열 칸을 뚫었다. 그래서 면의 법선이
+ * **수평에서 60° 안**일 때만 바닥으로 친다 (`3·ny² ≥ nx² + nz²`).
+ */
+function coverBits(verts, indices) {
+  const bits = Buffer.alloc(32 * 32 / 8)
+  const n = verts.length
+  const px = new Int32Array(n)
+  const py = new Int32Array(n)
+  const pz = new Int32Array(n)
+  const mid = 16 * POS_SCALE
+  for (let i = 0; i < n; i++) {
+    px[i] = Math.round(verts[i].pos[0] * POS_SCALE) + mid
+    py[i] = Math.round(verts[i].pos[1] * POS_SCALE)
+    pz[i] = Math.round(verts[i].pos[2] * POS_SCALE) + mid
+  }
+  const step = POS_SCALE / (COVER_SUB * 2)
+  // 칸마다 표본을 **몇 개** 덮었는지 센다. 삼각형이 여럿이면 합쳐서 센다
+  const hits = Buffer.alloc(32 * 32 * COVER_SUB * COVER_SUB / 8)
+  const mark = (tile, s) => {
+    const at = tile * COVER_SUB * COVER_SUB + s
+    hits[at >> 3] |= 1 << (at & 7)
+  }
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2]
+    const ax = px[a], az = pz[a], bx = px[b], bz = pz[b], cx = px[c], cz = pz[c]
+    const area = (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
+    if (area === 0) continue
+    if (!flatEnough(px, py, pz, a, b, c)) continue
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx) / POS_SCALE))
+    const x1 = Math.min(31, Math.floor(Math.max(ax, bx, cx) / POS_SCALE))
+    const z0 = Math.max(0, Math.floor(Math.min(az, bz, cz) / POS_SCALE))
+    const z1 = Math.min(31, Math.floor(Math.max(az, bz, cz) / POS_SCALE))
+    for (let tz = z0; tz <= z1; tz++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        const at = tz * 32 + tx
+        for (let sz = 0; sz < COVER_SUB; sz++) {
+          for (let sx = 0; sx < COVER_SUB; sx++) {
+            const qx = tx * POS_SCALE + step + sx * 2 * step
+            const qz = tz * POS_SCALE + step + sz * 2 * step
+            const w0 = (bx - ax) * (qz - az) - (bz - az) * (qx - ax)
+            const w1 = (cx - bx) * (qz - bz) - (cz - bz) * (qx - bx)
+            const w2 = (ax - cx) * (qz - cz) - (az - cz) * (qx - cx)
+            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+              mark(at, sz * COVER_SUB + sx)
+            }
+          }
+        }
+      }
+    }
+  }
+  for (let tile = 0; tile < 32 * 32; tile++) {
+    let n = 0
+    for (let s = 0; s < COVER_SUB * COVER_SUB; s++) {
+      const at = tile * COVER_SUB * COVER_SUB + s
+      if ((hits[at >> 3] & (1 << (at & 7))) !== 0) n++
+    }
+    if (n >= COVER_MIN) bits[tile >> 3] |= 1 << (tile & 7)
+  }
+  return bits
+}
+
+/** 딛을 만큼 누운 면인가 — 법선이 수평에서 60° 안인가 */
+function flatEnough(px, py, pz, a, b, c) {
+  const ux = (px[b] - px[a]) / POS_SCALE, uy = (py[b] - py[a]) / POS_SCALE
+  const uz = (pz[b] - pz[a]) / POS_SCALE
+  const vx = (px[c] - px[a]) / POS_SCALE, vy = (py[c] - py[a]) / POS_SCALE
+  const vz = (pz[c] - pz[a]) / POS_SCALE
+  const nx = uy * vz - uz * vy
+  const ny = uz * vx - ux * vz
+  const nz = ux * vy - uy * vx
+  return 3 * ny * ny >= nx * nx + nz * nz
+}
+
+/** 소품 모델의 XZ 상자 — `POS_SCALE` 단위 정수 넷. 그린 것이 없으면 null */
+function coverBox(verts) {
+  if (verts.length === 0) return null
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+  for (const v of verts) {
+    const x = Math.round(v.pos[0] * POS_SCALE), z = Math.round(v.pos[2] * POS_SCALE)
+    if (x < x0) x0 = x
+    if (x > x1) x1 = x
+    if (z < z0) z0 = z
+    if (z > z1) z1 = z
+  }
+  return [x0, z0, x1, z1]
+}
+
 const CEILING_LIFT = 1.5
 
 function dropBlackCeilings(verts, indices, submeshes, materials) {
@@ -358,6 +470,8 @@ function main() {
   fs.mkdirSync(outDir, { recursive: true })
 
   const index = []
+  /** 청크마다 32×32 비트 — 발밑에 그려진 것이 있는가 */
+  const covers = []
   let totalVerts = 0, totalTris = 0, totalBytes = 0
   let mismatched = 0
   let ceilings = 0
@@ -418,6 +532,8 @@ function main() {
     const idxAt = head + verts.length * VERTEX_BYTES
     indices.forEach((v, k) => { buf.writeUInt16LE(v, idxAt + k * 2) })
     fs.writeFileSync(path.join(outDir, `${i}.bin`), buf)
+    // 걷어낸 천장은 바닥이 아니다 — 남은 색인으로만 찍는다
+    covers.push(coverBits(verts, indices))
 
     index.push(verts.length)
     totalVerts += verts.length
@@ -425,6 +541,8 @@ function main() {
     totalBytes += buf.length
   }
 
+  // 청크마다 128B. 충돌은 스트리밍을 기다리면 안 되므로 한 파일로 둔다
+  fs.writeFileSync(path.join(outDir, 'cover.bin'), Buffer.concat(covers))
   const out = writeJson('chunks/index.json', {
     posScale: POS_SCALE, uvScale: UV_SCALE, vertexBytes: VERTEX_BYTES,
     unitsPerTile: UNITS_PER_TILE, count: narc.length,

@@ -63,6 +63,7 @@
 | 개체·진화·번식·능력치 | `engine/pokemon/` |
 | 가방·도구 쓰기 | `engine/bag/` (무엇을 할지) · `ui/menu/itemAction.ts` (실제로 밟기) |
 | 맵·격자·워프 | `engine/map/` · `scene/` |
+| **그린 것이 없는 자리 막기** | `engine/map/floorSeal.ts`가 규칙, 「그 칸 밑에 삼각형이 있는가」는 굽는 쪽이 비트로 적는다(`tools/extract/chunks.js`·`props.js` ↔ `src/import/platinum/chunks.ts` — **둘이 같아야 한다**). 거는 자리는 `scene/worldData.ts`의 `seal()`이고, 장치가 통행을 따로 쥐는 방은 거기 `SEAL_SKIP_MAPS`가 뺀다. 워프가 못 설 칸에 떨구면 `engine/map/world.ts`의 `standableSpot`이 비켜 세운다 ([REPAIR.md](REPAIR.md) §22·§23) |
 | 깨어진 세계 | 규칙은 `engine/world/distortion*.ts`, 연출은 `scene/distortion*.ts` — **이름이 짝을 이룬다**(`…Cascade`·`…Elevator`·`…Boulder`·`…Camera`). ⚠️ **`scene/distortion.ts`는 차례를 잡는 문이지 살림집이 아니다** — 들고 나기와 한 걸음의 순서만 들고, 층 자료·판 번호는 `distortionCore.ts`가 함수로만 내준다 (밖에서 대입하는 자리를 안 만들려고 그렇게 뒀다) |
 | 사람 모델을 세우는 비율 | `engine/model/` — `normalize.ts`가 키를 맞추고, `chibi.ts`가 배틀 몸이 없어 필드 번들로 서는 스물일곱을 등신 비율로 고친다: 머리·손을 줄이고, **머리를 줄인 뒤의 키**에 상수를 곱해 세우고, 굵기를 되돌리고, 그 되돌림이 팔에서 가져간 길이를 마디로 늘인다 (DATA §2.16) |
 | 주인공의 자세 | 걷기·서기는 `engine/actor/locomotion`이 뼈를 직접 돌린다. 낚시·폭포·물주기 같은 필드 동작은 **구운 클립**이고 어느 것을 언제 돌릴지는 `engine/actor/heroClips`가 정한다. ⚠️ **둘이 같은 뼈에 쓴다** — 클립이 돌면 `sceneRefs.playerClip`이 서고 `scene/EngineDriver`가 절차형을 건너뛴다 |
@@ -221,6 +222,7 @@
 | 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.10 |
 | 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
 | 기하 추출기 (`tools/extract/chunks·props·distortionProps·starterScene`) | `import/platinum/chunks.test.ts` · `distortionProps.test.ts` (**브라우저 변환기와 바이트로 같은가**) | DATA §2.2 |
+| 바닥 비트(`cover.bin`)·소품 상자·막는 규칙 | `engine/map/floorSeal.test.ts` · `import/platinum/chunks.test.ts`(파일 668개) · `engine/map/world.test.ts`(워프 1,207개가 내려놓는 자리) | REPAIR §22·§23 · DATA §2.2 |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은
 **한 번 재보는 자**다 — 명령이 어느 파일에서 몇 자리를 먹는지
@@ -249,3 +251,4 @@
 | 긴 목록에 `scrollIntoView` 빼기 | 열일곱 줄 너머로 내려가면 커서가 안 보인다 (§2.5) |
 | 리포트 칸을 가운데 끼우기 | 검사합이 깨진다 (§2.2) |
 | 「안 만든 것」과 「안 만들기로 한 것」 섞기 | 계통표에서 같은 줄로 보인다 — 후자는 명령을 만들어 **아무 일도 안 하게** 둔다 |
+| 롬의 행사 칸을 **무조건** 살아 있는 것으로 믿기 | 워프가 그린 바닥 밖 세 칸에 앉아 있으면 대개 **죽은 자료**다. 연고 관장 방의 문 셋이 다이아·펄 체육관의 남은 방을 가리키고 있었고, 그것을 살리려고 허공에 길을 냈다. 스크립트 이름(`res/field/scripts/scripts.order`)이 그 맵이 무엇인지 알려 준다 (REPAIR §22) |

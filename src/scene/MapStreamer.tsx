@@ -12,7 +12,9 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
-import { disarmWarp, isOutdoors, mapById, walkOutOfDoor, world } from '../engine/map/world'
+import {
+  disarmWarp, isOutdoors, mapById, standableSpot, walkOutOfDoor, world,
+} from '../engine/map/world'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -783,10 +785,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         .then((next) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
           // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
-          const at =
-            target.y === undefined
-              ? walkOutOfDoor(next, target.x, target.z)
-              : { x: target.x, z: target.z }
+          // 문이 아닌데 막힌 칸에 앉은 워프도 열넷 있다 — 거기 세우면 갇힌다
+          let at = { x: target.x, z: target.z }
+          if (target.y === undefined) {
+            const door = walkOutOfDoor(next, target.x, target.z)
+            at = standableSpot(next, door.x, door.z)
+          }
           enter(next, target.to, at.x, at.z, target.matrix, target.y,
             { x: target.x, z: target.z })
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간

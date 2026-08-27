@@ -466,6 +466,47 @@ export function walkOutOfDoor(
   return { x, z: z + 1 }
 }
 
+/**
+ * 도착한 칸이 막혀 있으면 **제일 가까운 설 수 있는 칸**으로 옮긴다.
+ *
+ * ⚠️ **여기 안 걸리면 사람이 갇힌다.** 워프 1,213개 중 스물하나가 문도 아닌
+ * 막힌 칸에 앉아 있고, 그중 **열넷이 실제로 도착 지점으로 쓰인다** — 축복시티
+ * 콘도 2층에서 계단을 내려오면 (0,0), 무쇠시티 집 셋은 (1,1), 팔파크·배틀파크·
+ * 물가시티·영원시티에도 하나씩 있다 (`.audit/warpFit.mjs`). 원작은 도착 좌표를
+ * 워프 그대로 쓰고(`FieldMapChange`) 그 자리를 못 벗어나는데, 2D에서는 다음
+ * 프레임에 스크립트가 옮겨 주거나 아예 안 쓰이는 워프라 티가 안 났다.
+ * 우리는 반지름 판정이라 네 귀퉁이가 다 막혀서 **어느 쪽으로도 못 나간다.**
+ *
+ * 옮기는 자리는 지어내지 않는다 — 4방향 너비 우선으로 **제일 가까운** 열린
+ * 칸이고, 같은 거리면 남·동·서·북 차례다(문이 남쪽으로 나오는 것과 같은 차례).
+ *
+ * @param reach 몇 칸까지 찾을 것인가. 못 찾으면 원래 자리를 그대로 준다
+ */
+export function standableSpot(
+  grid: { isBlocked(tx: number, tz: number): boolean },
+  x: number, z: number, reach = 8,
+): { x: number; z: number } {
+  const tx = Math.floor(x)
+  const tz = Math.floor(z)
+  if (!grid.isBlocked(tx, tz)) return { x, z }
+  const seen = new Set<string>([`${tx},${tz}`])
+  let ring: [number, number][] = [[tx, tz]]
+  for (let step = 0; step < reach; step++) {
+    const next: [number, number][] = []
+    for (const [cx, cz] of ring) {
+      for (const [ax, az] of [[cx, cz + 1], [cx + 1, cz], [cx - 1, cz], [cx, cz - 1]] as const) {
+        const key = `${ax},${az}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        if (!grid.isBlocked(ax, az)) return { x: ax + 0.5, z: az + 0.5 }
+        next.push([ax, az])
+      }
+    }
+    ring = next
+  }
+  return { x, z }
+}
+
 /** 바라보는 방향의 단위 벡터. `facing`은 `atan2(vx, vz)`라 0이 +z다 */
 const FACING_STEP = [
   { x: 0, z: 1 }, { x: 1, z: 0 }, { x: 0, z: -1 }, { x: -1, z: 0 },

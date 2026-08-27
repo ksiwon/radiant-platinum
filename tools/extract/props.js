@@ -50,6 +50,15 @@ function main() {
   fs.mkdirSync(outDir, { recursive: true })
 
   const index = []
+  /**
+   * 모델마다 XZ 상자 (`POS_SCALE` 단위 정수 넷).
+   *
+   * ⚠️ **`src/import/platinum/chunks.ts`의 `coverBox`와 같아야 한다.**
+   * 소품이 방 바닥을 대신 까는 자리가 있어서(챔피언 방은 청크 메시가 정점
+   * 넷뿐이고 바닥이 소품 110이다) `engine/map/floorSeal`이 이걸 봐야 그 방을
+   * 안 막는다
+   */
+  const boxes = []
   let bytes = 0, sheets = 0, noTex = 0, totalTris = 0, mismatched = 0
 
   for (let i = 0; i < models.length; i++) {
@@ -139,9 +148,21 @@ function main() {
     fs.writeFileSync(path.join(outDir, `${i}.bin`), buf)
     bytes += buf.length
     totalTris += indices.length / 3
+    if (verts.length === 0) boxes.push(null)
+    else {
+      let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity
+      for (const v of verts) {
+        const x = Math.round(v.pos[0] * POS_SCALE), z = Math.round(v.pos[2] * POS_SCALE)
+        if (x < x0) x0 = x
+        if (x > x1) x1 = x
+        if (z < z0) z0 = z
+        if (z > z1) z1 = z
+      }
+      boxes.push([x0, z0, x1, z1])
+    }
   }
 
-  const out = writeJson('props/index.json', { count: models.length, sheets: index })
+  const out = writeJson('props/index.json', { count: models.length, sheets: index, boxes })
   console.log(
     `소품 ${models.length}개 → 삼각형 ${totalTris} · ${(bytes / 1024 / 1024).toFixed(1)}MB · ` +
     `텍스처 시트 ${sheets}장 (자기 텍스처가 없는 것 ${noTex}개)`,

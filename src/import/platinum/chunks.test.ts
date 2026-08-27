@@ -143,8 +143,9 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
       else diff.push(`${path}: 크기는 같은데 내용이 다르다`)
     }
     expect(diff.slice(0, 5), `${String(diff.length)}개가 어긋난다`).toEqual([])
-    // 청크 666 + 목차 · 소품 590 + 시트 568 + 목차 · 텍스처 묶음 32 + 목차
-    expect(same).toBe(667)
+    // 청크 666 + 목차 + 바닥 비트(`cover.bin`) · 소품 590 + 시트 568 + 목차 ·
+    // 텍스처 묶음 32 + 목차
+    expect(same).toBe(668)
   }, 900_000)
 
   it('⚠️ 소품과 텍스처 시트도 픽셀로 같다', async () => {

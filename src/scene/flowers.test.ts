@@ -59,8 +59,9 @@ function readChunk(id: number): ChunkMesh {
 
 describe('화단', () => {
   it('오버월드에 꽃 그림이 깔린 칸이 실제로 있다', () => {
+    // ⚠️ `cover.bin`은 청크가 아니다 (`engine/map/floorSeal`) — 번호짜리만 센다
     const ids = readdirSync(resolve(DATA, 'chunks'))
-      .filter((f) => f.endsWith('.bin'))
+      .filter((f) => /^\d+\.bin$/.test(f))
       .map((f) => Number(f.replace('.bin', '')))
       .sort((a, b) => a - b)
 

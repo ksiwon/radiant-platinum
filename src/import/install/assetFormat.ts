@@ -138,6 +138,15 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 검은 쐐기로 떴다 — 콘테스트회장은 화면 왼쪽 29%였다. 확산색이 있는
    * 61개(714삼각형)만 흰 정점색으로 되돌린다(확산까지 검은 59개는 그림자다).
    *
+   * 6 — **발밑에 그려진 것이 있는가를 비트로 적는다** (`data/chunks/cover.bin`
+   * 85KB · `props/index.json`의 `boxes`). 통행표는 방 밖 빈 칸을 「걸을 수
+   * 있음」으로 두고 원작도 막지 않는데(`TerrainCollisionManager_CheckCollision`),
+   * 3인칭에서는 거기 들어서면 **그린 것이 없는 허공을 걷는다**. 게임을 처음부터
+   * 걸어서 닿는 칸 110,809개 중 4,165개가 그랬다 — 사천왕 방 넷이 각 803칸,
+   * 연고 체육관 788칸, 챔피언 방 208칸, 배틀팩토리 190칸, 야외 61칸
+   * (`.audit/reachAudit.mjs`). 그 비트로 `engine/map/floorSeal`이 막는다.
+   * 안 올리면 이미 깔린 사람은 `cover.bin`이 없어서 그대로 뚫린다
+   *
    * 3 — **노드 변환을 먹인다.** 청크 모델은 조각을 제자리에 놓는 일을 노드
    * 행렬에 맡기는데 굽는 쪽이 그것을 세기만 하고 안 썼다. 실측으로 노드 917개
    * 중 **이동 207 · 회전 41 · 크기 22**가 있고 노드가 여럿인 청크가 33개다
@@ -163,7 +172,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
    * (`.audit/whiteMaterials.mjs`)
    */
-  chunks: 5,
+  chunks: 6,
 }
 
 export function groupFormat(name: string): number {
