@@ -459,6 +459,14 @@ $ pnpm exec vitest run --config .audit/vitest.cost.config.ts .audit/otherCmds
 판에 얹히면 시험 파일 300개가 그 부하를 나눠 쓰고, 문턱이 짧은 것부터 넘어간다.
 `vite.config.ts`의 `test.exclude`에 `.audit/**`를 넣어 통째로 뺀다.
 
+### 같은 갈래가 e2e에서도 났다
+
+`pnpm e2e`의 ⑫(`.rpsave` 새 프로필 왕복)가 전체 판에서만 `page.goto: Timeout
+120000ms exceeded`로 떨어졌다. **따로 돌리면 통과한다.** 그 자리는 dist가 아니라
+**개발 서버**를 쓰는데, 개발 서버는 첫 요청에 앱을 통째로 컴파일한다 — 바로 앞의
+⑨⑩⑪이 진짜 롬으로 파일 6,402개를 굽고 난 직후라 디스크가 눌려 있었다. 여기도
+값이 아니라 문턱이었다: 갈 길의 문턱을 **300초**로 준다(`fresh()`).
+
 ---
 
 ## 24. 사용자의 롬이 우리 롬이 아니면 조용히 어긋난다 — **고쳤다**

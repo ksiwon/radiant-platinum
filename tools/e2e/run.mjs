@@ -168,7 +168,14 @@ async function fresh() {
   const requests = []
   const errors = []
   context.on('request', (r) => { requests.push(r.url()) })
-  context.setDefaultNavigationTimeout(120_000)
+  /**
+   * ⚠️ **개발 서버 쪽은 첫 요청에 앱을 통째로 컴파일한다** — dist를 받는 것이
+   * 아니다. 120초로 뒀더니 ⑫가 전체 판에서만 `page.goto` 시간 초과로 떨어졌다:
+   * 바로 앞의 ⑨⑩⑪이 진짜 롬으로 파일 6,402개를 굽고 난 직후라 디스크가 눌려
+   * 있었고, 같은 시험을 따로 돌리면 통과한다. 값이 틀린 것이 아니라 문턱이
+   * 짧았다 (REPAIR §14와 같은 갈래)
+   */
+  context.setDefaultNavigationTimeout(300_000)
   const page = await context.newPage()
   page.on('pageerror', (e) => errors.push(e.message.slice(0, 160)))
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 160)) })
