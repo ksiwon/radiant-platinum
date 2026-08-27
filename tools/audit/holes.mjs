@@ -92,7 +92,7 @@ const PITCHES = [-20, 0, 20]
  */
 const DEFAULT_AT = [
   'twinleaf', 'sandgem', 'jubilife', 'oreburgh', 'eterna', 'hearthome', 'veilstone',
-  'pastoria', 'canalave', 'snowpoint', 'sunyshore', 'valor', 'berry', 'forest', 'route217',
+  'pastoria', 'canalave', 'snowpoint', 'sunyshore', 'valor', 'poketch', 'forest', 'route217',
   'room', 'door', 'mart', 'center', 'museum', 'gym1', 'gym4', 'mine', 'library',
   'ironworks', 'coronet', 'distortion',
 ]
@@ -984,11 +984,17 @@ async function eyeSweep(id) {
 
 const report = []
 let bad = 0
+/**
+ * **못 간 자리는 빈틈이 아니다.** 확인 지점 이름이 바뀌면 `jump`가 2분을 기다리다
+ * 죽는데, 그것을 구멍으로 세면 「빈틈 N건」 안에 유령이 섞인다 — 실제로 `berry`가
+ * 한 자리를 그렇게 채우고 있었다. 그 지점은 같은 맵(356)의 `poketch`로 갈렸다
+ */
+let missed = 0
 for (const id of AT) {
   try {
     await jump(id)
     const r = await inspect([WANT_WALLS, WANT_FLOORS])
-    if (r.err) { console.log(`${id}: ${r.err}`); bad++; continue }
+    if (r.err) { console.log(`${id}: 못 쟀다 — ${r.err}`); missed++; continue }
     report.push({ id, ...r })
     console.log(`\n${id} (맵 ${String(r.mapId)} · ${r.outdoor ? '실외' : '실내'})`)
     if (r.walls) {
@@ -1031,7 +1037,7 @@ for (const id of AT) {
       // ⚠️ **벽·바닥 검사 뒤에 돈다.** 여기서 주인공을 옮기는데, 앞의 두 검사는
       // 서 있는 자리를 기준으로 방을 훑는다 — 먼저 돌리면 딴 데를 재게 된다
       const e = await eyeSweep(id)
-      if (e.err) { console.log(`  시점 — ${e.err}  ❌`); bad++ } else {
+      if (e.err) { console.log(`  시점 — 못 쟀다: ${e.err}  ❌`); missed++ } else {
         report[report.length - 1].eyes = e
         const leak = leakOf(e.third) + leakOf(e.first)
         if (leak > 0) bad++
@@ -1048,8 +1054,8 @@ for (const id of AT) {
       }
     }
   } catch (e) {
-    console.log(`${id}: ${String(e).slice(0, 200)}`)
-    bad++
+    console.log(`${id}: 못 갔다 — ${String(e).slice(0, 200)}`)
+    missed++
   }
 }
 
@@ -1059,6 +1065,7 @@ if (JSON_OUT) {
   console.log(`\n적어 둔 것: ${JSON_OUT}`)
 }
 console.log(bad === 0 ? '\n빈틈 없음 ✅' : `\n빈틈이 있는 자리 ${String(bad)}건 ❌`)
+if (missed > 0) console.log(`못 가거나 못 잰 자리 ${String(missed)}건 — 빈틈과 따로 센다`)
 await browser.close()
 vite.child.kill()
-process.exit(bad === 0 ? 0 : 1)
+process.exit(bad === 0 && missed === 0 ? 0 : 1)
