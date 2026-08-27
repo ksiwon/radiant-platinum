@@ -1,5 +1,5 @@
 {
-  "//": "지원 Platinum 지역판 지문 (IMPORT.md §5 · COPYRIGHT.md §2 '비표현적 호환성 메타데이터'). 원본 바이트도 해시도 아니다 — 헤더 필드 · 컨테이너 엔트리 수 · ARM9 표의 자리와 개수뿐이고, 전부 개발 기계의 롬 셋에서 실측했다. Node 추출기와 브라우저 Importer가 이 한 파일을 함께 읽는다.",
+  "//": "지원 Platinum 지역판 지문 (IMPORT.md §5 · COPYRIGHT.md §2 '비표현적 호환성 메타데이터'). 원본 바이트도 해시도 아니다 — 헤더 필드 · 컨테이너 엔트리 수 · ARM9와 오버레이 안 표의 자리와 개수뿐이고, 전부 개발 기계의 롬 셋에서 실측했다. Node 추출기와 브라우저 Importer가 이 한 파일을 함께 읽는다.",
   "contractVersion": 3,
   "title": "POKEMON PL",
   "makerCode": "01",

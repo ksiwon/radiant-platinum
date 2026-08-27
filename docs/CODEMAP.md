@@ -67,6 +67,8 @@
 | 깨어진 세계 | 규칙은 `engine/world/distortion*.ts`, 연출은 `scene/distortion*.ts` — **이름이 짝을 이룬다**(`…Cascade`·`…Elevator`·`…Boulder`·`…Camera`). ⚠️ **`scene/distortion.ts`는 차례를 잡는 문이지 살림집이 아니다** — 들고 나기와 한 걸음의 순서만 들고, 층 자료·판 번호는 `distortionCore.ts`가 함수로만 내준다 (밖에서 대입하는 자리를 안 만들려고 그렇게 뒀다) |
 | 사람 모델을 세우는 비율 | `engine/model/` — `normalize.ts`가 키를 맞추고, `chibi.ts`가 배틀 몸이 없어 필드 번들로 서는 스물일곱을 등신 비율로 고친다: 머리·손을 줄이고, **머리를 줄인 뒤의 키**에 상수를 곱해 세우고, 굵기를 되돌리고, 그 되돌림이 팔에서 가져간 길이를 마디로 늘인다 (DATA §2.16) |
 | 주인공의 자세 | 걷기·서기는 `engine/actor/locomotion`이 뼈를 직접 돌린다. 낚시·폭포·물주기 같은 필드 동작은 **구운 클립**이고 어느 것을 언제 돌릴지는 `engine/actor/heroClips`가 정한다. ⚠️ **둘이 같은 뼈에 쓴다** — 클립이 돌면 `sceneRefs.playerClip`이 서고 `scene/EngineDriver`가 절차형을 건너뛴다 |
+| **소리** | 곡·효과음을 실제로 울리는 것은 `engine/audio/` (SSEQ를 직접 렌더한다). **어디서 울리는가**는 갈래마다 다르다 — 발밑·벽은 `engine/actor/footstep`(무엇이 나는가)과 `scene/walkSound`(언제 나는가)로 갈려 있고, 번호는 전부 `engine/audio/sfx.ts`에 디컴프 파일·줄과 함께 적혀 있다. ⚠️ **번호만 적고 안 부르면 [REPAIR.md](REPAIR.md) §10이 세는 결함이 된다** — 걸 자리가 없는 소리는 아예 안 적는다 ([PARITY](PARITY.md) §8.13) |
+| **조우 컷인** | 값과 상태 기계는 `engine/battle/encounterCutIn`, 화면에 거는 것은 `scene/encounterCutIn`, 찢기·물결은 후처리 `scene/fx/cutInWarp`, 번쩍임·조리개는 DOM `ui/field/CutInOverlay`. ⚠️ **길이를 상수로 안 적는다** — 원작 태스크를 한 프레임에 상태 하나씩 밟게 옮기면 프레임 수가 세어져 나온다 ([PARITY](PARITY.md) §2.23) |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
 | **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
 | **통신을 닫아 둔 자리** | `engine/world/comm.ts` — 「안 된다」의 값 한 벌. 왜 문을 안 잠그고 답을 하는지는 [PARITY](PARITY.md) §9.4 |
