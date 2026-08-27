@@ -1415,21 +1415,21 @@ await ((haveRom && haveBdsp) ? run : () => {})(
       const ball = page.getByLabel('몬스터볼')
       if (await ball.count() > 0) { trail.push('볼'); await ball.click(); await page.waitForTimeout(200); continue }
 
-      // 고르는 줄 = 자식이 전부 글 있는 `<span>`인 div. 성능 오버레이는 span이
-      // 하나뿐이라 안 걸리고, 힌트 줄에는 span이 없다
-      const choices = await page.evaluate(() => {
-        for (const d of document.querySelectorAll('div')) {
-          const kids = [...d.children]
-          if (kids.length < 2) continue
-          if (kids.every((c) => c.tagName === 'SPAN' && (c.textContent ?? '').trim() !== '')) {
-            return kids.length
-          }
-        }
-        return 0
+      const { n: choices, at } = await page.evaluate(() => {
+    // ⚠️ **생김새로 어림짐작하지 않는다.** 예전에는 「자식이 전부 글 있는
+    // span인 div」로 셌는데, 계기판(`ui/hud/PerfOverlay`)이 자라서 정확히 그
+    // 모양(span 셋)이 되자 **그쪽을 고르는 줄로 셌다** — 오프닝이 조작 설명
+    // 문답에서 영영 안 빠져나왔다. 고르는 줄은 대사창도 오프닝도
+    // `role="radiogroup"`으로 칸과 커서를 내준다
+    const g = document.querySelector('[role="radiogroup"]')
+    if (g === null) return { n: 0, at: 0 }
+    const items = [...g.querySelectorAll('[role="radio"]')]
+    const at = items.findIndex((e) => e.getAttribute('aria-checked') === 'true')
+    return { n: items.length, at: at < 0 ? 0 : at }
       })
       if (choices >= 3) {
         trail.push(`${String(choices)}칸 중 끝`)
-        for (let d = 0; d < choices - 1; d++) await page.keyboard.press('ArrowDown')
+        for (let d = at; d < choices - 1; d++) await page.keyboard.press('ArrowDown')
         await page.waitForTimeout(80)
       }
       // ⚠️ **톡톡 두드리면 안 된다 — 누르고 있어야 한다.** 인쇄기는 누르고

@@ -503,10 +503,23 @@ export function IntroScreen() {
           </form>
         )}
 
+        {/*
+          ⚠️ **고르는 줄은 밖에서도 읽을 수 있어야 한다.** 대사창은 진작
+          `role="radiogroup"`으로 칸과 커서를 내주는데(`ui/field/MessageBox`)
+          여기만 맨 `<span>`이었다. 그래서 하네스가 「자식이 전부 글자 있는
+          span인 div」로 어림짐작했고, 계기판(`ui/hud/PerfOverlay`)이 딱 그
+          모양이라 그쪽을 고르는 줄로 세고 있었다 — 오프닝이 조작 설명 문답에서
+          영영 안 빠져나왔다 (`.audit/introProbe.mjs`로 잡았다)
+        */}
         {choices && (
-          <div className={css.choices}>
+          <div className={css.choices} role="radiogroup" aria-label="선택">
             {choices.map((label, i) => (
-              <span key={label + String(i)} className={i === cursor ? css.choiceOn : css.choice}>
+              <span
+                key={label + String(i)}
+                role="radio"
+                aria-checked={i === cursor}
+                className={i === cursor ? css.choiceOn : css.choice}
+              >
                 {label}
               </span>
             ))}

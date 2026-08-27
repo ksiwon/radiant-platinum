@@ -74,16 +74,18 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
     }
   }
 
-  /** 고르는 줄의 칸 수. 롬 글을 못 읽으니 **생김새**로 센다 */
+  /** 고르는 줄의 칸 수와 지금 커서 자리 */
   const choiceCount = () => page.evaluate(() => {
-    for (const d of document.querySelectorAll('div')) {
-      const kids = [...d.children]
-      if (kids.length < 2) continue
-      if (kids.every((c) => c.tagName === 'SPAN' && (c.textContent ?? '').trim() !== '')) {
-        return kids.length
-      }
-    }
-    return 0
+    // ⚠️ **생김새로 어림짐작하지 않는다.** 예전에는 「자식이 전부 글 있는
+    // span인 div」로 셌는데, 계기판(`ui/hud/PerfOverlay`)이 자라서 정확히 그
+    // 모양(span 셋)이 되자 **그쪽을 고르는 줄로 셌다** — 오프닝이 조작 설명
+    // 문답에서 영영 안 빠져나왔다. 고르는 줄은 대사창도 오프닝도
+    // `role="radiogroup"`으로 칸과 커서를 내준다
+    const g = document.querySelector('[role="radiogroup"]')
+    if (g === null) return { n: 0, at: 0 }
+    const items = [...g.querySelectorAll('[role="radio"]')]
+    const at = items.findIndex((e) => e.getAttribute('aria-checked') === 'true')
+    return { n: items.length, at: at < 0 ? 0 : at }
   })
 
   /**
@@ -117,8 +119,8 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
         await page.waitForTimeout(250)
         continue
       }
-      const n = await choiceCount()
-      if (n >= 3) for (let d = 0; d < n - 1; d++) await tap('ArrowDown', 40)
+      const { n, at } = await choiceCount()
+      if (n >= 3) for (let d = at; d < n - 1; d++) await tap('ArrowDown', 40)
       await tap('Space')
     }
     return false
@@ -674,18 +676,20 @@ export async function playOpening(page, names = OPENING_NAMES) {
     }
     const ball = page.getByLabel('몬스터볼')
     if (await ball.count() > 0) { await ball.click(); await page.waitForTimeout(200); continue }
-    const n = await page.evaluate(() => {
-      for (const d of document.querySelectorAll('div')) {
-        const kids = [...d.children]
-        if (kids.length < 2) continue
-        if (kids.every((c) => c.tagName === 'SPAN' && (c.textContent ?? '').trim() !== '')) {
-          return kids.length
-        }
-      }
-      return 0
+    const { n, at } = await page.evaluate(() => {
+    // ⚠️ **생김새로 어림짐작하지 않는다.** 예전에는 「자식이 전부 글 있는
+    // span인 div」로 셌는데, 계기판(`ui/hud/PerfOverlay`)이 자라서 정확히 그
+    // 모양(span 셋)이 되자 **그쪽을 고르는 줄로 셌다** — 오프닝이 조작 설명
+    // 문답에서 영영 안 빠져나왔다. 고르는 줄은 대사창도 오프닝도
+    // `role="radiogroup"`으로 칸과 커서를 내준다
+    const g = document.querySelector('[role="radiogroup"]')
+    if (g === null) return { n: 0, at: 0 }
+    const items = [...g.querySelectorAll('[role="radio"]')]
+    const at = items.findIndex((e) => e.getAttribute('aria-checked') === 'true')
+    return { n: items.length, at: at < 0 ? 0 : at }
     })
     if (n >= 3) {
-      for (let d = 0; d < n - 1; d++) {
+      for (let d = at; d < n - 1; d++) {
         await page.keyboard.down('ArrowDown')
         await page.waitForTimeout(40)
         await page.keyboard.up('ArrowDown')
