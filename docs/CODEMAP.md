@@ -155,7 +155,7 @@
 `gen:moveAnim`(기술 연출 대본 468개) · `gen:distortionTables`(깨어진 세계의 코드 표
 일곱 칸) · `gen:trainerModels`(BDSP 쪽, 파이썬).
 
-⚠️ **큰 표는 정적 import 하면 안 된다.** `moveAnimTable.ts` 하나가 162KB라 첫
+⚠️ **큰 표는 정적 import 하면 안 된다.** `moveAnimTable.ts` 하나가 167KB라 첫
 청크에 얹히면 앱 셸 예산(첫 청크 gzip 150kB)을 그 자리에서 깬다 — 부르는 자리
 하나에서 `await import`로 집는다. 어느 청크에 붙었는지는 `pnpm provenance`가 본다.
 
