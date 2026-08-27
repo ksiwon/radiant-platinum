@@ -64,6 +64,15 @@ export const worldState = {
      * 준다(`MapStreamer`) — 이동 시스템은 세이브를 안 본다
      */
     runningShoes: false,
+    /**
+     * 이번 프레임에 **밀었는데 못 간 방향** (`DIR`), 안 막혔으면 −1.
+     *
+     * 원작의 「한 걸음 시도가 충돌로 끝났다」에 해당하는 이산 사건이고, 우리
+     * 이동은 연속이라 이 자리 말고는 알 데가 없다 — 축별 통행 판정을 하는 것이
+     * `actor/player`뿐이다. 소리로 바꾸는 것은 `scene/walkSound`이고 되풀이
+     * 주기는 `actor/footstep`의 `BumpGate`가 원작 16프레임으로 자른다
+     */
+    bumpDir: -1,
     /** 필드 기술의 짧은 3D 연출. 규칙과 무관하며 시간이 끝나면 씬이 비운다. */
     fieldAction: {
       kind: null as FieldActionFxKind | null,

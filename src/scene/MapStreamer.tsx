@@ -45,6 +45,7 @@ import { installRoamers, roamersWalked, roamersWarped } from './roamers'
 import { installSafari, safariActive } from './safari'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
+import { resetWalkSound } from './walkSound'
 import { resetStepFeatureTile } from '../engine/script/field'
 import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
@@ -291,6 +292,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
       resetEncounterTile()
       resetStepTile()
+      resetWalkSound()
       resetStepFeatureTile()
       // 다리 위에 선 채로 맵을 옮길 수는 없다 — 새 맵의 어귀를 다시 밟아야 한다
       resetBridge()

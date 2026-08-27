@@ -1,7 +1,7 @@
 // 존(맵) 데이터와 충돌 질의 (PLAN §4.2 / Phase 1)
 // tools/extract/maps.js가 뽑은 JSON을 평평한 타일 격자로 펴서 O(1) 질의를 제공한다.
 // React를 모르는 순수 TS 계층이다 — 씬 연결은 src/scene이 담당한다.
-import { isBridgeOverWater } from '../actor/bridge'
+import { isBridgeOverSnow, isBridgeOverWater } from '../actor/bridge'
 
 /** 타일 u16의 최상위 비트가 통행 불가 플래그 */
 export const IMPASSABLE = 0x8000
@@ -39,6 +39,50 @@ export const Behavior = {
    */
   MUD_WITH_GRASS: 0x00a6,
   MUD_DEEP_WITH_GRASS: 0x00a7,
+  /**
+   * 진흙 — **풀 없는 쪽이다.** 같은 열 여덟 칸의 앞 둘이고,
+   * `TileBehavior_IsMud`가 보는 것은 **이 둘뿐**이다 (`map_tile_behavior.c` 486줄).
+   * 위의 `..._WITH_GRASS` 둘은 안 본다 — 대습초원의 풀 3,094칸에서 걷는 소리가
+   * 안 나는 까닭이 이것이고, 원작 표가 그렇게 적혀 있다
+   */
+  MUD: 0x00a4,
+  MUD_DEEP: 0x00a5,
+  /**
+   * 눈 네 단계 (`TileBehavior_IsSnow`, 506줄). **얕은 것이 끝에 떨어져 있다** —
+   * 0xA1·0xA2·0xA3이 깊은 쪽 셋이고 얕은 것은 0xA8이다. 산술로 이으면 어긋난다.
+   *
+   * 실측(`.audit/surfaceScan.mjs`): 얕음 1,443 · 깊음 2,687 · 더깊음 703 ·
+   * 제일깊음 171칸
+   */
+  SNOW_DEEP: 0x00a1,
+  SNOW_DEEPER: 0x00a2,
+  SNOW_DEEPEST: 0x00a3,
+  SNOW_SHALLOW: 0x00a8,
+  /**
+   * 그림자가 지는 눈 (`TileBehavior_IsSnowWithShadows`, 726줄).
+   *
+   * ⚠️ **`IsSnow`에 안 든다.** 원작이 발소리를 낼 때 `IsOnSnow || IsSnowWithShadows`로
+   * **따로 묻는다** (`player_move.c` 300줄) — 하나로 묶으면 다른 곳이 어긋난다.
+   * 84칸뿐이고 떡잎마을이 그중 하나다
+   */
+  SNOW_WITH_SHADOWS: 0x00a9,
+  /**
+   * 웅덩이 둘 (`TileBehavior_IsPuddle`, 606줄). 값이 붙어 있지 않다 —
+   * 0x16과 0x1D다. 뒤엣것은 물이 안 튀는 쪽이고 **거울 타일이기도 하다**
+   * (`TileBehavior_IsReflective`, 720줄). 합쳐 1,425칸
+   */
+  PUDDLE: 0x0016,
+  PUDDLE_NO_SPLASHING: 0x001d,
+  /** 얕은 물 (`TileBehavior_IsShallowWater`, 336줄). 346칸 다섯 곳 */
+  SHALLOW_WATER: 0x0017,
+  /**
+   * 모래 (`TileBehavior_IsSand`, 331줄).
+   *
+   * ⚠️ **여기서는 소리가 안 난다.** 원작이 `UNUSED(TileBehavior_IsSand(nextTile))`로
+   * 값만 버린다 (`player_move.c` 313줄) — 2,295칸이 깔려 있는데도 그렇다.
+   * 있다고 소리를 붙이면 원작에 없는 것을 짓는 셈이다
+   */
+  SAND: 0x0021,
   /**
    * 얼음판. 밟으면 조작이 안 먹고 부딪힐 때까지 미끄러진다 (`actor/ice`).
    *
@@ -177,6 +221,85 @@ export function isSurfable(behavior: number): boolean {
 export function isOnWater(behavior: number, onBridge: boolean): boolean {
   if (isBridgeOverWater(behavior)) return !onBridge
   return SURFABLE.has(behavior)
+}
+
+// ── 발밑이 무엇인가 (`map_tile_behavior.c`) ────────────────────────────────
+//
+// **목록을 눈으로 고르지 않는다.** 그 파일이 거동값마다 답을 적어 두었고,
+// 여기 있는 것은 그 함수들을 한 줄씩 옮긴 것이다. 줄 번호를 각자 달아 둔다.
+//
+// ⚠️ **하나로 묶고 싶어지는 자리가 셋 있는데 원작이 안 묶었다:**
+// 눈은 `IsSnow`(넷)와 `IsSnowWithShadows`(하나)가 따로고, 진흙은
+// `IsMud`(둘)가 `..._WITH_GRASS` 둘을 안 보고, 웅덩이는 값이 안 붙어 있다.
+// 묶으면 소리가 나면 안 될 3,178칸에서 난다.
+
+/** `TileBehavior_IsTallGrass` (265줄). 9,822칸 49곳 */
+export function isTallGrass(behavior: number): boolean {
+  return behavior === Behavior.TALL_GRASS
+}
+
+/** `TileBehavior_IsVeryTallGrass` (271줄). 1,066칸 세 곳 — 210·214·229번도로 */
+export function isVeryTallGrass(behavior: number): boolean {
+  return behavior === Behavior.VERY_TALL_GRASS
+}
+
+/** `TileBehavior_IsPuddle` (606줄) */
+export function isPuddle(behavior: number): boolean {
+  return behavior === Behavior.PUDDLE || behavior === Behavior.PUDDLE_NO_SPLASHING
+}
+
+/** `TileBehavior_IsShallowWater` (336줄) */
+export function isShallowWater(behavior: number): boolean {
+  return behavior === Behavior.SHALLOW_WATER
+}
+
+/** `TileBehavior_IsSand` (331줄). 소리는 안 난다 — `Behavior.SAND`의 ⚠️를 본다 */
+export function isSand(behavior: number): boolean {
+  return behavior === Behavior.SAND
+}
+
+/** `TileBehavior_IsMud` (486줄). **풀 있는 진흙 둘은 안 든다** */
+export function isMud(behavior: number): boolean {
+  return behavior === Behavior.MUD || behavior === Behavior.MUD_DEEP
+}
+
+/** `TileBehavior_IsDeepMud` (491줄) */
+export function isDeepMud(behavior: number): boolean {
+  return behavior === Behavior.MUD_DEEP
+}
+
+/** `TileBehavior_IsMudWithGrass` (496줄) — 대습초원의 풀숲 3,094칸 */
+export function isMudWithGrass(behavior: number): boolean {
+  return behavior === Behavior.MUD_WITH_GRASS || behavior === Behavior.MUD_DEEP_WITH_GRASS
+}
+
+/** `TileBehavior_IsSnow` (506줄). 넷이고 얕은 것(0xA8)이 끝에 떨어져 있다 */
+export function isSnow(behavior: number): boolean {
+  return behavior === Behavior.SNOW_DEEP
+    || behavior === Behavior.SNOW_DEEPER
+    || behavior === Behavior.SNOW_DEEPEST
+    || behavior === Behavior.SNOW_SHALLOW
+}
+
+/** `TileBehavior_IsShallowSnow` (517줄) */
+export function isShallowSnow(behavior: number): boolean {
+  return behavior === Behavior.SNOW_SHALLOW
+}
+
+/** `TileBehavior_IsSnowWithShadows` (726줄). `isSnow`와 **따로**다 */
+export function isSnowWithShadows(behavior: number): boolean {
+  return behavior === Behavior.SNOW_WITH_SHADOWS
+}
+
+/**
+ * 그 칸이 **지금 나에게** 눈인가 (`MapObject_IsOnSnow`, `map_object_move.c` 765줄).
+ *
+ * 물과 판박이다 — 눈 위에 놓인 다리(0x75, 216번도로에 30칸)는 위를 건너면
+ * 눈이 아니고 밑을 지나면 눈이다. `onBridge`는 `actor/bridge`가 든 그 값이다
+ */
+export function isOnSnow(behavior: number, onBridge: boolean): boolean {
+  if (isBridgeOverSnow(behavior)) return !onBridge
+  return isSnow(behavior)
 }
 
 /**

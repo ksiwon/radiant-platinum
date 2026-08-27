@@ -95,6 +95,57 @@ export const SFX = {
    */
   CAST_ROD: 1616,
   /**
+   * `SEQ_SE_DP_WALL_HIT`. 한 걸음이 **충돌로 끝났을 때**
+   * (`player_move.c` 1035·1070줄 등 아홉 자리).
+   *
+   * ⚠️ **워프일 때는 안 낸다** — 아홉 자리가 다 `(collision & PLAYER_COLLISION_WARP) == 0`을
+   * 앞세운다. 문에 대고 걸으면 소리 없이 들어간다 (`actor/footstep`의 `isWarpStep`)
+   */
+  WALL_HIT: 1537,
+  /**
+   * `SEQ_SE_DP_KUSA`. 긴 풀을 스칠 때 (`player_move.c` 322줄).
+   *
+   * ⚠️ **닿는 칸과 떠난 칸 **둘 중 하나**면 난다** — 원작이
+   * `IsVeryTallGrass(nextTile) || IsVeryTallGrass(curTile)`로 묻는다.
+   * 그리고 제자리걸음(벽에 막힌 걸음)에서는 **안 낸다**
+   */
+  GRASS_BRUSH: 1619,
+  /** `SEQ_SE_PL_YUKI`. 눈 (`player_move.c` 301줄) */
+  SNOW_STEP: 1353,
+  /** `SEQ_SE_DP_FOOT3_0`. 웅덩이 (`player_move.c` 305줄) */
+  PUDDLE_STEP: 1601,
+  /** `SEQ_SE_DP_FOOT3_1`. 얕은 물 (`player_move.c` 309줄) */
+  SHALLOW_WATER_STEP: 1602,
+  /**
+   * `SEQ_SE_DP_MARSH_WALK`. 진흙 (`player_move.c` 315줄).
+   *
+   * ⚠️ **깊은 진흙에서는 안 난다** — `IsMud && !IsDeepMud`다. 그리고 대습초원의
+   * **풀 있는 진흙**(0xA6·0xA7)은 `IsMud`에 아예 안 든다
+   */
+  MUD_STEP: 1621,
+
+  /**
+   * `SEQ_SE_DP_EXP`. 경험치 바가 차는 동안 (`battle_display.c` 4928줄).
+   *
+   * ⚠️ **끝나면 끊는다** (4940·4951줄). 원작이 최소 8프레임을 보장하고 나서
+   * `Sound_StopEffect`를 부른다 — 짧은 경험치도 소리가 잘려 들리지 않게
+   */
+  EXP_GAIN: 1803,
+  /** `SEQ_SE_DP_EXPMAX`. 레벨이 오를 때 (`battle_display.c` 5180줄) */
+  LEVEL_UP: 1804,
+  /**
+   * 배틀이 열릴 때의 지형 번쩍임 둘 (`battle_display.c`의 `SysTask_SetupUI`).
+   *
+   * 0프레임에 `PASA2`(5311줄), **23프레임에** `PASA3`(5343줄)이다 —
+   * `frameCount == 23`이 원작에 그대로 적혀 있다.
+   *
+   * ⚠️ **체력 바에는 소리가 없다.** `Task_UpdateHPGauge`(4896줄)에 `Sound_*`가
+   * 한 줄도 없다 — 바가 줄어드는 소리를 붙이면 원작에 없는 것을 짓는 셈이다
+   */
+  BATTLE_FLASH: 2127,
+  BATTLE_FLASH2: 2128,
+
+  /**
    * `SEQ_SE_DP_VS_SEEKER_BEEP`. VS시커가 둘레를 훑는 소리
    * (`vs_seeker.c`의 `VS_SEEKER_STATE_START`).
    *

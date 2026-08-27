@@ -49,6 +49,29 @@ const FACING_STEP = [
 ] as const
 const quarterOf = (facing: number): number => ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4
 
+/**
+ * 밀고 있는데 못 간 방향 (`DIR`), 아니면 −1. 원작의 「걸음 시도가 충돌로
+ * 끝났다」다 — 소리는 `scene/walkSound`가 낸다.
+ *
+ * ⚠️ **누른 축이 거절당했을 때만 센다.** 벽을 따라 비스듬히 미끄러지는 것은
+ * 한 축이 거절당한 것이 맞고, 원작도 그 방향을 누르고 있었다면 부딪히는
+ * 걸음이다 (원작에는 대각선 입력이 아예 없어 늘 한 축이다).
+ *
+ * ⚠️ **둘 다 거절당하면 크게 민 쪽이다.** `scene/stepSystem`의 `pushedDir`와
+ * 같은 잣대로 갈라야 「어느 칸으로 걸으려 했나」가 두 자리에서 안 갈린다
+ */
+function bumpDirection(
+  push: { x: number, z: number }, refusedX: boolean, refusedZ: boolean,
+): number {
+  const wantX = refusedX && Math.abs(push.x) > 0.2
+  const wantZ = refusedZ && Math.abs(push.z) > 0.2
+  if (wantX && (!wantZ || Math.abs(push.x) > Math.abs(push.z))) {
+    return push.x > 0 ? DIR.east : DIR.west
+  }
+  if (wantZ) return push.z > 0 ? DIR.south : DIR.north
+  return -1
+}
+
 const desired = new Vector3()
 
 /**
@@ -116,6 +139,10 @@ const iceView: IceView = {
 export const playerSystem = {
   fixedUpdate(dt: number) {
     const p = worldState.player
+    // 부딪히는 걸음은 **이 프레임의 사건**이다 (`actor/footstep`). 아래 어느
+    // 갈래로 빠져나가도 낡은 값이 남지 않게 여기서 먼저 비운다 — 타거나 뛰는
+    // 동안은 조작이 아예 안 먹으므로 그 갈래들은 −1로 나가는 것이 맞다
+    p.bumpDir = -1
 
     // 승강 발판을 타는 동안은 자리를 발판이 정한다 (PARITY §6.10). 여기서
     // 한 줄이라도 손대면 허공에서 걸어 내려가 버린다
@@ -289,14 +316,19 @@ export const playerSystem = {
       // 나오는 편이 낫다
       const stuck = blocked(p.position.x, p.position.z)
       // 축별로 따로 시도 — 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
+      let refusedX = false, refusedZ = false
       if (onWall) {
         // 벽에서는 x 대신 y를 민다. x는 이미 판에 붙여 두었다
         if (stuck || !blocked(p.position.x, p.position.z, ny)) p.position.y = ny
         else p.velocity.y = 0
       } else if (stuck || !blocked(nx, p.position.z)) p.position.x = nx
-      else p.velocity.x = 0
+      else { p.velocity.x = 0; refusedX = true }
       if (stuck || !blocked(p.position.x, nz)) p.position.z = nz
-      else p.velocity.z = 0
+      else { p.velocity.z = 0; refusedZ = true }
+      // **밀었는데 못 갔다** — 원작의 「걸음 시도가 충돌로 끝났다」다
+      // (`actor/footstep` 머리말). 여기 말고는 알 자리가 없다: 축별 통행 판정을
+      // 하는 것이 이 두 줄뿐이다
+      p.bumpDir = bumpDirection(dir, refusedX, refusedZ)
     } else {
       p.position.x = Math.max(-FALLBACK_ARENA, Math.min(FALLBACK_ARENA, nx))
       p.position.z = Math.max(-FALLBACK_ARENA, Math.min(FALLBACK_ARENA, nz))

@@ -15,6 +15,7 @@ import { warpSystem } from '../engine/map/world'
 import { fieldScripts, scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
+import { walkSoundSystem } from './walkSound'
 import { emoteFrame } from './emotes'
 import { vsSeekerFrame } from './vsSeeker'
 import { fishingSystem } from './fishingSystem'
@@ -76,6 +77,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 조우보다 **먼저**다. 원작도 `Field_ProcessStep`이 이동이 끝난 자리에서
       // 먼저 돌고, 그 안에서 스크립트가 걸리면 그 프레임은 거기서 끝난다
       gameLoop.register(stepSystem)
+      // 발밑이 내는 소리 (`player_move.c`의 `PlayWalkSE`). 이동 **뒤**여야 한다 —
+      // 원작도 걸음이 정해진 뒤에 그 걸음의 칸을 보고 소리를 고른다
+      gameLoop.register(walkSoundSystem)
       gameLoop.register(encounterSystem)
       gameLoop.register(cameraSystem)
       systemsRegistered = true

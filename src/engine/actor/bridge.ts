@@ -40,6 +40,17 @@ export function isBridgeOverWater(behavior: number): boolean {
   return behavior === 0x73 || behavior === 0x78 || behavior === 0x7c
 }
 
+/**
+ * 눈 위에 놓인 다리 (`TileBehavior_IsBridgeOverSnow`, `map_tile_behavior.c` 690줄).
+ *
+ * ⚠️ **하나뿐이다.** 물 쪽은 자전거 다리 둘이 같이 드는데(0x73·0x78·0x7c) 눈은
+ * `BRIDGE_OVER_SNOW`(0x75) 하나고 원작 표에 그렇게 적혀 있다. 216번도로에
+ * 30칸이 전부다 (`.audit/surfaceScan.mjs`)
+ */
+export function isBridgeOverSnow(behavior: number): boolean {
+  return behavior === 0x75
+}
+
 /** 남북 자전거 다리 (`TileBehavior_IsBikeBridgeNorthSouth`) */
 export function isBikeBridgeNorthSouth(behavior: number): boolean {
   return behavior >= 0x76 && behavior <= 0x79
