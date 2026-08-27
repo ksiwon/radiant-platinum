@@ -79,6 +79,24 @@ export function BattleSound() {
     if (outcome === 'fled') void music.playEffect(SFX.FLEE)
   }, [outcome])
 
+  /**
+   * 경험치와 레벨업 (`battle_display.c` 4928·5180줄).
+   *
+   * ⚠️ **원작은 바가 차는 동안 울리고 다 차면 끊는다** — 최소 8프레임을 보장한
+   * 뒤 `Sound_StopEffect`다(4940·4951줄). 우리 화면에는 경험치 바가 없어서
+   * (`BattleScreen`) 끊을 자리도 길이도 없다 — 한 번 울리고 만다.
+   * **바를 그리게 되면 그때 이 자리가 `stopEffect`를 갖는다**
+   */
+  const reward = view?.lastReward ?? null
+  const lastRewardSeq = useRef(0)
+  useEffect(() => {
+    if (!reward || reward.seq === lastRewardSeq.current) return
+    lastRewardSeq.current = reward.seq
+    if (reward.exp > 0) void music.playEffect(SFX.EXP_GAIN)
+    // 레벨이 오른 소리는 바가 다 찬 **뒤**다 (`Task_PlayLevelUpAnimation`)
+    if (reward.levelUp) void music.playEffect(SFX.LEVEL_UP)
+  }, [reward])
+
   const hit = view?.lastHit ?? null
   const lastHitSeq = useRef(0)
   useEffect(() => {

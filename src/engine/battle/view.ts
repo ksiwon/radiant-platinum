@@ -99,6 +99,16 @@ export interface BattleView {
     amount: number
     seq: number
   } | null
+  /**
+   * 방금 받은 경험치. 소리가 이걸 보고 난다 (`ui/battle/BattleSound`).
+   *
+   * `seq`는 `lastHit`와 같은 이유다 — 같은 값이 이어서 올 수 있다(파티 여섯이
+   * 같은 점수를 받으면 그렇다).
+   *
+   * ⚠️ **화면 값이 아니라 소리 값이다.** 우리 배틀 화면에는 경험치 바가 없고
+   * (`ui/battle/BattleScreen`) 원작도 이 자리에서 내는 것이 게이지 소리 하나다
+   */
+  lastReward: { exp: number; levelUp: boolean; seq: number } | null
   /** Most recent capture attempt, retained long enough for the 3D stage to play it once. */
   lastBall: {
     slot: SlotId
@@ -116,6 +126,7 @@ export function emptyView(doubles = false): BattleView {
   return {
     lastMove: null,
     lastHit: null,
+    lastReward: null,
     turn: 0,
     doubles,
     active: { p1a: null, p1b: null, p2a: null, p2b: null },
@@ -249,6 +260,16 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         lastHit: { slot: e.actor.slot, ...e.hit, amount, seq: (view.lastHit?.seq ?? 0) + 1 },
       }
     }
+
+    case 'reward':
+      // 원작이 경험치 바가 차기 **시작할 때** 소리를 낸다
+      // (`battle_display.c`의 `Task_UpdateExpGauge` `case 0`)
+      return {
+        ...view,
+        lastReward: {
+          exp: e.exp, levelUp: e.levels.length > 0, seq: (view.lastReward?.seq ?? 0) + 1,
+        },
+      }
 
     case 'heal':
       return patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
