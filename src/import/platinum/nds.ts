@@ -57,6 +57,15 @@ interface NdsHeader {
   fatSize: number
   overlayOffset: number
   overlaySize: number
+  /**
+   * 헤더 0x80 — 이 롬이 **실제로 쓰는 바이트 수.**
+   *
+   * ⚠️ **파일 크기와 다르다.** 카트리지 이미지는 128MB인데 뒤 27~30MB는
+   * 0x00/0xFF 패딩뿐이고, 세 롬 다 이 값이 **FAT의 최대 끝과 정확히 같다**
+   * (실측). 덤프를 자르는 것이 흔하므로 크기 판정은 이 값으로 한다
+   * (`validate.ts`)
+   */
+  usedRomSize: number
 }
 
 /** 헤더 최소 길이. 여기까지 없으면 NDS라고 부를 수도 없다 */
@@ -83,6 +92,7 @@ export async function readHeader(src: ByteSource): Promise<NdsHeader | null> {
     fatSize: view.getUint32(0x4c, true),
     overlayOffset: view.getUint32(0x50, true),
     overlaySize: view.getUint32(0x54, true),
+    usedRomSize: view.getUint32(0x80, true),
   }
 }
 

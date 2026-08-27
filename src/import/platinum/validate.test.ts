@@ -26,7 +26,7 @@ import { withRom, romPath } from '../../data/romData.testkit'
 function fakeRom(head: Partial<{
   title: string; gameCode: string; makerCode: string
   fntOffset: number; fntSize: number; fatOffset: number; fatSize: number
-  overlaySize: number
+  overlaySize: number; usedRomSize: number
 }> = {}, size = SUPPORTED.sizeBytes): ByteSource {
   const header = new Uint8Array(0x200)
   const view = new DataView(header.buffer)
@@ -42,6 +42,8 @@ function fakeRom(head: Partial<{
   view.setUint32(0x4c, head.fatSize ?? 0x100, true)
   view.setUint32(0x50, 0x3000, true)
   view.setUint32(0x54, head.overlaySize ?? 32 * 100, true)
+  // 헤더 0x80 — **이 롬이 실제로 쓰는 크기**. 크기 판정이 여기를 본다
+  view.setUint32(0x80, head.usedRomSize ?? EN.usedBytes, true)
 
   return {
     size,
@@ -53,8 +55,11 @@ function fakeRom(head: Partial<{
   }
 }
 
+/** 미국판 줄. 가짜 롬의 기본값이 이 판을 흉내 낸다 */
+const EN = SUPPORTED.releases.find((r) => r.gameCode === 'CPUE')!
+
 describe('가짜 롬 — 거절해야 하는 것들', () => {
-  it('크기가 다르면 한 조각도 안 읽고 거절한다', async () => {
+  it('너무 작으면 한 조각도 안 읽고 거절한다', async () => {
     let read = 0
     const src: ByteSource = {
       size: 1024,
@@ -65,6 +70,38 @@ describe('가짜 롬 — 거절해야 하는 것들', () => {
     if (!got.ok) expect(got.step).toBe('size')
     // 128MB짜리를 상대로 하는 일이다. 크기로 걸러지는 것을 읽기 시작하면 안 된다
     expect(read).toBe(0)
+  })
+
+  it('⚠️ 꼬리를 자른 덤프를 거절하지 않는다', async () => {
+    // NDS 덤프는 꼬리 패딩을 자르는 것이 흔하다. 실측하면 세 롬 다 헤더 0x80이
+    // 적는 크기가 **FAT의 최대 끝과 정확히 같고** 그 뒤는 0x00/0xFF뿐이라,
+    // 자른 덤프에도 우리가 읽는 바이트는 하나도 안 빠져 있다.
+    // 예전에는 "정확히 128MB"를 요구해서 이런 덤프가 「크기가 다릅니다」로 튕겼다
+    const got = await validatePlatinum(fakeRom({}, EN.usedBytes))
+    expect(got.ok).toBe(false)
+    // 가짜 롬은 FNT/FAT가 비어 있어서 뒤에서 떨어진다 — **크기에서는 안 떨어진다**
+    if (!got.ok) expect(got.step).not.toBe('size')
+  })
+
+  it('헤더가 적은 크기보다 짧으면 「잘렸다」고 말한다', async () => {
+    // 꼬리를 자른 것과 **중간에 끊긴 것**은 다르다. 사용자가 할 일도 다르다 —
+    // 앞엣것은 그냥 쓰면 되고 뒤엣것은 덤프를 다시 떠야 한다
+    const got = await validatePlatinum(fakeRom({ usedRomSize: SUPPORTED.sizeBytes }, EN.usedBytes))
+    expect(got.ok).toBe(false)
+    if (!got.ok) {
+      expect(got.step).toBe('truncated')
+      expect(explain(got)).toContain('덤프')
+      expect(explain(got)).not.toContain('다른 파일을 선택')
+    }
+  })
+
+  it('카트리지 이미지보다 크면 거절한다', async () => {
+    const got = await validatePlatinum(fakeRom({}, SUPPORTED.sizeBytes + 1))
+    expect(got.ok).toBe(false)
+    if (!got.ok) {
+      expect(got.step).toBe('size')
+      expect(got.why).toContain('큽니다')
+    }
   })
 
   it('다른 게임이면 헤더에서 거절한다', async () => {

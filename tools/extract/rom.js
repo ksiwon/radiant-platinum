@@ -56,6 +56,10 @@ function openRom(romPath = sources.requirePlatinumRom('en')) {
   const rom = readRom(romPath)
   return {
     rom,
+    // 헤더의 게임 코드. **지역판마다 자리가 다른 표**를 찾는 열쇠다
+    // (상금 배수표가 그렇다 — `trainers.js`). `--rom=`으로 아무 롬이나 줄 수
+    // 있으므로 부르는 쪽이 "미국판일 것"이라고 가정하면 안 된다
+    gameCode: rom.gameCode,
     narc: (p) => parseNarc(rom.read(p)),
     read: (p) => rom.read(p),
     overlay: (id) => overlay(rom, id),

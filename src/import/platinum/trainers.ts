@@ -11,6 +11,7 @@
 import { narcEntry } from './nds'
 import { openBanks, type DataLocale } from './text'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
+import { prizeLocator, type PrizeSite } from './validate'
 
 const TRDATA_SIZE = 20
 const COUNT = 928
@@ -92,12 +93,24 @@ export function parseParty(buf: Uint8Array, type: number, count: number): Traine
 // 분류마다 상금 배수가 하나씩 있고, 상금은 `마지막 포켓몬 레벨 × 4 × 배수`다.
 // 이 표는 NARC이 아니라 **배틀 오버레이 안에** 통째로 박혀 있다.
 //
-// ⚠️ 자리는 "105바이트가 오버레이 전체에서 딱 한 군데"로 확정했다 — 아래에서
-// 매번 다시 세어 본다. 두 군데 이상이면 우리가 잡은 오프셋이 우연일 수 있다
+// ⚠️ **자리가 지역판마다 다르다.** 한국판 오버레이 #16이 0x20 크고(0x35aa0 ·
+// 미국판·일본판 0x35a80) 표도 그만큼 뒤에 있다. 그래서 자리를 코드에 박지 않고
+// `supported.json`에서 판별로 읽는다 (`prizeLocator`). 알맹이 105바이트는 세
+// 판이 **바이트로 같다** — 옮겨진 것은 자리뿐이고, `trainers.test.ts`가 세 롬으로 굳힌다.
+//
+// ⚠️ **예전 검사 둘로는 안 걸린다.** 미국판 자리를 한국판에 쓰면 32바이트 앞을
+// 읽는데, 그 창은 앞이 0 패딩이라 「앞 두 칸이 0」을 통과하고 안에 포인터 한
+// 워드가 들어와 「오버레이 안에서 유일」까지 통과했다. 105칸 중 98칸이 조용히
+// 틀렸고 그중 28분류는 상금이 아예 0이 됐다. 그래서 셋째 검사를 더한다.
 
-const PRIZE_OVERLAY = 16
-const PRIZE_OFFSET = 0x359e0
-const CLASS_COUNT = 105
+/**
+ * 0이 이 칸수보다 길게 이어지면 표가 아니다.
+ *
+ * **실측**: 참 표에서 0이 제일 길게 이어지는 곳이 **6칸**(끝의 안 쓰는 분류
+ * 99~104), 32바이트 밀린 창은 **26칸**이다. 그 사이를 잡되 양쪽에 두 배씩
+ * 여유를 둔다 — 6보다 두 배 넉넉하고 26보다 두 배 빠듯하다
+ */
+const MAX_ZERO_RUN = 12
 
 /** `haystack` 안에서 `needle`이 몇 번 나오는가 */
 function occurrences(haystack: Uint8Array, needle: Uint8Array): number {
@@ -113,9 +126,20 @@ function occurrences(haystack: Uint8Array, needle: Uint8Array): number {
   return hits
 }
 
-function prizeTable(overlay: Uint8Array): number[] {
-  const table = overlay.subarray(PRIZE_OFFSET, PRIZE_OFFSET + CLASS_COUNT)
-  if (table.byteLength !== CLASS_COUNT) {
+/** 0이 제일 길게 이어지는 칸수 */
+export function longestZeroRun(table: ArrayLike<number>): number {
+  let run = 0
+  let max = 0
+  for (let i = 0; i < table.length; i++) {
+    run = table[i] === 0 ? run + 1 : 0
+    if (run > max) max = run
+  }
+  return max
+}
+
+export function prizeTable(overlay: Uint8Array, at: PrizeSite): number[] {
+  const table = overlay.subarray(at.offset, at.offset + at.count)
+  if (table.byteLength !== at.count) {
     throw new Error(`상금 배수표가 오버레이 밖으로 나간다 (${String(table.byteLength)}B)`)
   }
   const hits = occurrences(overlay, table)
@@ -126,6 +150,15 @@ function prizeTable(overlay: Uint8Array): number[] {
   if (table[0] !== 0 || table[1] !== 0) {
     throw new Error(
       `상금 배수표 앞 두 칸이 0이 아니다 (${String(table[0])}, ${String(table[1])}) — 오프셋이 밀렸다`,
+    )
+  }
+  // ⚠️ **이 검사가 앞의 둘이 못 잡던 것을 잡는다.** 표에서 0이 이어지는 자리는
+  // 끝의 안 쓰는 분류 여섯 칸뿐이다. 자리가 밀리면 코드와 표 사이의 0 패딩이
+  // 통째로 들어와 스물몇 칸이 이어진다
+  const zeros = longestZeroRun(table)
+  if (zeros > MAX_ZERO_RUN) {
+    throw new Error(
+      `상금 배수표에 0이 ${String(zeros)}칸 이어진다 (최대 ${String(MAX_ZERO_RUN)}) — 자리가 밀렸다`,
     )
   }
   return [...table]
@@ -232,9 +265,10 @@ export async function convertTrainers(ctx: ConvertContext): Promise<Produced> {
     throw new Error(`trpoke 크기 불일치 ${String(real.length)}건: ${real.slice(0, 5).join(' / ')}`)
   }
 
-  const overlay = await ctx.fs.overlay(PRIZE_OVERLAY)
-  if (!overlay) throw new Error(`오버레이 ${String(PRIZE_OVERLAY)}을 못 읽었다`)
-  const prizeMul = prizeTable(overlay)
+  const site = prizeLocator(ctx.release)
+  const overlay = await ctx.fs.overlay(site.overlay)
+  if (!overlay) throw new Error(`오버레이 ${String(site.overlay)}을 못 읽었다`)
+  const prizeMul = prizeTable(overlay, site)
 
   const banks = await openBanks(ctx)
   const loc = ctx.locale as DataLocale

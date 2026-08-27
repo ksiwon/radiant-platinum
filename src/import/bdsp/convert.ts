@@ -7,10 +7,11 @@
 // 흘려보낸다 (`convertTypes.ts`의 `put`). 모아 뒀다가 넘기면 Worker와 메인이 각각
 // 그만큼을 들고, 탭이 죽는다.
 //
-// ⚠️ **한 마리를 못 구웠다고 493마리를 멈추지 않는다.** 번들 하나가 같은 폴더에
-// 없는 CAB을 가리켜서 열다가 끊기는 것이 실제로 있다. 그런 것은 세어서 남기고
-// 다음으로 넘어간다 — 다만 **하나도 못 구우면 그건 실패다.** 빈 그룹이 `ready`로
-// 지나가면 3D가 통째로 빈 설치본이 완료가 된다
+// ⚠️ **한 벌을 못 구우면 거기서 선다** (`requireAll`). 번들 하나가 같은 폴더에
+// 없는 CAB을 가리켜서 열다가 끊기는 것이 실제로 있는데, 그때 쓰는 **다음 후보**는
+// 사람 쪽에 마련돼 있다(같은 번호의 필드 번들). 그 후보까지 다 떨어지면 그건
+// 넘어갈 일이 아니라 실패다 — 조용히 넘어가면 그 포켓몬·그 무대·그 사람만 빠진
+// 설치본이 `ready`로 완료되고, 무엇이 빠졌는지 세는 자가 아무 데도 없다
 import { encodePng } from '../platinum/png'
 import {
   breathe, check, json, put, requireBdsp,
@@ -82,6 +83,32 @@ async function index(src: BdspSource): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   for (const p of await src.list()) out.set(p.toLowerCase(), p)
   return out
+}
+
+/**
+ * 굽겠다고 센 것 중 **하나라도 빠지면 던진다.**
+ *
+ * ⚠️ **예전 바닥은 「0개면 던진다」뿐이었다.** 그러면 557종 중 300종이 실패해도
+ * 그룹은 성공으로 끝나고 `installer`가 `state: 'ready'`를 적는다 —
+ * `required.ts`는 그룹 **이름**만 세고 `integrity.ts`는 **쓴 것이 그대로인지**만
+ * 보므로, **안 만들어진 것을 세는 자가 아무 데도 없다.** 화면에는 그 포켓몬만
+ * 안 서는 것으로 보이고, 사용자는 그게 고장인지 원래 없는 건지 알 수가 없다.
+ *
+ * ⚠️ **바닥 수를 지어내지 않는다.** 「적어도 몇 개」가 아니라 **이 덤프에서
+ * 굽겠다고 센 수** 그대로를 기준으로 삼는다 — 판이 다른 덤프가 와도 기준이
+ * 같이 움직이므로 상수를 다시 재지 않아도 된다.
+ *
+ * 실측 (Unity 2019.4.27f1 덤프 · `tools/spike/bdspGroups.mjs`로 세 그룹을 다 돌렸다):
+ * 포켓몬 557/557 · 무대 30/30 · 사람 108/108(번들 116벌). **셋 다 빠진 것이 없다** —
+ * 그래서 「하나라도 모자라면 선다」가 지금 덤프에서 거짓 실패를 안 낸다
+ */
+function requireAll(what: string, attempted: number, missing: readonly string[]): void {
+  if (missing.length === 0) return
+  const head = missing.slice(0, 5).join(' · ')
+  throw new Error(
+    `BDSP ${what} ${String(attempted)}개 중 ${String(missing.length)}개를 못 구웠습니다`
+    + ` (${head}${missing.length > 5 ? ' …' : ''})`,
+  )
 }
 
 const childrenOf = (at: Map<string, string>, dir: string): string[] => {
@@ -269,19 +296,24 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
     }
   }
 
+  const missing: string[] = []
   for (const order of jobs) {
     check(ctx)
     // ⚠️ **한 번들에 걸지 않는다.** 어떤 배틀 번들은 같은 폴더에 없는 CAB을
     // 가리켜서 열다가 끊긴다 (`tr1085_00`의 재질). 그때 쓸 다음 후보가 **같은
     // 번호의 필드 번들**이다 — 안 그러면 그 사람만 통째로 사라진다
+    let ok = false
     for (const bundle of order) {
-      if (await bake(bundle)) break
+      if (await bake(bundle)) { ok = true; break }
     }
+    // ⚠️ **후보를 다 떨어뜨린 사람만 센다.** 앞 후보가 깨지는 것은 정상이고
+    // 그러라고 순서가 있는 것이다 — 실패는 그 순서가 **끝까지** 빈 때뿐이다
+    if (!ok) missing.push(order[0] ?? '?')
     done++
     ctx.onProgress?.(done, jobs.length + 2)
     await breathe(ctx)
   }
-  if (made.size === 0) throw new Error('BDSP 인물 모델을 하나도 못 구웠습니다')
+  requireAll('인물 모델', jobs.length, missing)
 
   // ⚠️ **구워 낸 것만 담는다.** 없는 glb를 받으러 가면 그 사람이 판때기로도
   // 안 서고 사라진다
@@ -292,11 +324,20 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   }
   put(ctx, out, 'data/npcModels.json', json(sprites))
 
+  // ⚠️ **사람 말고도 이 그룹이 굽는 것이 넷 있다.** 자전거·몬스터볼·파도타기
+  // 몸통·주인공 한 벌이 그것인데, 예전에는 못 구우면 `continue`로 넘어갔다 —
+  // 그러면 자전거를 타도 아무것도 안 나오고 길의 도구가 볼 없이 서는데
+  // 설치는 성공으로 끝난다. 사람과 같은 잣대로 센다
+  const extra: string[] = []
+
   // 주인공. 화면 쪽이 `models/dawn.glb`로도 받는다
-  if (made.has(NPC_BUNDLE.heroine)) {
-    const path = lookup(at, `${PERSONS}/battle/${NPC_BUNDLE.heroine}`)
+  {
+    const path = made.has(NPC_BUNDLE.heroine)
+      ? lookup(at, `${PERSONS}/battle/${NPC_BUNDLE.heroine}`)
+      : null
     const env = path ? await environmentOf(src, [path]) : null
-    if (env) {
+    if (!env) extra.push(NPC_BUNDLE.heroine)
+    else {
       // ⚠️ **클립을 안 싣는다.** 이 파일을 읽는 화면이 없다 — 배틀에도 필드에도
       // 서는 것은 `models/npc/pc0002_00.glb`다 (`playerModelPath`). 노드
       // 추출기(`extract:player`)도 `--no-clips`로 굽는다. 여기만 셋을 실으면
@@ -317,10 +358,11 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
   ] as const) {
     const found = lookup(at, bundle)
     const env = found ? await environmentOf(src, [found]) : null
-    if (!env) continue
+    if (!env) { extra.push(bundle); continue }
     const { glb } = await exportModel(env, encodePng, { maxSize: MAX_TEXTURE, keepClips: false })
     put(ctx, out, name, glb)
   }
+  requireAll('사람과 함께 굽는 물건', 4, extra)
   ctx.onProgress?.(jobs.length + 2, jobs.length + 2)
   return out
 }
@@ -475,6 +517,7 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
   // 파이썬 dict는 넣은 차례 그대로라 `201` 다음이 `201-1`이다. 알맹이는 같은데
   // **바이트만 갈려서** ⑮가 붉어졌다. 넣은 차례를 들고 직접 엮는다
   const index2: [string, { file: string, height: number, scale: number }][] = []
+  const missing: string[] = []
   let done = 0
   for (const { dex, form, name } of todo) {
     check(ctx)
@@ -494,7 +537,8 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
       ...kinTextures(at, name),
     ].filter((p): p is string => p !== null))]
     const env = await environmentOf(src, paths)
-    if (env) {
+    if (!env) missing.push(name)
+    else {
       try {
         const { glb } = await exportModel(env, encodePng, {
           maxSize: MAX_TEXTURE,
@@ -512,13 +556,13 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
           // 폼 배율이 없으면 기본 모습 것으로 떨어진다
           scale: scales.get(scaleKey(dex, form)) ?? scales.get(scaleKey(dex, 0)) ?? 1,
         }])
-      } catch { /* 이 종은 못 구웠다. 다음으로 */ }
+      } catch { missing.push(name) }
     }
     done++
     ctx.onProgress?.(done, todo.length)
     await breathe(ctx)
   }
-  if (index2.length === 0) throw new Error('BDSP 포켓몬 모델을 하나도 못 구웠습니다')
+  requireAll('포켓몬 모델', todo.length, missing)
 
   const rows = index2.map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',')
   put(ctx, out, 'models/pokemon/index.json', new TextEncoder().encode(`{"pokemon":{${rows}}}`))
@@ -545,24 +589,26 @@ async function convertArenas(ctx: ConvertContext): Promise<Produced> {
 
   const files = arenaFiles()
   const made: string[] = []
+  const missing: string[] = []
   let done = 0
   for (const file of files) {
     check(ctx)
     const name = file.replace(/\.glb$/, '')
     const path = lookup(at, `${ARENA_GROUND}/${name}`)
     const env = path ? await environmentOf(src, [path]) : null
-    if (env) {
+    if (!env) missing.push(name)
+    else {
       try {
         const { glb } = await exportArena(env, encodePng, { name })
         put(ctx, out, `models/arena/${file}`, glb)
         made.push(file)
-      } catch { /* 이 무대는 못 구웠다 */ }
+      } catch { missing.push(name) }
     }
     done++
     ctx.onProgress?.(done, files.length)
     await breathe(ctx)
   }
-  if (made.length === 0) throw new Error('BDSP 배틀 무대를 하나도 못 구웠습니다')
+  requireAll('배틀 무대', files.length, missing)
   put(ctx, out, 'models/arena/index.json', json({ arenas: made }))
   return out
 }
@@ -684,5 +730,26 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['data/motionTiming.json'],
     converter: 1,
     convert: convertMotionTiming,
+  },
+  /**
+   * 이로치 색과 암컷 몸 (PLAN §16.10 · `scene/battle/monModel`).
+   *
+   * ⚠️ **일부러 안 굽는다** — 3,375개 · 231MB고, 설치 총량이 3분의 1 늘어
+   * 932MB가 된다. 개발 추출기(`bdspPokemonVariants.py`)만 만든다.
+   *
+   * ⚠️ **그래서 여기 줄이 있다.** 없는 것을 목록에서 빼 두면 개발 서버에서는
+   * `public/`이 채워 주어 멀쩡히 보이고 설치본에서만 조용히 사라진다 —
+   * `loadMonVariantIndex`가 `.catch`로 빈 목차를 쓰기 때문에 화면에는 「이로치를
+   * 잡았는데 평범한 색으로 선다」로만 나온다. 굽지 않기로 한 것과 빠뜨린 것을
+   * 사용자가 가를 수 있어야 하므로, 설치 화면의 「아직 안 옮긴 변환」에 이름이
+   * 뜬다 (`ImportWizard`). 색 판정 자체는 원작대로 돈다 (`isShiny`)
+   */
+  {
+    name: 'monVariants',
+    outputs: ['models/pokemon/variants/{갈래}/{도감}[-{폼}].glb',
+      'models/pokemon/variants/index.json'],
+    converter: 1,
+    blockedBy: '이로치 색 3,186 · 암컷 몸 188을 더 구우면 설치가 231MB 늘어난다 —'
+      + ' 안 구운다. 이로치는 배틀에서 평범한 색으로 선다 (PLAN §16.10)',
   },
 ]

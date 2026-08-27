@@ -24,6 +24,26 @@ export interface Release {
   fileCount: number
   messageBanks: number
   /**
+   * 헤더 0x80이 적는 **실제로 쓰인 크기**. 카트리지 이미지 크기가 아니다.
+   *
+   * ⚠️ **꼬리를 자른 덤프를 거절하지 않으려고 있는 값이다.** 세 롬 다 이 값이
+   * FAT의 최대 끝과 **정확히 같고** 그 뒤로는 0x00/0xFF밖에 없다 —
+   * 곧 잘린 덤프에도 우리가 읽는 바이트는 하나도 안 빠진다
+   * (미국판 104,607,804 · 한국판 102,630,460 · 일본판 105,486,528).
+   *
+   * 동시에 **지문이기도 하다.** 자르든 안 자르든 헤더의 이 값은 안 변하므로
+   * 파일 크기보다 판을 더 잘 가른다
+   */
+  usedBytes: number
+  /**
+   * 상금 배수표가 배틀 오버레이 안에 놓인 자리 (16진 문자열).
+   *
+   * ⚠️ **지역판마다 다르다.** 한국판 오버레이 #16이 0x20 크고 표도 그만큼
+   * 뒤에 있다. 표의 알맹이 105바이트는 세 판이 **바이트로 같다** — 옮겨진
+   * 것은 자리뿐이다 (`supported.json`의 `prizeNote`)
+   */
+  prizeOffset: string
+  /**
    * ARM9 안의 상점 표 자리.
    *
    * **재고가 아니라 자리다.** 물건 목록은 사용자의 롬에서 읽는다 (`marts.ts`)
@@ -49,11 +69,45 @@ export const SUPPORTED = table as unknown as {
   contractVersion: number
   title: string
   makerCode: string
+  /** 자르지 않은 카트리지 이미지 크기. **요구값이 아니라 상한이다** */
   sizeBytes: number
+  /** 상금 배수표가 든 배틀 오버레이 번호. 세 판이 같다 */
+  prizeOverlay: number
+  /** 상금 배수표의 칸 수 = 트레이너 분류 수. 세 판이 같다 */
+  prizeCount: number
   requiredFiles: string[]
   sampleCounts: Record<string, number>
   martCounts: { common: number; specialty: number }
   releases: Release[]
+}
+
+/**
+ * 파일을 한 조각도 안 읽고 걸러 낼 **최소 크기.**
+ *
+ * ⚠️ **`sizeBytes`로 거르면 안 된다.** NDS 덤프는 꼬리 패딩을 자르는 것이
+ * 흔한데, 잘린 롬은 정확히 128MB가 아니라서 「크기가 다릅니다」로 튕겼다 —
+ * 실제로는 우리가 읽는 바이트가 하나도 안 빠진 멀쩡한 덤프다. 제일 작은
+ * 지역판(한국판)의 `usedBytes`보다 작으면 어느 판으로도 성립할 수 없다
+ */
+const MIN_BYTES = Math.min(...SUPPORTED.releases.map((r) => r.usedBytes))
+
+/** 상금 배수표가 놓인 자리 한 벌 */
+export interface PrizeSite {
+  /** 배틀 오버레이 번호 */
+  overlay: number
+  /** 그 오버레이 안의 바이트 자리 */
+  offset: number
+  /** 칸 수 = 트레이너 분류 수 */
+  count: number
+}
+
+/** 상금 배수표의 자리. 지역판마다 다르다 (`trainers.ts`가 읽는다) */
+export function prizeLocator(release: Release): PrizeSite {
+  return {
+    overlay: SUPPORTED.prizeOverlay,
+    offset: hexAt(release.prizeOffset, release.gameCode, 'prizeOffset'),
+    count: SUPPORTED.prizeCount,
+  }
 }
 
 /**
@@ -94,7 +148,7 @@ function hexAt(s: string, gameCode: string, what: string): number {
 }
 
 type ValidationStep =
-  | 'size' | 'header' | 'release' | 'files' | 'samples'
+  | 'size' | 'truncated' | 'header' | 'release' | 'files' | 'samples'
 
 export type Validation =
   | {
@@ -113,6 +167,10 @@ export function explain(v: Validation): string {
   if (v.ok) return `${v.release.label} — 지원됩니다`
   switch (v.step) {
     case 'size': return `${v.why} 다른 파일을 선택해 주세요.`
+    // ⚠️ **여기서 "다른 파일을 고르라"고 하면 안 된다.** 파일은 맞는데 뒤가
+    // 잘려 있는 것이므로, 사용자가 할 일은 파일을 바꾸는 것이 아니라 **덤프를
+    // 다시 뜨는 것**이다
+    case 'truncated': return `${v.why} 덤프가 중간에 끊겼을 수 있습니다.`
     case 'header': return `${v.why} Pokémon Platinum의 \`.nds\` 파일이 필요합니다.`
     case 'release': return `${v.why} 지원하는 지역판인지 확인해 주세요.`
     case 'files':
@@ -131,11 +189,19 @@ export async function validatePlatinum(
   onStep?: (step: ValidationStep) => void,
 ): Promise<Validation> {
   onStep?.('size')
-  // ① 크기. 롬 하나가 정확히 128MB다 — 잘린 파일과 엉뚱한 파일이 여기서 걸린다
-  if (src.size !== SUPPORTED.sizeBytes) {
+  // ① 크기. **범위로 본다** — 위는 자르지 않은 카트리지 이미지, 아래는 제일
+  // 작은 지역판이 실제로 쓰는 크기다. 꼬리를 자른 덤프가 이 사이에 들어온다.
+  // 진짜 판정은 헤더 0x80과 맞대는 ②·③이 한다
+  if (src.size < MIN_BYTES) {
     return {
       ok: false, step: 'size',
-      why: `크기가 다릅니다 (${mb(src.size)} · 필요 ${mb(SUPPORTED.sizeBytes)}).`,
+      why: `너무 작습니다 (${mb(src.size)} · 적어도 ${mb(MIN_BYTES)}).`,
+    }
+  }
+  if (src.size > SUPPORTED.sizeBytes) {
+    return {
+      ok: false, step: 'size',
+      why: `너무 큽니다 (${mb(src.size)} · 최대 ${mb(SUPPORTED.sizeBytes)}).`,
     }
   }
 
@@ -143,6 +209,14 @@ export async function validatePlatinum(
   const fs = await openNds(src)
   // ② 헤더·FNT·FAT가 파일 안에 있는가
   if (!fs) return { ok: false, step: 'header', why: '헤더나 파일시스템 표가 깨져 있습니다.' }
+  // 헤더가 스스로 적은 "쓰인 크기"보다 파일이 짧으면 **정말로 잘린 것**이다.
+  // 꼬리 패딩을 자른 덤프는 여기를 지나고, 중간에 끊긴 덤프는 여기서 선다
+  if (src.size < fs.header.usedRomSize) {
+    return {
+      ok: false, step: 'truncated',
+      why: `파일이 ${mb(src.size)}인데 헤더는 ${mb(fs.header.usedRomSize)}를 쓴다고 적혀 있습니다.`,
+    }
+  }
   if (fs.header.title !== SUPPORTED.title || fs.header.makerCode !== SUPPORTED.makerCode) {
     return {
       ok: false, step: 'header',
@@ -161,6 +235,17 @@ export async function validatePlatinum(
     return {
       ok: false, step: 'release',
       why: `아직 지원하지 않는 지역판입니다 (${fs.header.gameCode}).`,
+    }
+  }
+  // ⚠️ **파일 크기가 아니라 헤더가 적은 크기로 판을 가른다.** 자른 덤프도
+  // 안 자른 덤프도 이 값은 같으므로, 예전의 "정확히 128MB" 검사가 하던 일을
+  // 여기가 **더 좁게** 이어받는다 — 128MB짜리는 온 세상 DS 롬이 다 그렇지만
+  // 이 값은 이 판 하나를 가리킨다
+  if (fs.header.usedRomSize !== release.usedBytes) {
+    return {
+      ok: false, step: 'release',
+      why: `${release.label}의 크기와 다릅니다 (${mb(fs.header.usedRomSize)} · 필요 ${mb(release.usedBytes)}).`,
+      detail: '리비전이 다르거나 손댄 롬일 수 있습니다.',
     }
   }
   if (fs.files.size !== release.fileCount) {

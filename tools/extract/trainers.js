@@ -75,28 +75,56 @@ function parseParty(buf, type, count) {
 // 분류마다 상금 배수가 하나씩 있고, 상금은 `마지막 포켓몬 레벨 × 4 × 배수`다.
 // 이 표는 NARC이 아니라 **배틀 오버레이 안에** 통째로 박혀 있다.
 //
-// 위치는 "105바이트가 오버레이 전체에서 딱 한 군데"로 확정했다 — 아래에서 매번
-// 다시 세어 본다. 두 군데 이상이면 우리가 잡은 오프셋이 우연일 수 있다는 뜻이다.
-const PRIZE_OVERLAY = 16
-const PRIZE_OFFSET = 0x359e0
-const CLASS_COUNT = 105
+// ⚠️ **자리가 지역판마다 다르다.** 한국판 오버레이 #16이 0x20 크고(0x35aa0 ·
+// 미국판·일본판 0x35a80) 표도 그만큼 뒤에 있다. 그래서 자리를 여기 박지 않고
+// **롬 자신의 게임 코드**로 supported.json에서 찾는다 — `--rom=`으로 아무 롬이나
+// 줄 수 있으므로 "이 파이프라인은 미국판만 돈다"는 가정을 두면 안 된다.
+// 브라우저 쪽(`src/import/platinum/trainers.ts`)과 검사 넷이 한 줄씩 같다.
+const supported = require('../../src/import/platinum/supported.json')
+
+/** 실측: 참 표의 제일 긴 0 이음이 6칸, 32바이트 밀린 창은 26칸이다 */
+const MAX_ZERO_RUN = 12
+
+function prizeSite(rom) {
+  const code = rom.gameCode
+  const release = supported.releases.find((r) => r.gameCode === code)
+  if (!release) throw new Error(`상금 배수표: 모르는 지역판이다 (${code})`)
+  return { overlay: supported.prizeOverlay, offset: Number(release.prizeOffset), count: supported.prizeCount }
+}
+
+function longestZeroRun(table) {
+  let run = 0
+  let max = 0
+  for (const v of table) {
+    run = v === 0 ? run + 1 : 0
+    if (run > max) max = run
+  }
+  return max
+}
 
 function extractPrizeMul(rom) {
-  const ov = rom.overlay(PRIZE_OVERLAY)
-  const table = ov.subarray(PRIZE_OFFSET, PRIZE_OFFSET + CLASS_COUNT)
-  if (table.length !== CLASS_COUNT) {
+  const at = prizeSite(rom)
+  const ov = rom.overlay(at.overlay)
+  const table = ov.subarray(at.offset, at.offset + at.count)
+  if (table.length !== at.count) {
     throw new Error(`상금 배수표가 오버레이 밖으로 나간다 (${table.length}B)`)
   }
 
   // 같은 바이트열이 오버레이 안에 몇 번 나오는가. 하나여야 이 자리가 유일하다
-  let at = -1
+  let seek = -1
   let hits = 0
-  while ((at = ov.indexOf(table, at + 1)) >= 0) hits++
+  while ((seek = ov.indexOf(table, seek + 1)) >= 0) hits++
   if (hits !== 1) throw new Error(`상금 배수표와 같은 바이트열이 ${hits}군데 있다 — 자리가 안 정해진다`)
 
   // 주인공 두 칸은 상금이 없다. 여기가 0이 아니면 표의 시작이 밀린 것이다
   if (table[0] !== 0 || table[1] !== 0) {
     throw new Error(`상금 배수표 앞 두 칸이 0이 아니다 (${table[0]}, ${table[1]}) — 오프셋이 밀렸다`)
+  }
+  // ⚠️ 앞의 두 검사는 한국판에서 **틀린 자리를 통과시켰다** — 밀린 창의 앞이 0
+  // 패딩이고 안에 포인터 한 워드가 들어와 유일해졌다. 이 셋째 검사가 그것을 잡는다
+  const zeros = longestZeroRun(table)
+  if (zeros > MAX_ZERO_RUN) {
+    throw new Error(`상금 배수표에 0이 ${zeros}칸 이어진다 (최대 ${MAX_ZERO_RUN}) — 자리가 밀렸다`)
   }
   return [...table]
 }
@@ -231,4 +259,4 @@ function main() {
 }
 
 if (require.main === module) main()
-module.exports = { extractTrainers, monSize, parseParty, HAS_MOVES, HAS_ITEM }
+module.exports = { extractTrainers, extractPrizeMul, monSize, parseParty, HAS_MOVES, HAS_ITEM }
