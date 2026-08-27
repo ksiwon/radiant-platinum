@@ -47,6 +47,7 @@ import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWin
 import { resetStepTile } from './stepSystem'
 import { resetWalkSound } from './walkSound'
 import { cutInThenBattle, resetCutIn } from './encounterCutIn'
+import { frameStats, SPAN } from '../engine/loop/frameStats'
 import { resetStepFeatureTile } from '../engine/script/field'
 import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
@@ -290,6 +291,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       setZone(displayName(mapId))
       setMapId(mapId)
       publishMap(mapId)
+      // 여기서부터 새 맵이 다 붙을 때까지가 사용자가 **멎었다고 느끼는 구간**이다
+      // (REPAIR §8). 최장 프레임을 남긴다 — 닫는 것은 다음 구간이 열릴 때다
+      frameStats.openSpan(SPAN.warp)
       // 도착한 칸을 "방금 밟았다"로 치게 초기화한다
       resetEncounterTile()
       resetStepTile()

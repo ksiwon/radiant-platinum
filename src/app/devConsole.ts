@@ -33,6 +33,7 @@ import { poketchEnable, poketchRegister } from '../scene/poketch'
 import { usePoketchStore } from '../state/poketchStore'
 import { fieldScripts } from '../engine/script/field'
 import { perfSnapshot } from '../scene/sceneRefs'
+import { frameStats } from '../engine/loop/frameStats'
 import { addHallOfFameEntry } from '../engine/world/hallOfFame'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import { useCurrencyStore } from '../state/currencyStore'
@@ -165,6 +166,31 @@ export function installDevConsole(): void {
         script: fieldScripts.ctx !== null,
       }
     },
+    /**
+     * 실기 성능 기준선 한 벌 (`engine/loop/frameStats`).
+     *
+     * ⚠️ **헤드리스에서 부르면 안 된다** — `pnpm shot`·`pnpm story`는 WebGPU를
+     * 못 만들어 SwiftShader로 내려앉는다. 이 값은 **사람이 제 기계에서** 얼마쯤
+     * 걸어 다닌 뒤에 읽어 주는 것이다.
+     *
+     * `pt.perf()`를 그대로 붙여 넣으면 된다 — PLAN §10.5의 예산이 이 모양에서 온다
+     */
+    perf: () => ({
+      frames: frameStats.count,
+      p50: +frameStats.percentile(0.5).toFixed(1),
+      p95: +frameStats.percentile(0.95).toFixed(1),
+      p99: +frameStats.percentile(0.99).toFixed(1),
+      worst: +frameStats.percentile(1).toFixed(1),
+      calls: perfSnapshot.drawCalls,
+      tri: perfSnapshot.triangles,
+      backend: perfSnapshot.backend,
+      spans: Object.fromEntries([...frameStats.spans].map(([name, v]) => [name, {
+        first: +v.first.toFixed(1), worst: +v.worst.toFixed(1),
+        last: +v.last.toFixed(1), count: v.count,
+      }])),
+    }),
+    /** 잰 것을 버리고 다시 센다 — 켠 직후의 로딩을 빼고 재고 싶을 때 */
+    perfReset: () => { frameStats.reset() },
     /**
      * 시점을 바꾼다 — 0이 3인칭, 1이 1인칭. V와 **같은 값**을 만진다.
      *

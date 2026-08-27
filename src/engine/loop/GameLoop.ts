@@ -1,4 +1,5 @@
 // 고정 타임스텝 게임 루프 (PLAN §3.4) — Gaffer on Games "Fix Your Timestep"
+import { frameStats } from './frameStats'
 const FIXED_DT = 1 / 60
 const MAX_DELTA = 0.25 // 탭 복귀·GC 스파이크 방어 클램프
 
@@ -28,6 +29,10 @@ class GameLoop {
   tick(delta: number) {
     if (this.paused) return
     const d = Math.min(delta, MAX_DELTA)
+    // ⚠️ **자르기 **전**의 값을 센다.** `MAX_DELTA`는 탭에서 돌아왔을 때 세계가
+    // 한꺼번에 앞으로 튀지 않게 막는 것이지, 「그만큼밖에 안 멎었다」는 뜻이
+    // 아니다 — 자른 값을 세면 3.3초짜리 멈춤이 250ms로 적힌다 (`frameStats`)
+    frameStats.push(delta * 1000)
     const t0 = performance.now()
 
     this.accumulator += d

@@ -31,6 +31,7 @@ import { clampFriendship } from '../engine/pokemon/friendship'
 import { caughtAt, isOriginalTrainer, metToday, type TrainerIdentity } from '../engine/pokemon/origin'
 import { mapById, world } from '../engine/map/world'
 import { Terrain, terrainOf, type TerrainId } from '../engine/battle/terrain'
+import { frameStats, SPAN } from '../engine/loop/frameStats'
 import { burmyCloak, SPECIES_BURMY, SPECIES_UNOWN } from '../engine/pokemon/form'
 import type { BattleAction, PartySlot } from '../engine/battle/choice'
 import type { BattleEvent, SideId } from '../engine/battle/events'
@@ -1523,6 +1524,13 @@ async function open(
 // 끝나고도 안 사라진다. `phase` 하나가 임자이므로 그것을 구독해서 따라가게 둔다.
 // 이 모듈은 필드가 불러올 때 처음 들어오고, 배틀은 필드에서만 시작한다
 useBattleStore.subscribe((now, before) => {
+  // 배틀이 열리는 동안의 최장 프레임 (`engine/loop/frameStats`).
+  //
+  // ⚠️ **처음 한 번이 임자다** — `@pkmn/sim`이 그때 처음 들어오고(PLAN §7.5.1)
+  // 무대·모델도 그 판에 처음 굽는다. 다음부터는 다 캐시라 값이 다른 것을 잰다
+  if (now.phase === 'loading' && before.phase === 'off') frameStats.openSpan(SPAN.battle)
+  else if (now.phase === 'running' && before.phase === 'loading') frameStats.closeSpan()
+
   const on = now.phase !== 'off'
   if (on !== (before.phase !== 'off')) {
     useSessionStore.getState().setBattleScreen(on)
