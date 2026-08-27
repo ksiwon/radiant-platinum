@@ -14,6 +14,7 @@ import { worldState } from '../../state/worldState'
 import { mapById, world as mapWorld } from '../map/world'
 import { distortionBridge } from '../world/distortion'
 import { surfaceQuaternion } from './distortionSurface'
+import { cutInFrame } from '../battle/encounterCutIn'
 
 /** 카메라 각을 도는 축 둘. 판 좌표라 기울이기 **전에** 돌린다 */
 const X_AXIS = new Vector3(1, 0, 0)
@@ -408,6 +409,10 @@ export const cameraSystem = {
           .applyAxisAngle(Y_AXIS, swing.y * DEG)
           .applyQuaternion(tilt)
       }
+      // 조우 컷인이 팔을 당긴다 (`Camera_SetDistance`, `battle/encounterCutIn`).
+      // 각은 그대로 두고 **길이만** 곱한다 — 원작이 거리 하나만 만진다
+      const dolly = cutInFrame.now?.dolly ?? 1
+      if (dolly !== 1) offset.multiplyScalar(dolly)
       goal.copy(p).add(offset)
       look.copy(p)
       // **카메라는 안 물린다 — 겨눔점을 앞으로 민다** (`aimPitch`).
@@ -435,7 +440,12 @@ export const cameraSystem = {
     }
     tilted(0, 1, 0, cam.up)
 
-    const t = 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
+    // ⚠️ **컷인이 도는 동안은 안 늦춘다.** 원작이 `Camera_SetDistance`로 프레임마다
+    // 곧바로 세우는데, 여기 감쇠(5)를 그대로 태우면 서른여덟 프레임짜리 돌진이
+    // 8%밖에 안 먹혀 화면에서 아무 일도 안 일어난 것처럼 보인다
+    const t = cutInFrame.now !== null
+      ? 1
+      : 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
     cam.position.lerp(goal, t)
     cam.target.lerp(look, t)
 

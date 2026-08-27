@@ -121,7 +121,7 @@ const marks = (page) => page.evaluate(() => {
   return {
     boot: d.boot ?? null, scene: d.scene ?? null, map: Number(d.map ?? -1),
     menu: d.menu ?? null, talk: d.talk === '1', script: d.script === '1',
-    battle: d.battle ?? null, tile: d.tile ?? '', x, z,
+    battle: d.battle ?? null, cutin: d.cutin ?? null, tile: d.tile ?? '', x, z,
     path: location.pathname,
   }
 })
@@ -651,6 +651,10 @@ async function canWalk() {
       await page.waitForTimeout(70)
       const now = await marks(page)
       if (now.scene === 'battle') { met = true; break }
+      // ⚠️ **컷인이 도는 동안은 아직 `battle`이 아니다** (`scene/encounterCutIn`).
+      // 0.63초 동안 발이 묶이고 `data-tile`이 멎으므로, 이걸 안 보면 아래에서
+      // 「못 걸었다」로 읽고 남은 방향키를 배틀 화면에 눌러 넣는다
+      if (now.cutin !== null) { met = true; break }
       if (now.tile !== before && now.tile !== '') { saw = now.tile; break }
     }
     await page.keyboard.up(key)

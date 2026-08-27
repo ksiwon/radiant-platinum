@@ -46,6 +46,7 @@ import { installSafari, safariActive } from './safari'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
 import { resetWalkSound } from './walkSound'
+import { cutInThenBattle, resetCutIn } from './encounterCutIn'
 import { resetStepFeatureTile } from '../engine/script/field'
 import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
@@ -293,6 +294,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       resetEncounterTile()
       resetStepTile()
       resetWalkSound()
+      // 맵을 옮기는 중에 컷인이 남아 있으면 새 맵이 그 검정 밑에서 열린다
+      resetCutIn()
       resetStepFeatureTile()
       // 다리 위에 선 채로 맵을 옮길 수는 없다 — 새 맵의 어귀를 다시 밟아야 한다
       resetBridge()
@@ -846,16 +849,24 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // ⚠️ **사파리 깃발이 서 있으면 딴 판이 열린다** (PARITY §2.19).
       // 원작도 조우 자리에서 `BATTLE_TYPE_SAFARI`로 갈라 놓는다
       // (`wild_encounters.c` — 볼 수를 그 자리에서 읽는다)
-      if (safariActive()) void startSafari({ species: e.species, level: e.level, form: e.form })
-      else {
-        void startWild({
-          species: e.species,
-          level: e.level,
-          form: e.form,
-          roamer: e.roamer,
-          shiny: e.shiny,
-        })
-      }
+      // 조우 컷인이 먼저다 — 화면이 두 번 번쩍이고 지형대로 찢어지거나
+      // 물결치거나 조여든 **뒤에** 배틀이 열린다.
+      //
+      // ⚠️ **사파리도 건다.** `FieldTask_SafariEncounter`(`encounter.c` 458줄)도
+      // 같은 첫 걸음에서 `FieldTransition_StartEncounterEffect`를 부른다 —
+      // 여섯 갈래가 다 그렇다
+      void cutInThenBattle({ trainer: false, foeLevel: e.level }, () => {
+        if (safariActive()) void startSafari({ species: e.species, level: e.level, form: e.form })
+        else {
+          void startWild({
+            species: e.species,
+            level: e.level,
+            form: e.form,
+            roamer: e.roamer,
+            shiny: e.shiny,
+          })
+        }
+      })
     }
   })
 

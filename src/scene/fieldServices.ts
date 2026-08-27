@@ -14,6 +14,7 @@ import {
 import type { NpcTrades } from '../data/schema'
 import type { EmoteKind } from '../engine/actor/emote'
 import { showEmote } from './emotes'
+import { cutInThenBattle, cutInThenTrainerBattle } from './encounterCutIn'
 import { UI_BANK } from '../data/uiText'
 import type { DataLocale } from '../data/gameData'
 import {
@@ -671,16 +672,20 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void useBattleStore.getState().startTrainer(trainerID).catch((e: unknown) => {
-      // 배틀을 못 열면 스크립트가 영영 기다린다. 진 것으로 놓아준다
-      battleResult = 'loss'
-      battleMask = 2
-      waiting = false
-      // ⚠️ **조용히 넘기면 안 된다.** 한때 여기서 소리 없이 삼켰더니 브라우저
-      // 실측에서 트레이너전이 **한 번도 안 열리는데** 이야기는 그냥 지나갔다 —
-      // 배틀이 없었다는 것을 아무도 몰랐다. 못 여는 것은 이상한 일이므로 남긴다
-      console.error(`트레이너 #${String(trainerID)} 배틀을 못 열었다:`,
-        e instanceof Error ? e.message : String(e))
+    // 조우 컷인이 먼저다 (`FieldTask_Encounter`) — 야생과 같은 여섯을 쓰고
+    // 번호만 여섯 뒤로 밀린다 (`CutInEffects_ForBattle`)
+    void cutInThenTrainerBattle(trainerID, () => {
+      void useBattleStore.getState().startTrainer(trainerID).catch((e: unknown) => {
+        // 배틀을 못 열면 스크립트가 영영 기다린다. 진 것으로 놓아준다
+        battleResult = 'loss'
+        battleMask = 2
+        waiting = false
+        // ⚠️ **조용히 넘기면 안 된다.** 한때 여기서 소리 없이 삼켰더니 브라우저
+        // 실측에서 트레이너전이 **한 번도 안 열리는데** 이야기는 그냥 지나갔다 —
+        // 배틀이 없었다는 것을 아무도 몰랐다. 못 여는 것은 이상한 일이므로 남긴다
+        console.error(`트레이너 #${String(trainerID)} 배틀을 못 열었다:`,
+          e instanceof Error ? e.message : String(e))
+      })
     })
   },
 
@@ -1535,10 +1540,12 @@ const services: FieldServices = {
     waiting = true
     // ⚠️ 보통 트레이너전과 딱 하나 다르다 — **급소가 안 난다**
     // (`BATTLE_STATUS_FIRST_BATTLE` → `BtlCmd_CalcCrit`이 `criticalMul = 1`)
-    void useBattleStore.getState().startTrainer(trainerID, { noCrit: true }).catch(() => {
-      battleResult = 'loss'
-      battleMask = 2
-      waiting = false
+    void cutInThenTrainerBattle(trainerID, () => {
+      void useBattleStore.getState().startTrainer(trainerID, { noCrit: true }).catch(() => {
+        battleResult = 'loss'
+        battleMask = 2
+        waiting = false
+      })
     })
   },
 
@@ -1554,10 +1561,12 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void useBattleStore.getState().startWild({ species, level }).catch(() => {
-      battleResult = 'loss'
-      battleMask = 2
-      waiting = false
+    void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+      void useBattleStore.getState().startWild({ species, level }).catch(() => {
+        battleResult = 'loss'
+        battleMask = 2
+        waiting = false
+      })
     })
   },
 
@@ -1572,8 +1581,10 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void useBattleStore.getState().startWild({ species, level, form: GIRATINA_ORIGIN })
-      .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+    void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+      void useBattleStore.getState().startWild({ species, level, form: GIRATINA_ORIGIN })
+        .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+    })
   },
 
   /**
@@ -1622,8 +1633,10 @@ const services: FieldServices = {
       battleResult = null
       battleMask = null
       waiting = true
-      void useBattleStore.getState().startWild({ species, level })
-        .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+      void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+        void useBattleStore.getState().startWild({ species, level })
+          .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+      })
     },
     stopShaking: () => { honeyShake.stop?.(honeyTreeOf(mapWorld.mapId)) },
   },
@@ -1633,8 +1646,10 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void useBattleStore.getState().startWild({ species, level, fateful: true })
-      .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+    void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+      void useBattleStore.getState().startWild({ species, level, fateful: true })
+        .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
+    })
   },
 
   /**
@@ -1649,9 +1664,11 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void useBattleStore.getState().startTrainer(enemy1).catch(() => {
-      battleResult = 'loss'
-      waiting = false
+    void cutInThenTrainerBattle(enemy1, () => {
+      void useBattleStore.getState().startTrainer(enemy1).catch(() => {
+        battleResult = 'loss'
+        waiting = false
+      })
     })
   },
 

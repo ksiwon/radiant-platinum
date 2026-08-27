@@ -15,6 +15,7 @@ import { distortionBridge, PLATFORM_FLOOR } from '../world/distortion'
 import { surfaceHeading, surfaceVector } from './distortionSurface'
 import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR } from '../script/movement'
+import { cutInFrame } from '../battle/encounterCutIn'
 
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
@@ -144,9 +145,10 @@ export const playerSystem = {
     // 동안은 조작이 아예 안 먹으므로 그 갈래들은 −1로 나가는 것이 맞다
     p.bumpDir = -1
 
-    // 승강 발판을 타는 동안은 자리를 발판이 정한다 (PARITY §6.10). 여기서
-    // 한 줄이라도 손대면 허공에서 걸어 내려가 버린다
-    if (p.riding || p.flying) {
+    // 조우 컷인이 도는 동안은 발이 묶인다 (`MapObjectMan_PauseAllMovement`,
+    // `encounter.c` 168줄). 안 묶으면 화면이 찢어지는 동안 계속 걸어가서
+    // 배틀이 열릴 때 서 있는 칸이 조우한 칸이 아니다
+    if (p.riding || p.flying || cutInFrame.now !== null) {
       p.velocity.set(0, 0, 0)
       worldState.time.elapsed += dt
       return

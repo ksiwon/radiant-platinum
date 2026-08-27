@@ -45,6 +45,21 @@ export function markMenu(name: string | null): void {
 }
 
 /**
+ * 조우 컷인이 도는가 — `data-cutin="1"`(컷인 번호).
+ *
+ * ⚠️ **`scene`을 여기서 안 바꾼다.** 컷인이 도는 동안 조작을 받는 층은 아직
+ * 필드다 — 배틀은 컷인이 끝나야 뜬다 (`scene/encounterCutIn`).
+ *
+ * ⚠️ **왜 필요한가.** 컷인은 0.63초 동안 화면을 덮는데 그동안 `data-scene`은
+ * 아직 `overworld`고 `data-tile`은 멎어 있다. 밖에서 보면 「걷다가 멈췄다」와
+ * 구별이 안 된다 — 순회(`tools/e2e/story.mjs`)가 그때 남은 방향키를 눌러
+ * 배틀 명령 창에 흘려 넣은 적이 있다(다른 까닭으로, 그 파일이 적어 두었다)
+ */
+export function markCutIn(effect: number | null): void {
+  put('cutin', effect === null ? null : String(effect))
+}
+
+/**
  * 대사창이 떠 있는가. `MessageBox`가 그리는 것과 같은 순간에 적는다.
  *
  * ⚠️ **`scene`을 여기서 안 바꾼다.** 대사는 배틀 중에도 뜨고 메뉴 위에도 뜬다 —

@@ -15,6 +15,7 @@
 //     pnpm shot center --frontier=1              BP 교환 코너를 열어 본다
 //     pnpm shot center --factory=21              배틀팩토리 도전을 열어 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
+//     pnpm shot forest --cutin=1:24                   조우 컷인을 그 프레임에 세워 찍는다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
 //
@@ -366,6 +367,18 @@ async function main() {
         if (a !== null) globalThis.pt.app(a)
       }, app)
       await page.waitForTimeout(500)
+    }
+    // 조우 컷인을 그 프레임에 세워 놓고 찍는다 — `--cutin=1:24`(번호:프레임).
+    //
+    // ⚠️ **굴러가는 것을 못 잡는다.** 컷인이 서른여덟 프레임(0.63초)에 지나가는데
+    // 헤드리스는 초당 네댓 장이다. 그래서 `pt.cutIn`이 그 프레임의 값을 얹어
+    // **세워 둔다** — 찍히는 것은 실제 덮개·후처리·카메라가 그린 그 프레임이다
+    const cutin = flag('cutin')
+    if (cutin) {
+      const [effect, frame] = cutin.split(':').map(Number)
+      await page.evaluate(([e, f]) => { globalThis.pt.cutIn(e, f) },
+        [effect ?? 0, frame ?? 12])
+      await page.waitForTimeout(600)
     }
     const wild = flag('wild')
     if (wild) {

@@ -31,6 +31,7 @@ import { useBattleStore } from '../state/battleStore'
 import { createNewSave, useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
 import { installFieldServices } from './fieldServices'
+import { cutInSystem, resetCutIn } from './encounterCutIn'
 
 const DATA = resolve(__dirname, '../../public/data')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
@@ -92,6 +93,8 @@ maybe('스크립트가 연 트레이너전', () => {
     abortScript()
     stopServices?.()
     stopServices = null
+    // 판이 끝났는데 컷인이 남아 있으면 다음 판이 그 프레임을 물려받는다
+    resetCutIn()
     useBattleStore.getState().close()
   })
 
@@ -131,6 +134,11 @@ maybe('스크립트가 연 트레이너전', () => {
         // A는 두 프레임에 한 번. 계속 누르고 있으면 눌린 순간이 안 잡힌다
         worldState.input.interact = frames % 2 === 0
         scriptSystem.fixedUpdate()
+        // ⚠️ **컷인도 밀어야 배틀이 열린다** (`scene/encounterCutIn`). 원작처럼
+        // 컷인이 끝나야 배틀을 부르므로(`FieldTask_Encounter`), 이 줄이 없으면
+        // 서른여덟 프레임을 아무도 안 밀어서 트레이너전이 영영 안 열린다 —
+        // 이 시험이 잡으라고 있는 바로 그 증상이다
+        cutInSystem.fixedUpdate()
         // ⚠️ **프레임마다 진짜 시간을 흘려보낸다.** 글 뱅크도 배틀 청크도
         // 약속으로 오는데, `setImmediate`로만 양보하면 프레임이 마이크로초
         // 단위로 지나가 버려서 `@pkmn/sim`을 받기도 전에 6000프레임이 끝난다 —

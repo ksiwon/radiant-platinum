@@ -8,9 +8,10 @@ import { PerspectiveCamera, RedFormat, UnsignedByteType, type Camera, type Scene
 // 바뀌었고 옛 이름은 남아 있지만 부를 때마다 콘솔에 경고를 찍는다 —
 // 화면을 훑는 하네스(`pnpm story`)가 장면마다 그 경고를 주워 왔다
 import { RenderPipeline, type WebGPURenderer } from 'three/webgpu'
-import { float, mrt, output, pass, perspectiveDepthToViewZ, uv, vec2 } from 'three/tsl'
+import { float, mrt, output, pass, perspectiveDepthToViewZ, vec2 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { COVER } from './seeThrough'
+import { cutInWarp } from './cutInWarp'
 
 export interface PostChain {
   render(): void
@@ -68,6 +69,9 @@ function withOutline(
     coverTex.format = RedFormat
     coverTex.type = UnsignedByteType
 
+    // 조우 컷인이 화면을 미는 자리 (`fx/cutInWarp`). 안 돌 때는 항등이다
+    const warp = cutInWarp()
+
     const w = 1.4 / Math.max(1, renderer.domElement.width)
     const h = 1.4 / Math.max(1, renderer.domElement.height)
     /**
@@ -78,7 +82,7 @@ function withOutline(
      * 하나로는 못 잡는다. 시점 공간으로 되돌리면 단위가 타일이 된다
      */
     const at = (dx: number, dy: number) =>
-      perspectiveDepthToViewZ(depthTex.sample(uv().add(vec2(dx, dy))),
+      perspectiveDepthToViewZ(depthTex.sample(warp.uv.add(vec2(dx, dy))),
         float(cam.near), float(cam.far)).negate()
 
     const c = at(0, 0)
@@ -89,11 +93,13 @@ function withOutline(
     // ⚠️ **덮은 정도를 곱하지 않으면 건물을 투과해 뒤의 선이 보인다.** 깊이
     // 텍스처에는 반투명 면 **뒤**의 깊이가 적혀 있어서, 그 자리의 윤곽은 뒤에
     // 있는 것의 실루엣이다. 흐려진 집 위에 마을이 선으로 그려졌다
-    const edge = diff.smoothstep(EDGE_NEAR, EDGE_FAR).mul(float(EDGE_STRENGTH)).mul(cover.r)
+    const edge = diff.smoothstep(EDGE_NEAR, EDGE_FAR).mul(float(EDGE_STRENGTH))
+      .mul(cover.sample(warp.uv).r)
 
-    const shaded = color.mul(float(1).sub(edge))
+    // 밀려 나간 자리는 검다 — 원작이 창 밖을 그렇게 둔다
+    const shaded = color.sample(warp.uv).mul(float(1).sub(edge)).mul(warp.inside)
     post.outputNode = shaded.add(bloom(shaded, 0.28, 0.4, 0.92))
-    return { render: () => post.render() }
+    return { render: () => { warp.sync(); post.render() } }
   } catch (e) {
     console.warn('[post] 윤곽 체인 실패 — 블룸만으로 물러난다', e)
     return null
@@ -103,9 +109,11 @@ function withOutline(
 function bloomOnly(renderer: WebGPURenderer, scene: Scene, camera: Camera): PostChain | null {
   try {
     const post = new RenderPipeline(renderer)
-    const color = pass(scene, camera).getTextureNode('output')
+    const warp = cutInWarp()
+    const color = pass(scene, camera).getTextureNode('output').sample(warp.uv)
+      .mul(warp.inside)
     post.outputNode = color.add(bloom(color, 0.3, 0.4, 0.9))
-    return { render: () => post.render() }
+    return { render: () => { warp.sync(); post.render() } }
   } catch (e) {
     console.warn('[post] TSL RenderPipeline 초기화 실패 — 기본 렌더로 폴백', e)
     return null

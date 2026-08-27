@@ -16,6 +16,7 @@ import { fieldScripts, scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
 import { walkSoundSystem } from './walkSound'
+import { cutInSystem } from './encounterCutIn'
 import { emoteFrame } from './emotes'
 import { vsSeekerFrame } from './vsSeeker'
 import { fishingSystem } from './fishingSystem'
@@ -81,6 +82,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 원작도 걸음이 정해진 뒤에 그 걸음의 칸을 보고 소리를 고른다
       gameLoop.register(walkSoundSystem)
       gameLoop.register(encounterSystem)
+      // 조우 컷인은 **카메라 바로 앞**이다 — 그 프레임의 팔 배율을 카메라가
+      // 곧바로 읽어야 한다 (`actor/camera`). 뒤에 두면 한 프레임 늦게 먹는다
+      gameLoop.register(cutInSystem)
       gameLoop.register(cameraSystem)
       systemsRegistered = true
     }

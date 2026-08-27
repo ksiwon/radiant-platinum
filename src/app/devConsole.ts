@@ -24,6 +24,7 @@ import { useFactoryStore } from '../state/factoryStore'
 import { ChallengeType } from '../engine/frontier/factory'
 import { factorySlot } from '../engine/frontier/records'
 import { activateRoamer } from '../scene/roamers'
+import { pinCutIn } from '../scene/encounterCutIn'
 import { ROAMER_LEVEL, ROAMER_SPECIES } from '../engine/world/roamer'
 import { computeStats } from '../engine/pokemon/stats'
 import { LocationEvent } from '../engine/world/journal'
@@ -188,6 +189,13 @@ export function installDevConsole(): void {
     },
     /** 트레이너전을 연다. 번호는 `pt.find()`로 찾는다 */
     trainer: (id: number) => useBattleStore.getState().startTrainer(id),
+    /**
+     * 조우 컷인을 그 프레임에 세워 둔다 (`scene/encounterCutIn`).
+     *
+     * 번호 0~5가 풀숲·물·동굴 × 레벨 높낮이고 6~11이 트레이너 쪽이다.
+     * `pt.cutIn(1, -1)`로 지운다 — 안 지우면 그 화면이 계속 얹혀 있다
+     */
+    cutIn: (effect: number, frame = 12) => { pinCutIn(effect, frame) },
     /** 야생전을 연다. 셋째 값은 폼이다 (PARITY §3.4) */
     wild: (species: number, level = 10, form = 0) =>
       useBattleStore.getState().startWild({ species, level, form }),
