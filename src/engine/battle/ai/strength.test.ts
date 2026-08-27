@@ -27,7 +27,7 @@ import { romMove } from '../sim/bridge'
 import { BattleController } from '../sim/controller'
 import { movesById, rng, speciesById } from '../sim/fixtures.testkit'
 import type { SideMon } from '../sim/session'
-import { CHAMPION_FLAGS } from './score'
+import { BDSP_TOP_FLAGS, CHAMPION_FLAGS } from './score'
 
 /** 몇 판씩 붙이나. `AI_STRENGTH=200`으로 늘린다 */
 const ROUNDS = Number(process.env.AI_STRENGTH ?? '') || 40
@@ -87,7 +87,7 @@ const greedy: Baseline = (options, r) => {
 
 interface Score { ai: number; them: number; draw: number }
 
-async function match(baseline: Baseline, rounds: number): Promise<Score> {
+async function match(baseline: Baseline, rounds: number, floor = BDSP_TOP_FLAGS): Promise<Score> {
   const out: Score = { ai: 0, them: 0, draw: 0 }
   for (let seed = 1; seed <= rounds; seed += 1) {
     const r = rng(seed * 7919)
@@ -97,8 +97,10 @@ async function match(baseline: Baseline, rounds: number): Promise<Score> {
       seed: [seed & 0xffff, (seed * 7) & 0xffff, (seed * 13) & 0xffff, (seed * 29) & 0xffff],
       random: r,
       basePp: (move) => movesById.get(move)?.pp ?? 5,
-      // 상대만 AI다. 이쪽은 아래 잣대가 둔다
-      ai: { flags: CHAMPION_FLAGS, moves: { byId: movesById } },
+      // 상대만 AI다. 이쪽은 아래 잣대가 둔다.
+      // ⚠️ **`flags`가 아니라 `floor`가 무엇을 재는지 정한다** — `TrainerBrain`이
+      // 자료 값에 바닥을 `|`로 얹으므로, 바닥보다 낮은 `flags`는 티가 안 난다
+      ai: { flags: CHAMPION_FLAGS, moves: { byId: movesById }, floor },
     })
     let steps = 0
     while (!controller.ended && steps < MAX_STEPS) {
@@ -139,6 +141,21 @@ describe('AI 세기 — 같은 편성끼리 (난천 #870 · ai=0x07)', () => {
     // 도는 동안 그것이 뒤집히지 않는다
     expect(pct(s)).toBeGreaterThanOrEqual(90)
   }, 300_000)
+
+  it(`BDSP의 바닥(111)이 플래티넘 챔피언의 바닥(7)보다 안 약하다 (${String(ROUNDS)}판)`, async () => {
+    // ⚠️ **바닥을 올릴 근거는 여기서 나온다.** BDSP가 제 강자들에게 켜는 값이
+    // 111이라는 것은 실측이지만(`BDSP_TOP_FLAGS`), 그 값이 **우리 엔진에서도**
+    // 더 잘 두는지는 다른 질문이다 — 얹은 셋 중 `BATON_PASS`는 변화기 전부에
+    // +3을 주므로 잘못하면 셋업만 하다 지는 상대가 된다.
+    //
+    // 같은 잣대(탐욕)를 상대로 둘을 나란히 돌린다. 아래가 떨어지면 바닥을
+    // 되돌려야 한다는 뜻이고, 그때 고칠 것은 이 수가 아니라 바닥이다
+    const bdsp = await match(greedy, ROUNDS, BDSP_TOP_FLAGS)
+    const pt = await match(greedy, ROUNDS, CHAMPION_FLAGS)
+    show('BDSP 111', bdsp)
+    show('플래티넘 7', pt)
+    expect(pct(bdsp)).toBeGreaterThanOrEqual(pct(pt) - 5)
+  }, 600_000)
 
   it('난천의 AI 바이트가 원작 그대로 최고값이다', () => {
     expect(trainers[CYNTHIA]?.ai).toBe(CHAMPION_FLAGS)

@@ -29,8 +29,9 @@ export function needsTarget(targetType: string | undefined): boolean {
  * 우리 쪽 자리에서 보는 값이라 `p1`이 고르든 `p2`가 고르든 같은 규칙이다 —
  * 「상대 첫 자리」가 늘 1이다
  */
-const TARGET_FOE_A = 1
-const TARGET_FOE_B = 2
+/** 겨눈 자리 번호. 상대 쪽이 양수, 우리 쪽이 음수다 (`p2 move 1 2`의 뒤 숫자) */
+export const TARGET_FOE_A = 1
+export const TARGET_FOE_B = 2
 const TARGET_ALLY_A = -1
 const TARGET_ALLY_B = -2
 

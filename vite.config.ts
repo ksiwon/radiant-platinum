@@ -193,6 +193,16 @@ export default defineConfig({
    * 하네스는 이 환경변수로 자기 자리를 따로 잡는다 (`tools/devServer.mjs`)
    */
   cacheDir: process.env.VITE_CACHE_DIR,
+  /**
+   * ⚠️ **`.audit/`은 시험이 아니다.** 재는 자·조사용 스크립트를 두는 자리고
+   * gitignore다. 거기 `*.test.ts`를 하나 두면 vitest가 기본 `include`
+   * (`**\/*.test.ts`)로 **주워 간다** — 실측으로 `pnpm check`에 65초가 붙고,
+   * 그 부하가 문턱 5초짜리 다른 시험을 시간 초과로 떨어뜨렸다 (REPAIR §14와
+   * 같은 갈래). 기본 `exclude`를 그대로 두고 이 한 줄만 더한다
+   */
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', '.audit/**'],
+  },
   plugins: [
     // ⚠️ `pkmnDiet`이 먼저다 — `enforce: 'pre'`로 `resolveId`를 먼저 잡아야
     // 데이터 모듈이 그래프에 들어오기 전에 껍데기로 바뀐다

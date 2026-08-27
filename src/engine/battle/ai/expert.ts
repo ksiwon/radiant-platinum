@@ -16,7 +16,7 @@
 // 원작 주석의 확률(`~80.5%` 등)은 문턱값 `n/256`을 사람이 읽기 좋게 옮긴 것이다.
 // 여기서는 문턱값을 그대로 쓴다 — 확률을 다시 적으면 반올림이 끼어든다.
 import type { AiMon, AiMove, AiTurn } from './context'
-import { boosted, hpPercent } from './context'
+import { boosted, hpPercent, knownMoves } from './context'
 import { isDamageScored } from './damage'
 import { ABILITY, EFFECT } from './rom'
 import { effectivenessOf, TYPE } from './typeChart'
@@ -44,12 +44,12 @@ function resisted(move: AiMove, foe: AiMon): boolean {
 
 /** 내 기술칸에 이 효과를 가진 게 있는가 */
 function knowsEffect(turn: AiTurn, effect: number): boolean {
-  return turn.moves.some((m) => m.effect === effect)
+  return knownMoves(turn).some((m) => m.effect === effect)
 }
 
 /** 내 기술칸에 상대에게 효과가 굉장한 게 있는가 */
 function hasSuperEffective(turn: AiTurn): boolean {
-  return turn.moves.some((m) => isDamageScored(m) && eff(m, turn.foe) >= 2)
+  return knownMoves(turn).some((m) => isDamageScored(m) && eff(m, turn.foe) >= 2)
 }
 
 const MOVE_U_TURN = 369
@@ -114,7 +114,7 @@ function closeCombat(turn: AiTurn, move: AiMove): number {
 /** 맹독·씨뿌리기. 서로 체력이 적으면 지속 데미지를 기다릴 여유가 없다 */
 function toxicLeechSeed(turn: AiTurn): number {
   let delta = 0
-  if (turn.moves.some(isDamageScored)) {
+  if (knownMoves(turn).some(isDamageScored)) {
     if (hpPercent(turn.self) <= 50 && !skip(turn.random, 50)) delta -= 3
     if (hpPercent(turn.foe) <= 50 && !skip(turn.random, 50)) delta -= 3
   }
@@ -347,7 +347,7 @@ function curse(turn: AiTurn): number {
   if (turn.self.boosts.def >= 4) return 0
   let delta = 0
   // 자이로볼·트릭룸을 갖고 있으면 느려지는 것이 오히려 이득이다
-  const slowIsGood = turn.moves.some((m) => m.effect === EFFECT.TRICK_ROOM || m.effect === 219)
+  const slowIsGood = knownMoves(turn).some((m) => m.effect === EFFECT.TRICK_ROOM || m.effect === 219)
   if (slowIsGood && !skip(turn.random, 32)) delta += 1
   else if (!skip(turn.random, 128)) delta += 1
   if (turn.self.boosts.def >= 2) return delta

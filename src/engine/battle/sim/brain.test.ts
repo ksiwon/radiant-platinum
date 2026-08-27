@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { moveFileSchema, trainerFileSchema, type Move } from '../../../data/schema'
-import { AI_FLAG, CHAMPION_FLAGS } from '../ai/score'
+import { AI_FLAG, BDSP_TOP_FLAGS, CHAMPION_FLAGS } from '../ai/score'
 import { chooseRandom } from '../choice'
 import { EXPERT_HANDLED } from '../ai/expert'
 import type { BattleAction } from '../choice'
@@ -126,9 +126,14 @@ describe('AI가 실제로 이긴다', () => {
     //
     // ⚠️ 15·34 → 18·32로 옮겼다. 개체를 넣을 때 **성별을 글자로 박아** 넘기게 되면서
     // (`session.ts`의 `toSet`) sim이 성별을 안 굴리고, 그만큼 난수 흐름이
-    // 밀렸다. AI가 나빠진 것이 아니라 같은 씨앗이 다른 판이 된 것이다
+    // 밀렸다. AI가 나빠진 것이 아니라 같은 씨앗이 다른 판이 된 것이다.
+    //
+    // ⚠️ 32 → 31. 바닥을 `CHAMPION_FLAGS`(7)에서 `BDSP_TOP_FLAGS`(111)로 올렸다 —
+    // 셋업 · 변덕 · 배턴터치가 얹히면서 변화기를 더 자주 고른다. 판 하나 차이고,
+    // 같은 자리를 다른 잣대로도 쟀다: 탐욕을 상대로 100% → 97.5%
+    // (`ai/strength.test.ts`). **더 세지지는 않았고 더 약해지지도 않았다**
     expect(off.wins, '기준선(무작위 대 무작위)').toBe(18)
-    expect(on.wins, 'AI를 꽂은 쪽').toBe(32)
+    expect(on.wins, 'AI를 꽂은 쪽').toBe(31)
 
     const offRate = off.wins / off.played
     const onRate = on.wins / on.played
@@ -152,11 +157,16 @@ describe('AI가 실제로 이긴다', () => {
 })
 
 describe('바닥 플래그', () => {
-  it('우리가 까는 바닥이 곧 난천의 것이다', () => {
+  it('우리가 까는 바닥은 BDSP의 강자들 것이고, 플래티넘 챔피언의 것을 덮는다', () => {
     // "일반 트레이너라고 AI가 쉬울 필요는 없다"는 이 프로젝트의 선택이다. 그
-    // 기준을 지어내지 않고 **챔피언이 실제로 켜고 나오는 값**을 그대로 쓴다
+    // 기준을 지어내지 않고 **자료가 제일 센 상대에게 실제로 켜 주는 값**을 쓴다.
+    // 플래티넘 롬에서 그것이 난천의 7이고, BDSP 덤프에서는 관장·사천왕·챔피언
+    // 77명의 111이다 (`ai/score.ts`의 `BDSP_TOP_FLAGS`)
     const trainers = trainerFileSchema.parse(read('trainers.json')).trainers
     expect(trainers[267]!.ai).toBe(CHAMPION_FLAGS)
+    // 덮는 것이지 버리는 것이 아니다 — 롬 값이 통째로 들어 있어야 한다
+    expect(BDSP_TOP_FLAGS & CHAMPION_FLAGS).toBe(CHAMPION_FLAGS)
+    expect(BDSP_TOP_FLAGS).toBe(111)
   })
 
   it('롬 그대로면 638명이 헛수만 거른다 — 그래서 바닥을 깐다', () => {

@@ -291,6 +291,33 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         boosts: { ...m.boosts, [e.stat]: clampBoost(m.boosts[e.stat] + e.amount) },
       }))
 
+    // 배북. 더하는 게 아니라 그 값으로 못 박는다
+    case 'setboost':
+      return patch(view, e.actor.slot, (m) => ({
+        ...m,
+        boosts: { ...m.boosts, [e.stat]: clampBoost(e.amount) },
+      }))
+
+    // 흑안개. **선 자리 전부**를 되돌린다 — 한 쪽만 지우면 상대의 랭크가 남는다
+    case 'clearboosts': {
+      const active = { ...view.active }
+      let changed = false
+      for (const slot of SLOTS) {
+        const mon = active[slot]
+        if (!mon) continue
+        active[slot] = { ...mon, boosts: noBoosts() }
+        changed = true
+      }
+      return changed ? { ...view, active } : view
+    }
+
+    // 심리전. 베끼는 쪽의 랭크를 통째로 덮어쓴다
+    case 'copyboosts': {
+      const source = view.active[e.from.slot]
+      if (!source) return view
+      return patch(view, e.actor.slot, (m) => ({ ...m, boosts: { ...source.boosts } }))
+    }
+
     case 'weather':
       return { ...view, weather: e.weather }
 

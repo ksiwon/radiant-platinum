@@ -19,13 +19,18 @@ import { pickBest, scoreMoves } from './score'
 /**
  * 판마다 바뀌는 값. 컨트롤러가 매번 새로 만들어 넣는다.
  *
- * `moves`는 `AiTurn.moves`와 달리 **요청에 실제로 담긴 순서**여야 한다 —
- * 골라 낸 뒤 `slot`을 그대로 명령으로 보내기 때문이다
+ * 담긴 `moves`는 `AiTurn.moves`와 달리 **요청에 실제로 담긴 순서**여야 한다 —
+ * 골라 낸 뒤 `slot`(과 더블이면 `target`)을 그대로 명령으로 보내기 때문이다.
+ *
+ * ⚠️ **여러 벌이 온다.** 더블에서 원작은 겨눌 수 있는 자리마다 점수를 따로
+ * 매긴다(`TrainerAI_MainDoubles`가 `AI_CONTEXT.defender`를 바꿔 가며 돈다).
+ * 그래서 「상대 A를 겨눈 네 칸」과 「상대 B를 겨눈 네 칸」이 각각 한 벌이고,
+ * 고르는 것은 그 전부를 한 줄로 세운 뒤의 최고점이다. 싱글은 늘 한 벌이다
  */
-type TurnBuilder = (request: BattleRequest) => AiTurn | null
+type TurnBuilder = (request: BattleRequest, at: number) => AiTurn[]
 
 /** 교체할 때 다음 마리를 고르는 것. 안 주면 첫 번째 후보 */
-type SwitchChooser = (options: BattleAction[], request: BattleRequest) => BattleAction
+type SwitchChooser = (options: BattleAction[], request: BattleRequest, at: number) => BattleAction
 
 interface PolicyOptions {
   /** 트레이너 데이터의 AI 비트 (`trainers.json`의 `ai`) */
@@ -39,13 +44,13 @@ interface PolicyOptions {
    * 상대 팀에도 **빈 턴 칸**이 붙어 있다(도구를 쓰는 턴에 기술을 안 쓰려고).
    * AI가 그 칸을 고르면 물장구만 치므로 부르는 쪽이 빼고 넘긴다
    */
-  list?: (request: BattleRequest) => BattleAction[]
+  list?: (request: BattleRequest, at: number) => BattleAction[]
   /**
    * 쓰러지기 전에 스스로 바꿀 것인가 (`TrainerAI_ShouldSwitch`).
    *
    * 안 주면 안 바꾼다 — 쓰러질 때까지 버틴다
    */
-  wantsSwitch?: (request: BattleRequest) => boolean
+  wantsSwitch?: (request: BattleRequest, at: number) => boolean
 }
 
 /**
@@ -61,31 +66,36 @@ export function trainerPolicy(options: PolicyOptions) {
     ?? ((opts: BattleAction[]) => opts[Math.floor(random() * opts.length)] ?? opts[0]!)
   const list = options.list ?? ((r: BattleRequest) => legalActions(r))
 
-  return (request: BattleRequest): BattleAction | null => {
-    const actions = list(request)
+  return (request: BattleRequest, at = 0): BattleAction | null => {
+    const actions = list(request, at)
     if (!actions.length) return null
 
     const moves = actions.filter((a): a is Extract<BattleAction, { type: 'move' }> =>
       a.type === 'move')
-    if (!moves.length) return chooseSwitch(actions, request)
+    if (!moves.length) return chooseSwitch(actions, request, at)
 
     // 쓰러지기 전에 물러설 것인가. 원작은 기술 점수를 매기기 **전에** 이걸 묻는다
     // (`TrainerAI_PickCommand`가 `ShouldSwitch`를 맨 앞에 둔다)
     const bench = actions.filter((a) => a.type === 'switch')
-    if (bench.length > 0 && options.wantsSwitch?.(request) === true) {
-      return chooseSwitch(bench, request)
+    if (bench.length > 0 && options.wantsSwitch?.(request, at) === true) {
+      return chooseSwitch(bench, request, at)
     }
 
-    const turn = build(request)
-    if (!turn || turn.moves.length !== moves.length) {
+    const turns = build(request, at)
+    // 한 벌이라도 어긋나면 점수를 못 매긴다 — 아무것도 안 보내는 것보다는 낫다
+    const counted = turns.reduce((n, t) => n + t.moves.length, 0)
+    if (turns.length === 0 || counted !== moves.length) {
       return moves[Math.floor(random() * moves.length)] ?? moves[0]!
     }
 
-    const scored = scoreMoves(turn, flags, scoreExpert)
+    const scored = turns.flatMap((turn) => scoreMoves(turn, flags, scoreExpert))
     const best = pickBest(scored, random)
     if (!best) return moves[0]!
-    // `AiMove.slot`은 요청의 칸 번호다. 같은 번호를 가진 행동을 되찾는다
-    return moves.find((m) => m.slot === best.slot) ?? moves[0]!
+    // `AiMove.slot`은 요청의 칸 번호이고 `target`은 겨눈 자리다. 둘로 되찾는다 —
+    // 더블에서 칸 번호만 보면 상대 A를 겨눈 후보가 늘 먼저 걸린다
+    return moves.find((m) => m.slot === best.slot && m.target === best.target)
+      ?? moves.find((m) => m.slot === best.slot)
+      ?? moves[0]!
   }
 }
 

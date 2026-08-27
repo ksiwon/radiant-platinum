@@ -231,6 +231,22 @@ export type BattleEvent =
   | { kind: 'curestatus'; actor: Actor; status: Status }
   /** 랭크 변화. 하락은 `amount`가 음수다 — `-boost`와 `-unboost`를 하나로 합친다 */
   | { kind: 'boost'; actor: Actor; stat: BoostStat; amount: number }
+  /**
+   * 랭크를 **그 값으로 못 박는다** (`-setboost`). 배북이 공격을 +6으로 만든다.
+   *
+   * ⚠️ `boost`와 합치면 안 된다 — 그쪽은 더하는 값이고 이쪽은 절대값이다.
+   * 한동안 이 줄을 통째로 버렸고, 그래서 배북을 쓴 뒤에도 화면과 AI가
+   * **랭크 0**을 보고 있었다
+   */
+  | { kind: 'setboost'; actor: Actor; stat: BoostStat; amount: number }
+  /**
+   * 랭크를 통째로 되돌린다 (`-clearallboost`). 흑안개다.
+   *
+   * ⚠️ **한 자리가 아니라 배틀에 선 전부다.** 흑안개는 양쪽을 다 지운다
+   */
+  | { kind: 'clearboosts' }
+  /** 상대의 랭크를 그대로 베낀다 (`-copyboost`). 심리전이다 */
+  | { kind: 'copyboosts'; actor: Actor; from: Actor }
   | { kind: 'effectiveness'; actor: Actor; level: Effectiveness }
   | { kind: 'crit'; actor: Actor }
   /** 빗나감. `actor`는 **대상**이다 (`|-miss|공격자|대상`의 두 번째) */

@@ -92,7 +92,11 @@ describe('기술 연출 대본', () => {
         anims.filter((a) => a?.flash).map((a) => a!.flash!.color.join(',')),
       )
       expect(colors.size).toBe(13)
-      expect(anims.filter((a) => a?.flash).length).toBe(108)
+      // ⚠️ 108 → 106. 굽는 쪽이 대본을 통째로 훑느라 **갈래마다 한 벌씩** 더
+      // 세고 있었다 (`moveAnimModule.mainPath`) — 짝을 겨눈 갈래와 콘테스트
+      // 갈래에만 있는 물들임이 섞여 있었고, 남은 둘(로케트박치기·저주)은
+      // 두 턴짜리 기술의 **뒷턴** 것이라 첫 턴 연출에는 없다
+      expect(anims.filter((a) => a?.flash).length).toBe(106)
     })
   })
 })

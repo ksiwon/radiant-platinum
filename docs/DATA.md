@@ -2269,6 +2269,7 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 | 자료 | 무엇을 적어 두었나 |
 |---|---|
 | `Dpr/masterdatas` `TrainerTable.TrainerType` | 트레이너 갈래 106줄마다 `ModelID`(`tr1074_00`)와 `LabelTrType` |
+| `Dpr/masterdatas` `TrainerTable.TrainerData` | 트레이너 707줄마다 파티·도구 넷·상금·**`AIBit`**. 그 칸이 배틀 AI의 바닥을 정한다 (PLAN §7.7.5) |
 | `Message/english` `DP_Trainers_Type_*` | 그 갈래의 이름 (`Gym Leader` · `Youngster`) |
 | `Message/english` `DP_Trainers_Name_*` | 그 갈래로 싸우는 사람 이름 (`Gardenia`) |
 | 디컴프 `res/field/events/*.json` + `res/trainers/data/*.json` | **어느 그림이 어느 갈래로 싸우는가** |
@@ -5079,7 +5080,7 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 
 디컴프의 `res/moves/<이름>/anim.s` 468개, 12,514줄. 기술 번호는
 `generated/moves.txt`의 줄 번호다(0~467이 전부 짝이 맞고 빠지는 것이 없다).
-→ `src/engine/battle/moveAnimTable.ts` 178KB (`pnpm gen:moveAnim`).
+→ `src/engine/battle/moveAnimTable.ts` 162KB (`pnpm gen:moveAnim`).
 
 ⚠️ **롬에서 안 온다.** 대본은 빌드 때 오버레이 코드로 굳어서 사용자의 롬
 하나로는 못 꺼낸다 — 그래서 브라우저 변환기 대신 소스에 굽는다 (CODEMAP §2.4).
@@ -5094,9 +5095,35 @@ Delay 50
 Func_Shake 2, 0, 1, 14, BATTLE_ANIM_BATTLER_SPRITE_ATTACKER
 ```
 
-뽑는 것: 배경 물들임 108(색 13가지) · 몸 물들임 153 · 몸 떨림 279 · 화면
-흔들림 30 · 달려 나감 36 · 포물선 22 · 공전 2 · 눌림 24 · 흑백 5 · 사라짐 12 ·
-입자 붙임 1,742자리.
+뽑는 것: 배경 물들임 106(색 13가지) · 몸 물들임 151 · 몸 떨림 267 · 화면
+흔들림 29 · 달려 나감 34 · 포물선 20 · 공전 2 · 눌림 24 · 흑백 5 · 사라짐 11 ·
+입자 붙임 1,418자리. 대본 길이는 중앙값 12 · 최대 125프레임이다.
+
+⚠️ **한 대본에 연출이 여러 벌 적혀 있다.** 468개 중 76개가 머리에서 갈라진다 —
+`JumpIfFriendlyFire`(짝을 겨눴나) · `JumpIfContest`(콘테스트인가) ·
+`JumpIfBattlerSide`(어느 쪽이 쓰나) · `JumpIfEffectChanceOdd`(두 턴짜리의 앞뒤).
+**파일을 통째로 훑으면 그 벌이 전부 더해진다** — 차지빔이 85프레임 대신
+255프레임(세 벌)이었고 이미터가 넷 대신 열셋이었다. 화면에 뜨는 알갱이 수가 그
+값에서 나오므로 눈에 보이는 차이였다. 실측 65개가 길이를, 324자리가 이미터를
+부풀리고 있었다.
+
+⚠️ **갈래가 두 꼴이고 다루는 법이 반대다.**
+
+```
+L_0:  JumpIfContest L_2   … 알맹이 …  End      ← 갈림. 점프를 **버린다**
+L_0:  … 알맹이 …  JumpIfBattlerSide …, L_1, L_2   End   ← 분배. **따라간다**
+```
+
+가르는 잣대는 점프 **뒤에 그리는 것이 남았는가**다(`mainPath`). 「첫 `End`에서
+자른다」로 하면 뿔드릴·눈보라가 이미터를 통째로 잃고, 「머리에 알맹이가 없을
+때만 따라간다」로 하면 깨트리다가 그렇다 — 둘 다 실제로 겪었다.
+
+⚠️ **두 턴짜리 기술은 앞턴 연출로 굳는다.** 공중날기·구멍파기·로케트박치기·
+파멸의소원·섀도다이브는 분배기가 턴으로 갈리는데 우리는 한 벌만 들 수 있다.
+
+⚠️ **`CreateEmitterForMove`도 이미터다.** 다섯 대본(차지빔·파괴광선·머드숏·
+시그널빔·물대포)만 쓰는데, 갈래를 안 가르던 시절에는 옆 갈래의 평범한
+`CreateEmitter`가 대신 세어져서 빠진 것이 안 보였다.
 
 색은 헤더가 BGR555 옆에 적어 둔 `// RGB(r, g, b)`(0~31)를 읽는다 — 16비트 값을
 우리가 다시 푸는 것보다 원문이 말한 것을 그대로 쓰는 편이 낫다.

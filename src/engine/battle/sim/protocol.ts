@@ -181,9 +181,22 @@ export function parseLine(line: string): BattleEvent | null {
       if (!actor || !BOOST_STATS.includes(stat)) break
       const n = Number(rest[2])
       if (!Number.isFinite(n)) break
-      // -setboost는 절대값이라 여기서 합치면 거짓이 된다. other로 넘긴다
-      if (cmd === '-setboost') break
+      // ⚠️ **-setboost는 절대값이다.** 더하면 거짓이 되므로 갈래를 따로 낸다 —
+      // 한동안 `other`로 흘려 버렸고, 배북을 쓴 뒤 화면과 AI가 랭크 0을 봤다
+      if (cmd === '-setboost') return { kind: 'setboost', actor, stat, amount: n }
       return { kind: 'boost', actor, stat, amount: cmd === '-boost' ? n : -n }
+    }
+
+    // 흑안개. **양쪽 자리 전부**를 되돌린다
+    case '-clearallboost':
+      return { kind: 'clearboosts' }
+
+    // 심리전. `|-copyboost|베끼는 쪽|베껴지는 쪽`
+    case '-copyboost': {
+      const actor = need(0)
+      const from = who(1)
+      if (!actor || !from) break
+      return { kind: 'copyboosts', actor, from }
     }
 
     case '-supereffective':

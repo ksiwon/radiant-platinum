@@ -13,12 +13,18 @@
 // 곧바로 그 기술의 평가를 끝낸다(`PopOrEnd`). 그래서 "잠들어 있고 + 방음이고 +
 // 세이프가드"라도 -10이지 -30이 아니다. 여기서는 early return이 그 역할을 한다.
 import type { AiMon, AiMove, AiTurn } from './context'
-import { hpPercent } from './context'
+import { hpPercent, knownMoves } from './context'
 import { allDamage, estimateDamage, isDamageScored, killsWithMaxRoll } from './damage'
 import { ABILITY, EFFECT, RISKY_EFFECTS, SETUP_EFFECTS, SOUND_MOVES } from './rom'
 import { effectivenessOf, TYPE } from './typeChart'
 
-/** 트레이너 데이터의 AI 비트. 플래티넘이 실제로 쓰는 것은 아래 여섯 개뿐이다 */
+/**
+ * 트레이너 데이터의 AI 비트.
+ *
+ * 자리는 디컴프의 `FlagTable`(`trainer_ai/script.s` 18줄) 차례 그대로다 —
+ * 그 표가 비트 하나를 루틴 하나로 보낸다. 플래티넘 트레이너 데이터가 실제로
+ * 켜는 것은 앞의 여섯이고, `BATON_PASS`는 **BDSP만 켠다**(`BDSP_TOP_FLAGS`)
+ */
 export const AI_FLAG = {
   /** 헛수 거르기. 928명 중 927명이 갖고 있다 */
   BASIC: 1 << 0,
@@ -32,6 +38,8 @@ export const AI_FLAG = {
   RISKY: 1 << 4,
   /** 변덕스러운 위력 선호 */
   PRIORITIZE_EXTREMES: 1 << 5,
+  /** 넘겨 줄 것을 쌓기. 플래티넘은 아무도 안 켜고 BDSP의 강자 77명이 켠다 */
+  BATON_PASS: 1 << 6,
 } as const
 
 /**
@@ -46,9 +54,39 @@ export const AI_FLAG = {
  */
 export const CHAMPION_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT
 
-/** 원작에 있지만 플래티넘 트레이너 데이터에서 한 번도 안 켜지는 플래그 */
+/**
+ * BDSP가 제일 센 상대에게 주는 값. **실측 111**(`0b110_1111`)이다.
+ *
+ * ⚠️ **이 값을 모든 트레이너의 바닥으로 깐다** (`TrainerBrain`). 플래티넘의
+ * 바닥은 오래 `CHAMPION_FLAGS`(7)였는데, 같은 신오를 다시 만든 공식 리메이크가
+ * 제 강자들에게 더 얹어 두었으므로 그쪽을 기준으로 올린다.
+ *
+ * 잰 자리는 BDSP 덤프의 `Dpr/masterdatas` 안 `TrainerTable.TrainerData`
+ * 707줄이고 칸 이름이 `AIBit`이다. 분포가 이렇다:
+ *
+ *   111  **77명**  관장 여덟 · 사천왕 넷 · 챔피언 · 갤럭시단 · 라이벌 ·
+ *                  타워타이쿤 다섯 · 재대결판 · 모리모토
+ *   107   6명   위에서 EXPERT만 빠진 값
+ *    25   1명 ·  11  3명 ·  9  **619명** ·  8  1명
+ *
+ * 111 = BASIC | EVAL_ATTACK | EXPERT | SETUP_FIRST_TURN | PRIORITIZE_EXTREMES |
+ * BATON_PASS다. **RISKY(0x10)는 안 들어 있다** — 제일 센 쪽이 도박을 안 한다.
+ * 비트 자리는 DP·플래티넘과 같은 표다(`FlagTable`); 잡몹 619명의 값 9가
+ * `BASIC|SETUP_FIRST_TURN`으로 떨어지고 강자 77명이 위 여섯으로 떨어지는 것이
+ * 그 근거다.
+ *
+ * 다시 재는 법: `py -3.13 .audit/bdspTrainerAi.py` (UnityPy로 타입트리를 읽는다)
+ */
+export const BDSP_TOP_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT
+  | AI_FLAG.SETUP_FIRST_TURN | AI_FLAG.PRIORITIZE_EXTREMES | AI_FLAG.BATON_PASS
+
+/** 원작에 있지만 플래티넘·BDSP 트레이너 데이터에서 한 번도 안 켜지는 플래그 */
 export const UNUSED_FLAGS = {
-  BATON_PASS: 1 << 6,
+  /**
+   * 더블 전용. ⚠️ **자료가 안 켜도 원작이 켠다** — 더블 배틀이면
+   * `TrainerAI_Init`이 마스크에 이 비트를 얹는다(`trainer_ai.c` 254줄).
+   * 우리는 아직 안 옮겼다 (PARITY §2.2)
+   */
   TAG_STRATEGY: 1 << 7,
   CHECK_HP: 1 << 8,
   WEATHER: 1 << 9,
@@ -593,6 +631,65 @@ function scoreRisky(turn: AiTurn, move: AiMove): number {
   return rollSkips(turn.random, 128) ? 0 : 2
 }
 
+/** 배턴터치 루틴이 따로 보는 기술 번호 (`generated/moves.txt`의 줄 차례 −1) */
+const MOVE_SWORDS_DANCE = 14
+const MOVE_BATON_PASS = 226
+const MOVE_CALM_MIND = 347
+const MOVE_DRAGON_DANCE = 349
+const MOVE_NASTY_PLOT = 417
+
+/** 랭크를 두 칸 올리는 넷. 원본이 이 넷만 이름으로 집어 따로 센다 */
+const SETUP_AT_HIGH_HP: ReadonlySet<number> = new Set([
+  MOVE_SWORDS_DANCE, MOVE_DRAGON_DANCE, MOVE_CALM_MIND, MOVE_NASTY_PLOT,
+])
+
+/**
+ * 넘겨 줄 것을 쌓는다 (`BatonPass_Main`).
+ *
+ * ⚠️ **이름이 하는 일을 다 말하지 않는다.** 본체는 「데미지를 안 내는 기술
+ * 전부에 92%로 +3」이고, 배턴터치를 실제로 아는지는 그 앞의 문지기일 뿐이다 —
+ * 모르면 31.25%로 그냥 끝내고 나머지 68.75%는 그대로 아래로 흘린다. 그래서 이
+ * 비트가 켜진 상대는 셋업·상태이상·방어를 훨씬 자주 고른다. BDSP의 강자 77명이
+ * 켜고 나오는 값이 이것이다 (`BDSP_TOP_FLAGS`).
+ *
+ * 안 옮긴 것이 없다 — 원본 `BatonPass_Main`의 다섯 갈래를 그대로 옮겼다
+ */
+function scoreBatonPass(turn: AiTurn, move: AiMove): number {
+  // 뒤에 남은 애가 없으면 넘겨 줄 데가 없다 (`CountAlivePartyBattlers`)
+  if (turn.self.bench === 0) return 0
+  // 데미지를 내는 기술은 이 루틴이 안 본다 (`AI_NO_COMPARISON_MADE`)
+  if (isDamageScored(move)) return 0
+  // 배턴터치를 모르면 31.25%로 끝낸다
+  const knowsPass = knownMoves(turn).some((m) => m.effect === EFFECT.PASS_STATS_AND_STATUS)
+  if (!knowsPass && rollSkips(turn.random, 80)) return 0
+
+  if (SETUP_AT_HIGH_HP.has(move.id)) {
+    // 나온 첫 턴이면 +5, 아니면 체력을 본다
+    if (turn.turn === 0) return 5
+    return hpPercent(turn.self) < 60 ? -10 : 1
+  }
+
+  if (move.effect === EFFECT.PROTECT) {
+    // 직전에 쓴 것이 방어·판별이면 -2 (`LoadBattlerPreviousMove`)
+    return turn.protectChain > 0 ? -2 : 2
+  }
+
+  if (move.id === MOVE_BATON_PASS) {
+    // 첫 턴에 넘길 것은 아직 없다
+    if (turn.turn === 0) return -2
+    // 공격 랭크를 먼저 보고, 걸리면 거기서 끝난다 — 특공은 그 뒤다
+    for (const stage of [turn.self.boosts.atk, turn.self.boosts.spa]) {
+      if (stage > 2) return 3
+      if (stage > 1) return 2
+      if (stage > 0) return 1
+    }
+    return 0
+  }
+
+  // 나머지 변화기는 92%로 +3
+  return rollSkips(turn.random, 20) ? 0 : 3
+}
+
 /**
  * 위력이 들쭉날쭉하거나 아예 위력이 없는 기술에 61%로 +2.
  *
@@ -629,6 +726,7 @@ export function scoreMoves(turn: AiTurn, flags: number, expert?: ExpertScorer): 
     if (flags & AI_FLAG.SETUP_FIRST_TURN) score += scoreSetupFirstTurn(turn, move)
     if (flags & AI_FLAG.RISKY) score += scoreRisky(turn, move)
     if (flags & AI_FLAG.PRIORITIZE_EXTREMES) score += scorePrioritizeExtremes(turn, move)
+    if (flags & AI_FLAG.BATON_PASS) score += scoreBatonPass(turn, move)
     return { move, score }
   })
 }

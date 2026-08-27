@@ -55,6 +55,14 @@ export interface AiMon {
 export interface AiMove {
   /** `|request|`의 칸 번호(1부터). 고른 뒤 그대로 행동이 된다 */
   slot: number
+  /**
+   * 더블에서 이 후보가 겨눈 자리 (`p2 move 1 2`의 뒤 숫자). 싱글은 없다.
+   *
+   * ⚠️ **칸 번호만으로는 후보를 못 되찾는다** — 같은 기술이 상대 둘을 겨눈
+   * 후보 둘로 갈라져 있고, 원작도 그 둘을 **따로 점수 매긴다**
+   * (`TrainerAI_MainDoubles`가 자리마다 `AI_CONTEXT.defender`를 바꿔 가며 돈다)
+   */
+  target?: number
   /** 롬 기술 번호 */
   id: number
   /** 롬 기술 효과 번호(`moves.json`의 `effect`) */
@@ -70,7 +78,17 @@ export interface AiMove {
 export interface AiTurn {
   self: AiMon
   foe: AiMon
+  /** 이번에 **점수를 매길** 후보. 더블에서는 겨눈 자리 하나 몫이다 */
   moves: readonly AiMove[]
+  /**
+   * 이 마리가 이번 턴에 고를 수 있는 것 **전부**. 안 주면 `moves`와 같다.
+   *
+   * ⚠️ **「내가 무엇을 아는가」는 이쪽으로 묻는다.** 더블에서 후보가 겨눈
+   * 자리별로 갈리는데(`sim/brain.buildTurns`) 그 조각으로 물으면 배턴터치처럼
+   * **대상을 안 찍는 기술**이 다른 조각에 있어서 「모른다」가 된다.
+   * 싱글은 조각이 하나라 둘이 같다
+   */
+  all?: readonly AiMove[]
   weather: string | null
   field: ReadonlySet<string>
   /**
@@ -107,6 +125,11 @@ function stageMultiplier(stage: number): number {
 /** 랭크를 먹인 능력치. 4세대는 곱한 뒤 버린다 */
 export function boosted(base: number, stage: number): number {
   return Math.floor(base * stageMultiplier(stage))
+}
+
+/** 이 마리가 고를 수 있는 것 전부. 「내가 무엇을 아는가」를 묻는 자리가 쓴다 */
+export function knownMoves(turn: AiTurn): readonly AiMove[] {
+  return turn.all ?? turn.moves
 }
 
 /** HP 백분율. 원작 AI의 `IfHPPercentLessThan`이 보는 값과 같은 반올림이다 */

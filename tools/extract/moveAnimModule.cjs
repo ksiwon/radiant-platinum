@@ -91,6 +91,78 @@ function argsOf(line) {
   })
 }
 
+/**
+ * 대본에서 **실제로 도는 한 줄기**만 뽑는다.
+ *
+ * ⚠️ **파일을 통째로 훑으면 안 된다.** 대본 468개 중 76개가 갈래를 들고 있다 —
+ * 머리에서 `JumpIfFriendlyFire L_1` · `JumpIfContest L_2`로 빠지고 같은 연출이
+ * 라벨 밑에 한 벌씩 더 적혀 있다. 다 더하면 길이도 입자 자리도 두세 배가 된다:
+ * 차지빔이 85프레임 대신 255프레임(세 벌)이고 이미터가 넷 대신 열셋이었다.
+ * 실측 66개가 그렇게 부풀어 있었다.
+ *
+ * 갈래는 두 꼴이고 **다루는 법이 반대다**:
+ *
+ *   갈림   `JumpIfContest L_2` … 알맹이 … `End`   ← 점프를 **버린다**
+ *   분배   … 알맹이 … `JumpIfBattlerSide …, L_1, L_2` `End`  ← **따라간다**
+ *
+ * 가르는 잣대는 자리다 — `End` 앞의 **마지막 줄**이 점프면 분배기다. 뿔드릴·
+ * 눈보라는 머리에 알맹이를 두고 마지막에 분배하고, 대타출동·공중날기는 머리가
+ * 분배 한 줄뿐이다. 「첫 `End`에서 자른다」로 하면 뒤엣것이 통째로 사라지고,
+ * 「알맹이가 없을 때만 따라간다」로 하면 앞엣것이 이미터를 잃는다.
+ *
+ * 짝을 겨누는 갈래도 콘테스트도 우리에게는 없다 (PARITY §9) — 첫 줄기가 곧
+ * 우리가 그릴 것이다
+ */
+function mainPath(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.replace(/\/\/.*$/, ''))
+  /** 라벨 → 그 밑의 줄들 */
+  const blocks = new Map()
+  let at = null
+  for (const line of lines) {
+    const label = /^([A-Za-z_]\w*):/.exec(line)?.[1]
+    if (label !== undefined) { at = label; blocks.set(label, []); continue }
+    if (at !== null && /^\s+\w/.test(line)) blocks.get(at).push(line)
+  }
+  if (blocks.size === 0) return lines
+
+  const isJump = (l) => /^\s+Jump/.test(l)
+  /**
+   * 그 점프가 가리키는 라벨.
+   *
+   * ⚠️ **첫 낱말이 라벨인 것이 아니다** — `JumpIfBattlerSide
+   * BATTLER_ROLE_ATTACKER, L_1, L_2`처럼 조건이 앞에 오는 명령이 있다
+   */
+  const targetOf = (line, from) =>
+    (line.match(/[A-Za-z_]\w*/g) ?? []).find((t) => blocks.has(t) && t !== from)
+
+  /** 무언가를 그리는 줄인가. 뒷정리(`WaitFor…`·`Unload…`)는 아니다 */
+  const draws = (l) => /^\s+(CreateEmitter|Delay|Func_|SetVar|Move|Add|Play|Switch|Btl)/.test(l)
+
+  const out = []
+  let name = [...blocks.keys()][0]
+  const seen = new Set()
+  for (let hop = 0; hop < 6; hop += 1) {
+    if (name === undefined || seen.has(name)) break
+    seen.add(name)
+    const rows = blocks.get(name) ?? []
+    const stop = rows.findIndex((l) => /^\s+End\b/.test(l))
+    const body = stop < 0 ? rows : rows.slice(0, stop)
+    for (const l of body) if (!isJump(l)) out.push(l)
+    // **뒤에 그리는 것이 남아 있으면 갈림이고, 없으면 분배기다.** 깨트리다는
+    // 점프 뒤에 뒷정리 두 줄만 두고 갈라지므로 「마지막 줄이 점프인가」로는
+    // 못 가른다 — 그 잣대로는 이미터가 통째로 사라졌다
+    let dispatch
+    body.forEach((l, i) => {
+      if (!isJump(l)) return
+      if (body.slice(i + 1).some(draws)) return
+      dispatch = l
+    })
+    if (dispatch === undefined) break
+    name = targetOf(dispatch, name)
+  }
+  return out
+}
+
 function parseAnim(text, colors) {
   const out = {
     particle: null,
@@ -113,8 +185,7 @@ function parseAnim(text, colors) {
   /** `Func_FadeBg`는 되돌리는 짝이 늘 뒤에 온다. 제일 진한 것만 남긴다 */
   let peak = -1
 
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/\/\/.*$/, '')
+  for (const line of mainPath(text)) {
     const name = /^\s+([A-Za-z_]\w*)/.exec(line)?.[1]
     if (name === undefined) continue
     const a = argsOf(line)
@@ -206,6 +277,10 @@ function parseAnim(text, colors) {
         break
       }
 
+      // ⚠️ `CreateEmitterForMove`도 이미터다. 다섯 대본(차지빔·파괴광선·머드숏·
+      // 시그널빔·물대포)만 쓰는데, 갈래를 안 가르던 시절에는 옆 갈래의 평범한
+      // `CreateEmitter`가 대신 세어져서 빠진 것이 안 보였다
+      case 'CreateEmitterForMove':
       case 'CreateEmitter':
       case 'CreateEmitterEx': {
         const cb = a.find((v) => typeof v === 'string' && v.startsWith('EMITTER_CB_'))

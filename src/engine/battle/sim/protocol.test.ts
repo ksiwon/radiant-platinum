@@ -101,6 +101,43 @@ describe('지속 효과 접기', () => {
     expect(switched.active.p2a?.volatiles.size).toBe(0)
   })
 
+  it('배북은 랭크를 **그 값으로** 못 박는다', () => {
+    // ⚠️ `-setboost`는 절대값이다. 한동안 `other`로 흘려 버려서, 배북을 쓴 뒤에도
+    // 화면과 AI가 공격 랭크 0을 보고 있었다 — AI는 그 상태에서 배북을 또 골랐다
+    const drum = fold([
+      '|switch|p2a: 난천|Snorlax, L58, M|100/100',
+      '|-boost|p2a: 난천|atk|1',
+      '|-setboost|p2a: 난천|atk|6|[from] move: Belly Drum',
+    ])
+    expect(drum.active.p2a?.boosts.atk).toBe(6)
+  })
+
+  it('흑안개는 **양쪽 자리 전부**를 되돌린다', () => {
+    const hazed = fold([
+      '|switch|p1a: 빛나|Milotic, L58, F|100/100',
+      '|switch|p2a: 난천|Garchomp, L58, F|100/100',
+      '|-boost|p2a: 난천|atk|2',
+      '|-unboost|p1a: 빛나|def|1',
+      '|-clearallboost',
+    ])
+    expect(hazed.active.p2a?.boosts.atk).toBe(0)
+    expect(hazed.active.p1a?.boosts.def).toBe(0)
+  })
+
+  it('심리전은 상대의 랭크를 통째로 베낀다', () => {
+    const copied = fold([
+      '|switch|p1a: 빛나|Milotic, L58, F|100/100',
+      '|switch|p2a: 난천|Garchomp, L58, F|100/100',
+      '|-boost|p2a: 난천|atk|2',
+      '|-boost|p2a: 난천|spe|1',
+      '|-copyboost|p1a: 빛나|p2a: 난천|[from] move: Psych Up',
+    ])
+    expect(copied.active.p1a?.boosts.atk).toBe(2)
+    expect(copied.active.p1a?.boosts.spe).toBe(1)
+    // 베껴지는 쪽은 안 바뀐다
+    expect(copied.active.p2a?.boosts.atk).toBe(2)
+  })
+
   it('필드 효과는 쪽이 없다', () => {
     const on = fold(['|-fieldstart|move: Trick Room|[of] p2a: 난천'])
     expect(on.field.has('trickroom')).toBe(true)
@@ -228,6 +265,15 @@ const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
 // ⚠️ 또 바뀌었다. 빈 턴 칸의 PP를 0으로 눕히면서(`session.lowerIdle`) 무작위로
 // 두는 쪽의 후보 목록이 달라졌고, 여덟 판이 다른 길로 흘렀다 — `-hitcount`(연타)와
 // `-singleturn`(방어·기합펀치)이 그 길에서 새로 보였다
+// ⚠️ 또 바뀌었다. `-setboost`·`-clearallboost`·`-copyboost` 셋에 모양을 줬다 —
+// 셋 다 **랭크의 진실을 바꾸는 줄**이라 부가 연출이 아니었다. 여덟 판에서는
+// `-setboost`만 보였다.
+//
+// ⚠️ **이 목록이 전부가 아니다.** 여덟 판이 보는 것은 표본이고, 120판을 굴려
+// 세면 열여섯 가지가 나온다(`-activate` 156 · `-singleturn` 56 · `-prepare` 46 ·
+// `-singlemove` 36 · `-hitcount` 33 · `-notarget` 29 · `-block` 28 ·
+// `-mustrecharge` 15 · `-endability` 11 · `-fieldactivate` 9 · `-cureteam` 3 ·
+// `-hint` 2 · `-ohko` 2). 그쪽은 전부 **글과 연출**이고 진행에는 안 걸린다
 const UNMODELLED = ['-activate', '-hitcount', '-prepare', '-singleturn']
 
 /** 배틀 굴리기는 비싸다. 두 테스트가 같은 판을 나눠 쓴다 */

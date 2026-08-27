@@ -15,10 +15,10 @@
 import type { Move } from '../../../data/schema'
 import type { AiMon, AiMove, AiTurn } from '../ai/context'
 import type { BattleAction } from '../choice'
-import { legalActions } from '../choice'
+import { legalActions, TARGET_FOE_A, TARGET_FOE_B } from '../choice'
 import type { BattleEvent, BattleRequest, SideId } from '../events'
 import { trainerPolicy } from '../ai/policy'
-import { CHAMPION_FLAGS } from '../ai/score'
+import { BDSP_TOP_FLAGS } from '../ai/score'
 import { postKoSwitchIn, shouldSwitch, type BenchMon } from '../ai/switching'
 import { abilitySlotOf, genderOf, statsOf } from '../../pokemon/instance'
 import type { BattleView, ViewMon } from '../view'
@@ -47,8 +47,25 @@ interface BrainOptions {
   item?: (id: number) => { holdEffect?: number, effectParam?: number,
     naturalGiftPower?: number, naturalGiftType?: number } | undefined
   random: () => number
+  /**
+   * 자료 값 위에 까는 바닥. 안 주면 `BDSP_TOP_FLAGS`다.
+   *
+   * ⚠️ **바꿔 끼우라고 연 자리가 아니다.** 바닥을 바꾸면 게임 전체의 상대가
+   * 달라진다 — 여는 이유는 하나, `ai/strength.test.ts`가 **바닥 후보끼리
+   * 붙여서** 어느 쪽이 센지 재기 때문이다. 그 잣대 없이 바닥을 고르면
+   * 지어낸 값이 된다
+   */
+  floor?: number
   /** AI가 조종하는 쪽. 지금은 늘 p2다 */
   side: SideId
+  /**
+   * 더블인가 (PARITY §2.2).
+   *
+   * ⚠️ **안 주면 자리 A로만 생각한다.** 실제로 그랬다 — 둘째 자리도 첫째의
+   * 기술 목록으로 점수를 매기고, 컨트롤러가 그 **칸 번호**만 둘째에게 옮겨
+   * 심었다. 둘째의 기술칸이 다르면 그것은 사실상 무작위였다
+   */
+  doubles?: boolean
   team: SideMon[]
   foeTeam: SideMon[]
 }
@@ -67,16 +84,19 @@ export class TrainerBrain {
   private turn = 0
 
   /**
-   * 실제로 쓰는 AI 비트. 자료 값에 챔피언의 것을 깐다 (`CHAMPION_FLAGS`).
+   * 실제로 쓰는 AI 비트. 자료 값에 **BDSP의 강자들이 켜고 나오는 것**을 깐다
+   * (`BDSP_TOP_FLAGS` = 111).
    *
-   * 롬 그대로면 928명 중 639명이 헛수만 거르는 수준이라, 길에서 만나는
-   * 만나는 트레이너가 반감되는 기술을 그대로 내지른다
+   * 플래티넘 롬 그대로면 928명 중 639명이 헛수만 거르는 수준이라, 길에서
+   * 만나는 트레이너가 반감되는 기술을 그대로 내지른다. 바닥을 까는 자리는
+   * 여기 하나뿐이고, 자료에 더 켜져 있으면 그쪽을 남긴다 —
+   * 플래티넘에만 있는 `RISKY`가 그렇다 (`|`라서 안 지워진다)
    */
   private readonly flags: number
 
   constructor(options: BrainOptions) {
     this.options = options
-    this.flags = options.flags | CHAMPION_FLAGS
+    this.flags = options.flags | (options.floor ?? BDSP_TOP_FLAGS)
   }
 
   /** 상대편(우리) 쪽 표시 */
@@ -203,6 +223,7 @@ export class TrainerBrain {
       if (id === null || !data) return null
       out.push({
         slot: a.slot,
+        ...(a.target === undefined ? {} : { target: a.target }),
         id,
         effect: data.effect,
         power: data.power,
@@ -215,31 +236,69 @@ export class TrainerBrain {
     return out
   }
 
-  /** 지금 상황. 기술을 못 고르는 턴이면 null */
-  buildTurn(request: BattleRequest, view: BattleView): AiTurn | null {
-    const mySeen = activeAt(view, this.options.side)
-    const foeSeen = activeAt(view, this.foeSide)
-    if (!mySeen || !foeSeen) return null
-
+  /**
+   * 지금 상황. 기술을 못 고르는 턴이면 빈 배열.
+   *
+   * ⚠️ **더블은 여러 벌이 나온다.** 원작은 겨눌 수 있는 자리마다 점수를 따로
+   * 매기므로(`TrainerAI_MainDoubles`), 겨눈 자리로 후보를 묶고 그 자리에 선
+   * 마리를 `foe`로 삼은 한 벌씩을 낸다. 싱글은 늘 한 벌이다
+   */
+  buildTurns(request: BattleRequest, view: BattleView, at = 0): AiTurn[] {
+    const mySeen = activeAt(view, this.options.side, at)
+    if (!mySeen) return []
     const me = this.options.team.find((m) => m.key === mySeen.key)
-    const foe = this.options.foeTeam.find((m) => m.key === foeSeen.key)
-    if (!me || !foe) return null
+    if (!me) return []
 
-    const moves = this.toAiMoves(this.choices(request))
-    if (!moves || !moves.length) return null
-
-    return {
-      self: this.toAiMon(me, mySeen, view, true),
-      foe: this.toAiMon(foe, foeSeen, view, false),
-      moves,
-      weather: view.weather,
-      field: view.field,
-      turn: this.turnsOut(mySeen.key),
-      foeKnownMoves: this.foeMoves,
-      foeLastMoveCategory: this.foeLast?.category ?? null,
-      protectChain: this.protectChain,
-      random: this.options.random,
+    const groups = new Map<number | undefined, BattleAction[]>()
+    for (const a of this.choices(request, view, at)) {
+      if (a.type !== 'move') continue
+      const list = groups.get(a.target)
+      if (list) list.push(a)
+      else groups.set(a.target, [a])
     }
+    if (groups.size === 0) return []
+
+    const self = this.toAiMon(me, mySeen, view, true)
+    // 「내가 무엇을 아는가」를 묻는 자리가 볼 목록. 겨눈 자리로 갈리기 **전**의
+    // 후보 전부다 — 조각으로 물으면 대상을 안 찍는 기술이 다른 조각에 있어서
+    // 「모른다」가 된다 (`ai/context.knownMoves`)
+    const all = [...groups.values()].flatMap((list) => this.toAiMoves(list) ?? [])
+    const out: AiTurn[] = []
+    for (const [target, actions] of groups) {
+      const foeSeen = this.foeSeenFor(view, target, at)
+      const foe = foeSeen && this.options.foeTeam.find((m) => m.key === foeSeen.key)
+      if (!foeSeen || !foe) return []
+      const moves = this.toAiMoves(actions)
+      if (!moves || !moves.length) return []
+      out.push({
+        self,
+        foe: this.toAiMon(foe, foeSeen, view, false),
+        moves,
+        all,
+        weather: view.weather,
+        field: view.field,
+        turn: this.turnsOut(mySeen.key),
+        foeKnownMoves: this.foeMoves,
+        foeLastMoveCategory: this.foeLast?.category ?? null,
+        protectChain: this.protectChain,
+        random: this.options.random,
+      })
+    }
+    return out
+  }
+
+  /**
+   * 그 후보가 겨눈 자리에 서 있는 마리.
+   *
+   * 대상을 안 찍는 후보(`target`이 없다 — 싱글 전부와 전체기)는 **마주 선
+   * 자리**를 본다. 원작은 그 자리를 `BattleSystem_RandomOpponent`로 뽑지만,
+   * 우리는 그 자리에서 뽑은 값이 명령의 대상과 어긋날 수 있어 마주 선 쪽으로
+   * 고정한다 — 서 있지 않으면 상대 첫 자리다
+   */
+  private foeSeenFor(view: BattleView, target: number | undefined, at: number): ViewMon | null {
+    if (target === TARGET_FOE_A) return activeAt(view, this.foeSide, 0)
+    if (target === TARGET_FOE_B) return activeAt(view, this.foeSide, 1)
+    return activeAt(view, this.foeSide, at) ?? activeAt(view, this.foeSide, 0)
   }
 
   /**
@@ -247,10 +306,34 @@ export class TrainerBrain {
    *
    * **빈 턴 칸을 뺀다.** 상대 팀에도 맨 뒤에 물장구가 한 칸 붙어 있는데
    * (`session.ts`의 `IDLE_MOVE`) 그건 트레이너가 **도구를 쓰는 턴**에 기술을
-   * 안 쓰게 하려고 우리가 붙인 칸이다. AI가 그걸 고르면 그냥 한 턴을 버린다
+   * 안 쓰게 하려고 우리가 붙인 칸이다. AI가 그걸 고르면 그냥 한 턴을 버린다.
+   *
+   * ⚠️ **짝을 겨누는 후보도 뺀다.** 원작은 짝도 후보로 놓고 점수를 매기는데
+   * (`TrainerAI_MainDoubles`), 그것이 성립하는 것은 짝을 도우려는 갈래를
+   * `AI_FLAG_TAG_STRATEGY`가 따로 들고 있어서다. 그 루틴 없이 짝을 후보에
+   * 남기면 **효과가 굉장한 쪽이 제 짝**이라 자기편을 때린다. 다 빼서 고를 것이
+   * 없어지면 안 뺀다 — 도우미밖에 없는 마리가 그 자리다
    */
-  private choices(request: BattleRequest): BattleAction[] {
-    return legalActions(request, { hiddenSlot: idleSlotOf(request) })
+  private choices(request: BattleRequest, view: BattleView, at = 0): BattleAction[] {
+    const base = { hiddenSlot: idleSlotOf(request, at), at }
+    if (this.options.doubles !== true) return legalActions(request, base)
+    const all = legalActions(request, {
+      ...base,
+      doubles: true,
+      foeAlive: this.aliveOn(view, this.foeSide),
+      allyAlive: this.aliveOn(view, this.options.side)[at === 0 ? 1 : 0],
+    })
+    const foeOnly = all.filter((a) => a.type !== 'move' || a.target === undefined
+      || a.target > 0)
+    return foeOnly.some((a) => a.type === 'move') ? foeOnly : all
+  }
+
+  /** 그 쪽 두 자리에 멀쩡한 마리가 서 있는가 */
+  private aliveOn(view: BattleView, side: SideId): [boolean, boolean] {
+    return [0, 1].map((at) => {
+      const mon = activeAt(view, side, at)
+      return mon !== null && !mon.fainted
+    }) as [boolean, boolean]
   }
 
   /**
@@ -308,15 +391,20 @@ export class TrainerBrain {
     return out
   }
 
-  /** 쓰러지기 전에 스스로 바꿀 것인가 (`TrainerAI_ShouldSwitch`) */
-  private wantsSwitch(request: BattleRequest, view: BattleView): boolean {
-    const turn = this.buildTurn(request, view)
+  /**
+   * 쓰러지기 전에 스스로 바꿀 것인가 (`TrainerAI_ShouldSwitch`).
+   *
+   * 여러 벌이 와도 **첫 벌만 본다** — 원작의 이 갈래는 싱글용이고, 겨눈 자리가
+   * 달라도 「지금 이 애로 계속 갈까」의 답은 하나다 (PLAN §7.7.6)
+   */
+  private wantsSwitch(request: BattleRequest, view: BattleView, at = 0): boolean {
+    const turn = this.buildTurns(request, view, at)[0]
     if (!turn) return false
     return shouldSwitch({
       self: turn.self,
       foe: turn.foe,
       moves: turn.moves,
-      bench: this.benchOf(this.choices(request)),
+      bench: this.benchOf(this.choices(request, view, at)),
       weather: turn.weather,
       random: this.options.random,
     })
@@ -328,9 +416,9 @@ export class TrainerBrain {
    * **여기가 비어 있으면 챔피언이 아무나 내보낸다.** 실제로 그랬다 — 정책의
    * 기본값이 무작위였다
    */
-  private pickSwitch(options: BattleAction[], view: BattleView): BattleAction {
+  private pickSwitch(options: BattleAction[], view: BattleView, at = 0): BattleAction {
     const fallback = options[Math.floor(this.options.random() * options.length)] ?? options[0]!
-    const foeSeen = activeAt(view, this.foeSide)
+    const foeSeen = activeAt(view, this.foeSide, at) ?? activeAt(view, this.foeSide, 0)
     const foeMon = foeSeen && this.options.foeTeam.find((m) => m.key === foeSeen.key)
     if (!foeSeen || !foeMon) return fallback
     const foe = this.toAiMon(foeMon, foeSeen, view, false)
@@ -344,10 +432,10 @@ export class TrainerBrain {
     return trainerPolicy({
       flags: this.flags,
       random: this.options.random,
-      build: (request) => this.buildTurn(request, view()),
-      list: (request) => this.choices(request),
-      wantsSwitch: (request) => this.wantsSwitch(request, view()),
-      chooseSwitch: (options) => this.pickSwitch(options, view()),
+      build: (request, at) => this.buildTurns(request, view(), at),
+      list: (request, at) => this.choices(request, view(), at),
+      wantsSwitch: (request, at) => this.wantsSwitch(request, view(), at),
+      chooseSwitch: (options, _request, at) => this.pickSwitch(options, view(), at),
     })
   }
 }

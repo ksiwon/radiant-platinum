@@ -59,7 +59,7 @@ interface ControllerOptions extends BattleOptions {
    * `flags`는 `trainers.json`의 `ai` 바이트 그대로다. `foePolicy`를 같이 주면
    * 그쪽이 이긴다 — 테스트가 정책만 바꿔 끼울 수 있어야 해서다
    */
-  ai?: { flags: number; moves: MoveTable }
+  ai?: { flags: number; moves: MoveTable; floor?: number }
   /**
    * 시합규칙 「교체」. 상대가 다음 마리를 내보내기 전에 우리도 바꿀지 묻는다.
    *
@@ -188,10 +188,14 @@ export class BattleController {
       ? new TrainerBrain({
         flags: options.ai.flags,
         moves: options.ai.moves,
+        // 바닥은 `TrainerBrain`이 정한다. 재는 자리만 갈아 끼운다 (`floor`)
+        ...(options.ai.floor === undefined ? {} : { floor: options.ai.floor }),
         // 도구 보정을 AI가 보려면 표가 필요하다. 트레이너전에는 늘 있다
         item: options.items?.item,
         random: this.random,
         side: 'p2',
+        // ⚠️ **이걸 안 넘기면 AI가 자리 A로만 생각한다** (PARITY §2.2)
+        ...(options.doubles === true ? { doubles: true } : {}),
         team: this.foeTeam,
         foeTeam: this.playerTeam,
       })
@@ -751,8 +755,15 @@ export class BattleController {
       // 이미 요청을 비운 뒤라 **배틀이 그 자리에 선다** — 합법 목록으로 접는다
       if (pick?.type === 'move') {
         const want = pick.slot
-        const same = legal.filter((a) => a.type === 'move' && a.slot === want)
-        pick = same[Math.floor(this.random() * same.length)] ?? same[0] ?? null
+        const aimed = pick.target
+        const same = legal.filter((a): a is Extract<BattleAction, { type: 'move' }> =>
+          a.type === 'move' && a.slot === want)
+        // ⚠️ **AI가 찍은 자리를 먼저 살린다.** 원작도 겨눈 자리마다 점수를 따로
+        // 매기고 제일 높은 (기술, 자리) 짝을 고른다 (`TrainerAI_MainDoubles`).
+        // 여기서 다시 무작위로 흩으면 그 판단이 통째로 버려진다 — 실제로 그랬다
+        const exact = aimed === undefined ? [] : same.filter((a) => a.target === aimed)
+        const pool = exact.length > 0 ? exact : same
+        pick = pool[Math.floor(this.random() * pool.length)] ?? pool[0] ?? null
       } else if (pick?.type === 'switch' && taken.has(pick.index)) {
         pick = null
       }

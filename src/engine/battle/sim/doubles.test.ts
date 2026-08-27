@@ -31,7 +31,7 @@ function team(prefix: string, seed: number) {
   ]
 }
 
-async function open(seed: number) {
+async function open(seed: number, smart = false) {
   return BattleController.start({
     player: { name: '나', team: team('p1', seed) },
     foe: { name: '상대', team: team('p2', seed + 100) },
@@ -39,6 +39,8 @@ async function open(seed: number) {
     basePp,
     random: rng(seed),
     seed: [seed & 0xffff, (seed * 7) & 0xffff, (seed * 13) & 0xffff, (seed * 31) & 0xffff],
+    // 바닥은 `TrainerBrain`이 깐다. 0으로 줘도 BDSP의 111이 먹는다 (PLAN §7.7.5)
+    ...(smart ? { ai: { flags: 0, moves: { byId: movesById } } } : {}),
   })
 }
 
@@ -119,6 +121,50 @@ maybe('더블 배틀', () => {
     }
     expect(needsTarget(undefined)).toBe(false)
   })
+
+  it('⚠️ AI가 자리마다 **따로** 생각한다 — 그리고 제 짝을 안 때린다', async () => {
+    // ⚠️ **오래 안 그랬다.** 브레인이 `at`을 안 받아서 자리 A로 한 번 판단하고,
+    // 컨트롤러가 그 **칸 번호**만 자리 B의 합법 목록에 다시 심었다. B의 기술칸이
+    // 다르면 그것은 사실상 무작위였고, 겨눈 자리는 그 뒤에 또 무작위로 흩어졌다.
+    //
+    // 잡는 법은 **고른 칸 번호**다 — 옛 코드에서는 두 자리가 반드시 같았다.
+    // 그리고 짝을 겨눈 명령이 한 번이라도 나오면 안 된다
+    const SEED = 7
+    const foes = team('p2', SEED + 100)
+    /** 키 → 그 마리의 기술 번호 차례 */
+    const slotsOf = new Map(foes.map((m) => [m.key, m.mon.moves.map((s) => s.move)]))
+    const { controller } = await open(SEED, true)
+    try {
+      let sameSlot = 0
+      let differed = 0
+      let hitAlly = 0
+      for (let turn = 0; turn < 25 && !controller.ended; turn += 1) {
+        const view = controller.state
+        const step = await controller.chooseTurn(pickTurn(controller, rng(turn * 13 + 1)))
+        const picked = new Map<string, number>()
+        for (const e of step.events) {
+          if (e.kind !== 'move' || e.actor.side !== 'p2' || e.move === null) continue
+          // ⚠️ **제 몸에 거는 기술은 여기 들면 안 된다** — 껍질에숨기·성장은
+          // 겨눈 자리가 자기 자신이라 쪽만 보면 「짝을 때렸다」로 세어진다
+          if (e.target && e.target.side === 'p2' && e.target.slot !== e.actor.slot) hitAlly += 1
+          const key = view.active[e.actor.slot]?.key
+          const at = key === undefined ? -1 : slotsOf.get(key)?.indexOf(e.move) ?? -1
+          if (at >= 0) picked.set(e.actor.slot, at)
+        }
+        const a = picked.get('p2a')
+        const b = picked.get('p2b')
+        if (a === undefined || b === undefined) continue
+        if (a === b) sameSlot += 1
+        else differed += 1
+      }
+      expect(sameSlot + differed, '두 자리가 같이 기술을 쓴 턴이 한 번도 없다')
+        .toBeGreaterThan(2)
+      // 옛 코드에서는 `differed`가 반드시 0이었다
+      expect(differed, `두 자리가 늘 같은 칸을 골랐다 (같음 ${String(sameSlot)})`)
+        .toBeGreaterThan(0)
+      expect(hitAlly, 'AI가 제 짝을 겨눴다').toBe(0)
+    } finally { controller.destroy() }
+  }, 60_000)
 
   it('⚠️ 끝까지 굴려도 안 굳는다', async () => {
     // 싱글에서 배틀을 세운 것들(빈 턴 칸·잠긴 기술·강제 교체)이 더블에서는
