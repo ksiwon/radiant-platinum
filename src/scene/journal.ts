@@ -22,6 +22,7 @@ import {
   mapTransitionEvent, monVariant, rollPage, saveLocationEvent, saveMon, saveTitle,
   saveTrainer, trainerKind, type JournalEntry,
 } from '../engine/world/journal'
+import { useMenuStore } from '../state/menuStore'
 import { useSaveStore } from '../state/saveStore'
 
 /**
@@ -57,21 +58,19 @@ export function journalEnterMap(mapId: number, now: Date = new Date()): void {
   const acquired = journalAcquired()
   const save = useSaveStore.getState()
   const today = journalDate(now)
+  // ⚠️ **쪽을 넘기기 전에 묻는다** — 넘기고 나면 첫 쪽이 오늘이 되어 언제나 거짓이다
+  const opens = checkOpenOnContinue(save.journal, today, acquired)
   const rolled = rollPage(save.journal, today, acquired)
   if (!acquired) return
   const journal = rolled.journal
   journal[0] = saveTitle(journal[0]!, { ...today, mapId })
   useSaveStore.setState({ journal })
-}
-
-/**
- * 이어하기에서 노트가 저절로 펼쳐지는가 (`Journal_CheckOpenOnContinue`).
- *
- * ⚠️ **쪽을 넘기기 전에 물어야 한다.** 넘기고 나면 첫 쪽이 오늘이 되어
- * 언제나 거짓이 된다
- */
-export function journalOpensOnContinue(now: Date = new Date()): boolean {
-  return checkOpenOnContinue(useSaveStore.getState().journal, journalDate(now), journalAcquired())
+  // 이틀 넘게 안 켜면 노트가 저절로 펼쳐진다 (`FieldTask_LoadSavedGameMap` 0번).
+  //
+  // ⚠️ **원작은 쪽을 넘기기 전에 펼치고, 닫힐 때까지 맵을 안 세운다**(0번 → 4번
+  // → 1번). 그래서 사람이 보는 종이는 **지난번 쪽**이다. 우리는 맵을 세우는 것을
+  // 막을 수 없어 넘긴 뒤에 펼치는데, 넘어간 그 쪽을 가리키면 **종이는 같다**
+  if (opens) useMenuStore.getState().openJournal(rolled.rolled ? 1 : 0)
 }
 
 /**

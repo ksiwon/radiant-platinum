@@ -5,6 +5,7 @@
 // 만들면 그 구분이 화면에서 사라진다.
 import { keyframes, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { menu, SKIN } from './fieldWindow.css'
 
 /** 원작 창의 가로세로비 27:4. 그것보다 넓어지지 않게 최대 폭을 둔다 */
 const MAX_WIDTH = 760
@@ -23,11 +24,7 @@ export const frame = style({
 
 export const box = style({
   position: 'relative',
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.96), rgba(232, 236, 244, 0.96))',
-  border: '2px solid rgba(60, 74, 102, 0.85)',
-  borderRadius: 10,
-  boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.7)',
-  color: '#20263a',
+  ...SKIN,
   padding: '14px 26px 14px 20px',
   fontSize: 19,
   lineHeight: '30px',
@@ -59,27 +56,9 @@ export const arrow = style({
   animation: `${blink} 0.7s steps(1, end) infinite`,
 })
 
-export const menu = style({
-  position: 'absolute',
-  right: 0,
-  bottom: 'calc(100% + 10px)',
-  minWidth: 128,
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.96), rgba(232, 236, 244, 0.96))',
-  border: '2px solid rgba(60, 74, 102, 0.85)',
-  borderRadius: 10,
-  boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.7)',
-  color: '#20263a',
-  padding: '8px 12px',
-  fontSize: 18,
-  lineHeight: '30px',
-})
+export { menu }
 
-/**
- * 목록 메뉴. 예/아니오와 달리 항목이 길고 많다 — 여덟 개를 넘으면 스크롤한다.
- *
- * 원작은 창 자리를 명령 인자로 받지만(`anchorX`/`anchorY`) 우리 화면은 해상도가
- * 다르므로 대사창 위 오른쪽에 붙인다. 자리가 달라도 고르는 값은 같다
- */
+/** 목록 메뉴. 예/아니오와 달리 항목이 길고 많다 — 여덟 개를 넘으면 스크롤한다 */
 export const listMenu = style([menu, {
   display: 'grid',
   gap: '0 18px',

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Group } from 'three'
-import { loadMonModel, makeBody, play, type MonBody } from '../battle/monModel'
+import { useMonBody } from '../monBody'
 import { cinematicScale } from '../cinematicMotion'
 import { starterScene } from './starterRefs'
 
@@ -12,26 +12,8 @@ const STAGE_UNIT = 1 / 50
 export function StarterMon({ species, at }: { species: number; at: number }) {
   const group = useRef<Group>(null)
   const shown = useRef(0)
-  const [body, setBody] = useState<MonBody | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    let made: MonBody | null = null
-    void loadMonModel(species)
-      .then((loaded) => {
-        if (!alive || !loaded) return
-        made = makeBody(loaded)
-        play(made, 'wait')
-        setBody(made)
-      })
-      .catch(() => {
-        /* The volumetric fallback below remains visible. */
-      })
-    return () => {
-      alive = false
-      made?.mixer.stopAllAction()
-    }
-  }, [species])
+  /* The volumetric fallback below remains visible until the body arrives. */
+  const body = useMonBody(species)
 
   useFrame(({ clock }, delta) => {
     const node = group.current
@@ -42,7 +24,6 @@ export function StarterMon({ species, at }: { species: number; at: number }) {
     const scale = body ? cinematicScale(body.tall) : 1
     node.scale.setScalar((scale / STAGE_UNIT) * shown.current * 0.78)
     node.position.y = -27 + Math.sin(clock.elapsedTime * 2.2 + at) * 1.2
-    body?.mixer.update(delta)
   })
 
   const hue = (species * 47) % 360

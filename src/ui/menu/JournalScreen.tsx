@@ -27,7 +27,8 @@ export function JournalScreen() {
   const journal = useSaveStore((s) => s.journal)
   const rivalName = useSaveStore((s) => s.rivalName)
   const [names, setNames] = useState<JournalNames | null>(null)
-  const [page, setPage] = useState(0)
+  // 이어하기가 저절로 펼친 노트는 **지난번 쪽**에서 시작한다 (`scene/journal`)
+  const [page, setPage] = useState(useMenuStore.getState().journalAt)
 
   useEffect(() => {
     let live = true

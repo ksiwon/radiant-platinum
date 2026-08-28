@@ -307,30 +307,3 @@ export function chooseRandom(
   if (!options.length) return null
   return options[Math.floor(random() * options.length)] ?? options[0]!
 }
-
-/**
- * 자리마다 하나씩 무작위로. 더블에서 야생·정책 없는 상대가 쓴다.
- *
- * ⚠️ **같은 마리를 두 자리가 같이 내보내면 안 된다.** sim이
- * "can't switch to a Pokémon already switching in"으로 거절한다 — 그래서
- * 앞 자리가 고른 교체 대상을 뒤 자리 후보에서 뺀다
- */
-export function chooseRandomTurn(
-  request: BattleRequest | null,
-  random: () => number,
-  hide: ActionOptions = {},
-): BattleAction[] {
-  if (!request || request.wait) return []
-  const count = request.active?.length ?? request.forceSwitch?.length ?? 1
-  const taken = new Set<number>()
-  const out: BattleAction[] = []
-  for (let at = 0; at < count; at++) {
-    const options = legalActions(request, { ...hide, at })
-      .filter((a) => a.type !== 'switch' || !taken.has(a.index))
-    const pick = options[Math.floor(random() * options.length)] ?? options[0]
-    if (!pick) return out
-    if (pick.type === 'switch') taken.add(pick.index)
-    out.push(pick)
-  }
-  return out
-}

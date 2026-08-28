@@ -1,16 +1,13 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { DoubleSide, Group, Mesh } from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
-import { assets } from '../data/providers/assetProvider'
 import { type HallOfFameStagePhase, useHallOfFameStageStore } from '../state/hallOfFameStageStore'
-import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
+import { useMonBody } from './monBody'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
-import { preparePersonModel } from './personModel'
+import { usePersonModel } from './personModel'
 
 const PARTY_POSITIONS = [
   [0, 0, -1.45],
@@ -22,7 +19,6 @@ const PARTY_POSITIONS = [
 ] as const
 
 const CONFETTI_COLORS = ['#ff5f6d', '#ffd86f', '#6fd0ff', '#8bff9b', '#d99bff']
-const playerLoader = new GLTFLoader()
 
 function FallbackMon({ species }: { species: number }) {
   const hue = (species * 47) % 360
@@ -61,35 +57,15 @@ function HallMon({
   phase: HallOfFameStagePhase
 }) {
   const group = useRef<Group>(null)
-  const [body, setBody] = useState<MonBody | null>(null)
+  // 몸이 안 오면 절차형 몸을 쓴다
+  const body = useMonBody(species, { form, gender, shiny })
   const shown = useRef(0)
-
-  useEffect(() => {
-    let alive = true
-    let made: MonBody | null = null
-    setBody(null)
-    void loadMonModel(species, form, { gender, shiny })
-      .then((loaded) => {
-        if (!alive || !loaded) return
-        made = makeBody(loaded)
-        play(made, 'wait')
-        setBody(made)
-      })
-      .catch(() => {
-        /* 절차형 몸을 쓴다 */
-      })
-    return () => {
-      alive = false
-      made?.mixer.stopAllAction()
-    }
-  }, [species, form, gender, shiny])
 
   useEffect(() => {
     shown.current = 0
   }, [visible, phase])
 
   useFrame((state, delta) => {
-    body?.mixer.update(delta)
     const node = group.current
     if (!node) return
     shown.current += ((visible ? 1 : 0) - shown.current) * Math.min(1, delta * 5.5)
@@ -122,33 +98,8 @@ function HallMon({
 
 function HallPlayer({ gender, visible }: { gender: 'boy' | 'girl'; visible: boolean }) {
   const wrapper = useRef<Group>(null)
-  const [model, setModel] = useState<Group | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    const path = playerModelPath(gender)
-    const provider = assets()
-    void provider
-      .objectUrl(path)
-      .then(async (url) => {
-        try {
-          const gltf = await playerLoader.loadAsync(url)
-          if (!alive) return
-          // 복제 전에 손질한다 — 오프닝·필드와 같은 것을 쓴다 (`scene/personModel`)
-          preparePersonModel(gltf.scene)
-          const root = cloneSkinned(gltf.scene) as Group
-          setModel(root)
-        } finally {
-          provider.releaseObjectUrl(path)
-        }
-      })
-      .catch(() => {
-        /* 플레이어만 없는 채로 포켓몬 장면은 계속 돈다 */
-      })
-    return () => {
-      alive = false
-    }
-  }, [gender])
+  // 받는 것은 오프닝과 같다. 안 오면 플레이어만 없는 채로 포켓몬 장면은 계속 돈다
+  const model = usePersonModel(playerModelPath(gender))
 
   useLayoutEffect(() => {
     if (wrapper.current && model) normalizeModel(wrapper.current, model, PLAYER_HEIGHT)

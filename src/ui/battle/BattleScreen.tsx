@@ -34,6 +34,7 @@ import { SwitchScreen } from './SwitchScreen'
 import { battleText, type BattleNames } from './messages'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
+import { CommandButton } from './CommandButton'
 import * as css from './battleScreen.css'
 // ⚠️ **소리는 지연 마운트다.** `BattleScreen`은 App이 정적으로 잡는데(막을
 // 화면이 언제 뜰지 몰라서다), `BattleSound`가 `music`을 정적으로 잡으면 소리
@@ -543,22 +544,15 @@ function RootMenu(
       {/* 더블은 자리마다 물어본다. 누구에게 묻는지가 안 보이면 아무것도 못 고른다 */}
       {who !== null && <div className={css.askWho}>{withTopic(who)} 무엇을 할까?</div>}
       {entries.map((entry, i) => (
-        <button
+        <CommandButton
           key={entry.label}
-          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
-          style={{ ['--tint' as string]: entry.tint }}
+          on={i === cursor}
+          label={entry.label}
+          sub={entry.sub}
+          tint={entry.tint}
           onClick={entry.go}
           disabled={!entry.on}
-        >
-          {i === cursor && <span className={css.caret} aria-hidden />}
-          <span className={css.face}>
-            <span className={css.dot} aria-hidden />
-            <span className={css.labelCol}>
-              <span className={css.label}>{entry.label}</span>
-              <span className={css.subLine}>{entry.sub}</span>
-            </span>
-          </span>
-        </button>
+        />
       ))}
     </>
   )
@@ -591,22 +585,15 @@ function SafariMenu(
   return (
     <>
       {entries.map((entry, i) => (
-        <button
+        <CommandButton
           key={entry.label}
-          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
-          style={{ ['--tint' as string]: entry.tint }}
+          on={i === cursor}
+          label={entry.label}
+          sub={entry.sub}
+          tint={entry.tint}
           onClick={() => { onPick(entry.go) }}
           disabled={entry.go === 'ball' && balls <= 0}
-        >
-          {i === cursor && <span className={css.caret} aria-hidden />}
-          <span className={css.face}>
-            <span className={css.dot} aria-hidden />
-            <span className={css.labelCol}>
-              <span className={css.label}>{entry.label}</span>
-              <span className={css.subLine}>{entry.sub}</span>
-            </span>
-          </span>
-        </button>
+        />
       ))}
     </>
   )
@@ -628,21 +615,14 @@ function YesNo({ question, onPick }: { question: string; onPick: (yes: boolean) 
     <>
       <div className={css.waiting}>{question}</div>
       {entries.map((entry, i) => (
-        <button
+        <CommandButton
           key={entry.label}
-          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
-          style={{ ['--tint' as string]: entry.tint }}
+          on={i === cursor}
+          label={entry.label}
+          sub={entry.sub}
+          tint={entry.tint}
           onClick={() => { onPick(entry.yes) }}
-        >
-          {i === cursor && <span className={css.caret} aria-hidden />}
-          <span className={css.face}>
-            <span className={css.dot} aria-hidden />
-            <span className={css.labelCol}>
-              <span className={css.label}>{entry.label}</span>
-              <span className={css.subLine}>{entry.sub}</span>
-            </span>
-          </span>
-        </button>
+        />
       ))}
     </>
   )
@@ -695,22 +675,13 @@ function MoveMenu(
       <>
         <div className={css.askWho}>누구에게?</div>
         {aiming.map((a, i) => (
-          <button
+          <CommandButton
             key={a.type === 'move' ? a.target : i}
-            className={`${css.button} ${i === aimCursor ? css.buttonOn : ''}`}
+            on={i === aimCursor}
+            label={a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
+            sub={<MatchLine match={previewOf(a).match} />}
             onClick={() => { onPick(a) }}
-          >
-            {i === aimCursor && <span className={css.caret} aria-hidden />}
-            <span className={css.face}>
-              <span className={css.dot} aria-hidden />
-              <span className={css.labelCol}>
-                <span className={css.label}>
-                  {a.type === 'move' ? targetName?.(a.target ?? 0) ?? '' : ''}
-                </span>
-                <MatchLine match={previewOf(a).match} />
-              </span>
-            </span>
-          </button>
+          />
         ))}
         <button className={css.backButton} onClick={() => { setAiming(null) }}>← 돌아가기</button>
       </>
@@ -763,37 +734,32 @@ function MoveRows(
             : action.pp! <= Math.max(1, Math.floor(action.maxPp! / 4)) ? css.ppLow
               : ''
         return (
-          <button key={`m${action.slot}`}
-            className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
+          <CommandButton
+            key={`m${action.slot}`}
+            on={i === cursor}
             // 기술 칸의 색은 **타입 색**이다. 색만 보고도 무엇을 고르는지 안다
-            style={typeId !== null ? { ['--tint' as string]: typeColor(typeId) } : undefined}
-            onClick={() => onPick(action)}>
-            {i === cursor && <span className={css.caret} aria-hidden />}
-            <span className={css.face}>
-              <span className={css.dot} aria-hidden />
-              <span className={css.labelCol}>
-                <span className={css.label}>{label}</span>
-                {/*
-                  타입과 상성이 **한 줄에 같이** 선다. BDSP는 타입을 글자 대신
-                  아이콘으로 놓아서 밑줄이 통째로 비지만, 우리 왼쪽에 있는 것은
-                  점 하나뿐이라 그 점만으로는 무슨 타입인지 못 읽는다
-                */}
-                {type !== undefined && (
-                  <span className={css.subLine}>
-                    {type}
-                    {match !== null && <span className={css.sep} aria-hidden>·</span>}
-                    <MatchLine match={match} />
-                  </span>
-                )}
+            {...(typeId !== null ? { tint: typeColor(typeId) } : {})}
+            label={label}
+            /*
+              타입과 상성이 **한 줄에 같이** 선다. BDSP는 타입을 글자 대신
+              아이콘으로 놓아서 밑줄이 통째로 비지만, 우리 왼쪽에 있는 것은
+              점 하나뿐이라 그 점만으로는 무슨 타입인지 못 읽는다
+            */
+            sub={type !== undefined && (
+              <span className={css.subLine}>
+                {type}
+                {match !== null && <span className={css.sep} aria-hidden>·</span>}
+                <MatchLine match={match} />
               </span>
-              {hasPp && (
-                <span className={`${css.pp} ${ppClass}`}>
-                  <span className={css.ppNow}>{action.pp}</span>
-                  <span className={css.ppMax}>/{action.maxPp}</span>
-                </span>
-              )}
-            </span>
-          </button>
+            )}
+            right={hasPp && (
+              <span className={`${css.pp} ${ppClass}`}>
+                <span className={css.ppNow}>{action.pp}</span>
+                <span className={css.ppMax}>/{action.maxPp}</span>
+              </span>
+            )}
+            onClick={() => { onPick(action) }}
+          />
         )
       })}
       <button className={css.backButton} onClick={onBack}>← 돌아가기</button>

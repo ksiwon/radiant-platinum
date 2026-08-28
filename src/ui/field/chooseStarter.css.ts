@@ -5,6 +5,7 @@
 // 글창·예아니오·미리보기뿐이라 **바탕이 투명해야 한다** — 덮으면 무대가 가려진다.
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { menu, SKIN } from './fieldWindow.css'
 
 export const wrap = style({
   position: 'fixed',
@@ -45,11 +46,7 @@ export const box = style({
   pointerEvents: 'auto',
   width: 'min(calc(100vw - 48px), 760px)',
   marginTop: 18,
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.96), rgba(232, 236, 244, 0.96))',
-  border: '2px solid rgba(60, 74, 102, 0.85)',
-  borderRadius: 10,
-  boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.7)',
-  color: '#20263a',
+  ...SKIN,
   padding: '14px 26px 14px 20px',
   fontSize: 19,
   lineHeight: '30px',
@@ -57,20 +54,7 @@ export const box = style({
   whiteSpace: 'pre-line',
 })
 
-export const menu = style({
-  position: 'absolute',
-  right: 0,
-  bottom: 'calc(100% + 10px)',
-  minWidth: 128,
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.96), rgba(232, 236, 244, 0.96))',
-  border: '2px solid rgba(60, 74, 102, 0.85)',
-  borderRadius: 10,
-  boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.7)',
-  color: '#20263a',
-  padding: '8px 12px',
-  fontSize: 18,
-  lineHeight: '30px',
-})
+export { menu }
 
 const itemBase = style({ paddingLeft: 22 })
 

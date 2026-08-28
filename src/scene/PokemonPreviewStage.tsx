@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group, Material, Mesh, Vector3 } from 'three'
 import { usePreviewStore } from '../state/previewStore'
-import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
+import { type MonBody } from './battle/monModel'
+import { useMonBody } from './monBody'
 import { previewModelScale, previewNdcY } from './pokemonPreview3d'
 
 function cloneOverlayMaterials(root: Group): Material[] {
@@ -24,45 +25,36 @@ function cloneOverlayMaterials(root: Group): Material[] {
   return made
 }
 
+/**
+ * 이 몸을 말풍선으로 갈아 끼우고, 내릴 때 새로 만든 재질을 버린다.
+ *
+ * ⚠️ **네 자리 중 여기만 몸을 손본다** — 그래서 `useMonBody`가 `prepare`를 받는다
+ */
+function asOverlay(body: MonBody): () => void {
+  const made = cloneOverlayMaterials(body.root)
+  return () => {
+    made.forEach((material) => {
+      material.dispose()
+    })
+  }
+}
+
 /** `DrawPokemonPreview`를 같은 Canvas 안의 실제 포켓몬 모델로 표시한다. */
 export function PokemonPreviewStage() {
   const species = usePreviewStore((s) => s.species)
   const gender = usePreviewStore((s) => s.gender)
-  const [body, setBody] = useState<MonBody | null>(null)
   const root = useRef<Group>(null)
   const aura = useRef<Mesh>(null)
   const ray = useMemo(() => new Vector3(), [])
   const direction = useMemo(() => new Vector3(), [])
 
-  useEffect(() => {
-    let alive = true
-    let made: MonBody | null = null
-    let materials: Material[] = []
-    setBody(null)
-    if (species === null) return
-    const modelGender = gender === 1 ? 'female' : gender === 0 ? 'male' : 'genderless'
-    void loadMonModel(species, 0, { gender: modelGender })
-      .then((loaded) => {
-        if (!alive || !loaded) return
-        made = makeBody(loaded)
-        materials = cloneOverlayMaterials(made.root)
-        play(made, 'wait')
-        setBody(made)
-      })
-      .catch(() => {
-        /* 아래 절차형 몸이 대신 선다 */
-      })
-    return () => {
-      alive = false
-      made?.mixer.stopAllAction()
-      materials.forEach((material) => {
-        material.dispose()
-      })
-    }
-  }, [species, gender])
+  // 몸이 안 오면 아래 절차형 몸이 대신 선다
+  const body = useMonBody(species, {
+    gender: gender === 1 ? 'female' : gender === 0 ? 'male' : 'genderless',
+    prepare: asOverlay,
+  })
 
-  useFrame(({ camera, size, clock }, delta) => {
-    body?.mixer.update(delta)
+  useFrame(({ camera, size, clock }) => {
     const group = root.current
     if (!group || species === null) return
     ray.set(0, previewNdcY(size.height), 0).unproject(camera)

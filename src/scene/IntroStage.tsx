@@ -1,21 +1,17 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group, MeshStandardMaterial } from 'three'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
-import { assets, type AssetPath } from '../data/providers/assetProvider'
+import { type AssetPath } from '../data/providers/assetProvider'
 import { useIntroStageStore } from '../state/introStageStore'
-import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
+import { useMonBody } from './monBody'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
 import { NPC_BUNDLE } from '../engine/actor/npcModels'
-import { preparePersonModel } from './personModel'
-
-const personLoader = new GLTFLoader()
+import { usePersonModel } from './personModel'
 
 function Person({
   path,
@@ -28,7 +24,6 @@ function Person({
 }) {
   const wrapper = useRef<Group>(null)
   const host = useRef<Group>(null)
-  const [model, setModel] = useState<Group | null>(null)
   /**
    * 서 있는 자세.
    *
@@ -38,31 +33,8 @@ function Person({
    */
   const rig = useRef<Rig | null>(null)
 
-  useEffect(() => {
-    let alive = true
-    const provider = assets()
-    void provider
-      .objectUrl(path)
-      .then(async (url) => {
-        try {
-          const gltf = await personLoader.loadAsync(url)
-          if (!alive) return
-          // ⚠️ **복제하기 전에 손질한다** — `unifySkeletons`가 지오메트리를
-          // 고쳐 쓰기 때문이다 (`scene/personModel`). 필드·전당과 같은 것을 쓴다
-          preparePersonModel(gltf.scene)
-          const root = cloneSkinned(gltf.scene) as Group
-          setModel(root)
-        } finally {
-          provider.releaseObjectUrl(path)
-        }
-      })
-      .catch(() => {
-        /* fallback body remains */
-      })
-    return () => {
-      alive = false
-    }
-  }, [path])
+  // 받아 손질하는 것은 전당과 같다. 안 오면 아래 절차형 몸이 그대로 선다
+  const model = usePersonModel(path)
 
   useLayoutEffect(() => {
     if (!wrapper.current || !model) return
@@ -111,29 +83,14 @@ function Person({
   )
 }
 
+/** 오프닝에 서는 이어롤 (`SPECIES_BUNEARY`) */
+const BUNEARY = 427
+
 function Buneary({ visible }: { visible: boolean }) {
   const host = useRef<Group>(null)
-  const [body, setBody] = useState<MonBody | null>(null)
+  // 몸이 안 오면 아래 절차형 몸이 선다
+  const body = useMonBody(BUNEARY)
   const shown = useRef(0)
-
-  useEffect(() => {
-    let alive = true
-    let made: MonBody | null = null
-    void loadMonModel(427)
-      .then((loaded) => {
-        if (!alive || !loaded) return
-        made = makeBody(loaded)
-        play(made, 'wait')
-        setBody(made)
-      })
-      .catch(() => {
-        /* fallback remains */
-      })
-    return () => {
-      alive = false
-      made?.mixer.stopAllAction()
-    }
-  }, [])
 
   useFrame((_, delta) => {
     shown.current += ((visible ? 1 : 0) - shown.current) * Math.min(1, delta * 5.5)
@@ -142,7 +99,6 @@ function Buneary({ visible }: { visible: boolean }) {
     node.visible = shown.current > 0.01
     node.position.y = 0.34 + shown.current * 0.46
     node.scale.setScalar((body ? cinematicScale(body.tall) : 1) * shown.current)
-    body?.mixer.update(delta)
   })
 
   return (

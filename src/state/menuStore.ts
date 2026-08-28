@@ -16,7 +16,9 @@ import type { PartyItemUse } from '../engine/bag/fieldUse'
 export type MenuScreen =
   | 'start' | 'bag' | 'party' | 'pokedex' | 'trainerCard' | 'save' | 'options' | 'shop'
   | 'fly' | 'box'
-  // 모험노트. 가방의 열쇠도구에서 연다 (`ItemUseFunc_Journal`)
+  // 모험노트. 가방의 열쇠도구에서 연다 (`ItemUseFunc_Journal`).
+  // 이어하기에서는 **저절로 펼쳐진다** (`Journal_CheckOpenOnContinue`) — 그때만
+  // `journalAt`이 지난번 쪽을 가리킨다
   | 'journal'
   // 기술 되살리기·기술가르침. 스크립트가 열고 `reminder`가 무엇을 가르칠지 든다
   | 'reminder'
@@ -102,6 +104,11 @@ interface MenuStore {
    */
   summarySlot: number
   /**
+   * 모험노트를 몇 쌓째로 여는가. 가방에서 열면 언제나 0(오늘)이고,
+   * 이어하기가 저절로 펼칠 때만 지난번 쪽을 가리킨다 (`scene/journal`)
+   */
+  journalAt: number
+  /**
    * 가방을 **건네줄 상대**를 안고 열었는가 (`PartyMenu_SelectItemGive`).
    *
    * 파티 화면의 갈래 메뉴에서 「건네준다」를 고르면 가방이 이 값을 들고 뜨고,
@@ -180,6 +187,8 @@ interface MenuStore {
   openBox: (mode: number) => void
   /** 이름 짓기 화면을 연다 */
   openNaming: (what: NonNullable<MenuStore['naming']>) => void
+  /** 이어하기가 모험노트를 저절로 펼친다. 어느 쪽을 펼칠지를 같이 받는다 */
+  openJournal: (page: number) => void
   /** 도구를 들고 파티 화면을 연다. 스택 위에 쌓는다 — B로 가방으로 돌아간다 */
   openPartyWithItem: (what: NonNullable<MenuStore['usingItem']>) => void
   /** 요약 화면을 쌓는다. B로 파티 화면으로 돌아간다 */
@@ -239,6 +248,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   naming: null,
   usingItem: null,
   summarySlot: 0,
+  journalAt: 0,
   mail: null,
   easyChatAt: null,
   giveTo: null,
@@ -383,16 +393,23 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     return { stack, top: 'naming' as const, naming: what }
   }),
 
+  openJournal: (page) => set(() => {
+    const stack: MenuScreen[] = ['journal']
+    capture(stack)
+    return { stack, top: 'journal' as const, journalAt: page }
+  }),
+
   open: (screen) => set(() => {
     const stack = [screen]
     capture(stack)
-    return { stack, top: screen }
+    // 다른 길로 열린 노트는 오늘부터다 — 이어하기가 놓아둔 쪽을 끌고 오지 않는다
+    return { stack, top: screen, journalAt: 0 }
   }),
 
   push: (screen) => set((s) => {
     const stack = [...s.stack, screen]
     capture(stack)
-    return { stack, top: screen }
+    return { stack, top: screen, journalAt: 0 }
   }),
 
   back: () => set((s) => {

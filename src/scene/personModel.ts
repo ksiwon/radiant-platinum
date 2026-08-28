@@ -9,8 +9,22 @@
 // ⚠️ **셋이 이미 갈라져 있었다.** 필드만 `unifySkeletons`를 돌리고 있었다 —
 // 오프닝과 전당은 조각마다 뼈대가 갈린 채로 서서 셰이더를 그만큼 더 굽고 있었다.
 // 합치면서 그쪽에 맞춘다.
-import { Mesh, MeshStandardMaterial, type Object3D } from 'three'
+import { useEffect, useState } from 'react'
+import { Mesh, MeshStandardMaterial, type Group, type Object3D } from 'three'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
+import { assets } from '../data/providers/assetProvider'
 import { unifySkeletons } from './unifySkeleton'
+
+/**
+ * 오프닝과 전당이 같이 쓰는 받는 자.
+ *
+ * ⚠️ **둘이 각자 `new GLTFLoader()`를 들고 있었다.** 같은 것을 그리는데
+ * 받는 자가 둘이면 한쪽에 변환기를 달아도 다른 쪽은 안 따라온다.
+ * 필드 주인공은 R3F의 `useLoader`가 따로 든다 — 그쪽은 씨앗을 안 복제하고
+ * 세션 내내 하나라 이 훅이 하는 일이 필요 없다
+ */
+const loader = new GLTFLoader()
 
 /** 기본 복장과 겹쳐 z-fighting을 내는 대체 복장 조각 — 꺼 둔다 */
 const ALT_OUTFIT = ['hair2', 'shoes2']
@@ -39,4 +53,42 @@ export function preparePersonModel(scene: Object3D): void {
       material.metalness = 0
     }
   })
+}
+
+/**
+ * 그 주소의 사람 모델을 받아 손질한 **복제본**. 아직 안 왔으면 `null`이다.
+ *
+ * 오프닝(`IntroStage`)과 명예의 전당(`HallOfFameStage`)이 같은 열세 줄을 각자
+ * 들고 있었다 (REPAIR §9).
+ *
+ * ⚠️ **주소를 다 읽으면 놓는다.** 공개판은 OPFS Blob 주소라
+ * 붙들고 있으면 그만큼 남는다 (IMPORT.md §7)
+ */
+export function usePersonModel(path: string): Group | null {
+  const [model, setModel] = useState<Group | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    const provider = assets()
+    void provider
+      .objectUrl(path)
+      .then(async (url) => {
+        try {
+          const gltf = await loader.loadAsync(url)
+          if (!alive) return
+          // ⚠️ **복제하기 전에 손질한다** — `unifySkeletons`가 지오메트리를
+          // 고쳐 쓰고 복제본은 그것을 **참조로** 물려받는다
+          preparePersonModel(gltf.scene)
+          setModel(cloneSkinned(gltf.scene) as Group)
+        } finally {
+          provider.releaseObjectUrl(path)
+        }
+      })
+      .catch(() => {
+        /* 부르는 쪽이 사람 없이 그대로 돌아간다 */
+      })
+    return () => { alive = false }
+  }, [path])
+
+  return model
 }

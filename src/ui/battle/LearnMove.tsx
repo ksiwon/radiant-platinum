@@ -16,6 +16,7 @@ import { useState } from 'react'
 import { typeColor } from './typeColor'
 import { useListCursor } from './listCursor'
 import type { Move } from '../../data/schema'
+import { CommandButton } from './CommandButton'
 import * as css from './battleScreen.css'
 
 interface LearnMoveProps {
@@ -85,41 +86,29 @@ function ForgetList(props: LearnMoveProps) {
         const data = props.moveData(id)
         const type = data ? props.typeName(data.type) : undefined
         return (
-          <button
+          <CommandButton
             key={`f${String(i)}`}
-            className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
-            style={data ? { ['--tint' as string]: typeColor(data.type) } : undefined}
-            onClick={() => { props.onAnswer(i) }}
-          >
-            {i === cursor && <span className={css.caret} aria-hidden />}
-            <span className={css.face}>
-              <span className={css.dot} aria-hidden />
-              <span className={css.labelCol}>
-                <span className={css.label}>{props.moveName(id)}</span>
-                {type !== undefined && <span className={css.subLine}>{type}</span>}
-              </span>
+            on={i === cursor}
+            {...(data ? { tint: typeColor(data.type) } : {})}
+            label={props.moveName(id)}
+            sub={type}
+            right={(
               <span className={css.pp}>
                 <span className={css.ppNow}>{slot.pp}</span>
                 <span className={css.ppMax}>/{slot.maxPp}</span>
               </span>
-            </span>
-          </button>
+            )}
+            onClick={() => { props.onAnswer(i) }}
+          />
         )
       })}
-      <button
-        className={`${css.button} ${cursor === rows.length ? css.buttonOn : ''}`}
-        style={{ ['--tint' as string]: css.TINT.run }}
+      <CommandButton
+        on={cursor === rows.length}
+        tint={css.TINT.run}
+        label="그만둔다"
+        sub={`${props.moveName(props.move)}을(를) 안 배운다`}
         onClick={() => { props.onAnswer(null) }}
-      >
-        {cursor === rows.length && <span className={css.caret} aria-hidden />}
-        <span className={css.face}>
-          <span className={css.dot} aria-hidden />
-          <span className={css.labelCol}>
-            <span className={css.label}>그만둔다</span>
-            <span className={css.subLine}>{props.moveName(props.move)}을(를) 안 배운다</span>
-          </span>
-        </span>
-      </button>
+      />
     </>
   )
 }
@@ -136,21 +125,14 @@ function Choice<T>(
     <>
       <div className={css.waiting}>{question}</div>
       {entries.map((entry, i) => (
-        <button
+        <CommandButton
           key={entry.label}
-          className={`${css.button} ${i === cursor ? css.buttonOn : ''}`}
-          style={{ ['--tint' as string]: entry.tint }}
+          on={i === cursor}
+          label={entry.label}
+          sub={entry.sub}
+          tint={entry.tint}
           onClick={() => { onPick(entry.value) }}
-        >
-          {i === cursor && <span className={css.caret} aria-hidden />}
-          <span className={css.face}>
-            <span className={css.dot} aria-hidden />
-            <span className={css.labelCol}>
-              <span className={css.label}>{entry.label}</span>
-              <span className={css.subLine}>{entry.sub}</span>
-            </span>
-          </span>
-        </button>
+        />
       ))}
     </>
   )

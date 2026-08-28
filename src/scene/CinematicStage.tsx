@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Group, Mesh, PointLight } from 'three'
 import {
   type CinematicScene, type EvolutionPhase, type HatchPhase, type TradePhase, useCinematicStore,
 } from '../state/cinematicStore'
-import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
+import { useMonBody } from './monBody'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
 
@@ -19,31 +19,8 @@ function Model({
   gender?: 'male' | 'female' | 'genderless'
   shiny?: boolean
 }) {
-  const [body, setBody] = useState<MonBody | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    let made: MonBody | null = null
-    setBody(null)
-    void loadMonModel(species, form, { gender, shiny })
-      .then((loaded) => {
-        if (!alive || !loaded) return
-        made = makeBody(loaded)
-        play(made, 'wait')
-        setBody(made)
-      })
-      .catch(() => {
-        /* 아래 절차형 몸으로 떨어진다 */
-      })
-    return () => {
-      alive = false
-      made?.mixer.stopAllAction()
-    }
-  }, [species, form, gender, shiny])
-
-  useFrame((_, delta) => {
-    body?.mixer.update(delta)
-  })
+  // 몸이 없으면 아래 절차형 몸으로 떨어진다
+  const body = useMonBody(species, { form, gender, shiny })
 
   if (!body) return <FallbackModel species={species} />
   return (
