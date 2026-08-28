@@ -216,6 +216,7 @@
 | 추출 산출물 추가 | `data/assetManifest.test.ts` | DATA |
 | 게임이 읽는 논리 경로 · 그룹의 `outputs` | `data/assetContract.test.ts` | IMPORT §6 |
 | 걸음을 세는 자 · 지나온 칸 | `engine/actor/stepTrace.test.ts` | PARITY §1.1 |
+| 시스템 등록 순서 (`scene/EngineDriver`) | `scene/systemOrder.test.ts` · `engine/map/triggerWarpRace.test.ts` | PLAN §3.4 · REPAIR §27 |
 | 방 안으로 물리는 카메라 | `engine/actor/camera.test.ts` · `scene/roomWalls.test.ts` | PARITY §6.2 |
 | 리포트 스키마 | `state/saveStore.test.ts` · `save/migrate` 시험 | — |
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
