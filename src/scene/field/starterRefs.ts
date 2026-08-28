@@ -11,9 +11,17 @@ export const starterScene = {
   cameraSince: 0,
   /** 커서가 떠 있는가. 원작은 글 두 줄을 다 찍은 뒤에 켠다 */
   cursorShown: false,
-  /** 고른 자리 (0=왼쪽) */
-  /** ?? ??? ?? ??? 3D ?? ?? ???. */
+  /** 확인을 묻는 중인가. 이때만 미리보기 원과 3D 포켓몬이 뜬다 */
   confirming: false,
+  /**
+   * 미리보기가 날아온 정도 (0=고른 볼 위, 1=화면 한가운데).
+   *
+   * 원과 포켓몬이 **같은 값**으로 움직여야 해서 여기 둔다 — 원은 DOM이고
+   * 포켓몬은 3D라 서로 다른 곳에서 그리는데, 6프레임짜리라 한 프레임만
+   * 어긋나도 눈에 띈다 (`ui/field/starterScene`의 `previewShot`)
+   */
+  previewT: 0,
+  /** 고른 자리 (0=왼쪽) */
   pick: 0,
 }
 
@@ -25,4 +33,5 @@ export function resetStarterScene(): void {
   starterScene.cursorShown = false
   starterScene.pick = 0
   starterScene.confirming = false
+  starterScene.previewT = 0
 }

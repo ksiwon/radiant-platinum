@@ -24,22 +24,6 @@ export const wrap = style({
   pointerEvents: 'none',
 })
 
-/**
- * 미리보기 창 (`StarterPreviewWindow`).
- *
- * 원작은 확인을 물을 때만 열린다 — 커서를 옮기는 동안에는 볼만 보인다
- */
-export const preview = style({
-  width: 176,
-  height: 176,
-  marginBottom: 'auto',
-  marginTop: '8vh',
-  imageRendering: 'pixelated',
-  backgroundRepeat: 'no-repeat',
-  backgroundSize: '100% 100%',
-  filter: 'drop-shadow(0 10px 18px rgba(0, 0, 0, 0.6))',
-})
-
 /** 아래 대사창. 필드 창과 같은 모양이다 — 원작도 같은 테두리를 쓴다 */
 export const box = style({
   position: 'relative',

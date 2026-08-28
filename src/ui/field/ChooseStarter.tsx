@@ -32,7 +32,9 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { STARTER_BANK, STARTER_TEXT as TEXT, STARTERS } from './starterChoice'
-import { BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES } from './starterScene'
+import {
+  BAG_NOISE_DELAY, CAMERA_FRAMES, CURSOR_DELAY, FRAME_MS, OPEN_FRAMES, PREVIEW_FRAMES,
+} from './starterScene'
 import * as css from './chooseStarter.css'
 
 /** `Menu_MakeYesNoChoice` — 위가 "예"다 */
@@ -174,11 +176,19 @@ export function ChooseStarter() {
     let raf = 0
     let last = ''
     let before = performance.now()
+    /** 확인을 묻기 시작한 뒤 지난 시간(ms) */
+    let confirmSince = 0
     const frame = (): void => {
       raf = requestAnimationFrame(frame)
       const now = performance.now()
-      if (starterScene.camera === 'choose') starterScene.cameraSince += now - before
+      const delta = now - before
+      if (starterScene.camera === 'choose') starterScene.cameraSince += delta
       before = now
+      // 미리보기가 날아온 정도. 무대가 이 값 하나만 읽는다 — 시계를 둘 두면
+      // 원과 포켓몬이 어긋난다 (`scene/field/StarterMon`)
+      if (starterScene.confirming) confirmSince += delta
+      else confirmSince = 0
+      starterScene.previewT = Math.min(1, confirmSince / (PREVIEW_FRAMES * FRAME_MS))
       const p = printer.current
       if (p === null) return
       p.tick({ pressed: false, held: false })
@@ -274,8 +284,8 @@ export function ChooseStarter() {
   return (
     <div className={css.wrap}>
       {/*
-        미리보기 창 (`StarterPreviewWindow`). 확인을 물을 때만 열린다 —
-        커서를 옮기는 동안에는 볼만 보인다
+        미리보기(`StarterPreviewWindow`)는 무대가 그린다 — 흰 원과 그 위의 3D
+        포켓몬이다. 여기서 그리면 DOM이 캔버스 위라 포켓몬을 덮는다
       */}
 
       {text !== '' && (

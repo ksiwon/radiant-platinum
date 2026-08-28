@@ -105,6 +105,82 @@ export function cameraPosition(shot: CameraShot): [number, number, number] {
 }
 
 /**
+ * 확인을 물을 때 뜨는 **미리보기**의 자리와 크기 (`AdvancePreviewMovement`).
+ *
+ * 원작은 고른 볼의 화면 좌표에서 화면 한가운데로 **6프레임에 날아온다**:
+ *
+ *     StartPreviewWindowMovement(…, xStart, 128, yStart, 96, 0.40, 1.0, 6)
+ *     xStart = otherSelectionMatrix[pick][0]
+ *     yStart = otherSelectionMatrix[pick][1] + 48
+ *
+ * 창과 포켓몬이 **같은 값으로 같이** 움직인다 (`StartPreviewGraphicsMovement`가
+ * 같은 인자를 받는다). 되돌아갈 때는 프레임을 −2씩 세어 두 배로 빠르다
+ */
+export const PREVIEW_FRAMES = 6
+
+/** 출발·도착 배율. `FX32_CONST(0.40f)` → `FX32_CONST(1.0f)` */
+export const PREVIEW_SCALE = { from: 0.4, to: 1 } as const
+
+/** 도착 자리 — `128 << FX32_SHIFT`, `96 << FX32_SHIFT`. 화면 한가운데다 */
+export const PREVIEW_TO: readonly [number, number] = [128, 96]
+
+/** 출발 자리를 커서 좌표에서 얼마나 내리는가 (`+ 48`) */
+export const PREVIEW_DROP = 48
+
+/**
+ * 창 그림의 지름(픽셀).
+ *
+ * ⚠️ **창이 아니라 원이다.** `ev_pokeselect` 14번을 열어 보면 128×128 4bpp에
+ * **쓰이는 인덱스가 0과 1뿐**이고(칠한 픽셀 7,133개) 팔레트가 검정·흰색이다.
+ * 칠해진 자리는 x·y 모두 17~111 — 한가운데 놓인 **지름 95의 흰 원** 하나다.
+ * 색이 둘뿐이라 굽지 않고 CSS 원으로 같은 그림을 낸다
+ */
+export const PREVIEW_DISC = 95
+
+/** 포켓몬 앞모습 한 컷 (`pokegra`의 `CUT`). 창 안에서 이 크기로 선다 */
+export const PREVIEW_SPRITE = 80
+
+/** `SetupStarterMovement` + `AdvanceStarterMovement` — 선형이다 */
+function lerp(from: number, to: number, t: number): number {
+  return from + (to - from) * t
+}
+
+/**
+ * 미리보기가 `t`(0~1)에서 어디에 얼마만 한가. 자리는 **원작 화면 좌표**다.
+ *
+ * @param at 고른 볼 (0=왼쪽)
+ */
+export function previewShot(at: number, t: number): {
+  x: number, y: number, scale: number,
+} {
+  const from = CURSOR_SCREEN[at] ?? CURSOR_SCREEN[0]!
+  const k = Math.min(1, Math.max(0, t))
+  return {
+    x: lerp(from[0], PREVIEW_TO[0], k),
+    y: lerp(from[1] + PREVIEW_DROP, PREVIEW_TO[1], k),
+    scale: lerp(PREVIEW_SCALE.from, PREVIEW_SCALE.to, k),
+  }
+}
+
+/**
+ * 원작 화면 좌표 → 우리 화면의 NDC.
+ *
+ * ⚠️ **가로는 화면 비가 다르면 같이 안 간다.** 화각은 **세로**로 잡으므로
+ * 세로는 그대로 옮겨 오지만(`y/96`), 가로는 원작 화면 비 4:3만큼 넓힌 뒤 우리
+ * 비로 도로 나눠야 같은 자리를 가리킨다. 안 나누면 우리 화면이 넓을수록 볼이
+ * 실제 자리보다 바깥으로 벌어진다
+ */
+export function dsToNdc(
+  x: number, y: number, aspect: number,
+): [number, number] {
+  const wide = SCREEN.width / SCREEN.height
+  return [
+    ((x - SCREEN.width / 2) / (SCREEN.width / 2)) * wide / aspect,
+    -((y - SCREEN.height / 2) / (SCREEN.height / 2)),
+  ]
+}
+
+/**
  * 그 점이 원작 화면 어디에 찍히는가. **확인용이다** — 렌더는 three가 한다.
  *
  * 카메라는 yaw 0이라 오른쪽이 +X고 위가 `(0, cos, −sin)`이다

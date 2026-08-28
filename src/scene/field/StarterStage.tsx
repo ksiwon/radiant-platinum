@@ -166,6 +166,7 @@ export function StarterStage() {
   const open = piece(STARTER_MODEL.caseOpen)
 
   return (
+    <>
     <group position={STARTER_ORIGIN} scale={UNIT}>
       {/*
         뒤를 덮는다. 이 무대가 신오 위에 떠 있어서 안 덮으면 하늘 돔과 먼 지형이
@@ -205,10 +206,16 @@ export function StarterStage() {
           )
         })}
       </group>
-      {STARTERS.map((species, at) => (
-        <StarterMon key={species} species={species} at={at} />
-      ))}
     </group>
+    {/*
+      ⚠️ **미리보기는 이 무대 밖이다.** 위 묶음은 DS 유닛이라 50분의 1로 줄여
+      두었는데(`UNIT`), 미리보기는 세상이 아니라 **카메라 앞**에 서므로 그 배수를
+      먹으면 안 된다 — 자리도 크기도 매 프레임 화각에서 되돌려 잰다
+    */}
+    {STARTERS.map((species, at) => (
+      <StarterMon key={species} species={species} at={at} />
+    ))}
+    </>
   )
 }
 

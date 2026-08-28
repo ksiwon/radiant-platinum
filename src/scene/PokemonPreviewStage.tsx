@@ -1,43 +1,10 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Group, Material, Mesh, Vector3 } from 'three'
+import { Group, Mesh, Vector3 } from 'three'
 import { usePreviewStore } from '../state/previewStore'
-import { type MonBody } from './battle/monModel'
 import { useMonBody } from './monBody'
+import { asOverlay } from './monOverlay'
 import { previewModelScale, previewNdcY } from './pokemonPreview3d'
-
-function cloneOverlayMaterials(root: Group): Material[] {
-  const made: Material[] = []
-  root.traverse((object) => {
-    if (!(object instanceof Mesh)) return
-    const clone = (material: Material): Material => {
-      const next = material.clone()
-      next.depthTest = false
-      next.depthWrite = false
-      made.push(next)
-      return next
-    }
-    object.material = Array.isArray(object.material)
-      ? object.material.map(clone)
-      : clone(object.material)
-    object.renderOrder = 950
-  })
-  return made
-}
-
-/**
- * 이 몸을 말풍선으로 갈아 끼우고, 내릴 때 새로 만든 재질을 버린다.
- *
- * ⚠️ **네 자리 중 여기만 몸을 손본다** — 그래서 `useMonBody`가 `prepare`를 받는다
- */
-function asOverlay(body: MonBody): () => void {
-  const made = cloneOverlayMaterials(body.root)
-  return () => {
-    made.forEach((material) => {
-      material.dispose()
-    })
-  }
-}
 
 /** `DrawPokemonPreview`를 같은 Canvas 안의 실제 포켓몬 모델로 표시한다. */
 export function PokemonPreviewStage() {

@@ -12,7 +12,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   BALL_POSITION, CAMERA_CHOOSE, CAMERA_OPEN, CURSOR_SCREEN, FOV_HALF, GROUND_PLACE,
-  OPEN_FRAMES, SCREEN, STARTER_MODEL, cameraPosition, projectToScreen,
+  OPEN_FRAMES, PREVIEW_DISC, PREVIEW_DROP, PREVIEW_SCALE, PREVIEW_SPRITE, PREVIEW_TO,
+  SCREEN, STARTER_MODEL, cameraPosition, dsToNdc, previewShot, projectToScreen,
 } from './starterScene'
 import { withData } from '../../data/romData.testkit'
 
@@ -64,6 +65,63 @@ describe('파트너 고르는 장면 — 카메라', () => {
     expect(cz).toBeCloseTo(36 + 128.558, 3)
     // 고를 때가 더 가깝고 더 내려다본다
     expect(cy / cz).toBeGreaterThan(oy / oz)
+  })
+})
+
+describe('파트너 고르는 장면 — 미리보기', () => {
+  it('고른 볼 위에서 출발한다', () => {
+    // `xStart = otherSelectionMatrix[pick][0]` · `yStart = […][1] + 48`
+    CURSOR_SCREEN.forEach(([x, y], at) => {
+      const shot = previewShot(at, 0)
+      expect(shot.x).toBe(x)
+      expect(shot.y).toBe(y + PREVIEW_DROP)
+      expect(shot.scale).toBe(PREVIEW_SCALE.from)
+    })
+  })
+
+  it('화면 한가운데에 제 크기로 선다', () => {
+    for (let at = 0; at < CURSOR_SCREEN.length; at++) {
+      const shot = previewShot(at, 1)
+      expect([shot.x, shot.y]).toEqual([...PREVIEW_TO])
+      expect(shot.scale).toBe(1)
+    }
+    // 도착 자리가 곧 화면 한가운데다 — 화면 비가 무엇이든 NDC 0이어야 한다
+    for (const aspect of [4 / 3, 16 / 9, 1]) {
+      const [nx, ny] = dsToNdc(PREVIEW_TO[0], PREVIEW_TO[1], aspect)
+      expect(nx).toBeCloseTo(0, 10)
+      expect(ny).toBeCloseTo(0, 10)
+    }
+  })
+
+  it('중간이 선형이다 — `AdvanceStarterMovement`가 그렇다', () => {
+    const half = previewShot(0, 0.5)
+    expect(half.x).toBeCloseTo((CURSOR_SCREEN[0]![0] + PREVIEW_TO[0]) / 2, 10)
+    expect(half.scale).toBeCloseTo((PREVIEW_SCALE.from + 1) / 2, 10)
+    // 밖으로 나간 값은 양끝에 붙는다
+    expect(previewShot(0, -1).scale).toBe(PREVIEW_SCALE.from)
+    expect(previewShot(0, 2).scale).toBe(1)
+  })
+
+  it('화면이 넓어져도 가로 자리가 안 벌어진다', () => {
+    // 화각은 세로로 잡는다. 원작 화면 비(4:3)에서는 그대로고, 우리 화면이
+    // 넓어지면 같은 DS 좌표가 NDC로는 **덜** 벌어져야 같은 자리를 가리킨다
+    const ds = CURSOR_SCREEN[0]![0]
+    const same = dsToNdc(ds, 0, SCREEN.width / SCREEN.height)[0]
+    expect(same).toBeCloseTo((ds - 128) / 128, 10)
+    const wide = dsToNdc(ds, 0, 16 / 9)[0]
+    expect(Math.abs(wide)).toBeLessThan(Math.abs(same))
+    // 세로는 화면 비와 무관하다
+    expect(dsToNdc(0, 48, 4 / 3)[1]).toBeCloseTo(dsToNdc(0, 48, 16 / 9)[1], 10)
+    expect(dsToNdc(0, 0, 1)[1]).toBe(1)
+  })
+
+  it('포켓몬 한 컷이 원 안에 들어간다', () => {
+    // 창은 지름 95의 원이고 앞모습은 80×80 한 컷이다 — 컷이 더 커지면 원 밖으로
+    // 삐져나온다. 둘 다 실측이라 이 부등호가 깨지면 어느 한쪽을 잘못 읽은 것이다
+    expect(PREVIEW_SPRITE).toBeLessThan(PREVIEW_DISC)
+    // 그리고 화면을 다 덮지도 않는다 — 원이 화면 높이의 절반쯤이다
+    expect(PREVIEW_DISC / SCREEN.height).toBeGreaterThan(0.45)
+    expect(PREVIEW_DISC / SCREEN.height).toBeLessThan(0.55)
   })
 })
 
