@@ -17,6 +17,7 @@ import {
   standableSpot,
   walkOutOfDoor,
   disarmWarp,
+  scriptBridge,
   warpSystem,
   type EventFile, type MapHeader, type Warp,
 } from './world'
@@ -635,6 +636,21 @@ describe('발을 떼기 전에는 워프가 안 걸린다', () => {
   it('걸려 있으면 밟는 순간 걸린다', () => {
     world.armed = true
     expect(step()?.to).toBe(1)
+  })
+
+  /**
+   * ⚠️ **스크립트가 도는 동안에는 안 걸린다.** 원작은 장면이 시작하면 주인공을
+   * 묶어서(`ScrCmd_LockAll`) 이 자리가 아예 안 생긴다. 우리는 입력을 지우는
+   * 것으로 발을 묶는데, 그 프레임에 이미 문 앞이면 늦는다 — 그러면 맵이 갈린
+   * 뒤에도 **딴 맵의 장면이 이어져서** 주인공을 벽 속에 세운다 (REPAIR §25)
+   */
+  it('스크립트가 도는 동안에는 안 걸린다', () => {
+    world.armed = true
+    scriptBridge.running = () => true
+    expect(step()).toBeNull()
+    scriptBridge.running = () => false
+    expect(step()?.to).toBe(1)
+    scriptBridge.running = null
   })
 
   it('도착 처리를 하면 그 자리에서는 안 걸린다', () => {

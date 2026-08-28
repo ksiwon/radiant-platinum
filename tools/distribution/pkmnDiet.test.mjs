@@ -46,7 +46,11 @@ const distFiles = () => {
 }
 
 describe('껍데기 규칙이 실제 파일과 맞는다', () => {
-  const modules = allModules(esmDir())
+  // ⚠️ **한 번만 푼다.** 진입점을 푸는 데 `node` 자식 프로세스가 하나 뜨는데,
+  // 껍데기마다 다시 부르고 있었다 — 규칙 수만큼 프로세스가 떠서 이 하나가
+  // 8.7초였고(실측) 기본 제한 5초를 넘겨 죽었다
+  const ESM = esmDir()
+  const modules = allModules(ESM)
 
   it('규칙마다 실제로 맞는 파일이 있다 — 패키지가 올라도 조용히 안 빗나간다', () => {
     for (const shim of SHIMS) {
@@ -67,7 +71,7 @@ describe('껍데기 규칙이 실제 파일과 맞는다', () => {
       ]
       if (names.length === 0) continue   // `export {}` — 모드 index는 이름이 없다
       const sample = modules.find((m) => shim.match.test(m))
-      const real = readFileSync(join(esmDir(), sample), 'utf8')
+      const real = readFileSync(join(ESM, sample), 'utf8')
       for (const name of names) {
         // 원본도 두 꼴이다 — `data/index.mjs`는 다시 내보내기만 한다
         expect(real, `${sample}에 ${name}이 없다`)

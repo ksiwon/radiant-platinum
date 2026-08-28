@@ -429,8 +429,18 @@ function EngineDriver() {
 }
 ```
 
-시스템 실행 순서(고정):
-`Input → Script → AI → Movement → Physics → Collision → Trigger → Camera → Animation → VFX → Audio`
+시스템 실행 순서(고정 — 실제 등록은 `scene/EngineDriver`, 지키는 시험은
+`scene/systemOrder.test`):
+`Input → Script → NPC → Movement → ScriptStep → Warp → Step → Encounter → Camera`
+
+두 자리가 규칙이다.
+
+- **Script가 Movement보다 먼저다.** 스크립트가 도는 동안 입력을 지워서 발을
+  묶는데, 뒤에 두면 이미 그 프레임만큼 걸어간 뒤다. 낚시·물뿌리개도 같은 이유로
+  앞이고, NPC는 `LockAll`이 이번 프레임부터 먹도록 Script 뒤다.
+- **밟은 자리를 보는 스크립트(ScriptStep)는 Movement 뒤 · Warp 앞이다.** 원작
+  차례가 `Field_ProcessStep` → `Field_CheckMapTransition`이다. 앞에 두면 워프가
+  좌표 트리거를 **한 프레임 앞질러** 딴 맵에서 장면이 이어진다 (REPAIR.md §27).
 
 ---
 

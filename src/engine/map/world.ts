@@ -576,9 +576,36 @@ export function disarmWarp(): void {
   world.armed = false
 }
 
+/**
+ * 스크립트가 도는 중인가. `engine/script/field`가 매 프레임 채운다.
+ *
+ * ⚠️ **여기서 `field`를 import 하면 안 된다** — 그쪽이 이 모듈을 이미 부른다.
+ * 다른 다리들과 같은 꼴로 둔다 (`world/mapFeatures`의 `mapFeatureBridge`)
+ */
+export const scriptBridge: { running: (() => boolean) | null } = { running: null }
+
 export const warpSystem = {
   fixedUpdate() {
     if (world.mapId < 0 || world.pending) return
+    /**
+     * ⚠️ **컷신이 도는 동안에는 걸어서 워프를 밟지 않는다.**
+     *
+     * 원작은 스크립트가 시작하면 주인공을 묶어서(`ScrCmd_LockAll`) 이 자리가
+     * 아예 생기지 않는다. 우리는 입력을 프레임마다 지우는데(`script/field`),
+     * **장면이 시작하는 그 프레임에는 이미 문 앞에 서 있을 수 있다** — 문은
+     * 밟는 칸이 아니라 **앞 칸**이라 걸어 들어가는 도중에 걸린다.
+     *
+     * 실측(용식이 집): 문 앞 105,876에서 라이벌이 뛰어나오는 장면이 시작하는데
+     * 같은 순간 문 워프가 터졌다. 맵이 412로 갈린 뒤에도 411에서 시작한 그
+     * 장면이 계속 돌아, 그 장면의 「주인공은 남쪽으로 한 걸음」(뛰어나오는
+     * 라이벌에게 자리를 내주는 원작 연출)이 **집 안에서** 실행됐다. 집 안의
+     * 남쪽은 벽이라 주인공이 벽 속에 섰고, 벽 속에 서면 충돌 판정이 통째로
+     * 꺼져서(`actor/player`의 `stuck`) 검은 공간을 걸어 다니게 된다.
+     *
+     * 스크립트가 스스로 옮기는 `Warp` 명령은 이 자리를 안 지난다 — 그쪽은
+     * `world.pending`에 바로 올린다
+     */
+    if (scriptBridge.running?.() === true) return
     const p = worldState.player
     const tx = Math.floor(p.position.x), tz = Math.floor(p.position.z)
     const warps = warpsOf(world.mapId)

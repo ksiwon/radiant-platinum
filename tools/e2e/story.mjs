@@ -255,6 +255,13 @@ if (!url) {
 
 const browser = await chromium.launch({ args: GPU })
 const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 })
+/**
+ * ⚠️ **첫 방문은 개발 서버가 앱을 통째로 컴파일하는 시간이다.** 플레이라이트
+ * 기본값 30초로는 모자란다 — 기계가 막 깨어 vite 캐시가 식은 판에서
+ * `page.goto: Timeout 30000ms exceeded`로 **86자리를 하나도 못 돌고 죽었다.**
+ * e2e 쪽과 같은 예산을 준다 (`run.mjs`의 `fresh()` · REPAIR §14)
+ */
+context.setDefaultNavigationTimeout(300_000)
 await context.addInitScript(FRAME_PROBE)
 const page = await context.newPage()
 

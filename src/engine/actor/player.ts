@@ -3,6 +3,7 @@ import { Vector3 } from 'three'
 import { worldState } from '../../state/worldState'
 import { activeZone, isOnWater } from '../map/zone'
 import { MapGrid } from '../map/grid'
+import { standableSpot } from '../map/world'
 import { distortionHop, HOP_RISE, HOP_TIME, HOP_TWICE_TIME, ledgeHop } from './ledge'
 import { clearIceSlide, iceStep, isSliding, type IceView } from './ice'
 import { clearPanelSlide, panelStep } from './slidePanel'
@@ -317,15 +318,37 @@ export const playerSystem = {
       // 안전망은 남겨 둔다 — 벽 안은 이미 잘못된 상태고, 갇히는 것보다 걸어
       // 나오는 편이 낫다
       const stuck = blocked(p.position.x, p.position.z)
+      // ⚠️ **벽 안에서는 나오는 쪽으로만 걷는다.** 판정을 통째로 끄면 그대로
+      // **맵뚫**이다 — 판 밖은 전부 막힌 칸이라 한 번 나가면 `stuck`이 영영
+      // 참이고, 검은 공간을 끝까지 걸어 다니게 된다. 실제로 그 일이 있었다
+      // (용식이 집: 딴 맵의 장면이 주인공을 벽 속에 세웠다 — `scriptStepSystem`).
+      //
+      // 그래서 설 수 있는 칸을 하나 찾아(`standableSpot`) **그쪽으로 가까워지는
+      // 걸음만** 허락한다. 갇히지 않는다는 원래 목적은 그대로다
+      const tx = Math.floor(p.position.x), tz = Math.floor(p.position.z)
+      const inWall = stuck && activeZone.grid.isBlocked(tx, tz)
+      const out = inWall ? standableSpot(activeZone.grid, p.position.x, p.position.z) : null
+      // 옛 안전망을 그대로 여는 두 자리다 — **갇히는 것이 맵뚫보다 나쁘다**:
+      // ① 지형은 멀쩡한데 막혔다(사람이 내 칸에 올라섰다 따위) — 나갈 쪽이 없다
+      // ② 반경 8칸 안에 설 자리가 없다(`standableSpot`이 제자리를 돌려준다)
+      const anywhere = stuck && (out === null
+        || activeZone.grid.isBlocked(Math.floor(out.x), Math.floor(out.z)))
+      /** 벽 안에서 이 걸음이 나가는 쪽인가 */
+      const leaving = (from: number, to: number, goal: number): boolean =>
+        Math.abs(goal - to) < Math.abs(goal - from)
+      /** 이 축으로 가도 되는가 */
+      const may = (from: number, to: number, goal: number, free: boolean): boolean =>
+        anywhere || (out !== null ? leaving(from, to, goal) : free)
       // 축별로 따로 시도 — 벽에 비스듬히 부딪히면 벽을 따라 미끄러진다
       let refusedX = false, refusedZ = false
       if (onWall) {
         // 벽에서는 x 대신 y를 민다. x는 이미 판에 붙여 두었다
         if (stuck || !blocked(p.position.x, p.position.z, ny)) p.position.y = ny
         else p.velocity.y = 0
-      } else if (stuck || !blocked(nx, p.position.z)) p.position.x = nx
-      else { p.velocity.x = 0; refusedX = true }
-      if (stuck || !blocked(p.position.x, nz)) p.position.z = nz
+      } else if (may(p.position.x, nx, out?.x ?? 0, !blocked(nx, p.position.z))) {
+        p.position.x = nx
+      } else { p.velocity.x = 0; refusedX = true }
+      if (may(p.position.z, nz, out?.z ?? 0, !blocked(p.position.x, nz))) p.position.z = nz
       else { p.velocity.z = 0; refusedZ = true }
       // **밀었는데 못 갔다** — 원작의 「걸음 시도가 충돌로 끝났다」다
       // (`actor/footstep` 머리말). 여기 말고는 알 자리가 없다: 축별 통행 판정을

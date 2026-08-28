@@ -9,7 +9,7 @@ import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } fr
 import { markScript } from '../../app/sceneMark'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
-  signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld,
+  scriptBridge, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld,
   type MapHeader, type Npc, type Sign,
 } from '../map/world'
 import { worldState, type FieldActionFxKind } from '../../state/worldState'
@@ -492,6 +492,14 @@ export function makeWorld(
   return world
 }
 
+/**
+ * 걸어서 밟는 워프가 이 값을 보고 멈춘다 (`map/world`의 `warpSystem`).
+ *
+ * 컷신이 도는 동안 문으로 걸어 들어가면 **장면이 딴 맵에서 이어진다** —
+ * 그 자리의 실측이 `warpSystem`에 적혀 있다
+ */
+scriptBridge.running = () => fieldScripts.ctx !== null || native !== null
+
 /** `constants/scrcmd.h` — 이동 명령이 주인공을 가리키는 번호 */
 const LOCALID_PLAYER = 0xff
 /** 같은 표의 「지금 따라다니는 사람」. 배치표 번호가 아니다 */
@@ -717,31 +725,62 @@ export const scriptSystem = {
       step(ctx, world)
       return
     }
-    // ⚠️ **배틀 위에서는 새 스크립트를 시작하지 않는다.** 원작은 배틀에 들어가며
-    // 필드를 내리는데 우리 루프는 계속 돌아서, 눈 마주침도 `OnFrame`도 살아 있다 —
-    // 그러면 관장의 인사 대사창이 배틀 화면 **위에** 떠서 키를 먹는다
-    // (`FieldServices.battleUp`이 실측을 적어 뒀다). 위의 `ctx` 갈래는 안 막는다:
-    // 배틀을 연 것이 그 스크립트고, 끝나기를 기다리는 것도 그것이다
-    if (fieldScripts.services.battleUp?.() === true) return
-    // ⚠️ **세이브 값이 붓기 전에는 아무것도 안 건다** (`varsReady`). 그전에는
-    // 모든 변수가 0이라 표와 트리거가 전부 「아직 안 봤다」로 읽힌다.
-    // 위의 `ctx` 갈래는 안 막는다 — 이미 도는 것은 끝까지 가야 한다
-    if (!fieldScripts.varsReady) return
-    // ⚠️ **우리 사람이 원작 연출보다 먼저다** (SIWON.md §6). 복도의 `OnFrame`이
-    // 시작하면 그 안에는 못 끼어든다
-    if (trySiwonCameo()) return
-    // 맵이 스스로 거는 것이 제일 먼저다 (`FieldInput_Process`)
-    tryFrameTable()
-    // ⚠️ **운하시티 체육관의 판이 좌표 트리거보다 먼저다** (`Field_ProcessStep`의
-    // 첫 줄). 그 방은 단추도 트리거도 없고 **밟는 것**으로 판이 움직인다 —
-    // 태웠으면 그 걸음은 여기서 끝이다
-    if (fieldScripts.ctx === null) tryStepFeature()
-    // 그 다음이 밟아서 걸리는 것. 원작도 이동이 끝난 자리에서 좌표를 본다
-    if (fieldScripts.ctx === null) tryTrigger()
-    // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
-    if (fieldScripts.ctx === null) trySight()
-    if (fieldScripts.ctx === null && edges.a) tryTalk()
+    tryStartScripts()
   },
+}
+
+/**
+ * 밟은 자리를 **한 번 더** 본다 — 이동 시스템 뒤 · 워프 앞이다.
+ *
+ * ⚠️ **차례가 규칙의 일부다.** 원작은 걸음이 끝난 자리에서 `Field_ProcessStep`이
+ * 먼저 돌고 맵 이동 판정(`Field_CheckMapTransition`)은 그 뒤다. 우리 루프는
+ * `Script → NPC → Movement → Warp`라, 밟은 자리를 `scriptSystem`에서만 보면
+ * **워프가 좌표 트리거보다 한 프레임 빠르다** — 주인공이 그 칸에 발을 들이는
+ * 것은 `Movement`인데 워프는 그 뒤에서, 스크립트는 그 앞에서 보기 때문이다.
+ *
+ * 실측(용식이 집 문 앞): 145번째 프레임에 문 워프가 잡히고 146번째에 411번
+ * 맵의 좌표 트리거가 걸렸다. 맵은 이미 412로 갈린 뒤라 411에서 시작한 장면이
+ * 집 안에서 이어졌고, 그 장면의 「주인공은 남쪽으로 한 걸음」(`ApplyMovement`
+ * 255번 = 주인공)이 집 안의 **벽 속**에 주인공을 세웠다. 벽 속에 서면 충돌이
+ * 통째로 꺼져서(`actor/player`의 `stuck`) 검은 공간을 걸어 다니게 된다.
+ *
+ * 여기서 트리거가 먼저 걸리면 워프가 스스로 멈춘다 (`map/world`의 `scriptBridge`).
+ * `scriptSystem`에서도 그대로 보는 것은 **말 걸기·눈 마주침이 걸음보다 먼저**
+ * 걸려야 하기 때문이다 — 그쪽은 이동 앞에서 봐야 한 프레임 안 늦는다
+ */
+export const scriptStepSystem = {
+  fixedUpdate(): void {
+    if (fieldScripts.ctx !== null || native !== null) return
+    tryStartScripts()
+    markScript(fieldScripts.ctx !== null || native !== null)
+  },
+}
+
+/** 지금 자리에서 걸릴 스크립트를 찾는다. 이미 도는 것이 있으면 아무것도 안 건다 */
+function tryStartScripts(): void {
+  // ⚠️ **배틀 위에서는 새 스크립트를 시작하지 않는다.** 원작은 배틀에 들어가며
+  // 필드를 내리는데 우리 루프는 계속 돌아서, 눈 마주침도 `OnFrame`도 살아 있다 —
+  // 그러면 관장의 인사 대사창이 배틀 화면 **위에** 떠서 키를 먹는다
+  // (`FieldServices.battleUp`이 실측을 적어 뒀다). 도는 중인 스크립트는 안 막는다:
+  // 배틀을 연 것이 그 스크립트고, 끝나기를 기다리는 것도 그것이다
+  if (fieldScripts.services.battleUp?.() === true) return
+  // ⚠️ **세이브 값이 붓기 전에는 아무것도 안 건다** (`varsReady`). 그전에는
+  // 모든 변수가 0이라 표와 트리거가 전부 「아직 안 봤다」로 읽힌다
+  if (!fieldScripts.varsReady) return
+  // ⚠️ **우리 사람이 원작 연출보다 먼저다** (SIWON.md §6). 복도의 `OnFrame`이
+  // 시작하면 그 안에는 못 끼어든다
+  if (trySiwonCameo()) return
+  // 맵이 스스로 거는 것이 제일 먼저다 (`FieldInput_Process`)
+  tryFrameTable()
+  // ⚠️ **운하시티 체육관의 판이 좌표 트리거보다 먼저다** (`Field_ProcessStep`의
+  // 첫 줄). 그 방은 단추도 트리거도 없고 **밟는 것**으로 판이 움직인다 —
+  // 태웠으면 그 걸음은 여기서 끝이다
+  if (fieldScripts.ctx === null) tryStepFeature()
+  // 그 다음이 밟아서 걸리는 것. 원작도 이동이 끝난 자리에서 좌표를 본다
+  if (fieldScripts.ctx === null) tryTrigger()
+  // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
+  if (fieldScripts.ctx === null) trySight()
+  if (fieldScripts.ctx === null && edges.a) tryTalk()
 }
 
 /**

@@ -88,6 +88,12 @@ export function Ledges(
   }, [dummy, ledges])
 
   const capacity = Math.max(1, ledges.length)
+  // ⚠️ **턱이 없는 판에서는 아무것도 안 올린다.** 자리는 최소 하나로 잡아 두는데
+  // (`capacity`) 그린 수는 0이라, 인스턴스 0짜리 그리기가 매 프레임 나간다 —
+  // WebGL2로 내려가는 기계에서 `GL_INVALID_OPERATION: glDrawElements`가 둘씩
+  // 뜬다(실측: 사이클숍 맵 71, 콘솔 2건 · `.audit/cycleShop.mjs`). 실내가 전부
+  // 그렇다
+  if (ledges.length === 0) return null
   return (
     <group>
       <instancedMesh ref={top} args={[undefined, undefined, capacity]} castShadow receiveShadow>

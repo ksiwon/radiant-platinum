@@ -12,7 +12,7 @@ import { objectFxTick } from '../engine/actor/objectFx'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
-import { fieldScripts, scriptSystem } from '../engine/script/field'
+import { fieldScripts, scriptStepSystem, scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
 import { stepSystem } from './stepSystem'
 import { walkSoundSystem } from './walkSound'
@@ -47,7 +47,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   useEffect(() => {
     if (!systemsRegistered) {
       // 시스템 실행 순서 고정 (PLAN §3.4):
-      // Input → Script → NPC → Movement → Warp → Step → Encounter → Camera
+      // Input → Script → NPC → Movement → ScriptStep → Warp → Step →
+      // Encounter → Camera
       //
       // Script가 Movement보다 **먼저**여야 한다. 스크립트가 도는 동안 입력을
       // 지워서 발을 묶는데, 뒤에 두면 이미 그 프레임만큼 걸어간 뒤가 된다.
@@ -73,6 +74,11 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 프레임 수로 재므로 고정 스텝이다
       gameLoop.register({ fixedUpdate: objectFxTick })
       gameLoop.register(playerSystem)
+      // 밟은 자리를 보고 걸리는 스크립트는 **걸음 뒤 · 워프 앞**이다
+      // (원작 `Field_ProcessStep` → `Field_CheckMapTransition` 차례).
+      // 앞에 두면 워프가 좌표 트리거를 한 프레임 앞질러서, 딴 맵에서 장면이
+      // 이어진다 — 그 실측이 `script/field`의 `scriptStepSystem`에 적혀 있다
+      gameLoop.register(scriptStepSystem)
       gameLoop.register(warpSystem)
       // 한 칸을 밟은 뒤에 도는 것들 — 독·리펠·친밀도 (PARITY §1.1).
       // 조우보다 **먼저**다. 원작도 `Field_ProcessStep`이 이동이 끝난 자리에서
