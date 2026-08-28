@@ -847,9 +847,39 @@ if (ACTS.has('2')) {
       // 장면은 안 끊긴다. 끊김은 청크가 붙고 사람이 뜨는 동안 나온다
       const stood = await marks(page)
       let walk = { moved: null }
-      const steady = await frameWindow(page, FRAME_WINDOW_MS, async () => {
+      let steady = await frameWindow(page, FRAME_WINDOW_MS, async () => {
         if (cp.battle === null) walk = await canWalk()
       })
+
+      // ⚠️ **떨어질 값이 나오면 한 번 더 잰다.** 같은 자리가 두 번 끊기면 자리의
+      // 결함이고, 한 번만 끊기면 **재는 자가 흔들린 것**이다 — 판마다 떨어지는
+      // 자리가 통째로 갈렸다: `celestic` → `route217` → `elite`, 셋 다 끊김 3번인데
+      // **겹치는 자리가 하나도 없다.**
+      //
+      // ⚠️ **「언제부터 재는가」로는 못 고친다** — 그쪽을 먼저 재 봤다
+      // (`.audit/battleStream.mjs`). `settle()`은 삼각형이 750ms 안 바뀌면 넘어가는데,
+      // **안 바뀌는 동안에도 계속 붙는다**: `elite`는 4.7초에 9.8k로 넘어가고
+      // 삼각형은 9.5초까지 152.6k로 오른다. `gym8`은 11.5k에서 **7.6초** 동안
+      // 한 번도 안 바뀌다가 14.1초에 90.4k가 된다. 정체를 아무리 길게 잡아도
+      // 못 가르고, 「날아다니는 요청 0」을 얹어도 `elite`는 그대로다(요청은 4.6초에
+      // 다 끝나고 그 뒤는 파싱이다).
+      //
+      // ⚠️ **문턱은 그대로 둔다.** 이건 빨간 것을 초록으로 만드는 자리가 아니라
+      // **한 번 잰 값으로 판정하지 않는** 자리다. 진짜로 끊기는 자리는 두 번 다
+      // 끊긴다. 다시 잰 값도 표에 같이 남긴다
+      let retried = null
+      if (!gpu.software && !steady.thin && steady.hitches >= HITCH_LIMIT
+        // 맵을 나가는 중이면 어차피 판정 안 한다 — 다시 잴 것도 없다
+        && (await marks(page)).map === stood.map) {
+        retried = { hitches: steady.hitches, worst: steady.worst }
+        const again = await frameWindow(page, FRAME_WINDOW_MS, async () => {
+          if (cp.battle !== null) return
+          const more = await canWalk()
+          // 첫 걸음이 이미 걸렸으면 그것을 남긴다 — 이 걸음은 재려고 걷는 것이다
+          if (walk.moved !== true) walk = more
+        })
+        if (!again.thin) steady = again
+      }
 
       // ⚠️ **걸음이 장면을 연다.** 밟아서 걸리는 컷신이 여기서 시작하는데
       // (주인공 방의 라이벌이 그것이다), 그 자리에서 판정하면 **원작대로 도는
@@ -944,7 +974,8 @@ if (ACTS.has('2')) {
       if (err) trouble.push(`스크립트가 터졌다: ${String(err).slice(0, 120)}`)
       if (!gpu.software && !steady.thin && !warped) {
         if (steady.hitches >= HITCH_LIMIT) {
-          trouble.push(`끊김 ${steady.hitches}번 (제일 긴 프레임 ${steady.worst}ms)`)
+          trouble.push(`끊김 ${steady.hitches}번 (제일 긴 프레임 ${steady.worst}ms)`
+            + (retried === null ? '' : ` — 두 번 다 끊겼다 (처음 ${retried.hitches}번)`))
         } else if (steady.p95 > P95_MS) trouble.push(`프레임 95%가 ${steady.p95}ms`)
       }
       if (noise.length > 0) trouble.push(`콘솔 ${noise.length}건: ${noise[0]}`)
@@ -952,6 +983,10 @@ if (ACTS.has('2')) {
       const fps = gpu.software ? '못 잼'
         : steady.thin ? `프레임 ${steady.frames}개뿐`
           : `${steady.fps}fps p95 ${steady.p95}ms 끊김 ${steady.hitches}`
+            // ⚠️ **다시 쟀으면 그것도 적는다.** 첫 값을 숨기면 「이 자리가 흔들린다」가
+            // 표에서 사라진다 — 잦아지는지를 다음 사람이 봐야 한다
+            + (retried === null ? ''
+              : ` (처음 끊김 ${retried.hitches}·${retried.worst}ms, 다시 쟀다)`)
             + (warped ? ` (맵 ${at.map}으로 나가는 동안이라 판정 안 함)` : '')
       detail = `맵 ${at.map} · 삼각형 ${(shape.tri / 1000).toFixed(1)}k/${shape.draws}콜 · `
         + `뜨기 ${(arrived / 1000).toFixed(1)}초 붙기 ${((settled - arrived) / 1000).toFixed(1)}초 · `
@@ -966,7 +1001,11 @@ if (ACTS.has('2')) {
         + ((afterWalk.fought ?? onArrive.fought)
           ? ` · 컷신이 연 배틀 ${(afterWalk.fought ?? onArrive.fought).ended ? '끝냈다' : '안 끝났다'}` : '')
         + (extra.rewarped === undefined ? '' : ` · ⚠️ 맵 ${extra.rewarped}으로 밀려나 다시 뛰었다`)
-      extra = { ...extra, load, steady, pix, seconds: Math.round((Date.now() - t0) / 1000) }
+      extra = {
+        ...extra, load, steady, pix,
+        ...(retried === null ? {} : { firstSteady: retried }),
+        seconds: Math.round((Date.now() - t0) / 1000),
+      }
     } catch (e) {
       trouble.push(String(e.message ?? e).slice(0, 200))
     }
