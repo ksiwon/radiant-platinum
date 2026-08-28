@@ -1403,3 +1403,57 @@ WebGPU에서는 안 보이고 **WebGL2로 내려간 기계에서만** 경고가 
 - 사이클숍: 인스턴스 0짜리 **2 → 0**, GL 경고 **2 → 0**.
 - 턱이 있는 판은 그대로다: 지앤시티 **88개** · 무쇠시티 **38개**, 빈 것 0 · 경고 0
   (`.audit/ledgeCheck.mjs`).
+
+## 29. 한국·일본 롬으로 깔면 **배틀이 통째로 빈다** — **고쳤다**
+
+사용자가 배포본에서 본 것: 기술명이 영어(`scratch 35/35`) · 포켓몬 모델 없음 ·
+포켓몬 정보 칸 없음 · 기술을 눌러도 아무 일 없음. 넷이 **한 뿌리**다.
+
+### 무엇이었나
+
+설치본에는 **롬의 제 언어 한 벌만** 들어간다 — `import/platinum/text.ts`가
+`data/names/*.{로케일}.json`을 `ctx.locale` **한 벌만** 굽는다. 그런데
+`ui/battle/BattleScreen`이 이름표를 받을 때 `loadLabels('en')`을 **같이** 받았다
+(특성 아이디를 롬 번호로 되돌리려고). `Promise.all`이라 **그 한 파일의 404가 묶음
+전체를 깨뜨린다.** 그러면 `names`가 null → `buildBeats`가 `if (!names) return []`로
+빈 채로 서고, **사건을 뷰에 접는 일이 그 박자에 실려 있어서** `view.active`가
+끝까지 비어 있다. 칸도 모델도 로그도 안 뜨고, 기술 이름은 sim의 영어 아이디로
+떨어지고, 눌러도 고를 것이 없다.
+
+`.catch`에 「이름을 못 받으면 영어 원문으로 떨어진다」고 적혀 있었는데 **거짓이었다.**
+
+### 왜 안 걸렸나
+
+- **개발 서버는 멀쩡하다.** `public/data`에 `pnpm extract`가 구운 en·ja·ko 세 벌이
+  다 있다. `pnpm shot`도 `pnpm story`도 여기서 돈다.
+- **e2e도 초록이다.** `tools/e2e/run.mjs`가 `PT_E2E_LOCALE ?? 'en'`이라 **영어 롬으로
+  설치**한다. 영어 설치본에는 `labels.en.json`이 당연히 있다.
+
+**한국·일본 롬으로 깐 사람만** 이 자리에 빠진다. 스물아홉 검사가 전부 초록인 채로.
+
+### 실측 (`.audit/installedBattle.mjs`, 한국판 롬 설치본)
+
+| | 고치기 전 | 고친 뒤 |
+|---|---|---|
+| `view.active` | `p1a=null p2a=null` | `p1a=turtwig` |
+| 고를 것 | 0개 | `move:tackle/33` · `move:withdraw/110` |
+| 앱이 못 받은 것 | 404 한 건 | 0건 |
+| 화면 | 빈 배틀 | 「앗! 야생의 꼬링크가 나타났다!」· 모부기 25/25 |
+
+### 고친 자리
+
+- `ui/battle/BattleScreen` — `loadLabels('en')`을 뺐다. `.catch`는 콘솔에 적는다.
+- `ui/battle/SwitchScreen` — `abilityIndex(names.abilitiesEn, …)`를 지우고
+  `romAbility(id) ?? -1`로 간다. sim 덱스가 같은 값을 주므로 **롬 자료가 아예 필요
+  없다.** 번호가 곧 롬 이름표의 자리라는 것은 실측이다: `labels.ko.json`의 2·3·4번이
+  잔비·가속·전투무장이고, 그것이 Drizzle·Speed Boost·Battle Armor의 번호다.
+
+### 못 박은 자리
+
+`data/localeAssets.test` — `src/` 전체를 훑어 **언어를 손으로 박고 자료를 받는
+자리**를 잡는다 (`load*('en')` · `*.en.json`). 굽는 쪽(`import/`)과 시험은 뺀다.
+주석은 지우고 본다 — 「한때 여기서 `loadLabels('en')`을 받았다」고 적어 둔 줄이 다시
+걸리면 고쳐 놓고도 빨간불이 선다.
+
+남은 구멍은 **e2e가 영어 롬만 깐다**는 것이다. 로케일을 갈아 한 번 더 도는 값이
+설치 703초라 아직 안 붙였다.

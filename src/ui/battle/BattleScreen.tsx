@@ -76,8 +76,6 @@ interface Extras {
   types: string[]
   /** 특성 설명. 교체 화면이 쓴다 */
   abilityText: string[]
-  /** 특성의 영어 이름. 프로토콜 아이디를 번호로 되돌리는 열쇠다 */
-  abilitiesEn: string[]
   move(id: number): Move | undefined
   /** 그 모습의 타입 둘. 상성 표시가 본다 (§2.22) */
   typesOf(species: number, form: number): readonly number[] | null
@@ -93,27 +91,32 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
     void Promise.all([
       loadSpeciesNames(locale), loadMoveNames(locale), loadLabels(locale), loadMoves(),
       loadItemNames(locale),
-      // ⚠️ **영어 이름도 같이 받는다.** 프로토콜의 특성은 `sandstream` 같은
-      // 아이디라, 같은 차례의 영어 이름과 맞춰야 롬 번호가 나온다
-      // (`SwitchScreen`의 `abilityIndex`). 6KB짜리라 늘 받아 둔다
-      loadLabels('en'),
+      // ⚠️ **다른 언어 파일을 이름으로 부르지 않는다.** 설치본에는 **롬의 제
+      // 언어 한 벌만** 들어 있다 (`import/platinum/text.ts`가 `ctx.locale` 한
+      // 벌만 굽는다). 한때 여기서 `loadLabels('en')`을 같이 받았는데, 한국·일본
+      // 롬 설치본에는 그 파일이 없어서 **이 묶음이 통째로 깨졌다** — 그러면
+      // 아래 `beats`가 빈 채로 서고 사건이 뷰에 하나도 안 접힌다 (REPAIR §29)
+      //
       // 종족표는 배틀을 열 때 이미 받아 뒀다 (`battleStore.open`) — 두 번째
       // 호출은 캐시에서 돌아온다
       loadSpecies(),
     ])
-      .then(([species, moves, labels, table, items, en, dex]) => {
+      .then(([species, moves, labels, table, items, dex]) => {
         if (!alive) return
         setNames({ species, moves, abilities: labels.abilities, items })
         setExtras({
           types: labels.types,
           abilityText: labels.abilityText,
-          abilitiesEn: en.abilities,
           move: (id) => table.byId.get(id),
           // 표에 없는 번호가 오면 상성 칸을 비운다. 화면 하나 때문에 던지지 않는다
           typesOf: (id, form) => dex.byId.get(formSpeciesId(id, form))?.types ?? null,
         })
       })
-      .catch(() => { /* 이름을 못 받으면 아래에서 영어 원문으로 떨어진다 */ })
+      // ⚠️ **조용히 넘기지 않는다.** 한때 여기 「영어 원문으로 떨어진다」고
+      // 적혀 있었는데 **거짓이었다** — 이름표가 없으면 `beats`가 비고, 사건이
+      // 뷰에 안 접혀서 포켓몬 칸도 모델도 로그도 통째로 안 뜬다. 콘솔에 적어
+      // 두면 다음 사람이 화면만 보고 헤매지 않는다
+      .catch((e: unknown) => { console.error('배틀 이름표를 못 받았다', e) })
     return () => { alive = false }
   }, [locale])
   return { names, extras }

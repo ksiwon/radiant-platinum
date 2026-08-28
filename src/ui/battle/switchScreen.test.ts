@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { partySummary } from '../../engine/battle/choice'
 import type { BattleRequest } from '../../engine/battle/events'
-import { abilityIndex } from './SwitchScreen'
+import { romAbility } from '../../engine/battle/sim/bridge'
 
 const mon = (over: Partial<BattleRequest['side']['pokemon'][0]>) => ({
   ident: 'p1: turtwig',
@@ -70,17 +70,20 @@ describe('교체 화면이 읽는 파티', () => {
 })
 
 describe('특성 아이디 → 롬 번호', () => {
-  // ⚠️ 표를 손으로 안 적는다. 프로토콜은 `sandstream`을 주고 우리에겐 같은
-  // 차례의 영어 이름이 있다 — 둘을 같은 규칙으로 뭉개면 그대로 맞는다
-  const names = ['-', 'Stench', 'Drizzle', 'Speed Boost', 'Battle Armor']
-
+  // ⚠️ **영어 이름표에 안 묻는다.** 한때 `names/labels.en.json`의 차례와 맞췄는데
+  // 그 파일은 **영어 롬 설치본에만 있다** — 한국·일본 롬으로 깔면 그 한 파일이
+  // 없어서 배틀 이름표가 통째로 안 왔다 (REPAIR §29). sim 덱스가 같은 값을 준다.
+  //
+  // 번호가 곧 롬 이름표의 자리라는 것은 실측이다: `labels.ko.json`의 특성
+  // 124개 중 2·3·4번이 잔비·가속·전투무장이고, 그것이 Drizzle·Speed Boost·
+  // Battle Armor의 번호다
   it('사이의 빈칸과 대소문자를 무시하고 맞춘다', () => {
-    expect(abilityIndex(names, 'speedboost')).toBe(3)
-    expect(abilityIndex(names, 'battlearmor')).toBe(4)
-    expect(abilityIndex(names, 'drizzle')).toBe(2)
+    expect(romAbility('speedboost')).toBe(3)
+    expect(romAbility('battlearmor')).toBe(4)
+    expect(romAbility('drizzle')).toBe(2)
   })
 
-  it('없는 특성은 −1', () => {
-    expect(abilityIndex(names, 'sandstream')).toBe(-1)
+  it('4세대에 없는 특성은 null', () => {
+    expect(romAbility('justified')).toBeNull()
   })
 })

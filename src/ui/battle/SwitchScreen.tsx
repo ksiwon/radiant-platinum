@@ -12,6 +12,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { BattleAction, PartySlot } from '../../engine/battle/choice'
 import { effectivenessOf } from '../../engine/battle/ai/typeChart'
+import { romAbility } from '../../engine/battle/sim/bridge'
 import { loadSpecies } from '../../data/gameData'
 import type { Move, Species } from '../../data/schema'
 import type { RosterEntry } from '../../state/battleStore'
@@ -30,26 +31,7 @@ interface SwitchNames extends BattleNames {
   types: string[]
   /** 특성 설명. 특성 이름과 같은 색인 */
   abilityText: string[]
-  /**
-   * 특성의 **영어** 이름.
-   *
-   * 프로토콜이 주는 특성은 `sandstream` 같은 아이디라 롬 번호가 아니다.
-   * 같은 차례의 영어 이름과 맞춰야 번호가 나온다 (`abilityIndex`)
-   */
-  abilitiesEn: string[]
   move(id: number): Move | undefined
-}
-
-/**
- * 특성 아이디(`sandstream`) → 롬 특성 번호.
- *
- * ⚠️ **표를 손으로 적지 않는다.** 프로토콜이 주는 것은 영어 이름을 소문자로
- * 뭉갠 아이디고, 우리에겐 같은 차례의 **영어 이름 목록**이 이미 있다
- * (`names/labels.en.json`). 둘을 같은 규칙으로 뭉개면 그대로 맞는다
- */
-export function abilityIndex(names: readonly string[], id: string): number {
-  const key = id.replace(/[^a-z0-9]/gi, '').toLowerCase()
-  return names.findIndex((n) => n.replace(/[^a-z0-9]/gi, '').toLowerCase() === key)
 }
 
 /** 이 기술이 상대에게 몇 배인가. 판정이 아니라 귀띔이다 (`switchScreen.css`의 `hint`) */
@@ -192,7 +174,12 @@ export function SwitchScreen(
           </div>
 
           {(() => {
-            const idx = names ? abilityIndex(names.abilitiesEn, chosen.ability) : -1
+            // ⚠️ **영어 이름표에 안 묻는다.** 프로토콜이 주는 `sandstream` 같은
+            // 아이디를 번호로 되돌리는 일은 sim 덱스가 이미 한다 — 한때는
+            // `names/labels.en.json`의 차례와 맞췄는데, **그 파일은 영어 롬
+            // 설치본에만 있다.** 한국·일본 롬으로 깔면 그 한 파일이 404가 나면서
+            // 배틀 이름표가 통째로 안 왔다 (REPAIR §29)
+            const idx = romAbility(chosen.ability) ?? -1
             if (idx < 0) return null
             return (
               <div className={css.ability}>
