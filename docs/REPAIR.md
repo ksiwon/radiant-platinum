@@ -239,7 +239,7 @@ GC인가). ⚠️ **붙일 때마다 재고, 안 줄면 되돌린다** — 굽�
 | 이어하기에서 모험노트가 저절로 안 펼쳐진다 (`Journal_CheckOpenOnContinue`) | `scene/journal.ts`의 `journalOpensOnContinue` | 엔진의 `checkOpenOnContinue`도 그 시험도 있는데 **부르는 자리가 없다**. [PARITY.md](PARITY.md) §7.4는 ✅다 |
 | 순간이동으로 돌아온 것이 노트에 안 적힌다 | `scene/journal.ts`의 `journalWarpedByMove` | 하늘을날기는 적힌다(`journalFlew` ← `FlyScreen`). 텔레포트가 필드 기술 아홉에 없어서 부를 자리가 아직 없는 것이다 |
 | 지우기 직전 백업을 **되읽는 길이 없다** | `state/report.ts`의 `readBackup` | `backupBeforeOverwrite`가 파일과 IndexedDB 슬롯 **두 벌**을 남긴다고 적어 놨는데, 슬롯을 읽는 자리가 없어 지금은 쓰기 전용이다 ([IMPORT.md](IMPORT.md) §11-8) |
-| 맵을 떠날 때 맵 기능이 안 지워진다 (`DynamicMapFeatures_Free`) | `engine/world/mapFeatures.ts`의 `clearMapFeature` | 앞 맵의 기능이 `active`에 남는다. 새 맵의 스크립트가 `initPlatformLift`를 부르면 덮이지만, 그 명령이 없는 맵으로 가면 남는다 |
+| ~~맵을 떠날 때 맵 기능이 안 지워진다~~ — **이어 붙였다** | `scene/MapStreamer`가 맵을 옮길 때 부른다 | ⚠️ **여기 적혀 있던 결과가 과했다.** 갈래 번호는 정말 남았지만(실측: 영원 체육관 67 → 집 414에서 번호 8이 그대로) 통행 판정은 **안 샜다** — 갈래마다 제 상태를 따로 지우고(`resetEternaGym` 따위, MapStreamer가 이미 부른다) 판정이 그것을 먼저 보기 때문이다. 32×32칸에서 장치가 답한 칸이 0이다. 번호를 지우는 한 줄은 그래도 넣었다 (`.audit/staleFeature.mjs`) |
 | 더블에서 정책 없는 상대의 턴을 안 고른다 | `engine/battle/choice.ts`의 `chooseRandomTurn` | 27줄이 서 있고 「야생·정책 없는 상대가 쓴다」고 적혀 있는데 부르는 자리가 없다 |
 
 ⚠️ **이건 사고가 아니다.** 물뿌리개 안전장치(`scene/berryPatches.ts`의

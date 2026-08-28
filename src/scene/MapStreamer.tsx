@@ -87,6 +87,7 @@ import { DisguisePlates } from './DisguisePlates'
 import { EmoteMarks } from './EmoteMarks'
 import { FeatureProps } from './FeatureProps'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
+import { clearMapFeature } from '../engine/world/mapFeatures'
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
 import { resetSunyshoreGym, sunyshoreTick } from './sunyshoreGym'
 import { eternaTick, resetEternaGym } from './eternaGym'
@@ -306,6 +307,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 그 맵에만 있는 장치도 맵과 함께 없어진다 (`DynamicMapFeatures_Free`).
       // ⚠️ **`enterMap`보다 먼저다** — 새 맵의 초기화 스크립트가 그 안에서 돌면서
       // 다시 세우는데, 뒤에서 지우면 방금 세운 것을 지운다
+      // ⚠️ **갈래 번호도 같이 지운다** (`PersistedMapFeatures_Free`). 지금은
+      // 갈래마다 제 상태(`active`)를 따로 지우고 통행 판정이 그것을 먼저 보므로
+      // 번호만 남아도 판정은 안 샌다 — 실측(영원 체육관 67 → 집 414): 번호는
+      // 8로 남았는데 32×32칸에서 장치가 답한 칸이 0이다. 그래도 지운다:
+      // 「지금 어느 장치인가」를 묻는 자리가 하나라도 생기면 그때는 샌다
+      clearMapFeature()
       resetPlatformLift()
       resetPastoriaGym()
       resetSunyshoreGym()
