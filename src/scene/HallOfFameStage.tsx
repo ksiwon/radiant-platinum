@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { DoubleSide, Group, Mesh, MeshStandardMaterial, type Object3D } from 'three'
+import { DoubleSide, Group, Mesh } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
@@ -10,6 +10,7 @@ import { loadMonModel, makeBody, play, type MonBody } from './battle/monModel'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
+import { preparePersonModel } from './personModel'
 
 const PARTY_POSITIONS = [
   [0, 0, -1.45],
@@ -21,7 +22,6 @@ const PARTY_POSITIONS = [
 ] as const
 
 const CONFETTI_COLORS = ['#ff5f6d', '#ffd86f', '#6fd0ff', '#8bff9b', '#d99bff']
-const ALT_OUTFIT = ['hair2', 'shoes2']
 const playerLoader = new GLTFLoader()
 
 function FallbackMon({ species }: { species: number }) {
@@ -134,18 +134,9 @@ function HallPlayer({ gender, visible }: { gender: 'boy' | 'girl'; visible: bool
         try {
           const gltf = await playerLoader.loadAsync(url)
           if (!alive) return
+          // 복제 전에 손질한다 — 오프닝·필드와 같은 것을 쓴다 (`scene/personModel`)
+          preparePersonModel(gltf.scene)
           const root = cloneSkinned(gltf.scene) as Group
-          root.traverse((object: Object3D) => {
-            if (ALT_OUTFIT.some((name) => object.name.includes(name))) object.visible = false
-            if (!(object instanceof Mesh)) return
-            object.castShadow = true
-            const materials = Array.isArray(object.material) ? object.material : [object.material]
-            for (const material of materials) {
-              if (!(material instanceof MeshStandardMaterial)) continue
-              material.roughness = 0.85
-              material.metalness = 0
-            }
-          })
           setModel(root)
         } finally {
           provider.releaseObjectUrl(path)

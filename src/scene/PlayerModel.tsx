@@ -4,8 +4,8 @@ import { Suspense, useEffect, useRef } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
-  AnimationMixer, LoopOnce, LoopRepeat, Mesh, Quaternion,
-  type AnimationClip, type MeshStandardMaterial, type Group, type Object3D,
+  AnimationMixer, LoopOnce, LoopRepeat, Quaternion,
+  type AnimationClip, type Group, type Object3D,
 } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
@@ -22,8 +22,7 @@ import { useAssetUrl } from '../data/providers/useAssetUrl'
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
 import { useSaveStore } from '../state/saveStore'
 import { playerModelPath } from './playerModelPath'
-import { unifySkeletons } from './unifySkeleton'
-const ALT_OUTFIT = ['hair2', 'shoes2']
+import { preparePersonModel } from './personModel'
 
 /** 구운 클립을 도는 자. 클립이 없는 설치본에서는 `null`이고 절차형이 그대로 돈다 */
 interface ClipSet {
@@ -56,21 +55,8 @@ export function PlayerModel() {
     // ⚠️ **조각마다 뼈 수가 다르면 그 수만큼 셰이더가 갈린다** (`unifySkeleton`).
     // 주인공은 조각 열하나에 스킨 여섯이라 혼자서 프로그램을 여섯 개 쓴다.
     // 여기 씬은 `useLoader`가 캐시해 세션 내내 하나뿐이라 두 번 걸릴 일이 없다
-    unifySkeletons(gltf.scene)
-    gltf.scene.traverse((o) => {
-      if (ALT_OUTFIT.some((n) => o.name.includes(n))) o.visible = false
-      const mesh = o as Mesh
-      if (!mesh.isMesh) return
-      mesh.castShadow = true
-      // 알베도는 tools/extract/bdsp_bake_albedo.py가 이미 구워 넣었다 (BDSP 레이어 색상 →
-      // 평범한 albedo 텍스처). 여기서는 원작 툰 룩에 맞게 반사만 눌러둔다.
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      for (const m of mats) {
-        const std = m as MeshStandardMaterial
-        std.roughness = 0.85
-        std.metalness = 0.0
-      }
-    })
+    // 오프닝·명예의 전당과 **같은 손질**이다 (`scene/personModel`)
+    preparePersonModel(gltf.scene)
   }, [gltf])
 
   // 정규화는 머티리얼 처리 이후, 그리고 씬 등록 이전에 한 번

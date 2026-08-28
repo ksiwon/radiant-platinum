@@ -10,8 +10,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BufferAttribute, DoubleSide, Group, Mesh, MeshBasicMaterial, NearestFilter,
-  PlaneGeometry, SRGBColorSpace, Texture, TextureLoader,
+  BufferAttribute, DoubleSide, Group, Mesh, MeshBasicMaterial, PlaneGeometry,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
@@ -19,7 +18,8 @@ import { disguiseOf } from '../engine/actor/ambient'
 import {
   artDir, cameraQuadrant, frameOf, npcSprite, TEXELS_PER_TILE, type NpcSprite,
 } from '../engine/actor/sprites'
-import { assets, onProviderSwap } from '../data/providers/assetProvider'
+import { npcTexture } from './npcTexture'
+import { faceCamera, hideRest } from './billboard'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
@@ -37,43 +37,6 @@ const RANGE = 48
 const TICKS_PER_SECOND = 60
 /** 서 있는 사람도 조금씩 움직이면 살아 보이지만, 원작은 안 움직인다 */
 const IDLE_TICK = 0
-
-const loader = new TextureLoader()
-const textures = new Map<number, Texture>()
-
-// 갈아 끼우면 사람 그림은 옛 설치본 것이다. 텍스처도 함께 버린다
-onProviderSwap(() => {
-  for (const tex of textures.values()) tex.dispose()
-  textures.clear()
-})
-
-function textureFor(gfx: number): Texture {
-  const had = textures.get(gfx)
-  if (had !== undefined) return had
-  // ⚠️ 빈 텍스처를 먼저 돌려주고 주소가 오면 채운다. `textureFor`는 매 프레임
-  // 도는 자리라 비동기로 바꿀 수 없다 — 대신 그림이 늦게 오면 `needsUpdate`로
-  // 한 번 더 올린다.
-  //
-  // ⚠️ **다 읽으면 주소를 놓는다.** 그림은 `textures`가 들고 있고 Blob 원본은
-  // 더 안 쓴다. 사람이 470종이라 붙들면 그만큼 남는다
-  const tex = new Texture()
-  const path = `data/npc/${String(gfx)}.png`
-  const provider = assets()
-  void provider.objectUrl(path)
-    .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
-    .then((loaded) => {
-      tex.image = loaded.image as TexImageSource
-      tex.needsUpdate = true
-    })
-    .catch(() => { /* 그림이 없으면 빈 판으로 선다 */ })
-  // 도트를 뭉개지 않는다. 원작이 16텍셀 격자라 보간하면 윤곽이 흐려진다
-  tex.magFilter = NearestFilter
-  tex.minFilter = NearestFilter
-  tex.generateMipmaps = false
-  tex.colorSpace = SRGBColorSpace
-  textures.set(gfx, tex)
-  return tex
-}
 
 /** 판때기 하나 몫의 상태 */
 interface Slot {
@@ -182,7 +145,7 @@ export function NpcSprites({ grid, layer, standing }: Props) {
       const anim = sprite.directional ? artDir(actor.dir, quadrant) : 0
       const frame = frameOf(sprite, anim, ticks)
       if (slot.gfx !== actor.gfx) {
-        slot.material.map = textureFor(actor.gfx)
+        slot.material.map = npcTexture(actor.gfx)
         slot.material.needsUpdate = true
         slot.gfx = actor.gfx
         slot.frame = -1
@@ -200,26 +163,12 @@ export function NpcSprites({ grid, layer, standing }: Props) {
         actor.z + 0.5 + (actor.offsetZ ?? 0),
       )
       slot.mesh.scale.set(sprite.w / TEXELS_PER_TILE, sprite.h / TEXELS_PER_TILE, 1)
-      // **판때기가 카메라를 통째로 본다** (원작 SBC의 `BB` — 좌우만 도는 것은
-      // `BBY`다). 좌우로만 돌리면 세로가 내려보는 각만큼 눌린다: 실내 렌즈가
-      // 50.09도라 키가 **cos 50.09 = 64%**로 찌그러졌고, 갤럭시단 집회장에서
-      // 조무래기 판때기가 바닥에 누운 것처럼 보였다.
-      //
-      // ⚠️ **발은 안 뜬다.** 판의 원점이 아래 모서리라(`makeSlot`이 y로 0.5를
-      // 밀어 둔다) X축 회전이 그 모서리를 축으로 돈다. 도는 차례는 `YXZ`여야
-      // 한다 — 좌우를 먼저 돌고 그 자리에서 뒤로 눕는다
-      const toCamX = camera.position.x - slot.mesh.position.x
-      const toCamZ = camera.position.z - slot.mesh.position.z
-      const toCamY = camera.position.y - slot.mesh.position.y
-      slot.mesh.rotation.set(
-        -Math.atan2(toCamY, Math.hypot(toCamX, toCamZ)),
-        Math.atan2(toCamX, toCamZ), 0, 'YXZ')
+      // 카메라를 통째로 본다 (`scene/billboard` — 왜 좌우만으로는 안 되는지가
+      // 거기 적혀 있다). 판의 원점이 아래 모서리라 발은 안 뜬다
+      faceCamera(slot.mesh, camera)
       slot.mesh.visible = true
     }
-    for (let i = n; i < slots.length; i++) {
-      const s = slots[i]
-      if (s !== undefined) s.mesh.visible = false
-    }
+    hideRest(slots, n)
   })
 
   return <group ref={groupRef} />

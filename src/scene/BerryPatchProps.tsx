@@ -14,22 +14,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BufferAttribute, DoubleSide, FrontSide, Frustum, Matrix4, Mesh, MeshBasicMaterial, NearestFilter,
-  PlaneGeometry, Sphere, SRGBColorSpace, Texture, TextureLoader, Vector3, type Material,
+  BufferAttribute, DoubleSide, Frustum, Matrix4, Mesh, MeshBasicMaterial,
+  PlaneGeometry, Sphere, Vector3, type Material,
 } from 'three'
-import { assets, onProviderSwap } from '../data/providers/assetProvider'
 import { npcSprite, TEXELS_PER_TILE } from '../engine/actor/sprites'
 import { npcActors } from '../engine/actor/npcs'
 import { BERRY_STAGE } from '../engine/world/berryPatches'
 import { useSaveStore } from '../state/saveStore'
 import { berryPatchObjects, berryView } from './berryPatches'
 import {
-  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, sliceTexture,
-  type ChunkMesh, type TexSheet,
+  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet,
+  type ChunkMesh,
 } from './chunkMesh'
 import { groundYAt } from './distortion'
 import { world } from '../engine/map/world'
 import type { MapGrid } from '../engine/map/grid'
+import { npcTexture } from './npcTexture'
+import { hideRest } from './billboard'
+import { propMaterials } from './propMeshes'
 
 /** 흙 모델의 소품 번호 (`distortionProps`의 28번 = `fldeff.narc` 17) */
 const SOIL_KIND = 28
@@ -69,33 +71,6 @@ function berryStageGfx(berryID: number, growthStage: number): number | null {
   return BERRY_GFX_SPROUT + (berryID - 1) * 3 + at
 }
 
-const loader = new TextureLoader()
-const textures = new Map<number, Texture>()
-
-onProviderSwap(() => {
-  for (const tex of textures.values()) tex.dispose()
-  textures.clear()
-})
-
-/** `NpcSprites`의 것과 같은 식이다 — 빈 판을 먼저 주고 그림이 오면 채운다 */
-function textureFor(gfx: number): Texture {
-  const had = textures.get(gfx)
-  if (had !== undefined) return had
-  const tex = new Texture()
-  const path = `data/npc/${String(gfx)}.png`
-  const provider = assets()
-  void provider.objectUrl(path)
-    .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
-    .then((got) => { tex.image = got.image as TexImageSource; tex.needsUpdate = true })
-    .catch(() => { /* 그림이 없으면 흙만 보인다 */ })
-  tex.magFilter = NearestFilter
-  tex.minFilter = NearestFilter
-  tex.generateMipmaps = false
-  tex.colorSpace = SRGBColorSpace
-  textures.set(gfx, tex)
-  return tex
-}
-
 interface Slot {
   mesh: Mesh
   material: MeshBasicMaterial
@@ -114,28 +89,6 @@ function makeSlot(): Slot {
   mesh.visible = false
   mesh.frustumCulled = false
   return { mesh, material, uv: geometry.getAttribute('uv') as BufferAttribute, gfx: -1 }
-}
-
-function materialsOf(mesh: ChunkMesh, sheet: TexSheet | null): Material[] {
-  const cache = new Map<string, Material>()
-  return mesh.materials.map((spec) => {
-    const key = `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
-    const hit = cache.get(key)
-    if (hit) return hit
-    const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
-    const translucent = spec.a < 31
-    const made = new MeshBasicMaterial({
-      map: item && sheet ? sliceTexture(sheet, item, spec.rep) : null,
-      vertexColors: true,
-      alphaTest: translucent ? 0 : 0.5,
-      transparent: translucent,
-      opacity: translucent ? spec.a / 31 : 1,
-      depthWrite: !translucent,
-      side: spec.f === 3 ? DoubleSide : FrontSide,
-    })
-    cache.set(key, made)
-    return made
-  })
 }
 
 const viewProj = new Matrix4()
@@ -172,7 +125,7 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
     ])
       .then(([mesh, sheet, offsets]) => {
         if (!alive) return
-        setSoil({ mesh, materials: materialsOf(mesh, sheet), offset: offsets[SOIL_KIND] ?? [0, 0, 0] })
+        setSoil({ mesh, materials: propMaterials(mesh, sheet), offset: offsets[SOIL_KIND] ?? [0, 0, 0] })
       })
       .catch(() => { /* 흙이 없으면 자란 것만 선다 */ })
     return () => { alive = false }
@@ -203,7 +156,7 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
       n++
 
       if (slot.gfx !== gfx) {
-        slot.material.map = textureFor(gfx)
+        slot.material.map = npcTexture(gfx)
         slot.material.needsUpdate = true
         slot.gfx = gfx
         // 아틀라스의 첫 장만 쓴다. 흔들리는 연출은 원작에도 없다
@@ -221,10 +174,7 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
       ), 0)
       slot.mesh.visible = true
     }
-    for (let i = n; i < slots.length; i++) {
-      const s = slots[i]
-      if (s !== undefined) s.mesh.visible = false
-    }
+    hideRest(slots, n)
   })
 
   if (places.length === 0) return null

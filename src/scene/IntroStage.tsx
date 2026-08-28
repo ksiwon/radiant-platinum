@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Group, Mesh, MeshStandardMaterial, type Object3D } from 'three'
+import { Group, MeshStandardMaterial } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
@@ -13,9 +13,9 @@ import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
 import { NPC_BUNDLE } from '../engine/actor/npcModels'
+import { preparePersonModel } from './personModel'
 
 const personLoader = new GLTFLoader()
-const ALT_OUTFIT = ['hair2', 'shoes2']
 
 function Person({
   path,
@@ -47,18 +47,10 @@ function Person({
         try {
           const gltf = await personLoader.loadAsync(url)
           if (!alive) return
+          // ⚠️ **복제하기 전에 손질한다** — `unifySkeletons`가 지오메트리를
+          // 고쳐 쓰기 때문이다 (`scene/personModel`). 필드·전당과 같은 것을 쓴다
+          preparePersonModel(gltf.scene)
           const root = cloneSkinned(gltf.scene) as Group
-          root.traverse((object: Object3D) => {
-            if (ALT_OUTFIT.some((name) => object.name.includes(name))) object.visible = false
-            if (!(object instanceof Mesh)) return
-            object.castShadow = true
-            const materials = Array.isArray(object.material) ? object.material : [object.material]
-            for (const material of materials) {
-              if (!(material instanceof MeshStandardMaterial)) continue
-              material.roughness = 0.85
-              material.metalness = 0
-            }
-          })
           setModel(root)
         } finally {
           provider.releaseObjectUrl(path)

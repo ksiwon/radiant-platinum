@@ -24,6 +24,7 @@ import { world } from '../engine/map/world'
 import { emotes } from './emotes'
 import { npcBodyHeight } from './NpcModels'
 import { groundYAt } from './distortion'
+import { faceCameraYaw, hideRest } from './billboard'
 
 /** 한 번에 뜨는 표시. VS시커가 화면 안을 통째로 훑으므로 넉넉히 둔다 */
 const MAX = 24
@@ -162,16 +163,10 @@ export function EmoteMarks({ grid, layer }: { grid: MapGrid; layer: number }) {
         y + head + GAP + emoteRise(mark.frame),
         actor.z + 0.5,
       )
-      slot.mesh.rotation.set(0, Math.atan2(
-        camera.position.x - slot.mesh.position.x,
-        camera.position.z - slot.mesh.position.z,
-      ), 0)
+      faceCameraYaw(slot.mesh, camera)
       slot.mesh.visible = true
     }
-    for (let i = n; i < slots.length; i++) {
-      const s = slots[i]
-      if (s !== undefined) s.mesh.visible = false
-    }
+    hideRest(slots, n)
   })
 
   return <group ref={groupRef} />

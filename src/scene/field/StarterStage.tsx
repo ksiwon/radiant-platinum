@@ -14,20 +14,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   BackSide,
-  DoubleSide,
-  FrontSide,
   Group,
   Mesh,
-  MeshBasicMaterial,
   type BufferGeometry,
   type Material,
 } from 'three'
 import {
   loadStarterMesh,
   loadStarterSheet,
-  sliceTexture,
-  type ChunkMesh,
-  type TexSheet,
 } from '../chunkMesh'
 import { STARTER_ORIGIN, starterStage } from '../battle/stageRefs'
 import {
@@ -44,6 +38,7 @@ import {
 import { starterScene } from './starterRefs'
 import { STARTERS } from '../../ui/field/starterChoice'
 import { StarterMon } from './StarterMon'
+import { propMaterials } from '../propMeshes'
 
 /**
  * DS 단위 → 우리 타일.
@@ -76,37 +71,6 @@ interface Loaded {
   id: number
   geometry: BufferGeometry
   materials: Material[]
-}
-
-/**
- * 이 장면 전용 재질.
- *
- * `chunkMesh.makeMaterial`을 안 쓴다 — 저쪽은 `MeshLambertMaterial`이라 빛이
- * 있어야 보이고, 여기는 무광이어야 한다. 안개도 끈다: 필드 안개가 100타일쯤에서
- * 걷히는데 이 무대는 그보다 훨씬 멀리 있는 것으로 계산된다
- */
-function materialsOf(mesh: ChunkMesh, sheet: TexSheet | null): Material[] {
-  const cache = new Map<string, Material>()
-  return mesh.materials.map((spec) => {
-    const key = `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
-    const hit = cache.get(key)
-    if (hit) return hit
-    const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
-    const translucent = spec.a < 31
-    const made = new MeshBasicMaterial({
-      map: item && sheet ? sliceTexture(sheet, item, spec.rep) : null,
-      vertexColors: true,
-      // 4세대 텍스처는 색 0을 투명으로 쓴다
-      alphaTest: translucent ? 0 : 0.5,
-      transparent: translucent,
-      opacity: translucent ? spec.a / 31 : 1,
-      depthWrite: !translucent,
-      side: spec.f === 3 ? DoubleSide : FrontSide,
-      fog: false,
-    })
-    cache.set(key, made)
-    return made
-  })
 }
 
 /** 원작 프레임 수만큼 0→1로 가는 값 */
@@ -146,7 +110,7 @@ export function StarterStage() {
           .then(([mesh, sheet]): Loaded => ({
             id,
             geometry: mesh.geometry,
-            materials: materialsOf(mesh, sheet),
+            materials: propMaterials(mesh, sheet),
           }))
           .catch(() => null),
       ),
