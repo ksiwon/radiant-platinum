@@ -26,6 +26,10 @@ import {
   type GroupFailure, type InstallEvent, type InstallStores, type Producer,
 } from '../install/installer'
 import { REQUIRED_BDSP_GROUPS, missingRequired } from '../install/required'
+import {
+  forgetSources, recallSources, regrant, rememberBdsp, rememberRom,
+  type RememberedSources,
+} from '../install/sourceHandles'
 import { describeWipe, wipeSiteData } from '../install/wipe'
 import { opfsAvailable, opfsPackStore, OPFS_ASSETS, OPFS_ROOT } from '../../data/providers/packStore'
 import { activateInstall } from '../../app/boot'
@@ -94,10 +98,18 @@ function stores(): InstallStores {
   }
 }
 
-export function ImportWizard({ onClose, onReady }: {
+export function ImportWizard({ onClose, onReady, why }: {
   onClose: () => void
   /** 설치가 끝나 게임을 열 수 있게 됐다. **다시 켜지 않고** 그대로 넘어간다 */
   onReady?: () => void
+  /**
+   * 왜 이 화면이 떴는가 (`app/boot`의 `BootState`).
+   *
+   * ⚠️ **안 적으면 "또 다 깔라는 건가"가 된다.** 설치가 없어서 뜬 것과, 산출물
+   * 판이 올라 **그 그룹만** 다시 구우면 되는 것은 사용자가 할 일이 아주 다른데,
+   * 그동안 그 이유가 `document.documentElement.dataset.boot`에만 있었다
+   */
+  why?: { reason: string; detail?: string }
 }) {
   const [caps] = useState(capabilities)
   const [platinum, setPlatinum] = useState<ValidationReport | null>(null)
@@ -121,6 +133,13 @@ export function ImportWizard({ onClose, onReady }: {
   const [wipeArmed, setWipeArmed] = useState(false)
   /** 지난번 설치가 남긴 것이 OPFS에 있는가. 있으면 지울 길을 보여 준다 */
   const [leftover, setLeftover] = useState(false)
+  /**
+   * 지난번에 고른 자리. **바이트가 아니라 손잡이**다 (`install/sourceHandles`).
+   *
+   * 이것이 있으면 다시 구울 일이 생겨도 파일 고르기를 되풀이하지 않는다 —
+   * 권한 한 번만 다시 받으면 된다
+   */
+  const [remembered, setRemembered] = useState<RememberedSources>({ rom: null, bdsp: null })
   const romPicker = useRef<HTMLInputElement>(null)
   const dirPicker = useRef<HTMLInputElement>(null)
   /**
@@ -146,6 +165,12 @@ export function ImportWizard({ onClose, onReady }: {
       .then((all) => { setLeftover(all.length > 0) })
       .catch(() => { /* 못 읽으면 그 자체가 정상은 아니지만, 여기서 할 말은 없다 */ })
   }, [caps.opfs])
+
+  // 지난번에 고른 자리를 불러온다. 권한은 여기서 안 묻는다 — 제스처 밖이라
+  // 브라우저가 묻지도 않고 거절한다 (`sourceHandles`의 머리말)
+  useEffect(() => {
+    void recallSources().then((got) => { setRemembered(got) })
+  }, [])
 
   /**
    * 필요할 때 만든다. **화면이 떴다는 것만으로 스레드를 띄우지 않는다.**
@@ -191,13 +216,79 @@ export function ImportWizard({ onClose, onReady }: {
       .finally(() => { setScanning(false) })
   }
 
+  /**
+   * Platinum을 고른다.
+   *
+   * ⚠️ **`showOpenFilePicker`를 먼저 쓴다.** `<input type=file>`은 `File`만 주고
+   * **손잡이를 안 준다** — 그러면 다음에 다시 구울 때 또 고르라고 물어야 한다.
+   * 없는 브라우저에서는 그대로 폴백하고, 그때는 기억하지 않는다
+   */
+  const pickRom = (): void => {
+    const open = (window as {
+      showOpenFilePicker?: (o?: {
+        types?: { description: string; accept: Record<string, string[]> }[]
+        multiple?: boolean
+      }) => Promise<FileSystemFileHandle[]>
+    }).showOpenFilePicker
+    if (!open) { romPicker.current?.click(); return }
+    void open({
+      types: [{ description: 'DS 롬', accept: { 'application/octet-stream': ['.nds'] } }],
+      multiple: false,
+    })
+      .then(async ([handle]) => {
+        if (!handle) return
+        await rememberRom(handle)
+        setRemembered((was) => ({ ...was, rom: handle }))
+        pickPlatinum(await handle.getFile())
+      })
+      // 권한 거부는 오류가 아니라 **취소**다 (IMPORT.md §3)
+      .catch(() => { say('파일 선택을 취소했습니다') })
+  }
+
+  /**
+   * 지난번에 고른 Platinum을 그대로 쓴다.
+   *
+   * ⚠️ **이 클릭이 권한을 청할 수 있는 유일한 자리다.** 마운트에서 부르면
+   * 브라우저가 묻지도 않고 거절한다. 그래서 폴더와 **단추를 따로** 둔다 —
+   * 하나로 묶으면 앞의 물음이 제스처를 다 쓰고 뒤가 조용히 거절된다
+   */
+  const reuseRom = (): void => {
+    const handle = remembered.rom
+    if (!handle) return
+    void regrant(handle).then(async (granted) => {
+      if (!granted) { say('Platinum 파일 읽기 권한을 못 받았습니다'); return }
+      try {
+        pickPlatinum(await handle.getFile())
+      } catch {
+        // 파일이 옮겨졌거나 지워졌다. 기억이 낡은 것이므로 지우고 다시 고르게 한다
+        await forgetSources()
+        setRemembered({ rom: null, bdsp: null })
+        say('지난번 Platinum 파일이 그 자리에 없습니다 — 다시 골라 주세요')
+      }
+    })
+  }
+
+  /** 지난번에 고른 BDSP 폴더를 그대로 쓴다. 위와 같은 이유로 단추가 따로다 */
+  const reuseBdsp = (): void => {
+    const handle = remembered.bdsp
+    if (!handle) return
+    void regrant(handle).then((granted) => {
+      if (!granted) { say('BDSP 폴더 읽기 권한을 못 받았습니다'); return }
+      scanDir({ handle })
+    })
+  }
+
   const pickDirectory = (): void => {
     const open = (window as {
       showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>
     }).showDirectoryPicker
     if (!open) { dirPicker.current?.click(); return }
     void open()
-      .then((handle) => { scanDir({ handle }) })
+      .then(async (handle) => {
+        await rememberBdsp(handle)
+        setRemembered((was) => ({ ...was, bdsp: handle }))
+        scanDir({ handle })
+      })
       // 권한 거부는 오류가 아니라 **취소**다 (IMPORT.md §3)
       .catch(() => { say('폴더 선택을 취소했습니다') })
   }
@@ -404,6 +495,23 @@ export function ImportWizard({ onClose, onReady }: {
 
         <h2 className={css.title}>에셋 설치</h2>
 
+        {/* ⚠️ **이유를 적는다.** 설치본이 아예 없는 것과, 산출물 판이 올라 그
+            그룹만 다시 구우면 되는 것은 사용자가 할 일이 다르다. 그동안 이 값이
+            `data-boot`에만 있어서 화면에는 늘 처음 설치처럼 보였다 */}
+        {why && why.reason !== 'none' && (
+          <div className={css.banner}>
+            {why.reason === 'outdated'
+              ? '설치본은 그대로 있습니다. 변환기가 바뀐 그룹만 다시 만들면 됩니다 — '
+                + '나머지는 건너뜁니다.'
+              : why.reason === 'partial'
+                ? '지난 설치가 끝나지 않았습니다. 끝난 그룹은 그대로 두고 이어서 합니다.'
+                : why.reason === 'invalid'
+                  ? '설치 기록을 읽지 못했습니다. 다시 만듭니다.'
+                  : '이 브라우저에서는 설치본을 둘 곳이 없습니다.'}
+            {why.detail ? `\n${why.detail}` : ''}
+          </div>
+        )}
+
         {/* ⚠️ **여기 적힌 것이 사실이어야 한다.** 한때 "설치를 끝내도 아직 게임은
             시작할 수 없습니다"가 박혀 있었는데, 그 말이 참이 아니게 된 뒤에도
             남아 있었다. 그래서 숫자는 전부 표에서 세어 온다 */}
@@ -422,9 +530,11 @@ export function ImportWizard({ onClose, onReady }: {
           {'고른 파일은 이 기기 안에서만 읽습니다. 바이트도, 파일 이름도, 폴더 목록도, '}
           {'판정 결과도 서버로 보내지 않습니다. 변환은 전부 브라우저 안에서 일어납니다.\n'}
           {'설치가 끝나면 다음부터는 파일을 다시 고르지 않습니다 — 이 브라우저의 '}
-          {'저장 공간에서 바로 엽니다. 원본 파일과 폴더는 설치에 쓰고 놓아 줍니다: '}
-          {'경로도 파일 이름도 핸들도 저장하지 않으므로, 설치가 끝난 뒤 원본을 옮기거나 '}
-          {'지워도 게임은 그대로 돌아갑니다.\n'}
+          {'저장 공간에서 바로 엽니다. 게임이 도는 동안 원본은 한 번도 안 읽습니다.\n'}
+          {'다만 나중에 일부를 다시 변환해야 할 때 또 고르라고 묻지 않으려고, '}
+          {'고른 자리(파일·폴더 손잡이)를 이 브라우저 안에만 기억합니다. 바이트도 '}
+          {'경로 문자열도 서버로 가지 않고, 읽기 권한은 그때 한 번 더 물어봅니다 — '}
+          {'아래 「기억한 자리 잊기」로 지울 수 있고 「전부 지우기」에도 함께 지워집니다.\n'}
           {'⚠️ 설치본은 이 브라우저 · 이 기기 · 이 주소에만 있습니다. 다른 브라우저나 '}
           {'다른 기기에서는 다시 설치해야 하고, 주소가 바뀌어도 이어받지 못합니다.\n'}
           {'사이트 데이터를 지우면 설치된 에셋도 함께 사라집니다. 리포트는 '}
@@ -460,10 +570,15 @@ export function ImportWizard({ onClose, onReady }: {
             <button
               className={css.button}
               disabled={checking || !caps.worker}
-              onClick={() => romPicker.current?.click()}
+              onClick={pickRom}
             >
               {checking ? '확인하는 중…' : '이 기기에서 Platinum 선택'}
             </button>
+            {remembered.rom && !platinum && (
+              <button className={css.button} disabled={checking || !caps.worker} onClick={reuseRom}>
+                {`지난번 그대로 (${remembered.rom.name})`}
+              </button>
+            )}
             <input
               ref={romPicker}
               type="file"
@@ -499,6 +614,11 @@ export function ImportWizard({ onClose, onReady }: {
             <button className={css.button} disabled={scanning || !caps.worker} onClick={pickDirectory}>
               {scanning ? '살펴보는 중…' : '이 기기에서 BDSP 폴더 선택'}
             </button>
+            {remembered.bdsp && !bdsp && (
+              <button className={css.button} disabled={scanning || !caps.worker} onClick={reuseBdsp}>
+                {`지난번 그대로 (${remembered.bdsp.name})`}
+              </button>
+            )}
             <input
               ref={dirPicker}
               type="file"
@@ -586,6 +706,22 @@ export function ImportWizard({ onClose, onReady }: {
             <button className={css.button} disabled={phase === 'installing'} onClick={wipe}>
               에셋 다시 설치 (리포트는 남습니다)
             </button>
+            {/* 기억한 자리를 잊는다. 위 안내문이 약속한 그 단추다 — 없으면
+                "기억합니다"만 있고 무를 길이 없다 */}
+            {(remembered.rom ?? remembered.bdsp) && (
+              <button
+                className={css.button}
+                disabled={phase === 'installing'}
+                onClick={() => {
+                  void forgetSources().then(() => {
+                    setRemembered({ rom: null, bdsp: null })
+                    say('기억한 자리를 잊었습니다 — 다음에는 다시 고릅니다')
+                  })
+                }}
+              >
+                기억한 자리 잊기
+              </button>
+            )}
           </div>
           {/* ⚠️ **하다 죽었을 때만 보인다.** 늘 띄워 두면 리포트를 지우는 단추가
               설치가 잘된 사람 눈앞에도 있게 된다. 여기 오는 사람은 이미 같은

@@ -17,6 +17,7 @@ import {
   runInstall, SAVES_PREFIX, verifyGroups,
   type InstallEvent, type InstallJournal, type InstallStores, type Producer,
 } from './installer'
+import { groupFormat, needsSource, planAssets } from './assetFormat'
 import { CONTRACT_VERSION } from './manifestSchema'
 import { REQUIRED_GROUPS } from './required'
 
@@ -240,6 +241,63 @@ describe('끊기고 다시 잇기', () => {
     const manifest = await run(s, again)
     expect(ran).toEqual([FULL[3]!.name])
     expect(manifest.state).toBe('ready')
+  })
+
+  /**
+   * ⚠️ **여기가 「배포할 때마다 처음부터 다시 깔았다」의 자리였다.**
+   *
+   * 재개가 파일의 길이와 해시만 봤다. 우리가 변환기를 고쳐 **같은 롬에서 다른
+   * 바이트**가 나오게 되면 `GROUP_FORMAT`을 올리는데(`assetFormat`), 옛 파일은
+   * 제 해시와 여전히 맞으므로 「온전하다」로 세어 건너뛰었다. 그러면
+   * `runInstall`이 옛 기록을 그대로 옮겨 `format`이 낡은 채로 남고, 다음 부팅이
+   * 또 `outdated`가 된다 — **다시 깔아도 안 나아서** 빠져나가는 길이 「전부
+   * 지우고 다시」뿐이었다. 그룹 하나 때문에 600MB를 다시 굽던 자리다
+   */
+  it('⚠️ 산출물 판이 오른 그룹은 파일이 멀쩡해도 다시 만든다', async () => {
+    const s = stores()
+    await run(s, PARTIAL)
+
+    // 판이 오르기 **전에** 깔린 설치본을 흉내낸다. 파일은 손대지 않는다 —
+    // 해시는 그대로 맞고, 그래서 옛 코드가 이걸 건너뛰었다
+    const name = PARTIAL[0]!.name
+    expect(groupFormat(name)).toBeGreaterThan(1) // 판이 오른 적 있는 그룹이라야 시험이 산다
+    const was = await readInstall(s.root)
+    const older = JSON.parse(dec.decode((await s.root.read(INSTALL_FILE))!)) as {
+      groups: Record<string, { format: number }>
+    }
+    older.groups[name]!.format = 1
+    await s.root.write(INSTALL_FILE, enc.encode(JSON.stringify(older)))
+    expect(was.kind).toBe('ok')
+
+    const { skip, rebuild } = await resumableGroups(s, PARTIAL)
+    expect(skip).toEqual([PARTIAL[1]!.name])
+    expect(rebuild).toEqual([name])
+  })
+
+  it('⚠️ 판이 오른 그룹을 다시 만들면 낡은 기록이 안 남는다', async () => {
+    // 위 시험이 "다시 만든다"까지고, 여기가 **그 다음 부팅이 안 묻는다**이다
+    const s = stores()
+    await run(s, FULL)
+    const name = FULL[0]!.name
+    const older = JSON.parse(dec.decode((await s.root.read(INSTALL_FILE))!)) as {
+      groups: Record<string, { format: number }>
+    }
+    older.groups[name]!.format = 1
+    await s.root.write(INSTALL_FILE, enc.encode(JSON.stringify(older)))
+
+    const ran: string[] = []
+    const again = FULL.map((g) => ({
+      ...g,
+      convert: (c: Parameters<NonNullable<GroupSpec['convert']>>[0]) => { ran.push(g.name); return g.convert!(c) },
+    }))
+    const manifest = await run(s, again)
+
+    // 판이 오른 그것 **하나만** 돈다 — 나머지는 그대로 쓴다
+    expect(ran).toEqual([name])
+    expect(manifest.groups[name]!.format).toBe(groupFormat(name))
+    // 그리고 부팅이 더는 원본을 안 찾는다 (`app/boot`의 `outdated`)
+    expect(needsSource(planAssets(manifest.groups))).toBe(false)
+    expect(await installReady(s.root)).not.toBeNull()
   })
 
   it('계약 판이 바뀌면 저널을 안 믿는다', async () => {

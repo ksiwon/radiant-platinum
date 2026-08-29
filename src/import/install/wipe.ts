@@ -16,7 +16,7 @@
 // 세어서 돌려주고, 부르는 쪽이 그것을 화면에 적는다.
 import { OPFS_ROOT } from '../../data/providers/packStore'
 import {
-  LEGACY_OPTIONS_KEY, LEGACY_REPORT_DB, OPTIONS_KEY, REPORT_DB,
+  LEGACY_OPTIONS_KEY, LEGACY_REPORT_DB, OPTIONS_KEY, REPORT_DB, SOURCES_DB,
 } from '../../state/storageNames'
 
 interface WipeReport {
@@ -86,8 +86,8 @@ export async function wipeSiteData(): Promise<WipeReport> {
     else out.failed.push(`OPFS(${OPFS_ROOT})`)
   }
 
-  // ② IndexedDB — 리포트. 옛 이름도 같이 지운다
-  for (const name of [REPORT_DB, LEGACY_REPORT_DB]) {
+  // ② IndexedDB — 리포트와 **지난번에 고른 자리**. 옛 이름도 같이 지운다
+  for (const name of [REPORT_DB, LEGACY_REPORT_DB, SOURCES_DB]) {
     if (await deleteDatabase(name)) out.databases.push(name)
     else out.failed.push(`IndexedDB(${name})`)
   }

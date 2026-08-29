@@ -229,9 +229,17 @@ export async function resumableGroups(
   if (got.kind !== 'ok') return { skip: [], rebuild: [], journal }
 
   const known = new Set(groups.map((g) => g.name))
-  const candidates = journal.done.filter((n) => known.has(n) && got.value.groups[n])
-  const { ok, broken } = await verifyGroups(stores.assets, got.value, candidates)
-  return { skip: ok, rebuild: [...broken.keys()], journal }
+  const listed = journal.done.filter((n) => known.has(n) && got.value.groups[n])
+
+  // ⚠️ **바이트만 보면 판이 오른 그룹을 건너뛴다.** 그러면 `runInstall`이 옛
+  // 기록을 `keep`에 그대로 옮겨 `format`이 낡은 채로 남고, 다음 부팅이 또
+  // "낡았다"고 한다 (`app/boot`의 `outdated`) — **다시 깔아도 안 낫는다.**
+  // 빠져나가는 길이 「전부 지우고 다시」뿐이었다: 그룹 하나 때문에 600MB를
+  // 통째로 다시 굽는 자리였다. 판이 다른 것은 파일이 멀쩡해도 다시 만든다
+  const stale = listed.filter((n) => (got.value.groups[n]?.format ?? 1) !== groupFormat(n))
+  const fresh = listed.filter((n) => !stale.includes(n))
+  const { ok, broken } = await verifyGroups(stores.assets, got.value, fresh)
+  return { skip: ok, rebuild: [...stale, ...broken.keys()], journal }
 }
 
 // ── 설치 ─────────────────────────────────────────────────────────────────────

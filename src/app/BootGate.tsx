@@ -39,6 +39,8 @@ export function BootGate() {
         <ImportWizard
           onClose={() => { setTick((t) => t + 1) }}
           onReady={() => { setTick((t) => t + 1) }}
+          // 왜 설치 화면이 떴는가. 화면이 그 말을 해야 사용자가 할 일을 안다
+          why={{ reason: state.reason, detail: state.detail }}
         />
       </Suspense>
     </div>

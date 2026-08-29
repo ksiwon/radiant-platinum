@@ -24,6 +24,15 @@ export const REPORT_DB = 'radiant-platinum'
  */
 export const LEGACY_REPORT_DB = 'pt-3d'
 
+/**
+ * 지난번에 고른 롬 파일·BDSP 폴더의 **손잡이**가 사는 IndexedDB 이름.
+ *
+ * 바이트가 아니라 자리만 담는다 (`import/install/sourceHandles.ts`). 지우기가
+ * 이것도 지워야 "깨끗이"가 참이 된다 — 안 지우면 전부 지운 다음에도 지난번
+ * 폴더 이름이 화면에 남는다
+ */
+export const SOURCES_DB = 'radiant-platinum-sources'
+
 /** 설정이 사는 localStorage 키 */
 export const OPTIONS_KEY = 'radiant-platinum.options'
 
