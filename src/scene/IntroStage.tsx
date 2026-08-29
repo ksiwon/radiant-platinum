@@ -12,6 +12,7 @@ import { cinematicScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
 import { NPC_BUNDLE } from '../engine/actor/npcModels'
 import { usePersonModel } from './personModel'
+import { INTRO_BALL, INTRO_CAMERA } from './introPlace'
 
 function Person({
   path,
@@ -96,9 +97,16 @@ function Buneary({ visible }: { visible: boolean }) {
     shown.current += ((visible ? 1 : 0) - shown.current) * Math.min(1, delta * 5.5)
     const node = host.current
     if (!node) return
-    node.visible = shown.current > 0.01
-    node.position.y = 0.34 + shown.current * 0.46
-    node.scale.setScalar((body ? cinematicScale(body.tall) : 1) * shown.current)
+    const t = shown.current
+    node.visible = t > 0.01
+    /*
+      원작은 볼에서 **떴다가 내려와 통통 튄다**
+      (`RI_STATE_PKBL_ANIM_MV_PKM_UP_AND_FLASH_END` →
+      `..._MV_PKM_DOWN_AND_BOUNCE`). 볼이 있던 높이에서 시작해 바닥에 내려서고,
+      가는 길에 한 번 솟는다 — 예전에는 0.8m 높이에 **떠 있은 채로** 멈췄다
+    */
+    node.position.y = INTRO_BALL.at[1] * (1 - t) + Math.sin(Math.min(1, t) * Math.PI) * 0.25
+    node.scale.setScalar((body ? cinematicScale(body.tall) : 1) * t)
   })
 
   return (
@@ -125,11 +133,29 @@ function Buneary({ visible }: { visible: boolean }) {
   )
 }
 
-function IntroBall({ opened }: { opened: boolean }) {
+/**
+ * 마박사가 들고 있는 몬스터볼.
+ *
+ * ⚠️ **이어롤이 나오면 볼은 없어진다.** 원작이 볼을 누른 그 자리에서
+ * `Bg_ClearTilemap(BG_LAYER_MAIN_0)`으로 **볼을 지우고**(RI_STATE_PKBL_WAIT_INPUT)
+ * 섬광 넷을 친 뒤에야 이어롤 스프라이트를 얹는다 — 둘이 같이 있는 프레임이
+ * 원작에는 없다. 우리는 한동안 볼을 그대로 두어서 이어롤과 겹쳐 있었다
+ */
+function IntroBall({ opened, gone }: { opened: boolean, gone: boolean }) {
+  const host = useRef<Group>(null)
   const top = useRef<Group>(null)
   const bottom = useRef<Group>(null)
   const button = useRef<MeshStandardMaterial>(null)
+  const left = useRef(1)
   useFrame(({ clock }, delta) => {
+    // 사라지는 것이 뚜껑 열림보다 빨라야 한다 — 열리다 만 볼이 남으면 그것대로
+    // 어정쩡하다. 원작은 아예 한 프레임에 지운다
+    left.current += ((gone ? 0 : 1) - left.current) * Math.min(1, delta * 9)
+    const node = host.current
+    if (node) {
+      node.visible = left.current > 0.02
+      node.scale.setScalar(INTRO_BALL.scale * left.current)
+    }
     const target = opened ? 1 : 0
     if (top.current)
       top.current.rotation.x += (target * -1.18 - top.current.rotation.x) * Math.min(1, delta * 7)
@@ -143,7 +169,7 @@ function IntroBall({ opened }: { opened: boolean }) {
         : 0.35 + Math.sin(clock.elapsedTime * 3.4) * 0.25
   })
   return (
-    <group position={[0, 0.72, 0]} scale={0.72}>
+    <group ref={host} position={INTRO_BALL.at as unknown as [number, number, number]}>
       <group ref={top} position={[0, 0.02, 0]}>
         <mesh castShadow>
           <sphereGeometry args={[1, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2]} />
@@ -165,9 +191,12 @@ function IntroBall({ opened }: { opened: boolean }) {
         눌러보도록 하거라!」라고 하는데 볼에는 빨강·하양·띠뿐이라 어디를 누르라는
         말인지 알 수가 없었다. 띠에 붙여 두므로 뚜껑이 열려도 제자리에 남는다
       */}
-      <group position={[0, 0, 0.95]} rotation={[Math.PI / 2, 0, 0]}>
+      <group
+        position={INTRO_BALL.button as unknown as [number, number, number]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
         <mesh castShadow>
-          <cylinderGeometry args={[0.3, 0.3, 0.16, 28]} />
+          <cylinderGeometry args={[INTRO_BALL.buttonRadius, INTRO_BALL.buttonRadius, 0.16, 28]} />
           <meshStandardMaterial color="#16191d" roughness={0.5} />
         </mesh>
         <mesh position={[0, 0.09, 0]}>
@@ -206,19 +235,25 @@ export function IntroStage() {
    * 61px 올라가고, 발밑(창 위 378px)이 창에 안 닿는다
    */
   useEffect(() => {
+    // ⚠️ **숫자는 `introPlace`에 있다.** 누르는 자리(DOM)가 같은 값으로 버튼을
+    // 찾아야 해서 한 곳에 둔다 — 여기서 따로 적으면 그 둘이 어긋난다
+    const [ex, ey, ez] = INTRO_CAMERA.eye
+    const [tx, ty, tz] = INTRO_CAMERA.target
     cinematicStage.active = true
     cinematicStage.position.set(
-      CINEMATIC_ORIGIN.x,
-      CINEMATIC_ORIGIN.y + 2.6,
-      CINEMATIC_ORIGIN.z + 7.4,
+      CINEMATIC_ORIGIN.x + ex, CINEMATIC_ORIGIN.y + ey, CINEMATIC_ORIGIN.z + ez,
     )
-    cinematicStage.target.set(CINEMATIC_ORIGIN.x, CINEMATIC_ORIGIN.y + 0.55, CINEMATIC_ORIGIN.z)
-    cinematicStage.fov = 38
+    cinematicStage.target.set(
+      CINEMATIC_ORIGIN.x + tx, CINEMATIC_ORIGIN.y + ty, CINEMATIC_ORIGIN.z + tz,
+    )
+    cinematicStage.fov = INTRO_CAMERA.fov
     return () => {
       cinematicStage.active = false
     }
   }, [])
 
+  // 이어롤이 나오는 동안에도 잠깐 그린다 — 사라지는 것을 보여 주려면 남아야
+  // 한다. `gone`이 켜지면 곧 스스로 안 보이게 된다
   const ball = scene === 'ball' || scene === 'buneary'
   return (
     <group position={CINEMATIC_ORIGIN}>
@@ -251,7 +286,7 @@ export function IntroStage() {
           />
         </>
       )}
-      {ball && <IntroBall opened={scene === 'buneary'} />}
+      {ball && <IntroBall opened={scene === 'buneary'} gone={scene === 'buneary'} />}
       <Buneary visible={scene === 'buneary'} />
     </group>
   )

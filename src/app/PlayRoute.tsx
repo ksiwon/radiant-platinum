@@ -5,6 +5,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { setGameActive } from '../engine/input/keyboard'
+import { BINDINGS } from '../engine/input/keys'
 import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
@@ -36,7 +37,7 @@ export function PlayRoute() {
   // 브라우저가 이 자리에서는 허락한다. 클릭을 한 번 더 시키지 않는다
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.code !== 'KeyV' || e.repeat) return
+      if (!BINDINGS.view.includes(e.code) || e.repeat) return
       const options = useOptionsStore.getState()
       const next = options.view === 0 ? 1 : 0
       options.set('view', next)

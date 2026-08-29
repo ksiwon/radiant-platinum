@@ -3,6 +3,7 @@
 // X 키가 시작 메뉴를 연다. 대사창이 떠 있거나 배틀 중이면 안 열린다 —
 // 원작도 스크립트가 도는 동안에는 메뉴를 막는다.
 import { useEffect } from 'react'
+import { BINDINGS } from '../../engine/input/keys'
 import { fieldScripts } from '../../engine/script/field'
 import { runRegisteredItem } from '../../scene/registeredItem'
 import { useBattleStore } from '../../state/battleStore'
@@ -34,9 +35,11 @@ import { StartMenu } from './StartMenu'
 import { SummaryScreen } from './SummaryScreen'
 import { TrainerCard } from './TrainerCard'
 
-const OPEN_KEYS = new Set(['KeyX', 'Escape'])
+// ⚠️ **키를 여기 적지 않는다.** 오프닝에서 마박사가 이 키들을 말로 설명하는데
+// (`engine/intro/controlText`), 자리가 둘이면 한쪽만 바뀌어 설명이 거짓이 된다
+const OPEN_KEYS = new Set(BINDINGS.menu)
 /** 등록한 도구를 바로 쓰는 키 (PARITY §4.4). 원작 DS의 Y다 */
-const REGISTERED_KEY = 'KeyY'
+const REGISTERED_KEYS = new Set(BINDINGS.register)
 
 export function MenuLayer() {
   const top = useMenuStore((s) => s.top)
@@ -46,7 +49,7 @@ export function MenuLayer() {
   useEffect(() => {
     if (stackDepth > 0) return
     const onKey = (e: KeyboardEvent): void => {
-      if (!OPEN_KEYS.has(e.code) && e.code !== REGISTERED_KEY) return
+      if (!OPEN_KEYS.has(e.code) && !REGISTERED_KEYS.has(e.code)) return
       // 스크립트가 도는 중이면 그쪽이 B를 먼저 쓴다
       if (fieldScripts.ctx !== null) return
       // ⚠️ **배틀 중에도 안 열린다.** 위 주석은 처음부터 그렇게 적혀 있었는데
@@ -57,7 +60,7 @@ export function MenuLayer() {
       e.stopPropagation()
       // ⚠️ **Y는 메뉴를 안 연다.** 등록한 도구를 그 자리에서 쓴다 — 아무것도
       // 등록 안 했으면 원작처럼 조용히 아무 일도 안 한다
-      if (e.code === REGISTERED_KEY) { runRegisteredItem(); return }
+      if (REGISTERED_KEYS.has(e.code)) { runRegisteredItem(); return }
       open('start')
     }
     window.addEventListener('keydown', onKey, true)

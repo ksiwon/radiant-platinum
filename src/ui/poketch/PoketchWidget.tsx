@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { assignInlineVars } from '@vanilla-extract/dynamic'
 import { loadUiText } from '../../data/uiText'
-import { isUiCaptured, setUiCapture } from '../../engine/input/keys'
+import { BINDINGS, isUiCaptured, setUiCapture } from '../../engine/input/keys'
 import { loadPoketchMap } from '../../data/gameData'
 import { poketchShades, stepApp } from '../../engine/world/poketch'
 import { clearPoketchMemory, usePoketchStore } from '../../state/poketchStore'
@@ -59,7 +59,7 @@ export function PoketchWidget() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent): void => {
-      if (e.code === 'KeyR') {
+      if (BINDINGS.poketch.includes(e.code)) {
         if (held.current !== null) return
         fired.current = false
         held.current = window.setTimeout(() => {
@@ -73,10 +73,12 @@ export function PoketchWidget() {
       // 포켓치의 앱을 넘기면 안 된다. 크게 펼쳤을 때는 우리가 그 붙잡은
       // 쪽이므로 예외다
       if (isUiCaptured() && usePoketchStore.getState().view !== 'large') return
-      if (e.code === 'KeyQ' || e.code === 'KeyE') {
+      const turn = BINDINGS.poketchNext.includes(e.code) ? 1
+        : BINDINGS.poketchPrev.includes(e.code) ? -1 : 0
+      if (turn !== 0) {
         e.preventDefault()
         const save = useSaveStore.getState()
-        const next = stepApp(save.poketch, e.code === 'KeyE' ? 1 : -1)
+        const next = stepApp(save.poketch, turn)
         if (next !== save.poketch) {
           // ⚠️ **앱을 넘기면 앞 앱이 쓰던 값이 사라진다** — 원작 `PoketchMemory`가
           // 버퍼 하나를 돌려 쓴다
@@ -105,7 +107,7 @@ export function PoketchWidget() {
       }
     }
     const up = (e: KeyboardEvent): void => {
-      if (e.code !== 'KeyR') return
+      if (!BINDINGS.poketch.includes(e.code)) return
       if (held.current !== null) { clearTimeout(held.current); held.current = null }
       // 길게 눌러 이미 감췄으면 톡 누른 것으로 또 치지 않는다
       if (!fired.current) usePoketchStore.getState().toggleSize()

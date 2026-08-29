@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { fillMenuText, INTRO_TEXT, UI_BANK } from '../../data/uiText'
-import { INFO_CHOICES, infoLines, INTRO, RIVAL_NAME_CHOICES } from './beats'
+import { INFO_CHOICES, INFO_CONTROLS, infoLines, INTRO, RIVAL_NAME_CHOICES } from './beats'
+import { controlPages } from './controlText'
 import { withData } from '../../data/romData.testkit'
 
 describe('인트로 박자', () => {
@@ -66,16 +67,26 @@ describe('인트로 박자', () => {
 
   it('되묻기 세 갈래가 저마다 다른 글을 준다', () => {
     expect(INFO_CHOICES).toHaveLength(3)
-    expect(infoLines(0)).toEqual(INTRO_TEXT.controls)
+    // 조작 설명은 뱅크가 아니라 우리 키에서 온다 (`controlText`)
+    expect(INFO_CHOICES[INFO_CONTROLS]?.value).toBe(INFO_CONTROLS)
+    expect(infoLines(INFO_CONTROLS)).toEqual([])
+    expect(controlPages('ko').length).toBeGreaterThan(0)
     expect(infoLines(1)).toEqual(INTRO_TEXT.adventure)
     // "괜찮다!"는 아무것도 안 듣고 넘어간다
     expect(infoLines(2)).toEqual([])
   })
 
-  it('터치스크린 설명은 안 쓴다', () => {
-    // DS 아래 화면 이야기라 우리에게 해당이 없다. 원작 글을 고쳐 쓰지 않고 뺀다
+  it('원작 조작 설명 넷은 한 줄도 안 쓴다', () => {
+    // 2·3번은 십자키와 X·Y, 4·5번은 터치스크린 — 우리 화면에 그 넷이 다 없다.
+    // 원작 글을 고쳐 쓰지 않고 통째로 뺀 뒤 우리 키로 다시 말한다
+    expect(INTRO_TEXT.controlsSkipped).toEqual([2, 3, 4, 5])
+    const used = [
+      ...INTRO.flatMap((s) => (s.kind === 'say' ? [s.line] : [])),
+      ...INFO_CHOICES.map((c) => c.line),
+      ...infoLines(0), ...infoLines(1), ...infoLines(2),
+    ]
     for (const skipped of INTRO_TEXT.controlsSkipped) {
-      expect(INTRO_TEXT.controls).not.toContain(skipped)
+      expect(used, `${String(skipped)}번을 쓰고 있다`).not.toContain(skipped)
     }
   })
 })

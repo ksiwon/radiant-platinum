@@ -266,15 +266,15 @@ export const MAIN_MENU = { continue_: 0, newGame: 1, player: 12, playtime: 13, d
  * 인트로 (`rowan_intro`). 자리는 디컴프 `res/text/rowan_intro.json`의 줄 순서다.
  *
  * 2~5번(조작 설명)은 **DS 하드웨어 이야기다** — 십자키·터치스크린·X/Y 아이콘.
- * 그중 2·3번은 우리에게도 맞는 말이라 쓰고, 4·5번(터치스크린)은 안 쓴다.
- * 원작 글을 고쳐 쓰지는 않는다 — 안 맞는 것을 빼기만 한다.
+ * 우리에게는 그 넷 다 없으므로 **하나도 안 쓴다.** 그 자리에서 마박사는 실제로
+ * 묶여 있는 키를 말한다 (`engine/intro/controlText`). 원작 글을 고쳐 쓰지는
+ * 않는다 — 안 맞는 것을 빼기만 한다.
  */
 export const INTRO_TEXT = {
   hello: 0,
   myName: 1,
-  controls: [2, 3],
-  /** 4·5번은 터치스크린 설명이라 뺐다 */
-  controlsSkipped: [4, 5],
+  /** 2·3번은 십자키와 X·Y, 4·5번은 터치스크린 — 넷 다 우리 화면에 없다 */
+  controlsSkipped: [2, 3, 4, 5],
   understood: 7,
   anythingElse: 9,
   adventure: [10, 11, 12, 13, 14, 15],

@@ -12,6 +12,14 @@ const GAME_KEYS = new Set([
   'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab', 'Backspace',
 ])
 
+/**
+ * 무엇을 누르면 무엇이 되는가. **여기가 그 답의 유일한 자리다.**
+ *
+ * ⚠️ **화면에도 이 값을 쓴다.** 오프닝에서 마박사가 조작을 설명하는데
+ * (`engine/intro/controlText`), 그 글을 손으로 적어 두면 키를 바꾼 날부터
+ * **거짓말이 된다.** 그래서 아래 목록에서 글자를 뽑아 쓰고, 시험이 둘을
+ * 맞춰 본다 (`controlText.test`)
+ */
 export const BINDINGS = {
   up: ['KeyW', 'ArrowUp'],
   down: ['KeyS', 'ArrowDown'],
@@ -21,6 +29,22 @@ export const BINDINGS = {
   // 원작의 A와 B. 대사창은 둘 다로 넘어가고 예/아니오는 B가 "아니오"로 간다
   interact: ['Space', 'KeyZ'],
   cancel: ['KeyX', 'Backspace'],
+  /**
+   * 필드에서 시작 메뉴를 여는 키 (`ui/menu/MenuLayer`).
+   *
+   * 원작 DS에는 없는 자리다 — 거기서는 아래 화면을 눌러 연다. B(=X)로도
+   * 열리는 것은 그 화면이 없는 우리 사정이고, Esc는 그 위에 더 얹은 것이다
+   */
+  menu: ['KeyX', 'Escape'],
+  /** 원작 DS의 Y — 가방에서 등록해 둔 도구를 그 자리에서 쓴다 (PARITY §4.4) */
+  register: ['KeyY'],
+  /** 포켓치를 펼친다. 길게 누르면 감춘다 (`ui/poketch/PoketchWidget`) */
+  poketch: ['KeyR'],
+  /** 포켓치 앱을 앞뒤로 넘긴다 */
+  poketchPrev: ['KeyQ'],
+  poketchNext: ['KeyE'],
+  /** 1인칭과 뒤따라가는 시점을 오간다 (`app/PlayRoute`). 원작에 없는 우리 것이다 */
+  view: ['KeyV'],
 }
 
 let gameActive = false

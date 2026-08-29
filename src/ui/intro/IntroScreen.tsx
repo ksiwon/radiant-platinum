@@ -13,11 +13,13 @@ import { loadGenericNames, pickName } from '../../data/genericNames'
 import { fillMenuText, INTRO_TEXT, NAMING_TEXT, UI_BANK } from '../../data/uiText'
 import {
   INFO_CHOICES,
+  INFO_CONTROLS,
   infoLines,
   INTRO,
   RIVAL_NAME_CHOICES,
   type IntroStep,
 } from '../../engine/intro/beats'
+import { controlPages } from '../../engine/intro/controlText'
 import { introWelcome } from '../../engine/intro/welcomeText'
 import { music } from '../../engine/audio/music'
 import { OPENING_SONG } from '../../engine/audio/songIds'
@@ -27,6 +29,7 @@ import { useSessionStore } from '../../state/sessionStore'
 import { useIntroStageStore } from '../../state/introStageStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { startNewGame } from '../../state/saveStore'
+import { HIT_MARGIN, introBallButton } from '../../scene/introPlace'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import * as css from './intro.css'
 
@@ -50,7 +53,14 @@ type Stage =
   | { kind: 'say'; at: number }
   /** 되묻는 자리. `at`은 `INTRO`의 위치 */
   | { kind: 'infoMenu'; at: number }
-  | { kind: 'infoLines'; at: number; lines: readonly number[]; index: number }
+  /**
+   * 되묻기의 답을 한 쪽씩 넘긴다.
+   *
+   * ⚠️ **번호가 아니라 이미 만든 글이다.** 「모험이란?」은 원작 뱅크 줄이고
+   * 「조작 방법이란?」은 우리가 키에서 만든 글이라(`controlText`) 담는 것이
+   * 다르다 — 여기서 글로 맞춰 두면 아래가 한 갈래로 흐른다
+   */
+  | { kind: 'infoLines'; at: number; lines: readonly string[]; index: number }
   /** `nagged`는 볼 대신 버튼을 눌렀을 때다 — 원작도 그때 따로 말한다 */
   | { kind: 'pokeBall'; at: number; opened: boolean; nagged: boolean }
   | { kind: 'gender'; at: number }
@@ -208,7 +218,7 @@ export function IntroScreen() {
       case 'infoMenu':
         return line(INTRO_TEXT.anythingElse)
       case 'infoLines':
-        return line(stage.lines[stage.index] ?? INTRO_TEXT.anythingElse)
+        return stage.lines[stage.index] ?? line(INTRO_TEXT.anythingElse)
       // 볼이 열린 뒤의 말("우리 인간은 포켓몬과…")은 **다음 박자**가 찍는다.
       // 여기서 같이 띄우면 같은 줄이 두 번 나온다
       case 'pokeBall':
@@ -363,7 +373,10 @@ export function IntroScreen() {
     switch (stage.kind) {
       case 'infoMenu': {
         const choice = INFO_CHOICES[cursor]?.value ?? 2
-        const lines = infoLines(choice)
+        // 조작 설명만 우리 글이다 — 나머지는 원작 뱅크 줄을 그대로 읽는다
+        const lines = choice === INFO_CONTROLS
+          ? controlPages(locale)
+          : infoLines(choice).map(line)
         if (lines.length === 0) {
           step(stage.at)
           return
@@ -454,6 +467,7 @@ export function IntroScreen() {
 
   const step_ = INTRO[stageAt(stage)]
   const ballStep: IntroStep | undefined = step_
+  const hit = useBallHit()
 
   return (
     <div className={css.wrap}>
@@ -461,6 +475,10 @@ export function IntroScreen() {
         {stage.kind === 'pokeBall' && ready && ballStep?.kind === 'pokeBall' && (
           <button
             className={css.ballHit}
+            style={{
+              left: hit.x, top: hit.y,
+              width: hit.radius * 2 * HIT_MARGIN, height: hit.radius * 2 * HIT_MARGIN,
+            }}
             onClick={() => {
               if (rush()) return
               if (!stage.opened) setStage({ ...stage, opened: true })
@@ -543,6 +561,25 @@ export function IntroScreen() {
       </div>
     </div>
   )
+}
+
+/**
+ * 3D 버튼이 지금 화면 어디에 찍혀 있는가.
+ *
+ * 카메라가 오프닝 내내 안 움직이므로 **창 크기가 바뀔 때만** 다시 잰다
+ */
+function useBallHit() {
+  const [view, setView] = useState(() => ({
+    width: window.innerWidth, height: window.innerHeight,
+  }))
+  useEffect(() => {
+    const onResize = (): void => {
+      setView({ width: window.innerWidth, height: window.innerHeight })
+    }
+    window.addEventListener('resize', onResize)
+    return () => { window.removeEventListener('resize', onResize) }
+  }, [])
+  return useMemo(() => introBallButton(view), [view])
 }
 
 /** 이 단계가 `INTRO`의 어디인가 */

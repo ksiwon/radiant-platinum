@@ -46,10 +46,17 @@ const ballBase = style({
 
 export const ball = style([ballBase, {}])
 
-/** Transparent hit target; the visible ball is rendered by IntroStage. */
+/**
+ * 볼 가운데 버튼을 누르는 자리. 보이는 볼은 3D(`scene/IntroStage`)가 그린다.
+ *
+ * ⚠️ **자리와 크기를 여기서 정하지 않는다.** 3D 버튼이 화면 어디에 찍히는지는
+ * 카메라가 정하므로 `scene/introPlace`가 재고, 화면이 그 값을 그대로 얹는다.
+ * 한때 이 단추가 **대사창 위 빈 곳의 한가운데**에 있었는데 버튼은 카메라가
+ * 겨누는 화면 한가운데라, 누르는 곳과 보이는 곳이 어긋나 있었다
+ */
 export const ballHit = style({
-  width: 150,
-  height: 150,
+  position: 'fixed',
+  transform: 'translate(-50%, -50%)',
   borderRadius: '50%',
   border: 0,
   padding: 0,

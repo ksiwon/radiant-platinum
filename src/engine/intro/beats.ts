@@ -87,9 +87,16 @@ export const INFO_CHOICES: readonly IntroChoice[] = [
   { line: INTRO_TEXT.choiceNoInfo, value: 2 },
 ]
 
-/** 고른 갈래가 들려주는 글. "괜찮다!"는 빈 목록이다 */
+/** 「조작 방법이란?」 — 뱅크가 아니라 우리 키를 말한다 */
+export const INFO_CONTROLS = 0
+
+/**
+ * 고른 갈래가 들려주는 **원작 뱅크** 줄. "괜찮다!"는 빈 목록이다.
+ *
+ * ⚠️ **조작 설명(0)은 여기 없다.** 원작 2~5번이 십자키와 터치스크린 이야기라
+ * 우리 화면에서는 거짓이다 — `intro/controlText`가 실제로 묶인 키로 만든다
+ */
 export function infoLines(choice: number): readonly number[] {
-  if (choice === 0) return INTRO_TEXT.controls
   if (choice === 1) return INTRO_TEXT.adventure
   return []
 }
