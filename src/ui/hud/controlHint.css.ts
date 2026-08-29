@@ -12,6 +12,10 @@ import { HUD_LEFT_TOP } from './hudStack'
 
 export const wrap = style({
   position: 'fixed',
+  // ⚠️ **감싼 상자가 클릭을 먹으면 안 된다.** 펴면 이 상자가 판만큼 넓어지는데
+  // 알약은 그보다 좁아서, 알약 옆 여백과 사이 틈이 그대로 **3D 화면 왼쪽 위를
+  // 못 누르는 자리**가 된다. 받는 것은 알약 하나뿐이다
+  pointerEvents: 'none',
   left: 14,
   // 계기판이 이미 차지한 높이 아래에 붙는다 (`hudStack`). 계기판이 없으면 0이다
   top: `calc(var(${HUD_LEFT_TOP}, 0px) + 14px)`,
