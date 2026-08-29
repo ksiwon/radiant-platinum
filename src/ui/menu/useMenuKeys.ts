@@ -5,7 +5,7 @@
 // 그래서 여기는 DOM 이벤트를 그대로 쓴다.
 import { useEffect, useRef } from 'react'
 import { menuBeep } from '../../engine/audio/lazy'
-import { typingInto } from '../../engine/input/keys'
+import { BINDINGS, typingInto } from '../../engine/input/keys'
 
 interface MenuKeys {
   up?: () => void
@@ -34,8 +34,12 @@ const CODES: Record<string, keyof MenuKeys> = {
   KeyX: 'cancel', Backspace: 'cancel', Escape: 'cancel',
   KeyQ: 'pageUp', KeyE: 'pageDown',
   Tab: 'tab',
-  KeyY: 'register',
 }
+
+// ⚠️ **등록 키는 여기 안 적는다.** 필드에서 등록한 도구를 쓰는 키와 같아야
+// 하는데(`ui/menu/MenuLayer`), 두 군데 적어 두면 한쪽만 옮겨진다 — 실제로 그
+// 키를 `Y`에서 `F`로 옮기는 참이다
+for (const code of BINDINGS.register) CODES[code] = 'register'
 
 /**
  * 화면이 떠 있는 동안만 듣는다.

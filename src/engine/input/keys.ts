@@ -20,24 +20,39 @@ const GAME_KEYS = new Set([
  * **거짓말이 된다.** 그래서 아래 목록에서 글자를 뽑아 쓰고, 시험이 둘을
  * 맞춰 본다 (`controlText.test`)
  */
+/**
+ * ⚠️ **왼손 하나로 다 되어야 한다.** 오른손은 마우스에 있고, 원작이 한 손에
+ * 들고 하던 게임이다. 그래서 **임자 키를 전부 WASD 언저리**(Q W E R · A S D F ·
+ * Z X C V)와 왼쪽 Shift·스페이스에 둔다. 오른쪽 키(화살표·Enter·Backspace·Esc)는
+ * **덤으로만** 남긴다 — 그것만 아는 손도 있어서 뺏지는 않는다.
+ *
+ * 한때 등록 도구가 `Y`였다. 원작 DS의 Y 버튼이라 이름은 맞았지만 오른손을
+ * 건너가야 해서 `F`로 옮겼다 (`controlLegend.test`가 왼손 범위를 지킨다)
+ */
 export const BINDINGS = {
   up: ['KeyW', 'ArrowUp'],
   down: ['KeyS', 'ArrowDown'],
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   run: ['ShiftLeft', 'ShiftRight'],
-  // 원작의 A와 B. 대사창은 둘 다로 넘어가고 예/아니오는 B가 "아니오"로 간다
+  // 원작의 A와 B. 대사창은 둘 다로 넘어가고 예/아니오는 B가 "아니오"로 간다.
+  // A는 **스페이스가 임자**다 — 엄지 자리라 WASD에서 손이 안 움직인다
   interact: ['Space', 'KeyZ'],
   cancel: ['KeyX', 'Backspace'],
   /**
    * 필드에서 시작 메뉴를 여는 키 (`ui/menu/MenuLayer`).
    *
-   * 원작 DS에는 없는 자리다 — 거기서는 아래 화면을 눌러 연다. B(=X)로도
-   * 열리는 것은 그 화면이 없는 우리 사정이고, Esc는 그 위에 더 얹은 것이다
+   * 원작 DS에는 없는 자리다 — 거기서는 아래 화면을 눌러 연다. `C`가 임자고,
+   * B(=X)로도 열리는 것은 그 화면이 없는 우리 사정이다. Esc는 덤이다
    */
-  menu: ['KeyX', 'Escape'],
-  /** 원작 DS의 Y — 가방에서 등록해 둔 도구를 그 자리에서 쓴다 (PARITY §4.4) */
-  register: ['KeyY'],
+  menu: ['KeyC', 'KeyX', 'Escape'],
+  /**
+   * 가방에서 등록해 둔 도구를 그 자리에서 쓴다 (PARITY §4.4).
+   *
+   * 원작은 DS의 **Y**인데 그 자리가 오른손이라 `F`로 옮겼다 — 집게손가락
+   * 제자리다
+   */
+  register: ['KeyF'],
   /** 포켓치를 펼친다. 길게 누르면 감춘다 (`ui/poketch/PoketchWidget`) */
   poketch: ['KeyR'],
   /** 포켓치 앱을 앞뒤로 넘긴다 */
@@ -46,6 +61,20 @@ export const BINDINGS = {
   /** 1인칭과 뒤따라가는 시점을 오간다 (`app/PlayRoute`). 원작에 없는 우리 것이다 */
   view: ['KeyV'],
 }
+
+/**
+ * 왼손이 닿는 자판.
+ *
+ * 손을 WASD에 얹은 채로 누를 수 있는 것들이다 — 숫자줄과 오른쪽 절반은 없다.
+ * `controlLegend.test`가 **임자 키가 전부 이 안에 있는지** 잰다. 오른쪽 키는
+ * 덤으로만 두므로 이 목록에 없어도 된다
+ */
+export const LEFT_HAND: readonly string[] = [
+  'KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT',
+  'KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG',
+  'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB',
+  'ShiftLeft', 'ControlLeft', 'Tab', 'CapsLock', 'Space',
+]
 
 let gameActive = false
 export function setGameActive(active: boolean) {

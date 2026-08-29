@@ -18,5 +18,25 @@ export const overlay = style({
   zIndex: 100,
 })
 
+/** 머리줄이 곧 여닫는 단추다 */
+export const head = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  width: '100%',
+  pointerEvents: 'auto',
+  cursor: 'pointer',
+  background: 'none',
+  border: 0,
+  padding: 0,
+  margin: 0,
+  color: 'inherit',
+  font: 'inherit',
+  textAlign: 'left',
+})
+
+/** 접혔는지 폈는지 */
+export const mark = style({ marginLeft: 'auto', opacity: 0.55 })
+
 export const good = style({ color: vars.hud.accent })
 export const bad = style({ color: vars.hud.warn })

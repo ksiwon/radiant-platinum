@@ -8,20 +8,13 @@
 // 오른쪽이 포켓치고 **왼쪽은 비어 있다** (계기판은 `?dev=1`에서만 뜬다).
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
-
-/**
- * 계기판이 뜨는 자리만큼 내려가는 판.
- *
- * ⚠️ 계기판(`ui/hud/PerfOverlay`)도 왼쪽 위다. 그건 `?dev=1`에서만 뜨므로
- * 배포본에서는 안 겹치지만, 개발 중에는 쪽지가 그 위에 포개진다 — 그때만
- * 아래로 내린다 (실측으로 계기판이 110px쯤이다)
- */
-export const DEV_TOP = 122
+import { HUD_LEFT_TOP } from './hudStack'
 
 export const wrap = style({
   position: 'fixed',
   left: 14,
-  top: 14,
+  // 계기판이 이미 차지한 높이 아래에 붙는다 (`hudStack`). 계기판이 없으면 0이다
+  top: `calc(var(${HUD_LEFT_TOP}, 0px) + 14px)`,
   zIndex: 150,
   fontFamily: vars.font.ui,
   userSelect: 'none',

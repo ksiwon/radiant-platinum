@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import { controlRows, keyLocale, LEGEND_TOGGLE } from './controlLegend'
 import { keyList, moveKeys } from './keyNames'
-import { BINDINGS } from './keys'
+import { BINDINGS, LEFT_HAND } from './keys'
 
 const LOCALES = ['ko', 'en', 'ja'] as const
 
@@ -48,6 +48,22 @@ describe('조작 쪽지', () => {
     }
   })
 
+  it('임자 키가 전부 왼손에 있다', () => {
+    // 오른손은 마우스에 있다. 각 동작의 **첫 키**가 임자고, 그것이 WASD 언저리에
+    // 없으면 손을 건너가야 한다 — 등록 도구가 `Y`였을 때가 그랬다.
+    // 뒤에 붙은 것(화살표·Enter·Backspace·Esc)은 덤이라 여기 안 걸린다
+    const left = new Set(LEFT_HAND)
+    for (const [action, codes] of Object.entries(BINDINGS)) {
+      expect(left.has(codes[0] ?? ''), `${action}의 임자 ${String(codes[0])}`).toBe(true)
+    }
+    // 스페이스가 결정이다 — 엄지 자리라 WASD에서 손이 안 움직인다
+    expect(BINDINGS.interact[0]).toBe('Space')
+    // 오른손 자판은 임자로 안 쓴다
+    for (const codes of Object.values(BINDINGS)) {
+      expect(codes[0]).not.toMatch(/^(Key[YUIOPHJKLNM]|Arrow|Enter|Backspace|Escape)/)
+    }
+  })
+
   it('여닫는 키가 게임 키와 안 겹친다', () => {
     // 겹치면 쪽지를 여는 순간 주인공이 걷거나 메뉴가 열린다
     const taken = new Set(Object.values(BINDINGS).flat())
@@ -55,6 +71,8 @@ describe('조작 쪽지', () => {
       expect(taken.has(code), `${code}는 이미 임자가 있다`).toBe(false)
     }
     expect(LEGEND_TOGGLE.length).toBeGreaterThan(0)
+    // 쪽지 여는 키도 왼손이다
+    expect(new Set(LEFT_HAND).has(LEGEND_TOGGLE[0] ?? '')).toBe(true)
   })
 
   it('한 줄이 길지 않다 — 구석에 붙는 쪽지다', () => {

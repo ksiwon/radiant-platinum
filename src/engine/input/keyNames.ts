@@ -19,11 +19,13 @@ export type KeyLocale = 'ko' | 'en' | 'ja'
  * `keyList`가 하나로 줄인다
  */
 const LABEL: Readonly<Record<string, string>> = {
-  KeyA: 'A', KeyD: 'D', KeyE: 'E', KeyQ: 'Q', KeyR: 'R', KeyS: 'S',
+  KeyA: 'A', KeyB: 'B', KeyC: 'C', KeyD: 'D', KeyE: 'E', KeyF: 'F', KeyG: 'G',
+  KeyQ: 'Q', KeyR: 'R', KeyS: 'S', KeyT: 'T',
   KeyV: 'V', KeyW: 'W', KeyX: 'X', KeyY: 'Y', KeyZ: 'Z',
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
   ShiftLeft: 'Shift', ShiftRight: 'Shift',
   Space: 'Space', Enter: 'Enter', Backspace: 'Backspace', Escape: 'Esc',
+  Tab: 'Tab', ControlLeft: 'Ctrl', CapsLock: 'CapsLock',
 }
 
 /** 그 키를 사람이 읽는 이름으로. 모르는 자판이면 `event.code` 그대로다 */

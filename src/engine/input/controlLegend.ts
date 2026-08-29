@@ -49,7 +49,9 @@ export function controlRows(locale: string): readonly ControlRow[] {
 /**
  * 쪽지를 여닫는 키.
  *
- * ⚠️ **게임 키와 겹치면 안 된다.** `BINDINGS`에 있는 것은 다 임자가 있으므로
- * 물음표 자리(`/`)와 `F1`을 쓴다. `controlLegend.test`가 겹침을 잡는다
+ * ⚠️ **게임 키와 겹치면 안 되고, 왼손에 있어야 한다.** `BINDINGS`에 있는 것은
+ * 다 임자가 있으므로 그 옆의 빈자리 `G`를 쓴다 — 집게손가락이 제자리에서
+ * 한 칸 오른쪽이다. `F1`은 자판을 모르는 손을 위한 덤이다.
+ * `controlLegend.test`가 겹침과 왼손 범위를 잰다
  */
-export const LEGEND_TOGGLE: readonly string[] = ['Slash', 'F1']
+export const LEGEND_TOGGLE: readonly string[] = ['KeyG', 'F1']

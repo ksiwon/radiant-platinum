@@ -8,7 +8,6 @@
 // 키는 `BINDINGS`에서 온다 (`engine/input/controlLegend`) — 손으로 적으면 키를
 // 바꾼 날부터 거짓말이 된다.
 import { useEffect, useMemo, useState } from 'react'
-import { devToolsOn } from '../../app/devTools'
 import { controlRows, LEGEND_TOGGLE } from '../../engine/input/controlLegend'
 import { typingInto } from '../../engine/input/keys'
 import { useBattleStore } from '../../state/battleStore'
@@ -41,7 +40,7 @@ export function ControlHint() {
 
   if (busy || battling) return null
   return (
-    <div className={css.wrap} style={devToolsOn() ? { top: css.DEV_TOP } : undefined}>
+    <div className={css.wrap}>
       <button
         type="button"
         className={open ? css.chipOpen : css.chip}

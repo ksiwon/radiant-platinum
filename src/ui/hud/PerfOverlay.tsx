@@ -7,10 +7,21 @@
 // ⚠️ **여기 뜨는 수를 헤드리스에서 읽으면 안 된다.** `pnpm shot`·`pnpm story`는
 // WebGPU 장치를 못 만들어 SwiftShader로 내려앉는다 — 사용자 기계의 수가 아니다.
 // 이 판은 **사람이 제 기계에서 읽어 주는** 자리다 (DEPLOY.md).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { perfSnapshot } from '../../scene/sceneRefs'
 import { frameStats, SPAN } from '../../engine/loop/frameStats'
+import { typingInto } from '../../engine/input/keys'
+import { HUD_LEFT_TOP } from './hudStack'
 import * as css from './perfOverlay.css'
+
+/**
+ * 계기판을 접었다 펴는 키.
+ *
+ * ⚠️ **게임 키를 안 쓴다.** 이 판은 `?dev=1`에서만 뜨지만 그때도 게임은 돈다 —
+ * 왼손 자리는 전부 임자가 있으므로 기능 키를 쓴다 (`app/devTools`의 백틱과
+ * 같은 성격이다)
+ */
+const TOGGLE = ['F2']
 
 /** 60Hz 한 프레임(ms). 이보다 길면 한 장을 놓친 것이다 */
 const FRAME_60 = 1000 / 60
@@ -36,6 +47,8 @@ function read(): Shape {
 export function PerfOverlay() {
   const [snap, setSnap] = useState({ ...perfSnapshot })
   const [dist, setDist] = useState<Shape>(() => read())
+  const [open, setOpen] = useState(true)
+  const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -45,19 +58,64 @@ export function PerfOverlay() {
     return () => clearInterval(id)
   }, [])
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (typingInto(e.target) || !TOGGLE.includes(e.code)) return
+      e.preventDefault()
+      setOpen((v) => !v)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [])
+
+  /*
+    ⚠️ **아래에 붙는 것에게 제 키를 알려 준다.** 왼쪽 위에는 조작 쪽지도
+    선다(`ui/hud/ControlHint`). 높이를 손으로 적어 두면 이 판을 접는 순간
+    쪽지가 허공에 뜨므로, 잰 값을 뿌리 변수에 실어 보낸다
+  */
+  useEffect(() => {
+    const node = box.current
+    const root = document.documentElement
+    if (!node) return
+    const tell = (): void => {
+      root.style.setProperty(HUD_LEFT_TOP, `${String(Math.round(node.getBoundingClientRect().bottom))}px`)
+    }
+    tell()
+    const watch = new ResizeObserver(tell)
+    watch.observe(node)
+    return () => {
+      watch.disconnect()
+      root.style.removeProperty(HUD_LEFT_TOP)
+    }
+  }, [open])
+
   const ms = (v: number): string => `${v.toFixed(1)}ms`
 
   return (
-    <div className={css.overlay}>
-      <span className={snap.fps >= 55 ? css.good : css.bad}>
-        {`FPS ${snap.fps}  loop ${snap.frameMs.toFixed(2)}ms`}
-      </span>
-      {`\ncalls ${snap.drawCalls}  tris ${(snap.triangles / 1000).toFixed(1)}k\nbackend ${snap.backend}`}
+    <div className={css.overlay} ref={box}>
+      {/*
+        머리줄이 곧 여닫는 단추다. 접으면 FPS만 남는다 — 흘깃 보는 값은 그
+        하나고, 나머지는 들여다볼 때만 필요하다 (F2로도 여닫는다)
+      */}
+      <button
+        type="button"
+        className={css.head}
+        aria-expanded={open}
+        onClick={() => { setOpen((v) => !v) }}
+      >
+        <span className={snap.fps >= 55 ? css.good : css.bad}>
+          {`FPS ${snap.fps}  loop ${snap.frameMs.toFixed(2)}ms`}
+        </span>
+        <span className={css.mark}>{open ? '−' : '+'}</span>
+      </button>
+      {open && `calls ${snap.drawCalls}  tris ${(snap.triangles / 1000).toFixed(1)}k`
+        + `
+backend ${snap.backend}`}
       {/*
         프레임 시간 분포. **중간값이 아니라 `p99`가 부드러움의 값이다** —
         백 프레임 중 제일 느린 하나가 얼마나 느린가다 (`frameStats.percentile`)
       */}
-      {dist.frames > 0 && (
+      {open && dist.frames > 0 && (
         <span className={dist.p99 <= FRAME_60 * 2 ? css.good : css.bad}>
           {`\nframe ${ms(dist.mid)} / p99 ${ms(dist.p99)}  (${dist.frames}장)`}
         </span>
@@ -66,13 +124,13 @@ export function PerfOverlay() {
         구간마다의 최장 프레임. 맵 전환은 **제일 나쁜 번**이(어느 맵이 아픈가),
         배틀은 **처음 한 번**이 임자다(`@pkmn/sim`이 그때 온다)
       */}
-      {dist.warp && (
+      {open && dist.warp && (
         <span className={css.bad}>
           {`\n맵 전환 최장 ${ms(dist.warp.last)}  (제일 나쁜 번 ${ms(dist.warp.worst)}`
             + ` · ${dist.warp.count}번)`}
         </span>
       )}
-      {dist.battle && (
+      {open && dist.battle && (
         <span className={css.bad}>
           {`\n배틀 진입 최장 ${ms(dist.battle.first)}  (그 뒤 ${ms(dist.battle.last)}`
             + ` · ${dist.battle.count}번)`}
