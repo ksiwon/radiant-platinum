@@ -10,6 +10,7 @@ import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
 import { useSessionStore } from '../state/sessionStore'
+import { ControlHint } from '../ui/hud/ControlHint'
 import { CurrencyWindow } from '../ui/field/CurrencyWindow'
 import { SaveInfoWindow } from '../ui/field/SaveInfoWindow'
 import { MessageBox } from '../ui/field/MessageBox'
@@ -78,6 +79,7 @@ export function PlayRoute() {
       <FadeOverlay />
       <CutInOverlay />
       <PoketchWidget />
+      <ControlHint />
       <MenuLayer />
     </>
   )

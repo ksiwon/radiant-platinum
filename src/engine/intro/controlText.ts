@@ -16,66 +16,10 @@
 // 글 모양은 원작 대사창 규칙 그대로다 — `\n`이 줄 바꿈, `\r`이 「눌러서 창을
 // 비우고 다음 쪽」이다. 마박사의 말투(~하게/~일세 · ~じゃ)를 따른다.
 import { BINDINGS } from '../input/keys'
-
-type IntroLocale = 'ko' | 'en' | 'ja'
-
-/**
- * 화면에 적을 키 이름.
- *
- * `event.code`는 `KeyZ`·`ShiftLeft`처럼 자판을 가리키는 이름이라 그대로 보여
- * 주면 못 읽는다. 왼쪽·오른쪽 Shift처럼 **같은 글자로 적히는 것**은 아래
- * `keyList`가 하나로 줄인다
- */
-const LABEL: Readonly<Record<string, string>> = {
-  KeyA: 'A', KeyD: 'D', KeyE: 'E', KeyQ: 'Q', KeyR: 'R', KeyS: 'S',
-  KeyV: 'V', KeyW: 'W', KeyX: 'X', KeyY: 'Y', KeyZ: 'Z',
-  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
-  ShiftLeft: 'Shift', ShiftRight: 'Shift',
-  Space: 'Space', Enter: 'Enter', Backspace: 'Backspace', Escape: 'Esc',
-}
-
-/** 그 키를 사람이 읽는 이름으로. 모르는 자판이면 `event.code` 그대로다 */
-export function keyLabel(code: string): string {
-  return LABEL[code] ?? code
-}
-
-/** 「또는」 — 같은 일을 하는 키가 여럿일 때 사이에 넣는다 */
-const OR: Readonly<Record<IntroLocale, string>> = {
-  ko: ' 또는 ', en: ' or ', ja: ' または ',
-}
-
-/** 화살표 넷을 하나로 부르는 말 */
-const ARROWS: Readonly<Record<IntroLocale, string>> = {
-  ko: '화살표 키', en: 'the arrow keys', ja: '矢印キー',
-}
-
-/** 같은 일을 하는 키들을 「A 또는 B」로. 같은 이름은 한 번만 적는다 */
-export function keyList(codes: readonly string[], locale: IntroLocale): string {
-  const seen: string[] = []
-  for (const code of codes) {
-    const label = keyLabel(code)
-    if (!seen.includes(label)) seen.push(label)
-  }
-  return seen.join(OR[locale])
-}
-
-/**
- * 걷는 키. 글자 자판은 나란히 적고 화살표 넷은 한 마디로 줄인다.
- *
- * ⚠️ 「W 또는 ↑ 또는 A 또는 ←…」로 늘어놓으면 여덟 개짜리 목록이 된다 —
- * 읽히는 쪽이 이긴다
- */
-export function moveKeys(locale: IntroLocale): string {
-  const codes = [...BINDINGS.up, ...BINDINGS.left, ...BINDINGS.down, ...BINDINGS.right]
-  const letters = codes.filter((c) => c.startsWith('Key')).map(keyLabel)
-  const parts: string[] = []
-  if (letters.length > 0) parts.push(letters.join(' '))
-  if (codes.some((c) => c.startsWith('Arrow'))) parts.push(ARROWS[locale])
-  return parts.join(OR[locale])
-}
+import { keyList, moveKeys, type KeyLocale } from '../input/keyNames'
 
 /** 문장에 끼울 키 이름들 */
-function keys(locale: IntroLocale) {
+function keys(locale: KeyLocale) {
   const list = (codes: readonly string[]): string => keyList(codes, locale)
   return {
     move: moveKeys(locale),
@@ -98,7 +42,7 @@ function keys(locale: IntroLocale) {
  * 뒤쪽 끝에 붙인다
  */
 export function controlPages(locale: string): readonly string[] {
-  const at: IntroLocale = locale === 'en' ? 'en' : locale === 'ja' ? 'ja' : 'ko'
+  const at: KeyLocale = locale === 'en' ? 'en' : locale === 'ja' ? 'ja' : 'ko'
   const k = keys(at)
   if (at === 'en') {
     return [

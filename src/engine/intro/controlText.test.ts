@@ -5,7 +5,8 @@
 // 되므로, 그 어긋남을 여기서 잡는다.
 import { describe, expect, it } from 'vitest'
 import { BINDINGS } from '../input/keys'
-import { controlPages, keyLabel, keyList, moveKeys } from './controlText'
+import { keyLabel, keyList, moveKeys } from '../input/keyNames'
+import { controlPages } from './controlText'
 
 const LOCALES = ['ko', 'en', 'ja'] as const
 
