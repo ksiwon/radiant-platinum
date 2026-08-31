@@ -2,7 +2,8 @@
 
 **이 문서는 「무엇이 없는가」가 아니라 「어디를 만지는가」다.** 결손 목록은
 [PARITY.md](PARITY.md), 자료 포맷은 [DATA.md](DATA.md), 계획과 배경은
-[PLAN.md](PLAN.md)가 정본이고, 여기는 그 셋을 읽기 전에 보는 **길잡이**다.
+[PLAN.md](PLAN.md), **화면의 색·창·글꼴은 [DESIGN.md](DESIGN.md)**가 정본이고,
+여기는 그것들을 읽기 전에 보는 **길잡이**다.
 
 ⚠️ **아직 코드가 없는 검토가 하나 있다** — [VR.md](VR.md)는 1인칭을 VR로
 내보내는 길을 재 둔 것이다. **정해진 것이 아니라 값과 걸림돌만** 적혀 있고,
@@ -42,7 +43,7 @@
 | `src/engine/` | 값과 표뿐. 순수 함수 | zustand 스토어 (0파일). ⚠️ **`state/worldState`만 예외** — 프레임 상태 mutable 싱글톤이라 열 곳이 직접 읽고 쓴다. ⚠️ **three는 여섯 곳만** — 카메라·이동·깨어진 세계 표면·주인공 넷과 모델 둘(정규화·치비)이다. 벡터 계산이 실제로 three의 것이라 그렇고, 그 밖은 안 쓴다 |
 | `src/state/` | zustand 스토어. 엔진을 부른다 | React (0파일). three는 `worldState` 하나 — 주인공 좌표가 실제로 벡터다 |
 | `src/scene/` | three·R3F 씬과 시스템. 스토어를 읽고 쓴다 | — |
-| `src/ui/` | React 화면. 스토어를 읽고 쓴다 | three (0파일 — 씬이 따로 그린다) |
+| `src/ui/` | React 화면. 스토어를 읽고 쓴다 | three (0파일 — 씬이 따로 그린다). ⚠️ **색·테두리·모서리를 직접 안 적는다** — 전부 `src/ui/theme/`에서 온다 ([DESIGN.md](DESIGN.md)) |
 | `src/data/` | 산출물 읽기와 스키마 | 게임 규칙. ⚠️ 엔진의 **타입과 상수**는 가져온다 — 도감 비트 수처럼 스키마가 알아야 하는 것들이다 |
 | `src/import/` | 사용자의 롬에서 브라우저가 직접 굽는 길 | 게임 규칙 |
 | `tools/` | 개발 기계에서 Node가 굽는 길 | 앱 코드 |
@@ -169,6 +170,10 @@
 3. `ui/menu/MenuLayer.tsx`의 `switch`에 한 줄
 4. 틀은 `MenuScreen` 컴포넌트, 키는 `useMenuKeys`, 목록이 길면
    `scrollIntoView`를 커서 줄에 건다 — 없으면 커서가 화면 밖으로 사라진다
+
+⚠️ **새 창을 그리지 않는다.** 색·테두리·모서리는 `ui/theme/`에서 import로 온다
+([DESIGN.md](DESIGN.md)). 화면 파일에 `#색`·`boxShadow`·`borderRadius` 숫자를
+적으면 `pnpm lint`가 막는다 — 창이 여덟 벌로 갈라졌던 자리다.
 
 ### 2.6 글
 

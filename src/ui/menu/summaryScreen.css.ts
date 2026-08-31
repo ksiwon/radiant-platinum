@@ -5,9 +5,12 @@
 // 아주 다르게 보인다. 여기서 테두리를 갖는 것은 **왼쪽 기둥과 오른쪽 장** 둘뿐이고
 // 안쪽은 전부 글줄이다.
 import { style, styleVariants } from '@vanilla-extract/css'
+import { GAP, RADIUS, TEXT } from '../theme/scale'
+import { BAR_FILL, BAR_TRACK, PICKED } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
-const EDGE = 'rgba(255, 255, 255, 0.08)'
+// 창 안을 가르는 선은 창 한 벌의 것이다 (`theme/window.css`)
+const EDGE = vars.window.rule
 
 /** 왼쪽 기둥(포켓몬)과 오른쪽 장(쪽). 기둥이 좁고 고정이다 */
 export const stage = style({
@@ -35,7 +38,6 @@ export const portrait = style({
   height: 150,
   objectFit: 'contain',
   imageRendering: 'pixelated',
-  filter: 'drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))',
 })
 
 /** 알은 그림이 없다 — 자리만 비우고 아래 글로 알린다 */
@@ -49,8 +51,8 @@ export const nameRow = style({
   fontWeight: 700,
 })
 
-export const male = style({ color: '#7fb0ff', fontSize: 15 })
-export const female = style({ color: '#ff92ab', fontSize: 15 })
+export const male = style({ color: vars.state.male, fontSize: TEXT.base })
+export const female = style({ color: vars.state.female, fontSize: TEXT.base })
 
 export const level = style({
   fontSize: 13,
@@ -59,7 +61,7 @@ export const level = style({
 })
 
 /** 색이 다른 개체의 별. 도감 번호도 붉게 뜬다 (`SUMMARY_TEXT_RED`) */
-export const shiny = style({ color: '#ffd257', fontSize: 14 })
+export const shiny = style({ color: vars.pick.edge, fontSize: TEXT.small })
 
 /**
  * 포켓루스에 걸려 있는 동안 뜨는 딱지 (`SUMMARY_CONDITION_POKERUS`).
@@ -69,12 +71,13 @@ export const shiny = style({ color: '#ffd257', fontSize: 14 })
 export const pokerus = style({
   marginTop: 4,
   alignSelf: 'flex-start',
-  padding: '1px 6px',
-  borderRadius: 4,
-  fontSize: 11,
+  padding: '1px 7px',
+  border: `1px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
-  color: '#2a1030',
-  background: '#f19bd0',
+  color: vars.status.text,
+  background: vars.state.female,
 })
 
 /**
@@ -83,7 +86,7 @@ export const pokerus = style({
  * 원작도 이로치 별과 **같은 그림 묶음**의 다른 칸이라 나란히 붙는다.
  * 이 점이 「노력치가 계속 두 배로 들어간다」는 표시다
  */
-export const pokerusCured = style({ color: '#f19bd0', fontSize: 12 })
+export const pokerusCured = style({ color: vars.state.female, fontSize: TEXT.tiny })
 
 /** 지닌 도구 한 줄. 없으면 이 줄이 아예 없다 — 원작도 빈칸을 안 남긴다 */
 export const held = style({
@@ -142,8 +145,8 @@ export const value = style({
 })
 
 /** 원트레이너 이름의 색은 **성별**로 갈린다 (`SUMMARY_TEXT_BLUE`/`RED`) */
-export const otMale = style([value, { color: '#7fb0ff' }])
-export const otFemale = style([value, { color: '#ff92ab' }])
+export const otMale = style([value, { color: vars.state.male }])
+export const otFemale = style([value, { color: vars.state.female }])
 
 /** 값이 오른쪽에 붙는 줄 — 능력치처럼 자릿수를 맞춰 읽는 것 */
 export const num = style([value, { textAlign: 'right', maxWidth: 92 }])
@@ -156,10 +159,11 @@ export const typeRow = style({
 
 export const typeChip = style({
   padding: '1px 9px 2px',
-  borderRadius: 999,
-  fontSize: 12,
+  border: `1px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
-  color: '#0d1017',
+  color: vars.status.text,
   background: 'var(--tint)',
 })
 
@@ -168,16 +172,14 @@ export const typeChip = style({
 export const expTrack = style({
   display: 'block',
   flex: '0 1 200px',
-  height: 6,
-  borderRadius: 3,
-  background: 'rgba(255, 255, 255, 0.1)',
-  overflow: 'hidden',
+  height: 9,
+  ...BAR_TRACK,
 })
 
 export const expFill = style({
+  ...BAR_FILL,
+  vars: { '--lit': vars.bar.expLit, '--body': vars.bar.exp },
   display: 'block',
-  height: '100%',
-  background: vars.hud.warn,
   minWidth: 2,
 })
 
@@ -193,8 +195,8 @@ export const stats = style({
 /** 성격이 올리는 쪽에 빨강, 내리는 쪽에 파랑 (원작이 이름표 색을 바꾼다) */
 export const statName = styleVariants({
   '': [key, { flex: '0 0 64px' }],
-  up: [key, { flex: '0 0 64px', color: '#ff9f7a', opacity: 0.9 }],
-  down: [key, { flex: '0 0 64px', color: '#82c8ff', opacity: 0.9 }],
+  up: [key, { flex: '0 0 64px', color: vars.state.bad }],
+  down: [key, { flex: '0 0 64px', color: vars.state.male }],
 })
 
 export const hpBar = style({
@@ -207,13 +209,13 @@ export const hpBar = style({
 export const hpTrack = style({
   display: 'block',
   flex: '0 1 220px',
-  height: 7,
-  borderRadius: 4,
-  background: 'rgba(255, 255, 255, 0.1)',
-  overflow: 'hidden',
+  height: 9,
+  ...BAR_TRACK,
 })
 
-export const hpFill = style({ display: 'block', height: '100%' })
+// ⚠️ 색은 화면이 `HP_VARS`로 얹는다 (`SummaryScreen.tsx`). 여기서 정하면
+// 파티 화면과 갈라진다
+export const hpFill = style({ ...BAR_FILL, display: 'block' })
 
 // ── 기술 쪽 ──────────────────────────────────────────────────────────────────
 
@@ -227,16 +229,15 @@ const moveBase = style({
   display: 'flex',
   alignItems: 'center',
   gap: 9,
-  padding: '5px 8px',
-  borderRadius: 6,
-  fontSize: 15,
+  padding: `5px ${GAP.small}px`,
+  borderRadius: RADIUS.cell,
+  fontSize: TEXT.base,
 })
 
 export const move = styleVariants({
   off: [moveBase],
   on: [moveBase, {
-    background: 'rgba(238, 243, 255, 0.13)',
-    boxShadow: `inset 0 0 0 2px ${vars.hud.warn}`,
+    ...PICKED,
   }],
 })
 
@@ -289,6 +290,6 @@ export const memoRow = style({
 
 /** 문장 틀 안의 `{COLOR 1}` 구간 — 만난 자리 이름이 여기 들어간다 */
 export const accent = style({
-  color: vars.hud.warn,
+  color: vars.ink.strong,
   fontWeight: 600,
 })

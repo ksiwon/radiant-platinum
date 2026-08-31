@@ -3,6 +3,8 @@
 // 목록 화면(가방·도감)과 달리 가운데에 창 하나만 뜬다. 원작도 리포트는 요약창
 // 하나에 예/아니오만 붙는다.
 import { globalStyle, style } from '@vanilla-extract/css'
+import { GAP, RADIUS, TEXT } from '../theme/scale'
+import { PICKED, WINDOW } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 import { row, rowOn } from './menuChrome.css'
 
@@ -26,16 +28,13 @@ export const info = style({
   margin: 0,
   padding: '20px 32px',
   minWidth: 360,
-  background: 'rgba(18, 24, 42, 0.78)',
-  border: `1px solid ${vars.panel.border}`,
-  borderRadius: 14,
-  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
-  fontSize: 18,
+  ...WINDOW,
+  fontSize: TEXT.list,
 })
 
 // vanilla-extract는 style 안에서 `& dt` 같은 자식 선택자를 못 받는다.
 // globalStyle로 따로 건다
-globalStyle(`${info} dt`, { opacity: 0.7 })
+globalStyle(`${info} dt`, { color: vars.ink.dim })
 globalStyle(`${info} dd`, {
   margin: 0,
   textAlign: 'right',
@@ -52,9 +51,8 @@ export const prompt = style({
   lineHeight: '30px',
   whiteSpace: 'pre-line',
   textAlign: 'center',
-  background: 'rgba(12, 17, 30, 0.82)',
-  border: `1px solid ${vars.panel.border}`,
-  borderRadius: 14,
+  ...WINDOW,
+  fontFamily: vars.font.pixel,
 })
 
 export const choices = style({
@@ -63,22 +61,20 @@ export const choices = style({
 })
 
 const choiceBase = style({
+  ...WINDOW,
   minWidth: 110,
-  padding: '10px 22px',
-  borderRadius: 10,
-  fontSize: 18,
+  padding: `${GAP.small + 2}px ${GAP.loose - 2}px`,
+  fontSize: TEXT.list,
   textAlign: 'center',
-  border: `1px solid ${vars.panel.border}`,
-  background: 'rgba(18, 24, 42, 0.7)',
 })
 
-export const choice = style([choiceBase, { opacity: 0.6 }])
+export const choice = style([choiceBase, { opacity: 0.7 }])
 
 export const choiceOn = style([choiceBase, {
-  background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.94), rgba(226, 234, 250, 0.9))',
-  color: '#131a2c',
+  background: vars.pick.face,
+  borderColor: vars.pick.edge,
+  color: vars.pick.text,
   fontWeight: 700,
-  borderColor: 'transparent',
 }])
 
 /**
@@ -93,22 +89,21 @@ export const backup = style({
   gap: 10,
   maxWidth: 620,
   padding: '8px 14px',
-  fontSize: 13,
+  fontSize: TEXT.small,
   lineHeight: 1.6,
-  opacity: 0.86,
-  borderRadius: 10,
-  border: `1px solid ${vars.panel.border}`,
-  background: 'rgba(12, 17, 30, 0.6)',
+  borderRadius: RADIUS.cell,
+  border: `1px solid ${vars.window.rule}`,
 })
 
 export const backupButton = style({
   appearance: 'none',
-  padding: '5px 10px',
-  fontSize: 12,
-  color: 'inherit',
-  borderRadius: 999,
-  border: `1px solid ${vars.panel.border}`,
-  background: 'rgba(30, 38, 60, 0.9)',
+  padding: `5px ${GAP.small + 2}px`,
+  fontSize: TEXT.tiny,
+  fontWeight: 700,
+  color: vars.pick.text,
+  borderRadius: RADIUS.bar,
+  border: `2px solid ${vars.pick.edge}`,
+  background: vars.pick.face,
   cursor: 'pointer',
 })
 
@@ -126,8 +121,7 @@ export const optionRowOn = style([rowOn, { height: 38 }])
 
 export const rowLabel = style({
   flex: '0 0 170px',
-  opacity: 0.85,
-  fontSize: 15,
+  fontSize: TEXT.base,
 })
 
 /** 값 후보를 오른쪽에 늘어놓는다. 고른 것에만 색이 찬다 */
@@ -138,17 +132,16 @@ export const values = style({
 })
 
 const valueBase = style({
-  padding: '3px 11px',
-  borderRadius: 5,
-  fontSize: 14,
+  padding: `3px ${GAP.small + 3}px`,
+  borderRadius: RADIUS.bar,
+  fontSize: TEXT.small,
   whiteSpace: 'nowrap',
 })
 
-export const value = style([valueBase, { opacity: 0.5 }])
+export const value = style([valueBase, { color: vars.ink.faint }])
 
 export const valueOn = style([valueBase, {
-  background: vars.hud.accent,
-  color: '#0c1220',
+  ...PICKED,
   fontWeight: 700,
 }])
 
@@ -156,20 +149,21 @@ export const valueOn = style([valueBase, {
 export const help = style({
   marginTop: 14,
   minHeight: 56,
-  fontSize: 16,
+  fontSize: TEXT.base,
   lineHeight: '26px',
-  opacity: 0.75,
+  color: vars.ink.dim,
   whiteSpace: 'pre-line',
   textAlign: 'center',
 })
 
 /** 원작에 없는 항목임을 밝히는 표 */
+/** 원작에 없는 항목임을 밝히는 표 */
 export const ours = style({
-  marginLeft: 8,
-  fontSize: 12,
+  marginLeft: GAP.small,
+  fontSize: TEXT.tiny,
   padding: '2px 7px',
-  borderRadius: 999,
-  background: 'rgba(255, 255, 255, 0.12)',
-  opacity: 0.8,
+  borderRadius: RADIUS.bar,
+  border: `1px solid ${vars.window.rule}`,
+  color: vars.ink.dim,
   verticalAlign: 'middle',
 })

@@ -3,6 +3,9 @@
 // 고른 물건을 **크게** 세운다. 목록의 28픽셀짜리 아이콘만으로는 무엇을 고르고
 // 있는지가 안 보인다 — 이 칸에서 제일 큰 것이 그 물건이어야 한다.
 import { style } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
+import { RADIUS } from '../theme/scale'
+import { RULE } from '../theme/window.css'
 
 export const hero = style({
   display: 'flex',
@@ -10,7 +13,7 @@ export const hero = style({
   gap: 14,
   paddingBottom: 12,
   marginBottom: 12,
-  borderBottom: '1px solid rgba(150, 176, 224, 0.2)',
+  borderBottom: RULE,
 })
 
 /** 그림은 도트다. 부드럽게 늘리면 뭉개진다 */
@@ -18,7 +21,6 @@ export const heroIcon = style({
   flex: '0 0 auto',
   imageRendering: 'pixelated',
   backgroundRepeat: 'no-repeat',
-  filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5))',
 })
 
 export const heroText = style({
@@ -50,9 +52,10 @@ export const heroSub = style({
 export const registered = style({
   marginLeft: 6,
   padding: '0 5px',
-  borderRadius: 4,
+  borderRadius: RADIUS.bar,
   fontSize: 11,
   fontWeight: 700,
-  background: 'rgba(120, 160, 230, 0.9)',
-  color: '#101624',
+  background: vars.pick.face,
+  boxShadow: `inset 0 0 0 1px ${vars.pick.edge}`,
+  color: vars.pick.text,
 })

@@ -3,6 +3,8 @@
 // 원작은 위 화면에 마박사 그림, 아래 화면에 창이다. 우리는 한 화면이라 그림 자리를
 // 위에 비워 두고 창을 아래에 붙인다 — 초상이 들어오면 그 자리에 그대로 얹힌다.
 import { keyframes, style } from '@vanilla-extract/css'
+import { GAP, RADIUS, TEXT } from '../theme/scale'
+import { WINDOW } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
 const fadeIn = keyframes({ from: { opacity: 0 }, to: { opacity: 1 } })
@@ -14,8 +16,8 @@ export const wrap = style({
   display: 'flex',
   flexDirection: 'column',
   // 원작 인트로는 검은 바탕에서 마박사만 떠오른다
-  background: 'rgba(5, 7, 13, 0.08)',
-  color: vars.panel.text,
+  background: vars.scrim.over,
+  color: vars.ink.normal,
   fontFamily: vars.font.ui,
   userSelect: 'none',
   animation: `${fadeIn} 0.4s ease-out`,
@@ -33,14 +35,14 @@ export const stage = style({
 const ballBase = style({
   width: 120,
   height: 120,
-  borderRadius: '50%',
-  border: '4px solid #10151f',
+  borderRadius: RADIUS.round,
+  border: `4px solid ${vars.ball.band}`,
   cursor: 'pointer',
   padding: 0,
   // 위 빨강 아래 흰색, 가운데 띠 — 몬스터볼의 생김새다
-  background: 'linear-gradient(180deg, #e5484d 0 46%, #10151f 46% 54%, #f4f6fb 54% 100%)',
-  boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6), inset -10px -12px 24px rgba(0, 0, 0, 0.28)',
-  transition: 'transform 160ms ease-out, box-shadow 220ms ease-out',
+  background: `linear-gradient(180deg, ${vars.ball.top} 0 46%,`
+    + ` ${vars.ball.band} 46% 54%, ${vars.ball.bottom} 54% 100%)`,
+  transition: 'transform 160ms ease-out',
   ':hover': { transform: 'scale(1.04)' },
 })
 
@@ -57,13 +59,13 @@ export const ball = style([ballBase, {}])
 export const ballHit = style({
   position: 'fixed',
   transform: 'translate(-50%, -50%)',
-  borderRadius: '50%',
+  borderRadius: RADIUS.round,
   border: 0,
   padding: 0,
   background: 'transparent',
   cursor: 'pointer',
   outline: 'none',
-  ':focus-visible': { boxShadow: '0 0 0 3px rgba(255, 238, 164, 0.72)' },
+  ':focus-visible': { boxShadow: `0 0 0 3px ${vars.pick.edge}` },
 })
 
 export const box = style({
@@ -73,11 +75,9 @@ export const box = style({
   padding: '20px 26px',
   display: 'flex',
   flexDirection: 'column',
-  gap: 14,
-  background: 'rgba(12, 17, 30, 0.9)',
-  border: '2px solid rgba(150, 176, 224, 0.5)',
-  borderRadius: 14,
-  boxShadow: '0 16px 40px rgba(0, 0, 0, 0.6)',
+  gap: GAP.base + 2,
+  ...WINDOW,
+  fontFamily: vars.font.pixel,
 })
 
 export const text = style({
@@ -94,23 +94,20 @@ export const choices = style({
 })
 
 const choiceBase = style({
-  padding: '7px 16px',
-  borderRadius: 999,
-  fontSize: 16,
-  border: `1px solid ${vars.panel.border}`,
+  padding: `7px ${GAP.wide}px`,
+  borderRadius: RADIUS.cell,
+  fontSize: TEXT.base,
+  border: `2px solid ${vars.window.rule}`,
 })
 
-export const choice = style([choiceBase, { opacity: 0.55 }])
+export const choice = style([choiceBase, { color: vars.ink.dim }])
 
-export const choiceOn = style([
-  choiceBase,
-  {
-    background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(222, 232, 252, 0.9))',
-    color: '#131a2c',
-    fontWeight: 700,
-    borderColor: 'transparent',
-  },
-])
+export const choiceOn = style([choiceBase, {
+  background: vars.pick.face,
+  borderColor: vars.pick.edge,
+  color: vars.pick.text,
+  fontWeight: 700,
+}])
 
 export const nameRow = style({
   display: 'flex',
@@ -122,22 +119,23 @@ export const input = style({
   padding: '10px 14px',
   fontSize: 19,
   fontFamily: vars.font.ui,
-  color: vars.panel.text,
-  background: 'rgba(255, 255, 255, 0.08)',
-  border: `1px solid ${vars.panel.border}`,
-  borderRadius: 10,
+  color: vars.ink.strong,
+  background: vars.bar.trackTop,
+  border: `2px solid ${vars.window.edgeDim}`,
+  borderRadius: RADIUS.cell,
   outline: 'none',
-  ':focus': { borderColor: vars.hud.accent },
+  ':focus': { borderColor: vars.pick.edge },
 })
 
 export const ok = style({
-  padding: '10px 22px',
-  fontSize: 17,
+  padding: `${GAP.small + 2}px ${GAP.loose - 2}px`,
+  fontSize: TEXT.list,
+  fontWeight: 700,
   fontFamily: vars.font.ui,
-  color: '#0c1220',
-  background: vars.hud.accent,
-  border: 'none',
-  borderRadius: 10,
+  color: vars.pick.text,
+  background: vars.pick.face,
+  border: `2px solid ${vars.pick.edge}`,
+  borderRadius: RADIUS.cell,
   cursor: 'pointer',
 })
 

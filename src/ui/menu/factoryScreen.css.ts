@@ -4,12 +4,12 @@
 // 값을 보여 준다. 한 화면에서는 그 배치가 성립하지 않으므로 BDSP의 배틀타워
 // 대여 화면처럼 **왼쪽 목록 · 오른쪽 상세**로 옮긴다 (PARITY §12.4).
 import { style, styleVariants } from '@vanilla-extract/css'
+import { GAP, RADIUS, TEXT } from '../theme/scale'
 import { vars } from '../theme/contract.css'
 
-/** 고른 줄의 띠. 메뉴 공용 틀과 같은 색이다 (`menuChrome.css`) */
-const PICK_BG = 'linear-gradient(180deg, #eef3ff 0%, #cddaf4 100%)'
-const PICK_TEXT = '#111726'
-const HOVER = 'rgba(255, 255, 255, 0.08)'
+// ⚠️ 고른 줄의 띠를 여기서 다시 적지 않는다 — 창 한 벌의 것을 쓴다
+// (`theme/window.css`). 한때 이 세 줄이 `menuChrome`의 복붙이었고,
+// 그래서 한쪽만 고쳐지고 다른 쪽은 안 따라오는 자리였다
 
 /**
  * 목록과 상세.
@@ -35,9 +35,9 @@ export const column = style({
 })
 
 export const columnTitle = style({
-  fontSize: 13,
-  letterSpacing: '0.08em',
-  opacity: 0.7,
+  fontSize: TEXT.small,
+  fontWeight: 700,
+  color: vars.ink.dim,
 })
 
 const monRow = style({
@@ -45,16 +45,18 @@ const monRow = style({
   gridTemplateColumns: '32px minmax(0, 1fr) auto',
   alignItems: 'center',
   gap: 10,
-  padding: '6px 10px',
-  borderRadius: 8,
-  border: '1px solid transparent',
+  padding: `${GAP.tight + 2}px ${GAP.small + 2}px`,
+  borderRadius: RADIUS.cell,
+  border: '2px solid transparent',
 })
 
 export const rowState = styleVariants({
   idle: [monRow, {}],
-  on: [monRow, { background: PICK_BG, color: PICK_TEXT, borderColor: vars.panel.border }],
-  picked: [monRow, { background: HOVER, borderColor: vars.hud.accent }],
-  pickedOn: [monRow, { background: PICK_BG, color: PICK_TEXT, borderColor: vars.hud.accent }],
+  on: [monRow, { background: vars.pick.face, color: vars.pick.text, borderColor: vars.pick.edge }],
+  picked: [monRow, { borderColor: vars.state.good }],
+  pickedOn: [monRow, {
+    background: vars.pick.face, color: vars.pick.text, borderColor: vars.state.good,
+  }],
 })
 
 export const badge = style({
@@ -62,7 +64,7 @@ export const badge = style({
   fontWeight: 700,
   minWidth: 18,
   textAlign: 'center',
-  color: vars.hud.accent,
+  color: vars.state.good,
 })
 
 export const monName = style({
@@ -80,11 +82,12 @@ export const monSub = style({
 export const types = style({ display: 'flex', gap: 4 })
 
 export const typeChip = style({
-  fontSize: 11,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
-  padding: '1px 6px',
-  borderRadius: 999,
-  color: '#fff',
+  padding: '1px 7px',
+  border: `1px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
+  color: vars.status.text,
 })
 
 export const moves = style({
@@ -105,18 +108,18 @@ export const statLine = style({
   textAlign: 'center',
 })
 
-export const statName = style({ opacity: 0.6, fontSize: 11 })
+export const statName = style({ color: vars.ink.faint, fontSize: TEXT.tiny })
 
 export const banner = style({
   display: 'flex',
   alignItems: 'baseline',
   gap: 12,
-  padding: '8px 12px',
-  borderRadius: 8,
-  background: HOVER,
-  fontSize: 14,
+  padding: `${GAP.small}px ${GAP.base}px`,
+  borderRadius: RADIUS.cell,
+  boxShadow: `inset 0 0 0 1px ${vars.window.rule}`,
+  fontSize: TEXT.small,
 })
 
-export const bannerBig = style({ fontSize: 20, fontWeight: 700, color: vars.hud.accent })
+export const bannerBig = style({ fontSize: 20, fontWeight: 700, color: vars.state.good })
 
 export const hintLine = style({ fontSize: 13, opacity: 0.8, marginTop: 6 })

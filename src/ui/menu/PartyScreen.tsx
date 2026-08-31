@@ -46,6 +46,7 @@ import { MenuScreen } from './MenuScreen'
 import { PARTY_SLOT_NONE, partyChoice } from './partyChoice'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
+import { HP_VARS } from '../theme/window.css'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 
 /** 상태 이상 배지. 이름은 `TEXT_BANK_MENU_ENTRIES` 0~4와 같은 낱말이다 */
@@ -55,8 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const STAT_LABEL = { hp: 'HP', atk: '공격', def: '방어', spa: '특공', spd: '특방', spe: '스피드' } as const
 
-/** 배틀 게이지와 같은 색. 두 화면에서 같은 체력이 같은 색이어야 한다 */
-const BAR_COLOR = { green: '#5fd35f', yellow: '#f5c542', red: '#ef5350', empty: '#3a3f4a' }
+
 
 
 
@@ -473,6 +473,16 @@ export function PartyScreen() {
               }}
             />
           ))}
+          {/*
+            빈 자리도 그린다.
+
+            ⚠️ **원작 파티 화면은 언제나 여섯 칸이다.** 데리고 있는 만큼만 그리면
+            셋일 때 화면 아래 3분의 2가 텅 빈다 — 창 크기를 내용이 아니라 화면에
+            맞춘 꼴이고, 무엇보다 「여섯 중 셋」이라는 것이 화면에서 사라진다
+          */}
+          {Array.from({ length: Math.max(0, 6 - party.length) }, (_, k) => (
+            <div key={`empty/${String(k)}`} className={own.cardEmpty} aria-hidden />
+          ))}
         </div>
 
         <div className={css.detail}>
@@ -604,7 +614,7 @@ function Card(
           <span className={own.name}>{name}</span>
           {gender && <span className={gender.cls}>{gender.mark}</span>}
           {state !== 'ok' && (
-            <span className={own.status} style={{ background: own.statusColor[state] ?? '#6b7280' }}>
+            <span className={own.status} style={{ background: own.statusColor[state] }}>
               {STATUS_LABEL[state] ?? state}
             </span>
           )}
@@ -617,7 +627,7 @@ function Card(
               className={own.hpFill}
               style={{
                 width: `${String(ratio * 100)}%`,
-                background: BAR_COLOR[hpColor(mon.hp, full)],
+                ...HP_VARS[hpColor(mon.hp, full)],
               }}
             />
           </span>

@@ -11,6 +11,8 @@
 // ⚠️ **액정은 밝은 바탕에 어두운 글씨다.** 원작 팔레트를 재기 전에는 반대로
 // 그리고 있었다 — 롬의 네 단계 중 제일 밝은 것이 화면의 86%를 덮는다.
 import { createVar, globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
 
 /** 액정의 명암 네 단계 중 셋. `poketchShades`가 값을 준다 */
 export const ground = createVar()
@@ -39,10 +41,9 @@ export const body = style({
   flexDirection: 'column',
   gap: 5,
   padding: 8,
-  borderRadius: 14,
-  background: 'linear-gradient(160deg, #d8d8d0 0%, #a8a8a0 45%, #74746c 100%)',
-  border: '1px solid rgba(255,255,255,0.45)',
-  boxShadow: '0 10px 26px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.6)',
+  borderRadius: RADIUS.window,
+  background: `linear-gradient(180deg, ${vars.device.shell}, ${vars.device.shellDim})`,
+  border: `${EDGE.bar}px solid ${vars.device.edge}`,
 })
 
 /** 크게·작게 두 자리. 눈금은 액정의 **점 크기**로만 바뀐다 */
@@ -69,14 +70,13 @@ export const side = style({
 export const button = style({
   width: 16,
   height: 22,
-  borderRadius: 4,
+  borderRadius: RADIUS.bar,
   display: 'grid',
   placeItems: 'center',
   fontSize: 9,
-  color: 'rgba(0,0,0,0.55)',
-  background: 'linear-gradient(180deg, #ecece4 0%, #9a9a92 100%)',
-  border: '1px solid rgba(0,0,0,0.28)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.7)',
+  color: vars.device.textDim,
+  background: `linear-gradient(180deg, ${vars.device.bezel}, ${vars.device.bezelDim})`,
+  border: `1px solid ${vars.device.edge}`,
 })
 
 /** 액정. 안으로 파여 보이게 안쪽 그림자를 준다 */
@@ -84,13 +84,12 @@ export const screen = style({
   flex: 1,
   position: 'relative',
   minHeight: 92,
-  borderRadius: 6,
-  padding: 8,
+  borderRadius: RADIUS.bar,
+  padding: GAP.small,
   overflow: 'hidden',
   background: ground,
   color: ink,
-  border: '1px solid rgba(0,0,0,0.45)',
-  boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.55)',
+  border: `${EDGE.bar}px solid ${vars.device.edge}`,
   fontVariantNumeric: 'tabular-nums',
 })
 
@@ -106,8 +105,9 @@ globalStyle(`${screen}::after`, {
   inset: 0,
   pointerEvents: 'none',
   backgroundImage:
-    'repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px),'
-    + ' repeating-linear-gradient(90deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px)',
+    `repeating-linear-gradient(0deg, ${vars.device.edge} 0 1px, transparent 1px 3px),`
+    + ` repeating-linear-gradient(90deg, ${vars.device.edge} 0 1px, transparent 1px 3px)`,
+  opacity: 0.16,
 })
 
 /** 앱 이름. 몸체 아래쪽에 작게 찍힌다 */
@@ -116,18 +116,15 @@ globalStyle(`${screen}::after`, {
  */
 export const label = style({
   textAlign: 'center',
-  fontSize: 10,
+  fontSize: TEXT.tiny - 2,
   fontWeight: 800,
-  letterSpacing: '0.06em',
-  color: 'rgba(28,28,24,0.85)',
-  textShadow: '0 1px 0 rgba(255,255,255,0.5)',
+  color: vars.device.text,
 })
 
 export const hint = style({
   textAlign: 'center',
   fontSize: 8,
-  letterSpacing: '0.03em',
-  color: 'rgba(28,28,24,0.55)',
+  color: vars.device.textDim,
 })
 
 // ── 액정 안에서 쓰는 것들 ────────────────────────────────────────────────────
@@ -144,21 +141,18 @@ export const center = style({
 export const bigNumber = style({
   fontSize: 30,
   fontWeight: 800,
-  letterSpacing: '0.04em',
   lineHeight: 1.05,
 })
 
 export const hugeNumber = style({
   fontSize: 44,
   fontWeight: 800,
-  letterSpacing: '0.04em',
   lineHeight: 1.05,
 })
 
 export const small = style({
   fontSize: 10,
   opacity: 0.85,
-  letterSpacing: '0.05em',
 })
 
 export const rows = style({
@@ -246,7 +240,7 @@ export const mapBerry = style({
   height: 5,
   marginLeft: -2.5,
   marginTop: -2.5,
-  borderRadius: '50%',
+  borderRadius: RADIUS.round,
   background: 'currentColor',
   // 지도 그림 위에 얹히므로 바탕색으로 한 겹 두른다 — 안 두르면 지형에 묻힌다
   boxShadow: `0 0 0 1px ${ground}`,
@@ -254,7 +248,7 @@ export const mapBerry = style({
 
 /** 숨은 자리 넷. 이야기가 열어야 뜬다 */
 export const mapHidden = style([mapBerry, {
-  borderRadius: 0,
+  borderRadius: RADIUS.bar,
   width: 4,
   height: 4,
   marginLeft: -2,
@@ -268,7 +262,7 @@ export const marker = style({
   height: 6,
   marginLeft: -3,
   marginTop: -3,
-  borderRadius: '50%',
+  borderRadius: RADIUS.round,
   background: 'currentColor',
 })
 
@@ -284,7 +278,7 @@ export const here = style([marker, {
 /** 아날로그 시계 판 */
 export const dial = style({
   position: 'relative',
-  borderRadius: '50%',
+  borderRadius: RADIUS.round,
   border: '2px solid currentColor',
   margin: 'auto',
 })
@@ -330,11 +324,11 @@ export const swatches = style({
 
 export const swatch = style({
   height: 14,
-  border: '1px solid rgba(0,0,0,0.4)',
+  border: `1px solid ${vars.device.edge}`,
 })
 
 export const swatchOn = style([swatch, {
-  outline: '2px solid #fff',
+  outline: `2px solid ${vars.device.bezel}`,
   outlineOffset: 1,
 }])
 

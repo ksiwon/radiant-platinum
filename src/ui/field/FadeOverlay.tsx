@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react'
 import { fadeAlpha, screenFade } from '../../engine/script/fade'
 import * as css from './fadeOverlay.css'
+import { vars } from '../theme/contract.css'
 
 export function FadeOverlay() {
   const ref = useRef<HTMLDivElement>(null)
@@ -30,7 +31,7 @@ export function FadeOverlay() {
       el.style.opacity = String(alpha)
       // 완전히 투명하면 클릭을 막지 않게 아예 뺀다
       el.style.display = alpha > 0 ? 'block' : 'none'
-      el.style.background = screenFade.now?.color ?? '#000'
+      el.style.background = screenFade.now?.color ?? vars.scrim.black
     }
     raf = requestAnimationFrame(poll)
     return () => { cancelAnimationFrame(raf) }

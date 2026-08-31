@@ -3,6 +3,7 @@
 // 원작은 아래 화면에 창을 하나 더 얹지만 우리는 원 스크린이라 대사창 바로
 // 위에 세운다. 대사와 겹치면 안 되는 것이 이 창의 유일한 배치 조건이다.
 import { keyframes, style } from '@vanilla-extract/css'
+import { WINDOW } from '../theme/window.css'
 
 const rise = keyframes({
   from: { opacity: 0, transform: 'translate(-50%, 8px) scale(0.94)' },
@@ -20,10 +21,7 @@ export const frame = style({
   height: 132,
   display: 'grid',
   placeItems: 'center',
-  background: 'radial-gradient(circle, rgba(219, 233, 255, 0.06), rgba(8, 13, 28, 0.28))',
-  border: '2px solid rgba(60, 74, 102, 0.85)',
-  borderRadius: 10,
-  boxShadow: '0 8px 26px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.7)',
+  ...WINDOW,
   animation: `${rise} 0.22s ease-out`,
   pointerEvents: 'none',
 })

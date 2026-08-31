@@ -4,6 +4,7 @@
 // 모든 자리를 `px/256`·`px/192` 비율로 적는다. 두루마리 자리가 픽셀이라
 // 비율을 안 지키면 줄 간격이 원작과 어긋난다.
 import { style, styleVariants } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
 
 /** 원작 화면 크기 */
 const W = 256
@@ -16,7 +17,7 @@ export const backdrop = style({
   position: 'fixed',
   inset: 0,
   zIndex: 400,
-  background: '#000',
+  background: vars.scrim.black,
   display: 'grid',
   placeItems: 'center',
   overflow: 'hidden',
@@ -61,11 +62,10 @@ export const line = style({
   height: pctY(16),
   lineHeight: pctY(16),
   whiteSpace: 'pre',
-  letterSpacing: '0.02em',
+
   // 원작은 글자 뒤에 그림자 팔레트를 깐다 (`TEXT_COLOR(1, 2, 0)`의 둘째 값).
   // 하늘 위에 흰 글씨라 그림자가 없으면 밝은 구름에서 글이 사라진다
-  textShadow: '0 1px 0 rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6)',
-  color: '#fff',
+  color: vars.ink.onDark,
 })
 
 export const align = styleVariants({
@@ -80,6 +80,5 @@ export const hint = style({
   right: pctX(8),
   bottom: pctY(6),
   fontSize: '0.7em',
-  color: 'rgba(255, 255, 255, 0.55)',
-  textShadow: '0 1px 0 rgba(0, 0, 0, 0.85)',
+  color: vars.ink.onDarkDim,
 })

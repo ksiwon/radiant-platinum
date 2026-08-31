@@ -16,7 +16,7 @@ export const power = style({ opacity: 0.85, fontWeight: 600 })
 export const desc = style({
   marginTop: 12,
   paddingTop: 10,
-  borderTop: `1px solid ${vars.panel.border}`,
+  borderTop: `1px solid ${vars.window.rule}`,
   fontSize: 15,
   lineHeight: 1.62,
   whiteSpace: 'pre-line',

@@ -211,10 +211,10 @@ R3F를 전면 채택하면 씬 그래프 조작이 리컨실러를 타서 청크
 1. **`createTheme`가 CSS 변수를 네이티브로 생성한다.** 프레임당 갱신되는 UI(HP바 등)가 요구하는 "CSS 변수 직접 조작"이 예외 규칙이 아니라 **정식 경로**다. 테마 토큰 = CSS 변수이므로 낮/밤 전환도 클래스 토글 하나다.
 
    ```ts
-   // ui/theme/theme.css.ts
-   export const [darkTheme, vars] = createTheme({
-     hud: { hpFill: '#3ddc84', hpBg: '#1a1a1a' },
-     panel: { bg: '#0f1420', border: '#2a3550' },
+   // ui/theme/day.css.ts — 값은 여기 한 번만 적는다 (DESIGN.md §1이 출처)
+   export const dayTheme = createTheme(vars, {
+     window: { edge: '#7bb1e7', faceTop: '#f7fdfe', faceBottom: '#c3dae2' },
+     hp: { greenLit: '#62ff62', green: '#18c520' },   // party_menu/menu.pal 실측
    })
    ```
    ```ts
@@ -235,6 +235,7 @@ R3F를 전면 채택하면 씬 그래프 조작이 리컨실러를 타서 청크
 
 - **프레임당 갱신 UI(HP바, 데미지 숫자, 게이지)는 CSS 변수 경로.** 어떤 스타일링 라이브러리를 쓰든 변하지 않는 규칙이다.
 - 스타일은 `*.css.ts`에 분리. 컴포넌트 파일에 인라인 스타일 로직 금지.
+- **값은 `ui/theme/`에서만 나온다.** 화면 파일에 색·그림자·모서리 숫자를 적지 않는다 — [DESIGN.md](DESIGN.md)가 정본이고 `pnpm lint`가 잡는다.
 
 ### 2.4 결정: 렌더러 → **WebGPU 우선, WebGL2 자동 폴백**
 
@@ -1888,7 +1889,7 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 **CJK 폰트:** 한글 11,172자·한자 수만 자를 통짜 woff2로 실으면 그것만으로 초기 예산이 깨진다. 로케일별 전략:
 
 - 한국어 UI: **Pretendard 다이나믹 서브셋** (woff2 + `unicode-range` 청크 분할 공식 제공 — 화면에 나온 청크만 다운로드, 전량 814KB → 실사용 ~270KB)
-- 한국어 대화창: **Galmuri** (한글 픽셀 폰트, woff2) — 플래티넘 감성에 부합
+- 한국어 대화창: **Galmuri11** (한글 픽셀 폰트, woff2) — 어느 글꼴을 어디에 쓰는지는 [DESIGN.md](DESIGN.md) §4가 정본이다
 - 일본어: 가나는 작지만 **한자 때문에 서브셋이 한글보다 더 중요하다.** 픽셀 감성은 **PixelMplus** 계열, UI는 Pretendard JP 또는 Noto Sans JP 서브셋. 빌드 시 `subset-font`/`glyphhanger`로 **추출된 대사 텍스트에 실제 등장하는 글자만** 서브셋하면 최소가 된다 — 대사가 고정 텍스트라서 가능한 최적화
 - 자주 쓰는 범위(KS X 1001 2,350자, JIS 제1수준) 청크는 SW precache에 포함 (§4.6) + `font-display: swap`
 - 폰트 로딩은 로케일 선택 후에만 — 미사용 언어 폰트를 받지 않는다

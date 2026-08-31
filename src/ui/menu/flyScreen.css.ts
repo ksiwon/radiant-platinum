@@ -5,6 +5,7 @@
 // `image-rendering: pixelated`를 건다.
 import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { RADIUS } from '../theme/scale'
 
 /** 원작 위 화면 크기. 지도 좌표가 전부 이 안의 픽셀이다 */
 const MAP_W = 256
@@ -34,9 +35,8 @@ export const map = style({
   width: MAP_W * ZOOM,
   height: MAP_H * ZOOM,
   flex: '0 0 auto',
-  borderRadius: 6,
+  borderRadius: RADIUS.cell,
   overflow: 'hidden',
-  boxShadow: '0 6px 22px rgba(0, 0, 0, 0.45)',
   transition: 'transform 0.16s ease-out',
 })
 
@@ -52,7 +52,7 @@ export const viewport = style({
   width: MAP_W * ZOOM,
   height: MAP_H * ZOOM,
   flex: '0 0 auto',
-  borderRadius: 6,
+  borderRadius: RADIUS.cell,
   overflow: 'hidden',
 })
 
@@ -76,15 +76,15 @@ export const sheet = style({
  */
 const markBase = style({
   position: 'absolute',
-  borderRadius: 2,
-  boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.55)',
+  borderRadius: RADIUS.bar,
+  boxShadow: `0 0 0 1px ${vars.bar.edge}`,
 })
 
 export const mark = styleVariants({
-  town: [markBase, { background: '#4aa3ff' }],
-  city: [markBase, { background: '#ff6b5c' }],
+  town: [markBase, { background: vars.map.town }],
+  city: [markBase, { background: vars.map.city }],
   /** 아직 안 가 본 곳. 원작도 잠긴 표식을 회색으로 둔다 */
-  locked: [markBase, { background: 'rgba(20, 24, 34, 0.42)' }],
+  locked: [markBase, { background: vars.map.locked }],
 })
 
 /** 커서. 한 칸(7px)을 감싸고 깜빡인다 — 원작이 16프레임마다 색을 바꾼다 */
@@ -92,8 +92,8 @@ export const cursor = style({
   position: 'absolute',
   // ⚠️ 얇은 테두리 하나로는 **안 보인다.** 지도가 주황·초록이라 같은 색조에
   // 묻힌다 — 안쪽에 어두운 선을 한 겹 더 깔아 어디에나 뜨게 한다
-  boxShadow: `0 0 0 ${ZOOM}px ${vars.hud.warn}, 0 0 0 ${ZOOM * 2}px rgba(0, 0, 0, 0.65)`,
-  borderRadius: 2,
+  boxShadow: `0 0 0 ${ZOOM}px ${vars.pick.edge}, 0 0 0 ${ZOOM * 2}px ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
   pointerEvents: 'none',
   transition: 'left 60ms linear, top 60ms linear',
 })
@@ -107,9 +107,9 @@ const blink = keyframes({
 
 export const here = style({
   position: 'absolute',
-  background: '#fff',
-  borderRadius: '50%',
-  boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.6)',
+  background: vars.bar.trackTop,
+  borderRadius: RADIUS.round,
+  boxShadow: `0 0 0 1px ${vars.bar.edge}`,
   pointerEvents: 'none',
   animation: `${blink} 1s steps(2, end) infinite`,
 })
@@ -131,7 +131,7 @@ export const caption = style({
   justifyContent: 'center',
   gap: 1,
   // 원작 띠 위에 검은 글씨가 얹힌다
-  color: '#231a06',
+  color: vars.pick.text,
   pointerEvents: 'none',
 })
 

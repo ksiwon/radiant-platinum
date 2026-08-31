@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react'
 import { cutInFrame } from '../../engine/battle/encounterCutIn'
 import * as css from './cutInOverlay.css'
+import { vars } from '../theme/contract.css'
 
 /**
  * 조리개가 다 열렸을 때의 반지름 (화면 대각선의 몫).
@@ -42,7 +43,7 @@ export function CutInOverlay() {
         flash.style.display = cover === 0 ? 'none' : 'block'
         flash.style.opacity = String(Math.abs(cover))
         // 양수가 흰색이다 — 상대가 더 셀 때 그렇다 (`EncounterEffect_Flash(1, 16, …)`)
-        flash.style.background = cover > 0 ? '#fff' : '#000'
+        flash.style.background = cover > 0 ? vars.bar.trackTop : vars.scrim.black
       }
 
       const open = at?.iris ?? 1
@@ -53,7 +54,7 @@ export function CutInOverlay() {
         const inner = Math.max(0, open * 100)
         iris.style.background =
           `radial-gradient(circle ${OPEN} at 50% 50%,`
-          + ` rgba(0,0,0,0) ${String(inner)}%, #000 ${String(Math.min(100, inner + 1))}%)`
+          + ` transparent ${String(inner)}%, ${vars.scrim.black} ${String(Math.min(100, inner + 1))}%)`
       }
     }
     raf = requestAnimationFrame(poll)

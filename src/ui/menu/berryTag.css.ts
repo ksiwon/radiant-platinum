@@ -3,6 +3,7 @@
 // 맛 다섯은 **막대**로 본다. 숫자만 늘어놓으면 어느 맛이 센지를 세어야 알고,
 // 포핀을 만들 때 보는 것은 그 균형이다.
 import { style } from '@vanilla-extract/css'
+import { BAR_FILL, BAR_TRACK, WINDOW } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
 export const tag = style({
@@ -12,10 +13,7 @@ export const tag = style({
   display: 'flex',
   flexDirection: 'column',
   gap: 14,
-  background: 'linear-gradient(165deg, #3a4a2e 0%, #26301e 100%)',
-  border: '1px solid rgba(255,255,255,0.2)',
-  borderRadius: 12,
-  boxShadow: '0 18px 44px rgba(0,0,0,0.5)',
+  ...WINDOW,
 })
 
 export const head = style({ display: 'flex', alignItems: 'baseline', gap: 12 })
@@ -48,15 +46,13 @@ export const flavorName = style({ opacity: 0.78 })
 
 export const bar = style({
   height: 8,
-  borderRadius: 4,
-  background: 'rgba(0,0,0,0.35)',
-  overflow: 'hidden',
+  ...BAR_TRACK,
 })
 
 export const barFill = style({
+  ...BAR_FILL,
+  vars: { '--lit': vars.hp.greenLit, '--body': vars.state.good },
   display: 'block',
-  height: '100%',
-  background: 'linear-gradient(90deg, #a8d46a, #e0c94a)',
 })
 
 export const flavorValue = style({
@@ -68,7 +64,7 @@ export const flavorValue = style({
 export const desc = style({
   margin: 0,
   paddingTop: 12,
-  borderTop: `1px solid ${vars.panel.border}`,
+  borderTop: `1px solid ${vars.window.rule}`,
   fontSize: 14,
   lineHeight: 1.7,
   whiteSpace: 'pre-line',

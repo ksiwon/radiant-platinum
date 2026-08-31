@@ -322,7 +322,7 @@ export function ImportWizard({ onClose, onReady, why }: {
       setStorage(got)
       say(got.persisted
         ? '오래 보관: 켜졌습니다. 사이트 데이터를 지우기 전에는 설치본이 남습니다'
-        : '⚠️ 오래 보관이 안 켜졌습니다. 공간이 모자라면 브라우저가 설치본을 '
+        : '주의 — 오래 보관이 안 켜졌습니다. 공간이 모자라면 브라우저가 설치본을 '
           + '되찾아 갈 수 있습니다 — 리포트는 `.rpsave`로 따로 내보내 두세요')
     })
 
@@ -347,7 +347,7 @@ export function ImportWizard({ onClose, onReady, why }: {
           if (e.rebuilt.length > 0) say(`깨진 것 ${String(e.rebuilt.length)}개는 다시 만듭니다: ${e.rebuilt.join(' · ')}`)
         }
         if (e.kind === 'verifying' && e.total > 0) setProgress(e.done / e.total)
-        if (e.kind === 'groupFailed') say(`⚠️ ${e.name} 실패 — ${e.why}`)
+        if (e.kind === 'groupFailed') say(`${e.name} 실패 — ${e.why}`)
         if (e.kind === 'done') { setMissing(e.missing); setFailed(e.failed) }
       },
     })
@@ -472,15 +472,15 @@ export function ImportWizard({ onClose, onReady, why }: {
           <div className={css.leadHead}>시작하려면 준비물 둘이 먼저 필요합니다</div>
           <ul className={css.needs}>
             <li>
-              <span className={`${css.needMark} ${platinum?.ok ? css.ok : css.bad}`} aria-hidden>
-                {platinum?.ok ? '●' : '○'}
+              <span className={`${css.needMark} ${platinum?.ok ? css.ok : css.bad}`}>
+                {platinum?.ok ? '[받음]' : '[없음]'}
               </span>
               <b>Platinum .nds 파일</b>
               {' — 본인이 적법하게 보유한 것. 영어 · 한국어 · 일본어판을 받습니다'}
             </li>
             <li>
-              <span className={`${css.needMark} ${bdsp?.ok ? css.ok : css.bad}`} aria-hidden>
-                {bdsp?.ok ? '●' : '○'}
+              <span className={`${css.needMark} ${bdsp?.ok ? css.ok : css.bad}`}>
+                {bdsp?.ok ? '[받음]' : '[없음]'}
               </span>
               <b>AssetAssistant 폴더</b>
               {' — BDSP에서 이미 추출해 둔 것 '}
@@ -517,7 +517,7 @@ export function ImportWizard({ onClose, onReady, why }: {
             남아 있었다. 그래서 숫자는 전부 표에서 세어 온다 */}
         <div className={css.banner}>
           {stillMissing.length > 0
-            ? `⚠️ 이 화면은 아직 완성되지 않았습니다. 게임을 시작하려면 `
+            ? `주의 — 이 화면은 아직 완성되지 않았습니다. 게임을 시작하려면 `
               + `${String(stillMissing.length)}개가 더 필요합니다 — 설치를 끝내도 아직 `
               + `게임은 시작할 수 없습니다: ${stillMissing.join(' · ')}\n`
             : `변환 ${String(ready.length)}개가 전부 옮겨졌습니다. 설치가 끝나면 `
@@ -535,7 +535,7 @@ export function ImportWizard({ onClose, onReady, why }: {
           {'고른 자리(파일·폴더 손잡이)를 이 브라우저 안에만 기억합니다. 바이트도 '}
           {'경로 문자열도 서버로 가지 않고, 읽기 권한은 그때 한 번 더 물어봅니다 — '}
           {'아래 「기억한 자리 잊기」로 지울 수 있고 「전부 지우기」에도 함께 지워집니다.\n'}
-          {'⚠️ 설치본은 이 브라우저 · 이 기기 · 이 주소에만 있습니다. 다른 브라우저나 '}
+          {'주의 — 설치본은 이 브라우저 · 이 기기 · 이 주소에만 있습니다. 다른 브라우저나 '}
           {'다른 기기에서는 다시 설치해야 하고, 주소가 바뀌어도 이어받지 못합니다.\n'}
           {'사이트 데이터를 지우면 설치된 에셋도 함께 사라집니다. 리포트는 '}
           {'`.rpsave` 파일로 따로 내보내 둘 수 있습니다 (타이틀 화면) — 에셋을 다시 '}
@@ -825,7 +825,7 @@ export function ImportWizard({ onClose, onReady, why }: {
 function Line({ label, ok, note }: { label: string; ok: boolean; note?: string }) {
   return (
     <>
-      <span className={ok ? css.ok : css.bad}>{ok ? '●' : '○'}</span>
+      <span className={ok ? css.ok : css.bad}>{ok ? '됨' : '아직'}</span>
       <span>{label}</span>
       <span className={css.stepNote}>{note ?? ''}</span>
     </>

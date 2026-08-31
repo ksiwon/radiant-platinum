@@ -4,6 +4,7 @@
 // 화면이 256×192픽셀이고 타일이 8픽셀이니 32×24칸이다. 그 비율을 그대로 옮기려고
 // 화면 전체를 덮는 4:3 무대를 깔고 그 안에 퍼센트로 놓는다.
 import { style } from '@vanilla-extract/css'
+import { WINDOW_SMALL } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
 // ⚠️ **타일 → 퍼센트 함수는 여기 못 둔다.** vanilla-extract는 `.css.ts`가
@@ -36,11 +37,7 @@ export const box = style({
   padding: '0.2em 0.5em',
   display: 'grid',
   alignContent: 'center',
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.96), rgba(232, 236, 244, 0.96))',
-  border: '2px solid rgba(60, 74, 102, 0.85)',
-  borderRadius: 8,
-  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)',
-  color: '#20263a',
+  ...WINDOW_SMALL,
   fontWeight: 700,
   whiteSpace: 'pre',
   // ⚠️ 부모 글자 크기가 아니라 **화면 높이**에서 낸다. `100%`로 잡으면 16px의

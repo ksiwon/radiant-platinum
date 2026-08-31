@@ -4,6 +4,7 @@
 // 같이 어두워져야 한다(zIndex 200). 다만 메뉴가 떠 있는 동안(400)은 그 화면이
 // 이미 필드를 대신하고 있으므로 그 위를 덮으면 아무것도 안 보인다.
 import { style } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
 
 export const cover = style({
   position: 'fixed',
@@ -11,6 +12,6 @@ export const cover = style({
   zIndex: 300,
   display: 'none',
   opacity: 0,
-  background: '#000',
+  background: vars.scrim.black,
   pointerEvents: 'none',
 })

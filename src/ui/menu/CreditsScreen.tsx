@@ -34,6 +34,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import * as css from './credits.css'
+import { vars } from '../theme/contract.css'
 
 /** 원작 화면 크기. 자리를 백분율로 옮기는 데 쓴다 */
 const VIEW_W = 256
@@ -67,8 +68,8 @@ const OURS: readonly { text: string; centered?: boolean }[] = [
 
 /** `{COLOR n}`의 색. 대사창과 같은 표다 (`ui/field/MessageBox`) */
 const COLORS: Record<number, string> = {
-  1: '#ffd76a',
-  2: '#9fd8ff',
+  1: vars.emphasis.oneOnDark,
+  2: vars.emphasis.twoOnDark,
 }
 
 /** 한 줄을 색 조각으로 자른다. 색 부호 말고는 다 글자다 */

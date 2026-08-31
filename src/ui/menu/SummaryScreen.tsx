@@ -45,6 +45,8 @@ import { itemIcon } from './itemIcon'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as css from './menuChrome.css'
 import * as own from './summaryScreen.css'
+import { HP_VARS } from '../theme/window.css'
+import { vars } from '../theme/contract.css'
 
 /**
  * 요약 뱅크(455)의 글 번호. 원작 상수 이름 그대로다.
@@ -80,7 +82,7 @@ const STAT_ROWS = [
   ['spa', T.labelSpAttack], ['spd', T.labelSpDefense], ['spe', T.labelSpeed],
 ] as const
 
-const BAR_COLOR = { green: '#5fd35f', yellow: '#f5c542', red: '#ef5350', empty: '#3a3f4a' }
+
 
 interface Tables {
   species: SpeciesTable
@@ -299,7 +301,7 @@ function InfoPage(
       <Line label={t.summary[T.labelDexNum]}>
         {/* ⚠️ 신오도감에 없는 종은 번호가 아니라 물음표 셋이다. 색이 다른 개체는
             번호가 붉다 (`SUMMARY_TEXT_RED`) */}
-        <span style={shiny ? { color: '#ffd257' } : undefined}>
+        <span style={shiny ? { color: vars.pick.edge } : undefined}>
           {dex > 0 ? String(dex).padStart(3, '0') : t.summary[T.threeQuestions] ?? ''}
         </span>
       </Line>
@@ -397,7 +399,7 @@ function SkillsPage({ mon, t }: { mon: PokemonInstance; t: Tables }) {
             className={own.hpFill}
             style={{
               width: `${String(full > 0 ? (Math.max(0, Math.min(mon.hp, full)) / full) * 100 : 0)}%`,
-              background: BAR_COLOR[hpColor(mon.hp, full)],
+              ...HP_VARS[hpColor(mon.hp, full)],
             }}
           />
         </span>

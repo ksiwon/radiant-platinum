@@ -10,6 +10,8 @@
 // (`display: none`이 아니라 화면에서만 걷어낸다).
 import { globalStyle, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { GAP, RADIUS, TEXT } from '../theme/scale'
+import { PICKED, WINDOW, WINDOW_SMALL } from '../theme/window.css'
 
 
 export const wrap = style({
@@ -18,12 +20,12 @@ export const wrap = style({
   display: 'grid',
   gridTemplateRows: '1fr auto 1fr',
   justifyItems: 'center',
-  color: vars.panel.text,
+  color: vars.ink.onDark,
   fontFamily: vars.font.ui,
   zIndex: 10,
   overflow: 'hidden',
   userSelect: 'none',
-  background: '#070c16',
+  background: vars.scrim.deep,
 })
 
 /**
@@ -42,21 +44,15 @@ export const sky = style({
   position: 'absolute',
   inset: 0,
   zIndex: -2,
-  backgroundColor: '#070c16',
+  backgroundColor: vars.scrim.deep,
   backgroundPosition: 'center',
   backgroundRepeat: 'no-repeat',
   backgroundSize: 'cover',
-  backgroundImage: [
-    "url('/assets/radiant-platinum-intro.webp')",
-    // 위쪽에서 비스듬히 드는 차가운 빛
-    'radial-gradient(120% 90% at 50% -18%, rgba(126, 168, 214, 0.42), transparent 62%)',
-    // 지평선 쪽 옅은 온기
-    'radial-gradient(140% 70% at 50% 108%, rgba(96, 120, 158, 0.30), transparent 60%)',
-    // 백금빛 띠 하나. 금속 느낌은 이 기울기에서 나온다
-    'linear-gradient(200deg, rgba(214, 228, 244, 0.10) 0%, transparent 36%,'
-    + ' transparent 64%, rgba(214, 228, 244, 0.07) 100%)',
-    'linear-gradient(180deg, #0b1422 0%, #070c16 58%, #05080f 100%)',
-  ].join(', '),
+  // ⚠️ **그림 위에 빛을 덧그리지 않는다.** 한때 여기에 방사형 그러데이션 둘과
+  // 대각 광택 한 겹이 얹혀 있었다 — 「어두운 배경 뒤의 오로라」는 AI가 만든
+  // 화면을 알아보는 표식으로 꼽히는 것이고(DESIGN.md §0), 무엇보다 그림이
+  // 이미 그 빛을 그려 놓았다. 밑칠은 그림이 아직 안 왔을 때를 위한 것 하나면 된다
+  backgroundImage: "url('/assets/radiant-platinum-intro.webp')",
 })
 
 /** 아래쪽 땅. 지평선이 있으면 하늘이 하늘로 읽힌다 */
@@ -64,8 +60,7 @@ export const ground = style({
   position: 'absolute',
   inset: 0,
   zIndex: -1,
-  background:
-    'linear-gradient(180deg, transparent 76%, rgba(2, 3, 6, 0.12) 88%, rgba(2, 3, 6, 0.62) 100%)',
+  background: `linear-gradient(180deg, transparent 70%, ${vars.scrim.deep} 100%)`,
   pointerEvents: 'none',
 })
 
@@ -135,25 +130,20 @@ export const button = style({
   minHeight: 44,
   appearance: 'none',
   padding: '10px 16px 10px 26px',
-  fontSize: 14,
+  fontSize: TEXT.small,
   fontWeight: 700,
   lineHeight: 1.25,
   whiteSpace: 'nowrap',
   fontFamily: vars.font.ui,
-  color: '#eef3fa',
   textAlign: 'center',
-  background: 'linear-gradient(180deg, rgba(22, 32, 50, 0.74), rgba(8, 13, 23, 0.82))',
-  border: '1px solid rgba(255,255,255,0.2)',
-  borderRadius: 999,
-  boxShadow: '0 8px 24px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12)',
-  backdropFilter: 'blur(3px)',
+  ...WINDOW_SMALL,
   cursor: 'pointer',
-  transition: 'transform 90ms ease-out, border-color 120ms linear, box-shadow 120ms linear',
+  transition: 'transform 90ms ease-out, border-color 120ms linear',
   selectors: {
     '&:active': { transform: 'translateY(1px)' },
     // 눌러도 할 일이 없는 것. **왜 못 누르는지는 차림표 아래에 글로 적는다** —
     // 흐리기만 하면 눌러 보고 나서야 없다는 걸 알게 된다 (`TitleScreen` 머리말)
-    '&:disabled': { opacity: 0.42, cursor: 'default', boxShadow: 'none' },
+    '&:disabled': { opacity: 0.42, cursor: 'default' },
     '&:disabled:active': { transform: 'none' },
   },
 })
@@ -165,9 +155,7 @@ export const button = style({
  * 지금 눌리는 칸인지 헷갈린다
  */
 export const buttonOn = style({
-  borderColor: 'rgba(247, 224, 138, 0.75)',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(247, 224, 138, 0.3)',
-  background: 'linear-gradient(180deg, rgba(34, 48, 72, 0.92), rgba(18, 27, 44, 0.94))',
+  ...PICKED,
 })
 
 /**
@@ -178,9 +166,8 @@ export const buttonOn = style({
  */
 export const buttonMain = style({
   flexGrow: 1.7,
-  fontSize: 15,
-  borderColor: 'rgba(247, 224, 138, 0.42)',
-  background: 'linear-gradient(180deg, rgba(38, 52, 78, 0.86), rgba(14, 22, 38, 0.9))',
+  fontSize: TEXT.base,
+  borderColor: vars.pick.edge,
 })
 
 /** 리포트 파일 쪽 둘. 눌릴 일이 드물어 한 톤 죽인다 */
@@ -197,14 +184,13 @@ export const caret = style({
   left: 10,
   top: '50%',
   transform: 'translateY(-50%)',
-  color: '#f7e08a',
-  fontSize: 13,
+  color: vars.pick.edge,
+  fontSize: TEXT.small,
 })
 
 export const hint = style({
-  fontSize: 12,
-  opacity: 0.62,
-  textShadow: '0 1px 4px rgba(0,0,0,0.8)',
+  fontSize: TEXT.tiny,
+  color: vars.ink.onDarkDim,
 })
 
 /** 화면 아래에 붙는 조작 안내 */
@@ -223,12 +209,8 @@ export const summary = style({
   rowGap: 3,
   margin: 0,
   padding: '9px 13px',
-  fontSize: 12,
-  background: 'linear-gradient(180deg, rgba(18, 26, 42, 0.66), rgba(8, 13, 23, 0.74))',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: 9,
-  backdropFilter: 'blur(5px)',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+  fontSize: TEXT.tiny,
+  ...WINDOW,
   pointerEvents: 'auto',
   '@media': {
     'screen and (max-width: 980px)': {
@@ -238,7 +220,7 @@ export const summary = style({
   },
 })
 
-globalStyle(`${summary} dt`, { opacity: 0.62 })
+globalStyle(`${summary} dt`, { color: vars.ink.dim })
 globalStyle(`${summary} dd`, {
   margin: 0,
   textAlign: 'right',
@@ -277,16 +259,13 @@ export const files = style({
 })
 
 export const fileButton = style({
+  ...WINDOW_SMALL,
   appearance: 'none',
-  padding: '7px 12px',
+  padding: `7px ${GAP.base}px`,
   fontFamily: vars.font.ui,
-  fontSize: 12,
-  color: vars.panel.text,
-  background: 'rgba(8, 13, 23, 0.54)',
-  border: '1px solid rgba(255,255,255,0.12)',
-  borderRadius: 999,
-  opacity: 0.78,
-  backdropFilter: 'blur(4px)',
+  fontSize: TEXT.tiny,
+  borderRadius: RADIUS.cell,
+  opacity: 0.85,
   cursor: 'pointer',
   pointerEvents: 'auto',
   selectors: { '&:hover': { opacity: 1 } },
@@ -315,28 +294,20 @@ export const disclaimer = style({
   padding: '7px 16px',
   boxSizing: 'border-box',
   fontFamily: vars.font.ui,
-  fontSize: 12,
+  fontSize: TEXT.tiny,
   lineHeight: 1.55,
   textAlign: 'center',
-  color: 'rgba(233, 238, 250, 0.92)',
-  background: 'rgba(6, 10, 18, 0.72)',
-  border: '1px solid rgba(255,255,255,0.10)',
-  borderRadius: 8,
-  backdropFilter: 'blur(3px)',
+  ...WINDOW_SMALL,
 })
 
 /** 파일을 열어 보고 나서 확인받는 자리, 그리고 실패 이유 */
 export const notice = style({
-  padding: '10px 12px',
+  ...WINDOW_SMALL,
+  padding: `${GAP.small + 2}px ${GAP.base}px`,
   maxWidth: 520,
   fontFamily: vars.font.ui,
-  fontSize: 12,
+  fontSize: TEXT.tiny,
   lineHeight: 1.6,
-  color: vars.panel.text,
-  background: 'rgba(8, 13, 23, 0.66)',
-  border: '1px solid rgba(255,255,255,0.14)',
-  borderRadius: 10,
-  backdropFilter: 'blur(4px)',
   pointerEvents: 'auto',
   whiteSpace: 'pre-line',
 })

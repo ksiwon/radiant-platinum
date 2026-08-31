@@ -18,6 +18,11 @@
 | `assets/radiant-platinum-favicon.png` | 자체 | 파비콘 64px 7.4KB — SVG 파비콘을 안 받는 브라우저용 |
 | `assets/radiant-platinum-icon.png` | 자체 | 앱 아이콘 512px 254KB · apple-touch-icon |
 | `assets/radiant-platinum-intro.webp` | 자체 | 타이틀·설치 화면 배경 403KB |
+| `fonts/Galmuri11.woff2` | Galmuri11 (SIL OFL 1.1) | 대사창 픽셀 글꼴 493KB |
+| `fonts/Pretendard-Regular.subset.woff2` | Pretendard (SIL OFL 1.1) | UI 본문 261KB |
+| `fonts/Pretendard-Bold.subset.woff2` | Pretendard (SIL OFL 1.1) | UI 굵은 글씨 264KB |
+| `fonts/Galmuri-OFL.txt` | 자체 | Galmuri 허가문 |
+| `fonts/Pretendard-OFL.txt` | 자체 | Pretendard 허가문 |
 
 **그림 넷은 `art/`의 마스터에서 굽는다** — `pnpm assets:art`. 마스터(PNG 3.5MB)는
 저장소에 있고 배포물에는 안 들어간다. 굽는 값과 그 근거는 `tools/assets/shellArt.py`
@@ -30,8 +35,25 @@
 금빛 기울기를 벡터로 추적하면 색 띠가 생기고, 색을 256단계로 눌러 담아도
 픽셀당 최대 60/255 어긋난다 — 실측하고 무손실로 뒀다.
 
-`public/assets`에 목록에 없는 파일이 있으면 `pnpm boundary:pre`가 선다. 새 파일을
-넣으려면 `PUBLIC_SHELL`에 경로·출처를 적고 위 표에도 줄을 더한다.
+### 1.1 글꼴 — 유일한 남의 바이트
+
+**글꼴 셋만 우리 것이 아니다.** 둘 다 SIL Open Font License 1.1이고, OFL은
+글꼴 파일을 그대로 재배포하는 것을 허용한다. 조건은 하나 — **허가문을 같이
+싣는 것**이다. 그래서 `.txt` 둘이 같은 목록에 있고, `check.mjs` ①-c가
+「출처가 `자체`가 아니면 `license`가 배포물에 같이 나가는지」를 잰다.
+허가문을 목록에서 빼면 빌드가 선다.
+
+원작(롬·BDSP) 유래는 이 길로도 못 나간다. 그건 목록이 아니라 내용 검사가
+잡는다 (§2 마지막 문단).
+
+⚠️ **`public/fonts`가 목록에 없던 동안 배포물에서 통째로 빠졌다.**
+`copyPublicDir: false`라 개발 서버에서는 멀쩡히 보이고 **빌드에서만**
+`@font-face`가 404였다 — 그러면 화면이 시스템 글꼴로 조용히 폴백해서,
+글꼴을 실은 것과 안 실은 것이 개발 기계에서는 구분이 안 된다.
+`public/`에 새 폴더를 만들었으면 이 목록을 먼저 본다.
+
+`public/assets`·`public/fonts`에 목록에 없는 파일이 있으면 `pnpm boundary:pre`가
+선다. 새 파일을 넣으려면 `PUBLIC_SHELL`에 경로·출처를 적고 위 표에도 줄을 더한다.
 
 ## 2. `public/data`와 `public/models`
 

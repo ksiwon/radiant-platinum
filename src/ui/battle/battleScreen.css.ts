@@ -5,14 +5,16 @@
 // 직접 연 개발용 경로)에만 `fallback`이 임시 배경을 깐다.
 import { globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
+import { BAR_FILL, BAR_TRACK, PICKED, WINDOW } from '../theme/window.css'
 
-/** 떠 있는 판의 공통 재질. 무대가 비치되 글씨는 읽혀야 한다 */
-const glass = {
-  background: 'linear-gradient(180deg, rgba(18, 24, 38, 0.88), rgba(12, 17, 28, 0.92))',
-  border: '1px solid rgba(255, 255, 255, 0.16)',
-  boxShadow: '0 6px 22px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-  backdropFilter: 'blur(3px)',
-} as const
+/**
+ * 떠 있는 판의 재질 — **창 한 벌 그대로다** (DESIGN.md §3).
+ *
+ * ⚠️ 한때 여기가 반투명 유리였다 (`backdrop-filter: blur(3px)` + 흰 실선 1px +
+ * 크게 번지는 그림자). 무대가 비쳐서 좋아 보였지만 그 재질이 곧 「어느 앱이든
+ * 될 수 있는 판」이었고, 원작 체력판은 **불투명한 밝은 판에 어두운 글자**다.
+ */
 
 export const screen = style({
   position: 'fixed',
@@ -21,7 +23,7 @@ export const screen = style({
   display: 'grid',
   gridTemplateRows: '1fr auto',
   fontFamily: vars.font.ui,
-  color: vars.panel.text,
+  color: vars.ink.normal,
   userSelect: 'none',
   // 무대가 보여야 하므로 배경이 없다. 대신 위아래에만 옅은 그늘을 둬서
   // 흰 하늘 위에서도 HP 판과 텍스트가 뜬다.
@@ -30,14 +32,13 @@ export const screen = style({
   // 서는데(BDSP 배치) 그늘이 화면 절반을 지나면서 짙어져서, 모부기가 42%까지
   // 눌린 채로 그려졌다. 대사창은 제 배경이 따로 있으므로 여기서 그만큼 깔 이유가
   // 없다 — 시작을 아래로 내리고 짙기를 줄인다
-  background:
-    'linear-gradient(180deg, rgba(6,10,18,0.30) 0%, rgba(6,10,18,0) 24%,' +
-    ' rgba(6,10,18,0) 76%, rgba(6,10,18,0.22) 100%)',
+  background: `linear-gradient(180deg, ${vars.scrim.over} 0%, transparent 24%,`
+    + ` transparent 76%, ${vars.scrim.over} 100%)`,
 })
 
 /** 3D 무대가 없을 때만 깔리는 임시 배경 */
 export const fallback = style({
-  background: 'linear-gradient(180deg, #16233a 0%, #24354f 55%, #1a2436 100%)',
+  background: vars.scrim.deep,
 })
 
 /** 양쪽 포켓몬이 서는 판 — 이제 실제 위치는 3D가 잡고, 여기는 HP 판만 놓는다 */
@@ -56,12 +57,16 @@ export const foeSlot = style({ gridColumn: 1, gridRow: 1, justifySelf: 'start' }
 export const mineSlot = style({ gridColumn: 2, gridRow: 2, justifySelf: 'end', alignSelf: 'end' })
 
 /** 상대 트레이너 이름. 야생전에는 안 뜬다 */
+/**
+ * 상대 트레이너 이름. 야생전에는 안 뜬다.
+ *
+ * 무대 위에 바로 얹히므로 밝은 글자다 (`ink.onDark`) — 체력판 **안**이 아니다
+ */
 export const foeTrainer = style({
   marginBottom: 6,
-  fontSize: 13,
-  letterSpacing: '0.02em',
-  opacity: 0.9,
-  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+  fontSize: TEXT.small,
+  fontWeight: 700,
+  color: vars.ink.onDark,
 })
 
 /**
@@ -72,14 +77,13 @@ export const foeTrainer = style({
  * 그냥 둥근 상자가 되어서 어느 게임이든 될 수 있는 모양이 된다.
  */
 export const card = style({
-  ...glass,
+  ...WINDOW,
   position: 'relative',
   minWidth: 268,
-  padding: '8px 16px 10px',
-  borderRadius: 10,
+  padding: `${GAP.small}px ${GAP.wide}px ${GAP.small + 2}px`,
   // 비스듬한 모서리. 테두리가 clip에 잘리므로 안쪽에 선을 하나 더 둔다
   border: 'none',
-  boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+  boxShadow: 'none',
 })
 
 /** 잘린 자리에도 테두리가 보이게 하는 안쪽 선 */
@@ -87,8 +91,8 @@ const rim = {
   content: '""',
   position: 'absolute',
   inset: 0,
-  borderRadius: 10,
-  border: '1px solid rgba(255,255,255,0.18)',
+  borderRadius: RADIUS.window,
+  border: `${EDGE.window}px solid ${vars.window.edge}`,
   pointerEvents: 'none',
 } as const
 
@@ -112,10 +116,9 @@ export const cardHead = style({
 })
 
 export const monName = style({
-  fontSize: 16,
+  fontSize: TEXT.base,
   fontWeight: 700,
-  letterSpacing: '0.01em',
-  textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+  color: vars.ink.strong,
 })
 
 /** 성별 기호. 원작 체력판에도 이름 옆에 붙는다 */
@@ -124,14 +127,14 @@ export const genderMark = style({
   fontWeight: 700,
   lineHeight: 1,
 })
-export const male = style({ color: '#6db3f2' })
-export const female = style({ color: '#f28ab2' })
+export const male = style({ color: vars.state.male })
+export const female = style({ color: vars.state.female })
 
 export const monLevel = style({
   marginLeft: 'auto',
-  fontSize: 13,
+  fontSize: TEXT.small,
   fontFamily: vars.font.mono,
-  opacity: 0.8,
+  color: vars.ink.dim,
 })
 
 /** `HP` 딱지 + 게이지가 한 줄이다 */
@@ -143,31 +146,22 @@ export const barRow = style({
 
 /** 원작 체력판의 노란 `HP` 글자 */
 export const hpTag = style({
-  fontSize: 10,
+  fontSize: 11,
   fontWeight: 800,
-  letterSpacing: '0.08em',
   fontStyle: 'italic',
-  color: '#f5cf5a',
-  textShadow: '0 1px 0 rgba(0,0,0,0.7)',
+  color: vars.ink.dim,
 })
 
 /** HP 바. 원작처럼 얇고 길다 — 두꺼우면 게이지가 아니라 진행 표시처럼 보인다 */
 export const barTrack = style({
   position: 'relative',
   flex: 1,
-  height: 8,
-  borderRadius: 5,
-  background: 'rgba(0, 0, 0, 0.62)',
-  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.08)',
-  overflow: 'hidden',
+  height: 10,
+  ...BAR_TRACK,
 })
 
 export const barFill = style({
-  height: '100%',
-  borderRadius: 5,
-  // 위쪽에 밝은 선을 하나 넣어 게이지가 납작한 띠가 아니라 **덩어리**로 보이게 한다
-  backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.45) 0 40%, rgba(0,0,0,0.12) 100%)',
-  backgroundColor: '#5fd35f',
+  ...BAR_FILL,
   // 줄어드는 **시간**은 재생기가 정한다. 원작 게이지는 프레임당 한 칸씩 움직여서
   // 많이 맞을수록 오래 걸린다 (`playback.drainFrames`). 여기서는 기울기만 정하고
   // 길이는 `--drain`으로 받는다 — 고정 길이로 두면 큰 데미지가 순식간에 지나간다
@@ -178,21 +172,20 @@ export const barFill = style({
  * 색 셋. **경계는 `engine/battle/healthbar`가 정한다** — 비율이 아니라
  * 픽셀 수로 가른다(원작 `App_BarColor`)
  */
-export const barGreen = style({ backgroundColor: '#5fd35f' })
-export const barYellow = style({ backgroundColor: '#f5c542' })
-export const barRed = style({ backgroundColor: '#ef5350' })
+export const barGreen = style({ vars: { '--lit': vars.hp.greenLit, '--body': vars.hp.green } })
+export const barYellow = style({ vars: { '--lit': vars.hp.yellowLit, '--body': vars.hp.yellow } })
+export const barRed = style({ vars: { '--lit': vars.hp.redLit, '--body': vars.hp.red } })
 
 export const hpText = style({
   marginTop: 4,
-  fontSize: 12,
+  fontSize: TEXT.tiny,
   fontFamily: vars.font.mono,
   textAlign: 'right',
-  letterSpacing: '0.02em',
-  opacity: 0.9,
+  color: vars.ink.dim,
 })
 
 /** 남은 체력 숫자만 진하게 — 눈이 먼저 가야 하는 쪽이다 */
-export const hpNow = style({ fontWeight: 700, opacity: 1 })
+export const hpNow = style({ fontWeight: 700, color: vars.ink.strong })
 
 /**
  * 이미 잡아 본 종이면 뜨는 공 표시.
@@ -203,31 +196,30 @@ export const hpNow = style({ fontWeight: 700, opacity: 1 })
 export const caughtMark = style({
   width: 11,
   height: 11,
-  borderRadius: '50%',
+  borderRadius: RADIUS.round,
   alignSelf: 'center',
   // 몬스터볼. 위 빨강 · 아래 흰색 · 가운데 검은 띠
-  background:
-    'linear-gradient(180deg, #e8554e 0 42%, #1b1f27 42% 58%, #f4f6fa 58% 100%)',
-  boxShadow: '0 0 0 1px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.5)',
+  background: `linear-gradient(180deg, ${vars.ball.top} 0 42%,`
+    + ` ${vars.ball.band} 42% 58%, ${vars.ball.bottom} 58% 100%)`,
+  boxShadow: `0 0 0 1px ${vars.bar.edge}`,
   flex: '0 0 auto',
 })
 
 /** 상태 이상 딱지. 원작도 체력판 안에 색 딱지로 붙인다 */
 export const statusTag = style({
-  padding: '1px 6px',
-  borderRadius: 3,
-  fontSize: 10,
+  padding: '1px 7px',
+  border: `1px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
+  fontSize: 11,
   fontWeight: 800,
-  letterSpacing: '0.06em',
-  color: '#fff',
-  textShadow: '0 1px 1px rgba(0,0,0,0.45)',
-  background: '#6b7280',
+  color: vars.status.text,
+  background: vars.status.slp,
 })
 
 /** 상태마다 색이 다르다 — 글자를 안 읽어도 무엇에 걸렸는지 보인다 */
 export const statusColor: Record<string, string> = {
-  psn: '#a25bc4', tox: '#8b3fae', brn: '#e8763a',
-  par: '#d8b12a', slp: '#7b8794', frz: '#4aa8d8',
+  psn: vars.status.psn, tox: vars.status.tox, brn: vars.status.brn,
+  par: vars.status.par, slp: vars.status.slp, frz: vars.status.frz,
 }
 
 /** 아래쪽 — 왼쪽에 배틀 로그, 오른쪽에 명령 */
@@ -241,44 +233,30 @@ export const console_ = style({
 })
 
 /**
- * 배틀 로그.
+ * 배틀 로그 — **창이다.**
  *
- * **상자를 없앴다.** 원작 대화창은 화면 아래를 가로지르는 판이었지만, 그건 아래
- * 절반이 UI였던 2D 화면의 배치다 — 3D 무대 위에 그대로 얹으면 무대를 가린다.
- * 대신 글자만 띄우고 뒤에 **가장자리 없는** 그늘을 깔아 밝은 배경에서도 읽히게
- * 한다. 왼쪽 세로선 하나가 여기가 글이 나오는 자리라는 표시를 대신한다.
+ * ⚠️ 한때 상자를 없애고 글자만 띄운 뒤 뒤에 번짐을 깔았다. 3D 무대를 안 가리려던
+ * 것인데, 판을 없앤 자리에 남은 것이 **왼쪽 세로 색줄과 두 겹 글자 그림자**였다 —
+ * 웹앱의 장치다. 원작 배틀 글은 화면 아래 창 안에 뜨고, 창이 밝아진 뒤로는
+ * 무대 위에 얹혀도 글이 읽힌다.
  */
 export const log = style({
+  ...WINDOW,
   position: 'relative',
-  isolation: 'isolate',
   alignSelf: 'end',
-  padding: '10px 30px 12px 18px',
-  borderLeft: '3px solid rgba(255, 255, 255, 0.34)',
+  padding: `${GAP.base}px ${GAP.loose}px`,
   cursor: 'pointer',
-  // 상자가 아니라 **번짐**이다. 네 모서리가 없어야 판으로 안 읽힌다
-  '::before': {
-    content: '""',
-    position: 'absolute',
-    inset: '-18px -80px -22px -28px',
-    zIndex: -1,
-    background:
-      'radial-gradient(58% 130% at 18% 55%, rgba(4,8,16,0.78) 0%,' +
-      ' rgba(4,8,16,0.5) 46%, rgba(4,8,16,0) 100%)',
-    pointerEvents: 'none',
-  },
+  fontFamily: vars.font.pixel,
 })
 
 /** 지금 찍는 중인 글. 한 번에 한 문장만 있는다 — 원작의 박자다 */
 export const logText = style({
   whiteSpace: 'pre-line',
-  fontSize: 20,
-  fontWeight: 600,
-  lineHeight: 1.55,
-  letterSpacing: '0.01em',
+  fontSize: TEXT.title,
+  lineHeight: 1.5,
+  color: vars.ink.strong,
   // 두 줄치를 비워 둔다. 문장이 짧아질 때마다 명령 칸이 위아래로 흔들리면 안 된다
   minHeight: '2.2em',
-  // 판이 없으니 그늘이 글자를 붙잡는다. 두 겹인 이유는 흰 하늘 위에서도 떠야 해서다
-  textShadow: '0 2px 4px rgba(0,0,0,0.95), 0 0 16px rgba(0,0,0,0.75)',
 })
 
 const blink = keyframes({
@@ -342,29 +320,22 @@ export const menu = style({
 const SKEW = 9
 
 export const button = style({
+  ...WINDOW,
   position: 'relative',
   appearance: 'none',
   display: 'block',
   width: '100%',
   minHeight: 50,
-  padding: '8px 20px 8px 14px',
-  border: '1px solid rgba(255, 255, 255, 0.18)',
-  // 기운 알약. 각과 둥근 끝이 같이 있어야 딱딱해 보이지 않는다
-  borderRadius: 999,
-  background: 'linear-gradient(180deg, rgba(32, 40, 64, 0.9), rgba(15, 21, 36, 0.94))',
-  boxShadow: '0 6px 18px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14)',
-  backdropFilter: 'blur(4px)',
-  color: vars.panel.text,
+  padding: `${GAP.small}px ${GAP.wide + 4}px ${GAP.small}px ${GAP.base + 2}px`,
   font: 'inherit',
-  fontSize: 15,
+  fontSize: TEXT.base,
   fontWeight: 700,
   textAlign: 'left',
   cursor: 'pointer',
   flex: '0 0 auto',
   transform: `skewX(-${String(SKEW)}deg)`,
-  transition:
-    'transform 130ms cubic-bezier(.2,.85,.3,1), background 140ms linear,' +
-    ' border-color 140ms linear, box-shadow 140ms linear',
+  transition: 'transform 120ms ease-out, background 140ms linear,'
+    + ' border-color 140ms linear',
   selectors: {
     '&:hover:enabled, &:focus-visible:enabled': {
       transform: `skewX(-${String(SKEW)}deg) translateX(-6px)`,
@@ -392,12 +363,12 @@ export const face = style({
  * 색만으로도 손이 먼저 간다. 기술 칸에서는 이 색이 곧 타입 색이다
  */
 export const dot = style({
-  width: 24,
-  height: 24,
-  borderRadius: 8,
+  width: 22,
+  height: 22,
+  borderRadius: RADIUS.bar,
   flex: '0 0 auto',
-  background: 'var(--tint, rgba(255,255,255,0.32))',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.45), 0 1px 3px rgba(0,0,0,0.55)',
+  background: `var(--tint, ${vars.window.edge})`,
+  border: `1px solid ${vars.bar.edge}`,
 })
 
 /** 이름 + 그 아래 작은 줄 */
@@ -409,12 +380,10 @@ export const labelCol = style({
 })
 
 export const label = style({
-  fontSize: 16,
-  letterSpacing: '0.01em',
+  fontSize: TEXT.base,
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
-  textShadow: '0 1px 2px rgba(0,0,0,0.55)',
 })
 
 /**
@@ -424,14 +393,13 @@ export const label = style({
  * 들어오는 상성 표시(`matchLine`)의 색을 되돌릴 방법이 없어진다
  */
 export const subLine = style({
-  fontSize: 11,
+  fontSize: TEXT.tiny,
   fontWeight: 500,
-  letterSpacing: '0.04em',
-  color: 'rgba(255, 255, 255, 0.75)',
+  color: vars.ink.dim,
 })
 
 /** 타입과 상성 사이의 가운뎃점 */
-export const sep = style({ margin: '0 5px', color: 'rgba(255, 255, 255, 0.4)' })
+export const sep = style({ margin: '0 5px', color: vars.ink.faint })
 
 /**
  * 「효과가 굉장함」 (PARITY §2.22).
@@ -442,9 +410,9 @@ export const sep = style({ margin: '0 5px', color: 'rgba(255, 255, 255, 0.4)' })
 export const matchLine = style({ fontWeight: 700 })
 
 export const matchTone = styleVariants({
-  super: { color: '#ffd166' },
-  resisted: { color: '#8fb8d8' },
-  immune: { color: '#ff8f8f' },
+  super: { color: vars.match.superEff },
+  resisted: { color: vars.match.resisted },
+  immune: { color: vars.match.immune },
 })
 
 /** 오른쪽 끝의 PP. 큰 숫자 옆에 작은 분모 — 남은 값에 눈이 먼저 간다 */
@@ -468,38 +436,30 @@ export const ppMax = style({ fontSize: 12, opacity: 0.7 })
  * 푸르고, 도망친다는 하늘색이다. 글자를 안 읽어도 손이 먼저 간다
  */
 export const TINT = {
-  fight: '#e2574c',
-  bag: '#e0a83a',
-  party: '#4fa96b',
-  run: '#4a8fd0',
+  fight: vars.cmd.fight,
+  bag: vars.cmd.bag,
+  party: vars.cmd.party,
+  run: vars.cmd.run,
 } as const
 
 /**
  * 지금 고른 칸.
  *
- * 색을 덧칠하는 게 아니라 **그 칸의 색으로 통째로 채운다.** 어두운 판이 줄지어
- * 있는 가운데 하나만 밝으면 눈이 찾아갈 곳을 고민하지 않는다. 왼쪽으로 한 걸음
- * 나오는 것까지가 한 벌이다 — 목록에서 뽑혀 나온 것으로 읽힌다.
+ * **금 테두리다.** 게임 안에서 「고른 것」은 어디서나 금 테두리이므로
+ * (DESIGN.md §1.2) 여기만 다르게 두면 배틀에서만 규칙이 바뀐다.
  *
+ * ⚠️ 한때 **그 칸의 색으로 판을 통째로 채웠다.** 어두운 판이 줄지어 있던 시절의
+ * 답이었는데, 창이 밝아진 뒤로는 빨간 판 위의 빨간 글씨가 됐다 — 이름줄도
+ * 설명줄도 안 읽혔다. 왼쪽 색 조각이 이미 어느 칸인지를 나르므로 판까지
+ * 칠할 이유가 없다.
+ *
+ * 왼쪽으로 한 걸음 나오는 것까지가 한 벌이다 — 목록에서 뽑혀 나온 것으로 읽힌다.
  * 마우스 hover와 키보드 커서는 **같은 표시**를 쓴다. 둘이 다르면 지금 눌리는
  * 칸이 어느 쪽인지 헷갈린다
  */
 export const buttonOn = style({
   transform: `skewX(-${String(SKEW)}deg) translateX(-13px)`,
-  borderColor: 'rgba(255, 255, 255, 0.9)',
-  background:
-    'linear-gradient(180deg, var(--tint, #4a6ea8) 0%,' +
-    ' color-mix(in srgb, var(--tint, #4a6ea8) 70%, #05070d) 100%)',
-  boxShadow: '0 10px 28px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.4)',
-  color: '#ffffff',
-})
-
-// 채운 칸 안에서는 색 조각이 배경색과 겹쳐 안 보인다. 흰색으로 바꿔 남겨 둔다.
-// `selectors`가 아니라 `globalStyle`인 이유: vanilla-extract의 selectors는
-// 자기 자신만 겨눌 수 있고 자손은 못 겨눈다
-globalStyle(`${buttonOn} ${dot}`, {
-  background: 'rgba(255,255,255,0.92)',
-  boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.25)',
+  ...PICKED,
 })
 
 /**
@@ -514,16 +474,15 @@ export const caret = style({
   top: '50%',
   width: 0,
   height: 0,
-  borderLeft: '11px solid #ffd23f',
+  borderLeft: `11px solid ${vars.pick.edge}`,
   borderTop: '8px solid transparent',
   borderBottom: '8px solid transparent',
   transform: `translateY(-50%) skewX(${String(SKEW)}deg)`,
-  filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.75))',
 })
 
 /** 남은 PP가 적을 때. 바닥나기 전에 눈에 띄어야 한다 */
-export const ppLow = style({ color: '#ffd166', opacity: 1 })
-export const ppOut = style({ color: vars.hud.warn, opacity: 1 })
+export const ppLow = style({ color: vars.match.superEff, opacity: 1 })
+export const ppOut = style({ color: vars.state.bad, opacity: 1 })
 
 /** 한 단 들어간 메뉴의 "돌아가기". 명령 아래에 글자로만 둔다 */
 /**
@@ -533,12 +492,10 @@ export const ppOut = style({ color: vars.hud.warn, opacity: 1 })
  * 보여서, 첫째에게 물었는지 둘째에게 물었는지를 화면에서 알 수 없다
  */
 export const askWho = style({
-  color: vars.panel.text,
+  color: vars.ink.onDark,
   font: 'inherit',
-  fontSize: 13,
-  opacity: 0.85,
+  fontSize: TEXT.small,
   padding: '2px 6px 6px',
-  textShadow: '0 1px 3px rgba(0,0,0,0.85)',
   flex: '0 0 auto',
 })
 
@@ -547,16 +504,14 @@ export const backButton = style({
   appearance: 'none',
   border: 'none',
   background: 'none',
-  color: vars.panel.text,
+  color: vars.ink.onDarkDim,
   font: 'inherit',
-  fontSize: 13,
-  opacity: 0.62,
+  fontSize: TEXT.small,
   padding: '4px 6px',
   cursor: 'pointer',
-  textShadow: '0 1px 3px rgba(0,0,0,0.85)',
   flex: '0 0 auto',
   selectors: {
-    '&:hover': { opacity: 1 },
+    '&:hover': { color: vars.ink.onDark },
   },
 })
 
@@ -586,7 +541,7 @@ export const wipe = style({
   inset: 0,
   zIndex: 400,
   pointerEvents: 'none',
-  background: '#070b12',
+  background: vars.scrim.deep,
   animation: `${wipeOut} 560ms ease-out forwards`,
 })
 
@@ -604,9 +559,7 @@ export const waiting = style({
  */
 export const keyHint = style({
   marginTop: 2,
-  fontSize: 11,
-  letterSpacing: '0.02em',
-  opacity: 0.5,
+  fontSize: TEXT.tiny,
+  color: vars.ink.onDarkDim,
   textAlign: 'right',
-  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
 })

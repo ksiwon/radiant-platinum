@@ -9,13 +9,12 @@
 import { hpColor } from '../../engine/battle/healthbar'
 import type { PartySlot } from '../../engine/battle/choice'
 import * as css from './switchScreen.css'
+import { statusColor } from './battleScreen.css'
+import { HP_VARS } from '../theme/window.css'
+import { vars } from '../theme/contract.css'
 
 const STATUS_LABEL: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
-}
-const STATUS_COLOR: Record<string, string> = {
-  slp: '#b6a8d8', psn: '#c58ccd', tox: '#a45cb0', brn: '#f0885a',
-  frz: '#7fd0ee', par: '#f0d055',
 }
 
 /** 카드 한 장에 필요한 것. 이름과 레벨은 부르는 쪽이 푼다 */
@@ -55,12 +54,12 @@ export function PartyCards(
             <span className={css.cardTop}>
               <span className={css.name}>{label}</span>
               {slot.fainted && (
-                <span className={css.tag} style={{ background: '#8b93a3' }}>기절</span>
+                <span className={css.tag} style={{ background: vars.hp.empty }}>기절</span>
               )}
               {!slot.fainted && slot.status && (
                 <span
                   className={css.tag}
-                  style={{ background: STATUS_COLOR[slot.status] ?? '#8b93a3' }}
+                  style={{ background: statusColor[slot.status] ?? vars.hp.empty }}
                 >
                   {STATUS_LABEL[slot.status] ?? slot.status}
                 </span>
@@ -72,13 +71,13 @@ export function PartyCards(
                 className={css.fill}
                 style={{
                   width: `${String(Math.round(ratio * 100))}%`,
-                  background: css.fillColor[hpColor(slot.hp, slot.maxHp)],
+                  ...HP_VARS[hpColor(slot.hp, slot.maxHp)],
                 }}
               />
             </span>
             <span className={css.numbers}>
               <span>{slot.hp} / {slot.maxHp}</span>
-              {note != null && <span style={{ opacity: 0.75 }}>· {note}</span>}
+              {note != null && <span>· {note}</span>}
             </span>
           </button>
         )

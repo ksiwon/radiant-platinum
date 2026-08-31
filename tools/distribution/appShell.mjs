@@ -22,7 +22,10 @@ import { join } from 'node:path'
 /**
  * `public/` 아래에서 배포물로 옮길 파일 — 전부, 하나씩.
  *
- * `origin`은 그 바이트가 어디서 왔는지다. `자체`가 아닌 것은 못 나간다.
+ * `origin`은 그 바이트가 어디서 왔는지다. **`자체`가 아니면 `license`가
+ * 있어야 한다** — 남의 바이트를 싣는 유일한 길이고, 그때는 그 허가문도 같이
+ * 나간다 (`check.mjs` ①-c). 원본(롬·BDSP) 유래는 어느 쪽으로도 못 나간다.
+ *
  * `index.html`은 여기 없다 — Vite가 뿌리에서 직접 만들고 해시 붙은 js·css를
  * 물려 준다
  */
@@ -33,10 +36,37 @@ export const PUBLIC_SHELL = [
   { path: 'assets/radiant-platinum-favicon.png', origin: '자체', note: '파비콘 — SVG를 안 받는 브라우저용' },
   { path: 'assets/radiant-platinum-icon.png', origin: '자체', note: '앱 아이콘 · apple-touch-icon' },
   { path: 'assets/radiant-platinum-intro.webp', origin: '자체', note: '타이틀 배경' },
+
+  // 글꼴 (DESIGN.md §4). **남의 바이트지만 OFL이라 실을 수 있다** — 허가문을
+  // 같이 싣는 것이 그 조건이다.
+  //
+  // ⚠️ **`public/fonts`가 이 목록에 없던 동안 빌드에서 통째로 빠졌다.**
+  // `copyPublicDir: false`라 개발 서버에서는 멀쩡히 보이고 배포물에서만
+  // `@font-face`가 404였다 — 화면은 시스템 글꼴로 조용히 폴백한다
+  {
+    path: 'fonts/Galmuri11.woff2',
+    origin: 'Galmuri11 (SIL OFL 1.1)',
+    license: 'fonts/Galmuri-OFL.txt',
+    note: '대사창 픽셀 글꼴',
+  },
+  {
+    path: 'fonts/Pretendard-Regular.subset.woff2',
+    origin: 'Pretendard (SIL OFL 1.1)',
+    license: 'fonts/Pretendard-OFL.txt',
+    note: 'UI 본문',
+  },
+  {
+    path: 'fonts/Pretendard-Bold.subset.woff2',
+    origin: 'Pretendard (SIL OFL 1.1)',
+    license: 'fonts/Pretendard-OFL.txt',
+    note: 'UI 굵은 글씨',
+  },
+  { path: 'fonts/Galmuri-OFL.txt', origin: '자체', note: 'Galmuri 허가문 — 글꼴과 같이 나가야 한다' },
+  { path: 'fonts/Pretendard-OFL.txt', origin: '자체', note: 'Pretendard 허가문 — 글꼴과 같이 나가야 한다' },
 ]
 
 /** 목록에 없는 파일이 있으면 안 되는 나무. 여기만 전수 대조한다 */
-export const AUDITED_TREES = ['assets']
+export const AUDITED_TREES = ['assets', 'fonts']
 
 /**
  * 셸 목록을 실제 파일 경로로 편다. 없는 것은 조용히 빠진다 —

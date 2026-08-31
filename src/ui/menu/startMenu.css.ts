@@ -5,8 +5,14 @@
 //
 // 항목 수가 상황에 따라 둘에서 일곱까지 오간다(도감은 받기 전에는 없다). 그래서
 // 높이를 고정하지 않고 줄 높이만 원작처럼 맞춰 둔다.
+//
+// ⚠️ **창을 여기서 다시 그리지 않는다.** 한때 이 파일이 「전체 화면 메뉴와 같은
+// 테두리·같은 띠를 쓴다」고 주석에 적어 놓고 그 값을 손으로 베꼈다. 그러는 사이
+// 창 그러데이션이 3단과 2단으로 갈라져 있었다 — 말로 적은 규칙은 안 지켜진다.
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { GAP, TEXT } from '../theme/scale'
+import { PICKED, WINDOW, row as baseRow } from '../theme/window.css'
 import { OVERLAY_Z } from './menuChrome.css'
 
 export const frame = style({
@@ -16,45 +22,39 @@ export const frame = style({
   display: 'flex',
   justifyContent: 'flex-end',
   alignItems: 'flex-start',
-  padding: 24,
+  padding: GAP.loose,
   pointerEvents: 'none',
   fontFamily: vars.font.ui,
-  color: vars.panel.text,
   userSelect: 'none',
 })
 
-/**
- * 창.
- *
- * 전체 화면 메뉴와 **같은 테두리·같은 띠**를 쓴다. 여기만 다른 값을 쓰면
- * 시작 메뉴에서 가방으로 들어갈 때 다른 게임으로 넘어간 것처럼 보인다
- */
+/** 창. 전체 화면 메뉴와 **같은 것**이다 — 같은 파일에서 온다 */
 export const card = style({
+  ...WINDOW,
   minWidth: 176,
-  padding: 6,
+  padding: GAP.tight + 2,
   display: 'flex',
   flexDirection: 'column',
   gap: 1,
-  background: 'linear-gradient(180deg, #1a2138 0%, #101629 100%)',
-  border: '1px solid rgba(150, 176, 224, 0.34)',
-  borderRadius: 10,
-  boxShadow: '0 0 0 2px rgba(6, 9, 17, 0.85), 0 16px 38px rgba(0, 0, 0, 0.55)',
 })
 
-export const row = style({
+/**
+ * 한 줄.
+ *
+ * 전체 화면 메뉴는 커서를 `::before`로 띄우지만 여기는 손가락 표를 글자로
+ * 들고 있어서(`StartMenu.tsx`) 가로 flex라야 한다. **띠와 글자색은 같은
+ * 것**이고(`rowOn`), 다른 것은 그 배치뿐이다
+ */
+export const row = style([baseRow, {
   display: 'flex',
   alignItems: 'center',
   gap: 2,
-  height: 32,
-  padding: '0 12px 0 2px',
-  borderRadius: 6,
-  fontSize: 16,
+  padding: `0 ${GAP.base}px 0 2px`,
   whiteSpace: 'nowrap',
-})
+}])
 
 export const rowOn = style([row, {
-  background: 'linear-gradient(180deg, #eef3ff 0%, #cddaf4 100%)',
-  color: '#111726',
+  ...PICKED,
   fontWeight: 700,
 }])
 
@@ -63,5 +63,5 @@ export const cursor = style({
   display: 'inline-block',
   width: 18,
   textAlign: 'center',
-  fontSize: 11,
+  fontSize: TEXT.tiny,
 })

@@ -3,6 +3,8 @@
 // 여섯 마리가 화면에 **고정된 여섯 자리**에 선다. 격자가 아니라 손으로 놓은
 // 배치라(`spriteCoordinates`), 늘어놓지 않고 그 좌표를 그대로 쓴다.
 import { style } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
+import { RADIUS } from '../theme/scale'
 
 const W = 256
 const H = 192
@@ -12,10 +14,9 @@ export const stage = style({
   width: `min(100%, calc((100vh - 160px) * ${String(W / H)}))`,
   aspectRatio: `${String(W)} / ${String(H)}`,
   margin: '0 auto',
-  borderRadius: 10,
+  borderRadius: RADIUS.window,
   overflow: 'hidden',
-  background: 'rgba(8, 14, 28, 0.16)',
-  boxShadow: 'inset 0 0 0 2px rgba(120, 160, 230, 0.35)',
+  boxShadow: `inset 0 0 0 2px ${vars.window.edge}`,
   // ⚠️ **글자 크기를 `min(100%, …)`로 잡으면 안 된다.** font-size의 `100%`는
   // 너비가 아니라 **부모 글자 크기**라, 무대가 아무리 커도 16px의 한 조각이
   // 되어 이름표가 점 하나로 뜬다. 화면 높이에서 바로 낸다 — 원작 글꼴이 192픽셀
@@ -38,9 +39,8 @@ export const title = style({
   position: 'absolute',
   left: '4%',
   top: '3%',
-  color: '#f2f7ff',
+  color: vars.ink.onDark,
   fontWeight: 700,
-  textShadow: '0 1px 0 #101a30',
   whiteSpace: 'pre',
 })
 
@@ -52,9 +52,8 @@ export const info = style({
   bottom: '4%',
   display: 'grid',
   gap: '0.25em',
-  color: '#eef4ff',
+  color: vars.ink.onDark,
   fontWeight: 600,
-  textShadow: '0 1px 0 #101a30',
 })
 
 export const row = style({
@@ -72,12 +71,12 @@ export const moves = style({
   maxWidth: '75%',
 })
 
-export const male = style({ color: '#7fb4ff' })
-export const female = style({ color: '#ff8fa8' })
+export const male = style({ color: vars.state.male })
+export const female = style({ color: vars.state.female })
 
 export const empty = style({
   display: 'grid',
   placeItems: 'center',
   minHeight: 160,
-  color: 'rgba(230, 240, 255, 0.7)',
+  color: vars.ink.onDarkDim,
 })

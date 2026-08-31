@@ -8,6 +8,8 @@
 // 하나로 「여기만 배경이 보인다」를 만들고 나머지는 검게 둔다. 우리는 반대로
 // 검은 무대 위에 그 사각형만 밝게 얹는다 — 보이는 결과가 같다.
 import { keyframes, style, styleVariants } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
+import { WINDOW_SMALL } from '../theme/window.css'
 
 /** 원작 화면 크기. 아래 값은 전부 이 둘로 나눈 비율이다 */
 const W = 256
@@ -20,7 +22,7 @@ export const backdrop = style({
   position: 'fixed',
   inset: 0,
   zIndex: 400,
-  background: 'rgba(0, 0, 0, 0.12)',
+  background: vars.scrim.over,
   display: 'grid',
   placeItems: 'center',
   overflow: 'hidden',
@@ -64,7 +66,7 @@ export const beam = style({
   width: pctX(26),
   height: '120%',
   transformOrigin: '50% 100%',
-  background: 'linear-gradient(to top, rgba(150, 190, 255, 0.22), rgba(150, 190, 255, 0) 78%)',
+  background: `linear-gradient(to top, ${vars.scrim.over}, transparent 78%)`,
   filter: 'blur(3px)',
   animation: `${sweep} 5.5s ease-in-out infinite alternate`,
   pointerEvents: 'none',
@@ -73,8 +75,8 @@ export const beam = style({
 /** 밝은 판 하나. 자리와 크기는 부르는 쪽이 인라인으로 준다 */
 export const pane = style({
   position: 'absolute',
-  background: 'linear-gradient(180deg, rgba(28, 46, 84, 0.42), rgba(10, 18, 38, 0.32))',
-  boxShadow: 'inset 0 0 0 2px rgba(126, 174, 255, 0.55), 0 0 24px rgba(90, 140, 230, 0.35)',
+  background: vars.scrim.over,
+  boxShadow: `inset 0 0 0 2px ${vars.window.edge}`,
   overflow: 'hidden',
 })
 
@@ -88,8 +90,7 @@ export const line = style({
   position: 'absolute',
   width: pctX(136),
   textAlign: 'center',
-  color: '#f8fbff',
-  textShadow: '0 1px 0 #1a2a4a, 0 0 6px rgba(0, 0, 0, 0.8)',
+  color: vars.ink.onDark,
   fontWeight: 700,
   lineHeight: pctY(16),
   whiteSpace: 'pre',
@@ -106,8 +107,7 @@ export const centerLine = style({
   // 통째로 사라진다
   zIndex: 2,
   textAlign: 'center',
-  color: '#fff9d8',
-  textShadow: '0 1px 0 #4a3a12, 0 0 8px rgba(0, 0, 0, 0.85)',
+  color: vars.paper.gilt,
   fontWeight: 700,
   whiteSpace: 'pre',
 })
@@ -135,7 +135,7 @@ export const wipe = styleVariants({
     left: 0,
     width: '100%',
     top: 0,
-    background: '#000',
+    background: vars.scrim.black,
     transition: 'height 0.4s linear',
   },
   bottom: {
@@ -143,7 +143,7 @@ export const wipe = styleVariants({
     left: 0,
     width: '100%',
     bottom: 0,
-    background: '#000',
+    background: vars.scrim.black,
     transition: 'height 0.4s linear',
   },
 })
@@ -152,7 +152,7 @@ export const wipe = styleVariants({
 export const fade = style({
   position: 'absolute',
   inset: 0,
-  background: '#000',
+  background: vars.scrim.black,
   transition: 'opacity 0.27s linear',
   pointerEvents: 'none',
 })
@@ -167,10 +167,7 @@ export const dialog = style({
   minHeight: pctY(40),
   display: 'flex',
   alignItems: 'center',
-  background: 'linear-gradient(180deg, rgba(250, 250, 252, 0.97), rgba(226, 232, 244, 0.97))',
-  border: '2px solid rgba(60, 74, 102, 0.9)',
-  borderRadius: 8,
-  color: '#1b2536',
+  ...WINDOW_SMALL,
   fontWeight: 600,
   whiteSpace: 'pre-wrap',
 })
@@ -179,6 +176,6 @@ export const hint = style({
   position: 'absolute',
   right: pctX(8),
   bottom: pctY(4),
-  color: 'rgba(230, 240, 255, 0.75)',
+  color: vars.ink.onDarkDim,
   fontSize: '0.7em',
 })

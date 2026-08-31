@@ -144,10 +144,26 @@ describe('앱 셸은 파일 단위다', () => {
     }
   })
 
-  it('출처가 전부 적혀 있고 전부 자체 제작이다', () => {
+  it('출처가 전부 적혀 있다', () => {
     for (const e of PUBLIC_SHELL) {
-      expect(e.origin, e.path).toBe('자체')
+      expect(e.origin?.length ?? 0, e.path).toBeGreaterThan(0)
       expect(e.note?.length ?? 0, e.path).toBeGreaterThan(0)
+    }
+  })
+
+  it('⚠️ 남의 바이트는 허가문을 같이 싣는다', () => {
+    // 오래 「전부 자체 제작」이었다. 글꼴이 들어오면서 갈렸다 — OFL 글꼴은 남의
+    // 바이트지만 **허가문 동봉을 조건으로** 실을 수 있다. 그래서 규칙이
+    // 「자체가 아니면 막는다」에서 「자체가 아니면 허가문이 같이 나간다」로 바뀌었다.
+    //
+    // ⚠️ 원본(롬·BDSP) 유래는 이 길로도 못 나간다. 그건 목록이 아니라
+    // `check.mjs`의 내용 검사가 잡는다 — 목록에 뭐라고 적든 바이트를 다시 본다
+    const shipped = new Set(PUBLIC_SHELL.map((e) => e.path))
+    for (const e of PUBLIC_SHELL) {
+      if (e.origin === '자체') continue
+      expect(e.license, `${e.path} — 남의 바이트인데 허가문이 없다`).toBeTruthy()
+      expect(shipped.has(e.license), `${e.path} — 허가문 ${e.license}이 배포물에 안 나간다`)
+        .toBe(true)
     }
   })
 

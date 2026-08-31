@@ -80,6 +80,54 @@ const DESCRIBE_SKIP_FORBIDDEN = {
     + '손으로 적으면 PT_REQUIRE_DATA가 그 파일을 못 본다.',
 }
 
+/**
+ * 화면 파일은 **색을 직접 적지 않는다** (DESIGN.md §2).
+ *
+ * ⚠️ 문서에만 적힌 규칙은 안 지켜진다. 한때 테마 계약에 토큰이 7개인데 화면에는
+ * hex 140개와 `rgba()` 189벌이 박혀 있었고, 창 재질이 여덟 벌이었다. 더 나쁜 것은
+ * `startMenu.css.ts`가 주석에 「전체 화면 메뉴와 **같은** 테두리·같은 띠를 쓴다」고
+ * 적어 놓고 바로 아래에서 그 값을 손으로 베낀 것이다 — 그러는 사이 테두리 한 줄이
+ * 알파 넷으로 갈라져 있었다. 값은 `ui/theme/`에서 import로 와야 한다.
+ *
+ * `ui/theme/` 자신은 이 규칙 밖이다. 거기가 값이 사는 유일한 자리다.
+ */
+const DESIGN_FORBIDDEN = [
+  {
+    selector: 'Literal[raw=/#[0-9a-fA-F]{3}/]',
+    message: '화면 파일에 색을 적지 않는다 (DESIGN.md §2). ui/theme/의 vars를 쓴다.',
+  },
+  {
+    selector: 'TemplateElement[value.raw=/#[0-9a-fA-F]{3}/]',
+    message: '화면 파일에 색을 적지 않는다 (DESIGN.md §2). ui/theme/의 vars를 쓴다.',
+  },
+  {
+    selector: 'Literal[raw=/rgb[(]/]',
+    message: '화면 파일에 색을 적지 않는다 (DESIGN.md §2). ui/theme/의 vars를 쓴다.',
+  },
+  {
+    selector: 'TemplateElement[value.raw=/rgb[(]/]',
+    message: '화면 파일에 색을 적지 않는다 (DESIGN.md §2). ui/theme/의 vars를 쓴다.',
+  },
+  {
+    selector: "Property[key.name='backdropFilter']",
+    message: '반투명 유리는 원본에 없다 (DESIGN.md §2). 창은 불투명하다.',
+  },
+  {
+    selector: "Property[key.name='letterSpacing']",
+    message:
+      '자간을 벌리지 않는다 (DESIGN.md §2). 벌린 작은 라벨은 그 자체가 웹앱의 말투다.',
+  },
+  {
+    selector: "Property[key.name='borderRadius'] > Literal",
+    message: '모서리는 theme/scale의 RADIUS 넷 중 하나다 (DESIGN.md §2). 알약(999)은 없다.',
+  },
+  {
+    selector: "Property[key.name='textShadow']",
+    message:
+      '글자에 그늘을 깔지 않는다 (DESIGN.md §2). 글이 안 읽히면 판을 주지 그늘을 주지 않는다.',
+  },
+]
+
 export default tseslint.config(
   // `src/engine/battle/dex/vendor`는 생성물이다 — `@pkmn/sim`(MIT)의 4세대
   // 구현을 **한 글자도 안 고치고** 옮긴 것이라 우리 규칙으로 재면 안 된다
@@ -111,6 +159,17 @@ export default tseslint.config(
     // 그 하나. 여기서만 `import.meta.env.BASE_URL`을 읽는다
     files: ['src/data/assetBase.ts'],
     rules: { 'no-restricted-syntax': 'off' },
+  },
+  {
+    // 화면의 스타일 파일 — 값을 직접 적지 않는다 (DESIGN.md §2).
+    //
+    // ⚠️ 위 블록의 `no-restricted-syntax`를 **덮으므로** BASE_URL 조각을 같이
+    // 넣는다. 안 넣으면 css.ts에서만 그 금지가 조용히 죽는다
+    files: ['src/**/*.css.ts'],
+    ignores: ['src/ui/theme/**'],
+    rules: {
+      'no-restricted-syntax': ['error', BASE_URL_FORBIDDEN, ...DESIGN_FORBIDDEN],
+    },
   },
   {
     // 상태 3분할 경계 강제 — 엔진과 프레임 상태는 React를 몰라야 한다

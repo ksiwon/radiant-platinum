@@ -42,5 +42,5 @@ export const line = style({
   textAlign: 'center',
   fontSize: 17,
   lineHeight: 1.5,
-  color: vars.panel.text,
+  color: vars.ink.normal,
 })

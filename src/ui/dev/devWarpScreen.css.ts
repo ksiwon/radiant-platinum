@@ -1,16 +1,16 @@
 // 확인 지점 화면 — 메뉴 껍데기를 그대로 쓰고 여기서는 차이만 적는다.
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { RADIUS } from '../theme/scale'
 
 /** 시험용이라는 표시. 게임 화면과 헷갈리면 안 된다 */
 export const badge = style({
   fontSize: 13,
   fontWeight: 700,
-  letterSpacing: '0.08em',
   padding: '3px 10px',
-  borderRadius: 999,
-  background: '#f0b429',
-  color: '#241a02',
+  borderRadius: RADIUS.cell,
+  background: vars.dev.mark,
+  color: vars.dev.markText,
 })
 
 // ── 왼쪽: 단계로 묶은 칸들 ───────────────────────────────────────────────────
@@ -38,22 +38,20 @@ export const groupTitle = style({
   margin: 0,
   fontSize: 12,
   fontWeight: 700,
-  letterSpacing: '0.14em',
   opacity: 0.62,
   // 제목 줄이 칸들과 붙어 보이지 않게 밑줄 하나
   paddingBottom: 5,
-  borderBottom: `1px solid ${vars.panel.border}`,
+  borderBottom: `1px solid ${vars.window.rule}`,
 })
 
 /** 그 단계에 몇 개 있는가 */
 export const groupCount = style({
   fontSize: 11,
   fontWeight: 600,
-  letterSpacing: 0,
   padding: '1px 7px',
-  borderRadius: 999,
-  background: 'rgba(240, 180, 41, 0.16)',
-  color: '#f0b429',
+  borderRadius: RADIUS.cell,
+  background: vars.dev.markFace,
+  color: vars.dev.mark,
 })
 
 export const chips = style({
@@ -71,10 +69,10 @@ const chipBase = {
   fontFamily: vars.font.ui,
   fontSize: 14,
   lineHeight: 1.2,
-  color: vars.panel.text,
-  background: 'rgba(255, 255, 255, 0.05)',
-  border: `1px solid ${vars.panel.border}`,
-  borderRadius: 999,
+  color: vars.ink.normal,
+  background: vars.dev.bg,
+  border: `1px solid ${vars.window.rule}`,
+  borderRadius: RADIUS.cell,
   cursor: 'pointer',
   textAlign: 'left',
   transition: 'background 90ms linear, border-color 90ms linear',
@@ -90,8 +88,8 @@ export const chip = style(chipBase)
  */
 export const chipOn = style({
   ...chipBase,
-  background: 'rgba(240, 180, 41, 0.18)',
-  borderColor: 'rgba(240, 180, 41, 0.7)',
+  background: vars.dev.markFace,
+  borderColor: vars.dev.mark,
   fontWeight: 700,
 })
 
@@ -99,11 +97,10 @@ export const chipOn = style({
 export const chipMark = style({
   fontSize: 10,
   fontWeight: 700,
-  letterSpacing: '0.04em',
   padding: '1px 6px',
-  borderRadius: 999,
-  background: 'rgba(240, 180, 41, 0.20)',
-  color: '#f0b429',
+  borderRadius: RADIUS.cell,
+  background: vars.dev.markFace,
+  color: vars.dev.mark,
 })
 
 /** 오른쪽 칸 맨 위 — 지금 올려놓은 지점의 이름 */
@@ -118,7 +115,7 @@ export const detailName = style({
 export const setup = style({
   marginTop: 18,
   paddingTop: 14,
-  borderTop: `1px solid ${vars.panel.border}`,
+  borderTop: `1px solid ${vars.window.rule}`,
   fontSize: 15,
   lineHeight: '24px',
   opacity: 0.9,
@@ -138,9 +135,9 @@ export const setupKey = style({
  */
 export const env = style({
   padding: '10px 14px',
-  borderRadius: 8,
-  background: 'rgba(240, 180, 41, 0.12)',
-  border: '1px solid rgba(240, 180, 41, 0.35)',
+  borderRadius: RADIUS.cell,
+  background: vars.dev.markFace,
+  border: `1px solid ${vars.dev.mark}`,
   fontSize: 16,
   fontWeight: 700,
   lineHeight: 1.45,
@@ -166,7 +163,7 @@ export const tryItem = style({
 
 /** 앞에 붙는 점. 목록으로 읽히게만 한다 */
 export const tryMark = style({
-  color: '#f0b429',
+  color: vars.dev.mark,
   fontSize: 11,
   lineHeight: 1.7,
 })
@@ -175,6 +172,5 @@ export const tryMark = style({
 export const sectionTitle = style({
   marginTop: 18,
   fontSize: 12,
-  letterSpacing: '0.12em',
   opacity: 0.55,
 })

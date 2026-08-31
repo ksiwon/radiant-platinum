@@ -6,8 +6,13 @@
 // ⚠️ 카드에서 제일 커야 할 것은 **그림**이다. 전에는 62픽셀짜리 그림 옆에
 // 테두리·그림자·비스듬한 모서리가 붙어서, 정작 포켓몬은 작고 장식만 컸다.
 // 카드 높이를 줄이고 그림을 그 높이에 꽉 채운다.
+//
+// ⚠️ **색은 여기서 안 고른다** (DESIGN.md §2). HP 세 색은 원작 팔레트에서 오고
+// (`party_menu/menu.pal`), 고른 카드는 금 테두리다.
 import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
+import { BAR_FILL, BAR_TRACK, PICKED } from '../theme/window.css'
 
 /** 카드 여섯 장. 두 줄로 세우고 선두만 위로 뺀다 */
 export const grid = style({
@@ -16,28 +21,27 @@ export const grid = style({
   overflowX: 'hidden',
   display: 'grid',
   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-  gap: 8,
+  gap: GAP.small,
   alignContent: 'start',
-  paddingRight: 6,
+  paddingRight: GAP.tight + 2,
   scrollbarWidth: 'thin',
 })
 
 /**
  * 카드 하나.
  *
- * 안 고른 카드는 아주 옅은 판 하나뿐이다. 목록의 줄과 같은 규칙이다 —
+ * 안 고른 카드는 얇은 선 하나뿐이다. 목록의 줄과 같은 규칙이다 —
  * 눈에 띄어야 하는 것은 고른 하나지 여섯 개의 테두리가 아니다
  */
 export const card = style({
   position: 'relative',
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
+  gap: GAP.small,
   height: 64,
-  padding: '0 10px 0 6px',
-  borderRadius: 7,
-  background: 'rgba(255, 255, 255, 0.045)',
-  boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.06)',
+  padding: `0 ${GAP.small + 2}px 0 ${GAP.tight + 2}px`,
+  borderRadius: RADIUS.cell,
+  boxShadow: `inset 0 0 0 1px ${vars.window.rule}`,
 })
 
 /** 선두는 한 줄을 통째로 쓴다. 원작도 첫 칸만 따로 띄운다 */
@@ -47,9 +51,19 @@ export const cardLead = style([card, {
 }])
 
 export const cardOn = style({
-  background: 'rgba(238, 243, 255, 0.14)',
-  boxShadow: `inset 0 0 0 2px ${vars.hud.warn}`,
+  ...PICKED,
 })
+
+/**
+ * 빈 자리.
+ *
+ * 원작은 여섯 칸을 늘 그린다. 안 채워진 칸은 얇은 점선 자리로 남아서
+ * 「여섯 중 몇」이 화면에 그대로 보인다
+ */
+export const cardEmpty = style([card, {
+  boxShadow: 'none',
+  border: `1px dashed ${vars.window.rule}`,
+}])
 
 /** 쓰러진 카드는 눈에 띄게 죽인다 — 회복해야 할 것이 한눈에 보여야 한다 */
 export const cardFainted = style({
@@ -69,7 +83,6 @@ export const portrait = style({
   flex: '0 0 auto',
   imageRendering: 'pixelated',
   objectFit: 'contain',
-  filter: 'drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5))',
 })
 
 export const portraitLead = style([portrait, { width: 78, height: 78 }])
@@ -77,7 +90,7 @@ export const portraitLead = style([portrait, { width: 78, height: 78 }])
 export const body = style({
   display: 'flex',
   flexDirection: 'column',
-  gap: 4,
+  gap: GAP.tight,
   minWidth: 0,
   flex: 1,
 })
@@ -85,69 +98,71 @@ export const body = style({
 export const nameRow = style({
   display: 'flex',
   alignItems: 'baseline',
-  gap: 6,
+  gap: GAP.tight + 2,
   minWidth: 0,
 })
 
 export const name = style({
-  fontSize: 15,
+  fontSize: TEXT.base,
   fontWeight: 700,
+  color: vars.ink.strong,
   minWidth: 0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 })
 
-export const male = style({ color: '#6db3f2', fontWeight: 700 })
-export const female = style({ color: '#f28ab2', fontWeight: 700 })
+export const male = style({ color: vars.state.male, fontWeight: 700 })
+export const female = style({ color: vars.state.female, fontWeight: 700 })
 
 export const level = style({
   marginLeft: 'auto',
   flex: '0 0 auto',
-  fontSize: 13,
+  fontSize: TEXT.small,
   fontFamily: vars.font.mono,
-  opacity: 0.8,
+  color: vars.ink.dim,
 })
 
 /** 상태 이상. 색이 무엇에 걸렸는지를 나른다 */
 export const status = style({
   flex: '0 0 auto',
-  padding: '1px 6px',
-  borderRadius: 3,
-  fontSize: 11,
+  padding: '1px 7px',
+  border: `1px solid ${vars.bar.edge}`,
+  borderRadius: RADIUS.bar,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
-  color: '#fff',
+  color: vars.status.text,
 })
 
 /** 배틀 화면과 같은 색표다 — 두 화면에서 같은 상태가 같은 색이어야 한다 */
 export const statusColor: Record<string, string> = {
-  psn: '#a25bc4', tox: '#8b3fae', brn: '#e8763a',
-  par: '#d8b12a', slp: '#7b8794', frz: '#4aa8d8', ko: '#6b7280',
+  psn: vars.status.psn, tox: vars.status.tox, brn: vars.status.brn,
+  par: vars.status.par, slp: vars.status.slp, frz: vars.status.frz,
+  ko: vars.hp.empty,
 }
 
 export const barRow = style({
   display: 'flex',
   alignItems: 'center',
-  gap: 6,
+  gap: GAP.tight + 2,
 })
 
-/** 원작 체력판의 노란 `HP` 글자 */
+/** 원작 체력판의 `HP` 글자 */
 export const hpTag = style({
   flex: '0 0 auto',
-  fontSize: 10,
+  fontSize: TEXT.tiny,
   fontWeight: 800,
   fontStyle: 'italic',
-  color: '#f5cf5a',
+  color: vars.ink.dim,
 })
 
+/** 막대의 홈. 짙은 테두리 안에 흰 바탕 — 원작 구조다 (DESIGN.md §1.3) */
 export const hpTrack = style({
   position: 'relative',
   display: 'block',
   flex: 1,
-  height: 7,
-  borderRadius: 4,
-  background: 'rgba(0, 0, 0, 0.55)',
-  overflow: 'hidden',
+  height: 9,
+  ...BAR_TRACK,
 })
 
 /**
@@ -156,20 +171,23 @@ export const hpTrack = style({
  * `<span>`은 인라인이라 `width`도 `height`도 안 먹는다. 그래서 색을 제대로
  * 골라 넣고도 화면에는 게이지가 통째로 검게 떴다 — 홈이 보이고 채움이 없었다.
  * 스타일만 보면 멀쩡해서 눈으로는 원인이 안 보이는 자리다
+ *
+ * 결 넷은 원작 그대로다: 본색 1줄 · 밝은 쪽 2줄 · 본색 1줄
  */
 export const hpFill = style({
+  ...BAR_FILL,
   display: 'block',
-  height: '100%',
-  transition: 'width 220ms linear, background-color 200ms linear',
+  transition: 'width 220ms linear',
 })
 
 export const hpText = style({
   flex: '0 0 auto',
   minWidth: 58,
   textAlign: 'right',
-  fontSize: 12,
+  fontSize: TEXT.tiny,
   fontFamily: vars.font.mono,
   fontVariantNumeric: 'tabular-nums',
+  color: vars.ink.dim,
 })
 
 /**
@@ -182,25 +200,25 @@ export const hpText = style({
 export const stats = style({
   display: 'grid',
   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-  columnGap: 20,
+  columnGap: GAP.loose - 4,
   rowGap: 2,
 })
 
 export const statRow = style({
   display: 'flex',
   alignItems: 'baseline',
-  gap: 8,
-  fontSize: 14,
+  gap: GAP.small,
+  fontSize: TEXT.small,
   padding: '2px 0',
-  borderBottom: '1px solid rgba(150, 176, 224, 0.12)',
+  borderBottom: `1px solid ${vars.window.rule}`,
 })
 
 /** 성격 보정. 원작과 같은 색이다 — 올리는 쪽 빨강, 내리는 쪽 파랑 */
 export const statName = style({
-  opacity: 0.72,
+  color: vars.ink.dim,
   selectors: {
-    '&[data-nature="up"]': { color: '#ff8a7a', opacity: 1 },
-    '&[data-nature="down"]': { color: '#8ab8ff', opacity: 1 },
+    '&[data-nature="up"]': { color: vars.state.bad },
+    '&[data-nature="down"]': { color: vars.state.male },
   },
 })
 
@@ -209,60 +227,54 @@ export const statValue = style({
   fontFamily: vars.font.mono,
   fontVariantNumeric: 'tabular-nums',
   fontWeight: 700,
+  color: vars.ink.strong,
 })
 
 export const moveRow = style({
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
-  padding: '5px 10px',
+  gap: GAP.small + 2,
+  padding: `5px ${GAP.small + 2}px`,
   marginBottom: 3,
-  borderRadius: 5,
-  background: 'rgba(255, 255, 255, 0.045)',
-  fontSize: 14,
+  borderRadius: RADIUS.bar,
+  boxShadow: `inset 0 0 0 1px ${vars.window.rule}`,
+  fontSize: TEXT.small,
 })
 
 /** 커서가 올라간 기술. 설명이 아래에 뜬다 */
 export const moveRowOn = style([moveRow, {
-  background: 'linear-gradient(180deg, #eef3ff 0%, #cddaf4 100%)',
-  color: '#111726',
+  ...PICKED,
 }])
 
 /** 비전머신처럼 **밖에서 쓰는** 기술. 이름 옆에 그 표시가 붙는다 */
 export const fieldTag = style({
   flex: '0 0 auto',
-  fontSize: 10,
+  fontSize: TEXT.tiny,
   fontWeight: 800,
-  letterSpacing: '0.06em',
-  padding: '1px 6px',
-  borderRadius: 999,
-  background: 'rgba(120, 200, 140, 0.22)',
-  color: '#9fe6b4',
-  selectors: {
-    [`${moveRowOn} &`]: { background: 'rgba(20, 90, 45, 0.18)', color: '#1c6b38' },
-  },
+  padding: '1px 7px',
+  border: `1px solid ${vars.state.good}`,
+  borderRadius: RADIUS.bar,
+  color: vars.state.good,
 })
 
 /**
  * 기술 설명. 롬의 글이 줄 바꿈까지 들고 있어서 그대로 살린다 —
- * `
-`을 지우면 원작이 나눠 놓은 자리가 사라진다
+ * `\n`을 지우면 원작이 나눠 놓은 자리가 사라진다
  */
+// ⚠️ **테두리를 안 두른다.** 고른 기술이 없을 때 빈 상자 하나가 그대로 남는다 —
+// 판을 늘어놓지 않는다는 규칙이 여기서도 같다 (DESIGN.md §5)
 export const moveText = style({
-  marginTop: 8,
-  padding: '8px 10px',
-  borderRadius: 5,
+  marginTop: GAP.small,
+  padding: `${GAP.small}px 2px`,
   minHeight: 76,
-  background: 'rgba(0, 0, 0, 0.22)',
-  fontSize: 13,
+  fontSize: TEXT.small,
   lineHeight: 1.5,
-  opacity: 0.9,
   whiteSpace: 'pre-line',
 })
 
 /** 자리를 바꾸려고 집어 든 카드 */
 export const cardHeld = style({
-  outline: '2px dashed #f5c542',
+  outline: `${EDGE.bar}px dashed ${vars.pick.edge}`,
   outlineOffset: -2,
 })
 
@@ -271,8 +283,8 @@ export const movePp = style({
   flex: '0 0 auto',
   fontFamily: vars.font.mono,
   fontVariantNumeric: 'tabular-nums',
-  fontSize: 12,
-  opacity: 0.75,
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
 })
 
 /**
@@ -290,21 +302,20 @@ export const choices = style({
 })
 
 export const choiceAsk = style({
-  fontSize: 15,
+  fontSize: TEXT.base,
   fontWeight: 600,
   whiteSpace: 'pre-line',
   lineHeight: 1.5,
-  marginBottom: 8,
+  marginBottom: GAP.small,
 })
 
 export const choice = style({
-  padding: '5px 10px',
-  borderRadius: 6,
-  fontSize: 15,
+  padding: `5px ${GAP.small + 2}px`,
+  borderRadius: RADIUS.cell,
+  fontSize: TEXT.base,
 })
 
 export const choiceOn = style([choice, {
-  background: 'rgba(238, 243, 255, 0.14)',
-  boxShadow: `inset 0 0 0 2px ${vars.hud.warn}`,
+  ...PICKED,
   fontWeight: 600,
 }])

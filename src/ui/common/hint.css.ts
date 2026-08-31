@@ -1,4 +1,6 @@
 import { style } from '@vanilla-extract/css'
+import { GAP, RADIUS, TEXT } from '../theme/scale'
+import { WINDOW } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
 /** 물음표를 붙일 자리. 글줄 안에 섞이므로 `inline-flex`다 */
@@ -17,18 +19,19 @@ export const button = style({
   display: 'grid',
   placeItems: 'center',
   fontFamily: vars.font.ui,
-  fontSize: 11,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
   lineHeight: 1,
-  color: vars.panel.text,
-  background: 'rgba(110, 168, 255, 0.18)',
-  border: '1px solid rgba(110, 168, 255, 0.55)',
-  borderRadius: 999,
+  color: vars.ink.normal,
+  background: 'transparent',
+  border: `1px solid ${vars.window.edge}`,
+  // 물음표 표는 실제로 둥근 것이라 여기는 `round`가 맞다
+  borderRadius: RADIUS.round,
   cursor: 'help',
   selectors: {
-    '&:hover': { background: 'rgba(110, 168, 255, 0.34)' },
+    '&:hover': { background: vars.pick.face, borderColor: vars.pick.edge },
     // 키보드로 왔을 때 어디 있는지 보여야 한다
-    '&:focus-visible': { outline: '2px solid rgba(110, 168, 255, 0.9)', outlineOffset: 2 },
+    '&:focus-visible': { outline: `2px solid ${vars.pick.edge}`, outlineOffset: 2 },
   },
 })
 
@@ -45,12 +48,9 @@ export const bubble = style({
   left: 0,
   zIndex: 5,
   width: 'min(420px, 78vw)',
-  padding: '12px 14px',
-  borderRadius: 10,
-  border: '1px solid rgba(110, 168, 255, 0.45)',
-  background: 'rgba(10, 15, 26, 0.97)',
-  boxShadow: '0 10px 30px rgba(0, 0, 0, 0.55)',
-  fontSize: 12.5,
+  padding: `${GAP.base}px ${GAP.base + 2}px`,
+  ...WINDOW,
+  fontSize: TEXT.small,
   fontWeight: 400,
   lineHeight: 1.75,
   whiteSpace: 'pre-line',
@@ -67,9 +67,9 @@ export const bubble = style({
 export const tree = style({
   display: 'block',
   margin: '8px 0',
-  padding: '8px 10px',
-  borderRadius: 6,
-  background: 'rgba(255, 255, 255, 0.05)',
+  padding: `${GAP.small}px ${GAP.small + 2}px`,
+  borderRadius: RADIUS.bar,
+  border: `1px solid ${vars.window.rule}`,
   fontFamily: vars.font.mono,
   fontSize: 11.5,
   lineHeight: 1.6,
@@ -80,8 +80,8 @@ export const tree = style({
 /** 안내하지 않는다고 말하는 줄. 눈에 띄되 경고처럼 붉지는 않게 */
 export const caveat = style({
   display: 'block',
-  marginTop: 8,
-  paddingTop: 8,
-  borderTop: '1px solid rgba(255, 255, 255, 0.12)',
-  opacity: 0.78,
+  marginTop: GAP.small,
+  paddingTop: GAP.small,
+  borderTop: `1px solid ${vars.window.rule}`,
+  color: vars.ink.dim,
 })

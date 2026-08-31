@@ -11,6 +11,7 @@ import type { Line } from '../../engine/script/printer'
 import type { MenuEntry } from '../../engine/script/world'
 import { loadSignpostAtlas, signpostAtlas, signpostImage } from './signpost'
 import * as css from './messageBox.css'
+import { vars } from '../theme/contract.css'
 
 interface MenuView {
   kind: 'yesno' | 'list'
@@ -185,6 +186,6 @@ export function MessageBox() {
  * 1(빨강 계열)과 2(파랑 계열) 둘뿐이고, 도구 이름·사람 이름을 강조할 때 나온다
  */
 const COLORS: Record<number, string> = {
-  1: '#d94f4f',
-  2: '#3f6fd9',
+  1: vars.emphasis.one,
+  2: vars.emphasis.two,
 }

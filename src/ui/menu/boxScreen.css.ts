@@ -13,7 +13,9 @@
 // 세 배로 키워서 쓴다. 겹치는 것까지 그대로 둔다 — 원작 박스가 빽빽한 이유가
 // 그거고, 간격을 벌리면 서른 칸이 화면을 넘는다.
 import { style, styleVariants } from '@vanilla-extract/css'
+import { RADIUS, TEXT } from '../theme/scale'
 import { vars } from '../theme/contract.css'
+import { PICKED } from '../theme/window.css'
 
 /** 원작 픽셀을 화면 픽셀로 옮기는 배수 */
 const K = 3
@@ -29,7 +31,8 @@ const ICON = 32 * K
 const GRID_X = (WALL_W - PITCH * 6) / 2
 const GRID_Y = BANNER + 8 * K
 
-const EDGE = 'rgba(150, 176, 224, 0.34)'
+// 창 안을 가르는 선은 창 한 벌의 것이다 (`theme/window.css`)
+const EDGE = vars.window.rule
 
 /** 왼쪽 박스, 오른쪽 파티. 가르는 것은 판이 아니라 세로선 하나다 */
 export const stage = style({
@@ -56,11 +59,11 @@ export const wall = style({
   width: WALL_W,
   height: WALL_H,
   flex: '0 0 auto',
-  borderRadius: 6,
+  borderRadius: RADIUS.cell,
   // 원작 벽지는 픽셀 그림이다. 부드럽게 늘리면 죽이 된다
   imageRendering: 'pixelated',
   backgroundRepeat: 'no-repeat',
-  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
+  border: `2px solid ${vars.window.edge}`,
 })
 
 /**
@@ -78,8 +81,7 @@ export const boxName = style({
   fontSize: 17,
   fontWeight: 700,
   // 벽지 띠가 밝아서 어두운 글자가 원작과 같다
-  color: '#26324b',
-  textShadow: '0 1px 0 rgba(255, 255, 255, 0.55)',
+  color: vars.ink.strong,
   pointerEvents: 'none',
 })
 
@@ -116,17 +118,15 @@ export const cursor = style({
   position: 'absolute',
   width: PITCH,
   height: PITCH,
-  borderRadius: '50%',
-  background: 'radial-gradient(circle, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0) 70%)',
-  boxShadow: `0 0 0 2px ${vars.hud.warn}`,
+  borderRadius: RADIUS.round,
+  boxShadow: `0 0 0 2px ${vars.pick.edge}, inset 0 0 0 2px ${vars.pick.edge}`,
   pointerEvents: 'none',
   transition: 'left 0.06s linear, top 0.06s linear',
 })
 
 /** 집어 든 것. 커서를 따라다니지 않고 제자리에서 떠오른다 */
 export const picked = style({
-  filter: 'drop-shadow(0 4px 3px rgba(0, 0, 0, 0.55)) brightness(1.25)',
-  transform: 'translateY(-6px)',
+  transform: 'translateY(-6px) scale(1.12)',
 })
 
 /** 박스를 넘기는 줄 — ◀ 이름 ▶ */
@@ -142,7 +142,7 @@ export const pager = style({
 export const pagerArrow = style({
   padding: '0 8px',
   cursor: 'pointer',
-  selectors: { '&:hover': { color: vars.hud.warn } },
+  selectors: { '&:hover': { color: vars.pick.edge } },
 })
 
 /** 몇 마리 들어 있는가 */
@@ -162,9 +162,9 @@ export const side = style({
 })
 
 export const partyHead = style({
-  fontSize: 13,
-  letterSpacing: 1,
-  opacity: 0.62,
+  fontSize: TEXT.small,
+  fontWeight: 700,
+  color: vars.ink.dim,
 })
 
 /** 파티 여섯 칸. 두 줄로 세운다 — 세로 여섯이면 벽지보다 길어진다 */
@@ -181,16 +181,14 @@ const partyBase = {
   gap: 6,
   height: 46,
   padding: '0 6px',
-  borderRadius: 7,
-  background: 'rgba(255, 255, 255, 0.045)',
-  boxShadow: 'inset 0 0 0 1px rgba(255, 255, 255, 0.06)',
+  borderRadius: RADIUS.cell,
+  boxShadow: `inset 0 0 0 1px ${vars.window.rule}`,
 } as const
 
 export const partySlot = styleVariants({
   off: [partyBase],
   on: [partyBase, {
-    background: 'rgba(238, 243, 255, 0.14)',
-    boxShadow: `inset 0 0 0 2px ${vars.hud.warn}`,
+    ...PICKED,
   }],
   empty: [partyBase, { opacity: 0.3 }],
 })
@@ -255,14 +253,14 @@ export const detailLabel = style({
   opacity: 0.62,
 })
 
-export const male = style({ color: '#7fb2ff' })
-export const female = style({ color: '#ff9ac0' })
+export const male = style({ color: vars.state.male })
+export const female = style({ color: vars.state.female })
 
 /** 화면이 하는 말. 원작 글을 그대로 띄운다 (`TEXT_BANK_BOX_MESSAGES`) */
 export const notice = style({
   minHeight: 20,
   fontSize: 13,
-  color: vars.hud.warn,
+  color: vars.ink.normal,
 })
 
 // ── 비교하기 (`PC_MODE_COMPARE`) ────────────────────────────────────────────
@@ -291,9 +289,8 @@ export const compareName = style({
 
 export const comparePage = style({
   textAlign: 'center',
-  fontSize: 11,
-  letterSpacing: '0.08em',
-  opacity: 0.62,
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
 })
 
 export const compareRows = style({ display: 'flex', flexDirection: 'column', gap: 3 })

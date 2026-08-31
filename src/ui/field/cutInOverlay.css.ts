@@ -4,6 +4,7 @@
 // 배틀이 열리는 이음매를 덮어야 한다 — 밑에 두면 체력 상자가 컷인 위로 뜬다.
 // 메뉴(400)보다는 아래다: 컷인이 도는 동안 메뉴가 떠 있는 일은 없다.
 import { style } from '@vanilla-extract/css'
+import { vars } from '../theme/contract.css'
 
 const full = {
   position: 'fixed',
@@ -30,5 +31,5 @@ export const iris = style({
   ...full,
   zIndex: 349,
   display: 'none',
-  background: '#000',
+  background: vars.scrim.black,
 })

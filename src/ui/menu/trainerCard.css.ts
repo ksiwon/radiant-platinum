@@ -6,9 +6,10 @@
 // 배지를 아래에 한 줄로 늘어놓는다.
 import { globalStyle, keyframes, style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT, TIME } from '../theme/scale'
 
 const rise = keyframes({
-  from: { opacity: 0, transform: 'translateY(14px) rotate(-0.6deg)' },
+  from: { opacity: 0, transform: 'translateY(8px)' },
   to: { opacity: 1, transform: 'none' },
 })
 
@@ -20,27 +21,19 @@ export const card = style({
   display: 'flex',
   flexDirection: 'column',
   gap: 18,
-  // 파랑에서 남색으로. 원작 카드도 한 가지 색이 아니라 옅게 흐른다
-  background:
-    'linear-gradient(145deg, #3f6db4 0%, #2d4d86 42%, #1b2a4c 100%)',
-  border: '1px solid rgba(255,255,255,0.22)',
-  borderRadius: 16,
+  // 파랑에서 남색으로. 세로다 — **대각선이 아니다.** 145도로 흐르는 판에
+  // 광택을 얹은 것이 곧 핀테크 앱의 카드 목업이었다 (DESIGN.md §0)
+  background: `linear-gradient(180deg, ${vars.card.faceTop}, ${vars.card.faceBottom})`,
+  border: `${EDGE.window}px solid ${vars.card.edge}`,
+  borderRadius: RADIUS.window,
+  color: vars.card.text,
   // 오른쪽 아래를 자른다 — 이 각 하나가 "카드"를 만든다
   clipPath: 'polygon(0 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%)',
-  boxShadow: '0 20px 50px rgba(0,0,0,0.55)',
-  animation: `${rise} 0.22s cubic-bezier(.2,.85,.3,1)`,
+  animation: `${rise} ${TIME.fade} ease-out`,
 })
 
-/** 카드 위쪽을 훑는 빛. 코팅된 카드처럼 보이게 하는 한 겹이다 */
-globalStyle(`${card}::before`, {
-  content: '""',
-  position: 'absolute',
-  inset: 0,
-  background:
-    'linear-gradient(118deg, rgba(255,255,255,0.16) 0 18%, rgba(255,255,255,0) 34%),'
-    + ' repeating-linear-gradient(118deg, rgba(255,255,255,0.03) 0 3px, transparent 3px 12px)',
-  pointerEvents: 'none',
-})
+// ⚠️ **코팅 광택을 안 얹는다.** 여기 있던 `::before`가 대각 흰 띠와 빗금
+// 무늬였다 — 원작 카드는 납작하다
 
 export const top = style({
   display: 'flex',
@@ -50,35 +43,28 @@ export const top = style({
 })
 
 export const title = style({
-  fontSize: 12,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
-  letterSpacing: '0.08em',
-  opacity: 0.7,
+  color: vars.card.textDim,
 })
 
 export const name = style({
-  fontSize: 32,
+  fontSize: TEXT.big + 4,
   fontWeight: 800,
-  letterSpacing: '0.01em',
-  textShadow: '0 2px 6px rgba(0,0,0,0.5)',
 })
 
 /** 번호. 원작 카드도 오른쪽 위에 크게 박는다 */
 export const idNo = style({
   textAlign: 'right',
   fontFamily: vars.font.mono,
-  fontSize: 26,
+  fontSize: TEXT.big - 2,
   fontWeight: 800,
-  letterSpacing: '0.06em',
-  opacity: 0.92,
-  textShadow: '0 2px 6px rgba(0,0,0,0.5)',
 })
 
 export const idLabel = style({
   display: 'block',
-  fontSize: 11,
-  letterSpacing: '0.06em',
-  opacity: 0.6,
+  fontSize: TEXT.tiny,
+  color: vars.card.textDim,
   fontWeight: 700,
 })
 
@@ -91,7 +77,7 @@ export const rows = style({
 })
 
 // `<dt>`·`<dd>`는 클래스가 아니라 태그라 globalStyle로만 잡힌다
-globalStyle(`${rows} dt`, { opacity: 0.72, fontWeight: 600 })
+globalStyle(`${rows} dt`, { color: vars.card.textDim, fontWeight: 600 })
 globalStyle(`${rows} dd`, {
   margin: 0,
   textAlign: 'right',
@@ -101,11 +87,10 @@ globalStyle(`${rows} dd`, {
 })
 
 export const badgeHead = style({
-  fontSize: 11,
+  fontSize: TEXT.tiny,
   fontWeight: 700,
-  letterSpacing: '0.06em',
-  opacity: 0.6,
-  marginTop: 4,
+  color: vars.card.textDim,
+  marginTop: GAP.tight,
 })
 
 export const badges = style({
@@ -123,13 +108,13 @@ export const badges = style({
 export const badge = style({
   width: 34,
   height: 34,
-  borderRadius: '50%',
-  border: '2px dashed rgba(255, 255, 255, 0.26)',
+  // 배지는 실제로 둥근 것이라 여기는 `round`가 맞다
+  borderRadius: RADIUS.round,
+  border: `2px dashed ${vars.card.badgeOff}`,
   selectors: {
     '&[data-on="yes"]': {
-      border: 'none',
-      background: 'radial-gradient(circle at 34% 28%, #fff6c2 0%, #f7d24a 45%, #b8862a 100%)',
-      boxShadow: '0 0 14px rgba(247, 210, 74, 0.55), 0 2px 5px rgba(0,0,0,0.5)',
+      border: `2px solid ${vars.bar.edge}`,
+      background: vars.card.badgeOn,
     },
   },
 })

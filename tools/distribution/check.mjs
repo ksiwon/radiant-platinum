@@ -15,7 +15,7 @@
 import { gzipSync } from 'node:zlib'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { PUBLIC_SHELL, collectShell, unlistedShellFiles } from './appShell.mjs'
 import { SHELL_ART, missingArt, unlistedArt } from './shellArt.mjs'
 import { acceptedRisks, openBlockers } from './blockers.mjs'
@@ -78,9 +78,22 @@ function checkPre() {
     fail('앱 셸 목록에 없는 파일', `public/${rel} — appShell.mjs와 docs/APP_SHELL.md에 출처를 적는다`)
   }
 
-  // ①-c 출처가 '자체'가 아닌 것이 목록에 있는가
+  // ①-c 남의 바이트가 허가문 없이 나가는가.
+  //
+  // 오래 '자체'만 통과시켰다. 글꼴이 들어오면서 갈렸다 — OFL 글꼴은 남의
+  // 바이트지만 **허가문을 같이 싣는 조건으로** 실을 수 있다. 그래서 규칙을
+  // 「자체가 아니면 막는다」에서 「자체가 아니면 허가문을 같이 싣는다」로 바꾼다.
+  // 원본(롬·BDSP) 유래는 이 길로도 못 나간다 — 그건 내용 검사(②)가 잡는다
+  const shipped = new Set(PUBLIC_SHELL.map((e) => e.path))
   for (const e of PUBLIC_SHELL) {
-    if (e.origin !== '자체') fail(`앱 셸 출처가 '자체'가 아니다: ${e.origin}`, `public/${e.path}`)
+    if (e.origin === '자체') continue
+    if (e.license === undefined) {
+      fail(`앱 셸에 남의 바이트가 허가문 없이 있다: ${e.origin}`, `public/${e.path}`)
+    } else if (!shipped.has(e.license)) {
+      fail('허가문이 배포물에 같이 안 나간다', `public/${e.license} — appShell.mjs 목록에 적는다`)
+    } else if (!existsSync(join(publicDir, ...e.license.split('/')))) {
+      fail('허가문 파일이 없다', `public/${e.license}`)
+    }
   }
 
   // ①-d 에셋 목차가 다시 추적되고 있는가 (COPYRIGHT.md §5).

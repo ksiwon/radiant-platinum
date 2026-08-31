@@ -7,28 +7,24 @@
 //
 // 그래서 교체 화면과 같은 판을 쓴다 — 왼쪽에 목록, 오른쪽에 고른 것의 속사정.
 // 도구를 고르고 나면 **같은 판 위에서** 파티 카드로 넘어간다(`PartyCards`).
+//
+// ⚠️ **덮개와 창은 교체 화면 것을 그대로 가져온다** (`switchScreen.css`).
+// 여기서 다시 그리면 도구를 고르고 파티로 넘어가는 사이에 판이 바뀐다.
 import { style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
+import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
+import { PICKED, WINDOW } from '../theme/window.css'
+import { sheet as switchSheet } from './switchScreen.css'
 
 /** 교체 화면과 같은 덮개. 두 화면이 같은 판 위에서 이어져야 한다 */
-export const sheet = style({
-  position: 'absolute',
-  inset: 0,
-  display: 'grid',
+export const sheet = style([switchSheet, {
   gridTemplateColumns: 'minmax(320px, 38%) minmax(0, 1fr)',
-  gap: 22,
-  padding: '26px 34px 22px',
-  background:
-    'linear-gradient(100deg, rgba(6,10,20,0.92) 0%, rgba(6,10,20,0.72) 55%,'
-    + ' rgba(6,10,20,0.55) 100%)',
-  backdropFilter: 'blur(3px)',
-  zIndex: 3,
-})
+}])
 
 export const left = style({
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
+  gap: GAP.small + 2,
   minHeight: 0,
 })
 
@@ -39,31 +35,28 @@ export const left = style({
 
 export const tabs = style({
   display: 'flex',
-  gap: 6,
+  gap: GAP.tight + 2,
   flex: '0 0 auto',
 })
 
 const tabBase = style({
+  ...WINDOW,
   appearance: 'none',
-  border: '1px solid rgba(255,255,255,0.14)',
-  borderRadius: 999,
-  padding: '5px 14px',
+  borderRadius: RADIUS.cell,
+  padding: `5px ${GAP.base + 2}px`,
   font: 'inherit',
-  fontSize: 13,
+  fontSize: TEXT.small,
   fontWeight: 700,
-  color: vars.panel.text,
-  background: 'rgba(255,255,255,0.05)',
   cursor: 'pointer',
   transition: 'background 120ms linear, border-color 120ms linear',
 })
 
 export const tab = styleVariants({
-  off: [tabBase, { opacity: 0.55 }],
+  off: [tabBase, { opacity: 0.6 }],
   on: [tabBase, {
-    opacity: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    background: 'rgba(255,255,255,0.16)',
-    boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+    borderColor: vars.pick.edge,
+    background: vars.pick.face,
+    color: vars.pick.text,
   }],
 })
 
@@ -72,42 +65,39 @@ export const tab = styleVariants({
 export const list = style({
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
+  gap: GAP.tight + 2,
   minHeight: 0,
 })
 
 export const row = style({
+  ...WINDOW,
   position: 'relative',
   appearance: 'none',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: GAP.small + 2,
   width: '100%',
   textAlign: 'left',
-  padding: '7px 12px',
-  borderRadius: 12,
-  border: '1px solid rgba(255,255,255,0.12)',
-  background: 'linear-gradient(180deg, rgba(28,38,62,0.9), rgba(13,19,33,0.92))',
-  color: vars.panel.text,
+  padding: `7px ${GAP.base}px`,
   font: 'inherit',
   cursor: 'pointer',
-  transition: 'transform 120ms cubic-bezier(.2,.85,.3,1), border-color 120ms linear',
+  transition: 'transform 120ms ease-out, border-color 120ms linear',
   selectors: {
     '&:hover:enabled': { transform: 'translateX(4px)' },
     '&:disabled': { cursor: 'default' },
   },
 })
 
+/** 고른 줄. 금 테두리가 커서를 대신한다 */
 export const rowOn = style({
-  borderColor: 'rgba(255,255,255,0.62)',
-  boxShadow: '0 6px 20px rgba(0,0,0,0.55), inset 3px 0 0 rgba(255,255,255,0.85)',
+  ...PICKED,
   transform: 'translateX(4px)',
 })
 
 export const icon = style({ flex: '0 0 auto' })
 
 export const label = style({
-  fontSize: 15,
+  fontSize: TEXT.base,
   fontWeight: 700,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
@@ -116,8 +106,8 @@ export const label = style({
 
 export const count = style({
   marginLeft: 'auto',
-  fontSize: 13,
-  opacity: 0.8,
+  fontSize: TEXT.small,
+  color: vars.ink.dim,
   fontVariantNumeric: 'tabular-nums',
   flex: '0 0 auto',
 })
@@ -128,98 +118,104 @@ export const pager = style({
   alignItems: 'center',
   justifyContent: 'space-between',
   marginTop: 'auto',
-  paddingTop: 6,
-  fontSize: 12,
-  opacity: 0.7,
+  paddingTop: GAP.tight + 2,
+  fontSize: TEXT.tiny,
+  color: vars.ink.onDarkDim,
   fontVariantNumeric: 'tabular-nums',
 })
 
 export const empty = style({
-  padding: '18px 14px',
-  borderRadius: 14,
-  border: '1px dashed rgba(255,255,255,0.16)',
-  fontSize: 13,
-  opacity: 0.45,
+  padding: `${GAP.wide + 2}px ${GAP.base + 2}px`,
+  borderRadius: RADIUS.window,
+  border: `1px dashed ${vars.window.rule}`,
+  fontSize: TEXT.small,
+  color: vars.ink.onDarkDim,
 })
 
 // ── 오른쪽: 고른 도구 ────────────────────────────────────────────────────────
 
 export const detail = style({
+  ...WINDOW,
   display: 'flex',
   flexDirection: 'column',
-  gap: 12,
+  gap: GAP.base,
   minWidth: 0,
   alignSelf: 'start',
-  padding: 16,
-  borderRadius: 18,
-  border: '1px solid rgba(255,255,255,0.14)',
-  background: 'linear-gradient(180deg, rgba(20,27,46,0.9), rgba(11,16,28,0.92))',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+  padding: GAP.wide,
 })
 
 /** 아이콘을 크게 세운다. 목록의 28픽셀로는 무엇을 고르는지가 안 보인다 */
 export const hero = style({
   display: 'flex',
   alignItems: 'center',
-  gap: 14,
+  gap: GAP.base + 2,
   minWidth: 0,
 })
 
-export const heroName = style({ fontSize: 20, fontWeight: 800 })
-export const heroSub = style({ marginTop: 2, fontSize: 12, opacity: 0.7 })
+export const heroName = style({
+  fontSize: TEXT.title,
+  fontWeight: 800,
+  color: vars.ink.strong,
+})
+
+export const heroSub = style({
+  marginTop: 2,
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
+})
 
 export const text = style({
-  fontSize: 13,
+  fontSize: TEXT.small,
   lineHeight: 1.6,
-  opacity: 0.88,
   whiteSpace: 'pre-line',
 })
 
 /** 맨 위 띠 — 지금 무엇을 하는 중인지 한 줄로 */
 export const banner = style({
-  margin: '-16px -16px 0',
-  padding: '10px 16px',
-  borderRadius: '18px 18px 0 0',
-  fontSize: 15,
+  margin: `-${GAP.wide}px -${GAP.wide}px 0`,
+  padding: `${GAP.small + 2}px ${GAP.wide}px`,
+  borderRadius: `${RADIUS.window - EDGE.window}px ${RADIUS.window - EDGE.window}px 0 0`,
+  fontSize: TEXT.base,
   fontWeight: 800,
-  letterSpacing: '0.02em',
+  color: vars.status.text,
 })
 
 export const bannerKind = styleVariants({
-  ok: { background: 'rgba(60, 120, 90, 0.55)' },
-  none: { background: 'rgba(90, 96, 110, 0.55)' },
+  ok: { background: vars.state.good },
+  none: { background: vars.hp.empty },
 })
 
 // ── 기술 칸 고르기 — PP에이드·PP회복만 여기까지 온다 ──────────────────────────
 
-export const moves = style({ display: 'grid', gap: 6 })
+export const moves = style({ display: 'grid', gap: GAP.tight + 2 })
 
 export const move = style({
   appearance: 'none',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: GAP.small + 2,
   width: '100%',
   textAlign: 'left',
-  padding: '8px 12px',
-  borderRadius: 10,
-  border: '1px solid rgba(255,255,255,0.12)',
-  background: 'rgba(255,255,255,0.05)',
-  color: vars.panel.text,
+  padding: `${GAP.small}px ${GAP.base}px`,
+  borderRadius: RADIUS.cell,
+  border: `1px solid ${vars.window.rule}`,
+  background: 'transparent',
+  color: 'inherit',
   font: 'inherit',
   cursor: 'pointer',
   selectors: { '&:disabled': { opacity: 0.42, cursor: 'default' } },
 })
 
 export const moveOn = style({
-  borderColor: 'rgba(255,255,255,0.6)',
-  background: 'rgba(255,255,255,0.13)',
+  borderColor: vars.pick.edge,
+  background: vars.pick.face,
+  color: vars.pick.text,
 })
 
 export const pp = style({
   marginLeft: 'auto',
-  fontSize: 12,
-  opacity: 0.85,
+  fontSize: TEXT.tiny,
+  color: vars.ink.dim,
   fontVariantNumeric: 'tabular-nums',
 })
 
@@ -228,6 +224,6 @@ export const foot = style({
   gridColumn: '1 / -1',
   marginTop: 'auto',
   textAlign: 'right',
-  fontSize: 12,
-  opacity: 0.62,
+  fontSize: TEXT.tiny,
+  color: vars.ink.onDarkDim,
 })
