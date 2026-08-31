@@ -21,7 +21,6 @@ import { clampCursor, scrollIntoView, useMenuKeys } from './useMenuKeys'
 import { itemIcon } from './itemIcon'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
-import * as hero from './bagScreen.css'
 import * as own from './dialog.css'
 
 /** 가방과 같은 크기를 쓴다 — 같은 물건이 화면마다 다른 크기면 안 된다 */
@@ -202,11 +201,11 @@ export function ShopScreen() {
         <div className={css.detail}>
           {row && (
             <>
-              <div className={hero.hero}>
-                <span className={hero.heroIcon} style={itemIcon(data?.icons, row.item, BIG_ICON)} aria-hidden />
-                <span className={hero.heroText}>
-                  <span className={hero.heroName}>{data?.names[row.item] ?? ''}</span>
-                  <span className={hero.heroSub}>{amount(unit)}</span>
+              <div className={css.hero}>
+                <span className={css.heroIcon} style={itemIcon(data?.icons, row.item, BIG_ICON)} aria-hidden />
+                <span className={css.heroText}>
+                  <span className={css.heroName}>{data?.names[row.item] ?? ''}</span>
+                  <span className={css.heroSub}>{amount(unit)}</span>
                 </span>
               </div>
               <div className={css.detailText}>{data?.descriptions[row.item] ?? ''}</div>

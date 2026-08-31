@@ -40,6 +40,14 @@ export const vars = createThemeContract({
     /** 어두운 바탕(타이틀·설치 화면 배경) 위의 글자 */
     onDark: null,
     onDarkDim: null,
+    /**
+     * 색 판 위의 글자 — 타입 조각·머리 띠.
+     *
+     * ⚠️ 한때 이 자리에 `status.text`가 쓰였다. 상태 이상의 글자색이 타입
+     * 조각과 배틀 가방 머리 띠까지 나르고 있었고, 그러면 그 이름이 무엇도
+     * 안 가리킨다 (DESIGN.md §1.2의 `hud.warn`과 같은 갈래)
+     */
+    onTint: null,
   },
 
   /** 막대 (HP·경험치·게이지). 짙은 테두리 안에 광택이 있는 채움 */
@@ -60,6 +68,17 @@ export const vars = createThemeContract({
     emptyLit: null, empty: null,
   },
 
+  /**
+   * 파티 화면의 칸 (DESIGN.md §1.6).
+   *
+   * 원작 파티는 목록이 아니라 **판 여섯**이고, 그 판이 상태마다 색이 다르다.
+   * 여기 있는 것은 그 판의 색이지 「카드」라는 장식이 아니다
+   */
+  panel: {
+    face: null, edge: null,
+    faintedFace: null, faintedEdge: null,
+  },
+
   /** 뜻이 있는 색. **장식으로 쓰지 않는다** */
   state: {
     /** 못 하는 것·모자란 것 */
@@ -72,15 +91,19 @@ export const vars = createThemeContract({
   },
 
   /**
-   * 상태 이상 딱지.
+   * 상태 이상 딱지 (DESIGN.md §1.5).
    *
-   * ⚠️ **잰 값이 아니다.** 원작 딱지는 배틀 그래픽 안의 스프라이트라 팔레트
-   * 한 줄로 안 떨어진다. 시리즈가 줄곧 써 온 색을 우리 값으로 고정해 둔 것이고,
-   * 재서 바꿀 자리다 (DESIGN.md §1)
+   * 딱지 하나가 색 셋이다 — 위 한 줄이 밝고, 몸통, 아래 한 줄이 어둡다.
+   * 원작 그림이 24×8인데 그중 첫 줄과 끝 줄이 그 두 색이다
    */
   status: {
-    psn: null, tox: null, brn: null,
-    par: null, slp: null, frz: null,
+    pkrsLit: null, pkrs: null, pkrsDim: null,
+    parLit: null, par: null, parDim: null,
+    frzLit: null, frz: null, frzDim: null,
+    slpLit: null, slp: null, slpDim: null,
+    psnLit: null, psn: null, psnDim: null,
+    brnLit: null, brn: null, brnDim: null,
+    fntLit: null, fnt: null, fntDim: null,
     text: null,
   },
 

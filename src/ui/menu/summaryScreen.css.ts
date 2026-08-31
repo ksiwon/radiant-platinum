@@ -6,7 +6,7 @@
 // 안쪽은 전부 글줄이다.
 import { style, styleVariants } from '@vanilla-extract/css'
 import { GAP, RADIUS, TEXT } from '../theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED } from '../theme/window.css'
+import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
 // 창 안을 가르는 선은 창 한 벌의 것이다 (`theme/window.css`)
@@ -66,19 +66,16 @@ export const shiny = style({ color: vars.pick.edge, fontSize: TEXT.small })
 /**
  * 포켓루스에 걸려 있는 동안 뜨는 딱지 (`SUMMARY_CONDITION_POKERUS`).
  *
- * 원작은 상태이상 칸에 이것을 넣는다 — 상태이상이 **없을 때만**이다
+ * 원작은 상태이상 칸에 이것을 넣는다 — 상태이상이 **없을 때만**이다. 그래서
+ * 딱지도 상태 이상과 **같은 것**이고, 색만 `STATUS_VARS.pkrs`다.
+ *
+ * ⚠️ 한때 여기가 분홍(`state.female`)이었다. 실측해 보니 원작 포켓루스 딱지는
+ * 잠듦과 같은 회록색이다 (DESIGN.md §1.5) — 성별 색과는 아무 상관이 없었다
  */
-export const pokerus = style({
+export const pokerus = style([STATUS_TAG, {
   marginTop: 4,
   alignSelf: 'flex-start',
-  padding: '1px 7px',
-  border: `1px solid ${vars.bar.edge}`,
-  borderRadius: RADIUS.bar,
-  fontSize: TEXT.tiny,
-  fontWeight: 700,
-  color: vars.status.text,
-  background: vars.state.female,
-})
+}])
 
 /**
  * 다 나은 뒤에 남는 작은 점 (`SUMMARY_SPRITE_POKERUS_CURED_ICON`).
@@ -163,7 +160,7 @@ export const typeChip = style({
   borderRadius: RADIUS.bar,
   fontSize: TEXT.tiny,
   fontWeight: 700,
-  color: vars.status.text,
+  color: vars.ink.onTint,
   background: 'var(--tint)',
 })
 

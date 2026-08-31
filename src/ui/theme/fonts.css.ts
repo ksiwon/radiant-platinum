@@ -37,6 +37,41 @@ globalFontFace(UI, {
 })
 
 /**
+ * 일본어 UI (`tools/fonts/jpSubset.py`).
+ *
+ * Pretendard 서브셋에는 가나가 한 자도 없다 — 일본어로 두면 UI 전체가 시스템
+ * 글꼴로 새고, 한 화면에 글꼴 둘이 선다. 그래서 **가나 몫만** 따로 싣는다.
+ *
+ * ⚠️ **`unicodeRange`에 한자가 없다.** 한자를 넣으면 한국어 화면의 한자까지
+ * 일본 자형으로 끌려간다 (아래 폴백 주석과 같은 문제다). 4세대 일본어판은
+ * 한자를 안 써서 넣을 이유도 없다 — 게임 텍스트 496개 파일에 한자가 0자다.
+ *
+ * ⚠️ **`unicodeRange`가 곧 다운로드 조건이다.** 한국어·영어로 노는 사람은
+ * 이 66KB를 아예 안 받는다 — 화면에 그 코드포인트가 나와야 그때 받는다.
+ */
+const JP_RANGE = [
+  'U+2026', 'U+22EF', 'U+2640', 'U+2642', 'U+266B',
+  'U+3000-303F', 'U+3040-309F', 'U+30A0-30FF',
+  'U+329A-329B', 'U+FF01-FF5E', 'U+FF61-FF9F',
+].join(', ')
+
+globalFontFace(UI, {
+  src: "url('/fonts/NotoSansJP-Regular.subset.woff2') format('woff2')",
+  fontWeight: '400',
+  fontStyle: 'normal',
+  fontDisplay: 'swap',
+  unicodeRange: JP_RANGE,
+})
+
+globalFontFace(UI, {
+  src: "url('/fonts/NotoSansJP-Bold.subset.woff2') format('woff2')",
+  fontWeight: '700',
+  fontStyle: 'normal',
+  fontDisplay: 'swap',
+  unicodeRange: JP_RANGE,
+})
+
+/**
  * 폴백 목록.
  *
  * ⚠️ **한자 글꼴은 순서가 곧 나라다.** 브라우저는 글자마다 앞에서부터 그 글자를
@@ -49,7 +84,14 @@ const FALLBACK = "'Malgun Gothic', 'Yu Gothic UI', 'Meiryo', sans-serif"
 
 export const STACK = {
   ui: `'${UI}', ${FALLBACK}`,
-  /** 픽셀 글꼴에는 한자가 없다. 뒤를 시스템 글꼴이 받는다 */
+  /**
+   * 대사창.
+   *
+   * Galmuri11은 한글 11,172자에 **가나 187자와 한자 6,477자까지** 들고 있다
+   * (`fontTools`로 cmap을 세어 확인했다). 그래서 일본어 대사도 픽셀 글꼴
+   * 그대로 나온다 — 일본어 픽셀 글꼴을 따로 실을 이유가 없었다.
+   * 뒤의 `'${UI}'`가 받는 것은 ⋯·㊚·㊛ 셋뿐이다
+   */
   pixel: `'${PIXEL}', '${UI}', ${FALLBACK}`,
   mono: "'Cascadia Mono', 'Consolas', 'Malgun Gothic', monospace",
 } as const

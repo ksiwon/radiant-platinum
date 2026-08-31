@@ -113,6 +113,13 @@ export const GROUPS = [
   { name: 'frontier', make: 'pnpm extract:frontier', match: oneOf('data/frontier.json') },
   { name: 'spawns', make: 'pnpm extract:spawns', match: oneOf('data/spawns.json') },
   {
+    // 가방 그림 여덟 장 × 두 벌과 주머니 아이콘 (DESIGN.md §5). 가방 화면을
+    // 열 때만 읽는다 — 6KB라 크지도 않다
+    name: 'bagSprite',
+    make: 'pnpm extract:bagSprite',
+    match: oneOf('data/bagSprite.json', 'data/bagSprite.png', 'data/bagPockets.png'),
+  },
+  {
     name: 'itemIcons',
     make: 'pnpm extract:itemIcons',
     match: oneOf('data/itemIcons.json', 'data/itemIcons.png'),

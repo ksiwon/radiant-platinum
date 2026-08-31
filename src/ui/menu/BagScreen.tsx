@@ -4,12 +4,16 @@
 // 순서다 (`engine/bag/bag.ts`). 그 차이가 여기서 눈에 보이므로 정렬을 다시
 // 하지 않고 저장된 순서를 그대로 그린다.
 //
+// ⚠️ **배치가 원작 것이다** (DESIGN.md §5). 왼쪽에 가방이 서고, 오른쪽이 도구
+// 목록, 아래 폭 전체가 설명이다. 한때 「왼쪽 목록 / 오른쪽 상세」였는데 그건
+// 설정 앱의 배치고, 그렇게 두면 이 화면이 어느 게임의 것인지가 안 남는다.
+//
 // ⚠️ 설명칸에 **아이콘을 크게** 세운다. 목록의 28픽셀짜리로는 무엇을 고르고
 // 있는지가 안 보인다 — 원작도 위 화면에 고른 물건을 크게 띄운다.
 import { useEffect, useMemo, useState } from 'react'
 import {
-  loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoves, loadSpecies,
-  type ItemTable, type MoveTable, type SpeciesTable,
+  loadBagSprite, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoves,
+  loadSpecies, type ItemTable, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { POCKET_SIZE } from '../../engine/bag/bag'
@@ -18,11 +22,12 @@ import { itemChoice } from './itemChoice'
 import { fieldContextNow, performItemAction } from './itemAction'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
-import type { ItemIcons } from '../../data/schema'
+import type { BagSprite, ItemIcons } from '../../data/schema'
 import { clampCursor, scrollIntoView, useMenuKeys, wrapCursor } from './useMenuKeys'
 import { fieldAction, FieldUse } from '../../engine/bag/fieldUse'
 import { tradeEvolutionItems } from '../../engine/pokemon/evolution'
 import { itemIcon } from './itemIcon'
+import { bagArt, pocketIcon } from './bagArt'
 import { withHeldItem } from './formChange'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
@@ -31,13 +36,18 @@ import * as own from './bagScreen.css'
 /** 목록의 아이콘. 줄 높이(32)를 넘지 않는다 */
 const LIST_ICON = 28
 /** 설명칸의 아이콘. 이 화면에서 제일 큰 그림이어야 한다 */
-const BIG_ICON = 96
+const BIG_ICON = 80
+/** 왼쪽에 선 가방. 원작 스프라이트가 64픽셀이라 정수배로만 키운다 */
+const BAG_ART = 192
+/** 주머니 아이콘. 원작이 16픽셀이라 역시 정수배 */
+const POCKET_ICON = 32
 
 interface Loaded {
   items: ItemTable
   names: string[]
   descriptions: string[]
   icons: ItemIcons
+  bag: BagSprite
   pockets: string[]
   /**
    * 종족·기술 표.
@@ -60,6 +70,8 @@ export function BagScreen() {
   const back = useMenuStore((s) => s.back)
   const bag = useSaveStore((s) => s.bag)
   const money = useSaveStore((s) => s.money)
+  // 가방 그림이 남·여 두 벌이다 (`bag_sprite_{male,female}`)
+  const gender = useSaveStore((s) => s.trainer.gender)
   const removeItem = useSaveStore((s) => s.removeItem)
   const addItem = useSaveStore((s) => s.addItem)
   const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
@@ -75,9 +87,10 @@ export function BagScreen() {
     void Promise.all([
       loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
       loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
+      loadBagSprite(),
     ])
-      .then(([items, names, descriptions, icons, pockets, species, moves]) => {
-        if (alive) setData({ items, names, descriptions, icons, pockets, species, moves })
+      .then(([items, names, descriptions, icons, pockets, species, moves, bag]) => {
+        if (alive) setData({ items, names, descriptions, icons, bag, pockets, species, moves })
       })
       .catch(() => { /* 빈 가방으로 뜬다 */ })
     return () => { alive = false }
@@ -216,26 +229,37 @@ export function BagScreen() {
           : `↑↓ 고르기 · Z 고른다 · X 그만둔다`)
         + ` · ${String(slots.length)}/${String(POCKET_SIZE[shown] ?? 0)}칸`}
     >
-      <div className={css.tabs}>
-        {(data?.pockets ?? []).map((name, i) => (
-          // 고르라고 열린 가방은 그 주머니 하나만 보인다
-          pickPocket !== null && i !== pickPocket ? null : (
-            <span
-              key={name}
-              className={i === shown ? css.tab.on : css.tab.off}
-              onPointerDown={() => {
-                if (pickPocket !== null) return
-                setPocket(i); setCursor(0)
-              }}
-            >
-              {name}
-            </span>
-          )
-        ))}
-      </div>
+      <div className={own.stage}>
+        {/* 왼쪽 — 가방이 선다. 열린 칸이 지금 주머니를 말한다 */}
+        <div className={own.bay}>
+          <span
+            className={own.bag}
+            style={bagArt(data?.bag, shown, gender, BAG_ART)}
+            aria-hidden
+          />
+          <div className={own.pockets}>
+            {(data?.pockets ?? []).map((name, i) => (
+              <span
+                key={name}
+                className={i === shown ? own.pocketOn : own.pocketOff}
+                style={pocketIcon(data?.bag, i, i === shown, POCKET_ICON)}
+                title={name}
+                onPointerDown={() => {
+                  if (pickPocket !== null) return
+                  setPocket(i); setCursor(0)
+                }}
+              />
+            ))}
+          </div>
+          <div className={own.pocketName}>
+            {/* 고르라고 열린 가방은 그 주머니에 못 박히므로 화살표를 안 띄운다 */}
+            <span className={own.arrow}>{pickPocket === null ? '◀' : ''}</span>
+            {data?.pockets[shown] ?? ''}
+            <span className={own.arrow}>{pickPocket === null ? '▶' : ''}</span>
+          </div>
+        </div>
 
-      <div className={css.stage}>
-        <div className={css.list}>
+        <div className={own.list}>
           {slots.length === 0 && <div className={css.empty}>아무것도 없다</div>}
           {slots.map((slot, i) => (
             <div
@@ -259,28 +283,26 @@ export function BagScreen() {
           ))}
         </div>
 
-        <div className={css.detail}>
-          {selected && (
-            <>
-              <div className={own.hero}>
+        {/* 아래 — 원작도 설명은 화면 폭 전체다 */}
+        <div className={own.desc}>
+          {selected
+            ? (
+              <>
                 <span
-                  className={own.heroIcon}
+                  className={own.icon}
                   style={itemIcon(data?.icons, selected.item, BIG_ICON)}
                   aria-hidden
                 />
-                <span className={own.heroText}>
-                  <span className={own.heroName}>{data?.names[selected.item] ?? ''}</span>
-                  <span className={own.heroSub}>
-                    {data?.pockets[shown] ?? ''}
-                    {data?.items.get(selected.item).preventToss === 1 ? '' : ` · ${String(selected.count)}개`}
-                  </span>
+                <span className={own.text}>
+                  <span className={own.name}>{data?.names[selected.item] ?? ''}</span>
+                  <span className={own.body}>{data?.descriptions[selected.item] ?? ''}</span>
                 </span>
-              </div>
-              <div className={css.detailText}>{data?.descriptions[selected.item] ?? ''}</div>
-            </>
-          )}
+              </>
+            )
+            : <span className={own.descEmpty}>고른 물건이 없다</span>}
         </div>
       </div>
+
     </MenuScreen>
   )
 }

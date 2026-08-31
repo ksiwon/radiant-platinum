@@ -112,8 +112,16 @@ export const stage = style({
   },
 })
 
-/** 한 칸 전체를 쓰는 본문 (트레이너 카드처럼 목록이 없는 화면) */
-export const stageWide = style([stage, { gridTemplateColumns: '1fr' }])
+/**
+ * 한 칸 전체를 쓰는 본문 (트레이너 카드·파티처럼 오른쪽 상세 칸이 없는 화면).
+ *
+ * `position: relative`가 있는 이유: 파티의 갈래 메뉴가 원작처럼 판 위 오른쪽
+ * 아래에 겹쳐 뜨는데, 그 기준이 이 칸이다
+ */
+export const stageWide = style([stage, {
+  position: 'relative',
+  gridTemplateColumns: '1fr',
+}])
 
 export const list = style({
   minHeight: 0,
@@ -195,6 +203,52 @@ export const detailSub = style({
   fontSize: TEXT.tiny,
   color: vars.ink.faint,
   fontVariantNumeric: 'tabular-nums',
+})
+
+/**
+ * 설명칸 머리 — 고른 것의 그림을 **크게** 세우고 옆에 이름을 놓는다.
+ *
+ * 목록의 28픽셀짜리 아이콘만으로는 무엇을 고르고 있는지가 안 보인다. 이 칸에서
+ * 제일 큰 것이 그 물건이어야 한다 — 원작도 다른 화면에 고른 물건을 크게 띄운다.
+ *
+ * ⚠️ 한때 이 처방이 `bagScreen.css`에 있었고 상점이 그것을 빌려 썼다. 가방이
+ * 원작 배치로 바뀌면서 그 파일에서 사라지자 상점이 통째로 안 떴다 — 화면 전용
+ * 파일에서 남의 화면이 가져다 쓰면 그 파일은 이미 공용이다.
+ */
+export const hero = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 14,
+  paddingBottom: 12,
+  marginBottom: 12,
+  borderBottom: RULE,
+})
+
+/** 그림은 도트다. 부드럽게 늘리면 뭉개진다 */
+export const heroIcon = style({
+  flex: '0 0 auto',
+  imageRendering: 'pixelated',
+  backgroundRepeat: 'no-repeat',
+})
+
+export const heroText = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+})
+
+export const heroName = style({
+  fontSize: TEXT.title,
+  fontWeight: 700,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+})
+
+export const heroSub = style({
+  fontSize: TEXT.small,
+  color: vars.ink.dim,
 })
 
 export const detailText = style({

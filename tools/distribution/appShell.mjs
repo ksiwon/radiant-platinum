@@ -61,8 +61,23 @@ export const PUBLIC_SHELL = [
     license: 'fonts/Pretendard-OFL.txt',
     note: 'UI 굵은 글씨',
   },
+  // 일본어 몫만 잘라 낸 가나 글꼴 (`tools/fonts/jpSubset.py`). `unicode-range`가
+  // 걸려 있어서 한국어·영어로 노는 사람은 안 받는다
+  {
+    path: 'fonts/NotoSansJP-Regular.subset.woff2',
+    origin: 'Noto Sans JP (SIL OFL 1.1)',
+    license: 'fonts/NotoSansJP-OFL.txt',
+    note: '일본어 UI',
+  },
+  {
+    path: 'fonts/NotoSansJP-Bold.subset.woff2',
+    origin: 'Noto Sans JP (SIL OFL 1.1)',
+    license: 'fonts/NotoSansJP-OFL.txt',
+    note: '일본어 UI 굵은 글씨',
+  },
   { path: 'fonts/Galmuri-OFL.txt', origin: '자체', note: 'Galmuri 허가문 — 글꼴과 같이 나가야 한다' },
   { path: 'fonts/Pretendard-OFL.txt', origin: '자체', note: 'Pretendard 허가문 — 글꼴과 같이 나가야 한다' },
+  { path: 'fonts/NotoSansJP-OFL.txt', origin: '자체', note: 'Noto Sans JP 허가문 — 글꼴과 같이 나가야 한다' },
 ]
 
 /** 목록에 없는 파일이 있으면 안 되는 나무. 여기만 전수 대조한다 */

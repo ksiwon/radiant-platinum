@@ -7,6 +7,7 @@
 // ⚠️ **주석으로 「같은 것을 쓴다」고 적지 않는다.** 그렇게 적어 두고 값을 손으로
 // 베낀 자리가 있었고, 그 사이 테두리 한 줄이 알파 넷으로 갈라졌다. 여기 것을
 // `import`해서 펼쳐 쓴다.
+import type { CSSProperties } from 'react'
 import { keyframes, style } from '@vanilla-extract/css'
 import { vars } from './contract.css'
 import { EDGE, GAP, LINE, RADIUS, TEXT, TIME } from './scale'
@@ -163,6 +164,58 @@ export const HP_VARS: Record<string, { '--lit': string, '--body': string }> = {
   yellow: { '--lit': vars.hp.yellowLit, '--body': vars.hp.yellow },
   red: { '--lit': vars.hp.redLit, '--body': vars.hp.red },
   empty: { '--lit': vars.hp.emptyLit, '--body': vars.hp.empty },
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 상태 이상 딱지
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * 상태 이상 딱지 (DESIGN.md §1.5).
+ *
+ * 원작 그림은 24×8이고 **첫 줄과 끝 줄이 테두리**다 — 따로 두른 선이 아니라
+ * 띠 자체의 위아래 한 줄이다. 그래서 여기도 테두리를 안 두르고 그러데이션
+ * 세 칸으로 그린다. 색 셋은 쓰는 쪽이 `STATUS_VARS`로 준다.
+ *
+ * ⚠️ **한때 이 처방이 두 벌이었다** — 배틀과 파티가 각자 `statusColor` 표를
+ * 들고 있었고, 「두 화면에서 같은 상태가 같은 색이어야 한다」는 주석이 그
+ * 옆에 있었다. 주석은 그것을 지키지 못한다.
+ */
+export const STATUS_TAG = {
+  padding: `1px ${GAP.small - 1}px`,
+  borderRadius: RADIUS.bar,
+  fontSize: TEXT.tiny,
+  fontWeight: 700,
+  color: vars.status.text,
+  background: `linear-gradient(180deg, var(--lit) 0 ${EDGE.bar}px,`
+    + ` var(--body) ${EDGE.bar}px calc(100% - ${EDGE.bar}px),`
+    + ` var(--dim) calc(100% - ${EDGE.bar}px) 100%)`,
+} as const
+
+/**
+ * 상태마다 색 셋.
+ *
+ * ⚠️ **`tox`는 원작에 없다.** `PokemonSummaryScreen_StatusIconAnimIdx`가
+ * `MON_CONDITION_POISON | MON_CONDITION_TOXIC`을 한 딱지로 묶는다 — 맹독도
+ * 독과 같은 그림이다. 색을 따로 만들면 원작에 없는 구분이 생긴다.
+ *
+ * ⚠️ **`ko`도 원작에 없는 이름이다.** 원작은 HP가 0이면 `FAINTED` 딱지를
+ * 붙이므로(`fnt`) 우리 이름표만 다르다
+ */
+/** 색 셋을 인라인 style로 넘길 꼴로 묶는다. `--`로 시작하는 이름은 캐스트가 필요하다 */
+const tint = (lit: string, body: string, dim: string): CSSProperties =>
+  ({ '--lit': lit, '--body': body, '--dim': dim }) as CSSProperties
+
+export const STATUS_VARS: Record<string, CSSProperties> = {
+  pkrs: tint(vars.status.pkrsLit, vars.status.pkrs, vars.status.pkrsDim),
+  par: tint(vars.status.parLit, vars.status.par, vars.status.parDim),
+  frz: tint(vars.status.frzLit, vars.status.frz, vars.status.frzDim),
+  slp: tint(vars.status.slpLit, vars.status.slp, vars.status.slpDim),
+  psn: tint(vars.status.psnLit, vars.status.psn, vars.status.psnDim),
+  tox: tint(vars.status.psnLit, vars.status.psn, vars.status.psnDim),
+  brn: tint(vars.status.brnLit, vars.status.brn, vars.status.brnDim),
+  fnt: tint(vars.status.fntLit, vars.status.fnt, vars.status.fntDim),
+  ko: tint(vars.status.fntLit, vars.status.fnt, vars.status.fntDim),
 }
 
 // ─────────────────────────────────────────────────────────────────

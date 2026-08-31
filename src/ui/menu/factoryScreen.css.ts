@@ -87,7 +87,7 @@ export const typeChip = style({
   padding: '1px 7px',
   border: `1px solid ${vars.bar.edge}`,
   borderRadius: RADIUS.bar,
-  color: vars.status.text,
+  color: vars.ink.onTint,
 })
 
 export const moves = style({

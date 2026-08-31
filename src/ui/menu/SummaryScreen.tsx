@@ -45,7 +45,7 @@ import { itemIcon } from './itemIcon'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
 import * as css from './menuChrome.css'
 import * as own from './summaryScreen.css'
-import { HP_VARS } from '../theme/window.css'
+import { HP_VARS, STATUS_VARS } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
 
 /**
@@ -271,7 +271,9 @@ function Rail(
         {!mon.isEgg && cured(mon) && <span className={own.pokerusCured} title="포켓루스">●</span>}
       </span>
       {!mon.isEgg && <span className={own.level}>Lv.{mon.level}</span>}
-      {!mon.isEgg && infected(mon) && <span className={own.pokerus}>포켓루스</span>}
+      {!mon.isEgg && infected(mon) && (
+        <span className={own.pokerus} style={STATUS_VARS.pkrs}>포켓루스</span>
+      )}
       {mon.heldItem > 0 && (
         <span className={own.held}>
           <span className={own.heldIcon} style={itemIcon(t?.icons, mon.heldItem, 24)} aria-hidden />

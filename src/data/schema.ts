@@ -368,6 +368,20 @@ export const itemIconsSchema = z.object({
 export const pokeIconsSchema = itemIconsSchema
 
 /**
+ * 가방 그림 (DESIGN.md §5).
+ *
+ * 칸 하나가 64×64고 **가로가 주머니, 세로가 남·여**다. 주머니 아이콘은
+ * 딸린 그림(`data/bagPockets.png`) 한 줄이고 칸마다 안 고른 것·고른 것 둘씩이다
+ */
+export const bagSpriteSchema = z.object({
+  size: z.literal(64),
+  cols: z.literal(8),
+  rows: z.literal(2),
+  icon: z.literal(16),
+  iconCols: z.literal(16),
+})
+
+/**
  * 종마다 다른 동작 타이밍 (`BattleDataTable.MotionTimingData`).
  *
  * 열쇠가 **종×100 + 폼**이고 값이 프레임 번호 넷이다(`order`의 차례 —
@@ -682,6 +696,7 @@ export type DialogueIndex = z.infer<typeof dialogueIndexSchema>
 export type Item = z.infer<typeof itemSchema>
 export type ItemIcons = z.infer<typeof itemIconsSchema>
 export type PokeIcons = z.infer<typeof pokeIconsSchema>
+export type BagSprite = z.infer<typeof bagSpriteSchema>
 export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type CreditsAtlas = z.infer<typeof creditsSchema>

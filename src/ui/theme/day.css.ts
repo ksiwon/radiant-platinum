@@ -37,6 +37,7 @@ export const dayTheme = createTheme(vars, {
     faint: '#6b8296',
     onDark: '#eef4fb',
     onDarkDim: '#9fb2c6',
+    onTint: '#ffffff',
   },
 
   // 막대는 짙은 테두리 안에 광택. 같은 아틀라스 실측
@@ -57,6 +58,14 @@ export const dayTheme = createTheme(vars, {
     emptyLit: '#a4ac94', empty: '#6a7362',
   },
 
+  // `party_menu/menu.pal` 실측. `application->colors`가 3행부터라 판 색은
+  // 3+n행이고, 고른 것이 +4 · 기절이 +2다 (`main.c:1420`) — 곧 보통이 3행,
+  // 기절이 5행이다. 옮겨 오는 것은 램프의 밝은 끝(색 4)과 짙은 끝(색 7)이다
+  panel: {
+    face: '#9cc5f6', edge: '#416a9c',
+    faintedFace: '#dea452', faintedEdge: '#943900',
+  },
+
   state: {
     bad: '#c02a1c',
     good: '#18760f',
@@ -65,9 +74,21 @@ export const dayTheme = createTheme(vars, {
     female: '#d0417e',
   },
 
+  // `raw/decomp/res/graphics/pokemon_summary_screen/status_icons.{png,pal}` 실측.
+  // 딱지 일곱이 24×8로 세로로 쌓여 있고 차례가 `SUMMARY_CONDITION_*`이다
+  // (포켓러스·마비·얼음·잠듦·독·화상·기절). 띠 하나가 색 셋 — 첫 줄·몸통·끝 줄
   status: {
-    psn: '#a25bc4', tox: '#8b3fae', brn: '#e8763a',
-    par: '#d8b12a', slp: '#7b8794', frz: '#4aa8d8',
+    pkrsLit: '#9ca48b', pkrs: '#6a7362', pkrsDim: '#525a4a',
+    parLit: '#ffd529', par: '#eeac00', parDim: '#bd7b00',
+    frzLit: '#31cdcd', frz: '#009c9c', frzDim: '#006a6a',
+    // ⚠️ **잠듦과 포켓러스가 같은 색이다.** 원작이 같은 팔레트 자리를 쓴다 —
+    // 눈으로 고른 것이 아니라 그림에서 그대로 나온 값이라 안 벌린다
+    slpLit: '#9ca48b', slp: '#6a7362', slpDim: '#525a4a',
+    // ⚠️ 독은 몸통만 자홍이고 테두리는 화상 쪽 붉은색을 빌려 쓴다. 이상해
+    // 보이지만 원작 그림이 그렇다 (색 11·14·12)
+    psnLit: '#e65a4a', psn: '#c541cd', psnDim: '#b40000',
+    brnLit: '#ff9c8b', brn: '#e65a4a', brnDim: '#b40000',
+    fntLit: '#e65a4a', fnt: '#b40000', fntDim: '#730000',
     text: '#ffffff',
   },
 

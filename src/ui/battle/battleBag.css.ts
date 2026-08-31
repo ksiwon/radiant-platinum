@@ -177,7 +177,7 @@ export const banner = style({
   borderRadius: `${RADIUS.window - EDGE.window}px ${RADIUS.window - EDGE.window}px 0 0`,
   fontSize: TEXT.base,
   fontWeight: 800,
-  color: vars.status.text,
+  color: vars.ink.onTint,
 })
 
 export const bannerKind = styleVariants({

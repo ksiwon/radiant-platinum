@@ -6,6 +6,7 @@
 // 메커니즘(species/moves)과 이름(names/*)을 나눠 둔 이유: 로케일을 바꿔도
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
+  bagSpriteSchema,
   boxWallpapersSchema, creditsSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
@@ -13,6 +14,7 @@ import {
   pokeIconsSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
+  type BagSprite,
   type BoxWallpapers, type CreditsAtlas, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type PoketchMapFile,
@@ -43,6 +45,10 @@ import {
 export const ITEM_ICON_ATLAS = 'data/itemIcons.png'
 export const POKE_ICON_ATLAS = 'data/pokeIcons.png'
 export const BOX_WALLPAPER_ATLAS = 'data/boxWallpapers.png'
+/** 가방 그림. 가로가 주머니 여덟, 세로가 남·여 둘이다 */
+export const BAG_SPRITE_ATLAS = 'data/bagSprite.png'
+/** 주머니 아이콘 한 줄. 주머니마다 안 고른 것·고른 것 둘씩 */
+export const BAG_POCKET_ATLAS = 'data/bagPockets.png'
 /** 크레딧 배경 한 장의 자리 (PARITY §8.12). 장마다 크기가 달라 파일도 따로다 */
 export const creditsImage = (at: number): string => `data/credits${String(at)}.png`
 export const SIGNPOST_ATLAS = 'data/signposts.png'
@@ -294,6 +300,19 @@ export function loadItemIcons(): Promise<ItemIcons> {
 export function loadPokeIcons(): Promise<PokeIcons> {
   return fetchJson('pokeIcons.json', (v) => pokeIconsSchema.parse(v))
     .then(async (icons) => { await pinAtlas(POKE_ICON_ATLAS); return icons })
+}
+
+/**
+ * 가방 그림. 그림 두 장(`bagSprite.png`·`bagPockets.png`)을 같이 잡아 둔다 —
+ * 가방만 오고 주머니 아이콘이 안 오면 왼쪽 칸이 반만 선다
+ */
+export function loadBagSprite(): Promise<BagSprite> {
+  return fetchJson('bagSprite.json', (v) => bagSpriteSchema.parse(v))
+    .then(async (bag) => {
+      await pinAtlas(BAG_SPRITE_ATLAS)
+      await pinAtlas(BAG_POCKET_ATLAS)
+      return bag
+    })
 }
 
 /** 박스 벽지 아틀라스. 그림은 `data/boxWallpapers.png`다 */

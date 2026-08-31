@@ -10,7 +10,7 @@
 import { style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED, WINDOW } from '../theme/window.css'
+import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG, WINDOW } from '../theme/window.css'
 
 /** 무대 위에 통째로 덮는다. 고르는 동안은 배틀 화면이 아니라 이 화면이다 */
 export const sheet = style({
@@ -116,15 +116,8 @@ export const numbers = style({
   fontVariantNumeric: 'tabular-nums',
 })
 
-/** 상태이상·기절 딱지 */
-export const tag = style({
-  padding: '1px 7px',
-  border: `1px solid ${vars.bar.edge}`,
-  borderRadius: RADIUS.bar,
-  fontSize: TEXT.tiny,
-  fontWeight: 800,
-  color: vars.status.text,
-})
+/** 상태이상·기절 딱지. 배틀·파티와 **같은 것**이다 */
+export const tag = style(STATUS_TAG)
 
 // ── 오른쪽: 고른 한 마리의 속사정 ────────────────────────────────────────────
 
@@ -145,7 +138,7 @@ export const banner = style({
   borderRadius: `${RADIUS.window - EDGE.window}px ${RADIUS.window - EDGE.window}px 0 0`,
   fontSize: TEXT.base,
   fontWeight: 800,
-  color: vars.status.text,
+  color: vars.ink.onTint,
 })
 
 export const bannerKind = styleVariants({
@@ -175,7 +168,7 @@ export const typeChip = style({
   borderRadius: RADIUS.bar,
   fontSize: TEXT.tiny,
   fontWeight: 800,
-  color: vars.status.text,
+  color: vars.ink.onTint,
   background: `var(--tint, ${vars.window.edge})`,
 })
 

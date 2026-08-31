@@ -27,6 +27,7 @@ import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { withObject, withSubject, withTopic } from '../korean'
 import { useMenuKeys } from '../menu/useMenuKeys'
+import { STATUS_VARS } from '../theme/window.css'
 import { useListCursor } from './listCursor'
 import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
@@ -477,10 +478,7 @@ function MonCard(
         {gender && <span className={`${css.genderMark} ${gender.cls}`}>{gender.mark}</span>}
         {caught && <span className={css.caughtMark} title="도감에 등록된 포켓몬" />}
         {mon.status !== 'ok' && (
-          <span
-            className={css.statusTag}
-            style={{ background: css.statusColor[mon.status] }}
-          >
+          <span className={css.statusTag} style={STATUS_VARS[mon.status]}>
             {STATUS_LABEL[mon.status] ?? mon.status}
           </span>
         )}

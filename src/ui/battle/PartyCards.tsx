@@ -9,9 +9,7 @@
 import { hpColor } from '../../engine/battle/healthbar'
 import type { PartySlot } from '../../engine/battle/choice'
 import * as css from './switchScreen.css'
-import { statusColor } from './battleScreen.css'
-import { HP_VARS } from '../theme/window.css'
-import { vars } from '../theme/contract.css'
+import { HP_VARS, STATUS_VARS } from '../theme/window.css'
 
 const STATUS_LABEL: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
@@ -54,13 +52,10 @@ export function PartyCards(
             <span className={css.cardTop}>
               <span className={css.name}>{label}</span>
               {slot.fainted && (
-                <span className={css.tag} style={{ background: vars.hp.empty }}>기절</span>
+                <span className={css.tag} style={STATUS_VARS.fnt}>기절</span>
               )}
               {!slot.fainted && slot.status && (
-                <span
-                  className={css.tag}
-                  style={{ background: statusColor[slot.status] ?? vars.hp.empty }}
-                >
+                <span className={css.tag} style={STATUS_VARS[slot.status] ?? STATUS_VARS.fnt}>
                   {STATUS_LABEL[slot.status] ?? slot.status}
                 </span>
               )}

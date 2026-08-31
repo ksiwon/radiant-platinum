@@ -17,8 +17,7 @@
 import { useEffect, useState } from 'react'
 import { loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
 import { fillMenuText, loadUiText } from '../../data/uiText'
-import { genderOf, maxHp, natureOf, statsOf } from '../../engine/pokemon/instance'
-import { natureEffect } from '../../engine/pokemon/stats'
+import { genderOf, maxHp } from '../../engine/pokemon/instance'
 import { hpColor } from '../../engine/battle/healthbar'
 import { FIELD_MOVES, type FieldMoveId } from '../../engine/script/fieldMoves'
 import { fieldMoveFromMenu } from '../../engine/script/field'
@@ -46,15 +45,13 @@ import { MenuScreen } from './MenuScreen'
 import { PARTY_SLOT_NONE, partyChoice } from './partyChoice'
 import * as css from './menuChrome.css'
 import * as own from './partyScreen.css'
-import { HP_VARS } from '../theme/window.css'
+import { HP_VARS, STATUS_VARS } from '../theme/window.css'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 
 /** 상태 이상 배지. 이름은 `TEXT_BANK_MENU_ENTRIES` 0~4와 같은 낱말이다 */
 const STATUS_LABEL: Record<string, string> = {
   psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비', slp: '잠듦', ko: '기절',
 }
-
-const STAT_LABEL = { hp: 'HP', atk: '공격', def: '방어', spa: '특공', spd: '특방', spe: '스피드' } as const
 
 
 
@@ -106,11 +103,7 @@ export function PartyScreen() {
   const locale = useGameLocale()
   const [names, setNames] = useState<string[]>([])
   const [moveNames, setMoveNames] = useState<string[]>([])
-  const [moveTexts, setMoveTexts] = useState<string[]>([])
   const [cursor, setCursor] = useState(0)
-  /** 어느 목록에 커서가 있는가 */
-  const [pane, setPane] = useState<'party' | 'moves'>('party')
-  const [moveAt, setMoveAt] = useState(0)
   /** 자리를 바꾸려고 집어 든 카드. null이면 안 집었다 */
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -157,11 +150,11 @@ export function PartyScreen() {
     let alive = true
     void Promise.all([
       loadSpecies(), loadSpeciesNames(locale), loadMoveNames(locale),
-      loadUiText('moveDescriptions', locale), loadUiText('partyMenu', locale),
+      loadUiText('partyMenu', locale),
     ])
-      .then(([table, list, moves, texts, party]) => {
+      .then(([table, list, moves, party]) => {
         if (!alive) return
-        setSpecies(table); setNames(list); setMoveNames(moves); setMoveTexts(texts)
+        setSpecies(table); setNames(list); setMoveNames(moves)
         setPartyText(party)
       })
       .catch(() => { /* 이름만 빈다 */ })
@@ -170,8 +163,6 @@ export function PartyScreen() {
 
   const at = Math.min(cursor, Math.max(0, party.length - 1))
   const selected = party[at]
-  const moves = selected?.moves ?? []
-  const moveOn = Math.min(moveAt, Math.max(0, moves.length - 1))
 
   /**
    * 집은 채로 움직이면 **집은 것이 따라온다** — 그래야 어디로 가는지 보인다.
@@ -193,11 +184,6 @@ export function PartyScreen() {
     if (verdict === 'fly') { push('fly'); return }
     if (verdict === 'used') { closeAll(); return }
     setNotice(DENIAL[verdict] ?? null)
-  }
-
-  const tryMove = (): void => {
-    const slot = moves[moveOn]
-    if (slot) runFieldMove(slot.move)
   }
 
   /**
@@ -383,17 +369,12 @@ export function PartyScreen() {
   // 움직이면 무엇을 고르는 중인지가 사라진다
   const inMenu = menu !== null
   useMenuKeys({
-    up: inMenu ? () => { setMenuAt((c) => clampCursor(c, -1, choices.length)) }
-      : pane === 'party' ? stepParty(-1) : () => { setMoveAt((c) => clampCursor(c, -1, moves.length)) },
-    down: inMenu ? () => { setMenuAt((c) => clampCursor(c, 1, choices.length)) }
-      : pane === 'party' ? stepParty(1) : () => { setMoveAt((c) => clampCursor(c, 1, moves.length)) },
-    left: inMenu ? undefined : pane === 'party' ? stepParty(-1) : () => { setPane('party') },
-    right: inMenu ? undefined : pane === 'party' ? stepParty(1) : undefined,
-    tab: () => {
-      setNotice(null)
-      if (inMenu || held !== null) return // 집은 채로는 칸을 안 옮긴다
-      setPane((p) => (p === 'party' && moves.length > 0 ? 'moves' : 'party'))
-    },
+    // ⚠️ **위아래는 두 칸씩이다.** 판이 두 줄로 서 있어서 한 칸씩 옮기면
+    // ↑가 옆으로 가는 것처럼 보인다 (`GridMenuCursor_CheckNavigation`)
+    up: inMenu ? () => { setMenuAt((c) => clampCursor(c, -1, choices.length)) } : stepParty(-2),
+    down: inMenu ? () => { setMenuAt((c) => clampCursor(c, 1, choices.length)) } : stepParty(2),
+    left: inMenu ? undefined : stepParty(-1),
+    right: inMenu ? undefined : stepParty(1),
     confirm: () => {
       setNotice(null)
       if (inMenu) { choices[Math.min(menuAt, choices.length - 1)]?.run(); return }
@@ -406,7 +387,6 @@ export function PartyScreen() {
       }
       // 도구를 들고 왔으면 갈래 메뉴가 아니라 **먹이기**다
       if (usingItem !== null) { applyItem(); return }
-      if (pane === 'moves') { tryMove(); return }
       // 집은 것을 놓는다. 놓는 자리가 곧 새 자리다 — 옮기는 동안 이미 바뀌어 있다
       if (held !== null) { setHeld(null); return }
       setMenu('root')
@@ -419,26 +399,29 @@ export function PartyScreen() {
       // 안 고르고 나간다. 원작도 이때 `PARTY_SLOT_NONE`을 준다
       if (choosingMon) { partyChoice.slot = PARTY_SLOT_NONE; closeAll(); return }
       if (held !== null) { setHeld(null); return }
-      if (pane === 'moves') { setPane('party'); return }
       back()
     },
   })
 
   const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
-  const info = species && selected ? species.of(selected) : undefined
   const alive = party.filter((m) => m.hp > 0).length
 
-  const foot = inMenu
+  /**
+   * 아래 띠.
+   *
+   * ⚠️ **알림이 여기로 온다.** 「밖에서는 쓸 수 없는 기술이다」 같은 한 줄이
+   * 한때 오른쪽 상세 칸 밑에 붙어 있었는데 그 칸이 없어졌다. 원작도 이런 말은
+   * 화면 아래 글상자에 한 줄로 뜬다
+   */
+  const foot = notice ?? (inMenu
     ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
     : choosingMon
       ? '↑↓←→ 고르기 · Z 결정 · X 그만둔다'
       : usingItem !== null
-      ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
-      : held !== null
-        ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
-        : pane === 'moves'
-          ? '↑↓ 고르기 · Z 쓴다 · Tab/← 포켓몬 · X 닫기'
-          : '↑↓←→ 고르기 · Z 갈래 · Tab 기술 · X 닫기'
+        ? '↑↓←→ 누구에게 · Z 쓴다 · X 그만둔다'
+        : held !== null
+          ? '↑↓←→ 옮기기 · Z 놓기 · X 되돌리기'
+          : '↑↓←→ 고르기 · Z 갈래 · X 닫기')
 
   return (
     <MenuScreen
@@ -446,9 +429,8 @@ export function PartyScreen() {
       note={`싸울 수 있다 ${String(alive)} · 데리고 있다 ${String(party.length)}/6`}
       foot={foot}
     >
-      <div className={css.stage}>
+      <div className={css.stageWide}>
         <div className={own.grid}>
-          {party.length === 0 && <div className={css.empty}>데리고 있는 포켓몬이 없다</div>}
           {party.map((mon, i) => (
             <Card
               key={`${String(mon.pid)}/${String(i)}`}
@@ -457,12 +439,12 @@ export function PartyScreen() {
               genderRatio={species?.of(mon).genderRatio ?? 255}
               full={species ? fullHp(mon, species) : mon.hp}
               lead={i === 0}
-              on={i === at && pane === 'party'}
+              right={i % 2 === 1}
+              on={i === at}
               picked={i === held}
               onPick={() => {
                 if (held !== null) return // 집은 채로는 마우스가 커서를 안 끈다
                 setCursor(i)
-                setPane('party')
               }}
               onGrab={() => {
                 // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
@@ -481,77 +463,38 @@ export function PartyScreen() {
             맞춘 꼴이고, 무엇보다 「여섯 중 셋」이라는 것이 화면에서 사라진다
           */}
           {Array.from({ length: Math.max(0, 6 - party.length) }, (_, k) => (
-            <div key={`empty/${String(k)}`} className={own.cardEmpty} aria-hidden />
+            <div
+              key={`empty/${String(k)}`}
+              className={(party.length + k) % 2 === 1
+                ? `${own.cardEmpty} ${own.cardRight}`
+                : own.cardEmpty}
+              aria-hidden
+            />
           ))}
         </div>
 
-        <div className={css.detail}>
-          {inMenu && (
-            <div className={own.choices}>
-              {/* 원작이 먼저 묻고("○○을 어떻게 할까?") 그 아래에 갈래를 편다 */}
-              <div className={own.choiceAsk}>
-                {menu === 'item'
-                  ? plainText(partyText[P.askItem])
-                  : fillMenuText(partyText[P.askMon] ?? '', [selected ? nameOf(selected) : ''])}
-              </div>
-              {choices.map((c, i) => (
-                <div
-                  key={c.label + String(i)}
-                  className={i === Math.min(menuAt, choices.length - 1)
-                    ? own.choiceOn : own.choice}
-                  onPointerEnter={() => { setMenuAt(i) }}
-                  onClick={c.run}
-                >
-                  {c.label}
-                </div>
-              ))}
+        {/* 갈래 메뉴는 원작처럼 오른쪽 아래 구석에 창 하나로 뜬다 */}
+        {inMenu && (
+          <div className={own.choices}>
+            {/* 원작이 먼저 묻고("○○을 어떻게 할까?") 그 아래에 갈래를 편다 */}
+            <div className={own.choiceAsk}>
+              {menu === 'item'
+                ? plainText(partyText[P.askItem])
+                : fillMenuText(partyText[P.askMon] ?? '', [selected ? nameOf(selected) : ''])}
             </div>
-          )}
-          {!inMenu && selected && info ? (
-            <>
-              <div className={css.detailTitle}>
-                {nameOf(selected)}
-                <span className={css.detailSub}>
-                  No.{String(selected.species).padStart(3, '0')} · {natureOf(selected.pid)}
-                </span>
+            {choices.map((c, i) => (
+              <div
+                key={c.label + String(i)}
+                className={i === Math.min(menuAt, choices.length - 1)
+                  ? own.choiceOn : own.choice}
+                onPointerEnter={() => { setMenuAt(i) }}
+                onClick={c.run}
+              >
+                {c.label}
               </div>
-
-              <div className={css.detailHead}>능력</div>
-              <div className={own.stats}>
-                {(Object.keys(STAT_LABEL) as (keyof typeof STAT_LABEL)[]).map((key) => (
-                  <div key={key} className={own.statRow}>
-                    <span className={own.statName} data-nature={natureMark(selected, key)}>
-                      {STAT_LABEL[key]}
-                    </span>
-                    <span className={own.statValue}>{statsOf(selected, info)[key]}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className={css.detailHead}>기술</div>
-              {moves.map((slot, i) => {
-                const field = FIELD_BY_MOVE.get(slot.move)
-                const on = pane === 'moves' && i === moveOn
-                return (
-                  <div
-                    key={`${String(slot.move)}/${String(i)}`}
-                    className={on ? own.moveRowOn : own.moveRow}
-                    onPointerEnter={() => { setPane('moves'); setMoveAt(i); setNotice(null) }}
-                    onClick={tryMove}
-                  >
-                    <span className={css.label}>{moveNames[slot.move] ?? ''}</span>
-                    {field && <span className={own.fieldTag}>밖에서</span>}
-                    <span className={own.movePp}>PP {slot.pp}</span>
-                  </div>
-                )
-              })}
-              {/* 커서가 올라간 기술의 설명. 롬의 글을 줄 바꿈까지 그대로 쓴다 */}
-              <div className={own.moveText}>
-                {notice ?? (pane === 'moves' ? moveTexts[moves[moveOn]?.move ?? -1] ?? '' : '')}
-              </div>
-            </>
-          ) : null}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </MenuScreen>
   )
@@ -573,12 +516,14 @@ const GENDER_MARK: Record<string, { mark: string; cls: string }> = {
  * 것이 어느 것인지가 글자를 안 읽어도 보여야 한다
  */
 function Card(
-  { mon, name, genderRatio, full, lead, on, picked, onPick, onGrab }: {
+  { mon, name, genderRatio, full, lead, right, on, picked, onPick, onGrab }: {
     mon: PokemonInstance
     name: string
     genderRatio: number
     full: number
     lead: boolean
+    /** 오른쪽 줄인가. 원작이 오른쪽을 한 칸 내려 세운다 */
+    right: boolean
     on: boolean
     picked: boolean
     onPick: () => void
@@ -592,10 +537,12 @@ function Card(
   const gender = GENDER_MARK[genderOf(mon.pid, genderRatio)]
   const state = fainted ? 'ko' : mon.status
   const shell = [
-    lead ? own.cardLead : own.card,
+    own.card,
+    lead ? own.cardLead : '',
+    right ? own.cardRight : '',
+    fainted ? own.cardFainted : '',
     on ? own.cardOn : '',
     picked ? own.cardHeld : '',
-    fainted ? own.cardFainted : '',
   ].filter(Boolean).join(' ')
 
   return (
@@ -603,7 +550,7 @@ function Card(
       {/* 그림을 못 받아도 카드는 서야 한다. 자리만 비운다 */}
       {art !== null && (
         <img
-          className={lead ? own.portraitLead : own.portrait}
+          className={fainted ? own.portraitDown : own.portrait}
           src={art}
           alt=""
           onError={(e) => { e.currentTarget.style.visibility = 'hidden' }}
@@ -614,7 +561,7 @@ function Card(
           <span className={own.name}>{name}</span>
           {gender && <span className={gender.cls}>{gender.mark}</span>}
           {state !== 'ok' && (
-            <span className={own.status} style={{ background: own.statusColor[state] }}>
+            <span className={own.status} style={STATUS_VARS[state]}>
               {STATUS_LABEL[state] ?? state}
             </span>
           )}
@@ -638,11 +585,3 @@ function Card(
   )
 }
 
-/** 성격이 올리는 능력에 빨강, 내리는 쪽에 파랑. HP는 성격을 안 탄다 */
-function natureMark(mon: PokemonInstance, stat: string): '' | 'up' | 'down' {
-  if (stat === 'hp') return ''
-  const effect = natureEffect(natureOf(mon.pid))
-  if (effect.up === stat) return 'up'
-  if (effect.down === stat) return 'down'
-  return ''
-}

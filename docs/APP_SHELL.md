@@ -21,8 +21,18 @@
 | `fonts/Galmuri11.woff2` | Galmuri11 (SIL OFL 1.1) | 대사창 픽셀 글꼴 493KB |
 | `fonts/Pretendard-Regular.subset.woff2` | Pretendard (SIL OFL 1.1) | UI 본문 261KB |
 | `fonts/Pretendard-Bold.subset.woff2` | Pretendard (SIL OFL 1.1) | UI 굵은 글씨 264KB |
+| `fonts/NotoSansJP-Regular.subset.woff2` | Noto Sans JP (SIL OFL 1.1) | 일본어 UI 33KB |
+| `fonts/NotoSansJP-Bold.subset.woff2` | Noto Sans JP (SIL OFL 1.1) | 일본어 UI 굵은 글씨 33KB |
 | `fonts/Galmuri-OFL.txt` | 자체 | Galmuri 허가문 |
 | `fonts/Pretendard-OFL.txt` | 자체 | Pretendard 허가문 |
+| `fonts/NotoSansJP-OFL.txt` | 자체 | Noto Sans JP 허가문 |
+
+**일본어 글꼴 둘은 `pnpm gen:jpFont`이 굽는다** (`tools/fonts/jpSubset.py`).
+가나·전각기호만 남긴 서브셋이고 `@font-face`에 `unicode-range`가 걸려 있어서
+한국어·영어로 노는 사람은 안 받는다. 왜 한자를 안 넣었는지는 DESIGN.md §4에 있다.
+
+⚠️ Noto Sans JP의 예약 이름은 **'Source'**지 'Noto Sans JP'가 아니다
+(Source Han Sans에서 왔다). 그래서 서브셋을 만들고도 이름을 그대로 쓸 수 있다.
 
 **그림 넷은 `art/`의 마스터에서 굽는다** — `pnpm assets:art`. 마스터(PNG 3.5MB)는
 저장소에 있고 배포물에는 안 들어간다. 굽는 값과 그 근거는 `tools/assets/shellArt.py`

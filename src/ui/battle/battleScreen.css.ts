@@ -6,7 +6,7 @@
 import { globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED, WINDOW } from '../theme/window.css'
+import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG, WINDOW } from '../theme/window.css'
 
 /**
  * 떠 있는 판의 재질 — **창 한 벌 그대로다** (DESIGN.md §3).
@@ -205,22 +205,12 @@ export const caughtMark = style({
   flex: '0 0 auto',
 })
 
-/** 상태 이상 딱지. 원작도 체력판 안에 색 딱지로 붙인다 */
-export const statusTag = style({
-  padding: '1px 7px',
-  border: `1px solid ${vars.bar.edge}`,
-  borderRadius: RADIUS.bar,
-  fontSize: 11,
-  fontWeight: 800,
-  color: vars.status.text,
-  background: vars.status.slp,
-})
-
-/** 상태마다 색이 다르다 — 글자를 안 읽어도 무엇에 걸렸는지 보인다 */
-export const statusColor: Record<string, string> = {
-  psn: vars.status.psn, tox: vars.status.tox, brn: vars.status.brn,
-  par: vars.status.par, slp: vars.status.slp, frz: vars.status.frz,
-}
+/**
+ * 상태 이상 딱지. 원작도 체력판 안에 색 딱지로 붙인다.
+ *
+ * 색은 쓰는 쪽이 `STATUS_VARS`로 준다 — 파티 화면과 **같은 표**다
+ */
+export const statusTag = style(STATUS_TAG)
 
 /** 아래쪽 — 왼쪽에 배틀 로그, 오른쪽에 명령 */
 export const console_ = style({

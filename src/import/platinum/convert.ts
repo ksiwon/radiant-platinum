@@ -24,6 +24,7 @@ import { convertItems } from './items'
 import { convertNpcSprites } from './npcSprites'
 import { convertItemIcons, convertPokeIcons } from './icons'
 import { convertBoxWallpapers } from './boxWallpapers'
+import { convertBagSprite } from './bagSprite'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
 import { convertStarterScene } from './starterScene'
@@ -258,6 +259,12 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/pokeIcons.png', 'data/pokeIcons.json'],
     converter: 1,
     convert: convertPokeIcons,
+  },
+  {
+    name: 'bagSprite',
+    outputs: ['data/bagSprite.png', 'data/bagPockets.png', 'data/bagSprite.json'],
+    converter: 1,
+    convert: convertBagSprite,
   },
   {
     name: 'boxWallpapers',

@@ -1829,6 +1829,28 @@ NCGR 381번**을 쓴다 — 롬에 남은 3세대 잔재 33장 중 하나다. �
 않는 이유는 아틀라스를 **도구 번호로** 찾기 때문이다: 빌리면 그리는 자리마다
 번호를 갈아 끼워야 하고 가방에 같은 그림이 둘 뜬다.
 
+#### 가방 그림과 주머니 아이콘
+
+`graphic/pl_bag_gra.narc`, **39칸**. 차례는 디컴프의
+`res/graphics/bag/bag_graphics.order`가 정본이다 — 남·여 가방이 2·3과 6·7,
+주머니 아이콘이 21·22다.
+
+- 가방 시트는 4bpp **64×512**(64×64 여덟 장). NCGR이 `-clobbersize`로 구워져
+  머리의 크기 칸이 `0xffff`라 폭을 **알고** 읽어야 한다
+- 주머니 아이콘은 `-sopc`라 머리에 크기가 들어 있다 (`0x1a`에 32타일 = 256px).
+  한 줄에 열여섯이고 주머니마다 안 고른 것·고른 것 둘이다
+  (`BagUI_DrawPocketSelectorIcon`의 `pocketType * 32 (+16)`)
+
+⚠️ **주머니 번호 ≠ 그림 번호다.** `bag_sprite_anim.json`의
+`animationResults[N].index`가 `[1,3,4,7,2,6,5,0]`이라, 시트 차례대로 그리면
+「도구」 주머니에 볼 칸이 열린 가방이 뜬다. 같은 차례가 애니 이름표
+(`ca1 ca3 ca4 ca7 ca2 ca6 ca5 ca0`)에도 한 번 더 적혀 있다.
+
+굽는 것은 `tools/extract/bagSprite.js`(`pnpm extract:bagSprite`)와
+`src/import/platinum/bagSprite.ts` **둘 다**다. 결과는 `data/bagSprite.png`
+(512×128) · `data/bagPockets.png`(256×16) · `data/bagSprite.json`. 둘 다 디컴프
+원본 PNG와 **픽셀 단위로 같은지** 대조해서 확인했다.
+
 #### 2.12.1 nuts_data — 나무열매 64종, 그리고 밭 118곳
 
 `itemtool/itemdata/nuts_data.narc`. 열매마다 12바이트다 (`BerryData`) — 크기·
