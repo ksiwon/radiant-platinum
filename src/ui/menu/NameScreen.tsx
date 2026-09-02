@@ -14,6 +14,7 @@ import { loadUiText, NAMING_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { formatMessage, MessageSlots } from '../../engine/script/text'
+import * as chrome from './menuChrome.css'
 import * as css from './dialog.css'
 import { naming } from './namingAnswer'
 import * as own from './nameScreen.css'
@@ -77,30 +78,46 @@ export function NameScreen() {
   if (!what) return null
 
   return (
-    <div className={css.center}>
-      <div className={own.card}>
-        <p className={own.prompt}>{prompt || '별명을 지어 주세요'}</p>
-        <form
-          className={own.row}
-          onSubmit={(e) => { e.preventDefault(); done(draft) }}
-        >
-          <input
-            className={own.input}
-            value={draft}
-            maxLength={what.max}
-            autoFocus
-            onChange={(e) => { setDraft(e.target.value) }}
-            aria-label="별명"
-          />
-          <button className={own.ok} type="submit">결정</button>
-        </form>
-        {/*
-          안 짓고 넘어갈 수 있어야 한다. 원작도 여기서 B를 누르면 별명 없이
-          지나가고, 스크립트가 그 답(1)으로 갈라진다
-        */}
-        <button className={own.skip} type="button" onClick={() => { done('') }}>
-          그대로 두기
-        </button>
+    /*
+      ⚠️ **`overlay`가 없으면 화면이 3D 밑에 깔린다.** `dialog.css`의 `center`는
+      자리를 안 잡은(static) 상자라 층이 없는데, 무대(`scene/Stage`의
+      `#stage-wrap`)는 `position: fixed`다 — 자리를 잡은 것은 DOM 차례와 무관하게
+      안 잡은 것 위에 그려진다. 그래서 이 창은 **그려지긴 하는데 캔버스 뒤에**
+      있었다: 실측으로 「그대로 두기」 단추의 한가운데를 `elementFromPoint`로
+      되물으면 `CANVAS`가 나왔고, 화면에는 창이 한 조각도 안 보였다.
+
+      스크립트는 답이 나올 때까지 선다(`naming.answer`). 그러니 마우스로 노는
+      사람에게는 **연구소에서 게임이 멎은 것**으로 보인다 — 키보드(Enter·Esc)로만
+      빠져나갈 수 있었다. e2e ㉖이 여기서 60초를 서다 떨어졌다.
+
+      묻고 답하는 다른 화면(리포트·설정)과 같은 것을 쓴다.
+    */
+    <div className={chrome.overlay}>
+      <div className={css.center}>
+        <div className={own.card}>
+          <p className={own.prompt}>{prompt || '별명을 지어 주세요'}</p>
+          <form
+            className={own.row}
+            onSubmit={(e) => { e.preventDefault(); done(draft) }}
+          >
+            <input
+              className={own.input}
+              value={draft}
+              maxLength={what.max}
+              autoFocus
+              onChange={(e) => { setDraft(e.target.value) }}
+              aria-label="별명"
+            />
+            <button className={own.ok} type="submit">결정</button>
+          </form>
+          {/*
+            안 짓고 넘어갈 수 있어야 한다. 원작도 여기서 B를 누르면 별명 없이
+            지나가고, 스크립트가 그 답(1)으로 갈라진다
+          */}
+          <button className={own.skip} type="button" onClick={() => { done('') }}>
+            그대로 두기
+          </button>
+        </div>
       </div>
     </div>
   )

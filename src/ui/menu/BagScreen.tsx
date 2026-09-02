@@ -47,7 +47,16 @@ interface Loaded {
   names: string[]
   descriptions: string[]
   icons: ItemIcons
-  bag: BagSprite
+  /**
+   * 가방 그림. **없을 수 있다.**
+   *
+   * ⚠️ `bagSprite`는 필수 그룹이 아니고(`install/required.ts`), 새 그룹은
+   * **이미 깔린 설치본에 저절로 안 들어온다** (IMPORT.md §15). 그러면 이
+   * 한 장이 없다는 이유로 목록·이름·설명까지 통째로 없는 화면이 뜬다 —
+   * 실측으로 왼쪽 칸이 빈 채 주머니 아이콘 여덟과 주머니 이름이 다 사라졌다.
+   * `bagArt`·`pocketIcon`은 처음부터 `undefined`를 받게 돼 있다
+   */
+  bag: BagSprite | undefined
   pockets: string[]
   /**
    * 종족·기술 표.
@@ -87,7 +96,10 @@ export function BagScreen() {
     void Promise.all([
       loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
       loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
-      loadBagSprite(),
+      // ⚠️ **이 하나만 낱개로 받는다.** 나머지는 다 필수 그룹이라 없으면
+      // 애초에 게임이 안 열리는데, 이것은 아니다 — 한 뭉치로 묶으면 그림
+      // 한 장 때문에 도구 목록까지 같이 없어진다 (위 `bag` 주석)
+      loadBagSprite().catch(() => undefined),
     ])
       .then(([items, names, descriptions, icons, pockets, species, moves, bag]) => {
         if (alive) setData({ items, names, descriptions, icons, bag, pockets, species, moves })

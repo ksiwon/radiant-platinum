@@ -220,6 +220,31 @@ export const head = style({ borderBottom: RULE, color: vars.ink.strong })
 `ui/theme/`에서 온다.** 그 밖에 예외를 늘리지 않는다 — 여덟 벌이 됐던 것이
 그렇게 시작했다.
 
+### 창은 3D 위에 선다 — 자리를 잡아야 그렇게 된다
+
+⚠️ **창을 그냥 `<div>` 하나로 띄우면 화면에 안 나온다.** 무대(`scene/Stage`의
+`#stage-wrap`)가 `position: fixed`이고, **자리를 잡은 것은 DOM 차례와 무관하게
+안 잡은(static) 것 위에** 그려진다. 그래서 층 없는 창은 그려지긴 하는데 캔버스
+뒤에 있고, 마우스도 캔버스가 다 먹는다.
+
+층을 받는 길은 셋뿐이다:
+
+| 어떻게 | 무엇이 준다 |
+|---|---|
+| `<MenuScreen>`으로 감싼다 | 그 안에서 `overlay`/`cinematicOverlay`를 쓴다 |
+| `menuChrome.css`의 `overlay`·`cinematicOverlay` | `scrim`(fixed) + `z-index` 400 |
+| 제 스타일에 `position: fixed`를 준다 | 시작 메뉴의 `frame`이 그렇다 |
+
+⚠️ **이름 짓기 화면이 그 셋 중 아무것도 아니었다.** `dialog.css`의 `center`
+하나로 떴고 그것은 static이라, 창이 통째로 캔버스 뒤에 있었다 —
+`elementFromPoint`로 「그대로 두기」 단추의 한가운데를 되물으면 `CANVAS`가 나왔다.
+스크립트는 답이 나올 때까지 서므로 마우스로 노는 사람에게는 **연구소에서 게임이
+멎은 것**으로 보였다(키보드 Enter·Esc로만 빠져나갈 수 있었다).
+
+**말로 적었으니 됐다고 안 한다** — `src/ui/menu/menuLayer.test.ts`가 `MenuLayer`가
+그리는 화면마다 뿌리 태그를 읽어 셋 중 하나인지 본다. 새 화면이 층 없이 들어오면
+`pnpm check`가 선다.
+
 ---
 
 ## 4. 글꼴
