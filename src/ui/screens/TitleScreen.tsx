@@ -58,6 +58,14 @@ const OptionsScreen = lazy(() =>
 const ImportWizard = lazy(() =>
   import('../../import/ui/ImportWizard').then((m) => ({ default: m.ImportWizard })))
 
+/**
+ * 「이런 게임은 어떠세요?」 — 같은 사람이 만든 나머지 두 게임 (`OtherGames`).
+ *
+ * ⚠️ **지연 로드다.** 눌러야 뜨는 창이라 첫 화면이 이것을 지고 뜰 이유가 없다
+ */
+const OtherGames = lazy(() =>
+  import('./OtherGames').then((m) => ({ default: m.OtherGames })))
+
 const DEX_MAX = 493
 
 export function TitleScreen() {
@@ -72,6 +80,8 @@ export function TitleScreen() {
   const [confirmNew, setConfirmNew] = useState(false)
   /** 에셋 설치 화면이 떠 있는가 */
   const [importing, setImporting] = useState(false)
+  /** 「이런 게임은 어떠세요?」가 떠 있는가 */
+  const [showOther, setShowOther] = useState(false)
   /** 한가할 때 훑은 설치본에서 어긋난 것이 나왔는가 */
   const [assetWarning, setAssetWarning] = useState<string | null>(null)
   const filePicker = useRef<HTMLInputElement>(null)
@@ -231,6 +241,9 @@ export function TitleScreen() {
     // 설정은 앞의 넷보다 뒤다. **빼지는 않는다** — 빼면 게임을 열기 전에 설정을
     // 볼 길이 이 화면에서 사라진다
     { key: 'options', label: '설정', tone: 'ghost', go: () => { useMenuStore.getState().open('options') } },
+    // 여기서 나가는 유일한 길. **차림표 안에 둔다** — 밖에 세우면 화면에는
+    // 여섯이 보이는데 커서는 다섯만 도는, 이 화면이 이미 한 번 겪은 자리가 된다
+    { key: 'more', label: '이런 게임은 어떠세요?', tone: 'ghost', go: () => { setShowOther(true) } },
   ]
 
   /**
@@ -290,7 +303,7 @@ export function TitleScreen() {
     up: () => { move(-1) },
     down: () => { move(1) },
     confirm: () => { entries[cursor]?.go() },
-  }, menuTop === null)
+  }, menuTop === null && !showOther)
 
   return (
     <div className={css.wrap}>
@@ -459,6 +472,12 @@ export function TitleScreen() {
       {importing && (
         <Suspense fallback={null}>
           <ImportWizard onClose={() => { setImporting(false) }} />
+        </Suspense>
+      )}
+
+      {showOther && (
+        <Suspense fallback={null}>
+          <OtherGames onClose={() => { setShowOther(false) }} />
         </Suspense>
       )}
     </div>
