@@ -188,6 +188,22 @@ export const caret = style({
   fontSize: TEXT.small,
 })
 
+/**
+ * 안 본 것이 있다는 점 — 「패치노트」 칸에만 붙는다.
+ *
+ * ⚠️ **글자 뒤에 흐름대로 놓는다.** 커서(`caret`)처럼 절대 자리로 띄우면 칸마다
+ * 글자 길이가 달라 어느 칸에서는 글자 위에 앉는다. 여기는 칸을 6px 넓히고 만다
+ */
+export const dot = style({
+  display: 'inline-block',
+  width: 6,
+  height: 6,
+  marginLeft: 6,
+  verticalAlign: 'middle',
+  borderRadius: RADIUS.round,
+  background: vars.pick.edge,
+})
+
 export const hint = style({
   fontSize: TEXT.tiny,
   color: vars.ink.onDarkDim,

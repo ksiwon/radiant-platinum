@@ -863,7 +863,7 @@ src/engine/audio/tables.ts      ARM7에서 뜯은 포락선 표
 - 비배포물: `data/`, `models/`, ROM, romfs, AssetBundle, 변환 팩과 원본 유래 표
 - 외부 에셋 CDN 없음, `VITE_ASSET_BASE` 없음
 - Import 라우트에 분석 SDK·원격 오류 수집 없음
-- CSP 기본값 `connect-src 'self'`; 사용자 파일 내용·이름·해시 전송 금지
+- CSP `connect-src`의 바깥 오리진은 버그 제보의 EmailJS 하나뿐(DEPLOY.md §3); 사용자 파일 내용·이름·해시 전송 금지
 
 `public/data`(64MB)와 `public/models`(581MB)는 개발 산출물이고 **여전히 거기
 있다.** 배포물로 나가지 않는 것은 `copyPublicDir: false`와 허용 목록

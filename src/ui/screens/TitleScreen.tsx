@@ -34,6 +34,7 @@ import { watchIntegrity } from '../../app/integrityWatch'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import { playSong, warmMenu } from '../../engine/audio/lazy'
 import { TITLE_SONG } from '../../engine/audio/songIds'
+import { unreadPatch } from './patchLog'
 import * as css from './titleScreen.css'
 
 /** 게임 청크를 미리 받아둔다 — 클릭 시점의 대기를 없앤다 (PLAN §10.4) */
@@ -66,6 +67,18 @@ const ImportWizard = lazy(() =>
 const OtherGames = lazy(() =>
   import('./OtherGames').then((m) => ({ default: m.OtherGames })))
 
+/** 패치노트 — 같은 이유로 지연 로드다 (`PatchNotes`) */
+const PatchNotes = lazy(() =>
+  import('./PatchNotes').then((m) => ({ default: m.PatchNotes })))
+
+/** 버그 제보 — 이 앱이 바깥으로 나가는 유일한 자리다 (`BugReport`) */
+const BugReport = lazy(() =>
+  import('./BugReport').then((m) => ({ default: m.BugReport })))
+
+/** 「더보기」 — 급하지 않은 넷을 한 겹 안으로 넣은 창 (`MoreMenu`) */
+const MoreMenu = lazy(() =>
+  import('./MoreMenu').then((m) => ({ default: m.MoreMenu })))
+
 const DEX_MAX = 493
 
 export function TitleScreen() {
@@ -82,6 +95,11 @@ export function TitleScreen() {
   const [importing, setImporting] = useState(false)
   /** 「이런 게임은 어떠세요?」가 떠 있는가 */
   const [showOther, setShowOther] = useState(false)
+  const [showPatch, setShowPatch] = useState(false)
+  const [showBug, setShowBug] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  /** 안 본 판이 있으면 차림표 칸에 점 하나. 한 번 열면 꺼진다 (`patchNotes.ts`) */
+  const [newPatch, setNewPatch] = useState(unreadPatch)
   /** 한가할 때 훑은 설치본에서 어긋난 것이 나왔는가 */
   const [assetWarning, setAssetWarning] = useState<string | null>(null)
   const filePicker = useRef<HTMLInputElement>(null)
@@ -200,6 +218,8 @@ export function TitleScreen() {
     label: string
     tone: 'main' | 'plain' | 'ghost'
     go: () => void
+    /** 안 본 것이 있다는 점. 글자를 안 건드리고 뒤에 붙는다 */
+    dot?: boolean
     /** 눌러도 할 일이 없는 것. 감추지 않고 **왜 못 누르는지**를 보인다 */
     off?: boolean
   }[] = [
@@ -238,12 +258,15 @@ export function TitleScreen() {
     // 이고 여기는 아직 게임 밖이다 — 처음 온 사람에게는 그쪽이 읽힌다
     { key: 'backup', label: '세이브 파일 내보내기', tone: 'ghost', go: backup },
     { key: 'load', label: '세이브 파일 불러오기', tone: 'ghost', go: () => { filePicker.current?.click() } },
-    // 설정은 앞의 넷보다 뒤다. **빼지는 않는다** — 빼면 게임을 열기 전에 설정을
-    // 볼 길이 이 화면에서 사라진다
-    { key: 'options', label: '설정', tone: 'ghost', go: () => { useMenuStore.getState().open('options') } },
-    // 여기서 나가는 유일한 길. **차림표 안에 둔다** — 밖에 세우면 화면에는
-    // 여섯이 보이는데 커서는 다섯만 도는, 이 화면이 이미 한 번 겪은 자리가 된다
-    { key: 'more', label: '이런 게임은 어떠세요?', tone: 'ghost', go: () => { setShowOther(true) } },
+    // ⚠️ **급하지 않은 넷은 한 겹 안이다** (`MoreMenu`). 설정·패치노트·버그
+    // 제보·다른 게임을 여기 나란히 세우면 차림표가 여덟이 되는데, 하러 온 일은
+    // 위의 넷이다. **빼는 것이 아니라 접는 것이다** — 게임을 열기 전에 설정을
+    // 볼 길은 그대로 있고, 여기서 나가는 길도 여전히 차림표 안에 있다.
+    //
+    // ⚠️ **점을 이 칸이 대신 진다.** 패치노트가 안쪽으로 들어갔으므로, 안 본
+    // 판이 있다는 표시는 밖에 있는 이 칸에 떠야 한다 — 안 그러면 창을 열지
+    // 않는 사람에게 새 소식이 영영 안 보인다
+    { key: 'more', label: '더보기', tone: 'ghost', dot: newPatch, go: () => { setShowMore(true) } },
   ]
 
   /**
@@ -303,7 +326,7 @@ export function TitleScreen() {
     up: () => { move(-1) },
     down: () => { move(1) },
     confirm: () => { entries[cursor]?.go() },
-  }, menuTop === null && !showOther)
+  }, menuTop === null && !showOther && !showPatch && !showBug && !showMore)
 
   return (
     <div className={css.wrap}>
@@ -358,6 +381,7 @@ export function TitleScreen() {
             >
               {i === cursor && <span className={css.caret} aria-hidden>▶</span>}
               {entry.label}
+              {entry.dot === true && <span className={css.dot} aria-label="새 소식" />}
             </button>
           ))}
           <input
@@ -478,6 +502,33 @@ export function TitleScreen() {
       {showOther && (
         <Suspense fallback={null}>
           <OtherGames onClose={() => { setShowOther(false) }} />
+        </Suspense>
+      )}
+
+      {showPatch && (
+        <Suspense fallback={null}>
+          <PatchNotes onClose={() => { setShowPatch(false) }} />
+        </Suspense>
+      )}
+
+      {showBug && (
+        <Suspense fallback={null}>
+          <BugReport onClose={() => { setShowBug(false) }} />
+        </Suspense>
+      )}
+
+      {/* ⚠️ **여는 창마다 「더보기」를 닫는다.** 겹쳐 두면 X를 두 번 눌러야
+          타이틀로 돌아오고, 뒤에 깔린 창이 스크림을 한 겹 더 얹어 어두워진다 */}
+      {showMore && (
+        <Suspense fallback={null}>
+          <MoreMenu
+            newPatch={newPatch}
+            onOptions={() => { setShowMore(false); useMenuStore.getState().open('options') }}
+            onPatchNotes={() => { setShowMore(false); setShowPatch(true); setNewPatch(false) }}
+            onBugReport={() => { setShowMore(false); setShowBug(true) }}
+            onOtherGames={() => { setShowMore(false); setShowOther(true) }}
+            onClose={() => { setShowMore(false) }}
+          />
         </Suspense>
       )}
     </div>

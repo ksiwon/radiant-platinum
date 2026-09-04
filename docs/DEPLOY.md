@@ -225,7 +225,7 @@ script-src 'self';
 style-src 'self' 'unsafe-inline';
 img-src 'self' data: blob:;
 media-src 'self' blob:;
-connect-src 'self' blob:;
+connect-src 'self' blob: https://api.emailjs.com;
 worker-src 'self';
 font-src 'self';
 manifest-src 'self';
@@ -236,8 +236,17 @@ form-action 'none';
 frame-ancestors 'none'
 ```
 
-`connect-src 'self' blob:`가 무전송 경계다 — 바깥 오리진이 없으니 사용자가
-고른 롬 바이트가 나갈 곳이 없다.
+`connect-src`가 전송 경계다. 바깥 오리진은 **하나**뿐이고, 그 하나는 버그 제보가
+쓴다 (`src/ui/screens/BugReport.tsx`).
+
+⚠️ **한때 0이었고, 그때는 「무전송 경계」라고 불렀다.** 2026-09-04에 하나를 열면서
+약속의 등급이 내려갔다 — **구조적**(나갈 곳이 아예 없다)에서 **정책적**(사람이 적고
+사람이 누를 때만 나간다)으로다. 여전히 참인 것은 이것이다: **롬 바이트도, 변환
+결과도, 리포트도 안 나간다.** 제보 창은 OPFS를 안 읽는다 — 나가는 것은 사람이 친
+제목·내용과 판·브라우저 종류가 전부다.
+
+⚠️ **오리진을 더 늘리지 않는다.** 하나가 둘이 되면 「무엇이 어디로 가는가」를
+CSP 한 줄로 말할 수 없게 된다. `rules.test.mjs`가 그 하나를 문자열로 조여 둔다.
 
 ### meta로 대신할 수 없다
 

@@ -58,15 +58,15 @@
 
 # ── 응답 헤더 ────────────────────────────────────────────────────────────────
 #
-# `connect-src 'self' blob:`가 무전송 경계다 — 바깥 오리진이 없으니 사용자가
-# 고른 롬 바이트가 나갈 곳이 없다. `frame-ancestors`는 **헤더에서만** 먹는다
+# `connect-src`가 전송 경계다 — 바깥 오리진이 **하나**뿐이고(버그 제보의 EmailJS)
+# 롬 바이트도 변환 결과도 리포트도 나갈 곳이 없다. `frame-ancestors`는 **헤더에서만** 먹는다
 # (meta에서는 무시된다). 그것이 이 파일이 필요한 이유이자, GitHub Pages를
 # 못 쓰는 이유다.
 [[headers]]
   for = "/*"
 
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob:; worker-src 'self'; font-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' blob: https://api.emailjs.com; worker-src 'self'; font-src 'self'; manifest-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
     Cross-Origin-Opener-Policy = "same-origin"

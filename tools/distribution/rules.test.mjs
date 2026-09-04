@@ -193,10 +193,20 @@ describe('앱 셸은 파일 단위다', () => {
 // 이 묶음의 첫 동적 import가 기본 제한에 걸려 "무전송 경계가 깨졌다"처럼 보였다 —
 // 실제로는 CSP가 아니라 시계 문제였다. 단정문은 그대로 두고 시간만 넉넉히 준다
 describe('CSP 정본', { timeout: 60_000 }, () => {
-  it('connect-src에 바깥 오리진이 없다 — 그것이 무전송 경계다', async () => {
-    const { CSP, cspHeader } = await import('./csp.mjs')
-    expect(CSP['connect-src']).toBe("'self' blob:")
-    expect(cspHeader()).not.toMatch(/https?:/)
+  // ⚠️ **한때 「바깥 오리진이 하나도 없다」를 단정했다.** 2026-09-04에 버그 제보가
+  // EmailJS 하나를 열면서 그 단정이 못 서게 됐다. 느슨하게 푸는 대신 **정확히
+  // 그 하나만**으로 조인다 — 둘째가 들어오면 여기가 먼저 선다 (csp.mjs)
+  it('connect-src의 바깥 오리진은 EmailJS 하나뿐이다', async () => {
+    const { CSP } = await import('./csp.mjs')
+    expect(CSP['connect-src']).toBe("'self' blob: https://api.emailjs.com")
+  })
+
+  it('바깥 오리진은 connect-src 말고 어디에도 없다', async () => {
+    const { CSP } = await import('./csp.mjs')
+    for (const [directive, value] of Object.entries(CSP)) {
+      if (directive === 'connect-src') continue
+      expect(value, directive).not.toMatch(/https?:/)
+    }
   })
 
   it("증명 없이 'wasm-unsafe-eval'을 넣지 않는다", async () => {

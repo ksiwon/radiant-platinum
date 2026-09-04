@@ -22,9 +22,26 @@
 //   img-src     'self' data: blob:
 //                           OPFS에서 꺼낸 텍스처가 blob:, 작은 아이콘이 data:
 //   media-src   'self' blob:  롬에서 뽑은 음악도 OPFS → blob:
-//   connect-src 'self' blob:  ⚠️ **여기가 무전송 경계다.** 바깥 오리진이 없으므로
-//                           사용자가 고른 롬 바이트가 나갈 곳이 없다. blob:은
-//                           Worker가 자기 결과를 되읽을 때 쓴다
+//   connect-src 'self' blob: https://api.emailjs.com
+//                           ⚠️ **여기가 전송 경계다.** 바깥 오리진이 **하나**뿐이고
+//                           그 하나는 버그 제보가 쓴다 (`BugReport`). blob:은
+//                           Worker가 자기 결과를 되읽을 때 쓴다.
+//
+//                           ⚠️ **한때 바깥 오리진이 0이었고, 그것이 「무전송 경계」
+//                           였다.** 2026-09-04에 버그 제보를 넣으며 하나를 열었다.
+//                           그래서 이 자리의 약속은 **등급이 내려갔다**:
+//
+//                             전: 구조적 — 나갈 곳이 아예 없다
+//                             후: 정책적 — 사람이 적고 사람이 누를 때만 나간다
+//
+//                           **여전히 참인 것**: 롬 바이트도, 변환 결과도, 리포트도
+//                           안 나간다. 제보 창은 OPFS를 안 읽는다 — 보내는 것은
+//                           사람이 친 제목·내용과 판·브라우저 종류뿐이다.
+//                           분석·telemetry·광고 SDK는 여전히 하나도 없다.
+//
+//                           ⚠️ **여기에 오리진을 더 늘리지 않는다.** 하나가 둘이
+//                           되는 순간 「무엇이 어디로 가는가」를 이 파일만 보고는
+//                           말할 수 없게 된다 (COPYRIGHT.md §11 · DEPLOY.md §3)
 //   worker-src  'self'      Import Worker는 번들에서 나온 모듈 파일이다
 //   font-src    'self'      웹폰트를 바깥에서 안 받는다
 //   manifest-src 'self'
@@ -45,7 +62,7 @@ export const CSP = {
   'style-src': "'self' 'unsafe-inline'",
   'img-src': "'self' data: blob:",
   'media-src': "'self' blob:",
-  'connect-src': "'self' blob:",
+  'connect-src': "'self' blob: https://api.emailjs.com",
   'worker-src': "'self'",
   'font-src': "'self'",
   'manifest-src': "'self'",
