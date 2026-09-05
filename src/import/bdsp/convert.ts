@@ -27,6 +27,7 @@ import { bundleDeps } from './bundleDeps'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { openEnvironment, type Environment } from './environment'
 import { exportModel } from './model'
+import { bakeAlbedo } from './albedo'
 import { exportArena } from './arena'
 import { className, openBundle, readSerializedFile } from './unityfs'
 import type { UnityValue } from './typetree'
@@ -510,6 +511,32 @@ function glbHeight(glb: Uint8Array): number {
   return Number.isFinite(top - low) ? Math.round((top - low) * 1000) / 1000 : 0
 }
 
+/**
+ * 종 하나를 열려면 여는 번들들.
+ *
+ * ⚠️ **번들이 셋으로 갈려 있다.** 배틀 프리팹에 재질·뼈대·동작이 있고 메시와
+ * 텍스처는 `pokemons/common` 쪽 번들 둘에 있다. 하나만 열면 「메시가 없다」로
+ * 끝나고 그 종이 통째로 빠진다.
+ *
+ * ⚠️ **메시가 기본 판에만 있는 종이 있다.** 아르세우스·도롱충이·도롱마담·
+ * 조개무지·트리토돈이 그렇다 — `common/pm0493_12`가 아예 없고 열여덟 판이
+ * `common/pm0493_11` 하나를 나눠 쓴다. 제 것이 없으면 그 종의 첫 판을 연다.
+ *
+ * ⚠️ **이로치·암컷도 같은 규칙이다** (`tools/extract/bdspPokemon.py`의 `trio`) —
+ * 그래서 한 자리에 둔다
+ */
+function monPaths(at: Map<string, string>, name: string): string[] {
+  const stem = name.replace(/_\d\d$/, '')
+  const mesh = lookup(at, `${POKEMON_COMMON}/${stem}`) ?? sharedMesh(at, name)
+  return [...new Set([
+    lookup(at, `${POKEMON_BATTLE}/${name}`),
+    mesh,
+    lookup(at, `${POKEMON_COMMON}/${name}`),
+    // 색 그림이 다른 판에 있는 종이 있다 — 노드와 같은 규칙으로 같이 연다
+    ...kinTextures(at, name),
+  ].filter((p): p is string => p !== null))]
+}
+
 async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
   const src = requireBdsp(ctx)
   const at = await index(src)
@@ -536,19 +563,7 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
     // ⚠️ **번들이 셋으로 갈려 있다.** 배틀 프리팹에 재질·뼈대·동작이 있고 메시와
     // 텍스처는 `pokemons/common` 쪽 번들 둘에 있다. 하나만 열면 "메시가 없다"로
     // 끝나고 그 종이 통째로 빠진다
-    const stem = name.replace(/_\d\d$/, '')
-    // ⚠️ **메시가 기본 판에만 있는 종이 있다.** 아르세우스·도롱충이·도롱마담·
-    // 조개무지·트리토돈이 그렇다 — `common/pm0493_12`가 아예 없고 열여덟 판이
-    // `common/pm0493_11` 하나를 나눠 쓴다. 제 것이 없으면 그 종의 첫 판을 연다
-    const mesh = lookup(at, `${POKEMON_COMMON}/${stem}`) ?? sharedMesh(at, name)
-    const paths = [...new Set([
-      lookup(at, `${POKEMON_BATTLE}/${name}`),
-      mesh,
-      lookup(at, `${POKEMON_COMMON}/${name}`),
-      // 색 그림이 다른 판에 있는 종이 있다 — 노드와 같은 규칙으로 같이 연다
-      ...kinTextures(at, name),
-    ].filter((p): p is string => p !== null))]
-    const env = await environmentOf(src, paths)
+    const env = await environmentOf(src, monPaths(at, name))
     if (!env) missing.push(name)
     else {
       try {
@@ -578,6 +593,207 @@ async function convertMonModels(ctx: ConvertContext): Promise<Produced> {
 
   const rows = index2.map(([k, v]) => `${JSON.stringify(k)}:${JSON.stringify(v)}`).join(',')
   put(ctx, out, 'models/pokemon/index.json', new TextEncoder().encode(`{"pokemon":{${rows}}}`))
+  return out
+}
+
+// ── monVariants ──────────────────────────────────────────────────────────────
+
+/**
+ * 종·폼·성별·이로치 → 그 모습의 번들 이름과 배율 (`PokemonInfo.Catalog`).
+ *
+ * BDSP는 모습을 **성별 × 이로치** 네 벌로 나눠 둔다 — `_00_00` 수컷 보통,
+ * `_00_01` 수컷 이로치, `_01_00` 암컷 보통, `_01_01` 암컷 이로치
+ */
+interface MonLook { bundle: string, scale: number, sex: number }
+
+export function pokemonCatalog(env: Environment): Map<string, MonLook> {
+  const out = new Map<string, MonLook>()
+  for (const e of env.ofType('MonoBehaviour')) {
+    const v = env.readEntry(e) as Props | null
+    if (!v || v.m_Name !== 'PokemonInfo') continue
+    const rows = v.Catalog as Props[] | undefined
+    if (!rows) continue
+    for (const row of rows) {
+      const dex = row.MonsNo
+      const bundle = row.AssetBundleName
+      if (typeof dex !== 'number' || typeof bundle !== 'string') continue
+      const form = typeof row.FormNo === 'number' ? row.FormNo : 0
+      const sex = typeof row.Sex === 'number' ? row.Sex : 0
+      const rare = typeof row.Rare === 'number' ? row.Rare : 0
+      const scale = typeof row.BattleScale === 'number'
+        ? Math.round(row.BattleScale * 1000) / 1000
+        : 1
+      out.set(`${String(dex)}/${String(form)}/${String(sex)}/${String(rare)}`,
+        { bundle, scale, sex })
+    }
+    break
+  }
+  return out
+}
+
+const lookAt = (
+  catalog: Map<string, MonLook>, dex: number, form: number, sex: number, rare: number,
+): MonLook | undefined =>
+  catalog.get(`${String(dex)}/${String(form)}/${String(sex)}/${String(rare)}`)
+
+/**
+ * 성별을 안 가리고 그 모습을 찾는다.
+ *
+ * ⚠️ **성별이 둘이 아니다.** 무성 종은 `Sex`가 2라, 0과 1만 물으면 전기공·
+ * 메타몽·폴리곤·프리져 같은 **108종의 이로치가 통째로 빠진다** (실측: 브라우저
+ * 449 vs 노드 557). 노드 추출기도 같은 자리에서 성별을 안 가린다
+ * (`bdspPokemonVariants.py`의 `catalog_row`)
+ */
+export function anySex(
+  catalog: Map<string, MonLook>, dex: number, form: number, rare: number,
+): MonLook | undefined {
+  for (const sex of [0, 1, 2, 3]) {
+    const hit = lookAt(catalog, dex, form, sex, rare)
+    if (hit) return hit
+  }
+  return undefined
+}
+
+/**
+ * 구운 그림 이름 → 목차에 쓰는 이름.
+ *
+ * 재질 이름이 `pm0001_00_01-BodyA01_rare` 꼴이라 첫 `-` 뒤를 떼고 `_rare`를
+ * 지운다 — 보통색 재질과 **같은 이름**이 되어야 화면이 갈아 끼울 수 있다
+ * (`tools/extract/bdspPokemonVariants.py`의 `material_suffix`와 같은 규칙)
+ */
+export function variantSuffix(name: string): string {
+  const at = name.indexOf('-')
+  const tail = at < 0 ? name : name.slice(at + 1)
+  return tail.endsWith('_rare') ? tail.slice(0, -'_rare'.length) : tail
+}
+
+/**
+ * 이로치 색과 암컷 몸.
+ *
+ * ⚠️ **이로치는 그림만 굽는다.** 몸도 동작도 보통색과 같아서 glb를 한 벌 더
+ * 구우면 수백 MB가 그대로 는다 — 알베도만 굽고 화면이 갈아 끼운다
+ * (`scene/battle/monModel`). **암컷은 재질 칸 자체가 다른 벌이 있어서** 그런
+ * 종만 glb로 굽는다 (실측 94종).
+ *
+ * ⚠️ **노드 추출기와 같은 규칙이다** (`tools/extract/bdspPokemonVariants.py`).
+ * 그림 바이트는 인코더가 달라 안 같고(`platinum/png` 머리말) 목차는 같아야 한다
+ */
+async function convertMonVariants(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  const out: Produced = new Map()
+
+  const master = lookup(at, MASTERDATAS)
+  const masterEnv = master ? await environmentOf(src, [master]) : null
+  if (!masterEnv) throw new Error('BDSP masterdatas를 못 찾았습니다')
+  const catalog = pokemonCatalog(masterEnv)
+  if (catalog.size === 0) throw new Error('masterdatas에 PokemonInfo.Catalog가 없습니다')
+  const scales = battleScales(masterEnv)
+
+  const todo = speciesBundles(at)
+  if (todo.length === 0) throw new Error('BDSP 포켓몬 배틀 번들을 하나도 못 찾았습니다')
+
+  const shiny = new Map<string, Record<string, string>>()
+  const female = new Map<string, { file: string, height: number, scale: number }>()
+  const femaleShiny = new Map<string, { file: string, height: number, scale: number }>()
+  let done = 0
+
+  /** 암컷 한 벌. 제 그림이 없으면 수컷 그림 번들을 함께 연다 */
+  const bakeFemale = async (
+    key: string, label: string, look: MonLook, fallback: string,
+  ): Promise<{ file: string, height: number, scale: number } | null> => {
+    const paths = monPaths(at, look.bundle)
+    if (lookup(at, `${POKEMON_COMMON}/${look.bundle}`) === null) {
+      const spare = lookup(at, `${POKEMON_COMMON}/${fallback}`)
+      if (spare !== null && !paths.includes(spare)) paths.push(spare)
+    }
+    const env = await environmentOf(src, paths)
+    if (!env) return null
+    try {
+      const { glb } = await exportModel(env, encodePng, {
+        maxSize: MAX_TEXTURE,
+        keepClips: true,
+        clipFilter: BATTLE_CLIPS,
+        mainProps: MON_MAIN_PROPS,
+      })
+      const file = `variants/${label}/${key}.glb`
+      put(ctx, out, `models/pokemon/${file}`, glb)
+      return { file, height: glbHeight(glb), scale: look.scale }
+    } catch {
+      return null
+    }
+  }
+
+  for (const { dex, form } of todo) {
+    check(ctx)
+    const key = form === 0 ? String(dex) : `${String(dex)}-${String(form)}`
+    const male = lookAt(catalog, dex, form, 0, 0) ?? anySex(catalog, dex, form, 0)
+    // 무성 종은 여기서 성별을 안 가려야 나온다
+    const rare = lookAt(catalog, dex, form, male?.sex ?? 0, 1) ?? anySex(catalog, dex, form, 1)
+
+    if (rare) {
+      const env = await environmentOf(src, monPaths(at, rare.bundle))
+      if (env) {
+        const textures: Record<string, string> = {}
+        for (const mat of bakeAlbedo(env, { maxSize: MAX_TEXTURE, mainProps: MON_MAIN_PROPS })) {
+          const suffix = variantSuffix(mat.name)
+          const file = `models/pokemon/variants/shiny/${key}/${suffix}.png`
+          put(ctx, out, file, await encodePng(mat.pixels, mat.width, mat.height))
+          textures[suffix] = file
+        }
+        if (Object.keys(textures).length > 0) shiny.set(key, textures)
+      }
+    }
+
+    // ⚠️ **대부분의 암컷은 수컷 것을 그대로 쓴다.** 번들 이름이 같으면 BDSP가
+    // 모습을 안 바꾼 것이므로 굽지 않는다 — 실측으로 다른 것이 94종뿐이다
+    const she = lookAt(catalog, dex, form, 1, 0)
+    if (she && male && she.bundle !== male.bundle) {
+      const made = await bakeFemale(key, 'female', she, male.bundle)
+      if (made) {
+        female.set(key, made)
+        const sheRare = lookAt(catalog, dex, form, 1, 1)
+        if (sheRare && rare) {
+          const shinyMade = await bakeFemale(key, 'female-shiny', sheRare, rare.bundle)
+          if (shinyMade) femaleShiny.set(key, shinyMade)
+        }
+      }
+    }
+
+    done++
+    ctx.onProgress?.(done, todo.length)
+    await breathe(ctx)
+  }
+
+  if (shiny.size === 0) throw new Error('이로치 그림을 하나도 못 구웠습니다')
+
+  // ⚠️ **폼이 기본 색을 나눠 쓰는 자리가 있다** — 안농 글자와 재질만 다른 폼들.
+  // 그 폼에도 열쇠를 남겨야 구운 glb마다 짝이 있다
+  for (const { dex, form } of todo) {
+    if (form === 0) continue
+    const key = `${String(dex)}-${String(form)}`
+    const base = shiny.get(String(dex))
+    if (!shiny.has(key) && base) shiny.set(key, base)
+  }
+  // 배율이 목록에 없으면 종의 배율표로 떨어진다 — 지어내지 않는다
+  for (const group of [female, femaleShiny]) {
+    for (const [key, entry] of group) {
+      const [d, f] = key.split('-')
+      if (entry.scale === 1) {
+        entry.scale = scales.get(scaleKey(Number(d), Number(f ?? 0))) ?? 1
+      }
+    }
+  }
+
+  // ⚠️ **키 차례를 파이썬과 맞춘다.** 노드 쪽은 `sort_keys=True`라 **글자순**인데
+  // JS의 `JSON.stringify`는 정수처럼 생긴 키를 먼저 숫자순으로 낸다 — 알맹이가
+  // 같아도 바이트가 갈려 ⑮가 붉어진다 (`convertMonModels`에서 겪은 자리다)
+  const sorted = (m: Map<string, unknown>): string =>
+    `{${[...m.keys()].sort().map((k) => `${JSON.stringify(k)}:${JSON.stringify(m.get(k))}`).join(',')}}`
+  const manifest = `{"female":${sorted(female)},"femaleShiny":${sorted(femaleShiny)}`
+    + `,"shiny":${sorted(new Map([...shiny].map(([k, v]) => [k, { textures: v }])))}`
+    + ',"version":1}'
+  put(ctx, out, 'models/pokemon/variants/index.json', new TextEncoder().encode(manifest))
   return out
 }
 
@@ -746,22 +962,23 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
   /**
    * 이로치 색과 암컷 몸 (PLAN §16.10 · `scene/battle/monModel`).
    *
-   * ⚠️ **일부러 안 굽는다** — 3,375개 · 231MB고, 설치 총량이 3분의 1 늘어
-   * 932MB가 된다. 개발 추출기(`bdspPokemonVariants.py`)만 만든다.
+   * ⚠️ **물어보고 굽는다.** 3,375개 · 231MB라 설치 총량이 3분의 1 늘어 932MB가
+   * 된다 — 필수로 두면 이로치를 안 볼 사람도 그만큼 굽는다. 그래서 설치 화면의
+   * 스위치 하나로 두고(`optional`), 안 켜면 이로치가 **평범한 색으로 선다**
+   * (색 판정 자체는 원작대로 돈다 — `isShiny`).
    *
-   * ⚠️ **그래서 여기 줄이 있다.** 없는 것을 목록에서 빼 두면 개발 서버에서는
-   * `public/`이 채워 주어 멀쩡히 보이고 설치본에서만 조용히 사라진다 —
-   * `loadMonVariantIndex`가 `.catch`로 빈 목차를 쓰기 때문에 화면에는 「이로치를
-   * 잡았는데 평범한 색으로 선다」로만 나온다. 굽지 않기로 한 것과 빠뜨린 것을
-   * 사용자가 가를 수 있어야 하므로, 설치 화면의 「아직 안 옮긴 변환」에 이름이
-   * 뜬다 (`ImportWizard`). 색 판정 자체는 원작대로 돈다 (`isShiny`)
+   * ⚠️ **안 켠 것과 못 구운 것을 화면이 가른다.** 켜지 않은 그룹은
+   * 「더 구울 수 있는 것」에 뜨고, 못 옮긴 변환은 「아직 안 옮긴 변환」에 뜬다
+   * (`ImportWizard` · `groupsOptional`)
    */
   {
     name: 'monVariants',
-    outputs: ['models/pokemon/variants/{갈래}/{도감}[-{폼}].glb',
+    outputs: ['models/pokemon/variants/shiny/{도감}[-{폼}]/{재질}.png',
+      'models/pokemon/variants/female[-shiny]/{도감}[-{폼}].glb',
       'models/pokemon/variants/index.json'],
     converter: 1,
-    blockedBy: '이로치 색 3,186 · 암컷 몸 188을 더 구우면 설치가 231MB 늘어난다 —'
-      + ' 안 구운다. 이로치는 배틀에서 평범한 색으로 선다 (PLAN §16.10)',
+    optional: '이로치 색과 암컷 몸 — 231MB를 더 굽는다.'
+      + ' 안 켜면 이로치가 배틀에 평범한 색으로 선다',
+    convert: convertMonVariants,
   },
 ]

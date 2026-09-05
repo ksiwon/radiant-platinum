@@ -80,12 +80,13 @@ function loadMonIndex(): Promise<MonIndex> {
 /**
  * 이로치 색과 암컷 몸.
  *
- * ⚠️ **설치본에는 없다** — 굽는 브라우저 변환기가 일부러 없다 (`monVariants`
- * 그룹이 `blockedBy`로 그 이유를 들고 있고, 설치 화면의 「아직 안 옮긴 변환」에
- * 그 줄이 뜬다). 개발 서버에서만 `public/`이 채워 준다.
+ * ⚠️ **설치본에는 사용자가 켰을 때만 있다** — `monVariants`는 선택 그룹이라
+ * (231MB) 설치 화면의 「더 구울 수 있는 것」에서 켜야 굽는다
+ * (`import/groups.ts`의 `groupsOptional`).
  *
  * 그래서 여기서 빈 목차로 떨어지는 것은 **고장이 아니라 정해진 일**이다 —
- * 이로치는 배틀에 평범한 색으로 서고, 색 판정 자체는 원작대로 돈다(`isShiny`)
+ * 안 켜면 이로치가 배틀에 평범한 색으로 서고, 색 판정 자체는 원작대로 돈다
+ * (`isShiny`)
  */
 function loadMonVariantIndex(): Promise<MonVariantIndex> {
   variantIndex ??= (

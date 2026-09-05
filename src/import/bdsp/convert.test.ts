@@ -15,6 +15,8 @@ import { join } from 'node:path'
 import { openEnvironment } from './environment'
 import { exportArena } from './arena'
 import { exportModel } from './model'
+import { bakeAlbedo } from './albedo'
+import { anySex, pokemonCatalog, variantSuffix } from './convert'
 import { arenaFiles } from './convert'
 import { verifyGlb } from './glb'
 import { encodePng } from '../platinum/png'
@@ -205,6 +207,51 @@ suite('인물', () => {
 })
 
 suite('포켓몬', () => {
+  // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 이로치는 그림만 굽고
+  // 화면이 갈아 끼우는데(`scene/battle/monModel`), 재질 이름이 한 글자라도
+  // 어긋나면 **그 조각만 보통색으로 남는다** — 개발 서버에서는 노드 산출물이
+  // 채워 주므로 눈으로는 절대 안 걸린다
+  it('이로치 그림이 보통색과 같은 이름으로 나온다', async () => {
+    const plain = mon('pm0387_00_00')
+    const rare = mon('pm0387_00_01')
+    if (plain.length !== 3 || rare.length === 0) return
+
+    const names = (paths: string[]): string[] =>
+      bakeAlbedo(openEnvironment(paths.map(bytes)), {
+        maxSize: 256, mainProps: ['_Col0Tex', '_MainTex'],
+      }).map((m) => variantSuffix(m.name)).sort()
+
+    const before = names(plain)
+    const after = names(rare)
+    expect(after.length).toBeGreaterThan(0)
+    // 이름이 같아야 갈아 끼울 수 있다 — `_rare` 꼬리와 앞머리를 뗀 뒤의 이름이다
+    expect(after).toEqual(before)
+    // 그림이 실제로 달라야 이로치다. 같으면 보통색 번들을 두 번 구운 것이다
+    const pixels = (paths: string[]): Uint8Array =>
+      bakeAlbedo(openEnvironment(paths.map(bytes)), {
+        maxSize: 256, mainProps: ['_Col0Tex', '_MainTex'],
+      })[0]!.pixels
+    expect([...pixels(rare).slice(0, 256)]).not.toEqual([...pixels(plain).slice(0, 256)])
+  }, 180_000)
+
+  // ⚠️ **성별이 둘이 아니다.** 무성 종은 `Sex`가 2다 — 0과 1만 물으면 전기공·
+  // 메타몽·폴리곤·프리져 같은 **108종의 이로치가 통째로 빠진다.** 실제로 그렇게
+  // 빠졌었고(브라우저 449 vs 노드 557) 화면에서는 「이 종만 이로치가 안 뜬다」로만
+  // 보인다
+  it('무성 종의 이로치도 목록에 있다', async () => {
+    const master = AA ? join(AA, 'Dpr', 'masterdatas') : null
+    if (!master || !existsSync(master)) return
+    const catalog = pokemonCatalog(openEnvironment([bytes(master)]))
+    expect(catalog.size).toBeGreaterThan(1000)
+    // 전기공(100) · 메타몽(132) · 폴리곤(137) — 셋 다 무성이다
+    for (const dex of [100, 132, 137]) {
+      expect(catalog.get(`${String(dex)}/0/0/1`), `${String(dex)} 수컷 이로치`).toBeUndefined()
+      expect(anySex(catalog, dex, 0, 1), `${String(dex)} 이로치`).toBeDefined()
+    }
+    // 성별이 있는 종은 수컷 자리에 그대로 있다
+    expect(catalog.get('387/0/0/1')).toBeDefined()
+  }, 120_000)
+
   it('번들 셋을 합쳐야 메시가 나온다', async () => {
     const trio = mon('pm0387_00_00')
     expect(trio.length).toBe(3)

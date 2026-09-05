@@ -162,4 +162,13 @@ export interface GroupSpec {
   /** 구현됐으면 변환 함수, 아직이면 왜 막혔는지 */
   convert?: (ctx: ConvertContext) => Promise<Produced>
   blockedBy?: string
+  /**
+   * **사용자가 고르는 그룹.** 여기 글이 있으면 설치 화면에 스위치로 뜨고,
+   * 켜지 않으면 안 굽는다.
+   *
+   * ⚠️ **필수와 다른 자리다.** `blockedBy`는 「우리가 아직 안 옮겼다」이고 이것은
+   * 「옮겼지만 무거워서 물어본다」다. 둘을 한 칸에 담으면 설치 화면이 「안 되는
+   * 것」과 「안 고른 것」을 같은 말로 적게 된다
+   */
+  optional?: string
 }

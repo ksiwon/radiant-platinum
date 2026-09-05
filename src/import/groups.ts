@@ -22,6 +22,22 @@ export function groupsBlocked(): readonly GroupSpec[] {
   return ALL_GROUPS.filter((g) => g.convert === undefined)
 }
 
+/**
+ * 사용자가 켜야 굽는 그룹들.
+ *
+ * ⚠️ **`groupsReady()`에 그냥 두면 안 된다.** 그러면 설치기가 말없이 굽고
+ * 설치 총량이 늘어난다 — 무거운 그룹은 물어보고 굽는다
+ */
+export function groupsOptional(): readonly GroupSpec[] {
+  return ALL_GROUPS.filter((g) => g.convert !== undefined && g.optional !== undefined)
+}
+
+/** 이번 설치에서 실제로 돌릴 목록. `extras`에 든 선택 그룹만 함께 간다 */
+export function groupsToInstall(extras: readonly string[] = []): readonly GroupSpec[] {
+  const want = new Set(extras)
+  return ALL_GROUPS.filter((g) => g.optional === undefined || want.has(g.name))
+}
+
 export function groupSpec(name: string): GroupSpec | undefined {
   return ALL_GROUPS.find((g) => g.name === name)
 }
