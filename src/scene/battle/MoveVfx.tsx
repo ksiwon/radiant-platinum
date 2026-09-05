@@ -1,15 +1,17 @@
-// 기술 연출 (PLAN §7.3)
+// 기술 연출 (PLAN §7.3 · PARITY §2.13)
 //
-// 기술이 471개라 하나씩 만들 수 없다. 다섯 틀에 타입 색만 갈아 끼운다 —
-// 어느 틀인지는 롬의 기술 데이터가 정하고(`engine/battle/vfx`) 색은 타입 표에서
-// 온다. 그래서 10만볼트는 노란 줄기, 오물폭탄은 보라 덩어리가 된다.
+// 기술마다 원작 대본을 읽는다 (`res/moves/<이름>/anim.s` → `moveAnimTable`).
+// 대본이 정하는 것이 셋이다:
 //
-// **원작 연출을 한 컷씩 옮기는 것이 아니다.** 원작은 기술마다 연출 파일이 따로
-// 있는데 그 표를 아직 안 읽었다. 지금 보여 주는 것은 "어떤 종류의 사건인가"다 —
-// 때렸는지, 날렸는지, 쐈는지, 제 몸에 걸었는지, 상대에게 걸었는지.
+//   입자   `loads`·`emitters` — 어느 `.spa`를 어느 프레임에 어디에 세우는가.
+//          그리는 것은 `SplParticles`이고 알갱이는 **원작 것 그대로**다
+//   무대   번쩍임·물들임·떨림·눌림·사라짐 — `stageRefs.moveImpact`를 거쳐
+//          `BattleStage`가 몸과 배경에 건다
+//   도형   대본에 이미터가 없는 기술(46개)과 입자 자료를 아직 못 받은 그 한 번.
+//          틀 다섯에 타입 색을 갈아 끼운다 (`engine/battle/vfx`)
 //
-// 도형만 쓴다. 파티클을 쓰면 예산(§10.1)을 먼저 잡아먹고, 4세대 화면에는
-// 또렷한 도형이 오히려 맞는다.
+// ⚠️ **입자가 서면 도형은 물러난다.** 둘을 겹쳐 그리면 같은 자리에 두 벌이
+// 포개져 무엇이 원작인지 알아볼 수 없다. 무대에 거는 것은 어느 쪽이든 돈다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
@@ -24,12 +26,17 @@ import type { SlotId } from '../../engine/battle/events'
 import { clearMoveImpact, moveImpact, tallOf } from './stageRefs'
 import { GIRTH, muzzleY, shapeSpan, torsoY } from './moveAnchor'
 import type { MoveAnim } from '../../engine/battle/moveAnimTable'
+import type { SplFile } from '../../engine/battle/spl/resource'
 import {
   elementFamilyForType,
   moveVisualSignature,
   type ElementFamily,
   type MoveVisualSignature,
 } from './moveElements'
+import { SplParticles } from './SplParticles'
+import { preloadSplPack, splFileFor } from './splPack'
+import { splMetre, type Vec3 } from './splPlace'
+import type { SplCue } from './splDraw'
 
 /** 60fps 기준 프레임을 초로 */
 const DURATION = MOVE_FRAMES / 60
@@ -45,6 +52,41 @@ export interface Shot {
   /** 쓴 쪽과 맞는 쪽의 발판 자리 */
   from: [number, number]
   to: [number, number]
+  /**
+   * 원작 이미터들. 대본에 없거나 자료를 아직 못 받았으면 `null`이고,
+   * 그때만 도형이 대신 선다
+   */
+  cues: readonly SplCue[] | null
+  /** 이미터를 붙일 세 자리와 배율 (`splPlace`) */
+  place: { by: Vec3, foe: Vec3, metre: number } | null
+  /** 같은 배틀 안에서 기술마다 다른 그림이 나오게 하는 씨앗 */
+  seed: number
+}
+
+/**
+ * 대본의 `loads`·`emitters`를 이미터 목록으로.
+ *
+ * ⚠️ **하나라도 못 받았으면 통째로 `null`이다.** 이미터 셋 중 둘만 서면 원작에
+ * 없는 그림이 나온다 — 그럴 바에는 도형 한 벌로 가는 편이 낫다.
+ *
+ * `member`는 `battle_particles.order`의 줄 번호이고 그것이 곧 `waza` 묶음의
+ * 멤버 번호다. `ps`는 그 대본이 자료를 실어 둔 입자계 칸이다
+ */
+function cuesOf(anim: MoveAnim | null): readonly SplCue[] | null {
+  if (anim === null || anim.emitters.length === 0) return null
+  const loaded = new Map<number, SplFile>()
+  for (const load of anim.loads) {
+    const file = splFileFor(load.member)
+    if (file === null) return null
+    loaded.set(load.ps, file)
+  }
+  const cues: SplCue[] = []
+  for (const e of anim.emitters) {
+    const file = loaded.get(e.ps)
+    if (file === undefined) return null
+    cues.push({ file, res: e.res, at: e.at, frame: e.at_frame })
+  }
+  return cues.length > 0 ? cues : null
 }
 
 /** 0→1 진행에서 한 번 부풀었다 꺼지는 값. 연출이 툭 끊기지 않게 한다 */
@@ -64,9 +106,16 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
   const particles = useRef<Group>(null)
   const flash = useRef<Mesh>(null)
   const t = useRef(0)
+  // ⚠️ **원작 입자가 서면 도형 구름은 안 뿌린다.** 둘 다 그리면 같은 자리에
+  // 두 벌이 겹쳐서 무엇이 원작인지 알아볼 수 없다. 다만 머리·꼬리 메시는
+  // **지우지 않고 숨긴다** — 무대에 거는 값(`moveImpact`)과 배경 물들임이
+  // 같은 `useFrame` 안에서 그 뒤에 오기 때문이다
+  const usesSpl = shot.cues !== null
   const particleIds = useMemo(
-    () => Array.from({ length: shot.signature.particles }, (_, index) => index),
-    [shot.signature.particles],
+    () => (usesSpl
+      ? []
+      : Array.from({ length: shot.signature.particles }, (_, index) => index)),
+    [shot.signature.particles, usesSpl],
   )
   const color = useMemo(() => new Color(shot.color), [shot.color])
   const material = useMemo(
@@ -327,7 +376,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
           />
         </mesh>
       )}
-      <mesh ref={head} material={material}>
+      <mesh ref={head} material={material} visible={!usesSpl}>
         {rod ? (
           <boxGeometry args={[1, 1, 1]} />
         ) : shot.family === 'flame' || shot.family === 'leaf' ? (
@@ -342,7 +391,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
           <icosahedronGeometry args={[0.5, 1]} />
         )}
       </mesh>
-      <mesh ref={tail} material={material}>
+      <mesh ref={tail} material={material} visible={!usesSpl}>
         {shot.kind === 'self-buff' ? (
           <torusGeometry args={[1, 0.12, 6, 24]} />
         ) : (
@@ -394,6 +443,12 @@ export function MoveVfx({
   const [anims, setAnims] = useState<readonly (MoveAnim | null)[] | null>(null)
   const last = useRef<string | null>(null)
 
+  // ⚠️ **여기서 미리 받는다.** 기술이 나가는 그 프레임에는 기다릴 수 없다 —
+  // 배틀에 들어설 때 시작해 두면 첫 수까지 등장 연출 몇 초 사이에 끝난다
+  useEffect(() => {
+    void preloadSplPack()
+  }, [])
+
   useEffect(() => {
     let alive = true
     void loadMoves()
@@ -427,26 +482,48 @@ export function MoveVfx({
     // 대상이 없는 줄(전체기·자기 강화)은 맞은편 첫 자리를 겨눈다
     const target = spotAt(cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a'))
     const kind = archetypeFor(move)
+    const at = cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a')
+    const anim = anims?.[cast.move ?? 0] ?? null
     setShot({
       kind,
       by: cast.by,
-      at: cast.to ?? (cast.by.startsWith('p1') ? 'p2a' : 'p1a'),
+      at,
       family: elementFamilyForType(move?.type ?? 0),
       color: typeColor(move?.type ?? 0),
-      signature: moveVisualSignature(anims?.[cast.move ?? 0] ?? null),
+      signature: moveVisualSignature(anim),
       from: attacker,
       // 제 몸에 거는 것은 목표가 자기 자신이다
       to: kind === 'self-buff' ? attacker : target,
+      cues: cuesOf(anim),
+      // ⚠️ **몸통 높이에 건다.** 원작이 이미터를 붙이는 `WORLD_POS_TYPE_NORMAL`이
+      // 스프라이트 한가운데라, 발밑에 붙이면 연출이 통째로 땅으로 내려온다
+      place: {
+        by: [attacker[0], torsoY(cast.by), attacker[1]],
+        foe: [target[0], torsoY(at), target[1]],
+        metre: splMetre((tallOf(cast.by) + tallOf(at)) / 2),
+      },
+      seed: cast.seq,
     })
   }, [cast, table, anims, spotAt])
 
   if (!shot) return null
   return (
-    <Shape
-      shot={shot}
-      done={() => {
-        setShot(null)
-      }}
-    />
+    <>
+      <Shape
+        shot={shot}
+        done={() => {
+          setShot(null)
+        }}
+      />
+      {shot.cues !== null && shot.place !== null && (
+        <SplParticles
+          cues={shot.cues}
+          by={shot.place.by}
+          foe={shot.place.foe}
+          metre={shot.place.metre}
+          seed={shot.seed}
+        />
+      )}
+    </>
   )
 }

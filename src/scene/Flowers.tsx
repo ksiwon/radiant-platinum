@@ -17,6 +17,7 @@ import {
   BufferAttribute, BufferGeometry, Color, DoubleSide, InstancedMesh, Matrix4,
   MeshLambertMaterial, Quaternion, Vector3,
 } from 'three'
+import { setInstances } from './instances'
 
 /** 꽃잎 몇 장. 다섯이면 어느 각도에서도 하나는 정면으로 온다 */
 const PETALS = 5
@@ -111,7 +112,8 @@ export function Flowers({ field }: { field: FlowerField | null }) {
         const s = 0.8 + hash(at.x, at.z, 5) * 0.5
         mesh.setMatrixAt(n++, m.compose(at, spin, one.set(s, s, s)))
       }
-      mesh.count = n
+      // 색 갈래 하나가 한 송이도 못 가져가는 맵이 있다 — 그때 숨긴다
+      setInstances(mesh, n, false)
       mesh.castShadow = false
       mesh.receiveShadow = true
       return mesh

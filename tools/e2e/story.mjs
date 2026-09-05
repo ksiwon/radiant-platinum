@@ -7,6 +7,7 @@
 //     pnpm story --fight            배틀 장면을 **끝까지** 치른다 (느리다)
 //     pnpm story --chain            장면 사이에 화면을 안 새로 연다 (샘 찾기)
 //     pnpm story --url=http://…     이미 떠 있는 개발 서버를 쓴다
+//     pnpm story --gpu=gl           WebGPU 말고 WebGL2 폴백 경로로 잰다
 //
 // ⚠️ **왜 걸어서 안 하는가.** 원작을 처음부터 엔딩까지 걸으면 사람도 스무 시간이
 // 넘고, 우리 하네스는 떡잎마을에서 202번도로까지 가는 데만 15분을 쓴다
@@ -34,6 +35,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { freePort, startVite } from '../devServer.mjs'
+import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { playOpening } from './drive.mjs'
 import { installSceneWatch, readSceneWatch, takeSceneWatch } from './sceneWatch.mjs'
@@ -57,14 +59,16 @@ const FIGHT = args.includes('--fight')
 const FRESH = !args.includes('--chain')
 
 /**
- * ⚠️ **ANGLE 백엔드를 못 박는다.** 안 그러면 헤드리스가 SwiftShader로 떨어져
- * 게임이 6FPS로 돈다 — 그러면 67개를 훑는 데 몇 시간이 걸리고, 프레임 시간은
- * 이 기계의 것이 아니라 소프트웨어 래스터라이저의 것이라 **뜻이 없다.**
- * 실제로 어느 쪽으로 떨어졌는지는 아래 `probeGpu`가 재서 표 머리에 적는다
+ * ⚠️ **백엔드를 못 박는다.** 안 그러면 헤드리스가 SwiftShader로 떨어져 게임이
+ * 6FPS로 돈다 — 그러면 88개를 훑는 데 몇 시간이 걸리고, 프레임 시간은 이 기계의
+ * 것이 아니라 소프트웨어 래스터라이저의 것이라 **뜻이 없다.** 깃발과 그 근거는
+ * `tools/gpuFlags.mjs` 한 자리에 있다 — 하네스 넷이 같이 본다.
+ *
+ * `--gpu=gl`로 WebGL2 폴백 경로를 일부러 잴 수 있다. 실제로 어느 쪽을 잡았는지는
+ * `probeGpu`가 재서 표 머리에 적는다 — **깃발을 줬다고 믿지 않는다**
  */
-const GPU = process.platform === 'win32'
-  ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist']
-  : ['--enable-gpu', '--ignore-gpu-blocklist']
+const GPU_MODE = flag('gpu', 'webgpu')
+const GPU = gpuArgs(GPU_MODE)
 
 /** 찍고 재는 크기. 진짜 GPU를 못 잡으면 아래에서 줄인다 */
 let VIEW = { width: 960, height: 640 }
@@ -216,20 +220,7 @@ async function frameWindow(page, ms, during = null) {
  * 기계의 것이 아니므로 **끊김을 판정하면 안 된다.** 안 잰 것을 통과로도, 실패로도
  * 세지 않는다 — 표에 「못 잼」으로 적고 넘어간다
  */
-async function probeGpu(page) {
-  return page.evaluate(() => {
-    const c = document.createElement('canvas')
-    const gl = c.getContext('webgl2') ?? c.getContext('webgl')
-    if (!gl) return { renderer: '(WebGL 없음)', software: true, webgpu: 'gpu' in navigator }
-    const ext = gl.getExtension('WEBGL_debug_renderer_info')
-    const renderer = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '(가려짐)'
-    return {
-      renderer,
-      software: /swiftshader|llvmpipe|software|paint/i.test(renderer),
-      webgpu: 'gpu' in navigator,
-    }
-  })
-}
+// 재는 자는 `tools/gpuFlags.mjs`에 있다 — 하네스 넷이 같은 것을 쓴다
 
 // ── 화면 열기 ────────────────────────────────────────────────────────────────
 
@@ -280,10 +271,6 @@ const NOISE_OK = [
   // 크로미움이 윈도우에서 `requestAdapter({powerPreference})`를 무시한다고
   // 알리는 것이다 (crbug 369219127). 브라우저 쪽 알림이라 우리가 못 없앤다
   /powerPreference option is currently ignored/,
-  // ⚠️ **이 둘은 거르되 잊으면 안 된다.** 헤드리스 크로미움은 WebGPU 어댑터를
-  // 못 만들어(`Device failed at creation`) 우리 렌더러가 WebGL2로 내려앉는다 —
-  // 즉 여기서 재는 프레임은 **사용자가 쓸 길이 아니라 폴백 길**의 것이다.
-  // 어느 백엔드에서 쟀는지는 표 아래에 적는다
   /WebGPU is not available, running under WebGL2 backend/,
   /Device failed at creation/,
 ]
@@ -375,8 +362,13 @@ if (gpu.software) {
   await page.setViewportSize(VIEW)
 }
 console.log(`화면 ${VIEW.width}×${VIEW.height} · 렌더러 ${gpu.renderer}`
-  + ` · WebGPU ${gpu.webgpu ? '있다' : '없다'}`
+  + ` · WebGPU ${gpu.device ? `장치 O (${String(gpu.adapter)})` : gpu.webgpu ? '어댑터만' : '없다'}`
   + (gpu.software ? ' — ⚠️ 소프트웨어라 프레임 시간은 안 잰다' : ''))
+// ⚠️ **장치가 안 서면 크게 말한다.** 조용히 WebGL2로 내려앉은 값을 「WebGPU
+// 수치」로 적는 것이 이 하네스가 오래 하던 거짓말이다 (`tools/gpuFlags.mjs`)
+if (GPU_MODE === 'webgpu' && !gpu.device) {
+  console.log('⚠️ WebGPU 장치가 안 섰다 — 아래 수치는 WebGL2 폴백의 것이다')
+}
 
 /** 확인 지점 표를 **화면이 쓰는 그것에서** 받는다 (여기 또 적으면 조용히 갈린다) */
 const CHECKPOINTS = await page.evaluate(async () => {

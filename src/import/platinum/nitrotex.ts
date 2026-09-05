@@ -143,15 +143,26 @@ function decode4x4(tex0: Tex0, tex: TexEntry, palOffset: number, out: Uint8Array
   }
 }
 
-/** 텍스처 하나를 RGBA로 편다 */
-export function decode(tex0: Tex0, tex: TexEntry, palOffset: number): Uint8Array {
-  const { width, height, format, color0, offset: base } = tex
+/**
+ * 픽셀 바이트를 RGBA로 편다 — 4×4 압축(5)만 빼고 전부.
+ *
+ * ⚠️ **TEX0와 `.spa`가 같이 쓴다.** 입자 텍스처(`engine/battle/spl/texture`)도
+ * 같은 일곱 형식이라, 푸는 법을 두 군데 적으면 한쪽만 고쳐져 갈린다. 압축만
+ * 여기 못 오는 것은 블록 정보가 TEX0에만 있기 때문이다
+ */
+export function decodeFlat(
+  p: { width: number; height: number; format: number; color0: boolean },
+  src: DataView,
+  base: number,
+  palette: DataView,
+  palOffset: number,
+): Uint8Array {
+  const { width, height, format, color0 } = p
   const out = new Uint8Array(width * height * 4)
-  const src = format === 5 ? tex0.cmp : tex0.data
   const put = (i: number, rgb: Rgb, a: number): void => {
     out[i * 4] = rgb[0]; out[i * 4 + 1] = rgb[1]; out[i * 4 + 2] = rgb[2]; out[i * 4 + 3] = a
   }
-  const pal = (i: number): Rgb => color(tex0.pal.getUint16(palOffset + i * 2, true))
+  const pal = (i: number): Rgb => color(palette.getUint16(palOffset + i * 2, true))
 
   switch (format) {
     case 1: // A3I5 — 하위 5비트 색인, 상위 3비트 알파
@@ -171,7 +182,6 @@ export function decode(tex0: Tex0, tex: TexEntry, palOffset: number): Uint8Array
       }
       break
     }
-    case 5: decode4x4(tex0, tex, palOffset, out); break
     case 6: // A5I3 — 하위 3비트 색인, 상위 5비트 알파
       for (let i = 0; i < width * height; i++) {
         const b = src.getUint8(base + i)
@@ -185,7 +195,17 @@ export function decode(tex0: Tex0, tex: TexEntry, palOffset: number): Uint8Array
       }
       break
     default:
-      throw new Error(`형식 ${String(format)}은 모른다`)
+      throw new Error(`형식 ${String(format)}은 여기서 못 푸다`)
   }
   return out
+}
+
+/** 텍스처 하나를 RGBA로 펌다 */
+export function decode(tex0: Tex0, tex: TexEntry, palOffset: number): Uint8Array {
+  if (tex.format === 5) {
+    const out = new Uint8Array(tex.width * tex.height * 4)
+    decode4x4(tex0, tex, palOffset, out)
+    return out
+  }
+  return decodeFlat(tex, tex0.data, tex.offset, tex0.pal, palOffset)
 }

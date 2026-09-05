@@ -212,6 +212,19 @@ export const bdhcFileSchema = z.object({
  */
 const scriptArgsSchema = z.string().regex(/^(\d\*?( \d\*?)*)?$/)
 
+/**
+ * 입자 자리표 (`data/particles/index.json`).
+ *
+ * 묶음 이름마다 「멤버가 이어 붙인 바이트의 어디서 시작해 몇 바이트인가」다 —
+ * 자르는 것은 실행 중에 하고(`engine/battle/spl/resource`), 여기서는 자리만 온다
+ */
+export const particleIndexSchema = z.record(z.string(), z.object({
+  at: z.array(z.number().int().nonnegative()),
+  size: z.array(z.number().int().positive()),
+}))
+
+export type ParticleIndexFile = z.infer<typeof particleIndexSchema>
+
 export const scriptFileSchema = z.object({
   count: z.number().int().positive(),
   bytes: z.number().int().positive(),

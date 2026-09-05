@@ -70,6 +70,29 @@ function whoOf(token) {
 }
 
 /** 입자를 어디에 붙이는가 (`EMITTER_CB_*`) */
+/**
+ * 입자 이름 → NARC 멤버 번호.
+ *
+ * 대본이 `tackle_spa`라고 쓰면 자료는 `battle_particles.order`의 `tackle.spa`
+ * 줄이다 — **줄 번호가 곧 멤버 번호**다. 이 표가 없으면 우리는 이름만 알고
+ * 어느 파일인지를 모른다
+ */
+const PARTICLE_ORDER = 'res/graphics/battle/particles/battle_particles.order'
+let particleIndex = null
+function particleMember(symbol) {
+  if (particleIndex === null) {
+    particleIndex = new Map()
+    const lines = read(PARTICLE_ORDER).split(String.fromCharCode(10))
+    for (const [i, line] of lines.entries()) {
+      const name = line.trim()
+      if (name === '') continue
+      // `tackle.spa` → `tackle_spa` (대본이 쓰는 꼴)
+      particleIndex.set(name.replace(/[.]spa$/, '_spa'), i)
+    }
+  }
+  return particleIndex.get(symbol) ?? null
+}
+
 function anchorOf(token) {
   if (/DEFENDER/.test(token)) return 'defender'
   if (/ATTACKER/.test(token)) return 'attacker'
@@ -176,6 +199,7 @@ function parseAnim(text, colors) {
     squash: null,
     straight: false,
     gray: false,
+    loads: [],
     emitters: [],
     frames: 0,
     vanish: false,
@@ -195,10 +219,21 @@ function parseAnim(text, colors) {
         clock += typeof a[0] === 'number' ? a[0] : 0
         break
 
-      case 'LoadParticleResource':
-        // 첫 것만. 여러 벌 싣는 기술은 첫 벌이 주된 것이다
-        if (out.particle === null && typeof a[1] === 'string') out.particle = a[1]
+      case 'LoadParticleResource': {
+        // `LoadParticleResource ps, 이름` — 입자계 번호와 그 계에 실을 자료다
+        const ps = typeof a[0] === 'number' ? a[0] : 0
+        const symbol = typeof a[1] === 'string' ? a[1] : null
+        if (out.particle === null && symbol !== null) out.particle = symbol
+        // ⚠️ **번호까지 적어야 화면에 뜬다.** 이름만 적어 두던 동안 우리는 어느
+        // `.spa`의 몇 번 리소스인지를 몰라 그 자리를 도형으로 채우고 있었다 —
+        // 대본이 주는 것은 이름이 아니라 **멤버 번호**다 (`battle_particles.order`)
+        if (symbol !== null) {
+          const member = particleMember(symbol)
+          if (member === null) throw new Error(`입자 ${symbol}를 order에서 못 찾았다`)
+          out.loads.push({ ps, member })
+        }
         break
+      }
 
       case 'Func_FadeBg': {
         // bgType, delay, startAlpha, endAlpha, color
@@ -284,7 +319,11 @@ function parseAnim(text, colors) {
       case 'CreateEmitter':
       case 'CreateEmitterEx': {
         const cb = a.find((v) => typeof v === 'string' && v.startsWith('EMITTER_CB_'))
-        out.emitters.push({ at: anchorOf(String(cb ?? '')), at_frame: clock })
+        // `CreateEmitter ps, 리소스번호, 콜백` — `Ex`는 인자가 하나 더 붙지만
+        // 앞 둘의 뜻이 같다 (`BattleAnimScriptCmd_CreateEmitter`)
+        const ps = typeof a[0] === 'number' ? a[0] : 0
+        const res = typeof a[1] === 'number' ? a[1] : 0
+        out.emitters.push({ at: anchorOf(String(cb ?? '')), at_frame: clock, ps, res })
         break
       }
 
@@ -454,8 +493,20 @@ export interface MoveAnim {
   straight: boolean
   /** 배경이 흑백이 된다 */
   gray: boolean
-  /** 입자를 붙이는 자리와 그 시점(프레임) */
-  emitters: { at: MoveAnimAnchor, at_frame: number }[]
+  /**
+   * 어느 \`.spa\`를 어느 입자계에 싣는가 (\`LoadParticleResource\`).
+   *
+   * \`member\`는 \`battle_particles.order\`의 줄 번호이고, 그것이 곧 우리
+   * \`data/particles/waza.bin\`의 멤버 번호다
+   */
+  loads: { ps: number, member: number }[]
+  /**
+   * 입자를 붙이는 자리와 그 시점(프레임).
+   *
+   * \`res\`는 그 입자계에 실린 \`.spa\` 안의 **리소스 번호**다 —
+   * \`CreateEmitter ps, res, 콜백\` 그대로다
+   */
+  emitters: { at: MoveAnimAnchor, at_frame: number, ps: number, res: number }[]
   /** 대본이 쉬는 프레임의 합. 연출 길이의 아래끝이다 */
   frames: number
   /** 쓴 쪽이 화면에서 사라진다 (구멍파기·공중날기) */

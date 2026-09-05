@@ -19,6 +19,7 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
 import { startVite } from '../devServer.mjs'
+import { gpuArgs } from '../gpuFlags.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
 import { driveStory, OPENING_NAMES, playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
@@ -154,12 +155,14 @@ const origin = server.url
  * ⚠️ **ANGLE 백엔드를 못 박는다.** 안 그러면 헤드리스가 SwiftShader로 떨어져
  * 게임이 **6FPS**로 돈다 — 그러면 ㉖처럼 플레이해서 닿아야 하는 시험이
  * 몇 시간짜리가 된다. D3D11로 주면 같은 헤드리스가 진짜 GPU를 잡는다
- * (실측 6 → 60FPS). WebGPU는 여전히 없으므로 **성능을 재는 것이 아니다**
- * (DEPLOY.md §5).
+ * (실측 6 → 60FPS).
+ *
+ * ⚠️ **WebGPU도 연다.** 「헤드리스에는 없다」고 오래 적어 두었는데 실측으로
+ * 막고 있던 것은 `about:blank`(보안 컨텍스트가 아니다)과 Dawn의 `dxil.dll`
+ * 이었다 — 깃발과 근거는 `tools/gpuFlags.mjs` 한 자리에 있고 하네스 넷이
+ * 같이 본다. 여기서 재는 것은 **여전히 성능이 아니라 동작**이다 (DEPLOY.md §5)
  */
-const GPU = process.platform === 'win32'
-  ? ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist']
-  : ['--enable-gpu', '--ignore-gpu-blocklist']
+const GPU = gpuArgs()
 const browser = await chromium.launch({ args: ['--enable-precise-memory-info', ...GPU] })
 
 /** 새 컨텍스트 하나. OPFS도 캐시도 매번 새것이다 */

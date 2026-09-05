@@ -33,6 +33,7 @@ import {
 } from 'three'
 import { worldState } from '../state/worldState'
 import { cellX, cellZ, type Cell, type TreeSite } from './plates'
+import { setInstances } from './instances'
 
 /** 잎 덩이의 세로 눌림. 1이면 완전한 공이라 버섯처럼 보인다 */
 const CROWN_SQUASH = 0.8
@@ -781,7 +782,7 @@ export function Foliage(
       // 인스턴스가 청크를 가로질러 흩어져 있어서 메시 단위 절두체가 뜻이 없다 —
       // 대신 그루마다 직접 판정해 **보이는 것만 앞에서부터 채운다**
       mesh.frustumCulled = false
-      mesh.count = 0
+      setInstances(mesh, 0)
       return mesh
     }
     // 밑동의 접지 그림자. LOD를 안 나눈다 — 판 한 장이라 줄일 것이 없다
@@ -789,7 +790,7 @@ export function Foliage(
     const shade = new InstancedMesh(shape, material, matrices.length)
     shade.name = '밑동 그림자'
     shade.frustumCulled = false
-    shade.count = 0
+    setInstances(shade, 0)
     // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
     // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
     const spots = matrices.map((m) => {
@@ -845,16 +846,11 @@ export function Foliage(
         g.shade.setMatrixAt(s, scaled)
         s++
       }
-      g.near.count = n
-      g.stemNear.count = n
-      g.far.count = f
-      g.stemFar.count = f
-      g.shade.count = s
-      g.near.instanceMatrix.needsUpdate = true
-      g.stemNear.instanceMatrix.needsUpdate = true
-      g.far.instanceMatrix.needsUpdate = true
-      g.stemFar.instanceMatrix.needsUpdate = true
-      g.shade.instanceMatrix.needsUpdate = true
+      setInstances(g.near, n)
+      setInstances(g.stemNear, n)
+      setInstances(g.far, f)
+      setInstances(g.stemFar, f)
+      setInstances(g.shade, s)
     }
   })
 

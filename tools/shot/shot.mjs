@@ -31,9 +31,15 @@
 // ⚠️ **청크가 6초 안에 다 안 붙는 일이 있어서 삼각형 수가 뚝 떨어진다.**
 // 한 번 찍고 판단하지 말고 수치가 이상하면 다시 돌린다.
 //
-// ⚠️ **WebGPU는 없다.** 헤드리스 크로미움에 없어서 앱이 WebGL2로 폴백한다
-// (SwiftShader, 소프트웨어 래스터라이저). 그래서 **화면 배치·모델·텍스처는
-// 그대로지만 속도는 실제와 전혀 다르다.** 성능은 여기서 재면 안 된다.
+// ⚠️ **기본은 소프트웨어 래스터라이저다** (SwiftShader). 픽셀이 기계마다 같아야
+// 하는 검사가 여기 걸려 있어서 그렇게 둔다 — **화면 배치·모델·텍스처는 그대로지만
+// 속도는 실제와 전혀 다르다.** 성능은 이 기본값으로 재면 안 된다.
+//
+// 사용자가 타는 길을 보려면 `--gpu=webgpu`다. **헤드리스에도 WebGPU가 뜬다** —
+// http 출처(보안 컨텍스트)와 `--disable-dawn-features=use_dxc`가 있으면 장치가
+// 선다(깃발은 `tools/gpuFlags.mjs` 한 자리에 모여 있고, 넷을 재 본 표도 거기
+// 있다). 폴백에서는 안 보이던 것이 그 길에서 드러난다 — 빈 드로우콜과
+// 인스턴스 0이 그렇게 잡혔다.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import { dirname, resolve } from 'node:path'
@@ -41,6 +47,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { decodePng, looksFlat, statsOf } from './png.mjs'
 import { freePort, startVite } from '../devServer.mjs'
+import { gpuArgs } from '../gpuFlags.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const OUT = resolve(ROOT, 'shots')
@@ -157,9 +164,15 @@ async function main() {
     url = vite.url
   }
 
-  const browser = await chromium.launch({
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-  })
+  /**
+   * ⚠️ **기본이 소프트웨어 래스터라이저다.** 픽셀이 기계마다 같아야 하는 검사가
+   * 여기 걸려 있다 — 진짜 GPU로 바꾸면 그리는 결과가 조금씩 갈린다. 대신 느리다
+   * (4~7FPS): 스크립트가 프레임에 묶여 느린 것을 「멈췄다」로 오독하기 쉽다.
+   *
+   * `--gpu=webgpu`(사용자가 타는 길)나 `--gpu=gl`로 키운다. 몰고 다니며 찍을
+   * 때는 그쪽이 열 배 넘게 빠르다 (`tools/gpuFlags.mjs`)
+   */
+  const browser = await chromium.launch({ args: gpuArgs(flag('gpu', 'software')) })
   const page = await browser.newPage({ viewport: DRIVE, deviceScaleFactor: 1 })
   /**
    * ⚠️ **playwright 기본 30초로는 첫 `goto`가 떨어진다.**

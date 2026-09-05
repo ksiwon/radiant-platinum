@@ -30,6 +30,7 @@ import {
 import type { TexSheet } from './chunkMesh'
 import { ballNormals, lumpy, merge } from './Foliage'
 import type { RockSite } from './plates'
+import { setInstances } from './instances'
 
 /**
  * 폭 대비 높이. **원작에 없는 값이다** — 위 주석의 45° 셈에서 나온다:
@@ -189,7 +190,7 @@ export function Rocks({ groups }: { groups: RockGroup[] }) {
     mesh.receiveShadow = true
     // 인스턴스가 청크를 가로질러 흩어져 있어 메시 단위 절두체가 뜻이 없다
     mesh.frustumCulled = false
-    mesh.count = 0
+    setInstances(mesh, 0)
     const spots = matrices.map((m) => new Vector3().setFromMatrixPosition(m))
     const radius = matrices.map((m) => new Vector3().setFromMatrixScale(m).x * 0.7)
     return { key: g.key, mesh, matrices, spots, radius }
@@ -206,8 +207,7 @@ export function Rocks({ groups }: { groups: RockGroup[] }) {
         if (!frustum.intersectsSphere(sphere)) continue
         g.mesh.setMatrixAt(n++, g.matrices[i]!)
       }
-      g.mesh.count = n
-      g.mesh.instanceMatrix.needsUpdate = true
+      setInstances(g.mesh, n)
     }
   })
 

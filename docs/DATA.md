@@ -5193,9 +5193,12 @@ L_0:  … 알맹이 …  JumpIfBattlerSide …, L_1, L_2   End   ← 분배. **�
 ⚠️ **제일 세게 흔드는 기술은 파괴광선이 아니라 미아일 냄새다**(양쪽 200 · 땅
 가르기 120 · 파괴광선 80). 위력이 아니라 대본이 정한다.
 
-⚠️ **입자 알갱이(.spa)는 안 읽는다.** 롬 안의 그림 자원이라 우리가 그리는
-도형과 짝이 안 맞는다. 대본이 정한 색·박자·자리·힘만 가져오고, 그 위에 무엇을
-그릴지는 `scene/battle/MoveVfx`가 정한다.
+입자 알갱이는 §2.28이 뽑는다. 대본이 주는 것은 **멤버 번호와 리소스 번호**다 —
+`LoadParticleResource ps, tackle_spa`의 이름은 `battle_particles.order`의 줄
+번호로 바뀌고(`tackle.spa` → 63), `CreateEmitter ps, res, 콜백`의 `res`가 그
+`.spa` 안의 몇 번째 이미터인지를 가리킨다. 실측으로 몸통박치기가
+`loads:[{ps:0, member:63}]` · `emitters:[{res:1}, {res:0}]`이고 원작
+`tackle/anim.s`와 같다.
 
 ### 2.24 fld_trade — NPC 교환 넷
 
@@ -5319,6 +5322,69 @@ L_0:  … 알맹이 …  JumpIfBattlerSide …, L_1, L_2   End   ← 분배. **�
 들고 있어 사람 위치에 그대로 놓아도 머리 위에 뜨는데, 우리는 사람이 판때기이기도
 모델이기도 해서 키가 제각각이다. 그래서 **밑자리만 우리가 정한다** — 선 몸의
 높이를 재서 그 위에 얹는다 (`scene/EmoteMarks`).
+
+### 2.28 waza_particle.narc 외 일곱 — 입자 자료 `.spa`
+
+기술 연출·조우 이펙트·몬스터볼·알 부화·진화·폼 변화가 쓰는 알갱이 자료다.
+NARC 여덟에 **멤버 623개 2.74MiB** (`platinum.us/filesys.csv`):
+
+| 묶음 | NARC | 멤버 |
+|---|---|---|
+| `waza` | `wazaeffect/effectdata/waza_particle` | 485 |
+| `ball` | `wazaeffect/effectdata/ball_particle` | 117 |
+| `egg` | `demo/egg/data/particle/egg_demo_particle` | 2 |
+| `evolve` | `demo/shinka/data/particle/shinka_demo_particle` | 2 |
+| `frontier` | `particledata/pl_frontier/frontier_particle` | 7 |
+| `formChange` | `particledata/pl_pokelist/pokelist_particle` | 2 |
+| `etc` | `particledata/pl_etc/pl_etc_particle` | 2 |
+| `common` | `particledata/particledata` | 6 |
+
+→ `data/particles/{묶음}.bin` + `index.json` (`tools/extract/particles.js` ·
+`import/platinum/particles.ts`).
+
+⚠️ **굽는 쪽은 자르기만 한다.** 멤버를 이어 붙이고 시작 자리·크기만 적는다 —
+읽는 것은 실행 중에 `engine/battle/spl/resource`가 한다. 형식이 한 군데만 적혀
+있으므로 굽는 쪽 둘이 **자동으로** 같아진다(`particles.test.ts`가 롬으로 바이트를
+견준다). NARC 머리(FATB/FNTB/FIMG)를 다시 읽을 이유가 없고, 설치본의 파일 수도
+623개가 아니라 아홉이 된다.
+
+⚠️ **`.spa`가 아닌 멤버가 하나라도 있으면 선다.** 대본이 주는 것이 이름이 아니라
+**멤버 번호**라, 조용히 건너뛰면 그 뒤가 전부 밀려 엉뚱한 입자가 나온다.
+
+**형식** — 32바이트 머리(` APS`, 리틀엔디언 u32로 `0x53504120`) 뒤에 리소스 N개,
+그다음 텍스처 M개다. 원작 라이브러리가 디컴프에 통째로 있어서(`lib/spl`, 3,286줄)
+짐작한 자리가 없다: 구조체는 `spl_resource.h`, 읽는 차례는 `spl_manager.c`.
+
+```
+머리 32 · 리소스 88(고정) + 켜진 것만: scale 12 · color 12 · alpha 8 ·
+tex 12 · child 20 · 행동 여섯(gravity 8 · random 8 · magnet 16 · spin 4 ·
+collisionPlane 8 · convergence 16) · 텍스처 머리 32
+```
+
+⚠️ **구조체 크기가 틀리면 그럴듯한 쓰레기가 나온다.** 그래서 두 자리를 잰다 —
+리소스를 다 읽은 자리가 머리의 `texOffset`과 같아야 하고, 텍스처를 다 읽은
+자리가 파일 끝과 같아야 한다. **623개가 623개 다** 그 둘을 통과한다.
+
+실측(2026-09-05, 미국판): 리소스 **1,857개** · 텍스처 **1,765장**.
+
+- **텍스처 형식이 셋뿐이다** — A3I5(1) · 팔레트 4색(2) · A5I3(6). 셋 다
+  `import/platinum/nitrotex`가 이미 푸는 것이라 새 디코더가 없다
+  (`decodeFlat`을 맵 텍스처와 나눠 쓴다).
+- **그리는 갈래도 셋뿐이다** — 빌보드 1,589 · 방향 빌보드 261 · 폴리곤 7.
+  방향 폴리곤(3·4)은 한 벌도 안 쓴다.
+- 리소스 **806벌이 UV를 되풀이**하고 3벌이 뒤집는다. 뷰 공간을 쓰는 것은 둘뿐.
+- 한 `.spa` 안의 텍스처가 **크기가 제각각이다** (623벌 중 379벌). 그래서
+  아틀라스로 합치지 않는다 — 되풀이가 옆 칸을 물어 온다.
+- 고정소수는 fx32 1.19.12다. 난수는 `state = state·0x5eedf715 + 0x1b0cb173`
+  (`Math.imul`이어야 한다 — 그냥 곱하면 하위 비트가 날아가 수열이 통째로 달라진다).
+
+**원작이 이 자료를 놓는 공간**은 `src/particle_system.c`가 정한다 — 카메라
+(0,0,4)에서 원점, 위가 +Y, 원근 화각 45. 배틀러 자리는
+`battle_anim_util.c`에 못 박혀 있다: 내 쪽 (−2.3477, −1.334, 0.0156) ·
+상대 (2.6992, 1.0742, −1.2812). 그 둘이 **픽셀 표에도** 있어서(64,112)·(192,48)
+투영을 풀 수 있고, 깊이로 나눠 1단위가 117px이 나온다 — 배틀러 깊이에서
+22~29px이고 4세대 스프라이트 칸이 96px이니 **몸이 3단위쯤**이다. 우리 무대에
+얹는 자는 그 값에서 온다 (`scene/battle/splPlace`).
 
 ## 5. 남은 것
 

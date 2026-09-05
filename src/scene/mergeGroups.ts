@@ -98,6 +98,12 @@ export function mergeByMaterial(
   // 반투명이 겹치는 자리의 앞뒤가 안 바뀐다
   for (const slot of [...bySlot.keys()].sort((a, b) => a - b)) {
     const into = bySlot.get(slot)!
+    // ⚠️ **빈 그룹은 안 만든다.** 들어온 기하가 이미 개수 0짜리 그룹을 달고
+    // 있으면(원작 청크에 그런 재질 칸이 있다) 여기서 그대로 옮겨 담아 **아무것도
+    // 안 그리는 드로우콜**이 매 프레임 나간다. WebGL2에서는 조용한데 WebGPU에서는
+    // Dawn이 프레임마다 경고한다 — 실측(떡잎마을)으로 지형 메시 셋이 `tshadow`
+    // 칸을 0개로 달고 있어 15초에 2,664번이었다
+    if (into.length === 0) continue
     indices.set(into, at)
     out.addGroup(at, into.length, slot)
     at += into.length

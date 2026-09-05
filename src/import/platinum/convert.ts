@@ -27,6 +27,7 @@ import { convertBoxWallpapers } from './boxWallpapers'
 import { convertBagSprite } from './bagSprite'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
+import { convertParticles } from './particles'
 import { convertStarterScene } from './starterScene'
 import { convertDistortionProps } from './distortionProps'
 import { convertTrainers } from './trainers'
@@ -283,6 +284,18 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/signposts.png', 'data/signposts.json'],
     converter: 1,
     convert: convertSignposts,
+  },
+  {
+    /**
+     * 기술 연출·조우 이펙트·알 부화·진화·폼 변화의 **입자 자료**.
+     *
+     * ⚠️ **자르기만 한다** — 원작 바이트 그대로다. 읽는 것은 실행 중에
+     * `engine/battle/spl`이 한다 (DATA.md §2.28)
+     */
+    name: 'particles',
+    outputs: ['data/particles/{묶음}.bin', 'data/particles/index.json'],
+    converter: 1,
+    convert: convertParticles,
   },
   {
     name: 'starterScene',

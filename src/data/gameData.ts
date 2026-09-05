@@ -12,6 +12,7 @@ import {
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
+  particleIndexSchema,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BagSprite,
@@ -392,7 +393,7 @@ export function loadBerries(): Promise<Berries> {
 
 /** 깨어진 세계의 판·뛰는 자리·카메라·사건 (PARITY §6.10) */
 /**
- * 기술 연출 대본 468개 (PARITY §7.3). 색인이 기술 번호고, 대본이 없는 자리는 null이다.
+ * 기술 연출 대본 468개 (PARITY §2.13). 색인이 기술 번호고, 대본이 없는 자리는 null이다.
  *
  * ⚠️ **롬에서 안 온다.** 대본은 빌드 때 오버레이 코드로 굳어서 사용자의 롬
  * 하나로는 못 꺼낸다 — `pnpm gen:moveAnim`이 디컴프에서 TS 모듈로 굽는다.
@@ -438,6 +439,48 @@ export function loadPoketchMap(): Promise<PoketchMapFile> {
 // ── 스크립트·대사 (DATA.md §2.10, §2.11) ──────────────────────────────────────
 
 /** 바이트코드 1124개를 읽는 데 필요한 것 — 파일 경계, 명령 폭, scriptID 표 */
+/**
+ * 입자 묶음 하나 (`data/particles/<이름>.bin`).
+ *
+ * ⚠️ **묶음을 통째로 받는다.** 기술 입자가 2.3MB인데 조각으로 나눠 받을 길이
+ * 없다 — 설치본에서는 이것이 OPFS에서 와서 망을 안 타고, 개발 서버에서만
+ * 한 번 받는다. 한 번 받으면 배틀 내내 이 캐시가 준다
+ */
+export interface ParticlePack {
+  /** 멤버마다의 시작 자리. 길이가 곧 멤버 수다 */
+  readonly at: readonly number[]
+  readonly size: readonly number[]
+  readonly bytes: Uint8Array
+}
+
+/** 입자 묶음 여덟의 자리표 */
+function loadParticleIndex(): Promise<Record<string, { at: number[], size: number[] }>> {
+  return fetchJson('particles/index.json', (v) => particleIndexSchema.parse(v))
+}
+
+/**
+ * 묶음 하나를 받아 자리표와 함께 준다.
+ *
+ * @param group `PARTICLE_NARCS`의 이름 — `waza`·`ball`·`egg` 따위
+ */
+export async function loadParticles(group: string): Promise<ParticlePack> {
+  const key = `particles/${group}.bin`
+  const hit = cache.get(key)
+  if (hit) return hit as Promise<ParticlePack>
+  const promise = Promise.all([loadParticleIndex(), assets().bytes(`data/${key}`)])
+    .then(([index, bytes]) => {
+      const pack = index[group]
+      if (pack === undefined) throw new Error(`입자 묶음 ${group}이 자리표에 없다`)
+      return { at: pack.at, size: pack.size, bytes: new Uint8Array(bytes) }
+    })
+    .catch((e: unknown) => {
+      cache.delete(key)
+      throw e
+    })
+  cache.set(key, promise)
+  return promise
+}
+
 export function loadScriptMeta(): Promise<ScriptFile> {
   return fetchJson('scripts.json', (v) => scriptFileSchema.parse(v))
 }

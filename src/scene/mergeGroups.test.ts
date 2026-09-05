@@ -70,4 +70,21 @@ describe('mergeByMaterial', () => {
     const inGroups = merged.groups.reduce((a, g) => a + g.count, 0)
     expect(inGroups).toBe(before)
   })
+
+  // ⚠️ **빈 그룹을 옮겨 담으면 아무것도 안 그리는 드로우콜이 매 프레임 나간다.**
+  // 원작 청크에 개수 0짜리 재질 칸이 실제로 있다 — 실측(떡잎마을)으로 지형 메시
+  // 셋이 `tshadow`를 0개로 달고 있었고, WebGPU에서 15초에 2,664번 경고가 났다
+  it('빈 재질 칸은 그룹을 안 만든다', () => {
+    const merged = mergeByMaterial([tris(2, [[0, 6, 0], [6, 0, 1]])], mats(2))!
+    expect(merged.groups).toHaveLength(1)
+    expect(merged.groups[0]!.materialIndex).toBe(0)
+    expect(merged.groups.every((g) => g.count > 0)).toBe(true)
+  })
+
+  it('빈 칸을 빼도 남은 칸의 시작 자리가 안 밀린다', () => {
+    const merged = mergeByMaterial([tris(3, [[0, 3, 0], [3, 0, 1], [3, 6, 2]])], mats(3))!
+    expect(merged.groups.map((g) => [g.start, g.count, g.materialIndex]))
+      .toEqual([[0, 3, 0], [3, 6, 2]])
+    expect(merged.getIndex()!.count).toBe(9)
+  })
 })

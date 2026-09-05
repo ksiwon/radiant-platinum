@@ -30,6 +30,7 @@ import { dirname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { decodePng, looksFlat, statsOf } from './png.mjs'
+import { gpuArgs } from '../gpuFlags.mjs'
 import { freePort, startVite } from '../devServer.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -84,9 +85,8 @@ const port = await freePort()
 const vite = await startVite(port, 'node_modules/.vite-harness')
 const browser = await chromium.launch({
   // ⚠️ `shot.mjs`는 소프트웨어 래스터라이저를 쓰지만 여기서는 진짜 GPU를 쓴다 —
-  // 한 자리에 열여섯 장을 찍어서 소프트웨어로는 몇 시간이 된다. 둘 다 WebGL2라
-  // **그리는 결과는 같고** 속도만 다르다
-  args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist'],
+  // 한 자리에 열여섯 장을 찍어서 소프트웨어로는 몇 시간이 된다
+  args: gpuArgs('gl'),
 })
 const page = await browser.newPage({ viewport: VIEW, deviceScaleFactor: 1 })
 const noise = []

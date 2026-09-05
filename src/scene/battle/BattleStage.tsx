@@ -424,7 +424,7 @@ function Slot({
     const shake = hurt > 0 ? Math.sin(hurt * Math.PI * 8) * 0.22 * hurt : 0
     const blink = hurt > 0 && Math.floor((1 - hurt) * FLINCH_BLINKS * 2) % 2 === 1
 
-    // ── 기술 대본이 이 몸에 거는 것 (`stageRefs.moveImpact` · PARITY §7.3) ──
+    // ── 기술 대본이 이 몸에 거는 것 (`stageRefs.moveImpact` · PARITY §2.13) ──
     //
     // 떨림 279개 · 눌림 24개 · 사라짐 12개가 원작 대본에서 온다. 위력이나
     // 타입으로 짐작한 것이 아니라 `res/moves/<이름>/anim.s`가 적어 둔 값이다

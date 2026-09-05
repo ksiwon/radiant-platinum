@@ -38,6 +38,7 @@ export const GROUPS = [
     match: under('data/trainers/'),
   },
   { name: 'starterScene', make: 'pnpm extract:starterScene', match: under('data/starter/') },
+  { name: 'particles', make: 'pnpm extract:particles', match: under('data/particles/') },
   { name: 'dialogue', make: 'pnpm extract:dialogue', match: under('data/dialogue/') },
   { name: 'matrices', make: 'pnpm extract:matrices', match: under('data/matrices/') },
 
