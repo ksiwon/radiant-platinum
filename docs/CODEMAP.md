@@ -199,7 +199,7 @@
 | 원작에 있는데 우리는 반쯤이거나 없다 | [PARITY.md](PARITY.md) | 행 둘째 칸에 `◐`·`✖` |
 | 화면에 3D로 안 선다 | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 | `- [ ]` |
 | 우리가 만든 자리가 어긋났다 | [REPAIR.md](REPAIR.md) §0 표 | 행 하나 |
-| 알고 남겨 둔다 (무엇을 재면 되는지까지) | [PLAN.md](PLAN.md) §16.10 표 | 행 하나 |
+| 알고 남겨 둔다 (무엇을 재면 되는지까지) | [PLAN.md](PLAN.md) §16.11 표 | 행 하나 |
 | 공개 배포를 막는다 | `tools/distribution/blockers.mjs` | `resolved()`로 **직접 재는** 항목 |
 
 ⚠️ **마지막 줄만 문서가 아니라 코드다.** 배포를 막는 것은 사람이 지우는 목록에
@@ -230,7 +230,7 @@
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
 | 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/voidShots.mjs` · `.audit/distortionLook.mjs` | PARITY §6.2 · §6.10 |
-| 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.10 |
+| 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.11 |
 | 어느 클립을 굽는가 (`engine/actor/npcModels`의 `TRAINER_CLIPS`·`HERO_FIELD_CLIPS`) | `import/bdsp/convert.test.ts`(굽는 쪽 둘이 같은 규칙을 보는가) · `scene/battle/battleTrainerVisual.test.ts`(무대가 쓰는 이름이 그 규칙에 드는가) | PLAN §16.9 · 3D_GAP_AUDIT §3.2 · `import/install/assetFormat`의 `npcModels`를 **올려야 한다**(이미 깔린 사람이 다시 굽는다) · DEPLOY §5의 ⑮(설치 크기) |
 | 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
 | 기하 추출기 (`tools/extract/chunks·props·distortionProps·starterScene`) | `import/platinum/chunks.test.ts` · `distortionProps.test.ts` (**브라우저 변환기와 바이트로 같은가**) | DATA §2.2 |

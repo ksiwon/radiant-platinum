@@ -5421,6 +5421,12 @@ collisionPlane 8 · convergence 16) · 텍스처 머리 32
 - 고정소수는 fx32 1.19.12다. 난수는 `state = state·0x5eedf715 + 0x1b0cb173`
   (`Math.imul`이어야 한다 — 그냥 곱하면 하위 비트가 날아가 수열이 통째로 달라진다).
 
+⚠️ **`evolve` 묶음을 부르는 코드는 이름으로 안 찾힌다.** 진화 연출이
+`ParticleSystem_LoadResourceFromNARC(124, 0)`으로 **번호로** 부르고, 그 자리가
+이름 없는 파일(`unk_0207C63C.c`)이라 `shinka`로 훑으면 한 건도 안 나온다 —
+124가 이 NARC다(열거체를 세어 확인). 멤버 0에 **자원 열셋**이 들었고
+`evolution.c`가 그 열셋을 하나도 안 남기고 세운다 (PARITY §3.1).
+
 **원작이 이 자료를 놓는 공간**은 `src/particle_system.c`가 정한다 — 카메라
 (0,0,4)에서 원점, 위가 +Y, 원근 화각 45. 배틀러 자리는
 `battle_anim_util.c`에 못 박혀 있다: 내 쪽 (−2.3477, −1.334, 0.0156) ·
@@ -5428,6 +5434,89 @@ collisionPlane 8 · convergence 16) · 텍스처 머리 32
 투영을 풀 수 있고, 깊이로 나눠 1단위가 117px이 나온다 — 배틀러 깊이에서
 22~29px이고 4세대 스프라이트 칸이 96px이니 **몸이 3단위쯤**이다. 우리 무대에
 얹는 자는 그 값에서 온다 (`scene/battle/splPlace`).
+
+### 2.31 bm_anime.narc 외 열일곱 — 움직이는 소품 (NSBCA · NSBTP · NSBTA)
+
+문·배·자전거 비탈·간판이 움직이는 자료다. 롬 전체를 훑으면
+**BCA0 183 · BTP0 72 · BTA0 98**이고(`.audit/animScan.mjs`), 필드가 쓰는 것은 넷이다:
+
+| 아카이브 | 멤버 | 애니 | 쓰는 자리 |
+|---|---|---|---|
+| `arc/bm_anime` | 98 | BCA0 32 · BTP0 23 · BTA0 43 | **맵 소품 전부** |
+| `data/mmodel/fldeff` | 201 | BCA0 13 · BTP0 10 · BTA0 5 | 필드 이펙트 소품 |
+| `arc/ship_demo` | 20 | BCA0 4 · BTP0 4 · BTA0 4 · BMA0 4 | 배 컷신 |
+| `graphic/hiden_effect` | 15 | BCA0 4 · BTP0 3 · BTA0 2 | 비전기술 연출 |
+
+**소품 번호 → 애니 번호**는 `arc/bm_anime_list.narc`가 든다. 멤버 590개가 다
+**20바이트**고 디컴프의 `MapPropAnimeListFile`
+(`overlay005/map_prop_animation.h`)과 자리가 같다:
+
+```
+u8 hasAnimations · u8 flags · u8 isBicycleSlope · u8 dummy · s32 animeArchiveIDs[4]
+```
+
+실측 — 소품 590 중 **112개가 애니를 갖는다**(한 벌 81 · 두 벌 19 · 세 벌 1 ·
+네 벌 11). 애니 멤버 98개가 **하나도 안 남고 다 쓰인다**. `isBicycleSlope`가 선
+것이 **정확히 둘**(303·304)이고 그 둘이 `map_prop_models.order`의
+`bike_muddy_slope`·`bike_dungeon_muddy_slope`다 — 구조체를 제대로 읽었다는
+증거다. 이름표는 그 차례표가 준다(590줄, 줄 번호 − 1 = 소품 번호).
+
+문은 `DoorAnimation_FindDoorAndLoad`가 스무 종을 적어 둔다. **여닫이는 클립
+넷**(`door01` 66 · `brown_wooden_door` 67 · `green_wooden_door` 68 ·
+`iron_door` 69 → 애니 7·8·9·10), **미닫이는 둘**(`pokecenter_door` 70 → 5·6).
+박자는 `MapPropAnimation_AdvanceFrame`이 한 틱에 `FX32_ONE` — **1프레임/1틱**이고
+끝 판정이 `frame >= numFrame - 1`이다.
+
+#### JNT0 — 관절 애니
+
+공개 문서(scurest `nsbmd_docs.txt`)가 얼개는 맞는데 **PivotMatrix에서 두 자리
+틀렸다.** 정본은 apicula(`src/nitro/rotation.rs`)다:
+
+```
+문서:  c = ±a · d = ±b        ← 2×2가 [[a,±a],[b,±b]]가 되어 회전이 될 수 없다
+정본:  sel = bits(0,4) · neg = bits(4,8)
+       o = neg&1 ? -1 : 1 · c = neg&2 ? -b : +b · d = neg&4 ? -a : +a
+```
+
+⚠️ **우리 `nsbmd.ts`의 노드용 피벗을 그대로 쓰면 안 된다** — 그쪽은 기본값이
+`c = -b`고 부호 비트 차례도 다르다(노드 헤더가 앞 네 비트를 쓰기 때문이다).
+
+**가르는 자는 직교성이다.** 회전행렬을 잘못 풀면 열끼리 내적이 0이 아니게 된다.
+가설 셋을 롬 자료에 대고 쟀다 (`.audit/jntProbe.mjs`):
+
+| 가설 | 피벗 43,218벌 | 기저 11,234벌 |
+|---|---|---|
+| 문서꼴 | 39,343 어긋남 | — |
+| 우리 노드꼴 | 38,488 어긋남 | — |
+| **apicula꼴** | **0 · 최악 0.0003** | **0 · 최악 0.0010** |
+
+최악 오차가 고정소수 한 칸(1/4096 = 0.00024) 수준이다 — 자료가 담을 수 있는
+만큼 정확하다는 뜻이다. 기저행렬(`BasisMatrix`)은 문서대로 풀어 처음부터 맞았다.
+
+같이 잰 것 — 애니 **183벌 · 트랙 1,099**(빈 트랙 168) **· 곡선 4,003**을 탈
+없이 걷는다. 프레임 수는 최소 3 · 중앙 71 · 최대 1500이고 트랙이 가리키는 뼈
+번호는 최대 41이다.
+
+⚠️ **표본 간격이 1,287개가 전부 1이다.** 문서도 apicula도 「표본 사이를 어떻게
+채우는지 모른다」고 적어 두었는데(`OPEN QUESTION`), 백금 자료에는 그 물음이
+아예 안 생긴다 — 프레임마다 표본이 하나씩이라 정확히 재생된다. 표본 폭은
+이동 `1.19.12` 418 · `1.3.12` 123 · 크기 199/181 · 회전 366이다.
+
+**검증 오라클이 실제로 선다** — apicula 윈도우 빌드가
+`releases/download/continuous/apicula-latest-windows.zip`(727KB)로 나와 있어서
+러스트 빌드 없이 같은 파일을 넣고 **관절 행렬을 프레임마다** 견줄 수 있다.
+고정소수라 차가 0이어야 한다.
+
+#### PAT0 · SRT0 — 텍스처 갈아 끼우기와 UV 이동
+
+BTP0(PAT0)는 재질마다 키프레임 `(frame u16, tex u8, pal u8)` 목록이고 값이 다음
+키까지 버틴다. BTA0(SRT0)는 트랙마다 채널 다섯인데 뒤 둘이 U·V 이동이고
+`flags == 16`일 때만 `1.10.5` 배열을 가리킨다 — 앞 셋은 문서도 모른다.
+
+⚠️ **우리 소품 굽기가 노드를 정점에 발라 버린다.** `convertProps`의
+`placeByNode`가 노드 변환을 미리 곱해 넣으므로, NSBCA가 움직이는 그 행렬이
+남아 있지 않다. 애니 있는 **112개에 한해** `[노드 → 정점 구간]`을 같이 실어야
+한다 — 나머지 478개는 지금대로 두면 굽는 값이 안 는다.
 
 ## 5. 남은 것
 

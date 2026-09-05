@@ -258,10 +258,36 @@ GPU에 두므로 읽을 때마다 **그리는 중인 GPU와 동기를 맞추며 
 ⚠️ **눈에는 안 보인다.** 동기로 다시 구운 것이 그려지므로 사람은 멀쩡히 선다 —
 콘솔을 안 보면 모른다. 순회·`shot` 하네스가 이 오류를 세게 하는 것이 먼저다.
 
-**다음에 할 일 둘.** ① 위 오류를 없앤다 — `@group(1) @binding(5)`이 진짜 렌더에는
-있고 `compileAsync`에는 없다는 뜻이므로, 미리 굽는 자리의 렌더 컨텍스트가 진짜
-것과 다르다 (`warmPipelines` 머리말의 `callDepth` 이야기와 같은 자리일 수 있다).
-② 그 한 프레임만 창으로 잘라 자기 시간을 다시 센다 — 지금 자는
+**임자를 찾았다 — three 안의 캐시 열쇠다** (0.185
+`src/nodes/core/NodeBuilder.js` `_getBindGroup`). 공유 바인드그룹을 캐시하는데
+열쇠를 **노드 id를 구분자 없이 이어 붙여** 만든다:
+
+```js
+for ( const uniform of binding.uniforms ) cacheKeyString += uniform.nodeUniform.node.id;
+const cacheKey = hashString( cacheKeyString );
+bindGroup = bindingGroupsCache.get( cacheKey );
+```
+
+그래서 `[1, 23]`과 `[12, 3]`이 같은 `"123"`이다. 부딪치면 **바인딩 개수가 다른
+`BindGroup`**을 돌려받고, 레이아웃은 그 배열로 만들어진다 —
+`WebGPUBindingUtils._createLayoutEntries`가 `bindGroup.bindings`를 돌며
+`binding: index++`로 칸을 매기므로 **레이아웃 칸 수 = 돌려받은 배열 길이**인데
+셰이더는 제 것대로 `@binding(5)`를 적어 둔다. 관측된 오류가 정확히 그것이다.
+
+캐시가 `renderer._currentRenderContext`별로 갈리고 `compileAsync`는 **제
+컨텍스트**(깊이 0)를 세우므로, 진짜 렌더와 **다른 통**에서 다른 충돌이 난다 —
+굽기만 깨지고 그리기는 멀쩡한 것이 그래서다. 스킨 사람이 많을수록(사람마다 뼈
+버퍼가 새 노드 id를 낳는다) 부딪칠 확률이 오른다.
+
+⚠️ **아직 갈래이지 확정이 아니다.** 확인은 한 번 돌리면 된다 —
+`device.createBindGroupLayout`과 실패한 파이프라인의 WGSL을 같이 잡아 **레이아웃
+칸 수 vs 셰이더가 적은 최대 바인딩 번호**를 견준다. 칸이 모자라면 이 갈래다.
+
+**다음에 할 일 둘.** ① 위 확인을 돌리고, 맞으면 업스트림에 낸다(열쇠에 구분자
+하나). 그동안은 우리 쪽에서 막는다. ⚠️ **고쳐도 10~13초 멈춤이 줄 거라 기대하지
+않는다** — 파이프라인 굽기는 이미 잰 대로 자바스크립트 시간의 0%다. 이것은
+**안 되고 있던 것을 되게 하는** 일이고, 그다음에야 미리 굽기의 값을 처음으로
+정직하게 잴 수 있다. ② 그 한 프레임만 창으로 잘라 자기 시간을 다시 센다 — 지금 자는
 26초 창 전체를 더하므로 「렌더가 5초」 같은 잘못된 읽기가 나온다(실제로 한 번
 그렇게 읽었다). `.audit/warpCost.mjs`가 하던 **창 안만 세기**를 `warpGpu.mjs`에
 옮기는 것이 첫 걸음이다.
@@ -756,7 +782,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
   판때기 52장이 서 있는 것이 맞는가」인데, **잣대가 원작 화면뿐**이다.
 
 ⚠️ **포켓몬 이로치·암컷 외형(231MB)은 보류하기로 정했다** (2026-08-19) —
-[PLAN.md](PLAN.md) §16.10으로 옮겼다. 되살릴 때 `npcModels`의 `GROUP_FORMAT`을
+[PLAN.md](PLAN.md) §16.11로 옮겼다. 되살릴 때 `npcModels`의 `GROUP_FORMAT`을
 올리는 배포에 묻어 실어야 사용자가 롬을 두 번 안 고른다는 것도 거기 적혀 있다.
 
 ---

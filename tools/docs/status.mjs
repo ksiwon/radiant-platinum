@@ -15,7 +15,7 @@
 //   우리가 어긋낸 것 `docs/REPAIR.md` §0 표
 //   원작 대비       `docs/PARITY.md`의 `◐`·`✖` 행
 //   화면에 안 서는 것 `docs/3D_GAP_AUDIT.md` §5의 `- [ ]`
-//   알고 남긴 것    `docs/PLAN.md` §16.10 표
+//   알고 남긴 것    `docs/PLAN.md` §16.11 표
 //
 // ⚠️ **지금 상태(통과·실패)는 안 적는다.** blocker의 `resolved()`는 `dist/`와
 // `.audit/`을 읽는데 그 둘은 기계마다 다르고 저장소에 없다 — 그것을 대장에
@@ -113,7 +113,7 @@ function gaps() {
   return out
 }
 
-/** 알고 남겨 둔 것 (PLAN.md §16.10) */
+/** 알고 남겨 둔 것 (PLAN.md §16.11) */
 function known() {
   return tableAfter(read('PLAN.md'), '| | 크기 | 다음에 할 일 |')
     .map(([what, size, next]) => ({ what: plain(what), size: plain(size), next: plain(next) }))
@@ -145,7 +145,7 @@ function render() {
     `| 우리가 만든 자리가 어긋난 것 | ${r.length} | [REPAIR.md](REPAIR.md) |`,
     `| 원작 대비 반쯤 · 없음 | ${half} · ${none} | [PARITY.md](PARITY.md) |`,
     `| 화면에 아직 안 서는 것 | ${g.length} | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |`,
-    `| 알고 남겨 둔 것 | ${k.length} | [PLAN.md](PLAN.md) §16.10 |`,
+    `| 알고 남겨 둔 것 | ${k.length} | [PLAN.md](PLAN.md) §16.11 |`,
     '',
     '⚠️ **지금 무엇이 열려 있는지는 여기서 안 잰다.** blocker는 각자 `resolved()`로',
     '`dist/`와 `.audit/`을 읽는데 그 둘은 기계마다 다르고 저장소에 없다 — 그것을',
