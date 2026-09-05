@@ -27,10 +27,11 @@ function body(): Group {
 interface Seen { object: Object3D, camera: Camera, target: unknown, culled: boolean[] }
 
 /** 부를 때의 잘라내기 상태까지 받아 적는 가짜 렌더러 */
-function fakeGl(mode: 'hold' | 'now' | 'throw' = 'hold') {
+function fakeGl(mode: 'hold' | 'now' | 'throw' = 'hold', backend?: { isWebGPUBackend: boolean }) {
   const seen: Seen[] = []
   const done: (() => void)[] = []
   const gl = {
+    backend,
     compileAsync(object: Object3D, camera: Camera, target: unknown) {
       const culled: boolean[] = []
       object.traverse((o) => culled.push(o.frustumCulled))
@@ -49,6 +50,29 @@ const drain = () => new Promise((r) => setTimeout(r, 0))
 afterEach(() => { vi.useRealTimers() })
 
 describe('addWhenWarm', () => {
+  it('WebGPU에서는 안 굽고 바로 세운다', async () => {
+    // ⚠️ **얻는 것이 0인데 깨진다** — Dawn은 GPU 프로세스에서 굽고
+    // 자바스크립트를 안 막는다(실측 25회 0.9ms). 그런데 `compileAsync` 갈래가
+    // 바인드그룹 캐시에 걸려 깨진 파이프라인을 만든다 (REPAIR §8.1)
+    const { gl, seen } = fakeGl('hold', { isWebGPUBackend: true })
+    const parent = new Group()
+    const child = body()
+
+    addWhenWarm(gl, new Scene(), new PerspectiveCamera(), parent, child)
+    await drain()
+
+    expect(seen).toHaveLength(0)
+    expect(parent.children).toHaveLength(1)
+  })
+
+  it('WebGL2에서는 그대로 굽는다', async () => {
+    // ANGLE은 `LINK_STATUS`에서 HLSL을 번역하므로 그 물음을 렌더 밖으로 뺀다
+    const { gl, seen } = fakeGl('hold', { isWebGPUBackend: false })
+    addWhenWarm(gl, new Scene(), new PerspectiveCamera(), new Group(), body())
+    await drain()
+    expect(seen).toHaveLength(1)
+  })
+
   it('다 구워지기 전에는 씬에 안 붙인다', () => {
     const { gl } = fakeGl()
     const parent = new Group()

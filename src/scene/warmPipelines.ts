@@ -115,6 +115,41 @@ export function addWhenWarm(
 }
 
 /**
+ * 이 백엔드에서 미리 굽는 것이 값이 있나.
+ *
+ * ⚠️ **WebGPU에서는 안 한다.** 이 파일 머리말의 이야기는 전부 **WebGL2**의
+ * 것이다 — ANGLE이 `LINK_STATUS`에서 HLSL을 번역하므로 그 물음을 렌더 밖으로
+ * 빼면 실제로 수천 밀리초가 준다. Dawn은 다르다: 파이프라인을 **GPU 프로세스**
+ * 에서 굽고 자바스크립트를 안 막는다 — 실측으로 스물다섯 번에 0.9ms, 곧
+ * 자바스크립트 시간의 **0%**다 (REPAIR §8.1).
+ *
+ * 그리고 **얻는 것이 없는 대신 깨진다.** three가 공유 바인드그룹 캐시 열쇠를
+ * 노드 id를 **구분자 없이 이어 붙여** 만들어서(`NodeBuilder._getBindGroup`)
+ * `[1,23]`과 `[12,3]`이 같은 열쇠가 된다. 부딪치면 바인딩 개수가 다른
+ * `BindGroup`을 돌려받고, 레이아웃을 그 배열 길이로 만드는 바람에
+ * (`WebGPUBindingUtils._createLayoutEntries`) 셰이더가 적어 둔 `@binding(5)`가
+ * 레이아웃에 없다.
+ *
+ * 실측(`.audit/warmBind.mjs`, 트윈리프 14초) — **같은 파이프라인**
+ * `renderPipeline_face_733`이 동기 갈래에서는 group 1의 칸이 **여섯**인데
+ * 비동기 갈래에서는 **다섯**이다. 캐시가 남의 것을 돌려준다는 뜻이다.
+ * 그동안 콘솔에 오류가 **4,637줄** 쌓였고, 그때마다 three가
+ * `_reportShaderDiagnostics`로 컴파일 정보를 다시 받아 온다.
+ *
+ * ⚠️ **비동기 갈래는 캐시가 다른 통이라 더 잘 부딪친다** — 열쇠가
+ * `renderer._currentRenderContext`별로 갈리는데 `compileAsync`가 제 컨텍스트를
+ * 세우므로, 진짜 렌더와 **다른 조합**이 한 통에 모인다. 그리기가 멀쩡한 것이
+ * 그 때문이다.
+ *
+ * 고쳐야 할 곳은 three다(열쇠에 구분자 하나). 그 전까지 우리는 **얻는 것이
+ * 있는 백엔드에서만** 미리 굽는다
+ */
+function worthWarming(gl: WebGPURenderer): boolean {
+  const backend = (gl as unknown as { backend?: { isWebGPUBackend?: boolean } }).backend
+  return backend?.isWebGPUBackend !== true
+}
+
+/**
  * `root`를 **아직 씬 밖일 때** 구워 두고, 다 되면 풀린다.
  *
  * `addWhenWarm`은 붙일 자리를 `Object3D`로 받는데, 붙이는 쪽이 React면 그 자리가
@@ -131,6 +166,9 @@ export function warmBeforeShow(
   camera: Camera,
   root: Object3D,
 ): Promise<void> {
+  // 값이 없는 백엔드에서는 굽지 않고 바로 세운다 (`worthWarming`)
+  if (!worthWarming(gl)) return Promise.resolve()
+
   // ⚠️ **잘라내기를 끈다.** 아직 자리를 못 잡아 원점에 서 있는데, 카메라
   // 절두체가 원점을 안 담으면 `_projectObject`가 걸러서 **아무것도 안 구워진다**
   const was: { at: Object3D, culled: boolean }[] = []
