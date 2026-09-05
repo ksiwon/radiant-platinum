@@ -236,7 +236,32 @@ GPU에 두므로 읽을 때마다 **그리는 중인 GPU와 동기를 맞추며 
 ⚠️ **둘 다 CPU·GPU에서 일을 없앴는데 헤드라인 멈춤은 안 줄었다** (6.6 → 6.9초,
 편차 안). 곧 **4.9초짜리 프레임의 임자는 아직 이름이 없다.**
 
-**다음에 할 일.** 그 한 프레임만 창으로 잘라 자기 시간을 다시 센다 — 지금 자는
+#### ⚠️ **미리 굽기가 WebGPU에서 실패하고 있다**
+
+배틀을 찍다가 브라우저가 뱉었다 (실측, 설치 크롬 · `WebGPUBackend`):
+
+    THREE.WebGPURenderer: Async render pipeline creation failed
+      (renderPipeline_face_994): Binding doesn't exist in [BindGroupLayoutInternal]
+     - While validating that the entry-point's declaration for @group(1) @binding(5)
+       matches [BindGroupLayoutInternal (unlabeled)]
+     - While validating vertex stage ([ShaderModule "vertex_face"], entryPoint: "main")
+
+`face`·`wear`는 사람 재질이다 — 곧 `NpcModels`·`BattleTrainers`가 쓰는
+`warmBeforeShow`의 `compileAsync`가 **깨진 파이프라인을 만들고 있다.** three는
+그 자리에서 오류를 적고 그리는 프레임에 **동기로 다시 굽는다.**
+
+⚠️ **그래서 「미리 구웠는데 안 줄었다」가 두 번 나왔다.** 이 저장소가 WebGL2
+폴백에서 한 번(§8.1 위), 이번에 WebGPU에서 한 번 — 두 번 다 미리 굽기가
+실제로는 **안 일어나고 있었을 수 있다.** 값이 안 움직인 것이 「굽기가 임자가
+아니다」가 아니라 「굽기가 안 됐다」였을 여지가 남는다.
+
+⚠️ **눈에는 안 보인다.** 동기로 다시 구운 것이 그려지므로 사람은 멀쩡히 선다 —
+콘솔을 안 보면 모른다. 순회·`shot` 하네스가 이 오류를 세게 하는 것이 먼저다.
+
+**다음에 할 일 둘.** ① 위 오류를 없앤다 — `@group(1) @binding(5)`이 진짜 렌더에는
+있고 `compileAsync`에는 없다는 뜻이므로, 미리 굽는 자리의 렌더 컨텍스트가 진짜
+것과 다르다 (`warmPipelines` 머리말의 `callDepth` 이야기와 같은 자리일 수 있다).
+② 그 한 프레임만 창으로 잘라 자기 시간을 다시 센다 — 지금 자는
 26초 창 전체를 더하므로 「렌더가 5초」 같은 잘못된 읽기가 나온다(실제로 한 번
 그렇게 읽었다). `.audit/warpCost.mjs`가 하던 **창 안만 세기**를 `warpGpu.mjs`에
 옮기는 것이 첫 걸음이다.
