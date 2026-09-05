@@ -68,15 +68,26 @@ describe('진 동작은 진 쪽만 한다', () => {
 describe('굽는 쪽 둘이 같은 클립을 싣는다', () => {
   // ⚠️ **여기가 갈리면 개발 서버와 설치본이 다르다.** 화면이 부르는 이름이
   // 굽는 규칙에 안 맞으면 클립이 있어도 안 돈다 — 조용히 절차형으로 떨어진다
-  it('화면이 부르는 이름 셋이 굽는 규칙에 맞는다', () => {
+  it('화면이 부르는 이름 넷이 굽는 규칙에 맞는다', () => {
     for (const name of Object.values(TRAINER_CLIP)) {
       expect(TRAINER_CLIPS.test(name), name).toBe(true)
     }
   })
 
-  it('안 굽기로 한 다섯은 규칙에서 걸린다', () => {
-    for (const name of ['wait_b', 'wait02_b', 'speak01_b', 'eye01_b', 'advent02_b']) {
+  // ⚠️ `wait_b`는 이 목록에서 빠졌다 — 돌아갈 자리가 생겨서 굽기로 했다
+  // (`TRAINER_CLIPS`). 나머지 넷은 여전히 이어 붙일 자리가 없다
+  it('안 굽기로 한 넷은 규칙에서 걸린다', () => {
+    for (const name of ['wait02_b', 'speak01_b', 'eye01_b', 'advent02_b']) {
       expect(TRAINER_CLIPS.test(name), name).toBe(false)
     }
+  })
+
+  /**
+   * ⚠️ **쉬는 동작이 없으면 트레이너가 굳는다.** 등장 클립이 4.13초인데 배틀은
+   * 몇 분이라, 나머지 시간 내내 마지막 자세 그대로 서 있었다 — 움직이는 것이
+   * 1.2cm짜리 사인파 하나였다
+   */
+  it('쉬는 동작이 굽는 규칙에 든다', () => {
+    expect(TRAINER_CLIPS.test(TRAINER_CLIP.wait)).toBe(true)
   })
 })

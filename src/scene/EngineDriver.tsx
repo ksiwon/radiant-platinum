@@ -8,6 +8,7 @@ import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { isSliding } from '../engine/actor/ice'
 import { npcSystem } from '../engine/actor/ambient'
+import { hmCutInTick } from './hmCutInScene'
 import { objectFxTick } from '../engine/actor/objectFx'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { cameraSystem } from '../engine/actor/camera'
@@ -73,6 +74,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 사람 하나가 깜빡이거나 흔들리는 연출 둘 (`actor/objectFx`) — 이쪽도
       // 프레임 수로 재므로 고정 스텝이다
       gameLoop.register({ fixedUpdate: objectFxTick })
+      // 비전기술 컷인 (`PlayHMCutIn`). 이쪽도 원작 프레임 수로 재는 연출이라
+      // 고정 스텝이다 — 기계가 빠르다고 포켓몬이 빨리 지나가면 안 된다
+      gameLoop.register({ fixedUpdate: hmCutInTick })
       gameLoop.register(playerSystem)
       // 밟은 자리를 보고 걸리는 스크립트는 **걸음 뒤 · 워프 앞**이다
       // (원작 `Field_ProcessStep` → `Field_CheckMapTransition` 차례).

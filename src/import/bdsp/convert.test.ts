@@ -88,16 +88,18 @@ suite('인물', () => {
     expect(verifyGlb(glb)).toEqual([])
   }, 120_000)
 
-  // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기가 셋을
+  // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기가 넷을
   // 실어도 이쪽이 안 실으면 설치본의 트레이너만 안 움직인다 — 개발 서버에서는
   // 멀쩡히 보이므로 눈으로는 절대 안 걸린다
-  it('등신 몸에 배틀 클립 셋만 실린다', async () => {
+  it('등신 몸에 배틀 클립 넷만 실린다', async () => {
     const env = openEnvironment([bytes(person('battle', 'tr0002_00')!)])
     const { glb, stat } = await exportModel(env, encodePng, {
       maxSize: 256, keepClips: true, clipFilter: TRAINER_CLIPS,
     })
-    expect(stat.anim.clips).toBe(3)
-    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 셋이 나올 리 없다
+    // 등장 · 쉬기 · 지시 · 패배 (`TRAINER_CLIP`). 쉬는 것이 빠지면 트레이너가
+    // 등장 클립 끝 자세로 굳는다
+    expect(stat.anim.clips).toBe(4)
+    // 걸러진 것이 있어야 한다 — 규칙이 아무것도 안 거르면 넷이 나올 리 없다
     expect(stat.anim.skipped).toBeGreaterThan(0)
     expect(stat.anim.channels).toBeGreaterThan(500)
     expect(verifyGlb(glb)).toEqual([])
@@ -128,8 +130,8 @@ suite('인물', () => {
       maxSize: 256, keepClips: true, clipFilter: TRAINER_CLIPS,
       clipsFrom: from, borrowOnly: new Set(HERO_FIELD_CLIPS),
     })
-    // 제 클립은 둘뿐이다 — 주인공에게는 `lose01_b`가 아예 없다 (원작이 안 만들었다)
-    expect(stat.anim.clips).toBe(2)
+    // 제 클립은 셋뿐이다 — 주인공에게는 `lose01_b`가 아예 없다 (원작이 안 만들었다)
+    expect(stat.anim.clips).toBe(3)
     expect(stat.borrow?.borrowed).toBe(HERO_FIELD_CLIPS.length)
     expect(stat.borrow?.channels).toBe(1088)
     // 이름이 겹쳐 버린 뼈가 하나라도 있으면 그 자리가 조용히 안 움직인다

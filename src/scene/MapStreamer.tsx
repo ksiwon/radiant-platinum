@@ -13,8 +13,9 @@ import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import {
-  disarmWarp, isOutdoors, mapById, standableSpot, walkOutOfDoor, world,
+  disarmWarp, isOutdoors, mapById, scriptBridge, standableSpot, walkOutOfDoor, world,
 } from '../engine/map/world'
+import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fade'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -47,6 +48,7 @@ import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWin
 import { resetStepTile } from './stepSystem'
 import { resetWalkSound } from './walkSound'
 import { cutInThenBattle, resetCutIn } from './encounterCutIn'
+import { resetHmCutIn } from './hmCutInScene'
 import { frameStats, SPAN } from '../engine/loop/frameStats'
 import { resetStepFeatureTile } from '../engine/script/field'
 import { resetBridge } from '../engine/actor/bridge'
@@ -203,6 +205,45 @@ interface Props {
   locationNames: string[]
 }
 
+/**
+ * 맵을 갈아 끼울 때 화면을 덮는 페이드.
+ *
+ * ⚠️ **원작 값이다.** `FieldTransition_FadeOut`·`FadeIn`이 둘 다
+ * `StartScreenFade(…, COLOR_BLACK, 6, 1, …)`이라 **검정 6프레임**이다
+ * (`field_transition.c` 121·133줄) — 스크립트가 쓰는 `ScrCmd_FadeScreen`의
+ * FAST와 같은 모양이라 우리 `startFade`에 그대로 들어간다.
+ *
+ * 이게 없으면 격자를 갈아 끼우는 것과 청크가 4~10초에 걸쳐 붙는 것이 **그대로
+ * 보인다** — 원작에서 한 번도 보이지 않는 그림이다
+ */
+const WARP_FADE_STEPS = 6
+const WARP_FADE_FRAMES = 1
+/** `script/fade` — 짝수가 아웃, 홀수가 인이다 */
+const FADE_OUT = 0
+const FADE_IN = 1
+/** `COLOR_BLACK`. RGB555라 0이 검정이다 */
+const COLOR_BLACK = 0
+/**
+ * 덮개를 기다리는 예산.
+ *
+ * ⚠️ **게임 시계가 멈추면 페이드도 멈춘다** — 진하기를 굴리는 것이
+ * `FieldWorld.tick`이라(`script/fade`) 루프가 서면 영영 안 끝난다. 6프레임짜리를
+ * 기다리는 자리라 넉넉히 잡아도 눈에 안 띄고, 갇히는 것만 막는다
+ */
+const FADE_WAIT_MS = 2000
+
+/** 덮개가 다 덮이기를 기다린다 */
+function untilFaded(): Promise<void> {
+  return new Promise((ok) => {
+    const until = performance.now() + FADE_WAIT_MS
+    const poll = (): void => {
+      if (fadeDone() || performance.now() > until) { ok(); return }
+      requestAnimationFrame(poll)
+    }
+    requestAnimationFrame(poll)
+  })
+}
+
 export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const setZone = useSessionStore((s) => s.setZoneName)
   // 세션에도 남긴다 — 배틀 스토어처럼 `world`를 못 보는 쪽이 읽는다
@@ -301,6 +342,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       resetWalkSound()
       // 맵을 옮기는 중에 컷인이 남아 있으면 새 맵이 그 검정 밑에서 열린다
       resetCutIn()
+      // 비전기술 컷인도 같이 걷는다 — 남겨 두면 새 맵이 띠에 가린 채로 열리고,
+      // 스크립트는 끝나기를 기다리다 그대로 선다 (`hmCutInScene`)
+      resetHmCutIn()
       resetStepFeatureTile()
       // 다리 위에 선 채로 맵을 옮길 수는 없다 — 새 맵의 어귀를 다시 밟아야 한다
       resetBridge()
@@ -797,8 +841,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       if (target.silent !== true) {
         void music.playEffect(target.viaDoor ? SFX.DOOR : SFX.STAIRS)
       }
-      gridFor(target.matrix)
-        .then((next) => {
+      /**
+       * ⚠️ **덮개는 스크립트가 이미 들고 있을 수 있다.**
+       *
+       * `ScrCmd_Warp`는 「`FadeScreen` 아웃 → `Warp` → `FadeScreen` 인」 한복판에서
+       * 걸린다 — 그 자리에 우리 인을 얹으면 스크립트가 밝히기도 전에 우리가
+       * 밝혀 버려서 장면이 두 번 번쩍인다. 스크립트가 도는 동안은 그쪽에 맡긴다
+       */
+      const mine = scriptBridge.running?.() !== true
+      // 격자를 **먼저** 걸어 둔다. 덮는 6프레임과 겹쳐 받으므로 페이드가
+      // 기다림을 늘리지 않는다
+      const loading = gridFor(target.matrix)
+      if (mine) startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_OUT, COLOR_BLACK)
+      Promise.all([loading, mine ? untilFaded() : Promise.resolve()])
+        .then(([next]) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
           // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
           // 문이 아닌데 막힌 칸에 앉은 워프도 열넷 있다 — 거기 세우면 갇힌다
@@ -812,9 +868,19 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간
           // 방향 그대로 나오는 것이 맞아서 안 건드린다
           if (target.facing !== undefined) worldState.player.facing = FACING_OF[target.facing] ?? 0
+          // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
+          // (아웃만 걸고 워프하는 스크립트 때문에 걷어야 한다) 먼저 덮으면
+          // 그대로 지워진다. 덮고 나서 밝힌다 — 원작도 갈아 끼운 뒤에 인이다
+          // (`FieldTransition_StartMapAndFadeIn`: 맵을 세우고 → 지명을 띄우고 → 인)
+          if (mine) {
+            coverScreen(COLOR_BLACK)
+            startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_IN, COLOR_BLACK)
+          }
         })
         .catch((e) => {
           console.error('워프 실패', e)
+          // 못 갈아 끼웠는데 덮개를 그대로 두면 검은 화면에 갇힌다
+          if (mine) resetFade()
         })
         .finally(() => {
           world.pending = null

@@ -18,6 +18,29 @@ import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR } from '../script/movement'
 import { cutInFrame } from '../battle/encounterCutIn'
 
+/**
+ * 걷기·달리기 속도 (타일/초).
+ *
+ * ⚠️ **원작 값이 아니다. 원작은 걷기 7.5 · 달리기 15다.**
+ *
+ * 실측: 원작 주인공은 NPC와 **같은 이동 동작 표**를 쓴다 — `player_move.c`가
+ * 보통 걸음에 `MOVEMENT_ACTION_WALK_NORMAL_NORTH`, 달리기에
+ * `MOVEMENT_ACTION_RUN_NORTH`를 건다. 그 표를 `scripts.json`에서 읽으면
+ * 한 칸에 8프레임(7.5타일/초)과 4프레임(15타일/초)이다.
+ *
+ * 우리가 늦춘 까닭은 **화면이 다르기** 때문이다 (PARITY §1.31).
+ * 원작은 한 칸이 16px인 내려다보는 2D라 7.5칸/초가 경쾌한 걸음으로 읽히는데,
+ * 우리는 한 칸이 사람 키에 맞춘 3D 공간이라 같은 값이 **시속 27km**다 — 걷는
+ * 것이 아니라 달리는 것으로 보이고, 카메라가 못 따라가 멀미가 난다.
+ *
+ * ⚠️ **그래서 함께 늦춘 것이 더 있다.** 턱 뛰기(`HOP_TIME` 0.4초)가 그렇다 —
+ * 원작은 두 칸을 16프레임(0.267초)에 넘는데, 걷기와 같은 비율로 늘려 두었다.
+ * 한쪽만 고치면 뛰는 것이 걷는 것보다 빨라 보인다.
+ *
+ * ⚠️ **NPC는 원작 값 그대로다** — 그쪽은 이동 동작 표가 프레임을 정하고
+ * (`actor/ambient`), 한 칸 가고 서는 짓이라 빨라도 안 어색하다. 따라다니는
+ * 동행만 이 값을 보고 걸음을 고른다 (`followAction`)
+ */
 export const WALK_SPEED = 4.5
 export const RUN_SPEED = 8
 
@@ -151,6 +174,18 @@ export const playerSystem = {
     // 배틀이 열릴 때 서 있는 칸이 조우한 칸이 아니다
     if (p.riding || p.flying || cutInFrame.now !== null) {
       p.velocity.set(0, 0, 0)
+      /**
+       * ⚠️ **빠져나가는 갈래에서도 `prevPosition`을 맞춰 둔다.**
+       *
+       * 그리는 쪽은 `prevPosition`과 `position`을 `alpha`로 섞는다
+       * (`scene/EngineDriver`). 여기서 안 건드리면 자리를 옮기는 쪽이
+       * **저마다 기억해서** 맞춰야 하는데, 지금 그러고 있는 것이 승강 발판 ·
+       * 폭포 · 도는 판 · 운하시티 체육관 여섯 자리다 — 하나라도 빠뜨리면
+       * 그 갈래에서 사람이 매 프레임 두 자리 사이를 떤다. 여기서 한 번 맞춰
+       * 두면 그 규칙이 **저절로** 지켜진다(그쪽들이 하는 일과 같은 일이라
+       * 겹쳐도 값이 안 바뀐다)
+       */
+      p.prevPosition.copy(p.position)
       worldState.time.elapsed += dt
       return
     }
@@ -191,8 +226,10 @@ export const playerSystem = {
       const ground = distortionBridge.inWorld?.() === true
         ? p.hop.fromY
         : activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
-      // 포물선으로 뜬다. 4k(1−k)는 가운데서 1이고 양 끝에서 0이다
-      p.position.y = (ground ?? p.position.y) + HOP_RISE * 4 * k * (1 - k)
+      // 포물선으로 뜬다. 4k(1−k)는 가운데서 1이고 양 끝에서 0이다.
+      // ⚠️ **높이가 0인 갈래가 있다** — 폭포·록클라임은 벽을 타고 오르는 것이라
+      // 뜨면 안 되고, 오르는 높이는 지형이 준다 (`script/field`의 `hopTo`)
+      p.position.y = (ground ?? p.position.y) + p.hop.rise * 4 * k * (1 - k)
       if (p.hop.t >= 1) p.hop.active = false
       worldState.time.elapsed += dt
       return
@@ -200,7 +237,7 @@ export const playerSystem = {
 
     const startHop = (land: { x: number; z: number }, time: number) => {
       p.hop = {
-        active: true, t: 0, time,
+        active: true, t: 0, time, rise: HOP_RISE,
         fromX: p.position.x, fromZ: p.position.z, fromY: p.position.y,
         toX: land.x, toZ: land.z,
       }

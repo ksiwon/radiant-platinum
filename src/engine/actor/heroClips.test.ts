@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CLIMB_EDGE_SECONDS, HERO_CLIP_NONE, WATERING_START_SECONDS, WATERING_TAIL_SECONDS,
+  CLIMB_EDGE_SECONDS, CLIMB_IN_SECONDS, HERO_CLIP_NONE, WATERFALL_SECONDS,
+  rockClimbSeconds, WATERING_START_SECONDS, WATERING_TAIL_SECONDS,
   tickHeroClip, type HeroClipInput, type HeroClipState, type HeroFlyPhase,
 } from './heroClips'
 import { HERO_FIELD_CLIPS } from './npcModels'
@@ -53,10 +54,11 @@ describe('주인공 필드 동작 클립', () => {
       { fishing: rod('message', 'caught') },
       { fishing: rod('message', 'away') }, { fishing: rod('bite', null, 'old', 5) },
       { fly: 'takeoff' }, { fly: 'transit' }, { fly: 'landing' },
-      { action: { kind: 'waterfall', elapsed: 0, duration: 1.1 } },
-      { action: { kind: 'waterfall', elapsed: 0.5, duration: 1.1 } },
-      { action: { kind: 'waterfall', elapsed: 1.0, duration: 1.1 } },
-      { action: { kind: 'rockClimb', elapsed: 0.2, duration: 1.1 } },
+      // 규칙 쪽과 같은 길이로 본다 (`WATERFALL_SECONDS` 96프레임)
+      { action: { kind: 'waterfall', elapsed: 0, duration: WATERFALL_SECONDS } },
+      { action: { kind: 'waterfall', elapsed: 1.0, duration: WATERFALL_SECONDS } },
+      { action: { kind: 'waterfall', elapsed: 1.5, duration: WATERFALL_SECONDS } },
+      { action: { kind: 'rockClimb', elapsed: 0.2, duration: rockClimbSeconds(2) } },
     ]
     for (const c of cases) {
       const name = step(HERO_CLIP_NONE, c).name
@@ -98,14 +100,28 @@ describe('주인공 필드 동작 클립', () => {
   })
 
   it('폭포는 들어감 · 오름 · 나옴 셋이 다 보인다', () => {
-    const duration = 1.1
+    // 규칙 쪽이 쓰는 그 길이다 (`script/field`의 `WATERFALL_SECONDS`)
+    const duration = WATERFALL_SECONDS
     const at = (elapsed: number) =>
       step(HERO_CLIP_NONE, { action: { kind: 'waterfall', elapsed, duration } }).name
     expect(at(0)).toBe('waterfall_in_f')
-    expect(at(CLIMB_EDGE_SECONDS + 0.01)).toBe('waterfall_loop_f')
+    expect(at(CLIMB_IN_SECONDS + 0.01)).toBe('waterfall_loop_f')
     expect(at(duration - CLIMB_EDGE_SECONDS + 0.01)).toBe('waterfall_end_f')
     // 앞뒤를 떼고도 가운데가 남아야 셋이 다 보인다
-    expect(duration - CLIMB_EDGE_SECONDS * 2).toBeGreaterThan(0)
+    expect(duration - CLIMB_IN_SECONDS - CLIMB_EDGE_SECONDS).toBeGreaterThan(0)
+  })
+
+  it('오르는 길이가 몸과 연출에서 같다', () => {
+    // ⚠️ 이 둘이 갈리면 꼭대기에 선 채로 계속 기어오르는 그림이 된다 —
+    // 실제로 몸은 0.4초(턱의 `HOP_TIME`)에 도착하고 연출만 1.1초를 돌았다
+    expect(WATERFALL_SECONDS).toBeCloseTo(96 / 60, 6)
+    // 물벽을 타는 대목이 원작의 `SubTask_Waterfall_Ascend` 32프레임이다
+    expect(CLIMB_IN_SECONDS).toBeCloseTo(32 / 60, 6)
+    // 록클라임은 붙고(8) · 한 칸씩 오르고(4씩) · 내린다(8) — D칸이면 8 + 4D
+    expect(rockClimbSeconds(2)).toBeCloseTo(16 / 60, 6)
+    expect(rockClimbSeconds(5)).toBeCloseTo(28 / 60, 6)
+    // 두 칸보다 짧게는 못 오른다 — 붙는 것과 내리는 것만으로 두 칸이다
+    expect(rockClimbSeconds(1)).toBe(rockClimbSeconds(2))
   })
 
   it('물주기는 들고 · 주고 · 놓는 데까지 이어진다', () => {

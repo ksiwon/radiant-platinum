@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  AnimationMixer, Group, LoopOnce, Mesh, type AnimationClip, type Object3D,
+  AnimationMixer, Group, LoopOnce, LoopRepeat, Mesh, type AnimationClip, type Object3D,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
@@ -90,6 +90,8 @@ function TrainerActor({
   const clips = useRef<{ mixer: AnimationMixer, by: Map<string, AnimationClip> } | null>(null)
   const seen = useRef('')
   const gestureStarted = useRef(-100)
+  /** 지금 걸린 「끝나면 쉬기」 손잡이. 클립을 갈아 끼울 때 뗀다 */
+  const rest = useRef<(() => void) | null>(null)
   /** 내 쪽에서 본 결말. 누가 진 동작을 하는지는 `trainerLost`가 가른다 */
   const outcome = useBattleStore((state) => state.outcome)
   const origin = trainerThrowOrigin(mine ? 'p1a' : 'p2a')
@@ -97,23 +99,51 @@ function TrainerActor({
   const key = throwKey(view, mine)
 
   /**
-   * 클립 하나를 **한 번만** 돌리고 마지막 자세에서 멈춘다.
+   * 클립 하나를 돌린다.
    *
-   * 쉬는 동작(`wait_b`)은 안 구웠으므로 끝나고 돌아갈 자리가 없다 —
-   * 마지막 자세로 두는 것이 서 있는 모습이 된다. 클립이 없으면 false를
-   * 돌려주고, 부르는 쪽이 절차형으로 떨어진다
+   * 한 번만 돌고 마지막 자세에서 멈추는 것이 기본이고, **쉬는 동작만
+   * 되풀이한다** — 명령을 기다리는 동안 계속 돌아야 하기 때문이다.
+   * 클립이 없으면 false를 돌려주고, 부르는 쪽이 절차형으로 떨어진다
    */
-  const playClip = (name: string): boolean => {
+  const playClip = useCallback((name: string): boolean => {
     const set = clips.current
     const clip = set?.by.get(name)
     if (!set || !clip) return false
+    const loop = name === TRAINER_CLIP.wait
+    // 앞 클립이 걸어 둔 「끝나면 쉬기」를 먼저 뗀다. `stopAllAction`은 `finished`를
+    // 안 내므로 안 떼면 그 손잡이가 다음 클립의 끝에 얹혀 두 번 돈다
+    dropRest()
     set.mixer.stopAllAction()
     const action = set.mixer.clipAction(clip)
     action.reset()
-    action.setLoop(LoopOnce, 1)
-    action.clampWhenFinished = true
+    action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1)
+    action.clampWhenFinished = !loop
     action.play()
+    /**
+     * ⚠️ **한 번 돌 클립이 끝나면 쉬는 동작으로 되돌아간다.**
+     *
+     * 이게 없으면 트레이너가 그 자리에서 굳는다 — 등장 클립은 4.13초고
+     * 배틀은 몇 분이라, 나머지 시간 내내 **마지막 자세 그대로** 서 있었다.
+     * 움직이는 것이 아래 1.2cm짜리 사인파 하나뿐이었다.
+     *
+     * 진 동작만 안 되돌린다 — 배틀이 끝난 뒤라 다시 일어서면 안 된다
+     */
+    if (!loop && name !== TRAINER_CLIP.lose) {
+      const back = (): void => { dropRest(); playClip(TRAINER_CLIP.wait) }
+      rest.current = back
+      set.mixer.addEventListener('finished', back as never)
+    }
     return true
+    // 참조하는 것이 전부 ref라 한 번 만들고 계속 쓴다 — 아래 효과들이 이것을
+    // 의존으로 들 수 있어야 매 렌더마다 다시 도는 일이 안 생긴다
+  }, [])
+
+  /** 걸어 둔 「끝나면 쉬기」를 뗀다 */
+  const dropRest = (): void => {
+    const back = rest.current
+    if (!back) return
+    rest.current = null
+    clips.current?.mixer.removeEventListener('finished', back as never)
   }
 
   useEffect(() => {
@@ -121,12 +151,12 @@ function TrainerActor({
     seen.current = key
     // 공을 던지며 지시한다. 클립이 없는 몸이면 절차형 팔이 그 자리를 맡는다
     if (!playClip(TRAINER_CLIP.order)) gestureStarted.current = performance.now() / 1000
-  }, [key])
+  }, [key, playClip])
 
   // 졌으면 진 동작. 이겼거나 잡기·도망이면 아무것도 안 한다
   useEffect(() => {
     if (trainerLost(outcome, mine)) playClip(TRAINER_CLIP.lose)
-  }, [outcome, mine])
+  }, [outcome, mine, playClip])
 
   const gl = useThree((s) => s.gl) as unknown as WebGPURenderer
   const r3fScene = useThree((s) => s.scene)
@@ -187,14 +217,16 @@ function TrainerActor({
   // 몸이 서면 배틀에 들어서는 동작부터. 없으면 아무것도 안 한다 (선 자세 그대로)
   useEffect(() => {
     if (model) playClip(TRAINER_CLIP.advent)
-  }, [model])
+  }, [model, playClip])
 
   useFrame(({ clock }, delta) => {
     clips.current?.mixer.update(delta)
     const node = host.current
     if (!node) return
-    // 숨쉬는 흔들림은 클립이 있어도 둔다 — 쉬는 동작(`wait_b`)을 안 구워서
-    // 클립이 끝난 뒤에는 몸이 완전히 굳는다
+    // 숨쉬는 흔들림. 쉬는 동작(`wait_b`)을 실은 뒤로는 **몸을 못 구운 사람**을
+    // 위한 것이다 — 인물 106벌 중 절차형으로 떨어지는 사람이 그대로 이걸 쓴다.
+    // 클립이 도는 몸에서도 겹쳐 둔다: 1.2cm라 클립을 안 흔들고, 없으면 절차형
+    // 몸이 통째로 굳는다
     node.position.y = Math.sin(clock.elapsedTime * 1.2 + (mine ? 0 : 2.1)) * 0.012
     // ⚠️ **던지는 몸짓은 둘 중 하나만.** 클립이 있으면 `order_b`가 팔을
     // 돌리므로 여기서 몸통까지 기울이면 두 번 움직인다

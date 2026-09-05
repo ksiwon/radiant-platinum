@@ -420,10 +420,16 @@ export function buildOf(bundle: string): 'battle' | 'field' {
 /**
  * 등신 몸(`tr*`·`pc*`)에서 실을 클립.
  *
- * 몸 하나에 여덟이 오는데 배틀에서 이어 붙일 자리가 있는 것은 셋이다 —
- * 등장 · 지시 · 패배(`scene/battle/BattleTrainers`). 나머지 다섯은 안 싣는다:
- * `wait_b`·`wait02_b`·`speak01_b`·`eye01_b`는 이어 붙일 자리가 없고
- * `advent02_b`는 **움직이는 채널이 0**이라 실어도 아무것도 안 한다
+ * 몸 하나에 여덟이 오는데 배틀에서 이어 붙일 자리가 있는 것은 넷이다 —
+ * 등장 · **쉬기** · 지시 · 패배 (`scene/battle/BattleTrainers`).
+ *
+ * ⚠️ **`wait_b`가 없으면 트레이너가 굳는다.** 한동안 셋만 실었는데, 등장
+ * 클립이 끝나면 돌아갈 자리가 없어 **마지막 자세 그대로 멈춰 있었다** —
+ * 배틀 내내 움직이는 것이 1.2cm짜리 사인파 흔들림 하나뿐이었다. 원작에서
+ * 트레이너는 명령을 기다리는 동안 계속 쉬는 동작을 돈다.
+ *
+ * 나머지 넷은 그대로 안 싣는다: `wait02_b`·`speak01_b`·`eye01_b`는 이어 붙일
+ * 자리가 없고, `advent02_b`는 **움직이는 채널이 0**이라 실어도 아무것도 안 한다
  * (PLAN.md의 클립 표가 여덟을 다 재 두었다).
  *
  * ⚠️ **굽는 쪽 둘이 이것을 같이 본다.** `tools/extract/npcModels.mjs`는
@@ -431,7 +437,7 @@ export function buildOf(bundle: string): 'battle' | 'field' {
  * `src/import/bdsp/convert.ts`는 이 정규식을 그대로 쓴다. 따로 적으면
  * 개발 서버와 설치본이 다른 클립을 싣는다
  */
-export const TRAINER_CLIPS = /^(advent_b|order_b|lose01_b)$/
+export const TRAINER_CLIPS = /^(advent_b|wait_b|order_b|lose01_b)$/
 
 /**
  * 주인공 몸에 **치비에서 옮겨 실을** 필드 동작 클립 열여섯.

@@ -45,11 +45,52 @@ export interface HeroClipState extends HeroClip {
 export const HERO_CLIP_NONE: HeroClipState = { name: null, loop: false, tail: 0 }
 
 /**
- * 폭포·록클라임이 들어감·오름·나옴으로 갈리는 자리.
+ * 폭포오르기 한 번에 걸리는 시간.
  *
- * ⚠️ **우리가 정한 값이다.** 원작은 실제로 오른 칸 수만큼 `waterfall_loop_f`를
- * 돌리는데 우리 쪽 `runFieldMove`는 거리와 무관하게 1.1초로 오른다 — 그래서
- * 셋이 다 보이도록 앞뒤를 이만큼씩 떼어 준다
+ * ⚠️ **원작 실측이다** (`ov5_021DFB54.c`). 목적지가 `현재 + 북쪽 2칸`으로
+ * 못 박혀 있고(`MapObject_GetDxFromDir(DIR_NORTH) << 1`), 오르는 것이 두 단계다:
+ *
+ *   `SubTask_Waterfall_Ascend`        32프레임 — **y만** 오른다 (물벽을 탄다)
+ *   `SubTask_Waterfall_FinishAscent`  64프레임 — y와 z가 함께 간다 (턱을 넘는다)
+ *
+ * 합쳐 96프레임이다.
+ *
+ * ⚠️ **규칙 쪽이 이 값을 쓴다** (`script/field`의 `runFieldMove`). 예전에는
+ * 거기에 턱의 `HOP_TIME`(0.4초)이 들어가 있어서 **연출은 1.1초인데 몸은
+ * 0.4초에 도착했다** — 꼭대기에 선 채로 0.7초를 더 기어오르는 그림이었다.
+ * 한 자리에 두어야 다시 안 갈린다
+ */
+export const WATERFALL_SECONDS = 96 / 60
+
+/**
+ * 록클라임에 걸리는 시간. 오르는 칸 수를 탄다.
+ *
+ * ⚠️ **원작 실측이다** (`ov5_021DFB54.c`의 `sRockClimbTasks`). 벽에 붙는
+ * `HopOn`과 벽에서 내리는 `LoopOrHopOff`가 `JUMP_NEAR_FAST`(한 칸 8프레임)고,
+ * 그 사이를 `Move`가 `WALK_FAST`(한 칸 4프레임)로 **한 칸씩 되풀이한다** —
+ * 다음 칸도 오를 수 있으면 `state = 5`로 돌아간다. 그래서 D칸이면
+ * 8 + 4(D−2) + 8 = **8 + 4D** 프레임이다
+ */
+export function rockClimbSeconds(tiles: number): number {
+  return (8 + 4 * Math.max(2, tiles)) / 60
+}
+
+/**
+ * 폭포가 **물벽을 타는** 동안 (`waterfall_in_f`).
+ *
+ * ⚠️ **원작 실측이다** (`ov5_021DFB54.c`의 `SubTask_Waterfall_Ascend`) — 그
+ * 32프레임 동안 원작은 **y만** 올린다. 앞으로 나가는 것은 그 뒤 64프레임
+ * (`FinishAscent`)이라, 「물을 타고 오른다 → 턱을 넘는다」가 눈에 갈려 보인다.
+ * 규칙 쪽도 같은 96프레임을 쓴다 — `script/field`가 위의 `WATERFALL_SECONDS`를
+ * 그대로 가져다 쓴다
+ */
+export const CLIMB_IN_SECONDS = 32 / 60
+
+/**
+ * 폭포에서 몸이 턱을 넘는 마지막 대목 (`waterfall_end_f`).
+ *
+ * ⚠️ **우리가 정한 값이다.** 원작은 `FinishAscent` 한 덩어리라 나눌 자리가
+ * 없는데 우리는 클립이 셋이다 — 끝 클립이 보이게 뒤를 이만큼 뗀다
  */
 export const CLIMB_EDGE_SECONDS = 0.35
 
@@ -92,7 +133,7 @@ function actionClip(
   kind: FieldActionFxKind | null, elapsed: number, duration: number,
 ): HeroClip | null {
   if (kind === 'waterfall') {
-    if (elapsed < CLIMB_EDGE_SECONDS) return { name: 'waterfall_in_f', loop: false }
+    if (elapsed < CLIMB_IN_SECONDS) return { name: 'waterfall_in_f', loop: false }
     if (elapsed < duration - CLIMB_EDGE_SECONDS) return { name: 'waterfall_loop_f', loop: true }
     return { name: 'waterfall_end_f', loop: false }
   }

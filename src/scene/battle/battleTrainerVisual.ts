@@ -30,12 +30,14 @@ export function trainerFallbackPalette(trainerClass: number | null): TrainerPale
 /**
  * 등신 몸에 실린 배틀 클립.
  *
- * 굽는 쪽이 이 셋만 싣는다 (`engine/actor/npcModels`의 `TRAINER_CLIPS`).
+ * 굽는 쪽이 이 넷만 싣는다 (`engine/actor/npcModels`의 `TRAINER_CLIPS`).
  * 길이는 PLAN.md의 클립 표에서 잰 값이다
  */
 export const TRAINER_CLIP = {
   /** 배틀에 들어서는 동작. 4.13초 */
   advent: 'advent_b',
+  /** 명령을 기다리며 쉬는 동작. **되풀이한다** — 나머지 셋은 한 번만 돈다 */
+  wait: 'wait_b',
   /** 공을 던지며 지시하는 동작. 2.33초 */
   order: 'order_b',
   /** 진 동작. 5.50초 */

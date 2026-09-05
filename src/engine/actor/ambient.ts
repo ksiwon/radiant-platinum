@@ -30,7 +30,7 @@ import { activeZone, isOnWater } from '../map/zone'
 import { NO_SCRIPT } from '../map/world'
 import { DIR_STEP, MovementRunner, type MovementTable } from '../script/movement'
 import { obstacleAt } from './obstacles'
-import { npcActors, type NpcActor } from './npcs'
+import { measureNpcSpeeds, npcActors, type NpcActor } from './npcs'
 import { playerSpeed } from './player'
 
 type MovementTypeTable = ScriptFile['movementTypes']
@@ -465,5 +465,11 @@ function walkOrTurn(
 
 /** 게임 루프에 다는 자리. 스크립트 다음 · 주인공 이동 앞이다 */
 export const npcSystem = {
-  fixedUpdate(): void { npcAmbient.tick() },
+  fixedUpdate(dt: number): void {
+    npcAmbient.tick()
+    // ⚠️ **여기가 재는 자리다.** 이 스텝에 NPC를 옮기는 것은 둘뿐이고
+    // (`Script` 차례의 `ApplyMovement` · 바로 위의 혼자 하는 짓) 둘 다 끝났다.
+    // 그리는 쪽에서 재면 주사율에 묶여 팔다리가 깜빡인다 (`measureNpcSpeeds`)
+    measureNpcSpeeds(dt)
+  },
 }

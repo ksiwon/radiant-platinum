@@ -83,7 +83,46 @@ export interface NpcActor extends Movable {
    * 바꾸므로, 상태가 사람과 함께 나고 함께 사라져야 맞는다
    */
   ambient: AmbientState | null
+  /**
+   * 지금 내는 속도 (타일/초). **고정 스텝에서 잰 값이다.**
+   *
+   * ⚠️ **그리는 쪽에서 재면 안 된다.** 자리는 60Hz 고정 스텝에서만 움직이는데
+   * (`npcSystem` · 스크립트의 `MovementRunner`) 그림은 화면 주사율로 돈다 —
+   * 120·144Hz에서는 **한 프레임 걸러 이동량이 0**이라 팔다리가 매 프레임
+   * 깜빡이고, 60Hz에서도 누산기가 0스텝을 내는 프레임마다 한 번씩 튄다.
+   * 그래서 재는 자리를 스텝 쪽으로 옮겼다 (`measureNpcSpeeds`)
+   */
+  speed: number
+  /** 지난 고정 스텝의 자리. `speed`를 여기서 낸다 */
+  tickX: number
+  tickZ: number
 }
+
+/**
+ * 이 프레임에 얼마나 움직였는가를 재서 `speed`에 적는다.
+ *
+ * ⚠️ **NPC를 옮기는 모든 갈래 뒤에 와야 한다.** 스크립트의 `ApplyMovement`는
+ * `Script` 차례에서, 혼자 하는 짓은 `NPC` 차례에서 옮긴다 — 둘 다 끝난 자리가
+ * `npcSystem`의 끝이라 거기서 한 번만 잰다. 뒤에 오는 `objectFx`는 **그림
+ * 어긋남**만 건드리므로 여기 안 든다
+ */
+export function measureNpcSpeeds(dt: number): void {
+  if (dt <= 0) return
+  for (const actor of npcActors.list) {
+    const dx = actor.x - actor.tickX, dz = actor.z - actor.tickZ
+    actor.tickX = actor.x
+    actor.tickZ = actor.z
+    const moved = Math.sqrt(dx * dx + dz * dz)
+    // ⚠️ **옮겨 놓은 것은 걸은 것이 아니다.** `SetObjectPos`와 맵을 옮기는 자리는
+    // 한 스텝에 몇십 칸을 건너뛴다 — 그것을 속도로 읽으면 그 프레임에 다리가
+    // 한 번 홱 돈다. 제일 빠른 걸음이 한 스텝에 한 칸이라(`WALK_FASTEST`)
+    // 그보다 넘으면 걸은 것이 아니다
+    actor.speed = moved > TELEPORT_TILES ? 0 : moved / dt
+  }
+}
+
+/** 한 고정 스텝에 이보다 많이 옮겨졌으면 걸은 것이 아니다 (`WALK_FASTEST`가 한 칸) */
+const TELEPORT_TILES = 1.01
 
 export const npcActors = {
   /** 지금 맵의 NPC. 맵이 바뀌면 통째로 갈린다 */
@@ -174,6 +213,9 @@ export function addNpcFrom(info: Npc, vars: VarStore): void {
     movementType: info.move,
     params: paramsOf(info),
     ambient: null,
+    speed: 0,
+    tickX: info.x,
+    tickZ: info.z,
   }
   npcActors.list.push(actor)
   npcActors.byLocalID.set(info.localID, actor)
@@ -207,6 +249,9 @@ export function spawnNpcs(mapId: number, vars: VarStore): void {
       movementType: fix.move ?? info.move,
       params: paramsOf(info),
       ambient: null,
+      speed: 0,
+      tickX: fix.x ?? info.x,
+      tickZ: fix.z ?? info.z,
     }
     npcActors.list.push(actor)
     // 베껴 온 사람은 번호표에 안 올린다 — 그 번호는 **저쪽 맵의 번호**라
@@ -254,6 +299,9 @@ export function addNpc(localID: number, vars: VarStore): boolean {
     movementType: fix.move ?? info.move,
     params: paramsOf(info),
     ambient: null,
+    speed: 0,
+    tickX: fix.x ?? info.x,
+    tickZ: fix.z ?? info.z,
   }
   npcActors.list.push(actor)
   npcActors.byLocalID.set(localID, actor)

@@ -23,8 +23,15 @@ export const worldState = {
      *
      * `time`은 이 뜀에 걸리는 시간(초)이다. 턱과 깨어진 세계의 두 칸 뛰기가
      * 거리도 시간도 달라서 한 상수로 못 묶는다 (2칸 · 3칸 / 16 · 24프레임)
+     *
+     * `rise`는 솟는 높이(타일)다. **0이면 포물선 없이 곧게 간다** — 폭포와
+     * 록클라임이 그렇다. 그쪽은 벽을 타고 오르는 것이라 뜨면 안 되고, 높이는
+     * 지형이 올려 준다 (`actor/ledge`의 `HOP_RISE`가 턱의 값이다)
      */
-    hop: { active: false, t: 0, time: 0.4, fromX: 0, fromZ: 0, fromY: 0, toX: 0, toZ: 0 },
+    hop: {
+      active: false, t: 0, time: 0.4, rise: 0.55,
+      fromX: 0, fromZ: 0, fromY: 0, toX: 0, toZ: 0,
+    },
     /** 공중날기 연출 중. 그동안 조작이 안 먹는다 */
     flying: false,
     /**

@@ -94,6 +94,10 @@ maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
 
     mapWorld.mapId = mapId
     enterMap(mapId)
+    // ⚠️ **맵 뱅크가 오기를 기다린다.** `start`는 맵 뱅크를 읽는 스크립트를
+    // 글이 오기 전에는 안 건다(`field.ts`) — 안 기다리면 `ran`이 0이라
+    // "아무것도 안 돌고 초록"을 막는 아래 확인이 걸린다
+    await yieldToLoop()
 
     /** 이 맵에서 걸릴 수 있는 스크립트 전부. 어디서 왔는지도 같이 든다 */
     const jobs: { from: string, script: number, localID: number }[] = [

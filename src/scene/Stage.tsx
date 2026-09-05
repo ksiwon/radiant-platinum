@@ -13,6 +13,7 @@ import { DAY } from './fx/sky'
 import { FIELD_FOV } from '../engine/actor/camera'
 import { CinematicStage } from './CinematicStage'
 import { PokemonPreviewStage } from './PokemonPreviewStage'
+import { HmCutInStage } from './HmCutInStage'
 import { HallOfFameStage } from './HallOfFameStage'
 import { attachKeyboard } from '../engine/input/keyboard'
 import { IntroStage } from './IntroStage'
@@ -103,6 +104,8 @@ export function Stage() {
           <PlayerModel />
         </Suspense>
         <PokemonPreviewStage />
+        {/* 비전기술 컷인의 몸. 띠는 DOM 쪽이다 (`ui/field/HmCutInOverlay`) */}
+        <HmCutInStage />
         {inBattle && <BattleStage />}
         {choosing && <StarterStage />}
         {cinematic && <CinematicStage />}

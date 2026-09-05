@@ -20,7 +20,7 @@ import {
 import { ScriptContext, ScriptError, type CommonScripts } from './context'
 import { StepTrace } from '../actor/stepTrace'
 import { entryOffset, fileBytes, resolveScript, type ScriptData } from './data'
-import { resetFade } from './fade'
+import { resetFade, tickFade } from './fade'
 import {
   clearNpcPlacement, npcActors, npcByMovementType, spawnNpcs, switchMovementType,
 } from '../actor/npcs'
@@ -35,7 +35,11 @@ import {
 } from './siwonScene'
 import { SIWON_CAMEO_MAP, SIWON_SCRIPT } from '../world/siwonPlace'
 import { obstacleAt } from '../actor/obstacles'
-import { HOP_TIME } from '../actor/ledge'
+import { HOP_RISE, HOP_TIME } from '../actor/ledge'
+import { OVERWORLD_WEATHER, overworldWeather } from '../world/overworldWeather'
+// ⚠️ 오르는 길이는 **연출 쪽과 같은 자리**에서 온다. 갈리면 꼭대기에 선 채로
+// 계속 기어오르는 그림이 된다 (`actor/heroClips`)
+import { rockClimbSeconds, WATERFALL_SECONDS } from '../actor/heroClips'
 import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import {
@@ -46,7 +50,7 @@ import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
 import { APPROACH_TYPE, type ApproachingTrainer } from '../actor/approach'
 import { DIR, type Movable, type MovementTable } from './movement'
 import type { PrinterInput } from './printer'
-import { VarStore, VAR_LAST_TALKED } from './vars'
+import { VarStore, VAR_LAST_TALKED, SCRIPT_LOCAL_VARS_START } from './vars'
 import { FieldWorld, MENU_CANCEL, MENU_NO, type FieldServices, type NameSource } from './world'
 
 /**
@@ -665,8 +669,6 @@ function runFixedInit(mapId: number, type: number): void {
  * 원작도 이것을 다른 무엇보다 먼저 본다 (`FieldInput_Process`의 첫 줄)
  */
 function tryFrameTable(): void {
-  // 글이 오기 전에 걸면 첫 대사가 빈 창으로 지나간다
-  if (mapBankPending) return
   const header = mapById(mapWorld.mapId)
   const init = initScriptsOf(mapWorld.mapId)
   if (!header || init === null || init.frame.length === 0) return
@@ -725,6 +727,18 @@ export const scriptSystem = {
       step(ctx, world)
       return
     }
+    /**
+     * ⚠️ **스크립트가 없는 프레임에도 페이드는 굴러야 한다.**
+     *
+     * 진하기를 굴리는 것은 `world.tick()`인데 그것은 위 두 갈래에서만 돈다 —
+     * 즉 **스크립트가 도는 동안만** 페이드가 흘렀다. 스크립트 밖에서 거는
+     * 페이드가 생기면서(문·계단 워프의 덮개, `scene/MapStreamer`) 그 자리가
+     * 드러났다: 덮개가 0에 멈춘 채로 아웃이 영영 안 끝난다.
+     *
+     * 두 번 세지 않는다 — 위 갈래는 `return`으로 빠지고, `tryStartScripts`가
+     * 이 프레임에 스크립트를 걸어도 그쪽의 첫 `step`은 다음 프레임이다
+     */
+    tickFade()
     tryStartScripts()
   },
 }
@@ -1019,24 +1033,83 @@ function tryPC(front: { x: number; z: number }, mapFile: number): boolean {
 }
 
 /**
+ * `FIELD_MOVES` 스크립트 파일의 첫 번호 (`SCRIPT_ID(FIELD_MOVES, 0)`).
+ *
+ * `scripts.json`의 구간표가 `{from: 10000, file: 409, msg: 381}`이라 10000이
+ * 0번 진입점이다. 진입점 차례는 `res/field/scripts/scripts_field_moves.s`의
+ * `ScriptEntry` 순서 그대로다
+ */
+const FIELD_MOVES_SCRIPT = 10000
+
+/**
+ * **앞 칸이 부르는** 진입점 (`Field_TileBehaviorToScript`).
+ *
+ * 원작이 그 함수에서 돌려주는 번호 그대로다 — 폭포 6 · 록클라임 3 · 물 4.
+ * 나무(0)·바위(1)·큰바위(2)는 여기 없다: 그 셋은 **배치 객체**라 말을 거는
+ * 길로 이미 제 스크립트가 걸린다 (실측: `events.json`에 10000번 49개 ·
+ * 10001번 590개 · 10002번 49개)
+ */
+const TILE_FIELD_MOVE_ENTRY: Partial<Record<FieldMoveId, number>> = {
+  waterfall: 6,
+  rockClimb: 3,
+  surf: 4,
+}
+
+/**
+ * **기술 창에서 고른** 진입점 (`FieldMoves_Set*Task`).
+ *
+ * 원작의 각 태스크가 `ScriptManager_Change(taskMan, SCRIPT_ID(FIELD_MOVES, n),
+ * taskData->mapObj)`로 넘기는 번호다 (`field_move_tasks.c`)
+ */
+const MENU_FIELD_MOVE_ENTRY: Partial<Record<FieldMoveId, number>> = {
+  cut: 8,
+  rockSmash: 9,
+  strength: 10,
+  rockClimb: 11,
+  surf: 12,
+  waterfall: 13,
+  defog: 14,
+  flash: 15,
+}
+
+/**
  * 앞에 대고 A를 누르면 비전머신이 나간다 (`Field_TileBehaviorToScript`).
  *
  * 원작은 자격을 두 겹으로 본다 — 뱃지 하나와 `Party_HasMonWithMove` 하나다.
  * 둘 다 `engine/script/fieldMoves`에 표로 있고 여기서는 **결과만** 쓴다.
  *
- * ⚠️ 원작이 여는 `FIELD_MOVES` 스크립트(“○○의 파도타기!” 같은 대사와 컷인)는
- * 아직 안 돌린다. 하는 일만 한다 — 대사와 연출이 빠진 것이지 조건이 다른 것은
- * 아니다.
+ * ⚠️ **하는 일만 하지 않는다 — 원작 스크립트를 그대로 돌린다.** 한동안
+ * `runFieldMove`를 바로 불렀는데, 그러면 「○○의 파도타기!」도 「쓰겠습니까?」도
+ * 컷인도 여행기록도 통째로 빠진다. 그 셋이 다 그 스크립트 안에 있다:
  *
- * ⚠️ **안개제거와 플래시는 걸릴 자리가 없다.** 오버월드 날씨(`OVERWORLD_WEATHER_FOG`
- * · `DARK_FLASH`)를 아직 안 뽑았다 — 맵 헤더의 그 칸이 우리 `maps.json`에 없다.
- * 표에는 있으니 날씨가 들어오면 `FieldSpot`에 `fog`·`dark`를 채우면 된다
+ *     FieldMoves_Water:  PlaySE · LockAll · CheckHasPartner · Message ·
+ *                        ShowYesNoMenu · BufferPartyMonNickname · Message ·
+ *                        UseSurf · CreateJournalEvent
+ *
+ * 실제로 움직이는 것은 그 안의 `UseSurf`·`UseWaterfall`·`UseRockClimb`이고,
+ * 그 명령이 `fieldMoves.use`로 되돌아와 `runFieldMove`를 부른다 — **여기서
+ * 다시 스크립트를 걸면 안 되는 자리가 거기다**
+ *
+ * ⚠️ **안개제거·플래시는 이 길로 안 온다.** 원작도 그렇다 —
+ * `Field_TileBehaviorToScript`에 안개도 어둠도 갈래가 없고, `FIELD_MOVES`의
+ * 안개 진입점(5번 `FieldMoves_Fog_Unused`)은 이름 그대로 안 쓰인다. 그 둘은
+ * **기술 창에서만** 나간다 (`fieldMoveFromMenu`)
  */
 function tryFieldMove(front: { x: number; z: number }): void {
   const spot = spotAt(front)
   if (spot === null) return
-  const id = fieldMoveHere(spot, trainerNow())
-  if (id !== null) runFieldMove(id, front)
+  // ⚠️ **날씨가 여는 둘은 이 길에서 빼고 본다.** 안개 낀 맵에서 벽에 대고
+  // A를 누르면 「안개제거를 쓸 수 있다」가 걸려 버리는데, 원작의
+  // `Field_TileBehaviorToScript`에는 그 갈래가 아예 없다 — 그 둘은 기술 창
+  // 전용이다 (`MENU_FIELD_MOVE_ENTRY`)
+  const id = fieldMoveHere({ ...spot, fog: false, dark: false }, trainerNow())
+  if (id === null) return
+  const entry = TILE_FIELD_MOVE_ENTRY[id]
+  // 표에 없는 것은 배치 객체가 제 스크립트로 이미 처리한다 (나무·바위·큰바위는
+  // `events.json`에 10000~10002번을 달고 있어서 말 거는 길로 걸린다). 여기 오는
+  // 것은 그 객체에 스크립트가 없는 드문 자리뿐이다
+  if (entry === undefined) { runFieldMove(id, front); return }
+  start(FIELD_MOVES_SCRIPT + entry, currentMapFile())
 }
 
 /** 지금 앞에 무엇이 있는가. 격자가 없거나 뛰는 중이면 null */
@@ -1053,6 +1126,19 @@ function spotAt(front: { x: number; z: number }): FieldSpot | null {
     frontSprite: obstacleAt(front.x, front.z)?.gfx ?? null,
     quarter: quarterOf(p.facing),
     surfing: p.surfing,
+    /**
+     * ⚠️ **앞 칸이 아니라 날씨가 정하는 둘** (`FieldMoves_CanUseMoves`의 끝
+     * `switch`). 원작이 보는 것은 맵 헤더가 아니라 **지금 걸린 날씨**다
+     * (`FieldOverworldState_GetWeather`) — 그래야 안개제거를 쓴 뒤에 창이
+     * 다시 안 권한다. `ScrCmd_0C4`가 그 값을 맑음으로 되돌린다.
+     *
+     * 한동안 이 두 줄이 비어 있어서 **안개제거와 플래시가 영영 안 나갔다.**
+     * 「날씨 자료를 아직 안 뽑았다」고 적혀 있었는데 실제로는 뽑혀 있다 —
+     * `maps.json`의 `weather`에 값 스물둘이 들어 있고, 안개(14)가 51개 맵 ·
+     * 어둠(16)이 1개 맵이다
+     */
+    fog: overworldWeather.value === OVERWORLD_WEATHER.fog,
+    dark: overworldWeather.value === OVERWORLD_WEATHER.darkFlash,
   }
 }
 
@@ -1078,12 +1164,25 @@ export function frontTile(): { x: number; z: number } {
   return tileInFront(p.position.x, p.position.z, p.facing)
 }
 
-/** 규칙을 막지 않는 짧은 3D 피드백을 시작한다. */
-function showFieldAction(kind: FieldActionFxKind, duration: number): void {
+/**
+ * 규칙을 막지 않는 짧은 3D 피드백을 시작한다.
+ *
+ * ⚠️ **씬 쪽도 부른다** (`scene/fieldServices`의 `breakObstacle`). 나무·바위는
+ * 배치 객체라 **말을 거는 길로 원작 스크립트가 걸리고**, 그 스크립트가
+ * `StartDestroyObstacleAnimation`으로 연출을 시킨다 — 여기를 안 열어 두면
+ * 그 길에서는 나무가 소리 없이 사라진다
+ */
+export function showFieldAction(kind: FieldActionFxKind, duration: number): void {
   const fx = worldState.player.fieldAction
   fx.kind = kind
   fx.elapsed = 0
   fx.duration = duration
+}
+
+/** 그 연출이 다 끝났는가. 스크립트가 이걸 기다린다 */
+export function fieldActionDone(): boolean {
+  const fx = worldState.player.fieldAction
+  return fx.kind === null || fx.elapsed >= fx.duration
 }
 
 /**
@@ -1127,8 +1226,13 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
       while (grid.behavior(x + step.x, z + step.z) === behavior) { x += step.x; z += step.z }
       const landX = x + step.x, landZ = z + step.z
       if (grid.isBlocked(landX, landZ)) return false
-      hopTo(landX + 0.5, landZ + 0.5)
-      showFieldAction(id, 1.1)
+      const tiles = Math.abs(landX - Math.floor(p.position.x))
+        + Math.abs(landZ - Math.floor(p.position.z))
+      const time = id === 'waterfall' ? WATERFALL_SECONDS : rockClimbSeconds(tiles)
+      // ⚠️ **턱의 포물선을 쓰지 않는다.** 벽을 타고 오르는 것이라 뜨면 안 되고,
+      // 오르는 높이는 지형이 준다 — `hopTo`가 매 프레임 격자에 물어본다
+      hopTo(landX + 0.5, landZ + 0.5, time, 0)
+      showFieldAction(id, time)
       return true
     }
     default:
@@ -1147,6 +1251,17 @@ type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere'
  * 원작도 두 길이 같은 `FieldMoves_Check*`를 지난다. 다른 것은 여기서는
  * "왜 안 되는지"를 돌려준다는 것뿐이다.
  *
+ * 조건이 맞으면 **원작 스크립트로 넘긴다.** 원작의 각 태스크가 하는 일이
+ * 그것이다 — 조건은 C가 보고(여기 위 세 줄), 대사와 컷인은 스크립트가 낸다:
+ *
+ *     FieldMoves_CutTask:
+ *       ScriptManager_Change(taskMan, SCRIPT_ID(FIELD_MOVES, 8), taskData->mapObj)
+ *       FieldSystem_SetScriptParameters(fieldSystem, fieldMonId, 0, 0, 0)
+ *
+ * 넘기는 것이 둘이다 — **말 상대**(`mapObj`, 곧 벨 나무·바위)와 **파티 자리**
+ * (`VAR_0x8000`). 앞의 것이 없으면 `RemoveObject VAR_LAST_TALKED`가 0번 사람을
+ * 지우고, 뒤의 것이 없으면 「○○의 」 자리에 0번 슬롯의 이름이 들어간다
+ *
  * 공중날기만 여기서 안 끝난다 — 어디로 갈지는 화면이 고른다
  */
 export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
@@ -1158,13 +1273,41 @@ export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
   const front = frontTile()
   const spot = spotAt(front)
   if (spot === null || !movesUsableHere(spot).includes(id)) return 'notHere'
-  return runFieldMove(id, front) ? 'used' : 'notHere'
+  const entry = MENU_FIELD_MOVE_ENTRY[id]
+  if (entry === undefined) return runFieldMove(id, front) ? 'used' : 'notHere'
+  // `taskData->mapObj` — 벨 나무·깰 바위·밀 바위가 그것이다
+  const target = obstacleAt(front.x, front.z)
+  if (!start(FIELD_MOVES_SCRIPT + entry, currentMapFile(), target?.localID ?? 0)) {
+    return runFieldMove(id, front) ? 'used' : 'notHere'
+  }
+  // `FieldSystem_SetScriptParameters(fieldSystem, fieldMonId, …)`.
+  // ⚠️ **`start` 뒤다** — 그 안의 `resetLocals()`가 앞서 넣은 것을 지운다
+  fieldScripts.vars.set(
+    SCRIPT_LOCAL_VARS_START, fieldScripts.services.party?.findWithMove(move) ?? 0)
+  return 'used'
 }
 
-function hopTo(x: number, z: number): void {
+/**
+ * 스크립트가 실제로 그 기술을 쓴다 (`UseSurf` · `UseWaterfall` · `UseRockClimb`).
+ *
+ * ⚠️ **`fieldMoveFromMenu`로 되돌아가면 안 된다.** 그쪽은 이제 스크립트를 거는
+ * 자리라, 스크립트 안에서 부르면 같은 스크립트를 무한히 다시 건다. 여기는
+ * 조건을 다시 안 본다 — 스크립트에 닿았다는 것이 곧 조건이 맞았다는 뜻이다
+ * (원작도 `FieldTask_StartUseSurf`가 검사를 안 한다)
+ */
+export function useFieldMoveNow(id: FieldMoveId): boolean {
+  return runFieldMove(id, frontTile())
+}
+
+/**
+ * 그 칸으로 뛴다.
+ *
+ * `rise`가 0이면 포물선 없이 곧게 간다 — 벽을 타고 오르는 갈래가 그렇다
+ */
+function hopTo(x: number, z: number, time = HOP_TIME, rise = HOP_RISE): void {
   const p = worldState.player
   p.hop = {
-    active: true, t: 0, time: HOP_TIME,
+    active: true, t: 0, time, rise,
     fromX: p.position.x, fromZ: p.position.z, fromY: p.position.y, toX: x, toZ: z,
   }
 }
@@ -1454,6 +1597,25 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
   if (!target) return false
   const info = data.meta.files[target.file]
   if (!info || target.entry >= info.entries) return false
+
+  /**
+   * ⚠️ **이 맵의 글이 오기 전에는 맵 뱅크를 읽는 스크립트를 안 건다.**
+   *
+   * 뱅크는 fetch로 오는데(`enterMap`) 원작은 통째로 램에 있다 — 그 틈은
+   * 우리한테만 있다. 그 사이에 걸면 **앞 맵의 뱅크로 이 맵의 번호를 읽는다**:
+   * 글자는 멀쩡히 나오므로 눈으로는 "번역이 이상한가" 싶게 지나가고, 아직
+   * 아무 뱅크도 없으면 빈 창이 한 번 번쩍하고 닫힌다.
+   *
+   * ⚠️ **제 뱅크를 든 스크립트는 안 막는다.** `target.msg`가 있으면 그쪽으로
+   * 갈아 끼우므로 맵 뱅크와 상관이 없다 — 트레이너(3000번대는
+   * `TEXT_BANK_COMMON_STRINGS`) · 간판(2500번대) · 숨은 도구(8000번대)가
+   * 그렇고, 실측으로 간판 292개 중 262개가 그 길이다. 그걸 같이 막으면
+   * **기다릴 이유가 없는 것까지 기다린다.**
+   *
+   * 막힌 프레임은 그냥 지나간다 — 좌표 트리거와 눈 마주침은 다음 프레임에
+   * 다시 보고, 한 번 받은 뱅크는 `gameData`가 들고 있어 두 번째부터는 안 선다
+   */
+  if (target.msg === null && mapBankPending) return false
 
   // ⚠️ **변장이 여기서 풀린다** (PARITY §1.15). 원작은 다가오는 연출의 마지막에
   // 이동 유형을 `NONE`으로 갈아 끼운다 (`ApproachingTrainerTask_SwitchMovementTypeNone`)

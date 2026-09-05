@@ -85,6 +85,18 @@ export function fadeDone(): boolean {
 }
 
 /**
+ * 화면을 **덮은 채로 세워 둔다.**
+ *
+ * 맵을 갈아 끼우는 자리가 쓴다 (`scene/MapStreamer`). `enterMap`이 그 안에서
+ * `resetFade`로 덮개를 걷어 버리므로, 갈아 끼운 **직후에** 다시 덮어야
+ * 이어지는 인이 검은 화면에서 밝아진다 — 안 덮으면 `startFade`가 0에서
+ * 시작해 아무것도 안 덮인 채로 끝난다
+ */
+export function coverScreen(color = 0): void {
+  screenFade.now = { from: 1, to: 1, elapsed: 0, frames: 1, color: fadeColor(color) }
+}
+
+/**
  * 덮개를 걷는다.
  *
  * ⚠️ 맵을 옮길 때 꼭 불러야 한다. 아웃만 걸고 워프한 스크립트가 있으면, 안 걷을

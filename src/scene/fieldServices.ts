@@ -23,7 +23,10 @@ import {
 } from '../engine/pokemon/instance'
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
-import { fieldMoveFromMenu, fieldScripts, resetStepFeatureTile } from '../engine/script/field'
+import {
+  fieldActionDone, fieldScripts, resetStepFeatureTile, showFieldAction, useFieldMoveNow,
+} from '../engine/script/field'
+import { hmCutInDone, startHmCutInFor } from './hmCutInScene'
 import {
   VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
 } from '../engine/script/vars'
@@ -49,7 +52,6 @@ const NATIONAL_DEX_EXEMPT = new Set([491, 492, 493])
 /** 난수. 원작 LCRNG와 같은 자리에서 쓴다 */
 const randMod = (bound: number): number => (bound <= 1 ? 0 : Math.floor(Math.random() * bound))
 import { setOnCyclingRoad } from '../engine/actor/bike'
-import { FIELD_MOVES } from '../engine/script/fieldMoves'
 import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -73,6 +75,7 @@ import {
 } from '../engine/world/turnbackCave'
 import { entryNumber } from '../engine/world/hallOfFame'
 import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
+import { overworldWeather } from '../engine/world/overworldWeather'
 import { addBattlePoints, spendBattlePoints } from '../engine/bag/frontierMart'
 import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
@@ -667,6 +670,18 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   }
 }
 
+/**
+ * 나무·바위가 부서지는 연출의 길이 (초).
+ *
+ * ⚠️ **우리 값이다.** 원작은 `.spa` 입자 한 벌이 끝나기를 기다리는데 그 자료를
+ * 아직 안 뽑았다 (`FieldActionEffects`가 그 자리를 도형으로 채운다). 스크립트가
+ * `WaitTime 7`(7프레임)을 먼저 쓰므로 그보다는 길어야 눈에 보인다
+ */
+const BREAK_SECONDS = 0.65
+
+/** 괴력을 켤 때의 연출 길이 (초). `BREAK_SECONDS`와 같은 까닭으로 우리 값이다 */
+const STRENGTH_SECONDS = 0.8
+
 const services: FieldServices = {
   startTrainerBattle(trainerID: number): void {
     battleResult = null
@@ -971,10 +986,12 @@ const services: FieldServices = {
   /**
    * 지금 날씨 (`FieldOverworldState_GetWeather`).
    *
-   * ⚠️ **맵 헤더의 값이다.** 원작은 리포트 쪽에 따로 들고 있어서 스크립트가
-   * 바꾼 날씨도 읽히는데, 우리는 아직 바꾸는 길이 없다 (PARITY §8.3)
+   * ⚠️ **헤더 값이 아니라 지금 걸린 값이다.** 원작이 그 둘을 따로 드는데
+   * (`FieldOverworldState`), 안개제거·플래시를 쓰면 헤더는 그대로인 채 걸린
+   * 값만 맑음이 된다. 헤더를 돌려주면 안개를 걷고 나서도 스크립트가 안개 쪽
+   * 갈래로 간다 (PARITY §8.3 · `engine/world/overworldWeather`)
    */
-  weather: () => mapById(mapWorld.mapId)?.weather ?? 0,
+  weather: () => overworldWeather.value,
   // ⚠️ **요일은 진짜 달력에서 온다** — 게임 시계는 시·분만 든다. 원작도
   // `GetCurrentDate`로 기계의 날짜를 본다
   dayOfWeek: () => new Date().getDay(),
@@ -1035,16 +1052,54 @@ const services: FieldServices = {
    * 어느 뱃지에 어느 기술인지는 엔진의 표가 안다 (`engine/script/fieldMoves`).
    * 여기서는 세이브를 읽어 주기만 한다
    */
+  /**
+   * 비전기술 컷인 (`HMCutIn_StartTask`).
+   *
+   * ⚠️ **스크립트가 여기서 선다.** `PlayHMCutIn`이 `done()`이 참이 될 때까지
+   * 기다리므로(`ScriptContext_WaitForHMCutInFinished`), 이 자리가 비어 있으면
+   * 「○○의 파도타기!」 다음에 **아무것도 안 하고 곧바로** 물에 뛰어든다 —
+   * 한동안 그랬다
+   */
+  /**
+   * 나무·바위가 부서지는 연출 (`ScrCmd_StartDestroyObstacleAnimation`).
+   *
+   * ⚠️ **갈래는 원작 인자다** — `scripts_field_moves.s`가 나무에 0,
+   * 깰 바위에 1을 넘긴다. 큰 바위(괴력)는 이 명령을 안 쓴다: 그쪽은
+   * `DoStrengthFunc`로 미는 것을 허락만 하고, 실제로 미는 것은 걸음이다.
+   *
+   * ⚠️ **스크립트가 여기서 선다.** `WaitTime 7` 뒤에 「그 칸이 0이면
+   * 되돌아가기」로 기다리는데, 채워 주는 사람이 없으면 그대로 무한 고리다 —
+   * 명령 쪽이 서비스가 없을 때만 스스로 1을 채운다 (`commands.ts`)
+   */
+  breakObstacle: {
+    start: (kind) => { showFieldAction(kind === 0 ? 'cut' : 'rockSmash', BREAK_SECONDS) },
+    done: () => fieldActionDone(),
+  },
+
+  hmCutIn: {
+    start: (slot) => { startHmCutInFor(slot) },
+    done: () => hmCutInDone(),
+  },
+
   fieldMoves: {
     badges: () => useSaveStore.getState().badges,
     knows: (move: number) =>
       useSaveStore.getState().party.some((mon) => mon.moves.some((s) => s.move === move)),
-    // 메뉴에서 고르는 길과 **같은 규칙**을 쓴다 — 지형을 보고 뛰거나 오른다
-    use: (id) => fieldMoveFromMenu(FIELD_MOVES[id].move) === 'used',
+    /**
+     * ⚠️ **`fieldMoveFromMenu`로 되돌아가면 안 된다.** 그쪽은 이제 원작
+     * `FIELD_MOVES` 스크립트를 거는 자리고, 이 서비스를 부르는 것이 **바로 그
+     * 스크립트의 `UseSurf`**다 — 되돌아가면 같은 스크립트를 무한히 다시 건다.
+     * 여기는 하는 일만 하는 자리다 (원작의 `FieldTask_StartUseSurf`)
+     */
+    use: (id) => useFieldMoveNow(id),
     strength: (mode) => {
       const p = worldState.player
       if (mode === 'check') return p.strength
       p.strength = mode === 'set'
+      // ⚠️ **연출도 여기서 난다.** 큰 바위는 `StartDestroyObstacleAnimation`을
+      // 안 쓰고 `DoStrengthFunc`로 미는 것을 허락만 한다 — 이 자리를 비워 두면
+      // 「괴력을 썼다!」 다음에 화면에서 아무 일도 안 일어난다
+      if (p.strength) showFieldAction('strength', STRENGTH_SECONDS)
       return p.strength
     },
   },
@@ -1817,11 +1872,13 @@ export function setStarterChoice(species: number): void {
 /**
  * 문 여닫는 그림 (`ov5_021D431C.c`).
  *
- * ⚠️ **아직 그림이 없다.** 소품 590종을 기하와 텍스처로 뽑아 두었지만
- * 애니메이션(NSBCA)은 안 뽑았다. 그래서 여기서 하는 일은 **소리와 시간**뿐이다 —
+ * ⚠️ **원작 애니메이션(NSBCA)은 아직 안 뽑았다.** 소품 590종을 기하와
+ * 텍스처로만 뽑아 두었다. 그래서 여기서 하는 일은 **소리와 시간**이고 —
  * 문이 열릴 때 나는 소리는 원작 그대로고, `WaitForAnimation`이 서는 길이도
  * 원작의 한 바퀴(`MapPropOneShotAnimationManager_IsAnimationLoopFinished`)와
- * 같은 자리에 있다. 문짝이 **움직이는 모습**만 없다.
+ * 같은 자리에 있다 — **그림은 `scene/DoorAnimations`가 우리 것으로 그린다**
+ * (여닫이 문짝 하나가 같은 200ms 동안 돈다). 원작이 문마다 다른 그림을 쓰는
+ * 것과 달리 우리는 한 벌뿐이라, 미닫이 문에도 여닫이가 돈다.
  *
  * 소리는 문 종류가 정한다 (`DoorAnimation_GetSoundEffectType`):
  * 미닫이는 열 때 `SEQ_SE_DP_DOOR10`·닫을 때 소리 없음, 나머지는

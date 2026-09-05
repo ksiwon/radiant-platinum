@@ -526,18 +526,44 @@ const wipeOut = keyframes({
   '100%': { opacity: 0 },
 })
 
-export const wipe = style({
+const wipeBase = {
   position: 'fixed',
   inset: 0,
   zIndex: 400,
   pointerEvents: 'none',
   background: vars.scrim.deep,
+} as const
+
+/**
+ * 아직 무대를 못 세운 동안 **덮은 채로 세워 둔다.**
+ *
+ * ⚠️ 막이 560ms 고정이라, 준비가 그보다 길면 걷히고 나서 **빈 무대**가 보인다 —
+ * 첫 배틀은 규칙기(`battle-sim`, 483KB)를 그때 받으므로 실제로 더 길다.
+ * 실측으로 `pnpm shot rival`이 그 순간을 찍었다: 무대만 있고 포켓몬도 창도
+ * 없는 그림이었다. 준비가 끝날 때까지 걷지 않는다
+ */
+export const wipeHold = style(wipeBase)
+
+export const wipe = style({
+  ...wipeBase,
   animation: `${wipeOut} 560ms ease-out forwards`,
 })
 
+/**
+ * 준비 중 알림.
+ *
+ * ⚠️ **막보다 위다.** 막이 준비가 끝날 때까지 덮고 있으므로 밑에 두면 아무것도
+ * 안 보인다 — 오래 걸리는 판에서 「멈췄나」로 읽힌다
+ */
 export const waiting = style({
+  position: 'fixed',
+  inset: 0,
+  zIndex: 401,
+  display: 'grid',
+  placeContent: 'center',
   padding: 12,
   fontSize: 13,
+  color: vars.ink.onDark,
   animation: `${pulse} 1.1s ease-in-out infinite`,
 })
 

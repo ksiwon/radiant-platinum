@@ -275,7 +275,7 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
       // ⚠️ **등신과 치비가 싣는 것이 다르다.** 걷기는 `actor/locomotion`이
       // 뼈를 직접 돌려 만들어서 치비(`fc*`)의 클립 쉰여섯은 쓸 자리가 없다 —
       // 다 실으면 한 명이 1.06MB에서 2.58MB가 된다. 등신(`tr*`·`pc*`)은
-      // 배틀에서 이어 붙는 셋만 싣는다 (`TRAINER_CLIPS`)
+      // 배틀에서 이어 붙는 넷만 싣는다 (`TRAINER_CLIPS`)
       const battle = buildOf(bundle) === 'battle'
       // ⚠️ **레이어 색을 갈아 끼우는 표도 노드 추출기와 같이 본다**
       // (`NPC_RECOLOR`). 따로 적으면 개발 서버와 설치본의 사람 색이 갈린다

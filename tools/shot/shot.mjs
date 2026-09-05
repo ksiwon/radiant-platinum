@@ -161,6 +161,17 @@ async function main() {
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   })
   const page = await browser.newPage({ viewport: DRIVE, deviceScaleFactor: 1 })
+  /**
+   * ⚠️ **playwright 기본 30초로는 첫 `goto`가 떨어진다.**
+   *
+   * `startVite`가 「준비됐다」를 찍는 것은 `/` 하나가 답한 시점이고, vite는 그
+   * **뒤로도** 모듈 그래프를 계속 미리 변환한다. 그동안 두 번째 `goto`는
+   * 붙잡혀 있다 — 실측(2026-09-05)으로 서버가 58초에 뜬 판에서 `goto`가 30초를
+   * 넘겨 두 번 연속 떨어졌고, 세 번째에 219초를 기다려서야 찍혔다. 게임 결함이
+   * 아니라 **하네스가 제 서버를 못 기다린 것**이라, 여기서 예산을 늘린다.
+   * 진짜 고장은 아래 각 `waitFor`의 제 시간이 잡는다
+   */
+  page.setDefaultNavigationTimeout(240_000)
   const noise = []
   // 경고도 줍는다 — three는 스켈레톤이 깨져도 `console.warn`으로만 말한다
   page.on('console', (m) => {

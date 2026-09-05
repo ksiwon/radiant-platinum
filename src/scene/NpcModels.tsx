@@ -7,7 +7,8 @@
 // 같은 사람들이 들어 있다. 그림 이름(`BUG_CATCHER`)과 번들 안 텍스처 이름
 // (`tr1006_00_bugcatcher_body_col`)이 같은 낱말을 쓰는 것만 잇는다
 // (`engine/actor/npcModels`). 그럴듯한 짝은 안 만든다 — 지금 붙는 것이 배치
-// 3,555개 중 760개(21.4%)고, 나머지는 판때기로 남는다.
+// 3,555개 중 **1,895개(53.3%)**고, 나머지는 판때기로 남는다
+// (`npcModels.json`의 열쇠 116개를 `events.json`의 배치에 대고 센 값이다).
 //
 // ⚠️ **애니메이션 클립을 안 싣는다.** 걷기는 `actor/locomotion`이 뼈를 직접
 // 돌려서 만든다(주인공도 그렇다). 클립을 빼면 한 명이 2.58MB에서 1.06MB가 된다.
@@ -84,6 +85,14 @@ const ALONE: readonly number[] = [0]
 const GROUP_MAX = 64
 /** 걷는 중인지 가르는 문턱(타일/초). 이 아래는 서 있는 것으로 친다 */
 const MOVING = 0.05
+/**
+ * 몸이 도는 빠르기 (라디안/초).
+ *
+ * 90°를 0.13초에 감는다 — 원작의 한 걸음이 8프레임(0.133초)이라
+ * (`scripts.json`의 `WALK_NORMAL`) **걸음 하나 안에 다 돌아선다.** 그래서
+ * 걷다 모퉁이를 돌 때 몸이 뒤처져 미끄러지지 않으면서, 튀는 것만 없어진다
+ */
+const TURN_RATE = (Math.PI / 2) / (8 / 60)
 
 /** 받아 둔 씬. 갈래마다 한 벌만 받고 사람마다 복제한다 */
 const scenes = new Map<string, Object3D>()
@@ -99,9 +108,11 @@ interface Slot {
   outer: Group
   /** 이 칸에 선 몸들. 여럿이 그려진 판때기는 그 수만큼이다 (`GROUP_BODIES`) */
   rigs: (Rig | null)[]
-  /** 지난 프레임 자리. 걷는 속도를 여기서 잰다 — 배우는 속도를 안 들고 있다 */
-  lastX: number
-  lastZ: number
+  /**
+   * 이 칸에 사람이 막 앉았는가. 첫 프레임만 몸을 곧바로 돌려세운다 —
+   * 감아 돌리면 지난 주인의 각에서 한 바퀴 도는 것이 보인다
+   */
+  fresh: boolean
   /** 실제로 선 키 (타일). 머리 위에 무엇을 얹는 쪽이 본다 */
   height: number
   /** 맵을 떠서 버린 칸. 굽기가 늦게 끝나도 이러면 안 세운다 */
@@ -195,10 +206,9 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
           addWhenWarm(gl, root, cam, group, slot.outer, () => !mine.dropped)
         }
         slots.set(actor, slot)
-        // 새 주인 자리에서 시작한다 — 안 그러면 지난 주인과의 거리가 속도로
-        // 읽혀서, 선 사람이 한 프레임 달리는 자세를 낸다
-        slot.lastX = actor.x
-        slot.lastZ = actor.z
+        // 새 주인 자리에서 시작한다 — 안 그러면 지난 주인의 각에서 몸이
+        // 한 바퀴 감아 돌아오는 것이 보인다
+        slot.fresh = true
       }
       if (many) crowd += offsets.length; else n += offsets.length
       seen.add(actor)
@@ -213,14 +223,28 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
       )
       // 모델 정면이 +Z다. `DIR_STEP`이 그 방향의 걸음이라 그대로 각이 된다
       const step = DIR_STEP[actor.dir & 3]!
-      slot.outer.rotation.y = Math.atan2(step.x, step.z)
+      const want = Math.atan2(step.x, step.z)
+      // ⚠️ **몸을 즉시 돌려세우지 않는다.** 방향 번호는 네 값뿐이라 그대로 각에
+      // 넣으면 90°가 한 프레임에 튄다 — 두리번거리는 사람 하나가 그 자리에서
+      // 깜빡이는 것처럼 보인다. 원작은 2D 장이라 튀는 것이 맞았지만 몸이 있는
+      // 화면에서는 아니다. 각의 최단 거리로 감아 준다 (`TURN_RATE`)
+      if (slot.fresh) { slot.outer.rotation.y = want; slot.fresh = false } else {
+        let d = want - slot.outer.rotation.y
+        d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2
+        const max = TURN_RATE * delta
+        slot.outer.rotation.y += Math.abs(d) <= max ? d : Math.sign(d) * max
+      }
       slot.outer.visible = true
 
-      // 배우는 속도를 안 들고 있다 — 지난 프레임과의 거리로 잰다
-      const moved = Math.hypot(actor.x - slot.lastX, actor.z - slot.lastZ)
-      slot.lastX = actor.x
-      slot.lastZ = actor.z
-      const speed = delta > 0 ? moved / delta : 0
+      /**
+       * ⚠️ **속도는 배우가 들고 온다** (`actor/npcs`의 `measureNpcSpeeds`).
+       *
+       * 예전에는 여기서 지난 **그린 프레임**과의 거리로 쟀는데, 자리는 60Hz
+       * 고정 스텝에서만 움직이고 그림은 화면 주사율로 돈다 — 120·144Hz에서는
+       * 한 프레임 걸러 이동량이 0이라 팔다리가 매 프레임 깜빡였고, 60Hz에서도
+       * 누산기가 0스텝을 내는 프레임마다 한 번씩 튀었다
+       */
+      const speed = actor.speed
       for (const rig of slot.rigs) {
         // 서 있는 사람도 돌려야 한다 — 안 돌리면 바인드 포즈로 굳는다
         if (rig) updateLocomotion(rig, delta, speed < MOVING ? 0 : speed, WALK_SPEED, RUN_SPEED)
@@ -323,5 +347,5 @@ function build(
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
     rigs.push(createRig(body, inner))
   }
-  return { outer, rigs, lastX: 0, lastZ: 0, height, dropped: false, tag }
+  return { outer, rigs, fresh: true, height, dropped: false, tag }
 }

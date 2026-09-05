@@ -17,7 +17,7 @@ import { beforeEach, expect, it } from 'vitest'
 import { parseScriptMeta } from '../script/data'
 import { worldState } from '../../state/worldState'
 import { activeZone, type CollisionGrid } from '../map/zone'
-import { clearAmbient, npcAmbient, setAmbientTables } from './ambient'
+import { clearAmbient, npcAmbient, npcSystem, setAmbientTables } from './ambient'
 import { npcActors, type NpcActor } from './npcs'
 import { withData } from '../../data/romData.testkit'
 
@@ -72,7 +72,7 @@ function room(size: number): CollisionGrid {
 
 function actor(move: number, x: number, z: number, dir = 0): NpcActor {
   const npc = { sprite: 0, x, z, move, localID: 1 } as NpcActor['info']
-  return { localID: 1, info: npc, gfx: npc.sprite, x, z, y: 0, dir, visible: true, movementType: move, params: [], ambient: null }
+  return { localID: 1, info: npc, gfx: npc.sprite, x, z, y: 0, dir, visible: true, movementType: move, params: [], ambient: null, speed: 0, tickX: x, tickZ: z }
 }
 
 /** n 프레임 굴린다 */
@@ -380,5 +380,52 @@ maybe('배치표가 실제로 시키는 것', () => {
       - (count.get('partner') ?? 0) - (count.get('disguise') ?? 0)
     expect(notYet).toBe(118)
     expect(still.get('BERRY_SOIL')).toBe(118)
+  })
+})
+
+/**
+ * 걷는 빠르기를 **고정 스텝에서** 잰다 (`measureNpcSpeeds`).
+ *
+ * ⚠️ 예전에는 그리는 쪽이 지난 **그린 프레임**과의 거리로 쟀다. 자리는 60Hz
+ * 고정 스텝에서만 움직이고 그림은 화면 주사율로 도는데, 120·144Hz에서는
+ * 한 프레임 걸러 이동량이 0이라 **팔다리가 매 프레임 깜빡였다**
+ */
+maybe('걷는 빠르기', () => {
+  const meta = parseScriptMeta(read('scripts.json'))
+  const STEP = 1 / 60
+
+  beforeEach(() => {
+    clearAmbient()
+    setAmbientTables(meta)
+    activeZone.grid = room(20)
+    worldState.player.position.set(0.5, 0, 0.5)
+    npcActors.paused = false
+  })
+
+  it('한 칸 걷는 동안 원작 걸음의 빠르기가 나온다', () => {
+    // `WALK_NORMAL`은 한 칸 8프레임이다 (`scripts.json`) = 7.5타일/초
+    const walker = actor(TYPE.wanderAround, 10, 10)
+    npcActors.list = [walker]
+    npcActors.byLocalID = new Map([[1, walker]])
+    const seen: number[] = []
+    for (let i = 0; i < 240; i++) {
+      npcSystem.fixedUpdate(STEP)
+      seen.push(walker.speed)
+    }
+    const top = Math.max(...seen)
+    expect(top).toBeCloseTo(7.5, 3)
+    // 서 있는 프레임도 있어야 한다 — 배회는 걷다 쉰다
+    expect(Math.min(...seen)).toBe(0)
+  })
+
+  it('옮겨 놓은 것은 걸은 것으로 안 센다', () => {
+    const one = actor(TYPE.none, 10, 10)
+    npcActors.list = [one]
+    npcActors.byLocalID = new Map([[1, one]])
+    npcSystem.fixedUpdate(STEP)
+    // `SetObjectPos`가 한 스텝에 몇십 칸을 건너뛰는 자리
+    one.x = 90
+    npcSystem.fixedUpdate(STEP)
+    expect(one.speed).toBe(0)
   })
 })

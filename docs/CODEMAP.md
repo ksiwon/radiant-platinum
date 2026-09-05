@@ -67,9 +67,11 @@
 | **그린 것이 없는 자리 막기** | `engine/map/floorSeal.ts`가 규칙, 「그 칸 밑에 삼각형이 있는가」는 굽는 쪽이 비트로 적는다(`tools/extract/chunks.js`·`props.js` ↔ `src/import/platinum/chunks.ts` — **둘이 같아야 한다**). 거는 자리는 `scene/worldData.ts`의 `seal()`이고, 장치가 통행을 따로 쥐는 방은 거기 `SEAL_SKIP_MAPS`가 뺀다. 워프가 못 설 칸에 떨구면 `engine/map/world.ts`의 `standableSpot`이 비켜 세운다 ([REPAIR.md](REPAIR.md) §22·§23) |
 | 깨어진 세계 | 규칙은 `engine/world/distortion*.ts`, 연출은 `scene/distortion*.ts` — **이름이 짝을 이룬다**(`…Cascade`·`…Elevator`·`…Boulder`·`…Camera`). ⚠️ **`scene/distortion.ts`는 차례를 잡는 문이지 살림집이 아니다** — 들고 나기와 한 걸음의 순서만 들고, 층 자료·판 번호는 `distortionCore.ts`가 함수로만 내준다 (밖에서 대입하는 자리를 안 만들려고 그렇게 뒀다) |
 | 사람 모델을 세우는 비율 | `engine/model/` — `normalize.ts`가 키를 맞추고, `chibi.ts`가 배틀 몸이 없어 필드 번들로 서는 스물일곱을 등신 비율로 고친다: 머리·손을 줄이고, **머리를 줄인 뒤의 키**에 상수를 곱해 세우고, 굵기를 되돌리고, 그 되돌림이 팔에서 가져간 길이를 마디로 늘인다 (DATA §2.16) |
-| 주인공의 자세 | 걷기·서기는 `engine/actor/locomotion`이 뼈를 직접 돌린다. 낚시·폭포·물주기 같은 필드 동작은 **구운 클립**이고 어느 것을 언제 돌릴지는 `engine/actor/heroClips`가 정한다. ⚠️ **둘이 같은 뼈에 쓴다** — 클립이 돌면 `sceneRefs.playerClip`이 서고 `scene/EngineDriver`가 절차형을 건너뛴다 |
+| 주인공의 자세 | 걷기·서기는 `engine/actor/locomotion`이 뼈를 직접 돌린다. 낚시·폭포·물주기 같은 필드 동작은 **구운 클립**이고 어느 것을 언제 돌릴지는 `engine/actor/heroClips`가 정한다 — **오르는 데 걸리는 시간도 거기 하나에** 있다(`WATERFALL_SECONDS` 96프레임 · `rockClimbSeconds` 8+4D프레임). ⚠️ **둘이 같은 뼈에 쓴다** — 클립이 돌면 `sceneRefs.playerClip`이 서고 `scene/EngineDriver`가 절차형을 건너뛴다 |
 | **소리** | 곡·효과음을 실제로 울리는 것은 `engine/audio/` (SSEQ를 직접 렌더한다). **어디서 울리는가**는 갈래마다 다르다 — 발밑·벽은 `engine/actor/footstep`(무엇이 나는가)과 `scene/walkSound`(언제 나는가)로 갈려 있고, 번호는 전부 `engine/audio/sfx.ts`에 디컴프 파일·줄과 함께 적혀 있다. ⚠️ **번호만 적고 안 부르면 [REPAIR.md](REPAIR.md) §10이 세는 결함이 된다** — 걸 자리가 없는 소리는 아예 안 적는다 ([PARITY](PARITY.md) §8.13) |
 | **조우 컷인** | 값과 상태 기계는 `engine/battle/encounterCutIn`, 화면에 거는 것은 `scene/encounterCutIn`, 찢기·물결은 후처리 `scene/fx/cutInWarp`, 번쩍임·조리개는 DOM `ui/field/CutInOverlay`. ⚠️ **길이를 상수로 안 적는다** — 원작 태스크를 한 프레임에 상태 하나씩 밟게 옮기면 프레임 수가 세어져 나온다 ([PARITY](PARITY.md) §2.23) |
+| **비전기술 컷인** | 값과 상태 기계는 `engine/actor/hmCutIn`(순수 60Hz · 화면 밖 좌표계 256×192), 3D 몸은 `scene/HmCutInStage`, 위아래 밴드는 DOM `ui/field/HmCutInOverlay`, 그 셋을 잇고 울음을 트는 것은 `scene/hmCutInScene`. 스크립트가 `PlayHMCutIn`으로 부른다(`world.ts`의 `hmCutIn`). ⚠️ **조우 컷인과 같은 규칙** — 길이를 상수로 안 적고 원작 태스크를 한 프레임에 한 단계씩 밟게 옮긴다 ([PARITY](PARITY.md) §1.8) |
+| **비전기술이 나가는 길** | 자격·자리는 `engine/script/fieldMoves`, 두 진입점 표와 라우팅은 `engine/script/field`(`TILE_FIELD_MOVE_ENTRY`·`MENU_FIELD_MOVE_ENTRY`), 실제로 몸을 옮기는 것은 `useFieldMoveNow`. ⚠️ **`fieldMoveFromMenu`로 되돌아가면 안 된다** — 그쪽은 스크립트를 거는 쪽이고, 스크립트 안의 `UseSurf`가 다시 그리로 가면 고리가 된다 |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
 | **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
 | **통신을 닫아 둔 자리** | `engine/world/comm.ts` — 「안 된다」의 값 한 벌. 왜 문을 안 잠그고 답을 하는지는 [PARITY](PARITY.md) §9.4 |
@@ -228,6 +230,7 @@
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
 | 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/voidShots.mjs` · `.audit/distortionLook.mjs` | PARITY §6.2 · §6.10 |
 | 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.10 |
+| 어느 클립을 굽는가 (`engine/actor/npcModels`의 `TRAINER_CLIPS`·`HERO_FIELD_CLIPS`) | `import/bdsp/convert.test.ts`(굽는 쪽 둘이 같은 규칙을 보는가) · `scene/battle/battleTrainerVisual.test.ts`(무대가 쓰는 이름이 그 규칙에 드는가) | PLAN §16.9 · 3D_GAP_AUDIT §3.2 · `import/install/assetFormat`의 `npcModels`를 **올려야 한다**(이미 깔린 사람이 다시 굽는다) · DEPLOY §5의 ⑮(설치 크기) |
 | 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
 | 기하 추출기 (`tools/extract/chunks·props·distortionProps·starterScene`) | `import/platinum/chunks.test.ts` · `distortionProps.test.ts` (**브라우저 변환기와 바이트로 같은가**) | DATA §2.2 |
 | 바닥 비트(`cover.bin`)·소품 상자·막는 규칙 | `engine/map/floorSeal.test.ts` · `import/platinum/chunks.test.ts`(파일 668개) · `engine/map/world.test.ts`(워프 1,207개가 내려놓는 자리) | REPAIR §22·§23 · DATA §2.2 |

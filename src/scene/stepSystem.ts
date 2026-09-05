@@ -107,16 +107,48 @@ function publishMods(): void {
     : NO_LEAD
 
   const battler = save.party.find((m) => !m.isEgg && m.hp > 0)
-  const now = new Date()
-  encounters.mods = {
-    lead,
-    weather: mapById(mapWorld.mapId)?.weather ?? 0,
-    flute: save.flute,
-    repelLevel: save.steps.repel > 0 ? battler?.level ?? 0 : 0,
-    month: now.getMonth() + 1,
-    day: now.getDate(),
-  }
+  const date = today()
+  // ⚠️ **칸을 덮어쓴다 — 객체를 새로 만들지 않는다.** 이 함수는 **고정 스텝마다**
+  // 돈다(초당 60번). 매번 새 객체를 만들면 그 쓰레기가 프레임마다 쌓여서,
+  // 수집기가 도는 프레임이 눈에 보이는 끊김이 된다. 읽는 쪽은 `encounters.mods`를
+  // 프레임 안에서만 보므로 같은 객체를 계속 써도 된다
+  const mods = encounters.mods
+  mods.lead = lead
+  mods.weather = mapById(mapWorld.mapId)?.weather ?? 0
+  mods.flute = save.flute
+  mods.repelLevel = save.steps.repel > 0 ? battler?.level ?? 0 : 0
+  mods.month = date.month
+  mods.day = date.day
 }
+
+/**
+ * 오늘 날짜. **하루에 한 번만 `Date`를 만든다.**
+ *
+ * ⚠️ `publishMods`와 `checkDay`가 둘 다 고정 스텝마다 돌아서, 예전에는
+ * **초당 120개의 `Date`**가 났다. 값이 바뀌는 것은 자정에 한 번뿐이라
+ * 하루치를 들고 있으면 된다 — 자정을 넘겼는지만 싸게 본다
+ */
+interface DayNow { at: number; month: number; day: number; stamp: number; date: Date }
+let dayCache: DayNow | null = null
+
+/**
+ * 시계를 다시 읽는 사이 (ms).
+ *
+ * 이 값이 곧 「자정과 분이 바뀌는 것을 얼마나 늦게 알아채는가」다. 1초면
+ * 사람 눈에 안 걸리고, 초당 60번 읽던 것이 초당 한 번이 된다
+ */
+const CLOCK_RECHECK_MS = 1000
+
+function today(): DayNow {
+  const at = Date.now()
+  if (dayCache !== null && at - dayCache.at < CLOCK_RECHECK_MS) return dayCache
+  const date = new Date(at)
+  dayCache = {
+    at, date, month: date.getMonth() + 1, day: date.getDate(), stamp: dayNumber(date),
+  }
+  return dayCache
+}
+
 
 /** 종족 번호 → 타입 둘. 자력·정전기가 조우 칸을 집을 때 본다 */
 function typeOf(species: number): readonly [number, number] {
@@ -170,23 +202,22 @@ export function resetStepTile(): void {
  */
 function checkDay(): void {
   const save = useSaveStore.getState()
-  const now = new Date()
-  const today = dayNumber(now)
-  const daily = rollOver(save.daily, today)
+  const now = today()
+  const daily = rollOver(save.daily, now.stamp)
   if (daily !== save.daily) {
     // 포켓루스는 **하루에 한 칸씩** 낫는다 (`Party_UpdatePokerusStatus`).
     // 며칠을 안 켰으면 그만큼 한꺼번에 깎이고, 나흘을 넘겼으면 통째로 낫는다.
     //
     // ⚠️ 시계를 뒤로 돌린 경우는 0이다 — `rollOver`가 그때 씨앗을 안 굴리는
     // 것과 같은 이유로, 균주도 시계를 돌려 가며 늘릴 수 없어야 한다
-    const days = Math.max(0, today - save.daily.day)
+    const days = Math.max(0, now.stamp - save.daily.day)
     useSaveStore.setState({ daily, party: elapseDays(save.party, days) })
   }
   // 조우 시스템은 세이브를 못 읽는다 (PLAN §3.2). 갈아 끼울 값을 여기서 넘긴다
   encounters.swarmAt = swarmMap(daily)
   const garden = encounters.ex?.trophyGarden
   encounters.trophy = garden ? trophySpecies(daily, garden, save.nationalDex) : null
-  checkMinutes(now)
+  checkMinutes(now.date)
 }
 
 /**

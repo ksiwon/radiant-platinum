@@ -275,7 +275,12 @@ export function BattleScreen() {
   return (
     <div className={shell}>
       <Suspense fallback={null}><BattleSound /></Suspense>
-      <div className={css.wipe} />
+      {/*
+        ⚠️ **준비가 끝날 때까지 안 걷는다.** 클래스만 갈아 끼우므로 이 판은
+        여전히 **한 번만** 마운트된다 — 걷는 애니메이션은 클래스가 붙는
+        그 순간부터 돈다
+      */}
+      <div className={phase === 'loading' ? css.wipeHold : css.wipe} />
       {phase === 'loading' ? <div className={css.waiting}>배틀 준비 중…</div> : <>
       {/*
         누구를 내보낼까. **화면 전체를 덮는다** — 파티 여섯과 고른 한 마리의

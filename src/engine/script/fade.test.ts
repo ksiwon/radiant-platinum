@@ -9,7 +9,10 @@
 //   ③ **시간이 아니라 프레임을 센다.** 벽시계로 재면 게임을 빨리 감는 자리에서
 //      영영 안 끝난다 — 실제로 진입점 훑기가 그 자리에서 138개 멎었다.
 import { describe, expect, it, beforeEach } from 'vitest'
-import { fadeAlpha, fadeColor, fadeDone, resetFade, startFade, tickFade } from './fade'
+import {
+  coverScreen, fadeAlpha, fadeColor, fadeDone, resetFade, startFade, tickFade,
+} from './fade'
+import { fieldScripts, scriptSystem } from './field'
 
 /** `FADE_SCREEN_CMD_STEPS`. 매크로가 늘 이 값을 넣는다 */
 const STEPS = 6
@@ -101,5 +104,45 @@ describe('페이드', () => {
     startFade(STEPS, FAST, OUT, 0)
     run(1000)
     expect(fadeAlpha()).toBe(1)
+  })
+})
+
+/**
+ * 맵을 갈아 끼울 때 쓰는 덮개 (`scene/MapStreamer`).
+ *
+ * 원작 값이다 — `FieldTransition_FadeOut`·`FadeIn`이 둘 다
+ * `StartScreenFade(…, COLOR_BLACK, 6, 1, …)`이라 검정 6프레임이다
+ */
+describe('맵을 갈아 끼우는 덮개', () => {
+  beforeEach(() => { resetFade() })
+
+  it('덮은 채로 세워 두었다가 거기서 밝아진다', () => {
+    // `enterMap`이 `resetFade`로 덮개를 걷은 **뒤** 자리다
+    coverScreen(0)
+    expect(fadeAlpha()).toBe(1)
+    expect(fadeDone()).toBe(false)
+    // ⚠️ 안 덮고 인을 걸면 0에서 시작해 **아무것도 안 덮인 채로** 끝난다
+    startFade(STEPS, FAST, IN, 0)
+    expect(fadeAlpha()).toBe(1)
+    run(STEPS * FAST)
+    expect(fadeAlpha()).toBe(0)
+  })
+
+  /**
+   * ⚠️ **여기가 진짜로 막혀 있던 자리다.**
+   *
+   * 진하기를 굴리는 것은 `FieldWorld.tick`인데 그것은 **스크립트가 도는
+   * 프레임에만** 불렸다 — 문·계단 워프는 스크립트 밖에서 나므로 덮개가 0에
+   * 멈춘 채 아웃이 영영 안 끝났다
+   */
+  it('스크립트가 안 도는 프레임에도 굴러간다', () => {
+    const had = fieldScripts.ctx
+    fieldScripts.ctx = null
+    startFade(STEPS, FAST, OUT, 0)
+    expect(fadeAlpha()).toBe(0)
+    for (let i = 0; i < STEPS * FAST; i++) scriptSystem.fixedUpdate()
+    expect(fadeAlpha()).toBe(1)
+    expect(fadeDone()).toBe(true)
+    fieldScripts.ctx = had
   })
 })

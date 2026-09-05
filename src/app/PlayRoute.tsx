@@ -18,6 +18,7 @@ import { FishingBox } from '../ui/field/FishingBox'
 import { PokemonPreview } from '../ui/field/PokemonPreview'
 import { HatchScreen } from '../ui/menu/HatchScreen'
 import { FadeOverlay } from '../ui/field/FadeOverlay'
+import { HmCutInOverlay } from '../ui/field/HmCutInOverlay'
 import { CutInOverlay } from '../ui/field/CutInOverlay'
 import { MenuLayer } from '../ui/menu/MenuLayer'
 import { PoketchWidget } from '../ui/poketch/PoketchWidget'
@@ -77,6 +78,7 @@ export function PlayRoute() {
       <PokemonPreview />
       <HatchScreen />
       <FadeOverlay />
+      <HmCutInOverlay />
       <CutInOverlay />
       <PoketchWidget />
       <ControlHint />

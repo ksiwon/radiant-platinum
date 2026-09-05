@@ -636,6 +636,19 @@ function Flat({ look }: { look: TimeLook }) {
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
+  /**
+   * 기술 표와 타격 박자표를 **무대가 서면서** 받아 둔다.
+   *
+   * ⚠️ **첫 기술 하나가 엉뚱한 박자로 나가던 자리다.** 돌진은 `lastMove`가
+   * 바뀌는 프레임에 시작하는데, 그 기술이 물리인지 특수인지와 이 종이 몇 초 뒤에
+   * 때리는지는 그때 **비동기로** 풀린다 — 아직 안 온 첫 판은 `LUNGE / 2`라는
+   * 기본 박자로 나갔다. 둘 다 약속을 캐시하므로(`data/gameData`의 `fetchJson`)
+   * 여기서 한 번 걸어 두면 명령을 고르는 몇 초 사이에 다 와 있다
+   */
+  useEffect(() => {
+    void loadMoves().catch(() => { /* 없으면 지금까지의 기본 박자로 나간다 */ })
+    void loadMotionTiming().catch(() => { /* 위와 같다 */ })
+  }, [])
   // 오버월드와 **같은 하늘·같은 조명**을 쓴다. 두 화면의 톤이 어긋나면
   // 배틀에 들어갈 때마다 다른 게임처럼 보인다 — 해질녘에 걸어 들어왔는데
   // 배틀만 대낮이면 그 순간 다른 게임이 된다
