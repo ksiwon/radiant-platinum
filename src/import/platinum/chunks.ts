@@ -7,6 +7,7 @@
 // 검증은 헤더가 해 준다. MDL0가 정점·삼각형·사각형 수를 적어 두므로 우리가 센
 // 것과 한 개도 안 틀려야 한다 (666/666).
 import { narcEntry } from './nds'
+import { buildPropAnims } from './propAnims'
 import {
   fx32, readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, parseNodes, openModel,
   type NodeXform,
@@ -668,6 +669,17 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
     if (i % 16 === 0) { check(ctx); await breathe(ctx) }
   }
   out.set('data/props/index.json', json({ count, sheets, boxes }))
+
+  // 소품이 어떤 애니를 갖는가 — 문·자전거 비탈·간판이 이 표를 본다.
+  // ⚠️ **작다** — 소품 112개와 멤버 98개뿐이라 자리표 하나로 족하다
+  const list = await ctx.fs.read('/arc/bm_anime_list.narc')
+  const anime = await ctx.fs.read('/arc/bm_anime.narc')
+  if (!list || !anime) throw new Error('bm_anime_list·bm_anime을 못 읽었다')
+  const anims = buildPropAnims(list, anime)
+  if (anims.props[String(count - 1)] === undefined && Object.keys(anims.props).length === 0) {
+    throw new Error('소품 애니 표가 비었다')
+  }
+  out.set('data/props/anims.json', json(anims))
 }
 
 // ── 맵 텍스처 ────────────────────────────────────────────────────────────────

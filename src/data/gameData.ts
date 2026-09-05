@@ -13,6 +13,8 @@ import {
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
   pokeIconsSchema,
   particleIndexSchema,
+  propAnimsSchema,
+  type PropAnimsFile,
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BagSprite,
@@ -454,6 +456,16 @@ export interface ParticlePack {
 }
 
 /** 입자 묶음 여덟의 자리표 */
+/**
+ * 소품 애니 표 — 문이 몇 프레임에 열리는가 (DATA §2.31).
+ *
+ * ⚠️ **없어도 화면이 서야 한다.** 아직 안 구운 설치본에서는 문이 지금까지의
+ * 값으로 돈다 — 부르는 쪽(`scene/DoorAnimations`)이 `null`을 받는다
+ */
+export function loadPropAnims(): Promise<PropAnimsFile | null> {
+  return fetchJson('props/anims.json', (v) => propAnimsSchema.parse(v)).catch(() => null)
+}
+
 function loadParticleIndex(): Promise<Record<string, { at: number[], size: number[] }>> {
   return fetchJson('particles/index.json', (v) => particleIndexSchema.parse(v))
 }

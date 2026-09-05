@@ -190,6 +190,9 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
     }
     expect(diff.slice(0, 5), `${String(diff.length)}개가 어긋난다`).toEqual([])
     expect(pngs).toBeGreaterThan(560)
-    expect(jsons).toBe(2)
+    // 목차 셋이 바이트로 같다 — 맵 텍스처 · 소품 · **소품 애니**
+    // (`props/anims.json`은 굽는 쪽 둘이 `import/platinum/propAnims`의
+    // 같은 함수를 부르므로 같을 수밖에 없다. 그래도 여기서 센다)
+    expect(jsons).toBe(3)
   }, 900_000)
 })

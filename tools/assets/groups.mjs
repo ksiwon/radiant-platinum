@@ -28,7 +28,7 @@ const nameIn = (dir, ...heads) => (p) =>
 export const GROUPS = [
   // 덩치들. 지금도 gitignore라 새 기계에 없다
   { name: 'chunks', make: 'pnpm extract:chunks', match: under('data/chunks/') },
-  { name: 'props', make: 'pnpm extract:props', match: under('data/props/') },
+  { name: 'props', make: 'pnpm extract:props && pnpm extract:propAnims', match: under('data/props/') },
   { name: 'mapTextures', make: 'pnpm extract:mapTextures', match: under('data/tex/') },
   { name: 'sound', make: 'pnpm extract:sound', match: under('data/sound/') },
   { name: 'pokegra', make: 'pnpm extract:pokegra', match: under('data/pokemon/') },
