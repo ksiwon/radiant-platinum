@@ -12,7 +12,7 @@
 | 공개 배포를 막을 수 있는 자리 | 재는 자리 9 | [DEPLOY.md](DEPLOY.md) §1 |
 | 우리가 만든 자리가 어긋난 것 | 18 | [REPAIR.md](REPAIR.md) |
 | 원작 대비 반쯤 · 없음 | 16 · 0 | [PARITY.md](PARITY.md) |
-| 화면에 아직 안 서는 것 | 1 | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |
+| 화면에 아직 안 서는 것 | 0 | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |
 | 알고 남겨 둔 것 | 11 | [PLAN.md](PLAN.md) §16.10 |
 
 ⚠️ **지금 무엇이 열려 있는지는 여기서 안 잰다.** blocker는 각자 `resolved()`로
@@ -93,7 +93,6 @@
 
 「기능이 있는가」가 아니라 **「플레이 중 화면에 실제로 3D로 서는가」**다.
 
-- 드래곤사역사(`Dragon Tamer`) 열여섯이 절차형 마네킹으로 선다 — 판때기가 아니다. 오버월드에는 그 그림이 아예 없는 배틀 전용 갈래고, 몸을 못 찾으면 `BattleTrainers`가 캡슐 사람을 세운다. 후보 둘이 다 안 열린다: `tr1029_00`도 `fc1029_00`도 재질이 그 번들 밖 CAB을 가리킨다 (`FileNotFoundError: cab-… not found`). 다른 셋(`tr1026_00`·`tr1078_00`· `tr1085_00`)은 같은 까닭으로 등신이 막히지만 같은 번호의 치비로 떨어져서 사람은 선다 — 이 하나만 떨어질 자리가 없다. 여는 쪽을 고치려면 번들 하나가 아니라 가리키는 CAB까지 같이 열어야 한다 — 우리 `SerializedFile`은 바깥 파일표(externals)를 아예 안 읽는다 (`import/bdsp/unityfs.ts` · 재질을 못 찾은 껍데기를 버리는 자리는 `import/bdsp/model.ts` · `tools/extract/bdspGlb.py`).
 
 ## 5. 알고 남겨 둔 것
 

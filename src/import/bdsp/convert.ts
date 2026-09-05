@@ -23,6 +23,7 @@ import {
   modelFor,
   type NpcModelTable,
 } from '../../engine/actor/npcModels'
+import { bundleDeps } from './bundleDeps'
 import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { openEnvironment, type Environment } from './environment'
 import { exportModel } from './model'
@@ -31,6 +32,7 @@ import { className, openBundle, readSerializedFile } from './unityfs'
 import type { UnityValue } from './typetree'
 
 /** 뿌리 아래 자리들. 실측 덤프 구조 그대로다 (`scan.ts` 머리말) */
+const CHARACTERS = 'Characters'
 const PERSONS = 'Characters/persons'
 const POKEMON_BATTLE = 'Pokemon Database/pokemons/battle'
 const POKEMON_COMMON = 'Pokemon Database/pokemons/common'
@@ -269,7 +271,17 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
     if (broken.has(bundle)) return false
     // 다시 칠한 판은 이름에 꼬리가 붙어 있다 — 원본은 꼬리 뗀 그 번들이다
     const path = lookup(at, `${PERSONS}/${buildOf(bundle)}/${baseBundle(bundle)}`)
-    const env = path ? await environmentOf(src, [path]) : null
+    // ⚠️ **재질이 딴 번들에 있는 사람이 있다.** 유니티 `PPtr`의 `m_FileID`가 0이
+    // 아니면 그 파일의 바깥 참조표를 가리키는데, 드래곤사역사(`tr1029_00`)는
+    // 재질 아홉이 다 `objects/ob0204_00`에 있다. 같이 안 얹으면 재질을 못 찾은
+    // 껍데기가 통째로 버려지고 배틀에 **캡슐 사람**이 선다 (`model.ts`의
+    // 「재질을 못 찾으면」 자리). 어느 번들이 무엇을 가리키는지는 BDSP 번들
+    // 매니페스트가 알고, 그 표를 노드 추출기와 **같이 본다**
+    // (`bundleDeps` · `tools/extract/npcModels.mjs`)
+    const deps = bundleDeps(`persons/${buildOf(bundle)}/${baseBundle(bundle)}`)
+      .map((b) => lookup(at, `${CHARACTERS}/${b}`))
+      .filter((p): p is string => p !== null)
+    const env = path ? await environmentOf(src, [path, ...deps]) : null
     if (!env) { broken.add(bundle); return false }
     try {
       // ⚠️ **등신과 치비가 싣는 것이 다르다.** 걷기는 `actor/locomotion`이

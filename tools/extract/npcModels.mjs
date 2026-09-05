@@ -32,6 +32,7 @@ import {
   baseBundle, buildOf, fieldClipDonor, modelFor, NPC_RECOLOR, HERO_FIELD_CLIPS, TRAINER_CLIPS,
 } from '../../src/engine/actor/npcModels.ts'
 import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
+import { bundleDeps } from '../../src/import/bdsp/bundleDeps.ts'
 import { SPRITE_NAMES } from '../../src/import/platinum/spriteTable.ts'
 import { createRequire } from 'node:module'
 
@@ -40,7 +41,8 @@ const rawSources = createRequire(import.meta.url)('../raw/sources.cjs')
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const DATA = resolve(ROOT, 'public/data')
 const OUT = resolve(ROOT, 'public/models/npc')
-const PERSONS = resolve(rawSources.requireDir('bdsp.characters'), 'persons')
+const CHARACTERS = rawSources.requireDir('bdsp.characters')
+const PERSONS = resolve(CHARACTERS, 'persons')
 
 /** 텍스처 긴 변의 상한. 위 표가 근거다 */
 const MAX_TEXTURE = 256
@@ -165,9 +167,18 @@ function main() {
             .join(',')]
         : []
       const drop = spec?.drop?.length ? ['--drop', spec.drop.join(',')] : []
+      // ⚠️ **재질이 딴 번들에 있는 사람이 있다.** 드래곤사역사 열여섯은
+      // `objects/ob0204_00`을 가리키고, 그 번들을 같이 안 열면 재질을 못 찾은
+      // 껍데기가 통째로 버려져 **캡슐 사람**이 선다 (`import/bdsp/bundleDeps`).
+      // 브라우저 변환기도 같은 표를 본다 — 여기서만 고치면 설치본이 갈린다
+      const needs = bundleDeps(`persons/${buildOf(bundle)}/${baseBundle(bundle)}`)
+        .map((b) => resolve(CHARACTERS, b))
+        .filter((p) => existsSync(p))
+      const withDeps = needs.length > 0 ? ['--with', needs.join(',')] : []
       execFileSync('py', [
         '-3.13', BAKER, src, '-o', out,
-        '--max-texture', String(MAX_TEXTURE), ...clips, ...borrow, ...recolor, ...drop,
+        '--max-texture', String(MAX_TEXTURE),
+        ...clips, ...borrow, ...recolor, ...drop, ...withDeps,
       ], { stdio: ['ignore', 'ignore', 'pipe'] })
     } catch {
       broken.add(bundle)

@@ -22,12 +22,17 @@ import { SPRITE_NAMES } from '../platinum/spriteTable'
 import { HERO_FIELD_CLIPS, TRAINER_CLIPS, fieldClipDonor, modelFor } from '../../engine/actor/npcModels'
 import { TRAINER_CLIP } from '../../scene/battle/battleTrainerVisual'
 import { TRAINER_MODELS } from './trainerModels'
+import { bundleDeps } from './bundleDeps'
 import { bdspDir, withLocal } from '../../data/romData.testkit'
 
 const AA = bdspDir('root')
 const arena = (name: string): string | null => {
   const dir = bdspDir('arenas')
   return dir ? join(dir, 'ground', name) : null
+}
+const characters = (rel: string): string | null => {
+  const dir = bdspDir('characters')
+  return dir ? join(dir, ...rel.split('/')) : null
 }
 const person = (build: string, name: string): string | null => {
   const dir = bdspDir('characters')
@@ -87,6 +92,32 @@ suite('인물', () => {
     expect(stat.problems).toEqual([])
     expect(verifyGlb(glb)).toEqual([])
   }, 120_000)
+
+  // ⚠️ **재질이 딴 번들에 있는 사람이 있다.** 드래곤사역사(`tr1029_00`)는 재질
+  // 아홉이 다 `objects/ob0204_00`에 있어서, 그 번들을 같이 안 얹으면 재질을 못
+  // 찾은 껍데기가 통째로 버려지고 배틀에 **캡슐 사람**이 선다. 어느 번들이
+  // 무엇을 가리키는지는 `bundleDeps`가 알고 노드 추출기도 같은 표를 본다
+  it('의존 번들을 같이 얹어야 드래곤사역사가 선다', async () => {
+    const self = person('battle', 'tr1029_00')
+    const dep = characters('objects/ob0204_00')
+    if (!self || !dep || !existsSync(self) || !existsSync(dep)) return
+
+    // 표가 실제로 그 번들을 가리키는지부터 — 표가 비면 아래가 조용히 통과한다
+    expect(bundleDeps('persons/battle/tr1029_00')).toContain('objects/ob0204_00')
+
+    const alone = openEnvironment([bytes(self)])
+    // 혼자 열면 껍데기가 다 버려져 세울 것이 없다
+    await expect(exportModel(alone, encodePng, { maxSize: 256, keepClips: false }))
+      .rejects.toThrow()
+
+    const env = openEnvironment([bytes(self), bytes(dep)])
+    const { glb, stat } = await exportModel(env, encodePng, { maxSize: 256, keepClips: false })
+    expect(stat.dropped).toBe(0)
+    expect(stat.materials).toBeGreaterThan(5)
+    expect(stat.bones).toBeGreaterThan(100)
+    expect(stat.problems).toEqual([])
+    expect(verifyGlb(glb)).toEqual([])
+  }, 180_000)
 
   // ⚠️ **굽는 쪽이 둘이라 여기서 브라우저 쪽을 잡는다.** 노드 추출기가 넷을
   // 실어도 이쪽이 안 실으면 설치본의 트레이너만 안 움직인다 — 개발 서버에서는

@@ -572,9 +572,17 @@ def export(bundle, out: Path, color_index: int | None = None,
         # 아니라 **그 스킨의 `joints` 배열 안 자리**다. 노드 번호로 옮겼더니
         # 주인공(껍데기 여섯)에서 "관절이 스킨을 넘는다"가 14건 떴다.
         # 옮겨야 하는 것은 `joints` 배열 쪽이다
-        remap = np.array(
-            [index[b.read().object_reader.path_id] for b in smr.m_Bones], dtype=np.uint16,
-        )
+        # ⚠️ **빈 뼈 칸이 있다.** `tr1078_00`은 `m_Bones`에 `m_PathID == 0`인 칸을
+        # 들고 있어서 통째로 읽으면 `PPtr can't deref`로 죽고, 그 사람이 캡슐로
+        # 선다. 그 칸을 가리키는 정점은 어차피 가중치가 안 실리므로 **뿌리로
+        # 돌린다** — 없는 관절보다 안 움직이는 관절이 낫다
+        def _joint(ref) -> int:
+            try:
+                return index[ref.read().object_reader.path_id]
+            except Exception:
+                return 0
+
+        remap = np.array([_joint(b) for b in smr.m_Bones], dtype=np.uint16)
         joints = np.clip(joints, 0, max(0, len(remap) - 1))
         indices = np.array(handler.m_IndexBuffer, dtype=np.uint32)
 
@@ -602,12 +610,21 @@ def export(bundle, out: Path, color_index: int | None = None,
                 uv_of[st] = got
             return got
 
-        mats = [m.read() for m in smr.m_Materials]
+        # ⚠️ **빈 재질 칸이 있다.** `tr1078_00`은 `m_Materials`에 `m_PathID == 0`인
+        # 칸을 하나 들고 있어서 통째로 읽으면 `PPtr can't deref`로 죽는다 —
+        # 그 조각만 재질 없이 두고 나머지를 세운다 (아래에서 `noMaterial`로 센다)
+        def _mat(ref):
+            try:
+                return ref.read()
+            except Exception:
+                return None
+
+        mats = [_mat(m) for m in smr.m_Materials]
         primitives = []
         for i, sub in enumerate(mesh.m_SubMeshes):
             # 시작 위치가 **인덱스 번호가 아니라 바이트 오프셋**이다(`firstByte`).
             # 16비트 버퍼라 2로 나눠야 몇 번째 인덱스인지가 나온다
-            mat_name = mats[i].m_Name if i < len(mats) else ""
+            mat_name = mats[i].m_Name if i < len(mats) and mats[i] is not None else ""
             # 사람이 빼라고 적어 둔 재질은 **아무것도 하기 전에** 건너뛴다 —
             # 모자가 그렇다. 여기서 안 걸러 내면 안 그릴 조각의 인덱스가
             # 버퍼에 들어가고 삼각형 수·법선 통계도 같이 어긋난다
@@ -846,6 +863,9 @@ def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
     ap.add_argument("bundle", type=Path)
+    ap.add_argument("--with", dest="extra", default="",
+                    help="같이 열 번들 경로들, 쉼표로 나눈다. 재질이 딴 번들에 "
+                         "있는 사람이 있다 (`import/bdsp/bundleDeps`)")
     ap.add_argument("-o", "--out", type=Path, required=True)
     ap.add_argument("-c", "--color-index", type=int, default=None)
     ap.add_argument("--clips-from", type=Path, default=None,
@@ -873,8 +893,11 @@ def main() -> int:
         if not (mat and prop and value):
             raise SystemExit(f"--recolor 조각을 못 읽었다: {item}")
         recolor.setdefault(mat, {})[prop] = value
+    # ⚠️ **의존 번들을 뒤에 붙인다.** 앞의 것이 「이 번들」이고(`paths[0]`으로
+    # 이름·출력이 정해진다) 뒤엣것들은 재질·메시를 대 주기만 한다
+    bundles = [args.bundle, *(Path(x) for x in args.extra.split(",") if x)]
     stat = export(
-        args.bundle, args.out, args.color_index, args.clips_from,
+        bundles, args.out, args.color_index, args.clips_from,
         {n for n in args.only.split(",") if n}, args.max_texture, not args.no_clips,
         clip_filter=re.compile(args.clip_filter) if args.clip_filter else None,
         recolor=recolor or None,
