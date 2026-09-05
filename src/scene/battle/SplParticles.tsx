@@ -118,6 +118,11 @@ function buildRig(group: SplGroup): Rig {
  * @param by 때린 쪽 몸통 자리 (m)
  * @param foe 맞는 쪽 몸통 자리 (m)
  * @param metre DS 한 단위가 몇 미터인가 (`splPlace`의 `splMetre`)
+ * @param from 붙는 순간 이미 몇 프레임이 지난 것으로 볼 것인가.
+ *   ⚠️ **연출은 입자 묶음보다 먼저 시작한다** — 묶음을 받아 오는 동안 무대는
+ *   이미 돌고 있으므로, 0에서 세면 큐가 그만큼 늦게 선다(알 부화는 첫 조각이
+ *   51프레임인데 묶음이 그보다 늦게 와서 아예 안 보였다). 부르는 쪽이 공유
+ *   시계(`cinematicStore`의 `startedAt`)로 잰 값을 준다
  * @param basis DS 축을 우리 월드 축에 얹는 자. 안 주면 두 자리에서 세운다.
  *   ⚠️ **연출 무대는 두 자리가 같다** — 진화·부화는 몸 하나가 가운데 서므로
  *   `splBasis(by, foe)`가 뒷걸음질한 축을 낸다(`by === foe`면 +X가 −Z가 된다).
@@ -131,6 +136,7 @@ export function SplParticles({
   foe,
   metre,
   basis,
+  from,
   seed,
   onDone,
 }: {
@@ -139,13 +145,18 @@ export function SplParticles({
   foe: Vec3
   metre: number
   basis?: SplBasis
+  from?: number
   seed?: number
   onDone?: () => void
 }) {
-  const show = useMemo(
-    () => new SplShow(cues, by, foe, basis ?? splBasis(by, foe), metre, seed),
-    [cues, by, foe, metre, basis, seed],
-  )
+  const show = useMemo(() => {
+    const made = new SplShow(cues, by, foe, basis ?? splBasis(by, foe), metre, seed)
+    // 늦게 붙었으면 그만큼 감아 둔다. 한 걸음이 싸고 연출이 길어야 몇백이다
+    const skip = Math.min(600, Math.max(0, Math.floor(from ?? 0)))
+    for (let i = 0; i < skip; i++) made.step()
+    return made
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `from`은 붙는 순간의 값이라 딸림값이 아니다
+  }, [cues, by, foe, metre, basis, seed])
   const rigs = useMemo(() => show.groups.map(buildRig), [show])
   const meshes = useRef<(Mesh | null)[]>([])
   const acc = useRef(0)

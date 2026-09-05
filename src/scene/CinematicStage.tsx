@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Group, Mesh, PointLight } from 'three'
+import { Group, PointLight } from 'three'
 import {
   type CinematicScene, type EvolutionPhase, type HatchPhase, type TradePhase, useCinematicStore,
 } from '../state/cinematicStore'
 import { EVO_MEMBER, evolutionBeats } from '../engine/pokemon/evolutionBeat'
+import { EGG_MEMBER, hatchBeats } from '../engine/pokemon/hatchBeat'
 import type { SplFile } from '../engine/battle/spl/resource'
 import { useMonBody } from './monBody'
 import { whitenBody, type Whitener } from './monWhiten'
@@ -12,7 +13,7 @@ import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { SplParticles } from './battle/SplParticles'
 import type { SplCue } from './battle/splDraw'
 import type { SplBasis } from './battle/splPlace'
-import { preloadSplPack, splFileFor, SPL_EVOLVE } from './battle/splPack'
+import { preloadSplPack, splFileFor, SPL_EGG, SPL_EVOLVE } from './battle/splPack'
 import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
 
 function Model({
@@ -111,65 +112,12 @@ function Egg({ shell }: { shell: boolean }) {
   )
 }
 
-interface Fragment {
-  angle: number
-  speed: number
-  size: number
-  lift: number
-}
-
-function HatchFragments({ active }: { active: boolean }) {
-  const refs = useRef<Array<Mesh | null>>([])
-  const started = useRef(performance.now() / 1000)
-  const fragments = useMemo<Fragment[]>(
-    () =>
-      Array.from({ length: 18 }, (_, i) => ({
-        angle: i * 2.399963,
-        speed: 0.85 + (i % 5) * 0.13,
-        size: 0.07 + (i % 3) * 0.025,
-        lift: 1.1 + (i % 4) * 0.21,
-      })),
-    [],
-  )
-
-  useEffect(() => {
-    started.current = performance.now() / 1000
-  }, [active])
-
-  useFrame(() => {
-    const elapsed = performance.now() / 1000 - started.current
-    const t = Math.min(1.4, elapsed)
-    refs.current.forEach((mesh, i) => {
-      if (!mesh) return
-      const bit = fragments[i]!
-      mesh.visible = active && elapsed < 1.45
-      mesh.position.set(
-        Math.cos(bit.angle) * bit.speed * t,
-        0.9 + bit.lift * t - 1.5 * t * t,
-        Math.sin(bit.angle) * bit.speed * t,
-      )
-      mesh.rotation.set(t * (i + 2), t * (i + 1.3), t * 2.1)
-    })
-  })
-
-  return (
-    <group>
-      {fragments.map((bit, i) => (
-        <mesh
-          key={i}
-          ref={(node) => {
-            refs.current[i] = node
-          }}
-          visible={false}
-          scale={bit.size}
-        >
-          <tetrahedronGeometry />
-          <meshStandardMaterial color={i % 3 === 0 ? '#80b4d8' : '#fff8dc'} roughness={0.7} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
+/**
+ * ⚠️ **알 조각을 도형으로 안 뿌린다.** 사면체 열여덟을 우리가 날리고 있었는데,
+ * 원작은 `egg_demo_particle`의 이미터 넷을 세운다 — 첫 조각 · 더 깨진 조각 ·
+ * 터짐 · 반짝임이고 마디도 자료가 정한다 (`engine/pokemon/hatchBeat`).
+ * 그래서 그 도형들을 걷어 내고 `HatchParticles`가 그 자리를 맡는다.
+ */
 
 /**
  * 원작이 진화 이미터를 세우는 자리 — `SPLEmitter_SetPos(e, (0, 8*172, 0))`.
@@ -247,6 +195,30 @@ function EvolutionParticles({ file, seq }: { file: SplFile, seq: number }) {
       foe={at}
       metre={EVO_METRE}
       basis={EVO_BASIS}
+      from={((performance.now() - seq) * 60) / 1000}
+      seed={seq}
+    />
+  )
+}
+
+/** 알 부화의 원작 입자 (PARITY §3.2). 이미터를 원점에 세운다 */
+function HatchParticles({ file, seq }: { file: SplFile, seq: number }) {
+  const beats = useMemo(() => hatchBeats(file), [file])
+  const cues = useMemo<readonly SplCue[]>(
+    () => beats.cues.map((cue) => ({ file, res: cue.res, at: 'center' as const, frame: cue.frame })),
+    [beats, file],
+  )
+  // `SetSPLEmitterPos`가 (0,0,0)이다 — 화면 한가운데, 곧 카메라가 겨누는 자리
+  const at = useMemo(() => [EVO_AIM[0], EVO_AIM[1], EVO_AIM[2]] as const, [])
+  return (
+    <SplParticles
+      key={seq}
+      cues={cues}
+      by={at}
+      foe={at}
+      metre={EVO_METRE}
+      basis={EVO_BASIS}
+      from={((performance.now() - seq) * 60) / 1000}
       seed={seq}
     />
   )
@@ -277,17 +249,22 @@ export function CinematicStage() {
 
   // 진화 입자는 배틀과 **같은 묶음 읽개**로 온다 (`battle/splPack`)
   const [evoFile, setEvoFile] = useState<SplFile | null>(null)
+  const [eggFile, setEggFile] = useState<SplFile | null>(null)
   useEffect(() => {
-    if (scene !== 'evolution') return undefined
+    const want = scene === 'evolution'
+      ? { group: SPL_EVOLVE, member: EVO_MEMBER, put: setEvoFile }
+      : scene === 'hatch' ? { group: SPL_EGG, member: EGG_MEMBER, put: setEggFile } : null
+    if (want === null) return undefined
     let alive = true
-    void preloadSplPack(SPL_EVOLVE).then(() => {
-      if (alive) setEvoFile(splFileFor(SPL_EVOLVE, EVO_MEMBER))
+    void preloadSplPack(want.group).then(() => {
+      if (alive) want.put(splFileFor(want.group, want.member))
     })
     return () => {
       alive = false
     }
   }, [scene])
   const beats = useMemo(() => evolutionBeats(evoFile), [evoFile])
+  const eggBeats = useMemo(() => hatchBeats(eggFile), [eggFile])
 
   useEffect(() => {
     cinematicStage.active = true
@@ -353,7 +330,9 @@ export function CinematicStage() {
       if (lightRef.current) lightRef.current.intensity = pose.light
     } else {
       white.current = 0
-      const pose = hatchPose(phase as HatchPhase, elapsed.current)
+      // 진화와 같은 시계를 본다 — 마디가 프레임 단위다 (`cinematicStore`)
+      const frame = Math.max(0, ((performance.now() - startedAt) * 60) / 1000)
+      const pose = hatchPose(phase as HatchPhase, frame, eggBeats)
       if (egg) {
         egg.visible = pose.shellVisible
         egg.rotation.z = pose.rock
@@ -369,7 +348,6 @@ export function CinematicStage() {
     }
   })
 
-  const born = scene === 'hatch' && phase === 'born'
   return (
     <group position={CINEMATIC_ORIGIN}>
       <mesh position={[0, 3.1, -2.4]} scale={[18, 10, 1]}>
@@ -409,10 +387,10 @@ export function CinematicStage() {
       {scene === 'evolution' && phase !== 'canceled' && evoFile && (
         <EvolutionParticles file={evoFile} seq={startedAt} />
       )}
+      {scene === 'hatch' && eggFile && <HatchParticles file={eggFile} seq={startedAt} />}
       <group ref={eggRef} position={[0, 0, 0]}>
         <Egg shell={scene === 'hatch' && phase === 'shaking'} />
       </group>
-      <HatchFragments active={born} />
 
       <mesh position={[0, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.05, 1.12, 64]} />

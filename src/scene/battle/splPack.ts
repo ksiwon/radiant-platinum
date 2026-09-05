@@ -19,6 +19,8 @@ import { readSpa, type SplFile } from '../../engine/battle/spl/resource'
 export const SPL_WAZA = 'waza'
 /** 진화 무대가 쓰는 묶음. 원작이 NARC를 **번호 124**로 부르는 그것이다 */
 export const SPL_EVOLVE = 'evolve'
+/** 알 부화가 쓰는 묶음 (`cutscenes/egg_hatch`) */
+export const SPL_EGG = 'egg'
 
 interface Held {
   pack: Awaited<ReturnType<typeof loadParticles>> | null

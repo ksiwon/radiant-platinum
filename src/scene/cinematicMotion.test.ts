@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
 import { EVO_BEATS, EVO_CLAMP_FRAMES } from '../engine/pokemon/evolutionBeat'
+import { EGG_BEATS } from '../engine/pokemon/hatchBeat'
 
 describe('cinematic 3D motion', () => {
   it('keeps only the evolved body after the change', () => {
@@ -38,7 +39,15 @@ describe('cinematic 3D motion', () => {
   })
 
   it('hides the egg after hatching', () => {
-    expect(hatchPose('born', 2).shellVisible).toBe(false)
+    expect(hatchPose('born', 2, EGG_BEATS).shellVisible).toBe(false)
+  })
+
+  it('holds the egg still for the first 25 frames', () => {
+    // 원작이 `subStateTimer >= 25`를 세고 나서야 흔든다
+    expect(hatchPose('shaking', 10, EGG_BEATS).rock).toBe(0)
+    expect(hatchPose('shaking', 10, EGG_BEATS).shellVisible).toBe(true)
+    // 껍질은 터진 뒤에 사라진다
+    expect(hatchPose('shaking', EGG_BEATS.hide, EGG_BEATS).shellVisible).toBe(false)
   })
 
   it('shows exactly one body per trade phase — never both', () => {

@@ -18,6 +18,7 @@ import { mapById } from '../../engine/map/world'
 import { useSessionStore } from '../../state/sessionStore'
 import { useHatchStore } from '../../state/hatchStore'
 import { useGameLocale } from '../../state/optionsStore'
+import { EGG_BEATS } from '../../engine/pokemon/hatchBeat'
 import { useCinematicStore } from '../../state/cinematicStore'
 import { useSaveStore } from '../../state/saveStore'
 import { withSubject } from '../korean'
@@ -25,8 +26,18 @@ import { useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as own from './evolutionScreen.css'
 
-/** 알이 흔들리는 시간(ms). 원작도 짧게 흔들고 곧바로 깬다 */
-const SHAKE_MS = 1400
+
+/**
+ * 알이 흔들리다 깨지는 데 걸리는 시간.
+ *
+ * ⚠️ **우리가 고른 수가 아니다.** 원작은 스물다섯 프레임을 가만히 있다가
+ * 흔들림 넷(한 벌 열 프레임)을 돌리고, 조각 이미터가 **다 죽어야** 터진다 —
+ * 그 길이를 `.spa`가 정한다 (`engine/pokemon/hatchBeat`). 한동안 1,400ms였다.
+ *
+ * ⚠️ **무대와 같은 마디표를 본다** — 3D 쪽은 자료에서 뽑은 마디를 쓰고 여기는
+ * 실측 상수를 쓰는데, 시험(`hatchBeat.test.ts`)이 둘이 같은 수임을 못박는다
+ */
+const SHAKE_MS = (EGG_BEATS.hide / 60) * 1000
 
 type Stage = 'shaking' | 'born'
 
@@ -89,7 +100,12 @@ export function HatchScreen() {
 
   useEffect(() => {
     if (slot < 0 || stage !== 'shaking') return
-    const timer = setTimeout(born, SHAKE_MS)
+    // ⚠️ **무대와 같은 시계에서 센다.** 이 화면이 먼저 서고 `startHatch`가 그
+    // 뒤에 돌므로, 붙은 자리에서 재면 무대보다 **먼저** 깨진다 — 실측으로
+    // 알이 97프레임이 아니라 75프레임에 사라졌다 (`cinematicStore`의 `startedAt`)
+    const at = useCinematicStore.getState().startedAt
+    const left = at > 0 ? Math.max(0, SHAKE_MS - (performance.now() - at)) : SHAKE_MS
+    const timer = setTimeout(born, left)
     return () => {
       clearTimeout(timer)
     }

@@ -2,6 +2,7 @@ import type { EvolutionPhase, HatchPhase, TradePhase } from '../state/cinematicS
 import {
   EVO_CLAMP_FRAMES, evolutionBodyWhite, evolutionScales, type EvolutionBeats,
 } from '../engine/pokemon/evolutionBeat'
+import { hatchEggVisible, hatchShake, type HatchBeats } from '../engine/pokemon/hatchBeat'
 
 interface EvolutionPose {
   beforeVisible: boolean
@@ -58,13 +59,25 @@ export function evolutionPose(
 
 interface HatchPose { rock: number; lift: number; shellVisible: boolean }
 
-export function hatchPose(phase: HatchPhase, elapsed: number): HatchPose {
+/**
+ * 알이 흔들리는 자세 (`cutscenes/egg_hatch`).
+ *
+ * ⚠️ **여기 박자는 원작 것이다.** 흔들림 한 벌이 열 프레임이고 여섯째에 조각이
+ * 떨어진다 — 스물다섯 프레임을 가만히 있다가 잔 흔들림 둘, 큰 흔들림 둘이다
+ * (`engine/pokemon/hatchBeat`). 한동안 `Math.sin(elapsed × 11)`이었다.
+ *
+ * ⚠️ **흔드는 폭만 우리 것이다** — 원작은 2D 스프라이트를 픽셀로 밀고 아핀으로
+ * 누르는데 우리 알은 3D라 옮길 좌표가 없다
+ *
+ * @param frame 장면이 시작하고 몇 프레임째인가 (60Hz)
+ */
+export function hatchPose(phase: HatchPhase, frame: number, beats: HatchBeats): HatchPose {
   if (phase === 'born') return { rock: 0, lift: 0, shellVisible: false }
-  const beat = Math.sin(elapsed * 11)
   return {
-    rock: beat * 0.13 * (0.55 + 0.45 * Math.sin(elapsed * 2.8) ** 2),
-    lift: Math.max(0, Math.sin(elapsed * 5.5)) * 0.08,
-    shellVisible: true,
+    rock: hatchShake(frame, beats),
+    // 흔들릴 때 살짝 뜬다 — 원작이 아핀으로 누르는 자리다
+    lift: Math.abs(hatchShake(frame, beats)) * 0.22,
+    shellVisible: hatchEggVisible(frame, beats),
   }
 }
 
