@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import { bytesSource, narcCount, narcEntry, openNds } from '../../../import/platinum/nds'
 import { romPath, withRom } from '../../../data/romData.testkit'
 import { readSpa, type SplFile } from './resource'
-import { SplEmitter } from './emitter'
+import { SplEmitter, splLifeFrames } from './emitter'
 import { FX32_ONE, SplRandom } from './fx'
 
 const WAZA = '/wazaeffect/effectdata/waza_particle.narc'
@@ -158,5 +158,55 @@ withRom('en')('이미터 — 롬 실측', () => {
     expect([r.next(), r.next(), r.next(), r.next()]).toEqual(want)
     // 32비트를 넘지 않는다
     expect(want.every((v) => v >= 0 && v <= 0xffffffff)).toBe(true)
+  })
+})
+
+withRom('en')('splLifeFrames — 롬 실측', () => {
+  it('굴려서 나온 길이를 한 번도 안 넘는다 (씨앗을 바꿔 가며)', async () => {
+    const narc = await narcOf(WAZA)
+    // ⚠️ **상한이라는 말을 증명한다.** 씨앗 하나로 재면 다른 판에서 꼬리가
+    // 잘린다 — 원작 난수(`SPLRandom_ScaledRange`)가 수명을 **줄이기만** 하므로
+    // 헤더로 낸 값이 모든 씨앗의 위끝이어야 한다
+    const seeds = [7, 0x1234_5678, 1, 99_991]
+    let checked = 0
+    let tight = Number.POSITIVE_INFINITY
+    for (let m = 0; m < narcCount(narc)!; m++) {
+      const file = readSpa(narcEntry(narc, m)!)
+      for (const res of file.resources) {
+        const bound = splLifeFrames(res)
+        if (bound === null) continue
+        checked += 1
+        for (const seed of seeds) {
+          const e = new SplEmitter(res, seed)
+          let got = -1
+          for (let f = 0; f < bound + 200; f++) {
+            e.update()
+            if (e.done) {
+              got = f + 1
+              break
+            }
+          }
+          expect(got, `멤버 ${String(m)} 씨앗 ${String(seed)}`).toBeGreaterThan(0)
+          expect(got, `멤버 ${String(m)} 씨앗 ${String(seed)}`).toBeLessThanOrEqual(bound)
+          tight = Math.min(tight, bound - got)
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1400)
+    // 넉넉한 값을 내놓고 「안 넘었다」고 하면 안 된다 — 실제로 딱 맞는 자원이 있다
+    expect(tight).toBe(0)
+  })
+
+  it('스스로 안 끝나는 자원은 길이를 안 내놓는다', async () => {
+    const narc = await narcOf(WAZA)
+    let never = 0
+    for (let m = 0; m < narcCount(narc)!; m++) {
+      for (const res of readSpa(narcEntry(narc, m)!).resources) {
+        if (splLifeFrames(res) === null) never += 1
+      }
+    }
+    // `selfMaintaining`이 꺼진 자원들이다. 원작도 `UnloadParticleSystem`이
+    // 걷어 갈 때까지 살아서 `WaitForAllEmitters`로는 못 센다
+    expect(never).toBeGreaterThan(0)
   })
 })

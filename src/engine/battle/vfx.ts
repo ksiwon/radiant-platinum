@@ -57,14 +57,34 @@ export function archetypeFor(move: Move | null | undefined): Archetype {
 export const TARGET_SELF = 0x10
 
 /**
- * 연출이 도는 길이 (프레임, 60fps 기준).
+ * 연출이 도는 길이 (프레임, 60fps 기준) — **자료가 없을 때의 한 벌**.
  *
- * **틀마다 다르지 않고 하나다.** 박자(`playback`)가 이만큼 쉬고 무대가 이만큼
- * 도는데, 둘이 어긋나면 연출이 잘리거나 빈 화면이 남는다. 어긋날 여지를 아예
- * 안 만든다 — 길이를 나누려면 박자가 기술 자료를 알아야 하고, 엔진 계층은
- * 데이터 로더를 안 탄다.
+ * 박자(`playback`)가 이만큼 쉬고 무대가 이만큼 도는데, 둘이 어긋나면 연출이
+ * 잘리거나 빈 화면이 남는다. 그래서 둘이 **같은 자리에 물어본다**
+ * (`moveFramesOf`).
  *
- * 원작은 기술마다 다르다(`PlayMoveAnimation`이 기술별 연출 파일을 돌린다).
- * 그 표를 읽으면 여기와 `playback`의 상수 하나씩만 갈아 끼우면 된다
+ * 원작은 기술마다 다르다 — 대본이 `Delay`로 쉬고 `WaitForAllEmitters`로 입자가
+ * 사그라지기를 기다린다. 그 길이는 `moveLength`가 내고, 여기 값은 그 자료가
+ * 아직 안 왔을 때만 쓴다
  */
 export const MOVE_FRAMES = 40
+
+/**
+ * 기술 번호 → 연출 프레임. 자료를 든 쪽이 채운다 (`scene/battle/moveLength`).
+ *
+ * ⚠️ **엔진이 자료 로더를 안 탄다.** 대본 표는 218KB짜리 동적 청크라
+ * (`data/gameData`의 `loadMoveAnims`) 박자·무대가 직접 집으면 앱 셸 예산이
+ * 깨진다. 그래서 배틀에 들어설 때 화면 쪽이 한 번 꽂아 주고, 안 꽂혔으면
+ * 지금까지의 한 벌로 돈다
+ */
+let framesOf: ((move: number | null) => number) | null = null
+
+/** 배틀에 들어설 때 한 번. 나갈 때 `null`로 되돌린다 */
+export function setMoveFrames(fn: ((move: number | null) => number) | null): void {
+  framesOf = fn
+}
+
+/** 이 기술의 연출이 도는 프레임 */
+export function moveFramesOf(move: number | null): number {
+  return framesOf?.(move) ?? MOVE_FRAMES
+}

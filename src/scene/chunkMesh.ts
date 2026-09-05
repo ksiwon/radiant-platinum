@@ -12,6 +12,7 @@ import {
   NearestFilter, RepeatWrapping, SRGBColorSpace, type Material, type Texture,
 } from 'three'
 import { assets, readJson } from '../data/providers/assetProvider'
+import { decodePng } from '../import/platinum/png'
 import { markSeeThrough } from './fx/seeThrough'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
@@ -249,23 +250,34 @@ export function loadStarterSheet(index: number): Promise<TexSheet | null> {
   return promise
 }
 
+/**
+ * 그림 한 장을 **픽셀로** 펴 놓는다 — GPU를 안 거친다.
+ *
+ * ⚠️ **`createImageBitmap` + 캔버스 길로 가면 안 된다.** 그 길은 GPU 프로세스에서
+ * 그림을 풀고 결과를 GPU에 얹으므로, 캔버스로 옮겨 `getImageData`로 읽는 순간
+ * **그리는 중인 GPU와 동기를 맞추며 기다린다.** 맵을 한 번 넘을 때 시트 스물넷이
+ * 그 길로 가고 실측으로 디코딩만 3.29초였다 — 그림은 다 256×480 아래인데도 한
+ * 장에 최대 380ms다. 그동안 `renderer.render()` 한 번이 4.9초가 된다
+ * (`.audit/warpGpu.mjs`). 우리 PNG는 8비트 RGBA 한 꼴이라 바로 푼다
+ */
+async function pixelsOf(path: string): Promise<{
+  width: number
+  height: number
+  pixels: Uint8ClampedArray
+}> {
+  return decodePng(new Uint8Array(await assets().bytes(path)))
+}
+
 async function sheetFrom(
   path: string,
   info: { w: number, h: number, items: [string, string, number, number, number, number][] },
 ): Promise<TexSheet> {
-  // ⚠️ Blob URL을 만들었다 거두는 왕복을 안 한다 — `createImageBitmap`은 Blob을
-  // 그대로 받으므로 주소가 낄 자리가 없다 (IMPORT.md §7)
-  const blob = await assets().blob(path)
-  const bitmap = await createImageBitmap(blob)
-  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('2D 컨텍스트를 못 얻었다')
-  ctx.drawImage(bitmap, 0, 0)
+  const got = await pixelsOf(path)
   return {
-    width: bitmap.width,
-    height: bitmap.height,
+    width: got.width,
+    height: got.height,
     items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
-    pixels: ctx.getImageData(0, 0, bitmap.width, bitmap.height).data,
+    pixels: got.pixels,
   }
 }
 
@@ -277,20 +289,15 @@ export function loadTexSheet(set: number): Promise<TexSheet> {
     readJson(assets(), 'data/tex/index.json') as Promise<{
       sets: { w: number, h: number, items: [string, string, number, number, number, number][] }[]
     }>,
-    assets().blob(`data/tex/${String(set)}.png`).then((b) => createImageBitmap(b)),
-  ]).then(([index, bitmap]) => {
+    pixelsOf(`data/tex/${String(set)}.png`),
+  ]).then(([index, got]) => {
     const info = index.sets[set]
     if (!info) throw new Error(`텍스처 묶음 ${set}이 없다`)
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('2D 컨텍스트를 못 얻었다')
-    ctx.drawImage(bitmap, 0, 0)
-    const data = ctx.getImageData(0, 0, bitmap.width, bitmap.height)
     return {
-      width: bitmap.width,
-      height: bitmap.height,
+      width: got.width,
+      height: got.height,
       items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
-      pixels: data.data,
+      pixels: got.pixels,
     }
   }).catch((e: unknown) => { sheetCache.delete(set); throw e })
   sheetCache.set(set, promise)

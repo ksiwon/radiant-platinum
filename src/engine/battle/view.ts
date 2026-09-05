@@ -209,7 +209,7 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
 
     case 'move':
       // 화면에는 아무 변화가 없지만 **연출은 여기서 시작한다.** 박자가 이
-      // 사건에 `MOVE_FRAMES`만큼 쉬는 자리를 내 준다 (`playback`)
+      // 사건에 그 기술의 연출 길이만큼 쉬는 자리를 내 준다 (`playback`)
       return {
         ...view,
         lastMove: {

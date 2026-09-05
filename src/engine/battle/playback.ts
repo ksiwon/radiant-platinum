@@ -22,7 +22,7 @@
 // 도는 동안 게이지가 기다린다. 그 자리를 박자 하나로 낸다(`hold`) — 그동안
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
 import type { BattleEvent } from './events'
-import { MOVE_FRAMES } from './vfx'
+import { moveFramesOf } from './vfx'
 import { applyEvents, emptyView, type BattleView } from './view'
 
 /**
@@ -200,8 +200,9 @@ export function buildBeats(
         // 무엇이 지나갔는지 아무도 못 센다
         say(text(e), 0)
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
-        // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다
-        show([e], MOVE_FRAMES)
+        // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
+        // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
+        show([e], moveFramesOf(e.move))
         break
 
       default:

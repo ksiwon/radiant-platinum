@@ -45,7 +45,9 @@ const beats = buildBeats(TURN, say)
 const animAt = beats.findIndex((b) => b.events.some((e) => e.kind === 'move'))
 
 describe('연출 박자는 빠르기를 안 탄다', () => {
-  it('어느 설정에서도 `MOVE_FRAMES` 그대로다', () => {
+  // 이 시험에는 대본 표가 안 실려 있어 `moveFramesOf`가 한 벌짜리를 돌려준다 —
+  // 재는 것은 「빠르기가 이 쉼을 안 줄인다」이지 길이 자체가 아니다
+  it('어느 설정에서도 연출 길이 그대로다', () => {
     const beat = beats[animAt]
     expect(beat, '기술 박자가 없다').toBeDefined()
     for (const scale of BATTLE_PACE) {
@@ -54,14 +56,26 @@ describe('연출 박자는 빠르기를 안 탄다', () => {
     }
   })
 
-  it('⚠️ 무대가 도는 시간과 같은 상수를 본다', () => {
+  it('⚠️ 무대가 도는 시간을 같은 자리에서 받는다', () => {
     // 이 둘이 어긋나면 연출이 잘리거나 다 끝나고도 화면이 멈춰 있다.
-    // 상수가 파일 안에 갇혀 있어 값을 못 부르므로 **원문으로** 붙잡는다
+    // 길이가 기술마다 다르므로 상수가 아니라 **부르는 자리**를 붙잡는다 —
+    // 박자는 `moveFramesOf`, 무대는 `Shot.frames`·`moveFramesOf`로 같은 값을 본다
     const root = resolve(__dirname, '../../scene/battle')
-    for (const file of ['BattleStage.tsx', 'MoveVfx.tsx']) {
-      const src = readFileSync(resolve(root, file), 'utf8')
-      expect(src, `${file}이 연출 길이를 따로 잡고 있다`).toContain('MOVE_FRAMES / 60')
+    const asks = {
+      'BattleStage.tsx': 'moveFramesOf',
+      'MoveVfx.tsx': 'moveAnimFrames',
     }
+    for (const [file, call] of Object.entries(asks)) {
+      const src = readFileSync(resolve(root, file), 'utf8')
+      expect(src, `${file}이 연출 길이를 따로 잡고 있다`).toContain(call)
+    }
+    // ⚠️ **무대의 나감은 위끝이 따로 있다** — 3초짜리 연출 내내 몸이 나가
+    // 있으면 안 되므로 `MOVE_FRAMES`와 그 기술 길이 중 **짧은 쪽**을 쓴다
+    const stage = readFileSync(resolve(root, 'BattleStage.tsx'), 'utf8')
+    expect(stage).toContain('Math.min(LUNGE, moveFramesOf(move) / 60)')
+    // 박자도 같은 자리를 본다
+    const pb = readFileSync(resolve(__dirname, '../../engine/battle/playback.ts'), 'utf8')
+    expect(pb).toContain('moveFramesOf(e.move)')
   })
 
   it('그 박자는 글을 안 바꾼다 — 기술 이름이 뜬 채로 연출이 돈다', () => {

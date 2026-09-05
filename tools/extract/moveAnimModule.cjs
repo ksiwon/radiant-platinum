@@ -39,6 +39,18 @@ const ANIM_H = 'include/constants/battle/battle_anim.h'
 /** 표의 끝. 기술이 아니라서 `MOVE_` 접두어도 안 붙는다 */
 const SENTINEL = 'MAX_MOVES'
 
+/**
+ * 태스크 하나가 제 일을 마치고 사라지는 데 더 드는 프레임.
+ *
+ * 원작 태스크는 상태 기계다 — 보간이 끝난 프레임에 `FALSE`를 한 번 받아 상태를
+ * 올리고, 그 다음 프레임에 `BattleAnimSystem_EndAnimTask`로 사라진다.
+ * `WaitForAnimTasks`는 **사라질 때까지** 서므로 두 프레임이 더 든다
+ */
+const TASK_TAIL = 2
+
+/** 한 번 흔들 때 좌우로 꺾는 횟수 (`MAX_CYCLES_PER_SHAKE`) */
+const SHAKE_FLIPS = 4
+
 const read = (p) => fs.readFileSync(path.join(DECOMP, p), 'utf8')
 
 // ── 상수 표 ──────────────────────────────────────────────────────────────────
@@ -202,10 +214,20 @@ function parseAnim(text, colors) {
     loads: [],
     emitters: [],
     frames: 0,
+    waits: false,
+    unknownWait: false,
     vanish: false,
   }
   /** 지금까지 흐른 프레임. 입자가 언제 붙는지를 여기서 잰다 */
   let clock = 0
+  /**
+   * `WaitForAnimTasks`가 기다리는 태스크들의 남은 길이 (프레임).
+   *
+   * 대본의 시계는 `Delay`만으로는 안 흐른다 — 몸통박치기는 `Delay`가 하나도
+   * 없고 `Func_MoveBattler … 2` · `WaitForAnimTasks` 두 쌍으로만 되어 있다.
+   * 그걸 안 세면 그 대본은 「0프레임짜리」가 된다
+   */
+  let tasks = []
   /** `Func_FadeBg`는 되돌리는 짝이 늘 뒤에 온다. 제일 진한 것만 남긴다 */
   let peak = -1
 
@@ -217,6 +239,24 @@ function parseAnim(text, colors) {
     switch (name) {
       case 'Delay':
         clock += typeof a[0] === 'number' ? a[0] : 0
+        break
+
+      // 시작해 둔 태스크가 다 끝날 때까지 선다. 제일 긴 것 하나가 길이다
+      case 'WaitForAnimTasks':
+        // ⚠️ **기다릴 것이 없다면 우리가 모르는 태스크를 기다린 것이다.**
+        // 기술 열일곱은 `Func_Growth`·`Func_Minimize`처럼 전용 C 태스크 하나로만
+        // 되어 있고 그 길이는 저마다 다른 표에 있다 (`script_funcs_0.c`의
+        // `sMeditateScaleTable` 따위). 옮기지 않은 것을 0으로 치면 그 기술들이
+        // 「길이 0」이 되므로, **모른다는 사실을 남겨** 부르는 쪽이 바닥을 깐다
+        if (tasks.length === 0) out.unknownWait = true
+        else clock += Math.max(...tasks)
+        tasks = []
+        break
+
+      // 이미터가 다 사그라질 때까지 선다. 얼마나 걸리는지는 `.spa`가 알고 있어서
+      // 여기서는 **기다린다는 사실만** 적는다 (`engine/battle/moveLength`)
+      case 'WaitForAllEmitters':
+        out.waits = true
         break
 
       case 'LoadParticleResource': {
@@ -238,6 +278,10 @@ function parseAnim(text, colors) {
       case 'Func_FadeBg': {
         // bgType, delay, startAlpha, endAlpha, color
         const alpha = typeof a[3] === 'number' ? a[3] : 0
+        // 팔레트 한 단계에 `delay + 1`프레임이다
+        // (`palette.c`의 `WaitAndApplyBlendStepToPaletteBuffer`)
+        const steps = Math.abs(alpha - (Number(a[2]) || 0))
+        tasks.push(steps * ((Number(a[1]) || 0) + 1) + TASK_TAIL)
         const rgb = colors.get(String(a[4]))
         if (rgb !== undefined && alpha > peak) {
           peak = alpha
@@ -250,6 +294,10 @@ function parseAnim(text, colors) {
         // battler, fadeStepFrames, endDelay, color, alpha, [holdFrames]
         const rgb = colors.get(String(a[3]))
         const alpha = typeof a[4] === 'number' ? a[4] : 0
+        // 물들었다 돌아온다 — 한 단계에 `fadeStepFrames + 1`프레임이고
+        // (`PokemonSpriteManager_Update`의 `fadeDelayCounter`) 그 사이에 머문다
+        const step = (Number(a[1]) || 0) + 1
+        tasks.push(alpha * step * 2 + (Number(a[5]) || 0) + (Number(a[2]) || 0) + TASK_TAIL)
         if (rgb !== undefined && out.tint === null) {
           out.tint = { who: whoOf(String(a[0])), color: rgb, alpha }
         }
@@ -259,6 +307,9 @@ function parseAnim(text, colors) {
       case 'Func_Shake': {
         // extentX, extentY, interval, amount, targets
         const cycles = typeof a[3] === 'number' ? a[3] : 0
+        // `ShakeContext_Update`가 `interval`마다 한 번 꺾고 네 번 꺾여야 한 번을
+        // 쓴다 (`MAX_CYCLES_PER_SHAKE` = 4)
+        tasks.push((Number(a[2]) || 1) * cycles * SHAKE_FLIPS + TASK_TAIL)
         // 제일 센 것 하나만 남긴다 — 여러 번 흔드는 기술이 있다
         const power = Math.max(Number(a[0]) || 0, Number(a[1]) || 0) * cycles
         const had = out.shake === null ? -1 : out.shake.power
@@ -275,15 +326,26 @@ function parseAnim(text, colors) {
         break
       }
 
-      case 'Func_MoveBattler':
-      case 'Func_MoveBattlerX2': {
+      case 'Func_MoveBattler': {
         // target, dx, dy, frames
+        const frames = Number(a[3]) || 0
+        tasks.push(frames + TASK_TAIL)
         if (out.lunge === null && /ATTACKER/.test(String(a[0]))) {
-          out.lunge = {
-            dx: Number(a[1]) || 0,
-            dy: Number(a[2]) || 0,
-            frames: Number(a[3]) || 0,
-          }
+          out.lunge = { dx: Number(a[1]) || 0, dy: Number(a[2]) || 0, frames }
+        }
+        break
+      }
+
+      // ⚠️ **인자 차례가 `Func_MoveBattler`와 다르다** — `frames, offset, target`이고
+      // 가로로만 민다 (`BattleAnimTask_MoveBattlerX`의 `PosLerpContext_Init`이 y를
+      // 시작값 그대로 둔다). 같은 갈래로 묶어 두던 동안 86줄이 통째로 버려졌다
+      case 'Func_MoveBattlerX':
+      case 'Func_MoveBattlerX2': {
+        // frames, offset, target
+        const frames = Number(a[0]) || 0
+        tasks.push(frames + TASK_TAIL)
+        if (out.lunge === null && /ATTACKER/.test(String(a[2]))) {
+          out.lunge = { dx: Number(a[1]) || 0, dy: 0, frames }
         }
         break
       }
@@ -507,8 +569,24 @@ export interface MoveAnim {
    * \`CreateEmitter ps, res, 콜백\` 그대로다
    */
   emitters: { at: MoveAnimAnchor, at_frame: number, ps: number, res: number }[]
-  /** 대본이 쉬는 프레임의 합. 연출 길이의 아래끝이다 */
+  /**
+   * 대본 자체가 도는 프레임 (\`Delay\` + \`WaitForAnimTasks\`가 서는 시간).
+   *
+   * ⚠️ **이것만으로는 길이가 아니다.** \`WaitForAllEmitters\`를 쓰는 대본은
+   * 입자가 다 사그라질 때까지 더 선다 — 그 계산은 \`.spa\`를 읽어야 하므로
+   * \`engine/battle/moveLength\`가 \`waits\`와 함께 낸다
+   */
   frames: number
+  /** \`WaitForAllEmitters\`로 입자가 다 죽기를 기다리는가 (468 중 415) */
+  waits: boolean
+  /**
+   * 길이를 모르는 전용 태스크를 기다리는가 (기술 열일곱).
+   *
+   * \`Func_Growth\`·\`Func_Minimize\`처럼 대본이 태스크 하나로만 된 자리다.
+   * 그 길이는 원작 C 표에 저마다 다른 값으로 있고 아직 안 옮겼다 —
+   * \`moveLength\`가 이 표시를 보고 바닥을 깐다
+   */
+  unknownWait: boolean
   /** 쓴 쪽이 화면에서 사라진다 (구멍파기·공중날기) */
   vanish: boolean
 }

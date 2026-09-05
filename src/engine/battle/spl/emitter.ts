@@ -504,3 +504,35 @@ export function makeEmitter(file: SplFile, index: number, seed?: number): SplEmi
   const res = file.resources[index]
   return res === undefined ? null : new SplEmitter(res, seed)
 }
+
+/**
+ * 이 자원 하나가 **다 사그라지는** 프레임 — `WaitForAllEmitters`가 서는 시간.
+ *
+ * 대본이 「입자가 다 죽을 때까지」 선다고만 적어 두므로(`battle_anim_system.c`의
+ * `BattleAnimScriptCmd_WaitForAllEmitters`) 연출 길이는 여기서 나온다.
+ *
+ * ⚠️ **굴려 보지 않고 헤더로 낸다.** 굴리면 씨앗마다 답이 다르고, 그러면 씨앗
+ * 하나로 잰 길이가 다른 판에서는 짧아 **꼬리가 잘린다.** 다행히 원작 난수는
+ * 수명을 **줄이기만** 한다 — `SPLRandom_ScaledRange`가
+ * `(num × (255 − range·r/256)) >> 8`이라 `r = 0`일 때가 최대이고 그 값이
+ * `(num × 255) >> 8`이다. 그래서 상한이 씨앗과 무관하게 결정적이다.
+ * (`emitter.test.ts`가 씨앗을 바꿔 가며 이 값을 절대 안 넘는 것을 잰다.)
+ *
+ * ⚠️ **스스로 안 끝나는 자원은 `null`이다.** `selfMaintaining`이 꺼졌거나
+ * 수명이 0이면 원작도 `UnloadParticleSystem`이 걷어 갈 때까지 산다 —
+ * 그런 자원은 길이를 정하는 데 못 쓴다 (기술 스물아홉의 이미터 마흔넷)
+ */
+export function splLifeFrames(res: SplResource): number | null {
+  const h = res.header
+  if (!h.flags.selfMaintaining || h.emitterLifeTime === 0) return null
+  // 뿜기는 `startDelay` 뒤에 켜지고 그때 나이가 0으로 돌아간다 (`SPLManager_Update`)
+  const lastEmit = h.startDelay + Math.max(0, h.emitterLifeTime - 1)
+  // 수명이 최대인 입자 (`scaledRange`의 위끝 + 원작이 붙이는 1)
+  const life = shr(h.particleLifeTime * 255, 8) + 1
+  // `p.age > p.lifeTime`이 되는 프레임에 죽으므로 한 프레임 더 산다
+  const parent = lastEmit + life + 1
+  // 자식은 부모가 죽기 직전에도 태어날 수 있고 제 수명을 다 산다
+  const child = h.flags.hasChildResource && res.child !== null ? res.child.lifeTime + 1 : 0
+  // 이미터 자신도 `age > emitterLifeTime`이 되어야 끝난다
+  return Math.max(parent + child, h.startDelay + h.emitterLifeTime + 1)
+}

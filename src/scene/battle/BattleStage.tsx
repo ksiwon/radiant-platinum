@@ -45,7 +45,7 @@ import { loadMonModel, makeBody, play, type MonBody, type MotionName } from './m
 import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { BattleAtmosphere } from './BattleAtmosphere'
-import { MOVE_FRAMES } from '../../engine/battle/vfx'
+import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
 import {
   PAIR_DIR,
   ShotDirector,
@@ -161,12 +161,18 @@ function sideOf(slot: SlotId): Side {
 const FADE = 0.35
 
 /**
- * 때리러 나갔다 돌아오는 시간(초).
+ * 때리러 나갔다 돌아오는 시간(초)의 **위끝**.
  *
- * 박자가 기술에 내주는 쉼과 같은 상수를 쓴다(`MOVE_FRAMES`) — 다르게 잡으면
- * 연출이 끝나기도 전에 다음 글이 뜨거나, 다 끝나고도 화면이 멈춰 있다
+ * ⚠️ **연출 길이와 같지 않다.** 연출은 입자가 사그라지기를 기다리느라 3초까지
+ * 가는데(`engine/battle/moveLength`) 몸이 그동안 계속 나가 있으면 안 된다.
+ * 반대로 연출이 이보다 짧으면 다음 글이 뜬 뒤에도 몸이 아직 돌아오는 중이라
+ * — 그래서 **둘 중 짧은 쪽**을 쓴다 (`lungeFor`)
  */
 const LUNGE = MOVE_FRAMES / 60
+
+/** 이 기술에서 몸이 나갔다 오는 시간(초) */
+const lungeFor = (move: number | null): number =>
+  Math.min(LUNGE, moveFramesOf(move) / 60)
 
 /**
  * 0→1 진행 `k`를 **정점이 `p`에 오는** 0→1→0 곡선의 위상으로 옮긴다.
@@ -316,13 +322,17 @@ function Slot({
    * 다시 그린다 — 뷰가 바뀌는 순간에만 1로 채우고 나머지는 `useFrame`이 민다
    */
   const lunge = useRef(0)
+  /** 이번 나감이 도는 시간(초). 기술마다 다르다 */
+  const lungeSecs = useRef(LUNGE)
   const flinch = useRef(0)
   // ⚠️ **쪽이 아니라 자리로 본다.** 더블에서 쪽으로 보면 한 마리가 때릴 때
   // 옆의 짝도 같이 앞으로 나간다
   const cast = useBattleStore((s) => s.view?.lastMove ?? null)
   const struck = useBattleStore((s) => s.view?.lastHit ?? null)
   useEffect(() => {
-    if (cast?.by === slot) lunge.current = 1
+    if (cast?.by !== slot) return
+    lunge.current = 1
+    lungeSecs.current = lungeFor(cast.move)
   }, [cast, slot])
   useEffect(() => {
     if (struck?.slot === slot) flinch.current = 1
@@ -357,6 +367,8 @@ function Slot({
    * 표가 없거나 그 종이 없으면 `LUNGE`의 절반, 곧 지금까지의 박자다
    */
   const hitAt = useRef(LUNGE / 2)
+  // 표가 없거나 그 종이 없으면 나감의 한가운데다
+  const halfway = (): number => lungeSecs.current / 2
   useEffect(() => {
     if (!cast || cast.by !== slot || cast.move === null) return undefined
     const id = cast.move
@@ -372,7 +384,7 @@ function Slot({
         // 폼은 아직 첫 판만 세우므로 0이다 (§16.6)
         const at =
           species === null ? null : timing.at(species, 0, isSpecial ? 'special' : 'physical')
-        hitAt.current = at ?? LUNGE / 2
+        hitAt.current = at ?? halfway()
       })
       .catch(() => {
         special.current = false
@@ -413,10 +425,12 @@ function Slot({
     // 때리러 나간다. **정점이 그 종의 타격 프레임이다** — 앞뒤가 반반이 아니라
     // 표가 정하는 자리에서 꺾인다(`hitAt`). 갔다가 순간이동으로 돌아오면
     // 뒷걸음질이 아니라 깜빡임으로 보이므로 돌아오는 길도 이어서 민다
-    lunge.current = Math.max(0, lunge.current - delta / LUNGE)
+    lunge.current = Math.max(0, lunge.current - delta / lungeSecs.current)
     const k = 1 - lunge.current
     const reach =
-      lunge.current > 0 ? Math.sin(peakAt(k, hitAt.current / LUNGE) * Math.PI) * 0.42 : 0
+      lunge.current > 0
+        ? Math.sin(peakAt(k, hitAt.current / lungeSecs.current) * Math.PI) * 0.42
+        : 0
 
     // 맞으면 흔들리며 깜빡인다
     flinch.current = Math.max(0, flinch.current - delta / FLINCH)

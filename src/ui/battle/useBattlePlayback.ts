@@ -34,9 +34,9 @@ const paced = (frames: number, scale: number): number =>
 /**
  * 이 박자가 **무대의 연출을 덮고 있는가.**
  *
- * 기술 박자만 그렇다. 그 쉼은 `MOVE_FRAMES`인데 무대도 **같은 상수로** 그만큼
- * 돈다 — `BattleStage`의 `LUNGE`와 `MoveVfx`의 `DURATION`이 둘 다
- * `MOVE_FRAMES / 60`초다. 그러니 이 쉼은 「읽는 시간」이 아니라 **연출의 길이**다
+ * 기술 박자만 그렇다. 그 쉼은 기술마다 다르고(`engine/battle/moveLength`) 무대도
+ * **같은 자리에 물어본다** — `MoveVfx`가 `Shot.frames`로, `BattleStage`가
+ * `moveFramesOf`로. 그러니 이 쉼은 「읽는 시간」이 아니라 **연출의 길이**다
  */
 const animates = (beat: Beat): boolean => beat.events.some((e) => e.kind === 'move')
 
@@ -46,7 +46,7 @@ const animates = (beat: Beat): boolean => beat.events.some((e) => e.kind === 'mo
  * ⚠️ **연출이 도는 박자는 안 줄인다.** 설정의 빠르기는 「머무름·게이지·기절」에
  * 거는 값이고(`optionsStore`의 `BATTLE_PACE` 머리말), 연출 길이는 무대가 도는
  * 시간이라 여기만 줄이면 **연출이 끝나기도 전에** 게이지가 닳고 다음 글이 뜬다.
- * 기본값이 0.5라서 40프레임짜리 연출이 20프레임에 잘리고 있었다 — 포켓몬이
+ * 기본값이 0.5라서 연출이 절반에 잘리고 있었다 — 포켓몬이
  * 아직 때리러 나가 있는데 「효과가 굉장했다!」가 떴다.
  *
  * ⚠️ **읽는 시간은 `hold`에 안 든다.** 그 값은 게이지가 닳는 길이라 원작 프레임

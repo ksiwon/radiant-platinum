@@ -19,7 +19,7 @@ import {
   type Group, type MeshBasicMaterial as BasicMaterial,
 } from 'three'
 import { loadMoveAnims, loadMoves } from '../../data/gameData'
-import { MOVE_FRAMES, archetypeFor, type Archetype } from '../../engine/battle/vfx'
+import { MOVE_FRAMES, archetypeFor, setMoveFrames, type Archetype } from '../../engine/battle/vfx'
 import { typeColor } from '../../engine/battle/typeColor'
 import { useBattleStore } from '../../state/battleStore'
 import type { SlotId } from '../../engine/battle/events'
@@ -34,12 +34,13 @@ import {
   type MoveVisualSignature,
 } from './moveElements'
 import { SplParticles } from './SplParticles'
+import { moveAnimFrames } from '../../engine/battle/moveLength'
 import { preloadSplPack, splFileFor } from './splPack'
 import { splMetre, type Vec3 } from './splPlace'
 import type { SplCue } from './splDraw'
 
 /** 60fps 기준 프레임을 초로 */
-const DURATION = MOVE_FRAMES / 60
+const secs = (frames: number): number => frames / 60
 
 export interface Shot {
   kind: Archetype
@@ -61,6 +62,20 @@ export interface Shot {
   place: { by: Vec3, foe: Vec3, metre: number } | null
   /** 같은 배틀 안에서 기술마다 다른 그림이 나오게 하는 씨앗 */
   seed: number
+  /**
+   * 이 연출이 도는 프레임. 박자(`playback`)가 쉬는 값과 **같은 자리에서 온다**
+   * (`engine/battle/moveLength`)
+   */
+  frames: number
+  /**
+   * 몸에 거는 것(떨림·눌림·물들임·사라짐)이 도는 프레임.
+   *
+   * ⚠️ **전체 길이와 다르다.** 전체는 입자가 사그라지기를 기다리느라 3초까지
+   * 가는데, 원작에서 몸을 흔드는 것은 `Func_Shake` 같은 태스크 몇십 프레임이다
+   * — 전체에 맞춰 늘이면 포켓몬이 3초 내내 떨린다. 그래서 여기는 **대본 자체가
+   * 서는 시간**(`anim.frames`)이고 그것이 곧 그 태스크들의 길이다
+   */
+  bodyFrames: number
 }
 
 /**
@@ -139,7 +154,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
   useEffect(() => clearMoveImpact, [])
 
   useFrame((_, delta) => {
-    t.current += delta / DURATION
+    t.current += delta / secs(shot.frames)
     const k = t.current
     if (k >= 1) {
       clearMoveImpact()
@@ -148,16 +163,26 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
     }
 
     // 무대가 읽을 것을 먼저 적는다 — 몸 떨림·눌림·물들임·사라짐과 화면 흔들림은
-    // 도형이 아니라 무대가 건다 (`stageRefs`)
+    // 도형이 아니라 무대가 건다 (`stageRefs`).
+    //
+    // ⚠️ **몸에 거는 것은 제 시계로 돈다.** 전체 길이는 입자가 사그라지기를
+    // 기다리는 시간이라 3초까지 가는데, 원작이 몸을 흔드는 것은 그 안의 태스크
+    // 몇십 프레임이다 (`Shot.bodyFrames`). 다 끝나면 `t`를 1로 두어 무대가
+    // 놓게 한다 — `moveImpact.t >= 1`이 「걸린 것이 없다」는 뜻이다
+    const body = t.current * shot.frames / shot.bodyFrames
     const sig = shot.signature
-    moveImpact.t = k
-    moveImpact.attacker = shot.by
-    moveImpact.defender = shot.at
-    moveImpact.camera = sig.camera
-    moveImpact.shake = sig.shake
-    moveImpact.tint = sig.tint
-    moveImpact.squash = sig.squash
-    moveImpact.vanish = sig.vanish
+    if (body >= 1) {
+      clearMoveImpact()
+    } else {
+      moveImpact.t = body
+      moveImpact.attacker = shot.by
+      moveImpact.defender = shot.at
+      moveImpact.camera = sig.camera
+      moveImpact.shake = sig.shake
+      moveImpact.tint = sig.tint
+      moveImpact.squash = sig.squash
+      moveImpact.vanish = sig.vanish
+    }
     const h = head.current,
       l = tail.current
     if (!h || !l) return
@@ -245,7 +270,9 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
     const tone = shot.signature.flash
     if (wall !== null && tone !== null) {
       const mat = wall.material as BasicMaterial
-      mat.opacity = tone.strength * Math.sin(Math.min(1, k * 1.4) * Math.PI)
+      // 배경 물들임도 몸에 거는 것과 같은 시계다 — 원작의 `Func_FadeBg`가
+      // 대본 안의 태스크지 연출 전체 길이가 아니다
+      mat.opacity = tone.strength * Math.sin(Math.min(1, body * 1.4) * Math.PI)
     }
 
     const cloud = particles.current
@@ -424,8 +451,8 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
 /**
  * 뷰가 기술을 내밀면 한 번 돈다.
  *
- * 박자(`playback`)가 `MOVE_FRAMES`만큼 쉬는 그 자리다. 둘이 같은 상수를 보므로
- * 연출이 잘리거나 빈 화면이 남지 않는다
+ * 박자(`playback`)가 쉬는 그 자리다. 둘이 **같은 함수**를 보므로
+ * (`engine/battle/moveLength`) 연출이 잘리거나 빈 화면이 남지 않는다
  */
 export function MoveVfx({
   spotAt,
@@ -470,6 +497,17 @@ export function MoveVfx({
     }
   }, [])
 
+  // 박자(`playback`)와 무대(`BattleStage`)에 「이 기술은 몇 프레임인가」를 꽂는다.
+  // ⚠️ **엔진이 218KB짜리 대본 표를 직접 못 집는다** — 그것을 든 곳이 여기뿐이라
+  // 여기서 꽂고, 배틀을 나갈 때 되돌린다 (`vfx`의 `setMoveFrames`)
+  useEffect(() => {
+    if (anims === null) return undefined
+    setMoveFrames((move) => moveAnimFrames(anims[move ?? -1] ?? null, splFileFor))
+    return () => {
+      setMoveFrames(null)
+    }
+  }, [anims])
+
   const cast = view?.lastMove ?? null
   useEffect(() => {
     if (!cast) return
@@ -503,6 +541,12 @@ export function MoveVfx({
         metre: splMetre((tallOf(cast.by) + tallOf(at)) / 2),
       },
       seed: cast.seq,
+      // 박자와 **같은 자리에서** 온다 — 어긋나면 연출이 잘리거나 빈 화면이 남는다
+      frames: moveAnimFrames(anim, splFileFor),
+      // 대본 자체가 서는 시간. 0이면 지금까지의 한 벌로 (`Shot.bodyFrames`)
+      bodyFrames: Math.max(1, anim?.frames === undefined || anim.frames === 0
+        ? MOVE_FRAMES
+        : anim.frames),
     })
   }, [cast, table, anims, spotAt])
 
