@@ -35,7 +35,7 @@ import {
 } from './moveElements'
 import { SplParticles } from './SplParticles'
 import { moveAnimFrames } from '../../engine/battle/moveLength'
-import { preloadSplPack, splFileFor } from './splPack'
+import { preloadSplPack, splFileFor, splPackReader, SPL_WAZA } from './splPack'
 import { splMetre, type Vec3 } from './splPlace'
 import type { SplCue } from './splDraw'
 
@@ -87,11 +87,13 @@ export interface Shot {
  * `member`는 `battle_particles.order`의 줄 번호이고 그것이 곧 `waza` 묶음의
  * 멤버 번호다. `ps`는 그 대본이 자료를 실어 둔 입자계 칸이다
  */
+const wazaFile = splPackReader(SPL_WAZA)
+
 function cuesOf(anim: MoveAnim | null): readonly SplCue[] | null {
   if (anim === null || anim.emitters.length === 0) return null
   const loaded = new Map<number, SplFile>()
   for (const load of anim.loads) {
-    const file = splFileFor(load.member)
+    const file = splFileFor(SPL_WAZA, load.member)
     if (file === null) return null
     loaded.set(load.ps, file)
   }
@@ -473,7 +475,7 @@ export function MoveVfx({
   // ⚠️ **여기서 미리 받는다.** 기술이 나가는 그 프레임에는 기다릴 수 없다 —
   // 배틀에 들어설 때 시작해 두면 첫 수까지 등장 연출 몇 초 사이에 끝난다
   useEffect(() => {
-    void preloadSplPack()
+    void preloadSplPack(SPL_WAZA)
   }, [])
 
   useEffect(() => {
@@ -502,7 +504,7 @@ export function MoveVfx({
   // 여기서 꽂고, 배틀을 나갈 때 되돌린다 (`vfx`의 `setMoveFrames`)
   useEffect(() => {
     if (anims === null) return undefined
-    setMoveFrames((move) => moveAnimFrames(anims[move ?? -1] ?? null, splFileFor))
+    setMoveFrames((move) => moveAnimFrames(anims[move ?? -1] ?? null, wazaFile))
     return () => {
       setMoveFrames(null)
     }
@@ -542,7 +544,7 @@ export function MoveVfx({
       },
       seed: cast.seq,
       // 박자와 **같은 자리에서** 온다 — 어긋나면 연출이 잘리거나 빈 화면이 남는다
-      frames: moveAnimFrames(anim, splFileFor),
+      frames: moveAnimFrames(anim, wazaFile),
       // 대본 자체가 서는 시간. 0이면 지금까지의 한 벌로 (`Shot.bodyFrames`)
       bodyFrames: Math.max(1, anim?.frames === undefined || anim.frames === 0
         ? MOVE_FRAMES

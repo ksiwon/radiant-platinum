@@ -1,28 +1,58 @@
 import type { EvolutionPhase, HatchPhase, TradePhase } from '../state/cinematicStore'
+import {
+  EVO_CLAMP_FRAMES, evolutionBodyWhite, evolutionScales, type EvolutionBeats,
+} from '../engine/pokemon/evolutionBeat'
 
 interface EvolutionPose {
   beforeVisible: boolean
   afterVisible: boolean
   beforeScale: number
   afterScale: number
+  /** 두 몸이 얼마나 하얗게 지워졌나 (0~1) */
+  white: number
   light: number
 }
 
-/** 원작의 두 실루엣 교대 수축을 3D 몸 두 벌에 적용한다. */
-export function evolutionPose(phase: EvolutionPhase, elapsed: number): EvolutionPose {
-  if (phase === 'done') {
-    return { beforeVisible: false, afterVisible: true, beforeScale: 0, afterScale: 1, light: 0.45 }
-  }
+/**
+ * 진화 무대의 자세 (`evolution.c`의 `Evolution_Main`).
+ *
+ * ⚠️ **여기 숫자는 하나도 우리 것이 아니다.** 크기 곡선도 흰색도 마디도 다
+ * `engine/pokemon/evolutionBeat`이 롬 자료에서 뽑는다 — 한동안 이 자리가
+ * `Math.sin(elapsed × π × 3.6)`이었는데 원작은 사인파가 아니라 **왕복마다 배로
+ * 빨라지는 선형**이다(32·32·16·16·8·8·4…). 그리고 길이가 2,200ms로 굳어 있어
+ * 교대가 원작 242프레임의 55%에서 잘렸다.
+ *
+ * @param frame 장면이 시작하고 몇 프레임째인가 (60Hz)
+ */
+export function evolutionPose(
+  phase: EvolutionPhase, frame: number, beats: EvolutionBeats,
+): EvolutionPose {
   if (phase === 'canceled') {
-    return { beforeVisible: true, afterVisible: false, beforeScale: 1, afterScale: 0, light: 0.12 }
+    // 원작이 크기를 (1, 0)으로 되돌리고 새 몸을 숨긴다 (`CANCEL_EVOLUTION`)
+    return {
+      beforeVisible: true, afterVisible: false,
+      beforeScale: 1, afterScale: 0, white: 0, light: 0.12,
+    }
   }
-  const wave = (Math.sin(elapsed * Math.PI * 3.6) + 1) / 2
+  // 교대가 끝나면 원작이 크기를 (0, 1)로 딱 앉힌다 — 흔들리다 멈추지 않는다
+  if (phase === 'done' || frame >= beats.swap) {
+    const white = evolutionBodyWhite(frame, beats)
+    return {
+      beforeVisible: false, afterVisible: true,
+      beforeScale: 0, afterScale: 1, white,
+      // 흰 막이 설 때 무대도 같이 밝아진다
+      light: 0.45 + white * 1.2,
+    }
+  }
+  const scales = evolutionScales(Math.max(0, frame - EVO_CLAMP_FRAMES))
   return {
-    beforeVisible: wave < 0.56,
-    afterVisible: wave >= 0.44,
-    beforeScale: 0.58 + (1 - wave) * 0.42,
-    afterScale: 0.58 + wave * 0.42,
-    light: 0.35 + wave * 1.3,
+    // 원작은 둘 다 세워 두고 크기로만 주고받는다 — 크기가 0이면 안 보인다
+    beforeVisible: scales.before > 0,
+    afterVisible: scales.after > 0,
+    beforeScale: scales.before,
+    afterScale: scales.after,
+    white: evolutionBodyWhite(frame, beats),
+    light: 0.35 + evolutionBodyWhite(frame, beats) * 1.3,
   }
 }
 

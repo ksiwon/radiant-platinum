@@ -1,17 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
+import { EVO_BEATS, EVO_CLAMP_FRAMES } from '../engine/pokemon/evolutionBeat'
 
 describe('cinematic 3D motion', () => {
   it('keeps only the evolved body after the change', () => {
-    expect(evolutionPose('done', 3)).toMatchObject({
+    expect(evolutionPose('done', EVO_BEATS.end, EVO_BEATS)).toMatchObject({
+      beforeVisible: false, afterVisible: true, afterScale: 1, beforeScale: 0,
+    })
+    // 교대가 끝나는 프레임에 이미 새 몸으로 앉는다 — 가게가 늦게 알려도 마찬가지다
+    expect(evolutionPose('changing', EVO_BEATS.swap, EVO_BEATS)).toMatchObject({
       beforeVisible: false, afterVisible: true, afterScale: 1,
     })
   })
 
   it('restores the original body when evolution is canceled', () => {
-    expect(evolutionPose('canceled', 1)).toMatchObject({
-      beforeVisible: true, afterVisible: false, beforeScale: 1,
+    expect(evolutionPose('canceled', 1, EVO_BEATS)).toMatchObject({
+      beforeVisible: true, afterVisible: false, beforeScale: 1, white: 0,
     })
+  })
+
+  it('holds the old body still until the clamp has closed', () => {
+    // 띠가 닫히는 40프레임 동안은 교대가 시작하지 않는다 (`CLAMP_IN`)
+    for (const f of [0, 10, 39]) {
+      const pose = evolutionPose('changing', f, EVO_BEATS)
+      expect(pose.beforeScale, `프레임 ${String(f)}`).toBe(1)
+      expect(pose.afterScale).toBe(0)
+    }
+    expect(evolutionPose('changing', EVO_CLAMP_FRAMES + 16, EVO_BEATS).afterScale)
+      .toBeGreaterThan(0)
+  })
+
+  it('bleaches both bodies white while they trade places', () => {
+    expect(evolutionPose('changing', 0, EVO_BEATS).white).toBe(0)
+    // 80프레임이면 다 하얘진다 (`PokemonSprite_StartFade(…, 0, 16, 4, …)`)
+    expect(evolutionPose('changing', 80, EVO_BEATS).white).toBeCloseTo(1)
+    expect(evolutionPose('done', EVO_BEATS.end, EVO_BEATS).white).toBeCloseTo(0)
   })
 
   it('hides the egg after hatching', () => {

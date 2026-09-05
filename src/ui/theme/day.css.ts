@@ -150,6 +150,7 @@ export const dayTheme = createTheme(vars, {
     over: 'rgba(10, 24, 40, 0.34)',
     deep: 'rgba(6, 14, 24, 0.62)',
     black: '#000000',
+    white: '#ffffff',
   },
 
   font: { ui: STACK.ui, pixel: STACK.pixel, mono: STACK.mono },

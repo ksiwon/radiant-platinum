@@ -23,7 +23,7 @@ import {
 } from 'three/tsl'
 import { splTexture } from '../../engine/battle/spl/texture'
 import { SplShow, type SplCue, type SplGroup } from './splDraw'
-import { splBasis, type Vec3 } from './splPlace'
+import { splBasis, type SplBasis, type Vec3 } from './splPlace'
 
 /** 원작이 60Hz 태스크로 돈다 — 기계가 빨라도 입자가 빨리 날면 안 된다 */
 const STEP = 1 / 60
@@ -118,6 +118,11 @@ function buildRig(group: SplGroup): Rig {
  * @param by 때린 쪽 몸통 자리 (m)
  * @param foe 맞는 쪽 몸통 자리 (m)
  * @param metre DS 한 단위가 몇 미터인가 (`splPlace`의 `splMetre`)
+ * @param basis DS 축을 우리 월드 축에 얹는 자. 안 주면 두 자리에서 세운다.
+ *   ⚠️ **연출 무대는 두 자리가 같다** — 진화·부화는 몸 하나가 가운데 서므로
+ *   `splBasis(by, foe)`가 뒷걸음질한 축을 낸다(`by === foe`면 +X가 −Z가 된다).
+ *   원작 입자 공간이 「카메라가 +Z에서 원점을 본다」이고 우리 연출 카메라도
+ *   그러므로, 그런 자리는 **항등 기저**를 넣어 준다
  * @param onDone 입자가 다 죽었을 때
  */
 export function SplParticles({
@@ -125,6 +130,7 @@ export function SplParticles({
   by,
   foe,
   metre,
+  basis,
   seed,
   onDone,
 }: {
@@ -132,12 +138,13 @@ export function SplParticles({
   by: Vec3
   foe: Vec3
   metre: number
+  basis?: SplBasis
   seed?: number
   onDone?: () => void
 }) {
   const show = useMemo(
-    () => new SplShow(cues, by, foe, splBasis(by, foe), metre, seed),
-    [cues, by, foe, metre, seed],
+    () => new SplShow(cues, by, foe, basis ?? splBasis(by, foe), metre, seed),
+    [cues, by, foe, metre, basis, seed],
   )
   const rigs = useMemo(() => show.groups.map(buildRig), [show])
   const meshes = useRef<(Mesh | null)[]>([])

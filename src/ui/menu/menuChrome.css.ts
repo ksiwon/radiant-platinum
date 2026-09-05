@@ -53,7 +53,24 @@ export const screen = style({
   overflow: 'hidden',
 })
 
-export const cinematicScreen = screen
+/**
+ * 3D가 주인공인 화면의 창 — 진화·부화·명예의 전당.
+ *
+ * ⚠️ **창 얼굴을 안 칠한다.** 바로 위 `cinematicOverlay`가 「뒤를 안 가린다」고
+ * 해 놓고도 창이 불투명하면 **그 3D가 한 픽셀도 안 보인다.** 셋 다 그
+ * 상태였다 — `evolutionScreen.css`의 `cinematicSpace`가 「뒤의 영속 Canvas를
+ * 보여 주는 투명한 무대 창」인데 그 앞을 창 얼굴이 덮고 있었다.
+ *
+ * 원작 진화 화면도 **검은 배경에 몸 하나와 아래 글 한 줄**이고, 무대가 어두운
+ * 판을 이미 그린다 (`scene/CinematicStage`). 그래서 여기서는 테두리와 얼굴만
+ * 걷어 내면 그 화면이 그대로 나온다
+ */
+export const cinematicScreen = style([screen, {
+  background: 'none',
+  backgroundColor: 'transparent',
+  border: 'none',
+  boxShadow: 'none',
+}])
 
 export const head = style({
   flex: '0 0 auto',

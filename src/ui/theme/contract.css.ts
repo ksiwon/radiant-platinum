@@ -216,6 +216,8 @@ export const vars = createThemeContract({
     deep: null,
     /** 원작이 실제로 까맣게 덮는 자리 — 화면 전환·컷인·엔딩 */
     black: null,
+    /** 반대로 하얗게 덮는 자리 — 진화의 팔레트 페이드(`0x7FFF`)가 그것이다 */
+    white: null,
   },
 
   font: { ui: null, pixel: null, mono: null },

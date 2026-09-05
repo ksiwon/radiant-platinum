@@ -25,6 +25,15 @@ interface CinematicStore {
   phase: EvolutionPhase | HatchPhase | TradePhase | 'off'
   before: MonVisual | null
   after: MonVisual | null
+  /**
+   * 장면이 시작한 시각 (`performance.now()`).
+   *
+   * ⚠️ **시계가 둘이면 어긋난다.** 진화는 3D 무대(몸·입자)와 DOM(가림 띠·흰
+   * 막)이 **같은 마디표**를 보고 그리는데, 각자 제 시작 시각을 재면 마디가
+   * 프레임 단위로 밀린다 — 띠가 다 닫히기 전에 교대가 시작하는 식이다.
+   * 시작 시각을 여기 하나로 두면 둘이 같은 프레임을 센다 (PARITY §3.1)
+   */
+  startedAt: number
   startEvolution: (before: MonVisual, after: MonVisual) => void
   finishEvolution: () => void
   cancelEvolution: () => void
@@ -41,13 +50,14 @@ const OFF = {
   phase: 'off' as const,
   before: null,
   after: null,
+  startedAt: 0,
 }
 
 /** DOM 이벤트 화면과 영속 WebGL Canvas 사이의 작은 상태 다리. */
 export const useCinematicStore = create<CinematicStore>()((set) => ({
   ...OFF,
   startEvolution: (before, after) => {
-    set({ scene: 'evolution', phase: 'changing', before, after })
+    set({ scene: 'evolution', phase: 'changing', before, after, startedAt: performance.now() })
   },
   finishEvolution: () => {
     set((s) => (s.scene === 'evolution' ? { phase: 'done' } : s))
@@ -56,13 +66,13 @@ export const useCinematicStore = create<CinematicStore>()((set) => ({
     set((s) => (s.scene === 'evolution' ? { phase: 'canceled' } : s))
   },
   startHatch: (mon) => {
-    set({ scene: 'hatch', phase: 'shaking', before: null, after: mon })
+    set({ scene: 'hatch', phase: 'shaking', before: null, after: mon, startedAt: performance.now() })
   },
   finishHatch: () => {
     set((s) => (s.scene === 'hatch' ? { phase: 'born' } : s))
   },
   startTrade: (sending, receiving) => {
-    set({ scene: 'trade', phase: 'sending', before: sending, after: receiving })
+    set({ scene: 'trade', phase: 'sending', before: sending, after: receiving, startedAt: performance.now() })
   },
   setTradePhase: (phase) => {
     set((s) => (s.scene === 'trade' ? { phase } : s))

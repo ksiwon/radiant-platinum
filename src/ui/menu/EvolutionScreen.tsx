@@ -41,6 +41,9 @@ import {
   PARTY_MAX,
   type PokemonInstance,
 } from '../../engine/pokemon/instance'
+import {
+  EVO_BEATS, evolutionCanCancel, evolutionClamp, evolutionVeil,
+} from '../../engine/pokemon/evolutionBeat'
 import { useEvolutionStore } from '../../state/evolutionStore'
 import { addRecord, RECORD_POKEMON_EVOLVED } from '../../engine/world/gameRecords'
 import { useMenuStore } from '../../state/menuStore'
@@ -72,7 +75,18 @@ type Stage =
   | { kind: 'forget'; slot: number; move: number }
 
 /** "모습이…!"를 보여 주는 시간(ms). 원작은 그동안 축소·확대를 되풀이한다 */
-const CHANGE_MS = 2200
+/**
+ * 모습이 바뀌는 데 걸리는 시간.
+ *
+ * ⚠️ **우리가 고른 수가 아니다.** 원작 연출의 마디는 `.spa`가 정하고
+ * (`engine/pokemon/evolutionBeat`), 그것을 롬에서 재면 378프레임이다. 한동안
+ * 2,200ms로 굳어 있었는데 그러면 교대가 원작 242프레임의 **55%에서 잘린다**.
+ *
+ * ⚠️ **무대와 같은 마디표를 본다.** 3D 쪽은 자료에서 뽑은 마디를 쓰고 여기는
+ * 실측 상수를 쓰는데, 시험(`evolutionBeat.test.ts`)이 **둘이 같은 수**임을
+ * 못박는다 — 어긋나면 띠가 닫히기 전에 교대가 시작한다
+ */
+const CHANGE_MS = (EVO_BEATS.end / 60) * 1000
 
 export function EvolutionScreen() {
   const locale = useGameLocale()
@@ -251,6 +265,11 @@ export function EvolutionScreen() {
 
   const cancel = useCallback((): void => {
     if (stage.kind !== 'changing') return
+    // ⚠️ **아무 때나 못 멈춘다.** 원작은 `ANIMATION_ALTERNATE_POKEMON`일 때만 B를
+    // 받는다 — 띠가 닫히는 동안과 교대가 끝난 뒤에는 안 받는다 (PARITY §3.1)
+    const at = useCinematicStore.getState().startedAt
+    const frame = ((performance.now() - at) * 60) / 1000
+    if (!evolutionCanCancel(frame, EVO_BEATS)) return
     if (timer.current) clearTimeout(timer.current)
     useCinematicStore.getState().cancelEvolution()
     setStage({ kind: 'canceled', name: nameOf(stage.mon) })
@@ -312,10 +331,60 @@ export function EvolutionScreen() {
   return (
     <MenuScreen title="진화" foot={stage.kind === 'changing' ? 'X 그만둔다' : 'Z 넘기기'}>
       <div className={own.stage}>
-        <div className={own.cinematicSpace} aria-hidden />
+        <EvolutionFrame running={stage.kind === 'changing'} />
         <div className={own.line}>{line}</div>
       </div>
     </MenuScreen>
+  )
+}
+
+/**
+ * 무대 창 — 뒤의 3D를 그대로 보여 주고 그 위에 **가림 띠와 흰 막**을 얹는다.
+ *
+ * ⚠️ **상태로 그리지 않는다.** 프레임마다 바뀌는 값이라 `setState`로 돌리면
+ * 초당 예순 번 다시 그린다. 자리만 잡아 두고 값은 `ref`로 직접 밀어 넣는다.
+ *
+ * ⚠️ **시작 시각을 가게에서 받는다** — 3D 무대가 보는 것과 **같은 시계**여야
+ * 띠가 다 닫힌 뒤에 교대가 시작한다 (`cinematicStore`의 `startedAt`)
+ */
+function EvolutionFrame({ running }: { running: boolean }) {
+  const topRef = useRef<HTMLDivElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const veilRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const bars = [topRef.current, bottomRef.current]
+    const skin = veilRef.current
+    if (!running) {
+      for (const bar of bars) if (bar) bar.style.height = '0'
+      if (skin) skin.style.opacity = '0'
+      return undefined
+    }
+    let raf = 0
+    const tick = (): void => {
+      const at = useCinematicStore.getState().startedAt
+      const frame = Math.max(0, ((performance.now() - at) * 60) / 1000)
+      const rows = evolutionClamp(frame, EVO_BEATS)
+      for (const bar of bars) if (bar) bar.style.height = `${String(rows * 100)}%`
+      if (skin) skin.style.opacity = String(evolutionVeil(frame, EVO_BEATS))
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+    }
+  }, [running])
+
+  return (
+    <>
+      {/* 3D 무대가 설 만큼 자리를 비운다 — 그림은 뒤의 영속 Canvas가 그린다 */}
+      <div className={own.cinematicSpace} aria-hidden />
+      <div className={own.screenFrame} aria-hidden>
+        <div ref={topRef} className={`${own.clampBar} ${own.clampTop}`} />
+        <div ref={bottomRef} className={`${own.clampBar} ${own.clampBottom}`} />
+        <div ref={veilRef} className={own.veil} />
+      </div>
+    </>
   )
 }
 
