@@ -89,6 +89,11 @@ const NOT_IN_BUNDLE = new Set([
   'tools',
   // 시험·린트 설정. 배포물에 안 들어가고 빌드도 안 세운다
   'eslint.config.js', 'vitest.shimmed.config.ts',
+  // 확인 지점 세이브(PLAN §15.1b). 사용자가 **디스크에서 집어 올리는** 파일이라
+  // 번들에 안 들어간다 — `dist`에서 0건이고 `copyPublicDir: false`라 복사도 안 된다.
+  // ⚠️ 여기 두는 것이 곧 「다시 구워도 배포가 안 나간다」다. 3.8MB짜리 여든여섯
+  // 벌을 고칠 때마다 빌드를 태우면 빌드 횟수 예산만 깎인다 (DEPLOY.md §5.4)
+  'saves',
 ])
 
 describe('netlify.toml — 안 굽고 넘기는 규칙', () => {
