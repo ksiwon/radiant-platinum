@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { BufferGeometry, Group, Material, Texture } from 'three'
-import { sliceTexture, type ChunkMesh, type TexSheet } from './chunkMesh'
+import { sliceTexture, splitShadow, type ChunkMesh, type TexSheet } from './chunkMesh'
 import { DOOR_KIND } from '../import/platinum/propAnims'
 import {
   FRAME_MS, nodeMatrixAt, splitByNode, uvOffsetAt, type PropAnimSet,
@@ -37,6 +37,25 @@ const ONE_SHOT_MODELS = new Set([239, 240, 241])
 type Mapped = Material & { map: Texture | null }
 const mapped = (m: Material | undefined): Mapped | null =>
   m !== undefined && 'map' in m ? (m as Mapped) : null
+
+/**
+ * 조각 하나.
+ *
+ * ⚠️ **그림자를 지는 면과 안 지는 면을 갈라 그린다** — `ChunkModels`의
+ * `TerrainMesh`와 같은 규칙이다. `castShadow`는 오브젝트마다라 재질 무리별로
+ * 못 끄는데, 빛기둥·물·연기는 `alphaTest: 0`이라 깊이 패스에서 꽉 찬 실루엣으로
+ * 찍힌다 (`chunkMesh`의 `castsShadow`). 드로우콜은 안 는다 — three가 재질
+ * 무리마다 콜 하나를 내므로 무리를 두 메시에 나눠 담아도 총 콜 수는 같다
+ */
+function Piece({ geometry, materials }: { geometry: BufferGeometry, materials: Material[] }) {
+  const split = useMemo(() => splitShadow(geometry, materials), [geometry, materials])
+  return (
+    <>
+      <mesh geometry={split.solid} material={materials} castShadow receiveShadow />
+      {split.soft && <mesh geometry={split.soft} material={materials} receiveShadow />}
+    </>
+  )
+}
 
 interface Props {
   /** 소품 모델 번호 */
@@ -188,15 +207,15 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
 
   if (!info || clips.every((c) => c === null)) return null
   // 노드를 안 쪼개는 84개는 지금까지 그리던 그것을 그대로 그린다
-  if (!parts) return <mesh geometry={whole} material={materials} castShadow receiveShadow />
+  if (!parts) return <Piece geometry={whole} materials={materials} />
   return (
     <group>
       {[...parts].map(([node, geometry]: [number, BufferGeometry]) => (
         <group key={node} ref={(g) => { if (g) groups.current.set(node, g) }}>
-          <mesh geometry={geometry} material={materials} castShadow receiveShadow />
+          <Piece geometry={geometry} materials={materials} />
         </group>
       ))}
-      {fill !== null && <mesh geometry={fill} material={materials} castShadow receiveShadow />}
+      {fill !== null && <Piece geometry={fill} materials={materials} />}
     </group>
   )
 }

@@ -75,6 +75,10 @@ export function EncounterBurst() {
   useFrame(({ camera }) => {
     if (!armed.current) return
     armed.current = false
+    // ⚠️ **시계는 무슨 일이 있어도 켠다.** 화면을 덮은 막이 이 시계로 걷히므로
+    // (`ui/battle/BattleOpenVeil`) 여기서 그냥 돌아가면 배틀이 **검은 채로**
+    // 남는다 — 입자 묶음을 못 받은 판이 정확히 그 자리다
+    encounterBurst.at = performance.now()
     const [a, b] = burstMembers(battleTerrainNow())
     const fileA = splFileFor(SPL_WAZA, a)
     const fileB = splFileFor(SPL_WAZA, b)
@@ -87,7 +91,6 @@ export function EncounterBurst() {
     for (const [i] of fileB.resources.entries()) {
       made.push({ file: fileB, res: i, at: 'center', frame: BURST.second })
     }
-    encounterBurst.at = performance.now()
     setCues(made)
   })
 

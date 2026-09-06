@@ -126,6 +126,17 @@ export function movedNodes(anim: JntAnim): Set<number> {
 }
 
 /**
+ * 갈래마다 한 벌만 쪼갠다.
+ *
+ * ⚠️ **배치마다 쪼개면 안 된다.** 소품 하나가 한 맵에 여러 번 서는데
+ * (문 스무 종이 그렇다) 배치마다 새 기하를 만들면 그만큼 GPU 색인 버퍼가 는다.
+ * 그리고 **버릴 수도 없다** — 정점·UV·법선을 원본과 나눠 쓰므로
+ * `geometry.dispose()`가 그 공유 버퍼까지 놓아 원본이 안 그려진다.
+ * 기하가 갈래마다 하나뿐이므로(`loadPropMesh`가 캐시한다) 그것을 열쇠로 쓴다
+ */
+const splitCache = new WeakMap<ChunkMesh, Map<number, BufferGeometry>>()
+
+/**
  * 소품 기하를 **노드마다** 쪼갠다.
  *
  * 정점·UV·법선은 **나눠 쓴다** — 쪼개는 것은 색인뿐이라 GPU에 같은 것을 여러
@@ -134,6 +145,8 @@ export function movedNodes(anim: JntAnim): Set<number> {
 export function splitByNode(
   mesh: ChunkMesh, submeshNodes: readonly number[],
 ): Map<number, BufferGeometry> {
+  const hit = splitCache.get(mesh)
+  if (hit) return hit
   const index = mesh.geometry.getIndex()
   if (!index) return new Map()
   const byNode = new Map<number, { at: number, count: number, material: number }[]>()
@@ -162,6 +175,7 @@ export function splitByNode(
     made.computeBoundingSphere()
     out.set(node, made)
   }
+  splitCache.set(mesh, out)
   return out
 }
 
