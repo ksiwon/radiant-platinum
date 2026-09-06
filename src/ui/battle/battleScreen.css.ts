@@ -550,6 +550,21 @@ export const wipe = style({
 })
 
 /**
+ * 배틀이 **열리는 순간의 막** — 원작 것이다 (PARITY §7.13).
+ *
+ * `SysTask_SetupUI`가 열째 프레임부터 화면을 **흰색으로** 물들이고
+ * (`PaletteData_StartFade(..., 0, 16, fadeTarget)`) 스물여덟째부터 걷는다.
+ * 그 사이에 땅 입자 두 벌이 터진다 (`scene/battle/EncounterBurst`).
+ *
+ * ⚠️ **색과 짙기를 여기서 안 정한다.** 프레임마다 달라지는 값이라 rAF가
+ * 직접 쓴다 (`BattleOpenVeil`) — 리액트 상태로 두면 초당 예순 번 다시 그린다
+ */
+export const openVeil = style({
+  ...wipeBase,
+  opacity: 0,
+})
+
+/**
  * 준비 중 알림.
  *
  * ⚠️ **막보다 위다.** 막이 준비가 끝날 때까지 덮고 있으므로 밑에 두면 아무것도

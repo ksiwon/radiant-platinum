@@ -41,6 +41,8 @@ import {
   canShayminSky, changeForm, ITEM_GRACIDEA, SHAYMIN_SKY, spriteKey,
 } from '../../engine/pokemon/form'
 import { formTables, withHeldItem } from './formChange'
+import { SHAYMIN_BEATS } from '../../engine/pokemon/formChangeBeat'
+import { music } from '../../engine/audio/music'
 import { MenuScreen } from './MenuScreen'
 import { PARTY_SLOT_NONE, partyChoice } from './partyChoice'
 import * as css from './menuChrome.css'
@@ -293,12 +295,25 @@ export function PartyScreen() {
       if (!canShayminSky(selected, hour)) { setNotice('효과가 없을 것 같다.'); return }
       const forms = formTables(species, tables.moves)
       if (!forms) return
-      const next = [...party]
-      next[at] = changeForm(selected, SHAYMIN_SKY, forms)
-      useSaveStore.setState({ party: next })
+      // ⚠️ **한 프레임에 안 바꾼다.** 원작은 입자를 세우고 **서른다섯 프레임째**에
+      // 그림을 갈아 끼운 뒤, 다 흩어지면 울음소리를 내고 「폼이 바뀌었다」를
+      // 찍는다 (`PartyMenuFormChange_ChangeForm`). 그 마디가
+      // `engine/pokemon/formChangeBeat`에 있다
+      const beats = SHAYMIN_BEATS
+      const swapped = changeForm(selected, SHAYMIN_SKY, forms)
       // ⚠️ **꽃은 안 없어진다.** 원작도 그라시데아를 소모하지 않는다
       clearUsingItem()
-      back()
+      window.setTimeout(() => {
+        useSaveStore.setState((st) => {
+          const list = [...st.party]
+          list[at] = swapped
+          return { party: list }
+        })
+      }, (beats.swap * 1000) / 60)
+      window.setTimeout(() => {
+        void music.playCry(swapped.species)
+        setNotice(`${swapped.nickname ?? names[swapped.species] ?? ''}의 모습이 바뀌었다!`)
+      }, (beats.end * 1000) / 60)
       return
     }
 

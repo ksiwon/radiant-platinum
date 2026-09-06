@@ -8,7 +8,9 @@
 // 사건을 시간축에 펴는 것은 `engine/battle/playback.ts`다. 이 화면은 그 재생기가
 // 지금까지 접은 뷰만 그린다 — sim의 최종 상태를 직접 보지 않는다. 기술 연출과
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { BURST, burstWhite } from '../../engine/battle/encounterBurst'
+import { encounterBurst } from '../../scene/battle/stageRefs'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { SafariCommand } from '../../engine/battle/safariBattle'
 import type { Actor, SlotId } from '../../engine/battle/events'
@@ -28,6 +30,7 @@ import { useSessionStore } from '../../state/sessionStore'
 import { withObject, withSubject, withTopic } from '../korean'
 import { useMenuKeys } from '../menu/useMenuKeys'
 import { STATUS_VARS } from '../theme/window.css'
+import { vars } from '../theme/contract.css'
 import { useListCursor } from './listCursor'
 import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
@@ -280,7 +283,9 @@ export function BattleScreen() {
         여전히 **한 번만** 마운트된다 — 걷는 애니메이션은 클래스가 붙는
         그 순간부터 돈다
       */}
-      <div className={phase === 'loading' ? css.wipeHold : css.wipe} />
+      {phase === 'loading'
+        ? <div className={css.wipeHold} />
+        : <BattleOpenVeil />}
       {phase === 'loading' ? <div className={css.waiting}>배틀 준비 중…</div> : <>
       {/*
         누구를 내보낼까. **화면 전체를 덮는다** — 파티 여섯과 고른 한 마리의
@@ -773,3 +778,39 @@ function MoveRows(
   )
 }
 
+
+/**
+ * 배틀이 열리는 순간의 막 (PARITY §7.13).
+ *
+ * 원작 `SysTask_SetupUI`는 열째 프레임부터 화면을 흰색으로 물들이고 스물여덟째
+ * 부터 걷는다. 그 사이 스무째 프레임에 땅 입자 둘째 벌이 선다 —
+ * 무대(`scene/battle/EncounterBurst`)와 **같은 시계**를 읽어야 둘이 맞는다.
+ *
+ * ⚠️ **앞의 검정은 우리 것이다.** 원작은 배틀 화면을 이미 세워 놓고 흰색만
+ * 얹지만, 우리는 준비가 끝나는 그 프레임에 무대가 처음 보이므로 그대로 두면
+ * 검정에서 화면으로 **탁 잘린다**. 첫 열 프레임에 걷는 검정을 앞에 둔다 —
+ * 원작이 흰색을 시작하는 바로 그 프레임에 끝난다
+ */
+function BattleOpenVeil() {
+  const veil = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    let raf = 0
+    const tick = (): void => {
+      const node = veil.current
+      if (node) {
+        const at = encounterBurst.at
+        const frame = at > 0 ? (performance.now() - at) / (1000 / 60) : 0
+        const black = Math.max(0, 1 - frame / BURST.whiteIn)
+        const white = burstWhite(frame)
+        node.style.backgroundColor = black > white ? vars.scrim.black : vars.scrim.white
+        node.style.opacity = String(Math.max(black, white))
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+    }
+  }, [])
+  return <div ref={veil} className={css.openVeil} />
+}

@@ -28,6 +28,7 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
+import { EncounterBurst } from './EncounterBurst'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
 import type { ViewMon } from '../../engine/battle/view'
@@ -827,6 +828,12 @@ export function BattleStage() {
           }}
         />
       )}
+      {/*
+        배틀이 열리는 순간 발밑에서 터지는 것. 원작이 `PlayEncounterAnimation`
+        한 줄로 트는 그 자리다 — 땅마다 `.spa` 두 벌이고, 그 사이에 화면이
+        흰색으로 물든다 (`ui/battle/BattleScreen`이 그 막을 덮는다)
+      */}
+      {scene === SHOW_SCENE && <EncounterBurst />}
     </group>
   )
 }

@@ -86,6 +86,16 @@ export const moveImpact: {
   camera: 0, shake: null, tint: null, squash: null, vanish: false,
 }
 
+/**
+ * 배틀이 열리는 순간의 땅 이펙트 (`engine/battle/encounterBurst`).
+ *
+ * ⚠️ **화면과 무대가 시계를 나눠 써야 한다** — 흰 막은 DOM이 덮고
+ * (`ui/battle/BattleScreen`) 입자는 3D 무대가 뿌리는데, 원작에서는 같은
+ * `SysTask_SetupUI` 안의 한 프레임 카운터다. 시작 시각을 여기 한 자리에 두고
+ * 둘이 같이 읽는다 (진화·부화의 `cinematicStore.startedAt`과 같은 자리다)
+ */
+export const encounterBurst: { at: number } = { at: 0 }
+
 /** 연출이 끝났다. 걸어 둔 것을 전부 놓는다 */
 export function clearMoveImpact(): void {
   moveImpact.t = 1

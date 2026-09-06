@@ -136,11 +136,18 @@ const EVO_EYE = [0, 2.5, 7] as const
 const EVO_AIM = [0, 1.25, 0] as const
 
 /**
- * 원작 입자 카메라가 원점에서 보는 세로 폭 (DS 단위).
+ * 원작 입자 카메라가 원점에서 보는 세로 폭 (DS 단위) — **여덟이다.**
  *
- * `particle_system.c`의 기본 카메라가 (0,0,4)에서 원점을 보고 화각이 45도다
+ * `particle_system.c`의 기본 카메라가 (0,0,4)에서 원점을 보고 화각이 45도인데,
+ * 그 45도가 **반각**이다. 연출들이 이 카메라를 **정사영**으로 쓰고
+ * (`ParticleSystem_SetCameraProjection(…, 1)`) 정사영 쪽 셈이 그것을 못 박는다:
+ *
+ *     top = (sinFovY / cosFovY) × distance = tan(45°) × 4 = 4
+ *
+ * (`camera.c`의 `Camera_ComputeProjectionMatrix`. `Camera_Init`이 `fovY`를
+ * **반으로 안 나누고** 그대로 사인·코사인을 뜬다.) 위아래로 4씩이니 세로가 8이다
  */
-const DS_VIEW_TALL = 2 * 4 * Math.tan((45 / 2) * (Math.PI / 180))
+export const DS_VIEW_TALL = 8
 
 /**
  * DS 한 단위가 우리 무대의 몇 미터인가.

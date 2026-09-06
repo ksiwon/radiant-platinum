@@ -1175,6 +1175,16 @@ function grantFriendship(item: Item, key: string): void {
 let battleTerrain: TerrainId = Terrain.PLAIN
 
 /**
+ * 지금 배틀이 서 있는 땅.
+ *
+ * 도롱마담 옷감이 이걸로 갈리고 (`burmyCloak`), 배틀이 열리는 순간의 땅
+ * 이펙트도 이걸로 갈린다 (`engine/battle/encounterBurst`)
+ */
+export function battleTerrainNow(): TerrainId {
+  return battleTerrain
+}
+
+/**
  * 도롱마담이 싸운 땅의 옷감을 입는다 (`BattleSystem_SetBurmyForm`).
  *
  * ⚠️ **나온 마리만 갈아입는다.** 원작이 `battleParticipantMask`로 거른다 —
