@@ -109,7 +109,14 @@ function Door({ door, y, clip }: { door: DoorVisual; y: number; clip: DoorClip }
   )
 }
 
-/** `LoadDoorAnimation`으로 지정한 타일 위에 실제 회전 문짝을 세운다. */
+/**
+ * 배치가 **없는** 문 자리에만 우리 문짝을 세운다.
+ *
+ * ⚠️ **원작 문짝이 있으면 그것이 돈다.** 소품 배치가 있는 자리는
+ * `ChunkModels`가 세운 그 메시를 `AnimatedProp`이 원작 클립(`bm_anime`)으로
+ * 직접 돌린다 — 여기서 또 세우면 문이 두 겹이 된다. 남는 것은 `propModelAt`이
+ * 문 모델을 못 찾는 자리뿐이고, 거기서는 세울 원작 메시가 아예 없다
+ */
 export function DoorAnimations({ grid }: { grid: MapGrid }) {
   // ⚠️ **셀렉터 안에서 배열을 만들면 안 된다.** zustand 5는 `useSyncExternalStore`에
   // `Object.is`로만 견주므로 `Object.values`가 매번 새 배열을 돌려주면 스냅숏이
@@ -129,14 +136,18 @@ export function DoorAnimations({ grid }: { grid: MapGrid }) {
   }, [])
   return (
     <group>
-      {doors.map((door) => (
-        <Door
-          key={door.tag}
-          door={door}
-          clip={doorClip(grid.propModelAt(door.x, door.z), anims)}
-          y={grid.heightAtWorld(door.x + 0.5, door.z + 0.5, 0) ?? 0}
-        />
-      ))}
+      {doors.map((door) => {
+        const model = grid.propModelAt(door.x, door.z)
+        if (DOOR_KIND[model] !== undefined && anims?.props[String(model)] !== undefined) return null
+        return (
+          <Door
+            key={door.tag}
+            door={door}
+            clip={doorClip(model, anims)}
+            y={grid.heightAtWorld(door.x + 0.5, door.z + 0.5, 0) ?? 0}
+          />
+        )
+      })}
     </group>
   )
 }

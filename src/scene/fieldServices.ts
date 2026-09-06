@@ -173,6 +173,7 @@ import { useHatchStore } from '../state/hatchStore'
 import { worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
 import { useDoorVisualStore } from './doorVisualStore'
+import { loadPropAnimSet } from './propAnim'
 import { useBattleStore } from '../state/battleStore'
 import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
@@ -1890,12 +1891,23 @@ const DOOR_OPEN_SE = SFX.DOOR
 const DOOR_CLOSE_SE = 1543
 
 /**
- * 문이 한 바퀴 도는 시간(ms).
+ * 표를 아직 못 받았을 때 문이 한 바퀴 도는 시간(ms).
  *
- * ⚠️ 원작은 NSBCA 한 바퀴가 끝나기를 기다리는데 그 길이를 우리가 못 읽는다.
- * 열고 닫는 사이가 **눈에 띄게 끊기는** 정도면 되는 자리라 짧게 잡았다
+ * ⚠️ **원작 값이 아니다.** 원작은 NSBCA 한 바퀴가 끝나기를 기다리고, 그 길이가
+ * 소품마다 다르다 — 나무 여닫이 8프레임 · 포켓몬센터 미닫이 15 · 체육관 10.
+ * 이제 그 값을 읽으므로(`scene/propAnim`) 여기로는 표가 없을 때만 떨어진다
  */
 const DOOR_MS = 200
+
+/** 태그마다 [여는 프레임, 닫는 프레임]. `load`가 그 자리에서 재 둔다 */
+const doorSpan = new Map<number, [number, number]>()
+
+/** 이 문이 한 클립 도는 데 걸리는 시간(ms) */
+function doorMs(tag: number, shutting: boolean): number {
+  const span = doorSpan.get(tag)
+  if (!span) return DOOR_MS
+  return (span[shutting ? 1 : 0] * 1000) / 60
+}
 
 /** 태그 → 이 시각까지 도는 중 */
 const doorUntil = new Map<number, number>()
@@ -1903,21 +1915,31 @@ const doorUntil = new Map<number, number>()
 const door = {
   load: (x: number, z: number, tag: number): void => {
     doorUntil.delete(tag)
+    doorSpan.delete(tag)
+    // 그 칸에 놓인 소품의 클립 길이를 재 둔다 — 스크립트가 기다리는 시간이다
+    const model = mapWorld.grid?.propModelAt(x, z) ?? -1
+    void loadPropAnimSet().then((set) => {
+      const ids = set?.table.props[String(model)]
+      const span = (at: number | undefined): number =>
+        (at === undefined ? undefined : set?.table.members[at]?.frames) ?? 12
+      if (ids && ids.length >= 2) doorSpan.set(tag, [span(ids[0]), span(ids[1])])
+    })
     useDoorVisualStore.getState().load(x, z, tag, worldState.player.position.x, worldState.player.position.z)
   },
   open: (tag: number): void => {
-    doorUntil.set(tag, performance.now() + DOOR_MS)
+    doorUntil.set(tag, performance.now() + doorMs(tag, false))
     useDoorVisualStore.getState().open(tag)
     void music.playEffect(DOOR_OPEN_SE)
   },
   close: (tag: number): void => {
-    doorUntil.set(tag, performance.now() + DOOR_MS)
+    doorUntil.set(tag, performance.now() + doorMs(tag, true))
     useDoorVisualStore.getState().close(tag)
     void music.playEffect(DOOR_CLOSE_SE)
   },
   busy: (tag: number): boolean => performance.now() < (doorUntil.get(tag) ?? 0),
   unload: (tag: number): void => {
     doorUntil.delete(tag)
+    doorSpan.delete(tag)
     useDoorVisualStore.getState().unload(tag)
   },
 }

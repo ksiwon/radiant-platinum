@@ -45,7 +45,7 @@ interface JntTrack {
   frames: readonly JntFrame[]
 }
 
-interface JntAnim {
+export interface JntAnim {
   name: string
   /** 이 애니가 몇 프레임짜리인가 */
   frames: number

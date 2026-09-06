@@ -165,6 +165,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 검은 쐐기로 떴다 — 콘테스트회장은 화면 왼쪽 29%였다. 확산색이 있는
    * 61개(714삼각형)만 흰 정점색으로 되돌린다(확산까지 검은 59개는 그림자다).
    *
+   * 7 — **소품이 원작 클립대로 움직인다** (`data/props/anims.bin` 70.5KB ·
+   * `anims.json`의 `models`·`deferred`). 애니 있는 소품 112개에 「조각이 붙은
+   * 노드 · 노드 기본 변환 · 재질 이름 · 텍셀→UV 배수」를 싣고, `bm_anime.narc`
+   * 멤버 98벌을 **원작 바이트 그대로** 옮긴다. 그리고 BTP0가 부르는 그림을
+   * 시트에 같이 굽는다 — 에스컬레이터의 `esca_up1.2~4`처럼 **어느 재질도 안
+   * 가리키는** 그림이라 지금까지 시트에 없었다. 그래서 `.png` 몇 벌의 바이트도
+   * 달라진다. 안 올리면 소품이 지금까지처럼 가만히 선다
+   *
    * 6 — **발밑에 그려진 것이 있는가를 비트로 적는다** (`data/chunks/cover.bin`
    * 85KB · `props/index.json`의 `boxes`). 통행표는 방 밖 빈 칸을 「걸을 수
    * 있음」으로 두고 원작도 막지 않는데(`TerrainCollisionManager_CheckCollision`),
@@ -199,7 +207,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
    * (`.audit/whiteMaterials.mjs`)
    */
-  chunks: 6,
+  chunks: 7,
 }
 
 export function groupFormat(name: string): number {

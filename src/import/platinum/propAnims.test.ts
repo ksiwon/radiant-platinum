@@ -38,7 +38,7 @@ withRom('en')('소품 애니 목차 — 롬 실측', () => {
 
   it('애니 있는 소품이 112개고 자전거 비탈이 정확히 둘이다', async () => {
     const fs = await openNds(bytesSource(new Uint8Array(readFileSync(romPath('en')!))))
-    const index = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
+    const { index } = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
 
     expect(Object.keys(index.props)).toHaveLength(112)
     // ⚠️ **이 둘이 구조체를 제대로 읽었다는 증거다** — 303·304가
@@ -53,7 +53,7 @@ withRom('en')('소품 애니 목차 — 롬 실측', () => {
 
   it('애니 멤버 98개를 하나도 안 남기고 쓴다', async () => {
     const fs = await openNds(bytesSource(new Uint8Array(readFileSync(romPath('en')!))))
-    const index = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
+    const { index } = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
     expect(index.members).toHaveLength(98)
     const used = new Set(Object.values(index.props).flat())
     expect(used.size).toBe(98)
@@ -69,7 +69,7 @@ withRom('en')('소품 애니 목차 — 롬 실측', () => {
 
   it('여닫이는 클립 넷 · 미닫이는 둘이다', async () => {
     const fs = await openNds(bytesSource(new Uint8Array(readFileSync(romPath('en')!))))
-    const index = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
+    const { index } = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
     for (const [id, kind] of Object.entries(DOOR_KIND)) {
       const ids = index.props[id]
       expect(ids, `문 ${id}`).toBeDefined()

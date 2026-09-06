@@ -228,16 +228,32 @@ export type ParticleIndexFile = z.infer<typeof particleIndexSchema>
 /**
  * 소품 애니 표 (`data/props/anims.json`).
  *
- * 소품 번호 → 애니 아카이브 번호들, 그리고 그 아카이브가 무엇이고 몇
- * 프레임인가. 문·자전거 비탈이 이 표를 본다 (DATA §2.31)
+ * 소품 번호 → 애니 아카이브 번호들, 그 아카이브가 무엇이고 몇 프레임이고
+ * `anims.bin` 어디에 있는가, 그리고 애니가 있는 소품의 **모델 속살**.
+ * 문·자전거 비탈·에스컬레이터가 이 표를 본다 (DATA §2.31)
  */
 export const propAnimsSchema = z.object({
   members: z.array(z.object({
     kind: z.enum(['BCA0', 'BTP0', 'BTA0']),
     frames: z.number().int().positive(),
+    at: z.number().int().nonnegative(),
+    size: z.number().int().positive(),
   })),
   props: z.record(z.string(), z.array(z.number().int().nonnegative())),
   slopes: z.array(z.number().int().nonnegative()),
+  /** `flags & 1` — 저절로 안 도는 소품. 나머지는 다 무한 반복이다 */
+  deferred: z.array(z.number().int().nonnegative()),
+  /** 애니가 있는 소품만 (실측 112개) */
+  models: z.record(z.string(), z.object({
+    submeshNodes: z.array(z.number().int().nonnegative()),
+    nodes: z.array(z.object({
+      m: z.array(z.number()).length(9),
+      s: z.array(z.number()).length(3),
+      t: z.array(z.number()).length(3),
+    })),
+    materials: z.array(z.string()),
+    uv: z.array(z.tuple([z.number(), z.number()])),
+  })),
 })
 
 export type PropAnimsFile = z.infer<typeof propAnimsSchema>

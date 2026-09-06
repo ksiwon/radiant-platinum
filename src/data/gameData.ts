@@ -466,6 +466,23 @@ export function loadPropAnims(): Promise<PropAnimsFile | null> {
   return fetchJson('props/anims.json', (v) => propAnimsSchema.parse(v)).catch(() => null)
 }
 
+/**
+ * 소품 애니의 **원작 바이트** (`data/props/anims.bin`, 실측 70.5KB).
+ *
+ * ⚠️ **여기서 안 푼다.** 아흔여덟 멤버를 이어 붙인 것뿐이고 읽는 것은
+ * `import/platinum/nsbca`·`nsbta`·`nsbtp`가 한다 — 입자 묶음과 같은 길이라
+ * 굽는 쪽 둘이 저절로 같아진다 (`import/platinum/propAnims`)
+ */
+export function loadPropAnimBytes(): Promise<Uint8Array | null> {
+  const hit = cache.get('props/anims.bin')
+  if (hit) return hit as Promise<Uint8Array | null>
+  const promise = assets().bytes('data/props/anims.bin')
+    .then((b) => new Uint8Array(b))
+    .catch(() => null)
+  cache.set('props/anims.bin', promise)
+  return promise
+}
+
 function loadParticleIndex(): Promise<Record<string, { at: number[], size: number[] }>> {
   return fetchJson('particles/index.json', (v) => particleIndexSchema.parse(v))
 }

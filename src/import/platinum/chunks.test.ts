@@ -194,5 +194,8 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
     // (`props/anims.json`은 굽는 쪽 둘이 `import/platinum/propAnims`의
     // 같은 함수를 부르므로 같을 수밖에 없다. 그래도 여기서 센다)
     expect(jsons).toBe(3)
+    // ⚠️ **애니 바이트도 잰다.** 이건 원작 멤버를 이어 붙인 것뿐이라 갈릴 데가
+    // 없어 보이지만, 갈리면 문이 열다 말고 멈춘다 — 위 고리가 바이트로 견줬다
+    expect(out.has('data/props/anims.bin'), '애니 바이트를 안 구웠다').toBe(true)
   }, 900_000)
 })

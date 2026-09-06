@@ -7,7 +7,8 @@
 // 검증은 헤더가 해 준다. MDL0가 정점·삼각형·사각형 수를 적어 두므로 우리가 센
 // 것과 한 개도 안 틀려야 한다 (666/666).
 import { narcEntry } from './nds'
-import { buildPropAnims } from './propAnims'
+import { buildPropAnims, propModelInfo } from './propAnims'
+import { patTextures, readNsbtp } from './nsbtp'
 import {
   fx32, readDict, runDisplayList, vertexFrom, parseModel, parsePolygons, parseNodes, openModel,
   type NodeXform,
@@ -595,21 +596,31 @@ export function blocks(buf: Uint8Array, view: DataView): Record<string, number> 
   return out
 }
 
-/** 재질이 쓰는 (그림, 팔레트) 쌍 중 이 TEX0에 실제로 있는 것 */
-export function wantedItems(materials: readonly Material[], tex0: Tex0): SheetItem[] {
+/**
+ * 재질이 쓰는 (그림, 팔레트) 쌍 중 이 TEX0에 실제로 있는 것.
+ *
+ * ⚠️ **재질만 봐서는 모자란 소품이 있다.** BTP0(그림 갈아 끼우기)가 부르는
+ * `esca_up1.2` 같은 것은 어느 재질도 안 가리키는데 TEX0 안에는 있다 — 안 구우면
+ * 에스컬레이터가 첫 칸에 멈춘다. 그 목록을 `extra`로 같이 받는다 (`nsbtp`)
+ */
+export function wantedItems(
+  materials: readonly Material[], tex0: Tex0, extra: readonly [string, string][] = [],
+): SheetItem[] {
   const byName = new Map(tex0.textures.map((t) => [t.name, t]))
   const wanted = new Map<string, SheetItem>()
-  for (const m of materials) {
-    if (!m.texture) continue
-    const key = `${m.texture} ${m.palette ?? ''}`
-    const tex = byName.get(m.texture)
+  const add = (texture: string, palette: string): void => {
+    const key = `${texture} ${palette}`
+    const tex = byName.get(texture)
     if (tex && !wanted.has(key)) {
       wanted.set(key, {
-        tex: m.texture, pal: m.palette ?? '',
-        width: tex.width, height: tex.height, src: tex, x: 0, y: 0,
+        tex: texture, pal: palette, width: tex.width, height: tex.height, src: tex, x: 0, y: 0,
       })
     }
   }
+  for (const m of materials) {
+    if (m.texture) add(m.texture, m.palette ?? '')
+  }
+  for (const [texture, palette] of extra) add(texture, palette)
   return [...wanted.values()]
 }
 
@@ -617,7 +628,29 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
   const narc = await ctx.fs.read('/fielddata/build_model/build_model.narc')
   if (!narc) throw new Error('build_model.narc을 못 읽었다')
 
+  // 소품이 어떤 애니를 갖는가 — 문·자전거 비탈·에스컬레이터가 이 표를 본다.
+  // ⚠️ **모델보다 먼저 읽는다** — BTP0가 부르는 그림을 시트에 같이 구워야 해서다
+  const list = await ctx.fs.read('/arc/bm_anime_list.narc')
+  const anime = await ctx.fs.read('/arc/bm_anime.narc')
+  if (!list || !anime) throw new Error('bm_anime_list·bm_anime을 못 읽었다')
+  /**
+   * BTP0가 부르는 (그림, 팔레트) 짝 전부.
+   *
+   * ⚠️ **어느 소품 것인지 안 가린다.** `wantedItems`가 그 소품의 TEX0에 실제로
+   * 있는 것만 담으므로, 남의 이름은 저절로 떨어진다 — 대신 표를 소품마다 다시
+   * 훑지 않아도 된다
+   */
+  const patPairs: [string, string][] = []
+  for (let i = 0; ; i++) {
+    const member = narcEntry(anime, i)
+    if (!member) break
+    if (String.fromCharCode(...member.subarray(0, 4)) !== 'BTP0') continue
+    patPairs.push(...patTextures(readNsbtp(member)))
+  }
+
   const sheets: (Sheet | null)[] = []
+  /** 애니가 있는 소품만의 모델 속살 (`propModelInfo`) */
+  const models: Record<string, ReturnType<typeof propModelInfo>> = {}
   /** 모델마다 XZ 상자 (`POS_SCALE` 단위). 바닥을 소품이 까는 방이 있다 */
   const boxes: ([number, number, number, number] | null)[] = []
   let count = 0
@@ -651,6 +684,9 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
       for (const idx of mesh.indices) indices.push(base + idx)
     }
     out.set(`data/props/${String(i)}.bin`, packChunk(verts, indices, materials, submeshes))
+    // 애니가 있는 소품이면 노드·재질 이름을 같이 싣는다. 여기서는 이미 다 풀려
+    // 있으므로 공짜다 — 어느 소품이 애니를 갖는지는 아래에서 목차가 가른다
+    models[String(i)] = propModelInfo(nodes, pairs, materials)
     // 소품이 바닥을 대신 까는 방이 있다 — 챔피언 방은 청크 메시가 정점 넷뿐이고
     // 방 바닥이 소품 110이다. 상자만 실어 두면 `floorSeal`이 그 방을 안 막는다
     boxes.push(coverBox(verts))
@@ -661,7 +697,7 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
     if (texAt !== undefined) {
       const tex0 = parseTex0(file, texAt)
       const palAt = new Map(tex0.palettes.map((p) => [p.name, p.offset]))
-      baked = await bakeSheet(tex0, wantedItems(materials, tex0), palAt)
+      baked = await bakeSheet(tex0, wantedItems(materials, tex0, patPairs), palAt)
     }
     if (baked) out.set(`data/props/${String(i)}.png`, baked.png)
     sheets.push(baked?.sheet ?? null)
@@ -670,16 +706,16 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
   }
   out.set('data/props/index.json', json({ count, sheets, boxes }))
 
-  // 소품이 어떤 애니를 갖는가 — 문·자전거 비탈·간판이 이 표를 본다.
-  // ⚠️ **작다** — 소품 112개와 멤버 98개뿐이라 자리표 하나로 족하다
-  const list = await ctx.fs.read('/arc/bm_anime_list.narc')
-  const anime = await ctx.fs.read('/arc/bm_anime.narc')
-  if (!list || !anime) throw new Error('bm_anime_list·bm_anime을 못 읽었다')
+  // 표에는 **애니가 있는 소품의** 속살만 남긴다 (실측 112개)
   const anims = buildPropAnims(list, anime)
-  if (anims.props[String(count - 1)] === undefined && Object.keys(anims.props).length === 0) {
-    throw new Error('소품 애니 표가 비었다')
+  const kept: Record<string, ReturnType<typeof propModelInfo>> = {}
+  for (const id of Object.keys(anims.index.props)) {
+    const got = models[id]
+    if (got) kept[id] = got
   }
-  out.set('data/props/anims.json', json(anims))
+  if (Object.keys(anims.index.props).length === 0) throw new Error('소품 애니 표가 비었다')
+  out.set('data/props/anims.json', json({ ...anims.index, models: kept }))
+  out.set('data/props/anims.bin', anims.bytes)
 }
 
 // ── 맵 텍스처 ────────────────────────────────────────────────────────────────

@@ -204,7 +204,7 @@ export const GROUPS: readonly GroupSpec[] = [
       'data/chunks/{번호}.bin', 'data/chunks/index.json', 'data/chunks/cover.bin',
       'data/tex/{묶음}.png', 'data/tex/index.json',
       'data/props/{번호}.bin', 'data/props/{번호}.png', 'data/props/index.json',
-      'data/props/anims.json',
+      'data/props/anims.json', 'data/props/anims.bin',
     ],
     converter: 1,
     convert: convertChunks,

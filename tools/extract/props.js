@@ -43,9 +43,53 @@ function blocks(buf) {
   return out
 }
 
+/**
+ * BTP0(그림 갈아 끼우기)가 부르는 (그림, 팔레트) 짝 전부.
+ *
+ * ⚠️ **`src/import/platinum/nsbtp.ts`의 `readNsbtp`+`patTextures`와 같아야
+ * 한다** — 여기서 빠뜨리면 시트가 브라우저 것과 픽셀로 갈린다
+ * (`chunks.test.ts`가 그걸 잡는다). 자리는 공개 문서의 `Pattern Animations`다
+ */
+function patPairs(anime) {
+  const name16 = (buf, at) => {
+    let s = ''
+    for (let i = 0; i < 16; i++) { const c = buf[at + i]; if (!c) break; s += String.fromCharCode(c) }
+    return s
+  }
+  const out = []
+  for (const member of anime) {
+    if (member.subarray(0, 4).toString('ascii') !== 'BTP0') continue
+    const count = member.readUInt16LE(14)
+    for (let i = 0; i < count; i++) {
+      const pat = member.readUInt32LE(16 + i * 4)
+      if (member.subarray(pat, pat + 4).toString('ascii') !== 'PAT0') continue
+      for (const e of readDict(member, pat + 8)) {
+        const at = pat + member.readUInt32LE(e.at)
+        const texAt = at + member.readUInt16LE(at + 8)
+        const palAt = at + member.readUInt16LE(at + 10)
+        const textures = []
+        for (let k = 0; k < member[at + 6]; k++) textures.push(name16(member, texAt + k * 16))
+        const palettes = []
+        for (let k = 0; k < member[at + 7]; k++) palettes.push(name16(member, palAt + k * 16))
+        for (const t of readDict(member, at + 12)) {
+          const keyAt = at + member.readUInt16LE(t.at + 6)
+          for (let k = 0; k < member.readUInt32LE(t.at); k++) {
+            const p = keyAt + k * 4
+            out.push([textures[member[p + 2]] ?? '', palettes[member[p + 3]] ?? ''])
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+
 function main() {
   const rom = openRom()
   const models = rom.narc('/fielddata/build_model/build_model.narc')
+  // BTP0가 부르는 그림은 **어느 재질도 안 가리킨다** — 안 구우면 에스컬레이터가
+  // 첫 칸에 멈춘다 (`wantedItems`의 `extra`)
+  const extraPairs = patPairs(rom.narc('/arc/bm_anime.narc'))
   const outDir = path.join(ROOT, 'public/data/props')
   fs.mkdirSync(outDir, { recursive: true })
 
@@ -101,6 +145,13 @@ function main() {
         const tex = byName.get(m.texture)
         if (tex && !wanted.has(key)) {
           wanted.set(key, { tex: m.texture, pal: m.palette ?? '', width: tex.width, height: tex.height, src: tex })
+        }
+      }
+      for (const [texture, palette] of extraPairs) {
+        const key = `${texture} ${palette}`
+        const tex = byName.get(texture)
+        if (tex && !wanted.has(key)) {
+          wanted.set(key, { tex: texture, pal: palette, width: tex.width, height: tex.height, src: tex })
         }
       }
       items = [...wanted.values()]

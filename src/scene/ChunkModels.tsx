@@ -40,6 +40,8 @@ import { PropFade } from './PropFade'
 import { mergeByMaterial } from './mergeGroups'
 import { isFeaturePlacement } from './movingProps'
 import { isDistortionFloor } from './distortionCore'
+import { AnimatedProp, hasPropAnim, usePropAnimSet } from './AnimatedProp'
+import { loadPropAnimSet } from './propAnim'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
 const CHUNK_TILES = 32
@@ -109,6 +111,10 @@ interface Prop extends Placed {
   y: number
   rot: [number, number, number]
   scale: [number, number, number]
+  /** 그림표. BTP0가 그림을 갈아 끼울 때 여기서 다시 자른다 */
+  sheet: TexSheet | null
+  /** 원작에 없는 면을 메운 판 (`shell.shellPlates`). 없으면 null */
+  fill: BufferGeometry | null
 }
 
 /**
@@ -492,6 +498,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   const [flowers, setFlowers] = useState<FlowerField | null>(null)
   const [water, setWater] = useState<WaterField | null>(null)
   const [props, setProps] = useState<Prop[]>([])
+  /** 소품 애니 표. 못 받으면 소품이 지금까지처럼 가만히 선다 */
+  const anims = usePropAnimSet(loadPropAnimSet)
   /**
    * 나무가 못 들어가는 칸. **두 걸음으로 나눠 받는다.**
    *
@@ -878,6 +886,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             x: b.x, y: b.y, z: b.z,
             rot: b.rot, scale: b.scale,
             mesh: got.mesh,
+            sheet: got.sheet,
+            // 원작이 안 그린 면을 메운 판. 애니가 도는 소품은 몸통을 노드마다
+            // 쪼개므로 합친 기하를 못 쓴다 — 이것만 따로 한 번 더 그린다
+            fill: back.geometry,
             // 몸통과 채운 면을 합친 것. 합칠 것이 없으면 몸통 그대로다
             geometry: cachedMergedProp(got.id, got.mesh.geometry, back.geometry, materials)
               ?? got.mesh.geometry,
@@ -999,7 +1011,20 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               둘이 같은 재질 배열을 쓰므로 한 기하로 합쳐 둔다 (`mergeGroups`) —
               `poketch`에서 소품 124칸 + 채운 면 113칸이 따로 나가던 자리다
             */}
-            <TerrainMesh geometry={p.geometry} materials={p.materials} name="소품" />
+            {/*
+              애니가 있는 소품 112개는 원작 클립이 돌린다 — 문짝이 노드로 돌고,
+              폭포·용암이 UV로 흐르고, 에스컬레이터가 그림을 갈아 낀다
+              (`AnimatedProp`). 표를 아직 못 받았으면 정적 메시가 그대로 선다
+            */}
+            {anims && hasPropAnim(anims, p.index) ? (
+              <AnimatedProp
+                model={p.index} tile={[Math.floor(p.x), Math.floor(p.z)]}
+                mesh={p.mesh} sheet={p.sheet} materials={p.materials} set={anims}
+                whole={p.geometry} fill={p.fill}
+              />
+            ) : (
+              <TerrainMesh geometry={p.geometry} materials={p.materials} name="소품" />
+            )}
           </PropFade>
         </group>
       ))}
