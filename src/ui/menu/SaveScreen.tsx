@@ -76,6 +76,8 @@ export function SaveScreen() {
         x: p.x,
         z: p.z,
         facing: worldState.player.facing,
+        // 깨어진 세계는 격자에 높이가 없다 (`state/save/schema`의 `position.y`)
+        y: p.y,
       })
       .then((got) => {
         setBackup({ started: got.backup.started, fileName: got.fileName })

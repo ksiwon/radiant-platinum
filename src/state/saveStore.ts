@@ -176,7 +176,11 @@ export interface SaveData {
    * 엔진과 **같은 번호 체계**다 — `map`은 맵 헤더 번호, `matrix`는 그 맵이 선
    * 격자 번호다. 워프가 쓰는 것과 같은 짝이라 되돌아갈 때 그대로 넘겨주면 된다
    */
-  position: { map: number; matrix: number; x: number; z: number; facing: number }
+  position: {
+    map: number; matrix: number; x: number; z: number; facing: number
+    /** 선 높이. 깨어진 세계에서만 쓴다 — 그 세계는 격자에 높이가 없다 */
+    y: number | null
+  }
   money: number
   /**
    * 전멸했을 때 깨어날 자리 (`FieldOverworldState_SetBlackOutWarpId`).
@@ -290,6 +294,12 @@ export interface SaveData {
   /** 낱말 고르기에서 풀어 둔 것 (`UnlockedEasyChatWords`) */
   easyChatUnlocks: EasyChatUnlocks
   /**
+   * 시각을 못 박은 리포트인가 (0~24). null이면 실제 시계를 본다.
+   *
+   * 확인용 세이브만 채운다 (`saves/`) — 사람이 실제로 논 리포트는 늘 null이다
+   */
+  hourPin: number | null
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -351,7 +361,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 34
+export const SAVE_VERSION = 35
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -372,7 +382,7 @@ export const MAX_MONEY = 999999
  * 그대로 두면 주인공이 칸 모서리에 서서 **문 쪽(남쪽)을 보고** 시작한다
  */
 export const START_LOCATION = {
-  map: 415, matrix: 129, x: 4.5, z: 6.5, facing: Math.PI,
+  map: 415, matrix: 129, x: 4.5, z: 6.5, facing: Math.PI, y: null,
 } as const
 
 export function createNewSave(): SaveData {
@@ -445,6 +455,7 @@ export function createNewSave(): SaveData {
     siwonMet: false,
     mailbox: newMailbox(),
     easyChatUnlocks: newEasyChatUnlocks(),
+    hourPin: null,
   }
 }
 
@@ -696,6 +707,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     siwonMet: s.siwonMet,
     mailbox: s.mailbox,
     easyChatUnlocks: s.easyChatUnlocks,
+    hourPin: s.hourPin,
   }
 }
 

@@ -276,6 +276,17 @@ const saveSchema = z.object({
     x: z.number().finite(),
     z: z.number().finite(),
     facing: z.number().finite(),
+    /**
+     * 선 **높이**. 보통 맵에서는 안 쓴다 — 격자가 다시 내주고, 그래야 자료가
+     * 바뀌어도 자리가 따라간다.
+     *
+     * ⚠️ **깨어진 세계에서만 이것이 유일한 단서다** (PARITY §6.10). 그 세계는
+     * 맵 격자가 아니라 **떠 있는 판**이 통행과 높이를 정하는데, 판을 고르는
+     * `findPlatform`이 (x, y, z) 셋을 다 본다 — y를 격자에서 받으면 0이 와서
+     * 엉뚱한 판이 걸리고 사람이 판 속에 묻힌다. 옛 리포트는 null이라 그때는
+     * 여태처럼 격자에 묻는다
+     */
+    y: z.number().finite().nullable(),
   }),
   money: int(0, 999999),
   healSpot: int(0, 255),
@@ -674,6 +685,18 @@ const saveSchema = z.object({
     greetings: int(0, 0xffffffff),
     tough: int(0, 0xffffffff),
   }),
+  /**
+   * 시각을 못 박은 리포트인가 (0~24 실수). null이면 **실제 시계**를 본다.
+   *
+   * ⚠️ **확인용 세이브만 이걸 채운다** (`saves/`). 하늘색·조명·안개가 갈리고
+   * 시간대 인카운터도 갈리는데(`map/timeOfDay`), 밤을 보려면 기계 시계를
+   * 밤으로 돌려놓는 수밖에 없었다 — 그것은 「배포본에서 세이브로 다 본다」가
+   * 아니다. 사람이 실제로 논 리포트는 늘 null이다.
+   *
+   * ⚠️ **맨 뒤다** (CODEMAP §2.2). 사이에 끼우면 앞서 쓴 리포트와 바이트 차례가
+   * 어긋난다
+   */
+  hourPin: z.number().min(0).max(24).nullable(),
 })
 
 /**

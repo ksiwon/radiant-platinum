@@ -17,7 +17,7 @@ import { dexSet } from '../engine/pokemon/dex'
 const DB = createStore('radiant-platinum', 'save')
 const AT = new Date('2026-08-10T14:03:07')
 
-const where = { map: 415, matrix: 129, x: 4.5, z: 6.5, facing: 0 }
+const where = { map: 415, matrix: 129, x: 4.5, z: 6.5, facing: 0, y: null }
 
 function saveWith(name: string, money = 3000): SaveData {
   const save = createNewSave()

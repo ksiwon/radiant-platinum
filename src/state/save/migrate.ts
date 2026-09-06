@@ -387,6 +387,21 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       ? data.siwonGiven + 1
       : 0,
   }),
+
+  /**
+   * 34 → 35. 선 높이와 시각 못 박기가 생겼다.
+   *
+   * 둘 다 **null로 시작하는 것이 맞다**. 높이가 null이면 여태처럼 격자에
+   * 묻고(깨어진 세계에서 저장한 옛 리포트는 그래서 그대로다 — 나아지지도
+   * 나빠지지도 않는다), 시각이 null이면 실제 시계를 본다. 사람이 실제로 논
+   * 리포트는 둘 다 null인 것이 정상이고, 채워지는 것은 확인용 세이브뿐이다
+   */
+  34: (data) => ({
+    ...data,
+    version: 35,
+    position: { ...(data.position as Record<string, unknown>), y: null },
+    hourPin: null,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

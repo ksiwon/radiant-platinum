@@ -113,6 +113,8 @@
     "check:worker": "node tools/shot/workerCheck.mjs",
     "e2e": "node tools/e2e/run.mjs",
     "story": "node tools/e2e/story.mjs",
+    "saves": "node tools/saves/bake.mjs",
+    "saves:check": "node tools/saves/check.mjs",
     "bake:mechanics": "node tools/distribution/mechanics/bake.mjs",
     "test:shimmed": "vitest run --config vitest.shimmed.config.ts",
     "extract:bagSprite": "node tools/extract/bagSprite.js",

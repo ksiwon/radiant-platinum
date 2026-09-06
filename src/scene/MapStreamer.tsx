@@ -402,7 +402,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 평범한 격자로 걷는다
       distortionForgetEvents()
       if (isDistortionFloor(mapId)) {
-        const y = atY ?? next.heightAtWorld(x, z, 0) ?? 0
+        // ⚠️ **위에서 세운 높이를 그대로 쓴다.** 여기서 격자에 다시 물으면 0이
+        // 오는데(그 세계는 격자에 높이가 없다) 판을 고르는 `findPlatform`이
+        // (x, y, z) 셋을 다 봐서 **엉뚱한 판이 걸린다** — 사람은 판 위에 서고
+        // 통행 판정만 딴 판을 보는 상태가 된다
+        const y = worldState.player.position.y
         if (distortionLoaded()) distortionEnter(mapId, x, y, z)
         else
           void distortionPreload()
@@ -448,7 +452,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 있었고, 배틀 화면만 체육관 것이었다. 처음 도는 것과 다시 도는 것은 다른
    * 일이라 여기 적어 두고 가른다
    */
-  const resume = useRef<{ map: number; matrix: number; x: number; z: number } | null>(null)
+  const resume = useRef<
+    { map: number; matrix: number; x: number; z: number; y: number | null } | null>(null)
 
   /** 이 effect를 정리한다. 어디까지 왔는지를 `resume`에 남기고 세계를 비운다 */
   const forget = useCallback(() => {
@@ -459,6 +464,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       matrix: world.matrix,
       x: worldState.player.position.x,
       z: worldState.player.position.z,
+      // 깨어진 세계는 격자에 높이가 없다 — 안 들고 나가면 다시 설 때 판을
+      // 못 고른다 (`state/save/schema`의 `position.y`)
+      y: worldState.player.position.y,
     }
     activeZone.grid = null
     world.grid = null
@@ -494,7 +502,17 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (back !== null || !devWarp.claimed()) {
       const at = back ?? useSaveStore.getState().position
       if (back === null) worldState.player.facing = useSaveStore.getState().position.facing
-      if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0)
+      /**
+       * 서는 높이.
+       *
+       * ⚠️ **깨어진 세계에서만 준다.** 보통 맵은 격자가 다시 내주게 두어야
+       * 자료가 바뀌어도 자리가 따라간다 — 리포트에 적힌 높이를 그대로 믿으면
+       * 지형이 바뀐 자리에서 공중에 뜨거나 묻힌다. 그 세계는 반대다: 격자에
+       * 높이가 없어서 0이 오고, 판을 고르는 `findPlatform`이 (x, y, z) 셋을
+       * 다 보므로 엉뚱한 판이 걸린다 (PARITY §6.10)
+       */
+      const atY = isDistortionFloor(at.map) ? at.y ?? undefined : undefined
+      if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0, atY)
       else {
         // ⚠️ **그 사이에 누가 자리를 가져갔으면 덮어쓰지 않는다.** 격자를 받는
         // 동안 다른 것이 맵을 갈아 끼울 수 있다 — 확인 지점이 그렇다. 실측:
@@ -506,7 +524,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         void gridFor(at.matrix)
           .then((next) => {
             if (world.mapId !== from) return
-            enter(next, at.map, at.x, at.z, at.matrix)
+            enter(next, at.map, at.x, at.z, at.matrix, atY)
           })
           .catch(() => {
             /* 못 받으면 기본 스폰에 그대로 선다 */
@@ -631,6 +649,19 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
     if (world.mapId >= 0) enterMap(world.mapId)
   }, [hydrated, scriptsReady, pendingInit])
+
+  /**
+   * 시각을 못 박은 리포트면 그 값으로 (`state/save/schema`의 `hourPin`).
+   *
+   * ⚠️ **파일이 시각을 들고 다녀야 밤을 다시 열 수 있다.** 게임 시각은 켤 때
+   * 기계 시계에서 한 번 받아 굳히는 값이라(`worldState`의 `startHour`),
+   * 안 들고 다니면 밤 자리를 담은 세이브가 낮에 열린다. 사람이 실제로 논
+   * 리포트는 이 값이 null이라 여기서 아무 일도 안 한다
+   */
+  const hourPin = useSaveStore((s) => s.hourPin)
+  useEffect(() => {
+    if (hourPin !== null) worldState.time.gameHour = ((hourPin % 24) + 24) % 24
+  }, [hourPin])
 
   // 러닝슈즈는 세이브에 있고 이동 시스템은 프레임 상태만 본다. 그 사이를
   // 여기서 잇는다 — 엄마가 주는 순간 다음 프레임부터 뛸 수 있어야 한다

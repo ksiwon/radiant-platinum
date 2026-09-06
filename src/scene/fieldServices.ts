@@ -1185,6 +1185,9 @@ const services: FieldServices = {
           x: at.x,
           z: at.z,
           facing: worldState.player.facing,
+          // 깨어진 세계는 격자에 높이가 없다 — 리포트가 안 들고 있으면 다시
+          // 열 때 판을 못 고른다 (`state/save/schema`의 `position.y`)
+          y: at.y,
         })
         .then((got) => { saveOutcome = got.saved })
         .catch(() => { saveOutcome = false })
