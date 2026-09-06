@@ -563,8 +563,20 @@ async function widen(page, sha = null) {
         + (f.path in text ? ` [${sayJsonDiff(f.path, text[f.path])}]` : ''))).join(' · '))
   }
   const reps = compareReps(shape.reps)
+  // ⚠️ **「다르다」로 끝내지 않는다** — 바로 위 크기 쪽과 같은 규율이다. 이 판을
+  // 다시 모는 데 설치가 몇 분이라, 무엇이 갈렸는지를 여기서 같이 적어야 그 값을
+  // 두 번 안 치른다. 크기가 **같은 채로** 바이트만 갈리는 자리가 실제로 있었다
+  // (`npcModels` — 이름 하나가 바뀌면 길이가 안 바뀐다)
+  const jsonOf = (row) => /^\S+ (\S+\.json) \(바이트\)$/.exec(row)?.[1] ?? null
+  const badJson = reps.bad.map(jsonOf).filter((p) => p !== null)
+  const repText = badJson.length > 0
+    ? await page.evaluate(readFiles, badJson.slice(0, 6))
+    : {}
   assert(reps.bad.length === 0,
-    `대표 파일이 노드 산출물과 다르다: ${reps.bad.slice(0, 4).join(' · ')}`)
+    `대표 파일이 노드 산출물과 다르다: ${reps.bad.slice(0, 4).map((row) => {
+      const at = jsonOf(row)
+      return at !== null && at in repText ? `${row} [${sayJsonDiff(at, repText[at])}]` : row
+    }).join(' · ')}`)
   let said = `${saySpread(rows)} · 대표 ${String(reps.ok.length)}개 일치(그림은 픽셀로)`
   if (reps.noNode.length > 0) said += ` · 대표 ${String(reps.noNode.length)}개는 노드에 없어 못 잼`
   if (sha !== null) {
