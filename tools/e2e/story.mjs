@@ -26,11 +26,13 @@
 // 사이를 잇는 것은 ①(새 게임 → 오프닝 → 오버월드)과 `run.mjs`의 ㉖(떡잎마을 →
 // 201·202번도로 → 상점·배틀)이 걸어서 잰다. 여기서는 그 둘을 **안 겹쳐 센다.**
 //
-// ⚠️ **뒷문이 아니다.** 확인 지점은 `?dev=1`로 켜는 손잡이 뒤의 동적 import라
-// **안 켠 사람은 그 청크를 안 받는다**(`app/devTools`). 켜도 바뀌는 것은 화면에
-// 붙는 개발 UI뿐이고, 무엇을 읽고 어디서 뜰지(`app/boot.ts`의 `decide`)는 밖에서
-// 못 바꾼다 — e2e ㉓이 그것을 잰다. 여기서 밖에서 읽는 것은 `<html>`의 읽기 전용
-// 표식뿐이다 (`app/sceneMark.ts`).
+// ⚠️ **뒷문이 아니다.** 확인 지점은 `import.meta.env.DEV` 뒤의 동적 import라
+// **배포 빌드에는 그 조각이 아예 없다** — 조건이 빌드 상수라 rollup이 통째로
+// 흔들어 낸다. 주소로 켜는 길도 없다(e2e ㉓이 눌러 본다). 그래서 이 하네스는
+// 개발 서버에서만 돈다. 배포본을 상대로 같은 자리를 보는 길은 **세이브 파일**
+// 이다 — `saves/`의 여든여섯 벌이고, `pnpm saves:check`가 진짜 불러오기 길로
+// 잰다. 여기서 밖에서 읽는 것은 `<html>`의 읽기 전용 표식뿐이다
+// (`app/sceneMark.ts`).
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
@@ -80,7 +82,18 @@ const P95_MS = 50
 /** 끊김이 이만큼 나오면 그 장면은 떨어진다 */
 const HITCH_LIMIT = 3
 /** 고요해지기를 기다리는 최대 시간 */
-const SETTLE_MAX_MS = 15_000
+const SETTLE_MAX_MS = 30_000
+/**
+ * **프레임 루프가 살아났다**고 볼 문턱 — 400ms에 이만큼은 돌아야 한다.
+ *
+ * ⚠️ **삼각형이 멎은 것과 화면이 도는 것은 다른 일이다.** 실측으로 배틀파크도
+ * 배틀타워도 도착 뒤 **12초 동안 초당 한 프레임**이고 14초부터 60fps다
+ * (`.audit/parkWhen.mjs`) — 붙는 것은 9.5초에 끝나는데 그 뒤로도 한참 안 돈다.
+ * 그 사이에 걸어 보면 시뮬이 한 번도 안 돌아서 칸이 안 바뀌고, 그것이
+ * **「네 방향 다 못 걸었다」로 적혔다** — 격자는 남쪽이 열려 있는데도 그랬다
+ */
+const LIVE_FRAMES = 18
+const LIVE_WINDOW_MS = 400
 /** 프레임을 재는 창 */
 const FRAME_WINDOW_MS = 2_000
 
@@ -511,16 +524,46 @@ async function settle() {
   const till = Date.now() + SETTLE_MAX_MS
   let last = -1
   let same = 0
+  let live = false
   while (Date.now() < till) {
     const p = await perf(page)
     const tri = p?.triangles ?? 0
     same = tri === last ? same + 1 : 0
     last = tri
-    if (same >= 3 && tri > 0) return { tri, draws: p?.drawCalls ?? 0, backend: p?.backend ?? '?' }
+    // ⚠️ **붙기가 끝난 뒤에도 화면은 한참 안 돈다** (`LIVE_FRAMES` 머리말).
+    // 붙는 것만 보고 넘어가면 그 다음에 하는 일이 전부 **멎은 화면 위에서**
+    // 벌어진다 — 걷기가 거기서 떨어졌다
+    if (same >= 3 && tri > 0) {
+      live = await frameLoopLive()
+      if (live) return { tri, draws: p?.drawCalls ?? 0, backend: p?.backend ?? '?' }
+      continue
+    }
     await page.waitForTimeout(250)
   }
   const p = await perf(page)
-  return { tri: p?.triangles ?? 0, draws: p?.drawCalls ?? 0, backend: p?.backend ?? '?', slow: true }
+  return {
+    tri: p?.triangles ?? 0, draws: p?.drawCalls ?? 0, backend: p?.backend ?? '?',
+    slow: true, dead: !live,
+  }
+}
+
+/**
+ * 화면이 실제로 도는가. `LIVE_WINDOW_MS` 동안 rAF를 세어서 문턱과 견준다.
+ *
+ * ⚠️ **`perfSnapshot.fps`로는 못 잰다.** 그건 게임 루프가 저를 센 것이라 루프가
+ * 통째로 굶어도 「그 안에서는」 고르게 보인다 — 실측으로 배틀파크가
+ * `fps 4 · frameMs 0.6`이었다. 일이 무거운 것이 아니라 **안 불리는** 것이다
+ */
+async function frameLoopLive() {
+  return await page.evaluate(async (ms) => {
+    let n = 0
+    await new Promise((done) => {
+      const s = performance.now()
+      const tick = (t) => { n++; if (t - s < ms) requestAnimationFrame(tick); else done() }
+      requestAnimationFrame(tick)
+    })
+    return n
+  }, LIVE_WINDOW_MS).then((n) => n >= LIVE_FRAMES)
 }
 
 /**
@@ -611,11 +654,21 @@ const whyStuck = () => page.evaluate(async () => {
       return (grid.isBlocked(x, zz) ? '막힘' : '열림')
         + (o.obstacleAt(x, zz) === null ? '' : '+객체')
     }
+    // ⚠️ **「화면이 안 돈다」를 여기서 같이 잰다.** 시뮬이 한 번도 안 돌면 칸이
+    // 안 바뀌는데, 그것과 「사방이 막혔다」가 표에서 똑같이 「못 걸었다」로
+    // 보인다 — 배틀파크가 세 번 다 그렇게 적혔다 (`.audit/parkWhen.mjs`)
+    let frames = 0
+    await new Promise((done) => {
+      const s0 = performance.now()
+      const tick = (t) => { frames++; if (t - s0 < 300) requestAnimationFrame(tick); else done() }
+      requestAnimationFrame(tick)
+    })
     return {
       busy: f.scriptBusy(), id: f.fieldScripts.world?.scriptID ?? null,
       at: f.fieldScripts.ctx?.pointer ?? null, ui: k.isUiCaptured(),
       pos: `${p.position.x.toFixed(2)},${p.position.z.toFixed(2)}`,
       N: at(0, -1), S: at(0, 1), W: at(-1, 0), E: at(1, 0),
+      frames,
     }
   } catch (e) { return { why: String(e).slice(0, 120) } }
 })
@@ -944,6 +997,7 @@ if (ACTS.has('2')) {
           trouble.push(`네 방향 다 못 걸었다 (칸 ${walk.from}`
             + ` · ${s.busy === true ? `스크립트 ${String(s.id)}가 잡고 있다` : '스크립트 없다'}`
             + `${s.ui === true ? ' · UI가 키를 들었다' : ''}`
+            + `${typeof s.frames === 'number' && s.frames < 6 ? ` · **화면이 안 돈다** (0.3초에 ${String(s.frames)}프레임)` : ''}`
             + ` · 북${String(s.N)} 남${String(s.S)} 서${String(s.W)} 동${String(s.E)})`)
         }
         // UI가 키를 들고 있는 자리는 **걷는 것을 안 잰다.** 못 잰 것을 실패로
