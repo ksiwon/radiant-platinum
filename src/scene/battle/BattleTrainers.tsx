@@ -16,6 +16,7 @@ import { playerModelPath } from '../playerModelPath'
 import { trainerThrowOrigin } from './battleBallMotion'
 import { TRAINER_CLIP, trainerFallbackPalette, trainerLost } from './battleTrainerVisual'
 import { trainerModelBundle } from '../../engine/actor/npcModels'
+import { unifySkeletons } from '../unifySkeleton'
 
 const loader = new GLTFLoader()
 const SECONDARY_OUTFIT = ['hair2', 'shoes2']
@@ -176,6 +177,17 @@ function TrainerActor({
         try {
           const gltf = await loader.loadAsync(url)
           if (!alive) return
+          // ⚠️ **복제하기 전에 뼈대를 합친다.** 조각마다 뼈 수가 다르면 그
+          // 수만큼 셰이더가 갈리고, 그보다 나쁘게 **three가 재질 하나에 유니폼
+          // 버퍼를 하나만 만든다** — 크기가 처음 그 재질을 세운 조각의 뼈 수로
+          // 굳고 값은 그릴 때마다 그 물체의 것을 읽으므로, 같은 재질을 뼈 수가
+          // 다른 조각 둘이 나눠 쓰면 큰 쪽 행렬이 작은 쪽 버퍼로 간다
+          // (`skinning`의 `referenceBuffer`). 주인공이 정확히 그랬다 — `wear`를
+          // **뼈 131벌짜리 몸통과 9벌짜리 신발**이 나눠 써서 WebGPU가 그 쓰기를
+          // 버렸고, 그 조각들이 낡은 행렬로 그려졌다 (REPAIR §8.1).
+          // ⚠️ **복제 전이어야 한다** — `unifySkeletons`가 `skinIndex`를 고쳐
+          // 쓰는데 복제본은 지오메트리를 **참조로** 물려받는다
+          unifySkeletons(gltf.scene)
           const root = cloneSkinned(gltf.scene) as Group
           // ⚠️ **클립은 복제본에 다시 걸어야 한다.** `cloneSkinned`가 뼈를 새로
           // 만들므로 원본 씬에 건 자는 아무 뼈도 못 찾는다. 이름은 그대로라

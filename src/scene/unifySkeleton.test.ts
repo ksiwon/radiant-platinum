@@ -136,3 +136,55 @@ describe('unifySkeletons', () => {
     expect(out.skipped).toBeNull()
   })
 })
+
+/**
+ * ⚠️ **로더 하나가 빠지면 화면에는 안 보이고 콘솔에만 난다.**
+ *
+ * three는 재질마다 뼈 버퍼를 하나 만들고 **크기를 처음 그 재질을 세운 조각의
+ * 뼈 수로 굳힌다** (`skinning`의 `referenceBuffer`). 그래서 같은 재질을 뼈 수가
+ * 다른 조각 둘이 나눠 쓰면 큰 쪽 행렬이 작은 쪽 버퍼로 가고, WebGPU가 그 쓰기를
+ * **버려서** 그 조각이 낡은 행렬로 그려진다 — 사람은 멀쩡히 서 있는 것처럼
+ * 보이고 콘솔에만 남는다.
+ *
+ * 실제로 `BattleTrainers`가 넷 중 혼자 빠져 있었고, 주인공의 `wear`를 뼈
+ * **131벌짜리 몸통과 9벌짜리 신발**이 나눠 썼다 (REPAIR §8.1). 다섯째가
+ * 생겨도 같은 자리에 안 빠지게 **소스로** 지킨다
+ */
+describe('스킨 모델을 복제하는 자리는 다 뼈대를 합친다', () => {
+  /**
+   * 뼈대가 하나뿐인 모델이라 합칠 것이 없는 자리.
+   *
+   * 몬스터볼(`ItemBalls`)은 조각 전부가 뼈 셋짜리 한 뼈대다 — 실측으로 배치
+   * 마흔 개가 다 `뼈 3`이다 (`.audit/boneShare.mjs`)
+   */
+  const ALLOWED = ['src/scene/ItemBalls.tsx']
+
+  it('`cloneSkinned`를 부르는 파일이 `unifySkeletons`도 부른다', async () => {
+    const { readFileSync, readdirSync, statSync } = await import('node:fs')
+    const { join, resolve } = await import('node:path')
+    const root = resolve(__dirname, '../..')
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const name of readdirSync(dir)) {
+        const at = join(dir, name)
+        if (statSync(at).isDirectory()) walk(at, out)
+        else if (/\.tsx?$/.test(name) && !name.includes('.test.')) out.push(at)
+      }
+      return out
+    }
+    const bad: string[] = []
+    let looked = 0
+    for (const file of walk(resolve(root, 'src'))) {
+      const text = readFileSync(file, 'utf8')
+      if (!/\bcloneSkinned\s*\(/.test(text)) continue
+      looked++
+      const rel = file.slice(root.length + 1).split(String.fromCharCode(92)).join('/')
+      if (ALLOWED.includes(rel)) continue
+      // 직접 부르거나, 부르는 손질기(`preparePersonModel`)를 거치면 된다
+      if (/\bunifySkeletons\s*\(|\bpreparePersonModel\s*\(/.test(text)) continue
+      bad.push(rel)
+    }
+    expect(bad, '뼈대를 안 합치고 복제한다').toEqual([])
+    // ⚠️ **비어 있으면 뜻이 없다** — 훑기가 깨졌는데 초록으로 지나가면 안 된다
+    expect(looked, '`cloneSkinned`를 부르는 파일을 하나도 못 찾았다').toBeGreaterThanOrEqual(4)
+  })
+})
