@@ -4,9 +4,9 @@
 // 스크립트 VM이 필요한데(PLAN §6.5) 아직 없다. 그렇다고 다 만들 때까지 AI를
 // 손으로 확인할 수 없으면 안 되므로, 여기서 직접 부를 수 있게 열어 둔다.
 //
-// **안 켠 사람은 이 청크를 안 받는다.** 호출부가 `devToolsOn()` 뒤의 동적 import
-// 하나뿐이라(`app/devTools`), `?dev=1`을 켜야 그때 받아 온다. 그러니 여기서 무엇을
-// import 하든 초기 청크는 안 는다.
+// **배포본은 이 청크를 안 받는다.** 호출부가 `import.meta.env.DEV` 뒤의 동적
+// import 하나뿐이라(`app/App`), 배포 빌드에서는 rollup이 그 가지를 통째로 흔들어
+// 낸다. 그러니 여기서 무엇을 import 하든 초기 청크는 안 는다.
 import { gameLocale, useOptionsStore } from '../state/optionsStore'
 import {
   loadItems, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames, loadTrainerClasses,
@@ -354,12 +354,20 @@ export function installDevConsole(): void {
      */
     report: () => {
       const save = useSaveStore.getState()
+      // ⚠️ **스크립트가 세운 플래그를 먼저 스토어로 끌어온다.** 화면의 「리포트에
+      // 적기」와 자동 저장이 둘 다 이걸 먼저 한다 (`SaveScreen`·`fieldServices`) —
+      // 여기만 빠뜨리면 방금 맵이 세운 값이 안 실린 리포트가 나오고, 확인용
+      // 세이브를 굽는 것이 바로 이 길이다 (`pnpm saves`)
+      save.commitScriptState(fieldScripts.vars.saved, fieldScripts.vars.flags)
       // 맵에 아직 안 들어갔으면(타이틀 화면) 세이브에 적힌 자리를 그대로 쓴다.
       // `world.mapId`가 -1인 채로 넘기면 스키마가 막는다 — 맞는 동작이라
       // 우회하지 않고 **물어볼 자리를 바꾼다**
       const p = worldState.player.position
       const here = world.mapId >= 0
-        ? { map: world.mapId, matrix: world.matrix, x: p.x, z: p.z, facing: worldState.player.facing }
+        ? {
+          map: world.mapId, matrix: world.matrix, x: p.x, z: p.z,
+          facing: worldState.player.facing, y: p.y,
+        }
         : save.position
       return save.report(here)
     },

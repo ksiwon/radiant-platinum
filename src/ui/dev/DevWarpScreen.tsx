@@ -11,7 +11,8 @@
 // 전당등록 이후)로 묶고 칸을 옆으로 채운다. 어디로 가는지·무엇을 볼지는
 // **올려놓기만 하면** 오른쪽에 뜬다.
 //
-// **`?dev=1`을 켜야 받는다.** 이 파일에 닿는 유일한 길이 `App`의 동적 import다.
+// **개발 서버에서만 받는다.** 이 파일에 닿는 유일한 길이 `App`의 동적 import고,
+// 그 조건이 빌드 상수라 배포 빌드에는 조각 자체가 안 나온다.
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { CHECKPOINTS, stageOf, type Checkpoint } from '../../engine/dev/checkpoints'

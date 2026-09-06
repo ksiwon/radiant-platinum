@@ -1221,14 +1221,33 @@ await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 �
   await page.goto(`${origin}/?assets=opfs`, { waitUntil: 'load' })
   assert(await waitBoot(page) === 'install:none', '개발판 손잡이가 배포본에서 먹었다')
 
-  // ⚠️ **`?dev=1`은 화면에 개발 UI를 붙일 뿐 갈래는 안 건드린다** (`app/devTools`).
-  // 그 둘이 한 손잡이가 되면 「주소로 에셋 갈래를 바꾼다」가 되어 여기 있는 판정이
-  // 전부 무의미해진다. 켠 채로도 install:none이어야 한다
+  // ⚠️ **개발용 연장을 주소로 켜는 길이 없다.** 한동안 `?dev=1`이 그 일을 했다 —
+  // 그러면 켜는 값이 런타임 값이라 rollup이 가지를 못 흔들고, 확인 지점 표와
+  // `window.pt`가 **아무도 안 받는 채로 배포물에 남는다.** 지금은 조건이
+  // `import.meta.env.DEV` 하나뿐이라 배포 빌드에는 그 조각이 아예 없다.
+  // 배포본을 상대로 상황을 보는 일은 세이브 파일이 한다 (`saves/`).
+  //
+  // 그러니 여기서 재는 것은 「갈래를 안 바꾼다」가 아니라 **「아무 일도 안 난다」**다
   await page.goto(`${origin}/?dev=1`, { waitUntil: 'load' })
   assert(await waitBoot(page) === 'install:none', '?dev=1이 에셋 갈래를 바꿨다')
+  await page.keyboard.press('Backquote')
+  await page.waitForTimeout(500)
+  const backdoor = await page.evaluate(() => ({
+    pt: 'pt' in globalThis,
+    rows: document.querySelectorAll('[data-checkpoint]').length,
+    fetched: performance.getEntriesByType('resource')
+      .filter((r) => /DevWarpScreen|devConsole|PerfOverlay|devWarp/.test(r.name)).length,
+  }))
+  assert(!backdoor.pt, '?dev=1로 window.pt가 붙었다')
+  assert(backdoor.rows === 0, `?dev=1로 확인 지점 표가 떴다 — ${String(backdoor.rows)}줄`)
+  assert(backdoor.fetched === 0, `개발 조각을 받았다 — ${String(backdoor.fetched)}건`)
   await page.goto(`${origin}/?dev=1&assets=opfs`, { waitUntil: 'load' })
   assert(await waitBoot(page) === 'install:none', '?dev=1이 ?assets=opfs를 열어 줬다')
-  await page.goto(`${origin}/?dev=0`, { waitUntil: 'load' })
+  // 켜 두는 수법도 없다 — 저장소에 심어 놓고 다시 열어도 그대로여야 한다
+  await page.evaluate(() => { localStorage.setItem('rp.devTools', '1') })
+  await page.goto(`${origin}/`, { waitUntil: 'load' })
+  assert(await waitBoot(page) === 'install:none', '저장소 열쇠로 갈래가 바뀌었다')
+  assert(!(await page.evaluate(() => 'pt' in globalThis)), '저장소 열쇠로 window.pt가 붙었다')
 
   // 표식을 손으로 바꿔도 앱은 안 따라간다 — 쓰기 전용이 아니라 **읽기 전용**이다
   await page.evaluate(() => { document.documentElement.dataset.boot = 'play:opfs' })
@@ -1247,6 +1266,7 @@ await run('23', 'data-boot이 뒷문이 아니다 — 밖에서 갈래를 못 �
     return hits
   })
   return `쿼리·해시·저장소·표식·?assets=opfs·?dev=1 전부 install:none`
+    + ` · ?dev=1에 pt 없음·확인 지점 0줄·개발 조각 0건`
     + ` · 진입 청크의 표식 참조 ${String(reads)}건(쓰기만)`
 })
 

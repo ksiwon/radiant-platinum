@@ -4,8 +4,11 @@
 // 갈 곳을 씬에 **올려 둔다**. 실제로 격자를 갈아 끼우고 세우는 것은 `MapStreamer`가
 // 이미 워프를 위해 하고 있는 그 길이다 — 새 길을 내면 그 길만 시험되지 않는다.
 //
-// **안 켠 사람은 이 청크를 안 받는다.** 부르는 쪽이 전부 `devToolsOn()` 뒤의 동적
-// import라, `?dev=1`을 켜야 그때 받아 온다 (`app/devTools`).
+// **배포본은 이 청크를 안 받는다.** 부르는 쪽이 전부 `import.meta.env.DEV` 뒤의
+// 동적 import라 배포 빌드에서는 통째로 빠진다 (`app/App` · `scene/useDevWarp`).
+//
+// 배포본을 상대로 같은 상황을 보는 길은 **세이브 파일**이다 — 여기서 채운 것을
+// 그 자리에서 리포트로 떠 둔 것이 `saves/`고, 굽는 자는 `pnpm saves`다.
 import { loadItems, loadMoves, loadSpecies } from '../data/gameData'
 import { playerTrainer, useSaveStore, type PokemonInstance } from '../state/saveStore'
 import { addItem } from '../engine/bag/bag'
@@ -118,6 +121,13 @@ async function applySetup(cp: Checkpoint): Promise<void> {
   // 보고 스크립트를 거는데, 안 채우면 그 스크립트가 `LockAll`만 하고 끝나서
   // 주인공이 영영 묶인다 (`Checkpoint.story`의 실측)
   if (cp.story) for (const [id, value] of cp.story) giveVar(id, value)
+
+  // ⚠️ **시각도 세이브에 적는다.** 씬이 `worldState.time.gameHour`를 세우는
+  // 것만으로는 이 자리를 **파일로 다시 열 때** 낮이 된다 — 게임 시각은 켤 때
+  // 기계 시계에서 한 번 받아 굳히는 값이라 리포트가 들고 다녀야 한다
+  if (cp.hour !== undefined) {
+    useSaveStore.setState({ hourPin: ((cp.hour % 24) + 24) % 24 })
+  }
 
   if (cp.money !== undefined) useSaveStore.setState({ money: cp.money })
   if (cp.badges !== undefined) useSaveStore.setState({ badges: cp.badges })

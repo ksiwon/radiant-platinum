@@ -4,13 +4,13 @@
 // 갖고 있는 `enter`를 그대로 부른다 — 문 타일 손질(`walkOutOfDoor`)까지 같은 길로
 // 지나가야 시험용 이동이 진짜 이동과 다르게 동작하지 않는다.
 //
-// **안 켠 사람은 이 청크를 안 받는다.** 아래 동적 import 하나가 유일한 연결이고
-// `devToolsOn()` 뒤에 있다 — `app/devConsole`·`app/devWarp`와 같은 잣대다.
+// **배포본은 이 청크를 안 받는다.** 아래 동적 import 하나가 유일한 연결이고
+// 조건이 빌드 상수라 rollup이 통째로 흔들어 낸다 — `app/App`·`app/devConsole`과
+// 같은 잣대다.
 //
-// ⚠️ **여기가 `import.meta.env.DEV`였다.** 백틱 표는 `?dev=1`로 열리는데(`app/devTools`)
-// 옮기는 쪽인 이 자리만 개발 빌드에 묶여 있어서, 배포본에서는 **표가 뜨고 자리도
-// 눌리는데 아무 일도 안 났다** — `dev`가 끝까지 null이라 `tick()`이 매 프레임
-// 그냥 돌아 나갔다.
+// ⚠️ **여닫는 쪽과 옮기는 쪽의 조건이 같아야 한다.** 갈라 두면 **표가 뜨고
+// 자리도 눌리는데 아무 일도 안 나는** 판이 생긴다 — `dev`가 끝까지 null이라
+// `tick()`이 매 프레임 그냥 돌아 나간다.
 import { useCallback, useMemo, useRef } from 'react'
 import type { MapGrid } from '../engine/map/grid'
 import { mapById, npcsOf, standableSpot, walkOutOfDoor, warpsOf } from '../engine/map/world'
@@ -22,7 +22,6 @@ import { startSafari } from '../engine/world/safari'
 import { gridFor } from './worldData'
 import { distortionSpawn, isDistortionFloor } from './distortion'
 import type { Checkpoint } from '../engine/dev/checkpoints'
-import { devToolsOn } from '../app/devTools'
 
 type EnterFn = (
   grid: MapGrid, mapId: number, x: number, z: number, matrix: number,
@@ -40,7 +39,7 @@ let dev: DevApi | null = null
 // 모듈이 평가될 때 바로 받아 둔다. 마운트 시점에 이미 와 있어야 타이틀에서
 // 뛰어든 판이 세이브 자리를 한 번 들렀다 가지 않는다 — 게임 청크는 타이틀이
 // 미리 받으므로 실제로는 한참 전에 끝난다
-if (devToolsOn()) {
+if (import.meta.env.DEV) {
   void Promise.all([
     import('../app/devWarp'),
     import('../engine/dev/checkpoints'),

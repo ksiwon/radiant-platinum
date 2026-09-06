@@ -12,7 +12,6 @@ import { installAudioUnlock } from '../engine/audio/unlock'
 import { useMenuStore } from '../state/menuStore'
 import { useSessionStore } from '../state/sessionStore'
 import { markMap, markMenu, markScene } from './sceneMark'
-import { devToolsOn } from './devTools'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
 // ⚠️ **배틀 화면도 지연이다.** 늘 그려 두면(안에서 null을 내더라도) 배틀 UI
@@ -31,8 +30,19 @@ let bootstrapped = false
 export function App() {
   const stageMounted = useSessionStore((s) => s.stageMounted)
   const battleUp = useSessionStore((s) => s.battleScreen)
-  // 한 번 읽고 굳힌 값이다 (`app/devTools`). 계기판과 백틱이 같은 답을 봐야 한다
-  const devTools = devToolsOn()
+  /**
+   * 개발용 연장을 붙이는가 — **개발 서버에서만**이다.
+   *
+   * ⚠️ **주소로 켜는 손잡이를 두지 않는다.** 켜는 값이 런타임 값이 되는 순간
+   * 아래 조각들이 배포물에 실린다 — 안 받을 뿐 거기 있고, 그러면 그것이
+   * 뒷문이다. 굽힌 것과 개발 서버가 같은 화면을 안 내는 것은 사실이지만
+   * (실측: 같은 떡잎마을이 development 번들에서 콘솔 2,440줄·최저 48fps,
+   * 프로덕션에서 2줄·60fps), **배포본을 상대로 상황을 보는 일은 세이브
+   * 파일**이 한다 — `saves/`의 여든여섯 벌이고 굽는 자는 `pnpm saves`다.
+   *
+   * 빌드 상수라 rollup이 이 가지를 통째로 흔들어 낸다
+   */
+  const devTools = import.meta.env.DEV
 
   // 지금 무엇이 떠 있는지를 `<html>`에 적어 둔다 — 읽기 전용이고 `data-boot`과
   // 같은 자리다 (`sceneMark.ts`가 왜인지를 적는다)
@@ -53,9 +63,9 @@ export function App() {
     // 오디오 언락은 three를 끌고 오지 않으므로 초기 청크에 남긴다.
     // 타이틀의 "게임 시작" 클릭이 첫 제스처가 되도록 일찍 설치해야 한다 (§11.1).
     installAudioUnlock()
-    // 개발용 손잡이(`window.pt`). 꺼져 있으면 이 청크를 아예 안 받는다 —
-    // `devToolsOn()`은 `?dev=1`로만 참이 된다 (`app/devTools`)
-    if (devToolsOn()) void import('./devConsole').then((m) => { m.installDevConsole() })
+    // 개발용 손잡이(`window.pt`). 배포본에는 **조각째 안 실린다** — 조건이
+    // 빌드 상수라 rollup이 이 가지를 통째로 흔들어 낸다
+    if (import.meta.env.DEV) void import('./devConsole').then((m) => { m.installDevConsole() })
   }, [])
 
   return (
@@ -104,7 +114,7 @@ export function App() {
         </Routes>
         {/*
           ` — 확인 지점. 라우터 **안**에 두는 이유는 타이틀에서 고르면
-          `/play`로 넘어가야 하기 때문이다. `?dev=1`로 켜야 붙는다
+          `/play`로 넘어가야 하기 때문이다. **개발 서버에서만 붙는다**
         */}
         {devTools && <DevWarpHost />}
       </BrowserRouter>
@@ -113,7 +123,7 @@ export function App() {
 }
 
 /**
- * 확인 지점 화면을 백틱(`)으로 여닫는다 — **`?dev=1`로 켰을 때만 붙는다.**
+ * 확인 지점 화면을 백틱(`)으로 여닫는다 — **개발 서버에서만 붙는다.**
  *
  * 화면은 눌렀을 때 받는 동적 import다. 그래서 안 켜면 `ui/dev/*`를 **한 바이트도
  * 안 받는다** — `lazy()`를 모듈 꼭대기에 두면 그 가지가 늘 살아 있어서 이렇게
@@ -126,9 +136,7 @@ export function App() {
  * 계기판을 **받아서** 붙인다.
  *
  * ⚠️ **`lazy()`도 정적 import도 안 된다.** 둘 다 모듈 꼭대기에서 그래프를
- * 살려 두므로 타이틀 초기 청크에 늘 실린다. 예전에는 `import.meta.env.DEV`가
- * 상수라 rollup이 통째로 흔들어 냈지만, 이제 조건이 런타임 값이다 —
- * 안 켠 사람은 이 조각을 한 바이트도 안 받아야 한다
+ * 살려 두므로 타이틀 초기 청크에 늘 실린다 — 개발 서버에서도 그렇다
  */
 function PerfOverlayHost() {
   const [Overlay, setOverlay] = useState<ComponentType | null>(null)
