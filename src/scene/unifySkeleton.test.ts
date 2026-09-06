@@ -188,3 +188,55 @@ describe('스킨 모델을 복제하는 자리는 다 뼈대를 합친다', () =
     expect(looked, '`cloneSkinned`를 부르는 파일을 하나도 못 찾았다').toBeGreaterThanOrEqual(4)
   })
 })
+
+/**
+ * ⚠️ **손질이 한 프레임 늦으면 같은 병이 난다.**
+ *
+ * 리액트의 뒷일(`useEffect`)은 브라우저가 한 번 그린 **뒤에** 돌 수 있는데
+ * R3F는 제 rAF로 그리므로, 손질 전 몸이 한 번 그려진다. 그러면 three가 그때의
+ * 조각별 뼈 수로 유니폼 버퍼를 만들어 두고, 곧이어 뼈대를 합치면 큰 쪽 쓰기가
+ * 그 작은 버퍼로 간다 — 실측으로 **한 장면에 오류 5,607줄**이었고
+ * `useLayoutEffect`로 옮기니 **0**이 됐다 (REPAIR §8.1).
+ */
+describe('스킨 모델 손질은 그리기보다 앞선다', () => {
+  it('`useLoader`가 준 몸은 `useEffect`에서 손질하지 않는다', async () => {
+    const { readFileSync, readdirSync, statSync } = await import('node:fs')
+    const { join, resolve } = await import('node:path')
+    const root = resolve(__dirname, '../..')
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const name of readdirSync(dir)) {
+        const at = join(dir, name)
+        if (statSync(at).isDirectory()) walk(at, out)
+        else if (/\.tsx?$/.test(name) && !name.includes('.test.')) out.push(at)
+      }
+      return out
+    }
+    const bad: string[] = []
+    let looked = 0
+    for (const file of walk(resolve(root, 'src'))) {
+      const text = readFileSync(file, 'utf8')
+      if (!/\b(preparePersonModel|unifySkeletons)\s*\(/.test(text)) continue
+      looked++
+      // ⚠️ **직접 받아 오는 자리는 늦어도 된다.** `loader.loadAsync`로 받아
+      // 손질하고 나서 `setState`로 세우는 길은 세우기 **전에** 손질이 끝난다.
+      // 늦으면 안 되는 것은 `useLoader`처럼 **그리는 동안 이미 있는** 몸이다
+      if (!/\buseLoader\s*\(/.test(text)) continue
+      const rel = file.slice(root.length + 1).split(String.fromCharCode(92)).join('/')
+      // `useEffect(` 부터 그 짝이 닫히기 전까지 손질을 부르면 늦는다.
+      // 여는 괄호를 세어 그 효과 하나의 몸통만 본다
+      for (const m of text.matchAll(/useEffect\(/g)) {
+        let depth = 0
+        let at = m.index + m[0].length - 1
+        const from = at
+        for (; at < text.length; at++) {
+          if (text[at] === '(') depth++
+          else if (text[at] === ')') { depth--; if (depth === 0) break }
+        }
+        const body = text.slice(from, at)
+        if (/\b(preparePersonModel|unifySkeletons)\s*\(/.test(body)) bad.push(rel)
+      }
+    }
+    expect([...new Set(bad)], '`useLayoutEffect`로 옮겨야 한다').toEqual([])
+    expect(looked, '손질을 부르는 파일을 하나도 못 찾았다').toBeGreaterThanOrEqual(4)
+  })
+})

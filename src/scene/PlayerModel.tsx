@@ -1,6 +1,6 @@
 // 플레이어 캐릭터 모델 (PLAN §4.3) — BDSP 풀비율 모델을 glb로 변환한 것
 // 모델 전방은 +Z. playerSystem의 facing = atan2(vx, vz) 규약과 그대로 일치한다.
-import { Suspense, useEffect, useRef } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useRef } from 'react'
 import { useFrame, useLoader } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import {
@@ -51,7 +51,14 @@ export function PlayerModel() {
   // 세션 내내 사는 모델이라 참조를 안 놓는다 (`useAssetUrl` 머리말)
   const gltf = useLoader(GLTFLoader, useAssetUrl(modelPath))
 
-  useEffect(() => {
+  // ⚠️ **`useEffect`로 하면 안 된다 — 한 프레임 늦는다.** 리액트의 뒷일
+  // (passive effect)은 브라우저가 한 번 그린 **뒤에** 돌 수 있는데, R3F는 제
+  // rAF로 그리므로 그 사이에 **손질 전 몸이 한 번 그려진다.** 그러면 three가
+  // 그때의 조각별 뼈 수(131·9·6·2)로 유니폼 버퍼를 만들어 두고, 곧이어 뼈대를
+  // 132벌로 합치면 **132벌짜리 쓰기가 그 작은 버퍼로 간다** — WebGPU가 그
+  // 쓰기를 버리므로 그 조각들이 낡은 행렬로 그려진다 (REPAIR §8.1).
+  // `useLayoutEffect`는 커밋 직후 같은 태스크에서 돌아 다음 rAF보다 앞선다
+  useLayoutEffect(() => {
     // ⚠️ **조각마다 뼈 수가 다르면 그 수만큼 셰이더가 갈린다** (`unifySkeleton`).
     // 주인공은 조각 열하나에 스킨 여섯이라 혼자서 프로그램을 여섯 개 쓴다.
     // 여기 씬은 `useLoader`가 캐시해 세션 내내 하나뿐이라 두 번 걸릴 일이 없다
