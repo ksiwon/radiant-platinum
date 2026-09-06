@@ -1,15 +1,18 @@
 // 맵 소품 하나를 **원작 클립대로** 돌린다 (PARITY §8.5).
 //
 // 언제 도는가를 짐작하지 않는다 — `MapPropAnimationManager_LoadPropAnimations`가
-// 소품 모델을 올릴 때 애니마다 `loopCount = -1` · `looping = TRUE`로 세우고
-// 첫 프레임으로 보낸다. 곧 **기본이 무한 반복**이고, 거기서 빠지는 것은 자료에
-// 적힌 둘뿐이다:
+// 소품 모델을 올릴 때 애니마다 `loopCount = -1` · `looping = TRUE`로 세우고,
+// 배치를 세울 때 `AddAllAnimationsToRenderObj`가 **그 소품의 애니를 다 붙인다**
+// (`map_prop.c` 105줄 — 하나만 붙이는 길은 스크립트가 세우는 소품 쪽이다).
+// 곧 **기본이 무한 반복**이고, 거기서 빠지는 것은 자료에 적힌 셋뿐이다:
 //
-//     flags & 1 (미룬 적재, 실측 34개)  그 자리에서 `return` — 스크립트가 튼다
+//     flags & 1 (미룬 적재, 실측 34개)  `LoadPropAnimations`가 그 자리에서 `return`
+//     flags & 2 (미뤄 붙이기, 실측 3개) `AddAllAnimations…`가 아무것도 안 붙인다
 //     isBicycleSlope (실측 2개)         `paused = TRUE` · `loopCount = 1`
 //
 // 그래서 폭포·용암·물결·에스컬레이터가 아무 신호 없이 돌고, 문 스무 종은
-// 가만히 있다가 `LoadDoorAnimation`이 틀 때만 돈다.
+// 가만히 있다가 `LoadDoorAnimation`이 틀 때만 돈다. 꿀나무(26)도 포켓몬이
+// 붙어 있을 때만 `honey_tree.c`가 흔들 클립 하나를 골라 붙인다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { BufferGeometry, Group, Material, Texture } from 'three'

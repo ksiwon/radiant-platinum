@@ -133,13 +133,20 @@ interface PropAnimIndex {
    */
   slopes: readonly number[]
   /**
-   * **저절로 안 도는** 소품 (`flags & 1`, 미룬 적재).
+   * **저절로 안 도는** 소품. `flags`의 아래 두 비트가 각각 그 뜻이다.
    *
-   * ⚠️ **나머지는 다 저절로 돈다.** 위 함수가 소품 모델을 올릴 때 애니마다
-   * `loopCount = -1` · `looping = TRUE`로 세우고 첫 프레임으로 보낸다 —
-   * 폭포·용암·에스컬레이터가 아무 신호 없이 도는 까닭이다. 여기 든 것만
-   * 그 자리에서 **빠져나가고**(`return`) 스크립트가 틀 때까지 가만히 있는다 —
-   * 문 스무 종과 야도 체육관 단추가 그 갈래다
+   * ⚠️ **나머지는 다 저절로 돈다.** `MapPropAnimationManager_LoadPropAnimations`가
+   * 소품 모델을 올릴 때 애니마다 `loopCount = -1` · `looping = TRUE`로 세우고
+   * 첫 프레임으로 보내고, `MapPropManager`가 배치를 세울 때
+   * `AddAllAnimationsToRenderObj`로 **그 소품의 애니를 다 붙인다** —
+   * 폭포·용암·에스컬레이터가 아무 신호 없이 도는 까닭이다.
+   *
+   *     flags & 1  미룬 적재     `LoadPropAnimations`가 그 자리에서 `return`
+   *     flags & 2  미뤄 붙이기   `AddAllAnimations…`가 아무것도 안 붙인다
+   *
+   * 실측 — 미룬 적재 **34개**(문 스무 종 · 운하시티 다리 · 포켓몬센터 기계들),
+   * 미뤄 붙이기 **셋**(꿀나무 26 · 자전거 비탈 303·304). 꿀나무는 포켓몬이
+   * 붙어 있을 때만 `honey_tree.c`가 흔들 클립 하나를 골라 붙인다
    */
   deferred: readonly number[]
   /** 애니가 있는 소품의 모델 속살. 열쇠가 소품 번호다 */
@@ -227,7 +234,7 @@ export function buildPropAnims(
     if (row.anims.length === 0) continue
     props[String(prop)] = [...row.anims]
     if (row.slope) slopes.push(prop)
-    if ((row.flags & 1) !== 0) deferred.push(prop)
+    if ((row.flags & 3) !== 0) deferred.push(prop)
   }
   return { index: { members, props, slopes, deferred, models }, bytes }
 }

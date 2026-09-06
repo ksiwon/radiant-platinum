@@ -67,6 +67,23 @@ withRom('en')('소품 애니 목차 — 롬 실측', () => {
     }
   })
 
+  it('저절로 안 도는 소품이 서른일곱이다', async () => {
+    const fs = await openNds(bytesSource(new Uint8Array(readFileSync(romPath('en')!))))
+    const { index } = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
+    // `flags & 1` 미룬 적재 34 + `flags & 2` 미뤄 붙이기 3
+    expect(index.deferred).toHaveLength(37)
+    // 문 스무 종이 다 여기 든다 — 스크립트가 틀 때까지 가만히 있어야 한다
+    for (const id of Object.keys(DOOR_KIND)) {
+      expect(index.deferred, `문 ${id}`).toContain(Number(id))
+    }
+    // 꿀나무(26)와 자전거 비탈 둘이 「미뤄 붙이기」 셋이다
+    expect(index.deferred).toContain(26)
+    for (const slope of index.slopes) expect(index.deferred).toContain(slope)
+    // ⚠️ **폭포·용암은 여기 들면 안 된다** — 아무 신호 없이 도는 것들이다
+    expect(index.deferred).not.toContain(242) // pastoria_gym_water_floor
+    expect(index.deferred).not.toContain(34) // regular_ship
+  })
+
   it('여닫이는 클립 넷 · 미닫이는 둘이다', async () => {
     const fs = await openNds(bytesSource(new Uint8Array(readFileSync(romPath('en')!))))
     const { index } = buildPropAnims((await fs!.read(LIST))!, (await fs!.read(ANIM))!)
