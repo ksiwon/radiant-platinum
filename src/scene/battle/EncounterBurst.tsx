@@ -48,7 +48,13 @@ function metreOf(camera: Camera): number {
   return (2 * far * Math.tan((fov / 2) * (Math.PI / 180))) / DS_VIEW_TALL
 }
 
-export function EncounterBurst() {
+/**
+ * @param withParticles 설정의 「배틀 애니메이션」이 켜져 있나.
+ *   ⚠️ **꺼져 있어도 이 컴포넌트는 선다** — 화면을 덮은 막이 여기서 켜는 시계로
+ *   걷히므로(`ui/battle/BattleOpenVeil`) 안 서면 배틀이 **검은 채로** 남는다.
+ *   원작도 그 설정은 기술 연출을 건너뛰는 것이지 화면을 안 여는 것이 아니다
+ */
+export function EncounterBurst({ withParticles }: { withParticles: boolean }) {
   const phase = useBattleStore((s) => s.phase)
   const [cues, setCues] = useState<readonly SplCue[] | null>(null)
   const metre = useRef(1)
@@ -79,6 +85,7 @@ export function EncounterBurst() {
     // (`ui/battle/BattleOpenVeil`) 여기서 그냥 돌아가면 배틀이 **검은 채로**
     // 남는다 — 입자 묶음을 못 받은 판이 정확히 그 자리다
     encounterBurst.at = performance.now()
+    if (!withParticles) return
     const [a, b] = burstMembers(battleTerrainNow())
     const fileA = splFileFor(SPL_WAZA, a)
     const fileB = splFileFor(SPL_WAZA, b)

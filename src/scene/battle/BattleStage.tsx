@@ -833,7 +833,7 @@ export function BattleStage() {
         한 줄로 트는 그 자리다 — 땅마다 `.spa` 두 벌이고, 그 사이에 화면이
         흰색으로 물든다 (`ui/battle/BattleScreen`이 그 막을 덮는다)
       */}
-      {scene === SHOW_SCENE && <EncounterBurst />}
+      <EncounterBurst withParticles={scene === SHOW_SCENE} />
     </group>
   )
 }
