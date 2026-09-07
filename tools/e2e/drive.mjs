@@ -27,7 +27,8 @@
 // 이것을 게임의 결함으로 의심했는데, 막고 있던 것은 전부 **이 하네스가 건너뛴
 // 걸음**이었다.
 import {
-  encounterTiles, gridOf, mapRoute, matrixOf, pathTo, TILE_TABLE, trainersOn, warpsOf,
+  encounterTiles, grassAt, gridOf, mapRoute, matrixOf, pathTo, TILE_TABLE, trainersOn,
+  warpsOf,
 } from './route.mjs'
 
 /** 방향키 하나가 옮기는 칸 */
@@ -39,7 +40,9 @@ const STEPV = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRi
  * @param page playwright 페이지. 이미 `/play`에 들어와 있어야 한다
  * @returns 무엇에 닿았는지. 판정은 부르는 쪽이 한다
  */
-export async function driveStory(page, { log = () => {}, totalMs = 900_000, verbose = false } = {}) {
+export async function driveStory(page, {
+  log = () => {}, totalMs = 900_000, verbose = false, after = null, skipStory = false,
+} = {}) {
   const started = Date.now()
   const left = () => totalMs - (Date.now() - started)
   const maps = new Set()
@@ -120,6 +123,12 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
         continue
       }
       const { n, at } = await choiceCount()
+      // ⚠️ **둘짜리는 「예」를 못 박는다.** 예전에는 켜져 있는 칸에 그대로
+      // 스페이스를 눌렀는데, 그것은 「기본값이 예다」에 기대는 것이라 화면이
+      // 바뀌면 조용히 「아니오」가 된다 — 리포트를 안 쓰고, 축복시티 광대의
+      // 문답을 틀린다(원작에서 셋 다 답이 「예」다: `scripts_jubilife_city.s`의
+      // `Clown1/2/3CorrectAnswer`). 롬의 차례가 MENU_YES → MENU_NO다
+      if (n === 2) for (let d = at; d > 0; d--) await tap('ArrowUp', 40)
       if (n >= 3) for (let d = at; d < n - 1; d++) await tap('ArrowDown', 40)
       await tap('Space')
     }
@@ -280,10 +289,27 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
         || others.some((w) => w.x === x && w.z === z)
       const from = { x: s.x, z: s.z }
 
+      // ⚠️ **그냥 지나갈 때는 풀숲을 밟지 않는다.** 사람도 그렇게 걷는다.
+      // 실측(5판)으로 202번도로를 가로지르며 **야생 배틀 22회**가 붙어 480초
+      // 예산을 통째로 먹었고, 그 바람에 축복시티의 포켓치 차례를 못 밟았다 —
+      // 검사가 못 잰 것이 게임의 결함으로 보이는 자리다.
+      // ⚠️ **풀숲을 못 지나게 막는 것이 아니다.** 풀 없는 길이 없으면 그대로
+      // 지난다 — 아래에서 한 번 더 찾는다. 일부러 만나러 가는 쪽은
+      // `grindForWild`고, 그쪽은 이 규칙을 안 쓴다
+      const path = (isGoal) =>
+        pathTo(here, from, isGoal, { avoid: (x, z) => avoid(x, z) || grassAt(here, x, z) })
+        ?? pathTo(here, from, isGoal, { avoid })
+
       let keys = null
       if (here === matrixOf(target)) {
-        keys = pathTo(here, from, (x, z) => grid.zoneAt(x, z) === target, { avoid })
-      } else {
+        keys = path((x, z) => grid.zoneAt(x, z) === target)
+      }
+      // ⚠️ **같은 행렬에 있다고 걸어서 닿는다는 뜻이 아니다.** 축복시티와
+      // 무쇠시티는 둘 다 행렬 0인데 사이가 절벽이라, 사람은 무쇠게이트(258)로
+      // 들어갔다 나온다. 곧바로 노리는 길이 없으면 **없는 것이 아니라 문으로
+      // 도는 것**이므로 맵 그래프에 다시 묻는다 — 실측(2026-09-07)으로 이
+      // 자리가 없어서 「(177,804)에서 길을 못 찾았다」로 섰다
+      if (keys === null) {
         const route = mapRoute(s.map, target)
         if (!route || route.length < 2) return `길이 없다 (${String(s.map)} → ${String(target)})`
         // ⚠️ **중간 구역을 하나씩 밟으면 안 된다.** 같은 행렬 안에서는 구역이
@@ -299,10 +325,10 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
           const hop = route[1]
           const doors = others.filter((w) => w.to === hop)
           if (doors.length === 0) return `${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`
-          keys = pathTo(here, from, (x, z) => doors.some((w) => w.x === x && w.z === z), { avoid })
+          keys = path((x, z) => doors.some((w) => w.x === x && w.z === z))
         } else {
           for (let i = far; i >= 1 && keys === null; i--) {
-            keys = pathTo(here, from, (x, z) => grid.zoneAt(x, z) === route[i], { avoid })
+            keys = path((x, z) => grid.zoneAt(x, z) === route[i])
           }
         }
       }
@@ -484,6 +510,59 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
     return '시간이 다 됐다'
   }
 
+
+  /**
+   * **지금 서 있는 칸**으로 그 사람을 찾는다. 배치표의 자리가 아니다.
+   *
+   * ⚠️ **배치표 자리는 「처음 선 곳」일 뿐이다.** 축복시티 광대 둘은
+   * `MOVEMENT_TYPE_WANDER_AROUND`라 돌아다니고, 포켓치사 사장은 좌표 이벤트가
+   * 주인공 쪽으로 **걸어오게** 만든다 — 실측으로 셋 중 둘에게 「말을 못 걸었다」가
+   * 났고, 그것은 사람이 없어서가 아니라 **거기 없어서**였다.
+   *
+   * ⚠️ **읽기만 한다.** 개발 서버에서 모듈을 열어 지금 자리를 보는 것은
+   * `story.mjs`가 확인 지점 표를 읽는 것과 같은 자리다 — 진행은 여전히
+   * 방향키와 A로만 만든다 (파일 첫머리의 「읽는 것과 넣는 것은 다르다」)
+   *
+   * @param script 배치표의 스크립트 번호 (`events_*.json`의 `script`)
+   * @returns `{x, z}` 또는 못 찾으면 null
+   */
+  const npcSpot = async (mapId, script) => page.evaluate(async ([map, want]) => {
+    const m = await import('/src/engine/actor/npcs.ts')
+    const reg = m.npcActors
+    if (reg.mapId !== map) return null
+    const hit = reg.list.find((a) => a.info?.script === want && a.visible !== false)
+    return hit === undefined ? null : { x: Math.round(hit.x), z: Math.round(hit.z) }
+  }, [mapId, script])
+
+  /**
+   * 그 사람에게 말을 건다 — **돌아다녀도** 따라가서 건다.
+   *
+   * 한 번에 못 걸면 자리를 다시 읽고 다시 간다. 걸어 다니는 사람은 우리가
+   * 옆칸에 서는 사이에 한 칸 옮겨 가 있다
+   */
+  const talkToNpc = async (mapId, script, budgetMs, tries = 4) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    for (let i = 0; i < tries && Date.now() < till; i++) {
+      const at = await npcSpot(mapId, script)
+      if (at === null) return false
+      const left = till - Date.now()
+      if (left <= 0) return false
+      if (await talkTo(mapId, at, Math.min(left, Math.max(20_000, left / (tries - i))))) return true
+    }
+    return false
+  }
+
+  // ⚠️ **`skipStory`는 진단용이다** — 세이브를 읽어 이미 그 자리에 선 판에서
+  // **한 구간만** 다시 몰아 보려고 둔다. 대표 구간의 판정에는 안 쓴다:
+  // 여기를 건너뛰면 그 판은 「걸어서 이어졌다」를 증명하지 않는다 (기획서 §1.4)
+  if (skipStory) {
+    const only = after === null ? null : await after({
+      goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, settle, now, tap, clearTalk,
+      fightThrough, getParcel, log, left, maps, trouble, battles,
+    })
+    return { maps: [...maps], ...battles, shops, missed: [], trouble, extra: only }
+  }
+
   // ── 차례 ───────────────────────────────────────────────────────────────────
   //
   // 이야기가 지나가는 자리 그대로다. 중간을 건너뛰면 다음 문이 안 열린다 —
@@ -572,6 +651,21 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
   if (battles.trainer === 0 && left() > 0) await parcelThenRoute202()
   if (battles.trainer === 0) trouble.push('트레이너 배틀에 못 닿았다')
 
+  // ── 더 갈 데가 있으면 이어서 몬다 ─────────────────────────────────────────
+  //
+  // ⚠️ **길잡이를 그대로 넘긴다** (PT-03의 Journey가 여기서 이어 간다). 베껴
+  // 쓰면 「문 앞에서 한 발 물러난다」·「사람 칸으로 걸어가지 않는다」처럼 실측으로
+  // 얻은 요령이 두 벌이 되고, 언젠가 한쪽만 고쳐진다
+  const extra = after === null ? null : await after({
+    goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, settle, now, tap, clearTalk,
+    fightThrough,
+    // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 위에서는 트레이너전이 0일 때만
+    // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은
+    // **언제나** 소포가 있어야 한다 — 없으면 202번도로 서쪽이 막힌다
+    getParcel,
+    log, left, maps, trouble, battles,
+  })
+
   return {
     maps: [...maps].sort((a, b) => a - b),
     reached,
@@ -579,6 +673,7 @@ export async function driveStory(page, { log = () => {}, totalMs = 900_000, verb
     missed,
     wild: battles.wild, trainer: battles.trainer, shops, trouble,
     seconds: Math.round((Date.now() - started) / 1000),
+    extra,
   }
 
   /** 소포를 받고 202번도로 트레이너에게 간다 */

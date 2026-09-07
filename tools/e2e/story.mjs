@@ -41,10 +41,23 @@ import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { playOpening } from './drive.mjs'
 import { installSceneWatch, readSceneWatch, takeSceneWatch } from './sceneWatch.mjs'
+import {
+  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+} from '../distribution/evidence.mjs'
 import { missingData } from './route.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const OUT = resolve(ROOT, 'shots/story')
+
+/**
+ * 재기 **시작할 때**의 게임 소스 지문.
+ *
+ * ⚠️ **끝난 뒤에 재면 늦다.** 훑기는 38분을 도는데, 그 사이에 `src`를 고치면
+ * 앞 절반과 뒤 절반이 서로 다른 게임을 잰 것이 된다 — 끝 시점의 지문만 봐서는
+ * 그것이 안 보인다. HMR로 섞이는 그 순간을 봉투가 잡는다
+ * (`distribution/evidence.mjs`)
+ */
+const START_DIGEST = bindingDigest('story')
 
 const args = process.argv.slice(2)
 const flag = (name, fallback) => {
@@ -258,6 +271,8 @@ if (!url) {
 }
 
 const browser = await chromium.launch({ args: GPU })
+/** 브라우저 판. **닫기 전에** 받아 둔다 — 증거는 맨 끝에서 씌우는데 그때는 이미 닫혀 있다 */
+const BROWSER_VERSION = browser.version()
 const context = await browser.newContext({ viewport: VIEW, deviceScaleFactor: 1 })
 /**
  * ⚠️ **첫 방문은 개발 서버가 앱을 통째로 컴파일하는 시간이다.** 플레이라이트
@@ -1201,12 +1216,48 @@ else {
 mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 // ⚠️ **무엇을 걸렀는지를 같이 적는다.** `--only`로 셋만 돌린 기록이 파일에서는
 // 「다 돌렸다」와 똑같이 보이면, 나중에 그것을 근거로 「전부 통과」라고 쓰게 된다
-writeFileSync(resolve(ROOT, '.audit/story.json'), `${JSON.stringify({
-  gpu, view: VIEW, backend, known: [...known], warpRetries,
-  ran: { acts: [...ACTS], only: ONLY, from: FROM ?? null, fight: FIGHT, fresh: FRESH },
-  scenes: { all: CHECKPOINTS.length, ran: targets.length },
-  rows,
-}, null, 1)}\n`)
+/**
+ * **다 돌린 훑기 한 벌이 내야 할 확인 지점 전부.**
+ *
+ * ⚠️ **여기서 짓지 않는다.** 판정기가 `src/engine/dev/checkpoints.ts`에서
+ * 직접 뽑아 쥔다 (`distribution/evidence.mjs`의 roster). 하네스가 제 목록을
+ * 스스로 정하면, 시험을 줄이면서 목록도 같이 줄이는 한 번의 편집이 통과를
+ * 만든다 — 실측으로 한 건짜리 합성 봉투가 판 1을 통과했다.
+ *
+ * 차례로 ① 새 게임 · ② 확인 지점 여든여섯 · ③ 엔딩이다. `--only`·`--from`·
+ * `--act`로 걸러도 이 목록은 안 줄어든다 — 줄어드는 것은 아래 `executed`고,
+ * 둘이 갈리는 것이 곧 「일부만 돌렸다」의 증거다.
+ *
+ * ⚠️ **깃발을 하나씩 세어 막던 자리를 대신한다.** `blockers.mjs`가 `--only`·
+ * `--from`·막 셋을 각각 보고 있었는데, 그 방식은 **새 깃발이 생길 때마다
+ * 조용히 뚫린다** — 여기서는 「무엇을 재려 했는가」 하나로 판정한다
+ */
+const expected = rosterOf('story').cases
+/** 이번에 **실제로 들어가 본** 자리. 막을 걸렀으면 그만큼 빈다 */
+const executed = [
+  ...(ACTS.has('1') ? ['open'] : []),
+  ...(ACTS.has('2') ? targets.map((c) => c.id) : []),
+  ...(ACTS.has('3') ? ['ending'] : []),
+]
+
+writeFileSync(resolve(ROOT, '.audit/story.json'), `${JSON.stringify(sealEvidence({
+  suite: 'story',
+  selection: ONLY.length > 0 ? `--only=${ONLY.join(',')}`
+    : FROM ? `--from=${FROM}` : ACTS.size < 3 ? `--act=${[...ACTS].join(',')}` : 'all',
+  expectedCases: expected,
+  startDigest: START_DIGEST,
+  executedCases: executed,
+  // ⚠️ **깃발을 줬다고 믿지 않는다.** 실제로 어느 길로 그렸는지는 `backend`가,
+  // 소프트웨어 래스터라이저였는지는 `gpu.software`가 잰 값이다
+  environment: describeEnvironment({ browserVersion: BROWSER_VERSION, gpu, backend }),
+  results: rows,
+  // 아래는 판정에 안 쓰지만 읽는 사람에게 필요한 부속이다. 있던 자리를 안 옮긴다
+  extra: {
+    gpu, view: VIEW, backend, known: [...known], warpRetries,
+    ran: { acts: [...ACTS], only: ONLY, from: FROM ?? null, fight: FIGHT, fresh: FRESH },
+    scenes: { all: CHECKPOINTS.length, ran: targets.length },
+  },
+}), null, 1)}\n`)
 rmSync(resolve(ROOT, '.audit/story.tmp'), { recursive: true, force: true })
 
 process.exit(rows.some((r) => r.status === 'FAIL') ? 1 : 0)

@@ -73,7 +73,10 @@ export function statsOf(png) {
     colors.add((r >> 3 << 10) | (g >> 3 << 5) | (b >> 3))
   }
   const mean = sum / n
-  return { colors: colors.size, mean, stdev: Math.sqrt(sum2 / n - mean * mean) }
+  // ⚠️ **음수를 씌우면 NaN이다.** 완전한 단색 판에서는 부동소수 오차로
+  // `sum2/n - mean²`이 -1e-10쯤 나오고, 그대로 씌우면 보고서에 `stdev NaN`이
+  // 찍힌다 (실측: 색 1개짜리 빈 캔버스 컷). 0에서 자른다
+  return { colors: colors.size, mean, stdev: Math.sqrt(Math.max(0, sum2 / n - mean * mean)) }
 }
 
 /**

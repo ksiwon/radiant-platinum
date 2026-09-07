@@ -1,9 +1,10 @@
 // useFrame → 게임 루프 → 씬 동기화 → 렌더 (priority 1: 렌더를 우리가 소유)
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { Quaternion, Vector3, type PerspectiveCamera } from 'three'
+import { Quaternion, Vector2, Vector3, type PerspectiveCamera } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { gameLoop } from '../engine/loop/GameLoop'
+import { holdLoop, releaseLoop } from '../engine/loop/pause'
 import { inputSystem } from '../engine/input/keyboard'
 import { playerSystem, RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { isSliding } from '../engine/actor/ice'
@@ -23,8 +24,9 @@ import { vsSeekerFrame } from './vsSeeker'
 import { fishingSystem } from './fishingSystem'
 import { berryWateringSystem } from './berryPatches'
 import { stepTram } from './safari'
-import { markTile } from '../app/sceneMark'
+import { markBackend, markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
+import { useRendererStore } from '../state/rendererStore'
 import { spinBike } from './BikeModel'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
 import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
@@ -34,6 +36,8 @@ import { surfaceHeading, surfaceQuaternion } from '../engine/actor/distortionSur
 import { distortionCascadePose } from './distortion'
 
 let systemsRegistered = false
+/** `getDrawingBufferSize`가 받아 적을 그릇. 프레임마다 새로 안 만든다 */
+const drawnSize = new Vector2()
 const interpolated = new Vector3()
 const playerRotation = new Quaternion()
 /** 폭포에서 몸이 눕는 회전. 앞뒤 축(로컬 +Z) 둘레로 돈다 */
@@ -43,7 +47,27 @@ const WORLD_UP = new Vector3(0, 1, 0)
 
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   const { gl, scene, camera } = useThree()
+  // 후처리의 화소 간격이 매인 값 둘. R3F가 창과 DPR을 여기로 밀어 준다
+  const size = useThree((s) => s.size)
+  const dpr = useThree((s) => s.viewport.dpr)
   const postRef = useRef<PostChain | null>(null)
+  /**
+   * 이 Canvas가 몇 번째 세대인가.
+   *
+   * ⚠️ **마운트할 때 한 번만 읽는다.** `<Canvas key={generation}>`이라 세대가
+   * 오르면 이 부품도 통째로 새로 만들어진다 — 구독하면 이미 죽은 나무가 새
+   * 세대의 번호를 들고 「내가 그렸다」고 말하게 된다 (기획서 §3.5)
+   */
+  const generation = useRef(useRendererStore.getState().generation)
+  /**
+   * 이 세대에서 이미 그리다 터졌는가.
+   *
+   * ⚠️ **터진 뒤에도 프레임은 계속 온다.** 같은 자리에서 또 터지게 두면 초당
+   * 예순 줄이 콘솔에 쌓여서 **처음 터진 까닭이 밀려 나간다** — 후처리 사다리가
+   * 「칸이 바뀔 때만 한 줄」을 지키는 것과 같은 이유다. 다시 그리는 것은 세대를
+   * 올리는 `retry()`뿐이고, 그때는 이 부품도 통째로 새로 만들어진다
+   */
+  const crashed = useRef(false)
 
   useEffect(() => {
     if (!systemsRegistered) {
@@ -103,13 +127,90 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   useEffect(() => {
     const renderer = gl as unknown as WebGPURenderer
     perfSnapshot.backend = renderer.backend?.constructor?.name ?? 'unknown'
-    postRef.current = useBloom ? createPostChain(renderer, scene, camera) : null
-    return () => { postRef.current = null }
+    // 같은 값을 문서에도 적는다 — 개발 HUD는 배포 빌드에 없다 (`app/sceneMark`)
+    markBackend(perfSnapshot.backend)
+    const chain = useBloom ? createPostChain(renderer, scene, camera) : null
+    postRef.current = chain
+    return () => {
+      // ⚠️ **놓는 것은 이 체인이 만든 것뿐이다** (기획서 RP-05). 오래 참조만
+      // 끊었는데(`postRef.current = null`), 그러면 렌더 타깃과 블룸의 사다리
+      // 버퍼가 GPU에 그대로 남는다 — 이 효과는 `gl`·씬·카메라가 바뀔 때마다,
+      // 그러니까 렌더러를 다시 세우는 복구 길에서 **매번** 다시 돈다
+      chain?.dispose()
+      postRef.current = null
+    }
   }, [gl, scene, camera, useBloom])
 
-  // 탭 비활성 → 루프 정지 (PLAN §11.2)
+  // 창 크기나 DPR이 바뀌면 후처리의 화소 간격을 다시 낸다 (기획서 RP-06).
+  //
+  // ⚠️ **`render()`도 스스로 맞추지만 여기서 한 번 더 알린다.** 바뀐 바로 그
+  // 프레임에 맞춰야 창을 끄는 동안 윤곽이 한 프레임 굵어지지 않는다
+  useEffect(() => { postRef.current?.resize() }, [size.width, size.height, dpr])
+
+  // ⚠️ **렌더러가 아는 크기가 R3F가 잰 크기와 갈리면 화면이 통째로 버려진다.**
+  //
+  // 실측(2026-09-07, 대표 구간 3판): 30분 동안 콘솔에 GPU 오류 **171,459줄**이
+  // 쌓였고 3D가 검은 채로 남았다. 첫 줄이 원인이고 나머지 8만 5천은 그 뒤끝이다:
+  //
+  //     depthBuffer size (300, 150) does not match the other attachments (960, 640)
+  //     resolve target (960, 640) does not match the other attachments (300, 150)
+  //
+  // 300×150은 **`<canvas>`의 기본 크기**다. 왜 거기 갇히는지까지 쟀다 —
+  // R3F 9의 `<Canvas>`는 설정 이펙트에 **의존성 배열이 없어** 다시 그릴 때마다
+  // `configure()`를 부르고, 그 안의 `if (!state.gl)`은 **비동기 팩토리**를
+  // 기다리는 동안 두 번 통과한다. 그래서 `requestAdapter`가 둘이었다: R3F가
+  // 크기를 알려 준 것은 첫 번째 렌더러고, 실제로 그리게 된 것은 두 번째다.
+  // 두 번째는 캔버스 기본 크기 그대로였다.
+  //
+  // three 쪽은 스스로 못 고친다 — `Renderer._onCanvasTargetResize()`가
+  // `if (this._initialized) this.backend.updateSize()`라, 초기화 전에 온 크기는
+  // 백엔드의 캐시된 렌더 패스 서술자(`canvasData.descriptor`)를 안 버린다.
+  // 그 서술자가 깊이·MSAA 첨부를 **영영** 쥐고 있다.
+  //
+  // 그래서 여기서 불변식으로 못 박는다 — **그리는 렌더러의 크기는 잰 크기와
+  // 같다.** 같으면 아무것도 안 한다(`setSize`는 부를 때마다 resize를 쏘고,
+  // 그때마다 백엔드가 첨부를 다시 만든다 — 프레임마다 부르면 그것이 새 결함이다)
   useEffect(() => {
-    const onVis = () => { gameLoop.paused = document.hidden }
+    const renderer = gl as unknown as WebGPURenderer
+    const now = renderer.getDrawingBufferSize(drawnSize)
+    const want = { x: Math.floor(size.width * dpr), y: Math.floor(size.height * dpr) }
+    const same = now.x === want.x && now.y === want.y
+    // ⚠️ **크기가 같으면 아무것도 안 한다.** 한동안 여기에 「같아도 처음 한 번은
+    // 맞춘다」가 있었다. 그것을 뺐다 — **효과가 없다는 것을 실측했다.**
+    //
+    //   · 옛 근거는 `toDataURL`이 색 1개를 냈다는 것이었다. 그 자는 이 프로젝트에서
+    //     못 쓴다 (`preserveDrawingBuffer: false`라 눈에 세계가 보이는 판에서도
+    //     색 1개가 나온다 — `tools/shot/png.mjs`가 같은 함정을 적는다).
+    //   · 제대로 된 자로 다시 쟀다 (계기판을 숨기고 캔버스만 찍는다 —
+    //     `tools/e2e/canvasShot.mjs`). 강제 호출이 **있을 때도 없을 때도** 첫
+    //     화면은 똑같이 안 나왔다. 다른 것은 `context.configure()` 호출 수뿐이다:
+    //     있으면 둘(45233ms·45256ms), 없으면 하나. 화면은 둘 다 그대로다.
+    //
+    // 그래서 부질없는 재설정 하나를 없앤 것이고, **§41의 첫 화면 결함은 아직
+    // 안 고쳤다** — 그 절이 지금까지 지운 가설과 다음에 볼 자리를 적는다.
+    //
+    // 크기가 **갈릴 때** 맞추는 일은 그대로 남는다. 그것은 다른 결함을 막는다 —
+    // 캔버스 기본 크기(300×150)에 갇힌 렌더러가 프레임을 통째로 버리던 자리다
+    if (same) return
+    console.warn('[renderer] 그리는 크기가 잰 크기와 다르다 — 맞춘다'
+      + ` ${String(now.x)}x${String(now.y)} → ${String(want.x)}x${String(want.y)}`)
+    renderer.setPixelRatio(dpr)
+    renderer.setSize(size.width, size.height)
+    postRef.current?.resize()
+  }, [gl, size.width, size.height, dpr])
+
+  // 탭 비활성 → 루프 정지 (PLAN §11.2)
+  //
+  // ⚠️ **`gameLoop.paused`에 직접 대입하면 안 된다** (기획서 §3.4). 그 칸에는
+  // 장치 손실 쪽도 쓴다 — 그래서 **복구 중에 탭을 나갔다 돌아오기만 하면**
+  // `document.hidden === false`가 그 정지를 덮어서 세계가 다시 돌기 시작했다.
+  // 그 순간 눌려 있던 방향이 먹고, 사람은 아직 안 그려진 화면에서 걷는다.
+  // 까닭을 걸고 푸는 것만 하고, 하나라도 걸려 있으면 멎어 있다
+  useEffect(() => {
+    const onVis = () => {
+      if (document.hidden) holdLoop('hidden')
+      else releaseLoop('hidden')
+    }
     document.addEventListener('visibilitychange', onVis)
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [])
@@ -193,9 +294,25 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       lens.updateProjectionMatrix()
     }
 
-    // 렌더 (post 실패 시 기본 렌더 폴백)
-    if (postRef.current) postRef.current.render()
-    else state.gl.render(state.scene, state.camera)
+    // 렌더. **후처리가 손을 떼면 우리가 그린다** (RP-04) — 첫 프레임의 지연
+    // 셰이더 컴파일이 터지는 자리가 여기고, `render()`는 그때 `false`를 낸다.
+    //
+    // ⚠️ **마지막 기본 렌더도 터질 수 있다** (기획서 §3.5). 그 예외는 **React
+    // 오류 경계가 못 잡는다** — `useFrame`은 렌더 단계가 아니라 R3F의 루프에서
+    // 불리기 때문이다. 안 잡으면 루프째 서서 화면이 멎고 입력만 산다
+    if (crashed.current) return
+    try {
+      if (postRef.current?.render() !== true) state.gl.render(state.scene, state.camera)
+    } catch (e) {
+      crashed.current = true
+      console.error('[scene] 프레임을 그리다 터졌다', e)
+      useRendererStore.getState().markSceneCrashed(String((e as Error).message ?? e))
+      return
+    }
+    // 한 프레임이 **실제로 나갔다.** 여기서부터가 `live`고, 조작은 그때 돌아온다 —
+    // `renderer.init()`이 끝난 것만으로 조작을 돌려주면 아직 안 선 씬을 걷는다
+    // (기획서 §6.2). 이미 `live`면 스토어가 곧바로 되돌아온다
+    useRendererStore.getState().markPresented(generation.current)
 
     // 계측
     const info = (state.gl as unknown as WebGPURenderer).info

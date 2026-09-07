@@ -82,9 +82,20 @@ export function StartMenu() {
 
   return (
     <div className={own.frame}>
-      <div className={own.card}>
+      {/*
+        ⚠️ **고르는 줄은 `radiogroup`으로 내준다.** 화면 낭독기에게 「지금 몇 칸
+        중 몇째가 골라져 있는가」를 말해 주는 자리고, 대사창의 선택지도 같은
+        것을 쓴다 — 한 화면만 다른 문법을 쓰면 낭독기가 여기서만 침묵한다.
+        값을 써서 게임을 움직일 수 있는 길은 없다: 고르는 것은 여전히 키뿐이다
+      */}
+      <div className={own.card} role="radiogroup">
         {entries.map((entry, i) => (
-          <div key={entry.key} className={i === at ? own.rowOn : own.row}>
+          <div
+            key={entry.key}
+            className={i === at ? own.rowOn : own.row}
+            role="radio"
+            aria-checked={i === at}
+          >
             {/* 원작도 고른 줄 왼쪽에 손가락 커서가 선다 */}
             <span className={own.cursor} aria-hidden>{i === at ? '▶' : ''}</span>
             <span>{entry.label}</span>

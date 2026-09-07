@@ -94,6 +94,40 @@ export function markTile(x: number, z: number): void {
 }
 
 /**
+ * 무대가 실제로 어느 길로 그렸나 — `data-backend="WebGPUBackend"`.
+ *
+ * ⚠️ **깃발을 줬다고 믿지 않는다.** `WebGPURenderer`는 WebGL2 폴백을 안고
+ * 있어서, WebGPU를 켜 달라고 해도 실제로는 WebGL2로 그릴 수 있다. 그 둘의
+ * 프레임 시간은 같은 기계에서도 다른 값이라 **어느 쪽에서 잰 것인지 모르면
+ * 수치가 뜻을 잃는다.**
+ *
+ * ⚠️ **개발 콘솔로는 이걸 못 잰다.** `app/devConsole`은 `import.meta.env.DEV`
+ * 뒤라 배포 빌드에 조각이 아예 없는데, 브라우저 실측(`tools/e2e/run.mjs`)이
+ * 재는 것은 바로 그 배포물이다. 그래서 릴리스 증거의 `environment.backend`가
+ * 채울 길이 없었다 (`tools/distribution/evidence.mjs`).
+ *
+ * `data-boot`·`data-tile`과 같은 자리다 — 이미 정해진 것을 밖에서 읽게만
+ * 하고, 값을 써서 게임을 움직일 수 있는 길은 없다. 롬에서 온 글도 기계
+ * 이름도 아닌 **우리 렌더러의 클래스 이름**이다
+ */
+/**
+ * 렌더러가 어느 칸에 있는가 — `data-renderer="lost"` (`state/rendererStore`).
+ *
+ * ⚠️ **없으면 밖에서 세 가지가 똑같이 보인다.** 장치를 잃어 멎은 것과,
+ * 다시 세우는 중인 것과, 아예 포기한 것 — 셋 다 화면이 안 움직인다.
+ * 지원 문의에도 이 한 줄이 필요하다 ("검은 화면에서 안 넘어가요").
+ *
+ * `data-backend`와 같은 자리다 — 읽기만 되고, 값을 써서 게임을 움직일
+ * 수 있는 길은 없다
+ */
+export function markRenderer(phase: string): void {
+  put('renderer', phase)
+}
+export function markBackend(name: string | null): void {
+  put('backend', name)
+}
+
+/**
  * 필드 스크립트가 도는 중인가 — `data-script="1"`.
  *
  * ⚠️ **이게 없으면 밖에서 두 가지가 똑같이 보인다.** 스크립트가 발을 묶은

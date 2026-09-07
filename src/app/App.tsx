@@ -11,6 +11,9 @@ import { dayTheme } from '../ui/theme/day.css'
 import { installAudioUnlock } from '../engine/audio/unlock'
 import { useMenuStore } from '../state/menuStore'
 import { useSessionStore } from '../state/sessionStore'
+import { RECOVERY_TIMEOUT_MS, useRendererStore } from '../state/rendererStore'
+import { RendererTrouble } from '../ui/screens/RendererTrouble'
+import { SceneBoundary } from '../ui/screens/SceneBoundary'
 import { markMap, markMenu, markScene } from './sceneMark'
 
 const Stage = lazy(() => import('../scene/Stage').then((m) => ({ default: m.Stage })))
@@ -57,6 +60,30 @@ export function App() {
     markMap(mapId)
   }, [battleUp, menu, phase, mapId])
 
+  // 장치를 잃으면 **한 번만** 자동으로 다시 세운다 (기획서 §5.2).
+  //
+  // ⚠️ **여기가 무한 재시도가 되기 제일 쉬운 자리다.** 상한을 넘으면
+  // `retry(true)`가 세우지 않고 `failed`로 옮긴다 — 그때부터는 사람이 누른다
+  const rendererPhase = useRendererStore((s) => s.phase)
+  useEffect(() => {
+    if (rendererPhase !== 'lost') return
+    useRendererStore.getState().retry(true)
+  }, [rendererPhase])
+
+  // 다시 세우기가 **끝나지 않는** 경우 (기획서 §3.5).
+  //
+  // ⚠️ **「잠시만 기다려 주세요」가 영원히 떠 있으면 사람에게 고를 것이 없다.**
+  // 새 렌더러가 서기는 했는데 씬이 영영 첫 프레임을 못 내는 판이 그렇다 —
+  // 화면은 창 하나뿐이고 단추도 없다. 시간이 지나면 실패로 옮겨서 **마지막
+  // 리포트로 돌아갈 길**을 준다. 여기서 상태를 굽지는 않는다
+  useEffect(() => {
+    if (rendererPhase !== 'recovering' && rendererPhase !== 'ready') return
+    const timer = setTimeout(() => {
+      useRendererStore.getState().markRecoveryTimedOut()
+    }, RECOVERY_TIMEOUT_MS)
+    return () => { clearTimeout(timer) }
+  }, [rendererPhase])
+
   useEffect(() => {
     if (bootstrapped) return
     bootstrapped = true
@@ -70,10 +97,18 @@ export function App() {
 
   return (
     <div className={dayTheme} style={{ height: '100%' }}>
+      {/*
+        ⚠️ **Canvas 바깥에도 경계가 하나 더 있어야 한다** (기획서 §3.5). 안쪽
+        경계는 R3F 나무의 동기 오류를 잡지만, `<Canvas>` 자체가 렌더 중에
+        터지는 것은 그 바깥에서만 잡힌다 — 안 잡으면 앱이 통째로 언마운트되어
+        대사창도 메뉴도 없는 흰 화면이 남는다
+      */}
       {stageMounted && (
-        <Suspense fallback={null}>
-          <Stage />
-        </Suspense>
+        <SceneBoundary where="3D 무대">
+          <Suspense fallback={null}>
+            <Stage />
+          </Suspense>
+        </SceneBoundary>
       )}
       {/*
         계기판은 **개발 손잡이가 켜졌을 때만** 뜬다 (PLAN §10.5).
@@ -87,6 +122,12 @@ export function App() {
       */}
       {devTools && <PerfOverlayHost />}
       <ZoneBanner />
+      {/*
+        그래픽이 멈췄을 때의 창 (기획서 RP-03). 3D를 한 조각도 안 잡으므로
+        **3D가 못 서는 상황에서도 뜬다** — 여기가 뜨는 상황이 곧 그것이다.
+        정상일 때는 스스로 null을 낸다
+      */}
+      <RendererTrouble />
       {battleUp && (
         <Suspense fallback={null}>
           <BattleScreen />

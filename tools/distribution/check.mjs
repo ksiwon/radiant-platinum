@@ -24,6 +24,7 @@ import {
   unlistedTables,
 } from './dataTables.mjs'
 import { forbiddenIn } from './provenance.mjs'
+import { artifactDigest, sourceDigest } from './evidence.mjs'
 import { pathViolations, scanTree, originsIn } from './rules.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -336,6 +337,32 @@ function checkPost() {
 
 if (stage === 'pre' || stage === 'both') checkPre()
 const scan = stage === 'post' || stage === 'both' ? checkPost() : null
+
+/**
+ * 이 배포물이 **무엇으로 만들어졌는지**를 도장에 이어 적는다 (기획서 §6.1).
+ *
+ * ⚠️ **`buildId`만으로는 못 잇는다.** 커밋 해시는 「어느 커밋 곁에서 구웠나」고,
+ * 커밋 안 한 변경이 섞이면 `-dirty` 한 낱말로 뭉개진다 — 그 dirty가 무엇이었는지는
+ * 남지 않는다. 소스 지문과 dist 지문을 같이 적어 두면 나중에 **이 dist가 그
+ * 나무에서 나온 것이 맞는지**를 견줄 수 있다.
+ *
+ * ⚠️ vite 플러그인(`buildStamp`)이 아니라 여기서 적는다. 그쪽은 `writeBundle`
+ * 안이라 아직 다 안 쓰인 `dist/`를 재게 된다
+ */
+if (stage === 'post' || stage === 'both') {
+  const at = resolve(ROOT, '.audit/build.json')
+  if (existsSync(at)) {
+    const stamp = JSON.parse(readFileSync(at, 'utf8'))
+    // ⚠️ **한 번만 적는다.** `pnpm release:check`도 이 단계를 도는데, 그때 다시
+    // 재면 **지금 나무와 지금 dist**의 값이 덮여서 「빌드한 그 나무」가 사라진다 —
+    // 검사가 검사 대상을 고쳐 스스로 통과시키는 자리가 된다. vite가 빌드마다
+    // 도장을 새로 쓰므로(`vite.config.ts`의 `buildStamp`) 빌드 직후에는 늘 비어 있다
+    if (stamp.artifactDigest === undefined) writeFileSync(at, `${JSON.stringify({
+      ...stamp, sourceDigest: sourceDigest(), artifactDigest: artifactDigest(),
+    }, null, 1)}
+`)
+  }
+}
 
 // 공개 배포를 막고 있는 것. 손으로 적은 목록이 아니라 각자 직접 잰다
 for (const b of openBlockers()) releaseBlockers.push(`${b.why} — ${b.state.detail} (${b.where})`)

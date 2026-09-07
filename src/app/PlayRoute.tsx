@@ -9,6 +9,7 @@ import { BINDINGS } from '../engine/input/keys'
 import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
 import { useSaveStore } from '../state/saveStore'
+import { useRendererStore } from '../state/rendererStore'
 import { useSessionStore } from '../state/sessionStore'
 import { ControlHint } from '../ui/hud/ControlHint'
 import { CurrencyWindow } from '../ui/field/CurrencyWindow'
@@ -68,6 +69,24 @@ export function PlayRoute() {
       window.removeEventListener('keydown', onEsc)
     }
   }, [navigate, setPhase, mountStage])
+
+  // 렌더러를 다시 세운 뒤에 조작을 되돌린다.
+  //
+  // ⚠️ **위 효과가 이걸 못 한다.** 저것은 이 화면이 뜰 때 한 번만 돌고,
+  // 장치 손실은 화면을 안 갈아 끼운다(Canvas만 다시 선다) — 그래서 복구가
+  // 끝나도 `rendererStore`가 껐던 조작이 꺼진 채로 남아, 화면은 돌아왔는데
+  // 주인공만 안 움직이는 자리가 된다.
+  //
+  // ⚠️ **`ready`가 아니라 `live`다** (기획서 §6.2). `ready`는 `renderer.init()`이
+  // 끝난 것뿐이라 그 시점의 씬은 아직 다시 서는 중이다 — 거기서 조작을 돌려주면
+  // 사람은 **아직 안 그려진 세계**를 걷는다. 한 프레임이 실제로 나간 뒤가 `live`고,
+  // 그것을 적는 자리는 `scene/EngineDriver`의 프레임 콜백이다
+  const rendererPhase = useRendererStore((s) => s.phase)
+  useEffect(() => {
+    if (rendererPhase !== 'live') return
+    setGameActive(true)
+    setMouseActive(true)
+  }, [rendererPhase])
 
   return (
     <>

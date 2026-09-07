@@ -10,6 +10,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { artifactDigest, buildStamp, checkEvidence } from './evidence.mjs'
 import { forbiddenIn } from './provenance.mjs'
 import { ACCEPTED_BRAND_RISK, brandRisks } from './shellArt.mjs'
 
@@ -57,8 +58,29 @@ export const BLOCKERS = [
     resolved() {
       const at = read('.audit/deploy-verified.json')
       if (!at) return { ok: false, detail: 'pnpm verify:deploy <url>을 돌린 적이 없다' }
-      const v = JSON.parse(at)
-      return v.ok ? { ok: true } : { ok: false, detail: `${v.url}: ${v.problems?.length ?? '?'}건` }
+      let v
+      try {
+        v = JSON.parse(at)
+      } catch {
+        return { ok: false, detail: 'deploy-verified.json이 깨졌다 — 다시 재야 한다' }
+      }
+      if (!v.ok) return { ok: false, detail: `${v.url}: ${v.problems?.length ?? '?'}건` }
+      // ⚠️ **잰 빌드에만 붙는 도장이다.** e2e ⑯은 이 값을 지금 빌드와 맞대는데
+      // 여기서는 안 맞댔다 — 그래서 `58c9284`를 잰 도장이 `6c5e534` 배포물의
+      // 통과로 읽혔다. 껍데기가 통과했는가가 아니라 **어느 배포물을 쟀는가**로
+      // 판정한다 (기획서 §2.4)
+      if (!v.browserChecked) {
+        return { ok: false, detail: `${v.url}: 브라우저를 못 띄워 약한 갈래로 갔다 — 외부 요청을 실제로 못 셌다` }
+      }
+      const now = buildStamp()?.buildId ?? null
+      if (now === null) return { ok: false, detail: '빌드 도장이 없다 — 어느 배포물을 쟀는지 견줄 수 없다' }
+      if (typeof v.buildId !== 'string' || v.buildId === '') {
+        return { ok: false, detail: `${v.url}는 통과했지만 어느 빌드를 잰 것인지 모른다 — 다시 재야 한다` }
+      }
+      if (v.buildId !== now) {
+        return { ok: false, detail: `${v.url}는 ${v.buildId}를 쟀다. 지금 빌드는 ${now}다 — 다시 재야 한다` }
+      }
+      return { ok: true }
     },
   },
   {
@@ -132,18 +154,14 @@ export const BLOCKERS = [
     why: '브라우저 실측이 통과 상태가 아니다',
     where: 'DEPLOY.md §5',
     resolved() {
-      // 안 돌린 것을 통과로 세지 않는다. BLOCKED 줄이 하나라도 있으면 아직이다 —
-      // 그 줄들이 곧 "브라우저에서 아직 증명 못 한 것"의 목록이다
-      const at = read('.audit/e2e.json')
-      if (!at) return { ok: false, detail: 'pnpm e2e를 돌린 적이 없다' }
-      const { results } = JSON.parse(at)
-      const bad = results.filter((r) => r.status === 'FAIL')
-      const blocked = results.filter((r) => r.status === 'BLOCKED')
-      const notRun = results.filter((r) => r.status === 'NOT RUN')
-      if (bad.length) return { ok: false, detail: `FAIL ${String(bad.length)}건: ${bad.map((r) => r.id).join(' · ')}` }
-      if (notRun.length) return { ok: false, detail: `NOT RUN ${String(notRun.length)}건 — 전부 돌린 결과가 아니다` }
-      if (blocked.length) return { ok: false, detail: `BLOCKED ${String(blocked.length)}건: ${blocked.map((r) => `${r.id} ${r.what}`).join(' · ')}` }
-      return { ok: true }
+      // ⚠️ **결과 파일이 있다는 것과 「이 dist를 다 쟀다」는 것은 다르다.**
+      // 한때 여기서 FAIL·NOT RUN·BLOCKED만 셌는데, 그 판정은 빈 배열도 모르는
+      // status도 스물아홉 중 셋만 적은 파일도 **두 달 전 dist를 잰 결과**도
+      // 전부 초록으로 읽었다. 다섯 가지를 옛 판정과 나란히 재현한 것이
+      // `evidence.test.mjs`에 있다 — 고친 사실보다 **무엇이 뚫려 있었는지**가 남는다.
+      //
+      // 이제는 봉투(`evidence.mjs`)가 무엇을·언제·어디서·어디까지 쟀는지까지 본다
+      return checkEvidence('installed-e2e')
     },
   },
   {
@@ -154,26 +172,14 @@ export const BLOCKERS = [
       // ⚠️ **`browser-e2e`가 이걸 안 잰다.** 그쪽은 설치·저장·헤더처럼 껍데기를
       // 재고, 이야기가 실제로 **진행되는가**는 `pnpm story`만 잰다. 그래서 한때
       // story가 4개 떨어진 채로 release:check가 초록일 수 있었다 — 게임이 엔딩까지
-      // 안 가는데 "공개 가능"이라고 적히는 자리였다
-      const at = read('.audit/story.json')
-      if (!at) return { ok: false, detail: 'pnpm story를 돌린 적이 없다' }
-      const { rows, ran } = JSON.parse(at)
-      if (!Array.isArray(rows) || rows.length === 0) {
-        return { ok: false, detail: '결과가 비었다 — 다시 돌려야 한다' }
-      }
-      // ⚠️ **부분만 돌린 결과를 통과로 세지 않는다.** `--only`나 `--from`으로
-      // 몇 장면만 돌리면 나머지는 **재지 않은 것**이지 통과가 아니다
-      if (ran?.only?.length) {
-        return { ok: false, detail: `--only=${ran.only.join(',')}로 일부만 돌렸다 — 전체가 아니다` }
-      }
-      if (ran?.from) return { ok: false, detail: `--from=${ran.from}으로 중간부터 돌렸다 — 전체가 아니다` }
-      for (const act of ['1', '2', '3']) {
-        if (!ran?.acts?.includes(act)) return { ok: false, detail: `${act}막을 안 돌렸다 — 전체가 아니다` }
-      }
-      const bad = rows.filter((r) => r.status !== 'PASS')
-      return bad.length === 0
-        ? { ok: true }
-        : { ok: false, detail: `${String(bad.length)}개가 떨어졌다: ${bad.map((r) => r.id).join(' · ')}` }
+      // 안 가는데 "공개 가능"이라고 적히는 자리였다.
+      //
+      // ⚠️ **묶이는 지문이 `browser-e2e`와 다르다.** 훑기는 개발 서버에서 도므로
+      // (확인 지점이 `import.meta.env.DEV` 뒤라 배포 빌드에는 조각이 아예 없다)
+      // dist가 아니라 **게임 소스**에 묶인다. `--only`·`--from`·`--act`로 일부만
+      // 돌린 것은 봉투의 expectedCases와 executedCases가 갈려서 걸린다 —
+      // 깃발을 하나씩 세어 막던 것을 「무엇을 재려 했는가」 하나로 합친다
+      return checkEvidence('story')
     },
   },
   {
@@ -186,12 +192,29 @@ export const BLOCKERS = [
       // 것은 지금 나무가 아니라 `dist/`를 만든 그 나무다
       const at = read('.audit/build.json')
       if (!at) return { ok: false, detail: '빌드 도장이 없다 — pnpm build를 안 돌렸다' }
-      const { version, buildId } = JSON.parse(at)
+      const stamp = JSON.parse(at)
+      const { version, buildId } = stamp
       if (buildId.endsWith('-dirty')) {
         return { ok: false, detail: `${version}+${buildId} — 커밋 안 한 변경이 섞였다. 재현이 안 된다` }
       }
       if (buildId === 'dev' || buildId === 'unknown') {
         return { ok: false, detail: `${version}+${buildId} — 커밋 해시가 안 박혔다` }
+      }
+      // ⚠️ **무엇으로 만든 dist인지, 그리고 그 dist가 아직 그대로인지** (기획서 §6.1).
+      // 커밋 해시는 「어느 커밋 곁에서 구웠나」일 뿐이라 구운 뒤에 `dist/`를
+      // 손댄 것을 못 본다 — 그러면 브라우저 실측이 잰 배포물과 올라가는 것이
+      // 다른 물건일 수 있다. 지문은 `check.mjs`가 빌드 직후에 한 번 적는다
+      if (typeof stamp.sourceDigest !== 'string' || stamp.sourceDigest === '') {
+        return { ok: false, detail: `${version}+${buildId} — 무엇으로 구웠는지가 도장에 없다. 다시 구워야 한다` }
+      }
+      const now = artifactDigest()
+      if (now === null) return { ok: false, detail: 'dist/가 없다 — 배포 후보가 없다' }
+      if (stamp.artifactDigest !== now) {
+        return {
+          ok: false,
+          detail: `구울 때 ${String(stamp.artifactDigest).slice(0, 12)}이던 dist가 지금 ${now.slice(0, 12)}다`
+            + ' — 구운 뒤에 배포물이 바뀌었다',
+        }
       }
       return { ok: true }
     },
@@ -214,6 +237,58 @@ export const BLOCKERS = [
       }
       const n = out.split('\n').filter(Boolean).length
       return n === 0 ? { ok: true } : { ok: false, detail: `커밋 ${n}개가 그 경로를 건드린다` }
+    },
+  },
+  {
+    id: 'gpu-loss',
+    why: '장치를 잃었을 때 게임이 사람 손에 남는지 잰 적이 없다',
+    where: 'tools/e2e/gpuLoss.mjs',
+    resolved() {
+      // ⚠️ **`pnpm gpu:loss`의 종료 코드로 세면 안 된다** (기획서 §3.3). 그것은
+      // 오래 FAIL만 보고 1을 냈다 — BLOCKED만 남은 판, 그러니까 **못 잰 판**이
+      // 종료 0으로 나가서 부르는 쪽에서는 합격과 구별이 안 됐다. 봉투는
+      // BLOCKED·NOT RUN도 통과로 안 센다 (`evidence.mjs`).
+      //
+      // ⚠️ **여기 있는 것은 WebGL2 길의 손실뿐이다.** WebGPU는 브라우저가
+      // 손잡이를 안 내준다(three가 `reason: 'destroyed'`를 일부러 무시한다).
+      // G-G의 나머지 — 배틀 중·스크립트 중·설치본 장시간 — 는 아직 이 묶음
+      // 밖이고, 그것을 이 blocker가 풀렸다고 해서 잰 것으로 세면 안 된다
+      return checkEvidence('gpu-loss')
+    },
+  },
+  {
+    id: 'render-first',
+    why: '첫 3D 화면이 창을 흔들기 전까지 안 나온다',
+    where: 'tools/e2e/firstFrame.mjs',
+    resolved() {
+      // ⚠️ **`pnpm journey`가 통과해도 이 줄은 안 풀린다.** 대표 구간은 걸어서
+      // 이어지는가를 보고, 여기서 보는 것은 **사람이 처음 보는 화면이 나오는가**다.
+      // 검사가 제 손으로 창이나 부모 CSS를 흔들면 그 판은 스스로 결함을 고치므로
+      // (실측: `pnpm shot`이 오래 그러고 있었다), 이 하네스는 마지막 크기로
+      // **처음부터** 시작하고 재는 동안 아무것도 안 흔든다 (REPAIR §41).
+      //
+      // ⚠️ **정본 목록에 ①②③이 들어 있다.** 그것들은 게임이 아니라 **자**를
+      // 재는 줄이다 — 배경만 나온 컷을 거절하는가, 정지 프레임을 거절하는가,
+      // 찍는 동안 대상을 안 바꿨는가. 없으면 ④⑤의 통과가
+      // 「아무것도 안 잡는 자가 통과했다」와 구별이 안 된다
+      return checkEvidence('render-first')
+    },
+  },
+  {
+    id: 'journey',
+    why: '새 게임에서 첫 배지까지를 정상 입력으로 끝까지 걸어 본 적이 없다',
+    where: 'tools/e2e/journey.mjs',
+    resolved() {
+      // ⚠️ **`pnpm story`가 통과한 것과 다른 것을 잰다.** 훑기는 확인 지점
+      // 여든여덟 자리로 **뛰어들어** 그 장면이 서는지를 본다 — 장면이 다 서도
+      // 그 사이가 안 이어질 수 있다. 여기서 재는 것은 방향키·A·B만으로
+      // **걸어서 이어지는가**고, 그래서 확인 지점을 한 번도 안 주입한다
+      // (기획서 §1.4 · §7).
+      //
+      // ⚠️ **열두 자리를 다 지나도 그것만으로는 통과가 아니다.** 15(찍은 화면이
+      // 실제로 그려져 있다)와 16(콘솔이 조용하다)이 같은 목록에 있다 — 검은
+      // 화면으로 완주한 판을 완주로 세지 않기 위해서다
+      return checkEvidence('journey')
     },
   },
 ]

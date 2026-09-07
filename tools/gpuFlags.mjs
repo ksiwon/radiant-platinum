@@ -45,16 +45,37 @@ const WEBGPU = ['--enable-unsafe-webgpu', '--disable-dawn-features=use_dxc']
 const SOFTWARE = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
 
 /**
+ * WebGPU를 **실제로 끈다.** `navigator.gpu`가 안 뜨므로 three가 WebGL2로 내려앉는다.
+ *
+ * ⚠️ **ANGLE 깃발만으로는 WebGPU가 안 꺼진다.** 오래 `gl` 프로필이 그것뿐이었고,
+ * 그 이름을 믿고 「WebGL2 경로를 쟀다」고 적을 뻔했다 — 실제로는 그 판도 WebGPU로
+ * 돌고 있었다. 이름이 아니라 **화면의 `data-backend`**로 확인한다
+ */
+const NO_WEBGPU = ['--disable-features=WebGPU,WebGPUExperimentalFeatures']
+
+/**
  * 띄울 때 줄 깃발.
  *
- * @param {'webgpu' | 'gl' | 'software'} mode
- *   `webgpu` 사용자가 타는 길 (기본) · `gl` ANGLE만 (WebGL2 폴백을 일부러 잴 때) ·
- *   `software` SwiftShader (픽셀이 기계마다 같아야 할 때)
+ * @param {'webgpu' | 'gl' | 'software' | 'default'} mode
+ *   `webgpu` 헤드리스에서 WebGPU를 여는 한 벌 (기본) ·
+ *   `gl` **WebGPU를 끄고** ANGLE로 (WebGL2 폴백을 일부러 잴 때) ·
+ *   `software` SwiftShader (픽셀이 기계마다 같아야 할 때) ·
+ *   `default` **아무 깃발도 안 준다** — 사람이 제 브라우저에서 여는 것과 같은 조건.
+ *   ⚠️ 플레이라이트 제 기본 깃발까지 없다는 뜻은 아니다. 실제로 넘어간 목록은
+ *   `browser.args`가 아니라 하네스가 **제가 넘긴 것**을 그대로 적는다
  */
 export function gpuArgs(mode = 'webgpu') {
+  if (mode === 'default') return []
   if (mode === 'software') return [...SOFTWARE]
-  if (mode === 'gl') return [...ANGLE]
+  if (mode === 'gl') return [...ANGLE, ...NO_WEBGPU]
   return [...ANGLE, ...WEBGPU]
+}
+
+/** 그 프로필이 기대하는 백엔드 이름. 실제와 다르면 그 환경 검증은 미완료다 */
+export function wantBackend(mode = 'webgpu') {
+  if (mode === 'gl') return 'WebGLBackend'
+  if (mode === 'webgpu') return 'WebGPUBackend'
+  return null
 }
 
 /**

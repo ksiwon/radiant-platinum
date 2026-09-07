@@ -145,6 +145,16 @@ const ENCOUNTER_BEHAVIORS = new Set([
 ])
 
 /** 그 맵 안에서 야생이 나올 수 있는 칸들 */
+/**
+ * 그 칸이 **야생이 나오는 칸**인가. 칸 하나만 본다.
+ *
+ * ⚠️ `encounterTiles()`는 표를 통째로 훑는다 — 행렬 0은 수십만 칸이라 길을 찾을
+ * 때마다 부르면 안 된다. 길 찾기가 쓰는 것은 이쪽이다
+ */
+export function grassAt(matrixId, x, z) {
+  return ENCOUNTER_BEHAVIORS.has(gridOf(matrixId).at(x, z) & 0x7fff)
+}
+
 export function encounterTiles(mapId) {
   const matrix = matrixOf(mapId)
   const grid = gridOf(matrix)
@@ -256,11 +266,35 @@ export function mapRoute(from, to) {
   return null
 }
 
-/** 행렬 0에서 청크가 맞닿은 맵들 */
+/**
+ * 행렬 0에서 **걸어서 넘어갈 수 있는** 이웃 맵들.
+ *
+ * ⚠️ **「청크가 맞닿았다」는 「걸어갈 수 있다」가 아니다.** 오래 맞닿기만 보고
+ * 이었는데, 그러면 그래프가 **없는 길**을 낸다 — 실측(2026-09-07)으로
+ * 203번도로(344)와 무쇠시티(45)가 이웃으로 나왔고, `mapRoute(3, 45)`가
+ * `[3, 344, 45]`를 냈다. 원작에서 그 둘 사이는 **절벽**이고 사람은
+ * 무쇠게이트(258)로 들어갔다 나온다. 하네스는 있지도 않은 길을 찾다
+ * 「(177,804)에서 길을 못 찾았다」로 섰다.
+ *
+ * 그래서 맞닿은 청크 경계에서 **실제로 못 지나가는 칸이 아닌 짝**이 하나라도
+ * 있는지 본다. 하나도 없으면 이웃이 아니고, 그러면 너비 우선이 워프(게이트)를
+ * 고른다.
+ *
+ * ⚠️ **채움 지대(zone 0 `EVERYWHERE`)는 이웃으로 안 센다.** 그것은 장소가
+ * 아니라 이름 없는 바다·산으로 행렬 0의 468칸 중 **299칸**을 덮는다. 이웃으로
+ * 세면 거의 모든 맵이 그것 하나로 이어져서, 너비 우선이 **두 걸음짜리 가짜
+ * 길**을 낸다 — 실측으로 202번도로에서 무쇠시티까지가 `[343, 0, 45]`였다.
+ *
+ * 채움 **칸**을 밟지 말라는 뜻이 아니다. 한 행렬 안의 걸음은 `pathTo`가 칸
+ * 단위로 찾으므로 이름 없는 칸을 얼마든지 지난다 — 여기서 막는 것은 그것을
+ * **목적지로 삼는 것**뿐이다
+ */
 function sameMatrixNeighbours(mapId) {
   const grid = gridOf(0)
   const { width, height, chunks } = grid.meta
   const zone = new Map(chunks.map((c) => [c.i, c.zone]))
+  /** 청크 한 변에 든 타일 수 */
+  const n = grid.w / width
   const out = new Set()
   for (const c of chunks) {
     if (c.zone !== mapId) continue
@@ -271,10 +305,31 @@ function sameMatrixNeighbours(mapId) {
       const z = cz + dz
       if (x < 0 || z < 0 || x >= width || z >= height) continue
       const other = zone.get(z * width + x)
-      if (other !== undefined && other >= 0 && other !== mapId) out.add(other)
+      if (other === undefined || other <= 0 || other === mapId) continue
+      if (out.has(other)) continue
+      if (borderIsWalkable(grid, cx, cz, dx, dz, n)) out.add(other)
     }
   }
   return [...out]
+}
+
+/**
+ * 두 청크가 맞닿은 변에서 **양쪽 다 지날 수 있는 칸 짝**이 하나라도 있는가.
+ *
+ * 한 짝이면 충분하다 — 사람은 한 칸으로도 건너간다. 하나도 없으면 그 변은
+ * 절벽이거나 물이고, 그쪽으로는 길이 없다
+ */
+function borderIsWalkable(grid, cx, cz, dx, dz, n) {
+  // 내 쪽 마지막 칸과 이웃 쪽 첫 칸
+  const mineX = dx === 1 ? (cx + 1) * n - 1 : dx === -1 ? cx * n : null
+  const mineZ = dz === 1 ? (cz + 1) * n - 1 : dz === -1 ? cz * n : null
+  for (let t = 0; t < n; t++) {
+    const ax = mineX === null ? cx * n + t : mineX
+    const az = mineZ === null ? cz * n + t : mineZ
+    if (grid.blocked(ax, az)) continue
+    if (!grid.blocked(ax + dx, az + dz)) return true
+  }
+  return false
 }
 
 /** 맵 헤더 표와 이벤트 표. 읽는 자리에서 부른다 — 자료가 없으면 여기서 선다 */

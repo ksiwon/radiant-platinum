@@ -19,7 +19,10 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
 import { startVite } from '../devServer.mjs'
-import { gpuArgs } from '../gpuFlags.mjs'
+import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
+import {
+  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+} from '../distribution/evidence.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
 import { driveStory, OPENING_NAMES, playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
@@ -143,6 +146,38 @@ function readAudit(name) {
   }
 }
 
+/**
+ * **다 돌린 실측 한 벌이 내야 할 시험 전부.**
+ *
+ * ⚠️ **결과 파일에서 유도하지 않는다.** 돌다 만 실행은 그냥 줄이 적다 —
+ * 파일만 보면 「스물아홉을 다 돌려 통과」와 구별이 안 된다. 그래서 재려 한
+ * 것을 여기 못 박고, 실제로 적힌 것과 갈리면 봉투가 떨어진다
+ * (`distribution/evidence.mjs`). 시험을 늘리면 **이 목록도 같이 늘려야 한다** —
+ * 안 늘리면 새 시험이 빠진 채로 초록이 나온다
+ */
+const EXPECTED_CASES = rosterOf('installed-e2e').cases
+/**
+ * 재기 **시작할 때**의 dist 지문.
+ *
+ * ⚠️ **끝난 뒤에 재면 늦다.** 35분을 도는 사이에 누가 다시 굽거나 파일을
+ * 만지면 앞 절반과 뒤 절반이 서로 다른 배포물을 잰 것이 되는데, 끝 시점의
+ * 지문만 봐서는 그것이 안 보인다 (`distribution/evidence.mjs`)
+ */
+const START_DIGEST = bindingDigest('installed-e2e')
+
+/**
+ * 어느 기계에서, 어느 길로 그린 값인가. **시험이 지나가는 길에 주워 둔다.**
+ *
+ * ⚠️ **따로 한 판 더 열어서는 못 잰다.** 백엔드는 무대가 서야 정해지는데,
+ * 갓 연 배포본은 설치 화면에서 멎어 Canvas를 아예 안 만든다. 그래서 화면까지
+ * 가는 시험(㉕·㉖·㉙)이 지나갈 때 `data-backend`를 줍는다 (`app/sceneMark`).
+ *
+ * ⚠️ **못 주웠으면 빈칸으로 둔다.** 그럴듯한 기본값을 채우면 「WebGL2 폴백에서
+ * 잰 것」이 「WebGPU에서 잰 것」으로 적힌다 — 봉투가 빈칸을 막는 편이 낫다
+ */
+let seenGpu = null
+let seenBackend = null
+
 const results = []
 const record = (id, what, status, detail) => { results.push({ id, what, status, detail }) }
 const skip = (id, what) => {
@@ -164,6 +199,8 @@ const origin = server.url
  */
 const GPU = gpuArgs()
 const browser = await chromium.launch({ args: ['--enable-precise-memory-info', ...GPU] })
+/** 브라우저 판. **닫기 전에** 받아 둔다 — 증거는 맨 끝에서 씌우는데 그때는 이미 닫혀 있다 */
+const BROWSER_VERSION = browser.version()
 
 /** 새 컨텍스트 하나. OPFS도 캐시도 매번 새것이다 */
 async function fresh() {
@@ -220,6 +257,14 @@ async function run(id, what, fn) {
   } catch (e) {
     record(id, what, 'FAIL', String(e.message ?? e).slice(0, 300))
   } finally {
+    // ⚠️ **닫기 전에** 줍는다. 페이지가 이미 죽었으면 다음 시험에서 다시 만난다
+    try {
+      if (box.page.url().startsWith(origin)) {
+        seenGpu ??= await probeGpu(box.page)
+        seenBackend ??= await box.page.evaluate(() =>
+          document.documentElement.dataset.backend ?? null)
+      }
+    } catch { /* 못 주운 것은 빈칸으로 남는다 */ }
     await box.close()
   }
 }
@@ -2061,7 +2106,28 @@ const counts = ['PASS', 'FAIL', 'BLOCKED', 'NOT RUN']
 console.log(`\n  ${counts}`)
 
 mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
-writeFileSync(resolve(ROOT, '.audit/e2e.json'), `${JSON.stringify({ results }, null, 1)}\n`)
+/**
+ * 위에서 주운 것을 봉투가 읽는 꼴로 접는다. **깃발을 줬다고 믿지 않는다** —
+ * 헤드리스가 SwiftShader로 떨어졌는지는 `probeGpu`가 재야 안다.
+ *
+ * ⚠️ 여기서 재는 것은 여전히 **성능이 아니라 동작**이다 (DEPLOY.md §5).
+ * `software`를 같이 남기는 이유가 그것이다
+ */
+const ENVIRONMENT = describeEnvironment({
+  browserVersion: BROWSER_VERSION, gpu: seenGpu, backend: seenBackend,
+})
+
+writeFileSync(resolve(ROOT, '.audit/e2e.json'), `${JSON.stringify(sealEvidence({
+  suite: 'installed-e2e',
+  selection: only.length > 0 ? `--only=${only}` : 'all',
+  expectedCases: EXPECTED_CASES,
+  startDigest: START_DIGEST,
+  // ⚠️ **NOT RUN은 「돌린 것」이 아니다.** `--only`로 거른 줄도 결과에는 남으므로
+  // 그냥 세면 스물아홉을 다 돌린 것처럼 보인다
+  executedCases: results.filter((r) => r.status !== 'NOT RUN').map((r) => r.id),
+  environment: ENVIRONMENT,
+  results,
+}), null, 1)}\n`)
 if (existsSync(resolve(ROOT, '.audit/e2e.tmp'))) rmSync(resolve(ROOT, '.audit/e2e.tmp'), { recursive: true })
 
 process.exit(failed.length > 0 ? 1 : 0)
