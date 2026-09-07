@@ -25,6 +25,7 @@
 | `public/data/` · `public/models/` | **추출 산출물이라 Git에 없다.** 앞은 `pnpm extract`(롬), 뒤는 `pnpm extract:models`(AssetAssistant)로 굽는다. 무엇이 비었는지는 `pnpm assets:check`가 그룹별로 찍어 준다 |
 | 검사 | `pnpm check` — 타입·린트·**밖에서 안 부르는 `export`**·시험(자료 있는 판과 없는 판)을 다 돈다 |
 | 화면 확인 | `pnpm shot <자리> [--menu=bag] [--keys=z,z]` — 한 자리를 찍어서 본다 |
+| 첫 화면 | `pnpm render:first [--runs=5] [--channel=chrome] [--gpu=gl]` — **창을 한 번도 안 흔들고** 첫 3D가 나오는지 (REPAIR §41) |
 | 통째로 확인 | `pnpm story` — 처음 화면부터 엔딩까지 장면을 다 열어 몰아 본다 (DEPLOY.md §5) |
 | 배포본에서 확인 | `pnpm saves` — 확인 지점 86자리를 `.rpsave`로 굽는다 · `pnpm saves:check` — 진짜 「세이브 파일 불러오기」로 들여서 잰다 (PLAN §15.1b) |
 | 빈틈 검사 | `pnpm holes [--at=…] [--walls] [--floors] [--eyes] [--shots]` — 건물 속이 보이는가 · 방 둘레에 벽이 다 섰는가(출입구·단 빼고) · 나무·소품·울타리 밑에 바닥이 있는가 · **실제 카메라(1인칭 24방향 · 3인칭)에서 새는 데가 있는가** (DATA.md §2.2) |
@@ -236,6 +237,17 @@
 | 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
 | 기하 추출기 (`tools/extract/chunks·props·distortionProps·starterScene`) | `import/platinum/chunks.test.ts` · `distortionProps.test.ts` (**브라우저 변환기와 바이트로 같은가**) | DATA §2.2 |
 | 바닥 비트(`cover.bin`)·소품 상자·막는 규칙 | `engine/map/floorSeal.test.ts` · `import/platinum/chunks.test.ts`(파일 668개) · `engine/map/world.test.ts`(워프 1,207개가 내려놓는 자리) | REPAIR §22·§23 · DATA §2.2 |
+| 후처리 (`scene/fx/post`) | `scene/fx/post.test.ts` (그리다 터졌을 때 물러나는가 · 화소 간격을 다시 읽는가) | REPAIR §35 |
+| 렌더러 상태·장치 손실 (`state/rendererStore` · `scene/Stage`) | `state/rendererStore.test.ts` · **브라우저는 `pnpm gpu:loss`** (진짜 컨텍스트 손실을 쏜다) | REPAIR §36·§38 |
+| 정지 사유 (`engine/loop/pause`) | `engine/loop/pause.test.ts` · `state/rendererStore.test.ts`(탭 복귀가 복구 정지를 안 푸는가) | REPAIR §38 |
+| 씬 오류 경계 (`ui/screens/SceneBoundary` · `scene/EngineDriver`의 프레임 `try`) | `state/rendererStore.test.ts`(씬이 터지면 세계가 멎는가) · 갈래 셋의 받는 자리가 다르다 | REPAIR §38 |
+| 릴리스 증거를 읽는 자 (`tools/distribution/blockers`) | `tools/distribution/evidence.test.mjs` (옛 판정이 통과시키던 가짜 증거가 떨어지는가) | DEPLOY §1 · REPAIR §37 |
+| 정본 case 목록 (`evidence.mjs`의 roster) | `evidence.test.mjs` · **하네스 셋이 제 목록을 안 짓는다** — 줄이면 봉투가 떨어진다 | REPAIR §37 |
+| 렌더러를 만드는 자리 (`scene/Stage`의 `gl` 팩토리 · `makeRenderer`) | **브라우저는 `pnpm journey`의 ⑯**(콘솔이 조용한가). R3F가 팩토리를 두 번 부르므로 세대당 하나로 못 박는 자리다 | REPAIR §39 |
+| 필드 카메라의 신원과 투영 (`scene/fieldCamera`) | `scene/fieldCamera.test.ts`(퇴화한 투영이 안 태어난다) · **브라우저는 `pnpm render:first`의 ④** | REPAIR §41 |
+| 그리는 크기 (`scene/EngineDriver`의 크기 불변식) | `pnpm journey` ⑮(찍은 화면이 실제로 그려졌는가)·⑯ — 어긋나면 프레임이 통째로 버려지고 3D만 검게 남는다 | REPAIR §39 |
+| 맵 그래프·길 찾기 (`tools/e2e/route.mjs`) | `pnpm journey` ⑧~⑪(걸어서 닿는가) — 이웃 판정을 느슨하게 하면 **없는 길**이 난다 | REPAIR §40 |
+| `<html>`의 읽기 전용 표식 (`app/sceneMark`) | `app/sceneMark.test.ts` · 하네스 넷이 이 값으로 판정한다 | — |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은
 **한 번 재보는 자**다 — 명령이 어느 파일에서 몇 자리를 먹는지
@@ -265,4 +277,23 @@
 | 리포트 칸을 가운데 끼우기 | 검사합이 깨진다 (§2.2) |
 | 「안 만든 것」과 「안 만들기로 한 것」 섞기 | 계통표에서 같은 줄로 보인다 — 후자는 명령을 만들어 **아무 일도 안 하게** 둔다 |
 | 시스템을 **아무 데나** 등록하기 | 차례가 규칙의 일부인데 그것을 지키는 것이 등록 한 줄뿐이다. 밟은 자리를 보는 스크립트가 이동 앞에만 있어서 **워프가 좌표 트리거를 한 프레임 앞질렀고**, 딴 맵에서 이어진 장면이 주인공을 벽 속에 세워 맵뚫이 났다 (PLAN §3.4 · REPAIR §27) |
+| 자동화에서 `page.keyboard.press()` 쓰기 | 누름과 뗌 사이가 사실상 0이라 **60Hz 시뮬이 통째로 놓친다.** 컷신을 걷으려고 120번을 눌렀는데 한 번도 안 먹었고, 검사는 그것을 「조작이 죽었다」로 적었다. `story.mjs`의 `tap`처럼 **70ms를 쥔다** (REPAIR §36) |
+| 결과 파일에 **PASS 개수만** 세기 | 빈 배열·모르는 status·일부만 돌린 파일·두 달 전 dist가 전부 초록으로 읽힌다. 봉투(`tools/distribution/evidence.mjs`)가 무엇을·언제·어디서·어디까지 쟀는지까지 본다 (DEPLOY §1) |
+| 하네스가 **제 시험 목록을 스스로 적기** | 시험을 줄이면서 목록도 같이 줄이는 한 번의 편집이 통과를 만든다. 실측으로 예상·실행·결과를 전부 한 건으로 맞춘 봉투가 `ok`였다. 정본은 판정기가 쥐고, 훑기 목록은 `checkpoints.ts`에서 뽑는다 (REPAIR §37) |
+| `gameLoop.paused`에 **대입**하기 | 그 칸에 쓰는 쪽이 둘이라 나중에 쓴 쪽이 앞의 까닭을 지운다. 복구 중에 탭을 나갔다 돌아오기만 하면 정지가 풀렸다. 까닭을 걸고 푸는 것만 한다 (`engine/loop/pause` · REPAIR §38) |
+| `renderer.init()`이 끝난 것을 **play-ready**로 읽기 | 그 시점의 씬은 아직 서는 중이라, 거기서 조작을 돌려주면 안 그려진 세계를 걷는다. 한 프레임이 실제로 나간 뒤가 `live`다 (REPAIR §38) |
+| 검사의 **종료 코드**로 합격을 세기 | `gpu:loss`가 FAIL만 보고 1을 냈다 — BLOCKED만 남은 판, 그러니까 **못 잰 판**이 종료 0으로 나갔다. 봉투는 BLOCKED도 실패로 센다 (REPAIR §37) |
+| **비동기 `gl` 팩토리**를 R3F가 한 번만 부른다고 믿기 | `<Canvas>`의 설정 이펙트에 의존성 배열이 없어 다시 그릴 때마다 `configure()`가 돌고, `if (!state.gl)`은 팩토리를 기다리는 동안 두 번 통과한다. 실측으로 `requestAdapter`가 둘이었고 **크기를 받은 렌더러와 그리는 렌더러가 달랐다** — 3D가 30분 내내 검었고 콘솔에 17만 줄이 쌓였다 (REPAIR §39) |
+| **카메라**를 R3F가 만들게 두기 | 같은 창에서 **카메라도 둘**이 된다. R3F는 카메라를 `aspect 0`으로 만들고 크기 변화 때 고치는데, 스토어에 앉은 둘째는 그때 이미 크기가 최종값이라 **영영 안 고쳐진다.** aspect 0이면 투영 첫 성분이 무한대고 **모든 정점의 clip x가 NaN**이라 화면이 통째로 비었다 — 창을 한 번 흔들기 전까지. 카메라 **객체**를 넘겨 우리가 쥔다 (`scene/fieldCamera`) |
+| ⑤가 **걷기 전 화면만** 보기 | 「걷기 앞뒤로 그림이 달라졌다」만으로는 걷고 나서 **단색이 된 판**도 통과한다. 앞뒤 둘 다 세계여야 한다 (`firstFrameRules`) |
+| 오프닝을 **눈먼 스페이스**로 넘기기 | 「그 밖에 알고 싶은 건?」의 첫 칸이 조작 설명이라 설명을 듣고 그 물음으로 돌아오기를 되풀이한다. 고르는 줄을 읽어 마지막 칸을 고르되, **칸이 둘이면 옮기지 않는다** — 그 줄은 예/아니오라 마지막이 「아니오」다 (실측: 「여자 → 아니오」 300번) |
+| 검사 도구가 **찍기 전에 창을 흔드는 것**을 무해하다고 보기 | `pnpm shot`의 `setViewportSize` 한 줄이 **결함을 지나가면서 고치고 있었다.** 크기가 한 번 바뀌면 그제야 세계가 그려진다 (REPAIR §41). 그래서 스크린샷은 늘 멀쩡했고, 실제 플레이만 검었다. 첫 화면을 재는 자리는 **크기를 한 번도 안 건드리는** `pnpm render:first`다 |
+| R3F가 넘기는 **`alpha: true`**를 그대로 두기 | three는 그 값 하나로 캔버스의 합성 방식을 정한다(`premultiplied` / `opaque`). 우리 마지막 패스는 알파를 0으로 내므로 미리 곱하기로 합성하면 캔버스가 투명해진다 — 그래서 `alpha: false`다. ⚠️ **그것이 §41의 고침은 아니다**: `opaque`로 둔 지금도 첫 화면은 안 나온다 |
+| 크기가 다른 두 컷을 **「100% 달라졌다」**로 읽기 | 비교기가 그 자리에 `1`을 내면 부르는 쪽은 전부 **정상 변화**로 읽는다 — 크기가 어긋난 한 쌍이 「화면이 갱신됐다」로 통과한다. `NaN`으로 비켜 가는 것도 같은 병이다. **못 견둔다를 밖으로 내고** 그 줄은 PASS를 못 받게 한다 (`tools/e2e/canvasShot.mjs`의 `compareShots`) |
+| 사다리를 **화면 전체 차이**로 판정하기 | 하늘색으로 지우기만 해도 검은 페이지 배경과 100% 다르다 — **도형이 하나도 없어도 통과한다.** 도형 ROI와 배경 ROI를 견주고, 도형을 **옮긴 앞뒤**까지 본다 (REPAIR §41) |
+| `--gpu=gl`이라는 **이름**을 WebGL2 경로의 증거로 쓰기 | ANGLE 깃발은 WebGPU를 안 끈다 — 그 판도 WebGPU로 돈다. 무엇을 재고 있는지는 화면의 **`data-backend`**가 말한다 (`tools/gpuFlags.mjs`의 `wantBackend`) |
+| 「캔버스가 검다」와 「캔버스가 없다」를 색으로 가르기 | 페이지 배경이 검고 `alphaMode`가 `opaque`면 **둘이 같은 그림**이다. 가르려면 **배경만 자홍으로 칠하고** 다시 본다 — 칠하기만 바뀌고 레이아웃은 안 바뀐다 (REPAIR §41) |
+| `toDataURL`·`drawImage`로 **캔버스가 그려졌는지** 재기 | 눈으로 세계가 보이는 판에서도 둘 다 「색 1개 · 알파 0」을 냈다. WebGPU 캔버스에서는 못 믿는다 — 재려면 **계기판을 숨기고 캔버스 요소를 찍는다** (`tools/e2e/canvasShot.mjs` · REPAIR §41) |
+| 맵이 **맞닿았다**를 **걸어갈 수 있다**로 읽기 | 203번도로와 무쇠시티는 청크가 닿아 있지만 사이가 절벽이라 사람은 무쇠게이트로 돈다. 이웃 판정이 느슨하면 길 찾기가 **없는 길**을 내고, 그 자리에서 「길을 못 찾았다」로 선다. 채움 지대(`EVERYWHERE`)를 이웃으로 세는 것도 같은 종류다 (REPAIR §40) |
+| 사람을 **배치표 자리**로 찾기 | 그 자리는 「처음 선 곳」일 뿐이다. 돌아다니는 사람과 주인공 쪽으로 걸어오는 사람은 거기 없다 — 실측으로 축복시티에서 셋 중 둘에게 「말을 못 걸었다」가 났다 (REPAIR §40) |
 | 롬의 행사 칸을 **무조건** 살아 있는 것으로 믿기 | 워프가 그린 바닥 밖 세 칸에 앉아 있으면 대개 **죽은 자료**다. 연고 관장 방의 문 셋이 다이아·펄 체육관의 남은 방을 가리키고 있었고, 그것을 살리려고 허공에 길을 냈다. 스크립트 이름(`res/field/scripts/scripts.order`)이 그 맵이 무엇인지 알려 준다 (REPAIR §22) |

@@ -9,7 +9,7 @@
 
 | 갈래 | 남은 수 | 임자 |
 |---|---:|---|
-| 공개 배포를 막을 수 있는 자리 | 재는 자리 9 | [DEPLOY.md](DEPLOY.md) §1 |
+| 공개 배포를 막을 수 있는 자리 | 재는 자리 12 | [DEPLOY.md](DEPLOY.md) §1 |
 | 우리가 만든 자리가 어긋난 것 | 20 | [REPAIR.md](REPAIR.md) |
 | 원작 대비 반쯤 · 없음 | 14 · 0 | [PARITY.md](PARITY.md) |
 | 화면에 아직 안 서는 것 | 0 | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |
@@ -39,6 +39,9 @@
 | 처음부터 엔딩까지가 통과 상태가 아니다 | tools/e2e/story.mjs |
 | 이 배포물이 어느 커밋에서 나왔는지 말할 수 없다 | state/save/contract.ts |
 | Git 히스토리에 원본 유래 산출물이 남아 있다 | COPYRIGHT.md §9 |
+| 장치를 잃었을 때 게임이 사람 손에 남는지 잰 적이 없다 | tools/e2e/gpuLoss.mjs |
+| 첫 3D 화면이 창을 흔들기 전까지 안 나온다 | tools/e2e/firstFrame.mjs |
+| 새 게임에서 첫 배지까지를 정상 입력으로 끝까지 걸어 본 적이 없다 | tools/e2e/journey.mjs |
 
 ## 2. 우리가 만든 자리가 어긋난 것
 
