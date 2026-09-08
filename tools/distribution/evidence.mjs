@@ -200,14 +200,17 @@ export const SUITES = {
     binds: 'source',
     label: '대표 구간 완주',
     where: 'tools/e2e/journey.mjs',
-    // ⚠️ **2다.** ⑮의 뜻이 바뀌었다 — 화면 **전체**의 색 수로 보던 것을
-    // **캔버스만 떼어** 보는 것으로 갈았다. 옛 판 결과는 형식이 멀쩡해도
-    // 다른 것을 잰 것이라 다시 돌려야 한다 (REPAIR §41)
-    contract: 2,
+    // ⚠️ **4다.** ⑮의 뜻이 또 갈렸다 — 「캔버스의 색이 여럿인가」가 아니라
+    // **지형이 있는가**를 본다. 색 수로는 까만 원반 위에 주인공만 뜬 컷과
+    // 바닥이 한 줄만 그려진 컷이 **통과**했다(2026-09-08 실측, 눈으로 확인).
+    // 그리고 찍는 시점이 「도착 직후」가 아니라 **지형이 섰다는 상태**가 됐고,
+    // 그 상한을 넘긴 컷은 판정 불가로 갈라 적는다.
+    // **3으로 잰 판은 이 판정의 통과에 못 보탠다.**
+    contract: 4,
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
       'tools/e2e/journey.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/route.mjs',
-      'tools/e2e/canvasShot.mjs',
+      'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/shot/png.mjs',
       'tools/distribution/evidence.mjs',
     ],
@@ -336,6 +339,39 @@ export function artifactDigest() {
 }
 
 /**
+ * **개발 서버가 내주는 자료 나무**(`public/data`)의 지문 — 경로와 내용 전부.
+ *
+ * ⚠️ **`sourceDigest`가 이것을 안 센다.** 저작권 규칙(`NEVER_SOURCE`)이
+ * `public/data/`와 `public/models/`를 소스 목록에서 통째로 뺀다 — 그래야
+ * 추출물이 지문에 안 섞인다. 그런데 그 결과로 **행렬과 스크립트가 어느
+ * 지문에도 없었다**: 맵 격자를 갈아 끼우고 같은 봉투로 「이어 달리기」를 해도
+ * 아무도 못 막았다.
+ *
+ * ⚠️ **내용은 안 적는다.** 파일 이름과 바이트를 접어 만든 **한 줄**만 남는다 —
+ * 원본 내용이 보고서로 새지 않는다 (COPYRIGHT.md §6).
+ *
+ * ⚠️ **설치본이 쓰는 자료는 이것이 아니다.** 배포 번들은 OPFS에 설치된
+ * 것을 읽으므로(`app/boot.ts`가 `import.meta.env.DEV`로 가른다) 이 값은
+ * **개발 서버로 잰 판**의 신원이다. 봉투의 `environment`가 어느 쪽인지를 적는다
+ */
+export function dataDigest() {
+  const root = resolve(ROOT, 'public/data')
+  if (!existsSync(root)) return null
+  const entries = []
+  const walk = (at, rel) => {
+    for (const e of readdirSync(at, { withFileTypes: true })
+      .sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const child = join(at, e.name)
+      const childRel = rel ? `${rel}/${e.name}` : e.name
+      if (e.isDirectory()) walk(child, childRel)
+      else if (statSync(child).isFile()) entries.push([childRel, sha(readFileSync(child))])
+    }
+  }
+  walk(root, '')
+  return entries.length === 0 ? null : foldTree(entries)
+}
+
+/**
  * 그 묶음이 **묶이는 쪽**의 지금 지문.
  *
  * 하네스가 시작할 때 한 번 불러 두고 봉투에 같이 넣는다 — 끝난 시점의 지문만
@@ -402,15 +438,23 @@ export function describeEnvironment({ browserVersion, gpu, backend }) {
  */
 export function sealEvidence({
   suite, selection = 'all', expectedCases, executedCases, environment, results,
-  startDigest = null, extra = {},
+  startDigest = null, dataAtStart = null, extra = {},
 }) {
   const meta = SUITES[suite]
+  const data = dataDigest()
   return {
     schemaVersion: EVIDENCE_SCHEMA,
     contractVersion: meta?.contract ?? null,
     artifactDigest: artifactDigest(),
     sourceDigest: sourceDigest(),
     harnessDigest: harnessDigest(suite),
+    /** 이 판이 먹은 자료의 신원 (`dataDigest`) */
+    dataDigest: data,
+    /**
+     * 도는 동안 자료가 바뀌었는가. 시작 지문을 안 받았으면 `null`(모른다)이다 —
+     * **`false`로 접지 않는다**
+     */
+    dataChangedDuringRun: dataAtStart === null ? null : dataAtStart !== data,
     rosterDigest: meta?.roster()?.digest ?? null,
     buildId: buildStamp()?.buildId ?? null,
     testedAt: new Date().toISOString(),

@@ -23,6 +23,7 @@ import { HmCutInOverlay } from '../ui/field/HmCutInOverlay'
 import { CutInOverlay } from '../ui/field/CutInOverlay'
 import { MenuLayer } from '../ui/menu/MenuLayer'
 import { PoketchWidget } from '../ui/poketch/PoketchWidget'
+import { RestoreScreen } from '../ui/screens/RestoreScreen'
 
 export function PlayRoute() {
   const navigate = useNavigate()
@@ -102,6 +103,12 @@ export function PlayRoute() {
       <PoketchWidget />
       <ControlHint />
       <MenuLayer />
+      {/*
+        ⚠️ **제일 뒤에 그린다.** 저장한 자리를 세우는 동안은 그 위의 대사창·
+        메뉴가 아직 「저장한 곳이 아닌 세계」의 것이라 다 덮어야 한다
+        (`state/restoreStore`)
+      */}
+      <RestoreScreen />
     </>
   )
 }

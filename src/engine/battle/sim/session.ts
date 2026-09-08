@@ -257,6 +257,10 @@ export class BattleSession {
     // 이제 상대 것도 눕힌다. 그쪽 첫 요청은 이미 나갔지만 상관없다 — 우리가
     // 그 칸을 쓸지 묻는 자리(`hasIdle`)는 요청이 아니라 개체를 본다
     this.lowerIdle()
+    // ⚠️ **우리 쪽 마릿수를 여기서 다시 센다.** 배틀이 시작된 것은 바로 위의
+    // `>player p2`고, sim의 'start'가 그 숫자를 팀 크기로 되돌려 놨다
+    // (`countLeft`의 머리말). 체력은 안 되돌아가므로 다시 세기만 하면 된다
+    this.countLeft(0)
     if (options.noCrit) this.blockCrits()
   }
 
@@ -415,8 +419,28 @@ export class BattleSession {
         ...(status === 'slp' ? { time: Math.max(1, mine.mon.statusTurns) } : {}),
       } as typeof p.statusState
     }
-    // ⚠️ **남은 마릿수도 같이 고친다.** 이걸 안 맞추면 sim이 이미 쓰러진 벤치를
-    // 아직 살아 있다고 세어서, 마지막 한 마리가 쓰러져도 배틀이 안 끝난다
+    this.countLeft(side)
+  }
+
+  /**
+   * **남은 마릿수를 다시 센다.**
+   *
+   * ⚠️ **`syncVitals` 안에서 한 번 세는 것으로는 안 된다.** sim은 배틀이
+   * 시작되는 자리에서 그 수를 **통째로 되돌린다** —
+   * `battle.js`의 `case 'start'`가 `if (side.pokemonLeft) side.pokemonLeft =
+   * side.pokemon.length`다. 그 'start'는 `>player p2`가 들어오는 순간 도므로,
+   * 그 전에 맞춰 둔 **우리 쪽** 숫자만 지워진다(상대 쪽은 그 뒤에 맞춰서 남는다).
+   *
+   * ⚠️ **그러면 우리는 질 수가 없다.** `checkWin`은 `pokemonLeft === 0`일 때만
+   * 승부를 내는데, 쓰러진 채로 배틀에 들어간 벤치는 `faintMessages`를 안 거쳐서
+   * 그 수를 안 깎는다. 실측(2026-09-08): 쓰러진 둘을 데리고 들어간 판에서
+   * 마지막 한 마리가 쓰러졌는데도 sim이 **쓰러진 그 마리에게 계속 기술을
+   * 물었고**(선택지 `move`4개 · `forceSwitch` 없음) 400수까지 안 끝났다.
+   * 무쇠 체육관에서 하네스가 120초 상한을 일곱 번 먹은 것이 이 자리다
+   */
+  private countLeft(side: 0 | 1): void {
+    const simSide = this.raw.battle?.sides[side]
+    if (!simSide) return
     simSide.pokemonLeft = simSide.pokemon.filter((p) => !p.fainted).length
   }
 

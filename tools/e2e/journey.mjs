@@ -26,9 +26,12 @@ import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import { driveStory, playOpening } from './drive.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.mjs'
+import { judgeTerrain } from './terrainJudge.mjs'
+import { stageState, waitTerrain } from './stageProbe.mjs'
 import { missingData, trainersOn } from './route.mjs'
+import { resumableAt, writeSegment } from './segments.mjs'
 import {
-  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+  bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -38,6 +41,18 @@ const flag = (name) => {
   return hit === undefined ? null : hit.slice(name.length + 3)
 }
 const BUDGET_MS = Number(flag('budget') ?? 5400) * 1000
+/**
+ * **어느 구간부터 이어 달릴까** (`--from=09`). 진단을 빠르게 하려는 값이다.
+ *
+ * ⚠️ **최종 판정용 판에는 안 쓴다.** 지시서와 검토가 함께 못 박은 자리다 —
+ * 최종 `journey`는 **새 게임부터** 정상 진행으로 돈다. 여기서 건너뛴 구간은
+ * 결과 줄에 **안 들어가므로** 봉투의 `executedCases`에서 빠지고, 집계에
+ * **미실행**으로 잡힌다 (`_tally42.mjs`). 전체 PASS에 안 보탠다.
+ *
+ * ⚠️ **신원이 다르면 조용히 전체를 돈다** (`tools/e2e/segments.mjs`) —
+ * 소스·하네스·이야기 표·세이브 넷을 다 본다
+ */
+const FROM = flag('from')
 
 /**
  * 다 돌면 내야 할 정본 목록과, **돌기 시작할 때의 나무 지문.**
@@ -49,6 +64,8 @@ const BUDGET_MS = Number(flag('budget') ?? 5400) * 1000
  */
 const EXPECTED_CASES = rosterOf('journey')?.cases ?? null
 const START_DIGEST = bindingDigest('journey')
+/** 도는 동안 자료가 바뀌었는지 보려고 시작 지문을 같이 든다 (지시 §7) */
+const dataAtStart = dataDigest()
 
 if (EXPECTED_CASES === null) {
   console.error('\n정본 case 목록을 못 냈다 — tools/distribution/evidence.mjs를 본다\n')
@@ -117,6 +134,59 @@ const JUBILIFE = {
   president: { script: 18, what: '포켓치사 사장' },
 }
 
+/**
+ * 그 자리에서 **말을 걸어야 하는 사람들**. 트레이너 표에 없는 이들이다.
+ *
+ * 관장 로안은 탄광에서 먼저 만나고(원작 순서), 체육관에서 도전한다. 둘 다
+ * `trainerType: 0`이라 `trainersOn()`으로는 안 나온다 — 오래 말을 건 적이 없다
+ */
+const NPC_STOPS = {
+  198: [{ script: 7235, what: '관장 로안' }],
+  47: [{ script: 1, what: '관장 로안에게 도전' }],
+}
+
+/**
+ * 그 자리 앞에서 들를 **포켓몬센터 1F**. 간호사는 그 맵 스크립트의 첫 항목이다
+ * (`*_Nurse`가 첫 `ScriptEntry` — `scripts_jubilife_city_pokecenter_1f.s`).
+ *
+ * ⚠️ **「그 자리로 떠나기 전에」 들를 센터**다. 무쇠(45)로 떠날 때는 아직
+ * 축복시티에 있으므로 축복 센터(6)고, 탄광·체육관으로 갈 때는 무쇠 센터(48)다.
+ * 여기를 뒤집으면 쓰러진 채로 도시 하나를 걸어가게 된다
+ */
+/**
+ * **한 사람에게 말 거는 데 쓸 상한 — 필수와 곁가지를 가른다.**
+ *
+ * ⚠️ **상한을 필수 단계에만 걸어 놓으면 안 된다.** 한동안 이 파일에서 40초
+ * 상한이 붙은 자리가 **포켓치 사슬 하나뿐**이었다 — 광대 셋과 사장, 즉
+ * 원작이 동쪽을 여는 조건으로 삼은 **필수** 단계다. 그래서 상한이 하는 일이
+ * 「진단을 빨리 끝낸다」가 아니라 **「필수 이벤트를 시간으로 생략한다」**가
+ * 됐다.
+ *
+ * 실측이 그 경계를 그대로 보여 준다 — 같은 40초로 한 판은 광대 셋이 다
+ * 걸렸고(쿠폰 3/3 · 포켓치 켜짐), 다음 판은 **광대 ②에서 떨어져** 쿠폰 2/3에
+ * 멎었다(2026-09-08). 광대 둘은 `MOVEMENT_TYPE_WANDER_AROUND`라 돌아다니고,
+ * `talkToNpc`는 예산을 `tries`로 쪼개되 바닥이 20초라 **40초면 두 바퀴**다 —
+ * 축복시티를 가로질러 한 번 다가가는 데만 그만큼 든다.
+ *
+ * 그렇다고 상한이 없으면 반대쪽으로 넘어진다: 한 명당 180초를 네 번까지
+ * 따라다녀 90분 예산이 축복시티에서 탔고, 무쇠시티·탄광·체육관이 **전부**
+ * 「시간이 다 됐다 · 멈춘 맵 3」으로 떨어졌다.
+ *
+ * 그래서 **둘로 가른다** — 필수는 넉넉히 주되 **사슬 전체**에 상한을 걸어
+ * 한 판을 통째로 삼키지 못하게 한다. 어느 쪽이든 끊는 것은 시간이지 판정이
+ * 아니다: 실패는 이유와 함께 `missed`·`trouble`과 아래 줄들에 그대로 남는다.
+ */
+const STORY_TALK_MS = 150_000
+/**
+ * 포켓치 사슬(광대 셋 + 사장) **전체**에 쓸 상한.
+ *
+ * 넷이 저마다 `STORY_TALK_MS`를 다 쓰면 10분이다. 여기서 한 번 더 묶어 두면
+ * 최악에도 그 이상은 안 간다 — 남는 시간은 무쇠로 걸어가는 데 쓴다
+ */
+const POKETCH_CHAIN_MS = 600_000
+
+const CENTERS = { 3: 6, 45: 6, 198: 48, 47: 48 }
+
 const AFTER_STOPS = [
   { id: '08', map: 3, what: '축복시티' },
   { id: '09', map: 45, what: '무쇠시티' },
@@ -184,15 +254,50 @@ const BENIGN = [
   /THREE\.Clock: This module has been deprecated/,
 ]
 const noise = []
+/**
+ * ⚠️ **어디서 났는지를 같이 적는다.** 글만 300자로 잘라 두면 「누가 불렀나」를
+ * 나중에 못 캔다 — `Performance.measure … Data cannot be cloned`가 정확히 그
+ * 꼴이었다. 자리(파일·줄)와 스택 앞머리를 붙이고, 그때 화면이 무엇이었는지도
+ * 적는다. 스택은 다섯 줄까지만 — 통째로 쏟지 않는다
+ */
+const at = (m) => {
+  const l = m.location()
+  return l?.url ? `${String(l.url).split('/').pop()}:${String(l.lineNumber)}:${String(l.columnNumber)}` : null
+}
 page.on('console', (m) => {
   if (m.type() !== 'error' && m.type() !== 'warning') return
   const text = m.text()
   if (BENIGN.some((re) => re.test(text))) return
-  noise.push({ kind: m.type(), text: text.slice(0, 300) })
+  noise.push({ kind: m.type(), text: text.slice(0, 300), at: at(m), when: Date.now() })
 })
-page.on('pageerror', (e) => { noise.push({ kind: 'pageerror', text: String(e.message).slice(0, 300) }) })
+page.on('pageerror', (e) => {
+  noise.push({
+    kind: 'pageerror', text: String(e.message).slice(0, 300), when: Date.now(),
+    stack: String(e.stack ?? '').split('\n').slice(0, 5).join(' | ').slice(0, 600),
+  })
+})
 
 const marks = () => page.evaluate(() => ({ ...document.documentElement.dataset }))
+
+/**
+ * 엔진이 들고 있는 **날것의 자리**와 세이브가 적어 둔 자리.
+ *
+ * ⚠️ **`data-tile`로는 ⑭를 못 잰다.** 그것은 내림한 칸이라 「같은 맵의 엉뚱한
+ * 자리」가 통과한다. 그리고 견줄 기준은 새로고침 직전의 DOM이 아니라 **실제로
+ * 저장한 값**이다 — 리포트를 쓴 뒤에 한 걸음 더 걸었으면 DOM이 앞서 있다
+ */
+const whereNow = () => page.evaluate(async () => {
+  const w = await import('/src/engine/map/world.ts')
+  const s = await import('/src/state/worldState.ts')
+  const v = await import('/src/state/saveStore.ts')
+  const p = s.worldState.player
+  const save = v.useSaveStore.getState()
+  return {
+    world: { map: w.world.mapId, matrix: w.world.matrix, grid: w.world.grid !== null },
+    player: { x: p.position.x, z: p.position.z, facing: p.facing },
+    save: { ...save.position, loaded: save.loaded },
+  }
+})
 
 async function tap(key, hold = 70) {
   await page.keyboard.down(key)
@@ -216,22 +321,85 @@ let shotNo = 0
 async function shot(name, { world = true } = {}) {
   shotNo += 1
   const head = `shots/journey/${String(shotNo).padStart(2, '0')}-${name}`
+  /**
+   * **찍기 전에 지형이 서기를 기다린다 — 시간이 아니라 상태를.**
+   *
+   * ⚠️ **`goTo`가 `arrived`를 준 것은 지형이 섰다는 뜻이 아니다.** 그것은 맵을
+   * 갈아 끼우는 쪽의 신호고, 청크 모델은 그 뒤에 비동기로 온다
+   * (`scene/terrainMark`가 그 경계를 밖으로 낸다).
+   *
+   * ⚠️ **상한을 넘으면 「판정 불가」지 「통과」가 아니다.** 여기서 못 서면
+   * 그 시간만큼 **사용자도 빈 화면을 본 것**이고, 아래 `readiness`가 그것을
+   * 그대로 남긴다
+   */
+  const readiness = world ? await waitTerrain(page, 20_000) : null
   const png = await page.screenshot({ path: resolve(ROOT, `${head}.png`) })
   const pix = statsOf(png)
   const one = {
     name, file: `${head}.png`, colors: pix.colors,
     stdev: Number(pix.stdev.toFixed(1)), flat: looksFlat(pix),
   }
+  if (readiness !== null) one.readiness = readiness
   if (world) {
+    // ⚠️ **컷만으로는 판정할 수 없다.** 「거의 한 색」인 컷이 렌더 결함인지,
+    // 지형이 없는 자리에 서 있는 것인지는 **그때의 게임 상태**를 같이 봐야
+    // 갈린다 — 실측으로 after-gym은 `tris 20.3k`가 나가는데 화면은 안개색
+    // 한 장이었고, 그 자리는 맵이 아직 안 선 곳이었다
+    one.state = await whereNow().catch(() => null)
+    one.marks = await marks().catch(() => null)
     try {
       const at = `${head}-캔버스.png`
       const cut = await shootCanvas(page, { path: resolve(ROOT, at) })
+      /**
+       * ⚠️ **색 개수로 지형을 인정하지 않는다.** 실측(2026-09-08)에서 까만
+       * 원반 위에 주인공만 뜬 컷과 바닥이 한 줄만 그려진 컷이 색 개수로는
+       * **통과**했다. `terrainJudge`가 칸을 나눠 아래 두 줄을 본다 — 문턱은
+       * 사람이 눈으로 가른 대조 컷 열 장에서 나왔다
+       * (`.audit/terrain-controls/`, `terrainJudge.test.mjs`)
+       */
+      const land = judgeTerrain(cut.png)
       one.canvas = {
         file: at, colors: cut.stats.colors, stdev: Number(cut.stats.stdev.toFixed(1)),
-        drawn: looksDrawn(cut.stats), steady: cut.steady,
+        // 옛 잣대도 같이 남긴다 — 두 자가 언제 갈리는지가 그대로 증거다
+        flatOnly: looksDrawn(cut.stats), steady: cut.steady,
+        drawn: land.drawn, filled: land.filled, need: land.need, landWhy: land.why,
+      }
+      one.stage = await stageState(page).catch(() => null)
+      /**
+       * **여기서 실패했으면 그 실행을 살려 둔 채 이어서 잰다** (지시 §2).
+       *
+       * ⚠️ **움직이지도, 크기를 흔들지도, 다시 들이지도 않는다.** 같은 페이지 ·
+       * 같은 카메라 · 같은 자리에서 시간만 흘려보낸다. 나중에 채워지면 「촬영
+       * 준비」 문제고, 끝내 안 채워지면 「씬·카메라·자료」 문제다.
+       *
+       * ⚠️ **최초 판정을 덮어쓰지 않는다.** `one.canvas.drawn`은 위에서 찍은
+       * 첫 컷의 값 그대로다 — 아래 표는 `one.after`에만 쌓인다
+       */
+      if (!one.canvas.drawn) {
+        one.after = []
+        const t0 = Date.now()
+        for (const sec of [0, 1, 3, 10, 30]) {
+          const wait = sec * 1000 - (Date.now() - t0)
+          if (wait > 0) await page.waitForTimeout(wait)
+          const late = `${head}-이어서-${String(sec).padStart(2, '0')}초.png`
+          const c = await shootCanvas(page, { path: resolve(ROOT, late) }).catch(() => null)
+          if (c === null) { one.after.push({ sec, unobservable: '캔버스를 못 뗐다' }); continue }
+          const j = judgeTerrain(c.png)
+          one.after.push({
+            sec, file: late, colors: c.stats.colors,
+            stdev: Number(c.stats.stdev.toFixed(1)), drawn: j.drawn, filled: j.filled,
+            stage: await stageState(page).catch(() => null),
+          })
+        }
+        const late = one.after.filter((r) => r.drawn === true)
+        console.log(`        ⚠️ 실패한 그 실행에서 30초를 더 봤다 —`
+          + ` ${late.length === 0 ? '끝내 안 채워졌다' : `${String(late[0].sec)}초에 채워졌다`}`)
       }
       if (!one.canvas.drawn) {
-        console.log(`        ⚠️ ${at} — 3D가 거의 한 색이다 (색 ${String(cut.stats.colors)})`)
+        console.log(`        ⚠️ ${at} — 3D가 거의 한 색이다 (색 ${String(cut.stats.colors)})`
+          + ` · 그때 ${JSON.stringify(one.state?.world ?? null)}`
+          + ` ${String(one.state?.player?.x)},${String(one.state?.player?.z)}`
+          + ` scene=${String(one.marks?.scene)}`)
       }
     } catch (e) {
       one.canvasWhy = String(e.message ?? e).slice(0, 120)
@@ -247,6 +415,43 @@ async function shot(name, { world = true } = {}) {
  * ⚠️ 개발 서버에서 모듈을 여는 것은 story.mjs가 확인 지점 표를 읽는 것과 같은
  * 자리다. **읽기만 한다** — 여기서 값을 넣으면 그 순간 이 검사는 뜻을 잃는다
  */
+/**
+ * **포켓치를 정말 받았는가.** 대화 반환값이 아니라 게임이 든 값으로 잰다.
+ *
+ * 원작의 계약(`scripts_jubilife_city.s`):
+ * `JubilifeCity_SetObtainedCouponsCount`가 `FLAG_RECEIVED_COUPON_1..3`을 세고,
+ * `GoToIfEq VAR_0x8004, 3, JubilifeCity_GivePoketch` → `GivePoketch`가
+ * `SetVar VAR_JUBILIFE_CITY_STATE, 2`를 한다.
+ *
+ * ⚠️ **번호를 줄 셈으로 짐작하지 않는다.** 목록은 C enum처럼 세는 것이라
+ * 줄 번호와의 차이가 **구간마다 다르다** — 실측(2026-09-08 `_jubi42`의 깃발
+ * diff): 광대 셋이 세운 것은 **237·238·239**였고 사장이 세운 것은 **243**이었다.
+ * 그 값들이 `FLAG_RECEIVED_COUPON_1`(줄 240)·`FLAG_RECEIVED_POKETCH`(줄 246)와
+ * **줄 −3**으로 맞고, 이미 확정된 `FLAG_HAS_POKEDEX = 144`(줄 147)도 같은 −3이다.
+ * 한때 −7로 적었다가 엉뚱한 깃발 셋을 읽었다(그 −7은 목록 **뒤쪽** 구간의 값이다).
+ *
+ * 변수는 `VAR_JUBILIFE_CITY_STATE = 16503`이고, 이건 **동작으로** 확인됐다 —
+ * 사장에게 말을 건 순간 1에서 2로 올랐다(원작의 `GivePoketch`가 하는 그 일이다).
+ *
+ * ⚠️ **읽기만 한다.**
+ */
+const poketchNow = () => page.evaluate(async () => {
+  const f = await import('/src/engine/script/field.ts')
+  const save = await import('/src/state/saveStore.ts')
+  const v = f.fieldScripts.vars
+  const s = save.useSaveStore.getState()
+  return {
+    coupons: [237, 238, 239].map((n) => v.checkFlag(n)),
+    /** `FLAG_RECEIVED_POKETCH` — 사장이 실제로 준 자리 */
+    received: v.checkFlag(243),
+    cityState: v.get(16503),
+    enabled: s.poketch.enabled,
+  }
+})
+
+/** 쿠폰 셋만 — 광대 한 명이 끝날 때마다 본다 */
+const couponsNow = async () => (await poketchNow()).coupons
+
 const readSave = () => page.evaluate(async () => {
   const m = await import('/src/state/saveStore.ts')
   const s = m.useSaveStore.getState()
@@ -343,6 +548,24 @@ const timings = {}
 const shots = []
 let ranToTheEnd = false
 
+/**
+ * `--from`이 가리키는 구간에서 이어 달려도 되는가 — **신원까지 맞을 때만.**
+ *
+ * ⚠️ **안 되면 조용히 전체를 돈다.** 다만 왜 못 이어 달리는지는 화면에 적는다 —
+ * 「신원이 다르다」로만 적으면 다음 사람이 무엇이 바뀌었는지 다시 찾아야 한다
+ */
+const resume = FROM === null ? { ok: false, segment: null, why: '' } : resumableAt(FROM)
+if (FROM !== null) {
+  console.log(resume.ok
+    ? `  구간 ${resume.segment.id}에서 이어 달린다 — ${resume.segment.save}`
+      + ` (적어 둔 때 ${resume.segment.verifiedAt})`
+    : `  구간 ${FROM}에서 못 이어 달린다 — ${resume.why}
+  → 새 게임부터 전부 돈다`)
+  if (resume.ok) {
+    console.log('  ⚠️ 이 판은 **진단**이다 — 건너뛴 구간은 미실행이고 전체 PASS에 안 보탠다')
+  }
+}
+
 try {
   // ── ① 첫 화면 ────────────────────────────────────────────────────────────
   const title = await openTitle()
@@ -352,6 +575,26 @@ try {
 
   // ── ② 새 게임 → 오프닝을 정상 입력으로 끝낸다 ─────────────────────────────
   const t1 = Date.now()
+  if (resume.ok) {
+    /**
+     * **적어 둔 자리에서 이어 달린다.** 정상 UI로 들인다 — 리포트를 고르는
+     * 그 길이다. ②③은 **안 만든다**: 이 판은 오프닝을 지나지도, 시작
+     * 리포트를 쓰지도 않았으므로 그 줄을 PASS로 적으면 거짓이 된다.
+     * 결과에서 빠지면 봉투가 그것을 **미실행**으로 적는다
+     */
+    await page.setInputFiles('input[type=file]', resolve(ROOT, resume.segment.save))
+    const bring = page.getByRole('button', { name: '이 리포트로 이어하기' })
+    await bring.waitFor({ timeout: 60_000 })
+    await bring.click()
+    await page.waitForFunction(() => location.pathname === '/play', null, { timeout: 120_000 })
+    await page.waitForSelector('canvas', { timeout: 120_000 })
+    await page.waitForFunction(() => document.documentElement.dataset.renderer === 'live'
+      && document.documentElement.dataset.restoring === undefined, null, { timeout: 180_000 })
+    gpu = await probeGpu(page)
+    backend = (await marks()).backend ?? null
+    await settle()
+    console.log(`    구간 ${resume.segment.id}에 섰다 — ${JSON.stringify(await marks())}`)
+  } else {
   await title.start.click({ timeout: 60_000 })
   await page.waitForFunction(() => location.pathname === '/intro', null, { timeout: 60_000 })
   const after = await playOpening(page)
@@ -373,14 +616,21 @@ try {
   add('03', '시작 자리에서 리포트를 쓰고 파일로 받는다', startSave.ok ? 'PASS' : 'FAIL',
     startSave.ok ? `${startSave.file} (${startSave.name}) · ${JSON.stringify(startState)}`
       : String(startSave.why))
+  }
 
   // ── ④~⑦ 파트너·라이벌·야생·상점·트레이너 (이미 있는 드라이버) ────────────
   const log = (line) => { console.log(`    ${line}`) }
   const drive = await driveStory(page, {
     log,
     totalMs: Math.max(600_000, BUDGET_MS - (Date.now() - t1)),
+    // 이어 달리는 판은 이야기 길목을 다시 안 걷는다 — 이미 그 자리에 서 있다
+    skipStory: resume.ok,
     after: async (api) => {
       const seen = []
+      /** 트레이너 표에 없는 사람들을 실제로 만났는가 */
+      const metNpcs = []
+      /** 회복하러 들른 기록 */
+      const heals = []
       // ⚠️ **여기부터는 소포가 있어야 한다.** 원작이 202번도로 입구에서 막는다 —
       // 소포가 없으면 라이벌이 "가족한테 말은 하고 왔니"라며 되돌려 세우고,
       // 그것도 **들어설 때마다 다시**다 (`Route202_CheckStartCatchingTutorial`).
@@ -415,37 +665,211 @@ try {
           await api.clearTalk()
           await api.settle()
           log(`  사장 앞(${String(JUBILIFE.campaign.x)},${String(JUBILIFE.campaign.z)}) → ${met}`)
+          /** 사슬 전체의 마감. 넷이 나눠 쓴다 */
+          const chainTill = Date.now() + Math.min(POKETCH_CHAIN_MS, Math.max(0, api.left()))
+          /** 이 사람에게 줄 시간 — 사슬 마감과 전체 예산 둘 다에 걸린다 */
+          const chainRoom = () => Math.min(STORY_TALK_MS, chainTill - Date.now(), api.left())
           for (const clown of JUBILIFE.clowns) {
-            if (api.left() <= 0) break
-            const said = await api.talkToNpc(3, clown.script, Math.min(180_000, api.left()))
+            if (chainRoom() <= 0) { log(`  ${clown.what} → 사슬 예산이 다 됐다`); continue }
+            const said = await api.talkToNpc(3, clown.script, chainRoom())
             await api.clearTalk()
             await api.settle()
-            log(`  ${clown.what} → ${said ? '말을 걸었다' : '못 걸었다'}`)
+            const got = await couponsNow()
+            log(`  ${clown.what} → ${said ? '말을 걸었다' : '못 걸었다'}`
+              + ` · 쿠폰 ${got.filter(Boolean).length}/3`)
           }
-          const gave = api.left() > 0
-            && await api.talkToNpc(3, JUBILIFE.president.script, Math.min(180_000, api.left()))
+          const said = chainRoom() > 0
+            && await api.talkToNpc(3, JUBILIFE.president.script, chainRoom())
           await api.clearTalk()
           await api.settle()
-          // ⚠️ **말을 걸었다가 곧 받았다는 뜻이 아니다.** 쿠폰이 셋 다 있어야
-          // 사장이 준다 — 열린 것은 **동쪽으로 한 발**로만 확인되고, 그 판정은
-          // 아래 09~11이 한다
-          poketch.done = gave === true
-          poketch.why = gave === true ? '' : '사장에게 말을 못 걸었다'
-          log(`  ${JUBILIFE.president.what} → `
-            + `${gave === true ? '말을 걸었다' : '못 걸었다'} · 지금 ${JSON.stringify(await marks())}`)
+          /**
+           * ⚠️ **말을 걸었다는 것은 받았다는 뜻이 아니다.**
+           *
+           * 원작의 계약은 `scripts_jubilife_city.s`에 그대로 있다 —
+           * `JubilifeCity_SetObtainedCouponsCount`가 `FLAG_RECEIVED_COUPON_1..3`을
+           * 세고 **셋이 다 서야** `JubilifeCity_GivePoketch`가 돌아
+           * `VAR_JUBILIFE_CITY_STATE`를 2로 올린다. 그래서 판정은 **받은 것**으로
+           * 한다: 쿠폰 셋 · 도시 단계 2 · 포켓치 보유.
+           *
+           * 예전에는 `poketch.done = gave === true`였다 — 대화 반환값 하나로
+           * 「받았다」를 적었다는 뜻이고, 그러면 말만 걸고 못 받은 판이
+           * 통과로 새어 나간다
+           */
+          const bag = await poketchNow()
+          poketch.done = bag.coupons.filter(Boolean).length === 3
+            && bag.received && bag.cityState === 2 && bag.enabled
+          poketch.said = said === true
+          poketch.state = bag
+          poketch.why = poketch.done ? ''
+            : !said ? '사장에게 말을 못 걸었다'
+              : bag.coupons.filter(Boolean).length < 3
+                ? `쿠폰이 ${bag.coupons.filter(Boolean).length}/3이라 안 준다`
+                : `말은 걸었는데 못 받았다 (도시단계 ${String(bag.cityState)})`
+          log(`  ${JUBILIFE.president.what} → ${said ? '말을 걸었다' : '못 걸었다'}`
+            + ` · 쿠폰 ${bag.coupons.filter(Boolean).length}/3`
+            + ` · 도시단계 ${String(bag.cityState)}`
+            + ` · 지급표시 ${bag.received ? '섰다' : '안 섰다'}`
+            + ` · 포켓치 ${bag.enabled ? '켜졌다' : '안 켜졌다'}`)
         }
       }
 
+      /**
+       * **필수 단계가 무너지면 종속 구간을 무작정 걷지 않는다.**
+       *
+       * 축복시티 동쪽(203번도로)은 포켓치를 받아야 열린다 —
+       * `JubilifeCity_CoordEvent_LookerBlockRoute203`이
+       * `VAR_JUBILIFE_CITY_STATE == 1`인 동안 핸섬을 걸어오게 해 주인공을
+       * **서쪽으로 되돌려 세운다.** 그 값을 2로 올리는 자리는 온 게임에
+       * `JubilifeCity_GivePoketch` 하나뿐이다.
+       *
+       * ⚠️ **이것은 봐주는 것이 아니다.** 못 간 자리는 그대로 FAIL이고, 다만
+       * 이유가 「시간이 다 됐다」가 아니라 **「동쪽이 잠겼다」**로 남는다 —
+       * 앞엣것은 원인을 가리고 뒤엣것은 가리키다. 그리고 900초씩 세 번을
+       * 벽에 대고 쓰지 않으므로 뒤 항목들이 잴 시간이 남는다
+       */
+      /**
+       * ⚠️ **잠겼는지는 「재서」 안다 — 짐작으로 건너뛰지 않는다.**
+       *
+       * 원작은 `JubilifeCity_CoordEvent_LookerBlockRoute203`이
+       * `VAR_JUBILIFE_CITY_STATE == 1`인 동안 동쪽을 막는다. 벽이 아니라
+       * **스크립트가 밀어낸다** — 핸섬이 플레이어의 z로 걸어와 말을 건 뒤
+       * `JubilifeCity_Movement_PlayerWalkWestWithLooker`로 서쪽으로 되민다.
+       *
+       * ⚠️ **203번도로는 344다. 343은 202번도로다** (`maps.json`의 `R203`·`R202`).
+       * 한동안 이 자리가 **343으로 물어보고 있었다** — 즉 「동쪽이 열렸는가」를
+       * 물으면서 **이미 걸어온 서쪽 길**을 짚었고, 당연히 늘 `arrived`가 나왔다.
+       * 그 값 하나로 「우리 게임은 포켓치 없이도 동쪽에 닿는다」는 문장이 섰고,
+       * 그것이 다시 「원작 게이트가 우리 쪽에 안 선다」는 의심으로 이어졌다.
+       * **둘 다 그 오타에서 나온 것이다.**
+       *
+       * 344로 바로잡고 실측하니 원작대로 막힌다 (`_east42`, 도시단계 1 ·
+       * 쿠폰 2/3): 제품의 `triggerAt`이 (188, 757~760) 네 칸에서 **script 3**을
+       * 그대로 풀고, 동쪽으로 밀면 스크립트가 서면서 187로 되밀려 344에
+       * 못 나간다.
+       *
+       * 그래도 **짐작으로 접지 않고 한 번 밀어 본다.** 막히면 그때 종속 구간을
+       * 원인과 함께 접고, 열려 있으면 평소대로 걷는다
+       */
+      const ROUTE_203 = 344
+      const eastProbe = poketch.done ? 'received'
+        : api.left() > 0 ? await api.goTo(ROUTE_203, Math.min(120_000, api.left()))
+          : '시간이 다 됐다'
+      const eastLocked = eastProbe !== 'received' && eastProbe !== 'arrived'
+      log(`  동쪽(203번도로 ${String(ROUTE_203)}) 통행 시험 → ${eastProbe}`
+        + `${eastLocked ? ' — 잠겼다고 본다' : ''}`)
+      poketch.east = eastProbe
+      /** 축복시티 **동쪽**이라 포켓치가 있어야 닿는 자리들 */
+      const EAST_OF_JUBILIFE = new Set([45, 198, 47])
+
+      /**
+       * `--from=<id>`가 가리키는 자리 **앞의** 구간들. 건너뛰면 결과 줄을
+       * **안 만든다** — 그래야 봉투의 `executedCases`에서 빠져 「미실행」이 된다
+       */
+      const skipBefore = resume.ok ? resume.segment.id : null
+
       for (const stop of AFTER_STOPS) {
+        if (skipBefore !== null && stop.id < skipBefore) {
+          log(`${stop.what}(${String(stop.map)}) → 건너뛴다 (미실행 · --from=${skipBefore})`)
+          continue
+        }
         if (api.left() <= 0) { seen.push({ ...stop, verdict: '시간이 다 됐다' }); continue }
-        const verdict = await api.goTo(stop.map, Math.min(480_000, api.left()))
+        if (eastLocked && EAST_OF_JUBILIFE.has(stop.map)) {
+          const why = `동쪽이 잠겼다 (${eastProbe}) — 포켓치를 못 받았다 (${String(poketch.why)})`
+          log(`${stop.what}(${String(stop.map)}) → ${why}`)
+          seen.push({ ...stop, verdict: why, at: null })
+          api.trouble.push(`${stop.what}: ${why}`)
+          continue
+        }
+        /**
+         * ⚠️ **쓰러진 채로 다음 자리로 가지 않는다.** 전멸하면 원작은 마지막
+         * 회복 자리로 되돌려 보내는데, 그것을 안 보면 하네스는 「걷다 길을
+         * 잃었다」로 읽는다 — 실측(2026-09-07)으로 축복시티에서 무쇠로 가랬더니
+         * 떡잎마을(411)에 서 있었고, 세 자리를 8분씩 헤매다 끝났다.
+         *
+         * ⚠️ **체육관 앞에서는 늘 회복한다.** 사람도 그렇게 한다. 관장은 12~14
+         * 레벨 셋이라 반쯤 깎인 채로 들어가면 진다
+         */
+        const before = await api.partyState()
+        const need = api.fullyHealed(before)
+        const hurt = before.some((p) => p.hp <= 0)
+        const center = CENTERS[stop.map] ?? null
+        /** 이 자리 앞의 회복이 **계약대로** 됐는가. 안 됐으면 관장에게 안 간다 */
+        let healOk = need.ok
+        if (center !== null && (!need.ok || stop.map === 47)) {
+          const got = await api.healAt(center, Math.min(300_000, api.left()))
+          healOk = got.ok
+          log(`  ${stop.what} 앞 회복 (센터 ${String(center)}) → `
+            + `${got.ok ? '나았다' : String(got.why)}`)
+          heals.push({ before: stop.map, center, was: need.why, ...got })
+        }
+        if (hurt) api.trouble.push(`${stop.what} 앞에서 파티가 쓰러져 있었다 (전멸했을 수 있다)`)
+        /**
+         * ⚠️ **480초로는 모자랐다.** 실측(2026-09-08): 예진호수가 열린 뒤 처음
+         * 축복시티까지 갔는데, 거기서 무쇠시티·탄광·체육관 셋이 **전부**
+         * 「시간이 다 됐다」로 떨어졌다 — 그런데 그때 전체 예산은 **37분이
+         * 남아 있었다.** 막은 것은 게임이 아니라 이 한 줄이었다. 축복시티로
+         * 가는 걸음이 900초를 받는 것과 같은 까닭이고(바로 위), 무쇠로 가는
+         * 길은 203번도로와 무쇠게이트를 지나므로 그보다 짧지 않다.
+         *
+         * ⚠️ **전체 예산은 그대로다.** `api.left()`가 늘 함께 걸리므로 이 값을
+         * 올려도 한 판이 길어지지 않는다 — 남은 시간을 **쓰는** 것뿐이다
+         */
+        const verdict = await api.goTo(stop.map, Math.min(900_000, api.left()))
         await api.settle()
         const at = await marks()
         log(`${stop.what}(${String(stop.map)}) → ${verdict} · 지금 맵 ${String(at.map)}`)
         seen.push({ ...stop, verdict, at: at.map ?? null })
         if (verdict === 'arrived') {
           shots.push(await shot(`stop-${stop.id}`))
-          // 그 자리의 트레이너에게 차례로 말을 건다 — 탄광의 관장이 여기 있다
+          /**
+           * **정상 진행으로 여기까지 왔다**는 자리를 적어 둔다. 다음 판이
+           * `--from`으로 여기서 이어 달릴 수 있다 — 신원이 같을 때만이다.
+           *
+           * ⚠️ **정상 입력으로 선 판에서만 적는다.** 건너뛰어 온 판에서 다시
+           * 적으면 「검증된 자리」가 스스로를 증명하는 꼴이 된다
+           */
+          if (skipBefore === null) {
+            const file = `seg-${stop.id}.rpsave`
+            const kept = await writeReport(file)
+            if (kept.ok) {
+              const where = await whereNow()
+              writeSegment(stop.id, `.audit/journey/${file}`, {
+                map: where.world.map, matrix: where.world.matrix,
+                x: where.player.x, z: where.player.z,
+                poketch: poketch.done, badges: (await readSave()).badges,
+              })
+              log(`  구간 ${stop.id}을 적어 뒀다 (${file})`)
+            } else log(`  구간 ${stop.id}을 못 적었다 — ${String(kept.why)}`)
+          }
+          /**
+           * ⚠️ **관장은 트레이너 표에 없다.** `trainersOn(47)`이 내는 둘은
+           * 체육관 **부하** 둘(스크립트 3243·3244)이고, 관장 로안은
+           * `trainerType: 0`인 **사람**이다 — 맵 47의 (5,3), 스크립트 1.
+           * 원작도 그렇다: `OreburghGym_Roark`가 스크립트 항목 첫째고, 그 안에서
+           * `StartTrainerBattle TRAINER_LEADER_ROARK` → 이기면 `GiveBadge`다
+           * (`raw/decomp/…/scripts_oreburgh_city_gym.s`).
+           *
+           * 그래서 오래 **말을 건 적이 없다.** 부하 둘에게 말을 걸고 배지가
+           * 0인 것을 보고 끝났다 (실측). 탄광(198)의 로안도 사람이다 —
+           * (19,4) 스크립트 7235
+           */
+          for (const who of NPC_STOPS[stop.map] ?? []) {
+            if (api.left() <= 0) break
+            // ⚠️ **회복이 안 된 채로 관장에게 안 간다.** 지면 전멸해서 처음으로
+            // 되돌아가고, 그 판은 「배지 0개」만 남긴다 — 왜 0인지가 안 보인다
+            if (stop.map === 47 && !healOk) {
+              log(`  ${who.what} → 회복이 안 돼서 안 갔다`)
+              metNpcs.push({ map: stop.map, ...who, said: false, why: '회복 실패' })
+              continue
+            }
+            const said = await api.talkToNpc(stop.map, who.script, Math.min(180_000, api.left()))
+            await api.settle()
+            const badges = (await readSave()).badges
+            log(`  ${stop.what} ${who.what} → ${said ? '만났다' : '못 만났다'}`
+              + ` · 배지 ${String(badges)}개`)
+            metNpcs.push({ map: stop.map, ...who, said, badges })
+          }
+          // 그 자리의 트레이너들 (체육관 부하 둘)
           for (const t of trainersOn(stop.map)) {
             if (api.left() <= 0) break
             const said = await api.talkTo(stop.map, { x: t.x, z: t.z }, Math.min(150_000, api.left()))
@@ -457,18 +881,27 @@ try {
           }
         }
       }
-      return { seen, poketch, badges: (await readSave()).badges }
+      return { seen, metNpcs, heals, poketch, badges: (await readSave()).badges }
     },
   })
   Object.assign(story, drive)
 
-  add('04', '파트너를 고르고 라이벌전을 치른다',
-    drive.trainer > 0 ? 'PASS' : 'FAIL',
-    `트레이너전 ${String(drive.trainer)}회 · 지난 맵 ${String(drive.maps.length)}개`)
-  add('05', '야생 배틀이 열린다', drive.wild > 0 ? 'PASS' : 'FAIL', `야생 ${String(drive.wild)}회`)
-  add('06', '상점이 열린다', drive.shops > 0 ? 'PASS' : 'FAIL', `상점 ${String(drive.shops)}회`)
-  add('07', '202번도로까지 이어진다', drive.maps.includes(343) ? 'PASS' : 'FAIL',
-    drive.missed.length === 0 ? '길목을 다 지났다' : `못 지난 길목: ${drive.missed.slice(0, 3).join(' · ')}`)
+  /**
+   * ⚠️ **이어 달린 판은 ④~⑦을 안 만든다.** 그 줄들이 재는 것은 이 판이
+   * **걸어서 지나온 것**인데, 이어 달린 판은 그 길을 안 걸었다. 0회를 FAIL로
+   * 적으면 없는 결함이 생기고, PASS로 적으면 거짓이다 — 그래서 **줄을 안
+   * 만든다.** 봉투가 그것을 미실행으로 적는다 (`executedCases`)
+   */
+  if (!resume.ok) {
+    add('04', '파트너를 고르고 라이벌전을 치른다',
+      drive.trainer > 0 ? 'PASS' : 'FAIL',
+      `트레이너전 ${String(drive.trainer)}회 · 지난 맵 ${String(drive.maps.length)}개`)
+    add('05', '야생 배틀이 열린다', drive.wild > 0 ? 'PASS' : 'FAIL', `야생 ${String(drive.wild)}회`)
+    add('06', '상점이 열린다', drive.shops > 0 ? 'PASS' : 'FAIL', `상점 ${String(drive.shops)}회`)
+    add('07', '202번도로까지 이어진다', drive.maps.includes(343) ? 'PASS' : 'FAIL',
+      drive.missed.length === 0 ? '길목을 다 지났다'
+        : `못 지난 길목: ${drive.missed.slice(0, 3).join(' · ')}`)
+  }
 
   const seen = drive.extra?.seen ?? []
   const poketch = drive.extra?.poketch ?? null
@@ -485,7 +918,15 @@ try {
   }
 
   const badges = (await readSave()).badges
-  add('12', '첫 배지를 받는다', badges > 0 ? 'PASS' : 'FAIL', `배지 ${String(badges)}개`)
+  // ⚠️ **왜 못 받았는지가 이 줄에 있어야 한다.** 「배지 0개」만 적으면 관장을
+  // 못 만난 것인지, 만나서 진 것인지, 이겼는데 지급이 안 된 것인지를 못 가른다
+  const metNpcs = drive.extra?.metNpcs ?? []
+  add('12', '첫 배지를 받는다', badges > 0 ? 'PASS' : 'FAIL',
+    `배지 ${String(badges)}개`
+    + (metNpcs.length === 0 ? ' · 말을 걸 사람 목록이 비었다'
+      : ` · ${metNpcs.map((m) => `${String(m.what)} ${m.said ? '만났다' : '못 만났다'}`).join(' · ')}`))
+  // 관장을 만난 뒤·전투가 끝난 뒤의 화면이다. 배지를 못 받았으면 그 사실이
+  // 이름과 위 줄에 그대로 남는다
   shots.push(await shot('after-gym'))
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────
@@ -496,6 +937,9 @@ try {
       : String(endSave.why))
 
   // ── ⑭ 앱을 다시 켜서 이어하기 ────────────────────────────────────────────
+  // ⚠️ **기준은 저장한 값이다.** 아래 판정은 이 스냅샷의 `save`와 되켠 뒤의
+  // `world`·`player`를 견준다 — DOM의 내림한 칸이 아니다
+  const beforeWhere = await whereNow()
   const before = await marks()
   const t2 = Date.now()
   await page.goto(url, { waitUntil: 'load' })
@@ -515,13 +959,106 @@ try {
   ).then(() => true).catch(() => false)
   timings.warmResumeMs = Date.now() - t2
   await settle()
+  /**
+   * **저장한 자리에 설 때까지** 기다린다 — 벽시계 상한을 걸고.
+   *
+   * ⚠️ **`data-map`이 붙은 것과 그 자리에 선 것은 다르다.** 예전 `MapStreamer`는
+   * 오버월드 **기본 스폰**(떡잎마을 · 112.5,880.5)으로 한 번 세운 뒤 실내 격자를
+   * 비동기로 받아 다시 세웠다. 그 사이에 재면 세이브가 멀쩡해도 「맵 411 칸
+   * 112,880」이 나왔다 — 실측으로 그것을 이어하기의 결함으로 적을 뻔했다.
+   * 지금은 **목적지에 한 번만 들어선다**(`scene/restoreWorld`) — 그래도
+   * 이 기다림은 남긴다: 격자를 받는 동안은 여전히 아무 데도 안 서 있고,
+   * 그때 재면 「맵 없음」이 나온다.
+   *
+   * ⚠️ **못 서면 그대로 떨어진다.** 기다림은 무한이 아니고, 상한에 닿으면
+   * 마지막으로 본 자리를 그대로 판정에 넘긴다
+   */
+  const waitRestored = async (want, capMs = 45_000) => {
+    const t0 = Date.now()
+    let last = null
+    let still = null
+    while (Date.now() - t0 < capMs) {
+      const m = await marks()
+      const w = await whereNow()
+      last = w
+      /**
+       * **복원이 끝났다**는 상태를 못 박는다. 고정 시간을 기다리면 그것은
+       * 「대충 이쯤이면 됐겠지」고, 느린 기계에서는 아직 아니고 빠른 기계에서는
+       * 낭비다. 여기서 요구하는 것은 넷이다:
+       *
+       *   ⓪ 제품이 「아직 세우는 중」을 안 적고 있다 (`data-restoring`)
+       *   ① 세이브가 가리키는 맵·행렬에 서 있고 격자가 있다
+       *   ② 필드다 (`scene === 'overworld'`)
+       *   ③ 스크립트도 대사도 안 돈다 — 아직 무언가 옮기는 중이면 자리가 바뀐다
+       *   ④ 자리가 **연달아 두 번 같다** — 마지막 한 걸음이 아직 안 끝났을 수 있다
+       *
+       * ⚠️ **성공을 전제하지 않는다.** ①은 「세이브 맵에 섰는가」라 못 서면
+       * 상한까지 기다리다 FAIL이고, 그때 마지막으로 본 자리를 그대로 넘긴다
+       */
+      const ready = m.restoring === undefined
+        && w.world.map === want.map && w.world.matrix === want.matrix
+        && w.world.grid && m.scene === 'overworld'
+        && m.script === undefined && m.talk === undefined
+      const here = `${String(w.player.x)},${String(w.player.z)}`
+      if (ready && still === here) return { ok: true, ms: Date.now() - t0, at: w }
+      still = ready ? here : null
+      await page.waitForTimeout(250)
+    }
+    return { ok: false, ms: Date.now() - t0, at: last }
+  }
+  const restored = await waitRestored(beforeWhere.save)
+  timings.restoreMs = restored.ms
   const back = await marks()
+  const backWhere = restored.at
   shots.push(await shot('resumed'))
-  const sameMap = back.map === before.map
-  add('14', '앱을 다시 켜면 이어하기로 그 자리에 선다', sameMap ? 'PASS' : 'FAIL',
-    `${String(Math.round(timings.warmResumeMs / 1000))}초 · 나갈 때 맵 ${String(before.map)} 칸 ${String(before.tile)}`
-    + ` → 돌아온 맵 ${String(back.map)} 칸 ${String(back.tile)}`
-    + (stood ? '' : ' · 60초를 기다려도 맵이 안 섰다'))
+  /**
+   * ⚠️ **맵 번호만 보면 안 된다.** 예전 판은 `back.map === before.map` 하나였고,
+   * 그러면 **같은 맵의 엉뚱한 자리**가 그대로 통과한다. 지금은 저장한 값과
+   * 견준다 — 맵·행렬·좌표·방향, 그리고 월드가 실제로 섰는가까지.
+   *
+   * 좌표는 **딱 맞아야 한다.** 복원은 세이브의 x·z를 그대로
+   * `enter(next, at.map, at.x, at.z, at.matrix)`에 넣는다 — 보정이 없다.
+   * 실측(침실 415/129와 무쇠 414/128, 두 판)에서 어긋남이 **0.00**이었다.
+   *
+   * ⚠️ **`walkOutOfDoor`의 한 칸 보정을 여기 끌어오지 않는다.** 그것은 **문으로
+   * 들어설 때** 통행 불가 타일에서 한 칸 내려 세우는 것이고 워프 경로의 일이다.
+   * 그걸 핑계로 허용 범위를 반 칸으로 넓히면 **같은 맵의 옆 칸**이 통과한다.
+   * 여기 `EPS`는 실수 왕복에서 생길 수 있는 오차만 본다.
+   *
+   * 높이(y)는 안 본다 — 격자가 다시 내주는 값이라 자료가 바뀌면 따라간다
+   * (`MapStreamer`가 그 까닭을 적는다). 방향은 라디안이고 0.01(약 0.6도)이다
+   */
+  const EPS = 0.01
+  const FACE_TOL = 0.01
+  const want = beforeWhere.save
+  // 한 번도 못 읽었으면 **없는 자리**로 둔다 — 판정이 조용히 통과하면 안 된다
+  const got = backWhere ?? {
+    world: { map: -1, matrix: -1, grid: false },
+    player: { x: NaN, z: NaN, facing: NaN },
+  }
+  const gap = {
+    x: Math.abs(got.player.x - want.x), z: Math.abs(got.player.z - want.z),
+    facing: Math.abs(Math.atan2(Math.sin(got.player.facing - want.facing),
+      Math.cos(got.player.facing - want.facing))),
+  }
+  const sameMap = got.world.map === want.map && got.world.matrix === want.matrix
+  const samePlace = gap.x <= EPS && gap.z <= EPS
+  const sameFacing = gap.facing <= FACE_TOL
+  const ready = stood && got.world.grid && restored.ok
+  const at = (w) => `${String(w.map ?? w.world?.map)}/${String(w.matrix ?? w.world?.matrix)}`
+  add('14', '앱을 다시 켜면 이어하기로 **저장한 그 자리**에 선다',
+    ready && sameMap && samePlace && sameFacing ? 'PASS' : 'FAIL',
+    `${String(Math.round(timings.warmResumeMs / 1000))}초 · 저장한 자리 ${at(want)}`
+    + ` ${want.x.toFixed(2)},${want.z.toFixed(2)}`
+    + ` → 돌아온 자리 ${at(got)} ${got.player.x.toFixed(2)},${got.player.z.toFixed(2)}`
+    + ` · 어긋남 x${gap.x.toFixed(2)} z${gap.z.toFixed(2)} 방향${gap.facing.toFixed(2)}`
+    + ` · 복원 ${String(Math.round(restored.ms / 100) / 10)}초`
+    + (restored.ok ? '' : ` · **${String(Math.round(restored.ms / 1000))}초를 기다려도 저장한 맵에 안 섰다**`)
+    + (stood ? '' : ' · 60초를 기다려도 맵이 안 섰다')
+    + (sameMap ? '' : ' · **다른 맵이다**')
+    + (samePlace ? '' : ' · **같은 맵이라도 다른 자리다**')
+    + (sameFacing ? '' : ' · 방향이 다르다')
+    + ` · DOM 칸 ${String(before.tile)} → ${String(back.tile)}`)
 
   // ⚠️ **3D가 진짜 그려졌는가.** 계기판을 숨기고 **캔버스만** 잰다 — 화면
   // 전체로 재면 DOM이 문턱을 혼자 넘긴다 (위 `shot`이 왜인지를 적는다).
@@ -533,19 +1070,46 @@ try {
   const WORLD_NEED = ['bedroom', 'after-gym', 'resumed']
   const short = missingShots(WORLD_NEED, shots.map((one) => one.name))
   const world = shots.filter((one) => one.canvas !== undefined)
-  const blank = world.filter((one) => !one.canvas.drawn)
-  const shook = world.filter((one) => !one.canvas.steady)
-  add('15', '3D 화면이 실제로 그려져 있다 (캔버스만 떼어 잰다)',
-    short.length > 0 ? 'BLOCKED' : blank.length === 0 && shook.length === 0 ? 'PASS' : 'FAIL',
+  /**
+   * ⚠️ **준비와 화면을 가른다** (지시 §3).
+   *
+   * 「지형이 설 때까지」 기다리다 상한을 넘은 컷은 **판정 불가**다 — 그 컷의
+   * 그림이 무엇이든 「제품이 못 그린다」의 증거가 못 된다. 반대로 **준비가
+   * 됐다고 선언한 뒤**에 그림이 틀렸으면 그건 덜 기다린 것이 아니라
+   * **화면 결함**이다.
+   *
+   * ⚠️ **준비 실패도 결과다.** 사용자는 그 시간 동안 실제로 빈 화면을 봤다 —
+   * 「기다렸더니 됐다」로 접지 않는다
+   */
+  const notReady = world.filter((one) => one.readiness?.ok === false)
+  const judged = world.filter((one) => one.readiness?.ok !== false)
+  const blank = judged.filter((one) => !one.canvas.drawn)
+  const shook = judged.filter((one) => !one.canvas.steady)
+  /** 실패한 그 실행에서 30초를 더 봤을 때 끝내 안 채워진 컷 */
+  const stuck = blank.filter((one) => (one.after ?? []).every((r) => r.drawn !== true))
+  const bad = notReady.length > 0 || blank.length > 0 || shook.length > 0
+  add('15', '3D 화면이 실제로 그려져 있다 (캔버스만 떼어 지형 칸으로 잰다)',
+    short.length > 0 ? 'BLOCKED' : bad ? 'FAIL' : 'PASS',
     short.length > 0
       ? `${short.join(' · ')} 자리까지 못 갔다 — 앞 줄을 본다`
-      : blank.length === 0 && shook.length === 0
-        ? world.map((one) => `${one.name} 색 ${String(one.canvas.colors)}`).join(' · ')
-        : `${String(blank.length)}/${String(world.length)}컷의 3D가 거의 한 색이다: `
-          + blank.map((one) => `${one.name} (색 ${String(one.canvas.colors)}`
-            + ` · 흩어짐 ${String(one.canvas.stdev)})`).join(' · ')
-          + (shook.length > 0 ? ` · 찍는 동안 흔들린 컷 ${String(shook.length)}개` : '')
-          + ` ｜ 같은 컷을 화면 전체로 재면 색 ${world.map((one) => String(one.colors)).join('·')}다`)
+      : !bad
+        ? world.map((one) => `${one.name} 지형칸 ${String(one.canvas.filled)}`
+          + `/${String(one.canvas.need)} · ${String(one.readiness.waitedMs)}ms 기다렸다`).join(' · ')
+        : [
+          notReady.length === 0 ? null
+            : `준비 실패 ${String(notReady.length)}컷 (판정 불가) — `
+              + notReady.map((one) => `${one.name}: ${String(one.readiness.why)}`
+                + ` (${String(one.readiness.waitedMs)}ms)`).join(' · '),
+          blank.length === 0 ? null
+            : `준비됐다는데 지형이 없다 ${String(blank.length)}/${String(judged.length)}컷 — `
+              + blank.map((one) => `${one.name} (지형칸 ${String(one.canvas.filled)}`
+                + `/${String(one.canvas.need)} · 색 ${String(one.canvas.colors)}`
+                + ` · 옛 잣대로는 ${one.canvas.flatOnly ? '통과' : '실패'})`).join(' · '),
+          stuck.length === 0 ? null
+            : `그 실행에서 30초를 더 봐도 안 채워진 컷 ${String(stuck.length)}개`
+              + ` — 늦게 그리는 것이 아니다`,
+          shook.length === 0 ? null : `찍는 동안 흔들린 컷 ${String(shook.length)}개`,
+        ].filter((l) => l !== null).join(' ｜ '))
 
   const errors = noise.filter((one) => one.kind !== 'warning')
   add('16', '콘솔이 조용하다', noise.length === 0 ? 'PASS' : 'FAIL',
@@ -580,6 +1144,7 @@ mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 // 파일과 열일곱 줄을 다 돌린 파일이 똑같아 보이면 안 된다 — 실제로 밟은 목록을
 // 여기서 넘기고, 판정은 `validateEvidence`가 정본과 맞대어 한다
 writeFileSync(resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
+  dataAtStart,
   suite: 'journey',
   expectedCases: EXPECTED_CASES,
   executedCases: rows.map((r) => r.id),

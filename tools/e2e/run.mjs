@@ -21,7 +21,7 @@ import { serveDist } from './serve.mjs'
 import { startVite } from '../devServer.mjs'
 import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import {
-  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+  bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
 import { compareHeader } from '../distribution/csp.mjs'
 import { driveStory, OPENING_NAMES, playOpening } from './drive.mjs'
@@ -164,6 +164,8 @@ const EXPECTED_CASES = rosterOf('installed-e2e').cases
  * 지문만 봐서는 그것이 안 보인다 (`distribution/evidence.mjs`)
  */
 const START_DIGEST = bindingDigest('installed-e2e')
+/** 도는 동안 자료가 바뀌었는지 보려고 시작 지문을 같이 든다 (지시 §7) */
+const dataAtStart = dataDigest()
 
 /**
  * 어느 기계에서, 어느 길로 그린 값인가. **시험이 지나가는 길에 주워 둔다.**
@@ -2118,6 +2120,7 @@ const ENVIRONMENT = describeEnvironment({
 })
 
 writeFileSync(resolve(ROOT, '.audit/e2e.json'), `${JSON.stringify(sealEvidence({
+  dataAtStart,
   suite: 'installed-e2e',
   selection: only.length > 0 ? `--only=${only}` : 'all',
   expectedCases: EXPECTED_CASES,

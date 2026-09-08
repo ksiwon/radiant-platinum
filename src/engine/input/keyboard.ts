@@ -12,7 +12,10 @@ export { attachKeyboard, setGameActive, setUiCapture, isUiCaptured } from './key
 /** 매 fixedUpdate 직전에 호출 — 키 상태를 InputState로 합성 */
 export const inputSystem = {
   fixedUpdate() {
-    if (!isGameActive() || isUiCaptured()) {
+    // ⚠️ **복원 중에는 키가 주인공까지 가면 안 된다.** 저장한 자리가 아직 안
+    // 선 동안 걸으면, 갈아 끼우는 순간 **엉뚱한 데서 걷던 걸음**이 저장한 자리로
+    // 옮겨진다 (`state/worldState`의 `restoring`이 까닭을 적는다)
+    if (!isGameActive() || isUiCaptured() || worldState.restoring) {
       worldState.input.move.set(0, 0)
       worldState.input.run = false
       worldState.input.interact = false

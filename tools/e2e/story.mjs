@@ -42,7 +42,7 @@ import { looksFlat, statsOf } from '../shot/png.mjs'
 import { playOpening } from './drive.mjs'
 import { installSceneWatch, readSceneWatch, takeSceneWatch } from './sceneWatch.mjs'
 import {
-  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+  bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
 import { missingData } from './route.mjs'
 
@@ -58,6 +58,8 @@ const OUT = resolve(ROOT, 'shots/story')
  * (`distribution/evidence.mjs`)
  */
 const START_DIGEST = bindingDigest('story')
+/** 도는 동안 자료가 바뀌었는지 보려고 시작 지문을 같이 든다 (지시 §7) */
+const dataAtStart = dataDigest()
 
 const args = process.argv.slice(2)
 const flag = (name, fallback) => {
@@ -906,6 +908,111 @@ if (ACTS.has('2')) {
       // 고요해진 **뒤에** 재는 창이 판정 대상이다. 걸으면서 잰다 — 서 있는
       // 장면은 안 끊긴다. 끊김은 청크가 붙고 사람이 뜨는 동안 나온다
       const stood = await marks(page)
+      /**
+       * **걷기 전의 한 컷** — 그 지점이 이름 붙인 **바로 그 자리**다.
+       *
+       * ⚠️ **문 앞 지점은 한 걸음이 곧 다른 맵이다.** `door`가 그렇다: 맵 414의
+       * (6,10)이 맵 411로 나가는 문이라, 걸은 **뒤**의 컷은 이미 실외다. 그래서
+       * 두 장면을 다 남긴다 — 여기가 **실내(414)**, 아래가 **문을 지난 뒤(411)**.
+       * 어느 쪽도 다른 쪽을 대신하지 않는다
+       */
+      /**
+       * **덮개가 걷혔는지, 무엇이 화면을 덮고 있는지.**
+       *
+       * 값(`fadeAlpha`)과 실제로 덮은 판을 나란히 본다 — 둘이 어긋나는 판이
+       * 있어서 하나만 봐서는 「다 그려졌는데 거의 한 색」을 못 가른다
+       */
+      const coverProbe = () => page.evaluate(async () => {
+        const fade = await import('/src/engine/script/fade.ts')
+        const st = await import('/src/state/worldState.ts')
+        const f = fade.screenFade.now
+        const el = document.querySelector('[aria-hidden][class*="cover"]')
+        return {
+          fade: f === null ? null : {
+            alpha: +fade.fadeAlpha().toFixed(3), from: f.from, to: f.to,
+            elapsed: f.elapsed, frames: f.frames, done: fade.fadeDone(),
+          },
+          overlayOpacity: el === null ? null : getComputedStyle(el).opacity,
+          restoring: st.worldState.restoring,
+          /** 화면을 덮은 판 가운데 실제로 보이는 것들 */
+          screens: [...document.querySelectorAll('body *')]
+            .filter((e) => {
+              const cs = getComputedStyle(e)
+              if (cs.position !== 'fixed' || cs.display === 'none') return false
+              const r = e.getBoundingClientRect()
+              return r.width >= innerWidth * 0.9 && r.height >= innerHeight * 0.9
+                && Number(cs.opacity) > 0.02
+            })
+            .map((e) => `${e.className} z${getComputedStyle(e).zIndex} a${getComputedStyle(e).opacity}`)
+            .slice(0, 6),
+        }
+      })
+      /**
+       * **찍을 수 있는 상태가 될 때까지 기다린 다음, 한 번 찍는다.**
+       *
+       * ⚠️ **「색이 많이 나올 때까지 다시 찍기」로 바꾸지 않는다.** 그러면 재는
+       * 것이 「장면이 그려졌는가」에서 「몇 판 만에 그럴듯한 컷이 나오는가」로
+       * 슬그머니 바뀐다. 기다리는 것은 **뜻이 분명한 조건 셋**이다:
+       *
+       *   ① 화면 전환이 끝났다 (`fadeAlpha() === 0`)
+       *   ② 세우는 중이 아니다 (`data-restoring`이 없다)
+       *   ③ 맵이 **연달아 두 번 같다** — 워프가 걸음 **뒤에** 잡히므로,
+       *      한 번 보고 끝내면 아직 안 걸린 순간을 「가만있다」로 읽는다
+       *
+       * 조건이 안 서면 상한에서 **그대로 찍고 그대로 판정한다** — 못 선 것은
+       * 못 선 것이다.
+       */
+      const ready = async (capMs = 20_000) => {
+        const till = Date.now() + capMs
+        let last = null
+        let same = 0
+        while (Date.now() < till) {
+          const m = await marks(page)
+          const c = await coverProbe()
+          const still = m.map === last
+          last = m.map
+          same = still ? same + 1 : 0
+          if (c.restoring !== true && m.restoring === undefined
+            && (c.fade === null || c.fade.alpha === 0) && same >= 1) {
+            return { ok: true, ms: capMs - (till - Date.now()), map: m.map }
+          }
+          await page.waitForTimeout(250)
+        }
+        return { ok: false, ms: capMs, map: last }
+      }
+
+      /**
+       * **실내 컷도 실외 컷과 같은 조건에서 찍는다.**
+       *
+       * ⚠️ **실외 한 번으로 둘 다 검증했다고 하면 안 된다.** 아래 `ready()`는
+       * 문을 지난 **뒤**의 상태를 보는 것이고, 이 컷은 그 **앞**이다 — 뛰어든
+       * 직후의 실내는 청크가 붙는 중이거나 페이드가 아직 덮여 있을 수 있다.
+       * 그래서 여기서도 같은 조건 셋(전환 끝 · 세우는 중 아님 · 맵 연속 동일)을
+       * 기다리고, **그때의 맵을 함께 적는다** — `door`라면 414여야 한다
+       */
+      const beforeReady = await ready()
+      const beforeCover = await coverProbe()
+      const beforeAt = await marks(page)
+      const beforePng = await page.screenshot()
+      const beforePix = statsOf(beforePng)
+      writeFileSync(resolve(OUT, `${String(n).padStart(2, '0')}-${cp.id}-도착.png`), beforePng)
+      extra.before = {
+        /** 찍은 **그 순간**의 맵. 뛰어든 자리의 맵과 다르면 그 컷은 실내가 아니다 */
+        map: beforeAt.map ?? null, tile: beforeAt.tile ?? null,
+        colors: beforePix.colors, stdev: Number(beforePix.stdev.toFixed(1)),
+        flat: looksFlat(beforePix),
+        ready: beforeReady, covered: beforeCover,
+      }
+      // 실내 컷이 노린 맵이 아니거나 덮여 있으면 **그것도 적는다** — 실외 컷이
+      // 멀쩡하다고 실내 컷의 흠이 덮이지 않는다
+      if (String(beforeAt.map) !== String(cp.map)) {
+        trouble.push(`도착 컷의 맵이 ${String(beforeAt.map)}다 (${String(cp.map)}을 노렸다)`)
+      }
+      if (!beforeReady.ok) trouble.push(`도착 컷을 찍을 때 화면이 안 섰다 (${String(beforeReady.ms)}ms)`)
+      if (looksFlat(beforePix)) {
+        trouble.push(`도착 컷이 거의 한 색이다 (색 ${String(beforePix.colors)}`
+          + ` · 흩어짐 ${beforePix.stdev.toFixed(1)} · 덮개 ${JSON.stringify(beforeCover.fade)})`)
+      }
       let walk = { moved: null }
       let steady = await frameWindow(page, FRAME_WINDOW_MS, async () => {
         if (cp.battle === null) walk = await canWalk()
@@ -978,9 +1085,13 @@ if (ACTS.has('2')) {
       if (watched.say !== null) extra.scene = watched.say
       trouble.push(...watched.trouble)
 
-      const at = await marks(page)
+      extra.ready = await ready()
+      const covered = await coverProbe()
       const png = await page.screenshot()
       const pix = statsOf(png)
+      extra.covered = covered
+
+      const at = await marks(page)
       writeFileSync(resolve(OUT, `${String(n).padStart(2, '0')}-${cp.id}.png`), png)
 
       // ── 판정 ──
@@ -995,7 +1106,9 @@ if (ACTS.has('2')) {
       else if (at.map !== cp.map) trouble.push(`맵이 ${at.map}다 (${cp.map}을 노렸다)`)
       if (shape.tri === 0) trouble.push('삼각형 0 — 아무것도 안 올라갔다')
       if (looksFlat(pix)) {
-        trouble.push(`거의 한 색이다 (색 ${pix.colors} · 흩어짐 ${pix.stdev.toFixed(1)})`)
+        trouble.push(`거의 한 색이다 (색 ${pix.colors} · 흩어짐 ${pix.stdev.toFixed(1)}`
+          + ` · 덮개 ${JSON.stringify(covered.fade)}`
+          + ` · 판 ${covered.screens.join(' / ') || '없다'})`)
       }
       if (cp.battle !== null) {
         if (at.scene !== 'battle') trouble.push(`배틀이 안 열렸다 (${at.scene})`)
@@ -1241,6 +1354,7 @@ const executed = [
 ]
 
 writeFileSync(resolve(ROOT, '.audit/story.json'), `${JSON.stringify(sealEvidence({
+  dataAtStart,
   suite: 'story',
   selection: ONLY.length > 0 ? `--only=${ONLY.join(',')}`
     : FROM ? `--from=${FROM}` : ACTS.size < 3 ? `--act=${[...ACTS].join(',')}` : 'all',

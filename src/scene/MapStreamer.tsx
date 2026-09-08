@@ -16,6 +16,8 @@ import {
   disarmWarp, isOutdoors, mapById, scriptBridge, standableSpot, walkOutOfDoor, world,
 } from '../engine/map/world'
 import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fade'
+import { restoreRetry } from '../state/restoreStore'
+import { startRestore } from './restoreWorld'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -477,11 +479,29 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     publishMap(-1)
   }, [setZone, publishMap])
 
+  /**
+   * 실패 화면의 「다시 해 보기」가 이것을 올린다 — 아래 effect가 다시 돈다.
+   *
+   * ⚠️ **다시 마운트하지 않는다.** Canvas를 다시 세우는 것은 장치를 잃었을
+   * 때의 일이고(`rendererStore`), 여기서 못 받은 것은 격자 하나다. 씬을 통째로
+   * 흔들면 잃을 것만 늘어난다
+   */
+  const [restoreTry, setRestoreTry] = useState(0)
+
   // 세이브가 적어 둔 자리에서 시작한다. 새 판이면 그것이 주인공 방이고
   // (`START_LOCATION`) 이어하기면 리포트를 쓴 자리다.
   //
-  // 실내는 그 격자를 따로 받아야 해서 오버월드로 한 번 세운 뒤 갈아 끼운다 —
-  // 첫 프레임에 빈 화면을 안 보이려고
+  // ⚠️ **한 번만 들어선다.** 전에는 오버월드 기본 스폰으로 먼저 `enter`하고
+  // 격자가 오면 저장 자리로 갈아 끼웠는데, `enter`는 렌더만 하는 함수가 아니다 —
+  // `enterMap`·`arriveAt`·`journalChangedMap`·`roamersWarped`·`disarmWarp`와
+  // 세이브의 `exit`·`flute`까지 건드린다. 저장이 실내를 가리키면 **가 본 적도
+  // 없는 기본 스폰의 도착 처리가 매번 한 번씩 돌았다.**
+  //
+  // ⚠️ **덮개도 그 `enter`가 걷고 있었다.** `coverScreen()` 바로 다음 줄의
+  // `enter`가 `enterMap` → `resetFade`로 덮개를 지운다(`script/fade`의
+  // `resetFade` 머리말이 같은 것을 적는다) — 즉 격자를 받는 내내 화면은 안
+  // 덮여 있었고 사람은 기본 스폰을 보고 있었다. 로딩 화면의 책임은 스크립트
+  // 페이드가 아니라 `state/restoreStore`와 그 DOM 화면이 진다
   useEffect(() => {
     // 노트의 쪽을 넘기고 오늘 머리글을 적는다 (`FieldTask_LoadSavedGameMap`).
     // ⚠️ **맵을 세우기 전이다** — 머리글의 자리는 리포트에 적힌 그 자리고,
@@ -495,44 +515,52 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 실측). 다시 도는 것(`back !== null`)은 다르다: 정리에서 격자를 비웠으므로
     // 반드시 다시 세워야 한다
     if (back === null && devWarp.moved()) return () => { forget() }
-    enter(initial, spawn.map, spawn.x, spawn.z, 0)
-    // 시험용 확인 지점으로 들어온 판이면 세이브 자리를 안 들른다. 잠깐이라도
-    // 주인공 방을 비추고 가면 무엇을 보고 있는지 헷갈린다 — 곧 `devWarp.tick`이
-    // 목적지로 옮긴다
-    if (back !== null || !devWarp.claimed()) {
-      const at = back ?? useSaveStore.getState().position
-      if (back === null) worldState.player.facing = useSaveStore.getState().position.facing
-      /**
-       * 서는 높이.
-       *
-       * ⚠️ **깨어진 세계에서만 준다.** 보통 맵은 격자가 다시 내주게 두어야
-       * 자료가 바뀌어도 자리가 따라간다 — 리포트에 적힌 높이를 그대로 믿으면
-       * 지형이 바뀐 자리에서 공중에 뜨거나 묻힌다. 그 세계는 반대다: 격자에
-       * 높이가 없어서 0이 오고, 판을 고르는 `findPlatform`이 (x, y, z) 셋을
-       * 다 보므로 엉뚱한 판이 걸린다 (PARITY §6.10)
-       */
-      const atY = isDistortionFloor(at.map) ? at.y ?? undefined : undefined
-      if (at.matrix === 0) enter(initial, at.map, at.x, at.z, 0, atY)
-      else {
-        // ⚠️ **그 사이에 누가 자리를 가져갔으면 덮어쓰지 않는다.** 격자를 받는
-        // 동안 다른 것이 맵을 갈아 끼울 수 있다 — 확인 지점이 그렇다. 실측:
-        // 209번도로로 뛰어들었는데 주인공 방에 서 있었고, `devWarp`의 동적
-        // import가 이 effect보다 늦게 도착한 실행에서만 그랬다. 그러면
-        // `claimed()`가 아직 false라 여기까지 오고, 늦게 온 이 `enter`가
-        // **이미 옮겨 놓은 자리를 세이브 자리로 되돌린다**
-        const from = world.mapId
-        void gridFor(at.matrix)
-          .then((next) => {
-            if (world.mapId !== from) return
-            enter(next, at.map, at.x, at.z, at.matrix, atY)
-          })
-          .catch(() => {
-            /* 못 받으면 기본 스폰에 그대로 선다 */
-          })
-      }
+    // 시험용 확인 지점으로 들어온 판이면 세이브 자리를 안 들른다 — 곧
+    // `devWarp.tick`이 목적지로 옮긴다. 그때까지 설 자리는 있어야 한다
+    if (back === null && devWarp.claimed()) {
+      enter(initial, spawn.map, spawn.x, spawn.z, 0)
+      return () => { forget() }
     }
-    return () => { forget() }
-  }, [initial, spawn, enter, setZone, publishMap, devWarp, forget])
+
+    const at = back ?? useSaveStore.getState().position
+    /** 다시 도는 것이면 얼굴은 이미 맞다 — 세이브 값으로 되돌리면 안 된다 */
+    const facing = back === null ? useSaveStore.getState().position.facing : null
+    /**
+     * 서는 높이.
+     *
+     * ⚠️ **깨어진 세계에서만 준다.** 보통 맵은 격자가 다시 내주게 두어야
+     * 자료가 바뀌어도 자리가 따라간다 — 리포트에 적힌 높이를 그대로 믿으면
+     * 지형이 바뀐 자리에서 공중에 뜨거나 묻힌다. 그 세계는 반대다: 격자에
+     * 높이가 없어서 0이 오고, 판을 고르는 `findPlatform`이 (x, y, z) 셋을
+     * 다 보므로 엉뚱한 판이 걸린다 (PARITY §6.10)
+     */
+    const atY = isDistortionFloor(at.map) ? at.y ?? undefined : undefined
+
+    // 순서(늦은 응답·정리·재시도)는 `scene/restoreWorld`가 쥔다 — 여기서는
+    // **들어서는 일**만 넘겨준다
+    const cancel = startRestore(at, {
+      overworld: initial,
+      load: gridFor,
+      settle: (next) => {
+        if (facing !== null) worldState.player.facing = facing
+        enter(next, at.map, at.x, at.z, at.matrix, atY)
+        // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
+        // 먼저 덮으면 지워진다. 로딩 화면이 걷히는 그 순간을 이 인이 이어받는다
+        coverScreen()
+        startFade(6, 3, 1, 0)
+      },
+    })
+    return () => {
+      cancel()
+      forget()
+    }
+  }, [initial, spawn, enter, setZone, publishMap, devWarp, forget, restoreTry])
+
+  // 실패 화면이 부를 손잡이를 걸어 둔다. 마운트 밖에서는 눌릴 일이 없다
+  useEffect(() => {
+    restoreRetry.run = () => { setRestoreTry((n) => n + 1) }
+    return () => { restoreRetry.run = null }
+  }, [])
 
   // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
   // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다
@@ -671,7 +699,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [runningShoes])
 
   // 존만 바뀌는 경우(마을 → 도로)도 맵이 바뀐 것이다
+  // ⚠️ **아직 안 들어선 맵에는 안 부른다.** 이 상태는 첫 렌더에서 기본
+  // 스폰이고, 복원이 목적지로 `enter`한 **같은 커밋**의 이 효과는 아직 옛
+  // 값을 들고 돈다 — 그대로 부르면 방금 세운 목적지 위에 기본 스폰의 사람들이
+  // 선다. `enter`가 `world.mapId`를 같은 자리에서 맞추므로 그것과 대조한다
   useEffect(() => {
+    if (world.mapId !== mapId) return
     enterMap(mapId)
   }, [mapId])
 
@@ -811,6 +844,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 프레임마다 도는 일은 정수 비교 셋뿐이다
   const warping = useRef(false)
   useFrame((_, dt) => {
+    // ⚠️ **저장한 자리가 아직 안 섰으면 여기도 안 돈다** (`state/restoreStore`).
+    // 키를 막는 것만으로는 모자란다 — 아래 존 갱신은 **입력 없이** 도는데,
+    // 아직 안 들어선 세계에서는 `world.mapId`가 -1이라 첫 프레임의 좌표가
+    // 어느 존이든 「맵이 바뀌었다」로 읽힌다. 그러면 `arriveAt`이 가 본 적도
+    // 없는 마을의 공중날기 자리를 열고 `journalArrived`가 노트에 적는다
+    if (worldState.restoring) return
     // 깨어진 세계의 승강 발판. 층이 바뀌는 것도 여기서 나므로 워프보다 먼저
     // 돈다 (PARITY §6.10)
     distortionRideTick(dt)

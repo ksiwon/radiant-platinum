@@ -247,6 +247,8 @@
 | 필드 카메라의 신원과 투영 (`scene/fieldCamera`) | `scene/fieldCamera.test.ts`(퇴화한 투영이 안 태어난다) · **브라우저는 `pnpm render:first`의 ④** | REPAIR §41 |
 | 그리는 크기 (`scene/EngineDriver`의 크기 불변식) | `pnpm journey` ⑮(찍은 화면이 실제로 그려졌는가)·⑯ — 어긋나면 프레임이 통째로 버려지고 3D만 검게 남는다 | REPAIR §39 |
 | 맵 그래프·길 찾기 (`tools/e2e/route.mjs`) | `pnpm journey` ⑧~⑪(걸어서 닿는가) — 이웃 판정을 느슨하게 하면 **없는 길**이 난다 | REPAIR §40 |
+| 이어하기의 수명주기 (`state/restoreStore` · `scene/restoreWorld`) | `scene/restoreWorld.test.ts`(늦은 응답·정리·재시도가 남의 잠금을 푸는가) · `engine/input/restoreGate.test.ts`(복원 중 방향키) · **브라우저는 `pnpm journey`의 ⑭** | REPAIR §42 |
+| 길 계획의 끝난 까닭 (`tools/e2e/route.mjs`의 `planPath`) | `node tools/e2e/planBench.mjs`(옛 구현과 걸음 수·본 칸 수 대조, 7사례) — 상한 소진을 「길이 없다」로 읽으면 엉뚱한 구역으로 간다 | REPAIR §42 |
 | `<html>`의 읽기 전용 표식 (`app/sceneMark`) | `app/sceneMark.test.ts` · 하네스 넷이 이 값으로 판정한다 | — |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은

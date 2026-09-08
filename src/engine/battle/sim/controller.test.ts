@@ -23,6 +23,8 @@ const LUXRAY = 405
 const RATTATA = 19
 const BLISSEY = 242
 const ARCEUS = 493
+const SHINX = 403
+const GEODUDE = 74
 /** 빈 턴 칸이 쓰는 물장구의 롬 번호 */
 const SPLASH = 150
 
@@ -136,6 +138,46 @@ describe('배틀 진행', () => {
     expect(a.view.winner).toBe(b.view.winner)
     expect(a.all.map((e) => e.kind).join()).toBe(b.all.map((e) => e.kind).join())
   }, 30_000)
+
+  it('쓰러진 벤치를 데리고 들어간 판도 **질 수 있다**', async () => {
+    // ⚠️ **이 자리에서 우리는 질 수가 없었다.** sim은 배틀이 열리는 자리에서
+    // 남은 마릿수를 팀 크기로 되돌린다 (`battle.js`의 `case 'start'`가
+    // `if (side.pokemonLeft) side.pokemonLeft = side.pokemon.length`). 쓰러진
+    // 채로 들어간 벤치는 `faintMessages`를 안 거치니 그 수를 안 깎고,
+    // `checkWin`은 0일 때만 승부를 낸다 — 그래서 **마지막 한 마리가 쓰러져도**
+    // 배틀이 안 끝나고, sim이 쓰러진 그 마리에게 계속 기술을 묻는다.
+    //
+    // 실측(2026-09-08): 무쇠 체육관에서 첫 부하를 이기고 둘이 쓰러진 채로 둘째
+    // 부하에게 갔더니 배틀이 안 끝났다 — 하네스의 120초 상한을 **일곱 번**
+    // 먹고 예산이 다 떨어졌다. 그 뒤 회복도 관장도 못 갔고 첫 배지가 안 났다.
+    const me = spawn(SHINX, 13, 3, 'p1-0')
+    me.mon.hp = 5
+    const bench = [1, 2].map((i) => {
+      const one = spawn(i === 1 ? TURTWIG : STARLY, 14, 3 + i, `p1-${i}`)
+      one.mon.hp = 0
+      return one
+    })
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [me, ...bench] },
+      foe: { name: '반바지꼬마', team: [spawn(GEODUDE, 9, 13, 'p2-0')] },
+      seed: [3, 7, 13, 29],
+      random: rng(3),
+    })
+    let steps = 0
+    while (!controller.ended && steps < 200) {
+      const options = controller.actions
+      if (!options.length) break
+      await controller.choose(options[0]!)
+      steps++
+    }
+    const mine = controller.results('p1')
+    controller.destroy()
+    expect(mine.every((one) => one.fainted), '이 판으로는 검증이 안 된다 — 누가 살아남았다')
+      .toBe(true)
+    expect(steps, '200수까지 승부가 안 났다').toBeLessThan(200)
+    expect(controller.state.ended, '전원이 쓰러졌는데 배틀이 안 끝났다').toBe(true)
+    expect(controller.finish, '전원이 쓰러졌는데 진 것이 아니다').toBe('loss')
+  }, 60_000)
 
   it('끝난 뒤에 더 고르면 아무 일도 안 일어난다', async () => {
     const { controller } = await BattleController.start({

@@ -41,7 +41,14 @@ maybe('살아 있는 NPC', () => {
 
   it('숨김 플래그가 선 사람은 아예 안 세운다', () => {
     spawnNpcs(TWINLEAF, vars)
-    const hidden = npcActors.list.find((a) => a.info.flag !== null)
+    /**
+     * ⚠️ **0은 숨김 플래그가 아니다.** 배치표의 「조건 없음」이 0으로 적혀 있어서
+     * `flag !== null`로 고르면 **거의 모든 사람**이 걸린다 — 떡잎마을만 해도
+     * 여덟 중 여섯이다. 그 0을 세워 놓고 「숨었다」를 재면, 재려던 것(플래그 하나가
+     * 한 사람을 가린다)이 아니라 **저장소가 0을 막는가**를 재게 된다
+     * (`script/vars`의 `NULL_FLAG` — 원작 `vars_flags.c`의 `flagID == 0`)
+     */
+    const hidden = npcActors.list.find((a) => a.info.flag !== null && a.info.flag !== 0)
     expect(hidden).toBeDefined()
     const flag = hidden!.info.flag!
     const before = npcActors.list.length
@@ -54,6 +61,34 @@ maybe('살아 있는 NPC', () => {
     spawnNpcs(TWINLEAF, vars)
     expect(npcActors.list.length).toBe(before - share)
     expect(npcActors.byLocalID.has(hidden!.localID)).toBe(false)
+  })
+
+  /**
+   * ⚠️ **이것이 없으면 게임의 사람이 통째로 사라진다.** 실측(2026-09-08
+   * `_nurse42`): 무쇠시티 포켓몬센터(맵 48)의 배치표 아홉 명이 **전원** 숨어
+   * 명부가 비었고, 간호사에게 말을 못 걸어 첫 배지에서 멎었다. 세운 것은
+   * 플래그 0 하나였다
+   */
+  it('플래그 0은 아무도 안 숨긴다', () => {
+    spawnNpcs(TWINLEAF, vars)
+    const before = npcActors.list.length
+    const zeros = npcActors.list.filter((a) => a.info.flag === 0).length
+    expect(zeros).toBeGreaterThan(0)
+
+    vars.setFlag(0)
+    spawnNpcs(TWINLEAF, vars)
+    expect(npcActors.list.length).toBe(before)
+
+    /**
+     * ⚠️ **이미 켜진 채로 저장된 리포트가 있다.** 가드는 `setFlag`를 막을 뿐
+     * 지나간 세이브의 바이트를 되돌리지 않는다 — 그런 리포트를 들여와도
+     * 사람이 서야 한다. 실측으로 그 판에서 무쇠 포켓몬센터의 아홉이 전부
+     * 숨어 간호사에게 말을 걸 길이 없었다 (`.audit/journey/seg-09.rpsave`)
+     */
+    vars.flags[0] |= 1
+    spawnNpcs(TWINLEAF, vars)
+    expect(npcActors.list.length).toBe(before)
+    expect(npcActors.list.filter((a) => a.info.flag === 0).length).toBe(zeros)
   })
 
   it('AddObject가 배치표에서 한 명을 되살린다', () => {

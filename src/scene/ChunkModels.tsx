@@ -35,6 +35,7 @@ import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
+import { markTerrain } from './terrainMark'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
 import { mergeByMaterial } from './mergeGroups'
@@ -140,6 +141,18 @@ export function materialsFor(
     const made = item && sheet
       ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep), twoSided)
       : spec.tex === null ? makeMaterial(spec, null, twoSided) : MISSING
+    /**
+     * ⚠️ **이 그림은 이 배치의 것이다.** `sliceTexture`는 부를 때마다 새
+     * `DataTexture`를 만든다 — 나눠 쓰는 것은 **묶음 그림**(`TexSheet`)이지
+     * 잘라 낸 조각이 아니다. 그런데 `Material.dispose()`는 `map`을 안 버리므로,
+     * 버리는 쪽이 「이 그림도 내 것인가」를 알아야 한다.
+     *
+     * 다른 데서 온 그림을 문 재질도 있어서(소품 띠는 `cachedBack`이 든 것을
+     * 나눠 쓴다) **표시가 있는 것만** 버린다
+     */
+    if (made !== MISSING && (made as { map?: Texture | null }).map != null) {
+      made.userData.ownsMap = true
+    }
     if (made !== MISSING) depthPriority(made, i)
     cache.set(key, made)
     return made
@@ -473,9 +486,27 @@ function disposeProps(list: readonly Prop[]): void {
     for (const m of p.materials) {
       if (m === MISSING || seen.has(m)) continue
       seen.add(m)
-      m.dispose()
+      dropMaterial(m)
     }
   }
+}
+
+/**
+ * 재질 하나와 **그 재질이 제 것이라고 표시한 그림**을 버린다.
+ *
+ * ⚠️ **`Material.dispose()`가 `map`을 안 버린다.** GPU 자리의 대부분이
+ * 그림인데 오래 그것을 안 버리고 있었다 — 실측(2026-09-08 `_land42`,
+ * 축복시티↔201번도로 왕복): 씬에서 **닿는** 그림은 431~500장으로 평평한데
+ * three가 세는 **만든** 그림은 242 → 3,496장으로 한 번도 안 줄고 올랐다.
+ * 기하도 144 → 2,181로 같은 모양이다. 「메모리가 높다」가 아니라
+ * **주인 없이 남은 것이 그만큼**이라는 뜻이다.
+ *
+ * ⚠️ **표시가 없는 그림은 남긴다.** 나눠 쓰는 것을 버리면 다음 배치가
+ * 빈 그림을 문다 (`cachedBack`의 띠 그림이 그렇다)
+ */
+function dropMaterial(m: Material): void {
+  if (m.userData.ownsMap === true) (m as { map?: Texture | null }).map?.dispose()
+  m.dispose()
 }
 
 interface Props {
@@ -511,6 +542,32 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
    * 그래서 청크가 아는 것(세운 판)은 청크 effect가, 소품은 소품 effect가 따로
    * 적는다. 소품 쪽이 늦게 와도 나무가 한 번 더 서는 것으로 끝난다
    */
+  /**
+   * 이번에 **받으려 한** 한 벌. 커밋 뒤에 `terrainMark`가 이것을 적는다.
+   *
+   * ⚠️ **`setPlaced`를 부른 자리는 아직 씬이 아니다.** 거기서 적으면
+   * 「지형이 섰다」가 한 프레임 이르고, 그 한 프레임에 찍힌 컷이 하늘 한 장이다
+   */
+  const asked = useRef({
+    mapId: -1, matrix: -1, chunkIndex: -1, want: 0, failed: false, why: null as string | null,
+  })
+  /**
+   * **이 배치가 스스로 만든 지형 재질.** 배치가 바뀌면 앞엣것을 버려야 한다.
+   *
+   * ⚠️ **소품은 버리는데 지형은 안 버리고 있었다.** `materialsFor`의 보관함은
+   * effect가 돌 때마다 **새것**이고, 그 안의 재질은 저마다 `sliceTexture`가
+   * 새로 만든 `DataTexture`를 안고 있다 — 어느 것도 나눠 쓰지 않는다. 그런데
+   * 창이 옮겨 가면 그냥 버려졌다(참조만 끊고 `dispose`는 안 했다).
+   *
+   * 실측(2026-09-08 `_land42`, 축복시티↔201번도로 열다섯 번 왕복): 씬의 메시는
+   * 484~503으로 **평평한데** three가 세는 기하는 137 → 2,712, 그림은
+   * 237 → **7,601**로 한 번도 안 줄고 올랐다. 왕복 한 번에 그림 약 600장이다.
+   *
+   * `pending`은 이번 것, `standingMats`는 화면에 서 있는 것이다 — **그린
+   * 다음에** 앞엣것을 버린다(소품과 같은 차례다)
+   */
+  const pending = useRef<Material[]>([])
+  const standingMats = useRef<Material[]>([])
   const [plateSolid, setPlateSolid] = useState<ReadonlySet<number>>(() => new Set())
   const [propSolid, setPropSolid] = useState<ReadonlySet<number>>(() => new Set())
   // 자리 하나에 최대 스물다섯 칸을 보므로 프레임마다 부를 것은 아니다 — 나무를
@@ -522,6 +579,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   useEffect(() => {
     let alive = true
     const around = [...grid.chunksAround(chunkIndex, radius)]
+    asked.current = {
+      mapId: world.mapId, matrix: world.matrix, chunkIndex,
+      want: around.length, failed: false, why: null,
+    }
     void Promise.all([
       loadTexSheet(texSet),
       Promise.all(around.map((c) => loadChunkMesh(c.land).then((mesh) => ({ c, mesh })))),
@@ -796,6 +857,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         }
         cameraSystem.rooms = rooms
 
+        // 이 배치가 만든 재질 — 커밋 뒤에 앞 배치의 것을 버리는 데 쓴다
+        pending.current = [...cache.values()]
         setPlaced(next)
         setFoliage([...byTexture.values()])
         setRocks([...byRock.values()])
@@ -810,14 +873,34 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         // 물도 자리는 거동값이 준다 — 색만 이 영역 그림에서 가져온다
         setWater({ ...waterField(grid, chunkIndex, radius), colors: waterColors(sheet) })
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (alive) {
+          /**
+           * ⚠️ **오래 이 자리가 조용했다.** 청크를 하나라도 못 받으면
+           * `Promise.all`이 통째로 거절되고, 여기서 빈손으로 접은 뒤
+           * **아무 자국도 안 남겼다** — 밖에서 보이는 것은 「지형 없는 하늘」
+           * 한 장뿐이었고, 그것을 판정하는 자는 「덜 기다렸나」를 의심했다.
+           * 삼키지 않고 적는다 (`scene/terrainMark`가 밖으로 낸다)
+           */
+          const why = String((e as Error | null)?.message ?? e).slice(0, 200)
+          asked.current = { ...asked.current, failed: true, why }
+          pending.current = []
+          console.error(`[scene] 청크를 못 받아 지형을 비웠다 — 맵 ${String(world.mapId)}`
+            + `/${String(world.matrix)} 칸 ${String(chunkIndex)} · ${why}`)
           setPlaced([]); setFoliage([]); setRocks([])
           setGrass(null); setWater(null); setFlowers(null)
         }
       })
     return () => { alive = false }
   }, [grid, chunkIndex, radius, texSet, groundAt])
+
+  /**
+   * **커밋이 끝났다 — 이제 씬에 있다.** 밖에서 「지형이 섰는가」를 상태로
+   * 기다릴 수 있게 한 줄 적는다 (`scene/terrainMark`). 읽기만 되는 자리다
+   */
+  useEffect(() => {
+    markTerrain({ ...asked.current, placed: placed.length })
+  }, [placed])
 
   // 소품(집·간판)은 청크 모델에 없다. 배치 기록이 번호와 자리를 준다
   useEffect(() => {
@@ -921,13 +1004,32 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   // **그린 다음에** 버린다 — 새 목록이 붙은 뒤라야 방금 버린 것을 한 프레임
   // 더 그리는 일이 없다 (소품 재질과 같은 차례다)
   const standing = useRef<Land[]>([])
+  /**
+   * 지형 재질과 그 그림을 같이 버린다.
+   *
+   * ⚠️ **`Material.dispose()`는 `map`을 안 버린다.** 그림이 GPU 자리의 대부분인데
+   * 재질만 버리면 그대로 남는다 — 위 실측의 「그림 7,601장」이 그것이다.
+   *
+   * ⚠️ **`MISSING`은 건드리지 않는다.** 모듈이 하나 들고 온 나눠 쓰는 재질이라
+   * 버리면 그다음 못 찾은 서브메시가 통째로 사라진다
+   */
+  const dropMaterials = (list: readonly Material[]) => {
+    for (const m of list) {
+      if (m === MISSING) continue
+      dropMaterial(m)
+    }
+  }
   useEffect(() => {
     const old = standing.current
+    const oldMats = standingMats.current
     standing.current = placed
+    standingMats.current = pending.current
     for (const p of old) p.merged?.dispose()
+    dropMaterials(oldMats)
   }, [placed])
   useEffect(() => () => {
     for (const p of standing.current) p.merged?.dispose()
+    dropMaterials(standingMats.current)
   }, [])
 
   return (

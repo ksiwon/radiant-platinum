@@ -313,6 +313,12 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     // `renderer.init()`이 끝난 것만으로 조작을 돌려주면 아직 안 선 씬을 걷는다
     // (기획서 §6.2). 이미 `live`면 스토어가 곧바로 되돌아온다
     useRendererStore.getState().markPresented(generation.current)
+    // 무엇으로 그렸는지를 남긴다 — 바뀔 때만 쓴다 (프레임마다 쓰면 값이 든다)
+    if (sceneRefs.stage.camera !== state.camera) sceneRefs.stage.camera = state.camera
+    if (sceneRefs.stage.scene !== state.scene) sceneRefs.stage.scene = state.scene
+    if (sceneRefs.stage.gl !== state.gl) sceneRefs.stage.gl = state.gl
+    // 한 장이 나갔다. 「씬에 붙인 것이 화면에 나갔는가」를 재는 유일한 수다
+    perfSnapshot.frames += 1
 
     // 계측
     const info = (state.gl as unknown as WebGPURenderer).info

@@ -36,7 +36,7 @@ import {
 import { NEED, judgeFirstFrame } from './firstFrameRules.mjs'
 import { statsOf } from '../shot/png.mjs'
 import {
-  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+  bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -66,6 +66,8 @@ const WANT_BACKEND = wantBackend(PROFILE)
 
 const EXPECTED_CASES = rosterOf('render-first')?.cases ?? null
 const START_DIGEST = bindingDigest('render-first')
+/** 도는 동안 자료가 바뀌었는지 보려고 시작 지문을 같이 든다 (지시 §7) */
+const dataAtStart = dataDigest()
 if (EXPECTED_CASES === null) {
   console.error('\n정본 case 목록을 못 냈다 — tools/distribution/evidence.mjs를 본다\n')
   process.exit(1)
@@ -351,6 +353,7 @@ const fails = rows.filter((r) => r.status !== 'PASS')
 // ⚠️ **봉투를 씌운다.** 어느 소스를·어느 기계에서·무엇을 다 돌려서 나온 결과인지가
 // 결과와 한 몸이어야 한다 — 소스가 바뀌면 이 결과는 스스로 무효가 된다
 const sealed = sealEvidence({
+  dataAtStart,
   suite: 'render-first',
   expectedCases: EXPECTED_CASES,
   executedCases: rows.map((r) => r.id),

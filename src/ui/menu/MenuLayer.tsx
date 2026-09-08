@@ -4,6 +4,7 @@
 // 원작도 스크립트가 도는 동안에는 메뉴를 막는다.
 import { useEffect } from 'react'
 import { BINDINGS } from '../../engine/input/keys'
+import { worldState } from '../../state/worldState'
 import { fieldScripts } from '../../engine/script/field'
 import { runRegisteredItem } from '../../scene/registeredItem'
 import { useBattleStore } from '../../state/battleStore'
@@ -50,6 +51,11 @@ export function MenuLayer() {
     if (stackDepth > 0) return
     const onKey = (e: KeyboardEvent): void => {
       if (!OPEN_KEYS.has(e.code) && !REGISTERED_KEYS.has(e.code)) return
+      // ⚠️ **아직 세계가 안 섰으면 안 열린다** (`state/restoreStore`). 이 손은
+      // `inputSystem`을 안 거치고 창에 바로 붙으므로 이동 키 잠금이 여기까지
+      // 안 온다 — 안 막으면 복원 중에 메뉴가 열리고, 거기서 **리포트를 쓰면
+      // 저장한 곳이 아닌 자리가 저장된다**
+      if (worldState.restoring) return
       // 스크립트가 도는 중이면 그쪽이 B를 먼저 쓴다
       if (fieldScripts.ctx !== null) return
       // ⚠️ **배틀 중에도 안 열린다.** 위 주석은 처음부터 그렇게 적혀 있었는데

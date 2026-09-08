@@ -28,7 +28,7 @@ import { chromium } from 'playwright'
 import { freePort, startVite } from '../devServer.mjs'
 import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import {
-  bindingDigest, describeEnvironment, rosterOf, sealEvidence,
+  bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
 import { playOpening } from './drive.mjs'
 import { missingData } from './route.mjs'
@@ -48,6 +48,8 @@ const flag = (name) => {
  * 무효다 (`distribution/evidence.mjs`)
  */
 const START_DIGEST = bindingDigest('gpu-loss')
+/** 도는 동안 자료가 바뀌었는지 보려고 시작 지문을 같이 든다 (지시 §7) */
+const dataAtStart = dataDigest()
 
 const rows = []
 const add = (id, what, status, detail) => {
@@ -459,6 +461,7 @@ function writeResult() {
   mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
   const expected = rosterOf('gpu-loss').cases
   writeFileSync(resolve(ROOT, '.audit/gpuLoss.json'), `${JSON.stringify(sealEvidence({
+  dataAtStart,
     suite: 'gpu-loss',
     selection: flag('url') === null ? 'all' : `--url=${String(flag('url'))}`,
     expectedCases: expected,

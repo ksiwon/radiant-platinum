@@ -1,6 +1,6 @@
 // 씬 오브젝트 레지스트리 — 엔진(순수 TS)과 R3F 씬 사이의 얇은 다리
 // R3F 컴포넌트가 마운트 시 ref를 등록하고, EngineDriver가 매 프레임 변환을 쓴다
-import type { Object3D } from 'three'
+import type { Camera, Object3D, Scene } from 'three'
 import type { Rig } from '../engine/actor/locomotion'
 
 export const sceneRefs: {
@@ -17,11 +17,25 @@ export const sceneRefs: {
   playerClip: boolean
   /** 자전거. 주인공 그룹의 자식이고, 안 탈 때는 `visible`만 꺼 둔다 */
   bike: Object3D | null
+  /**
+   * **지금 실제로 그리는** 카메라·씬·렌더러. `EngineDriver`가 프레임마다
+   * 바뀌었을 때만 채운다.
+   *
+   * ⚠️ **`worldState.camera`와 다르다.** 그쪽은 우리가 **원하는** 시점이고,
+   * 여기 있는 것은 `gl.render(scene, camera)`에 실제로 들어가는 그것이다.
+   * 둘이 어긋난 적이 있다 — R3F가 만든 둘째 카메라의 `aspect`가 0이라
+   * 첫 화면이 통째로 비었다(§41). 그때 밖에서 그것을 잴 길이 없었다.
+   *
+   * ⚠️ **읽기만 하는 자리다.** `player`·`bike`와 같다 — 여기 값을 넣어
+   * 게임을 움직일 길은 없다
+   */
+  stage: { camera: Camera | null, scene: Scene | null, gl: unknown }
 } = {
   player: null,
   playerRig: null,
   playerClip: false,
   bike: null,
+  stage: { camera: null, scene: null, gl: null },
 }
 
 // 성능 계측 스냅샷 (PerfOverlay가 폴링)
@@ -40,4 +54,13 @@ export const perfSnapshot = {
    */
   scriptErrors: 0,
   lastScriptError: null as string | null,
+  /**
+   * **실제로 나간 프레임 수.** `EngineDriver`가 `render()`가 돌아온 뒤에 센다.
+   *
+   * ⚠️ **`fps`로는 「이 상태가 화면에 나갔는가」를 못 잰다.** 씬에 무엇을 붙인
+   * 뒤 그것이 눈에 보이려면 프레임이 한 장 더 나가야 하는데, 밖에서는 그
+   * 한 장을 셀 길이 없어 검사가 **고정 시간을 기다리고** 있었다
+   * (`scene/terrainMark`가 이 수로 기다림을 상태로 바꾼다)
+   */
+  frames: 0,
 }

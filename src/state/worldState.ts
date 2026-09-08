@@ -122,6 +122,23 @@ export const worldState = {
   // `interact`가 원작의 A, `cancel`이 B다. 대사창은 둘 다로 넘어가고
   // (`ScriptContext_CheckABPress`) 예/아니오는 B가 "아니오"로 간다
   input: { move: new Vector2(), run: false, interact: false, cancel: false },
+  /**
+   * **세이브가 가리키는 세계가 아직 안 섰다** (`scene/MapStreamer`).
+   *
+   * 이어하기는 두 걸음이다 — 오버월드를 먼저 세우고 그 위에 저장한 자리를
+   * 갈아 끼운다(실내는 그 격자를 따로 받아야 해서 그렇다). 그 사이가 짧지만
+   * 0은 아니고, 그동안 화면에는 **저장한 곳이 아닌 데 서 있는 주인공**이 보인다.
+   * 그 틈에 방향키가 먹으면 사람은 자기가 어디 있는지 모른 채로 걷는다.
+   *
+   * ⚠️ **`isGameActive`로는 못 막는다.** 그건 화면이 필드인가를 말하는 값이라
+   * `PlayRoute`가 마운트에서 켜고 렌더러가 살아날 때 또 켠다 — 여기서 끄면
+   * 그 둘 중 하나가 곧바로 되돌린다. 그래서 **까닭이 다른 잠금**을 따로 둔다
+   * (`engine/loop/pause`가 정지 까닭을 겹쳐 드는 것과 같은 이유다).
+   *
+   * 이 값이 참인 동안 입력은 지워지고(`engine/input/keyboard`) 화면은 덮여
+   * 있다(`script/fade`의 `coverScreen`). 준비되면 덮개를 걷으며 밝아진다
+   */
+  restoring: false,
 }
 
 export type WorldState = typeof worldState

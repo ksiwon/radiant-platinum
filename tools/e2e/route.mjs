@@ -100,15 +100,25 @@ export function gridOf(matrixId) {
       return tiles[z * meta.tileWidth + x]
     },
     blocked(x, z) { return (grid.at(x, z) & IMPASSABLE) !== 0 },
-    /** 그 칸이 속한 맵 헤더 번호. 실내 행렬은 -1이라 맵이 하나뿐이다 */
+    /**
+     * 그 칸이 속한 맵 헤더 번호. 실내 행렬은 -1이라 맵이 하나뿐이다.
+     *
+     * ⚠️ **표를 한 번 만든다.** 예전에는 칸마다 `chunks.find(...)`를 돌았는데
+     * 행렬 0의 청크가 468개다 — 길 하나를 찾는 동안 수십만 번 부르는 자리라
+     * 선형 훑기가 그대로 계획 시간이 됐다 (실측은 `tools/e2e/planBench.mjs`)
+     */
     zoneAt(x, z) {
       const n = meta.tileWidth / meta.width
       const cx = Math.floor(x / n)
       const cz = Math.floor(z / n)
       if (cx < 0 || cz < 0 || cx >= meta.width || cz >= meta.height) return -1
-      const c = meta.chunks.find((k) => k.i === cz * meta.width + cx)
-      return c ? c.zone : -1
+      return zoneTable[cz * meta.width + cx]
     },
+  }
+  /** 청크 색인 → 존. 없는 칸은 -1이다 */
+  const zoneTable = new Int32Array(meta.width * meta.height).fill(-1)
+  for (const c of meta.chunks) {
+    if (c.i >= 0 && c.i < zoneTable.length) zoneTable[c.i] = c.zone
   }
   gridCache.set(matrixId, grid)
   return grid
@@ -189,42 +199,157 @@ export const STEP = {
  */
 const NODE_CAP = 250_000
 
-export function pathTo(matrixId, from, isGoal, { limit = NODE_CAP, avoid = null } = {}) {
-  const grid = gridOf(matrixId)
-  const start = `${from.x},${from.z}`
-  const prev = new Map([[start, null]])
-  const queue = [from]
-  let head = 0
-  while (head < queue.length && head < limit) {
-    const cur = queue[head++]
-    if (isGoal(cur.x, cur.z)) return walkBack(prev, cur)
-    for (const [key, [dx, dz]] of Object.entries(STEP)) {
-      const nx = cur.x + dx
-      const nz = cur.z + dz
-      const id = `${nx},${nz}`
-      if (prev.has(id)) continue
-      // 목적지 칸이 막혀 있어도 **거기가 목표면** 넣는다 — 워프 칸은 문이라
-      // 통행 불가로 적힌 것이 있다
-      if (grid.blocked(nx, nz) && !isGoal(nx, nz)) continue
-      // ⚠️ **다른 문을 밟고 지나가면 안 된다.** 모래시티는 z=842 한 줄에 문이
-      // 셋이라, 상점 문으로 가는 길이 포켓몬센터 문을 지난다 — 그러면 엉뚱한
-      // 건물 안에서 다시 계획하게 된다 (실측: 419로 가다가 422에 들어갔다)
-      if (avoid !== null && avoid(nx, nz) && !isGoal(nx, nz)) continue
-      prev.set(id, { from: cur, key })
-      queue.push({ x: nx, z: nz })
-    }
-  }
-  return null
+/**
+ * 계획 하나가 어떻게 끝났는가. **상한 소진과 「길이 없다」는 다른 일이다** —
+ * 예전에는 둘 다 `null`이라, 부르는 쪽이 상한에 걸린 먼 목적지를 「길 없음」으로
+ * 읽고 가까운 엉뚱한 데로 갔다
+ */
+export const PLAN = {
+  found: 'found',
+  unreachable: 'unreachable',
+  budget: 'search-budget-exceeded',
+  cancelled: 'cancelled',
+  invalid: 'invalid-input',
 }
 
-function walkBack(prev, at) {
+/**
+ * 행렬마다 한 벌씩 두고 다시 쓰는 자리 — 방문 표·부모·방향·큐.
+ *
+ * ⚠️ **매번 새로 잡으면 안 된다.** 행렬 0이 960×960(92만 칸)이라 한 번 잡을
+ * 때마다 십수 MB다. 방문 표는 지우는 대신 **계획 번호를 찍어** 가른다
+ * (`stamp[id] === run`) — 92만 칸을 0으로 미는 것도 계획 시간이다
+ */
+const scratch = new Map()
+function scratchFor(grid) {
+  const size = grid.w * grid.h
+  let s = scratch.get(grid)
+  if (!s) {
+    s = {
+      stamp: new Int32Array(size),
+      parent: new Int32Array(size),
+      dir: new Uint8Array(size),
+      queue: new Int32Array(size),
+      run: 0,
+    }
+    scratch.set(grid, s)
+  }
+  return s
+}
+
+/** 방향키를 번호로 — `dir`에 한 바이트로 담는다. 0은 「출발점」이다 */
+const STEP_KEYS = Object.keys(STEP)
+
+/** 마지막 계획의 계측. `drive.mjs`가 이것을 그대로 기록한다 */
+export const lastPlan = {
+  status: null,
+  matrix: -1,
+  ms: 0,
+  expanded: 0,
+  goalTests: 0,
+  pushed: 0,
+  steps: 0,
+}
+
+/**
+ * `from`에서 `isGoal`인 칸까지 한 칸씩 가는 방향키 목록과 **끝난 까닭**.
+ *
+ * ⚠️ **문자열 좌표를 안 쓴다.** 예전에는 칸마다 `` `${x},${z}` `` 를 만들어
+ * `Map`에 넣었다 — 상한이 25만 칸이라 계획 한 번에 문자열 25만 개와 해시
+ * 25만 번이었고, 그것이 하네스가 몇 초씩 멎어 보이던 값의 정체다. 칸 번호는
+ * `z*w+x` 정수 하나면 되고, 방문·부모·방향은 형식화 배열에 담긴다.
+ *
+ * @param cancelled 취소되었는지 묻는 함수. 늦게 온 결과를 버리는 쪽이 준다
+ */
+export function planPath(
+  matrixId, from, isGoal, { limit = NODE_CAP, avoid = null, cancelled = null } = {},
+) {
+  const t0 = performance.now()
+  const grid = gridOf(matrixId)
+  const w = grid.w
+  const h = grid.h
+  lastPlan.matrix = matrixId
+  lastPlan.expanded = 0
+  lastPlan.goalTests = 0
+  lastPlan.pushed = 0
+  lastPlan.steps = 0
+
+  const done = (status, keys) => {
+    lastPlan.status = status
+    lastPlan.ms = performance.now() - t0
+    lastPlan.steps = keys === null ? 0 : keys.length
+    return { status, keys, stats: { ...lastPlan } }
+  }
+
+  // ⚠️ **격자 밖에서 출발하면 계산이 아니라 잘못된 입력이다.** 예전에는 그냥
+  // 「길이 없다」로 떨어져서, 좌표를 잘못 준 자리와 절벽에 막힌 자리가
+  // 구별되지 않았다
+  if (!Number.isInteger(from.x) || !Number.isInteger(from.z)
+    || from.x < 0 || from.z < 0 || from.x >= w || from.z >= h) {
+    return done(PLAN.invalid, null)
+  }
+
+  const s = scratchFor(grid)
+  const run = ++s.run
+  const { stamp, parent, dir, queue } = s
+  const start = from.z * w + from.x
+  stamp[start] = run
+  parent[start] = -1
+  dir[start] = 0
+  queue[0] = start
+  let head = 0
+  let tail = 1
+
+  while (head < tail && head < limit) {
+    // 취소는 **꺼내는 자리**에서만 본다. 칸마다 물으면 그 물음이 계획 시간이 된다
+    if (cancelled !== null && (head & 0x3ff) === 0 && cancelled()) return done(PLAN.cancelled, null)
+    const id = queue[head++]
+    lastPlan.expanded++
+    const cx = id % w
+    const cz = (id - cx) / w
+    lastPlan.goalTests++
+    if (isGoal(cx, cz)) return done(PLAN.found, walkBack(parent, dir, id))
+    for (let k = 0; k < 4; k++) {
+      const [dx, dz] = STEP[STEP_KEYS[k]]
+      const nx = cx + dx
+      const nz = cz + dz
+      if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue
+      const nid = nz * w + nx
+      if (stamp[nid] === run) continue
+      const blocked = grid.blocked(nx, nz)
+      const shunned = avoid !== null && avoid(nx, nz)
+      if (blocked || shunned) {
+        // 목적지 칸이 막혀 있어도 **거기가 목표면** 넣는다 — 워프 칸은 문이라
+        // 통행 불가로 적힌 것이 있다. 다른 문을 밟고 지나가는 것은 `avoid`가 막는다
+        lastPlan.goalTests++
+        if (!isGoal(nx, nz)) continue
+      }
+      stamp[nid] = run
+      parent[nid] = id
+      dir[nid] = k + 1
+      queue[tail++] = nid
+      lastPlan.pushed++
+    }
+  }
+  // ⚠️ **상한에 걸린 것을 「길이 없다」로 적지 않는다.** 큐가 마른 것만이
+  // 「정말 못 간다」다
+  return done(head >= limit && head < tail ? PLAN.budget : PLAN.unreachable, null)
+}
+
+/**
+ * 예전 이름. 길이 있으면 방향키 목록, 아니면 `null`이다.
+ *
+ * ⚠️ **끝난 까닭이 필요하면 `planPath`를 부른다.** 여기서는 상한 소진과
+ * 길 없음이 다시 하나로 뭉개진다
+ */
+export function pathTo(matrixId, from, isGoal, opts = {}) {
+  return planPath(matrixId, from, isGoal, opts).keys
+}
+
+/** 부모를 거슬러 방향키를 모은다. 번호 하나가 칸 하나다 */
+function walkBack(parent, dir, at) {
   const keys = []
-  let node = at
-  for (;;) {
-    const step = prev.get(`${node.x},${node.z}`)
-    if (!step) break
-    keys.push(step.key)
-    node = step.from
+  for (let node = at; parent[node] >= 0; node = parent[node]) {
+    keys.push(STEP_KEYS[dir[node] - 1])
   }
   return keys.reverse()
 }
@@ -289,7 +414,21 @@ export function mapRoute(from, to) {
  * 단위로 찾으므로 이름 없는 칸을 얼마든지 지난다 — 여기서 막는 것은 그것을
  * **목적지로 삼는 것**뿐이다
  */
+const neighbourCache = new Map()
 function sameMatrixNeighbours(mapId) {
+  const hit = neighbourCache.get(mapId)
+  if (hit) return hit
+  const out = computeNeighbours(mapId)
+  neighbourCache.set(mapId, out)
+  return out
+}
+
+/**
+ * ⚠️ **자료가 안 바뀌는 동안만 캐시다.** 여기서 보는 것은 행렬 0의 청크 배치와
+ * 타일 통행뿐이라 한 판 안에서 안 바뀐다 — 회피 목록·NPC 같은 **움직이는 제약은
+ * 여기 안 들어온다.** 그것을 굳히면 문이 닫힌 자리가 열린 것으로 남는다
+ */
+function computeNeighbours(mapId) {
   const grid = gridOf(0)
   const { width, height, chunks } = grid.meta
   const zone = new Map(chunks.map((c) => [c.i, c.zone]))

@@ -79,6 +79,37 @@ const LOCAL_VAR_COUNT = 14
 export const FLAG_COUNT = 4106
 
 /**
+ * **0번은 플래그가 아니다** — 세우려 해도 안 서고, 물으면 언제나 거짓이다.
+ *
+ * 원작이 세 접근자를 한 자리에서 그렇게 막는다 (`vars_flags.c`):
+ *
+ * ```c
+ * u8 *VarsFlags_GetFlagChunk(VarsFlags *varsFlags, u16 flagID) {
+ *     if (flagID == 0) { return NULL; }        // ← 여기
+ *     ...
+ * }
+ * ```
+ *
+ * `CheckFlag`·`SetFlag`·`ClearFlag`가 전부 이 함수를 거치고 널이면 아무 일도
+ * 안 한다. 표의 첫 줄 이름도 그 뜻이다 — `FLAG_UNUSED_0x0000`.
+ *
+ * ⚠️ **이 한 줄이 없으면 게임의 사람이 통째로 사라진다.** 배치표의 「숨김 조건
+ * 없음」이 0으로 적혀 있어서(`events.json`의 `flag: 0`), 0이 한 번 서면
+ * `spawnNpcs`의 `hideFlagOf(info) !== null && vars.checkFlag(hide)`가 그 사람들
+ * 전부에게 참이 된다. 그리고 0을 세우는 길이 실제로 있다 — `RemoveObject`가
+ * 지운 사람의 숨김 플래그를 세우는데(`MapObject_SetFlagAndDeleteObject`), 그
+ * 사람의 플래그가 0이면 0을 세운다. 원작도 그 줄은 조건 없이 부르고, **막는
+ * 자리가 여기**다.
+ *
+ * 실측(2026-09-08 `_nurse42`): 무쇠시티 포켓몬센터(맵 48)의 배치표 9명 가운데
+ * **9명이 전부 숨어** 명부가 비었고, 그래서 간호사에게 영영 말을 못 걸었다 —
+ * 일곱이 `flag: 0`이고 나머지 둘은 제 플래그(387·388)가 서 있었다. 세이브
+ * 바이트가 그 자리를 가른다: 떡잎시티(`seg-08`)에서 0x04였던 첫 바이트가
+ * 무쇠시티(`seg-09`)에서 0x05가 됐다
+ */
+const NULL_FLAG = 0
+
+/**
  * 도감을 받았는가. 시작 메뉴의 첫 줄이 이 비트 하나로 있고 없다.
  *
  * 번호는 `vars_flags.txt`를 C enum처럼 세어서 나온 값이다(`=` 줄은 세지 않고
@@ -136,15 +167,18 @@ export class VarStore {
   }
 
   checkFlag(id: number): boolean {
+    if (id === NULL_FLAG) return false
     const byte = this.flags[id >> 3]
     return byte !== undefined && (byte & (1 << (id & 7))) !== 0
   }
 
   setFlag(id: number): void {
+    if (id === NULL_FLAG) return
     if (id >> 3 < this.flags.length) this.flags[id >> 3]! |= 1 << (id & 7)
   }
 
   clearFlag(id: number): void {
+    if (id === NULL_FLAG) return
     if (id >> 3 < this.flags.length) this.flags[id >> 3]! &= ~(1 << (id & 7))
   }
 
