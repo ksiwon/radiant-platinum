@@ -34,12 +34,28 @@ const CELL_COLORS = 8
 const CELL_STDEV = 8
 
 /**
- * 아래 두 줄(=지형 자리) 여덟 칸 중 몇 칸이 채워져야 하는가.
+ * **화면 밖**으로 치는 칸 — 거의 완전한 검정.
  *
- * 실측 대조로 잡았다 — **성한 컷 열여덟 장이 6~8칸**이고 **망가진 컷 여섯
- * 장이 0~5칸**이다 (`tools/e2e/terrainJudge.test.mjs`가 그 컷들을 그대로 건다)
+ * ⚠️ **정상 실내가 여기 걸린다.** 카메라가 방 상자에 물리기 전에는 방이 화면
+ * 위쪽에만 들어가고 아래가 통째로 검다 — 실측(2026-09-08 센터 왕복)에서
+ * **눈으로 봐 멀쩡한 컷**이 아래 네 칸이 검어 4/8로 떨어졌다. 그 검정은
+ * 「못 그린 것」이 아니라 **그릴 것이 없는 자리**다.
+ *
+ * ⚠️ **망가진 컷의 빈 하늘은 여기 안 걸린다.** 그쪽은 밝다 — 노을이 밝기 100
+ * 언저리고 파란 여백도 78이다. 그래서 **밝기까지** 봐야 둘이 갈린다
  */
-const NEED = 6
+const VOID_MEAN = 8
+const VOID_STDEV = 1
+
+/**
+ * 「화면 밖」을 뺀 지형 자리 중 **몇 할**이 채워져야 하는가.
+ *
+ * 실측 대조로 잡았다 (`tools/e2e/terrainJudge.test.mjs`가 컷을 그대로 건다) —
+ * 성한 컷이 75~100%이고 망가진 컷이 0~63%다
+ */
+const NEED_RATIO = 0.7
+/** 살아 있는 칸이 이보다 적으면 판정할 거리가 못 된다 */
+const MIN_LIVE = 2
 
 /** 칸마다의 색 수와 밝기 흩어짐 */
 export function cellStats(png) {
@@ -62,7 +78,7 @@ export function cellStats(png) {
       }
       const mean = sum / n
       out.push({
-        r, c, colors: set.size,
+        r, c, colors: set.size, mean: Number(mean.toFixed(1)),
         stdev: Number(Math.sqrt(Math.max(0, sum2 / n - mean * mean)).toFixed(1)),
       })
     }
@@ -77,17 +93,25 @@ export function cellStats(png) {
  */
 export function judgeTerrain(png) {
   const cells = cellStats(png)
-  const roi = cells.filter((x) => x.r >= 1)
+  const all = cells.filter((x) => x.r >= 1)
+  // 「그릴 것이 없는 자리」를 먼저 뺀다 — 안 빼면 정상 실내가 떨어진다
+  const roi = all.filter((x) => !(x.mean < VOID_MEAN && x.stdev < VOID_STDEV))
   const filled = roi.filter((x) => x.colors >= CELL_COLORS && x.stdev >= CELL_STDEV).length
-  const drawn = filled >= NEED
+  const ratio = roi.length === 0 ? 0 : filled / roi.length
+  const drawn = roi.length >= MIN_LIVE && ratio >= NEED_RATIO
   return {
     drawn,
     filled,
-    need: NEED,
     roi: roi.length,
+    voids: all.length - roi.length,
+    ratio: Number(ratio.toFixed(2)),
+    need: NEED_RATIO,
     why: drawn ? null
-      : `아래 ${String(roi.length)}칸 중 ${String(filled)}칸만 채워졌다`
-        + ` (${String(NEED)}칸 필요) — 지형이 안 그려졌다`,
+      : roi.length < MIN_LIVE
+        ? `지형 자리 ${String(all.length)}칸이 전부 검다 — 그릴 것이 아무것도 없다`
+        : `지형 자리 ${String(roi.length)}칸 중 ${String(filled)}칸만 채워졌다`
+          + ` (${String(Math.round(ratio * 100))}% · ${String(Math.round(NEED_RATIO * 100))}% 필요)`
+          + ' — 지형이 안 그려졌다',
     cells,
   }
 }

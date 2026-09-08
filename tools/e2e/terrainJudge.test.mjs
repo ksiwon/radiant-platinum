@@ -16,33 +16,49 @@ import { judgeTerrain } from './terrainJudge.mjs'
 const ROOT = resolve(import.meta.dirname, '../..')
 const DIR = resolve(ROOT, '.audit/terrain-controls')
 
+/**
+ * ⚠️ **대조 컷은 나무에 안 담긴다.** 게임 화면 그림이라 `.audit/`에 두고
+ * git이 안 본다 (COPYRIGHT.md §6). 그러니 새 클론에는 없다 — 그때 이 절은
+ * **건너뛴다.** 「건너뛴 것은 미실행이지 통과가 아니다」라서 vitest가 그것을
+ * skipped로 세고, 여기 있는 기계에서는 그대로 돈다.
+ *
+ * ⚠️ **있는데 비었으면 떨어뜨린다.** 컷만 지워 놓고 초록을 받는 길을 안 남긴다
+ */
+const HAVE = existsSync(DIR)
+
 const shots = (kind) => {
   const at = resolve(DIR, kind)
-  // ⚠️ **없으면 건너뛰지 않고 떨어뜨린다.** 대조 컷이 사라진 채로 초록이 나면
-  // 그 초록은 아무것도 안 잰 것이다
-  expect(existsSync(at), `대조 컷이 없다 — ${at}`).toBe(true)
+  expect(existsSync(at), `대조 컷 폴더가 없다 — ${at}`).toBe(true)
   const list = readdirSync(at).filter((f) => f.endsWith('.png'))
   expect(list.length, `대조 컷이 비었다 — ${at}`).toBeGreaterThan(0)
   return list.map((f) => [f, judgeTerrain(readFileSync(resolve(at, f)))])
 }
 
-describe('지형이 그려졌는가를 재는 자', () => {
+describe.skipIf(!HAVE)('지형이 그려졌는가를 재는 자 (대조 컷 `.audit/terrain-controls/`)', () => {
   it('사람이 확인한 망가진 컷을 전부 떨어뜨린다', () => {
     for (const [name, j] of shots('망가진')) {
-      expect(j.drawn, `${name} — ${String(j.filled)}/${String(j.roi)}칸`).toBe(false)
+      expect(j.drawn, `${name} — ${String(j.filled)}/${String(j.roi)}칸 (${String(j.ratio)})`).toBe(false)
     }
   })
 
   it('사람이 확인한 성한 컷을 전부 통과시킨다 — 실내 검은 여백도 정상 하늘도', () => {
     for (const [name, j] of shots('성한')) {
-      expect(j.drawn, `${name} — ${String(j.filled)}/${String(j.roi)}칸`).toBe(true)
+      expect(j.drawn, `${name} — ${String(j.filled)}/${String(j.roi)}칸 (${String(j.ratio)})`).toBe(true)
     }
   })
 
-  it('두 무리 사이가 벌어져 있다 — 문턱이 한 장 차이로 뒤집히지 않는다', () => {
-    const bad = shots('망가진').map(([, j]) => j.filled)
-    const ok = shots('성한').map(([, j]) => j.filled)
-    // 실측: 망가진 쪽 0~5칸, 성한 쪽 6~8칸
+  it('두 무리 사이가 벌어져 있다 — 문턱이 한 칸 차이로 뒤집히지 않는다', () => {
+    const bad = shots('망가진').map(([, j]) => j.ratio)
+    const ok = shots('성한').map(([, j]) => j.ratio)
+    // 실측: 망가진 쪽 0~63%, 성한 쪽 75~100%
     expect(Math.max(...bad)).toBeLessThan(Math.min(...ok))
+  })
+
+  it('카메라가 넓어 아래가 검은 정상 실내를 안 거절한다', () => {
+    // ⚠️ 이 컷이 판정자를 한 번 속였다 — 눈으로 봐 멀쩡한 센터인데 아래 네 칸이
+    // 검다는 이유로 떨어졌다. 그 검정은 못 그린 것이 아니라 **그릴 것이 없는 자리**다
+    const [, j] = shots('성한').find(([n]) => n.includes('카메라넓을때'))
+    expect(j.voids).toBeGreaterThan(0)
+    expect(j.drawn).toBe(true)
   })
 })

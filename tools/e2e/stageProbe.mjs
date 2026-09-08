@@ -126,17 +126,28 @@ export const stageState = (page) => page.evaluate(async () => {
  */
 export async function waitTerrain(page, capMs = 20_000) {
   const t0 = Date.now()
-  try {
-    await page.waitForFunction(async () => {
+  let why = '아직 한 번도 못 물었다'
+  /**
+   * ⚠️ **`page.waitForFunction`에 async 판정식을 주면 안 된다.** 돌려준
+   * `Promise` 객체가 **참**이라 첫 폴링에서 곧바로 통과한다 — 실측
+   * (2026-09-08 판정용 journey): 이 자리가 「16ms에 섰다」고 적은 그 순간
+   * `terrainReady().ok`는 **거짓**이었고(「씬에 선 청크가 다른 맵의 것이다」)
+   * 그 상태는 이미 256프레임째 이어지고 있었다. 즉 **관문이 아무것도 안
+   * 막고 있었다.**
+   *
+   * `import`가 필요하니 판정식은 async일 수밖에 없다. 그러면 기다리는 일을
+   * 플레이라이트에 맡기지 말고 **여기서 직접 돈다** — `page.evaluate`는
+   * 프로미스를 제대로 기다린다 (`stageState`가 그 증거다)
+   */
+  while (Date.now() - t0 < capMs) {
+    const got = await page.evaluate(async () => {
       const t = await import('/src/scene/terrainMark.ts')
-      return t.terrainReady().ok
-    }, null, { timeout: capMs })
-    return { ok: true, why: null, waitedMs: Date.now() - t0 }
-  } catch {
-    const s = await stageState(page).catch(() => null)
-    return {
-      ok: false, waitedMs: Date.now() - t0,
-      why: s?.ready?.why ?? `${String(capMs)}ms 안에 지형이 안 섰다`,
-    }
+      const r = t.terrainReady()
+      return { ok: r.ok, why: r.why }
+    }).catch((e) => ({ ok: false, why: `못 물었다 — ${String(e?.message ?? e).slice(0, 80)}` }))
+    if (got.ok) return { ok: true, why: null, waitedMs: Date.now() - t0 }
+    why = got.why ?? '까닭을 안 줬다'
+    await page.waitForTimeout(250)
   }
+  return { ok: false, waitedMs: Date.now() - t0, why }
 }

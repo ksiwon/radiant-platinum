@@ -362,7 +362,8 @@ async function shot(name, { world = true } = {}) {
         file: at, colors: cut.stats.colors, stdev: Number(cut.stats.stdev.toFixed(1)),
         // 옛 잣대도 같이 남긴다 — 두 자가 언제 갈리는지가 그대로 증거다
         flatOnly: looksDrawn(cut.stats), steady: cut.steady,
-        drawn: land.drawn, filled: land.filled, need: land.need, landWhy: land.why,
+        drawn: land.drawn, filled: land.filled, roi: land.roi, voids: land.voids,
+        ratio: land.ratio, landWhy: land.why,
       }
       one.stage = await stageState(page).catch(() => null)
       /**
@@ -1094,7 +1095,7 @@ try {
       ? `${short.join(' · ')} 자리까지 못 갔다 — 앞 줄을 본다`
       : !bad
         ? world.map((one) => `${one.name} 지형칸 ${String(one.canvas.filled)}`
-          + `/${String(one.canvas.need)} · ${String(one.readiness.waitedMs)}ms 기다렸다`).join(' · ')
+          + `/${String(one.canvas.roi)} · ${String(one.readiness.waitedMs)}ms 기다렸다`).join(' · ')
         : [
           notReady.length === 0 ? null
             : `준비 실패 ${String(notReady.length)}컷 (판정 불가) — `
@@ -1103,7 +1104,8 @@ try {
           blank.length === 0 ? null
             : `준비됐다는데 지형이 없다 ${String(blank.length)}/${String(judged.length)}컷 — `
               + blank.map((one) => `${one.name} (지형칸 ${String(one.canvas.filled)}`
-                + `/${String(one.canvas.need)} · 색 ${String(one.canvas.colors)}`
+                + `/${String(one.canvas.roi)} · 검은칸 ${String(one.canvas.voids)}`
+                + ` · 색 ${String(one.canvas.colors)}`
                 + ` · 옛 잣대로는 ${one.canvas.flatOnly ? '통과' : '실패'})`).join(' · '),
           stuck.length === 0 ? null
             : `그 실행에서 30초를 더 봐도 안 채워진 컷 ${String(stuck.length)}개`

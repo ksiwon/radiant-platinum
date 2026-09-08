@@ -323,6 +323,20 @@ export const cameraSystem = {
   fov: FIELD_FOV,
 
   /**
+   * 카메라가 **가려던 자리에서 아직 얼마나 떨어져 있나** (월드 단위).
+   *
+   * ⚠️ **맵을 갈아 끼운 직후에는 이 값이 크다.** 자리는 감쇠(5)로 따라가므로
+   * 새 맵의 첫 프레임은 앞 맵의 시점에서 출발해 1초 남짓 미끄러진다 — 그동안
+   * 화면에는 방이 위에서 내려오고 나머지는 검다. 밖에서 그 구간을 「못 그린
+   * 화면」과 구별할 길이 없어서, 검사가 그때 찍은 컷을 결함으로 적었다
+   * (실측 2026-09-08: 센터 왕복 세 바퀴째에 지형 칸 0/8, 그 0.5초 뒤 8/8).
+   *
+   * `scene/terrainMark`가 이 값으로 「찍을 만한가」를 가른다. 읽기만 하는
+   * 자리다 — 여기 값을 넣어도 카메라는 안 움직인다
+   */
+  drift: 0,
+
+  /**
    * 스크립트가 카메라를 주인공에게서 떼어 놓은 자리 (`AddFreeCamera`).
    *
    * 원작은 안 보이는 객체를 하나 세우고 `Camera_TrackTarget`을 그쪽으로 옮긴다.
@@ -448,6 +462,7 @@ export const cameraSystem = {
       : 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
     cam.position.lerp(goal, t)
     cam.target.lerp(look, t)
+    cameraSystem.drift = cam.position.distanceTo(goal)
 
     const wantFov = inDistortion ? DISTORTION_FOV : FIELD_FOV
     if (!fovReady) { cameraSystem.fov = wantFov; fovReady = true }

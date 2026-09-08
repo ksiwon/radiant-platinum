@@ -11,6 +11,7 @@
 // 정해진 것을 밖에서 읽게만 하고, 여기에 값을 써서 게임을 움직일 길은 없다.
 // 판정하는 쪽이 「기다릴 것」을 고정 시간이 아니라 **상태**로 잡게 하는 것이
 // 이 파일이 있는 까닭이다.
+import { cameraSystem } from '../engine/actor/camera'
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { perfSnapshot } from './sceneRefs'
@@ -53,6 +54,9 @@ export function markTerrain(
   terrainMark.frame = perfSnapshot.frames
 }
 
+/** 카메라가 「닿았다」고 볼 잔여 거리 (월드 단위 = 타일) */
+const CAMERA_SETTLED = 0.25
+
 interface TerrainReady {
   ok: boolean
   /** 왜 아직인가. `ok`면 null */
@@ -68,6 +72,8 @@ interface TerrainReady {
   framesSince: number
   pending: boolean
   restoring: boolean
+  /** 카메라가 가려던 자리에서 떨어진 거리 */
+  drift: number
 }
 
 /**
@@ -78,6 +84,7 @@ interface TerrainReady {
  *   ③ 씬에 반영된 청크 한 벌의 맵·행렬이 지금 것과 같다
  *   ④ 그 한 벌이 **지금 서 있는 칸의 청크**의 것이다 (늦게 온 앞 맵의 것이 아니다)
  *   ⑤ 그 뒤로 프레임이 한 장 이상 실제로 나갔다
+ *   ⑥ 카메라가 가려던 자리에 닿았다 (`cameraSystem.drift`)
  *
  * ⚠️ **판정을 이미지로 정의하지 않는다.** 여기서 `ok`가 났는데 화면이
  * 틀렸으면 그건 **화면 결함**이지 「덜 기다린 것」이 아니다
@@ -92,10 +99,11 @@ export function terrainReady(): TerrainReady {
     placed: terrainMark.placed, want: terrainMark.want, failed: terrainMark.failed,
     why: terrainMark.why,
   }
+  const drift = cameraSystem.drift
   const framesSince = perfSnapshot.frames - terrainMark.frame
   const pending = world.pending !== null
   const restoring = worldState.restoring
-  const shape = { want, have, framesSince, pending, restoring }
+  const shape = { want, have, framesSince, pending, restoring, drift: +drift.toFixed(2) }
   if (grid === null) return { ok: false, why: '격자가 아직 없다', ...shape }
   if (pending) return { ok: false, why: '처리할 전이가 남았다', ...shape }
   if (restoring) return { ok: false, why: '아직 복원 중이다', ...shape }
@@ -114,5 +122,17 @@ export function terrainReady(): TerrainReady {
     return { ok: false, why: `청크 ${String(have.want)}개를 받았는데 세운 땅이 0이다`, ...shape }
   }
   if (framesSince < 1) return { ok: false, why: '반영 뒤로 나간 프레임이 없다', ...shape }
+  /**
+   * ⚠️ **청크가 다 서도 카메라가 아직 미끄러지는 중일 수 있다.** 그때 화면은
+   * 방이 위에서 내려오는 중이고 나머지가 검다 — 「못 그린 것」이 아니라
+   * **아직 안 도착한 것**이다. 실측(2026-09-08 센터 왕복): 세 바퀴째에 지형
+   * 칸 0/8이었고 그 반 초 뒤에 8/8이었다.
+   *
+   * 한 칸의 4분의 1을 문턱으로 둔다 — 걷는 동안의 잔여는 그보다 작고, 맵을
+   * 갈아 낀 직후의 미끄러짐은 그보다 한참 크다
+   */
+  if (drift > CAMERA_SETTLED) {
+    return { ok: false, why: `카메라가 아직 ${drift.toFixed(2)}칸 미끄러지는 중이다`, ...shape }
+  }
   return { ok: true, why: null, ...shape }
 }
