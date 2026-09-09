@@ -125,3 +125,52 @@
 사용자가 실제로 플레이하며 찍은 것에서 나온다 — `docs/REPAIR.md`의 열린 자리(§8 맵
 전환 5.5초·§12 노드 이동 열둘)와 `docs/PARITY.md`의 반쯤인 것 중 어느 것을 먼저 할지는
 그 뒤에 정한다. 지금 정하지 않는다.
+
+## §7 §3-1 확인 (2026-09-09 23:50)
+
+동결 커밋은 `14fb963`(origin/master 앞 36개, 트리 깨끗). 기획이 대조한 것:
+
+| 확인 | 결과 |
+|---|---|
+| H1~H4가 커밋에 있는가 | 있다 — drive/story/run/journey/evidence + `budget.mjs`·`loadSpy.mjs`·`devServer.mjs` |
+| 분류기가 내용 실패를 BLOCKED로 못 내리는가 | `budget.mjs` `classify`가 시간 모양에만 열려 있고 부하 미측정을 붐빔으로 안 접는다 |
+| 순수 함수 시험 | `vitest run tools/e2e/budget.test.mjs` 18/18 통과. `pnpm check`의 `test:strict`에 포함된다 |
+| 계약 판 | evidence.mjs e2e 2 · story 2 · journey 6. 새 파일 둘이 하네스 다이제스트 목록에 있다 |
+| §1.4 `phase` 읽는 자리 | `.audit/post-overnight-20260909/deploy-phase/PHASE_READERS.md` 32줄·16파일, 한 줄씩 판단 있음. 고친 곳 없음 |
+
+주의 둘, 고치라는 것이 아니다:
+
+- `PHASE_READERS.md`는 `.audit/`라 git에 안 들어간다. 그래도 된다. 다만 §4 보고서 REPORT.md에서 이 파일을 가리켜라.
+- 기본 판 pushBattle의 상한 800회는 무쇠 체육관 실측 542회의 1.5배다. 훑기 중 어떤 배틀이 800회를 채우고 「안 끝났다」로 남으면 그것은 FAIL이 아니라(기본 판은 끝까지 안 가도 된다) 보고서 §7 「하네스가 못 잰 것」에 횟수와 함께 적는다. 상한을 올리지 마라.
+
+§3-2는 그대로다. 사용자가 「다른 작업을 껐다」고 말하기 전에는 훑기를 시작하지 않는다.
+
+## §8 순서 변경 — 먼저 올리고, 새벽 창에서 한 벌 (2026-09-09 사용자 제안, 기획 승인)
+
+사용자가 새벽 시간대를 오로지 이 검증에 내주기로 했다. 그 창을 한 번에 다 쓰기 위해 §3의 순서를 바꾼다: **push를 훑기 앞으로 옮긴다.** §3-2·§3-3·§4는 아래로 갈음한다.
+
+먼저 사실 하나. journey·story는 배포 사이트에서 못 잰다 — `observe.mjs`의 dist 어댑터는 `/src`를 못 열어 값을 안 읽고, e2e는 로컬 dist를 스스로 띄운다. 그러므로 훑기의 CPU는 어차피 이 기계 것이고, 배포 사이트가 직접 재는 것은 ⑯·`verify:deploy`·마지막 세 장뿐이다. 이 변경이 사는 것은 CPU가 아니라 **창 하나**다 — 전에는 훑기 → 승인 → push → e2e 다시로 창이 둘 필요했다.
+
+받아들이는 근거: 마지막 완주(붐빔 전, b2895f6)와 지금 사이의 src 변화는 `battleStore.ts` 한 파일(6a7d5fe)뿐이고, 그 자리는 `--only` 재현과 §1.4 전수로 확인됐다. 14fb963은 tools/·docs/만 건드려 dist가 안 바뀐다. 그래서 「안 잰 것을 올린다」의 폭이 좁다.
+
+### 창의 순서 (사용자가 「자러 간다 / 다 껐다」고 말한 뒤 시작, 무인)
+
+| # | 할 것 | 통과 조건 | 못 서면 |
+|---|---|---|---|
+| 1 | `pnpm check` · `pnpm build` (14fb963) | 둘 다 통과 | **push 안 한다.** 여기서 멈추고 보고 |
+| 2 | `git checkout master && git merge --ff-only hm-cutin-and-warp-fade && git push origin master` | 한 번 | 두 번 push 금지 |
+| 3 | `pnpm verify:deploy https://radiant.siwon.it.kr/` (Netlify 빌드가 끝날 때까지 `knock` 간격으로 기다린 뒤) | ⑯ 통과 | ⑯이 안 서도 4~7은 계속 돈다. 보고서에 적는다 |
+| 4 | `render:first` → `gpu:loss` → `journey` → `e2e` → `story` (차례로, 동시 금지) | 5/5 · 9/9 · 17/17 · PASS 29·BLOCKED 0 · 88/88, 같은 다이제스트 | 실패해도 **고치지 않고 다음으로 간다.** src 손대기 금지, 두 번째 push 금지 |
+| 5 | `pnpm release:check` | ②만 열려 있음 | 적는다 |
+| 6 | 배포 URL에서 세 장(`pnpm shot`) | 타이틀·필드·배틀 | 적는다 |
+| 7 | 보고서 `.audit/post-overnight-20260909/deploy-phase/REPORT.md` 여덟 절 + `PHASE_READERS.md` 가리키기 + §2.1 fps 비교(dev journey vs dist ㉖) | 아침에 사용자가 읽는다 | — |
+
+BLOCKED(경합)가 하나라도 나오면 그 묶음만 창 안에서 한 번 다시 돈다. 두 번째도 BLOCKED면 그대로 적는다 — 그 창에 다른 부하가 있었다는 뜻이므로 원인을 `기계조건.md`에 남긴다.
+
+### 완료 조건 (§4 갈음)
+
+①~⑦ 그대로. 단 e2e는 배포 뒤 한 판이 전부이므로 「배포 전 ⑯ BLOCKED」 판은 없다. 4의 다섯 묶음이 한 다이제스트로 서고, ⑯이 서고, ②만 남고, 보고서가 있으면 끝. 아침에 사용자가 플레이한다.
+
+### 이 변경의 값
+
+내용 실패가 창 안에서 나오면 배포 사이트는 그 결함을 아침까지 진다. 사용자가 그것을 알고 골랐다. 고치는 push는 아침에 보고를 보고 따로 승인한다(빌드 한 번 더).
