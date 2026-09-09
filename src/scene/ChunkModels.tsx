@@ -13,7 +13,9 @@ import {
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
 import {
-  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, sliceTexture,
+  dropMaterial,
+  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, ownMap, sliceTexture,
+  releaseSplit,
   splitShadow,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
@@ -35,7 +37,7 @@ import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
-import { markTerrain } from './terrainMark'
+import { markTerrain, openTerrainRequest, traceTerrain } from './terrainMark'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
 import { mergeByMaterial } from './mergeGroups'
@@ -108,6 +110,43 @@ interface Land extends Placed {
   room: RoomWalls | null
 }
 
+/**
+ * **요청 한 건이 낳은 것 전부.** 신원과 결과와 그 배치가 소유한 자원이 한 덩이다.
+ *
+ * ⚠️ **셋을 따로 들면 서로 다른 건의 것이 섞인다.** 앞서는 신원도 재질도 ref였다.
+ * 그러면 워프 둘이 한 커밋에 겹칠 때 「새 건의 신원 + 옛 건의 땅」이 함께 게시되어
+ * **밖에서는 틀린 화면이 준비됐다고 보인다.** state 하나로 묶으면 커밋된 것만이
+ * 곧 게시된 신원이고, 버릴 재질도 제 배치를 따라간다
+ */
+interface LandBatch {
+  /** 이 건의 번호 (`openTerrainRequest`) */
+  req: number
+  mapId: number
+  matrix: number
+  chunkIndex: number
+  /** 받으려 한 청크 수 */
+  want: number
+  failed: boolean
+  why: string | null
+  lands: Land[]
+  /** 이 배치가 **스스로 만든** 재질. 배치가 물러날 때 같이 버린다 */
+  mats: Material[]
+  /**
+   * 카메라가 갇힐 방의 테두리.
+   *
+   * ⚠️ **배치 밖에서 먼저 게시하면 안 된다** (후속 §6). 예전에는 짓는 도중에
+   * `cameraSystem.rooms`를 곧바로 갈아 끼웠다 — 그때 씬에 서 있는 땅은 아직
+   * **앞 배치의 것**이라, 새 방의 상자가 옛 바닥에 걸려 있는 순간이 있었다.
+   * 이제 커밋과 **같은 순간**에 간다
+   */
+  rooms: RoomBox[]
+}
+
+const EMPTY_BATCH: LandBatch = {
+  req: 0, mapId: -1, matrix: -1, chunkIndex: -1, want: 0,
+  failed: false, why: null, lands: [], mats: [], rooms: [],
+}
+
 interface Prop extends Placed {
   y: number
   rot: [number, number, number]
@@ -150,9 +189,7 @@ export function materialsFor(
      * 다른 데서 온 그림을 문 재질도 있어서(소품 띠는 `cachedBack`이 든 것을
      * 나눠 쓴다) **표시가 있는 것만** 버린다
      */
-    if (made !== MISSING && (made as { map?: Texture | null }).map != null) {
-      made.userData.ownsMap = true
-    }
+    if (made !== MISSING) ownMap(made)
     if (made !== MISSING) depthPriority(made, i)
     cache.set(key, made)
     return made
@@ -403,7 +440,10 @@ function borrowFloors(
         const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
         let made = cache.get(key)
         if (!made) {
-          made = item ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep)) : MISSING
+          // ⚠️ **여기 그림도 이 배치의 것이다.** 표시를 안 달아서 `dropMaterial`이
+          // 그냥 지나갔다 — 실측(2026-09-09 `_land42` 22바퀴): 빌려 온 바닥의
+          // 그림이 **왕복마다 7장씩** 늘어 한 번도 안 줄었다 (`texSpy`)
+          made = item ? ownMap(makeMaterial(spec, sliceTexture(sheet, item, spec.rep))) : MISSING
           if (made !== MISSING) depthPriority(made, from)
           cache.set(key, made)
         }
@@ -504,10 +544,7 @@ function disposeProps(list: readonly Prop[]): void {
  * ⚠️ **표시가 없는 그림은 남긴다.** 나눠 쓰는 것을 버리면 다음 배치가
  * 빈 그림을 문다 (`cachedBack`의 띠 그림이 그렇다)
  */
-function dropMaterial(m: Material): void {
-  if (m.userData.ownsMap === true) (m as { map?: Texture | null }).map?.dispose()
-  m.dispose()
-}
+
 
 interface Props {
   grid: MapGrid
@@ -522,7 +559,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   // 않는다 — 잎 아래끝에 세우면 48,525그루 중 48,331그루가 뜬다 (`Foliage`)
   const groundAt = useCallback(
     (x: number, z: number, near: number) => grid.heightAtWorld(x, z, near), [grid])
-  const [placed, setPlaced] = useState<Land[]>([])
+  const [batch, setBatch] = useState<LandBatch>(EMPTY_BATCH)
   const [foliage, setFoliage] = useState<FoliageGroup[]>([])
   const [rocks, setRocks] = useState<RockGroup[]>([])
   const [grass, setGrass] = useState<GrassField | null>(null)
@@ -542,32 +579,6 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
    * 그래서 청크가 아는 것(세운 판)은 청크 effect가, 소품은 소품 effect가 따로
    * 적는다. 소품 쪽이 늦게 와도 나무가 한 번 더 서는 것으로 끝난다
    */
-  /**
-   * 이번에 **받으려 한** 한 벌. 커밋 뒤에 `terrainMark`가 이것을 적는다.
-   *
-   * ⚠️ **`setPlaced`를 부른 자리는 아직 씬이 아니다.** 거기서 적으면
-   * 「지형이 섰다」가 한 프레임 이르고, 그 한 프레임에 찍힌 컷이 하늘 한 장이다
-   */
-  const asked = useRef({
-    mapId: -1, matrix: -1, chunkIndex: -1, want: 0, failed: false, why: null as string | null,
-  })
-  /**
-   * **이 배치가 스스로 만든 지형 재질.** 배치가 바뀌면 앞엣것을 버려야 한다.
-   *
-   * ⚠️ **소품은 버리는데 지형은 안 버리고 있었다.** `materialsFor`의 보관함은
-   * effect가 돌 때마다 **새것**이고, 그 안의 재질은 저마다 `sliceTexture`가
-   * 새로 만든 `DataTexture`를 안고 있다 — 어느 것도 나눠 쓰지 않는다. 그런데
-   * 창이 옮겨 가면 그냥 버려졌다(참조만 끊고 `dispose`는 안 했다).
-   *
-   * 실측(2026-09-08 `_land42`, 축복시티↔201번도로 열다섯 번 왕복): 씬의 메시는
-   * 484~503으로 **평평한데** three가 세는 기하는 137 → 2,712, 그림은
-   * 237 → **7,601**로 한 번도 안 줄고 올랐다. 왕복 한 번에 그림 약 600장이다.
-   *
-   * `pending`은 이번 것, `standingMats`는 화면에 서 있는 것이다 — **그린
-   * 다음에** 앞엣것을 버린다(소품과 같은 차례다)
-   */
-  const pending = useRef<Material[]>([])
-  const standingMats = useRef<Material[]>([])
   const [plateSolid, setPlateSolid] = useState<ReadonlySet<number>>(() => new Set())
   const [propSolid, setPropSolid] = useState<ReadonlySet<number>>(() => new Set())
   // 자리 하나에 최대 스물다섯 칸을 보므로 프레임마다 부를 것은 아니다 — 나무를
@@ -576,22 +587,76 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
     (x: number, z: number) => Math.min(clearance(plateSolid, x, z), clearance(propSolid, x, z)),
     [plateSolid, propSolid])
 
+  /**
+   * **못 받았을 때 사용자가 회복할 길** (후속 §6).
+   *
+   * ⚠️ **공유 `format` 프로미스를 다시 부를 수 있게 한 것은 자동 복구가
+   * 아니다.** 한 번 거절되면 그 배치는 실패로 게시되고 effect의 의존성은
+   * 그대로라 **아무것도 다시 안 부른다** — 사용자가 보는 것은 지형 없는
+   * 화면 한 장이고, 새로고침 말고는 길이 없었다.
+   *
+   * ⚠️ **무한 재시도도 캐시 전체 삭제도 안 한다.** 세 번까지, 0.5·1·2초를
+   * 두고 다시 부른다. 다 쓰면 실패한 채로 남고 그 까닭이 `terrainMark`로
+   * 밖에 나간다 — 못 고친 것을 고친 척하지 않는다
+   */
+  const RETRY_MAX = 3
+  const [attempt, setAttempt] = useState(0)
+  const tries = useRef(0)
+  // 자리가 바뀌면 그 자리의 몫으로 다시 센다
+  useEffect(() => { tries.current = 0 }, [grid, chunkIndex, radius, texSet])
+
   useEffect(() => {
     let alive = true
+    let retry: ReturnType<typeof setTimeout> | null = null
     const around = [...grid.chunksAround(chunkIndex, radius)]
-    asked.current = {
-      mapId: world.mapId, matrix: world.matrix, chunkIndex,
-      want: around.length, failed: false, why: null,
+    /**
+     * ⚠️ **신원은 여기서 굳는다.** 이번 건이 무엇을 받으러 갔는지는 effect가
+     * 도는 이 순간의 사실이다 — 뒤에 `world`가 어디로 가든 이 건의 신원은 안 바뀐다
+     */
+    const asked = { mapId: world.mapId, matrix: world.matrix, chunkIndex, want: around.length }
+    const req = openTerrainRequest(asked)
+    /** 청크가 몇 개나 돌아왔나. 「끝내 안 끝났다」와 「받고도 못 세웠다」를 가른다 */
+    let got = 0
+    /**
+     * **이 건이 만든 것들.** 커밋으로 소유권이 넘어가기 전까지는 여기 있다.
+     *
+     * ⚠️ **짓다 터지면 놓는 자가 없었다** (후속 §6). `catch`는 빈 배치를
+     * 게시하지만, 그때까지 만든 재질·합친 기하·앞벽은 그대로 GPU에 남았다.
+     * 그래서 만드는 족족 여기 적고, 실패·취소 자리에서 이것만 놓는다 —
+     * **공유 보관함의 것은 여기 안 들어온다**
+     */
+    const madeHere: { mats: Map<string, Material> | null, lands: Land[] } = {
+      mats: null, lands: [],
+    }
+    const dropMadeHere = () => {
+      for (const p of madeHere.lands) {
+        releaseSplit(p.merged)
+        p.merged?.dispose()
+        p.room?.geometry.dispose()
+      }
+      if (madeHere.mats !== null) {
+        for (const m of madeHere.mats.values()) {
+          if (m !== MISSING) dropMaterial(m)
+        }
+      }
+      madeHere.lands = []
+      madeHere.mats = null
     }
     void Promise.all([
-      loadTexSheet(texSet),
-      Promise.all(around.map((c) => loadChunkMesh(c.land).then((mesh) => ({ c, mesh })))),
+      loadTexSheet(texSet).then((v) => { traceTerrain(req, 'sheet-done'); return v }),
+      Promise.all(around.map((c) => loadChunkMesh(c.land).then((mesh) => {
+        got += 1
+        if (got === around.length) traceTerrain(req, 'chunks-done')
+        return { c, mesh }
+      }))),
     ])
       .then(([sheet, loaded]) => {
-        if (!alive) return
+        if (!alive) { traceTerrain(req, 'superseded', `청크 ${String(got)}/${String(around.length)}에서 물러났다`); return }
+        traceTerrain(req, 'build-begin')
         // 같은 (그림, 팔레트, 반복) 조합은 한 번만 만든다. 청크마다 새로
         // 만들면 25청크 × 19재질 = 텍스처 475개가 GPU에 올라간다
         const cache = new Map<string, Material>()
+        madeHere.mats = cache
         // 그림이 같은 나무는 청크를 넘어 한 덩어리로 모은다. 창 안에 2천 그루가
         // 서므로 청크마다 따로 그리면 드로우콜이 수십 개가 된다
         const byTexture = new Map<string, FoliageGroup>()
@@ -652,7 +717,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          *
          * 실측: 1F(573)에 벽 삼각형 292개 · B4F(577)에 330개가 섰고, 원작
          * 렌즈(8.09도)로 보면 그 판들이 화면을 가로지르는 검은 띠와 세로 실선으로
-         * 찍힌다 (`node .audit/distortionWalls.mjs` · REPAIR §15)
+         * 찍힌다 (`node .audit/probe/distortionWalls.mjs` · REPAIR §15)
          */
         const indoor = header !== null && !isOutdoors(header)
           && !isDistortionFloor(world.mapId ?? -1)
@@ -808,7 +873,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // (`plates.standLevel`) — 막힌 칸의 판은 건물 외벽이고, 걸어
             // 다니는 칸의 판은 성문 아치처럼 그 밑을 지나가는 것이다
             (x, z) => grid.isBlockedAtWorld(x + originX, z + originZ))
-          return {
+          const land: Land = {
             key: `${String(c.mx)},${String(c.my)},${String(c.land)}`,
             index: c.land,
             x: originX,
@@ -829,12 +894,16 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             merged: mergeByMaterial(
               [split.geometry, floor?.geometry, p.shells?.geometry], materials),
           }
+          // ⚠️ **만들자마자 적는다** (§6). 다음 조각에서 터지면 여기까지가
+          // 이 건이 만든 것이고, 놓는 자는 실패 경계다
+          madeHere.lands.push(land)
+          return land
         })
         // ⚠️ **카메라가 방 밖에 서지 않게 테두리를 넘긴다** (REPAIR §5).
         //
         // 3인칭이 여덟 칸 뒤에서 보므로 작은 방에서는 카메라가 바닥 밖으로
         // 나가고, 그러면 화면 아래가 통째로 검어진다 — 포켓몬센터가 7.5칸,
-        // 들판 체육관이 7.5칸 밖이었다 (`node .audit/roomBox.mjs`).
+        // 들판 체육관이 7.5칸 밖이었다 (`node .audit/probe/roomBox.mjs`).
         //
         // ⚠️ **방을 아는 자료가 이것뿐이다.** 통행 격자는 방 밖도 「안 막힘」으로
         // 두고 높이 판은 행렬 전체를 덮는 맵이 있다 — **그려진 바닥**만이 방이다.
@@ -855,11 +924,20 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           }
           rooms = floorRegions(tiles, (x, z) => grid.isBlocked(x, z))
         }
-        cameraSystem.rooms = rooms
+        // ⚠️ **여기서 안 세운다** — 커밋과 같은 순간에 간다 (아래 effect, §6)
 
-        // 이 배치가 만든 재질 — 커밋 뒤에 앞 배치의 것을 버리는 데 쓴다
-        pending.current = [...cache.values()]
-        setPlaced(next)
+        // 이 배치가 만든 재질은 **배치와 함께** 간다 — 커밋 뒤에 앞 배치의 것을 버린다
+        traceTerrain(req, 'submitted', `땅 ${String(next.length)}조각 · 재질 ${String(cache.size)}개`)
+        tries.current = 0
+        // ⚠️ **여기서 소유권이 옮겨 간다.** 이 줄 뒤로 `madeHere`는 비어 있어야
+        // 한다 — 안 그러면 실패 정리가 **씬에 서 있는 것**을 놓는다
+        inflight.current = { req, lands: next, mats: [...cache.values()] }
+        madeHere.lands = []
+        madeHere.mats = null
+        setBatch({
+          req, ...asked, failed: false, why: null, lands: next, mats: [...cache.values()],
+          rooms,
+        })
         setFoliage([...byTexture.values()])
         setRocks([...byRock.values()])
         // 풀숲 자리는 격자가 준다 — 그림이 아니라 타일 거동값이다. 색만
@@ -883,24 +961,51 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
            * 삼키지 않고 적는다 (`scene/terrainMark`가 밖으로 낸다)
            */
           const why = String((e as Error | null)?.message ?? e).slice(0, 200)
-          asked.current = { ...asked.current, failed: true, why }
-          pending.current = []
+          traceTerrain(req, 'failed', `청크 ${String(got)}/${String(around.length)} · ${why}`)
+          // ⚠️ **빈 배치를 게시하기 전에 이 건이 만든 것을 놓는다** (§6)
+          dropMadeHere()
           console.error(`[scene] 청크를 못 받아 지형을 비웠다 — 맵 ${String(world.mapId)}`
             + `/${String(world.matrix)} 칸 ${String(chunkIndex)} · ${why}`)
-          setPlaced([]); setFoliage([]); setRocks([])
+          setBatch({ req, ...asked, failed: true, why, lands: [], mats: [], rooms: [] })
+          setFoliage([]); setRocks([])
           setGrass(null); setWater(null); setFlowers(null)
+          if (tries.current < RETRY_MAX) {
+            tries.current += 1
+            const wait = 500 * 2 ** (tries.current - 1)
+            traceTerrain(req, 'retry', `${String(tries.current)}/${String(RETRY_MAX)}번째를 ${String(wait)}ms 뒤에`)
+            retry = setTimeout(() => { setAttempt((n) => n + 1) }, wait)
+          } else {
+            traceTerrain(req, 'gave-up', `${String(RETRY_MAX)}번 다시 불러도 안 됐다`)
+          }
         }
+        // ⚠️ **물러난 뒤에 온 실패도 만든 것을 놓아야 한다.** `alive`가 거짓인
+        // 동안 게시는 안 하지만, 짓다 만 것이 있으면 그것은 여전히 우리 것이다
+        if (!alive) dropMadeHere()
       })
-    return () => { alive = false }
-  }, [grid, chunkIndex, radius, texSet, groundAt])
+    return () => {
+      alive = false
+      if (retry !== null) clearTimeout(retry)
+      // ⚠️ **취소도 정리 경계다** (§6). 이 건이 이미 지어 놓은 것이 있으면
+      // 그대로 남기지 않는다 — 커밋된 것은 위에서 `madeHere`를 비웠으므로
+      // 여기서 놓이는 일이 없다
+      dropMadeHere()
+    }
+  }, [grid, chunkIndex, radius, texSet, groundAt, attempt])
 
   /**
    * **커밋이 끝났다 — 이제 씬에 있다.** 밖에서 「지형이 섰는가」를 상태로
    * 기다릴 수 있게 한 줄 적는다 (`scene/terrainMark`). 읽기만 되는 자리다
    */
   useEffect(() => {
-    markTerrain({ ...asked.current, placed: placed.length })
-  }, [placed])
+    traceTerrain(batch.req, 'committed', `땅 ${String(batch.lands.length)}조각`)
+    // ⚠️ **땅과 방 테두리가 같은 순간에 바뀐다** (후속 §6)
+    cameraSystem.rooms = batch.rooms
+    markTerrain({
+      req: batch.req,
+      mapId: batch.mapId, matrix: batch.matrix, chunkIndex: batch.chunkIndex,
+      want: batch.want, placed: batch.lands.length, failed: batch.failed, why: batch.why,
+    })
+  }, [batch])
 
   // 소품(집·간판)은 청크 모델에 없다. 배치 기록이 번호와 자리를 준다
   useEffect(() => {
@@ -1003,7 +1108,12 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   //
   // **그린 다음에** 버린다 — 새 목록이 붙은 뒤라야 방금 버린 것을 한 프레임
   // 더 그리는 일이 없다 (소품 재질과 같은 차례다)
-  const standing = useRef<Land[]>([])
+  const standing = useRef<LandBatch>(EMPTY_BATCH)
+  /**
+   * **제출했지만 아직 커밋 안 된 것.** 소유권이 씬으로 넘어가기 전의 자리다
+   * (후속 §6). 커밋되면 비우고, 커밋 전에 언마운트되면 여기서 놓는다
+   */
+  const inflight = useRef<{ req: number, lands: Land[], mats: Material[] } | null>(null)
   /**
    * 지형 재질과 그 그림을 같이 버린다.
    *
@@ -1019,17 +1129,45 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       dropMaterial(m)
     }
   }
+  /**
+   * 배치가 **제 것으로 만든 기하**를 전부 놓는다 (후속 §5·§6).
+   *
+   * ⚠️ **셋이다.** 합친 지형(`merged`)만 놓고 있었는데, 그림자를 가른 파생
+   * 기하(`splitShadow`)와 실내 앞벽(`room`)도 이 배치가 만든 것이다 — 둘 다
+   * 놓는 자가 없었다.
+   *
+   * ⚠️ **파생을 먼저 놓는다.** 파생은 원본과 attribute를 나눠 쓰므로 원본이
+   * 살아 있는 동안 놓으면 안 된다 — 여기서는 셋이 **같은 순간에** 간다
+   */
+  const dropLands = (lands: readonly Land[]) => {
+    for (const p of lands) {
+      releaseSplit(p.merged)
+      p.merged?.dispose()
+      p.room?.geometry.dispose()
+    }
+  }
   useEffect(() => {
     const old = standing.current
-    const oldMats = standingMats.current
-    standing.current = placed
-    standingMats.current = pending.current
-    for (const p of old) p.merged?.dispose()
-    dropMaterials(oldMats)
-  }, [placed])
+    standing.current = batch
+    // 커밋됐다 — 이제 이 배치의 소유권은 씬에 있다 (`inflight`가 놓는 일 없다)
+    if (inflight.current?.req === batch.req) inflight.current = null
+    if (old.req === batch.req) return
+    dropLands(old.lands)
+    dropMaterials(old.mats)
+  }, [batch])
   useEffect(() => () => {
-    for (const p of standing.current) p.merged?.dispose()
-    dropMaterials(standingMats.current)
+    dropLands(standing.current.lands)
+    dropMaterials(standing.current.mats)
+    /**
+     * ⚠️ **제출했는데 커밋 못 한 것이 남는다.** `setBatch` 뒤에 그리기 전에
+     * 언마운트되면 위 `[batch]` effect가 안 돌아 **소유권이 아무 데도 없다** —
+     * 그때 만든 기하와 재질을 놓는 자가 없었다 (후속 §6)
+     */
+    if (inflight.current !== null) {
+      dropLands(inflight.current.lands)
+      dropMaterials(inflight.current.mats)
+      inflight.current = null
+    }
   }, [])
 
   return (
@@ -1038,7 +1176,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         땅도 그림자를 던진다 — 나무·절벽이 청크 모델 안에 들어 있어서 여기서
         안 던지면 숲이 통째로 그림자를 안 만든다
       */}
-      {placed.map((p) => (
+      {batch.lands.map((p) => (
         <group key={p.key} position={[p.x, 0, p.z]}>
           {/*
             지형 + 숲 바닥의 구멍을 메운 판 + 울타리·표지판의 옆면.

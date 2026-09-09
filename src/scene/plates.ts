@@ -383,7 +383,7 @@ export function plateLumps(
       // `gm05_yomawaru`(3·5타일 폭)는 좌우 끝이 차 있어 담으로 남고, 홀로 선
       // 쪽만 덩이가 됐다.
       //
-      // 실측 (`node .audit/lumpSizes.mjs`, 오버월드+실내 열두 자리의 덩이 8,957장):
+      // 실측 (`node .audit/probe/lumpSizes.mjs`, 오버월드+실내 열두 자리의 덩이 8,957장):
       //
       //   덩이  `imped` 1×1 7,295 · 2×2 880 · 3×1 41 · 4×1 38 · 8×1 38 …
       //         **키/폭이 하나도 1.00을 안 넘는다**

@@ -192,14 +192,14 @@ NSBMD는 정점 배열이 아니라 **NDS GPU의 디스플레이 리스트**를 
 굽는 쪽이 그때만 `d`를 싣는다 (`extract/chunks.js`의 `materialSpec` ·
 `import/platinum/chunks.ts`의 `packChunk`). **텍스처가 있는 재질에는 안 붙인다** —
 붙이면 확산색이 텍스처를 한 번 더 곱해 온 신오가 어두워진다. 재는 자는
-`node .audit/whiteMaterials.mjs`고, 어디를 봐야 하는지는 `.audit/whiteAim.mjs`가 준다.
+`node .audit/probe/whiteMaterials.mjs`고, 어디를 봐야 하는지는 `.audit/probe/whiteAim.mjs`가 준다.
 
 ⚠️ **싣는 것과 그리는 것이 둘 다여야 한다.** 소품 재질을 만드는 자리가 한동안
 두 벌이었고(`DistortionProps`·`ObjectProps`가 각자 `materialsOf`를 들었다) 뒤엣것이
 `d` 칸을 안 봤다 — 갈래 38(그림 262, 맵 71)의 재질 하나가 텍스처 없이 확산색
 (99,99,99)만 드는데 그것이 **흰색으로** 그려졌다. 지금은 `scene/propMeshes.ts`의
 `propMaterials` 하나를 둘이 같이 쓴다. 화면에 선 색을 읽는 자는
-`node .audit/objectPropColor.mjs`고, 갈래 38이 `#636363`이면 맞다.
+`node .audit/probe/objectPropColor.mjs`고, 갈래 38이 `#636363`이면 맞다.
 
 좌표 단위는 **타일이 아니라 유닛**이고 16유닛이 한 타일이다(청크 하나가
 −256~+256 유닛 = 32타일로 딱 떨어진다). 이동 동작 표의 "거리 × 프레임 = 16"과
@@ -2164,7 +2164,7 @@ DP가 특히 악명 높았고 Pt는 그걸 고치려고 배틀을 빠르게 한 
 ⚠️ **줄이면 겹친다.** 한동안 `beat.hold`를 가리지 않고 곱해서 기본값에서 40프레임
 연출이 20프레임에 잘렸다 — 포켓몬이 아직 때리러 나가 있는데 체력바가 닳았다.
 손 떼고 실제 배틀에서 「연출이 시작한 시각 → 체력이 처음 움직인 시각」을 재면
-(`.audit/battleOverlap.mjs`):
+(`.audit/probe/battleOverlap.mjs`):
 
 | | 기술 1 | 기술 2 |
 |---|---:|---:|
@@ -2379,7 +2379,7 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 
 **넷째 길이 있다 — 눈으로 고른 표**(`NPC_MODEL_BUNDLE`). 이름표로 못 고르던
 자리는 후보를 전부 3D로 찍어 원작 그림 옆에 늘어놓고 정한다
-(`.audit/renderCands.mjs` → `.audit/plateReview.html`). 열셋이 이 길로
+(`.audit/probe/renderCands.mjs` → `.audit/probe/out/plateReview.html`). 열셋이 이 길로
 붙었고, 그중 `madam`처럼 **한 낱말이 번들 셋에 붙어 있는** 자리는 이름표로
 이으면 딴 사람이 온다 — `tr0047_00`(트레이너 마담)·`fc0047_00`·`fc2023_00`.
 
@@ -2452,8 +2452,8 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 치비를 배틀에도 세우게 되면 `shapeChibi`를 그쪽에서도 불러야 한다.
 
 **상수 넷을 등신 몸과 맞대어 정했다.** 눈이 아니라 스킨을 먹인 정점으로
-재고(`.audit/chibiFit.mjs`), 값을 훑어 어긋남이 제일 작은 자리를 골랐다
-(`.audit/chibiSweep.mjs`). 등신 셋과 나란히 놓은 실측:
+재고(`.audit/probe/chibiFit.mjs`), 값을 훑어 어긋남이 제일 작은 자리를 골랐다
+(`.audit/probe/chibiSweep.mjs`). 등신 셋과 나란히 놓은 실측:
 
 ⚠️ **반드시 `updateLocomotion`을 돌리고 재라.** 화면에서 사람은 T자세로 안
 선다 — 팔을 내리고 서고, 그러면 팔의 길이축이 가로에서 **세로**로 바뀌어 받는
@@ -2542,7 +2542,7 @@ SOUTH=1, WEST=2, EAST=3`과 그대로 맞는다.
 
 갈래마다 클립 몫이 크게 다르고 **얻는 것도 다르다.** 어느 것을 굽고 어느 것을
 안 굽기로 했는지는 [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §3.2에 실측과 함께 있다.
-재는 자리는 `.audit/clipCost.py`다 — 같은 사람을 클립 있게·없게 두 번 굽고 뺀다.
+재는 자리는 `.audit/probe/clipCost.py`다 — 같은 사람을 클립 있게·없게 두 번 굽고 뺀다.
 
 ⚠️ **키를 우리가 정하지 않는다.** 사람마다 같은 키로 맞추면 어린아이가 어른과
 같아진다. **주인공이 원본 키에서 줄어든 배수 하나**를 BDSP 원본 키에 곱하면
@@ -2863,7 +2863,7 @@ BDSP의 불·연기·오라 재질에는 **색 그림이 없다.** 한동안 그
 | 재질 | 무엇을 들고 있나 | 어떻게 굽나 |
 |---|---|---|
 | `*Core` (리자몽 `FireCore`) | `_BaseColor` (1.0, 0.196, 0.102) · `_LayerColor` (0.941, 0.808, 0.0) · `_Blend*Tex` 마스크 | 두 색을 마스크로 섞고 알파도 마스크에서 — 반투명으로 얹는다 |
-| `*Core` (로토무 `FireCore`) | `_BaseColor`만 있고 모양 그림이 없다 | 제 색으로 꽉 찬 한 점 (실측으로 이 갈래는 로토무 여섯 판뿐이다 — `.audit/flatEffect.mjs`) |
+| `*Core` (로토무 `FireCore`) | `_BaseColor`만 있고 모양 그림이 없다 | 제 색으로 꽉 찬 한 점 (실측으로 이 갈래는 로토무 여섯 판뿐이다 — `.audit/probe/flatEffect.mjs`) |
 | `*Mask` (`FireMask`·`SmokeMask`) | `_Color` 흰색뿐. 키워드 `MASK_CALC_MODE_ADD`, `_Stencil` | **안 그린다** — 깎아 내는 도구지 보이는 면이 아니다 |
 
 가르는 기준이 이름이 아니라 **`_BaseColor`가 있는가**다. 없으면 조각을 통째로
@@ -2876,7 +2876,7 @@ BDSP의 불·연기·오라 재질에는 **색 그림이 없다.** 한동안 그
 `SmokeMask*`가 **깊이 버퍼로 깎아 내는 것**인데, glTF에 그 단계가 없다.
 
 깎개가 어느 쪽인지는 재질이 스스로 적어 뒀다 (`m_ShaderKeywords`, 종·판 557개
-실측 — `.audit/maskRule.mjs`):
+실측 — `.audit/probe/maskRule.mjs`):
 
 | 깎개 | 키워드 | `_ZWrite` | 화면 |
 |---|---|---:|---|
@@ -2891,7 +2891,7 @@ BDSP의 불·연기·오라 재질에는 **색 그림이 없다.** 한동안 그
 
 ⚠️ **그렇다고 다 빼면 안 된다.** 같은 잣대에 코터스(`pm0324`)도 걸리는데 그 연기는
 등딱지 옆·위에 떠 있어서 몸을 안 가린다. 그래서 **몸을 통째로 감싸는 것만** 뺀다 —
-감싸는지는 렌더러가 적어 둔 `m_AABB`로 가른다 (`.audit/effectWrap.mjs`):
+감싸는지는 렌더러가 적어 둔 `m_AABB`로 가른다 (`.audit/probe/effectWrap.mjs`):
 
     또가스   알맹이 [-0.87 -0.33 -0.87]~[0.87 1.14 0.87] ⊃ 몸 → 뺀다
     또도가스 알맹이 [-1.27 -1.12 -1.12]~[0.98 1.12 1.13] ⊃ 몸 → 뺀다
@@ -4057,7 +4057,7 @@ if (Field_MapConnection(...) && input->transitionDir != DIR_NONE) {
 풀므로 자전거를 갈아도 몸이 따라간다.
 
 ⚠️ **안장 뼈가 없어서 골반 자리는 원작이 앉힌 데서 가져온다.** `bike_walk_f`를
-여덟 점으로 재면 골반이 y 0.6498 · z 0.0212다(`.audit/bikePose.py`). 메시의
+여덟 점으로 재면 골반이 y 0.6498 · z 0.0212다(`.audit/probe/bikePose.py`). 메시의
 안장 꼭대기는 y 0.5722라 그 위 7.8cm인데, 사람 골반이 방석 위에 그만큼 뜨는
 것이 맞다. 달릴 때는 y 0.6650, 멈춰 설 때는 0.5352인데 멈춤 자세는 **한 발을
 땅에 내리고 엉덩이를 떼는 것**이라 우리 자세(두 발이 페달)와 다른 물건이다.
@@ -4390,9 +4390,9 @@ UV는 좌표의 아핀 함수라 평행이동을 그대로 따라가서, 옆 청
 
 ⚠️ **한 칸에 층이 둘이면 어느 층에서 늘어뜨릴지부터 정해야 한다.** 4세대는 벽도
 지붕도 「높이 띄운 가로 판」으로 그려서, 층이 1.5타일 넘게 벌어진 칸이 청크
-666개에 **10,249개**(바닥 있는 칸의 3.8%)다 (`.audit/overhangs.mjs`). 맨 위를
+666개에 **10,249개**(바닥 있는 칸의 3.8%)다 (`.audit/probe/overhangs.mjs`). 맨 위를
 그냥 집으면 지붕 밑에 커튼이 쳐진다. 갈라 주는 것은 **통행값**이다
-(`plates.standLevel`, `.audit/levelsHere.mjs` 실측):
+(`plates.standLevel`, `.audit/probe/levelsHere.mjs` 실측):
 
 | 자리 | 위 / 아래 | 통행 | 옆면 |
 |---|---|---|---|
@@ -4428,7 +4428,7 @@ UV는 좌표의 아핀 함수라 평행이동을 그대로 따라가서, 옆 청
 이웃 바닥에서 그림을 빌려 온다(`black` 344장 → 26장 · 빌려 온 `wifi_r_1_2` 60장).
 
 확인 지점에서 「땅 그림으로 칠해진, 발밑보다 1.5칸 넘게 높은 지형면」을 센 값
-(`.audit/curtains.mjs`):
+(`.audit/probe/curtains.mjs`):
 
 | 자리 | 고치기 전 | 고친 뒤 |
 |---|---|---|
@@ -4568,13 +4568,13 @@ UV는 좌표의 아핀 함수라 평행이동을 그대로 따라가서, 옆 청
 회색 띠는 벽지 뒤에 깔린 **받침**이고 눈에 보이는 것은 벽지다. 그런데 네 층의
 무게중심이 xz에서 같아서 「제일 가까운 것」이 그냥 **처음 만난 것**으로 갈렸고,
 회색 받침이 뽑혔다 — 계단 옆에 **바닥부터 천장까지 새까만 판때기**가 섰다
-(사용자가 그림으로 짚었다 · `.audit/wallSource.mjs`).
+(사용자가 그림으로 짚었다 · `.audit/probe/wallSource.mjs`).
 
 그래서 **같은 선 위의 층 중 세로 1타일당 UV가 제일 많이 움직이는 것**을 고른다 —
 무늬가 실린 층이 그것이다 (`nearestWall`). 실측으로 실내 여덟 곳의 판 528장 중
 **76장**의 색이 바뀌었고, 제일 크게 바뀐 것이 주인공 방의 `#7b6b6b → #c3b286`
 (밝기 +66)이다. 어두워진 쪽은 첫 체육관의 `#89898f → #797981`(−16)이 제일 크다
-(`.audit/wallBands.mjs`)
+(`.audit/probe/wallBands.mjs`)
 (`floorPatch`의 옆면과 같은 길이다). 세로 삼각형이 하나도 없는 방에서는 **안 세운다** —
 베낄 벽이 없으면 지어내지 않는다.
 
@@ -5438,7 +5438,7 @@ collisionPlane 8 · convergence 16) · 텍스처 머리 32
 ### 2.31 bm_anime.narc 외 열일곱 — 움직이는 소품 (NSBCA · NSBTP · NSBTA)
 
 문·배·자전거 비탈·간판이 움직이는 자료다. 롬 전체를 훑으면
-**BCA0 183 · BTP0 72 · BTA0 98**이고(`.audit/animScan.mjs`), 필드가 쓰는 것은 넷이다:
+**BCA0 183 · BTP0 72 · BTA0 98**이고(`.audit/probe/animScan.mjs`), 필드가 쓰는 것은 넷이다:
 
 | 아카이브 | 멤버 | 애니 | 쓰는 자리 |
 |---|---|---|---|
@@ -5482,7 +5482,7 @@ u8 hasAnimations · u8 flags · u8 isBicycleSlope · u8 dummy · s32 animeArchiv
 `c = -b`고 부호 비트 차례도 다르다(노드 헤더가 앞 네 비트를 쓰기 때문이다).
 
 **가르는 자는 직교성이다.** 회전행렬을 잘못 풀면 열끼리 내적이 0이 아니게 된다.
-가설 셋을 롬 자료에 대고 쟀다 (`.audit/jntProbe.mjs`):
+가설 셋을 롬 자료에 대고 쟀다 (`.audit/probe/jntProbe.mjs`):
 
 | 가설 | 피벗 43,218벌 | 기저 11,234벌 |
 |---|---|---|
@@ -5521,7 +5521,7 @@ u8 hasAnimations · u8 flags · u8 isBicycleSlope · u8 dummy · s32 animeArchiv
 목록을 읽어 시트에 같이 넣는다 (`nsbtp.patTextures`).
 
 **BTA0(SRT0)**는 공개 문서가 「이 절은 매우 불완전하다」고 적어 둔 자리다 —
-트랙의 채널 다섯 중 셋이 「모른다」다. 롬 값으로 갈랐다 (`.audit/matAnim.mjs`,
+트랙의 채널 다섯 중 셋이 「모른다」다. 롬 값으로 갈랐다 (`.audit/probe/matAnim.mjs`,
 곡선 78개 · 트랙 82):
 
 | 채널 | 깃발 | 값 | 무엇인가 |

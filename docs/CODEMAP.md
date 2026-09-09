@@ -75,6 +75,7 @@
 | **비전기술 컷인** | 값과 상태 기계는 `engine/actor/hmCutIn`(순수 60Hz · 화면 밖 좌표계 256×192), 3D 몸은 `scene/HmCutInStage`, 위아래 밴드는 DOM `ui/field/HmCutInOverlay`, 그 셋을 잇고 울음을 트는 것은 `scene/hmCutInScene`. 스크립트가 `PlayHMCutIn`으로 부른다(`world.ts`의 `hmCutIn`). ⚠️ **조우 컷인과 같은 규칙** — 길이를 상수로 안 적고 원작 태스크를 한 프레임에 한 단계씩 밟게 옮긴다 ([PARITY](PARITY.md) §1.8) |
 | **비전기술이 나가는 길** | 자격·자리는 `engine/script/fieldMoves`, 두 진입점 표와 라우팅은 `engine/script/field`(`TILE_FIELD_MOVE_ENTRY`·`MENU_FIELD_MOVE_ENTRY`), 실제로 몸을 옮기는 것은 `useFieldMoveNow`. ⚠️ **`fieldMoveFromMenu`로 되돌아가면 안 된다** — 그쪽은 스크립트를 거는 쪽이고, 스크립트 안의 `UseSurf`가 다시 그리로 가면 고리가 된다 |
 | **기술 입자** | 원작 `lib/spl`을 그대로 옮긴 것이 `engine/battle/spl/` — `resource`(`.spa` 읽기) · `fx`(고정소수·난수·삼각표) · `anim`(수명 곡선 넷) · `emitter`(뿜기 열 갈래 · 행동 여섯 · 한 프레임) · `texture`(GX 형식 → RGBA). 무대에 얹는 자는 `scene/battle/splPlace`(DS 단위 → 미터 · 축 셋 · 앵커), 그리기는 `scene/battle/splDraw`(사각형 두 축을 CPU에서)와 `SplParticles.tsx`(TSL 노드 재질 · 인스턴스), 자료를 쥐는 것은 `splPack`. ⚠️ **`engine/battle/spl`은 three를 모른다** — 거기까지가 순수 포팅이고, 월드에 얹는 자(배율·축)는 `scene/battle/splPlace` 한 자리에만 있다 ([DATA](DATA.md) §2.28 · [PARITY](PARITY.md) §2.13) |
+| **「지형이 화면에 섰는가」** | `scene/terrainMark.ts` — 읽기만 되는 준비 경계다. `ChunkModels`가 요청을 열 때 신원을 적고(`openTerrainRequest`) 커밋 뒤에 결과를 적으면(`markTerrain`), `terrainReady()`가 **가장 새 요청이 커밋됐는가**로 답한다. ⚠️ **맵 번호로 걸면 안 된다** — 한 행렬에 존이 여럿이라 도로를 걸어 나가면 번호만 바뀌고 지형은 그대로다 ([REPAIR.md](REPAIR.md) §43). 요청 한 건의 자국은 `terrainTrace()`(링 버퍼)가 준다 |
 | 부가 시설·세계 규칙 | `engine/world/` (꿀나무·사파리·복권·기록·장식…) |
 | **우리가 덧붙인 것** (시원의 배포) | `engine/world/siwon*.ts` · `engine/script/siwonScene.ts` — [SIWON.md](SIWON.md)가 정본 |
 | **통신을 닫아 둔 자리** | `engine/world/comm.ts` — 「안 된다」의 값 한 벌. 왜 문을 안 잠그고 답을 하는지는 [PARITY](PARITY.md) §9.4 |
@@ -231,7 +232,7 @@
 | 리포트 스키마 | `state/saveStore.test.ts` · `save/migrate` 시험 | — |
 | 디컴프에서 구운 표 | 그 표의 `*.test.ts` (모양과 수) | PARITY의 해당 절 |
 | 조명 프리셋·광원 방향 | `scene/fx/sky.test.ts` (면빛 비율) | PLAN §6.2 · 깨어진 세계는 PARITY §6.10 |
-| 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/voidShots.mjs` · `.audit/distortionLook.mjs` | PARITY §6.2 · §6.10 |
+| 필드 카메라 거리·화각 | `engine/actor/camera.test.ts` (방으로 물리는 규칙). 렌즈 값 자체는 화면으로 잰다 — `.audit/probe/voidShots.mjs` · `.audit/probe/distortionLook.mjs` | PARITY §6.2 · §6.10 |
 | 맵마다 도는 장치의 **배선** (체육관 여섯 · 리그 승강판) | `engine/script/mapFeatures.test.ts`(맵에 들어서면 켜지는가) · `scene/fieldServices.test.ts`(손잡이가 제 장치로 가는가) | PARITY §1.23 · PLAN §16.11 |
 | 어느 클립을 굽는가 (`engine/actor/npcModels`의 `TRAINER_CLIPS`·`HERO_FIELD_CLIPS`) | `import/bdsp/convert.test.ts`(굽는 쪽 둘이 같은 규칙을 보는가) · `scene/battle/battleTrainerVisual.test.ts`(무대가 쓰는 이름이 그 규칙에 드는가) | PLAN §16.9 · 3D_GAP_AUDIT §3.2 · `import/install/assetFormat`의 `npcModels`를 **올려야 한다**(이미 깔린 사람이 다시 굽는다) · DEPLOY §5의 ⑮(설치 크기) |
 | 타는 것·드는 것의 자리 (자전거 · 파도타기 · 공중날기 · 낚싯대 · 물뿌리개) | `scene/pcParts.test.ts`(번들에서 잰 자리) · `engine/actor/locomotion.test.ts`(발이 페달에, 손이 손잡이에) | DATA §4.2.1 · 3D_GAP_AUDIT §3.2 |
@@ -250,6 +251,10 @@
 | 이어하기의 수명주기 (`state/restoreStore` · `scene/restoreWorld`) | `scene/restoreWorld.test.ts`(늦은 응답·정리·재시도가 남의 잠금을 푸는가) · `engine/input/restoreGate.test.ts`(복원 중 방향키) · **브라우저는 `pnpm journey`의 ⑭** | REPAIR §42 |
 | 길 계획의 끝난 까닭 (`tools/e2e/route.mjs`의 `planPath`) | `node tools/e2e/planBench.mjs`(옛 구현과 걸음 수·본 칸 수 대조, 7사례) — 상한 소진을 「길이 없다」로 읽으면 엉뚱한 구역으로 간다 | REPAIR §42 |
 | `<html>`의 읽기 전용 표식 (`app/sceneMark`) | `app/sceneMark.test.ts` · 하네스 넷이 이 값으로 판정한다 | — |
+| 관측 어댑터 (`tools/e2e/observe.mjs`) | `tools/e2e/observe.test.mjs` — **배포 실행에서 `/src` 요청 0건**이고 못 읽는 것은 `known:false`다. 개발 전용 관측을 공유 드라이버에 섞으면 배포본이 조용히 다르게 돈다 | REPAIR §44 |
+| 통행 불가 목표의 예외 (`route.mjs`의 `enterBlockedGoal`) | `tools/e2e/route.test.mjs` — 문에만 건다. 구역·밟기·사람 옆칸에도 걸리면 **못 서는 칸이 `found`로** 나온다 | REPAIR §44 |
+| 배치가 만든 기하의 수명 (`chunkMesh.releaseSplit` · `ChunkModels`의 정리 경계) | `scene/chunkMesh.test.ts`(파생을 함께 놓는가·원본은 안 놓는가) · **브라우저는 `node tools/e2e/_land42.mjs`** | REPAIR §44 |
+| 진단기가 원래 오류를 안 덮는다 (`tools/e2e/perfSpy.mjs`) | `tools/e2e/perfSpy.test.mjs` — `detail`의 getter가 터져도 원래 예외가 나간다 | REPAIR §44 |
 
 ⚠️ **`.audit/`는 Git에 없고 시험 모음에도 안 들어간다.** 거기 있는 것은
 **한 번 재보는 자**다 — 명령이 어느 파일에서 몇 자리를 먹는지
@@ -271,7 +276,7 @@
 | 끝난 스크립트의 **글 뱅크를 안 내려놓기** | 다음 스크립트가 남의 뱅크에서 같은 번호를 읽는다. 글자는 멀쩡히 나와서 눈으로 지나간다 (DATA §2.10) |
 | 두 추출기 중 하나만 고치기 | 자기 롬으로 설치한 사람에게만 빈 화면 (§1) |
 | 추출기를 고치고 **`pnpm extract:*`를 안 돌리기** | 개발 나무의 산출물만 낡는다. 브라우저 변환기와 어긋나는데 `pnpm check`는 통과하고 **e2e(25분)에서야** 잡힌다 — 그 그룹에 바이트 대조 시험이 있어야 vitest가 본다 (REPAIR §21) |
-| **같은 것을 그리는 코드를 두 벌로 두기** | 한쪽만 고쳐져서 화면이 갈린다. 소품 재질이 두 벌이라 로토무 방 벽이 회색 대신 **흰색**으로 섰고, 시험 3,543개가 그걸 다 통과했다 — 재질 색은 화면이라 vitest가 안 본다. ⚠️ **합쳐 놓아도 다시 자란다** — 그 함수가 뒤에 다른 두 파일에 또 서 있었다. 겹치는 것을 세는 자가 `.audit/dup.mjs`다 (REPAIR §9 · DATA §2.2) |
+| **같은 것을 그리는 코드를 두 벌로 두기** | 한쪽만 고쳐져서 화면이 갈린다. 소품 재질이 두 벌이라 로토무 방 벽이 회색 대신 **흰색**으로 섰고, 시험 3,543개가 그걸 다 통과했다 — 재질 색은 화면이라 vitest가 안 본다. ⚠️ **합쳐 놓아도 다시 자란다** — 그 함수가 뒤에 다른 두 파일에 또 서 있었다. 겹치는 것을 세는 자가 `.audit/probe/dup.mjs`다 (REPAIR §9 · DATA §2.2) |
 | 제 파일 안에서만 쓰는데 `export` 붙이기 | `noUnusedLocals`가 **못 본다** — 「밖에서 쓸지도 모른다」라 영원히 안 잡히고, 그 이름이 죽어도 아무도 안 선다. `pnpm exports:check`가 그 자리를 지킨다 (`--write`로 낱말만 뗀다) |
 | 능력 차례 뒤집기 | 저장 차례는 HP·공격·방어·**스피드**·특공·특방이다 (DATA §2.24) |
 | 종족 이름 배열과 표 자리 헷갈리기 | 이름 배열은 종족 번호, 표는 그 −1인 자리가 있다 |

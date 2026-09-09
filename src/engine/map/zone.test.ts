@@ -4,7 +4,7 @@
 // 물면 소리가 나면 안 될 자리에서 나거나 나야 할 자리에서 안 난다. 원작 표는
 // 값마다 답을 적어 두었으므로 **개수가 곧 표와 같은가**의 증거가 된다.
 //
-// 실측 자리 수는 `.audit/surfaceScan.mjs`가 신오 전체 행렬에서 센 것이다.
+// 실측 자리 수는 `.audit/probe/surfaceScan.mjs`가 신오 전체 행렬에서 센 것이다.
 import { describe, expect, it } from 'vitest'
 import {
   Behavior, isDeepMud, isMud, isMudWithGrass, isOnSnow, isPuddle, isSand,

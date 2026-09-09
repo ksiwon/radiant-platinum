@@ -1,4 +1,4 @@
-Radiant Platinum 저장소의 docs/NEXT_RENDER_PRESENTATION_TASK.md(2026-09-08 후속 지시)를 읽고 A~E를 구현·검증까지 실행하라. 기존 OVERNIGHT_REPAIR_PLAN보다 이번 후속 지시를 우선한다. 기존 변경·저장·설치 프로필을 보존하고 커밋·푸시·배포는 하지 마라.
+Radiant Platinum 저장소의 docs/orders/NEXT_RENDER_PRESENTATION_TASK.md(2026-09-08 후속 지시)를 읽고 A~E를 구현·검증까지 실행하라. 기존 OVERNIGHT_REPAIR_PLAN보다 이번 후속 지시를 우선한다. 기존 변경·저장·설치 프로필을 보존하고 커밋·푸시·배포는 하지 마라.
 
 먼저 실패 순간 VAR_FOLLOWER_RIVAL_STATE(16518)와 실제 실행 이벤트를 읽어라. 예진호수 미완료는 아직 가설이다. drive.mjs는 입구 arrived만으로 reached를 기록하고 stood/장면 완료를 반영하지 않는다. 원본 이벤트를 따라 호수 안쪽 장면과 정상 동쪽 통행까지 명시적으로 완료한 뒤 다음 단계로 가라. warped를 완료로 읽거나 플래그를 직접 쓰지 마라.
 

@@ -39,7 +39,7 @@ export const BIKE = {
    *
    * ⚠️ **`ob1004_00`에는 안장 뼈가 없다.** 대신 원작이 `bike_walk_f`에서 골반을
    * 어디에 두는지를 잰다 — 여덟 점 평균으로 y 0.6498 · z 0.0212다
-   * (`.audit/bikePose.py`). 메시의 안장 꼭대기는 y 0.5722 · z −0.0200이라
+   * (`.audit/probe/bikePose.py`). 메시의 안장 꼭대기는 y 0.5722 · z −0.0200이라
    * 그 위 7.8cm이고, 사람 골반은 방석 위에 그만큼 뜨는 것이 맞다.
    *
    * 단마다 조금씩 다르다 — `bike_run_f`가 y 0.6650 · z 0.0305고, 멈춰 선
@@ -59,7 +59,7 @@ export const BIKE = {
    *
    * ⚠️ **끝 뼈가 없다.** `Handle` 뼈에 매달린 정점 중 제일 바깥을 잰다 —
    * x 0.3481 언저리 18점이 y 0.6345~0.6863 · z 0.2542~0.2797에 모여 있다
-   * (`.audit/bikeAnchor.mjs`). **손잡이가 뒤로 휜다** — 뼈 `Handle` 자체는
+   * (`.audit/probe/bikeAnchor.mjs`). **손잡이가 뒤로 휜다** — 뼈 `Handle` 자체는
    * z 0.393인데 끝은 0.265다.
    *
    * ⚠️ **원작 치비는 여기까지 못 잡는다.** 실측으로 그 손이 x 0.207 · y 0.673 ·
@@ -183,7 +183,7 @@ export function isOnCyclingRoad(): boolean { return onCyclingRoad }
  * 상체가 앞으로 숙는 각(라디안). **원작은 단마다 다르게 숙인다.**
  *
  * 골반→목 벡터가 곧게 선 데서 얼마나 기울었나를 클립 셋에서 여덟 점씩 재서
- * 평균했다 (`.audit/bikePose.py`):
+ * 평균했다 (`.audit/probe/bikePose.py`):
  *
  * | 클립 | 기울기 | 폭 |
  * |---|---:|---|

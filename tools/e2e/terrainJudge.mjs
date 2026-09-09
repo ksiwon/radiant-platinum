@@ -21,7 +21,9 @@ const COLS = 4
 const ROWS = 3
 
 /**
- * 한 칸이 「구조가 있는가」의 문턱.
+ * **계약 1의 문턱이었다 — 지금은 판정에 안 쓴다.** 값 자체는 계속 재서 표에
+ * 적는다(사람이 읽고 옛 판정과 견주는 값이다). 왜 물러났는지는 `CELL_EDGE`에
+ * 있다.
  *
  * ⚠️ **색 개수가 아니라 밝기 흩어짐이 가른다.** 실측(아래 대조 컷)에서
  * **성한 실내 바닥**은 색이 14~22개밖에 안 됐다 — 장판과 융단이 넓은 단색
@@ -30,8 +32,35 @@ const ROWS = 3
  *
  * 색 문턱은 「완전한 단색」만 걷어내는 낮은 값으로 둔다
  */
-const CELL_COLORS = 8
-const CELL_STDEV = 8
+/**
+ * **계약 2 — 「무늬가 있는가」가 아니라 「가장자리까지 무언가 있는가」다.**
+ *
+ * ⚠️ **계약 1(색 개수 + 밝기 흩어짐)은 정상 실내를 거절했다.** 축복시티
+ * 포켓몬센터의 크림색 장판은 넓고 매끄러워서 흩어짐이 **4~7**밖에 안 되는데,
+ * 못 그린 하늘도 **8** 언저리다 — 실측(`judge-false-negative/`)으로 문턱을
+ * 어디에 놓아도 그 둘이 안 갈렸고, 칸을 잘게 나눠도 최소값이 같이 내려갔다.
+ *
+ * 갈리는 것은 **무늬의 세기가 아니라 무언가가 있느냐**다. 지형이 그려졌으면
+ * 그 칸은 매끄러워도 **명암이 조금씩 변한다** — 바닥이 원근으로 기울고 빛이
+ * 앉기 때문이다. 못 그린 자리는 **말 그대로 아무 변화가 없다**: 클리어 색
+ * 한 장이거나 세로로만 변하는 하늘이다. 그래서 칸마다 **이웃 화소 차이의
+ * 평균**(가로 + 세로)을 재고, 그것이 0에 가까우면 죽은 칸으로 센다.
+ *
+ * 실측 값 (개발 대조군 13장 · 합성 7장, `.audit/terrain-controls`):
+ *
+ * | 무리 | 칸값 |
+ * | --- | --- |
+ * | 성한 컷의 **가장 낮은 칸** | **0.47** (센터 반례의 매끄러운 장판) |
+ * | 망가진 실측 컷의 **가장 높은 죽은 칸** | 0.10 (까만 원반의 바깥 칸) |
+ * | 합성 하늘 그라데이션 (거절해야 한다) | 0.33 |
+ *
+ * 창이 `0.33 < T ≤ 0.47`이라 **가운데인 0.40**을 잡았다. 이 값은 **개발
+ * 대조군에서 나왔다** — 보류 검증셋 평가 전에 못 박고, 그 뒤로는 안 움직인다
+ */
+const CELL_EDGE = 0.40
+
+/** 이 판정의 계약 번호. 뜻이 바뀌면 올린다 — 옛 JSON의 판정과 안 섞으려고 적는다 */
+export const JUDGE_CONTRACT = 2
 
 /**
  * **화면 밖**으로 치는 칸 — 거의 완전한 검정.
@@ -54,8 +83,14 @@ const VOID_STDEV = 1
  * 성한 컷이 75~100%이고 망가진 컷이 0~63%다
  */
 const NEED_RATIO = 0.7
-/** 살아 있는 칸이 이보다 적으면 판정할 거리가 못 된다 */
-const MIN_LIVE = 2
+/**
+ * 살아 있는 칸이 이보다 적으면 판정할 거리가 못 된다.
+ *
+ * ⚠️ **2였을 때 구멍이 뚫려 있었다.** 검은 바탕에 아래 가운데 두 칸만 무늬인
+ * 그림이 「2칸 중 2칸 = 100%」로 **통과했다** — 합성 대조 「검정-바탕에-두칸만」의
+ * 실측이다. 아래 규칙(줄 단위 제외)과 함께 살아 있는 칸은 늘 4 아니면 8이 된다
+ */
+const MIN_LIVE = 4
 
 /** 칸마다의 색 수와 밝기 흩어짐 */
 export function cellStats(png) {
@@ -67,6 +102,12 @@ export function cellStats(png) {
       const y0 = Math.floor(r * h / ROWS), y1 = Math.floor((r + 1) * h / ROWS)
       const set = new Set()
       let sum = 0, sum2 = 0, n = 0
+      // 이웃 화소와의 차이 — 칸 오른쪽·아래 한 줄은 짝이 없어 못 센다
+      let edge = 0, en = 0
+      const at = (x, y) => {
+        const o = (y * w + x) * bpp
+        return (pixels[o] * 299 + pixels[o + 1] * 587 + pixels[o + 2] * 114) / 1000
+      }
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
           const o = (y * w + x) * bpp
@@ -74,14 +115,44 @@ export function cellStats(png) {
           const l = (R * 299 + G * 587 + B * 114) / 1000
           sum += l; sum2 += l * l; n += 1
           set.add((R >> 3 << 10) | (G >> 3 << 5) | (B >> 3))
+          if (x + 1 < x1 && y + 1 < y1) {
+            edge += Math.abs(at(x + 1, y) - l) + Math.abs(at(x, y + 1) - l)
+            en += 1
+          }
         }
       }
       const mean = sum / n
       out.push({
         r, c, colors: set.size, mean: Number(mean.toFixed(1)),
         stdev: Number(Math.sqrt(Math.max(0, sum2 / n - mean * mean)).toFixed(1)),
+        /** 계약 2가 보는 값 — 이웃 화소 차이의 평균 */
+        edge: Number((en === 0 ? 0 : edge / en).toFixed(3)),
       })
     }
+  }
+  return out
+}
+
+/**
+ * **화면 밖**으로 빼 줄 줄(row)을 고른다 — **아래에서 위로, 통째로만.**
+ *
+ * ⚠️ **칸 하나씩 빼면 안 된다.** 「검다」는 픽셀만으로 그 자리가 원래 화면
+ * 밖이라고 증명하지 못한다. 칸 단위로 빼 주면 **검은 바탕에 두 칸만 무늬인
+ * 그림이 「2칸 중 2칸」으로 통과한다** — 합성 대조로 실측한 구멍이다.
+ *
+ * 진짜 여백은 **구조**가 있다. 카메라가 방 상자에 물리기 전의 검정은 화면
+ * **아래 가장자리부터 줄을 통째로** 채운다 (실측 「실내-센터-카메라넓을때」:
+ * 아랫줄 네 칸이 모두 색 1개·밝기 0.0·흩어짐 0.0). 그래서 **맨 아랫줄이
+ * 통째로 검을 때만** 그 줄을 빼고, 그 위 줄은 아랫줄이 이미 빠졌을 때만 본다.
+ * 흩어져 있는 검은 칸은 **안 빼고 「안 채워진 칸」으로 센다**
+ */
+function voidRows(all) {
+  const out = []
+  for (let r = ROWS - 1; r >= 1; r--) {
+    const row = all.filter((x) => x.r === r)
+    if (row.length === 0) break
+    if (!row.every((x) => x.mean < VOID_MEAN && x.stdev < VOID_STDEV)) break
+    out.push(r)
   }
   return out
 }
@@ -94,12 +165,14 @@ export function cellStats(png) {
 export function judgeTerrain(png) {
   const cells = cellStats(png)
   const all = cells.filter((x) => x.r >= 1)
-  // 「그릴 것이 없는 자리」를 먼저 뺀다 — 안 빼면 정상 실내가 떨어진다
-  const roi = all.filter((x) => !(x.mean < VOID_MEAN && x.stdev < VOID_STDEV))
-  const filled = roi.filter((x) => x.colors >= CELL_COLORS && x.stdev >= CELL_STDEV).length
+  const roi = all.filter((x) => !voidRows(all).includes(x.r))
+  // ⚠️ **계약 2다.** 색 개수·흩어짐은 계속 재서 표에 적지만(사람이 읽는 값이고
+  // 옛 판정과 견주는 값이다) **판정에는 안 쓴다** — 그 둘이 정상 실내를 거절했다
+  const filled = roi.filter((x) => x.edge >= CELL_EDGE).length
   const ratio = roi.length === 0 ? 0 : filled / roi.length
   const drawn = roi.length >= MIN_LIVE && ratio >= NEED_RATIO
   return {
+    contract: JUDGE_CONTRACT,
     drawn,
     filled,
     roi: roi.length,
@@ -109,7 +182,7 @@ export function judgeTerrain(png) {
     why: drawn ? null
       : roi.length < MIN_LIVE
         ? `지형 자리 ${String(all.length)}칸이 전부 검다 — 그릴 것이 아무것도 없다`
-        : `지형 자리 ${String(roi.length)}칸 중 ${String(filled)}칸만 채워졌다`
+        : `지형 자리 ${String(roi.length)}칸 중 ${String(filled)}칸만 살아 있다`
           + ` (${String(Math.round(ratio * 100))}% · ${String(Math.round(NEED_RATIO * 100))}% 필요)`
           + ' — 지형이 안 그려졌다',
     cells,
@@ -121,7 +194,8 @@ export function cellGrid(cells) {
   const rows = []
   for (let r = 0; r < ROWS; r++) {
     rows.push(cells.filter((x) => x.r === r)
-      .map((x) => `${String(x.colors).padStart(5)}/${x.stdev.toFixed(1).padStart(5)}`).join(' '))
+      .map((x) => `${x.edge.toFixed(2).padStart(6)}|${String(x.colors).padStart(3)}/${x.stdev.toFixed(1).padStart(5)}`)
+      .join(' '))
   }
   return rows
 }

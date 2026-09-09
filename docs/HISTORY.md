@@ -141,7 +141,7 @@ git filter-repo --force \
 가리키는 것이 없어진다.** 지금 이 계획서에 적힌 것도 마찬가지다. 다시 쓴 뒤에
 문서를 한 번 훑어 옛 해시를 지우거나 "다시 쓰기 이전"이라고 표시한다.
 
-`.audit/build.json`의 `buildId`도 옛 해시다 — 다시 빌드하면 갱신된다.
+`.audit/probe/out/build.json`의 `buildId`도 옛 해시다 — 다시 빌드하면 갱신된다.
 
 ---
 

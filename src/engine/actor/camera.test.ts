@@ -17,7 +17,7 @@ const box = (minX: number, minZ: number, maxX: number, maxZ: number): RoomBox =>
   southEdge: new Map(Array.from({ length: maxX - minX }, (_, i) => [minX + i, maxZ])),
 })
 
-/** 포켓몬센터의 실측 상자 (`node .audit/roomFit.mjs`) */
+/** 포켓몬센터의 실측 상자 (`node .audit/probe/roomFit.mjs`) */
 const CENTER: RoomBox = box(1, 3, 16, 14)
 
 /** 실내 렌즈. 주인공을 곧장 겨누면 이 각이다 */

@@ -1,7 +1,7 @@
 // 릴리스 증거의 봉투 (PLATINUM_3D_COMPLETION_PLAN §6.1 · PT-01)
 //
 // ⚠️ **결과 파일이 있다는 것과 「이 배포물을 다 쟀다」는 것은 다르다.**
-// `blockers.mjs`는 오래 `.audit/e2e.json`을 열어 FAIL·BLOCKED·NOT RUN이 하나도
+// `blockers.mjs`는 오래 `.audit/probe/out/e2e.json`을 열어 FAIL·BLOCKED·NOT RUN이 하나도
 // 없으면 통과로 셌다. 그 판정은 다음을 **전부 통과로 읽는다** — 재현은
 // `evidence.test.mjs`에 있다:
 //
@@ -177,7 +177,8 @@ export const SUITES = {
     contract: 1,
     roster: () => listRoster(E2E_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
-      'tools/e2e/run.mjs', 'tools/e2e/serve.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/run.mjs', 'tools/e2e/serve.mjs',
+      'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs',
       'tools/distribution/evidence.mjs', 'tools/distribution/csp.mjs',
     ],
@@ -190,7 +191,8 @@ export const SUITES = {
     contract: 1,
     roster: storyRoster,
     harness: [
-      'tools/e2e/story.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/story.mjs',
+      'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/e2e/sceneWatch.mjs', 'tools/devServer.mjs', 'tools/gpuFlags.mjs',
       'tools/shot/png.mjs', 'tools/distribution/evidence.mjs',
     ],
@@ -206,11 +208,24 @@ export const SUITES = {
     // 그리고 찍는 시점이 「도착 직후」가 아니라 **지형이 섰다는 상태**가 됐고,
     // 그 상한을 넘긴 컷은 판정 불가로 갈라 적는다.
     // **3으로 잰 판은 이 판정의 통과에 못 보탠다.**
-    contract: 4,
+    //
+    // ⚠️ **5다.** 뜻이 두 곳에서 또 갈렸다 (2026-09-09).
+    // ① 화면: 검은 칸을 **칸마다** 빼 주던 것이 「아래에서 통째로 한 줄씩」이
+    //    됐다 — 앞 규칙에는 **검은 바탕에 두 칸만 무늬면 통과**하는 구멍이
+    //    있었다(합성 대조로 실측). 살아 있는 칸의 최소도 2에서 4가 됐다.
+    // ② 준비: 「표식의 맵 번호가 지금 맵과 같은가」가 「**가장 새 요청이
+    //    커밋됐는가**」가 됐다. 앞 판은 한 행렬 안에서 존만 바뀌어도 거짓
+    //    실패였고(도로를 걷는 내내 준비 안 됨), 텍스처 묶음만 바뀐 재요청은
+    //    못 봤다.
+    // **4로 잰 판도 이 판정의 통과에 못 보탠다.**
+    contract: 5,
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
-      'tools/e2e/journey.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/journey.mjs',
+      'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',
+      // ⚠️ 페이지에 심는 것도 도구다 — 빠지면 계측이 바뀐 판을 봉투가 못 잡는다
+      'tools/e2e/perfSpy.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/shot/png.mjs',
       'tools/distribution/evidence.mjs',
     ],
@@ -229,7 +244,7 @@ export const SUITES = {
       // ⚠️ 판정기(`firstFrameRules`)가 빠져 있었다 — 뜻을 바꾸는 파일이
       // 도구 목록 밖에 있으면 봉투가 그 변화를 못 잡는다
       'tools/e2e/firstFrame.mjs', 'tools/e2e/firstFrameRules.mjs',
-      'tools/e2e/canvasShot.mjs', 'tools/e2e/drive.mjs',
+      'tools/e2e/canvasShot.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/shot/png.mjs',
       'tools/distribution/evidence.mjs',
     ],
@@ -242,7 +257,8 @@ export const SUITES = {
     contract: 1,
     roster: () => listRoster(GPU_LOSS_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
-      'tools/e2e/gpuLoss.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/gpuLoss.mjs',
+      'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/distribution/evidence.mjs',
     ],
   },
@@ -402,7 +418,7 @@ export function harnessDigest(suiteName) {
 /** 빌드가 스스로 적어 둔 신원. 없으면 `null` */
 export function buildStamp() {
   try {
-    return JSON.parse(readFileSync(resolve(ROOT, '.audit/build.json'), 'utf8'))
+    return JSON.parse(readFileSync(resolve(ROOT, '.audit/probe/out/build.json'), 'utf8'))
   } catch {
     return null
   }

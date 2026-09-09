@@ -229,7 +229,7 @@ export const NPC_MODEL_ALIAS: Readonly<Record<string, string>> = {
  * 마담) · `fc0047_00` · `fc2023_00` 셋에 다 붙어 있다.
  *
  * 그래서 근거가 **후보를 다 3D로 찍어 나란히 놓고 사람이 고른 것**이다
- * (`.audit/plateReview.html` · `.audit/renderCands.mjs`가 만든다). 짐작이 아니라
+ * (`.audit/probe/out/plateReview.html` · `.audit/probe/renderCands.mjs`가 만든다). 짐작이 아니라
  * 본 것이므로 낱말보다 세고, 줄마다 무엇을 보고 골랐는지 적는다.
  *
  * ⚠️ **갈래가 있는 그림은 여기 적지 않는다.** BDSP가 제 답을 적어 둔 자리를
@@ -272,7 +272,7 @@ export const NPC_MODEL_BUNDLE: Readonly<Record<string, string>> = {
 
   // ⚠️ **핸섬과 플루토는 BDSP에 몸이 없다** — 필드 161벌·배틀 124벌을 다 세었고
   // 이름표가 안 붙은 셋(`fc1008_01`·`fc2039_00`·`fc2044_00`)까지 열어 봤다
-  // (`.audit/lookerCharonCands.mjs`). 그래서 남의 몸을 **다시 칠해서** 세운다 —
+  // (`.audit/probe/lookerCharonCands.mjs`). 그래서 남의 몸을 **다시 칠해서** 세운다 —
   // 아래 `NPC_RECOLOR`가 임자고, 이름 뒤에 붙는 꼬리가 그 판을 가리킨다
   LOOKER: 'fc1051_00-looker',
   CHARON: 'fc1041_00-charon',
@@ -297,8 +297,8 @@ interface Recolor {
  * 부위 색이 바뀐다. 위에 물감을 덧칠하는 것이 아니다.
  *
  * ⚠️ **색을 눈으로 고르지 않는다.** 목표는 롬 그림 앞모습에서 그 부위 픽셀의
- * 선형 평균이고(`.audit/spriteRegions.py`), 넣는 값은
- * **목표 ÷ 그 채널의 음영 평균**을 푼 것이다(`.audit/recolorSolve.py`). 그래서
+ * 선형 평균이고(`.audit/probe/spriteRegions.py`), 넣는 값은
+ * **목표 ÷ 그 채널의 음영 평균**을 푼 것이다(`.audit/probe/recolorSolve.py`). 그래서
  * 줄마다 「넣는 값 → 화면에 나올 색」이 적혀 있고 뒤엣것이 롬에서 잰 값이다.
  *
  * ⚠️ **원래 번들은 그대로 남는다.** `fc2033_01`은 게임디렉터(그림 242)가 쓰고
@@ -312,12 +312,12 @@ export const NPC_RECOLOR: Readonly<Record<string, Recolor>> = {
   // `wear`의 세 채널이 코트+모자(Skin 77%) · **바지와 장갑**(Primary 19%) ·
   // 작은 어두운 부분(Secondary 4%)이다 — Primary는 가슴의 정장 띠가 아니라
   // 다리라서 목표가 롬 그림의 바지색(#424242)이지 정장색(#7b4242)이 아니다
-  // (마스크를 열어 봤다: `.audit/mask-fc1051-wear.png`)
+  // (마스크를 열어 봤다: `.audit/probe/out/mask-fc1051-wear.png`)
   //
   // ⚠️ **중절모는 못 뗀다.** 리오(`fc2009_00`)는 모자가 `hat`이라는 독립
   // 재질이라 조각째 뺄 수 있지만, 갬블러의 모자는 코트와 **한 조각**에 들어
   // 있어서 재질 이름으로는 못 가른다. 모자를 포기하고 옷차림을 얻는 쪽이
-  // 낫다는 것이 사람의 결정이다 (`.audit/lookerAB.png`에서 둘을 견줬다)
+  // 낫다는 것이 사람의 결정이다 (`.audit/probe/out/lookerAB.png`에서 둘을 견줬다)
   'fc1051_00-looker': {
     paint: {
       hair: { _PrimaryColor: '#57574f' },   // → #4a4a43 검은 머리

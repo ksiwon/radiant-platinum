@@ -1,0 +1,84 @@
+{
+ "note": "대조 컷의 신원. 컷 자체는 저작물이라 나무에 안 담는다 (COPYRIGHT.md 6). 여기 적는 것은 경로·해시·기대 판정뿐이다.",
+ "cuts": [
+  {
+   "path": ".audit/terrain-controls/망가진/까만원반-탄광앞.png",
+   "scene": "망가진",
+   "sha256": "3056d5f4a7b867702fe669bce2919fa460d74e35ef1a87e1b8dce4f7dcf76bef",
+   "want": false
+  },
+  {
+   "path": ".audit/terrain-controls/망가진/바닥없음-관장뒤.png",
+   "scene": "망가진",
+   "sha256": "23e8424bceae131652c1ffa7bc1097c806bdc2b4b6576dfaed188ad6da278c70",
+   "want": false
+  },
+  {
+   "path": ".audit/terrain-controls/망가진/바닥한줄-체육관.png",
+   "scene": "망가진",
+   "sha256": "9d6a2aeaceac87a952af6d6b8a3c4bc49a088543c94fa8480c30df36ff47b4cb",
+   "want": false
+  },
+  {
+   "path": ".audit/terrain-controls/망가진/파란여백-이어하기.png",
+   "scene": "망가진",
+   "sha256": "7cd95301d298029ff8a8fd06583463349d72f57938dfe8bd122be6528d803e6e",
+   "want": false
+  },
+  {
+   "path": ".audit/terrain-controls/망가진/하늘만-무쇠시티.png",
+   "scene": "망가진",
+   "sha256": "1c57c5c9fd78de11bd9cb9155c40843520dbcc0a065381c40f125e2dc9e1e489",
+   "want": false
+  },
+  {
+   "path": ".audit/terrain-controls/망가진/하늘만-축복시티.png",
+   "scene": "망가진",
+   "sha256": "99f2f10e3e48515df3549d618606e431c1b421997f7f1270df2f4dd8fab9e4a0",
+   "want": false
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실내-센터-카메라넓을때.png",
+   "scene": "성한",
+   "sha256": "9a55440758f16d9b25b3d094b14f36c016b046c58e9a15bf92523b302dfdc895",
+   "want": true
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실내-센터-카메라붙은뒤.png",
+   "scene": "성한",
+   "sha256": "e91508afe3db75c4cf8991660c33f6dec213b921e9c9b469f2425730467ff65b",
+   "want": true
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실내-침실.png",
+   "scene": "성한",
+   "sha256": "20620d74e6bc86aad432bf0fbc7c5546ebace8b44a6a421822edd718569cb227",
+   "want": true
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실외-걸어들어온직후.png",
+   "scene": "성한",
+   "sha256": "bb2cf5f68d0f5ceca61a2a0eac18e337225e55044cdf444a18da98a97828e32d",
+   "want": true
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실외-축복시티-1초.png",
+   "scene": "성한",
+   "sha256": "e86ac277eebfe1bab7af1ea04c4e633bab066c3f29efe8ee4c35488fbf231d1b",
+   "want": true
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실외-한걸음뒤.png",
+   "scene": "성한",
+   "sha256": "5a100c143ecf7e9a2e3c4ae9dfcdaba91cb27b1c239e72229d6ee56c7755cb60",
+   "want": true
+  },
+  {
+   "path": ".audit/terrain-controls/성한/실내-센터-매끄러운장판.png",
+   "scene": "성한",
+   "sha256": "aecf206f384084a377e4d6c0b1a1cdfe45f69588ee31e028fbb47a5932cca134",
+   "want": true,
+   "note": "계약 1이 2/8로 거절했던 컷 — 매끄럽고 밝은 크림색 장판. 원본 증거는 .audit/post-overnight-20260909/judge-false-negative/02-맵6.png"
+  }
+ ]
+}

@@ -59,7 +59,7 @@ export interface HatchBeats {
 /**
  * 자료를 아직 못 받았을 때 쓰는 값.
  *
- * ⚠️ **롬 실측이다** (`.audit/eggBeat.mjs`, 미국판). 자원 넷의 수명이
+ * ⚠️ **롬 실측이다** (`.audit/probe/eggBeat.mjs`, 미국판). 자원 넷의 수명이
  * 22·26·27·27프레임이라 「이미터가 다 죽는」 자리가 87프레임에 온다
  */
 export const EGG_BEATS: HatchBeats = beatsFrom([22, 26, 27, 27])

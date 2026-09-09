@@ -11,7 +11,7 @@
 // ⚠️ **화면에 들었는지도 여기서 잰다.** 그게 곧 「이 밭이 자라기 시작하는가」다
 // (`BerryPatches_UpdateGrowthStates`). 그리는 자리와 재는 자리가 원작에서도
 // 같은 절두체를 본다.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   BufferAttribute, DoubleSide, Frustum, Matrix4, Mesh, MeshBasicMaterial,
@@ -23,6 +23,7 @@ import { BERRY_STAGE } from '../engine/world/berryPatches'
 import { useSaveStore } from '../state/saveStore'
 import { berryPatchObjects, berryView } from './berryPatches'
 import {
+  dropMaterial,
   loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet,
   type ChunkMesh,
 } from './chunkMesh'
@@ -130,6 +131,23 @@ export function BerryPatchProps({ grid, layer }: { grid: MapGrid; layer: number 
       .catch(() => { /* 흙이 없으면 자란 것만 선다 */ })
     return () => { alive = false }
   }, [places.length])
+
+  /**
+   * 흙 재질과 그 그림을 놓는다.
+   *
+   * ⚠️ **놓는 자가 없었다** — 맵이 바뀔 때마다 `propMaterials`가 새로 굽는데
+   * 앞엣것이 그대로 남았다 (`useLoadedProps`와 같은 자리다). **그린 다음에**
+   * 버린다
+   */
+  const shownSoil = useRef<Soil | null>(null)
+  useEffect(() => {
+    const old = shownSoil.current
+    shownSoil.current = soil
+    if (old !== null && old !== soil) for (const m of old.materials) dropMaterial(m)
+  }, [soil])
+  useEffect(() => () => {
+    if (shownSoil.current !== null) for (const m of shownSoil.current.materials) dropMaterial(m)
+  }, [])
 
   useEffect(() => () => { berryView.inView = null }, [])
 

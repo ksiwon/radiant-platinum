@@ -54,7 +54,7 @@ const POKEBALL = 'Characters/objects/ob0201_00'
  * 주인공이 **들고 타는 것들**이 한 번들에 같이 있다.
  *
  * 필드 번들 161벌의 메시 이름을 전수로 훑어 나온 자리다
- * (`.audit/fieldClipCensus.mjs`): 파도타기 몸 `naminori_00_00_BodySkin` ·
+ * (`.audit/probe/fieldClipCensus.mjs`): 파도타기 몸 `naminori_00_00_BodySkin` ·
  * 공중날기 몸 `sora_00_00_BodyASkin` · 물뿌리개 `fo1013_00_wateringcanSkin` ·
  * 낚싯대 셋 `fo1005~1007_00_roadSkin`. 지금 쓰는 것은 파도타기뿐이다
  */

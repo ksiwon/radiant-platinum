@@ -23,6 +23,8 @@ export const stageState = (page) => page.evaluate(async () => {
     const fs = await import('/src/engine/loop/frameStats.ts')
 
     const ready = t.terrainReady()
+    // 요청 한 건이 어디까지 갔는지 — 「끝내 안 끝났다」를 관측으로 가른다
+    const trace = t.terrainTrace().slice(-40)
     const cam = refs.sceneRefs.stage.camera
     const scene = refs.sceneRefs.stage.scene
     const gl = refs.sceneRefs.stage.gl
@@ -63,6 +65,7 @@ export const stageState = (page) => page.evaluate(async () => {
     const d = document.documentElement.dataset
     return {
       ready,
+      trace,
       camera: cam === null ? null : {
         kind: cam.type ?? null,
         uuid: String(cam.uuid ?? '').slice(0, 8),
@@ -124,30 +127,72 @@ export const stageState = (page) => page.evaluate(async () => {
  *
  * @returns `{ ok, why, waitedMs }`
  */
-export async function waitTerrain(page, capMs = 20_000) {
+export async function waitTerrain(page, capMs = 20_000, tickMs = 3_000) {
   const t0 = Date.now()
   let why = '아직 한 번도 못 물었다'
   /**
-   * ⚠️ **`page.waitForFunction`에 async 판정식을 주면 안 된다.** 돌려준
-   * `Promise` 객체가 **참**이라 첫 폴링에서 곧바로 통과한다 — 실측
+   * ⚠️ **`page.waitForFunction`에 async 판정식을 주면 안 된다.** 설치된
+   * 플레이라이트(1.62.1)로 잰 값이다 — 프로젝트와 무관한 빈 페이지에서:
+   *
+   * ```
+   * waitForFunction(async () => false)          17ms에 **통과**
+   * waitForFunction(() => false)              2000ms 시간초과 (옳다)
+   * waitForFunction(async () => {…1초 뒤 true})   2ms에 통과 — 안 기다렸다
+   * ```
+   *
+   * 참·거짓을 **기다리기 전의 `Promise` 객체**로 재기 때문이다(그 뒤에 값을
+   * 꺼내느라 await은 한다 — 그래서 던지면 오류는 새어 나온다). 실측
    * (2026-09-08 판정용 journey): 이 자리가 「16ms에 섰다」고 적은 그 순간
-   * `terrainReady().ok`는 **거짓**이었고(「씬에 선 청크가 다른 맵의 것이다」)
-   * 그 상태는 이미 256프레임째 이어지고 있었다. 즉 **관문이 아무것도 안
-   * 막고 있었다.**
+   * `terrainReady().ok`는 **거짓**이었고 그 상태가 이미 256프레임째였다.
+   * 즉 **관문이 아무것도 안 막고 있었다.**
    *
    * `import`가 필요하니 판정식은 async일 수밖에 없다. 그러면 기다리는 일을
-   * 플레이라이트에 맡기지 말고 **여기서 직접 돈다** — `page.evaluate`는
-   * 프로미스를 제대로 기다린다 (`stageState`가 그 증거다)
+   * 플레이라이트에 맡기지 말고 **여기서 직접 돈다.**
+   *
+   * ⚠️ **한 번 묻는 것에도 상한을 둔다.** 안 끝나는 프로미스를 `page.evaluate`에
+   * 주면 **26초**를 매달렸다가 「Resulting promise was garbage collected」로
+   * 끝났다 — 같은 판의 실측이다. 그것은 계약이 아니라 우연이라, 한 번 묻는 데
+   * `tickMs`를 걸어 **바깥 상한이 늘 듣게** 한다
    */
+  /**
+   * ⚠️ **`Promise.race`는 진 쪽을 안 끊는다** (후속 §7). 상한에 걸릴 때마다
+   * 다음 바퀴에서 **또** `evaluate`를 열면, 안 끝나는 물음이 겹겹이 쌓인 채로
+   * 페이지가 그것을 다 붙들고 있다 — 재는 자가 재려는 것을 무겁게 만든다.
+   * 그래서 **떠 있는 물음은 늘 하나**고, 한 번 상한을 넘기면 그 자리에서
+   * **명시적인 진단 실패**로 끝낸다 (다시 열지 않는다)
+   */
+  let asked = 0
   while (Date.now() - t0 < capMs) {
-    const got = await page.evaluate(async () => {
+    const left = capMs - (Date.now() - t0)
+    const wait = Math.min(tickMs, Math.max(1, left))
+    asked += 1
+    const ask = page.evaluate(async () => {
       const t = await import('/src/scene/terrainMark.ts')
       const r = t.terrainReady()
       return { ok: r.ok, why: r.why }
-    }).catch((e) => ({ ok: false, why: `못 물었다 — ${String(e?.message ?? e).slice(0, 80)}` }))
-    if (got.ok) return { ok: true, why: null, waitedMs: Date.now() - t0 }
+    })
+    // 버려진 물음이 나중에 깨지더라도 이 자리에서 받아 준다
+    ask.catch(() => {})
+    let bell
+    let timedOut = false
+    const got = await Promise.race([
+      ask.catch((e) => ({ ok: false, why: `못 물었다 — ${String(e?.message ?? e).slice(0, 80)}` })),
+      new Promise((r) => {
+        bell = setTimeout(() => { timedOut = true; r({ ok: false, why: null }) }, wait)
+      }),
+    ])
+    clearTimeout(bell)
+    if (timedOut) {
+      // ⚠️ **못 잰 것을 「아직 안 됐다」로 적지 않는다.** 앞은 재는 자의
+      // 고장이고 뒤는 화면의 상태다 — 같은 글로 적으면 나중에 못 가른다
+      return {
+        ok: false, probeFailed: true, asked, waitedMs: Date.now() - t0,
+        why: `한 번 묻는 데 ${String(wait)}ms를 넘겼다 — 관측 실패다 (마지막에 본 것: ${why})`,
+      }
+    }
+    if (got.ok) return { ok: true, why: null, asked, waitedMs: Date.now() - t0 }
     why = got.why ?? '까닭을 안 줬다'
     await page.waitForTimeout(250)
   }
-  return { ok: false, waitedMs: Date.now() - t0, why }
+  return { ok: false, probeFailed: false, asked, waitedMs: Date.now() - t0, why }
 }

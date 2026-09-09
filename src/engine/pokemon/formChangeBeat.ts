@@ -33,7 +33,7 @@ interface FormChangeBeats {
 /**
  * 자료를 못 받았을 때 쓰는 값.
  *
- * ⚠️ **롬 실측이다** (`.audit/formSpa.mjs`, 미국판). 기라티나 멤버의 자원 셋이
+ * ⚠️ **롬 실측이다** (`.audit/probe/formSpa.mjs`, 미국판). 기라티나 멤버의 자원 셋이
  * 76·77·75프레임이고 쉐이미의 둘이 83·63이다
  */
 export const GIRATINA_BEATS: FormChangeBeats = { swap: 65, end: 77 }

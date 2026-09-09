@@ -10,7 +10,7 @@
 // 넣는다. 안 넣으면 갈아 끼울 그림이 없어 첫 칸에 멈춘 것처럼 보인다.
 //
 // 자리는 공개 문서(`Pattern Animations`) 그대로고 롬으로 확인했다
-// (`.audit/matAnim.mjs` — 트랙 이름 31벌이 31벌 다 소품 재질 이름과 맞는다).
+// (`.audit/probe/matAnim.mjs` — 트랙 이름 31벌이 31벌 다 소품 재질 이름과 맞는다).
 import { readDict } from './nsbmd'
 
 /** 이 프레임부터 이 그림을 쓴다 */

@@ -103,7 +103,7 @@ const SETTLE_MAX_MS = 30_000
  *
  * ⚠️ **삼각형이 멎은 것과 화면이 도는 것은 다른 일이다.** 실측으로 배틀파크도
  * 배틀타워도 도착 뒤 **12초 동안 초당 한 프레임**이고 14초부터 60fps다
- * (`.audit/parkWhen.mjs`) — 붙는 것은 9.5초에 끝나는데 그 뒤로도 한참 안 돈다.
+ * (`.audit/probe/parkWhen.mjs`) — 붙는 것은 9.5초에 끝나는데 그 뒤로도 한참 안 돈다.
  * 그 사이에 걸어 보면 시뮬이 한 번도 안 돌아서 칸이 안 바뀌고, 그것이
  * **「네 방향 다 못 걸었다」로 적혔다** — 격자는 남쪽이 열려 있는데도 그랬다
  */
@@ -484,7 +484,7 @@ async function warpTo(cp) {
   // `Timeout 30000ms exceeded` 한 줄뿐이다.** 실제로 훑기 71줄 중 ③이 그 한
   // 줄로 떨어졌는데, 그것만으로는 **키를 못 들은 것**과 **화면이 안 온 것**을
   // 못 가른다 — 고칠 자리가 서로 다르다. 재현은 스무 판을 몰아도 안 됐다
-  // (`.audit/warpRace.mjs`·`warpRace2.mjs` — 타이틀만 열 판, ③과 같은 조건으로
+  // (`.audit/probe/warpRace.mjs`·`warpRace2.mjs` — 타이틀만 열 판, ③과 같은 조건으로
   // 열 판, 전부 한 번에 열렸다). 그래서 **왜 안 열렸는지를 같이 던진다**
   for (let tries = 0; ; tries++) {
     try {
@@ -673,7 +673,7 @@ const whyStuck = () => page.evaluate(async () => {
     }
     // ⚠️ **「화면이 안 돈다」를 여기서 같이 잰다.** 시뮬이 한 번도 안 돌면 칸이
     // 안 바뀌는데, 그것과 「사방이 막혔다」가 표에서 똑같이 「못 걸었다」로
-    // 보인다 — 배틀파크가 세 번 다 그렇게 적혔다 (`.audit/parkWhen.mjs`)
+    // 보인다 — 배틀파크가 세 번 다 그렇게 적혔다 (`.audit/probe/parkWhen.mjs`)
     let frames = 0
     await new Promise((done) => {
       const s0 = performance.now()
@@ -883,7 +883,7 @@ if (ACTS.has('2')) {
         // `phase`는 `off → loading → running → over`인데(`state/battleStore.ts`),
         // 여기 닿는 시점에 배틀은 대개 아직 `off`다. 그래서 이 조건은 **곧바로
         // 참이 되고**, 배틀이 빨리 열린 실행에서만 우연히 제 일을 했다.
-        // 실측(`.audit/battleStream.mjs`) — 뛰어들고 나서 `running`까지:
+        // 실측(`.audit/probe/battleStream.mjs`) — 뛰어들고 나서 `running`까지:
         //   `gym8` 7.9초 · `elite` 3.7초. 그 사이를 안 기다리고 잰 값이
         //   `gym8` 삼각형 0.6k · `elite` 0.6k였다
         await page.waitForFunction(async () => {
@@ -1024,7 +1024,7 @@ if (ACTS.has('2')) {
       // **겹치는 자리가 하나도 없다.**
       //
       // ⚠️ **「언제부터 재는가」로는 못 고친다** — 그쪽을 먼저 재 봤다
-      // (`.audit/battleStream.mjs`). `settle()`은 삼각형이 750ms 안 바뀌면 넘어가는데,
+      // (`.audit/probe/battleStream.mjs`). `settle()`은 삼각형이 750ms 안 바뀌면 넘어가는데,
       // **안 바뀌는 동안에도 계속 붙는다**: `elite`는 4.7초에 9.8k로 넘어가고
       // 삼각형은 9.5초까지 152.6k로 오른다. `gym8`은 11.5k에서 **7.6초** 동안
       // 한 번도 안 바뀌다가 14.1초에 90.4k가 된다. 정체를 아무리 길게 잡아도
@@ -1353,7 +1353,7 @@ const executed = [
   ...(ACTS.has('3') ? ['ending'] : []),
 ]
 
-writeFileSync(resolve(ROOT, '.audit/story.json'), `${JSON.stringify(sealEvidence({
+writeFileSync(resolve(ROOT, '.audit/probe/out/story.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'story',
   selection: ONLY.length > 0 ? `--only=${ONLY.join(',')}`

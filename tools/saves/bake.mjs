@@ -124,8 +124,8 @@ for (const cp of list) {
         page.waitForEvent('download', { timeout: 60_000 }),
         page.evaluate(() => globalThis.pt.report()),
       ])
-      const tmp = resolve(ROOT, '.audit/saves.tmp', download.suggestedFilename())
-      mkdirSync(resolve(ROOT, '.audit/saves.tmp'), { recursive: true })
+      const tmp = resolve(ROOT, '.audit/probe/out/saves.tmp', download.suggestedFilename())
+      mkdirSync(resolve(ROOT, '.audit/probe/out/saves.tmp'), { recursive: true })
       await download.saveAs(tmp)
       const text = readFileSync(tmp, 'utf8')
       if (out.saved !== true) why = `내부 저장이 실패했다: ${String(out.why)}`

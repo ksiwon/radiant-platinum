@@ -213,7 +213,7 @@ export interface NodeXform {
  * 있었다.
  *
  * 실측: 청크 666개에 노드 917개 · **이동 207 · 회전 41(그중 피벗꼴 40) ·
- * 크기 22** (`node .audit/nodeXform.mjs`).
+ * 크기 22** (`node .audit/probe/nodeXform.mjs`).
  *
  * ⚠️ **회전 첫 칸이 머리에 끼어 있다.** `flag` 바로 뒤 u16이 남는 자리가 아니라
  * **회전행렬의 `m00`**이고, 나머지 여덟은 이동 뒤에 온다

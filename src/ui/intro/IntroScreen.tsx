@@ -527,7 +527,7 @@ export function IntroScreen() {
           여기만 맨 `<span>`이었다. 그래서 하네스가 「자식이 전부 글자 있는
           span인 div」로 어림짐작했고, 계기판(`ui/hud/PerfOverlay`)이 딱 그
           모양이라 그쪽을 고르는 줄로 세고 있었다 — 오프닝이 조작 설명 문답에서
-          영영 안 빠져나왔다 (`.audit/introProbe.mjs`로 잡았다)
+          영영 안 빠져나왔다 (`.audit/probe/introProbe.mjs`로 잡았다)
         */}
         {choices && (
           <div className={css.choices} role="radiogroup" aria-label="선택">

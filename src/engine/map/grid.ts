@@ -36,9 +36,31 @@ export interface MatrixMeta {
 
 export class MapGrid implements CollisionGrid {
   readonly meta: MatrixMeta
-  private readonly tiles: Uint16Array
-  private readonly zoneOfChunk: Int16Array
-  private readonly chunkByIndex = new Map<number, MatrixChunk>()
+  /**
+   * 통행값 격자 — 오버월드가 960×960이라 **92만 칸**이다.
+   *
+   * ⚠️ **`private`는 타입스크립트의 약속일 뿐 런타임에는 그냥 열거되는
+   * 속성이다.** 그래서 이 격자를 `grid` prop으로 받는 R3F 컴포넌트를 다시
+   * 그릴 때, R3F의 개발 전용 「Changed Props」 자국이 이것을 **한 칸씩 펼쳐**
+   * `performance.measure`의 `detail`에 실었다 — 실측(2026-09-09 `_land42`
+   * 13바퀴): `detail.devtools.properties`가 **924,116개**였고 그 호출이
+   * `Failed to execute 'measure' on 'Performance': Data cannot be cloned,
+   * out of memory.`로 터졌다.
+   *
+   * ⚠️ **그 예외가 R3F의 커밋 안에서 났다.** 그 바퀴의 지형 요청 #27은
+   * `submitted`까지 갔는데 `committed`가 **없다**(`terrainTrace`) — 자료도
+   * 빌드도 멀쩡했고 커밋만 잃었다. 밖에서는 「지형이 안 온다」로 보인다.
+   *
+   * 그래서 **진짜 사적 필드**로 둔다. 읽는 법은 그대로고, 열거하는 쪽에는
+   * 아예 안 보인다. 밖에서 이 셋을 읽는 자리는 없다(실측 0건).
+   *
+   * ⚠️ **이것은 개발 서버의 자국이다.** 배포 production은 이 `measure`를
+   * 한 번도 안 부른다(실측). 그러니 이 수정이 고치는 것은 **개발에서 도는
+   * 우리 검사**고, 쌓이는 자원 자체는 따로 봐야 한다
+   */
+  readonly #tiles: Uint16Array
+  readonly #zoneOfChunk: Int16Array
+  readonly #chunkByIndex = new Map<number, MatrixChunk>()
 
   constructor(meta: MatrixMeta, tiles: Uint16Array) {
     const expected = meta.tileWidth * meta.tileHeight
@@ -46,11 +68,11 @@ export class MapGrid implements CollisionGrid {
       throw new Error(`행렬 ${meta.id} 격자 크기 불일치: ${tiles.length} ≠ ${expected}`)
     }
     this.meta = meta
-    this.tiles = tiles
-    this.zoneOfChunk = new Int16Array(meta.width * meta.height).fill(-1)
+    this.#tiles = tiles
+    this.#zoneOfChunk = new Int16Array(meta.width * meta.height).fill(-1)
     for (const c of meta.chunks) {
-      this.zoneOfChunk[c.i] = c.zone
-      this.chunkByIndex.set(c.i, c)
+      this.#zoneOfChunk[c.i] = c.zone
+      this.#chunkByIndex.set(c.i, c)
     }
   }
 
@@ -62,7 +84,7 @@ export class MapGrid implements CollisionGrid {
   /** 격자 밖은 통행 불가. 청크가 없는 칸도 추출 시점에 IMPASSABLE로 채워져 있다 */
   tileAt(tx: number, tz: number): number {
     if (tx < 0 || tz < 0 || tx >= this.meta.tileWidth || tz >= this.meta.tileHeight) return IMPASSABLE
-    return this.tiles[tz * this.meta.tileWidth + tx]!
+    return this.#tiles[tz * this.meta.tileWidth + tx]!
   }
 
   isBlocked(tx: number, tz: number): boolean {
@@ -113,7 +135,7 @@ export class MapGrid implements CollisionGrid {
   bakedHeightAtWorld(x: number, z: number, near = 0): number | null {
     const i = this.chunkIndexAt(Math.floor(x), Math.floor(z))
     if (i < 0) return null
-    const c = this.chunkByIndex.get(i)
+    const c = this.#chunkByIndex.get(i)
     if (!c) return null
     const n = this.chunkTiles
     // 판 좌표는 청크 원점 기준이라 청크가 놓인 자리를 빼고 묻는다
@@ -123,7 +145,7 @@ export class MapGrid implements CollisionGrid {
   /** 맵 헤더 id. 청크가 없거나 행렬에 headers가 없으면 -1 */
   zoneAt(tx: number, tz: number): number {
     const i = this.chunkIndexAt(tx, tz)
-    return i < 0 ? -1 : this.zoneOfChunk[i]!
+    return i < 0 ? -1 : this.#zoneOfChunk[i]!
   }
 
   /**
@@ -151,7 +173,7 @@ export class MapGrid implements CollisionGrid {
       for (let dx = -r; dx <= r; dx++) {
         const x = cx + dx, z = cz + dz
         if (x < 0 || z < 0 || x >= this.meta.width || z >= this.meta.height) continue
-        const c = this.chunkByIndex.get(z * this.meta.width + x)
+        const c = this.#chunkByIndex.get(z * this.meta.width + x)
         if (c) out.push(c)
       }
     }

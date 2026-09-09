@@ -101,7 +101,7 @@ export const fieldScripts = {
    * 변수가 0이면 걸어라」 꼴이라, 값이 붓기 전 한 프레임이라도 표를 보면
    * **이미 지나간 컷신이 다시 돈다.**
    *
-   * 실측(`.audit/rivalScene.mjs`, 처음 화면부터 사람이 하는 그대로 밟아서):
+   * 실측(`.audit/probe/rivalScene.mjs`, 처음 화면부터 사람이 하는 그대로 밟아서):
    * 주인공 방의 TV 방송(`OnFrame` 표, `VAR_PLAYER_HOUSE_SPECIAL_PROGRAM_STATE`가
    * 0이면 3번)이 **오프닝 화면 뒤에서** +7.50초에 한 번 돌아 그 변수를 1로
    * 세웠고, +17.33초에 `initNewGame()`의 `vars.reset()`이 그것을 지웠고,

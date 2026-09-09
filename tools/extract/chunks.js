@@ -232,7 +232,7 @@ function buildMesh(dl, scale, material) {
   // 실측으로 청크 전체에 **그림 없고 정점색이 검은 서브메시 128개**가 있는데,
   // 그중 확산색까지 검은 것(59개·1,231삼각형)은 진짜 그림자라 그대로 두고,
   // **확산색이 있는 것(61개·714삼각형)만** 흰 정점색으로 되돌린다
-  // (`node .audit/blackWhat.mjs contest`)
+  // (`node .audit/probe/blackWhat.mjs contest`)
   const lit = material.diffuse[0] + material.diffuse[1] + material.diffuse[2] > 0
   if (!material.texture && lit) {
     for (const v of verts) {
@@ -259,7 +259,7 @@ function chunkModel(buf) {
  * 남아 화면에 **하얗게** 뜬다 — 그림자 재질(`kage`·`shade`·`lm*`, 확산
  * (0,0,0)~(66,82,107))이 전부 흰 안개로 깔렸던 자리다. 실측으로 맵 청크
  * 재질 7346개 중 170개, 건물 소품 1333개 중 117개, 깨어진 세계 소품 118개
- * 중 4개가 여기 해당한다 (`.audit/whiteMaterials.mjs`).
+ * 중 4개가 여기 해당한다 (`.audit/probe/whiteMaterials.mjs`).
  *
  * ⚠️ **텍스처가 있는 재질에는 안 붙인다.** 붙이면 확산색이 텍스처를 한 번 더
  * 곱해 온 신오가 어두워지고, 바이트가 달라지는 파일이 전부로 늘어난다
@@ -311,7 +311,7 @@ function placeByNode(verts, node) {
  * 떠 있다. 원작 카메라는 그 위에서 내려다보지 않으므로 그것이 「위쪽을 가리는
  * 뚜껑」 노릇만 한다. 우리 3인칭은 주인공보다 네 칸 위에 서므로 **그 뚜껑을
  * 위에서 본다** — 강철섬(맵 293, 청크 504~507)에서 y 10에 깔린 판이 화면의
- * 92%를 검게 덮었다 (`node .audit/blackWhat.mjs ironisle`).
+ * 92%를 검게 덮었다 (`node .audit/probe/blackWhat.mjs ironisle`).
  *
  * **아래에서 보면 없애도 똑같다** — 검은 판이든 아무것도 없는 허공이든 검정이다.
  *

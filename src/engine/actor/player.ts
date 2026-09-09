@@ -206,7 +206,7 @@ export const playerSystem = {
     // ⚠️ **깨어진 세계에서는 누른 방향이 서 있는 판을 지나 세계 축이 된다**
     // (PARITY §6.10 · `player_move.c`의 걸음 표 넷). 벽에서는 북남이 오르내림이
     // 되고 서동이 z가 된다 — 좌우를 오르내림에 매면 서쪽 벽에서 오른쪽을 눌러
-    // 벽을 타고 내려가고 아래를 눌러 벽에서 떨어진다 (`.audit/distortionWalk.mjs`)
+    // 벽을 타고 내려가고 아래를 눌러 벽에서 떨어진다 (`.audit/probe/distortionWalk.mjs`)
     surfaceVector(distortionBridge.frame?.() ?? null, dir.x, 0, dir.z, desired)
       .multiplyScalar(speed)
 

@@ -92,7 +92,7 @@ describe('shapeChibi', () => {
   // ⛔ **팔은 손대지 않는다.** T자세로 재면 짧아 보이지만 화면에서 사람은
   // 팔을 내리고 서고(`updateLocomotion`), 그러면 팔의 길이축이 세로가 되어
   // 다리와 같은 대접을 받는다 — 길이는 키 늘림, 단면은 굵기다. 실측으로
-  // 위팔관절~손이 24.2%로 등신 24.7~26.1% 안이다 (`.audit/armSpan.mjs`)
+  // 위팔관절~손이 24.2%로 등신 24.7~26.1% 안이다 (`.audit/probe/armSpan.mjs`)
   it('팔 마디와 팔뼈 배율을 안 건드린다', () => {
     const { inner, body, arm, fore, hand } = rig()
     const was = { arm: arm.position.clone(), fore: fore.position.x, hand: hand.position.x }

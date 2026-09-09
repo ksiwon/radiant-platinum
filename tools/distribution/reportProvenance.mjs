@@ -2,7 +2,7 @@
 //
 //     pnpm build && pnpm provenance
 //
-// `vite build`가 `.audit/bundle-provenance.json`을 남기고, 이 파일이 그것을 읽는다.
+// `vite build`가 `.audit/probe/out/bundle-provenance.json`을 남기고, 이 파일이 그것을 읽는다.
 // 숫자는 `renderedLength` — 원본 파일 크기가 아니라 **그 청크에 실제로 실린**
 // 바이트다. tree-shaking 뒤의 값이라야 "무엇이 얼마나 나가는가"의 답이 된다.
 import { existsSync, readFileSync } from 'node:fs'
@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import { forbiddenIn } from './provenance.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
-const AT = resolve(ROOT, '.audit/bundle-provenance.json')
+const AT = resolve(ROOT, '.audit/probe/out/bundle-provenance.json')
 
 if (!existsSync(AT)) {
   console.error('출처 보고서가 없다. `pnpm build`를 먼저 돌린다.')

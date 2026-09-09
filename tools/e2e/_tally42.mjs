@@ -3,7 +3,7 @@
 //     node tools/e2e/_tally42.mjs
 //
 // ⚠️ **손으로 센 숫자를 보고서에 옮기지 않는다.** 실측(2026-09-08): 보고서에
-// 「journey 12 PASS · 5 FAIL」이라 적혔는데 `.audit/journey.json`의 results는
+// 「journey 12 PASS · 5 FAIL」이라 적혔는데 `.audit/probe/out/journey.json`의 results는
 // **9 PASS · 8 FAIL**이었다 — 로그의 ✓ 표를 눈으로 센 값이 그대로 굳은 것이다.
 // 그래서 세는 일을 도구로 옮긴다. 숫자가 마음에 안 들면 검사를 다시 돌리는
 // 것이지, 여기를 고치는 것이 아니다.
@@ -18,11 +18,11 @@ const OUT = resolve(ROOT, '.audit/overnight-20260908')
 
 /** 봉투 하나 = 검사 한 벌. 이름은 실행 명령 그대로다 */
 const SUITES = [
-  { id: 'render:first', file: '.audit/renderFirst.json' },
-  { id: 'gpu:loss', file: '.audit/gpuLoss.json' },
-  { id: 'journey', file: '.audit/journey.json' },
-  { id: 'e2e', file: '.audit/e2e.json' },
-  { id: 'story', file: '.audit/story.json' },
+  { id: 'render:first', file: '.audit/probe/out/renderFirst.json' },
+  { id: 'gpu:loss', file: '.audit/probe/out/gpuLoss.json' },
+  { id: 'journey', file: '.audit/probe/out/journey.json' },
+  { id: 'e2e', file: '.audit/probe/out/e2e.json' },
+  { id: 'story', file: '.audit/probe/out/story.json' },
 ]
 
 const rows = []

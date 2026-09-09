@@ -9,10 +9,12 @@
 // (로토무 방 벽, 그림 262)의 재질 둘 중 하나가 텍스처 없이 확산색 (99,99,99)만
 // 드는데, 그것을 안 곱하면 정점색 흰색이 그대로 나가 **회색 벽이 하얗게 뜬다**
 // (DATA.md §2.2 — 맵 청크와 건물 소품에서 고친 것과 같은 자리다).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { DoubleSide, FrontSide, MeshBasicMaterial, type Material } from 'three'
 import {
-  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, sliceTexture,
+  dropMaterial,
+  loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, ownMap,
+  sliceTexture,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import { markSeeThrough } from './fx/seeThrough'
@@ -55,9 +57,25 @@ export function propMaterials(mesh: ChunkMesh, sheet: TexSheet | null): Material
     })
     // 깊이를 안 쓰는 면은 윤곽 후처리에 알려 준다 (`fx/seeThrough`)
     markSeeThrough(made, translucent)
+    // ⚠️ **이 그림은 이 재질의 것이다.** `sliceTexture`가 부를 때마다 새
+    // `DataTexture`를 만드는데 표시를 안 달아서 놓는 자가 지나갔다 —
+    // 실측(2026-09-09 `_land42` 22바퀴): 왕복마다 **6장씩** 늘어 한 번도 안 줄었다
+    ownMap(made)
     cache.set(key, made)
     return made
   })
+}
+
+/** 그 갈래들의 재질과 **그 재질이 제 것인 그림**을 놓는다 */
+function dropLoaded(list: readonly LoadedProp[]): void {
+  const seen = new Set<Material>()
+  for (const l of list) {
+    for (const m of l.materials) {
+      if (seen.has(m)) continue
+      seen.add(m)
+      dropMaterial(m)
+    }
+  }
 }
 
 /**
@@ -103,6 +121,21 @@ export function useLoadedProps(kinds: readonly number[]): {
       alive = false
     }
   }, [kinds])
+
+  /**
+   * **그린 다음에 버린다.** 새 목록이 붙은 뒤라야 방금 버린 재질을 한 프레임
+   * 더 그리는 일이 없다 (`ChunkModels`의 소품 재질과 같은 차례다).
+   *
+   * ⚠️ **앞 세대를 놓는 자가 없었다.** 맵이 바뀌면 `kinds`가 바뀌어 재질을
+   * 통째로 다시 굽는데, 앞엣것은 그대로 GPU에 남았다
+   */
+  const shown = useRef<readonly LoadedProp[]>([])
+  useEffect(() => {
+    const old = shown.current
+    shown.current = loaded
+    if (old !== loaded) dropLoaded(old)
+  }, [loaded])
+  useEffect(() => () => { dropLoaded(shown.current) }, [])
 
   const byKind = useMemo(() => new Map(loaded.map((l) => [l.kind, l])), [loaded])
   return { byKind, offsets }

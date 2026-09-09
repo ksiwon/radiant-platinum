@@ -45,7 +45,7 @@ export function isBridgeOverWater(behavior: number): boolean {
  *
  * ⚠️ **하나뿐이다.** 물 쪽은 자전거 다리 둘이 같이 드는데(0x73·0x78·0x7c) 눈은
  * `BRIDGE_OVER_SNOW`(0x75) 하나고 원작 표에 그렇게 적혀 있다. 216번도로에
- * 30칸이 전부다 (`.audit/surfaceScan.mjs`)
+ * 30칸이 전부다 (`.audit/probe/surfaceScan.mjs`)
  */
 export function isBridgeOverSnow(behavior: number): boolean {
   return behavior === 0x75

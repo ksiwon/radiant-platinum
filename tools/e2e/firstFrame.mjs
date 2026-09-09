@@ -368,7 +368,7 @@ const sealed = sealEvidence({
   results: rows,
   extra: { url, need: NEED, detail: runs },
 })
-writeFileSync(resolve(ROOT, '.audit/renderFirst.json'), `${JSON.stringify(sealed, null, 1)}\n`)
+writeFileSync(resolve(ROOT, '.audit/probe/out/renderFirst.json'), `${JSON.stringify(sealed, null, 1)}\n`)
 console.log(`\n${fails.length === 0 ? '다 통과했다' : `${String(fails.length)}건이 떨어졌다`}`
-  + ' — shots/first · .audit/renderFirst.json')
+  + ' — shots/first · .audit/probe/out/renderFirst.json')
 process.exit(fails.length === 0 ? 0 : 1)

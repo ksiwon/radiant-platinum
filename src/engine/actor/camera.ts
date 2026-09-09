@@ -72,7 +72,7 @@ const INDOOR_SLANT = 6.3632
  * `mapType` 4인데 `camera` 9라 40.59도다. **둘 중 하나라도 방이면** 방으로
  * 보고, 각은 언제나 `camera` 칸이 준다.
  *
- * 실측 (`node .audit/roomFit.mjs`): 이 규칙이 닿는 맵이 357개다 —
+ * 실측 (`node .audit/probe/roomFit.mjs`): 이 규칙이 닿는 맵이 357개다 —
  * 둘 다인 맵 277 · `mapType`만 57 · `camera`만 23.
  *
  * ⚠️ **1인칭은 안 건드린다.** 눈이 방 안에 있으므로 이 문제가 없다.
@@ -146,7 +146,7 @@ const MIN_AIM = 6
  *
  * 실내 3인칭은 주인공 뒤 5.5칸·위 3.2칸에서 본다. 그런데 **건물에 들어서면
  * 주인공은 늘 앞벽에 붙어 선다** — 실측으로 스무 곳 전부 방의 남쪽 끝이고
- * 뒤에 남은 바닥이 1.5칸뿐이다 (`node .audit/roomFit.mjs`). 카메라가 갈 5.5칸
+ * 뒤에 남은 바닥이 1.5칸뿐이다 (`node .audit/probe/roomFit.mjs`). 카메라가 갈 5.5칸
  * 뒤는 그려진 바닥 밖이라 **화면 아래 33%가 통째로 검다.**
  *
  * 예전에는 카메라를 방 상자 안으로 **물렸다**. 그러면 검은 자리는 사라지지만
@@ -242,7 +242,7 @@ export function roomAt(rooms: readonly RoomBox[], x: number, z: number): RoomBox
 /**
  * ⚠️ **굴에는 방 렌즈를 안 건다.** `!isOutdoors`는 동굴(3)과 지하(6)까지
  * 「실외가 아님」에 넣는데 그 둘은 방이 아니라 넓은 굴이다 — 강철섬에 방 렌즈를
- * 물리면 검은 화소가 **71.6% → 93.1%로 늘었다** (`node .audit/voidShots.mjs`).
+ * 물리면 검은 화소가 **71.6% → 93.1%로 늘었다** (`node .audit/probe/voidShots.mjs`).
  * 그래서 `roomLens`는 `mapType` 4·5나 `camera` 4만 방으로 본다.
  *
  * ⚠️ **깨어진 세계도 아니다.** 그쪽은 제 렌즈가 따로 있고(원작 필드의 기본
@@ -312,6 +312,19 @@ const tiltGoal = new Quaternion()
 let tiltReady = false
 /** 화각도 첫 프레임에는 앉힌다 — 안 그러면 맵을 열 때마다 렌즈가 빨려 들어간다 */
 let fovReady = false
+/**
+ * 자리와 시선도 **맵이 갈릴 때는** 앉힌다.
+ *
+ * ⚠️ **워프는 걸음이 아니다.** 감쇠 보간은 「걸어가는 동안 카메라가 따라온다」를
+ * 위한 것인데, 순간이동한 뒤에도 그대로 걸리면 **앞 맵의 시점에서 새 맵으로
+ * 미끄러져 들어온다** — 화면에는 방이 위에서 내려오고 나머지가 검다. 실측
+ * (2026-09-08 센터 왕복): 그 한복판에서 찍힌 컷이 지형 칸 0/8이었고 그 반 초
+ * 뒤가 8/8이었다. 그 사이는 **사용자도 그 화면을 본다.**
+ *
+ * `snap()`이 끄고 다음 `update`가 한 번 앉힌 뒤 다시 켠다. 걸음 보간과
+ * 스크립트·비전기술 카메라는 `snap`을 안 부르므로 그대로다
+ */
+let placeReady = false
 
 export const cameraSystem = {
   /**
@@ -373,6 +386,7 @@ export const cameraSystem = {
   snap() {
     tiltReady = false
     fovReady = false
+    placeReady = false
   },
 
   update(delta: number) {
@@ -457,12 +471,18 @@ export const cameraSystem = {
     // ⚠️ **컷인이 도는 동안은 안 늦춘다.** 원작이 `Camera_SetDistance`로 프레임마다
     // 곧바로 세우는데, 여기 감쇠(5)를 그대로 태우면 서른여덟 프레임짜리 돌진이
     // 8%밖에 안 먹혀 화면에서 아무 일도 안 일어난 것처럼 보인다
-    const t = cutInFrame.now !== null
+    const t = cutInFrame.now !== null || !placeReady
       ? 1
       : 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
+    placeReady = true
     cam.position.lerp(goal, t)
     cam.target.lerp(look, t)
-    cameraSystem.drift = cam.position.distanceTo(goal)
+    /**
+     * ⚠️ **자리만 재면 안 된다.** 시선(`target`)도 같이 보간된다 — 눈이 제자리에
+     * 있어도 **어디를 보는지**가 아직 미끄러지면 화면은 그만큼 다른 그림이다.
+     * 둘 중 **먼 쪽**을 남긴다
+     */
+    cameraSystem.drift = Math.max(cam.position.distanceTo(goal), cam.target.distanceTo(look))
 
     const wantFov = inDistortion ? DISTORTION_FOV : FIELD_FOV
     if (!fovReady) { cameraSystem.fov = wantFov; fovReady = true }

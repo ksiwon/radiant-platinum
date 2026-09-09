@@ -51,7 +51,7 @@ export const Behavior = {
    * 눈 네 단계 (`TileBehavior_IsSnow`, 506줄). **얕은 것이 끝에 떨어져 있다** —
    * 0xA1·0xA2·0xA3이 깊은 쪽 셋이고 얕은 것은 0xA8이다. 산술로 이으면 어긋난다.
    *
-   * 실측(`.audit/surfaceScan.mjs`): 얕음 1,443 · 깊음 2,687 · 더깊음 703 ·
+   * 실측(`.audit/probe/surfaceScan.mjs`): 얕음 1,443 · 깊음 2,687 · 더깊음 703 ·
    * 제일깊음 171칸
    */
   SNOW_DEEP: 0x00a1,
@@ -91,7 +91,7 @@ export const Behavior = {
    *
    * 깔린 자리는 **835칸 일곱 맵**뿐이다: 선단시티 체육관 497 · 선단신전 여섯
    * 층 338(1F 7 · B1F 14 · B2F 2 · B3F 106 · B4F 1 · B5F 208).
-   * 재는 법은 `.audit/iceScan.mjs`
+   * 재는 법은 `.audit/probe/iceScan.mjs`
    */
   ICE: 0x0020,
   /** 넓은 수면. 수로(W) 존을 채운다 — W231에만 6912칸 */

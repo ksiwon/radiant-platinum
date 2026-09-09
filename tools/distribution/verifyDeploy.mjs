@@ -101,7 +101,7 @@ else if (!/<div id="root">/.test(await deep.text())) problems.push('/play가 ind
 // ── ⑤ 올라간 것이 **이 빌드인가** ───────────────────────────────────────────
 //
 // ⚠️ **이게 없으면 검사 결과가 영원히 산다.** 한 번 통과시켜 놓고 소스를 고친
-// 뒤 다시 재지 않아도 `.audit/deploy-verified.json`은 그대로 남아, 다음
+// 뒤 다시 재지 않아도 `.audit/probe/out/deploy-verified.json`은 그대로 남아, 다음
 // `release:check`가 **다른 빌드의 통과 도장**을 읽는다. 그래서 무엇을 쟀는지를
 // 결과에 같이 적는다 (`run.mjs`의 ⑯이 이 값을 지금 빌드와 맞춰 본다).
 //
@@ -131,9 +131,9 @@ if (localEntry.length > 0 && servedEntry.join() !== localEntry.join()) {
 let buildId = null
 try {
   const { readFileSync } = await import('node:fs')
-  buildId = JSON.parse(readFileSync(resolve(ROOT, '.audit/build.json'), 'utf8')).buildId ?? null
+  buildId = JSON.parse(readFileSync(resolve(ROOT, '.audit/probe/out/build.json'), 'utf8')).buildId ?? null
 } catch {
-  notes.push('.audit/build.json이 없다 — 어느 빌드를 쟀는지 적을 수 없다')
+  notes.push('.audit/probe/out/build.json이 없다 — 어느 빌드를 쟀는지 적을 수 없다')
 }
 
 // ── 결과 ────────────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ if (!browserChecked) console.log('  · ⚠️ 브라우저 검사를 못 했다.
 // ⚠️ **약한 갈래로 간 검사는 `ok: false`다.** 브라우저를 못 띄웠으면 외부 요청을
 // 실제로 세지 못한 것이고, 못 센 것을 통과로 기록하면 blocker가 거짓으로 풀린다
 mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
-writeFileSync(resolve(ROOT, '.audit/deploy-verified.json'), `${JSON.stringify({
+writeFileSync(resolve(ROOT, '.audit/probe/out/deploy-verified.json'), `${JSON.stringify({
   url: base, ok: problems.length === 0 && browserChecked, browserChecked, problems,
   // 무엇을 쟀는지. `run.mjs`의 ⑯과 `blockers.mjs`가 지금 빌드와 맞춰 본다
   buildId, entry: servedEntry, at: new Date().toISOString(),

@@ -130,7 +130,7 @@ export function addWhenWarm(
  * (`WebGPUBindingUtils._createLayoutEntries`) 셰이더가 적어 둔 `@binding(5)`가
  * 레이아웃에 없다.
  *
- * 실측(`.audit/warmBind.mjs`, 트윈리프 14초) — **같은 파이프라인**
+ * 실측(`.audit/probe/warmBind.mjs`, 트윈리프 14초) — **같은 파이프라인**
  * `renderPipeline_face_733`이 동기 갈래에서는 group 1의 칸이 **여섯**인데
  * 비동기 갈래에서는 **다섯**이다. 캐시가 남의 것을 돌려준다는 뜻이다.
  * 그동안 콘솔에 오류가 **4,637줄** 쌓였고, 그때마다 three가

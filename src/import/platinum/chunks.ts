@@ -262,7 +262,7 @@ export function buildMesh(
   // 실측으로 청크 전체에 **그림 없고 정점색이 검은 서브메시 128개**가 있는데,
   // 그중 확산색까지 검은 것(59개·1,231삼각형)은 진짜 그림자라 그대로 두고,
   // **확산색이 있는 것(61개·714삼각형)만** 흰 정점색으로 되돌린다
-  // (`node .audit/blackWhat.mjs contest`)
+  // (`node .audit/probe/blackWhat.mjs contest`)
   const lit = material.diffuse[0]! + material.diffuse[1]! + material.diffuse[2]! > 0
   if (!material.texture && lit) {
     for (const v of verts) {
@@ -342,7 +342,7 @@ const COVER_MIN = 8
  * 통행표(perm)는 방 밖 빈 자리를 0x0000(걸을 수 있음)으로 두고, 원작은 거기
  * 갈 일이 없어서 그냥 둔다. 우리는 3인칭이라 그 자리에 들어서면 **그린 것이
  * 없는 허공을 걷는다** — 사천왕 방 넷에서 803칸씩, 연고 체육관에서 788칸이
- * 그렇다 (`.audit/reachAudit.mjs`). 그걸 막으려면 「여기 바닥이 그려져
+ * 그렇다 (`.audit/probe/reachAudit.mjs`). 그걸 막으려면 「여기 바닥이 그려져
  * 있는가」를 알아야 하고, 그 답이 이 비트다. 막는 것은 `engine/map/floorSeal`.
  *
  * ⚠️ **정수로만 잰다.** 굽는 쪽이 둘이라(`tools/extract/chunks.js`) 부동소수점
@@ -498,7 +498,7 @@ const CEILING_LIFT = 1.5
  * 떠 있다. 원작 카메라는 그 위에서 내려다보지 않으므로 그것이 「위쪽을 가리는
  * 뚜껑」 노릇만 한다. 우리 3인칭은 주인공보다 네 칸 위에 서므로 **그 뚜껑을
  * 위에서 본다** — 강철섬(맵 293, 청크 504~507)에서 y 10에 깔린 판이 화면의
- * 92%를 검게 덮었다 (`node .audit/blackWhat.mjs ironisle`).
+ * 92%를 검게 덮었다 (`node .audit/probe/blackWhat.mjs ironisle`).
  *
  * **아래에서 보면 없애도 똑같다** — 검은 판이든 허공이든 검정이다.
  *

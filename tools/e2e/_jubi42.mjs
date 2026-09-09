@@ -203,23 +203,47 @@ try {
       const chase = async (who, rounds = 5) => {
         const trace = { script: who.script, what: who.what, ok: false, rounds: [] }
         for (let i = 0; i < rounds && api.left() > 20_000; i++) {
+          // ⚠️ **채취 시점을 적는다.** 「낡은 목표」라는 말이 뜻을 가지려면
+          // 목표를 **언제** 읽었고 상호작용이 **언제** 일어났는지가 있어야
+          // 한다 — 그 사이에 사람이 움직였는지를 그 둘로만 가른다
+          const pickedAt = Date.now()
           const spot = await api.npcSpot(CITY, who.script)
+          const bench = await roster(page)
           const before = await ctx(page)
           if (spot === null) {
-            trace.rounds.push({ i, aimed: null, why: '명부에서 사라졌다' })
+            // ⚠️ **「없다」의 까닭이 셋이다.** 다른 맵에 서 있는 것과, 명부가
+            // 아직 그 맵 것이 아닌 것과, 정말 그 사람이 없는 것은 다른 일이다
+            const why = Number(before.marks.map) !== CITY
+              ? `우리가 맵 ${String(before.marks.map)}에 있다 — 명부는 그 맵 것이다`
+              : bench.mapId !== CITY
+                ? `명부가 아직 맵 ${String(bench.mapId)} 것이다 — 준비가 안 됐다`
+                : bench.list.length === 0
+                  ? '명부가 비었다 — 아직 안 세워졌다'
+                  : `명부 ${String(bench.list.length)}명 안에 script ${String(who.script)}가 없다`
+            trace.rounds.push({ i, pickedAt, aimed: null, why, roster: { mapId: bench.mapId, n: bench.list.length } })
             break
           }
           const said = await api.talkTo(CITY, spot, 40_000)
+          const spokeAt = Date.now()
           const after = await ctx(page)
           const near = await api.npcSpot(CITY, who.script)
           trace.rounds.push({
             i,
+            /** 목표를 읽은 시각과, 말을 걸어 본 시각 */
+            pickedAt, spokeAt, gapMs: spokeAt - pickedAt,
+            /** 채취 순간의 명부 세대 */
+            roster: { mapId: bench.mapId, n: bench.list.length, paused: bench.paused },
             /** 이 바퀴에 노린 자리 */
             aimed: spot,
             /** 다가간 뒤 그 사람이 실제로 있던 자리 — 다르면 그 사이에 움직인 것이다 */
             moved: near,
+            /** 노린 자리와 그때 자리가 어긋났는가 — 이것이 「낡은 목표」다 */
+            stale: near === null || near.unknown === true ? null
+              : near.x !== spot.x || near.z !== spot.z,
             playerBefore: before.player,
             playerAfter: after.player,
+            /** 다가간 뒤 우리가 선 칸 · 그 사람과의 칸 거리 */
+            standing: { x: Number(after.marks.tile?.split(',')[0] ?? NaN), z: Number(after.marks.tile?.split(',')[1] ?? NaN) },
             said,
             /** A를 눌렀을 때 **누가** 열렸는가 */
             opened: after.running,
@@ -235,6 +259,9 @@ try {
         note(`${who.what} 말 걸기`, `${trace.ok ? '됐다' : '**안 됐다**'}`
           + ` · ${String(trace.rounds.length)}바퀴`
           + ` · 마지막 노린 자리 ${JSON.stringify(last?.aimed)} → 그때 그 사람 ${JSON.stringify(last?.moved)}`
+          + ` · 목표가 낡았나 ${String(last?.stale)}`
+          + ` · 채취→말걸기 ${String(last?.gapMs)}ms`
+          + (last?.why === undefined ? '' : ` · ${String(last.why)}`)
           + ` · 열린 것 ${JSON.stringify(last?.opened)}`)
         return trace.ok
       }
@@ -282,7 +309,13 @@ try {
       return { came, traces: out.traces.length }
     },
   })
-  out.result = { trouble: result.trouble, battles: { wild: result.wild, trainer: result.trainer } }
+  out.result = {
+    trouble: result.trouble, battles: { wild: result.wild, trainer: result.trainer },
+    // 목적지 하나 단위의 결말과 실패 자취 (후속 §4.1). 계획 하나 단위의
+    // `plan`과 **다른 것을 센다** — 풀회피 실패 뒤 일반 성공은 성공한 여행이다
+    observer: result.observer, movePicks: result.movePicks,
+    plan: result.plan, episodes: result.episodes, failedEpisodes: result.failedEpisodes,
+  }
 } catch (e) {
   out.crash = String(e?.message ?? e).slice(0, 400)
   console.error(`  터졌다 — ${out.crash}`)

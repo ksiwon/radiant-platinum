@@ -175,7 +175,7 @@ function pushedDir(): number {
  *
  * ⚠️ **걸음은 칸 변화가 아니라 거리다.** 칸으로 세면 45도로 걸을 때 x와 z가
  * 따로 경계를 넘어 같은 거리에 √2배가 세어진다 — 독·친밀도·알 부화·만보기가
- * 그만큼 빨라졌다 (실측 1.444, `node .audit/diagonalSteps.mjs`)
+ * 그만큼 빨라졌다 (실측 1.444, `node .audit/probe/diagonalSteps.mjs`)
  */
 const trace = new StepTrace()
 /** 지난 프레임의 「칸 × 방향」. 같으면 떠나는 칸 처리를 다시 안 한다 */

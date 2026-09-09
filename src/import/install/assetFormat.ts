@@ -92,7 +92,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * **비버통(400) 모델**을 태워 두고 있었는데 그것은 우리가 고른 것이다.
    * 원작은 전용 몸 `naminori_00_00_BodySkin`을 쓰고, 그것이 물뿌리개·낚싯대
    * 셋·공중날기 몸과 함께 `persons/field/pc_parts` 한 번들에 들어 있다
-   * (`.audit/fieldClipCensus.mjs`). 안 올리면 이미 깔린 사람은 그 파일이 없어
+   * (`.audit/probe/fieldClipCensus.mjs`). 안 올리면 이미 깔린 사람은 그 파일이 없어
    * 옛 몸을 그대로 탄다.
    *
    * 6 — 몬스터볼(`models/pokeball.glb`)이 늘어난다. 길에 떨어진 도구가
@@ -179,13 +179,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 3인칭에서는 거기 들어서면 **그린 것이 없는 허공을 걷는다**. 게임을 처음부터
    * 걸어서 닿는 칸 110,809개 중 4,165개가 그랬다 — 사천왕 방 넷이 각 803칸,
    * 연고 체육관 788칸, 챔피언 방 208칸, 배틀팩토리 190칸, 야외 61칸
-   * (`.audit/reachAudit.mjs`). 그 비트로 `engine/map/floorSeal`이 막는다.
+   * (`.audit/probe/reachAudit.mjs`). 그 비트로 `engine/map/floorSeal`이 막는다.
    * 안 올리면 이미 깔린 사람은 `cover.bin`이 없어서 그대로 뚫린다
    *
    * 3 — **노드 변환을 먹인다.** 청크 모델은 조각을 제자리에 놓는 일을 노드
    * 행렬에 맡기는데 굽는 쪽이 그것을 세기만 하고 안 썼다. 실측으로 노드 917개
    * 중 **이동 207 · 회전 41 · 크기 22**가 있고 노드가 여럿인 청크가 33개다
-   * (`node .audit/nodeXform.mjs`). 그 결과 조각이 원점에 겹쳐 쌓여서, 실내
+   * (`node .audit/probe/nodeXform.mjs`). 그 결과 조각이 원점에 겹쳐 쌓여서, 실내
    * 307곳 중 **27곳의 출입구가 그려진 바닥 밖**에 있었다 — 장막백화점(맵 137)
    * 은 바닥이 통째로 z로 12칸 밀려 주인공이 허공에 서 있었다. 고치니 **12곳**
    * 으로 준다(남은 것은 맵 경계 밖으로 나가는 워프다).
@@ -205,7 +205,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 6,900개가 전부 흰색으로 그려졌다 — 체육관 바닥의 `kage`(확산 (0,0,0),
    * 알파 10/31)가 어두운 그림자가 아니라 **흰 안개**였다.
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
-   * (`.audit/whiteMaterials.mjs`)
+   * (`.audit/probe/whiteMaterials.mjs`)
    */
   chunks: 7,
 }

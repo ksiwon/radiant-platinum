@@ -64,7 +64,7 @@ export function ItemBalls({ grid, layer, onStanding }: Props) {
     // 다시 `cloneSkinned`를 걸면 이름으로 뼈를 찾는데 복제본 트리에는 그 뼈가
     // 없어서 **뼈대가 통째로 `undefined` 셋**이 된다. 그리기는 뼈 텍스처를
     // 쓰므로 조용히 넘어가고, 광선을 쏘면 `applyBoneTransform`에서 터진다 —
-    // `pnpm shot --hit`이 볼이 있는 맵에서 다 죽어 있었다 (`.audit/skinCheck.mjs`)
+    // `pnpm shot --hit`이 볼이 있는 맵에서 다 죽어 있었다 (`.audit/probe/skinCheck.mjs`)
     const body = cloneSkinned(gltf.scene) as Group
     outer.add(body)
     const box = new Box3().setFromObject(body)

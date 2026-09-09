@@ -64,8 +64,14 @@ const starterSheetCache = new Map<number, Promise<TexSheet | null>>()
 let format: Promise<ChunkFormat> | null = null
 
 function loadChunkFormat(): Promise<ChunkFormat> {
-  // 주소를 만들지 않는다 — 공개판에서 이 자료는 OPFS에서 온다 (IMPORT.md §7)
-  format ??= readJson(assets(), 'data/chunks/index.json') as Promise<ChunkFormat>
+  /**
+   * ⚠️ **한 번 깨지면 영영 깨진 채로 남아 있었다.** 이 프로미스는 청크 전부가
+   * 나눠 쓴다 — 처음 한 번이 어떤 까닭으로든 거절되면 그 뒤의 모든 청크 요청이
+   * **다시 받아 보지도 못하고** 같은 거절을 물려받는다. 지형이 영영 안 서고
+   * 새로고침 말고는 길이 없다. 깨진 것은 지워서 **다음 요청이 다시 받게** 한다
+   */
+  format ??= (readJson(assets(), 'data/chunks/index.json') as Promise<ChunkFormat>)
+    .catch((e: unknown) => { format = null; throw e })
   return format
 }
 
@@ -83,7 +89,12 @@ export function loadChunkMesh(index: number): Promise<ChunkMesh> {
     loadChunkFormat(),
     assets().bytes(`data/chunks/${String(index)}.bin`),
   ]).then(([fmt, buffer]) => build(buffer, fmt))
-    .catch((e: unknown) => { chunkCache.delete(index); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (chunkCache.get(index) === promise) chunkCache.delete(index)
+    throw e
+  })
   chunkCache.set(index, promise)
   return promise
 }
@@ -148,7 +159,12 @@ export function loadPropMesh(index: number): Promise<ChunkMesh> {
     loadChunkFormat(),
     assets().bytes(`data/props/${String(index)}.bin`),
   ]).then(([fmt, buffer]) => build(buffer, fmt))
-    .catch((e: unknown) => { propCache.delete(index); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (propCache.get(index) === promise) propCache.delete(index)
+    throw e
+  })
   propCache.set(index, promise)
   return promise
 }
@@ -163,7 +179,12 @@ export function loadPropSheet(index: number): Promise<TexSheet | null> {
       if (!info) return null
       return sheetFrom(`data/props/${String(index)}.png`, info)
     })
-    .catch((e: unknown) => { propSheetCache.delete(index); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (propSheetCache.get(index) === promise) propSheetCache.delete(index)
+    throw e
+  })
   propSheetCache.set(index, promise)
   return promise
 }
@@ -181,7 +202,12 @@ export function loadDistortionPropMesh(kind: number): Promise<ChunkMesh> {
     loadChunkFormat(),
     assets().bytes(`data/distortionProps/${String(kind)}.bin`),
   ]).then(([fmt, buffer]) => build(buffer, fmt))
-    .catch((e: unknown) => { distPropCache.delete(kind); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (distPropCache.get(kind) === promise) distPropCache.delete(kind)
+    throw e
+  })
   distPropCache.set(kind, promise)
   return promise
 }
@@ -198,7 +224,12 @@ export function loadDistortionPropSheet(kind: number): Promise<TexSheet | null> 
       if (!info) return null
       return sheetFrom(`data/distortionProps/${String(kind)}.png`, info)
     })
-    .catch((e: unknown) => { distPropSheetCache.delete(kind); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (distPropSheetCache.get(kind) === promise) distPropSheetCache.delete(kind)
+    throw e
+  })
   distPropSheetCache.set(kind, promise)
   return promise
 }
@@ -228,7 +259,12 @@ export function loadStarterMesh(index: number): Promise<ChunkMesh> {
     loadChunkFormat(),
     assets().bytes(`data/starter/${String(index)}.bin`),
   ]).then(([fmt, buffer]) => build(buffer, fmt))
-    .catch((e: unknown) => { starterCache.delete(index); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (starterCache.get(index) === promise) starterCache.delete(index)
+    throw e
+  })
   starterCache.set(index, promise)
   return promise
 }
@@ -245,7 +281,12 @@ export function loadStarterSheet(index: number): Promise<TexSheet | null> {
       if (!info) return null
       return sheetFrom(`data/starter/${String(index)}.png`, info)
     })
-    .catch((e: unknown) => { starterSheetCache.delete(index); throw e })
+    .catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (starterSheetCache.get(index) === promise) starterSheetCache.delete(index)
+    throw e
+  })
   starterSheetCache.set(index, promise)
   return promise
 }
@@ -258,7 +299,7 @@ export function loadStarterSheet(index: number): Promise<TexSheet | null> {
  * **그리는 중인 GPU와 동기를 맞추며 기다린다.** 맵을 한 번 넘을 때 시트 스물넷이
  * 그 길로 가고 실측으로 디코딩만 3.29초였다 — 그림은 다 256×480 아래인데도 한
  * 장에 최대 380ms다. 그동안 `renderer.render()` 한 번이 4.9초가 된다
- * (`.audit/warpGpu.mjs`). 우리 PNG는 8비트 RGBA 한 꼴이라 바로 푼다
+ * (`.audit/probe/warpGpu.mjs`). 우리 PNG는 8비트 RGBA 한 꼴이라 바로 푼다
  */
 async function pixelsOf(path: string): Promise<{
   width: number
@@ -299,7 +340,12 @@ export function loadTexSheet(set: number): Promise<TexSheet> {
       items: info.items.map(([tex, pal, x, y, w, h]) => ({ tex, pal, x, y, w, h })),
       pixels: got.pixels,
     }
-  }).catch((e: unknown) => { sheetCache.delete(set); throw e })
+  }).catch((e: unknown) => {
+    // 지울 것은 **이 프로미스**다 — 늦게 깨진 앞엣것이 그 사이에 생긴
+    // 새 요청을 지워 버리면 그 소비자들이 까닭 없이 다시 받게 된다
+    if (sheetCache.get(set) === promise) sheetCache.delete(set)
+    throw e
+  })
   sheetCache.set(set, promise)
   return promise
 }
@@ -362,6 +408,31 @@ export function softAlpha(pixels: ArrayLike<number>): boolean {
  * 알파 31이 불투명이다. 그보다 낮으면 반투명 판(물·그림자)이고, 깊이 쓰기를
  * 끄지 않으면 뒤에 있는 것이 통째로 사라진다
  */
+/**
+ * 이 재질이 **제 그림을 제 것으로 들고 있다**고 표시한다.
+ *
+ * ⚠️ **`sliceTexture`는 부를 때마다 새 `DataTexture`를 만든다.** 나눠 쓰는 것은
+ * 묶음 그림(`TexSheet`)이지 잘라 낸 조각이 아니다. 그런데 `Material.dispose()`는
+ * `map`을 안 버리므로, 버리는 쪽이 「이 그림도 내 것인가」를 알아야 한다 —
+ * 다른 데서 온 그림을 문 재질도 있어서(소품 띠는 `cachedBack`이 든 것을 나눠
+ * 쓴다) **표시가 있는 것만** 버린다
+ */
+export function ownMap(m: Material): Material {
+  if ((m as { map?: Texture | null }).map != null) m.userData.ownsMap = true
+  return m
+}
+
+/**
+ * 재질 하나와 **그 재질이 제 것이라고 표시한 그림**을 버린다.
+ *
+ * ⚠️ **표시가 없는 그림은 남긴다.** 나눠 쓰는 것을 버리면 다음 배치가 빈
+ * 그림을 문다
+ */
+export function dropMaterial(m: Material): void {
+  if (m.userData.ownsMap === true) (m as { map?: Texture | null }).map?.dispose()
+  m.dispose()
+}
+
 export function makeMaterial(
   spec: ChunkMeta['materials'][number], texture: Texture | null, doubleSided = false,
 ): Material {
@@ -424,7 +495,72 @@ export function castsShadow(material: Material): boolean {
  * 섞는 무리가 없으면 `soft`가 `null`이고 `solid`는 원본 그대로다 — 대부분의
  * 청크가 그렇다
  */
+/**
+ * 갈라 놓은 것을 **원본 옆에 둔다.**
+ *
+ * ⚠️ **배치마다 다시 갈라내고 있었다.** 부르는 쪽이
+ * `useMemo(() => splitShadow(geometry, materials), [geometry, materials])`인데
+ * `materials`가 **배치마다 새 배열**이라 기억이 한 번도 안 맞았다. 그런데 여기서
+ * 나온 기하는 위 설명대로 **버릴 수가 없다**(정점 버퍼를 원본과 나눠 쓴다) —
+ * 그러니 만든 만큼 그대로 쌓인다. 실측(2026-09-09 `_land42`, 맵 3↔6 열여덟 번):
+ * 이 자리에서 **1,116개**가 태어나 **한 개도 안 버려졌고**, 그동안 렌더러가 세는
+ * 기하가 바퀴마다 51개씩 곧게 올랐다.
+ *
+ * 원본 기하는 `chunkCache`가 붙잡고 있으므로 그 옆에 매달아 둔다 — 원본이
+ * 사라지면 같이 사라지고, 살아 있는 동안은 **한 벌만 있다.** 무리를 가르는 기준은
+ * 재질의 **신원이 아니라 내용**(`castsShadow`)이라, 같은 그림을 다시 구워도 같은
+ * 자리에서 갈린다. 그 갈래를 열쇠로 삼는다
+ */
+const splitCache = new WeakMap<BufferGeometry, Map<string, {
+  solid: BufferGeometry, soft: BufferGeometry | null
+}>>()
+
 export function splitShadow(
+  geometry: BufferGeometry, materials: readonly Material[],
+): { solid: BufferGeometry, soft: BufferGeometry | null } {
+  const groups = geometry.groups
+  const mask = groups
+    .map((g) => (materials[g.materialIndex ?? 0] !== undefined
+      && !castsShadow(materials[g.materialIndex ?? 0]!) ? '1' : '0')).join('')
+  let byMask = splitCache.get(geometry)
+  if (byMask === undefined) { byMask = new Map(); splitCache.set(geometry, byMask) }
+  const hit = byMask.get(mask)
+  if (hit !== undefined) return hit
+  const made = splitShadowNow(geometry, materials)
+  byMask.set(mask, made)
+  return made
+}
+
+/**
+ * 원본과 **그 파생 기하를 함께 놓는다** (후속 §5).
+ *
+ * ⚠️ **WeakMap이 수거되는 것은 GPU 해제가 아니다.** `splitShadow`가 만든
+ * `solid`/`soft`는 원본과 attribute·index를 **나눠 쓰는 별개의
+ * `BufferGeometry`**고, three는 렌더러에 등록된 기하마다 자원을 들고 있다가
+ * `dispose` 사건에 놓는다. 자바스크립트 쪽 참조가 사라져도 그 사건은 안 난다 —
+ * 실측(2026-09-08 `_land42`): 18전환에 `splitShadow` 기하 1,116개가 태어나
+ * **0개가 놓였다.** WeakMap 재사용으로 태어나는 수를 1,116→198로 줄였지만
+ * 놓는 자는 여전히 없었고, 그것이 남은 전환당 5~6개다.
+ *
+ * ⚠️ **나눠 쓰는 원본이 살아 있으면 부르면 안 된다.** 파생을 놓으면 원본과
+ * 같은 attribute의 GPU 버퍼가 함께 풀린다 — 그래서 **원본을 소유한 쪽만**,
+ * 원본을 버리는 바로 그 자리에서 부른다 (`ChunkModels`의 배치 정리).
+ * 공유 보관함(`chunkCache`·`mergedPropCache`)의 기하에는 안 부른다.
+ *
+ * ⚠️ **`soft`가 없으면 `solid`는 원본 그 자체다** — 두 번 놓지 않는다
+ */
+export function releaseSplit(source: BufferGeometry | null | undefined): void {
+  if (source === null || source === undefined) return
+  const byMask = splitCache.get(source)
+  if (byMask === undefined) return
+  splitCache.delete(source)
+  for (const made of byMask.values()) {
+    if (made.solid !== source) made.solid.dispose()
+    made.soft?.dispose()
+  }
+}
+
+function splitShadowNow(
   geometry: BufferGeometry, materials: readonly Material[],
 ): { solid: BufferGeometry, soft: BufferGeometry | null } {
   const groups = geometry.groups

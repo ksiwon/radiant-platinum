@@ -82,7 +82,7 @@ export async function encodePng(rgba: Uint8Array, width: number, height: number)
  * 캔버스로 옮겨 `getImageData`로 읽으면 그리는 중인 GPU와 동기를 맞추며 기다린다.
  * 맵을 한 번 넘을 때 소품·영역 시트 스물넷이 그 길로 가고, 실측으로 그 디코딩이
  * **3.29초**였다 — 256×480 아래짜리 그림들인데도 한 장에 최대 380ms다
- * (`.audit/warpGpu.mjs`). 여기서는 바이트를 그대로 풀어 CPU에만 둔다.
+ * (`.audit/probe/warpGpu.mjs`). 여기서는 바이트를 그대로 풀어 CPU에만 둔다.
  *
  * ⚠️ **우리가 굽는 PNG만 받는다.** 굽는 쪽이 8비트 RGBA·인터레이스 없음 한 꼴로만
  * 쓰므로(`tools/extract/png.js`·`encodePng`) 그 꼴만 푼다 — 팔레트나 16비트가

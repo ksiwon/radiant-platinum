@@ -405,6 +405,6 @@ try {
 } finally {
   await browser.close()
   vite?.child.kill()
-  writeFileSync(resolve(ROOT, '.audit/canvas-probe.txt'), `${out.join('\n')}\n`)
-  console.log('\n→ .audit/canvas-probe.txt · shots/probe41/')
+  writeFileSync(resolve(ROOT, '.audit/probe/out/canvas-probe.txt'), `${out.join('\n')}\n`)
+  console.log('\n→ .audit/probe/out/canvas-probe.txt · shots/probe41/')
 }

@@ -76,7 +76,7 @@ maybe('트리거와 워프가 같은 걸음에 걸리는 자리', () => {
   })
 
   it('자리가 스물다섯 · 맵 열여섯이다', () => {
-    // 늘었으면 새 자리를 이 시험으로 몰아 보고 늘린다 (`.audit/triggerWarpSweep.mjs`)
+    // 늘었으면 새 자리를 이 시험으로 몰아 보고 늘린다 (`.audit/probe/triggerWarpSweep.mjs`)
     expect(list).toHaveLength(25)
     expect(new Set(list.map((s) => s.map)).size).toBe(16)
     // 용식이 집 문 앞 — 실제로 맵뚫이 났던 그 칸이 목록에 있다

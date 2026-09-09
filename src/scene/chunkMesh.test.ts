@@ -9,8 +9,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { BufferAttribute, BufferGeometry, MeshLambertMaterial, type Material } from 'three'
-import { castsShadow, softAlpha, splitShadow } from './chunkMesh'
+import {
+  BufferAttribute, BufferGeometry, DataTexture, MeshLambertMaterial, type Material,
+} from 'three'
+import { castsShadow, dropMaterial, ownMap, releaseSplit, softAlpha, splitShadow } from './chunkMesh'
 import { decodePng, withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data/chunks')
@@ -220,10 +222,84 @@ describe('그림자를 던질 면 가르기', () => {
     expect(out.solid.groups.length + (out.soft?.groups.length ?? 0)).toBe(g.groups.length)
   })
 
+  it('같은 원본·같은 그림자 무리면 다시 안 만든다', () => {
+    const g = land()
+    const mats = [opaque(), soft(), opaque(), soft()]
+    // ⚠️ **재질 배열은 배치마다 새로 온다.** 객체 신원으로 캐시하면 한 번도
+    // 안 맞는다 — 여기서 재는 것은 「그림자를 던지는 무리가 같은가」다
+    const a = splitShadow(g, mats)
+    const b = splitShadow(g, [opaque(), soft(), opaque(), soft()])
+    expect(b.solid).toBe(a.solid)
+    expect(b.soft).toBe(a.soft)
+  })
+
+  it('원본을 놓을 때 파생도 함께 놓는다 — 놓는 자가 없었다', () => {
+    const g = land()
+    const out = splitShadow(g, [opaque(), soft(), opaque(), soft()])
+    let freed = 0
+    out.solid.addEventListener('dispose', () => { freed++ })
+    out.soft?.addEventListener('dispose', () => { freed++ })
+    releaseSplit(g)
+    expect(freed).toBe(2)
+    // 보관함에서도 빠진다 — 다시 부르면 새로 만든다
+    const again = splitShadow(g, [opaque(), soft(), opaque(), soft()])
+    expect(again.solid).not.toBe(out.solid)
+  })
+
+  it('나눌 것이 없었으면 원본을 놓지 않는다', () => {
+    const g = land()
+    const out = splitShadow(g, [opaque(), opaque(), opaque(), opaque()])
+    expect(out.solid).toBe(g)
+    let freed = 0
+    g.addEventListener('dispose', () => { freed++ })
+    releaseSplit(g)
+    // ⚠️ **여기서 원본을 놓으면 나눠 쓰는 쪽이 함께 깨진다**
+    expect(freed).toBe(0)
+  })
+
+  it('만든 적 없는 기하를 놓으라 해도 조용하다', () => {
+    expect(() => { releaseSplit(land()); releaseSplit(null) }).not.toThrow()
+  })
+
   it('알파를 자르는 면은 그림자를 던진다 — 나무와 울타리가 그렇다', () => {
     expect(castsShadow(new MeshLambertMaterial({ alphaTest: 0.5 }))).toBe(true)
     expect(castsShadow(new MeshLambertMaterial({ transparent: true, alphaTest: 0.5 }))).toBe(true)
     // 빛기둥·물·연기는 안 던진다 (`castsShadow` 머리말)
     expect(castsShadow(new MeshLambertMaterial({ transparent: true, alphaTest: 0 }))).toBe(false)
+  })
+})
+
+// 재질을 버릴 때 **그 그림도 같이 가는가** (REPAIR §46.3)
+//
+// ⚠️ **`Material.dispose()`는 `map`을 안 버린다.** `sliceTexture`가 부를 때마다
+// 새 `DataTexture`를 만드는데, 표시가 없으면 놓는 자가 그냥 지나간다 —
+// 실측(2026-09-09 `_land42` 22바퀴)으로 빌려 온 바닥이 왕복마다 7장, 소품
+// 재질이 6장씩 늘어 한 번도 안 줄었다.
+describe('그림의 임자', () => {
+  /** 재질과 **그 재질이 문 그림**을 함께 돌려준다 */
+  const withMap = (): { m: Material, tex: DataTexture, freed: () => number } => {
+    const tex = new DataTexture(new Uint8Array(4), 1, 1)
+    let n = 0
+    tex.addEventListener('dispose', () => { n++ })
+    return { m: new MeshLambertMaterial({ map: tex }), tex, freed: () => n }
+  }
+
+  it('표시를 단 재질은 그림까지 버린다', () => {
+    const one = withMap()
+    dropMaterial(ownMap(one.m))
+    expect(one.freed()).toBe(1)
+  })
+
+  it('표시가 없으면 그림은 남긴다 — 나눠 쓰는 것이 있다', () => {
+    const one = withMap()
+    dropMaterial(one.m)
+    // ⚠️ 나눠 쓰는 그림을 버리면 다음 배치가 빈 그림을 문다
+    expect(one.freed()).toBe(0)
+  })
+
+  it('그림이 없는 재질에는 표시를 안 단다', () => {
+    const m = ownMap(new MeshLambertMaterial())
+    expect(m.userData.ownsMap).toBeUndefined()
+    expect(() => { dropMaterial(m) }).not.toThrow()
   })
 })

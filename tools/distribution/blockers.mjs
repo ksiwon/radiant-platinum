@@ -24,7 +24,7 @@ export const BLOCKERS = [
     why: '번들에 제3자 정적 게임 데이터가 있다',
     where: 'DEPLOY.md §4',
     resolved() {
-      const at = read('.audit/bundle-provenance.json')
+      const at = read('.audit/probe/out/bundle-provenance.json')
       // 보고서가 없으면 잰 적이 없는 것이다. 안 잰 것을 풀렸다고 하지 않는다
       if (!at) return { ok: false, detail: '출처 보고서가 없다 — pnpm build를 안 돌렸다' }
       const bad = forbiddenIn(JSON.parse(at))
@@ -56,7 +56,7 @@ export const BLOCKERS = [
     why: '실제 호스트의 CSP 응답 헤더를 잰 적이 없다',
     where: 'DEPLOY.md §3',
     resolved() {
-      const at = read('.audit/deploy-verified.json')
+      const at = read('.audit/probe/out/deploy-verified.json')
       if (!at) return { ok: false, detail: 'pnpm verify:deploy <url>을 돌린 적이 없다' }
       let v
       try {
@@ -190,7 +190,7 @@ export const BLOCKERS = [
       // 빌드가 스스로 적어 둔 것을 읽는다. 여기서 git을 다시 묻지 않는 이유는
       // **빌드 시점과 검사 시점 사이에 나무가 바뀔 수 있어서다** — 재야 하는
       // 것은 지금 나무가 아니라 `dist/`를 만든 그 나무다
-      const at = read('.audit/build.json')
+      const at = read('.audit/probe/out/build.json')
       if (!at) return { ok: false, detail: '빌드 도장이 없다 — pnpm build를 안 돌렸다' }
       const stamp = JSON.parse(at)
       const { version, buildId } = stamp

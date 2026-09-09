@@ -14,7 +14,7 @@ const AIM = new Vector3(48.5, 10.2, 18.5)
 
 describe('가리는 소품 고르기', () => {
   it('사람을 품은 상자는 안 건드린다 — 배틀타워가 통째로 사라졌다', () => {
-    // 실측한 배틀타워 상자 (`.audit/fadeBox.mjs`) — 17.3 × 21.6 × 20.4타일
+    // 실측한 배틀타워 상자 (`.audit/probe/fadeBox.mjs`) — 17.3 × 21.6 × 20.4타일
     const tower = new Box3(new Vector3(41.6, 6.4, 6.4), new Vector3(58.9, 28, 26.8))
     expect(tower.containsPoint(AIM)).toBe(true)
     expect(blockedBy(tower, EYE, AIM)).toBe(1)

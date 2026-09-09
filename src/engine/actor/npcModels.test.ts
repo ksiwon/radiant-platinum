@@ -212,7 +212,7 @@ maybe('실제 자료', () => {
     expect(found.length).toBeGreaterThanOrEqual(100)
     expect(found.length).toBeLessThan(list.length)
     // 대부분이 등신이다. 치비로 내려가는 것은 트레이너가 아닌 사람들뿐이라,
-    // 그림 354칸 중 붙는 것 112에 치비가 28이다 (`.audit/countNow.mjs`)
+    // 그림 354칸 중 붙는 것 112에 치비가 28이다 (`.audit/probe/countNow.mjs`)
     const chibi = found.filter((m) => buildOf(m.bundles[0]!) === 'field')
     expect(chibi.length).toBeLessThan(found.length / 3)
   })

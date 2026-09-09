@@ -79,7 +79,7 @@ const ALONE: readonly number[] = [0]
  *
  * ⚠️ **값이 싸지 않다.** 그 방을 다 세우면 삼각형이 **151.8k → 715.0k**로 늘고
  * 순회 하네스에서 **60fps → 36fps(최저 33)**다 (`FP_ONLY=galactic-hq node
- * .audit/fpTour.mjs`). 다만 그 하네스는 WebGL2 폴백이라(`backend xG`) 이
+ * .audit/probe/fpTour.mjs`). 다만 그 하네스는 WebGL2 폴백이라(`backend xG`) 이
  * 수가 사용자가 받는 성능은 아니다 — 설치본은 WebGPU로 돈다
  */
 const GROUP_MAX = 64

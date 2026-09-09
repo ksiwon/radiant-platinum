@@ -44,6 +44,21 @@ function schemaOneVerdict(env) {
   return oldVerdict(env)
 }
 
+/**
+ * 지문을 뜨는 데 드는 실제 시간.
+ *
+ * ⚠️ **5초 기본값으로는 못 잰다.** `dataDigest()`가 `public/data` 전체를
+ * 훑으므로 한 번에 0.9~1.2초고(실측 2026-09-09), `sealEvidence` +
+ * `validateEvidence` 한 쌍이면 소스·산출물 지문까지 네댓 번이다. 다른 시험
+ * 파일과 나란히 도는 동안 그것이 5초를 넘겨 **번번이 다른 시험이 터졌다** —
+ * 재는 것이 느린 것이지 계약이 틀린 것이 아니다.
+ *
+ * ⚠️ **지문을 기억해 두는 것으로 줄이지 않는다.** 시작과 끝의 지문을 따로
+ * 뜨는 것이 이 계약의 핵심이라(도중에 소스가 바뀌면 무효다), 한 번 뜬 값을
+ * 다시 쓰면 그 검사가 사라진다
+ */
+const SLOW = 60_000
+
 const ART = 'a'.repeat(64)
 const SRC = 'b'.repeat(64)
 const HARNESS = 'c'.repeat(64)
@@ -99,7 +114,7 @@ describe('봉투가 제 시험 목록을 스스로 정하지 못한다', () => {
     expect(said.ok).toBe(false)
     expect(said.detail).toContain('정본과 다르다')
     expect(said.detail).toContain('빠진 것 28개')
-  })
+  }, SLOW)
 
   it('훑기 여든여덟을 한 건으로 줄인 봉투도 떨어진다', () => {
     const one = {
@@ -117,7 +132,7 @@ describe('봉투가 제 시험 목록을 스스로 정하지 못한다', () => {
       { artifact: ART, source: SRC, harness: HARNESS, roster: STORY })
     expect(said.ok).toBe(false)
     expect(said.detail).toContain('정본과 다르다')
-  })
+  }, SLOW)
 
   it('정본에 없는 이름을 목록에 끼워 넣어도 떨어진다', () => {
     const env = envelope()
@@ -125,13 +140,13 @@ describe('봉투가 제 시험 목록을 스스로 정하지 못한다', () => {
     env.scope.executedCases = [...E2E.cases, '30']
     env.results.push({ id: '30', what: '내가 지은 시험', status: 'PASS', detail: '' })
     expect(judge(env).detail).toContain('정본에 없는 것')
-  })
+  }, SLOW)
 
   it('정본 목록이 나온 자료가 바뀌면 다시 돌려야 한다', () => {
     // 확인 지점 표가 바뀌면 이름이 그대로여도 **자리**가 달라진다
     expect(judge(envelope({ rosterDigest: 'f'.repeat(64) })).detail).toContain('정본 case 목록이 그 뒤로 바뀌었다')
     expect(judge(envelope({ rosterDigest: undefined })).detail).toContain('rosterDigest')
-  })
+  }, SLOW)
 
   it('훑기의 정본은 확인 지점 표에서 나온다 — 하네스가 짓지 않는다', () => {
     expect(STORY.from).toBe('src/engine/dev/checkpoints.ts')
@@ -149,7 +164,7 @@ describe('옛 판정이 통과시키던 가짜 증거', () => {
     expect(oldVerdict(env)).toBe(true)
     expect(judge(env).ok).toBe(false)
     expect(judge(env).detail).toContain('비었다')
-  })
+  }, SLOW)
 
   it('모르는 status — 세 갈래 중 어느 것도 아니면 통과였다', () => {
     const env = envelope()
@@ -157,7 +172,7 @@ describe('옛 판정이 통과시키던 가짜 증거', () => {
     expect(oldVerdict(env)).toBe(true)
     expect(judge(env).ok).toBe(false)
     expect(judge(env).detail).toContain('WIP')
-  })
+  }, SLOW)
 
   it('일부만 돌린 결과 — 안 돌린 줄을 아예 안 적으면 티가 안 났다', () => {
     const env = envelope()
@@ -167,7 +182,7 @@ describe('옛 판정이 통과시키던 가짜 증거', () => {
     const said = judge(env)
     expect(said.ok).toBe(false)
     expect(said.detail).toContain('26/29')
-  })
+  }, SLOW)
 
   it('선언 안 한 시험을 돌린 결과 — 하네스만 늘고 목록이 그대로면 조용히 안 세어진다', () => {
     const env = envelope()
@@ -178,7 +193,7 @@ describe('옛 판정이 통과시키던 가짜 증거', () => {
     expect(said.ok).toBe(false)
     // 정본과 갈린 것이 먼저 잡힌다 — 목록을 줄인 것 자체가 흠이다
     expect(said.detail).toContain('정본과 다르다')
-  })
+  }, SLOW)
 
   it('다른 배포물의 도장 — 파일은 소스를 고쳐도 그대로 살아 있다', () => {
     const env = envelope()
@@ -187,14 +202,14 @@ describe('옛 판정이 통과시키던 가짜 증거', () => {
       { artifact: 'd'.repeat(64), source: SRC, harness: HARNESS, roster: E2E })
     expect(said.ok).toBe(false)
     expect(said.detail).toContain('바뀌었다')
-  })
+  }, SLOW)
 
   it('결과가 없는 케이스를 돌렸다고 적는다 — 목록만 늘려서는 못 통과한다', () => {
     const env = envelope()
     env.results = env.results.slice(0, 28)
     expect(oldVerdict(env)).toBe(true)
     expect(judge(env).detail).toContain('결과가 없다')
-  })
+  }, SLOW)
 })
 
 describe('이름 목록이 성한가', () => {
@@ -202,31 +217,31 @@ describe('이름 목록이 성한가', () => {
     const env = envelope()
     env.scope.executedCases = [...E2E.cases.slice(0, 28), '01']
     expect(judge(env).detail).toContain('두 번 있다')
-  })
+  }, SLOW)
 
   it('결과 줄이 겹쳐도 막는다 — 한 시험을 두 번 적어 통과시키는 길', () => {
     const env = envelope()
     env.results = [...env.results.slice(0, 28), { ...env.results[0] }]
     expect(judge(env).detail).toContain('두 번 있다')
-  })
+  }, SLOW)
 
   it('글자가 아닌 이름은 이름이 아니다', () => {
     const env = envelope()
     env.scope.executedCases = [...E2E.cases.slice(0, 28), 29]
     expect(judge(env).detail).toContain('글자가 아닌')
-  })
+  }, SLOW)
 
   it('정본에 없는 결과 줄이 섞이면 막는다', () => {
     const env = envelope()
     env.results.push({ id: '99', what: '검사가 터졌다', status: 'PASS', detail: '' })
     expect(judge(env).detail).toContain('정본에 없는 결과 줄')
-  })
+  }, SLOW)
 
   it('무엇을 걸러 돌렸는지를 안 적으면 막는다', () => {
     const env = envelope()
     delete env.scope.selection
     expect(judge(env).detail).toContain('selection')
-  })
+  }, SLOW)
 })
 
 describe('재는 도중에 대상이나 도구가 바뀌면 무효다', () => {
@@ -234,7 +249,7 @@ describe('재는 도중에 대상이나 도구가 바뀌면 무효다', () => {
     const env = envelope()
     delete env.scope.startDigest
     expect(judge(env).detail).toContain('startDigest')
-  })
+  }, SLOW)
 
   it('시작과 끝의 지문이 다르면 앞뒤가 다른 것을 잰 것이다', () => {
     const env = envelope()
@@ -242,18 +257,18 @@ describe('재는 도중에 대상이나 도구가 바뀌면 무효다', () => {
     const said = judge(env)
     expect(said.ok).toBe(false)
     expect(said.detail).toContain('도는 동안')
-  })
+  }, SLOW)
 
   it('검사 도구가 바뀌면 그 결과는 지금 하네스가 낸 적 없는 판정이다', () => {
     expect(judge(envelope({ harnessDigest: 'f'.repeat(64) })).detail).toContain('검사 도구가 그 뒤로 바뀌었다')
     expect(judge(envelope({ harnessDigest: undefined })).detail).toContain('harnessDigest')
-  })
+  }, SLOW)
 
   it('검사 계약 판이 다르면 형식이 멀쩡해도 다시 돌려야 한다', () => {
     const env = envelope({ contractVersion: SUITES['installed-e2e'].contract + 1 })
     expect(oldVerdict(env)).toBe(true)
     expect(judge(env).detail).toContain('검사 계약 판')
-  })
+  }, SLOW)
 })
 
 describe('형식이 아닌 것은 crash가 아니라 판정이다', () => {
@@ -261,13 +276,13 @@ describe('형식이 아닌 것은 crash가 아니라 판정이다', () => {
     // ⚠️ 옛 판정은 여기서 `results.filter`로 **터졌다** — 실패도 통과도 못 낸다
     expect(() => oldVerdict({})).toThrow()
     expect(judge({ ...envelope(), results: undefined }).ok).toBe(false)
-  })
+  }, SLOW)
 
   it('배열·null·문자열이 와도 판정이 나온다', () => {
     for (const junk of [null, [], 'PASS', 42]) {
       expect(judge(junk).ok, String(junk)).toBe(false)
     }
-  })
+  }, SLOW)
 
   it('깨진 JSON은 읽기에서 잡는다', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rp-evidence-'))
@@ -279,7 +294,7 @@ describe('형식이 아닌 것은 crash가 아니라 판정이다', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, SLOW)
 
   it('파일이 없으면 「돌린 적 없다」다 — 통과가 아니다', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rp-evidence-'))
@@ -290,13 +305,13 @@ describe('형식이 아닌 것은 crash가 아니라 판정이다', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
-  })
+  }, SLOW)
 
   it('봉투가 없는 옛 결과는 통과가 아니다', () => {
     const { schemaVersion: _drop, ...noEnvelope } = envelope()
     expect(oldVerdict(noEnvelope)).toBe(true)
     expect(judge(noEnvelope).detail).toContain('옛 결과')
-  })
+  }, SLOW)
 })
 
 describe('무엇을 언제 어디서 쟀는지', () => {
@@ -306,18 +321,18 @@ describe('무엇을 언제 어디서 쟀는지', () => {
       delete env.environment[key]
       expect(judge(env).detail, key).toContain(key)
     }
-  })
+  }, SLOW)
 
   it('잰 시각이 없거나 날짜가 아니면 막는다', () => {
     expect(judge(envelope({ testedAt: undefined })).ok).toBe(false)
     expect(judge(envelope({ testedAt: '언젠가' })).ok).toBe(false)
-  })
+  }, SLOW)
 
   it('다른 묶음의 결과를 이 묶음의 통과로 읽지 않는다', () => {
     const env = envelope()
     env.scope.suite = 'story'
     expect(judge(env).detail).toContain('다른 묶음')
-  })
+  }, SLOW)
 })
 
 describe('묶음마다 다른 것에 묶인다', () => {
@@ -332,7 +347,7 @@ describe('묶음마다 다른 것에 묶인다', () => {
   it('e2e는 소스가 바뀌어도 살아 있다 — dist를 띄워 재기 때문이다', () => {
     expect(validateEvidence(envelope(), 'installed-e2e',
       { artifact: ART, source: 'd'.repeat(64), harness: HARNESS, roster: E2E }).ok).toBe(true)
-  })
+  }, SLOW)
 
   it('묶음마다 하네스 목록이 다르다 — 남의 도구 편집으로 죽지 않는다', () => {
     const story = new Set(SUITES.story.harness)
@@ -382,7 +397,7 @@ describe('무엇이 게임 소스인가', () => {
     expect(judge(envelope({ buildId: '58c9284' })).ok).toBe(true)
     // 다만 **어느 빌드 곁에서 쟀는지**는 적혀 있어야 한다
     expect(judge(envelope({ buildId: null })).ok).toBe(false)
-  })
+  }, SLOW)
 })
 
 describe('하네스가 씌우는 봉투', () => {
@@ -407,7 +422,7 @@ describe('하네스가 씌우는 봉투', () => {
     })
     expect(said.detail ?? '').toBe('')
     expect(said.ok).toBe(true)
-  })
+  }, SLOW)
 
   it('FAIL·BLOCKED·NOT RUN은 그대로 막힌다 — 종료 0이라도 아니다', () => {
     for (const status of ['FAIL', 'BLOCKED', 'NOT RUN']) {
@@ -416,7 +431,7 @@ describe('하네스가 씌우는 봉투', () => {
       expect(oldVerdict(env), status).toBe(false)
       expect(judge(env).detail, status).toContain(status)
     }
-  })
+  }, SLOW)
 
   it('장치 손실도 같은 봉투를 쓴다 — BLOCKED 하나로 떨어진다 (기획서 §3.3)', () => {
     const roster = rosterOf('gpu-loss')
@@ -436,7 +451,7 @@ describe('하네스가 씌우는 봉투', () => {
       { artifact: ART, source: SRC, harness: HARNESS, roster })
     expect(said.ok).toBe(false)
     expect(said.detail).toContain('BLOCKED')
-  })
+  }, SLOW)
 })
 
 describe('대표 구간의 정본 목록', () => {
@@ -475,5 +490,5 @@ describe('대표 구간의 정본 목록', () => {
       artifact: env.artifactDigest, source: env.sourceDigest,
       harness: env.harnessDigest, roster,
     }).detail).toContain('정본과 다르다')
-  })
+  }, SLOW)
 })

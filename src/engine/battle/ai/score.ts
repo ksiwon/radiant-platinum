@@ -75,7 +75,7 @@ export const CHAMPION_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPE
  * `BASIC|SETUP_FIRST_TURN`으로 떨어지고 강자 77명이 위 여섯으로 떨어지는 것이
  * 그 근거다.
  *
- * 다시 재는 법: `py -3.13 .audit/bdspTrainerAi.py` (UnityPy로 타입트리를 읽는다)
+ * 다시 재는 법: `py -3.13 .audit/probe/bdspTrainerAi.py` (UnityPy로 타입트리를 읽는다)
  */
 export const BDSP_TOP_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT
   | AI_FLAG.SETUP_FIRST_TURN | AI_FLAG.PRIORITIZE_EXTREMES | AI_FLAG.BATON_PASS

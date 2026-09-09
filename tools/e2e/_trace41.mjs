@@ -349,6 +349,6 @@ try {
 } finally {
   await browser.close()
   vite?.child.kill()
-  writeFileSync(resolve(ROOT, '.audit/trace41.txt'), `${out.join('\n')}\n`)
-  console.log(`\n→ .audit/trace41.txt · ${OUT}`)
+  writeFileSync(resolve(ROOT, '.audit/probe/out/trace41.txt'), `${out.join('\n')}\n`)
+  console.log(`\n→ .audit/probe/out/trace41.txt · ${OUT}`)
 }

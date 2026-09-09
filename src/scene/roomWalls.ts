@@ -292,7 +292,7 @@ interface FloorExtent {
    *
    * 상자의 `maxZ` 하나로는 모자란다 — 포켓몬센터(맵 420)는 문간이 남쪽으로
    * 한 칸 파여 있어서 상자가 z 14인데 주인공이 선 줄(x 8)의 바닥은 z 13에서
-   * 끝난다. 그 한 칸 차이가 화면 아래 12%를 검게 남겼다 (`node .audit/roomFit.mjs`).
+   * 끝난다. 그 한 칸 차이가 화면 아래 12%를 검게 남겼다 (`node .audit/probe/roomFit.mjs`).
    * 카메라는 이 표를 보고 겨눔을 민다 (`actor/camera`의 `aimPitch`)
    */
   southEdge: ReadonlyMap<number, number>
@@ -318,7 +318,7 @@ const tileZ = (key: number): number => (key % TILE_SPAN) - TILE_BIAS
  * ⚠️ **통행 격자도 BDHC 판도 방의 크기가 아니다.** 실내 행렬은 32×32인데 방은
  * 그 일부이고, 통행 자료는 방 밖도 「안 막힘」으로 두고(포켓몬센터 1,024칸 중
  * 901칸이 열려 있다), 높이 판은 아예 행렬 전체를 덮는 맵이 넷 중 넷이다
- * (`node .audit/roomBox.mjs`). **그려진 바닥만이 방이다** — 그리고 그것을 이미
+ * (`node .audit/probe/roomBox.mjs`). **그려진 바닥만이 방이다** — 그리고 그것을 이미
  * `survey`가 세고 있다 (벽을 세울 자리를 찾느라).
  */
 export function floorTiles(split: Split, origin: { x: number, z: number }): number[] {
@@ -338,7 +338,7 @@ export function floorTiles(split: Split, origin: { x: number, z: number }): numb
  *
  * ⚠️ **「이어진 바닥」만으로는 안 갈라진다.** 실측으로 맵 89의 바닥 371칸이
  * **한 덩어리**다 — 벽 밑에도 바닥이 깔려 있어서 방 안과 방 밖이 그 벽을 지나
- * 붙는다(`node .audit/roomFloorMap.mjs`).
+ * 붙는다(`node .audit/probe/roomFloorMap.mjs`).
  *
  * 그래서 **걸어 다닐 수 있는 칸으로만 번진다.** 막힌 칸은 번지지 않고 테두리에만
  * 든다 — 벽 밑 한 겹은 방의 일부라 카메라가 그 위에 서도 발밑이 바닥이다.
@@ -369,7 +369,7 @@ export function floorRegions(
     }
     // ⚠️ **벽 밑 바닥은 안 센다.** 그 줄은 바깥에서 보면 벽에 가려 안 보이는데
     // 상자에는 든다 — 포켓몬센터가 그래서 z 14로 잡혔고, 실제로 그려진 마지막
-    // 줄은 z 13이라 화면 아래 12%가 검게 남았다 (`node .audit/roomFit.mjs`)
+    // 줄은 z 13이라 화면 아래 12%가 검게 남았다 (`node .audit/probe/roomFit.mjs`)
     const edge = (x: number, z: number): void => {
       const was = southEdge.get(x)
       if (was === undefined || z + 1 > was) southEdge.set(x, z + 1)
@@ -529,7 +529,7 @@ function uvOnWall(src: WallTri): (x: number, y: number, z: number) => [number, n
  * 회색 띠는 벽지 뒤에 깔린 **받침**이고 눈에 보이는 것은 벽지다.
  * 그런데 네 층의 무게중심이 xz에서 똑같아서 「제일 가까운 것」이 그냥 처음
  * 만난 것으로 갈렸고, 실제로 회색 받침이 뽑혔다 — 계단 옆에 **바닥부터
- * 천장까지 새까만 판때기**가 섰다 (`.audit/wallSource.mjs`).
+ * 천장까지 새까만 판때기**가 섰다 (`.audit/probe/wallSource.mjs`).
  */
 function uvPerHeight(t: WallTri): number {
   const at = uvOnWall(t)

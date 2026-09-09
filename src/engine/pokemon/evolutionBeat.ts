@@ -81,7 +81,7 @@ export interface EvolutionBeats {
 /**
  * 자료를 아직 못 받았을 때 쓰는 값.
  *
- * ⚠️ **지어낸 수가 아니라 롬 실측이다** (`.audit/evoBeat.mjs`, 미국판). 입자
+ * ⚠️ **지어낸 수가 아니라 롬 실측이다** (`.audit/probe/evoBeat.mjs`, 미국판). 입자
  * 묶음이 오기 전에도 화면은 돌아야 하는데, 그때 길이가 0이 되면 진화가
  * 한 프레임에 끝난다. 자료가 오면 `evolutionBeats`가 같은 수를 다시 낸다
  */

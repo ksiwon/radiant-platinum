@@ -219,7 +219,7 @@ export function tileBehavior(attrs: number): number | null {
  *   천장            북 → z+1 · 남 → z−1 (바닥과 z가 뒤집힌다). x는 그대로다
  *
  * 한동안 벽에서 **좌우를 오르내림에 매어** 두었다. 실측하면 서쪽 벽에서 오른쪽을
- * 누르면 벽을 타고 내려가고 아래를 누르면 벽에서 떨어졌다 (`.audit/distortionWalk.mjs`).
+ * 누르면 벽을 타고 내려가고 아래를 누르면 벽에서 떨어졌다 (`.audit/probe/distortionWalk.mjs`).
  */
 export const STEP: readonly (readonly (readonly [number, number, number])[])[] = [
   /* PLATFORM_FLOOR     */ [[0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]],

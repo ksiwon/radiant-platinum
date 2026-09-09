@@ -11,6 +11,17 @@ import { join, resolve } from 'node:path'
 import { pathViolations, scanTree, originsIn, listTree } from './rules.mjs'
 import { collectShell, PUBLIC_SHELL } from './appShell.mjs'
 
+/**
+ * 나무 전체를 훑는 시험의 실제 시간.
+ *
+ * ⚠️ **5초 기본값으로는 못 잰다.** `git ls-files` 뒤에 파일마다 내용을 보는
+ * 시험이라 한 번에 7~9초다(실측 2026-09-09). 다른 시험 파일과 나란히 도는
+ * 동안 그것이 5초를 넘겨 **번번이 다른 시험이 터졌다** — 재는 것이 느린
+ * 것이지 계약이 틀린 것이 아니다
+ */
+const SLOW = 60_000
+
+
 const ROOT = resolve(import.meta.dirname, '../..')
 
 describe('경로 규칙', () => {
@@ -243,7 +254,7 @@ describe('release blocker', () => {
       expect(state, b.id).toHaveProperty('ok')
       if (!state.ok) expect(state.detail, b.id).toBeTruthy()
     }
-  })
+  }, SLOW)
 
   it('문서 §1의 표와 같은 수다', async () => {
     const { readFileSync } = await import('node:fs')
@@ -258,7 +269,7 @@ describe('release blocker', () => {
     const rows = section.match(/^\| \d+ \| /gm) ?? []
     expect(rows, `§1 표 ${String(rows.length)}줄 ≠ blocker ${String(BLOCKERS.length)}개`)
       .toHaveLength(BLOCKERS.length)
-  })
+  }, SLOW)
 })
 
 describe('src 안의 자료 표', () => {
@@ -331,7 +342,7 @@ describe('src 안의 자료 표', () => {
       expect(bad).toHaveLength(1)
       expect(bad[0].what).toBe('뱅크 암호화 키 표')
     } finally { rmSync(inRepo, { force: true }) }
-  })
+  }, SLOW)
 
   it('롬 컨테이너가 tracked로 들어오면 잡는다', async () => {
     const { trackedContentLeaks } = await import('./dataTables.mjs')
@@ -341,7 +352,7 @@ describe('src 안의 자료 표', () => {
     try {
       expect(trackedContentLeaks([rel]).map((b) => b.what)).toEqual(['NARC 컨테이너'])
     } finally { rmSync(inRepo, { force: true }) }
-  })
+  }, SLOW)
 
   it('진짜 tracked 나무에는 원본 유래가 없다', async () => {
     const { trackedContentLeaks } = await import('./dataTables.mjs')
@@ -349,7 +360,7 @@ describe('src 안의 자료 표', () => {
       .split('\n').map((s) => s.trim()).filter(Boolean)
     expect(tracked.length).toBeGreaterThan(400)
     expect(trackedContentLeaks(tracked)).toEqual([])
-  })
+  }, SLOW)
 })
 
 describe('E2E 재료가 앱과 안 갈린다', () => {

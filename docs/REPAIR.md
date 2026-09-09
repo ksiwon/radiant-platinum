@@ -60,7 +60,7 @@
 
 ### 8.1 맵을 나가는 동안 멎는다 — 링크는 그중 1초다
 
-**쟀다** (`.audit/warpCost.mjs`, 진짜 GPU · `--use-angle=d3d11 --enable-gpu`):
+**쟀다** (`.audit/probe/warpCost.mjs`, 진짜 GPU · `--use-angle=d3d11 --enable-gpu`):
 
 | 어디 | 멈춘 프레임 | 합 | 제일 긴 것 |
 |---|---:|---:|---:|
@@ -87,7 +87,7 @@
 같은 자리가 진짜 GPU에서는 517ms다 — **어디가 아픈지는 스윕으로 못 고른다.**
 
 **우리는 이 병을 이미 안다.** 배틀이 열릴 때 같은 자리에서 막혔고
-(`.audit/battleWarm.mjs`), `scene/warmPipelines.ts`가 `compileAsync`로 미리
+(`.audit/probe/battleWarm.mjs`), `scene/warmPipelines.ts`가 `compileAsync`로 미리
 구워 두는 길을 냈다 — `warmBeforeShow`·`addWhenWarm`이고 인물(`NpcModels`)과
 포켓몬(`NpcMonModels`)이 쓴다. **맵 청크가 그 길을 안 쓴다.**
 
@@ -106,7 +106,7 @@
 아니라 **나무·바위·풀·꽃·물·소품·인물**에도 있고, 막히는 링크는 그쪽에서 난다.
 
 ⚠️ **길 자체는 막혀 있지 않다.** `KHR_parallel_shader_compile`이 이 기계에
-**있다**(`.audit/parallelCompile.mjs` — ANGLE/Intel Arc 140V, D3D11). three의
+**있다**(`.audit/probe/parallelCompile.mjs` — ANGLE/Intel Arc 140V, D3D11). three의
 WebGL 백엔드는 그 확장이 있을 때만 링크 확인을 미루므로(`warmPipelines` 머리말)
 `compileAsync`가 진짜 비동기로 돌 수 있다. **한 자리만 데워서는 안 되고 새
 재질을 세우는 자리를 전부 그 길로 돌려야 한다**는 뜻이다.
@@ -115,7 +115,7 @@ WebGL 백엔드는 그 확장이 있을 때만 링크 확인을 미루므로(`wa
 
 three는 물체를 그리기 직전에 `object.onBeforeRender`를 부르고 **그 다음에** 그
 재질의 프로그램을 준비한다. 그래서 그 자리에 「지금 누구를 그리는 중」을 적고
-`linkProgram`을 감싸면 갈린다 (`.audit/warpOwners.mjs`). `forest`에서 아래로
+`linkProgram`을 감싸면 갈린다 (`.audit/probe/warpOwners.mjs`). `forest`에서 아래로
 한 걸음 — 맵 203 → 347, 멈춘 프레임 5개 합 **5.53초**, 링크 28회 **1,001ms**:
 
 | 누구 | 링크 | 합 |
@@ -142,7 +142,7 @@ three는 물체를 그리기 직전에 `object.onBeforeRender`를 부르고 **�
 #### 해 봤고 **안 통한 것** — 나무 데우기
 
 「`Foliage`를 데우면 1,001ms 중 379ms를 노린다」가 여기 적혀 있던 다음 할 일이었다.
-**해 봤고 값이 안 움직였다.** 두 가지로 해 봤다 (`.audit/warpOwners.mjs`, `forest`):
+**해 봤고 값이 안 움직였다.** 두 가지로 해 봤다 (`.audit/probe/warpOwners.mjs`, `forest`):
 
 | | 멈춘 프레임 | 합 | 제일 긴 것 |
 |---|---:|---:|---:|
@@ -160,7 +160,7 @@ three는 물체를 그리기 직전에 `object.onBeforeRender`를 부르고 **�
 #### 잣대를 바꿔 다시 쟀다 — **위의 값은 전부 폴백이었다**
 
 「헤드리스가 WebGPU 장치를 만들게 하거나 사람이 켠 브라우저에서 재라」가 여기
-적혀 있던 다음 할 일이었다. **둘 다 됐다** (`tools/gpuFlags.mjs` · `.audit/warpGpu.mjs`,
+적혀 있던 다음 할 일이었다. **둘 다 됐다** (`tools/gpuFlags.mjs` · `.audit/probe/warpGpu.mjs`,
 `perfSnapshot.backend`가 `WebGPUBackend`로 찍히는 것을 확인하고 잰다).
 
 **그리고 위의 진단이 이 길에서는 안 선다.** `forest`에서 아래로 한 걸음, 설치된
@@ -176,7 +176,7 @@ three는 물체를 그리기 직전에 `object.onBeforeRender`를 부르고 **�
 ⚠️ **WebGPU에는 `getProgramParameter`가 없다.** Dawn은 `createRenderPipeline`에서
 바로 돌아오고 진짜 굽기는 GPU 프로세스에서 한다 — 그래서 **자바스크립트 시간으로는
 굽는 값이 0%로 보인다.** 그래도 굽는 값이 있기는 하다: **같은 경계를 두 번째로
-넘으면 새 파이프라인 한 개에 멈춤 1.0초**다 (`node .audit/warpGpu.mjs forest ArrowDown --again`).
+넘으면 새 파이프라인 한 개에 멈춤 1.0초**다 (`node .audit/probe/warpGpu.mjs forest ArrowDown --again`).
 
 ⚠️ **우리 깃발이 컴파일러를 바꾼다.** 번들 크로미움은 `dxil.dll`을 못 열어
 `--disable-dawn-features=use_dxc`로 **FXC**를 쓰는데, 그러면 같은 걸음이 10.2초다.
@@ -186,7 +186,7 @@ three는 물체를 그리기 직전에 `object.onBeforeRender`를 부르고 **�
 #### 파이프라인을 데려오는 임자 — 갈랐다
 
 `onBeforeRender`에 「지금 누구를 그리는 중」을 적고 파이프라인 생성과 맞춘다
-(`.audit/warpGpu.mjs`, `.audit/warpOwners.mjs`와 같은 수법). 25개 중:
+(`.audit/probe/warpGpu.mjs`, `.audit/probe/warpOwners.mjs`와 같은 수법). 25개 중:
 
 | 누구 | 개수 |
 |---|---:|
@@ -291,7 +291,7 @@ bindGroup = bindingGroupsCache.get( cacheKey );
 굽기만 깨지고 그리기는 멀쩡한 것이 그래서다. 스킨 사람이 많을수록(사람마다 뼈
 버퍼가 새 노드 id를 낳는다) 부딪칠 확률이 오른다.
 
-**재서 확인했다** (`.audit/warmBind.mjs` — WebGPU 호출을 가로채 레이아웃 칸
+**재서 확인했다** (`.audit/probe/warmBind.mjs` — WebGPU 호출을 가로채 레이아웃 칸
 수를 기억해 둔다. 트윈리프 14초):
 
     같은 파이프라인 renderPipeline_face_733
@@ -316,7 +316,7 @@ bindGroup = bindingGroupsCache.get( cacheKey );
 있었다 — **배틀에서 난다.** 확인 지점만 열고 재면 스킨 메시가 사람뿐이라 못
 잡는다. 재는 자에 `--battle`을 주면 야생전을 열고 나서 센다.
 
-**임자를 씬에서 잡았다** (`.audit/boneShare.mjs --battle` — 재질마다 그것을
+**임자를 씬에서 잡았다** (`.audit/probe/boneShare.mjs --battle` — 재질마다 그것을
 쓰는 스킨 메시의 **뼈 수가 몇 가지인가**를 센다). three 0.185의 `skinning`이
 
 ```js
@@ -375,9 +375,9 @@ R3F는 제 rAF로 그리므로, 그 사이에 **손질 전 몸이 한 번 그려
 뼈 크기짜리 버퍼에서만 스택을 뜬다. 그리고 **필드 한 자리만 열고 재면 못 잡는다**
 — 장면을 실제로 몰아 봐야 나온다(`pnpm story`).
 
-**되살아나면** `.audit/boneShare.mjs --battle`이 재질 쪽을,
-`.audit/boneWho.mjs --battle`이 버퍼 쪽을 짚는다. `.audit/consoleCount.mjs`는
-갈래별로 세고, `.audit/bufOverflow.mjs`는 **총 쓰기 수**를 같이 찍는다 —
+**되살아나면** `.audit/probe/boneShare.mjs --battle`이 재질 쪽을,
+`.audit/probe/boneWho.mjs --battle`이 버퍼 쪽을 짚는다. `.audit/probe/consoleCount.mjs`는
+갈래별로 세고, `.audit/probe/bufOverflow.mjs`는 **총 쓰기 수**를 같이 찍는다 —
 그 수가 0이면 갈고리가 안 걸린 것이라 「넘침 0」이 뜻이 없다.
 
 #### 재 봤다 — **「R3F 재조정」이 아니었다**
@@ -387,7 +387,7 @@ R3F는 제 rAF로 그리므로, 그 사이에 **손질 전 몸이 한 번 그려
 
 R3F는 JSX 하나마다 three 물체를 만들어 `parent.add(child)`로 붙인다. 그
 `add`·`remove`를 감싸면 재조정이 실제로 몇 개를 만지는지가 나오고, 그 수는
-번들에서 `Dl`·`ct`로 뭉개지지 않는다 (`.audit/warpReconcile.mjs`).
+번들에서 `Dl`·`ct`로 뭉개지지 않는다 (`.audit/probe/warpReconcile.mjs`).
 `forest`에서 아래로 한 걸음 — 맵 203 → 347, 멈춘 프레임 8개 합 **5.15초**,
 제일 긴 것 3,300ms, 그 5,266ms 창 안에서:
 
@@ -415,7 +415,7 @@ R3F는 JSX 하나마다 three 물체를 만들어 `parent.add(child)`로 붙인�
 다르므로 프로파일 시작·끝을 양쪽에서 한 번씩 찍어 **선형으로 옮긴다**(표본
 간격이 0.2ms라 왕복 오차는 멈춤 100ms 잣대 안에서 무해하다).
 
-**그 차이가 크다** (`node .audit/warpGpu.mjs forest ArrowDown --url=…`, 개발
+**그 차이가 크다** (`node .audit/probe/warpGpu.mjs forest ArrowDown --url=…`, 개발
 서버 · WebGPU · 맵 203 → 347 · 멈춘 프레임 14개 합 16.13초):
 
 | 어디를 세나 | 표본 합 | 제일 큰 것 |
@@ -435,7 +435,7 @@ R3F는 JSX 하나마다 three 물체를 만들어 `parent.add(child)`로 붙인�
 ⚠️ **찬 서버에서는 이 자가 안 선다** — `startVite`가 첫 요청에 170초를 안
 기다리고 포기한다. 이미 돌고 있는 서버에 `--url=http://localhost:5312`로 붙인다.
 
-⚠️ **`.audit/warpCost.mjs`가 요즘 페이지를 떨어뜨린다** — GL 호출 10만 건을
+⚠️ **`.audit/probe/warpCost.mjs`가 요즘 페이지를 떨어뜨린다** — GL 호출 10만 건을
 배열에 모으면서 탭이 죽는다(`Page crashed`, 실측 1회). 다시 쓰려면 모으는 것을
 이름별 누적으로 바꿔야 한다.
 
@@ -463,8 +463,8 @@ R3F는 JSX 하나마다 three 물체를 만들어 `parent.add(child)`로 붙인�
 색도 세우는 자세도 **화면**이라 vitest가 보는 것이 아니다. 그래서 이 갈래는
 「나중에 정리」가 아니라 **다음 결함이 어디서 날지 이미 아는 자리**였다.
 
-**쟀다** (`.audit/dup.mjs` — 주석·빈 줄을 뺀 연속 12줄이 그대로 겹치는 창을 센다.
-두 파일의 제일 긴 겹침은 `.audit/dupShow.mjs <파일> <파일>`).
+**쟀다** (`.audit/probe/dup.mjs` — 주석·빈 줄을 뺀 연속 12줄이 그대로 겹치는 창을 센다.
+두 파일의 제일 긴 겹침은 `.audit/probe/dupShow.mjs <파일> <파일>`).
 
 ### 무엇을 합쳤나
 
@@ -490,7 +490,7 @@ R3F는 JSX 하나마다 three 물체를 만들어 `parent.add(child)`로 붙인�
   열하나에 스킨 여섯이다). 합치면서 그쪽에 맞췄다 — **복제하기 전에** 부른다.
 - **되살아난 `materialsOf` 둘은 확산색을 안 곱한다.** 다만 **지금은 안 보인다** —
   그 두 자리가 쓰는 메시 일곱(나무열매 흙 · 파트너 장면 여섯)에 **텍스처 없는
-  재질이 0개**다(`.audit/propColors.mjs`). 뭉쳐 버릴 재질 짝도 0이다. 결함이
+  재질이 0개**다(`.audit/probe/propColors.mjs`). 뭉쳐 버릴 재질 짝도 0이다. 결함이
   아니라 **다음 자산에서 터질 자리**였다.
 - **판때기 회전은 일부러 다르다** — 사람은 카메라를 통째로 보고(`BB`) 머리 위
   표시는 좌우로만 돈다(`BBY`). 합치면서 **같게 만들지 않았다**: 갈래 둘을
@@ -506,7 +506,7 @@ R3F는 JSX 하나마다 three 물체를 만들어 `parent.add(child)`로 붙인�
 
 ### 아직 남은 것
 
-`.audit/dup.mjs`를 다시 돌리면 **시험이 아닌 짝에서 세 창 이상이 하나도 없다**
+`.audit/probe/dup.mjs`를 다시 돌리면 **시험이 아닌 짝에서 세 창 이상이 하나도 없다**
 (16 → 14짝, 남은 것은 시험 파일과 `import/`의 한두 창짜리다). 제일 큰 것이
 `cards.test` ↔ `plates.test` ↔ `shell.test`의 열여섯 창인데, 시험은 **같아 보이는
 것을 각자 다시 적는 편이 낫다** — 한 시험이 다른 시험의 도우미를 물면 무엇이
@@ -527,7 +527,7 @@ twinleaf poketch`로 주인공(필드)과 나무열매 밭을 봤다. 오프닝�
 
 아무도 안 부르는 `export`를 훑다가 나온 것들이다. **죽은 코드가 아니라 하다 만
 것**이라 지우지 않고 여기 적는다 — 지우면 다음 사람이 처음부터 다시 만든다.
-재는 자는 `.audit/deadExports.mjs`다.
+재는 자는 `.audit/probe/deadExports.mjs`다.
 
 ⚠️ **「누가 쓴다」고 적힌 주석을 믿지 않는다.** 그렇게 적힌 여섯 중 **다섯이**
 거짓이었고 그 다섯은 지웠다 — `journalGymTooTough`의 「개발 콘솔과 시험이 본다」
@@ -542,7 +542,7 @@ twinleaf poketch`로 주인공(필드)과 나무열매 밭을 봤다. 오프닝�
 | ~~이어하기에서 모험노트가 저절로 안 펼쳐진다~~ — **이어 붙였다** | `scene/journal.ts`의 `journalEnterMap`이 쪽을 넘기기 **전에** 묻고 넘긴 뒤에 편다 | ⚠️ **원작은 쪽을 넘기기 전에 펴고 닫힐 때까지 맵을 안 세운다** (`FieldTask_LoadSavedGameMap` 0번 → 4번 → 1번) — 그래서 사람이 보는 종이는 **지난번 쪽**이다. 우리는 맵 세우는 것을 막을 수 없어 넘긴 뒤에 펴되 **넘어간 그 쪽**(`journalAt = 1`)을 가리킨다. 종이는 같다. `scene/journalContinue.test.ts` 넷 |
 | 순간이동으로 돌아온 것이 노트에 안 적힌다 | `scene/journal.ts`의 `journalWarpedByMove` | 하늘을날기는 적힌다(`journalFlew` ← `FlyScreen`). 텔레포트가 필드 기술 아홉에 없어서 부를 자리가 아직 없는 것이다 |
 | 지우기 직전 백업을 **되읽는 길이 없다** | `state/report.ts`의 `readBackup` | `backupBeforeOverwrite`가 파일과 IndexedDB 슬롯 **두 벌**을 남긴다고 적어 놨는데, 슬롯을 읽는 자리가 없어 지금은 쓰기 전용이다 ([IMPORT.md](IMPORT.md) §11-8) |
-| ~~맵을 떠날 때 맵 기능이 안 지워진다~~ — **이어 붙였다** | `scene/MapStreamer`가 맵을 옮길 때 부른다 | ⚠️ **여기 적혀 있던 결과가 과했다.** 갈래 번호는 정말 남았지만(실측: 영원 체육관 67 → 집 414에서 번호 8이 그대로) 통행 판정은 **안 샜다** — 갈래마다 제 상태를 따로 지우고(`resetEternaGym` 따위, MapStreamer가 이미 부른다) 판정이 그것을 먼저 보기 때문이다. 32×32칸에서 장치가 답한 칸이 0이다. 번호를 지우는 한 줄은 그래도 넣었다 (`.audit/staleFeature.mjs`) |
+| ~~맵을 떠날 때 맵 기능이 안 지워진다~~ — **이어 붙였다** | `scene/MapStreamer`가 맵을 옮길 때 부른다 | ⚠️ **여기 적혀 있던 결과가 과했다.** 갈래 번호는 정말 남았지만(실측: 영원 체육관 67 → 집 414에서 번호 8이 그대로) 통행 판정은 **안 샜다** — 갈래마다 제 상태를 따로 지우고(`resetEternaGym` 따위, MapStreamer가 이미 부른다) 판정이 그것을 먼저 보기 때문이다. 32×32칸에서 장치가 답한 칸이 0이다. 번호를 지우는 한 줄은 그래도 넣었다 (`.audit/probe/staleFeature.mjs`) |
 | ~~더블에서 정책 없는 상대의 턴을 안 고른다~~ — **하다 만 것이 아니라 밀려난 것이었다** | 지웠다. 그 일은 `sim/controller.ts`의 `foeTurn`이 이미 한다 | ⚠️ **이어 붙이면 오히려 뒷걸음이었다.** `foeTurn`은 자리마다 `foePolicy`를 부르고 교체 대상 겹침을 막는 것에 더해 **`chooseRandomTurn`에 없는 것 셋**을 한다 — 벤치가 모자란 자리의 `pass`, 도구를 쓴 자리의 빈 턴, AI가 찍은 기술·자리를 합법 목록으로 접는 일. 27줄은 그 셋이 생기기 전의 판이다 |
 
 ⚠️ **이건 사고가 아니다.** 물뿌리개 안전장치(`scene/berryPatches.ts`의
@@ -658,7 +658,7 @@ twinleaf poketch`로 주인공(필드)과 나무열매 밭을 봤다. 오프닝�
 
 앞 판에 적어 둔 갈래가 **그 자리에서 틀렸다.** 물 채우기를 해 봤더니 맵 89의
 바닥 371칸이 **한 덩어리**였다 — 벽 밑에도 바닥이 깔려 있어서 방 안과 방 밖이
-그 벽을 지나 이어진다 (`node .audit/roomFloorMap.mjs`가 글자판으로 찍는다).
+그 벽을 지나 이어진다 (`node .audit/probe/roomFloorMap.mjs`가 글자판으로 찍는다).
 
 **가르는 것은 통행이다.** 걸어 다닐 수 있는 칸으로만 번지고, 막힌 칸은 테두리에만
 넣는다 (`scene/roomWalls`의 `floorRegions`). 벽 밑 한 겹은 방의 일부라 카메라가
@@ -680,7 +680,7 @@ x 43~53짜리 조각이 뽑혀 카메라가 x 44로 밀렸다. **두 칸까지�
 
 ### 결과 (실측)
 
-`node .audit/roomRegions.mjs` — 실내 확인 지점 열일곱 곳의 옛 상자와 새 상자:
+`node .audit/probe/roomRegions.mjs` — 실내 확인 지점 열일곱 곳의 옛 상자와 새 상자:
 
 | | 맵 | 조인 넓이 |
 |---|---:|---:|
@@ -693,7 +693,7 @@ x 43~53짜리 조각이 뽑혀 카메라가 x 44로 밀렸다. **두 칸까지�
 | 나머지 열하나 | | 0% (그대로) |
 
 화면은 `pnpm shot hearthome-doors`로 본다 — **검정 73.4% → 24.2%**
-(`node .audit/blackFrac.mjs`). 뛰어든 첫 화면은 카메라 자리가 그대로라
+(`node .audit/probe/blackFrac.mjs`). 뛰어든 첫 화면은 카메라 자리가 그대로라
 (z 11로 물리는 값이 옛 상자에서도 같았다) 안 바뀐다.
 
 ⚠️ **방이 좁아진 만큼 주인공이 화면 가운데를 벗어난다.** 원작도 맵 경계에서
@@ -703,8 +703,8 @@ x 43~53짜리 조각이 뽑혀 카메라가 x 44로 밀렸다. **두 칸까지�
 
 ### 재는 법
 
-`node .audit/roomRegions.mjs` (상자) · `node .audit/roomFloorMap.mjs` (글자판) ·
-`pnpm shot hearthome-doors` + `node .audit/blackFrac.mjs` (검은 화소).
+`node .audit/probe/roomRegions.mjs` (상자) · `node .audit/probe/roomFloorMap.mjs` (글자판) ·
+`pnpm shot hearthome-doors` + `node .audit/probe/blackFrac.mjs` (검은 화소).
 
 ---
 
@@ -749,13 +749,13 @@ Error: Test timed out in 5000ms.
 ### 부하를 만든 쪽 — **시험이 아닌 것이 시험으로 세어졌다**
 
 문턱을 올린 뒤에도 같은 갈래가 한 번 더 났다(`pkmnDiet.test.mjs`, 문턱 5초).
-이번에는 **부하 쪽에 임자가 있었다.** `.audit/otherCmds.test.ts`는 「sim이 내는데
+이번에는 **부하 쪽에 임자가 있었다.** `.audit/probe/otherCmds.test.ts`는 「sim이 내는데
 우리가 안 읽는 줄」을 세려고 배틀 **120판**을 굴리는 일회성 측정인데, 이름이
 `*.test.ts`라 vitest의 기본 `include`(`**/*.{test,spec}.?(c|m)[jt]s?(x)`)에 그대로
 걸렸다. 혼자 돌려 재면 **66.8초**다:
 
 ```
-$ pnpm exec vitest run --config .audit/vitest.cost.config.ts .audit/otherCmds
+$ pnpm exec vitest run --config .audit/probe/vitest.cost.config.ts .audit/otherCmds
  Test Files  1 passed (1)
    Duration  66.81s (transform 349ms, import 1.14s, tests 65.30s)
 ```
@@ -863,7 +863,7 @@ pnpm exec vitest run src/import/platinum/validate.test.ts   ②
 node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spike/bdspGroups.mjs <그룹> --only __none__          ③
 ```
 
-`.audit/rom-vs-system.html`에 잰 것이 다 있고, 잰 스크립트도 `.audit/`에 있다.
+`.audit/probe/out/rom-vs-system.html`에 잰 것이 다 있고, 잰 스크립트도 `.audit/`에 있다.
 
 ---
 
@@ -907,7 +907,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 무엇이 어긋났나 (실측)
 
-`node .audit/distortionWalls.mjs`:
+`node .audit/probe/distortionWalls.mjs`:
 
 | 맵 | 없는 벽 | 삼각형 | 선 자리 |
 |---|---:|---:|---|
@@ -944,7 +944,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 그 세계에 **나무가 선다**: 1F에 12그루 · B4F에 81그루. 지어낸 것이 아니라 원작
 자료다 — 텍스처가 `tree_sbt01`이고, 64×64 안에 셋이 들었다(실측
-`node .audit/distortionTex.mjs`): **왼쪽 절반(32×64)이 옆에서 본 짙은 남색
+`node .audit/probe/distortionTex.mjs`): **왼쪽 절반(32×64)이 옆에서 본 짙은 남색
 침엽수** · 오른쪽 위가 위에서 본 잎 · 오른쪽 아래가 뿌리다. 옆에서 본 그림이
 반을 차지하니 **세우라고 그려 둔 그림**이고, `Foliage`가 다른 데와 똑같은
 규칙으로 세운다.
@@ -952,7 +952,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 ⚠️ **텍스처가 안 붙어서 검은 것이 아니다.** `splitFoliage`가 잎 판을 통째로
 걷어내고 `Foliage`가 `plateColors`로 **원작 팔레트에서 센 색**으로 다시 세운다
 — 화면의 검푸른 빛은 위 그림의 색 그대로다. 길 위에 선 것도 없다
-(`node .audit/distortionTreeSpots.mjs` — 판에 물어 걸을 수 있는 칸은 0그루).
+(`node .audit/probe/distortionTreeSpots.mjs` — 판에 물어 걸을 수 있는 칸은 0그루).
 
 ⚠️ **그런데 화면에서는 어두운 판때기 더미로 읽힌다.** 그림이 짙은 남색인 데다
 바로 위에서 8도 렌즈로 내려다보므로 잎 덩이가 겹쳐 보인다. 원작에서는 위에서
@@ -961,9 +961,9 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 재는 법
 
-`node .audit/distortionWalls.mjs` (벽·나무·바위 수) ·
-`node .audit/distortionTrees.mjs` (어느 서브메시가 잎인가) ·
-`node .audit/distortionTex.mjs` (그 그림을 뽑아 본다) ·
+`node .audit/probe/distortionWalls.mjs` (벽·나무·바위 수) ·
+`node .audit/probe/distortionTrees.mjs` (어느 서브메시가 잎인가) ·
+`node .audit/probe/distortionTex.mjs` (그 그림을 뽑아 본다) ·
 `pnpm shot distortion --hit=x,y` (그 픽셀에 무엇이 있나).
 
 ---
@@ -984,7 +984,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 (3·5타일 폭)는 그림 칸의 좌우 끝이 차 있어 담으로 남아 **평평하게 섰고**,
 홀로 선 `yomawaru.1`만 덩이가 됐다 — 파이프라인이 같은 그림에 두 답을 냈다.
 
-**가르는 것은 키다.** 실측 (`node .audit/lumpSizes.mjs`, 열두 자리의 덩이 8,957장):
+**가르는 것은 키다.** 실측 (`node .audit/probe/lumpSizes.mjs`, 열두 자리의 덩이 8,957장):
 
 | | 폭 × 키 | 장수 | 키/폭 |
 |---|---|---:|---:|
@@ -1022,7 +1022,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 `yomawaru.1` 32). 세우고 나면 전부 `1 × 2 × 0`이다.
 
 **세우는 것은 우리 짐작이 아니라 원작이 적어 둔 것이다.** 실측
-(`node .audit/ghostHang.mjs`, 52장 전부):
+(`node .audit/probe/ghostHang.mjs`, 52장 전부):
 
 | 그림 | 장수 | 기울기 | 원본 폭 × 깊이 | 밑변 y | 세운 뒤 키 |
 |---|---:|---:|---|---:|---:|
@@ -1057,8 +1057,8 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 재는 법
 
-`node .audit/lumpSizes.mjs` (덩이의 폭·키) · `node .audit/ghostStand.mjs`
-(세운 뒤 크기와 그 칸이 막혔는가) · `node .audit/standOnWalk.mjs`
+`node .audit/probe/lumpSizes.mjs` (덩이의 폭·키) · `node .audit/probe/ghostStand.mjs`
+(세운 뒤 크기와 그 칸이 막혔는가) · `node .audit/probe/standOnWalk.mjs`
 (걷는 칸에 선 판) · `pnpm shot hearthome-doors --hit=x,y`.
 
 ---
@@ -1076,7 +1076,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 **뒤에 있는 것**의 깊이가 적혀 있다. 그러니 거기서 잰 이웃과의 깊이 차는
 뒤에 있는 것의 실루엣이고, 윤곽이 그것을 앞면 위에 그린다.
 
-깊이를 안 쓰는 면이 화면을 얼마나 덮는가 (`.audit/seeThrough.mjs`, 확인 지점
+깊이를 안 쓰는 면이 화면을 얼마나 덮는가 (`.audit/probe/seeThrough.mjs`, 확인 지점
 32곳 × 화소 1,536 — 광선을 쏴 맨 앞의 재질을 본다):
 
 | 자리 | 선이 보이는 화소 | 임자 |
@@ -1098,7 +1098,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
    눈에는 멀쩡한 벽인데 이미 깊이를 안 쓴다.
 2. **폴리곤 알파가 31인데 그림이 텍셀마다 알파를 나르는 것** (A3I5·A5I3).
    `chunkMesh.softAlpha`가 그런 그림을 통째로 반투명으로 본다 — 실측으로
-   그림 39장 · 삼각형 21,859개다 (`.audit/softAlpha.mjs`). 제일 넓은 것이
+   그림 39장 · 삼각형 21,859개다 (`.audit/probe/softAlpha.mjs`). 제일 넓은 것이
    바닷가 `seaside3` 16,620삼각형(부드러운 텍셀 10.2%)이다.
 
 ### 고친 자리
@@ -1120,7 +1120,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 `UnsignedByteType`로 내려서 여덟 배 줄인다. `r8unorm`은 섞기가 되므로 반투명
 합성으로 덮은 정도를 쌓는 것은 그대로다.
 
-실측 (`.audit/fpsAB.mjs`, 굽힌 번들 · 자리마다 새로 열어 여섯 번):
+실측 (`.audit/probe/fpsAB.mjs`, 굽힌 번들 · 자리마다 새로 열어 여섯 번):
 
 | 자리 | MRT 없음 | RGBA16F | R8 |
 |---|---|---|---|
@@ -1135,7 +1135,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 결과 (실측)
 
-앞뒤로 같은 자리를 찍어 뺀 값 (`.audit/seeThruDiff.mjs`, 여섯 자리):
+앞뒤로 같은 자리를 찍어 뺀 값 (`.audit/probe/seeThruDiff.mjs`, 여섯 자리):
 지워진 선 화소 **11,222개**, 밝아진 폭 평균 20~48/255.
 
 ⚠️ **인물이 걸어 다녀서 두 사진이 같지 않다.** 그 몫을 「앞 사진에서 이웃보다
@@ -1143,7 +1143,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ⚠️ **윤곽 체인이 실패하면 블룸만으로 물러난다** — 그러면 선이 통째로 없어져
 「고쳐진 것처럼」 보인다. 그래서 잴 때마다 콘솔의 `[post]` 경고를 같이 본다
-(`.audit/seeThruShot.mjs`).
+(`.audit/probe/seeThruShot.mjs`).
 
 ### 남은 것
 
@@ -1153,19 +1153,19 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 재는 법
 
-`node .audit/seeThrough.mjs` (덮은 화소와 임자) · `node .audit/softAlpha.mjs`
-(그림마다 부드러운 텍셀 비율) · `node .audit/seeThruShot.mjs <꼬리표>` 뒤
-`node .audit/seeThruDiff.mjs` (앞뒤 차분).
+`node .audit/probe/seeThrough.mjs` (덮은 화소와 임자) · `node .audit/probe/softAlpha.mjs`
+(그림마다 부드러운 텍셀 비율) · `node .audit/probe/seeThruShot.mjs <꼬리표>` 뒤
+`node .audit/probe/seeThruDiff.mjs` (앞뒤 차분).
 
 ---
 
 ## 18. 「대사가 안 넘어간다」는 자리 둘 — **재는 자가 틀렸다**
 
-순회(`.audit/fpTour.mjs`)가 콘테스트홀(맵 117)과 예진호수(맵 311)를 오래
+순회(`.audit/probe/fpTour.mjs`)가 콘테스트홀(맵 117)과 예진호수(맵 311)를 오래
 **「걸음 0칸」**으로 적어 왔고, 그것을 「대사가 안 넘어간다」로 읽고 있었다.
 
 **둘 다 안 막힌다.** 스크립트 문맥을 프레임마다 들여다보며 끝까지 눌러 보면
-(`.audit/stuckScript.mjs`) 콘테스트는 **38번**, 예진호수는 **31번**에 끝나고
+(`.audit/probe/stuckScript.mjs`) 콘테스트는 **38번**, 예진호수는 **31번**에 끝나고
 그 뒤에 걸어진다(예진호수 1.79칸 · 콘테스트는 연출이 워프까지 한다).
 
 임자는 하네스의 상수였다 — 걷기 전에 대사를 지우는 자리가 **열두 번**만
@@ -1178,7 +1178,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 재는 법
 
-`node .audit/stuckScript.mjs contest valor` — 누를 때마다 스크립트 자리 ·
+`node .audit/probe/stuckScript.mjs contest valor` — 누를 때마다 스크립트 자리 ·
 창 · 인쇄기 상태를 찍고, 끝나면 한 걸음 걸어 본다.
 
 ---
@@ -1191,7 +1191,7 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 ### 무엇이 어긋났나 (실측)
 
 `PropFade`가 카메라와 사람 사이에 든 소품을 흐려서 지운다. 재는 자가 **소품의
-상자 하나**인데, 배틀타워의 상자가 이렇다 (`.audit/fadeBox.mjs`):
+상자 하나**인데, 배틀타워의 상자가 이렇다 (`.audit/probe/fadeBox.mjs`):
 
     크기   17.3 × 21.6 × 20.4 타일
     자리   x 41.6~58.9 · z 6.4~26.8
@@ -1226,9 +1226,9 @@ node --import ./tools/spike/tsResolve.mjs --experimental-strip-types   tools/spi
 
 ### 재는 법
 
-`node .audit/fadeBox.mjs <확인지점>` (큰 소품의 상자와 카메라·사람 자리) ·
-`node .audit/towerWall.mjs` (그 재질이 지금 어떤 값인가) ·
-`node .audit/skinCheck.mjs` (뼈를 벗어난 스킨) ·
+`node .audit/probe/fadeBox.mjs <확인지점>` (큰 소품의 상자와 카메라·사람 자리) ·
+`node .audit/probe/towerWall.mjs` (그 재질이 지금 어떤 값인가) ·
+`node .audit/probe/skinCheck.mjs` (뼈를 벗어난 스킨) ·
 `pnpm shot frontier battlepark --hour=12`.
 
 ---
@@ -1264,7 +1264,7 @@ three가 그림자를 그릴 때 쓰는 깊이 재질이 원래 재질에서 가
 
 ### 재는 법
 
-`node .audit/softShadow.mjs <확인지점>` · `node .audit/softAlpha.mjs`.
+`node .audit/probe/softShadow.mjs <확인지점>` · `node .audit/probe/softAlpha.mjs`.
 
 ---
 
@@ -1302,7 +1302,7 @@ three가 그림자를 그릴 때 쓰는 깊이 재질이 원래 재질에서 가
 갈 일이 없어 아무도 안 밟았을 뿐이다.
 
 3인칭에서는 밟힌다. 게임을 처음부터 **걸어서** 닿는 칸을 고정점으로 구하고
-(`.audit/sealCheck.mjs`) 칸마다 청크 메시 삼각형을 XZ로 눌러 봤다 — 닿는 칸
+(`.audit/probe/sealCheck.mjs`) 칸마다 청크 메시 삼각형을 XZ로 눌러 봤다 — 닿는 칸
 110,809개 중 **4,170개**가 그렇고, 네 자리가 그 전부다:
 
 | 어디 | 허공 칸 | 어떻게 들어가나 |
@@ -1348,7 +1348,7 @@ three가 그림자를 그릴 때 쓰는 깊이 재질이 원래 재질에서 가
    - **바닥에 닿은 행사 칸** — 워프·사람·간판·트리거. 5,504칸을 재면 5,485칸이
      그린 바닥 **위**고 3칸이 모델 가장자리에서 **한 칸** 나와 있다(문턱이다).
      그래서 「제 칸이거나 네 이웃 중 하나가 그려져 있으면」으로 끊는다
-     (`.audit/evFar.mjs`).
+     (`.audit/probe/evFar.mjs`).
    - **원래 이어져 있던 길**. 배틀프런티어 동쪽 날개가 x=63의 **두 칸**을 지나야
      닿는데 그걸 막았더니 배틀팩토리가 통째로 끊겼다(실측). 그래서 안 그려진
      칸을 지나는 최단 경로를 짧은 것부터 골라 도로 잇는다(크러스컬).
@@ -1364,7 +1364,7 @@ three가 그림자를 그릴 때 쓰는 깊이 재질이 원래 재질에서 가
 
 ### 잰 값
 
-`node --experimental-strip-types .audit/sealCheck.mjs` — 엔진이 실제로 쓰는
+`node --experimental-strip-types .audit/probe/sealCheck.mjs` — 엔진이 실제로 쓰는
 `sealFloor`를 그대로 불러서 잰다.
 
 | | 막기 전 | 막은 뒤 |
@@ -1387,9 +1387,9 @@ three가 그림자를 그릴 때 쓰는 깊이 재질이 원래 재질에서 가
 쓰는 방이라 막아도 잃는 것이 없고, 실제로 걸어서 닿는 맵은 438로 그대로다.
 
 승강판 여덟 자리(강철섬 셋 · 리그 다섯)는 3×2칸이 전부 그대로 열려 있다
-(`.audit/liftCheck.mjs`).
+(`.audit/probe/liftCheck.mjs`).
 
-막는 값은 오버월드 80ms · 실내 269개 합계 99ms다 (`.audit/sealCost.mjs`).
+막는 값은 오버월드 80ms · 실내 269개 합계 99ms다 (`.audit/probe/sealCost.mjs`).
 격자를 만들 때 한 번이고, 충돌은 스트리밍을 기다리면 안 되므로 비트는 처음에
 통째로 받는다.
 
@@ -1410,7 +1410,7 @@ three가 그림자를 그릴 때 쓰는 깊이 재질이 원래 재질에서 가
 도착 좌표는 목적지 워프 타일 그 자체다 — 원작이 그렇고(`FieldMapChange`가
 `location->x = warpEvent->x`) 우리도 그렇다. 문 타일은 통행 불가라 `walkOutOfDoor`
 가 한 칸 남쪽으로 내보내는데, **문이 아니면서 막힌 칸에 앉은 워프가 스물하나**
-있다 (`.audit/warpFit.mjs`):
+있다 (`.audit/probe/warpFit.mjs`):
 
 ```
 워프 1,213개
@@ -1518,7 +1518,7 @@ e2e ㉓이 배포 빌드를 상대로 `?dev=1`을 실제로 누른다 — `pt` �
 
 그래서 계기판에 세 번째 span이 뜨는 순간부터 하네스는 **매 프레임 계기판을 고르는
 줄로 세고** 화살표를 두 번 내린 뒤 스페이스를 눌렀다. 마박사의 조작 설명 문답에서
-나가는 칸을 영영 못 골라 세 줄을 돌았다 (`.audit/introProbe.mjs`, 883번 오판).
+나가는 칸을 영영 못 골라 세 줄을 돌았다 (`.audit/probe/introProbe.mjs`, 883번 오판).
 
 ### 임자는 손잡이가 없던 것
 
@@ -1549,7 +1549,7 @@ e2e ㉓이 배포 빌드를 상대로 `?dev=1`을 실제로 누른다 — `pt` �
 
 ### 무엇이었나 (실측)
 
-한 프레임씩 받아 적으니 차례가 그대로 나왔다 (`.audit/rivalHouse3.mjs`):
+한 프레임씩 받아 적으니 차례가 그대로 나왔다 (`.audit/probe/rivalHouse3.mjs`):
 
 | 프레임 | 무슨 일 | 맵 |
 |---|---|---|
@@ -1597,14 +1597,14 @@ e2e ㉓이 배포 빌드를 상대로 `?dev=1`을 실제로 누른다 — `pt` �
   선다(`ownBlocked: false`). 그다음 걸음이 평범하게 집으로 들어가
   `412@6.5,10.5`, `stuck: false`, 벽통과 없음.
 - 벽 속에 강제로 세워 밀어 본 값: 남·서·동 **0.00칸**, 북(나가는 쪽)만 걸어
-  나온다 (`.audit/wallEscape.mjs`).
+  나온다 (`.audit/probe/wallEscape.mjs`).
 - **한 자리가 아니었다.** 좌표 트리거가 워프 칸에 닿는 자리가 **25칸 · 16맵**이다
   (`public/data/events.json` 전수). 용식이 집(411 `105,876`)은 그중 하나고,
   집 안쪽(414 `6,10`)도 같은 목록에 있다.
 
 ### 그 스물다섯 칸을 다 몰아 봤다
 
-고친 뒤에 **25칸 전부**를 실제로 걸어 들어가 봤다 (`.audit/triggerWarpSweep.mjs` —
+고친 뒤에 **25칸 전부**를 실제로 걸어 들어가 봤다 (`.audit/probe/triggerWarpSweep.mjs` —
 자리마다 판을 새로 열고, 트리거의 조건 변수를 세우고, 그 칸으로 걸어 들어간다).
 
 **멀쩡 25 · 문제 0.** 스물다섯 곳에서 트리거가 다 걸렸고(`triggerAt`이 전부 값을
@@ -1626,7 +1626,7 @@ e2e ㉓이 배포 빌드를 상대로 `?dev=1`을 실제로 누른다 — `pt` �
 (연고체육관 여섯 방, 전부 트레이너 0번이 워프판 `7,10`을 향한다), 실제로는
 **하나도 아니다** — 그 방의 회전문이 트레이너 **바로 앞 칸**(`7,7`)을 막고 있어
 시야가 첫 칸에서 죽는다. 여섯 방을 다 물어본 값이 같다: `7,7=막힘` ·
-「눈이 마주쳤나: 아니다」(`.audit/sightAsk.mjs`). 자료만 세면 6, 규칙에 물으면 0이다.
+「눈이 마주쳤나: 아니다」(`.audit/probe/sightAsk.mjs`). 자료만 세면 6, 규칙에 물으면 0이다.
 
 ### 못 박은 자리
 
@@ -1647,7 +1647,7 @@ e2e ㉓이 배포 빌드를 상대로 `?dev=1`을 실제로 누른다 — `pt` �
 ### 무엇이었나 (실측)
 
 그 판에서 그리는 것 144개를 훑으니 **인스턴스 0개짜리가 정확히 둘**이었다
-(`.audit/cycleShop.mjs`). 방지턱의 단차(`scene/Ledges`)다 — 자리는 최소 하나로
+(`.audit/probe/cycleShop.mjs`). 방지턱의 단차(`scene/Ledges`)다 — 자리는 최소 하나로
 잡아 두는데(`capacity`) 그린 수가 0이라, 턱이 없는 판에서 **빈 그리기가 매 프레임**
 나갔다. 실내가 전부 그렇다.
 
@@ -1662,7 +1662,7 @@ WebGPU에서는 안 보이고 **WebGL2로 내려간 기계에서만** 경고가 
 
 - 사이클숍: 인스턴스 0짜리 **2 → 0**, GL 경고 **2 → 0**.
 - 턱이 있는 판은 그대로다: 지앤시티 **88개** · 무쇠시티 **38개**, 빈 것 0 · 경고 0
-  (`.audit/ledgeCheck.mjs`).
+  (`.audit/probe/ledgeCheck.mjs`).
 
 ## 29. 한국·일본 롬으로 깔면 **배틀이 통째로 빈다** — **고쳤다**
 
@@ -1691,7 +1691,7 @@ WebGPU에서는 안 보이고 **WebGL2로 내려간 기계에서만** 경고가 
 
 **한국·일본 롬으로 깐 사람만** 이 자리에 빠진다. 스물아홉 검사가 전부 초록인 채로.
 
-### 실측 (`.audit/installedBattle.mjs`, 한국판 롬 설치본)
+### 실측 (`.audit/probe/installedBattle.mjs`, 한국판 롬 설치본)
 
 | | 고치기 전 | 고친 뒤 |
 |---|---|---|
@@ -1728,7 +1728,7 @@ WebGPU에서는 안 보이고 **WebGL2로 내려간 기계에서만** 경고가 
 
 ㉖이 뜻이 있는 이유: `fightThrough`가 배틀이 끝날 때까지 스페이스를 누르고,
 800번 안에 안 끝나면 떨어진다. 고치기 전 한국판 설치본에서는 고를 것이 0개라
-(`.audit/installedBattle.mjs`) 눌러도 아무 일이 안 났다.
+(`.audit/probe/installedBattle.mjs`) 눌러도 아무 일이 안 났다.
 
 **아직 자동으로는 안 돈다.** 로케일마다 설치를 새로 굽는 값이 3.8분이라 스물아홉을
 세 판 돌리는 비용이 크다 — 지금은 손으로 돌리고 여기 적는다.
@@ -1817,7 +1817,7 @@ WebGPU에서는 안 보이고 **WebGL2로 내려간 기계에서만** 경고가 
 키인가, 자판 이름(`KeyZ`·`ShiftLeft`)이 화면에 새지 않는가, 한 쪽이 두 줄을
 넘지 않는가.
 
-실제로 뜬 글 (실측, `.audit/introScene.mjs`):
+실제로 뜬 글 (실측, `.audit/probe/introScene.mjs`):
 
     전후좌우로 주인공을 움직이려면
     W A S D 또는 화살표 키를 쓰게.
@@ -1975,11 +1975,11 @@ WebGPU에서는 안 보이고 **WebGL2로 내려간 기계에서만** 경고가 
 ### 무엇이었나 (실측)
 
 **걷는다.** 키를 톡 치는 것이 아니라 **누르고 있으면** 남쪽으로 한 칸 간다 —
-z 33.5 → 34.3 (`.audit/parkWhy.mjs`). 북·서·동이 막힌 막다른 칸이라 남쪽 하나뿐인
+z 33.5 → 34.3 (`.audit/probe/parkWhy.mjs`). 북·서·동이 막힌 막다른 칸이라 남쪽 하나뿐인
 것도 맞다.
 
 임자는 **언제 걸었나**다. 도착한 뒤 시점마다 rAF를 1초씩 세어 보면
-(`.audit/parkWhen.mjs`):
+(`.audit/probe/parkWhen.mjs`):
 
 | | 4초 | 7초 | 10초 | 14초 | 18초 | 24초 | 30초 |
 |---|---|---|---|---|---|---|---|
@@ -2777,3 +2777,353 @@ talk=1`이 떴는데, 그 칸은 자료의 201번도로 트리거 자리다
   된다** — 위 고침이 그 자리를 없앴을 수 있지만, 없앴다고 적지 않는다.
 * 같은 판에서 콘솔에 남은 `Failed to execute 'measure' on 'Performance': Data
   cannot be cloned, out of memory.` — 개발 서버의 FAIL로 그대로 둔다.
+
+## 43. 워프 뒤 화면이 **아직 안 도착한 것**이었다 — 그리고 재는 자가 안 막고 있었다
+
+§42를 고치고 돌린 판정용 여정에서 대표 컷 몇 장이 「지형이 없는 화면」으로
+떨어졌다. 그 컷들을 눈으로 보면 **방이 화면 위에서 내려오는 중**이고 나머지가
+검다 — 못 그린 것이 아니라 **카메라가 아직 안 앉은 것**이다.
+
+### 카메라가 앞 맵의 시점에서 미끄러져 들어왔다
+
+`cameraSystem.snap()`은 맵이 갈릴 때 **기울기와 화각만** 앉혔다. 자리와 시선은
+감쇠 보간(`THIRD.damping`) 그대로라, 순간이동한 뒤에도 앞 맵의 시점에서
+새 맵으로 미끄러져 들어온다. 워프는 걸음이 아니므로 그 보간은 뜻이 없다.
+
+`placeReady` 한 자리를 뒀다 — `snap()`이 끄고 다음 `update`가 `t = 1`로 한 번
+앉힌 뒤 다시 켠다. 걸음 보간과 스크립트·비전기술 카메라는 `snap`을 안 부르므로
+그대로다. 실측(2026-09-09 `_land42`, 축복시티↔센터 스무 번):
+
+| | 전 | 후 |
+| --- | ---: | ---: |
+| 들인 직후 준비까지 | 12,266ms | **2,925ms** |
+| 맵 3 도착 대기 | 6,165~8,421ms | 1~3,930ms (예열 뒤 250~580ms) |
+| 맵 6 도착 대기 | 2,351~3,154ms | **1~11ms** |
+| 지형 칸 | 20/20이 8/8 | 20/20이 8/8 |
+
+### 「지형이 섰는가」를 밖에서 잘못 묻고 있었다
+
+`terrainReady()`가 표식의 **맵 번호**를 `world.mapId`와 견줬다. 그런데 오버월드는
+**한 행렬에 존이 여럿**이라, 축복시티(3)에서 201번도로(342)로 걸어 나가면
+`MapStreamer`가 번호만 바꾸고 격자도 칸도 그대로 둔다 — `ChunkModels`의 effect는
+안 돌고(의존성은 격자·칸·반경·텍스처묶음이다) 표식은 들어올 때의 번호로 남는데
+**그 지형이 맞다.** 번호로 걸면 도로를 걷는 내내 「준비 안 됨」이 된다.
+
+두 걸음으로 바꿨다: ⓐ **지금 나가 있는 요청**이 내가 선 자리의 것인가(행렬·칸),
+ⓑ 그 요청이 **커밋됐는가**(번호). 텍스처 묶음만 바뀐 재요청도 ⓑ가 잡는다 —
+밖에서 최신을 다시 셈하지 않고 **요청을 낸 쪽이 적은 신원**을 그대로 쓴다.
+
+### 배치의 신원·땅·재질이 따로 놀았다
+
+`asked`가 ref였고 `markTerrain`은 `[placed]`에 매달려 있었다. 한 커밋에
+①청크 effect 재실행(asked ← 새 맵) ②`placed` 커밋(옛 땅)이 겹치면
+**「새 신원 + 옛 땅」**이 게시된다 — 밖에서는 **틀린 화면이 준비됐다고 보인다.**
+재질(`pending.current`)도 같은 길이라 남의 배치 것을 버릴 수 있었다.
+셋을 `LandBatch` 하나로 묶어 state에 넣었다. **커밋된 것만이 게시된 신원이다.**
+
+### 자원 — `splitShadow`가 배치마다 다시 갈라냈다
+
+`tools/e2e/geoSpy.mjs`로 기하가 **태어나는 자리**를 세었다(맵 3↔6, 예열 뒤
+18전환). 부르는 쪽이 `useMemo(() => splitShadow(geometry, materials),
+[geometry, materials])`인데 `materials`가 **배치마다 새 배열**이라 기억이 한 번도
+안 맞았다. 그런데 거기서 나온 기하는 **버릴 수가 없다** — 정점 버퍼를 원본과
+나눠 쓰므로 `dispose()`하면 아직 쓰는 원본의 버퍼까지 없앤다. 그래서 만든 만큼
+쌓인다: 그 자리에서 **1,116개**가 태어나 **한 개도 안 버려졌다.**
+
+원본 기하 옆에 `WeakMap`으로 매달았다. 열쇠는 재질의 신원이 아니라
+**그림자 갈래**(`castsShadow`의 0/1 표)라 같은 그림을 다시 구워도 같은 자리에서
+갈린다. 원본은 `chunkCache`가 붙잡으므로 수명이 그것을 따라간다.
+
+| 바퀴 | 렌더러 기하 (전) | (후) |
+| ---: | ---: | ---: |
+| 2 | 227 | **188** |
+| 6 | 431 | **232** |
+| 10 | 635 | **276** |
+| **바퀴당** | **+51** | **+11** |
+
+힙은 두 판 다 평평했다 — 254MB → **157MB**. ⚠️ **「메모리가 샌다」가 아니었다.**
+자란 것은 렌더러에 등록된 기하 **개수**다. 태어난 것 중 대부분(전환당 ~300)은
+**한 번도 안 그려지는 중간 기하**(three의 `Mesh` 기본 인자, 합치기 전의 조각)로
+GPU에 안 올라가고 GC가 걷는다 — **둘을 안 섞는다.**
+
+⚠️ **다 안 닫혔다.** `splitShadow`가 여전히 전환당 5~6개를 새로 만든다 —
+원본 기하 자체가 그 배치의 것인 경우다.
+
+### 공유 프로미스가 한 번 깨지면 영영 깨진 채였다
+
+`loadChunkFormat()`의 `format ??= …`은 청크 전부가 나눠 쓴다. 처음 한 번이
+거절되면 그 뒤 **모든** 청크 요청이 다시 받아 보지도 못하고 같은 거절을
+물려받는다 — 지형이 영영 안 서고 새로고침 말고 길이 없다. 깨진 것은 지워
+다음 요청이 다시 받게 했다. 보관함 삭제도 **그때 그 프로미스인지**를 보고 지운다.
+
+### 재는 자가 아무것도 안 막고 있었다
+
+`waitTerrain`이 `page.waitForFunction`에 async 판정식을 줬다. 설치된
+플레이라이트 1.62.1을 빈 페이지에서 직접 쟀다:
+
+    waitForFunction(async () => false)        17ms에 **통과**
+    waitForFunction(() => false)            2000ms 시간초과 (옳다)
+    waitForFunction(async () => 1초 뒤 true)    2ms 통과 — 안 기다렸다
+    page.evaluate(() => new Promise(()=>{}))  26,040ms 뒤 GC로 끝났다
+
+참·거짓을 **await 이전의 `Promise` 객체**로 재기 때문이다(값을 꺼낼 때만
+await한다 — 그래서 던지면 오류는 보인다). 직접 도는 폴링으로 바꾸고, **한 번
+묻는 데도 상한**을 걸었다 — 위 26초는 계약이 아니라 GC의 우연이다.
+
+### 화면 판정에 구멍이 있었다
+
+검은 칸을 「그릴 것이 없는 자리」로 **칸마다** 빼 주면, **검은 바탕에 아래 두
+칸만 무늬**인 그림이 「2칸 중 2칸 = 100%」로 통과한다(합성 대조로 실측).
+이제 검은 줄은 **화면 아래에서 통째로 한 줄씩만** 빠지고(진짜 여백은 구조가
+있다 — 실측 「실내-센터-카메라넓을때」의 아랫줄 네 칸이 색 1개·밝기 0.0·흩어짐 0.0),
+살아 있는 칸의 최소는 2 → 4다.
+
+저작물이 아닌 **합성 대조 일곱 장**(`tools/e2e/synthCuts.mjs`)을 어디서나 돌리고,
+실측 컷은 경로·sha256·기대 판정을 `tools/e2e/terrainCuts.json`에 적는다 —
+**내용은 안 담는다**(COPYRIGHT.md §6). 없으면 미실행이고, 있는데 해시가 다르면 실패다.
+
+### 아직 못 짚은 것
+
+* **stop-08**(표식 6/116 · want 3/0이 30초 지속) — 맵 3↔6 스무 번으로는 재현이
+  안 됐다. 앞 판의 관측만으로는 「요청이 안 나갔다」·「자료를 못 받았다」·
+  「받고 못 세웠다」·「세우고 커밋이 안 됐다」가 **모두 같은 그림**이라
+  「끝내 안 끝났다」로 확정하지 않는다. 요청 자국(`scene/terrainMark`의
+  `terrainTrace`, 링 버퍼 240줄)을 넣어 다음 판이 그 자리에서 가른다.
+* **`performance.measure`의 복제 실패** — 부르는 자리는 R3F가 번들한
+  리컨사일러(19.2.0)의 성능 트랙이 확실하나 **어느 부품의 어느 prop**인지는
+  아직이다. 짧은 판에서는 안 터진다(개발 434~488회 무오류). `pnpm journey`가 이제
+  감시자를 달고 돌아 터진 값의 이름·경로·prop을 봉투에 남긴다.
+
+  ⚠️ **설치된 배포본에서는 그 계측이 아예 안 돈다.** 진짜 롬·BDSP로 설치된 전용
+  프로필에서 재니 `performance.measure` **호출이 0회**다(개발은 같은 시나리오에서
+  434회). 번들에서 글자를 못 찾았다는 정적 사실이 아니라 **실행으로 잰 값**이다.
+  다만 그 판은 오프닝만 걷는 짧은 시나리오라 「배포본에서 영영 안 난다」로는 안 넓힌다.
+
+* **`driveStory`가 배포본에서 못 돈다** — `lakeVars`·`snapshot`이
+  `import('/src/engine/script/field.ts')`로 제품 내부를 읽는데 `/src/`는 개발
+  서버에만 있다. 그래서 `pnpm e2e`의 ㉖(구운 `dist`를 정본 CSP로 띄우고 모는 줄)이
+  늘 터진다. 같은 배틀 안의 `pickMove`는 같은 길을 `.catch(() => null)`로 접어 둬서
+  안 터진다. 못 읽는 것은 터지지 말고 **관측 불가**로 내고, 변수를 못 보는 판에서는
+  이미 세고 있는 워프 자취로 판정하게 해야 한다.
+
+
+## 44. 배포본을 몰던 드라이버가 **개발 서버의 모듈을 열고 있었다**
+
+### 44.1 ㉖이 끊긴 자리
+
+`tools/e2e/drive.mjs`는 개발 서버와 배포물(dist)을 **같은 코드로** 몬다.
+그런데 다섯 자리가 `/src/...`를 동적으로 `import` 해서 값을 읽었다 —
+`pickMove` · `partyState` · `npcSpot` · `lakeVars` · `snapshot`, 모두 아홉 줄이다.
+배포물에는 그 모듈이 없다.
+
+두 가지로 갈렸고 **뒤쪽이 더 나빴다.**
+
+- `lakeVars`·`snapshot`은 그대로 던졌다 → ㉖이 통째로 끊겼다
+  (`Failed to fetch dynamically imported module: …/src/engine/script/field.ts`).
+- `pickMove`는 `.catch(() => null)`로 **삼켰다** → 실행은 이어지되 **고르는
+  기술이 달라졌다.** 위력·상성으로 고르던 자리가 화면 글 규칙으로 물러났고,
+  그 판이 같은 검사 이름으로 세어졌다.
+
+### 44.2 갈래를 먼저 정한다
+
+`tools/e2e/observe.mjs`가 관측을 둘로 나눈다.
+
+| 갈래 | 무엇을 읽나 | 못 읽는 것 |
+| --- | --- | --- |
+| `dev` | `/src/...`를 열어 제품이 export하는 값을 **읽기만** 한다 | 모듈이 안 열리면 `known:false` |
+| `dist` | `<html>`의 읽기 전용 표식(`app/sceneMark`)과 화면만 본다 | 이야기 변수·명부·파티·기술표 |
+
+모든 답이 `{known:true, value}` 또는 `{known:false, why}`다 —
+**관측 불가를 `false`·`0`·성공으로 바꾸지 않는다.**
+
+갈래는 `/@vite/client` 한 줄로 가른다. **`/src`를 찔러 보지 않는다** — 그
+자체가 「배포에서 요청 0건」을 깨뜨린다. ㉖은 실행 뒤 그 0건을 직접 확인한다.
+
+### 44.3 호수 완료를 무엇으로 아는가
+
+배포물에서는 `VAR_VISITED_LAKE_VERITY_WITH_RIVAL`을 못 읽는다. 그렇다고
+**「안쪽 맵을 밟았다」로 대신하지 않는다** — 그것이 예전에 실제 결함이었다.
+
+순서 있는 전환으로 가른다: 안쪽(311) 진입 → **장면이 돌고 끝남**(대사·스크립트
+표식이 켜졌다가 조작이 돌아온 프레임이 넷 이어짐) → 정상 출구로 334 → **동쪽
+통행**. 마지막 하나가 실은 라이벌 상태를 정상 입력으로 읽는 자리다 —
+`VAR_FOLLOWER_RIVAL_STATE`가 3인 동안 201번도로 (115,853)은 주인공을 되돌려
+세운다(`Route201_CoordEvent_FollowingRivalStopPlayerEast`).
+
+장면이 **한 번도 안 돌았으면** 통과도 실패도 아닌 관측 불가로 남기고, 판정은
+동쪽 통행이 한다. 약한 근거로 같은 검사의 PASS를 만들지 않는다.
+
+## 45. 「길은 있는데 안 움직인다」 — 문에만 있어야 할 예외가 **모든 목표에** 걸려 있었다
+
+`route.mjs`의 `planPath`는 다음 칸이 통행 불가여도 **거기가 목표면** 큐에 넣었다.
+문(워프 칸)이 격자에 통행 불가로 적혀 있어서 둔 예외다 — 문은 밟는 것이 아니라
+**미는** 것이다.
+
+그런데 그 예외가 `구역 N` · `밟기 x,z` · `말 걸 자리`에도 그대로 걸렸다.
+그래서 **못 서는 칸을 목표로 삼은 계획이 `found`로 나왔고**, 실제로 걸으면
+마지막 한 걸음에서 막혀 `blocked`로 돌아와 그 칸을 피하고 다시 계획했다.
+밖에서 보이는 것은 「길은 있는데 안 움직인다」였다.
+
+지금은 `enterBlockedGoal`이 기본 `false`고 **문 목표에서만** 켠다. 쓴 사실은
+`stats.blockedGoal`에 남는다 (`tools/e2e/route.test.mjs`).
+
+같은 자리에서 **끝난 까닭을 위로 올린다.** 예전에는 `budget`·`unreachable`·
+`invalid`가 부르는 쪽에서 전부 `null`이었다 — 상한을 소진한 것을 「길이 없다」로
+읽으면 가까운 엉뚱한 구역으로 대신 간다.
+
+⚠️ **「계획 unreachable 46%」는 원인이 아니다.** 그 수는 한 목적지에 대한
+풀회피·일반·경유 시도를 **한데 센 것**이라, 「풀회피 실패 뒤 일반 성공」이라는
+**성공한 여행**이 실패 하나로 들어간다. 이제 목적지 하나를 한 episode로 묶어
+결말을 일곱 갈래로 나눈다 (`drive.mjs`의 `episodeSummary`).
+
+## 46. 「지형이 안 온다」의 최초 실패 경계 — **커밋을 잃고 있었다**
+
+### 46.1 어디서 멈추는지를 자국이 말했다
+
+요청마다 번호를 붙이고 `요청 → 그림 도착 → 청크 도착 → 짓기 시작 → 제출 →
+커밋`을 적게 했다(`scene/terrainMark`의 `terrainTrace`). 실측
+(2026-09-09 `_land42`, 축복시티↔축복 포켓몬센터 22왕복 중 13바퀴째):
+
+```
+276348ms  #26 requested    맵 3/0 칸 725 · 청크 23개
+280427ms  #26 submitted    땅 23조각 · 재질 189개
+280592ms  #26 committed    땅 23조각
+285800ms  #27 requested    맵 6/116 칸 0 · 청크 1개
+288647ms  #27 sheet-done · chunks-done · build-begin
+288661ms  #27 submitted    땅 1조각 · 재질 8개
+          ← committed 가 **없다**
+```
+
+#21~#26은 전부 커밋까지 갔다. #27만 **`submitted`와 `committed` 사이**에서
+멎었다 — **자료도 빌드도 멀쩡했고 커밋만 잃었다.** 30초를 더 봐도 그대로였고,
+같은 세이브를 **새 페이지**에 들이면 8/8로 멀쩡하다(저장 안 되는 런타임 상태).
+
+⚠️ **「로딩이 안 끝났다」가 아니었다.** 그 가정으로는 `submitted`가 찍힌 것을
+설명 못 한다.
+
+### 46.2 커밋을 앗아간 것
+
+바로 앞 줄에 콘솔 오류가 있었다:
+
+```
+Failed to execute 'measure' on 'Performance': Data cannot be cloned, out of memory.
+```
+
+`perfSpy`가 그 호출을 잡아 적었다:
+
+| 무엇 | 값 |
+| --- | --- |
+| 컴포넌트 | `ObjectProps` |
+| 부른 쪽 | `@react-three/fiber`의 리컨사일러 (React가 아니다) |
+| 터진 값 | `detail.devtools.properties` — **924,116개짜리 배열** |
+| 내용 | 바뀐 `grid` prop의 「Changed Props」 자국 |
+
+924,116의 정체는 `MapGrid`의 통행값 격자다 — 오버월드가 960×960이라 **921,600칸**
+이고, 거기에 청크 468개와 나머지가 붙는다. R3F의 **개발 전용** 자국이 바뀐
+prop을 한 겹씩 펼쳐 `performance.measure`의 `detail`에 싣는데, 그 격자가
+**런타임에 열거되는 속성**이었다.
+
+⚠️ **`private`로는 못 막는다.** 타입스크립트의 `private`는 컴파일하면 사라지는
+약속이라 런타임에는 그냥 열거되는 속성이다. `#tiles`·`#zoneOfChunk`·
+`#chunkByIndex`로 **진짜 사적 필드**를 쓴다 — 읽는 법은 그대로고 밖에서 이 셋을
+읽는 자리는 0건이다 (`engine/map/gridPrivacy.test.ts`).
+
+⚠️ **이것은 개발 서버의 자국이다.** 배포 production은 이 `measure`를 한 번도
+안 부른다(실측). 그러니 이 수정이 곧바로 고치는 것은 **개발에서 도는 우리
+검사**고, 쌓이는 자원 자체는 아래가 따로 본다.
+
+### 46.3 배치가 만든 것을 놓는 자가 없었다
+
+전환마다 늘던 기하의 임자를 셋으로 갈랐다.
+
+| 기하 | 소유자 | 놓는 자 (전) | 지금 |
+| --- | --- | --- | --- |
+| 청크 원본 | 공유 보관함 | 없음 (옳다) | 그대로 |
+| 합친 지형 `p.merged` | 배치 | `dispose()` ✔ | 그대로 |
+| 그림자 파생 `solid`·`soft` | 원본을 가진 쪽 | **없음** | `releaseSplit` |
+| 실내 앞벽 `p.room.geometry` | 배치 | **없음** | `dispose()` |
+
+⚠️ **WeakMap 수거는 GPU 해제가 아니다.** 파생 기하는 원본과 `attributes`·`index`를
+**같은 객체로** 나눠 쓰므로, 원본이 살아 있는 동안 파생만 놓으면 원본의 버퍼가
+함께 풀린다 — 그래서 **원본을 버리는 바로 그 자리에서** 함께 놓는다. `soft`가
+없으면 `solid`는 원본 그 자체라 안 놓는다.
+
+**잰 값** (같은 세이브 · 같은 왕복 · 예열 뒤 `renderer.info.memory.geometries`):
+
+| 바퀴 | 맵 3 (전 → 후) | 맵 6 (전 → 후) |
+| --- | --- | --- |
+| 1 | 143 → 143 | 167 → 157 |
+| 2 | 188 → **177** | 178 → **157** |
+| 5 | 221 → **177** | 211 → **157** |
+| 9 | 265 → **177** | 255 → **157** |
+| 13 | — → **177** | — → **157** |
+
+전환당 +11이던 것이 **+0**이다.
+
+### 46.4 그림의 임자는 따로 있었다
+
+기하가 평평해진 뒤에도 텍스처는 **왕복마다 +15**로 곧게 올랐다(22바퀴 내내
+포화 없음). 수만으로는 못 짚어 `tools/e2e/texSpy.mjs`로 **만든 자리**를 받아
+적었다:
+
+| 만든 자리 | 왕복당 | 22바퀴 뒤 남은 것 |
+| --- | --- | --- |
+| `borrowFloors`의 콜백 → `sliceTexture` | **+7** | 147 (버린 0) |
+| `propMaterials` → `sliceTexture` | **+6** | 126 (버린 0) |
+| 그 밖 | +2 | 42 |
+
+⚠️ **스택의 틀 차례가 자리를 정했다.** `sliceTexture ← ChunkModels ← plates.ts
+← Array.map`이므로 ChunkModels의 코드가 **plates 안에서 불린 콜백**이다 —
+`cachedShells`였다면 plates가 ChunkModels **아래**에 찍힌다. 줄 번호가 아니라
+차례로 갈랐다.
+
+까닭은 둘 다 **`ownsMap` 표시를 안 단 것**이다. `borrowFloors`는 빌려 온 바닥의
+재질을 `makeMaterial(spec, sliceTexture(...))`로 굽는데 `materialsFor`와 달리
+표시가 없어 `dropMaterial`이 재질만 버리고 그림은 지나갔다. `propMaterials`도
+표시가 없었고, 게다가 **앞 세대를 놓는 자가 아예 없었다**
+(`useLoadedProps`·`BerryPatchProps` — 맵이 바뀌면 재질을 통째로 다시 굽는다).
+
+`ownMap()`·`dropMaterial()`을 `chunkMesh.ts`에 **한 벌로** 두고 세 자리가 같이
+쓴다 (`chunkMesh.test.ts`).
+
+**잰 값** (`renderer.info.memory.textures`, 맵 6, 예열 뒤):
+
+| 바퀴 | 1 | 2 | 3 | 4 | 5 | 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 전 | 175 | 188 | 199 | 210 | 221 | 232 |
+| 후 | 164 | **166** | **166** | **166** | **166** | **166** |
+
+전환당 +11 → **+0**. `texSpy`의 잔액도 왕복당 +15 → **+2**고, 남은 둘은
+`info.memory`에 안 잡히는 **GPU에 안 올라간 객체**다.
+
+⚠️ **GPU에 안 올라간 중간 객체를 누수로 세지 않는다.** `geoSpy`의 「만든
+3,096 / 버린 596」은 자바스크립트 객체의 수고, `renderer.info.memory`가 세는
+것은 **한 번이라도 그려진 것**이다. 합치기 전의 바닥·판 옆면은 앞의 수에만 든다.
+
+## 47. 재는 자가 **정상 실내를 「지형 없음」**으로 읽는다 — 아직 못 고쳤다
+
+`terrainJudge`는 화면을 4×3으로 잘라 **아래 두 줄**을 보고, 칸의 색 개수와
+표준편차가 문턱을 넘으면 「채워졌다」로 센다. 문턱은 실외 컷에서 나왔다.
+
+실측(2026-09-09 `_land42`): **완전히 정상으로 그려진 축복시티 포켓몬센터
+실내**가 **2/8**로 떨어졌다. 같은 순간 `terrainReady()`는 참이었고 요청 자국도
+온전했다(`submitted → committed 땅 1조각`). **제품이 아니라 재는 자가 틀렸다.**
+
+까닭은 바닥이 **매끄럽고 밝아서**다:
+
+```
+줄1: 185/6  182/24  178/31  185/7     (mean/stdev)
+줄2: 184/4  185/5   185/5   184/4
+```
+
+⚠️ **문턱만 내리면 안 된다.** 실패 대조와 안 갈린다 — 「하늘-그라데이션」이
+147/8·174/8이고 「검정-바탕에 두 칸만」은 **채워진 칸이 똑같이 2개**다. 밝기로도
+색 개수로도(바닥이 오히려 더 적다) 못 가른다.
+
+갈라 보이는 유일한 신호는 「한 줄 안에서 칸마다 값이 다른가」인데, 합성 실패
+컷은 전부 **균일하게 칠한 것**이라 그 규칙은 **내가 만든 컷에만 맞춘 문턱**이
+된다. 그래서 **안 고쳤다.** 이 컷을 어려운 대조로 남기고, 다음 규칙은 합성 일곱
+장·실제 열두 장·이 한 장을 **함께** 만족해야 한다
+(`.audit/post-overnight-20260909/judge-false-negative/`).
+
+그때까지 `journey` ⑮는 **매끄러운 실내 바닥 컷에서 헛 FAIL이 날 수 있다.**

@@ -82,7 +82,7 @@
 | §1.26 | 배로 건너가기 | `PlayBoatCutscene`(573)이 원작에서 배를 타는 워프 그 자체다 — 워프 타일도 `Warp`도 아니고 이 명령 하나고, 부르는 여덟 자리가 다 `ReleaseAll; End` 바로 앞 마지막 줄이라 대체 경로가 없다. 없는 동안 맵 63개가 닫혀 있었다 |
 | §2.20 | 배틀타워·프론티어 | 배틀팩토리 하나를 만들었다 (§9.3) — 빌린 여섯에서 셋을 골라 일곱 판을 잇고, 이길 때마다 쓰러뜨린 상대와 한 마리를 바꾼다. 나머지 넷(타워·스테이지·캐슬·룰렛)은 §9. ⚠️ 멀티도 §9다 — 짝이 있어야 성립한다 |
 | §2.23 | 조우 컷인 | 풀숲을 밟으면 화면이 두 번 번쩍이고 지형대로 갈라진 뒤에 배틀이 열린다 (`engine/battle/encounterCutIn` · `scene/encounterCutIn`). 어느 상황이 어느 번호인지는 원작의 세 줄 그대로다 (`CutInEffects_ForBat |
-| §2.24 | sim이 내는데 우리가 안 읽는 줄 | 무작위 120판을 굴려 셌다(`.audit/otherCmds.test.ts`). 진행·체력에는 안 걸리지만 원작이 글이나 연출을 내는 자리다: `-activate` 156 · `-singleturn` 56(방어·기합모으기) · `-prepare` 46(「하늘 높이 날아 |
+| §2.24 | sim이 내는데 우리가 안 읽는 줄 | 무작위 120판을 굴려 셌다(`.audit/probe/otherCmds.test.ts`). 진행·체력에는 안 걸리지만 원작이 글이나 연출을 내는 자리다: `-activate` 156 · `-singleturn` 56(방어·기합모으기) · `-prepare` 46(「하늘 |
 | §4.1 | 필드에서 도구 쓰기 | `item_use_functions.c`의 스물다섯 갈래를 표로 옮겼다(`engine/bag/fieldUse.ts`). 열이 돈다 — 회복·기술머신·진화의돌·리펠·피리 둘·탈출로프·자전거·포켓몬레이더(155종)·천계의피리·그라시데아꽃. 나머지는 "무엇이 없어서 못 쓰는 |
 | §6.13 | 493종에 길이 있는가 | 신오도감 211칸 중 여덟에 길이 없다 — 200·429(무우마·무우마직) · 198·430(니로우·돈크로우) · 431·432(나옹마·페르시온) · 434·435(스컹뿡·스컹크탱크). ⚠️ 넷 다 우리 탓이 아니다 — `res/field/encounters/*.jso |
 | §6.14 | 화강돌 | 209번도로 무덤이 지하통로에서 나눈 인사 108번으로 열린다. 그쪽이 §9라 셀 것이 없어 `GetSpiritombCounter`는 안 만들었다 — 지역 변수가 0으로 비워지므로(`resetLocals`) 무덤은 「아무 일도 일어나지 않는다」로 끝나고 양옥집 같은 전 |
@@ -110,10 +110,10 @@
 | 키 리맵 화면 | — | 입력은 이미 표로 갈려 있다 (`engine/input`) |
 | 도감 평가의 글 번호 | 2자리 | 문턱 표가 코드 안에 있다 (`Pokedex_GetRatingMessageID_*` — 신오 열둘·전국 열여덟). 세는 것과 「다 찼는가」는 됐다 (PARITY §10) |
 | 건물이 지면과 0.25타일 뜬 자리 | 106곳 | 일부러 띄운 것과 안 갈랐다. 옆에서 찍어 보고 갈라야 한다 |
-| 그래도 발밑에 아무것도 없는 칸 | 116 | 전부 운하시티 체육관이고 일부러 안 막았다 — 바닥이 없고 뜨는 판 스물넷 위로만 다니는 것이 그 방의 설계라(`CANALAVE_COLLISION`) 격자로 막으면 방이 통째로 못 쓰게 된다. 재려면 `node --experimental-strip-types .audit/sealCheck.mjs` (REPAIR.md §22) |
+| 그래도 발밑에 아무것도 없는 칸 | 116 | 전부 운하시티 체육관이고 일부러 안 막았다 — 바닥이 없고 뜨는 판 스물넷 위로만 다니는 것이 그 방의 설계라(`CANALAVE_COLLISION`) 격자로 막으면 방이 통째로 못 쓰게 된다. 재려면 `node --experimental-strip-types .audit/probe/sealCheck.mjs` (REPAIR.md §22) |
 | 비켜 세울 데가 없는 워프 도착 | 2 | 축복시티 맵 31·32 → (129,736)·(128,736). 여덟 칸 안에 걸을 칸이 하나도 없어 `standableSpot`이 못 옮긴다. 다만 그 방으로 들어가는 워프 두 칸도 막혀 있어 밟을 수가 없다 — 닿는 길이 생기면 그때 본다 (REPAIR §23) |
 | KTX2 텍스처 | 0개 | 실제 기계에서 모자랄 때 (§16.4) |
-| 아무도 안 부르는 `export` | 52 (값 46 · 타입 6) | 세는 자는 `.audit/deadExports.mjs`(타입스크립트 파서로 훑는다). 기계가 할 수 있는 자리는 끝났다 — 제 파일 안에서만 쓰는 `export`는 낱말을 떼서 지금 0개고(`pnpm exports:check`가 다시 자라는 것을 막는다), 이름이 어디에도 안 나오는 것 중 근거가 선 29개를 지웠다. ⚠️ 남은 52개는 쓸어 담으면 안 된다 — 만들어 낸 파일(`DECIBEL`·`POKETCH_MAP_STEP`) 둘 · 아직 안 끝난 BDSP 브라우저 변환의 발판과 조사 도구용 여섯(`readIseAt`·`iseInfo`·`weightTable`·`meshesOf`·`texturesOf`·`textureObjects`) · 구현해 놓고 안 이어 붙인 셋(`berryWateringCancel`·`journalWarpedByMove`·`readBackup` — REPAIR.md §10이 임자다)이 그 안에 있다. ⚠️ 「누가 쓴다」고 적힌 주석을 믿지 않는다 — REPAIR §10이 여섯 중 다섯을 거짓으로 잡았고, `scene/stepSystem`의 `resetDayCache`도 「시험이 쓴다」고 적힌 채 그런 시험이 없어서 지웠다. ⚠️ 시험만 쓰는 `export` 562개는 흙이 아니다 (값 534 · 타입 28) — 순수 함수를 시험이 직접 부르라고 연 자리고, 검사가 시험을 소비자로 안 세면 그것이 다 걸려서 못 쓴다 |
+| 아무도 안 부르는 `export` | 52 (값 46 · 타입 6) | 세는 자는 `.audit/probe/deadExports.mjs`(타입스크립트 파서로 훑는다). 기계가 할 수 있는 자리는 끝났다 — 제 파일 안에서만 쓰는 `export`는 낱말을 떼서 지금 0개고(`pnpm exports:check`가 다시 자라는 것을 막는다), 이름이 어디에도 안 나오는 것 중 근거가 선 29개를 지웠다. ⚠️ 남은 52개는 쓸어 담으면 안 된다 — 만들어 낸 파일(`DECIBEL`·`POKETCH_MAP_STEP`) 둘 · 아직 안 끝난 BDSP 브라우저 변환의 발판과 조사 도구용 여섯(`readIseAt`·`iseInfo`·`weightTable`·`meshesOf`·`texturesOf`·`textureObjects`) · 구현해 놓고 안 이어 붙인 셋(`berryWateringCancel`·`journalWarpedByMove`·`readBackup` — REPAIR.md §10이 임자다)이 그 안에 있다. ⚠️ 「누가 쓴다」고 적힌 주석을 믿지 않는다 — REPAIR §10이 여섯 중 다섯을 거짓으로 잡았고, `scene/stepSystem`의 `resetDayCache`도 「시험이 쓴다」고 적힌 채 그런 시험이 없어서 지웠다. ⚠️ 시험만 쓰는 `export` 562개는 흙이 아니다 (값 534 · 타입 28) — 순수 함수를 시험이 직접 부르라고 연 자리고, 검사가 시험을 소비자로 안 세면 그것이 다 걸려서 못 쓴다 |
 | 그래픽 프리셋 ↔ 후처리 | — | 헤드리스로는 이득을 못 재므로 실기에서 모자랄 때 (§10.1) |
 
 ## 6. 여기 안 세는 것

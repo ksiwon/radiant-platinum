@@ -5,7 +5,7 @@
 //
 // ⚠️ **「헤드리스에는 WebGPU가 없다」는 틀렸다.** 한 세션 내내 그렇게 적고
 // 있었고 순회 표에도 「WebGPU 없다」가 찍혔는데, 실측(2026-09-05,
-// `.audit/webgpuProbe3.mjs`)으로 막고 있던 것이 **둘**이었다:
+// `.audit/probe/webgpuProbe3.mjs`)으로 막고 있던 것이 **둘**이었다:
 //
 //   ① `about:blank`은 보안 컨텍스트가 아니라 `navigator.gpu` **자체가 안 뜬다.**
 //      `http://127.0.0.1`(또는 localhost)로 옮긴 뒤에야 어댑터를 물어볼 수 있다.

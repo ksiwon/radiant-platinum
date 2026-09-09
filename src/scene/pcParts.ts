@@ -1,6 +1,6 @@
 // 주인공이 **들고 타는 것들** — BDSP의 `Characters/persons/field/pc_parts`.
 //
-// 한 번들에 여섯이 같이 들어 있다 (`.audit/fieldClipCensus.mjs`가 필드 번들
+// 한 번들에 여섯이 같이 들어 있다 (`.audit/probe/fieldClipCensus.mjs`가 필드 번들
 // 161벌의 메시 이름을 전수로 훑어 찾았다):
 //
 //     naminori_00_00_BodySkin      파도타기 몸   정점 1,422
@@ -23,7 +23,7 @@ export const PC_PART = {
 } as const
 
 /**
- * 파도타기 몸의 자리들 — **번들 좌표 그대로**다 (`.audit/surfMount.mjs`).
+ * 파도타기 몸의 자리들 — **번들 좌표 그대로**다 (`.audit/probe/surfMount.mjs`).
  *
  * 번들 원점은 몸보다 위에 있고, 몸의 발판은 `Origin_mcl`이 y −1.0에 놓여 있다.
  * 그래서 **그 자리를 물 높이로 올려** 놓는다 — 씬에 넣을 때 `lift`만큼 든다.
@@ -82,7 +82,7 @@ export function keepOnly(root: Object3D, name: string): void {
 }
 
 /**
- * 공중날기 새(`sora_00_00`)의 자리들 — **번들 단위**다 (`.audit/pcMounts.mjs`).
+ * 공중날기 새(`sora_00_00`)의 자리들 — **번들 단위**다 (`.audit/probe/pcMounts.mjs`).
  *
  * ⚠️ **오래 찌르호크(398) 모델을 태우고 있었다.** 원작 새는 이 번들에 있고
  * 날개를 편 채로 굳어 있다 — 아래 `FLY_PATH`가 몸통째로 옮길 뿐이다
@@ -99,7 +99,7 @@ export const FLY_MOUNT = {
   /** 원작 클립 `fly_on_f`·`fly_off_f`의 길이 */
   clip: 0.6667,
   /**
-   * 사람이 땅을 뜨는 때 (`.audit/flyHero.py`).
+   * 사람이 땅을 뜨는 때 (`.audit/probe/flyHero.py`).
    *
    * 치비 `Waist`가 `fly_on_f`의 0.3333초까지 땅자리(y 0.4415)에 있다가 **다음
    * 키 0.3500초에 1.1635로 뛴다** — 한 프레임에 0.72 올라간다. `fly_off_f`는
@@ -114,12 +114,12 @@ export interface FlyKey { t: number, x: number, y: number, z: number }
 export interface FlyTurn { t: number, x: number, y: number, z: number, w: number }
 
 /**
- * **원작이 새와 사람을 어디로 옮기는가** (`.audit/flyTable.py`).
+ * **원작이 새와 사람을 어디로 옮기는가** (`.audit/probe/flyTable.py`).
  *
  * ⚠️ **원작 새는 날갯짓을 안 한다.** `fly_on_f`·`fly_off_f`의 354개 바인딩 중
  * 새 뼈를 실제로 미는 것은 `Waist_mf` **하나**고, 날개뼈(`LArm_mf`·`RArm_mf`)는
  * 바인드 그대로다 — 편 날개로 스쳐 지나간다. 우리가 오래 돌리던 18rad/s
- * 날갯짓은 자리표시자 새의 것이었다 (`.audit/flyCurves.py`).
+ * 날갯짓은 자리표시자 새의 것이었다 (`.audit/probe/flyCurves.py`).
  *
  * 새 자리는 `Waist_mf`의 바인드 로컬(0, 0.5882, −0.0039)을 뺀 값이라 **몸을
  * 통째로 미는 양**이다. x는 `import/bdsp/model.ts`와 같게 뒤집어 두었다.
@@ -215,7 +215,7 @@ export function flyTurnAt(keys: readonly FlyTurn[], t: number): FlyTurn {
  *
  * ⚠️ **치비에도 등신에도 같은 이름으로 있다.** 실측으로 `fc0001_00`과
  * `pc0001_00`·`pc0002_00` 넷 다 `LItem1`·`RItem1`을 들고 있고, 바인드 세계
- * 회전이 왼쪽은 그대로·오른쪽은 z −180°다 (`.audit/handRuler.mjs`). 오른쪽에
+ * 회전이 왼쪽은 그대로·오른쪽은 z −180°다 (`.audit/probe/handRuler.mjs`). 오른쪽에
  * 그냥 걸면 소품이 좌우로 뒤집히므로 `spin`으로 되돌린다.
  *
  * `x`·`y`·`z`는 **치비 쪽** 자리다. `pc_parts`의 소품 정점이 그 자리를 원점

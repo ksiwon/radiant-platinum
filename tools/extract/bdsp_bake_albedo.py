@@ -293,11 +293,11 @@ def carved_shells(env, main_props: tuple[str, ...]) -> set[str]:
     """**깎개가 깊이로 깎아 내는 알맹이**의 이름 — 우리는 그 깎기를 못 한다.
 
     ⚠️ 또도가스(`pm0110`)의 연기가 **몸을 통째로 가리는 크림색 구**로 섰다
-    (`.audit/mon/before-110.png`). 굽는 쪽 둘이 갈린 것이 아니라 둘 다 그렇게
+    (`.audit/probe/out/mon/before-110.png`). 굽는 쪽 둘이 갈린 것이 아니라 둘 다 그렇게
     그렸다 — 원판에서 연기의 모양을 내는 것이 색 그림이 아니라 **깊이 버퍼로
     깎아 내는 짝**(`SmokeMask*`)인데, glTF에는 그 단계가 없다.
 
-    재질이 스스로 무엇인지 적어 뒀다 (`.audit/maskRule.mjs`가 종·판 557개를 훑었다):
+    재질이 스스로 무엇인지 적어 뒀다 (`.audit/probe/maskRule.mjs`가 종·판 557개를 훑었다):
 
         고오스 `SmokeMask`            `MASK_FIRST_UV_ZERO`             _ZWrite=0
         리자몽 `FireMask`             `MASK_CALC_MODE_ADD …`           _ZWrite=1
@@ -308,9 +308,9 @@ def carved_shells(env, main_props: tuple[str, ...]) -> set[str]:
     깎개는 **색을 섞는** 도구고, 그것 없이 깊이만 켠 깎개가 **깎아 내는** 도구다.
 
     ⚠️ **그렇다고 다 빼면 안 된다.** 같은 잣대에 코터스(`pm0324`)도 걸리는데 그
-    연기는 등딱지 옆·위에 떠 있어서 몸을 안 가린다 (`.audit/mon/before-324.png`).
+    연기는 등딱지 옆·위에 떠 있어서 몸을 안 가린다 (`.audit/probe/out/mon/before-324.png`).
     그래서 **몸을 통째로 감싸는 것만** 뺀다 — 렌더러가 적어 둔 `m_AABB`로
-    가른다 (`.audit/effectWrap.mjs`).
+    가른다 (`.audit/probe/effectWrap.mjs`).
 
     ⚠️ **브라우저 변환기와 같아야 한다** (`src/import/bdsp/albedo.ts`의
     `carvedShells`). 한쪽만 고치면 설치본에만 연기가 남는다

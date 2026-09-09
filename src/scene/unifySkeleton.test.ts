@@ -155,7 +155,7 @@ describe('스킨 모델을 복제하는 자리는 다 뼈대를 합친다', () =
    * 뼈대가 하나뿐인 모델이라 합칠 것이 없는 자리.
    *
    * 몬스터볼(`ItemBalls`)은 조각 전부가 뼈 셋짜리 한 뼈대다 — 실측으로 배치
-   * 마흔 개가 다 `뼈 3`이다 (`.audit/boneShare.mjs`)
+   * 마흔 개가 다 `뼈 3`이다 (`.audit/probe/boneShare.mjs`)
    */
   const ALLOWED = ['src/scene/ItemBalls.tsx']
 

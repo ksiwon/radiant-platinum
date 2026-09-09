@@ -248,6 +248,15 @@ async function waitBoot(page) {
  */
 const atTitle = (page) => page.getByRole('button', { name: '시작', exact: true })
 
+/**
+ * **막혔다** — 실패가 아니라 「이 판에서는 못 쟀다」다.
+ *
+ * ⚠️ **FAIL로 적으면 없는 결함을 쫓게 되고, PASS로 적으면 검사가 사라진다.**
+ * 관측이 안 되는 것과 제품이 틀린 것은 다른 결과이므로 따로 적는다
+ */
+class Blocked extends Error {}
+const blocked = (why) => { throw new Blocked(why) }
+
 async function run(id, what, fn) {
   if (only.length > 0 && !only.some((p) => id.startsWith(p))) {
     record(id, what, 'NOT RUN', '--only로 걸렀다'); return
@@ -257,7 +266,8 @@ async function run(id, what, fn) {
     const detail = await fn(box)
     record(id, what, 'PASS', detail ?? '')
   } catch (e) {
-    record(id, what, 'FAIL', String(e.message ?? e).slice(0, 300))
+    record(id, what, e instanceof Blocked ? 'BLOCKED' : 'FAIL',
+      String(e.message ?? e).slice(0, 300))
   } finally {
     // ⚠️ **닫기 전에** 줍는다. 페이지가 이미 죽었으면 다음 시험에서 다시 만난다
     try {
@@ -1791,9 +1801,38 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     const after = await playOpening(page, OPENING_NAMES)
     assert(after === '/play', `오프닝이 안 끝났다 — ${after}`)
 
-    const story = await driveStory(page, { totalMs: 900_000 })
+    // ⚠️ **갈래를 못 박는다** (`tools/e2e/observe.mjs`). 여기서 도는 것은
+    // 배포물이라 `/src/...` 모듈이 아예 없다 — 예전에는 드라이버가 그것을
+    // 열려다 ㉖을 통째로 끊었고(`Failed to fetch dynamically imported module`),
+    // 한 자리는 삼켜서 **다른 기술로 싸운 판**을 같은 검사로 셌다
+    const story = await driveStory(page, { totalMs: 900_000, observe: 'dist' })
+    assert(story.observer === 'dist', `배포물인데 어댑터가 ${String(story.observer)}다`)
+    // ⚠️ **「404를 무시했다」가 아니라 「요청을 안 보냈다」여야 한다.**
+    //
+    // ⚠️ **`mark` 뒤만 보면 안 된다.** 그것은 설치가 끝난 뒤부터다 — 설치·부팅
+    // 중에 나간 `/src`는 그 창 밖이라 안 보인다. 이 검사가 재는 것은 「이
+    // 페이지가 사는 동안 /src를 한 번도 안 불렀다」이므로 **처음부터 전부** 본다
+    const srcHits = requests.filter((u) => /\/src\//.test(u))
+    assert(srcHits.length === 0, `배포본에 /src 요청이 나갔다: ${srcHits.slice(0, 3).join(' · ')}`)
+    // ⚠️ **호수는 「밟았다」가 아니라 순서로 판정한다** (`drive.mjs`의
+    // `lakeVerity`): 안쪽 진입 → 장면이 돌고 끝남 → 정상 출구 → 동쪽 통행.
+    // 배포물은 이야기 변수를 못 읽으므로 계약이 `transition`이어야 하고,
+    // 「관측 불충분」(`inconclusive`)은 실패와 **따로** 적는다
+    const lake = story.scenes?.find((one) => one.map === 334) ?? null
+    const lakeSay = lake === null ? '호수 단계 없음'
+      : `호수 ${String(lake.contract)} · `
+        + lake.stages.map((g) => `${g.name}=${g.ok === null ? '못쟀다' : g.ok ? '됐다' : '안됐다'}`).join(' → ')
+    assert(lake === null || lake.contract === 'transition',
+      `배포물인데 호수 계약이 ${String(lake?.contract)}다 — /src를 읽었다는 뜻이다`)
+    // ⚠️ **관측 불충분은 BLOCKED다.** 배포물에서는 이야기 변수를 못 읽으므로
+    // 장면을 못 본 것이 곧 「장면이 안 돌았다」는 뜻이 아니다
+    if (lake?.inconclusive === true) {
+      blocked(`호수 장면을 관측 못 했다 (실패가 아니라 관측 불충분) — ${lakeSay}`)
+    }
     const say = `맵 ${story.maps.join('·')} · 야생 ${String(story.wild)} · `
       + `트레이너 ${String(story.trainer)} · 상점 ${String(story.shops)} · ${String(story.seconds)}초`
+      + ` · 어댑터 ${String(story.observer)} · /src 요청 0건 · ${lakeSay}`
+    assert(lake === null || lake.ok === true, `호수 장면을 못 끝냈다 — ${lakeSay}`)
     assert(story.trouble.length === 0, `${story.trouble.join(' | ')} (${say})`)
     assert(story.wild > 0, `야생 배틀에 못 닿았다 — ${say}`)
     assert(story.trainer > 0, `트레이너 배틀에 못 닿았다 — ${say}`)
@@ -1828,7 +1867,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
   const now = readAudit('build.json')?.buildId ?? null
   if (!at) {
     record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
-      'pnpm verify:deploy <url>을 돌린 적이 없다 — .audit/deploy-verified.json이 없다')
+      'pnpm verify:deploy <url>을 돌린 적이 없다 — .audit/probe/out/deploy-verified.json이 없다')
   } else if (!at.browserChecked) {
     record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
       `${at.url}: 브라우저를 못 띄워 약한 갈래로 갔다 — 외부 요청을 실제로 세지 못했다`)
@@ -1915,7 +1954,7 @@ if (!(haveRom && haveBdsp)) {
           for (const id of WANT) {
             // ⚠️ **백틱은 토글인데, 뛴 직후에는 표가 「닫히는 중」이다.**
             // 그래서 「열려 있나」를 보고 누를지 정하면 그 틈에 걸린다 — 실측으로
-            // (`.audit/warpRows.mjs`) 둘째 확인 지점에서 뛴 직후가 `열려 있다:
+            // (`.audit/probe/warpRows.mjs`) 둘째 확인 지점에서 뛴 직후가 `열려 있다:
             // true`였고, 셋째에서 그걸 믿고 안 눌렀더니 곧 닫혀서 서른 초를
             // 기다렸다. **닫힌 것을 먼저 보고 한 번만 누른다**
             const table = page.getByText('확인 지점').first()
@@ -1988,7 +2027,7 @@ if (!(haveRom && haveBdsp)) {
           //
           // ⚠️ **글자 수 하나로 다섯을 다 못 잰다.** 구석 HUD가 늘 57자를 찍고
           // 있고, 메뉴가 뜨면 그 HUD가 **가려져서 오히려 줄어든다** — 실측으로
-          // (`.audit/menuChars.mjs`, `play:dev`) 도감 2,795 · 공중날기 109 ·
+          // (`.audit/probe/menuChars.mjs`, `play:dev`) 도감 2,795 · 공중날기 109 ·
           // 나무열매 71 · 크레딧 75 · **프런티어 51(바탕 57보다 적다)**이다.
           // 빈 화면도 HUD만으로 57자를 내므로, 글로 갈리는 것은 도감 하나뿐이다.
           const screens = []
@@ -2119,7 +2158,7 @@ const ENVIRONMENT = describeEnvironment({
   browserVersion: BROWSER_VERSION, gpu: seenGpu, backend: seenBackend,
 })
 
-writeFileSync(resolve(ROOT, '.audit/e2e.json'), `${JSON.stringify(sealEvidence({
+writeFileSync(resolve(ROOT, '.audit/probe/out/e2e.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'installed-e2e',
   selection: only.length > 0 ? `--only=${only}` : 'all',

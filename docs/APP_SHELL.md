@@ -34,7 +34,7 @@
 ⚠️ **그 범위에 Pretendard가 이미 가진 글자를 넣으면 「안 받는다」가 거짓이 된다.**
 한때 `U+2026`과 `U+3008-300F`(… 〈〉《》「」『』)가 들어 있어서, 타이틀 화면의
 한국어 안내문에 쓰인 낫표 두 쌍 때문에 **모든 첫 방문이 33.8kB를 받아 갔다**
-(`.audit/wire.mjs` 실측 · DEPLOY.md §3).
+(`.audit/probe/wire.mjs` 실측 · DEPLOY.md §3).
 
 ⚠️ Noto Sans JP의 예약 이름은 **'Source'**지 'Noto Sans JP'가 아니다
 (Source Han Sans에서 왔다). 그래서 서브셋을 만들고도 이름을 그대로 쓸 수 있다.

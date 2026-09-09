@@ -248,6 +248,8 @@ export const lastPlan = {
   goalTests: 0,
   pushed: 0,
   steps: 0,
+  /** 통행 불가인 목표 칸으로 들어선 횟수. 0이 아니면 **문 예외를 쓴 계획**이다 */
+  blockedGoal: 0,
 }
 
 /**
@@ -260,8 +262,21 @@ export const lastPlan = {
  *
  * @param cancelled 취소되었는지 묻는 함수. 늦게 온 결과를 버리는 쪽이 준다
  */
+/**
+ * @param enterBlockedGoal 목표 칸이 **통행 불가·회피 대상이라도** 그리로
+ *   들어서는 것을 허용할지. 기본은 `false`다.
+ *
+ *   ⚠️ **문에만 쓰는 예외다.** 워프 칸은 격자에 통행 불가로 적힌 것이 있어서
+ *   (문은 밟는 것이 아니라 **미는** 것이다) 그것을 목표로 삼으려면 예외가
+ *   필요하다. 그런데 예전에는 이 예외가 **모든 목표에** 걸려 있었다 —
+ *   `구역 N`·`밟기 x,z`·사람 옆칸까지. 그래서 **못 서는 칸을 목표로 삼은
+ *   계획이 `found`로 나왔고**, 실제로 걸으면 마지막 한 걸음에서 막혀
+ *   `blocked`로 돌아와 그 칸을 `shun`에 넣고 다시 계획했다. 밖에서는
+ *   「길은 있는데 안 움직인다」로 보이던 자리다 (후속 §4.2)
+ */
 export function planPath(
-  matrixId, from, isGoal, { limit = NODE_CAP, avoid = null, cancelled = null } = {},
+  matrixId, from, isGoal,
+  { limit = NODE_CAP, avoid = null, cancelled = null, enterBlockedGoal = false } = {},
 ) {
   const t0 = performance.now()
   const grid = gridOf(matrixId)
@@ -272,6 +287,7 @@ export function planPath(
   lastPlan.goalTests = 0
   lastPlan.pushed = 0
   lastPlan.steps = 0
+  lastPlan.blockedGoal = 0
 
   const done = (status, keys) => {
     lastPlan.status = status
@@ -318,10 +334,12 @@ export function planPath(
       const blocked = grid.blocked(nx, nz)
       const shunned = avoid !== null && avoid(nx, nz)
       if (blocked || shunned) {
-        // 목적지 칸이 막혀 있어도 **거기가 목표면** 넣는다 — 워프 칸은 문이라
-        // 통행 불가로 적힌 것이 있다. 다른 문을 밟고 지나가는 것은 `avoid`가 막는다
+        // 목적지 칸이 막혀 있어도 **거기가 목표고 문 목표면** 넣는다.
+        // 그 밖의 목표는 **실제로 설 수 있는 칸만** 인정한다 (후속 §4.2)
+        if (!enterBlockedGoal) continue
         lastPlan.goalTests++
         if (!isGoal(nx, nz)) continue
+        lastPlan.blockedGoal++
       }
       stamp[nid] = run
       parent[nid] = id

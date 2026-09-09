@@ -99,7 +99,7 @@ export function lockDirection(vx: number, vz: number): { dx: number; dz: number 
  * ⚠️ **똑같은지 그대로 비교하면 안 된다.** 원작 높이는 fx32 정수라 층이
  * 딱 떨어지지만 우리는 BDHC 판을 보간해서 읽으므로 **같은 단의 이웃 칸끼리도
  * 소수점 아래가 다르다.** 선단 체육관을 실측한 값이 그것을 보여 준다
- * (`.audit/iceHeights.mjs`):
+ * (`.audit/probe/iceHeights.mjs`):
  *
  * - 평평한 단은 정확히 1 · 2 · 3이다 (57 · 106 · 217칸)
  * - 단과 단 사이 비탈만 흔들린다 — 2.5짜리 56칸이 2.4989 · 2.4994 · 2.4995 ·

@@ -993,7 +993,7 @@ type CameraPreset = {
 
 ⚠️ **동굴에는 방 렌즈를 안 건다.** `mapType` 3·6은 방이 아니라 넓은 굴이고,
 당길수록 화면에 드는 것이 불 켜진 자리가 아니라 어두운 굴 바닥이다 — 강철섬에
-걸었더니 검은 화소가 **71.6% → 93.1%로 늘었다** (`node .audit/voidShots.mjs`).
+걸었더니 검은 화소가 **71.6% → 93.1%로 늘었다** (`node .audit/probe/voidShots.mjs`).
 
 ⚠️ **각은 맵마다 원작 값이다.** 맵 표의 `camera` 칸이 원작 카메라 갈래
 (0~16)를 가리키고, `overlay005/field_camera.c`가 갈래마다 내림각을 적어 둔다 —
@@ -1011,7 +1011,7 @@ type CameraPreset = {
 뒤에 남은 바닥이 1.5칸뿐이었다. 카메라를 상자 안으로 **물리면** 붐이 0.5칸으로
 줄어 **내려보는 각이 81.1도**가 된다(정수리만 보인다). 자리는 그대로 두고
 프레임 아랫변이 바닥 끝**보다 앞**에 떨어지게 겨눔을 눕히면, 스무 곳의 내림각이
-50.1도가 되고 검은 화소는 27.4% → 25.5%다 (`node .audit/roomFit.mjs`).
+50.1도가 되고 검은 화소는 27.4% → 25.5%다 (`node .audit/probe/roomFit.mjs`).
 
 ⚠️ **굴에는 겨눔 밀기를 안 건다 — 거기서는 물린다** (`clampToRoom`). 굴에서
 뽑히는 조각은 방이 아니라 통로 토막이라 바닥 끝을 못 믿는다: 어긋난 동굴
@@ -1021,7 +1021,7 @@ type CameraPreset = {
 상자는 **그려진 바닥**의
 테두리이고, 그것을 아는 자료는 그것뿐이다 — 통행 격자는 방 밖도 「안 막힘」으로
 두고(포켓몬센터 1,024칸 중 901칸이 열려 있다) 높이 판은 행렬 전체를 덮는 맵이
-넷 중 넷이다 (`node .audit/roomBox.mjs`). 그 칸은 `scene/roomWalls`가 벽 세울
+넷 중 넷이다 (`node .audit/probe/roomBox.mjs`). 그 칸은 `scene/roomWalls`가 벽 세울
 자리를 찾느라 이미 세고 있어서 새로 굽는 자료가 없다.
 
 ⚠️ **상자는 맵마다 하나가 아니라 방마다 하나다** (`floorRegions` · `roomAt`).
@@ -1450,7 +1450,7 @@ sim은 **모든 기술에 포인트업 3회를 먹인 최대치**를 쓴다(PP 1
 BATON_PASS`다. **RISKY(0x10)는 안 들어 있다** — 제일 센 쪽이 도박을 안 한다.
 비트 자리가 DP·플래티넘과 같은 표(`FlagTable`)라는 근거는 분포 자체다: 잡몹
 619명이 `BASIC|SETUP_FIRST_TURN`으로, 강자 77명이 위 여섯으로 떨어진다.
-다시 재는 법은 `py -3.13 .audit/bdspTrainerAi.py`.
+다시 재는 법은 `py -3.13 .audit/probe/bdspTrainerAi.py`.
 
 ⚠️ **얹은 셋 중 `BATON_PASS`는 플래티넘 트레이너 928명이 아무도 안 켠다.**
 그래서 루틴이 없었고 이번에 옮겼다(`ai/score.scoreBatonPass`). 이름이 하는
@@ -2051,7 +2051,7 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 | 번들 안의 `eval(` | ✅ **0건.** `>eval` 디버그 명령을 빌드에서 지운다 — CSP를 열 이유가 없어졌다 |
 | 앱 셸 그림 심사 | ▲ **감수하기로 했다.** 타이틀 배경에 워드마크, 아이콘에 원작 캐릭터로 보이는 형상 — 사실은 그대로고 대장이 매번 다시 찍는다 (COPYRIGHT.md §11) |
 | 한 번 설치하면 다시 안 묻기 | ✅ 두 번째 실행이 갈래 67ms · 타이틀 108ms · 변환기 0회 · OPFS 쓰기 0회 (e2e ⑮·⑰) |
-| CSP | ✅ **실제 호스트 응답 헤더까지 쟀다** — `pnpm verify:deploy <url>`이 정본(`tools/distribution/csp.mjs`)과 지시자마다 맞대고 결과를 `.audit/deploy-verified.json`에 남기며, `blockers.mjs`의 `csp-header`가 그 파일을 읽어 스스로 풀린다. ⚠️ **잰 빌드에만 붙는 도장이라** 올릴 때마다 다시 돌려야 한다 — 임자는 [DEPLOY.md](DEPLOY.md) §5의 ⑯ |
+| CSP | ✅ **실제 호스트 응답 헤더까지 쟀다** — `pnpm verify:deploy <url>`이 정본(`tools/distribution/csp.mjs`)과 지시자마다 맞대고 결과를 `.audit/probe/out/deploy-verified.json`에 남기며, `blockers.mjs`의 `csp-header`가 그 파일을 읽어 스스로 풀린다. ⚠️ **잰 빌드에만 붙는 도장이라** 올릴 때마다 다시 돌려야 한다 — 임자는 [DEPLOY.md](DEPLOY.md) §5의 ⑯ |
 | Git 히스토리 감사 | ✅ 경로 + **내용**(모든 블롭의 머리 바이트)으로 실측. ❌ 다시 쓰기는 승인 대기 |
 | `src/` 자료 표 심사 | ✅ allowlist · 배포물 재검사 · **tracked 나무를 내용으로 훑기**. `textBanks.json`은 지웠고 자리를 계산으로 대신한다 |
 | 무전송 E2E | ✅ **브라우저로 잰다** — 미설치 요청 0건 · 128MB 변환 중 0건 (DEPLOY.md §5) |
@@ -2158,7 +2158,7 @@ WebGPU 엔트리는 TSL 노드 시스템과 전체 NodeMaterial 라이브러리�
 `raw/work/assets-manifest.local.json`을 읽어 하고, 어디서도 받아 오지 않는다.
 
 경로·확장자만으로는 **번들 안**을 못 본다. 빌드가 청크별 모듈 출처를
-`.audit/bundle-provenance.json`에 남기고 `pnpm provenance`가 사람이 읽게 찍는다 —
+`.audit/probe/out/bundle-provenance.json`에 남기고 `pnpm provenance`가 사람이 읽게 찍는다 —
 그 검사가 `battle-sim` 청크의 8,881kB짜리 제3자 게임 데이터를 찾아냈고, 지금은
 그것이 전부 빠져 0바이트다 (DEPLOY.md §4). 공개 배포 판정은
 `pnpm release:check`가 하고, 아직 통과 못 한다.
@@ -3415,7 +3415,7 @@ UnityPy로 번들을 열어 glTF 2.0 바이너리를 직접 쓴다 — 메시·�
 ⚠️ **굽는 쪽 둘에 같은 수식이 있어야 한다.** `tools/extract/bdspRetarget.py`와
 `src/import/bdsp/retarget.ts`다 — 한쪽만 고치면 개발 서버에서만 낚싯대가
 움직인다. 두 산출물이 클립 19개 · 채널 1156개에서 **5.7e-14** 안에 든다
-(`.audit/glbAnimDiff.mjs`).
+(`.audit/probe/glbAnimDiff.mjs`).
 
 ⚠️ **뼈를 이름으로 짝지을 때 클립이 모는 갈래로 좁힌다.** 치비 번들은 자전거·
 낚싯대·탈것이 제 안에 사람 뼈대를 한 벌씩 더 들고 있어서 이름이 겹친다 —
@@ -3485,7 +3485,7 @@ UnityPy로 번들을 열어 glTF 2.0 바이너리를 직접 쓴다 — 메시·�
 
 ### 16.10 남은 긴 작업 — 어디까지 갔나
 
-기획서(`.audit/hard-parts-plan.html`)의 일곱이 다 열렸다. 값과 근거는 각 문서에
+기획서(`.audit/probe/out/hard-parts-plan.html`)의 일곱이 다 열렸다. 값과 근거는 각 문서에
 있다 — 소품 애니는 [DATA §2.31](DATA.md)과 [PARITY §8.5·§8.5b·§8.6](PARITY.md),
 조우 이펙트는 §8.6c, 폼 변화는 §3.4, 진화·부화는 §3.1·§3.2, 미리 굽기와 워프
 멈춤은 [REPAIR §8.1](REPAIR.md). 아래는 **거기서 새로 남은 것**만이다.
@@ -3532,10 +3532,10 @@ BTA0 4 · **BMA0 4**)고 `bm_anime`과 아카이브가 다르다. BMA0(재질 �
 | 키 리맵 화면 | — | 입력은 이미 표로 갈려 있다 (`engine/input`) |
 | 도감 평가의 글 번호 | 2자리 | 문턱 표가 코드 안에 있다 (`Pokedex_GetRatingMessageID_*` — 신오 열둘·전국 열여덟). 세는 것과 「다 찼는가」는 됐다 (PARITY §10) |
 | 건물이 지면과 0.25타일 뜬 자리 | 106곳 | 일부러 띄운 것과 안 갈랐다. 옆에서 찍어 보고 갈라야 한다 |
-| 그래도 발밑에 아무것도 없는 칸 | **116** | 전부 운하시티 체육관이고 **일부러 안 막았다** — 바닥이 없고 뜨는 판 스물넷 위로만 다니는 것이 그 방의 설계라(`CANALAVE_COLLISION`) 격자로 막으면 방이 통째로 못 쓰게 된다. 재려면 `node --experimental-strip-types .audit/sealCheck.mjs` ([REPAIR.md](REPAIR.md) §22) |
+| 그래도 발밑에 아무것도 없는 칸 | **116** | 전부 운하시티 체육관이고 **일부러 안 막았다** — 바닥이 없고 뜨는 판 스물넷 위로만 다니는 것이 그 방의 설계라(`CANALAVE_COLLISION`) 격자로 막으면 방이 통째로 못 쓰게 된다. 재려면 `node --experimental-strip-types .audit/probe/sealCheck.mjs` ([REPAIR.md](REPAIR.md) §22) |
 | 비켜 세울 데가 없는 워프 도착 | 2 | 축복시티 맵 31·32 → (129,736)·(128,736). 여덟 칸 안에 걸을 칸이 하나도 없어 `standableSpot`이 못 옮긴다. **다만 그 방으로 들어가는 워프 두 칸도 막혀 있어 밟을 수가 없다** — 닿는 길이 생기면 그때 본다 (REPAIR §23) |
 | KTX2 텍스처 | 0개 | 실제 기계에서 모자랄 때 (§16.4) |
-| 아무도 안 부르는 `export` | **52** (값 46 · 타입 6) | 세는 자는 `.audit/deadExports.mjs`(타입스크립트 파서로 훑는다). 기계가 할 수 있는 자리는 끝났다 — 제 파일 안에서만 쓰는 `export`는 낱말을 떼서 **지금 0개**고(`pnpm exports:check`가 다시 자라는 것을 막는다), 이름이 어디에도 안 나오는 것 중 **근거가 선 29개를 지웠다**. ⚠️ **남은 52개는 쓸어 담으면 안 된다** — **만들어 낸 파일**(`DECIBEL`·`POKETCH_MAP_STEP`) 둘 · 아직 안 끝난 BDSP 브라우저 변환의 발판과 조사 도구용 여섯(`readIseAt`·`iseInfo`·`weightTable`·`meshesOf`·`texturesOf`·`textureObjects`) · **구현해 놓고 안 이어 붙인 셋**(`berryWateringCancel`·`journalWarpedByMove`·`readBackup` — [REPAIR.md](REPAIR.md) §10이 임자다)이 그 안에 있다. ⚠️ **「누가 쓴다」고 적힌 주석을 믿지 않는다** — REPAIR §10이 여섯 중 다섯을 거짓으로 잡았고, `scene/stepSystem`의 `resetDayCache`도 「시험이 쓴다」고 적힌 채 그런 시험이 없어서 지웠다. ⚠️ **시험만 쓰는 `export` 562개는 흙이 아니다** (값 534 · 타입 28) — 순수 함수를 시험이 직접 부르라고 연 자리고, 검사가 시험을 소비자로 안 세면 그것이 다 걸려서 못 쓴다 |
+| 아무도 안 부르는 `export` | **52** (값 46 · 타입 6) | 세는 자는 `.audit/probe/deadExports.mjs`(타입스크립트 파서로 훑는다). 기계가 할 수 있는 자리는 끝났다 — 제 파일 안에서만 쓰는 `export`는 낱말을 떼서 **지금 0개**고(`pnpm exports:check`가 다시 자라는 것을 막는다), 이름이 어디에도 안 나오는 것 중 **근거가 선 29개를 지웠다**. ⚠️ **남은 52개는 쓸어 담으면 안 된다** — **만들어 낸 파일**(`DECIBEL`·`POKETCH_MAP_STEP`) 둘 · 아직 안 끝난 BDSP 브라우저 변환의 발판과 조사 도구용 여섯(`readIseAt`·`iseInfo`·`weightTable`·`meshesOf`·`texturesOf`·`textureObjects`) · **구현해 놓고 안 이어 붙인 셋**(`berryWateringCancel`·`journalWarpedByMove`·`readBackup` — [REPAIR.md](REPAIR.md) §10이 임자다)이 그 안에 있다. ⚠️ **「누가 쓴다」고 적힌 주석을 믿지 않는다** — REPAIR §10이 여섯 중 다섯을 거짓으로 잡았고, `scene/stepSystem`의 `resetDayCache`도 「시험이 쓴다」고 적힌 채 그런 시험이 없어서 지웠다. ⚠️ **시험만 쓰는 `export` 562개는 흙이 아니다** (값 534 · 타입 28) — 순수 함수를 시험이 직접 부르라고 연 자리고, 검사가 시험을 소비자로 안 세면 그것이 다 걸려서 못 쓴다 |
 | 그래픽 프리셋 ↔ 후처리 | — | 헤드리스로는 이득을 못 재므로 실기에서 모자랄 때 (§10.1) |
 
 #### 맵 270개를 한 번에 훑는다 (`.audit/probe/mapAudit.mjs`)

@@ -24,6 +24,8 @@ import { perfSnapshot } from './sceneRefs'
  * 무대에 있는 것이고, 그 시점은 `placed`를 보는 effect다
  */
 const terrainMark = {
+  /** 커밋된 그 요청의 번호 (`openTerrainRequest`) */
+  req: -1,
   /** 이 한 벌이 어느 맵·행렬·청크의 것인가 */
   mapId: -1,
   matrix: -1,
@@ -41,9 +43,10 @@ const terrainMark = {
 
 /** `ChunkModels`가 커밋 뒤에 부른다 */
 export function markTerrain(
-  one: { mapId: number, matrix: number, chunkIndex: number,
+  one: { req: number, mapId: number, matrix: number, chunkIndex: number,
     want: number, placed: number, failed: boolean, why: string | null },
 ): void {
+  terrainMark.req = one.req
   terrainMark.mapId = one.mapId
   terrainMark.matrix = one.matrix
   terrainMark.chunkIndex = one.chunkIndex
@@ -52,6 +55,59 @@ export function markTerrain(
   terrainMark.failed = one.failed
   terrainMark.why = one.why
   terrainMark.frame = perfSnapshot.frames
+}
+
+/**
+ * **한 건의 요청을 끝까지 잇는 자국.**
+ *
+ * ⚠️ **「끝내 안 끝났다」는 관측이 아니라 결론이다.** 판정용 판의 `stop-08`은
+ * 화면에 앞 맵의 지형이 30초 남았는데, 밖에서 볼 수 있는 것은 **표식이 옛
+ * 맵이다**뿐이었다 — 새 요청이 나갔는지, 자료를 못 받은 것인지, 받아 놓고
+ * 못 세운 것인지, 세워 놓고 커밋이 안 된 것인지를 **가를 자리가 없었다.**
+ *
+ * ⚠️ **크기를 못 박는다.** 링 버퍼 한 벌이고 담는 것은 수와 짧은 글뿐이다 —
+ * three 객체를 붙잡으면 그 자체가 누수가 된다
+ */
+const TRACE_ROWS = 240
+const trace: { t: number, req: number, step: string, note: string }[] = []
+let lastReq = 0
+
+/**
+ * 지금 **받으러 나가 있는** 한 벌. `ChunkModels`가 요청을 열 때 적는다.
+ *
+ * ⚠️ **「무엇이 최신인가」를 밖에서 다시 셈하면 안 된다.** 예전에는 표식의
+ * 맵 번호를 `world.mapId`와 견줬는데, 오버월드는 **한 행렬에 존이 여럿**이라
+ * 도로를 걸어 나가면 번호만 바뀌고 지형은 그대로다 — 그러면 걷는 내내
+ * 「준비 안 됨」이 된다. 반대로 텍스처 묶음이 바뀌어 요청이 다시 나간
+ * 경우는 번호만으로는 못 본다. 그래서 **요청을 낸 쪽이 신원을 적고**,
+ * 준비 판정은 「가장 새 요청이 커밋됐는가」를 묻는다
+ */
+const terrainWanted = { req: 0, mapId: -1, matrix: -1, chunkIndex: -1, want: 0 }
+
+/** 새 요청 한 건을 연다. 돌려주는 번호가 그 건의 신원이다 */
+export function openTerrainRequest(
+  one: { mapId: number, matrix: number, chunkIndex: number, want: number },
+): number {
+  lastReq += 1
+  terrainWanted.req = lastReq
+  terrainWanted.mapId = one.mapId
+  terrainWanted.matrix = one.matrix
+  terrainWanted.chunkIndex = one.chunkIndex
+  terrainWanted.want = one.want
+  traceTerrain(lastReq, 'requested',
+    `맵 ${String(one.mapId)}/${String(one.matrix)} 칸 ${String(one.chunkIndex)} · 청크 ${String(one.want)}개`)
+  return lastReq
+}
+
+/** 그 건이 어디까지 갔는지 한 줄 적는다 */
+export function traceTerrain(req: number, step: string, note = ''): void {
+  trace.push({ t: Math.round(performance.now()), req, step, note })
+  if (trace.length > TRACE_ROWS) trace.splice(0, trace.length - TRACE_ROWS)
+}
+
+/** 밖에서 읽는다. 베낀 배열이라 읽는 쪽이 흔들 수 없다 */
+export function terrainTrace(): readonly { t: number, req: number, step: string, note: string }[] {
+  return trace.map((r) => ({ ...r }))
 }
 
 /** 카메라가 「닿았다」고 볼 잔여 거리 (월드 단위 = 타일) */
@@ -63,9 +119,11 @@ interface TerrainReady {
   why: string | null
   /** 지금 서 있어야 할 곳 */
   want: { map: number, matrix: number, chunk: number }
+  /** 지금 받으러 나가 있는 한 벌 */
+  asked: { req: number, map: number, matrix: number, chunk: number }
   /** 씬에 반영된 한 벌 */
   have: {
-    map: number, matrix: number, chunk: number, placed: number, want: number,
+    req: number, map: number, matrix: number, chunk: number, placed: number, want: number,
     failed: boolean, why: string | null,
   }
   /** 반영 뒤에 나간 프레임 수 */
@@ -94,7 +152,12 @@ export function terrainReady(): TerrainReady {
   const p = worldState.player.position
   const chunk = grid === null ? -1 : grid.chunkIndexAt(Math.floor(p.x), Math.floor(p.z))
   const want = { map: world.mapId, matrix: world.matrix, chunk }
+  const asked = {
+    req: terrainWanted.req, map: terrainWanted.mapId,
+    matrix: terrainWanted.matrix, chunk: terrainWanted.chunkIndex,
+  }
   const have = {
+    req: terrainMark.req,
     map: terrainMark.mapId, matrix: terrainMark.matrix, chunk: terrainMark.chunkIndex,
     placed: terrainMark.placed, want: terrainMark.want, failed: terrainMark.failed,
     why: terrainMark.why,
@@ -103,17 +166,30 @@ export function terrainReady(): TerrainReady {
   const framesSince = perfSnapshot.frames - terrainMark.frame
   const pending = world.pending !== null
   const restoring = worldState.restoring
-  const shape = { want, have, framesSince, pending, restoring, drift: +drift.toFixed(2) }
+  const shape = { want, asked, have, framesSince, pending, restoring, drift: +drift.toFixed(2) }
   if (grid === null) return { ok: false, why: '격자가 아직 없다', ...shape }
   if (pending) return { ok: false, why: '처리할 전이가 남았다', ...shape }
   if (restoring) return { ok: false, why: '아직 복원 중이다', ...shape }
-  if (have.map !== want.map || have.matrix !== want.matrix) {
-    return { ok: false, why: `씬에 선 청크가 다른 맵의 것이다 (${String(have.map)}/`
-      + `${String(have.matrix)} ≠ ${String(want.map)}/${String(want.matrix)})`, ...shape }
+  /**
+   * ⚠️ **맵 번호로 걸면 안 된다.** 오버월드는 **한 행렬 안에 존이 여럿**이다 —
+   * 축복시티(3)에서 201번도로(342)로 걸어 나가는 것은 워프가 아니라 좌표
+   * 연속이라 `MapStreamer`가 `world.mapId`만 바꾸고 격자도 칸도 그대로 둔다.
+   * 그러면 `ChunkModels`의 effect가 안 돌고 표식은 들어올 때의 번호로 남는데
+   * **그 지형이 맞다.** 번호로 걸면 도로를 걷는 내내 「준비 안 됨」이 된다.
+   *
+   * 그래서 두 걸음으로 묻는다: ⓐ **지금 나가 있는 요청**이 내가 선 자리의
+   * 것인가(행렬·칸), ⓑ 그 요청이 **커밋됐는가**(번호가 같은가). 텍스처 묶음이
+   * 바뀌어 요청이 다시 나간 경우도 ⓑ가 잡는다 — 밖에서 최신을 다시 셈하지 않고
+   * **요청을 낸 쪽이 적은 신원**을 그대로 쓴다
+   */
+  if (asked.matrix !== want.matrix || asked.chunk !== want.chunk) {
+    return { ok: false, why: `선 자리의 지형을 아직 부르지도 않았다 (부른 것: `
+      + `맵 ${String(asked.map)}/${String(asked.matrix)} 칸 ${String(asked.chunk)}`
+      + ` ≠ 선 곳: 맵 ${String(want.map)}/${String(want.matrix)} 칸 ${String(want.chunk)})`, ...shape }
   }
-  if (have.chunk !== want.chunk) {
-    return { ok: false, why: `씬에 선 청크가 다른 칸의 것이다 (${String(have.chunk)}`
-      + ` ≠ ${String(want.chunk)})`, ...shape }
+  if (have.req !== asked.req) {
+    return { ok: false, why: `씬에 선 것이 앞 요청의 것이다 (#${String(have.req)} ≠ #${String(asked.req)}`
+      + ` — 맵 ${String(have.map)}/${String(have.matrix)} 칸 ${String(have.chunk)})`, ...shape }
   }
   if (have.failed) {
     return { ok: false, why: `청크를 못 받아 빈손이다 — ${String(have.why)}`, ...shape }
@@ -131,6 +207,14 @@ export function terrainReady(): TerrainReady {
    * 한 칸의 4분의 1을 문턱으로 둔다 — 걷는 동안의 잔여는 그보다 작고, 맵을
    * 갈아 낀 직후의 미끄러짐은 그보다 한참 크다
    */
+  /**
+   * ⚠️ **`drift > 문턱`으로 쓰면 NaN이 통과한다.** 비교가 늘 거짓이라 「닿았다」로
+   * 읽힌다 — 카메라가 망가진 판이 곧 **통과하는 판**이 된다. 「닿았다」쪽을 물어
+   * 유한하지 않으면 떨어지게 뒤집는다
+   */
+  if (!Number.isFinite(drift)) {
+    return { ok: false, why: `카메라 잔여가 수가 아니다 (${String(drift)})`, ...shape }
+  }
   if (drift > CAMERA_SETTLED) {
     return { ok: false, why: `카메라가 아직 ${drift.toFixed(2)}칸 미끄러지는 중이다`, ...shape }
   }

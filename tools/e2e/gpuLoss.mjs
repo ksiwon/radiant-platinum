@@ -460,7 +460,7 @@ process.exit(rows.some((r) => r.status === 'FAIL' || r.status === 'BLOCKED') ? 1
 function writeResult() {
   mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
   const expected = rosterOf('gpu-loss').cases
-  writeFileSync(resolve(ROOT, '.audit/gpuLoss.json'), `${JSON.stringify(sealEvidence({
+  writeFileSync(resolve(ROOT, '.audit/probe/out/gpuLoss.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
     suite: 'gpu-loss',
     selection: flag('url') === null ? 'all' : `--url=${String(flag('url'))}`,

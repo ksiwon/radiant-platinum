@@ -65,7 +65,7 @@ const WANT_WALLS = wants('walls')
 const WANT_FLOORS = wants('floors')
 const WANT_EYES = wants('eyes')
 const WANT_SHOTS = args.includes('--shots')
-const JSON_OUT = flag('json', '.audit/holes.json')
+const JSON_OUT = flag('json', '.audit/probe/out/holes.json')
 const SETTLE_MS = Number(flag('settle', 7000))
 
 /** 1인칭 눈높이 — 실제 값이다 (`actor/camera`의 `EYE_HEIGHT`) */

@@ -66,7 +66,7 @@ function fadeFor(distance: number): number {
  * 안에 서므로 선이 상자 속을 지나 거리가 0이 되고, **건물이 통째로 사라졌다.**
  * 남은 것은 따로 배치된 문짝(`gym_door00`) 하나라 파란 판이 허공에 떠 있었다.
  * 사람이 그 안에 서 있으면 그것은 사람을 둘러싼 배경이지 사이에 든 것이 아니다
- * (`.audit/fadeBox.mjs`)
+ * (`.audit/probe/fadeBox.mjs`)
  */
 export function blockedBy(box: Box3, eye: Vector3, aim: Vector3): number {
   if (box.containsPoint(aim)) return 1

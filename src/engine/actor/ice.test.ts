@@ -87,7 +87,7 @@ describe('속도', () => {
   })
 
   it('⚠️ 비탈의 보간 잡음은 층이 아니다 — 선단 체육관 실측 폭 0.0012타일', () => {
-    // 같은 2.5단인데 칸마다 소수점 아래가 다르다 (`.audit/iceHeights.mjs`)
+    // 같은 2.5단인데 칸마다 소수점 아래가 다르다 (`.audit/probe/iceHeights.mjs`)
     const noisy = row('....', [2.4989, 2.4994, 2.4995, 2.4999])
     for (let i = 0; i < 3; i += 1) expect(heightChange(noisy, i, 0, 1, 0)).toBe('none')
     // 진짜 단(0.5타일)은 그대로 잡힌다
