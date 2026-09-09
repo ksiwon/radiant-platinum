@@ -320,9 +320,9 @@ function checkPost() {
   // ⚠️ 위 `scanTree`는 파일 이름과 자리만 본다. `dist/assets/battle-sim-*.js`는
   // 둘 다 통과하면서 6.5MB의 종족·기술 표를 싣고 있었다. 그 안을 보는 유일한
   // 길이 빌드가 남긴 출처 보고서다
-  const at = resolve(ROOT, '.audit/probe/out/bundle-provenance.json')
+  const at = resolve(ROOT, '.audit/bundle-provenance.json')
   if (!existsSync(at)) {
-    fail('번들 출처 보고서가 없다', '.audit/probe/out/bundle-provenance.json — vite 플러그인이 안 돌았다')
+    fail('번들 출처 보고서가 없다', '.audit/bundle-provenance.json — vite 플러그인이 안 돌았다')
   } else {
     const bad = forbiddenIn(JSON.parse(readFileSync(at, 'utf8')))
     for (const b of bad.slice(0, 3)) {
@@ -350,7 +350,7 @@ const scan = stage === 'post' || stage === 'both' ? checkPost() : null
  * 안이라 아직 다 안 쓰인 `dist/`를 재게 된다
  */
 if (stage === 'post' || stage === 'both') {
-  const at = resolve(ROOT, '.audit/probe/out/build.json')
+  const at = resolve(ROOT, '.audit/build.json')
   if (existsSync(at)) {
     const stamp = JSON.parse(readFileSync(at, 'utf8'))
     // ⚠️ **한 번만 적는다.** `pnpm release:check`도 이 단계를 도는데, 그때 다시
@@ -377,7 +377,7 @@ if (scan) console.log(`  · dist 파일 ${String(scan.files.length)}개 · ${mb(
 // 판정을 파일로도 남긴다 — 배포 스크립트가 사람 눈 없이 읽을 수 있어야 한다
 if (stage === 'post' || stage === 'both') {
   mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
-  writeFileSync(resolve(ROOT, '.audit/probe/out/release-blockers.json'),
+  writeFileSync(resolve(ROOT, '.audit/release-blockers.json'),
     `${JSON.stringify({ blockers: releaseBlockers, accepted, violations: problems.length }, null, 1)}\n`)
 }
 

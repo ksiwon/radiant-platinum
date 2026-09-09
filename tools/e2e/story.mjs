@@ -1353,7 +1353,7 @@ const executed = [
   ...(ACTS.has('3') ? ['ending'] : []),
 ]
 
-writeFileSync(resolve(ROOT, '.audit/probe/out/story.json'), `${JSON.stringify(sealEvidence({
+writeFileSync(resolve(ROOT, '.audit/story.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'story',
   selection: ONLY.length > 0 ? `--only=${ONLY.join(',')}`

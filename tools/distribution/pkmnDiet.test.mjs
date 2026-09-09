@@ -121,7 +121,7 @@ describe('껍데기 규칙이 실제 파일과 맞는다', () => {
 
 describe('배포물에 표가 없다', () => {
   const files = distFiles()
-  const auditAt = resolve(ROOT, '.audit/probe/out/bundle-provenance.json')
+  const auditAt = resolve(ROOT, '.audit/bundle-provenance.json')
   const audit = existsSync(auditAt) ? JSON.parse(readFileSync(auditAt, 'utf8')) : null
   /** 배포물에 실제로 들어간 `@pkmn/sim` 모듈 (esm 상대 경로) */
   const shipped = audit

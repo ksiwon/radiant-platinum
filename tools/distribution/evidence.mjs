@@ -1,7 +1,7 @@
 // 릴리스 증거의 봉투 (PLATINUM_3D_COMPLETION_PLAN §6.1 · PT-01)
 //
 // ⚠️ **결과 파일이 있다는 것과 「이 배포물을 다 쟀다」는 것은 다르다.**
-// `blockers.mjs`는 오래 `.audit/probe/out/e2e.json`을 열어 FAIL·BLOCKED·NOT RUN이 하나도
+// `blockers.mjs`는 오래 `.audit/e2e.json`을 열어 FAIL·BLOCKED·NOT RUN이 하나도
 // 없으면 통과로 셌다. 그 판정은 다음을 **전부 통과로 읽는다** — 재현은
 // `evidence.test.mjs`에 있다:
 //
@@ -418,7 +418,7 @@ export function harnessDigest(suiteName) {
 /** 빌드가 스스로 적어 둔 신원. 없으면 `null` */
 export function buildStamp() {
   try {
-    return JSON.parse(readFileSync(resolve(ROOT, '.audit/probe/out/build.json'), 'utf8'))
+    return JSON.parse(readFileSync(resolve(ROOT, '.audit/build.json'), 'utf8'))
   } catch {
     return null
   }

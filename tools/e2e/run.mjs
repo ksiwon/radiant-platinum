@@ -1867,7 +1867,7 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
   const now = readAudit('build.json')?.buildId ?? null
   if (!at) {
     record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
-      'pnpm verify:deploy <url>을 돌린 적이 없다 — .audit/probe/out/deploy-verified.json이 없다')
+      'pnpm verify:deploy <url>을 돌린 적이 없다 — .audit/deploy-verified.json이 없다')
   } else if (!at.browserChecked) {
     record('16', '실제 호스트의 CSP 응답 헤더', 'BLOCKED',
       `${at.url}: 브라우저를 못 띄워 약한 갈래로 갔다 — 외부 요청을 실제로 세지 못했다`)
@@ -2158,7 +2158,7 @@ const ENVIRONMENT = describeEnvironment({
   browserVersion: BROWSER_VERSION, gpu: seenGpu, backend: seenBackend,
 })
 
-writeFileSync(resolve(ROOT, '.audit/probe/out/e2e.json'), `${JSON.stringify(sealEvidence({
+writeFileSync(resolve(ROOT, '.audit/e2e.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'installed-e2e',
   selection: only.length > 0 ? `--only=${only}` : 'all',

@@ -1261,7 +1261,7 @@ mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
 // ⚠️ **`executedCases`를 결과 줄에서 뽑지 않는다.** 도중에 터져 여덟 줄만 남은
 // 파일과 열일곱 줄을 다 돌린 파일이 똑같아 보이면 안 된다 — 실제로 밟은 목록을
 // 여기서 넘기고, 판정은 `validateEvidence`가 정본과 맞대어 한다
-writeFileSync(resolve(ROOT, '.audit/probe/out/journey.json'), `${JSON.stringify(sealEvidence({
+writeFileSync(resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,
   suite: 'journey',
   expectedCases: EXPECTED_CASES,
