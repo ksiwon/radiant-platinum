@@ -45,6 +45,7 @@ import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
 } from '../distribution/evidence.mjs'
 import { missingData } from './route.mjs'
+import { makeStall } from './budget.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const OUT = resolve(ROOT, 'shots/story')
@@ -612,7 +613,7 @@ async function runScripts(budgetMs = CUTSCENE_MS) {
   while (Date.now() < till) {
     const at = await marks(page)
     if (at.scene === 'battle') {
-      fought = await pushBattle(till - Date.now())
+      fought = await pushBattle()
       taps += fought.taps
       if (fought.frozen) return { done: false, frozen: true, taps, at: fought.at, fought }
       // 배틀이 끝나면 스크립트가 이어 달린다. 지문을 새로 잡고 다시 민다
@@ -787,16 +788,46 @@ const battleBeat = () => page.evaluate(async () => {
 /** 파티 최대 칸. 교체 화면에서 커서를 맨 위로 올릴 때 이만큼 누른다 */
 const MAX_PARTY = 6
 
-async function pushBattle(budgetMs) {
-  const till = Date.now() + budgetMs
+/**
+ * 배틀이 **얼마나 안 나아가면** 얼었다고 할까 (지시서 H2).
+ *
+ * ⚠️ **시계로는 결함을 못 가른다.** 실측(2026-09-09): 무쇠 체육관 배틀이
+ * **542번 눌러서** 끝났는데 45초 상한은 그것을 「얼었다」로 적었고, 반대로
+ * 기계가 붐빈 판에서는 멀쩡한 배틀이 상한에 걸렸다. 한 바퀴는 「지문 읽기 ×2
+ * + 누르기」라 250ms쯤이므로 100바퀴는 조용한 기계에서 25초쯤이고, 붐비면
+ * 저절로 늘어난다 — **부하가 상한을 스스로 늘린다**
+ */
+const BATTLE_PATIENCE = 100
+/**
+ * 기본 판에서 한 배틀에 누르는 최대 횟수.
+ *
+ * ⚠️ **시간이 아니라 횟수다.** 「기본은 얼지 않는가만 재고 `--fight`를 주면
+ * 끝까지 간다」는 뜻은 그대로 두되, 그것을 재는 자를 기계 부하를 안 타는
+ * 것으로 바꾼다. 800은 `drive.mjs`의 `fightThrough`가 쓰는 것과 같은 값이고,
+ * 실측된 가장 긴 배틀(542번)보다 넉넉하다.
+ *
+ * ⚠️ **여기 걸린 것은 「얼었다」가 아니다.** 안 끝났다고만 적는다
+ */
+const BATTLE_TAPS = 800
+/**
+ * 마지막 방어선. **판정자가 아니라 무한 루프를 막는 자다** — 여기 걸리면
+ * 그 사실을 그대로 적는다
+ */
+const BATTLE_CEIL_MS = 1_800_000
+
+async function pushBattle({ fight = FIGHT } = {}) {
+  const till = Date.now() + BATTLE_CEIL_MS
+  const cap = fight ? Infinity : BATTLE_TAPS
   /** 이번에 내보낼 자리. 고를 때마다 다음 칸으로 옮겨 간다 */
   let pick = 1
+  /** 진행 계수기 — 지문이 안 바뀐 바퀴를 센다 (지시서 H2) */
+  const stall = makeStall(BATTLE_PATIENCE)
   let seen = (await battleBeat()).fp
-  let changed = Date.now()
+  stall.note(seen)
   let taps = 0
-  while (Date.now() < till) {
+  while (Date.now() < till && taps < cap) {
     const at = await marks(page)
-    if (at.scene !== 'battle') return { ended: true, taps }
+    if (at.scene !== 'battle') return { ended: true, taps, moves: stall.moves }
     const now = await battleBeat()
     // ⚠️ **선두가 쓰러지면 A만으로는 못 지나간다.** 교체 화면이 뜨는데 커서가
     // **그 쓰러진 마리**에 서 있고, 거기서 A는 (원작처럼) 아무 일도 안 한다 —
@@ -821,11 +852,19 @@ async function pushBattle(budgetMs) {
     await tap(page, 'Space', 60)
     taps++
     const after = (await battleBeat()).fp
-    if (after !== seen) { seen = after; changed = Date.now() } else if (
-      Date.now() - changed > FREEZE_MS
-    ) return { ended: false, frozen: true, taps, at: seen }
+    seen = after
+    // ⚠️ **진행은 턴·사건·체력이 바뀌는 것이다** (`battleBeat`의 지문). 누른
+    // 횟수는 진행이 아니다 — 그것을 세면 얼어붙은 배틀이 영영 안 잡힌다
+    if (stall.note(after)) {
+      return { ended: false, frozen: true, taps, at: seen,
+        why: `${String(BATTLE_PATIENCE)}바퀴 동안 지문이 안 바뀌었다` }
+    }
   }
-  return { ended: false, taps, at: seen }
+  // ⚠️ **안 끝난 것과 언 것은 다르다.** 누르는 횟수를 다 쓴 것은 「기본 판이
+  // 여기까지만 민다」는 뜻이고, 얼어붙은 것이 아니다
+  return { ended: false, taps, at: seen, moves: stall.moves,
+    why: taps >= cap ? `기본 판의 ${String(BATTLE_TAPS)}번을 다 눌렀다 (--fight면 끝까지 간다)`
+      : `마지막 방어선(${String(Math.round(BATTLE_CEIL_MS / 60_000))}분)에 걸렸다` }
 }
 
 const targets = CHECKPOINTS
@@ -1061,7 +1100,7 @@ if (ACTS.has('2')) {
       // 확인이 조용히 빠진다. 다시 걷다 또 만나는 것도 풀 위에서는 정상이다
       for (let round = 0; round < 3 && cp.battle === null; round++) {
         if ((await marks(page)).scene !== 'battle') break
-        const wild = await pushBattle(120_000)
+        const wild = await pushBattle()
         extra.wildOnWalk = { ...wild, round: round + 1 }
         if (wild.frozen) {
           trouble.push(`걸어서 열린 야생전이 얼었다 (${wild.taps}번 눌렀다 · ${wild.at})`)
@@ -1113,7 +1152,7 @@ if (ACTS.has('2')) {
       if (cp.battle !== null) {
         if (at.scene !== 'battle') trouble.push(`배틀이 안 열렸다 (${at.scene})`)
         else {
-          const fought = await pushBattle(FIGHT ? 600_000 : 45_000)
+          const fought = await pushBattle()
           extra.battle = fought
           if (fought.frozen) trouble.push(`배틀이 얼었다 (${fought.taps}번 눌렀다)`)
         }

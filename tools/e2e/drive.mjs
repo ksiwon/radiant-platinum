@@ -27,6 +27,7 @@
 // 이것을 게임의 결함으로 의심했는데, 막고 있던 것은 전부 **이 하네스가 건너뛴
 // 걸음**이었다.
 import { makeObserver } from './observe.mjs'
+import { makeStall, SLOW, STALLED } from './budget.mjs'
 import {
   PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, planPath, TILE_TABLE,
   trainersOn, warpsOf,
@@ -34,6 +35,28 @@ import {
 
 /** 방향키 하나가 옮기는 칸 */
 const STEPV = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
+
+/**
+ * **진행 없는 한 바퀴는 이보다 짧게 안 센다** (지시서 H1).
+ *
+ * ⚠️ **바퀴만 세면 빠른 바퀴가 견딤을 갉아먹는다.** 스크립트가 도는 동안의 한
+ * 바퀴는 「표식 읽기 + 스페이스 한 번」이라 130ms다 — 그것을 그대로 세면 견딤
+ * 90회가 12초가 되어 **멀쩡한 컷신을 「멈췄다」로 적는다.** 진행이 없었던
+ * 바퀴만 이 길이로 맞춘다. 나아가는 바퀴는 그대로 전속력이다.
+ *
+ * ⚠️ **이것은 상한이 아니다.** 기계가 느리면 한 바퀴가 저절로 이보다 길어지고,
+ * 그만큼 견딤도 길어진다 — 부하가 상한을 스스로 늘린다. 그것이 이 바꿈의 요지다
+ */
+const ROUND_MS = 330
+/**
+ * 진행 없이 견디는 바퀴 수.
+ *
+ * ⚠️ **넉넉히 잡는다.** 여기서 아끼는 것은 실패한 판의 시간뿐인데, 짧게 잡아
+ * 잃는 것은 **멀쩡한 판의 판정**이다. 90바퀴는 진행이 정말 0일 때 최소
+ * 30초(90 × 330ms)이고, 실제로는 한 바퀴가 계획·걷기를 안으므로 훨씬 길다
+ */
+const GO_PATIENCE = 90
+const STEP_PATIENCE = 90
 
 /**
  * 이야기를 끝까지 몬다.
@@ -278,6 +301,21 @@ export async function driveStory(page, {
       ok: Number.isFinite(x) && Number.isFinite(Number(m.map)) && m.restoring === undefined,
     }
   }
+
+  /**
+   * 관측 하나를 **진행 지문**으로 접는다 (지시서 H1).
+   *
+   * ⚠️ **여기 든 것이 곧 「진행」의 정의다.** 지시서가 못 박은 넷이다 — 칸,
+   * 맵, 장면이 열리고 닫힘(대사·스크립트·배틀), 그리고 부르는 쪽이 넘기는
+   * 남은 계획 길이. 이 밖의 것을 넣으면 안 된다: 예컨대 누른 횟수를 넣으면
+   * **언제나 진행 중**이 되어 견딤이 영영 안 찬다
+   *
+   * @param extra 부르는 쪽의 진행 값 (남은 걸음 수 따위)
+   */
+  const beat = (s, extra = '') => [
+    s.map, s.x, s.z, s.scene, s.talk ? 't' : '-', s.script ? 's' : '-',
+    s.battle ?? '-', s.restoring ?? '-', extra,
+  ].join('|')
 
   /** 고르는 줄의 칸 수와 지금 커서 자리 */
   const choiceCount = () => page.evaluate(() => {
@@ -701,8 +739,35 @@ export async function driveStory(page, {
     let stuckFor = 0
     /** 표식 둘이 아직 안 맞은 바퀴 수. 영영 기다리지는 않는다 */
     let offGrid = 0
+    /**
+     * **그만두는 자는 시계가 아니라 진행이다** (지시서 H1).
+     *
+     * ⚠️ **벽시계 900초는 기계가 붐비면 게임을 잘못 고발한다.**
+     * 실측(2026-09-09): 다른 프로세스와 CPU를 나눠 쓰기 시작하자 그전까지
+     * 통과하던 축복시티 구간이 「시간이 다 됐다」로 떨어졌다 — 게임은 한 줄도
+     * 안 바뀌었다. 진행이 있으면 얼마가 걸리든 기다리고, 진행이 없으면
+     * 얼마 안 걸렸어도 그만둔다.
+     *
+     * 진행은 지시서가 정한 넷이다 — **칸이 바뀜 · 맵이 바뀜 · 장면(대사·
+     * 스크립트·배틀)이 열리거나 닫힘 · 남은 계획 길이가 줄어듦**
+     */
+    const stall = makeStall(GO_PATIENCE)
+    /** 지난 바퀴에 세운 계획의 남은 걸음 수. 줄어드는 것도 진행이다 */
+    let planLeft = -1
+    /** 이번 바퀴가 시작한 시각. 진행 없는 바퀴를 너무 짧게 안 센다 */
+    let roundAt = Date.now()
     for (let t = 0; Date.now() < till; t++) {
+      // ⚠️ **빠른 바퀴가 견딤을 갉아먹지 않게 한다** (`ROUND_MS`)
+      const spent = Date.now() - roundAt
+      if (stall.idle > 0 && spent < ROUND_MS) await page.waitForTimeout(ROUND_MS - spent)
+      roundAt = Date.now()
       const s = await now()
+      if (stall.note(beat(s, planLeft))) {
+        return done(`${STALLED} — ${String(GO_PATIENCE)}바퀴 동안 진행이 없다`
+          + ` (맵 ${String(s.map)} · 칸 ${String(s.x)},${String(s.z)}`
+          + ` · 씬 ${String(s.scene)}${s.script ? ' · 스크립트' : ''}`
+          + `${s.talk ? ' · 대사창' : ''})`)
+      }
       if (verbose && t % 5 === 0) log(`    →${String(target)} ${t}: ${JSON.stringify(s)}`)
       if (s.scene === 'battle') { await fightThrough(); continue }
       if (s.talk || s.scene === 'menu') { await clearTalk(); continue }
@@ -881,11 +946,17 @@ export async function driveStory(page, {
         await runKeys(back.key, 1, back.at)
         continue
       }
+      planLeft = keys.length
       const how = await walk(keys, { x: s.x, z: s.z }, s.map, shun)
       noteMove(how, await now())
       if (verbose) log(`      ${String(keys.length)}걸음 → ${how}`)
     }
-    return done('시간이 다 됐다')
+    // ⚠️ **총예산은 마지막 방어선이지 판정자가 아니다** (지시서 1.1).
+    // 나아가는 중에 거기 걸렸으면 그것은 **못 잰 것**이지 실패가 아니다
+    return done(stall.moving
+      ? `${SLOW} — 나아가는 중에 총예산이 끝났다`
+        + ` (${String(stall.moves)}번 나아갔고 마지막 진행 뒤 ${String(stall.idle)}바퀴)`
+      : `${STALLED} — 총예산이 끝났고 그전에 진행도 없었다`)
   }
 
   /**
@@ -926,8 +997,24 @@ export async function driveStory(page, {
     let blind = 0
     /** 표식 둘이 아직 안 맞은 바퀴 수 */
     let offGrid = 0
+    /** 여기도 시계가 아니라 진행으로 그만둔다 (지시서 H1 · `goTo`와 같은 자다) */
+    const stall = makeStall(STEP_PATIENCE)
+    /** 지난 바퀴의 남은 걸음 수 */
+    let planLeft = -1
+    let roundAt = Date.now()
     while (Date.now() < till) {
+      const spent = Date.now() - roundAt
+      if (stall.idle > 0 && spent < ROUND_MS) await page.waitForTimeout(ROUND_MS - spent)
+      roundAt = Date.now()
       const s = await settle()
+      // ⚠️ **밟은 것을 먼저 본다.** 멈춤으로 접기 전에 `trail`을 봐야, 밟고
+      // 장면에 끌려간 판이 「멈췄다」로 안 적힌다
+      if (stall.note(beat(s, planLeft))) {
+        if (passed()) return done('arrived')
+        return done(`${STALLED} — ${String(STEP_PATIENCE)}바퀴 동안 진행이 없다`
+          + ` (맵 ${String(s.map)} · 칸 ${String(s.x)},${String(s.z)}`
+          + ` · 씬 ${String(s.scene)}${s.script ? ' · 스크립트' : ''})`)
+      }
       if (!s.ok) { await page.waitForTimeout(200); continue }
       if (s.map !== mapId) {
         /**
@@ -990,13 +1077,18 @@ export async function driveStory(page, {
       }
       blind = 0
       const keys = r.keys
+      planLeft = keys.length
       const how = await walk(keys, { x: s.x, z: s.z }, mapId, shun)
       noteMove(how, await now())
       if (how === 'done') { ep.via = 'stood'; return done('arrived') }
       if (passed()) return done('arrived')
       if (verbose) log(`      ${String(spot.x)},${String(spot.z)}까지 ${how}`)
     }
-    return done(passed() ? 'arrived' : '시간이 다 됐다')
+    if (passed()) return done('arrived')
+    return done(stall.moving
+      ? `${SLOW} — 나아가는 중에 총예산이 끝났다`
+        + ` (${String(stall.moves)}번 나아갔고 마지막 진행 뒤 ${String(stall.idle)}바퀴)`
+      : `${STALLED} — 총예산이 끝났고 그전에 진행도 없었다`)
   }
 
   /**

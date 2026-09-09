@@ -18,7 +18,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import { serveDist } from './serve.mjs'
-import { startVite } from '../devServer.mjs'
+import { knock, startVite } from '../devServer.mjs'
+import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
 import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import {
   bindingDigest, dataDigest, describeEnvironment, rosterOf, sealEvidence,
@@ -182,6 +183,11 @@ let seenBackend = null
 
 const results = []
 const record = (id, what, status, detail) => { results.push({ id, what, status, detail }) }
+/**
+ * ㉖이 **배포물에서** 잰 부하 (지시서 H4). 못 쟀으면 `null`이다 — **0으로 안
+ * 접는다**. ㉖을 안 돌린 판(`--only`)에서도 `null`이고, 그것은 「안 붐볐다」가 아니다
+ */
+let distLoad = null
 const skip = (id, what) => {
   record(id, what, 'NOT RUN', ROM === null ? '이 기계에 Platinum 롬이 없다' : '건너뜀')
 }
@@ -1789,6 +1795,18 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
   '26', '야생 배틀 · 트레이너 배틀 · 상점',
   async ({ page, requests, errors }) => {
     page.setDefaultTimeout(60_000)
+    /**
+     * **배포물이 실제로 몇 프레임으로 도는지를 여기서 잰다** (지시서 H4·§2.1).
+     *
+     * ⚠️ **지금까지 fps 표본이 개발 서버의 막힌 다리에서만 모였다.** 그래서
+     * 「4FPS가 났다」는 사실은 있는데 그것이 제품 성능인지 개발 서버 탓인지를
+     * 말할 수 없었다 (보고서 §7). 여기가 **배포물** 쪽 분포다 — journey의
+     * 개발 서버 분포와 같은 자(`requestAnimationFrame` 세기)로 잰다.
+     *
+     * ⚠️ **판정에 안 쓴다.** 낮은 fps로 이 항목이 떨어지지 않는다
+     */
+    await page.addInitScript(LOAD_SPY)
+    const loadSpy = startLoadSpy(page)
     await page.goto(`${origin}/`, { waitUntil: 'load' })
     await waitBoot(page)
     await armWizard(page, BDSP, 300_000)
@@ -1845,7 +1863,13 @@ await ((haveRom && haveBdsp && haveRoute) ? run : () => {})(
     const fatal = errors.filter((e) => !/ResizeObserver|WebGL|Download the React/.test(e))
     assert(fatal.length === 0, `콘솔 오류: ${fatal.slice(0, 2).join(' / ')}`)
 
+    // ⚠️ **판정 뒤에 걷는다.** 이 값은 판정에 안 쓰이므로, 걷다 실패해도 위의
+    // 판정을 뒤집으면 안 된다
+    distLoad = await loadSpy.stop().catch(() => null)
+    const fps = distLoad?.fps ?? null
     return `${say} · 게임 중 요청 0건 · 콘솔 오류 0건`
+      + (fps === null ? ' · 프레임 표본 없다'
+        : ` · 프레임 중앙값 ${String(fps.p50)} · p10 ${String(fps.p10)} (표본 ${String(fps.n)}초)`)
   },
 )
 
@@ -1907,6 +1931,19 @@ if (!(haveRom && haveBdsp)) {
         async ({ page, errors }) => {
           await ensure()
           page.setDefaultTimeout(60_000)
+          /**
+           * ⚠️ **브라우저를 열기 전에 서버가 사는지부터 본다** (지시서 H3).
+           *
+           * 실측(2026-09-09 · 기계를 다른 프로세스와 나눠 쓰던 중): 이 항목이
+           * `page.goto: Timeout 60000ms exceeded`로 떨어졌다. 그 한 줄은 밖에서
+           * **게임의 실패**로 읽힌다 — 못 뜬 것은 개발 서버였다. 서버가 안
+           * 대답하면 이 항목은 실패가 아니라 **BLOCKED(인프라)**다
+           */
+          const alive = await knock(`${dev}/`)
+          if (!alive.ok) {
+            blocked(`개발 서버가 대답을 안 한다 (${dev} · ${String(alive.why)}`
+              + ` · ${String(alive.ms)}ms) — 게임을 안 열었으므로 잰 것이 없다`)
+          }
           await page.goto(`${dev}/?assets=opfs`, { waitUntil: 'load' })
           const boot0 = await waitBoot(page)
           assert(boot0.startsWith('install:'),
@@ -2154,9 +2191,18 @@ mkdirSync(resolve(ROOT, '.audit'), { recursive: true })
  * ⚠️ 여기서 재는 것은 여전히 **성능이 아니라 동작**이다 (DEPLOY.md §5).
  * `software`를 같이 남기는 이유가 그것이다
  */
-const ENVIRONMENT = describeEnvironment({
-  browserVersion: BROWSER_VERSION, gpu: seenGpu, backend: seenBackend,
-})
+const ENVIRONMENT = {
+  ...describeEnvironment({
+    browserVersion: BROWSER_VERSION, gpu: seenGpu, backend: seenBackend,
+  }),
+  /**
+   * 이 판이 얼마나 붐볐나 (지시서 H4). ㉖이 **배포물에서** 잰 것이다 —
+   * 다른 항목들은 설치·부팅이라 프레임을 안 돌린다.
+   *
+   * ⚠️ **`null`은 「안 붐볐다」가 아니라 「못 쟀다」다** (㉖을 안 돌린 판)
+   */
+  load: distLoad,
+}
 
 writeFileSync(resolve(ROOT, '.audit/e2e.json'), `${JSON.stringify(sealEvidence({
   dataAtStart,

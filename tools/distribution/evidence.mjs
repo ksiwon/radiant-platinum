@@ -174,11 +174,22 @@ export const SUITES = {
     binds: 'artifact',
     label: '브라우저 실측',
     where: 'DEPLOY.md §5',
-    contract: 1,
+    // ⚠️ **2다.** 판정의 뜻이 바뀌었다 (2026-09-09 · 배포 구간 지시서 §1.1).
+    // ① 그만두는 자가 **벽시계에서 진행**으로 바뀌었다 — `goTo`·`stepOn`이
+    //    「진행 없음 N바퀴」로 끝나고, 총예산에 걸린 것은 그전에 나아가고
+    //    있었으면 실패가 아니라 **느림(관측 불능)**이다.
+    // ② ㉙이 브라우저를 열기 전에 개발 서버를 맨 HTTP로 두드린다 — 서버가
+    //    안 대답하면 그 항목은 FAIL이 아니라 **BLOCKED(인프라)**다.
+    // **1로 잰 판은 이 판정의 통과에 못 보탠다** — 옛 판의 「시간이 다 됐다」
+    // 하나에는 못 잰 것과 막힌 것이 섞여 있다
+    contract: 2,
     roster: () => listRoster(E2E_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
       'tools/e2e/run.mjs', 'tools/e2e/serve.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
+      // ⚠️ **그만두는 자와 부하 계측도 도구다** — 빠지면 판정의 뜻이 바뀐
+      // 판을 봉투가 못 잡는다 (`firstFrameRules`가 빠져 있던 것과 같은 자리다)
+      'tools/e2e/budget.mjs', 'tools/e2e/loadSpy.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs',
       'tools/distribution/evidence.mjs', 'tools/distribution/csp.mjs',
     ],
@@ -188,11 +199,17 @@ export const SUITES = {
     binds: 'source',
     label: '이야기 훑기',
     where: 'tools/e2e/story.mjs',
-    contract: 1,
+    // ⚠️ **2다.** 배틀 판정의 뜻이 바뀌었다 (2026-09-09 · 지시서 H2).
+    // 「45초 안에 안 끝났다」가 「**지문이 100바퀴 동안 안 바뀌었다**」가 됐다 —
+    // 옛 판은 무쇠 체육관의 **542번 눌러 끝난 배틀**을 「얼었다」로 적었다.
+    // 그리고 `goTo`·`stepOn`이 진행으로 그만둔다 (위 `installed-e2e`와 같다).
+    // **1로 잰 판은 이 판정의 통과에 못 보탠다**
+    contract: 2,
     roster: storyRoster,
     harness: [
       'tools/e2e/story.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/budget.mjs',
       'tools/e2e/sceneWatch.mjs', 'tools/devServer.mjs', 'tools/gpuFlags.mjs',
       'tools/shot/png.mjs', 'tools/distribution/evidence.mjs',
     ],
@@ -218,11 +235,20 @@ export const SUITES = {
     //    실패였고(도로를 걷는 내내 준비 안 됨), 텍스처 묶음만 바뀐 재요청은
     //    못 봤다.
     // **4로 잰 판도 이 판정의 통과에 못 보탠다.**
-    contract: 5,
+    //
+    // ⚠️ **6이다.** 뜻이 또 바뀌었다 (2026-09-09 · 배포 구간 지시서 §1.1).
+    // ① 구간 판정이 **PASS/FAIL 둘**에서 **PASS/FAIL/BLOCKED 셋**이 됐다.
+    //    시간 모양의 실패는 그 판의 부하가 붐빔을 가리킬 때 BLOCKED(경합)로
+    //    적힌다 — **통과가 아니고, 그 판은 다시 돌아야 한다.** 내용 모양의
+    //    실패(길이 없다·표식이 안 맞는다·멈췄다)는 어떤 부하에서도 FAIL이다.
+    // ② `goTo`·`stepOn`이 벽시계가 아니라 진행으로 그만둔다.
+    // **5로 잰 판은 이 판정의 통과에 못 보탠다.**
+    contract: 6,
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
       'tools/e2e/journey.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/budget.mjs', 'tools/e2e/loadSpy.mjs',
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',
       // ⚠️ 페이지에 심는 것도 도구다 — 빠지면 계측이 바뀐 판을 봉투가 못 잡는다
       'tools/e2e/perfSpy.mjs',
@@ -245,6 +271,8 @@ export const SUITES = {
       // 도구 목록 밖에 있으면 봉투가 그 변화를 못 잡는다
       'tools/e2e/firstFrame.mjs', 'tools/e2e/firstFrameRules.mjs',
       'tools/e2e/canvasShot.mjs', 'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs',
+      // ⚠️ `drive.mjs`가 이것으로 그만둔다 — 빠지면 그 변화를 봉투가 못 잡는다
+      'tools/e2e/budget.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/shot/png.mjs',
       'tools/distribution/evidence.mjs',
     ],
@@ -259,6 +287,7 @@ export const SUITES = {
     harness: [
       'tools/e2e/gpuLoss.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
+      'tools/e2e/budget.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/distribution/evidence.mjs',
     ],
   },

@@ -21,7 +21,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
-import { freePort, startVite } from '../devServer.mjs'
+import { freePort, knock, startVite } from '../devServer.mjs'
 import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import { driveStory, playOpening } from './drive.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
@@ -29,6 +29,8 @@ import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.
 import { judgeTerrain } from './terrainJudge.mjs'
 import { stageState, waitTerrain } from './stageProbe.mjs'
 import { SPY } from './perfSpy.mjs'
+import { LOAD_SPY, startLoadSpy } from './loadSpy.mjs'
+import { classify, INFRA, SHAPE, SLOW } from './budget.mjs'
 import { missingData, trainersOn } from './route.mjs'
 import { resumableAt, writeSegment } from './segments.mjs'
 import {
@@ -221,7 +223,29 @@ const AFTER_STOPS = [
   { id: '11', map: 47, what: '무쇠 체육관' },
 ]
 
+/**
+ * 구간 하나의 결말을 PASS·FAIL·BLOCKED로 가른다 (지시서 §1.1 「분류 규칙」).
+ *
+ * ⚠️ **BLOCKED는 통과가 아니다.** 그 구간은 조용한 기계에서 **다시 돌아야**
+ * 하고, 다시 돌아 PASS가 되기 전에는 완료 조건이 안 선다. 여기서 하는 일은
+ * 「이 실패로 게임을 의심할 것인가」를 가르는 것뿐이다.
+ *
+ * ⚠️ **시간 모양만 내려갈 수 있다.** 「느림 · 관측 불능」과 「예산이 다 돼
+ * 안 밟았다」가 그것이다. **「멈췄다」는 안 내려간다** — 그것은 표식이
+ * 90바퀴 동안 한 번도 안 바뀌었다는 뜻이고, 기계가 느리면 칸이 느리게라도
+ * 바뀌지 아예 안 바뀌지는 않는다. 「길이 없다」·「표식이 안 맞는다」도 내용이다
+ */
+const stopVerdict = (v) => {
+  if (v === 'arrived') return { status: 'PASS', why: null }
+  const timeShaped = typeof v === 'string'
+    && (v.startsWith(SLOW) || v.startsWith('시간이 다 됐다'))
+  const r = classify(timeShaped ? SHAPE.time : SHAPE.content, loadSpy.peek())
+  return { status: r.verdict, why: r.why }
+}
+
 let video = null
+/** 이 판이 얼마나 붐볐나 (지시서 H4). 못 걷었으면 `null` — **0으로 안 접는다** */
+let load = null
 const rows = []
 const add = (id, what, status, detail) => {
   rows.push({ id, what, status, detail })
@@ -271,6 +295,15 @@ await page.addInitScript(WATCH_INIT)
  * ⚠️ **계측 없는 대조가 따로 있다** — 2026-09-08 판정용 판(계약 4)에는 이 줄이 없었다
  */
 await page.addInitScript(SPY)
+/**
+ * **판이 도는 내내 부하를 잰다** (지시서 H4).
+ *
+ * ⚠️ **판정에 안 쓴다.** 낮은 fps 그 자체로는 아무 줄도 안 떨어뜨린다. 쓰이는
+ * 자리는 둘뿐이다 — 시간 모양의 실패를 FAIL과 BLOCKED(경합)로 가르는 분류와,
+ * 개발 서버·배포물의 분포를 나란히 놓는 §2.1의 비교다
+ */
+await page.addInitScript(LOAD_SPY)
+const loadSpy = startLoadSpy(page)
 
 /**
  * 콘솔이 조용한가. 게임이 도는 내내 듣는다.
@@ -591,6 +624,18 @@ async function openTitle() {
   // 찍은 뒤로도 모듈 그래프를 계속 미리 변환하고, 그동안 첫 `goto`는 붙잡혀
   // 있다 — 실측으로 캐시가 찬 판에서도 34초에 떨어졌다 (`tools/shot/shot.mjs`의
   // 같은 자리)
+  /**
+   * ⚠️ **가기 전에 서버가 사는지부터 본다** (지시서 H3). 여기서 `goto`가
+   * 죽으면 판 전체가 ⑨⑨ FAIL로 끝나고, 그 줄은 밖에서 **게임의 실패**로
+   * 읽힌다 — 서버가 안 대답하는 것은 게임이 틀린 것이 아니다.
+   *
+   * ⚠️ **상한을 대신 올리는 것이 아니다.** 아래 180초는 그대로 둔다
+   */
+  const alive = await knock(url)
+  if (!alive.ok) {
+    throw new Error(`${INFRA} 개발 서버가 대답을 안 한다 (${url}`
+      + ` · ${String(alive.why)} · ${String(alive.ms)}ms) — 게임을 안 열었다`)
+  }
   await page.goto(url, { waitUntil: 'load', timeout: 180_000 })
   const start = page.getByRole('button', { name: '시작', exact: true })
   await start.waitFor({ timeout: 120_000 })
@@ -1028,9 +1073,10 @@ try {
     const extra = stop.id === '08' && poketch !== null
       ? ` · 포켓치 ${poketch.done ? '받았다' : `못 받았다 (${String(poketch.why)})`}`
       : ''
-    add(stop.id, `${stop.what}에 걸어서 닿는다`,
-      got?.verdict === 'arrived' ? 'PASS' : 'FAIL',
-      `${String(got?.verdict ?? '안 갔다')}${got?.at ? ` · 멈춘 맵 ${String(got.at)}` : ''}${extra}`)
+    const j = stopVerdict(got?.verdict ?? '안 갔다')
+    add(stop.id, `${stop.what}에 걸어서 닿는다`, j.status,
+      `${String(got?.verdict ?? '안 갔다')}${got?.at ? ` · 멈춘 맵 ${String(got.at)}` : ''}${extra}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
   }
 
   const badges = (await readSave()).badges
@@ -1257,8 +1303,15 @@ try {
   ranToTheEnd = true
   add('99', '검사가 끝까지 갔다', 'PASS', `${String(rows.length)}줄 · 그림 ${String(shots.length)}컷`)
 } catch (e) {
-  if (!ranToTheEnd) add('99', '검사가 끝까지 갔다', 'FAIL', String(e.message ?? e).slice(0, 400))
+  if (!ranToTheEnd) {
+    // ⚠️ **게임을 못 연 것은 게임의 실패가 아니다** (지시서 H3). BLOCKED는
+    // 통과가 아니므로 이 판은 조용한 기계에서 **다시 돌아야** 한다
+    const why = String(e.message ?? e)
+    add('99', '검사가 끝까지 갔다', why.startsWith(INFRA) ? 'BLOCKED' : 'FAIL', why.slice(0, 400))
+  }
 } finally {
+  // ⚠️ **화면을 닫기 전에 걷는다** — 닫은 뒤에는 마지막 몫을 못 읽는다
+  load = await loadSpy.stop().catch(() => null)
   // 파일은 맥락이 닫힐 때 쓰인다 — 경로는 그 뒤에야 확실해진다
   const clip = page.video()
   await browser.close()
@@ -1286,7 +1339,13 @@ writeFileSync(resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEviden
   expectedCases: EXPECTED_CASES,
   executedCases: rows.map((r) => r.id),
   startDigest: START_DIGEST,
-  environment: { ...describeEnvironment({ browserVersion, gpu, backend }), view: VIEW },
+  environment: {
+    ...describeEnvironment({ browserVersion, gpu, backend }),
+    view: VIEW,
+    // ⚠️ **이 판이 얼마나 붐볐는지가 봉투 안에 있어야 한다** (지시서 H4).
+    // 밖에 적으면 다음 사람이 「그때 기계가 어땠는지」를 못 되짚는다
+    load,
+  },
   results: rows,
   extra: { timings, story, shots, video, noise, perfSpy },
 }), null, 1)}\n`)

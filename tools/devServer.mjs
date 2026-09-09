@@ -21,6 +21,42 @@ export async function freePort() {
 }
 
 /**
+ * 그 주소가 **살아 있는가**를 맨 HTTP로 두드린다 (지시서 H3).
+ *
+ * ⚠️ **왜 필요한가.** `page.goto`가 시간 초과로 죽으면 그 항목이 FAIL로
+ * 적히는데, 그 문장은 **게임을 고발한다** — 실측(2026-09-09 · 기계를 나눠 쓰던
+ * 중): e2e ㉙이 `page.goto: Timeout 60000ms exceeded`로 떨어졌다. 게임은 한 줄도
+ * 안 바뀌었고 못 뜬 것은 서버였다. 브라우저를 열기 전에 서버 뿌리를 두드려
+ * **인프라가 죽은 것과 게임이 틀린 것**을 가른다.
+ *
+ * ⚠️ **`page.goto`의 상한을 대신 올리는 것이 아니다.** 그 값은 그대로 두고,
+ * 여기서 안 오면 그 항목을 **BLOCKED(인프라)**로 적는다 — 통과가 아니고,
+ * 그 묶음은 다시 돌아야 한다.
+ *
+ * @returns `{ ok, status, ms, why }` — 못 열었으면 `why`에 까닭이 있다
+ */
+export async function knock(url, { timeout = 20_000, tries = 3 } = {}) {
+  const t0 = Date.now()
+  let why = null
+  for (let i = 0; i < tries; i++) {
+    const ctl = new AbortController()
+    const bell = setTimeout(() => { ctl.abort() }, timeout)
+    try {
+      // ⚠️ **본문을 안 받는다.** 개발 서버의 `index.html`은 작지만, 여기서
+      // 재려는 것은 「듣고 있는가」지 「무엇을 주는가」가 아니다
+      const res = await fetch(url, { signal: ctl.signal, redirect: 'manual' })
+      await res.body?.cancel().catch(() => {})
+      return { ok: true, status: res.status, ms: Date.now() - t0, why: null }
+    } catch (e) {
+      why = String(e?.cause?.code ?? e?.name ?? e?.message ?? e)
+    } finally { clearTimeout(bell) }
+    // 서버가 아직 뜨는 중일 수 있다 — 한 번은 더 본다
+    if (i + 1 < tries) await new Promise((ok) => { setTimeout(ok, 1_000) })
+  }
+  return { ok: false, status: null, ms: Date.now() - t0, why }
+}
+
+/**
  * vite 개발 서버를 띄우고 주소가 뜰 때까지 기다린다.
  *
  * ⚠️ **`npx`가 아니라 vite의 js를 노드로 바로 부른다.** 윈도우에서 `.cmd`를
