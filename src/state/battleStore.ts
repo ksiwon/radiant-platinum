@@ -512,62 +512,106 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     )
   },
 
+  /**
+   * 트레이너전을 연다.
+   *
+   * ⚠️ **자리를 자료보다 먼저 잡는다.** 형제 셋(`startWild`·`startFactory`·
+   * `startSafari`)은 `await` 앞에서 `phase`를 세우는데 여기만 표 셋을 받은
+   * **뒤에** 세우고 있었다. 그 몇 프레임 동안 `phase`가 `'off'`라 밖에서는
+   * **배틀이 없는 것과 구별이 안 된다** — 필드의 `tryStartScripts`가 바로 그
+   * 값을 보고 새 스크립트를 막는다(`script/field.ts`).
+   *
+   * ⚠️ **실측으로 잡았다** (2026-09-09 · `pnpm story`의 gym3). 확인 지점으로
+   * 연고 체육관에 뛰어들면 `useDevWarp`가 `abortScript()` 뒤에 이 함수를
+   * 부르는데, 표를 받는 사이에 필드가 열려 **눈이 마주친 트레이너**의 다가오는
+   * 연출이 시작됐다. 그 연출의 대사창이 배틀 화면 **밑에서** 영영 기다렸고
+   * (12쪽 중 0쪽), 밖에서는 「대사가 통째로 날아갔다」로 보였다.
+   *
+   * ⚠️ **정상 플레이에는 이 구멍이 없었다.** 스크립트가 여는 길은 그 스크립트가
+   * 계속 돌아서(`fieldScripts.ctx !== null`) `tryStartScripts`가 애초에 안
+   * 불린다 — 스크립트를 **먼저 지우는** 자리만 뚫렸다. 그래도 여기서 막는다:
+   * 뚫린 값을 내주고 있던 것은 이 함수다.
+   *
+   * ⚠️ **잡았으면 반드시 놓아준다.** 자리만 잡고 터지면 `phase`가 `'loading'`에
+   * 묶여 배틀 화면이 빈 채로 남는다. 그래서 실패는 `'off'`로 되돌리고 **다시
+   * 던진다** — 부르는 쪽(`scene/fieldServices`)이 그 예외를 받아 스크립트를
+   * 놓아준다
+   */
   startTrainer: async (trainerId, options) => {
-    const [table, names, classes] = await Promise.all([
-      loadTrainers(),
-      loadTrainerNames(gameLocale()),
-      loadTrainerClasses(gameLocale()),
-    ])
-    const trainer = table.get(trainerId)
-    metTrainer = trainerId
-    // 부적금화는 도구 데이터가 아직 없어서 안 본다
-    const prize = prizeFor(trainer, table.prizeMul)
-    if (!trainer.party.length) {
-      set({ error: `트레이너 #${trainerId}은(는) 파티가 없다` })
-      return
-    }
-    // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
-    const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
+    if (get().phase !== 'off') return
+    set({
+      phase: 'loading', kind: 'trainer', foeName: null, prize: 0,
+      trainerId, trainerClass: null,
+      view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
+      atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
+      shiftAsk: null, safari: null,
+    })
+    try {
+      const [table, names, classes] = await Promise.all([
+        loadTrainers(),
+        loadTrainerNames(gameLocale()),
+        loadTrainerClasses(gameLocale()),
+      ])
+      const trainer = table.get(trainerId)
+      metTrainer = trainerId
+      // 부적금화는 도구 데이터가 아직 없어서 안 본다
+      const prize = prizeFor(trainer, table.prizeMul)
+      if (!trainer.party.length) {
+        // ⚠️ **잡은 자리를 놓고 나간다.** 안 놓으면 `phase`가 `'loading'`에 묶여
+        // 배틀 화면이 빈 채로 남는다
+        set({ phase: 'off', trainerId: null, trainerClass: null,
+          error: `트레이너 #${trainerId}은(는) 파티가 없다` })
+        return
+      }
+      // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
+      const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
 
-    // 트레이너가 들고 나오는 회복 도구. 개수도 종류도 롬 기록 그대로다 —
-    set({ trainerId, trainerClass: trainer.class })
-    // 라이벌은 상처약, 관장은 좋은상처약, 사천왕·챔피언은 회복약이다
-    let items: ControllerItems | undefined
-    if (trainer.items.length > 0) {
-      const bank = await loadItems()
-      items = { bag: new TrainerItems(trainer.items, bank), item: (id) => bank.get(id) }
-    }
+      // 트레이너가 들고 나오는 회복 도구. 개수도 종류도 롬 기록 그대로다 —
+      set({ trainerId, trainerClass: trainer.class })
+      // 라이벌은 상처약, 관장은 좋은상처약, 사천왕·챔피언은 회복약이다
+      let items: ControllerItems | undefined
+      if (trainer.items.length > 0) {
+        const bank = await loadItems()
+        items = { bag: new TrainerItems(trainer.items, bank), item: (id) => bank.get(id) }
+      }
 
-    // 더블 배틀 (PARITY §2.2). 롬이 트레이너마다 적어 둔 표식이다 —
-    // 928명 중 28명이 참이다.
-    //
-    // ⚠️ **양쪽 다 두 마리가 있어야 연다.** 원작은 스크립트가 먼저 세어 보고
-    // "포켓몬이 두 마리 필요하다"로 막지만(§10 「글 칸 채우기」), 우리는 아직
-    // 그 자리가 없다 — 한 마리로 더블을 열면 sim이 시작하자마자 승부를 낸다.
-    // 여기서 싱글로 떨어뜨리는 것이 그 사이의 방어선이다
-    const able = useSaveStore.getState().party.filter((m) => !m.isEgg && m.hp > 0).length
-    const doubles = trainer.double && trainer.party.length >= 2 && able >= 2
+      // 더블 배틀 (PARITY §2.2). 롬이 트레이너마다 적어 둔 표식이다 —
+      // 928명 중 28명이 참이다.
+      //
+      // ⚠️ **양쪽 다 두 마리가 있어야 연다.** 원작은 스크립트가 먼저 세어 보고
+      // "포켓몬이 두 마리 필요하다"로 막지만(§10 「글 칸 채우기」), 우리는 아직
+      // 그 자리가 없다 — 한 마리로 더블을 열면 sim이 시작하자마자 승부를 낸다.
+      // 여기서 싱글로 떨어뜨리는 것이 그 사이의 방어선이다
+      const able = useSaveStore.getState().party.filter((m) => !m.isEgg && m.hp > 0).length
+      const doubles = trainer.double && trainer.party.length >= 2 && able >= 2
 
-    await open(
-      set,
-      get,
-      'trainer',
-      label,
-      prize,
-      ({ species, pp }) => ({
-        name: label || '상대',
-        team: trainer.party.map((entry, i) => {
-          const sp = species.get(entry.species)
-          const mon = trainerMonToInstance(entry, sp, trainerId, i)
-          mon.hp = statsOf(mon, sp).hp
-          return ready(fillPp(mon, pp), sp, foeKey(i))
+      await open(
+        set,
+        get,
+        'trainer',
+        label,
+        prize,
+        ({ species, pp }) => ({
+          name: label || '상대',
+          team: trainer.party.map((entry, i) => {
+            const sp = species.get(entry.species)
+            const mon = trainerMonToInstance(entry, sp, trainerId, i)
+            mon.hp = statsOf(mon, sp).hp
+            return ready(fillPp(mon, pp), sp, foeKey(i))
+          }),
         }),
-      }),
-      trainer.ai,
-      options,
-      items,
-      doubles,
-    )
+        trainer.ai,
+        options,
+        items,
+        doubles,
+        // 자리는 위에서 이미 잡았다 (머리말)
+        true,
+      )
+    } catch (e) {
+      set({ phase: 'off', trainerId: null, trainerClass: null,
+        error: e instanceof Error ? e.message : String(e) })
+      throw e
+    }
   },
 
   startFactory: async ({ team, foe, label, ai, doubles }) => {
@@ -1373,8 +1417,19 @@ async function open(
   rules?: BattleRules,
   items?: ControllerItems,
   doubles = false,
+  /**
+   * 부르는 쪽이 **이미 자리를 잡았는가.**
+   *
+   * ⚠️ **왜 필요한가.** 이 함수의 첫 두 줄이 「비어 있으면 잡는다」인데, 그
+   * 두 줄은 부르는 쪽이 `await`을 하나라도 지나온 뒤에야 돈다. 자료를 받는
+   * 동안 `phase`가 `'off'`로 남으면 그 몇 프레임이 **필드에게는 배틀이 없는
+   * 시간**이라, 필드가 그 사이에 새 스크립트를 시작한다
+   * (`script/field.ts`의 `tryStartScripts` — 그 가드가 보는 것이 `phase`다).
+   * 그래서 `startTrainer`는 자료보다 **먼저** 잡고 여기에 참을 준다
+   */
+  claimed = false,
 ): Promise<void> {
-  if (get().phase !== 'off') return
+  if (!claimed && get().phase !== 'off') return
   set({
     phase: 'loading',
     kind,
