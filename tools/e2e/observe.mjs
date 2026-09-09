@@ -97,6 +97,39 @@ function devObserver(page) {
         facing: st.worldState.player.facing,
       }
     }),
+    /**
+     * **게임 자신의 격자**가 그 칸을 막았는가. 우리 격자(`route.mjs`)와 견주려고
+     * 읽는다 — 계획은 우리 것으로 세우고 막는 것은 게임 것이라, 둘이 다르면
+     * 「길은 있는데 안 걸어진다」가 난다
+     */
+    blockedAt: (x, z) => read('게임 격자를 못 읽었다', async ([tx, tz]) => {
+      const m = await import('/src/engine/map/world.ts')
+      const g = m.world.grid
+      if (!g) return null
+      return { blocked: g.isBlocked(tx, tz), behavior: g.behavior?.(tx, tz) ?? null }
+    }, [x, z]),
+    /**
+     * 그 자리를 **사람이** 막고 있는가 (`actor/obstacles.ts`의 `solidNpcAt` —
+     * 게임이 실제로 쓰는 그 함수다).
+     *
+     * ⚠️ **격자에는 사람이 없다.** `route.mjs`는 칸 격자로만 계획하므로
+     * 사람을 뚫고 가는 길을 낸다 — 그때 「경로는 있는데 이동 실패」가 난다
+     */
+    solidAt: (x, z) => read('사람 충돌을 못 읽었다', async ([tx, tz]) => {
+      const o = await import('/src/engine/actor/obstacles.ts')
+      const st = await import('/src/state/worldState.ts')
+      const hit = o.solidNpcAt(tx, tz, st.worldState.player.position.y)
+      return hit === null ? null : {
+        script: hit.info?.script ?? null,
+        at: { x: Number(hit.x.toFixed(2)), z: Number(hit.z.toFixed(2)) },
+      }
+    }, [x, z]),
+    /** 지금 프레임이 얼마나 걸리나 (`scene/sceneRefs.ts`의 `perfSnapshot`) */
+    perf: () => read('계기판을 못 읽었다', async () => {
+      const m = await import('/src/scene/sceneRefs.ts')
+      const p = m.perfSnapshot
+      return p === undefined ? null : { fps: p.fps ?? null, ms: p.ms ?? null, draws: p.draws ?? null }
+    }),
     npcSpot: (mapId, script) => read('명부를 못 읽었다', async ([map, want]) => {
       const m = await import('/src/engine/actor/npcs.ts')
       const reg = m.npcActors
@@ -170,6 +203,9 @@ function distObserver(page) {
       if (!Number.isFinite(x) || !Number.isFinite(z)) return unknown('아직 칸 표식이 없다')
       return got({ map: Number(m.map), x, z, facing: null, tileOnly: true })
     },
+    blockedAt: async () => unknown(NO_SRC),
+    solidAt: async () => unknown(NO_SRC),
+    perf: async () => unknown(NO_SRC),
     npcSpot: async () => unknown(NO_SRC),
     partyState: async () => unknown(NO_SRC),
     bestMove: async () => unknown(NO_SRC),

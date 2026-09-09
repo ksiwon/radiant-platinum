@@ -489,12 +489,24 @@ const poketchNow = () => page.evaluate(async () => {
     /** `FLAG_RECEIVED_POKETCH` — 사장이 실제로 준 자리 */
     received: v.checkFlag(243),
     cityState: v.get(16503),
+    /**
+     * `VAR_POKETCH_CAMPAIGN_STATE = 16615`.
+     *
+     * ⚠️ **광대 ③은 이 값에 걸려 있다** — 원작
+     * (`scripts_jubilife_city.s:1578`)이
+     * `GoToIfLt VAR_POKETCH_CAMPAIGN_STATE, 2`면 "좀 더 둘러보라"로 빠지고
+     * 쿠폰을 **안 준다.** 그래서 이 값이 없으면 「말은 걸었는데 쿠폰이 안 는다」의
+     * 까닭을 못 가른다 — 못 만난 것인지, 만났는데 관문에 걸린 것인지.
+     *
+     * ⚠️ **번호는 두 앵커로 확인했다.** 목록(`vars_flags.txt`)에서
+     * `VAR_UNK_0x4072`(줄 4225)와 `VAR_UNUSED_0x40EA`(줄 4345)가 둘 다
+     * 줄 4342를 `0x40E7 = 16615`로 가리킨다. 같은 셈이 이미 확정된
+     * `VAR_JUBILIFE_CITY_STATE = 16503`(줄 4230)도 맞힌다
+     */
+    campaign: v.get(16615),
     enabled: s.poketch.enabled,
   }
 })
-
-/** 쿠폰 셋만 — 광대 한 명이 끝날 때마다 본다 */
-const couponsNow = async () => (await poketchNow()).coupons
 
 const readSave = () => page.evaluate(async () => {
   const m = await import('/src/state/saveStore.ts')
@@ -744,7 +756,13 @@ try {
             : '안 갔다'
           await api.clearTalk()
           await api.settle()
-          log(`  사장 앞(${String(JUBILIFE.campaign.x)},${String(JUBILIFE.campaign.z)}) → ${met}`)
+          // ⚠️ **밟았다는 것과 장면이 돌았다는 것은 다르다.** 그 칸의 좌표
+          // 이벤트(`events.json` 표 2의 script 17 · `var 16615 == 1`)가 도는
+          // 것이 목적이고, 그것이 캠페인 단계를 2로 올린다 — 광대 ③이 그
+          // 값에 걸려 있다. 밟기 결말만 적으면 그 차이가 안 남는다
+          const camp = (await poketchNow()).campaign
+          log(`  사장 앞(${String(JUBILIFE.campaign.x)},${String(JUBILIFE.campaign.z)}) → ${met}`
+            + ` · 캠페인단계 ${String(camp)}`)
           /** 사슬 전체의 마감. 넷이 나눠 쓴다 */
           const chainTill = Date.now() + Math.min(POKETCH_CHAIN_MS, Math.max(0, api.left()))
           /** 이 사람에게 줄 시간 — 사슬 마감과 전체 예산 둘 다에 걸린다 */
@@ -754,9 +772,10 @@ try {
             const said = await api.talkToNpc(3, clown.script, chainRoom())
             await api.clearTalk()
             await api.settle()
-            const got = await couponsNow()
+            const bag2 = await poketchNow()
             log(`  ${clown.what} → ${said ? '말을 걸었다' : '못 걸었다'}`
-              + ` · 쿠폰 ${got.filter(Boolean).length}/3`)
+              + ` · 쿠폰 ${bag2.coupons.filter(Boolean).length}/3`
+              + ` · 캠페인단계 ${String(bag2.campaign)}`)
           }
           const said = chainRoom() > 0
             && await api.talkToNpc(3, JUBILIFE.president.script, chainRoom())

@@ -55,6 +55,18 @@ const PRESIDENT = { script: 18, what: '포켓치사 사장' }
  */
 const VAR_CITY = 16503
 /**
+ * `VAR_POKETCH_CAMPAIGN_STATE`. 목록 줄 4342이고, 앞뒤 두 앵커가 같은 값을
+ * 가리킨다 — `VAR_UNK_0x4072`(줄 4225)에서 세면 `0x40E7`, `VAR_UNUSED_0x40EA`
+ * (줄 4345)에서 거꾸로 세도 `0x40E7`이다. **16615**다.
+ *
+ * ⚠️ **광대 ③만 이 관문을 진다** (`scripts_jubilife_city.s:1578` —
+ * `GoToIfLt VAR_POKETCH_CAMPAIGN_STATE, 2`). 그래서 광대 ③에서만
+ * 「말은 걸었는데 쿠폰이 안 는다」가 나올 수 있고, 그때 원인은 접근이 아니라
+ * **앞 단계**다: 스쿨이 1로 올리고, 사장 앞 좌표 이벤트(표 2의 script 17)가
+ * 2로 올린다
+ */
+const VAR_CAMPAIGN = 16615
+/**
  * `FLAG_RECEIVED_COUPON_1..3`.
  *
  * ⚠️ **줄 셈으로 짐작하지 않는다 — 재서 얻은 값이다.** 깃발 diff로 광대 셋이
@@ -88,18 +100,19 @@ const flagsNow = (page) => page.evaluate(async () => {
 })
 
 /** 이야기 상태를 **읽는다** — 쿠폰 셋 · 도시 단계 · 포켓치 보유 */
-const story = (page) => page.evaluate(async ([varCity, coupons, poketchFlag]) => {
+const story = (page) => page.evaluate(async ([varCity, coupons, poketchFlag, varCamp]) => {
   const f = await import('/src/engine/script/field.ts')
   const save = await import('/src/state/saveStore.ts')
   const v = f.fieldScripts.vars
   const s = save.useSaveStore.getState()
   return {
     cityState: v.get(varCity),
+    campaign: v.get(varCamp),
     coupons: coupons.map((n) => v.checkFlag(n)),
     received: v.checkFlag(poketchFlag),
     poketch: { enabled: s.poketch.enabled, apps: s.poketch.registry.filter((n) => n > 0).length },
   }
-}, [VAR_CITY, COUPONS, FLAG_POKETCH])
+}, [VAR_CITY, COUPONS, FLAG_POKETCH, VAR_CAMPAIGN])
 
 /** 그 맵에 실제로 선 사람들 — 신원·지금 자리·움직임까지 */
 const roster = (page) => page.evaluate(async () => {

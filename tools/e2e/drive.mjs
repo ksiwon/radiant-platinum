@@ -173,6 +173,24 @@ export async function driveStory(page, {
    * ⚠️ **같은 요청을 계속 쌓지 않는다** (§4.1). 같은 목표를 되풀이한 것은
    * 횟수와 처음·마지막만 남긴다 — 빠르게 실패한 계획일수록 줄 수가 많다
    */
+  /**
+   * **막힌 걸음의 까닭을 묶어 센다** — 「벽이었다」와 「잠겨 있었다」를 가른다.
+   *
+   * ⚠️ **판정에 안 쓴다.** 이것은 증거지 통과·실패의 근거가 아니다
+   */
+  const blockSummary = () => {
+    const byWhy = {}
+    for (const b of blockNotes) {
+      const why = b.grid === true ? '격자가 막았다'
+        : b.lock.script ? '스크립트가 돌고 있었다'
+          : b.lock.talk ? '대사창이 떠 있었다'
+            : b.lock.scene !== 'overworld' ? `씬이 ${String(b.lock.scene)}였다`
+              : '격자는 열렸는데 안 갔다'
+      byWhy[why] = (byWhy[why] ?? 0) + 1
+    }
+    return { n: blockNotes.length, byWhy, first: blockNotes.slice(0, 12) }
+  }
+
   const failedEpisodes = (cap = 200) => {
     const seen = new Map()
     for (const e of episodes) {
@@ -229,9 +247,27 @@ export async function driveStory(page, {
     await page.waitForTimeout(60)
   }
 
+  /**
+   * **그 칸에 서 있는 것을 본** 마지막 시각 — `맵:x,z` → ms.
+   *
+   * ⚠️ **왜 필요한가.** 좌표 이벤트가 걸린 칸은 밟는 **순간** 장면이 열리고,
+   * 장면이 주인공을 딴 데로 옮긴다. 그래서 "지금 그 칸에 서 있는가"만 물으면
+   * **밟았는데도 영영 확인이 안 된다** — 실측(2026-09-09): 201번도로
+   * (111,857)에서 가방 장면이 제대로 열려 파트너를 고르고 라이벌전까지
+   * 치렀는데, `stepOn`은 그 180초를 다 쓰고 「시간이 다 됐다」로 적었다.
+   *
+   * ⚠️ **느슨하게 만드는 것이 아니다.** 좌표 이벤트는 칸에 **들어설 때**
+   * 걸린다(`events.json`의 `triggers`) — 거기 **머무는** 것은 게임이 요구하지
+   * 않는 더 센 조건이다. 그리고 짐작이 아니라 **관측한 칸만** 적는다
+   */
+  const trail = new Map()
+
   const now = async () => {
     const m = await page.evaluate(() => ({ ...document.documentElement.dataset }))
     const [x, z] = (m.tile ?? '').split(',').map(Number)
+    if (Number.isFinite(x) && Number.isFinite(Number(m.map)) && m.restoring === undefined) {
+      trail.set(`${String(Number(m.map))}:${String(x)},${String(z)}`, Date.now())
+    }
     return {
       scene: m.scene, map: Number(m.map), talk: m.talk === '1', script: m.script === '1',
       battle: m.battle ?? null, menu: m.menu ?? null, x, z,
@@ -472,19 +508,71 @@ export async function driveStory(page, {
   }
 
   /** 방향키를 잡고 그 줄 끝 칸에 닿을 때까지 기다린다 */
+  /**
+   * 방향키를 잡고 그 줄 끝 칸에 닿을 때까지 기다린다.
+   *
+   * ⚠️ **「칸당 420ms」로 끊으면 안 된다 — 그것은 60FPS 가정이다.**
+   * 실측(2026-09-09 `_stairs42` · 개발 서버): 화면이 **4FPS**로 떨어지는
+   * 순간이 있고(전체의 8.9%가 10FPS 미만, 최저 4 · 중앙값은 60), 그때 두 칸을
+   * 부탁하고 1395ms를 기다리면 **0.18칸**만 간다. 그 판을 「막혔다」로 적으면
+   *
+   *   ① 멀쩡한 칸이 그 여행 내내 기피 목록에 들어가고
+   *   ② 길이 있는데 「경로 found 후 이동 실패」가 난다
+   *
+   * 실제로 그것이 journey 실패 아홉 건의 원인이었다.
+   *
+   * 그래서 **시간이 아니라 나아가는가를 본다.** 나아가는 동안은 기다리고,
+   * 멈춘 채로 `STALL`을 넘길 때만 포기한다. 왜 끝났는지는 `lastRun`에 남긴다 —
+   * 「막혔다」와 「느렸다」를 부르는 쪽이 갈라 쓸 수 있어야 한다.
+   *
+   * ⚠️ **원시 좌표가 있으면 그것으로 본다.** 표식은 칸 단위 정수라 반 칸을
+   * 못 보여 준다 — 4FPS에서 한 칸은 7초가 넘으므로 표식만 보면 「멈췄다」로
+   * 읽힌다. 배포물에는 원시 좌표가 없으므로 그쪽은 칸으로 보되 기다림을 넉넉히
+   * 준다 (한 칸에 7.7초가 실측값이다)
+   */
   const runKeys = async (key, count, want) => {
     lastKeyAt = Date.now()
+    /** 원시 좌표를 읽을 수 있나. 읽으면 훨씬 촘촘히 나아감을 본다 */
+    const fine = obs.kind === 'dev'
+    /** 멈춘 채로 이만큼 지나면 정말 안 가는 것이다 */
+    const STALL = fine ? 1_500 : 9_000
+    /** 아무리 느려도 여기서는 끊는다 — 무한정 잡고 있지 않는다 */
+    const cap = Date.now() + Math.min(60_000, 2_000 + count * 10_000)
+    const [dx, dz] = STEPV[key]
     await page.keyboard.down(key)
-    const until = Date.now() + 400 + count * 420
     let at = null
-    while (Date.now() < until) {
+    let moved = Date.now()
+    let seen = null
+    let rawSeen = null
+    let rawAt = 0
+    let why = 'deadline'
+    while (Date.now() < cap) {
       at = await now()
-      if (at.talk || at.scene !== 'overworld') break
-      if (at.x === want.x && at.z === want.z) break
+      if (at.talk || at.scene !== 'overworld') { why = 'scene'; break }
+      // ⚠️ **정확히 같은 칸만 보면 지나친다.** 나아가는 동안 잡고 있으므로,
+      // 폴링 사이에 목표 칸을 건너뛰면 영영 안 멈춘다 — 실측(고친 직후):
+      // `ArrowLeft×3`을 부탁했는데 **열한 칸**을 갔다. 미는 축에서
+      // **닿았거나 지나쳤으면** 손을 뗀다
+      if (at.x === want.x && at.z === want.z) { why = 'arrived'; break }
+      if (dx !== 0 && (dx > 0 ? at.x >= want.x : at.x <= want.x)) { why = 'passed'; break }
+      if (dz !== 0 && (dz > 0 ? at.z >= want.z : at.z <= want.z)) { why = 'passed'; break }
+      const tile = `${String(at.x)},${String(at.z)}`
+      if (tile !== seen) { seen = tile; moved = Date.now() }
+      // 원시 좌표는 매 바퀴 묻기엔 비싸다 — 200ms마다 본다
+      if (fine && Date.now() - rawAt > 200) {
+        rawAt = Date.now()
+        const r = await obs.where()
+        if (r.known) {
+          const now2 = `${r.value.x.toFixed(2)},${r.value.z.toFixed(2)}`
+          if (now2 !== rawSeen) { rawSeen = now2; moved = Date.now() }
+        }
+      }
+      if (Date.now() - moved > STALL) { why = 'stalled'; break }
       await page.waitForTimeout(25)
     }
     await page.keyboard.up(key)
     await page.waitForTimeout(70)
+    lastRun = { why, ms: Date.now() - lastKeyAt, key, count }
     return at
   }
 
@@ -504,27 +592,90 @@ export async function driveStory(page, {
   }
 
   /** 계획한 길을 밟는다. 중간에 무슨 일이 나면 거기서 멈추고 알린다 */
+  /** 그 칸이 **우리 격자로** 막혔는가. 「벽이었나」와 「잠겼었나」를 가르는 값이다 */
+  const grid0 = (mapId, x, z) => {
+    try { return gridOf(matrixOf(mapId)).blocked(x, z) } catch { return null }
+  }
+  /** 막힌 걸음의 까닭 기록. 판정에는 안 쓰고 증거로만 남긴다 */
+  const blockNotes = []
+  /** 마지막 `runKeys`가 왜 끝났나 — `arrived`·`stalled`·`scene`·`deadline` */
+  let lastRun = { why: null, ms: 0, key: null, count: 0 }
+
   const walk = async (keys, from, mapId, shun = null) => {
     for (const leg of runs(keys, from)) {
+      const legT0 = Date.now()
       const at = await runKeys(leg.key, leg.count, leg.want)
+      const legMs = Date.now() - legT0
       if (at === null) return 'unknown'
       if (at.scene === 'battle') return 'battle'
       if (at.talk || at.scene === 'menu') return 'talk'
       if (at.scene !== 'overworld') return 'scene'
       if (at.map !== mapId) return 'warped'
       if (at.x !== leg.want.x || at.z !== leg.want.z) {
+        // ⚠️ **「막혔다」의 까닭이 하나가 아니다.** 벽일 수도, 사람일 수도,
+        // **필드 스크립트가 발을 묶은 것**일 수도 있다 — `runKeys`는 대사창과
+        // 씬 전환만 보고 멈추지 최신 `script` 표식은 안 본다. 실측
+        // (2026-09-09 `_stairs42`): 떡잎마을 (115,886)에서 왼·아래·오른 **세
+        // 방향이 다 「막혔다」**로 적혔는데 격자로는 셋 다 열려 있었다.
+        // 무엇이었는지 **적어 두고** 가른다 — 적기 전에는 고치지 않는다
+        blockNotes.push({
+          key: leg.key, count: leg.count,
+          want: { x: leg.want.x, z: leg.want.z },
+          at: { x: at.x, z: at.z, map: at.map },
+          lock: { script: at.script, talk: at.talk, scene: at.scene, restoring: at.restoring },
+          grid: grid0(mapId, leg.want.x, leg.want.z),
+          // ⚠️ **게임에게 직접 묻는다.** 우리 격자와 다르면 그것이 원인이다
+          game: await (async () => {
+            const r = await obs.blockedAt(leg.want.x, leg.want.z)
+            return r.known ? r.value : { why: r.why }
+          })(),
+          // ⚠️ **「안 움직였다」와 「표식이 안 따라왔다」는 다른 일이다.**
+          // 표식(`data-tile`)은 칸 단위 정수라 반 칸을 못 보여 준다 — 원시
+          // 좌표를 함께 적어야 그 둘이 갈린다
+          raw: await (async () => {
+            const r = await obs.where()
+            return r.known ? r.value : { why: r.why }
+          })(),
+          // ⚠️ **격자에 없는 것이 사람이다** — 게임이 쓰는 그 함수에 그대로 묻는다
+          // ⚠️ **칸 중심을 물어야 한다.** 주인공의 원시 좌표가 `886.5`인 것에서
+          // 보듯 칸 중심은 **정수 + 0.5**다. 정수를 넘기면 칸 모서리를 묻게 되어
+          // 옆에 선 사람을 놓친다 — 처음에 그렇게 물어 「사람 null」이 나왔다
+          solid: await (async () => {
+            const r = await obs.solidAt(leg.want.x + 0.5, leg.want.z + 0.5)
+            return r.known ? r.value : { why: r.why }
+          })(),
+          // ⚠️ **`runKeys`는 칸당 420ms를 가정한다.** 화면이 그보다 느리면
+          // 「덜 걸은 것」이 「막힌 것」으로 적힌다 — 그 둘을 가르는 값이다
+          legMs,
+          why: lastRun.why,
+          perf: await (async () => {
+            const r = await obs.perf()
+            return r.known ? r.value : { why: r.why }
+          })(),
+        })
         if (verbose) {
           log(`        ${leg.key}×${String(leg.count)} 막혔다 — ${String(at.x)},${String(at.z)} `
-            + `(원한 곳 ${String(leg.want.x)},${String(leg.want.z)})`)
+            + `(원한 곳 ${String(leg.want.x)},${String(leg.want.z)})`
+            + ` · 스크립트 ${at.script ? '돈다' : '안 돈다'} · 대사 ${at.talk ? '있다' : '없다'}`
+            + ` · 우리격자 ${grid0(mapId, leg.want.x, leg.want.z) ? '막힘' : '열림'}`
+            + ` · 게임격자 ${JSON.stringify(blockNotes.at(-1)?.game)}`
+            + ` · 원시 ${JSON.stringify(blockNotes.at(-1)?.raw)}`
+            + ` · 사람 ${JSON.stringify(blockNotes.at(-1)?.solid)}`
+            + ` · ${String(legMs)}ms · 끝난 까닭 ${String(lastRun.why)}`
+            + ` · 계기판 ${JSON.stringify(blockNotes.at(-1)?.perf)}`)
         }
         // ⚠️ **막은 것이 벽이 아니라 사람일 수 있다.** 이야기의 길목마다 누가
         // 서서 "아직 못 간다"고 한다 — 말을 걸어야 비켜 준다
         await tap('Space')
         await clearTalk()
-        // ⚠️ **같은 칸을 다시 계획하면 영영 돈다.** 격자는 지나갈 수 있다고
-        // 하는데 실제로는 못 지나가는 자리가 있다(실측: 집 1층에서 155초를
-        // 같은 한 걸음에 썼다). 그 칸을 이번 계획에서 빼고 **돌아간다** —
-        // 무엇이 막았는지 몰라도 길만 있으면 간다
+        // ⚠️ **「멈췄다」일 때만 기피 목록에 넣는다.** 나아가는 중이었는데
+        // 상한에 걸린 것(`deadline`)을 기피로 적으면 **멀쩡한 칸을 그 여행
+        // 내내 피한다** — 실측으로 그것이 journey 실패 아홉 건의 원인이었다.
+        // 그때는 그냥 다시 계획해서 이어 간다
+        if (lastRun.why !== 'stalled') return 'slow'
+        // ⚠️ **정말 안 움직인 자리는 뺀다.** 격자는 지나갈 수 있다고 하는데
+        // 실제로는 못 지나가는 자리가 있다(실측: 집 1층에서 155초를 같은 한
+        // 걸음에 썼다). 무엇이 막았는지 몰라도 길만 있으면 돌아간다
         shun?.add(`${String(leg.want.x)},${String(leg.want.z)}`)
         return 'blocked'
       }
@@ -548,6 +699,8 @@ export async function driveStory(page, {
     /** 제자리에서 몇 바퀴를 돌았나. 문 앞에서 이게 는다 */
     let stuckAt = ''
     let stuckFor = 0
+    /** 표식 둘이 아직 안 맞은 바퀴 수. 영영 기다리지는 않는다 */
+    let offGrid = 0
     for (let t = 0; Date.now() < till; t++) {
       const s = await now()
       if (verbose && t % 5 === 0) log(`    →${String(target)} ${t}: ${JSON.stringify(s)}`)
@@ -561,6 +714,35 @@ export async function driveStory(page, {
 
       const here = matrixOf(s.map)
       const grid = gridOf(here)
+
+      /**
+       * ⚠️ **표식 둘은 같은 순간에 안 적힌다 — 어긋난 한 프레임을 오류로 읽지
+       * 않는다.**
+       *
+       * `data-tile`은 엔진이 **프레임마다** 적고(`scene/EngineDriver`),
+       * `data-map`은 React의 `useEffect`가 **커밋 뒤에** 적는다(`app/App.tsx`).
+       * 그래서 문을 지난 바로 뒤에는 최소 한 프레임 동안 **맵은 옛것, 칸은
+       * 새것**이다. 그때 좌표는 그 맵 격자의 밖이라 `planned`가 `invalid`를
+       * 돌려주는데, 예전에는 그것을 「계획 입력이 잘못됐다」로 적고 그 자리에서
+       * 접었다 — 실측(2026-09-09): 집 1층(414 · 행렬 128)에 실외 칸
+       * (166,818)이 적혀 있었고, 그 한 줄 때문에 축복시티부터 첫 배지까지
+       * 다섯 자리가 통째로 무너졌다.
+       *
+       * ⚠️ **제품 결함이 아니다.** 두 표식은 서로 다른 층이 적는 것이고, 그
+       * 사이가 0인 판은 없다. 밖에서 할 일은 **맞을 때까지 기다리는 것**이다 —
+       * 실외는 아래에서 이미 그렇게 하고 있었다(`zoneAt(s.x, s.z) !== s.map`).
+       * 실내에만 그 대칭이 없었다.
+       *
+       * ⚠️ **영영 기다리지는 않는다.** 정말 좌표가 틀린 판과 구별해야 하므로
+       * 바퀴를 세고, 넘으면 그때는 어긋남 그대로를 적고 접는다
+       */
+      if (s.x < 0 || s.z < 0 || s.x >= grid.w || s.z >= grid.h) {
+        offGrid++
+        if (offGrid <= 20) { await page.waitForTimeout(100); continue }
+        return done(`표식이 안 맞는다 — 맵 ${String(s.map)}(행렬 ${String(here)}`
+          + ` · ${String(grid.w)}×${String(grid.h)})에 칸 ${String(s.x)},${String(s.z)}`)
+      }
+      offGrid = 0
 
       // ⚠️ **문은 한 발 물러났다 다시 밀어야 열릴 때가 있다.** 문은 밟는 것이
       // 아니라 **마주 보고 미는 것**이고(`map/world.ts`의 `doorEntry`), 앞 칸이
@@ -723,12 +905,27 @@ export async function driveStory(page, {
     const ep = openEpisode('tile', { mapId, spot: { ...spot } }, await now())
     const done = (end) => closeEpisode(ep, end)
     /**
+     * 이 부름이 시작한 시각. **이번에** 밟은 것만 센다 — 아까 지나간 칸을
+     * 지금의 통과로 읽으면 밟기가 공짜가 된다
+     */
+    const since = Date.now()
+    const key = `${String(mapId)}:${String(spot.x)},${String(spot.z)}`
+    /** 걷는 도중에 그 칸을 밟고 장면이 데려갔는가 (`trail`이 왜인지를 적는다) */
+    const passed = () => {
+      const seen = trail.get(key)
+      if (seen === undefined || seen < since) return false
+      ep.via = 'passed'
+      return true
+    }
+    /**
      * 옆 구역으로 흘러나간 횟수. 너무 잦으면 되돌아가는 것도 그만둔다 —
      * 목적지가 정말 못 밟는 자리일 수 있다
      */
     let drifted = 0
     /** 잇달아 길을 못 찾은 횟수. 한 번은 사람이 지나가는 중일 수 있다 */
     let blind = 0
+    /** 표식 둘이 아직 안 맞은 바퀴 수 */
+    let offGrid = 0
     while (Date.now() < till) {
       const s = await settle()
       if (!s.ok) { await page.waitForTimeout(200); continue }
@@ -746,14 +943,29 @@ export async function driveStory(page, {
          * 장면이 데려가는 것은 **다른 행렬**로 간다(호수 안쪽 311은 행렬
          * 101이다). 같은 행렬이면 흘러나온 것이니 되돌아가서 이어 간다
          */
+        // ⚠️ **장면이 데려간 것이 곧 「못 밟았다」는 아니다.** 밟아서 열린
+        // 장면이 데려가는 일이 많다 — 밟은 것을 봤으면 그것이 답이다
+        if (passed()) return done('arrived')
         if (matrixOf(s.map) !== here || drifted >= 4) return done('warped')
         drifted++
         if (verbose) log(`      ${String(s.map)}으로 흘러나왔다 — ${String(mapId)}로 되돌아간다`)
         const back = await goTo(mapId, Math.max(0, till - Date.now()))
-        if (back !== 'arrived') return done('warped')
+        if (back !== 'arrived') return done(passed() ? 'arrived' : 'warped')
         continue
       }
-      if (s.x === spot.x && s.z === spot.z) return done('arrived')
+      if (s.x === spot.x && s.z === spot.z) { ep.via = 'stood'; return done('arrived') }
+      if (passed()) return done('arrived')
+      // ⚠️ **여기도 표식이 맞기를 기다린다** (`goTo`가 왜인지를 적는다). 안
+      // 기다리면 문을 지난 한 프레임이 「밟기 좌표가 격자 밖이다」로 적히는데,
+      // 그 문장은 **엉뚱한 것을 가리킨다** — 틀린 것은 밟을 칸이 아니라 지금 칸이다
+      const sg = gridOf(here)
+      if (s.x < 0 || s.z < 0 || s.x >= sg.w || s.z >= sg.h) {
+        offGrid++
+        if (offGrid <= 20) { await page.waitForTimeout(100); continue }
+        return done(`표식이 안 맞는다 — 맵 ${String(s.map)}(행렬 ${String(here)})에`
+          + ` 칸 ${String(s.x)},${String(s.z)}`)
+      }
+      offGrid = 0
       // ⚠️ **밟을 칸은 문이 아니다** — 통행 불가 칸을 목표로 삼는 예외를 안 쓴다
       // (후속 §4.2). 쓰면 「계획은 `found`인데 마지막 한 걸음이 늘 막힌다」가
       // 예산이 다 될 때까지 되풀이된다
@@ -780,10 +992,11 @@ export async function driveStory(page, {
       const keys = r.keys
       const how = await walk(keys, { x: s.x, z: s.z }, mapId, shun)
       noteMove(how, await now())
-      if (how === 'done') return done('arrived')
+      if (how === 'done') { ep.via = 'stood'; return done('arrived') }
+      if (passed()) return done('arrived')
       if (verbose) log(`      ${String(spot.x)},${String(spot.z)}까지 ${how}`)
     }
-    return done('시간이 다 됐다')
+    return done(passed() ? 'arrived' : '시간이 다 됐다')
   }
 
   /**
@@ -1342,6 +1555,7 @@ export async function driveStory(page, {
     return {
       maps: [...maps], ...battles, shops, missed: [], trouble,
       plan: planSummary(), episodes: episodeSummary(), failedEpisodes: failedEpisodes(),
+      blocks: blockSummary(),
       fights, movePicks, observer: obs.kind, extra: only,
     }
   }
@@ -1489,6 +1703,7 @@ export async function driveStory(page, {
     episodes: episodeSummary(),
     /** 실패한 목적지의 자취. 빠르게 실패한 것도 남는다 */
     failedEpisodes: failedEpisodes(),
+    blocks: blockSummary(),
     /** 배틀 자취. 같은 사람과 여러 번인지, 지고 되돌아왔는지가 여기 있다 */
     fights,
     /** 이야기 장면의 단계 기록. 「들어섰다」로는 못 세는 것이 여기 있다 */
