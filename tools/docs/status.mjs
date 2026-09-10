@@ -228,10 +228,20 @@ function render() {
 }
 
 const made = render()
+/**
+ * 줄 끝을 접어서 맞댄다.
+ *
+ * ⚠️ **바이트로 맞대면 윈도우에서 영영 빨갛다.** `core.autocrlf`가 켜진 기계는
+ * 이 파일을 CRLF로 꺼내 놓는데 생성기는 LF로 만든다 — 내용이 한 글자도 안 달라도
+ * 어긋난 것으로 읽혀서, 무엇을 고치든 `pnpm check`가 여기서 선다.
+ * 세이브(`saves/*.rpsave` · `.gitattributes`)와 달리 이 파일은 **바이트가 아니라
+ * 내용이 물음**이므로 접는 것이 맞다
+ */
+const sameText = (a, b) => a.replaceAll('\r\n', '\n') === b.replaceAll('\r\n', '\n')
 if (process.argv.includes('--check')) {
   let had
   try { had = readFileSync(AT, 'utf8') } catch { had = null }
-  if (had !== made) {
+  if (had === null || !sameText(had, made)) {
     console.error('docs/STATUS.md가 임자 문서와 어긋난다 — `pnpm status`로 다시 쓴다')
     process.exit(1)
   }

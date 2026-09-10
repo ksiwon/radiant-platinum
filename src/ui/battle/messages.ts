@@ -1,15 +1,30 @@
-// 배틀 텍스트 — 도메인 이벤트 하나를 한국어 한 줄로.
+// 배틀 텍스트 — 도메인 이벤트 하나를 한 줄로.
 //
-// 원작의 말투를 따른다. 우리 쪽은 이름만 부르고("모부기의 몸통박치기!"), 야생은
-// "야생의"를, 트레이너의 것은 "상대"를 앞에 붙인다. 조사는 `korean.ts`가 받침으로
-// 고른다 — "찌르꼬이(가)"처럼 병기형이 화면에 나오면 안 된다.
+// ⚠️ **글은 롬에서 온다.** 배틀 글 뱅크(`battle_strings` · us 368)의 1,269줄이
+// 원작이 배틀에서 찍는 글 전부고, 화면에 뜨는 것은 그 줄 자체다. 우리가 하는 일은
+// **빈칸에 이름을 넣는 것**뿐이다 — 줄 번호는 `romText.ts`가 든다.
+//
+// 그렇게 바꾼 까닭: 한동안 이 글을 손으로 들었는데, 롬이 있는 기계에서 마흔여덟
+// 줄을 처음 맞대 보니 **일곱만 맞았다.** 「목을 움츠렸다」가 「머리를」이 되고
+// 「분신」이 「대타」가 되고, 롬에 아예 없는 문장이 둘 섞여 있었다.
+//
+// **조사도 롬이 든다** — `{STRVAR_1 1, 0, 2}`의 마지막 2가 을/를이다. 그래서
+// 「찌르꼬이(가)」 같은 병기형이 그 줄들에서는 원리적으로 안 난다. 아직 손으로
+// 드는 줄만 `korean.ts`가 받침으로 고른다 (그 목록은 PARITY §2.24가 센다).
+//
+// ⚠️ **자리 표시는 이름표가 붙인다.** 롬은 「우리 편·야생·상대」를 세 줄로 따로
+// 들고 있는데 우리는 맨 줄 하나만 쓰고 「야생 」·「상대 」를 이름 앞에 붙여 넣는다.
+// 뱅크 1,269줄에 「야생의」는 **0건**이고 「야생 」이 344건이라, 이름표가 롬의 말을
+// 쓰면 두 길이 같은 글이 된다 (`BattleScreen`의 `label`).
 //
 // 아직 문장이 없는 이벤트는 null이다. 텍스트 박스가 그냥 건너뛴다.
 import type {
   Actor, BattleEvent, BoostStat, EffectExtra, EffectRef,
 } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
+import { formatMessage, MESSAGE_SLOTS, MessageSlots } from '../../engine/script/text'
 import { withObject, withSubject, withTopic } from '../korean'
+import { MSG } from './romText'
 
 export interface BattleNames {
   /** 종족 번호로 색인 */
@@ -24,6 +39,13 @@ export interface BattleNames {
 
 export interface TextContext {
   names: BattleNames
+  /**
+   * 롬의 배틀 글 뱅크 (`battle_strings` · us 368). **자리가 곧 줄 번호**다.
+   *
+   * ⚠️ **비면 그 줄들이 통째로 조용해진다.** 이름표와 같은 묶음으로 받으므로
+   * (`BattleScreen`의 `useNames`) 화면에서는 늘 차 있다
+   */
+  lines: readonly string[]
   /** 자리 → 화면에 쓸 이름. "모부기" / "야생의 찌르꼬" / "상대 찌르꼬" */
   label: (actor: Actor) => string
   /** 상대 트레이너 이름("체육관 관장 동관"). 야생이면 null */
@@ -92,19 +114,19 @@ const WEATHER: Record<string, { start: string; upkeep: string }> = {
  * 모으는 기술의 첫 턴 (PARITY §2.24 · `-prepare`).
  *
  * 4세대에서 이 줄을 내는 기술이 **정확히 아홉**이다 — sim의 4세대 덱스로 세어
- * 확정했고(`protocolLines.test.ts`가 그 아홉을 다시 센다), 그래서 여기 표가
- * 그 줄의 전부다. 원작도 기술마다 다른 한 줄을 찍는다
+ * 확정했고(`protocolLines.test.ts`가 그 아홉을 다시 센다), 원작도 기술마다
+ * 다른 한 줄을 찍는다. 그 아홉 줄이 롬의 214~232·1082번이다
  */
-const PREPARE: Record<string, string> = {
-  fly: '하늘 높이 날아올랐다!',
-  dig: '땅속으로 파고들었다!',
-  dive: '물속으로 숨었다!',
-  bounce: '높이 뛰어올랐다!',
-  razorwind: '회오리를 일으켰다!',
-  skullbash: '머리를 움츠렸다!',
-  skyattack: '강렬한 빛에 휩싸였다!',
-  solarbeam: '빛을 흡수했다!',
-  shadowforce: '순식간에 모습을 감췄다!',
+const PREPARE: Record<string, number> = {
+  fly: MSG.flewUpHigh,
+  dig: MSG.burrowedUnderTheGround,
+  dive: MSG.hidUnderwater,
+  bounce: MSG.sprangUp,
+  razorwind: MSG.whippedUpAWhirlwind,
+  skullbash: MSG.tuckedInItsHead,
+  skyattack: MSG.becameCloakedInAHarshLight,
+  solarbeam: MSG.absorbedLight,
+  shadowforce: MSG.vanishedInstantly,
 }
 
 /** 효과 한 줄을 쓸 때 필요한 것. 자리가 없는 줄이면 `who`가 null이다 */
@@ -121,78 +143,79 @@ interface EffectSay {
   label: string
 }
 
+/** 효과 표의 한 줄. 롬의 줄 하나를 골라 칸을 채운다 */
+type EffectLine = (ctx: TextContext, s: EffectSay) => string | null
+
 /**
- * 효과 id → 문장 (PARITY §2.24 · `-activate`·`-block`).
+ * 효과 id → 롬의 줄 (PARITY §2.24 · `-activate`·`-block`).
  *
  * ⚠️ **접두사로도 갈래로도 안 가른다.** 같은 효과가 `move: Protect`로도
  * `Protect`로도 오고, 그중 여섯(방어·뿌리박기·흰안개·신비의부적·점착·흡반)은
  * `@pkmn/protocol`이 `-block`으로 다시 써서 보낸다. 그래서 열쇠는
  * `EffectRef.id` 하나고 표도 하나다 (`sim/protocol`의 `effectRef`).
  *
- * ⚠️ **여기 없는 효과는 조용하다.** 지어낸 문장을 놓느니 아무 말도 안 하는 편이
- * 낫다 — 아직 글이 없는 효과가 무엇인지는 PARITY §2.24에 낱낱이 적혀 있다.
- * 다만 **특성은 예외**로 아래 `effectText`가 원작의 특성 배너로 떨어진다
+ * ⚠️ **여기 없는 효과는 조용하다.** 롬에 줄이 없는 것은 지어내지 않는다 —
+ * 4세대 뱅크에 없는 것이 확인된 자리는 아래 주석이 그 근거를 적어 둔다.
+ * 다만 **특성은 예외**로 `effectText`가 원작의 특성 배너로 떨어진다
  */
-const ACTIVATE: Record<string, (s: EffectSay) => string | null> = {
-  // 방어·판별이 공격을 막았다. **쓰는 줄과 막는 줄이 서로 다른 문장이다** —
-  // 쓰는 쪽은 `-singleturn`이고 원작도 「방어 태세를 취했다!」로 따로 찍는다
-  protect: (s) => `${withTopic(s.who ?? '')} 공격을 막았다!`,
-  // 대타출동이 대신 맞았다. 원작도 맞은 쪽 이름을 부른다
-  substitute: (s) => `대타가 ${s.who ?? ''} 대신 공격을 받았다!`,
-  // 버티기가 걸려 1 남기고 버텼다
-  endure: (s) => `${withTopic(s.who ?? '')} 공격을 버텨냈다!`,
+const ACTIVATE: Record<string, EffectLine> = {
+  // 방어·판별이 공격을 **막았다**. 쓰는 줄(`-singleturn`)과 문장이 다르다
+  protect: (c, s) => rom(c, MSG.protectedItself, s.who),
+  // 대타출동이 대신 맞았다. 롬은 「대타」가 아니라 **「분신」**이라 부른다
+  substitute: (c, s) => rom(c, MSG.theSubstituteTookDamageForPokemon, s.who),
+  endure: (c, s) => rom(c, MSG.enduredTheHit, s.who),
   // 치유방울. 4세대에서는 이쪽이 `-activate`고 아로마테라피만 `-cureteam`이다
-  healbell: () => '종소리가 울려퍼졌다!',
-  aromatherapy: () => '기분 좋은 향기가 감돌았다!',
-  // 흰안개·신비의부적이 막는 자리
-  mist: (s) => `${withTopic(s.who ?? '')} 흰안개에 보호받고 있다!`,
-  safeguard: (s) => `${withTopic(s.who ?? '')} 신비의부적에 보호받고 있다!`,
+  healbell: (c) => rom(c, MSG.aBellChimed),
+  aromatherapy: (c) => rom(c, MSG.aSoothingAromaWaftedThroughTheArea),
+  // 흰안개·신비의부적이 막는 자리. 롬은 신비의부적을 「신비의 베일」이라 쓴다
+  mist: (c, s) => rom(c, MSG.isProtectedByMist, s.who),
+  safeguard: (c, s) => rom(c, MSG.isProtectedBySafeguard, s.who),
   // 트릭·바꿔치기는 한 줄로 서로의 도구가 오간다
-  trick: (s) => `${withTopic(s.who ?? '')} 서로의 도구를 바꿨다!`,
-  switcheroo: (s) => `${withTopic(s.who ?? '')} 서로의 도구를 바꿨다!`,
-  // 매그니튜드는 굴린 수가 `[number]`로 온다
-  magnitude: (s) => (s.extra.num === null ? null : `매그니튜드 ${s.extra.num}!`),
-  // 참기가 힘을 모으는 두 턴
-  bide: (s) => `${withTopic(s.who ?? '')} 힘을 모으고 있다!`,
-  // 헤롱헤롱은 상대가 `[of]`로 온다
-  attract: (s) => `${withTopic(s.who ?? '')} ${s.of ?? '상대'}에게 헤롱헤롱해졌다!`,
-  // 길동무가 실제로 걸린 순간
-  destinybond: (s) => `${withTopic(s.who ?? '')} 상대를 길동무로 삼았다!`,
-  snatch: (s) => `${withTopic(s.who ?? '')} 상대의 기술을 가로챘다!`,
+  trick: (c, s) => rom(c, MSG.switchedItemsWithItsTarget, s.who),
+  switcheroo: (c, s) => rom(c, MSG.switchedItemsWithItsTarget, s.who),
+  // 매그니튜드는 굴린 수가 `[number]`로 온다. 롬은 느낌표를 **둘** 찍는다
+  magnitude: (c, s) => (s.extra.num === null
+    ? null
+    : rom(c, MSG.magnitudeX, String(s.extra.num))),
+  bide: (c, s) => rom(c, MSG.isStoringEnergy, s.who),
+  // 헤롱헤롱으로 발이 묶인 턴. 홀린 상대가 `[of]`로 온다
+  attract: (c, s) => rom(c, MSG.isInLoveWithPokemon, s.who, s.of),
+  // ⚠️ **길동무가 실제로 데려간 줄은 비어 있다.** 롬의 그 줄은 이름을 둘 부르는데
+  // (`{건 쪽}는 {끌려간 쪽}를 길동무로 삼았다!`) sim은 `-activate`에 **한 자리만**
+  // 준다 (`add('-activate', target, 'move: Destiny Bond')` — `[of]`가 없다).
+  // 반쪽만 채운 문장을 놓느니 비운다. 거는 줄(`-singlemove`)은 아래에 있다
+  snatch: (c, s) => rom(c, MSG.snatchedPokemonsMove, s.who, s.of),
   // 혼란은 걸린 줄(`-start`)과 매 턴 도는 줄이 따로다. 이쪽이 도는 쪽이고,
   // 바로 뒤에 자기를 때린 데미지가 `[from] confusion`으로 온다
-  confusion: (s) => `${withTopic(s.who ?? '')} 혼란에 빠져 있다!`,
-  // 뿌리박기·흡반은 날려버리기를 버틴다
-  ingrain: (s) => `${withTopic(s.who ?? '')} 뿌리를 내려 버티고 있다!`,
-  suctioncups: (s) => `${withTopic(s.who ?? '')} 흡반으로 버티고 있다!`,
-  // 점착으로 도구를 못 뺏는다
-  stickyhold: (s) => `${s.who ?? ''}의 도구는 뺏을 수 없다!`,
-  // 록온·마음의눈이 조준한다. 겨눈 쪽이 `[of]`로 온다
-  lockon: (s) => `${withTopic(s.who ?? '')} ${withObject(s.of ?? '상대')} 조준했다!`,
-  mindreader: (s) => `${withTopic(s.who ?? '')} ${withObject(s.of ?? '상대')} 조준했다!`,
-  // 선제공격손톱이 돌았다
-  quickclaw: (s) => `${withTopic(s.who ?? '')} 선제공격손톱으로 행동이 빨라졌다!`,
-  // 스케치가 베낀 기술은 `[move]`로 온다.
-  //
-  // ⚠️ **한국어 이름이 안 풀리면 조용하다.** 다른 자리는 못 찾은 이름을 영어로
-  // 떨어뜨리지만(`모부기의 Tackle!`) 여기는 뒤에 조사가 붙는 자리라, 떨어뜨리면
-  // 화면에 「Tackle을(를) 스케치했다!」가 뜬다 — 이 파일이 첫 줄에서 금지한
-  // 병기형이 바로 그것이다
-  sketch: (s) => (s.extra.move === null
+  confusion: (c, s) => rom(c, MSG.isConfused, s.who),
+  // 뿌리박기가 날려버리기를 버텼다
+  ingrain: (c, s) => rom(c, MSG.anchoredItselfWithItsRoots, s.who),
+  // 흡반. 롬은 특성 이름을 빈칸으로 받는다
+  suctioncups: (c, s) => rom(c, MSG.anchorsItselfWithAbility, s.who, s.label),
+  // 록온·마음의눈. 겨눈 쪽이 `[of]`로 온다
+  // (`add('-activate', source, 'move: Lock-On', '[of] ' + target)`)
+  lockon: (c, s) => rom(c, MSG.tookAimAtPokemon, s.who, s.of),
+  mindreader: (c, s) => rom(c, MSG.tookAimAtPokemon, s.who, s.of),
+  // 스케치가 베낀 기술은 `[move]`로 온다. 한국어 이름이 안 풀리면 `rom`이
+  // 문장 자체를 비운다 — 조사가 뒤에 붙는 자리라 영어를 떨어뜨리면
+  // 「Tackle을(를) 스케치했다!」가 뜬다
+  sketch: (c, s) => (s.extra.move === null
     ? null
-    : `${withTopic(s.who ?? '')} ${withObject(s.extraMove)} 스케치했다!`),
+    : rom(c, MSG.sketchedMove, s.who, s.extraMove)),
   // 튀어오르기. sim은 `-nothing`을 내고 `@pkmn/protocol`이 이 줄로 다시 쓴다 —
-  // 그래서 **자리가 비어 있다**(`|-activate||move: Splash`)
-  splash: () => '하지만 아무 일도 일어나지 않았다!',
+  // 그래서 **자리가 비어 있다** (`|-activate||move: Splash`)
+  splash: (c) => rom(c, MSG.butNothingHappened),
+  // ⚠️ **점착과 선제공격손톱은 4세대 뱅크에 줄이 없다.** 「손톱」·「뺏」이
+  // 1,269줄에서 0건이다 — 5세대 이후에 생긴 글이라 여기서는 비운다
 }
 
 /**
  * 무대 전체에 걸린 효과 (`-fieldactivate`). 4세대에서는 둘뿐이다 —
  * 멸망의노래와 페이데이
  */
-const FIELD_ACTIVATE: Record<string, string> = {
-  perishsong: '모든 포켓몬이 멸망의노래를 들었다!',
-  payday: '주위에 동전이 흩어졌다!',
+const FIELD_ACTIVATE: Record<string, number> = {
+  perishsong: MSG.allPokemonHearingTheSongWillFaintInThreeTurns,
+  payday: MSG.coinsScatteredEverywhere,
 }
 
 /**
@@ -201,29 +224,76 @@ const FIELD_ACTIVATE: Record<string, string> = {
  * ⚠️ **회복지령(`roost`)은 여기 없다.** 그 줄은 쇼다운이 타입이 바뀐 것을 스스로
  * 적어 두는 자리고 원작은 아무 말도 안 한다
  */
-const SINGLE_TURN: Record<string, (s: EffectSay) => string | null> = {
-  protect: (s) => `${withTopic(s.who ?? '')} 방어 태세를 취했다!`,
-  focuspunch: (s) => `${withTopic(s.who ?? '')} 기합을 모으고 있다!`,
-  endure: (s) => `${withTopic(s.who ?? '')} 버틸 태세를 취했다!`,
-  magiccoat: (s) => `${withTopic(s.who ?? '')} 매직코트에 둘러싸였다!`,
-  snatch: (s) => `${withTopic(s.who ?? '')} 상대가 기술을 쓰기를 기다리고 있다!`,
-  followme: (s) => `${withTopic(s.who ?? '')} 주목을 모으고 있다!`,
+const SINGLE_TURN: Record<string, EffectLine> = {
+  protect: (c, s) => rom(c, MSG.protectedItself2, s.who),
+  focuspunch: (c, s) => rom(c, MSG.isTighteningItsFocus, s.who),
+  endure: (c, s) => rom(c, MSG.bracedItself, s.who),
+  magiccoat: (c, s) => rom(c, MSG.shroudedItselfWithMagicCoat, s.who),
+  snatch: (c, s) => rom(c, MSG.waitsForATargetToMakeAMove, s.who),
+  followme: (c, s) => rom(c, MSG.becameTheCenterOfAttention, s.who),
   // ⚠️ **자리가 뒤집혀 있다.** 이 줄의 자리는 **도움을 받는 쪽**이고 도운 쪽이
-  // `[of]`로 온다 (`add('-singleturn', target, 'Helping Hand', '[of] ' + source)`)
-  helpinghand: (s) => `${withTopic(s.of ?? '')} ${withObject(s.who ?? '')} 도울 준비를 했다!`,
+  // `[of]`로 온다 (`add('-singleturn', target, 'Helping Hand', '[of] ' + source)`).
+  // 롬의 첫 칸은 **돕는 쪽**이라 둘을 바꿔 넣는다
+  helpinghand: (c, s) => rom(c, MSG.isReadyToHelpPokemon, s.of, s.who),
 }
 
 /** 다음 기술 한 번에만 걸리는 것 (`-singlemove`). 분노는 원작이 아무 말도 안 한다 */
-const SINGLE_MOVE: Record<string, (s: EffectSay) => string | null> = {
-  destinybond: (s) => `${withTopic(s.who ?? '')} 상대를 길동무로 만들려 하고 있다!`,
-  grudge: (s) => `${withTopic(s.who ?? '')} 상대가 원한을 품기를 바라고 있다!`,
+const SINGLE_MOVE: Record<string, EffectLine> = {
+  destinybond: (c, s) => rom(c, MSG.isTryingToTakeItsFoeWithIt, s.who),
+  grudge: (c, s) => rom(c, MSG.wantsTheFoeToBearAGrudge, s.who),
 }
+
+/**
+ * 표에 놓인 효과 id. `messages.test.ts`가 표를 통째로 돌려
+ * **빈칸이 남는 줄이 없는지** 본다 — 남으면 화면에 제어 부호가 글자로 뜬다
+ */
+export const ACTIVATE_IDS: readonly string[] = Object.keys(ACTIVATE)
+export const SINGLE_TURN_IDS: readonly string[] = Object.keys(SINGLE_TURN)
+export const SINGLE_MOVE_IDS: readonly string[] = Object.keys(SINGLE_MOVE)
 
 /** 랭크 변화 폭 → 부사. 원작은 1단계와 2단계 이상을 다르게 말한다 */
 function boostAdverb(amount: number): string {
   const n = Math.abs(amount)
   if (amount > 0) return n >= 3 ? '엄청나게 올라갔다!' : n === 2 ? '쭉쭉 올라갔다!' : '올라갔다!'
   return n >= 3 ? '엄청나게 떨어졌다!' : n === 2 ? '뚝 떨어졌다!' : '떨어졌다!'
+}
+
+/**
+ * 롬의 줄 하나를 칸을 채워 낸다 (PARITY §2.24).
+ *
+ * 칸은 **온 차례대로** 0번부터 들어간다. 롬의 배틀 글은 빈칸을 0·1·2로 이어
+ * 쓰므로 자리를 따로 적을 일이 없다.
+ *
+ * ⚠️ **칸 하나라도 비면 문장 자체를 비운다.** 조사가 뒤에 붙는 자리라 못 푼
+ * 이름을 그냥 넣으면 「Tackle을(를) 스케치했다!」가 화면에 뜬다 — 실제로 그랬다.
+ *
+ * ⚠️ **뱅크가 안 왔으면 조용하다.** 던지지 않는다 — 글 한 줄 때문에 배틀이
+ * 서면 그것이 더 나쁘다
+ */
+function rom(
+  ctx: TextContext, at: number, ...values: readonly (string | null)[]
+): string | null {
+  const raw = ctx.lines[at]
+  if (raw === undefined || raw === '') return null
+  const filled: string[] = []
+  for (const value of values) {
+    if (value === null || value === '') return null
+    filled.push(value)
+  }
+  const slots = new MessageSlots(Math.max(filled.length, MESSAGE_SLOTS))
+  filled.forEach((value, i) => { slots.set(i, value) })
+  return onePage(formatMessage(raw, slots))
+}
+
+/**
+ * 한 쪽으로 편다.
+ *
+ * 롬은 창을 비우고 새로 찍는 자리를 `\r`로, 한 줄 올리고 잇는 자리를 `\f`로
+ * 적어 둔다. 우리 로그는 **박자 하나가 곧 한 쪽**이라(글은 한 자씩 안 찍는다)
+ * 둘 다 줄바꿈으로 눕히고 끝의 빈 줄을 턴다
+ */
+function onePage(text: string): string {
+  return text.replace(/[\r\f]/g, '\n').replace(/\n+$/, '')
 }
 
 /**
@@ -406,7 +476,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     // ── 글만 내는 열둘 (PARITY §2.24) ────────────────────────────────────────
     case 'activate':
     case 'block':
-      return effectText(ACTIVATE, e.effect, {
+      return effectText(ACTIVATE, e.effect, ctx, {
         who: e.actor ? ctx.label(e.actor) : null,
         of: e.of ? ctx.label(e.of) : null,
         extra: e.extra,
@@ -415,7 +485,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       })
 
     case 'singleturn':
-      return effectText(SINGLE_TURN, e.effect, {
+      return effectText(SINGLE_TURN, e.effect, ctx, {
         who: ctx.label(e.actor),
         of: e.of ? ctx.label(e.of) : null,
         extra: NO_EXTRA,
@@ -424,7 +494,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       })
 
     case 'singlemove':
-      return effectText(SINGLE_MOVE, e.effect, {
+      return effectText(SINGLE_MOVE, e.effect, ctx, {
         who: ctx.label(e.actor),
         of: null,
         extra: NO_EXTRA,
@@ -435,30 +505,32 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     case 'prepare': {
       // 기술 번호가 아니라 **이름을 접어** 찾는다 — 번호는 롬 표가 있어야 풀리는데
       // 이 줄은 표가 아직 안 왔을 때도 와서, 번호로 찾으면 조용히 비는 자리가 생긴다
-      const line = PREPARE[foldName(e.moveName)]
-      return line ? `${withTopic(ctx.label(e.actor))} ${line}` : null
+      const at = PREPARE[foldName(e.moveName)]
+      return at === undefined ? null : rom(ctx, at, ctx.label(e.actor))
     }
 
     case 'hitcount':
-      // `BattleStrings_Text_HitNTimes` — 원작도 수만 갈아 끼운다
-      return `${e.count}번 맞았다!`
+      return rom(ctx, MSG.hitXTimes, String(e.count))
 
     case 'notarget':
-      return '하지만 상대가 없다!'
+      return rom(ctx, MSG.butThereWasNoTarget)
 
     case 'ohko':
-      return '일격필살!'
+      return rom(ctx, MSG.itsAOneHitKO)
 
-    case 'fieldactivate':
-      return FIELD_ACTIVATE[e.effect.id] ?? null
+    case 'fieldactivate': {
+      const at = FIELD_ACTIVATE[e.effect.id]
+      return at === undefined ? null : rom(ctx, at)
+    }
 
     case 'cureteam':
-      // 4세대에서 이 줄을 내는 것은 아로마테라피 하나다
-      return '기분 좋은 향기가 감돌았다!'
+      // 4세대에서 이 줄을 내는 것은 아로마테라피 하나다. 치유방울은 같은 일을
+      // 하면서도 `-activate|move: Heal Bell`로 나가고 글도 다르다
+      return rom(ctx, MSG.aSoothingAromaWaftedThroughTheArea)
 
     case 'endability':
       // 4세대에서는 위장약 하나가 이 줄을 낸다
-      return `${ctx.label(e.actor)}의 특성이 사라졌다!`
+      return rom(ctx, MSG.pokemonsAbilityWasSuppressed, ctx.label(e.actor))
 
     // 다음 턴에 「움직일 수 없다!」를 찍는 것은 `cant|recharge`다. 여기서 또 찍으면
     // 한 번 쉬는 데 글이 두 줄이 된다
@@ -507,12 +579,13 @@ function effectLabel(effect: EffectRef, names: BattleNames): string {
  * **쓴** 줄의 문장이라 막은 자리에 놓으면 거짓말이 된다
  */
 function effectText(
-  table: Record<string, (s: EffectSay) => string | null>,
+  table: Record<string, EffectLine>,
   effect: EffectRef,
+  ctx: TextContext,
   say: EffectSay,
 ): string | null {
   const line = table[effect.id]
-  if (line) return line(say)
+  if (line) return line(ctx, say)
   if (effect.kind === 'ability' && say.who !== null) return `${say.who}의 ${say.label}!`
   return null
 }

@@ -258,6 +258,15 @@ const EXTRA_BANKS = [
   // 원작은 그 넷을 **대문자 뱅크**로 읽는데(`move_names_uppercase` 따위)
   // **한국어·일본어 롬에는 그 뱅크가 아예 없다.** 그래서 우리는 세 로케일 다
   // 보통 이름표를 쓴다 — 로케일마다 다른 낱말 목록이 생기는 편이 더 나쁘다
+  // 배틀 글 1,269줄 (PARITY §2.24 · §2.25). 배틀은 필드 스크립트가 아니라 제
+  // VM이 도는 자리라(`battle_main.c`가 `MessageLoader_Init`으로 이 뱅크를 직접
+  // 연다) 스크립트에서 안 보인다.
+  //
+  // ⚠️ **이걸 안 실어서 배틀 글을 손으로 들고 있었다.** 그렇게 든 마흔여덟을
+  // 롬과 맞대 보니 **일곱만 맞았다** — 「목을 움츠렸다」가 「머리를」이 되고
+  // 「분신」이 「대타」가 되고, 롬에 아예 없는 문장이 둘 섞여 있었다.
+  // 여기 실으면 문장도 **조사도** 롬 것이 된다 (`{STRVAR_1 1, 0, 2}`의 2가 을/를)
+  'TEXT_BANK_BATTLE_STRINGS',
   'TEXT_BANK_EASY_CHAT', 'TEXT_BANK_EASY_CHAT_GROUPS',
   'TEXT_BANK_TRAINER_WORDS', 'TEXT_BANK_PEOPLE_WORDS', 'TEXT_BANK_GREETINGS',
   'TEXT_BANK_LIFESTYLE_WORDS', 'TEXT_BANK_FEELINGS', 'TEXT_BANK_TOUGH_WORDS',

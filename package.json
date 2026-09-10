@@ -122,7 +122,8 @@
     "extract:bagSprite": "node tools/extract/bagSprite.js",
     "gen:jpFont": "py -3.13 tools/fonts/jpSubset.py",
     "extract:particles": "node tools/extract/particles.js",
-    "render:first": "node tools/e2e/firstFrame.mjs"
+    "render:first": "node tools/e2e/firstFrame.mjs",
+    "gen:battleStrings": "node tools/extract/battleStringsModule.cjs"
   },
   "dependencies": {
     "@pkmn/protocol": "^0.7.3",

@@ -17,7 +17,10 @@ import { battleText, type TextContext } from './messages'
 
 const ctx: TextContext = {
   names: { species: [], moves: [], abilities: [], items: [] },
-  label: (a) => (a.side === 'p1' ? '모부기' : '야생의 팬텀'),
+  // 이 파일이 재는 것은 **갈래가 아예 없다**는 것이라 뱅크가 필요 없다 —
+  // 글을 놓는 순간 뱅크가 없어도 `battleText`가 그 갈래를 탄다
+  lines: [],
+  label: (a) => (a.side === 'p1' ? '모부기' : '야생 팬텀'),
 }
 const MINE = { slot: 'p1a', side: 'p1' as SideId, name: 'p1-0' } as const
 

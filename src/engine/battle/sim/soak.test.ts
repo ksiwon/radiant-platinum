@@ -30,6 +30,7 @@ import { buildBeats } from '../playback'
 import { Ball } from '../meta/capture'
 import { TrainerItems } from '../meta/trainerItems'
 import { battleText } from '../../../ui/battle/messages'
+import { BATTLE_BANK } from '../../../ui/battle/romText'
 import { BattleController } from './controller'
 import { IDLE_MOVE_ID } from './session'
 import { movesById, rng, speciesById, spawn } from './fixtures.testkit'
@@ -47,6 +48,12 @@ const POTIONS: readonly number[] = [
   itemList.findIndex((i) => i.name === 'super_potion'),
   itemList.findIndex((i) => i.name === 'full_restore'),
 ]
+/**
+ * 롬의 배틀 글 (PARITY §2.24). 화면이 받는 것과 같은 파일이라, 아래 ⑧번 검사가
+ * **실제로 화면에 뜰 문장**에서 영어를 찾는다
+ */
+const LINES = read<string[]>('dialogue/ko/' + String(BATTLE_BANK) + '.json')
+
 /** 화면이 쓰는 것과 **같은 표**다 (`BattleScreen`의 `useNames`) */
 const NAMES = {
   species: read<string[]>('names/species.ko.json'),
@@ -230,7 +237,7 @@ async function soak(plan: Plan): Promise<Broken> {
 
   // ④ 박자로 펴도 안 터지고, ⑧ 화면에 영어가 안 샌다
   const label = (a: { side: 'p1' | 'p2' }) => (a.side === 'p1' ? '이쪽' : '저쪽')
-  const beats = buildBeats(all, (e) => battleText(e, { names: NAMES, label }))
+  const beats = buildBeats(all, (e) => battleText(e, { names: NAMES, lines: LINES, label }))
   for (const b of beats) {
     if (b.hold < 0 || !Number.isFinite(b.hold)) note('박자의 쉼이 이상하다')
     // 이름을 못 찾으면 프로토콜의 영어 이름이 그대로 나온다. 로마자 낱말이

@@ -41,8 +41,10 @@ maybe('대사', () => {
     // 배틀팩토리 다섯(21 프런티어 트레이너 이름 315·614 그 대사 945·
     // 364 고르는 화면·365 복도와 배틀룸·363 빌린 개체의 원트레이너 — PARITY §9.3),
     // 우편과 낱말 고르기 열하나(408 우편함·409 편지 화면·436 무리 이름·
-    // 437 화면 글, 그리고 **낱말이 든 뱅크 일곱** 439~445 — PARITY §4.8)
-    expect(index.banks.length).toBe(493)
+    // 437 화면 글, 그리고 **낱말이 든 뱅크 일곱** 439~445 — PARITY §4.8),
+    // 배틀 글 1,269줄(368 — PARITY §2.24. 배틀은 제 VM이 도는 자리라
+    // 스크립트가 이 뱅크를 안 가리킨다)
+    expect(index.banks.length).toBe(494)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)
@@ -138,7 +140,9 @@ maybe('대사', () => {
       }
       counted[locale] = controls
     }
-    expect(counted).toEqual({ en: 5115, ko: 3217, ja: 3426 })
+    // ⚠️ 배틀 글 뱅크(368)를 실으면서 셋 다 2,000쯤 늘었다 — 그 뱅크는 1,269줄이
+    // 거의 다 이름·수를 빈칸으로 받는 문장 틀이다
+    expect(counted).toEqual({ en: 7138, ko: 5242, ja: 5459 })
   })
 
   it('떡잎마을 기타리스트 대사에 주인공·라이벌이 따로 들어간다', () => {

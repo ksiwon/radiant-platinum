@@ -1,11 +1,22 @@
 // 배틀 문구. 조사가 하나만 틀려도 화면에서 바로 보이는 종류의 버그라 문장을
 // 통째로 못박는다 — 조각으로 검사하면 "찌르꼬이(가)"가 그대로 지나간다.
+//
+// ⚠️ **아래 절반은 롬의 글이다** (PARITY §2.24). 손으로 든 문장이 아니라
+// `public/data/dialogue/ko/368.json`의 줄을 칸까지 채운 것이라, 자료가 없는
+// 기계에서는 그 묶음이 통째로 빠진다 (`withData`).
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import type {
   Actor, BattleEvent, BoostStat, Cause, EffectExtra, EffectRef, SafariBeat,
 } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
-import { battleText, type BattleNames, type TextContext } from './messages'
+import { DATA, withData } from '../../data/romData.testkit'
+import {
+  ACTIVATE_IDS, battleText, SINGLE_MOVE_IDS, SINGLE_TURN_IDS,
+  type BattleNames, type TextContext,
+} from './messages'
+import { BATTLE_BANK } from './romText'
 
 const MINE: Actor = { slot: 'p1a', side: 'p1', name: 'p1-0' }
 const FOE: Actor = { slot: 'p2a', side: 'p2', name: 'p2-0' }
@@ -17,10 +28,29 @@ const names: BattleNames = {
   items: (() => { const i: string[] = []; i[23] = '회복약'; i[26] = '좋은상처약'; return i })(),
 }
 
-/** 받침이 있는 이름(팬텀)과 없는 이름(모부기)을 일부러 섞는다 */
+const BANK_AT = 'dialogue/ko/' + String(BATTLE_BANK) + '.json'
+const withBank = withData(BANK_AT)
+
+/** 롬의 배틀 글. 자료가 없으면 빈 배열이고, 그 줄들은 통째로 조용해진다 */
+const lines: readonly string[] = (() => {
+  try {
+    return JSON.parse(readFileSync(resolve(DATA, BANK_AT), 'utf8')) as string[]
+  } catch {
+    return []
+  }
+})()
+
+/**
+ * 받침이 있는 이름(팬텀)과 없는 이름(모부기)을 일부러 섞는다.
+ *
+ * ⚠️ **「야생의」가 아니라 「야생 」이다.** 롬의 배틀 글 1,269줄에 「야생의」는
+ * 0건이고 「야생 」이 344건이다 — 이름표가 롬의 말을 써야 맨 줄 하나로 세 자리를
+ * 다 덮을 수 있다
+ */
 const ctx: TextContext = {
   names,
-  label: (a) => (a.side === 'p1' ? '모부기' : '야생의 팬텀'),
+  lines,
+  label: (a) => (a.side === 'p1' ? '모부기' : '야생 팬텀'),
 }
 
 const say = (e: BattleEvent) => battleText(e, ctx)
@@ -36,8 +66,8 @@ describe('배틀 문구', () => {
     })
     expect(say(enter(MINE, false))).toBe('가라! 모부기!')
     // 받침 있는 이름에는 "이"가 붙어야 한다
-    expect(say(enter(FOE, false))).toBe('앗! 야생의 팬텀이 나타났다!')
-    expect(say(enter(FOE, true))).toBe('야생의 팬텀이 끌려나왔다!')
+    expect(say(enter(FOE, false))).toBe('앗! 야생 팬텀이 나타났다!')
+    expect(say(enter(FOE, true))).toBe('야생 팬텀이 끌려나왔다!')
   })
 
   it('기술은 한국어 이름으로 나온다', () => {
@@ -57,10 +87,10 @@ describe('배틀 문구', () => {
     expect(say({ kind: 'effectiveness', actor: FOE, level: 'super' })).toBe('효과가 굉장했다!')
     expect(say({ kind: 'effectiveness', actor: FOE, level: 'resisted' })).toBe('효과가 별로인 것 같다…')
     expect(say({ kind: 'effectiveness', actor: FOE, level: 'immune' }))
-      .toBe('야생의 팬텀에게는 효과가 없는 것 같다…')
+      .toBe('야생 팬텀에게는 효과가 없는 것 같다…')
     expect(say({ kind: 'crit', actor: FOE })).toBe('급소에 맞았다!')
     expect(say({ kind: 'fail', actor: MINE })).toBe('하지만 실패했다!')
-    expect(say({ kind: 'faint', actor: FOE })).toBe('야생의 팬텀은 쓰러졌다!')
+    expect(say({ kind: 'faint', actor: FOE })).toBe('야생 팬텀은 쓰러졌다!')
     expect(say({ kind: 'faint', actor: MINE })).toBe('모부기는 쓰러졌다!')
   })
 
@@ -138,7 +168,7 @@ describe('배틀 문구', () => {
 
   it('특성 발동', () => {
     expect(say({ kind: 'ability', actor: FOE, ability: 22, abilityName: 'Intimidate' }))
-      .toBe('야생의 팬텀의 위협!')
+      .toBe('야생 팬텀의 위협!')
   })
 
   it('문장이 없는 이벤트는 null이다', () => {
@@ -154,14 +184,14 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     ({ kind: 'ball', actor: FOE, ball: 4, shakes, caught })
 
   it('잡히면 이름에 목적격 조사가 붙는다', () => {
-    expect(say(ball(4, true))).toBe('신난다! 야생의 팬텀을 잡았다!')
+    expect(say(ball(4, true))).toBe('신난다! 야생 팬텀을 잡았다!')
   })
 
   it('흔들린 횟수마다 말이 다르다', () => {
     // 세 번 흔들리고 놓치는 것이 가장 아깝다. 원작도 그때만 "앗!"을 붙인다
     const texts = [0, 1, 2, 3].map((n) => say(ball(n, false)))
     expect(new Set(texts).size, '전부 같은 문장이면 흔들림을 세는 의미가 없다').toBe(4)
-    expect(texts[1]).toBe('앗! 야생의 팬텀이 볼에서 나와 버렸다!')
+    expect(texts[1]).toBe('앗! 야생 팬텀이 볼에서 나와 버렸다!')
   })
 
   it('도망', () => {
@@ -224,21 +254,25 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
       say({ kind: 'safari', actor: FOE, beat: b })
     const me: TextContext = { ...ctx, playerName: '빛나' }
     expect(battleText({ kind: 'safari', actor: FOE, beat: 'bait' }, me))
-      .toBe('빛나는 야생의 팬텀에게 미끼를 던졌다!')
-    expect(beat('eating')).toBe('야생의 팬텀은 먹고 있다!')
-    expect(beat('busyEating')).toBe('야생의 팬텀은 먹느라 정신이 없다!')
+      .toBe('빛나는 야생 팬텀에게 미끼를 던졌다!')
+    expect(beat('eating')).toBe('야생 팬텀은 먹고 있다!')
+    expect(beat('busyEating')).toBe('야생 팬텀은 먹느라 정신이 없다!')
     expect(battleText({ kind: 'safari', actor: FOE, beat: 'mud' }, me))
-      .toBe('빛나는 야생의 팬텀에게 진흙을 던졌다!')
-    expect(beat('angry')).toBe('야생의 팬텀은 화가 났다!')
-    expect(beat('veryAngry')).toBe('야생의 팬텀은 몹시 화가 났다!')
-    expect(beat('watching')).toBe('야생의 팬텀은 주의깊게 보고 있다!')
+      .toBe('빛나는 야생 팬텀에게 진흙을 던졌다!')
+    expect(beat('angry')).toBe('야생 팬텀은 화가 났다!')
+    expect(beat('veryAngry')).toBe('야생 팬텀은 몹시 화가 났다!')
+    expect(beat('watching')).toBe('야생 팬텀은 주의깊게 보고 있다!')
   })
 })
 
 // ── 글만 내는 열둘 (PARITY §2.24) ─────────────────────────────────────────────
 //
-// 판마다 3.7줄이 여기로 흘러 화면이 조용했다. 문장을 통째로 못박는 이유는 위와
-// 같다 — 조사 하나가 틀리면 조각 검사는 그대로 지나간다.
+// 판마다 3.7줄이 여기로 흘러 화면이 조용했다.
+//
+// ⚠️ **이 아래는 롬의 글을 그대로 못박는다.** 손으로 든 문장이 아니라
+// `public/data/dialogue/ko/368.json`의 줄이라, 여기 적힌 한국어는 **원작의
+// 한국어**다. 번호가 어느 줄인지는 `romText.test.ts`가 따로 잰다 — 여기서 재는
+// 것은 「그 줄이 칸까지 채워져 화면 문장이 되는가」다.
 
 const NO_EXTRA: EffectExtra = { num: null, move: null, moveName: null }
 
@@ -257,25 +291,29 @@ const activate = (
   extra: o.extra ?? NO_EXTRA,
 })
 
-describe('글만 내는 열둘 (PARITY §2.24)', () => {
+withBank('롬의 배틀 글 (PARITY §2.24)', () => {
   it('방어는 쓰는 줄과 막는 줄이 다르다', () => {
-    // 원작도 둘을 따로 찍는다. 하나로 합치면 "막았다"가 쓰자마자 뜬다
+    // 원작도 둘을 따로 찍는다. 하나로 합치면 "몸을 지켰다"가 쓰자마자 뜬다
     expect(say({ kind: 'singleturn', actor: MINE, effect: eff('protect', 'other'), of: null }))
-      .toBe('모부기는 방어 태세를 취했다!')
-    expect(say(activate('protect'))).toBe('모부기는 공격을 막았다!')
+      .toBe('모부기는\n방어 태세에 들어갔다!')
+    expect(say(activate('protect'))).toBe('모부기는 공격으로부터\n몸을 지켰다!')
     // sim이 낸 `-activate`가 `-block`으로 도착해도 같은 문장이어야 한다
     expect(say({
       kind: 'block', actor: MINE, effect: eff('protect'), of: null, extra: NO_EXTRA,
-    })).toBe('모부기는 공격을 막았다!')
+    })).toBe('모부기는 공격으로부터\n몸을 지켰다!')
   })
 
   it('모으는 기술 아홉이 저마다 한 줄을 갖는다', () => {
     const prepare = (moveName: string): BattleEvent =>
       ({ kind: 'prepare', actor: FOE, move: null, moveName, target: MINE })
-    expect(say(prepare('Fly'))).toBe('야생의 팬텀은 하늘 높이 날아올랐다!')
-    expect(say(prepare('Solar Beam'))).toBe('야생의 팬텀은 빛을 흡수했다!')
+    expect(say(prepare('Fly'))).toBe('야생 팬텀은\n하늘 높이 날아올랐다!')
+    expect(say(prepare('Solar Beam'))).toBe('야생 팬텀은\n빛을 흡수했다!')
     // 접기가 이름 그대로가 아니다 — 빈칸과 대소문자를 지우고 찾는다
-    expect(say(prepare('Shadow Force'))).toBe('야생의 팬텀은 순식간에 모습을 감췄다!')
+    expect(say(prepare('Shadow Force'))).toBe('야생 팬텀의 모습이\n일순간에 사라졌다!')
+    // ⚠️ 손으로 들 때는 「땅속으로 파고들었다!」였다. 롬은 앞에 한 마디가 더 있다
+    expect(say(prepare('Dig'))).toBe('야생 팬텀은\n구멍을 파서 땅속에 파고들었다!')
+    // 그리고 로케트박치기는 「머리」가 아니라 「목」이다
+    expect(say(prepare('Skull Bash'))).toBe('야생 팬텀은\n목을 움츠렸다!')
     const nine = ['Fly', 'Dig', 'Dive', 'Bounce', 'Razor Wind', 'Skull Bash',
       'Sky Attack', 'Solar Beam', 'Shadow Force']
     const lines = nine.map((m) => say(prepare(m)))
@@ -289,37 +327,39 @@ describe('글만 내는 열둘 (PARITY §2.24)', () => {
   it('수를 그대로 옮기는 줄', () => {
     expect(say({ kind: 'hitcount', actor: FOE, count: 3 })).toBe('3번 맞았다!')
     expect(say({ kind: 'hitcount', actor: FOE, count: 1 })).toBe('1번 맞았다!')
-    expect(say({ kind: 'notarget', actor: FOE })).toBe('하지만 상대가 없다!')
+    expect(say({ kind: 'notarget', actor: FOE })).toBe('그러나 상대가 없으므로\n실패하고 말았다!')
     expect(say({ kind: 'ohko' })).toBe('일격필살!')
-    // 매그니튜드는 굴린 수가 `[number]`로 온다. 못 받으면 조용하다
+    // 매그니튜드는 굴린 수가 `[number]`로 온다. 못 받으면 조용하다.
+    // ⚠️ 느낌표가 **둘**이다 — 손으로 들 때는 하나였다
     expect(say(activate('magnitude', { extra: { ...NO_EXTRA, num: 7 } })))
-      .toBe('매그니튜드 7!')
+      .toBe('매그니튜드 7!!')
     expect(say(activate('magnitude'))).toBeNull()
   })
 
   it('자리가 비어 오는 줄도 문장이 된다', () => {
     // 튀어오르기는 `|-activate||move: Splash`로 온다 — 자리가 없다
-    expect(say(activate('splash', { actor: null }))).toBe('하지만 아무 일도 일어나지 않았다!')
+    expect(say(activate('splash', { actor: null }))).toBe('그러나 아무 일도 일어나지 않았다')
     expect(say({ kind: 'fieldactivate', effect: eff('perishsong') }))
-      .toBe('모든 포켓몬이 멸망의노래를 들었다!')
-    expect(say({ kind: 'fieldactivate', effect: eff('payday') })).toBe('주위에 동전이 흩어졌다!')
+      .toBe('멸망의노래를 들은 포켓몬은\n3턴 후에 쓰러져 버린다!')
+    expect(say({ kind: 'fieldactivate', effect: eff('payday') })).toBe('돈이 주위에 흩어졌다!')
   })
 
-  it('`[of]`가 가리키는 쪽이 문장에 들어간다', () => {
-    // 도우미는 **자리가 뒤집혀 있다** — 자리가 도움을 받는 쪽이다
+  it('[of]가 가리키는 쪽이 문장에 들어간다', () => {
+    // 도우미는 **자리가 뒤집혀 있다** — 자리가 도움을 받는 쪽이고, 롬의 첫 칸은
+    // 돕는 쪽이라 둘을 바꿔 넣는다
     expect(say({
       kind: 'singleturn', actor: MINE, effect: eff('helpinghand', 'other'), of: FOE,
-    })).toBe('야생의 팬텀은 모부기를 도울 준비를 했다!')
+    })).toBe('야생 팬텀은 모부기에게\n도우미가 되어주려 한다!')
     expect(say(activate('attract', { of: FOE })))
-      .toBe('모부기는 야생의 팬텀에게 헤롱헤롱해졌다!')
-    // 받침 없는 이름에는 "를"이 붙어야 한다
+      .toBe('모부기는\n야생 팬텀에게 헤롱헤롱해 있다!')
+    // 롬이 「…로/으로」를 부호로 고른다 — 모부기는 받침이 없으므로 「로」다
     expect(say(activate('lockon', { actor: FOE, of: MINE })))
-      .toBe('야생의 팬텀은 모부기를 조준했다!')
+      .toBe('야생 팬텀은 목표를\n모부기로 결정했다!')
   })
 
   it('베낀 기술은 한국어 이름으로 나온다', () => {
     expect(say(activate('sketch', { extra: { num: null, move: 33, moveName: 'Tackle' } })))
-      .toBe('모부기는 몸통박치기를 스케치했다!')
+      .toBe('모부기는\n몸통박치기를 스케치했다!')
     // ⚠️ **번호를 못 찾으면 조용하다.** 다른 자리처럼 영어로 떨어뜨리면 뒤에
     // 조사가 붙어 「Tackle을(를) 스케치했다!」가 화면에 뜬다
     expect(say(activate('sketch', { extra: { num: null, move: null, moveName: 'Tackle' } })))
@@ -328,8 +368,42 @@ describe('글만 내는 열둘 (PARITY §2.24)', () => {
     expect(say(activate('sketch'))).toBeNull()
   })
 
+  it('파티 전체와 특성이 걷히는 줄', () => {
+    expect(say({ kind: 'cureteam', actor: MINE, from: null })).toBe('기분 좋은 향기가 퍼졌다!')
+    expect(say({ kind: 'endability', actor: FOE, ability: null, abilityName: '' }))
+      .toBe('야생 팬텀은\n특성이 없어졌다!')
+  })
+
+  it('길동무는 거는 줄만 글이 있다', () => {
+    expect(say({ kind: 'singlemove', actor: MINE, effect: eff('destinybond', 'other') }))
+      .toBe('모부기는 상대를\n길동무로 삼으려 하고 있다')
+    // ⚠️ **걸린 줄은 비어 있다.** 롬의 그 줄은 이름을 둘 부르는데
+    // (「건 쪽는 끌려간 쪽를 길동무로 삼았다!」) sim은 -activate에 자리를 하나만
+    // 준다 — 반쪽만 채운 문장을 놓느니 비운다
+    expect(say(activate('destinybond'))).toBeNull()
+  })
+
+  it('표에 놓은 줄은 빈칸이 하나도 안 남는다', () => {
+    // ⚠️ **빈칸이 남으면 화면에 제어 부호가 글자로 뜬다** — 실제로 그렇게 떴다.
+    // 이름을 둘 다 주고 표를 통째로 돌려 여는 중괄호가 남는 줄이 없는지 본다
+    const both = { of: FOE, extra: { num: 7, move: 33, moveName: 'Tackle' } }
+    const lines: (readonly [string, string | null])[] = [
+      ...ACTIVATE_IDS.map((id) => [id, say(activate(id, both))] as const),
+      ...SINGLE_TURN_IDS.map((id) => [id, say({
+        kind: 'singleturn', actor: MINE, effect: eff(id, 'other'), of: FOE,
+      })] as const),
+      ...SINGLE_MOVE_IDS.map((id) => [id, say({
+        kind: 'singlemove', actor: MINE, effect: eff(id, 'other'),
+      })] as const),
+    ]
+    // 표에 있는 것은 다 문장이 된다 — 자리가 모자라 못 놓는 길동무는 애초에
+    // 표에 없다 (바로 위 시험이 그 자리가 비는 것을 따로 못박는다)
+    expect(lines.filter(([, l]) => l === null).map(([id]) => id)).toEqual([])
+    expect(lines.filter(([, l]) => l !== null && l.includes('{')).map(([id]) => id)).toEqual([])
+  })
+
   it('글이 없는 효과는 조용하되 특성은 배너로 떨어진다', () => {
-    // 원작은 특성이 일한 자리에서 특성 이름을 먼저 띄운다 — `-ability` 줄과 같은
+    // 원작은 특성이 일한 자리에서 특성 이름을 먼저 띄운다 — -ability 줄과 같은
     // 문장이라 지어낸 것이 아니다
     expect(say(activate('intimidate', { kind: 'ability' })))
       .toBe('모부기의 intimidate!')
@@ -342,25 +416,16 @@ describe('글만 내는 열둘 (PARITY §2.24)', () => {
     })).toBe('모부기의 위협!')
     // 기술은 이렇게 못 한다 — "모부기의 추격!"은 기술을 **쓴** 줄의 문장이다
     expect(say(activate('pursuit'))).toBeNull()
+    // ⚠️ 선제공격손톱은 **4세대 뱅크에 줄이 없다.** 「손톱」이 1,269줄에서 0건이다 —
+    // 5세대 이후의 글이라 손으로 들 때 지어냈던 자리다. 이제 비운다
+    expect(say(activate('quickclaw', { kind: 'item' }))).toBeNull()
   })
 
   it('원작에 없는 줄에는 글을 안 놓는다', () => {
-    // 다음 턴에 「움직일 수 없다!」를 찍는 것은 `cant|recharge`다
+    // 다음 턴에 「움직일 수 없다!」를 찍는 것은 cant의 recharge다
     expect(say({ kind: 'mustrecharge', actor: MINE })).toBeNull()
     expect(say({ kind: 'cant', actor: MINE, reason: 'recharge' })).toBe('모부기는 움직일 수 없다!')
     // 쇼다운이 사람에게 규칙을 설명하는 줄
     expect(say({ kind: 'hint', text: 'Some effects can force a Pokemon…' })).toBeNull()
-  })
-
-  it('파티 전체와 특성이 걷히는 줄', () => {
-    expect(say({ kind: 'cureteam', actor: MINE, from: null })).toBe('기분 좋은 향기가 감돌았다!')
-    expect(say({ kind: 'endability', actor: FOE, ability: null, abilityName: '' }))
-      .toBe('야생의 팬텀의 특성이 사라졌다!')
-  })
-
-  it('길동무는 거는 줄과 걸린 줄이 다르다', () => {
-    expect(say({ kind: 'singlemove', actor: MINE, effect: eff('destinybond', 'other') }))
-      .toBe('모부기는 상대를 길동무로 만들려 하고 있다!')
-    expect(say(activate('destinybond'))).toBe('모부기는 상대를 길동무로 삼았다!')
   })
 })

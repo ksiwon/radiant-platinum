@@ -17,7 +17,8 @@ import type { Actor, SlotId } from '../../engine/battle/events'
 import { buildBeats } from '../../engine/battle/playback'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
 import {
-  loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpecies, loadSpeciesNames,
+  loadDialogueBank, loadItemNames, loadLabels, loadMoveNames, loadMoves,
+  loadSpecies, loadSpeciesNames,
 } from '../../data/gameData'
 import {
   MATCH_LABEL, moveMatch, shownType, type MoveMatch,
@@ -36,6 +37,7 @@ import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
 import { SwitchScreen } from './SwitchScreen'
 import { battleText, type BattleNames } from './messages'
+import { BATTLE_BANK } from './romText'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import { CommandButton } from './CommandButton'
@@ -85,9 +87,13 @@ interface Extras {
   typesOf(species: number, form: number): readonly number[] | null
 }
 
-function useNames(): { names: BattleNames | null; extras: Extras | null } {
+function useNames(): {
+  names: BattleNames | null; extras: Extras | null; lines: readonly string[]
+} {
   const [names, setNames] = useState<BattleNames | null>(null)
   const [extras, setExtras] = useState<Extras | null>(null)
+  // 롬의 배틀 글 (PARITY §2.24). 화면에 뜨는 배틀 문장이 여기서 온다
+  const [lines, setLines] = useState<readonly string[]>([])
   // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
   const locale = useGameLocale()
   useEffect(() => {
@@ -104,10 +110,18 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
       // 종족표는 배틀을 열 때 이미 받아 뒀다 (`battleStore.open`) — 두 번째
       // 호출은 캐시에서 돌아온다
       loadSpecies(),
+      // ⚠️ **이 하나만 넘어져도 되게 잡는다.** 위의 여섯은 없으면 배틀이 통째로
+      // 안 뜨지만(REPAIR §29) 배틀 글은 없어도 판이 돈다 — 로그가 조용해질 뿐이다.
+      // 로케일 하나에 이 뱅크가 없다고 배틀을 못 하게 만들 이유가 없다
+      loadDialogueBank(locale, BATTLE_BANK).catch((e: unknown) => {
+        console.error('배틀 글 뱅크를 못 받았다', e)
+        return [] as string[]
+      }),
     ])
-      .then(([species, moves, labels, table, items, dex]) => {
+      .then(([species, moves, labels, table, items, dex, battleLines]) => {
         if (!alive) return
         setNames({ species, moves, abilities: labels.abilities, items })
+        setLines(battleLines)
         setExtras({
           types: labels.types,
           abilityText: labels.abilityText,
@@ -123,7 +137,7 @@ function useNames(): { names: BattleNames | null; extras: Extras | null } {
       .catch((e: unknown) => { console.error('배틀 이름표를 못 받았다', e) })
     return () => { alive = false }
   }, [locale])
-  return { names, extras }
+  return { names, extras, lines }
 }
 
 export function BattleScreen() {
@@ -161,7 +175,7 @@ export function BattleScreen() {
   // ⚠️ **세이브를 본다.** 배틀 안의 기술 칸(`moveSlotsOf`)이 아니다 — 레벨업으로
   // 배운 기술은 세이브에 먼저 들어가고 sim은 그 판이 끝날 때까지 모른다
   const savedParty = useSaveStore((s) => s.party)
-  const { names, extras } = useNames()
+  const { names, extras, lines } = useNames()
   const [page, setPage] = useState<MenuPage>('root')
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
   // 씬이 없으므로 그때만 배경을 깐다 — 안 그러면 타이틀 위에 HUD만 뜬다
@@ -193,8 +207,11 @@ export function BattleScreen() {
     const entry: RosterEntry | undefined = roster[actor.name]
     const base = entry?.nickname ?? names?.species[entry?.species ?? -1] ?? actor.name
     if (entry?.side !== 'p2') return base
-    // 사파리도 야생이다 — 트레이너가 데리고 나온 마리만 「상대」다
-    return kind === 'trainer' ? `상대 ${base}` : `야생의 ${base}`
+    // 사파리도 야생이다 — 트레이너가 데리고 나온 마리만 「상대」다.
+    // ⚠️ **「야생의」가 아니라 「야생 」이다** — 롬의 배틀 글 1,269줄에 「야생의」는
+    // 0건이고 「야생 」이 344건이다. 롬은 자리마다 줄을 셋 들고 있는데(우리 편·
+    // 야생·상대) 이름표가 롬의 말을 쓰면 **맨 줄 하나로 셋을 다 덮는다**
+    return kind === 'trainer' ? `상대 ${base}` : `야생 ${base}`
   }, [roster, names, kind])
 
   /** 자리 표시 없는 이름. 아직 안 나온 마리를 부를 때 쓴다 */
@@ -237,7 +254,7 @@ export function BattleScreen() {
   const beats = useMemo(() => {
     if (!names) return []
     const out = buildBeats(
-      events, (e) => battleText(e, { names, label, foeName, bare, playerName }),
+      events, (e) => battleText(e, { names, lines, label, foeName, bare, playerName }),
     )
     // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다
     if (kind === 'trainer' && foeName) {
@@ -249,7 +266,7 @@ export function BattleScreen() {
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
     if (end !== null) out.push({ text: end, events: [], hold: 30 })
     return out
-  }, [events, names, label, bare, outcome, kind, foeName, playerName])
+  }, [events, names, lines, label, bare, outcome, kind, foeName, playerName])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
   const script = useBattlePlayback(beats, playEvents)
