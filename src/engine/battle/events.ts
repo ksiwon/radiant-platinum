@@ -144,6 +144,43 @@ export interface Cause {
 }
 
 /**
+ * `-activate` 계통이 가리키는 **효과 하나** (PARITY §2.24).
+ *
+ * ⚠️ **같은 효과가 두 꼴로 온다.** 방어는 쓸 때 `|-singleturn|p1a: 모부기|Protect`고
+ * 막을 때 `|-activate|p1a: 모부기|move: Protect`다 — 접두사가 붙은 쪽과 안 붙은
+ * 쪽이 같은 것을 가리킨다. 그래서 비교의 정본은 `id`(`conditionId`와 같은 꼴)
+ * 하나로 접는다. 접두사로 갈라 두면 문구 표를 두 벌 적게 되고, 실제로 sim 판이
+ * 바뀔 때마다 한쪽만 살아남는다
+ */
+export interface EffectRef {
+  /** `protect`, `healbell`, `quickclaw`, `confusion` — 비교는 늘 이걸로 한다 */
+  id: string
+  /** 접두사. 안 붙어 온 것은 `other`다 — 그것도 뜻이 있다(`trapped`·`confusion`) */
+  kind: 'move' | 'ability' | 'item' | 'other'
+  /** 기술·특성이면 롬 번호. 접두사가 없거나 4세대 밖이면 null */
+  num: number | null
+  /** 원문 이름 (`Protect`). 번호를 못 찾았을 때 화면이 떨어질 자리 */
+  name: string
+}
+
+/**
+ * 효과 뒤에 붙어 오는 값 (PARITY §2.24).
+ *
+ * ⚠️ **자리 인자로 안 온다.** `@pkmn/protocol`이 `-activate`를 다시 쓰면서
+ * 넷째 자리를 `[of]`로 못 박고, 매그니튜드의 수·스케치가 베낀 기술 같은 것은
+ * **이름 있는 칸**으로 옮긴다 (`upgradeBattleArgs`). 그래서 읽는 자리도
+ * 자리 번호가 아니라 이름이어야 한다 — 자리로 읽으면 조용히 `[of]`가 잡힌다
+ */
+export interface EffectExtra {
+  /** 매그니튜드가 굴린 수, 깎인 PP */
+  num: number | null
+  /** 스케치가 베낀 기술, 원한이 지운 기술. 롬 번호를 못 찾으면 null */
+  move: number | null
+  /** 그 기술의 원문 이름. 번호를 못 찾았을 때 화면이 떨어질 자리 */
+  moveName: string | null
+}
+
+/**
  * 사파리 판의 한 마디 (PARITY §2.19).
  *
  * ⚠️ **`eating`과 `busyEating`이 뒤집혀 있지 않은지 늘 확인한다.** 굴린 값이
@@ -268,6 +305,69 @@ export type BattleEvent =
   | { kind: 'win'; winner: string }
   | { kind: 'tie' }
   | { kind: 'request'; request: BattleRequest | null }
+  // ── 글만 내는 열둘 (PARITY §2.24) ─────────────────────────────────────────
+  // 진행에도 체력에도 안 걸리지만 **원작이 글을 내는 자리**다. 판마다 3.7줄이
+  // 여기로 흘렀고, 그동안 화면은 방어를 써도 날아올라도 아무 말을 안 했다.
+  //
+  // ⚠️ **모양과 글은 다른 일이다.** 모양이 없으면 `other`로 떨어져 셀 수가
+  // 없고, 모양이 있으면 「글이 아직 없는 효과」를 낱낱이 셀 수 있다. 그래서
+  // 문구를 못 대는 효과라도 모양은 준다 (`ui/battle/messages`가 null을 낸다)
+  /**
+   * 효과가 발동했다. 대타가 대신 맞고, 방어가 막고, 급소회피 도구가 돈다.
+   *
+   * `args`는 효과 뒤에 붙는 자리 인자다 — 매그니튜드의 수, 흉내내기가 베낀
+   * 기술 이름처럼 **효과마다 뜻이 다르다.** 여기서 풀지 않고 그대로 넘긴다
+   */
+  | { kind: 'activate'; actor: Actor | null; effect: EffectRef; of: Actor | null; extra: EffectExtra }
+  /**
+   * 효과가 **막았다.** `-activate`와 같은 표를 본다.
+   *
+   * ⚠️ **sim은 이 줄을 안 낸다.** 방어가 막은 자리도 sim에서는 `-activate`고,
+   * `@pkmn/protocol`이 여섯을 `-block`으로 다시 쓴다 — 4세대에 닿는 것은
+   * 방어·뿌리박기·흰안개·신비의부적·점착·흡반이다. 그래서 갈래는 둘이어도
+   * 문구 표는 하나여야 한다
+   */
+  | { kind: 'block'; actor: Actor | null; effect: EffectRef; of: Actor | null; extra: EffectExtra }
+  /** 이번 **턴에만** 걸리는 것. 방어·기합펀치·매직코트·가로챈다·버티기 */
+  | { kind: 'singleturn'; actor: Actor; effect: EffectRef; of: Actor | null }
+  /** 다음 기술 **한 번에만** 걸리는 것. 길동무·원한·분노 */
+  | { kind: 'singlemove'; actor: Actor; effect: EffectRef }
+  /**
+   * 모으는 기술의 첫 턴 (`|-prepare|공격자|기술|대상`).
+   *
+   * 4세대에서 이 줄을 내는 기술은 **아홉**이다 — 날아오르기·구멍파기·다이빙·
+   * 튀어오르기·칼바람·로케트박치기·하늘의은총·솔라빔·섀도다이브
+   */
+  | { kind: 'prepare'; actor: Actor; move: number | null; moveName: string; target: Actor | null }
+  /** 연타가 몇 번 맞았나 (`|-hitcount|대상|수`) */
+  | { kind: 'hitcount'; actor: Actor | null; count: number }
+  /** 겨눌 상대가 없었다. 더블에서 옆이 이미 쓰러졌을 때 */
+  | { kind: 'notarget'; actor: Actor | null }
+  /** 일격필살이 맞았다. 자리 인자가 없는 줄이다 (`|-ohko|`) */
+  | { kind: 'ohko' }
+  /**
+   * 다음 턴을 쉬어야 한다 (파괴광선).
+   *
+   * ⚠️ **여기서는 아무 말도 안 한다.** 원작이 글을 내는 것은 **다음 턴**이고
+   * (「움직일 수 없다!」) 그 줄은 `cant|recharge`로 이미 받고 있다. 여기서 또
+   * 찍으면 한 번 쉬는 데 글이 두 줄이 된다
+   */
+  | { kind: 'mustrecharge'; actor: Actor }
+  /** 특성이 없어졌다 (4세대에서는 위장약 하나다) */
+  | { kind: 'endability'; actor: Actor; ability: number | null; abilityName: string }
+  /** 무대 전체에 걸린 효과가 돌았다. 4세대에서는 멸망의노래와 페이데이 둘이다 */
+  | { kind: 'fieldactivate'; effect: EffectRef }
+  /** 파티 전체의 상태이상이 나았다 (4세대에서는 아로마테라피 하나다) */
+  | { kind: 'cureteam'; actor: Actor; from: Cause | null }
+  /**
+   * 쇼다운이 **사람에게 규칙을 설명하는** 줄.
+   *
+   * ⚠️ **원작에 없는 줄이라 글을 안 놓는다.** 「Dynamaxed Pokémon are immune
+   * to Destiny Bond.」 같은 것이고, 옮기면 우리 화면이 원작에 없는 말을 한다.
+   * 그래도 `other`에 안 남긴다 — 남겨 두면 「아직 모양 없는 줄」 목록이 이것
+   * 하나 때문에 영영 안 빈다
+   */
+  | { kind: 'hint'; text: string }
   | { kind: 'other'; cmd: string; args: string[] }
   // ── 아래 둘은 프로토콜에 없다 ──────────────────────────────────────────────
   // 포획과 도망은 대전 규칙 밖의 일이라 sim이 모른다. 컨트롤러가 직접 넣는다.

@@ -251,11 +251,10 @@ function compare(
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
 
 /**
- * 8배틀을 굴려 실제로 관측된, 아직 모양을 안 준 명령.
+ * 8배틀을 굴려도 아직 모양을 못 준 명령. **지금은 비어 있다.**
  *
- * 전부 **부가 연출**이다 — 씨뿌리기가 걸렸다(`-start`), 압정이 깔렸다(`-sidestart`),
- * 2타 맞았다(`-hitcount`) 같은 것들. 진행과 HP에는 영향이 없어서 지금 없어도
- * 배틀이 성립한다. 연출 계층(PLAN §7.3)을 만들 때 여기부터 채우면 된다
+ * 비어 있는 것이 이 검사의 값이다 — 모르는 줄은 버리지 않고 `other`로 남기므로,
+ * sim 판이 올라가 새 줄이 오면 여기서 티가 난다
  */
 // 지속 효과 여섯 줄(`-start`/`-end`/`-sidestart`/`-sideend`/`-fieldstart`/`-fieldend`)은
 // 트레이너 AI가 리플렉터·대타출동·트릭룸을 보게 하려고 모양을 줬다 (PLAN §7.7)
@@ -269,12 +268,17 @@ const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
 // 셋 다 **랭크의 진실을 바꾸는 줄**이라 부가 연출이 아니었다. 여덟 판에서는
 // `-setboost`만 보였다.
 //
-// ⚠️ **이 목록이 전부가 아니다.** 여덟 판이 보는 것은 표본이고, 120판을 굴려
-// 세면 열여섯 가지가 나온다(`-activate` 156 · `-singleturn` 56 · `-prepare` 46 ·
-// `-singlemove` 36 · `-hitcount` 33 · `-notarget` 29 · `-block` 28 ·
-// `-mustrecharge` 15 · `-endability` 11 · `-fieldactivate` 9 · `-cureteam` 3 ·
-// `-hint` 2 · `-ohko` 2). 그쪽은 전부 **글과 연출**이고 진행에는 안 걸린다
-const UNMODELLED = ['-activate', '-hitcount', '-prepare', '-singleturn']
+// ⚠️ **그리고 비었다 (PARITY §2.24).** 120판을 굴려 세면 열여섯 가지가 나왔는데
+// (`-activate` 156 · `-singleturn` 56 · `-prepare` 46 · `-singlemove` 36 ·
+// `-hitcount` 33 · `-notarget` 29 · `-block` 28 · `-mustrecharge` 15 ·
+// `-endability` 11 · `-fieldactivate` 9 · `-cureteam` 3 · `-hint` 2 · `-ohko` 2),
+// 그 열셋에 전부 모양을 줬다. **모양이 있다는 것과 글이 있다는 것은 다르다** —
+// 문구를 아직 못 댄 효과는 `ui/battle/messages`가 null을 내고 그 목록은
+// PARITY §2.24에 있다. 여기서 세는 것은 **모양**뿐이다.
+//
+// ⚠️ `-hint`에도 모양을 줬다. 원작에 없는 줄이라 글은 안 놓지만, `other`에
+// 남겨 두면 이 목록이 그것 하나 때문에 영영 안 빈다
+const UNMODELLED: string[] = []
 
 /** 배틀 굴리기는 비싸다. 두 테스트가 같은 판을 나눠 쓴다 */
 let cached: Promise<Playout[]> | null = null

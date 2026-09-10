@@ -1,7 +1,9 @@
 // 배틀 문구. 조사가 하나만 틀려도 화면에서 바로 보이는 종류의 버그라 문장을
 // 통째로 못박는다 — 조각으로 검사하면 "찌르꼬이(가)"가 그대로 지나간다.
 import { describe, it, expect } from 'vitest'
-import type { Actor, BattleEvent, BoostStat, Cause, SafariBeat } from '../../engine/battle/events'
+import type {
+  Actor, BattleEvent, BoostStat, Cause, EffectExtra, EffectRef, SafariBeat,
+} from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
 import { battleText, type BattleNames, type TextContext } from './messages'
 
@@ -230,5 +232,135 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     expect(beat('angry')).toBe('야생의 팬텀은 화가 났다!')
     expect(beat('veryAngry')).toBe('야생의 팬텀은 몹시 화가 났다!')
     expect(beat('watching')).toBe('야생의 팬텀은 주의깊게 보고 있다!')
+  })
+})
+
+// ── 글만 내는 열둘 (PARITY §2.24) ─────────────────────────────────────────────
+//
+// 판마다 3.7줄이 여기로 흘러 화면이 조용했다. 문장을 통째로 못박는 이유는 위와
+// 같다 — 조사 하나가 틀리면 조각 검사는 그대로 지나간다.
+
+const NO_EXTRA: EffectExtra = { num: null, move: null, moveName: null }
+
+/** `move: Protect` → 효과 하나. `sim/protocol`의 `effectRef`와 같은 모양이다 */
+const eff = (id: string, kind: EffectRef['kind'] = 'move', num: number | null = null): EffectRef =>
+  ({ id, kind, num, name: id })
+
+const activate = (
+  id: string,
+  o: { actor?: Actor | null; of?: Actor | null; extra?: EffectExtra; kind?: EffectRef['kind'] } = {},
+): BattleEvent => ({
+  kind: 'activate',
+  actor: o.actor === undefined ? MINE : o.actor,
+  effect: eff(id, o.kind),
+  of: o.of ?? null,
+  extra: o.extra ?? NO_EXTRA,
+})
+
+describe('글만 내는 열둘 (PARITY §2.24)', () => {
+  it('방어는 쓰는 줄과 막는 줄이 다르다', () => {
+    // 원작도 둘을 따로 찍는다. 하나로 합치면 "막았다"가 쓰자마자 뜬다
+    expect(say({ kind: 'singleturn', actor: MINE, effect: eff('protect', 'other'), of: null }))
+      .toBe('모부기는 방어 태세를 취했다!')
+    expect(say(activate('protect'))).toBe('모부기는 공격을 막았다!')
+    // sim이 낸 `-activate`가 `-block`으로 도착해도 같은 문장이어야 한다
+    expect(say({
+      kind: 'block', actor: MINE, effect: eff('protect'), of: null, extra: NO_EXTRA,
+    })).toBe('모부기는 공격을 막았다!')
+  })
+
+  it('모으는 기술 아홉이 저마다 한 줄을 갖는다', () => {
+    const prepare = (moveName: string): BattleEvent =>
+      ({ kind: 'prepare', actor: FOE, move: null, moveName, target: MINE })
+    expect(say(prepare('Fly'))).toBe('야생의 팬텀은 하늘 높이 날아올랐다!')
+    expect(say(prepare('Solar Beam'))).toBe('야생의 팬텀은 빛을 흡수했다!')
+    // 접기가 이름 그대로가 아니다 — 빈칸과 대소문자를 지우고 찾는다
+    expect(say(prepare('Shadow Force'))).toBe('야생의 팬텀은 순식간에 모습을 감췄다!')
+    const nine = ['Fly', 'Dig', 'Dive', 'Bounce', 'Razor Wind', 'Skull Bash',
+      'Sky Attack', 'Solar Beam', 'Shadow Force']
+    const lines = nine.map((m) => say(prepare(m)))
+    expect(lines.every((l) => l !== null)).toBe(true)
+    // 아홉이 서로 다른 문장이어야 한다 — 같으면 무엇을 모으는지 화면에서 안 보인다
+    expect(new Set(lines).size).toBe(9)
+    // 모으는 기술이 아닌 것은 조용하다
+    expect(say(prepare('Tackle'))).toBeNull()
+  })
+
+  it('수를 그대로 옮기는 줄', () => {
+    expect(say({ kind: 'hitcount', actor: FOE, count: 3 })).toBe('3번 맞았다!')
+    expect(say({ kind: 'hitcount', actor: FOE, count: 1 })).toBe('1번 맞았다!')
+    expect(say({ kind: 'notarget', actor: FOE })).toBe('하지만 상대가 없다!')
+    expect(say({ kind: 'ohko' })).toBe('일격필살!')
+    // 매그니튜드는 굴린 수가 `[number]`로 온다. 못 받으면 조용하다
+    expect(say(activate('magnitude', { extra: { ...NO_EXTRA, num: 7 } })))
+      .toBe('매그니튜드 7!')
+    expect(say(activate('magnitude'))).toBeNull()
+  })
+
+  it('자리가 비어 오는 줄도 문장이 된다', () => {
+    // 튀어오르기는 `|-activate||move: Splash`로 온다 — 자리가 없다
+    expect(say(activate('splash', { actor: null }))).toBe('하지만 아무 일도 일어나지 않았다!')
+    expect(say({ kind: 'fieldactivate', effect: eff('perishsong') }))
+      .toBe('모든 포켓몬이 멸망의노래를 들었다!')
+    expect(say({ kind: 'fieldactivate', effect: eff('payday') })).toBe('주위에 동전이 흩어졌다!')
+  })
+
+  it('`[of]`가 가리키는 쪽이 문장에 들어간다', () => {
+    // 도우미는 **자리가 뒤집혀 있다** — 자리가 도움을 받는 쪽이다
+    expect(say({
+      kind: 'singleturn', actor: MINE, effect: eff('helpinghand', 'other'), of: FOE,
+    })).toBe('야생의 팬텀은 모부기를 도울 준비를 했다!')
+    expect(say(activate('attract', { of: FOE })))
+      .toBe('모부기는 야생의 팬텀에게 헤롱헤롱해졌다!')
+    // 받침 없는 이름에는 "를"이 붙어야 한다
+    expect(say(activate('lockon', { actor: FOE, of: MINE })))
+      .toBe('야생의 팬텀은 모부기를 조준했다!')
+  })
+
+  it('베낀 기술은 한국어 이름으로 나온다', () => {
+    expect(say(activate('sketch', { extra: { num: null, move: 33, moveName: 'Tackle' } })))
+      .toBe('모부기는 몸통박치기를 스케치했다!')
+    // ⚠️ **번호를 못 찾으면 조용하다.** 다른 자리처럼 영어로 떨어뜨리면 뒤에
+    // 조사가 붙어 「Tackle을(를) 스케치했다!」가 화면에 뜬다
+    expect(say(activate('sketch', { extra: { num: null, move: null, moveName: 'Tackle' } })))
+      .toBeNull()
+    // 기술 이름을 아예 못 받아도 조용하다
+    expect(say(activate('sketch'))).toBeNull()
+  })
+
+  it('글이 없는 효과는 조용하되 특성은 배너로 떨어진다', () => {
+    // 원작은 특성이 일한 자리에서 특성 이름을 먼저 띄운다 — `-ability` 줄과 같은
+    // 문장이라 지어낸 것이 아니다
+    expect(say(activate('intimidate', { kind: 'ability' })))
+      .toBe('모부기의 intimidate!')
+    expect(say({
+      kind: 'activate',
+      actor: MINE,
+      effect: { id: 'intimidate', kind: 'ability', num: 22, name: 'Intimidate' },
+      of: null,
+      extra: NO_EXTRA,
+    })).toBe('모부기의 위협!')
+    // 기술은 이렇게 못 한다 — "모부기의 추격!"은 기술을 **쓴** 줄의 문장이다
+    expect(say(activate('pursuit'))).toBeNull()
+  })
+
+  it('원작에 없는 줄에는 글을 안 놓는다', () => {
+    // 다음 턴에 「움직일 수 없다!」를 찍는 것은 `cant|recharge`다
+    expect(say({ kind: 'mustrecharge', actor: MINE })).toBeNull()
+    expect(say({ kind: 'cant', actor: MINE, reason: 'recharge' })).toBe('모부기는 움직일 수 없다!')
+    // 쇼다운이 사람에게 규칙을 설명하는 줄
+    expect(say({ kind: 'hint', text: 'Some effects can force a Pokemon…' })).toBeNull()
+  })
+
+  it('파티 전체와 특성이 걷히는 줄', () => {
+    expect(say({ kind: 'cureteam', actor: MINE, from: null })).toBe('기분 좋은 향기가 감돌았다!')
+    expect(say({ kind: 'endability', actor: FOE, ability: null, abilityName: '' }))
+      .toBe('야생의 팬텀의 특성이 사라졌다!')
+  })
+
+  it('길동무는 거는 줄과 걸린 줄이 다르다', () => {
+    expect(say({ kind: 'singlemove', actor: MINE, effect: eff('destinybond', 'other') }))
+      .toBe('모부기는 상대를 길동무로 만들려 하고 있다!')
+    expect(say(activate('destinybond'))).toBe('모부기는 상대를 길동무로 삼았다!')
   })
 })

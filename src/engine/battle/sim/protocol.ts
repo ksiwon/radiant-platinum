@@ -6,7 +6,7 @@
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import { Protocol } from '@pkmn/protocol'
 import type {
-  Actor, BattleEvent, BattleRequest, BoostStat, Cause, Effectiveness,
+  Actor, BattleEvent, BattleRequest, BoostStat, Cause, EffectExtra, EffectRef, Effectiveness,
 } from '../events'
 import { conditionId, parseActor, parseCondition, parseDetails, parseSide } from '../events'
 import type { Status } from '../../pokemon/instance'
@@ -38,6 +38,55 @@ function from(kw: Record<string, unknown>): Cause | null {
   if (kind === 'ability') return { kind: 'ability', id: romAbility(name), name }
   if (kind === 'item') return { kind: 'item', id: null, name }
   return { kind: 'other', id: null, name }
+}
+
+/**
+ * 효과 뒤에 붙어 온 값. 자리가 아니라 **이름 있는 칸**에서 읽는다.
+ *
+ * 매그니튜드는 `[number] 7`로, 스케치가 베낀 기술은 `[move] Tackle`로 온다 —
+ * sim이 자리 인자로 보낸 것을 `@pkmn/protocol`이 여기로 옮겨 놓는다
+ */
+function extra(kw: Record<string, unknown>): EffectExtra {
+  const n = Number(kw['number'])
+  const raw = kw['move']
+  const moveName = typeof raw === 'string' && raw ? raw : null
+  return {
+    num: Number.isFinite(n) ? n : null,
+    // 번호까지 여기서 푼다 — 위층은 sim을 모르므로 `Tackle`을 한국어로 못 바꾼다
+    move: moveName === null ? null : romMove(moveName),
+    moveName,
+  }
+}
+
+/**
+ * `[of] p2a: 난천` → 그 자리. 효과를 **건 쪽**이라 발동한 쪽과 다르다.
+ *
+ * 흉내내기·가로챈다처럼 두 마리가 한 줄에 나오는 자리에서 필요하다
+ */
+function of(kw: Record<string, unknown>): Actor | null {
+  const v = kw['of']
+  return typeof v === 'string' ? parseActor(v) : null
+}
+
+/**
+ * `move: Protect` · `Protect` · `ability: Sticky Hold` → 효과 하나 (PARITY §2.24).
+ *
+ * ⚠️ **접두사가 있을 때와 없을 때가 같은 효과다.** 방어는 쓸 때 접두사 없이
+ * (`|-singleturn|…|Protect`) 막을 때 붙여서(`|-activate|…|move: Protect`) 온다.
+ * `id`를 `conditionId`로 접어 그 둘을 한자리로 모은다 — 지속 효과 세 갈래가
+ * 이미 같은 접기를 쓰고 있다
+ */
+function effectRef(raw: string): EffectRef {
+  const colon = raw.indexOf(':')
+  const prefix = colon < 0 ? '' : raw.slice(0, colon).trim()
+  const name = (colon < 0 ? raw : raw.slice(colon + 1)).trim()
+  const kind = prefix === 'move' || prefix === 'ability' || prefix === 'item' ? prefix : 'other'
+  return {
+    id: conditionId(raw),
+    kind,
+    num: kind === 'move' ? romMove(name) : kind === 'ability' ? romAbility(name) : null,
+    name,
+  }
 }
 
 const BOOST_STATS: BoostStat[] = ['atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion']
@@ -266,6 +315,98 @@ export function parseLine(line: string): BattleEvent | null {
       if (!actor || !volatile) break
       return { kind: 'volatile', actor, volatile, start: cmd === '-start' }
     }
+
+    // ── 글만 내는 열둘 (PARITY §2.24) ────────────────────────────────────────
+    //
+    // `|-activate|p1a: 모부기|Substitute|[damage]`, `|-block|p1a: 모부기|move: Protect`
+    //
+    // ⚠️ **자리 인자를 세지 않는다.** `@pkmn/protocol`이 이 줄을 다시 쓰면서
+    // 넷째 자리를 `[of]`로 못 박기 때문에, 자리로 읽으면 매그니튜드의 수 자리에
+    // 조용히 상대 이름이 들어온다 (`upgradeBattleArgs`). 붙어 오는 값은 전부
+    // 이름 있는 칸으로 옮겨져 있다
+    case '-activate':
+    case '-block': {
+      const effect = effectRef(rest[1] ?? '')
+      if (!effect.id) break
+      return {
+        kind: cmd === '-activate' ? 'activate' : 'block',
+        actor: who(0),
+        effect,
+        of: of(kw),
+        extra: extra(kw),
+      }
+    }
+
+    // `|-singleturn|p1a: 모부기|Protect`, `|-singlemove|p2a: 팬텀|Destiny Bond`
+    case '-singleturn':
+    case '-singlemove': {
+      const actor = need(0)
+      const effect = effectRef(rest[1] ?? '')
+      if (!actor || !effect.id) break
+      return cmd === '-singleturn'
+        ? { kind: 'singleturn', actor, effect, of: of(kw) }
+        : { kind: 'singlemove', actor, effect }
+    }
+
+    // `|-prepare|p1a: 모부기|Fly|p2a: 팬텀`. 대상 자리는 없을 수도 있다
+    case '-prepare': {
+      const actor = need(0)
+      if (!actor) break
+      const moveName = rest[1] ?? ''
+      return { kind: 'prepare', actor, move: romMove(moveName), moveName, target: who(2) }
+    }
+
+    // `|-hitcount|p2a: 팬텀|3`
+    case '-hitcount': {
+      const count = Number(rest[1])
+      if (!Number.isFinite(count)) break
+      return { kind: 'hitcount', actor: who(0), count }
+    }
+
+    // `|-notarget|p2a: 팬텀` — 자리가 아예 없는 줄도 있다
+    case '-notarget':
+      return { kind: 'notarget', actor: who(0) }
+
+    // `|-ohko|` — 자리 인자가 없다
+    case '-ohko':
+      return { kind: 'ohko' }
+
+    case '-mustrecharge': {
+      const actor = need(0)
+      if (!actor) break
+      return { kind: 'mustrecharge', actor }
+    }
+
+    // `|-endability|p1a: 모부기` — 특성 이름은 안 붙어 오는 것이 보통이다
+    case '-endability': {
+      const actor = need(0)
+      if (!actor) break
+      const abilityName = rest[1] ?? ''
+      return {
+        kind: 'endability',
+        actor,
+        ability: abilityName ? romAbility(abilityName) : null,
+        abilityName,
+      }
+    }
+
+    // `|-fieldactivate|move: Perish Song` — 자리가 없다. 무대 전체의 줄이다
+    case '-fieldactivate': {
+      const effect = effectRef(rest[0] ?? '')
+      if (!effect.id) break
+      return { kind: 'fieldactivate', effect }
+    }
+
+    // `|-cureteam|p1a: 모부기|[from] move: Aromatherapy`
+    case '-cureteam': {
+      const actor = need(0)
+      if (!actor) break
+      return { kind: 'cureteam', actor, from: from(kw) }
+    }
+
+    // 쇼다운이 사람에게 규칙을 설명하는 줄. 원작에 없어서 글은 안 놓는다
+    case '-hint':
+      return { kind: 'hint', text: rest.join('|') }
   }
 
   return { kind: 'other', cmd, args: rest }
