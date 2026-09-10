@@ -122,14 +122,21 @@ export function buildBeats(
   let view: BattleView = emptyView()
   let lastLine: string | null = null
 
-  /** 글만 찍는 박자. 같은 줄이 연달아 나오면(연타 데미지) 다시 안 찍는다 */
+  /**
+   * 글만 찍는 박자. 같은 창이 연달아 나오면(연타 데미지) 다시 안 찍는다.
+   *
+   * ⚠️ **줄바꿈 하나로 창을 가르지 않는다.** 롬의 배틀 글은 거의 다 **두 줄**이고
+   * 그 줄바꿈은 한 창 안의 것이다 (`ui/battle/messages`의 `pages`). 한때 `\n`마다
+   * 창을 새로 열었는데, 그러자 「모부기의 / 공격이 떨어졌다!」가 반 문장씩 두 번
+   * 떴다 — 시험은 전부 초록이었고 **화면에서만 보였다**. 창을 가르는 것은 빈 줄이다
+   */
   const say = (line: string | null, hold: number): void => {
     if (line === null) return
-    // 여러 줄짜리(경험치·레벨업·기술 습득)는 원작도 한 창에 하나씩 띄운다
-    for (const part of line.split('\n')) {
-      if (part === '' || part === lastLine) continue
-      lastLine = part
-      out.push({ text: part, events: [], hold })
+    for (const part of line.split('\n\n')) {
+      const page = part.trim()
+      if (page === '' || page === lastLine) continue
+      lastLine = page
+      out.push({ text: page, events: [], hold })
     }
   }
 

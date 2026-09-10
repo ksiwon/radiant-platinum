@@ -534,18 +534,27 @@ function fill(
   }
   const slots = new MessageSlots(Math.max(filled.length, MESSAGE_SLOTS))
   filled.forEach((value, i) => { slots.set(i, value) })
-  return onePage(formatMessage(raw, slots))
+  return pages(formatMessage(raw, slots))
 }
 
 /**
- * 한 쪽으로 편다.
+ * 창 단위로 편다.
  *
- * 롬은 창을 비우고 새로 찍는 자리를 `\r`로, 한 줄 올리고 잇는 자리를 `\f`로
- * 적어 둔다. 우리 로그는 **박자 하나가 곧 한 쪽**이라(글은 한 자씩 안 찍는다)
- * 둘 다 줄바꿈으로 눕히고 끝의 빈 줄을 턴다
+ * 롬은 창을 **비우고 새로 찍는** 자리를 `\r`로, 한 줄 올리고 **잇는** 자리를
+ * `\f`로 적어 둔다. 우리 규칙은 그 둘을 그대로 옮긴 것이다:
+ *
+ *   `\n`     한 창 안에서 줄만 바꾼다 (롬의 `\n`·`\f`)
+ *   `\n\n`   **창을 새로 연다** (롬의 `\r`)
+ *
+ * ⚠️ **이 규칙이 없는 동안 화면이 반 문장씩 떴다.** 박자 만드는 쪽이 `\n`마다
+ * 창을 새로 열고 있어서, 롬의 두 줄짜리(「모부기의 / 공격이 떨어졌다!」)가
+ * 두 창으로 갈렸다 — 시험은 전부 초록이었고 **화면에서만 보였다**
  */
-function onePage(text: string): string {
-  return text.replace(/[\r\f]/g, '\n').replace(/\n+$/, '')
+function pages(text: string): string {
+  return text
+    .replace(/\f/g, '\n')
+    .replace(/\r/g, '\n\n')
+    .replace(/[\s]+$/, '')
 }
 
 /**
@@ -705,7 +714,8 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       for (const move of e.pending) {
         push(rom(ctx, MSG.pokemonIsTryingToLearnMove, who, names.moves[move] ?? null))
       }
-      return out.length === 0 ? null : out.join('\n')
+      // 창을 하나씩 연다 — 경험치 · 레벨 · 배운 기술은 원작도 따로 띄운다
+      return out.length === 0 ? null : out.join('\n\n')
     }
 
     case 'prize':
@@ -736,7 +746,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       if (e.reason === 'hitSelf') {
         const first = rom(ctx, MSG.pokemonWontObey, who)
         const second = rom(ctx, MSG.itHurtItselfInItsConfusion)
-        return first === null || second === null ? null : first + '\n' + second
+        return first === null || second === null ? null : first + '\n\n' + second
       }
       return rom(ctx, idleLine(e.flavor ?? 0), who)
     }

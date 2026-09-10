@@ -237,8 +237,8 @@ withBank('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
       kind: 'reward', key: 'p1-0', exp: 160, levels: [6, 7], learned: [33], pending: [],
     })
     expect(text).toBe(
-      '모부기는\n160 경험치를 얻었다!\n'
-      + '모부기는\n레벨7로 올랐다!\n'
+      '모부기는\n160 경험치를 얻었다!\n\n'
+      + '모부기는\n레벨7로 올랐다!\n\n'
       + '모부기는\n몸통박치기를 배웠다!',
     )
   })
@@ -272,7 +272,8 @@ withBank('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     expect(say({ kind: 'disobey', actor: MINE, reason: 'nap' }))
       .toBe('모부기는 낮잠을 자기 시작했다!')
     expect(say({ kind: 'disobey', actor: MINE, reason: 'hitSelf' }))
-      .toBe('모부기는 말을 듣지 않는다!\n영문도 모른 채\n자신을 공격했다!')
+      // 창이 둘이다 — 롬도 두 줄을 따로 띄운다. 빈 줄이 그 표시다
+      .toBe('모부기는 말을 듣지 않는다!\n\n영문도 모른 채\n자신을 공격했다!')
   })
 
   it('아무것도 안 한 마디는 넷이고 서로 다르다', () => {

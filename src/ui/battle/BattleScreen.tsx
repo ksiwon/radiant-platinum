@@ -213,7 +213,7 @@ export function BattleScreen() {
     return () => { window.removeEventListener('keydown', onEsc) }
   }, [page, forced])
 
-  /** 키 → 화면에 쓸 이름. 상대 쪽에는 "야생의"나 "상대"를 앞에 붙인다 */
+  /** 키 → 화면에 쓸 이름. 상대 쪽에는 "야생 "이나 "상대 "를 앞에 붙인다 */
   const label = useMemo(() => (actor: Actor) => {
     const entry: RosterEntry | undefined = roster[actor.name]
     const base = entry?.nickname ?? names?.species[entry?.species ?? -1] ?? actor.name
@@ -349,7 +349,7 @@ export function BattleScreen() {
             <MonCard
               key={i}
               mon={m} names={names} drainMs={script.holdMs}
-              prefix={kind === 'trainer' ? '상대 ' : '야생의 '}
+              prefix={kind === 'trainer' ? '상대 ' : '야생 '}
               caught={m.species !== null && dexHas(caughtDex, m.species)}
             />
           ))}

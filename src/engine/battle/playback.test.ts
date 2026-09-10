@@ -192,15 +192,17 @@ describe('박자 순서', () => {
     expect(late.filter((e) => e.kind === 'switch')).toHaveLength(1)
   })
 
-  it('여러 줄짜리 보상은 창 하나에 한 줄씩 나온다', () => {
+  it('빈 줄로 갈린 글은 창이 갈리고, 줄바꿈 하나는 한 창에 남는다', () => {
+    // ⚠️ **줄바꿈 하나로 창을 가르면 안 된다.** 롬의 배틀 글은 거의 다 두 줄이고
+    // 그 줄바꿈은 한 창 안의 것이다 — 가르면 화면에 반 문장씩 뜬다
     const beats = buildBeats(
       [{ kind: 'reward', key: 'party-0', exp: 24, levels: [6], learned: [], pending: [] }],
-      () => '모부기는 경험치를 24 얻었다!\n모부기의 레벨이 올랐다! (Lv.6)',
+      () => '모부기는\n24 경험치를 얻었다!\n\n모부기는\n레벨6으로 올랐다!',
     )
     const lines = beats.map((b) => b.text).filter((t) => t !== null)
     expect(lines).toEqual([
-      '모부기는 경험치를 24 얻었다!',
-      '모부기의 레벨이 올랐다! (Lv.6)',
+      '모부기는\n24 경험치를 얻었다!',
+      '모부기는\n레벨6으로 올랐다!',
     ])
   })
 })
