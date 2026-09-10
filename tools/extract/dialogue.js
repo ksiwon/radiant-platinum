@@ -267,6 +267,14 @@ const EXTRA_BANKS = [
   // 「분신」이 「대타」가 되고, 롬에 아예 없는 문장이 둘 섞여 있었다.
   // 여기 실으면 문장도 **조사도** 롬 것이 된다 (`{STRVAR_1 1, 0, 2}`의 2가 을/를)
   'TEXT_BANK_BATTLE_STRINGS',
+  // 기술을 쓰는 줄 1,404개 (PARITY §2.24). 「{이름}의 줄바꿈 {기술}!」이 **기술마다
+  // 통째로** 들어 있다 — 자리는 `기술번호 × 3 + (우리 편 0 · 야생 1 · 상대 2)`고,
+  // 그 규칙은 기술 이름표 467개와 맞대 확인했다 (`romText.test.ts`)
+  'TEXT_BANK_MOVES_USED_IN_BATTLE',
+  // 랭크 이름 아홉 (PARITY §2.24). 롬의 랭크 줄이 「{이름}의 {능력} 올라갔다!」로
+  // 능력 이름을 빈칸으로 받는다 — 우리가 「공격」을 적어 두면 로케일을 바꿔도
+  // 한국어가 남는다. 요약 화면 뱅크의 이름표와는 다른 표다
+  'TEXT_BANK_POKEMON_STAT_NAMES',
   'TEXT_BANK_EASY_CHAT', 'TEXT_BANK_EASY_CHAT_GROUPS',
   'TEXT_BANK_TRAINER_WORDS', 'TEXT_BANK_PEOPLE_WORDS', 'TEXT_BANK_GREETINGS',
   'TEXT_BANK_LIFESTYLE_WORDS', 'TEXT_BANK_FEELINGS', 'TEXT_BANK_TOUGH_WORDS',

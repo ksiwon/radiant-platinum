@@ -35,6 +35,7 @@ const names = {
   moves: Array<string>(700).fill('리플렉터'),
   abilities: Array<string>(200).fill('프레셔'),
   items: [],
+  stats: [],
 }
 
 const ctx: TextContext = {
@@ -46,6 +47,8 @@ const ctx: TextContext = {
       return []
     }
   })(),
+  // 이 파일은 기술을 쓰는 줄을 안 묻는다
+  moveLines: [],
   label: (a) => (a.side === 'p1' ? '모부기' : '야생 팬텀'),
 }
 

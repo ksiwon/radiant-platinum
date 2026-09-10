@@ -8,10 +8,13 @@
 // 이름의 순서일 뿐 롬에서 읽은 값이 아니라 저장소 안에 있다 — `uiText.test.ts`가
 // 뱅크 번호를 `BANK_ORDER`로 재는 것과 같은 자리다. 글 자체가 맞는지는
 // `messages.test.ts`가 실린 뱅크로 잰다.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { DATA, withData } from '../../data/romData.testkit'
 import { BATTLE_STRING_ORDER, battleMessage } from '../../import/platinum/battleStrings'
 import { bankIndex } from '../../import/platinum/textBanks'
-import { BATTLE_BANK, forSide, MSG, SIDE_KEYS } from './romText'
+import { BATTLE_BANK, forSide, MOVE_BANK, moveUsedLine, MSG, SIDE_KEYS } from './romText'
 
 /** `MSG`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleStrings_Text_` 뒤) */
 const NAMED: Record<keyof typeof MSG, string> = {
@@ -124,6 +127,85 @@ const NAMED: Record<keyof typeof MSG, string> = {
   twistedTheDimensions: "PokemonTwistedTheDimensions_Ally",
   restoredTheTwistedDimensions: "PokemonRestoredTheTwistedDimensions_Ally",
   gravityIntensified: "GravityIntensified",
+  goPokemon: "GoPokemon",
+  aWildPokemonAppeared: "AWildPokemonAppeared",
+  wasDraggedOut: "PokemonWasDraggedOut_Ally",
+  pokemonFainted: "PokemonFainted_Ally",
+  itsSuperEffective: "ItsSuperEffective",
+  itsNotVeryEffective: "ItsNotVeryEffective",
+  itDoesntAffectPokemon: "ItDoesntAffectPokemon_Ally",
+  aCriticalHit: "ACriticalHit",
+  pokemonAvoidedTheAttack: "PokemonAvoidedTheAttack_Ally",
+  pokemonsAttackMissed: "PokemonsAttackMissed_Ally",
+  butItFailed: "ButItFailed",
+  pokemonRegainedHealth: "PokemonRegainedHealth_Ally",
+  pokemonFellAsleep: "PokemonFellAsleep_Ally",
+  pokemonWasPoisoned: "PokemonWasPoisoned_Ally",
+  pokemonWasBadlyPoisoned: "PokemonWasBadlyPoisoned_Ally",
+  pokemonWasBurned: "PokemonWasBurned_Ally",
+  pokemonWasFrozenSolid: "PokemonWasFrozenSolid_Ally",
+  pokemonIsParalyzedItMayBeUnableToMove: "PokemonIsParalyzedItMayBeUnableToMove_Ally",
+  pokemonWokeUp: "PokemonWokeUp",
+  pokemonWasCuredOfItsPoisoning: "PokemonWasCuredOfItsPoisoning",
+  pokemonsBurnWasHealed: "PokemonsBurnWasHealed",
+  pokemonThawedOut: "PokemonThawedOut_Ally",
+  pokemonWasHealedOfParalysis: "PokemonWasHealedOfParalysis_Ally",
+  pokemonIsFastAsleep: "PokemonIsFastAsleep_Ally",
+  pokemonIsFrozenSolid: "PokemonIsFrozenSolid_Ally",
+  pokemonIsParalyzedItCantMove: "PokemonIsParalyzedItCantMove_Ally",
+  pokemonFlinched: "PokemonFlinched_Ally",
+  pokemonMustRecharge: "PokemonMustRecharge_Ally",
+  cantUseMoveAfterTheTaunt: "PokemonCantUseMoveAfterTheTaunt_Ally",
+  pokemonIsImmobilizedByLove: "PokemonIsImmobilizedByLove_Ally",
+  pokemonsStatRose: "PokemonsStatRose_Ally",
+  pokemonsStatSharplyRose: "PokemonsStatSharplyRose_Ally",
+  pokemonsStatFell: "PokemonsStatFell_Ally",
+  pokemonsStatHarshlyFell: "PokemonsStatHarshlyFell_Ally",
+  allStatChangesWereEliminated: "AllStatChangesWereEliminated",
+  itStartedToRain: "ItStartedToRain",
+  rainContinuesToFall: "RainContinuesToFall",
+  theRainStopped: "TheRainStopped",
+  aSandstormBrewed: "ASandstormBrewed",
+  theSandstormRages: "TheSandstormRages",
+  theSandstormSubsided: "TheSandstormSubsided",
+  theSunlightTurnedHarsh: "TheSunlightTurnedHarsh",
+  theSunlightIsStrong: "TheSunlightIsStrong",
+  theSunlightFaded: "TheSunlightFaded",
+  itStartedToHail: "ItStartedToHail",
+  hailContinuesToFall: "HailContinuesToFall",
+  theHailStopped: "TheHailStopped",
+  isBuffetedByTheWeather: "PokemonIsBuffetedByTheWeather_Ally",
+  pokemonIsHurtByPoison: "PokemonIsHurtByPoison_Ally",
+  pokemonIsHurtByItsBurn: "PokemonIsHurtByItsBurn_Ally",
+  gotchaPokemonWasCaught: "GotchaPokemonWasCaught",
+  ohNoThePokemonBrokeFree: "OhNoThePokemonBrokeFree",
+  gotAwaySafely: "GotAwaySafely",
+  cantEscape: "CantEscape",
+  gravityReturnedToNormal: "GravityReturnedToNormal",
+  pokemonIsHurtByMove: "PokemonIsHurtByMove_Ally",
+  healthIsSappedByLeechSeed: "PokemonsHealthIsSappedByLeechSeed_Ally",
+  isHurtByTheSpikes: "PokemonIsHurtByTheSpikes_Ally",
+  pointedStonesDugIntoPokemon: "PointedStonesDugIntoPokemon_Ally",
+  pokemonGainedExpPoints: "PokemonGainedExpPoints",
+  pokemonGrewToLevel: "PokemonGrewToLevel",
+  pokemonLearnedMove: "PokemonLearnedMove",
+  pokemonIsTryingToLearnMove: "PokemonIsTryingToLearnMove",
+  playerGotMoneyForWinning: "PlayerGotMoneyForWinning",
+  pokemonIgnoredOrdersWhileAsleep: "PokemonIgnoredOrdersWhileAsleep",
+  pokemonIgnoredOrders: "PokemonIgnoredOrders",
+  pokemonBeganToNap: "PokemonBeganToNap",
+  pokemonIsLoafingAround: "PokemonIsLoafingAround",
+  pokemonWontObey: "PokemonWontObey",
+  itHurtItselfInItsConfusion: "ItHurtItselfInItsConfusion",
+  theWildPokemonFled: "TheWildPokemonFled",
+  playerThrewSomeBaitAtThePokemon: "PlayerThrewSomeBaitAtThePokemon",
+  pokemonIsEating: "PokemonIsEating",
+  pokemonIsBusyEating: "PokemonIsBusyEating",
+  playerThrewMudAtThePokemon: "PlayerThrewMudAtThePokemon",
+  pokemonIsAngry: "PokemonIsAngry",
+  pokemonIsBesideItselfWithAnger: "PokemonIsBesideItselfWithAnger",
+  pokemonIsWatchingCarefully: "PokemonIsWatchingCarefully",
+  playerUsedOneItem: "PlayerUsedOneItem",
 }
 
 describe('배틀 글 줄 번호', () => {
@@ -158,5 +240,34 @@ describe('배틀 글 줄 번호', () => {
   it('이름을 안 적어 둔 번호가 없다', () => {
     // 새 줄을 놓으면서 이름을 안 적으면 그 번호는 아무도 안 잰다
     expect(Object.keys(MSG).sort()).toEqual(Object.keys(NAMED).sort())
+  })
+})
+
+withData('dialogue/ko/' + String(MOVE_BANK) + '.json')('기술을 쓰는 줄', () => {
+  const read = (at: string): string[] =>
+    JSON.parse(readFileSync(resolve(DATA, at), 'utf8')) as string[]
+
+  it('자리는 기술 번호 곱하기 셋이다', () => {
+    // ⚠️ **이 곱셈이 이 뱅크의 전부다.** 한 칸만 밀려도 몸통박치기를 쓸 때
+    // 누르기가 뜨는데, 글자가 나오므로 눈으로는 안 보인다. 그래서 롬이 스스로
+    // 답하게 한다 — **기술 이름표의 이름이 제 자리 줄 안에 들어 있는가**
+    const lines = read('dialogue/ko/' + String(MOVE_BANK) + '.json')
+    const names = read('names/moves.ko.json')
+    const wrong: string[] = []
+    let checked = 0
+    for (const [id, name] of names.entries()) {
+      if (id === 0 || !name) continue
+      const line = lines[moveUsedLine(id)]
+      checked++
+      if (line === undefined || !line.includes(name)) wrong.push(String(id) + ' ' + name)
+    }
+    expect(wrong, wrong.slice(0, 5).join(' / ')).toEqual([])
+    expect(checked).toBe(467)
+
+    // 그 다음 둘이 야생 줄과 상대 줄이다 — 우리는 이름표가 자리 표시를 붙이므로
+    // 맨 줄만 쓴다
+    expect(lines[moveUsedLine(33) + 1]).toMatch(/^야생 /)
+    expect(lines[moveUsedLine(33) + 2]).toMatch(/^상대 /)
+    expect(lines).toHaveLength(1404)
   })
 })

@@ -6,7 +6,7 @@
 // 기계에서는 그 묶음이 통째로 빠진다 (`withData`).
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { it, expect } from 'vitest'
 import type {
   Actor, BattleEvent, BoostStat, Cause, EffectExtra, EffectRef, SafariBeat,
 } from '../../engine/battle/events'
@@ -16,29 +16,36 @@ import {
   ACTIVATE_IDS, battleText, SINGLE_MOVE_IDS, SINGLE_TURN_IDS,
   type BattleNames, type TextContext,
 } from './messages'
-import { BATTLE_BANK } from './romText'
+import { BATTLE_BANK, MOVE_BANK, STAT_BANK } from './romText'
 
 const MINE: Actor = { slot: 'p1a', side: 'p1', name: 'p1-0' }
 const FOE: Actor = { slot: 'p2a', side: 'p2', name: 'p2-0' }
 
-const names: BattleNames = {
-  species: [], // 이름은 label이 이미 풀어 준다
-  moves: (() => { const m: string[] = []; m[33] = '몸통박치기'; m[73] = '씨뿌리기'; return m })(),
-  abilities: (() => { const a: string[] = []; a[22] = '위협'; return a })(),
-  items: (() => { const i: string[] = []; i[23] = '회복약'; i[26] = '좋은상처약'; return i })(),
-}
-
-const BANK_AT = 'dialogue/ko/' + String(BATTLE_BANK) + '.json'
-const withBank = withData(BANK_AT)
-
-/** 롬의 배틀 글. 자료가 없으면 빈 배열이고, 그 줄들은 통째로 조용해진다 */
-const lines: readonly string[] = (() => {
+const bankAt = (at: string): readonly string[] => {
   try {
-    return JSON.parse(readFileSync(resolve(DATA, BANK_AT), 'utf8')) as string[]
+    return JSON.parse(readFileSync(resolve(DATA, at), 'utf8')) as string[]
   } catch {
     return []
   }
-})()
+}
+
+const names: BattleNames = {
+  species: [], // 이름은 label이 이미 풀어 준다
+  moves: (() => { const m: string[] = []; m[33] = '몸통박치기'; m[73] = '씨뿌리기'; m[201] = '모래바람'; return m })(),
+  abilities: (() => { const a: string[] = []; a[22] = '위협'; return a })(),
+  items: (() => { const i: string[] = []; i[23] = '회복약'; i[26] = '좋은상처약'; return i })(),
+  // 랭크 이름은 롬에서 온다 — 자리가 곧 이름이다
+  stats: [...bankAt('dialogue/ko/' + String(STAT_BANK) + '.json')],
+}
+
+const BANK_AT = 'dialogue/ko/' + String(BATTLE_BANK) + '.json'
+const MOVE_AT = 'dialogue/ko/' + String(MOVE_BANK) + '.json'
+const withBank = withData(BANK_AT)
+
+/** 롬의 배틀 글. 자료가 없으면 빈 배열이고, 그 줄들은 통째로 조용해진다 */
+const lines = bankAt(BANK_AT)
+/** 기술을 쓰는 줄만 든 뱅크 */
+const moveLines = bankAt(MOVE_AT)
 
 /**
  * 받침이 있는 이름(팬텀)과 없는 이름(모부기)을 일부러 섞는다.
@@ -50,7 +57,10 @@ const lines: readonly string[] = (() => {
 const ctx: TextContext = {
   names,
   lines,
+  moveLines,
   label: (a) => (a.side === 'p1' ? '모부기' : '야생 팬텀'),
+  // 야생 등판 줄은 「야생 」이 **문장에 박혀 있어서** 맨 이름을 넣는다
+  bare: () => '팬텀',
 }
 
 const say = (e: BattleEvent) => battleText(e, ctx)
@@ -58,26 +68,35 @@ const say = (e: BattleEvent) => battleText(e, ctx)
 const damage = (actor: Actor, from: Cause | null = null): BattleEvent =>
   ({ kind: 'damage', actor, condition: { hp: 10, maxHp: 40, status: 'ok' }, from })
 
-describe('배틀 문구', () => {
+withBank('배틀 문구', () => {
   it('등판', () => {
     const enter = (actor: Actor, forced: boolean): BattleEvent => ({
       kind: 'switch', actor, species: 387, speciesName: 'Turtwig', level: 5,
       gender: 'male', shiny: false, condition: { hp: 20, maxHp: 20, status: 'ok' }, forced,
     })
-    expect(say(enter(MINE, false))).toBe('가라! 모부기!')
+    // ⚠️ 손으로 들 때는 「가라!」였다. 원작은 「가랏!」이다
+    expect(say(enter(MINE, false))).toBe('가랏! 모부기!')
     // 받침 있는 이름에는 "이"가 붙어야 한다
-    expect(say(enter(FOE, false))).toBe('앗! 야생 팬텀이 나타났다!')
-    expect(say(enter(FOE, true))).toBe('야생 팬텀이 끌려나왔다!')
+    expect(say(enter(FOE, false))).toBe('앗! 야생 팬텀이 튀어나왔다!')
+    expect(say(enter(FOE, true))).toBe('야생 팬텀은 배틀에\n끌려 나왔다!')
   })
 
-  it('기술은 한국어 이름으로 나온다', () => {
+  it('기술 줄은 롬이 통째로 든다', () => {
+    // ⚠️ **이름과 기술을 우리가 붙이지 않는다.** 롬의 `moves_used_in_battle`이
+    // 기술마다 한 줄을 들고 있고, 우리는 이름 빈칸 하나만 채운다 —
+    // **이름 뒤에서 줄이 바뀌는 것**도 원작 것이다
     expect(say({
       kind: 'move', actor: MINE, move: 33, moveName: 'Tackle', target: FOE, miss: false, from: null,
-    })).toBe('모부기의 몸통박치기!')
+    })).toBe('모부기의\n몸통박치기!')
+    expect(say({
+      kind: 'move', actor: FOE, move: 467, moveName: 'Shadow Force', target: MINE,
+      miss: false, from: null,
+    })).toBe('야생 팬텀의\n섀도다이브!')
   })
 
   it('모르는 기술 번호면 영어 원문으로 떨어진다', () => {
-    // 빈칸이 뜨는 것보다 영어가 낫다
+    // 빈칸이 뜨는 것보다 영어가 낫다. 여기는 조사가 뒤에 안 붙는 자리라
+    // 병기형(「Tackle을(를)」)이 날 데가 없다
     expect(say({
       kind: 'move', actor: MINE, move: null, moveName: 'Tackle', target: FOE, miss: false, from: null,
     })).toBe('모부기의 Tackle!')
@@ -85,11 +104,11 @@ describe('배틀 문구', () => {
 
   it('상성·급소·실패', () => {
     expect(say({ kind: 'effectiveness', actor: FOE, level: 'super' })).toBe('효과가 굉장했다!')
-    expect(say({ kind: 'effectiveness', actor: FOE, level: 'resisted' })).toBe('효과가 별로인 것 같다…')
+    expect(say({ kind: 'effectiveness', actor: FOE, level: 'resisted' })).toBe('효과가 별로인 듯하다')
     expect(say({ kind: 'effectiveness', actor: FOE, level: 'immune' }))
-      .toBe('야생 팬텀에게는 효과가 없는 것 같다…')
+      .toBe('야생 팬텀에게는\n효과가 없는 것 같다...')
     expect(say({ kind: 'crit', actor: FOE })).toBe('급소에 맞았다!')
-    expect(say({ kind: 'fail', actor: MINE })).toBe('하지만 실패했다!')
+    expect(say({ kind: 'fail', actor: MINE })).toBe('그러나 실패하고 말았다!')
     expect(say({ kind: 'faint', actor: FOE })).toBe('야생 팬텀은 쓰러졌다!')
     expect(say({ kind: 'faint', actor: MINE })).toBe('모부기는 쓰러졌다!')
   })
@@ -99,17 +118,19 @@ describe('배틀 문구', () => {
     for (const status of all) {
       const onset = say({ kind: 'status', actor: MINE, status })
       expect(onset, `${status} 걸림`).toBeTruthy()
-      expect(onset!.startsWith('모부기는 '), `${status}: ${onset}`).toBe(true)
+      expect(onset!.startsWith('모부기'), `${status}: ${onset}`).toBe(true)
       const cured = say({ kind: 'curestatus', actor: MINE, status })
       expect(cured, `${status} 나음`).toBeTruthy()
       // 조사 병기형이 새어 나오면 안 된다
       expect(cured!.includes('('), `${status}: ${cured}`).toBe(false)
     }
     expect(say({ kind: 'status', actor: MINE, status: 'par' }))
-      .toBe('모부기는 마비되어 기술이 나오기 어려워졌다!')
-    expect(say({ kind: 'curestatus', actor: MINE, status: 'par' })).toBe('모부기의 마비가 나았다!')
-    // 받침 없는 명사에는 "가"
-    expect(say({ kind: 'curestatus', actor: MINE, status: 'slp' })).toBe('모부기의 잠이 나았다!')
+      .toBe('모부기는 마비되어\n기술이 나오기 어려워졌다!')
+    // ⚠️ **나은 줄은 상태마다 다르다.** 손으로 들 때는 한 틀이었는데 원작은 저마다 말한다
+    expect(say({ kind: 'curestatus', actor: MINE, status: 'par' }))
+      .toBe('모부기의\n마비가 풀렸다!')
+    expect(say({ kind: 'curestatus', actor: MINE, status: 'slp' }))
+      .toBe('모부기는\n눈을 떴다!')
   })
 
   it('랭크 일곱 가지가 전부 문장을 갖고 조사가 갈린다', () => {
@@ -120,24 +141,29 @@ describe('배틀 문구', () => {
       expect(text!.includes('('), `${stat}: ${text}`).toBe(false)
     }
     expect(say({ kind: 'boost', actor: MINE, stat: 'atk', amount: 1 }))
-      .toBe('모부기의 공격이 올라갔다!')
+      .toBe('모부기의\n공격이 올라갔다!')
     // 방어는 받침이 없으므로 "가"
     expect(say({ kind: 'boost', actor: MINE, stat: 'def', amount: -1 }))
-      .toBe('모부기의 방어가 떨어졌다!')
+      .toBe('모부기의\n방어가 떨어졌다!')
     expect(say({ kind: 'boost', actor: MINE, stat: 'spe', amount: 2 }))
-      .toBe('모부기의 스피드가 쭉쭉 올라갔다!')
+      .toBe('모부기의\n스피드가 크게 올라갔다!')
     expect(say({ kind: 'boost', actor: MINE, stat: 'atk', amount: -3 }))
-      .toBe('모부기의 공격이 엄청나게 떨어졌다!')
+      .toBe('모부기의\n공격이 크게 떨어졌다!')
   })
 
   it('못 움직인 이유', () => {
-    expect(say({ kind: 'cant', actor: MINE, reason: 'par' }))
-      .toBe('모부기는 몸이 저려서 움직일 수 없다!')
-    expect(say({ kind: 'cant', actor: MINE, reason: 'flinch' }))
-      .toBe('모부기는 풀이 죽어서 기술이 안 나왔다!')
-    // 모르는 이유라도 문장은 나와야 한다
-    expect(say({ kind: 'cant', actor: MINE, reason: 'move: Imprison' }))
-      .toBe('모부기는 기술을 쓸 수 없다!')
+    expect(say({ kind: 'cant', actor: MINE, reason: 'par', move: null, moveName: '' }))
+      .toBe('모부기는\n몸이 저려서 움직일 수 없다')
+    expect(say({ kind: 'cant', actor: MINE, reason: 'flinch', move: null, moveName: '' }))
+      .toBe('모부기는 풀이 죽어\n움직일 수 없었다!')
+    // 도발은 **못 쓴 기술 이름**이 문장에 들어간다
+    expect(say({
+      kind: 'cant', actor: MINE, reason: 'move: Taunt', move: 33, moveName: 'Tackle',
+    })).toBe('모부기는 도발당해서\n몸통박치기를 쓸 수 없다!')
+    // ⚠️ **모르는 까닭은 조용하다.** 손으로 들 때는 「기술을 쓸 수 없다!」로
+    // 때웠는데 그런 문장은 롬에 없다
+    expect(say({ kind: 'cant', actor: MINE, reason: 'move: Imprison', move: null, moveName: '' }))
+      .toBeNull()
   })
 
   it('기술 데미지는 말하지 않는다 — 바로 앞 줄이 이미 기술이다', () => {
@@ -146,24 +172,30 @@ describe('배틀 문구', () => {
 
   it('지속 데미지는 원인을 말한다', () => {
     expect(say(damage(MINE, { kind: 'status', id: null, name: 'psn' })))
-      .toBe('모부기는 독으로 데미지를 입었다!')
+      .toBe('모부기는\n독에 의한 데미지를 입고 있다!')
     expect(say(damage(MINE, { kind: 'status', id: null, name: 'brn' })))
-      .toBe('모부기는 화상으로 데미지를 입었다!')
+      .toBe('모부기는\n화상 데미지를 입고 있다!')
+    // 날씨는 **날씨 이름이 첫 칸**이다 — 롬은 그것도 기술 이름표에서 읽는다
     expect(say(damage(MINE, { kind: 'other', id: null, name: 'Sandstorm' })))
-      .toBe('모부기는 모래바람에 시달리고 있다!')
-    // 기술이 원인이면 한국어 이름으로
+      .toBe('모래바람이 모부기를\n덮쳤다!')
+    // 저만의 줄이 있는 기술은 그 줄로 간다
     expect(say(damage(MINE, { kind: 'move', id: 73, name: 'Leech Seed' })))
-      .toBe('모부기는 씨뿌리기를 맞았다!')
+      .toBe('씨뿌리기가 모부기의\n체력을 빼앗는다!')
+    // 없으면 두루 쓰는 줄이다
+    expect(say(damage(MINE, { kind: 'move', id: 33, name: 'Tackle' })))
+      .toBe('모부기는 몸통박치기의\n데미지를 입고 있다')
   })
 
   it('날씨는 시작과 유지를 다르게 말한다', () => {
     expect(say({ kind: 'weather', weather: 'Sandstorm', upkeep: false }))
       .toBe('모래바람이 불기 시작했다!')
     expect(say({ kind: 'weather', weather: 'Sandstorm', upkeep: true }))
-      .toBe('모래바람이 휘몰아친다!')
+      .toBe('모래바람이 세차게 분다')
     // 유지 줄은 매 턴 오므로 날씨가 없으면 아무 말도 안 한다
     expect(say({ kind: 'weather', weather: null, upkeep: true })).toBeNull()
-    expect(say({ kind: 'weather', weather: null, upkeep: false })).toBe('날씨가 원래대로 돌아왔다!')
+    // ⚠️ **그치는 줄은 비어 있다.** 롬은 「비가 그쳤다!」처럼 날씨마다 갈라 말하는데
+    // `|-weather|none`은 무엇이 그쳤는지를 안 들고 온다
+    expect(say({ kind: 'weather', weather: null, upkeep: false })).toBeNull()
   })
 
   it('특성 발동', () => {
@@ -179,19 +211,20 @@ describe('배틀 문구', () => {
   })
 })
 
-describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
+withBank('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
   const ball = (shakes: number, caught: boolean): BattleEvent =>
     ({ kind: 'ball', actor: FOE, ball: 4, shakes, caught })
 
   it('잡히면 이름에 목적격 조사가 붙는다', () => {
-    expect(say(ball(4, true))).toBe('신난다! 야생 팬텀을 잡았다!')
+    expect(say(ball(4, true))).toBe('신난다-!\n야생 팬텀을 붙잡았다!')
   })
 
   it('흔들린 횟수마다 말이 다르다', () => {
-    // 세 번 흔들리고 놓치는 것이 가장 아깝다. 원작도 그때만 "앗!"을 붙인다
+    // 롬은 863부터 넷을 차례로 들고 있다 — 자리가 곧 아까움의 크기다
     const texts = [0, 1, 2, 3].map((n) => say(ball(n, false)))
     expect(new Set(texts).size, '전부 같은 문장이면 흔들림을 세는 의미가 없다').toBe(4)
-    expect(texts[1]).toBe('앗! 야생 팬텀이 볼에서 나와 버렸다!')
+    expect(texts[0]).toBe('안돼! 포켓몬이\n볼에서 나와버렸다!')
+    expect(texts[3]).toBe('아깝다!\n조금만 더하면 됐는데!')
   })
 
   it('도망', () => {
@@ -204,9 +237,9 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
       kind: 'reward', key: 'p1-0', exp: 160, levels: [6, 7], learned: [33], pending: [],
     })
     expect(text).toBe(
-      '모부기는 경험치를 160 얻었다!\n'
-      + '모부기의 레벨이 올랐다! (Lv.7)\n'
-      + '모부기는 새로 몸통박치기를 배웠다!',
+      '모부기는\n160 경험치를 얻었다!\n'
+      + '모부기는\n레벨7로 올랐다!\n'
+      + '모부기는\n몸통박치기를 배웠다!',
     )
   })
 
@@ -215,17 +248,19 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     const text = say({
       kind: 'reward', key: 'p1-0', exp: 10, levels: [7], learned: [], pending: [33],
     })
-    expect(text).toContain('모부기는 몸통박치기를 배우고 싶어 한다!')
+    expect(text).toContain('몸통박치기를 배우고 싶다')
     expect(text).not.toContain('배웠다')
   })
 
   it('레벨이 안 올랐으면 경험치 줄만 나온다', () => {
     expect(say({ kind: 'reward', key: 'p1-0', exp: 12, levels: [], learned: [], pending: [] }))
-      .toBe('모부기는 경험치를 12 얻었다!')
+      .toBe('모부기는\n12 경험치를 얻었다!')
   })
 
   it('상금 줄', () => {
-    expect(say({ kind: 'prize', money: 4920 })).toBe('상금으로 4920엔을 받았다!')
+    // 롬은 주인공을 부르고 **원**으로 센다 — 「엔」은 우리가 적어 둔 것이었다
+    expect(battleText({ kind: 'prize', money: 4920 }, { ...ctx, playerName: '빛나' }))
+      .toBe('빛나는 상금으로\n4920원을 손에 넣었다!')
   })
 
   it('말을 안 들으면 갈래마다 다른 줄이 나온다 (PARITY §2.18)', () => {
@@ -233,19 +268,20 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
     expect(say({ kind: 'disobey', actor: MINE, reason: 'otherMove' }))
       .toBe('모부기는 명령을 무시했다!')
     expect(say({ kind: 'disobey', actor: MINE, reason: 'ignoredAsleep' }))
-      .toBe('모부기는 자면서 명령을 무시했다!')
+      .toBe('모부기는 잠든 채로\n명령을 무시했다!')
     expect(say({ kind: 'disobey', actor: MINE, reason: 'nap' }))
-      .toBe('모부기는 꾸벅꾸벅 졸기 시작했다!')
+      .toBe('모부기는 낮잠을 자기 시작했다!')
     expect(say({ kind: 'disobey', actor: MINE, reason: 'hitSelf' }))
-      .toBe('모부기는 말을 안 듣는다!\n혼란에 빠져 자신을 공격했다!')
+      .toBe('모부기는 말을 듣지 않는다!\n영문도 모른 채\n자신을 공격했다!')
   })
 
   it('아무것도 안 한 마디는 넷이고 서로 다르다', () => {
     const said = [0, 1, 2, 3].map((flavor) =>
       say({ kind: 'disobey', actor: MINE, reason: 'nothing', flavor }))
     expect(new Set(said).size).toBe(4)
-    expect(said[0]).toBe('모부기는 빈둥거리고 있다!')
-    expect(said[3]).toBe('모부기는 못 들은 척했다!')
+    // 롬은 828부터 넷을 나란히 들고 있다 — 자리가 곧 뽑은 값이다
+    expect(said[0]).toBe('모부기는 게으름을 피우고 있다!')
+    expect(said[3]).toBe('모부기는 모른 체했다!')
   })
   it('사파리 일곱 마디 (PARITY §2.19)', () => {
     // ⚠️ **「먹느라 정신이 없다」가 이득 본 판이다.** 뒤집혀 있으면 화면만
@@ -254,14 +290,14 @@ describe('볼·도망·보상 — 프로토콜에 없는 사건들', () => {
       say({ kind: 'safari', actor: FOE, beat: b })
     const me: TextContext = { ...ctx, playerName: '빛나' }
     expect(battleText({ kind: 'safari', actor: FOE, beat: 'bait' }, me))
-      .toBe('빛나는 야생 팬텀에게 미끼를 던졌다!')
-    expect(beat('eating')).toBe('야생 팬텀은 먹고 있다!')
-    expect(beat('busyEating')).toBe('야생 팬텀은 먹느라 정신이 없다!')
+      .toBe('빛나는\n팬텀에게 먹이를 던졌다!')
+    expect(beat('eating')).toBe('팬텀은\n먹이를 먹고 있다!')
+    expect(beat('busyEating')).toBe('팬텀은\n먹이를 먹는데 푹 빠졌다!')
     expect(battleText({ kind: 'safari', actor: FOE, beat: 'mud' }, me))
-      .toBe('빛나는 야생 팬텀에게 진흙을 던졌다!')
-    expect(beat('angry')).toBe('야생 팬텀은 화가 났다!')
-    expect(beat('veryAngry')).toBe('야생 팬텀은 몹시 화가 났다!')
-    expect(beat('watching')).toBe('야생 팬텀은 주의깊게 보고 있다!')
+      .toBe('빛나는\n팬텀에게 진흙을 던졌다!')
+    expect(beat('angry')).toBe('팬텀은\n화내고 있다!')
+    expect(beat('veryAngry')).toBe('팬텀은\n분노로 이성을 잃었다!')
+    expect(beat('watching')).toBe('팬텀은\n상황을 살피고 있다!')
   })
 })
 
@@ -424,7 +460,7 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
   it('원작에 없는 줄에는 글을 안 놓는다', () => {
     // 다음 턴에 「움직일 수 없다!」를 찍는 것은 cant의 recharge다
     expect(say({ kind: 'mustrecharge', actor: MINE })).toBeNull()
-    expect(say({ kind: 'cant', actor: MINE, reason: 'recharge' })).toBe('모부기는 움직일 수 없다!')
+    expect(say({ kind: 'cant', actor: MINE, reason: 'recharge', move: null, moveName: '' })).toBe('공격의 반동으로\n모부기는 움직일 수 없다!')
     // 쇼다운이 사람에게 규칙을 설명하는 줄
     expect(say({ kind: 'hint', text: 'Some effects can force a Pokemon…' })).toBeNull()
   })

@@ -287,9 +287,16 @@ export type BattleEvent =
   | { kind: 'effectiveness'; actor: Actor; level: Effectiveness }
   | { kind: 'crit'; actor: Actor }
   /** 빗나감. `actor`는 **대상**이다 (`|-miss|공격자|대상`의 두 번째) */
-  | { kind: 'miss'; actor: Actor | null }
+  /**
+   * 빗나갔다. `actor`는 **겨눔을 받은 쪽**이고 `source`가 쓴 쪽이다.
+   *
+   * 원작은 이 둘을 다른 문장으로 말한다 — 받은 쪽을 알면 「{받은 쪽}에게는 맞지
+   * 않았다!」, 모르면 「그러나 {쓴 쪽}의 공격은 빗나갔다!」다
+   */
+  | { kind: 'miss'; actor: Actor | null; source: Actor | null }
   | { kind: 'fail'; actor: Actor | null }
-  | { kind: 'cant'; actor: Actor; reason: string }
+  /** 못 움직였다. 도발·사슬묶기처럼 **못 쓴 기술**이 붙어 오는 까닭도 있다 */
+  | { kind: 'cant'; actor: Actor; reason: string; move: number | null; moveName: string }
   | { kind: 'ability'; actor: Actor; ability: number | null; abilityName: string }
   | { kind: 'weather'; weather: string | null; upkeep: boolean }
   // ── 지속 효과 세 갈래 ────────────────────────────────────────────────────

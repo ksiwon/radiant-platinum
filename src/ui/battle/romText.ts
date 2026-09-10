@@ -23,6 +23,36 @@
 export const BATTLE_BANK = 368
 
 /**
+ * `TEXT_BANK_MOVES_USED_IN_BATTLE` — 기술을 쓰는 줄만 든 뱅크 (us 0 · 1,404줄).
+ *
+ * 「{이름}의 줄바꿈 {기술}!」이 **기술마다 통째로** 들어 있다. 우리가 이름과 기술을
+ * 따로 붙이면 줄바꿈이 사라지고(원작은 이름 뒤에서 줄을 바꾼다) 기술 이름표가
+ * 없는 순간 영어가 샌다
+ */
+export const MOVE_BANK = 0
+
+/**
+ * `TEXT_BANK_POKEMON_STAT_NAMES` — 랭크 이름 아홉 (us 551).
+ *
+ * 롬의 랭크 줄이 능력 이름을 빈칸으로 받는다. 아홉 줄뿐이라 무게가 없다
+ */
+export const STAT_BANK = 551
+
+/**
+ * 기술 번호 → 그 줄의 자리.
+ *
+ * 자리는 `번호 × 3`이고 그 다음 둘이 야생·상대 줄이다. 우리는 자리 표시를
+ * 이름표가 붙이므로 맨 줄만 쓴다 (`forSide`와 같은 결이지만 여기는 **이름 빈칸이
+ * 있어서** 맨 줄 하나로 셋을 덮는다).
+ *
+ * 규칙이 맞는다는 근거: 기술 이름표 467개 전부가 제 자리 줄 안에 들어 있다
+ * (`romText.test.ts`). 0·1·2번은 「!」뿐인 빈 줄이다 — 기술 0번 자리다
+ */
+export function moveUsedLine(move: number): number {
+  return move * 3
+}
+
+/**
  * 뱅크 안의 줄 번호. 키는 디컴프의 `BattleStrings_Text_…` 이름을 낮춰 쓴 것이고,
  * `romText.test.ts`가 키마다 그 이름을 다시 적어 번호와 맞대 본다.
  *
@@ -164,6 +194,113 @@ export const MSG = {
   /** 트릭룸이 걸렸다 */ twistedTheDimensions: 1070,
   /** 트릭룸이 풀렸다 */ restoredTheTwistedDimensions: 1073,
   /** 중력 */ gravityIntensified: 997,
+
+  // ── 판의 뼈대 (PARITY §2.24) ─────────────────────────────────────────────
+  //
+  // 매 턴 뜨는 줄들이다. 여기도 한동안 손으로 들고 있었고, 롬과 맞대 보니
+  // 「효과가 별로인 것 같다…」가 원작에서는 「효과가 별로인 듯하다」였고
+  // 「가라!」가 「가랏!」이었다
+  /** 등판 — 우리 쪽 */ goPokemon: 979,
+  /** 등판 — 야생 */ aWildPokemonAppeared: 965,
+  /** 날려버리기·울부짖기로 끌려 나왔다 */ wasDraggedOut: 603,
+  /** 쓰러졌다 */ pokemonFainted: 30,
+  /** 효과가 굉장 */ itsSuperEffective: 780,
+  /** 효과가 별로 */ itsNotVeryEffective: 779,
+  /** 효과가 없다 */ itDoesntAffectPokemon: 27,
+  /** 급소 */ aCriticalHit: 774,
+  /** 겨눈 쪽을 알 때 */ pokemonAvoidedTheAttack: 24,
+  /** 겨눈 쪽을 모를 때 — 쓴 쪽 이름이 들어간다 */ pokemonsAttackMissed: 12,
+  /** 실패 */ butItFailed: 796,
+  /** 체력 회복 */ pokemonRegainedHealth: 184,
+
+  // 상태이상에 걸린 순간
+  /** 잠 */ pokemonFellAsleep: 47,
+  /** 독 */ pokemonWasPoisoned: 63,
+  /** 맹독 */ pokemonWasBadlyPoisoned: 79,
+  /** 화상 */ pokemonWasBurned: 85,
+  /** 얼음 */ pokemonWasFrozenSolid: 101,
+  /** 마비 */ pokemonIsParalyzedItMayBeUnableToMove: 120,
+
+  // 상태이상이 나은 순간
+  /** 잠에서 깼다 */ pokemonWokeUp: 1210,
+  /** 해독됐다 */ pokemonWasCuredOfItsPoisoning: 1207,
+  /** 화상이 나았다 */ pokemonsBurnWasHealed: 1209,
+  /** 얼음이 녹았다 */ pokemonThawedOut: 114,
+  /** 마비가 풀렸다 */ pokemonWasHealedOfParalysis: 136,
+
+  // 못 움직인 까닭
+  /** 자고 있다 */ pokemonIsFastAsleep: 299,
+  /** 얼어 있다 */ pokemonIsFrozenSolid: 111,
+  /** 몸이 저리다 */ pokemonIsParalyzedItCantMove: 130,
+  /** 풀이 죽었다 */ pokemonFlinched: 181,
+  /** 반동으로 쉰다 */ pokemonMustRecharge: 360,
+  /** 도발당해 못 쓴다. 기술 이름을 빈칸으로 받는다 */ cantUseMoveAfterTheTaunt: 613,
+  /** 헤롱헤롱해서 못 움직인다 */ pokemonIsImmobilizedByLove: 172,
+
+  // 랭크. 원작은 한 단계와 두 단계 위만 가른다 — 「쭉쭉」도 「뚝」도 없다
+  /** 올라갔다 */ pokemonsStatRose: 750,
+  /** 크게 올라갔다 */ pokemonsStatSharplyRose: 753,
+  /** 떨어졌다 */ pokemonsStatFell: 762,
+  /** 크게 떨어졌다 */ pokemonsStatHarshlyFell: 765,
+  /** 흑안개 */ allStatChangesWereEliminated: 817,
+
+  // 날씨. 시작·머무름·그침이 다 따로다
+  /** 비 */ itStartedToRain: 799,
+  /** 비가 이어진다 */ rainContinuesToFall: 801,
+  /** 비가 그쳤다 */ theRainStopped: 803,
+  /** 모래바람 */ aSandstormBrewed: 804,
+  /** 모래바람이 이어진다 */ theSandstormRages: 805,
+  /** 모래바람이 그쳤다 */ theSandstormSubsided: 806,
+  /** 햇살 */ theSunlightTurnedHarsh: 807,
+  /** 햇살이 이어진다 */ theSunlightIsStrong: 808,
+  /** 햇살이 약해졌다 */ theSunlightFaded: 809,
+  /** 싸라기눈 */ itStartedToHail: 810,
+  /** 싸라기눈이 이어진다 */ hailContinuesToFall: 811,
+  /** 싸라기눈이 그쳤다 */ theHailStopped: 812,
+  /** 날씨가 때린다. 첫 칸이 **날씨 이름**이다 */ isBuffetedByTheWeather: 285,
+
+  // 매 턴 깎이는 것
+  /** 독 데미지 */ pokemonIsHurtByPoison: 73,
+  /** 화상 데미지 */ pokemonIsHurtByItsBurn: 95,
+
+  // 볼과 도망. 흔들린 횟수만큼 줄이 이어져 있다 (863 + 흔들린 수)
+  /** 붙잡았다 */ gotchaPokemonWasCaught: 867,
+  /** 0번 흔들렸다 */ ohNoThePokemonBrokeFree: 863,
+  /** 무사히 도망쳤다 */ gotAwaySafely: 781,
+  /** 못 도망친다 */ cantEscape: 42,
+
+  /** 중력이 풀렸다 */ gravityReturnedToNormal: 1004,
+  /** 기술에 매 턴 깎인다. 기술 이름을 빈칸으로 받는다 */ pokemonIsHurtByMove: 262,
+  /** 씨뿌리기가 빨아간다 */ healthIsSappedByLeechSeed: 296,
+  /** 압정을 밟았다 */ isHurtByTheSpikes: 429,
+  /** 스텔스록이 박혔다 */ pointedStonesDugIntoPokemon: 1079,
+
+  // 판이 끝난 뒤
+  /** 경험치 */ pokemonGainedExpPoints: 1,
+  /** 레벨이 올랐다 */ pokemonGrewToLevel: 3,
+  /** 기술을 배웠다 */ pokemonLearnedMove: 4,
+  /** 기술을 배우고 싶어 한다 */ pokemonIsTryingToLearnMove: 5,
+  /** 상금 */ playerGotMoneyForWinning: 33,
+
+  // 말을 안 듣는 네 마디 (PARITY §2.18). 828부터 넷이 차례로 이어져 있다
+  /** 자면서 무시 */ pokemonIgnoredOrdersWhileAsleep: 825,
+  /** 그냥 무시 */ pokemonIgnoredOrders: 826,
+  /** 낮잠 */ pokemonBeganToNap: 827,
+  /** 아무것도 안 한 네 마디의 첫 자리 */ pokemonIsLoafingAround: 828,
+  /** 말을 듣지 않는다 */ pokemonWontObey: 829,
+  /** 혼란으로 자기를 때렸다 */ itHurtItselfInItsConfusion: 797,
+  /** 야생이 달아났다 */ theWildPokemonFled: 784,
+
+  // 사파리
+  /** 먹이를 던졌다 */ playerThrewSomeBaitAtThePokemon: 851,
+  /** 먹고 있다 */ pokemonIsEating: 852,
+  /** 먹는 데 빠졌다 */ pokemonIsBusyEating: 853,
+  /** 진흙을 던졌다 */ playerThrewMudAtThePokemon: 854,
+  /** 화내고 있다 */ pokemonIsAngry: 855,
+  /** 이성을 잃었다 */ pokemonIsBesideItselfWithAnger: 856,
+  /** 상황을 살피고 있다 */ pokemonIsWatchingCarefully: 849,
+
+  /** 가방에서 도구를 썼다 */ playerUsedOneItem: 857,
 } as const
 
 type MessageKey = keyof typeof MSG

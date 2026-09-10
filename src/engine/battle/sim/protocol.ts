@@ -282,15 +282,25 @@ export function parseLine(line: string): BattleEvent | null {
     }
 
     // `|-miss|공격자|대상`. 대상이 없는 줄도 있다(대상이 이미 사라진 경우)
+    // `|-miss|SOURCE|TARGET` — 겨눈 자리는 없을 수도 있다
     case '-miss':
-      return { kind: 'miss', actor: who(1) ?? who(0) }
+      return { kind: 'miss', actor: who(1), source: who(0) }
     case '-fail':
       return { kind: 'fail', actor: who(0) }
 
+    // `|cant|POKEMON|REASON|MOVE` — 넷째 자리는 **못 쓴 기술**이다.
+    // 도발·사슬묶기·봉인은 원작이 그 이름을 문장에 넣는다
     case 'cant': {
       const actor = need(0)
       if (!actor) break
-      return { kind: 'cant', actor, reason: rest[1] ?? '' }
+      const moveName = rest[2] ?? ''
+      return {
+        kind: 'cant',
+        actor,
+        reason: rest[1] ?? '',
+        move: moveName ? romMove(moveName) : null,
+        moveName,
+      }
     }
 
     case '-ability': {

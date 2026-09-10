@@ -23,8 +23,8 @@ import type {
 } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
 import { formatMessage, MESSAGE_SLOTS, MessageSlots } from '../../engine/script/text'
-import { withObject, withSubject, withTopic } from '../korean'
-import { forSide, MSG } from './romText'
+import { withObject, withTopic } from '../korean'
+import { forSide, moveUsedLine, MSG } from './romText'
 
 export interface BattleNames {
   /** 종족 번호로 색인 */
@@ -35,6 +35,13 @@ export interface BattleNames {
   abilities: string[]
   /** 도구 번호로 색인. 트레이너가 도구를 쓸 때만 본다 */
   items: string[]
+  /**
+   * 랭크 이름 아홉 (`pokemon_stat_names` · us 551). 자리는 `STAT_SLOT`이 안다.
+   *
+   * 롬의 랭크 줄이 이 이름을 **빈칸으로** 받는다 — 우리가 「공격」을 적어 두면
+   * 로케일을 바꿔도 한국어가 남는다
+   */
+  stats: string[]
 }
 
 export interface TextContext {
@@ -46,7 +53,22 @@ export interface TextContext {
    * (`BattleScreen`의 `useNames`) 화면에서는 늘 차 있다
    */
   lines: readonly string[]
-  /** 자리 → 화면에 쓸 이름. "모부기" / "야생의 찌르꼬" / "상대 찌르꼬" */
+  /**
+   * 기술을 쓰는 줄만 든 뱅크 (`moves_used_in_battle` · us 0). 자리는
+   * `기술번호 × 3`이다 (`moveUsedLine`).
+   *
+   * ⚠️ **따로 받는 까닭.** 이 줄은 기술 이름이 **문장 안에 박혀 있다** —
+   * 빈칸이 아니다. 그래서 이름표가 없어도 영어가 샐 데가 없고, 원작이 이름
+   * 뒤에서 줄을 바꾸는 것도 그대로 온다
+   */
+  moveLines: readonly string[]
+  /**
+   * 자리 → 화면에 쓸 이름. "모부기" / "야생 찌르꼬" / "상대 찌르꼬".
+   *
+   * ⚠️ **「야생의」가 아니라 「야생 」이다** — 배틀 글 1,269줄에 「야생의」는
+   * 0건이고 「야생 」이 344건이다. 롬은 자리마다 줄을 셋 들고 있는데
+   * 이름표가 롬의 말을 쓰면 **맨 줄 하나로 셋을 다 덮는다**
+   */
   label: (actor: Actor) => string
   /** 상대 트레이너 이름("체육관 관장 동관"). 야생이면 null */
   foeName?: string | null
@@ -61,53 +83,73 @@ export interface TextContext {
   bare?: (key: string) => string
 }
 
-/** 상태이상의 이름씨. "마비가 나았다"처럼 명사로 쓰이는 자리 */
-const STATUS_NOUN: Record<Exclude<Status, 'ok'>, string> = {
-  slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
+/**
+ * 상태이상에 걸린 순간 · 나은 순간 (PARITY §2.24).
+ *
+ * ⚠️ **나은 줄은 상태마다 다르다.** 롬에 「상태이상이 나았다」 하나로 때우는 줄도
+ * 있지만(1229) 그것은 도구가 여러 상태를 한 번에 고칠 때 쓰는 자리다 — 하나씩
+ * 나을 때는 「눈을 떴다!」·「얼음이 녹았다!」처럼 저마다 말한다
+ */
+const STATUS_ONSET: Record<Exclude<Status, 'ok'>, number> = {
+  slp: MSG.pokemonFellAsleep,
+  psn: MSG.pokemonWasPoisoned,
+  tox: MSG.pokemonWasBadlyPoisoned,
+  brn: MSG.pokemonWasBurned,
+  frz: MSG.pokemonWasFrozenSolid,
+  par: MSG.pokemonIsParalyzedItMayBeUnableToMove,
 }
 
-/** 상태이상에 걸린 순간 */
-const STATUS_ONSET: Record<Exclude<Status, 'ok'>, string> = {
-  slp: '잠들어 버렸다!',
-  psn: '독을 입었다!',
-  tox: '맹독을 입었다!',
-  brn: '화상을 입었다!',
-  frz: '얼어붙었다!',
-  par: '마비되어 기술이 나오기 어려워졌다!',
-}
-
-/** 상태이상 때문에 못 움직인 이유 */
-const CANT_REASON: Record<string, string> = {
-  slp: '쿨쿨 자고 있다.',
-  frz: '얼어붙어서 움직일 수 없다!',
-  par: '몸이 저려서 움직일 수 없다!',
-  flinch: '풀이 죽어서 기술이 안 나왔다!',
-  recharge: '움직일 수 없다!',
-  'move: Taunt': '도발당해서 그 기술을 쓸 수 없다!',
+const STATUS_CURED: Record<Exclude<Status, 'ok'>, number> = {
+  slp: MSG.pokemonWokeUp,
+  psn: MSG.pokemonWasCuredOfItsPoisoning,
+  tox: MSG.pokemonWasCuredOfItsPoisoning,
+  brn: MSG.pokemonsBurnWasHealed,
+  frz: MSG.pokemonThawedOut,
+  par: MSG.pokemonWasHealedOfParalysis,
 }
 
 /**
- * 명령을 안 듣고 **아무것도 안 했을 때**의 네 마디
- * (`subscript_disobey_do_nothing`). 차례가 원작의 뽑은 값 0~3과 같아야 한다
+ * 못 움직인 까닭 (`cant`).
+ *
+ * ⚠️ **도발은 못 쓴 기술 이름이 들어간다.** 그래서 표가 아니라 갈래로 다룬다 —
+ * 아래 `battleText`의 `cant`를 보라
  */
-const IDLE_FLAVOR: readonly string[] = [
-  '빈둥거리고 있다!',
-  '말을 안 듣는다!',
-  '외면했다!',
-  '못 들은 척했다!',
-]
-
-const STAT_NOUN: Record<BoostStat, string> = {
-  atk: '공격', def: '방어', spa: '특수공격', spd: '특수방어',
-  spe: '스피드', accuracy: '명중률', evasion: '회피율',
+const CANT_REASON: Record<string, number> = {
+  slp: MSG.pokemonIsFastAsleep,
+  frz: MSG.pokemonIsFrozenSolid,
+  par: MSG.pokemonIsParalyzedItCantMove,
+  flinch: MSG.pokemonFlinched,
+  recharge: MSG.pokemonMustRecharge,
+  'move: Attract': MSG.pokemonIsImmobilizedByLove,
 }
 
-/** 날씨 이름 → 시작·유지 문구 */
-const WEATHER: Record<string, { start: string; upkeep: string }> = {
-  Sandstorm: { start: '모래바람이 불기 시작했다!', upkeep: '모래바람이 휘몰아친다!' },
-  Hail: { start: '싸라기눈이 내리기 시작했다!', upkeep: '싸라기눈이 휘몰아친다!' },
-  RainDance: { start: '비가 내리기 시작했다!', upkeep: '비가 계속 내리고 있다.' },
-  SunnyDay: { start: '햇살이 강해졌다!', upkeep: '햇살이 강하다.' },
+/**
+ * 날씨 세 자리 — 시작·머무름·그침.
+ *
+ * ⚠️ **그치는 줄도 날씨마다 다르다.** 손으로 들 때는 「날씨가 원래대로
+ * 돌아왔다!」 하나였는데 롬은 「비가 그쳤다!」·「햇살이 약해졌다!」로 갈라 말한다
+ */
+const WEATHER: Record<string, { start: number; upkeep: number; stop: number }> = {
+  Sandstorm: {
+    start: MSG.aSandstormBrewed,
+    upkeep: MSG.theSandstormRages,
+    stop: MSG.theSandstormSubsided,
+  },
+  Hail: {
+    start: MSG.itStartedToHail,
+    upkeep: MSG.hailContinuesToFall,
+    stop: MSG.theHailStopped,
+  },
+  RainDance: {
+    start: MSG.itStartedToRain,
+    upkeep: MSG.rainContinuesToFall,
+    stop: MSG.theRainStopped,
+  },
+  SunnyDay: {
+    start: MSG.theSunlightTurnedHarsh,
+    upkeep: MSG.theSunlightIsStrong,
+    stop: MSG.theSunlightFaded,
+  },
 }
 
 /**
@@ -415,12 +457,39 @@ const FIELD_NEEDS_WHO = new Set<number>([
   MSG.twistedTheDimensions, MSG.restoredTheTwistedDimensions,
 ])
 
-/** 랭크 변화 폭 → 부사. 원작은 1단계와 2단계 이상을 다르게 말한다 */
-function boostAdverb(amount: number): string {
-  const n = Math.abs(amount)
-  if (amount > 0) return n >= 3 ? '엄청나게 올라갔다!' : n === 2 ? '쭉쭉 올라갔다!' : '올라갔다!'
-  return n >= 3 ? '엄청나게 떨어졌다!' : n === 2 ? '뚝 떨어졌다!' : '떨어졌다!'
+/**
+ * 랭크 이름이 든 자리 (`pokemon_stat_names` · us 551).
+ *
+ * 롬의 랭크 줄은 능력 이름을 **빈칸으로** 받는다 — 우리가 「공격」을 적어 두면
+ * 로케일을 바꾸는 순간 한국어가 남는다
+ */
+const STAT_SLOT: Record<BoostStat, number> = {
+  atk: 1, def: 2, spe: 3, spa: 4, spd: 5, accuracy: 6, evasion: 7,
 }
+
+/**
+ * 날씨가 때리는 줄의 첫 칸은 **날씨 이름**인데, 롬은 그것을 기술 이름표에서
+ * 읽는다. 모래바람 201 · 싸라기눈 258이 그 기술 번호다
+ */
+const WEATHER_MOVE: Record<string, number> = { Sandstorm: 201, Hail: 258 }
+
+/** 매 턴 깎는 기술 중 **저만의 줄**이 있는 것. 나머지는 두루 쓰는 줄로 간다 */
+const DAMAGE_BY_MOVE: Record<number, number> = {
+  73: MSG.healthIsSappedByLeechSeed,
+  191: MSG.isHurtByTheSpikes,
+  446: MSG.pointedStonesDugIntoPokemon,
+}
+
+/**
+ * 명령을 안 듣고 **아무것도 안 했을 때**의 네 마디
+ * (`subscript_disobey_do_nothing`). 차례가 원작의 뽑은 값 0~3과 같아야 한다.
+ *
+ * ⚠️ **롬도 넷을 나란히 들고 있다** — 828부터 「게으름을 피우고 있다!」·
+ * 「말을 듣지 않는다!」·「외면했다!」·「모른 체했다!」다. 손으로 들 때는 첫 마디가
+ * 「빈둥거리고 있다!」였고 넷째가 「못 들은 척했다!」였다
+ */
+const idleLine = (flavor: number): number =>
+  MSG.pokemonIsLoafingAround + Math.min(Math.max(flavor, 0), 3)
 
 /**
  * 효과의 **한국어** 이름. 못 풀면 null이다.
@@ -449,7 +518,14 @@ function romName(effect: EffectRef, names: BattleNames): string | null {
 function rom(
   ctx: TextContext, at: number, ...values: readonly (string | null)[]
 ): string | null {
-  const raw = ctx.lines[at]
+  return fill(ctx.lines, at, ...values)
+}
+
+/** 뱅크를 골라 채우는 쪽. 기술 줄은 다른 뱅크에서 온다 */
+function fill(
+  lines: readonly string[], at: number, ...values: readonly (string | null)[]
+): string | null {
+  const raw = lines[at]
   if (raw === undefined || raw === '') return null
   const filled: string[] = []
   for (const value of values) {
@@ -483,121 +559,158 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
   switch (e.kind) {
     case 'switch': {
       const who = ctx.label(e.actor)
-      if (e.forced) return `${withSubject(who)} 끌려나왔다!`
-      // 야생은 "나타났다", 우리 쪽은 "가라!"
-      return e.actor.side === 'p1' ? `가라! ${who}!` : `앗! ${withSubject(who)} 나타났다!`
+      // 날려버리기·울부짖기로 억지로 나온 자리는 원작이 따로 말한다
+      if (e.forced) return rom(ctx, MSG.wasDraggedOut, who)
+      if (e.actor.side === 'p1') return rom(ctx, MSG.goPokemon, who)
+      // ⚠️ **야생 줄만 이름표를 안 쓴다.** 이 줄은 자리마다 셋으로 갈린 것이
+      // 아니라 **한 줄에 「야생 」이 이미 박혀 있어서**, 이름표를 넣으면
+      // 「앗! 야생 야생 팬텀이…」가 된다. 그래서 맨 이름을 넣는다
+      return rom(ctx, MSG.aWildPokemonAppeared, ctx.bare?.(e.actor.name) ?? who)
     }
 
     case 'move': {
-      const move = (e.move !== null ? names.moves[e.move] : null) ?? e.moveName
-      return `${ctx.label(e.actor)}의 ${move}!`
+      // 롬은 이 줄을 **기술마다 통째로** 들고 있다 (`moves_used_in_battle`).
+      // 이름 빈칸 하나만 채우면 되고, 줄바꿈 자리도 원작 것이다
+      const line = e.move === null
+        ? null
+        : fill(ctx.moveLines, moveUsedLine(e.move), ctx.label(e.actor))
+      if (line !== null) return line
+      // ⚠️ **번호를 못 풀면 영어로 떨어진다.** 여기는 조사가 뒤에 안 붙는
+      // 자리라 병기형이 안 나고, 빈 줄이 뜨는 것보다 낫다
+      return `${ctx.label(e.actor)}의 ${e.moveName}!`
     }
 
     case 'effectiveness':
-      if (e.level === 'super') return '효과가 굉장했다!'
-      if (e.level === 'resisted') return '효과가 별로인 것 같다…'
-      return `${ctx.label(e.actor)}에게는 효과가 없는 것 같다…`
+      if (e.level === 'super') return rom(ctx, MSG.itsSuperEffective)
+      if (e.level === 'resisted') return rom(ctx, MSG.itsNotVeryEffective)
+      return rom(ctx, MSG.itDoesntAffectPokemon, ctx.label(e.actor))
 
     case 'crit':
-      return '급소에 맞았다!'
+      return rom(ctx, MSG.aCriticalHit)
 
     case 'miss':
-      return e.actor ? `${withTopic(ctx.label(e.actor))} 맞지 않았다!` : '하지만 빗나갔다!'
+      // 겨눈 자리를 알면 그쪽 이름으로, 모르면 쓴 쪽 이름으로 — 원작이 두 문장을
+      // 따로 들고 있다
+      if (e.actor) return rom(ctx, MSG.pokemonAvoidedTheAttack, ctx.label(e.actor))
+      return e.source ? rom(ctx, MSG.pokemonsAttackMissed, ctx.label(e.source)) : null
 
     case 'fail':
-      return '하지만 실패했다!'
+      return rom(ctx, MSG.butItFailed)
 
     case 'faint':
-      return `${withTopic(ctx.label(e.actor))} 쓰러졌다!`
+      return rom(ctx, MSG.pokemonFainted, ctx.label(e.actor))
 
     case 'status':
       if (e.status === 'ok') return null
-      return `${withTopic(ctx.label(e.actor))} ${STATUS_ONSET[e.status]}`
+      return rom(ctx, STATUS_ONSET[e.status], ctx.label(e.actor))
 
     case 'curestatus':
       if (e.status === 'ok') return null
-      return `${ctx.label(e.actor)}의 ${withSubject(STATUS_NOUN[e.status])} 나았다!`
+      return rom(ctx, STATUS_CURED[e.status], ctx.label(e.actor))
 
-    case 'boost':
+    case 'boost': {
       if (e.amount === 0) return null
-      return `${ctx.label(e.actor)}의 ${withSubject(STAT_NOUN[e.stat])} ${boostAdverb(e.amount)}`
+      // 원작은 한 단계와 **두 단계 위**만 가른다 — 「쭉쭉」도 「뚝」도 없다
+      const big = Math.abs(e.amount) >= 2
+      const at = e.amount > 0
+        ? (big ? MSG.pokemonsStatSharplyRose : MSG.pokemonsStatRose)
+        : (big ? MSG.pokemonsStatHarshlyFell : MSG.pokemonsStatFell)
+      return rom(ctx, at, ctx.label(e.actor), names.stats[STAT_SLOT[e.stat]] ?? null)
+    }
 
     case 'cant': {
-      const why = CANT_REASON[e.reason]
-      const who = withTopic(ctx.label(e.actor))
-      return why ? `${who} ${why}` : `${who} 기술을 쓸 수 없다!`
+      // 도발·사슬묶기·봉인은 **못 쓴 기술 이름**이 문장에 들어간다
+      if (e.reason === 'move: Taunt') {
+        const move = e.move !== null ? names.moves[e.move] ?? null : null
+        return rom(ctx, MSG.cantUseMoveAfterTheTaunt, ctx.label(e.actor), move)
+      }
+      const at = CANT_REASON[e.reason]
+      return at === undefined ? null : rom(ctx, at, ctx.label(e.actor))
     }
 
     case 'ability': {
+      // ⚠️ **이 한 줄만 우리 것이다.** 원작은 특성이 일한 자리에 이름을 띄우는데
+      // 그것이 글이 아니라 화면 부품이라 뱅크에 줄이 없다 (PARITY §2.24)
       const ability = (e.ability !== null ? names.abilities[e.ability] : null) ?? e.abilityName
       return `${ctx.label(e.actor)}의 ${ability}!`
     }
 
     case 'weather': {
-      if (!e.weather) return e.upkeep ? null : '날씨가 원래대로 돌아왔다!'
-      const w = WEATHER[e.weather]
+      // ⚠️ **그치는 줄은 비어 있다.** 롬은 「비가 그쳤다!」·「햇살이 약해졌다!」로
+      // 날씨마다 갈라 말하는데 `|-weather|none`은 **무엇이 그쳤는지를 안 들고
+      // 온다.** 손으로 들 때는 「날씨가 원래대로 돌아왔다!」 한 줄로 때웠지만
+      // 그런 문장은 롬에 없다 — 지어내느니 비운다 (PARITY §2.24)
+      const w = e.weather === null ? null : WEATHER[e.weather]
       if (!w) return null
-      return e.upkeep ? w.upkeep : w.start
+      return rom(ctx, e.upkeep ? w.upkeep : w.start)
     }
 
     case 'damage': {
       // 기술에 맞은 데미지는 따로 말하지 않는다 — 바로 앞에 기술 줄이 이미 있다
       if (!e.from) return null
       const { kind, id, name } = e.from
-      const who = withTopic(ctx.label(e.actor))
+      const who = ctx.label(e.actor)
       if (kind === 'status') {
-        if (name === 'psn' || name === 'tox') return `${who} 독으로 데미지를 입었다!`
-        if (name === 'brn') return `${who} 화상으로 데미지를 입었다!`
-        return `${who} 데미지를 입었다!`
+        if (name === 'psn' || name === 'tox') return rom(ctx, MSG.pokemonIsHurtByPoison, who)
+        if (name === 'brn') return rom(ctx, MSG.pokemonIsHurtByItsBurn, who)
+        return null
       }
-      if (name === 'Sandstorm') return `${who} 모래바람에 시달리고 있다!`
-      if (name === 'Hail') return `${who} 싸라기눈에 시달리고 있다!`
+      // 날씨는 **날씨 이름이 첫 칸**이다 — 롬은 그것을 기술 이름표에서 읽는다
+      const weather = WEATHER_MOVE[name]
+      if (weather !== undefined) {
+        return rom(ctx, MSG.isBuffetedByTheWeather, names.moves[weather] ?? null, who)
+      }
       if (kind === 'move') {
-        const move = (id !== null ? names.moves[id] : null) ?? name
-        return `${who} ${withObject(move)} 맞았다!`
+        const at = DAMAGE_BY_MOVE[id ?? -1]
+        if (at !== undefined) return rom(ctx, at, who)
+        const move = id !== null ? names.moves[id] ?? null : null
+        return rom(ctx, MSG.pokemonIsHurtByMove, who, move)
       }
-      return `${who} 데미지를 입었다!`
+      return null
     }
 
     case 'heal':
-      return `${withTopic(ctx.label(e.actor))} 체력을 회복했다!`
+      return rom(ctx, MSG.pokemonRegainedHealth, ctx.label(e.actor))
 
     case 'ball': {
-      const who = ctx.label(e.actor)
-      if (e.caught) return `신난다! ${withObject(who)} 잡았다!`
-      // 흔들린 횟수만큼 아깝다. 원작도 세 번에서 빠져나오면 따로 말한다
-      if (e.shakes >= 3) return '앗! 아깝다! 조금만 더 하면 잡을 수 있었는데!'
-      if (e.shakes === 2) return '아깝다! 조금만 더 하면 잡을 수 있었는데!'
-      if (e.shakes === 1) return `앗! ${withSubject(who)} 볼에서 나와 버렸다!`
-      return '앗! 볼에 넣지 못했다!'
+      if (e.caught) return rom(ctx, MSG.gotchaPokemonWasCaught, ctx.label(e.actor))
+      // ⚠️ **흔들린 횟수만큼 줄이 이어져 있다.** 863부터 넷이 차례로
+      // 「안돼! 볼에서 나와버렸다!」·「아아! 잡았다고 생각했는데!」·
+      // 「아쉽다!…」·「아깝다!…」다. 자리가 곧 아까움의 크기다
+      return rom(ctx, MSG.ohNoThePokemonBrokeFree + Math.min(Math.max(e.shakes, 0), 3))
     }
 
     case 'escape':
-      // 배회 포켓몬이 달아난 자리 (PARITY §6.3). 우리가 도망친 것과 글이 다르다
+      // 배회 포켓몬이 달아난 자리 (PARITY §6.3). 우리가 도망친 것과 글이 다르다.
+      // 이 줄도 「야생 」이 문장에 박혀 있어 맨 이름을 넣는다
       if (e.foe) {
-        return e.actor ? `${withSubject(ctx.label(e.actor))} 도망쳤다!` : '상대가 도망쳤다!'
+        if (!e.actor) return null
+        return rom(ctx, MSG.theWildPokemonFled, ctx.bare?.(e.actor.name) ?? ctx.label(e.actor))
       }
-      return e.success ? '무사히 도망쳤다!' : '도망칠 수 없다!'
+      return rom(ctx, e.success ? MSG.gotAwaySafely : MSG.cantEscape)
 
     case 'reward': {
       // 숫자 뒤에는 조사를 붙이지 않는다 — 읽는 소리로 갈리기 때문에(5는 "오가",
       // 6은 "육이") 받침 규칙으로는 못 고른다. 문장을 그렇게 안 쓰면 그만이다
       const who = ctx.label({ slot: 'p1a', side: 'p1', name: e.key })
-      const lines = [`${withTopic(who)} 경험치를 ${e.exp} 얻었다!`]
+      const out: string[] = []
+      const push = (line: string | null) => { if (line !== null) out.push(line) }
+      push(rom(ctx, MSG.pokemonGainedExpPoints, who, String(e.exp)))
       const top = e.levels[e.levels.length - 1]
-      if (top !== undefined) lines.push(`${who}의 레벨이 올랐다! (Lv.${top})`)
+      if (top !== undefined) push(rom(ctx, MSG.pokemonGrewToLevel, who, String(top)))
       // 빈 칸에 그냥 들어간 것과, 무엇을 지울지 물어야 하는 것은 다른 문장이다
       for (const move of e.learned) {
-        lines.push(`${withTopic(who)} 새로 ${withObject(names.moves[move] ?? `#${move}`)} 배웠다!`)
+        push(rom(ctx, MSG.pokemonLearnedMove, who, names.moves[move] ?? null))
       }
       for (const move of e.pending) {
-        lines.push(`${withTopic(who)} ${withObject(names.moves[move] ?? `#${move}`)} 배우고 싶어 한다!`)
+        push(rom(ctx, MSG.pokemonIsTryingToLearnMove, who, names.moves[move] ?? null))
       }
-      return lines.join('\n')
+      return out.length === 0 ? null : out.join('\n')
     }
 
     case 'prize':
-      return `상금으로 ${e.money}엔을 받았다!`
+      // 롬은 주인공 이름을 부르고 **원**으로 센다 — 「엔」은 우리가 적어 둔 것이었다
+      return rom(ctx, MSG.playerGotMoneyForWinning, ctx.playerName ?? null, String(e.money))
 
     case 'shift': {
       const who = ctx.bare?.(e.key) ?? ctx.label({ slot: 'p2a', side: 'p2', name: e.key })
@@ -611,38 +724,37 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       return `${withTopic(trainer)} ${withObject(item)} 썼다!`
     }
 
-    case 'bagItem': {
-      // `BattleStrings_Text_UsedTheItem` — "{플레이어}는 {도구}를 썼다!"
-      const item = names.items[e.item] ?? `#${e.item}`
-      return `${withTopic(ctx.playerName ?? '나')} ${withObject(item)} 썼다!`
-    }
+    case 'bagItem':
+      return rom(ctx, MSG.playerUsedOneItem, ctx.playerName ?? null, names.items[e.item] ?? null)
 
     case 'disobey': {
       const who = ctx.label(e.actor)
-      if (e.reason === 'ignoredAsleep') return `${withTopic(who)} 자면서 명령을 무시했다!`
-      if (e.reason === 'otherMove') return `${withTopic(who)} 명령을 무시했다!`
-      if (e.reason === 'nap') return `${withTopic(who)} 꾸벅꾸벅 졸기 시작했다!`
-      // 자기를 때리는 자리는 두 줄이다 — 원작도 "말을 안 듣는다"를 먼저 찍는다
+      if (e.reason === 'ignoredAsleep') return rom(ctx, MSG.pokemonIgnoredOrdersWhileAsleep, who)
+      if (e.reason === 'otherMove') return rom(ctx, MSG.pokemonIgnoredOrders, who)
+      if (e.reason === 'nap') return rom(ctx, MSG.pokemonBeganToNap, who)
+      // 자기를 때리는 자리는 두 줄이다 — 원작도 「말을 듣지 않는다!」를 먼저 찍는다
       if (e.reason === 'hitSelf') {
-        return `${withTopic(who)} 말을 안 듣는다!\n혼란에 빠져 자신을 공격했다!`
+        const first = rom(ctx, MSG.pokemonWontObey, who)
+        const second = rom(ctx, MSG.itHurtItselfInItsConfusion)
+        return first === null || second === null ? null : first + '\n' + second
       }
-      return `${withTopic(who)} ${IDLE_FLAVOR[e.flavor ?? 0] ?? IDLE_FLAVOR[0]!}`
+      return rom(ctx, idleLine(e.flavor ?? 0), who)
     }
 
     case 'safari': {
-      const who = ctx.label(e.actor)
-      const me = ctx.playerName ?? '나'
+      // ⚠️ **사파리 줄은 이름표를 안 쓴다.** 롬의 그 줄들은 종족 이름 칸을 쓰고
+      // 「야생 」을 안 붙인다 — 사파리는 어차피 야생뿐이라서다
+      const who = ctx.bare?.(e.actor.name) ?? ctx.label(e.actor)
+      const me = ctx.playerName ?? null
       switch (e.beat) {
-        // `BattleStrings_Text_PlayerThrewSomeBaitAtThePokemon`
-        case 'bait': return `${withTopic(me)} ${who}에게 미끼를 던졌다!`
-        case 'eating': return `${withTopic(who)} 먹고 있다!`
-        case 'busyEating': return `${withTopic(who)} 먹느라 정신이 없다!`
-        // `BattleStrings_Text_PlayerThrewMudAtThePokemon`
-        case 'mud': return `${withTopic(me)} ${who}에게 진흙을 던졌다!`
-        case 'angry': return `${withTopic(who)} 화가 났다!`
-        case 'veryAngry': return `${withTopic(who)} 몹시 화가 났다!`
+        case 'bait': return rom(ctx, MSG.playerThrewSomeBaitAtThePokemon, me, who)
+        case 'eating': return rom(ctx, MSG.pokemonIsEating, who)
+        case 'busyEating': return rom(ctx, MSG.pokemonIsBusyEating, who)
+        case 'mud': return rom(ctx, MSG.playerThrewMudAtThePokemon, me, who)
+        case 'angry': return rom(ctx, MSG.pokemonIsAngry, who)
+        case 'veryAngry': return rom(ctx, MSG.pokemonIsBesideItselfWithAnger, who)
         // `subscript_safari_escape` — 이름이 「도망」이지만 **안 달아난** 턴의 줄이다
-        default: return `${withTopic(who)} 주의깊게 보고 있다!`
+        default: return rom(ctx, MSG.pokemonIsWatchingCarefully, who)
       }
     }
 
