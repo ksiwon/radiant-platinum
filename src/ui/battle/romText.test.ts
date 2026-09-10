@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { BATTLE_STRING_ORDER, battleMessage } from '../../import/platinum/battleStrings'
 import { bankIndex } from '../../import/platinum/textBanks'
-import { BATTLE_BANK, MSG } from './romText'
+import { BATTLE_BANK, forSide, MSG, SIDE_KEYS } from './romText'
 
 /** `MSG`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleStrings_Text_` 뒤) */
 const NAMED: Record<keyof typeof MSG, string> = {
@@ -58,6 +58,72 @@ const NAMED: Record<keyof typeof MSG, string> = {
   butThereWasNoTarget: "ButThereWasNoTarget",
   itsAOneHitKO: "ItsAOneHitKO",
   pokemonsAbilityWasSuppressed: "PokemonsAbilityWasSuppressed_Ally",
+  surroundedItselfWithAVeilOfWater: "PokemonSurroundedItselfWithAVeilOfWater_Ally",
+  fellInLove: "PokemonFellInLove_Ally",
+  gotOverItsInfatuation: "PokemonGotOverItsInfatuation",
+  unleashedEnergy: "PokemonUnleashedEnergy_Ally",
+  wasSqueezedByPokemon: "PokemonWasSqueezedByPokemon_AllyAlly",
+  beganChargingPower: "PokemonBeganChargingPower_Ally",
+  clampedPokemon: "PokemonClampedPokemon_AllyAlly",
+  cutItsOwnHPAndLaidACurseOnPokemon: "PokemonCutItsOwnHPAndLaidACurseOnPokemon_AllyAlly",
+  moveWasDisabled: "PokemonsMoveWasDisabled_Ally",
+  isNoLongerDisabled: "PokemonIsNoLongerDisabled_Ally",
+  choseMoveAsItsDestiny: "PokemonChoseMoveAsItsDestiny_Ally",
+  cantUseItemsAnymore: "PokemonCantUseItemsAnymore_Ally",
+  canUseItemsAgain: "PokemonCanUseItemsAgain_Ally",
+  receivedAnEncore: "PokemonReceivedAnEncore_Ally",
+  encoreEnded: "PokemonsEncoreEnded_Ally",
+  wasTrappedInAVortex: "PokemonWasTrappedInAVortex_Ally",
+  isGettingPumped: "PokemonIsGettingPumped_Ally",
+  foresawAnAttack: "PokemonForesawAnAttack_Ally",
+  wasPreventedFromHealing: "PokemonWasPreventedFromHealing_Ally",
+  sealedTheOpponentsMoves: "PokemonSealedTheOpponentsMoves_Ally",
+  plantedItsRoots: "PokemonPlantedItsRoots_Ally",
+  wasSeeded: "PokemonWasSeeded_Ally",
+  wasFreedFromMove: "PokemonWasFreedFromMove_Ally",
+  becameTrappedBySwirlingMagma: "PokemonBecameTrappedBySwirlingMagma_Ally",
+  levitatedOnElectromagnetism: "PokemonLevitatedOnElectromagnetism_Ally",
+  electromagnetismWoreOff: "PokemonsElectromagnetismWoreOff_Ally",
+  learnedMove2: "PokemonLearnedMove2_Ally",
+  identifiedPokemon: "PokemonIdentifiedPokemon_AllyAlly",
+  beganHavingANightmare: "PokemonBeganHavingANightmare_Ally",
+  switchedItsAttackAndDefense: "PokemonSwitchedItsAttackAndDefense_Ally",
+  wasTrappedBySandTomb: "PokemonWasTrappedBySandTomb_Ally",
+  stockpiledX: "PokemonStockpiledX_Ally",
+  stockpiledEffectWoreOff: "PokemonsStockpiledEffectWoreOff_Ally",
+  madeASubstitute: "PokemonMadeASubstitute_Ally",
+  substituteFaded: "PokemonsSubstituteFaded_Ally",
+  fellForTheTaunt: "PokemonFellForTheTaunt_Ally",
+  tauntWoreOff: "PokemonsTauntWoreOff_Ally",
+  wasSubjectedToTorment: "PokemonWasSubjectedToTorment_Ally",
+  moveWoreOff: "PokemonsMoveWoreOff_Ally",
+  causedAnUproar: "PokemonCausedAnUproar_Ally",
+  calmedDown: "PokemonCalmedDown_Ally",
+  wasWrappedByPokemon: "PokemonWasWrappedByPokemon_AllyAlly",
+  madePokemonDrowsy: "PokemonMadePokemonDrowsy_AllyAlly",
+  becameConfused: "PokemonBecameConfused_Ally",
+  snappedOutOfConfusion: "PokemonSnappedOutOfConfusion_Ally",
+  abilityRaisedThePowerOfItsFireTypeMoves: "PokemonsAbilityRaisedThePowerOfItsFireTypeMoves_Ally",
+  isExertingItsAbility: "PokemonIsExertingItsAbility_Ally",
+  cantGetItGoingBecauseOfItsAbility: "PokemonCantGetItGoingBecauseOfItsAbility_Ally",
+  finallyGotItsActTogether: "PokemonFinallyGotItsActTogether_Ally",
+  moveRaisedYourTeamsSpecialDefense: "MoveRaisedYourTeamsSpecialDefense",
+  moveRaisedYourTeamsDefense: "MoveRaisedYourTeamsDefense",
+  yourTeamBecameCloakedInAMysticalVeil: "YourTeamBecameCloakedInAMysticalVeil",
+  yourTeamIsNoLongerProtectedBySafeguard: "YourTeamIsNoLongerProtectedBySafeguard",
+  yourTeamBecameShroudedInMist: "YourTeamBecameShroudedInMist",
+  yourTeamsMoveEffectWoreOff: "YourTeamsMoveEffectWoreOff",
+  spikesWereScatteredAllAroundYourTeamsFeet: "SpikesWereScatteredAllAroundYourTeamsFeet",
+  poisonSpikesWereScatteredAllAroundYourTeamsFeet: "PoisonSpikesWereScatteredAllAroundYourTeamsFeet",
+  thePoisonSpikesDisappearedFromAroundYourTeamsFeet: "ThePoisonSpikesDisappearedFromAroundYourTeamsFeet",
+  pointedStonesFloatInTheAirAroundYourTeam: "PointedStonesFloatInTheAirAroundYourTeam",
+  theTailwindBlewFromBehindYourTeam: "TheTailwindBlewFromBehindYourTeam",
+  yourTeamsTailwindPeteredOut: "YourTeamsTailwindPeteredOut",
+  theLuckyChantShieldedYourTeamFromCriticalHits: "TheLuckyChantShieldedYourTeamFromCriticalHits",
+  yourTeamsLuckyChantWoreOff: "YourTeamsLuckyChantWoreOff",
+  twistedTheDimensions: "PokemonTwistedTheDimensions_Ally",
+  restoredTheTwistedDimensions: "PokemonRestoredTheTwistedDimensions_Ally",
+  gravityIntensified: "GravityIntensified",
 }
 
 describe('배틀 글 줄 번호', () => {
@@ -76,6 +142,18 @@ describe('배틀 글 줄 번호', () => {
       expect(MSG[key]).toBe(battleMessage(name))
     })
   }
+
+  it('진영 줄은 우리 편 바로 다음이 상대다', () => {
+    // ⚠️ **이 +1이 유일하게 자리를 세는 자리다.** 한 칸이라도 어긋나면 상대가
+    // 리플렉터를 깔았을 때 「우리 편은…」이 뜬다 — 글자가 나오므로 눈으로는 넘어간다
+    for (const key of SIDE_KEYS) {
+      const mine = BATTLE_STRING_ORDER[MSG[key]]!
+      const theirs = BATTLE_STRING_ORDER[forSide(MSG[key], false)]!
+      expect(mine, key).toMatch(/Your|TheFeetOfTheFoes/)
+      expect(theirs, key).toMatch(/Foe|Enemy/)
+    }
+    expect(SIDE_KEYS).toHaveLength(14)
+  })
 
   it('이름을 안 적어 둔 번호가 없다', () => {
     // 새 줄을 놓으면서 이름을 안 적으면 그 번호는 아무도 안 잰다

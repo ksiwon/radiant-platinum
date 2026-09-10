@@ -24,7 +24,7 @@ import type {
 import type { Status } from '../../engine/pokemon/instance'
 import { formatMessage, MESSAGE_SLOTS, MessageSlots } from '../../engine/script/text'
 import { withObject, withSubject, withTopic } from '../korean'
-import { MSG } from './romText'
+import { forSide, MSG } from './romText'
 
 export interface BattleNames {
   /** 종족 번호로 색인 */
@@ -141,6 +141,14 @@ interface EffectSay {
   extraMove: string
   /** 효과가 기술·특성이면 그 한국어 이름. 번호를 못 찾으면 원문 */
   label: string
+  /**
+   * 같은 이름이되 **못 풀면 null**이다.
+   *
+   * 롬 문장의 빈칸에 들어가는 것은 이쪽이다 — `label`처럼 영어로 떨어뜨리면
+   * 화면에 「Reflect로 물리 공격에 강해졌다!」가 뜬다. 빈칸이 못 채워지면
+   * `rom()`이 문장 자체를 비운다
+   */
+  romLabel: string | null
 }
 
 /** 효과 표의 한 줄. 롬의 줄 하나를 골라 칸을 채운다 */
@@ -251,11 +259,179 @@ export const ACTIVATE_IDS: readonly string[] = Object.keys(ACTIVATE)
 export const SINGLE_TURN_IDS: readonly string[] = Object.keys(SINGLE_TURN)
 export const SINGLE_MOVE_IDS: readonly string[] = Object.keys(SINGLE_MOVE)
 
+/**
+ * 개체에 **걸린** 줄 (PARITY §2.25 · `-start`).
+ *
+ * ⚠️ **모양은 진작에 있었다.** 트레이너 AI가 리플렉터·대타출동·트릭룸을 보라고
+ * 준 것이라 「아직 모양 안 준 명령」 목록에 안 잡혔는데, `battleText`에는 이
+ * 갈래가 **아예 없었다** — 씨뿌리기가 걸려도 대타가 나타나도 도발에 넘어가도
+ * 화면이 한 마디도 안 했다.
+ *
+ * ⚠️ **여기 없는 것은 조용하다.** 특성 배너로도 안 떨어뜨린다 — 날씨부정·틀깨기는
+ * 4세대 뱅크에 줄이 없고, 원작이 아무 말도 안 하는 자리에 배너를 띄우면
+ * 그것이 지어낸 것이다
+ */
+const VOLATILE_ON: Record<string, EffectLine> = {
+  aquaring: (c, s) => rom(c, MSG.surroundedItselfWithAVeilOfWater, s.who),
+  attract: (c, s) => rom(c, MSG.fellInLove, s.who),
+  bide: (c, s) => rom(c, MSG.isStoringEnergy, s.who),
+  charge: (c, s) => rom(c, MSG.beganChargingPower, s.who),
+  confusion: (c, s) => rom(c, MSG.becameConfused, s.who),
+  destinybond: (c, s) => rom(c, MSG.isTryingToTakeItsFoeWithIt, s.who),
+  disable: (c, s) => rom(c, MSG.moveWasDisabled, s.who, s.extraMove || null),
+  doomdesire: (c, s) => rom(c, MSG.choseMoveAsItsDestiny, s.who, s.romLabel),
+  embargo: (c, s) => rom(c, MSG.cantUseItemsAnymore, s.who),
+  encore: (c, s) => rom(c, MSG.receivedAnEncore, s.who),
+  endure: (c, s) => rom(c, MSG.bracedItself, s.who),
+  focusenergy: (c, s) => rom(c, MSG.isGettingPumped, s.who),
+  focuspunch: (c, s) => rom(c, MSG.isTighteningItsFocus, s.who),
+  followme: (c, s) => rom(c, MSG.becameTheCenterOfAttention, s.who),
+  futuresight: (c, s) => rom(c, MSG.foresawAnAttack, s.who),
+  gastroacid: (c, s) => rom(c, MSG.pokemonsAbilityWasSuppressed, s.who),
+  grudge: (c, s) => rom(c, MSG.wantsTheFoeToBearAGrudge, s.who),
+  healblock: (c, s) => rom(c, MSG.wasPreventedFromHealing, s.who),
+  imprison: (c, s) => rom(c, MSG.sealedTheOpponentsMoves, s.who),
+  ingrain: (c, s) => rom(c, MSG.plantedItsRoots, s.who),
+  leechseed: (c, s) => rom(c, MSG.wasSeeded, s.who),
+  magiccoat: (c, s) => rom(c, MSG.shroudedItselfWithMagicCoat, s.who),
+  magmastorm: (c, s) => rom(c, MSG.becameTrappedBySwirlingMagma, s.who),
+  magnetrise: (c, s) => rom(c, MSG.levitatedOnElectromagnetism, s.who),
+  mimic: (c, s) => rom(c, MSG.learnedMove2, s.who, s.extraMove || null),
+  nightmare: (c, s) => rom(c, MSG.beganHavingANightmare, s.who),
+  powertrick: (c, s) => rom(c, MSG.switchedItsAttackAndDefense, s.who),
+  sandtomb: (c, s) => rom(c, MSG.wasTrappedBySandTomb, s.who),
+  snatch: (c, s) => rom(c, MSG.waitsForATargetToMakeAMove, s.who),
+  stockpile: (c, s) => (s.extra.num === null
+    ? null
+    : rom(c, MSG.stockpiledX, s.who, String(s.extra.num))),
+  substitute: (c, s) => rom(c, MSG.madeASubstitute, s.who),
+  taunt: (c, s) => rom(c, MSG.fellForTheTaunt, s.who),
+  torment: (c, s) => rom(c, MSG.wasSubjectedToTorment, s.who),
+  uproar: (c, s) => rom(c, MSG.causedAnUproar, s.who),
+  // 회오리불꽃·소용돌이·조이기·감기·조개무지는 **가둔 쪽 이름**이 붙는다.
+  // 못 받으면 `rom`이 문장 자체를 비운다
+  firespin: (c, s) => rom(c, MSG.wasTrappedInAVortex, s.who),
+  whirlpool: (c, s) => rom(c, MSG.wasTrappedInAVortex, s.who),
+  bind: (c, s) => rom(c, MSG.wasSqueezedByPokemon, s.who, s.of),
+  wrap: (c, s) => rom(c, MSG.wasWrappedByPokemon, s.who, s.of),
+  clamp: (c, s) => rom(c, MSG.clampedPokemon, s.who, s.of),
+  // ⚠️ **첫 칸이 건 쪽인 줄 넷.** 저주·심안·도우미·하품은 롬 문장이
+  // 「{건 쪽}는 {받는 쪽}…」이고 sim은 **받는 쪽**을 자리로 준다
+  curse: (c, s) => rom(c, MSG.cutItsOwnHPAndLaidACurseOnPokemon, s.of, s.who),
+  foresight: (c, s) => rom(c, MSG.identifiedPokemon, s.of, s.who),
+  miracleeye: (c, s) => rom(c, MSG.identifiedPokemon, s.of, s.who),
+  helpinghand: (c, s) => rom(c, MSG.isReadyToHelpPokemon, s.of, s.who),
+  yawn: (c, s) => rom(c, MSG.madePokemonDrowsy, s.of, s.who),
+  lockon: (c, s) => rom(c, MSG.tookAimAtPokemon, s.of, s.who),
+  mindreader: (c, s) => rom(c, MSG.tookAimAtPokemon, s.of, s.who),
+  // 특성이 걸어 두는 것 셋. 롬은 특성 이름을 빈칸으로 받는다
+  flashfire: (c, s) => rom(c, MSG.abilityRaisedThePowerOfItsFireTypeMoves, s.who, s.romLabel),
+  pressure: (c, s) => rom(c, MSG.isExertingItsAbility, s.who, s.romLabel),
+  slowstart: (c, s) => rom(c, MSG.cantGetItGoingBecauseOfItsAbility, s.who, s.romLabel),
+}
+
+/**
+ * 개체에서 **풀린** 줄 (PARITY §2.25 · `-end`).
+ *
+ * ⚠️ **두루 쓰는 줄이 있어도 표를 안 접는다.** 롬의 `moveWoreOff`는 기술 이름을
+ * 빈칸으로 받아 무엇에나 쓸 수 있게 생겼지만, 그 줄을 기본값으로 깔면 **원작이
+ * 아무 말도 안 하는 자리까지** 말하게 된다. 접두사 없이 오는 이름 중에는
+ * 기술이 아닌 것도 섞여 있어(`confusion`) 엉뚱한 기술 이름이 들어가기도 한다
+ */
+const VOLATILE_OFF: Record<string, EffectLine> = {
+  attract: (c, s) => rom(c, MSG.gotOverItsInfatuation, s.who),
+  bide: (c, s) => rom(c, MSG.unleashedEnergy, s.who),
+  confusion: (c, s) => rom(c, MSG.snappedOutOfConfusion, s.who),
+  disable: (c, s) => rom(c, MSG.isNoLongerDisabled, s.who),
+  embargo: (c, s) => rom(c, MSG.canUseItemsAgain, s.who),
+  encore: (c, s) => rom(c, MSG.encoreEnded, s.who),
+  magnetrise: (c, s) => rom(c, MSG.electromagnetismWoreOff, s.who),
+  powertrick: (c, s) => rom(c, MSG.switchedItsAttackAndDefense, s.who),
+  slowstart: (c, s) => rom(c, MSG.finallyGotItsActTogether, s.who),
+  stockpile: (c, s) => rom(c, MSG.stockpiledEffectWoreOff, s.who),
+  substitute: (c, s) => rom(c, MSG.substituteFaded, s.who),
+  uproar: (c, s) => rom(c, MSG.calmedDown, s.who),
+  // 기술 이름을 빈칸으로 받는 둘. 이름이 안 풀리면 문장을 비운다
+  leechseed: (c, s) => rom(c, MSG.wasFreedFromMove, s.who, s.romLabel),
+  taunt: (c, s) => rom(c, MSG.tauntWoreOff, s.who, s.romLabel),
+  torment: (c, s) => rom(c, MSG.moveWoreOff, s.who, s.romLabel),
+  healblock: (c, s) => rom(c, MSG.moveWoreOff, s.who, s.romLabel),
+}
+
+/**
+ * 진영에 깔리고 걷히는 줄 (PARITY §2.25 · `-sidestart`·`-sideend`).
+ *
+ * ⚠️ **여기만 자리에 따라 번호를 고른다.** 롬이 「우리 편은…」과 「상대는…」을
+ * 아예 다른 줄로 들고 있고 그 줄에는 이름 빈칸이 없어서, 이름표로는 못 덮는다.
+ * 우리 편 줄 바로 다음이 상대 줄이다 (`forSide` · `romText.test.ts`가 열넷 전부 잰다)
+ */
+const SIDE_ON: Record<string, number> = {
+  reflect: MSG.moveRaisedYourTeamsDefense,
+  lightscreen: MSG.moveRaisedYourTeamsSpecialDefense,
+  mist: MSG.yourTeamBecameShroudedInMist,
+  safeguard: MSG.yourTeamBecameCloakedInAMysticalVeil,
+  spikes: MSG.spikesWereScatteredAllAroundYourTeamsFeet,
+  toxicspikes: MSG.poisonSpikesWereScatteredAllAroundYourTeamsFeet,
+  stealthrock: MSG.pointedStonesFloatInTheAirAroundYourTeam,
+  tailwind: MSG.theTailwindBlewFromBehindYourTeam,
+  luckychant: MSG.theLuckyChantShieldedYourTeamFromCriticalHits,
+}
+
+const SIDE_OFF: Record<string, number> = {
+  safeguard: MSG.yourTeamIsNoLongerProtectedBySafeguard,
+  toxicspikes: MSG.thePoisonSpikesDisappearedFromAroundYourTeamsFeet,
+  tailwind: MSG.yourTeamsTailwindPeteredOut,
+  luckychant: MSG.yourTeamsLuckyChantWoreOff,
+  // 나머지 넷은 롬도 두루 쓰는 줄 하나로 말한다 — 기술 이름이 빈칸이다
+  reflect: MSG.yourTeamsMoveEffectWoreOff,
+  lightscreen: MSG.yourTeamsMoveEffectWoreOff,
+  mist: MSG.yourTeamsMoveEffectWoreOff,
+  spikes: MSG.yourTeamsMoveEffectWoreOff,
+  stealthrock: MSG.yourTeamsMoveEffectWoreOff,
+}
+
+/** 그 줄이 기술 이름을 빈칸으로 받는가. 받으면 이름이 안 풀릴 때 조용해진다 */
+const SIDE_NEEDS_MOVE = new Set<number>([
+  MSG.moveRaisedYourTeamsDefense,
+  MSG.moveRaisedYourTeamsSpecialDefense,
+  MSG.yourTeamsMoveEffectWoreOff,
+])
+
+/**
+ * 무대 전체 (`-fieldstart`·`-fieldend`). 4세대에서 글이 붙는 것은 트릭룸과
+ * 중력 둘뿐이다 — 중력은 걸릴 때만 말한다
+ */
+const FIELD_ON: Record<string, number> = {
+  trickroom: MSG.twistedTheDimensions,
+  gravity: MSG.gravityIntensified,
+}
+
+const FIELD_OFF: Record<string, number> = {
+  trickroom: MSG.restoredTheTwistedDimensions,
+}
+
+/** 트릭룸은 **비튼 쪽 이름**이 붙는다. 중력은 자리가 없는 줄이다 */
+const FIELD_NEEDS_WHO = new Set<number>([
+  MSG.twistedTheDimensions, MSG.restoredTheTwistedDimensions,
+])
+
 /** 랭크 변화 폭 → 부사. 원작은 1단계와 2단계 이상을 다르게 말한다 */
 function boostAdverb(amount: number): string {
   const n = Math.abs(amount)
   if (amount > 0) return n >= 3 ? '엄청나게 올라갔다!' : n === 2 ? '쭉쭉 올라갔다!' : '올라갔다!'
   return n >= 3 ? '엄청나게 떨어졌다!' : n === 2 ? '뚝 떨어졌다!' : '떨어졌다!'
+}
+
+/**
+ * 효과의 **한국어** 이름. 못 풀면 null이다.
+ *
+ * `effectLabel`과 다른 점이 그 하나다 — 저쪽은 못 찾으면 프로토콜의 영어 원문을
+ * 주는데, 그 값이 조사가 뒤에 붙는 빈칸에 들어가면 병기형보다 나쁜 것이 뜬다
+ */
+function romName(effect: EffectRef, names: BattleNames): string | null {
+  if (effect.num === null) return null
+  const table = effect.kind === 'ability' ? names.abilities : names.moves
+  return table[effect.num] ?? null
 }
 
 /**
@@ -473,6 +649,40 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     case 'tie':
       return '무승부다!'
 
+    // ── 걸림과 풀림 (PARITY §2.25) ───────────────────────────────────────────
+    //
+    // 모양은 진작에 있었다 — 트레이너 AI가 리플렉터·대타출동·트릭룸을 보라고 준
+    // 것이다. 없던 것은 **글**이고, 그래서 씨뿌리기가 걸려도 대타가 나타나도
+    // 압정이 깔려도 화면이 한 마디도 안 했다
+    case 'volatile': {
+      const line = (e.start ? VOLATILE_ON : VOLATILE_OFF)[e.effect.id]
+      return line === undefined ? null : line(ctx, {
+        who: ctx.label(e.actor),
+        of: e.of ? ctx.label(e.of) : null,
+        extra: e.extra,
+        extraMove: moveLabel(e.extra, names),
+        label: effectLabel(e.effect, names),
+        romLabel: romName(e.effect, names),
+      })
+    }
+
+    case 'sidecondition': {
+      const at = (e.start ? SIDE_ON : SIDE_OFF)[e.effect.id]
+      if (at === undefined) return null
+      // 우리 쪽이면 「우리 편은…」, 상대 쪽이면 바로 다음 줄인 「상대는…」이다
+      const line = forSide(at, e.side === 'p1')
+      return SIDE_NEEDS_MOVE.has(at)
+        ? rom(ctx, line, romName(e.effect, names))
+        : rom(ctx, line)
+    }
+
+    case 'fieldcondition': {
+      const at = (e.start ? FIELD_ON : FIELD_OFF)[e.effect.id]
+      if (at === undefined) return null
+      return FIELD_NEEDS_WHO.has(at)
+        ? rom(ctx, at, e.of ? ctx.label(e.of) : null)
+        : rom(ctx, at)
+    }
     // ── 글만 내는 열둘 (PARITY §2.24) ────────────────────────────────────────
     case 'activate':
     case 'block':
@@ -482,6 +692,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
         extra: e.extra,
         extraMove: moveLabel(e.extra, names),
         label: effectLabel(e.effect, names),
+        romLabel: romName(e.effect, names),
       })
 
     case 'singleturn':
@@ -491,6 +702,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
         extra: NO_EXTRA,
         extraMove: '',
         label: effectLabel(e.effect, names),
+        romLabel: romName(e.effect, names),
       })
 
     case 'singlemove':
@@ -500,6 +712,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
         extra: NO_EXTRA,
         extraMove: '',
         label: effectLabel(e.effect, names),
+        romLabel: romName(e.effect, names),
       })
 
     case 'prepare': {

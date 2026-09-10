@@ -89,6 +89,25 @@ function effectRef(raw: string): EffectRef {
   }
 }
 
+/**
+ * 지속 효과 세 갈래(`-start`·`-sidestart`·`-fieldstart`)의 효과 이름.
+ *
+ * ⚠️ **이 줄들은 `move:` 접두사를 자주 뺀다** — `|-sidestart|p1: 빛나|Reflect`는
+ * 접두사가 없고 `|-sidestart|p2: 난천|move: Light Screen`은 있다. 같은 일인데
+ * 한쪽만 번호가 풀리면 「우리 편은 {기술}로 물리 공격에 강해졌다!」의 빈칸이
+ * 반만 채워진다. 그래서 접두사가 없어도 롬의 기술 표를 한 번 뒤진다.
+ *
+ * ⚠️ **`kind`는 안 건드린다.** 접두사가 없다는 사실 자체가 자료고, 접두사 없이
+ * 오는 이름 중에는 기술이 아닌 것도 있다(`confusion`은 상태지만 롬 기술 표에는
+ * 같은 이름의 기술이 있다). 그래서 `num`은 **롬 문장에 기술 빈칸이 있는 자리에서만**
+ * 읽는다 (`ui/battle/messages`).
+ */
+function conditionRef(raw: string): EffectRef {
+  const base = effectRef(raw)
+  if (base.num !== null || base.kind !== 'other') return base
+  return { ...base, num: romMove(base.name) }
+}
+
 const BOOST_STATS: BoostStat[] = ['atk', 'def', 'spa', 'spd', 'spe', 'accuracy', 'evasion']
 const EFFECTIVENESS: Record<string, Effectiveness> = {
   '-supereffective': 'super',
@@ -294,26 +313,28 @@ export function parseLine(line: string): BattleEvent | null {
     case '-sidestart':
     case '-sideend': {
       const side = parseSide(rest[0] ?? '')
-      const condition = conditionId(rest[1] ?? '')
-      if (!side || !condition) break
-      return { kind: 'sidecondition', side, condition, start: cmd === '-sidestart' }
+      const effect = conditionRef(rest[1] ?? '')
+      if (!side || !effect.id) break
+      return { kind: 'sidecondition', side, effect, start: cmd === '-sidestart' }
     }
 
     // `|-fieldstart|move: Trick Room|[of] p2a: 난천`
     case '-fieldstart':
     case '-fieldend': {
-      const condition = conditionId(rest[0] ?? '')
-      if (!condition) break
-      return { kind: 'fieldcondition', condition, start: cmd === '-fieldstart' }
+      const effect = conditionRef(rest[0] ?? '')
+      if (!effect.id) break
+      return { kind: 'fieldcondition', effect, start: cmd === '-fieldstart', of: of(kw) }
     }
 
     // `|-start|p1a: 빛나|Substitute`, `|-end|p2a: 난천|move: Leech Seed`
     case '-start':
     case '-end': {
       const actor = need(0)
-      const volatile = conditionId(rest[1] ?? '')
-      if (!actor || !volatile) break
-      return { kind: 'volatile', actor, volatile, start: cmd === '-start' }
+      const effect = conditionRef(rest[1] ?? '')
+      if (!actor || !effect.id) break
+      return {
+        kind: 'volatile', actor, effect, start: cmd === '-start', of: of(kw), extra: extra(kw),
+      }
     }
 
     // ── 글만 내는 열둘 (PARITY §2.24) ────────────────────────────────────────

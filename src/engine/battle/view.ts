@@ -322,19 +322,19 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       return { ...view, weather: e.weather }
 
     case 'sidecondition': {
-      const next = stack(view.sideConditions[e.side], e.condition, e.start)
+      const next = stack(view.sideConditions[e.side], e.effect.id, e.start)
       if (next === view.sideConditions[e.side]) return view
       return { ...view, sideConditions: { ...view.sideConditions, [e.side]: next } }
     }
 
     case 'fieldcondition': {
-      const next = toggle(view.field, e.condition, e.start)
+      const next = toggle(view.field, e.effect.id, e.start)
       return next === view.field ? view : { ...view, field: next }
     }
 
     case 'volatile':
       return patch(view, e.actor.slot, (m) => {
-        const next = toggle(m.volatiles, e.volatile, e.start)
+        const next = toggle(m.volatiles, e.effect.id, e.start)
         return next === m.volatiles ? m : { ...m, volatiles: next }
       })
 

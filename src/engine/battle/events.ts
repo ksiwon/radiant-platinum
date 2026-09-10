@@ -296,12 +296,21 @@ export type BattleEvent =
   // 화면(리플렉터)·장(트릭룸)·개체(대타출동)는 걸리는 곳이 달라서 따로 접어야 한다.
   // 이름은 `reflect`, `trickroom`, `leechseed`처럼 sim의 id 꼴로 정규화된다 —
   // 원문(`move: Trick Room`)을 그대로 두면 비교할 때마다 접두사를 떼야 한다
+  //
+  // ⚠️ **이름이 아니라 `EffectRef`를 든다** (PARITY §2.25). `id`는 예전 `condition`과
+  // 글자 그대로 같은 값이라(`effectRef`가 `conditionId`를 그대로 쓴다) 접는 쪽은
+  // 안 달라졌다. 늘어난 것은 **글에 필요한 것들**이다 — 롬의 그 줄들이 기술 이름
+  // (「우리 편은 {기술}로 물리 공격에 강해졌다!」)과 상대 이름(「{A}는 {B}에게
+  // 휘감겼다!」)과 수(「{N}개 비축했다!」)를 빈칸으로 받는다
   /** 한 쪽 진영 전체에 걸린 것. 리플렉터·빛의장막·압정뿌리기·신비의부적 */
-  | { kind: 'sidecondition'; side: SideId; condition: string; start: boolean }
+  | { kind: 'sidecondition'; side: SideId; effect: EffectRef; start: boolean }
   /** 필드 전체에 걸린 것. 트릭룸·중력·매직룸 */
-  | { kind: 'fieldcondition'; condition: string; start: boolean }
+  | { kind: 'fieldcondition'; effect: EffectRef; start: boolean; of: Actor | null }
   /** 지금 나와 있는 한 마리에게 걸린 것. 대타출동·씨뿌리기·혼란·조이기 */
-  | { kind: 'volatile'; actor: Actor; volatile: string; start: boolean }
+  | {
+    kind: 'volatile'; actor: Actor; effect: EffectRef; start: boolean
+    of: Actor | null; extra: EffectExtra
+  }
   | { kind: 'win'; winner: string }
   | { kind: 'tie' }
   | { kind: 'request'; request: BattleRequest | null }
