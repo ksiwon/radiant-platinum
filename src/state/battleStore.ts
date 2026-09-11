@@ -182,6 +182,17 @@ interface BattleState {
   kind: BattleKind
   /** 상대 트레이너 표시 이름("체육관 관장 동관"). 야생이면 null */
   foeName: string | null
+  /**
+   * 그 이름을 **가른 두 조각**. 야생이면 둘 다 null.
+   *
+   * ⚠️ **왜 따로 드나.** 롬의 두 줄이 트레이너를 **두 칸으로** 받는다 —
+   * 「{분류} {이름}은 {포켓몬}을 내보냈다!」(`TrSentOutPokemon`)와 도구 줄이다.
+   * 합쳐 든 `foeName` 하나로는 그 두 칸을 못 채워서, 한동안 그 둘만 손 글이었다.
+   * 화면 머리말과 「승부를 걸어왔다!」는 여전히 합친 이름이 맞다 — 롬도 그
+   * 자리에서는 분류와 이름을 나란히 찍는다
+   */
+  foeClass: string | null
+  foeTrainer: string | null
   /** Active opponent trainer identity, retained for the 3D battle stage. */
   trainerId: number | null
   trainerClass: number | null
@@ -433,6 +444,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   phase: 'off',
   kind: 'wild',
   foeName: null,
+  foeClass: null,
+  foeTrainer: null,
   trainerId: null,
   trainerClass: null,
   prize: 0,
@@ -457,6 +470,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       set,
       get,
       'wild',
+      null,
+      null,
       null,
       0,
       ({ species, pp }) => {
@@ -540,7 +555,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   startTrainer: async (trainerId, options) => {
     if (get().phase !== 'off') return
     set({
-      phase: 'loading', kind: 'trainer', foeName: null, prize: 0,
+      phase: 'loading', kind: 'trainer', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
       trainerId, trainerClass: null,
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
@@ -590,6 +605,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         get,
         'trainer',
         label,
+        classes[trainer.class] ?? null,
+        names[trainerId] ?? null,
         prize,
         ({ species, pp }) => ({
           name: label || '상대',
@@ -623,6 +640,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       get,
       'factory',
       label,
+      null,
+      null,
       // 상금이 없다. 프론티어는 BP로 셈한다
       0,
       ({ species }) => ({
@@ -639,7 +658,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   startSafari: async (wild) => {
     if (get().phase !== 'off') return
     set({
-      phase: 'loading', kind: 'safari', foeName: null, prize: 0,
+      phase: 'loading', kind: 'safari', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
       trainerId: null, trainerClass: null,
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
@@ -928,7 +947,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       }
       const spent = run.outcome === 'outOfBalls'
       set({
-        phase: 'off', kind: 'wild', foeName: null, prize: 0, trainerId: null, trainerClass: null,
+        phase: 'off', kind: 'wild', foeName: null, foeClass: null, foeTrainer: null, prize: 0, trainerId: null, trainerClass: null,
         view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
         roster: {}, outcome: null, shiftAsk: null, safari: null,
       })
@@ -949,7 +968,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       participants = new Set()
       leveledUp = new Set()
       set({
-        phase: 'off', kind: 'wild', foeName: null, prize: 0, trainerId: null, trainerClass: null,
+        phase: 'off', kind: 'wild', foeName: null, foeClass: null, foeTrainer: null, prize: 0, trainerId: null, trainerClass: null,
         view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
         roster: {}, outcome: null, shiftAsk: null,
       })
@@ -1088,6 +1107,8 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       phase: 'off',
       kind: 'wild',
       foeName: null,
+  foeClass: null,
+  foeTrainer: null,
       prize: 0,
       trainerId: null,
       trainerClass: null,
@@ -1410,6 +1431,9 @@ async function open(
   get: GetState,
   kind: BattleKind,
   foeName: string | null,
+  /** 그 이름을 가른 두 조각. 롬의 두 칸짜리 줄이 이것을 받는다 */
+  foeClass: string | null,
+  foeTrainer: string | null,
   prize: number,
   buildFoe: BuildFoe,
   /** 트레이너 AI 비트. 안 주면 상대는 무작위로 둔다 — 야생이 그렇다 */
@@ -1434,6 +1458,8 @@ async function open(
     phase: 'loading',
     kind,
     foeName,
+    foeClass,
+    foeTrainer,
     prize,
     view: null,
     truth: null,

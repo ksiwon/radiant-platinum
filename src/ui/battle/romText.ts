@@ -19,6 +19,8 @@
 // **0건**이고 「야생 」이 344건이라, 이름표를 롬의 말로 맞추면 두 길이 같은 글이
 // 된다.
 
+import type { BoostStat } from '../../engine/battle/events'
+
 /** `TEXT_BANK_BATTLE_STRINGS` — 미국 롬 기준 뱅크 번호 */
 export const BATTLE_BANK = 368
 
@@ -301,6 +303,36 @@ export const MSG = {
   /** 상황을 살피고 있다 */ pokemonIsWatchingCarefully: 849,
 
   /** 가방에서 도구를 썼다 */ playerUsedOneItem: 857,
+
+  // ── 트레이너를 **두 칸으로** 받는 줄 (PARITY §2.24) ─────────────────────────
+  //
+  // 롬은 분류(「체육관 관장」)와 이름(「동관」)을 따로 받는다. 우리가 한동안
+  // 「체육관 관장 동관」으로 **합쳐** 들고 있어서 이 줄들만 손 글이었다.
+  // 분류가 없는 상대(통신·배틀팩토리)에게는 롬이 **이름 한 칸짜리 줄**을 따로
+  // 들고 있다 — 그 짝이 아래 `…LinkTr…`이다
+  /** 「{분류} {이름}은 / 승부를 걸어왔다!」 */ youAreChallengedByTr: 969,
+  /** 분류 없는 짝 */ youAreChallengedByLinkTr: 970,
+  /** 「{분류} {이름}과의 / 승부에서 이겼다!」 */ playerDefeatedTr: 839,
+  /** 분류 없는 짝 */ playerDefeatedLinkTr: 785,
+  /** 「{분류} {이름}은 / {포켓몬}을 내보냈다!」 */ trSentOutPokemon: 972,
+  /** 분류 없는 짝 */ linkTrSentOutPokemon: 974,
+  /** 「{분류} {이름}은 / {도구}를 썼다!」 */ trUsedOneItem: 858,
+  /**
+   * 시합규칙 「교체」 — 세 칸짜리 한 줄에 물음까지 들어 있다.
+   *
+   * 끝의 `{SCREEN 0}`은 예/아니오 창을 여는 부호다. `tokensToText`가 빈 글자로
+   * 지우므로 화면에는 안 남는다 — 묻는 창은 우리 쪽이 따로 띄운다
+   */
+  willYouSwitchYourPokemon: 835,
+  /** 「{이름}은 / 눈앞이 캄캄해졌다!」 */ playerBlackedOut: 37,
+  /**
+   * 트레이너전에서 볼을 던졌다.
+   *
+   * ⚠️ **원작 가방은 이걸 안 막는다** — 던지게 두고 배틀 스크립트가 이 줄을
+   * 찍는다 (`battle_bag.c`의 `TryUseItem`에는 트레이너 검사가 없다). 우리는
+   * 가방에서 미리 막으므로(`BattleBag`) 그 자리에 이 줄을 보여 준다
+   */
+  theTrainerBlockedTheBall: 859,
 } as const
 
 type MessageKey = keyof typeof MSG
@@ -329,3 +361,62 @@ export const SIDE_KEYS: readonly MessageKey[] = [
 export function forSide(at: number, mine: boolean): number {
   return mine ? at : at + 1
 }
+
+/**
+ * 랭크 이름이 든 자리 (`pokemon_stat_names` · us 551).
+ *
+ * 롬의 랭크 줄은 능력 이름을 **빈칸으로** 받는다 — 우리가 「공격」을 적어 두면
+ * 로케일을 바꾸는 순간 한국어가 남는다. 배틀 로그(`messages.ts`)와 배틀 가방의
+ * 「무슨 일이 일어나는가」 줄(`BattleBag.tsx`)이 같은 표를 읽는다
+ */
+export const STAT_SLOT: Record<BoostStat, number> = {
+  atk: 1, def: 2, spe: 3, spa: 4, spd: 5, accuracy: 6, evasion: 7,
+}
+
+// ── 배틀 **안**의 두 화면 (PARITY §2.26) ────────────────────────────────────
+//
+// 배틀 위 화면과 뱅크가 아예 다르다. DS는 아래 화면에 가방과 파티를 띄웠고
+// 그 둘이 각자 뱅크를 열었다 (`battle_bag.c` · `battle_party.c`의
+// `MessageLoader_Init`). 우리는 화면이 하나라 같은 자리에 겹쳐 띄운다.
+//
+// ⚠️ **같은 문장이 두 뱅크에 있다.** 「금제의 효과로 …」는 가방 46번과 파티
+// 95번이 글자까지 같다 — 원작은 **어느 화면이 떠 있느냐**로 고른다. 우리도
+// 그대로 한다: 도구를 고르는 단은 가방 줄, 대상을 고르는 단은 파티 줄이다.
+
+/** `TEXT_BANK_BATTLE_BAG` — 배틀 안 가방 49줄 (us 2) */
+export const BAG_BANK = 2
+
+/** `TEXT_BANK_BATTLE_PARTY` — 배틀 안 파티 96줄 (us 3) */
+export const PARTY_BANK = 3
+
+/**
+ * 배틀 가방 뱅크의 줄 번호.
+ *
+ * 주머니 이름 넷은 우리가 적어 둔 것과 **글자까지 같았다** — 그래도 롬에서 읽는다.
+ * 손으로 든 글은 로케일을 바꾸면 한국어가 남고, 같은지 아닌지도 아무도 다시 안 잰다
+ */
+export const BAG = {
+  /** 회복 (HP·PP 도구가 한 칸이다) */ pocketRestore: 23,
+  /** 상태 */ pocketStatus: 24,
+  /** 볼 */ pocketBalls: 26,
+  /** 배틀용 */ pocketBattleItems: 27,
+  /** 금제가 막았다. 빈칸 둘은 기술 이름과 이름 */ embargoBlockingItemUse: 46,
+} as const
+
+/**
+ * 배틀 파티 뱅크의 줄 번호.
+ *
+ * 도구를 먹인 **뒤**의 열한 줄(82~92)은 안 적는다 — 그 자리는 배틀 로그가
+ * `battle_strings`의 같은 문장으로 이미 말한다. 두 뱅크에 같은 글이 있을 때
+ * 우리처럼 화면이 하나면 한쪽만 골라야 하고, 로그 쪽이 이미 흐름에 얹혀 있다
+ */
+export const PARTY = {
+  /** 누구를 내보낼지 고르는 줄 */ chooseAPokemon: 6,
+  /** 도구를 누구에게 쓸지 고르는 줄 */ useOnWhichPokemon: 7,
+  /** 이미 나가 있다 */ cantSwitchWithPokemonAlreadyInBattle: 76,
+  /** 기력이 없다 */ cantSwitchWithFaintedPokemon: 77,
+  /** 못 돌아오게 한다 (묶기·그림자밟기 따위) */ cantSwitchPokemon: 78,
+  /** 써도 효과가 없다 */ itemWontHaveAnyEffect: 81,
+  /** 어느 기술을 회복하겠습니까 */ restoreWhichMove: 94,
+  /** 금제가 막았다. 빈칸 둘은 기술 이름과 이름 */ embargoPreventsItemUse: 95,
+} as const

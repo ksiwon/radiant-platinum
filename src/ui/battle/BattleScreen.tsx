@@ -28,7 +28,7 @@ import type { Move } from '../../data/schema'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
-import { withObject, withSubject, withTopic } from '../korean'
+import { withTopic } from '../korean'
 import { useMenuKeys } from '../menu/useMenuKeys'
 import { STATUS_VARS } from '../theme/window.css'
 import { vars } from '../theme/contract.css'
@@ -37,7 +37,8 @@ import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
 import { SwitchScreen } from './SwitchScreen'
 import { battleText, type BattleNames } from './messages'
-import { BATTLE_BANK, MOVE_BANK, STAT_BANK } from './romText'
+import { romLine } from './romLine'
+import { BATTLE_BANK, MOVE_BANK, MSG, STAT_BANK } from './romText'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import { CommandButton } from './CommandButton'
@@ -161,6 +162,9 @@ export function BattleScreen() {
   const playerName = useSaveStore((s) => s.trainer.name)
   const kind = useBattleStore((s) => s.kind)
   const foeName = useBattleStore((s) => s.foeName)
+  // 롬의 네 줄이 트레이너를 **두 칸으로** 받는다 (PARITY §2.24)
+  const foeClass = useBattleStore((s) => s.foeClass)
+  const foeTrainer = useBattleStore((s) => s.foeTrainer)
   const view = useBattleStore((s) => s.view)
   const actions = useBattleStore((s) => s.actions)
   const canSpendTurn = useBattleStore((s) => s.canSpendTurn)
@@ -264,20 +268,31 @@ export function BattleScreen() {
 
   const beats = useMemo(() => {
     if (!names) return []
-    const out = buildBeats(
-      events, (e) => battleText(e, { names, lines, moveLines, label, foeName, bare, playerName }),
-    )
-    // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다
-    if (kind === 'trainer' && foeName) {
-      out.unshift({ text: `${withSubject(foeName)} 승부를 걸어왔다!`, events: [], hold: 30 })
+    const ctx = {
+      names, lines, moveLines, label, foeName, foeClass, foeTrainer, bare, playerName,
     }
+    const out = buildBeats(events, (e) => battleText(e, ctx))
+    // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다.
+    // 롬은 분류·이름을 두 칸으로 받는 줄과 이름 한 칸짜리 줄을 따로 들고 있다
+    const challenge = kind !== 'trainer' ? null
+      : romLine(lines, MSG.youAreChallengedByTr, foeClass, foeTrainer)
+        ?? romLine(lines, MSG.youAreChallengedByLinkTr, foeName)
+    if (challenge !== null) out.unshift({ text: challenge, events: [], hold: 30 })
     const end = outcome === 'win'
-      ? (kind === 'trainer' && foeName ? `${withObject(foeName)} 이겼다!` : '배틀에서 이겼다!')
-      : outcome === 'loss' ? '눈앞이 캄캄해졌다…' : null
+      ? (kind === 'trainer'
+        ? romLine(lines, MSG.playerDefeatedTr, foeClass, foeTrainer)
+          ?? romLine(lines, MSG.playerDefeatedLinkTr, foeName)
+        // ⚠️ **야생전은 원작이 아무 말도 안 한다.** 이긴 순간이 곧 배틀의 끝이라
+        // 줄이 없다 — 우리 화면은 로그가 그대로 서 있으므로 한 줄을 놓는다
+        : '배틀에서 이겼다!')
+      : outcome === 'loss' ? romLine(lines, MSG.playerBlackedOut, playerName) : null
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
     if (end !== null) out.push({ text: end, events: [], hold: 30 })
     return out
-  }, [events, names, lines, moveLines, label, bare, outcome, kind, foeName, playerName])
+  }, [
+    events, names, lines, moveLines, label, bare, outcome, kind,
+    foeName, foeClass, foeTrainer, playerName,
+  ])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
   const script = useBattlePlayback(beats, playEvents)

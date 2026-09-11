@@ -23,6 +23,9 @@ import { maxPpOf } from '../../engine/pokemon/instance'
 import { clampCursor, useMenuKeys } from '../menu/useMenuKeys'
 import type { BattleNames } from './messages'
 import { PartyCards, type PartyCard } from './PartyCards'
+import { romLine } from './romLine'
+import { PARTY, PARTY_BANK } from './romText'
+import { useRomLines } from './useRomLines'
 import { typeColor } from './typeColor'
 import * as css from './switchScreen.css'
 
@@ -117,6 +120,26 @@ export function SwitchScreen(
     }
   })
 
+  // 배틀 안 파티 화면의 글 (PARITY §2.26). 원작도 이 화면은 배틀 위 화면과
+  // **다른 뱅크**를 연다 (`battle_party.c`의 `MessageLoader_Init`)
+  const partyLines = useRomLines(PARTY_BANK)
+  /**
+   * 커서 밑의 한 마리를 두고 원작이 하는 말.
+   *
+   * ⚠️ **못 고르는 까닭이 셋 다 있는 것은 아니다.** `CheckCanSwitchPokemon`이
+   * 세는 것은 기절·이미 나가 있음·알·파트너 것·이미 고른 것·기술 배우는 중
+   * 여섯인데, 우리 화면에 올 수 있는 것은 앞의 둘뿐이다 — 묶여서 못 바꾸는
+   * 자리는 원작도 이 화면에서 아무 말 안 하고 배틀 쪽이 나중에 말한다.
+   * 그래서 그때는 이 화면의 **원래 물음**이 그대로 서 있다
+   */
+  const banner = (slot: PartySlot | null): string | null => {
+    if (!slot) return null
+    const who = cards[cursor]?.label ?? null
+    if (slot.fainted) return romLine(partyLines, PARTY.cantSwitchWithFaintedPokemon, who)
+    if (slot.active) return romLine(partyLines, PARTY.cantSwitchWithPokemonAlreadyInBattle, who)
+    return romLine(partyLines, PARTY.chooseAPokemon)
+  }
+
   return (
     <div className={css.sheet}>
       <PartyCards
@@ -133,8 +156,7 @@ export function SwitchScreen(
               : chosen.active ? css.bannerKind.here : css.bannerKind.ok
           }`}
           >
-            {chosen.fainted ? '싸울 수 없다'
-              : chosen.active ? '이미 나와 있다' : '이 포켓몬을 내보낸다'}
+            {banner(chosen)}
           </div>
 
           <div className={css.row}>

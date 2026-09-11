@@ -19,12 +19,12 @@
 //
 // 아직 문장이 없는 이벤트는 null이다. 텍스트 박스가 그냥 건너뛴다.
 import type {
-  Actor, BattleEvent, BoostStat, EffectExtra, EffectRef,
+  Actor, BattleEvent, EffectExtra, EffectRef,
 } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
-import { formatMessage, MESSAGE_SLOTS, MessageSlots } from '../../engine/script/text'
 import { withObject, withTopic } from '../korean'
-import { forSide, moveUsedLine, MSG } from './romText'
+import { romLine } from './romLine'
+import { forSide, moveUsedLine, MSG, STAT_SLOT } from './romText'
 
 export interface BattleNames {
   /** 종족 번호로 색인 */
@@ -72,6 +72,15 @@ export interface TextContext {
   label: (actor: Actor) => string
   /** 상대 트레이너 이름("체육관 관장 동관"). 야생이면 null */
   foeName?: string | null
+  /**
+   * 그 이름을 가른 두 조각 — 분류("체육관 관장")와 이름("동관").
+   *
+   * ⚠️ **롬의 네 줄이 트레이너를 두 칸으로 받는다.** 합친 이름으로는 그 두
+   * 칸을 못 채워서 한동안 그 줄들만 손 글이었다. 분류가 없는 상대(통신·
+   * 배틀팩토리)에게는 롬이 이름 한 칸짜리 줄을 따로 들고 있다
+   */
+  foeClass?: string | null
+  foeTrainer?: string | null
   /** 내 이름. 가방 도구를 쓴 주어다 — 원작도 플레이어 이름으로 부른다 */
   playerName?: string | null
   /**
@@ -458,16 +467,6 @@ const FIELD_NEEDS_WHO = new Set<number>([
 ])
 
 /**
- * 랭크 이름이 든 자리 (`pokemon_stat_names` · us 551).
- *
- * 롬의 랭크 줄은 능력 이름을 **빈칸으로** 받는다 — 우리가 「공격」을 적어 두면
- * 로케일을 바꾸는 순간 한국어가 남는다
- */
-const STAT_SLOT: Record<BoostStat, number> = {
-  atk: 1, def: 2, spe: 3, spa: 4, spd: 5, accuracy: 6, evasion: 7,
-}
-
-/**
  * 날씨가 때리는 줄의 첫 칸은 **날씨 이름**인데, 롬은 그것을 기술 이름표에서
  * 읽는다. 모래바람 201 · 싸라기눈 258이 그 기술 번호다
  */
@@ -518,43 +517,7 @@ function romName(effect: EffectRef, names: BattleNames): string | null {
 function rom(
   ctx: TextContext, at: number, ...values: readonly (string | null)[]
 ): string | null {
-  return fill(ctx.lines, at, ...values)
-}
-
-/** 뱅크를 골라 채우는 쪽. 기술 줄은 다른 뱅크에서 온다 */
-function fill(
-  lines: readonly string[], at: number, ...values: readonly (string | null)[]
-): string | null {
-  const raw = lines[at]
-  if (raw === undefined || raw === '') return null
-  const filled: string[] = []
-  for (const value of values) {
-    if (value === null || value === '') return null
-    filled.push(value)
-  }
-  const slots = new MessageSlots(Math.max(filled.length, MESSAGE_SLOTS))
-  filled.forEach((value, i) => { slots.set(i, value) })
-  return pages(formatMessage(raw, slots))
-}
-
-/**
- * 창 단위로 편다.
- *
- * 롬은 창을 **비우고 새로 찍는** 자리를 `\r`로, 한 줄 올리고 **잇는** 자리를
- * `\f`로 적어 둔다. 우리 규칙은 그 둘을 그대로 옮긴 것이다:
- *
- *   `\n`     한 창 안에서 줄만 바꾼다 (롬의 `\n`·`\f`)
- *   `\n\n`   **창을 새로 연다** (롬의 `\r`)
- *
- * ⚠️ **이 규칙이 없는 동안 화면이 반 문장씩 떴다.** 박자 만드는 쪽이 `\n`마다
- * 창을 새로 열고 있어서, 롬의 두 줄짜리(「모부기의 / 공격이 떨어졌다!」)가
- * 두 창으로 갈렸다 — 시험은 전부 초록이었고 **화면에서만 보였다**
- */
-function pages(text: string): string {
-  return text
-    .replace(/\f/g, '\n')
-    .replace(/\r/g, '\n\n')
-    .replace(/[\s]+$/, '')
+  return romLine(ctx.lines, at, ...values)
 }
 
 /**
@@ -574,7 +537,16 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // ⚠️ **야생 줄만 이름표를 안 쓴다.** 이 줄은 자리마다 셋으로 갈린 것이
       // 아니라 **한 줄에 「야생 」이 이미 박혀 있어서**, 이름표를 넣으면
       // 「앗! 야생 야생 팬텀이…」가 된다. 그래서 맨 이름을 넣는다
-      return rom(ctx, MSG.aWildPokemonAppeared, ctx.bare?.(e.actor.name) ?? who)
+      const bare = ctx.bare?.(e.actor.name) ?? who
+      // ⚠️ **트레이너전에서는 「야생」이 아니다.** 한동안 상대 쪽 교체가 전부
+      // 이 야생 줄로 떨어져서 체육관 관장이 내보내도 「앗! 야생 켄타로스가
+      // 튀어나왔다!」가 떴다. 롬은 그 자리에 분류·이름·포켓몬 세 칸짜리 줄을 쓴다
+      const sent = rom(ctx, MSG.trSentOutPokemon, ctx.foeClass ?? null, ctx.foeTrainer ?? null, bare)
+      if (sent !== null) return sent
+      // 분류가 없는 상대(통신·배틀팩토리)는 이름 한 칸짜리 짝을 쓴다
+      const link = rom(ctx, MSG.linkTrSentOutPokemon, ctx.foeName ?? null, bare)
+      if (link !== null) return link
+      return rom(ctx, MSG.aWildPokemonAppeared, bare)
     }
 
     case 'move': {
@@ -582,7 +554,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // 이름 빈칸 하나만 채우면 되고, 줄바꿈 자리도 원작 것이다
       const line = e.move === null
         ? null
-        : fill(ctx.moveLines, moveUsedLine(e.move), ctx.label(e.actor))
+        : romLine(ctx.moveLines, moveUsedLine(e.move), ctx.label(e.actor))
       if (line !== null) return line
       // ⚠️ **번호를 못 풀면 영어로 떨어진다.** 여기는 조사가 뒤에 안 붙는
       // 자리라 병기형이 안 나고, 빈 줄이 뜨는 것보다 낫다
@@ -724,14 +696,20 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
 
     case 'shift': {
       const who = ctx.bare?.(e.key) ?? ctx.label({ slot: 'p2a', side: 'p2', name: e.key })
-      const trainer = ctx.foeName ?? '상대'
-      return `${withTopic(trainer)} ${withObject(who)} 내보내려고 한다.`
+      // 롬은 물음까지 한 줄에 담아 두었다 — 「…내보내려 하고 있다 / 포켓몬을
+      // 교체하시겠습니까?」. 예/아니오 창은 우리 쪽이 따로 띄운다
+      return rom(ctx, MSG.willYouSwitchYourPokemon, ctx.foeClass ?? null, ctx.foeTrainer ?? null, who)
     }
 
     case 'trainerItem': {
+      const item = names.items[e.item] ?? null
+      const line = rom(ctx, MSG.trUsedOneItem, ctx.foeClass ?? null, ctx.foeTrainer ?? null, item)
+      if (line !== null) return line
+      // ⚠️ **분류가 없는 상대에게는 롬이 이 줄을 안 들고 있다** (통신·배틀팩토리).
+      // 「내보냈다」·「걸어왔다」·「이겼다」 셋은 이름 한 칸짜리 짝이 있는데 이
+      // 줄만 없다 — 그래서 여기만 우리 말로 떨어진다
       const trainer = ctx.foeName ?? '상대'
-      const item = names.items[e.item] ?? `#${e.item}`
-      return `${withTopic(trainer)} ${withObject(item)} 썼다!`
+      return `${withTopic(trainer)} ${withObject(item ?? `#${String(e.item)}`)} 썼다!`
     }
 
     case 'bagItem':

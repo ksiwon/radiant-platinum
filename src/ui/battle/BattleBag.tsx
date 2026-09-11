@@ -34,6 +34,11 @@ import { clampCursor, useMenuKeys, wrapCursor } from '../menu/useMenuKeys'
 import { itemIcon } from '../menu/itemIcon'
 import type { BattleNames } from './messages'
 import { PartyCards, type PartyCard } from './PartyCards'
+import { romLine } from './romLine'
+import {
+  BAG, BAG_BANK, BATTLE_BANK, MSG, PARTY, PARTY_BANK, STAT_SLOT,
+} from './romText'
+import { useRomLines } from './useRomLines'
 import * as css from './battleBag.css'
 
 /** 목록의 아이콘. 줄 높이를 안 넘는다 */
@@ -48,23 +53,34 @@ const BIG_ICON = 72
  */
 const PER_PAGE = 6
 
-/** `enum BattlePocketIndex` — 이 순서가 원작 배틀 가방의 탭 순서다 */
+/**
+ * `enum BattlePocketIndex` — 이 순서가 원작 배틀 가방의 탭 순서다.
+ *
+ * 이름은 롬의 주머니 줄에서 읽는다 (`battle_bag` 23·24·26·27). 손으로 적어 둔
+ * 넷과 **글자까지 같았는데** 그래도 롬에서 읽는다 — 손으로 들면 로케일을 바꿔도
+ * 한국어가 남고, 같은지 아닌지도 아무도 다시 안 잰다. 뱅크가 안 왔을 때만
+ * `name`으로 떨어진다 (탭 이름이 비면 화면을 못 쓴다)
+ */
 const CATEGORY = [
-  { name: '회복', mask: BATTLE_POCKET.hp | BATTLE_POCKET.pp },
-  { name: '상태', mask: BATTLE_POCKET.status },
-  { name: '볼', mask: BATTLE_POCKET.ball },
-  { name: '배틀용', mask: BATTLE_POCKET.battle },
+  { name: '회복', line: BAG.pocketRestore, mask: BATTLE_POCKET.hp | BATTLE_POCKET.pp },
+  { name: '상태', line: BAG.pocketStatus, mask: BATTLE_POCKET.status },
+  { name: '볼', line: BAG.pocketBalls, mask: BATTLE_POCKET.ball },
+  { name: '배틀용', line: BAG.pocketBattleItems, mask: BATTLE_POCKET.battle },
 ] as const
 
 /** 볼 번호는 도구 번호와 같다 (`capture.ts`의 Ball) */
 const BALL_IDS = new Set<number>(Object.values(Ball))
 
+/**
+ * 「금제」의 기술 번호.
+ *
+ * 롬의 그 줄이 기술 이름을 **빈칸으로** 받는다 — `battle_bag.c`도
+ * `StringTemplate_SetMoveName(…, 1, MOVE_EMBARGO)`로 채운다
+ */
+const EMBARGO_MOVE = 373
+
 const STATUS_NOUN: Record<string, string> = {
   slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
-}
-const STAT_NOUN: Record<string, string> = {
-  atk: '공격', def: '방어', spa: '특수공격', spd: '특수방어',
-  spe: '스피드', accuracy: '명중률', evasion: '회피율',
 }
 
 /** 지금 어느 단인가. 원작의 화면 전환과 같은 셋이다 */
@@ -90,15 +106,24 @@ interface Props {
   onBack: () => void
 }
 
-/** 계획 하나를 사람이 읽을 한 줄로. 대상 카드 옆에 그대로 붙는다 */
-function planSummary(plan: ItemPlan): string {
+/**
+ * 계획 하나를 사람이 읽을 한 줄로. 대상 카드 옆에 그대로 붙는다.
+ *
+ * ⚠️ **이 줄은 우리 것이다.** 원작에는 「무슨 일이 일어날까」를 미리 보여 주는
+ * 자리가 없다 — 고르게 두고 아무 일도 안 일어나면 그제서야 「써도 효과가 없다!」를
+ * 띄운다. 그래서 여기 말투는 롬에서 못 가져온다.
+ *
+ * 랭크 이름만은 롬 것을 쓴다 (`pokemon_stat_names` · us 551). 「공격」·「명중률」은
+ * 이름표에 이미 있는 낱말이라 손으로 또 적을 이유가 없다
+ */
+function planSummary(plan: ItemPlan, stats: readonly string[]): string {
   const parts: string[] = []
   if (plan.revive) parts.push('되살아난다')
   if (plan.heal > 0) parts.push(`체력 ${String(plan.heal)} 회복`)
   for (const s of plan.cure) parts.push(`${STATUS_NOUN[s] ?? s} 낫는다`)
   for (const v of plan.clear) parts.push(v === 'confusion' ? '혼란이 풀린다' : '헤롱헤롱이 풀린다')
   if (plan.mist) parts.push('능력이 안 떨어진다')
-  for (const b of plan.boosts) parts.push(`${STAT_NOUN[b] ?? b} 올라간다`)
+  for (const b of plan.boosts) parts.push(`${stats[STAT_SLOT[b]] ?? b} 올라간다`)
   if (plan.focusEnergy) parts.push('급소에 잘 맞는다')
   const pp = plan.pp.reduce((sum, one) => sum + one.amount, 0)
   if (pp > 0) parts.push(`PP ${String(pp)} 회복`)
@@ -121,6 +146,16 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
   const embargo = useBattleStore((s) => s.truth?.active.p1a?.volatiles.has('embargo') ?? false)
   // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
   const locale = useGameLocale()
+
+  // ⚠️ **뱅크가 셋이다.** 원작도 그렇다 — 가방 화면은 제 뱅크를 열고
+  // (`battle_bag.c`), 파티 화면으로 넘어가면 그쪽 뱅크를 열고(`battle_party.c`),
+  // 볼을 막는 줄만은 배틀 글 뱅크에서 온다. 받은 것은 `gameData`가 캐시하므로
+  // 배틀 화면이 이미 받아 둔 배틀 글 뱅크는 요청이 다시 안 나간다
+  const bagLines = useRomLines(BAG_BANK)
+  const partyLines = useRomLines(PARTY_BANK)
+  const battleLines = useRomLines(BATTLE_BANK)
+  /** 「금제」의 이름. 롬의 두 줄이 기술 이름을 빈칸으로 받는다 */
+  const embargoName = data?.moves[EMBARGO_MOVE] ?? null
 
   useEffect(() => {
     let alive = true
@@ -241,11 +276,16 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
         label: it?.nickname ?? (it ? names?.species[it.species] : null) ?? one.key,
         level: it?.level ?? '?',
         can: made !== null,
-        note: made === null ? null : planSummary(made),
+        note: made === null ? null : planSummary(made, names?.stats ?? []),
       }
     })
     const here = cards[target]
     const held = embargoBlocks(item, (party[target]?.active ?? false) && embargo)
+    // 막힌 두 줄은 **파티 화면 뱅크**에서 온다. 지금 떠 있는 것이 파티 화면이라서다
+    // (`battle_party.c`의 `CheckCanUseItem`) — 가방 뱅크에도 글자가 같은 줄이 있다
+    const blocked = held
+      ? romLine(partyLines, PARTY.embargoPreventsItemUse, here?.label ?? null, embargoName)
+      : romLine(partyLines, PARTY.itemWontHaveAnyEffect)
     return (
       <div className={css.sheet}>
         <PartyCards
@@ -255,10 +295,7 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
         />
         <div className={css.detail}>
           <div className={`${css.banner} ${here?.can ? css.bannerKind.ok : css.bannerKind.none}`}>
-            {/* `BattleParty_Text_EmbargoPreventsItemUse` · `..._ItemWontHaveAnyEffect` */}
-            {here?.can ? here.note
-              : held ? `금제의 효과로 ${here?.label ?? ''}에게는 도구를 쓸 수 없다!`
-                : '이 도구로는 효과가 없을 것 같다'}
+            {here?.can ? here.note : blocked}
           </div>
           <div className={css.hero}>
             <span
@@ -268,7 +305,12 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
             />
             <span>
               <div className={css.heroName}>{data?.names[chosen?.item ?? 0] ?? ''}</div>
-              <div className={css.heroSub}>{here?.label ?? ''}에게 쓴다</div>
+              {/* 원작이 이 단에 세워 두는 물음. 기술 칸을 묻는 단은 줄이 다르다 */}
+              <div className={css.heroSub}>
+                {romLine(partyLines, step === 'move'
+                  ? PARTY.restoreWhichMove
+                  : PARTY.useOnWhichPokemon)}
+              </div>
             </span>
           </div>
           {step === 'move' && (
@@ -299,11 +341,22 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
   }
 
   // ── 무엇을 쓸까 ───────────────────────────────────────────────────────────
+  /** 나와 있는 한 마리. 배틀용 도구는 대상을 안 묻고 이 마리에게 간다 */
+  const out = party.find((p) => p.active)
+  const outName = out ? roster[out.key]?.nickname
+    ?? (roster[out.key] ? names?.species[roster[out.key].species] : null) ?? null : null
   const why = !pickable
-    ? (isBall ? '트레이너의 포켓몬에게는 못 쓴다' : '지금은 그럴 때가 아니다')
-    // 배틀용은 대상 단을 안 거치므로 막힌 이유를 여기서 말해야 한다
+    // 원작은 트레이너전에서도 볼을 던지게 두고 **배틀 쪽이** 이 줄을 찍는다.
+    // 우리는 여기서 미리 막으므로 그 줄을 이 자리에 놓는다 (`romText`의 주석)
+    ? (isBall ? romLine(battleLines, MSG.theTrainerBlockedTheBall)
+      // ⚠️ **도망 도구 쪽은 우리 말이다.** 롬의 그 줄(`CommonStrings_Text_
+      // CantDoThatRightNow`)은 마박사가 세 쪽에 걸쳐 타이르는 글이라 한 줄짜리
+      // 안내 칸에 안 들어간다 — 뜻만 옮겨 한 줄로 줄였다
+      : '지금은 그럴 때가 아니다')
+    // 배틀용은 대상 단을 안 거치므로 막힌 이유를 여기서 말해야 한다.
+    // 이 단은 가방 화면이라 **가방 뱅크**의 줄이다 (`battle_bag.c`의 `TryUseItem`)
     : item !== null && !needsTarget(item) && embargoBlocks(item, embargo)
-      ? '금제의 효과로 도구를 쓸 수 없다!'
+      ? romLine(bagLines, BAG.embargoBlockingItemUse, outName, embargoName)
       : null
   return (
     <div className={css.sheet}>
@@ -315,7 +368,7 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
               className={i === tab ? css.tab.on : css.tab.off}
               onPointerDown={() => { setTab(i); setCursor(0) }}
             >
-              {c.name}
+              {romLine(bagLines, c.line) ?? c.name}
             </button>
           ))}
         </div>

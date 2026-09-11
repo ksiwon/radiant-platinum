@@ -1,7 +1,7 @@
-// 배틀 글의 줄 이름 (DATA.md §2.11 · PARITY §2.24)
+// 배틀이 여는 뱅크 셋의 줄 이름 (DATA.md §2.11 · PARITY §2.24 · §2.26)
 //
-// 배틀 글 뱅크(`battle_strings` · us 368)의 줄 순서다. **자리 = 배열 인덱스**이고
-// 이름은 디컴프 `res/text/battle_strings.json`의 `id`에서 `BattleStrings_Text_`를 뗀 것이다.
+// `battle_strings` us 368 · `battle_bag` us 2 · `battle_party` us 3 세 뱅크의 줄 순서다. **자리 = 배열 인덱스**이고
+// 이름은 디컴프 `res/text/*.json`의 `id`에서 뱅크별 앞가지를 뗀 것이다.
 //
 // ⚠️ **여기에는 롬에서 읽은 값이 하나도 없다** — `textBanks.ts`의 `BANK_ORDER`와
 // 같은 성격이다. 이름의 순서뿐이고, 그 순서가 곧 뱅크의 순서다 (COPYRIGHT.md §6).
@@ -12,7 +12,7 @@
 //
 // ⚠️ **손으로 고치지 않는다.** `pnpm gen:battleStrings`가 다시 만든다.
 
-/** 뱅크 안의 줄 순서. 자리가 곧 줄 번호다 */
+/** `battle_strings` (us 368) 뱅크 안의 줄 순서. 자리가 곧 줄 번호다 */
 export const BATTLE_STRING_ORDER: readonly string[] = [
   'Dummy0', 'PokemonGainedExpPoints', 'PokemonGainedABoostedExpPoints', 'PokemonGrewToLevel',
   'PokemonLearnedMove', 'PokemonIsTryingToLearnMove', 'ButPokemonCantLearnMoreThanFourMoves',
@@ -549,15 +549,87 @@ export const BATTLE_STRING_ORDER: readonly string[] = [
   'TheDistortionWorldsPokemonAppeared',
 ]
 
-const AT = new Map(BATTLE_STRING_ORDER.map((id, i) => [id, i]))
+const BATTLEMESSAGE_AT = new Map(BATTLE_STRING_ORDER.map((id, i) => [id, i]))
 
 /**
- * 이름 → 줄 번호. 없는 이름이면 던진다.
+ * 배틀 글의 이름 → 줄 번호. 없는 이름이면 던진다.
  *
  * 조용히 -1을 내면 그 번호로 뱅크를 집었을 때 **뒤에서 세어** 엉뚱한 글이 뜬다
  */
 export function battleMessage(name: string): number {
-  const at = AT.get(name)
+  const at = BATTLEMESSAGE_AT.get(name)
   if (at === undefined) throw new Error(`배틀 글에 그런 이름이 없다: ${name}`)
+  return at
+}
+
+/** `battle_bag` (us 2) 뱅크 안의 줄 순서. 자리가 곧 줄 번호다 */
+export const BATTLE_BAG_ORDER: readonly string[] = [
+  'MenuTitleHPPP', 'MenuTitleRestore', 'MenuTitleStatus', 'MenuTitleHealers',
+  'pl_msg_00000002_00004', 'pl_msg_00000002_00005', 'MenuTitleBattleItems', 'MenuTitlePokeBalls',
+  'ItemUsedLast', 'PocketSlot1ItemName', 'PocketSlot1ItemAmount', 'PocketSlot2ItemName',
+  'PocketSlot2ItemAmount', 'PocketSlot3ItemName', 'PocketSlot3ItemAmount', 'PocketSlot4ItemName',
+  'PocketSlot4ItemAmount', 'PocketSlot5ItemName', 'PocketSlot5ItemAmount', 'PocketSlot6ItemName',
+  'PocketSlot6ItemAmount', 'pl_msg_00000002_00021', 'PocketNameHPPP', 'PocketNameRestore',
+  'PocketNameStatus', 'PocketNameHealers', 'PocketNamePokeBalls', 'PocketNameBattleItems',
+  'PocketPageDivider', 'PocketCurrentPage', 'PocketPageNum', 'Use', 'pl_msg_00000002_00032',
+  'pl_msg_00000002_00033', 'ItemHasNoUse', 'pl_msg_00000002_00035', 'pl_msg_00000002_00036',
+  'pl_msg_00000002_00037', 'pl_msg_00000002_00038', 'pl_msg_00000002_00039',
+  'pl_msg_00000002_00040', 'pl_msg_00000002_00041', 'pl_msg_00000002_00042',
+  'pl_msg_00000002_00043', 'CantUseBallTwoPokemon', 'CantUseBallNoRoomLeft',
+  'EmbargoBlockingItemUse', 'CantUseBallPokemonHidden', 'CantUseBallPokemonSubstituted',
+]
+
+const BAGMESSAGE_AT = new Map(BATTLE_BAG_ORDER.map((id, i) => [id, i]))
+
+/**
+ * 배틀 안 가방의 이름 → 줄 번호. 없는 이름이면 던진다.
+ *
+ * 조용히 -1을 내면 그 번호로 뱅크를 집었을 때 **뒤에서 세어** 엉뚱한 글이 뜬다
+ */
+export function bagMessage(name: string): number {
+  const at = BAGMESSAGE_AT.get(name)
+  if (at === undefined) throw new Error(`배틀 안 가방에 그런 이름이 없다: ${name}`)
+  return at
+}
+
+/** `battle_party` (us 3) 뱅크 안의 줄 순서. 자리가 곧 줄 번호다 */
+export const BATTLE_PARTY_ORDER: readonly string[] = [
+  'PartyPokemon1Name', 'PartyPokemon2Name', 'PartyPokemon3Name', 'PartyPokemon4Name',
+  'PartyPokemon5Name', 'PartyPokemon6Name', 'ChooseAPokemon', 'UseOnWhichPokemon',
+  'PokemonAbilityName', 'PokemonHeldItemName', 'pl_msg_00000003_00010', 'pl_msg_00000003_00011',
+  'pl_msg_00000003_00012', 'pl_msg_00000003_00013', 'PokemonPPLabel', 'ShiftButton', 'MaleIcon',
+  'FemaleIcon', 'SummaryButton', 'CheckMovesButton', 'PokemonNoItemHeld', 'pl_msg_00000003_00021',
+  'pl_msg_00000003_00022', 'PokemonLevelLabel', 'PokemonLevelValue', 'PokemonExpToNextLevelLabel',
+  'PokemonExpToNextLevelValue', 'pl_msg_00000003_00027', 'PokemonHPStatLabel',
+  'PokemonHPStatValue', 'PokemonMaxHPStatValue', 'PokemonHPStatDivider', 'PokemonAttackStatLabel',
+  'PokemonAttackStatValue', 'PokemonDefenseStatLabel', 'PokemonDefenseStatValue',
+  'PokemonSpAtkStatLabel', 'PokemonSpAtkStatValue', 'PokemonSpDefStatLabel',
+  'PokemonSpDefStatValue', 'PokemonSpeedStatLabel', 'PokemonSpeedStatValue',
+  'pl_msg_00000003_00042', 'MovePPLabel', 'MoveCurrentPP', 'MoveMaxPP', 'MovePPDivider',
+  'pl_msg_00000003_00047', 'MovePowerLabel', 'MovePowerValue', 'MoveStatNoValue',
+  'MoveAccuracyLabel', 'MoveAccuracyValue', 'MoveCategoryLabel', 'MoveCategoryPhysical',
+  'MoveCategoryStatus', 'MoveCategorySpecial', 'AppealPtsLabel', 'ForgetMoveButton',
+  'CancelMoveButton', 'HMMovesCantBeForgotten', 'Move1Name', 'pl_msg_00000003_00062',
+  'pl_msg_00000003_00063', 'Move2Name', 'pl_msg_00000003_00065', 'pl_msg_00000003_00066',
+  'Move3Name', 'pl_msg_00000003_00068', 'pl_msg_00000003_00069', 'Move4Name',
+  'pl_msg_00000003_00071', 'pl_msg_00000003_00072', 'MoveToLearnName', 'pl_msg_00000003_00074',
+  'pl_msg_00000003_00075', 'CantSwitchWithPokemonAlreadyInBattle', 'CantSwitchWithFaintedPokemon',
+  'CantSwitchPokemon', 'CantSwitchWithEgg', 'CantSwitchWithPartnersPokemon',
+  'ItemWontHaveAnyEffect', 'ItemRestoredHealth', 'ItemCuredPoisoning', 'ItemCuredParalysis',
+  'ItemCuredBurn', 'ItemCuredFreeze', 'ItemRestoredPP', 'ItemRevivedPokemon',
+  'ItemCuredMultipleStatuses', 'ItemCuredConfusion', 'ItemCuredInfatuation', 'ItemCuredSleep',
+  'CantSwitchWithAlreadySelectedPokemon', 'RestoreWhichMove', 'EmbargoPreventsItemUse',
+]
+
+const PARTYMESSAGE_AT = new Map(BATTLE_PARTY_ORDER.map((id, i) => [id, i]))
+
+/**
+ * 배틀 안 파티의 이름 → 줄 번호. 없는 이름이면 던진다.
+ *
+ * 조용히 -1을 내면 그 번호로 뱅크를 집었을 때 **뒤에서 세어** 엉뚱한 글이 뜬다
+ */
+export function partyMessage(name: string): number {
+  const at = PARTYMESSAGE_AT.get(name)
+  if (at === undefined) throw new Error(`배틀 안 파티에 그런 이름이 없다: ${name}`)
   return at
 }

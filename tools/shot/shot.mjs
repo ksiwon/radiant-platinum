@@ -15,6 +15,7 @@
 //     pnpm shot center --frontier=1              BP 교환 코너를 열어 본다
 //     pnpm shot center --factory=21              배틀팩토리 도전을 열어 본다
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
+//     pnpm shot center --trainer=326                  그 트레이너와의 배틀을 연다
 //     pnpm shot forest --cutin=1:24                   조우 컷인을 그 프레임에 세워 찍는다
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
@@ -410,6 +411,16 @@ async function main() {
       await page.evaluate(async ([s, l, f]) => {
         await globalThis.pt.wild(s, l, f)
       }, [species, level ?? 10, form ?? 0])
+      await page.waitForTimeout(Number(flag('wildAfter', 8000)))
+    }
+    // 트레이너전을 연다 — `--trainer=326`(트레이너 번호).
+    //
+    // 야생전과 글이 다르다. 롬은 분류와 이름을 두 칸으로 받아서
+    // 「체육관 관장 동관은 / 켄타로스를 내보냈다!」라고 말한다 (PARITY §2.24) —
+    // 그 줄은 트레이너전을 실제로 열어야 화면에 뜬다
+    const trainer = flag('trainer')
+    if (trainer) {
+      await page.evaluate(async (id) => { await globalThis.pt.trainer(id) }, Number(trainer))
       await page.waitForTimeout(Number(flag('wildAfter', 8000)))
     }
     // 스크립트를 태우지 않고 메뉴 화면 하나를 바로 연다. 고르는 장면처럼

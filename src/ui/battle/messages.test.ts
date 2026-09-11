@@ -466,3 +466,49 @@ withBank('롬의 배틀 글 (PARITY §2.24)', () => {
     expect(say({ kind: 'hint', text: 'Some effects can force a Pokemon…' })).toBeNull()
   })
 })
+
+// ── 트레이너를 **두 칸으로** 받는 줄 (PARITY §2.24) ─────────────────────────
+//
+// 롬은 분류(「체육관 관장」)와 이름(「동관」)을 따로 받는다. 우리가 한동안
+// 「체육관 관장 동관」으로 합쳐 들고 있어서 이 줄들만 손 글이었다.
+withBank('트레이너 줄', () => {
+  /** 분류와 이름을 가진 상대. 실제 트레이너전의 자리다 */
+  const vs: TextContext = {
+    ...ctx,
+    label: (a) => (a.side === 'p1' ? '모부기' : '상대 팬텀'),
+    foeName: '체육관 관장 동관',
+    foeClass: '체육관 관장',
+    foeTrainer: '동관',
+  }
+  /** 분류가 없는 상대 — 통신과 배틀팩토리가 이렇다 */
+  const link: TextContext = { ...vs, foeClass: null, foeTrainer: null }
+
+  const enter: BattleEvent = {
+    kind: 'switch', actor: FOE, species: 94, speciesName: 'Gengar', level: 5,
+    gender: 'male', shiny: false, condition: { hp: 20, maxHp: 20, status: 'ok' }, forced: false,
+  }
+
+  it('트레이너가 내보내면 「야생」이 아니다', () => {
+    // ⚠️ **한동안 상대 쪽 교체가 전부 야생 줄로 떨어졌다** — 체육관 관장이
+    // 내보내도 「앗! 야생 팬텀이 튀어나왔다!」가 떴다
+    expect(battleText(enter, vs)).toBe('체육관 관장 동관은\n팬텀을 내보냈다!')
+    // 분류가 없으면 이름 한 칸짜리 짝으로 떨어진다
+    expect(battleText(enter, link)).toBe('체육관 관장 동관은\n팬텀을 내보냈다!')
+    // 이름조차 없으면 야생 줄이다 (야생전이 그렇다)
+    expect(battleText(enter, ctx)).toBe('앗! 야생 팬텀이 튀어나왔다!')
+  })
+
+  it('도구를 쓰면 분류와 이름이 갈려 들어간다', () => {
+    const used: BattleEvent = { kind: 'trainerItem', key: 'p2-0', item: 26 }
+    expect(battleText(used, vs)).toBe('체육관 관장 동관은\n좋은상처약을 썼다!')
+    // ⚠️ **이 줄만은 이름 한 칸짜리 짝이 롬에 없다.** 그래서 우리 말로 떨어진다
+    expect(battleText(used, link)).toBe('체육관 관장 동관은 좋은상처약을 썼다!')
+  })
+
+  it('시합규칙 교체는 물음까지 한 줄이다', () => {
+    // 끝의 `{SCREEN 0}`이 예/아니오 창을 여는 부호다. 화면에는 안 남는다
+    expect(battleText({ kind: 'shift', key: 'p2-0' }, vs))
+      .toBe('체육관 관장 동관은\n팬텀을 내보내려 하고 있다\n포켓몬을 교체하시겠습니까?')
+    expect(battleText({ kind: 'shift', key: 'p2-0' }, vs)).not.toContain('{')
+  })
+})

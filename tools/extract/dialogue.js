@@ -258,6 +258,10 @@ const EXTRA_BANKS = [
   // 원작은 그 넷을 **대문자 뱅크**로 읽는데(`move_names_uppercase` 따위)
   // **한국어·일본어 롬에는 그 뱅크가 아예 없다.** 그래서 우리는 세 로케일 다
   // 보통 이름표를 쓴다 — 로케일마다 다른 낱말 목록이 생기는 편이 더 나쁘다
+  'TEXT_BANK_EASY_CHAT', 'TEXT_BANK_EASY_CHAT_GROUPS',
+  'TEXT_BANK_TRAINER_WORDS', 'TEXT_BANK_PEOPLE_WORDS', 'TEXT_BANK_GREETINGS',
+  'TEXT_BANK_LIFESTYLE_WORDS', 'TEXT_BANK_FEELINGS', 'TEXT_BANK_TOUGH_WORDS',
+  'TEXT_BANK_UNION_WORDS',
   // 배틀 글 1,269줄 (PARITY §2.24 · §2.25). 배틀은 필드 스크립트가 아니라 제
   // VM이 도는 자리라(`battle_main.c`가 `MessageLoader_Init`으로 이 뱅크를 직접
   // 연다) 스크립트에서 안 보인다.
@@ -275,10 +279,14 @@ const EXTRA_BANKS = [
   // 능력 이름을 빈칸으로 받는다 — 우리가 「공격」을 적어 두면 로케일을 바꿔도
   // 한국어가 남는다. 요약 화면 뱅크의 이름표와는 다른 표다
   'TEXT_BANK_POKEMON_STAT_NAMES',
-  'TEXT_BANK_EASY_CHAT', 'TEXT_BANK_EASY_CHAT_GROUPS',
-  'TEXT_BANK_TRAINER_WORDS', 'TEXT_BANK_PEOPLE_WORDS', 'TEXT_BANK_GREETINGS',
-  'TEXT_BANK_LIFESTYLE_WORDS', 'TEXT_BANK_FEELINGS', 'TEXT_BANK_TOUGH_WORDS',
-  'TEXT_BANK_UNION_WORDS',
+  // 배틀 안 가방·파티 화면의 글 (PARITY §2.26). 배틀 안에서 아래 화면으로
+  // 뜨는 두 화면인데 **뱅크가 따로**다 (`battle_bag.c` · `battle_party.c`가
+  // 각자 `MessageLoader_Init`으로 연다) — 가방 49줄과 파티 96줄.
+  //
+  // ⚠️ **브라우저 변환기는 이 둘을 이미 싣고 있었다** (`import/platinum/text.ts`가
+  // `BANK_ORDER`를 통째로 굽는다). 그래서 설치본에서는 있고 개발판에서는 없는
+  // 뱅크였다 — 개발 서버에서만 조용한 자리는 이렇게 생긴다
+  'TEXT_BANK_BATTLE_BAG', 'TEXT_BANK_BATTLE_PARTY',
 ]
 
 function main() {

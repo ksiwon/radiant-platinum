@@ -12,9 +12,15 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { DATA, withData } from '../../data/romData.testkit'
-import { BATTLE_STRING_ORDER, battleMessage } from '../../import/platinum/battleStrings'
+import {
+  BATTLE_BAG_ORDER, BATTLE_PARTY_ORDER, BATTLE_STRING_ORDER,
+  bagMessage, battleMessage, partyMessage,
+} from '../../import/platinum/battleStrings'
 import { bankIndex } from '../../import/platinum/textBanks'
-import { BATTLE_BANK, forSide, MOVE_BANK, moveUsedLine, MSG, SIDE_KEYS } from './romText'
+import {
+  BAG, BAG_BANK, BATTLE_BANK, forSide, MOVE_BANK, moveUsedLine, MSG,
+  PARTY, PARTY_BANK, SIDE_KEYS, STAT_SLOT,
+} from './romText'
 
 /** `MSG`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleStrings_Text_` 뒤) */
 const NAMED: Record<keyof typeof MSG, string> = {
@@ -206,6 +212,16 @@ const NAMED: Record<keyof typeof MSG, string> = {
   pokemonIsBesideItselfWithAnger: "PokemonIsBesideItselfWithAnger",
   pokemonIsWatchingCarefully: "PokemonIsWatchingCarefully",
   playerUsedOneItem: "PlayerUsedOneItem",
+  youAreChallengedByTr: "YouAreChallengedByTr",
+  youAreChallengedByLinkTr: "YouAreChallengedByLinkTr",
+  playerDefeatedTr: "PlayerDefeatedTr",
+  playerDefeatedLinkTr: "PlayerDefeatedLinkTr",
+  trSentOutPokemon: "TrSentOutPokemon",
+  linkTrSentOutPokemon: "LinkTrSentOutPokemon",
+  trUsedOneItem: "TrUsedOneItem",
+  willYouSwitchYourPokemon: "WillYouSwitchYourPokemon",
+  playerBlackedOut: "PlayerBlackedOut",
+  theTrainerBlockedTheBall: "TheTrainerBlockedTheBall",
 }
 
 describe('배틀 글 줄 번호', () => {
@@ -269,5 +285,119 @@ withData('dialogue/ko/' + String(MOVE_BANK) + '.json')('기술을 쓰는 줄', (
     expect(lines[moveUsedLine(33) + 1]).toMatch(/^야생 /)
     expect(lines[moveUsedLine(33) + 2]).toMatch(/^상대 /)
     expect(lines).toHaveLength(1404)
+  })
+})
+
+// ── 배틀 **안**의 두 화면 (PARITY §2.26) ────────────────────────────────────
+
+/** `BAG`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleBag_Text_` 뒤) */
+const BAG_NAMED: Record<keyof typeof BAG, string> = {
+  pocketRestore: 'PocketNameRestore',
+  pocketStatus: 'PocketNameStatus',
+  pocketBalls: 'PocketNamePokeBalls',
+  pocketBattleItems: 'PocketNameBattleItems',
+  embargoBlockingItemUse: 'EmbargoBlockingItemUse',
+}
+
+/** `PARTY`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleParty_Text_` 뒤) */
+const PARTY_NAMED: Record<keyof typeof PARTY, string> = {
+  chooseAPokemon: 'ChooseAPokemon',
+  useOnWhichPokemon: 'UseOnWhichPokemon',
+  cantSwitchWithPokemonAlreadyInBattle: 'CantSwitchWithPokemonAlreadyInBattle',
+  cantSwitchWithFaintedPokemon: 'CantSwitchWithFaintedPokemon',
+  cantSwitchPokemon: 'CantSwitchPokemon',
+  itemWontHaveAnyEffect: 'ItemWontHaveAnyEffect',
+  restoreWhichMove: 'RestoreWhichMove',
+  embargoPreventsItemUse: 'EmbargoPreventsItemUse',
+}
+
+describe('배틀 안 가방·파티의 줄 번호', () => {
+  it('뱅크가 battle_bag과 battle_party다', () => {
+    expect(BAG_BANK).toBe(bankIndex('battle_bag', 'us'))
+    expect(PARTY_BANK).toBe(bankIndex('battle_party', 'us'))
+  })
+
+  it('이름표가 뱅크 길이와 같다', () => {
+    expect(BATTLE_BAG_ORDER).toHaveLength(49)
+    expect(BATTLE_PARTY_ORDER).toHaveLength(96)
+  })
+
+  for (const [key, name] of Object.entries(BAG_NAMED) as [keyof typeof BAG, string][]) {
+    it(`가방 ${key}는 ${name}이다`, () => {
+      expect(BAG[key]).toBe(bagMessage(name))
+    })
+  }
+
+  for (const [key, name] of Object.entries(PARTY_NAMED) as [keyof typeof PARTY, string][]) {
+    it(`파티 ${key}는 ${name}이다`, () => {
+      expect(PARTY[key]).toBe(partyMessage(name))
+    })
+  }
+
+  it('이름을 안 적어 둔 번호가 없다', () => {
+    expect(Object.keys(BAG).sort()).toEqual(Object.keys(BAG_NAMED).sort())
+    expect(Object.keys(PARTY).sort()).toEqual(Object.keys(PARTY_NAMED).sort())
+  })
+})
+
+withData('dialogue/ko/' + String(BAG_BANK) + '.json')('배틀 안 가방의 글', () => {
+  const read = (at: string): string[] =>
+    JSON.parse(readFileSync(resolve(DATA, at), 'utf8')) as string[]
+
+  it('주머니 이름 넷이 우리가 들고 있던 것과 같다', () => {
+    // ⚠️ **같아서 안 고쳤다는 것을 여기 못박는다.** 손으로 든 배틀 글 마흔여덟 중
+    // 일곱만 맞았던 자리와 달리 이 넷은 글자까지 같았다 — 그래도 롬에서 읽는다.
+    // 손으로 들면 로케일을 바꿔도 한국어가 남는다
+    const lines = read('dialogue/ko/' + String(BAG_BANK) + '.json')
+    expect(lines[BAG.pocketRestore]).toBe('회복')
+    expect(lines[BAG.pocketStatus]).toBe('상태')
+    expect(lines[BAG.pocketBalls]).toBe('볼')
+    expect(lines[BAG.pocketBattleItems]).toBe('배틀용')
+    expect(lines).toHaveLength(49)
+  })
+
+  it('금제 줄의 빈칸은 이름 하나와 기술 하나다', () => {
+    const lines = read('dialogue/ko/' + String(BAG_BANK) + '.json')
+    const line = lines[BAG.embargoBlockingItemUse]!
+    // 0번 칸이 이름, 1번 칸이 기술 이름이다 (`battle_bag.c`의 `TryUseItem`)
+    expect(line).toContain('{STRVAR_1 1, 0, 0}')
+    expect(line).toContain('{STRVAR_1 6, 1, 0}')
+  })
+})
+
+withData('dialogue/ko/' + String(PARTY_BANK) + '.json')('배틀 안 파티의 글', () => {
+  const read = (at: string): string[] =>
+    JSON.parse(readFileSync(resolve(DATA, at), 'utf8')) as string[]
+
+  it('못 고르는 두 줄이 이름을 빈칸으로 받는다', () => {
+    // 이름이 안 풀리면 `romLine`이 문장을 통째로 비운다 — 조사가 뒤에 붙어서다
+    const lines = read('dialogue/ko/' + String(PARTY_BANK) + '.json')
+    expect(lines[PARTY.cantSwitchWithFaintedPokemon]).toContain('{STRVAR_1 1, 0, 1}')
+    expect(lines[PARTY.cantSwitchWithPokemonAlreadyInBattle]).toContain('{STRVAR_1 1, 0, 1}')
+    expect(lines).toHaveLength(96)
+  })
+
+  it('고르라는 두 줄에는 빈칸이 없다', () => {
+    const lines = read('dialogue/ko/' + String(PARTY_BANK) + '.json')
+    expect(lines[PARTY.chooseAPokemon]).toBe('포켓몬을 선택해 주십시오')
+    expect(lines[PARTY.useOnWhichPokemon]).toBe('어느 포켓몬에게 쓰겠습니까?')
+    expect(lines[PARTY.restoreWhichMove]).toBe('어느 기술을 회복하겠습니까?')
+  })
+})
+
+withData('dialogue/ko/551.json')('랭크 이름표', () => {
+  it('STAT_SLOT이 가리키는 자리가 그 능력의 이름이다', () => {
+    // 배틀 로그와 배틀 가방이 같은 표를 읽는다. 한 칸 밀리면 「방어가 올라갔다」가
+    // 「스피드가 올라갔다」로 뜨는데 글자가 나오므로 눈으로는 안 보인다
+    const lines = JSON.parse(
+      readFileSync(resolve(DATA, 'dialogue/ko/551.json'), 'utf8'),
+    ) as string[]
+    expect(lines[STAT_SLOT.atk]).toBe('공격')
+    expect(lines[STAT_SLOT.def]).toBe('방어')
+    expect(lines[STAT_SLOT.spe]).toBe('스피드')
+    expect(lines[STAT_SLOT.spa]).toBe('특수공격')
+    expect(lines[STAT_SLOT.spd]).toBe('특수방어')
+    expect(lines[STAT_SLOT.accuracy]).toBe('명중률')
+    expect(lines[STAT_SLOT.evasion]).toBe('회피율')
   })
 })
