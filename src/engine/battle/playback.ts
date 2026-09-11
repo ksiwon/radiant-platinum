@@ -212,11 +212,17 @@ export function buildBeats(
         show([e], moveFramesOf(e.move))
         break
 
-      default:
+      default: {
         if (isSilent(e)) { show([e], 0); break }
+        // 그친 날씨가 무엇이었는지는 **여기서만 안다.** `|-weather|none`은 이름을
+        // 안 들고 오고, 뷰는 `show`가 접는 순간 null이 된다 — 접기 **전에** 실어
+        // 준다. 데미지에 타격 정보를 얹는 것과 같은 방식이다
+        const told = e.kind === 'weather' && e.weather === null
+          ? { ...e, ended: view.weather }
+          : e
         // 랭크·상태이상은 연출이 먼저고 글이 뒤다 (`PlayBattleAnimation` → `PrintMessage`)
-        show([e], 0)
-        say(text(e), HOLD_MESSAGE)
+        show([told], 0)
+        say(text(told), HOLD_MESSAGE)
         // 배우고 싶어 하는 기술마다 한 번씩 묻는다. 사건이 이미 확정된 뒤라
         // 이 박자들도 흔들리지 않는다
         if (e.kind === 'reward') {
@@ -224,6 +230,7 @@ export function buildBeats(
             out.push({ text: null, events: [], hold: 0, ask: { key: e.key, move } })
           }
         }
+      }
     }
 
     if (e.kind === 'damage') flush()

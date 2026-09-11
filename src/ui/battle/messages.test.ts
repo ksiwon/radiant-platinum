@@ -186,16 +186,29 @@ withBank('배틀 문구', () => {
       .toBe('모부기는 몸통박치기의\n데미지를 입고 있다')
   })
 
-  it('날씨는 시작과 유지를 다르게 말한다', () => {
+  it('날씨는 시작·유지·그침을 저마다 다르게 말한다', () => {
     expect(say({ kind: 'weather', weather: 'Sandstorm', upkeep: false }))
       .toBe('모래바람이 불기 시작했다!')
     expect(say({ kind: 'weather', weather: 'Sandstorm', upkeep: true }))
       .toBe('모래바람이 세차게 분다')
     // 유지 줄은 매 턴 오므로 날씨가 없으면 아무 말도 안 한다
     expect(say({ kind: 'weather', weather: null, upkeep: true })).toBeNull()
-    // ⚠️ **그치는 줄은 비어 있다.** 롬은 「비가 그쳤다!」처럼 날씨마다 갈라 말하는데
-    // `|-weather|none`은 무엇이 그쳤는지를 안 들고 온다
+  })
+
+  it('그치는 줄은 그친 날씨를 알아야 나온다', () => {
+    // `|-weather|none`은 무엇이 그쳤는지를 안 들고 온다. `buildBeats`가 직전
+    // 뷰에서 읽어 `ended`로 실어 준 뒤라야 롬의 넷 중 하나를 고를 수 있다
     expect(say({ kind: 'weather', weather: null, upkeep: false })).toBeNull()
+    expect(say({ kind: 'weather', weather: null, upkeep: false, ended: 'RainDance' }))
+      .toBe('비가 그쳤다!')
+    expect(say({ kind: 'weather', weather: null, upkeep: false, ended: 'Sandstorm' }))
+      .toBe('모래바람이 가라앉았다!')
+    expect(say({ kind: 'weather', weather: null, upkeep: false, ended: 'SunnyDay' }))
+      .toBe('햇살이 약해졌다!')
+    expect(say({ kind: 'weather', weather: null, upkeep: false, ended: 'Hail' }))
+      .toBe('싸라기눈이 그쳤다!')
+    // 모르는 이름이면 비운다 — 지어낸 문장을 놓느니 조용한 편이 낫다
+    expect(say({ kind: 'weather', weather: null, upkeep: false, ended: 'Nothing' })).toBeNull()
   })
 
   it('특성 발동', () => {
@@ -510,5 +523,15 @@ withBank('트레이너 줄', () => {
     expect(battleText({ kind: 'shift', key: 'p2-0' }, vs))
       .toBe('체육관 관장 동관은\n팬텀을 내보내려 하고 있다\n포켓몬을 교체하시겠습니까?')
     expect(battleText({ kind: 'shift', key: 'p2-0' }, vs)).not.toContain('{')
+  })
+
+  it('비긴 판은 상대를 알 때만 롬 줄로 간다', () => {
+    // ⚠️ **롬이 비긴 판을 말하는 자리는 통신뿐이다** — `LoadResultMessage`가
+    // `BATTLE_RESULT_DRAW`를 통신에서만 읽어서 이름 칸이 하나다. 분류·이름
+    // 두 칸짜리 짝(961)은 어느 스크립트도 안 가리키므로 안 쓴다
+    expect(battleText({ kind: 'tie' }, vs)).toBe('체육관 관장 동관과의\n승부에서 비겼다!')
+    expect(battleText({ kind: 'tie' }, link)).toBe('체육관 관장 동관과의\n승부에서 비겼다!')
+    // 부를 이름이 없으면 우리 한 줄이다 — 야생전이 그렇다
+    expect(battleText({ kind: 'tie' }, ctx)).toBe('무승부다!')
   })
 })

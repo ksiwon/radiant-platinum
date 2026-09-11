@@ -278,16 +278,31 @@ export function BattleScreen() {
       : romLine(lines, MSG.youAreChallengedByTr, foeClass, foeTrainer)
         ?? romLine(lines, MSG.youAreChallengedByLinkTr, foeName)
     if (challenge !== null) out.unshift({ text: challenge, events: [], hold: 30 })
-    const end = outcome === 'win'
-      ? (kind === 'trainer'
+    // 판이 끝나고 나오는 줄. **하나가 아니라 여럿이다** — 진 판은 원작이 창
+    // 셋을 잇는다 (`subscript_battle_lost.s`)
+    const tail: (string | null)[] = outcome === 'win'
+      ? [kind === 'trainer'
         ? romLine(lines, MSG.playerDefeatedTr, foeClass, foeTrainer)
           ?? romLine(lines, MSG.playerDefeatedLinkTr, foeName)
         // ⚠️ **야생전은 원작이 아무 말도 안 한다.** 이긴 순간이 곧 배틀의 끝이라
-        // 줄이 없다 — 우리 화면은 로그가 그대로 서 있으므로 한 줄을 놓는다
-        : '배틀에서 이겼다!')
-      : outcome === 'loss' ? romLine(lines, MSG.playerBlackedOut, playerName) : null
+        // 줄이 없다(`subscript_battle_won.s`의 야생 갈래가 곧장 페이드로 간다) —
+        // 우리 화면은 로그가 그대로 서 있으므로 한 줄을 놓는다
+        : '배틀에서 이겼다!']
+      : outcome === 'loss'
+        // 「싸울 수 있는 포켓몬이 없다!」 → 「... ... ... ...」 → 「눈앞이 캄캄해졌다!」.
+        // 여태 마지막 하나만 띄워서, 지는 순간이 한 창으로 툭 끝났다.
+        // ⚠️ 사이의 상금 줄(34·35)은 아직 못 놓는다 — 진 판에 돈이 깎이는 일
+        // 자체가 없어서 채울 수가 없다
+        ? [
+          romLine(lines, MSG.playerIsOutOfUsablePokemon, playerName),
+          romLine(lines, MSG.blackedOutDotDotDot),
+          romLine(lines, MSG.playerBlackedOut, playerName),
+        ]
+        : []
     // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
-    if (end !== null) out.push({ text: end, events: [], hold: 30 })
+    for (const text of tail) {
+      if (text !== null) out.push({ text, events: [], hold: 30 })
+    }
     return out
   }, [
     events, names, lines, moveLines, label, bare, outcome, kind,

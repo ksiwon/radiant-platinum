@@ -66,6 +66,33 @@ describe('게이지 속도', () => {
     expect(drainFrames(0, 100)).toBe(0)
     expect(drainFrames(-5, 100)).toBe(0)
   })
+
+  it('그친 날씨의 이름을 글 만드는 쪽에 실어 준다', () => {
+    // `|-weather|none`은 무엇이 그쳤는지를 안 들고 온다. 아는 쪽은 **직전의
+    // 뷰**뿐이고, 그 뷰는 사건을 접는 순간 비어 버린다 — 접기 전에 실어야 한다.
+    // 두 파일의 시험이 각자 초록인 채로 가운데가 빌 수 있는 자리라 여기서 못박는다
+    const told: (string | null | undefined)[] = []
+    const seen = (e: BattleEvent): string | null => {
+      if (e.kind === 'weather') told.push(e.ended)
+      return null
+    }
+    buildBeats([
+      { kind: 'weather', weather: 'RainDance', upkeep: false },
+      { kind: 'weather', weather: 'RainDance', upkeep: true },
+      { kind: 'weather', weather: null, upkeep: false },
+    ], seen)
+    expect(told).toEqual([undefined, undefined, 'RainDance'])
+  })
+
+  it('날씨가 바뀌면 그치는 이름도 새것을 따른다', () => {
+    const told: (string | null | undefined)[] = []
+    buildBeats([
+      { kind: 'weather', weather: 'RainDance', upkeep: false },
+      { kind: 'weather', weather: 'SunnyDay', upkeep: false },
+      { kind: 'weather', weather: null, upkeep: false },
+    ], (e) => { if (e.kind === 'weather') told.push(e.ended); return null })
+    expect(told[2]).toBe('SunnyDay')
+  })
 })
 
 describe('박자 순서', () => {

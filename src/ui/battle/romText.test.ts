@@ -21,6 +21,7 @@ import {
   BAG, BAG_BANK, BATTLE_BANK, forSide, MOVE_BANK, moveUsedLine, MSG,
   PARTY, PARTY_BANK, SIDE_KEYS, STAT_SLOT,
 } from './romText'
+import { romLine } from './romLine'
 
 /** `MSG`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleStrings_Text_` 뒤) */
 const NAMED: Record<keyof typeof MSG, string> = {
@@ -220,7 +221,10 @@ const NAMED: Record<keyof typeof MSG, string> = {
   linkTrSentOutPokemon: "LinkTrSentOutPokemon",
   trUsedOneItem: "TrUsedOneItem",
   willYouSwitchYourPokemon: "WillYouSwitchYourPokemon",
+  playerIsOutOfUsablePokemon: "PlayerIsOutOfUsablePokemon",
   playerBlackedOut: "PlayerBlackedOut",
+  blackedOutDotDotDot: "BlackedOutDotDotDot",
+  playerDrewAgainstLinkTr: "PlayerDrewAgainstLinkTr",
   theTrainerBlockedTheBall: "TheTrainerBlockedTheBall",
 }
 
@@ -382,6 +386,29 @@ withData('dialogue/ko/' + String(PARTY_BANK) + '.json')('배틀 안 파티의 �
     expect(lines[PARTY.chooseAPokemon]).toBe('포켓몬을 선택해 주십시오')
     expect(lines[PARTY.useOnWhichPokemon]).toBe('어느 포켓몬에게 쓰겠습니까?')
     expect(lines[PARTY.restoreWhichMove]).toBe('어느 기술을 회복하겠습니까?')
+  })
+})
+
+withData('dialogue/ko/' + String(BATTLE_BANK) + '.json')('진 판의 세 줄', () => {
+  // ⚠️ **원작은 한 창으로 안 끝난다** (`subscript_battle_lost.s`). 여태 마지막
+  // 하나만 띄웠고, 그래서 지는 순간이 「눈앞이 캄캄해졌다!」 한 창으로 툭 끝났다.
+  // 화면을 짜는 쪽은 `BattleScreen`이고 여기서는 그 셋이 실제로 채워지는지를 잰다
+  const lines = JSON.parse(
+    readFileSync(resolve(DATA, 'dialogue/ko/' + String(BATTLE_BANK) + '.json'), 'utf8'),
+  ) as string[]
+
+  it('이름이 들어가는 두 줄과 이름이 없는 한 줄이다', () => {
+    expect(romLine(lines, MSG.playerIsOutOfUsablePokemon, '빛나'))
+      .toBe('빛나에게는\n싸울 수 있는 포켓몬이 없다!')
+    expect(romLine(lines, MSG.blackedOutDotDotDot)).toBe('... ... ... ...')
+    expect(romLine(lines, MSG.playerBlackedOut, '빛나')).toBe('빛나는\n눈앞이 캄캄해졌다!')
+  })
+
+  it('이름을 못 풀면 그 줄은 통째로 빈다', () => {
+    // 조사가 뒤에 붙는 자리라 영어로 떨어뜨릴 수가 없다
+    expect(romLine(lines, MSG.playerBlackedOut, null)).toBeNull()
+    // 칸이 없는 줄은 이름과 상관없이 뜬다
+    expect(romLine(lines, MSG.blackedOutDotDotDot)).not.toBeNull()
   })
 })
 

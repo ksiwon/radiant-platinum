@@ -298,7 +298,15 @@ export type BattleEvent =
   /** 못 움직였다. 도발·사슬묶기처럼 **못 쓴 기술**이 붙어 오는 까닭도 있다 */
   | { kind: 'cant'; actor: Actor; reason: string; move: number | null; moveName: string }
   | { kind: 'ability'; actor: Actor; ability: number | null; abilityName: string }
-  | { kind: 'weather'; weather: string | null; upkeep: boolean }
+  /**
+   * 날씨가 바뀌었다. `weather`가 null이면 그친 것이다.
+   *
+   * ⚠️ `ended`는 프로토콜에 없다 — **박자를 만들 때 붙인다**(`playback.ts`).
+   * 롬은 그치는 줄도 날씨마다 갈라 말하는데(「비가 그쳤다!」·「햇살이
+   * 약해졌다!」) `|-weather|none`은 **무엇이 그쳤는지를 안 들고 온다.**
+   * 아는 쪽은 그 직전의 뷰뿐이다 (`view.weather`)
+   */
+  | { kind: 'weather'; weather: string | null; upkeep: boolean; ended?: string | null }
   // ── 지속 효과 세 갈래 ────────────────────────────────────────────────────
   // 화면(리플렉터)·장(트릭룸)·개체(대타출동)는 걸리는 곳이 달라서 따로 접어야 한다.
   // 이름은 `reflect`, `trickroom`, `leechseed`처럼 sim의 id 꼴로 정규화된다 —

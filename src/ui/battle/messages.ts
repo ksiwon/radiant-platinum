@@ -617,11 +617,15 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     }
 
     case 'weather': {
-      // ⚠️ **그치는 줄은 비어 있다.** 롬은 「비가 그쳤다!」·「햇살이 약해졌다!」로
-      // 날씨마다 갈라 말하는데 `|-weather|none`은 **무엇이 그쳤는지를 안 들고
-      // 온다.** 손으로 들 때는 「날씨가 원래대로 돌아왔다!」 한 줄로 때웠지만
-      // 그런 문장은 롬에 없다 — 지어내느니 비운다 (PARITY §2.24)
-      const w = e.weather === null ? null : WEATHER[e.weather]
+      // 그치는 줄도 날씨마다 다르다. `|-weather|none`은 무엇이 그쳤는지를
+      // 안 들고 오므로 `buildBeats`가 직전 뷰에서 읽어 `ended`로 실어 준다.
+      // 그것까지 없으면 비운다 — 「날씨가 원래대로 돌아왔다!」 같은 문장은
+      // 롬에 없다 (PARITY §2.24)
+      if (e.weather === null) {
+        const was = e.ended ? WEATHER[e.ended] : undefined
+        return was ? rom(ctx, was.stop) : null
+      }
+      const w = WEATHER[e.weather]
       if (!w) return null
       return rom(ctx, e.upkeep ? w.upkeep : w.start)
     }
@@ -747,7 +751,10 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     }
 
     case 'tie':
-      return '무승부다!'
+      // 롬이 비긴 판을 말하는 자리는 통신뿐이라(`LoadResultMessage`)
+      // 이름 칸이 하나다. 상대를 아는 판에서만 그 줄을 쓰고,
+      // 야생전처럼 부를 이름이 없으면 우리 한 줄로 남긴다
+      return rom(ctx, MSG.playerDrewAgainstLinkTr, ctx.foeName ?? null) ?? '무승부다!'
 
     // ── 걸림과 풀림 (PARITY §2.25) ───────────────────────────────────────────
     //
