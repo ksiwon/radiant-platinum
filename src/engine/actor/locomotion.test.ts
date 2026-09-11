@@ -18,7 +18,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { Matrix4, Object3D, Quaternion, Vector3 } from 'three'
 import { createRig, resetRig, updateLocomotion } from './locomotion'
-import { BIKE, BIKE_GEARS, pedalPoint } from './bike'
+import { BIKE, BIKE_SPEEDS, pedalPoint } from './bike'
 import { BDSP_TO_WORLD } from '../model/normalize'
 
 interface GlbNode {
@@ -619,7 +619,7 @@ const bikePoint = (p: { x: number, y: number, z: number }): Vector3 =>
  * (`bikeLean`), 원작에 없는 느린 속도로 재면 덜 숙은 자세가 나온다 — 그러면
  * 어깨가 안 나가서 손이 손잡이에 7cm 모자란다
  */
-const BIKE_SPEED = 4.5 * BIKE_GEARS[0]!
+const BIKE_SPEED = 4.5 * BIKE_SPEEDS[1]!
 
 describe('자전거 자세', () => {
   it('골반이 안장에 앉는다', () => {

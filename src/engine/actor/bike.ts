@@ -92,33 +92,65 @@ export function pedalPoint(phase: number, side: 1 | -1): { x: number, y: number,
 }
 
 /**
- * 자전거의 속도 단계 (걷기의 몇 배인가).
+ * 이동 속도 **네 단** (걷기의 몇 배인가) — 원작 `AVATAR_MOVE_SPEED_0`~`_3`.
  *
  * ⚠️ **실측이다.** 원작의 이동 동작이 `InitWalk(방향, 프레임당 픽셀, 프레임 수)`
- * 꼴이라 한 칸(16px)에 걸리는 시간이 그대로 나온다
- * (`unk_020655F4.c`):
+ * 꼴이라 한 칸(16px)에 걸리는 프레임 수가 그대로 나온다. 셋은 고른 걸음이고
+ * 둘은 걸음마다 폭이 다른 표다 (`unk_020655F4.c`의 `sStepSizes_*`):
  *
- * | 동작 | 픽셀×프레임 | 걷기 대비 |
- * |---|---|---|
- * | 보통 걷기 | 2 × 8 | 1배 |
- * | 빠른 걷기 (자전거 1단) | 4 × 4 | **2배** |
- * | 조금 더 빠르게 (2단) | 16/3 × 3 | **2.67배** |
- * | 더 빠르게 (3단) | 8 × 2 | **4배** |
+ * | 동작 | 한 칸 프레임 | 걷기 대비 | 어느 단 |
+ * |---|---|---|---|
+ * | `WalkNormal` (2 × 8) | 8 | 1배 | 걷기 |
+ * | `WalkSlightlyFast` (2+3+3+2+3+3) | 6 | **1.33배** | `SPEED_0` |
+ * | `WalkFast` (4 × 4) | 4 | **2배** | `SPEED_1` |
+ * | `WalkSlightlyFaster` (5+6+5) | 3 | **2.67배** | `SPEED_2` |
+ * | `WalkFaster` (8 × 2) | 2 | **4배** | `SPEED_3` |
  *
- * 원작은 페달을 밟을 때마다 한 단씩 오른다(`PlayerAvatar_AccelerateBike`,
- * 최대 3). 우리 이동은 연속이라 시간으로 올린다
+ * ⚠️ **오래 첫 단이 빠져 있었다.** 표를 셋만 들고 2배에서 시작했는데, 원작은
+ * 선 자리에서 속도가 0으로 지워지고(`PlayerAvatar_ClearSpeed`) 첫 걸음이
+ * **그 0단의 동작**으로 나간다 — `GetMovementActionFromSpeed`가 속도를 읽고
+ * **그 다음에** `AccelerateBike`가 올린다
  */
-export const BIKE_GEARS: readonly number[] = [2, 8 / 3, 4]
-
-/** 한 단 오르는 데 걸리는 시간(초). 원작은 한 칸에 한 단이고 1단이 0.13초다 */
-export const GEAR_TIME = 0.5
+export const BIKE_SPEEDS: readonly number[] = [4 / 3, 2, 8 / 3, 4]
 
 /**
- * 지금 속도 배수. `t`는 페달을 밟기 시작한 뒤 흐른 시간(초)
+ * 자전거의 **모드 둘** (`PlayerData.cyclingGear`).
+ *
+ * ⚠️ **속도 단과 다른 것이다.** 원작의 자전거는 B로 오가는 모드가 둘이고
+ * (`PlayerAvatar_TryCyclingGearChange`), 그 둘이 속도를 아주 다르게 낸다:
+ *
+ * · **3단**(`third`, 원작의 초기값) — 걸음마다 `SetSpeed(SPEED_2)`다. 늘
+ *   2.67배 한 속도고 올라가지도 내려가지도 않는다
+ *   (`SetMovement_BikeThirdGearMoving`)
+ * · **4단**(`fourth`) — 걸음마다 한 단씩 올라 4배까지 간다
+ *   (`AccelerateBike`, 최대 `SPEED_3`). 멈추면 처음으로 돌아간다
+ *
+ * **전속력이 필요한 자리가 그 둘을 가른다** — 진흙 비탈은 `SPEED_3`으로만
+ * 오르므로 3단으로는 **영영 못 오른다** (`actor/bikeTerrain`)
  */
-export function bikeSpeedAt(t: number): number {
-  const gear = Math.min(BIKE_GEARS.length - 1, Math.floor(t / GEAR_TIME))
-  return BIKE_GEARS[gear]!
+export const BIKE_GEAR = { third: 0, fourth: 1 } as const
+export type BikeGear = 0 | 1
+
+/** 3단이 늘 내는 속도 — 원작이 걸음마다 `SPEED_2`로 못박는다 */
+export const THIRD_GEAR_LEVEL = 2
+/** 전속력 (`AVATAR_MOVE_SPEED_3`). 비탈과 도약대가 이 단을 묻는다 */
+export const TOP_LEVEL = 3
+
+/**
+ * 지금 속도 **단**. `tiles`는 페달을 밟기 시작한 뒤 **지나온 거리**(타일)다.
+ *
+ * ⚠️ **시간이 아니라 거리다.** 원작은 한 걸음에 한 단씩 올리고 한 걸음이
+ * 곧 한 칸이라, 거리로 세는 것이 그 규칙 그대로다. 시간으로 세면 같은 칸 수를
+ * 가도 속도가 다르게 오른다 — 빠를수록 더 빨리 오르는 되먹임이 생긴다
+ */
+export function bikeSpeedLevel(tiles: number, gear: BikeGear): number {
+  if (gear === BIKE_GEAR.third) return THIRD_GEAR_LEVEL
+  return Math.min(TOP_LEVEL, Math.max(0, Math.floor(tiles)))
+}
+
+/** 지금 속도 배수. `tiles`는 페달을 밟기 시작한 뒤 지나온 거리(타일)다 */
+export function bikeSpeedAt(tiles: number, gear: BikeGear): number {
+  return BIKE_SPEEDS[bikeSpeedLevel(tiles, gear)]!
 }
 
 /** 왜 못 타는가. `null`이면 탈 수 있다 */
@@ -197,14 +229,23 @@ export function isOnCyclingRoad(): boolean { return onCyclingRoad }
 const BIKE_LEAN = { still: 0.2438, walk: 0.5307, run: 0.7110 } as const
 
 /**
+ * 자세를 잰 클립 둘이 서 있는 속도 (걷기의 몇 배).
+ *
+ * ⚠️ **속도 단의 첫 칸·끝 칸이 아니다.** `bike_walk_f`·`bike_run_f`가 원작에서
+ * 어느 속도의 자세인가를 잡아 둔 값이라, 속도 표에 단이 하나 더 생겨도
+ * **여기는 안 움직인다** — 움직이면 같은 속도에서 다른 자세가 나온다
+ */
+const LEAN_AT = { walk: 2, run: 4 } as const
+
+/**
  * 지금 속도에서 숙일 각. `walkSpeed`는 걷는 속도(m/s)다.
  *
- * 단은 걷기의 몇 배인가로 정해진다(`BIKE_GEARS`) — 1단이 2배, 3단이 4배다.
- * 그 사이를 곧게 잇는다
+ * 걷기의 2배에서 `bike_walk_f`, 4배에서 `bike_run_f` 자세고 그 사이를 곧게
+ * 잇는다. 그보다 느리면 선 자세(`bike_wait_f`) 쪽으로 편다
  */
 export function bikeLean(speed: number, walkSpeed: number): number {
-  const first = BIKE_GEARS[0]!
-  const last = BIKE_GEARS[BIKE_GEARS.length - 1]!
+  const first = LEAN_AT.walk
+  const last = LEAN_AT.run
   const times = walkSpeed > 1e-6 ? speed / walkSpeed : 0
   const at = (a: number, b: number, k: number): number =>
     a + (b - a) * Math.max(0, Math.min(1, k))

@@ -4,31 +4,55 @@
 // 자리의 차례가 원작과 같은** 것. 차례가 중요하다 — 자전거 다리 위에서는
 // 내리지 못하는데, 그 검사를 나중에 두면 다리 위에서 내려 아래로 떨어진다.
 import { describe, it, expect } from 'vitest'
-import { BIKE_GEARS, GEAR_TIME, bikeBlock, bikeSpeedAt } from './bike'
+import {
+  BIKE_GEAR, BIKE_SPEEDS, THIRD_GEAR_LEVEL, TOP_LEVEL,
+  bikeBlock, bikeSpeedAt, bikeSpeedLevel,
+} from './bike'
 import { BRIDGE_START, resetBridge, trackBridge } from './bridge'
 import type { MapHeader } from '../map/world'
 
 const map = (bike: number): MapHeader => ({ bike } as MapHeader)
 
 describe('자전거 속도', () => {
-  it('원작이 적어 둔 배수 그대로 오른다', () => {
-    // `InitWalk(방향, 프레임당 픽셀, 프레임 수)`에서 나온 값이다:
-    // 걷기 2×8 · 1단 4×4 · 2단 16/3×3 · 3단 8×2 (한 칸이 16px)
-    expect(BIKE_GEARS).toEqual([2, 8 / 3, 4])
-    expect(bikeSpeedAt(0)).toBe(2)
-    expect(bikeSpeedAt(GEAR_TIME)).toBeCloseTo(8 / 3, 5)
-    expect(bikeSpeedAt(GEAR_TIME * 2)).toBe(4)
+  it('원작이 적어 둔 배수 **네 단** 그대로다', () => {
+    // 한 칸(16px)에 걸리는 프레임 수에서 그대로 나온다. 보통 걸음이 8프레임이고
+    // 넷이 6 · 4 · 3 · 2프레임이다 — 고른 걸음 둘(`InitWalk`)과 걸음마다 폭이
+    // 다른 표 둘(`sStepSizes_WalkSlightlyFast` 2+3+3+2+3+3 ·
+    // `sStepSizes_WalkSlightlyFaster` 5+6+5)이 다 한 칸으로 떨어진다
+    expect(BIKE_SPEEDS).toEqual([8 / 6, 8 / 4, 8 / 3, 8 / 2])
   })
 
-  it('3단이 끝이다 — 계속 밟아도 더는 안 빨라진다', () => {
-    // 원작 `PlayerAvatar_AccelerateBike`가 `AVATAR_MOVE_SPEED_3`에서 멈춘다
-    expect(bikeSpeedAt(GEAR_TIME * 20)).toBe(4)
+  it('4단은 지나온 칸마다 한 단씩 오른다', () => {
+    // ⚠️ **첫 걸음은 0단이다** — 원작이 속도를 읽어 동작을 고르고 **그 다음에**
+    // 올린다 (`GetMovementActionFromSpeed` → `AccelerateBike`)
+    const g = BIKE_GEAR.fourth
+    expect(bikeSpeedAt(0, g)).toBeCloseTo(4 / 3, 10)
+    expect(bikeSpeedAt(1, g)).toBe(2)
+    expect(bikeSpeedAt(2, g)).toBeCloseTo(8 / 3, 10)
+    expect(bikeSpeedAt(3, g)).toBe(4)
+    // 한 칸 안에서는 안 오른다
+    expect(bikeSpeedAt(0.99, g)).toBeCloseTo(4 / 3, 10)
   })
 
-  it('걷기보다 빠르고, 3단은 달리기의 두 배다', () => {
-    // 우리 걷기 4.5 · 달리기 8. 원작 기준으로 달리기는 걷기의 2배(= 1단)다
-    expect(bikeSpeedAt(0)).toBeGreaterThan(1)
-    expect(bikeSpeedAt(GEAR_TIME * 2)).toBe(BIKE_GEARS[0]! * 2)
+  it('전속력이 끝이다 — 계속 밟아도 더는 안 빨라진다', () => {
+    // 원작 `AccelerateBike`가 `AVATAR_MOVE_SPEED_3`에서 멈춘다
+    expect(bikeSpeedAt(20, BIKE_GEAR.fourth)).toBe(4)
+    expect(bikeSpeedLevel(20, BIKE_GEAR.fourth)).toBe(TOP_LEVEL)
+  })
+
+  it('3단은 얼마를 가도 **전속력이 안 된다**', () => {
+    // 원작이 걸음마다 `SetSpeed(AVATAR_MOVE_SPEED_2)`로 못박는다.
+    // 진흙 비탈이 전속력을 묻기 때문에 이것이 곧 「3단으로는 못 오른다」다
+    for (const tiles of [0, 1, 5, 100]) {
+      expect(bikeSpeedLevel(tiles, BIKE_GEAR.third)).toBe(THIRD_GEAR_LEVEL)
+      expect(bikeSpeedAt(tiles, BIKE_GEAR.third)).toBeCloseTo(8 / 3, 10)
+    }
+    expect(THIRD_GEAR_LEVEL).toBeLessThan(TOP_LEVEL)
+  })
+
+  it('어느 단이든 걷기보다는 빠르다', () => {
+    // 우리 걷기 4.5 · 달리기 8 (`actor/player`)
+    for (const s of BIKE_SPEEDS) expect(s).toBeGreaterThan(1)
   })
 })
 

@@ -10,7 +10,8 @@ import { clearPanelSlide, panelStep } from './slidePanel'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
-import { bikeSpeedAt } from './bike'
+import { TOP_LEVEL, bikeSpeedAt, bikeSpeedLevel } from './bike'
+import { bikeRampHop, bikeSlopeStep, clearBikeSlip, isSlippingDownSlope } from './bikeTerrain'
 import { onElevatedBridge, trackBridge } from './bridge'
 import { distortionBridge, PLATFORM_FLOOR } from '../world/distortion'
 import { surfaceHeading, surfaceVector } from './distortionSurface'
@@ -53,8 +54,19 @@ export const RUN_SPEED = 8
  */
 export function playerSpeed(): number {
   const p = worldState.player
-  if (p.cycling) return WALK_SPEED * bikeSpeedAt(p.pedalling)
+  if (p.cycling) return WALK_SPEED * bikeSpeedAt(p.pedalling, p.bikeGear)
   return worldState.input.run && p.runningShoes ? RUN_SPEED : WALK_SPEED
+}
+
+/**
+ * 자전거가 **전속력**인가 (`PlayerAvatar_GetSpeed() >= AVATAR_MOVE_SPEED_3`).
+ *
+ * 진흙 비탈과 먼 도약이 이것 하나를 묻는다. 3단은 늘 `SPEED_2`라 **참이 될 수
+ * 없고**, 그것이 원작에서 B로 모드를 바꾸는 까닭이다
+ */
+function bikeAtTopSpeed(): boolean {
+  const p = worldState.player
+  return p.cycling && bikeSpeedLevel(p.pedalling, p.bikeGear) === TOP_LEVEL
 }
 /** 캐릭터 반지름(타일 단위). 벽에 얼굴이 박히지 않게 여유를 둔다 */
 const RADIUS = 0.3
@@ -195,10 +207,16 @@ export const playerSystem = {
     // ⚠️ **신발이 있어야 뛴다** (`PlayerAvatar`가 `PlayerData_HasRunningShoes`를
     // 본다). 엄마가 주기 전에는 달리기 키를 눌러도 걷는 속도 그대로다.
     //
-    // 자전거는 그보다 빠르고 **밟을수록 빨라진다** — 원작이 페달마다 한 단씩
-    // 올린다 (`actor/bike`의 실측 배수 2 · 2.67 · 4). 멈추면 처음으로 돌아간다
+    // 자전거는 그보다 빠르고 **4단에서는 밟을수록 빨라진다** — 원작이 걸음마다
+    // 한 단씩 올린다 (`actor/bike`의 실측 배수 1.33 · 2 · 2.67 · 4).
+    //
+    // ⚠️ **세는 것은 시간이 아니라 지나온 거리다.** 원작의 한 걸음이 곧 한
+    // 칸이라 거리로 세는 것이 그 규칙 그대로고, 시간으로 세면 빠를수록 더 빨리
+    // 오르는 되먹임이 생긴다. 멈추면 처음으로 돌아간다 (`ClearSpeed`)
     const moving = worldState.input.move.lengthSq() > 0.0001
-    p.pedalling = p.cycling && moving ? p.pedalling + dt : 0
+    p.pedalling = p.cycling && moving
+      ? p.pedalling + Math.hypot(p.velocity.x, p.velocity.z) * dt
+      : 0
     const speed = playerSpeed()
     // 3인칭은 원작대로 방향키가 월드 축이다. 1인칭은 **시선이 기준**이라 누른
     // 방향을 yaw만큼 돌린다 — yaw 0이면 회전이 항등이라 3인칭과 같은 식이 된다
@@ -279,6 +297,28 @@ export const playerSystem = {
       clearPanelSlide()
     }
 
+    /**
+     * **진흙 비탈** (PARITY §1.9 · `PlayerAvatar_TileMove_BikeSlope`).
+     *
+     * 북쪽은 자전거가 전속력일 때만 오르고 그 밖에는 미끄러져 내려온다.
+     * 얼음·도는 판과 같은 자리에 두되 **뒤에** 둔다 — 한 칸에 둘이 같이
+     * 있는 자리는 없지만, 먼저 잡힌 미끄러짐을 덮으면 안 된다
+     */
+    if (activeZone.grid && !isSliding()) {
+      const slid = bikeSlopeStep(
+        iceView, p.position, { vx: p.velocity.x, vz: p.velocity.z },
+        WALK_SPEED, bikeAtTopSpeed(),
+      )
+      if (slid !== null) {
+        p.velocity.set(slid.vx, 0, slid.vz)
+        // 미끄러지는 동안은 몸도 내려가는 쪽을 본다 (원작이 `LOCK_DIR`을 걸고
+        // 내려가는 방향으로 동작을 돌린다). `facing`은 `atan2(vx, vz)`라 0이 남쪽이다
+        if (isSlippingDownSlope()) p.facing = 0
+      }
+    } else if (!activeZone.grid) {
+      clearBikeSlip()
+    }
+
     const grid = activeZone.grid
     if (grid instanceof MapGrid) {
       /**
@@ -314,6 +354,21 @@ export const playerSystem = {
       const land = ledgeHop(grid, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
       if (land) {
         startHop(land, HOP_TIME)
+        return
+      }
+
+      /**
+       * **자전거 도약대** (PARITY §1.9 · `PlayerAvatar_WillHitBikeRamp`).
+       *
+       * 턱 뒤에 둔다 — 같은 「앞 칸을 보고 뛴다」 갈래이고 한 칸에 둘이 같이
+       * 있는 자리는 없다. 자전거가 아니면 `null`이라 그대로 벽에 부딪힌다
+       */
+      const ramp = bikeRampHop(
+        grid, p.position.x, p.position.z, p.velocity.x, p.velocity.z,
+        p.cycling, bikeAtTopSpeed(),
+      )
+      if (ramp) {
+        startHop(ramp, ramp.time)
         return
       }
     }

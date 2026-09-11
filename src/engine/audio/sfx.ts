@@ -123,6 +123,24 @@ export const SFX = {
    * **풀 있는 진흙**(0xA6·0xA7)은 `IsMud`에 아예 안 든다
    */
   MUD_STEP: 1621,
+  /**
+   * 자전거가 내는 소리 셋 (PARITY §1.9 · §8.13).
+   *
+   * ⚠️ **번호를 이름으로 짐작하지 않았다** — 셋 다 우리가 구운 SDAT 목차에서
+   * 이름으로 찾은 값이다(`public/data/sound/index.json`).
+   *
+   * · `SEQ_SE_DP_GEAR`·`GEAR2` — 단을 바꿀 때 (`TryCyclingGearChange`).
+   *   ⚠️ **차례가 거꾸로 보인다**: 원작이 `gear == 0`(3단)일 때 `GEAR2`고
+   *   4단일 때 `GEAR`다
+   * · `SEQ_SE_DP_SUNA` — 진흙 비탈에 올라설 때 (`TileMove_BikeSlope` 첫 줄).
+   *   **오르든 내리든 갈래 앞에서 한 번** 울린다
+   * · `SEQ_SE_DP_DANSA4` — 도약대의 **먼 도약에만** 붙는다. 가까운 도약은
+   *   `InitJump`가 기본으로 내는 `SEQ_SE_DP_DANSA`라 따로 안 적는다
+   */
+  BIKE_GEAR_UP: 1561,
+  BIKE_GEAR_DOWN: 1564,
+  BIKE_SLOPE: 1620,
+  BIKE_RAMP_FAR: 1622,
 
   /**
    * `SEQ_SE_DP_EXP`. 경험치 바가 차는 동안 (`battle_display.c` 4928줄).

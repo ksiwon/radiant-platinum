@@ -53,6 +53,14 @@ export const BINDINGS = {
    * 제자리다
    */
   register: ['KeyF'],
+  /**
+   * 자전거의 단을 바꾼다 (`PlayerAvatar_TryCyclingGearChange` · `actor/bikeGear`).
+   *
+   * 원작은 **B**인데 우리 B 자리(`cancel`)는 이미 X고 그것이 시작 메뉴도 연다.
+   * 그래서 왼손에 비어 있던 `B`를 쓴다 — 글자가 원작 버튼과 같은 것은 덤이다.
+   * ⚠️ **타고 있을 때만 뜻이 있다** — 걷는 동안 눌러도 아무 일도 안 한다
+   */
+  gear: ['KeyB'],
   /** 포켓치를 펼친다. 길게 누르면 감춘다 (`ui/poketch/PoketchWidget`) */
   poketch: ['KeyR'],
   /** 포켓치 앱을 앞뒤로 넘긴다 */

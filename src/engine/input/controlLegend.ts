@@ -18,9 +18,18 @@ interface ControlRow {
 
 /** 줄마다의 이름. 줄 차례는 아래 `controlRows`가 정한다 */
 const WHAT: Readonly<Record<KeyLocale, readonly string[]>> = {
-  ko: ['이동', '달리기', '결정·조사', '취소', '메뉴', '등록 도구', '포켓치', '앱 넘기기', '시점'],
-  en: ['Move', 'Run', 'Confirm', 'Cancel', 'Menu', 'Registered item', 'Pokétch', 'Next app', 'View'],
-  ja: ['うごく', 'はしる', 'きめる', 'もどる', 'メニュー', 'とうろくどうぐ', 'ポケッチ', 'アプリ', 'してん'],
+  ko: [
+    '이동', '달리기', '결정·조사', '취소', '메뉴', '등록 도구', '자전거 단',
+    '포켓치', '앱 넘기기', '시점',
+  ],
+  en: [
+    'Move', 'Run', 'Confirm', 'Cancel', 'Menu', 'Registered item', 'Bike gear',
+    'Pokétch', 'Next app', 'View',
+  ],
+  ja: [
+    'うごく', 'はしる', 'きめる', 'もどる', 'メニュー', 'とうろくどうぐ', 'じてんしゃギア',
+    'ポケッチ', 'アプリ', 'してん',
+  ],
 }
 
 /** 설정에 없는 언어는 한국어로 떨어진다 */
@@ -39,6 +48,7 @@ export function controlRows(locale: string): readonly ControlRow[] {
     keyList(BINDINGS.cancel, at),
     keyList(BINDINGS.menu, at),
     keyList(BINDINGS.register, at),
+    keyList(BINDINGS.gear, at),
     keyList(BINDINGS.poketch, at),
     keyList([...BINDINGS.poketchPrev, ...BINDINGS.poketchNext], at),
     keyList(BINDINGS.view, at),

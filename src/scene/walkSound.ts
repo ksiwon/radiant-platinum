@@ -7,6 +7,7 @@
 // ⚠️ **여기가 세는 걸음은 `stepSystem`의 그것과 다른 자다.** 저쪽은 독·친밀도·
 // 알을 굴리는 자리라 스크립트가 도는 동안 아예 서고, 이쪽은 소리라 같은 조건에
 // 걸릴 이유가 없다. `StepTrace`는 세는 자리마다 제 것을 든다 (그 파일 머리말).
+import { drainBikeCues } from '../engine/actor/bikeTerrain'
 import { BumpGate, isWarpStep, stepOf, walkEffects } from '../engine/actor/footstep'
 import { StepTrace } from '../engine/actor/stepTrace'
 import { onElevatedBridge } from '../engine/actor/bridge'
@@ -46,6 +47,12 @@ function behaviorAt(tx: number, tz: number): number {
 
 export const walkSoundSystem = {
   fixedUpdate(): void {
+    // 자전거가 쌓아 둔 소리 — 단 바꾸기 · 진흙 비탈 · 먼 도약 (`actor/bikeTerrain`).
+    //
+    // ⚠️ **격자를 기다리지 않는다.** 아래 걸음 소리는 맵이 서 있어야 뜻이 있지만
+    // 이 셋은 이미 일어난 사건이라, 안 비우면 다음 맵에서 늦게 울린다
+    for (const seq of drainBikeCues()) void music.playEffect(seq)
+
     const grid = mapWorld.grid
     if (!grid || mapWorld.pending) { gate.reset(); fromX = Number.NaN; return }
     const p = worldState.player.position

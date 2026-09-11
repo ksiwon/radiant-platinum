@@ -10,10 +10,10 @@ import { BINDINGS, LEFT_HAND } from './keys'
 const LOCALES = ['ko', 'en', 'ja'] as const
 
 describe('조작 쪽지', () => {
-  it('아홉 줄이 세 언어 다 채워져 있다', () => {
+  it('열 줄이 세 언어 다 채워져 있다', () => {
     for (const locale of LOCALES) {
       const rows = controlRows(locale)
-      expect(rows, locale).toHaveLength(9)
+      expect(rows, locale).toHaveLength(10)
       for (const row of rows) {
         expect(row.keys.length, `${locale} ${row.what}`).toBeGreaterThan(0)
         expect(row.what.length, `${locale} ${row.keys}`).toBeGreaterThan(0)
@@ -33,6 +33,7 @@ describe('조작 쪽지', () => {
         keyList(BINDINGS.cancel, locale),
         keyList(BINDINGS.menu, locale),
         keyList(BINDINGS.register, locale),
+        keyList(BINDINGS.gear, locale),
         keyList(BINDINGS.poketch, locale),
         keyList([...BINDINGS.poketchPrev, ...BINDINGS.poketchNext], locale),
         keyList(BINDINGS.view, locale),

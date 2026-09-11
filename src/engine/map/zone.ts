@@ -139,6 +139,31 @@ export const Behavior = {
   SLIDE_WEST: 0x0041,
   SLIDE_NORTH: 0x0042,
   SLIDE_SOUTH: 0x0043,
+  /**
+   * **자전거 도약대** (`TILE_BEHAVIOR_BIKE_RAMP_EASTWARD`·`WESTWARD`,
+   * `actor/bikeTerrain`).
+   *
+   * 값은 이름이 16진수를 담은 `UNUSED_xD6` 바로 다음이라 못 박힌다.
+   * 부딪히는 방향이 정해져 있다 — 동쪽 도약대는 **동쪽으로 밀 때만** 걸린다
+   * (`PlayerAvatar_WillHitBikeRamp`).
+   *
+   * ⚠️ **우리 격자에서 스물넷이 다 통행 불가다** (실측: 동 9 · 서 15).
+   * 그래서 자전거로 넘어가는 길이 **영영 막힌 벽**이었다 — 굴다래동굴
+   * (`m_dun2102_`)과 던전 둘이 그 자리다
+   */
+  BIKE_RAMP_EAST: 0x00d7,
+  BIKE_RAMP_WEST: 0x00d8,
+  /**
+   * **자전거 진흙 비탈** (`TILE_BEHAVIOR_BIKE_SLOPE_TOP`·`BOTTOM`).
+   *
+   * 북쪽으로는 **자전거가 전속력일 때만** 오른다 — 그 밖에는 미끄러져 내려온다
+   * (`PlayerAvatar_TileMove_BikeSlope`). 남쪽으로는 그냥 흘러내린다.
+   *
+   * ⚠️ **우리 격자에서 서른넷이 다 그냥 걸어진다** (실측: 위 17 · 아래 17).
+   * 걸어서 오를 수 있으면 그 비탈이 막고 있던 길이 통째로 열린다
+   */
+  BIKE_SLOPE_TOP: 0x00d9,
+  BIKE_SLOPE_BOTTOM: 0x00da,
 } as const
 
 /**
