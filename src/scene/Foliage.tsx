@@ -500,6 +500,10 @@ export function contactTexture(): DataTexture {
     }
   }
   const tex = new DataTexture(data, N, N)
+  // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
+  // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
+  // 임자를 못 짚는다 (REPAIR §48)
+  tex.name = 'foliage-noise'
   tex.needsUpdate = true
   return tex
 }

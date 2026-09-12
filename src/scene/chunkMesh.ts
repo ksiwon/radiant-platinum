@@ -14,6 +14,7 @@ import {
 import { assets, readJson } from '../data/providers/assetProvider'
 import { decodePng } from '../import/platinum/png'
 import { markSeeThrough } from './fx/seeThrough'
+import { retireTexture } from './retireTexture'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
 interface ChunkFormat {
@@ -369,6 +370,10 @@ export function sliceTexture(sheet: TexSheet, item: SheetItem, rep: number): Tex
     out.set(sheet.pixels.subarray(from, from + item.w * 4), y * item.w * 4)
   }
   const texture = new DataTexture(out, item.w, item.h)
+  // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
+  // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
+  // 임자를 못 짚는다 (REPAIR §48)
+  texture.name = `chunk-slice ${String(item.w)}x${String(item.h)}`
   texture.colorSpace = SRGBColorSpace
   texture.wrapS = wrap((rep & 1) !== 0, (rep & 4) !== 0)
   texture.wrapT = wrap((rep & 2) !== 0, (rep & 8) !== 0)
@@ -428,10 +433,18 @@ export function ownMap(m: Material): Material {
  * ⚠️ **표시가 없는 그림은 남긴다.** 나눠 쓰는 것을 버리면 다음 배치가 빈
  * 그림을 문다
  */
+/**
+ * ⚠️ **그림은 미뤄서 버린다** — 그 자리에서 버리면 제출 중인 프레임이 문다
+ * (`scene/retireTexture`)
+ */
 export function dropMaterial(m: Material): void {
-  if (m.userData.ownsMap === true) (m as { map?: Texture | null }).map?.dispose()
+  if (m.userData.ownsMap === true) {
+    const map = (m as { map?: Texture | null }).map
+    if (map) retireTexture(map)
+  }
   m.dispose()
 }
+
 
 export function makeMaterial(
   spec: ChunkMeta['materials'][number], texture: Texture | null, doubleSided = false,

@@ -70,6 +70,10 @@ export function InteractionPrompt({ grid, layer }: { grid: MapGrid; layer: numbe
       g.fillRect(0, 0, size, size)
     }
     const tex = new CanvasTexture(canvas)
+    // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
+    // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
+    // 임자를 못 짚는다 (REPAIR §48)
+    tex.name = 'interaction-prompt'
     tex.colorSpace = SRGBColorSpace
     tex.minFilter = LinearFilter
     tex.magFilter = LinearFilter

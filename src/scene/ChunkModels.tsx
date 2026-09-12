@@ -483,6 +483,10 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
   if (band) {
     // 폭 1텍셀 × 높이 h. 세로만 늘어나므로 가로 물림은 뜻이 없다
     strip = new DataTexture(band.pixels, 1, band.h)
+    // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
+    // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
+    // 임자를 못 짚는다 (REPAIR §48)
+    strip.name = 'prop-band'
     strip.colorSpace = SRGBColorSpace
     strip.wrapS = ClampToEdgeWrapping
     strip.wrapT = ClampToEdgeWrapping

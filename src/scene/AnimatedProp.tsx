@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { BufferGeometry, Group, Material, Texture } from 'three'
 import { sliceTexture, splitShadow, type ChunkMesh, type TexSheet } from './chunkMesh'
+import { retireTexture } from './retireTexture'
 import { DOOR_KIND } from '../import/platinum/propAnims'
 import {
   FRAME_MS, nodeMatrixAt, splitByNode, uvOffsetAt, type PropAnimSet,
@@ -145,8 +146,9 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
     }
     return out
   }, [clips, sheet, mesh])
+  // 미뤄서 버린다 — 여기 그림도 `sliceTexture`가 낸 16×16이다 (REPAIR §48)
   useEffect(() => () => {
-    for (const t of swaps.values()) t.dispose()
+    for (const t of swaps.values()) retireTexture(t)
   }, [swaps])
 
   useFrame(() => {

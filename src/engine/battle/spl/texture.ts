@@ -43,6 +43,10 @@ function splTextureRgba(tex: SplTexture): Uint8Array {
  */
 export function splTexture(tex: SplTexture): Texture {
   const out = new DataTexture(splTextureRgba(tex), tex.width, tex.height)
+  // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
+  // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
+  // 임자를 못 짚는다 (REPAIR §48)
+  out.name = `spl-particle ${String(tex.width)}x${String(tex.height)}`
   out.colorSpace = SRGBColorSpace
   out.wrapS = wrap(tex.repeatS, tex.flipS)
   out.wrapT = wrap(tex.repeatT, tex.flipT)

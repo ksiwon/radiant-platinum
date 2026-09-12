@@ -407,6 +407,8 @@ export function makeSkyTexture(preset: SkyPreset): CanvasTexture | null {
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, 2, 256)
   const tex = new CanvasTexture(canvas)
+  // 이름은 GPU 라벨로 그대로 간다 — 안 붙이면 오류가 `unlabeled`라고만 한다 (REPAIR §48)
+  tex.name = 'sky-gradient'
   tex.colorSpace = SRGBColorSpace
   tex.minFilter = LinearFilter
   tex.magFilter = LinearFilter
@@ -432,6 +434,8 @@ export function makeBlobShadow(): CanvasTexture | null {
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, 64, 64)
   const tex = new CanvasTexture(canvas)
+  // 이름은 GPU 라벨로 그대로 간다 — 안 붙이면 오류가 `unlabeled`라고만 한다 (REPAIR §48)
+  tex.name = 'blob-shadow'
   tex.colorSpace = SRGBColorSpace
   return tex
 }

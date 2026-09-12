@@ -9,6 +9,7 @@ import {
 } from 'three'
 import type { BattleView } from '../../engine/battle/view'
 import type { SlotId } from '../../engine/battle/events'
+import { retireTexture } from '../retireTexture'
 
 type SpotAt = (slot: SlotId) => readonly [number, number]
 
@@ -41,6 +42,10 @@ function damageTexture(view: BattleView): CanvasTexture | null {
   ctx.fillText(amount, 128, 64)
 
   const texture = new CanvasTexture(canvas)
+  // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
+  // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
+  // 임자를 못 짚는다 (REPAIR §48)
+  texture.name = 'damage-popup'
   texture.colorSpace = SRGBColorSpace
   texture.minFilter = LinearFilter
   texture.magFilter = LinearFilter
@@ -56,7 +61,8 @@ function DamagePopup({ view, at }: { view: BattleView; at: readonly [number, num
   useEffect(() => {
     elapsed.current = 0
     return () => {
-      texture?.dispose()
+      // 미뤄서 버린다 — 그 자리에서 버리면 제출 중인 프레임이 문다 (REPAIR §48)
+      if (texture) retireTexture(texture)
     }
   }, [texture])
   useFrame((_, dt) => {

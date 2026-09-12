@@ -10,9 +10,11 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  BufferAttribute, BufferGeometry, DataTexture, MeshLambertMaterial, type Material,
+  BufferAttribute, BufferGeometry, DataTexture, MeshBasicMaterial, MeshLambertMaterial, Texture,
+  type Material,
 } from 'three'
 import { castsShadow, dropMaterial, ownMap, releaseSplit, softAlpha, splitShadow } from './chunkMesh'
+import { tickRetiredTextures } from './retireTexture'
 import { decodePng, withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data/chunks')
@@ -284,9 +286,11 @@ describe('그림의 임자', () => {
     return { m: new MeshLambertMaterial({ map: tex }), tex, freed: () => n }
   }
 
-  it('표시를 단 재질은 그림까지 버린다', () => {
+  it('표시를 단 재질은 그림까지 버린다 — 나간 프레임 두 장 뒤에', () => {
     const one = withMap()
     dropMaterial(ownMap(one.m))
+    // 그 자리에서 버리면 제출 중인 프레임이 문다 (REPAIR §48)
+    tickRetiredTextures(); tickRetiredTextures()
     expect(one.freed()).toBe(1)
   })
 
@@ -301,5 +305,51 @@ describe('그림의 임자', () => {
     const m = ownMap(new MeshLambertMaterial())
     expect(m.userData.ownsMap).toBeUndefined()
     expect(() => { dropMaterial(m) }).not.toThrow()
+  })
+})
+
+// 버리기를 미룬다 (REPAIR §48)
+//
+// 그 자리에서 버리면 제출 중인 프레임이 없는 그림을 문다 —
+// `Destroyed texture [Texture (unlabeled 16x16 px, …)] used in a submit`.
+// `sliceTexture`가 내는 것이 정확히 그 16×16이다.
+describe('버리기를 미룬다', () => {
+  const own = () => {
+    const m = ownMap(new MeshBasicMaterial({ map: new Texture() }))
+    const map = (m as MeshBasicMaterial).map!
+    let disposed = 0
+    map.addEventListener('dispose', () => { disposed += 1 })
+    return { m, count: () => disposed }
+  }
+
+  it('⚠️ 버리라고 한 그 자리에서는 안 버린다', () => {
+    const { m, count } = own()
+    dropMaterial(m)
+    expect(count()).toBe(0)
+  })
+
+  it('한 장으로는 모자라다 — 두 장이 나간 뒤에 버린다', () => {
+    const { m, count } = own()
+    dropMaterial(m)
+    tickRetiredTextures()
+    expect(count()).toBe(0)
+    tickRetiredTextures()
+    expect(count()).toBe(1)
+  })
+
+  it('두 번 버리지 않는다', () => {
+    const { m, count } = own()
+    dropMaterial(m)
+    tickRetiredTextures(); tickRetiredTextures(); tickRetiredTextures()
+    expect(count()).toBe(1)
+  })
+
+  it('제 것이 아닌 그림은 애초에 안 맡는다', () => {
+    const map = new Texture()
+    let disposed = 0
+    map.addEventListener('dispose', () => { disposed += 1 })
+    dropMaterial(new MeshBasicMaterial({ map }))
+    tickRetiredTextures(); tickRetiredTextures()
+    expect(disposed).toBe(0)
   })
 })

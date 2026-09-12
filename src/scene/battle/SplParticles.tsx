@@ -22,6 +22,7 @@ import {
   texture, varying, vec4,
 } from 'three/tsl'
 import { splTexture } from '../../engine/battle/spl/texture'
+import { retireTexture } from '../retireTexture'
 import { SplShow, type SplCue, type SplGroup } from './splDraw'
 import { splBasis, type SplBasis, type Vec3 } from './splPlace'
 
@@ -166,7 +167,8 @@ export function SplParticles({
     for (const r of rigs) {
       r.geometry.dispose()
       r.material.dispose()
-      r.map.dispose()
+      // 입자 그림은 미뤄서 버린다 — 1,765장 중 780장이 32×32다 (REPAIR §48)
+      retireTexture(r.map)
     }
   }, [rigs])
 

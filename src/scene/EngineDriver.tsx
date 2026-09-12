@@ -32,6 +32,7 @@ import { spinBike } from './BikeModel'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
 import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
+import { tickRetiredTextures } from './retireTexture'
 import { distortionBridge } from '../engine/world/distortion'
 import { surfaceHeading, surfaceQuaternion } from '../engine/actor/distortionSurface'
 import { distortionCascadePose } from './distortion'
@@ -317,6 +318,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     // `renderer.init()`이 끝난 것만으로 조작을 돌려주면 아직 안 선 씬을 걷는다
     // (기획서 §6.2). 이미 `live`면 스토어가 곧바로 되돌아온다
     useRendererStore.getState().markPresented(generation.current)
+    // 한 장이 나갔다. 버리기로 한 그림은 여기서만 줄어든다 (REPAIR §48)
+    tickRetiredTextures()
     // 무엇으로 그렸는지를 남긴다 — 바뀔 때만 쓴다 (프레임마다 쓰면 값이 든다)
     if (sceneRefs.stage.camera !== state.camera) sceneRefs.stage.camera = state.camera
     if (sceneRefs.stage.scene !== state.scene) sceneRefs.stage.scene = state.scene
