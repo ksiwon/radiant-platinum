@@ -211,3 +211,23 @@ function distObserver(page) {
     bestMove: async () => unknown(NO_SRC),
   }
 }
+
+// Install before walking into the target map. The driver can finish its dialog
+// inside settle(), before its next snapshot observes that any script ran.
+export function watchMapScene(targetMap) {
+  globalThis.__rpMapSceneWatch?.disconnect()
+  let ran = false
+  const read = () => {
+    const m = document.documentElement.dataset
+    if (Number(m.map) === targetMap && (m.talk === '1' || m.script === '1' || m.scene === 'battle')) ran = true
+  }
+  const observer = new MutationObserver(read)
+  observer.observe(document.documentElement, {
+    attributes: true, attributeFilter: ['data-map', 'data-talk', 'data-script', 'data-scene'],
+  })
+  read()
+  globalThis.__rpMapSceneWatch = {
+    finish: () => { read(); observer.disconnect(); return ran },
+    disconnect: () => observer.disconnect(),
+  }
+}

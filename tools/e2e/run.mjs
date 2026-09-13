@@ -1944,6 +1944,15 @@ if (!(haveRom && haveBdsp)) {
             blocked(`개발 서버가 대답을 안 한다 (${dev} · ${String(alive.why)}`
               + ` · ${String(alive.ms)}ms) — 게임을 안 열었으므로 잰 것이 없다`)
           }
+          // Prepare the development module graph separately from the timed test page.
+          // HTTP readiness alone does not mean all first-use modules are transformed.
+          const warm = await page.context().newPage()
+          try {
+            await warm.goto(`${dev}/?assets=opfs`, { waitUntil: 'load', timeout: 300_000 })
+            await waitBoot(warm)
+          } catch (e) {
+            blocked(`개발 모듈 준비 실패 — ${String(e.message ?? e)}`)
+          } finally { await warm.close() }
           await page.goto(`${dev}/?assets=opfs`, { waitUntil: 'load' })
           const boot0 = await waitBoot(page)
           assert(boot0.startsWith('install:'),

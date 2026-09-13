@@ -26,7 +26,7 @@
 // `scripts_route_202.s` · `scripts_twinleaf_town_player_house_1f.s`). 한때
 // 이것을 게임의 결함으로 의심했는데, 막고 있던 것은 전부 **이 하네스가 건너뛴
 // 걸음**이었다.
-import { makeObserver } from './observe.mjs'
+import { makeObserver, watchMapScene } from './observe.mjs'
 import { makeStall, SLOW, STALLED } from './budget.mjs'
 import {
   PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, planPath, TILE_TABLE,
@@ -1519,6 +1519,7 @@ export async function driveStory(page, {
     //    `var 16514 == 0`. 장면이 주인공을 북으로 걷게 하고 안쪽으로 워프한다
     // ⚠️ **한 번에 못 밟는 것이 정상이다.** 이 칸은 구역 안쪽 깊숙이 있고
     // 가는 길에 사람도 지형도 있다 — 되돌아가서 다시 간다
+    await page.evaluate(watchMapScene, 311)
     let stood = '안 해 봤다'
     let inside = await now()
     for (let t = 0; t < 3 && inside.map !== 311 && room() > 0; t++) {
@@ -1530,6 +1531,7 @@ export async function driveStory(page, {
         inside = await now()
       }
     }
+    const ranDuringEntry = await page.evaluate(() => globalThis.__rpMapSceneWatch.finish())
     if (!await mark('안쪽으로 들어섰다', inside.map === 311, `밟기 ${stood}`)) {
       return { ok: false, stages, at: await snapshot(), contract }
     }
@@ -1563,7 +1565,7 @@ export async function driveStory(page, {
      * 간격의 관측 4회**이지 렌더 프레임 4장이 아니다. 프레임을 세는 자리가
      * 아니므로 그렇게 적지 않는다
      */
-    let ran = false
+    let ran = ranDuringEntry
     let quiet = 0
     while (Date.now() < sceneTill) {
       if (varsKnown && (await lakeVars()).visited === 1) break

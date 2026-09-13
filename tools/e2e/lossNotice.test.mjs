@@ -39,3 +39,21 @@ it.each(['display:none', 'visibility:hidden'])('does not pass an invisible notic
     expect(await page.evaluate(() => globalThis.__rpLossNotice)).toBeNull()
   } finally { await page.close() }
 })
+
+it.each([311, 334])('records a completed scene only in the target map (%s)', async (map) => {
+  const { watchMapScene } = await import('./observe.mjs')
+  const page = await browser.newPage()
+  try {
+    await page.setContent('<main>game</main>')
+    await page.evaluate(watchMapScene, 311)
+    await page.evaluate(async (id) => {
+      const m = document.documentElement.dataset
+      m.map = String(id)
+      m.scene = 'overworld'
+      m.script = '1'
+      await new Promise((done) => requestAnimationFrame(done))
+      delete m.script
+    }, map)
+    expect(await page.evaluate(() => globalThis.__rpMapSceneWatch.finish())).toBe(map === 311)
+  } finally { await page.close() }
+})
