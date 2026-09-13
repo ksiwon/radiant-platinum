@@ -14,6 +14,7 @@
 |---|---|---|
 | `manifest.webmanifest` | 자체 | PWA 매니페스트. 손으로 쓴 JSON |
 | `sw.js` | 자체 | 앱 셸 전용 service worker. 손으로 쓴 JS |
+| `_headers` | 자체 | Cloudflare Workers 응답 헤더(CSP·COOP·HSTS·nosniff·Referrer-Policy). `netlify.toml` `[[headers]]`를 옮긴 것. 허용 목록에 없으면 빌드에서 빠져 **헤더가 한 줄도 안 나간다**(2026-09-13 실측) |
 | `assets/radiant-platinum-favicon.svg` | 자체 | 파비콘 31KB. 아이콘을 128px 무손실로 담은 SVG |
 | `assets/radiant-platinum-favicon.png` | 자체 | 파비콘 64px 7.4KB — SVG 파비콘을 안 받는 브라우저용 |
 | `assets/radiant-platinum-icon.png` | 자체 | 앱 아이콘 512px 254KB · apple-touch-icon |
