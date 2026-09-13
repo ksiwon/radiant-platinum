@@ -285,7 +285,7 @@ export const SUITES = {
     contract: 1,
     roster: () => listRoster(GPU_LOSS_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
-      'tools/e2e/gpuLoss.mjs',
+      'tools/e2e/gpuLoss.mjs', 'tools/e2e/lossNotice.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/e2e/budget.mjs',
       'tools/devServer.mjs', 'tools/gpuFlags.mjs', 'tools/distribution/evidence.mjs',

@@ -25,6 +25,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { chromium } from 'playwright'
+import { observeLossNotice } from './lossNotice.mjs'
 import { freePort, startVite } from '../devServer.mjs'
 import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import {
@@ -318,6 +319,7 @@ try {
       .observe(document.documentElement, { attributes: true, attributeFilter: ['data-renderer', 'data-tile'] })
   })
 
+  await page.evaluate(observeLossNotice)
   await page.keyboard.down(walkKey)
   // ⚠️ **누른 채로 죽인다.** 놓고 죽이면 「멎어서 안 움직인 것」과 「아무도
   // 안 눌러서 안 움직인 것」이 같은 모양이 된다
@@ -341,8 +343,10 @@ try {
     add('03', '진짜 장치 손실을 쏜다', 'PASS', 'WEBGL_lose_context.loseContext()')
 
     // ── 사람에게 무엇이 보이는가 ──────────────────────────────────────────
-    await page.waitForSelector('[role="alertdialog"]', { timeout: 30_000 })
-    const said = await page.locator('[role="alertdialog"]').innerText()
+    // Capture text while visible; recovery can remove the dialog between locator calls.
+    const notice = await page.waitForFunction(() => globalThis.__rpLossNotice, null, { timeout: 30_000 })
+    const said = await notice.jsonValue()
+    await notice.dispose()
     add('04', '흰 화면이 아니라 설명이 뜬다', 'PASS', said.split('\n')[0])
 
     // ── 그 사이에 아무도 못 움직인다 ──────────────────────────────────────
