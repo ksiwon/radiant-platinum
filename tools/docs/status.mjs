@@ -66,7 +66,18 @@ function blockers() {
 }
 
 /**
+ * REPAIR §0의 갈래. **임자 문서의 범례와 같은 여섯이고 차례까지 같다** —
+ * 대장이 이 차례로 줄을 묶는다. `끝`은 마지막이고 대장에는 **수만** 남는다
+ */
+const REPAIR_KINDS = ['결함', '미구현', '검증부족', '사람 판단', '범위 밖', '끝']
+
+/**
  * 우리가 만든 자리가 어긋난 것 (REPAIR.md §0).
+ *
+ * ⚠️ **줄 수를 남은 일의 수로 안 센다.** 그 표에는 끝난 줄도 남는다 —
+ * 무엇을 어떻게 닫았는지가 다음 사람에게 필요한 근거라서다. 한때 대장이 그 21줄을
+ * 그대로 「남은 수」로 적었고, 그중 **끝난 16줄**이 거기 들어 있었다 — 임자 문서
+ * §11은 다섯이라고 적어 둔 채로다. 그래서 임자 표에 **갈래 칸**을 두고 그것으로 갈라 센다.
  *
  * ⚠️ **그 문서는 다 하면 지운다** — 제 머리말에 그렇게 적혀 있다. 없으면 이
  * 갈래가 비는 것이 맞고, 여기서 터지면 안 된다
@@ -75,8 +86,14 @@ function repair() {
   let text
   try { text = read('REPAIR.md') } catch { return [] }
   // ⚠️ **`순서` 칸은 남은 것이 둘 이상일 때만 있다.** 하나로 줄면 순서가 없다
-  return tableAfter(text, '| | 무엇이 어긋났나 | 값 |')
-    .map(([id, what, size]) => ({ id: plain(id), what: plain(what), size: plain(size) }))
+  return tableAfter(text, '| | 무엇이 어긋났나 | 갈래 | 값 |')
+    .map(([id, what, kind, size]) => {
+      const at = plain(kind)
+      // ⚠️ **모르는 갈래를 조용히 지나치지 않는다.** 오타 하나가 그 줄을
+      // 「끝난 것도 남은 것도 아닌」 어딘가로 보내버린다
+      if (!REPAIR_KINDS.includes(at)) throw new Error(`REPAIR §0의 갈래를 모른다: ${at}`)
+      return { id: plain(id), what: plain(what), kind: at, size: plain(size) }
+    })
 }
 
 /** 원작에 있는데 우리는 반쯤이거나 없는 것 (PARITY.md) */
@@ -125,6 +142,9 @@ function render() {
   const b = blockers(), r = repair(), p = parity(), g = gaps(), k = known()
   const half = p.filter((x) => x.state === '◐').length
   const none = p.filter((x) => x.state === '✖').length
+  // ⚠️ **끝난 줄은 남은 수에 안 든다.** 근거로 임자 문서에만 남긴다
+  const open = r.filter((x) => x.kind !== '끝')
+  const closed = r.length - open.length
 
   const out = []
   const say = (...lines) => out.push(...lines)
@@ -142,7 +162,7 @@ function render() {
     '| 갈래 | 남은 수 | 임자 |',
     '|---|---:|---|',
     `| 공개 배포를 막을 수 있는 자리 | 재는 자리 ${b.length} | [DEPLOY.md](DEPLOY.md) §1 |`,
-    `| 우리가 만든 자리가 어긋난 것 | ${r.length} | [REPAIR.md](REPAIR.md) |`,
+    `| 우리가 만든 자리가 어긋난 것 | ${open.length} (끝난 ${closed}은 안 센다) | [REPAIR.md](REPAIR.md) |`,
     `| 원작 대비 반쯤 · 없음 | ${half} · ${none} | [PARITY.md](PARITY.md) |`,
     `| 화면에 아직 안 서는 것 | ${g.length} | [3D_GAP_AUDIT.md](3D_GAP_AUDIT.md) §5 |`,
     `| 알고 남겨 둔 것 | ${k.length} | [PLAN.md](PLAN.md) §16.11 |`,
@@ -156,7 +176,7 @@ function render() {
     '',
     '## 1. 공개 배포를 막을 수 있는 자리',
     '',
-    '**아홉이 다 열려 있다는 뜻이 아니다.** 각자 `resolved()`로 그 자리에서 재고,',
+    `**재는 자리 ${b.length}개가 다 열려 있다는 뜻이 아니다.** 각자 \`resolved()\`로 그 자리에서 재고,`,
     '재서 풀렸으면 스스로 빠진다 (`tools/distribution/blockers.mjs`). 지금 몇 개가',
     '열려 있는지는 `pnpm release:check` 한 줄로 나온다.',
     '',
@@ -172,11 +192,19 @@ function render() {
     '원작에 없던 것을 우리가 만들면서 어긋난 자리다. 다 하면 임자 문서가 비고,',
     '빈 문서는 지운다.',
     '',
+    `⚠️ **여기 서는 것은 ${open.length}개다.** 임자 표에는 끝난 줄 ${closed}개가 근거로 남아`,
+    '있어서 그쪽 줄 수는 더 크다 — 그것을 남은 수로 읽지 않는다.',
+    '',
   )
-  if (r.length === 0) say('다 했다 — 임자 문서를 지웠다.')
+  if (open.length === 0) say('다 했다 — 임자 문서에는 근거만 남았다.')
   else {
-    say('| | 무엇이 어긋났나 | 값 |', '|---|---|---|')
-    for (const x of r) say(`| ${x.id} | ${x.what} | ${x.size} |`)
+    say('| | 갈래 | 무엇이 어긋났나 | 값 |', '|---|---|---|---|')
+    // 갈래 차례대로 묶는다 — 무엇부터 볼지가 그 차례다
+    for (const kind of REPAIR_KINDS) {
+      for (const x of open.filter((y) => y.kind === kind)) {
+        say(`| ${x.id} | ${x.kind} | ${x.what} | ${x.size} |`)
+      }
+    }
   }
 
   say(

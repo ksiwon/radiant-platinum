@@ -50,6 +50,40 @@ describe('남은 일 대장', () => {
   })
 })
 
+// ⚠️ **대장과 임자가 같은 수를 말해야 한다.** 대장은 REPAIR §0 표에서 갈래로
+// 갈라 세는데, 그 문서의 §11은 남은 절 번호를 **손으로 적은 문장**으로 든다 —
+// 둘이 갈라졌던 자리가 실제로 있었다(대장 21 vs §11 다섯). 한쪽만 고치면
+// 다음 사람이 어느 쪽을 믿을지 모른다
+describe('REPAIR §0의 갈래와 §11의 문장', () => {
+  const repair = readFileSync(resolve(ROOT, 'docs/REPAIR.md'), 'utf8')
+
+  /** §0 표에서 갈래가 `끝`이 아닌 줄의 절 번호 */
+  const openIds = () => {
+    const lines = repair.split(/\r?\n/)
+    const head = lines.findIndex((l) => l.trim() === '| | 무엇이 어긋났나 | 갈래 | 값 |')
+    expect(head, '§0 표 머리글').toBeGreaterThan(-1)
+    const out = []
+    for (let i = head + 2; i < lines.length && lines[i]?.startsWith('|'); i++) {
+      const cells = lines[i].split('|').slice(1, -1).map((c) => c.trim())
+      if (cells[2] !== '끝') out.push(cells[0])
+    }
+    return out
+  }
+
+  it('§11의 「남은 것」과 같은 절을 가리킨다', () => {
+    const at = repair.indexOf('## 11. 남은 것')
+    expect(at, '§11').toBeGreaterThan(-1)
+    const said = repair.slice(at, at + 400)
+    // 머리말 다음 문장이 남은 것을 세는 줄이다 — 「… 다섯이다.」까지가 그 목록이고
+    // 그 뒤는 끝난 것의 목록이라, 세는 문장이 끝나는 자리에서 자른다
+    const cut = said.indexOf('이다.')
+    expect(cut, '「…이다.」로 끝나는 세는 문장').toBeGreaterThan(-1)
+    const remaining = [...said.slice(0, cut).matchAll(/§\d+/g)].map((m) => m[0])
+    expect(remaining.length, '세는 문장에 절 번호가 없다').toBeGreaterThan(0)
+    expect([...remaining].sort()).toEqual([...openIds()].sort())
+  })
+})
+
 // ⚠️ **문서를 옮기거나 지우면 다른 문서의 링크가 조용히 죽는다.** 120개가 서로를
 // 걸고 있어서 눈으로는 못 센다 — 특히 「다 하면 이 문서는 지운다」가 적힌
 // 문서들(REPAIR)이 그렇다
