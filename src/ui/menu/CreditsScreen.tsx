@@ -3,11 +3,15 @@
 // 명예의 전당이 리포트를 다 쓰면 이 화면이 뜨고, 두루마리가 다 흐르면 타이틀로
 // 나간다. 원작의 차례가 그렇다 — 전당 → 리포트 → 크레딧 → 리셋.
 //
-// ⚠️ **글은 롬의 대사 뱅크 548 237줄이다.** 우리가 한 글자도 짓지 않고, 색 부호와
-// 앞의 빈칸까지 그대로 찍는다.
+// ⚠️ **글은 롬의 대사 뱅크 548이다.** 우리가 한 글자도 짓지 않고, 색 부호와
+// 앞의 빈칸까지 그대로 찍는다. 줄 수는 판마다 다르다 — 미국 237 · 한국 209 ·
+// 일본 184.
 //
-// ⚠️ **자리와 정렬은 디컴프에서 구운 표다** (`pnpm gen:credits`). 어느 줄이 몇
-// 픽셀째에 서고 어느 줄이 가운데인지가 롬 자료에 없다.
+// ⚠️ **자리와 정렬은 사용자 롬의 오버레이 #99에서 온다** (`data/credits.<판>.json`).
+// 어느 줄이 몇 픽셀째에 서고 어느 줄이 가운데인지가 롬 자료(NARC)에는 없고 코드 안
+// 표에 있다. 한동안 미국 표 237줄을 **뱅크 길이로 잘라** 썼는데, 그것은 범위만
+// 지키고 자리는 안 지킨다 — 일본판은 목록이 127번째 줄부터 갈려 열네 자리가
+// 어긋났고, 한국판은 뱅크 237칸 중 뒤 28칸이 비어서 빈 줄 스물여덟이 흘렀다.
 //
 // ⚠️ **넘기는 것은 한 번 깬 뒤부터다** — 원작이 `gameCompleted`일 때만 START를
 // 받는다. 처음 끝낸 사람에게는 흐르는 것을 보여 준다.
@@ -22,8 +26,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router'
 import { music } from '../../engine/audio/music'
-import { creditsImage, loadCreditsAtlas } from '../../data/gameData'
-import type { CreditsAtlas } from '../../data/schema'
+import { creditsImage, loadCreditRows, loadCreditsAtlas } from '../../data/gameData'
+import type { CreditRows, CreditsAtlas } from '../../data/schema'
 import { atlasUrl } from '../../data/providers/atlas'
 import { loadUiText } from '../../data/uiText'
 import { parseMessage } from '../../engine/script/text'
@@ -135,14 +139,24 @@ export function CreditsScreen() {
   const cleared = useSaveStore((s) => s.hallOfFame.total > 0)
 
   const [lines, setLines] = useState<string[] | null>(null)
+  /** 그 판의 배치표. 글과 **같은 판**이라야 자리가 맞는다 */
+  const [table, setTable] = useState<CreditRows | null>(null)
   const [atlas, setAtlas] = useState<CreditsAtlas | null>(null)
   const [frame, setFrame] = useState(0)
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadUiText('credits', locale), loadCreditsAtlas()])
-      .then(([text, meta]) => { if (alive) { setLines(text); setAtlas(meta) } })
-      .catch(() => { if (alive) setLines([]) })
+    void Promise.all([loadUiText('credits', locale), loadCreditRows(locale), loadCreditsAtlas()])
+      .then(([text, rows, meta]) => {
+        if (!alive) return
+        setLines(text)
+        setTable(rows)
+        setAtlas(meta)
+      })
+      // ⚠️ **자리표를 못 받아도 미국 표로 안 떨어진다.** 떨어지면 그 판의 화면이
+      // 어긋난 채로 130초를 흐르고, 그것은 「안 나오는 것」보다 알아채기 어렵다.
+      // 빈 표면 롬 목록이 한 줄도 안 흐르고 **우리 몫만** 지나간 뒤 타이틀로 나간다
+      .catch(() => { if (alive) { setLines([]); setTable({ rows: [] }) } })
     return () => { alive = false }
   }, [locale])
 
@@ -161,8 +175,8 @@ export function CreditsScreen() {
   // ⚠️ **경과 시간으로 센다.** 프레임 수로 세면 느린 기계에서 크레딧이 늘어진다
   const started = useRef<number | null>(null)
   useEffect(() => {
-    if (lines === null) return
-    const until = creditsFrames(creditsRows(lines.length, OURS.map((l) => l.centered ?? false)))
+    if (lines === null || table === null) return
+    const until = creditsFrames(creditsRows(table.rows, OURS.map((l) => l.centered ?? false)))
     let raf = 0
     const tick = (now: number): void => {
       started.current ??= now
@@ -173,7 +187,7 @@ export function CreditsScreen() {
     }
     raf = requestAnimationFrame(tick)
     return () => { cancelAnimationFrame(raf) }
-  }, [lines, leave])
+  }, [lines, table, leave])
 
   // 넘기기. 한 번 깬 리포트에서만 받는다
   useEffect(() => {
@@ -188,16 +202,21 @@ export function CreditsScreen() {
     return () => { window.removeEventListener('keydown', onKey, true) }
   }, [cleared, leave])
 
-  const scene = atlas ? creditsScene(frame, atlas.count) : 0
-  // ⚠️ **뱅크 길이에서 끊는다** — 일본 롬은 184줄뿐이라 표를 끝까지 돌리면
-  // 뒤쪽 53줄이 빈 채로 1분 가까이 흐른다
-  const rows = lines === null ? [] : creditsRows(lines.length, OURS.map((l) => l.centered ?? false))
+  /** 롬 목록만 흐르는 데 걸리는 프레임. **배경 셋을 나누는 자가 이것이다** */
+  const romFrames = table === null ? 0 : creditsFrames(table.rows)
+  const scene = atlas ? creditsScene(frame, atlas.count, romFrames) : 0
+  const rows = table === null ? [] : creditsRows(table.rows, OURS.map((l) => l.centered ?? false))
+  /**
+   * 그 줄의 글. 롬의 목록을 지나면 우리 몫이다.
+   *
+   * ⚠️ **자리를 세는 자가 배치표다.** 뱅크가 표보다 길 수 있다 — 한국 롬의
+   * 뱅크는 237칸인데 배치표는 209줄이고 뒤 28칸이 빈 글이다. 뱅크 길이로 세면
+   * 우리 몫이 그 28칸만큼 밀려 엉뚱한 줄에 붙는다
+   */
+  const romLines = table?.rows.length ?? 0
   const shown = creditsAt(frame, rows)
-  /** 그 줄의 글. 롬의 목록을 지나면 우리 몫이다 */
   const textOf = (index: number): string =>
-    index < (lines?.length ?? 0)
-      ? lines?.[index] ?? ''
-      : OURS[index - Math.min(lines?.length ?? 0, rows.length)]?.text ?? ''
+    index < romLines ? lines?.[index] ?? '' : OURS[index - romLines]?.text ?? ''
 
   return (
     <div className={css.backdrop}>

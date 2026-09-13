@@ -7,7 +7,7 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   bagSpriteSchema,
-  boxWallpapersSchema, creditsSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
@@ -18,7 +18,7 @@ import {
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BagSprite,
-  type BoxWallpapers, type CreditsAtlas, type Signposts, type Item, type ItemIcons, type Labels,
+  type BoxWallpapers, type CreditRows, type CreditsAtlas, type Signposts, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type PoketchMapFile,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
@@ -331,6 +331,18 @@ export function loadCreditsAtlas(): Promise<CreditsAtlas> {
       for (let i = 0; i < meta.count; i++) await pinAtlas(creditsImage(i))
       return meta
     })
+}
+
+/**
+ * 크레딧 두루마리의 배치표 — **그 판의 것** (PARITY §8.12).
+ *
+ * ⚠️ **`creditsTable.ts`의 237줄로 대신하지 않는다.** 그것은 미국 오버레이를
+ * 디컴프에서 구운 표이고, 한국(209)·일본(184)은 줄 수부터 다르다. 설치본에는
+ * 설치한 판 하나만 있으므로 없는 판을 물으면 그대로 실패한다 — 조용히 미국
+ * 표로 떨어지면 그 화면이 어긋난 채로 흐른다
+ */
+export function loadCreditRows(locale: DataLocale): Promise<CreditRows> {
+  return fetchJson(`credits.${locale}.json`, (v) => creditRowsSchema.parse(v))
 }
 
 /** 간판 판 그림 아틀라스. 그림은 `data/signposts.png`다 */

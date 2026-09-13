@@ -143,7 +143,9 @@ export const GROUPS = [
   {
     name: 'credits',
     make: 'pnpm extract:credits',
-    match: (p) => p === 'data/credits.json' || /^data\/credits\d+\.png$/.test(p),
+    // 배치표는 판마다 한 벌이다 (`credits.<판>.json` — PARITY §8.12)
+    match: (p) => p === 'data/credits.json' || /^data\/credits\d+\.png$/.test(p)
+      || /^data\/credits\.[a-z]+\.json$/.test(p),
   },
   {
     name: 'townMap',

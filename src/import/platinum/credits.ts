@@ -23,6 +23,7 @@
 // ⚠️ **노드 쪽(`tools/extract/credits.js`)과 픽셀로 같아야 한다.** PNG 바이트는
 // deflate 구현이 달라 안 맞는다 (`png.ts` 머리말)
 import { narcEntry } from './nds'
+import { creditsLocator, type CreditsSite } from './validate'
 import { maybeLz77, palettes, chars, screen, drawTile, TILE } from './ntrgfx'
 import { encodePng } from './png'
 import {
@@ -30,6 +31,55 @@ import {
 } from './convertTypes'
 
 const NARC = '/graphic/ending.narc'
+
+/** 배치표 한 줄 — `{줄번호 u16, 띠 위 y u16, 가운데정렬 u16}` */
+const ROW_BYTES = 6
+
+/**
+ * 크레딧 두루마리의 **배치표**를 오버레이에서 읽는다 (PARITY §8.12).
+ *
+ * ⚠️ **지역판마다 다른 표다.** 한동안 미국 오버레이에서 구운 237줄을 뱅크 길이로
+ * 잘라 썼는데, 그것으로는 두 판이 틀린다 — 일본판은 목록이 127번째 줄부터 아예
+ * 갈려서 y 간격이 **열네 자리** 어긋나고, 한국판은 뱅크가 237칸이지만 뒤 28칸이
+ * 비어 있어 아무것도 없는 화면이 28줄만큼 흐른다. 줄 수(237 · 209 · 184)도
+ * 마지막 자리(7581 · 7530 · 7544)도 다르다.
+ *
+ * ⚠️ **자리를 그냥 믿지 않는다.** `supported.json`이 적어 준 자리에서 읽되
+ * **표 자신의 모양으로 되짚는다** — 줄 번호가 0부터 하나씩 오르고, y가 뒤로
+ * 가며 줄지 않고, 가운데 정렬 칸이 0이나 1이고, 적힌 줄 수에서 정확히 끊긴다.
+ * 상금표가 0 패딩 위에서 검사를 통과했던 자리라(`supported.json`의 `prizeNote`)
+ * 모양 검사를 표 자신에게서 받는다
+ */
+export function creditRows(
+  overlay: Uint8Array, site: CreditsSite,
+): { at: number; centered: boolean }[] {
+  const view = new DataView(overlay.buffer, overlay.byteOffset, overlay.byteLength)
+  const need = site.offset + (site.rows + 1) * ROW_BYTES
+  if (site.offset < 0 || need > overlay.byteLength) {
+    throw new Error(`크레딧 배치표가 오버레이 밖이다 (0x${site.offset.toString(16)} · ${String(site.rows)}줄)`)
+  }
+
+  const rows: { at: number; centered: boolean }[] = []
+  let last = -1
+  for (let i = 0; i < site.rows; i++) {
+    const p = site.offset + i * ROW_BYTES
+    const line = view.getUint16(p, true)
+    const y = view.getUint16(p + 2, true)
+    const centered = view.getUint16(p + 4, true)
+    if (line !== i) throw new Error(`크레딧 배치표 ${String(i)}번째 줄 번호가 ${String(line)}이다`)
+    if (y < last) throw new Error(`크레딧 배치표 ${String(i)}번째 자리 ${String(y)}가 앞보다 위다`)
+    if (centered > 1) throw new Error(`크레딧 배치표 ${String(i)}번째 정렬 값이 ${String(centered)}이다`)
+    last = y
+    rows.push({ at: y, centered: centered !== 0 })
+  }
+  // ⚠️ **끊기는 자리까지 봐야 줄 수가 확정된다.** 여기를 안 보면 「앞 n줄이
+  // 맞더라」만 확인한 것이라, 우리 표의 줄 수가 틀려도 조용히 지나간다
+  const after = view.getUint16(site.offset + site.rows * ROW_BYTES, true)
+  if (after === site.rows) {
+    throw new Error(`크레딧 배치표가 ${String(site.rows)}줄에서 안 끝난다 — 더 이어진다`)
+  }
+  return rows
+}
 
 /** 장수. 일곱 장면이 이 셋을 돌려 쓴다 */
 const COUNT = 3
@@ -76,6 +126,14 @@ export async function convertCredits(ctx: ConvertContext): Promise<Produced> {
 
   check(ctx)
   put(ctx, out, 'data/credits.json', json({ count: COUNT, scenes }))
+
+  // ⚠️ **배치표는 설치한 판 하나만 나온다.** 노드 쪽(`tools/extract/credits.js`)은
+  // 롬 셋을 열어 세 벌을 굽지만 설치본에는 롬이 하나뿐이다 (`pokedex.ts`와 같다)
+  const site = creditsLocator(ctx.release)
+  const overlay = await ctx.fs.overlay(site.overlay)
+  if (!overlay) throw new Error(`오버레이 ${String(site.overlay)}을 못 읽었다`)
+  put(ctx, out, `data/credits.${ctx.locale}.json`, json({ rows: creditRows(overlay, site) }))
+
   ctx.onProgress?.(COUNT + 1, COUNT + 1)
   return out
 }

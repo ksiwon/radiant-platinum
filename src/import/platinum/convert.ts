@@ -330,11 +330,14 @@ export const GROUPS: readonly GroupSpec[] = [
   },
   { name: 'berries', outputs: ['data/berries.json'], converter: 1, convert: convertBerries },
   {
+    // ⚠️ **배치표는 설치한 판 하나만 나온다** — 노드 쪽은 롬 셋을 열어 세 벌을
+    // 굽지만 설치본에는 롬이 하나뿐이다 (`credits.ts` 머리말)
     name: 'credits',
     outputs: [
-      'data/credits.json', 'data/credits0.png', 'data/credits1.png', 'data/credits2.png',
+      'data/credits.json', 'data/credits.*.json',
+      'data/credits0.png', 'data/credits1.png', 'data/credits2.png',
     ],
-    converter: 1,
+    converter: 2,
     convert: convertCredits,
   },
   { name: 'frontier', outputs: ['data/frontier.json'], converter: 1, convert: convertFrontier },

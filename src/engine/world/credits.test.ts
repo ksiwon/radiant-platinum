@@ -11,7 +11,7 @@ import {
 } from './credits'
 import {
   CREDIT_INDENT, CREDIT_LINE_HEIGHT, CREDIT_LINES, CREDIT_ROWS,
-  CREDIT_SCROLL_PER_FRAME, CREDIT_SCROLL_START, CREDIT_VIEW_HEIGHT,
+  CREDIT_SCROLL_PER_FRAME, CREDIT_SCROLL_START, CREDIT_VIEW_HEIGHT, type CreditRow,
 } from './creditsTable'
 import { DATA, withData } from '../../data/romData.testkit'
 
@@ -76,27 +76,33 @@ describe('흐르는 자리', () => {
   })
 })
 
-describe('짧은 뱅크', () => {
-  it('⚠️ 일본 롬은 184줄이다 — 없는 줄은 안 흐르고 그만큼 일찍 끝난다', () => {
-    const ja = 184
-    const rows = creditsRows(ja)
-    expect(rows).toHaveLength(ja)
+describe('짧은 판', () => {
+  // ⚠️ **길이만 맞추는 것으로는 안 닫힌다.** 한동안 미국 표를 뱅크 길이로 잘라
+  // 썼는데, 그것은 「범위를 안 넘는다」만 지키고 **자리는 안 지킨다** — 일본
+  // 목록은 127번째 줄부터 아예 갈리므로 잘라낸 표의 간격이 그 뒤로 어긋난다
+  it('짧은 표는 그만큼 일찍 끝난다', () => {
+    const short = CREDIT_ROWS.slice(0, 184)
+    const rows = creditsRows(short)
+    expect(rows).toHaveLength(184)
     expect(creditsFrames(rows)).toBeLessThan(CREDITS_FRAMES)
     for (let f = 0; f < CREDITS_FRAMES; f += 37) {
-      for (const line of creditsAt(f, rows)) expect(line.index).toBeLessThan(ja)
+      for (const line of creditsAt(f, rows)) expect(line.index).toBeLessThan(184)
     }
   })
 
-  it('표보다 긴 수를 줘도 표에서 멈춘다', () => {
-    expect(creditsRows(9999)).toHaveLength(CREDIT_LINES)
-    expect(creditsFrames(creditsRows(9999))).toBe(CREDITS_FRAMES)
+  it('⚠️ 받은 표를 그대로 쓴다 — 미국 표를 섞지 않는다', () => {
+    const own: CreditRow[] = [
+      { at: 0, centered: true }, { at: 40, centered: false }, { at: 900, centered: false },
+    ]
+    expect(creditsRows(own)).toEqual(own)
+    expect(creditsFrames(creditsRows(own))).toBe(900 + 16 + 240)
   })
 })
 
 describe('우리 몫', () => {
   it('⚠️ 롬의 마지막 줄과 화면 하나만큼 떨어진다 — 두 목록이 같이 안 보인다', () => {
     const tail = [true, false, false]
-    const rows = creditsRows(CREDIT_LINES, tail)
+    const rows = creditsRows(CREDIT_ROWS, tail)
     expect(rows).toHaveLength(CREDIT_LINES + tail.length)
     const lastRom = rows[CREDIT_LINES - 1]!.at
     const firstOurs = rows[CREDIT_LINES]!.at
@@ -112,7 +118,7 @@ describe('우리 몫', () => {
   })
 
   it('가운데 정렬 표시가 그대로 실린다', () => {
-    const rows = creditsRows(CREDIT_LINES, [true, false])
+    const rows = creditsRows(CREDIT_ROWS, [true, false])
     expect(rows[CREDIT_LINES]!.centered).toBe(true)
     expect(rows[CREDIT_LINES + 1]!.centered).toBe(false)
   })
@@ -129,19 +135,90 @@ describe('배경 넘기기', () => {
   })
 })
 
-const maybe = withData('dialogue/index.json')
+const LOCALES = ['en', 'ko', 'ja'] as const
+const maybe = withData(
+  'dialogue/index.json', ...LOCALES.map((l) => `credits.${l}.json`))
+
+const read = <T,>(rel: string): T => JSON.parse(readFileSync(resolve(DATA, rel), 'utf8')) as T
+const bank = (locale: string): string[] =>
+  read<string[]>(`dialogue/${locale}/${String(CREDITS_BANK)}.json`)
+const layout = (locale: string): CreditRow[] =>
+  read<{ rows: CreditRow[] }>(`credits.${locale}.json`).rows
 
 maybe('롬의 글과 맞댄다', () => {
-  const lines: string[] = JSON.parse(
-    readFileSync(resolve(DATA, 'dialogue/ko', `${String(CREDITS_BANK)}.json`), 'utf8'),
-  )
-
-  it('⚠️ 뱅크의 줄 수가 표와 같다 — 어긋나면 빈 줄이 흐른다', () => {
-    expect(lines).toHaveLength(CREDIT_LINES)
+  /**
+   * ⚠️ **이것이 이 표가 맞다는 근거다.** 사용자 롬의 오버레이 #99에서 읽은 미국
+   * 237줄과, 디컴프의 `Unk_ov99_021D4CE4`를 구운 `CREDIT_ROWS`가 **줄마다 같다.**
+   * 자리를 그 하나로 못 박고 나면 나머지 두 판은 같은 자를 그대로 댄 것이 된다
+   */
+  it('⚠️ 미국 롬에서 읽은 표가 디컴프 표와 줄마다 같다', () => {
+    expect(layout('en')).toEqual([...CREDIT_ROWS])
+    expect(CREDIT_LINES).toBe(237)
   })
 
-  it('가운데 정렬인 두 줄이 표지다 — 첫 줄에 색 부호가 붙어 있다', () => {
-    expect(lines[0]).toMatch(/^\{COLOR 1\}/)
-    expect(lines[1]!.length).toBeGreaterThan(0)
+  // ⚠️ **판마다 다른 표다.** 「미국 것을 잘라 쓰면 된다」가 아니라는 것을 수로 못 박는다
+  it('⚠️ 판마다 줄 수도 마지막 자리도 다르다', () => {
+    const size = Object.fromEntries(
+      LOCALES.map((l) => [l, layout(l).length]))
+    expect(size).toEqual({ en: 237, ko: 209, ja: 184 })
+    const last = Object.fromEntries(
+      LOCALES.map((l) => [l, layout(l).at(-1)!.at]))
+    expect(last).toEqual({ en: 7581, ko: 7530, ja: 7544 })
+  })
+
+  /**
+   * ⚠️ **빈 줄을 흘리지 않는다.** 한국 롬의 뱅크는 237칸인데 **뒤 28칸이 빈 글**
+   * 이다 — 뱅크 길이로 자르면 아무것도 없는 줄 스물여덟이 그대로 흐른다.
+   * 배치표의 줄 수가 곧 「글이 있는 줄」의 수여야 한다
+   */
+  it.each(LOCALES)('%s — 배치표 줄 수가 글이 있는 줄 수와 같다', (locale) => {
+    const lines = bank(locale)
+    const rows = layout(locale)
+    expect(rows.length).toBeLessThanOrEqual(lines.length)
+    // 표가 세는 줄은 다 글이 있다
+    expect(lines.slice(0, rows.length).filter((l) => l === '')).toEqual([])
+    // 표 뒤는 다 빈 글이다 — 흘릴 것이 없다
+    expect(lines.slice(rows.length).filter((l) => l !== '')).toEqual([])
+  })
+
+  it.each(LOCALES)('%s — 가운데 정렬인 두 줄이 표지다', (locale) => {
+    const rows = layout(locale)
+    expect(rows.flatMap((r, i) => (r.centered ? [i] : []))).toEqual([0, 1])
+    expect(bank(locale)[0]).toMatch(/^\{COLOR 1\}/)
+    expect(bank(locale)[1]!.length).toBeGreaterThan(0)
+  })
+
+  /**
+   * ⚠️ **미국 표를 잘라 쓰면 몇 줄이 틀리는지를 수로 남긴다.**
+   *
+   * 세 판의 줄 간격 자체가 다르다 — 이름 줄이 미국 21 · 한국 22 · 일본 24픽셀이고
+   * 마디 사이도 미국 56/130 · 한국 80/138 · 일본 48/64/168/280으로 갈린다.
+   * 그래서 미국 표를 길이로 자르면 **두 번째 줄부터** 어긋난다
+   */
+  it.each([['ko', 209, 207], ['ja', 184, 182]] as const)(
+    '⚠️ %s에 미국 표를 잘라 대면 %d줄 중 %d줄의 자리가 틀리다', (locale, all, wrong) => {
+      const rows = layout(locale)
+      expect(rows).toHaveLength(all)
+      const bad = rows.flatMap((r, i) => (CREDIT_ROWS[i]!.at === r.at ? [] : [i]))
+      expect(bad).toHaveLength(wrong)
+      // 표지 두 줄만 자리가 같다 — 0픽셀과 16픽셀이라 어느 판이든 같은 자리다
+      expect(bad[0]).toBe(2)
+      // ⚠️ **가운데 정렬은 세 판이 같다.** 「잘라 써도 정렬은 맞더라」가
+      // 「그러니 잘라 써도 된다」가 되지 않도록 그 사실을 여기 적어 둔다
+      expect(rows.map((r) => r.centered)).toEqual(CREDIT_ROWS.slice(0, all).map((r) => r.centered))
+    })
+
+  /** 줄 간격이 판마다 다르다 — 「같은 표가 옮겨 앉은 것」이 아니라는 증거다 */
+  it('⚠️ 이름 줄의 간격이 21 · 22 · 24로 갈린다', () => {
+    const pitch = (locale: string): number => {
+      const gaps = new Map<number, number>()
+      const rows = layout(locale)
+      for (let i = 1; i < rows.length; i++) {
+        const g = rows[i]!.at - rows[i - 1]!.at
+        gaps.set(g, (gaps.get(g) ?? 0) + 1)
+      }
+      return [...gaps].sort((a, b) => b[1] - a[1])[0]![0]
+    }
+    expect({ en: pitch('en'), ko: pitch('ko'), ja: pitch('ja') }).toEqual({ en: 21, ko: 22, ja: 24 })
   })
 })

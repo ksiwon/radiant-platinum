@@ -25,7 +25,8 @@
 'use strict'
 const fs = require('fs')
 const path = require('path')
-const { openRom, writeJson, ROOT } = require('./rom')
+const { openRom, writeJson, ROOT, LOCALES, sources } = require('./rom')
+const supported = require('../../src/import/platinum/supported.json')
 const { encodePng } = require('./png')
 
 const TILE = 8
@@ -33,6 +34,54 @@ const TILE = 8
 const COUNT = 3
 /** 위 화면의 첫 파일 번호 — 팔레트·타일·배치 */
 const TOP = { pal: 18, chr: 9, scr: 3 }
+/** 배치표 한 줄 — `{줄번호 u16, 띠 위 y u16, 가운데정렬 u16}` */
+const ROW_BYTES = 6
+
+/**
+ * 크레딧 두루마리의 **배치표**를 오버레이 #99에서 읽는다 (PARITY §8.12).
+ *
+ * ⚠️ **브라우저 쪽(`import/platinum/credits.ts`의 `creditRows`)과 같은 규칙이다.**
+ * 자리와 줄 수는 `supported.json`을 둘이 같이 읽고, 모양 검사도 같은 넷이다 —
+ * 줄 번호가 0부터 하나씩 · y가 단조 · 정렬 칸이 0이나 1 · 적힌 줄에서 끊긴다.
+ *
+ * ⚠️ **미국판이 곧 잣대다.** 여기서 읽은 237줄이 디컴프의 `Unk_ov99_021D4CE4`와
+ * 바이트로 같다 (`pnpm gen:credits`가 굽는 `creditsTable.ts`). 그 하나가 이
+ * 자리와 이 구조가 맞다는 근거고, 나머지 두 판은 같은 자를 그대로 댄다
+ */
+function creditRows(overlay, site) {
+  const need = site.offset + (site.rows + 1) * ROW_BYTES
+  if (site.offset < 0 || need > overlay.length) {
+    throw new Error(`크레딧 배치표가 오버레이 밖이다 (0x${site.offset.toString(16)} · ${site.rows}줄)`)
+  }
+  const rows = []
+  let last = -1
+  for (let i = 0; i < site.rows; i++) {
+    const p = site.offset + i * ROW_BYTES
+    const line = overlay.readUInt16LE(p)
+    const y = overlay.readUInt16LE(p + 2)
+    const centered = overlay.readUInt16LE(p + 4)
+    if (line !== i) throw new Error(`크레딧 배치표 ${i}번째 줄 번호가 ${line}이다`)
+    if (y < last) throw new Error(`크레딧 배치표 ${i}번째 자리 ${y}가 앞보다 위다`)
+    if (centered > 1) throw new Error(`크레딧 배치표 ${i}번째 정렬 값이 ${centered}이다`)
+    last = y
+    rows.push({ at: y, centered: centered !== 0 })
+  }
+  if (overlay.readUInt16LE(site.offset + site.rows * ROW_BYTES) === site.rows) {
+    throw new Error(`크레딧 배치표가 ${site.rows}줄에서 안 끝난다 — 더 이어진다`)
+  }
+  return rows
+}
+
+/** 그 판의 표가 오버레이 어디에 몇 줄로 놓였나. 브라우저 쪽 `creditsLocator`와 같은 값 */
+function creditsSite(gameCode) {
+  const release = supported.releases.find((r) => r.gameCode === gameCode)
+  if (!release) throw new Error(`모르는 판이다: ${gameCode}`)
+  return {
+    overlay: supported.creditsOverlay,
+    offset: Number(release.creditsOffset),
+    rows: release.creditsRows,
+  }
+}
 
 /** LZ77(0x10). 안 눌린 것은 그대로 돌려준다 */
 function lz77(src) {
@@ -148,6 +197,19 @@ function main() {
     `(${(bytes / 1024).toFixed(1)}KB) · ${meta.rel}`,
   )
   console.log(`  ${sizes.map((s) => `${s.w}×${s.h}`).join(' · ')}`)
+
+  // 배치표는 **판마다 다른 표**다. 개발 산출물은 롬 셋이 있으므로 세 벌을 굽는다
+  for (const locale of LOCALES) {
+    const rom = openRom(sources.requirePlatinumRom(locale))
+    const site = creditsSite(rom.gameCode)
+    const rows = creditRows(rom.overlay(site.overlay), site)
+    const file = writeJson(`credits.${locale}.json`, { rows })
+    const centered = rows.filter((r) => r.centered).length
+    console.log(
+      `  배치표 ${locale} — 줄 ${rows.length} · 가운데 ${centered} · ` +
+      `마지막 자리 ${rows[rows.length - 1].at}px · ${file.rel} (${file.kb}KB)`,
+    )
+  }
 }
 
 if (require.main === module) main()

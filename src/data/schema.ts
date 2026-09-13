@@ -498,6 +498,23 @@ export const creditsSchema = z.object({
   })),
 })
 
+/**
+ * 크레딧 두루마리의 배치표 — **판마다 다르다** (PARITY.md §8.12).
+ *
+ * ⚠️ **미국 표를 잘라 쓸 수 없다.** 줄 수(237 · 209 · 184)도 마지막 자리
+ * (7581 · 7530 · 7544)도 다르고, 일본판은 목록이 127번째 줄부터 아예 갈린다 —
+ * 잘라 쓰면 그 뒤로 y 간격이 열네 자리 어긋난다. 설치본에는 **설치한 판 하나**만
+ * 있다 (`import/platinum/credits.ts`)
+ */
+export const creditRowsSchema = z.object({
+  rows: z.array(z.object({
+    /** 흐르는 띠 위의 y (픽셀) */
+    at: z.number().int().nonnegative(),
+    /** 가운데 정렬인가. 아니면 왼쪽에서 `CREDIT_INDENT`픽셀이다 */
+    centered: z.boolean(),
+  })).nonempty(),
+})
+
 export const boxWallpapersSchema = z.object({
   count: z.number().int().positive(),
   cols: z.number().int().positive(),
@@ -746,6 +763,7 @@ export type BagSprite = z.infer<typeof bagSpriteSchema>
 export type MotionTiming = z.infer<typeof motionTimingSchema>
 export type BoxWallpapers = z.infer<typeof boxWallpapersSchema>
 export type CreditsAtlas = z.infer<typeof creditsSchema>
+export type CreditRows = z.infer<typeof creditRowsSchema>
 export type TownMapFile = z.infer<typeof townMapSchema>
 export type PoketchMapFile = z.infer<typeof poketchMapSchema>
 export type PokedexSort = z.infer<typeof pokedexSortSchema>

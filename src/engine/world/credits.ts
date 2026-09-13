@@ -41,18 +41,25 @@ export const CREDITS_TAIL_GAP = CREDIT_VIEW_HEIGHT + CREDIT_LINE_HEIGHT
 /**
  * 흐를 줄들의 자리.
  *
- * 앞은 롬의 표이고 뒤는 **우리 몫**이다. 우리 줄은 자리 표가 없으므로 줄 높이
- * 간격으로 이어 붙인다 — 원작 표도 대부분 그 간격이다.
+ * 앞은 **그 판의 배치표**이고 뒤는 **우리 몫**이다. 우리 줄은 자리 표가 없으므로
+ * 줄 높이 간격으로 이어 붙인다 — 원작 표도 대부분 그 간격이다.
  *
- * ⚠️ **뱅크가 표보다 짧을 수 있다.** 일본 롬의 크레딧은 184줄이고(현지화 인원이
- * 통째로 없다) 표는 미국 오버레이의 237줄짜리다 — 끝까지 돌리면 뒤쪽 53줄이
- * 빈 줄로 흘러 크레딧이 1분 가까이 아무것도 없이 흐른다
+ * ⚠️ **미국 표를 잘라서 쓰면 안 된다.** 한동안 `CREDIT_ROWS`(미국 237줄)를 대사
+ * 뱅크 길이로 잘랐는데, 그것은 「범위를 안 넘는다」만 지키고 **자리는 안 지킨다**:
+ *
+ * · 일본판은 목록이 **127번째 줄부터 아예 갈린다** (현지화 인원이 없고 그 자리에
+ *   다른 사람들이 온다). 미국 표의 간격을 그대로 대면 마디 머리에 빈 자리가
+ *   안 생기거나 이름 줄에 마디 간격이 붙는다 — 실측으로 **열네 자리**다
+ * · 한국판은 대사 뱅크가 237칸인데 **뒤 28칸이 비어 있다.** 길이로만 자르면
+ *   아무것도 없는 줄 스물여덟이 그대로 흐른다
+ *
+ * 그래서 받는 것은 줄 수가 아니라 **그 판의 표**다 (`data/credits.<판>.json` —
+ * `import/platinum/credits.ts`가 사용자 롬의 오버레이 #99에서 읽는다)
  */
 export function creditsRows(
-  lineCount = CREDIT_ROWS.length, tail: readonly boolean[] = [],
+  rom: readonly CreditRow[] = CREDIT_ROWS, tail: readonly boolean[] = [],
 ): CreditRow[] {
-  const rom = CREDIT_ROWS.slice(0, Math.min(lineCount, CREDIT_ROWS.length))
-  if (tail.length === 0) return rom
+  if (tail.length === 0) return [...rom]
   const from = (rom[rom.length - 1]?.at ?? 0) + CREDITS_TAIL_GAP
   return [...rom, ...tail.map((centered, i) => ({ at: from + i * CREDIT_LINE_HEIGHT, centered }))]
 }
@@ -67,7 +74,13 @@ export function creditsFrames(rows: readonly CreditRow[]): number {
   return (rows[rows.length - 1]?.at ?? 0) + CREDIT_LINE_HEIGHT - CREDIT_SCROLL_START
 }
 
-/** 롬의 표만 다 흐를 때의 길이. 배경 나누기와 시험이 이걸 본다 */
+/**
+ * 미국 표만 다 흐를 때의 길이. **시험과 기준선이 이걸 본다.**
+ *
+ * ⚠️ **배경 나누기가 이 값을 쓰면 안 된다.** 판마다 표가 달라서 마지막 자리가
+ * 7581 · 7530 · 7544로 갈린다 — 미국 길이로 나누면 다른 판의 셋째 장이 이르거나
+ * 늦게 온다. `creditsScene`은 **그 판의 길이**를 인자로 받는다
+ */
 export const CREDITS_FRAMES = creditsFrames(CREDIT_ROWS)
 
 /**
@@ -115,8 +128,8 @@ export const CREDIT_SCENE_PAN: readonly { x: number; y: number }[] = [
  * 끝낼 때 넘기는데(`ov99_021D1D30`), 그 일곱이 오버레이 99 안의 3D 연출이라
  * 배경 그림만 있는 우리에게는 그 시각이 없다. 세 장을 **똑같이 나눈다**
  */
-export function creditsScene(frame: number, count: number): number {
-  if (count <= 0) return 0
-  const at = Math.floor((frame / CREDITS_FRAMES) * count)
+export function creditsScene(frame: number, count: number, total = CREDITS_FRAMES): number {
+  if (count <= 0 || total <= 0) return 0
+  const at = Math.floor((frame / total) * count)
   return Math.min(count - 1, Math.max(0, at))
 }

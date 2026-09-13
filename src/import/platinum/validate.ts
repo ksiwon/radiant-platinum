@@ -44,6 +44,18 @@ export interface Release {
    */
   prizeOffset: string
   /**
+   * 크레딧 배치표가 오버레이 #99 안에 놓인 자리 (16진 문자열).
+   *
+   * ⚠️ **지역판마다 줄 수 자체가 다르다** — 미국 237 · 한국 209 · 일본 184.
+   * 상금표처럼 「같은 표가 옮겨 앉은 것」이 아니라 **다른 표**다: 일본판은
+   * 현지화 인원이 통째로 없어 목록이 127번째 줄부터 갈리고, 한국판은 대사
+   * 뱅크가 237칸인데 뒤 28칸이 비어 있다. 미국 표를 잘라 쓰면 두 판의 줄
+   * y 좌표가 어긋난다 (PARITY.md §8.12)
+   */
+  creditsOffset: string
+  /** 그 표의 줄 수. 읽은 것과 다르면 우리가 아는 판이 아니다 */
+  creditsRows: number
+  /**
    * ARM9 안의 상점 표 자리.
    *
    * **재고가 아니라 자리다.** 물건 목록은 사용자의 롬에서 읽는다 (`marts.ts`)
@@ -75,6 +87,8 @@ export const SUPPORTED = table as unknown as {
   prizeOverlay: number
   /** 상금 배수표의 칸 수 = 트레이너 분류 수. 세 판이 같다 */
   prizeCount: number
+  /** 크레딧 배치표가 든 오버레이 번호. 세 판이 같다 */
+  creditsOverlay: number
   requiredFiles: string[]
   sampleCounts: Record<string, number>
   martCounts: { common: number; specialty: number }
@@ -107,6 +121,31 @@ export function prizeLocator(release: Release): PrizeSite {
     overlay: SUPPORTED.prizeOverlay,
     offset: hexAt(release.prizeOffset, release.gameCode, 'prizeOffset'),
     count: SUPPORTED.prizeCount,
+  }
+}
+
+/** 크레딧 배치표가 놓인 자리 한 벌 */
+export interface CreditsSite {
+  /** 오버레이 번호 */
+  overlay: number
+  /** 그 오버레이 안의 바이트 자리 */
+  offset: number
+  /** 줄 수. 지역판마다 다르다 */
+  rows: number
+}
+
+/**
+ * 크레딧 배치표의 자리 (`credits.ts`가 읽는다).
+ *
+ * ⚠️ **상금표와 달리 알맹이가 판마다 다르다.** 상금표는 105바이트가 세 판에
+ * 바이트로 같고 옮겨진 것이 자리뿐이라 「자리만 고르면」 되는데, 이 표는
+ * **줄 수부터 다르다**. 그래서 자리와 줄 수를 같이 든다
+ */
+export function creditsLocator(release: Release): CreditsSite {
+  return {
+    overlay: SUPPORTED.creditsOverlay,
+    offset: hexAt(release.creditsOffset, release.gameCode, 'creditsOffset'),
+    rows: release.creditsRows,
   }
 }
 
