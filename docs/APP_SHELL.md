@@ -12,6 +12,7 @@
 
 | 경로 | 출처 | 무엇 |
 |---|---|---|
+| `_headers` | 자체 | Cloudflare 정적 자산의 CSP·보안 헤더 설정. 호스트가 배포 시 읽는다 |
 | `manifest.webmanifest` | 자체 | PWA 매니페스트. 손으로 쓴 JSON |
 | `sw.js` | 자체 | 앱 셸 전용 service worker. 손으로 쓴 JS |
 | `assets/radiant-platinum-favicon.svg` | 자체 | 파비콘 31KB. 아이콘을 128px 무손실로 담은 SVG |

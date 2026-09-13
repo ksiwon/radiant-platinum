@@ -81,6 +81,8 @@ const ignoreRule = (() => {
  */
 const NOT_IN_BUNDLE = new Set([
   '.gitignore', 'README.md',
+  // Netlify에서는 사용하지 않는 Cloudflare Workers 배포 설정.
+  'wrangler.jsonc',
   // 문서. `dist`에서 0건이다 (`copyPublicDir: false` + 앱 셸 허용 목록)
   'docs',
   // 원본 그림·설정 예시. 배포물은 `public/`에 구워 둔 것만 쓴다

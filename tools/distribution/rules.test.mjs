@@ -5,7 +5,7 @@
 // **잡혀야 하는 것이 실제로 잡히는지**를 먼저 잰다.
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathViolations, scanTree, originsIn, listTree } from './rules.mjs'
@@ -151,7 +151,7 @@ describe('앱 셸은 파일 단위다', () => {
     // 한때 `{ kind: 'dir', path: 'assets' }` 한 줄이었다. `public/assets`에
     // 무엇을 떨어뜨리든 그대로 실려 나갔다
     for (const e of PUBLIC_SHELL) {
-      expect(e.path, e.path).toMatch(/\.[a-z0-9]+$/)
+      expect(statSync(join(ROOT, 'public', e.path)).isFile(), e.path).toBe(true)
     }
   })
 

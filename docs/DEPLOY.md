@@ -1691,3 +1691,17 @@ corpus는 발견되지 않았다. 게임 자산은 사용자가 선택한 입력
 "삭제되지 않는다"도 쓰지 않는다.
 
 법적 판단은 이 문서의 범위가 아니다 — 남는 위험은 COPYRIGHT.md §3과 §11.
+
+## Cloudflare Workers 배포 (2026-09-13)
+
+현재 호스트 설정은 `wrangler.jsonc`다. `pnpm build`가 만든 `dist/`를 정적
+자산으로 배포하고, 없는 경로는 SPA의 `index.html`로 처리한다. `public/_headers`는
+`PUBLIC_SHELL`의 파일 허용 목록을 통해 `dist/_headers`로 나가야 한다.
+`copyPublicDir: false`는 유지한다. 헤더 원본이 있다는 것만으로 적용됐다고 판단하지 않는다.
+
+최종 소스를 확정한 뒤 check·build와 소스 지문에 묶인 검증을 실행한다.
+master push가 배포를 유발하는 현재 운영 방식에서는 push 후 실제 호스트의
+번들 이름이 로컬 dist와 같아졌는지 확인하고 `pnpm verify:deploy
+https://radiant.siwon.it.kr/`, 전체 `pnpm e2e`, `pnpm release:check`를 통과해야
+배포 완료다. 배포 전에는 새 빌드의 실제 호스트 검증을 통과로 기록할 수 없다.
+Netlify의 ignore 규칙과 위의 과거 배포 기록은 Cloudflare의 현재 결과를 증명하지 않는다.
