@@ -73,15 +73,27 @@ type ReportRead =
       raw: unknown
     }
 
-export async function readReportDetailed(expectVersion: number): Promise<ReportRead> {
+/**
+ * 슬롯 하나를 판정까지 붙여 읽는다.
+ *
+ * ⚠️ **현재 슬롯과 백업 슬롯이 같은 자를 써야 한다.** 백업은 「지우기 직전의
+ * 현재 슬롯」을 그대로 옮겨 둔 것이라 **같은 스키마·같은 이주기**를 탄다 —
+ * 되찾는 쪽에만 느슨한 길을 따로 내면, 지금 슬롯이었으면 거절됐을 것이
+ * 백업이라는 이유로 들어온다
+ */
+async function readSlotDetailed(slot: string, expectVersion: number): Promise<ReportRead> {
   await migrate()
-  const data: unknown = await get(SLOT, dbStore)
+  const data: unknown = await get(slot, dbStore)
   if (data === undefined || data === null) return { kind: 'none' }
 
   const { migrateSave } = await import('./save/migrate')
   const got = migrateSave(data, expectVersion)
   if (got.kind === 'ok') return { kind: 'ok', save: got.save, migrated: got.migrated }
   return { kind: 'unreadable', reason: got, raw: data }
+}
+
+export function readReportDetailed(expectVersion: number): Promise<ReportRead> {
+  return readSlotDetailed(SLOT, expectVersion)
 }
 
 /** 리포트를 읽는다. 없거나 못 읽으면 null — 옛 부르는 쪽을 위해 남긴다 */
@@ -155,9 +167,23 @@ export async function backupReport(): Promise<boolean> {
   return true
 }
 
-/** 지우기 직전에 옮겨 둔 것. 없으면 undefined */
-export function readBackup(): Promise<unknown> {
-  return get(BACKUP, dbStore)
+/**
+ * 지우기 직전에 옮겨 둔 것을 **판정까지 붙여서** 읽는다
+ * (REPAIR.md §10 · IMPORT.md §11-8).
+ *
+ * ⚠️ **이것이 이 슬롯을 읽는 유일한 길이다.** 한동안 `backupReport`가 쓰기만
+ * 하고 읽는 자리가 없어서, 지우기 전에 남겨 둔 한 벌을 사람이 되찾을 길이
+ * 없었다. 그 옆에 판정 없이 값만 주는 `readBackup`이 같이 서 있었는데 그것도
+ * 부르는 데가 없었다 — **둘을 하나로 합쳤다.** 날것을 돌려주는 문을 따로 두면
+ * 되찾는 쪽이 스키마를 안 거치고 쓰는 길이 생긴다.
+ *
+ * ⚠️ **여기서 「없다」와 「못 읽는다」를 가른다.** 되찾기 화면이 할 일이 갈린다
+ * — 없으면 보일 것이 없고, 못 읽으면 **현재 슬롯에 쓰지 않고 파일로** 돌려준다.
+ * 미래 판(`too-new`)이 그 자리다: 그것을 지금 슬롯에 밀어 넣으면 다음에 켤 때
+ * 현재 슬롯까지 못 읽는 것이 된다
+ */
+export function readBackupDetailed(expectVersion: number): Promise<ReportRead> {
+  return readSlotDetailed(BACKUP, expectVersion)
 }
 
 export function clearReport(): Promise<void> {

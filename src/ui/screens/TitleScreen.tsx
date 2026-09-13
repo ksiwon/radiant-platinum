@@ -27,7 +27,8 @@ import { readReportDetailed } from '../../state/report'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import {
-  dexHas, SAVE_VERSION, useSaveStore, type ImportPreview, type SaveData,
+  dexHas, SAVE_VERSION, useSaveStore,
+  type BackupPreview, type ImportPreview, type SaveData,
 } from '../../state/saveStore'
 import { PORTABLE_EXT } from '../../state/save/portable'
 import { watchIntegrity } from '../../app/integrityWatch'
@@ -91,6 +92,15 @@ export function TitleScreen() {
   const [pending, setPending] = useState<(ImportPreview & { ok: true }) | null>(null)
   /** 「시작」을 눌렀는데 하던 리포트가 있다. 지우기 전에 한 번 묻는다 */
   const [confirmNew, setConfirmNew] = useState(false)
+  /**
+   * 지우거나 덮기 직전에 남겨 둔 한 벌 (REPAIR.md §10 · IMPORT.md §11-8).
+   *
+   * `null`이면 아직 안 읽었다 — 「없다」(`kind: 'none'`)와 다른 상태다.
+   * 읽기 전에 단추를 세우면 백업이 없는 사람에게도 되찾기가 한 칸 서 있게 된다
+   */
+  const [kept, setKept] = useState<BackupPreview | null>(null)
+  /** 되찾기를 눌렀다. 덮기 전에 무엇이 덮이는지를 보이고 한 번 묻는다 */
+  const [confirmRestore, setConfirmRestore] = useState(false)
   /** 에셋 설치 화면이 떠 있는가 */
   const [importing, setImporting] = useState(false)
   /** 「이런 게임은 어떠세요?」가 떠 있는가 */
@@ -160,6 +170,11 @@ export function TitleScreen() {
       // 것처럼 보이던 자리다 (IMPORT.md §11 끝) — 원본을 파일로 돌려줄 수 있다
       setUnreadable(got.kind === 'unreadable' ? explainStored(got.reason.kind) : null)
     }).catch(() => { if (alive) setReport(null) })
+    // 남겨 둔 한 벌이 있는가. **여기서는 열어 보기만 한다** — 되찾는 것은
+    // 사람이 단추를 누른 뒤고, 그때까지 저장된 것은 한 바이트도 안 바뀐다
+    void useSaveStore.getState().previewBackup()
+      .then((got) => { if (alive) setKept(got) })
+      .catch(() => { if (alive) setKept({ kind: 'none' }) })
     void loadUiText('mainMenu', locale).then((bank) => { if (alive) setText(bank) })
       .catch(() => { /* 우리 글로 떨어진다 */ })
     return () => { alive = false }
@@ -203,6 +218,36 @@ export function TitleScreen() {
     void useSaveStore.getState().commitImport(target).then((done) => {
       if (!done.ok) { setNotice(`불러오지 못했습니다 — ${done.why}\n지금 리포트는 그대로입니다`); return }
       navigate('/play')
+    })
+  }
+
+  /** 남겨 둔 한 벌을 `.rpsave` 파일로 받는다. 못 읽는 것도 원본 그대로 나간다 */
+  const saveBackupFile = (): void => {
+    void useSaveStore.getState().exportBackup().then((got) => {
+      if (got.kind === 'none') { setNotice('받을 백업이 없습니다'); return }
+      setNotice(got.outcome.started
+        ? `${got.fileName}${got.raw ? '\n(이 판이 못 읽는 백업이라 원본 그대로 담았습니다)' : ''}`
+        : '브라우저가 다운로드를 막았습니다. 한 번 더 눌러 주세요')
+    })
+  }
+
+  /**
+   * 남겨 둔 한 벌로 되돌린다.
+   *
+   * ⚠️ **백업 슬롯은 안 건드린다** — 스토어가 그 길을 따로 두고 있다
+   * (`restoreBackup`). 평소의 「덮기 전 백업」으로 가면 되찾으려는 그 한 벌이
+   * 지금 리포트로 덮인다
+   */
+  const bringBack = (): void => {
+    if (kept?.kind !== 'ok') return
+    const target = kept.save
+    setConfirmRestore(false)
+    void useSaveStore.getState().restoreBackup(target).then((done) => {
+      if (!done.ok) {
+        setNotice(`되찾지 못했습니다 — ${done.why}\n지금 리포트와 백업 둘 다 그대로입니다`)
+        return
+      }
+      void navigate('/play')
     })
   }
 
@@ -290,6 +335,26 @@ export function TitleScreen() {
       label: '어긋난 에셋 다시 만들기',
       tone: 'ghost',
       go: () => { setImporting(true) },
+    })
+  }
+
+  /**
+   * 백업에서 되찾는 길 — **남겨 둔 것이 있을 때만 선다** (REPAIR.md §10).
+   *
+   * ⚠️ **늘 세워 두지 않는다.** 이 슬롯은 지우거나 덮기 직전에만 생긴다
+   * (`backupBeforeOverwrite`) — 한 번도 그런 적이 없는 사람에게는 누를 것이
+   * 없는 단추이고, 하필 그 이름이 「되찾기」라 잃은 것이 있다는 인상만 준다.
+   * 「어긋난 에셋 다시 만들기」와 같은 잣대다.
+   *
+   * ⚠️ **못 읽는 백업에도 선다.** 그때 할 일이 되찾기가 아니라 **파일로 받아
+   * 두기**로 바뀔 뿐이고, 감추면 그 사람에게는 남은 한 벌이 아예 없는 것이 된다
+   */
+  if (kept !== null && kept.kind !== 'none') {
+    entries.push({
+      key: 'restore',
+      label: '백업에서 되찾기',
+      tone: 'ghost',
+      go: () => { setNotice(null); setConfirmRestore(true) },
     })
   }
 
@@ -401,10 +466,16 @@ export function TitleScreen() {
 
         {/* ⚠️ **왜 못 누르는지를 적는다.** 흐리게만 두면 눌러 보고 나서야 없다는
             걸 알게 된다. `undefined`는 아직 읽는 중이라 아무 말도 하지 않는다 */}
+        {/* ⚠️ **남겨 둔 한 벌이 있으면 그 말을 여기서 한다.** 리포트가 없는
+            사람이 바로 그 한 벌을 찾는 사람이다 — 단추가 줄 끝에 서 있어도
+            「없습니다」만 읽고 돌아서면 못 만난다 */}
         {report === null && (
           <p className={css.hint}>
-            이어할 세이브가 없습니다 — 「시작」으로 새 모험을 열거나,
-            「세이브 파일 불러오기」로 갖고 있는 파일을 들이세요
+            {kept !== null && kept.kind !== 'none'
+              ? '이어할 세이브가 없습니다 — 「백업에서 되찾기」로 지우기 직전에 남겨 둔 한 벌을 '
+                + '열어 보거나, 「세이브 파일 불러오기」로 갖고 있는 파일을 들이세요'
+              : '이어할 세이브가 없습니다 — 「시작」으로 새 모험을 열거나, '
+                + '「세이브 파일 불러오기」로 갖고 있는 파일을 들이세요'}
           </p>
         )}
 
@@ -431,7 +502,62 @@ export function TitleScreen() {
           {unreadable !== null && (
             <div className={css.notice}>
               {`저장된 리포트를 이 판이 못 읽습니다 — ${unreadable}\n`}
-              {'"리포트 백업 받기"로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
+              {'「세이브 파일 내보내기」로 원본을 파일에 담아 두세요. 지우지 않습니다.'}
+            </div>
+          )}
+
+          {/*
+            ⚠️ **덮기 전에 무엇이 덮이는지를 보인다.** 되찾기는 되돌릴 수 없는
+            일이고, 사람이 알아볼 수 있는 것은 이름·시간·배지·도감 넷이다 —
+            타이틀 요약이 쓰는 것과 같은 넷이라 나란히 놓고 견줄 수 있다.
+
+            ⚠️ **여기서는 아직 아무것도 안 바뀌었다.** 「그만두기」를 누르면
+            저장된 것도 백업도 손대지 않은 채로 창만 닫힌다
+          */}
+          {confirmRestore && kept !== null && kept.kind !== 'none' && (
+            <div className={css.notice}>
+              {kept.kind === 'unreadable' ? (
+                <>
+                  {`남겨 둔 백업을 이 판이 못 읽습니다 — ${kept.why}\n`}
+                  {'지금 리포트에는 쓰지 않습니다. 원본을 파일로 받아 두세요.'}
+                  <div className={css.files}>
+                    <button className={css.fileButton} onClick={saveBackupFile}>
+                      백업을 파일로 받기
+                    </button>
+                    <button className={css.fileButton} onClick={() => { setConfirmRestore(false) }}>
+                      그만두기
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {`되찾을 백업 — ${kept.save.trainer.name || '이름 없음'} · `}
+                  {`${clock(kept.save.trainer.playtimeMs)} · `}
+                  {`배지 ${countBadges(kept.save.badges)}개 · `}
+                  {`도감 ${countDex(kept.save.pokedex.caught)}마리\n`}
+                  {kept.migrated ? '옛 판이라 지금 판으로 옮겨서 되찾습니다\n' : ''}
+                  {hasSave
+                    ? `지금 리포트(${report?.trainer.name || '이름 없음'} · `
+                      + `${clock(report?.trainer.playtimeMs ?? 0)})가 덮입니다. `
+                      + '덮기 전에 세이브 파일로 받습니다.\n'
+                    : '지금은 이어할 리포트가 없어 덮을 것이 없습니다.\n'}
+                  {/* ⚠️ **이것을 「외부 백업」이라고 말하지 않는다.** 같은
+                      브라우저 안의 한 벌이라 사이트 데이터를 지우면 같이 사라진다
+                      (`state/report.ts`의 `backupReport`) */}
+                  {'⚠️ 이 백업은 이 브라우저 안에 있습니다 — 사이트 데이터를 지우면 같이 사라집니다.'}
+                  <div className={css.files}>
+                    <button className={css.fileButton} onClick={bringBack}>
+                      이 백업으로 되찾기
+                    </button>
+                    <button className={css.fileButton} onClick={saveBackupFile}>
+                      백업을 파일로 받기
+                    </button>
+                    <button className={css.fileButton} onClick={() => { setConfirmRestore(false) }}>
+                      그만두기
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

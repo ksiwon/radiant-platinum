@@ -6,6 +6,7 @@
 //   ② 내부 저장 성공과 파일 백업 성공이 **따로**다
 //   ③ 실패한 가져오기는 기존 리포트를 **한 바이트도** 안 바꾼다
 //   ④ 지우기 전에 백업을 먼저 시도한다
+//   ⑤ 그 백업을 **사람이 되찾는다** — 없음·정상·손상·예전 판·미래 판·취소·쓰기 실패
 import 'fake-indexeddb/auto'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { get, set, del, createStore } from 'idb-keyval'
@@ -272,5 +273,145 @@ describe('지우기 전 백업', () => {
   it('리포트가 없으면 받을 것도 없다', async () => {
     await useSaveStore.getState().resetSave()
     expect(grabbed).toEqual([])
+  })
+})
+
+/**
+ * 남겨 둔 한 벌을 되찾는다 (REPAIR.md §10 · IMPORT.md §11-8).
+ *
+ * ⚠️ **이 갈래의 유일한 실패 방식은 「되찾다가 잃는 것」이다.** 되찾기는 지금
+ * 리포트를 덮는 일이고, 평소의 「덮기 전 백업」은 지금 리포트를 **백업 슬롯에
+ * 복사한다** — 그 길로 오면 되찾으려던 바로 그 한 벌이 사라진다. 아래 ⑤가
+ * 그 자리를 못 박는다.
+ */
+describe('백업에서 되찾기', () => {
+  /** 「처음부터」를 눌러 백업 슬롯을 만든 상태 */
+  const leaveBackup = async (name: string, money: number): Promise<void> => {
+    useSaveStore.setState({ ...saveWith(name, money) })
+    await useSaveStore.getState().report(where)
+    await useSaveStore.getState().resetSave()
+    grabbed = []
+  }
+
+  it('백업이 없으면 열어 볼 것도 없다', async () => {
+    expect(await useSaveStore.getState().previewBackup()).toEqual({ kind: 'none' })
+    expect(await useSaveStore.getState().exportBackup()).toEqual({ kind: 'none' })
+  })
+
+  it('지우고 나면 그 한 벌이 열린다', async () => {
+    await leaveBackup('되찾을것', 4321)
+
+    const got = await useSaveStore.getState().previewBackup()
+    expect(got.kind).toBe('ok')
+    if (got.kind !== 'ok') return
+    expect(got.save.trainer.name).toBe('되찾을것')
+    expect(got.save.money).toBe(4321)
+    expect(got.migrated).toBe(false)
+  })
+
+  // ⚠️ **열어 보는 것만으로는 아무것도 안 바뀐다.** 화면의 「그만두기」가 성립하는
+  // 근거가 이것이다 — 되찾기를 안 누르면 저장된 것도 백업도 그대로여야 한다
+  it('⚠️ 열어 보기만 해서는 저장된 것이 안 바뀐다', async () => {
+    await leaveBackup('되찾을것', 4321)
+    useSaveStore.setState({ ...saveWith('지금것', 10) })
+    await useSaveStore.getState().report(where)
+
+    await useSaveStore.getState().previewBackup()
+
+    expect((await get<SaveData>('report', DB))?.money).toBe(10)
+    expect((await get<SaveData>('report.bak', DB))?.money).toBe(4321)
+    expect(useSaveStore.getState().money).toBe(10)
+  })
+
+  it('되찾으면 현재 슬롯과 스토어가 그것이 된다 — 그리고 이어할 수 있다', async () => {
+    await leaveBackup('되찾을것', 4321)
+
+    const got = await useSaveStore.getState().previewBackup()
+    expect(got.kind).toBe('ok')
+    if (got.kind !== 'ok') return
+    const done = await useSaveStore.getState().restoreBackup(got.save)
+    expect(done.ok).toBe(true)
+
+    expect(useSaveStore.getState().trainer.name).toBe('되찾을것')
+    expect(useSaveStore.getState().loaded).toBe(true)
+    // 디스크에도 실제로 앉았다 — 다시 켠 것처럼 읽어 본다
+    useSaveStore.setState({ ...createNewSave(), loaded: false })
+    expect(await useSaveStore.getState().loadReport()).toBe(true)
+    expect(useSaveStore.getState().money).toBe(4321)
+  })
+
+  // ⑤ ⚠️ **되찾는 동안 복구 후보를 덮지 않는다.** `resetSave`·`commitImport`가
+  // 쓰는 길은 현재 슬롯을 `report.bak`에 **복사한다** — 그것을 그대로 쓰면
+  // 한 번 되찾은 뒤 백업 슬롯에는 방금 덮인 리포트가 들어앉는다
+  it('⚠️ 되찾아도 백업 슬롯은 그 한 벌 그대로다', async () => {
+    await leaveBackup('되찾을것', 4321)
+    useSaveStore.setState({ ...saveWith('덮일것', 999) })
+    await useSaveStore.getState().report(where)
+    grabbed = []
+
+    const got = await useSaveStore.getState().previewBackup()
+    if (got.kind !== 'ok') throw new Error('백업을 못 읽었다')
+    const done = await useSaveStore.getState().restoreBackup(got.save)
+    expect(done.ok).toBe(true)
+
+    expect((await get<SaveData>('report.bak', DB))?.money).toBe(4321)
+    // 덮이는 리포트는 **파일로** 지킨다 — 백업 슬롯이 아니다
+    expect(grabbed).toHaveLength(1)
+    const kept = JSON.parse(await grabbed[0]!.blob.text()) as { summary: { trainer: string } }
+    expect(kept.summary.trainer).toBe('덮일것')
+  })
+
+  it('옛 판 백업은 옮겨서 읽는다', async () => {
+    await set('report.bak', { ...saveWith('옛것', 77), version: SAVE_VERSION - 1 }, DB)
+    const got = await useSaveStore.getState().previewBackup()
+    expect(got.kind).toBe('ok')
+    if (got.kind !== 'ok') return
+    expect(got.migrated).toBe(true)
+    expect(got.save.version).toBe(SAVE_VERSION)
+    expect(got.save.trainer.name).toBe('옛것')
+  })
+
+  // ⚠️ **못 읽는 백업을 현재 슬롯에 밀어 넣지 않는다.** 밀어 넣으면 다음에 켤 때
+  // 현재 슬롯까지 못 읽는 것이 되어, 잃은 것이 하나에서 둘이 된다
+  it.each([
+    ['미래 판', { ...saveWith('미래'), version: SAVE_VERSION + 5 }, '더 새로운 판'],
+    ['너무 옛 판', { ...saveWith('옛것'), version: 2 }, '옛 백업'],
+    ['어긋난 내용', { ...saveWith('깨진것'), money: -9 }, '어긋납니다'],
+  ])('⚠️ %s 백업은 열리되 현재 슬롯에 안 쓴다', async (_what, bad, says) => {
+    useSaveStore.setState({ ...saveWith('지금것', 1234) })
+    await useSaveStore.getState().report(where)
+    await set('report.bak', bad, DB)
+
+    const got = await useSaveStore.getState().previewBackup()
+    expect(got.kind).toBe('unreadable')
+    if (got.kind !== 'unreadable') return
+    expect(got.why).toContain(says)
+
+    // 현재 슬롯은 한 바이트도 안 바뀐다
+    expect((await get<SaveData>('report', DB))?.money).toBe(1234)
+    // 그래도 원본은 파일로 돌려준다
+    grabbed = []
+    const out = await useSaveStore.getState().exportBackup()
+    expect(out.kind).toBe('done')
+    if (out.kind !== 'done') return
+    expect(out.raw).toBe(true)
+    expect(grabbed).toHaveLength(1)
+  })
+
+  // ⚠️ **쓰기가 실패해도 둘 다 남는다.** 되찾기는 검증하는 쓰기 하나만 쓰므로
+  // (`writeReportVerified`) 스키마를 어기는 것은 임시 슬롯에도 안 닿는다
+  it('⚠️ 쓰기가 실패하면 현재 슬롯도 백업도 안 잃는다', async () => {
+    await leaveBackup('되찾을것', 4321)
+    useSaveStore.setState({ ...saveWith('지금것', 1234) })
+    await useSaveStore.getState().report(where)
+
+    const done = await useSaveStore.getState().restoreBackup({ ...saveWith('깨진것'), money: -9 })
+    expect(done.ok).toBe(false)
+    if (done.ok) return
+    expect(done.why).toContain('money')
+
+    expect((await get<SaveData>('report', DB))?.money).toBe(1234)
+    expect((await get<SaveData>('report.bak', DB))?.money).toBe(4321)
+    expect(await get('report.tmp', DB)).toBeUndefined()
   })
 })

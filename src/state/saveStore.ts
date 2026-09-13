@@ -7,13 +7,17 @@
 // 남긴다. 디스크로 나가는 문은 `report()` 하나뿐이다 (`state/report.ts`).
 import { create } from 'zustand'
 import {
-  backupReport, clearReport, readReport, readReportDetailed, writeReportVerified,
+  backupReport, clearReport, readBackupDetailed, readReport, readReportDetailed,
+  writeReportVerified,
 } from './report'
 import { downloadPortable, saveFileName, type DownloadOutcome } from './save/download'
 import {
   buildPortable, buildPortableRaw, explainFailure, parsePortable, type PortableSave,
 } from './save/portable'
 import { compareContract, type Compatibility } from './save/contract'
+// ⚠️ **이주기를 값으로 안 끌어온다** — zod를 데려온다 (`state/report.ts` 머리말).
+// 갈래 이름만 빌리므로 `import type`이면 번들에 한 줄도 안 남는다
+import type { MigrateResult } from './save/migrate'
 
 
 // 도감 비트필드는 엔진이 갖는다 — 세이브 스키마가 그 크기를 알아야 하는데
@@ -589,6 +593,24 @@ interface SaveStore extends SaveData {
   /** 미리 본 것을 실제로 들인다. 실패하면 기존 리포트는 그대로다 */
   commitImport: (preview: ImportPreview & { ok: true }) => Promise<ImportOutcome>
   /**
+   * 지우기 직전에 남겨 둔 한 벌을 **열어 보기만** 한다 (REPAIR.md §10).
+   *
+   * ⚠️ **여기서는 아무것도 안 바꾼다.** 사람이 보고 정할 것을 돌려줄 뿐이고,
+   * 덮는 것은 `restoreBackup`이다
+   */
+  previewBackup: () => Promise<BackupPreview>
+  /**
+   * 그 한 벌을 현재 슬롯으로 되돌린다.
+   *
+   * ⚠️ **되찾는 동안 백업 슬롯을 건드리지 않는다.** `resetSave`·`commitImport`가
+   * 쓰는 `backupBeforeOverwrite`는 현재 슬롯을 백업 슬롯에 **복사한다** — 그
+   * 길로 오면 지금 되찾으려는 그 한 벌이 덮인다. 여기서는 현재 슬롯을 **파일로만**
+   * 지킨다 (`backupBeforeOverwrite(false)`)
+   */
+  restoreBackup: (save: SaveData) => Promise<RestoreOutcome>
+  /** 그 한 벌을 `.rpsave` 파일로 받는다. 못 읽는 것도 원본 그대로 나간다 */
+  exportBackup: () => Promise<ExportOutcome>
+  /**
    * 처음부터. 리포트도 같이 지운다 — 안 지우면 다음에 켤 때 옛 판이 되살아난다.
    *
    * ⚠️ **지우기 전에 백업을 시도한다** (IMPORT.md §11 끝). 파일 다운로드와
@@ -623,6 +645,37 @@ export type ImportPreview =
 
 type ImportOutcome =
   | { ok: true; backedUp: DownloadOutcome }
+  | { ok: false; why: string }
+
+/**
+ * 백업 슬롯을 열어 본 결과 (REPAIR.md §10).
+ *
+ * ⚠️ **「없다」와 「못 읽는다」를 안 뭉친다.** 없으면 되찾기 화면 자체를 안 열고,
+ * 못 읽으면 **열되 현재 슬롯에는 안 쓴다** — 파일로 돌려주는 것만 한다.
+ * 저장된 리포트를 읽을 때와 같은 갈래다 (`state/report.ts`의 `ReportRead`)
+ */
+export type BackupPreview =
+  | { kind: 'none' }
+  | {
+      kind: 'ok'
+      save: SaveData
+      /** 옛 판이라 지금 판으로 옮겨서 읽었는가 */
+      migrated: boolean
+    }
+  | {
+      kind: 'unreadable'
+      /** 사람에게 보일 한 줄. 왜 못 읽는지가 할 일을 가른다 */
+      why: string
+      /** 미래 판이면 그 번호. 「지금 판보다 새것」을 화면이 말할 수 있어야 한다 */
+      found: number | null
+    }
+
+type RestoreOutcome =
+  | {
+      ok: true
+      /** 덮이기 전의 현재 리포트를 파일로 받았는가. 막혀도 되찾기는 끝난 것이다 */
+      backedUp: DownloadOutcome
+    }
   | { ok: false; why: string }
 
 /**
@@ -970,6 +1023,49 @@ export const useSaveStore = create<SaveStore>()(
         return { ok: true, backedUp }
       },
 
+      previewBackup: async () => {
+        const got = await readBackupDetailed(SAVE_VERSION)
+        if (got.kind === 'none') return { kind: 'none' }
+        if (got.kind === 'ok') return { kind: 'ok', save: got.save, migrated: got.migrated }
+        // ⚠️ **못 읽는 백업도 버리지 않는다.** 파일로는 그대로 나갈 수 있다 —
+        // 왜 못 읽는지가 사람이 할 일을 가르므로 갈래마다 다른 말을 한다
+        return { kind: 'unreadable', why: explainBackup(got.reason), found: got.reason.found }
+      },
+
+      restoreBackup: async (save) => {
+        // ⚠️ **파일로만 지킨다.** 백업 슬롯에도 한 벌 옮기는 평소 길로 가면
+        // 지금 되찾으려는 그 한 벌이 **현재 리포트로 덮인다**
+        const backedUp = await backupBeforeOverwrite(false)
+
+        // 검증하는 쓰기 하나만 쓴다 — 임시 슬롯에 쓰고 되읽어 체크섬까지 맞춘
+        // 뒤에야 현재 슬롯이 바뀐다. 여기서 실패하면 현재 슬롯도 백업 슬롯도
+        // 한 바이트가 안 바뀐 채로 남는다
+        const written = await writeReportVerified(save)
+        if (!written.ok) return { ok: false, why: written.why }
+
+        set({ ...save, hydrated: true, loaded: true, pendingInit: false })
+        return { ok: true, backedUp }
+      },
+
+      exportBackup: async () => {
+        const got = await readBackupDetailed(SAVE_VERSION)
+        if (got.kind === 'none') return { kind: 'none' }
+        const at = new Date()
+        if (got.kind === 'ok') {
+          const name = saveFileName(got.save.trainer.name, at)
+          return {
+            kind: 'done', fileName: name, raw: false,
+            outcome: downloadPortable(buildPortable(got.save, at), name),
+          }
+        }
+        const found = got.reason.kind === 'invalid' ? (got.reason.found ?? 0) : got.reason.found
+        const name = saveFileName('복구', at)
+        return {
+          kind: 'done', fileName: name, raw: true,
+          outcome: downloadPortable(buildPortableRaw(got.raw, found, at), name),
+        }
+      },
+
       resetSave: async (options) => {
         if (options?.backup !== false) await backupBeforeOverwrite()
         await clearReport()
@@ -983,16 +1079,38 @@ export const useSaveStore = create<SaveStore>()(
  *
  * 두 벌을 남긴다 — 파일과 IndexedDB 백업 슬롯. 파일이 최종 보험이지만
  * 브라우저가 반복 다운로드를 막을 수 있고, 백업 슬롯은 사이트 데이터를 통째로
- * 지우면 같이 사라진다. 둘 다 완전하지 않아서 둘 다 한다
+ * 지우면 같이 사라진다. 둘 다 완전하지 않아서 둘 다 한다.
+ *
+ * ⚠️ **백업 슬롯에 옮기는 것을 끌 수 있어야 한다** (`toSlot`). 백업에서
+ * 되찾는 길에서는 그 복사가 **되찾으려는 바로 그 한 벌을 덮는다** — 현재
+ * 리포트를 백업 슬롯에 쓰는 것이 이 함수가 하는 일이기 때문이다.
+ * 그 길에서는 파일 한 벌만 남기고, 백업 슬롯은 손대지 않는다 (`restoreBackup`)
  */
-async function backupBeforeOverwrite(): Promise<DownloadOutcome> {
+async function backupBeforeOverwrite(toSlot = true): Promise<DownloadOutcome> {
   const got = await readReportDetailed(SAVE_VERSION)
   if (got.kind === 'none') return { started: false, why: 'no-dom' }
-  await backupReport().catch(() => false)
+  if (toSlot) await backupReport().catch(() => false)
   const at = new Date()
   if (got.kind === 'ok') {
     return downloadPortable(buildPortable(got.save, at), saveFileName(got.save.trainer.name, at))
   }
   const found = got.reason.kind === 'invalid' ? (got.reason.found ?? 0) : got.reason.found
   return downloadPortable(buildPortableRaw(got.raw, found, at), saveFileName('복구', at))
+}
+
+/**
+ * 백업을 왜 못 읽는가 — **사람이 할 일이 갈리므로 뭉치면 안 된다.**
+ *
+ * 미래 판은 「더 새 판에서 열어라」이고, 너무 옛 판과 어긋난 내용은 「파일로
+ * 받아 두고 보관해라」다. 셋 다 **현재 슬롯에는 안 쓴다**
+ */
+function explainBackup(reason: Exclude<MigrateResult, { kind: 'ok' }>): string {
+  switch (reason.kind) {
+    case 'too-new':
+      return `더 새로운 판(${String(reason.found)})이 남긴 백업입니다. 그 판에서 열어 주세요`
+    case 'unsupported-old':
+      return `너무 옛 백업이라 지금 판으로 옮길 수 없습니다 (판 ${String(reason.found)})`
+    case 'invalid':
+      return `백업의 내용이 어긋납니다 — ${reason.why}`
+  }
 }
