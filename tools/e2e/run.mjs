@@ -327,10 +327,11 @@ async function where(page, fn, what, timeout = 60_000) {
 
 /** 받은 파일의 글. 디스크에 안 남긴다 */
 async function readDownload(download) {
-  const at = resolve(ROOT, '.audit/e2e.tmp', download.suggestedFilename())
-  mkdirSync(resolve(ROOT, '.audit/e2e.tmp'), { recursive: true })
-  await download.saveAs(at)
-  return readFileSync(at, 'utf8')
+  const stream = await download.createReadStream()
+  if (!stream) throw new Error('다운로드 스트림이 없다')
+  const chunks = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return Buffer.concat(chunks).toString('utf8')
 }
 
 /**
@@ -1708,10 +1709,7 @@ await ((haveRom && haveBdsp) ? run : () => {})(
       page.waitForEvent('download', { timeout: 60_000 }),
       page.getByRole('button', { name: '세이브 파일 내보내기' }).click(),
     ])
-    const at = resolve(ROOT, '.audit/e2e.tmp', download.suggestedFilename())
-    mkdirSync(resolve(ROOT, '.audit/e2e.tmp'), { recursive: true })
-    await download.saveAs(at)
-    const bytes = readFileSync(at)
+    const bytes = Buffer.from(await readDownload(download), 'utf8')
     assert(bytes.length > 0, '내려받은 .rpsave가 비어 있다')
 
     // 새 프로필과 같은 자리로 만든다 — 리포트만 지우고 설치본은 그대로 둔다
@@ -1728,7 +1726,9 @@ await ((haveRom && haveBdsp) ? run : () => {})(
     await seen(page, page.locator('input[accept=".rpsave"]'),
       '리포트를 지웠는데 백업 고르는 칸이 안 뜬다', 60_000, 'attached')
 
-    await page.locator('input[accept=".rpsave"]').setInputFiles(at)
+    await page.locator('input[accept=".rpsave"]').setInputFiles({
+      name: download.suggestedFilename(), mimeType: 'application/json', buffer: bytes,
+    })
     await page.getByRole('button', { name: '이 리포트로 이어하기' }).click({ timeout: 60_000 })
     // ⚠️ **되살리면 타이틀에 안 머문다.** `commitImport`가 성공하면 곧장
     // `/play`로 들어간다 — 여기서 요약창을 찾으면 영영 없다. 들어간 것을 먼저
@@ -1741,7 +1741,6 @@ await ((haveRom && haveBdsp) ? run : () => {})(
       '.rpsave로 되살린 리포트가 타이틀에 안 남는다')
     const back = await page.locator('dl').first().innerText()
     assert(back.includes(NAME), `되살린 리포트에 이름이 없다: ${back.replace(/\n/g, ' ')}`)
-    rmSync(at, { force: true })
 
     // 게임을 끝까지 도는 동안 바깥으로도, /data로도 아무것도 안 나갔다
     const leaked = [
