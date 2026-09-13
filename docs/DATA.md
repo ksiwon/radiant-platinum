@@ -5461,6 +5461,17 @@ u8 hasAnimations · u8 flags · u8 isBicycleSlope · u8 dummy · s32 animeArchiv
 `bike_muddy_slope`·`bike_dungeon_muddy_slope`다 — 구조체를 제대로 읽었다는
 증거다. 이름표는 그 차례표가 준다(590줄, 줄 번호 − 1 = 소품 번호).
 
+그 둘의 클립은 **저절로 안 돈다** — 적재기가 그 자리에서 `paused = TRUE` ·
+`loopCount = 1`을 박는다. 트는 것은 필드가 매 틱 도는 일 하나고
+(`ov5_021EE768` → `ov5_021D4D78`), **칸이 바뀐 프레임에** 아래 칸(0xDA)이면
+클립 0(`cy_slope_botm`) · 위 칸(0xD9)이면 클립 1(`cy_slope_top`)을 한 번 돌린다.
+⚠️ **어느 소품인가를 상자로 안 찾아도 된다** — 비탈 짝 열일곱과 소품 열일곱이
+정확히 맞고 소품이 전부 **아래 칸**에 앉아 있다 (실측 `.audit/probe/slopeProps.mjs`:
+오버월드에 303이 열넷 · 실내 75번 격자에 304가 셋, 모든 짝에서 소품 칸 − 위 칸이
+(0, +1)). 클립 둘은 BTA0가 스물한 프레임에 V를 0에서 −128까지 흘리는 것이고
+**frame 0이 곧 기본 자세**라, 한 바퀴가 끝나면 그 자리로 돌아가면 된다
+(PARITY §1.9 · `scene/slopeAnimStore`).
+
 문은 `DoorAnimation_FindDoorAndLoad`가 스무 종을 적어 둔다. **여닫이는 클립
 넷**(`door01` 66 · `brown_wooden_door` 67 · `green_wooden_door` 68 ·
 `iron_door` 69 → 애니 7·8·9·10), **미닫이는 둘**(`pokecenter_door` 70 → 5·6).

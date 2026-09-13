@@ -42,6 +42,8 @@ import {
 import { abilityOf, genderOf, statsOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { useHatchStore } from '../state/hatchStore'
 import { NO_LEAD, type Lead } from '../engine/battle/encounterLead'
+import { Behavior } from '../engine/map/zone'
+import { useSlopeAnimStore } from './slopeAnimStore'
 
 /**
  * 보고 있는 쪽을 원작의 방향 번호로 (`FACE_UP`·`DOWN`·`LEFT`·`RIGHT`).
@@ -191,6 +193,38 @@ export function resetStepTile(): void {
   const p = worldState.player.position
   trace.reset(p.x, p.z)
   lastMove = -1
+  lastSlopeTile = -1
+}
+
+/**
+ * 지난 프레임에 서 있던 칸. **진흙 비탈이 이것만 본다** (PARITY §1.9).
+ *
+ * ⚠️ **걸음이 아니라 칸이다.** 원작의 그 일(`ov5_021EE768`)은 걸음 계수기를
+ * 안 보고 `PlayerAvatar_GetXPos`·`GetZPos`가 지난번과 다른지만 본다 — 스크립트가
+ * 옮겼든 미끄러져 내려왔든 칸이 바뀌면 한 번이다
+ */
+let lastSlopeTile = -1
+
+/**
+ * 진흙 비탈에 올라섰으면 그 소품을 **한 번** 돌린다 (`ov5_021EE768` → `ov5_021D4D78`).
+ *
+ * ⚠️ **매 프레임 다시 트는 것이 이 자리의 실패 방식이다.** 원작이 칸 비교를
+ * 맨 앞에 두는 까닭이 그것이다 — 비탈 한 칸을 밟고 서 있는 동안 계속 틀면
+ * 흙이 21프레임마다 끊겼다 다시 흐른다.
+ *
+ * ⚠️ **맵 전체의 같은 소품을 같이 안 튼다.** 도는 것은 **그 짝의 소품 하나**다.
+ * 자리는 「밟은 칸이 아래면 그 칸 · 위면 남쪽 한 칸」이고, 그 규칙이 자료와
+ * 열일곱 대 열일곱으로 맞는다 (`scene/slopeAnimStore` 머리말)
+ */
+function bikeSlopeAnim(tx: number, tz: number, key: number): void {
+  if (key === lastSlopeTile) return
+  lastSlopeTile = key
+  const grid = mapWorld.grid
+  if (!grid) return
+  const here = grid.behavior(tx, tz)
+  // 아래 칸이 클립 0(`cy_slope_botm`) · 위 칸이 클립 1(`cy_slope_top`)이다
+  if (here === Behavior.BIKE_SLOPE_BOTTOM) useSlopeAnimStore.getState().play(tx, tz, 0)
+  else if (here === Behavior.BIKE_SLOPE_TOP) useSlopeAnimStore.getState().play(tx, tz + 1, 1)
 }
 
 /**
@@ -281,6 +315,9 @@ export const stepSystem = {
     const tx = Math.floor(p.x), tz = Math.floor(p.z)
     const key = tz * grid.tileWidth + tx
     const moved = trace.advance(p.x, p.z)
+
+    // 진흙 비탈은 **칸이 바뀐 프레임에 한 번**이다 (PARITY §1.9)
+    bikeSlopeAnim(tx, tz, key)
 
     // ⚠️ **떠나는 칸에서 도는 것이 따로 있다** (PARITY §6.10). 원작은 유령
     // 소품 방아쇠·카메라 각·뛰는 자리를 걸음이 **시작될 때** 지금 서 있는

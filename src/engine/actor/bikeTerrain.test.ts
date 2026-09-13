@@ -159,6 +159,18 @@ describe('진흙 비탈', () => {
 /** 실제 격자에서 그 값들이 몇이고 어떻게 놓여 있는가 */
 withData('matrices/0.bin', 'matrices/interiors.bin')('자료와 맞대기', () => {
   interface Mat { name: string; tileWidth: number; tileHeight: number; byteOffset?: number }
+  /** 소품 배치 한 줄. 모델 번호와 놓인 자리만 본다 */
+  interface Placed { model: number; x: number; z: number }
+  /** 자전거 진흙 비탈 소품 둘 (`map_prop_models.order`) */
+  const SLOPE_MODELS = new Set([303, 304])
+
+  /** 격자 전부를 **소품까지 달아서**. 오버월드 하나와 실내 269개 */
+  function matrices(): { mat: Mat & { buildings?: Record<string, Placed[]> } }[] {
+    const over = JSON.parse(readFileSync(resolve(DATA, 'matrices/0.json'), 'utf8')) as Mat
+    const inner = JSON.parse(readFileSync(resolve(DATA, 'matrices/interiors.json'), 'utf8')) as
+      { matrices: Record<string, Mat> }
+    return [{ mat: over }, ...Object.values(inner.matrices).map((mat) => ({ mat }))]
+  }
 
   /** 격자 전부 — 오버월드 하나와 실내 269개 */
   function grids(): { mat: Mat; at: (x: number, z: number) => number }[] {
@@ -239,5 +251,42 @@ withData('matrices/0.bin', 'matrices/interiors.bin')('자료와 맞대기', () =
       expect((t.at(t.x, t.z + 1) & 0x7fff), `${String(t.x)},${String(t.z)}`)
         .toBe(Behavior.BIKE_SLOPE_BOTTOM)
     }
+  })
+
+  /**
+   * ⚠️ **비탈 연출이 「어느 소품을 트는가」를 여기서 못 박는다** (PARITY §1.9).
+   *
+   * 원작은 상자를 만들어 걸리는 소품을 찾지만
+   * (`TerrainCollisionHitbox_Init` → `FindCollidingLoadedMapPropByModelIDs`),
+   * 이 자료에서는 **짝과 소품이 열일곱 대 열일곱으로 정확히 맞고** 소품이 전부
+   * **아래 칸**에 앉아 있다. 그래서 우리 쪽은 상자 없이 「아래 칸이 곧 소품 칸」
+   * 하나로 간다 (`scene/stepSystem`의 `bikeSlopeAnim`).
+   *
+   * 여기가 무너지면 그 규칙이 조용히 틀린다 — 맵 전체의 같은 소품을 같이 틀거나,
+   * 아무것도 안 튼다
+   */
+  it('⚠️ 짝마다 소품이 하나씩, 아래 칸에 앉아 있다 — 열일곱 대 열일곱', () => {
+    const { slopes } = census()
+    const bottoms = slopes.filter((s) => s.v === Behavior.BIKE_SLOPE_BOTTOM)
+    expect(bottoms).toHaveLength(17)
+
+    /** 그 격자의 소품 배치 중 비탈 모델만 */
+    const propsOf = (mat: Mat & { buildings?: Record<string, Placed[]> }): Placed[] =>
+      Object.values(mat.buildings ?? {}).flat().filter((b) => SLOPE_MODELS.has(b.model))
+
+    const mats = matrices()
+    const placed = mats.flatMap(({ mat }) => propsOf(mat))
+    expect(placed, '비탈 소품 배치').toHaveLength(17)
+
+    // 소품 칸을 모아 놓고 아래 칸과 맞댄다 — 격자가 하나뿐인 값이라 칸으로 견준다
+    const spots = new Set(placed.map((b) => `${String(Math.floor(b.x))},${String(Math.floor(b.z))}`))
+    expect(spots.size, '한 칸에 둘이 겹치지 않는다').toBe(17)
+    for (const s of bottoms) {
+      expect(spots.has(`${String(s.x)},${String(s.z)}`), `아래 칸 ${String(s.x)},${String(s.z)}`)
+        .toBe(true)
+    }
+    // 실외가 `bike_muddy_slope`(303) · 실내가 `bike_dungeon_muddy_slope`(304)다
+    expect(placed.filter((b) => b.model === 303)).toHaveLength(14)
+    expect(placed.filter((b) => b.model === 304)).toHaveLength(3)
   })
 })

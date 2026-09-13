@@ -115,6 +115,7 @@ import { enterMapWeather } from '../engine/world/overworldWeather'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import { DoorAnimations } from './DoorAnimations'
 import { useDoorVisualStore } from './doorVisualStore'
+import { useSlopeAnimStore } from './slopeAnimStore'
 import { InteractionPrompt } from './InteractionPrompt'
 import type { NpcActor } from '../engine/actor/npcs'
 import {
@@ -301,6 +302,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 동굴탈출로프의 목적지다 (PARITY §4.1)
       const from = mapById(world.mapId)
       useDoorVisualStore.getState().clear()
+      // 비탈 재생도 맵마다 비운다 — 칸 번호가 맵 밖에서는 딴 자리를 가리킨다
+      useSlopeAnimStore.getState().clear()
       if (from && from.matrix === 0 && mapById(mapId)?.matrix !== 0) {
         const p = worldState.player.position
         useSaveStore.setState({

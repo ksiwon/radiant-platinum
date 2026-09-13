@@ -10,6 +10,11 @@
 //     flags & 2 (미뤄 붙이기, 실측 3개) `AddAllAnimations…`가 아무것도 안 붙인다
 //     isBicycleSlope (실측 2개)         `paused = TRUE` · `loopCount = 1`
 //
+// ⚠️ **비탈 둘은 「안 돈다」가 아니라 「불러야 돈다」다.** 한동안 여기서 그 둘을
+// 반복에서 빼기만 하고 트는 자리를 안 놓아서, 자료도 클립도 다 있는데 화면에서는
+// 흙이 한 번도 안 흘렀다. 트는 것은 필드가 매 틱 도는 일 하나고(`ov5_021EE768`),
+// 우리 쪽 짝은 `scene/stepSystem`의 `bikeSlopeAnim`이다 (`scene/slopeAnimStore`).
+//
 // 그래서 폭포·용암·물결·에스컬레이터가 아무 신호 없이 돌고, 문 스무 종은
 // 가만히 있다가 `LoadDoorAnimation`이 틀 때만 돈다. 꿀나무(26)도 포켓몬이
 // 붙어 있을 때만 `honey_tree.c`가 흔들 클립 하나를 골라 붙인다.
@@ -23,6 +28,7 @@ import {
   FRAME_MS, nodeMatrixAt, splitByNode, uvOffsetAt, type PropAnimSet,
 } from './propAnim'
 import { useDoorVisualStore, type DoorVisual } from './doorVisualStore'
+import { slopePlayAt, useSlopeAnimStore } from './slopeAnimStore'
 
 /**
  * 야도 체육관 단추 셋 (`pastoria_gym_*_button`).
@@ -105,6 +111,10 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
   const ids = set.table.props[String(model)]
   const info = set.table.models[String(model)]
   const isDoor = DOOR_KIND[model] !== undefined
+  /** 자전거 진흙 비탈인가 — 밟을 때 한 번만 돈다 (`scene/slopeAnimStore`) */
+  const isSlope = set.table.slopes.includes(model)
+  const slopePlays = useSlopeAnimStore((s) => s.plays)
+  const slope = isSlope ? slopePlayAt(slopePlays, tile[0], tile[1]) : null
   const doors = useDoorVisualStore((s) => s.doors)
   const door = useMemo(
     () => Object.values(doors).find((d) => d.x === tile[0] && d.z === tile[1]) ?? null,
@@ -116,7 +126,7 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
   const clips = useMemo(() => (ids ?? []).map((id) => set.clip(id)), [ids, set])
   /** 저절로 도는가 — 미룬 적재·비탈·단추만 빠진다 */
   const loops = !set.table.deferred.includes(model)
-    && !set.table.slopes.includes(model)
+    && !isSlope
     && !ONE_SHOT_MODELS.has(model)
 
   // 관절 애니가 있으면 기하를 노드마다 쪼갠다. 나머지 84개는 안 쪼갠다
@@ -164,6 +174,16 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
         // 지금 도는 것이 이 자리의 클립일 때만 손댄다
         if (!running || running.slot !== slot) continue
         frame = running.frame
+      } else if (isSlope) {
+        // ⚠️ **밟은 쪽의 클립 하나만 돈다.** 아래 칸이 0(`cy_slope_botm`) ·
+        // 위 칸이 1(`cy_slope_top`)이고 둘은 서로 다른 재질을 만진다
+        if (!slope || slope.clip !== slot) continue
+        const since = (performance.now() - slope.since) / FRAME_MS
+        // ⚠️ **다 흐르면 첫 프레임으로 앉는다.** 원작은 한 바퀴가 끝나면 애니를
+        // 렌더 오브젝트에서 떼는데(`BicycleSlopeAnimation_ResetFinishedAnimations`)
+        // 그 자리가 곧 클립의 0프레임이다 — 실측으로 두 클립 다 V가 0에서 시작해
+        // −128까지 흐른다. 마지막 프레임에 두면 흙이 밀린 채로 굳는다
+        frame = since >= clip.frames ? 0 : since
       } else if (loops) {
         frame = free % clip.frames
       } else {
