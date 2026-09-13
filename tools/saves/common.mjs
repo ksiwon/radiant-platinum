@@ -96,10 +96,15 @@ export async function warpTo(page, cp) {
   await page.waitForTimeout(150)
   await row.click()
   await page.waitForURL('**/play', { timeout: 60_000 })
-  await page.waitForFunction(async (want) => {
-    const m = await import('/src/engine/map/world.ts')
-    return m.world.mapId === want
-  }, cp.map, { timeout: 90_000 })
+  // ⚠️ **맵 번호를 안 주면 그 대조를 건너뛴다.** 부르는 쪽이 표를 안 읽고
+  // id만 들고 올 수 있어야 한다 — 확인 지점 표를 페이지에서 또 읽게 하면
+  // 그 자체가 또 하나의 멎을 자리가 된다
+  if (cp.map !== null && cp.map !== undefined) {
+    await page.waitForFunction(async (want) => {
+      const m = await import('/src/engine/map/world.ts')
+      return m.world.mapId === want
+    }, cp.map, { timeout: 90_000 })
+  }
   await page.waitForSelector('canvas', { timeout: 120_000 })
 }
 
