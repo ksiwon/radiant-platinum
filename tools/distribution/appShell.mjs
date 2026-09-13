@@ -30,9 +30,9 @@ import { join } from 'node:path'
  * 물려 준다
  */
 export const PUBLIC_SHELL = [
-  { path: '_headers', origin: '자체', note: 'Cloudflare 정적 자산의 CSP·보안 응답 헤더' },
   { path: 'manifest.webmanifest', origin: '자체', note: 'PWA 매니페스트. 손으로 쓴 JSON' },
   { path: 'sw.js', origin: '자체', note: '앱 셸 전용 service worker. 손으로 쓴 JS' },
+  { path: '_headers', origin: '자체', note: 'Cloudflare 응답 헤더(CSP·COOP·HSTS·nosniff). netlify.toml [[headers]]를 옮긴 것 — 빠지면 헤더가 안 나간다' },
   { path: 'assets/radiant-platinum-favicon.svg', origin: '자체', note: '파비콘 (아이콘 원본 픽셀을 담은 SVG)' },
   { path: 'assets/radiant-platinum-favicon.png', origin: '자체', note: '파비콘 — SVG를 안 받는 브라우저용' },
   { path: 'assets/radiant-platinum-icon.png', origin: '자체', note: '앱 아이콘 · apple-touch-icon' },
