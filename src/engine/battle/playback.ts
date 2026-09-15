@@ -59,6 +59,36 @@ export interface LearnPrompt {
 /** `WaitButtonABTime 30` — 글 하나를 읽히는 시간 */
 const HOLD_MESSAGE = 30
 
+/**
+ * 등판이 서는 데 걸리는 프레임. **원작이 자리마다 적어 두었다.**
+ *
+ * 판 도중 교체는 `PokemonSendOut` 뒤 `WaitTime 72`다
+ * (`subscript_switch_pokemon.s` _045 — 힐링소원·달의춤·쫓아내기·쓰러진 뒤
+ * 교체까지 다섯 자리가 다 같은 값이다).
+ *
+ * 배틀을 여는 등판만 더 길고 **쪽마다 다르다** (`subscript_start_encounter.s`):
+ * 우리 쪽은 `ThrowPokeball PLAYER` → `PokemonSlideIn` 뒤 `WaitTime 96`,
+ * 상대는 `WaitTime 112`다.
+ *
+ * ⚠️ **이 값이 0이면 두 마리가 한 프레임에 선다.** 재생기가 「글도 쉼도 없는
+ * 박자」를 같은 프레임에 이어 붙이기 때문이다 (`ui/battle/useBattlePlayback`) —
+ * 앞의 글이 하나라도 비면 등판 둘이 통째로 겹쳐서 **와르르** 나왔다
+ */
+const HOLD_SEND_OUT = 72
+const HOLD_FIRST_SEND_OUT = { p1: 96, p2: 112 } as const
+
+/**
+ * 야생이 서 있는 채로 조우 연출이 도는 시간.
+ *
+ * `PlayEncounterAnimation` 뒤의 `WaitTime 122`다 — 원작은 그 122프레임이 지나야
+ * 체력판이 들어오고 「앗! 야생 …!」이 뜬다. 우리 땅 이펙트가 그 자리에서 돈다
+ * (`scene/battle/EncounterBurst`).
+ *
+ * ⚠️ **0으로 두면 안 된다.** 글을 못 찾은 판에서 이 박자가 글도 쉼도 없는
+ * 박자가 되어 다음 등판과 **한 프레임에** 합쳐진다
+ */
+const HOLD_ENCOUNTER = 122
+
 
 /**
  * 체력바가 화면 밖으로 빠지는 시간.
@@ -98,6 +128,18 @@ function isSilent(e: BattleEvent): boolean {
     || e.kind === 'other' || e.kind === 'win'
 }
 
+/** `buildBeats`가 판마다 달리 쓰는 것 */
+interface BeatOptions {
+  /**
+   * 상대가 **화면이 열릴 때 이미 서 있는가** — 야생전이다.
+   *
+   * 원작이 야생만 `SetPokemonEncounter BTLSCR_ENEMY`로 먼저 세워 놓고 글을
+   * 찍는다. 트레이너전은 반대로 글(`PrintFirstSendOutMessage ENEMY`)이 먼저고
+   * 공을 그 뒤에 던진다 (`subscript_start_encounter.s` _000 대 _118)
+   */
+  foeOnStage?: boolean
+}
+
 /**
  * 사건 줄기 → 박자 목록.
  *
@@ -117,10 +159,13 @@ function isSilent(e: BattleEvent): boolean {
 export function buildBeats(
   events: readonly BattleEvent[],
   text: (e: BattleEvent) => string | null,
+  { foeOnStage = false }: BeatOptions = {},
 ): Beat[] {
   const out: Beat[] = []
   let view: BattleView = emptyView()
   let lastLine: string | null = null
+  /** 그 쪽이 이미 한 번 나왔는가. 여는 등판만 더 길게 선다 */
+  const sentOut = new Set<'p1' | 'p2'>()
 
   /**
    * 글만 찍는 박자. 같은 창이 연달아 나오면(연타 데미지) 다시 안 찍는다.
@@ -199,6 +244,25 @@ export function buildBeats(
         show([e], HOLD_FAINT)
         say(text(e), HOLD_MESSAGE)
         break
+
+      case 'switch': {
+        // ⚠️ **글이 먼저고 몸이 그 뒤다.** 원작이 `PrintSendOutMessage` →
+        // `ThrowPokeball` → `PokemonSlideIn` 차례로 적어 두었다. 뒤집으면
+        // 포켓몬이 먼저 서 있고 「가랏!」이 그 뒤에 뜬다
+        const first = !sentOut.has(e.actor.side)
+        sentOut.add(e.actor.side)
+        // 야생만 예외다 — `SetPokemonEncounter BTLSCR_ENEMY`가 글보다 앞이라
+        // **화면이 열릴 때 이미 서 있다.** 여기서 글을 기다리게 하면 조우 연출이
+        // 빈 발판에서 터진다 (`scene/battle/EncounterBurst`)
+        if (first && e.actor.side === 'p2' && foeOnStage) {
+          show([e], HOLD_ENCOUNTER)
+          say(text(e), HOLD_MESSAGE)
+          break
+        }
+        say(text(e), HOLD_MESSAGE)
+        show([e], first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT)
+        break
+      }
 
       case 'move':
         inMove = true

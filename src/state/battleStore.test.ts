@@ -87,6 +87,20 @@ describe('배틀 스토어', () => {
     expect(useBattleStore.getState().actions.length, '고를 게 없다').toBeGreaterThan(0)
   }, 30_000)
 
+  /**
+   * ⚠️ **sim은 우리 쪽부터 내놓는다.** 그대로 화면에 흘리면 우리 것이 먼저 서
+   * 있는 채로 야생이 나타난다 — 원작은 「앗! 야생 {0}가 튀어나왔다!」를 찍고
+   * 30프레임 뒤에 「가랏!」으로 우리 공을 던진다
+   * (`subscript_start_encounter.s`의 `SetPokemonEncounter BTLSCR_ENEMY`)
+   */
+  it('여는 등판은 상대가 먼저다', async () => {
+    await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
+    const outs = useBattleStore.getState().events.filter((e) => e.kind === 'switch')
+    expect(outs.length).toBeGreaterThanOrEqual(2)
+    expect(outs[0]!.actor.side).toBe('p2')
+    expect(outs[1]!.actor.side).toBe('p1')
+  }, 30_000)
+
   it('키가 파티 순서와 이어져 있다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 3 })
     const { roster, truth: view } = useBattleStore.getState()

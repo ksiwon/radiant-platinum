@@ -1432,6 +1432,37 @@ function grantPrize(state: BattleState): BattleEvent[] {
   return [{ kind: 'prize', money: state.prize }]
 }
 
+/**
+ * 여는 등판의 차례를 원작 것으로 돌린다 — **상대가 먼저다.**
+ *
+ * sim은 첫 스텝에서 `|switch|`를 우리 쪽부터 내놓는데, 원작은 야생이면
+ * 「앗! 야생 {0}가 튀어나왔다!」를 찍고 30프레임 뒤에 「가랏! {0}!」로 우리 공을
+ * 던지고(`subscript_start_encounter.s` _000), 트레이너전이면
+ * `PrintFirstSendOutMessage ENEMY` → 던지기 → `PrintFirstSendOutMessage PLAYER`
+ * 차례다(_118). 그대로 두면 **우리 것이 먼저 서 있는 채로** 야생이 나타난다.
+ *
+ * ⚠️ **맨 앞의 등판 묶음만 건드린다.** 뒤엣것을 옮기면 사건 차례가 흐트러지고,
+ * 재생기는 이미 틀어 버린 앞자리를 못 고친다 (`buildBeats` 머리말)
+ */
+function foeFirst(events: readonly BattleEvent[]): BattleEvent[] {
+  // ⚠️ **등판이 0번이 아니다.** 줄기는 `start`로 열린다 — 실측으로
+  // `start | switch:p1a | switch:p2a | turn`이다. 0번부터 세면 이 함수가
+  // 아무것도 안 하고 조용히 지나간다
+  let from = 0
+  while (from < events.length && events[from]!.kind !== 'switch') from++
+  let to = from
+  while (to < events.length && events[to]!.kind === 'switch') to++
+  const lead = events.slice(from, to)
+  const foe = lead.filter((e) => e.kind === 'switch' && e.actor.side === 'p2')
+  if (foe.length === 0 || foe.length === lead.length) return [...events]
+  return [
+    ...events.slice(0, from),
+    ...foe,
+    ...lead.filter((e) => !foe.includes(e)),
+    ...events.slice(to),
+  ]
+}
+
 /** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
 type BuildFoe = (ctx: { species: SpeciesTable; pp: (move: number) => number }) => SideSpec
 
@@ -1589,14 +1620,15 @@ async function open(
     // 한 걸음 앞서 나간다 — 고치지 않으면 첫 타를 맞을 때까지 게이지만
     // 만피로 거짓말을 한다
     const met = roamerMet
-    const events =
+    const events = foeFirst(
       met === null
         ? step.events
         : step.events.map((e) =>
             e.kind === 'switch' && e.actor.side === 'p2'
               ? { ...e, condition: { ...e.condition, ...foeVitals(met, e.condition.maxHp) } }
               : e,
-          )
+          ),
+    )
     trackParticipants(events)
     trackDex(events, roster)
     set({

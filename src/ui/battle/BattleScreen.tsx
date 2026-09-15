@@ -307,7 +307,11 @@ export function BattleScreen() {
     const ctx = {
       names, lines, moveLines, label, foeName, foeClass, foeTrainer, bare, playerName,
     }
-    const out = buildBeats(events, (e) => battleText(e, ctx))
+    // 야생은 상대가 화면이 열릴 때 이미 서 있다 — 트레이너전은 글을 찍고
+    // 공을 던진다 (`engine/battle/playback`의 `BeatOptions`)
+    const out = buildBeats(events, (e) => battleText(e, ctx), {
+      foeOnStage: kind !== 'trainer',
+    })
     // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다.
     // 롬은 분류·이름을 두 칸으로 받는 줄과 이름 한 칸짜리 줄을 따로 들고 있다
     const challenge = kind !== 'trainer' ? null

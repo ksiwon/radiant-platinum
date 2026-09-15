@@ -219,6 +219,45 @@ describe('박자 순서', () => {
     expect(late.filter((e) => e.kind === 'switch')).toHaveLength(1)
   })
 
+  /**
+   * ⚠️ **두 마리가 한 프레임에 서던 자리다.** 등판 박자의 쉼이 0이라,
+   * 재생기가 「글도 쉼도 없는 박자」를 이어 붙이면서 둘이 통째로 겹쳤다 —
+   * 앞의 글이 하나라도 비면 그렇게 된다. 원작은 자리마다 프레임을 적어 두었다
+   * (`subscript_start_encounter.s` · `subscript_switch_pokemon.s`)
+   */
+  it('등판은 저마다 제 박자를 가진다 — 쉼이 0인 등판은 없다', () => {
+    const beats = buildBeats([enter(p2, 20), enter(p1, 20)], say, { foeOnStage: true })
+    for (const b of beats.filter((x) => x.events.some((e) => e.kind === 'switch'))) {
+      expect(b.hold).toBeGreaterThan(0)
+    }
+  })
+
+  it('글이 먼저고 몸이 그 뒤다 — 원작이 `PrintSendOutMessage` 다음에 공을 던진다', () => {
+    const beats = buildBeats([enter(p1, 20)], say)
+    expect(beats.map((b) => (b.text ?? b.events[0]?.kind))).toEqual(['가라! party-0!', 'switch'])
+    // 여는 등판은 `WaitTime 96`이다
+    expect(beats[1]!.hold).toBe(96)
+  })
+
+  it('야생만 몸이 먼저다 — 화면이 열릴 때 이미 서 있다', () => {
+    const wild = buildBeats([enter(p2, 20)], say, { foeOnStage: true })
+    expect(wild[0]!.events[0]?.kind).toBe('switch')
+    // `PlayEncounterAnimation` 뒤의 `WaitTime 122`
+    expect(wild[0]!.hold).toBe(122)
+    expect(wild[1]!.text).toBe('가라! foe-0!')
+    // 트레이너전은 반대다 — 글을 찍고 공을 던진다 (`WaitTime 112`)
+    const tr = buildBeats([enter(p2, 20)], say, { foeOnStage: false })
+    expect(tr[0]!.text).toBe('가라! foe-0!')
+    expect(tr[1]!.hold).toBe(112)
+  })
+
+  it('판 도중 교체는 72프레임이다 — 여는 등판보다 짧다', () => {
+    const beats = buildBeats([enter(p2, 20), enter(p1, 20), swap(p1, 405, 'Luxray')], say,
+      { foeOnStage: true })
+    const outs = beats.filter((b) => b.events.some((e) => e.kind === 'switch'))
+    expect(outs.map((b) => b.hold)).toEqual([122, 96, 72])
+  })
+
   it('빈 줄로 갈린 글은 창이 갈리고, 줄바꿈 하나는 한 창에 남는다', () => {
     // ⚠️ **줄바꿈 하나로 창을 가르면 안 된다.** 롬의 배틀 글은 거의 다 두 줄이고
     // 그 줄바꿈은 한 창 안의 것이다 — 가르면 화면에 반 문장씩 뜬다
