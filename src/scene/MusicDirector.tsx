@@ -34,6 +34,14 @@ export function MusicDirector() {
    */
   const intro = useIntroStageStore((s) => s.scene !== 'off')
   const phase = useBattleStore((s) => s.phase)
+  /**
+   * 무대가 다 섰는가 (`battleStore`의 `sceneReady`).
+   *
+   * ⚠️ **배틀 곡을 `phase`만 보고 틀면 빈 화면에서 먼저 난다.** 모델이 오기까지
+   * 몇 초가 걸려서 곡·조우 연출·포켓몬이 따로 놀았다. 그동안은 **걷던 곳의
+   * 곡을 그대로 둔다** — 원작도 배틀 화면을 다 세우고 곡을 바꾼다
+   */
+  const sceneReady = useBattleStore((s) => s.sceneReady)
   const kind = useBattleStore((s) => s.kind)
   // 야생은 **누가 나왔는지**가 곡을 정한다. 기라티나는 전용 곡이다 (`songs.ts`)
   const foeSpecies = useBattleStore((s) => s.view?.active.p2a?.species ?? null)
@@ -55,6 +63,8 @@ export function MusicDirector() {
     if (since.current < CHECK_SECONDS) return
     since.current = 0
 
+    // 준비하는 동안은 아무것도 안 고른다 — 지금 흐르던 곡이 그대로 흐른다
+    if (phase !== 'off' && !sceneReady) return
     const want = phase === 'off'
       ? songForMap(world.mapId, new Date().getHours())
       : kind === 'trainer' ? TRAINER_BATTLE

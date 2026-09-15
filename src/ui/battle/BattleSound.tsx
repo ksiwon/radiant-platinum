@@ -49,15 +49,17 @@ export function BattleSound() {
    * ⚠️ **체력 바 소리가 아니다.** `Task_UpdateHPGauge`(4896줄)에는 `Sound_*`가
    * 한 줄도 없다 — 바가 줄어드는 소리를 붙이면 원작에 없는 것을 짓는 셈이다.
    *
-   * ⚠️ **`off → loading`에서만이다.** 원작도 화면을 **세울 때** 한 번이고,
-   * `running`으로 넘어갈 때 또 내면 한 판에 두 번 난다
+   * ⚠️ **무대가 다 선 그 순간이다** (`battleStore`의 `sceneReady`). 원작도 화면을
+   * **세울 때** 한 번이고, 우리 화면이 실제로 서는 자리가 여기다 — 준비 중에
+   * 내면 아직 검은 막 뒤에서 소리만 난다
    */
+  const sceneReady = useBattleStore((s) => s.sceneReady)
   useEffect(() => {
-    if (phase !== 'loading') return
+    if (!sceneReady) return
     void music.playEffect(SFX.BATTLE_FLASH)
     const id = setTimeout(() => { void music.playEffect(SFX.BATTLE_FLASH2) }, FLASH2_DELAY)
     return () => { clearTimeout(id) }
-  }, [phase])
+  }, [sceneReady])
 
   useEffect(() => {
     if (!view) return

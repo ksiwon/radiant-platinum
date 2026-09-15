@@ -14,7 +14,7 @@ import { encounterBurst } from '../../scene/battle/stageRefs'
 import type { BattleAction } from '../../engine/battle/choice'
 import type { SafariCommand } from '../../engine/battle/safariBattle'
 import type { Actor, SlotId } from '../../engine/battle/events'
-import { buildBeats } from '../../engine/battle/playback'
+import { buildBeats, type Beat } from '../../engine/battle/playback'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
 import {
   loadDialogueBank, loadItemNames, loadLabels, loadMoveNames, loadMoves,
@@ -88,6 +88,17 @@ interface Extras {
   typesOf(species: number, form: number): readonly number[] | null
 }
 
+/**
+ * 무대가 다 서기를 기다리는 시한(ms).
+ *
+ * 실측으로 모델과 규칙기까지 3.5초쯤이다 (`scene/battle/EncounterBurst` 머리말).
+ * 느린 기계와 첫 판(규칙기 483KB)을 넉넉히 덮는 값이고, 넘기면 **안 기다린다**
+ */
+const STAGE_DEADLINE_MS = 15_000
+
+/** 무대가 아직 안 선 동안 재생기에 주는 빈 목록. **매번 같은 배열이어야 한다** */
+const NO_BEATS: readonly Beat[] = []
+
 function useNames(): {
   names: BattleNames | null; extras: Extras | null
   lines: readonly string[]; moveLines: readonly string[]
@@ -154,6 +165,15 @@ function useNames(): {
 
 export function BattleScreen() {
   const phase = useBattleStore((s) => s.phase)
+  /**
+   * 무대가 다 섰는가 (`state/battleStore`의 `sceneReady`).
+   *
+   * ⚠️ **`running`만 보면 이 화면이 빈 무대 앞에서 열린다.** 그 자리에서 온 것은
+   * 규칙기와 자료뿐이고 모델은 그 뒤 몇 초에 온다 — 곡과 조우 연출이 먼저 나고
+   * 포켓몬이 늦게 튀어나오던 자리다 (`scene/battle/BattleStage`의 `useSceneReady`)
+   */
+  const sceneReady = useBattleStore((s) => s.sceneReady)
+
   // 이미 잡아 본 종이면 상대 판에 공 표시가 뜬다 (원작 `HealthBox_DrawCaughtIcon`)
   const caughtDex = useSaveStore((s) => s.pokedex.caught)
   // 기술 칸의 상성은 **상대해 본 종에게만** 뜬다 (§2.22)
@@ -195,6 +215,22 @@ export function BattleScreen() {
   // 3D 무대는 씬이 떠 있을 때만 뒤에 선다. 개발 콘솔로 타이틀에서 배틀을 열면
   // 씬이 없으므로 그때만 배경을 깐다 — 안 그러면 타이틀 위에 HUD만 뜬다
   const staged = useSessionStore((s) => s.stageMounted)
+
+  /**
+   * ⚠️ **시한이 있어야 한다.** 무대가 못 서면 이 화면이 「배틀 준비 중…」에
+   * 영영 묶인다 — 모델을 하나 못 받거나, 아예 3D 무대가 없는 자리에서 배틀을
+   * 열면(개발 콘솔로 타이틀에서 여는 길) 알려 줄 사람이 없다. 그때는 덜 갖춘
+   * 채로 여는 편이 낫다: 예전 그림, 곧 빈 무대에서 시작하는 그 화면이다
+   */
+  useEffect(() => {
+    if (phase === 'off' || phase === 'loading' || sceneReady) return
+    // 무대가 아예 없는 자리(타이틀에서 개발 콘솔로 여는 길)는 기다릴 것이 없다
+    if (!staged) { useBattleStore.setState({ sceneReady: true }); return }
+    const id = setTimeout(() => {
+      useBattleStore.setState({ sceneReady: true })
+    }, STAGE_DEADLINE_MS)
+    return () => { clearTimeout(id) }
+  }, [phase, sceneReady, staged])
 
   const moveActions = actions.filter((a) => a.type === 'move')
   const switchActions = actions.filter((a) => a.type === 'switch')
@@ -310,7 +346,9 @@ export function BattleScreen() {
   ])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
-  const script = useBattlePlayback(beats, playEvents)
+  // ⚠️ **무대가 서기 전에는 박자를 안 푼다.** 첫 박자가 등판이라, 여기서
+  // 미리 흘리면 아직 안 온 몸 대신 빈 발판에 대고 「나와라!」가 뜬다
+  const script = useBattlePlayback(sceneReady ? beats : NO_BEATS, playEvents)
   // 아직 재생 중이면 A가 빨리 감기다. 메뉴 키와 겹치면 안 된다.
   // ⚠️ **묻는 자리에서는 빨리 감기를 끈다** — 안 그러면 Z 한 번이 물음을
   // 넘기면서 동시에 답으로도 먹혀 아무거나 골라진다
@@ -341,10 +379,10 @@ export function BattleScreen() {
         여전히 **한 번만** 마운트된다 — 걷는 애니메이션은 클래스가 붙는
         그 순간부터 돈다
       */}
-      {phase === 'loading'
+      {!sceneReady
         ? <div className={css.wipeHold} />
         : <BattleOpenVeil />}
-      {phase === 'loading' ? <div className={css.waiting}>배틀 준비 중…</div> : <>
+      {!sceneReady ? <div className={css.waiting}>배틀 준비 중…</div> : <>
       {/*
         누구를 내보낼까. **화면 전체를 덮는다** — 파티 여섯과 고른 한 마리의
         속사정을 나란히 놓아야 교체를 결정할 근거가 화면에 있다 (§2.5)

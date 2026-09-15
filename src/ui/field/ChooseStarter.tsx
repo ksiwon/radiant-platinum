@@ -25,6 +25,7 @@ import { loadDialogueBank } from '../../data/gameData'
 import { MessagePrinter, printedText } from '../../engine/script/printer'
 import { MessageSlots } from '../../engine/script/text'
 import { fieldScripts } from '../../engine/script/field'
+import { resetFade, screenFade } from '../../engine/script/fade'
 import { SFX } from '../../engine/audio/sfx'
 import { setStarterChoice } from '../../scene/fieldServices'
 import { resetStarterScene, starterScene } from '../../scene/field/starterRefs'
@@ -83,6 +84,33 @@ export function ChooseStarter() {
     resetStarterScene()
     return () => {
       resetStarterScene()
+    }
+  }, [])
+
+  /**
+   * 스크립트가 덮어 둔 화면을 **이 화면이 사는 동안만** 걷는다.
+   *
+   * ⚠️ **이게 없으면 무대가 통째로 검다.** 원작 바이트코드가 이 순서다
+   * (`scripts_route_201.s`의 `Route201_Briefcase`):
+   *
+   *     FadeScreenOut → WaitFadeScreen → StartChooseStarterScene
+   *
+   * 원작은 고르는 화면이 **자기 화면을 따로 세우는 프로그램**이라 필드에 덮인
+   * 덮개와 상관이 없다. 우리는 화면이 하나뿐이고 덮개가 DOM 판 한 장이라
+   * (`ui/field/FadeOverlay`, zIndex 300) 그 판이 3D 무대를 덮은 채로 남는다 —
+   * 글창은 이 화면 것이라 그 위(400)에 떠서 **글은 보이고 고를 수도 있는데
+   * 가방만 안 보이는** 그림이 된다. 실제로 그렇게 보고가 왔다.
+   *
+   * ⚠️ **끝나면 덮개를 그대로 되돌려 놓는다.** 다음 줄이 `ReturnToField` →
+   * `FadeScreenIn`인데, `startFade`가 **지금 덮인 만큼에서 시작**하므로
+   * (`script/fade`) 여기서 걷어 버린 채로 나가면 밝아질 것이 없어 필드가
+   * 한 프레임 만에 튀어나온다
+   */
+  useEffect(() => {
+    const covered = screenFade.now
+    resetFade()
+    return () => {
+      screenFade.now = covered
     }
   }, [])
 

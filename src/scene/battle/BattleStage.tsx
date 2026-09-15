@@ -9,7 +9,7 @@
 // 한 장이었고 오래 그렇게 세워 왔는데, 무대를 BDSP의 진짜 3D로 갈아 끼우고 나니
 // 그 한 장만 화면에서 튀었다. 지어낸 것이 아니라 공식 리메이크가 같은 493마리를
 // 3D로 다시 만들어 둔 것을 가져온다. 모델을 못 받은 종은 도트로 떨어진다.
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useLoader, useThree } from '@react-three/fiber'
 import {
   BackSide,
@@ -24,6 +24,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { WebGPURenderer } from 'three/webgpu'
 import { warmBeforeShow } from '../warmPipelines'
+import { preloadSplPack, SPL_WAZA } from './splPack'
 import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
@@ -47,15 +48,7 @@ import { spriteKey } from '../../engine/pokemon/form'
 import { MoveVfx } from './MoveVfx'
 import { BattleAtmosphere } from './BattleAtmosphere'
 import { MOVE_FRAMES, moveFramesOf } from '../../engine/battle/vfx'
-import {
-  PAIR_DIR,
-  ShotDirector,
-  SLOT,
-  sampleShot,
-  shotFor,
-  type ShotName,
-  type Side,
-} from '../../engine/battle/shots'
+import { CAMERA, PAIR_DIR, SLOT, type Side } from '../../engine/battle/shots'
 import { useOptionsStore } from '../../state/optionsStore'
 import {
   BACK_DIR,
@@ -608,8 +601,16 @@ function Slot({
  * 한 벌이 2~8MB라 배틀이 열리는 순간에 받는다. 받는 동안은 아래 `Flat`이 대신
  * 선다 — 첫 프레임에 빈 화면을 보이지 않으려고
  */
-function Arena({ look, file }: { look: TimeLook; file: string }) {
+function Arena({ look, file, onUp }: { look: TimeLook; file: string; onUp: (up: boolean) => void }) {
   const gltf = useLoader(GLTFLoader, useAssetUrl(`models/arena/${file}`))
+  // 이 부품이 서는 것 자체가 「무대가 왔다」다 — `useLoader`가 풀려야 마운트된다.
+  // ⚠️ **나갈 때 도로 내린다.** 깃발을 밖에서 초기화하면, 무대 파일이 이미
+  // 캐시에 있는 **두 번째 배틀**에서 이 효과가 먼저 돌고 초기화가 나중에 돌아
+  // 영영 안 서는 창이 생긴다 — 자기가 켜고 자기가 끄면 그 창이 없다
+  useEffect(() => {
+    onUp(true)
+    return () => { onUp(false) }
+  }, [onUp])
   const scene = useMemo(() => {
     const root = gltf.scene.clone(true)
     root.traverse((o) => {
@@ -651,6 +652,7 @@ function Flat({ look }: { look: TimeLook }) {
 export function BattleStage() {
   const view = useBattleStore((s) => s.view)
   const roster = useBattleStore((s) => s.roster)
+  useSceneReady()
   /**
    * 기술 표와 타격 박자표를 **무대가 서면서** 받아 둔다.
    *
@@ -683,6 +685,7 @@ export function BattleStage() {
     const here = world.grid?.behaviorAtWorld(p.x, p.z) ?? null
     return arenaFor(mapById(world.mapId), worldState.player.surfing, here)
   }, [])
+  const arenaUp = useCallback((up: boolean) => { arenaHere = up }, [])
   const [colors, setColors] = useState<((id: number) => string) | null>(null)
   const scene = useOptionsStore((s) => s.battleScene)
 
@@ -762,7 +765,7 @@ export function BattleStage() {
         무대. 받는 동안은 평평한 땅이 대신 선다 — 배틀은 곧바로 열려야 한다
       */}
       <Suspense fallback={<Flat look={timeLook} />}>
-        <Arena look={timeLook} file={arena.file} />
+        <Arena look={timeLook} file={arena.file} onUp={arenaUp} />
       </Suspense>
       <BattleAtmosphere
         view={view}
@@ -839,85 +842,36 @@ export function BattleStage() {
 }
 
 /**
- * 카메라 연출 (PLAN §7.4).
+ * 배틀 카메라 (PLAN §7.4).
  *
- * 배틀에서 일어나는 일을 보고 샷을 컷한다 — 기술을 쓰면 어깨 너머, 맞으면
- * 클로즈업, 쓰러지면 로우앵글. 샷이 끝나면 기본 샷으로 돌아온다.
+ * **한 자리에 선다.** 무대 전체가 늘 보이고 움직이는 것은 포켓몬과 기술
+ * 연출뿐이다 (`engine/battle/shots`의 `CAMERA`).
  *
- * ⚠️ **설정의 "배틀 애니메이션"을 여기서 본다.** 원작의 그 항목은 연출을 통째로
- * 건너뛰어 배틀을 빠르게 만드는 것이라, 끄면 카메라도 기본 샷에 붙박이가 된다.
- * 그동안 값만 저장되고 아무 데도 안 걸려 있던 항목이다
+ * ⚠️ **샷을 컷하던 연출을 걷어냈다.** 기술을 쓰면 어깨 너머, 맞으면 클로즈업,
+ * 쓰러지면 로우앵글로 컷했는데 — 거리와 화각을 한 값으로 못 박은 뒤에도
+ * **한 턴에 컷이 서넛**이라 플레이해 보면 무대가 아니라 카메라가 먼저 보였다.
+ * 원작 DS는 카메라가 아예 안 움직인다.
+ *
+ * 흔들림은 남는다. 다만 **샷이 정하는 흔들림이 아니라 기술 대본이 시키는
+ * 것**이다 (`moveImpact.camera` — `Func_ShakeBg`가 적힌 기술 서른 개)
  */
 function useBattleCamera(fit: number): void {
-  const director = useRef(new ShotDirector())
-  const scene = useOptionsStore((s) => s.battleScene)
-  const cast = useBattleStore((s) => s.view?.lastMove ?? null)
-  const struck = useBattleStore((s) => s.view?.lastHit ?? null)
-  const active = useBattleStore((s) => s.view?.active ?? null)
-
-  /** 두 번 같은 일로 컷하지 않게, 방금 본 것을 기억한다 */
-  const seen = useRef({ move: -1, hit: -1, out: '', down: '0000' })
-
-  const cut = (name: ShotName, side: Side): void => {
-    if (scene === SHOW_SCENE) director.current.cut(name, side)
-  }
-
-  useEffect(() => {
-    if (!cast || cast.seq === seen.current.move) return
-    seen.current.move = cast.seq
-    cut('oncoming', sideOf(cast.by))
-  })
-
-  useEffect(() => {
-    if (!struck || struck.seq === seen.current.hit) return
-    seen.current.hit = struck.seq
-    cut('impact', sideOf(struck.slot))
-  })
-
-  // 등판과 기절. 어느 쪽이 바뀌었는지는 종족 번호와 체력으로 안다
-  useEffect(() => {
-    if (!active) return
-    // ⚠️ **자리마다 본다.** 쪽으로 세면 더블에서 짝이 바뀔 때 컷이 안 걸린다
-    const out = SLOTS.map((slot) => String(active[slot]?.species ?? '')).join('/')
-    const was = seen.current.out.split('/')
-    if (out !== seen.current.out) {
-      const changed = SLOTS.filter((slot, i) => String(active[slot]?.species ?? '') !== was[i])
-      const first = seen.current.out === ''
-      seen.current.out = out
-      // ⚠️ 첫 등판에는 컷하지 않는다. 배틀이 열리는 순간이라 두 자리가 한꺼번에
-      // 차는데, 그때 등판 샷을 걸면 무대가 서기도 전에 카메라가 한쪽으로 붙는다
-      if (!first && changed[0]) cut('switchIn', sideOf(changed[0]))
-    }
-    const down = SLOTS.map((slot) => ((active[slot]?.hp ?? 1) <= 0 ? '1' : '0')).join('')
-    if (down !== seen.current.down) {
-      const fell = SLOTS.filter((_, i) => down[i] === '1' && seen.current.down[i] !== '1')
-      seen.current.down = down
-      if (fell[0]) cut('faint', sideOf(fell[0]))
-    }
-  })
-
-  useFrame((_, delta) => {
-    const frame =
-      scene === SHOW_SCENE
-        ? director.current.advance(delta)
-        : sampleShot(shotFor('establish', 'p1'), 0)
-    // 흔들림은 방향을 여기서 정한다 — 엔진이 난수를 들고 있을 이유가 없다
-    const jitter = frame.shake === 0 ? 0 : Math.sin(performance.now() / 17) * frame.shake
-    // ⚠️ 대본이 배경을 흔들라고 적은 기술만 여기서 더 흔든다 (`Func_ShakeBg`,
-    // 30개). 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
+  useFrame(() => {
+    // ⚠️ 대본이 배경을 흔들라고 적은 기술만 흔든다 (`Func_ShakeBg`, 30개).
+    // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
     const quake = moveImpact.t < 1 && moveImpact.camera > 0
       ? Math.sin(performance.now() / 11) * moveImpact.camera * (1 - moveImpact.t)
       : 0
-    // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 샷은 풀밭(반지름 12m) 기준으로
+    // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 자리는 풀밭(반지름 12m) 기준으로
     // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖
     // 천장 위에 선다. 바라보는 자리는 그대로 두고 거리만 줄인다
-    const [lx, ly, lz] = frame.look
+    const [lx, ly, lz] = CAMERA.look
     battleStage.position
       .set(
-        lx + (frame.position[0] - lx) * fit + jitter + quake,
-        ly + (frame.position[1] - ly) * fit + jitter * 0.6 + quake * 0.7,
-        lz + (frame.position[2] - lz) * fit,
+        lx + (CAMERA.position[0] - lx) * fit + quake,
+        ly + (CAMERA.position[1] - ly) * fit + quake * 0.7,
+        lz + (CAMERA.position[2] - lz) * fit,
       )
       .add(STAGE_ORIGIN)
     battleStage.target.set(lx, ly, lz).add(STAGE_ORIGIN)
@@ -926,3 +880,69 @@ function useBattleCamera(fit: number): void {
 
 /** 설정의 "배틀 애니메이션"에서 **보는** 쪽 값 (`options_menu` 뱅크 13번) */
 const SHOW_SCENE = 0
+
+/**
+ * 무대가 **다 서는** 순간을 스토어에 알린다 (`state/battleStore`의 `sceneReady`).
+ *
+ * ⚠️ **`phase: 'running'`은 「보여 줘도 된다」가 아니다.** 그 자리에서 온 것은
+ * 규칙기와 자료뿐이고, 화면에 서는 무대(2~8MB glb)와 앞에 나올 두 마리의 몸은
+ * 그 뒤에 받는다 — 실측으로 3.5초다. 그동안 배틀 곡이 흐르고 빈 무대에 조우
+ * 연출이 터지고 나서야 포켓몬이 툭 나타났다. 그래서 여기서 셋을 다 기다린다:
+ *
+ *   ① 무대 모델 — `Arena`가 서면 온 것이다 (`useLoader`가 풀려야 마운트된다)
+ *   ② 앞에 나올 두 마리의 몸 — **정본**(`truth`)에서 고른다. 화면 뷰(`view`)는
+ *     재생기가 아직 안 푼 빈 무대라 거기서는 누가 나올지 알 수 없다
+ *   ③ 조우 연출 입자 묶음 (`EncounterBurst`가 `loading`에서 미리 받는다)
+ *
+ * 몸을 여기서 **미리 받아 두는 것**이 요점이다 — 나중에 `Slot`이 같은
+ * `loadMonModel`을 부르면 캐시에 걸려 그 프레임에 선다
+ */
+function useSceneReady(): void {
+  const ready = useBattleStore((s) => s.sceneReady)
+  /**
+   * 앞에 나올 마리들. **문자열 하나로 접어서** 고른다 — 배열을 돌려주면
+   * 선택자가 매 프레임 새 값을 내서 무대가 통째로 다시 그려진다
+   */
+  const leads = useBattleStore((s) => {
+    const active = s.truth?.active
+    if (!active) return ''
+    return SLOTS.map((slot) => {
+      const mon = active[slot]
+      if (!mon || mon.species === null) return ''
+      const form = mon.form ?? s.roster[mon.key]?.form ?? 0
+      return [mon.species, form, mon.gender, mon.shiny ? 1 : 0, slot.startsWith('p1') ? 1 : 0].join(':')
+    }).filter((k) => k !== '').join('/')
+  })
+
+  useEffect(() => {
+    if (ready || leads === '') return
+    let alive = true
+    // 조우 연출 입자 묶음. `EncounterBurst`가 `loading`에서 이미 걸어 두므로
+    // 여기서는 **같은 약속을 한 번 더 기다릴 뿐**이다 (`splPack`이 캐시한다)
+    const burst = preloadSplPack(SPL_WAZA).catch(() => undefined)
+    const bodies = leads.split('/').map((key) => {
+      const [species, form, gender, shiny] = key.split(':')
+      return loadMonModel(Number(species), Number(form), {
+        gender: gender as 'male' | 'female' | 'genderless',
+        shiny: shiny === '1',
+      }).catch(() => null)
+    })
+    /** 무대가 아직 안 왔으면 다음 프레임에 다시 본다 */
+    let raf = 0
+    void Promise.all([...bodies, burst]).then(() => {
+      const waitArena = (): void => {
+        if (!alive) return
+        if (arenaHere) { useBattleStore.setState({ sceneReady: true }); return }
+        raf = requestAnimationFrame(waitArena)
+      }
+      waitArena()
+    })
+    return () => {
+      alive = false
+      cancelAnimationFrame(raf)
+    }
+  }, [leads, ready])
+}
+
+/** 무대 모델이 서 있는가. React 상태로 두면 `Arena`가 그때마다 다시 그려진다 */
+let arenaHere = false

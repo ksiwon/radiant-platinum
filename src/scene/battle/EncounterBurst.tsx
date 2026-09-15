@@ -66,10 +66,15 @@ export function EncounterBurst({ withParticles }: { withParticles: boolean }) {
 
   /** 열렸다는 것은 알았고 아직 안 텄다 */
   const armed = useRef(false)
+  /**
+   * ⚠️ **`running`이 아니라 무대가 다 선 순간이다** (`battleStore`의 `sceneReady`).
+   * `running`에 터뜨리면 모델이 아직 안 와서 **빈 발판 위에서** 흙이 튄다
+   */
+  const ready = useBattleStore((s) => s.sceneReady)
   useEffect(() => {
-    if (phase !== 'running') setCues(null)
-    armed.current = phase === 'running'
-  }, [phase])
+    if (!ready) setCues(null)
+    armed.current = ready
+  }, [ready])
 
   /**
    * ⚠️ **효과 안에서 시계를 켜면 안 된다.** 배틀이 열리는 그 순간 주인공·상대

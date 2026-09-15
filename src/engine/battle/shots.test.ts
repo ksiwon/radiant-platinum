@@ -1,226 +1,107 @@
-// 배틀 카메라 샷 (PLAN §7.4)
+// 배틀 카메라 (PLAN §7.4)
 //
-// ⚠️ 이 화면에서 겁나는 것 하나: **무대에 서는 것은 3D 모델이 아니라 도트
-// 한 장**이다. 카메라가 크게 돌면 그림이 그려진 각도와 어긋나서, 빌보드로
-// 돌려 놔도 어색해진다. 그래서 시험의 절반이 "얼마나 도는가"를 잰다.
+// 카메라가 한 자리에 서므로 여기서 잴 것은 **그 한 자리가 무대를 제대로
+// 담는가**와, 더블에서 짝을 벌리는 두 방향이 그 시선에서 뽑혔는가다.
 import { describe, it, expect } from 'vitest'
-import {
-  BASE_AZIMUTH, MAX_SWING, SHOT_REACH, SLOT, ShotDirector, clampSwing, ease, sampleShot, shotFor,
-  type ShotName, type Side, type Vec3,
-} from './shots'
+import { BATTLE_FOV, CAMERA, PAIR_DEPTH, PAIR_DIR, SHOT_REACH, SLOT, type Side, type Vec3 } from './shots'
 
-const ALL: ShotName[] = ['establish', 'oncoming', 'impact', 'reaction', 'faint', 'switchIn']
 const SIDES: Side[] = ['p1', 'p2']
 
-/** 무대 한가운데를 축으로 잰 방위각 */
-function azimuth(position: Vec3, look: Vec3): number {
-  return Math.atan2(position[0] - look[0], position[2] - look[2])
+/** 카메라에서 그 자리까지 */
+function reach(side: Side): number {
+  return Math.hypot(
+    CAMERA.position[0] - SLOT[side].x,
+    CAMERA.position[2] - SLOT[side].z,
+  )
 }
 
-// ⚠️ 기준 샷 좌표를 여기 다시 적지 않는다. 예전에 그렇게 두었다가
-// 샷을 BDSP 값으로 옮겼을 때 시험만 옛 자리를 기준으로 쟀다
-const BASE = BASE_AZIMUTH
-
-function offBase(position: Vec3, look: Vec3): number {
-  let off = azimuth(position, look) - BASE
-  while (off > Math.PI) off -= Math.PI * 2
-  while (off < -Math.PI) off += Math.PI * 2
-  return Math.abs(off)
-}
-
-describe('샷', () => {
-  it('전부 지면 위에 있고 무대 밖으로 안 나간다', () => {
-    for (const name of ALL) {
-      for (const side of SIDES) {
-        const shot = shotFor(name, side)
-        for (const p of [shot.from, shot.to]) {
-          expect(p[1], `${name}/${side} 높이`).toBeGreaterThan(0.4)
-          expect(p[1], `${name}/${side} 높이`).toBeLessThan(8)
-          // 지면 원판이 반지름 34다. 그 밖으로 나가면 허공이 보인다
-          expect(Math.hypot(p[0], p[2]), `${name}/${side} 거리`).toBeLessThan(30)
-        }
-      }
-    }
+describe('카메라', () => {
+  it('지면 위에 서고 무대 밖으로 안 나간다', () => {
+    const [x, y, z] = CAMERA.position
+    expect(y).toBeGreaterThan(0.4)
+    expect(y).toBeLessThan(8)
+    // 지면 원판이 반지름 34다. 그 밖으로 나가면 허공이 보인다
+    expect(Math.hypot(x, z)).toBeLessThan(30)
   })
 
-  it('주인공을 본다 — 보는 점이 그 자리에 붙어 있다', () => {
-    const near = (a: Vec3, side: Side) =>
-      Math.hypot(a[0] - SLOT[side].x, a[2] - SLOT[side].z)
-    // 때리는 샷만 **상대**를 보고, 나머지는 자기 쪽을 본다
+  it('두 자리 사이를 본다 — 한쪽에 붙어 있지 않다', () => {
+    // 보는 점은 무대 한가운데다. 양쪽 발판에서 같은 거리에 있어야 한다
+    const toP1 = Math.hypot(CAMERA.look[0] - SLOT.p1.x, CAMERA.look[2] - SLOT.p1.z)
+    const toP2 = Math.hypot(CAMERA.look[0] - SLOT.p2.x, CAMERA.look[2] - SLOT.p2.z)
+    expect(Math.abs(toP1 - toP2)).toBeLessThan(0.01)
+    expect(CAMERA.look[1]).toBeGreaterThan(0)
+  })
+
+  it('내 쪽이 카메라에 가깝다 — 화면에서 내 것이 크다', () => {
+    expect(reach('p1')).toBeLessThan(reach('p2'))
+    // 실측 3.9 대 7.7 — 상대가 절반 크기다 (PLAN §7.4)
+    expect(reach('p2') / reach('p1')).toBeGreaterThan(1.8)
+  })
+
+  it('`SHOT_REACH`가 실제 수평 거리다 — 좁은 무대를 당길 때 이 값을 쓴다', () => {
+    const flat = Math.hypot(
+      CAMERA.position[0] - CAMERA.look[0],
+      CAMERA.position[2] - CAMERA.look[2],
+    )
+    expect(SHOT_REACH).toBeCloseTo(flat, 6)
+    expect(SHOT_REACH).toBeCloseTo(5.68, 2)
+  })
+
+  it('무대에 선 둘이 화면 안에 든다', () => {
+    // 화각은 **세로**다. 가로는 화면 비만큼 넓다 — 찍는 창이 960×640이라 1.5배
+    const half = Math.tan((BATTLE_FOV / 2) * (Math.PI / 180)) * (960 / 640)
     for (const side of SIDES) {
-      const foe = side === 'p1' ? 'p2' : 'p1'
-      expect(near(shotFor('oncoming', side).look, foe)).toBeLessThan(0.01)
-      for (const name of ['impact', 'reaction', 'faint', 'switchIn'] as ShotName[]) {
-        expect(near(shotFor(name, side).look, side), name).toBeLessThan(0.01)
-      }
-    }
-  })
-
-  /**
-   * ⚠️ 여기가 이 파일의 요지다. 카메라가 기준 각도에서 `MAX_SWING`을 넘게 돌면
-   * 축을 넘어가 누가 내 편인지가 뒤집힌다
-   */
-  it('어느 샷도 기준 각도에서 60°를 안 넘는다', () => {
-    for (const name of ALL) {
-      for (const side of SIDES) {
-        const shot = shotFor(name, side)
-        for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-          const f = sampleShot(shot, t * (shot.hold || 1))
-          expect(offBase(f.position, f.look), `${name}/${side} t=${String(t)}`)
-            .toBeLessThanOrEqual(MAX_SWING + 1e-9)
-        }
-      }
-    }
-  })
-
-  /**
-   * ⚠️ **접기 전에 이미 안쪽이어야 한다.**
-   *
-   * 위 시험만으로는 부족하다 — `sampleShot`이 접고 나서 재기 때문에, 샷을
-   * 아무렇게나 적어도 통과한다. 실제로 처음 만든 판이 그랬다: 상대가 때릴 때
-   * 카메라가 무대 반대편으로 넘어가 148~180°였는데, 접는 코드가 전부 한계각으로
-   * 되감아서 다섯 샷이 다 같은 자리가 됐다. 시험은 통과하고 연출은 없었다.
-   *
-   * 그래서 여기서는 **날것의 `from`·`to`를 잰다.** 접는 코드는 안전망이지
-   * 설계가 아니다
-   */
-  it('접기 전의 자리부터 안쪽이다 — 접는 것은 안전망일 뿐이다', () => {
-    for (const name of ALL) {
-      for (const side of SIDES) {
-        const shot = shotFor(name, side)
-        expect(offBase(shot.from, shot.look), `${name}/${side} from`).toBeLessThan(MAX_SWING)
-        expect(offBase(shot.to, shot.look), `${name}/${side} to`).toBeLessThan(MAX_SWING)
-        // 접혔는지 직접 확인한다 — 접히면 자리가 움직인다
-        expect(clampSwing(shot.from, shot.look), `${name}/${side}`).toEqual(shot.from)
-        expect(clampSwing(shot.to, shot.look), `${name}/${side}`).toEqual(shot.to)
-      }
-    }
-  })
-
-  it('샷마다 자리가 다르다 — 같으면 연출이 아니라 한 컷이다', () => {
-    const seen = new Map<string, string>()
-    for (const name of ALL) {
-      for (const side of SIDES) {
-        const shot = shotFor(name, side)
-        // 기본 샷은 양쪽이 같은 것이 맞다
-        const key = name === 'establish' ? 'establish' : `${name}/${side}`
-        const spot = shot.from.map((v) => v.toFixed(2)).join(',')
-        const clash = [...seen].find(([, v]) => v === spot)
-        expect(clash?.[0] ?? key, `${key}가 ${String(clash?.[0])}와 같은 자리다`).toBe(key)
-        seen.set(key, spot)
-      }
-    }
-  })
-
-  it('접는 것이 각도만 건드린다 — 거리와 높이는 그대로다', () => {
-    const look: Vec3 = [0, 1, 0]
-    // 기준에서 한참 벗어난 자리
-    const wild: Vec3 = [0, 4, -9]
-    const held = clampSwing(wild, look)
-    expect(held[1]).toBe(wild[1])
-    expect(Math.hypot(held[0] - look[0], held[2] - look[2]))
-      .toBeCloseTo(Math.hypot(wild[0] - look[0], wild[2] - look[2]), 10)
-    expect(offBase(held, look)).toBeCloseTo(MAX_SWING, 6)
-  })
-
-  it('안 벗어난 자리는 그대로 둔다', () => {
-    const look: Vec3 = [0.9, 1.0, -1.6]
-    const inside: Vec3 = [-2.6, 5.0, 9.6]
-    expect(clampSwing(inside, look)).toEqual(inside)
-  })
-
-  it('맞는 샷만 흔들리고, 흔들림은 시간이 가면 사라진다', () => {
-    const shot = shotFor('impact', 'p1')
-    expect(sampleShot(shot, 0).shake).toBeGreaterThan(0)
-    expect(sampleShot(shot, shot.hold * 0.5).shake).toBe(0)
-    for (const name of ['establish', 'oncoming', 'reaction', 'faint', 'switchIn'] as ShotName[]) {
-      expect(sampleShot(shotFor(name, 'p1'), 0).shake, name).toBe(0)
-    }
-  })
-
-  /**
-   * ⚠️ **여기가 「기술 모션이 어색하다」의 자리다.**
-   *
-   * 예전에는 샷마다 피사체까지의 거리가 달랐다 — 기본 5.79m인데 임팩트가
-   * 1.98m, 기절이 2.14m였다. 곧 기술 한 번에 화면이 3배 가까이 당겨졌다
-   * 풀렸고, 그 줌이 연출보다 먼저 보였다. 각도는 마음껏 바꾸되 **크기는
-   * 안 바꾼다** — 원작 DS는 카메라가 아예 안 움직인다
-   */
-  it('어느 샷에서도 피사체가 같은 크기로 보인다 — 각도만 바뀐다', () => {
-    for (const name of ALL) {
-      for (const side of SIDES) {
-        const shot = shotFor(name, side)
-        for (const [what, p] of [['from', shot.from], ['to', shot.to]] as const) {
-          const flat = Math.hypot(p[0] - shot.look[0], p[2] - shot.look[2])
-          expect(flat, `${name}/${side} ${what}`).toBeCloseTo(SHOT_REACH, 6)
-        }
-        // 높이까지 넣은 실제 거리도 2% 안이다 (높이는 샷마다 다르게 둔다)
-        const far = Math.hypot(
-          shot.from[0] - shot.look[0], shot.from[1] - shot.look[1], shot.from[2] - shot.look[2])
-        expect(far / SHOT_REACH, `${name}/${side} 실제 거리`).toBeLessThan(1.02)
-      }
-    }
-  })
-
-  it('샷 안에서는 멈추지 않는다 — 처음과 끝의 자리가 다르다', () => {
-    for (const name of ALL) {
-      const shot = shotFor(name, 'p1')
-      const span = shot.hold || 1
-      const a = sampleShot(shot, 0).position
-      const b = sampleShot(shot, span).position
-      expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]), name).toBeGreaterThan(0.05)
+      // 시선 축으로 잰 깊이와, 그 축에서 옆으로 벗어난 거리
+      const dx = SLOT[side].x - CAMERA.position[0]
+      const dz = SLOT[side].z - CAMERA.position[2]
+      const depth = dx * -VIEW.x + dz * -VIEW.z
+      const lateral = Math.abs(dx * LAT.x + dz * LAT.z)
+      // 실측 — 내 쪽 깊이 3.75·옆 1.05(0.279) · 상대 7.62·1.05(0.137).
+      // 가로 한계가 0.402다
+      expect(lateral / depth, side).toBeLessThan(half)
     }
   })
 })
 
-describe('이징', () => {
-  it('0에서 0, 1에서 1이고 그 사이는 단조롭다', () => {
-    expect(ease(0)).toBe(0)
-    expect(ease(1)).toBe(1)
-    let before = -1
-    for (let i = 0; i <= 20; i++) {
-      const v = ease(i / 20)
-      expect(v).toBeGreaterThanOrEqual(before)
-      before = v
+describe('짝이 벌어지는 방향', () => {
+  const unit = (v: Vec3) => Math.hypot(v[0], v[1], v[2])
+
+  it('둘 다 단위 길이고 지면에 눕는다', () => {
+    expect(unit(PAIR_DIR)).toBeCloseTo(1, 6)
+    expect(unit(PAIR_DEPTH)).toBeCloseTo(1, 6)
+    expect(PAIR_DIR[1]).toBe(0)
+    expect(PAIR_DEPTH[1]).toBe(0)
+  })
+
+  it('서로 직각이다 — 하나는 시선의 좌우, 하나는 깊이다', () => {
+    const dot = PAIR_DIR[0] * PAIR_DEPTH[0] + PAIR_DIR[2] * PAIR_DEPTH[2]
+    expect(dot).toBeCloseTo(0, 6)
+  })
+
+  /**
+   * ⚠️ 여기가 이 짝의 요지다. x축으로 벌리면 한 마리는 카메라 쪽으로 오고
+   * 한 마리는 물러나서 **크기가 갈린다**. 시선의 좌우로 벌려야 둘이 같은
+   * 깊이에 나란히 선다
+   */
+  it('좌우로 벌리는 편이 x축으로 벌리는 것보다 깊이가 덜 갈린다', () => {
+    const spread = 0.45
+    for (const side of SIDES) {
+      const far = (dir: Vec3, sign: number) => Math.hypot(
+        CAMERA.position[0] - (SLOT[side].x + dir[0] * spread * sign),
+        CAMERA.position[2] - (SLOT[side].z + dir[2] * spread * sign),
+      )
+      const swing = (dir: Vec3) => Math.abs(far(dir, 1) - far(dir, -1))
+      // 실측 — 내 쪽 0.240 대 0.623, 상대 0.122 대 0.316. 절반 아래다
+      expect(swing(PAIR_DIR) / swing([1, 0, 0]), side).toBeLessThan(0.5)
     }
   })
-
-  it('범위 밖은 잘린다 — 샷이 끝난 뒤에도 값이 안 튄다', () => {
-    expect(ease(-3)).toBe(0)
-    expect(ease(9)).toBe(1)
-  })
 })
 
-describe('연출가', () => {
-  it('처음에는 기본 샷이다', () => {
-    expect(new ShotDirector().current).toBe('establish')
-  })
-
-  it('시간이 다 되면 기본 샷으로 되돌아간다', () => {
-    const d = new ShotDirector()
-    d.cut('impact', 'p2')
-    expect(d.current).toBe('impact')
-    const hold = shotFor('impact', 'p2').hold
-    d.advance(hold * 0.5)
-    expect(d.current).toBe('impact')
-    d.advance(hold * 0.6)
-    expect(d.current).toBe('establish')
-  })
-
-  it('⚠️ 기본 샷은 저 혼자 안 끝난다 — 끝나면 카메라가 매 프레임 되감긴다', () => {
-    const d = new ShotDirector()
-    for (let i = 0; i < 100; i++) d.advance(0.5)
-    expect(d.current).toBe('establish')
-  })
-
-  it('같은 샷을 다시 걸면 처음부터 다시 돈다', () => {
-    const d = new ShotDirector()
-    d.cut('reaction', 'p1')
-    d.advance(0.6)
-    const late = d.advance(0)
-    d.cut('reaction', 'p1')
-    const fresh = d.advance(0)
-    expect(fresh.position).not.toEqual(late.position)
-    expect(fresh.position).toEqual(sampleShot(shotFor('reaction', 'p1'), 0).position)
-  })
-})
+/** 시선과 그 오른쪽. 모듈 안의 것과 같은 식으로 여기서 다시 뽑는다 */
+const VIEW = (() => {
+  const x = CAMERA.position[0] - CAMERA.look[0]
+  const z = CAMERA.position[2] - CAMERA.look[2]
+  const n = Math.hypot(x, z)
+  return { x: x / n, z: z / n }
+})()
+const LAT = { x: -VIEW.z, z: VIEW.x }

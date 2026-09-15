@@ -179,6 +179,20 @@ interface WildStart {
 
 interface BattleState {
   phase: BattlePhase
+  /**
+   * **무대가 다 서서 보여 줄 수 있는가.**
+   *
+   * `phase`가 `'running'`이 되는 것은 **규칙기와 자료**가 다 왔다는 뜻일 뿐이다.
+   * 화면에 서는 것 — 무대 모델(`models/arena/*.glb`)과 앞에 나올 두 마리의 몸
+   * (`models/pokemon/*.glb`) — 은 그 뒤에 받는다. 실측으로 그 사이가 **3.5초**라
+   * (`scene/battle/EncounterBurst` 머리말) 그동안 배틀 곡이 흐르고 빈 무대에
+   * 조우 연출이 터지고 나서야 포켓몬이 툭 나타났다.
+   *
+   * 그래서 기다림을 여기서 한 번 더 잡는다 — 무대가 다 서면
+   * (`scene/battle/BattleStage`) 이 깃발이 서고, **그 순간** 막이 걷히고 곡이
+   * 나고 재생기가 첫 박자를 푼다
+   */
+  sceneReady: boolean
   kind: BattleKind
   /** 상대 트레이너 표시 이름("체육관 관장 동관"). 야생이면 null */
   foeName: string | null
@@ -442,6 +456,7 @@ function ensureParty(table: SpeciesLookup, pp: (move: number) => number): Pokemo
 
 export const useBattleStore = create<BattleState>((set, get) => ({
   phase: 'off',
+  sceneReady: false,
   kind: 'wild',
   foeName: null,
   foeClass: null,
@@ -555,7 +570,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   startTrainer: async (trainerId, options) => {
     if (get().phase !== 'off') return
     set({
-      phase: 'loading', kind: 'trainer', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
+      phase: 'loading', sceneReady: false, kind: 'trainer', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
       trainerId, trainerClass: null,
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
@@ -658,7 +673,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   startSafari: async (wild) => {
     if (get().phase !== 'off') return
     set({
-      phase: 'loading', kind: 'safari', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
+      phase: 'loading', sceneReady: false, kind: 'safari', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
       trainerId: null, trainerClass: null,
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
@@ -1456,6 +1471,7 @@ async function open(
   if (!claimed && get().phase !== 'off') return
   set({
     phase: 'loading',
+    sceneReady: false,
     kind,
     foeName,
     foeClass,

@@ -42,7 +42,7 @@ import type { SplCue } from './splDraw'
 /** 60fps 기준 프레임을 초로 */
 const secs = (frames: number): number => frames / 60
 
-export interface Shot {
+interface Shot {
   kind: Archetype
   /** 때린 쪽·맞은 쪽의 자리. 몸에 거는 것은 이 둘로 가른다 */
   by: SlotId

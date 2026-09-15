@@ -1,7 +1,8 @@
-// 배틀 카메라 샷 (PLAN §7.4)
+// 배틀 카메라 (PLAN §7.4)
 //
-// 배틀이 "3D답게" 느껴지는 것은 대부분 카메라 덕이다. 지금까지는 한 자리에
-// 고정이라 무대만 3D고 연출은 없었다.
+// **카메라는 한 자리에 선다.** 무대 전체가 늘 보이고, 움직이는 것은 포켓몬과
+// 기술 연출뿐이다 — 원작 DS가 그렇고, 플레이해 보면 그 이유가 분명하다:
+// 기술 한 번에 어깨 너머로 컷했다 돌아오면 무엇을 봐야 할지가 매번 끊긴다.
 //
 // ⚠️ **자리와 렌즈는 BDSP가 적어 둔 것이다.** 우리가 눈으로 맞춘 값이 아니라
 // `Battle/battle_masterdatas`의 `BattleDefaultPlacementData`에서 읽었다
@@ -15,9 +16,6 @@
 // 3D 모델이 아니라 **도트 한 장**이라 그림이 그려진 각도를 지켜야 했고, 크기도
 // 우리가 정하는 값(2.8m)이었다. 지금은 BDSP 모델이 **실측 크기**로 선다 —
 // 모부기가 0.397m다. 그 몸을 예전 렌즈로 보면 화면 높이의 4%짜리 점이 된다.
-//
-// 샷 사이는 **컷**이고 샷 안에서는 **이징**이다(§7.4). 컷이 있어야 "장면이
-// 바뀌었다"가 읽히고, 샷 안에서 천천히 밀고 들어가야 정지 화면이 안 된다.
 
 export type Side = 'p1' | 'p2'
 
@@ -40,15 +38,6 @@ export const SLOT: Readonly<Record<Side, { x: number; z: number }>> = {
 }
 
 /**
- * 눈높이. 발판 위 이 높이를 본다.
- *
- * 포켓몬이 실측 크기(화면에 서는 키 0.2~7.3m, 중앙값 1.17m)라 예전 값 1.0으로
- * 보면 작은 종의 머리 위 빈 공간을 겨눈다. 0.5는 그 중앙값의 절반쯤 —
- * 웬만한 종의 몸통이다
- */
-const EYE = 0.5
-
-/**
  * 배틀 화각(세로 전각, 도).
  *
  * BDSP의 `MainCamFov` 그대로다. 필드는 55°인데 배틀만 30°로 좁힌다 — 망원으로
@@ -58,101 +47,35 @@ const EYE = 0.5
 export const BATTLE_FOV = 30
 
 /**
- * 기본 샷. 여기서 시작하고 여기로 돌아온다.
+ * 카메라가 서는 자리와 보는 자리. **배틀 내내 이 한 벌이다.**
  *
- * **거리와 렌즈는 BDSP다** — `MainCamPos` (−2.7, 0.7, 5.0)를 X 뒤집어 옮긴
- * 자리라 무대 한가운데에서 5.68m, 화각 30°다 (모델을 X 뒤집어 굽는다,
- * `bdspGlb` 머리말).
- *
- * ⚠️ **높이만 우리가 올렸다** (0.7 → 1.5, 겨누는 곳 0.4). BDSP는 눈높이에서
+ * ⚠️ **높이만 우리가 올렸다** (BDSP 0.7 → 1.5, 겨누는 곳 0.4). BDSP는 눈높이에서
  * 수평으로 보는데, 그러면 **뒤에 선 상대가 화면 한가운데(960×640에서 y 398)에
  * 떨어져 내 체력판에 가린다** — 우리 체력판은 원작 DS 배치(상대 왼쪽 위 · 나
  * 오른쪽 아래)라 BDSP의 배치와 다르기 때문이다. 조금 내려다보면 먼 쪽이 위로
  * 올라가서 원작 DS의 구도가 그대로 선다: **내 것 (158, 433) · 상대 (643, 293)**
  * 으로 둘 다 판을 안 물린다. 2.2까지 올려 보니 이번에는 하늘과 나무가 화면
- * 밖으로 밀려서 무대가 안 보였다. 높은 카메라 자체는 BDSP도 쓴다 —
- * 더블배틀이 (−4.0, 3.3, 7.2)다
+ * 밖으로 밀려서 무대가 안 보였다
  */
-/**
- * 샷 안에서 도는 각(도).
- *
- * ⚠️ **밀고 들어가지 않는다.** 예전에는 샷마다 `from`에서 `to`로 **가까이**
- * 갔다 — 임팩트가 1.98m, 기절이 2.14m로 기본 샷(5.79m)의 3분의 1까지 당겼다.
- * 그러면 기술 한 번에 화면이 확 당겨졌다 풀리는데, 원작 DS는 카메라가 아예 안
- * 움직이고 BDSP도 배율까지 흔들지는 않는다 — 플레이해 보면 그 줌만 도드라진다.
- * 그래서 **각도만 바꾼다**: 거리는 `atReach`가 모든 샷에서 같게 잡고, 샷 안의
- * 움직임은 이만큼 도는 선회와 높이 변화로만 준다
- */
-const ORBIT_DEG = 2.6
-
-/** `look`을 축으로 `deg`만큼 돌리고 `lift`만큼 올린다. **반지름은 그대로다** */
-function orbit(pos: Vec3, look: Vec3, deg: number, lift = 0): Vec3 {
-  const t = (deg * Math.PI) / 180
-  const dx = pos[0] - look[0], dz = pos[2] - look[2]
-  return [
-    look[0] + dx * Math.cos(t) + dz * Math.sin(t),
-    pos[1] + lift,
-    look[2] - dx * Math.sin(t) + dz * Math.cos(t),
-  ]
-}
-
-const EST_FROM: Vec3 = [2.7, 1.5, 5.0]
-const EST_LOOK: Vec3 = [0, 0.4, 0]
-
-const ESTABLISH: Shot = {
-  from: EST_FROM,
-  to: orbit(EST_FROM, EST_LOOK, -ORBIT_DEG, -0.03),
-  look: EST_LOOK,
-  hold: 0,
-  shake: 0,
+export const CAMERA: { readonly position: Vec3; readonly look: Vec3 } = {
+  position: [2.7, 1.5, 5.0],
+  look: [0, 0.4, 0],
 }
 
 /**
- * 기준 각도에서 벗어날 수 있는 한계(라디안).
+ * 카메라가 무대 한가운데에서 떨어진 **수평** 거리(m).
  *
- * 60°다. 도트 한 장을 세우던 시절에는 40°였다 — 앞모습 그림을 옆에서 보면
- * 종잇장이 드러나서였다. 3D 모델은 어느 각에서 봐도 몸이라 그 제약이 사라졌고,
- * 그래도 한계를 두는 것은 **축을 넘어가면 누가 내 편인지가 뒤집히기** 때문이다
+ * `battle/arena`의 `cameraFit`이 좁은 무대에서 얼마나 당길지를 이 값으로 잰다
  */
-export const MAX_SWING = (60 * Math.PI) / 180
+export const SHOT_REACH = Math.hypot(
+  CAMERA.position[0] - CAMERA.look[0],
+  CAMERA.position[2] - CAMERA.look[2],
+)
 
-export type ShotName =
-  | 'establish'
-  | 'oncoming'
-  | 'impact'
-  | 'reaction'
-  | 'faint'
-  | 'switchIn'
-
-/**
- * 샷 하나.
- *
- * `from`에서 `to`로 천천히 민다 — 카메라가 완전히 멈추면 3D 무대가 배경 그림이
- * 된다. `hold`는 이 샷이 살아 있는 시간(초)이고, 지나면 기본 샷으로 돌아간다
- */
-export interface Shot {
-  from: Vec3
-  to: Vec3
-  look: Vec3
-  hold: number
-  /** 흔들림의 세기(월드 단위). 시간이 갈수록 준다 */
-  shake: number
-}
-
-/**
- * 기준 샷이 보는 방향에서 뽑은 무대 좌표계.
- *
- * ⚠️ **샷을 두 자리를 잇는 축으로 세우면 안 된다.** 처음에 그렇게 만들었더니
- * 상대가 때릴 때 카메라가 무대 **반대편**으로 넘어가서, 재어 보니 기준에서
- * 148~180° 돌아 있었다. 접는 코드가 전부 40°로 되감아서 다섯 샷이 다 같은
- * 자리가 됐다 — 시험은 통과하는데 연출은 없는 상태였다.
- *
- * 그래서 모든 샷을 **기준 시선 기준의 깊이·좌우**로 적는다. 깊이가 클수록
- * 카메라 쪽(앞)이다
- */
+/** 카메라가 보는 방향에서 뽑은 무대 좌표계. 깊이가 클수록 카메라 쪽(앞)이다 */
 const VIEW = (() => {
-  const x = ESTABLISH.from[0] - ESTABLISH.look[0]
-  const z = ESTABLISH.from[2] - ESTABLISH.look[2]
+  const x = CAMERA.position[0] - CAMERA.look[0]
+  const z = CAMERA.position[2] - CAMERA.look[2]
   const n = Math.hypot(x, z)
   return { x: x / n, z: z / n }
 })()
@@ -176,220 +99,3 @@ export const PAIR_DIR: Vec3 = [LAT.x, 0, LAT.z]
  * 체력판이 있다. 앞뒤로도 엇갈려야 원작 DS의 **대각선 배치**가 된다
  */
 export const PAIR_DEPTH: Vec3 = [VIEW.x, 0, VIEW.z]
-
-const ORIGIN = ESTABLISH.look
-
-/**
- * 기준 샷이 서 있는 방위각(라디안). 모든 샷이 여기서 얼마나 벗어났는지로 잰다.
- *
- * ⚠️ **여기 한 벌만 둔다.** 시험이 기준 샷 좌표를 따로 적어 두고 있었는데,
- * 샷을 BDSP 값으로 옮기고 나서도 시험만 옛 자리를 기준으로 재는 바람에
- * 멀쩡한 샷이 79°나 돈 것으로 나왔다
- */
-export const BASE_AZIMUTH = Math.atan2(
-  ESTABLISH.from[0] - ESTABLISH.look[0],
-  ESTABLISH.from[2] - ESTABLISH.look[2],
-)
-
-/** 기준 시선에서 얼마나 앞인가. 클수록 카메라에 가깝다 */
-function depthOf(side: Side): number {
-  return (SLOT[side].x - ORIGIN[0]) * VIEW.x + (SLOT[side].z - ORIGIN[2]) * VIEW.z
-}
-
-/** 기준 시선에서 얼마나 오른쪽인가 */
-function latOf(side: Side): number {
-  return (SLOT[side].x - ORIGIN[0]) * LAT.x + (SLOT[side].z - ORIGIN[2]) * LAT.z
-}
-
-/** 깊이·좌우·높이를 월드 좌표로 */
-function place(depth: number, lateral: number, y: number): Vec3 {
-  return [
-    ORIGIN[0] + VIEW.x * depth + LAT.x * lateral,
-    y,
-    ORIGIN[2] + VIEW.z * depth + LAT.z * lateral,
-  ]
-}
-
-const eyeOf = (side: Side): Vec3 => [SLOT[side].x, EYE, SLOT[side].z]
-const other = (side: Side): Side => (side === 'p1' ? 'p2' : 'p1')
-
-/**
- * 때리는 샷에서 카메라가 **때리는 쪽으로** 치우치는 정도. 어깨 너머를 만든다.
- *
- * ⚠️ 0.5는 안 된다 — 정확히 두 자리의 한가운데라 어느 쪽이 때리든 카메라가
- * 같은 자리에 선다. 어깨 너머가 아니라 그냥 가까운 기본 샷이 된다
- */
-const SHOULDER = 0.62
-
-/**
- * 샷의 거리·높이는 전부 이 리그 크기에서 잰 값이다 (기본 샷이 무대 한가운데에서
- * 떨어진 거리, m). 예전 값 9.95에서 BDSP의 5.68로 줄면서 오프셋을 같은 비율로
- * 줄였다 — 안 줄이면 어깨 너머 샷이 무대 밖으로 나간다.
- * `battle/arena`의 `cameraFit`도 이 값을 본다
- */
-export const SHOT_REACH = 5.68
-
-/**
- * 보는 자리에서 **늘 같은 거리**에 세운다 — 배율을 고정하는 자리다.
- *
- * 수평 반지름만 맞추고 **높이는 적힌 그대로 둔다.** 셋을 다 맞추면 낮은 샷이
- * 땅으로 가라앉는다 — 기절 샷은 눈높이보다 아래에서 올려다보는 각이라, 3차원
- * 거리로 늘리면 카메라가 y 0.11m, 곧 지면에 파묻힌다. 수평만 맞추면 샷마다
- * 실제 거리가 5.68~5.79m로 2% 안에 들어와서 화면에 뜨는 크기는 그대로다:
- *
- *     기본 5.79 · 때리기 5.76 · 임팩트 5.70 · 반응 5.75 · 기절 5.68 · 등판 5.79
- *
- * `clampSwing`이 각도만 건드리고 거리·높이를 안 건드리는 것과 같은 잣대다
- */
-function atReach(pos: Vec3, look: Vec3): Vec3 {
-  const dx = pos[0] - look[0], dz = pos[2] - look[2]
-  const flat = Math.hypot(dx, dz)
-  if (flat < 1e-6) return pos
-  const k = SHOT_REACH / flat
-  return [look[0] + dx * k, pos[1], look[2] + dz * k]
-}
-
-/**
- * 카메라 자리를 기준 각도 안으로 접는다.
- *
- * 무대 한가운데를 축으로 재고, `MAX_SWING`을 넘으면 그 각도로 되돌린다.
- * 거리와 높이는 그대로 둔다 — 각도만 문제이기 때문이다
- */
-export function clampSwing(position: Vec3, look: Vec3): Vec3 {
-  const base = BASE_AZIMUTH
-  const dx = position[0] - look[0], dz = position[2] - look[2]
-  const here = Math.atan2(dx, dz)
-  let off = here - base
-  while (off > Math.PI) off -= Math.PI * 2
-  while (off < -Math.PI) off += Math.PI * 2
-  if (Math.abs(off) <= MAX_SWING) return position
-  const want = base + Math.sign(off) * MAX_SWING
-  const flat = Math.hypot(dx, dz)
-  return [look[0] + Math.sin(want) * flat, position[1], look[2] + Math.cos(want) * flat]
-}
-
-/**
- * 샷 하나를 만든다.
- *
- * `side`는 **그 샷의 주인공**이다 — `oncoming`은 때리는 쪽, `impact`·`reaction`·
- * `faint`는 맞는 쪽, `switchIn`은 나오는 쪽
- */
-export function shotFor(name: ShotName, side: Side): Shot {
-  const shot = framing(name, side)
-  // ⚠️ **여기 한 자리에서 배율을 잡는다.** 샷마다 적힌 깊이는 「어느 쪽에서
-  // 보는가」를 정할 뿐이고, 얼마나 크게 보이는가는 안 정한다
-  return { ...shot, from: atReach(shot.from, shot.look), to: atReach(shot.to, shot.look) }
-}
-
-/** 각 샷의 **방향**. 거리는 `shotFor`가 맞춘다 */
-function framing(name: ShotName, side: Side): Shot {
-  if (name === 'establish') return ESTABLISH
-
-  // 때리는 샷만 상대를 본다. 나머지는 `side`가 곧 주인공이다
-  if (name === 'oncoming') {
-    const foe = other(side)
-    // ⚠️ **둘 중 카메라에 가까운 쪽보다 더 뒤에 선다.** 때리는 쪽만 보고
-    // 물러나면, 상대가 때릴 때 카메라가 맞는 쪽 **앞**에 서서 뒤를 돌아본다
-    const behind = Math.max(depthOf(side), depthOf(foe))
-    const lateral = latOf(foe) + SHOULDER * (latOf(side) - latOf(foe))
-    const look = eyeOf(foe)
-    const from = place(behind + 1.94, lateral, 1.43)
-    return { from, to: orbit(from, look, -ORBIT_DEG, -0.18), look, hold: 0.9, shake: 0 }
-  }
-
-  const depth = depthOf(side)
-  const lateral = latOf(side)
-  const look = eyeOf(side)
-
-  switch (name) {
-    // 맞는 순간. 어깨 너머로 붙어 서서 흔든다 — 당기는 것은 흔들림이지 배율이 아니다
-    case 'impact': {
-      const eye: Vec3 = [look[0], EYE + 0.09, look[2]]
-      const from = place(depth + 1.82, lateral + 0.51, 1.08)
-      return { from, to: orbit(from, eye, -ORBIT_DEG, -0.05), look: eye, hold: 0.5, shake: 0.13 }
-    }
-    // 맞고 난 뒤. 반대쪽으로 돌아 들어가며 반응을 본다
-    case 'reaction': {
-      const from = place(depth + 2.51, lateral - 0.57, 1.37)
-      return { from, to: orbit(from, look, -ORBIT_DEG, 0.11), look, hold: 0.8, shake: 0 }
-    }
-    // 쓰러진다. **아래에서 올려다본다** — 원작에 없는 각도지만 3D의 문법이다
-    case 'faint': {
-      const eye: Vec3 = [look[0], EYE + 0.23, look[2]]
-      const from = place(depth + 2.05, lateral, 0.51)
-      return { from, to: orbit(from, eye, ORBIT_DEG, 0.17), look: eye, hold: 1.2, shake: 0 }
-    }
-    // 등판. 옆 위에서 돌아 내려오며 들어온다
-    case 'switchIn': {
-      const from = place(depth + 2.39, lateral + 1.03, 1.6)
-      return { from, to: orbit(from, look, -ORBIT_DEG * 2, -0.69), look, hold: 0.9, shake: 0 }
-    }
-  }
-}
-
-/** 부드럽게 시작해 부드럽게 끝난다 */
-export function ease(t: number): number {
-  const k = Math.min(1, Math.max(0, t))
-  return k * k * (3 - 2 * k)
-}
-
-interface CameraFrame {
-  position: Vec3
-  look: Vec3
-  /** 이 프레임에 실을 흔들림. 무대가 자기 난수로 방향을 정한다 */
-  shake: number
-}
-
-/**
- * 샷 하나를 시각 `t`(초)에서 뜬다.
- *
- * 자리는 `from`에서 `to`로 이징하고, 흔들림은 처음 40%가 지나면 사라진다 —
- * 계속 흔들면 맞는 순간이 아니라 지진이 된다
- */
-export function sampleShot(shot: Shot, t: number): CameraFrame {
-  const span = shot.hold > 0 ? shot.hold : 1
-  const k = ease(t / span)
-  const position = clampSwing([
-    shot.from[0] + (shot.to[0] - shot.from[0]) * k,
-    shot.from[1] + (shot.to[1] - shot.from[1]) * k,
-    shot.from[2] + (shot.to[2] - shot.from[2]) * k,
-  ], shot.look)
-  const decay = Math.max(0, 1 - t / (span * 0.4))
-  return { position, look: shot.look, shake: shot.shake * decay * decay }
-}
-
-/**
- * 샷을 이어 붙이는 연출가.
- *
- * 상태는 "지금 어느 샷이고 몇 초 지났나" 둘뿐이다. 샷의 시간이 다 되면 기본
- * 샷으로 **컷**한다 — 되돌아가는 것을 이징으로 하면 카메라가 미끄러지는 것처럼
- * 보이고, 그건 장면이 끝났다는 신호가 안 된다
- */
-export class ShotDirector {
-  private name: ShotName = 'establish'
-  private side: Side = 'p1'
-  private t = 0
-
-  /** 지금 무슨 샷인가 */
-  get current(): ShotName { return this.name }
-
-  /** 새 샷으로 컷한다. 같은 샷을 다시 걸면 처음부터 다시 돈다 */
-  cut(name: ShotName, side: Side): void {
-    this.name = name
-    this.side = side
-    this.t = 0
-  }
-
-  /** 기본 샷으로 돌아간다 */
-  reset(): void {
-    this.cut('establish', 'p1')
-  }
-
-  /** 시간을 흘리고 이 프레임의 카메라를 준다 */
-  advance(delta: number): CameraFrame {
-    this.t += delta
-    const shot = shotFor(this.name, this.side)
-    if (shot.hold > 0 && this.t >= shot.hold) this.reset()
-    return sampleShot(shotFor(this.name, this.side), this.t)
-  }
-}
