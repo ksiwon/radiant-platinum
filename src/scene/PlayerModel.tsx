@@ -9,6 +9,7 @@ import {
 } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { createRig } from '../engine/actor/locomotion'
+import { GaitPlayer, measureCycle, pickGaitClips, snapshotPose } from '../engine/actor/clipGait'
 import { HERO_CLIP_NONE, tickHeroClip, type HeroClipState } from '../engine/actor/heroClips'
 import { worldState } from '../state/worldState'
 import { fishing } from './fishingSystem'
@@ -85,6 +86,24 @@ export function PlayerModel() {
       console.warn('[model] 보행 리그를 만들지 못했다 — 필요한 본이 없다. 바인드 포즈로 둔다')
     }
 
+    // 원작 걷기·뛰기 (`engine/actor/clipGait`).
+    // ⚠️ **바깥 그룹에서 잰다.** 정규화 그룹은 키를 맞추는 배율이 걸려 있어서
+    // 그 안에서 재면 한 바퀴 거리가 그 배율만큼 어긋난다 — 엔진이 쓰는 미터와
+    // 같은 자는 몸이 얹힌 바깥 그룹이다
+    const frame = groupRef.current ?? normRef.current
+    const gaitClips = pickGaitClips(gltf.animations)
+    const walk = gaitClips && measureCycle(gltf.scene, frame, gaitClips.walk)
+    if (gaitClips && walk) {
+      const rest = snapshotPose(gltf.scene)
+      const run = gaitClips.run ? measureCycle(gltf.scene, frame, gaitClips.run) : null
+      sceneRefs.playerGait = {
+        player: new GaitPlayer(gltf.scene, { clips: gaitClips, walk, run }),
+        rest,
+      }
+    } else if (import.meta.env.DEV) {
+      console.info('[model] 주인공 몸에 걷기 클립이 없다 — 절차형으로 걷는다')
+    }
+
     // ⚠️ **여기서 뜬다.** 절차형이 뼈에 쓰기 전에 바인드 자세를 떠 놓아야
     // 클립이 끝났을 때 돌아갈 자리가 남는다
     if (gltf.animations.length > 0) {
@@ -102,6 +121,8 @@ export function PlayerModel() {
     playing.current = HERO_CLIP_NONE
     return () => {
       sceneRefs.playerRig = null
+      sceneRefs.playerGait?.player.dispose(gltf.scene)
+      sceneRefs.playerGait = null
       clips.current?.mixer.stopAllAction()
       clips.current = null
       sceneRefs.playerClip = false

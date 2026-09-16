@@ -10,13 +10,14 @@
 // 3,555개 중 **1,895개(53.3%)**고, 나머지는 판때기로 남는다
 // (`npcModels.json`의 열쇠 116개를 `events.json`의 배치에 대고 센 값이다).
 //
-// ⚠️ **애니메이션 클립을 안 싣는다.** 걷기는 `actor/locomotion`이 뼈를 직접
-// 돌려서 만든다(주인공도 그렇다). 클립을 빼면 한 명이 2.58MB에서 1.06MB가 된다.
-// 대신 **서 있는 사람도 `updateLocomotion`을 돌려야 한다** — 안 돌리면 바인드
-// 포즈, 즉 팔을 벌린 T 자세로 서 있는다.
+// ⚠️ **클립은 쓸 것만 싣는다** (`clipFilterFor`). 치비는 제 걷기·뛰기·서기 셋,
+// 등신은 배틀 넷이다 — 쉰여섯을 다 실으면 한 명이 1.06MB에서 2.58MB가 된다.
+// 등신에는 원작에 걷기가 없으므로 **주인공 것을 여기서 그 몸으로 옮긴다**
+// (`gaitFor` · PLAN §16.5). 클립이 없는 몸은 절차형이 맡고, 그때도 **서 있는
+// 사람을 한 번은 돌려야 한다** — 안 돌리면 팔을 벌린 T 자세로 선다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Group, type Object3D } from 'three'
+import { Group, type AnimationClip, type Object3D } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
@@ -24,6 +25,11 @@ import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
 import { disguiseOf } from '../engine/actor/ambient'
 import { createRig, updateLocomotion, type Rig } from '../engine/actor/locomotion'
+import {
+  GaitPlayer, captureRest, measureCycle, pickGaitClips, pickIdleClip, retargetClip,
+  type GaitClips, type GaitSet, type RestPose,
+} from '../engine/actor/clipGait'
+import { NPC_BUNDLE } from '../engine/actor/npcModels'
 import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
@@ -33,7 +39,7 @@ import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
 import { addWhenWarm } from './warmPipelines'
 import { unifySkeletons } from './unifySkeleton'
-import { assets, onProviderSwap } from '../data/providers/assetProvider'
+import { assets, onProviderSwap, type AssetPath } from '../data/providers/assetProvider'
 
 /**
  * 동시에 세우는 모델 수의 상한.
@@ -96,11 +102,76 @@ const TURN_RATE = (Math.PI / 2) / (8 / 60)
 
 /** 받아 둔 씬. 갈래마다 한 벌만 받고 사람마다 복제한다 */
 const scenes = new Map<string, Object3D>()
+/** 그 갈래가 제 몸에 들고 온 클립. 서 있는 동작(`wait_b`)이 여기서 나온다 */
+const clipsOf = new Map<string, AnimationClip[]>()
 const loading = new Set<string>()
 const loader = new GLTFLoader()
 
-// 갈아 끼우면 사람 모델은 옛 설치본 것이다
-onProviderSwap(() => { scenes.clear(); loading.clear() })
+/**
+ * 걷기·뛰기를 꿔 주는 몸 (`engine/actor/clipGait`).
+ *
+ * ⚠️ **원작에서 등신 몸의 걷기를 가진 것은 주인공뿐이다** (`HERO_GAIT_CLIPS`).
+ * 오버월드에서 트레이너가 걷는 것은 원작이 치비 몸으로 그리기 때문인데, 우리는
+ * 등신으로 세우므로 주인공의 걷기를 그 몸으로 옮긴다. 남녀를 가리지 않고 광휘
+ * 한 벌에서 꿔 온다 — 몸마다 옮겨 구우면 33MB가 는다
+ */
+let donor: { rest: RestPose, clips: GaitClips } | null = null
+let donorAsked = false
+/** 갈래 → 옮겨 둔 이동 클립과 잰 한 바퀴. 갈래마다 한 번만 만든다 */
+const gaitOf = new Map<string, GaitSet | null>()
+
+function askDonor(done: () => void): void {
+  if (donorAsked) return
+  donorAsked = true
+  const path: AssetPath = `models/npc/${NPC_BUNDLE.hero}.glb`
+  const provider = assets()
+  provider.objectUrl(path)
+    .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
+    .then((gltf) => {
+      const clips = pickGaitClips(gltf.animations)
+      // 클립이 없는 설치본이면 꿔 줄 것이 없다 — 그때는 절차형이 그대로 돈다
+      if (clips) donor = { rest: captureRest(gltf.scene), clips }
+      done()
+    })
+    .catch(() => { /* 못 받으면 다들 절차형으로 걷는다 */ })
+}
+
+/**
+ * 이 갈래가 쓸 이동 클립. 못 만들면 `null`이고 그 사람은 절차형으로 걷는다.
+ *
+ * ⚠️ **잰 값은 이 몸에서 잰다.** 한 바퀴 거리는 정규화 배율을 탄 길이라
+ * (`measureCycle`) 키가 다른 몸에 그대로 쓰면 그만큼 발이 미끄러진다
+ */
+function gaitFor(
+  bundle: string, body: Object3D, frame: Object3D, rest: RestPose,
+): GaitSet | null {
+  const had = gaitOf.get(bundle)
+  if (had !== undefined) return had
+  // 제 몸에 걷기가 있으면 그것이 임자다 — 치비(`fc*`)는 원작이 필드에 세우는
+  // 몸이라 걷기·뛰기·서기를 제가 갖고 있다 (`walk_f`가 161벌 중 151)
+  const mine = clipsOf.get(bundle) ?? []
+  const own = pickGaitClips(mine)
+  if (!own && !donor) return null
+  const clips: GaitClips = own ?? {
+    // 서 있는 동작은 **제 몸의 것**이다 (`wait_b`는 등신 124벌이 다 갖고 있다)
+    wait: pickIdleClip(mine),
+    walk: retargetClip(donor!.clips.walk, donor!.rest, rest),
+    run: donor!.clips.run ? retargetClip(donor!.clips.run, donor!.rest, rest) : null,
+  }
+  const walk = measureCycle(body, frame, clips.walk)
+  const set = walk
+    ? { clips, walk, run: clips.run ? measureCycle(body, frame, clips.run) : null }
+    : null
+  gaitOf.set(bundle, set)
+  return set
+}
+
+// 갈아 끼우면 사람 모델은 옛 설치본 것이다 — 그 몸에서 뽑아 둔 이동 클립과
+// 꿔 줄 몸도 같이 버린다. 안 버리면 옛 뼈대에서 옮긴 동작이 새 몸에 걸린다
+onProviderSwap(() => {
+  scenes.clear(); loading.clear(); clipsOf.clear(); gaitOf.clear()
+  donor = null; donorAsked = false
+})
 
 /** 한 사람 몫. 모델·리그·래퍼를 함께 들고 있는다 */
 interface Slot {
@@ -108,6 +179,20 @@ interface Slot {
   outer: Group
   /** 이 칸에 선 몸들. 여럿이 그려진 판때기는 그 수만큼이다 (`GROUP_BODIES`) */
   rigs: (Rig | null)[]
+  /**
+   * 그 몸들과 그것을 감싼 틀, 그리고 **세우자마자 뜬 쉬는 자세.**
+   *
+   * ⚠️ **쉬는 자세는 여기서 떠야 한다.** 이동 클립은 나중에 붙는데(꿔 줄 몸이
+   * 늦게 온다) 그때 뜨면 **절차형이 이미 걷혀 놓은 자세**를 쉬는 자세로 잡는다 —
+   * 옮기는 수식이 「쉬는 자세에서 얼마나 돌았나」라 그만큼 통째로 어긋나고,
+   * 화면에서 사람이 팔을 벌린 채 섰다
+   */
+  bodies: { body: Object3D, frame: Object3D, rest: RestPose }[]
+  /**
+   * 원작 동작으로 걷는 자. 꿔 줄 몸(`donor`)이 아직 안 왔으면 `null`이고,
+   * 오는 대로 다음 프레임에 붙는다 — 그전에는 절차형이 그 자리를 맡는다
+   */
+  gaits: (GaitPlayer | null)[]
   /**
    * 이 칸에 사람이 막 앉았는가. 첫 프레임만 몸을 곧바로 돌려세운다 —
    * 감아 돌리면 지난 주인의 각에서 한 바퀴 도는 것이 보인다
@@ -119,6 +204,16 @@ interface Slot {
   dropped: boolean
   /** 어느 갈래에서 나왔나. 자리를 뜨면 이 이름의 통으로 돌아간다 */
   tag: string
+  /** 어느 몸인가. 꼬리 없는 번들 이름이다 — 이동 클립을 갈래마다 한 번 만든다 */
+  bundle: string
+}
+
+/** 이 칸의 몸 하나에 이동 클립을 붙인다. 아직 못 붙이면 `null` */
+function makeGait(slot: Slot, i: number): GaitPlayer | null {
+  const at = slot.bodies[i]
+  if (!at) return null
+  const set = gaitFor(slot.bundle, at.body, at.frame, at.rest)
+  return set ? new GaitPlayer(at.body, set) : null
 }
 
 interface Props {
@@ -152,11 +247,18 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
   const [, bump] = useState(0)
   const standing = useRef<ReadonlySet<NpcActor>>(new Set())
 
+  // 걷기를 꿔 줄 몸은 맵마다 한 번만 받는다. 오면 다시 그려서 그 프레임부터 붙는다
+  useEffect(() => { askDonor(() => { bump((v) => v + 1) }) }, [])
+
   useEffect(() => () => {
     const group = groupRef.current
     for (const slot of [...slots.values(), ...[...spare.values()].flat()]) {
       // 아직 굽는 중인 칸도 있다 — 다 구워졌을 때 세우지 말라고 표시해 둔다
       slot.dropped = true
+      for (let i = 0; i < slot.gaits.length; i++) {
+        const body = slot.bodies[i]?.body
+        if (body) slot.gaits[i]?.dispose(body)
+      }
       group?.remove(slot.outer)
     }
     slots.clear()
@@ -245,9 +347,16 @@ export function NpcModels({ grid, layer, table, onStanding }: Props) {
        * 누산기가 0스텝을 내는 프레임마다 한 번씩 튀었다
        */
       const speed = actor.speed
-      for (const rig of slot.rigs) {
+      const going = speed < MOVING ? 0 : speed
+      for (let i = 0; i < slot.rigs.length; i++) {
+        // 원작 동작이 있으면 그것이 몰고, 없으면 절차형이 맡는다. 꿔 줄 몸이
+        // 늦게 오므로 **매 프레임 한 번 물어본다** — 오는 순간부터 바뀐다
+        slot.gaits[i] ??= makeGait(slot, i)
+        const gait = slot.gaits[i]
+        if (gait) { gait.update(delta, going, WALK_SPEED, RUN_SPEED); continue }
         // 서 있는 사람도 돌려야 한다 — 안 돌리면 바인드 포즈로 굳는다
-        if (rig) updateLocomotion(rig, delta, speed < MOVING ? 0 : speed, WALK_SPEED, RUN_SPEED)
+        const rig = slot.rigs[i]
+        if (rig) updateLocomotion(rig, delta, going, WALK_SPEED, RUN_SPEED)
       }
     }
 
@@ -296,6 +405,7 @@ function fetchModel(tag: string, done: () => void): void {
       // 물려받아 이미 고친 `skinIndex`를 또 고친다
       unifySkeletons(gltf.scene)
       scenes.set(tag, gltf.scene)
+      clipsOf.set(tag, gltf.animations)
       done()
     })
     .catch(() => { /* 못 받으면 그 사람은 판때기로 남는다 */ })
@@ -322,6 +432,7 @@ function build(
 ): Slot {
   const outer = new Group()
   const rigs: (Rig | null)[] = []
+  const bodies: Slot['bodies'] = []
   let height = 0
   for (const dx of offsets) {
     const inner = new Group()
@@ -346,6 +457,12 @@ function build(
     // 리그는 정규화 **이후**에 만든다 — 본의 월드 회전에서 로컬 축을 뽑기 때문에
     // 래퍼 변환이 확정된 뒤라야 축이 맞는다 (`PlayerModel`과 같은 순서)
     rigs.push(createRig(body, inner))
+    // ⚠️ **틀은 `inner`가 아니라 `outer`다.** `inner`는 키를 맞추느라 배율이
+    // 걸려 있어서, 그 안에서 재면 한 바퀴 거리가 몸 크기만큼 어긋난다
+    bodies.push({ body, frame: outer, rest: captureRest(body) })
   }
-  return { outer, rigs, fresh: true, height, dropped: false, tag }
+  return {
+    outer, rigs, bodies, gaits: bodies.map(() => null),
+    fresh: true, height, dropped: false, tag, bundle,
+  }
 }

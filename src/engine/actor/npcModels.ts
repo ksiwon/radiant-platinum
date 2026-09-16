@@ -437,7 +437,50 @@ export function buildOf(bundle: string): 'battle' | 'field' {
  * `src/import/bdsp/convert.ts`는 이 정규식을 그대로 쓴다. 따로 적으면
  * 개발 서버와 설치본이 다른 클립을 싣는다
  */
-export const TRAINER_CLIPS = /^(advent_b|wait_b|order_b|lose01_b)$/
+const TRAINER_CLIP_NAMES = ['advent_b', 'wait_b', 'order_b', 'lose01_b'] as const
+
+/** 이름 목록 → `^(a|b)$`. 파이썬 `re`와 자바스크립트에서 같은 뜻이다 */
+const clipRe = (names: readonly string[]): RegExp => new RegExp(`^(${names.join('|')})$`)
+
+export const TRAINER_CLIPS = clipRe(TRAINER_CLIP_NAMES)
+
+/**
+ * 주인공 몸에만 더 싣는 **걷기와 뛰기**.
+ *
+ * ⚠️ **원작에서 등신 몸의 걷기를 가진 것은 주인공뿐이다.** 인물 번들 124벌을
+ * 다 열어 보면 `walk_b`가 스물여덟인데 그것이 전부 `pc0001`·`pc0002`의
+ * 옷차림이고, 트레이너 쪽은 `tr0002_00`(용식)의 `run_b` 하나뿐이다
+ * (`.audit/probe/walkDonors.mjs`). 오버월드에서 트레이너가 걷는 것은 원작이
+ * **치비 몸**으로 그리기 때문이다.
+ *
+ * 그래서 다른 사람의 걷기는 안 굽는다 — 주인공의 이 두 벌을 화면에서 그 몸으로
+ * 옮긴다 (`engine/actor/clipGait`). 한 사람마다 구우면 360KB씩, 아흔한 벌이면
+ * 33MB가 는다.
+ *
+ * ⚠️ **굽는 쪽 둘이 이것을 같이 본다** (`TRAINER_CLIPS`와 같은 이유)
+ */
+const HERO_GAIT_CLIP_NAMES = ['walk_b', 'run_b'] as const
+
+export const HERO_GAIT_CLIPS = clipRe(HERO_GAIT_CLIP_NAMES)
+
+/**
+ * 치비 몸(`fc*`)에서 실을 이동 클립.
+ *
+ * ⚠️ **치비는 옮겨 오지 않고 제 것을 싣는다.** 원작이 필드에 세우는 몸이 이쪽이라
+ * 걷기·뛰기·서기가 다 들어 있고(161벌 중 `walk_f` 151 · `wait_f` 158), 무엇보다
+ * **뼈 비율이 등신과 딴판이라** 등신 걷기를 옮기면 다리를 접고 앉은 자세가 된다.
+ *
+ * 쉰여섯을 다 싣지는 않는다 — 그러면 한 명이 1.06MB에서 2.58MB가 된다
+ */
+const CHIBI_GAIT_CLIPS = clipRe(['walk_f', 'run_f', 'wait_f'])
+
+/** 이 번들에서 실을 클립. 없으면 `null`이고 그때는 아무것도 안 싣는다 */
+export function clipFilterFor(bundle: string): RegExp {
+  const base = baseBundle(bundle)
+  if (buildOf(base) === 'field') return CHIBI_GAIT_CLIPS
+  if (base !== NPC_BUNDLE.hero && base !== NPC_BUNDLE.heroine) return TRAINER_CLIPS
+  return clipRe([...TRAINER_CLIP_NAMES, ...HERO_GAIT_CLIP_NAMES])
+}
 
 /**
  * 주인공 몸에 **치비에서 옮겨 실을** 필드 동작 클립 열여섯.

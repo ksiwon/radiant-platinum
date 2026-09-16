@@ -13,6 +13,7 @@ import { npcSystem } from '../engine/actor/ambient'
 import { hmCutInTick } from './hmCutInScene'
 import { objectFxTick } from '../engine/actor/objectFx'
 import { updateLocomotion } from '../engine/actor/locomotion'
+import { restorePose } from '../engine/actor/clipGait'
 import { cameraSystem } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
 import { fieldScripts, scriptStepSystem, scriptSystem } from '../engine/script/field'
@@ -70,6 +71,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
    * 올리는 `retry()`뿐이고, 그때는 이 부품도 통째로 새로 만들어진다
    */
   const crashed = useRef(false)
+  /** 지난 프레임에 걷기를 클립이 몰았는가 (`engine/actor/clipGait`) */
+  const gaitWasClip = useRef(false)
 
   useEffect(() => {
     if (!systemsRegistered) {
@@ -268,10 +271,22 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // ⚠️ **얼음 위에서는 발을 멈춘다.** 원작이 미끄러지는 동안 그림을 세운다
       // (`MAP_OBJ_STATUS_PAUSE_ANIMATION`). 안 세우면 달리기 자세로 미끄러져서
       // 발이 땅 위를 헛돈다 — `gait`가 보폭에서 위상을 유도하는 이유와 같다
-      updateLocomotion(
-        sceneRefs.playerRig, delta, isSliding() ? 0 : speed, WALK_SPEED, RUN_SPEED,
-        hop.active ? hop.t : null, p.cycling,
-      )
+      const going = isSliding() ? 0 : speed
+      // 두 발로 걷는 동안은 원작 동작이 몰고(`clipGait`), 자전거와 턱 넘기는
+      // 절차형이 맡는다 — 그 둘은 클립이 아예 없다. 넘어가는 프레임에 한 번
+      // 쉬는 자세로 되돌린다: 절차형은 제가 아는 관절 열둘만 쓰므로 안 되돌리면
+      // 손가락과 골반 자리가 걷던 자세로 굳는다
+      const byClip = sceneRefs.playerGait !== null && !hop.active && !p.cycling
+      if (byClip) {
+        sceneRefs.playerGait!.player.update(delta, going, WALK_SPEED, RUN_SPEED)
+      } else {
+        if (gaitWasClip.current && sceneRefs.playerGait) restorePose(sceneRefs.playerGait.rest)
+        updateLocomotion(
+          sceneRefs.playerRig, delta, going, WALK_SPEED, RUN_SPEED,
+          hop.active ? hop.t : null, p.cycling,
+        )
+      }
+      gaitWasClip.current = byClip
       // 자전거는 사람이 앉은 자세와 한 몸이라 같은 위상으로 돈다
       if (sceneRefs.bike) {
         sceneRefs.bike.visible = p.cycling

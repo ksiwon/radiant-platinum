@@ -2,6 +2,7 @@
 // R3F 컴포넌트가 마운트 시 ref를 등록하고, EngineDriver가 매 프레임 변환을 쓴다
 import type { Camera, Object3D, Scene } from 'three'
 import type { Rig } from '../engine/actor/locomotion'
+import type { GaitPlayer, PoseSnapshot } from '../engine/actor/clipGait'
 
 export const sceneRefs: {
   player: Object3D | null
@@ -15,6 +16,15 @@ export const sceneRefs: {
    * 덮인다. 클립이 없는 설치본에서는 늘 false라 절차형이 그대로 돈다
    */
   playerClip: boolean
+  /**
+   * 원작 걷기·뛰기를 도는 자 (`engine/actor/clipGait`). 클립이 없는 설치본에서는
+   * `null`이고 그때는 절차형이 그 자리를 맡는다.
+   *
+   * 같이 든 **쉬는 자세**는 클립에서 절차형으로 넘어갈 때 한 번 되돌리는 데 쓴다 —
+   * 자전거·턱 넘기는 절차형이 맡는데, 그쪽은 제가 아는 관절 열둘만 쓰므로
+   * 손가락과 골반 자리가 걷던 자세로 굳는다
+   */
+  playerGait: { player: GaitPlayer, rest: PoseSnapshot } | null
   /** 자전거. 주인공 그룹의 자식이고, 안 탈 때는 `visible`만 꺼 둔다 */
   bike: Object3D | null
   /**
@@ -34,6 +44,7 @@ export const sceneRefs: {
   player: null,
   playerRig: null,
   playerClip: false,
+  playerGait: null,
   bike: null,
   stage: { camera: null, scene: null, gl: null },
 }

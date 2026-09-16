@@ -19,7 +19,7 @@ import {
 } from '../platinum/convertTypes'
 import { EVERY_ARENA } from '../../engine/battle/arena'
 import {
-  HERO_FIELD_CLIPS, NPC_BUNDLE, NPC_RECOLOR, TRAINER_CLIPS, baseBundle, buildOf, fieldClipDonor,
+  HERO_FIELD_CLIPS, NPC_BUNDLE, NPC_RECOLOR, baseBundle, buildOf, clipFilterFor, fieldClipDonor,
   modelFor,
   type NpcModelTable,
 } from '../../engine/actor/npcModels'
@@ -285,18 +285,16 @@ async function convertNpcModels(ctx: ConvertContext): Promise<Produced> {
     const env = path ? await environmentOf(src, [path, ...deps]) : null
     if (!env) { broken.add(bundle); return false }
     try {
-      // ⚠️ **등신과 치비가 싣는 것이 다르다.** 걷기는 `actor/locomotion`이
-      // 뼈를 직접 돌려 만들어서 치비(`fc*`)의 클립 쉰여섯은 쓸 자리가 없다 —
-      // 다 실으면 한 명이 1.06MB에서 2.58MB가 된다. 등신(`tr*`·`pc*`)은
-      // 배틀에서 이어 붙는 넷만 싣는다 (`TRAINER_CLIPS`)
-      const battle = buildOf(bundle) === 'battle'
+      // ⚠️ **몸마다 싣는 것이 다르다** (`clipFilterFor`가 임자다). 등신은
+      // 배틀에서 이어 붙는 넷, 주인공은 거기에 걷기·뛰기, 치비는 제 걷기 셋이다 —
+      // 치비의 클립 쉰여섯을 다 실으면 한 명이 1.06MB에서 2.58MB가 된다
       // ⚠️ **레이어 색을 갈아 끼우는 표도 노드 추출기와 같이 본다**
       // (`NPC_RECOLOR`). 따로 적으면 개발 서버와 설치본의 사람 색이 갈린다
       const spec = NPC_RECOLOR[bundle]
       const { glb } = await exportModel(env, encodePng, {
         maxSize: MAX_TEXTURE,
-        keepClips: battle,
-        ...(battle ? { clipFilter: TRAINER_CLIPS } : {}),
+        keepClips: true,
+        clipFilter: clipFilterFor(bundle),
         ...(spec ? { recolor: spec.paint, ...(spec.drop ? { drop: spec.drop } : {}) } : {}),
         ...(await heroFieldClips(ctx, src, at, bundle)),
       })

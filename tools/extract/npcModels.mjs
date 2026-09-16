@@ -29,7 +29,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  baseBundle, buildOf, fieldClipDonor, modelFor, NPC_RECOLOR, HERO_FIELD_CLIPS, TRAINER_CLIPS,
+  baseBundle, buildOf, clipFilterFor, fieldClipDonor, modelFor, NPC_RECOLOR, HERO_FIELD_CLIPS,
 } from '../../src/engine/actor/npcModels.ts'
 import { TRAINER_MODELS } from '../../src/import/bdsp/trainerModels.ts'
 import { bundleDeps } from '../../src/import/bdsp/bundleDeps.ts'
@@ -145,10 +145,10 @@ function main() {
       // 실제로 도는 셋만 싣는다 — 나머지 다섯(`wait_b`·`wait02_b`·`speak01_b`·
       // `eye01_b`·`advent02_b`)은 이어 붙일 자리가 없고, `advent02_b`는 채널이
       // 0이라 아무것도 안 한다 (PLAN.md의 클립 표)
-      const clips = buildOf(bundle) === 'battle'
-        // 파이썬 `re`가 이 정규식을 그대로 받는다 — `^(a|b|c)$`는 두 문법에서 같다
-        ? ['--clip-filter', TRAINER_CLIPS.source]
-        : ['--no-clips']
+      // 파이썬 `re`가 이 정규식을 그대로 받는다 — `^(a|b|c)$`는 두 문법에서 같다.
+      // 어느 몸이 무엇을 싣는지는 `clipFilterFor`가 정하고 브라우저 변환기도
+      // 같은 줄을 본다 (등신은 배틀 넷 + 주인공만 걷기 · 치비는 제 걷기 셋)
+      const clips = ['--clip-filter', clipFilterFor(bundle).source]
       // ⚠️ **주인공만 치비에서 필드 동작을 꿔 온다.** 등신 몸에는 낚시도 폭포도
       // 없다 — 원작에서 이 몸은 배틀에만 서기 때문이다. 어느 클립을 옮기는지는
       // `HERO_FIELD_CLIPS`가 임자고 브라우저 변환기도 같은 줄을 본다
