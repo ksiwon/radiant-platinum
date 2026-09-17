@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import type { FinalMon } from './events'
 import type { PokemonInstance } from '../pokemon/instance'
-import { applyResults, foeKey, isWipedOut, partyKey } from './aftermath'
+import { applyResults, foeKey, isWipedOut, partyKey, shouldPartnerHeal } from './aftermath'
 import { noOrigin } from '../pokemon/origin'
 
 function mon(species: number, hp: number): PokemonInstance {
@@ -93,6 +93,21 @@ describe('배틀 결과 되돌리기', () => {
     party[0]!.moves = [{ move: 33, pp: 35, ppUps: 0 }]
     const after = applyResults(party, [result(partyKey(0), 30, { pp: [] })])
     expect(after[0]!.moves[0]!.pp).toBe(35)
+  })
+
+  it('동행이 붙어 있으면 배틀이 끝날 때마다 다 낫는다', () => {
+    expect(shouldPartnerHeal('win', true)).toBe(true)
+    expect(shouldPartnerHeal('caught', true)).toBe(true)
+    // 원작의 `PLAYER_FLED`·`ENEMY_FLED`는 둘 다 「진 판」이 아니다
+    expect(shouldPartnerHeal('fled', true)).toBe(true)
+    expect(shouldPartnerHeal('foeFled', true)).toBe(true)
+  })
+
+  it('진 판은 안 낫는다 — 동행이 있어도. 동행이 없으면 이겨도 안 낫는다', () => {
+    expect(shouldPartnerHeal('loss', true)).toBe(false)
+    expect(shouldPartnerHeal(null, true)).toBe(false)
+    expect(shouldPartnerHeal('win', false)).toBe(false)
+    expect(shouldPartnerHeal('caught', false)).toBe(false)
   })
 
   it('전멸 판정 — 빈 파티는 전멸이 아니다', () => {

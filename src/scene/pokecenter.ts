@@ -8,6 +8,9 @@
 // 원작은 **맵을 갈아 끼울 때마다** `GetMapBlackOutWarpId`를 돌려서, 새 맵이
 // 센터 1층이면 그 자리로 옮긴다(`field_map_change.c` 291줄). 들어서기만 하면 된다.
 import { loadMoves, loadSpecies, type SpeciesLookup } from '../data/gameData'
+import { shouldPartnerHeal } from '../engine/battle/aftermath'
+import { fieldScripts } from '../engine/script/field'
+import { SYSTEM_FLAG } from '../engine/script/commands'
 import { statsOf, maxPpOf, type PokemonInstance } from '../engine/pokemon/instance'
 import { flyUnlockedAt, spawnAt, spawnWarp } from '../engine/map/spawns'
 import { world } from '../engine/map/world'
@@ -86,6 +89,29 @@ export function watchBlackOut(): () => void {
     if (state.phase === 'off' && prev.phase !== 'off' && lost) {
       lost = false
       blackOut()
+    }
+  })
+}
+
+/**
+ * **동행이 붙어 있는 동안은 배틀이 끝날 때마다 다 낫는다**
+ * (`encounter.c` · 규칙은 `battle/aftermath`의 `shouldPartnerHeal`).
+ *
+ * 영원의 숲의 모미가 그 자리다 — 원작에서 숲이 험하지 않은 까닭이 이것이고,
+ * 이것이 없어서 우리 쪽은 숲에서 전멸을 거듭했다.
+ *
+ * 전멸과 같은 자리에서 본다 — **화면이 닫힌 뒤에** 손댄다. 결과가 나오자마자
+ * 파티를 고치면 배틀 화면이 아직 제 값을 되돌리는 중이라 덮어쓰기가 엇갈린다
+ */
+export function watchPartnerHeal(): () => void {
+  let finish: 'win' | 'loss' | 'caught' | 'fled' | 'foeFled' | null = null
+  return useBattleStore.subscribe((state, prev) => {
+    if (state.outcome !== null && state.outcome !== prev.outcome) finish = state.outcome
+    if (state.phase === 'off' && prev.phase !== 'off') {
+      const had = finish
+      finish = null
+      const partner = fieldScripts.vars?.checkFlag(SYSTEM_FLAG.hasPartner) === true
+      if (shouldPartnerHeal(had, partner)) healParty()
     }
   })
 }

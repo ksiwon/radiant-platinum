@@ -360,6 +360,43 @@ describe('포획', () => {
     expect(dexHas(useSaveStore.getState().pokedex.caught, STARLY)).toBe(true)
   }, 30_000)
 
+  /**
+   * 원작은 **던진 그 순간** 볼을 하나 뺀다 — 잡히든 안 잡히든이다
+   * (`battle_controller_player.c`의 `ITEM_BATTLE_CATEGORY_POKE_BALLS` 갈래가
+   * `Bag_TryRemoveItem`을 부른다). 트레이너전과 잡는 법 강습만 예외인데,
+   * 트레이너전은 `throwBall`이 위에서 이미 막는다.
+   *
+   * ⚠️ **이 줄이 없어서 볼이 무한했다.** 도구 쪽(`useItem`)만 가방을 깎고 볼
+   * 쪽은 안 깎았다 — 브라우저 실측(2026-09-16)에서 몬스터볼 여섯으로 한 마리를
+   * 잡고도 여섯 그대로였다
+   */
+  it('던진 볼은 가방에서 빠진다', async () => {
+    const bank = await loadItems()
+    const pocket = bank.get(Ball.POKE).pocket ?? 0
+    useSaveStore.getState().addItem(pocket, Ball.POKE, 5)
+    expect(quantity(useSaveStore.getState().bag, pocket, Ball.POKE)).toBe(5)
+
+    await useBattleStore.getState().startWild({ species: STARLY, level: 5 })
+    await useBattleStore.getState().throwBall(Ball.POKE)
+    useBattleStore.getState().close()
+
+    expect(quantity(useSaveStore.getState().bag, pocket, Ball.POKE)).toBe(4)
+  }, 30_000)
+
+  /** 마스터볼도 같다 — 잡혔다고 공짜가 되지 않는다 */
+  it('잡아도 그 볼은 돌아오지 않는다', async () => {
+    const bank = await loadItems()
+    const pocket = bank.get(Ball.MASTER).pocket ?? 0
+    useSaveStore.getState().addItem(pocket, Ball.MASTER, 1)
+
+    await useBattleStore.getState().startWild({ species: STARLY, level: 5 })
+    await useBattleStore.getState().throwBall(Ball.MASTER)
+    expect(useBattleStore.getState().outcome).toBe('caught')
+    useBattleStore.getState().close()
+
+    expect(quantity(useSaveStore.getState().bag, pocket, Ball.MASTER)).toBe(0)
+  }, 30_000)
+
   it('파티가 여섯이면 박스로 간다', async () => {
     await useBattleStore.getState().startWild({ species: STARLY, level: 5 })
     useBattleStore.getState().close()

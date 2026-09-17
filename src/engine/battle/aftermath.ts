@@ -54,3 +54,34 @@ export function applyResults(
 export function isWipedOut(party: readonly PokemonInstance[]): boolean {
   return party.length > 0 && party.every((m) => m.hp <= 0)
 }
+
+/**
+ * 동행이 붙어 있는 동안 **배틀이 끝날 때마다 파티가 다 낫는다**
+ * (`encounter.c` — 야생 한 자리, 그 밖 한 자리, 두 곳 다 같은 조건이다):
+ *
+ * ```c
+ * if (CheckPlayerWonEncounter(encounter) == FALSE) { … return TRUE; }
+ *
+ * if (SystemFlag_CheckHasPartner(SaveData_GetVarsFlags(fieldSystem->saveData))) {
+ *     Party_HealAllMembers(SaveData_GetParty(fieldSystem->saveData));
+ * }
+ * ```
+ *
+ * ⚠️ **「이겼다」가 우리 말보다 넓다.** 원작의 `CheckPlayerWonBattle`은
+ * **진 판과 비긴 판만** 거짓이고 나머지는 전부 참이다 —
+ * 잡은 판(`CAPTURED_MON`), 내가 달아난 판(`PLAYER_FLED = CAPTURED_MON|WIN`),
+ * 상대가 달아난 판(`ENEMY_FLED = CAPTURED_MON|LOSE`, 값 6이라 `LOSE`도
+ * `DRAW`도 아니다)까지 낫는다. 우리에게 비긴 판은 아직 없다.
+ *
+ * 이것이 없으면 영원의 숲이 원작보다 훨씬 험해진다 — 모미가 붙어 있는데도
+ * 야생 배틀마다 HP가 깎여 내려가므로, 실측(2026-09-16 journey8)으로 한 판에
+ * 숲과 205번도로에서 세 번 전멸했다
+ */
+export function shouldPartnerHeal(
+  outcome: 'win' | 'loss' | 'caught' | 'fled' | 'foeFled' | null,
+  hasPartner: boolean,
+): boolean {
+  if (!hasPartner) return false
+  if (outcome === null || outcome === 'loss') return false
+  return true
+}

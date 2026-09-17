@@ -171,7 +171,7 @@ import {
 import { canLearnTm } from '../engine/bag/fieldUse'
 import { useHatchStore } from '../state/hatchStore'
 import { worldState } from '../state/worldState'
-import { blackOut, healParty, loadHealTables, watchBlackOut } from './pokecenter'
+import { blackOut, healParty, loadHealTables, watchBlackOut, watchPartnerHeal } from './pokecenter'
 import { useDoorVisualStore } from './doorVisualStore'
 import { loadPropAnimSet } from './propAnim'
 import { useBattleStore } from '../state/battleStore'
@@ -664,9 +664,11 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   fieldScripts.services = services
   const stop = watchBattle()
   const stopBlackOut = watchBlackOut()
+  const stopPartnerHeal = watchPartnerHeal()
   return () => {
     stop()
     stopBlackOut()
+    stopPartnerHeal()
     fieldScripts.services = {}
   }
 }

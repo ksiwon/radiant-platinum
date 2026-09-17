@@ -821,6 +821,23 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     // 트레이너의 포켓몬에는 볼을 못 던진다. 화면도 버튼을 안 보여주지만,
     // 규칙은 화면이 아니라 여기가 갖고 있어야 한다
     if (get().kind !== 'wild') return
+    /**
+     * **던진 볼은 가방에서 빠진다** — 잡히든 안 잡히든 (`battle_controller_player.c`):
+     *
+     *     case ITEM_BATTLE_CATEGORY_POKE_BALLS:
+     *         nextSeq = subscript_throw_pokeball;
+     *         if (트레이너전이 아니고 && 잡는 법 강습이 아니면) {
+     *             Bag_TryRemoveItem(…, used->item, 1, …);
+     *
+     * ⚠️ **한동안 안 깎고 있었다.** 도구 쪽(`useItem`)은 `spendFromBag`을 부르는데
+     * 볼 쪽만 빠져 있어서 **볼이 무한했다** — 실측(2026-09-16 `_catch42`)으로
+     * 몬스터볼 여섯으로 한 마리를 잡고도 여섯 그대로였다.
+     *
+     * 원작의 두 조건 중 트레이너전은 바로 위에서 이미 걸렀고, 잡는 법 강습은
+     * 우리에게 아직 없다 — 생기면 그때 여기에 갈래가 하나 는다.
+     * 사파리는 제 볼을 따로 세므로(`engine/battle/safariBattle`) 여기 안 온다
+     */
+    spendFromBag(await loadItems(), ball)
     await advance(set, get, (c) =>
       c.throwBall(ball, {
         // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
