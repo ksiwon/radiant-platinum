@@ -243,3 +243,43 @@ export const choiceOn = style([choice, {
   ...PICKED,
   fontWeight: 600,
 }])
+
+/**
+ * 레벨업 능력치 창 (`PartyMenu_DrawLevelUpStatIncreases`) — 원작은 왼쪽 위 구석
+ * (1,1)에 14×12칸으로 띄운다. 이름은 왼쪽, 값은 오른쪽 끝에 맞춘다.
+ *
+ * 폭은 **판 한 열을 넘지 않는다** — 넘으면 옆 열의 대상 판을 덮는다
+ * (`levelPanelRight`는 대상이 왼쪽 열일 때)
+ */
+export const levelPanel = style({
+  ...WINDOW_SMALL,
+  position: 'absolute',
+  left: GAP.base,
+  top: GAP.base,
+  zIndex: 2,
+  width: `calc(50% - ${String(GAP.base * 2)}px)`,
+  maxWidth: 320,
+  boxSizing: 'border-box',
+  padding: `${GAP.small}px ${GAP.base}px`,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+})
+
+export const levelPanelRight = style([levelPanel, {
+  left: 'auto',
+  right: GAP.base,
+}])
+
+export const levelRow = style({
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: GAP.base,
+  fontSize: TEXT.base,
+  lineHeight: 1.5,
+})
+
+export const levelValue = style({
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 600,
+})

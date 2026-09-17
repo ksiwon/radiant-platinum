@@ -5,11 +5,12 @@
 // 이유다 — 자전거 하나만 되고 나머지 서른셋 갈래가 조용했다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { itemFileSchema, speciesFileSchema, type Item } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 import {
-  canLearnTm, fieldAction, FieldUse, MAP_TYPE_CAVE, repelStepsOf, tmIndex, tmMove,
+  canLearnTm, fieldAction, FieldUse, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
+  tmIndex, tmMove,
   type FieldContext,
 } from './fieldUse'
 import { tradeEvolutionItems } from '../pokemon/evolution'
@@ -158,6 +159,47 @@ maybe('필드 도구', () => {
     expect(tmMove(named('ITEM_HM07'), file.tmMoves)).toBe(127)
     expect(tmMove(named('ITEM_HM08'), file.tmMoves)).toBe(431)
     expect(new Set(file.tmMoves).size).toBe(100)
+  })
+
+  /**
+   * 원작의 `PartyMenu_TeachMove_Check` 네 갈래 (`party_menu/callbacks.c`).
+   *
+   * ⚠️ **차례가 곧 시험이다.** 「이미 배웠다」가 「못 배운다」보다 **먼저**고,
+   * 칸이 찼을 때는 거절이 아니라 **물음**이다
+   */
+  describe('기술머신을 쓰면', () => {
+    const HM06 = 92 + 5
+    const ROCK_SMASH = 249
+    const slots = (...ids: number[]) => ids.map((move) => ({ move }))
+
+    it('빈 칸이 있으면 그 칸에 들어간다', () => {
+      const bidoof = byId.get(399)!
+      expect(teachMoveCheck(slots(33, 45), bidoof.tm, HM06, ROCK_SMASH))
+        .toEqual({ kind: 'learn', slot: 2 })
+    })
+
+    it('칸이 다 찼으면 **거절이 아니라** 무엇을 잊을지 묻는다', () => {
+      // 모부기 L17이 실제로 이 자리였다 (2026-09-16 대표 구간) — 넷을 채우고
+      // 있어서 바위깨기를 못 배웠고, 험한 샛길에서 길이 끊겼다
+      const grotle = byId.get(388)!
+      expect(teachMoveCheck(slots(33, 110, 71, 75), grotle.tm, HM06, ROCK_SMASH))
+        .toEqual({ kind: 'mustForget' })
+    })
+
+    it('이미 배운 기술이면 그것부터 말한다 — 못 배우는 마리여도', () => {
+      // 잉어킹은 아무것도 못 배우지만, 그 기술을 이미 알고 있으면 원작은
+      // 「이미 기억하고 있습니다」다. 차례를 뒤집으면 「상성이 좋지 않다」가 뜬다
+      const magikarp = byId.get(129)!
+      expect(teachMoveCheck(slots(ROCK_SMASH), magikarp.tm, HM06, ROCK_SMASH))
+        .toEqual({ kind: 'already' })
+    })
+
+    it('종족표가 막으면 못 배운다', () => {
+      // 찌르꼬는 바위깨기를 못 배운다 — 그래서 대표 구간이 비버니를 잡는다
+      const starly = byId.get(396)!
+      expect(teachMoveCheck(slots(33), starly.tm, HM06, ROCK_SMASH))
+        .toEqual({ kind: 'cannot' })
+    })
   })
 
   it('배울 수 있는지는 종족표의 비트가 정한다', () => {

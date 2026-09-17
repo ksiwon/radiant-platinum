@@ -14,7 +14,7 @@
 //
 // 오른쪽 기술 목록은 남는다 — 원작에는 없지만 커서를 올리면 설명이 뜨는 자리라
 // 갈래 메뉴와 겹치지 않는다.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable } from '../../data/gameData'
 import { fillMenuText, loadUiText } from '../../data/uiText'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
@@ -31,12 +31,17 @@ import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
 import { planItemUse } from '../../engine/battle/meta/bagItem'
 import {
-  applyFieldPlan, canLearnTm, fieldTarget, tmIndex, tmMove,
+  applyFieldPlan, fieldTarget, teachMoveCheck, tmIndex, tmMove,
 } from '../../engine/bag/fieldUse'
 import { EvoClass, evolutionTarget } from '../../engine/pokemon/evolution'
 import { maxPpOf } from '../../engine/pokemon/instance'
+import { canLevelUp, fieldFriendship, isLevelUpItem, levelUpOnce } from '../../engine/bag/rareCandy'
+import { isNight } from '../../engine/map/timeOfDay'
+import { mapById } from '../../engine/map/world'
 import { useEvolutionStore } from '../../state/evolutionStore'
+import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
+import type { Stats } from '../../data/schema'
 import {
   canShayminSky, changeForm, ITEM_GRACIDEA, SHAYMIN_SKY, spriteKey,
 } from '../../engine/pokemon/form'
@@ -79,9 +84,49 @@ const DENIAL: Record<string, string> = {
  */
 const P = {
   askMon: 37, askItem: 38,
+  /**
+   * 기술머신 흐름 (`PartyMenuCB_TeachMove`) — 롬 뱅크 453의 그 줄들이다.
+   * 52가 「기술을 4개 알고 있으므로 … 다른 기술을 잊게 하겠습니까?」고,
+   * 55가 「그럼… 배우는 것을 포기하겠습니까?」, 59가 「어느 기술을 잊게
+   * 하겠습니까?」다. 예·아니오도 롬에 두 벌(53·54 · 56·57) 있다
+   */
+  learnAsk: 52, yes: 53, no: 54, stopAsk: 55, didNotLearn: 58,
+  whichForget: 59, forgot: 60, learned: 61, notCompatible: 62, alreadyKnows: 63,
+  /** 「써도 효과가 없다!」 (`PartyMenu_Text_ItWontHaveAnyEffect`) */
+  noEffect: 105,
+  /**
+   * 이상한사탕 (`PartyMenuCB_LevelUp`) — 185~190이 능력치 이름(최대HP · 공격 · 방어 ·
+   * 특수공격 · 특수방어 · 스피드 차례), 191이 「+n」, 192가 새 값, 193이 「레벨 n로
+   * 올랐다!」, 194가 레벨업으로 「배웠다!」다
+   */
+  statNames: 185, statGain: 191, statValue: 192, levelUp: 193, levelLearned: 194,
   switch_: 145, summary: 146, item: 147, mail: 148, mailRead: 149, mailTake: 150,
   cancel: 152, give: 160, take: 161,
 } as const
+
+/**
+ * 기술 칸이 다 차서 **무엇을 잊을지 묻는 중**인 기술 하나.
+ *
+ * 둘이 같은 물음(52 → 59 → 60·61 / 55 → 58)을 쓴다:
+ * - `tm` — 기술머신. 도구 번호를 붙들어 두는 까닭은 잊을 것을 고르고 나서야
+ *   도구를 쓰기 때문이다. 물음 도중에 그만두면 기술머신이 그대로 남는다
+ * - `level` — 레벨업(이상한사탕). 도구는 이미 썼고, 끝나면 **남은 기술로 이어 간다**
+ *   (`LEVELUP_STATE_CHECK_LEARNSET`로 돌아간다)
+ */
+type Learning =
+  | { kind: 'tm'; item: number; pocket: number; index: number; move: number; slot: number }
+  | { kind: 'level'; move: number; slot: number; rest: number[] }
+
+/** 한 글을 쪽으로 가른다 — 원작의 `\r`·`\f`가 A·B를 기다리는 자리다 */
+function pagesOf(text: string): string[] {
+  return text.split(/[\r\f]/).map((one) => one.trim()).filter((one) => one !== '')
+}
+
+/**
+ * 레벨업 창에 적는 차례 (`PartyMenu_DrawLevelUpStatIncreases`의 `stats[]`) —
+ * 최대HP · 공격 · 방어 · 특수공격 · 특수방어 · 스피드. 스피드가 **맨 끝**이다
+ */
+const STAT_ORDER = ['hp', 'atk', 'def', 'spa', 'spd', 'spe'] as const
 
 /** 갈래 하나 */
 interface Choice {
@@ -110,7 +155,29 @@ export function PartyScreen() {
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   /** 떠 있는 갈래 메뉴. null이면 카드를 고르는 중이다 */
-  const [menu, setMenu] = useState<'root' | 'item' | 'mail' | null>(null)
+  const [menu, setMenu] = useState<
+    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | null
+  >(null)
+  /**
+   * 기술 칸이 다 차서 **무엇을 잊을지 묻는 중**. null이면 안 묻고 있다.
+   *
+   * 도구 번호를 여기 붙들어 두는 까닭은, 잊을 것을 고르고 나서야 도구를
+   * 쓰기 때문이다 — 물음 도중에 그만두면 기술머신이 그대로 남아야 한다
+   */
+  const [learning, setLearning] = useState<Learning | null>(null)
+  /**
+   * 차례로 넘기는 글 — A·B 하나에 한 쪽이다 (원작의 긴 글상자).
+   * 다 넘기면 `afterPages`를 부른다
+   */
+  const [pages, setPages] = useState<string[]>([])
+  const afterPages = useRef<(() => void) | null>(null)
+  /**
+   * 레벨업 능력치 창 (`PartyMenu_DrawLevelUpStatIncreases` → `…NewStatValues`).
+   * 오른 폭을 먼저 보이고 A·B에 새 값으로 바꾼다
+   */
+  const [levelPanel, setLevelPanel] = useState<
+    { slot: number; before: Stats; after: Stats; show: 'gain' | 'value'; then: () => void } | null
+  >(null)
   const [menuAt, setMenuAt] = useState(0)
   /** 파티 뱅크의 글. 갈래 메뉴의 낱말이 전부 여기서 온다 */
   const [partyText, setPartyText] = useState<string[]>([])
@@ -268,9 +335,164 @@ export function PartyScreen() {
     addItem(tables?.items.get(held).pocket ?? 0, held, 1)
   }
 
+  /** 글을 쪽으로 띄우고, 다 넘기면 `then`을 부른다 */
+  const say = (text: string, then: (() => void) | null = null): void => {
+    const list = pagesOf(text)
+    afterPages.current = then
+    setNotice(null)
+    if (list.length === 0) { afterPages.current = null; then?.(); return }
+    setPages(list)
+  }
+
+  /**
+   * 한 자리의 기술 칸을 바꿔 적는다. 세이브에서 **지금** 파티를 읽는다 —
+   * 레벨업 흐름은 이어지는 글 사이에 파티가 이미 한 번 바뀌어 있다
+   */
+  const putMove = (slot: number, move: number, into: number): void => {
+    const now = useSaveStore.getState().party
+    const mon = now[slot]
+    if (!mon || !tables) return
+    const fresh = {
+      move,
+      pp: maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp),
+      ppUps: 0,
+    }
+    const moves = into < mon.moves.length
+      ? mon.moves.map((one, i) => (i === into ? fresh : one))
+      : [...mon.moves, fresh]
+    const next = [...now]
+    next[slot] = { ...mon, moves }
+    useSaveStore.setState({ party: next })
+  }
+
+  /**
+   * **기술 하나를 넣는다** — 빈 칸이면 더하고, 잊을 칸을 받았으면 갈아 끼운다.
+   *
+   * 갈아 끼웠으면 「1, 2 … 짠! … 깨끗이 잊었다! 그리고...!」(60)를 먼저 넘기고
+   * 「배웠다!」(61)로 간다 — 원작의 `PartyMenuCB_LevelMove_Exit`·기술머신 흐름이
+   * 같은 두 글을 쓴다.
+   *
+   * 기술머신은 한 번 쓰면 사라지고 **비전머신은 안 사라진다**
+   * (`Item_TMHMNumber`가 92 미만이면 기술머신이다)
+   */
+  const learnMove = (spec: Learning, into: number): void => {
+    const mon = useSaveStore.getState().party[spec.slot]
+    if (!mon || !tables) return
+    const forgot = into < mon.moves.length ? mon.moves[into]?.move ?? null : null
+    putMove(spec.slot, spec.move, into)
+    if (spec.kind === 'tm' && spec.index < 92) removeItem(spec.pocket, spec.item, 1)
+    setMenu(null)
+    setLearning(null)
+    const learned = fillMenuText(partyText[P.learned] ?? '', [nameOf(mon), moveNames[spec.move] ?? ''])
+    const text = forgot === null ? learned
+      : `${fillMenuText(partyText[P.forgot] ?? '', [nameOf(mon), moveNames[forgot] ?? ''])}\r${learned}`
+    if (spec.kind === 'level') { say(text, () => { nextLevelMove(spec.slot, spec.rest) }); return }
+    clearUsingItem()
+    say(text)
+  }
+
+  /** 배우기를 그만둔다 (`PartyMenuCB_TeachMove_PromptStopTrying`의 「예」) */
+  const stopLearning = (): void => {
+    const spec = learning
+    const mon = spec === null ? null : party[spec.slot]
+    setMenu(null)
+    setLearning(null)
+    const text = spec === null || !mon ? ''
+      : fillMenuText(partyText[P.didNotLearn] ?? '', [nameOf(mon), moveNames[spec.move] ?? ''])
+    if (spec?.kind === 'level') { say(text, () => { nextLevelMove(spec.slot, spec.rest) }); return }
+    clearUsingItem()
+    say(text)
+  }
+
+  /**
+   * 레벨업으로 배울 기술을 하나씩 넣는다 (`LEVELUP_STATE_CHECK_LEARNSET`).
+   *
+   * 이미 아는 기술은 말없이 건너뛴다(`LEARNSET_MOVE_ALREADY_KNOWN`). 빈 칸이면
+   * 넣고 「배웠다!」(194), 찼으면 무엇을 잊을지 묻는다(52). 다 넣었으면 진화를 본다
+   */
+  const nextLevelMove = (slot: number, moves: readonly number[]): void => {
+    const mon = useSaveStore.getState().party[slot]
+    const [move, ...rest] = moves
+    if (!mon || move === undefined) { finishLevelUp(slot); return }
+    if (mon.moves.some((one) => one.move === move)) { nextLevelMove(slot, rest); return }
+    if (mon.moves.length < 4) {
+      putMove(slot, move, mon.moves.length)
+      say(fillMenuText(partyText[P.levelLearned] ?? '', [nameOf(mon), moveNames[move] ?? '']),
+        () => { nextLevelMove(slot, rest) })
+      return
+    }
+    setLearning({ kind: 'level', move, slot, rest })
+    setMenu('learnAsk')
+    setMenuAt(0)
+  }
+
+  /**
+   * 레벨업을 끝낸다 (`LEVELUP_STATE_CHECK_EVOLUTION`).
+   *
+   * 진화하면 진화 화면으로 넘긴다 — 도구 없이 큐에 넣으면 그 화면이 **레벨 갈래**로
+   * 다시 판단한다. 안 하면 가방으로 돌아간다 (`PARTY_MENU_EXIT_CODE_DONE`)
+   */
+  const finishLevelUp = (slot: number): void => {
+    const now = useSaveStore.getState().party
+    const mon = now[slot]
+    const info = mon && species ? species.of(mon) : null
+    const evo = mon && info && tables
+      ? evolutionTarget(EvoClass.LEVEL, mon, info, {
+        party: now.map((one) => one.species),
+        night: isNight(worldState.time.gameHour),
+        mapId: useSessionStore.getState().mapId,
+        holdEffect: mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect : undefined,
+      })
+      : null
+    clearUsingItem()
+    if (evo) {
+      useEvolutionStore.getState().queue([slot])
+      closeAll()
+      open('evolution')
+      return
+    }
+    back()
+  }
+
+  /**
+   * 「다른 기술을 잊게 하겠습니까?」 (`TEACH_MOVE_RESULT_MUST_FORGET_FIRST`).
+   * 예면 무엇을 잊을지로, 아니오면 「포기하겠습니까?」로 간다
+   */
+  const learnAskChoices = (): Choice[] => [
+    { label: partyText[P.yes] ?? '', run: () => { setMenu('learnForget'); setMenuAt(0) } },
+    { label: partyText[P.no] ?? '', run: () => { setMenu('learnStop'); setMenuAt(0) } },
+  ]
+
+  /** 「그럼… 포기하겠습니까?」 — 아니오면 **다시 고르러** 돌아간다 */
+  const learnStopChoices = (): Choice[] => [
+    { label: partyText[P.yes] ?? '', run: stopLearning },
+    { label: partyText[P.no] ?? '', run: () => { setMenu('learnForget'); setMenuAt(0) } },
+  ]
+
+  /**
+   * 「어느 기술을 잊게 하겠습니까?」 — 네 칸과 「그만둔다」.
+   *
+   * ⚠️ **그만둔다가 곧 포기는 아니다.** 원작은 거기서 한 번 더 묻는다
+   */
+  const learnForgetChoices = (): Choice[] => {
+    const mon = learning === null ? null : party[learning.slot]
+    if (learning === null || !mon) return []
+    const spec = learning
+    return [
+      ...mon.moves.map((one, i) => ({
+        label: moveNames[one.move] ?? '',
+        run: () => { learnMove(spec, i) },
+      })),
+      { label: partyText[P.cancel] ?? '', run: () => { setMenu('learnStop'); setMenuAt(0) } },
+    ]
+  }
+
   const choices = menu === 'root' ? rootChoices()
     : menu === 'item' ? itemChoices()
-      : menu === 'mail' ? mailChoices() : []
+      : menu === 'mail' ? mailChoices()
+        : menu === 'learnAsk' ? learnAskChoices()
+          : menu === 'learnStop' ? learnStopChoices()
+            : menu === 'learnForget' ? learnForgetChoices() : []
 
   /**
    * 들고 온 도구를 고른 마리에게 쓴다 (`item_use_pokemon.c`).
@@ -330,11 +552,46 @@ export function PartyScreen() {
       return
     }
 
+    /**
+     * 효과가 든 뒤의 친밀도 (`Pokemon_ApplyItemEffects` 끝). 필드 쪽 계산은
+     * 평온의방울을 **먼저** 곱한다 — `engine/bag/rareCandy`의 `fieldFriendship`
+     */
+    const befriend = (mon: PokemonInstance): PokemonInstance => ({
+      ...mon,
+      friendship: fieldFriendship(item, mon, {
+        heldEffect: mon.heldItem > 0 ? tables.items.get(mon.heldItem).holdEffect ?? 0 : 0,
+        // 원작이 넘기는 것은 맵 번호가 아니라 **지역명 번호**다 (`GetCurrentMapLabel`)
+        mapLabel: mapById(useSessionStore.getState().mapId)?.label ?? 0,
+      }),
+    })
+
+    // 이상한사탕 — 회복 갈래(1)에 들어 있지만 **레벨업 칸을 먼저** 본다
+    // (`NormalizeItemEffect`). 도구는 판정이 서자마자 빠진다(`ApplyItemEffectOnPokemon`)
+    if (usingItem.use === 'heal' && isLevelUpItem(item)) {
+      const got = canLevelUp(selected) ? levelUpOnce(selected, info) : null
+      if (got === null) { setNotice(plainText(partyText[P.noEffect])); return }
+      const slot = at
+      const next = [...party]
+      next[slot] = befriend(got.mon)
+      useSaveStore.setState({ party: next })
+      removeItem(item.pocket ?? 0, usingItem.item, 1)
+      const grown = fillMenuText(partyText[P.levelUp] ?? '', [nameOf(selected), String(got.mon.level)])
+      say(grown, () => {
+        // 능력치 창이 떠 있는 동안에도 레벨 글은 남아 있다
+        setNotice(pagesOf(grown).at(-1) ?? null)
+        setLevelPanel({
+          slot, before: got.before, after: got.after, show: 'gain',
+          then: () => { setNotice(null); nextLevelMove(slot, got.moves) },
+        })
+      })
+      return
+    }
+
     if (usingItem.use === 'heal') {
       const plan = planItemUse(item, fieldTarget(selected, maxHp(selected, info), ppOf))
-      if (plan === null) { setNotice('효과가 없을 것 같다.'); return }
+      if (plan === null) { setNotice(plainText(partyText[P.noEffect])); return }
       const next = [...party]
-      next[at] = applyFieldPlan(selected, plan, maxHp(selected, info), ppOf)
+      next[at] = befriend(applyFieldPlan(selected, plan, maxHp(selected, info), ppOf))
       useSaveStore.setState({ party: next })
       removeItem(item.pocket ?? 0, usingItem.item, 1)
       clearUsingItem()
@@ -346,19 +603,35 @@ export function PartyScreen() {
       const index = tmIndex(item)
       const move = tmMove(item, tables.items.tmMoves)
       if (index === null || move === null) { setNotice('가르칠 수 없다.'); return }
-      if (!canLearnTm(info.tm, index)) { setNotice('이 포켓몬은 배울 수 없다.'); return }
-      if (selected.moves.some((m) => m.move === move)) { setNotice('이미 배웠다.'); return }
-      if (selected.moves.length >= 4) { setNotice('기술 칸이 다 찼다.'); return }
-      const next = [...party]
-      next[at] = {
-        ...selected,
-        moves: [...selected.moves, { move, pp: maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp), ppUps: 0 }],
+      const spec: Learning = { kind: 'tm', item: usingItem.item, pocket: item.pocket ?? 0, index, move, slot: at }
+      /**
+       * 갈래는 원작의 `PartyMenu_TeachMove_Check`가 넷으로 가른다.
+       * **말도 롬의 것을 쓴다** — 우리가 지어낸 「이미 배웠다」·「기술 칸이
+       * 다 찼다」가 그 자리에 있었다
+       */
+      const got = teachMoveCheck(selected.moves, info.tm, index, move)
+      const who = nameOf(selected)
+      const name = moveNames[move] ?? ''
+      if (got.kind === 'already') {
+        setNotice(fillMenuText(partyText[P.alreadyKnows] ?? '', [who, name]))
+        return
       }
-      useSaveStore.setState({ party: next })
-      // 기술머신은 한 번 쓰면 사라진다. 비전머신은 안 사라진다
-      if (index < 92) removeItem(item.pocket ?? 0, usingItem.item, 1)
-      setNotice(`${moveNames[move] ?? ''}을(를) 배웠다!`)
-      clearUsingItem()
+      if (got.kind === 'cannot') {
+        setNotice(fillMenuText(partyText[P.notCompatible] ?? '', [who, name]))
+        return
+      }
+      /**
+       * ⚠️ **칸이 찼다고 거절하지 않는다.** 원작은 거기서 무엇을 잊을지
+       * 묻는다 — 그 물음이 없으면 기술 넷을 채운 마리는 비전머신을 영영
+       * 못 배우고, 바위깨기가 없으면 험한 샛길에서 길이 끊긴다
+       */
+      if (got.kind === 'mustForget') {
+        setLearning(spec)
+        setMenu('learnAsk')
+        setMenuAt(0)
+        return
+      }
+      learnMove(spec, got.slot)
       return
     }
 
@@ -370,7 +643,7 @@ export function PartyScreen() {
       item: usingItem.item,
       holdEffect: selected.heldItem > 0 ? tables.items.get(selected.heldItem).holdEffect : undefined,
     })
-    if (evo === null) { setNotice('효과가 없을 것 같다.'); return }
+    if (evo === null) { setNotice(plainText(partyText[P.noEffect])); return }
     removeItem(item.pocket ?? 0, usingItem.item, 1)
     // ⚠️ **무엇으로 걸었는지 같이 넘긴다.** 안 넘기면 진화 화면이 「레벨이
     // 올랐다」로만 다시 보고 아무것도 못 찾는다 — 도구만 사라진다
@@ -380,17 +653,43 @@ export function PartyScreen() {
     open('evolution')
   }
 
+  /**
+   * 글이나 능력치 창을 **하나 넘긴다.** 원작은 둘 다 A·B 아무거나로 넘긴다
+   * (`JOY_NEW(PAD_BUTTON_A | PAD_BUTTON_B)`). 넘길 것이 없으면 false
+   */
+  const turnPage = (): boolean => {
+    if (pages.length > 0) {
+      const rest = pages.slice(1)
+      setPages(rest)
+      if (rest.length === 0) {
+        const then = afterPages.current
+        afterPages.current = null
+        then?.()
+      }
+      return true
+    }
+    if (levelPanel !== null) {
+      if (levelPanel.show === 'gain') setLevelPanel({ ...levelPanel, show: 'value' })
+      else { setLevelPanel(null); levelPanel.then() }
+      return true
+    }
+    return false
+  }
+
   // 갈래 메뉴가 떠 있으면 **키를 그쪽이 다 가져간다** — 뒤에서 카드가 같이
-  // 움직이면 무엇을 고르는 중인지가 사라진다
-  const inMenu = menu !== null
+  // 움직이면 무엇을 고르는 중인지가 사라진다. 넘길 글이 있으면 그것이 먼저다
+  const paging = pages.length > 0 || levelPanel !== null
+  const inMenu = menu !== null && !paging
+  const still = (): void => { /* 글을 넘기는 동안 커서는 안 움직인다 */ }
   useMenuKeys({
     // ⚠️ **위아래는 두 칸씩이다.** 판이 두 줄로 서 있어서 한 칸씩 옮기면
     // ↑가 옆으로 가는 것처럼 보인다 (`GridMenuCursor_CheckNavigation`)
-    up: inMenu ? () => { setMenuAt((c) => clampCursor(c, -1, choices.length)) } : stepParty(-2),
-    down: inMenu ? () => { setMenuAt((c) => clampCursor(c, 1, choices.length)) } : stepParty(2),
-    left: inMenu ? undefined : stepParty(-1),
-    right: inMenu ? undefined : stepParty(1),
+    up: paging ? still : inMenu ? () => { setMenuAt((c) => clampCursor(c, -1, choices.length)) } : stepParty(-2),
+    down: paging ? still : inMenu ? () => { setMenuAt((c) => clampCursor(c, 1, choices.length)) } : stepParty(2),
+    left: paging ? still : inMenu ? undefined : stepParty(-1),
+    right: paging ? still : inMenu ? undefined : stepParty(1),
     confirm: () => {
+      if (turnPage()) return
       setNotice(null)
       if (inMenu) { choices[Math.min(menuAt, choices.length - 1)]?.run(); return }
       // 스크립트가 부른 고르기. 빈 파티에서는 고를 것이 없다
@@ -408,7 +707,11 @@ export function PartyScreen() {
       setMenuAt(0)
     },
     cancel: () => {
+      if (turnPage()) return
       setNotice(null)
+      // 기술머신 물음에서 B는 그 물음의 **「아니오」**와 같다 (원작의 yes/no 창)
+      if (menu === 'learnAsk' || menu === 'learnForget') { setMenu('learnStop'); setMenuAt(0); return }
+      if (menu === 'learnStop') { stopLearning(); return }
       if (menu === 'item') { setMenu('root'); setMenuAt(0); return }
       if (inMenu) { setMenu(null); return }
       // 안 고르고 나간다. 원작도 이때 `PARTY_SLOT_NONE`을 준다
@@ -428,7 +731,7 @@ export function PartyScreen() {
    * 한때 오른쪽 상세 칸 밑에 붙어 있었는데 그 칸이 없어졌다. 원작도 이런 말은
    * 화면 아래 글상자에 한 줄로 뜬다
    */
-  const foot = notice ?? (inMenu
+  const foot = pages[0] ?? notice ?? (inMenu
     ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
     : choosingMon
       ? '↑↓←→ 고르기 · Z 결정 · X 그만둔다'
@@ -488,6 +791,34 @@ export function PartyScreen() {
           ))}
         </div>
 
+        {/*
+          레벨업 능력치 창. 이름은 185~190 차례, 값은 오른쪽 끝에 맞춘다.
+
+          ⚠️ **대상이 없는 쪽 열에 띄운다.** 원작은 늘 왼쪽 위 (1,1)에 14×12칸
+          (`windows.c` `PartyMenu_DrawLevelUpStatIncreases`)이라 0·2번 판을 덮는데,
+          그러면 선두에게 먹일 때 누가 올랐는지가 창 밑으로 사라진다 (기획
+          JOURNEY21_NEXT_DECISIONS §4)
+        */}
+        {levelPanel !== null && (
+          <div
+            className={levelPanel.slot % 2 === 0 ? own.levelPanelRight : own.levelPanel}
+            data-level-panel={levelPanel.show}
+          >
+            {STAT_ORDER.map((key, i) => (
+              <div key={key} className={own.levelRow}>
+                <span>{plainText(partyText[P.statNames + i])}</span>
+                <span className={own.levelValue}>
+                  {fillMenuText(partyText[levelPanel.show === 'gain' ? P.statGain : P.statValue] ?? '', [
+                    String(levelPanel.show === 'gain'
+                      ? levelPanel.after[key] - levelPanel.before[key]
+                      : levelPanel.after[key]),
+                  ])}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* 갈래 메뉴는 원작처럼 오른쪽 아래 구석에 창 하나로 뜬다 */}
         {inMenu && (
           <div className={own.choices}>
@@ -495,7 +826,13 @@ export function PartyScreen() {
             <div className={own.choiceAsk}>
               {menu === 'item'
                 ? plainText(partyText[P.askItem])
-                : fillMenuText(partyText[P.askMon] ?? '', [selected ? nameOf(selected) : ''])}
+                : menu === 'learnForget'
+                  ? plainText(partyText[P.whichForget])
+                  : menu === 'learnAsk' || menu === 'learnStop'
+                    ? fillMenuText(partyText[menu === 'learnAsk' ? P.learnAsk : P.stopAsk] ?? '',
+                      [learning === null ? '' : nameOf(party[learning.slot] ?? selected),
+                        learning === null ? '' : moveNames[learning.move] ?? ''])
+                    : fillMenuText(partyText[P.askMon] ?? '', [selected ? nameOf(selected) : ''])}
             </div>
             {choices.map((c, i) => (
               <div

@@ -335,6 +335,50 @@ export function tmIndex(item: Item): number | null {
  * `species.json`의 `tm`은 롬 바이트 28~43을 **그 차례대로** 16진수로 적은
  * 32글자다. 그래서 i번 비트는 `i >> 3`번째 바이트의 `i & 7`번째 비트다
  */
+/** 한 마리가 들고 있는 기술 칸 수 (`LEARNED_MOVES_MAX`) */
+export const LEARNED_MOVES_MAX = 4
+
+/** 기술머신을 이 마리에게 쓰면 어떻게 되는가 */
+type TeachMoveResult =
+  /** 빈 칸에 그냥 들어간다 — `slot`이 그 칸이다 */
+  | { kind: 'learn'; slot: number }
+  /** 이미 그 기술을 알고 있다 */
+  | { kind: 'already' }
+  /** 종족표가 막는다 — 상성이 안 맞는다 */
+  | { kind: 'cannot' }
+  /** 칸이 다 찼다. **무엇을 잊을지 물어야 한다** */
+  | { kind: 'mustForget' }
+
+/**
+ * 원작의 `PartyMenu_TeachMove_Check` 그대로.
+ *
+ * ⚠️ **차례가 곧 뜻이다.** 원작은 ① 이미 배웠는가 → ② 배울 수 있는가 →
+ * ③ 칸이 찼는가 순으로 본다. 빈 칸을 만나면 거기서 훑기를 멈추므로, 뒤 칸에
+ * 같은 기술이 있을 수는 없다. 한때 우리 쪽은 ②①③이라 **이미 배운 기술을
+ * 못 배우는 마리에게 쓰면 「상성이 좋지 않다」**가 떴다.
+ *
+ * ⚠️ **③은 거절이 아니라 물음이다.** 원작은 거기서
+ * `TEACH_MOVE_RESULT_MUST_FORGET_FIRST`를 돌려주고 「다른 기술을 잊게
+ * 하겠습니까?」를 묻는다 — 한때 우리는 그 자리에서 **「기술 칸이 다 찼다」로
+ * 끝냈고**, 그래서 기술 넷을 채운 마리에게는 비전머신을 영영 못 가르쳤다.
+ * 실측(2026-09-16 대표 구간): 모부기 L17이 넷을 채우고 있어 바위깨기를 못
+ * 배웠고, 험한 샛길의 바위를 못 깨 둘째 배지까지 가는 길이 통째로 막혔다
+ */
+export function teachMoveCheck(
+  moves: readonly { move: number }[], tmBits: string, index: number, move: number,
+): TeachMoveResult {
+  let slot = LEARNED_MOVES_MAX
+  for (let i = 0; i < LEARNED_MOVES_MAX; i++) {
+    const has = moves[i]?.move ?? 0
+    if (has === move) return { kind: 'already' }
+    // 빈 칸이다 (`MOVE_NONE`) — 여기까지만 본다
+    if (has === 0) { slot = i; break }
+  }
+  if (!canLearnTm(tmBits, index)) return { kind: 'cannot' }
+  if (slot === LEARNED_MOVES_MAX) return { kind: 'mustForget' }
+  return { kind: 'learn', slot }
+}
+
 export function canLearnTm(tmBits: string, index: number): boolean {
   if (index < 0 || index >= TM_COUNT + 8) return false
   const at = (index >> 3) * 2
