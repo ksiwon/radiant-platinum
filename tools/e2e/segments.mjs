@@ -34,6 +34,8 @@ function digestOf(path) {
  * · `harness` 검사 하네스 (`harnessDigest('journey')`) — 재는 자가 바뀌면 값도 바뀐다
  * · `data`    `public/data` **나무 전체** — 아래 ⚠️
  * · `save`    이어 달릴 세이브 파일 그 자체 (`writeSegment`가 덧붙인다)
+ * · `shortcuts` 그 판에서 켠 지름길 깃발 (`journey --candy`). 사탕으로 레벨을 채운
+ *             세이브는 파티가 다르다 — **깃발이 같은 판끼리만** 이어 달린다
  *
  * ⚠️ **`sourceDigest`는 `public/data/`를 일부러 뺀다.** 원본 유래 추출물이라
  * 지문에 경로가 실리면 안 된다는 규칙이다(`evidence.mjs`의 `NEVER_SOURCE`).
@@ -43,13 +45,23 @@ function digestOf(path) {
  * 격자 한 칸이나 스크립트 한 줄이 바뀌어도 「같은 세상」으로 읽혔다. 골라 담으면
  * 언젠가 또 빠지므로 **나무를 통째로** 센다 (실측 69MB · 한 번에 1초 안쪽).
  */
-export function identityNow() {
+export function identityNow(shortcuts = []) {
   return {
+    shortcuts: [...shortcuts].sort().join(','),
     source: sourceDigest(),
     harness: harnessDigest('journey'),
     // 봉투(`sealEvidence`)가 적는 것과 **같은 자**다 — 둘이 갈라지면 뜻을 잃는다
     data: dataDigest(),
   }
+}
+
+/**
+ * 같은 칸인가 — 이름과 지름길이 둘 다 같아야 한다. 지름길 칸이 없는 옛 기록은
+ * 깃발 없는 판의 것이지만 **그것으로 맞추지 않는다** — 하네스 지문이 이미 달라서
+ * 어차피 못 이어 달리고, 여기서 빈 값으로 접으면 그 사실이 가려진다
+ */
+function sameSlot(one, id, shortcuts) {
+  return one.id === id && one.identity?.shortcuts === shortcuts
 }
 
 /** 적어 둔 구간들. 파일이 없거나 깨졌으면 빈 목록이다 */
@@ -68,7 +80,7 @@ export function readSegments() {
  * @param save    그 자리에서 정상 UI로 쓴 리포트 파일 (repo 상대 경로)
  * @param at      그때 선 자리 · 이야기 전제 (다음 판이 같은 자리에서 이어졌는지 볼 값)
  */
-export function writeSegment(id, save, at) {
+export function writeSegment(id, save, at, shortcuts = []) {
   mkdirSync(DIR, { recursive: true })
   const book = readSegments()
   const one = {
@@ -76,10 +88,13 @@ export function writeSegment(id, save, at) {
     save,
     at,
     verifiedAt: new Date().toISOString(),
-    identity: { ...identityNow(), save: digestOf(save) },
+    identity: { ...identityNow(shortcuts), save: digestOf(save) },
   }
-  book.segments = [...book.segments.filter((x) => x.id !== id), one]
-    .sort((a, b) => (a.id < b.id ? -1 : 1))
+  // 지름길 칸이 없는 옛 기록은 같은 이름이면 **새 것으로 갈아 끼운다** — 둘 다 두면 겹친다
+  const stale = (x) => sameSlot(x, id, one.identity.shortcuts)
+    || (x.id === id && x.identity?.shortcuts === undefined)
+  book.segments = [...book.segments.filter((x) => !stale(x)), one]
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : a.identity.shortcuts < b.identity.shortcuts ? -1 : 1))
   writeFileSync(BOOK, `${JSON.stringify(book, null, 1)}\n`)
   return one
 }
@@ -93,16 +108,22 @@ export function writeSegment(id, save, at) {
  *
  * @returns `{ ok, segment, why }`
  */
-export function resumableAt(id) {
+export function resumableAt(id, shortcuts = []) {
   const book = readSegments()
-  const one = book.segments.find((x) => x.id === id)
-  if (one === undefined) return { ok: false, segment: null, why: `구간 ${id}을 적어 둔 적이 없다` }
+  const want = identityNow(shortcuts).shortcuts
+  const one = book.segments.find((x) => sameSlot(x, id, want))
+  if (one === undefined) {
+    return {
+      ok: false, segment: null,
+      why: `구간 ${id}을 적어 둔 적이 없다${want === '' ? '' : ` (지름길 ${want})`}`,
+    }
+  }
   if (!existsSync(resolve(ROOT, one.save))) {
     return { ok: false, segment: one, why: `세이브가 없다 (${one.save})` }
   }
-  const now = { ...identityNow(), save: digestOf(one.save) }
+  const now = { ...identityNow(shortcuts), save: digestOf(one.save) }
   const drift = []
-  for (const key of ['source', 'harness', 'data', 'save']) {
+  for (const key of ['shortcuts', 'source', 'harness', 'data', 'save']) {
     if (one.identity[key] !== now[key]) {
       drift.push(`${key} ${String(one.identity[key])} → ${String(now[key])}`)
     }

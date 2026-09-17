@@ -119,7 +119,9 @@ const RENDER_FIRST_CASES = ['01', '02', '03', '04', '05']
  */
 const JOURNEY_CASES = [
   '01', '02', '03', '04', '05', '06', '07', '08',
-  '09', '10', '11', '12', '13', '14', '15', '16', '99',
+  '09', '10', '11', '12', '13', '14', '15', '16',
+  // 둘째 배지까지 (지시서 `docs/orders/JOURNEY_BADGE2_20260916.md` §2)
+  '17', '18', '19', '20', '21', '22', '99',
 ]
 
 /** 확인 지점 표의 정본. 훑기의 목록은 **이 파일에서** 나온다 */
@@ -243,7 +245,12 @@ export const SUITES = {
     //    실패(길이 없다·표식이 안 맞는다·멈췄다)는 어떤 부하에서도 FAIL이다.
     // ② `goTo`·`stepOn`이 벽시계가 아니라 진행으로 그만둔다.
     // **5로 잰 판은 이 판정의 통과에 못 보탠다.**
-    contract: 6,
+    //
+    // ⚠️ **7이다.** 구간이 **첫 배지**에서 **둘째 배지**까지로 늘었다
+    // (2026-09-16 · `docs/orders/JOURNEY_BADGE2_20260916.md`). 줄 여섯(⑰~㉒)이
+    // 늘었을 뿐 아니라 ⑬⑭⑮가 **영원시티 자리에서** 재는 것으로 뜻이 바뀌었다.
+    // **6으로 잰 판은 이 판정의 통과에 못 보탠다.**
+    contract: 7,
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
       'tools/e2e/journey.mjs',
@@ -483,7 +490,7 @@ export function describeEnvironment({ browserVersion, gpu, backend }) {
  */
 export function sealEvidence({
   suite, selection = 'all', expectedCases, executedCases, environment, results,
-  startDigest = null, dataAtStart = null, extra = {},
+  startDigest = null, dataAtStart = null, shortcuts = [], extra = {},
 }) {
   const meta = SUITES[suite]
   const data = dataDigest()
@@ -504,7 +511,11 @@ export function sealEvidence({
     buildId: buildStamp()?.buildId ?? null,
     testedAt: new Date().toISOString(),
     environment,
-    scope: { suite, selection, expectedCases, executedCases, startDigest },
+    /**
+     * `shortcuts` — 이 판에서 켠 **지름길 깃발**(예: `candy`). 빈 목록이어야 통과다.
+     * 켠 판은 진단이다 — 판정기가 스스로 떨어뜨린다 (`validateEvidence` ④)
+     */
+    scope: { suite, selection, expectedCases, executedCases, startDigest, shortcuts },
     results,
     ...extra,
   }
@@ -685,6 +696,17 @@ export function validateEvidence(env, suiteName, { artifact, source, harness, ro
   if (missing.length > 0) {
     return bad(`${String(missing.length)}/${String(expected.length)}개를 안 돌렸다:`
       + ` ${missing.slice(0, 6).join(' · ')}${missing.length > 6 ? ' …' : ''}`)
+  }
+
+  // ⚠️ **지름길을 켠 판은 통과가 아니다.** 이상한사탕으로 레벨을 채운 판
+  // (`journey --candy`)은 레벨 맞추기와 그 배틀을 안 밟았다 — 줄이 다 PASS여도
+  // 사람이 하는 길을 잰 것이 아니다. 칸이 없으면 켰는지 모르는 것이라 역시 막는다
+  const cut = env.scope?.shortcuts
+  if (!Array.isArray(cut)) {
+    return bad('지름길을 켰는지가 없다 (scope.shortcuts)')
+  }
+  if (cut.length > 0) {
+    return bad(`지름길을 켠 진단 판이다 (${cut.map(String).join(' · ')}) — 기록용 판은 깃발 없이 돌린다`)
   }
 
   // ⑤ 결과. 여기까지 와야 내용을 센다

@@ -29,8 +29,8 @@
 import { makeObserver, watchMapScene } from './observe.mjs'
 import { makeStall, SLOW, STALLED } from './budget.mjs'
 import {
-  PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, planPath, TILE_TABLE,
-  trainersOn, warpsOf,
+  allMaps, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf, planPath,
+  TILE_TABLE, trainersOn, warpsOf,
 } from './route.mjs'
 
 /** 방향키 하나가 옮기는 칸 */
@@ -66,7 +66,9 @@ const STEP_PATIENCE = 90
  */
 export async function driveStory(page, {
   log = () => {}, totalMs = 900_000, verbose = false, after = null, skipStory = false,
-  upTo = null, observe = 'auto',
+  upTo = null, observe = 'auto', obstacles = null, closedMaps = null,
+  /** 진단 스크린샷을 둘 곳 (약을 못 본 순간 등). null이면 안 찍는다 */
+  shotDir = null,
 } = {}) {
   const started = Date.now()
   /**
@@ -80,6 +82,12 @@ export async function driveStory(page, {
   const obs = await makeObserver(page, observe)
   /** 기술을 무엇으로 골랐나 — 읽어서 골랐나, 화면 글로 물러났나 */
   const movePicks = { read: 0, text: 0 }
+  /** 「새 기술을 배우겠는가」에 몇 번 답했나 */
+  let learnAsks = 0
+  /** 규칙대로 갈아 낀 기술 — `잊은것→배운것` */
+  const learnTaught = []
+  /** 규칙이 「새것이 더 세지 않다」거나 못 읽어서 그대로 둔 횟수 */
+  let learnKept = 0
   const left = () => totalMs - (Date.now() - started)
   const maps = new Set()
   const battles = { wild: 0, trainer: 0 }
@@ -104,6 +112,92 @@ export async function driveStory(page, {
   const plans = []
   /** 마지막으로 키를 보낸 시각. 「계획 중」과 「눌렀는데 안 움직인다」를 가른다 */
   let lastKeyAt = Date.now()
+
+  /**
+   * **격자가 모르는 벽** — 그 맵에만 있는 장치가 지금 막고 있는 칸.
+   *
+   * `route.mjs`의 격자는 타일 통행만 안다. 그런데 장치가 있는 방은 같은 칸이
+   * 때에 따라 막히고 열린다 — 영원 체육관의 꽃시계가 그렇다. 바늘 자리는
+   * 13×13 표 다섯 장으로 구워져 있고(`engine/world/eternaGym.ts`), 제품도
+   * 그것으로 막는다(`scene/mapFeatureCollision.ts`).
+   *
+   * ⚠️ **모르면 없는 결함이 생긴다.** 실측(표로 미리 셈): 시계 상태 0에서
+   * 표가 막는 160칸 중 **140칸을 격자는 걸을 수 있다고 한다.** 그 칸으로
+   * 계획을 세우면 걸음마다 벽에 부딪히고, 하네스는 그것을 「멈췄다」나
+   * 「길이 없다」로 적는다 — 게임은 원작대로 움직이고 있는데도 그렇다.
+   *
+   * ⚠️ **표를 여기서 다시 세지 않는다.** 부르는 쪽이 제품에게 물어 만든
+   * 것을 넘겨받기만 한다 — 두 벌이 되면 언젠가 한쪽만 고쳐진다.
+   * 장치가 상태를 바꾸면(트레이너를 이기면) 부르는 쪽이 다시 읽어 갈아 끼운다
+   */
+  const blockedByFeature = (mapId, x, z) =>
+    (obstacles !== null && obstacles(mapId, x, z) === true)
+    // ⚠️ **맵이 아니라 행렬로 센다.** 실외는 구역이 **한 행렬을 나눠 쓰므로**,
+    // 347에 서서 65로 가는 길을 세우면 그 길이 202를 가로지른다 — 서 있는 맵의
+    // 번호로 장애물을 걸어 두면 **그때 그 나무들이 안 보인다**. 실측
+    // (2026-09-17 `_leg42`): 202에서 347로 빠져나왔다가 같은 계획으로 202에
+    // 도로 들어가기를 121걸음씩 되풀이했다
+    || standingObstacles.has(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+
+  /**
+   * **벨 나무·깰 바위·밀 바위는 격자에 없다** — 지형이 아니라 객체라서다
+   * (`engine/actor/obstacles.ts`의 `OBSTACLE_MOVE`: 84 괴력 · 85 바위깨기 ·
+   * 86 베어가르기). 길 찾기는 칸 격자만 보므로 **그것들을 뚫고 가는 길**을 낸다.
+   *
+   * ⚠️ 실측(2026-09-17 `_leg42`): 영원의 숲(202) 216,566과 216,567에
+   * **베어가르기 나무 둘**(스프라이트 86 · 스크립트 10000 · 플래그 34)이 나란히
+   * 서서 동쪽 길을 막는데, 그쪽이 202에서 205번도로 북(349)으로 가는 **유일한**
+   * 격자 길이다. 그래서 하네스는 같은 두 칸에 스무 번을 부딪혔다. 제대로 된 길은
+   * 202가 아니라 **숲 안(203)의 북쪽 문**이고, 그 길은 이 두 칸을 막아야 보인다.
+   *
+   * ⚠️ **표를 쓰지 않고 게임에게 묻는다.** `events.json`은 **처음** 서 있던
+   * 자리라, 우리가 이미 깬 바위(험한 샛길)도 그대로 서 있다고 한다 — 그러면
+   * 우리가 낸 길을 우리가 막는다. 그래서 맵에 들어설 때마다 제품의
+   * `obstacleAt`에게 **아직 서 있는지**를 묻는다. 물어볼 칸은 맵당 몇 개다
+   */
+  const standingObstacles = new Set()
+  /** 장애물 표를 이미 깐 행렬과, 게임에게 이미 물어본 맵 */
+  const obstaclesSeeded = new Set()
+  const obstaclesAsked = new Set()
+  const OBSTACLE_SPRITES = new Set([84, 85, 86])
+  /**
+   * 그 행렬의 장애물을 **표에서 통째로 깐다** — 아직 안 가 본 구역 것까지.
+   *
+   * ⚠️ **제품에게 물어서는 못 채운다.** `obstacleAt`은 **지금 떠 있는 맵**의
+   * 실제 물체를 보므로, 옆 구역 칸을 물으면 「없다」가 온다 — 그것을 믿으면
+   * 안 가 본 구역의 나무를 뚫고 가는 길을 낸다. 그래서 **모르는 것은 서 있는
+   * 것으로 친다**: 잘못 막으면 돌아갈 뿐이고, 잘못 열면 그 앞에서 멎는다.
+   *
+   * 행렬 0 전체가 77개다 (실측 2026-09-17) — 깔아도 값이 싸다
+   */
+  const seedObstacles = (matrix) => {
+    if (matrix < 0 || obstaclesSeeded.has(matrix)) return
+    obstaclesSeeded.add(matrix)
+    const maps = allMaps()
+    for (let id = 0; id < maps.length; id++) {
+      if (matrixOf(id) !== matrix) continue
+      for (const npc of npcsOf(id)) {
+        if (!OBSTACLE_SPRITES.has(npc.sprite)) continue
+        standingObstacles.add(`${String(matrix)}:${String(npc.x)},${String(npc.z)}`)
+      }
+    }
+  }
+  /** 이 맵의 장애물 중 **이미 치운 것**을 지운다. 물을 수 있는 건 선 맵뿐이다 */
+  const askObstacles = async (mapId) => {
+    seedObstacles(matrixOf(mapId))
+    if (obstaclesAsked.has(mapId)) return
+    obstaclesAsked.add(mapId)
+    for (const npc of npcsOf(mapId)) {
+      if (!OBSTACLE_SPRITES.has(npc.sprite)) continue
+      const r = await obs.obstacleAt(npc.x, npc.z)
+      // 못 읽으면 **표를 믿는다** — 모르는 채로 뚫고 가는 길을 내느니 돌아간다
+      if (r.known && r.value === null) obstacleGone(mapId, npc.x, npc.z)
+    }
+  }
+  /** 그 칸의 장애물을 치웠다 — 다음 계획부터 지나갈 수 있다 */
+  const obstacleGone = (mapId, x, z) => {
+    standingObstacles.delete(`${String(matrixOf(mapId))}:${String(x)},${String(z)}`)
+  }
 
   /**
    * **목적지 하나가 한 episode다** (후속 §4.1).
@@ -263,7 +357,11 @@ export async function driveStory(page, {
    * 안 돼서 **프레임 사이로 빠져나간다.** 오프닝에서 스페이스를 900번 눌러도
    * 한 줄도 안 넘어갔다 — 화면은 멀쩡했고 로그에는 아무것도 안 남았다
    */
+  /** 최근에 누른 키 — 약을 못 본 순간 **직전 입력**을 남기려고 둔다 */
+  const recentKeys = []
   const tap = async (key, hold = 70) => {
+    recentKeys.push({ key, at: Date.now() })
+    if (recentKeys.length > 12) recentKeys.shift()
     await page.keyboard.down(key)
     await page.waitForTimeout(hold)
     await page.keyboard.up(key)
@@ -392,6 +490,27 @@ export async function driveStory(page, {
   let stuckFights = 0
 
   /** 배틀 하나를 끝까지 민다 */
+  /**
+   * **배틀 안에서 회복 도구를 쓸까** (지시서 §13.5의 3번).
+   *
+   * 기본은 **끈 상태**다 — 아무 배틀에서나 약을 쓰면 판마다 가방이 달라져
+   * 배틀을 견줄 수 없다. 관장전처럼 **사람이 약을 쓰는 자리**에서만 켠다
+   * (`usePotions`). 켠 자리를 벗어나면 다시 끈다
+   */
+  const potion = {
+    item: null, name: null, floor: 0, left: 0, used: 0, why: '', misses: [], uses: [],
+    /** 마지막으로 못 본 배틀 턴 — **같은 턴에는 다시 안 간다** */
+    missTurn: null,
+  }
+  const usePotions = (item, name, floor, count) => {
+    potion.item = item; potion.name = name; potion.floor = floor
+    // ⚠️ **쓴 횟수는 안 지운다.** 관장 재도전에서 다시 켜므로, 지우면 보고서가
+    // 「한 판에 몇 번 썼나」를 마지막 배틀 것만 적는다. 남은 개수는 가방이 답한다
+    potion.left = count
+    potion.why = ''
+  }
+  const stopPotions = () => { potion.item = null; potion.name = null; potion.floor = 0; potion.left = 0 }
+
   const fightThrough = async () => {
     if (stuckFights >= STUCK_FIGHTS) return false
     const opened = await now()
@@ -416,17 +535,36 @@ export async function driveStory(page, {
      * 아니다 (별명 화면을 글로 찾는 것과 같은 자리다)
      */
     const pickFighter = async () => {
-      for (const [text, key] of [
-        ['이 포켓몬을 내보낸다', 'Space'],
-        ['싸울 수 없다', 'ArrowDown'],
-        ['이미 나와 있다', 'ArrowDown'],
-      ]) {
-        if (await page.getByText(text, { exact: true }).count() > 0) {
-          await tap(key, 40)
-          return true
-        }
+      /**
+       * ⚠️ **글로 찾지 않는다 — 화면이 이미 갈라 놓은 것을 읽는다.**
+       *
+       * 예전에는 「이 포켓몬을 내보낸다」·「싸울 수 없다」·「이미 나와 있다」 셋을
+       * 찾았고 주석에 "우리 안내문이라 롬 대사가 아니다"라고 적혀 있었다.
+       * **지금은 아니다** — 그 자리의 글은 롬 뱅크 3에서 온다
+       * (`ui/battle/SwitchScreen`의 `banner`). 실측(2026-09-16)으로 한국어 줄은
+       * 「이미 배틀에 나가 있습니다」와 「싸우기 위한 기력이 남아있지 않습니다!」라,
+       * 찾던 셋은 **어느 화면에도 없다.** 즉 이 함수는 늘 거짓을 돌려주고 있었다.
+       *
+       * 파티가 한 마리인 동안에는 교체 화면이 안 떠서 안 드러났다. 잡아서 둘이
+       * 되는 순간부터는 앞의 마리가 쓰러질 때마다 이 화면이 뜨고, 커서는
+       * **쓰러진 그 마리**에 놓여 있다 — 거기서 결정을 눌러 봐야 아무 일도 없다.
+       *
+       * 그래서 **고를 수 있는 칸**을 누른다. 화면이 `disabled`로 이미 갈라 두었다
+       * (`ui/battle/PartyCards`의 `can`). 칸은 「Lv.」이 붙은 단추뿐이라 기술
+       * 칸(`12/25`)과 안 헷갈린다
+       */
+      const cards = page.locator('button').filter({ hasText: /Lv\./ })
+      const n = await cards.count()
+      if (n === 0) return false
+      for (let i = 0; i < n; i++) {
+        const card = cards.nth(i)
+        if (await card.isDisabled().catch(() => true)) continue
+        await card.click({ timeout: 3000 }).catch(() => {})
+        return true
       }
-      return false
+      // 고를 수 있는 칸이 하나도 없다 — 전멸이다. 넘겨서 끝낸다
+      await tap('Space', 60)
+      return true
     }
 
     /**
@@ -489,6 +627,231 @@ export async function driveStory(page, {
       return true
     }
 
+    /**
+     * **「새 기술을 배우겠는가」에 정해진 규칙으로 답한다** (`ui/battle/LearnMove`).
+     *
+     * ⚠️ **이 화면을 모르면 배틀이 영영 안 끝난다.** 실측(`_wild42`, 2026-09-16):
+     * 모부기가 17레벨에서 저주를 배우려 하자 화면에 **잊을 기술 네 칸**이 떴고,
+     * `pickMove`가 그 칸을 기술 고르기로 읽어 **121초 · 800탭** 동안 같은 자리를
+     * 눌렀다. 그 판의 트레이너전은 8~13초에 끝났으니 느린 것이 아니라
+     * **그 물음에 아무도 답하지 않은 것**이다.
+     *
+     * **규칙 — 위력이 가장 낮은 기술을 잊는다.** 같으면 앞 칸이고, 새 기술이 더
+     * 세지 않으면 안 배운다. 변화 기술의 위력은 0이다.
+     *
+     * ⚠️ **예전에는 늘 「안 배운다」였다.** 판마다 파티를 같게 하려던 것인데,
+     * 그 대가로 수풀부기가 L21 물기를 흘려보내고 풀 기술만 들고 유채(풀 셋)에게
+     * 갔다 — journey13에서 첫 도전·재도전 모두 졌다(지시서 §13.4). 규칙이
+     * **고정**이면 판마다 파티는 여전히 같으므로 견주기는 그대로 유지된다.
+     *
+     * ⚠️ **화면 글자를 위력으로 읽지 않는다.** 이름을 게임의 기술표에 물어보고,
+     * 한 칸이라도 못 읽으면 **손대지 않고** 예전처럼 안 배운다 — 모르는 것을
+     * 0으로 접으면 제일 좋은 기술을 잊는다
+     */
+    const forgetPick = async () => {
+      const rows = page.locator('button').filter({ hasText: /\d+\s*\/\s*\d+/ })
+      const n = await rows.count()
+      if (n === 0) return null
+      // 새 기술의 이름은 「그만둔다」 칸의 작은 줄에 그대로 적혀 있다
+      const stop = page.locator('button').filter({ hasText: '그만둔다' }).first()
+      const sub = (await stop.innerText().catch(() => '')).replace(/\s+/g, ' ')
+      const fresh = /(\S+)을\(를\) 안 배운다/.exec(sub)
+      if (fresh === null) return null
+      const names = []
+      for (let i = 0; i < n; i++) {
+        names.push((await rows.nth(i).innerText()).split(/\r?\n/)[0].trim())
+      }
+      const read = await obs.movePower([...names, fresh[1]])
+      if (!read.known || !Array.isArray(read.value)) return null
+      const power = read.value
+      const gain = power[power.length - 1]
+      if (typeof gain !== 'number') return null
+      let at = -1
+      for (let i = 0; i < names.length; i++) {
+        if (typeof power[i] !== 'number') return null
+        if (at < 0 || power[i] < power[at]) at = i
+      }
+      return at >= 0 && power[at] < gain ? { at, was: names[at], now: fresh[1] } : null
+    }
+
+    const answerLearnMove = async () => {
+      const seen = (text) => page.locator('button').filter({ hasText: text }).count()
+      // 세 단은 화면의 **다른 칸**으로 갈린다 (`LearnMove`의 `Stage`)
+      const ask = await seen('기술 하나를 잊는다') > 0
+      const giveUp = await seen('다시 고른다') > 0
+      const forget = !ask && !giveUp && await seen('그만둔다') > 0
+      if (!ask && !giveUp && !forget) return false
+      /**
+       * ⚠️ **누르지 말고 키로 답한다.** 실측(`_wild42`, 2026-09-16): 칸을
+       * `click()`으로 고르면 **3초씩 통째로 시간이 나가고** 화면은 그대로다 —
+       * 40번을 그렇게 눌러 122초를 썼다. 대사가 아직 흐르는 동안은 그 칸이
+       * 눌릴 자리에 안 서 있다는 뜻이다. 사람은 키로 답하고, 키는 먹는다.
+       *
+       * 커서는 **안 돌아간다** (`clampCursor`) — 첫 칸에서 시작해 아래로만 간다
+       */
+      if (ask) await tap('Space', 120)                                   // 예
+      else if (giveUp) { await tap('ArrowDown', 60); await tap('Space', 120) } // 다시 고른다
+      else {
+        const pick = await forgetPick()
+        if (pick === null) {
+          for (let i = 0; i < 5; i++) await tap('ArrowDown', 40)
+          await tap('Space', 120)
+          learnKept++
+        } else {
+          for (let i = 0; i < pick.at; i++) await tap('ArrowDown', 40)
+          await tap('Space', 120)
+          learnTaught.push(`${pick.was}→${pick.now}`)
+        }
+      }
+      learnAsks++
+      return true
+    }
+
+    /**
+     * **약이 필요하면 쓴다** (지시서 §13.5의 3번 · `usePotions`로 켠 자리에서만).
+     *
+     * 길은 볼 던지기와 같다 — 명령 단 → 가방 → 그 약이 보이는 주머니 → 첫 줄 →
+     * 「누구에게?」의 첫 칸. 사람이 하는 그 길이고 뒷문은 없다.
+     *
+     * ⚠️ **약은 턴을 쓴다.** 원작과 같다 — 쓴 턴에는 공격하지 않는다. 그래서
+     * 문턱을 낮게 잡는다(체력이 그 몫 아래로 떨어질 때만).
+     *
+     * ⚠️ **첫 줄이 그 약인지를 가방으로 확인한다.** 화면 줄에서 커서 자리를 읽을
+     * 길이 없어 첫 줄을 누르는데, 회복 주머니에 다른 것이 먼저 들어 있으면
+     * **엉뚱한 것을 쓴다.** 그때는 안 쓰고 까닭을 남긴다
+     */
+    /**
+     * **명령 단(싸운다·가방·포켓몬·도망친다)이 서 있나.**
+     *
+     * ⚠️ **「싸운다」가 든 칸으로 찾으면 안 된다.** 시합규칙 「교체」 물음의
+     * 「아니오」 칸 밑줄이 **「그대로 싸운다」**다(`BattleScreen`의 `YesNo`). 상대가
+     * 쓰러진 뒤 그 물음이 뜬 채로 선두 체력이 문턱 아래면 옛 판정은 그것을 명령
+     * 단으로 읽었고, ↓ 결정이 **「예」(교체)**를 골라 교체 화면이 열렸다 — 약 줄이
+     * 안 보이는 것이 당연했다. 관장의 둘째·셋째 마리 앞에서만 난 까닭이다
+     * (journey20·21 · 지시서 JOURNEY21_NEXT_DECISIONS §6).
+     * 그래서 **칸의 첫 낱말**로 본다 — 「싸운다」와 「가방」이 둘 다 칸 머리에 있어야 한다
+     */
+    const buttonTexts = async () => (await page.locator('button').allInnerTexts())
+      .map((t) => t.replace(/\s+/g, ' ').trim())
+      .filter((t) => t !== '' && !t.startsWith('FPS'))
+    const commandReady = (texts) => texts.some((t) => t.startsWith('싸운다'))
+      && texts.some((t) => t.startsWith('가방'))
+    const maybePotion = async () => {
+      if (potion.item === null || potion.left <= 0) return false
+      /**
+       * ⚠️ **배틀 중 체력은 `partyState`가 아니라 배틀에게 묻는다.** `saveStore`의
+       * 파티는 배틀이 끝나야 바뀐다 — 실측(journey16)에서 그 값이 만피 그대로라
+       * 문턱이 한 번도 안 걸렸고, 산 약 넷을 하나도 못 썼다
+       */
+      const me = await obs.battleHp()
+      if (!me.known || me.value === null) return false
+      const { hp, max, fainted } = me.value
+      if (fainted || typeof hp !== 'number' || typeof max !== 'number') return false
+      if (hp <= 0 || hp > max * potion.floor) return false
+      const moment = await obs.battleMoment()
+      const turn = moment.known ? moment.value?.turn ?? null : null
+      // 못 본 그 턴에는 다시 손대지 않는다 — 입력이 한 턴에 쌓이면 무엇이 먹었는지 모른다
+      if (turn !== null && potion.missTurn === turn) return false
+      const bag = await obs.bagState()
+      const mine = bag.known ? (bag.value?.items ?? []).find((one) => one.item === potion.item) : null
+      if (!mine) { potion.why = '가방에 그 약이 없다'; potion.left = 0; return false }
+      if (mine.row !== 0) {
+        potion.why = `회복 주머니 ${String(mine.row)}번째라 첫 줄을 못 누른다`
+        potion.left = 0
+        return false
+      }
+      const panel = buttonTexts
+      /**
+       * ⚠️ **명령 단이 이미 서 있을 때만 손을 댄다.** 기다리면서 Space를 누르면
+       * 기술 고르기 화면에서 **아무 기술이나 골라 버린다** — 약을 쓰려다 턴을
+       * 엉뚱하게 쓴다. 안 서 있으면 물러나고, 바깥 바퀴가 다시 부른다
+       */
+      const before = await panel()
+      if (!commandReady(before)) return false
+      const t0 = Date.now()
+      await tap('ArrowDown', 90)
+      await tap('Space', 150)
+      const rowUp = async (rounds) => {
+        for (let i = 0; i < rounds; i++) {
+          if ((await panel()).some((t) => t.includes(potion.name))) return true
+          await page.waitForTimeout(200)
+        }
+        return false
+      }
+      const ready = await rowUp(50)
+      /**
+       * ⚠️ **한 번 못 봤다고 그 판의 약을 끊지 않는다.** 그 순간 **무슨 화면이었는지**를
+       * 넉넉히 적고, 세 번 못 볼 때까지는 **다음 턴에** 다시 간다. 세 번은 재시도
+       * 정책이지 고쳤다는 판정이 아니다.
+       *
+       * ⚠️ 못 봤을 때 ←→로 주머니를 넘겨 보지 않는다 — 가방이 아닌 화면(교체 목록)에서
+       * 그 키는 커서를 옮기고, 입력만 쌓인다
+       */
+      if (!ready) {
+        const saw = await panel()
+        const marks = await page.evaluate(() => ({ ...document.documentElement.dataset })).catch(() => null)
+        const after = await obs.battleMoment()
+        let shot = null
+        if (shotDir !== null) {
+          shot = `${shotDir}/potion-miss-${String(potion.misses.length + 1)}.png`
+          await page.screenshot({ path: shot }).catch(() => { shot = null })
+        }
+        potion.misses.push({
+          used: potion.used, ms: Date.now() - t0,
+          hp, max, turn,
+          before: before.slice(0, 8), screen: saw.slice(0, 12),
+          momentBefore: moment.known ? moment.value : `관측 불가 (${String(moment.why)})`,
+          momentAfter: after.known ? after.value : `관측 불가 (${String(after.why)})`,
+          scene: marks?.scene ?? null, menu: marks?.menu ?? null,
+          item: { id: potion.item, count: mine.count, row: mine.row, pocket: mine.pocket },
+          keys: recentKeys.map((k) => `${k.key}@${String(k.at - t0)}`),
+          shot,
+        })
+        potion.missTurn = turn
+        potion.why = `가방 화면에 ${String(potion.name)}이(가) 안 보인다`
+          + ` (${String(potion.misses.length)}번째 · 화면 ${JSON.stringify(saw.slice(0, 4))})`
+        if (potion.misses.length >= 3) potion.left = 0
+        // 명령 단이 다시 설 때까지만 물러난다 — 거기서 멈춘다
+        for (let i = 0; i < 4; i++) {
+          const now2 = await panel()
+          if (commandReady(now2) || (await now()).scene !== 'battle') break
+          await tap('KeyX', 120)
+          await page.waitForTimeout(150)
+        }
+        return false
+      }
+      await tap('Space', 250)   // 첫 줄 — 그 약
+      await tap('Space', 250)   // 「누구에게?」 첫 칸 — 선두
+      potion.left--
+      potion.used++
+      /**
+       * 턴이 끝날 때까지 넘기면서 **체력의 제일 높은 값**을 같이 본다.
+       *
+       * ⚠️ **끝값만 보면 「안 나았다」로 적힌다.** 약은 턴을 쓰므로 **같은 턴에 상대가
+       * 때린다** — 실측(2026-09-17 `_potion42 --drive`): 쓴 값까지 찼다가 맞아서 그
+       * 아래로 끝난 턴이 있다
+       */
+      let peak = hp
+      for (let i = 0; i < 60; i++) {
+        const r = await obs.battleHp()
+        const v = r.known && r.value !== null ? r.value.hp : null
+        if (typeof v === 'number' && v > peak) peak = v
+        const s2 = await now()
+        if (s2.scene !== 'battle') break
+        if (commandReady(await panel())) break
+        await tap('Space', 90)
+      }
+      const bag2 = await obs.bagState()
+      const left2 = bag2.known ? (bag2.value?.items ?? []).find((one) => one.item === potion.item)?.count ?? 0 : null
+      potion.uses.push({
+        turn, hp, max,
+        hpPeak: peak,
+        count: mine.count, countAfter: left2,
+        spent: left2 === null ? null : mine.count - left2,
+      })
+      return true
+    }
+
     // ⚠️ **벽시계 상한을 여기서도 본다.** 예전에는 800번을 세는 것뿐이라,
     // 안 끝나는 배틀 하나가 `settle`의 150바퀴와 겹쳐 **예산을 통째로 넘겼다** —
     // 실측으로 체육관에서 배틀 13회를 찍고 그 뒤로 로그가 멎었다. 세는 것과
@@ -510,9 +873,14 @@ export async function driveStory(page, {
           + ' — 전멸해서 되돌아왔을 수 있다')
         return true
       }
+      // ⚠️ **기술 배우기 물음이 제일 먼저다.** 그 화면에도 PP가 붙은 칸 넷이
+      // 떠서, 뒤에 두면 `pickMove`가 그것을 기술 고르기로 읽고 영영 누른다
+      if (await answerLearnMove()) continue
       // 파티 목록이 떠 있으면 **고를 수 있는 마리로 커서를 옮긴 뒤** 결정한다.
       // ⚠️ **기술 고르기보다 먼저다** — 그 화면의 오른쪽 판에도 상성 글이 뜬다
       if (await pickFighter()) continue
+      // 약은 기술보다 **먼저** 본다 — 쓰면 그 턴을 쓴 것이라 공격과 겹치면 안 된다
+      if (await maybePotion()) continue
       if (await pickMove()) continue
       await tap('Space')
     }
@@ -650,6 +1018,13 @@ export async function driveStory(page, {
       if (at.scene !== 'overworld') return 'scene'
       if (at.map !== mapId) return 'warped'
       if (at.x !== leg.want.x || at.z !== leg.want.z) {
+        // ⚠️ **막은 칸은 「가려던 끝」이 아니라 「멈춘 자리 바로 앞」이다.**
+        // 한 방향을 다섯·여섯 칸씩 몰기 때문에, 끝 칸을 물으면 **엉뚱한 칸**을
+        // 보고 엉뚱한 칸을 기피에 넣는다. 실측(2026-09-17 `_leg42`): 영원의
+        // 숲(202)에서 215,566에 멈췄는데 220,566을 기피에 넣어 매번 같은
+        // 216을 다시 계획했다 — 같은 걸음을 20분 동안 되풀이했다
+        const [bdx, bdz] = STEPV[leg.key]
+        const stop = { x: at.x + bdx, z: at.z + bdz }
         // ⚠️ **「막혔다」의 까닭이 하나가 아니다.** 벽일 수도, 사람일 수도,
         // **필드 스크립트가 발을 묶은 것**일 수도 있다 — `runKeys`는 대사창과
         // 씬 전환만 보고 멈추지 최신 `script` 표식은 안 본다. 실측
@@ -661,10 +1036,11 @@ export async function driveStory(page, {
           want: { x: leg.want.x, z: leg.want.z },
           at: { x: at.x, z: at.z, map: at.map },
           lock: { script: at.script, talk: at.talk, scene: at.scene, restoring: at.restoring },
-          grid: grid0(mapId, leg.want.x, leg.want.z),
+          stop,
+          grid: grid0(mapId, stop.x, stop.z),
           // ⚠️ **게임에게 직접 묻는다.** 우리 격자와 다르면 그것이 원인이다
           game: await (async () => {
-            const r = await obs.blockedAt(leg.want.x, leg.want.z)
+            const r = await obs.blockedAt(stop.x, stop.z)
             return r.known ? r.value : { why: r.why }
           })(),
           // ⚠️ **「안 움직였다」와 「표식이 안 따라왔다」는 다른 일이다.**
@@ -679,7 +1055,7 @@ export async function driveStory(page, {
           // 보듯 칸 중심은 **정수 + 0.5**다. 정수를 넘기면 칸 모서리를 묻게 되어
           // 옆에 선 사람을 놓친다 — 처음에 그렇게 물어 「사람 null」이 나왔다
           solid: await (async () => {
-            const r = await obs.solidAt(leg.want.x + 0.5, leg.want.z + 0.5)
+            const r = await obs.solidAt(stop.x + 0.5, stop.z + 0.5)
             return r.known ? r.value : { why: r.why }
           })(),
           // ⚠️ **`runKeys`는 칸당 420ms를 가정한다.** 화면이 그보다 느리면
@@ -695,7 +1071,8 @@ export async function driveStory(page, {
           log(`        ${leg.key}×${String(leg.count)} 막혔다 — ${String(at.x)},${String(at.z)} `
             + `(원한 곳 ${String(leg.want.x)},${String(leg.want.z)})`
             + ` · 스크립트 ${at.script ? '돈다' : '안 돈다'} · 대사 ${at.talk ? '있다' : '없다'}`
-            + ` · 우리격자 ${grid0(mapId, leg.want.x, leg.want.z) ? '막힘' : '열림'}`
+            + ` · 막은 칸 ${String(stop.x)},${String(stop.z)}`
+            + ` · 우리격자 ${grid0(mapId, stop.x, stop.z) ? '막힘' : '열림'}`
             + ` · 게임격자 ${JSON.stringify(blockNotes.at(-1)?.game)}`
             + ` · 원시 ${JSON.stringify(blockNotes.at(-1)?.raw)}`
             + ` · 사람 ${JSON.stringify(blockNotes.at(-1)?.solid)}`
@@ -714,7 +1091,7 @@ export async function driveStory(page, {
         // ⚠️ **정말 안 움직인 자리는 뺀다.** 격자는 지나갈 수 있다고 하는데
         // 실제로는 못 지나가는 자리가 있다(실측: 집 1층에서 155초를 같은 한
         // 걸음에 썼다). 무엇이 막았는지 몰라도 길만 있으면 돌아간다
-        shun?.add(`${String(leg.want.x)},${String(leg.want.z)}`)
+        shun?.add(`${String(stop.x)},${String(stop.z)}`)
         return 'blocked'
       }
     }
@@ -752,6 +1129,10 @@ export async function driveStory(page, {
      * 스크립트·배틀)이 열리거나 닫힘 · 남은 계획 길이가 줄어듦**
      */
     const stall = makeStall(GO_PATIENCE)
+    /** 박동이 마지막으로 울린 때, 이 걸음이 시작한 때, 지나온 맵 자취 */
+    let beatAt = Date.now()
+    const t0Go = Date.now()
+    const seenMaps = []
     /** 지난 바퀴에 세운 계획의 남은 걸음 수. 줄어드는 것도 진행이다 */
     let planLeft = -1
     /** 이번 바퀴가 시작한 시각. 진행 없는 바퀴를 너무 짧게 안 센다 */
@@ -769,6 +1150,26 @@ export async function driveStory(page, {
           + `${s.talk ? ' · 대사창' : ''})`)
       }
       if (verbose && t % 5 === 0) log(`    →${String(target)} ${t}: ${JSON.stringify(s)}`)
+      /**
+       * **박동** — 조용한 것이 「걷는 중」인지 「되풀이하는 중」인지 밖에서
+       * 가를 수 있어야 한다.
+       *
+       * ⚠️ **실측(2026-09-16 대표 구간 WebGL 판): 30분 동안 로그가 한 줄도 안
+       * 나왔다.** 배틀은 붙을 때마다 줄을 남기므로 「싸우지도 멎지도 않는」
+       * 상태였는데, 밖에서는 그것이 긴 걸음인지 문 앞 되돌이인지 알 길이
+       * 없었다 — 영상만 자라고 있었다. 사람이 판을 끊을지 말지를 **짐작으로**
+       * 정하게 되는 자리라, 60초마다 지금 자리와 지나온 맵을 적는다.
+       *
+       * 판정에 안 쓴다. 적는 것뿐이고, 늘 켜 둔다 (`verbose`와 무관하다)
+       */
+      if (Date.now() - beatAt > 60_000) {
+        beatAt = Date.now()
+        log(`    →${String(target)} 걷는 중 ${String(Math.round((Date.now() - t0Go) / 1000))}초`
+          + ` · 맵 ${String(s.map)} 칸 ${String(s.x)},${String(s.z)}`
+          + ` · 지나온 맵 ${JSON.stringify(seenMaps.slice(-6))}`
+          + ` · 쉰 바퀴 ${String(stall.idle)}`)
+      }
+      if (seenMaps.at(-1) !== s.map) seenMaps.push(s.map)
       if (s.scene === 'battle') { await fightThrough(); continue }
       if (s.talk || s.scene === 'menu') { await clearTalk(); continue }
       // 스크립트가 도는 동안은 발이 묶인다 — 밀어 봐야 안 움직인다. 넘겨 준다
@@ -837,9 +1238,12 @@ export async function driveStory(page, {
 
       // 이 맵의 **다른 문은 밟지 않는다** — 모래시티는 한 줄에 문이 셋이라,
       // 상점으로 가는 길이 포켓몬센터 문을 지난다 (실측: 419로 가다 422에 들어갔다)
+      // 이 맵의 장애물이 **아직 서 있는지** 한 번 묻는다 (맵당 한 번)
+      await askObstacles(s.map)
       const others = warpsOf(s.map)
       const avoid = (x, z) => shun.has(`${String(x)},${String(z)}`)
         || others.some((w) => w.x === x && w.z === z)
+        || blockedByFeature(s.map, x, z)
       const from = { x: s.x, z: s.z }
 
       // ⚠️ **그냥 지나갈 때는 풀숲을 밟지 않는다.** 사람도 그렇게 걷는다.
@@ -881,6 +1285,11 @@ export async function driveStory(page, {
       const use = (r) => { plan = r; return r.keys }
 
       let keys = null
+      /**
+       * ⚠️ **아직 못 지나는 맵** (`closedMaps`). 맵 그래프에서 빼고, 「닿을 수 있는
+       * 다른 구역」 후보에서도 뺀다 — 한쪽만 빼면 그쪽으로 다시 걸어간다
+       */
+      const shut = closedMaps === null ? null : closedMaps()
       if (here === matrixOf(target)) {
         keys = use(path((x, z) => grid.zoneAt(x, z) === target, `구역 ${String(target)}`))
       }
@@ -890,7 +1299,10 @@ export async function driveStory(page, {
       // 도는 것**이므로 맵 그래프에 다시 묻는다 — 실측(2026-09-07)으로 이
       // 자리가 없어서 「(177,804)에서 길을 못 찾았다」로 섰다
       if (keys === null) {
-        const route = mapRoute(s.map, target)
+        // 자전거길이 그 예다 — 격자에는 길이 있고 게임은 막는다. 빼지 않으면 그
+        // 길로 계획을 내고, 계획이 늘 「17걸음 있다」고 하니 같은 자리를 영영
+        // 맴돈다 (실측 2026-09-17 journey17 — 207번도로에서 18분)
+        const route = mapRoute(s.map, target, { without: shut })
         if (!route || route.length < 2) return done(`길이 없다 (${String(s.map)} → ${String(target)})`)
         // ⚠️ **중간 구역을 하나씩 밟으면 안 된다.** 같은 행렬 안에서는 구역이
         // 맞닿아 있기만 하면 한 걸음으로 세므로, 맵 그래프가 202번도로에서
@@ -914,6 +1326,31 @@ export async function driveStory(page, {
               `경유 구역 ${String(route[i])}`))
           }
         }
+      }
+      // ⚠️ **맵 그래프가 못 지나가는 길을 낼 수 있다.** 구역 표는 **맞닿아
+      // 있는가**만 보는데, 그 경계에 베어가르기 나무가 서 있으면 맞닿아 있어도
+      // 못 간다 — 실측(2026-09-17 `_leg42`): 영원의 숲 바깥(202)에서 205번도로
+      // 북(349)이 「맞닿음」인데 사이가 나무 둘이라, `mapRoute`가 낸
+      // `[202, 349, 65]`가 통째로 거짓말이었다. 진짜 길은 **뒤로 나갔다가**
+      // 숲 안(203)의 북쪽 문으로 도는 것이다.
+      //
+      // 그래서 마지막으로 **닿을 수 있는 다른 구역**을 찾는다. 거기서 다시
+      // 물으면 맵 그래프가 이번엔 지나갈 수 있는 길을 낸다
+      if (keys === null) {
+        const byZone = new Map()
+        const worthGoing = (zone) => {
+          if (zone === s.map) return false
+          let ok = byZone.get(zone)
+          if (ok === undefined) {
+            const r = shut?.has(zone) === true ? null : mapRoute(zone, target, { without: shut })
+            // 지금 맵으로 되돌아오는 길은 소용없다 — 왔던 자리로 도로 온다
+            ok = Array.isArray(r) && r.length >= 1 && !r.includes(s.map)
+            byZone.set(zone, ok)
+          }
+          return ok
+        }
+        keys = use(path((x, z) => worthGoing(grid.zoneAt(x, z)), '닿을 수 있는 다른 구역'))
+        if (keys !== null && verbose) log('      맵 그래프의 길이 막혔다 — 다른 구역으로 돌아 나간다')
       }
       if (keys === null) {
         lost++
@@ -1058,7 +1495,8 @@ export async function driveStory(page, {
       // 예산이 다 될 때까지 되풀이된다
       const r = planned(here, { x: s.x, z: s.z }, (x, z) => x === spot.x && z === spot.z, {
         avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
-          || doors.some((w) => w.x === x && w.z === z),
+          || doors.some((w) => w.x === x && w.z === z)
+          || blockedByFeature(mapId, x, z),
       }, `밟기 ${String(spot.x)},${String(spot.z)}`)
       if (r.keys === null) {
         if (shun.size > 0) { shun.clear(); continue }
@@ -1143,7 +1581,8 @@ export async function driveStory(page, {
           (x, z) => x === side.at.x && z === side.at.z,
           {
             avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
-              || doors.some((w) => w.x === x && w.z === z),
+              || doors.some((w) => w.x === x && w.z === z)
+              || blockedByFeature(mapId, x, z),
           }, '말 걸 자리').keys
         if (keys === null) {
           if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}로 가는 길이 없다`)
@@ -1283,6 +1722,401 @@ export async function driveStory(page, {
     }
   }
 
+  /** 이야기 변수·가방·꽃시계 — **읽기만** 한다. 못 읽으면 `null`이다 */
+  const storyVars = async () => {
+    const r = await obs.storyVars()
+    return r.known ? r.value : null
+  }
+  const bagState = async () => {
+    const r = await obs.bagState()
+    return r.known ? r.value : null
+  }
+  const eternaWalls = async () => {
+    const r = await obs.eternaWalls()
+    return r.known ? r.value : null
+  }
+
+  /**
+   * **마트에서 산다** — 사람이 하는 길 그대로.
+   *
+   * 점원은 계산대 뒤 (3,5)고 **스크립트 1**이다 (`events.json`의 마트 넷이
+   * 다 같다 — 축복 4 · 모래 419 · 꽃향기 427 · 영원 66). 자리가 아니라
+   * 스크립트로 찾는 까닭은 간호사와 같다.
+   *
+   * 화면은 `ui/menu/ShopScreen`이고 줄이 `<div>`라 **누를 단추가 없다** —
+   * 키로 몬다. 계약이 그 파일에 그대로 있다:
+   *
+   *   · 결정 한 번에 `count`가 0 → 1 (`confirm`의 `if (max > 0) setCount(1)`)
+   *   · `count > 0`이면 ↑가 **개수를 올린다** (`Math.min(max, c + 1)`)
+   *   · 그 자리에서 결정이 `settle()` — 돈을 내고 가방에 넣는다
+   *   · 취소가 가게를 닫는다
+   *
+   * ⚠️ **산 것은 가방으로 확인한다.** 「샀다」 글을 읽으면 글자 맞추기가 되고,
+   * 돈이 모자라 안 산 판이 통과로 새어 나간다
+   *
+   * @param martMap 마트 맵 번호
+   * @param item    도구 번호 (몬스터볼이 4다)
+   * @param want    몇 개
+   */
+  const buyAt = async (martMap, item, want, budgetMs) => {
+    const t0 = Date.now()
+    const before = await bagState()
+    if (before === null) return { ok: false, unknown: true, why: `가방을 못 읽었다 (${obs.kind})` }
+    const held = (bag) => bag.items.find((one) => one.item === item)?.count ?? 0
+    const came = await goTo(martMap, Math.min(budgetMs, left()))
+    if (came !== 'arrived') return { ok: false, why: `마트에 못 갔다 (${String(came)})` }
+    const said = await talkToNpc(martMap, 1, Math.min(120_000, left()))
+    if (said !== true) return { ok: false, why: '점원에게 못 걸었다' }
+    // 가게가 열릴 때까지 넘긴다 — 인사 대사가 먼저 흐른다
+    let opened = false
+    for (let i = 0; i < 60 && !opened; i++) {
+      const s2 = await now()
+      if (s2.menu === 'shop') { opened = true; break }
+      await tap('Space', 120)
+    }
+    if (!opened) return { ok: false, why: '가게가 안 열렸다' }
+    /**
+     * ⚠️ **줄 번호를 짐작하지 않는다.** 재고는 그 자리의 **배지 수**가 정하므로
+     * (`engine/bag/mart.ts`) 배지가 하나 늘면 목록이 통째로 밀린다 — 「첫 줄이
+     * 몬스터볼」은 오늘만 참인 문장이다. 열린 가게의 재고를 읽어 **그 줄까지**
+     * 커서를 내린다. 커서는 안 돌아간다 (`clampCursor`)
+     */
+    const stock = await obs.shopStock()
+    if (!stock.known || !Array.isArray(stock.value)) {
+      await tap('KeyX', 120)
+      return { ok: false, unknown: true, why: `재고를 못 읽었다 (${obs.kind})` }
+    }
+    const at = stock.value.indexOf(item)
+    if (at < 0) {
+      await tap('KeyX', 120)
+      return { ok: false, why: `이 가게에 도구 ${String(item)}이 없다` }
+    }
+    for (let i = 0; i < at; i++) await tap('ArrowDown', 70)
+    await tap('Space', 200)
+    for (let i = 1; i < want; i++) await tap('ArrowUp', 70)
+    await tap('Space', 300)
+    await tap('KeyX', 200)
+    await clearTalk()
+    await settle()
+    const after = await bagState()
+    if (after === null) return { ok: false, unknown: true, why: `가방을 못 읽었다 (${obs.kind})` }
+    const got2 = held(after) - held(before)
+    return {
+      ok: got2 > 0, bought: got2, want, ms: Date.now() - t0,
+      money: [before.money, after.money], have: held(after),
+      why: got2 > 0 ? null : `안 샀다 (돈 ${String(after.money)}원)`,
+    }
+  }
+
+  /**
+   * **가방을 열고 그 도구 칸에 커서를 놓는다** — 사람이 하는 길 그대로.
+   *
+   * 시작 메뉴에서 가방을 찾는 자리가 여기다. ⚠️ **글로 못 찾는다** — 실측
+   * (2026-09-16 `_north42` 3판)으로 일곱 칸의 글이 전부 비어 있었다
+   * (`["▶","","","","","",""]`). 이름표는 롬 뱅크에서 받아 오는데
+   * (`ui/menu/StartMenu`의 `label()`) 그 왕복이 아직 안 끝나 있었다.
+   * 그래서 **차례로 찾는다**: 뒤 다섯은 늘 가방·트레이너카드·리포트·설정·닫기라,
+   * 앞의 도감·포켓몬·공중날기가 있든 없든 가방은 **뒤에서 다섯째**다.
+   * 리포트를 뒤에서 셋째로 찾는 `journey.mjs`의 `writeReport`와 같은 자리다.
+   * 글이 와 있으면 그것으로 맞춰 본다.
+   *
+   * 주머니는 ←→로 옮기고(**돌아간다** — `wrapCursor`) 줄은 ↑↓다(안 돌아간다).
+   * 몇 번째 주머니의 몇째 줄인지는 세이브에서 읽는다 (`bagState`)
+   *
+   * @returns `{ ok, slot, why }` — `slot`은 `{ item, count, pocket, row }`
+   */
+  const openBagAt = async (item, till) => {
+    const bag = await bagState()
+    if (bag === null) return { ok: false, unknown: true, why: `가방을 못 읽었다 (${obs.kind})` }
+    const slot = bag.items.find((one) => one.item === item) ?? null
+    if (slot === null) return { ok: false, why: `가방에 도구 ${String(item)}이 없다` }
+
+    await settle()
+    await tap('KeyC')
+    const rowAt = async () => page.evaluate(() => {
+      const all = [...document.querySelectorAll('[role="radiogroup"] [role="radio"]')]
+      return {
+        n: all.length,
+        at: all.findIndex((e) => e.getAttribute('aria-checked') === 'true'),
+        want: all.findIndex((e) => (e.textContent ?? '').includes('가방')),
+        texts: all.map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim()),
+      }
+    })
+    let menu = null
+    for (let i = 0; i < 20 && Date.now() < till; i++) {
+      menu = await rowAt().catch(() => null)
+      if (menu !== null && menu.n > 0) break
+      await page.waitForTimeout(250)
+    }
+    if (menu === null || menu.n < 5) {
+      for (let i = 0; i < 6; i++) await tap('KeyX', 80)
+      return { ok: false, why: `시작 메뉴가 안 열렸다 (${JSON.stringify(menu?.texts ?? null)})` }
+    }
+    const want = menu.want >= 0 ? menu.want : menu.n - 5
+    for (let i = 0; i < menu.n + 3; i++) {
+      const at = await rowAt()
+      if (at.at === want) break
+      await tap(at.at < want ? 'ArrowDown' : 'ArrowUp', 60)
+    }
+    await tap('Space', 250)
+    for (let i = 0; i < 30 && (await now()).menu !== 'bag'; i++) await page.waitForTimeout(200)
+    if ((await now()).menu !== 'bag') {
+      for (let i = 0; i < 6; i++) await tap('KeyX', 80)
+      return { ok: false, why: '가방이 안 열렸다' }
+    }
+    for (let i = 0; i < slot.pocket; i++) await tap('ArrowRight', 90)
+    for (let i = 0; i < slot.row; i++) await tap('ArrowDown', 80)
+    return { ok: true, slot, why: null }
+  }
+
+  /** 가방이든 무엇이든 열린 화면을 닫고 필드로 돌아온다 */
+  const closeMenus = async () => {
+    for (let i = 0; i < 8 && (await now()).menu !== undefined; i++) await tap('KeyX', 120)
+    await settle()
+  }
+
+  /**
+   * **도구 하나를 밭에서 쓴다** (`ui/menu/itemAction`의 그 갈래들).
+   *
+   * 지금 쓰는 자리는 **벌레회피스프레이**다 — 영원의 숲과 205번도로는 칸마다
+   * 야생이 붙어서, 실측(2026-09-16 대표 구간)으로 한 다리에 열두 번이 붙고
+   * 900초 상한이 걸어가는 도중에 끊겼다. 원작이 그 자리에 주는 답이 이 도구고
+   * (마트 재고 t2 · 350원 · 100걸음), 우리 쪽도 `TryUseRepel` 그대로 걸음을 센다.
+   *
+   * ⚠️ **썼는지는 가방으로 본다.** 화면 글(「…을 썼다!」)로 재면 「아직 효과가
+   * 남아 있다」와 구분이 글자 맞추기가 된다
+   */
+  const useItem = async (item, budgetMs = 120_000) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const before = await bagState()
+    const had = before?.items.find((one) => one.item === item)?.count ?? 0
+    const at = await openBagAt(item, till)
+    if (!at.ok) { await closeMenus(); return { ...at, had } }
+    await tap('Space', 400)
+    await closeMenus()
+    const after = await bagState()
+    const now2 = after?.items.find((one) => one.item === item)?.count ?? 0
+    return { ok: now2 < had, had, left: now2, why: now2 < had ? null : '안 줄었다' }
+  }
+
+  /**
+   * **비전머신을 가르친다** — 사람이 하는 길 그대로.
+   *
+   * 원작이 여기서 막는다: `whyNot`이 「그 기술을 아는 파티원이 있는가」를 보고
+   * (`Party_HasMonWithMove`), 없으면 바위 앞에서 A를 눌러도 아무 일도 안 난다.
+   * 비전머신06(도구 425)은 첫 배지 자리의 가방에 **이미 들어 있다** — 무쇠게이트
+   * 1층의 등산가가 배지 하나를 보고 준다 (`OreburghGate1F_HikerGiveHM`).
+   *
+   * 화면의 계약은 `ui/menu/BagScreen`과 `ui/menu/PartyScreen`에 있다 —
+   * ←→가 주머니, ↑↓가 줄, 결정이 **바로** 쓴다(갈래 메뉴가 없다). 기술머신이면
+   * 파티 화면이 열리고, 거기서 고른 마리가 배운다. 비전머신은 **안 없어진다**.
+   *
+   * ⚠️ **배웠는지는 파티로 확인한다.** 화면 글(「배웠다!」)로 재면 「이 포켓몬은
+   * 배울 수 없다」와 구분이 글자 맞추기가 되고, 못 배운 판이 통과로 샌다
+   */
+  const teachHm = async (item, move, budgetMs) => {
+    const t0 = Date.now()
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const knows = async () => {
+      const party = await partyState()
+      return party === null ? null
+        : party.findIndex((one) => one.moves.some((m) => m.move === move))
+    }
+    const had = await knows()
+    if (had === null) return { ok: false, unknown: true, why: `파티를 못 읽었다 (${obs.kind})` }
+    if (had >= 0) return { ok: true, already: true, slot: had, ms: 0 }
+    const at = await openBagAt(item, till)
+    if (!at.ok) { await closeMenus(); return { ...at, ms: Date.now() - t0 } }
+    await tap('Space', 300)
+
+    /**
+     * 파티 화면에서 **배울 수 있는 마리**를 찾는다.
+     *
+     * ⚠️ **한 마리만 눌러 보고 그만두지 않는다.** 찌르꼬는 바위깨기를 못 배운다 —
+     * 첫 칸에서 「이 포켓몬은 배울 수 없다」가 나면 다음 칸으로 간다. 배운 것은
+     * 글이 아니라 파티로 본다
+     */
+    let learned = -1
+    /** 화면이 뭐라고 했나 — 「배울 수 없다」와 「칸이 다 찼다」는 다른 결함이다 */
+    const said2 = []
+    const screen = async () => page.evaluate(
+      () => (document.body.innerText ?? '').replace(/\s+/g, ' '),
+    ).catch(() => '')
+    for (let i = 0; i < 6 && Date.now() < till; i++) {
+      await tap('Space', 400)
+      /**
+       * **기술 칸이 다 찼으면 원작은 묻는다** (`PartyMenuCB_TeachMove`) —
+       * 「다른 기술을 잊게 하겠습니까?」 → 「어느 기술을 잊게 하겠습니까?」다.
+       * 눈 감고 결정을 연타하면 그 둘을 우연히 지나가게 되므로, **글을 보고**
+       * 답한다. 잊는 것은 **첫 칸**이다 — 레벨로 가장 먼저 배운 기술이라
+       * 사람도 대개 그것을 버린다(모부기면 몸통박치기다). 커서는 열 때마다
+       * 0이라 옮길 것이 없다
+       */
+      for (let step = 0; step < 4; step++) {
+        const text = await screen()
+        said2.push(text.slice(0, 160))
+        if (text.includes('잊게 하겠습니까')) { await tap('Space', 300); continue }
+        if (text.includes('어느 기술을')) { await tap('Space', 400); continue }
+        break
+      }
+      learned = await knows() ?? -1
+      if (learned >= 0) break
+      await tap('ArrowRight', 120)
+    }
+    for (let i = 0; i < 8 && (await now()).menu !== undefined; i++) await tap('KeyX', 120)
+    await settle()
+    const bagAfter = await bagState()
+    return {
+      ok: learned >= 0, slot: learned, ms: Date.now() - t0, said: said2,
+      // 비전머신은 써도 안 없어진다 (`PartyScreen`의 `index < 92`)
+      have: bagAfter?.items.find((one) => one.item === item)?.count ?? 0,
+      why: learned >= 0 ? null : '아무도 못 배웠다',
+    }
+  }
+
+  /**
+   * **이상한사탕을 먹인다** (`docs/orders/RARE_CANDY_20260917.md`).
+   *
+   * ⚠️ **`journey --candy`에서만 부른다.** 사탕을 가방에 넣는 것은 부르는 쪽의
+   * 개발 모듈이고, 먹이는 것은 사람이 누르는 길 그대로다 — 가방에서 결정 →
+   * 파티 화면에서 그 자리로 → 결정 → 「레벨 올랐다」· 오른 폭 · 새 능력치 ·
+   * 배운 기술을 결정으로 넘긴다 → 진화가 걸리면 진화 화면을 끝까지 본다.
+   *
+   * 한 알이 끝났는지는 **화면 이름**으로 본다. 진화가 없으면 파티 화면이 가방으로
+   * 돌아가고, 진화가 걸리면 메뉴가 다 닫힌다. ⚠️ 가방으로 돌아온 뒤 결정을 한 번
+   * 더 누르면 **다음 알을 먹이러 간다** — 그래서 거기서 바로 멈춘다.
+   *
+   * 칸이 찼을 때의 물음은 `forget`이 정한다 — 기본은 `teachHm`과 같게 **첫 칸**을
+   * 잊는다. 진단은 답을 차례로 줄 수 있다(`['refuse', 1]` = 첫 물음은 거절, 다음
+   * 물음은 둘째 칸을 잊는다). 목록이 다하면 다시 첫 칸이다.
+   * 올랐는지는 글이 아니라 **파티의 레벨**로 잰다
+   *
+   * @returns `{ ok, fed, level, species, said }`
+   */
+  const feedCandy = async (slot, toLevel, budgetMs = 600_000, { forget = [] } = {}) => {
+    const CANDY = 50
+    const t0 = Date.now()
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const said3 = []
+    /** 칸이 찼을 때 무엇으로 답했나 — 진단이 이 자취를 본다 */
+    const asks = []
+    const answers = [...forget]
+    let fed = 0
+    const screen = async () => page.evaluate(
+      () => (document.body.innerText ?? '').replace(/\s+/g, ' '),
+    ).catch(() => '')
+    const done = (extra) => ({ fed, said: said3, asks, ms: Date.now() - t0, ...extra })
+    for (;;) {
+      const party = await partyState()
+      if (party === null) return done({ ok: false, unknown: true, why: `파티를 못 읽었다 (${obs.kind})` })
+      const mon = party[slot]
+      if (!mon) return done({ ok: false, why: `${String(slot)}번 자리가 비었다` })
+      if (mon.level >= toLevel) return done({ ok: true, level: mon.level, species: mon.species, why: null })
+      if (Date.now() >= till) return done({ ok: false, level: mon.level, why: '시간이 다 됐다' })
+      const at = await openBagAt(CANDY, till)
+      if (!at.ok) { await closeMenus(); return done({ ...at, level: mon.level }) }
+      await tap('Space', 300)
+      for (let i = 0; i < 30 && (await now()).menu !== 'party'; i++) await page.waitForTimeout(150)
+      if ((await now()).menu !== 'party') {
+        await closeMenus()
+        return done({ ok: false, level: mon.level, why: '파티 화면이 안 열렸다' })
+      }
+      for (let i = 0; i < slot; i++) await tap('ArrowRight', 90)
+      await tap('Space', 250)
+      fed++
+      // 한 알의 끝까지 넘긴다. 진화 화면은 도는 동안 결정을 안 받으니 넉넉히 기다린다
+      const stopAt = Math.min(Date.now() + 90_000, till)
+      while (Date.now() < stopAt) {
+        const s = await now()
+        if (s.menu === 'bag' || s.menu === null) break
+        const text = await screen()
+        // 글띠는 화면 **끝**에 있다 — 앞쪽은 계기판 글이다
+        if (said3.at(-1) !== text.slice(-120)) said3.push(text.slice(-120))
+        /**
+         * 「다른 기술을 잊게 하겠습니까?」 — 커서는 「예」에 선다.
+         *
+         * · 첫 칸을 잊는다 → 예 · 첫 줄 (기본)
+         * · 거절한다 → ↓「아니오」 → 「포기하겠습니까?」의 「예」
+         * · n번째 칸을 잊는다 → 예 · ↓를 n번
+         */
+        if (text.includes('잊게 하겠습니까')) {
+          const answer = answers.length > 0 ? answers.shift() : 0
+          asks.push({ at: fed, answer: String(answer) })
+          if (answer === 'refuse') {
+            await tap('ArrowDown', 200)   // 아니오
+            await tap('Space', 300)
+            await tap('Space', 300)       // 「포기하겠습니까?」 — 예
+            continue
+          }
+          await tap('Space', 300)         // 예
+          // 목록이 실제로 뜬 뒤에 고른다 — 안 기다리면 ↓가 허공으로 간다
+          for (let i = 0; i < 20 && !(await screen()).includes('어느 기술을'); i++) {
+            await page.waitForTimeout(150)
+          }
+          for (let i = 0; i < Number(answer); i++) await tap('ArrowDown', 150)
+          await tap('Space', 300)
+          continue
+        }
+        if (text.includes('어느 기술을')) { await tap('Space', 300); continue }
+        await tap('Space', 250)
+        if (s.menu === 'evolution') await page.waitForTimeout(250)
+      }
+      await closeMenus()
+      const after = (await partyState())?.[slot]
+      if (after && after.level <= mon.level) {
+        return done({ ok: false, level: after.level, why: `먹였는데 레벨이 ${String(after.level)} 그대로다` })
+      }
+    }
+  }
+
+  /**
+   * **앞을 막은 바위를 깬다** (`OBJ_EVENT_GFX_ROCK_SMASH` · 스프라이트 85).
+   *
+   * 험한 샛길(254)이 그 자리다 — 204번도로 남쪽에서 (19,50)으로 들어와
+   * 북쪽 출구 (28,44)로 나가야 하는데 (23,44)에 바위가 있다. 실측(2026-09-16
+   * 대표 구간 한 판)으로 하네스가 그 앞 (22,44)에서 314번을 나아가고도 못 나갔다 —
+   * **막은 것은 원작이고, 빠진 것은 바위깨기였다.**
+   *
+   * 바위는 말 거는 길로 걸린다 (`events.json`의 스크립트 10001). 앞에 서서 A를
+   * 누르면 「바위깨기를 쓸까?」가 뜨고 `clearTalk`가 「예」를 고른다 —
+   * 그 갈래는 이미 롬의 차례(MENU_YES → MENU_NO)로 맞춰져 있다.
+   *
+   * ⚠️ **다 깨지 않는다.** 험한 샛길에만 스물일곱 개가 있고 길에 필요한 것은
+   * 몇 개뿐이다. **가까운 것부터 하나씩** 깨고 그때마다 목적지로 가 본다
+   */
+  const smashWay = async (mapId, to, budgetMs, maxRocks = 4) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const rocks = npcsOf(mapId).filter((one) => one.sprite === 85)
+    const broke = []
+    if (rocks.length === 0) return { ok: false, why: `맵 ${String(mapId)}에 바위가 없다`, broke }
+    for (let i = 0; i < maxRocks && Date.now() < till; i++) {
+      const at = await now()
+      if (!at.ok || at.map !== mapId) return { ok: false, why: `동굴을 벗어났다 (맵 ${String(at.map)})`, broke }
+      const left2 = rocks
+        .filter((r) => !broke.some((b) => b.x === r.x && b.z === r.z))
+        .sort((a, b) => (Math.abs(a.x - at.x) + Math.abs(a.z - at.z))
+          - (Math.abs(b.x - at.x) + Math.abs(b.z - at.z)))
+      if (left2.length === 0) return { ok: false, why: '깰 바위가 더 없다', broke }
+      const rock = left2[0]
+      const said = await talkTo(mapId, { x: rock.x, z: rock.z },
+        Math.min(180_000, till - Date.now()))
+      await clearTalk()
+      await settle()
+      // 깨졌으면 **그 자리에 물체가 없다** — 게임 자신에게 묻는다
+      const still = await obs.obstacleAt(rock.x, rock.z)
+      const gone = still.known ? still.value === null : null
+      broke.push({ ...rock, said, gone })
+      // 깼으면 **길 찾기도 그렇게 알아야 한다** — 안 그러면 우리가 낸 길을
+      // 우리가 막는다
+      if (gone === true) obstacleGone(mapId, rock.x, rock.z)
+      log(`  바위 (${String(rock.x)},${String(rock.z)}) → `
+        + `${said ? '말을 걸었다' : '못 걸었다'} · ${gone === null ? '확인 불가' : gone ? '깼다' : '그대로다'}`)
+      const went = await goTo(to, Math.min(240_000, till - Date.now()))
+      if (went === 'arrived') return { ok: true, broke, went }
+    }
+    return { ok: false, why: '바위를 깼는데도 길이 안 열렸다', broke }
+  }
+
   /**
    * 풀밭 위를 왕복해서 야생을 만난다.
    *
@@ -1290,7 +2124,7 @@ export async function driveStory(page, {
    * 3회·0회·0회였다 — 길이 풀밭을 스치는지가 그때그때 달라서다. 여기서는
    * **풀 칸만 골라 밟는다**
    */
-  const grindForWild = async (mapId, budgetMs) => {
+  const grindForWild = async (mapId, budgetMs, onBattle = null) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const here = matrixOf(mapId)
     const grass = encounterTiles(mapId)
@@ -1299,7 +2133,7 @@ export async function driveStory(page, {
     let i = 0
     while (Date.now() < till) {
       const s = await now()
-      if (s.scene === 'battle') { await fightThrough(); return 'battle' }
+      if (s.scene === 'battle') { await (onBattle ?? fightThrough)(); return 'battle' }
       if (s.talk || s.scene === 'menu') { await clearTalk(); continue }
       if (s.script) { await tap('Space'); continue }
       if (!s.ok || s.map !== mapId) return `풀밭을 벗어났다 (맵 ${String(s.map)})`
@@ -1309,9 +2143,266 @@ export async function driveStory(page, {
         { avoid: (x, z) => doors.some((w) => w.x === x && w.z === z) }, '풀 칸').keys
       if (keys === null || keys.length === 0) continue
       const how = await walk(keys, { x: s.x, z: s.z }, mapId)
-      if (how === 'battle') { await fightThrough(); return 'battle' }
+      if (how === 'battle') { await (onBattle ?? fightThrough)(); return 'battle' }
     }
     return '시간이 다 됐다'
+  }
+
+  /**
+   * **열려 있는 야생 배틀에서 볼을 던진다.**
+   *
+   * 사람이 하는 길 그대로다 — 명령 단의 「가방」 → 주머니를 **볼**로 옮기고
+   * → 첫 줄을 고른다. 주머니 차례는 원작의 `enum BattlePocketIndex`라
+   * (`ui/battle/BattleBag`의 `CATEGORY`) 회복·상태·**볼**·배틀용이고, 그래서
+   * 오른쪽으로 두 번이다. 글자로 찾지 않는다 — 탭 이름은 **롬에서 읽어** 오므로
+   * 로케일을 바꾸면 달라진다.
+   *
+   * ⚠️ **잡혔는지는 파티로 안다.** 화면 글로 재면 「잡았다」와 「아깝다」를
+   * 가르는 일이 글자 맞추기가 된다. 파티가 한 마리 늘었으면 잡은 것이다.
+   *
+   * ⚠️ **볼이 떨어지면 그만둔다.** 볼 주머니가 비면 줄이 하나도 안 뜨고,
+   * 그때 결정을 눌러 봐야 아무 일이 없다 — 그 자리에서 배틀을 싸워 끝낸다
+   */
+  const throwBalls = async (budgetMs, maxThrows = 4) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const was = (await partyState())?.length ?? null
+    let thrown = 0
+    let why = ''
+    /** 마지막으로 본 칸들 — 왜 안 나갔는지가 여기 있다 */
+    let saw = null
+
+    /** 지금 화면의 칸 글자들. 대사가 흐르는 동안은 **빈 목록**이다 */
+    const panel = async () => {
+      const all = await page.locator('button').allInnerTexts()
+      return all.map((t) => t.replace(/\s+/g, ' ').trim())
+        .filter((t) => t !== '' && !t.startsWith('FPS'))
+    }
+    const has = (list, text) => list.some((t) => t.includes(text))
+
+    /**
+     * ⚠️ **정해진 순서로 키를 쏘면 안 된다.** 실측(`_bag42`, 2026-09-16): 명령 단이
+     * 떠 있을 때 ↓를 한 번 눌렀더니 **다음 순간 칸이 하나도 없었다** — 대사가
+     * 흐르는 동안 화면이 메뉴를 아예 안 그린다(`BattleScreen`의 `reading`).
+     * 그래서 「↓ · 결정 · → · → · 결정」을 줄줄이 보내면 절반이 허공에 떨어지고,
+     * 밖에서는 「볼을 다섯 번 던졌는데 가방은 여섯 그대로」로 보인다.
+     *
+     * 한 걸음 누르고 **그 걸음이 먹었는지 보고** 다음을 누른다
+     */
+    const waitFor = async (want, rounds = 40) => {
+      for (let i = 0; i < rounds; i++) {
+        const list = await panel()
+        saw = list
+        if (want(list)) return list
+        // 칸이 없으면 대사가 흐르는 중이다 — 넘겨 준다
+        await tap('Space', 90)
+      }
+      return null
+    }
+
+    while (Date.now() < till && thrown < maxThrows) {
+      const at = await now()
+      if (at.scene !== 'battle') { why = '배틀이 끝났다'; break }
+
+      // ① 명령 단을 기다린다
+      const root = await waitFor((list) => has(list, '싸운다'))
+      if (root === null) { why = `명령 단이 안 떴다 (${JSON.stringify(saw?.slice(0, 6))})` ; break }
+      // ⚠️ **트레이너전에는 볼을 못 쓴다** — 원작이 막고 우리도 막는다.
+      // 그 사실을 「볼이 없다」로 적으면 가방을 뒤지게 된다
+      if (has(root, '도망칠 수 없다')) { why = '트레이너전이라 볼을 못 쓴다'; break }
+
+      // ② 가방으로 (싸운다 → **가방**). 커서는 안 돌아간다 (`clampCursor`)
+      await tap('ArrowDown', 90)
+      await tap('Space', 150)
+      /**
+       * ③④ **몬스터볼이 보일 때까지 주머니를 넘긴다.**
+       *
+       * ⚠️ **첫 주머니가 비었다고 그만두면 안 된다.** 실측(`_catch42` 4·5판):
+       * 가방을 열면 주머니 이름 넷(회복·상태·볼·배틀용)만 뜨고 줄이 하나도
+       * 없었다 — 첫 배지 자리의 가방에는 **회복 주머니가 비어 있어서**다
+       * (몬스터볼 여섯은 볼 주머니에 있다). 줄이 뜰 때까지 기다리다 그만두면
+       * 볼을 한 번도 못 던지고 「가방에 볼이 없다」로 적힌다.
+       *
+       * ⚠️ **주머니 차례를 세지 않고 글자로 찾는다.** 도구 표는 화면이 그때
+       * 받아 오므로(`BattleBag`의 `loadItems`) 한 주머니마다 잠깐 기다려 준다
+       */
+      const ballRow = async (rounds) => {
+        for (let i = 0; i < rounds; i++) {
+          const list = await panel()
+          saw = list
+          if (list.some((t) => t.includes('몬스터볼'))) return true
+          await page.waitForTimeout(200)
+        }
+        return false
+      }
+      /**
+       * ⚠️ **첫 주머니에서 넉넉히 기다린다.** 도구 표는 가방을 처음 열 때 한 번
+       * 받아 오는데(`BattleBag`의 `loadItems`), 그 왕복이 기계 사정에 따라
+       * 몇 초씩 걸린다. 실측(2026-09-16): 1.6초씩 기다린 판은 주머니 이름 넷만
+       * 보고 「몬스터볼이 없다」로 떨어졌고, 같은 코드가 다른 판에서는 잡았다 —
+       * 끊은 것은 가방이 아니라 **기다린 길이**다. 첫 번만 10초를 준다
+       */
+      let ready = await ballRow(50)
+      for (let i = 0; i < 4 && !ready; i++) {
+        await tap('ArrowRight', 150)
+        ready = await ballRow(10)
+      }
+      if (!ready) {
+        why = `가방에 몬스터볼이 안 보인다 (${JSON.stringify(saw?.slice(0, 8))})`
+        await tap('KeyX', 90)
+        break
+      }
+      // ⑤ 첫 줄이 몬스터볼이다 — 커서는 주머니를 옮길 때마다 0으로 돌아간다
+      await tap('Space', 250)
+      thrown++
+
+      // ⑥ 결말이 날 때까지 넘긴다. 잡히면 배틀이 끝난다
+      for (let i = 0; i < 80; i++) {
+        const s2 = await now()
+        if (s2.scene !== 'battle') break
+        const list = await panel()
+        if (has(list, '싸운다')) break
+        await tap('Space', 90)
+      }
+      const party = await partyState()
+      if (party !== null && was !== null && party.length > was) {
+        return { caught: true, thrown, party, saw }
+      }
+    }
+    const party = await partyState()
+    const caught = party !== null && was !== null && party.length > was
+    return { caught, thrown, party, saw, why: caught ? '' : (why || '볼을 다 썼는데 안 잡혔다') }
+  }
+
+  /**
+   * **도망친다** — 찾던 마리가 아닐 때 쓰는 길이다.
+   *
+   * 첫 단의 넷은 `useListCursor`라 **안 돌아간다** (`ui/battle/BattleScreen`의
+   * `RootMenu`) — 싸운다·가방·포켓몬·도망친다 차례라 ↓ 셋에 결정이다.
+   *
+   * ⚠️ **눈 감고 키를 쏘지 않는다.** 대사가 흐르는 동안은 화면이 메뉴를 아예
+   * 안 그린다(`reading`) — 첫 단이 뜬 것을 보고 누른다. 볼을 던질 때 배운
+   * 그 자리다.
+   *
+   * ⚠️ **도망은 실패한다.** 원작의 확률이 그대로 있으므로(`TryEscape`) 못
+   * 도망친 판은 그대로 돌려주고, 부르는 쪽이 싸워서 끝낸다
+   */
+  const runAway = async (budgetMs = 60_000) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const panel = async () => {
+      const all = await page.locator('button').allInnerTexts()
+      return all.map((t) => t.replace(/\s+/g, ' ').trim()).filter((t) => t !== '' && !t.startsWith('FPS'))
+    }
+    while (Date.now() < till) {
+      const at = await now()
+      if (at.scene !== 'battle') return true
+      const list = await panel()
+      if (!list.some((t) => t.startsWith('싸운다'))) { await tap('Space', 90); continue }
+      // 트레이너전에서는 도망 칸이 꺼져 있다 — 눌러도 아무 일이 없다
+      if (list.some((t) => t.includes('도망칠 수 없다'))) return false
+      for (let i = 0; i < 3; i++) await tap('ArrowDown', 80)
+      await tap('Space', 200)
+      for (let i = 0; i < 30; i++) {
+        const s2 = await now()
+        if (s2.scene !== 'battle') return true
+        const again = await panel()
+        // 첫 단이 다시 떴으면 **못 도망쳤다** (원작의 확률 그대로다)
+        if (again.some((t) => t.startsWith('싸운다'))) return false
+        await tap('Space', 90)
+      }
+    }
+    return false
+  }
+
+  /**
+   * 그 맵 풀숲에서 **한 마리를 잡는다.**
+   *
+   * ⚠️ **안 잡히면 그 배틀은 싸워서 끝낸다.** 볼만 던지다 상대에게 맞아
+   * 쓰러지면 전멸해서 되돌려 보내지고, 그러면 그 뒤 걸음이 전부 엉뚱한 자리에서
+   * 시작한다 — 「잡기」가 「길 잃기」로 보이는 자리다
+   */
+  const catchInGrass = async (mapId, budgetMs, maxTries = 6, want = null) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const was = (await partyState())?.length ?? null
+    const tried = []
+    /** 이번에 나온 것이 **찾던 마리인가.** 못 읽으면 가리지 않는다 */
+    /** 걸러 본 자취 — 무엇이 나왔고 왜 던졌나. 「못 읽어서 던졌다」도 여기 남는다 */
+    const saw = []
+    /**
+     * 이번에 나온 것이 **찾던 마리인가.**
+     *
+     * ⚠️ **배틀이 열린 그 순간에는 아직 못 읽는다.** 상대는 `view.active.p2a`에
+     * 들어오는데 그것이 채워지기 전에 물으면 `null`이다 — 그때 「모르니 던진다」로
+     * 접었더니 **찌르꼬를 찾는 판에서 비버니를 잡고도 「찌르꼬 잡았다」로 적혔다**
+     * (실측 2026-09-16 `_north42` 4판). 그래서 **읽힐 때까지 몇 번 더 묻고**,
+     * 끝내 못 읽으면 그 사실을 자취에 남긴다 — 조용히 아무나 잡지 않는다
+     */
+    const wanted = async () => {
+      if (want === null) return true
+      for (let i = 0; i < 20; i++) {
+        const r = await obs.foeNow()
+        if (r.known && r.value !== null && r.value.species != null) {
+          const yes = want.includes(r.value.species)
+          saw.push({ species: r.value.species, level: r.value.level, threw: yes })
+          return yes
+        }
+        await page.waitForTimeout(250)
+      }
+      saw.push({ species: null, threw: true, why: `상대를 못 읽었다 (${obs.kind})` })
+      return true
+    }
+    for (let t = 0; t < maxTries && Date.now() < till; t++) {
+      const how = await grindForWild(mapId, Math.min(180_000, till - Date.now()), async () => {
+        /**
+         * ⚠️ **나온 것마다 볼을 던지지 않는다.** 실측(2026-09-16 `_north42`):
+         * 204번도로 남쪽에서 두 번 다 **꼬몽울**이 잡혔다 — 풀 타입이라 유채에게
+         * 아무 쓸모가 없고, 비전머신06도 못 배운다. 그 표에는 찌르꼬(비행)와
+         * 비버니(바위깨기를 배운다)도 같이 있다 (`encounters.json` 143번 표).
+         * 사람도 나온 것을 보고 정한다 — 찾던 것이 아니면 **싸워서** 끝낸다
+         * (경험치는 그대로 남는다)
+         */
+        if (!await wanted()) {
+          /**
+           * ⚠️ **안 찾던 마리와 매번 싸우면 못 버틴다.** 실측(2026-09-16
+           * `_north42` 3판): 모부기 한 마리로 찌르꼬를 기다리다 **무쇠 센터(48)로
+           * 되돌려 보내졌다** — 「풀밭을 벗어났다」로 적힌 그 줄이 전멸이다.
+           * 사람도 안 찾는 마리에게서는 도망친다. 못 도망치면 싸워서 끝낸다
+           */
+          if (!await runAway(Math.min(60_000, till - Date.now()))) {
+            const s2 = await now()
+            if (s2.scene === 'battle') await fightThrough()
+          }
+          return
+        }
+        const got = await throwBalls(Math.min(150_000, till - Date.now()))
+        tried.push(got)
+        // 안 잡혔으면 남은 배틀은 싸워서 끝낸다
+        if (!got.caught) {
+          const s = await now()
+          if (s.scene === 'battle') await fightThrough()
+        }
+      })
+      const party = await partyState()
+      if (party !== null && was !== null && party.length > was) {
+        return {
+          ok: true, tries: tried.length, party, met: saw,
+          /** **실제로 들어온 마리.** 찾던 것과 다를 수 있다 — 그러면 그게 사실이다 */
+          got: party.at(-1)?.species ?? null,
+          wanted: want, saw: tried.at(-1)?.saw ?? null,
+          thrown: tried.reduce((a, b) => a + b.thrown, 0),
+        }
+      }
+      if (how !== 'battle' && how !== '시간이 다 됐다') {
+        return { ok: false, why: how, tries: tried.length, party }
+      }
+      if (tried.at(-1)?.why?.startsWith('가방에 몬스터볼이') === true) {
+        return { ok: false, why: String(tried.at(-1)?.why), tries: tried.length, party }
+      }
+    }
+    return {
+      ok: false, why: '풀밭을 돌았는데 못 잡았다', tries: tried.length,
+      party: await partyState(), saw: tried.at(-1)?.saw ?? null,
+      thrown: tried.reduce((a, b) => a + b.thrown, 0),
+    }
   }
 
 
@@ -1641,8 +2732,10 @@ export async function driveStory(page, {
   // 여기를 건너뛰면 그 판은 「걸어서 이어졌다」를 증명하지 않는다 (기획서 §1.4)
   if (skipStory) {
     const only = after === null ? null : await after({
-      goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, settle, now, tap, clearTalk,
-      partyState, healAt, fullyHealed,
+      goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
+      settle, now, tap, clearTalk,
+      partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
+      teachHm, feedCandy, smashWay, runAway, useItem, usePotions, stopPotions,
       fightThrough, getParcel, log, left, maps, trouble, battles,
       lakeVars, snapshot, lakeVerity,
     })
@@ -1651,6 +2744,7 @@ export async function driveStory(page, {
       plan: planSummary(), episodes: episodeSummary(), failedEpisodes: failedEpisodes(),
       blocks: blockSummary(),
       fights, movePicks, observer: obs.kind, extra: only,
+      potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses },
     }
   }
 
@@ -1772,8 +2866,10 @@ export async function driveStory(page, {
   // 쓰면 「문 앞에서 한 발 물러난다」·「사람 칸으로 걸어가지 않는다」처럼 실측으로
   // 얻은 요령이 두 벌이 되고, 언젠가 한쪽만 고쳐진다
   const extra = after === null ? null : await after({
-    goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, settle, now, tap, clearTalk,
-    partyState, healAt, fullyHealed,
+    goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
+    settle, now, tap, clearTalk,
+    partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
+    teachHm, feedCandy, smashWay, runAway, useItem, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 위에서는 트레이너전이 0일 때만
     // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은
@@ -1806,6 +2902,14 @@ export async function driveStory(page, {
     observer: obs.kind,
     /** 기술을 무엇으로 골랐나. 배포물은 전부 `text`다 (관측 불가) */
     movePicks,
+    /** 「새 기술을 배우겠는가」에 몇 번 답했나 */
+    learnAsks,
+    /** 규칙대로 갈아 낀 기술 — `잊은것→배운것`. 파티가 왜 그 기술을 들었는지가 여기 남는다 */
+    learnTaught,
+    /** 새것이 더 세지 않거나 기술표를 못 읽어 그대로 둔 횟수 */
+    learnKept,
+    /** 배틀 안에서 약을 몇 번 썼나 · 못 썼으면 까닭 */
+    potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses },
     extra,
   }
 

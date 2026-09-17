@@ -43,7 +43,15 @@ const flag = (name) => {
   const hit = args.find((a) => a.startsWith(`--${name}=`))
   return hit === undefined ? null : hit.slice(name.length + 3)
 }
-const BUDGET_MS = Number(flag('budget') ?? 5400) * 1000
+/**
+ * ⚠️ **10800이다 (3시간).** 구간이 **둘째 배지**까지 늘었다 —
+ * 축복시티에서 꽃향기마을 한 다리만으로 실측 20분이 넘는다(2026-09-16 `_eter42`:
+ * 427걸음 · 쉰 바퀴 0). 5400으로는 영원의 숲에 닿기 전에 예산이 끝난다.
+ *
+ * ⚠️ **한 판이 저절로 길어지지는 않는다.** 다리마다의 상한에 `api.left()`가 늘
+ * 함께 걸리므로, 이 값을 올리는 것은 남은 시간을 **쓸 수 있게** 하는 것뿐이다
+ */
+const BUDGET_MS = Number(flag('budget') ?? 10800) * 1000
 /**
  * **어느 구간부터 이어 달릴까** (`--from=09`). 진단을 빠르게 하려는 값이다.
  *
@@ -56,6 +64,31 @@ const BUDGET_MS = Number(flag('budget') ?? 5400) * 1000
  * 소스·하네스·이야기 표·세이브 넷을 다 본다
  */
 const FROM = flag('from')
+
+/**
+ * **이상한사탕 지름길** (`--candy` · 기본 꺼짐 · `docs/orders/RARE_CANDY_20260917.md`).
+ *
+ * 켜면 **안 밟는 것**이 둘이다 —
+ *
+ *   · ⑲ 앞 레벨 맞추기(205번도로 남쪽 야생전 · 상한 900초)를 사탕으로 채운다
+ *   · 유채 앞에서 찌르꼬를 사탕으로 L16까지 올린다(L14 찌르버드) — 원래는 없던 걸음이다
+ *
+ * 사탕을 **가방에 넣는 것만** 개발 모듈로 하고, 먹이는 것은 가방 → 파티 화면 →
+ * 진화 화면을 키로 넘긴다(`drive.feedCandy`).
+ *
+ * ⚠️ **진단 판이다.** 봉투의 `scope.shortcuts`에 `candy`가 적히고, 판정기가 그 판을
+ * 스스로 떨어뜨린다(`evidence.validateEvidence`) — ⑪·⑦에 못 들어간다. 구간 세이브도
+ * 이름과 신원이 따로라(`seg-NN-candy`) 사탕 판끼리만 이어 달린다.
+ * **기록용 판은 깃발 없이 돈다**
+ */
+const CANDY = args.includes('--candy')
+const SHORTCUTS = CANDY ? ['candy'] : []
+/** 사탕 판에서 유채 앞 찌르꼬를 올릴 레벨 — L14 진화 · 날개치기는 L9 */
+const CANDY_STARLY_LEVEL = 16
+/** 이상한사탕 (`items.json` 50 · 약 주머니) */
+const RARE_CANDY = 50
+const MEDICINE_POCKET = 1
+const STARLY = 396
 
 /**
  * 다 돌면 내야 할 정본 목록과, **돌기 시작할 때의 나무 지문.**
@@ -146,6 +179,22 @@ const JUBILIFE = {
 const NPC_STOPS = {
   198: [{ script: 7235, what: '관장 로안' }],
   47: [{ script: 1, what: '관장 로안에게 도전' }],
+  // 영원 체육관 넷. 꽃시계가 하나씩 열리므로 **이 차례를 지켜야** 닿는다
+  67: [
+    { script: 5, what: '트① 캐롤라인' },
+    { script: 6, what: '트② 제나' },
+    { script: 7, what: '트③ 앤젤라' },
+    { script: 4, what: '관장 유채' },
+  ],
+}
+
+/**
+ * 지면 **한 번 더** 도전하는 관장 — 맵 → 스크립트와 이기면 되는 배지 수.
+ * 스크립트 번호는 `NPC_STOPS`의 관장 줄과 같다
+ */
+const LEADER_RETRY = {
+  47: { script: 1, badges: 1, what: '관장 로안' },
+  67: { script: 4, badges: 2, what: '관장 유채' },
 }
 
 /**
@@ -204,8 +253,22 @@ const STORY_TALK_MS = 300_000
  * 최악에도 그 이상은 안 간다 — 남는 시간은 무쇠로 걸어가는 데 쓴다
  */
 const POKETCH_CHAIN_MS = 1_200_000
+/**
+ * 못 받은 쿠폰을 **몇 바퀴까지** 다시 도나.
+ *
+ * 돌아다니는 광대라 한 바퀴에 놓치는 일이 있다. 세 바퀴로 잡되 끊는 것은 늘
+ * `POKETCH_CHAIN_MS`다 — 바퀴 수가 예산을 늘리지는 않는다
+ */
+const POKETCH_ROUNDS = 3
 
-const CENTERS = { 3: 6, 45: 6, 198: 48, 47: 48 }
+/**
+ * ⚠️ **떠나기 전 지역의 센터다** (바로 위). 꽃향기로 떠날 때는 아직 축복시티라
+ * 축복 센터(6)고, 숲으로 떠날 때는 꽃향기 센터(428)다. 영원시티로 떠나는
+ * 자리도 숲 앞이라 428이고, 체육관 앞에서만 영원 센터(69)다 —
+ * 실측(2026-09-16 `_eter42`)으로 **목적지 쪽 센터**를 적었다가 도착도 못 한 채
+ * 300초를 태웠다
+ */
+const CENTERS = { 3: 6, 45: 6, 198: 48, 47: 48, 426: 6, 203: 428, 65: 428, 67: 69 }
 
 /**
  * 모래시티 포켓몬센터 1층.
@@ -221,7 +284,91 @@ const AFTER_STOPS = [
   { id: '09', map: 45, what: '무쇠시티' },
   { id: '10', map: 198, what: '무쇠탄광 (관장을 만나는 자리)' },
   { id: '11', map: 47, what: '무쇠 체육관' },
+  // ── 여기부터 둘째 배지 (지시서 JOURNEY_BADGE2 §1) ──────────────────────
+  { id: '18', map: 426, what: '꽃향기마을' },
+  { id: '19', map: 203, what: '영원의 숲' },
+  { id: '20', map: 65, what: '영원시티' },
+  { id: '21', map: 67, what: '영원 체육관' },
 ]
+
+/** 숲에 들기 전 선두 레벨 (진화 18을 넘고, 숲을 통과한 판의 L19~21에 맞춘다) */
+const FOREST_LEVEL = 20
+/** 그 레벨을 맞출 풀밭 — 205번도로 남쪽 */
+const FOREST_GRASS = 347
+/** 레벨 맞추기에 줄 시간의 상한 */
+const FOREST_TRAIN_MS = 900_000
+
+/** 축복시티 마트. 볼을 여기서 산다 — 꽃향기까지 가면 잡을 자리를 이미 지난다 */
+const JUBILIFE_MART = 4
+/** 몬스터볼. 도구 번호다 (`items.json` — 값 200원) */
+const POKE_BALL = 4
+/** 갤럭시단 장면이 도는 칸 — 축복시티 북쪽 (`JubilifeCity_CoordEvent_TeamGalactic`) */
+const GALACTIC_TILE = { x: 173, z: 743 }
+/** 잡으러 들르는 풀밭 — 204번도로 남쪽 */
+const CATCH_MAP = 345
+/**
+ * **누구를 잡을까.** 사람이 여기서 고르는 그 둘이다 —
+ * 찌르꼬는 비행이라 유채의 풀에 2배고, 비버니는 바위깨기를 배워 험한 샛길을 연다
+ * (`species.json`의 기술머신 비트 97번 — 모부기·비버니는 서고 찌르꼬·꼬링크·꼬몽울은 안 선다)
+ */
+const CATCH_WANT = [
+  { what: '찌르꼬', species: [396] },
+  { what: '비버니', species: [399] },
+]
+/**
+ * **벌레회피스프레이** (79 · 350원 · 100걸음).
+ *
+ * ⚠️ **이것이 없으면 다리가 안 끝난다.** 실측(2026-09-16 대표 구간, WebGL 판):
+ * 영원의 숲과 205번도로에서 야생이 **한 다리에 열두 번** 붙었고, 걷는 도중에
+ * 다리 상한이 끊겨 「나아가는 중에 총예산이 끝났다 (355번 나아갔다)」로 떨어졌다.
+ * 막은 것은 길이 아니라 **싸운 시간**이다. 원작이 그 자리에 주는 답이 이 도구고
+ * (마트 재고 t2라 배지 하나면 뜬다), 사람도 숲에 들어가기 전에 뿌린다
+ */
+const REPEL = 79
+/** 자전거 (`items.ko.json` 450번 · 열쇠도구) */
+const BICYCLE = 450
+/**
+ * 자전거가 없으면 못 지나는 맵 — **206번도로(자전거길)**.
+ *
+ * 영원시티의 자전거 가게는 이 구간 **뒤**에 열리므로 둘째 배지까지는 늘 닫혀 있다.
+ * 그래도 못 박지 않고 가방으로 정한다 (`closedMaps`)
+ */
+const CLOSED_WITHOUT_BIKE = new Set([350])
+
+/**
+ * **영원 마트** (`C04FS0101`). 체육관 바로 옆이라 사람도 여기서 약을 산다
+ */
+const ETERNA_MART = 66
+/**
+ * **좋은상처약** (26 · 700원 · 50 회복).
+ *
+ * 배지 하나면 재고 계단이 2라 이것이 선다(`marts.json` · `bag/mart.ts`) —
+ * 유채 자신이 쓰는 그 약이다(`leader_gardenia.json`에 둘)
+ */
+const SUPER_POTION = 26
+/** 몇 개를 살까. 넷이면 2,800원이고, 유채가 쓰는 둘보다 둘 많다 */
+const SUPER_POTIONS = 4
+/**
+ * 선두의 체력이 이 몫 아래면 약을 쓴다.
+ *
+ * ⚠️ **약은 턴을 쓴다** — 높게 잡으면 때리지 않고 약만 먹다 진다. 좋은상처약이
+ * 50을 채우고 그 무렵 수풀부기의 최대 HP가 70 언저리라(실측 journey13 L24),
+ * 0.45면 한 번 쓸 때 거의 다 찬다
+ */
+const POTION_FLOOR = 0.45
+/** 몇 개를 살까. 여섯이면 600걸음이고 2,100원이다 (볼 열 개를 사고도 남는다) */
+const REPELS = 6
+/** 뿌리고 들어가는 자리 — 칸마다 야생이 붙는 바깥 길들 */
+const REPEL_BEFORE = new Set([426, 203, 65])
+
+/** 비전머신06과 바위깨기 (`items.txt`의 426번째 줄 · `tmhm.narc`의 97번) */
+const HM06 = 425
+const ROCK_SMASH = 249
+/** 험한 샛길과 그 앞뒤 204번도로. 남쪽은 잡으러 가는 그 풀밭이다(`CATCH_MAP`) */
+const RAVAGED_PATH = 254
+const ROUTE_204_S = CATCH_MAP
+const ROUTE_204_N = 346
+
 
 /**
  * 구간 하나의 결말을 PASS·FAIL·BLOCKED로 가른다 (지시서 §1.1 「분류 규칙」).
@@ -272,7 +419,19 @@ const url = flag('url') ?? await (async () => {
   return at
 })()
 
-const browser = await chromium.launch({ args: gpuArgs(flag('gpu') ?? 'webgpu') })
+/**
+ * ⚠️ **기본이 `gl`이다.** 이 구간이 증명하는 것은 「**걸어서 이어지는가**」라
+ * 백엔드와 무관한데, 실측(2026-09-16 `_pace42` A/B/A)으로 같은 길 넷을 걷는 데
+ * **WebGPU 61·58초 · WebGL 28초**였다 — 두 배 넘게 차이 난다. 둘째 배지까지
+ * 늘어난 구간을 WebGPU로 돌면 한 판이 두 시간을 넘긴다.
+ *
+ * ⚠️ **WebGPU를 안 재는 것이 아니다.** 게임 화면을 WebGPU로 증명하는 자리는
+ * 따로 있다 — `pnpm story`가 확인 지점 여든여덟을 `WebGPUBackend`로 돌고
+ * (실측 34.8분), `pnpm render:first`도 WebGPU 다섯 판이다. 여기서 재는 것은
+ * 그 사이가 **이어지는가**고, `--gpu=webgpu`로 언제든 되돌린다.
+ * 어느 쪽으로 돌았는지는 봉투의 `environment.backend`에 그대로 남는다
+ */
+const browser = await chromium.launch({ args: gpuArgs(flag('gpu') ?? 'gl') })
 const browserVersion = browser.version()
 // ⚠️ **영상은 납품물이다** (기획서 §7.3.3). 그림 여덟 컷은 「그 자리에 섰다」를
 // 보이지만 **걷는 것과 싸우는 것**은 못 보인다 — 컷인 타이밍도, 대사창이
@@ -322,6 +481,15 @@ const BENIGN = [
   // three 0.185가 제 안에서 쓰면서 스스로 경고한다
   /THREE\.Clock: This module has been deprecated/,
 ]
+/**
+ * ⚠️ **WebGPU를 일부러 끈 판(`gl`)에서만** 폴백 알림 두 줄을 거른다. 끄면 three가
+ * 반드시 찍는 말이라 게임의 흠이 아니다 — `story`·`saves`가 이미 같은 두 줄을 거른다.
+ * 실측(2026-09-17 journey12·13): 기본을 `gl`로 바꾼 뒤 ⑯이 이 두 줄로만 떨어졌다.
+ * `--gpu=webgpu`에서는 안 거른다 — 거기서 나오면 진짜로 WebGPU가 못 선 것이다
+ */
+if ((flag('gpu') ?? 'gl') === 'gl') {
+  BENIGN.push(/WebGPU is not available, running under WebGL2 backend/, /Device failed at creation/)
+}
 const noise = []
 /** `performance.measure` 감시자가 남긴 것. 봉투의 `extra`까지 가야 하니 밖에 둔다 */
 let perfSpy = null
@@ -629,16 +797,37 @@ async function openTitle() {
    * 죽으면 판 전체가 ⑨⑨ FAIL로 끝나고, 그 줄은 밖에서 **게임의 실패**로
    * 읽힌다 — 서버가 안 대답하는 것은 게임이 틀린 것이 아니다.
    *
-   * ⚠️ **상한을 대신 올리는 것이 아니다.** 아래 180초는 그대로 둔다
+   * ⚠️ **상한이 판정을 대신하지 않는다.** 아래 상한은 「서버가 아직 굽고 있다」와
+   * 「게임이 안 열린다」를 가르는 값일 뿐이고, 늦게 열린 판도 늦었다고 적힌다
    */
   const alive = await knock(url)
   if (!alive.ok) {
     throw new Error(`${INFRA} 개발 서버가 대답을 안 한다 (${url}`
       + ` · ${String(alive.why)} · ${String(alive.ms)}ms) — 게임을 안 열었다`)
   }
-  await page.goto(url, { waitUntil: 'load', timeout: 180_000 })
+  /**
+   * ⚠️ **180초로는 붐비는 기계에서 첫 쪽이 안 온다.** vite는 「준비됐다」를 찍은
+   * 뒤에도 모듈 그래프를 계속 변환하고, 첫 `goto`가 그 뒤를 기다린다 —
+   * 실측(2026-09-16 `_title42`) 한가한 나무에서 **154초**였고,
+   * 실측(2026-09-17 journey9) `pnpm check` 바로 뒤의 붐비는 나무에서는
+   * **180초를 넘겨** 판이 통째로 「검사가 끝까지 갔다 FAIL」로 떨어졌다 —
+   * 게임은 열어 보지도 못한 채였다. 아래 「시작」 기다림과 같은 300초로 맞춘다
+   */
+  await page.goto(url, { waitUntil: 'load', timeout: 300_000 })
   const start = page.getByRole('button', { name: '시작', exact: true })
-  await start.waitFor({ timeout: 120_000 })
+  /**
+   * ⚠️ **120초로는 붐비는 기계에서 문이 안 열린다.** 실측(2026-09-16 `_title42`):
+   * 같은 나무에서 개발 서버가 「준비됐다」를 찍는 데 140초, 그 뒤 첫 `goto`가
+   * **154초**였고 — vite는 ready를 찍은 뒤에도 모듈 그래프를 계속 변환한다 —
+   * 「시작」은 goto가 끝나자 **0초에** 떴다. 콘솔 오류는 0건이었다.
+   * 그런데 대표 구간 두 판이 바로 이 자리에서 ⑨⑨ FAIL로 끝났고, 그 줄은
+   * 밖에서 **게임의 실패**로 읽힌다.
+   *
+   * ⚠️ **숨기는 것이 아니다.** 걸린 시간은 `timings.coldTitleMs`에 그대로
+   * 남고, 오래 걸린 판은 §2.1의 비교에서 드러난다. 여기서 재는 것은
+   * 「화면이 뜨는가」지 「몇 초에 뜨는가」가 아니다
+   */
+  await start.waitFor({ timeout: 300_000 })
   return { ms: Date.now() - t0, start }
 }
 
@@ -655,7 +844,8 @@ let ranToTheEnd = false
  * ⚠️ **안 되면 조용히 전체를 돈다.** 다만 왜 못 이어 달리는지는 화면에 적는다 —
  * 「신원이 다르다」로만 적으면 다음 사람이 무엇이 바뀌었는지 다시 찾아야 한다
  */
-const resume = FROM === null ? { ok: false, segment: null, why: '' } : resumableAt(FROM)
+const resume = FROM === null ? { ok: false, segment: null, why: '' } : resumableAt(FROM, SHORTCUTS)
+if (CANDY) console.log('  ⚠️ --candy — 레벨을 사탕으로 채우는 **진단 판**이다. 봉투가 이 판을 통과로 안 받는다')
 if (FROM !== null) {
   console.log(resume.ok
     ? `  구간 ${resume.segment.id}에서 이어 달린다 — ${resume.segment.save}`
@@ -737,18 +927,55 @@ try {
    */
   const HARD_STOP_MS = BUDGET_MS + 300_000
   let hardStop = null
+  /** 지금 꽃시계가 막고 있는 칸. 체육관에 들어설 때와 한 판마다 다시 읽는다 */
+  let gymWalls = new Set()
+  /**
+   * 가방에 자전거가 있나 (`closedMaps`가 본다).
+   *
+   * ⚠️ **없다고 시작한다.** 모르는 채로 열어 두면 자전거길로 다시 걸어 들어간다 —
+   * 못 읽는 것을 「열려 있다」로 접지 않는다
+   */
+  let hasBike = false
   const drive = await Promise.race([
     driveStory(page, {
     log,
     totalMs: Math.max(600_000, BUDGET_MS - (Date.now() - t1)),
+    /**
+     * **꽃시계가 막는 칸.** 우리 격자(`route.mjs`)는 타일 통행만 알아서 시계
+     * 바늘을 모른다 — 상태 0에서 제품이 막는 168칸을 격자는 대부분 걸을 수
+     * 있다고 한다. 그대로 계획하면 시계를 뚫고 가는 길이 나오고, 밖에서는
+     * 「길은 있는데 안 걸어진다」로 보인다 (지시서 §3.2).
+     *
+     * ⚠️ **표를 하네스가 다시 세지 않는다.** 제품이 실제로 쓰는
+     * `scene/eternaGym.ts`의 `eternaBlockedAt`을 **읽어서** 쓴다.
+     * 트레이너를 하나 이길 때마다 시계가 돌므로 그때마다 다시 읽는다
+     */
+    obstacles: (mapId, x, z) => mapId === 67 && gymWalls.has(`${String(x)},${String(z)}`),
+    /**
+     * **아직 못 지나는 맵** — 자전거가 없으면 자전거길(206번도로)이 안 열린다.
+     *
+     * ⚠️ 격자는 맞닿은 것만 안다. 실측(2026-09-17 journey17): 숲에서 전멸해
+     * 축복 센터로 밀린 판이 영원시티로 돌아갈 때 맵 그래프가 무쇠 → 207번도로 →
+     * **자전거길**을 냈고, 207번도로 (306,720)에서 **18분 동안 같은 자리**를
+     * 맴돌았다 — 계획은 늘 「17걸음 있다」고 하고 게임은 늘 막았다.
+     *
+     * ⚠️ **가방을 읽어서 정한다.** 「이 구간에는 자전거가 없다」로 못 박으면
+     * 자전거를 받은 뒤의 판에서 거짓이 된다. 못 읽으면 **닫아 둔다** — 열어
+     * 두면 다시 18분을 맴돈다
+     */
+    closedMaps: () => (hasBike ? null : CLOSED_WITHOUT_BIKE),
     // 이어 달리는 판은 이야기 길목을 다시 안 걷는다 — 이미 그 자리에 서 있다
     skipStory: resume.ok,
     after: async (api) => {
       const seen = []
       /** 트레이너 표에 없는 사람들을 실제로 만났는가 */
       const metNpcs = []
+      /** 영원 체육관에서 꽃시계가 어떻게 열렸나 (㉑의 근거) */
+      const clock = []
       /** 회복하러 들른 기록 */
       const heals = []
+      /** 벌레회피스프레이를 언제 뿌렸나 */
+      const sprays = []
       // ⚠️ **여기부터는 소포가 있어야 한다.** 원작이 202번도로 입구에서 막는다 —
       // 소포가 없으면 라이벌이 "가족한테 말은 하고 왔니"라며 되돌려 세우고,
       // 그것도 **들어설 때마다 다시**다 (`Route202_CheckStartCatchingTutorial`).
@@ -812,15 +1039,37 @@ try {
           const chainTill = Date.now() + Math.min(POKETCH_CHAIN_MS, Math.max(0, api.left()))
           /** 이 사람에게 줄 시간 — 사슬 마감과 전체 예산 둘 다에 걸린다 */
           const chainRoom = () => Math.min(STORY_TALK_MS, chainTill - Date.now(), api.left())
-          for (const clown of JUBILIFE.clowns) {
-            if (chainRoom() <= 0) { log(`  ${clown.what} → 사슬 예산이 다 됐다`); continue }
-            const said = await api.talkToNpc(3, clown.script, chainRoom())
-            await api.clearTalk()
-            await api.settle()
-            const bag2 = await poketchNow()
-            log(`  ${clown.what} → ${said ? '말을 걸었다' : '못 걸었다'}`
-              + ` · 쿠폰 ${bag2.coupons.filter(Boolean).length}/3`
-              + ` · 캠페인단계 ${String(bag2.campaign)}`)
+          /**
+           * ⚠️ **한 바퀴로 끝내지 않는다.** 광대 둘은 `MOVEMENT_TYPE_WANDER_AROUND`라
+           * 스물여덟 명이 오가는 도시를 돌아다닌다. 실측(2026-09-17 journey15):
+           * 한 바퀴에 ①②를 **둘 다 놓쳤고**, 사슬 예산 1,200초 중 대부분이 남았는데도
+           * 쿠폰 1/3으로 사장에게 갔다 — 그러면 동쪽이 안 열려 **첫 배지부터** 무너지고
+           * 둘째 배지 사슬이 통째로 죽는다 (그 판이 그렇게 갔다).
+           *
+           * **못 받은 쿠폰만** 다시 돈다. 판정은 말을 걸었는가가 아니라 **쿠폰 칸이
+           * 섰는가**다 — 말은 걸었는데 안 주는 자리(캠페인 단계가 안 오른 광대 ③)가
+           * 있어서, 대화 반환값으로 세면 안 걸린 것을 걸린 것으로 적는다
+           */
+          const coupon = (bag2, i) => bag2.coupons[i] === true
+          for (let round = 1; round <= POKETCH_ROUNDS; round++) {
+            let bag2 = await poketchNow()
+            if (bag2.coupons.filter(Boolean).length === 3) break
+            let tried = 0
+            for (const [i, clown] of JUBILIFE.clowns.entries()) {
+              if (coupon(bag2, i)) continue
+              if (chainRoom() <= 0) { log(`  ${clown.what} → 사슬 예산이 다 됐다`); continue }
+              tried += 1
+              const said = await api.talkToNpc(3, clown.script, chainRoom())
+              await api.clearTalk()
+              await api.settle()
+              bag2 = await poketchNow()
+              log(`  ${clown.what}${round > 1 ? ` (${String(round)}번째)` : ''}`
+                + ` → ${said ? '말을 걸었다' : '못 걸었다'}`
+                + ` · 쿠폰 ${bag2.coupons.filter(Boolean).length}/3`
+                + ` · 캠페인단계 ${String(bag2.campaign)}`)
+            }
+            // 한 바퀴에 아무도 못 갔으면 더 돌아도 같다 — 예산만 태운다
+            if (tried === 0) break
           }
           const said = chainRoom() > 0
             && await api.talkToNpc(3, JUBILIFE.president.script, chainRoom())
@@ -904,6 +1153,10 @@ try {
       poketch.east = eastProbe
       /** 축복시티 **동쪽**이라 포켓치가 있어야 닿는 자리들 */
       const EAST_OF_JUBILIFE = new Set([45, 198, 47])
+      /** 축복시티 **북쪽**이라 204번도로를 지나야 닿는 자리들 */
+      const NORTH_OF_JUBILIFE = new Set([426, 203, 65, 67])
+      /** 북쪽이 실제로 열렸는가 — **걸어 보고** 한 번만 정한다 */
+      let northProbe = null
 
       /**
        * `--from=<id>`가 가리키는 자리 **앞의** 구간들. 건너뛰면 결과 줄을
@@ -911,7 +1164,238 @@ try {
        */
       const skipBefore = resume.ok ? resume.segment.id : null
 
+      /**
+       * **꽃향기로 떠나기 전에 해야 하는 것** (지시서 §1 ②③ · §3.3).
+       *
+       * 원작이 정한 차례다 — 배지 하나를 받으면 `VAR_JUBILIFE_CITY_STATE`가
+       * 3이 되고, 그제야 축복시티 북쪽 (173,743)의 좌표 이벤트가 갤럭시단
+       * 둘을 부른다. 이기면 그 값이 **4**가 되고 북쪽이 열린다.
+       *
+       * 그 김에 **파티를 꾸린다.** 첫 배지 자리의 세이브는 모부기 하나에
+       * 몬스터볼 여섯이고(실측), 유채는 모부기 L20 · 체리꽃 L20 · 로즈레이드
+       * L22에 좋은상처약 둘을 쓴다 — 한 마리로는 진다. 원작이 준 답이
+       * **잡는 것**이라 마트에서 볼을 사고 204번도로 남쪽에서 잡는다
+       * (찌르꼬는 비행이라 유채의 풀에 2배다).
+       *
+       * ⚠️ **레벨 노가다로 넘지 않는다.** 그것은 사람이 안 하는 길이고,
+       * 「포획 후 저장·복원」(기획서 §7.2)을 이 구간이 처음 재는 자리이기도 하다
+       */
+      /**
+       * 선두가 `level`에 닿을 때까지 `grass` 맵의 풀밭에서 싸운다. 체력이 반 아래면
+       * `center`에서 낫고 돌아온다. 예산이 다 되면 그대로 적고 넘어간다(건너뛰지 않는다)
+       */
+      const trainBefore = async (level, grass, center, budgetMs) => {
+        const till = Date.now() + budgetMs
+        let fights = 0
+        const leadLevel = async () => ((await api.partyState()) ?? [])[0]?.level ?? 0
+        const from = await leadLevel()
+        if (from >= level) return `이미 L${String(from)}`
+        while (Date.now() < till && api.left() > 0) {
+          if (await leadLevel() >= level) break
+          const party = (await api.partyState()) ?? []
+          const lead = party[0]
+          if (lead === undefined || lead.hp * 2 < lead.max || party.every((m) => m.hp <= 0)) {
+            const healed = await api.healAt(center, Math.min(300_000, till - Date.now()))
+            if (!healed.ok) return `회복을 못 했다 (${String(healed.why)}) · ${String(fights)}판 · L${String(from)}→${String(await leadLevel())}`
+          }
+          const there = await api.goTo(grass, Math.min(300_000, till - Date.now()))
+          if (there !== 'arrived') return `풀밭에 못 갔다 (${there}) · ${String(fights)}판`
+          const how = await api.grindForWild(grass, Math.min(180_000, till - Date.now()))
+          if (how === 'battle') fights += 1
+        }
+        const to = await leadLevel()
+        return `${to >= level ? '됐다' : '시간이 다 됐다'} · ${String(fights)}판 · L${String(from)}→${String(to)}`
+      }
+
+      /**
+       * **사탕으로 올린다** (`--candy`에서만). `slot`이 null이면 `species`인 첫 마리다.
+       * 모자란 만큼만 가방에 넣고 화면으로 먹인다. 결과는 한 줄 글로 돌려준다 —
+       * 레벨 맞추기와 같은 자리(`story.training`)에 적힌다
+       */
+      const candyUp = async (slot, species, level) => {
+        const party = (await api.partyState()) ?? []
+        const seen = party.map((one) => `${String(one.species)} L${String(one.level)}`)
+        const at = slot ?? party.findIndex((one) => one.species === species
+          || (species === STARLY && one.species === STARLY + 1))
+        const mon = party[at]
+        /**
+         * ⚠️ **「못 했다」와 「할 자리가 없었다」를 가른다** (지시서
+         * JOURNEY21_NEXT_DECISIONS §2). 찌르꼬를 못 잡은 판에서는 이 걸음이
+         * **미실행**이지 실패가 아니다 — 그때의 실제 파티를 같이 적는다.
+         * 대신 잡기를 한 번 더 하거나 선두를 더 올리지 않는다
+         */
+        if (mon === undefined) {
+          return { ran: false, why: '먹일 마리가 파티에 없다', party: seen, fed: 0 }
+        }
+        const need = level - mon.level
+        if (need <= 0) return { ran: false, why: `이미 L${String(mon.level)}`, party: seen, fed: 0 }
+        const stocked = await page.evaluate(async ([pocket, item, n]) => {
+          const m = await import('/src/state/saveStore.ts')
+          return m.useSaveStore.getState().addItem(pocket, item, n)
+        }, [MEDICINE_POCKET, RARE_CANDY, need]).catch((e) => `넣기 실패 ${String(e?.message ?? e)}`)
+        if (stocked !== true) {
+          return { ran: false, why: `사탕을 못 넣었다 (${String(stocked)})`, party: seen, fed: 0 }
+        }
+        const fed = await api.feedCandy(at, level, Math.min(900_000, api.left()))
+        return {
+          ran: true, ok: fed.ok, why: fed.why ?? null, party: seen, fed: fed.fed,
+          from: `${String(mon.species)} L${String(mon.level)}`,
+          to: `${String(fed.species ?? '?')} L${String(fed.level ?? '?')}`,
+          asks: fed.asks ?? [], ms: fed.ms ?? null,
+        }
+      }
+
+      /** 사탕 걸음 하나를 한 줄 글로 — 로그에 적히는 그 줄이다 */
+      const candyLine = (got) => (got.ran
+        ? `${got.ok ? '됐다' : `못 했다 (${String(got.why)})`} · 사탕 ${String(got.fed)}알`
+          + ` · ${got.from}→${got.to} · ${String(Math.round((got.ms ?? 0) / 1000))}초`
+        : `**미실행** — ${got.why} (파티 ${JSON.stringify(got.party)})`)
+
+      /**
+       * ⚠️ **영원 체육관에서는 한 판마다 낫는다.** 실측(2026-09-17 journey12):
+       * 수풀부기가 **L25**였는데도 부하 둘을 이긴 피해를 안고 셋째(앤젤라)에게 져서
+       * 꽃시계가 2에 멈췄다. 체육관에는 동행 회복(§9)이 없고, 들어설 때 한 번만
+       * 나았다. 영원 센터(69)가 코앞이라 사람도 부하 사이에 낫는다.
+       * 만피면 안 간다. 다녀온 뒤에는 체육관으로 돌아온다
+       */
+      const healBetween = async (what) => {
+        const party = await api.partyState()
+        if (api.fullyHealed(party).ok) return
+        const got = await api.healAt(CENTERS[67], Math.min(300_000, api.left()))
+        heals.push({ where: `${what} 앞 (체육관 안)`, center: CENTERS[67], ...got })
+        const back = got.ok ? await api.goTo(67, Math.min(300_000, api.left())) : 'skipped'
+        log(`  ${what} 앞 회복 (센터 ${String(CENTERS[67])}) → ${got.ok ? '나았다' : String(got.why)} · 돌아옴 ${back}`)
+      }
+
+      /** 체육관 앞에서 약을 샀나 */
+      let potionBuy = null
+      const north = { scene: null, bought: null, caught: [] }
+      const goNorth = async () => {
+        if (api.left() <= 0) { north.scene = '시간이 다 됐다'; return }
+        const back = await api.goTo(3, Math.min(600_000, api.left()))
+        if (back !== 'arrived') { north.scene = `축복시티로 못 돌아왔다 (${back})`; return }
+        // ① 볼을 산다 — 잡을 자리(204 남쪽)를 지나기 **전에** 들른다
+        north.bought = await api.buyAt(JUBILIFE_MART, POKE_BALL, 10,
+          Math.min(300_000, api.left()))
+        log(`  축복 마트(${String(JUBILIFE_MART)}) 몬스터볼 열 개 → `
+          + `${north.bought.ok ? `${String(north.bought.bought)}개 샀다 (가진 것 ${String(north.bought.have)})`
+            : String(north.bought.why)}`)
+        // 같은 마트에서 **벌레회피스프레이**도 산다 (바로 위 참고)
+        north.repels = await api.buyAt(JUBILIFE_MART, REPEL, REPELS,
+          Math.min(300_000, api.left()))
+        log(`  축복 마트 벌레회피스프레이 ${String(REPELS)}개 → `
+          + `${north.repels.ok ? `${String(north.repels.bought)}개 샀다 (돈 ${String(north.repels.money?.[1])}원)`
+            : String(north.repels.why)}`)
+        /**
+         * ③ **누구를 잡을지 고른다.** 나온 것마다 던지면 안 된다 —
+         * 실측(`_north42`)으로 두 번 다 꼬몽울(풀)이 잡혔고, 그것은 유채에게도
+         * 쓸모가 없고 비전머신06도 못 배운다. 204번도로 남쪽 표(`encounters.json`
+         * 143번)에서 우리가 찾는 둘은 **찌르꼬**(비행 — 유채의 풀에 2배)와
+         * **비버니**(바위깨기를 배운다 — 험한 샛길을 여는 마리다)
+         */
+        for (const who of CATCH_WANT) {
+          if (api.left() <= 600_000) break
+          /**
+           * ⚠️ **상한 마리로 풀밭을 돌지 않는다.** 실측(2026-09-16 `_north42`):
+           * 모부기 하나로 찌르꼬를 기다리다 무쇠 센터(48)로 되돌려 보내졌다.
+           * 사람도 잡으러 가기 전에 낫는다 — 축복시티 센터가 바로 옆이다
+           */
+          const hurt = await api.partyState()
+          if (!api.fullyHealed(hurt).ok) {
+            const got2 = await api.healAt(CENTERS[426], Math.min(240_000, api.left()))
+            heals.push({ where: `${who.what}을 잡으러 가기 전`, center: CENTERS[426], ...got2 })
+            log(`  잡기 전 회복 (센터 ${String(CENTERS[426])}) → ${got2.ok ? '나았다' : String(got2.why)}`)
+          }
+          const came = await api.goTo(CATCH_MAP, Math.min(300_000, api.left()))
+          if (came !== 'arrived') { north.caught.push({ ok: false, why: `풀밭에 못 갔다 (${came})` }); break }
+          const got = await api.catchInGrass(CATCH_MAP, Math.min(600_000, api.left()), 12, who.species)
+          north.caught.push({ what: who.what, ...got })
+          const party = await api.partyState()
+          // ⚠️ **찾던 것이 아니라 들어온 것을 적는다.** 실측(2026-09-16)으로
+          // 비버니를 잡고도 「찌르꼬 잡았다」로 적힌 판이 있었다
+          log(`  ${who.what} → ${got.ok ? `${String(got.got)}을 잡았다` : `못 잡았다 (${String(got.why)})`}`
+            + ` · 만난 것 ${JSON.stringify((got.met ?? []).map((one) => one.species))}`
+            + ` · 파티 ${JSON.stringify((party ?? []).map((one) => one.species))}`)
+          if (!got.ok && String(got.why).startsWith('가방에 몬스터볼이')) break
+        }
+
+        /**
+         * ③ **갤럭시단 둘과 붙는다** — 잡기가 **끝난 뒤**다.
+         *
+         * ⚠️ **차례를 바꾼 까닭이 실측이다** (2026-09-16 WebGL 판): 모부기
+         * 한 마리로 이 자리에 섰다가 **전멸해 무쇠 센터(48)로 밀려났고**,
+         * 도시단계가 3에 머물러 그 뒤가 통째로 무너졌다. 204번도로 남쪽은
+         * 이 장면 없이도 갈 수 있다 — 같은 판이 거기서 비버니를 잡아 증명했다.
+         * 사람도 그렇게 한다: 잡아서 머릿수를 채우고 나서 붙는다.
+         *
+         * ⚠️ **원작보다 어려운 자리다.** 원작은 라이벌과 함께 싸우는 태그
+         * 배틀인데 우리는 1:1로 줄여 두었다 (`scene/fieldServices`의
+         * `startTagBattle` — 알려진 축소다). 그래서 혼자 둘을 감당한다.
+         *
+         * 지면 낫고 **한 번 더** 간다 — 원작에서 사람이 하는 그대로다
+         */
+        for (let round = 0; round < 2 && api.left() > 300_000; round++) {
+          const was = await api.storyVars()
+          if (was?.jubilife === 4) { north.scene = 'arrived'; north.vars = { was: 4, now: 4 }; break }
+          if (round > 0) {
+            const again = await api.healAt(CENTERS[426], Math.min(240_000, api.left()))
+            heals.push({ where: '갤럭시단 재도전 앞', center: CENTERS[426], ...again })
+            log(`  갤럭시단 재도전 앞 회복 → ${again.ok ? '나았다' : String(again.why)}`)
+          }
+          const stood = await api.goTo(3, Math.min(300_000, api.left())) === 'arrived'
+            ? await api.stepOn(3, GALACTIC_TILE, Math.min(300_000, api.left()))
+            : '축복시티로 못 갔다'
+          await api.clearTalk()
+          await api.settle()
+          const nowVars = await api.storyVars()
+          north.scene = stood
+          north.vars = { was: was?.jubilife ?? null, now: nowVars?.jubilife ?? null }
+          log(`  갤럭시단 장면 (${String(GALACTIC_TILE.x)},${String(GALACTIC_TILE.z)})`
+            + `${round > 0 ? ' 재도전' : ''} → ${stood}`
+            + ` · 도시단계 ${String(was?.jubilife ?? '?')}→${String(nowVars?.jubilife ?? '?')}`
+            + ` · 파티 ${JSON.stringify(((await api.partyState()) ?? []).map((one) => `${String(one.species)} L${String(one.level)}`))}`)
+          if (nowVars?.jubilife === 4) break
+        }
+
+        /**
+         * ④ **바위깨기를 가르치고 ⑤ 험한 샛길을 연다.**
+         *
+         * ⚠️ **여기가 원작의 관문이다.** 204번도로 남쪽에서 북쪽으로 가려면
+         * 험한 샛길(254)을 지나야 하는데, (19,50)으로 들어와 (28,44)로 나가는
+         * 길목 (23,44)에 `OBJ_EVENT_GFX_ROCK_SMASH`가 서 있다. 실측(2026-09-16
+         * 대표 구간 한 판)으로 하네스가 그 앞 (22,44)에서 **314번을 나아가고도**
+         * 못 나갔다 — 막은 것은 우리 결함이 아니라 원작이고, 빠진 것은 기술이었다.
+         *
+         * 비전머신06은 무쇠게이트 1층 등산가가 배지 하나를 보고 이미 줬다
+         * (`OreburghGate1F_HikerGiveHM` — 첫 배지 자리 가방에 들어 있다).
+         */
+        north.taught = await api.teachHm(HM06, ROCK_SMASH, Math.min(300_000, api.left()))
+        log(`  바위깨기를 가르친다 → ${north.taught.ok ? `${String(north.taught.slot)}번째가 배웠다` : String(north.taught.why)}`)
+        if (api.left() > 300_000) {
+          const inCave = await api.goTo(RAVAGED_PATH, Math.min(300_000, api.left()))
+          north.cave = inCave
+          if (inCave === 'arrived') {
+            north.smash = await api.smashWay(RAVAGED_PATH, ROUTE_204_N, Math.min(600_000, api.left()))
+            log(`  험한 샛길의 바위 → ${north.smash.ok ? '길이 열렸다' : String(north.smash.why)}`
+              + ` (${String(north.smash.broke.length)}개 건드렸다)`)
+          } else log(`  험한 샛길(${String(RAVAGED_PATH)}) → ${inCave}`)
+        }
+      }
+
+      /** 가방을 읽어 자전거 여부를 새로 적는다. 못 읽으면 **그대로 둔다**(닫힌 채) */
+      const noteBike = async () => {
+        const bag = await api.bagState()
+        if (bag !== null && Array.isArray(bag.items)) {
+          hasBike = bag.items.some((one) => one.item === BICYCLE && one.count > 0)
+        }
+      }
       for (const stop of AFTER_STOPS) {
+        await noteBike()
+        // ⚠️ **북쪽 다리는 꽃향기 앞에서 딱 한 번 연다.** 이 걸음을 건너뛰면
+        // 204번도로가 아직 잠겨 있어 뒤의 넷이 전부 「길이 없다」로 떨어진다
+        if (stop.id === '18' && north.scene === null && !(skipBefore !== null && stop.id < skipBefore)) {
+          await goNorth()
+        }
         if (skipBefore !== null && stop.id < skipBefore) {
           log(`${stop.what}(${String(stop.map)}) → 건너뛴다 (미실행 · --from=${skipBefore})`)
           continue
@@ -921,6 +1405,44 @@ try {
           // 판을 밖에서 「멎었다」로 읽고 사람이 끊은 적이 있다 (2026-09-09)
           log(`${stop.what}(${String(stop.map)}) → 시간이 다 됐다 — 안 밟는다`)
           seen.push({ ...stop, verdict: '시간이 다 됐다' })
+          continue
+        }
+        /**
+         * ⚠️ **북쪽이 안 열렸으면 벽에 대고 예산을 쓰지 않는다.**
+         *
+         * 204번도로로 나가는 문은 `VAR_JUBILIFE_CITY_STATE == 4`에서만 열린다 —
+         * 그 값을 4로 올리는 자리는 갤럭시단 둘을 이기는 것 하나뿐이고, 그것도
+         * 배지 하나(3)가 있어야 시작한다. 못 열렸으면 그 뒤 넷은 **걸어갈 길이
+         * 아예 없다.**
+         *
+         * ⚠️ **봐주는 것이 아니다.** 그 줄들은 그대로 떨어지고, 이유가
+         * 「시간이 다 됐다」가 아니라 **「북쪽이 잠겼다」**로 남는다
+         */
+        /**
+         * ⚠️ **잠겼는지는 「재서」 안다 — 변수로 짐작하지 않는다.**
+         *
+         * 한동안 이 자리가 `VAR_JUBILIFE_CITY_STATE`가 4가 아니면 뒤 넷을
+         * 통째로 접었다. 실측(2026-09-16 WebGL 판)이 그 짐작을 깼다: 같은 판이
+         * 「북쪽이 잠겼다」로 넷을 접어 놓고, **그 전에 204번도로 남쪽에서
+         * 비버니를 잡고 험한 샛길(254)의 바위까지 깼다.** 길은 열려 있었고
+         * 잠근 것은 이 줄이었다.
+         *
+         * 원작이 북쪽에 두는 것은 벽이 아니라 **장면**이다. 그래서 동쪽(포켓치)
+         * 자리와 똑같이 한다 — **한 번 밀어 보고**, 정말 못 가면 그때 접는다.
+         * 접을 때도 이유에 갤럭시단 장면의 결말을 같이 적는다
+         */
+        if (NORTH_OF_JUBILIFE.has(stop.map) && northProbe === null) {
+          northProbe = await api.goTo(ROUTE_204_S, Math.min(300_000, api.left()))
+          log(`  북쪽(204번도로 남 ${String(ROUTE_204_S)}) 통행 시험 → ${northProbe}`
+            + ` · 도시단계 ${String((await api.storyVars())?.jubilife ?? '?')}`)
+        }
+        if (NORTH_OF_JUBILIFE.has(stop.map) && northProbe !== 'arrived') {
+          const why = `북쪽에 못 나갔다 (${String(northProbe)}`
+            + ` · 도시단계 ${String(north.vars?.now ?? '?')}`
+            + ` · 갤럭시단 ${String(north.scene ?? '안 갔다')})`
+          log(`${stop.what}(${String(stop.map)}) → ${why}`)
+          seen.push({ ...stop, verdict: why, at: null })
+          api.trouble.push(`${stop.what}: ${why}`)
           continue
         }
         if (eastLocked && EAST_OF_JUBILIFE.has(stop.map)) {
@@ -964,7 +1486,81 @@ try {
          * ⚠️ **전체 예산은 그대로다.** `api.left()`가 늘 함께 걸리므로 이 값을
          * 올려도 한 판이 길어지지 않는다 — 남은 시간을 **쓰는** 것뿐이다
          */
-        const verdict = await api.goTo(stop.map, Math.min(900_000, api.left()))
+        /**
+         * ⚠️ **바깥 길은 뿌리고 들어간다.** 야생과 싸운 시간이 다리를 끊는다
+         * (위 `REPEL` 참고). 없으면 그대로 걷는다 — 건너뛰지 않는다
+         */
+        /**
+         * ⚠️ **숲 앞에서 레벨을 맞춘다.** 숲 트레이너는 L11~14를 둘씩 낸다. 실측:
+         * 통과한 판(2026-09-16 leg6)은 수풀부기 L19→21이었고, 못 뚫은 판은 둘 다
+         * 진화 전 모부기였다 — journey10 L16, journey12(2026-09-17) L17로 숲에서 세 번
+         * 전멸해 꽃향기 센터로 밀려났다. 사람도 숲에 들기 전에 이만큼은 올린다.
+         *
+         * 205번도로 남쪽 풀밭에서 야생과 싸운다. **스프레이를 뿌리기 전이다** — 그
+         * 풀밭의 야생(L10~12)은 선두보다 약해서 스프레이가 남아 있으면 안 나온다.
+         * 체육관은 여기 안 건다(`JOURNEY_BADGE2` §3.3 — 파티를 꾸려서 넘는다)
+         */
+        if (stop.id === '19') {
+          const got = CANDY
+            ? await candyUp(0, null, FOREST_LEVEL)
+            : await trainBefore(FOREST_LEVEL, FOREST_GRASS, CENTERS[203],
+              Math.min(FOREST_TRAIN_MS, api.left()))
+          const trained = CANDY ? candyLine(got) : got
+          log(`  ${stop.what} 앞 레벨 맞추기 (선두 L${String(FOREST_LEVEL)}) → ${trained}`)
+          story.training = [...(story.training ?? []), { before: stop.what, result: trained }]
+          if (CANDY) story.candySteps = [...(story.candySteps ?? []), { what: '숲 앞 선두', ...got }]
+        }
+        /**
+         * ⚠️ **체육관 앞에서 약을 산다** (지시서 §13.5의 3번).
+         *
+         * 유채는 풀 셋에 좋은상처약 둘을 쓴다. 우리는 한 마리로 붙으므로 약이
+         * 없으면 세 번째를 못 넘긴다 — journey13이 첫 도전·재도전 모두 그렇게
+         * 졌다. 사람이 체육관 옆 마트에 들르는 그 걸음이고, 파는 것도 원작이
+         * 그 시점에 파는 것뿐이다(배지 하나 = 재고 계단 2)
+         */
+        if (stop.map === 67 && CANDY) {
+          const fed = await candyUp(null, STARLY, CANDY_STARLY_LEVEL)
+          log(`  ${stop.what} 앞 찌르꼬 사탕 (L${String(CANDY_STARLY_LEVEL)}) → ${candyLine(fed)}`)
+          story.training = [...(story.training ?? []),
+            { before: `${stop.what} (찌르꼬)`, result: candyLine(fed) }]
+          story.candySteps = [...(story.candySteps ?? []), { what: '유채 앞 찌르꼬', ...fed }]
+        }
+        if (stop.map === 67) {
+          potionBuy = await api.buyAt(ETERNA_MART, SUPER_POTION, SUPER_POTIONS,
+            Math.min(300_000, api.left()))
+          log(`  영원 마트(${String(ETERNA_MART)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+            + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다 (돈 ${String(potionBuy.money?.[1])}원)`
+              : String(potionBuy.why)}`)
+          // 켜는 것은 **관장 앞에서**다 (아래 NPC 차례) — 부하 셋에게 다 쓰면
+          // 정작 유채 앞에서 빈손이다. 사람도 약은 관장에게 아낀다
+        }
+        if (REPEL_BEFORE.has(stop.map)) {
+          const sprayed = await api.useItem(REPEL, Math.min(150_000, api.left()))
+          sprays.push({ before: stop.what, ...sprayed })
+          log(`  ${stop.what} 앞 벌레회피스프레이 → `
+            + `${sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why)}`)
+        }
+        /**
+         * ⚠️ **다리마다 900초로 자르지 않는다.** 실측(2026-09-16 WebGL 판):
+         * 영원시티로 가는 다리가 **355번 나아가던 중에** 그 상한에 끊겼다
+         * (「마지막 진행 뒤 0바퀴」 — 멈춘 것이 아니라 걷는 중이었다는 뜻이다).
+         * 막은 것은 게임이 아니라 이 한 줄이었다.
+         *
+         * 그래서 **남은 예산을 남은 자리 수로 나눠** 준다 — 한 다리가 판을
+         * 통째로 삼키지는 못하되, 900초보다 길어야 하는 다리는 길게 걷는다.
+         * 바닥은 900초다(짧은 다리에서 굳이 줄일 까닭이 없다)
+         */
+        const ahead = AFTER_STOPS.filter((one) => one.id >= stop.id).length
+        /**
+         * ⚠️ **위를 안 막으면 한 다리가 판을 통째로 삼킨다.** 900초 상한을
+         * 없앤 판(2026-09-16)에서 영원시티 다리가 **30분 동안 줄 하나 없이**
+         * 돌았다 — 배틀도 안 붙고 멎지도 않은 채였고, 예산 나누기로는 그 다리
+         * 하나가 한 시간까지 쓸 수 있었다. 900초는 너무 짧고(걷는 중에 끊겼다)
+         * 한 시간은 너무 길다. **바닥 900초 · 천장 1,800초**로 가둔다
+         */
+        const room = Math.min(1_800_000,
+          Math.max(900_000, Math.floor(api.left() / Math.max(1, ahead))))
+        const verdict = await api.goTo(stop.map, Math.min(room, api.left()))
         await api.settle()
         const at = await marks()
         log(`${stop.what}(${String(stop.map)}) → ${verdict} · 지금 맵 ${String(at.map)}`)
@@ -979,7 +1575,7 @@ try {
            * 적으면 「검증된 자리」가 스스로를 증명하는 꼴이 된다
            */
           if (skipBefore === null) {
-            const file = `seg-${stop.id}.rpsave`
+            const file = `seg-${stop.id}${CANDY ? '-candy' : ''}.rpsave`
             const kept = await writeReport(file)
             if (kept.ok) {
               const where = await whereNow()
@@ -987,7 +1583,7 @@ try {
                 map: where.world.map, matrix: where.world.matrix,
                 x: where.player.x, z: where.player.z,
                 poketch: poketch.done, badges: (await readSave()).badges,
-              })
+              }, SHORTCUTS)
               log(`  구간 ${stop.id}을 적어 뒀다 (${file})`)
             } else log(`  구간 ${stop.id}을 못 적었다 — ${String(kept.why)}`)
           }
@@ -1012,12 +1608,110 @@ try {
               metNpcs.push({ map: stop.map, ...who, said: false, why: '회복 실패' })
               continue
             }
+            /**
+             * ⚠️ **한 판마다 시계를 다시 읽는다.** 이길 때마다 바늘이 돌아
+             * (`EternaGym_AdvanceClock`) 막힌 칸이 168 → 147 → 135 → 124로
+             * 줄어든다 (실측 2026-09-16 `_clock42`). 들어설 때 한 번만 읽으면
+             * 둘째 트레이너부터 **열린 길을 못 본다**
+             */
+            if (stop.map === 67) {
+              /**
+               * ⚠️ **시계를 먼저 읽고 그다음에 낫는다.** 오래 이 두 줄이 거꾸로
+               * 있었다 — 나으러 나가는 길을 **앞 판의 벽**으로 계획했다.
+               *
+               * 벽은 줄기만 하는 것이 아니다(168→147→135→124). 시침이 돌아서
+               * 앞 상태에 열려 있던 칸이 막힌다. 실측(2026-09-17 탐침): 시계 2의
+               * 벽으로 낸 길은 (13,13)을 지나는데 시계 3은 그 칸을 막는다 —
+               * journey13이 (11,14)·(12,13)에서 90바퀴를 선 그 자리다.
+               * 시침을 뛰어넘어야 해서가 아니었다. 뛰지 않아도 **모든 상태에서
+               * 문↔부하·관장 왕복 길이 있다**(같은 탐침)
+               */
+              const walls = await api.eternaWalls()
+              if (walls === null) {
+                api.trouble.push('꽃시계를 못 읽었다 — 체육관 길을 계획할 수 없다')
+              } else gymWalls = new Set(walls)
+              await healBetween(who.what)
+              /**
+               * ⚠️ **약은 관장에게만 쓴다.** 부하 셋 사이에는 영원 센터가 코앞이라
+               * 걸어가서 낫는 편이 싸고(`healBetween`), 넷을 부하에게 다 쓰면 정작
+               * 유채 앞에서 빈손이다. 사람도 그렇게 아낀다
+               */
+              if (who.script === LEADER_RETRY[67]?.script && potionBuy?.ok === true) {
+                api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
+              } else api.stopPotions()
+              const v = await api.storyVars()
+              log(`  ${who.what} 앞 — 시계 ${String(v?.clock ?? '?')}`
+                + ` · 이긴 수 ${String(v?.beaten ?? '?')}`
+                + ` · 막힌 칸 ${String(walls?.length ?? '?')}`)
+            }
             const said = await api.talkToNpc(stop.map, who.script, Math.min(180_000, api.left()))
             await api.settle()
             const badges = (await readSave()).badges
             log(`  ${stop.what} ${who.what} → ${said ? '만났다' : '못 만났다'}`
               + ` · 배지 ${String(badges)}개`)
-            metNpcs.push({ map: stop.map, ...who, said, badges })
+            const vars = stop.map === 67 ? await api.storyVars() : null
+            metNpcs.push({ map: stop.map, ...who, said, badges, vars })
+            if (stop.map === 67) clock.push({ who: who.what, said, badges, ...(vars ?? {}) })
+          }
+          /**
+           * **관장에게 한 번은 다시 도전한다.**
+           *
+           * 지면 원작은 마지막 센터로 되돌려 보낸다 — 사람은 거기서 낫고 다시
+           * 온다. 그 한 번을 안 하면 우리 판은 「졌다」가 아니라 「배지가 하나」로만
+           * 남고, 진 까닭(파티가 약하다)과 못 간 까닭(길이 없다)이 안 갈린다.
+           *
+           * ⚠️ **로안에게도 한다.** 오래 유채에게만 있었다. 실측(2026-09-17
+           * journey11): 같은 코드로 journey10은 로안을 한 번에 이겼는데 이 판은
+           * 부하 둘 뒤에 로안에게 져서 무쇠 센터(48)로 밀려났고, 배지 0개로
+           * 북쪽에 올라가 둘째 배지 사슬이 통째로 막혔다. 배틀 운이 가른 것이라
+           * 사람이 하듯 낫고 한 번 더 간다.
+           *
+           * ⚠️ **두 번은 안 한다.** 되돌이가 예산을 통째로 먹는다. 두 번째도
+           * 지면 그것은 **파티가 약하다**는 실측이고, 그대로 적힌다
+           */
+          const leader = LEADER_RETRY[stop.map]
+          if (leader !== undefined && (await readSave()).badges < leader.badges
+            && api.left() > 600_000) {
+            const center = CENTERS[stop.map]
+            const again = await api.healAt(center, Math.min(300_000, api.left()))
+            log(`  ${leader.what} 재도전 앞 회복 (센터 ${String(center)}) → `
+              + `${again.ok ? '나았다' : String(again.why)}`)
+            const backIn = await api.goTo(stop.map, Math.min(300_000, api.left()))
+            if (backIn === 'arrived' && again.ok) {
+              /**
+               * ⚠️ **관장만 다시 부르면 안 된다.** 실측(2026-09-17 journey12): 셋째
+               * 부하 앤젤라에게 져서 꽃시계가 2에 멈췄는데, 재도전이 유채에게만 말을
+               * 걸었다 — 시계가 안 돌아 **관장에게 닿는 길이 없다.** 아직 못 이긴
+               * 부하부터 차례대로 다시 간다 (영원 체육관은 이긴 수 = 부하 차례다)
+               */
+              const beaten = stop.map === 67 ? ((await api.storyVars())?.beaten ?? 0) : 0
+              const order = stop.map === 67
+                ? (NPC_STOPS[67] ?? []).filter((who, k) => who.script === leader.script || k >= beaten)
+                : [{ script: leader.script, what: leader.what }]
+              for (const who of order) {
+                if (api.left() <= 0) break
+                if (stop.map === 67) {
+                  // 위와 같은 차례다 — **시계를 먼저 읽는다**
+                  const walls = await api.eternaWalls()
+                  if (walls !== null) gymWalls = new Set(walls)
+                  await healBetween(`${who.what} (재도전)`)
+                  // 재도전도 같다 — 남은 약은 관장에게만
+                  if (who.script === leader.script && potionBuy?.ok === true) {
+                    api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
+                  } else api.stopPotions()
+                }
+                const said = await api.talkToNpc(stop.map, who.script, Math.min(300_000, api.left()))
+                await api.settle()
+                const badges = (await readSave()).badges
+                const vars = await api.storyVars()
+                log(`  ${who.what} 재도전 → ${said ? '만났다' : '못 만났다'} · 배지 ${String(badges)}개`
+                  + (stop.map === 67 ? ` · 시계 ${String(vars?.clock ?? '?')} · 이긴 수 ${String(vars?.beaten ?? '?')}` : ''))
+                metNpcs.push({ map: stop.map, script: who.script, what: `${who.what} (재도전)`, said, badges })
+                if (stop.map === 67) clock.push({ who: `${who.what} (재도전)`, said, badges, ...(vars ?? {}) })
+                // 지면 체육관 밖으로 밀려난다 — 두 번째 되돌이는 안 한다 (위 ⚠️)
+                if ((await api.now()).map !== stop.map) break
+              }
+            } else log(`  ${leader.what} 재도전 → 못 들어갔다 (${backIn})`)
           }
           // 그 자리의 트레이너들 (체육관 부하 둘)
           for (const t of trainersOn(stop.map)) {
@@ -1029,9 +1723,15 @@ try {
               + `${said ? '반응했다' : '못 걸었다'} · 배지 ${String(badges)}개`)
             if (badges > 0) break
           }
+          // 체육관을 나서면 약을 다시 끈다 — 다른 자리에서 쓰면 판마다 가방이 달라진다
+          if (stop.map === 67) api.stopPotions()
         }
       }
-      return { seen, metNpcs, heals, poketch, badges: (await readSave()).badges }
+      return {
+        seen, metNpcs, heals, sprays, poketch, north, clock, potionBuy,
+        vars: await api.storyVars(), bag: await api.bagState(),
+        party: await api.partyState(), badges: (await readSave()).badges,
+      }
     },
   }),
     new Promise((r) => {
@@ -1066,7 +1766,9 @@ try {
 
   const seen = drive.extra?.seen ?? []
   const poketch = drive.extra?.poketch ?? null
-  for (const stop of AFTER_STOPS) {
+  /** 첫 배지까지의 자리들. 둘째 배지 쪽은 ⑫ 뒤에 따로 적는다 */
+  const FIRST_BADGE_STOPS = new Set(['08', '09', '10', '11'])
+  for (const stop of AFTER_STOPS.filter((one) => FIRST_BADGE_STOPS.has(one.id))) {
     const got = seen.find((s) => s.id === stop.id)
     // ⚠️ 축복시티 줄에는 **동쪽이 열렸는지**까지 적는다. 「닿았다」만으로는
     // 그다음 셋이 왜 못 갔는지가 이 표에서 안 보인다 (원작의 포켓치 관문)
@@ -1090,6 +1792,81 @@ try {
   // 관장을 만난 뒤·전투가 끝난 뒤의 화면이다. 배지를 못 받았으면 그 사실이
   // 이름과 위 줄에 그대로 남는다
   shots.push(await shot('after-gym'))
+
+  // ── ⑰~㉒ 둘째 배지 (지시서 JOURNEY_BADGE2 §2) ────────────────────────────
+  //
+  // ⚠️ **읽은 값으로 적는다.** 「장면이 돌았다」를 밟기 결말로만 적으면
+  // 밟기는 됐는데 장면이 안 돈 판이 통과로 샌다 — 원작의 계약은 변수다
+  const north = drive.extra?.north ?? null
+  const galactic = north?.vars ?? null
+  add('17', '축복시티 북쪽에서 갤럭시단 장면이 돈다',
+    galactic?.now === 4 ? 'PASS' : 'FAIL',
+    `밟기 ${String(north?.scene ?? '안 갔다')}`
+    + ` · 도시단계 ${String(galactic?.was ?? '?')}→${String(galactic?.now ?? '?')}`
+    + (north?.bought === null || north?.bought === undefined ? ''
+      : ` · 몬스터볼 ${north.bought.ok ? `${String(north.bought.bought)}개 샀다` : String(north.bought.why)}`)
+    + ` · 잡은 것 ${String((north?.caught ?? []).filter((c) => c.ok).length)}마리`)
+
+  /**
+   * ⚠️ **체육관 도착(21)은 줄을 따로 안 만든다.** 원장 목록(`evidence.JOURNEY_CASES`)의
+   * ㉑은 **꽃시계** 줄이다(지시서 §2). 도착까지 줄로 적었더니 한 판에 번호 21이 둘
+   * 찍혔다 (2026-09-17 journey12). 도착 결말은 꽃시계 줄에 적는다
+   */
+  const GYM_STOP = '21'
+  for (const stop of AFTER_STOPS.filter((one) => !FIRST_BADGE_STOPS.has(one.id) && one.id !== GYM_STOP)) {
+    const got = seen.find((one) => one.id === stop.id)
+    const j = stopVerdict(got?.verdict ?? '안 갔다')
+    // 숲 줄에는 **동행**까지 적는다 — 붙었는지가 그 구간의 내용이다
+    const cheryl = stop.id === '19' && drive.extra?.vars
+      ? ` · 동행 상태 ${String(drive.extra.vars.cheryl)}` : ''
+    /**
+     * ⚠️ **꽃향기 줄에는 험한 샛길까지 적는다.** 그 다리를 막는 것은 거리가
+     * 아니라 **바위깨기**다 — 그것을 안 적으면 「닿지 못했다」만 남고 왜인지가
+     * 이 표에서 안 보인다
+     */
+    const cave = stop.id !== '18' || north === null ? ''
+      : ` · 바위깨기 ${north.taught?.ok === true ? `${String(north.taught.slot)}번째가 배웠다` : String(north.taught?.why ?? '안 가르쳤다')}`
+        + ` · 험한 샛길 ${north.smash?.ok === true ? '길을 열었다' : String(north.smash?.why ?? north.cave ?? '안 갔다')}`
+    add(stop.id, `${stop.what}에 걸어서 닿는다`, j.status,
+      `${String(got?.verdict ?? '안 갔다')}${got?.at ? ` · 멈춘 맵 ${String(got.at)}` : ''}${cheryl}${cave}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+
+  const clock = drive.extra?.clock ?? []
+  const clockStates = clock.map((c) => c.clock).filter((one) => one !== undefined && one !== null)
+  const beaten = drive.extra?.vars?.beaten ?? null
+  const gymArrival = seen.find((one) => one.id === GYM_STOP)?.verdict ?? '안 갔다'
+  add('21', '꽃시계가 트레이너 셋마다 열린다', beaten === 3 ? 'PASS' : 'FAIL',
+    `체육관 ${String(gymArrival)} · 이긴 수 ${String(beaten ?? '?')}/3 · 시계 ${String(drive.extra?.vars?.clock ?? '?')}`
+    + (clock.length === 0 ? ' · 체육관에 못 들어갔다'
+      : ` · ${clock.map((c) => `${String(c.who)} ${c.said ? '만났다' : '못 만났다'}`).join(' · ')}`)
+    + (clockStates.length === 0 ? '' : ` · 거친 시계 ${clockStates.join('→')}`))
+
+  const badges2 = (await readSave()).badges
+  const gym2 = (drive.extra?.metNpcs ?? []).filter((m) => m.map === 67)
+  add('22', '둘째 배지를 받는다', badges2 >= 2 ? 'PASS' : 'FAIL',
+    `배지 ${String(badges2)}개`
+    + ` · 파티 ${JSON.stringify((drive.extra?.party ?? []).map((one) => `${String(one.species)} L${String(one.level)}`))}`
+    + (gym2.length === 0 ? ' · 체육관 사람을 아무도 못 만났다'
+      : ` · ${gym2.map((m) => `${String(m.what)} ${m.said ? '만났다' : '못 만났다'}`).join(' · ')}`)
+    /**
+     * ⚠️ **어떻게 넘겼는지를 같은 줄에 적는다** (지시서 §13.5). 배지 수만 적으면
+     * 이긴 판과 진 판이 「2개」·「1개」로만 갈리고, **무엇을 바꿔서 이겼는지**가
+     * 보고서에서 사라진다 — 기술을 갈아 낀 것인지 약을 쓴 것인지
+     */
+    + ` · 기술 ${drive.learnTaught?.length > 0 ? drive.learnTaught.join('·') : `안 갈았다(물음 ${String(drive.learnAsks ?? 0)} · 그대로 ${String(drive.learnKept ?? 0)})`}`
+    + ` · 좋은상처약 ${String(drive.extra?.potionBuy?.bought ?? 0)}개 사서 ${String(drive.potions?.used ?? 0)}번 썼다`
+    + (drive.potions?.why ? ` (${String(drive.potions.why)})` : '')
+    /**
+     * ⚠️ **지름길 걸음은 여행 결과와 따로 적는다** (지시서
+     * JOURNEY21_NEXT_DECISIONS §2). 「이겼다」 옆에 사탕을 몇 알 먹였는지가 아니라,
+     * **그 걸음이 돌았는지**를 적어야 이긴 까닭을 사탕 쪽으로 잘못 읽지 않는다
+     */
+    + (CANDY
+      ? ` · 사탕 걸음 ${(story.candySteps ?? []).map((one) =>
+        `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`
+      : ''))
+  shots.push(await shot('after-gym2'))
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────
   const endSave = await writeReport('end.rpsave')
@@ -1229,7 +2006,9 @@ try {
   // 컷만 찍고도 통과한다. 그리고 그 자리에 **못 간 것**은 앞 줄이 이미
   // 떨어뜨렸으므로 여기서는 FAIL이 아니라 BLOCKED다 — 한 사슬의 실패를
   // 여러 결함처럼 세지 않는다
-  const WORLD_NEED = ['bedroom', 'after-gym', 'resumed']
+  // ⚠️ **영원 체육관 한 컷이 늘었다.** 꽃시계 방은 이 구간에서 처음 그려지는
+  // 실내이고, 바늘이 도는 자리라 정지 화면으로도 볼 것이 있다
+  const WORLD_NEED = ['bedroom', 'after-gym', 'after-gym2', 'resumed']
   const short = missingShots(WORLD_NEED, shots.map((one) => one.name))
   const world = shots.filter((one) => one.canvas !== undefined)
   /**
@@ -1339,6 +2118,7 @@ writeFileSync(resolve(ROOT, '.audit/journey.json'), `${JSON.stringify(sealEviden
   expectedCases: EXPECTED_CASES,
   executedCases: rows.map((r) => r.id),
   startDigest: START_DIGEST,
+  shortcuts: SHORTCUTS,
   environment: {
     ...describeEnvironment({ browserVersion, gpu, backend }),
     view: VIEW,

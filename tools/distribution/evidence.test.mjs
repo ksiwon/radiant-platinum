@@ -88,6 +88,7 @@ function envelope(over = {}) {
       expectedCases: [...cases],
       executedCases: [...cases],
       startDigest: ART,
+      shortcuts: [],
     },
     results: cases.map((id) => ({ id, what: `시험 ${id}`, status: 'PASS', detail: '' })),
     ...over,
@@ -241,6 +242,34 @@ describe('이름 목록이 성한가', () => {
     const env = envelope()
     delete env.scope.selection
     expect(judge(env).detail).toContain('selection')
+  }, SLOW)
+})
+
+describe('지름길을 켠 판은 통과가 아니다', () => {
+  it('사탕 판은 줄이 다 PASS여도 떨어진다', () => {
+    const env = envelope()
+    env.scope.shortcuts = ['candy']
+    const said = judge(env)
+    expect(said.ok).toBe(false)
+    expect(said.detail).toContain('candy')
+  }, SLOW)
+
+  it('켰는지를 안 적은 봉투도 떨어진다', () => {
+    const env = envelope()
+    delete env.scope.shortcuts
+    expect(judge(env).detail).toContain('scope.shortcuts')
+  }, SLOW)
+
+  it('봉투를 만드는 쪽은 안 받으면 빈 목록을 적는다', () => {
+    const env = sealEvidence({
+      suite: 'journey', expectedCases: ['01'], executedCases: ['01'], environment: {}, results: [],
+    })
+    expect(env.scope.shortcuts).toEqual([])
+    const lit = sealEvidence({
+      suite: 'journey', expectedCases: ['01'], executedCases: ['01'], environment: {}, results: [],
+      shortcuts: ['candy'],
+    })
+    expect(lit.scope.shortcuts).toEqual(['candy'])
   }, SLOW)
 })
 
@@ -443,7 +472,7 @@ describe('하네스가 씌우는 봉투', () => {
       rosterDigest: roster.digest,
       scope: {
         suite: 'gpu-loss', selection: 'all',
-        expectedCases: roster.cases, executedCases: roster.cases, startDigest: SRC,
+        expectedCases: roster.cases, executedCases: roster.cases, startDigest: SRC, shortcuts: [],
       },
       results: rows,
     }
@@ -455,9 +484,10 @@ describe('하네스가 씌우는 봉투', () => {
 })
 
 describe('대표 구간의 정본 목록', () => {
-  it('열일곱 자리이고, 하네스가 아니라 판정기가 갖고 있다', () => {
+  it('스물세 자리이고, 하네스가 아니라 판정기가 갖고 있다', () => {
+    // 첫 배지까지 열일곱, 둘째 배지까지 여섯 (지시서 JOURNEY_BADGE2 §1)
     const roster = rosterOf('journey')
-    expect(roster.cases).toHaveLength(17)
+    expect(roster.cases).toHaveLength(23)
     expect(roster.from).toBe('tools/distribution/evidence.mjs')
   })
 

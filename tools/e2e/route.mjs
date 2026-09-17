@@ -380,7 +380,18 @@ export const exitsTo = (mapId, to) => warpsOf(mapId).filter((w) => w.to === to)
  *
  * @returns 지나갈 맵 번호 목록 (`from` 포함, `to`로 끝난다). 없으면 null
  */
-export function mapRoute(from, to) {
+/**
+ * ⚠️ **`without`은 「우리가 아직 못 지나는 맵」이다.** 구역 표는 **맞닿아 있는가**만
+ * 아는데, 원작에는 도구가 있어야 열리는 길이 있다 — 자전거길(206번도로)이 그렇다.
+ * 실측(2026-09-17 journey17): 숲에서 전멸해 축복 센터로 밀린 판이 영원시티로
+ * 돌아갈 때 맵 그래프가 `[3,344,258,45,353,350,80,65]`(무쇠 → 207 → **자전거길**)을
+ * 냈고, 207번도로(306,720)에서 **18분 동안 같은 자리**를 맴돌았다. 격자에는 길이
+ * 있고 게임은 막는다 — 둘 다 옳았고 서로를 몰랐다.
+ *
+ * 끝 맵 자신은 안 지운다. 거기로 가려는 것이니 지우면 「길이 없다」만 남는다
+ */
+export function mapRoute(from, to, { without = null } = {}) {
+  const skip = (id) => id !== to && without !== null && without.has(id)
   const prev = new Map([[from, null]])
   const queue = [from]
   let head = 0
@@ -392,7 +403,7 @@ export function mapRoute(from, to) {
       return out
     }
     for (const w of warpsOf(cur)) {
-      if (prev.has(w.to)) continue
+      if (prev.has(w.to) || skip(w.to)) continue
       prev.set(w.to, cur)
       queue.push(w.to)
     }
@@ -400,7 +411,7 @@ export function mapRoute(from, to) {
     const matrix = matrixOf(cur)
     if (matrix === 0) {
       for (const other of sameMatrixNeighbours(cur)) {
-        if (prev.has(other)) continue
+        if (prev.has(other) || skip(other)) continue
         prev.set(other, cur)
         queue.push(other)
       }

@@ -124,6 +124,19 @@ function devObserver(page) {
         at: { x: Number(hit.x.toFixed(2)), z: Number(hit.z.toFixed(2)) },
       }
     }, [x, z]),
+    /**
+     * **비전기술로 치우는 물체**가 그 칸에 있는가 (`actor/obstacles.ts`의
+     * `obstacleAt` — 게임이 실제로 쓰는 그 함수다).
+     *
+     * ⚠️ **`solidAt`으로는 못 본다.** 그쪽은 `solidNpcAt`이라 높이를 같이 보고,
+     * 바위·나무·큰바위만 가리지도 않는다 — 실측(2026-09-16 `_north42` 3판)에서
+     * 못 깬 바위를 「깼다」로 읽었다
+     */
+    obstacleAt: (x, z) => read('물체를 못 읽었다', async ([tx, tz]) => {
+      const o = await import('/src/engine/actor/obstacles.ts')
+      const hit = o.obstacleAt(tx, tz)
+      return hit === null ? null : { gfx: hit.gfx, script: hit.info?.script ?? null }
+    }, [x, z]),
     /** 지금 프레임이 얼마나 걸리나 (`scene/sceneRefs.ts`의 `perfSnapshot`) */
     perf: () => read('계기판을 못 읽었다', async () => {
       const m = await import('/src/scene/sceneRefs.ts')
@@ -154,6 +167,131 @@ function devObserver(page) {
           max: info ? inst.maxHp(p, info) : null, status: p.status, moves: slots,
         }
       })
+    }),
+    /**
+     * **둘째 배지 길목의 이야기 변수들.** 번호는 `generated/vars_flags.txt`의
+     * `enumValues` 차례다 (줄 번호가 아니다 — 별칭 줄이 섞여 있다).
+     *
+     *   · 16503 `VAR_JUBILIFE_CITY_STATE`            3 → **4**가 갤럭시단 장면이다
+     *   · 16459 `VAR_ETERNA_GYM_FLOWER_CLOCK_STATE`  0 → 1 → 2 → 3
+     *   · 16558 `VAR_ETERNA_GYM_TRAINERS_BEATEN`     시계와 나란히 오른다
+     *   · 16561 `VAR_ETERNA_FOREST_FOLLOWER_CHERYL_STATE` 0(안 붙음) → 1 → 2
+     *
+     * ⚠️ **못 읽으면 관측 불가다.** 0으로 접으면 「장면이 안 돌았다」로 잘못 적힌다
+     */
+    storyVars: () => read('이야기 변수를 못 읽었다', async () => {
+      const f = await import('/src/engine/script/field.ts')
+      const v = f.fieldScripts.vars
+      return {
+        jubilife: v.get(16503), clock: v.get(16459),
+        beaten: v.get(16558), cheryl: v.get(16561),
+        // ⚠️ **동행 플래그는 변수가 아니라 플래그다** (`SYSTEM_FLAG.hasPartner`
+        // = 2401). 모미의 회복이 걸린 조건이 이것이라, 「붙었다」를 이 값으로
+        // 본다 — 구역 변수(`cheryl`)는 장면이 어디까지 갔나만 말해 준다
+        partner: v.checkFlag(2401) === true,
+      }
+    }),
+    /**
+     * **지금 열린 가게의 재고 차례.** 줄 번호를 세지 않으려고 읽는다 —
+     * 목록은 우리가 정하지 않고 그 자리의 배지 수가 정한다
+     * (`engine/bag/mart.ts`의 `PokeMartCommon`)
+     */
+    shopStock: () => read('상점 재고를 못 읽었다', async () => {
+      const m = await import('/src/state/menuStore.ts')
+      return m.useMenuStore.getState().shopStock ?? null
+    }),
+    /** 가방과 돈. 볼을 사고 던지는 걸음이 여기 걸린다 */
+    bagState: () => read('가방을 못 읽었다', async () => {
+      const m = await import('/src/state/saveStore.ts')
+      const s = m.useSaveStore.getState()
+      return {
+        money: s.money,
+        // ⚠️ **주머니 번호를 같이 적는다.** 가방 화면은 ←→로 주머니를 옮기므로
+        // 「몇 번째 주머니의 몇째 줄」을 모르면 커서를 못 놓는다
+        items: s.bag.flatMap((slots, pocket) =>
+          slots.map((one, row) => ({ item: one.item, count: one.count, pocket, row }))),
+      }
+    }),
+    /**
+     * **꽃시계가 지금 막고 있는 칸.** 표를 하네스가 다시 세지 않는다 —
+     * 제품이 실제로 쓰는 `eternaBlockedAt`을 그대로 읽는다 (지시서 §3.2).
+     *
+     * ⚠️ 우리 격자(`route.mjs`)는 이 벽을 모른다. 상태 0에서 시계가 막는
+     * 168칸을 격자는 대부분 걸을 수 있다고 한다 — 그래서 계획이 시계를
+     * 뚫고 지나가고, 밖에서는 「길은 있는데 안 걸어진다」로 보인다
+     */
+    eternaWalls: () => read('꽃시계를 못 읽었다', async () => {
+      const g = await import('/src/scene/eternaGym.ts')
+      const list = []
+      for (let z = 0; z < 32; z++) {
+        for (let x = 0; x < 32; x++) if (g.eternaBlockedAt(x, z) === true) list.push(`${x},${z}`)
+      }
+      return list
+    }),
+    /**
+     * **지금 맞서 있는 야생 포켓몬.** 무엇을 잡을지 고르려고 읽는다 —
+     * 사람도 나온 것을 보고 볼을 던질지 싸울지 정한다
+     */
+    foeNow: () => read('상대를 못 읽었다', async () => {
+      const store = await import('/src/state/battleStore.ts')
+      const st = store.useBattleStore.getState()
+      const foe = st.view?.active?.p2a ?? null
+      return foe === null ? null
+        : { species: foe.species ?? null, level: foe.level ?? null, kind: st.kind ?? null }
+    }),
+    /**
+     * **화면에 적힌 기술 이름의 위력.** 「새 기술을 배우겠는가」에 사람처럼
+     * 답하려고 읽는다 (지시서 §13.5의 1번). 변화 기술은 0이다.
+     *
+     * ⚠️ **못 찾은 이름을 0으로 접지 않는다.** 접으면 하네스가 제일 좋은 기술을
+     * 「위력 0」으로 보고 잊는다 — 없는 값은 null로 돌려주고 부르는 쪽이 물러선다
+     */
+    movePower: (names) => read('기술표를 못 읽었다', async (want) => {
+      const data = await import('/src/data/gameData.ts')
+      const opt = await import('/src/state/optionsStore.ts')
+      const [list, moves] = await Promise.all([
+        data.loadMoveNames(opt.gameLocale()), data.loadMoves(),
+      ])
+      const byName = new Map()
+      list.forEach((n, i) => { if (n !== '' && !byName.has(n)) byName.set(n, i) })
+      return want.map((n) => {
+        const id = byName.get(n)
+        if (id === undefined) return null
+        const info = moves.get(id)
+        if (!info) return null
+        return info.category === 'status' ? 0 : info.power
+      })
+    }, names),
+    /**
+     * **지금 나와 있는 우리 쪽 마리의 체력** (`battleStore.view.active.p1a`).
+     *
+     * ⚠️ **배틀 중에 `partyState`로 체력을 재면 안 된다.** 그쪽은 `saveStore`의
+     * 파티라 **배틀이 끝나야** 값이 바뀐다 — 실측(2026-09-17 journey16): 유채전에서
+     * 수풀부기가 쓰러질 때까지 그 값이 만피 그대로였고, 그래서 「체력이 45% 아래면
+     * 약을 쓴다」가 **한 번도 안 걸렸다** (좋은상처약 4개를 사서 0번 썼다).
+     * 배틀이 보는 값은 배틀에게 물어야 한다
+     */
+    /**
+     * **배틀이 지금 무엇을 묻고 있나** — 약을 쓰려다 못 본 순간을 가르려고 읽는다
+     * (지시서 JOURNEY21_NEXT_DECISIONS §6). 턴 번호·「교체」 물음·고를 수 있는
+     * 명령 수·단계. 화면 글이 아니라 가게(`battleStore`)의 값이다
+     */
+    battleMoment: () => read('배틀 순간을 못 읽었다', async () => {
+      const store = await import('/src/state/battleStore.ts')
+      const st = store.useBattleStore.getState()
+      return {
+        turn: st.view?.turn ?? null,
+        phase: st.phase ?? null,
+        shiftAsk: st.shiftAsk ?? null,
+        actions: Array.isArray(st.actions) ? st.actions.length : null,
+      }
+    }),
+    battleHp: () => read('배틀 체력을 못 읽었다', async () => {
+      const store = await import('/src/state/battleStore.ts')
+      const me = store.useBattleStore.getState().view?.active?.p1a ?? null
+      if (me === null) return null
+      const max = typeof me.maxHp === 'number' && me.maxHp > 0 ? me.maxHp : null
+      return { hp: me.hp ?? null, max, fainted: me.fainted === true }
     }),
     bestMove: () => read('기술표를 못 읽었다', async () => {
       const store = await import('/src/state/battleStore.ts')
@@ -205,10 +343,19 @@ function distObserver(page) {
     },
     blockedAt: async () => unknown(NO_SRC),
     solidAt: async () => unknown(NO_SRC),
+    obstacleAt: async () => unknown(NO_SRC),
     perf: async () => unknown(NO_SRC),
     npcSpot: async () => unknown(NO_SRC),
     partyState: async () => unknown(NO_SRC),
     bestMove: async () => unknown(NO_SRC),
+    battleHp: async () => unknown(NO_SRC),
+    battleMoment: async () => unknown(NO_SRC),
+    movePower: async () => unknown(NO_SRC),
+    foeNow: async () => unknown(NO_SRC),
+    storyVars: async () => unknown(NO_SRC),
+    bagState: async () => unknown(NO_SRC),
+    shopStock: async () => unknown(NO_SRC),
+    eternaWalls: async () => unknown(NO_SRC),
   }
 }
 
