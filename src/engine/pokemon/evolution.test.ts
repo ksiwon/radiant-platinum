@@ -12,10 +12,10 @@ import { describe, expect, it } from 'vitest'
 import { speciesFileSchema, type Species } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 import { FIRST_EXTRA_ITEM, ITEM_LINKING_CORD, ITEM_PRISM_SCALE } from '../bag/extraItems'
-import type { PokemonInstance } from './instance'
+import { statsOf, type PokemonInstance } from './instance'
 import { noOrigin } from './origin'
 import {
-  Evo, EvoClass, evolutionTarget, evolve, FRIENDSHIP_THRESHOLD, HOLD_EFFECT_NO_EVOLVE,
+  carriedHp, Evo, EvoClass, evolutionTarget, evolve, FRIENDSHIP_THRESHOLD, HOLD_EFFECT_NO_EVOLVE,
   MAP_EVOLUTION, movesOnEvolve, spawnsShedinja, tradeEvolutionItems, type EvoContext,
 } from './evolution'
 
@@ -290,9 +290,46 @@ maybe('진화', () => {
 
   it('진화해도 개체값·성격·경험치는 그대로다', () => {
     const before = mon(387, { level: 14, exp: 1234, pid: 0xabcdef01, friendship: 111 })
-    const after = evolve(before, 388)
+    const after = evolve(before, of(387), of(388))
     expect(after.species).toBe(388)
-    expect({ ...after, species: before.species }).toEqual(before)
+    expect({ ...after, species: before.species, hp: before.hp }).toEqual(before)
+  })
+
+  it('진화하면 최대 체력이 는 만큼 체력도 는다 (`Pokemon_CalcStats`)', () => {
+    // 실측(2026-09-17 `_candy42`): 찌르꼬 L14 38/38이 찌르버드가 되고 38/43으로 남았다
+    const base = mon(396, { level: 14 })
+    const full = { ...base, hp: statsOf(base, of(396)).hp }
+    const grown = evolve(full, of(396), of(397))
+    expect(grown.hp).toBe(statsOf(grown, of(397)).hp)
+    const hurt = evolve({ ...full, hp: 5 }, of(396), of(397))
+    expect(hurt.hp).toBe(5 + statsOf(grown, of(397)).hp - full.hp)
+    // 쓰러진 마리는 그대로 0이다
+    expect(evolve({ ...full, hp: 0 }, of(396), of(397)).hp).toBe(0)
+  })
+
+  it('체력 옮기기 — 껍질몬은 서 있으면 1, 쓰러졌으면 0', () => {
+    expect(carriedHp(30, 40, 1)).toBe(1)
+    expect(carriedHp(0, 40, 1)).toBe(0)
+    // 옛 최대가 0인 갓 만든 개체만 가득 채운다
+    expect(carriedHp(0, 0, 25)).toBe(25)
+    // 셈한 값이 딱 0이면 원작은 체력 칸에 안 쓴다 — 옛 체력이 남는다
+    expect(carriedHp(5, 45, 40)).toBe(5)
+  })
+
+  it('지닌 도구로 건 진화는 그 도구를 쓴다 — 다른 갈래는 그대로 쥔다', () => {
+    const night = of(207).evolutions.find((e) => e.method === Evo.LEVEL_WITH_HELD_ITEM_NIGHT)!
+    const fang = mon(207, { heldItem: night.param })
+    expect(evolve(fang, of(207), of(night.to), Evo.LEVEL_WITH_HELD_ITEM_NIGHT).heldItem).toBe(0)
+    const day = all.flatMap((s) => s.evolutions.filter((e) => e.method === Evo.LEVEL_WITH_HELD_ITEM_DAY)
+      .map((e) => ({ from: s.id, e })))[0]!
+    expect(evolve(mon(day.from, { heldItem: day.e.param }), of(day.from), of(day.e.to),
+      Evo.LEVEL_WITH_HELD_ITEM_DAY).heldItem).toBe(0)
+    const coat = of(123).evolutions.find((e) => e.method === Evo.TRADE_WITH_HELD_ITEM)!
+    expect(evolve(mon(123, { heldItem: coat.param }), of(123), of(coat.to),
+      Evo.TRADE_WITH_HELD_ITEM).heldItem).toBe(0)
+    // 레벨로 진화한 모부기는 쥔 것을 그대로 쥔다
+    const plain = of(387).evolutions[0]!
+    expect(evolve(mon(387, { heldItem: 155 }), of(387), of(plain.to), Evo.LEVEL).heldItem).toBe(155)
   })
 
   it('진화한 자리에서 새 종족의 기술을 배운다', () => {

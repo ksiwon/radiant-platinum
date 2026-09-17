@@ -332,7 +332,9 @@ export function tradeEvolutionItems(all: Iterable<Species>): Set<number> {
 
 /**
  * 진화한 몸. **개체를 갈아 끼우지 않고 종족만 바꾼다** — 개체값도 성격도
- * 경험치도 그대로다.
+ * 경험치도 그대로다. 체력만 새 최대에 맞춰 옮긴다 (`carriedHp`).
+ *
+ * `from`·`to`는 **폼까지 읽은** 종족이다 — 도롱마담은 옷감마다 능력치가 다르다.
  *
  * ⚠️ 레벨은 다시 안 센다. 4세대는 종족이 바뀌어도 누적 경험치가 정본이고
  * 성장 곡선이 다른 종으로 진화하는 경우가 없다.
@@ -341,9 +343,47 @@ export function tradeEvolutionItems(all: Iterable<Species>): Set<number> {
  * 그대로 도롱마담의 옷감이 된다 — 원작도 폼 칸을 안 건드린다. 수컷이
  * 나메일로 진화하면 그쪽은 폼이 하나뿐이라 읽는 자리에서 0으로 접힌다
  * (`sanitizeForm`)
+ *
+ * `method`는 걸린 갈래다. **지닌 도구로 건 진화는 그 도구를 쓴다**
+ * (`Evolution_ProcessEvolutionEffects`) — 교환·낮·밤 세 갈래가 `MON_DATA_HELD_ITEM`을
+ * 0으로 지운다. 안 지우면 예리한이빨을 쥔 글라이거가 진화한 뒤에도 이빨을 쥐고 있다
  */
-export function evolve(mon: PokemonInstance, to: number): PokemonInstance {
-  return { ...mon, species: to }
+export function evolve(
+  mon: PokemonInstance, from: Species, to: Species, method?: EvoMethod,
+): PokemonInstance {
+  const next = { ...mon, species: to.id }
+  const heldItem = method !== undefined && CONSUMES_HELD_ITEM.has(method) ? 0 : mon.heldItem
+  return { ...next, heldItem, hp: carriedHp(mon.hp, statsOf(mon, from).hp, statsOf(next, to).hp) }
+}
+
+/** 진화하면서 지닌 도구를 쓰는 갈래 (`Evolution_ProcessEvolutionEffects`) */
+const CONSUMES_HELD_ITEM: ReadonlySet<EvoMethod> = new Set<EvoMethod>([
+  Evo.TRADE_WITH_HELD_ITEM,
+  Evo.LEVEL_WITH_HELD_ITEM_DAY,
+  Evo.LEVEL_WITH_HELD_ITEM_NIGHT,
+])
+
+/**
+ * 능력치를 다시 센 뒤의 체력 (`Pokemon_CalcStats` 끝).
+ *
+ * 진화는 종족을 바꾸고 바로 `Pokemon_CalcLevelAndStats`를 부른다
+ * (`evolution.c`). 그 루틴이 체력을 이렇게 옮긴다 —
+ *
+ * - 서 있는 마리: `hp += 새 최대 − 옛 최대`. 가득이었으면 가득으로 남는다
+ * - 쓰러진 마리: 0 그대로 (옛 최대가 0인 갓 만든 개체만 가득 채운다)
+ * - 껍질몬(최대 1): 서 있으면 1
+ *
+ * 원작은 셈한 값이 **0이 아닐 때만** 체력 칸에 쓴다(`if (monCurrentHp)`). 그래서
+ * `hp + 차이`가 딱 0이면 옛 체력이 그대로 남는다. 음수는 원작에서 부호 없는 칸으로
+ * 넘쳐 버리는데 진화·레벨업으로는 최대 체력이 줄지 않으므로 1로 막아 둔다
+ */
+export function carriedHp(hp: number, oldMax: number, newMax: number): number {
+  if (hp === 0 && oldMax !== 0) return 0
+  if (newMax === 1) return 1
+  if (hp === 0) return newMax
+  const got = hp + (newMax - oldMax)
+  if (got === 0) return hp
+  return Math.max(1, got)
 }
 
 /**

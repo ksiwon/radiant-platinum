@@ -27,6 +27,7 @@ import { isNight } from '../../engine/map/timeOfDay'
 import {
   EvoClass,
   evolutionTarget,
+  carriedHp,
   evolve,
   ITEM_POKE_BALL,
   movesOnEvolve,
@@ -37,6 +38,7 @@ import {
 import {
   genderOf,
   isShiny,
+  maxHp,
   maxPpOf,
   PARTY_MAX,
   type PokemonInstance,
@@ -196,8 +198,8 @@ export function EvolutionScreen() {
         return
       }
 
-      const after = evolve(before, s.evo.to)
-      const grown = tables.species.get(s.evo.to)
+      const grown = tables.species.of({ species: s.evo.to, form: before.form })
+      const after = evolve(before, tables.species.of(before), grown, s.evo.method)
       const ppOf = (move: number): number =>
         maxPpOf({ move, pp: 0, ppUps: 0 }, tables.moves.get(move).pp)
       const taught = learnMoves(after, movesOnEvolve(grown, after.level), ppOf)
@@ -220,6 +222,8 @@ export function EvolutionScreen() {
         party.push({
           ...taught.mon,
           species: SPECIES_SHEDINJA,
+          // 원작도 껍질몬의 능력치를 다시 센다 — 최대 1이라 서 있으면 1이다
+          hp: carriedHp(taught.mon.hp, maxHp(taught.mon, grown), 1),
           nickname: null,
           ball: ITEM_POKE_BALL,
           heldItem: 0,
