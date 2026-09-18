@@ -21,8 +21,11 @@
 // 「벽이 있다」로 세면 그 위가 통째로 뚫린 채 지나간다. 어디까지 덮는지는
 // `gapsOn`이 가른다.
 //
-// ⚠️ **출입구는 비운다.** 문 앞 칸(워프)에 벽을 세우면 나갈 수가 없고, 화면에도
-// 문이 벽으로 막혀 보인다.
+// ⚠️ **출입구는 지나다니는 띠만 비운다.** 문 앞 칸(워프)을 바닥부터 막으면 나갈
+// 수가 없고 화면에도 문이 벽으로 막혀 보인다. 그렇다고 통째로 비우면 **문 위가
+// 뚫린다** — 백화점 2층(137) 워프 0번에 서서 뒤를 보면 여덟 방위 중 셋이 온통
+// 검은 화면이었다. 문 높이는 지어내지 않고 **원작이 그 모서리에 세워 둔 면의
+// 위**를 문 위로 본다.
 //
 // 그림은 **그 방의 벽에서 베낀다.** `plates.floorPatch`의 옆면과 같은 길이다 —
 // 제일 가까운 세로 삼각형의 서브메시와 UV 평면을 그대로 쓰고, UV는 타일 안쪽으로
@@ -566,7 +569,7 @@ function nearestWall(tris: readonly WallTri[], x: number, z: number): WallTri | 
 /**
  * 바닥이 끝나는데 벽이 없는 자리에 벽을 세운다. 세울 것이 없으면 `null`.
  *
- * @param door 그 칸이 출입구인가 (월드 타일). 여기는 비운다
+ * @param door 그 칸이 출입구인가 (월드 타일). 바닥에 닿는 띠만 비운다
  * @param origin 청크가 놓인 자리. `door`에 월드 좌표로 물으려고 받는다
  */
 export function roomWalls(
@@ -629,8 +632,25 @@ export function roomWalls(
         ? [[y, y + Math.max(MIN_HEIGHT, top - y)] as Band]
         : gapsOn(cover.get(edge), y, top, besideKeys(edge).some(stands))
       if (gaps.length === 0) continue
-      // 출입구는 비운다 — 막으면 못 나가고 문이 벽으로 덮인다
-      if (door(tx + origin.x, tz + origin.z)) continue
+      /**
+       * 출입구는 **바닥에 닿는 띠만** 비운다 — 지나다니는 자리가 그것이다.
+       * 막으면 못 나가고 문이 벽으로 덮인다.
+       *
+       * ⚠️ **문간을 통째로 비우면 그 위가 뚫린다.** 워프 0번 칸에 서서 1인칭으로
+       * 뒤를 보면 여덟 방위 중 셋이 **온통 검은 화면**이었다 (색 43 · 밝기 0.3 —
+       * 그 43색은 「조작?」 단추가 전부다). 백화점 2층(137)만이 아니라 연고 357 ·
+       * 무쇠탄 47 · 전룡 154가 다 그랬다.
+       *
+       * 문 높이를 지어내지 않는다. **원작이 그 모서리에 세워 둔 면의 위**가 문
+       * 위이고, 거기 남는 띠만 메운다. 그래서 원작이 문 위에 인방을 남긴 방에서만
+       * 는다 — 실측(`node tools/audit/holes.mjs --eyes`, 1인칭 24방향 · 광선
+       * 2808): 도서관(38) 출입구 광선 **1130 → 941**. 원작이 그 자리에 아무것도
+       * 안 세운 방(백화점 2층)은 바닥에 닿는 띠 하나뿐이라 예전처럼 한 장도 안
+       * 선다 — 1130 그대로다. 그 방의 앞쪽은 벽이 아니라 **열린 층**이다
+       */
+      const doorway = door(tx + origin.x, tz + origin.z)
+      const bands = doorway ? gaps.filter((b) => b[0] > y + SEAM) : gaps
+      if (bands.length === 0) continue
 
       const src = nearestWall(tris, tx + 0.5, tz + 0.5)
       if (!src) continue
@@ -661,7 +681,7 @@ export function roomWalls(
       const shiftZ = Math.floor(src.cz) - tz
       const uvAt = (px: number, py: number, pz: number): [number, number] =>
         at(px + shiftX, src.y0 + (py - y), pz + shiftZ)
-      for (const [lo, hi] of gaps) {
+      for (const [lo, hi] of bands) {
         const face: [number, number, number][] = [
           [p0x, lo, p0z], [p1x, lo, p1z], [p1x, hi, p1z],
           [p0x, lo, p0z], [p1x, hi, p1z], [p0x, hi, p0z],

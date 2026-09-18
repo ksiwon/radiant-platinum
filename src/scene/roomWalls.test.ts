@@ -109,6 +109,17 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
     expect(built!.count, '남쪽 한 칸이 빠져 여덟이다').toBe(8)
   })
 
+  it('문 위는 메운다 — 비우는 것은 지나다니는 띠뿐이다', () => {
+    // 북쪽 벽이 무릎 높이(0~1.5)까지만 덮는 방. 그 위는 어느 칸에서든 구멍이다
+    const low = (): Split => room(3, 3, true, [[0, 1.5]])
+    const open = roomWalls(low(), NO_DOOR)!
+    const door = roomWalls(low(), (tx, tz) => tx === 1 && tz === 0)!
+    expect(door.count, '문간이라고 그 위까지 빼지 않는다').toBe(open.count)
+    expect(northBand(door), '문 위 띠만 선다 — 지나다니는 발치는 비었다')
+      .toEqual(northBand(open))
+    expect(northBand(door)[0], '바닥에 닿는 띠는 안 세운다').toBeGreaterThan(1.4)
+  })
+
   it('베낄 벽이 하나도 없으면 안 지어낸다', () => {
     expect(roomWalls(room(3, 3, false), NO_DOOR),
       '벽 그림이 없는 방에 우리가 벽을 만들어 붙이지 않는다').toBeNull()
