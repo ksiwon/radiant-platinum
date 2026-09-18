@@ -3,8 +3,12 @@ import { chromium } from 'playwright'
 import { observeLossNotice } from './lossNotice.mjs'
 
 let browser
-beforeAll(async () => { browser = await chromium.launch() })
-afterAll(async () => { await browser?.close() })
+// ⚠️ **진짜 브라우저를 여닫으므로 훅 시한을 따로 준다.** 한가한 기계에서 닫기는 0.1초인데
+// `pnpm check` 전체가 병렬로 돌고 옆에서 다른 Playwright가 돌면 기본 10초를 넘겨 이 파일만
+// 떨어졌다 — 시험 다섯은 다 통과한 채로 (실측 2026-09-18 · `.audit/tmp/closeTime.mjs`)
+const BROWSER_HOOK_MS = 60_000
+beforeAll(async () => { browser = await chromium.launch() }, BROWSER_HOOK_MS)
+afterAll(async () => { await browser?.close() }, BROWSER_HOOK_MS)
 
 it('preserves visible notice text after automatic recovery removes it', async () => {
   const page = await browser.newPage()
