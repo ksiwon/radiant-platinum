@@ -7,14 +7,15 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { it, expect, beforeAll } from 'vitest'
 import { MapGrid, type MatrixMeta } from '../engine/map/grid'
+import { heightField } from '../engine/map/height'
 import { Behavior, isWater } from '../engine/map/zone'
-import { waterField, waveAt } from './Water'
+import { LIFT, waterField, waveAt } from './Water'
 import { waterColors } from './plates'
 import type { TexSheet } from './chunkMesh'
 import { withData } from '../data/romData.testkit'
 
 const DATA = resolve(__dirname, '../../public/data')
-const maybe = withData('matrices/0.bin')
+const maybe = withData('matrices/0.bin', 'bdhc.bin', 'bdhc.json')
 
 function detach(p: string): ArrayBuffer {
   const buf = readFileSync(resolve(DATA, p))
@@ -25,6 +26,21 @@ maybe('물', () => {
   let grid: MapGrid
 
   beforeAll(() => {
+    // 높이 판을 안 얹으면 `heightAtWorld`가 전부 null이라 물가가 안 보인다
+    const meta = JSON.parse(readFileSync(resolve(DATA, 'bdhc.json'), 'utf8')) as {
+      planes: [number, number, number, number][]
+      chunks: [number, number][]
+      plateCount: number
+      fixedPerTile: number
+    }
+    const blob = detach('bdhc.bin')
+    heightField.data = {
+      planes: meta.planes,
+      chunks: meta.chunks,
+      coords: new Int32Array(blob, 0, meta.plateCount * 4),
+      refs: new Uint16Array(blob, meta.plateCount * 16, meta.plateCount),
+      fixedPerTile: meta.fixedPerTile,
+    }
     grid = new MapGrid(
       JSON.parse(readFileSync(resolve(DATA, 'matrices/0.json'), 'utf8')) as MatrixMeta,
       new Uint16Array(detach('matrices/0.bin')),
@@ -95,6 +111,56 @@ maybe('물', () => {
     }
     expect(hi).toBeLessThan(0.12)
     expect(hi).toBeGreaterThan(0.03)
+    // 골이 원래 물 그림 아래로 내려가면 그 자리만 지지직거린다
+    expect(hi).toBeLessThan(LIFT)
+  })
+
+  it('물가 모서리가 뭍 높이를 안 받는다', () => {
+    // 모서리를 `heightAtWorld(x, z)`에 그대로 물으면 남동쪽 한 칸만 보므로 기슭에서
+    // 뭍 높이가 들어온다. 그러면 수면이 못 바닥 아래로 꺼져 바닥이 비어져 나온다
+    const NB = [[0, 0], [-1, 0], [0, -1], [-1, -1]] as const
+    for (const ci of [238, grid.chunkIndexAt(110, 892)]) {
+      const { grid: pos } = waterField(grid, ci, 1)
+      let checked = 0
+      for (let i = 0; i < pos.length; i += 3) {
+        const x = pos[i]!, y = pos[i + 1]!, z = pos[i + 2]!
+        const wet: number[] = []
+        for (const [dx, dz] of NB) {
+          if (!isWater(grid.behavior(x + dx, z + dz))) continue
+          const h = grid.heightAtWorld(x + dx + 0.5, z + dz + 0.5)
+          if (h !== null) wet.push(h)
+        }
+        expect(wet.length, `${String(x)},${String(z)}`).toBeGreaterThan(0)
+        expect(y, `${String(x)},${String(z)}`).toBe(Math.min(...wet))
+        checked += 1
+      }
+      expect(checked).toBeGreaterThan(40)
+    }
+  })
+
+  it('창을 넓혀도 같은 모서리는 같은 높이다 — 이음매가 안 생긴다', () => {
+    const ci = grid.chunkIndexAt(110, 892)
+    const height = (radius: number) => {
+      const { grid: pos } = waterField(grid, ci, radius)
+      const m = new Map<string, number>()
+      for (let i = 0; i < pos.length; i += 3) m.set(`${String(pos[i])},${String(pos[i + 2])}`, pos[i + 1]!)
+      return m
+    }
+    const near = height(0), far = height(1)
+    expect(near.size).toBeGreaterThan(0)
+    for (const [k, y] of near) expect(far.get(k), k).toBe(y)
+  })
+
+  it('떡잎 연못 수면이 한 높이로 평평하다', () => {
+    // 실측: 칸 108–115 × 891–895가 물 0.50, 남쪽 잔디가 0.00이다. 고치기 전에는
+    // 남쪽 모서리 아홉이 0.00으로 꺼졌다
+    const { grid: pos } = waterField(grid, grid.chunkIndexAt(110, 892), 0)
+    const pond = []
+    for (let i = 0; i < pos.length; i += 3) {
+      if (pos[i]! >= 108 && pos[i]! <= 116 && pos[i + 2]! >= 891 && pos[i + 2]! <= 896) pond.push(pos[i + 1]!)
+    }
+    expect(pond.length).toBe(54)
+    expect(new Set(pond)).toEqual(new Set([0.5]))
   })
 
   it('법선이 물결 기울기와 맞다', () => {

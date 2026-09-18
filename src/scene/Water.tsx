@@ -32,8 +32,13 @@ const WAVES: readonly (readonly [number, number, number, number])[] = [
   [0.055, 5.5, 0.42, 0.0],
   [0.032, 2.9, 0.63, 2.1],
 ]
-/** 물 면을 지면에서 이만큼 띄운다 (타일). 원작 물 그림과 z-파이팅을 피한다 */
-const LIFT = 0.045
+/**
+ * 물 면을 지면에서 이만큼 띄운다 (타일). 원작 물 그림과 z-파이팅을 피한다.
+ *
+ * **물결 진폭 합(0.055 + 0.032 = 0.087)보다 커야 한다** — 작으면 골에서 수면이
+ * 원래 물 그림 아래로 0.042타일 내려가 그 자리만 지지직거린다
+ */
+export const LIFT = 0.09
 
 export interface WaterField {
   /** 정점 자리 `[x, 바닥 높이, z]`가 이어진 것 */
@@ -48,7 +53,14 @@ export interface WaterField {
  * 창 안의 물 면.
  *
  * 타일마다 판을 따로 두지 않고 **모서리를 공유한다** — 안 그러면 이웃한 타일의
- * 물결이 어긋나서 격자 선이 보인다
+ * 물결이 어긋나서 격자 선이 보인다.
+ *
+ * ⚠️ **모서리 높이는 물 칸에서만 받는다.** 모서리 자리를 그대로
+ * `heightAtWorld(x, z)`에 물으면 `Math.floor`가 **남동쪽 한 칸**을 고르므로, 그
+ * 칸이 뭍인 기슭에서는 모서리가 뭍 높이를 받는다. 실측(떡잎 연못 108–115 ×
+ * 891–895, 물 0.50 · 남쪽 잔디 0.00): 정점 54개 중 9개가 0.50타일 꺼져서 수면이
+ * 못 바닥 아래로 내려갔고, 바닥이 물 위로 풀빛 삼각형으로 비어져 나왔다.
+ * 무쇠시티 44:750은 582개 중 42개(최대 1.00타일).
  */
 export function waterField(
   grid: MapGrid, chunkIndex: number, radius: number,
@@ -58,13 +70,29 @@ export function waterField(
   const at = new Map<number, number>()
   const pos: number[] = []
   const index: number[] = []
+  /**
+   * 모서리에 닿은 **네 칸 중 물인 것**의 높이 중 제일 낮은 것.
+   *
+   * 창 안의 칸만 훑으면 창 가장자리에서 답이 달라져 **창을 옮길 때 이음매가
+   * 생긴다** — 네 칸을 직접 묻는다
+   */
+  const heightAt = (x: number, z: number): number => {
+    let low = null
+    for (const [dx, dz] of [[0, 0], [-1, 0], [0, -1], [-1, -1]] as const) {
+      if (!isWater(grid.behavior(x + dx, z + dz))) continue
+      // 칸 한가운데에 물어야 판이 물 칸의 것으로 떨어진다
+      const h = grid.heightAtWorld(x + dx + 0.5, z + dz + 0.5)
+      if (h !== null && (low === null || h < low)) low = h
+    }
+    return low ?? 0
+  }
   const corner = (x: number, z: number): number => {
     const key = x * 4096 + z
     let got = at.get(key)
     if (got === undefined) {
       got = pos.length / 3
       at.set(key, got)
-      pos.push(x, grid.heightAtWorld(x, z) ?? 0, z)
+      pos.push(x, heightAt(x, z), z)
     }
     return got
   }
