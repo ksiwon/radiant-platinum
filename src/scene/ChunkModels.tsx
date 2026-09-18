@@ -20,7 +20,7 @@ import {
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import {
-  cachedSplit, canBorrowFloor, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites,
+  cachedSplit, canBorrowFloor, cellKey, cutoutGroups, floorPatch, floorSource, flowerColors, flowerSites,
   grassColors, groundRank, pickGround,
   plateColors, plateLumps, rockSites, shiftFloors, treeSites, trunkNudge, tuftTextures,
   waterColors,
@@ -45,7 +45,7 @@ import { bestSet, lendersFor, lendKey, missingIn, pickSheet } from './chunkSheet
 import { planChunk, planterGroupOf, quadStarts } from './visual/chunkPlan'
 import { Planters, type PlanterGroup } from './visual/Planters'
 import { recipeMode, VISUAL_RECIPES } from './visual/recipes'
-import { crossCards } from './visual/propPlan'
+import { crossCards, dropClaims, propTree, shellBody, standProp, treeClaims, type PropTree } from './visual/propPlan'
 import { noteVisualDecisions } from './visual/readiness'
 import type { PartDecision } from './visual/types'
 import { isFeaturePlacement } from './movingProps'
@@ -355,6 +355,22 @@ function cachedShells(
   return made
 }
 
+/**
+ * 청크의 십자 카드. 소품의 `crossPropCache`와 같은 까닭으로 **안 버린다** — 합친
+ * 기하가 좌표를 복사해 가므로 이 사본은 배치와 수명이 엮이지 않는다
+ */
+const crossChunkCache = new Map<string, BufferGeometry | null>()
+
+function cachedCrossChunk(
+  key: string, mesh: ChunkMesh, sheet: TexSheet, land: number, set: number,
+): BufferGeometry | null {
+  const hit = crossChunkCache.get(key)
+  if (hit !== undefined) return hit
+  const made = crossCards(mesh, sheet, land, VISUAL_RECIPES, recipeMode(), 'chunk', set)
+  crossChunkCache.set(key, made)
+  return made
+}
+
 function cachedFloors(
   key: string, mesh: ChunkMesh, split: ReturnType<typeof cachedSplit>,
 ): FloorSource {
@@ -421,6 +437,8 @@ interface Piece {
   source: FloorSource
   /** 세워 놓은 판(울타리·표지판). 나무가 비켜설 자리를 여기서도 받는다 */
   shells: CardShells | null
+  /** 십자로 한 벌 더 세우는 카드 (`visual/propPlan.crossCards`) — 화분 나무 */
+  cross: BufferGeometry | null
   originX: number
   originZ: number
   /** 이 청크를 그리는 묶음 — 대개 현재 묶음이고, 모자라면 제 집 묶음이다 (`chunkSheets`) */
@@ -511,8 +529,10 @@ const backCache = new Map<number, Back>()
 function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
   const hit = backCache.get(id)
   if (hit !== undefined) return hit
-  const paint = shellPaint(mesh, sheet)
-  const band = wallStrip(mesh, sheet, wallSource(mesh, paint))
+  // 세울 카드는 빼고 센다 — 안 빼면 눕힌 자리에 비석이 한 장 더 선다 (`propPlan.shellBody`)
+  const body = shellBody(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  const paint = shellPaint(body, sheet)
+  const band = wallStrip(body, sheet, wallSource(body, paint))
   let strip: Texture | null = null
   if (band) {
     // 폭 1텍셀 × 높이 h. 세로만 늘어나므로 가로 물림은 뜻이 없다
@@ -530,7 +550,7 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
     strip.needsUpdate = true
   }
   const made: Back = {
-    geometry: shellPlates(mesh, paint),
+    geometry: shellPlates(body, paint),
     strip,
     spec: band ? mesh.materials[band.group] ?? null : null,
   }
@@ -564,6 +584,40 @@ function cachedCrossProp(id: number, mesh: ChunkMesh, sheet: TexSheet | null): B
   return made
 }
 
+/**
+ * 눕힌 카드를 세운 몸통 (`visual/propPlan.standProp`) — 묘비·체육관 석상·조각상.
+ * 모델마다 하나고 안 버린다 (`crossPropCache`와 같은 까닭)
+ */
+const stoodPropCache = new Map<number, BufferGeometry | null>()
+
+function cachedStoodProp(id: number, mesh: ChunkMesh, sheet: TexSheet | null): BufferGeometry | null {
+  const hit = stoodPropCache.get(id)
+  if (hit !== undefined) return hit
+  const made = standProp(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  stoodPropCache.set(id, made)
+  return made
+}
+
+/**
+ * 잎 카드를 입체 나무로 바꾼 소품 — 꿀나무 (`visual/propPlan.propTree`).
+ * 몸통은 잎 카드를 접어 뺀 것이고, 나무는 `Foliage`가 세운다
+ */
+const treePropCache = new Map<number, { body: BufferGeometry, tree: PropTree } | null>()
+
+function cachedTreeProp(
+  id: number, mesh: ChunkMesh, sheet: TexSheet | null,
+): { body: BufferGeometry, tree: PropTree } | null {
+  const hit = treePropCache.get(id)
+  if (hit !== undefined) return hit
+  const tree = propTree(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  const made = tree === null ? null : {
+    body: dropClaims(mesh, treeClaims(mesh, sheet, id, VISUAL_RECIPES, recipeMode())).geometry,
+    tree,
+  }
+  treePropCache.set(id, made)
+  return made
+}
+
 function cachedMergedProp(
   id: number, mesh: BufferGeometry, back: BufferGeometry | null, cross: BufferGeometry | null,
   materials: Material[],
@@ -573,6 +627,29 @@ function cachedMergedProp(
   const made = back === null && cross === null
     ? null : mergeByMaterial([mesh, back, cross], materials)
   mergedPropCache.set(id, made)
+  return made
+}
+
+/** 그릴 몸통 — 세운 카드(`cachedStoodProp`) · 잎 카드를 뺀 것(`cachedTreeProp`) · 원본 */
+function bodyOf(id: number, mesh: ChunkMesh, sheet: TexSheet | null): BufferGeometry {
+  return cachedStoodProp(id, mesh, sheet) ?? cachedTreeProp(id, mesh, sheet)?.body ?? mesh.geometry
+}
+
+/**
+ * 그 몸통을 든 모델. 바뀐 것이 없으면 **원본 그대로**다 — 새 객체를 주면 애니 소품이
+ * 노드마다 다시 쪼갠다 (`AnimatedProp`의 `splitByNode`가 `mesh`에 걸려 있다).
+ *
+ * ⚠️ **관절 애니 소품은 합친 몸통을 안 쓴다** — 원본 모델을 노드마다 쪼개 그린다. 꿀나무
+ * (소품 26 · 노드 넷)가 그래서 합친 몸통만 바꿨을 때 옛 잎 판이 그대로 섰다 (실측 `fp-honey`)
+ */
+const bodyMeshCache = new Map<number, ChunkMesh>()
+
+function bodyMesh(id: number, mesh: ChunkMesh, sheet: TexSheet | null): ChunkMesh {
+  const hit = bodyMeshCache.get(id)
+  if (hit !== undefined) return hit
+  const geometry = bodyOf(id, mesh, sheet)
+  const made = geometry === mesh.geometry ? mesh : { ...mesh, geometry }
+  bodyMeshCache.set(id, made)
   return made
 }
 
@@ -626,6 +703,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   const [flowers, setFlowers] = useState<FlowerField | null>(null)
   const [water, setWater] = useState<WaterField | null>(null)
   const [props, setProps] = useState<Prop[]>([])
+  /** 소품이 세우는 입체 나무 — 꿀나무 (`cachedTreeProp`) */
+  const [propTrees, setPropTrees] = useState<FoliageGroup[]>([])
   /** 소품 애니 표. 못 받으면 소품이 지금까지처럼 가만히 선다 */
   const anims = usePropAnimSet(loadPropAnimSet)
   /**
@@ -858,6 +937,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             source: cachedFloors(key, mesh, split),
             shells: cachedShells(key, mesh, cutout, split, pSheet,
               hold === undefined || hold.size === 0 ? gone : new Set([...gone, ...hold])),
+            // 계획이 없으면 걸 레시피도 없다 — 청크마다 조각을 다시 세지 않는다
+            cross: vp === null ? null : cachedCrossChunk(key, mesh, pSheet, c.land, pSet),
             originX: c.mx * CHUNK_TILES + CHUNK_TILES / 2,
             originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
             sheet: pSheet,
@@ -1075,7 +1156,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // ⚠️ **방 벽은 안 합친다.** 나머지 셋은 그림자를 던지는데 방 벽은
             // 받기만 한다 — 합치면 안 보이는 앞벽이 방 안에 그림자를 드리운다
             merged: mergeByMaterial(
-              [split.geometry, floor?.geometry, p.shells?.geometry], materials),
+              [split.geometry, floor?.geometry, p.shells?.geometry, p.cross], materials),
           }
           // ⚠️ **만들자마자 적는다** (§6). 다음 조각에서 터지면 여기까지가
           // 이 건이 만든 것이고, 놓는 자는 실패 경계다
@@ -1236,6 +1317,28 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           markBox(blockers, b.x + x0, b.x + x1, b.z + z0, b.z + z1)
         }
         setPropSolid(blockers)
+        // 잎 카드를 입체 나무로 바꾼 소품의 나무 자리. 몸통과 **같은 변환**으로 옮긴다
+        // (위 상자와 같은 Y축 회전 · 크기)
+        const trees = new Map<string, FoliageGroup>()
+        for (const b of spots) {
+          const got = byId.get(b.model)
+          const made = got ? cachedTreeProp(got.id, got.mesh, got.sheet) : null
+          if (!made) continue
+          const t = made.tree
+          const a = b.rot?.[1] ?? 0
+          const [sx, sy, sz] = [b.scale?.[0] ?? 1, b.scale?.[1] ?? 1, b.scale?.[2] ?? 1]
+          const x = b.x + (t.x * sx) * Math.cos(a) + (t.z * sz) * Math.sin(a)
+          const z = b.z - (t.x * sx) * Math.sin(a) + (t.z * sz) * Math.cos(a)
+          const key = `prop${String(got!.id)}`
+          let group = trees.get(key)
+          if (!group) { group = { key, leaf: t.leaf, trunk: t.trunk, items: [] }; trees.set(key, group) }
+          group.items.push([{
+            key: cellKey(Math.floor(x), Math.floor(z)),
+            cell: { minY: b.y + t.minY * sy, maxY: b.y + t.maxY * sy, group: 0 },
+            x, z,
+          }, 0, 0])
+        }
+        setPropTrees([...trees.values()])
         setProps(spots.flatMap((b, i) => {
           const got = byId.get(b.model)
           if (!got) return []
@@ -1264,21 +1367,23 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             index: b.model,
             x: b.x, y: b.y, z: b.z,
             rot: b.rot, scale: b.scale,
-            mesh: got.mesh,
+            // 세운 카드·잎 카드를 뺀 몸통을 애니 소품도 쓴다 (`bodyMesh`)
+            mesh: bodyMesh(got.id, got.mesh, got.sheet),
             sheet: got.sheet,
             // 원작이 안 그린 면을 메운 판. 애니가 도는 소품은 몸통을 노드마다
             // 쪼개므로 합친 기하를 못 쓴다 — 이것만 따로 한 번 더 그린다
             fill: back.geometry,
-            // 몸통과 채운 면을 합친 것. 합칠 것이 없으면 몸통 그대로다
+            // 몸통과 채운 면을 합친 것. 합칠 것이 없으면 몸통 그대로다.
+            // 눕힌 카드를 세운 모델은 세운 몸통을 쓴다 (`cachedStoodProp`)
             geometry: cachedMergedProp(
-              got.id, got.mesh.geometry, back.geometry,
+              got.id, bodyOf(got.id, got.mesh, got.sheet), back.geometry,
               cachedCrossProp(got.id, got.mesh, got.sheet), materials,
-            ) ?? got.mesh.geometry,
+            ) ?? bodyOf(got.id, got.mesh, got.sheet),
             materials,
           }]
         }))
       })
-      .catch(() => { if (alive) setProps([]) })
+      .catch(() => { if (alive) { setProps([]); setPropTrees([]) } })
     return () => { alive = false }
   }, [grid, chunkIndex, radius])
 
@@ -1404,6 +1509,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         색만 가져와 입체로 세운다 (`plates.ts`)
       */}
       <Foliage groups={foliage} ground={groundAt} clear={clearAt} />
+      {/*
+        소품의 잎 카드를 바꾼 입체 나무 — 꿀나무. 비켜설 자리(`clear`)는 안 준다:
+        막힘 상자에 **제 소품**(그루터기)이 들어 있어서 주면 제 자리에서 안 자란다
+      */}
+      <Foliage groups={propTrees} ground={groundAt} />
       {/*
         물가의 바위. 원작은 45°로 눕힌 판 한 장이라(실측 1,001장이 전부 그렇다)
         세우면 새까만 달걀이 물 위에 늘어선다 — 자리와 폭만 가져온다 (`Rocks.tsx`)

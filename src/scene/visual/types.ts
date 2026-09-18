@@ -87,6 +87,12 @@ type GeometryKind =
   | 'tree' | 'building-patch' | 'room-patch'
   /** 원본 카드를 90° 돌려 한 벌 더 (소품의 십자 빌보드 · FP-07) */
   | 'cross-cards'
+  /**
+   * 소품의 **눕힌 카드를 세운다** — 고정 카메라에서 서 보이라고 원작이 뒤로 눕힌
+   * 그림이다(묘비·체육관 석상·조각상). 청크는 `plates.standCutouts`가 45°·63.4°를
+   * 세우지만 소품에는 그 길이 없었다 (FP-07 `tilted` 꼬리)
+   */
+  | 'stand-card'
 
 type MaterialProfile = 'rom-lit' | 'cutout-lit' | 'decal-unlit' | 'water'
 

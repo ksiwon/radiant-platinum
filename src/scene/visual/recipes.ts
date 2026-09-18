@@ -322,13 +322,101 @@ const PLANT01_CROSS: VisualRecipe = {
     within: [0, 0, 16, 32],
     // 선 판만 — 누운 면(90°)은 안 맡는다
     leanDeg: [0, 45],
+  }, {
+    // 같은 나무 카드가 **청크 332**(리조트 별장)에도 두 그루 선다 — 같은 칸·같은 지문
+    // (FP-07 `tilted` 꼬리 · 청크 324는 색 칸만 찍는 화분이라 안 걸린다)
+    kind: 'chunk', tex: 'plant01', pal: 'plant01',
+    regionHashes: ['31186151'],
+    within: [0, 0, 16, 32],
+    leanDeg: [0, 45],
   }],
   provenance: '원본 카드를 그 등줄기(밑동을 지나는 카드 면 안의 기운 선) 둘레로 90° 돌린 사본. 새 좌표·색·그림 없음',
+}
+
+/**
+ * **소품의 눕힌 카드를 세운다** (FP-07 `tilted` 꼬리 · `visual/propPlan.standProp`).
+ *
+ * 원작이 고정 카메라에서 서 보이라고 뒤로 눕힌 **그림 한 장이 곧 그 물건**인 소품이다.
+ * 1인칭에서는 책이 기댄 판이 된다 — 제자리 화면으로 본 셋이다
+ * (`shots/first-person/fp-tail`): 혼잡한 탑 묘비 · 체육관 입구 석상 · 배틀타워 조각상.
+ *
+ * ⚠️ **받침은 안 건드린다.** 석상·조각상의 받침은 진짜 입체고, 조각상 받침의 옆면(15.8°)도
+ * 같은 그림을 쓰지만 `within`·`leanDeg`가 그 면을 뺀다
+ */
+const STAND_SHAPE_PROP = {
+  version: 1,
+  outcome: 'keep',
+  geometry: 'stand-card',
+  materialProfile: 'cutout-lit',
+  anchor: 'source-local',
+  review: 'verified',
+} as const
+
+const STANDING_PROP_CARDS: readonly VisualRecipe[] = [
+  {
+    ...STAND_SHAPE_PROP,
+    id: 'tomb01-stand',
+    semantic: 'sign',
+    selectors: [{
+      kind: 'prop', tex: 'tomb01', pal: 'tomb01',
+      regionHashes: ['2a58c905'], within: [0, 0, 16, 16], leanDeg: [42, 43.5],
+    }],
+    provenance: '혼잡한 탑 묘비 (소품 492 · 배치 57) — 1칸 폭 그림 한 장이 비석 전체다',
+  },
+  {
+    ...STAND_SHAPE_PROP,
+    id: 'gym-obj1-statue',
+    semantic: 'sign',
+    selectors: [{
+      kind: 'prop', tex: 'gym_obj1', pal: 'gym_obj1_pl',
+      // 체육관 다섯 곳의 석상 모델(152·422·504·505·523)이 픽셀까지 같은 그림이다
+      regionHashes: ['63f32386'], within: [0, 0, 32, 32], leanDeg: [35, 59],
+    }],
+    provenance: '체육관 입구 석상 — 받침(입체) 위에 얹은 석상 그림. 받침 앞 모서리에서 선다',
+  },
+  {
+    ...STAND_SHAPE_PROP,
+    id: 'bf-object01-statue',
+    semantic: 'sign',
+    selectors: [{
+      kind: 'prop', tex: 'bf_object01', pal: 'bf_object01',
+      // 칸 아래쪽 띠(v 0.75~)는 받침 면이 찍어 쓰는 색이다 — 조각상 그림만
+      regionHashes: ['b7b228a7'], within: [0, 0, 32, 48], leanDeg: [44.8, 45.2],
+    }],
+    provenance: '배틀타워·배틀프런티어 조각상 (소품 548) — 45°로 눕힌 2칸 폭 그림',
+  },
+]
+
+/**
+ * **꿀나무** (소품 26 · 21그루 · FP-07 `tilted` 꼬리 · `visual/propPlan.propTree`).
+ *
+ * 그루터기 한 장(땅) + **55°로 눕혀 겹쳐 쌓은 잎 뭉치 세 장**이다 — 갈색 칸(26,28~64,64) ·
+ * 황토 칸(0,0~34,30) · 노랑 칸(0,40~26,64). 고정 카메라에서는 둥근 금빛 나무로 보이지만
+ * 1인칭에서는 기운 원판 세 장이다(`shots/first-person/fp-tail/eterna_283_526`).
+ * 세 장을 청크 나무와 같은 입체 나무 하나로 바꾸고 그루터기는 둔다.
+ * 잎 색은 카드마다 가장 많이 찍는 텍셀 (#c6ad39 · #ad9439 · #947b39), 줄기는 그루터기 갈색 #8c6331
+ */
+const HONEY_TREE: VisualRecipe = {
+  id: 'honey-tree',
+  version: 1,
+  semantic: 'tree',
+  outcome: 'replace',
+  geometry: 'tree',
+  materialProfile: 'rom-lit',
+  anchor: 'ground-contact',
+  review: 'verified',
+  selectors: [
+    { kind: 'prop', tex: 'treeeff01', pal: 'treeeff01_pl', regionHashes: ['d3b30bab'], within: [26, 28, 64, 64], leanDeg: [54, 56] },
+    { kind: 'prop', tex: 'treeeff01', pal: 'treeeff01_pl', regionHashes: ['2c83014d'], within: [0, 0, 34, 30], leanDeg: [54, 56] },
+    { kind: 'prop', tex: 'treeeff01', pal: 'treeeff01_pl', regionHashes: ['6adf1b67'], within: [0, 40, 26, 64], leanDeg: [54, 56] },
+  ],
+  provenance: '크기는 잎 카드 더미의 높이, 색은 잎 카드가 찍는 텍셀과 그루터기 칸. 새 색 없음',
 }
 
 export const VISUAL_RECIPES: readonly VisualRecipe[] = [
   IMPED_PLANTER, IMPED_PLANTER_SET0, IMPED_SHRUB, BF_UEKI_SHRUB, IMPED_FENCE,
   IMPED_BOLLARD_CHAIN, IMPED_BOLLARD_GRASS, PLANT01_CROSS, ...STANDING_PROPS,
+  ...STANDING_PROP_CARDS, HONEY_TREE,
 ]
 
 /**

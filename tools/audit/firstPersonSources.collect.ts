@@ -32,7 +32,7 @@ import {
 } from '../../src/scene/plates'
 import { bestSet, lendersFor, lendKey, pickSheet } from '../../src/scene/chunkSheets'
 import { planChunk, quadStarts } from '../../src/scene/visual/chunkPlan'
-import { crossClaims } from '../../src/scene/visual/propPlan'
+import { crossClaims, standClaims, treeClaims } from '../../src/scene/visual/propPlan'
 import { VISUAL_RECIPES } from '../../src/scene/visual/recipes'
 
 const ROOT = resolve(__dirname, '../..')
@@ -435,8 +435,11 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
           const ids = new Set(part.tris.map((t) => recipeAt.get(t)))
           if (ids.size === 1 && !ids.has(undefined)) {
             const row = sources[sources.length - 1]!
-            row.outcome = 'replace:recipe'
-            row.recipe = [...ids][0]!
+            const id = [...ids][0]!
+            // ⚠️ **augment는 교체가 아니다** — 원본이 그대로 서고 사본이 붙는다
+            row.outcome = VISUAL_RECIPES.find((r) => r.id === id)?.geometry === 'cross-cards'
+              ? 'augment:cross-cards' : 'replace:recipe'
+            row.recipe = id
             row.review = 'verified'
           }
         }
@@ -460,6 +463,10 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
         const lumps = plateLumps(mesh, sheet, cutout, pos)
         // 소품에 걸리는 레시피 — 지금은 십자 카드 하나다 (`visual/propPlan`)
         const crossAt = crossClaims(mesh, sheet, id, VISUAL_RECIPES, 'verified')
+        // 눕힌 카드를 세우는 레시피 (`propPlan.standProp`) — 묘비·석상·조각상
+        const standAt = standClaims(mesh, sheet, id, VISUAL_RECIPES, 'verified')
+        // 잎 카드를 입체 나무로 바꾸는 레시피 (`propPlan.propTree`) — 꿀나무
+        const treeAt = treeClaims(mesh, sheet, id, VISUAL_RECIPES, 'verified')
         for (const part of partsOf('prop', id, mesh)) {
           describePart(part, mesh, sheet, cutout, new Set(), new Set(), null, propUse.get(id) ?? 0, `prop${String(id)}`)
           const row = sources[sources.length - 1]!
@@ -471,6 +478,18 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
           if (ids.size === 1 && !ids.has(undefined)) {
             row.outcome = 'augment:cross-cards'
             row.recipe = [...ids][0]!
+            row.review = 'verified'
+          }
+          const treed = new Set(part.tris.map((t) => treeAt.get(t)))
+          if (treed.size === 1 && !treed.has(undefined)) {
+            row.outcome = 'replace:recipe'
+            row.recipe = [...treed][0]!
+            row.review = 'verified'
+          }
+          const stood = new Set(part.tris.map((t) => standAt.get(t)))
+          if (stood.size === 1 && !stood.has(undefined)) {
+            row.outcome = 'stand:card'
+            row.recipe = [...stood][0]!
             row.review = 'verified'
           }
         }
