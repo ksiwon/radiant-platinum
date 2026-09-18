@@ -248,8 +248,87 @@ const IMPED_FENCE: VisualRecipe = {
   provenance: '자리·길이·기둥 간격·높이·색은 원본 판과 울타리 칸 텍셀. 기둥·가로대 깊이는 §6.2 초기값',
 }
 
+/**
+ * **imped 볼라드(말뚝) — 사슬 갈래** (FP-05).
+ *
+ * 묶음 19(`8feb19f7` · 배치 314)는 울타리와 같은 칸을 쓰지만 **가로대가 없다**.
+ * 8텍셀마다 흰 말뚝이 서고 기둥 사이 행 6에 사슬 한 줄, 밑에 넓은 받침이 있다
+ * (텍셀 실측). 파이트에리어·리조트에리어와 228~232번도로에 선다
+ */
+const IMPED_BOLLARD_CHAIN: VisualRecipe = {
+  id: 'imped-bollard-chain',
+  version: 1,
+  semantic: 'bollard',
+  outcome: 'replace',
+  geometry: 'bollard-chain',
+  materialProfile: 'rom-lit',
+  anchor: 'ground-contact',
+  review: 'verified',
+  selectors: [{
+    kind: 'chunk', tex: 'imped', pal: 'imped',
+    regionHashes: ['8feb19f7'],
+    within: [0, 0, 64, 16],
+    leanDeg: [44.8, 45.2],
+  }],
+  provenance: '자리·길이·기둥 간격·높이·사슬 높이·색은 원본 판과 칸 텍셀. 깊이는 §6.2 초기값',
+}
+
+/**
+ * **imped 볼라드 — 풀 갈래** (FP-05).
+ *
+ * 묶음 17(`e3243c1d` · 배치 29)은 사슬이 없고 **기둥 밑을 풀이 덮는다** (행 9~14가
+ * 초록 세 단계고 말뚝마다 무늬가 다르다). 225~227번도로와 서바이벌에리어에 선다
+ */
+const IMPED_BOLLARD_GRASS: VisualRecipe = {
+  ...IMPED_BOLLARD_CHAIN,
+  id: 'imped-bollard-grass',
+  geometry: 'bollard-grass',
+  selectors: [{
+    kind: 'chunk', tex: 'imped', pal: 'imped',
+    regionHashes: ['e3243c1d'],
+    within: [0, 0, 64, 16],
+    leanDeg: [44.8, 45.2],
+  }],
+  provenance: '자리·길이·기둥 간격·높이·색은 원본 판과 칸 텍셀. 풀 덩이 비율은 §6.1 계열의 초기값',
+}
+
+/**
+ * **화분에 심은 작은 나무** (`plant01`) — 나무 카드는 소품 85에만 있다, 배치 191 (FP-07).
+ * 같은 그림을 쓰는 소품 86·522는 오른쪽 색 칸만 찍는 화분이다 (목록 실측).
+ *
+ * 그림 칸(32×32)의 왼쪽 반이 **잎 무성한 나무 한 장**(초록 다섯 · 줄기 갈색 셋)이고,
+ * 오른쪽 띠의 분홍 `#d6639c`·노랑 `#ffbd5a`·청록 `#39ad84`은 **화분 면이 찍어 쓰는 색
+ * 칸**이다 (텍셀 실측). 나무는 한 장이 20° 기울어 서 있을 뿐이라 옆에서 보면 종이다 —
+ * 기준선에서 눈으로 본 결함 「센터 왼쪽 화분 소품이 납작한 판」이 이것이다.
+ *
+ * ⚠️ **나무 칸만 맡는다** (`within` 0,0,16,32 · 선 판만). 화분 윗면은 칸이 오른쪽 띠라
+ * 안 걸린다 — 누운 면까지 90° 돌려 복제하면 같은 높이에 두 장이 겹친다.
+ *
+ * ⚠️ **덩이로 바꾸지 않는다.** 원본을 그대로 두고 **같은 카드를 등줄기 둘레로 90°
+ * 돌려 한 벌 더** 세운다 — 새 색도 새 그림도 없다 (`propPlan` 머리말)
+ */
+const PLANT01_CROSS: VisualRecipe = {
+  id: 'plant01-cross',
+  version: 1,
+  semantic: 'tree',
+  outcome: 'augment',
+  geometry: 'cross-cards',
+  materialProfile: 'cutout-lit',
+  anchor: 'source-local',
+  review: 'verified',
+  selectors: [{
+    kind: 'prop', tex: 'plant01', pal: 'plant01',
+    regionHashes: ['31186151'],
+    within: [0, 0, 16, 32],
+    // 선 판만 — 누운 면(90°)은 안 맡는다
+    leanDeg: [0, 45],
+  }],
+  provenance: '원본 카드를 그 등줄기(밑동을 지나는 카드 면 안의 기운 선) 둘레로 90° 돌린 사본. 새 좌표·색·그림 없음',
+}
+
 export const VISUAL_RECIPES: readonly VisualRecipe[] = [
-  IMPED_PLANTER, IMPED_PLANTER_SET0, IMPED_SHRUB, BF_UEKI_SHRUB, IMPED_FENCE, ...STANDING_PROPS,
+  IMPED_PLANTER, IMPED_PLANTER_SET0, IMPED_SHRUB, BF_UEKI_SHRUB, IMPED_FENCE,
+  IMPED_BOLLARD_CHAIN, IMPED_BOLLARD_GRASS, PLANT01_CROSS, ...STANDING_PROPS,
 ]
 
 /**

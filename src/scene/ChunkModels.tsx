@@ -45,6 +45,7 @@ import { bestSet, lendersFor, lendKey, missingIn, pickSheet } from './chunkSheet
 import { planChunk, planterGroupOf, quadStarts } from './visual/chunkPlan'
 import { Planters, type PlanterGroup } from './visual/Planters'
 import { recipeMode, VISUAL_RECIPES } from './visual/recipes'
+import { crossCards } from './visual/propPlan'
 import { noteVisualDecisions } from './visual/readiness'
 import type { PartDecision } from './visual/types'
 import { isFeaturePlacement } from './movingProps'
@@ -546,12 +547,31 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
  */
 const mergedPropCache = new Map<number, BufferGeometry | null>()
 
+/**
+ * 십자로 한 벌 더 세우는 카드 (`visual/propPlan.crossCards` · FP-07).
+ *
+ * ⚠️ **모델마다 하나고 안 버린다** — 합친 기하(`mergedPropCache`)와 같은 자리에
+ * 산다. 배치마다 만들면 놓는 자를 새로 정해야 하는데, 이 파생은 원본 attribute를
+ * **안 나눠 쓰므로**(좌표를 새로 만든다) 원본을 버릴 때 같이 버릴 수도 없다
+ */
+const crossPropCache = new Map<number, BufferGeometry | null>()
+
+function cachedCrossProp(id: number, mesh: ChunkMesh, sheet: TexSheet | null): BufferGeometry | null {
+  const hit = crossPropCache.get(id)
+  if (hit !== undefined) return hit
+  const made = crossCards(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  crossPropCache.set(id, made)
+  return made
+}
+
 function cachedMergedProp(
-  id: number, mesh: BufferGeometry, back: BufferGeometry | null, materials: Material[],
+  id: number, mesh: BufferGeometry, back: BufferGeometry | null, cross: BufferGeometry | null,
+  materials: Material[],
 ): BufferGeometry | null {
   const hit = mergedPropCache.get(id)
   if (hit !== undefined) return hit
-  const made = back === null ? null : mergeByMaterial([mesh, back], materials)
+  const made = back === null && cross === null
+    ? null : mergeByMaterial([mesh, back, cross], materials)
   mergedPropCache.set(id, made)
   return made
 }
@@ -732,20 +752,37 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          * ⚠️ **청크의 묶음은 안 바꾼다.** 모자란 그림 하나만 남의 묶음에서 꺼낸다 —
          * 묶음을 통째로 바꾸면 나머지가 다 틀어진다
          */
+        /**
+         * 청크마다 **어느 묶음으로 그릴까**를 여기서 정한다.
+         *
+         * ⚠️ **빌릴 것을 고르기 전에 정해야 한다.** 예전에는 「창이 쥔 묶음
+         * 어디에도 없는 것」만 빌렸는데, 청크가 그리는 묶음은 그중 **하나**다 —
+         * 영원 체육관 위층은 묶음 12로 그리면서 `gym_obj1`은 묶음 25에만 있어
+         * 「쥐고 있으니 안 빌린다」로 넘어갔고, 그 서브메시가 자홍이었다
+         */
+        const pickOf = new Map<number, { set: number, sheet: TexSheet }>()
+        for (const { c, mesh } of loaded) {
+          const cands = candidatesOf(c.zone, c.land).flatMap((s) => {
+            const got = homes.get(s)
+            return got === undefined ? [] : [{ set: s, sheet: got }]
+          })
+          const picked = pickSheet(sheet, cands, mesh.materials)
+          pickOf.set(c.land, picked === null
+            ? { set: texSet, sheet } : { set: picked, sheet: homes.get(picked)! })
+        }
         const lend = new Map<string, { set: number, sheet: TexSheet, pal: string }>()
         if (names !== null) {
-          const mine = [sheet, ...homes.values()]
           const lacking = new Map<string, { tex: string, pal: string | null }>()
-          for (const { mesh } of loaded) {
+          for (const { c, mesh } of loaded) {
+            const mine = pickOf.get(c.land)!.sheet
             for (const m of mesh.materials) {
               if (m.tex === null) continue
-              if (mine.some((h) => h.items.some((it) => it.tex === m.tex && it.pal === (m.pal ?? '')))) continue
+              if (mine.items.some((it) => it.tex === m.tex && it.pal === (m.pal ?? ''))) continue
               lacking.set(lendKey(m.tex, m.pal), { tex: m.tex, pal: m.pal })
             }
           }
           if (lacking.size > 0) {
-            const skip = new Set([texSet, ...homes.keys()])
-            const rows = lendersFor(names, skip, [...lacking.values()])
+            const rows = lendersFor(names, [...lacking.values()])
             const need = new Set(rows.map((r) => r.set))
             const got = new Map<number, TexSheet>()
             await Promise.all([...need].map((s) => loadTexSheet(s).then((h) => { got.set(s, h) })))
@@ -755,9 +792,9 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             }
           }
         }
-        return { sheet, loaded, homes, lend }
+        return { sheet, loaded, lend, pickOf }
       })
-      .then(({ sheet, loaded, homes, lend }) => {
+      .then(({ sheet, loaded, lend, pickOf }) => {
         if (!alive) { traceTerrain(req, 'superseded', `청크 ${String(got)}/${String(around.length)}에서 물러났다`); return }
         traceTerrain(req, 'build-begin')
         // 같은 (그림, 팔레트, 반복) 조합은 한 번만 만든다. 청크마다 새로
@@ -788,13 +825,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          */
         const keepFoliage = isDistortionFloor(world.mapId ?? -1)
         const pieces: Piece[] = loaded.map(({ c, mesh }) => {
-          const cands = candidatesOf(c.zone, c.land).flatMap((s) => {
-            const got = homes.get(s)
-            return got === undefined ? [] : [{ set: s, sheet: got }]
-          })
-          const picked = pickSheet(sheet, cands, mesh.materials)
-          const pSheet = picked === null ? sheet : homes.get(picked)!
-          const pSet = picked ?? texSet
+          const { set: pSet, sheet: pSheet } = pickOf.get(c.land)!
           const cutout = cutoutGroups(mesh, pSheet)
           /**
            * **새 표현 계획** (FIRST_PERSON §4.5). 레시피가 맡은 사각형은 덩이·세우기·
@@ -1239,8 +1270,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 쪼개므로 합친 기하를 못 쓴다 — 이것만 따로 한 번 더 그린다
             fill: back.geometry,
             // 몸통과 채운 면을 합친 것. 합칠 것이 없으면 몸통 그대로다
-            geometry: cachedMergedProp(got.id, got.mesh.geometry, back.geometry, materials)
-              ?? got.mesh.geometry,
+            geometry: cachedMergedProp(
+              got.id, got.mesh.geometry, back.geometry,
+              cachedCrossProp(got.id, got.mesh, got.sheet), materials,
+            ) ?? got.mesh.geometry,
             materials,
           }]
         }))

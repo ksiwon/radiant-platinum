@@ -1117,7 +1117,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         받는다. 충돌·높이는 여전히 perm/BDHC가 잡으므로 이 층은 그림만 담당한다
       */}
       <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
-      <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} />
+      <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />
       {/* 나무열매 밭 — 흙 위에 자란 것이 선다 (PARITY §4.6) */}

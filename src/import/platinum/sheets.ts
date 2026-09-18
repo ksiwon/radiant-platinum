@@ -20,6 +20,12 @@ export interface SheetItem {
   src: TexEntry
   x: number
   y: number
+  /**
+   * 이 그림이 **다른 묶음에서 온 것**이면 그 묶음과 팔레트 자리. 맵 묶음에 없는
+   * 이름을 같은 영역의 건물 묶음에서 꺼낼 때 쓴다 (`chunks.holePairs`)
+   */
+  from?: Tex0
+  palOff?: number
 }
 
 /** 선반 채우기 — 높이가 큰 것부터 줄을 채운다. 단순하지만 낭비가 적다 */
@@ -51,7 +57,7 @@ export async function bakeSheet(
   const rgba = new Uint8Array(size.width * height * 4)
   for (const item of items) {
     // 팔레트가 없는 재질(direct color)은 0에서 읽는다
-    const pixels = decode(tex0, item.src, palAt.get(item.pal) ?? 0)
+    const pixels = decode(item.from ?? tex0, item.src, item.palOff ?? palAt.get(item.pal) ?? 0)
     for (let y = 0; y < item.height; y++) {
       const from = y * item.width * 4
       const to = ((item.y + y) * size.width + item.x) * 4

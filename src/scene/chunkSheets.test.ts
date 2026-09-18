@@ -79,25 +79,28 @@ describe('한 묶음으로 못 그리는 청크 — 모자란 그림만 빌려 �
   ] as unknown as TexNames[]
 
   it('팔레트까지 같은 묶음을 찾는다 — 번호가 작은 쪽', () => {
-    const got = lendersFor(names, new Set([0]), [{ tex: 'h_kage', pal: 'h_kage_pl' }])
+    const got = lendersFor(names, [{ tex: 'h_kage', pal: 'h_kage_pl' }])
     expect(got).toEqual([{ key: lendKey('h_kage', 'h_kage_pl'), tex: 'h_kage', pal: 'h_kage_pl', set: 1, loose: false }])
   })
 
-  it('이미 가진 묶음은 건너뛴다', () => {
-    expect(lendersFor(names, new Set([1, 2]), [{ tex: 'h_kage', pal: 'h_kage_pl' }])).toEqual([])
+  /**
+   * ⚠️ **이미 쥔 묶음도 후보다.** 영원 체육관 위층의 `gym04_d`는 묶음 25에만 있고
+   * 팔레트 이름이 `gym04_d`다. 청크는 그 묶음을 이미 쥐고 있었는데 팔레트가 달라
+   * 못 찾았고, 건너뛰기까지 걸려 10삼각형이 자홍으로 남았다 (실측 40,787픽셀)
+   */
+  it('이미 쥔 묶음이라도 팔레트만 다른 것은 빌려 온다', () => {
+    const got = lendersFor(names, [{ tex: 'gym04_d', pal: 'gym04_d_pl' }])
+    expect(got).toEqual([{
+      key: lendKey('gym04_d', 'gym04_d_pl'), tex: 'gym04_d', pal: 'gym04_d', set: 3, loose: true,
+    }])
   })
 
   it('그림 없는 재질은 빌릴 것이 없다', () => {
-    expect(lendersFor(names, new Set(), [{ tex: null, pal: null }])).toEqual([])
-  })
-
-  it('팔레트가 다르면 그것을 쓰되 **느슨하다고 적는다**', () => {
-    const got = lendersFor(names, new Set(), [{ tex: 'gym04_d', pal: 'gym04_d_pl' }])
-    expect(got).toEqual([{ key: lendKey('gym04_d', 'gym04_d_pl'), tex: 'gym04_d', pal: 'gym04_d', set: 3, loose: true }])
+    expect(lendersFor(names, [{ tex: null, pal: null }])).toEqual([])
   })
 
   it('어디에도 없는 이름은 안 돌려준다 — 없는 것을 있다고 하지 않는다', () => {
-    expect(lendersFor(names, new Set(), [{ tex: 'gym_obj2', pal: 'gym_obj2_pl' }])).toEqual([])
+    expect(lendersFor(names, [{ tex: 'nowhere', pal: 'nowhere_pl' }])).toEqual([])
   })
 })
 
@@ -117,7 +120,7 @@ maybeTex('실제 자료 — 영원시티 집의 그림자', () => {
     )) as { sets: { items: [string, string, number, number, number, number][] }[] }
     const names = idx.sets.map((s) => s.items.map((i) => [i[0], i[1]])) as unknown as TexNames[]
     expect(names[57]!.some(([t]) => t === 'h_kage')).toBe(false)
-    const got = lendersFor(names, new Set([57]), [{ tex: 'h_kage', pal: 'h_kage_pl' }])
+    const got = lendersFor(names, [{ tex: 'h_kage', pal: 'h_kage_pl' }])
     expect(got).toHaveLength(1)
     expect(got[0]!.loose).toBe(false)
     expect(names[got[0]!.set]!.some(([t, p]) => t === 'h_kage' && p === 'h_kage_pl')).toBe(true)

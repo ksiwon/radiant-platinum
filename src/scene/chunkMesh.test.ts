@@ -133,7 +133,9 @@ maybeTex('맵 텍스처 시트', () => {
         total++
       }
     }
-    expect(total).toBe(2736)
+    // 재질이 쓰는 조합으로 편 것 2,736장 + 맵 묶음 어디에도 없어 **건물 묶음에서**
+    // 빌려 온 72장 (FP-04 · `chunks.holePairs`)
+    expect(total).toBe(2808)
   })
 
   it('한 묶음 안에서 조각이 안 겹친다', () => {

@@ -203,10 +203,17 @@ const FENCE = {
   railDepth: 2,
 } as const
 
-/** 네모 상자 하나 — 앞뒤(±z)·옆(±x)·위·밑 면마다 칸을 따로 준다 */
+/**
+ * 네모 상자 하나 — 앞뒤(±z)·옆(±x)·위·밑 면마다 칸을 따로 준다.
+ *
+ * `band`를 주면 옆면을 그 높이에서 **가로로 가른다** — 위쪽만 다른 칸이 된다.
+ * 상자 둘을 쌓으면 맞닿은 면이 안에 남아 **닫힌 메시가 아니게 되므로**(모서리를
+ * 삼각형 넷이 나눠 갖는다), 색만 달라지는 띠는 이렇게 가른다
+ */
 function box(
   x0: number, x1: number, y0: number, y1: number, z0: number, z1: number,
   slot: { front: number, side: number, top: number }, slots: number,
+  band?: { y: number, front: number, side: number },
 ): ReturnType<typeof lathe> {
   const position: number[] = []
   const uv: number[] = []
@@ -218,10 +225,18 @@ function box(
     byGroup[g]!.push(base, base + 1, base + 2, base, base + 2, base + 3)
   }
   // 바깥에서 보아 반시계로 감는다
-  quad(slot.front, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1])
-  quad(slot.front, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0])
-  quad(slot.side, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1])
-  quad(slot.side, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0])
+  const cut = band !== undefined && band.y > y0 && band.y < y1 ? band.y : null
+  const wall = (g: number, gTop: number, a: number[], b: number[], c: number[], d: number[]) => {
+    // a·b가 밑변, c·d가 윗변이다 (b 위가 c)
+    if (cut === null) { quad(g, a, b, c, d); return }
+    const mb = [b[0]!, cut, b[2]!], ma = [a[0]!, cut, a[2]!]
+    quad(g, a, b, mb, ma)
+    quad(gTop, ma, mb, c, d)
+  }
+  wall(slot.front, band?.front ?? slot.front, [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1])
+  wall(slot.front, band?.front ?? slot.front, [x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0])
+  wall(slot.side, band?.side ?? slot.side, [x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1])
+  wall(slot.side, band?.side ?? slot.side, [x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0])
   quad(slot.top, [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0])
   quad(slot.front, [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1])
   return { position, uv, byGroup }
@@ -260,6 +275,116 @@ export function fenceGeometry(length: number, u0: number, u1: number): BuiltShap
       { front: R_FRONT, side: R_FRONT, top: R_TOP }, slots))
   }
   return assemble(parts, FENCE_SLOTS)
+}
+
+/** 볼라드(말뚝) 재질 칸 — 사슬 갈래와 풀 갈래가 같이 쓴다 */
+export const BOLLARD_SLOTS = [
+  'postFront', 'postEdge', 'headFront', 'headTop', 'baseFront', 'baseTop', 'chain', 'grass',
+] as const
+
+/**
+ * 볼라드 치수 — **텍셀**(16텍셀 = 1칸). 높이 규칙은 울타리와 같다:
+ * 행 14의 아래 가장자리가 땅이고, 행 r은 높이 (14−r)/16 … (15−r)/16이다.
+ * 깊이는 원본에 없다 — §6.2의 「기둥 폭의 0.6배」를 그대로 쓴다.
+ *
+ * 두 갈래의 행은 **칸을 텍셀로 읽어** 정했다 (FP-05):
+ *
+ * ```
+ * 사슬 (묶음 19 · 8feb19f7)        풀 (묶음 17 · e3243c1d)
+ *  2 ...aa...   꼭대기              2 ...aa...   꼭대기
+ *  3 ..abba..   흰 머리             3 ..bccb..   흰 머리
+ *  5 ..cddc..   밝은 몸통           6 ..abba..   회색 몸통
+ *  6 ..ceec..aaaa  ← 사슬           9 ..ebfe..   ← 풀이 덮는다
+ * 12 .faffaf..  넓은 받침          12 .aghfga.   풀
+ * 14 ..ffff..   밑                 14 ..ahha..   풀
+ * ```
+ */
+const BOLLARD = {
+  pitch: 8,
+  postFrom: 2,
+  postTo: 6,
+  tipFrom: 3,
+  tipTo: 5,
+  tipTop: 13,
+  /** 흰 머리 밑 = 행 5의 아래 가장자리 */
+  headFrom: 9,
+  headTop: 12,
+  /** 넓은 받침 (사슬 갈래) */
+  baseFrom: 1,
+  baseTo: 7,
+  baseTop: 3,
+  /** 사슬 — 행 6 한 줄 */
+  chain: [8, 9] as readonly [number, number],
+  chainDepth: 1.5,
+  postDepth: 0.6 * 4,
+  tipDepth: 0.6 * 2,
+  /** 풀 갈래의 풀 — 행 9~14를 덮는다 */
+  grassTop: 6,
+  grassWidth: 6,
+} as const
+
+/**
+ * **볼라드 한 줄** (FP-05). 울타리와 같은 자리·같은 u 규칙으로 서지만 **가로대가
+ * 없다** — 사슬 갈래는 기둥 사이에 사슬 한 줄, 풀 갈래는 기둥 밑에 풀 덩이다.
+ *
+ * ⚠️ **사슬을 늘어뜨리지 않는다.** 원본 그림의 사슬은 행 6 한 줄로 **곧다**
+ * (텍셀 실측). 늘어진 곡선은 원본에 없는 것을 짓는 일이다
+ */
+export function bollardGeometry(
+  length: number, u0: number, u1: number, kind: 'chain' | 'grass',
+): BuiltShape {
+  const T = 1 / 16
+  const B = BOLLARD
+  const slots = BOLLARD_SLOTS.length
+  const [P_FRONT, P_EDGE, H_FRONT, H_TOP, B_FRONT, B_TOP, CHAIN, GRASS] = [0, 1, 2, 3, 4, 5, 6, 7]
+  const xOf = (u: number) => ((u - u0) / (u1 - u0) - 0.5) * length
+  const lo = Math.min(u0, u1), hi = Math.max(u0, u1)
+  const parts: ReturnType<typeof lathe>[] = []
+  const at = (
+    k: number, from: number, to: number, bottom: number, top: number, depth: number,
+    slot: { front: number, side: number, top: number },
+    band?: { y: number, front: number, side: number },
+  ): void => {
+    const a = Math.max(lo, k * B.pitch + from), b = Math.min(hi, k * B.pitch + to)
+    if (b - a < 0.25) return
+    const xa = xOf(a), xb = xOf(b)
+    const d = (depth * T) / 2
+    parts.push(box(Math.min(xa, xb), Math.max(xa, xb), bottom * T, top * T, -d, d, slot, slots, band))
+  }
+  for (let k = Math.floor((lo - B.postTo) / B.pitch); k * B.pitch + B.postFrom < hi; k++) {
+    // 몸통과 흰 머리는 폭이 같다 — 상자를 쌓으면 안에 면이 남으므로 **띠로 가른다**
+    at(k, B.postFrom, B.postTo, 0, B.headTop, B.postDepth,
+      { front: P_FRONT, side: P_EDGE, top: H_TOP },
+      { y: B.headFrom * T, front: H_FRONT, side: P_EDGE })
+    at(k, B.tipFrom, B.tipTo, B.headTop, B.tipTop, B.tipDepth,
+      { front: H_TOP, side: H_FRONT, top: H_TOP })
+    if (kind === 'chain') {
+      at(k, B.baseFrom, B.baseTo, 0, B.baseTop, B.postDepth * 1.4,
+        { front: B_FRONT, side: B_FRONT, top: B_TOP })
+    } else {
+      // 풀은 기둥을 감싼 낮은 덩이 하나 — 네모 상자로 두면 화단처럼 읽힌다
+      const mid = k * B.pitch + (B.postFrom + B.postTo) / 2
+      if (mid >= lo && mid <= hi) {
+        const half = (B.grassWidth * T) / 2
+        const tuft = lathe([
+          { r: 0, y: 0, slot: GRASS },
+          { r: half * 0.8, y: 0, slot: GRASS },
+          { r: half, y: B.grassTop * T * 0.45, slot: GRASS },
+          { r: half * 0.7, y: B.grassTop * T * 0.85, slot: GRASS },
+          { r: 0, y: B.grassTop * T, slot: GRASS },
+        ], 8, slots, false)
+        const cx = xOf(mid)
+        for (let i = 0; i < tuft.position.length; i += 3) tuft.position[i] += cx
+        parts.push(tuft)
+      }
+    }
+  }
+  if (kind === 'chain') {
+    const d = (B.chainDepth * T) / 2
+    parts.push(box(-length / 2, length / 2, B.chain[0] * T, B.chain[1] * T, -d, d,
+      { front: CHAIN, side: CHAIN, top: CHAIN }, slots))
+  }
+  return assemble(parts, BOLLARD_SLOTS)
 }
 
 /**

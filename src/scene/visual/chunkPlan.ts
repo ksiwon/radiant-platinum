@@ -14,8 +14,8 @@ import { PLANTER_FILL } from './planter'
 import { markFailed, markReady, planOf, resolveParts, type RecipeMode } from './resolve'
 import { regionDigest, sourceParts, type MeshArrays } from './sourceParts'
 import {
-  fenceSwatch, PLANTER_LAYOUTS, planterSwatch, shrubSwatch,
-  type FenceSwatch, type PlanterSwatch, type ShrubSwatch,
+  bollardSwatch, fenceSwatch, PLANTER_LAYOUTS, planterSwatch, shrubSwatch,
+  type BollardSwatch, type FenceSwatch, type PlanterSwatch, type ShrubSwatch,
 } from './swatches'
 import type { PartDecision, ResolvedVisualPlan, SourcePart, VisualRecipe } from './types'
 
@@ -25,6 +25,9 @@ type Planned = { key: string, width: number, site: PlanterSite }
     | { kind: 'planter', swatch: PlanterSwatch }
     | { kind: 'shrub', swatch: ShrubSwatch }
     | { kind: 'fence', swatch: FenceSwatch, u0: number, u1: number }
+    | {
+      kind: 'bollard', variant: 'chain' | 'grass', swatch: BollardSwatch, u0: number, u1: number,
+    }
   )
 
 /**
@@ -35,9 +38,11 @@ export function planterGroupOf(one: Planned): PlanterGroup {
   const base = { key: one.key, width: one.width, items: [] as PlanterGroup['items'] }
   return one.kind === 'fence'
     ? { ...base, kind: 'fence', swatch: one.swatch, u0: one.u0, u1: one.u1 }
-    : one.kind === 'shrub'
-      ? { ...base, kind: 'shrub', swatch: one.swatch }
-      : { ...base, kind: 'planter', swatch: one.swatch }
+    : one.kind === 'bollard'
+      ? { ...base, kind: 'bollard', variant: one.variant, swatch: one.swatch, u0: one.u0, u1: one.u1 }
+      : one.kind === 'shrub'
+        ? { ...base, kind: 'shrub', swatch: one.swatch }
+        : { ...base, kind: 'planter', swatch: one.swatch }
 }
 
 interface ChunkPlan {
@@ -150,7 +155,9 @@ export function planChunk(
     const part = byId.get(d.componentId)!
     const recipe = recipeOf.get(d.recipeId ?? '')
     const kind = recipe?.geometry
-    if (recipe === undefined || (kind !== 'planter' && kind !== 'shrub' && kind !== 'fence')) {
+    const line2 = kind === 'bollard-chain' ? 'chain' : kind === 'bollard-grass' ? 'grass' : null
+    if (recipe === undefined
+      || (kind !== 'planter' && kind !== 'shrub' && kind !== 'fence' && line2 === null)) {
       return markFailed(d, `만들 줄 모르는 형상 (${String(kind)})`)
     }
     const item = itemOf(sheet, part.source.tex, part.source.pal)
@@ -161,29 +168,34 @@ export function planChunk(
     const width = +(plate * PLANTER_FILL).toFixed(3)
     const site = { x: (x0 + x1) / 2, y: y0, z: (z0 + z1) / 2, yaw }
     const key = `${recipe.id}@${String(recipe.version)}/${String(hash)}/${String(width)}`
-    if (kind === 'fence') {
-      const swatch = item === null ? null : fenceSwatch(sheet, item)
+    if (kind === 'fence' || line2 !== null) {
+      const swatch = item === null ? null
+        : line2 === null ? fenceSwatch(sheet, item) : bollardSwatch(sheet, item, line2)
       const line = item === null ? null : baseline(arrays, part, item.w)
       if (swatch === null || line === null) return markFailed(d, `울타리 줄을 못 읽었다 (${String(hash)})`)
       const length = +plate.toFixed(3)
       // 기둥 자리는 u를 `pitch`로 나눈 나머지만 본다 — 같은 모양이면 청크를 넘어 모인다
       const shift = Math.floor(Math.min(line.u0, line.u1) / 8) * 8
       const u0 = +(line.u0 - shift).toFixed(3), u1 = +(line.u1 - shift).toFixed(3)
-      planters.push({
-        kind, key: `${recipe.id}@${String(recipe.version)}/${String(hash)}/${String(length)}/${String(u0)}:${String(u1)}`,
-        width: length, swatch, u0, u1, site: { x: line.x, y: line.y, z: line.z, yaw },
-      })
+      const key2 = `${recipe.id}@${String(recipe.version)}/${String(hash)}/${String(length)}/${String(u0)}:${String(u1)}`
+      const site2 = { x: line.x, y: line.y, z: line.z, yaw }
+      planters.push(line2 === null
+        ? { kind: 'fence', key: key2, width: length, swatch: swatch as FenceSwatch, u0, u1, site: site2 }
+        : {
+          kind: 'bollard', variant: line2, key: key2, width: length,
+          swatch: swatch as BollardSwatch, u0, u1, site: site2,
+        })
     } else if (kind === 'planter') {
       const layout = hash === null ? undefined : PLANTER_LAYOUTS[hash]
       const swatch = item === null || layout === undefined ? null : planterSwatch(sheet, item, layout)
       if (swatch === null) return markFailed(d, `색 자리를 못 읽었다 (${String(hash)})`)
-      planters.push({ kind, key, width, swatch, site })
+      planters.push({ kind: 'planter', key, width, swatch, site })
     } else {
       // 덤불 칸의 왼쪽 위는 선택자의 `within`이 말해 준다 (imped 48,32 · bf_ueki01 0,0)
       const swatch = item === null ? null
         : shrubSwatch(sheet, item, [sel.within[0], sel.within[1]])
       if (swatch === null) return markFailed(d, `색 자리를 못 읽었다 (${String(hash)})`)
-      planters.push({ kind, key, width, swatch, site })
+      planters.push({ kind: 'shrub', key, width, swatch, site })
     }
     return markReady(d)
   })

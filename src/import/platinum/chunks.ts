@@ -731,18 +731,67 @@ async function emptySheet(): Promise<Uint8Array> {
   return blank
 }
 
+/**
+ * 청크가 부르는데 **어느 맵 묶음에도 없는** (그림, 팔레트) 쌍. 굽는 쪽의 구멍이다.
+ *
+ * 실측 11쌍이고 그중 셋(`gym_obj1` · `gym_obj2` · `m_fh01_012t`)은 맵 묶음이
+ * 아니라 같은 영역의 **건물 텍스처 묶음**(`areabm_texset`)에만 있다. 원작은 둘 다
+ * VRAM에 싣지만 청크 모델은 맵 묶음에만 잇는다 (`land_data.c`) — 그래서 원작에서도
+ * 그 재질은 안 이어진다. 우리는 그 영역이 함께 실은 건물 묶음에서 꺼내 같은 시트에
+ * 굽는다. 나머지 여덟 쌍은 롬 어디에도 없다
+ */
+export function holePairs(wanted: ReadonlySet<string>, sets: readonly Tex0[]): Set<string> {
+  const out = new Set<string>()
+  for (const pair of wanted) {
+    const sp = pair.indexOf(' ')
+    const tex = pair.slice(0, sp)
+    const pal = pair.slice(sp + 1)
+    const anywhere = sets.some((t) => t.textures.some((x) => x.name === tex)
+      && (pal === '' || t.palettes.some((x) => x.name === pal)))
+    if (!anywhere) out.add(pair)
+  }
+  return out
+}
+
 async function convertTextures(
   ctx: ConvertContext, out: Produced, wanted: ReadonlySet<string>,
 ): Promise<void> {
   const narc = await ctx.fs.read('/fielddata/areadata/area_map_tex/map_tex_set.narc')
   if (!narc) throw new Error('map_tex_set.narc을 못 읽었다')
+  // 영역 표가 맵 묶음과 건물 묶음을 **짝지어** 가리킨다 (`AreaDataFile`)
+  const areaNarc = await ctx.fs.read('/fielddata/areadata/area_data.narc')
+  const propNarc = await ctx.fs.read('/fielddata/areadata/area_build_model/areabm_texset.narc')
+  if (!areaNarc || !propNarc) throw new Error('area_data·areabm_texset을 못 읽었다')
 
-  const sets: Sheet[] = []
+  /** 맵 묶음마다 같은 영역이 함께 싣는 건물 묶음들 */
+  const propsOf = new Map<number, Set<number>>()
+  for (let i = 0; ; i++) {
+    const b = narcEntry(areaNarc, i)
+    if (!b) break
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+    const got = propsOf.get(v.getUint16(2, true))
+    if (got) got.add(v.getUint16(0, true))
+    else propsOf.set(v.getUint16(2, true), new Set([v.getUint16(0, true)]))
+  }
+  const propTex: (Tex0 | null)[] = []
+  for (let i = 0; ; i++) {
+    const b = narcEntry(propNarc, i)
+    if (!b) break
+    const v = new DataView(b.buffer, b.byteOffset, b.byteLength)
+    try { propTex.push(parseTex0(b, v.getUint32(16, true))) } catch { propTex.push(null) }
+  }
+  const mapTex: Tex0[] = []
   for (let s = 0; ; s++) {
     const buf = narcEntry(narc, s)
     if (!buf) break
     const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
-    const tex0 = parseTex0(buf, view.getUint32(16, true))
+    mapTex.push(parseTex0(buf, view.getUint32(16, true)))
+  }
+  const holes = holePairs(wanted, mapTex)
+
+  const sets: Sheet[] = []
+  for (let s = 0; s < mapTex.length; s++) {
+    const tex0 = mapTex[s]!
     const byName = new Map(tex0.textures.map((t) => [t.name, t]))
     const palAt = new Map(tex0.palettes.map((p) => [p.name, p.offset]))
 
@@ -757,6 +806,25 @@ async function convertTextures(
       items.push({
         tex: texName, pal: palName, width: tex.width, height: tex.height, src: tex, x: 0, y: 0,
       })
+    }
+    // 맵 묶음 어디에도 없는 이름은 **이 영역이 함께 실은 건물 묶음**에서 꺼낸다
+    for (const pair of holes) {
+      const sp = pair.indexOf(' ')
+      const texName = pair.slice(0, sp)
+      const palName = pair.slice(sp + 1)
+      for (const p of propsOf.get(s) ?? []) {
+        const from = propTex[p]
+        if (!from) continue
+        const tex = from.textures.find((t) => t.name === texName)
+        if (!tex) continue
+        const off = from.palettes.find((x) => x.name === palName)?.offset
+        if (palName !== '' && off === undefined) continue
+        items.push({
+          tex: texName, pal: palName, width: tex.width, height: tex.height, src: tex, x: 0, y: 0,
+          from, palOff: off ?? 0,
+        })
+        break
+      }
     }
     const baked = await bakeSheet(tex0, items, palAt)
     out.set(`data/tex/${String(s)}.png`, baked ? baked.png : await emptySheet())

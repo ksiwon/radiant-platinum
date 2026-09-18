@@ -7,7 +7,7 @@ export type SourceKind = 'chunk' | 'prop' | 'fldeff' | 'npc-gfx'
 
 /** 조각이 무엇인가. 검수 전에는 확정하지 않는다 */
 type Semantic =
-  | 'tree' | 'rock' | 'planter' | 'shrub' | 'fence' | 'rail' | 'sign'
+  | 'tree' | 'rock' | 'planter' | 'shrub' | 'fence' | 'bollard' | 'rail' | 'sign'
   | 'building' | 'wall' | 'ground' | 'grass' | 'flower' | 'water' | 'decal' | 'other'
 
 /**
@@ -83,7 +83,10 @@ export interface SourceSelector {
 }
 
 type GeometryKind =
-  | 'original' | 'fence' | 'rail' | 'planter' | 'shrub' | 'rock' | 'tree' | 'building-patch' | 'room-patch'
+  | 'original' | 'fence' | 'bollard-chain' | 'bollard-grass' | 'rail' | 'planter' | 'shrub' | 'rock'
+  | 'tree' | 'building-patch' | 'room-patch'
+  /** 원본 카드를 90° 돌려 한 벌 더 (소품의 십자 빌보드 · FP-07) */
+  | 'cross-cards'
 
 type MaterialProfile = 'rom-lit' | 'cutout-lit' | 'decal-unlit' | 'water'
 

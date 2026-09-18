@@ -12,8 +12,8 @@ import {
   type BufferGeometry,
 } from 'three'
 import { setInstances } from '../instances'
-import { paintedFence, paintedPlanter, paintedShrub } from './planter'
-import type { FenceSwatch, PlanterSwatch, ShrubSwatch } from './swatches'
+import { paintedBollard, paintedFence, paintedPlanter, paintedShrub } from './planter'
+import type { BollardSwatch, FenceSwatch, PlanterSwatch, ShrubSwatch } from './swatches'
 
 /** 화분 하나의 자리 — 밑면 한가운데와 판의 가로축 방향 */
 export interface PlanterSite {
@@ -34,6 +34,8 @@ export type PlanterGroup = {
   | { kind: 'shrub', swatch: ShrubSwatch }
   /** `u0`·`u1` — 토막 양 끝의 칸 텍셀 u (`fenceGeometry`) */
   | { kind: 'fence', swatch: FenceSwatch, u0: number, u1: number }
+  /** 볼라드 — 사슬 갈래와 풀 갈래 (FP-05) */
+  | { kind: 'bollard', variant: 'chain' | 'grass', swatch: BollardSwatch, u0: number, u1: number }
 )
 
 /** 절두체 여유 (타일) */
@@ -59,7 +61,8 @@ export function Planters({ groups }: { groups: PlanterGroup[] }) {
     if (!shape) {
       shape = g.kind === 'planter' ? paintedPlanter(g.width, g.swatch)
         : g.kind === 'shrub' ? paintedShrub(g.width, g.swatch)
-          : paintedFence(g.width, g.u0, g.u1, g.swatch)
+          : g.kind === 'bollard' ? paintedBollard(g.width, g.u0, g.u1, g.variant, g.swatch)
+            : paintedFence(g.width, g.u0, g.u1, g.swatch)
       shape.clearGroups()
       shapes.set(g.key, shape)
     }

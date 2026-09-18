@@ -3,11 +3,13 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { expect, it } from 'vitest'
 import { decodePng, withData } from '../../data/romData.testkit'
-import { colorsIn, fenceSwatch, PLANTER_LAYOUTS, planterSwatch, shrubSwatch, texel } from './swatches'
+import {
+  bollardSwatch, colorsIn, fenceSwatch, PLANTER_LAYOUTS, planterSwatch, shrubSwatch, texel,
+} from './swatches'
 
 const DATA = resolve(__dirname, '../../../public/data')
 
-withData('tex/index.json', 'tex/0.png', 'tex/8.png', 'tex/12.png')('imped 역할별 색', () => {
+withData('tex/index.json', 'tex/0.png', 'tex/8.png', 'tex/12.png', 'tex/17.png', 'tex/19.png')('imped 역할별 색', () => {
   const idx = JSON.parse(readFileSync(resolve(DATA, 'tex/index.json'), 'utf8')) as {
     sets: { items: [string, string, number, number, number, number][] }[]
   }
@@ -88,5 +90,36 @@ withData('tex/index.json', 'tex/6.png', 'tex/14.png')('imped 말뚝 울타리 �
     expect(fenceSwatch(blue.sheet, blue.item)).toEqual({
       postFront: 0x9ca5ad, postTop: 0xeff7ff, postEdge: 0xced6ef, railTop: 0xced6ef, railFront: 0x6b6b7b,
     })
+  })
+
+  // FP-05 — 볼라드 두 갈래. 울타리와 같은 칸인데 짜임이 다르다
+  it('묶음 19(사슬)와 17(풀) — 가로대가 없고 짜임이 서로 다르다', () => {
+    const chain = open(19)
+    expect(bollardSwatch(chain.sheet, chain.item, 'chain')).toEqual({
+      postFront: 0xadadad,
+      postEdge: 0x736b63,
+      headFront: 0xffffff,
+      headTop: 0xffffff,
+      baseFront: 0x635a42,
+      baseTop: 0x8c8c73,
+      chain: 0x635a42,
+      grass: [],
+    })
+    const grass = open(17)
+    const got = bollardSwatch(grass.sheet, grass.item, 'grass')!
+    expect(got.postFront).toBe(0xadadad)
+    expect(got.headTop).toBe(0xffffff)
+    expect(got.headFront).toBe(0xcecece)
+    // 풀은 초록 세 단계 — 밝은 것부터
+    expect(got.grass).toEqual([0x39a55a, 0x398452, 0x296b42])
+  })
+
+  it('⚠️ 색 자리만으로는 울타리와 볼라드를 못 가른다 — 그래서 지문으로 건다', () => {
+    const six = open(6)
+    // 묶음 6은 기둥 사이가 **가로대**라 사슬 자리(8,6)에도 색이 있고, 풀 자리에도
+    // 가로대 색이 있다. 색을 읽는 데는 성공한다 — 뜻이 다를 뿐이다.
+    // 그래서 레시피는 이름이 아니라 **칸 지문**(`8feb19f7`·`e3243c1d`)으로 건다
+    expect(bollardSwatch(six.sheet, six.item, 'chain')).not.toBeNull()
+    expect(bollardSwatch(six.sheet, six.item, 'grass')!.grass).toEqual([0xadad9c, 0xadad9c, 0xadad9c])
   })
 })

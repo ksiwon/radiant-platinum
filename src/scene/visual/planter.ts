@@ -3,8 +3,8 @@
 // 색은 **정점색**이다. 텍스처를 안 붙이는 것은 원본이 위에서 내려다본 그림이라
 // 어느 면에도 그대로 못 붙기 때문이다(§6.4-6과 같은 까닭). 명암은 조명이 준다.
 import { BufferAttribute, Color, type BufferGeometry } from 'three'
-import { fenceGeometry, PLANTER, planterGeometry, shrubGeometry } from './geometry'
-import type { FenceSwatch, PlanterSwatch, ShrubSwatch } from './swatches'
+import { bollardGeometry, fenceGeometry, PLANTER, planterGeometry, shrubGeometry } from './geometry'
+import type { BollardSwatch, FenceSwatch, PlanterSwatch, ShrubSwatch } from './swatches'
 
 /**
  * 원본 판 폭 중 **화분이 차지하는 몫**.
@@ -118,6 +118,44 @@ export function paintedFence(length: number, u0: number, u1: number, swatch: Fen
     const rgb = bySlot[grp.materialIndex ?? 0]!
     for (let t = grp.start; t < grp.start + grp.count; t++) {
       const i = index[t]!
+      colors[i * 3] = rgb[0]
+      colors[i * 3 + 1] = rgb[1]
+      colors[i * 3 + 2] = rgb[2]
+    }
+  }
+  g.setAttribute('color', new BufferAttribute(colors, 3))
+  return g
+}
+
+/**
+ * 역할색을 입힌 **볼라드** 한 토막 (FP-05). 칸 차례는 `BOLLARD_SLOTS`.
+ *
+ * 풀은 덤불과 같은 길로 칠한다 — 위가 밝고 아래가 어둡다. 사슬 갈래에는 풀이 없다
+ */
+export function paintedBollard(
+  length: number, u0: number, u1: number, kind: 'chain' | 'grass', swatch: BollardSwatch,
+): BufferGeometry {
+  const built = bollardGeometry(length, u0, u1, kind)
+  const g = built.geometry
+  const index = g.getIndex()!.array
+  const pos = g.getAttribute('position').array
+  const colors = new Float32Array(pos.length)
+  const bySlot = [
+    swatch.postFront, swatch.postEdge, swatch.headFront, swatch.headTop,
+    swatch.baseFront, swatch.baseTop, swatch.chain, swatch.postFront,
+  ].map(linear)
+  const grass = swatch.grass.map(linear)
+  const top = built.bounds[4]
+  for (const grp of g.groups) {
+    const isGrass = built.slots[grp.materialIndex ?? 0] === 'grass'
+    for (let t = grp.start; t < grp.start + grp.count; t++) {
+      const i = index[t]!
+      let rgb = bySlot[grp.materialIndex ?? 0]!
+      if (isGrass && grass.length > 0) {
+        // 위가 밝은 것부터. 높이 비율로 고른다 (`paintedShrub`과 같은 셈)
+        const h = top === 0 ? 0 : Math.min(1, Math.max(0, pos[i * 3 + 1]! / top))
+        rgb = grass[Math.min(grass.length - 1, Math.floor((1 - h) * grass.length))]!
+      }
       colors[i * 3] = rgb[0]
       colors[i * 3 + 1] = rgb[1]
       colors[i * 3 + 2] = rgb[2]

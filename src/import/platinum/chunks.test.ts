@@ -10,7 +10,8 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { openNds, narcEntry } from './nds'
 import { countGeometry, openModel, parsePolygons, runDisplayList } from './nsbmd'
-import { buildChunk, readSbc, convertChunks } from './chunks'
+import { buildChunk, readSbc, convertChunks, holePairs } from './chunks'
+import { parseTex0 } from './nitrotex'
 import { SUPPORTED } from './validate'
 import {
   DATA, withRom, romPath, fileSource, decodePng, decodePngBytes,
@@ -146,6 +147,48 @@ withRom('en')('parity — 노드 산출물과 바이트로 같다', () => {
     // 청크 666 + 목차 + 바닥 비트(`cover.bin`) · 소품 590 + 시트 568 + 목차 ·
     // 텍스처 묶음 32 + 목차
     expect(same).toBe(668)
+  }, 900_000)
+
+  // FP-04 — 청크가 부르는데 **맵 묶음 어디에도 없는** 이름 (자홍 156삼각형)
+  it('⚠️ 맵 묶음에 없는 그림은 같은 영역의 건물 묶음에서 굽는다', async () => {
+    const fs = await openNds(fileSource(romPath('en')!))
+    const texNarc = (await fs!.read('/fielddata/areadata/area_map_tex/map_tex_set.narc'))!
+    const sets = []
+    for (let s = 0; ; s++) {
+      const buf = narcEntry(texNarc, s)
+      if (!buf) break
+      const v = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+      sets.push(parseTex0(buf, v.getUint32(16, true)))
+    }
+    const land = (await fs!.read('/fielddata/land_data/land_data.narc'))!
+    const wanted = new Set<string>()
+    for (let i = 0; ; i++) {
+      const entry = narcEntry(land, i)
+      if (!entry) break
+      for (const m of buildChunk(entry, i).materials) {
+        if (m.texture) wanted.add(`${m.texture} ${m.palette ?? ''}`)
+      }
+    }
+    const holes = holePairs(wanted, sets)
+    // 실측 11쌍. 늘면 굽는 쪽에 구멍이 하나 더 난 것이다
+    expect(holes.size).toBe(11)
+    expect(holes.has('gym_obj2 gym_obj2_pl')).toBe(true)
+    expect(holes.has('m_fh01_012t m_fs01_12t')).toBe(true)
+
+    const out = await convertChunks({ fs: fs!, locale: 'en', release: EN })
+    const index = JSON.parse(decoder.decode(out.get('data/tex/index.json')!)) as {
+      sets: { items: [string, string, number, number, number, number][] }[]
+    }
+    const at = (set: number, tex: string): number[] | undefined =>
+      index.sets[set]!.items.find((i) => i[0] === tex)?.slice(4) as number[] | undefined
+    // 영원 체육관 위층(맵 68)의 영역 26은 맵 묶음 25와 건물 묶음 22를 함께 싣는다
+    expect(at(25, 'gym_obj1')).toEqual([32, 32])
+    expect(at(25, 'gym_obj2')).toEqual([16, 16])
+    // 장막 백화점 2층(맵 137)의 영역 22는 맵 묶음 21과 건물 묶음 18이다
+    expect(at(21, 'm_fh01_012t')).toEqual([16, 16])
+    // ⚠️ **아무 묶음에나 넣지 않는다.** 묶음 7의 영역은 그 그림을 안 싣는다 —
+    // 청크는 chunkSheets.lendersFor로 묶음 25에서 빌려 온다
+    expect(at(7, 'gym_obj2')).toBeUndefined()
   }, 900_000)
 
   it('⚠️ 소품과 텍스처 시트도 픽셀로 같다', async () => {

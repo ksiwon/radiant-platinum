@@ -30,8 +30,9 @@ import {
 import {
   cutoutGroups, isBakedShadow, isFoliage, leaning, plateLumps, rockSites,
 } from '../../src/scene/plates'
-import { bestSet, pickSheet } from '../../src/scene/chunkSheets'
+import { bestSet, lendersFor, lendKey, pickSheet } from '../../src/scene/chunkSheets'
 import { planChunk, quadStarts } from '../../src/scene/visual/chunkPlan'
+import { crossClaims } from '../../src/scene/visual/propPlan'
 import { VISUAL_RECIPES } from '../../src/scene/visual/recipes'
 
 const ROOT = resolve(__dirname, '../..')
@@ -48,8 +49,10 @@ type Outcome =
   | 'remove:baked-shadow'  // 나무 그림자 판을 걷는다 — 자리는 나무 앞으로 쓴다
   | 'replace:rock-named'   // searock·dun_srock 판을 걷고 Rocks가 세운다
   | 'replace:rock-lump'    // imped 등의 「덩이」 판을 걷고 Rocks가 세운다 — 화분도 여기로 간다
-  | 'keep:no-sheet'        // 그림 묶음에서 이름을 못 찾았다
+  | 'keep:no-sheet'        // 어느 묶음에도 그 이름이 없다 — 자홍이 된다
+  | 'keep:borrowed'        // 이 묶음엔 없지만 **이름으로 남의 묶음에서 빌려 온다** (`lendersFor`)
   | 'replace:recipe'       // 검수된 새 표현 레시피가 맡았다 (`scene/visual`)
+  | 'augment:cross-cards'  // 원본은 그대로, 같은 카드를 90° 돌려 한 벌 더 (`visual/propPlan`)
 
 /** 기획서 §3 표 — imped 64×64 안의 좌표, 좌상단 원점, [x0,y0,x1,y1) */
 const IMPED_REGIONS: readonly { name: string, rect: readonly [number, number, number, number] }[] = [
@@ -140,10 +143,31 @@ function partsOf(kind: Part['kind'], asset: number, mesh: ChunkMesh): Part[] {
   return out
 }
 
+/**
+ * **납작한 오려 낸 그림을 뜻으로 가른다** (FIRST_PERSON §12 · FP-07).
+ *
+ * `keep:cutout-flat`은 「오려 낸 그림인데 원작의 눕힘 각(45°·63.4°)이 아니다」일
+ * 뿐이라, 그 안에 뜻이 아주 다른 것들이 섞여 있다. 숫자만큼 일괄로 세우면 바닥
+ * 그림자와 물결까지 일으켜 세운다. 그래서 **기울기로 먼저 가른다** —
+ * `lean`은 판 법선의 |y|이고 `asin(lean)`이 수직에서 넘어간 각이다.
+ *
+ * - `ground`   깔렸다 (>0.95) — 물가·웅덩이·꽃·빛무리·턱 그림 같은 **바닥 그림**.
+ *              원작이 일부러 눕힌 것이라 그대로 둔다
+ * - `upright`  이미 섰다 (<0.1) — 벽·창·간판. 세울 것이 없다
+ * - `tilted`   그 사이 — **후보**다. 지붕·비탈처럼 기울어 마땅한 것과, 납작하게
+ *              눌린 화분·풀처럼 고쳐야 할 것이 여기 섞여 있다
+ */
+function flatClass(lean: number | null): 'ground' | 'upright' | 'tilted' | null {
+  if (lean === null) return null
+  if (lean > 0.95) return 'ground'
+  if (lean < 0.1) return 'upright'
+  return 'tilted'
+}
+
 /** 게임이 그 조각을 어떻게 다루는가 — `plates.splitFoliage`와 같은 차례 */
 function outcomeOf(
   part: Part, mesh: ChunkMesh, cutout: readonly boolean[], lumps: ReadonlySet<number>,
-  rockGroups: ReadonlySet<number>, hasItem: boolean,
+  rockGroups: ReadonlySet<number>, hasItem: boolean, borrowed = false,
 ): Outcome {
   if (isBakedShadow(mesh, part.group)) return 'remove:baked-shadow'
   if (rockGroups.has(part.group)) return 'replace:rock-named'
@@ -153,7 +177,7 @@ function outcomeOf(
   if (cutout[part.group] === true) {
     return part.lean !== null && leaning(part.lean) ? 'stand:card' : 'keep:cutout-flat'
   }
-  if (part.tex !== null && !hasItem) return 'keep:no-sheet'
+  if (part.tex !== null && !hasItem) return borrowed ? 'keep:borrowed' : 'keep:no-sheet'
   return 'keep:original'
 }
 
@@ -320,15 +344,47 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
       wraps: boolean, fractional: boolean, lean: number | null,
       semantic: { status: 'unclassified' | 'candidate', candidates: { name: string, share: number }[] },
       recipe: string | null, outcome: Outcome, review: 'unreviewed' | 'verified', placements: number,
+      lend?: { set: number, pal: string, loose: boolean } | null,
     }
     const sources: SourceRow[] = []
     const failed: { what: string, why: string }[] = []
 
+    /**
+     * **이 묶음에 없는 그림을 어디서 빌려 오나** — 게임과 같은 함수(`lendersFor`)로
+     * 묻는다 (`ChunkModels`의 `lend`). 이걸 안 물으면 목록이 자홍을 부풀린다:
+     * 실측으로 97삼각형(`h_kage` 85 · `gym04_d` 10 · `dun_floor2` 2)이 그려지는데도
+     * `keep:no-sheet`로 세어졌다
+     */
+    const lendFor = async (
+      mesh: ChunkMesh, sheet: TexSheet, texSet: number,
+    ): Promise<Map<string, { set: number, sheet: TexSheet, pal: string, loose: boolean }>> => {
+      const out = new Map<string, { set: number, sheet: TexSheet, pal: string, loose: boolean }>()
+      const lacking = new Map<string, { tex: string, pal: string | null }>()
+      for (const m of mesh.materials) {
+        if (m.tex === null) continue
+        if (sheet.items.some((it) => it.tex === m.tex && it.pal === (m.pal ?? ''))) continue
+        lacking.set(lendKey(m.tex, m.pal), { tex: m.tex, pal: m.pal })
+      }
+      if (lacking.size === 0) return out
+      for (const r of lendersFor(await loadTexNames(), [...lacking.values()])) {
+        out.set(r.key, { set: r.set, sheet: await loadTexSheet(r.set), pal: r.pal, loose: r.loose })
+      }
+      return out
+    }
+
     const describePart = (
       part: Part, mesh: ChunkMesh, sheet: TexSheet | null, cutout: boolean[], lumps: Set<number>,
       rocks: Set<number>, texSet: number | null, placements: number, sheetTag: string,
+      lend?: ReadonlyMap<string, { set: number, sheet: TexSheet, pal: string, loose: boolean }>,
     ): void => {
-      const item = sheet?.items.find((s) => s.tex === part.tex && s.pal === (part.pal ?? '')) ?? null
+      const mine = sheet?.items.find((s) => s.tex === part.tex && s.pal === (part.pal ?? '')) ?? null
+      // 제 묶음에 없으면 빌려 온 묶음에서 찾는다 — 그림도 거기 것을 잰다
+      const from = mine !== null || part.tex === null
+        ? null : lend?.get(lendKey(part.tex, part.pal)) ?? null
+      const item = mine ?? (from === null ? null
+        : from.sheet.items.find((s) => s.tex === part.tex && s.pal === from.pal) ?? null)
+      const at = mine !== null ? sheet! : from?.sheet ?? null
+      const tag = mine !== null ? sheetTag : `set${String(from?.set ?? -1)}`
       const rect = item
         ? [part.uv[0] * item.w, part.uv[1] * item.h, part.uv[2] * item.w, part.uv[3] * item.h].map(fmt3)
         : null
@@ -342,13 +398,14 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
           + `/g${String(part.group)}/t${String(tris[0])}`,
         kind: part.kind, asset: part.asset, texSet, group: part.group,
         tex: part.tex, pal: part.pal, rep: part.rep, alpha: part.alpha,
-        itemHash: sheet && item ? itemHash(sheet, item, sheetTag) : null,
+        itemHash: at && item ? itemHash(at, item, tag) : null,
         tris: tris.length, triOffsets: [tris[0]!, tris[tris.length - 1]!],
         rawUv: part.uv.map(fmt3), texelRect: rect, wraps, fractional,
         lean: part.lean === null ? null : fmt3(part.lean),
         semantic: { status: candidates.length > 0 ? 'candidate' : 'unclassified', candidates },
         recipe: null,
-        outcome: outcomeOf(part, mesh, cutout, lumps, rocks, item !== null),
+        outcome: outcomeOf(part, mesh, cutout, lumps, rocks, mine !== null, item !== null),
+        lend: from === null || item === null ? null : { set: from.set, pal: from.pal, loose: from.loose },
         review: 'unreviewed',
         placements,
       })
@@ -370,8 +427,11 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
         }
         const lumps = plateLumps(mesh, sheet, cutout, pos, claimed)
         const rocks = new Set(rockSites(mesh, pos).map((s) => s.group))
+        const lend = await lendFor(mesh, sheet, texSet)
         for (const part of partsOf('chunk', chunk, mesh)) {
-          describePart(part, mesh, sheet, cutout, lumps, rocks, texSet, placements, `set${String(texSet)}`)
+          describePart(
+            part, mesh, sheet, cutout, lumps, rocks, texSet, placements, `set${String(texSet)}`, lend,
+          )
           const ids = new Set(part.tris.map((t) => recipeAt.get(t)))
           if (ids.size === 1 && !ids.has(undefined)) {
             const row = sources[sources.length - 1]!
@@ -398,6 +458,8 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
         // ⚠️ 소품에는 잎 걷기·덩이 걷기가 안 걸린다 (`ChunkModels`는 소품을 `splitShadow`만
         // 해서 그린다). 판정은 게임 함수로 하되 결과를 「소품은 그대로」로 접는다
         const lumps = plateLumps(mesh, sheet, cutout, pos)
+        // 소품에 걸리는 레시피 — 지금은 십자 카드 하나다 (`visual/propPlan`)
+        const crossAt = crossClaims(mesh, sheet, id, VISUAL_RECIPES, 'verified')
         for (const part of partsOf('prop', id, mesh)) {
           describePart(part, mesh, sheet, cutout, new Set(), new Set(), null, propUse.get(id) ?? 0, `prop${String(id)}`)
           const row = sources[sources.length - 1]!
@@ -405,6 +467,12 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
           const wouldLump = part.tris.some((t) => lumps.has(t - ((t - start) % 6)))
           row.outcome = cutout[part.group] === true ? 'keep:cutout-flat' : row.outcome
           if (wouldLump) row.semantic.candidates.push({ name: 'lump-shaped(prop, not replaced)', share: 1 })
+          const ids = new Set(part.tris.map((t) => crossAt.get(t)))
+          if (ids.size === 1 && !ids.has(undefined)) {
+            row.outcome = 'augment:cross-cards'
+            row.recipe = [...ids][0]!
+            row.review = 'verified'
+          }
         }
       } catch (e) {
         failed.push({ what: `prop ${String(id)}`, why: String((e as Error).message ?? e).slice(0, 200) })
@@ -455,6 +523,16 @@ it('1인칭 원재료 전수 목록', { timeout: 1_800_000 }, async () => {
         recipes: VISUAL_RECIPES.map((r) => ({ id: r.id, review: r.review })),
       },
       byOutcome: tally(sources, (r) => `${r.kind}/${r.outcome}`),
+      // 납작한 그림을 뜻으로 가른 것 (FP-07). `tilted`만 후보다
+      flatCutouts: tally(
+        sources.filter((r) => r.outcome === 'keep:cutout-flat'),
+        (r) => `${r.kind}/${String(flatClass(r.lean))}`,
+      ),
+      // `tilted` 안에서 어느 그림이 큰가 — 배치 많은 것부터 (§12의 「고빈도 먼저」)
+      flatTiltedBySource: Object.fromEntries(Object.entries(tally(
+        sources.filter((r) => r.outcome === 'keep:cutout-flat' && flatClass(r.lean) === 'tilted'),
+        (r) => `${r.kind}/${r.tex ?? '-'}`,
+      )).sort((a, b) => b[1].placedParts - a[1].placedParts).slice(0, 40)),
       bySemantic: tally(sources, (r) => r.semantic.status),
       impedLumpRegions: tally(
         sources.filter((r) => r.tex === 'imped' && r.kind === 'chunk'),

@@ -1,7 +1,8 @@
 // 형상 생성 검증 (FIRST_PERSON §13.1 「기하」)
 import { describe, expect, it } from 'vitest'
 import {
-  FENCE_SLOTS, PLANTER, PLANTER_SLOTS, SHRUB_SLOTS, fenceGeometry, openEdges, planterGeometry, shrubGeometry,
+  BOLLARD_SLOTS, FENCE_SLOTS, PLANTER, PLANTER_SLOTS, SHRUB_SLOTS, bollardGeometry, fenceGeometry,
+  openEdges, planterGeometry, shrubGeometry,
   signedVolume,
   type BuiltShape,
 } from './geometry'
@@ -195,5 +196,71 @@ describe('말뚝 울타리', () => {
     const plain = fenceGeometry(4, 0, 64)
     expect([...shifted.geometry.getAttribute('position').array])
       .toEqual([...plain.geometry.getAttribute('position').array])
+  })
+})
+
+describe('볼라드 — 사슬 갈래와 풀 갈래', () => {
+  it('사슬 갈래: 네 칸이면 말뚝 여덟 벌과 사슬 하나고 상자마다 닫혀 있다', () => {
+    const shape = bollardGeometry(4, 0, 64, 'chain')
+    sane(shape)
+    expect(shape.slots).toEqual(BOLLARD_SLOTS)
+    // 말뚝 하나 = 기둥(옆면을 띠로 가르니 삼각형 20) · 꼭대기 12 · 받침 12 = 44.
+    // 사슬 하나 = 12
+    expect(shape.geometry.getIndex()!.count / 3).toBe(8 * 44 + 12)
+    expect(openEdges(shape.geometry)).toBe(0)
+    expect(signedVolume(shape.geometry)).toBeGreaterThan(0)
+    // 꼭대기는 행 2의 위 가장자리(13/16) — 울타리(14/16)보다 한 텍셀 낮다
+    expect(shape.bounds[4]).toBeCloseTo(13 / 16, 6)
+    expect(shape.bounds[3] - shape.bounds[0]).toBeCloseTo(4, 6)
+  })
+
+  it('사슬은 기둥 사이를 **곧게** 잇는다 — 행 6 한 줄, 판 길이 그대로', () => {
+    const shape = bollardGeometry(4, 0, 64, 'chain')
+    const pos = shape.geometry.getAttribute('position').array
+    const index = shape.geometry.getIndex()!.array
+    const chain = shape.slots.indexOf('chain')
+    const ys = new Set<number>()
+    let minX = Infinity, maxX = -Infinity
+    for (const g of shape.geometry.groups) {
+      if (g.materialIndex !== chain) continue
+      for (let t = g.start; t < g.start + g.count; t++) {
+        const i = index[t]!
+        ys.add(+pos[i * 3 + 1]!.toFixed(6))
+        minX = Math.min(minX, pos[i * 3]!)
+        maxX = Math.max(maxX, pos[i * 3]!)
+      }
+    }
+    expect([...ys].sort((a, b) => a - b)).toEqual([+(8 / 16).toFixed(6), +(9 / 16).toFixed(6)])
+    expect(maxX - minX).toBeCloseTo(4, 6)
+  })
+
+  it('풀 갈래에는 사슬도 받침도 없고, 말뚝마다 풀 덩이가 하나다', () => {
+    const shape = bollardGeometry(4, 0, 64, 'grass')
+    sane(shape)
+    const used = new Set(shape.geometry.groups
+      .filter((g) => g.count > 0)
+      .map((g) => shape.slots[g.materialIndex ?? 0]))
+    expect(used.has('chain')).toBe(false)
+    expect(used.has('baseFront')).toBe(false)
+    expect(used.has('grass')).toBe(true)
+    // 풀은 여덟모 덩이 하나씩이다 — 옆면 5점 프로필이면 부채 8 + 사각 16 + 16 +
+    // 부채 8 = 삼각형 48이고, 말뚝 여덟이면 384다
+    const grass = shape.slots.indexOf('grass')
+    const tris = shape.geometry.groups
+      .filter((g) => g.materialIndex === grass)
+      .reduce((n, g) => n + g.count / 3, 0)
+    expect(tris).toBe(8 * 48)
+    expect(shape.bounds[1]).toBeCloseTo(0, 6)
+  })
+
+  it('판 끝에서 잘린 말뚝은 잘린 폭만 남는다 — 반칸 토막도 하나가 산다', () => {
+    const half = bollardGeometry(0.5, 0, 8, 'chain')
+    sane(half)
+    expect(half.bounds[3] - half.bounds[0]).toBeCloseTo(0.5, 6)
+    const posts = new Set<number>()
+    const pos = half.geometry.getAttribute('position').array
+    for (let i = 0; i < pos.length; i += 3) if (pos[i + 1]! > 12 / 16) posts.add(+pos[i]!.toFixed(4))
+    // 꼭대기(u 3…5)가 하나 — 자리 셋(양 끝과 가운데)
+    expect(posts.size).toBe(2)
   })
 })

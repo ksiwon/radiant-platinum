@@ -152,3 +152,57 @@ export function fenceSwatch(sheet: SheetPixels, item: Item): FenceSwatch | null 
   }
   return { postFront, postTop, postEdge, railTop, railFront }
 }
+
+export interface BollardSwatch {
+  postFront: number
+  postEdge: number
+  headFront: number
+  headTop: number
+  baseFront: number
+  baseTop: number
+  chain: number
+  /** 풀 갈래만 — 밝은 것부터 */
+  grass: readonly number[]
+}
+
+/**
+ * imped **볼라드(말뚝)** 칸(0,0,64,16)의 역할별 색 (FP-05).
+ *
+ * 울타리와 같은 칸인데 짜임이 다르다 — 가로대가 없다. 자리는 묶음 19(`8feb19f7`)와
+ * 17(`e3243c1d`)을 텍셀로 읽어 정했다:
+ *
+ * - 사슬 갈래: 행 3 흰 머리 · 행 8 밝은 몸통 · 열 2 모서리 · 행 12~13 넓은 받침 ·
+ *   기둥 사이 행 6이 **사슬**
+ * - 풀 갈래: 행 3 흰 머리 · 행 7 회색 몸통 · 행 9~14가 **기둥을 덮은 풀**
+ *
+ * 자리 하나라도 투명이면 null — 그 그림은 이 짜임이 아니다
+ */
+export function bollardSwatch(
+  sheet: SheetPixels, item: Item, kind: 'chain' | 'grass',
+): BollardSwatch | null {
+  const chainKind = kind === 'chain'
+  const postFront = texel(sheet, item, 3, chainKind ? 8 : 7)
+  const postEdge = texel(sheet, item, 2, chainKind ? 8 : 7)
+  const headFront = texel(sheet, item, 3, chainKind ? 3 : 5)
+  const headTop = texel(sheet, item, 3, 3)
+  const baseFront = texel(sheet, item, 3, 13)
+  const baseTop = texel(sheet, item, 3, 12)
+  // 사슬은 **기둥 사이**에 있다 — 한 칸(8텍셀) 건너 첫 열이다
+  const chain = chainKind ? texel(sheet, item, 8, 6) : baseFront
+  if (postFront === null || postEdge === null || headFront === null || headTop === null
+    || baseFront === null || baseTop === null || chain === null) {
+    return null
+  }
+  /**
+   * 풀은 **자리로** 읽는다 — 첫 말뚝의 밝은 잎(3,11) · 가운데(4,11) · 밑(3,13).
+   *
+   * ⚠️ 사각형 안의 색을 빈도로 모으면 말뚝의 어두운 모서리(`#736b63`·`#635a42`)까지
+   * 초록으로 센다 (실측). 화분·덤불과 같은 규칙으로 자리를 적어 둔다
+   */
+  const grass = chainKind ? [] : [
+    texel(sheet, item, 3, 11), texel(sheet, item, 4, 11), texel(sheet, item, 3, 13),
+  ]
+  if (!chainKind && grass.some((c) => c === null)) return null
+  const leaves = (grass as number[]).sort((a, b) => luma(b) - luma(a))
+  return { postFront, postEdge, headFront, headTop, baseFront, baseTop, chain, grass: leaves }
+}

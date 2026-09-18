@@ -837,6 +837,20 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
     ...STAGE.badge1,
   },
   {
+    id: 'gym2-upper',
+    label: '영원 체육관 · 위층',
+    env: '실내 · 체육관 위층 (밖을 내다보는 난간) · 배지 1개',
+    try: [
+      '난간 너머 바깥 그림이 제대로 그려지는지 본다',
+      '⚠️ 이 청크(295)는 제 영역 묶음(25)에 **그림이 거의 없다** — 게임이 이름으로',
+      '   가장 덜 모자란 묶음을 고른다. `gym_obj1`·`gym_obj2`는 어느 맵 묶음에도 없어',
+      '   같은 영역의 건물 묶음에서 굽는다 (FP-04 · 자홍 140삼각형)',
+    ],
+    map: 68,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge1,
+  },
+  {
     id: 'gym2',
     label: '영원 체육관 · 유채 (풀)',
     env: '실내 · 체육관 (풀) · 배지 1개에서 2개로',
@@ -853,6 +867,18 @@ export const CHECKPOINTS: readonly Checkpoint[] = [
       { species: LUXIO, level: 19 }, { species: BIDOOF, level: 18 },
     ],
     battle: { kind: 'trainer', id: 315 },
+  },
+  {
+    id: 'dept2',
+    label: '장막시티 백화점 · 2층',
+    env: '실내 · 상점 층 (진열대와 점원)',
+    try: [
+      '진열대 그림이 제대로 그려지는지 본다',
+      '⚠️ `m_fh01_012t`는 맵 묶음에 없고 같은 영역의 건물 묶음에만 있다 (FP-04)',
+    ],
+    map: 137,
+    spot: { kind: 'warp', index: 0 },
+    ...STAGE.badge2,
   },
   {
     id: 'galactic',
