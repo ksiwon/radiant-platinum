@@ -115,6 +115,8 @@ export interface Material {
    * 이것이 유일한 색이다** — `packChunk`가 그때만 `d`로 싣는다
    */
   diffuse: [number, number, number]
+  /** 켠 빛 (`polyAttr` 0~3비트). 켜져 있으면 법선 명령이 정점색을 조명으로 덮는다 */
+  lights: number
   texture: string | null
   palette: string | null
 }
@@ -155,6 +157,7 @@ export function parseMaterials(
       alpha: (polyAttr >> 16) & 0x1f,
       faces: (polyAttr >> 6) & 3,
       diffuse: rgb5(diffAmb & 0x7fff),
+      lights: polyAttr & 15,
       texture: null,
       palette: null,
     }
@@ -193,6 +196,12 @@ export function buildMesh(
   let uv: [number, number] = [0, 0]
   let normal: Vec3 = [0, 0, 127]
   let color: Vec3 = [255, 255, 255]
+  /**
+   * 마지막 색 명령 **뒤에** 법선이 왔는가 — 노드 굽는 쪽(`tools/extract/chunks.js`)과
+   * 같은 규칙이다. 빛을 켠 재질에서는 법선 명령이 정점색을 **조명 결과로 덮는다**.
+   * 하드마운틴 바깥의 `COLOR 0 → NORMAL` 땅이 원작에서는 밝은데 우리는 먹빛이었다
+   */
+  let relit = false
 
   const tri = (a: number, b: number, c: number): void => { indices.push(a, b, c) }
 
@@ -205,10 +214,12 @@ export function buildMesh(
         // 정점 색은 5비트씩이다. 8비트로 늘릴 때 위 3비트를 되붙인다
         const c = (x: number): number => (x << 3) | (x >> 2)
         color = [c(v & 0x1f), c((v >> 5) & 0x1f), c((v >> 10) & 0x1f)]
+        relit = false
         return
       }
       case 0x21: {
         const v = params[0]!
+        relit = true
         const s = (x: number): number => { const n = x & 0x3ff; return n & 0x200 ? n - 0x400 : n }
         // 1.0이 512다. int8로 담으므로 127로 맞춘다
         normal = [s(v), s(v >> 10), s(v >> 20)]
@@ -232,7 +243,8 @@ export function buildMesh(
       pos: pos.map((v) => v * scale / UNITS_PER_TILE) as Vec3,
       uv: [uv[0] * uScale, uv[1] * vScale],
       normal,
-      color,
+      // 조명에 덮인 색은 색 명령이 없는 정점과 같게 굽는다
+      color: material.lights !== 0 && relit ? [255, 255, 255] : color,
     })
     const i = verts.length - 1
     strip.push(i)

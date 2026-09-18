@@ -10,7 +10,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { openNds, narcEntry } from './nds'
 import { countGeometry, openModel, parsePolygons, runDisplayList } from './nsbmd'
-import { buildChunk, readSbc, convertChunks, holePairs } from './chunks'
+import { buildChunk, buildMesh, readSbc, convertChunks, holePairs, type Material } from './chunks'
 import { parseTex0 } from './nitrotex'
 import { SUPPORTED } from './validate'
 import {
@@ -65,6 +65,42 @@ describe('디스플레이 리스트', () => {
     const seen: [number, number[]][] = []
     runDisplayList(b, (op, params) => seen.push([op, params]))
     expect(seen).toEqual([[0x00, []], [0x10, [0x1234]], [0x00, []], [0x00, []]])
+  })
+
+  /**
+   * `BEGIN(삼각형) · COLOR 0 · NORMAL · VTX×3 · END`를 원시 명령으로 짠다.
+   * 명령 넷이 한 워드로 묶이고 그 뒤에 파라미터 워드가 순서대로 온다
+   */
+  function blackThenNormal(): Uint8Array {
+    const words: number[] = []
+    const pack = (ops: number[], params: number[]) => {
+      words.push(ops[0]! | (ops[1]! << 8) | (ops[2]! << 16) | (ops[3]! << 24), ...params)
+    }
+    const vtx = (x: number, z: number) => [x & 0xffff, z & 0xffff]
+    pack([0x40, 0x20, 0x21, 0x23], [0, 0, 0x1ff << 10, ...vtx(0, 0)])
+    pack([0x23, 0x23, 0x41, 0x00], [...vtx(16, 0), ...vtx(0, 16)])
+    const b = new Uint8Array(words.length * 4)
+    const v = new DataView(b.buffer)
+    words.forEach((w, i) => { v.setUint32(i * 4, w >>> 0, true) })
+    return b
+  }
+  const material = (lights: number): Material => ({
+    name: 'm', origWidth: 8, origHeight: 8, magW: 1, magH: 1,
+    repeatS: false, repeatT: false, flipS: false, flipT: false,
+    alpha: 31, faces: 2, diffuse: [206, 206, 206], lights, texture: 'x', palette: 'x',
+  })
+
+  it('⚠️ 빛을 켠 재질에서는 법선이 정점색을 덮는다 — 색 0을 굽지 않는다', () => {
+    // 하드마운틴 바깥(청크 172) 땅이 `COLOR 0 → NORMAL → VTX`다. 원작은 NORMAL이
+    // 조명으로 색을 다시 내므로 밝은데, 색 0을 그대로 구우니 먹빛이었다
+    const lit = buildMesh(blackThenNormal(), 1, material(1))
+    expect(lit.verts.map((v) => v.color)).toEqual([[255, 255, 255], [255, 255, 255], [255, 255, 255]])
+  })
+
+  it('빛을 끈 재질의 색 0은 원작도 검다 — 그대로 둔다', () => {
+    // 장막백화점 에스컬레이터 뚜껑(`lambert19`)이 그렇다
+    const dark = buildMesh(blackThenNormal(), 1, material(0))
+    expect(dark.verts.map((v) => v.color)).toEqual([[0, 0, 0], [0, 0, 0], [0, 0, 0]])
   })
 
   it('모르는 GPU 명령이면 세운다', () => {

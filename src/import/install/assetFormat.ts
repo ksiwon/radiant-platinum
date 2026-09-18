@@ -184,6 +184,14 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 검은 쐐기로 떴다 — 콘테스트회장은 화면 왼쪽 29%였다. 확산색이 있는
    * 61개(714삼각형)만 흰 정점색으로 되돌린다(확산까지 검은 59개는 그림자다).
    *
+   * 8 — **빛을 켠 재질에서 법선이 덮어쓴 정점색을 굽지 않는다.** GX의
+   * `NORMAL`은 그 자리에서 조명을 계산해 정점색을 낸다 — 그 뒤 정점은 색
+   * 명령의 값이 아니라 조명 결과로 그려진다. `COLOR 0 → NORMAL → VTX`를 색 0으로
+   * 구우니 하드마운틴 바깥(청크 172) 땅이 통째로 먹빛이었다. 청크 37벌·소품
+   * 5벌의 바이트가 달라지고(9,728정점, 그중 검정 8,872) 검은 누운 면이 5,023 →
+   * 2,303이 된다 — 남은 것은 빛을 끈 재질이라 원작도 검다
+   * (`.audit/tmp/litOrder.cjs`)
+   *
    * 7 — **소품이 원작 클립대로 움직인다** (`data/props/anims.bin` 70.5KB ·
    * `anims.json`의 `models`·`deferred`). 애니 있는 소품 112개에 「조각이 붙은
    * 노드 · 노드 기본 변환 · 재질 이름 · 텍셀→UV 배수」를 싣고, `bm_anime.narc`
@@ -226,7 +234,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 바이트가 달라지는 것은 그 140벌뿐이지만 그룹을 통째로 다시 굽는다
    * (`.audit/probe/whiteMaterials.mjs`)
    */
-  chunks: 7,
+  chunks: 8,
 }
 
 export function groupFormat(name: string): number {

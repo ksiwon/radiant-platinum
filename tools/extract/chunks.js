@@ -133,6 +133,8 @@ function parseMaterials(buf, modelAt, header) {
       diffuse: rgb5(diffAmb & 0x7fff),
       /** 6~7비트가 어느 면을 그리는가다: 1 뒷면 · 2 앞면 · 3 양면 */
       faces: (polyAttr >> 6) & 3,
+      /** 0~3비트 — 켠 빛. 켜져 있으면 법선 명령이 정점색을 조명으로 다시 계산한다 */
+      lights: polyAttr & 15,
       texture: null,
       palette: null,
     }
@@ -167,9 +169,24 @@ function buildMesh(dl, scale, material) {
   let uv = [0, 0]
   let normal = [0, 0, 127]
   let color = [255, 255, 255]
+  /**
+   * 마지막 색 명령 **뒤에** 법선이 왔는가.
+   *
+   * ⚠️ **빛을 켠 재질에서는 법선 명령이 정점색을 덮어쓴다** (GX `NORMAL`이 그
+   * 자리에서 조명을 계산해 색을 낸다). 그 뒤의 정점은 색 명령의 값이 아니라
+   * **조명 결과**로 그려진다. 실측(`.audit/tmp/litOrder.cjs`): 하드마운틴 바깥
+   * (청크 172)은 `COLOR 0 → NORMAL → VTX`로 칠한 땅이 2,672정점인데, 재질이
+   * 빛 0번을 켜고 주변광 31/31이라 원작 화면에서는 밝다. 색 0을 그대로 구우니
+   * 땅이 통째로 먹빛이었다. 온 게임에서 38청크 9,728정점(그중 검정 8,872)이다.
+   * 반대로 빛을 끈 재질의 색 0(장막백화점 에스컬레이터 뚜껑 `lambert19`)은
+   * 원작도 검다 — 그건 그대로 둔다
+   */
+  let relit = false
 
   const emit = () => {
-    verts.push({ pos: pos.map((v) => v * scale / UNITS_PER_TILE), uv: [uv[0] * uScale, uv[1] * vScale], normal, color })
+    // 조명에 덮인 색은 **색 명령이 없는 정점**과 같게 굽는다 — 빛은 우리 재질이 준다
+    const shown = material.lights && relit ? [255, 255, 255] : color
+    verts.push({ pos: pos.map((v) => v * scale / UNITS_PER_TILE), uv: [uv[0] * uScale, uv[1] * vScale], normal, color: shown })
     return verts.length - 1
   }
   const tri = (a, b, c) => { indices.push(a, b, c) }
@@ -183,10 +200,12 @@ function buildMesh(dl, scale, material) {
         // 정점 색은 5비트씩이다. 8비트로 늘릴 때 위 3비트를 되붙인다
         const c = (x) => (x << 3) | (x >> 2)
         color = [c(v & 0x1f), c((v >> 5) & 0x1f), c((v >> 10) & 0x1f)]
+        relit = false
         return
       }
       case 0x21: {
         const v = params[0]
+        relit = true
         const s = (x) => { const n = x & 0x3ff; return n & 0x200 ? n - 0x400 : n }
         // 1.0이 512다. int8로 담으므로 127로 맞춘다
         normal = [s(v), s(v >> 10), s(v >> 20)].map((n) => Math.max(-127, Math.min(127, Math.round(n / 512 * 127))))

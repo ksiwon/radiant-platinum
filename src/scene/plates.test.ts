@@ -1643,6 +1643,51 @@ describe('턱에 옆면을 세운다', () => {
     expect(spans).toContainEqual([0, 1])
   })
 
+  /**
+   * 높은 칸의 정점색만 `shade`로 칠한 `terrace`. 낮은 칸은 흰색 그대로다
+   */
+  function shaded(shade: number): Split {
+    const split = terrace(1)
+    const n = split.geometry.getAttribute('position').count
+    const col = new Float32Array(n * 3).fill(1)
+    const pos = split.geometry.getAttribute('position')
+    for (let i = 0; i < n; i++) if (pos.getY(i) > 0.5) col.fill(shade, i * 3, i * 3 + 3)
+    split.geometry.setAttribute('color', new BufferAttribute(col, 3))
+    return split
+  }
+
+  /** 옆면(법선 y 0)의 정점색만 */
+  function skirtColors(split: Split): number[][] {
+    // 높은 칸이 막혀 있다 — 장막 에스컬레이터 뚜껑 칸이 그렇다 (`standLevel`)
+    const patch = floorPatch(split, (x) => (x < 1 ? 1 : 0), [], undefined, undefined, undefined,
+      (x) => x < 1)
+    if (patch === null) return []
+    const nor = patch.geometry.getAttribute('normal')
+    const col = patch.geometry.getAttribute('color')
+    const out: number[][] = []
+    for (let i = 0; i < nor.count; i++) {
+      if (Math.abs(nor.getY(i)) < 0.5) out.push([col.getX(i), col.getY(i), col.getZ(i)])
+    }
+    return out
+  }
+
+  it('정점색이 0인 판에서는 검은 옆면을 안 내린다 — 이웃 그림을 빌린다', () => {
+    // ⚠️ 장막백화점 2층 한가운데 검은 기둥 (실측 2026-09-18): 그림은 주황
+    // (`m_depart01_01` 텍셀 255,173,16)인데 정점색이 0,0,0인 구멍 뚜껑에서 옆면이
+    // 내려왔다. 텍셀 × 정점색이 화면 색이라 그림이 멀쩡해도 새까맣다
+    const got = skirtColors(shaded(0))
+    expect(got.length).toBeGreaterThan(0)
+    for (const c of got) expect(c).toEqual([1, 1, 1])
+  })
+
+  it('정점색이 살아 있는 판은 예전처럼 제 것으로 선다', () => {
+    // 그늘이 짙은 것과 없는 것은 다르다 — 원작 그늘 넉 단계(156·181·206·255)의
+    // 가장 어두운 것도 옆면에 그대로 실린다
+    const got = skirtColors(shaded(156 / 255))
+    expect(got.length).toBeGreaterThan(0)
+    for (const c of got) for (const v of c) expect(v).toBeCloseTo(156 / 255, 5)
+  })
+
   it('UV가 타일 밖으로 안 나간다 — 안쪽으로 되짚는다', () => {
     const patch = floorPatch(terrace(2), (x) => (x < 1 ? 2 : 0))!
     const uv = patch.geometry.getAttribute('uv')

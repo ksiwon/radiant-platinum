@@ -106,6 +106,20 @@ const GROUND_OPAQUE = 0.995
  */
 const PITCH_BLACK = 16
 
+/**
+ * 정점색이 0이라 **그림이 무엇이든 새까맣게 그려지는** 판.
+ *
+ * `PITCH_BLACK`과 같은 뜻을 정점색 쪽에서 본 것이다 — 원작은 그늘·메움을 그림으로도
+ * (`black`) 칠하고 **정점색 0으로도** 칠한다. 재질은 `vertexColors`라 텍셀 × 정점색이
+ * 곧 화면 색이다. 실측(2026-09-18 `.audit/tmp/blackBox.mjs`): 장막백화점 2층 한가운데
+ * 검은 기둥은 그림이 주황(`m_depart01_01` 텍셀 255,173,16)인데 정점색이 0,0,0인
+ * **에스컬레이터 구멍 뚜껑**(y 2.88)에서 접어 내린 옆면이었다.
+ *
+ * 그래서 옆면을 세울 때 **등급 0과 같은 갈래**로 보낸다 (`floorPatch`) — 원작 세로면이
+ * 선 칸이면 안 세우고, 없는 칸이면 이웃의 그림을 빌린다
+ */
+const pitchBlack = (f: FloorTri): boolean => f.r + f.g + f.b < 1e-3
+
 /** 그림 한 장을 두 번 재지 않는다. 시트가 바뀌면 통째로 사라진다 */
 const rankCache = new WeakMap<TexSheet, Map<string, number>>()
 
@@ -633,8 +647,8 @@ export function leaning(lean: number): boolean {
   return STAND_ANGLES.some((a) => Math.abs(deg - a) <= STAND_SLACK)
 }
 
-/** 판 하나를 세운다. 정점 자리를 제자리에서 고친다 */
-function standCard(pos: Float32Array, verts: number[], n: [number, number, number]): void {
+/** 판 하나를 세운다. 정점 자리를 제자리에서 고친다 (소품도 쓴다 — `visual/propPlan.standProp`) */
+export function standCard(pos: Float32Array, verts: number[], n: [number, number, number]): void {
   // 경첩은 판 평면의 수평 방향이다. 판이 수평이면 경첩이 없다
   const hx = n[2], hz = -n[0]
   const hl = Math.hypot(hx, hz)
@@ -1445,7 +1459,8 @@ export function floorPatch(
   // 위에 겹쳐 깐 얼음 한 겹(`c09_ice` 55% · `c09_ice2` 48%)일 수 있다 —
   // 세워 놓으면 반이 비쳐서 턱을 메우기는커녕 창문이 된다 (선단시티·217번도로
   // 실측 각 104삼각형). 등급 0은 물·풀숲·속 빈 그림이다 (`groundRank`)
-  const walls = kind ? floors.filter((f) => kind(f.group).rank > 0) : floors
+  const walls = (kind ? floors.filter((f) => kind(f.group).rank > 0) : floors)
+    .filter((f) => !pitchBlack(f))
   /** 제 층을 그린 삼각형으로는 못 세우는 칸. 그때만 이웃에서 그림을 빌린다 */
   const orphan: number[] = []
   /** 빌려 올 칸의 **높이**. 그림만 남에게서 가져오고 높이는 제 것을 쓴다 */
@@ -1455,7 +1470,11 @@ export function floorPatch(
     const tx = cellX(key), tz = cellZ(key)
     const shut = blocked?.(tx + 0.5, tz + 0.5) ?? false
     const pick = standLevel(here, ground(tx + 0.5, tz + 0.5, highest(here)), shut)
-    if (kind === null || kind(pick.src.group).rank > 0) top.set(key, { y: pick.y, src: pick.src })
+    // ⚠️ **정점색이 0인 판도 등급 0이다** (`pitchBlack`) — 그림만 보면 주황이라
+    // 여기를 지나쳐, 장막 에스컬레이터 뚜껑이 천장부터 바닥까지 검은 벽이 됐다
+    if ((kind === null || kind(pick.src.group).rank > 0) && !pitchBlack(pick.src)) {
+      top.set(key, { y: pick.y, src: pick.src })
+    }
     // ⚠️ **원작이 이미 세로면을 그려 둔 칸에는 안 세운다.** 연고시티 성문
     // 옆기둥이 그 자리다 — 원작 벽(`area4_gate_a`·`_b` 37삼각형)이 서 있는데
     // 그 그림이 불투명 58%라 등급 0이고, 이웃에서 `ngrass`를 빌려 오면 진짜
