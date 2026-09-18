@@ -14,7 +14,7 @@ import {
 import type { MapGrid } from '../engine/map/grid'
 import {
   dropMaterial,
-  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexSheet, makeMaterial, ownMap, sliceTexture,
+  loadChunkMesh, loadPropMesh, loadPropSheet, loadTexNames, loadTexSheet, makeMaterial, ownMap, sliceTexture,
   releaseSplit,
   splitShadow,
   type ChunkMesh, type TexSheet,
@@ -41,6 +41,12 @@ import { markTerrain, openTerrainRequest, traceTerrain } from './terrainMark'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
 import { mergeByMaterial } from './mergeGroups'
+import { bestSet, lendersFor, lendKey, missingIn, pickSheet } from './chunkSheets'
+import { planChunk, planterGroupOf, quadStarts } from './visual/chunkPlan'
+import { Planters, type PlanterGroup } from './visual/Planters'
+import { recipeMode, VISUAL_RECIPES } from './visual/recipes'
+import { noteVisualDecisions } from './visual/readiness'
+import type { PartDecision } from './visual/types'
 import { isFeaturePlacement } from './movingProps'
 import { isDistortionFloor } from './distortionCore'
 import { AnimatedProp, hasPropAnim, usePropAnimSet } from './AnimatedProp'
@@ -166,19 +172,33 @@ interface Prop extends Placed {
 export function materialsFor(
   mesh: ChunkMesh, sheet: TexSheet | null, cache: Map<string, Material>,
   cutout: readonly boolean[] = [],
+  /** 그 그림을 꺼낸 묶음. 한 배치에 묶음이 둘 이상 섞일 때 보관함을 가른다 */
+  set?: number,
+  /**
+   * **이 묶음에 없는 그림을 빌려 올 자리** (`chunkSheets.lendersFor`).
+   *
+   * 한 청크가 두 묶음에 나뉜 그림을 함께 쓰는 자리가 있어서, 묶음 하나로는
+   * 못 그린다 — 그러면 예전에는 그 서브메시가 통째로 자홍이었다
+   */
+  lend?: ReadonlyMap<string, { set: number, sheet: TexSheet, pal: string }>,
 ): Material[] {
   return mesh.materials.map((spec, i) => {
     const twoSided = cutout[i] === true
-    const key = materialKey(spec, twoSided, i)
+    const borrow = spec.tex === null || sheet?.items.some(
+      (s) => s.tex === spec.tex && s.pal === (spec.pal ?? '')) === true
+      ? undefined : lend?.get(lendKey(spec.tex, spec.pal))
+    const key = materialKey(spec, twoSided, i, borrow === undefined ? set : borrow.set)
     const hit = cache.get(key)
     if (hit) return hit
-    const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
+    const from = borrow === undefined ? sheet : borrow.sheet
+    const item = from?.items.find((s) => s.tex === spec.tex
+      && s.pal === (borrow === undefined ? (spec.pal ?? '') : borrow.pal))
     // ⚠️ **그림이 없는 서브메시는 고장이 아니다.** 원작 DS는 텍스처 없이
     // 정점 색만으로 그리는 폴리곤을 쓴다 — 오버월드 소품 서브메시 442개 중
     // 두 개가 `tex: null`이다. 이걸 "못 만든 것"으로 돌리면 무쇠시티 프렌들리숍
     // 문틀에 **자홍색 선**이 그어진다. 실제로 그렇게 나와 있었다
-    const made = item && sheet
-      ? makeMaterial(spec, sliceTexture(sheet, item, spec.rep), twoSided)
+    const made = item && from
+      ? makeMaterial(spec, sliceTexture(from, item, spec.rep), twoSided)
       : spec.tex === null ? makeMaterial(spec, null, twoSided) : MISSING
     /**
      * ⚠️ **이 그림은 이 배치의 것이다.** `sliceTexture`는 부를 때마다 새
@@ -228,11 +248,18 @@ function depthPriority(material: Material, submesh: number): void {
  */
 function materialKey(
   spec: ChunkMesh['materials'][number], twoSided: boolean, submesh: number,
+  /**
+   * ⚠️ **묶음 번호도 열쇠다** (`chunkSheets`). 이웃 지역 청크를 제 집 묶음으로
+   * 그리면 한 배치에 묶음이 둘이 되는데, 이름은 같고 픽셀이 다른 그림이 92종이다
+   * (`firstPersonSources`) — 빼면 먼저 만든 쪽 그림이 남의 청크에 붙는다
+   */
+  set?: number,
 ): string {
   return `${spec.tex ?? ''}/${spec.pal ?? ''}/${String(spec.rep)}/${String(spec.a)}/${String(spec.f)}`
     // ⚠️ **서브메시 차례도 열쇠다.** `depthPriority`가 차례마다 다른 깊이 눈금을
     // 주므로, 이것을 빼면 먼저 만들어진 하나가 공유되어 그 눈금이 통째로 사라진다
     + `/${(spec.d ?? []).join(',')}/${String(twoSided)}/${String(submesh)}`
+    + (set === undefined ? '' : `/s${String(set)}`)
 }
 
 /**
@@ -395,6 +422,11 @@ interface Piece {
   shells: CardShells | null
   originX: number
   originZ: number
+  /** 이 청크를 그리는 묶음 — 대개 현재 묶음이고, 모자라면 제 집 묶음이다 (`chunkSheets`) */
+  sheet: TexSheet
+  set: number
+  /** 새 표현 계획. 레시피가 없는 청크는 null (`visual/chunkPlan`) */
+  visual: ReturnType<typeof planChunk>
 }
 
 /**
@@ -411,7 +443,7 @@ interface Piece {
  * 준다 — 땅 메시는 그 번호를 안 쓰므로 서로 간섭하지 않는다
  */
 function borrowFloors(
-  self: Piece, all: readonly Piece[], sheet: TexSheet,
+  self: Piece, all: readonly Piece[],
   materials: Material[], cache: Map<string, Material>,
   pick?: string,
 ): FloorTri[] {
@@ -434,16 +466,17 @@ function borrowFloors(
         const spec = p.mesh.materials[from]!
         // 빌려 온 바닥도 **원래 청크에서의 차례**를 그대로 쓴다 — 그래야
         // 깊이 우선순위(`depthPriority`)가 저쪽에서와 같은 순서로 갈린다
-        const key = materialKey(spec, false, from)
+        // ⚠️ **빌려 준 청크의 묶음으로 꺼낸다.** 그 바닥은 저쪽 그림이다
+        const key = materialKey(spec, false, from, p.set)
         const had = added.get(key)
         if (had !== undefined) return had
-        const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
+        const item = p.sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
         let made = cache.get(key)
         if (!made) {
           // ⚠️ **여기 그림도 이 배치의 것이다.** 표시를 안 달아서 `dropMaterial`이
           // 그냥 지나갔다 — 실측(2026-09-09 `_land42` 22바퀴): 빌려 온 바닥의
           // 그림이 **왕복마다 7장씩** 늘어 한 번도 안 줄었다 (`texSpy`)
-          made = item ? ownMap(makeMaterial(spec, sliceTexture(sheet, item, spec.rep))) : MISSING
+          made = item ? ownMap(makeMaterial(spec, sliceTexture(p.sheet, item, spec.rep))) : MISSING
           if (made !== MISSING) depthPriority(made, from)
           cache.set(key, made)
         }
@@ -566,6 +599,9 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
   const [batch, setBatch] = useState<LandBatch>(EMPTY_BATCH)
   const [foliage, setFoliage] = useState<FoliageGroup[]>([])
   const [rocks, setRocks] = useState<RockGroup[]>([])
+  const [planters, setPlanters] = useState<PlanterGroup[]>([])
+  /** 제출한 배치의 표현 결정. 커밋 effect가 `visual/readiness`에 옮긴다 (§4.5-9) */
+  const visualDecisions = useRef<{ req: number, decisions: readonly PartDecision[] } | null>(null)
   const [grass, setGrass] = useState<GrassField | null>(null)
   const [flowers, setFlowers] = useState<FlowerField | null>(null)
   const [water, setWater] = useState<WaterField | null>(null)
@@ -646,6 +682,25 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       madeHere.lands = []
       madeHere.mats = null
     }
+    /** 그 칸 맵의 묶음. 행렬에 맵이 없거나(-1) 가장자리(0 `EVERYWHERE`)면 없다 */
+    const homeOf = (zone: number): number | null => {
+      if (zone <= 0) return null
+      const area = mapById(zone)?.area
+      return area === undefined ? null : world.areas?.[area]?.tex ?? null
+    }
+    /** 창에 실린 맵들의 묶음 — 집 없는 청크의 후보다 (`chunkSheets`) */
+    const windowSets = [...new Set(around.map((c) => homeOf(c.zone)).filter((s) => s !== null))]
+    /**
+     * 그 청크가 모자랄 때 볼 묶음. 제 집이 맨 앞이고, 집이 없으면 창의 묶음들,
+     * 그래도 없으면 그림 목록에서 찾은 하나다 (`chunkSheets`)
+     */
+    const extra = new Map<number, number | null>()
+    const candidatesOf = (zone: number, land: number): number[] => {
+      const home = homeOf(zone)
+      if (home !== null) return [home]
+      const far = extra.get(land)
+      return far === undefined || far === null ? windowSets : [...windowSets, far]
+    }
     void Promise.all([
       loadTexSheet(texSet).then((v) => { traceTerrain(req, 'sheet-done'); return v }),
       Promise.all(around.map((c) => loadChunkMesh(c.land).then((mesh) => {
@@ -654,7 +709,55 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         return { c, mesh }
       }))),
     ])
-      .then(([sheet, loaded]) => {
+      .then(async ([sheet, loaded]) => {
+        // 현재 묶음에 없는 그림을 쓰는 청크가 있으면 **그 청크의 후보 묶음만** 더 받는다
+        const wanted = new Set<number>()
+        const short = loaded.some(({ mesh }) => missingIn(sheet, mesh.materials) > 0)
+        const names = short ? await loadTexNames() : null
+        for (const { c, mesh } of loaded) {
+          if (missingIn(sheet, mesh.materials) === 0) continue
+          if (names !== null && homeOf(c.zone) === null) extra.set(c.land, bestSet(names, texSet, mesh.materials))
+          for (const s of candidatesOf(c.zone, c.land)) if (s !== texSet) wanted.add(s)
+        }
+        const homes = new Map<number, TexSheet>()
+        await Promise.all([...wanted].map((s) => loadTexSheet(s).then((h) => { homes.set(s, h) })))
+        /**
+         * **어느 후보로도 못 그리는 그림은 이름으로 빌려 온다** (FP-04 · 자홍 나머지).
+         *
+         * 여기까지 와도 못 찾는 그림이 있다 — 한 청크가 **두 묶음에 나뉜** 그림을
+         * 함께 쓰는 자리다. 영원시티 집 셋의 청크가 묶음 57의 방 그림과 함께
+         * `h_kage`(그림자)를 쓰는데 그 이름은 묶음 5·7·12·19·39·51·54에만 있다.
+         * 예전에는 그 서브메시가 통째로 자홍이었다 (85삼각형 · 실측 2026-09-17).
+         *
+         * ⚠️ **청크의 묶음은 안 바꾼다.** 모자란 그림 하나만 남의 묶음에서 꺼낸다 —
+         * 묶음을 통째로 바꾸면 나머지가 다 틀어진다
+         */
+        const lend = new Map<string, { set: number, sheet: TexSheet, pal: string }>()
+        if (names !== null) {
+          const mine = [sheet, ...homes.values()]
+          const lacking = new Map<string, { tex: string, pal: string | null }>()
+          for (const { mesh } of loaded) {
+            for (const m of mesh.materials) {
+              if (m.tex === null) continue
+              if (mine.some((h) => h.items.some((it) => it.tex === m.tex && it.pal === (m.pal ?? '')))) continue
+              lacking.set(lendKey(m.tex, m.pal), { tex: m.tex, pal: m.pal })
+            }
+          }
+          if (lacking.size > 0) {
+            const skip = new Set([texSet, ...homes.keys()])
+            const rows = lendersFor(names, skip, [...lacking.values()])
+            const need = new Set(rows.map((r) => r.set))
+            const got = new Map<number, TexSheet>()
+            await Promise.all([...need].map((s) => loadTexSheet(s).then((h) => { got.set(s, h) })))
+            for (const r of rows) {
+              const from = got.get(r.set)
+              if (from !== undefined) lend.set(r.key, { set: r.set, sheet: from, pal: r.pal })
+            }
+          }
+        }
+        return { sheet, loaded, homes, lend }
+      })
+      .then(({ sheet, loaded, homes, lend }) => {
         if (!alive) { traceTerrain(req, 'superseded', `청크 ${String(got)}/${String(around.length)}에서 물러났다`); return }
         traceTerrain(req, 'build-begin')
         // 같은 (그림, 팔레트, 반복) 조합은 한 번만 만든다. 청크마다 새로
@@ -666,6 +769,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         const byTexture = new Map<string, FoliageGroup>()
         // 물가의 바위도 판때기 한 장이다. 나무와 같은 길로 모은다 (`Rocks`)
         const byRock = new Map<string, RockGroup>()
+        const byPlanter = new Map<string, PlanterGroup>()
         // 화단 자리와 꽃잎 색. 청크를 넘어 한 덩어리로 모은다 — 창 하나에
         // 수백 칸이라 청크마다 따로 그리면 드로우콜만 늘어난다
         const petals: number[] = []
@@ -684,18 +788,50 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          */
         const keepFoliage = isDistortionFloor(world.mapId ?? -1)
         const pieces: Piece[] = loaded.map(({ c, mesh }) => {
-          const cutout = cutoutGroups(mesh, sheet)
-          const key = `${String(c.land)}/${String(texSet)}`
+          const cands = candidatesOf(c.zone, c.land).flatMap((s) => {
+            const got = homes.get(s)
+            return got === undefined ? [] : [{ set: s, sheet: got }]
+          })
+          const picked = pickSheet(sheet, cands, mesh.materials)
+          const pSheet = picked === null ? sheet : homes.get(picked)!
+          const pSet = picked ?? texSet
+          const cutout = cutoutGroups(mesh, pSheet)
+          /**
+           * **새 표현 계획** (FIRST_PERSON §4.5). 레시피가 맡은 사각형은 덩이·세우기·
+           * 껍질에서 빼고, 대체물이 이 배치에 같이 설 때만 원본에서 지운다.
+           * 계획이 없으면 아래는 예전과 똑같이 돈다
+           */
+          const vp = keepFoliage ? null : planChunk(mesh, pSheet, pSet, c.land, VISUAL_RECIPES, recipeMode())
+          const claimed = vp === null ? undefined : quadStarts(mesh, vp.plan.suppressLegacyOffsets)
+          const removed = vp === null ? undefined : quadStarts(mesh, vp.plan.removeOffsets)
+          /**
+           * ⚠️ **맡았다고 다 눕혀 두지 않는다.** `hold`에 든 사각형은 세우기에서
+           * 빠진다 — 대체물이 그 자리에 서기 때문이다. 그런데 `geometry: 'original'`
+           * 레시피는 대체물을 안 만들고 **원작처럼 세워야** 하는 것들이라
+           * (자전거 거치대·금빛 기둥·다크펫 그림) `hold`에서 뺀다.
+           * 덩이(`plateLumps`)에서는 `claimed`로 이미 빠져 있다
+           */
+          const stood = vp === null ? undefined : quadStarts(mesh, vp.plan.standOffsets)
+          const hold = claimed === undefined ? undefined
+            : new Set([...claimed].filter((q) => removed?.has(q) !== true && stood?.has(q) !== true))
+          const key = `${String(c.land)}/${String(pSet)}${vp === null ? '' : `/v${vp.plan.key}`}`
           const lumps = plateLumps(
-            mesh, sheet, cutout,
-            (mesh.geometry.getAttribute('position') as BufferAttribute).array as Float32Array)
-          const split = cachedSplit(key, mesh, cutout, lumps, keepFoliage)
+            mesh, pSheet, cutout,
+            (mesh.geometry.getAttribute('position') as BufferAttribute).array as Float32Array,
+            claimed)
+          // 걷어낼 것 = 바위로 갈 덩이 + 준비된 교체
+          const gone = removed === undefined || removed.size === 0 ? lumps : new Set([...lumps, ...removed])
+          const split = cachedSplit(key, mesh, cutout, gone, keepFoliage, hold)
           return {
             c, mesh, cutout, lumps, split,
             source: cachedFloors(key, mesh, split),
-            shells: cachedShells(key, mesh, cutout, split, sheet, lumps),
+            shells: cachedShells(key, mesh, cutout, split, pSheet,
+              hold === undefined || hold.size === 0 ? gone : new Set([...gone, ...hold])),
             originX: c.mx * CHUNK_TILES + CHUNK_TILES / 2,
             originZ: c.my * CHUNK_TILES + CHUNK_TILES / 2,
+            sheet: pSheet,
+            set: pSet,
+            visual: vp,
           }
         })
         /**
@@ -760,15 +896,17 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          * 창 전체로 넓히지 않는 것은 설원과 초원이 한 창에 같이 실릴 때
          * 한쪽이 통째로 남의 땅이 되기 때문이다
          */
-        const rankOf = (name: string): number =>
-          (tufts.has(name) ? 0 : groundRank(sheet, name))
+        // 그 이름을 **그 청크의 묶음**에서 잰다 — 제 집 묶음으로 그리는 청크의 그림은
+        // 현재 묶음에 없어서, 현재 묶음으로 재면 늘 「그 밖의 땅」(1)으로 접힌다
+        const rankOf = (name: string, from: TexSheet): number =>
+          (tufts.has(name) ? 0 : groundRank(from, name))
         const picked = new Map<Piece, string | null>()
         for (const p of pieces) {
           const area: GroundArea = new Map()
           for (const q of pieces) {
             if (Math.max(Math.abs(q.c.mx - p.c.mx), Math.abs(q.c.my - p.c.my)) > 1) continue
             for (const [name, a] of cachedArea(q)) {
-              const rank = rankOf(name)
+              const rank = rankOf(name, q.sheet)
               if (rank === 0) continue
               const had = area.get(name)
               if (had) had.area += a
@@ -793,13 +931,14 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
               ? raw
               : { ...raw, x: raw.x + nudge.dx, z: raw.z + nudge.dz }
             const spec = mesh.materials[site.cell.group]
-            const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
+            // 묶음이 다르면 같은 이름이라도 색이 다르다 (`chunkSheets`)
+            const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}/s${String(p.set)}`
             let group = byTexture.get(key)
             if (!group) {
-              const item = sheet.items.find(
+              const item = p.sheet.items.find(
                 (s) => s.tex === spec?.tex && s.pal === (spec.pal ?? ''))
               const colors = item
-                ? plateColors(sheet, item)
+                ? plateColors(p.sheet, item)
                 : { leaf: [0x4f9e52], trunk: 0x4a3a24 }
               group = { key, ...colors, items: [] }
               byTexture.set(key, group)
@@ -814,17 +953,17 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             const spec = mesh.materials[site.group]
             // ⚠️ 열쇠에 **그림 칸**이 들어간다. 한 그림에 바위와 화분이 같이
             // 있어서 이름만으로 묶으면 화분이 바위 색으로 칠해진다
-            const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}`
+            const key = `${spec?.tex ?? ''}/${spec?.pal ?? ''}/s${String(p.set)}`
               + `/${site.u0.toFixed(3)},${site.u1.toFixed(3)}`
               + `,${site.v0.toFixed(3)},${site.v1.toFixed(3)}`
             let group = byRock.get(key)
             if (!group) {
-              const item = sheet.items.find(
+              const item = p.sheet.items.find(
                 (s) => s.tex === spec?.tex && s.pal === (spec.pal ?? ''))
               group = {
                 key,
                 bands: item
-                  ? plateBands(sheet, item, site.u0, site.u1, site.v0, site.v1)
+                  ? plateBands(p.sheet, item, site.u0, site.u1, site.v0, site.v1)
                   : [0x8c8c84],
                 items: [],
               }
@@ -832,16 +971,25 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             }
             group.items.push([site, originX, originZ])
           }
+          // 새 표현이 세우는 화분 (`visual/Planters`) — 같은 모양끼리 청크를 넘어 모은다
+          for (const one of p.visual?.planters ?? []) {
+            let group = byPlanter.get(one.key)
+            if (!group) {
+              group = planterGroupOf(one)
+              byPlanter.set(one.key, group)
+            }
+            group.items.push([one.site, originX, originZ])
+          }
           // 바닥에 깔린 꽃 그림 위에 실제로 서는 송이를 얹는다 (`Flowers`)
           for (const site of flowerSites(mesh, split)) {
-            for (const c of flowerColors(sheet, mesh, site.group)) tints.add(c)
+            for (const c of flowerColors(p.sheet, mesh, site.group)) tints.add(c)
             for (let k = 0; k < FLOWERS_PER_TILE; k++) {
               const jx = flowerJitter(site.x, site.z, k * 2)
               const jz = flowerJitter(site.x, site.z, k * 2 + 1)
               petals.push(site.x + originX + jx, site.y + 0.02, site.z + originZ + jz)
             }
           }
-          const materials = materialsFor(mesh, sheet, cache, p.cutout)
+          const materials = materialsFor(mesh, p.sheet, cache, p.cutout, p.set, lend)
           // 깔 땅이 제 청크에 없으면 이웃에서 빌려 온다. 재질은 이 배열 뒤에 붙는다.
           //
           // ⚠️ **물·턱만 있는 청크도 "없는 것"으로 친다** (`plates.floorSource`).
@@ -855,7 +1003,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           const pick = picked.get(p) ?? undefined
           const mine = pick !== undefined
             && p.source.floors.some((f) => (mesh.materials[f.group]?.tex ?? '') === pick)
-          const borrowed = mine ? [] : borrowFloors(p, pieces, sheet, materials, cache, pick)
+          const borrowed = mine ? [] : borrowFloors(p, pieces, materials, cache, pick)
           const floors = borrowed.length > 0
             ? borrowed
             : p.source.floors.length > 0 ? [] : p.source.fallback ?? []
@@ -870,7 +1018,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 풀숲으로 보이는데 정작 인카운터 칸은 거기가 아니다
             (g) => {
               const name = materials[g]?.name ?? ''
-              return { name, rank: rankOf(name) }
+              return { name, rank: rankOf(name, p.sheet) }
             },
             pick,
             // 머리 위를 덮은 판이 **벽인지 지붕인지**는 통행값이 가른다
@@ -944,6 +1092,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         })
         setFoliage([...byTexture.values()])
         setRocks([...byRock.values()])
+        setPlanters([...byPlanter.values()])
+        // 대체물의 결정 — **커밋 뒤에** 적는다(아래 effect). 여기서는 들고만 있다
+        visualDecisions.current = {
+          req, decisions: pieces.flatMap((p): readonly PartDecision[] => p.visual?.plan.decisions ?? []),
+        }
         // 풀숲 자리는 격자가 준다 — 그림이 아니라 타일 거동값이다. 색만
         // 이 영역 그림에서 가져온다
         setGrass({ spots: grassSpots(grid, chunkIndex, radius), colors: grassColors(sheet) })
@@ -971,7 +1124,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
           console.error(`[scene] 청크를 못 받아 지형을 비웠다 — 맵 ${String(world.mapId)}`
             + `/${String(world.matrix)} 칸 ${String(chunkIndex)} · ${why}`)
           setBatch({ req, ...asked, failed: true, why, lands: [], mats: [], rooms: [] })
-          setFoliage([]); setRocks([])
+          setFoliage([]); setRocks([]); setPlanters([])
           setGrass(null); setWater(null); setFlowers(null)
           if (tries.current < RETRY_MAX) {
             tries.current += 1
@@ -1002,6 +1155,9 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
    */
   useEffect(() => {
     traceTerrain(batch.req, 'committed', `땅 ${String(batch.lands.length)}조각`)
+    // 대체물은 땅과 같은 커밋에 섰다 — 그 결정을 이제 적는다
+    const seen = visualDecisions.current
+    noteVisualDecisions(batch.req, seen !== null && seen.req === batch.req ? seen.decisions : [])
     // ⚠️ **땅과 방 테두리가 같은 순간에 바뀐다** (후속 §6)
     cameraSystem.rooms = batch.rooms
     markTerrain({
@@ -1220,6 +1376,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
         세우면 새까만 달걀이 물 위에 늘어선다 — 자리와 폭만 가져온다 (`Rocks.tsx`)
       */}
       <Rocks groups={rocks} />
+      <Planters groups={planters} />
       {/*
         긴 풀. 원작은 바닥 그림이라 1인칭에서 초록 장판이 된다 — 거동값
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)

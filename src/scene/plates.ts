@@ -348,6 +348,11 @@ export type LumpSet = Set<number>
 export function plateLumps(
   mesh: ChunkMesh, sheet: TexSheet | null, cutout: readonly boolean[],
   position: Float32Array,
+  /**
+   * 새 표현 레시피가 맡은 사각형(시작 자리). **덩이로 안 센다** — 맡은 쪽이 따로
+   * 세우므로, 여기서도 세우면 원본 자리에 바위와 새 화분이 겹친다 (FIRST_PERSON §4.3)
+   */
+  claimed?: ReadonlySet<number>,
 ): LumpSet {
   const out: LumpSet = new Set()
   if (!sheet) return out
@@ -363,6 +368,7 @@ export function plateLumps(
     const item = sheet.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
     if (!item) return
     for (let t = 0; t + 6 <= count; t += 6) {
+      if (claimed?.has(start + t)) continue
       const vs = [0, 1, 2, 3, 4, 5].map((k) => index[start + t + k]!)
       const a = vs[0]!, b = vs[1]!, c = vs[2]!
       const ax = position[a * 3]!, ay = position[a * 3 + 1]!, az = position[a * 3 + 2]!
@@ -478,12 +484,19 @@ export function splitFoliage(
    * 판을 세우면 화면에는 검고 각진 파편만 흩어진다.
    */
   keepFoliage = false,
+  /**
+   * **원본 그대로 둘** 사각형(시작 자리) — 새 레시피가 맡았지만 원본을 지우지 않는
+   * 것(keep·대기). 세우지도 걷지도 않는다 (FIRST_PERSON §4.5-3)
+   */
+  hold?: LumpSet,
 ): Split {
   const src = mesh.geometry
   const source = (src.getAttribute('position') as BufferAttribute).array as Float32Array
   // 누워 있는 오려 낸 판(울타리·표지판)을 세운다. 원본은 안 건드린다 —
-  // 청크는 캐시돼 있고 텍스처 묶음이 다르면 오려 낸 판도 달라진다
-  const position = standCutouts(mesh, cutout, source, lumps)
+  // 청크는 캐시돼 있고 텍스처 묶음이 다르면 오려 낸 판도 달라진다.
+  // 맡긴 사각형은 덩이처럼 **세우지 않는다** — 걷는 것은 `lumps`만이다
+  const position = standCutouts(mesh, cutout, source,
+    hold === undefined || hold.size === 0 ? lumps : new Set([...(lumps ?? []), ...hold]))
   const index = src.getIndex()!.array
   const cells = new Map<number, Cell>()
   const shadows = new Set<number>()
@@ -1639,12 +1652,14 @@ const splitCache = new Map<string, Split>()
 export function cachedSplit(
   key: string, mesh: ChunkMesh, cutout: readonly boolean[], lumps?: LumpSet,
   keepFoliage = false,
+  /** `splitFoliage`의 `hold`. ⚠️ 부르는 쪽이 **표현 계획의 열쇠를 `key`에 넣어야** 한다 */
+  hold?: LumpSet,
 ): Split {
   // 잎을 남기는지가 결과를 통째로 바꾸므로 열쇠에 든다
   const full = keepFoliage ? `${key}/잎` : key
   const hit = splitCache.get(full)
   if (hit) return hit
-  const made = splitFoliage(mesh, cutout, lumps, keepFoliage)
+  const made = splitFoliage(mesh, cutout, lumps, keepFoliage, hold)
   splitCache.set(full, made)
   return made
 }

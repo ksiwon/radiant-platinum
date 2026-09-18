@@ -323,6 +323,26 @@ async function sheetFrom(
   }
 }
 
+/** 묶음마다 든 그림 이름 — `[tex, pal]` 쌍 */
+export type TexNames = readonly (readonly [string, string])[]
+
+let texNames: Promise<readonly TexNames[]> | null = null
+
+/**
+ * 묶음 일흔다섯 장의 **그림 이름만.** 픽셀은 안 받는다.
+ *
+ * 집 없는 청크를 어느 묶음으로 그릴지 고를 때 쓴다 (`chunkSheets.bestSet`) —
+ * 후보를 다 받아 보고 고르면 PNG 수십 장을 받게 된다
+ */
+export function loadTexNames(): Promise<readonly TexNames[]> {
+  texNames ??= (readJson(assets(), 'data/tex/index.json') as Promise<{
+    sets: { items: [string, string, number, number, number, number][] }[]
+  }>).then((idx) => idx.sets.map((set) => set.items.map(([tex, pal]) => [tex, pal] as const)))
+    // 깨진 것은 지워서 다음 요청이 다시 받게 한다 (`loadChunkFormat`과 같은 까닭)
+    .catch((e: unknown) => { texNames = null; throw e })
+  return texNames
+}
+
 /** 영역 텍스처 한 장. 받은 뒤 조각내야 하므로 픽셀까지 들고 온다 */
 export function loadTexSheet(set: number): Promise<TexSheet> {
   const hit = sheetCache.get(set)
