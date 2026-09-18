@@ -233,11 +233,43 @@ async function fresh() {
 /** 부팅 갈래. `boot()`이 `<html data-boot>`에 적어 둔다 */
 const bootTag = (page) => page.evaluate(() => document.documentElement.dataset.boot ?? null)
 
-/** 갈래가 정해질 때까지 기다린다. 안 정해지면 그 자체가 실패다 */
+/**
+ * 갈래가 정해질 때까지 기다린다. 안 정해지면 그 자체가 실패다.
+ *
+ * 안 오면 **그때 화면에 뭐가 있었는지**를 같이 적는다 (`where`)
+ */
 async function waitBoot(page) {
-  await page.waitForFunction(() => document.documentElement.dataset.boot !== undefined,
-    null, { timeout: 20_000 })
+  await where(page, () => document.documentElement.dataset.boot !== undefined,
+    '부팅 갈래(data-boot)가 안 정해졌다', 20_000)
   return bootTag(page)
+}
+
+/**
+ * 막 띄운 개발 서버를 **재는 페이지와 따로** 한 번 부팅시켜 데운다.
+ *
+ * ⚠️ `startVite`의 「준비됐다」는 `/` 한 요청이 답했다는 뜻뿐이다. 브라우저는
+ * 그 뒤에 모듈 백여 개를 받고 React가 그린 다음에야 `data-boot`를 찍는다.
+ * 실측(`.audit/tmp/coldBoot.mjs` · 2026-09-19 · 서버 준비 71초 뒤): 첫 페이지
+ * **66.4초** · 둘째 0.39초 · 셋째 0.24초. 그 첫 페이지를 맡은 항목이
+ * `waitBoot`의 20초에 걸려 떨어졌다 — ⑫가 두 판 연속, ㉙의 데우기가 한 판.
+ * 떨어진 것은 앱이 아니라 서버가 덜 데워진 것이다.
+ *
+ * 그래서 준비는 준비대로 기다린다(서버 기다림과 같은 10분). **재는 페이지의
+ * 20초는 그대로 둔다** — 데운 서버에서 20초를 넘기면 그건 앱의 실패다.
+ * 준비에서 막히면 잰 것이 없으므로 FAIL이 아니라 BLOCKED다
+ */
+async function warmDev(context, url) {
+  const warm = await context.newPage()
+  const t0 = Date.now()
+  try {
+    await warm.goto(url, { waitUntil: 'load', timeout: 600_000 })
+    await where(warm, () => document.documentElement.dataset.boot !== undefined,
+      '개발 모듈 준비 — 데우는 페이지의 부팅 갈래가 안 정해졌다',
+      Math.max(30_000, 600_000 - (Date.now() - t0)))
+  } catch (e) {
+    blocked(`개발 모듈 준비 실패 — ${String(e.message ?? e)}`)
+  } finally { await warm.close() }
+  return (Date.now() - t0) / 1000
 }
 
 /**
@@ -798,8 +830,9 @@ await (haveRom ? run : skip)('11', '취소가 진짜 Worker에서 먹고, 하다
 // 다운로드 경로를 지난다.
 try {
   await withDev(async (dev, ensure) => {
-  await run('12', '.rpsave 새 프로필 왕복 (개발 서버)', async ({ page }) => {
+  await run('12', '.rpsave 새 프로필 왕복 (개발 서버)', async ({ context, page }) => {
     await ensure()
+    await warmDev(context, `${dev}/`)
     await page.goto(`${dev}/`, { waitUntil: 'load' })
     assert(await waitBoot(page) === 'play:dev', '개발 갈래로 안 떴다')
     await page.waitForFunction(() => 'pt' in globalThis, null, { timeout: 60_000 })
@@ -830,6 +863,7 @@ try {
     await ensure()
     // 브라우저가 다운로드를 막는 상황을 만든다. 그래도 **내부 저장은 성공**이라야
     // 한다 — 둘은 별개의 성공이고, 순서도 저장이 먼저다 (IMPORT.md §10)
+    await warmDev(context, `${dev}/`)
     await context.route('blob:**', (r) => r.abort())
     await page.goto(`${dev}/`, { waitUntil: 'load' })
     await waitBoot(page)
@@ -849,8 +883,9 @@ try {
     return '받기 실패 · 내부 저장 성공 · 리포트 남음'
   })
 
-  await run('14', '큰 파일 하나를 쓰는 동안 힙이 몇 배가 되는가 (개발 서버)', async ({ page }) => {
+  await run('14', '큰 파일 하나를 쓰는 동안 힙이 몇 배가 되는가 (개발 서버)', async ({ context, page }) => {
     await ensure()
+    await warmDev(context, `${dev}/`)
     // ⚠️ BDSP 모델이 붙으면 그룹 하나가 수백 MB다. `.part`에 쓰고 → 되읽고 →
     // 해시하고 → 제자리로 옮기는 길에서 **같은 바이트가 몇 벌 살아 있는가**를
     // 잰다. 한때 되읽기가 `.arrayBuffer()`라 두 벌이었다
@@ -1943,15 +1978,8 @@ if (!(haveRom && haveBdsp)) {
             blocked(`개발 서버가 대답을 안 한다 (${dev} · ${String(alive.why)}`
               + ` · ${String(alive.ms)}ms) — 게임을 안 열었으므로 잰 것이 없다`)
           }
-          // Prepare the development module graph separately from the timed test page.
-          // HTTP readiness alone does not mean all first-use modules are transformed.
-          const warm = await page.context().newPage()
-          try {
-            await warm.goto(`${dev}/?assets=opfs`, { waitUntil: 'load', timeout: 300_000 })
-            await waitBoot(warm)
-          } catch (e) {
-            blocked(`개발 모듈 준비 실패 — ${String(e.message ?? e)}`)
-          } finally { await warm.close() }
+          // 재는 페이지와 따로 데운다 (`warmDev`)
+          await warmDev(page.context(), `${dev}/?assets=opfs`)
           await page.goto(`${dev}/?assets=opfs`, { waitUntil: 'load' })
           const boot0 = await waitBoot(page)
           assert(boot0.startsWith('install:'),

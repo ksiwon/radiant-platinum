@@ -87,10 +87,27 @@ function magentaPixels(buf) {
   return n
 }
 
+/**
+ * 새까만 픽셀이 몇인가 (0~255 채널 셋 다 8 미만).
+ *
+ * 판정이 아니라 **전후를 견주는 잣대**다 — 밤·굴 안은 원래 어둡다. 정점색이 0인
+ * 판에서 내려온 턱 옆면(장막백화점 2층 검은 기둥)이 이 수로 드러난다
+ */
+function blackPixels(buf) {
+  const { w, h, bpp, pixels } = decodePng(buf)
+  let n = 0
+  for (let i = 0; i < w * h; i++) {
+    const o = i * bpp
+    if (pixels[o] < 8 && pixels[o + 1] < 8 && pixels[o + 2] < 8) n += 1
+  }
+  return n
+}
+
 async function snap(page, file) {
   const buf = await page.screenshot({ path: file, style: HIDE_DEV })
   const stats = statsOf(buf)
   stats.magenta = magentaPixels(buf)
+  stats.black = blackPixels(buf)
   const jpg = await page.screenshot({ type: 'jpeg', quality: 45, style: HIDE_DEV })
   thumbs.set(file, `data:image/jpeg;base64,${jpg.toString('base64')}`)
   return { file, flat: looksFlat(stats), stats }
@@ -203,8 +220,12 @@ try {
 
   for (const spec of SITES) {
     // `forest@120:540` — 확인 지점에 들어간 뒤 그 칸으로 옮겨 선다 (`pnpm shot --at`과 같다)
-    const [cp, atText] = spec.split('@')
-    const site = spec.replace(/[@:]/g, '_')
+    //
+    // `elite>357@9:11` — 확인 지점의 진행 상태 그대로 **맵 357의 워프 0번**에 선다.
+    // 확인 지점이 없는 맵(혼잡한 탑·천관산 층)을 보려고 둔다 (`devWarp.warpTo`)
+    const [head, atText] = spec.split('@')
+    const [cp, mapText] = head.split('>')
+    const site = spec.replace(/[@:>]/g, '_')
     const row = { site, checkpoint: cp, at: atText ?? null, status: 'CAPTURED', shots: [], walk: [], toggles: [], notes: [], noise: [] }
     results.push(row)
     const dir = resolve(OUT, site)
@@ -213,6 +234,26 @@ try {
     try {
       try {
         row.map = await enterCheckpoint(page, vite.url, cp)
+        if (mapText !== undefined) {
+          const first = await waitFor(page, (st) => st.ready, 90_000, '출발 자리 준비')
+          if (!first.ok) throw new Error(`출발 자리 지형이 안 섰다 — ${String(first.last?.why)}`)
+          const want = Number(mapText)
+          await page.evaluate(async ([id, m]) => {
+            const { CHECKPOINTS } = await import('/src/engine/dev/checkpoints.ts')
+            const { warpTo } = await import('/src/app/devWarp.ts')
+            const base = CHECKPOINTS.find((c) => c.id === id)
+            await warpTo({ ...base, id: `${id}>${String(m)}`, map: m, spot: { kind: 'warp', index: 0 } })
+          }, [cp, want])
+          await page.waitForFunction(async (w) => {
+            const m = await import('/src/engine/map/world.ts')
+            return m.world.mapId === w
+          }, want, { timeout: 120_000 })
+          await page.evaluate(async (h) => {
+            const w = await import('/src/state/worldState.ts')
+            w.worldState.time.gameHour = h
+          }, HOUR)
+          row.map = want
+        }
         if (atText !== undefined) {
           // ⚠️ **출발 자리가 다 선 뒤에 옮긴다.** 들어서자마자 옮기면 확인 지점의
           // 배치가 늦게 와서 덮는다 (실측: 575로 옮겼는데 531.5에 서 있었다)
@@ -289,7 +330,7 @@ try {
           await sleep(450)
           const s = await snap(page, resolve(dir, `y${String(yaw).padStart(3, '0')}_p${pitch < 0 ? 'm' : 'p'}${Math.abs(pitch)}.png`))
           const st = await probe(page)
-          row.shots.push({ yaw, pitch, file: s.file, flat: s.flat, magenta: s.stats.magenta, mode: st.mode, ready: st.ready })
+          row.shots.push({ yaw, pitch, file: s.file, flat: s.flat, magenta: s.stats.magenta, black: s.stats.black, mode: st.mode, ready: st.ready })
           if (s.stats.magenta > 0) {
             row.status = 'FAILED_VISUAL'
             row.notes.push(`못 찾은 그림(자홍) ${String(s.stats.magenta)}픽셀 — yaw ${String(yaw)} pitch ${String(pitch)}`)
@@ -417,7 +458,7 @@ const section = (r) => {
   const grid = PITCHES.map((p) => `<div class="row"><span class="lab">고개 ${p}°</span>${
     YAWS.map((y) => {
       const s = r.shots?.find((x) => x.yaw === y && x.pitch === p)
-      return s ? `<figure><img loading="lazy" src="${inline(s.file)}" alt="${esc(r.site)} ${y}° ${p}°"><figcaption>${y}°${s.flat ? ' · 한 색' : ''}${s.magenta ? ` · 자홍 ${s.magenta}` : ''}</figcaption></figure>` : ''
+      return s ? `<figure><img loading="lazy" src="${inline(s.file)}" alt="${esc(r.site)} ${y}° ${p}°"><figcaption>${y}°${s.flat ? ' · 한 색' : ''}${s.magenta ? ` · 자홍 ${s.magenta}` : ''}${s.black ? ` · 검정 ${s.black}` : ''}</figcaption></figure>` : ''
     }).join('')}</div>`).join('')
   const pair = [['3인칭', r.third], ['3인칭 (다시)', r.thirdAgain], ['1인칭 (다시)', r.firstAgain]]
     .filter(([, s]) => s).map(([t, s]) => `<figure><img loading="lazy" src="${inline(s.file)}" alt="${esc(t)}"><figcaption>${esc(t)}</figcaption></figure>`).join('')
