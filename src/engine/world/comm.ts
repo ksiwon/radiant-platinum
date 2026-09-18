@@ -59,7 +59,7 @@ export const SCRIPT_UNION_ROOM_ATTENDANT = 9003
 /**
  * 통신 전용 맵 — 우리가 절대 안 들어가는 곳.
  *
- * 걸어서 닿을 수 없다는 것을 `comm.test.ts`가 잰다. 목록을 두는 이유는
+ * 걸어서 닿을 수 없다는 것을 `script/comm.test.ts`가 잰다. 목록을 두는 이유는
  * 「없다」가 아니라 **「어디가 없는지」**를 적어 두기 위해서다.
  */
 export const COMM_MAPS = {

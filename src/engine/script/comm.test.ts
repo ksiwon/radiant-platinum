@@ -325,14 +325,29 @@ mapData('통신 맵으로 가는 길', () => {
   /** 계단으로 올라오는 칸 */
   const STAIRS = { x: 2, z: 10 }
 
-  it('⚠️ 유니온룸 문은 카운터 너머라 걸어서 못 닿는다', () => {
-    const { m } = grid(maps[POKECENTER_2F]!.matrix)
-    const door = events[maps[POKECENTER_2F]!.events]!.warps
-      .find((w) => w.to === COMM_MAPS.unionRoom)
-    expect(door, '2층에 유니온룸 문이 있어야 이 시험이 뜻이 있다').toBeDefined()
-    const walkable = reach(POKECENTER_2F, STAIRS)
-    expect(walkable.size).toBeGreaterThan(50)
-    expect(walkable.has(door!.z * m.tileWidth + door!.x)).toBe(false)
+  it('⚠️ 유니온룸 문은 카운터 너머라 걸어서 못 닿는다 — 문이 있는 18곳 전부', () => {
+    // 행렬은 같아도 사건 자료(사람이 선 칸)는 곳마다 다르다 — 한 곳만 재면
+    // 나머지 열일곱은 「같겠지」가 된다
+    const doors = maps.flatMap((mm, id) => (mm?.events == null ? [] : (events[mm.events]?.warps ?? [])
+      .filter((w) => w.to === COMM_MAPS.unionRoom).map((w) => ({ id, w }))))
+    expect(doors.length).toBe(18)
+    expect(doors.map((d) => d.id)).toContain(POKECENTER_2F)
+    for (const { id, w } of doors) {
+      const { m } = grid(maps[id]!.matrix)
+      const walkable = reach(id, STAIRS)
+      expect(walkable.size, `맵 ${String(id)}`).toBeGreaterThan(50)
+      expect(walkable.has(w.z * m.tileWidth + w.x), `맵 ${String(id)} 유니온룸 문`).toBe(false)
+    }
+  })
+
+  it('⚠️ 지하통로(맵 2)도 들어오는 워프가 아예 없다 — 입구는 탐험세트뿐이다', () => {
+    // 지하통로는 범위 밖이다 (PARITY §9 · 3D_GAP_AUDIT §9). 원작도 워프가 아니라
+    // 탐험세트를 쓰는 순간 들어가고, 우리 탐험세트는 「없음」으로 답한다
+    // (`bag/fieldUse`의 `MISSING`)
+    const UNDERGROUND = 2
+    const into = maps.flatMap((mm, i) => (mm?.events == null ? [] : (events[mm.events]?.warps ?? [])
+      .filter((w) => w.to === UNDERGROUND).map(() => i)))
+    expect(into).toEqual([])
   })
 
   it('⚠️ Wi-Fi 광장은 들어오는 워프가 아예 없다', () => {

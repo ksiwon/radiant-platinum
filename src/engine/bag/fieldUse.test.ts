@@ -134,6 +134,9 @@ maybe('필드 도구', () => {
     expect(fieldAction(named('ITEM_TOWN_MAP'), town())).toEqual({ kind: 'missing', what: '타운맵' })
     // 몬스터볼은 원작도 밖에서 못 쓴다 (`ITEM_USE_FUNC_NONE`)
     expect(fieldAction(named('ITEM_POKE_BALL'), town()).kind).toBe('blocked')
+    // ⚠️ **탐험세트는 지하통로로 가는 유일한 입구다** — 지하통로가 범위 밖이라
+    // 「없음」으로 답한다. 들어오는 워프가 0개인 것은 `script/comm.test.ts`가 잰다
+    expect(fieldAction(named('ITEM_EXPLORER_KIT'), town())).toEqual({ kind: 'missing', what: '지하통로' })
   })
 
   it('기술머신 번호가 TM01→0 · HM01→92로 이어진다', () => {
