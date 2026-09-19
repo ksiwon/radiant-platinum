@@ -65,7 +65,6 @@ function appVersion(): string {
  */
 function buildId(): string {
   const ci = process.env.GITHUB_SHA // GitHub Actions
-    ?? process.env.COMMIT_REF // Netlify
     ?? process.env.WORKERS_CI_COMMIT_SHA // Cloudflare Workers Builds
     ?? process.env.CF_PAGES_COMMIT_SHA // Cloudflare Pages
     ?? process.env.VERCEL_GIT_COMMIT_SHA // Vercel

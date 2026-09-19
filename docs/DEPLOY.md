@@ -263,9 +263,9 @@ blocker와 **위반**은 다르다. 위반은 지금 고칠 수 있는 것이라
 `-dirty`가 붙는다. 그 한 낱말이 청크 해시를 바꿔 §3의 「올라간 것이 이 나무의
 빌드인가」를 영영 못 넘게 한다. 실측: 올라간 묶음과 같은 커밋으로 여기서 구운
 묶음이 **그 문자열 하나만** 달랐다 (`f4ac353-dirty` ↔ `f4ac353`, 나머지 청크는
-바이트까지 동일). `vite.config.ts`의 `buildId()`가 `GITHUB_SHA` · `COMMIT_REF`
-(Netlify) · `CF_PAGES_COMMIT_SHA` · `VERCEL_GIT_COMMIT_SHA` · `CI_COMMIT_SHA` ·
-`APP_BUILD_ID` 순으로 본다.
+바이트까지 동일). `vite.config.ts`의 `buildId()`가 `GITHUB_SHA` ·
+`WORKERS_CI_COMMIT_SHA` · `CF_PAGES_COMMIT_SHA` · `VERCEL_GIT_COMMIT_SHA` ·
+`CI_COMMIT_SHA` · `APP_BUILD_ID` 순으로 본다.
 
 ⚠️ **여기 `build.json`만 보면 공개물이 dirty여도 모른다.** 그것은 이 기기의 빌드를
 잴 뿐이다. 올라간 것이 무엇인지는 §3의 묶음 이름 대조가 잰다 — 실제로 그것이 잡았다.
@@ -380,41 +380,39 @@ meta를 넣는 이유는 헤더가 잘못 설정된 채 올라갔을 때 아무 
 켜면 blob:/data: 로딩 규칙이 까다로워져 OPFS 경로가 흔들린다. 필요해지는
 날 다시 본다.
 
-### 호스트는 Netlify다 (2026-08-17)
+### 호스트는 Cloudflare Workers다
 
-**조건은 하나였다: 위 응답 헤더를 실제로 붙일 수 있고, SPA fallback이 돌 것.**
-Vercel·Cloudflare Pages·Netlify 셋 다 그 조건을 만족한다. 갈린 것은 도메인이다 —
-만든 사람의 `siwon.it.kr`이 **이미 Netlify 네임서버 아래**에 있어서, 하위 도메인을
-붙이고 인증서를 받는 데 DNS를 옮길 일이 없다. 다른 둘로 가면 그 도메인을 CNAME으로
-따로 잇거나 네임서버를 옮겨야 하고, 그건 그 도메인에 매달린 다른 것들까지 건드리는
-일이다.
+**조건은 하나다: 위 응답 헤더를 실제로 붙일 수 있고, SPA fallback이 돌 것.**
 
 ⚠️ **GitHub Pages는 후보가 아니다.** 저장소가 이미 GitHub에 있어 제일 손쉬워
 보이지만, **응답 헤더를 아예 못 붙인다.** `frame-ancestors`는 meta에서 무시되므로
 (위 "meta로 대신할 수 없다") 그것을 고르면 blocker ③은 영원히 안 닫힌다.
 
-설정은 뿌리의 [`netlify.toml`](../netlify.toml)이다.
+설정은 뿌리의 [`wrangler.jsonc`](../wrangler.jsonc) 한 파일이다 — `dist`를 통째로
+내주고(`assets.directory`), 없는 경로는 `index.html`로 보내고
+(`not_found_handling: "single-page-application"`), `radiant.siwon.it.kr`을
+커스텀 도메인으로 붙인다.
 
-⚠️ **`_headers`·`_redirects`를 안 쓴다.** 그 둘은 배포 폴더 안에 있어야 하는데
-빌드가 `copyPublicDir: false`로 **앱 셸 허용 목록만** 옮긴다 (§2). 그 길로 가려면
-허용 목록과 앱 셸 대장까지 고쳐야 하고, 그러면 "배포물에 무엇이 들어가는가"를 재는
-검사가 흐려진다. 뿌리의 `netlify.toml`은 `dist`를 한 조각도 안 건드린다.
+⚠️ **응답 헤더는 [`public/_headers`](../public/_headers)다.** 빌드가
+`copyPublicDir: false`로 **앱 셸 허용 목록만** 옮기므로(§2) 이 파일은 허용 목록에
+들어 있어야 한다 — 빠지면 `dist`에 안 실리고 **헤더가 한 줄도 안 나간다**
+(2026-09-13 실측). 그 자리를
+[`cloudflareHeaders.test.mjs`](../tools/distribution/cloudflareHeaders.test.mjs)가
+허용 목록째로 확인한다.
 
 ⚠️ **호스트 설정에 적은 헤더 값은 손으로 관리하지 않는다.** 정본은 `csp.mjs`인데
 호스트는 우리 자바스크립트를 안 부르므로 값을 문자열로 한 번 더 적어야 한다.
-그 두 벌을 [`tools/distribution/netlifyHeaders.test.mjs`](../tools/distribution/netlifyHeaders.test.mjs)가
-맞춰 본다 — 없으면 어긋난 것을 `verify:deploy`로, 즉 **이미 올린 뒤에** 알게 된다.
-실측으로 확인했다: `frame-ancestors`를 `'none'`에서 `'self'`로 한 낱말만 바꿨더니
-`pnpm check`가 섰다.
+그 두 벌을 같은 시험이 맞춰 본다 — 없으면 어긋난 것을 `verify:deploy`로, 즉
+**이미 올린 뒤에** 알게 된다. 실측으로 확인했다: `frame-ancestors`를 `'none'`에서
+`'self'`로 한 낱말만 바꿨더니 `pnpm check`가 섰다.
 
 서버가 내보내는 것은 **6.3MB · 108개**뿐이고 나머지는 사용자 기기에서 만들어진다.
 한 번 열 때 실제로 나가는 바이트는 그보다 훨씬 적다 — 아래에서 잰다.
 
-### 배포물이 안 바뀌면 안 굽는다
+### 다시 구우면 배포물이 바뀐다
 
-**빌드 예산은 시간이 아니라 횟수다.** 한 번이 실측 **31~40초**인데(호스트의 배포
-목록) 청구는 **분 단위로 올림**한다 — `tsc -b` 19초를 통째로 없애도 여전히 1분이다.
-줄일 수 있는 것은 횟수뿐이고, 거기에 새는 자리가 있었다:
+`BUILD_ID`가 `contract` 청크에 박혀 있어서, **코드가 한 줄도 안 바뀐 재빌드에도**
+청크 열다섯이 새 이름을 받는다.
 
 | | 실측 |
 |---|---|
@@ -422,22 +420,10 @@ Vercel·Cloudflare Pages·Netlify 셋 다 그 조건을 만족한다. 갈린 것
 | `dist`에 한 바이트도 안 가는 커밋 | 최근 60개 중 **22개 (37%)** — 대부분 문서 한 파일짜리 |
 | 도장만 바꿔 다시 구웠을 때 바뀌는 파일 | 71개 중 **16개** (청크 15개 1,064.0kB · gzip 350.4kB · assets의 22%) |
 
-마지막 줄이 대역폭까지 먹는 자리다. `BUILD_ID`가 `contract` 청크에 박혀 있어서
-코드가 한 줄도 안 바뀐 재빌드에도 청크 열다섯이 새 이름을 받고, `/assets/*.js`에
-1년 `immutable`이 걸려 있으니 **다시 오는 사람이 그것을 통째로 다시 받는다.**
-
-그래서 `netlify.toml`에 `ignore`를 둔다 — 배포물의 재료가 안 바뀐 푸시는 굽지
-않는다. **exit 0이 「건너뜀」**이라 `git diff --quiet`의 뜻이 그대로 맞는다.
-
-⚠️ **빈 값을 먼저 막아야 한다.** `$CACHED_COMMIT_REF`가 비면(첫 빌드·캐시 만료)
-`git diff --quiet <sha> -- 경로`가 되어 작업 트리와 견주게 되고, 체크아웃한 것이
-바로 그 커밋이라 차이가 0으로 나온다 — **첫 빌드를 건너뛴다.** 앞의 `[ -n … ]`
-둘이 그 자리를 막는다.
-
-⚠️ **목록이 곧 「배포물의 재료」다.** 새 소스 뿌리를 만들고 안 적으면 그 자리를
-고쳐도 배포가 **조용히** 안 나간다. `netlifyHeaders.test.mjs`가 Git이 아는 뿌리를
-전부 훑어 목록에 있거나 「배포물에 안 간다」로 적혀 있는지 본다 — 새 뿌리가 생기면
-`pnpm check`가 선다.
+마지막 줄이 대역폭을 먹는 자리다. `/assets/*.js`에 1년 `immutable`이 걸려 있으니
+**다시 오는 사람이 그 열다섯을 통째로 다시 받는다.** 그래서 문서 한 줄을 고치고
+미는 것과 코드를 고치고 미는 것의 값이 같지 않다 — 나가는 바이트는
+`.audit/wire.mjs`로 계속 잰다.
 
 ⚠️ **`buildId`의 뜻이 한 자리 바뀐다.** 문서만 고친 푸시를 건너뛰면 올라간
 `buildId`가 **마지막으로 배포물을 만든 커밋**에 머문다. 그것이 사실이다 — 그
@@ -466,14 +452,13 @@ CSP 응답 헤더가 정본 14개와 지시자까지 같고, `nosniff` · `no-re
 
 ### 한 번 볼 때 몇 바이트가 나가는가 (2026-09-03 · 빌드 `d035548`)
 
-Netlify 무료 요금제의 대역폭이 **한 달 100GB**다. 그 안에 몇 명이 들어오는지를
-알려면 「dist가 몇 MB인가」가 아니라 **한 번 열 때 실제로 나가는 바이트**를 세야
+호스트가 얼마를 내주는지를 알려면 「dist가 몇 MB인가」가 아니라 **한 번 열 때 실제로 나가는 바이트**를 세야
 한다. 세는 자리는 `.audit/probe/wire.mjs`이고 **서버 쪽에서 센다**.
 
 ⚠️ **브라우저 CDP로는 못 잰다.** 서비스워커가 가로챈 요청은 SW 타깃에서 나가
 페이지 세션에 안 잡히고, 브라우저 세션까지 붙이면 같은 요청이 두 번 잡히면서
 한쪽이 0으로 온다. 실제로 첫 측정에서 재방문이 0kB로 보였는데 그건 안 잡힌
-것이었다. `dist`를 Netlify와 같은 규칙(brotli · ETag · 304 · `netlify.toml`의
+것이었다. `dist`를 호스트와 같은 규칙(brotli · ETag · 304 · `public/_headers`의
 `Cache-Control`)으로 띄우고 나간 바이트를 세면 그 애매함이 사라진다.
 
 | | 그림을 굽기 전 | 그림을 구운 뒤 | 지금 (글꼴이 들어온 뒤) |
@@ -1635,11 +1620,9 @@ three는 그 자리를 이미 갖고 있었다. `compileAsync(대상, 카메라,
 바뀌면 다시 굽는다.
 
 ⚠️ **`saves/`는 배포물의 재료가 아니다.** 사용자가 디스크에서 집어 올리는
-파일이라 `dist`에서 0건이고(`copyPublicDir: false`), 그래서 `netlify.toml`의
-`ignore` 목록이 아니라 `netlifyHeaders.test.mjs`의 「배포물에 안 간다」 쪽에
-적혀 있다 (§3). **다시 구워서 커밋해도 배포가 안 나간다** — 3.8MB짜리 여든여섯
-벌이 바뀔 때마다 빌드를 태우면 빌드 횟수 예산만 깎인다. 세이브를 새로 구운 뒤
-올린 것까지 바꾸려면 소스 쪽 푸시가 한 번 더 있어야 한다.
+파일이라 `dist`에서 0건이고(`copyPublicDir: false`), 그래서 뿌리 대장의
+「배포물에 안 간다」 쪽에 적혀 있다 (§3). 다시 구워서 커밋해도 `dist`는 한 조각도
+안 바뀐다.
 
 ## 6. 공개 전 점검
 
@@ -1713,4 +1696,4 @@ master push가 배포를 유발하는 현재 운영 방식에서는 push 후 실
 번들 이름이 로컬 dist와 같아졌는지 확인하고 `pnpm verify:deploy
 https://radiant.siwon.it.kr/`, 전체 `pnpm e2e`, `pnpm release:check`를 통과해야
 배포 완료다. 배포 전에는 새 빌드의 실제 호스트 검증을 통과로 기록할 수 없다.
-Netlify의 ignore 규칙과 위의 과거 배포 기록은 Cloudflare의 현재 결과를 증명하지 않는다.
+위의 과거 배포 기록은 지금 올라간 것의 결과를 증명하지 않는다.
