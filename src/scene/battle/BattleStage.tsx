@@ -224,11 +224,13 @@ function Slot({
 }: {
   mon: ViewMon | null
   /**
-   * 어느 모습인가 (PARITY §3.4). 뷰가 아니라 **명단**이 들고 있다.
+   * 어느 모습인가 (PARITY §3.4).
    *
-   * ⚠️ **배틀 안에서 바뀌는 폼은 못 따라간다.** 날씨구슬 캐스퐁과 플라워기프트
-   * 체리버가 그렇다 — 규칙은 sim이 제대로 돌리지만(타입이 실제로 바뀐다) 그
-   * `-formechange`가 우리 뷰까지 안 올라온다. 리포트에 남는 폼은 다 맞는다
+   * **배틀 도중에 바뀌는 폼도 따라간다.** `-formechange`가 `form` 사건으로
+   * 올라와 뷰의 `active[slot].form`을 갈아 끼우고
+   * (`engine/battle/view`의 `case 'form'`), `battleFormVisual.test`가 날씨구슬
+   * 캐스퐁으로 그 자리를 잰다. 뷰에 폼이 없을 때만 명단 값으로 떨어진다
+   * (`formOf`)
    */
   form: number
   look: SpeciesLook | null

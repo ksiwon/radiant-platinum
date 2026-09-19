@@ -20,7 +20,11 @@
 `pnpm check` 종료 코드 0 — 일반 시험 **4,739 통과 · 3 skipped**(368 파일 중 1 skipped), shimmed **4 통과**.
 로그: `.audit/fix-20260919-check.log`. 기준 검토 때가 4,710이었으므로 새 시험 29건이 늘었다.
 
-**배포는 안 했고 `pnpm build`·`release:check`·`journey`·`story`도 이번에 안 돌렸다.** §7을 보라.
+`pnpm story` **PASS 90 · FAIL 0 · NOT RUN 0** (exit 0 · 무대 백엔드 `WebGPUBackend`).
+로그: `.audit/fix-20260919-story.log`. 실내 맵 전부와 배틀 장면 여럿이 이 안에 들어 있어
+이번 변경(방 벽·연출 시계)의 회귀 검사로 쓴다.
+
+**배포는 안 했고 `pnpm build`·`release:check`·`journey`는 이번에 안 돌렸다.** §7을 보라.
 
 ## 1. R1 — 배틀 연출이 주사율에 안 묶인다
 
@@ -263,8 +267,9 @@
 다음은 **이번 판에서 실행하지 않았다.** 통과도 실패도 아니다.
 
 - `pnpm build` · `pnpm release:check` · `pnpm verify:deploy` · 배포.
-- `pnpm journey`(완주) · `pnpm story`(확인 지점 67자리) · `pnpm e2e` · `pnpm gpu:loss` ·
-  `pnpm render:first`.
+- `pnpm journey`(완주) · `pnpm e2e` · `pnpm gpu:loss` · `pnpm render:first`.
+  `pnpm story`는 돌렸고 90자리 전부 PASS다 — 다만 그것은 **장면이 뜨고 그려지고 움직인다**는
+  증명이지 장면과 장면을 걸어서 잇는다는 증명이 아니다(`story.mjs`의 머리말).
 - R7의 **실제 관장전 재현** — 약을 사고·쓰고·잔량이 주는 것을 화면에서 본 기록이 없다.
   고친 것은 하네스의 줄 고르기와 제품의 읽기 전용 표시이고, 그 둘의 계약만 시험으로 잠갔다.
 - 배틀의 실제 영상 검증 — 승리·전멸·포획 성공/실패·사파리·더블·연속 공격·충전 기술·
@@ -274,6 +279,13 @@
 - R4의 실제 미러 비트 자산 캡처 — 현재 추출본에 활성 자산이 0개라 남길 것이 없었다.
 - 성능 재측정. 이번 변경은 배틀 연출의 **시간 축**을 바꾸므로 프레임 시간 자체보다
   「같은 연출이 같은 시간에 끝나는가」가 중요한데, 그것은 §1의 논리 시뮬레이션으로만 쟀다.
+
+### 7.1 곁들여 정리한 것
+
+지시서 §4가 시킨 대로 낡은 설명 하나를 대조해 고쳤다. `BattleStage`의 폼 주석이
+「`-formechange`가 우리 뷰까지 안 올라온다」고 적고 있었는데, `engine/battle/view`에
+`case 'form'`이 있고 `battleFormVisual.test`가 날씨구슬 캐스퐁으로 그것을 잰다 —
+구현이 주석보다 앞서 있었다. 기능을 되돌리지 않고 주석만 현재에 맞췄다.
 
 ## 8. 다음 사람이 이어서 할 순서
 
