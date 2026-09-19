@@ -30,6 +30,7 @@ import { markBackend, markTile } from '../app/sceneMark'
 import { worldState } from '../state/worldState'
 import { useRendererStore } from '../state/rendererStore'
 import { spinBike } from './BikeModel'
+import { showPlayerSkin } from './playerVisibility'
 import { sceneRefs, perfSnapshot } from './sceneRefs'
 import { battleStage, cinematicStage, starterStage } from './battle/stageRefs'
 import { createPostChain, type PostChain } from './fx/post'
@@ -255,8 +256,14 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       }
       sceneRefs.player.quaternion.slerp(playerRotation, Math.min(1, delta * 12))
       // 1인칭에서는 자기 몸이 화면을 가린다. 눈이 머리 안쪽에 있어서
-      // 안 끄면 얼굴 텍스처가 통째로 보인다
-      sceneRefs.player.visible = worldState.camera.mode !== 'first'
+      // 안 끄면 얼굴 텍스처가 통째로 보인다.
+      //
+      // ⚠️ **그룹째 끄면 타고 있는 것까지 사라진다** (FIRST_PERSON §9.2) —
+      // 자전거·파도타기·공중날기는 이 그룹의 자식이고 낚싯대·물뿌리개는 손
+      // 뼈의 자식이다. 그래서 **살덩이 조각만** 끄고 뼈와 나머지는 켜 둔다
+      const first = worldState.camera.mode === 'first'
+      // 모델이 아직 안 왔을 때의 폴백(`GreyBox`)만 그룹째 끈다
+      sceneRefs.player.visible = showPlayerSkin(sceneRefs.playerSkin, first) || !first
     }
 
     // 보행 포즈. 시뮬레이션이 아니라 표현이라 고정 스텝이 아닌 렌더 델타로 돈다 —

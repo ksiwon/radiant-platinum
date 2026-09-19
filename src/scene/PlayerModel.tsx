@@ -18,6 +18,7 @@ import { wateringActive } from './berryPatches'
 import { BikeModel } from './BikeModel'
 import { FieldActionEffects } from './FieldActionEffects'
 import { sceneRefs } from './sceneRefs'
+import type { SkinPart } from './playerVisibility'
 import { useAssetUrl } from '../data/providers/useAssetUrl'
 
 // 대체 복장용 메시 — 기본 복장과 겹쳐 z-fighting을 내므로 꺼둔다
@@ -174,8 +175,18 @@ export function PlayerModel() {
   useEffect(() => {
     const node = groupRef.current
     sceneRefs.player = node
+    // 1인칭에서 끄는 것은 **조각뿐이다** (`sceneRefs.playerSkin`의 머리말).
+    // 켜짐 여부를 지금 떠 둔다 — 대체 복장은 이미 꺼진 채로 온다
+    const skin: SkinPart[] = []
+    gltf.scene.traverse((o) => {
+      if ((o as { isMesh?: boolean }).isMesh) skin.push({ mesh: o, shown: o.visible })
+    })
+    sceneRefs.playerSkin = skin
     // 내가 넣은 것일 때만 뺀다 — 나보다 늦게 온 쪽의 등록을 지우지 않는다
-    return () => { if (sceneRefs.player === node) sceneRefs.player = null }
+    return () => {
+      if (sceneRefs.player === node) sceneRefs.player = null
+      if (sceneRefs.playerSkin === skin) sceneRefs.playerSkin = null
+    }
   }, [gltf, modelPath])
 
   return (

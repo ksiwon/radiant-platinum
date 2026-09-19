@@ -2,6 +2,7 @@
 // R3F 컴포넌트가 마운트 시 ref를 등록하고, EngineDriver가 매 프레임 변환을 쓴다
 import type { Camera, Object3D, Scene } from 'three'
 import type { Rig } from '../engine/actor/locomotion'
+import type { SkinPart } from './playerVisibility'
 import type { GaitPlayer, PoseSnapshot } from '../engine/actor/clipGait'
 
 export const sceneRefs: {
@@ -25,6 +26,19 @@ export const sceneRefs: {
    * 손가락과 골반 자리가 걷던 자세로 굳는다
    */
   playerGait: { player: GaitPlayer, rest: PoseSnapshot } | null
+  /**
+   * 주인공의 **살덩이만** — 그 조각과 원래 켜짐 여부.
+   *
+   * ⚠️ **1인칭에서 그룹을 통째로 끄면 안 된다** (FIRST_PERSON §9.2). 손에 든
+   * 낚싯대·물뿌리개는 손 뼈의 자식이고 자전거·파도타기·공중날기는 같은 그룹의
+   * 자식이라, 그룹을 끄면 **타고 있는 것과 쓰고 있는 것이 같이 사라진다** —
+   * 자전거를 타는데 화면에 아무것도 없고 속도만 빨라진다.
+   *
+   * 조각만 끄면 뼈는 켜진 채라 손에 매단 것이 그대로 보인다. `shown`은 등록할
+   * 때의 값이다 — 대체 복장 조각은 `personModel`이 꺼 두므로 1인칭을 나올 때
+   * 그것까지 켜면 기본 복장과 겹쳐 z-fighting이 난다
+   */
+  playerSkin: SkinPart[] | null
   /** 자전거. 주인공 그룹의 자식이고, 안 탈 때는 `visible`만 꺼 둔다 */
   bike: Object3D | null
   /**
@@ -45,6 +59,7 @@ export const sceneRefs: {
   playerRig: null,
   playerClip: false,
   playerGait: null,
+  playerSkin: null,
   bike: null,
   stage: { camera: null, scene: null, gl: null },
 }
