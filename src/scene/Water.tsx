@@ -40,11 +40,39 @@ const WAVES: readonly (readonly [number, number, number, number])[] = [
  */
 export const LIFT = 0.09
 
+/**
+ * 기슭에서 물결이 잦아드는 폭 (타일).
+ *
+ * ⚠️ **기슭에서도 같은 진폭으로 일렁이면 물이 뭍을 타고 오르내린다.** 골에서는
+ * 모래가 드러나고 마루에서는 풀을 덮는다 — 원작 그림의 물가 선과 어긋난다.
+ * 경계에서 0, 이만큼 떨어지면 1이 되게 부드럽게 올린다 (FIRST_PERSON §8.2)
+ */
+const SHORE_WIDTH = 1
+
+/** 기슭 감쇠의 기울기를 중앙차분으로 잴 때 쓰는 간격 (타일) */
+const SHORE_EPS = 0.125
+
+/**
+ * 같은 수면인가를 가르는 높이 눈금 (타일).
+ *
+ * 원본 높이판이 1/256타일 고정소수라 그 눈금에 맞춘다 — 그보다 잘게 가르면
+ * 같은 못이 부동소수 한 톨로 두 겹이 된다
+ */
+const HEIGHT_STEP = 256
+
 export interface WaterField {
   /** 정점 자리 `[x, 바닥 높이, z]`가 이어진 것 */
   grid: Float32Array
   /** 삼각형 색인 */
   index: Uint32Array
+  /**
+   * 정점마다 `[기슭 감쇠 a, ∂a/∂x, ∂a/∂z]`.
+   *
+   * 기울기까지 드는 이유는 법선이다. 높이가 `H = base + a·S`면
+   * `dH/dx = (∂a/∂x)·S + a·(∂S/∂x)`이라, 파동 미분에 `a`만 곱하면 **기슭에서
+   * 법선이 틀린다** (FIRST_PERSON §8.3)
+   */
+  shore: Float32Array
   /** 얕은 색 · 깊은 색 */
   colors: readonly [number, number]
 }
@@ -64,49 +92,138 @@ export interface WaterField {
  */
 export function waterField(
   grid: MapGrid, chunkIndex: number, radius: number,
-): { grid: Float32Array; index: Uint32Array } {
+): { grid: Float32Array; index: Uint32Array; shore: Float32Array } {
   const n = grid.chunkTiles
-  /** 모서리 좌표 → 정점 번호 */
-  const at = new Map<number, number>()
+  /** `수면 높이|모서리` → 정점 번호 */
+  const at = new Map<string, number>()
   const pos: number[] = []
+  const shore: number[] = []
   const index: number[] = []
+
   /**
-   * 모서리에 닿은 **네 칸 중 물인 것**의 높이 중 제일 낮은 것.
+   * 그 칸의 **제 수면 높이**. 물이 아니면 null.
    *
-   * 창 안의 칸만 훑으면 창 가장자리에서 답이 달라져 **창을 옮길 때 이음매가
-   * 생긴다** — 네 칸을 직접 묻는다
+   * ⚠️ **모서리가 아니라 칸 한가운데에 묻는다.** 모서리를 그대로
+   * `heightAtWorld(x, z)`에 물으면 `Math.floor`가 **남동쪽 한 칸**을 고르므로,
+   * 그 칸이 뭍인 기슭에서는 뭍 높이가 들어온다
    */
-  const heightAt = (x: number, z: number): number => {
-    let low = null
-    for (const [dx, dz] of [[0, 0], [-1, 0], [0, -1], [-1, -1]] as const) {
-      if (!isWater(grid.behavior(x + dx, z + dz))) continue
-      // 칸 한가운데에 물어야 판이 물 칸의 것으로 떨어진다
-      const h = grid.heightAtWorld(x + dx + 0.5, z + dz + 0.5)
-      if (h !== null && (low === null || h < low)) low = h
-    }
-    return low ?? 0
+  const surfaceAt = (x: number, z: number): number | null => {
+    if (!isWater(grid.behavior(x, z))) return null
+    const h = grid.heightAtWorld(x + 0.5, z + 0.5)
+    return h === null ? null : Math.round(h * HEIGHT_STEP) / HEIGHT_STEP
   }
-  const corner = (x: number, z: number): number => {
-    const key = x * 4096 + z
+
+  /**
+   * 이 점에서 **그 수면의 물가**까지의 거리 (타일).
+   *
+   * 물가는 「물 칸과 물 아닌 칸」 사이의 변이고, **높이가 다른 물도 물가로 친다** —
+   * 폭포 위아래를 한 면으로 이으면 안 되므로 서로에게 끝이다.
+   *
+   * 둘레 두 칸만 본다. `SHORE_WIDTH`가 1이라 그보다 멀면 답이 1로 굳는다
+   */
+  const shoreDistance = (px: number, pz: number, h: number): number => {
+    let best = SHORE_WIDTH + 1
+    const cx = Math.floor(px), cz = Math.floor(pz)
+    for (let z = cz - 2; z <= cz + 2; z++) {
+      for (let x = cx - 2; x <= cx + 2; x++) {
+        if (surfaceAt(x, z) !== h) continue
+        // 이 물 칸의 네 변 중 **바깥과 맞닿은** 것까지의 거리.
+        // 변은 길이 1짜리 선분이고 축에 나란하다 — 한 축은 못 박고 다른 축은
+        // 칸 안으로 끼워 넣은 뒤 두 점 거리를 잰다
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          if (surfaceAt(x + dx, z + dz) === h) continue
+          let d: number
+          if (dx !== 0) {
+            const line = x + (dx > 0 ? 1 : 0)
+            d = Math.hypot(px - line, pz - Math.min(z + 1, Math.max(z, pz)))
+          } else {
+            const line = z + (dz > 0 ? 1 : 0)
+            d = Math.hypot(px - Math.min(x + 1, Math.max(x, px)), pz - line)
+          }
+          if (d < best) best = d
+        }
+      }
+    }
+    return best
+  }
+
+  /** 0에서 1로 부드럽게 오른다 */
+  const smoothstep = (v: number): number => {
+    const k = Math.min(1, Math.max(0, v))
+    return k * k * (3 - 2 * k)
+  }
+
+  /**
+   * 그 점이 **이 수면 안쪽**인가.
+   *
+   * ⚠️ **거리에는 부호가 없다.** 안팎을 안 가르면 물가 바깥 0.125타일도 안쪽
+   * 0.125타일과 같은 답을 내서, 중앙차분이 서로 지워지고 **기슭에서 기울기가
+   * 0이 된다** — 그러면 `∂a/∂x` 항을 들고 다닐 이유가 없어진다
+   */
+  const insideAt = (px: number, pz: number, h: number): boolean =>
+    surfaceAt(Math.floor(px), Math.floor(pz)) === h
+
+  const ampAt = (px: number, pz: number, h: number): number =>
+    (insideAt(px, pz, h) ? smoothstep(shoreDistance(px, pz, h) / SHORE_WIDTH) : 0)
+
+  /**
+   * 감쇠의 기울기 `[∂a/∂x, ∂a/∂z]`.
+   *
+   * ⚠️ **가로세로 두 점만 보면 안 된다.** 물이 대각선으로만 닿은 모서리에서는
+   * ±x도 ±z도 둘 다 뭍이라 차분이 0으로 죽는다 — 그 자리만 법선이 평평해진다.
+   * 여덟 점(소벨)으로 보면 대각선 물도 잡힌다
+   */
+  const slopeAt = (x: number, z: number, h: number): [number, number] => {
+    const e = SHORE_EPS
+    const n = ampAt(x, z - e, h), sth = ampAt(x, z + e, h)
+    const w = ampAt(x - e, z, h), ea = ampAt(x + e, z, h)
+    const nw = ampAt(x - e, z - e, h), ne = ampAt(x + e, z - e, h)
+    const sw = ampAt(x - e, z + e, h), se = ampAt(x + e, z + e, h)
+    return [
+      ((ne + 2 * ea + se) - (nw + 2 * w + sw)) / (8 * e),
+      ((sw + 2 * sth + se) - (nw + 2 * n + ne)) / (8 * e),
+    ]
+  }
+
+  /**
+   * 모서리 하나. **수면 높이를 열쇠에 넣는다.**
+   *
+   * ⚠️ **`x*4096+z`만으로는 높이가 다른 물이 한 정점을 나눠 쓴다.** 실측으로
+   * 오버월드 모서리 32,205개 중 **445개**가 높이가 다른 물 칸에 걸쳐 있고, 제일
+   * 심한 데는 2.0과 0.5가 만난다(910,480) — 예전에는 그중 **낮은 쪽**을 골랐으므로
+   * 높은 못의 가장자리가 1.5타일을 주저앉아 비스듬한 판이 됐다
+   */
+  const corner = (x: number, z: number, h: number): number => {
+    const key = `${String(h)}|${String(x)},${String(z)}`
     let got = at.get(key)
     if (got === undefined) {
       got = pos.length / 3
       at.set(key, got)
-      pos.push(x, heightAt(x, z), z)
+      pos.push(x, h, z)
+      // 감쇠와 그 기울기. 기울기는 같은 함수를 중앙차분한다 —
+      // 감쇠를 곱하기만 하고 기울기를 안 고치면 기슭에서 빛이 딴 데를 본다
+      const a = ampAt(x, z, h)
+      shore.push(a, ...slopeAt(x, z, h))
     }
     return got
   }
+
   for (const c of grid.chunksAround(chunkIndex, radius)) {
     for (let z = c.my * n; z < (c.my + 1) * n; z++) {
       for (let x = c.mx * n; x < (c.mx + 1) * n; x++) {
-        if (!isWater(grid.behavior(x, z))) continue
-        const a = corner(x, z), b = corner(x + 1, z)
-        const d = corner(x, z + 1), e = corner(x + 1, z + 1)
+        const h = surfaceAt(x, z)
+        if (h === null) continue
+        const a = corner(x, z, h), b = corner(x + 1, z, h)
+        const d = corner(x, z + 1, h), e = corner(x + 1, z + 1, h)
         index.push(a, d, b, b, d, e)
       }
     }
   }
-  return { grid: new Float32Array(pos), index: new Uint32Array(index) }
+  return {
+    grid: new Float32Array(pos),
+    index: new Uint32Array(index),
+    shore: new Float32Array(shore),
+  }
 }
 
 /**
@@ -167,12 +284,19 @@ export function Water({ field }: { field: WaterField | null }) {
     const col = geo.getAttribute('color') as BufferAttribute
     const shallow = new Color(field.colors[0]), deep = new Color(field.colors[1])
     const base = field.grid
+    const shore = field.shore
     for (let i = 0; i < pos.count; i++) {
       const x = base[i * 3]!, z = base[i * 3 + 2]!
-      const [y, dx, dz] = waveAt(x, z, t)
+      const [s, sdx, sdz] = waveAt(x, z, t)
+      // 기슭에서는 잦아든다. 물가 선에서 a가 0이라 수면이 원작 물가에 밀착한다
+      const a = shore[i * 3] ?? 1
+      const adx = shore[i * 3 + 1] ?? 0, adz = shore[i * 3 + 2] ?? 0
+      const y = a * s
       pos.setY(i, base[i * 3 + 1]! + LIFT + y)
-      // 기울기에서 바로 나온 법선. 길이는 재질이 정규화한다
-      nrm.setXYZ(i, -dx, 1, -dz)
+      // ⚠️ **파동 미분에 `a`만 곱하면 안 된다.** 실제 높이는 `H = base + a·S`라
+      // `dH/dx = (∂a/∂x)·S + a·(∂S/∂x)`다 — 앞 항을 빼면 기슭에서 빛이 물결과
+      // 따로 논다 (FIRST_PERSON §8.3)
+      nrm.setXYZ(i, -(adx * s + a * sdx), 1, -(adz * s + a * sdz))
       // 마루가 밝고 골이 어둡다
       const k = Math.min(1, Math.max(0, y / 0.09 + 0.5))
       col.setXYZ(i,

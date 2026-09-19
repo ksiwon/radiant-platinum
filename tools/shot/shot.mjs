@@ -783,6 +783,77 @@ async function main() {
       }
     }
 
+    /**
+     * **그 자리 둘레의 삼각형을 통째로 늘어놓는다** — `--near=x,y,z,r`.
+     *
+     * ⚠️ **광선으로는 「없는 것」을 못 짚는다.** 틈은 아무것도 안 맞는 자리라,
+     * 광선은 「하늘이다」까지만 말하고 **누구의 변이 모자란지**는 말 못 한다.
+     * 그래서 그 둘레의 면을 월드 좌표로 다 꺼내 어느 변이 어디서 끝나는지 본다.
+     *
+     * 세로로 훑으면 끊긴 높이가 바로 보인다 — 그것이 틈의 위아래 임자다
+     */
+    const near = flag('near')
+    if (near) {
+      const [nx, ny, nz, nr] = near.split(',').map(Number)
+      const rows = await page.evaluate(async ([cx, cy, cz, r]) => {
+        const THREE = await import('/node_modules/three/build/three.webgpu.js')
+        const refs = await import('/src/scene/sceneRefs.ts')
+        let root = refs.sceneRefs.player
+        while (root?.parent) root = root.parent
+        if (!root) return []
+        const hub = new THREE.Vector3(cx, cy, cz)
+        const out = []
+        const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3()
+        root.traverse((o) => {
+          if (!o.isMesh || o.isSkinnedMesh) return
+          const g = o.geometry
+          const pos = g?.attributes?.position
+          if (!pos) return
+          const idx = g.index
+          const count = idx ? idx.count : pos.count
+          if (count > 400_000) return
+          const groups = g.groups.length > 0 ? g.groups : [{ start: 0, count, materialIndex: 0 }]
+          const mats = Array.isArray(o.material) ? o.material : [o.material]
+          for (const grp of groups) {
+            const end = Math.min(grp.start + grp.count, count)
+            for (let t = grp.start; t + 2 < end; t += 3) {
+              const i0 = idx ? idx.getX(t) : t
+              const i1 = idx ? idx.getX(t + 1) : t + 1
+              const i2 = idx ? idx.getX(t + 2) : t + 2
+              a.fromBufferAttribute(pos, i0); o.localToWorld(a)
+              b.fromBufferAttribute(pos, i1); o.localToWorld(b)
+              c.fromBufferAttribute(pos, i2); o.localToWorld(c)
+              const mid = a.distanceTo(hub) < b.distanceTo(hub)
+                ? (a.distanceTo(hub) < c.distanceTo(hub) ? a : c)
+                : (b.distanceTo(hub) < c.distanceTo(hub) ? b : c)
+              if (mid.distanceTo(hub) > r) continue
+              const f = (v) => [+v.x.toFixed(3), +v.y.toFixed(3), +v.z.toFixed(3)]
+              out.push({
+                mesh: o.name || o.type,
+                mat: mats[grp.materialIndex ?? 0]?.name ?? '?',
+                sub: grp.materialIndex ?? 0,
+                tri: t / 3,
+                y: [+Math.min(a.y, b.y, c.y).toFixed(3), +Math.max(a.y, b.y, c.y).toFixed(3)],
+                z: [+Math.min(a.z, b.z, c.z).toFixed(3), +Math.max(a.z, b.z, c.z).toFixed(3)],
+                x: [+Math.min(a.x, b.x, c.x).toFixed(3), +Math.max(a.x, b.x, c.x).toFixed(3)],
+                v: [f(a), f(b), f(c)],
+              })
+            }
+          }
+        })
+        // ⚠️ **낮은 쪽을 자르면 안 된다.** 높은 순으로 잘랐더니 틈 **아래**의
+        // 면이 통째로 빠져서, 없는 줄 알았던 것이 실은 목록 밖이었다
+        return out.sort((p1, p2) => p1.y[0] - p2.y[0]).slice(0, 160)
+      }, [nx, ny, nz, nr ?? 1.5])
+      console.log(`  ${id} (${String(nx)}, ${String(ny)}, ${String(nz)}) 반경 ${String(nr ?? 1.5)} 안의 면 ${String(rows.length)}개`)
+      for (const r of rows) {
+        console.log(`     ${r.mat.padEnd(14)} 서브${String(r.sub).padStart(2)} 삼각형 ${String(r.tri).padStart(5)}`
+          + ` y ${String(r.y[0]).padStart(7)}~${String(r.y[1]).padEnd(7)}`
+          + ` z ${String(r.z[0]).padStart(7)}~${String(r.z[1]).padEnd(7)}`
+          + ` x ${String(r.x[0]).padStart(7)}~${String(r.x[1])}`)
+      }
+    }
+
     // 배틀 무대 아래에 실제로 무엇이 서 있는지 늘어놓는다.
     //
     // ⚠️ **광선으로는 "없는 것"을 못 가린다.** 포켓몬 모델을 처음 세운 날

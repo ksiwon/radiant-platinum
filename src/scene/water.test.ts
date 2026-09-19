@@ -176,6 +176,91 @@ maybe('물', () => {
     }
   })
 
+  it('높이가 다른 물은 정점을 안 나눠 쓴다', () => {
+    // 실측: 오버월드 모서리 32,205개 중 445개가 높이가 다른 물 칸에 걸쳐 있다.
+    // (910,480)은 2.0과 0.5가 만나는 자리다 — 예전 키(`x*4096+z`)는 낮은 쪽을
+    // 골랐으므로 높은 못의 가장자리가 1.5타일을 주저앉아 비스듬한 판이 됐다
+    const ci = grid.chunkIndexAt(911, 481)
+    const { grid: pos } = waterField(grid, ci, 1)
+    const byCorner = new Map<string, number[]>()
+    for (let i = 0; i < pos.length; i += 3) {
+      const key = `${String(pos[i])},${String(pos[i + 2])}`
+      const had = byCorner.get(key)
+      if (had) had.push(pos[i + 1]!)
+      else byCorner.set(key, [pos[i + 1]!])
+    }
+    const split = [...byCorner.entries()].filter(([, ys]) => ys.length > 1)
+    expect(split.length, '높이가 갈리는 모서리가 이 창에 없다 — 시험 자리가 틀렸다')
+      .toBeGreaterThan(0)
+    // 갈린 자리는 **정말 높이가 다르다.** 같은 높이가 둘이면 그냥 중복이다
+    for (const [key, ys] of split) {
+      expect(new Set(ys).size, key).toBe(ys.length)
+    }
+    // 그리고 그 높이는 실제 물 칸이 가진 값 중 하나여야 한다
+    const NB = [[0, 0], [-1, 0], [0, -1], [-1, -1]] as const
+    for (const [key, ys] of split) {
+      const [x, z] = key.split(',').map(Number)
+      const wet = new Set<number>()
+      for (const [dx, dz] of NB) {
+        if (!isWater(grid.behavior(x! + dx, z! + dz))) continue
+        const h = grid.heightAtWorld(x! + dx + 0.5, z! + dz + 0.5)
+        if (h !== null) wet.add(Math.round(h * 256) / 256)
+      }
+      for (const y of ys) expect(wet.has(y), `${key} → ${String(y)}`).toBe(true)
+    }
+  })
+
+  it('기슭에서 물결이 잦아든다', () => {
+    const { grid: pos, shore } = waterField(grid, 238, 1)
+    expect(shore.length).toBe(pos.length)
+    let atShore = 0, inside = 0
+    for (let i = 0; i < pos.length; i += 3) {
+      const x = pos[i]!, z = pos[i + 2]!
+      // 물가에 붙은 모서리 — 둘레 네 칸 중 물이 아닌 것이 있다
+      const wet = [[0, 0], [-1, 0], [0, -1], [-1, -1]]
+        .every(([dx, dz]) => isWater(grid.behavior(x + dx!, z + dz!)))
+      const a = shore[i]!
+      expect(a, `${String(x)},${String(z)}`).toBeGreaterThanOrEqual(0)
+      expect(a, `${String(x)},${String(z)}`).toBeLessThanOrEqual(1)
+      if (!wet) { expect(a, `물가 ${String(x)},${String(z)}`).toBeLessThan(0.2); atShore++ }
+      else if (a > 0.99) inside++
+    }
+    expect(atShore, '물가 모서리가 없다').toBeGreaterThan(20)
+    expect(inside, '속이 트인 물이 없다').toBeGreaterThan(20)
+  })
+
+  it('감쇠 기울기가 감쇠 자체의 미분과 맞다', () => {
+    // ⚠️ 파동 미분에 `a`만 곱하면 기슭에서 법선이 틀린다 (FIRST_PERSON §8.3).
+    // 그래서 `∂a/∂x`를 같이 들고 다니는데, 그 값이 실제 `a`의 기울기여야 한다
+    const { grid: pos, shore } = waterField(grid, 238, 1)
+    let flat = 0, sloped = 0
+    for (let i = 0; i < pos.length; i += 3) {
+      const x = pos[i]!, z = pos[i + 2]!
+      const a = shore[i]!, ax = shore[i + 1]!, az = shore[i + 2]!
+      // 기울기가 터무니없이 크면 안 된다 — smoothstep의 최대 기울기는
+      // 폭 1타일에서 1.5다
+      expect(Math.hypot(ax, az), `${String(x)},${String(z)}`).toBeLessThan(1.6)
+      // ⚠️ **모서리에서 `a`는 0 아니면 1이다.** 정점이 타일 모서리에 놓이고
+      // 물가도 타일 변이라 거리가 0 아니면 1 이상이다 — 그 사이는 GPU가 면
+      // 안에서 선형으로 채운다. 그래서 「중간값이 있는가」가 아니라 **물가에서
+      // 기울기가 살아 있는가**를 본다. 부호를 안 가르면 이 값이 0으로 죽는다
+      if (a === 0) {
+        expect(Math.hypot(ax, az), `물가 ${String(x)},${String(z)}`).toBeGreaterThan(0)
+        sloped++
+      }
+      // **둘레 세 칸이 죄다 물**이면 물가에서 충분히 멀다 — 거기서는 평평하다
+      const deep = [-2, -1, 0, 1].every((dz) =>
+        [-2, -1, 0, 1].every((dx) => isWater(grid.behavior(x + dx, z + dz))))
+      if (deep) {
+        expect(a, `속 ${String(x)},${String(z)}`).toBe(1)
+        expect(Math.abs(ax) + Math.abs(az), `속 ${String(x)},${String(z)}`).toBe(0)
+        flat++
+      }
+    }
+    expect(flat, '속이 트인 자리가 없다').toBeGreaterThan(20)
+    expect(sloped, '물가 경사가 없다').toBeGreaterThan(10)
+  })
+
   it('색은 그림에서 오고 마루가 더 밝다', () => {
     const items = [{ tex: 'sea', pal: '', x: 0, y: 0, w: 4, h: 4 }]
     const pixels = new Uint8ClampedArray(4 * 4 * 4)
