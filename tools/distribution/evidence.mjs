@@ -512,7 +512,7 @@ export function sealEvidence({
     testedAt: new Date().toISOString(),
     environment,
     /**
-     * `shortcuts` — 이 판에서 켠 **지름길 깃발**(예: `candy`). 빈 목록이어야 통과다.
+     * `shortcuts` — 이 판에서 켠 **지름길 깃발**. 빈 목록이어야 통과다.
      * 켠 판은 진단이다 — 판정기가 스스로 떨어뜨린다 (`validateEvidence` ④)
      */
     scope: { suite, selection, expectedCases, executedCases, startDigest, shortcuts },
@@ -698,9 +698,9 @@ export function validateEvidence(env, suiteName, { artifact, source, harness, ro
       + ` ${missing.slice(0, 6).join(' · ')}${missing.length > 6 ? ' …' : ''}`)
   }
 
-  // ⚠️ **지름길을 켠 판은 통과가 아니다.** 이상한사탕으로 레벨을 채운 판
-  // (`journey --candy`)은 레벨 맞추기와 그 배틀을 안 밟았다 — 줄이 다 PASS여도
-  // 사람이 하는 길을 잰 것이 아니다. 칸이 없으면 켰는지 모르는 것이라 역시 막는다
+  // ⚠️ **지름길을 켠 판은 통과가 아니다.** 사람이 밟는 걸음을 깃발로 건너뛴 판은
+  // 줄이 다 PASS여도 사람이 하는 길을 잰 것이 아니다. 칸이 없으면 켰는지 모르는
+  // 것이라 역시 막는다. 지금 이 깃발을 다는 하네스는 없다 — 다음에 생길 것을 가둬 둔다
   const cut = env.scope?.shortcuts
   if (!Array.isArray(cut)) {
     return bad('지름길을 켰는지가 없다 (scope.shortcuts)')

@@ -66,24 +66,25 @@ const BUDGET_MS = Number(flag('budget') ?? 10800) * 1000
 const FROM = flag('from')
 
 /**
- * **이상한사탕 지름길** (`--candy` · 기본 꺼짐 · `docs/orders/RARE_CANDY_20260917.md`).
+ * **레벨은 이상한사탕으로 맞춘다** (`docs/orders/RARE_CANDY_20260917.md`).
  *
- * 켜면 **안 밟는 것**이 둘이다 —
+ * 두 자리에서 올린다 —
  *
- *   · ⑲ 앞 레벨 맞추기(205번도로 남쪽 야생전 · 상한 900초)를 사탕으로 채운다
- *   · 유채 앞에서 찌르꼬를 사탕으로 L16까지 올린다(L14 찌르버드) — 원래는 없던 걸음이다
+ *   · ⑲ 숲에 들기 전 선두를 L20까지
+ *   · 유채 앞에서 찌르꼬를 L16까지 (L14에 찌르버드가 된다)
  *
  * 사탕을 **가방에 넣는 것만** 개발 모듈로 하고, 먹이는 것은 가방 → 파티 화면 →
- * 진화 화면을 키로 넘긴다(`drive.feedCandy`).
+ * 진화 화면을 키로 넘긴다(`drive.feedCandy`) — 사람이 누르는 그 길이다.
  *
- * ⚠️ **진단 판이다.** 봉투의 `scope.shortcuts`에 `candy`가 적히고, 판정기가 그 판을
- * 스스로 떨어뜨린다(`evidence.validateEvidence`) — ⑪·⑦에 못 들어간다. 구간 세이브도
- * 이름과 신원이 따로라(`seg-NN-candy`) 사탕 판끼리만 이어 달린다.
- * **기록용 판은 깃발 없이 돈다**
+ * ⚠️ **풀밭 노가다로는 관장을 못 넘었다.** 205번도로 남쪽에서 야생과 싸워 레벨을
+ * 맞추던 길은 붙는 판 수가 판마다 흔들렸다 — 실측(2026-09-19): 9판 만에 L17→20으로
+ * 끝나 선두 L24로 유채에게 들어갔고 **첫 도전·재도전 둘 다 전멸**했다(전날 판은
+ * 13판·L26으로 이겼다). 이 판이 재는 것은 레벨을 올리는 솜씨가 아니라 **게임 전체가
+ * 끝까지 도는가**라, 레벨은 빨리 맞추고 시간은 여정에 쓴다 (사람이 정했다).
  */
-const CANDY = args.includes('--candy')
-const SHORTCUTS = CANDY ? ['candy'] : []
-/** 사탕 판에서 유채 앞 찌르꼬를 올릴 레벨 — L14 진화 · 날개치기는 L9 */
+/** 켠 지름길 깃발 — 지금은 없다. 사탕은 지름길이 아니라 **늘 밟는 걸음**이다 */
+const SHORTCUTS = []
+/** 유채 앞에서 찌르꼬를 올릴 레벨 — L14 진화 · 날개치기는 L9 */
 const CANDY_STARLY_LEVEL = 16
 /** 이상한사탕 (`items.json` 50 · 약 주머니) */
 const RARE_CANDY = 50
@@ -293,10 +294,6 @@ const AFTER_STOPS = [
 
 /** 숲에 들기 전 선두 레벨 (진화 18을 넘고, 숲을 통과한 판의 L19~21에 맞춘다) */
 const FOREST_LEVEL = 20
-/** 그 레벨을 맞출 풀밭 — 205번도로 남쪽 */
-const FOREST_GRASS = 347
-/** 레벨 맞추기에 줄 시간의 상한 */
-const FOREST_TRAIN_MS = 900_000
 
 /** 축복시티 마트. 볼을 여기서 산다 — 꽃향기까지 가면 잡을 자리를 이미 지난다 */
 const JUBILIFE_MART = 4
@@ -845,7 +842,6 @@ let ranToTheEnd = false
  * 「신원이 다르다」로만 적으면 다음 사람이 무엇이 바뀌었는지 다시 찾아야 한다
  */
 const resume = FROM === null ? { ok: false, segment: null, why: '' } : resumableAt(FROM, SHORTCUTS)
-if (CANDY) console.log('  ⚠️ --candy — 레벨을 사탕으로 채우는 **진단 판**이다. 봉투가 이 판을 통과로 안 받는다')
 if (FROM !== null) {
   console.log(resume.ok
     ? `  구간 ${resume.segment.id}에서 이어 달린다 — ${resume.segment.save}`
@@ -1181,34 +1177,7 @@ try {
        * 「포획 후 저장·복원」(기획서 §7.2)을 이 구간이 처음 재는 자리이기도 하다
        */
       /**
-       * 선두가 `level`에 닿을 때까지 `grass` 맵의 풀밭에서 싸운다. 체력이 반 아래면
-       * `center`에서 낫고 돌아온다. 예산이 다 되면 그대로 적고 넘어간다(건너뛰지 않는다)
-       */
-      const trainBefore = async (level, grass, center, budgetMs) => {
-        const till = Date.now() + budgetMs
-        let fights = 0
-        const leadLevel = async () => ((await api.partyState()) ?? [])[0]?.level ?? 0
-        const from = await leadLevel()
-        if (from >= level) return `이미 L${String(from)}`
-        while (Date.now() < till && api.left() > 0) {
-          if (await leadLevel() >= level) break
-          const party = (await api.partyState()) ?? []
-          const lead = party[0]
-          if (lead === undefined || lead.hp * 2 < lead.max || party.every((m) => m.hp <= 0)) {
-            const healed = await api.healAt(center, Math.min(300_000, till - Date.now()))
-            if (!healed.ok) return `회복을 못 했다 (${String(healed.why)}) · ${String(fights)}판 · L${String(from)}→${String(await leadLevel())}`
-          }
-          const there = await api.goTo(grass, Math.min(300_000, till - Date.now()))
-          if (there !== 'arrived') return `풀밭에 못 갔다 (${there}) · ${String(fights)}판`
-          const how = await api.grindForWild(grass, Math.min(180_000, till - Date.now()))
-          if (how === 'battle') fights += 1
-        }
-        const to = await leadLevel()
-        return `${to >= level ? '됐다' : '시간이 다 됐다'} · ${String(fights)}판 · L${String(from)}→${String(to)}`
-      }
-
-      /**
-       * **사탕으로 올린다** (`--candy`에서만). `slot`이 null이면 `species`인 첫 마리다.
+       * **사탕으로 올린다.** `slot`이 null이면 `species`인 첫 마리다.
        * 모자란 만큼만 가방에 넣고 화면으로 먹인다. 결과는 한 줄 글로 돌려준다 —
        * 레벨 맞추기와 같은 자리(`story.training`)에 적힌다
        */
@@ -1501,14 +1470,11 @@ try {
          * 체육관은 여기 안 건다(`JOURNEY_BADGE2` §3.3 — 파티를 꾸려서 넘는다)
          */
         if (stop.id === '19') {
-          const got = CANDY
-            ? await candyUp(0, null, FOREST_LEVEL)
-            : await trainBefore(FOREST_LEVEL, FOREST_GRASS, CENTERS[203],
-              Math.min(FOREST_TRAIN_MS, api.left()))
-          const trained = CANDY ? candyLine(got) : got
+          const got = await candyUp(0, null, FOREST_LEVEL)
+          const trained = candyLine(got)
           log(`  ${stop.what} 앞 레벨 맞추기 (선두 L${String(FOREST_LEVEL)}) → ${trained}`)
           story.training = [...(story.training ?? []), { before: stop.what, result: trained }]
-          if (CANDY) story.candySteps = [...(story.candySteps ?? []), { what: '숲 앞 선두', ...got }]
+          story.candySteps = [...(story.candySteps ?? []), { what: '숲 앞 선두', ...got }]
         }
         /**
          * ⚠️ **체육관 앞에서 약을 산다** (지시서 §13.5의 3번).
@@ -1518,7 +1484,7 @@ try {
          * 졌다. 사람이 체육관 옆 마트에 들르는 그 걸음이고, 파는 것도 원작이
          * 그 시점에 파는 것뿐이다(배지 하나 = 재고 계단 2)
          */
-        if (stop.map === 67 && CANDY) {
+        if (stop.map === 67) {
           const fed = await candyUp(null, STARLY, CANDY_STARLY_LEVEL)
           log(`  ${stop.what} 앞 찌르꼬 사탕 (L${String(CANDY_STARLY_LEVEL)}) → ${candyLine(fed)}`)
           story.training = [...(story.training ?? []),
@@ -1575,7 +1541,7 @@ try {
            * 적으면 「검증된 자리」가 스스로를 증명하는 꼴이 된다
            */
           if (skipBefore === null) {
-            const file = `seg-${stop.id}${CANDY ? '-candy' : ''}.rpsave`
+            const file = `seg-${stop.id}.rpsave`
             const kept = await writeReport(file)
             if (kept.ok) {
               const where = await whereNow()
@@ -1858,14 +1824,12 @@ try {
     + ` · 좋은상처약 ${String(drive.extra?.potionBuy?.bought ?? 0)}개 사서 ${String(drive.potions?.used ?? 0)}번 썼다`
     + (drive.potions?.why ? ` (${String(drive.potions.why)})` : '')
     /**
-     * ⚠️ **지름길 걸음은 여행 결과와 따로 적는다** (지시서
+     * ⚠️ **사탕 걸음은 여행 결과와 따로 적는다** (지시서
      * JOURNEY21_NEXT_DECISIONS §2). 「이겼다」 옆에 사탕을 몇 알 먹였는지가 아니라,
      * **그 걸음이 돌았는지**를 적어야 이긴 까닭을 사탕 쪽으로 잘못 읽지 않는다
      */
-    + (CANDY
-      ? ` · 사탕 걸음 ${(story.candySteps ?? []).map((one) =>
-        `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`
-      : ''))
+    + ` · 사탕 걸음 ${(story.candySteps ?? []).map((one) =>
+      `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`)
   shots.push(await shot('after-gym2'))
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────

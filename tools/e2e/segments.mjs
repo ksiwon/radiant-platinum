@@ -34,8 +34,8 @@ function digestOf(path) {
  * · `harness` 검사 하네스 (`harnessDigest('journey')`) — 재는 자가 바뀌면 값도 바뀐다
  * · `data`    `public/data` **나무 전체** — 아래 ⚠️
  * · `save`    이어 달릴 세이브 파일 그 자체 (`writeSegment`가 덧붙인다)
- * · `shortcuts` 그 판에서 켠 지름길 깃발 (`journey --candy`). 사탕으로 레벨을 채운
- *             세이브는 파티가 다르다 — **깃발이 같은 판끼리만** 이어 달린다
+ * · `shortcuts` 그 판에서 켠 지름길 깃발. 건너뛴 걸음이 다르면 세이브의 파티도
+ *             다르다 — **깃발이 같은 판끼리만** 이어 달린다
  *
  * ⚠️ **`sourceDigest`는 `public/data/`를 일부러 뺀다.** 원본 유래 추출물이라
  * 지문에 경로가 실리면 안 된다는 규칙이다(`evidence.mjs`의 `NEVER_SOURCE`).

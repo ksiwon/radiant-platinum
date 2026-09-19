@@ -246,12 +246,12 @@ describe('이름 목록이 성한가', () => {
 })
 
 describe('지름길을 켠 판은 통과가 아니다', () => {
-  it('사탕 판은 줄이 다 PASS여도 떨어진다', () => {
+  it('깃발을 단 판은 줄이 다 PASS여도 떨어진다', () => {
     const env = envelope()
-    env.scope.shortcuts = ['candy']
+    env.scope.shortcuts = ['givenBadge']
     const said = judge(env)
     expect(said.ok).toBe(false)
-    expect(said.detail).toContain('candy')
+    expect(said.detail).toContain('givenBadge')
   }, SLOW)
 
   it('켰는지를 안 적은 봉투도 떨어진다', () => {
@@ -267,9 +267,9 @@ describe('지름길을 켠 판은 통과가 아니다', () => {
     expect(env.scope.shortcuts).toEqual([])
     const lit = sealEvidence({
       suite: 'journey', expectedCases: ['01'], executedCases: ['01'], environment: {}, results: [],
-      shortcuts: ['candy'],
+      shortcuts: ['givenBadge'],
     })
-    expect(lit.scope.shortcuts).toEqual(['candy'])
+    expect(lit.scope.shortcuts).toEqual(['givenBadge'])
   }, SLOW)
 })
 
