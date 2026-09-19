@@ -14,11 +14,14 @@
 | R3 HP/기절 분리 | 고침 · 시험으로 잠금 | `faintOrder.test.ts` 8건 |
 | R4 Scale2x 거울 경계 | 고침 · 시험으로 잠금 | `mirrorWrap.test.ts` 8건 |
 | R7 회복 주머니 줄 고르기 | 고침 · 계약을 시험으로 잠금 | `bagRowMarks.test.ts` 7건 · 실제 관장전 재현은 **미실행** |
-| R5 문간 화면 | 센터는 원인 확정 후 고침 · **천관산은 아래 §5.2** | 실제 화면 실측 (`.audit/r5-*`) |
-| R6 전체 명세 범위 | 아래 §6에 매핑 · 새 구현 없음 | 코드와 `coverage.json` 대조 |
+| R5 문간 화면 | 센터·천관산 **둘 다 원인 확정 후 고침** | 실제 화면 실측 (`.audit/r5-*`) |
+| R6 §8.2 물 층·해안 | 고침 · 시험으로 잠금 | `water.test.ts` 13건 |
+| R6 §10.2 LOD | 고침 · 시험으로 잠금 | `screenLod.test.ts` 8건 |
+| R6 §6.3 바위 | 다시 만듦 · 시험으로 잠금 | `rockShape.test.ts` 11건 · `rockPaint.test.ts` 8건 · **화면 확인 미실행** |
+| R6 나머지 | 아래 §6에 매핑 | 코드와 `coverage.json` 대조 |
 
-`pnpm check` 종료 코드 0 — 일반 시험 **4,739 통과 · 3 skipped**(368 파일 중 1 skipped), shimmed **4 통과**.
-로그: `.audit/fix-20260919-check.log`. 기준 검토 때가 4,710이었으므로 새 시험 29건이 늘었다.
+`pnpm check` 종료 코드 0 — 일반 시험 **4,782 통과 · 3 skipped**(372 파일 중 1 skipped), shimmed **4 통과**.
+로그: `.audit/fix-20260919-check.log`. 기준 검토 때가 4,710이었으므로 새 시험 72건이 늘었다.
 
 `pnpm story` **PASS 90 · FAIL 0 · NOT RUN 0** (exit 0 · 무대 백엔드 `WebGPUBackend`).
 로그: `.audit/fix-20260919-story.log`. 실내 맵 전부와 배틀 장면 여럿이 이 안에 들어 있어
