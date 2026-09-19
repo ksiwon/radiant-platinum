@@ -378,22 +378,95 @@ function wrap(repeat: boolean, flip: boolean) {
 }
 
 /**
+ * 도트 하나가 화면에서 커질 때 **계단만 깎는다** (Scale2x · AdvMAME2x).
+ *
+ * ⚠️ **새 색을 만들지 않는다.** 이웃 화소를 그대로 옮길 뿐이라 원작 팔레트 밖으로
+ * 나가지 않고, 투명(색 0)도 한 색으로 쳐서 비교하므로 잘라 낼 자리에 반투명
+ * 테두리가 안 생긴다. 선형 보간을 그냥 걸면 둘 다 깨진다.
+ *
+ * ⚠️ **반복하는 그림은 가장자리를 물려서 읽는다.** 끝을 붙잡아(clamp) 읽으면
+ * 이어 붙는 자리에 한 줄짜리 이음매가 생긴다 — 래핑 모드를 그대로 따른다
+ */
+function scale2x(
+  src: Uint8Array<ArrayBuffer>, w: number, h: number, wrapX: boolean, wrapY: boolean,
+): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(w * h * 16)
+  const px = (x: number, y: number): number => {
+    const cx = wrapX ? ((x % w) + w) % w : Math.min(w - 1, Math.max(0, x))
+    const cy = wrapY ? ((y % h) + h) % h : Math.min(h - 1, Math.max(0, y))
+    return (cy * w + cx) * 4
+  }
+  const eq = (a: number, b: number): boolean =>
+    src[a] === src[b] && src[a + 1] === src[b + 1]
+    && src[a + 2] === src[b + 2] && src[a + 3] === src[b + 3]
+  const put = (x: number, y: number, at: number): void => {
+    const o = (y * w * 2 + x) * 4
+    out[o] = src[at]!; out[o + 1] = src[at + 1]!
+    out[o + 2] = src[at + 2]!; out[o + 3] = src[at + 3]!
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const e = px(x, y), b = px(x, y - 1), d = px(x - 1, y), f = px(x + 1, y), g = px(x, y + 1)
+      let e0 = e, e1 = e, e2 = e, e3 = e
+      if (!eq(b, g) && !eq(d, f)) {
+        if (eq(d, b)) e0 = d
+        if (eq(b, f)) e1 = f
+        if (eq(d, g)) e2 = d
+        if (eq(g, f)) e3 = f
+      }
+      put(x * 2, y * 2, e0); put(x * 2 + 1, y * 2, e1)
+      put(x * 2, y * 2 + 1, e2); put(x * 2 + 1, y * 2 + 1, e3)
+    }
+  }
+  return out
+}
+
+/**
+ * 짧은 변이 이만큼은 되게 키운다 (텍셀).
+ *
+ * 왜 키우나 — 1인칭에서 **텍셀 하나가 화면 12~54픽셀**이다 (실측 중앙값, 자리마다
+ * 영원의 숲 11.6 · 천관산 18.4 · 주인공 방 19.8 · 포켓몬센터 21.1 · 축복시티 27.6 ·
+ * 백화점 2층 53.7 — `.audit/first-person/magnify.json`). 원작은 위에서 내려다보는
+ * 두 화면이라 그 타일이 손톱만 했는데, 그 위에 서면 16×16 한 장이 화면을 덮는다.
+ *
+ * 왜 64인가 — 원작 그림에 이미 64×64가 293장 있다. 거기 맞추면 **원작이 제일 크게
+ * 그린 밀도**까지만 올리는 것이라 우리가 밀도를 지어내는 것이 아니다.
+ */
+const WANT_SHORT = 64
+
+/** 여기보다 짧은 변은 안 키운다 — 1~2픽셀짜리 띠는 Scale2x가 할 일이 없다 */
+const TOO_THIN = 4
+
+/** 키운 뒤 넘지 않을 화소 수 (256×256). 긴 변이 긴 띠가 터지는 것을 막는다 */
+const MAX_PIXELS = 256 * 256
+
+/**
  * 시트에서 텍스처 하나를 잘라 낸다.
  *
  * `NearestFilter`인 이유: 원본이 16×16짜리 도트다. 선형 보간을 걸면 타일 경계가
- * 번지면서 4세대 특유의 또렷함이 사라진다
+ * 번지면서 4세대 특유의 또렷함이 사라진다. 대신 **그림 쪽을 Scale2x로 키워**
+ * 대각선 계단만 깎는다 (`scale2x` · `WANT_SHORT`)
  */
 export function sliceTexture(sheet: TexSheet, item: SheetItem, rep: number): Texture {
-  const out = new Uint8Array(item.w * item.h * 4)
+  const cut = new Uint8Array(item.w * item.h * 4)
   for (let y = 0; y < item.h; y++) {
     const from = ((item.y + y) * sheet.width + item.x) * 4
-    out.set(sheet.pixels.subarray(from, from + item.w * 4), y * item.w * 4)
+    cut.set(sheet.pixels.subarray(from, from + item.w * 4), y * item.w * 4)
   }
-  const texture = new DataTexture(out, item.w, item.h)
+  const wrapX = wrap((rep & 1) !== 0, (rep & 4) !== 0) !== ClampToEdgeWrapping
+  const wrapY = wrap((rep & 2) !== 0, (rep & 8) !== 0) !== ClampToEdgeWrapping
+  let out = cut, w = item.w, h = item.h
+  // 짧은 변이 `WANT_SHORT`가 될 때까지만 — 16×16은 ×4, 32×32는 ×2, 64×64는 그대로다.
+  // ⚠️ **긴 변도 막는다.** 8×256 같은 띠를 짧은 변 기준으로 키우면 64×2048이 된다
+  while (Math.min(w, h) >= TOO_THIN && Math.min(w, h) < WANT_SHORT && w * h <= MAX_PIXELS / 4) {
+    out = scale2x(out, w, h, wrapX, wrapY)
+    w *= 2; h *= 2
+  }
+  const texture = new DataTexture(out, w, h)
   // 이름은 **GPU 라벨로 그대로 간다** — three가 `texture.name`을 쓴다
   // (`WebGPUTextureUtils`). 안 붙이면 드라이버 오류가 `unlabeled`라고만 말해서
   // 임자를 못 짚는다 (REPAIR §48)
-  texture.name = `chunk-slice ${String(item.w)}x${String(item.h)}`
+  texture.name = `chunk-slice ${String(w)}x${String(h)}`
   texture.colorSpace = SRGBColorSpace
   texture.wrapS = wrap((rep & 1) !== 0, (rep & 4) !== 0)
   texture.wrapT = wrap((rep & 2) !== 0, (rep & 8) !== 0)

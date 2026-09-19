@@ -13,7 +13,10 @@ import {
   BufferAttribute, BufferGeometry, DataTexture, MeshBasicMaterial, MeshLambertMaterial, Texture,
   type Material,
 } from 'three'
-import { castsShadow, dropMaterial, ownMap, releaseSplit, softAlpha, splitShadow } from './chunkMesh'
+import {
+  castsShadow, dropMaterial, ownMap, releaseSplit, sliceTexture, softAlpha, splitShadow,
+  type TexSheet,
+} from './chunkMesh'
 import { tickRetiredTextures } from './retireTexture'
 import { decodePng, withData } from '../data/romData.testkit'
 
@@ -353,5 +356,71 @@ describe('버리기를 미룬다', () => {
     dropMaterial(new MeshBasicMaterial({ map }))
     tickRetiredTextures(); tickRetiredTextures()
     expect(disposed).toBe(0)
+  })
+})
+
+
+// **도트를 키워서 계단만 깎는다** (`sliceTexture`의 Scale2x · FIRST_PERSON_FP)
+//
+// 1인칭에서 텍셀 하나가 화면 12~54픽셀이 된다(실측 중앙값). 원작은 위에서
+// 내려다보는 화면이라 그 타일이 손톱만 했다. 여기서 보는 것은 셋이다:
+// **짧은 변이 64가 되는가** · **새 색을 안 만드는가** · **안 키울 것은 그대로 두는가**.
+describe('도트를 키운다 — 계단만 깎고 색은 안 만든다', () => {
+  /** `w×h` 시트 한 장. `paint(x,y)`가 RGBA를 준다 */
+  const sheetOf = (w: number, h: number, paint: (x: number, y: number) => number[]): TexSheet => {
+    const pixels = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) pixels.set(paint(x, y), (y * w + x) * 4)
+    }
+    return { width: w, height: h, items: [], pixels }
+  }
+  /** 대각선 — Scale2x가 깎을 계단이 있는 그림이다 */
+  const diagonal = (w: number, h: number): TexSheet =>
+    sheetOf(w, h, (x, y) => (x > y ? [200, 40, 40, 255] : [20, 20, 200, 255]))
+
+  const sizeOf = (tex: Texture): [number, number] => {
+    const img = tex.image as { width: number, height: number }
+    return [img.width, img.height]
+  }
+
+  it('짧은 변이 64가 될 때까지만 키운다', () => {
+    const item = (w: number, h: number) => ({ tex: 't', pal: 'p', x: 0, y: 0, w, h })
+    expect(sizeOf(sliceTexture(diagonal(16, 16), item(16, 16), 0)), '16×16은 ×4').toEqual([64, 64])
+    expect(sizeOf(sliceTexture(diagonal(32, 32), item(32, 32), 0)), '32×32는 ×2').toEqual([64, 64])
+    expect(sizeOf(sliceTexture(diagonal(64, 64), item(64, 64), 0)), '64×64는 그대로').toEqual([64, 64])
+    expect(sizeOf(sliceTexture(diagonal(16, 32), item(16, 32), 0)), '짧은 변으로 잰다').toEqual([64, 128])
+  })
+
+  it('1~2픽셀짜리 띠는 안 키운다 — Scale2x가 할 일이 없다', () => {
+    const item = { tex: 't', pal: 'p', x: 0, y: 0, w: 2, h: 64 }
+    expect(sizeOf(sliceTexture(diagonal(2, 64), item, 0))).toEqual([2, 64])
+  })
+
+  it('⚠️ 새 색을 만들지 않는다 — 원작 팔레트 밖으로 안 나간다', () => {
+    const src = diagonal(16, 16)
+    const out = sliceTexture(src, { tex: 't', pal: 'p', x: 0, y: 0, w: 16, h: 16 }, 0)
+    const data = (out.image as { data: Uint8Array }).data
+    const seen = new Set<string>()
+    for (let i = 0; i < data.length; i += 4) {
+      seen.add(`${String(data[i])},${String(data[i + 1])},${String(data[i + 2])},${String(data[i + 3])}`)
+    }
+    expect([...seen].sort(), '섞은 색이 하나라도 생기면 보간을 한 것이다')
+      .toEqual(['20,20,200,255', '200,40,40,255'])
+  })
+
+  it('키운 그림도 계단이 깎인다 — 그대로 키운 것과 다르다', () => {
+    const item = { tex: 't', pal: 'p', x: 0, y: 0, w: 16, h: 16 }
+    const grown = sliceTexture(diagonal(16, 16), item, 0)
+    const data = (grown.image as { data: Uint8Array }).data
+    // 그냥 ×4로 키웠다면 (x,y)의 색은 원본 (x>>2, y>>2)의 색과 늘 같다.
+    // 계단을 깎았으면 경계 근처에서 다른 칸이 나온다
+    let moved = 0
+    for (let y = 0; y < 64; y++) {
+      for (let x = 0; x < 64; x++) {
+        const want = (x >> 2) > (y >> 2) ? 200 : 20
+        if (data[(y * 64 + x) * 4] !== want) moved += 1
+      }
+    }
+    expect(moved, '경계에서 화소가 옮겨 앉은 자리가 있어야 한다').toBeGreaterThan(0)
   })
 })
