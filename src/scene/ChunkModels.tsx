@@ -27,7 +27,7 @@ import {
   type FloorSource, type FloorTri, type GroundArea, type LumpSet,
 } from './plates'
 import { Foliage, type FoliageGroup } from './Foliage'
-import { Rocks, plateBands, type RockGroup } from './Rocks'
+import { Rocks, plateBands, rockLook, type RockGroup } from './Rocks'
 import { Flowers, type FlowerField } from './Flowers'
 import { Grass, grassSpots, type GrassField } from './Grass'
 // 어디가 풀숲인지는 그림이 아니라 거동값이 말한다 — `Grass`와 같은 잣대를 쓴다
@@ -1070,6 +1070,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
                 bands: item
                   ? plateBands(p.sheet, item, site.u0, site.u1, site.v0, site.v1)
                   : [0x8c8c84],
+                // **문양은 그림에서 온다.** 층 색은 그림을 못 받았을 때의 길이다
+                crop: rockLook(p.sheet, item, site).crop,
                 items: [],
               }
               byRock.set(key, group)

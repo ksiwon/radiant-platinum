@@ -249,7 +249,7 @@ function hash(x: number, z: number, salt: number): number {
  * 같은 자리는 늘 같은 값이라 나무가 흔들리지 않고, 그루마다 다르게 돌려
  * 세우므로 같은 지오메트리라도 서로 달라 보인다
  */
-export function lumpy(geo: BufferGeometry, r: number, amount = LUMP): void {
+function lumpy(geo: BufferGeometry, r: number, amount = LUMP): void {
   const pos = geo.getAttribute('position') as BufferAttribute
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i)
@@ -289,7 +289,7 @@ export function paint(geo: BufferGeometry, rgb: number): BufferGeometry {
  * `lumpy`가 정점을 민 뒤라 중심 방향과 실제 면이 조금 어긋나 있는데, 그
  * 어긋남이 오히려 잎덩이의 결처럼 보인다
  */
-export function ballNormals(geo: BufferGeometry, cx: number, cy: number, cz: number): void {
+function ballNormals(geo: BufferGeometry, cx: number, cy: number, cz: number): void {
   const pos = geo.getAttribute('position') as BufferAttribute
   const normal = new Float32Array(pos.count * 3)
   for (let i = 0; i < pos.count; i++) {
