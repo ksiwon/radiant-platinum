@@ -38,24 +38,68 @@ import { pickLod, screenPixels, type LodBand } from './screenLod'
 
 /** 잎 덩이의 세로 눌림. 1이면 완전한 공이라 버섯처럼 보인다 */
 const CROWN_SQUASH = 0.8
+/** 잎 덩이 하나 `[x, y, z, 반지름]`. y는 잎 무리 원점 기준이다 */
+export type Blob = readonly [number, number, number, number]
+
 /**
- * 잎 덩이 여섯. `[x, y, z, 반지름]`이고 y는 잎 무리 원점 기준이다.
+ * 잎 무리의 **검수된 변주 셋** (FIRST_PERSON §6.4.4).
  *
- * 셋이었다. 셋이면 어느 각도에서든 **공 세 개**로 읽혀서, 윤곽선이 큰 원호
- * 세 개로 끊긴다 — 사용자가 "폴리곤 느낌"이라 한 것의 절반이 그 윤곽이다.
- * 여섯이면 크기가 제각각인 덩이가 서로 물려서 윤곽에 큰 원호가 안 남는다.
+ * 덩이는 여섯이다. 셋이었을 때는 어느 각도에서든 **공 세 개**로 읽혀서 윤곽선이
+ * 큰 원호 세 개로 끊겼다 — 사용자가 "폴리곤 느낌"이라 한 것의 절반이 그 윤곽이다.
+ * 여섯이면 크기가 제각각인 덩이가 서로 물려서 큰 원호가 안 남는다. 삼각형은
+ * 안 늘어난다: 큰 덩이 하나만 80면이고 나머지 다섯은 20면이다.
  *
- * 삼각형은 안 늘어난다: 큰 덩이 하나만 80면이고 나머지 다섯은 20면이라
- * 3개(120)에서 6개(180)로 60개 는 것이 전부다
+ * ⚠️ **표가 하나면 숲이 한 그루의 복사다.** 그루마다 돌려 세우고 크기를 흔들어도
+ * 윤곽의 짜임은 같아서, 나란히 선 나무가 같은 것으로 읽힌다. 그래서 표를 셋 두고
+ * **자리로** 고른다 (`treeVariant`) — 프레임 난수는 안 쓴다. 그러면 청크를 다시
+ * 세워도 같은 나무가 같은 모습이다.
+ *
+ * ⚠️ **셋이 같은 봉투 안에 있어야 한다.** 폭은 `CROWN_REACH`, 위아래는
+ * `CROWN_TOP`·`CROWN_H`가 정한 자리이고 그 값들로 컬링 여백·소품 회피·판 더미
+ * 대비 키를 잰다. 봉투를 넘으면 그 계산이 전부 틀어진다 — `plates.test`가
+ * 변주마다 다시 잰다.
+ *
+ * 값은 **시제품 초기값**이다. 원작에 나무의 입체가 없으므로(판 한 장이다)
+ * 지어낼 수밖에 없는 자리이고, 지어낸 것은 지어냈다고 적는다
  */
-const BLOBS: readonly (readonly [number, number, number, number])[] = [
-  [0, 0.02, 0, 0.92],
-  [0.42, 0.30, -0.18, 0.55],
-  [-0.36, 0.22, 0.32, 0.50],
-  [0.10, -0.28, 0.44, 0.44],
-  [-0.44, -0.12, -0.34, 0.42],
-  [0.02, 0.52, 0.10, 0.46],
+export const CROWN_VARIANTS: readonly { id: string, blobs: readonly Blob[] }[] = [
+  {
+    id: '퍼진 수관',
+    blobs: [
+      [0, 0.02, 0, 0.92],
+      [0.42, 0.30, -0.18, 0.55],
+      [-0.36, 0.22, 0.32, 0.50],
+      [0.10, -0.28, 0.44, 0.44],
+      [-0.44, -0.12, -0.34, 0.42],
+      [0.02, 0.52, 0.10, 0.46],
+    ],
+  },
+  {
+    // 덩이를 가운데로 모으고 위쪽에 몰아 둔다 — 좁고 솟은 윤곽이다
+    id: '솟은 수관',
+    blobs: [
+      [0, -0.02, 0, 0.86],
+      [0.30, 0.34, 0.26, 0.52],
+      [-0.32, 0.18, -0.30, 0.50],
+      [0.16, 0.56, -0.10, 0.41],
+      [-0.20, -0.18, 0.38, 0.40],
+      [0.38, 0.00, -0.34, 0.44],
+    ],
+  },
+  {
+    // 한쪽으로 기운다. 큰 덩이의 중심을 옆으로 밀어 회전체로 안 보이게 한다
+    id: '기운 수관',
+    blobs: [
+      [0.06, 0.00, -0.04, 0.90],
+      [-0.40, 0.26, 0.20, 0.54],
+      [0.34, 0.32, 0.30, 0.48],
+      [-0.14, -0.24, -0.42, 0.44],
+      [0.44, -0.10, -0.24, 0.42],
+      [-0.06, 0.55, 0.14, 0.42],
+    ],
+  },
 ]
+
 /**
  * 덩이마다 세분. 0이면 20면이라 각지고 1이면 80면이다.
  *
@@ -67,10 +111,11 @@ const BLOB_DETAIL = [1, 0, 0, 0, 0, 0]
 /** 잎 덩이를 울퉁불퉁하게 미는 정도(반지름 배수). 0이면 매끈한 공이다 */
 const LUMP = 0.16
 /**
- * 잎 무리의 세로 높이 · 위로 뻗는 높이 (나무 반지름 배수). `BLOBS`에서 나온 값이다.
+ * 잎 무리의 세로 높이 · 위로 뻗는 높이 (나무 반지름 배수). 변주 표가 정한 봉투다.
  *
  * 덩이마다 아래로 `y − r×0.8` · 위로 `y + r×0.8`이고, 그 최소·최대가
- * −0.714(첫 덩이)와 +0.888(마지막 덩이)다 → 1.602.
+ * −0.714(첫 덩이)와 +0.888(마지막 덩이)다 → 1.602. **변주 셋이 이 안에 든다**
+ * (`plates.test`가 변주마다 다시 잰다).
  * 가로는 최대 |x|+r = 0.97이라 폭 1.94다. 원작 나무 한 그루가 폭 2.06타일이므로
  * 반지름 1.06이 원작 크기다 — 그래서 `RADIUS`가 그 언저리다
  */
@@ -143,6 +188,19 @@ const TRUNK_SIDES = 6
 const TRUNK_SHADE = 0.62
 
 /**
+ * 줄기의 **검수된 변주 셋**. `[휨 배수, 굵기 배수]`이고 수관 변주와 짝이다.
+ *
+ * 수관만 갈라 두면 밑에서 올려다볼 때 줄기가 셋 다 같아서 티가 난다. 대신
+ * 굵기는 원작이 정한 값이라(`TRUNK_R`) 조금만 흔든다 — 많이 흔들면 그루터기
+ * 그림이 줄기 밖으로 나온다
+ */
+const TRUNK_VARIANTS: readonly (readonly [number, number])[] = [
+  [1.00, 1.00],
+  [0.45, 0.94],
+  [1.55, 1.06],
+]
+
+/**
  * 가지 `[갈라지는 높이, 뻗는 길이, 오르는 높이]`.
  *
  * 길이·높이는 `TRUNK_R`·나무 반지름 배수다. 줄기 하나만 서 있으면 잎 무리가
@@ -176,12 +234,16 @@ const RADIUS_MAX = 1.40
 const RADIUS_JITTER = 0.12
 
 /**
- * 잎이 옆으로 뻗는 제일 먼 거리 (나무 반지름 배수). `BLOBS`에서 나온 값이다 —
- * `max(|x| + r)`가 둘째 덩이의 0.42 + 0.55 = 0.97이다.
+ * 잎이 옆으로 뻗는 제일 먼 거리 (나무 반지름 배수).
+ *
+ * ⚠️ **표에서 더하지 말고 지오메트리에서 잰다.** `|x| + r`로 세면 `lumpy`가
+ * 정점을 밀고 다시 줄이는 몫이 빠져서 실제와 어긋난다 — 변주 셋을 실제로 재면
+ * 0.9705 · 0.9574 · **0.9720**이고, 표로 세면 1.007까지 나온다. 셋 중 제일 먼
+ * 0.972 위로 올려 잡는다 (`plates.test`가 변주마다 다시 잰다).
  *
  * 나무가 소품·울타리에 얼마나 가까이 설 수 있는지를 이 값이 정한다
  */
-export const CROWN_REACH = 0.97
+export const CROWN_REACH = 0.98
 
 /**
  * 키를 반지름과 **따로** 흔드는 폭.
@@ -237,6 +299,17 @@ export interface FoliageGroup {
 function hash(x: number, z: number, salt: number): number {
   const s = Math.sin(x * 127.1 + z * 311.7 + salt * 74.7) * 43758.5453
   return s - Math.floor(s)
+}
+
+/**
+ * 자리에서 **변주**를 고른다 (`CROWN_VARIANTS` · `TRUNK_VARIANTS`).
+ *
+ * 같은 나무는 늘 같은 모습이어야 한다 — `Math.random`이면 청크를 다시 세울
+ * 때마다 숲의 짜임이 흔들린다. 그루의 밑동 자리로 뽑으므로 청크 로딩 순서도
+ * 안 탄다 (FIRST_PERSON §6.4.10)
+ */
+export function treeVariant(x: number, z: number): number {
+  return Math.floor(hash(x, z, 23) * CROWN_VARIANTS.length) % CROWN_VARIANTS.length
 }
 
 /**
@@ -392,9 +465,11 @@ export function merge(parts: readonly BufferGeometry[]): BufferGeometry {
  * 가로 방향(고리의 바깥)으로 주는 것이 실제와 거의 같다 — 그리고 그렇게 줘야
  * 여섯 면이 여섯 개의 널판으로 안 갈린다
  */
-export function trunkGeometry(rgb: number, far = false): BufferGeometry {
+export function trunkGeometry(rgb: number, far = false, variant = 0): BufferGeometry {
   const sides = far ? 4 : TRUNK_SIDES
-  const rungs = far ? [TRUNK[0]!, TRUNK[TRUNK.length - 1]!] : TRUNK
+  const [bend, thick] = TRUNK_VARIANTS[variant] ?? TRUNK_VARIANTS[0]!
+  const shaped = TRUNK.map(([h, r, lean]) => [h, r * thick, lean * bend] as const)
+  const rungs = far ? [shaped[0]!, shaped[shaped.length - 1]!] : shaped
   const base = new Color(rgb)
   const top = TRUNK[TRUNK.length - 1]![0]
   const shade = (h: number): Color =>
@@ -541,11 +616,12 @@ export function contactGeometry(): BufferGeometry {
  * 그리고 **줄이는 것의 대부분은 LOD가 아니라 프러스텀 컬링**이다 — 카메라가
  * 한 방향만 보므로 실제로 화면에 드는 것은 15~30%다
  */
-export function crownGeometry(leaf: number[], far = false): BufferGeometry {
+export function crownGeometry(leaf: number[], far = false, variant = 0): BufferGeometry {
   const parts: BufferGeometry[] = []
   const low = CROWN_Y - (CROWN_H - CROWN_TOP)
   const high = CROWN_Y + CROWN_TOP
-  for (const [x, y, z, r] of BLOBS) {
+  const blobs = (CROWN_VARIANTS[variant] ?? CROWN_VARIANTS[0]!).blobs
+  for (const [x, y, z, r] of blobs) {
     const i = parts.length
     const geo = far
       ? new OctahedronGeometry(r, 0)
@@ -566,10 +642,12 @@ export function crownGeometry(leaf: number[], far = false): BufferGeometry {
  * 화면은 둘을 따로 그린다(가로 배율이 달라서다). 여기서는 줄기를 `TRUNK_R`만큼
  * 줄여 붙여서, 실제로 서는 것과 같은 모양 한 벌을 만든다
  */
-export function treeGeometry(leaf: number[], trunk: number, far = false): BufferGeometry {
-  const stem = trunkGeometry(trunk, far)
+export function treeGeometry(
+  leaf: number[], trunk: number, far = false, variant = 0,
+): BufferGeometry {
+  const stem = trunkGeometry(trunk, far, variant)
   stem.scale(TRUNK_R, 1, TRUNK_R)
-  return merge([stem, crownGeometry(leaf, far)])
+  return merge([stem, crownGeometry(leaf, far, variant)])
 }
 
 /**
@@ -722,21 +800,21 @@ function localBounds(geo: BufferGeometry): Box3 {
   return geo.boundingBox!.clone().expandByPoint(new Vector3(0, 0, 0))
 }
 
-function shapeOf(key: string, leaf: number[], far: boolean): BufferGeometry {
-  const id = far ? `${key}/far` : key
+function shapeOf(key: string, leaf: number[], far: boolean, variant: number): BufferGeometry {
+  const id = `${key}/v${String(variant)}${far ? '/far' : ''}`
   let geo = shapes.get(id)
   if (!geo) {
-    geo = crownGeometry(leaf, far)
+    geo = crownGeometry(leaf, far, variant)
     shapes.set(id, geo)
   }
   return geo
 }
 
-function stemOf(key: string, trunk: number, far: boolean): BufferGeometry {
-  const id = far ? `${key}/줄기/far` : `${key}/줄기`
+function stemOf(key: string, trunk: number, far: boolean, variant: number): BufferGeometry {
+  const id = `${key}/줄기/v${String(variant)}${far ? '/far' : ''}`
   let geo = shapes.get(id)
   if (!geo) {
-    geo = trunkGeometry(trunk, far)
+    geo = trunkGeometry(trunk, far, variant)
     shapes.set(id, geo)
   }
   return geo
@@ -763,7 +841,7 @@ export function Foliage(
   const camera = useThree((s) => s.camera)
   const viewport = useThree((s) => s.size.height)
 
-  const meshes = useMemo(() => groups.map((g) => {
+  const meshes = useMemo(() => groups.flatMap((g) => {
     const matrices: Matrix4[] = []
     for (const [site, originX, originZ] of g.items) {
       // 지면은 **월드 좌표로** 묻는다. 그림자 판에 붙은 자리가 청크 경계를 넘을 수
@@ -777,51 +855,60 @@ export function Foliage(
       // 높이는 청크가 이미 갖고 있어서 안 더한다 — 밑동이 곧 월드 높이다
       matrices.push(m.premultiply(offset.makeTranslation(originX, 0, originZ)))
     }
-    // 가까운 것과 먼 것을 **따로 그린다.** 인스턴스 하나가 지오메트리를 바꿔
-    // 달 수는 없으므로 메시를 둘 두고 프레임마다 나눠 담는다.
-    //
-    // 잎과 줄기도 따로다 — 줄기는 가로 배율이 나무 크기를 안 따라간다(`TRUNK_R`)
-    const make = (far: boolean, stem: boolean) => {
-      const mesh = new InstancedMesh(
-        stem ? stemOf(g.key, g.trunk, far) : shapeOf(g.key, g.leaf, far),
-        leafMaterial, matrices.length)
-      mesh.name = `${stem ? '줄기' : '나무'}${far ? '(먼 것)' : ''}`
-      mesh.castShadow = true
-      mesh.receiveShadow = true
-      // 인스턴스가 청크를 가로질러 흩어져 있어서 메시 단위 절두체가 뜻이 없다 —
-      // 대신 그루마다 직접 판정해 **보이는 것만 앞에서부터 채운다**
-      mesh.frustumCulled = false
-      setInstances(mesh, 0)
-      return mesh
+    // **변주별로 나눠 담는다.** 인스턴스 하나가 지오메트리를 바꿔 달 수 없으니
+    // 모양이 다르면 메시가 다르다. 변주는 밑동 자리가 정한다 (`treeVariant`)
+    const byVariant = CROWN_VARIANTS.map((): Matrix4[] => [])
+    for (const m of matrices) {
+      byVariant[treeVariant(m.elements[12]!, m.elements[14]!)]!.push(m)
     }
-    // 밑동의 접지 그림자. LOD를 안 나눈다 — 판 한 장이라 줄일 것이 없다
-    const [shape, material] = contact()
-    const shade = new InstancedMesh(shape, material, matrices.length)
-    shade.name = '밑동 그림자'
-    shade.frustumCulled = false
-    setInstances(shade, 0)
-    // ⚠️ **감싸는 공과 키는 실제 모양에서 잰다** (FIRST_PERSON §10.2). 예전에는
-    // 반지름 배수 1.35와 수관 높이 상수로 잡았는데, 모양이 바뀌면 그 상수가
-    // 모양을 모른다 — 절두체가 큰 나무의 끝을 자르거나 작은 나무를 괜히 남긴다.
-    // 수관 모양의 상자에 **밑동(원점)**을 더한다: 줄기가 땅까지 내려오기 때문이다
-    const box = localBounds(shapeOf(g.key, g.leaf, false))
-    const local = box.getBoundingSphere(new Sphere())
-    const tall = box.max.y - box.min.y
-    // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
-    // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
-    const spots = matrices.map((m) => local.center.clone().applyMatrix4(m))
-    const radius = matrices.map((m) => local.radius * new Vector3().setFromMatrixScale(m).x)
-    const height = matrices.map((m) => tall * new Vector3().setFromMatrixScale(m).y)
-    /** 그루마다 지난번 고른 모양. 경계에서 왕복하지 않게 들고 있는다 */
-    const bands = matrices.map((): LodBand | null => null)
-    // 줄기 행렬은 미리 뽑아 둔다 — 프레임마다 분해하면 그루당 한 번씩이다
-    const stems = matrices.map((m) => stemMatrix(m, new Matrix4()))
-    return {
-      key: g.key,
-      near: make(false, false), far: make(true, false),
-      stemNear: make(false, true), stemFar: make(true, true),
-      shade, matrices, stems, spots, radius, height, bands,
-    }
+    return byVariant.flatMap((mine, variant) => {
+      if (mine.length === 0) return []
+      // 가까운 것과 먼 것을 **따로 그린다.** 인스턴스 하나가 지오메트리를 바꿔
+      // 달 수는 없으므로 메시를 둘 두고 프레임마다 나눠 담는다.
+      //
+      // 잎과 줄기도 따로다 — 줄기는 가로 배율이 나무 크기를 안 따라간다(`TRUNK_R`)
+      const make = (far: boolean, stem: boolean) => {
+        const mesh = new InstancedMesh(
+          stem ? stemOf(g.key, g.trunk, far, variant) : shapeOf(g.key, g.leaf, far, variant),
+          leafMaterial, mine.length)
+        mesh.name = `${stem ? '줄기' : '나무'} ${CROWN_VARIANTS[variant]!.id}${far ? '(먼 것)' : ''}`
+        mesh.castShadow = true
+        mesh.receiveShadow = true
+        // 인스턴스가 청크를 가로질러 흩어져 있어서 메시 단위 절두체가 뜻이 없다 —
+        // 대신 그루마다 직접 판정해 **보이는 것만 앞에서부터 채운다**
+        mesh.frustumCulled = false
+        setInstances(mesh, 0)
+        return mesh
+      }
+      // 밑동의 접지 그림자. LOD를 안 나눈다 — 판 한 장이라 줄일 것이 없다
+      const [shape, material] = contact()
+      const shade = new InstancedMesh(shape, material, mine.length)
+      shade.name = '밑동 그림자'
+      shade.frustumCulled = false
+      setInstances(shade, 0)
+      // ⚠️ **감싸는 공과 키는 실제 모양에서 잰다** (FIRST_PERSON §10.2). 예전에는
+      // 반지름 배수 1.35와 수관 높이 상수로 잡았는데, 모양이 바뀌면 그 상수가
+      // 모양을 모른다 — 절두체가 큰 나무의 끝을 자르거나 작은 나무를 괜히 남긴다.
+      // 변주마다 상자가 다르므로 **그 변주의 모양에서** 잰다
+      const box = localBounds(shapeOf(g.key, g.leaf, false, variant))
+      const local = box.getBoundingSphere(new Sphere())
+      const tall = box.max.y - box.min.y
+      // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
+      // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
+      const spots = mine.map((m) => local.center.clone().applyMatrix4(m))
+      const radius = mine.map((m) => local.radius * new Vector3().setFromMatrixScale(m).x)
+      const height = mine.map((m) => tall * new Vector3().setFromMatrixScale(m).y)
+      /** 그루마다 지난번 고른 모양. 경계에서 왕복하지 않게 들고 있는다 */
+      const bands = mine.map((): LodBand | null => null)
+      // 줄기 행렬은 미리 뽑아 둔다 — 프레임마다 분해하면 그루당 한 번씩이다
+      const stems = mine.map((m) => stemMatrix(m, new Matrix4()))
+      return [{
+        key: `${g.key}/v${String(variant)}`,
+        near: make(false, false), far: make(true, false),
+        stemNear: make(false, true), stemFar: make(true, true),
+        shade, matrices: mine, stems, spots, radius, height, bands,
+      }]
+    })
   }), [groups, ground, clear])
 
   /**

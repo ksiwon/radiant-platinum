@@ -18,8 +18,9 @@ import {
   type FloorSource, type FloorTri, type GroundKind, type Split,
 } from './plates'
 import {
-  BARE, CONTACT_DARK, CROWN_REACH, CULL_MARGIN, RADIUS_MIN, TREE_TOP, TRUNK, TRUNK_R,
-  crownGeometry, trunkGeometry,
+  BARE, CONTACT_DARK, CROWN_REACH, CROWN_VARIANTS, CULL_MARGIN, RADIUS_MIN, TREE_TOP,
+  TRUNK, TRUNK_R,
+  crownGeometry, treeVariant, trunkGeometry,
   contactGeometry, contactMaterial, contactTexture, merge, nearScale, paint, treeAt,
   treeGeometry,
 } from './Foliage'
@@ -1697,5 +1698,68 @@ describe('턱에 옆면을 세운다', () => {
       expect(uv.getY(i)).toBeGreaterThanOrEqual(0)
       expect(uv.getY(i)).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+describe('나무의 검수된 변주 (FIRST_PERSON §6.4.4)', () => {
+  /** 그 변주의 실제 지오메트리에서 재는 값들 */
+  const measure = (variant: number) => {
+    const geo = treeGeometry([0x60a050], 0x6b4a2a, false, variant)
+    const pos = geo.getAttribute('position') as BufferAttribute
+    let lo = Infinity, hi = -Infinity, reach = 0, hidden = Infinity
+    for (let i = 0; i < pos.count; i++) {
+      const y = pos.getY(i)
+      const rad = Math.hypot(pos.getX(i), pos.getZ(i))
+      lo = Math.min(lo, y); hi = Math.max(hi, y); reach = Math.max(reach, rad)
+      // 3인칭 26.6°에서 잎이 가리는 줄기 높이 (`BARE` 위만 본다)
+      if (y >= BARE - 0.01) hidden = Math.min(hidden, y - 0.5 * rad)
+    }
+    return { lo, hi, reach, hidden, tris: pos.count / 3 }
+  }
+
+  it('셋이 서로 다른 실루엣이다 — 표가 하나면 숲이 한 그루의 복사다', () => {
+    const shapes = CROWN_VARIANTS.map((_, v) =>
+      Array.from((crownGeometry([0x60a050], false, v)
+        .getAttribute('position') as BufferAttribute).array).join(','))
+    expect(new Set(shapes).size).toBe(CROWN_VARIANTS.length)
+    // 줄기도 갈린다. 수관만 갈라 두면 올려다볼 때 셋이 같아 보인다
+    const stems = CROWN_VARIANTS.map((_, v) =>
+      Array.from((trunkGeometry(0x6b4a2a, false, v)
+        .getAttribute('position') as BufferAttribute).array).join(','))
+    expect(new Set(stems).size).toBe(CROWN_VARIANTS.length)
+  })
+
+  it('셋이 같은 봉투 안에 든다 — 컬링·회피·키 계산이 이 값으로 돈다', () => {
+    for (const [v, def] of CROWN_VARIANTS.entries()) {
+      const m = measure(v)
+      // 폭은 `CROWN_REACH`가 정한 자리 안. 넘으면 소품 회피가 모자란다
+      expect(m.reach, `${def.id} 폭`).toBeLessThanOrEqual(CROWN_REACH)
+      // 키는 `TREE_TOP` 아래. 넘으면 절두체 여백과 그림자 길이가 짧아진다
+      expect(m.hi, `${def.id} 키`).toBeLessThanOrEqual(TREE_TOP)
+      // 그리고 원작 판 더미를 덮을 만큼은 자라야 한다
+      expect(m.hi, `${def.id} 키`).toBeGreaterThan(TREE_TOP - 0.1)
+      // 밑동은 땅 밑에서 시작한다 (`TRUNK`의 첫 마디가 −0.10이다)
+      expect(m.lo, `${def.id} 밑동`).toBeCloseTo(-0.10, 6)
+      // 삼각형 수는 셋이 같다 — 변주가 예산을 안 건드린다 (§10.1)
+      expect(m.tris, `${def.id} 삼각형`).toBe(252)
+      expect(treeGeometry([0x60a050], 0x6b4a2a, true, v)
+        .getAttribute('position').count / 3).toBe(56)
+    }
+  })
+
+  it('어느 변주에서도 잎이 줄기를 다 가리지 않는다', () => {
+    for (const [v, def] of CROWN_VARIANTS.entries()) {
+      const m = measure(v)
+      expect(m.hidden, `${def.id}`).toBeGreaterThan(0.75)
+      expect(m.hidden * RADIUS_MIN, `${def.id}`).toBeGreaterThan(0.7)
+    }
+  })
+
+  it('자리가 같으면 늘 같은 변주다 — 청크 로딩 순서가 숲을 안 흔든다', () => {
+    expect(treeVariant(12.5, 40.5)).toBe(treeVariant(12.5, 40.5))
+    const seen = new Set<number>()
+    for (let i = 0; i < 300; i++) seen.add(treeVariant(i * 1.5 + 0.5, i * 0.7 + 0.5))
+    // 셋이 고루 나온다 — 한 변주만 나오면 고른 뜻이 없다
+    expect(seen.size).toBe(CROWN_VARIANTS.length)
   })
 })
