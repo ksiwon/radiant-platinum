@@ -80,6 +80,37 @@ describe('UV', () => {
     expect(inner, '가운데 조각을 쓰는 면이 없다').toBeGreaterThan(0)
   })
 
+  it('앞면으로 치는 면이 정말 원작 카메라 쪽을 본다', () => {
+    // ⚠️ 감는 순서가 뒤집혀 있으면 이 판정이 **정확히 반대**가 된다 — 뒷통수에
+    // 원작 문양이 펴지고 앞에는 조각이 물린다. 어두운 화면에서는 묻혀서 안
+    // 보였다 (`rockShape.test`의 바깥면 시험과 한 쌍이다).
+    //
+    // 가르는 법: 앞면 UV는 세로가 그림 전체(0~1)를 쓰고 조각 UV는 0.35~0.75
+    // 안에 머문다. 폭만으로는 못 가른다 — 가운데의 좁은 앞면도 0.3~0.7에 든다
+    let half = 0
+    for (let i = 0; i < pos.length; i += 3) {
+      half = Math.max(half, Math.abs(pos[i]!), Math.abs(pos[i + 2]!))
+    }
+    let front = 0, back = 0
+    for (let t = 0; t + 8 < pos.length; t += 9) {
+      const ux = pos[t + 3]! - pos[t]!, uy = pos[t + 4]! - pos[t + 1]!, uz = pos[t + 5]! - pos[t + 2]!
+      const vx = pos[t + 6]! - pos[t]!, vy = pos[t + 7]! - pos[t + 1]!, vz = pos[t + 8]! - pos[t + 2]!
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+      const facing = nz / Math.hypot(nx, ny, nz)
+      /** 앞면 갈래가 내놓을 값 */
+      const spread = [0, 1, 2].every((k) => {
+        const px = pos[t + k * 3]!, py = pos[t + k * 3 + 1]!
+        const u = uv[(t / 3 + k) * 2]!, v = uv[(t / 3 + k) * 2 + 1]!
+        return Math.abs(u - (px / (2 * half) + 0.5)) < 1e-6
+          && Math.abs(v - (1 - Math.min(1, Math.max(0, py / 0.42)))) < 1e-6
+      })
+      if (facing > 0.30) { front++; expect(spread, '앞면인데 조각을 물렸다').toBe(true) }
+      else if (facing < -0.30) { back++; expect(spread, '뒷면에 그림을 폈다').toBe(false) }
+    }
+    expect(front, '앞을 보는 면이 없다').toBeGreaterThan(0)
+    expect(back, '뒤를 보는 면이 없다').toBeGreaterThan(0)
+  })
+
   it('한 면 안에서 UV가 안 뭉친다 — 한 줄이 늘어나면 그렇게 된다', () => {
     let flat = 0
     for (let t = 0; t + 5 < uv.length; t += 6) {

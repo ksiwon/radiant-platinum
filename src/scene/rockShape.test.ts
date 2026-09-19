@@ -48,6 +48,29 @@ describe('덩이 하나', () => {
     expect(angle0).not.toBe(angle1)
   })
 
+  it('면이 바깥을 본다 — 뒤집히면 속을 들여다보게 되어 새까맣다', () => {
+    // ⚠️ 실측으로 잡았다: 물가시티 방파제 바위가 **한낮에도 #020101**이었다
+    // (`pnpm shot sunyshore --hour=12`). 감는 순서가 뒤집혀 있어서 겉이 잘리고
+    // 속면이 보였고, 빛은 밖에서 오니 속은 늘 검다. 눈으로만 보면 「어두운
+    // 바위」로 지나간다 — 그래서 수치로 잠근다
+    const p = rockPositions(ROCK_RECIPES[0]!, 0.42, 0.1)
+    let cx = 0, cy = 0, cz = 0, n = 0
+    for (let i = 0; i < p.length; i += 3) { cx += p[i]!; cy += p[i + 1]!; cz += p[i + 2]!; n++ }
+    cx /= n; cy /= n; cz /= n
+    let outward = 0, faces = 0
+    for (let t = 0; t + 8 < p.length; t += 9) {
+      const ux = p[t + 3]! - p[t]!, uy = p[t + 4]! - p[t + 1]!, uz = p[t + 5]! - p[t + 2]!
+      const vx = p[t + 6]! - p[t]!, vy = p[t + 7]! - p[t + 1]!, vz = p[t + 8]! - p[t + 2]!
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+      const mx = (p[t]! + p[t + 3]! + p[t + 6]!) / 3 - cx
+      const my = (p[t + 1]! + p[t + 4]! + p[t + 7]!) / 3 - cy
+      const mz = (p[t + 2]! + p[t + 5]! + p[t + 8]!) / 3 - cz
+      faces++
+      if (nx * mx + ny * my + nz * mz > 0) outward++
+    }
+    expect(outward, `${String(faces)}면 중 ${String(outward)}면만 바깥을 본다`).toBe(faces)
+  })
+
   it('변주 셋이 서로 다르다', () => {
     const shapes = ROCK_RECIPES.map((r) => rockPositions(r, 0.42, 0.1).join(','))
     expect(new Set(shapes).size).toBe(ROCK_RECIPES.length)

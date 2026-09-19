@@ -148,8 +148,8 @@ const OUTCOME_NOTE = {
   'stand:card': '45°·63.4° 판을 세움 + 1텍셀 껍질',
   'replace:foliage': '잎 판을 걷고 Foliage 수관',
   'remove:baked-shadow': '구운 그림자를 걷음 (나무 자리로만 씀)',
-  'replace:rock-named': 'searock 판을 걷고 Rocks 정이십면체',
-  'replace:rock-lump': '덩이 판을 걷고 Rocks 정이십면체 — 화분·덤불도 여기',
+  'replace:rock-named': 'searock 판을 걷고 Rocks가 링 넷으로 덩이를 세운다',
+  'replace:rock-lump': '덩이 판을 걷고 Rocks가 덩이를 세운다 — 화분·덤불도 여기',
   'keep:no-sheet': '그 묶음에 그림이 없다 → 게임은 자홍 MISSING으로 그린다 (화면 검증 필요)',
   'replace:recipe': '검수된 새 표현 레시피가 맡았다 (scene/visual)',
 }

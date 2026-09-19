@@ -107,16 +107,17 @@ export function rockPositions(recipe: RockRecipe, tall: number, sink: number): F
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n
       const a = at(r, i), b = at(r, j), c = at(r + 1, j), d = at(r + 1, i)
-      // 밖에서 보이게 감는다
-      push(a, b, c)
-      push(a, c, d)
+      // ⚠️ **밖에서 보이게 감는다.** 뒤집으면 겉면이 잘리고 속이 보여서 빛을
+      // 등진다 — 한낮의 물가시티 방파제가 #020101이었다 (`rockShape.test`)
+      push(a, c, b)
+      push(a, d, c)
     }
   }
   // 꼭대기는 마지막 링의 한가운데로 모은다
   const top = rings[rings.length - 1]!
   const apex: [number, number, number] = [top[2], lift + top[0] * tall, top[3]]
   for (let i = 0; i < n; i++) {
-    push(at(rings.length - 1, i), at(rings.length - 1, (i + 1) % n), apex)
+    push(at(rings.length - 1, (i + 1) % n), at(rings.length - 1, i), apex)
   }
   return new Float32Array(out)
 }
