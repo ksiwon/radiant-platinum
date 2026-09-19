@@ -4,6 +4,8 @@
 //     pnpm shot forest --keys=z,z,z    뛰어든 뒤 키를 더 누른다
 //     pnpm shot vsseeker --keys=z --keysAfter=120   마지막 키 뒤를 짧게 (짧은 연출)
 //     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
+//     pnpm shot center --blame=480,320 그 픽셀을 **실제로 칠한** 메시를 숨겨 가며 찾는다
+//     pnpm shot center --first --look=180,0  1인칭으로 돌려 그 방향을 본다
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
 //     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
@@ -266,6 +268,32 @@ async function main() {
         w.worldState.player.prevPosition.copy(w.worldState.player.position)
       }, [x, z])
       await page.waitForTimeout(Number(flag('atAfter', 6000)))
+    }
+    /**
+     * **1인칭으로 돌려 그 방향을 본다** — `--first --look=180,0`.
+     *
+     * ⚠️ **`--eye`와 다르다.** 저쪽은 카메라 시스템을 루프에서 빼고 값을 밀어
+     * 넣는 것이라 **주인공이 안 숨는다** — 실측으로 센터 문간을 그렇게 겨눴더니
+     * 광선이 0.03m 앞의 제 낚싯대를 맞혔다. 문이 무엇인지 되묻는 자리에서는
+     * 사람이 실제로 서는 그 시점이어야 한다. 도는 것은 제품의 개발 콘솔 손잡이
+     * 하나(`app/devConsole`의 `pt.look`)로, 카메라 시스템은 그대로 돈다
+     */
+    if (args.includes('--first')) {
+      await page.keyboard.press('KeyV')
+      for (let i = 0; i < 40; i++) {
+        const mode = await page.evaluate(async () => {
+          const w = await import('/src/state/worldState.ts')
+          return w.worldState.camera.mode
+        })
+        if (mode === 'first') break
+        await page.waitForTimeout(250)
+      }
+    }
+    const look = flag('look')
+    if (look) {
+      const [yaw, pitch] = look.split(',').map(Number)
+      await page.evaluate(([y, p]) => globalThis.pt.look(y, p), [yaw, pitch ?? 0])
+      await page.waitForTimeout(Number(flag('lookAfter', 1200)))
     }
     // **아무 데서나 아무 데나 보게 한다** — `--eye=x,y,z --gaze=x,y,z`.
     //
@@ -561,6 +589,16 @@ async function main() {
             : stage.starterStage.active ? stage.starterStage
               : stage.battleStage.active ? stage.battleStage : ws.worldState.camera
           const look = eye.target
+          /**
+           * ⚠️ **실제로 그린 카메라가 있으면 그것으로 쏜다** (지시서 R5 1번).
+           *
+           * 아래 재구성은 자리·겨눈 곳·화각·머리 방향을 **다시 세우는** 것이라,
+           * `EngineDriver`가 렌더 직전에 먹인 값과 한 프레임 어긋나거나 화각을
+           * 잘못 집으면 엉뚱한 데를 맞힌다. `sceneRefs.stage.camera`는
+           * `gl.render(scene, camera)`에 **그대로 들어간** 그 카메라다 — 행렬을
+           * 그대로 쓰면 재구성이 아니다
+           */
+          // 아래는 그 카메라를 못 잡았을 때의 **되돌아갈 길**이다.
           // 카메라를 씬에서 찾을 수 없으므로(R3F는 기본 카메라를 씬에 안 넣는다)
           // 자리·겨눈 곳·화각·머리 방향으로 직접 세운다.
           //
@@ -579,11 +617,19 @@ async function main() {
             ? new THREE.Vector3(0, 1, 0) : ws.worldState.camera.up)
           cam.lookAt(look)
           cam.updateMatrixWorld()
+          const drawn = refs.sceneRefs.stage.camera
+          const shooter = drawn ?? cam
+          if (drawn) drawn.updateMatrixWorld()
           const ray = new THREE.Raycaster()
           ray.setFromCamera(
-            new THREE.Vector2((sx / w) * 2 - 1, -((sy / h) * 2 - 1)), cam)
+            new THREE.Vector2((sx / w) * 2 - 1, -((sy / h) * 2 - 1)), shooter)
           const list = ray.intersectObject(root, true).slice(0, 4)
           return {
+            /** 재구성 카메라를 썼는가. 참이면 그 값은 참고용이다 */
+            rebuilt: drawn === null,
+            eye: drawn
+              ? [+drawn.position.x.toFixed(2), +drawn.position.y.toFixed(2), +drawn.position.z.toFixed(2)]
+              : null,
             rows: list.map((it) => {
               const mats = Array.isArray(it.object.material)
                 ? it.object.material : [it.object.material]
@@ -609,6 +655,21 @@ async function main() {
                   return m
                 })(),
                 at: [+it.point.x.toFixed(1), +it.point.y.toFixed(1), +it.point.z.toFixed(1)],
+                /**
+                 * 맞은 **삼각형**과 그 자리의 UV.
+                 *
+                 * ⚠️ **가운데 값으로 때우지 않는다.** UV는 three가 세 꼭짓점을
+                 * 무게중심 좌표로 섞어 낸 **그 점의** 값이다 — 「대략 어디쯤」이
+                 * 아니라 그 텍셀을 짚어야 어느 그림의 어느 자리가 화면을 채우는지
+                 * 말할 수 있다 (지시서 R5 1번)
+                 */
+                tri: it.face ? [it.face.a, it.face.b, it.face.c] : null,
+                face: it.faceIndex ?? null,
+                uv: it.uv ? [+it.uv.x.toFixed(4), +it.uv.y.toFixed(4)] : null,
+                sub: it.face?.materialIndex ?? null,
+                // 이 그림이 어느 크기로 구워졌는가 (`chunkMesh`의 `sliceTexture`)
+                tex: mat?.map?.name ?? null,
+                wrap: mat?.map ? `${String(mat.map.wrapS)}/${String(mat.map.wrapT)}` : null,
               }
             }),
             // 어떤 렌즈로 쏘았는지 같이 낸다 — 빗나갔을 때 여기부터 본다
@@ -618,14 +679,84 @@ async function main() {
         const o = (py * shot.w + px) * shot.bpp
         const pixel = `#${[0, 1, 2].map((k) => shot.pixels[o + k].toString(16).padStart(2, '0')).join('')}`
         console.log(`  ${id} (${String(px)},${String(py)}) 화면 ${pixel}`
-          + ` 화각 ${String(found.fov ?? '?')} ${found.err ?? ''}`)
+          + ` 화각 ${String(found.fov ?? '?')}`
+          + ` 카메라 ${found.rebuilt ? '재구성(참고용)' : `실제 ${String(found.eye)}`}`
+          + ` ${found.err ?? ''}`)
         for (const r of found.rows ?? []) {
           console.log(`     ${String(r.d).padStart(6)}  ${r.mesh.padEnd(16)}`
             + ` ${r.mat.padEnd(18)} ${r.map} ${r.rgb} 불투명 ${String(r.op)}`
             + ` 문턱 ${String(r.aT)}${r.tr ? '·반투명' : ''} 알파최대 ${String(r.maxA)}`
             + ` @ ${String(r.at)}`)
+          console.log(`            서브메시 ${String(r.sub)} 삼각형 ${String(r.face)}`
+            + ` ${JSON.stringify(r.tri)} UV ${JSON.stringify(r.uv)}`
+            + ` 그림 ${String(r.tex)} 감기 ${String(r.wrap)}`)
         }
         if ((found.rows ?? []).length === 0) console.log('     맞은 것이 없다 — 하늘이다')
+      }
+    }
+
+    /**
+     * **그 픽셀을 실제로 칠한 것을 메시 하나씩 숨겨 가며 찾는다** (지시서 R5 1번).
+     *
+     * ⚠️ **첫 광선과 화면색이 다를 수 있다.** 광선은 알파 테스트도 후처리도 안
+     * 본다 — 통째로 잘려 안 그려진 판도 그대로 맞히고, 윤곽선·색보정이 그 위에
+     * 한 겹 더 얹힌다. 그래서 「무엇이 보이는가」의 답은 광선이 아니라 **숨겨
+     * 보는 것**이다. 후보를 하나씩 `visible = false`로 두고 다시 찍어, 그 픽셀의
+     * 색이 얼마나 달라지는지를 잰다 — 제일 많이 달라진 것이 범인이다.
+     *
+     * 색을 숨기거나 카메라를 돌려 화면을 가리는 것과는 반대 방향의 도구다.
+     * 무엇이 거기 있는지 **알아내려고** 숨긴다
+     */
+    const blame = flag('blame')
+    if (blame) {
+      for (const spot of blame.split(';')) {
+        const [px, py] = spot.split(',').map(Number)
+        const base = decodePng(await page.screenshot())
+        const bo = (py * base.w + px) * base.bpp
+        const was = [0, 1, 2].map((k) => base.pixels[bo + k])
+        // 광선이 집어 주는 후보들. 못 맞히면 씬 전체의 큰 메시로 넓힌다
+        const names = await page.evaluate(async ([sx, sy, w, h]) => {
+          const THREE = await import('/node_modules/three/build/three.webgpu.js')
+          const refs = await import('/src/scene/sceneRefs.ts')
+          let root = refs.sceneRefs.player
+          while (root?.parent) root = root.parent
+          const cam = refs.sceneRefs.stage.camera
+          if (!root || !cam) return []
+          cam.updateMatrixWorld()
+          const ray = new THREE.Raycaster()
+          ray.setFromCamera(new THREE.Vector2((sx / w) * 2 - 1, -((sy / h) * 2 - 1)), cam)
+          const seen = []
+          for (const it of ray.intersectObject(root, true).slice(0, 6)) {
+            if (!seen.some((one) => one.uuid === it.object.uuid)) {
+              seen.push({ uuid: it.object.uuid, name: it.object.name || it.object.type })
+            }
+          }
+          return seen
+        }, [px, py, VIEWPORT.width, VIEWPORT.height])
+        console.log(`  ${id} (${String(px)},${String(py)}) 원래 색`
+          + ` #${was.map((v) => v.toString(16).padStart(2, '0')).join('')}`)
+        for (const one of names) {
+          await page.evaluate(async (uuid) => {
+            const refs = await import('/src/scene/sceneRefs.ts')
+            let root = refs.sceneRefs.player
+            while (root?.parent) root = root.parent
+            root?.traverse((o) => { if (o.uuid === uuid) o.visible = false })
+          }, one.uuid)
+          const off = decodePng(await page.screenshot())
+          const oo = (py * off.w + px) * off.bpp
+          const now = [0, 1, 2].map((k) => off.pixels[oo + k])
+          const moved = Math.max(...was.map((v, k) => Math.abs(v - now[k])))
+          console.log(`     ${one.name.padEnd(20)} 숨기면`
+            + ` #${now.map((v) => v.toString(16).padStart(2, '0')).join('')}`
+            + ` (차이 ${String(moved)})${moved > 8 ? '  ← 이것이 칠한다' : ''}`)
+          await page.evaluate(async (uuid) => {
+            const refs = await import('/src/scene/sceneRefs.ts')
+            let root = refs.sceneRefs.player
+            while (root?.parent) root = root.parent
+            root?.traverse((o) => { if (o.uuid === uuid) o.visible = true })
+          }, one.uuid)
+        }
+        if (names.length === 0) console.log('     후보가 없다 — 실제 카메라를 못 잡았거나 하늘이다')
       }
     }
 

@@ -372,7 +372,20 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
             </button>
           ))}
         </div>
-        <div className={css.list}>
+        {/*
+          ⚠️ **줄마다 무엇인지 적어 둔다.** 화면을 모는 하네스(`tools/e2e/drive`)가
+          「좋은상처약이 몇째 줄인가」를 알 데가 없어서, 첫 줄이 아니면 약 쓰기를
+          통째로 포기하고 있었다 (지시서 R7). 세이브 가방의 순번은 이 목록의 줄
+          번호가 **아니다** — 배틀 가방은 `battlePocket` 비트로 다시 거르므로
+          그 둘이 어긋난다. 읽기 전용 표시라 규칙은 이 값을 안 본다
+        */}
+        <div
+          className={css.list}
+          data-battle-bag="items"
+          data-pocket={tab}
+          data-cursor={at}
+          data-items={list.length}
+        >
           {list.length === 0 && <div className={css.empty}>아무것도 없다</div>}
           {shown.map((one, i) => {
             const index = page * PER_PAGE + i
@@ -380,6 +393,10 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
               <button
                 key={one.item}
                 className={`${css.row} ${index === at ? css.rowOn : ''}`}
+                data-item-id={one.item}
+                data-item-row={index}
+                data-item-count={one.count}
+                aria-selected={index === at}
                 onPointerEnter={() => { setCursor(index) }}
                 onClick={() => { setCursor(index); pickItem() }}
               >

@@ -75,11 +75,14 @@ export function BattleSound() {
         if (mon.side === 'p1') void music.playEffect(SFX.THROW)
         void music.playEffect(SFX.SEND_OUT)
         if (mon.species !== null) void music.playCry(mon.species)
-        seen.current[slot] = { key: mon.key, fainted: mon.fainted }
+        seen.current[slot] = { key: mon.key, fainted: mon.presence === 'down' }
         continue
       }
 
-      if (mon.fainted && !was.fainted) {
+      // ⚠️ **`fainted`가 아니라 `presence`다.** 숫자 HP는 게이지가 닳기 **전에**
+      // 이미 0이라, 그 값으로 울리면 체력이 내려가기도 전에 기절 소리가 난다
+      // (`engine/battle/view`의 `presence`)
+      if (mon.presence === 'down' && !was.fainted) {
         void music.playEffect(SFX.FAINT)
         // 원작은 기절 울음을 3.5반음 내려서 낸다 (`POKECRY_FAINT`)
         if (mon.species !== null) {
@@ -87,7 +90,7 @@ export function BattleSound() {
           setTimeout(() => { void music.playCry(species, { faint: true }) }, FAINT_CRY_DELAY)
         }
       }
-      seen.current[slot] = { key: mon.key, fainted: mon.fainted }
+      seen.current[slot] = { key: mon.key, fainted: mon.presence === 'down' }
     }
   }, [view])
 

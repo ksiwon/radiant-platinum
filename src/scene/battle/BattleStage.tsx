@@ -29,6 +29,7 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
+import { BODY_FADE_SECONDS, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
@@ -151,8 +152,13 @@ function sideOf(slot: SlotId): Side {
   return slot.startsWith('p1') ? 'p1' : 'p2'
 }
 
-/** 등판·기절이 딱 끊기지 않게 하는 시간(초) */
-const FADE = 0.35
+/**
+ * 등판·기절이 딱 끊기지 않게 하는 시간(초).
+ *
+ * ⚠️ **박자도 같은 값을 본다.** 기절 박자가 이만큼 쉬어야 몸이 다 진 뒤에
+ * 「쓰러졌다!」와 교체가 온다 (`engine/battle/playback`의 `HOLD_FAINT_PRESENTATION`)
+ */
+const FADE = BODY_FADE_SECONDS
 
 /**
  * 때리러 나갔다 돌아오는 시간(초)의 **위끝**.
@@ -241,7 +247,11 @@ function Slot({
   /** 지금까지 본 제일 높은 자리와, 다음에 잴 시각 */
   const grown = useRef(0)
   const watch = useRef(0)
-  const fainted = mon !== null && mon.hp <= 0
+  // ⚠️ **HP가 0인 것과 화면에서 지는 것은 다른 일이다.** 예전에는 여기서
+  // `mon.hp <= 0`을 봤고, 그 값이 `damage` 사건에서 이미 참이 되므로 **게이지가
+  // 닳는 도중에** 몸이 먼저 사라졌다. 지는 것을 시작하는 것은 `faint` 사건뿐이다
+  // (`engine/battle/view`의 `presence`)
+  const fainted = mon !== null && mon.presence === 'down'
   const [art, setArt] = useState<{ map: Texture; scale: number; lift: number } | null>(null)
   const [model, setModel] = useState<MonBody | null>(null)
 
@@ -302,6 +312,15 @@ function Slot({
    * 대기로 이어야 하는데, 상태로 두면 배틀 내내 React가 다시 그린다
    */
   const motion = useRef<MotionName>('enter')
+  /**
+   * 지금 **지는 중**인가. 등판과 퇴장이 같은 `shown` 값을 쓰므로 방향을 따로 든다.
+   *
+   * ⚠️ **퇴장에 등판 클립을 쓰면 안 된다.** `t < 0.99`만 보면 사라지는 동안에도
+   * `enter`가 골라져서, 쓰러지는 포켓몬이 **착지 동작**을 한다. BDSP에 기절
+   * 클립이 따로 없으므로(`monModel`의 `MOTION` — ba01·02·10·20·21·30뿐) 퇴장은
+   * 지금 자세 그대로 가라앉히고 지운다
+   */
+  const leaving = useRef(false)
   // 등판·기절을 0/1로 끊으면 포켓몬이 순간이동한다. 눈에 보이는 값만 쓰는
   // 표현이므로 시뮬레이션 스텝이 아니라 렌더 델타로 민다
   const shown = useRef(0)
@@ -342,7 +361,7 @@ function Slot({
     if (!lastBall || lastBall.slot !== slot || capture.current?.seq === lastBall.seq) return
     capture.current = {
       seq: lastBall.seq,
-      started: performance.now() / 1000,
+      started: battleClock.now(),
       shakes: lastBall.shakes,
       caught: lastBall.caught,
     }
@@ -395,15 +414,17 @@ function Slot({
     // 몸이 같은 값(`view.active`)을 보고 같은 프레임에 시작하던 탓에, 포켓몬이
     // 먼저 서 있고 그 뒤에 볼이 날아와 터졌다
     const opensAt = ballOpen[slot] ?? 0
-    const waiting = performance.now() / 1000 < opensAt
+    const waiting = battleClock.now() < opensAt
     const want = mon && !fainted && !waiting ? 1 : 0
+    if (want === 0 && shown.current > 0.01) leaving.current = true
+    if (want === 1) leaving.current = false
     shown.current +=
       Math.sign(want - shown.current) * Math.min(delta / FADE, Math.abs(want - shown.current))
     const t = shown.current
     const captureNow = capture.current
     const caughtScale = captureNow
       ? captureBodyScale(
-          performance.now() / 1000 - captureNow.started,
+          battleClock.now() - captureNow.started,
           captureNow.shakes,
           captureNow.caught,
         )
@@ -414,7 +435,7 @@ function Slot({
     // 살짝 흔든다. 완전히 굳어 있으면 도형이 아니라 소품으로 보인다.
     // **위로만 뜬다** — 아래로 내려가면 발이 땅에 파묻힌다.
     // 모델은 대기 동작이 이미 숨을 쉬므로 안 흔든다
-    const bob = model ? 0 : (Math.sin(performance.now() / 620 + spot.x) * 0.5 + 0.5) * 0.05
+    const bob = model ? 0 : (Math.sin(battleClock.now() * 1000 / 620 + spot.x) * 0.5 + 0.5) * 0.05
 
     // 때리러 나간다. **정점이 그 종의 타격 프레임이다** — 앞뒤가 반반이 아니라
     // 표가 정하는 자리에서 꺾인다(`hitAt`). 갔다가 순간이동으로 돌아오면
@@ -485,7 +506,10 @@ function Slot({
 
     // 동작을 넘긴다. 때리고 맞는 것이 우선이고 그 타이머가 다 되면 대기로 돈다
     const now: MotionName =
-      t < 0.99
+      // 지는 중에는 동작을 안 갈아 끼운다 — 맞은 자세 그대로 가라앉는다
+      leaving.current
+        ? motion.current
+        : t < 0.99
         ? 'enter'
         : flinch.current > 0
           ? 'damage'
@@ -861,7 +885,7 @@ function useBattleCamera(fit: number): void {
     // 지진·땅가르기가 그것이고, 번개는 안 흔든다 — 위력이 아니라 대본이
     // 정한다. 연출이 끝나면 `t`가 1이라 0이 곱해진다
     const quake = moveImpact.t < 1 && moveImpact.camera > 0
-      ? Math.sin(performance.now() / 11) * moveImpact.camera * (1 - moveImpact.t)
+      ? Math.sin(battleClock.now() * 1000 / 11) * moveImpact.camera * (1 - moveImpact.t)
       : 0
     // ⚠️ **좁은 무대에서는 카메라를 당긴다.** 자리는 풀밭(반지름 12m) 기준으로
     // 적혀 있는데 실내 무대는 12×18m짜리 방이라, 그대로 두면 카메라가 벽 밖

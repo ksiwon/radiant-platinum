@@ -1,12 +1,26 @@
 import type { SlotId } from '../../engine/battle/events'
+// ⚠️ **시간표는 엔진이 든다.** 박자를 만드는 쪽(`engine/battle/playback`)이 같은
+// 값을 봐야 포획 결과 글이 볼 연출을 기다린다 — 예전에는 이 초가 여기에만 있어서
+// 결과가 던지기와 같은 프레임에 떴다
+import {
+  CAPTURE_RELEASE_TIME,
+  CAPTURE_SEAL_TIME,
+  CAPTURE_SHAKE_START,
+  CAPTURE_SHAKE_STEP,
+  CAPTURE_THROW_TIME,
+  captureDuration,
+  captureResolveAt,
+} from '../../engine/battle/captureTiming'
 
 export type Point3 = readonly [number, number, number]
 
-export const CAPTURE_THROW_TIME = 0.52
-export const CAPTURE_SEAL_TIME = 0.74
-export const CAPTURE_SHAKE_START = 0.92
-const CAPTURE_SHAKE_STEP = 0.46
-const CAPTURE_RELEASE_TIME = 0.28
+export {
+  CAPTURE_SEAL_TIME,
+  CAPTURE_SHAKE_START,
+  CAPTURE_THROW_TIME,
+  captureDuration,
+  captureResolveAt,
+}
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value))
@@ -34,14 +48,6 @@ export function throwArc(
 
 export function trainerThrowOrigin(slot: SlotId): Point3 {
   return slot.startsWith('p1') ? [-4.4, 1.65, 6.2] : [4.6, 1.65, -6.4]
-}
-
-export function captureResolveAt(shakes: number): number {
-  return CAPTURE_SHAKE_START + Math.max(0, shakes) * CAPTURE_SHAKE_STEP
-}
-
-export function captureDuration(shakes: number, caught: boolean): number {
-  return captureResolveAt(shakes) + (caught ? 0.72 : 0.62)
 }
 
 export function ballShakeAngle(elapsed: number, shakes: number): number {

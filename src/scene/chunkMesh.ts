@@ -377,6 +377,38 @@ function wrap(repeat: boolean, flip: boolean) {
   return flip ? MirroredRepeatWrapping : RepeatWrapping
 }
 
+/** 같은 비트를 CPU 쪽 이웃 읽기 모드로. `wrap`과 **한 자리에서** 갈린다 */
+export function wrapModeOf(repeat: boolean, flip: boolean): WrapMode {
+  if (!repeat) return 'clamp'
+  return flip ? 'mirror' : 'repeat'
+}
+
+/**
+ * 한 축의 이웃 읽는 법. GPU의 `wrapS`·`wrapT`와 **같은 뜻**이어야 한다.
+ *
+ * ⚠️ **셋을 boolean 하나로 접으면 안 된다.** 예전에는 「Clamp가 아닌가」만
+ * 넘겼고, 그래서 `MirroredRepeat`이 `Repeat`과 똑같이 처리됐다 — 경계 바로
+ * 바깥의 이웃을 **반대쪽 끝**에서 읽었다. 거울 반복에서 그 자리는 반대쪽 끝이
+ * 아니라 **경계 화소 자신**이다. 합성 4×4 fixture에서 출력 (0,2)의 red가
+ * 2로 나왔고 올바른 값은 1이었다 (`chunkMesh.test`가 그 자리를 못 박는다)
+ */
+type WrapMode = 'clamp' | 'repeat' | 'mirror'
+
+/**
+ * 좌표 `x`를 길이 `n` 안으로 접는다. 모드가 곧 의미다.
+ *
+ * `mirror`는 주기가 **2n**이다 — 0..n-1은 그대로, n..2n-1은 뒤집혀 `2n-1-q`다.
+ * 그래서 −1은 0, n은 n−1이 되어 경계에서 이음매가 안 생긴다
+ */
+export function wrapCoord(x: number, n: number, mode: WrapMode): number {
+  if (n <= 0) return 0
+  if (mode === 'clamp') return Math.min(n - 1, Math.max(0, x))
+  if (mode === 'repeat') return ((x % n) + n) % n
+  const period = n * 2
+  const q = ((x % period) + period) % period
+  return q < n ? q : period - 1 - q
+}
+
 /**
  * 도트 하나가 화면에서 커질 때 **계단만 깎는다** (Scale2x · AdvMAME2x).
  *
@@ -385,17 +417,15 @@ function wrap(repeat: boolean, flip: boolean) {
  * 테두리가 안 생긴다. 선형 보간을 그냥 걸면 둘 다 깨진다.
  *
  * ⚠️ **반복하는 그림은 가장자리를 물려서 읽는다.** 끝을 붙잡아(clamp) 읽으면
- * 이어 붙는 자리에 한 줄짜리 이음매가 생긴다 — 래핑 모드를 그대로 따른다
+ * 이어 붙는 자리에 한 줄짜리 이음매가 생긴다 — 래핑 모드를 **축마다** 그대로
+ * 따른다. 두 번 키워도 같은 모드다
  */
-function scale2x(
-  src: Uint8Array<ArrayBuffer>, w: number, h: number, wrapX: boolean, wrapY: boolean,
+export function scale2x(
+  src: Uint8Array<ArrayBuffer>, w: number, h: number, wrapX: WrapMode, wrapY: WrapMode,
 ): Uint8Array<ArrayBuffer> {
   const out = new Uint8Array(w * h * 16)
-  const px = (x: number, y: number): number => {
-    const cx = wrapX ? ((x % w) + w) % w : Math.min(w - 1, Math.max(0, x))
-    const cy = wrapY ? ((y % h) + h) % h : Math.min(h - 1, Math.max(0, y))
-    return (cy * w + cx) * 4
-  }
+  const px = (x: number, y: number): number =>
+    (wrapCoord(y, h, wrapY) * w + wrapCoord(x, w, wrapX)) * 4
   const eq = (a: number, b: number): boolean =>
     src[a] === src[b] && src[a + 1] === src[b + 1]
     && src[a + 2] === src[b + 2] && src[a + 3] === src[b + 3]
@@ -453,8 +483,10 @@ export function sliceTexture(sheet: TexSheet, item: SheetItem, rep: number): Tex
     const from = ((item.y + y) * sheet.width + item.x) * 4
     cut.set(sheet.pixels.subarray(from, from + item.w * 4), y * item.w * 4)
   }
-  const wrapX = wrap((rep & 1) !== 0, (rep & 4) !== 0) !== ClampToEdgeWrapping
-  const wrapY = wrap((rep & 2) !== 0, (rep & 8) !== 0) !== ClampToEdgeWrapping
+  // ⚠️ **GPU에 거는 모드와 CPU가 읽는 이웃이 같은 뜻이어야 한다.** 아래
+  // `texture.wrapS`·`wrapT`와 같은 비트에서 뽑는다 — 축마다 따로다
+  const wrapX = wrapModeOf((rep & 1) !== 0, (rep & 4) !== 0)
+  const wrapY = wrapModeOf((rep & 2) !== 0, (rep & 8) !== 0)
   let out = cut, w = item.w, h = item.h
   // 짧은 변이 `WANT_SHORT`가 될 때까지만 — 16×16은 ×4, 32×32는 ×2, 64×64는 그대로다.
   // ⚠️ **긴 변도 막는다.** 8×256 같은 띠를 짧은 변 기준으로 키우면 64×2048이 된다

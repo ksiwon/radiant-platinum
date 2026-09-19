@@ -21,7 +21,9 @@
 // **기술 연출이 여기서 자리를 받는다.** 원작은 글을 찍은 뒤 `PlayMoveAnimation`이
 // 도는 동안 게이지가 기다린다. 그 자리를 박자 하나로 낸다(`hold`) — 그동안
 // 무대의 `MoveVfx`가 틀 하나를 돌린다(`battle/vfx`). 길이는 틀과 위력이 정한다.
+import { captureFrames, captureTailFrames } from './captureTiming'
 import type { BattleEvent } from './events'
+import { BODY_FADE_SECONDS, FRAME_SECONDS } from './presentationClock'
 import { moveFramesOf } from './vfx'
 import { applyEvents, emptyView, type BattleView } from './view'
 
@@ -36,8 +38,18 @@ export interface Beat {
   text: string | null
   /** 글을 다 찍은 뒤 뷰에 접을 사건 */
   events: BattleEvent[]
-  /** 접고 나서 쉬는 프레임. A·B로 건너뛴다 */
+  /** 접고 나서 쉬는 프레임. A·B로 건너뛴다 — 단 `presentation`이면 못 건너뛴다 */
   hold: number
+  /**
+   * 이 쉼이 **무대가 도는 시간**인가.
+   *
+   * ⚠️ **글 대기와 연출 대기는 다른 것이다.** 원작에서 A로 넘기는 것은 글이고
+   * (`WaitButtonABTime`), `PlayMoveAnimation`·`ThrowPokeball`·
+   * `PlayFaintAnimation`은 눌러도 끝까지 돈다. 참이면 빠르기 설정도 A·Z도 이
+   * 쉼을 못 줄인다 — 재생기만 빨라지면 공이 아직 흔들리는데 결과가 뜬다
+   * (`ui/battle/useBattlePlayback`)
+   */
+  presentation?: boolean
   /**
    * 여기서 **사람에게 묻고 멈춘다.** 답이 올 때까지 다음 박자로 안 넘어간다.
    *
@@ -98,6 +110,16 @@ const HOLD_ENCOUNTER = 122
  * 안 적혀 있다. 여기 안 넣었다 — 없는 값을 지어내는 것보다 짧은 편이 낫다
  */
 const HOLD_FAINT = 7
+
+/**
+ * 기절 박자가 실제로 쉬는 프레임.
+ *
+ * 체력창이 빠지는 7프레임 **더하기** 몸이 지는 시간이다
+ * (`presentationClock`의 `BODY_FADE_SECONDS`). 원작 값 7만 쉬면 무대의 몸이
+ * 아직 반쯤 남아 있는데 「쓰러졌다!」와 교체가 지나간다 — 값 7을 몸 동작의
+ * 길이로 쓰지 말라는 것이 이 상수의 뜻이다
+ */
+const HOLD_FAINT_PRESENTATION = HOLD_FAINT + Math.ceil(BODY_FADE_SECONDS / FRAME_SECONDS)
 
 /**
  * 게이지 칸 수. `HEALTHBOX_HP_CELL_COUNT(6) × HEALTHBOX_NAME_BLOCK_COUNT_X(8)`.
@@ -185,10 +207,10 @@ export function buildBeats(
     }
   }
 
-  /** 화면만 바꾸는 박자 */
-  const show = (list: BattleEvent[], hold: number): void => {
+  /** 화면만 바꾸는 박자. `presentation`이면 그 쉼이 무대가 도는 시간이다 */
+  const show = (list: BattleEvent[], hold: number, presentation = false): void => {
     view = applyEvents(view, list)
-    out.push({ text: null, events: list, hold })
+    out.push(presentation ? { text: null, events: list, hold, presentation } : { text: null, events: list, hold })
   }
 
   /** 게이지가 지금 값에서 새 값까지 가는 프레임 */
@@ -240,8 +262,10 @@ export function buildBeats(
       }
 
       case 'faint':
-        // `PlayFaintAnimation / HealthBoxSlideOut / PrintMessage` — 먼저 쓰러지고 그 다음에 말한다
-        show([e], HOLD_FAINT)
+        // `PlayFaintAnimation / HealthBoxSlideOut / PrintMessage` — 먼저 쓰러지고 그 다음에 말한다.
+        // ⚠️ **몸이 사라지는 시간까지 쉰다** (`HOLD_FAINT_PRESENTATION`).
+        // `HOLD_FAINT 7`은 체력창이 빠지는 값이고 몸이 지는 시간이 아니다
+        show([e], HOLD_FAINT_PRESENTATION, true)
         say(text(e), HOLD_MESSAGE)
         break
 
@@ -255,12 +279,12 @@ export function buildBeats(
         // **화면이 열릴 때 이미 서 있다.** 여기서 글을 기다리게 하면 조우 연출이
         // 빈 발판에서 터진다 (`scene/battle/EncounterBurst`)
         if (first && e.actor.side === 'p2' && foeOnStage) {
-          show([e], HOLD_ENCOUNTER)
+          show([e], HOLD_ENCOUNTER, true)
           say(text(e), HOLD_MESSAGE)
           break
         }
         say(text(e), HOLD_MESSAGE)
-        show([e], first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT)
+        show([e], first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT, true)
         break
       }
 
@@ -273,7 +297,23 @@ export function buildBeats(
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
-        show([e], moveFramesOf(e.move))
+        show([e], moveFramesOf(e.move), true)
+        break
+
+      case 'ball':
+        // ⚠️ **결과는 볼이 멎은 뒤에 안다.** 예전에는 이 사건이 아래 `default`로
+        // 떨어져 `show([e], 0)`이 됐고, 쉼이 0인 박자는 재생기가 **같은 프레임에**
+        // 이어 붙이므로 「잡았다!」가 던지는 순간에 떴다 (`useBattlePlayback`).
+        //
+        // 세 걸음이다: 던짐·수납·흔들기가 도는 동안 쉬고 → 결과 글을 찍고 →
+        // 마지막 반짝임이 사그라지기를 기다린다. 그 뒤에야 닉네임·도감·배틀
+        // 해제나 상대의 다음 수가 온다. 길이는 무대와 **같은 시간표**에서 온다
+        // (`engine/battle/captureTiming`)
+        show([e], captureFrames(e.shakes), true)
+        say(text(e), HOLD_MESSAGE)
+        out.push({
+          text: null, events: [], hold: captureTailFrames(e.shakes, e.caught), presentation: true,
+        })
         break
 
       default: {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import type { Group } from 'three'
 import { SLOTS, type SlotId } from '../../engine/battle/events'
+import { battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
 import { ballOpen, clearBallOpen } from './stageRefs'
 import { useBattleStore } from '../../state/battleStore'
@@ -45,8 +46,15 @@ const SPARKS: readonly Point3[] = [
   [-0.72, -0.72, 0],
 ]
 
+/**
+ * 지금 연출 시각(초).
+ *
+ * ⚠️ **`performance.now()`가 아니다.** 볼만 벽시계를 보면 탭을 숨겼다 돌아왔을
+ * 때 공이 이미 다 흔들려 있고, 박자는 아직 던지는 중이다 — 둘이 같은 시계를
+ * 봐야 포획 결과 글이 공 연출을 기다린다 (`engine/battle/presentationClock`)
+ */
 function nowSeconds(): number {
-  return performance.now() / 1000
+  return battleClock.now()
 }
 
 function shotDuration(shot: BallShot): number {

@@ -499,6 +499,13 @@ export async function driveStory(page, {
    */
   const potion = {
     item: null, name: null, floor: 0, left: 0, used: 0, why: '', misses: [], uses: [],
+    /**
+     * 실제로 커서를 어느 줄에 놓았는가 (지시서 R7).
+     *
+     * 화면 줄 번호와 세이브 가방 순번을 **따로** 적는다 — 둘이 같다고 믿은 것이
+     * 옛 결함이었다 (`maybePotion`)
+     */
+    rows: [],
     /** 마지막으로 못 본 배틀 턴 — **같은 턴에는 다시 안 간다** */
     missTurn: null,
   }
@@ -716,9 +723,17 @@ export async function driveStory(page, {
      * ⚠️ **약은 턴을 쓴다.** 원작과 같다 — 쓴 턴에는 공격하지 않는다. 그래서
      * 문턱을 낮게 잡는다(체력이 그 몫 아래로 떨어질 때만).
      *
-     * ⚠️ **첫 줄이 그 약인지를 가방으로 확인한다.** 화면 줄에서 커서 자리를 읽을
-     * 길이 없어 첫 줄을 누르는데, 회복 주머니에 다른 것이 먼저 들어 있으면
-     * **엉뚱한 것을 쓴다.** 그때는 안 쓰고 까닭을 남긴다
+     * ⚠️ **첫 줄만 누르지 않는다** (지시서 R7).
+     *
+     * 예전에는 세이브 가방의 순번(`bagState().items[].row`)이 0이 아니면
+     * `potion.left = 0`으로 그 판의 약을 통째로 포기했다. 그런데 그 순번은
+     * **화면 줄 번호가 아니다** — 배틀 가방은 `battlePocket` 비트로 다시 거르고
+     * 쪽까지 나눈다 (`ui/battle/BattleBag`). 그래서 약이 정말 둘째 줄이든,
+     * 거르고 나니 첫 줄이든 똑같이 포기했다.
+     *
+     * 지금은 **화면에서** 그 도구의 줄을 찾아 방향키로 옮기고, 고른 줄의 도구
+     * 번호가 맞는지 확인한 뒤에 결정한다. 못 찾으면 안 쓰고 까닭을 남긴다 —
+     * 첫 줄의 다른 도구를 잘못 쓰지 않는 보호는 그대로다
      */
     /**
      * **명령 단(싸운다·가방·포켓몬·도망친다)이 서 있나.**
@@ -755,11 +770,6 @@ export async function driveStory(page, {
       const bag = await obs.bagState()
       const mine = bag.known ? (bag.value?.items ?? []).find((one) => one.item === potion.item) : null
       if (!mine) { potion.why = '가방에 그 약이 없다'; potion.left = 0; return false }
-      if (mine.row !== 0) {
-        potion.why = `회복 주머니 ${String(mine.row)}번째라 첫 줄을 못 누른다`
-        potion.left = 0
-        return false
-      }
       const panel = buttonTexts
       /**
        * ⚠️ **명령 단이 이미 서 있을 때만 손을 댄다.** 기다리면서 Space를 누르면
@@ -779,6 +789,27 @@ export async function driveStory(page, {
         return false
       }
       const ready = await rowUp(50)
+      /**
+       * **화면이 지금 보여 주는 회복 주머니.** 제품이 줄마다 적어 두는 읽기 전용
+       * 표시를 그대로 읽는다 (`ui/battle/BattleBag`의 `data-item-*`) — 스토어를
+       * 직접 집지 않는다
+       */
+      const bagRows = async () => page.evaluate(() => {
+        const list = document.querySelector('[data-battle-bag="items"]')
+        if (list === null) return null
+        return {
+          pocket: Number(list.getAttribute('data-pocket')),
+          cursor: Number(list.getAttribute('data-cursor')),
+          total: Number(list.getAttribute('data-items')),
+          rows: [...list.querySelectorAll('[data-item-id]')].map((el) => ({
+            item: Number(el.getAttribute('data-item-id')),
+            row: Number(el.getAttribute('data-item-row')),
+            count: Number(el.getAttribute('data-item-count')),
+            on: el.getAttribute('aria-selected') === 'true',
+            label: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          })),
+        }
+      }).catch(() => null)
       /**
        * ⚠️ **한 번 못 봤다고 그 판의 약을 끊지 않는다.** 그 순간 **무슨 화면이었는지**를
        * 넉넉히 적고, 세 번 못 볼 때까지는 **다음 턴에** 다시 간다. 세 번은 재시도
@@ -820,7 +851,60 @@ export async function driveStory(page, {
         }
         return false
       }
-      await tap('Space', 250)   // 첫 줄 — 그 약
+      /**
+       * 목표 도구가 선 줄까지 커서를 옮긴다.
+       *
+       * ⚠️ **줄 수를 세어 누르고 끝내지 않는다.** 누른 뒤에 고른 줄의 도구 번호를
+       * 다시 읽어 맞는지 본다 — 쪽이 넘어가거나 목록이 줄면 세어 둔 수가 어긋난다.
+       * 안 맞으면 결정을 **안 누르고** 물러난다
+       */
+      const backOff = async () => {
+        for (let i = 0; i < 4; i++) {
+          if (commandReady(await panel()) || (await now()).scene !== 'battle') break
+          await tap('KeyX', 120)
+          await page.waitForTimeout(150)
+        }
+        potion.missTurn = turn
+        return false
+      }
+      const seen = await bagRows()
+      if (seen === null) {
+        potion.why = '회복 주머니 목록을 못 읽었다'
+        return backOff()
+      }
+      const started = seen.cursor
+      /**
+       * 한 줄씩 내려가며 **선 줄의 도구 번호**를 본다.
+       *
+       * ⚠️ **쪽이 넘어간다.** 한 쪽이 여섯 줄이라(`BattleBag`의 `PER_PAGE`) 일곱째
+       * 도구는 지금 화면에 아예 없다 — 「보이는 줄에서 찾기」로는 못 집는다.
+       * 커서가 더 안 내려가면 목록 끝이므로 거기서 멈춘다
+       */
+      let stood = seen.rows.find((r) => r.on) ?? null
+      let where = seen.cursor
+      for (let i = 0; i <= (Number.isFinite(seen.total) ? seen.total : 40); i++) {
+        if (stood !== null && stood.item === potion.item) break
+        await tap('ArrowDown', 70)
+        const next = await bagRows()
+        if (next === null) { stood = null; break }
+        if (next.cursor === where) { stood = next.rows.find((r) => r.on) ?? null; break }
+        where = next.cursor
+        stood = next.rows.find((r) => r.on) ?? null
+      }
+      if (stood === null || stood.item !== potion.item) {
+        potion.why = `커서가 ${String(potion.name)} 줄에 안 섰다`
+          + ` (선 줄 ${JSON.stringify(stood?.label ?? null)} · ${String(seen.total)}종)`
+        return backOff()
+      }
+      const seat = stood
+      const cursorAt = started
+      // 화면 줄 번호와 세이브 순번을 **따로** 적는다. 둘이 어긋나는 것이
+      // 이 고침의 전부라, 다음에 또 어긋나면 기록에서 바로 보인다
+      potion.rows.push({
+        turn, item: potion.item, screenRow: seat.row, saveRow: mine.row,
+        from: cursorAt, pocket: seen.pocket, total: seen.total,
+      })
+      await tap('Space', 250)   // 그 약
       await tap('Space', 250)   // 「누구에게?」 첫 칸 — 선두
       potion.left--
       potion.used++
@@ -2744,7 +2828,7 @@ export async function driveStory(page, {
       plan: planSummary(), episodes: episodeSummary(), failedEpisodes: failedEpisodes(),
       blocks: blockSummary(),
       fights, movePicks, observer: obs.kind, extra: only,
-      potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses },
+      potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses, rows: potion.rows },
     }
   }
 
@@ -2909,7 +2993,7 @@ export async function driveStory(page, {
     /** 새것이 더 세지 않거나 기술표를 못 읽어 그대로 둔 횟수 */
     learnKept,
     /** 배틀 안에서 약을 몇 번 썼나 · 못 썼으면 까닭 */
-    potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses },
+    potions: { used: potion.used, left: potion.left, why: potion.why, misses: potion.misses, uses: potion.uses, rows: potion.rows },
     extra,
   }
 

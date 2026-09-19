@@ -19,6 +19,7 @@ import {
   type Group, type MeshBasicMaterial as BasicMaterial,
 } from 'three'
 import { loadMoveAnims, loadMoves } from '../../data/gameData'
+import { battleClock } from '../../engine/battle/presentationClock'
 import { MOVE_FRAMES, archetypeFor, setMoveFrames, type Archetype } from '../../engine/battle/vfx'
 import { typeColor } from '../../engine/battle/typeColor'
 import { useBattleStore } from '../../state/battleStore'
@@ -62,6 +63,16 @@ interface Shot {
   place: { by: Vec3, foe: Vec3, metre: number } | null
   /** 같은 배틀 안에서 기술마다 다른 그림이 나오게 하는 씨앗 */
   seed: number
+  /**
+   * 이 연출이 **연출 시계에서 시작한 시각**(초).
+   *
+   * ⚠️ **델타를 쌓지 않는다.** 예전에는 `t.current += delta / 길이`였고, 그
+   * `t`가 `useRef`라 같은 컴포넌트가 다음 연출에 다시 쓰이면 **앞 연출의 진행도를
+   * 물려받았다** — 새 기술이 이미 반쯤 지난 채로 시작하거나 첫 프레임에 끝났다.
+   * 지금은 시작 시각 하나만 들고 진행도를 매번 다시 잰다
+   * (`engine/battle/presentationClock`)
+   */
+  startedAt: number
   /**
    * 이 연출이 도는 프레임. 박자(`playback`)가 쉬는 값과 **같은 자리에서 온다**
    * (`engine/battle/moveLength`)
@@ -117,12 +128,13 @@ function pulse(t: number): number {
  * 틀마다 도형 두 개를 쓰고 `useFrame`에서 자리만 고쳐 쓴다 — 프레임마다
  * `setState`를 하면 React가 배틀 중에 계속 다시 그린다
  */
-function Shape({ shot, done }: { shot: Shot; done: () => void }) {
+function Shape({ shot, done }: { shot: Shot; done: (seq: number) => void }) {
   const head = useRef<Mesh>(null)
   const tail = useRef<Mesh>(null)
   const particles = useRef<Group>(null)
   const flash = useRef<Mesh>(null)
-  const t = useRef(0)
+  /** 이 연출이 끝났다고 이미 알렸는가. 두 번 알리면 다음 연출이 지워진다 */
+  const ended = useRef(false)
   // ⚠️ **원작 입자가 서면 도형 구름은 안 뿌린다.** 둘 다 그리면 같은 자리에
   // 두 벌이 겹쳐서 무엇이 원작인지 알아볼 수 없다. 다만 머리·꼬리 메시는
   // **지우지 않고 숨긴다** — 무대에 거는 값(`moveImpact`)과 배경 물들임이
@@ -155,14 +167,20 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
   // 도형이 사라져도 무대에 걸어 둔 것이 남으면 다음 턴까지 몸이 물든다
   useEffect(() => clearMoveImpact, [])
 
-  useFrame((_, delta) => {
-    t.current += delta / secs(shot.frames)
-    const k = t.current
+  useFrame(() => {
+    // 진행도는 **시작 시각부터 지금까지**로 잰다 — 쌓아 둔 값이 아니다.
+    // 모든 연출이 같은 시계를 보므로 게이지·글·공과 순서가 안 어긋난다
+    const k = (battleClock.now() - shot.startedAt) / secs(shot.frames)
     if (k >= 1) {
+      if (ended.current) return
+      ended.current = true
       clearMoveImpact()
-      done()
+      // ⚠️ **누가 끝났는지 같이 알린다.** 그냥 `done()`이면 이미 다음 연출이
+      // 서 있을 때 앞엣것의 종료가 그 새 연출을 지운다
+      done(shot.seed)
       return
     }
+    if (k < 0) return
 
     // 무대가 읽을 것을 먼저 적는다 — 몸 떨림·눌림·물들임·사라짐과 화면 흔들림은
     // 도형이 아니라 무대가 건다 (`stageRefs`).
@@ -171,7 +189,7 @@ function Shape({ shot, done }: { shot: Shot; done: () => void }) {
     // 기다리는 시간이라 3초까지 가는데, 원작이 몸을 흔드는 것은 그 안의 태스크
     // 몇십 프레임이다 (`Shot.bodyFrames`). 다 끝나면 `t`를 1로 두어 무대가
     // 놓게 한다 — `moveImpact.t >= 1`이 「걸린 것이 없다」는 뜻이다
-    const body = t.current * shot.frames / shot.bodyFrames
+    const body = k * shot.frames / shot.bodyFrames
     const sig = shot.signature
     if (body >= 1) {
       clearMoveImpact()
@@ -543,6 +561,7 @@ export function MoveVfx({
         metre: splMetre((tallOf(cast.by) + tallOf(at)) / 2),
       },
       seed: cast.seq,
+      startedAt: battleClock.now(),
       // 박자와 **같은 자리에서** 온다 — 어긋나면 연출이 잘리거나 빈 화면이 남는다
       frames: moveAnimFrames(anim, wazaFile),
       // 대본 자체가 서는 시간. 0이면 지금까지의 한 벌로 (`Shot.bodyFrames`)
@@ -556,9 +575,12 @@ export function MoveVfx({
   return (
     <>
       <Shape
+        // ⚠️ **연출마다 새 컴포넌트다.** 같은 인스턴스를 다시 쓰면 `useRef`에
+        // 남은 앞 연출의 값이 이어진다 (`Shot.startedAt`의 머리말)
+        key={shot.seed}
         shot={shot}
-        done={() => {
-          setShot(null)
+        done={(seq) => {
+          setShot((now) => (now === null || now.seed === seq ? null : now))
         }}
       />
       {shot.cues !== null && shot.place !== null && (

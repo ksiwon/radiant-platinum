@@ -45,7 +45,23 @@ export interface ViewMon {
   maxHp: number
   status: Status
   boosts: Boosts
+  /**
+   * **숫자로서** 쓰러졌는가 — HP가 0이다. 규칙이 보는 값이다.
+   *
+   * ⚠️ **화면이 이 값으로 몸을 지우면 안 된다.** 게이지가 닳는 동안에도 이미
+   * 참이라, 무대가 이걸 보고 사라지면 체력이 내려가는 도중에 몸이 먼저 없어진다.
+   * 화면이 보는 것은 아래 `presence`다
+   */
   fainted: boolean
+  /**
+   * **화면에 서 있는가.** `down`은 기절 연출이 시작됐다는 뜻이다.
+   *
+   * 숫자 HP와 따로 두는 이유가 순서다. 원작은 `UPDATE_HP`(게이지) →
+   * `PlayFaintAnimation`(몸) → `PrintMessage`(글) 차례고, 그 사이에 몸은
+   * **살아 있는 모습으로 맞고 있다.** 그래서 이 값은 `faint` 사건에서만 바뀐다 —
+   * `damage`로 HP가 0이 되는 것으로는 안 바뀐다
+   */
+  presence: 'alive' | 'down'
   /**
    * 이 개체에게 걸려 있는 것. `substitute`, `leechseed`, `confusion`.
    *
@@ -198,6 +214,8 @@ function withCondition(mon: ViewMon, c: Condition): ViewMon {
     maxHp: c.maxHp ?? mon.maxHp,
     status: c.status,
     fainted: c.hp <= 0,
+    // ⚠️ **여기서 `presence`를 안 건드린다.** 게이지가 다 닳기 전에 몸이
+    // 사라지던 자리다 — 지우는 것은 `faint` 사건뿐이다
   }
 }
 
@@ -237,6 +255,8 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         status: e.condition.status,
         boosts: noBoosts(), // 랭크는 교체로 사라진다
         fainted: e.condition.hp <= 0,
+        // 등판하는 마리는 늘 서 있다. 쓰러진 채로 나오는 자리는 없다
+        presence: 'alive',
         volatiles: EMPTY, // 대타출동·씨뿌리기도 마찬가지다
       }
       return { ...view, active: { ...view.active, [e.actor.slot]: mon } }
@@ -275,7 +295,11 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       return patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
 
     case 'faint':
-      return patch(view, e.actor.slot, (m) => ({ ...m, hp: 0, fainted: true }))
+      // **화면에서 지는 것이 여기서 시작한다.** 박자도 이 사건에서 몸이 다
+      // 사라질 때까지 쉰다 (`playback`의 `HOLD_FAINT_PRESENTATION`)
+      return patch(view, e.actor.slot, (m) => ({
+        ...m, hp: 0, fainted: true, presence: 'down' as const,
+      }))
 
     case 'status':
       return patch(view, e.actor.slot, (m) => ({ ...m, status: e.status }))

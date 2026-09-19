@@ -22,6 +22,7 @@ import {
   texture, varying, vec4,
 } from 'three/tsl'
 import { splTexture } from '../../engine/battle/spl/texture'
+import { battleClock } from '../../engine/battle/presentationClock'
 import { retireTexture } from '../retireTexture'
 import { SplShow, type SplCue, type SplGroup } from './splDraw'
 import { splBasis, type SplBasis, type Vec3 } from './splPlace'
@@ -161,6 +162,8 @@ export function SplParticles({
   const rigs = useMemo(() => show.groups.map(buildRig), [show])
   const meshes = useRef<(Mesh | null)[]>([])
   const acc = useRef(0)
+  /** 연출 시계에서 마지막으로 본 시각. 델타를 여기서 뽑는다 */
+  const seen = useRef<number | null>(null)
   const ended = useRef(false)
 
   useEffect(() => () => {
@@ -175,10 +178,17 @@ export function SplParticles({
   // 새 기술이면 처음부터 — `show`가 갈리면 끝났다는 표시도 지운다
   useEffect(() => {
     acc.current = 0
+    seen.current = null
     ended.current = false
   }, [show])
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
+    // ⚠️ **렌더 델타가 아니라 연출 시계다.** 글·게이지·몸·공이 같은 시계를
+    // 보므로(`engine/battle/presentationClock`) 입자만 따로 흐르면 탭을 숨겼다
+    // 돌아왔을 때 알갱이만 앞서 가 있다
+    const at = battleClock.now()
+    const delta = seen.current === null ? 0 : at - seen.current
+    seen.current = at
     acc.current += Math.min(delta, MAX_DELTA)
     // ⚠️ **한 프레임에 네 걸음까지만.** 무거운 프레임 뒤에 밀린 것을 다 몰아
     // 돌리면 연출이 한 칸 건너뛴 것처럼 보인다
