@@ -552,10 +552,61 @@ function uvPerHeight(t: WallTri): number {
 }
 
 /**
+ * 이보다 얇은 UV는 **면이 아니라 줄**이다.
+ *
+ * 1/512는 제일 큰 원본 그림(64텍셀)에서도 1/8텍셀이라, 잘라 내는 것은 폭이
+ * 정말 0인 것뿐이다
+ */
+const FLAT_UV = 1 / 512
+
+/**
+ * 그 삼각형의 UV가 **두 축 모두** 폭을 갖는가.
+ *
+ * ⚠️ **한 축이 0이면 그림 한 줄이 벽 전체에 늘어난다.** 실측(2026-09-19,
+ * `pnpm shot center --first --look=180,0 --hit`): 포켓몬센터 420의 방 벽이
+ * `pc_room4` 서브메시 5를 베꼈는데 그 UV의 v가 **어디서나 0**이었다 — 가로로도
+ * 세로로도 u만 움직이고 v는 0에 못 박혀서, 64×64 조각의 **맨 윗줄 한 줄**이
+ * 벽을 통째로 덮었다. 화면에서는 큰 회색 단색 띠였다.
+ *
+ * 원작에는 이런 얇은 테두리 폴리곤이 있고 그것 자체는 고장이 아니다. 고장은
+ * 그것을 **벽의 재료로 베끼는 것**이다
+ */
+function uvSolid(t: WallTri): boolean {
+  const us = [t.au, t.au + t.du, t.au + t.eu]
+  const vs = [t.av, t.av + t.dv, t.av + t.ev]
+  return Math.max(...us) - Math.min(...us) > FLAT_UV
+    && Math.max(...vs) - Math.min(...vs) > FLAT_UV
+}
+
+/**
  * 그 칸에서 제일 가까운 벽 삼각형. **같은 선 위에 층이 겹치면 무늬가 실린 층**을
  * 고른다 (`uvPerHeight`)
  */
-function nearestWall(tris: readonly WallTri[], x: number, z: number): WallTri | null {
+function nearestWall(
+  all: readonly WallTri[], x: number, z: number,
+  /**
+   * 세울 판이 **어느 선 위에 눕는가** — `'x'`면 x가 고정(동·서를 보는 벽),
+   * `'z'`면 z가 고정(남·북을 보는 벽)이다.
+   *
+   * ⚠️ **방향이 다른 벽에서 베끼면 가로가 죽는다.** `uvOnWall`은 원본 삼각형이
+   * 뻗은 축으로 (가로, 높이)를 푸는데, 원본이 x쪽 벽이고 세울 판이 z쪽 벽이면
+   * 판의 가로로 움직여도 원본의 가로 성분은 **하나도 안 변한다** — 실측
+   * (2026-09-19, `pnpm shot center --first --look=180,0 --hit`): 포켓몬센터의
+   * 방 벽이 x 8.1·8.5·8.9에서 u가 −2.0625로 똑같았다. 그림 한 **세로줄**이
+   * 벽을 가로로 덮은 것이다
+   */
+  want: 'x' | 'z',
+): WallTri | null {
+  /**
+   * 후보를 좁힌다. **좁힌 것이 없으면 한 단계씩 넓힌다** — 아무것도 안 세우면
+   * 방에 구멍이 남고, 그것은 잘못 베낀 벽보다 나쁘다
+   */
+  const first = (...pools: readonly WallTri[][]): readonly WallTri[] =>
+    pools.find((one) => one.length > 0) ?? all
+  const tris = first(
+    all.filter((t) => t.axis === want && uvSolid(t)),
+    all.filter(uvSolid),
+  )
   let near: WallTri | null = null
   let far = Infinity
   for (const t of tris) {
@@ -635,7 +686,8 @@ export function roomWalls(
         ? [[y, y + Math.max(MIN_HEIGHT, top - y)] as Band]
         : gapsOn(cover.get(edge), y, top, besideKeys(edge).some(stands))
       if (gaps.length === 0) continue
-      const src = nearestWall(tris, tx + 0.5, tz + 0.5)
+      // 판은 `dx`쪽이면 x가 고정된 선 위에, `dz`쪽이면 z가 고정된 선 위에 선다
+      const src = nearestWall(tris, tx + 0.5, tz + 0.5, dx !== 0 ? 'x' : 'z')
       if (!src) continue
       const at = uvOnWall(src)
       // 판은 칸 경계에 선다. 방 **안쪽**을 보게 감는다.

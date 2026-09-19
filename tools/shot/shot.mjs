@@ -6,6 +6,7 @@
 //     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
 //     pnpm shot center --blame=480,320 그 픽셀을 **실제로 칠한** 메시를 숨겨 가며 찾는다
 //     pnpm shot center --first --look=180,0  1인칭으로 돌려 그 방향을 본다
+//     pnpm shot coronet --warp=220 --at=31,53   확인 지점이 없는 맵의 그 칸으로
 //     pnpm shot forest --crop=180,260,140,90,5   그 구석만 잘라 다섯 배로 키운다
 //     pnpm shot twinleaf --eye=117,6,875 --gaze=117,2,884   건물 뒤로 돌아가 본다
 //     pnpm shot wild --tree            배틀 무대 위에 실제로 무엇이 섰는지 늘어놓는다
@@ -256,6 +257,28 @@ async function main() {
       }, Number(hour))
     }
     await page.waitForTimeout(Number(flag('after', SETTLE_MS)))
+    /**
+     * **확인 지점이 없는 맵**으로 건너간다 — `--warp=220`.
+     *
+     * 확인 지점의 진행 상태 그대로 그 맵의 워프 0번에 선다. 혼잡한 탑·천관산
+     * 층처럼 확인 지점이 안 잡힌 자리를 되묻는 데 쓴다 (`firstPersonAudit`의
+     * `cp>map` 표기와 같은 길이고, 여기서도 `--hit`·`--blame`을 쓰려고 옮겼다)
+     */
+    const warp = flag('warp')
+    if (warp) {
+      const want = Number(warp)
+      await page.evaluate(async ([cp, m]) => {
+        const { CHECKPOINTS } = await import('/src/engine/dev/checkpoints.ts')
+        const { warpTo } = await import('/src/app/devWarp.ts')
+        const base = CHECKPOINTS.find((c) => c.id === cp)
+        await warpTo({ ...base, id: `${cp}>${String(m)}`, map: m, spot: { kind: 'warp', index: 0 } })
+      }, [id, want])
+      await page.waitForFunction(async (w) => {
+        const m = await import('/src/engine/map/world.ts')
+        return m.world.mapId === w
+      }, want, { timeout: 120_000 })
+      await page.waitForTimeout(Number(flag('warpAfter', 8000)))
+    }
     // 확인 지점이 세우는 자리 말고 **그 맵의 다른 칸**을 보고 싶을 때.
     // 컷신에만 나오는 사람들이 대개 확인 지점에서 멀리 서 있다
     const at2 = flag('at')
