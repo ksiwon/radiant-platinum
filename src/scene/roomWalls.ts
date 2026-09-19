@@ -21,11 +21,21 @@
 // 「벽이 있다」로 세면 그 위가 통째로 뚫린 채 지나간다. 어디까지 덮는지는
 // `gapsOn`이 가른다.
 //
-// ⚠️ **출입구는 지나다니는 띠만 비운다.** 문 앞 칸(워프)을 바닥부터 막으면 나갈
-// 수가 없고 화면에도 문이 벽으로 막혀 보인다. 그렇다고 통째로 비우면 **문 위가
-// 뚫린다** — 백화점 2층(137) 워프 0번에 서서 뒤를 보면 여덟 방위 중 셋이 온통
-// 검은 화면이었다. 문 높이는 지어내지 않고 **원작이 그 모서리에 세워 둔 면의
-// 위**를 문 위로 본다.
+// ⚠️ **출입구도 벽으로 세운다.** 한동안 워프 칸을 비워 뒀다 — 막으면 못 나가고
+// 문이 벽으로 덮인다고 봤기 때문이다. 둘 다 아니었다:
+//
+// - **통행은 격자가 정한다.** 이 판은 `<mesh name="방 벽">` 한 장으로 그려질 뿐
+//   충돌에 안 들어간다. 그리고 워프는 **그 칸에 올라서는 순간** 터지므로 사람이
+//   이 판의 평면을 지나갈 일이 애초에 없다.
+// - **문짝은 칸 가운데(+0.5)에 선다.** 판은 칸 경계에 서므로 문짝이 판 **앞**에
+//   있다 — 덮이지 않는다. 원작 문짝 19종의 윗변을 재 보면 제일 높은 것이
+//   2.75타일(`gym_door`·`card_door`)이고 아홉이 1.938인데, 우리가 세우는 벽은
+//   바닥+3 이상이라 문짝을 뚫고 나오지도 않는다
+//   (`.audit/tmp/probe/doorHeight.probe.ts`).
+//
+// 비워 두면 **문간 칸에 선 사람이 정면을 볼 때 화면이 통째로 검다** — 원작이 그쪽
+// 벽을 아예 안 만들었기 때문이다. 여기서 세우는 것은 원작에 없는 벽이고, 그림은
+// 그 방의 벽에서 베낀다.
 //
 // 그림은 **그 방의 벽에서 베낀다.** `plates.floorPatch`의 옆면과 같은 길이다 —
 // 제일 가까운 세로 삼각형의 서브메시와 UV 평면을 그대로 쓰고, UV는 타일 안쪽으로
@@ -568,14 +578,9 @@ function nearestWall(tris: readonly WallTri[], x: number, z: number): WallTri | 
 
 /**
  * 바닥이 끝나는데 벽이 없는 자리에 벽을 세운다. 세울 것이 없으면 `null`.
- *
- * @param door 그 칸이 출입구인가 (월드 타일). 바닥에 닿는 띠만 비운다
- * @param origin 청크가 놓인 자리. `door`에 월드 좌표로 물으려고 받는다
  */
 export function roomWalls(
   split: Split,
-  door: (tx: number, tz: number) => boolean,
-  origin: { x: number, z: number } = { x: 0, z: 0 },
   /** 이 서브메시에서 벽 그림을 베껴도 되는가. 안 주면 다 된다 */
   paint?: (group: number) => boolean,
 ): RoomWalls | null {
@@ -594,12 +599,10 @@ export function roomWalls(
 
   // ⚠️ **두 번 돈다.** 발치만 덮인 모서리는 옆이 **끝내 서는지**를 봐야 갈리는데,
   // 그 답에는 우리가 세울 판도 들어간다 (`gapsOn` 주석). 그래서 먼저 갈래만
-  // 매기고, 세우는 것은 그 다음이다. 출입구는 비우는 자리라 갈래에서 뺀다 —
-  // 문간을 「선 벽」으로 세면 그 옆 단이 벽이 된다
+  // 매기고, 세우는 것은 그 다음이다. 문간도 세우는 자리이므로 갈래에도 넣는다
   const kinds = new Map<string, Kind>()
   for (const [key, y] of floor) {
     const tx = cellX(key), tz = cellZ(key)
-    if (door(tx + origin.x, tz + origin.z)) continue
     for (const [dx, dz] of SIDES) {
       if (floor.has(cellKey(tx + dx, tz + dz))) continue
       kinds.set(edgeKey(tx, tz, dx, dz), kindOf(cover.get(edgeKey(tx, tz, dx, dz)), y))
@@ -632,26 +635,6 @@ export function roomWalls(
         ? [[y, y + Math.max(MIN_HEIGHT, top - y)] as Band]
         : gapsOn(cover.get(edge), y, top, besideKeys(edge).some(stands))
       if (gaps.length === 0) continue
-      /**
-       * 출입구는 **바닥에 닿는 띠만** 비운다 — 지나다니는 자리가 그것이다.
-       * 막으면 못 나가고 문이 벽으로 덮인다.
-       *
-       * ⚠️ **문간을 통째로 비우면 그 위가 뚫린다.** 워프 0번 칸에 서서 1인칭으로
-       * 뒤를 보면 여덟 방위 중 셋이 **온통 검은 화면**이었다 (색 43 · 밝기 0.3 —
-       * 그 43색은 「조작?」 단추가 전부다). 백화점 2층(137)만이 아니라 연고 357 ·
-       * 무쇠탄 47 · 전룡 154가 다 그랬다.
-       *
-       * 문 높이를 지어내지 않는다. **원작이 그 모서리에 세워 둔 면의 위**가 문
-       * 위이고, 거기 남는 띠만 메운다. 그래서 원작이 문 위에 인방을 남긴 방에서만
-       * 는다 — 실측(`node tools/audit/holes.mjs --eyes`, 1인칭 24방향 · 광선
-       * 2808): 도서관(38) 출입구 광선 **1130 → 941**. 원작이 그 자리에 아무것도
-       * 안 세운 방(백화점 2층)은 바닥에 닿는 띠 하나뿐이라 예전처럼 한 장도 안
-       * 선다 — 1130 그대로다. 그 방의 앞쪽은 벽이 아니라 **열린 층**이다
-       */
-      const doorway = door(tx + origin.x, tz + origin.z)
-      const bands = doorway ? gaps.filter((b) => b[0] > y + SEAM) : gaps
-      if (bands.length === 0) continue
-
       const src = nearestWall(tris, tx + 0.5, tz + 0.5)
       if (!src) continue
       const at = uvOnWall(src)
@@ -681,7 +664,7 @@ export function roomWalls(
       const shiftZ = Math.floor(src.cz) - tz
       const uvAt = (px: number, py: number, pz: number): [number, number] =>
         at(px + shiftX, src.y0 + (py - y), pz + shiftZ)
-      for (const [lo, hi] of bands) {
+      for (const [lo, hi] of gaps) {
         const face: [number, number, number][] = [
           [p0x, lo, p0z], [p1x, lo, p1z], [p1x, hi, p1z],
           [p0x, lo, p0z], [p1x, hi, p1z], [p0x, hi, p0z],

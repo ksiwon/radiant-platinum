@@ -74,8 +74,6 @@ function room(
   return { cells: new Map(), shadows: new Set(), geometry, groups }
 }
 
-const NO_DOOR = (): boolean => false
-
 /**
  * 북쪽(z = 0)에 세운 판이 덮는 높이 범위.
  *
@@ -99,34 +97,29 @@ function northBand(built: RoomWalls): [number, number] {
 describe('원작이 안 만든 실내 벽을 세운다', () => {
   it('바닥이 끝나는데 벽이 없는 자리에만 세운다', () => {
     // 3×3 방. 북쪽에 벽이 있으므로 열린 것은 동 3 · 서 3 · 남 3 = 아홉 자리다
-    const built = roomWalls(room(3, 3), NO_DOOR)
+    const built = roomWalls(room(3, 3))
     expect(built).not.toBeNull()
     expect(built!.count, '북쪽은 이미 벽이 있으므로 아홉이다').toBe(9)
   })
 
-  it('출입구는 비운다 — 막으면 못 나가고 문이 벽으로 덮인다', () => {
-    const built = roomWalls(room(3, 3), (tx, tz) => tx === 1 && tz === 2)
-    expect(built!.count, '남쪽 한 칸이 빠져 여덟이다').toBe(8)
-  })
-
-  it('문 위는 메운다 — 비우는 것은 지나다니는 띠뿐이다', () => {
-    // 북쪽 벽이 무릎 높이(0~1.5)까지만 덮는 방. 그 위는 어느 칸에서든 구멍이다
-    const low = (): Split => room(3, 3, true, [[0, 1.5]])
-    const open = roomWalls(low(), NO_DOOR)!
-    const door = roomWalls(low(), (tx, tz) => tx === 1 && tz === 0)!
-    expect(door.count, '문간이라고 그 위까지 빼지 않는다').toBe(open.count)
-    expect(northBand(door), '문 위 띠만 선다 — 지나다니는 발치는 비었다')
-      .toEqual(northBand(open))
-    expect(northBand(door)[0], '바닥에 닿는 띠는 안 세운다').toBeGreaterThan(1.4)
+  it('출입구도 바닥부터 세운다 — 한 칸도 안 비운다', () => {
+    // 통행은 격자가 정하고 워프는 그 칸에 올라서는 순간 터진다. 이 판은
+    // 그려지기만 하므로 문간을 세워도 못 나가지 않는다 (`roomWalls.ts` 머리말)
+    const built = roomWalls(room(3, 3))!
+    expect(built.count, '동 3 · 서 3 · 남 3 — 문간이라고 빠지는 자리가 없다').toBe(9)
+    const pos = built.geometry.getAttribute('position') as BufferAttribute
+    let lowest = Infinity
+    for (let i = 0; i < pos.count; i++) lowest = Math.min(lowest, pos.getY(i))
+    expect(lowest, '발치까지 선다').toBeCloseTo(0, 6)
   })
 
   it('베낄 벽이 하나도 없으면 안 지어낸다', () => {
-    expect(roomWalls(room(3, 3, false), NO_DOOR),
+    expect(roomWalls(room(3, 3, false)),
       '벽 그림이 없는 방에 우리가 벽을 만들어 붙이지 않는다').toBeNull()
   })
 
   it('안쪽을 보고, 바닥에서 벽 높이까지 서고, UV가 타일 안에 있다', () => {
-    const built = roomWalls(room(3, 3), NO_DOOR)!
+    const built = roomWalls(room(3, 3))!
     const pos = built.geometry.getAttribute('position') as BufferAttribute
     const nrm = built.geometry.getAttribute('normal') as BufferAttribute
     const uv = built.geometry.getAttribute('uv') as BufferAttribute
@@ -158,7 +151,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
    * 통과했다 (`holes --eyes`). 시험은 그동안 초록이었다
    */
   it('감는 순서도 안쪽을 본다 — 법선 속성과 어긋나면 화면에서 사라진다', () => {
-    const built = roomWalls(room(3, 3), NO_DOOR)!
+    const built = roomWalls(room(3, 3))!
     const pos = built.geometry.getAttribute('position') as BufferAttribute
     const nrm = built.geometry.getAttribute('normal') as BufferAttribute
     expect(pos.count % 3, '삼각형 단위로 떨어져야 한다').toBe(0)
@@ -191,7 +184,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
    */
   it('굽도리와 지붕만 있고 가운데가 비면 그 사이를 메운다', () => {
     // 북쪽에 굽도리(0~0.2)와 지붕(4~4.3)만 있다. 그 사이 0.2~4가 구멍이다
-    const built = roomWalls(room(3, 3, true, [[0, 0.2], [4, 4.3]]), NO_DOOR)!
+    const built = roomWalls(room(3, 3, true, [[0, 0.2], [4, 4.3]]))!
     expect(built.count, '동·서·남 아홉에 북쪽 셋이 더 붙는다').toBe(12)
     const [lo, hi] = northBand(built)
     expect(lo, '굽도리 꼭대기에서 시작한다').toBeCloseTo(0.2, 6)
@@ -200,7 +193,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
 
   it('벽이 눈높이보다 낮으면 그 위만 잇는다', () => {
     // 굴처럼 사방이 막혔는데 북쪽만 2.8타일이다. `MIN_HEIGHT` 3까지 0.2가 뜬다
-    const built = roomWalls(room(3, 3, true, [[0, 2.8]]), NO_DOOR)!
+    const built = roomWalls(room(3, 3, true, [[0, 2.8]]))!
     expect(built.count, '아홉에 북쪽 셋').toBe(12)
     const [lo, hi] = northBand(built)
     expect(lo).toBeCloseTo(2.8, 6)
@@ -215,7 +208,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
    * 그렇다 (`pnpm holes`, 맵 573)
    */
   it('바닥 밑으로만 뻗은 옆면에는 안 세운다 — 뜬 발판을 상자로 만들지 않는다', () => {
-    const built = roomWalls(room(3, 3, true, [[-2, 0]]), NO_DOOR)
+    const built = roomWalls(room(3, 3, true, [[-2, 0]]))
     expect(built?.count ?? 0, '북쪽은 단이 내려가는 자리다. 아홉 그대로다').toBe(9)
   })
 
@@ -250,7 +243,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
     g.setIndex(idx)
     const groups = split.groups.map((gr) => [...gr] as [number, number, number])
     groups[groups.length - 1]![1] += 6
-    const built = roomWalls({ ...split, geometry: g, groups }, NO_DOOR)!
+    const built = roomWalls({ ...split, geometry: g, groups })!
     expect(built.count, '아홉에 빠진 북쪽 한 칸이 더 붙는다').toBe(10)
     const [lo, hi] = northBand(built)
     expect(lo, '바닥에서 시작한다').toBeCloseTo(0, 6)
@@ -287,7 +280,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
     g.setIndex(idx)
     const groups = split.groups.map((gr) => [...gr] as [number, number, number])
     groups[groups.length - 1]![1] += 6
-    const built = roomWalls({ ...split, geometry: g, groups }, NO_DOOR)!
+    const built = roomWalls({ ...split, geometry: g, groups })!
     // 북 3 · 동 3 · 남 3. 서쪽은 벽이 있다
     expect(built.count, '발치만 덮인 가운데 칸도 같이 선다').toBe(9)
     const [lo, hi] = northBand(built)
@@ -296,7 +289,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
   })
 
   it('세운 판은 청크 재질을 그대로 쓴다 — 벽 그림을 베껴 왔으므로', () => {
-    const built = roomWalls(room(3, 3), NO_DOOR)!
+    const built = roomWalls(room(3, 3))!
     // 서브메시 1이 벽이다. 세운 판도 그 번호로 그려져야 같은 그림이 붙는다
     expect(built.groups.map((g) => g[2])).toEqual([1])
   })
@@ -305,17 +298,7 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
     const empty: Split = {
       cells: new Map(), shadows: new Set(), geometry: new BufferGeometry(), groups: [],
     }
-    expect(roomWalls(empty, NO_DOOR)).toBeNull()
-  })
-
-  it('청크 원점을 더해 월드 좌표로 문을 묻는다', () => {
-    const asked: [number, number][] = []
-    roomWalls(room(2, 2), (tx, tz) => { asked.push([tx, tz]); return false }, { x: 100, z: 200 })
-    expect(asked.length).toBeGreaterThan(0)
-    for (const [tx, tz] of asked) {
-      expect(tx).toBeGreaterThanOrEqual(100)
-      expect(tz).toBeGreaterThanOrEqual(200)
-    }
+    expect(roomWalls(empty)).toBeNull()
   })
 
   it('셀 열쇠가 청크 로컬 좌표 범위를 벗어나지 않는다', () => {

@@ -36,7 +36,7 @@ import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
-import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
+import { isOutdoors, mapById, world } from '../engine/map/world'
 import { markTerrain, openTerrainRequest, traceTerrain } from './terrainMark'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
@@ -973,13 +973,6 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          */
         const indoor = header !== null && !isOutdoors(header)
           && !isDistortionFloor(world.mapId ?? -1)
-        const doors = new Set<number>()
-        if (indoor) {
-          for (const w of warpsOf(world.mapId ?? -1)) {
-            for (let dx = -1; dx <= 1; dx += 1) doors.add(solidKey(w.x + dx, w.z))
-          }
-        }
-        const isDoor = (tx: number, tz: number): boolean => doors.has(solidKey(tx, tz))
 
         const plates = new Set<number>()
         for (const p of pieces) {
@@ -1146,13 +1139,10 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             geometry: split.geometry,
             materials,
             // 원작 실내는 카메라가 고정이라 **안 보이는 쪽 벽을 안 만들었다** —
-            // 문이 있는 앞벽이 그렇다. 출입구만 비우고 세운다 (`roomWalls.ts`).
+            // 문이 있는 앞벽이 그렇다. 출입구까지 다 세운다 (`roomWalls.ts`).
             // 실외에는 안 건다: 거기서 바닥이 끝나는 자리는 맵 가장자리라
             // 벽을 세우면 세계가 상자 안에 갇힌다
-            room: indoor
-              ? roomWalls(split, isDoor, { x: originX, z: originZ },
-                (g) => cutout[g] !== true)
-              : null,
+            room: indoor ? roomWalls(split, (g) => cutout[g] !== true) : null,
             // ⚠️ **방 벽은 안 합친다.** 나머지 셋은 그림자를 던지는데 방 벽은
             // 받기만 한다 — 합치면 안 보이는 앞벽이 방 안에 그림자를 드리운다
             merged: mergeByMaterial(
