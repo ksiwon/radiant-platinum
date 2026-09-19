@@ -119,13 +119,18 @@ function build(buffer: ArrayBuffer, fmt: ChunkFormat): ChunkMesh {
     for (let a = 0; a < 2; a++) uv[i * 2 + a] = view.getFloat32(o + 8 + a * 4, true)
     for (let a = 0; a < 3; a++) color[i * 3 + a] = view.getUint8(o + 20 + a) / 255
   }
-  const indices = new Uint16Array(buffer, head + n * stride, meta.indices)
+  const raw = new Uint16Array(buffer, head + n * stride, meta.indices)
+  const sills: Sill[] = []
+  closeCaveMouths(position, uv, raw, meta, color, sills)
+  const { position: allPos, uv: allUv, color: allColor, indices, submeshes } =
+    withSills(position, uv, color, raw, meta.submeshes, sills)
+  meta.submeshes = submeshes
 
   const geometry = new BufferGeometry()
-  geometry.setAttribute('position', new BufferAttribute(position, 3))
-  geometry.setAttribute('uv', new BufferAttribute(uv, 2))
-  geometry.setAttribute('color', new BufferAttribute(color, 3))
-  geometry.setIndex(new BufferAttribute(new Uint16Array(indices), 1))
+  geometry.setAttribute('position', new BufferAttribute(allPos, 3))
+  geometry.setAttribute('uv', new BufferAttribute(allUv, 2))
+  geometry.setAttribute('color', new BufferAttribute(allColor, 3))
+  geometry.setIndex(new BufferAttribute(indices, 1))
   // ⚠️ **롬 법선은 안 쓴다.** 파일에는 들어 있지만 라이팅에 못 쓸 값이다 —
   // 청크 0의 나무 600삼각형이 쓰는 법선이 (0,104,73)과 (0,127,0) 둘뿐이고
   // 둘 다 위를 본다. 원작 필드는 조명을 안 걸고 그리니까 그래도 됐지만, 우리는
@@ -146,6 +151,210 @@ function build(buffer: ArrayBuffer, fmt: ChunkFormat): ChunkMesh {
     groups: meta.submeshes,
   }
 }
+
+/**
+ * 동굴 입구 틀의 **안쪽 끝을 타일 경계까지 늘린다.**
+ *
+ * `dhole`은 천관산 등의 동굴 입구로 쓰이는 틀이다. 청크 다섯(377·381·578·637·641)에
+ * 똑같이 찍혀 있고, 바닥과 옆벽이 **타일 경계 1/8칸 앞**(z 7.875)에서 끝난다.
+ * 그 뒤를 막는 절벽(`criff`)은 옆 청크의 것이라 경계(z 8)에 서고 아랫변이
+ * y 0.926이다 — 바닥 끝(0.9375)보다 1.15/100타일밖에 안 낮다.
+ *
+ * 원작은 남쪽 위에서만 내려다보므로 그 1/8칸이 절벽 뒤에 숨었다. 1인칭으로
+ * 내려다보면 5.3°만 숙여도 광선이 바닥 끝을 지나 절벽 아랫변 **밑으로** 빠져서
+ * 하늘이 한 줄 보인다. 실측(2026-09-19, 맵 220 · `pnpm shot --near`/`--hit`):
+ * 화면 y 392~400에서 첫 히트가 알파로 잘리는 앞 카드뿐이고 그 뒤에 아무 면도
+ * 없었다 — 흰 띠는 그때의 **하늘색**이었다.
+ *
+ * ⚠️ **색을 덮지 않는다.** 하늘을 어둡게 하거나 양면을 켜는 것은 틈을 감출 뿐이다.
+ * 모자란 것은 기하 1/8칸이라 그만큼만 늘린다. 바닥은 기울기를, 그림은 UV를
+ * 같은 비율로 이어 붙인다 — 끝을 경계로 끌기만 하면 마지막 6%가 늘어난다.
+ *
+ * 안쪽 끝을 가르는 기준은 **키 큰 옆벽이 닿는 쪽**이다. 입구 쪽은 아치라 옆벽의
+ * 위쪽이 거기까지 안 온다
+ */
+export function closeCaveMouths(
+  position: Float32Array, uv: Float32Array, indices: ArrayLike<number>, meta: ChunkMeta,
+  color?: Float32Array, sills?: Sill[],
+): number {
+  let moved = 0
+  for (const [sub, [mat, start, count]] of meta.submeshes.entries()) {
+    if (meta.materials[mat]?.tex !== CAVE_MOUTH) continue
+    const verts = new Set<number>()
+    /**
+     * 누운 면(바닥)의 정점. **높이로 가르면 안 된다** — 입구 옆벽의 아랫단이
+     * 바닥과 같은 높이대라, 높이로 자르면 벽 정점이 바닥 기울기를 받아 들린다.
+     * 사각형마다 정점을 따로 가지므로 삼각형의 방향으로 가르면 깨끗하다
+     */
+    const floorVerts = new Set<number>()
+    for (let t = start; t + 2 < start + count; t += 3) {
+      const a = indices[t]!, b = indices[t + 1]!, c = indices[t + 2]!
+      verts.add(a); verts.add(b); verts.add(c)
+      const ux = position[b * 3]! - position[a * 3]!, uy = position[b * 3 + 1]! - position[a * 3 + 1]!
+      const uz = position[b * 3 + 2]! - position[a * 3 + 2]!
+      const vx = position[c * 3]! - position[a * 3]!, vy = position[c * 3 + 1]! - position[a * 3 + 1]!
+      const vz = position[c * 3 + 2]! - position[a * 3 + 2]!
+      const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx
+      const len = Math.hypot(nx, ny, nz)
+      if (len > 1e-9 && Math.abs(ny) / len > 0.9) { floorVerts.add(a); floorVerts.add(b); floorVerts.add(c) }
+    }
+    if (verts.size === 0 || floorVerts.size === 0) continue
+    const list = [...verts]
+    const y = (i: number): number => position[i * 3 + 1]!
+    const floorTop = Math.max(...[...floorVerts].map(y))
+    // 키 큰 옆벽 — 바닥보다 한참 높이 올라간 정점들
+    const tall = list.filter((i) => y(i) > floorTop + 0.5)
+    if (tall.length < 2) continue
+    // 옆벽이 얇은 축이 옆이고, 나머지 수평축이 깊이다
+    const spread = (axis: 0 | 2, of: number[]): number =>
+      Math.max(...of.map((i) => position[i * 3 + axis]!)) - Math.min(...of.map((i) => position[i * 3 + axis]!))
+    const depth: 0 | 2 = spread(0, tall) >= spread(2, tall) ? 2 : 0
+    const along = (i: number): number => position[i * 3 + depth]!
+    const floor = [...floorVerts]
+    const open = [Math.min(...floor.map(along)), Math.max(...floor.map(along))]
+    const tallEnds = [Math.min(...tall.map(along)), Math.max(...tall.map(along))]
+    // 안쪽 끝은 바닥의 양끝 중 **옆벽이 닿는 쪽**이다
+    const far = Math.abs(open[1]! - tallEnds[1]!) < 1e-3 ? open[1]!
+      : Math.abs(open[0]! - tallEnds[0]!) < 1e-3 ? open[0]! : null
+    if (far === null) continue
+    const mouth = far === open[1] ? open[0]! : open[1]!
+    const edge = far > mouth ? Math.ceil(far) : Math.floor(far)
+    const delta = edge - far
+    // 1/4칸보다 멀면 이 틀이 아니다 — 모르는 모양은 안 건드린다
+    if (Math.abs(delta) < 1e-4 || Math.abs(delta) > 0.25) continue
+    const side: 0 | 2 = depth === 2 ? 0 : 2
+    /** 바닥 그림이 깊이 1타일에 움직이는 UV. 문턱 면을 접어 올릴 때 쓴다 */
+    let floorRate: [number, number] | null = null
+    for (const i of list) {
+      if (Math.abs(along(i) - far) > 1e-4) continue
+      // 같은 옆자리·같은 높이(벽) 또는 같은 옆자리(바닥)의 입구 쪽 짝으로 기울기를 잰다
+      const isFloor = floorVerts.has(i)
+      const mate = list.find((j) => j !== i
+        && floorVerts.has(j) === isFloor
+        && Math.abs(along(j) - mouth) < 1e-4
+        && Math.abs(position[j * 3 + side]! - position[i * 3 + side]!) < 1e-4
+        && (isFloor || Math.abs(y(j) - y(i)) < 1e-4))
+      const run = far - mouth
+      if (mate !== undefined && isFloor && Math.abs(run) > 1e-6 && floorRate === null) {
+        floorRate = [(uv[i * 2]! - uv[mate * 2]!) / run, (uv[i * 2 + 1]! - uv[mate * 2 + 1]!) / run]
+      }
+      if (mate !== undefined && Math.abs(run) > 1e-6) {
+        const k = delta / run
+        if (isFloor) position[i * 3 + 1] = y(i) + (y(i) - y(mate)) * k
+        uv[i * 2] = uv[i * 2]! + (uv[i * 2]! - uv[mate * 2]!) * k
+        uv[i * 2 + 1] = uv[i * 2 + 1]! + (uv[i * 2 + 1]! - uv[mate * 2 + 1]!) * k
+      }
+      position[i * 3 + depth] = edge
+      moved++
+    }
+
+    /**
+     * **안쪽 끝에 문턱 면을 세운다.**
+     *
+     * ⚠️ **늘리기만으로는 다 안 닫힌다.** 뒤 절벽의 아랫단(y 0.926~1)이 조각마다
+     * 있다 없다 한다 — 맵 220에서 x 30~32 조각에는 있고 x 32~33 조각에는 없어서,
+     * 거기는 바닥 끝(0.941)과 절벽 밑변(1.0) 사이 6/100칸이 계속 열려 있었다
+     * (실측 `.audit/r5-coronet-sliver.log`). 옆 청크의 모양은 여기서 모르므로,
+     * 틀 **제 옆벽 아랫단과 같은 높이**까지 뒤를 막는다 — 그 높이는 틀 자신이
+     * 이미 쓰는 값이다.
+     *
+     * 그림은 **바닥을 그대로 접어 올린다.** 바닥 끝의 UV에서 시작해 바닥이 깊이
+     * 1타일에 움직이는 만큼씩 높이를 따라 잇는다 — 한 줄을 늘이지 않는다
+     */
+    if (sills === undefined || floorRate === null) continue
+    const farFloor = [...floorVerts].filter((i) => Math.abs(position[i * 3 + depth]! - edge) < 1e-4)
+    const lowWall = list.filter((i) => !floorVerts.has(i)
+      && Math.abs(position[i * 3 + depth]! - edge) < 1e-4 && y(i) < floorTop + 0.5)
+    if (farFloor.length < 2 || lowWall.length === 0) continue
+    const top = Math.max(...lowWall.map(y))
+    const bySide = [...farFloor].sort((a, b) => position[a * 3 + side]! - position[b * 3 + side]!)
+    const a = bySide[0]!, b = bySide[bySide.length - 1]!
+    if (!(top > Math.max(y(a), y(b)) + 1e-4)) continue
+    const corner = (i: number, up: number): { p: [number, number, number], t: [number, number] } => {
+      const p: [number, number, number] = [position[i * 3]!, up, position[i * 3 + 2]!]
+      const rise = up - y(i)
+      return { p, t: [uv[i * 2]! + floorRate![0] * rise, uv[i * 2 + 1]! + floorRate![1] * rise] }
+    }
+    const q = [corner(a, y(a)), corner(b, y(b)), corner(b, top), corner(a, top)]
+    // 입구 쪽을 보게 감는다. 감는 순서가 앞뒤를 정한다 — 뒤집히면 안에서 안 보인다
+    const ux = q[1]!.p[0] - q[0]!.p[0], uz = q[1]!.p[2] - q[0]!.p[2]
+    const vy = q[2]!.p[1] - q[0]!.p[1]
+    const nDepth = depth === 2 ? ux * vy : -uz * vy
+    const facing = Math.sign(mouth - edge)
+    const order = Math.sign(nDepth) === facing ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2]
+    const col = (i: number): [number, number, number] =>
+      (color ? [color[i * 3]!, color[i * 3 + 1]!, color[i * 3 + 2]!] : [1, 1, 1])
+    sills.push({
+      submesh: sub,
+      position: q.flatMap((c) => c.p),
+      uv: q.flatMap((c) => c.t),
+      color: [...col(a), ...col(b), ...col(b), ...col(a)],
+      order,
+    })
+  }
+  return moved
+}
+
+/** 틀 안쪽 끝에 새로 세우는 면 하나 (`closeCaveMouths`) */
+export interface Sill {
+  /** 어느 서브메시에 붙는가 — 그 재질로 그린다 */
+  submesh: number
+  /** 네 꼭짓점 × xyz */
+  position: number[]
+  uv: number[]
+  color: number[]
+  /** 네 꼭짓점을 두 삼각형으로 잇는 순서 */
+  order: number[]
+}
+
+/**
+ * 새 면을 **그 서브메시의 색인 구간 안에** 끼워 넣는다.
+ *
+ * 뒤에 따로 붙이면 안 된다 — 서브메시 목록(`groups`)을 읽는 쪽이 여럿이라
+ * (그림자 가르기·방 벽 훑기) 구간 밖의 면은 그들 눈에 없다. 뒤따르는 서브메시의
+ * 시작만 그만큼 민다
+ */
+function withSills(
+  position: Float32Array, uv: Float32Array, color: Float32Array,
+  indices: Uint16Array, submeshes: [number, number, number][], sills: readonly Sill[],
+): {
+  position: Float32Array, uv: Float32Array, color: Float32Array,
+  indices: Uint16Array, submeshes: [number, number, number][],
+} {
+  const base = position.length / 3
+  if (sills.length === 0 || base + sills.length * 4 > 0xffff) {
+    return { position, uv, color, indices: new Uint16Array(indices), submeshes }
+  }
+  const pos = new Float32Array(position.length + sills.length * 12)
+  pos.set(position)
+  const tex = new Float32Array(uv.length + sills.length * 8)
+  tex.set(uv)
+  const col = new Float32Array(color.length + sills.length * 12)
+  col.set(color)
+  const out = new Uint16Array(indices.length + sills.length * 6)
+  const subs: [number, number, number][] = []
+  let at = 0
+  sills.forEach((one, k) => {
+    pos.set(one.position, (base + k * 4) * 3)
+    tex.set(one.uv, (base + k * 4) * 2)
+    col.set(one.color, (base + k * 4) * 3)
+  })
+  for (const [sub, [mat, start, count]] of submeshes.entries()) {
+    const from = at
+    out.set(indices.subarray(start, start + count), at)
+    at += count
+    sills.forEach((one, k) => {
+      if (one.submesh !== sub) return
+      // 꼭짓점 번호는 **배열 자리**로 정한다 — 서브메시 순서와 같다고 믿지 않는다
+      for (const o of one.order) out[at++] = base + k * 4 + o
+    })
+    subs.push([mat, from, at - from])
+  }
+  return { position: pos, uv: tex, color: col, indices: out, submeshes: subs }
+}
+
+/** 동굴 입구 틀의 그림 이름 (`closeCaveMouths`) */
+const CAVE_MOUTH = 'dhole'
 
 /**
  * 맵 소품(집·간판) 하나. 청크와 파일 형식이 같다.

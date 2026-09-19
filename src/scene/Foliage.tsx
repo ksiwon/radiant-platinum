@@ -27,13 +27,14 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
-  BufferAttribute, BufferGeometry, Color, DataTexture, Frustum, IcosahedronGeometry,
+  Box3, BufferAttribute, BufferGeometry, Color, DataTexture, Frustum, IcosahedronGeometry,
   InstancedMesh, Matrix4, MeshBasicMaterial, MeshLambertMaterial, MultiplyBlending,
-  OctahedronGeometry, Quaternion, Sphere, Vector3,
+  OctahedronGeometry, PerspectiveCamera, Quaternion, Sphere, Vector3,
 } from 'three'
 import { worldState } from '../state/worldState'
 import { cellX, cellZ, type Cell, type TreeSite } from './plates'
 import { setInstances } from './instances'
+import { pickLod, screenPixels, type LodBand } from './screenLod'
 
 /** 잎 덩이의 세로 눌림. 1이면 완전한 공이라 버섯처럼 보인다 */
 const CROWN_SQUASH = 0.8
@@ -657,16 +658,6 @@ export function treeAt(
 }
 
 /**
- * 이 거리부터 값싼 모양으로 바꾼다 (타일).
- *
- * 30타일이면 나무 하나가 화면에서 180픽셀쯤이다. 그 크기에서 잎 덩이의 세분
- * (80면과 20면)과 줄기 단면(6각과 3각)은 구별이 안 된다 — 실루엣만 지키면 된다.
- * 그보다 가까우면 1인칭으로 밑동까지 걸어가므로 온전한 모양이 필요하다
- */
-const LOD_DISTANCE = 30
-/** 나무를 감싸는 공의 반지름 (반지름 배수). 프러스텀 판정에 쓴다 */
-const TREE_SPHERE = 1.35
-/**
  * 화면 밖이어도 이만큼은 남긴다 (타일).
  *
  * **그림자 때문이다.** 화면 밖 나무도 그림자는 화면 안에 질 수 있다. 태양이
@@ -717,6 +708,19 @@ const shrink = new Vector3()
 const viewProj = new Matrix4()
 const frustum = new Frustum()
 const sphere = new Sphere()
+const depth = new Vector3()
+
+/**
+ * 그 모양의 **자기 좌표 상자** — 밑동(원점)까지 넣는다.
+ *
+ * 수관 지오메트리는 이미 수관 높이로 올려 둔 것이라 그 상자만 쓰면 줄기 몫이
+ * 빠진다. 줄기는 가로 배율이 따로라(`TRUNK_R`) 상자에 굵기는 안 보태고 높이만
+ * 땅까지 내린다
+ */
+function localBounds(geo: BufferGeometry): Box3 {
+  if (!geo.boundingBox) geo.computeBoundingBox()
+  return geo.boundingBox!.clone().expandByPoint(new Vector3(0, 0, 0))
+}
 
 function shapeOf(key: string, leaf: number[], far: boolean): BufferGeometry {
   const id = far ? `${key}/far` : key
@@ -757,6 +761,7 @@ export function Foliage(
   { groups, ground, clear }: { groups: FoliageGroup[]; ground?: GroundAt; clear?: ClearAt },
 ) {
   const camera = useThree((s) => s.camera)
+  const viewport = useThree((s) => s.size.height)
 
   const meshes = useMemo(() => groups.map((g) => {
     const matrices: Matrix4[] = []
@@ -795,20 +800,27 @@ export function Foliage(
     shade.name = '밑동 그림자'
     shade.frustumCulled = false
     setInstances(shade, 0)
+    // ⚠️ **감싸는 공과 키는 실제 모양에서 잰다** (FIRST_PERSON §10.2). 예전에는
+    // 반지름 배수 1.35와 수관 높이 상수로 잡았는데, 모양이 바뀌면 그 상수가
+    // 모양을 모른다 — 절두체가 큰 나무의 끝을 자르거나 작은 나무를 괜히 남긴다.
+    // 수관 모양의 상자에 **밑동(원점)**을 더한다: 줄기가 땅까지 내려오기 때문이다
+    const box = localBounds(shapeOf(g.key, g.leaf, false))
+    const local = box.getBoundingSphere(new Sphere())
+    const tall = box.max.y - box.min.y
     // 카메라와의 거리는 **잎**으로 잰다. 화면을 가리는 것이 잎이라 밑동으로 재면
     // 나무가 나보다 키가 큰 만큼 늦게 비켜 준다
-    const spots = matrices.map((m) => {
-      const p = new Vector3().setFromMatrixPosition(m)
-      return p.setY(p.y + CROWN_Y * new Vector3().setFromMatrixScale(m).x)
-    })
-    const radius = matrices.map((m) => TREE_SPHERE * new Vector3().setFromMatrixScale(m).x)
+    const spots = matrices.map((m) => local.center.clone().applyMatrix4(m))
+    const radius = matrices.map((m) => local.radius * new Vector3().setFromMatrixScale(m).x)
+    const height = matrices.map((m) => tall * new Vector3().setFromMatrixScale(m).y)
+    /** 그루마다 지난번 고른 모양. 경계에서 왕복하지 않게 들고 있는다 */
+    const bands = matrices.map((): LodBand | null => null)
     // 줄기 행렬은 미리 뽑아 둔다 — 프레임마다 분해하면 그루당 한 번씩이다
     const stems = matrices.map((m) => stemMatrix(m, new Matrix4()))
     return {
       key: g.key,
       near: make(false, false), far: make(true, false),
       stemNear: make(false, true), stemFar: make(true, true),
-      shade, matrices, stems, spots, radius,
+      shade, matrices, stems, spots, radius, height, bands,
     }
   }), [groups, ground, clear])
 
@@ -826,6 +838,7 @@ export function Foliage(
     const active = worldState.camera.mode !== 'first'
     viewProj.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
     frustum.setFromProjectionMatrix(viewProj)
+    const fov = (camera as PerspectiveCamera).fov ?? 55
     for (const g of meshes) {
       let n = 0, f = 0, s = 0
       for (let i = 0; i < g.spots.length; i++) {
@@ -840,7 +853,15 @@ export function Foliage(
         scaled.copy(g.matrices[i]!)
         stem.copy(g.stems[i]!)
         if (k < 1) { scaled.scale(shrink.setScalar(k)); stem.scale(shrink) }
-        if (distance < LOD_DISTANCE) {
+        // ⚠️ **거리가 아니라 화면 크기로 고른다** (`screenLod`). 깊이는 카메라
+        // 앞쪽 축으로 잰다 — 화면 가장자리의 나무는 거리보다 깊이가 짧다
+        depth.copy(spot).applyMatrix4(camera.matrixWorldInverse)
+        const px = screenPixels(g.height[i]! * k, viewport, -depth.z, fov)
+        const band = pickLod(px, g.bands[i] ?? null)
+        g.bands[i] = band
+        // 모양은 둘뿐이다 — 중간과 먼 것은 같은 값싼 모양을 쓴다. 명세도 첫 판의
+        // 원경은 **작은 3D 메시를 유지**하라고 한다
+        if (band === 0) {
           g.near.setMatrixAt(n, scaled)
           g.stemNear.setMatrixAt(n++, stem)
         } else {
