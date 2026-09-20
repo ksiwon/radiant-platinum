@@ -803,14 +803,19 @@ async function openTitle() {
       + ` · ${String(alive.why)} · ${String(alive.ms)}ms) — 게임을 안 열었다`)
   }
   /**
-   * ⚠️ **180초로는 붐비는 기계에서 첫 쪽이 안 온다.** vite는 「준비됐다」를 찍은
-   * 뒤에도 모듈 그래프를 계속 변환하고, 첫 `goto`가 그 뒤를 기다린다 —
-   * 실측(2026-09-16 `_title42`) 한가한 나무에서 **154초**였고,
-   * 실측(2026-09-17 journey9) `pnpm check` 바로 뒤의 붐비는 나무에서는
-   * **180초를 넘겨** 판이 통째로 「검사가 끝까지 갔다 FAIL」로 떨어졌다 —
-   * 게임은 열어 보지도 못한 채였다. 아래 「시작」 기다림과 같은 300초로 맞춘다
+   * ⚠️ **상한을 실측 편차보다 넉넉히 준다.** vite는 「준비됐다」를 찍은 뒤에도
+   * 모듈 그래프를 계속 변환하고, 첫 `goto`가 그 뒤를 기다린다. 이 한 값이 실측으로
+   * 이만큼 흔들렸다 — **154초**(2026-09-16 `_title42`, 한가한 나무) ·
+   * **183초**(2026-09-20, `timings.coldTitleMs`) · **180초 초과**(2026-09-17 journey9,
+   * `pnpm check` 직후) · **300초 초과 두 판**(2026-09-20). 세 배가 넘게 벌어지므로
+   * 빠듯하게 맞추면 붐빌 때마다 판이 통째로 「검사가 끝까지 갔다 FAIL」로 떨어지고,
+   * 그 줄은 밖에서 **게임의 실패**로 읽힌다 — 게임은 열어 보지도 못한 채다.
+   * `devServer.mjs`가 스스로에게 주는 예산과 같은 **10분**으로 맞춘다.
+   *
+   * ⚠️ **숨기는 것이 아니다.** 걸린 시간은 `timings.coldTitleMs`에 그대로 남고,
+   * 늦게 열린 판은 §2.1의 비교에서 드러난다
    */
-  await page.goto(url, { waitUntil: 'load', timeout: 300_000 })
+  await page.goto(url, { waitUntil: 'load', timeout: 600_000 })
   const start = page.getByRole('button', { name: '시작', exact: true })
   /**
    * ⚠️ **120초로는 붐비는 기계에서 문이 안 열린다.** 실측(2026-09-16 `_title42`):
@@ -824,7 +829,7 @@ async function openTitle() {
    * 남고, 오래 걸린 판은 §2.1의 비교에서 드러난다. 여기서 재는 것은
    * 「화면이 뜨는가」지 「몇 초에 뜨는가」가 아니다
    */
-  await start.waitFor({ timeout: 300_000 })
+  await start.waitFor({ timeout: 600_000 })
   return { ms: Date.now() - t0, start }
 }
 
