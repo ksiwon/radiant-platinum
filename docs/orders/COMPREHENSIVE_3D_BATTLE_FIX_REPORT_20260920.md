@@ -254,3 +254,62 @@ fetch failed`로 섰다. 프로세서 대기열은 0이었으므로 CPU 포화�
   지시서가 요구한 공유는 되어 있다. 화면 실측은 위 §4로 닫았다.
 - **§5 점프 턱** `ledgeVisual.ts`(`lipHeight: 0.18`)를 import 하는 곳은 `Ledges.tsx`와 그
   시험뿐이다 — 엔진의 충돌·점프 규칙은 이 값을 아예 안 본다.
+
+## 7. 배포와 배포판 확인 (2026-09-20~21)
+
+`master`에 `62622d8` 하나를 올렸다. 그 뒤 순서는 DEPLOY.md §1이 못박은 대로 돌았다 —
+**push → 호스트 재배포 → 여기 재빌드 → `verify:deploy` → `pnpm e2e` 완주.**
+
+| | 결과 |
+|---|---|
+| 호스트 엔트리 | `assets/index-Bgb0sSyf.js` — 재빌드한 로컬 `dist`와 **같다** |
+| `verify:deploy https://radiant.siwon.it.kr/` | 통과 · 응답 CSP가 정본과 같다 (`frame-ancestors 'none'`까지) |
+| `pnpm e2e` | **PASS 29 · FAIL 0 · BLOCKED 0 · NOT RUN 0** |
+| `pnpm release:check` | **배포 경계 통과 (post)** · blocker 0건 |
+| `pnpm journey` (배포 뒤 한 판 더) | **PASS 23 · FAIL 0 · BLOCKED 0** |
+
+남은 `▲` 한 줄은 감수하기로 한 앱 셸 그림이고 막힌 것이 아니다 (COPYRIGHT.md §11).
+
+### 7.1 1인칭 — 실내에 천장이 없다 (미구현, 새로 잰 것)
+
+`node tools/audit/firstPersonAudit.mjs` (WebGPU · 장소 13곳 · 방위 8 × 고개 3 = 곳당 24장).
+진짜 V키로 들어가 설정값과 `worldState.camera.mode`가 둘 다 `first`인 것을 확인한 촬영이다.
+
+| 판정 | 장소 |
+|---|---|
+| CAPTURED | room · twinleaf · forest · jubilife · sunyshore · route217 · gym2 · distortion |
+| FAILED_VISUAL (한 색 화면) | canalave · center · mart · library · wayward |
+
+그림을 열어 보니 **한 원인이다 — 실내에 천장 판이 없어 위쪽이 검은 허공이다.**
+센터에서 고개를 +25도만 들면 화면의 2/3가 검정이고(`center/y000_pp25.png`), 마트·도서관도
+같다. 벽 위가 통째로 비어 있다.
+
+**이것은 회귀가 아니라 아직 안 만든 것이다.** 근거 두 곳:
+
+- `src/engine/actor/camera.ts:35` — 「우리 기본값 26.57도로 방을 보면 **천장 없는 벽 위
+  허공**이 화면에 든다 — 원작은 50~68도로 내려다봐서 그 허공을 안 본다」. 그래서 3인칭은
+  원작 내림각 열일곱 갈래(`FIELD_CAMERA_PITCH`)를 따라가 그 허공을 프레임 밖으로 民다.
+  1인칭은 눈이 머리에 붙어 수평을 보므로 그 방어가 안 듣는다.
+- `docs/FIRST_PERSON_VISUAL_IMPROVEMENT_PLAN.md:391` — 「천장은 방의 실제 유형별 opt-in.
+  1인칭에서 위를 볼 때 필요하더라도 3인칭 카메라와 기존 가림을 별도 처리한다. **모든
+  indoor 플래그에 천장을 붙이지 않는다**」.
+
+천장이 **있는** 실내도 있다 — 주인공 방(`room/y000_pp25.png`, 널과 들보)과 217번도로
+게이트(`route217/y000_pp25.png`, 나무 천장)는 위를 봐도 채워져 있다. 즉 구조가 못 하는
+것이 아니라 방 유형별로 아직 안 붙인 것이다.
+
+⚠️ **안 고쳤다.** 어느 방에 어떤 천장을 붙일지는 위 계획서가 opt-in으로 두기로 한
+갈림길이라 여기서 임의로 정하지 않는다.
+
+`canalave`·`wayward`의 한 색 화면은 성격이 다르다 — 확인 지점이 벽 바로 앞에 서서
+그 방향이 벽으로 꽉 찬 것이다(`canalave/y000_pp0.png`). 화면 결함으로 읽지 않았다.
+
+### 7.2 3D와 영원시티까지의 진행
+
+- **3D** — `story` 88장면 + 엔딩이 각 장면의 삼각형 수·프레임·색을 재서 **PASS 90 · FAIL 0**.
+  배포판 쪽은 `e2e` ㉙이 설치본으로 열어 `distortion 143.1k · battletower 128.7k ·
+  poketch 236.3k` 삼각형을 직접 쟀고, ㉖이 실제 플레이 644초에서 **프레임 중앙값 60 ·
+  p10 32**, 게임 중 외부 요청 0건, 콘솔 오류 0건이다.
+- **영원시티까지** — `journey`가 새 게임에서 방향키·A·B만으로 무쇠 배지 → 영원시티 →
+  꽃시계 → 유채까지 이어 **배지 2개**로 끝났다. 배포 전후로 두 판 모두 `PASS 23 · FAIL 0`.
+  캔버스를 떼어 잰 ⑮가 정지점 12곳에서 `지형칸 8/8`이다.
