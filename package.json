@@ -125,7 +125,8 @@
     "render:first": "node tools/e2e/firstFrame.mjs",
     "gen:battleStrings": "node tools/extract/battleStringsModule.cjs",
     "gauge": "node tools/e2e/battleGauge.mjs",
-    "potionrow": "node tools/e2e/potionRow.mjs"
+    "potionrow": "node tools/e2e/potionRow.mjs",
+    "capture": "node tools/e2e/captureBall.mjs"
   },
   "dependencies": {
     "@pkmn/protocol": "^0.7.3",
