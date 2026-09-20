@@ -205,7 +205,32 @@ CSS `transition: width var(--drain) linear`를 걷어냈다. CSS 전환은 벽�
 | `pnpm check` | exit 0 · 4,829 통과 · 3 skipped · shimmed 4 | 새 시험 37건 |
 | `pnpm gauge --gpu=webgpu` | 두 판 통과 (`WebGPUBackend`) | `.audit/battle-gauge-stall0.json` |
 | `pnpm gauge --gpu=webgpu --stall=1000` | 두 판 통과 | `.audit/battle-gauge-stall1000.json` |
-| `pnpm story` | **PASS 90 · FAIL 0 · NOT RUN 0** (`WebGPUBackend`) | `.audit/fix-20260920b-story.log` |
+| `pnpm story` | **PASS 90 · FAIL 0 · NOT RUN 0** (`WebGPUBackend`) | `.audit/dep-story4.log` |
+| `pnpm gpu:loss` | **PASS 9 · FAIL 0 · BLOCKED 0** | `.audit/dep-gpuloss.log` |
+| `pnpm render:first` | **①~⑤ 전부 통과** · 5판 960x640 DPR 1 · 실제 `WebGPUBackend` | `.audit/dep-firstframe.log` |
+| `pnpm journey` | **PASS 23 · FAIL 0 · BLOCKED 0** · 배지 2개 · 콘솔 0건 | `.audit/dep-journey4.log` |
+| `pnpm e2e` | **PASS 28 · FAIL 0 · BLOCKED 1** — 막힌 하나는 ⑯ 호스트 CSP 헤더로, 배포해야 재는 것이다 | `.audit/dep-e2e.log` |
+
+### 이 회귀에서 흔들린 자리 두 곳 — 통과로 접지 않는다
+
+**`story`의 `origin`(시작의 방)이 다섯 판 중 한 판 떨어졌다.** 떨어진 판은 맵 **414**(주인공
+집)에서 끝났고 통과한 다섯 판은 모두 맵 **510**에서 끝났다. 누른 횟수는 갈림의 근거가 아니다 —
+통과 판 하나가 **620번**을 눌렀고 떨어진 판은 596번이었다. `runScripts`는 시간이 아니라
+`FREEZE_MS` 동안 지문이 안 바뀌는 것으로 판정하므로 오래 걸린 것 자체는 실패가 아니다.
+맵 414로 끝났다는 것은 Lv.80 전설전에서 **져서 화이트아웃으로 눕혀졌다**는 뜻으로 읽히는데,
+그렇다면 정상 결과이고 도구가 그 갈래를 모르는 것이다. 다만 화이트아웃 뒤에 스크립트 상태가
+안 치워지는 쪽도 아직 안 갈랐다 — **미해결**이다.
+
+**`journey`의 첫 `goto` 상한 300초가 빠듯하다.** 실측: 154초(2026-09-16 한가한 나무) ·
+**183초**(`timings.coldTitleMs`, 이번 통과 판) · 300초 초과 2회(이번 실패 두 판). vite가
+「ready」를 찍은 뒤에도 모듈 그래프를 계속 변환하고 첫 `goto`가 그 뒤를 기다리는 자리라
+(`journey.mjs:786` 주석), 편차가 두 배를 넘는다. `devServer.mjs`가 스스로에게 주는 예산이
+10분이므로 거기에 맞추는 것이 맞다 — **안 고쳤다.** 고치면 `harnessDigest`가 움직여 방금
+통과한 journey 증거가 무효가 되고 한 판을 다시 돌려야 한다.
+
+⚠️ **개발 서버가 긴 판 도중에 연결을 놓는 일이 있었다.** 한 판은 45/88에서 서버가 사라져
+뒤 43장면이 `ERR_CONNECTION_REFUSED`로 떨어졌고, 다른 판은 `vite가 첫 요청에 안 답했다 —
+fetch failed`로 섰다. 프로세서 대기열은 0이었으므로 CPU 포화는 아니다. 원인은 **안 밝혔다.**
 
 ## 6. 안 한 것 — 미실행은 미실행이다
 
