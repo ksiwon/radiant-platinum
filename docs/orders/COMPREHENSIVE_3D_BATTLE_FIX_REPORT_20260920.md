@@ -1,0 +1,164 @@
+# 후속 수정 보고 — 2026-09-20 재검토 지시서의 A·B
+
+지시서: `docs/orders/COMPREHENSIVE_3D_BATTLE_REVIEW_20260920.md`
+출발 HEAD: `466343b`. 작업 트리에는 검토자가 앞 지시서에 붙인 안내 한 줄만 있었고 그것은 건드리지 않았다.
+
+이 보고는 **수정 완료 / 의도적 유지 / 검증대기 / 미구현**을 가른다. 안 한 것은 안 한 것으로 적는다.
+
+## 0. 한눈에
+
+| 항목 | 상태 | 근거 |
+|---|---|---|
+| A. HP 감소 중 입력으로 기절이 앞당겨짐 (P1) | **수정 완료** · 단위+화면으로 잠금 | `hpDrainContract.test.ts` 17건 · `.audit/battle-gauge-stall0.json` |
+| B-1. 무대 몸체가 원시 delta를 쓴다 (P1) | **수정 완료** · 시험으로 잠금 | `stageClock.test.ts` 10건 |
+| B-2. HP 표시가 CSS 벽시계다 (P1) | **수정 완료** · 단위+화면으로 잠금 | `hpDrain.test.ts` 10건 · `.audit/battle-gauge-stall1000.json` |
+| B-3. 인물(트레이너) 몸이 벽시계다 | **수정 완료** (지시서가 짚지 않았지만 같은 결함이었다) | `BattleTrainers.tsx` · 아래 §2.3 |
+| 글창 클릭이 키와 다른 조건이었다 | **수정 완료** | `BattleScreen.tsx`의 `tapLog` |
+| 지시서 §4가 시킨 앞 보고서 정리 | **완료** | `COMPREHENSIVE_3D_BATTLE_FIX_REPORT_20260919.md` §0·§8 |
+| §5 3D 범위 · §6 최종 검증표 | **검증대기** | 아래 §4 |
+
+`pnpm check` 종료 코드 0 — 일반 **4,829 통과 · 3 skipped**, shimmed **4 통과**. 재검토 때가 4,792였으므로 새 시험 37건이 늘었다.
+
+## 1. A — 체력이 닳는 동안에는 입력이 다음 사건을 못 당긴다
+
+### 원인
+
+`playback.ts`가 damage·heal 박자를 **그냥 쉼**으로 적었다. `BeatRunner.advance()`는
+`presentation`이 아닌 박자의 `holdLeft`를 0으로 만드는데, 게이지가 닳는 시간이 바로
+그 `hold`였다. 그래서 A·Z·글창 클릭 한 번이 20/20 → 0/20의 48프레임을 **다음 한 걸음**으로
+줄였다.
+
+### 무엇을 했나
+
+`Beat`에 **`gauge`** 를 더했다. 지시서 §2-2가 요구한 대로 「건너뛰기 금지」와 「빠르기 배율」을
+다른 축으로 둔다.
+
+- `presentation` — 무대가 도는 시간. A·Z도 **빠르기 설정도** 못 줄인다.
+- `gauge` — 게이지가 한 칸씩 움직이는 시간. A·Z는 못 줄이지만 **빠르기 설정은 그대로 먹는다.**
+
+`beatRunner`는 둘을 `holdsLocked()`로 묶어 `advance()`에서 막고, `beatFrames()`는
+`presentation`만 배율에서 뺀다. 그래서 「배틀 빠르기」가 체력바에 계속 걸린다 —
+`presentation`을 붙이는 손쉬운 길로 갔다면 그 설정이 죽었다.
+
+글창 클릭(`onClick={script.advance}`)은 키와 조건이 달라서 명령 메뉴나 「어느 기술을
+잊게 할까?」 앞에서도 재생기에 닿았다. 키와 같은 조건(`reading && ask === null`)으로 묶었다.
+
+### 근거 ①: 실제 `buildBeats` + `BeatRunner`
+
+`src/ui/battle/hpDrainContract.test.ts` 17건. 30·60·120·144Hz × 지원하는 빠르기 셋(1·0.5·0.25)
+12조합에서 **매 걸음 `advance()`를 때리며** 잰다. 견주는 값은 시험이 적은 상수가 아니라
+제품이 스스로 알려 준 게이지 길이(`BeatSink.hold`)다.
+
+- `faintAt - damageAt >= 그 박자의 게이지 길이 - 한 걸음`
+- 연타 판과 안 누른 판의 차가 한 걸음 안
+- 빠르기 0.5가 1.0의 절반, 0.25가 그보다 짧다 (배율이 살아 있다)
+- 회복(`heal`)과 연속 공격(데미지 3연타)에서도 앞 이동을 안 건너뛴다
+
+⚠️ 이 시험은 **고치기 전 코드에서 15/17이 깨진다**(실측). 순서만 보는 시험이 아니다.
+
+### 근거 ②: 브라우저 (`pnpm gauge --gpu=webgpu`)
+
+`tools/e2e/battleGauge.mjs`를 새로 썼다. 센터 확인 지점에서 야생 캐터피전을 열고,
+**체력바 요소의 실제 폭**과 글창의 글을 매 프레임 재면서 Z를 20Hz로 쏜다.
+`.audit/battle-gauge-stall0.json` · `.audit/battle-gauge-연타.png`.
+
+| 판 | 게이지 이동 | 표본 | 0 도달 → 「쓰러졌다!」 |
+|---|---|---|---|
+| 가만히 | 395.7ms (0.9838 → 0) | 24 | +480ms |
+| **연타 (20Hz)** | **400.6ms** (0.9838 → 0) | 24 | +495ms |
+
+빠르기 기본값이 0.5라 48프레임 × 0.5 = 24프레임 = **400ms**가 계약값이고, 실측이 그 값이다.
+표본 24개는 60Hz 프레임마다 한 개씩 잡혔다는 뜻이다. **연타가 게이지를 줄이지 않았고**
+(차 −4.9ms) 「쓰러졌다!」는 바가 0에 닿은 뒤에 떴다.
+
+⚠️ 이 도구는 **기절을 필수로 요구하지 않는다.** 한 방에 쓰러뜨리는 판을 만들려면 기술·명중·
+급소에 기대게 되고 그러면 못 재는 날이 생긴다. 재는 것은 「닳는 동안 다음 것이 안 왔는가」다.
+
+## 2. B — 몸도 HP도 공통 시계 위에 선다
+
+### 2.1 읽는 쪽의 경과 시간
+
+`presentationClock`에 **`ClockReader`** 를 더했다. 소비자는 `tick`을 부르지 않고
+(미는 쪽은 재생기 하나여야 한다) `now()`의 **차이**만 떼어 간다.
+
+- 첫 읽기는 0 — 마운트 순간의 시계 값을 통째로 안 삼킨다
+- 같은 프레임에 두 번 읽어도 두 번 안 나아간다
+- 시계가 되돌아가면(다음 배틀 `reset`) 음수 대신 0을 주고 거기서 다시 센다
+- `reset()` — 모델이 바뀌면 기다린 시간을 안 소비한다
+
+### 2.2 무대의 몸
+
+`BattleStage`의 Slot이 `useFrame((_, delta) => …)`를 버리고 `ClockReader`를 쓴다.
+등장/퇴장(`FADE` 0.35초) · 전진(lunge) · 피격(flinch) · `mixer.update` · 크기 관찰이
+전부 그 값으로 전진한다. 모델이 바뀌면 `stageTime.current.reset()`.
+
+`src/scene/battle/stageClock.test.ts` 10건이 ① `ClockReader`의 계약, ② 같은 지연에서
+시계 쪽과 원시 delta 쪽이 갈린다는 것(1초 프레임: 0.35초 퇴장이 시계로는 28.6%인데
+원시 delta로는 100%), ③ **제품이 정말 시계를 읽는다는 것**(원시 delta 인자가 없고
+`ClockReader`에서 delta가 온다)을 잠근다.
+
+### 2.3 인물
+
+지시서가 §3-4에서 「파티클·볼·카메라·완료 콜백」을 확인하라고 했다. 훑어 보니
+입자(`SplParticles`)·볼(`BattleBallEffects`)·기술(`MoveVfx`)은 이미 `battleClock`을 보고
+있었고, 기술의 완료 콜백은 `ended.current`로 **한 번만** 불린다. 남아 있던 곳은
+**인물(`BattleTrainers`)** 이었다 — `mixer.update(delta)`와 `performance.now()`로 던지는
+몸짓을 재고 있었다. 같은 결함이라 같이 고쳤다 (`ClockReader` + `battleClock.now()`).
+
+⚠️ **안 고친 것**: `EncounterBurst`의 `performance.now()`. 그것은 필드에서 배틀로 넘어가는
+전환이라 재생기가 시계를 잡기 전에 돈다. `BattleAtmosphere`의 `clock.elapsedTime`은
+하늘·바람 같은 **상태 전이가 아닌** 배경 흔들림이라 그대로 뒀다.
+
+### 2.4 체력바
+
+CSS `transition: width var(--drain) linear`를 걷어냈다. CSS 전환은 벽시계라 탭을 숨겨도
+흐르고 `MAX_STEP_MS`를 모른다. 새 `src/ui/battle/hpDrain.ts`가 **표시 체력과 목표 체력을
+나눠** 시작 시각·시작 비율·목표 비율·기간으로 셈한다. 색 전환(200ms)만 CSS에 남겼다.
+
+⚠️ **폭을 쓰는 임자는 하나여야 한다.** 처음 고칠 때 `style={{ width }}`를 같이 남겼더니,
+사건이 접히는 프레임에 React가 목표 폭으로 **한 번 튕기고** 다음 프레임부터 훅이 출발
+값에서 다시 내려왔다 — 화면 자취에 `0.9838 → 0 → 0.9016 → …`으로 그 한 프레임이 찍혔다
+(`.audit`의 첫 측정). 지금은 `useDrain`만 폭을 쓰고, 시험이 그 자리를 잠근다.
+
+#### 근거: 프레임 하나를 1초 묶었을 때 (`pnpm gauge --gpu=webgpu --stall=1000`)
+
+`.audit/battle-gauge-stall1000.json`.
+
+| 판 | 게이지 이동(벽시계) | **한 표본 최대 이동** |
+|---|---|---|
+| 가만히 | 1,290.8ms | **0.246** |
+| 연타 | 1,300.9ms | **0.246** |
+
+400ms짜리 이동에서 `MAX_STEP_MS`(100ms)는 0.25다. 1초를 통째로 묶은 프레임에서도
+게이지가 **한 칸 0.246**만 갔다 — 벽시계였다면 그 프레임에 1.0이 지나가 끝났다.
+
+## 3. 회귀
+
+| 검사 | 결과 | 비고 |
+|---|---|---|
+| `pnpm check` | exit 0 · 4,829 통과 · 3 skipped · shimmed 4 | 새 시험 37건 |
+| `pnpm gauge --gpu=webgpu` | 두 판 통과 (`WebGPUBackend`) | `.audit/battle-gauge-stall0.json` |
+| `pnpm gauge --gpu=webgpu --stall=1000` | 두 판 통과 | `.audit/battle-gauge-stall1000.json` |
+| `pnpm story` | **PASS 90 · FAIL 0 · NOT RUN 0** (`WebGPUBackend`) | `.audit/fix-20260920b-story.log` |
+
+## 4. 안 한 것 — 미실행은 미실행이다
+
+지시서 §5·§6은 이번 판에서 **닫지 않았다.** 아래는 통과도 실패도 아니다.
+
+- **§6-1 배틀 표 전수 영상** — 야생 승리/도주, 트레이너 승리/전멸, 포획 성공/실패, 사파리,
+  더블, 충전/숨기 기술, 강제교체, 경험치/레벨/기술 습득/진화. 이번에 화면으로 본 것은
+  **야생전 한 줄(공격 → 게이지 → 기절)** 뿐이다.
+- **§6-2 양 백엔드 대조** — 이번 게이지 실측은 `WebGPUBackend` 한 쪽이다. WebGL2 쪽은 안 쟀다.
+- **§6-3 R7 다중 줄** — 좋은상처약보다 앞선 회복 도구가 있는 가방으로의 재현.
+- **§6-4 성능 3회 반복** · **§6-5 Scale2x 누수 추세** — 둘 다 미실행.
+- **§5 3D 범위** — 건물 외피 레시피, 실내 벽 `RoomBoundarySegment`/openings, 울타리 단면,
+  풀·꽃·바닥·절벽·날씨의 조항별 렌더 목록. 미구현이거나 검증대기다.
+- **5초 탭 숨김·복귀** — 긴 프레임(`--stall`)은 쟀지만 `visibilitychange`를 실제로 일으킨
+  화면 실측은 안 했다.
+
+### 곁들여 확인한 것 (코드 대조만, 화면은 안 봄)
+
+- **R2** `captureTiming`은 `playback.ts`와 `scene/battle/battleBallMotion.ts`가 **같이** 쓴다.
+  지시서가 요구한 공유는 되어 있다. 성공/실패/0~3 shake 영상은 여전히 미실행이다.
+- **§5 점프 턱** `ledgeVisual.ts`(`lipHeight: 0.18`)를 import 하는 곳은 `Ledges.tsx`와 그
+  시험뿐이다 — 엔진의 충돌·점프 규칙은 이 값을 아예 안 본다.
