@@ -1,18 +1,22 @@
-// 스크립트는 **끝나야 한다** (DATA.md §2.10)
+// 스크립트는 **져도** 끝나야 한다 (DATA.md §2.10)
 //
-// ⚠️ **안 끝나는 스크립트는 게임을 영영 세운다.** 스크립트가 도는 동안 발이
-// 묶이므로(`field.ts`의 `scriptSystem`), 끝나지 않으면 화면은 멀쩡한데
-// 걸음도 대사도 없는 채로 굳는다. 브라우저 실측이 실제로 그 자리에서 섰다 —
-// 주인공 집 1층에서 다섯 번 중 세 번.
+// ⚠️ **`terminates.test.ts`는 이긴 판만 잰다.** 거기 붙은 가짜 일감은
+// `battleResult: () => 'win'`이라, 배틀을 여는 스크립트는 전부 **이긴 갈래**로만
+// 지나간다. 진 갈래는 아무도 안 밟았다.
 //
-// 그 자리를 밖에서 보면 "안 움직인다"뿐이라 벽에 막힌 것과 구별이 안 된다.
-// 여기서는 안에서 본다: 진짜 자료로 스크립트를 하나씩 걸고, 정해진 프레임
-// 안에 끝나는지를 센다. 안 끝나면 **그때 돌던 명령 이름**까지 적는다.
+// 그 틈으로 이런 자리가 지나간다: 스크립트가 배틀을 열고 `ctx.pause`로 결과를
+// 기다리는데(`StartTrainerBattle`·`StartLegendaryBattle`·`StartWildBattle` 셋 다
+// 같은 모양이다), 결과가 「졌다」로 오면 그 뒤 갈래가 안 끝날 수 있다. 원작은
+// 전멸을 `FieldTask_ChangeMapByLocation`으로 처리해 **필드 태스크째 갈아 끼우므로**
+// 그 위에 얹힌 스크립트가 같이 죽는다 — 우리는 워프만 건다. 그래서 진 갈래는
+// 스크립트 스스로 끝나야 한다.
 //
-// ⚠️ **바깥 일감(services)은 다 채워 준다.** 배틀도 상점도 여기서는 즉시
-// 끝난 것으로 답한다 — 재려는 것이 "붙일 것을 안 붙여서 서는가"가 아니라
-// **"다 붙여도 스크립트 자체가 안 끝나는가"**이기 때문이다. 안 붙여서 서는
-// 자리는 `story.test.ts`가 따로 잡는다.
+// 안 끝나면 무슨 일이 나는지는 `field.ts`의 `abortScript` 주석이 적어 뒀다 —
+// 「딴 맵에서 그 대사창이 뜨고 플레이어가 잠긴 채로 서 있는다」. 스크립트가 도는
+// 동안은 발이 묶이므로, 깨어난 자리에서 한 칸도 못 간다.
+//
+// ⚠️ **롬 글은 안 적는다.** 여기 남기는 것은 우리가 붙인 명령 이름과 번호뿐이다
+// (COPYRIGHT.md §6).
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, expect, it } from 'vitest'
@@ -34,17 +38,24 @@ const maybe = withData('scripts.bin', 'events.json', 'maps.json')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
 
 /**
- * 오프닝이 지나가는 자리 전부. 새 게임에서 첫 배틀·첫 상점까지의 길이다.
+ * 배틀을 여는 스크립트가 실제로 있는 맵들.
  *
- * 415 침실 → 414 1층 → 411 떡잎마을 → 342 201번도로 → 418 모래시티 →
- * 419 프렌들리숍. 여기가 막히면 **아무도 게임을 시작 못 한다**
+ * 510 시작의 방(전설전)과 175 리그 로비는 `story.mjs`가 「배틀 명령 바로 다음에
+ * 선다」로 적어 둔 바로 그 두 자리다. 343 202번도로는 새 게임에서 처음 만나는
+ * 트레이너 셋이 서 있는 곳이고, 나머지는 오프닝 길목이다
  */
-const OPENING_MAPS = [415, 414, 411, 342, 418, 419, 412, 413, 420, 421]
+const BATTLE_MAPS = [510, 175, 343, 415, 414, 411, 342]
+
+/** 배틀을 여는 명령들. 하나라도 안 돌면 이 시험은 아무것도 안 잰 것이다 */
+const OPENS_BATTLE = new Set([
+  'StartTrainerBattle', 'StartLegendaryBattle', 'StartWildBattle', 'StartTagBattle',
+  'StartFirstBattle',
+])
 
 /** 한 스크립트에 주는 프레임. 60프레임이 1초니까 100초다 */
 const FRAME_CAP = 6_000
 
-maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
+maybe('배틀을 여는 스크립트는 져도 끝난다', () => {
   const meta = parseScriptMeta(read('scripts.json'))
   const raw = readFileSync(resolve(DATA, 'scripts.bin'))
   const maps = (read('maps.json') as { maps: MapHeader[] }).maps
@@ -52,24 +63,31 @@ maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
 
   /** 방금 돈 명령 이름들. 안 끝났을 때 어디서 도는지 적는다 */
   let trace: string[] = []
+  /** 이 판에서 배틀을 연 횟수 */
+  let opened = 0
 
   beforeEach(() => {
     mapWorld.maps = maps
     mapWorld.events = events
+    mapWorld.pending = null
     fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+
     const built = buildCommands(meta.commands)
     const named = new Map<number, CommandFn>()
     for (const [op, fn] of built.map) {
       const name = meta.commands[op]?.name ?? `#${String(op)}`
       named.set(op, (ctx) => {
         trace.push(name)
+        if (OPENS_BATTLE.has(name)) opened++
         if (trace.length > 4_000) trace = trace.slice(-200)
         return fn(ctx)
       })
     }
     fieldScripts.commands = { map: named, unhandled: built.unhandled }
     fieldScripts.vars = new VarStore()
-    fieldScripts.services = allDoneServices
+    // ⚠️ **여기 한 줄이 이 파일의 전부다.** 나머지는 `terminates.test.ts`와 같고,
+    // 배틀 결과만 「졌다」로 답한다
+    fieldScripts.services = { ...allDoneServices, battleResult: () => 'loss' as const }
     fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
     fieldScripts.ctx = null
     fieldScripts.lastError = null
@@ -78,28 +96,16 @@ maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
     worldState.input.move.set(0, 0)
   })
 
-  /**
-   * 이벤트 루프에 한 바퀴 양보한다.
-   *
-   * ⚠️ **없으면 전부 "안 끝난다"로 나온다.** 글 뱅크는 약속으로 오는데
-   * (`switchBank`), 프레임 고리를 동기로 돌리면 그 약속이 영영 안 풀려
-   * `bankPending`이 참인 채로 스크립트가 한 발도 못 뗀다. 처음에 그렇게 짜서
-   * 맵 여덟 개가 통째로 빨갛게 나왔다 — 게임이 아니라 시험이 틀린 것이었다
-   */
   const yieldToLoop = async (): Promise<void> => new Promise((done) => { setImmediate(done) })
 
-  it.each(OPENING_MAPS)('맵 %i', async (mapId) => {
+  it.each(BATTLE_MAPS)('맵 %i', async (mapId) => {
     const header = mapById(mapId)
     expect(header, `맵 ${String(mapId)}이 없다`).not.toBeNull()
 
     mapWorld.mapId = mapId
     enterMap(mapId)
-    // ⚠️ **맵 뱅크가 오기를 기다린다.** `start`는 맵 뱅크를 읽는 스크립트를
-    // 글이 오기 전에는 안 건다(`field.ts`) — 안 기다리면 `ran`이 0이라
-    // "아무것도 안 돌고 초록"을 막는 아래 확인이 걸린다
     await yieldToLoop()
 
-    /** 이 맵에서 걸릴 수 있는 스크립트 전부. 어디서 왔는지도 같이 든다 */
     const jobs: { from: string, script: number, localID: number }[] = [
       ...npcsOf(mapId).map((n) => ({ from: '사람', script: n.script, localID: n.localID })),
       ...triggersOf(mapId).map((t) => ({ from: '밟기', script: t.script, localID: 0 })),
@@ -108,9 +114,8 @@ maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
     ]
 
     const stuck: string[] = []
-    /** 실제로 걸린 스크립트 수. 0이면 이 시험은 아무것도 안 잰 것이다 */
     let ran = 0
-    let frameTotal = 0
+    opened = 0
     for (const job of jobs) {
       abortScript()
       fieldScripts.vars = new VarStore()
@@ -122,25 +127,49 @@ maybe('오프닝 길목의 스크립트는 전부 끝난다', () => {
 
       let frames = 0
       for (; frames < FRAME_CAP && scriptBusy(); frames++) {
-        // A는 두 프레임에 한 번. 계속 누르고 있으면 눌린 순간이 안 잡힌다
         worldState.input.interact = frames % 2 === 0
         scriptSystem.fixedUpdate()
         if (frames % 8 === 0) await yieldToLoop()
       }
       if (scriptBusy()) {
-        // ⚠️ **롬 글은 안 적는다.** 여기 남기는 것은 우리가 붙인 명령 이름과
-        // 번호뿐이다 (COPYRIGHT.md §6)
         const loop = [...new Set(trace.slice(-40))].join(' → ')
         stuck.push(`${job.from} ${String(job.script)}: ${loop || '(명령을 한 번도 안 돌았다)'}`)
       }
-      frameTotal += frames
       abortScript()
     }
 
-    expect(stuck, `맵 ${String(mapId)}에서 안 끝나는 스크립트 ${String(stuck.length)}개`).toEqual([])
-    // ⚠️ **아무것도 안 돌고 초록인 것을 막는다.** 한 번은 프레임 고리가 통째로
-    // 헛돌면서 10개가 다 통과했다 — 스크립트가 하나도 안 걸렸기 때문이었다
+    expect(stuck, `맵 ${String(mapId)}에서 지고 나서 안 끝나는 스크립트 ${String(stuck.length)}개`)
+      .toEqual([])
     expect(ran, `맵 ${String(mapId)}에서 걸린 스크립트가 없다`).toBeGreaterThan(0)
-    expect(frameTotal, `맵 ${String(mapId)}에서 프레임이 한 번도 안 돌았다`).toBeGreaterThan(0)
+  })
+
+  /**
+   * ⚠️ **진 갈래를 한 번도 안 밟고 초록인 것을 막는다.** 위 맵들이 배틀을 아예
+   * 안 열면 `battleResult`를 무엇으로 두든 결과가 같다 — 그러면 이 파일은 그냥
+   * `terminates.test.ts`를 한 번 더 돌린 것이다
+   */
+  it('배틀을 실제로 열었다', async () => {
+    const header = mapById(343)
+    expect(header, '202번도로 헤더가 없다').not.toBeNull()
+    mapWorld.mapId = 343
+    enterMap(343)
+    await yieldToLoop()
+
+    opened = 0
+    for (const n of npcsOf(343).filter((x) => x.script >= 3000 && x.script < 5000)) {
+      abortScript()
+      fieldScripts.vars = new VarStore()
+      fieldScripts.world = makeWorld(fieldScripts.vars, [], meta.movements)
+      mapWorld.mapId = 343
+      trace = []
+      if (!start(n.script, header!.scripts, n.localID)) continue
+      for (let f = 0; f < FRAME_CAP && scriptBusy(); f++) {
+        worldState.input.interact = f % 2 === 0
+        scriptSystem.fixedUpdate()
+        if (f % 8 === 0) await yieldToLoop()
+      }
+      abortScript()
+    }
+    expect(opened, '배틀을 여는 명령이 한 번도 안 돌았다').toBeGreaterThan(0)
   })
 })
