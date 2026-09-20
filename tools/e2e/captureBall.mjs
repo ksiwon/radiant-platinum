@@ -247,6 +247,8 @@ async function main() {
     }
   }
   out.throws = await page.evaluate(() => window.__ball?.throws ?? [])
+  // ⚠️ **깃발을 줬다고 믿지 않는다.** 실제로 그린 길은 제품이 내놓는 값으로 읽는다
+  out.backend = await page.evaluate(() => globalThis.pt?.perf?.().backend ?? null).catch(() => null)
   await browser.close()
   vite?.child.kill()
 

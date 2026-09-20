@@ -241,11 +241,14 @@ async function main() {
     const name = press ? '연타' : '가만히'
     runs[name] = await once(page, url, { press, stall, name })
   }
+  // ⚠️ **깃발을 줬다고 믿지 않는다.** 실제로 어느 길로 그렸는지는 제품이
+  // 내놓는 값으로 읽는다 (`pt.perf().backend`)
+  const backend = await page.evaluate(() => globalThis.pt?.perf?.().backend ?? null).catch(() => null)
   await browser.close()
   vite?.child.kill()
 
   mkdirSync(OUT, { recursive: true })
-  const out = { gpu, stall, checkpoint: CHECKPOINT, mine: MINE, foe: FOE, noise, runs: {} }
+  const out = { gpu, backend, stall, checkpoint: CHECKPOINT, mine: MINE, foe: FOE, noise, runs: {} }
   let bad = 0
   for (const [name, r] of Object.entries(runs)) {
     const drain = r.rows.map((x) => x.r)
