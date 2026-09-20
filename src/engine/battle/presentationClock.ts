@@ -116,6 +116,38 @@ class BattlePresentationClock {
 }
 
 /**
+ * 시계를 **읽기만 하는 쪽**이 자기 몫의 경과 시간을 받는 자리.
+ *
+ * ⚠️ **소비자는 `tick`을 부르지 않는다.** 미는 쪽은 재생기 하나여야 한다
+ * (`useBattlePlayback`) — 무대까지 밀면 연출 시간이 두 배로 간다. 그렇다고
+ * `useFrame`의 원시 delta를 쓰면 `MAX_STEP_MS`도 visibility hold도 안 걸려서
+ * 1초짜리 프레임에 몸이 0.35초 퇴장을 통째로 끝낸다 — 시계는 0.1초만 갔는데
+ * 몸만 100%다. 여기서는 `now()`의 **차이**만 셈해서 그 둘을 붙인다.
+ *
+ * - 같은 프레임에 두 번 읽어도 두 번 나아가지 않는다 (차가 0이다)
+ * - 시계가 되돌아가면(`reset`) 음수 경과 대신 0을 주고 거기서 다시 센다
+ */
+export class ClockReader {
+  private last: number | null = null
+
+  /** 지난번에 읽은 뒤로 흐른 **연출 초**. 첫 읽기는 0이다 */
+  read(now: number): number {
+    if (this.last === null || now < this.last) {
+      this.last = now
+      return 0
+    }
+    const step = now - this.last
+    this.last = now
+    return step
+  }
+
+  /** 마운트·모델 교체·배틀 reset에서 부른다. 다음 읽기가 다시 0이 된다 */
+  reset(): void {
+    this.last = null
+  }
+}
+
+/**
  * 배틀 하나가 쓰는 시계. UI와 무대가 **같은 것**을 본다.
  *
  * 모듈 하나에 둔 이유는 의존 방향이다 — UI가 씬을 import 하면 지연 로딩 경계가

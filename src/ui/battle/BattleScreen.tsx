@@ -41,6 +41,7 @@ import { romLine } from './romLine'
 import { BATTLE_BANK, MOVE_BANK, MSG, STAT_BANK } from './romText'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
+import { useDrain } from './hpDrain'
 import { CommandButton } from './CommandButton'
 import * as css from './battleScreen.css'
 // ⚠️ **소리는 지연 마운트다.** `BattleScreen`은 App이 정적으로 잡는데(막을
@@ -357,6 +358,10 @@ export function BattleScreen() {
   // ⚠️ **묻는 자리에서는 빨리 감기를 끈다** — 안 그러면 Z 한 번이 물음을
   // 넘기면서 동시에 답으로도 먹혀 아무거나 골라진다
   const reading = !script.caughtUp
+  // 글창 클릭도 A와 같은 길이다. ⚠️ **키와 같은 조건을 건다** — 안 그러면
+  // 명령 메뉴가 떠 있을 때나 「어느 기술을 잊게 할까?」 앞에서 클릭이 재생기에
+  // 한 번 더 들어간다 (`useMenuKeys`의 조건과 짝이다)
+  const tapLog = reading && script.ask === null ? script.advance : undefined
   useMenuKeys({ confirm: script.advance, cancel: script.advance },
     phase !== 'off' && reading && script.ask === null)
   // 배틀이 끝난 뒤의 "계속". 여기만 키 처리가 비어 있어서 마우스로만 닫혔다
@@ -438,7 +443,7 @@ export function BattleScreen() {
 
       <div className={css.console_}>
         {/* 로그는 판이 아니라 글이다. 무대를 가리지 않게 상자를 없앴다 */}
-        <div className={css.log} onClick={script.advance}>
+        <div className={css.log} onClick={tapLog}>
           <div className={css.logText}>
             {script.text}
             {reading && <span className={css.nextArrow} aria-hidden>▼</span>}
@@ -575,6 +580,10 @@ function MonCard(
 ) {
   const name = (mon.species !== null ? names?.species[mon.species] : null) ?? mon.speciesName
   const ratio = mon.maxHp > 0 ? Math.max(0, Math.min(mon.hp, mon.maxHp)) / mon.maxHp : 0
+  // ⚠️ **게이지는 CSS 전환이 아니라 연출 시계가 민다** (`hpDrain`). CSS는 벽시계라
+  // 탭을 숨겨도, 프레임이 1초로 늘어져도 저 혼자 흐른다 — 재생기가 서 있는데
+  // 체력만 마저 줄었다. `width`의 인라인 값은 스크립트가 꺼진 화면의 첫 폭이다
+  const bar = useDrain(ratio, drainMs)
   const color = hpColor(mon.hp, mon.maxHp)
   const fill = color === 'green' ? css.barGreen : color === 'yellow' ? css.barYellow : css.barRed
   const gender = GENDER_MARK[mon.gender]
@@ -597,10 +606,8 @@ function MonCard(
       <div className={css.barRow}>
         <span className={css.hpTag}>HP</span>
         <div className={css.barTrack}>
-          <div
-            className={`${css.barFill} ${fill}`}
-            style={{ width: `${ratio * 100}%`, ['--drain' as string]: `${drainMs}ms` }}
-          />
+          {/* ⚠️ 폭은 style로 안 준다 — `useDrain`만 쓴다 (두 임자가 다투면 튕긴다) */}
+          <div ref={bar} className={`${css.barFill} ${fill}`} />
         </div>
       </div>
       {showHp && (

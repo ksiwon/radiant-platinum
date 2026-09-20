@@ -38,7 +38,7 @@ export interface Beat {
   text: string | null
   /** 글을 다 찍은 뒤 뷰에 접을 사건 */
   events: BattleEvent[]
-  /** 접고 나서 쉬는 프레임. A·B로 건너뛴다 — 단 `presentation`이면 못 건너뛴다 */
+  /** 접고 나서 쉬는 프레임. A·B로 건너뛴다 — 단 `presentation`·`gauge`면 못 건너뛴다 */
   hold: number
   /**
    * 이 쉼이 **무대가 도는 시간**인가.
@@ -50,6 +50,21 @@ export interface Beat {
    * (`ui/battle/useBattlePlayback`)
    */
   presentation?: boolean
+  /**
+   * 이 쉼이 **게이지가 닳는 시간**인가.
+   *
+   * ⚠️ **글 건너뛰기와 체력 이동 대기는 다른 것이다.** A·Z·글창 클릭이 넘기는
+   * 것은 읽는 시간이고, 체력이 20에서 0으로 가는 48프레임은 원작이
+   * `HealthBar_Update`로 **한 칸씩** 움직이는 시간이라 눌러도 안 줄어든다.
+   * 예전에는 이 박자가 그냥 쉼이라 `advance()`가 `holdLeft`를 0으로 만들었고,
+   * 그러면 다음 걸음(60Hz에서 16.67ms)에 기절이 접혔다 — 체력바가 아직
+   * 800ms짜리 전환을 도는 중에 몸이 쓰러지고 「쓰러졌다!」가 떴다.
+   *
+   * ⚠️ **`presentation`으로 대신하지 않는다.** 그쪽은 빠르기 설정까지 무시하는
+   * 값이라(`beatFrames`) 여기에 붙이면 「배틀 빠르기」가 게이지에 안 먹는다.
+   * 건너뛰기 금지와 빠르기 배율은 **다른 축**이다
+   */
+  gauge?: boolean
   /**
    * 여기서 **사람에게 묻고 멈춘다.** 답이 올 때까지 다음 박자로 안 넘어간다.
    *
@@ -207,10 +222,16 @@ export function buildBeats(
     }
   }
 
-  /** 화면만 바꾸는 박자. `presentation`이면 그 쉼이 무대가 도는 시간이다 */
-  const show = (list: BattleEvent[], hold: number, presentation = false): void => {
+  /**
+   * 화면만 바꾸는 박자. `presentation`이면 그 쉼이 무대가 도는 시간이고,
+   * `gauge`면 체력이 한 칸씩 움직이는 시간이다 — 둘 다 A·Z로 못 줄인다
+   */
+  const show = (list: BattleEvent[], hold: number, kind?: 'presentation' | 'gauge'): void => {
     view = applyEvents(view, list)
-    out.push(presentation ? { text: null, events: list, hold, presentation } : { text: null, events: list, hold })
+    const beat: Beat = { text: null, events: list, hold }
+    if (kind === 'presentation') beat.presentation = true
+    if (kind === 'gauge') beat.gauge = true
+    out.push(beat)
   }
 
   /** 게이지가 지금 값에서 새 값까지 가는 프레임 */
@@ -257,7 +278,7 @@ export function buildBeats(
         const marked = e.kind === 'damage' && inMove && e.from === null
           ? { ...e, hit: hitOf() }
           : e
-        show([marked], drainFor(e))
+        show([marked], drainFor(e), 'gauge')
         break
       }
 
@@ -265,7 +286,7 @@ export function buildBeats(
         // `PlayFaintAnimation / HealthBoxSlideOut / PrintMessage` — 먼저 쓰러지고 그 다음에 말한다.
         // ⚠️ **몸이 사라지는 시간까지 쉰다** (`HOLD_FAINT_PRESENTATION`).
         // `HOLD_FAINT 7`은 체력창이 빠지는 값이고 몸이 지는 시간이 아니다
-        show([e], HOLD_FAINT_PRESENTATION, true)
+        show([e], HOLD_FAINT_PRESENTATION, 'presentation')
         say(text(e), HOLD_MESSAGE)
         break
 
@@ -279,12 +300,12 @@ export function buildBeats(
         // **화면이 열릴 때 이미 서 있다.** 여기서 글을 기다리게 하면 조우 연출이
         // 빈 발판에서 터진다 (`scene/battle/EncounterBurst`)
         if (first && e.actor.side === 'p2' && foeOnStage) {
-          show([e], HOLD_ENCOUNTER, true)
+          show([e], HOLD_ENCOUNTER, 'presentation')
           say(text(e), HOLD_MESSAGE)
           break
         }
         say(text(e), HOLD_MESSAGE)
-        show([e], first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT, true)
+        show([e], first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT, 'presentation')
         break
       }
 
@@ -297,7 +318,7 @@ export function buildBeats(
         // 연출이 도는 만큼 쉰다. 이 자리가 0이면 기술 이름이 뜨자마자 게이지가
         // 닳아서, 무엇이 무엇을 때렸는지가 화면에서 안 이어진다.
         // **기술마다 길이가 다르다** — 무대도 같은 자리에 물어본다 (`vfx`)
-        show([e], moveFramesOf(e.move), true)
+        show([e], moveFramesOf(e.move), 'presentation')
         break
 
       case 'ball':
@@ -309,7 +330,7 @@ export function buildBeats(
         // 마지막 반짝임이 사그라지기를 기다린다. 그 뒤에야 닉네임·도감·배틀
         // 해제나 상대의 다음 수가 온다. 길이는 무대와 **같은 시간표**에서 온다
         // (`engine/battle/captureTiming`)
-        show([e], captureFrames(e.shakes), true)
+        show([e], captureFrames(e.shakes), 'presentation')
         say(text(e), HOLD_MESSAGE)
         out.push({
           text: null, events: [], hold: captureTailFrames(e.shakes, e.caught), presentation: true,

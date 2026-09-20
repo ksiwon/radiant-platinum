@@ -162,10 +162,13 @@ export const barTrack = style({
 
 export const barFill = style({
   ...BAR_FILL,
-  // 줄어드는 **시간**은 재생기가 정한다. 원작 게이지는 프레임당 한 칸씩 움직여서
-  // 많이 맞을수록 오래 걸린다 (`playback.drainFrames`). 여기서는 기울기만 정하고
-  // 길이는 `--drain`으로 받는다 — 고정 길이로 두면 큰 데미지가 순식간에 지나간다
-  transition: 'width var(--drain, 420ms) linear, background-color 200ms linear',
+  // ⚠️ **폭은 전환하지 않는다.** 줄어드는 시간은 재생기가 정하고
+  // (`playback.drainFrames` — 프레임당 한 칸이라 많이 맞을수록 오래 걸린다)
+  // 그 시간을 미는 것은 공통 연출 시계다 (`ui/battle/hpDrain`). CSS 전환은
+  // 벽시계라 탭을 숨겨도 흐르고 긴 프레임에서 `MAX_STEP_MS`를 모른다 —
+  // 재생기가 서 있는 동안 게이지만 마저 줄어드는 자리가 여기였다.
+  // 색은 그대로 전환한다 — 초록→노랑이 한 프레임에 튀면 눈에 거슬린다
+  transition: 'background-color 200ms linear',
 })
 
 /**

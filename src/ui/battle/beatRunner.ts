@@ -41,6 +41,20 @@ function holdsPresentation(beat: Beat): boolean {
 }
 
 /**
+ * 이 박자의 쉼을 **A·Z가 못 줄이는가.**
+ *
+ * 둘이다. 연출(`presentation`)은 무대가 도는 시간이고, 게이지(`gauge`)는 체력이
+ * 한 칸씩 움직이는 시간이다 (`playback.drainFrames`).
+ *
+ * ⚠️ **빠르기와는 다른 축이다.** 연출은 빠르기도 안 먹지만 게이지는 먹는다 —
+ * 아래 `beatFrames`가 그래서 둘을 따로 본다. 게이지까지 `presentation`으로
+ * 묶으면 설정의 배틀 빠르기가 체력바에 안 걸린다
+ */
+function holdsLocked(beat: Beat): boolean {
+  return beat.presentation === true || beat.gauge === true
+}
+
+/**
  * 한 박자가 쓰는 프레임 — 게이지가 닳는 길이(`hold`)와 박자 전체 길이(`wait`).
  *
  * ⚠️ **연출이 도는 박자는 안 줄인다.** 설정의 빠르기는 「머무름·게이지·기절」에
@@ -98,7 +112,7 @@ export class BeatRunner {
   private holdLeft = 0
   /** 남은 **글 읽는** 시간(ms). A·Z가 이것을 0으로 만든다 */
   private readLeft = 0
-  /** 이 박자의 쉼이 무대 연출인가 */
+  /** 이 박자의 쉼을 A·Z가 못 줄이는가 (연출이거나 게이지다) */
   private locked = false
   /** 묻는 박자에서 답을 받았는가. 받으면 그 박자를 넘긴다 */
   private answered = false
@@ -160,7 +174,7 @@ export class BeatRunner {
         this.sink.hold(frameMs(hold))
         this.sink.apply(beat.events)
         this.applied = true
-        this.locked = holdsPresentation(beat)
+        this.locked = holdsLocked(beat)
         this.holdLeft = frameMs(hold)
         this.readLeft = frameMs(wait - hold)
         // 쉬거나 글을 띄운 박자는 여기서 이 걸음을 끝낸다. 아무것도 안 남긴
@@ -198,14 +212,17 @@ export class BeatRunner {
   /**
    * A·Z. 글 읽는 시간만 줄인다.
    *
-   * ⚠️ **연출은 안 건너뛴다.** 원작에서 A로 넘기는 것은 글이고
+   * ⚠️ **연출도 게이지도 안 건너뛴다.** 원작에서 A로 넘기는 것은 글이고
    * (`WaitButtonABTime`), `PlayMoveAnimation`·`ThrowPokeball`은 눌러도 끝까지
-   * 돈다. 여기서 재우면 포켓몬이 때리러 나가 있는 채로 게이지가 닳는다
+   * 돈다. 여기서 재우면 포켓몬이 때리러 나가 있는 채로 게이지가 닳는다.
+   * 체력이 닳는 쉼(`Beat.gauge`)도 같다 — 예전에는 이것만 안 잠겨 있어서,
+   * 20→0이 48프레임(800ms)을 요청한 직후에 A를 누르면 다음 걸음 16.67ms에
+   * 기절이 접혔다
    */
   advance(beats: readonly Beat[]): void {
     this.readLeft = 0
     const beat = beats[this.at]
-    if (beat !== undefined && holdsPresentation(beat)) return
+    if (beat !== undefined && holdsLocked(beat)) return
     if (this.locked) return
     this.holdLeft = 0
   }

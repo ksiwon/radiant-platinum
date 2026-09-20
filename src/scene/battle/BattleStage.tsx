@@ -29,7 +29,7 @@ import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
 import { mapById, world } from '../../engine/map/world'
 import { arenaFor, cameraFit, hasSky } from '../../engine/battle/arena'
-import { BODY_FADE_SECONDS, battleClock } from '../../engine/battle/presentationClock'
+import { BODY_FADE_SECONDS, ClockReader, battleClock } from '../../engine/battle/presentationClock'
 import { EncounterBurst } from './EncounterBurst'
 import { loadMotionTiming, loadMoves, loadSpecies } from '../../data/gameData'
 import { useBattleStore } from '../../state/battleStore'
@@ -269,6 +269,9 @@ function Slot({
     setArt(null)
     grown.current = 0
     watch.current = 0
+    // 몸이 바뀌면 시간도 다시 센다 — 안 그러면 새 모델이 앞 모델을 기다린
+    // 시간을 첫 프레임에 통째로 소비한다
+    stageTime.current.reset()
     delete slotBody[slot]
     if (species === null) return
     void loadMonModel(species, form, { gender: mon?.gender, shiny: mon?.shiny })
@@ -336,6 +339,15 @@ function Slot({
    * 값은 프레임마다 줄어드는 타이머 둘이다. `useState`로 두면 배틀 내내 React가
    * 다시 그린다 — 뷰가 바뀌는 순간에만 1로 채우고 나머지는 `useFrame`이 민다
    */
+  /**
+   * 이 몸이 **공통 시계에서** 떼어 쓰는 시간 (`presentationClock.ClockReader`).
+   *
+   * ⚠️ **`useFrame`의 delta를 안 쓴다.** 그것은 벽시계라 `MAX_STEP_MS`도 탭
+   * 숨김도 모른다 — 프레임 하나가 1초가 되면 시계는 0.1초만 가는데 몸은 1초를
+   * 소비해서, 0.35초짜리 퇴장이 시계 쪽 28.6%인 자리에서 이미 100% 끝나 있었다.
+   * 글·게이지·볼·기술이 한 시간축 위에 선다는 계약이 여기서만 깨져 있었다
+   */
+  const stageTime = useRef(new ClockReader())
   const lunge = useRef(0)
   /** 이번 나감이 도는 시간(초). 기술마다 다르다 */
   const lungeSecs = useRef(LUNGE)
@@ -409,9 +421,11 @@ function Slot({
     }
   }, [cast, slot, species])
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     const g = body.current
     if (!g) return
+    // 공통 시계에서 내 몫을 뗀다. 같은 프레임에 두 번 읽어도 두 번 안 나아간다
+    const delta = stageTime.current.read(battleClock.now())
     // ⚠️ **볼이 열리기 전에는 안 나온다** (`stageRefs.ballOpen`). 등판 연출과
     // 몸이 같은 값(`view.active`)을 보고 같은 프레임에 시작하던 탓에, 포켓몬이
     // 먼저 서 있고 그 뒤에 볼이 날아와 터졌다

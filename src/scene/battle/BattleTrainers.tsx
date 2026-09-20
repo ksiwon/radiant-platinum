@@ -9,6 +9,7 @@ import type { WebGPURenderer } from 'three/webgpu'
 import { warmBeforeShow } from '../warmPipelines'
 import { assets, type AssetPath } from '../../data/providers/assetProvider'
 import { normalizeModel, PLAYER_HEIGHT } from '../../engine/model/normalize'
+import { ClockReader, battleClock } from '../../engine/battle/presentationClock'
 import type { BattleView } from '../../engine/battle/view'
 import { useBattleStore } from '../../state/battleStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -30,8 +31,9 @@ function throwKey(view: BattleView | null, mine: boolean): string {
 function ProceduralTrainer({ trainerClass }: { trainerClass: number | null }) {
   const palette = trainerFallbackPalette(trainerClass)
   const arm = useRef<Group>(null)
-  useFrame(({ clock }) => {
-    if (arm.current) arm.current.rotation.x = Math.sin(clock.elapsedTime * 1.4) * 0.035
+  useFrame(() => {
+    // 공통 연출 시계다 — 재생기가 서면 사람도 선다 (`presentationClock`)
+    if (arm.current) arm.current.rotation.x = Math.sin(battleClock.now() * 1.4) * 0.035
   })
   return (
     <group>
@@ -91,6 +93,13 @@ function TrainerActor({
   const clips = useRef<{ mixer: AnimationMixer, by: Map<string, AnimationClip> } | null>(null)
   const seen = useRef('')
   const gestureStarted = useRef(-100)
+  /**
+   * 인물의 몸이 쓰는 시간도 **공통 연출 시계**에서 뗀다.
+   *
+   * ⚠️ `useFrame`의 delta와 `performance.now()`는 벽시계라 탭 숨김도
+   * `MAX_STEP_MS`도 모른다 — 긴 프레임 하나에 던지는 몸짓이 통째로 끝났다
+   */
+  const bodyTime = useRef(new ClockReader())
   /** 지금 걸린 「끝나면 쉬기」 손잡이. 클립을 갈아 끼울 때 뗀다 */
   const rest = useRef<(() => void) | null>(null)
   /** 내 쪽에서 본 결말. 누가 진 동작을 하는지는 `trainerLost`가 가른다 */
@@ -151,7 +160,7 @@ function TrainerActor({
     if (!key || key === seen.current) return
     seen.current = key
     // 공을 던지며 지시한다. 클립이 없는 몸이면 절차형 팔이 그 자리를 맡는다
-    if (!playClip(TRAINER_CLIP.order)) gestureStarted.current = performance.now() / 1000
+    if (!playClip(TRAINER_CLIP.order)) gestureStarted.current = battleClock.now()
   }, [key, playClip])
 
   // 졌으면 진 동작. 이겼거나 잡기·도망이면 아무것도 안 한다
@@ -231,19 +240,20 @@ function TrainerActor({
     if (model) playClip(TRAINER_CLIP.advent)
   }, [model, playClip])
 
-  useFrame(({ clock }, delta) => {
-    clips.current?.mixer.update(delta)
+  useFrame(() => {
+    const now = battleClock.now()
+    clips.current?.mixer.update(bodyTime.current.read(now))
     const node = host.current
     if (!node) return
     // 숨쉬는 흔들림. 쉬는 동작(`wait_b`)을 실은 뒤로는 **몸을 못 구운 사람**을
     // 위한 것이다 — 인물 106벌 중 절차형으로 떨어지는 사람이 그대로 이걸 쓴다.
     // 클립이 도는 몸에서도 겹쳐 둔다: 1.2cm라 클립을 안 흔들고, 없으면 절차형
     // 몸이 통째로 굳는다
-    node.position.y = Math.sin(clock.elapsedTime * 1.2 + (mine ? 0 : 2.1)) * 0.012
+    node.position.y = Math.sin(now * 1.2 + (mine ? 0 : 2.1)) * 0.012
     // ⚠️ **던지는 몸짓은 둘 중 하나만.** 클립이 있으면 `order_b`가 팔을
     // 돌리므로 여기서 몸통까지 기울이면 두 번 움직인다
     if (clips.current) return
-    const elapsed = performance.now() / 1000 - gestureStarted.current
+    const elapsed = now - gestureStarted.current
     const throwAmount = elapsed >= 0 && elapsed < 0.72 ? Math.sin((elapsed / 0.72) * Math.PI) : 0
     node.rotation.x = -throwAmount * 0.2
     node.rotation.z = (mine ? -1 : 1) * throwAmount * 0.14
