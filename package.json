@@ -123,7 +123,8 @@
     "gen:jpFont": "py -3.13 tools/fonts/jpSubset.py",
     "extract:particles": "node tools/extract/particles.js",
     "render:first": "node tools/e2e/firstFrame.mjs",
-    "gen:battleStrings": "node tools/extract/battleStringsModule.cjs"
+    "gen:battleStrings": "node tools/extract/battleStringsModule.cjs",
+    "gauge": "node tools/e2e/battleGauge.mjs"
   },
   "dependencies": {
     "@pkmn/protocol": "^0.7.3",
