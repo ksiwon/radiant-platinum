@@ -306,20 +306,30 @@ fetch failed`로 섰다. 프로세서 대기열은 0이었으므로 CPU 포화�
 
 ## 7. 배포와 배포판 확인 (2026-09-20~21)
 
-두 번 올렸다. 처음이 `62622d8`, 그 뒤 밤새 좁힌 것과 검사 도구 수정을 얹어 **`cedb34f`**까지
-갔다. 두 판 다 DEPLOY.md §1이 못박은 순서로 돌았다 — **push → 호스트 재배포 → 여기 재빌드 →
-`verify:deploy` → `pnpm e2e` 완주.** 소스 지문은 두 판 사이에 안 바뀌었다(`b384a854…`) —
-바뀐 것은 `tools/`와 `docs/`뿐이라, 배포물이 달라진 것은 `buildId` 한 값이다.
+`62622d8`을 올린 뒤 밤새 좁힌 것과 검사 도구 수정을 여러 번에 걸쳐 얹었다. **게임 소스는
+그 사이 한 줄도 안 바뀌었다** — 소스 지문이 `b384a854…`로 내내 같다. 바뀐 것은 `tools/`와
+`docs/`뿐이고, 그래도 배포물은 매번 달라진다(`buildId`가 커밋 SHA에서 나와 `contract` 청크에
+박힌다 — DEPLOY.md §1).
 
-| | `62622d8` | `cedb34f` (지금 올라간 것) |
+⚠️ **그래서 여기에 「지금 올라간 것」의 SHA를 안 적는다.** 이 문서를 한 줄만 고쳐도 그 값이
+낡기 때문이다. 지금 올라간 것은 `master`의 머리이고, 무엇이 재어졌는지는
+`.audit/deploy-verified.json`이 `buildId`와 엔트리 이름으로 들고 있다.
+
+아래는 **전체 검사 한 벌을 끝까지 받은 빌드**들이다. 순서는 DEPLOY.md §1이 못박은 대로
+돌았다 — **push → 호스트 재배포 → 여기 재빌드 → `verify:deploy` → `pnpm e2e` 완주.**
+
+| | `62622d8` | `b07c93c` |
 |---|---|---|
-| 호스트 엔트리 | `assets/index-Bgb0sSyf.js` | **`assets/index-DsZDpJ27.js`** — 재빌드한 로컬 `dist`와 같다 |
+| 호스트 엔트리 | `assets/index-Bgb0sSyf.js` | **`assets/index-BnyqmAtv.js`** — 재빌드한 로컬 `dist`와 같다 |
 | `verify:deploy https://radiant.siwon.it.kr/` | 통과 | **통과** · 응답 CSP가 정본과 같다 (`frame-ancestors 'none'`까지) |
 | `pnpm e2e` | PASS 29 · FAIL 0 · BLOCKED 0 | **PASS 29 · FAIL 0 · BLOCKED 0 · NOT RUN 0** |
 | `pnpm release:check` | 통과 · blocker 0 | **배포 경계 통과 (post)** · blocker 0건 |
 | `pnpm story` | — | **PASS 90 · FAIL 0 · NOT RUN 0** |
 | `pnpm journey` | PASS 23 · FAIL 0 | **PASS 23 · FAIL 0 · BLOCKED 0** · 배지 2개 |
 | `pnpm gpu:loss` · `pnpm render:first` | — | **PASS 9 · FAIL 0** · ①~⑤ 전부 통과 |
+
+`story`·`journey`·`gpu:loss`·`render:first`는 소스 지문에 묶이므로 `b07c93c` 뒤에 문서를
+고쳐도 그대로 산다. 묶음 이름에 묶이는 것은 ⑯ 하나뿐이다.
 
 남은 `▲` 한 줄은 감수하기로 한 앱 셸 그림이고 막힌 것이 아니다 (COPYRIGHT.md §11).
 
