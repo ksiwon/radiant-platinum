@@ -603,6 +603,16 @@ async function frameLoopLive() {
  */
 const CUTSCENE_MS = 180_000
 const FREEZE_MS = 20_000
+/** 전멸 워프의 페이드가 지나 도착지 스크립트가 뜨기까지 기다리는 최대 시간 */
+const AFTER_BATTLE_GRACE_MS = 8_000
+async function afterBattleSettles() {
+  const till = Date.now() + AFTER_BATTLE_GRACE_MS
+  while (Date.now() < till) {
+    const at = await marks(page)
+    if (at.talk || at.script || at.scene === 'battle') return
+    await page.waitForTimeout(100)
+  }
+}
 async function runScripts(budgetMs = CUTSCENE_MS) {
   const till = Date.now() + budgetMs
   let seen = await beat()
@@ -617,6 +627,14 @@ async function runScripts(budgetMs = CUTSCENE_MS) {
       taps += fought.taps
       if (fought.frozen) return { done: false, frozen: true, taps, at: fought.at, fought }
       // 배틀이 끝나면 스크립트가 이어 달린다. 지문을 새로 잡고 다시 민다
+      //
+      // ⚠️ **졌으면 워프 페이드 동안 대사창도 스크립트도 잠깐 빈다.** 그 순간을
+      // 「끝났다」로 읽고 손을 놓으면, 전멸 자리(집 1층 맵 414)에 도착하며 시작하는
+      // 스크립트 2가 A를 기다린 채 남아 「스크립트가 안 끝난다 (번호 2)」로 떨어진다.
+      // 시작의 방이 그렇게 일곱 판 중 두 판 떨어졌다 — `originLoss.mjs --lead=1`로는
+      // 남은 글이 14번에 끝나는 정상 갈래다. 그래서 배틀 뒤에는 글이 다시 뜨기까지
+      // 잠깐 기다린다 (이긴 갈래는 바로 이어져서 첫 표본에 돌아온다)
+      await afterBattleSettles()
       seen = await beat()
       changed = Date.now()
       continue

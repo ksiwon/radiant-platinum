@@ -27,6 +27,10 @@
 | `pnpm check` | 타입 0 · lint 0 · **4,838 통과 · 3 skipped** · shimmed 4 | 고친 뒤 typecheck·lint 다시 0 · `uiText.test.ts` 65 통과 |
 | `pnpm story` (전날 밤 판) | **PASS 90 · FAIL 0** | `.audit/story.full-20260921-b384a854.json`에 보존 |
 | `pnpm journey` (전날 밤 판) | **PASS 23 · FAIL 0** · 둘째 배지 | `.audit/dep-journey6.log` |
+| `pnpm story` (`4674809` · 21일 22:11~23:03) | **PASS 89 · FAIL 1** — `origin`이 기라티나에게 **진** 판이었다 | REPAIR §50 — 훑기가 전멸 워프의 틈을 「끝」으로 읽었다. `originLoss --lead=1`로 그 갈래를 밟으면 남은 글 12번에 걷는다. `.audit/story.full-20260921-4674809-89of90.json` |
+| `pnpm gpu:loss` (`4674809`) | **PASS 9 · FAIL 0** | 23:03~23:04 |
+| `pnpm render:first` (`4674809`) | **통과** · WebGPUBackend | 23:04~23:07 |
+| `pnpm journey` (`4674809`) | **PASS 23 · FAIL 0** · 둘째 배지 · 51분 | 23:07~23:58 · 야생 18 · 트레이너 15 |
 | `pnpm e2e` (`b07c93c`) | PASS 29 · FAIL 0 | 배포판 · `verify:deploy` 통과 |
 | `pnpm saves:check` | 아래 §3 | 오늘 |
 | `pnpm story --fight --only=wild,rival,double,gym1,safari` | 아래 §3 | 오늘 |
