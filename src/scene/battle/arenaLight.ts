@@ -11,12 +11,18 @@
 // 그대로다(흰색을 더하면 흰색이다). 원작 화면에서 그것이 무엇이었는지는 텍스처가
 // 없어 알 수 없으므로, 읽히는 쪽을 택해 안 그린다 (실측 `shots/audit/indoor3wildB.png`).
 // `g015`(민가·갤럭시단 빌딩 232맵)의 창빛 다섯은 그림이 있어 더하기로 바르게 선다.
+//
+// ⚠️ **숨기는 것은 `WindowLight`만이다.** 리그 무대 다섯(`g038~g042`)에도 그림 없는
+// `Light_27`·`Light_23~25`가 있는데 그것은 널빤지가 아니라 조명 기구의 흰 면이라
+// 여태 그대로 보였다 — 이름이 그냥 `Light`인 그림 없는 재질은 손대지 않는다.
 import { AdditiveBlending, type Material, type MeshStandardMaterial } from 'three'
 
 type LightMode = 'plain' | 'additive' | 'hidden'
 
 /** 이름이 창빛인가. 굽는 쪽 둘이 같은 이름 규칙(BDSP 재질 이름 그대로)을 쓴다 */
 const isLightMaterial = (name: string): boolean => /Light|Window/i.test(name)
+/** 창으로 드는 빛의 판. 그림이 없으면 어떻게 그려도 흰 판이라 숨기는 갈래는 이것뿐이다 */
+const isWindowLight = (name: string): boolean => /WindowLight/i.test(name)
 
 /**
  * 재질 하나를 어떻게 그릴까.
@@ -27,7 +33,8 @@ const isLightMaterial = (name: string): boolean => /Light|Window/i.test(name)
  */
 export function lightMode(name: string, blends: boolean, hasMap: boolean): LightMode {
   if (!blends || !isLightMaterial(name)) return 'plain'
-  return hasMap ? 'additive' : 'hidden'
+  if (hasMap) return 'additive'
+  return isWindowLight(name) ? 'hidden' : 'plain'
 }
 
 /**

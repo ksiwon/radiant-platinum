@@ -16,6 +16,9 @@ describe('무대 창빛', () => {
     // g021의 열하나 — 색만 흰색·알파 1이라 어떻게 그려도 흰 판이다
     expect(lightMode('M_B_021_WindowLight_03', true, false)).toBe('hidden')
     expect(lightMode('M_CB_021_WindowLight_05', true, false)).toBe('hidden')
+    // 리그 무대의 그림 없는 조명 면은 널빤지가 아니다 — 여태 보이던 대로 둔다
+    expect(lightMode('M_B_038_Light_27', true, false)).toBe('plain')
+    expect(lightMode('M_B_042_Light_24', true, false)).toBe('plain')
   })
 
   it('재질에 실제로 건다', () => {
