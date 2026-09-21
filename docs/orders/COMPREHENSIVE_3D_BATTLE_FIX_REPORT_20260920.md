@@ -19,7 +19,7 @@
 | §4 R2 — 포획 결과는 공이 멎은 뒤에 | **검증 완료** (제품 변경 없음) · 흔들림 3만 미실행 | `.audit/capture-ball-10.json` · 아래 §4 |
 | §5 3D 범위 · §6 최종 검증표 | **검증대기** | 아래 §4 |
 
-`pnpm check` 종료 코드 0 — 일반 **4,829 통과 · 3 skipped**, shimmed **4 통과**. 재검토 때가 4,792였으므로 새 시험 37건이 늘었다.
+`pnpm check` 종료 코드 0 — 일반 **4,838 통과 · 3 skipped**, shimmed **4 통과**. 재검토 때가 4,792였으므로 새 시험 46건이 늘었다.
 
 ## 1. A — 체력이 닳는 동안에는 입력이 다음 사건을 못 당긴다
 
@@ -202,14 +202,14 @@ CSS `transition: width var(--drain) linear`를 걷어냈다. CSS 전환은 벽�
 
 | 검사 | 결과 | 비고 |
 |---|---|---|
-| `pnpm check` | exit 0 · 4,829 통과 · 3 skipped · shimmed 4 | 새 시험 37건 |
+| `pnpm check` | exit 0 · **4,838 통과** · 3 skipped · shimmed 4 | 재검토 때 4,792였으므로 새 시험 46건 |
 | `pnpm gauge --gpu=webgpu` | 두 판 통과 (`WebGPUBackend`) | `.audit/battle-gauge-stall0.json` |
 | `pnpm gauge --gpu=webgpu --stall=1000` | 두 판 통과 | `.audit/battle-gauge-stall1000.json` |
-| `pnpm story` | **PASS 90 · FAIL 0 · NOT RUN 0** (`WebGPUBackend`) | `.audit/dep-story4.log` |
-| `pnpm gpu:loss` | **PASS 9 · FAIL 0 · BLOCKED 0** | `.audit/dep-gpuloss.log` |
-| `pnpm render:first` | **①~⑤ 전부 통과** · 5판 960x640 DPR 1 · 실제 `WebGPUBackend` | `.audit/dep-firstframe.log` |
-| `pnpm journey` | **PASS 23 · FAIL 0 · BLOCKED 0** · 배지 2개 · 콘솔 0건 | `.audit/dep-journey4.log` |
-| `pnpm e2e` | **PASS 28 · FAIL 0 · BLOCKED 1** — 막힌 하나는 ⑯ 호스트 CSP 헤더로, 배포해야 재는 것이다 | `.audit/dep-e2e.log` |
+| `pnpm story` | **PASS 90 · FAIL 0 · NOT RUN 0** (`WebGPUBackend`) | `.audit/story-deploy-pre.log` |
+| `pnpm gpu:loss` | **PASS 9 · FAIL 0 · BLOCKED 0** | `.audit/dep-suites2.log` |
+| `pnpm render:first` | **①~⑤ 전부 통과** · 5판 960x640 DPR 1 · 실제 `WebGPUBackend` | `.audit/dep-suites2.log` |
+| `pnpm journey` | **PASS 23 · FAIL 0 · BLOCKED 0** · 배지 2개 · 콘솔 0건 | `.audit/dep-journey6.log` |
+| `pnpm e2e` | **PASS 29 · FAIL 0 · BLOCKED 0 · NOT RUN 0** — ⑯(실제 호스트 CSP)까지 포함해 재었다 | `.audit/dep-e2e5.log` |
 
 ### 이 회귀에서 흔들린 자리 두 곳 — 통과로 접지 않는다
 
@@ -306,18 +306,46 @@ fetch failed`로 섰다. 프로세서 대기열은 0이었으므로 CPU 포화�
 
 ## 7. 배포와 배포판 확인 (2026-09-20~21)
 
-`master`에 `62622d8` 하나를 올렸다. 그 뒤 순서는 DEPLOY.md §1이 못박은 대로 돌았다 —
-**push → 호스트 재배포 → 여기 재빌드 → `verify:deploy` → `pnpm e2e` 완주.**
+두 번 올렸다. 처음이 `62622d8`, 그 뒤 밤새 좁힌 것과 검사 도구 수정을 얹어 **`cedb34f`**까지
+갔다. 두 판 다 DEPLOY.md §1이 못박은 순서로 돌았다 — **push → 호스트 재배포 → 여기 재빌드 →
+`verify:deploy` → `pnpm e2e` 완주.** 소스 지문은 두 판 사이에 안 바뀌었다(`b384a854…`) —
+바뀐 것은 `tools/`와 `docs/`뿐이라, 배포물이 달라진 것은 `buildId` 한 값이다.
 
-| | 결과 |
-|---|---|
-| 호스트 엔트리 | `assets/index-Bgb0sSyf.js` — 재빌드한 로컬 `dist`와 **같다** |
-| `verify:deploy https://radiant.siwon.it.kr/` | 통과 · 응답 CSP가 정본과 같다 (`frame-ancestors 'none'`까지) |
-| `pnpm e2e` | **PASS 29 · FAIL 0 · BLOCKED 0 · NOT RUN 0** |
-| `pnpm release:check` | **배포 경계 통과 (post)** · blocker 0건 |
-| `pnpm journey` (배포 뒤 한 판 더) | **PASS 23 · FAIL 0 · BLOCKED 0** |
+| | `62622d8` | `cedb34f` (지금 올라간 것) |
+|---|---|---|
+| 호스트 엔트리 | `assets/index-Bgb0sSyf.js` | **`assets/index-DsZDpJ27.js`** — 재빌드한 로컬 `dist`와 같다 |
+| `verify:deploy https://radiant.siwon.it.kr/` | 통과 | **통과** · 응답 CSP가 정본과 같다 (`frame-ancestors 'none'`까지) |
+| `pnpm e2e` | PASS 29 · FAIL 0 · BLOCKED 0 | **PASS 29 · FAIL 0 · BLOCKED 0 · NOT RUN 0** |
+| `pnpm release:check` | 통과 · blocker 0 | **배포 경계 통과 (post)** · blocker 0건 |
+| `pnpm story` | — | **PASS 90 · FAIL 0 · NOT RUN 0** |
+| `pnpm journey` | PASS 23 · FAIL 0 | **PASS 23 · FAIL 0 · BLOCKED 0** · 배지 2개 |
+| `pnpm gpu:loss` · `pnpm render:first` | — | **PASS 9 · FAIL 0** · ①~⑤ 전부 통과 |
 
 남은 `▲` 한 줄은 감수하기로 한 앱 셸 그림이고 막힌 것이 아니다 (COPYRIGHT.md §11).
+
+### 7.0 검사 도구가 살아 있는 서버를 죽었다고 적고 있었다
+
+이 배포에서 `journey`와 `e2e ㉙`이 각각 한 번씩 **BLOCKED**로 떨어졌고, 둘 다 같은 값이었다 —
+`AbortError · 62092ms`와 `AbortError · 62084ms`. 자리는 `knock()`의 기본 예산
+**20초 × 3회 = 60초**다. 그런데 그 두 자리 바로 아래 주석은 같은 파일에서 이렇게 적고 있었다:
+vite는 「준비됐다」를 찍은 뒤에도 모듈 그래프를 미리 변환하고(실측 168초), 그동안 첫 요청을
+붙잡는다 — 그래서 `goto`와 `warmDev`와 `devServer`는 스스로에게 **10분**을 준다.
+**살아서 굽고 있는 서버를 60초에 「죽었다」고 적는 자를 그 앞에 세워 둔 것이다.**
+
+실측이 그대로 보여 준다 — 그 판들에서 서버가 준비되기까지 **69초 · 149초 · 231초**가 걸렸다.
+한 값이 **두 파일에서 같은 62.1초로** 두 번 나왔으니 부하 잡음으로 접을 모양이 아니다.
+두 자리 모두 `goto`와 같은 10분으로 맞췄고(`tools/e2e/journey.mjs` · `tools/e2e/run.mjs`),
+그 뒤 231초짜리 판이 `PASS 29 · FAIL 0 · BLOCKED 0`으로 끝났다. 판정은 안 무뎌진다 —
+서버가 정말 죽었으면 `fetch failed`가 상한을 안 쓰고 곧바로 돌아온다.
+
+⚠️ **여기 안 들어가는 막힘이 하나 더 있었다.** `e2e ⑫`가 한 판에서 `warmDev`의
+「데우는 페이지의 부팅 갈래가 안 정해졌다 — 393.456초」로 막혔다. 이쪽은 예산이 이미 10분이라
+같은 병이 아니고, 바로 뒤 ⑬·⑭가 **같은 개발 서버에서** 통과했으므로 앱은 떠 있었다.
+다음 판에서 통과했다 — **원인은 안 밝혔다.**
+
+⚠️ **기본값(`tools/devServer.mjs`의 `knock`)은 안 고쳤다.** 그 파일은 모든 벌의 도구 목록에
+들어 있어 한 글자만 고쳐도 같은 소스에서 방금 받은 증거 넷이 통째로 죽는다. 부르는 자리에서
+예산을 주는 쪽이 싸고, 예산의 근거도 부르는 자리에 있다.
 
 ### 7.1 1인칭 — 실내에 천장이 없다 (의도적 유지)
 
