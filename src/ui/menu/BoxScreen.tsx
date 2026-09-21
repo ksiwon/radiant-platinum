@@ -65,6 +65,8 @@ export function BoxScreen() {
   const [msg, setMsg] = useState<string[]>([])
   /** `menu_entries` — 창 이름으로 쓰는 PC 항목 글 */
   const [pcText, setPcText] = useState<string[]>([])
+  /** 성격 이름 25 (`TEXT_BANK_NATURE_NAMES`). 번호를 그대로 찍지 않는다 */
+  const [natureNames, setNatureNames] = useState<string[]>([])
 
   const mode = useMenuStore((s) => s.boxMode)
   const back = useMenuStore((s) => s.back)
@@ -109,12 +111,13 @@ export function BoxScreen() {
       loadSpecies(), loadSpeciesNames(locale), loadPokeIcons(), loadBoxWallpapers(),
       loadUiText('storageSystem', locale), loadUiText('boxMessages', locale),
       loadUiText('menuEntries', locale), loadItemNames(locale), loadMoveNames(locale),
+      loadUiText('natureNames', locale),
     ])
-      .then(([table, list, icon, wall, names18, names19, entries, items, moves]) => {
+      .then(([table, list, icon, wall, names18, names19, entries, items, moves, natures]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setIcons(icon); setWalls(wall)
         setBoxText(names18); setMsg(names19); setPcText(entries)
-        setItemNames(items); setMoveNames(moves)
+        setItemNames(items); setMoveNames(moves); setNatureNames(natures)
       })
       .catch(() => { /* 그림과 이름만 빈다. 자리는 선다 */ })
     return () => { alive = false }
@@ -398,7 +401,7 @@ export function BoxScreen() {
                 </div>
                 <div className={own.detailRow}>
                   <span className={own.detailLabel}>성격</span>
-                  <span>{natureOf(selected.pid)}</span>
+                  <span>{natureNames[natureOf(selected.pid)] ?? ''}</span>
                 </div>
                 <div className={own.detailRow}>
                   <span className={own.detailLabel}>HP</span>

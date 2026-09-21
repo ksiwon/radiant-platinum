@@ -242,6 +242,17 @@ export const SAVE_TEXT = {
   ask: 13, overwrite: 14, writing: 15, done: 16,
 } as const
 
+/**
+ * 예·아니오 (`TEXT_BANK_MENU_ENTRIES` 41·42).
+ *
+ * ⚠️ **리포트 뱅크(`common_strings`)에는 예·아니오가 없다.** 한동안 그 뱅크의
+ * 82·83을 예·아니오로 읽었는데 그 두 줄은 센터 지하 안내원과 포켓치 설명원의
+ * 대사다 — 리포트 물음 밑에 「죄송합니다 지하는 조정 중이므로…」가 답으로 떴다
+ * (실측 2026-09-21 · 한국·미국 롬 둘 다). 예·아니오는 세 뱅크에 있고
+ * (220 옵션 50·51 · 361 메뉴 41·42 · 11 배틀), 옵션 것이 아닌 자리는 이것을 쓴다
+ */
+export const YES_NO = { yes: 41, no: 42 } as const
+
 /** 리포트 요약창의 이름표 (`save_info_window`) */
 export const SAVE_INFO = {
   player: 1, badges: 2, pokedex: 3, playtime: 4,

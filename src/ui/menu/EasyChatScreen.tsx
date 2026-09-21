@@ -25,6 +25,10 @@ import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 
+/** `ul`의 기본 들여쓰기(40px)를 뗀다 — 줄이 `width: 100%`라 그만큼 오른쪽으로 새어 낱말 수가 잘렸다 */
+const UL_RESET = { margin: 0, padding: 0, listStyle: 'none' } as const
+const COUNT_GAP = { marginLeft: 10, opacity: 0.7 } as const
+
 export function EasyChatScreen() {
   const back = useMenuStore((s) => s.back)
   const setWord = useMenuStore((s) => s.setMailWord)
@@ -105,18 +109,19 @@ export function EasyChatScreen() {
         : '↑↓ 무리 · Z 연다 · X 비우고 나간다'}
     >
       <div className={css.stage}>
-        <ul className={css.list}>
+        <ul className={css.list} style={UL_RESET}>
           {groups.map((g, i) => (
             <li
               key={g.index}
               className={!inWords && i === group ? css.rowOn : css.row}
             >
               <span className={css.label}>{names[g.index] ?? g.group.name}</span>
-              <span className={css.count}>{g.words.length}</span>
+              {/* 줄이 `block`이라 `count`의 `margin-left: auto`가 안 먹는다 — 「포켓몬7」로 붙지 않게 사이를 띈다 */}
+              <span className={css.count} style={COUNT_GAP}>{g.words.length}</span>
             </li>
           ))}
         </ul>
-        <ul className={css.list}>
+        <ul className={css.list} style={UL_RESET}>
           {words.slice(Math.max(0, at - 7), Math.max(0, at - 7) + 15).map((w, i) => {
             const idx = Math.max(0, at - 7) + i
             return (

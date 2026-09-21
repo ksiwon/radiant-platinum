@@ -9,7 +9,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { bankIndex, type TextBankName } from '../import/platinum/textBanks'
 import {
-  fillMenuText, MAIN_MENU, OPTIONS_TEXT, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK,
+  fillMenuText, MAIN_MENU, OPTIONS_TEXT, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK, YES_NO,
 } from './uiText'
 import { withData } from './romData.testkit'
 
@@ -133,6 +133,18 @@ maybe('한국어 글이 제자리에 있다', () => {
     expect(bank(UI_BANK.bagPockets)).toEqual([
       '도구', '회복', '볼', '기술머신', '나무열매', '메일', '배틀용', '중요한 물건',
     ])
+  })
+
+  it('예·아니오는 메뉴 뱅크 41·42다 — 리포트 뱅크에는 없다', () => {
+    // 리포트 화면이 한동안 `common_strings` 82·83을 예·아니오로 읽었다. 그 두 줄은
+    // 센터 지하 안내원과 포켓치 설명원의 대사라, 물음 밑에 대사 두 벌이 답으로 떴다
+    // (실측 2026-09-21). 글자가 나오기는 하므로 눈으로는 넘어가기 쉬운 자리다
+    const menu = bank(UI_BANK.menuEntries)
+    expect(menu[YES_NO.yes]).toBe('예')
+    expect(menu[YES_NO.no]).toBe('아니오')
+    const common = bank(UI_BANK.common)
+    expect(common.findIndex((s) => s.trim() === '예')).toBe(-1)
+    expect(common[82]).not.toBe('예')
   })
 
   it('도감 화면의 글자리가 맞다', () => {

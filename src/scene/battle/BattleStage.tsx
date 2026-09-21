@@ -24,6 +24,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { WebGPURenderer } from 'three/webgpu'
 import { warmBeforeShow } from '../warmPipelines'
+import { applyLightMode } from './arenaLight'
 import { preloadSplPack, SPL_WAZA } from './splPack'
 import { worldState } from '../../state/worldState'
 import { timeBlend } from '../../engine/map/timeOfDay'
@@ -657,6 +658,8 @@ function Arena({ look, file, onUp }: { look: TimeLook; file: string; onUp: (up: 
       if (o instanceof Mesh) {
         o.receiveShadow = true
         o.castShadow = false
+        // 창빛은 더하기로, 그림 없는 창빛은 숨긴다 — 아니면 흰 널빤지가 선다 (`arenaLight`)
+        if (o.material instanceof MeshStandardMaterial && !applyLightMode(o.material)) o.visible = false
       }
     })
     return root

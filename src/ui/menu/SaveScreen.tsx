@@ -7,7 +7,7 @@
 // **여기가 디스크로 나가는 유일한 문이다.** 걸어다니는 동안에는 아무것도
 // 안 남는다 (`state/saveStore.ts` 머리말).
 import { useEffect, useState } from 'react'
-import { fillMenuText, loadUiText, SAVE_TEXT, UI_BANK } from '../../data/uiText'
+import { fillMenuText, loadUiText, SAVE_TEXT, UI_BANK, YES_NO } from '../../data/uiText'
 import { loadDialogueBank } from '../../data/gameData'
 import { world } from '../../engine/map/world'
 import { fieldScripts } from '../../engine/script/field'
@@ -33,6 +33,8 @@ type Backup = { started: boolean; fileName: string } | null
 
 export function SaveScreen() {
   const [common, setCommon] = useState<string[]>([])
+  /** 예·아니오. 리포트 뱅크가 아니라 메뉴 뱅크에 있다 (`YES_NO`) */
+  const [entries, setEntries] = useState<string[]>([])
   /**
    * 이미 리포트가 있으면 덮어쓸지부터 묻는다.
    *
@@ -57,8 +59,11 @@ export function SaveScreen() {
 
   useEffect(() => {
     let alive = true
-    void Promise.all([loadUiText('saveInfo', locale), loadDialogueBank(locale, UI_BANK.common)])
-      .then(([, strings]) => { if (alive) setCommon(strings) })
+    void Promise.all([
+      loadUiText('saveInfo', locale), loadDialogueBank(locale, UI_BANK.common),
+      loadUiText('menuEntries', locale),
+    ])
+      .then(([, strings, menu]) => { if (alive) { setCommon(strings); setEntries(menu) } })
       .catch(() => { /* 글을 못 받아도 기록은 된다 */ })
     return () => { alive = false }
   }, [locale])
@@ -125,8 +130,8 @@ export function SaveScreen() {
 
         {asking && (
           <div className={own.choices}>
-            <span className={yes ? own.choiceOn : own.choice}>{common[82] ?? '예'}</span>
-            <span className={yes ? own.choice : own.choiceOn}>{common[83] ?? '아니오'}</span>
+            <span className={yes ? own.choiceOn : own.choice}>{entries[YES_NO.yes] ?? '예'}</span>
+            <span className={yes ? own.choice : own.choiceOn}>{entries[YES_NO.no] ?? '아니오'}</span>
           </div>
         )}
 
