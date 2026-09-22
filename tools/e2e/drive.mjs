@@ -35,6 +35,8 @@ import {
 
 /** 방향키 하나가 옮기는 칸 */
 const STEPV = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
+/** 자전거 (`items.ko.json` 450번 · 열쇠도구). `actor/bike.ts`의 `BIKE_ITEM`과 같은 값이다 */
+const BIKE_ITEM = 450
 
 /**
  * **진행 없는 한 바퀴는 이보다 짧게 안 센다** (지시서 H1).
@@ -1061,7 +1063,19 @@ export async function driveStory(page, {
       await page.waitForTimeout(25)
     }
     await page.keyboard.up(key)
-    await page.waitForTimeout(70)
+    /**
+     * ⚠️ **관성이 죽기를 기다린다.** 70ms였고, 그것이 문으로 새는 두 번째 길이었다.
+     *
+     * 손을 떼면 속도가 `exp(−12t)`로 죽는다(`actor/player`의
+     * `velocity.lerp(desired, 1 − exp(−12dt))`). 70ms 뒤에도 **43%**가 남아 있고,
+     * 다음 다리가 다른 방향이면 그 나머지가 **대각선 미끄러짐**이 되어 주인공을
+     * 계획에 없는 옆 칸으로 밀어 넣는다 — 실측(2026-09-22)으로 그렇게 밀려간 칸이
+     * 약초가게 문 앞이었고 그대로 가게 안이었다.
+     *
+     * 250ms면 `exp(−3)` ≈ 5%다. 걸어서 남는 미끄러짐이 **0.02칸**,
+     * 자전거 4단(4배)에서도 0.075칸이라 칸을 못 넘는다
+     */
+    await page.waitForTimeout(250)
     lastRun = { why, ms: Date.now() - lastKeyAt, key, count }
     return at
   }
@@ -1086,15 +1100,147 @@ export async function driveStory(page, {
   const grid0 = (mapId, x, z) => {
     try { return gridOf(matrixOf(mapId)).blocked(x, z) } catch { return null }
   }
+  /**
+   * **문 앞 칸에 문을 향해 들어서는 걸음을 막는다** (지시서 §1.1).
+   *
+   * ⚠️ **칸을 피하는 것으로는 못 막는다.** 계획은 문 **칸**을 이미 빼고 있는데도
+   * 실측 3판(2026-09-22 `_cyn42`)이 셋 다 건물 안에 들어갔다. 우리 문은 밟는
+   * 칸이 아니라 **마주 보고 미는 앞 칸**이고(`map/world`의 `doorEntry`), 그
+   * 판정은 **지금 눌려 있는 키**를 프레임마다 본다 — 문 앞 칸에 발을 들이는
+   * 그 프레임에 이미 문이 열린다.
+   *
+   * 마지막 판은 **조용한 기계**에서 났다 (표본 간격 150~170ms · 멎은 구간 없음):
+   * (305,532)→(305,531)로 북쪽 한 칸을 딛자 포켓몬센터(69) 안이었다. 칸이 바뀐
+   * 것을 보고 손을 떼는 `stepOnce`로는 늦는다 — 폴링 한 바퀴가 한 프레임보다
+   * 짧을 수 없다. 그래서 **손이 아니라 길**을 고친다: 같은 칸이라도 옆에서
+   * 들어서면 문을 안 보므로 그대로 지나간다.
+   *
+   * **제품 결함이 아니다** — 사람도 그 칸을 북쪽으로 걸으면 센터에 들어간다.
+   * 원작도 걸음 끝에 눌린 키를 본다 (`FieldInput` 166줄). 잘못 걸은 쪽은 우리다
+   *
+   * @param except 일부러 들어갈 문들. 그 앞 칸은 안 막는다 — 안 빼면
+   *   **들어가려는 문 앞에도 못 서서** 어느 문으로도 못 들어간다
+   */
+  const banCache = new Map()
+  const doorStepBan = (mapId, except = []) => {
+    if (except.length === 0) {
+      const hit = banCache.get(mapId)
+      if (hit !== undefined) return hit
+    }
+    const g = gridOf(matrixOf(mapId))
+    const ban = new Set()
+    for (const w of warpsOf(mapId)) {
+      // 밟는 워프(계단·워프판)는 **미는 것이 아니다** — 그쪽은 `avoid`가 뺀다
+      if (!g.blocked(w.x, w.z)) continue
+      if (except.some((e) => e.x === w.x && e.z === w.z)) continue
+      for (const [key, [dx, dz]] of Object.entries(STEPV)) {
+        ban.add(`${String(w.x - dx)},${String(w.z - dz)},${key}`)
+      }
+    }
+    if (except.length === 0) banCache.set(mapId, ban)
+    return ban
+  }
+  /** 위 목록을 `planPath`의 `avoidStep` 모양으로 */
+  const noDoorStep = (mapId, except = []) => {
+    const ban = doorStepBan(mapId, except)
+    return (x, z, key) => ban.has(`${String(x)},${String(z)},${key}`)
+  }
+
+  /**
+   * **문에서 한 칸 떨어져 걷는다** — 문 앞 칸 넷을 계획에서 아예 뺀다.
+   *
+   * ⚠️ **걸음 금지(`doorStepBan`)만으로는 안 닫힌다.** 그것은 **계획한 칸**에만
+   * 걸리는데, 우리 걸음이 연속이라 **몸이 계획 밖 칸으로 간다**. 실측
+   * (2026-09-22 · 약초가게 81): 계획은 317열로 북상하는 것이었는데 밟은 칸이
+   * `… 317,523 → 316,523 → 316,522`였다 — 서쪽 키를 떼고 북쪽을 누르는 사이
+   * 서쪽 관성이 남아 **대각선으로 흘러** 한 열 옆으로 밀렸고, 그 칸이 하필
+   * 약초가게 문 (316,521) 앞이었다.
+   *
+   * 그래서 문 둘레에 **한 칸을 비우고** 걷는다. 밀려도 문 앞에 닿으려면 온 칸
+   * 하나를 가야 하는데, 손을 뗀 뒤 남는 미끄러짐은 0.02칸이다(`runKeys` 꼬리).
+   *
+   * ⚠️ **길이 그것뿐이면 놓는다.** 부르는 쪽이 이 규칙을 **먼저** 걸어 보고,
+   * 못 가면 빼고 다시 계획한다 — 안 그러면 골목 안 가게에 영영 못 들어간다
+   *
+   * @param except 일부러 들어갈 문들. 그 앞은 안 비운다
+   */
+  const berthCache = new Map()
+  const doorBerth = (mapId, except = []) => {
+    if (except.length === 0) {
+      const hit = berthCache.get(mapId)
+      if (hit !== undefined) return hit
+    }
+    const g = gridOf(matrixOf(mapId))
+    const out = new Set()
+    for (const w of warpsOf(mapId)) {
+      if (!g.blocked(w.x, w.z)) continue
+      if (except.some((e) => e.x === w.x && e.z === w.z)) continue
+      for (const [dx, dz] of Object.values(STEPV)) {
+        out.add(`${String(w.x + dx)},${String(w.z + dz)}`)
+      }
+    }
+    if (except.length === 0) berthCache.set(mapId, out)
+    return out
+  }
+
   /** 막힌 걸음의 까닭 기록. 판정에는 안 쓰고 증거로만 남긴다 */
   const blockNotes = []
   /** 마지막 `runKeys`가 왜 끝났나 — `arrived`·`stalled`·`scene`·`deadline` */
   let lastRun = { why: null, ms: 0, key: null, count: 0 }
 
+  /**
+   * **한 칸만 딛는다** — 키를 잡고 있지 않는다.
+   *
+   * ⚠️ **문 앞의 마지막 한 칸은 잡고 가면 안 된다.** 실측(2026-09-22 `_cyn42`):
+   * 영원시티 (305,532)에서 북쪽 한 칸을 잡고 가는데 페이지가 **2초 멎었고**, 풀리는
+   * 순간 잡혀 있던 키가 (305,531)을 지나 문 (305,530)을 밀어 포켓몬센터에 들어갔다 —
+   * 그 앞 판(`_cut42`)도 같은 모양으로 약초가게에 들어갔다. 멎은 것은 기계지만
+   * (다른 프로젝트의 e2e가 같은 CPU를 쓴다) 잡고 있는 손은 우리 것이다. 칸이
+   * 바뀐 것을 보는 즉시 손을 떼고, 멈춰 서기를 기다린다
+   */
+  const stepOnce = async (key, want) => {
+    lastKeyAt = Date.now()
+    const cap = Date.now() + 1_500
+    await page.keyboard.down(key)
+    let at = null
+    let why = 'deadline'
+    while (Date.now() < cap) {
+      at = await now()
+      if (at.talk || at.scene !== 'overworld') { why = 'scene'; break }
+      if (at.x === want.x && at.z === want.z) { why = 'arrived'; break }
+      await page.waitForTimeout(15)
+    }
+    await page.keyboard.up(key)
+    // 칸 중심까지 마저 걷기를 기다린다 — 다음 계획이 반 칸에서 시작하면 안 된다
+    await page.waitForTimeout(260)
+    at = await now()
+    lastRun = { why, ms: Date.now() - lastKeyAt, key, count: 1 }
+    return at
+  }
+
   const walk = async (keys, from, mapId, shun = null) => {
+    const doors = warpsOf(mapId)
     for (const leg of runs(keys, from)) {
       const legT0 = Date.now()
-      const at = await runKeys(leg.key, leg.count, leg.want)
+      /**
+       * ⚠️ **다음 칸이 문이면 마지막 한 칸은 잡지 않고 딛는다** (`stepOnce`). 문은
+       * 마주 보고 미는 것이라(`map/world`의 `doorEntry`) 한 칸만 지나쳐도 건물 안이다.
+       * 계획은 문 칸을 피하지만 손을 떼는 것은 폴링이라, 기계가 멎으면 지나친다
+       */
+      const [ldx, ldz] = STEPV[leg.key]
+      const beyond = { x: leg.want.x + ldx, z: leg.want.z + ldz }
+      const doorAhead = doors.some((w) => w.x === beyond.x && w.z === beyond.z)
+      let at
+      if (doorAhead) {
+        if (leg.count > 1) {
+          const shy = { x: leg.want.x - ldx, z: leg.want.z - ldz }
+          at = await runKeys(leg.key, leg.count - 1, shy)
+          if (at !== null && at.scene === 'overworld' && !at.talk && at.map === mapId
+            && at.x === shy.x && at.z === shy.z) {
+            at = await stepOnce(leg.key, leg.want)
+          }
+        } else at = await stepOnce(leg.key, leg.want)
+      } else at = await runKeys(leg.key, leg.count, leg.want)
       const legMs = Date.now() - legT0
       if (at === null) return 'unknown'
       if (at.scene === 'battle') return 'battle'
@@ -1217,6 +1363,40 @@ export async function driveStory(page, {
     let beatAt = Date.now()
     const t0Go = Date.now()
     const seenMaps = []
+    /**
+     * **이번 여행에서 실제로 지나온 문**. `맵:x,z` 꼴이다.
+     *
+     * ⚠️ **한 맵이 여러 구역으로 갈려 있으면 「어느 문으로 들어갔나」가 뜻을 가진다**
+     * (REPAIR §53). 앞 내다보기(`landsWell`)는 **목적지가 다음 홉일 때 아무것도 못
+     * 거른다** — 어느 계단으로 내려도 「그 맵에 도착」이라서다. 그래서 갤럭시 빌딩
+     * 2F로 갈 때 왼쪽 방에 떨어질 수 있고, 그다음 3F 계단이 안 보인다.
+     *
+     * 그때는 **왔던 문을 빼고 다시 고른다.** 어느 문으로 들어왔는지는 도착한 칸으로
+     * 안다 — 워프의 `anchor`가 상대 맵의 몇 번째 워프에 내리는지 말해 준다
+     */
+    const usedDoors = new Set()
+    /** 맵이 갈린 직후, 어느 문으로 들어왔는지 적는다 */
+    const noteArrival = (from, to, at) => {
+      if (from === to || from === null) return
+      /**
+       * ⚠️ **도착 칸이 워프 칸과 늘 같지는 않다.** 계단·워프판은 그 칸에 내리지만
+       * **문은 통행 불가**라 씬이 한 칸 내려 세운다(`map/world`의 `walkOutOfDoor`).
+       * 표본도 한 바퀴 늦을 수 있다. 그래서 딱 맞는 것이 없으면 **두 칸 안**을 본다.
+       *
+       * ⚠️ **애매하면 아무것도 안 적는다.** 같은 맵으로 나가는 문 짝 488개 가운데
+       * **186개**가 내려서는 칸이 두 칸 안이다(가게 양쪽 문처럼 아예 같은 칸도 있다).
+       * 그때 하나를 찍으면 **안 지나온 문을 지나왔다고 적는** 셈이라, 다음 고르기가
+       * 엉뚱한 문을 뺀다. 못 가리면 안 적는 것이 맞다 — 이 기억은 길을 좁히는
+       * 도움일 뿐이고, 없다고 틀리지는 않는다
+       */
+      const mine = warpsOf(from).filter((w) => w.to === to)
+        .map((w) => ({ w, land: warpsOf(to)[w.anchor] }))
+        .filter((one) => one.land !== undefined)
+      const exact = mine.filter((one) => one.land.x === at.x && one.land.z === at.z)
+      const close = mine.filter((one) => Math.abs(one.land.x - at.x) + Math.abs(one.land.z - at.z) <= 2)
+      const pick = exact.length === 1 ? exact[0] : close.length === 1 ? close[0] : null
+      if (pick !== null) usedDoors.add(`${String(from)}:${String(pick.w.x)},${String(pick.w.z)}`)
+    }
     /** 지난 바퀴에 세운 계획의 남은 걸음 수. 줄어드는 것도 진행이다 */
     let planLeft = -1
     /** 이번 바퀴가 시작한 시각. 진행 없는 바퀴를 너무 짧게 안 센다 */
@@ -1253,7 +1433,10 @@ export async function driveStory(page, {
           + ` · 지나온 맵 ${JSON.stringify(seenMaps.slice(-6))}`
           + ` · 쉰 바퀴 ${String(stall.idle)}`)
       }
-      if (seenMaps.at(-1) !== s.map) seenMaps.push(s.map)
+      if (seenMaps.at(-1) !== s.map) {
+        noteArrival(seenMaps.at(-1) ?? null, s.map, { x: s.x, z: s.z })
+        seenMaps.push(s.map)
+      }
       if (s.scene === 'battle') { await fightThrough(); continue }
       if (s.talk || s.scene === 'menu') { await clearTalk(); continue }
       // 스크립트가 도는 동안은 발이 묶인다 — 밀어 봐야 안 움직인다. 넘겨 준다
@@ -1304,10 +1487,17 @@ export async function driveStory(page, {
       stuckAt = where
       if (stuckFor >= 3) {
         stuckFor = 0
+        /**
+         * ⚠️ **물러나는 걸음도 문 앞에 문을 향해 서면 안 된다** (지시서 §1.1 (나)).
+         * 워프 **칸**만 피하면 한 칸 옆의 문 앞으로 물러나 그대로 들어가 버린다 —
+         * 문을 못 열어 막힌 자리에서 물러나는 걸음이라 하필 문이 가깝다
+         */
+        const banned = doorStepBan(s.map)
         const away = ['ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowUp']
           .map((key) => ({ key, at: { x: s.x + STEPV[key][0], z: s.z + STEPV[key][1] } }))
           .find((n) => !grid.blocked(n.at.x, n.at.z)
-            && !warpsOf(s.map).some((w) => w.x === n.at.x && w.z === n.at.z))
+            && !warpsOf(s.map).some((w) => w.x === n.at.x && w.z === n.at.z)
+            && !banned.has(`${String(n.at.x)},${String(n.at.z)},${n.key}`))
         if (away !== undefined) {
           if (verbose) log(`      제자리다 — ${away.key}로 한 발 물러난다`)
           await runKeys(away.key, 1, away.at)
@@ -1349,13 +1539,26 @@ export async function driveStory(page, {
        * 부르는 쪽에 그대로 돌려준다 (§4.3)
        *
        * @param door 목표가 **문**인가. 문일 때만 통행 불가 칸으로 들어선다
+       * @param into 일부러 들어갈 문들. 그 문 앞 칸만 걸음 금지에서 뺀다 —
+       *   안 빼면 **들어가려는 문 앞에도 못 서서** 어느 문으로도 못 들어간다
        */
-      const path = (isGoal, why, door = false) => {
-        const opts = { enterBlockedGoal: door }
+      const path = (isGoal, why, door = false, into = []) => {
+        const opts = { enterBlockedGoal: door, avoidStep: noDoorStep(s.map, into) }
+        /**
+         * **문에서 한 칸 떨어져서** 먼저 찾는다 (`doorBerth`). 못 찾으면 놓는다 —
+         * 골목 안 가게처럼 문 앞을 지나야만 닿는 자리가 있다
+         */
+        const berth = doorBerth(s.map, into)
+        const wide = (x, z) => berth.has(`${String(x)},${String(z)}`)
         const shy = planned(here, from, isGoal,
-          { ...opts, avoid: (x, z) => avoid(x, z) || grassAt(here, x, z) }, `${why}/풀회피`)
+          { ...opts, avoid: (x, z) => avoid(x, z) || grassAt(here, x, z) || wide(x, z) }, `${why}/풀·문회피`)
         if (shy.keys !== null) {
           return { keys: shy.keys, status: shy.status, why, grassAvoided: true }
+        }
+        const dry = planned(here, from, isGoal,
+          { ...opts, avoid: (x, z) => avoid(x, z) || wide(x, z) }, `${why}/문회피`)
+        if (dry.keys !== null) {
+          return { keys: dry.keys, status: dry.status, why, grassAvoided: false, shy: shy.status }
         }
         const plain = planned(here, from, isGoal, { ...opts, avoid }, why)
         if (plain.status === PLAN.budget && verbose) {
@@ -1399,11 +1602,61 @@ export async function driveStory(page, {
         while (far + 1 < route.length && matrixOf(route[far + 1]) === here) far++
         if (far === 0) {
           const hop = route[1]
-          const doors = others.filter((w) => w.to === hop)
-          if (doors.length === 0) return done(`${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`)
+          const all = others.filter((w) => w.to === hop)
+          if (all.length === 0) return done(`${String(s.map)}에서 ${String(hop)}으로 나가는 문이 없다`)
+          /**
+           * **한 맵 안이 여러 구역으로 갈려 있을 수 있다** — 맵 그래프는 맵을 한
+           * 덩어리로 보므로 그 갈림을 모른다.
+           *
+           * ⚠️ 실측(2026-09-22 다리 a): 갤럭시 빌딩 **2F(73)** 가 그렇다. 1F에서
+           * 내려오는 계단이 **둘**인데 왼쪽 (3,3)으로 내려오면 x=4·5가 벽이라
+           * 3F 계단 (14,3)·(20,3)과 **안 이어진다**. 재는 자는 그 방에서 「길을
+           * 못 찾았다」로 서고, 밖에서는 빌딩을 못 올라가는 것으로 보였다.
+           *
+           * 그래서 문을 고를 때 **내려서는 자리**를 본다: 워프의 `anchor`가 상대
+           * 맵의 몇 번째 워프에 내리는지 말해 주므로(`resolveWarp`와 같은 규칙),
+           * 그 칸에서 **그 맵의 다음 문**까지 이어지는 문만 쓴다.
+           *
+           * ⚠️ **모르면 막지 않는다.** 앞을 못 내다보는 갈래는 전부 참을 낸다 —
+           * 이 규칙이 길을 **좁히기만** 하고 새로 막지는 않게 한다. 다 걸러지면
+           * 원래 목록을 그대로 쓴다
+           */
+          const landsWell = (w) => {
+            const land = warpsOf(w.to)[w.anchor]
+            if (land === undefined) return true
+            const on = mapRoute(w.to, target, { without: shut })
+            if (!Array.isArray(on) || on.length < 2) return true
+            const nextDoors = warpsOf(w.to).filter((d) => d.to === on[1])
+            if (nextDoors.length === 0) return true
+            const there = warpsOf(w.to)
+            const r = planPath(matrixOf(w.to), { x: land.x, z: land.z },
+              (x, z) => nextDoors.some((d) => d.x === x && d.z === z),
+              {
+                enterBlockedGoal: true,
+                // 다른 워프는 밟지 않는다 — 노리는 문만 목표다
+                avoid: (x, z) => there.some((o) => o.x === x && o.z === z)
+                  && !nextDoors.some((d) => d.x === x && d.z === z),
+              })
+            return r.keys !== null
+          }
+          const good = all.filter((w) => landsWell(w))
+          /**
+           * **이미 지나온 문은 다시 안 고른다** — 그 문으로 들어가 봤는데 여기로
+           * 되돌아왔다는 뜻이다(구역이 갈린 맵). 남는 것이 없으면 그 기억은 놓는다
+           */
+          const narrowed = good.length > 0 ? good : all
+          const fresh = narrowed.filter((w) => !usedDoors.has(`${String(s.map)}:${String(w.x)},${String(w.z)}`))
+          const doors = fresh.length > 0 ? fresh : narrowed
+          if (verbose && fresh.length !== narrowed.length) {
+            log(`      →${String(hop)} 이미 지나온 문 ${String(narrowed.length - fresh.length)}개를 뺀다`)
+          }
+          if (verbose && good.length !== all.length) {
+            log(`      →${String(hop)} 문 ${String(all.length)}개 중 ${String(good.length)}개만`
+              + ' 내려선 자리에서 길이 이어진다')
+          }
           // ⚠️ **문만 통행 불가 칸으로 들어선다** (후속 §4.2)
           keys = use(path((x, z) => doors.some((w) => w.x === x && w.z === z),
-            `문 →${String(hop)}`, true))
+            `문 →${String(hop)}`, true, doors))
         } else {
           for (let i = far; i >= 1 && keys === null; i--) {
             keys = use(path((x, z) => grid.zoneAt(x, z) === route[i],
@@ -1434,6 +1687,30 @@ export async function driveStory(page, {
           return ok
         }
         keys = use(path((x, z) => worthGoing(grid.zoneAt(x, z)), '닿을 수 있는 다른 구역'))
+        /**
+         * **실내는 구역이 하나뿐이라 위 갈래가 후보를 못 찾는다** (REPAIR §53).
+         * 그런데 한 맵이 여러 구역으로 갈려 있을 수 있다 — 갤럭시 빌딩 2F가 그렇다.
+         * 노리는 문이 안 닿으면 **닿는 다른 문으로 일단 나갔다가** 다시 들어온다.
+         *
+         * ⚠️ **되돌아오기만 하는 문은 고르지 않는다** — 그 맵에서 목적지로 가는
+         * 길이 남아 있어야 하고, **이미 지나온 문**도 뺀다(`usedDoors`). 그래야
+         * 두 문 사이를 영영 오가지 않는다
+         */
+        if (keys === null) {
+          const back = others.filter((w) => w.to !== s.map)
+            .filter((w) => !usedDoors.has(`${String(s.map)}:${String(w.x)},${String(w.z)}`))
+            .filter((w) => {
+              const r = shut?.has(w.to) === true ? null : mapRoute(w.to, target, { without: shut })
+              return Array.isArray(r) && r.length >= 1
+            })
+          if (back.length > 0) {
+            keys = use(path((x, z) => back.some((w) => w.x === x && w.z === z),
+              '나갔다 다시 들어올 문', true, back))
+            if (keys !== null && verbose) {
+              log(`      ${String(s.map)}에서 ${String(target)}로 곧장 못 간다 — 다른 문으로 나갔다 온다`)
+            }
+          }
+        }
         if (keys !== null && verbose) log('      맵 그래프의 길이 막혔다 — 다른 구역으로 돌아 나간다')
       }
       if (keys === null) {
@@ -1489,9 +1766,15 @@ export async function driveStory(page, {
    * 그 뒤의 문이 조용히 잠긴다 — 실측으로 201번도로 첫 장면을 이렇게 지나쳐서
    * 가방이 끝까지 안 나타났고, 파트너를 못 고른 채로 이야기가 멎었다
    */
-  const stepOn = async (mapId, spot, budgetMs) => {
+  /**
+   * @param intoDoors 일부러 문 앞에 서려는 것이면 그 문들. 그 문만 걸음 금지에서
+   *   뺀다 (`enterDoor`가 쓴다 — 안 빼면 문 아래 칸에 **아래에서** 못 올라선다)
+   */
+  const stepOn = async (mapId, spot, budgetMs, { intoDoors = [] } = {}) => {
     const here = matrixOf(mapId)
     const doors = warpsOf(mapId)
+    /** 문에서 한 칸 떨어져 걸을까. 그래서는 못 가면 아래에서 놓는다 */
+    let berth = true
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const shun = new Set()
     const ep = openEpisode('tile', { mapId, spot: { ...spot } }, await now())
@@ -1580,9 +1863,17 @@ export async function driveStory(page, {
       const r = planned(here, { x: s.x, z: s.z }, (x, z) => x === spot.x && z === spot.z, {
         avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
           || doors.some((w) => w.x === x && w.z === z)
-          || blockedByFeature(mapId, x, z),
-      }, `밟기 ${String(spot.x)},${String(spot.z)}`)
+          || blockedByFeature(mapId, x, z)
+          // **문에서 한 칸 떨어져 걷는다** — 못 가면 아래에서 놓는다
+          || (berth && doorBerth(mapId, intoDoors).has(`${String(x)},${String(z)}`)),
+        // ⚠️ **밟으러 가다 건물에 들어가지 않는다** (지시서 §1.1). 실측 3판이
+        // 전부 이 부름에서 샜다 — `stepOn(65, {303,524})`이 포켓몬센터였다
+        avoidStep: noDoorStep(mapId, intoDoors),
+      }, `밟기 ${String(spot.x)},${String(spot.z)}${berth ? '/문회피' : ''}`)
       if (r.keys === null) {
+        // ⚠️ **문 회피는 넉넉한 규칙이지 길이 아니다.** 골목 안 가게나 문 앞
+        // 칸 자체가 목표면 그 규칙으로는 못 간다 — 먼저 그것부터 놓는다
+        if (berth) { berth = false; continue }
         if (shun.size > 0) { shun.clear(); continue }
         // ⚠️ **못 서는 칸을 예산이 다 되도록 노리지 않는다** (§4.3). 큐가 마른
         // 것은 「더 보면 된다」가 아니다 — 왜 못 서는지는 부르는 쪽이 적는다
@@ -1667,6 +1958,8 @@ export async function driveStory(page, {
             avoid: (x, z) => shun.has(`${String(x)},${String(z)}`)
               || doors.some((w) => w.x === x && w.z === z)
               || blockedByFeature(mapId, x, z),
+            // ⚠️ **말 걸러 가다 건물에 들어가지 않는다** (지시서 §1.1)
+            avoidStep: noDoorStep(mapId),
           }, '말 걸 자리').keys
         if (keys === null) {
           if (verbose) log(`      ${String(side.at.x)},${String(side.at.z)}로 가는 길이 없다`)
@@ -1817,6 +2110,29 @@ export async function driveStory(page, {
   }
   const eternaWalls = async () => {
     const r = await obs.eternaWalls()
+    return r.known ? r.value : null
+  }
+  /**
+   * 넷째·다섯째 배지 체육관을 재는 읽기 셋. 전부 **제품이 내놓는 값**이다
+   * (`observe.mjs`가 까닭을 적어 뒀다). 못 읽으면 `null`이고, 부르는 쪽이
+   * 그것을 「관측 불가」로 적는다 — 0이나 빈 목록으로 접지 않는다
+   */
+  const veilstoneState = async () => {
+    const r = await obs.veilstoneState()
+    return r.known ? r.value : null
+  }
+  const pastoriaState = async () => {
+    const r = await obs.pastoriaState()
+    return r.known ? r.value : null
+  }
+  /** @param box `{ x0, z0, x1, z1 }` 훑을 네모 */
+  const featureWalls = async (box) => {
+    const r = await obs.featureWalls(box)
+    return r.known ? r.value : null
+  }
+  /** 장막 체육관 풀이 — **페이지 안에서** 돈다 (`observe.veilstonePlan`) */
+  const veilstonePlan = async (arg) => {
+    const r = await obs.veilstonePlan(arg)
     return r.known ? r.value : null
   }
 
@@ -2009,6 +2325,16 @@ export async function driveStory(page, {
     const had = await knows()
     if (had === null) return { ok: false, unknown: true, why: `파티를 못 읽었다 (${obs.kind})` }
     if (had >= 0) return { ok: true, already: true, slot: had, ms: 0 }
+    /**
+     * ⚠️ **무엇을 잊었는지 적는다.** 칸이 다 찼으면 이 걸음은 **첫 칸을 버린다** —
+     * 대개 레벨로 가장 먼저 배운 기술이라 사람도 그것을 버리지만, **늘 그렇지는
+     * 않다.** 셋째 배지 계획은 선두의 **물기**로 멜리사(고스트)를 친다
+     * (`JOURNEY_BADGE345` §7) — 그것을 잊고 간 판은 관장 앞에서야 표가 난다.
+     * 판정에는 안 쓰고, 부르는 쪽이 결과에 적어 사람이 보게 한다
+     */
+    const movesBefore = (await partyState())?.map((one) => ({
+      species: one.species, moves: one.moves.map((m) => m.move),
+    })) ?? null
     const at = await openBagAt(item, till)
     if (!at.ok) { await closeMenus(); return { ...at, ms: Date.now() - t0 } }
     await tap('Space', 300)
@@ -2026,7 +2352,32 @@ export async function driveStory(page, {
     const screen = async () => page.evaluate(
       () => (document.body.innerText ?? '').replace(/\s+/g, ' '),
     ).catch(() => '')
+    /**
+     * **빈 칸이 있는 마리에게 먼저 가르친다** — 두 바퀴를 돈다.
+     *
+     * ⚠️ **첫 칸에 있는 마리가 늘 옳지는 않다.** 실측(2026-09-22 다리 a 앞):
+     * 선두 수풀부기의 기술이 `바위깨기·물기·흡수·잎날가르기`로 **꽉 차 있었고**,
+     * 비버니는 `몸통박치기` 하나뿐이라 **빈 칸이 셋**이었다. 그냥 첫 칸부터 누르면
+     * 수풀부기가 **바위깨기를 버리고** 베어가르기를 배운다 — 사람이라면 비버니에게
+     * 가르친다. 그래서 첫 바퀴는 **칸이 남은 마리만** 보고, 아무도 못 배우면
+     * 두 번째 바퀴에서 칸이 찬 마리까지 본다.
+     *
+     * 칸이 찬 마리에게 가르치는 것 자체는 막지 않는다 — 비전머신을 배울 마리가
+     * 그것뿐인 판이 있고, 그때는 **무엇을 잊었는지가 결과에 적힌다**(`lost`)
+     */
+    const full = (i) => (movesBefore?.[i]?.moves.length ?? 0) >= 4
+    const roomy = (movesBefore ?? []).some((_, i) => !full(i))
+    for (let pass = 0; pass < (roomy ? 2 : 1) && learned < 0 && Date.now() < till; pass++) {
+      if (pass > 0) {
+        // 커서를 처음으로 되돌린다 — 파티 화면을 닫았다 열면 0에서 시작한다
+        for (let i = 0; i < 8 && (await now()).menu !== undefined; i++) await tap('KeyX', 120)
+        const again = await openBagAt(item, till)
+        if (!again.ok) break
+        await tap('Space', 300)
+      }
     for (let i = 0; i < 6 && Date.now() < till; i++) {
+      // 첫 바퀴에는 **칸이 찬 마리를 건너뛴다**
+      if (pass === 0 && roomy && full(i)) { await tap('ArrowRight', 120); continue }
       await tap('Space', 400)
       /**
        * **기술 칸이 다 찼으면 원작은 묻는다** (`PartyMenuCB_TeachMove`) —
@@ -2047,13 +2398,27 @@ export async function driveStory(page, {
       if (learned >= 0) break
       await tap('ArrowRight', 120)
     }
+    }
     for (let i = 0; i < 8 && (await now()).menu !== undefined; i++) await tap('KeyX', 120)
     await settle()
     const bagAfter = await bagState()
+    const movesAfter = (await partyState())?.map((one) => ({
+      species: one.species, moves: one.moves.map((m) => m.move),
+    })) ?? null
+    /** 이 걸음에 사라진 기술들 — 마리마다 「전에 있었는데 지금 없는 것」 */
+    const lost = movesBefore === null || movesAfter === null ? null
+      : movesBefore.flatMap((was, i) => {
+        const now2 = movesAfter[i]
+        if (now2 === undefined || now2.species !== was.species) return []
+        return was.moves.filter((m) => !now2.moves.includes(m))
+          .map((m) => ({ slot: i, species: was.species, move: m }))
+      })
     return {
       ok: learned >= 0, slot: learned, ms: Date.now() - t0, said: said2,
       // 비전머신은 써도 안 없어진다 (`PartyScreen`의 `index < 92`)
       have: bagAfter?.items.find((one) => one.item === item)?.count ?? 0,
+      // ⚠️ **잊은 기술은 결함이 아니라 값이다** — 사람이 보고 판단할 자리다
+      lost, movesBefore, movesAfter,
       why: learned >= 0 ? null : '아무도 못 배웠다',
     }
   }
@@ -2168,38 +2533,80 @@ export async function driveStory(page, {
    * ⚠️ **다 깨지 않는다.** 험한 샛길에만 스물일곱 개가 있고 길에 필요한 것은
    * 몇 개뿐이다. **가까운 것부터 하나씩** 깨고 그때마다 목적지로 가 본다
    */
-  const smashWay = async (mapId, to, budgetMs, maxRocks = 4) => {
+  /**
+   * **길을 막는 물체를 치우고 지나간다** — 바위(85)든 나무(86)든 같은 걸음이다.
+   *
+   * 원작이 셋을 한 자리에서 다룬다(`actor/obstacles.ts`의 `OBSTACLE_MOVE`): 마주
+   * 보고 A → 「…을 쓰겠습니까」 → 예. 치웠는지는 **게임에게 묻는다**(`obstacleAt`) —
+   * 화면 글로 재면 「깼다」와 「이 포켓몬은 …을 쓸 수 없다」가 글자 맞추기가 된다.
+   *
+   * ⚠️ **가까운 것부터 친다.** 영원시티의 나무 셋(304~306,521)은 나란히 서서 문 하나를
+   * 막으므로 하나만 베도 길이 난다 — 다 베지 않는다. 한 번 치우고 목적지로 가 보고,
+   * 닿았으면 끝이다
+   */
+  const clearWay = async (mapId, to, budgetMs, { sprite = 85, maxHits = 4 } = {}) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
-    const rocks = npcsOf(mapId).filter((one) => one.sprite === 85)
+    const what = sprite === 86 ? '나무' : sprite === 84 ? '큰바위' : '바위'
+    const rocks = npcsOf(mapId).filter((one) => one.sprite === sprite)
     const broke = []
-    if (rocks.length === 0) return { ok: false, why: `맵 ${String(mapId)}에 바위가 없다`, broke }
-    for (let i = 0; i < maxRocks && Date.now() < till; i++) {
+    if (rocks.length === 0) return { ok: false, why: `맵 ${String(mapId)}에 ${what}가 없다`, broke }
+    for (let i = 0; i < maxHits && Date.now() < till; i++) {
       const at = await now()
-      if (!at.ok || at.map !== mapId) return { ok: false, why: `동굴을 벗어났다 (맵 ${String(at.map)})`, broke }
+      if (!at.ok || at.map !== mapId) return { ok: false, why: `그 맵을 벗어났다 (맵 ${String(at.map)})`, broke }
       const left2 = rocks
         .filter((r) => !broke.some((b) => b.x === r.x && b.z === r.z))
         .sort((a, b) => (Math.abs(a.x - at.x) + Math.abs(a.z - at.z))
           - (Math.abs(b.x - at.x) + Math.abs(b.z - at.z)))
-      if (left2.length === 0) return { ok: false, why: '깰 바위가 더 없다', broke }
+      if (left2.length === 0) return { ok: false, why: `치울 ${what}가 더 없다`, broke }
       const rock = left2[0]
       const said = await talkTo(mapId, { x: rock.x, z: rock.z },
         Math.min(180_000, till - Date.now()))
       await clearTalk()
       await settle()
-      // 깨졌으면 **그 자리에 물체가 없다** — 게임 자신에게 묻는다
       const still = await obs.obstacleAt(rock.x, rock.z)
       const gone = still.known ? still.value === null : null
       broke.push({ ...rock, said, gone })
-      // 깼으면 **길 찾기도 그렇게 알아야 한다** — 안 그러면 우리가 낸 길을
-      // 우리가 막는다
       if (gone === true) obstacleGone(mapId, rock.x, rock.z)
-      log(`  바위 (${String(rock.x)},${String(rock.z)}) → `
-        + `${said ? '말을 걸었다' : '못 걸었다'} · ${gone === null ? '확인 불가' : gone ? '깼다' : '그대로다'}`)
+      log(`  ${what} (${String(rock.x)},${String(rock.z)}) → `
+        + `${said ? '말을 걸었다' : '못 걸었다'} · ${gone === null ? '확인 불가' : gone ? '치웠다' : '그대로다'}`)
       const went = await goTo(to, Math.min(240_000, till - Date.now()))
       if (went === 'arrived') return { ok: true, broke, went }
     }
-    return { ok: false, why: '바위를 깼는데도 길이 안 열렸다', broke }
+    return { ok: false, why: `${what}를 치웠는데도 길이 안 열렸다`, broke }
   }
+
+  /**
+   * **자전거를 탄다** — 가방에서 자전거를 고르는 그 길이다 (`ui/menu/itemAction`의 `bike`).
+   *
+   * ⚠️ **`useItem`으로는 못 잰다.** 그쪽은 「개수가 줄었나」로 판정하는데 자전거는
+   * 열쇠도구라 안 준다. 여기서는 게임의 `CheckPlayerOnBike`가 읽는 그 값(`riding`)을
+   * 본다. 이미 타고 있으면 안 누른다 — 누르면 **내린다**
+   */
+  const rideBike = async (budgetMs = 120_000) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const was = await obs.riding()
+    if (!was.known) return { ok: false, unknown: true, why: was.why }
+    if (was.value === true) return { ok: true, already: true }
+    const at = await openBagAt(BIKE_ITEM, till)
+    if (!at.ok) { await closeMenus(); return at }
+    await tap('Space', 400)
+    await closeMenus()
+    const now2 = await obs.riding()
+    const ok = now2.known && now2.value === true
+    return { ok, why: ok ? null : now2.known ? '안 탔다 (그 자리에서는 못 탄다고 했을 수 있다)' : now2.why }
+  }
+  const riding = async () => {
+    const r = await obs.riding()
+    return r.known ? r.value : null
+  }
+  /** 연고 체육관 문 답을 **읽는다** (`observe.hearthomeDoor`). 못 읽으면 null */
+  const hearthomeDoor = async () => {
+    const r = await obs.hearthomeDoor()
+    return r.known ? r.value : null
+  }
+
+  const smashWay = async (mapId, to, budgetMs, maxRocks = 4) =>
+    clearWay(mapId, to, budgetMs, { sprite: 85, maxHits: maxRocks })
 
   /**
    * 풀밭 위를 왕복해서 야생을 만난다.
@@ -2224,7 +2631,11 @@ export async function driveStory(page, {
       // 지금 자리에서 가장 가까운 풀 칸부터. 밟을 때마다 다른 칸을 고른다
       const want = grass[(i++ * 7) % grass.length]
       const keys = planned(here, { x: s.x, z: s.z }, (x, z) => x === want.x && z === want.z,
-        { avoid: (x, z) => doors.some((w) => w.x === x && w.z === z) }, '풀 칸').keys
+        {
+          avoid: (x, z) => doors.some((w) => w.x === x && w.z === z),
+          // ⚠️ **풀밭을 오가다 건물에 들어가지 않는다** (지시서 §1.1)
+          avoidStep: noDoorStep(mapId),
+        }, '풀 칸').keys
       if (keys === null || keys.length === 0) continue
       const how = await walk(keys, { x: s.x, z: s.z }, mapId)
       if (how === 'battle') { await (onBattle ?? fightThrough)(); return 'battle' }
@@ -2819,7 +3230,9 @@ export async function driveStory(page, {
       goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
       settle, now, tap, clearTalk,
       partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
-      teachHm, feedCandy, smashWay, runAway, useItem, usePotions, stopPotions,
+      veilstoneState, pastoriaState, featureWalls, veilstonePlan,
+      teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor,
+      runAway, useItem, usePotions, stopPotions,
       fightThrough, getParcel, log, left, maps, trouble, battles,
       lakeVars, snapshot, lakeVerity,
     })
@@ -2953,7 +3366,9 @@ export async function driveStory(page, {
     goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
     settle, now, tap, clearTalk,
     partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
-    teachHm, feedCandy, smashWay, runAway, useItem, usePotions, stopPotions,
+    veilstoneState, pastoriaState, featureWalls, veilstonePlan,
+    teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor,
+    runAway, useItem, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 위에서는 트레이너전이 0일 때만
     // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은

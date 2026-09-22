@@ -121,7 +121,13 @@ const JOURNEY_CASES = [
   '01', '02', '03', '04', '05', '06', '07', '08',
   '09', '10', '11', '12', '13', '14', '15', '16',
   // 둘째 배지까지 (지시서 `docs/orders/JOURNEY_BADGE2_20260916.md` §2)
-  '17', '18', '19', '20', '21', '22', '99',
+  '17', '18', '19', '20', '21', '22',
+  // 셋째 배지까지 (지시서 `docs/orders/JOURNEY_BADGE345_20260922.md` §3.2)
+  '23', '24', '25', '26', '27', '28', '29', '30', '31',
+  // 넷째 배지까지 (같은 지시서 §4.3)
+  '32', '33', '34', '35', '36',
+  // 다섯째 배지까지 (같은 지시서 §5.3)
+  '37', '38', '39', '40', '99',
 ]
 
 /** 확인 지점 표의 정본. 훑기의 목록은 **이 파일에서** 나온다 */
@@ -250,10 +256,20 @@ export const SUITES = {
     // (2026-09-16 · `docs/orders/JOURNEY_BADGE2_20260916.md`). 줄 여섯(⑰~㉒)이
     // 늘었을 뿐 아니라 ⑬⑭⑮가 **영원시티 자리에서** 재는 것으로 뜻이 바뀌었다.
     // **6으로 잰 판은 이 판정의 통과에 못 보탠다.**
-    contract: 7,
+    // **8이다** (2026-09-22 · `docs/orders/JOURNEY_BADGE345_20260922.md` §0). 줄 열여덟
+    // (㉓~㊵)이 늘었고 ⑬⑭⑮가 **들판 체육관 관장 방에서** 재는 것으로 뜻이 바뀌었다.
+    // **7로 잰 판은 이 판정의 통과에 못 보탠다.**
+    //
+    // ⚠️ **셋째부터 다섯째까지가 한 계약이다** — 지시서가 한 번만 올리라고 적었다.
+    // 셋째 배지까지만 도는 판은 이 계약을 **못 채운다**(㉜~㊵이 「안 갔다」로 남는다)
+    contract: 8,
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
-      'tools/e2e/journey.mjs',
+      'tools/e2e/journey.mjs', 'tools/e2e/badges.mjs',
+      // ⚠️ **체육관 풀이도 도구다.** 장막의 샌드백 차례를 내는 탐색이 여기 있고
+      // (`observe.veilstonePlan`이 페이지 안에서 부른다), 그것이 바뀌면 「자두
+      // 앞에 섰다」의 뜻이 바뀐다 — 목록 밖에 있으면 봉투가 그 변화를 못 잡는다
+      'tools/e2e/gymSolve.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/e2e/budget.mjs', 'tools/e2e/loadSpy.mjs',
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',

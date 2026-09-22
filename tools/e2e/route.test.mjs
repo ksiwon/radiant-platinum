@@ -103,3 +103,51 @@ describe('맵 그래프 — 아직 못 지나는 맵', () => {
     expect(round).toContain(65)
   })
 })
+
+/**
+ * **문 앞 칸에 문을 향해 들어서는 걸음** (`avoidStep` · 지시서 §1.1).
+ *
+ * ⚠️ **이것은 칸이 아니라 걸음의 시험이다.** 영원시티 포켓몬센터 문은 (305,530)이고
+ * 그 아래 (305,531)은 **멀쩡히 걸어 다니는 길바닥**이다 — 막을 것은 그 칸이 아니라
+ * 「그 칸에 **북쪽으로** 들어서는 걸음」이다. 실측 3판(2026-09-22 `_cyn42`, 마지막은
+ * 조용한 기계)이 전부 그 걸음에서 센터 안으로 빨려 들어갔다
+ */
+describe.skipIf(!HAVE)('문 앞 걸음 금지', () => {
+  /** 영원시티 포켓몬센터 문과 그 앞 칸 */
+  const DOOR = { x: 305, z: 530 }
+  const FRONT = { x: 305, z: 531 }
+  /** (305,531)에 북쪽으로 들어서는 걸음만 막는다 */
+  const noStep = (x, z, key) => x === FRONT.x && z === FRONT.z && key === 'ArrowUp'
+
+  it('문 앞 칸은 길바닥이고 문은 통행 불가다 — 전제', () => {
+    const g = gridOf(0)
+    expect(g.blocked(DOOR.x, DOOR.z), '문은 밟는 칸이 아니다').toBe(true)
+    expect(g.blocked(FRONT.x, FRONT.z), '문 앞은 길바닥이다').toBe(false)
+  })
+
+  it('막기 전에는 그 걸음을 쓰는 길을 낸다', () => {
+    const r = planPath(0, { x: 305, z: 534 }, (x, z) => x === FRONT.x && z === FRONT.z)
+    expect(r.status).toBe(PLAN.found)
+    expect(r.keys.at(-1), '북쪽으로 들어선다').toBe('ArrowUp')
+  })
+
+  it('막으면 같은 칸에 **옆에서** 들어선다 — 길을 잃지 않는다', () => {
+    const r = planPath(0, { x: 305, z: 534 }, (x, z) => x === FRONT.x && z === FRONT.z,
+      { avoidStep: noStep })
+    expect(r.status, '길은 그대로 있다').toBe(PLAN.found)
+    expect(r.keys.at(-1), '마지막 걸음이 북쪽이 아니다').not.toBe('ArrowUp')
+  })
+
+  it('낸 길 어디에도 그 걸음이 없다', () => {
+    const r = planPath(0, { x: 312, z: 563 }, (x, z) => x === 303 && z === 524,
+      { avoidStep: noStep })
+    expect(r.status).toBe(PLAN.found)
+    const step = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
+    let at = { x: 312, z: 563 }
+    for (const key of r.keys) {
+      at = { x: at.x + step[key][0], z: at.z + step[key][1] }
+      expect(noStep(at.x, at.z, key), `(${at.x},${at.z})에 ${key}로 들어섰다`).toBe(false)
+    }
+    expect(at, '목표에 닿는다').toEqual({ x: 303, z: 524 })
+  })
+})

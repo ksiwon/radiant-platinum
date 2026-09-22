@@ -16,8 +16,8 @@ import { worldState } from '../../state/worldState'
 import { buildCommands } from './commands'
 import { parseScriptMeta } from './data'
 import {
-  enterMap, fieldScripts, initScriptsOf, loadVars, makeWorld, npcAt, resetTriggerTile, scriptBusy,
-  scriptSystem, signAt, start, tileInFront, triggerAt,
+  enterMap, fieldScripts, initScriptsOf, loadVars, makeWorld, npcAt, resetTriggerTile,
+  resetTriggerWatch, scriptBusy, scriptSystem, signAt, start, tileInFront, triggerAt, triggerWatch,
 } from './field'
 import { frameTableScript } from './initScripts'
 import { npcActors } from '../actor/npcs'
@@ -349,6 +349,45 @@ maybe('떡잎마을에서 말 걸기', () => {
     expect(scriptBusy()).toBe(true)
   })
 
+  /**
+   * **계측도 검증한다** (`probe-must-be-verified-too`). 이 값이 거짓말을 하면
+   * 그것으로 좁힌 원인이 통째로 거짓말이 된다 — 실제로 이것을 단 까닭이
+   * 「좌표 이벤트가 세 판 중 한 판만 안 돌았는데 밖에서 알 길이 없었다」다
+   * (REPAIR §52)
+   */
+  it('진단 계측이 본 칸과 그 답을 그대로 적는다', () => {
+    const north = triggersOf(TWINLEAF_MAP).find((t) => t.width === 8)!
+    fieldScripts.vars.set(north.var, north.value)
+    worldState.player.position.set(north.x + 0.5, 0, north.z + 1.5)
+    resetTriggerTile()
+    resetTriggerWatch()
+    run(1)
+    expect(triggerWatch.calls, '불리기는 했다').toBeGreaterThan(0)
+    expect(triggerWatch.recent, '아직 칸을 안 건넜으니 적힐 것이 없다').toEqual([])
+    expect(triggerWatch.stepped).toBe(0)
+
+    // 한 칸 들어선다 — 그때 본 칸과 그 답이 그대로 적혀야 한다
+    worldState.player.position.set(north.x + 0.5, 0, north.z + 0.5)
+    run(1)
+    expect(triggerWatch.stepped, '칸이 바뀐 스텝은 한 번이다').toBe(1)
+    expect(triggerWatch.recent.at(-1)).toEqual({
+      x: north.x, z: north.z, script: north.script, map: TWINLEAF_MAP,
+    })
+    expect(triggerWatch.fired, '실제로 걸었다').toBe(1)
+    expect(scriptBusy()).toBe(true)
+
+    /**
+     * 스크립트가 도는 동안은 **아예 안 본다** — `scriptSystem`이 `tryStartScripts`
+     * 앞에서 빠져나간다. 같은 갈래가 발도 묶으므로(`input.move`·`velocity`를 0으로)
+     * 「자취는 멎었는데 주인공은 걷는다」는 자리가 **없다**. 좌표 이벤트를 놓친
+     * 까닭을 거기서 찾지 말라고 여기 적어 둔다 (REPAIR §52)
+     */
+    const was = triggerWatch.calls
+    run(1)
+    expect(triggerWatch.calls, '스크립트가 도는 동안은 안 부른다').toBe(was)
+    expect(worldState.player.velocity.lengthSq(), '발도 묶인다').toBe(0)
+  })
+
   it('플래그가 서면 그 자리에 NPC가 없는 것이 된다', () => {
     // 플래그가 **서 있으면** 숨은 것이다. 반대로 읽으면 이야기가 끝난 NPC에게
     // 계속 말을 걸게 되고, 그건 원작과 다른 게임이 된다
@@ -673,5 +712,67 @@ maybe('맵 초기화 스크립트', () => {
     expect(fieldScripts.varsReady).toBe(true)
     scriptSystem.fixedUpdate()
     expect(fieldScripts.ctx).not.toBeNull()
+  })
+})
+
+/**
+ * **주인공이 선 칸을 스크립트에게 알려 주는 자리** (`GetPlayerMapPos`).
+ *
+ * ⚠️ **원작은 격자에 잠긴 이동이라 주인공이 늘 칸 한가운데에 있었다.** 우리는
+ * 연속 이동이라 칸 안 아무 데나 선다 — 그래서 이 값이 **선 자리의 절반에서**
+ * 앞 칸으로 읽히고 있었다. 밖에서 보이는 모습은 「밟았는데 아무 일도 안 난다」다:
+ * 롬 스크립트는 이 값으로 갈래를 타고 **안 맞으면 조용히 `End`** 하기 때문이다.
+ *
+ * 실측(2026-09-22 · REPAIR §52): 영원시티 난천 장면이 일곱 판 중 셋에서 안 돌았고,
+ * 갈린 자리가 **정확히 z 522.5**였다. 같은 명령이 롬 스크립트 63개 파일 144자리에 있다.
+ *
+ * ⚠️ **기존 시험이 못 잡은 까닭도 여기 적어 둔다** — 전부 주인공을 `칸 + 0.5`,
+ * 곧 **칸 한가운데**에 세운다. 사람도 하네스도 그렇게 걷지 않는다
+ */
+maybe('스크립트가 읽는 주인공 칸', () => {
+  const meta = parseScriptMeta(read('scripts.json'))
+  const raw = readFileSync(resolve(DATA, 'scripts.bin'))
+  /** 영원시티. script 1이 `LockAll` 다음 곧바로 `GetPlayerMapPos`를 한다 */
+  const ETERNA = 65
+  const CYNTHIA_SCRIPT = 1
+  /** `VAR_0x8004`·`VAR_0x8005` — 그 명령이 쓰는 자리 */
+  const POS_X = 0x8004
+  const POS_Z = 0x8005
+
+  beforeEach(() => {
+    mapWorld.maps = (read('maps.json') as { maps: MapHeader[] }).maps
+    mapWorld.events = (read('events.json') as { events: Record<string, EventFile> }).events
+    mapWorld.mapId = ETERNA
+    fieldScripts.data = { meta, bytes: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength) }
+    fieldScripts.commands = buildCommands(meta.commands)
+    fieldScripts.vars = new VarStore()
+    fieldScripts.world = makeWorld(fieldScripts.vars, [])
+    fieldScripts.varsReady = true
+    fieldScripts.ctx = null
+    fieldScripts.lastError = null
+    fieldScripts.names = { player: () => '', rival: () => '', counterpart: () => '' }
+    worldState.input.interact = false
+    worldState.input.move.set(0, 0)
+  })
+
+  /** 칸 (tx,tz) 안의 `off`만큼 들어간 자리에 세우고, 스크립트가 읽은 칸을 낸다 */
+  const readTile = (tx: number, tz: number, off: number): { x: number; z: number } => {
+    worldState.player.position.set(tx + off, 0, tz + off)
+    start(CYNTHIA_SCRIPT, mapById(ETERNA)?.scripts ?? -1)
+    // `LockAll` → `GetPlayerMapPos`까지만 가면 된다. 몇 프레임이면 지난다
+    for (let i = 0; i < 4; i++) scriptSystem.fixedUpdate()
+    return { x: fieldScripts.vars.get(POS_X), z: fieldScripts.vars.get(POS_Z) }
+  }
+
+  it('칸 안 어디에 서 있든 **그 칸**을 읽는다', () => {
+    // 0.5는 칸 한가운데다 — 여기만 맞으면 원작과 같아 보이지만 아니다
+    for (const off of [0.02, 0.2, 0.4, 0.5, 0.6, 0.8, 0.98]) {
+      expect(readTile(306, 522, off), `칸 안 +${String(off)}`).toEqual({ x: 306, z: 522 })
+    }
+  })
+
+  it('칸 경계를 넘으면 그때 다음 칸이다', () => {
+    expect(readTile(306, 522, 0.99), '아직 그 칸').toEqual({ x: 306, z: 522 })
+    expect(readTile(307, 523, 0.0), '경계에 서면 새 칸').toEqual({ x: 307, z: 523 })
   })
 })

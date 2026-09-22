@@ -1507,8 +1507,26 @@ on('GetPlayerMapPos', (ctx) => {
   const destX = ctx.readHalfWord()
   const destZ = ctx.readHalfWord()
   const player = ctx.host.world.player
-  ctx.host.vars.set(destX, Math.floor(player?.x ?? 0))
-  ctx.host.vars.set(destZ, Math.floor(player?.z ?? 0))
+  /**
+   * ⚠️ **`floor`가 아니라 `round`다.**
+   *
+   * `world.player`는 스크립트 좌표계라 **칸 가운데를 0.0으로** 준다
+   * (`script/field`의 `playerMovable`이 `position − 0.5`를 낸다 — NPC는 칸 번호에
+   * 서고 주인공은 칸 가운데에 서기 때문이다). 원작은 격자에 잠긴 이동이라 주인공이
+   * **늘 칸 한가운데**에 있었고 그래서 그 값이 곧 칸 번호였다. 우리는 연속 이동이라
+   * 칸 안 아무 데나 선다 — `floor`를 씌우면 **칸의 앞쪽 절반이 앞 칸으로 읽힌다.**
+   *
+   * 칸 번호는 `floor(position)`이고 `player.x = position − 0.5`이므로
+   * `round(player.x)`가 그것이다. 가짜 세계를 쓰는 시험들은 칸 번호를 정수로
+   * 주는데, 정수는 `round`도 그대로다.
+   *
+   * 실측(2026-09-22 · REPAIR §52): 영원시티 난천 장면이 일곱 판 중 셋에서 안 돌았고
+   * 갈린 자리가 **정확히 z 522.5**였다. 그 스크립트는 이 값으로 갈래를 타고
+   * **어디에도 안 맞으면 조용히 `End`** 한다 — 밖에서는 「밟았는데 아무 일도 안
+   * 난다」로 보인다. 같은 꼴이 롬 스크립트 **63개 파일 144자리**에 있다
+   */
+  ctx.host.vars.set(destX, Math.round(player?.x ?? 0))
+  ctx.host.vars.set(destZ, Math.round(player?.z ?? 0))
   return false
 })
 

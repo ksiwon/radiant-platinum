@@ -189,6 +189,165 @@ function devObserver(page) {
         // = 2401). 모미의 회복이 걸린 조건이 이것이라, 「붙었다」를 이 값으로
         // 본다 — 구역 변수(`cheryl`)는 장면이 어디까지 갔나만 말해 준다
         partner: v.checkFlag(2401) === true,
+        /**
+         * **셋째~다섯째 배지 길목** (`docs/orders/JOURNEY_BADGE345_20260922.md` §1).
+         * 번호는 같은 셈법이다 — `vars_flags.txt`를 C 열거형으로 세었다.
+         *
+         *   · 16506 `VAR_ETERNA_CITY_STATE`             0 태홍 → 1 난천(베어가르기) → 2 · 쥬피터 뒤 3
+         *   · 16660 `VAR_ETERNA_CITY_BLOCK_EXITS_STATE` 자전거만 있고 탐사세트가 없으면 1
+         *   · 16524 `VAR_ROUTE_207_COUNTERPART_TRIGGER_STATE` 동행 상대 장면 0 → 1
+         *   · 16534 `VAR_MT_CORONET_1F_SOUTH_STATE`     태홍 장면 0 → 1
+         *   · 16630 `VAR_HEARTHOME_CITY_STATE`          키라·이어롤 장면 0 → 1
+         *   · 16507 `VAR_ROUTE_209_GATE_TO_HEARTHOME_CITY_STATE` 배지 3이면 1 · 라이벌전 뒤 2
+         *   · 16499 `VAR_SOLACEON_TOWN_STATE`           라이벌 장면 0 → 1
+         *   · 16629 `VAR_VEILSTONE_CITY_CRASHER_WAKE_STATE` 체육관 앞 맥실러 장면 0 → 1
+         *   · 16666 `VAR_VEILSTONE_CITY_COUNTERPART_NEEDS_HELP_STATE` 배지 4 뒤 1 → 장면 뒤 2
+         *   · 16671 `VAR_VEILSTONE_CITY_GALACTIC_WAREHOUSE_STATE` 창고 태그 배틀 뒤 2
+         *   · 16508 `VAR_PASTORIA_CITY_STATE`           창고 뒤 1 → 라이벌전 뒤 2 → 배지 5 뒤 3
+         *
+         * 플래그 셋은 가방으로도 보이지만 롬이 거는 조건은 이 깃발이라 같이 읽는다 —
+         * 121 `FLAG_RECEIVED_EXPLORER_KIT` · 129 `FLAG_TEAM_GALACTIC_LEFT_ETERNA_BUILDING` ·
+         * 130 `FLAG_RECEIVED_BICYCLE`
+         */
+        eterna: v.get(16506), eternaExits: v.get(16660), route207: v.get(16524),
+        coronet: v.get(16534), hearthome: v.get(16630), gate209: v.get(16507),
+        solaceon: v.get(16499), wake: v.get(16629), help: v.get(16666),
+        warehouse: v.get(16671), pastoria: v.get(16508),
+        explorerKit: v.checkFlag(121) === true,
+        galacticLeft: v.checkFlag(129) === true,
+        bicycle: v.checkFlag(130) === true,
+      }
+    }),
+    /**
+     * **자전거를 타고 있는가.** 게임의 `CheckPlayerOnBike`가 읽는 그 값이다
+     * (`scene/fieldServices`의 `bike.riding` = `worldState.player.cycling`).
+     *
+     * ⚠️ **가방으로는 못 잰다.** 자전거는 열쇠도구라 써도 개수가 안 줄고, 206번도로
+     * 게이트가 보는 것은 가진 것이 아니라 **타고 있는 것**이다
+     */
+    riding: () => read('자전거 상태를 못 읽었다', async () => {
+      const st = await import('/src/state/worldState.ts')
+      return st.worldState.player.cycling === true
+    }),
+    /**
+     * **연고 체육관 문 고르기의 답.** 제품이 들어설 때 뽑아 든 것을 **읽는다**
+     * (`scene/hearthomeGym.ts`의 `hearthomePuzzle`).
+     *
+     * ⚠️ **사람은 이 값을 볼 길이 없다** — 힌트 그림이 아직 없다
+     * (`JOURNEY_BADGE3` §5 ①). 그래서 이 읽기로 통과한 판은 「게임이 이어진다」지
+     * 「사람이 할 수 있다」가 아니다. 그 사실은 부르는 쪽이 결과에 적는다
+     */
+    hearthomeDoor: () => read('연고 문 답을 못 읽었다', async () => {
+      const g = await import('/src/scene/hearthomeGym.ts')
+      const p = g.hearthomePuzzle()
+      return p === null ? null : { room: p.room, door: p.correctDoor, clue: { x: p.clueX, z: p.clueZ } }
+    }),
+    /**
+     * **장막 체육관의 지금 자리** — 샌드백 아홉과 아직 선 타이어, 미끄러지는 중인가.
+     *
+     * ⚠️ **타이어 목록은 제품이 따로 안 내놓는다.** 그래서 **빼서** 얻는다:
+     * `veilstoneBlockedAt`이 참인 칸은 「샌드백 아니면 타이어」이고, 샌드백은
+     * `veilstoneBagAt`으로 아홉을 알 수 있으니 그 차가 타이어다. 여기서 표를
+     * 다시 세지 않는다는 뜻이다 (`two-bakers-must-match`)
+     */
+    veilstoneState: () => read('장막 체육관 상태를 못 읽었다', async () => {
+      const v = await import('/src/scene/veilstoneGym.ts')
+      const bags = []
+      for (let i = 0; i < 9; i++) {
+        const at = v.veilstoneBagAt(i)
+        if (at !== null) bags.push([at[0], at[1]])
+      }
+      if (bags.length === 0) return null
+      const solid = []
+      for (let z = 0; z < 32; z++) {
+        for (let x = 0; x < 32; x++) if (v.veilstoneBlockedAt(x, z) === true) solid.push([x, z])
+      }
+      const isBag = (x, z) => bags.some(([bx, bz]) => bx === x && bz === z)
+      return {
+        bags,
+        stacks: solid.filter(([x, z]) => !isBag(x, z)).map(([x, z]) => `${x},${z}`),
+        busy: v.veilstoneBusy(),
+      }
+    }),
+    /**
+     * **지금 막힌 칸** — 제품이 장치까지 얹어 내는 그 답이다
+     * (`scene/mapFeatureCollision`의 `featureBlocked`를 `mapFeatureBridge`로 부른다).
+     *
+     * ⚠️ **`pastoriaBlocked`만 보면 445칸이 빈다** — 들판시티 물(`0x59`)은 장치 표가
+     * 아니라 **엔진 규칙**(구운 높이 vs 높이판)으로 막힌다. 그래서 우리가 규칙을
+     * 다시 쓰지 않고 **제품에게 통째로 묻는다**
+     *
+     * @param box `{ x0, z0, x1, z1 }` 훑을 네모. 방 하나 크기로 준다
+     */
+    featureWalls: (box) => read('장치 벽을 못 읽었다', async (b) => {
+      const mf = await import('/src/engine/world/mapFeatures.ts')
+      const zone = await import('/src/engine/map/zone.ts')
+      const st = await import('/src/state/worldState.ts')
+      const ask = mf.mapFeatureBridge.blocked
+      if (typeof ask !== 'function') return null
+      const grid = zone.activeZone.grid
+      const y = st.worldState.player.position.y
+      const out = []
+      for (let z = b.z0; z <= b.z1; z++) {
+        for (let x = b.x0; x <= b.x1; x++) {
+          if (grid?.isBlocked(x, z) === true || ask(x, z, y) === true) out.push(`${x},${z}`)
+        }
+      }
+      return out
+    }, box),
+    /**
+     * **장막 체육관 풀이를 페이지 안에서 돌린다.**
+     *
+     * ⚠️ **탐색은 여기서 안 한다** — `tools/e2e/gymSolve.mjs`가 하고, 그것이 쓰는
+     * 표와 규칙은 **제품 모듈**에서 온다(`veilstoneTravel`·`VEILSTONE_STEP`…).
+     * 같은 파일을 단위 시험도 그대로 부르므로 **굽는 쪽이 하나**다.
+     *
+     * 페이지 안에서 도는 까닭은 `veilstoneTravel`이 제품 TS라 node 쪽에서 못 부르기
+     * 때문이다. 벽은 닫힘을 못 넘기므로 **칸 목록**으로 받아 안에서 다시 묶는다
+     *
+     * @param arg `{ start, goal, wall: ['x,z', …], stacks: ['x,z', …], cap }`
+     */
+    veilstonePlan: (arg) => read('장막 풀이를 못 돌렸다', async (a) => {
+      const g = await import('/src/engine/world/veilstoneGym.ts')
+      const v = await import('/src/scene/veilstoneGym.ts')
+      const s = await import('/tools/e2e/gymSolve.mjs')
+      const bags = []
+      for (let i = 0; i < 9; i++) {
+        const at = v.veilstoneBagAt(i)
+        if (at !== null) bags.push([at[0], at[1]])
+      }
+      if (bags.length === 0) return null
+      const wall = new Set(a.wall)
+      return s.solveVeilstone({
+        start: a.start, goal: a.goal, bags, stacks: a.stacks,
+        wall: (x, z) => wall.has(`${x},${z}`),
+        travel: g.veilstoneTravel, step: g.VEILSTONE_STEP,
+        tireFlag: g.VEILSTONE_FLAG.tireStack, key: g.veilstoneKey,
+        cap: a.cap ?? 40000,
+      })
+    }, arg),
+    /** 들판 체육관 — 지금 물 높이와 움직이는 중인가 */
+    pastoriaState: () => read('들판 체육관 상태를 못 읽었다', async () => {
+      const p = await import('/src/scene/pastoriaGym.ts')
+      const h = p.pastoriaWaterHeight()
+      return h === null ? null : { water: h, pressed: p.pastoriaPressed(), busy: p.pastoriaBusy() }
+    }),
+    /**
+     * **밟기 판정이 무엇을 봤는가** (`script/field.ts`의 `triggerWatch` · REPAIR §52).
+     *
+     * 좌표 이벤트가 판마다 다르게 걸리는 자리를 잡으려고 제품이 내놓는 값이다 —
+     * 부른 횟수 · 칸이 나온 횟수 · 실제로 건 횟수 · **굶은 까닭** · 최근에 본 칸과
+     * 그 답. 여기서 만들어 내는 값은 하나도 없다
+     *
+     * ⚠️ **판정에 안 쓴다.** 증거로만 적는다 — 「좌표 이벤트가 몇 번 걸렸나」를
+     * 통과 조건으로 삼으면 이야기가 아니라 계측을 재게 된다
+     */
+    triggerWatch: () => read('밟기 계측을 못 읽었다', async () => {
+      const f = await import('/src/engine/script/field.ts')
+      const w = f.triggerWatch
+      return {
+        calls: w.calls, stepped: w.stepped, fired: w.fired,
+        skipped: { ...w.skipped }, recent: w.recent.slice(-16),
       }
     }),
     /**
@@ -356,6 +515,13 @@ function distObserver(page) {
     bagState: async () => unknown(NO_SRC),
     shopStock: async () => unknown(NO_SRC),
     eternaWalls: async () => unknown(NO_SRC),
+    riding: async () => unknown(NO_SRC),
+    hearthomeDoor: async () => unknown(NO_SRC),
+    triggerWatch: async () => unknown(NO_SRC),
+    veilstoneState: async () => unknown(NO_SRC),
+    veilstonePlan: async () => unknown(NO_SRC),
+    featureWalls: async () => unknown(NO_SRC),
+    pastoriaState: async () => unknown(NO_SRC),
   }
 }
 

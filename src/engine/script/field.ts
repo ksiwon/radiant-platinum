@@ -777,13 +777,13 @@ function tryStartScripts(): void {
   // 그러면 관장의 인사 대사창이 배틀 화면 **위에** 떠서 키를 먹는다
   // (`FieldServices.battleUp`이 실측을 적어 뒀다). 도는 중인 스크립트는 안 막는다:
   // 배틀을 연 것이 그 스크립트고, 끝나기를 기다리는 것도 그것이다
-  if (fieldScripts.services.battleUp?.() === true) return
+  if (fieldScripts.services.battleUp?.() === true) { triggerWatch.skipped.battle++; return }
   // ⚠️ **세이브 값이 붓기 전에는 아무것도 안 건다** (`varsReady`). 그전에는
   // 모든 변수가 0이라 표와 트리거가 전부 「아직 안 봤다」로 읽힌다
-  if (!fieldScripts.varsReady) return
+  if (!fieldScripts.varsReady) { triggerWatch.skipped.vars++; return }
   // ⚠️ **우리 사람이 원작 연출보다 먼저다** (SIWON.md §6). 복도의 `OnFrame`이
   // 시작하면 그 안에는 못 끼어든다
-  if (trySiwonCameo()) return
+  if (trySiwonCameo()) { triggerWatch.skipped.cameo++; return }
   // 맵이 스스로 거는 것이 제일 먼저다 (`FieldInput_Process`)
   tryFrameTable()
   // ⚠️ **운하시티 체육관의 판이 좌표 트리거보다 먼저다** (`Field_ProcessStep`의
@@ -791,7 +791,7 @@ function tryStartScripts(): void {
   // 태웠으면 그 걸음은 여기서 끝이다
   if (fieldScripts.ctx === null) tryStepFeature()
   // 그 다음이 밟아서 걸리는 것. 원작도 이동이 끝난 자리에서 좌표를 본다
-  if (fieldScripts.ctx === null) tryTrigger()
+  if (fieldScripts.ctx === null) tryTrigger(); else triggerWatch.skipped.script++
   // 그 다음이 눈이 마주치는 것이다. 내가 A를 누르기 전에 저쪽이 먼저 온다
   if (fieldScripts.ctx === null) trySight()
   if (fieldScripts.ctx === null && edges.a) tryTalk()
@@ -1442,12 +1442,48 @@ export function resetStepFeatureTile(): void {
   stepFeatureTrace.reset(p.x, p.z)
 }
 
+/**
+ * **밟기 판정이 무엇을 봤는가** — 진단용. 판정에도 이야기에도 안 쓴다.
+ *
+ * ⚠️ **없는 값을 짐작으로 채우지 않으려고 둔다.** 실측(2026-09-22 · REPAIR §52):
+ * 난천 좌표 이벤트가 세 판 중 한 판에서 안 돌았는데, 표(`triggerAt`)도 변수도
+ * 「돌아야 한다」고 답했고 오류도 없었다. 밖에서는 **`tryTrigger`가 그 스텝에
+ * 무슨 칸을 봤는지**를 알 길이 아예 없어서 원인을 못 좁혔다 — 그 하나를 연다.
+ *
+ * 값이 쌓이는 자리는 셋이다: 부른 횟수 · **굶은 까닭**(`tryStartScripts`가
+ * 트리거 앞에서 빠져나간 갈래) · 최근에 본 칸과 그 답. 칸이 나온 스텝에만
+ * 담으므로 평소에는 아무것도 안 쌓인다
+ */
+export const triggerWatch = {
+  /** `tryTrigger`가 불린 횟수 */
+  calls: 0,
+  /** 칸이 나온 횟수 (= 밟은 칸이 바뀐 스텝) */
+  stepped: 0,
+  /** 스크립트를 실제로 건 횟수 */
+  fired: 0,
+  /** 트리거를 **못 본** 까닭별 횟수 */
+  skipped: { battle: 0, vars: 0, cameo: 0, script: 0 },
+  /** 최근에 본 칸과 그 답. 뒤에서부터 예순넷만 남는다 */
+  recent: [] as { x: number; z: number; script: number | null; map: number }[],
+}
+
+/** 진단 계측을 처음으로 (맵을 옮기거나 탐침이 구간을 가를 때) */
+export function resetTriggerWatch(): void {
+  triggerWatch.calls = 0
+  triggerWatch.stepped = 0
+  triggerWatch.fired = 0
+  triggerWatch.skipped = { battle: 0, vars: 0, cameo: 0, script: 0 }
+  triggerWatch.recent = []
+}
+
 function tryTrigger(): void {
+  triggerWatch.calls++
   const header = mapById(mapWorld.mapId)
   if (!header) return
   const p = worldState.player.position
   const tiles = triggerTrace.advance(p.x, p.z).tiles
   if (tiles.length === 0) return
+  triggerWatch.stepped++
   // 한 칸 움직였으면 "그 자리에 서 있다" 표시를 지운다
   // (`FieldInput_Process`가 걸음마다 `SystemFlag_ClearStep`을 부른다)
   fieldScripts.vars.clearFlag(SYSTEM_FLAG.step)
@@ -1455,7 +1491,9 @@ function tryTrigger(): void {
   // 한 틱에 스크립트를 둘 돌릴 수는 없다
   for (const tile of tiles) {
     const script = triggerAt(mapWorld.mapId, tile.x, tile.z, fieldScripts.vars)
-    if (script !== null) { start(script, header.scripts); return }
+    if (triggerWatch.recent.length >= 64) triggerWatch.recent.shift()
+    triggerWatch.recent.push({ x: tile.x, z: tile.z, script, map: mapWorld.mapId })
+    if (script !== null) { triggerWatch.fired++; start(script, header.scripts); return }
   }
 }
 

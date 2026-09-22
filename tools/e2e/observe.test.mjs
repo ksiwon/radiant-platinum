@@ -108,3 +108,30 @@ describe('개발용 어댑터', () => {
     expect(await obs.lakeVars()).toEqual({ known: true, value: { rival: 4, front: 1, visited: 1 } })
   })
 })
+
+/**
+ * **굽는 쪽이 둘이다** — 개발 서버 판과 배포물 판이 따로 있다.
+ *
+ * ⚠️ **열쇠가 어긋나면 배포물 판에서 「관측 불가」가 아니라 터진다.** 새 읽기를
+ * 개발 쪽에만 더하기가 너무 쉽고(실제로 이 파일에 그렇게 더해진 것이 여럿이다),
+ * 그러면 `obs.새것()`이 함수가 아니라서 그 자리가 **결함처럼 보이는 크래시**가
+ * 된다 — 못 읽는 것은 못 읽었다고 말해야 한다(이 파일 머리말)
+ */
+describe('두 어댑터가 같은 것을 내놓는다', () => {
+  it('열쇠가 한 글자도 안 어긋난다', async () => {
+    const dev = await makeObserver(fakePage('dev'), 'dev')
+    const dist = await makeObserver(fakePage('dist'), 'dist')
+    const keys = (o) => Object.keys(o).filter((k) => k !== 'kind').sort()
+    expect(keys(dist), '배포물 쪽에 스텁이 빠졌다').toEqual(keys(dev))
+  })
+
+  it('개발 쪽 읽기는 전부 함수다 — 배포 쪽도 마찬가지다', async () => {
+    const dev = await makeObserver(fakePage('dev'), 'dev')
+    const dist = await makeObserver(fakePage('dist'), 'dist')
+    for (const k of Object.keys(dev)) {
+      if (k === 'kind') continue
+      expect(typeof dev[k], `dev.${k}`).toBe('function')
+      expect(typeof dist[k], `dist.${k}`).toBe('function')
+    }
+  })
+})

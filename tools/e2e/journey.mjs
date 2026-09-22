@@ -24,6 +24,11 @@ import { chromium } from 'playwright'
 import { freePort, knock, startVite } from '../devServer.mjs'
 import { gpuArgs, probeGpu } from '../gpuFlags.mjs'
 import { driveStory, playOpening } from './drive.mjs'
+import {
+  eternaToBike, FANTINA, hearthomeDoors, hearthomeToVeilstone, ITEM as B3, JUPITER,
+  MAP as B3MAP, PASTORIA, pastoriaClimb, rideToHearthome, VEILSTONE, veilstoneKicks,
+  veilstoneToPastoria, veilstoneWarehouse,
+} from './badges.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.mjs'
 import { judgeTerrain } from './terrainJudge.mjs'
@@ -51,7 +56,14 @@ const flag = (name) => {
  * ⚠️ **한 판이 저절로 길어지지는 않는다.** 다리마다의 상한에 `api.left()`가 늘
  * 함께 걸리므로, 이 값을 올리는 것은 남은 시간을 **쓸 수 있게** 하는 것뿐이다
  */
-const BUDGET_MS = Number(flag('budget') ?? 10800) * 1000
+/**
+ * ⚠️ **21600이다 (6시간).** 구간이 **다섯째 배지**까지 늘었다
+ * (`docs/orders/JOURNEY_BADGE345_20260922.md` §0) — 둘째 배지 판이 51~62분이었고
+ * 여기에 갤럭시 빌딩 4층 · 자전거길 · 천관산 · 208번도로 · 연고 체육관 두 방 ·
+ * 209 게이트 라이벌전 · 215번도로 · 장막 체육관 샌드백 · 갤럭시 창고 ·
+ * 214·213번도로 · 들판 체육관 물바닥과 재도전 몇 번이 붙는다
+ */
+const BUDGET_MS = Number(flag('budget') ?? 21600) * 1000
 /**
  * **어느 구간부터 이어 달릴까** (`--from=09`). 진단을 빠르게 하려는 값이다.
  *
@@ -187,6 +199,13 @@ const NPC_STOPS = {
     { script: 7, what: '트③ 앤젤라' },
     { script: 4, what: '관장 유채' },
   ],
+  // 셋째 배지 (지시서 JOURNEY_BADGE3 §3.3 · §3.6). 층의 그런트와 방의 트레이너는
+  // `badges.mjs`가 먼저 치고, 여기는 **관장급** 둘만이다
+  [JUPITER.map]: [{ script: JUPITER.script, what: JUPITER.what }],
+  [FANTINA.map]: [{ script: FANTINA.script, what: FANTINA.what }],
+  // 넷째·다섯째 배지. 두 방의 트레이너는 `trainersOn()`이 내므로 관장만 적는다
+  [VEILSTONE.map]: [{ script: VEILSTONE.script, what: VEILSTONE.what }],
+  [PASTORIA.map]: [{ script: PASTORIA.script, what: PASTORIA.what }],
 }
 
 /**
@@ -196,6 +215,20 @@ const NPC_STOPS = {
 const LEADER_RETRY = {
   47: { script: 1, badges: 1, what: '관장 로안' },
   67: { script: 4, badges: 2, what: '관장 유채' },
+  /**
+   * ⚠️ **쥬피터는 배지가 아니다.** 이겼는지는 롬이 세우는 깃발로 본다
+   * (`FLAG_TEAM_GALACTIC_LEFT_ETERNA_BUILDING` — `observe.storyVars().galacticLeft`)
+   */
+  [JUPITER.map]: { script: JUPITER.script, won: (v) => v?.galacticLeft === true, what: JUPITER.what },
+  [FANTINA.map]: { script: FANTINA.script, badges: 3, what: FANTINA.what },
+  /**
+   * ⚠️ **두 방은 재도전 앞에 퍼즐을 다시 풀어야 한다.** 장막은 들어설 때마다
+   * 샌드백이 처음 자리로 돌아가고(`initVeilstoneGym`), 들판은 물이 낮음에서
+   * 다시 시작한다 — 그래서 아래 재도전 갈래가 `veilstoneKicks`/`pastoriaClimb`을
+   * 한 번 더 부른다. 안 부르면 관장에게 **닿지도 못한 채** 「못 걸었다」가 적힌다
+   */
+  [VEILSTONE.map]: { script: VEILSTONE.script, badges: 4, what: VEILSTONE.what },
+  [PASTORIA.map]: { script: PASTORIA.script, badges: 5, what: PASTORIA.what },
 }
 
 /**
@@ -269,7 +302,20 @@ const POKETCH_ROUNDS = 3
  * 실측(2026-09-16 `_eter42`)으로 **목적지 쪽 센터**를 적었다가 도착도 못 한 채
  * 300초를 태웠다
  */
-const CENTERS = { 3: 6, 45: 6, 198: 48, 47: 48, 426: 6, 203: 428, 65: 428, 67: 69 }
+const CENTERS = {
+  3: 6, 45: 6, 198: 48, 47: 48, 426: 6, 203: 428, 65: 428, 67: 69,
+  // 셋째 배지 — 빌딩·게이트로 떠날 때는 영원 센터(69). 207·천관산·208·연고시티로
+  // 떠나는 자리는 뒤가 영원 센터라 **적지 않는다**(되돌아가면 다리를 통째로 다시 걷는다).
+  // 체육관 앞만 연고 센터(101)다
+  72: 69, 75: 69, 80: 69, 91: 101,
+  /**
+   * 넷째·다섯째 배지 (지시서 §6의 표). **떠나기 전 지역**의 센터다 —
+   * 신수마을로 떠날 때는 아직 연고시티(101)고, 장막시티로 떠날 때는 신수(435),
+   * 체육관 둘과 창고·들판시티는 장막 센터(134)와 들판 센터(123)다.
+   * 214·213번도로 사이에는 센터가 없으므로 들판시티 앞도 134다
+   */
+  433: 101, 132: 435, 133: 134, 143: 134, 120: 134, 122: 123,
+}
 
 /**
  * 모래시티 포켓몬센터 1층.
@@ -290,7 +336,44 @@ const AFTER_STOPS = [
   { id: '19', map: 203, what: '영원의 숲' },
   { id: '20', map: 65, what: '영원시티' },
   { id: '21', map: 67, what: '영원 체육관' },
+  // ── 여기부터 셋째 배지 (지시서 JOURNEY_BADGE3 §1·§2) ───────────────────────
+  { id: '23', map: B3MAP.galactic1F, what: '갤럭시단 영원 빌딩 1F (베어가르기)' },
+  { id: '24', map: B3MAP.galactic4F, what: '갤럭시단 영원 빌딩 4F (쥬피터)' },
+  { id: '25', map: B3MAP.gate206North, what: '206번도로 북쪽 게이트 (자전거·탐사세트)' },
+  { id: '26', map: B3MAP.route207, what: '207번도로 (자전거길을 타고)' },
+  { id: '27', map: B3MAP.coronetSouth, what: '천관산 1F 남' },
+  { id: '28', map: B3MAP.route208, what: '208번도로' },
+  { id: '29', map: B3MAP.hearthome, what: '연고시티' },
+  { id: '30', map: B3MAP.hearthomeLeader, what: '연고 체육관 관장 방 (문 고르기)' },
+  // ── 여기부터 넷째 배지 (지시서 JOURNEY_BADGE345 §4) ─────────────────────────
+  { id: '32', map: B3MAP.solaceon, what: '신수마을 (209 게이트 라이벌전 뒤)' },
+  { id: '33', map: B3MAP.veilstone, what: '장막시티' },
+  { id: '34', map: VEILSTONE.map, what: '장막 체육관 (샌드백을 차서 자두 앞)' },
+  { id: '35', map: B3MAP.warehouse, what: '갤럭시 창고 (핸섬 · 비전머신02)' },
+  // ── 여기부터 다섯째 배지 (지시서 JOURNEY_BADGE345 §5) ───────────────────────
+  { id: '36', map: B3MAP.pastoria, what: '들판시티' },
+  { id: '37', map: PASTORIA.map, what: '들판 체육관 (물 높이를 바꿔 맥실러 앞)' },
 ]
+/** 셋째 배지 자리들. 결과 줄을 따로 적는다 */
+const THIRD_BADGE_STOPS = new Set(['23', '24', '25', '26', '27', '28', '29', '30'])
+/** 넷째·다섯째 배지 자리들. 앞에서 밟을 걸음이 `badges.mjs`에 있다 */
+const LATER_BADGE_STOPS = new Set(['32', '33', '34', '35', '36', '37'])
+/** 연고 체육관 앞 사탕 기준 (지시서 §3.7 시작값) — 선두와 찌르버드 */
+const HEARTHOME_LEAD_LEVEL = 30
+const STARAVIA = 397
+const HEARTHOME_STARAVIA_LEVEL = 26
+/**
+ * 장막 체육관(자두 · 격투) 앞 — 요가랑 28 · 근육몬 29 · 루카리오 32.
+ * 우리에게 박히는 것은 **찌르버드의 비행**이라 그쪽을 관장보다 높게 둔다
+ */
+const VEILSTONE_LEAD_LEVEL = 34
+const VEILSTONE_STARAVIA_LEVEL = 34
+/**
+ * 들판 체육관(맥실러 · 물) 앞 — 갸라도스 33 · 누오 34 · 플로젤 37.
+ * 선두의 풀이 물에 2배(누오는 물/땅이라 4배)라 선두를 올린다
+ */
+const PASTORIA_LEAD_LEVEL = 39
+const PASTORIA_STARAVIA_LEVEL = 36
 
 /** 숲에 들기 전 선두 레벨 (진화 18을 넘고, 숲을 통과한 판의 L19~21에 맞춘다) */
 const FOREST_LEVEL = 20
@@ -942,6 +1025,15 @@ try {
   /** 지금 꽃시계가 막고 있는 칸. 체육관에 들어설 때와 한 판마다 다시 읽는다 */
   let gymWalls = new Set()
   /**
+   * **방마다의 장치 벽** — 맵 → 막힌 칸. 장막(샌드백·타이어)과 들판(물 높이)이
+   * 여기 들어온다. 꽃시계와 같은 까닭이다: 격자는 장치를 모른다.
+   *
+   * ⚠️ **표를 여기서 세지 않는다.** `badges.mjs`가 제품에게 물어(`featureWalls`)
+   * 넘겨 주는 것을 담기만 한다 — 샌드백을 찰 때마다, 물이 오르내릴 때마다
+   */
+  const roomWalls = new Map()
+  const setWalls = (mapId, keys) => { roomWalls.set(mapId, new Set(keys)) }
+  /**
    * 가방에 자전거가 있나 (`closedMaps`가 본다).
    *
    * ⚠️ **없다고 시작한다.** 모르는 채로 열어 두면 자전거길로 다시 걸어 들어간다 —
@@ -962,7 +1054,8 @@ try {
      * `scene/eternaGym.ts`의 `eternaBlockedAt`을 **읽어서** 쓴다.
      * 트레이너를 하나 이길 때마다 시계가 돌므로 그때마다 다시 읽는다
      */
-    obstacles: (mapId, x, z) => mapId === 67 && gymWalls.has(`${String(x)},${String(z)}`),
+    obstacles: (mapId, x, z) => (mapId === 67 && gymWalls.has(`${String(x)},${String(z)}`))
+      || roomWalls.get(mapId)?.has(`${String(x)},${String(z)}`) === true,
     /**
      * **아직 못 지나는 맵** — 자전거가 없으면 자전거길(206번도로)이 안 열린다.
      *
@@ -1254,6 +1347,10 @@ try {
 
       /** 체육관 앞에서 약을 샀나 */
       let potionBuy = null
+      /** 셋째 배지 다리들의 결말 (`badges.mjs`) */
+      const badge3 = {}
+      /** 넷째·다섯째 배지 다리들의 결말 (`badges.mjs`) */
+      const badge45 = {}
       const north = { scene: null, bought: null, caught: [] }
       const goNorth = async () => {
         if (api.left() <= 0) { north.scene = '시간이 다 됐다'; return }
@@ -1374,12 +1471,156 @@ try {
           hasBike = bag.items.some((one) => one.item === BICYCLE && one.count > 0)
         }
       }
+      /**
+       * **이 자리의 앞 걸음이 이미 회복을 했는가.**
+       *
+       * ⚠️ **없으면 방에서 걸어 나갔다 들어온다.** 세 자리(연고·장막·들판 관장 방)는
+       * 앞 걸음이 **방 안까지** 데려다 놓는데, 아래의 「체육관 앞에서는 늘 낫는다」가
+       * 그 뒤에 또 돌면 관장 앞에서 센터까지 걸어 나갔다가 돌아온다. 그 왕복은
+       * 예산만 태우는 것이 아니다 — **장막은 나가는 순간 샌드백이 처음 자리로
+       * 돌아가고** 들판은 물이 낮음으로 되돌아가, 돌아와도 관장에게 못 닿는다
+       */
+      let preHealed = false
       for (const stop of AFTER_STOPS) {
+        preHealed = false
         await noteBike()
         // ⚠️ **북쪽 다리는 꽃향기 앞에서 딱 한 번 연다.** 이 걸음을 건너뛰면
         // 204번도로가 아직 잠겨 있어 뒤의 넷이 전부 「길이 없다」로 떨어진다
         if (stop.id === '18' && north.scene === null && !(skipBefore !== null && stop.id < skipBefore)) {
           await goNorth()
+        }
+        /**
+         * **셋째 배지의 다리들** (`badges.mjs`). 자리마다 그 앞의 걸음을 먼저 밟고,
+         * 아래의 `goTo`는 대개 「이미 서 있다」로 곧바로 돌아온다.
+         *
+         * ⚠️ **다리 하나가 실패해도 다음 자리를 조용히 건너뛰지 않는다** — 아래
+         * `goTo`가 제 결말(길이 없다 · 멈췄다)을 그대로 적는다
+         */
+        if (THIRD_BADGE_STOPS.has(stop.id) && !(skipBefore !== null && stop.id < skipBefore) && api.left() > 0) {
+          const ctx = { log }
+          if (stop.id === '23') {
+            const before = await api.partyState()
+            if (!api.fullyHealed(before).ok) {
+              /**
+               * ⚠️ **`CENTERS[65]`가 아니다.** 그 값은 428(**무릉마을** 센터)이고,
+               * 「영원시티로 **가는 길**에 들르는 센터」다. 여기는 이미 영원시티
+               * 안이라 그쪽으로 회복하러 가면 **영원의 숲을 통째로 다시 걷는다**.
+               * 빌딩으로 떠나는 자리의 센터는 영원 센터(69)다 — `CENTERS[72]`
+               */
+              const center = CENTERS[B3MAP.galactic1F]
+              const got = await api.healAt(center, Math.min(300_000, api.left()))
+              heals.push({ where: '베어가르기 앞', center, ...got })
+            }
+            badge3.cut = await eternaToBike(api, ctx, { phases: ['cut'] })
+          }
+          if (stop.id === '24') {
+            /**
+             * ⚠️ **여기서도 나갔다 들어오면 안 된다.** `eternaToBike`의 층 걸음은
+             * **층마다** 다쳤는지 보고 낫는다(`badges.hurt`) — 그런데 이 걸음이
+             * 4F에 세워 둔 뒤에 아래의 「안 나았으면 낫는다」가 또 돌면, PP가 덜
+             * 찼다는 까닭만으로 4층을 걸어 내려가 센터에 갔다가 다시 올라온다.
+             * 그 빌딩은 층마다 구역이 갈려 있어(REPAIR §53) 왕복이 가장 비싼 곳이다
+             */
+            badge3.floors = await eternaToBike(api, ctx, { phases: ['floors'] })
+            preHealed = true
+          }
+          if (stop.id === '25') {
+            badge3.bike = await eternaToBike(api, ctx, { phases: ['bike'] })
+            // 뒤의 바깥 길 셋(자전거길·천관산·208)에 뿌릴 스프레이 — 영원 마트에서
+            badge3.repels = await api.buyAt(B3MAP.eternaMart, B3.repel, 4, Math.min(300_000, api.left()))
+            log(`  영원 마트(${String(B3MAP.eternaMart)}) 벌레회피스프레이 4개 → `
+              + `${badge3.repels.ok ? `${String(badge3.repels.bought)}개 샀다` : String(badge3.repels.why)}`)
+            await noteBike()
+          }
+          if (['25', '26', '27', '28', '29'].includes(stop.id)) {
+            badge3.ride = [...(badge3.ride ?? []), { to: stop.map, ...await rideToHearthome(api, ctx, { stopAt: stop.map }) }]
+          }
+          if (stop.id === '30') {
+            const lead = await candyUp(0, null, HEARTHOME_LEAD_LEVEL)
+            log(`  연고 체육관 앞 선두 사탕 (L${String(HEARTHOME_LEAD_LEVEL)}) → ${candyLine(lead)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '연고 앞 선두', ...lead }]
+            const bird = await candyUp(null, STARAVIA, HEARTHOME_STARAVIA_LEVEL)
+            log(`  연고 체육관 앞 찌르버드 사탕 (L${String(HEARTHOME_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '연고 앞 찌르버드', ...bird }]
+            potionBuy = await api.buyAt(B3MAP.hearthomeMart, SUPER_POTION, SUPER_POTIONS, Math.min(300_000, api.left()))
+            log(`  연고 마트(${String(B3MAP.hearthomeMart)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+              + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다 (돈 ${String(potionBuy.money?.[1])}원)` : String(potionBuy.why)}`)
+            const got = await api.healAt(CENTERS[91], Math.min(300_000, api.left()))
+            heals.push({ where: '연고 체육관 앞', center: CENTERS[91], ...got })
+            log(`  연고 체육관 앞 회복 (센터 ${String(CENTERS[91])}) → ${got.ok ? '나았다' : String(got.why)}`)
+            preHealed = true
+            badge3.doors = await hearthomeDoors(api, ctx)
+          }
+        }
+        /**
+         * **넷째·다섯째 배지의 다리들** (`badges.mjs` · 지시서 §4·§5).
+         *
+         * ⚠️ **두 체육관은 여기서 퍼즐까지 푼다.** 아래 `goTo(stop.map)`은 방에
+         * 들어서기만 하고, 관장 앞 칸은 샌드백을 차거나 물 높이를 바꿔야 열린다 —
+         * 풀이를 `NPC_STOPS` 뒤로 미루면 관장에게 **닿지도 못한 채** 「못 걸었다」가
+         * 적힌다
+         */
+        if (LATER_BADGE_STOPS.has(stop.id) && !(skipBefore !== null && stop.id < skipBefore) && api.left() > 0) {
+          const ctx = { log, setWalls }
+          if (stop.id === '32' || stop.id === '33') {
+            /**
+             * 자두 앞에 쓸 약은 **신수 마트(434)**에서 산다 — 장막의 가게는
+             * 백화점이라 층이 갈리고, 215번도로를 건너기 전에 사 두는 편이 짧다
+             */
+            if (stop.id === '33') {
+              potionBuy = await api.buyAt(B3MAP.solaceonMart, SUPER_POTION, SUPER_POTIONS, Math.min(300_000, api.left()))
+              log(`  신수 마트(${String(B3MAP.solaceonMart)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+                + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다` : String(potionBuy.why)}`)
+            }
+            badge45.road = [...(badge45.road ?? []),
+              { to: stop.map, ...await hearthomeToVeilstone(api, ctx, { stopAt: stop.map }) }]
+          }
+          if (stop.id === '34') {
+            const lead = await candyUp(0, null, VEILSTONE_LEAD_LEVEL)
+            log(`  장막 체육관 앞 선두 사탕 (L${String(VEILSTONE_LEAD_LEVEL)}) → ${candyLine(lead)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '장막 앞 선두', ...lead }]
+            const bird = await candyUp(null, STARAVIA, VEILSTONE_STARAVIA_LEVEL)
+            log(`  장막 체육관 앞 찌르버드 사탕 (L${String(VEILSTONE_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '장막 앞 찌르버드', ...bird }]
+            const got = await api.healAt(CENTERS[VEILSTONE.map], Math.min(300_000, api.left()))
+            heals.push({ where: '장막 체육관 앞', center: CENTERS[VEILSTONE.map], ...got })
+            log(`  장막 체육관 앞 회복 (센터 ${String(CENTERS[VEILSTONE.map])}) → ${got.ok ? '나았다' : String(got.why)}`)
+            preHealed = true
+            const inside = await api.goTo(VEILSTONE.map, Math.min(600_000, api.left()))
+            log(`  장막 체육관(133) 들어가기 → ${inside}`)
+            if (inside === 'arrived') badge45.kicks = await veilstoneKicks(api, ctx)
+            else badge45.kicks = { ok: false, why: `체육관에 못 들어갔다 (${inside})` }
+          }
+          if (stop.id === '35') {
+            // 태그 배틀이 기다린다 — 자두를 이긴 파티로 그냥 붙지 않는다
+            const got = await api.healAt(CENTERS[B3MAP.warehouse], Math.min(300_000, api.left()))
+            heals.push({ where: '창고 앞', center: CENTERS[B3MAP.warehouse], ...got })
+            log(`  창고 앞 회복 (센터 ${String(CENTERS[B3MAP.warehouse])}) → ${got.ok ? '나았다' : String(got.why)}`)
+            preHealed = true
+            badge45.warehouse = await veilstoneWarehouse(api, ctx)
+          }
+          if (stop.id === '36') {
+            badge45.south = await veilstoneToPastoria(api, ctx, { stopAt: stop.map })
+          }
+          if (stop.id === '37') {
+            potionBuy = await api.buyAt(B3MAP.pastoriaMart, SUPER_POTION, SUPER_POTIONS, Math.min(300_000, api.left()))
+            log(`  들판 마트(${String(B3MAP.pastoriaMart)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+              + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다` : String(potionBuy.why)}`)
+            const lead = await candyUp(0, null, PASTORIA_LEAD_LEVEL)
+            log(`  들판 체육관 앞 선두 사탕 (L${String(PASTORIA_LEAD_LEVEL)}) → ${candyLine(lead)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '들판 앞 선두', ...lead }]
+            const bird = await candyUp(null, STARAVIA, PASTORIA_STARAVIA_LEVEL)
+            log(`  들판 체육관 앞 찌르버드 사탕 (L${String(PASTORIA_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '들판 앞 찌르버드', ...bird }]
+            const got = await api.healAt(CENTERS[PASTORIA.map], Math.min(300_000, api.left()))
+            heals.push({ where: '들판 체육관 앞', center: CENTERS[PASTORIA.map], ...got })
+            log(`  들판 체육관 앞 회복 (센터 ${String(CENTERS[PASTORIA.map])}) → ${got.ok ? '나았다' : String(got.why)}`)
+            preHealed = true
+            const inside = await api.goTo(PASTORIA.map, Math.min(600_000, api.left()))
+            log(`  들판 체육관(122) 들어가기 → ${inside}`)
+            if (inside === 'arrived') badge45.climb = await pastoriaClimb(api, ctx)
+            else badge45.climb = { ok: false, why: `체육관에 못 들어갔다 (${inside})` }
+          }
         }
         if (skipBefore !== null && stop.id < skipBefore) {
           log(`${stop.what}(${String(stop.map)}) → 건너뛴다 (미실행 · --from=${skipBefore})`)
@@ -1452,7 +1693,8 @@ try {
         const center = CENTERS[stop.map] ?? null
         /** 이 자리 앞의 회복이 **계약대로** 됐는가. 안 됐으면 관장에게 안 간다 */
         let healOk = need.ok
-        if (center !== null && (!need.ok || stop.map === 47)) {
+        const alwaysHeal = new Set([47, FANTINA.map, VEILSTONE.map, PASTORIA.map])
+        if (center !== null && !preHealed && (!need.ok || alwaysHeal.has(stop.map))) {
           const got = await api.healAt(center, Math.min(300_000, api.left()))
           healOk = got.ok
           log(`  ${stop.what} 앞 회복 (센터 ${String(center)}) → `
@@ -1626,6 +1868,11 @@ try {
                 + ` · 이긴 수 ${String(v?.beaten ?? '?')}`
                 + ` · 막힌 칸 ${String(walls?.length ?? '?')}`)
             }
+            // 멜리사에게도 약을 쓴다 — 유채와 같은 규칙이다(관장에게만)
+            if (stop.map === FANTINA.map || stop.map === VEILSTONE.map || stop.map === PASTORIA.map) {
+              if (potionBuy?.ok === true) api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
+              else api.stopPotions()
+            }
             const said = await api.talkToNpc(stop.map, who.script, Math.min(180_000, api.left()))
             await api.settle()
             const badges = (await readSave()).badges
@@ -1652,13 +1899,37 @@ try {
            * 지면 그것은 **파티가 약하다**는 실측이고, 그대로 적힌다
            */
           const leader = LEADER_RETRY[stop.map]
-          if (leader !== undefined && (await readSave()).badges < leader.badges
-            && api.left() > 600_000) {
+          /** 이겼는가 — 배지 수로, 배지가 아니면 롬의 깃발로 (`won`) */
+          const leaderWon = async () => (leader.won !== undefined
+            ? leader.won(await api.storyVars())
+            : (await readSave()).badges >= leader.badges)
+          if (leader !== undefined && !(await leaderWon()) && api.left() > 600_000) {
             const center = CENTERS[stop.map]
             const again = await api.healAt(center, Math.min(300_000, api.left()))
             log(`  ${leader.what} 재도전 앞 회복 (센터 ${String(center)}) → `
               + `${again.ok ? '나았다' : String(again.why)}`)
-            const backIn = await api.goTo(stop.map, Math.min(300_000, api.left()))
+            /**
+             * ⚠️ **연고 체육관은 `goTo`로 못 돌아간다.** 문 셋·다섯이 우리 표에서 전부
+             * 다음 방으로 적혀 있고 제품이 들어설 때마다 답을 다시 뽑으므로, 답을 읽어
+             * 문을 고르는 `hearthomeDoors`로 되돌아간다 (`badges.mjs`)
+             */
+            /**
+             * ⚠️ **장막·들판도 `goTo`만으로는 관장에게 못 간다.** 방을 나갔다
+             * 들어오면 샌드백은 처음 자리로 돌아가고(`initVeilstoneGym`) 물은
+             * 낮음에서 다시 시작한다 — 퍼즐을 **다시 풀어야** 한다
+             */
+            const solveAgain = async (what, solve) => {
+              const went = await api.goTo(stop.map, Math.min(600_000, api.left()))
+              if (went !== 'arrived') return went
+              const done = await solve(api, { log, setWalls })
+              badge45[what] = done
+              return done.ok === true ? 'arrived' : String(done.why ?? done.at)
+            }
+            const backIn = stop.map === FANTINA.map
+              ? ((badge3.doorsRetry = await hearthomeDoors(api, { log })).ok ? 'arrived' : String(badge3.doorsRetry.why ?? badge3.doorsRetry.at))
+              : stop.map === VEILSTONE.map ? await solveAgain('kicksRetry', veilstoneKicks)
+                : stop.map === PASTORIA.map ? await solveAgain('climbRetry', pastoriaClimb)
+                  : await api.goTo(stop.map, Math.min(300_000, api.left()))
             if (backIn === 'arrived' && again.ok) {
               /**
                * ⚠️ **관장만 다시 부르면 안 된다.** 실측(2026-09-17 journey12): 셋째
@@ -1682,6 +1953,10 @@ try {
                     api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
                   } else api.stopPotions()
                 }
+                if ((stop.map === FANTINA.map || stop.map === VEILSTONE.map || stop.map === PASTORIA.map)
+                  && potionBuy?.ok === true) {
+                  api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
+                }
                 const said = await api.talkToNpc(stop.map, who.script, Math.min(300_000, api.left()))
                 await api.settle()
                 const badges = (await readSave()).badges
@@ -1696,7 +1971,14 @@ try {
             } else log(`  ${leader.what} 재도전 → 못 들어갔다 (${backIn})`)
           }
           // 그 자리의 트레이너들 (체육관 부하 둘)
-          for (const t of trainersOn(stop.map)) {
+          /**
+           * ⚠️ **장막·들판 체육관에서는 안 돈다.** 두 방의 풀이는 트레이너가 선
+           * 칸을 **벽으로 세고** 관장 앞까지의 최소 길을 낸다 — 그들에게 가려면
+           * 그 길을 벗어나야 하고, 장막은 찬 샌드백을 못 되돌리므로 방을 영영
+           * 못 여는 자리로 갈 수 있다. 원작도 체육관 트레이너는 **선택**이다
+           */
+          for (const t of (LATER_BADGE_STOPS.has(stop.id) && (stop.map === VEILSTONE.map || stop.map === PASTORIA.map)
+            ? [] : trainersOn(stop.map))) {
             if (api.left() <= 0) break
             const said = await api.talkTo(stop.map, { x: t.x, z: t.z }, Math.min(150_000, api.left()))
             await api.settle()
@@ -1706,11 +1988,12 @@ try {
             if (badges > 0) break
           }
           // 체육관을 나서면 약을 다시 끈다 — 다른 자리에서 쓰면 판마다 가방이 달라진다
-          if (stop.map === 67) api.stopPotions()
+          if (stop.map === 67 || stop.map === FANTINA.map
+            || stop.map === VEILSTONE.map || stop.map === PASTORIA.map) api.stopPotions()
         }
       }
       return {
-        seen, metNpcs, heals, sprays, poketch, north, clock, potionBuy,
+        seen, metNpcs, heals, sprays, poketch, north, clock, potionBuy, badge3, badge45,
         vars: await api.storyVars(), bag: await api.bagState(),
         party: await api.partyState(), badges: (await readSave()).badges,
       }
@@ -1795,7 +2078,8 @@ try {
    * 찍혔다 (2026-09-17 journey12). 도착 결말은 꽃시계 줄에 적는다
    */
   const GYM_STOP = '21'
-  for (const stop of AFTER_STOPS.filter((one) => !FIRST_BADGE_STOPS.has(one.id) && one.id !== GYM_STOP)) {
+  for (const stop of AFTER_STOPS.filter((one) => !FIRST_BADGE_STOPS.has(one.id) && one.id !== GYM_STOP
+    && !THIRD_BADGE_STOPS.has(one.id))) {
     const got = seen.find((one) => one.id === stop.id)
     const j = stopVerdict(got?.verdict ?? '안 갔다')
     // 숲 줄에는 **동행**까지 적는다 — 붙었는지가 그 구간의 내용이다
@@ -1847,6 +2131,225 @@ try {
     + ` · 사탕 걸음 ${(story.candySteps ?? []).map((one) =>
       `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`)
   shots.push(await shot('after-gym2'))
+
+  // ── ㉓~㉛ 셋째 배지 (지시서 JOURNEY_BADGE3 §2) ────────────────────────────
+  //
+  // ⚠️ **읽은 값으로 적는다.** 자리에 닿은 것(`seen`)과 롬이 세우는 변수·깃발·가방을
+  // 함께 적는다 — 닿기만 하고 장면이 안 돈 판이 통과로 새지 않게
+  const b3 = drive.extra?.badge3 ?? {}
+  const v3 = drive.extra?.vars ?? null
+  const bag3 = drive.extra?.bag?.items ?? []
+  const has = (item) => bag3.some((one) => one.item === item && one.count > 0)
+  const stopLine = (id) => {
+    const got = seen.find((one) => one.id === id)
+    return { got, j: stopVerdict(got?.verdict ?? '안 갔다'), text: `${String(got?.verdict ?? '안 갔다')}${got?.at ? ` · 멈춘 맵 ${String(got.at)}` : ''}` }
+  }
+  {
+    const { got, j, text } = stopLine('23')
+    const cut = b3.cut ?? null
+    add('23', '난천에게 베어가르기를 받고 나무를 베어 갤럭시 빌딩에 들어간다',
+      got?.verdict === 'arrived' && (v3?.eterna ?? 0) >= 2 && cut?.cut?.ok === true ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 영원 상태 ${String(v3?.eterna ?? '?')} (2 이상이어야 난천을 지났다)`
+      + ` · 비전머신01 ${has(B3.hm01) ? '있다' : '없다'}`
+      + ` · 가르치기 ${cut?.taught?.ok === true ? `${String(cut.taught.slot)}번째` : String(cut?.taught?.why ?? '안 했다')}`
+      /**
+       * ⚠️ **무엇을 잊었는지 줄에 적는다.** 기술 칸이 차 있으면 이 걸음이 첫 칸을
+       * 버린다 — 선두의 **물기**를 버리고 가면 멜리사(고스트) 앞에서야 표가 난다
+       * (§7). 판정에는 안 넣는다: 잊고도 이긴 판은 이긴 판이다
+       */
+      + (cut?.taught?.lost === undefined || cut.taught.lost === null ? ''
+        : cut.taught.lost.length === 0 ? ' · 잊은 기술 없다'
+          : ` · **잊은 기술** ${cut.taught.lost.map((one) => `${String(one.species)}의 ${String(one.move)}`).join('·')}`)
+      + ` · 나무 ${cut?.cut?.ok === true ? `${String(cut.cut.broke.length)}그루 건드려 열었다` : String(cut?.cut?.why ?? '안 벴다')}`
+      /**
+       * ⚠️ **난천 칸을 몇 번 밟았는지 적는다** (REPAIR §52). 한 번이면 정상이다 —
+       * 둘 이상이면 좌표 이벤트가 또 새고 있다는 뜻이고, 그 수가 먼저 울어야 한다.
+       * **통과 조건에는 안 넣는다**: 재도전으로 지난 판도 「이야기가 이어졌다」는
+       * 맞으므로, 판정이 아니라 증거로 남긴다
+       */
+      + ` · 난천 칸 ${String(cut?.tries?.length ?? (cut?.cynthia === undefined ? '?' : 1))}번 밟았다`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('24')
+    const jup = (drive.extra?.metNpcs ?? []).filter((m) => m.map === JUPITER.map)
+    add('24', '갤럭시 빌딩 4F에서 쥬피터를 이긴다',
+      v3?.galacticLeft === true ? 'PASS' : j.status === 'BLOCKED' && got?.verdict !== 'arrived' ? 'BLOCKED' : 'FAIL',
+      `${text} · 떠났다 깃발 ${String(v3?.galacticLeft ?? '?')} · 영원 상태 ${String(v3?.eterna ?? '?')}`
+      + ` · 층 ${String((b3.floors?.floors ?? []).filter((f) => f.went === 'arrived').length)}/4`
+      + (jup.length === 0 ? ' · 쥬피터를 못 만났다' : ` · ${jup.map((m) => `${String(m.what)} ${m.said ? '만났다' : '못 만났다'}`).join(' · ')}`)
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('25')
+    add('25', '자전거와 탐사세트를 받고 영원시티를 나가 206번도로 게이트에 선다',
+      got?.verdict === 'arrived' && has(B3.bicycle) && has(B3.explorerKit) ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 자전거 ${has(B3.bicycle) ? '있다' : '없다'} · 탐사세트 ${has(B3.explorerKit) ? '있다' : '없다'}`
+      + ` · 출구 잠금 ${String(b3.bike?.exits ?? '?')}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('26')
+    const rode = (b3.ride ?? []).find((r) => r.gate)?.gate?.riding ?? null
+    add('26', '자전거길을 타고 지나 207번도로에 닿는다',
+      got?.verdict === 'arrived' && rode === true ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 게이트에서 타고 있었나 ${String(rode)}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('27')
+    add('27', '207번도로에서 동행 상대 장면이 돌고 배틀서처를 받은 뒤 천관산에 든다',
+      got?.verdict === 'arrived' && (v3?.route207 ?? 0) >= 1 ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 207 상태 ${String(v3?.route207 ?? '?')} · 배틀서처 ${has(B3.vsSeeker) ? '있다' : '없다'}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('28')
+    add('28', '천관산을 지나 208번도로에 닿는다',
+      got?.verdict === 'arrived' ? 'PASS' : j.status,
+      `${text} · 천관산 태홍 장면 ${String(v3?.coronet ?? '?')}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('29')
+    add('29', '연고시티에 걸어서 닿는다',
+      got?.verdict === 'arrived' ? 'PASS' : j.status,
+      `${text} · 키라 장면 상태 ${String(v3?.hearthome ?? '?')}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('30')
+    const doors = b3.doors ?? null
+    /**
+     * ⚠️ **답을 읽어서 골랐다는 것을 줄에 적는다** (지시서 §5 ①). 사람에게는 힌트
+     * 그림이 없어 이 줄의 PASS가 「사람이 할 수 있다」를 뜻하지 않는다
+     */
+    add('30', '연고 체육관의 문 둘을 골라 관장 방에 선다 (답은 제품에서 읽었다 — 사람은 못 본다)',
+      got?.verdict === 'arrived' && doors?.ok === true ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 되돌려진 횟수 ${String(doors?.bounced ?? '?')}`
+      + ` · 방 ${(doors?.rooms ?? []).map((r) => `${String(r.room)}:문 ${String(r.answer?.door ?? '?')}`).join(' → ')}`
+      + (doors?.why ? ` · ${String(doors.why)}` : '')
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  const badges3 = (await readSave()).badges
+  const gym3 = (drive.extra?.metNpcs ?? []).filter((m) => m.map === FANTINA.map)
+  add('31', '셋째 배지를 받는다', badges3 >= 3 ? 'PASS' : 'FAIL',
+    `배지 ${String(badges3)}개`
+    + ` · 파티 ${JSON.stringify((drive.extra?.party ?? []).map((one) => `${String(one.species)} L${String(one.level)}`))}`
+    + (gym3.length === 0 ? ' · 관장을 못 만났다'
+      : ` · ${gym3.map((m) => `${String(m.what)} ${m.said ? '만났다' : '못 만났다'}`).join(' · ')}`)
+    + ` · 사탕 걸음 ${(story.candySteps ?? []).filter((one) => String(one.what).startsWith('연고')).map((one) =>
+      `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`)
+  shots.push(await shot('after-gym3'))
+
+  // ── ㉜~㊱ 넷째 배지 · ㊲~㊵ 다섯째 배지 (지시서 §4.3·§5.3) ─────
+  //
+  // ⚠️ **닿은 것과 장면이 돈 것을 같이 적는다.** 자리에만 닿고 좌표 이벤트가
+  // 안 돈 판이 통과로 새지 않게 — 그것이 REPAIR §52가 잡은 결함의 모양이었다
+  const b45 = drive.extra?.badge45 ?? {}
+  {
+    const { got, j, text } = stopLine('32')
+    add('32', '209번도로 게이트에서 라이벌을 이기고 신수마을에 닿는다',
+      got?.verdict === 'arrived' && (v3?.gate209 ?? 0) >= 2 ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 게이트 상태 ${String(v3?.gate209 ?? '?')} (2여야 라이벌을 이겼다)`
+      + ` · 신수 장면 ${String(v3?.solaceon ?? '?')}`
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('33')
+    add('33', '210번도로 남·215번도로를 지나 장막시티에 닿는다',
+      got?.verdict === 'arrived' ? 'PASS' : j.status,
+      `${text}${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('34')
+    const kicks = b45.kicks ?? null
+    const planned = kicks?.plan?.kicks?.length ?? null
+    const done = (kicks?.kicks ?? []).filter((one) => one.landed === true).length
+    /**
+     * ⚠️ **맞게 참는가까지 적는다.** 차기는 못 되돌리므로, 계획한 수와
+     * 실제로 계획한 칸으로 간 수가 다르면 그 판은 제품 표와 우리 격자의 원점이
+     * 어긋난 것이다 — 그 수가 먼저 울어야 한다
+     */
+    add('34', '맥실러 장면이 돌고, 샌드백을 차서 자두 앞 칸에 선다',
+      got?.verdict === 'arrived' && (v3?.wake ?? 0) >= 1 && kicks?.ok === true ? 'PASS'
+        : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 맥실러 장면 ${String(v3?.wake ?? '?')}`
+      + ` · 차기 ${String(done)}/${String(planned ?? '?')}`
+      + ` · 자두 앞 ${String(kicks?.at ?? '안 갔다')}`
+      + (kicks?.why ? ` · ${String(kicks.why)}` : '')
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  const badges4 = (await readSave()).badges
+  const gym4 = (drive.extra?.metNpcs ?? []).filter((m) => m.map === VEILSTONE.map)
+  add('35', '넷째 배지를 받는다', badges4 >= 4 ? 'PASS' : 'FAIL',
+    `배지 ${String(badges4)}개`
+    + ` · 파티 ${JSON.stringify((drive.extra?.party ?? []).map((one) => `${String(one.species)} L${String(one.level)}`))}`
+    + (gym4.length === 0 ? ' · 관장을 못 만났다'
+      : ` · ${gym4.map((m) => `${String(m.what)} ${m.said ? '만났다' : '못 만났다'}`).join(' · ')}`)
+    + ` · 사탕 걸음 ${(story.candySteps ?? []).filter((one) => String(one.what).startsWith('장막')).map((one) =>
+      `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`)
+  shots.push(await shot('after-gym4'))
+  {
+    const { got, j, text } = stopLine('35')
+    const wh = b45.warehouse ?? null
+    /**
+     * ⚠️ **비전머신02는 핸섬이 주는 것이 아니라 창고 바닥에서 주우는 것이다**
+     * (지시서 §4.1 ⑧′). 안 주우면 이 줄은 FAIL이고, 그것이 맞다
+     */
+    add('36', '동행 상대와 태그 배틀을 치르고 창고에서 비전머신02를 주운다',
+      got?.verdict === 'arrived' && (v3?.help ?? 0) >= 2 && (v3?.warehouse ?? 0) >= 2
+        && (v3?.pastoria ?? 0) >= 1 && has(B3.hm02) ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 도움 ${String(v3?.help ?? '?')} · 창고 ${String(v3?.warehouse ?? '?')}`
+      + ` · 들판 ${String(v3?.pastoria ?? '?')} · 비전머신02 ${has(B3.hm02) ? '있다' : '없다'}`
+      + ` · 태그 배틀 뒤 창고로 옥겨졌나 ${String(wh?.warpedIn ?? '?')}`
+      + (wh?.why ? ` · ${String(wh.why)}` : '')
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    const { got, j, text } = stopLine('36')
+    add('37', '214번도로·진실호수 호숙가·213번도로를 지나 들판시티에 닿는다',
+      got?.verdict === 'arrived' ? 'PASS' : j.status,
+      `${text}${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  {
+    /**
+     * ⚠️ **창고를 안 했으면 라이벌전이 서지 않는다** (`pastoria == 1`이라야 난다).
+     * 그때는 줄을 **안 만든다** — 봉투가 미실행으로 적는다. FAIL로 적으면 없는
+     * 결함이 생기고, PASS로 적으면 거짓이다 (지시서 §5.1 ②)
+     */
+    const rival = b45.south?.pastoria?.rival ?? null
+    const ran = rival !== null && rival.stood !== null
+    if (ran) {
+      add('38', '들판 체육관 문 앞 칸에서 라이벌을 이긴다',
+        (v3?.pastoria ?? 0) >= 2 ? 'PASS' : 'FAIL',
+        `밟은 결말 ${String(rival.stood)} · 들판 상태 ${String(v3?.pastoria ?? '?')}`
+        + ` · 배틀 뒤 맵 ${String(rival.mapAfter ?? '?')}`)
+    } else {
+      log(`  ㊳ 들판 라이벌전 → 미실행 (들판 상태 ${String(b45.south?.pastoria?.before ?? '?')})`)
+    }
+  }
+  {
+    const { got, j, text } = stopLine('37')
+    const climb = b45.climb ?? null
+    add('39', '물 높이를 바꿔 가며 맥실러 앞 칸에 선다',
+      got?.verdict === 'arrived' && climb?.ok === true ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
+      `${text} · 단추 ${String((climb?.presses ?? []).length)}번`
+      + ` (${(climb?.presses ?? []).map((one) => `${String(one.what)} ${String(one.from)}→${String(one.to)}`).join(' · ') || '안 밟았다'})`
+      + ` · 맥실러 앞 ${String(climb?.at ?? '안 갔다')}`
+      + (climb?.why ? ` · ${String(climb.why)}` : '')
+      + `${j.why === null ? '' : ` · ${j.why}`}`)
+  }
+  const badges5 = (await readSave()).badges
+  const gym5 = (drive.extra?.metNpcs ?? []).filter((m) => m.map === PASTORIA.map)
+  add('40', '다섯째 배지를 받는다', badges5 >= 5 ? 'PASS' : 'FAIL',
+    `배지 ${String(badges5)}개`
+    + ` · 파티 ${JSON.stringify((drive.extra?.party ?? []).map((one) => `${String(one.species)} L${String(one.level)}`))}`
+    + (gym5.length === 0 ? ' · 관장을 못 만났다'
+      : ` · ${gym5.map((m) => `${String(m.what)} ${m.said ? '만났다' : '못 만났다'}`).join(' · ')}`)
+    + ` · 사탕 걸음 ${(story.candySteps ?? []).filter((one) => String(one.what).startsWith('들판')).map((one) =>
+      `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`)
+  shots.push(await shot('after-gym5'))
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────
   const endSave = await writeReport('end.rpsave')

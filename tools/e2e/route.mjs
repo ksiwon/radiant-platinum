@@ -133,6 +133,17 @@ export const npcsOf = (mapId) => {
   const { maps, events } = data()
   return events[String(maps[mapId]?.events)]?.npcs ?? []
 }
+/**
+ * **밟으면 도는 좌표 이벤트**들 (`events_*.json`의 `coord_events`).
+ *
+ * ⚠️ **이 자리를 손으로 옮겨 적지 않는다.** 들판 체육관의 단추 열 자리가 그 예다 —
+ * 하네스가 표를 따로 들면 굽는 쪽이 둘이 된다(`two-bakers-must-match`). 여기서
+ * **구운 것을 읽어** 쓴다
+ */
+export const triggersOn = (mapId) => {
+  const { maps, events } = data()
+  return events[String(maps[mapId]?.events)]?.triggers ?? []
+}
 
 /**
  * 트레이너로 서 있는 사람들.
@@ -274,9 +285,18 @@ export const lastPlan = {
  *   `blocked`로 돌아와 그 칸을 `shun`에 넣고 다시 계획했다. 밖에서는
  *   「길은 있는데 안 움직인다」로 보이던 자리다 (후속 §4.2)
  */
+/**
+ * @param avoidStep `(nx, nz, key)` — **그 칸에 그 방향으로 들어서는 걸음**을 막는다.
+ *   칸이 아니라 **걸음**을 막는 것이 요점이다: 같은 칸이라도 옆에서 들어서면
+ *   괜찮은 자리가 있다.
+ *
+ *   ⚠️ **문이 그렇다.** 우리 문은 밟는 칸이 아니라 **마주 보고 미는 앞 칸**이라
+ *   (`map/world`의 `doorEntry`), 문 바로 앞 칸에 문 쪽을 보고 들어서면 **그
+ *   프레임에** 건물 안이다. `avoid`로는 못 막는다 — 막을 것이 칸이 아니다
+ */
 export function planPath(
   matrixId, from, isGoal,
-  { limit = NODE_CAP, avoid = null, cancelled = null, enterBlockedGoal = false } = {},
+  { limit = NODE_CAP, avoid = null, avoidStep = null, cancelled = null, enterBlockedGoal = false } = {},
 ) {
   const t0 = performance.now()
   const grid = gridOf(matrixId)
@@ -332,6 +352,10 @@ export function planPath(
       const nid = nz * w + nx
       if (stamp[nid] === run) continue
       const blocked = grid.blocked(nx, nz)
+      // ⚠️ **걸음 금지는 목표 예외를 안 탄다.** 아래 `enterBlockedGoal` 갈래는
+      // 「막힌 칸이지만 거기가 목표다」를 위한 것인데, 걸음 금지가 막는 칸은
+      // **막히지도 않았고 목표도 아니다** — 지나가는 길일 뿐이다. 여기서 먼저 끊는다
+      if (avoidStep !== null && avoidStep(nx, nz, STEP_KEYS[k])) continue
       const shunned = avoid !== null && avoid(nx, nz)
       if (blocked || shunned) {
         // 목적지 칸이 막혀 있어도 **거기가 목표고 문 목표면** 넣는다.
