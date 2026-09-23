@@ -1003,6 +1003,21 @@ export async function driveStory(page, {
       await tap('Space')
     }
     stuckFights++
+    /**
+     * ⚠️ **「안 끝났다」만 적으면 다음 판도 똑같이 선다.** 실측(2026-09-24
+     * `journey-from30` 둘째 판): 209번도로 (561,686)의 트레이너전이 안 끝났고
+     * 그 뒤 모든 단계가 「진행이 없다」였는데, 화면도 배틀 상태도 안 남아 무엇을
+     * 묻고 있었는지 못 봤다. 그래서 그 순간의 **그림 · 배틀 가게의 단계 · 보이는
+     * 단추 글**을 남긴다
+     */
+    const stuckShot = `shots/journey/stuck-battle-${String(stuckFights)}.png`
+    await page.screenshot({ path: stuckShot }).catch(() => {})
+    const moment = await obs.battleMoment().catch(() => null)
+    const buttons = await page.locator('button:visible').allInnerTexts().catch(() => [])
+    const said = await page.evaluate(() => document.querySelector('[data-battle-text], [role="log"]')?.textContent ?? null).catch(() => null)
+    log(`    배틀이 안 끝났다 — 그림 ${stuckShot} · 단계 ${JSON.stringify(moment?.value ?? moment)}`
+      + ` · 단추 ${JSON.stringify(buttons.map((t) => t.replace(/\s+/g, ' ').slice(0, 40)).slice(0, 12))}`
+      + `${said ? ` · 글 ${JSON.stringify(said.slice(0, 120))}` : ''}`)
     trouble.push(`배틀이 안 끝났다 — ${String(Math.round((Date.now() - t0) / 1000))}초`
       + (stuckFights >= STUCK_FIGHTS ? ' · 같은 판에 더 안 들어간다' : ''))
     fights.push({ kind, from: opened.map, to: null, taps: 800, ms: Date.now() - t0, movedAfter: null })

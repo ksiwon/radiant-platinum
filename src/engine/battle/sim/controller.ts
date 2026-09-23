@@ -325,7 +325,14 @@ export class BattleController {
   private spendTurn(at = 0): boolean {
     if (!this.session.useIdle('p1', at)) return false
     this.spent.p1 = true
-    this.request.p1 = null
+    /**
+     * ⚠️ **더블에서는 요청을 안 지운다.** 싱글은 `useIdle`이 그 자리에서 명령을
+     * 보냈으니 요청이 끝난 것이지만, 더블은 아직 **다른 자리가 고를 차례**다.
+     * 여기서 지우면 뒤 자리의 `actionsAt`이 빈 목록을 낸다 — 실측(2026-09-24
+     * 209번도로 쌍둥이): 앞 자리가 상처약을 쓰자 명령 창이 영영 안 떴다.
+     * 더블의 요청은 `chooseTurn`이 두 자리를 한 줄로 보낸 뒤에 지운다
+     */
+    if (!this.doubles) this.request.p1 = null
     return true
   }
 

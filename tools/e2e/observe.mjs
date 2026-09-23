@@ -499,14 +499,21 @@ function devObserver(page) {
       const picks = st.actions.filter((a) => a.type === 'move')
       if (picks.length === 0) return null
       const foe = st.view?.active?.p2a ?? null
-      const foeTypes = foe?.species == null ? null : species.get(foe.species)?.types ?? null
+      const foeSpecies = foe?.species == null ? null : species.get(foe.species) ?? null
+      const foeTypes = foeSpecies?.types ?? null
+      // 상성표만 보면 고우스트에게 지진을 먼저 고른다 — 부유가 막는다(2026-09-23 7판 멜리사).
+      // 특성은 배틀 화면에 안 뜨므로 **그 종이 가질 수 있는 특성이 전부** 그 타입을
+      // 막을 때만 「효과 없음」으로 친다. 하나라도 안 막으면 상성표 그대로다
+      const blocks = { 26: 4, 18: 10, 11: 11, 87: 11, 10: 13, 78: 13 } // 부유·타오르는불꽃·저수·건조피부·축전·전기엔진
+      const kinds = (foeSpecies?.abilities ?? []).filter((x) => x !== 0)
+      const walled = (type) => kinds.length > 0 && kinds.every((x) => blocks[x] === type)
       const scored = picks.map((a, i) => {
         const info = moves.get(a.move)
         if (!info) return { i, score: 0 }
         if (a.pp === 0) return { i, score: -1000 }
         if (info.category === 'status') return { i, score: 1 }
         const tag = preview.moveMatch(info, foeTypes, null, true)
-        if (tag === 'immune') return { i, score: 0 }
+        if (tag === 'immune' || walled(info.type)) return { i, score: 0 }
         const mul = tag === 'super' ? 4 : tag === 'resisted' ? 0.5 : 1
         return { i, score: Math.max(1, info.power) * mul + 10 }
       })

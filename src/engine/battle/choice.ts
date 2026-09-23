@@ -280,10 +280,17 @@ function targetsFor(kind: string, at: number, options: ActionOptions): number[] 
   if (foeA) foes.push(TARGET_FOE_A)
   if (foeB) foes.push(TARGET_FOE_B)
 
-  // 도우미·마사지는 **짝만** 겨눈다. 짝이 없으면 쓸 데가 없다
+  // 도우미·마사지는 **짝만** 겨눈다.
+  //
+  // ⚠️ **짝이 쓰러졌어도 짝 자리를 겨눈다.** sim의 `validTargetLoc`은 자리의
+  // **위치**만 보고 살았는지는 안 본다 — 상대 자리를 주면 「Invalid target for
+  // Helping Hand」로 거절하고, 우리는 이미 요청을 비운 뒤라 배틀이 선다.
+  // 실측(2026-09-24 209번도로 쌍둥이 이향&미향): 꼬지지가 쓰러진 뒤 흉내내가
+  // 도우미를 골라 배틀이 멈췄다. 짝 자리를 주면 받아 주고, 기술은 원작처럼
+  // 「하지만 실패했다」로 끝난다
   const ally = at === 0 ? TARGET_ALLY_B : TARGET_ALLY_A
   const self = at === 0 ? TARGET_ALLY_A : TARGET_ALLY_B
-  if (kind === 'adjacentAlly') return options.allyAlive ? [ally] : [TARGET_FOE_A]
+  if (kind === 'adjacentAlly') return [ally]
   if (kind === 'adjacentAllyOrSelf') {
     return options.allyAlive ? [self, ally] : [self]
   }

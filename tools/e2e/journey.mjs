@@ -319,11 +319,15 @@ const CENTERS = {
   72: 69, 75: 69, 80: 69, 91: 101,
   /**
    * 넷째·다섯째 배지 (지시서 §6의 표). **떠나기 전 지역**의 센터다 —
-   * 신수마을로 떠날 때는 아직 연고시티(101)고, 장막시티로 떠날 때는 신수(435),
-   * 체육관 둘과 창고·들판시티는 장막 센터(134)와 들판 센터(123)다.
-   * 214·213번도로 사이에는 센터가 없으므로 들판시티 앞도 134다
+   * 신수마을로 떠날 때는 아직 연고시티(101)고, 체육관 둘과 창고·들판시티는
+   * 장막 센터(134)와 들판 센터(123)다. 214·213번도로 사이에는 센터가 없으므로
+   * 들판시티 앞도 134다.
+   *
+   * ⚠️ **장막시티(132)도 134다.** 그 자리의 앞 걸음(209→신수→210→215→장막·맥실러
+   * 장면)이 회복보다 **먼저** 돌아 이미 장막시티에 서 있다 — 신수 센터(435)를
+   * 적었더니 장막 건물 넷을 드나들며 300초를 태웠다(2026-09-23 `journey-from30`)
    */
-  433: 101, 132: 435, 133: 134, 143: 134, 120: 134, 122: 123,
+  433: 101, 132: 134, 133: 134, 143: 134, 120: 134, 122: 123,
 }
 
 /**
@@ -1151,9 +1155,17 @@ try {
       // `driveStory`는 트레이너전이 0일 때만 이 걸음을 밟으므로, 라이벌전이
       // 이미 붙은 판에서는 건너뛴다 — 실측으로 축복시티·무쇠시티·탄광 셋이
       // **전부 맵 343에서** 막혔고 로그에 「엄마에게」 줄이 없었다
-      await api.getParcel()
-      await api.settle()
-      log(`소포를 받으러 다녀왔다 — 지금 ${JSON.stringify(await marks())}`)
+      /**
+       * ⚠️ **이어 달리는 판은 첫머리를 안 걷는다.** 세이브가 이미 그 자리 뒤다 —
+       * 실측(2026-09-23 `journey-from30`): 연고시티에서 이어 달렸는데 소포 심부름·
+       * 모래 센터 회복·203번도로 통행 시험이 그대로 돌아 208번도로까지 헤매다
+       * 돌아왔다. 그 자리의 사실(포켓치)은 구간 기록(`segment.at`)에서 읽는다
+       */
+      if (!resume.ok) {
+        await api.getParcel()
+        await api.settle()
+        log(`소포를 받으러 다녀왔다 — 지금 ${JSON.stringify(await marks())}`)
+      }
       /**
        * **사탕으로 올린다.** `slot`이 null이면 `species`인 첫 마리다.
        * 모자란 만큼만 가방에 넣고 화면으로 먹인다. 결과는 한 줄 글로 돌려준다 —
@@ -1218,8 +1230,10 @@ try {
         story.candySteps = [...(story.candySteps ?? []), { what: '202번도로 앞 선두', ...early }]
       }
       // ── 축복시티: 포켓치를 받아 동쪽을 연다 (원작 차례. 위 JUBILIFE 참고) ──
-      const poketch = { done: false, why: '' }
-      if (api.left() > 0) {
+      const poketch = resume.ok
+        ? { done: resume.segment.at?.poketch === true, why: '이어 달린 판 — 구간 기록에서 읽었다' }
+        : { done: false, why: '' }
+      if (!resume.ok && api.left() > 0) {
         /**
          * ⚠️ **쓰러진 채로 202번도로를 건너면 안 된다.**
          *
@@ -1377,9 +1391,10 @@ try {
        */
       const ROUTE_203 = 344
       const eastProbe = poketch.done ? 'received'
+        : resume.ok ? '이어 달린 판 — 안 쟀다'
         : api.left() > 0 ? await api.goTo(ROUTE_203, Math.min(120_000, api.left()))
           : '시간이 다 됐다'
-      const eastLocked = eastProbe !== 'received' && eastProbe !== 'arrived'
+      const eastLocked = !resume.ok && eastProbe !== 'received' && eastProbe !== 'arrived'
       log(`  동쪽(203번도로 ${String(ROUTE_203)}) 통행 시험 → ${eastProbe}`
         + `${eastLocked ? ' — 잠겼다고 본다' : ''}`)
       poketch.east = eastProbe

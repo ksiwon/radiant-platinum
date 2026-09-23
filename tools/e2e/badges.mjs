@@ -685,9 +685,12 @@ export const VEILSTONE = {
  * 어긋났을 때 **다시 푸는** 횟수.
  *
  * ⚠️ 되돌리는 것이 아니라 **지금 자리에서 다시 찾는** 것이라, 정말 막혔으면
- * 풀이가 스스로 「없다」고 답한다. 그 답이 「우리가 망쳤다」의 정본이다
+ * 풀이가 스스로 「없다」고 답한다. 그 답이 「우리가 망쳤다」의 정본이다.
+ *
+ * 여덟인 까닭: 부하 넷이 **각자** 걸어와 설 때마다 한 번씩 다시 푼다(아래
+ * `guardsMoved`). 그 넷에 어긋남 넷을 더한 값이다
  */
-const REPLANS = 4
+const REPLANS = 8
 
 /** 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → 방향키 */
 const DIR_KEY = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
@@ -777,8 +780,17 @@ export async function veilstoneKicks(api, ctx) {
     ctx.setWalls?.(VEILSTONE.map, withGuards(walls))
     const moving = new Set([...state.stacks, ...state.bags.map(([x, z]) => `${String(x)},${String(z)}`)])
     const still = withGuards(walls.filter((k) => !moving.has(k)))
+    /**
+     * ⚠️ **다시 풀 때 주인공은 문간에 없다.** 예전에는 여기도 `VEILSTONE.door`였다 —
+     * 실측(2026-09-23 `journey-from30`): 여덟을 차고 (3,12)에 선 채 다시 풀었더니
+     * 풀이는 문간에서 닿는 (20,18)부터 차라고 했고, 주인공은 거기로 갈 길이 없어
+     * 네 번을 내리 같은 자리에서 섰다. 풀이의 구역은 **선 칸**에서 센다
+     */
+    const here = await api.now().catch(() => null)
+    const start = here !== null && here.map === VEILSTONE.map && Number.isFinite(here.x) && Number.isFinite(here.z)
+      ? { x: here.x, z: here.z } : VEILSTONE.door
     const got = await api.veilstonePlan({
-      start: VEILSTONE.door, goal: VEILSTONE.front, wall: still, stacks: state.stacks,
+      start, goal: VEILSTONE.front, wall: still, stacks: state.stacks,
     })
     if (got === null) return { ok: false, why: '풀이를 못 돌렸다 (관측 불가)' }
     return got
@@ -810,6 +822,8 @@ export async function veilstoneKicks(api, ctx) {
     start: VEILSTONE.door, goal: VEILSTONE.front, wall: still, stacks: state.stacks,
   })
   if (plan === null) { out.why = '풀이를 못 돌렸다 (관측 불가)'; return out }
+  /** 지금 계획이 벽으로 세운 사람들 — 달라지면 다시 푼다 */
+  let planGuards = new Set(guards)
   out.plan = plan
   note('샌드백 풀이', plan.ok
     ? `${String(plan.kicks.length)}번 차면 열린다 (상태 ${String(plan.seen)} · ${String(plan.ms)}ms)`
@@ -833,6 +847,7 @@ export async function veilstoneKicks(api, ctx) {
     if (round > 0) {
       note('다시 푼다', `${String(round)}번째 — ${String(askAgain)}`)
       plan = await solveNow()
+      planGuards = new Set(guards)
       out.plans = [...(out.plans ?? []),
         { round, ok: plan.ok === true, kicks: plan.kicks?.length ?? null, why: plan.why ?? null }]
       if (plan.ok !== true) { out.why = `다시 푸니 길이 없다 — ${String(plan.why)}`; return out }
@@ -1005,6 +1020,19 @@ export async function veilstoneKicks(api, ctx) {
       + ` · ${landed ? '갔다' : '**계획과 다르다**'}`)
     if (!landed) {
       askAgain = `${String(n + 1)}번째 차기가 계획한 칸으로 안 갔다`
+      break
+    }
+    /**
+     * ⚠️ **사람이 옮겨 섰으면 남은 계획은 옛 방의 계획이다.** 계획은 그때 선 자리의
+     * 부하를 벽으로 세웠는데, 부하는 주인공을 보면 걸어와 **거기 그대로** 선다.
+     * 실측(2026-09-23 `journey-from30`): 첫 차기 뒤 부하 셋이 걸어왔는데 계획을 안
+     * 고치고 여덟을 더 찼고, 주인공은 문으로도 자두로도 못 가는 구역에 갇혔다 —
+     * 뒤의 모든 단계가 「길을 못 찾았다」였다. 그래서 **남은 차기가 있는 동안**
+     * 사람이 달라졌으면 지금 자리에서 다시 푼다
+     */
+    const moved = guards.length !== planGuards.size || guards.some((k) => !planGuards.has(k))
+    if (moved && n + 1 < plan.kicks.length) {
+      askAgain = `${String(n + 1)}번째 차기 뒤 부하가 옮겨 섰다 (${guards.filter((k) => !planGuards.has(k)).join(' · ')})`
       break
     }
     }
