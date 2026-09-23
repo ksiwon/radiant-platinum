@@ -34,11 +34,31 @@ mkdirSync(OUT, { recursive: true })
 
 /** 맥실러 앞 사탕 기준 (지시서 §7 — 탐침이 바꾼다) */
 const LEAD_LEVEL = Number(flag('lead', '39'))
-const STARAVIA = 397
+/** 찌르버드와 그 진화형 찌르호크. 둘 다 같은 자리다 */
+const STARAVIA = [397, 398]
 const STARAVIA_LEVEL = Number(flag('bird', '36'))
+/**
+ * **셋째 자리**도 싸울 몸으로 만든다.
+ *
+ * ⚠️ **두 마리로는 체육관을 못 지난다.** 실측(2026-09-22 다리 c 1·2판): 연고
+ * 체육관에서 토대부기 L32 · 찌르버드 L30 · **비버니 L4**로 두 판 다 넷째
+ * 부하에게 전멸했다. 둘째 판은 약 여덟을 켜고도 졌다 — 약은 아홉 번 **쓰였고**
+ * 바닥났다(`out.potions`). 모자란 것은 약이 아니라 **몸**이었다.
+ * 셋째에 사탕을 먹인 3판이 한 번에 배지를 땄다
+ */
+const THIRD_LEVEL = Number(flag('third', '36'))
 const RARE_CANDY = 50
 const MEDICINE_POCKET = 1
-const SUPER_POTIONS = 6
+/**
+ * 들판 마트에서 살 좋은상처약 개수.
+ *
+ * ⚠️ **약으로는 못 이긴다 — 몸이 먼저다.** 실측(2026-09-22 배지5 탐침 3판):
+ * 토대부기 L39·찌르호크 L36·비버통 L36으로 맥실러에게 **두 판 다 전멸**했고,
+ * 그때 약은 **열여덟 번 쓰이고 바닥났다**(`out.potions.left = 0`). 기록을 보면
+ * 선두가 한 방에 126 중 50씩 깎였다 — 토대부기는 풀·땅이라 얼음이 **4배**다.
+ * 먹인 뒤 68까지 올라가도 다음 턴에 18로 돌아왔다
+ */
+const SUPER_POTIONS = Number(flag('potions', '6'))
 
 const out = { stamp: STAMP, save: SAVE, leg: LEG, steps: [] }
 const note = (what, detail) => {
@@ -137,9 +157,19 @@ try {
         log: (l) => { console.log(`    ${l}`) },
         setWalls: (mapId, keys) => { roomWalls.set(mapId, new Set(keys)) },
       }
+      /**
+       * @param species 한 마리가 아니라 **진화 계통**이다.
+       *
+       * ⚠️ **번호 하나로 찾으면 진화한 뒤 조용히 못 찾는다.** 찌르버드(397)는
+       * 장막 체육관 가는 길에 L34에서 찌르호크(398)가 된다 — 397만 찾으면
+       * 「먹일 마리가 없다」로 지나가고, 그 판은 새가 두 레벨 모자란 채 관장
+       * 앞에 선다. 못 먹인 것은 `out.gym.candy`에 남지만 **판이 끝난 뒤에야**
+       * 읽힌다
+       */
       const candyUp = async (slot, species, level) => {
+        const family = species === null ? [] : [species].flat()
         const party = (await api.partyState()) ?? []
-        const at = slot ?? party.findIndex((one) => one.species === species)
+        const at = slot ?? party.findIndex((one) => family.includes(one.species))
         const mon = party[at]
         if (mon === undefined) return { ran: false, why: '먹일 마리가 없다' }
         const need = level - mon.level
@@ -174,10 +204,16 @@ try {
         out.gym = { candy: [] }
         out.gym.candy.push({ what: '선두', ...(await candyUp(0, null, LEAD_LEVEL)) })
         out.gym.candy.push({ what: '찌르버드', ...(await candyUp(null, STARAVIA, STARAVIA_LEVEL)) })
+        out.gym.candy.push({ what: '셋째', ...(await candyUp(2, null, THIRD_LEVEL)) })
         note('사탕', JSON.stringify(out.gym.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 ${c.from}→L${String(c.level)}` : String(c.why)}`)))
         out.gym.potions = await api.buyAt(MAP.pastoriaMart, ITEM.superPotion, SUPER_POTIONS, Math.min(300_000, api.left()))
         note(`들판 마트 좋은상처약 ${String(SUPER_POTIONS)}개`, out.gym.potions.ok ? `${String(out.gym.potions.bought)}개 샀다` : String(out.gym.potions.why))
         await heal(MAP.pastoriaCenter, '들판 체육관')
+        /**
+         * ⚠️ **들어가기 전에 켠다.** 방 안에 부하 **여섯**이 서 있고
+         * (`trainersOn(122)`), 나갔다 오면 물이 낮음에서 다시 시작한다
+         */
+        if (out.gym.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.45, out.gym.potions.bought)
         const inside = await api.goTo(PASTORIA.map, Math.min(600_000, api.left()))
         note('들판 체육관(122) 들어가기', inside)
         if (inside === 'arrived') {
@@ -213,6 +249,8 @@ try {
     },
   })
   out.trouble = drive?.trouble ?? null
+  // ⚠️ 약을 썼는지 안 적으면 다음 판에서 짐작하게 된다 (`probe-must-be-verified-too`)
+  out.potions = drive?.potions ?? null
   out.battles = drive?.wild === undefined ? null : { wild: drive.wild, trainer: drive.trainer }
   out.end = await storyNow(page)
   if (out.trouble !== null && out.trouble.length > 0) note('걸린 것', JSON.stringify(out.trouble))

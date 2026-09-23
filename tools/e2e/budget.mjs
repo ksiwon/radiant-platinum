@@ -106,6 +106,58 @@ export function makeStall(patience) {
   }
 }
 
+/**
+ * **가둠 계수기** — 움직이는데 안 나아간다.
+ *
+ * ⚠️ **`makeStall`은 되밀림을 진행으로 읽는다.** 지문이 바뀌면 진행이므로
+ * (7,7)↔(7,8)을 오가는 동안 `idle`이 영영 0이다. 실측(2026-09-22 다리 b):
+ * 자전거 없이 206번도로 북쪽 게이트에 들어가 좌표 이벤트에 **3,764번
+ * 되밀렸는데** 멈춤 계수기는 한 번도 안 울렸고, 예산 3,600초가 통째로
+ * 거기서 녹았다 — 다리 하나를 통으로 잃었다.
+ *
+ * 그래서 「같은 자리인가」가 아니라 **「얼마나 좁은 자리에서만 도는가」**를
+ * 센다.
+ *
+ * ⚠️ **자유 보행 바퀴만 센다.** 대사·스크립트·배틀 바퀴는 부르는 쪽이 걸러서
+ * 넘기지 않는다 — 컷신은 제자리에 오래 서 있는 것이 **정상**이라, 그것까지
+ * 세면 멀쩡한 장면을 가둠으로 읽는다. 맵이 바뀌면 처음부터 다시 센다.
+ *
+ * @param rounds 몇 바퀴부터 의심하나 (자유 보행 바퀴만)
+ * @param tiles 그 바퀴 동안 밟은 칸이 이 수 **이하**면 갇힌 것이다
+ */
+export function makePen(rounds, tiles) {
+  if (!Number.isInteger(rounds) || rounds < 1) {
+    throw new Error(`가둠을 의심할 바퀴 수가 1 이상 정수가 아니다: ${String(rounds)}`)
+  }
+  if (!Number.isInteger(tiles) || tiles < 1) {
+    throw new Error(`가둠으로 볼 칸 수가 1 이상 정수가 아니다: ${String(tiles)}`)
+  }
+  let map = null
+  let seen = new Set()
+  let count = 0
+  return {
+    rounds,
+    tiles,
+    /**
+     * 자유 보행 한 바퀴를 적는다.
+     *
+     * @returns 갇혔는가 — `rounds`바퀴를 `tiles`칸 이하에서만 돌았는가
+     */
+    note(mapId, x, z) {
+      if (mapId !== map) { map = mapId; seen = new Set(); count = 0 }
+      seen.add(`${String(x)},${String(z)}`)
+      count++
+      return count >= rounds && seen.size <= tiles
+    },
+    /** 지금 맵에서 자유롭게 걸은 바퀴 수 */
+    get count() { return count },
+    /** 지금 맵에서 밟은 서로 다른 칸 수 */
+    get size() { return seen.size },
+    /** 세고 있는 맵 */
+    get map() { return map },
+  }
+}
+
 /** `n`번째 백분위. 표본이 비었으면 `null`이다 — **0으로 안 접는다** */
 export function pct(values, p) {
   const all = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b)

@@ -400,6 +400,38 @@ function walkBack(parent, dir, at) {
 export const exitsTo = (mapId, to) => warpsOf(mapId).filter((w) => w.to === to)
 
 /**
+ * **진흙 비탈** — 자전거를 타야 **북쪽으로** 오를 수 있는 칸
+ * (`Behavior.BIKE_SLOPE_TOP` 0xD9 · `BOTTOM` 0xDA · `actor/bikeTerrain`).
+ *
+ * ⚠️ **격자에는 길이 있고 게임은 막는다.** 비탈은 `blocked`가 거짓이라 계획이
+ * 그 위로 지나간다 — 실측(2026-09-22 배지4 탐침 1판): 209번도로 (562,693)에서
+ * **9분 동안** 북쪽으로 밀기만 했다. 계획은 매 바퀴 「22걸음 있다」고 했고
+ * 게임은 걸어서 오르는 것을 거절했다. 둘 다 옳았고 서로를 몰랐다
+ * (자전거길 게이트와 같은 갈래다).
+ *
+ * **돌아가는 길은 있다** — 같은 자리에서 비탈을 피하면 38걸음이다. 그래서
+ * 막는 것은 **칸이 아니라 걸음**이다: 북쪽으로 들어서는 것만 막고 내려오는
+ * 것은 그대로 둔다 (`planPath`의 `avoidStep`).
+ *
+ * 온 세계에 서른넷뿐이라 한 번 훑어 두고 쓴다
+ */
+const BIKE_SLOPE = new Set([0xd9, 0xda])
+const slopeCache = new Map()
+export function bikeSlopes(matrixId) {
+  const had = slopeCache.get(matrixId)
+  if (had !== undefined) return had
+  const grid = gridOf(matrixId)
+  const out = new Set()
+  for (let z = 0; z < grid.h; z++) {
+    for (let x = 0; x < grid.w; x++) {
+      if (BIKE_SLOPE.has(grid.at(x, z) & 0x7fff)) out.add(`${String(x)},${String(z)}`)
+    }
+  }
+  slopeCache.set(matrixId, out)
+  return out
+}
+
+/**
  * 맵 사이의 길. 워프 표를 그래프로 보고 너비 우선으로 찾는다.
  *
  * @returns 지나갈 맵 번호 목록 (`from` 포함, `to`로 끝난다). 없으면 null

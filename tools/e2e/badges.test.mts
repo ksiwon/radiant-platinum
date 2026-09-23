@@ -7,10 +7,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { Behavior } from '../../src/engine/map/zone'
 import { PASTORIA_WATER } from '../../src/engine/world/pastoriaGym'
 import { VEILSTONE_GYM_MAP } from '../../src/engine/world/veilstoneGym'
 import { MAP, PASTORIA, pastoriaButtons, VEILSTONE } from './badges.mjs'
-import { gridOf, matrixOf, missingData, npcsOf, warpsOf } from './route.mjs'
+import { bikeSlopes, gridOf, matrixOf, missingData, npcsOf, planPath, warpsOf } from './route.mjs'
 
 /** 자료를 아직 안 구운 기계에서는 **미실행**이다. 통과가 아니다 */
 const HAVE = missingData().length === 0
@@ -23,6 +24,54 @@ const romEvents = (name: string): {
   coord_events?: { script: number, x: number, z: number, width: number, length: number }[]
   object_events?: { id: string, script: number, x: number, z: number }[]
 } => JSON.parse(readFileSync(resolve(DECOMP, `${name}.json`), 'utf8')) as never
+
+describe.skipIf(!HAVE)('진흙 비탈', () => {
+  /**
+   * ⚠️ **거동값이 두 군데에 적혀 있다.** 제품은 `Behavior.BIKE_SLOPE_*`로,
+   * 하네스는 `route.mjs`가 훑을 때 쓰는 숫자로. 한쪽만 고치면 계획이 다시
+   * 걸어서 비탈을 오르려 든다 — 그때 판은 「길이 있다」고 말하며 선다
+   */
+  it('하네스가 쓰는 거동값이 제품의 그것이다', () => {
+    expect(Behavior.BIKE_SLOPE_TOP).toBe(0xd9)
+    expect(Behavior.BIKE_SLOPE_BOTTOM).toBe(0xda)
+  })
+
+  it('오버월드의 비탈을 전부 찾는다', () => {
+    const slopes = bikeSlopes(0)
+    expect(slopes.size).toBeGreaterThan(0)
+    const grid = gridOf(0)
+    for (const key of slopes) {
+      const [x, z] = key.split(',').map(Number)
+      const behavior = grid.at(x, z) & 0x7fff
+      expect([Behavior.BIKE_SLOPE_TOP, Behavior.BIKE_SLOPE_BOTTOM]).toContain(behavior)
+      // 비탈은 걸을 수 있는 칸으로 표시돼 있다 — 그래서 계획이 속았다
+      expect(grid.blocked(x, z)).toBe(false)
+    }
+  })
+
+  /**
+   * 209번도로의 그 자리 (실측 2026-09-22 · 배지4 탐침 1판에서 9분을 섰다).
+   * 걸어서는 **돌아가는 길**이 있고, 그것이 이 규칙을 쓸 수 있는 근거다 —
+   * 돌아갈 길이 없으면 막는 것이 곧 못 가는 것이 된다
+   */
+  it('209번도로는 걸어서도 돌아갈 길이 있다', () => {
+    const grid = gridOf(0)
+    const slopes = bikeSlopes(0)
+    const from = { x: 562, z: 693 }
+    const toSolaceon = (x: number, z: number): boolean => grid.zoneAt(x, z) === MAP.solaceon
+    const riding = planPath(0, from, toSolaceon, {})
+    const walking = planPath(0, from, toSolaceon, {
+      avoidStep: (nx: number, nz: number, key: string) =>
+        key === 'ArrowUp' && slopes.has(`${String(nx)},${String(nz)}`),
+    })
+    expect(riding.keys).not.toBeNull()
+    expect(walking.keys).not.toBeNull()
+    // 돌아가는 길이라 더 길다 — 같으면 비탈을 안 지나고 있다는 뜻이라 시험이 헛돈다
+    expect(walking.keys!.length).toBeGreaterThan(riding.keys!.length)
+    expect(riding.keys!.length).toBe(22)
+    expect(walking.keys!.length).toBe(38)
+  })
+})
 
 describe.skipIf(!HAVE)('들판 체육관 단추', () => {
   it('구운 좌표 이벤트에서 열 자리를 읽는다', () => {

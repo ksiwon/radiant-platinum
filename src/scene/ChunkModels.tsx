@@ -36,7 +36,7 @@ import { Water, waterField, type WaterField } from './Water'
 import { shellPaint, shellPlates, wallSource, wallStrip } from './shell'
 import { cardShells, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
-import { isOutdoors, mapById, world } from '../engine/map/world'
+import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
 import { markTerrain, openTerrainRequest, traceTerrain } from './terrainMark'
 import { cameraSystem, type RoomBox } from '../engine/actor/camera'
 import { PropFade } from './PropFade'
@@ -954,13 +954,6 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          * 오히려 **집 안쪽으로** 밀어 넣었다 — 사용자가 찍어 보낸 포켓몬 센터
          * 앞의 나무가 그것이다
          */
-        /**
-         * 실내인가, 그리고 어느 칸이 출입구인가.
-         *
-         * 워프 칸에 벽을 세우면 못 나가고 문이 벽으로 덮인다. 문 앞은 한 칸이
-         * 아니라 **문 폭만큼** 비워야 해서 워프의 양옆도 같이 비운다 — 원작 문이
-         * 두 칸짜리다
-         */
         const header = mapById(world.mapId ?? -1)
         /**
          * ⚠️ **깨어진 세계는 실내로 세면 안 된다.** 헤더는 실내라고 적혀 있지만
@@ -973,6 +966,18 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
          */
         const indoor = header !== null && !isOutdoors(header)
           && !isDistortionFloor(world.mapId ?? -1)
+        /**
+         * 어느 칸이 **문간인가** (월드 타일).
+         *
+         * 그 칸에는 방 벽을 문 높이만큼 비워 세운다 — 다 메우면 문이 사라지고,
+         * 다 비우면 정면이 통째로 검다 (`roomWalls.ts` 머리말).
+         *
+         * ⚠️ **폭을 넓히지 않는다.** 한때 「원작 문이 두 칸이니 워프 양옆도
+         * 비운다」고 적혀 있었는데, 두 칸짜리 문은 **워프 칸이 둘**이라 이미
+         * 자료에 들어 있다 (맵 414의 셋이 그렇게 따로 적혀 있다). 양옆까지
+         * 넓히면 문이 아닌 벽에 구멍이 난다
+         */
+        const doorTiles = indoor ? warpsOf(world.mapId ?? -1) : []
 
         const plates = new Set<number>()
         for (const p of pieces) {
@@ -1144,7 +1149,11 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 문이 있는 앞벽이 그렇다. 출입구까지 다 세운다 (`roomWalls.ts`).
             // 실외에는 안 건다: 거기서 바닥이 끝나는 자리는 맵 가장자리라
             // 벽을 세우면 세계가 상자 안에 갇힌다
-            room: indoor ? roomWalls(split, (g) => cutout[g] !== true) : null,
+            room: indoor
+              ? roomWalls(split, (g) => cutout[g] !== true,
+                // 워프는 맵 칸이고 `roomWalls`가 세는 것은 청크 로컬이다
+                new Set(doorTiles.map((w) => cellKey(w.x - originX, w.z - originZ))))
+              : null,
             // ⚠️ **방 벽은 안 합친다.** 나머지 셋은 그림자를 던지는데 방 벽은
             // 받기만 한다 — 합치면 안 보이는 앞벽이 방 안에 그림자를 드리운다
             merged: mergeByMaterial(

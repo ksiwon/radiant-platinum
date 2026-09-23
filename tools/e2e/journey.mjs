@@ -361,7 +361,19 @@ const LATER_BADGE_STOPS = new Set(['32', '33', '34', '35', '36', '37'])
 /** 연고 체육관 앞 사탕 기준 (지시서 §3.7 시작값) — 선두와 찌르버드 */
 const HEARTHOME_LEAD_LEVEL = 30
 const STARAVIA = 397
+/** 찌르꼬 → 찌르버드 → 찌르호크. 사탕은 어느 단계에서도 같은 자리를 가리킨다 */
+const STARLY_LINE = [396, 397, 398]
 const HEARTHOME_STARAVIA_LEVEL = 26
+/**
+ * **셋째 자리**의 기준. 연고 체육관부터 선다.
+ *
+ * ⚠️ **부하 여섯을 두 마리로는 못 지난다.** 실측(2026-09-22 다리 c 2판):
+ * 토대부기 L32 · 찌르버드 L30 · **비버니 L4**로 들어가 두 판 다 넷째 부하에게
+ * 전멸했다. 둘째 판은 약 여덟을 들고도 졌다 — 싸울 몸이 **둘**뿐인 것이
+ * 문제였다. 상대는 여섯 트레이너의 열 마리고, 문 체육관이라 중간에 나가
+ * 나을 수도 없다
+ */
+const THIRD_LEVEL = 30
 /**
  * 장막 체육관(자두 · 격투) 앞 — 요가랑 28 · 근육몬 29 · 루카리오 32.
  * 우리에게 박히는 것은 **찌르버드의 비행**이라 그쪽을 관장보다 높게 둔다
@@ -370,10 +382,25 @@ const VEILSTONE_LEAD_LEVEL = 34
 const VEILSTONE_STARAVIA_LEVEL = 34
 /**
  * 들판 체육관(맥실러 · 물) 앞 — 갸라도스 33 · 누오 34 · 플로젤 37.
- * 선두의 풀이 물에 2배(누오는 물/땅이라 4배)라 선두를 올린다
+ *
+ * ⚠️ **선두의 풀이 물에 2배인 것보다 「얼음이 우리에게 4배」가 크다.**
+ * 토대부기는 풀·땅이라 얼음 기술이 **4배**로 박힌다. 실측(2026-09-22 배지5
+ * 탐침 3판) L39·36·36으로 붙었더니 선두가 한 턴에 126 중 **50씩** 깎였고,
+ * 약을 **열여덟 개 다 쓰고도** 두 판 내리 전멸했다(`out.potions.left = 0`) —
+ * 먹여서 68까지 올려도 다음 턴에 18로 돌아왔다. **모자란 것은 약이 아니라
+ * 레벨이다.** 4판에서 아래 값으로 한 번에 이겼다 (약 12개 · 끝 파티 L47·43·43)
  */
-const PASTORIA_LEAD_LEVEL = 39
-const PASTORIA_STARAVIA_LEVEL = 36
+const PASTORIA_LEAD_LEVEL = 46
+const PASTORIA_STARAVIA_LEVEL = 43
+/** 셋째 자리도 같이 올린다 — 선두가 넘어가면 이 마리가 받아야 한다 */
+const PASTORIA_THIRD_LEVEL = 43
+/**
+ * 들판 체육관에서 살 좋은상처약.
+ *
+ * ⚠️ **잠긴 체육관 기준(8)으로는 모자랐다.** 실측(2026-09-22 배지5 탐침 3판)
+ * 열여덟 개가 쓰이고 바닥났다. 이긴 4판은 열두 개를 들고 들어갔다
+ */
+const PASTORIA_POTIONS = 12
 
 /** 숲에 들기 전 선두 레벨 (진화 18을 넘고, 숲을 통과한 판의 L19~21에 맞춘다) */
 const FOREST_LEVEL = 20
@@ -428,6 +455,23 @@ const ETERNA_MART = 66
 const SUPER_POTION = 26
 /** 몇 개를 살까. 넷이면 2,800원이고, 유채가 쓰는 둘보다 둘 많다 */
 const SUPER_POTIONS = 4
+/**
+ * **못 나가는 체육관은 더 산다** (연고 · 장막 · 들판).
+ *
+ * ⚠️ 영원의 「관장에게만 약」은 **센터가 코앞이라** 성립한다 — 부하 사이에
+ * 걸어 나가 나으면 된다. 나머지 셋은 그게 안 된다:
+ *
+ *   연고  나가면 **문을 다시 골라야** 한다 · 부하 여섯 (방1 둘 · 방2 넷)
+ *   장막  나가면 **샌드백이 처음 자리로** 돌아간다 (`initVeilstoneGym`) · 부하 넷
+ *   들판  나가면 **물이 낮음에서** 다시 시작한다 · 부하 **여섯**
+ *
+ * 실측(2026-09-22 다리 c): 토대부기 L32 · 찌르버드 L30이 연고에서 넷째 부하에게
+ * 전멸했고 가방의 약 넷은 **그대로**였다 — 관장 직전에만 켜도록 돼 있었다.
+ * 약을 여덟으로 늘려 켜고 다시 붙은 2판도 같은 자리에서 졌는데, 그때는 약이
+ * **아홉 번 쓰이고 바닥났다**(`potions.used`). 모자란 것은 약이 아니라 **몸**이라
+ * 셋째 자리에 사탕을 먹인 3판이 한 번에 넘었다. 둘 다 필요했다
+ */
+const LOCKED_GYM_POTIONS = 8
 /**
  * 선두의 체력이 이 몫 아래면 약을 쓴다.
  *
@@ -1293,8 +1337,14 @@ try {
       const candyUp = async (slot, species, level) => {
         const party = (await api.partyState()) ?? []
         const seen = party.map((one) => `${String(one.species)} L${String(one.level)}`)
-        const at = slot ?? party.findIndex((one) => one.species === species
-          || (species === STARLY && one.species === STARLY + 1))
+        /**
+         * ⚠️ **번호 하나로 찾으면 진화한 뒤 조용히 못 찾는다.** 찌르꼬(396)는
+         * L14에 찌르버드(397)가 되고 **L34에 찌르호크(398)**가 된다 — 장막·들판
+         * 체육관 앞의 사탕은 그 뒤라, 397만 찾으면 「먹일 마리가 파티에 없다」로
+         * 지나가고 새가 두 레벨 모자란 채 관장 앞에 선다. 한 줄이 계통 전체다
+         */
+        const family = STARLY_LINE.includes(species) ? STARLY_LINE : [species]
+        const at = slot ?? party.findIndex((one) => family.includes(one.species))
         const mon = party[at]
         /**
          * ⚠️ **「못 했다」와 「할 자리가 없었다」를 가른다** (지시서
@@ -1542,13 +1592,21 @@ try {
             const bird = await candyUp(null, STARAVIA, HEARTHOME_STARAVIA_LEVEL)
             log(`  연고 체육관 앞 찌르버드 사탕 (L${String(HEARTHOME_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
             story.candySteps = [...(story.candySteps ?? []), { what: '연고 앞 찌르버드', ...bird }]
-            potionBuy = await api.buyAt(B3MAP.hearthomeMart, SUPER_POTION, SUPER_POTIONS, Math.min(300_000, api.left()))
-            log(`  연고 마트(${String(B3MAP.hearthomeMart)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+            const third = await candyUp(2, null, THIRD_LEVEL)
+            log(`  연고 체육관 앞 셋째 사탕 (L${String(THIRD_LEVEL)}) → ${candyLine(third)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '연고 앞 셋째', ...third }]
+            potionBuy = await api.buyAt(B3MAP.hearthomeMart, SUPER_POTION, LOCKED_GYM_POTIONS, Math.min(300_000, api.left()))
+            log(`  연고 마트(${String(B3MAP.hearthomeMart)}) 좋은상처약 ${String(LOCKED_GYM_POTIONS)}개 → `
               + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다 (돈 ${String(potionBuy.money?.[1])}원)` : String(potionBuy.why)}`)
             const got = await api.healAt(CENTERS[91], Math.min(300_000, api.left()))
             heals.push({ where: '연고 체육관 앞', center: CENTERS[91], ...got })
             log(`  연고 체육관 앞 회복 (센터 ${String(CENTERS[91])}) → ${got.ok ? '나았다' : String(got.why)}`)
             preHealed = true
+            /**
+             * ⚠️ **부하부터 켠다** (`LOCKED_GYM_POTIONS`). 아래 멜리사 자리에서
+             * 다시 켜는 줄이 있지만 그것은 **늦다** — 여섯을 지나는 동안 쓴다
+             */
+            if (potionBuy.ok) api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
             badge3.doors = await hearthomeDoors(api, ctx)
           }
         }
@@ -1568,8 +1626,8 @@ try {
              * 백화점이라 층이 갈리고, 215번도로를 건너기 전에 사 두는 편이 짧다
              */
             if (stop.id === '33') {
-              potionBuy = await api.buyAt(B3MAP.solaceonMart, SUPER_POTION, SUPER_POTIONS, Math.min(300_000, api.left()))
-              log(`  신수 마트(${String(B3MAP.solaceonMart)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+              potionBuy = await api.buyAt(B3MAP.solaceonMart, SUPER_POTION, LOCKED_GYM_POTIONS, Math.min(300_000, api.left()))
+              log(`  신수 마트(${String(B3MAP.solaceonMart)}) 좋은상처약 ${String(LOCKED_GYM_POTIONS)}개 → `
                 + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다` : String(potionBuy.why)}`)
             }
             badge45.road = [...(badge45.road ?? []),
@@ -1582,10 +1640,15 @@ try {
             const bird = await candyUp(null, STARAVIA, VEILSTONE_STARAVIA_LEVEL)
             log(`  장막 체육관 앞 찌르버드 사탕 (L${String(VEILSTONE_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
             story.candySteps = [...(story.candySteps ?? []), { what: '장막 앞 찌르버드', ...bird }]
+            const third34 = await candyUp(2, null, VEILSTONE_LEAD_LEVEL)
+            log(`  장막 체육관 앞 셋째 사탕 (L${String(VEILSTONE_LEAD_LEVEL)}) → ${candyLine(third34)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '장막 앞 셋째', ...third34 }]
             const got = await api.healAt(CENTERS[VEILSTONE.map], Math.min(300_000, api.left()))
             heals.push({ where: '장막 체육관 앞', center: CENTERS[VEILSTONE.map], ...got })
             log(`  장막 체육관 앞 회복 (센터 ${String(CENTERS[VEILSTONE.map])}) → ${got.ok ? '나았다' : String(got.why)}`)
             preHealed = true
+            // ⚠️ **들어가기 전에 켠다** — 방 안에 부하 넷이 있고 나가면 샌드백이 되돌아간다
+            if (potionBuy?.ok === true) api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
             const inside = await api.goTo(VEILSTONE.map, Math.min(600_000, api.left()))
             log(`  장막 체육관(133) 들어가기 → ${inside}`)
             if (inside === 'arrived') badge45.kicks = await veilstoneKicks(api, ctx)
@@ -1603,8 +1666,8 @@ try {
             badge45.south = await veilstoneToPastoria(api, ctx, { stopAt: stop.map })
           }
           if (stop.id === '37') {
-            potionBuy = await api.buyAt(B3MAP.pastoriaMart, SUPER_POTION, SUPER_POTIONS, Math.min(300_000, api.left()))
-            log(`  들판 마트(${String(B3MAP.pastoriaMart)}) 좋은상처약 ${String(SUPER_POTIONS)}개 → `
+            potionBuy = await api.buyAt(B3MAP.pastoriaMart, SUPER_POTION, PASTORIA_POTIONS, Math.min(300_000, api.left()))
+            log(`  들판 마트(${String(B3MAP.pastoriaMart)}) 좋은상처약 ${String(PASTORIA_POTIONS)}개 → `
               + `${potionBuy.ok ? `${String(potionBuy.bought)}개 샀다` : String(potionBuy.why)}`)
             const lead = await candyUp(0, null, PASTORIA_LEAD_LEVEL)
             log(`  들판 체육관 앞 선두 사탕 (L${String(PASTORIA_LEAD_LEVEL)}) → ${candyLine(lead)}`)
@@ -1612,10 +1675,19 @@ try {
             const bird = await candyUp(null, STARAVIA, PASTORIA_STARAVIA_LEVEL)
             log(`  들판 체육관 앞 찌르버드 사탕 (L${String(PASTORIA_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
             story.candySteps = [...(story.candySteps ?? []), { what: '들판 앞 찌르버드', ...bird }]
+            const third37 = await candyUp(2, null, PASTORIA_THIRD_LEVEL)
+            log(`  들판 체육관 앞 셋째 사탕 (L${String(PASTORIA_THIRD_LEVEL)}) → ${candyLine(third37)}`)
+            story.candySteps = [...(story.candySteps ?? []), { what: '들판 앞 셋째', ...third37 }]
             const got = await api.healAt(CENTERS[PASTORIA.map], Math.min(300_000, api.left()))
             heals.push({ where: '들판 체육관 앞', center: CENTERS[PASTORIA.map], ...got })
             log(`  들판 체육관 앞 회복 (센터 ${String(CENTERS[PASTORIA.map])}) → ${got.ok ? '나았다' : String(got.why)}`)
             preHealed = true
+            /**
+             * ⚠️ **들어가기 전에 켠다.** 방 안에 부하 여섯이 있고, 물 높이를
+             * 바꿔 가며 도는 동안 계속 마주친다 — 장막과 같은 자리다.
+             * 실측(배지5 탐침 3판): 안 켜고 붙었다가 맥실러에게 두 판 전멸했다
+             */
+            if (potionBuy?.ok === true) api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
             const inside = await api.goTo(PASTORIA.map, Math.min(600_000, api.left()))
             log(`  들판 체육관(122) 들어가기 → ${inside}`)
             if (inside === 'arrived') badge45.climb = await pastoriaClimb(api, ctx)
@@ -1875,6 +1947,23 @@ try {
             }
             const said = await api.talkToNpc(stop.map, who.script, Math.min(180_000, api.left()))
             await api.settle()
+            /**
+             * ⚠️ **이긴 **뒤에도** 시계를 다시 읽는다.**
+             *
+             * 벽을 싸우기 **전에만** 읽고 있었다. 관장을 이기면 시계가 마지막
+             * 상태로 한 번 더 도는데(`ETERNA_CLOCK.gymLeader`) 그 뒤로 다시
+             * 읽는 자리가 없어서, 나갈 때는 **한 상태 낡은 벽**으로 길을 냈다.
+             * 벽은 줄기만 하는 것이 아니라 **앞 상태에 열려 있던 칸이 막힌다** —
+             * 그래서 계획이 매 바퀴 벽으로 한 걸음을 내고 걸음은 매번 실패한다.
+             *
+             * 실측(2026-09-23 대표 구간 2판): 배지 2를 딴 뒤 맵 67의 (10,13)에서
+             * **90바퀴를 한 칸도 못 갔고**, 그 뒤 항목이 전부 무너졌다. 우리
+             * 격자로는 그 칸에서 문(11,27)까지 닿는다 — 낡은 것은 시계였다
+             */
+            if (stop.map === 67) {
+              const after = await api.eternaWalls()
+              if (after !== null) gymWalls = new Set(after)
+            }
             const badges = (await readSave()).badges
             log(`  ${stop.what} ${who.what} → ${said ? '만났다' : '못 만났다'}`
               + ` · 배지 ${String(badges)}개`)
@@ -1925,6 +2014,14 @@ try {
               badge45[what] = done
               return done.ok === true ? 'arrived' : String(done.why ?? done.at)
             }
+            /**
+             * ⚠️ **되들어가는 길에도 부하가 남아 있다.** 이긴 부하는 깃발이
+             * 서서 다시 안 붙지만, 지고 나온 판에는 **아직 안 이긴 부하**가
+             * 그대로 있다 — 약을 켜고 들어간다
+             */
+            if (stop.map === FANTINA.map && potionBuy?.ok === true) {
+              api.usePotions(SUPER_POTION, '좋은상처약', POTION_FLOOR, potionBuy.bought)
+            }
             const backIn = stop.map === FANTINA.map
               ? ((badge3.doorsRetry = await hearthomeDoors(api, { log })).ok ? 'arrived' : String(badge3.doorsRetry.why ?? badge3.doorsRetry.at))
               : stop.map === VEILSTONE.map ? await solveAgain('kicksRetry', veilstoneKicks)
@@ -1959,6 +2056,11 @@ try {
                 }
                 const said = await api.talkToNpc(stop.map, who.script, Math.min(300_000, api.left()))
                 await api.settle()
+                // 재도전도 같다 — 이긴 뒤에 시계가 한 번 더 돈다 (위 ⚠️)
+                if (stop.map === 67) {
+                  const after = await api.eternaWalls()
+                  if (after !== null) gymWalls = new Set(after)
+                }
                 const badges = (await readSave()).badges
                 const vars = await api.storyVars()
                 log(`  ${who.what} 재도전 → ${said ? '만났다' : '못 만났다'} · 배지 ${String(badges)}개`

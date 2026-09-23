@@ -483,6 +483,33 @@ export const playerSystem = {
       // yaw는 **판 위의 로컬 좌표**로 둔다 — 세계 속도를 판의 기저로 되돌리면
       // 벽에서도 천장에서도 같은 식이 된다 (`surfaceHeading`)
       p.facing = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
+    } else if (desired.lengthSq() > 0.01 && !isSliding()) {
+      /**
+       * **제자리 돌기** (`PlayerAvatar_UpdateMoveState`의 `AVATAR_MOVE_STATE_TURNING`).
+       *
+       * ⚠️ **속도만 보면 막힌 쪽으로는 영영 못 돈다.** 위의 통행 판정이 거절한
+       * 축의 속도를 0으로 지우기 때문에(`refusedX`·`refusedZ`), 밟을 수 없는
+       * 것을 마주 보려고 그 방향을 눌러도 얼굴이 그대로다. 원작은 선 자리에서
+       * 돈다 — `curDir != nextDir`이고 걷는 중이 아니면 `TURNING`으로 가서
+       * `WALK_ON_SPOT_FASTER`를 걸고 `MapObject_Turn`으로 방향을 바꾼다.
+       * **막혔는지는 묻지도 않는다**(`player_move.c`).
+       *
+       * ⚠️ **사람이 못 깨는 자리가 있었다.** 장막시티 체육관의 샌드백은 밟을 수
+       * 없으니 마주 봐야 차는데, 걸어온 방향이 그쪽이 아니면 영영 못 찼다 —
+       * 실측(2026-09-22 배지4 탐침 9판): (2,14)에 서서 남쪽을 본 채 오른쪽을
+       * 다섯 번 눌러도 `facing`이 남쪽이었다. 계산대 뒤 점원·간호사, 옆에서
+       * 다가간 간판·도구 볼도 같은 자리다.
+       *
+       * ⚠️ **속도가 아니라 「밀고 있는 쪽」을 본다** (`desired`) — 거절당해도
+       * 남아 있는 값이 이것뿐이다. `bumpDir`은 축 하나로 접힌 뒤라 대각선
+       * 입력에서 얼굴이 튄다.
+       *
+       * ⚠️ **한 박자 늦추지는 않는다.** 원작의 `TURNING`은 걸음 하나를 먹지만
+       * (한 칸이 한 동작인 격자 이동이라), 우리는 연속 이동이라 그 박자를
+       * 넣으면 **모든 방향 전환**이 굼떠진다 (`WALK_SPEED` 머리말과 같은 갈래의
+       * 판단이다). 원작과 갈리는 것은 그 한 박자뿐이고, 도는 것 자체는 같다
+       */
+      p.facing = surfaceHeading(frame, desired.x, desired.y, desired.z, p.facing)
     }
 
     const here = activeZone.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null

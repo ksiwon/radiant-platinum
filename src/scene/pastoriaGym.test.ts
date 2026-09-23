@@ -86,11 +86,22 @@ describe('롬과 맞는가', () => {
 describe('단추가 물 높이를 정한다', () => {
   beforeEach(() => { resetPastoriaGym() })
 
-  it('⚠️ 들어설 때마다 물이 낮은 데서 다시 시작한다', () => {
+  /**
+   * ⚠️ **낮음에서 시작하면 방에서 못 나간다 — 사람도 그렇다.** 현관에서 위로
+   * 가는 길 셋이 전부 닫히고(가운데 (13,35)는 `0x57`, 양옆 (1,36)·(25,36)은
+   * `0x58`) 단추는 하나도 안 닿는다. 실측(2026-09-22 배지5 탐침 1·2판):
+   * 닿는 칸 66개 · 단추 열 개가 전부 「안 닿는다」였다.
+   *
+   * 원작은 `PersistedMapFeatures_InitWithID`로 지운 **다음 줄에서**
+   * `feature->pressedButton = PASTORIA_GREEN_BUTTON_PRESSED`를 적는다
+   */
+  it('⚠️ 들어설 때마다 초록에서 다시 시작한다 — 물이 가운데다', () => {
     expect(initPastoriaGym(PASTORIA_GYM_MAP)).toBe(true)
-    expect(pastoriaPressed()).toBe(PASTORIA_BUTTON.orange)
-    expect(pastoriaWaterHeight()).toBe(PASTORIA_WATER.low)
-    expect(pastoriaWaterProp()).toEqual({ model: PASTORIA_WATER_MODEL, x: 16, y: 0, z: 16 })
+    expect(pastoriaPressed()).toBe(PASTORIA_BUTTON.green)
+    expect(pastoriaWaterHeight()).toBe(PASTORIA_WATER.middle)
+    expect(pastoriaWaterProp()).toEqual({
+      model: PASTORIA_WATER_MODEL, x: 16, y: PASTORIA_WATER.middle, z: 16,
+    })
   })
 
   it('파랑은 높음 · 초록은 가운데 · 주황은 낮음', () => {
@@ -122,7 +133,7 @@ describe('단추가 물 높이를 정한다', () => {
 
   it('같은 단추를 다시 밟으면 아무 일도 없다', () => {
     initPastoriaGym(PASTORIA_GYM_MAP)
-    expect(pressPastoriaButton(PASTORIA_BUTTON_MODEL.orange)).toBe(false)
+    expect(pressPastoriaButton(PASTORIA_BUTTON_MODEL.green)).toBe(false)
     expect(pastoriaBusy()).toBe(false)
   })
 
@@ -136,7 +147,10 @@ describe('물 높이가 길을 여닫는다', () => {
   beforeEach(() => { resetPastoriaGym(); initPastoriaGym(PASTORIA_GYM_MAP) })
 
   it('⚠️ 이름과 반대다 — 높은 땅은 물이 낮아야 딛는다', () => {
-    // 땅이 높으면 물이 낮아야 발이 닿는다. 뒤집으면 방의 길이 통째로 뒤집힌다
+    // 땅이 높으면 물이 낮아야 발이 닿는다. 뒤집으면 방의 길이 통째로 뒤집힌다.
+    // ⚠️ **물을 여기서 못 박는다** — 들어설 때는 초록(가운데)이라 낮음은 손으로 만든다
+    pressPastoriaButton(PASTORIA_BUTTON_MODEL.orange)
+    settle()
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.highGround)).toBeNull()
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.middleGround)).toBe(true)
     expect(pastoriaBlockedAt(PASTORIA_BEHAVIOR.lowGround)).toBe(true)

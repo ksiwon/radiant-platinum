@@ -37,11 +37,26 @@ mkdirSync(OUT, { recursive: true })
 
 /** 자두 앞 사탕 기준 (지시서 §7 — 탐침이 바꾼다) */
 const LEAD_LEVEL = Number(flag('lead', '34'))
-const STARAVIA = 397
+/** 찌르버드와 그 진화형 찌르호크. 둘 다 같은 자리다 */
+const STARAVIA = [397, 398]
 const STARAVIA_LEVEL = Number(flag('bird', '34'))
+/**
+ * **셋째 자리**도 싸울 몸으로 만든다.
+ *
+ * ⚠️ **두 마리로는 체육관을 못 지난다.** 실측(2026-09-22 다리 c 1·2판): 연고
+ * 체육관에서 토대부기 L32 · 찌르버드 L30 · **비버니 L4**로 두 판 다 넷째
+ * 부하에게 전멸했다. 둘째 판은 약 여덟을 켜고도 졌다 — 약은 아홉 번 **쓰였고**
+ * 바닥났다(`out.potions`). 모자란 것은 약이 아니라 **몸**이었다.
+ * 셋째에 사탕을 먹인 3판이 한 번에 배지를 땄다
+ */
+const THIRD_LEVEL = Number(flag('third', '34'))
 const RARE_CANDY = 50
 const MEDICINE_POCKET = 1
-const SUPER_POTIONS = 6
+/**
+  * 신수 마트에서 살 개수. **0이면 안 산다** — 다리를 나눠 재는 판에서 장막부터
+  * 신수까지 되걷는 왕복이 9분이라, 가방에 이미 있으면 그 시간을 안 쓴다
+  */
+const SUPER_POTIONS = Number(flag('potions', '6'))
 
 const out = { stamp: STAMP, save: SAVE, leg: LEG, steps: [] }
 const note = (what, detail) => {
@@ -140,9 +155,19 @@ try {
         log: (l) => { console.log(`    ${l}`) },
         setWalls: (mapId, keys) => { roomWalls.set(mapId, new Set(keys)) },
       }
+      /**
+       * @param species 한 마리가 아니라 **진화 계통**이다.
+       *
+       * ⚠️ **번호 하나로 찾으면 진화한 뒤 조용히 못 찾는다.** 찌르버드(397)는
+       * 장막 체육관 가는 길에 L34에서 찌르호크(398)가 된다 — 397만 찾으면
+       * 「먹일 마리가 없다」로 지나가고, 그 판은 새가 두 레벨 모자란 채 관장
+       * 앞에 선다. 못 먹인 것은 `out.gym.candy`에 남지만 **판이 끝난 뒤에야**
+       * 읽힌다
+       */
       const candyUp = async (slot, species, level) => {
+        const family = species === null ? [] : [species].flat()
         const party = (await api.partyState()) ?? []
-        const at = slot ?? party.findIndex((one) => one.species === species)
+        const at = slot ?? party.findIndex((one) => family.includes(one.species))
         const mon = party[at]
         if (mon === undefined) return { ran: false, why: '먹일 마리가 없다' }
         const need = level - mon.level
@@ -177,10 +202,20 @@ try {
         out.gym = { candy: [] }
         out.gym.candy.push({ what: '선두', ...(await candyUp(0, null, LEAD_LEVEL)) })
         out.gym.candy.push({ what: '찌르버드', ...(await candyUp(null, STARAVIA, STARAVIA_LEVEL)) })
+        out.gym.candy.push({ what: '셋째', ...(await candyUp(2, null, THIRD_LEVEL)) })
         note('사탕', JSON.stringify(out.gym.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 ${c.from}→L${String(c.level)}` : String(c.why)}`)))
-        out.gym.potions = await api.buyAt(MAP.solaceonMart, ITEM.superPotion, SUPER_POTIONS, Math.min(300_000, api.left()))
+        out.gym.potions = SUPER_POTIONS === 0
+          ? { ok: false, why: '안 샀다 (--potions=0)' }
+          : await api.buyAt(MAP.solaceonMart, ITEM.superPotion, SUPER_POTIONS, Math.min(300_000, api.left()))
         note(`신수 마트 좋은상처약 ${String(SUPER_POTIONS)}개`, out.gym.potions.ok ? `${String(out.gym.potions.bought)}개 샀다` : String(out.gym.potions.why))
         await heal(MAP.veilstoneCenter, '장막 체육관')
+        /**
+         * ⚠️ **들어가기 전에 켠다.** 방 안에 부하 넷이 서 있고(`trainersOn(133)`),
+         * 풀이는 그들을 벽으로 세워 **피해** 가지만 시야에 걸리면 붙는다.
+         * 나갔다 오면 샌드백이 처음 자리로 돌아가므로 중간에 나올 수가 없다 —
+         * 연고에서 배운 것과 같은 자리다
+         */
+        if (out.gym.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.45, out.gym.potions.bought)
         const inside = await api.goTo(VEILSTONE.map, Math.min(600_000, api.left()))
         note('장막 체육관(133) 들어가기', inside)
         if (inside === 'arrived') {
@@ -226,6 +261,8 @@ try {
     },
   })
   out.trouble = drive?.trouble ?? null
+  // ⚠️ 약을 썼는지 안 적으면 다음 판에서 짐작하게 된다 (`probe-must-be-verified-too`)
+  out.potions = drive?.potions ?? null
   out.battles = drive?.wild === undefined ? null : { wild: drive.wild, trainer: drive.trainer }
   out.end = await storyNow(page)
   if (out.trouble !== null && out.trouble.length > 0) note('걸린 것', JSON.stringify(out.trouble))

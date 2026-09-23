@@ -150,6 +150,44 @@ function devObserver(page) {
       const hit = reg.list.find((a) => a.info?.script === want && a.visible !== false)
       return hit === undefined ? null : { x: Math.round(hit.x), z: Math.round(hit.z) }
     }, [mapId, script]),
+    /**
+     * 주인공이 **지금 보는 쪽** — 원작 방향 번호로 (북 0 · 남 1 · 서 2 · 동 3).
+     *
+     * ⚠️ **`worldState.player.facing`은 번호가 아니라 라디안이다.** 실측
+     * (2026-09-22 배지4 탐침 7판): 그 값을 그대로 `kick.dir`과 견주었더니 **영영
+     * 안 맞았고**, 「돌아섰나」를 묻는 고리가 통째로 헛돌았다. 기록에 남은 값은
+     * `1.5707963267948966`(π/2)이었다 — 번호였다면 3이었을 자리다.
+     *
+     * 제품의 변환은 `script/field.ts`의 `playerMovable.dir`인데 **내보내지 않아서**
+     * 밖에서 못 부른다. 그래서 같은 셈을 여기서 한다 — 사분면(0 +z · 1 +x ·
+     * 2 −z · 3 −x)을 내고 방향으로 옮긴다. **번호는 제품의 `DIR`에서 가져온다**
+     * (`atan2(vx, vz)`라 0이 +z, 곧 남쪽이다)
+     */
+    facingDir: () => read('보는 쪽을 못 읽었다', async () => {
+      const st = await import('/src/state/worldState.ts')
+      const mv = await import('/src/engine/script/movement.ts')
+      const yaw = st.worldState.player.facing
+      if (typeof yaw !== 'number') return null
+      const quarter = ((Math.round(yaw / (Math.PI / 2)) % 4) + 4) % 4
+      return [mv.DIR.south, mv.DIR.east, mv.DIR.north, mv.DIR.west][quarter] ?? null
+    }),
+    /**
+      * 그 맵에 **지금** 서 있는 사람들의 칸.
+      *
+      * ⚠️ **배치표의 자리가 아니다.** 트레이너는 주인공을 보면 **걸어와서** 그
+      * 자리에 선다 — 이긴 뒤에도 거기 그대로다. 그래서 `trainersOn`(구운 배치표)로
+      * 벽을 세우면 **싸운 뒤부터 틀린다.** 실측(2026-09-22 장막 체육관): 부하 셋과
+      * 붙은 뒤 셋째 차기의 설 자리 (2,14)에 못 갔다 — 격자로는 걸을 수 있는 칸인데
+      * 게임이 막았고, 계획은 매 바퀴 「한 걸음」을 내고 걸음은 매번 실패해
+      * 90바퀴를 섰다
+      */
+    npcSpots: (mapId) => read('명부를 못 읽었다', async (map) => {
+      const m = await import('/src/engine/actor/npcs.ts')
+      const reg = m.npcActors
+      if (reg.mapId !== map) return null
+      return reg.list.filter((a) => a.visible !== false)
+        .map((a) => [Math.round(a.x), Math.round(a.z)])
+    }, mapId),
     partyState: () => read('파티를 못 읽었다', async () => {
       const m = await import('/src/state/saveStore.ts')
       const inst = await import('/src/engine/pokemon/instance.ts')
@@ -505,6 +543,8 @@ function distObserver(page) {
     obstacleAt: async () => unknown(NO_SRC),
     perf: async () => unknown(NO_SRC),
     npcSpot: async () => unknown(NO_SRC),
+    npcSpots: async () => unknown(NO_SRC),
+    facingDir: async () => unknown(NO_SRC),
     partyState: async () => unknown(NO_SRC),
     bestMove: async () => unknown(NO_SRC),
     battleHp: async () => unknown(NO_SRC),

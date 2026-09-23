@@ -343,6 +343,37 @@ try {
         await page.screenshot({ path: `${OUT}/체육관-${String(who.script)}.png` })
         if (after.badges >= 2) break
       }
+      /**
+       * ④ **이기고 나서 체육관을 나갈 수 있는가.**
+       *
+       * ⚠️ **대표 구간이 여기서 끝났다** (2026-09-23): 배지 2를 딴 뒤 맵 67의
+       * (10,13)에서 90바퀴를 한 칸도 못 갔고, 그 뒤 항목이 전부 무너졌다.
+       * 우리 벽 모형으로는 그 칸에서 문(11,27)까지 **닿는다** — 그러니 막은
+       * 것은 우리가 모르는 무엇이다. 게임 자신에게 네 이웃을 되묻는다
+       */
+      const leave = await api.goTo(ETERNA, Math.min(300_000, api.left()))
+      out.leave = { went: leave }
+      if (leave !== 'arrived') {
+        const at = await api.now().then((w) => ({ map: w.map, x: w.x, z: w.z })).catch(() => null)
+        const around = []
+        if (at !== null && at.x !== null) {
+          for (const [dx, dz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+            const x = at.x + dx, z = at.z + dz
+            around.push({
+              at: [x, z],
+              game: await api.gameBlocked?.(x, z).catch(() => null) ?? null,
+              solid: await api.gameSolid?.(x + 0.5, z + 0.5).catch(() => null) ?? null,
+            })
+          }
+        }
+        out.leave = {
+          went: leave, at, around,
+          facing: await api.facing().catch(() => null),
+          walls: (await api.eternaWalls?.().catch(() => null)) ?? null,
+        }
+        note('체육관에서 나가기', `${leave} · 선 자리 ${JSON.stringify(at)}`)
+        note('  둘레', JSON.stringify(around))
+      } else note('체육관에서 나가기', '나왔다')
       out.end = await storyNow(page)
       return out
     },

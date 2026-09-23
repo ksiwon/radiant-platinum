@@ -34,16 +34,32 @@ export const pastoriaSound: {
 } = { play: null, stop: null }
 
 /**
- * 맵에 들어설 때 (`PastoriaGym_DynamicMapFeaturesInit`).
+ * 맵에 들어설 때 (`PersistedMapFeatures_InitForPastoriaGym` →
+ * `PastoriaGym_DynamicMapFeaturesInit`).
  *
- * ⚠️ **들어설 때마다 물이 낮은 데서 다시 시작한다.** 원작이 이 자리를 통째로
- * 0으로 지우는데(`PersistedMapFeatures_InitWithID`) 그 0이 주황 단추다 —
- * 나갔다 들어오면 풀던 것이 처음으로 돌아간다
+ * ⚠️ **초록에서 시작한다 — 물이 가운데다.** 원작이 이 자리를 통째로 0으로
+ * 지우기는 하는데(`PersistedMapFeatures_InitWithID`), **그 다음 줄에서 초록을
+ * 도로 적는다**:
+ *
+ * ```c
+ * PersistedMapFeatures_InitWithID(persistedMapFeatures, DYNAMIC_MAP_FEATURES_PASTORIA_GYM);
+ * feature->pressedButton = PASTORIA_GREEN_BUTTON_PRESSED;   // ← 이 줄
+ * ```
+ *
+ * ⚠️ **낮음에서 시작하면 방에서 못 나간다 — 사람도 그렇다.** 현관에서 위로
+ * 가는 길이 셋인데 물이 낮으면 셋 다 닫힌다: 가운데 길 (13,35)는 `0x57`
+ * (가운데일 때만) 이고 양옆 (1,36)·(25,36)은 `0x58`(높을 때만)이다. 그리고
+ * **단추는 하나도 현관에서 안 닿는다** — 실측(2026-09-22 배지5 탐침 1·2판):
+ * 닿는 칸 66개 · 단추 열 개가 전부 「안 닿는다」였다. 물을 못 바꾸니 영영
+ * 못 나간다.
+ *
+ * ⚠️ **들어설 때마다 다시 시작하는 것은 맞다.** 원작도 이 자리를 지우고 다시
+ * 적으므로, 나갔다 들어오면 풀던 것이 초록으로 돌아간다
  */
 export function initPastoriaGym(map: number): boolean {
   if (map !== PASTORIA_GYM_MAP) return false
   setMapFeature(MAP_FEATURE.pastoriaGym)
-  const pressed = PASTORIA_BUTTON.orange
+  const pressed = PASTORIA_BUTTON.green
   const waterY = pastoriaWaterFor(pressed)
   active = { pressed, waterY }
   moving = null

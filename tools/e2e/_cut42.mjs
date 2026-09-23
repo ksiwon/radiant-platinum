@@ -39,11 +39,35 @@ mkdirSync(OUT, { recursive: true })
 const LEAD_LEVEL = Number(flag('lead', '30'))
 const STARAVIA = 397
 const STARAVIA_LEVEL = Number(flag('bird', '26'))
+/**
+ * **셋째 자리**도 싸울 몸으로 만든다.
+ *
+ * ⚠️ **부하 여섯을 두 마리로는 못 지난다.** 실측 2판 모두 넷째 부하(방2의
+ * 18,7)에서 전멸했다 — 파티가 토대부기 L32 · 찌르버드 L30 · **비버니 L4**라
+ * 실제로 싸우는 몸이 **둘**뿐이었다. 상대는 여섯 트레이너의 열 마리고,
+ * 방 안에서는 나가서 나을 수도 없다.
+ *
+ * 레벨이 막았다면 사탕을 먹인다 — 사용자가 정한 규칙이다 (`journey-levels-by-candy`)
+ */
+const THIRD_LEVEL = Number(flag('third', '30'))
 /** 쥬피터 앞 기준 (실측으로 정한다 — 멜리사 앞 값보다 낮게 둔다) */
 const JUPITER_LEAD = Number(flag('jlead', '28'))
 const JUPITER_BIRD = Number(flag('jbird', '24'))
 const RARE_CANDY = 50
 const MEDICINE_POCKET = 1
+/**
+ * 연고 체육관에서 들고 갈 좋은상처약.
+ *
+ * ⚠️ **문 체육관은 「관장에게만 약」 규칙이 안 통한다.** 영원 체육관은 센터가
+ * 코앞이라 부하 사이에 걸어 나가 나으면 되지만, 연고는 **나가면 문을 다시
+ * 골라야** 한다. 부하도 둘이 아니라 **여섯**이다 (방1에 둘 · 방2에 넷).
+ *
+ * 실측(2026-09-22 다리 c 1판): 토대부기 L32 · 찌르버드 L30으로 들어가 **넷째
+ * 부하(방2의 18,7)에게 전멸했다.** 가방에는 안 쓴 약 넷이 그대로 있었다 —
+ * 관장 직전에만 켜도록 돼 있었기 때문이다. 레벨 문제가 아니다: 부하들은
+ * L20~28이고(고오스·고우스트·무우마·흔들풍손) 최면술·저주·나이트헤드가 쌓인다
+ */
+const GYM_POTIONS = 8
 
 const out = { stamp: STAMP, save: SAVE, leg: LEG, steps: [] }
 const note = (what, detail) => {
@@ -203,16 +227,21 @@ try {
         out.c = { candy: [] }
         out.c.candy.push({ what: '선두', ...(await candyUp(0, null, LEAD_LEVEL)) })
         out.c.candy.push({ what: '찌르버드', ...(await candyUp(null, STARAVIA, STARAVIA_LEVEL)) })
+        out.c.candy.push({ what: '셋째', ...(await candyUp(2, null, THIRD_LEVEL)) })
         note('사탕', JSON.stringify(out.c.candy.map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알 ${c.from}→L${String(c.level)}` : String(c.why)}`)))
-        out.c.potions = await api.buyAt(MAP.hearthomeMart, ITEM.superPotion, 4, Math.min(300_000, api.left()))
-        note('연고 마트 좋은상처약 4개', out.c.potions.ok ? `${String(out.c.potions.bought)}개 샀다` : String(out.c.potions.why))
+        out.c.potions = await api.buyAt(MAP.hearthomeMart, ITEM.superPotion, GYM_POTIONS, Math.min(300_000, api.left()))
+        note(`연고 마트 좋은상처약 ${String(GYM_POTIONS)}개`, out.c.potions.ok ? `${String(out.c.potions.bought)}개 샀다` : String(out.c.potions.why))
         await heal(MAP.hearthomeCenter, '체육관 문')
+        // ⚠️ **부하부터 켠다** — 여섯을 지나는 동안 나올 자리가 없다 (`GYM_POTIONS`)
+        if (out.c.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.45, out.c.potions.bought)
         out.c.doors = await hearthomeDoors(api, ctx)
         note('문 고르기', JSON.stringify({ at: out.c.doors.at, bounced: out.c.doors.bounced, why: out.c.doors.why ?? null }))
         if (out.c.doors.ok) {
           for (let round = 0; round < 2; round++) {
             if (round > 0) {
               await heal(MAP.hearthomeCenter, '멜리사 재도전')
+              // 되들어가는 길에도 아직 안 이긴 부하가 남아 있다
+              if (out.c.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.45, out.c.potions.bought)
               const again = await hearthomeDoors(api, ctx)
               note('재도전 문 고르기', JSON.stringify({ at: again.at, bounced: again.bounced }))
               if (!again.ok) break
@@ -233,6 +262,12 @@ try {
     },
   })
   out.trouble = drive?.trouble ?? null
+  /**
+   * ⚠️ **약을 썼는지 안 적으면 다음 판에서 짐작하게 된다.** 실측(다리 c 2판):
+   * 약 여덟을 켜 두고도 같은 부하에게 졌는데, 보고서에 이 칸이 없어서
+   * 「안 쓴 것인가 모자란 것인가」를 로그로도 못 갈랐다 (`probe-must-be-verified-too`)
+   */
+  out.potions = drive?.potions ?? null
   out.battles = drive?.wild === undefined ? null : { wild: drive.wild, trainer: drive.trainer }
   out.end = await storyNow(page)
   if (out.trouble !== null && out.trouble.length > 0) note('걸린 것', JSON.stringify(out.trouble))

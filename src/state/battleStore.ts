@@ -1480,6 +1480,27 @@ function foeFirst(events: readonly BattleEvent[]): BattleEvent[] {
   ]
 }
 
+/**
+ * 배틀을 여는 데 이만큼 걸리면 **무언가 잘못된 것이다** (ms).
+ *
+ * 정상값은 첫 판 0.4~0.8초이고 그 뒤는 캐시다 (PLAN §7.5.1). 이 값은 판정이
+ * 아니라 **말해 주는 시한**이다 — 넘겨도 배틀을 접지 않는다. 늦게라도 열리면
+ * 그대로 열린다
+ */
+const LOADING_TELL_MS = 20_000
+
+/**
+ * 지금 **무엇을 기다리는가**. 화면에 적을 말이다.
+ *
+ * ⚠️ **오래 걸리는 것과 영영 안 오는 것을 밖에서 못 가른다.** `open()`의
+ * `await`은 터지면 `catch`가 잡아 이유를 남기지만, **안 돌아오면** 아무 데도
+ * 아무것도 안 남는다 — `phase`가 `'loading'`에 묶이고 배틀 화면은 「배틀
+ * 준비 중…」인 채로 선다. 실측(파일럿 보고 2026-09-22): 「배틀 배경으로
+ * 바뀌긴 했는데 BGM도 안 바뀌고 포켓몬들도 안 나오면서 그냥 멈췄다」가
+ * 바로 그 모양이고, 콘솔에도 화면에도 단서가 한 줄도 없었다
+ */
+type Waiting = '규칙기' | '게임 자료' | '파티' | '심판'
+
 /** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
 type BuildFoe = (ctx: { species: SpeciesTable; pp: (move: number) => number }) => SideSpec
 
@@ -1540,6 +1561,20 @@ async function open(
     shiftAsk: null,
   })
 
+  /**
+   * 안 돌아오는 `await`을 **말하게 한다** (`Waiting` 머리말).
+   *
+   * 시한을 넘겨도 배틀을 접지 않는다 — 늦게 열리면 그대로 열린다. 여기서 하는
+   * 일은 화면과 콘솔에 **무엇을 기다리는 중인지** 적는 것뿐이다
+   */
+  let waiting: Waiting = '규칙기'
+  const tell = setTimeout(() => {
+    if (get().phase !== 'loading') return
+    const why = `배틀이 안 열린다 — ${waiting}을(를) ${String(LOADING_TELL_MS / 1000)}초째 기다리는 중이다`
+    console.error(why)
+    set({ error: why })
+  }, LOADING_TELL_MS)
+
   try {
     // ⚠️ **표를 먼저 채운다.** sim의 데이터 폴더는 빌드에서 빠져 있고 종족값·
     // 위력은 사용자의 롬에서 온다 (`dex/provider.ts`). sim이 표를 한 번 읽으면
@@ -1547,12 +1582,14 @@ async function open(
     // 채워도 종족을 하나도 모르는 심판이 된다
     const { primeBattleDex } = await import('../engine/battle/dex/provider')
     await primeBattleDex()
+    waiting = '게임 자료'
     const [{ BattleController }, species, moves, bank] = await Promise.all([
       import('../engine/battle/sim/controller'),
       loadSpecies(),
       loadMoves(),
       loadItems(),
     ])
+    waiting = '파티'
     const pp = (id: number) => moves.byId.get(id)?.pp ?? 5
     // ⚠️ **밟고 선 칸도 본다.** 원작 `CalcTerrain`이 그렇다 — 무대 고르기와
     // 같은 잣대이고(`arenaFor`), 도롱마담 옷감이 이 값에서 나온다
@@ -1606,6 +1643,7 @@ async function open(
     })
 
     const trainer = useSaveStore.getState().trainer
+    waiting = '심판'
     const { controller, step } = await BattleController.start({
       player: { name: trainer.name || '나', team },
       foe,
@@ -1650,6 +1688,8 @@ async function open(
     trackDex(events, roster)
     set({
       phase: 'running',
+      // 늦게라도 열렸으면 하던 말은 지운다
+      error: null,
       truth: events === step.events ? step.view : applyEvents(emptyView(doubles), events),
       // 빈 무대에서 시작한다. 등판도 재생기가 한 박자씩 올린다
       view: emptyView(doubles),
@@ -1671,6 +1711,8 @@ async function open(
       trainerClass: null,
       error: e instanceof Error ? e.message : String(e),
     })
+  } finally {
+    clearTimeout(tell)
   }
 }
 

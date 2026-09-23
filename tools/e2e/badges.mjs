@@ -31,6 +31,15 @@ export const ITEM = {
 export const CUT = 15
 
 /** 맵 번호 (`raw/decomp/generated/map_headers.txt`의 줄 번호 − 1) */
+/**
+ * 영원시티에서 연고시티까지 들고 갈 좋은상처약.
+ *
+ * ⚠️ **넉넉히 산다.** 실측 2판의 그 길은 배틀 열넷(트레이너 넷 · 야생 열)이었고
+ * 그 사이에 회복할 자리가 하나도 없다. 모자라면 전멸이고, 전멸하면 영원시티
+ * 센터까지 되돌아가 **그 길을 통째로 다시 걷는다**
+ */
+const ROAD_POTIONS = 8
+
 export const MAP = {
   eterna: 65, eternaMart: 66, eternaGym: 67, eternaCenter: 69,
   cycleShop: 71, galactic1F: 72, galactic2F: 73, galactic3F: 74, galactic4F: 75,
@@ -425,7 +434,23 @@ export async function eternaToBike(api, ctx, {
  *
  * @param stopAt 어느 맵까지 (기본 연고시티). `journey`는 다리를 자리마다 끊어 재므로 넘긴다
  */
-export async function rideToHearthome(api, ctx, { stopAt = MAP.hearthome, repel = true } = {}) {
+/**
+ * **영원시티에서 연고시티 사이에는 포켓몬 센터가 없다.**
+ *
+ * ⚠️ 그래서 이 길은 **약을 들고 가야 한다.** 실측(2026-09-22 다리 b 2판):
+ * 트레이너 넷과 야생 열을 회복 한 번 없이 치르고 천관산 안에서 **전멸했다** —
+ * 레벨 문제가 아니었다(수풀부기 L30·찌르버드 L30 대 동굴 야생 10대 중반).
+ * 열네 판을 내리 맞은 누적이다.
+ *
+ * 전멸하면 영원시티 센터(69)로 되돌아가는데, 스프레이는 100걸음이라 되돌아온
+ * 길에서 또 깎인다. 그래서 **사고 · 쓰고 · 산 앞에서 다시 뿌린다.**
+ *
+ * @param stopAt 여기까지만 간다
+ * @param repel 스프레이를 뿌리나
+ * @param potions 길에서 쓸 좋은상처약을 사서 쓰나 (영원시티 쪽에서 출발할 때만)
+ */
+export async function rideToHearthome(api, ctx,
+  { stopAt = MAP.hearthome, repel = true, potions = true } = {}) {
   const t0 = Date.now()
   const out = { steps: [] }
   const note = (what, detail) => { out.steps.push({ what, detail }); ctx.log(`  ${what} → ${detail}`) }
@@ -439,14 +464,52 @@ export async function rideToHearthome(api, ctx, { stopAt = MAP.hearthome, repel 
   const want = legs.slice(from, legs.indexOf(stopAt) + 1)
   out.want = want
 
-  // 타고 게이트로 — 게이트 안 (5~8,8)의 좌표 이벤트가 걷는 사람을 되민다
+  /**
+   * 타고 게이트로.
+   *
+   * ⚠️ **밖에 나가서 탄다. 실내에서는 자전거를 못 탄다.** 한동안 이 자리가
+   * 곧바로 `rideBike`를 불렀는데, 바로 앞줄이 회복이라 부를 때 선 자리가
+   * **포켓몬 센터(69) 안**이었다 — 실측(2026-09-22 다리 b 1판): 「안 탔다」가
+   * 났고, 그대로 걸어 들어가 게이트에서 **3,764번 되밀린 채 예산 3,600초가
+   * 통째로 녹았다.**
+   *
+   * **되미는 쪽이 옳다.** 게이트(80)의 좌표 이벤트 (5~8,8)은 롬 그대로다 —
+   * `CheckPlayerOnBike`가 거짓이면 점원이 「자전거 전용」이라 말하고
+   * `ApplyMovement LOCALID_PLAYER, WalkNormalNorth`로 한 칸 되민다
+   * (`scripts_route_206_cycling_road_north_gate.s`). 탄 채로 들어가면
+   * `FLAG_FORCE_BIKING_IN_GATE`가 서고 그 띠가 더 안 걸린다.
+   *
+   * 그래서 순서가 **밖(65) → 타기 → 게이트**다. 뒤집으면 영영 못 지난다
+   */
   if (want.includes(MAP.gate206North)) {
+    /**
+     * ⚠️ **떠나기 전에 산다.** 이 뒤로는 연고시티까지 가게가 없다.
+     * 영원 마트(66)가 마지막이다
+     */
+    if (potions) {
+      out.potions = await api.buyAt(MAP.eternaMart, ITEM.superPotion, ROAD_POTIONS,
+        Math.min(300_000, api.left()))
+      note(`영원 마트 좋은상처약 ${String(ROAD_POTIONS)}개`,
+        out.potions.ok ? `${String(out.potions.bought)}개 샀다` : String(out.potions.why))
+      if (out.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.5, out.potions.bought)
+    }
+    const outside = await api.goTo(MAP.eterna, Math.min(300_000, api.left()))
+    note('밖으로 (영원시티 65)', outside)
     if (repel) {
       const sprayed = await api.useItem(ITEM.repel, Math.min(150_000, api.left()))
       note('벌레회피스프레이', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
     }
     out.ride = await api.rideBike(Math.min(120_000, api.left()))
     note('자전거 타기', out.ride.ok ? (out.ride.already ? '이미 타고 있다' : '탔다') : String(out.ride.why))
+    /**
+     * ⚠️ **못 탔으면 게이트로 안 간다.** 가 봐야 되밀리기만 하고, 그 되밀림은
+     * 「움직이는 중」이라 시간으로만 끝난다 (`makePen`이 그 뒤를 받는다)
+     */
+    if (out.ride.ok !== true) {
+      out.why = `자전거를 못 탔다 — ${String(out.ride.why)}`
+      out.ms = Date.now() - t0
+      return out
+    }
     const gate = await api.goTo(MAP.gate206North, Math.min(600_000, api.left()))
     out.gate = { went: gate, riding: await api.riding() }
     note('206번도로 북쪽 게이트(80)', `${gate} · 타고 있나 ${String(out.gate.riding)}`)
@@ -483,6 +546,15 @@ export async function rideToHearthome(api, ctx, { stopAt = MAP.hearthome, repel 
     out.coronet = { went: cave }
     note('천관산 1F 남(207)', cave)
     if (cave === 'arrived') {
+      /**
+       * ⚠️ **산 앞에서 뿌린 것으로는 산을 못 건넌다.** 스프레이는 100걸음인데
+       * 천관산 1F 남(207)은 그보다 넓다 — 실측 2판에서 동굴 안에서만 야생을
+       * 여섯 번 만났고 그중에 전멸했다. 들어와서 한 번 더 뿌린다
+       */
+      if (repel) {
+        const again = await api.useItem(ITEM.repel, Math.min(150_000, api.left()))
+        note('벌레회피스프레이 (동굴 안)', again.ok ? `뿌렸다 (남은 것 ${String(again.left)})` : String(again.why))
+      }
       let v = await api.storyVars()
       if ((v?.coronet ?? 0) === 0) {
         const stood = await api.stepOn(MAP.coronetSouth, CORONET_CYRUS, Math.min(300_000, api.left()))
@@ -509,6 +581,8 @@ export async function rideToHearthome(api, ctx, { stopAt = MAP.hearthome, repel 
     out.hearthome = { went: city, state: v?.hearthome ?? null }
     note('연고시티(86)', `${city} · 키라 장면 상태 ${String(v?.hearthome)}`)
   }
+  // ⚠️ **끄고 나간다.** 켠 채로 두면 다음 자리의 보고서가 이 길에서 쓴 것까지 센다
+  api.stopPotions()
   out.ms = Date.now() - t0
   return out
 }
@@ -607,6 +681,14 @@ export const VEILSTONE = {
    */
   box: { x0: 0, z0: 0, x1: 25, z1: 31 },
 }
+/**
+ * 어긋났을 때 **다시 푸는** 횟수.
+ *
+ * ⚠️ 되돌리는 것이 아니라 **지금 자리에서 다시 찾는** 것이라, 정말 막혔으면
+ * 풀이가 스스로 「없다」고 답한다. 그 답이 「우리가 망쳤다」의 정본이다
+ */
+const REPLANS = 4
+
 /** 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → 방향키 */
 const DIR_KEY = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
 
@@ -629,14 +711,78 @@ export async function veilstoneKicks(api, ctx) {
   const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
 
   /**
-   * ⚠️ **트레이너 넷은 장치 판정에 안 들어간다.** `featureWalls`는 격자와 장치
-   * (샌드백·타이어)를 얹은 값이고 **사람은 안 센다** — 그런데 넷이 서 있는 칸은
+   * ⚠️ **사람은 장치 판정에 안 들어간다.** `featureWalls`는 격자와 장치
+   * (샌드백·타이어)를 얹은 값이고 **사람은 안 센다** — 그런데 서 있는 칸은
    * 못 지나가고(이겨도 그 자리에 그대로 선다), 샌드백도 그 칸을 지나 미끄러지지
    * 않는다. 그래서 **풀이에도 길 찾기에도** 더한다 (지시서 §4.2).
-   * 배치표 자리다 — 이 방의 넷은 순회형이 아니라 제자리에 선다
+   *
+   * ⚠️ **배치표 자리를 쓰면 안 된다 — 트레이너는 걸어온다.** 원작의 트레이너는
+   * 주인공을 보면 **다가와서** 그 자리에 서고, 이긴 뒤에도 거기 그대로다. 그래서
+   * 구운 배치표(`trainersOn`)는 **첫 배틀 뒤부터 틀린다.** 실측(2026-09-22 배지4
+   * 탐침 5판): 부하 셋과 붙은 뒤 셋째 차기의 설 자리 (2,14)에 못 갔다 — 격자로는
+   * 걸을 수 있는 칸인데 게임이 막았고, 계획은 매 바퀴 한 걸음을 냈고 걸음은 매번
+   * 실패해 **90바퀴를 섰다.** 그 방의 넷은 순회형이 아니지만(움직임 2·7·8·15는
+   * 전부 제자리에서 도는 값이다) **싸우러 오는 걸음**은 그것과 별개다.
+   *
+   * 그래서 **지금 자리를 읽는다** (`npcSpots`). 못 읽으면 배치표로 접는다 —
+   * 없는 것보다는 낫고, 못 읽었다는 것은 `out.guards`에 남는다
    */
-  const guards = trainersOn(VEILSTONE.map).map((t) => `${String(t.x)},${String(t.z)}`)
-  const withGuards = (walls) => [...new Set([...walls, ...guards])]
+  const guardsNow = async () => {
+    const live = await api.npcSpots(VEILSTONE.map)
+    if (live === null) {
+      out.guards = '못 읽어 배치표로 갈음했다'
+      return trainersOn(VEILSTONE.map).map((t) => `${String(t.x)},${String(t.z)}`)
+    }
+    return live.map(([x, z]) => `${String(x)},${String(z)}`)
+  }
+  let guards = await guardsNow()
+  /**
+   * **게임이 막았다고 답한 칸들** — 우리 모형에 없던 것.
+   *
+   * ⚠️ **같은 칸에 네 번 부딪히고 끝내지 않는다.** 실측(2026-09-22 배지4 탐침
+   * 10판): 여덟을 차고 아홉째 설 자리로 가다 (11,14)에서 90바퀴를 섰고, 다시
+   * 푼 세 판이 **같은 칸에서** 똑같이 섰다. 길이 없었으면 `stepOn`이 「설 길이
+   * 없다」로 적었을 테니 길은 있었고, **게임이 걸음을 거절한 것**이다 — 곧 우리
+   * 벽 모형에 없는 무언가다.
+   *
+   * 그래서 선 자리에서 **게임 자신에게 네 이웃을 되묻고**(`gameBlocked` ·
+   * `gameSolid` — 게임이 실제로 쓰는 격자와 `solidNpcAt`이다), 막혔다는 답이
+   * 온 칸을 여기 담아 다음 계획에 얹는다. 짐작이 아니라 **제품의 답**이다
+   */
+  const learned = new Set()
+  const withGuards = (walls) => [...new Set([...walls, ...guards, ...learned])]
+
+  /**
+   * ⚠️ **부하를 먼저 다 만나려 해도 소용없다.** 한 판 그렇게 해 봤는데
+   * **넷 중 하나만** 닿았다 (`15,23 만났다 · 16,14 false · 2,9 false ·
+   * 11,13 false`) — 나머지는 샌드백과 타이어 너머라 **길이 없다.** 그것이 이
+   * 방의 퍼즐 자체다. 그래서 「싸움을 먼저 끝내 자리를 굳힌다」는 길은 없다.
+   *
+   * 대신 **계획을 계획으로 다룬다** — 어긋나면 지금 상태에서 다시 푼다.
+   * 풀이는 7초고 상태는 전부 읽을 수 있으므로, 사람이 하는 그대로다
+   */
+  /**
+   * **지금 상태로 한 벌 푼다.** 차기 도중에 어긋나면 이것을 다시 부른다.
+   *
+   * ⚠️ **다시 푸는 것은 되돌리는 것이 아니다.** 찬 것은 못 되돌린다 — 여기서
+   * 하는 일은 **지금 놓인 자리에서** 남은 길을 새로 찾는 것뿐이고, 정말 막혔으면
+   * 풀이가 「없다」고 답한다. 그 답이 「우리가 망쳤다」의 정본이다
+   */
+  const solveNow = async () => {
+    const state = await api.veilstoneState()
+    if (state === null) return { ok: false, why: '장막 체육관 상태를 못 읽었다 (관측 불가)' }
+    const walls = await api.featureWalls(VEILSTONE.box)
+    if (walls === null) return { ok: false, why: '장막 체육관 벽을 못 읽었다 (관측 불가)' }
+    guards = await guardsNow()
+    ctx.setWalls?.(VEILSTONE.map, withGuards(walls))
+    const moving = new Set([...state.stacks, ...state.bags.map(([x, z]) => `${String(x)},${String(z)}`)])
+    const still = withGuards(walls.filter((k) => !moving.has(k)))
+    const got = await api.veilstonePlan({
+      start: VEILSTONE.door, goal: VEILSTONE.front, wall: still, stacks: state.stacks,
+    })
+    if (got === null) return { ok: false, why: '풀이를 못 돌렸다 (관측 불가)' }
+    return got
+  }
 
   const state = await api.veilstoneState()
   if (state === null) { out.why = '장막 체육관 상태를 못 읽었다 (관측 불가)'; return out }
@@ -660,7 +806,7 @@ export async function veilstoneKicks(api, ctx) {
    * ⚠️ **탐색은 페이지 안에서 돈다** — 제품의 `veilstoneTravel`이 TS라 여기서 못
    * 부른다. 같은 `gymSolve.mjs`를 단위 시험도 그대로 부른다(굽는 쪽이 하나다)
    */
-  const plan = await api.veilstonePlan({
+  let plan = await api.veilstonePlan({
     start: VEILSTONE.door, goal: VEILSTONE.front, wall: still, stacks: state.stacks,
   })
   if (plan === null) { out.why = '풀이를 못 돌렸다 (관측 불가)'; return out }
@@ -670,36 +816,204 @@ export async function veilstoneKicks(api, ctx) {
     : `못 풀었다 — ${String(plan.why)}`)
   if (!plan.ok) { out.why = `풀이가 없다 — ${String(plan.why)}`; return out }
 
-  for (const [n, kick] of plan.kicks.entries()) {
+  /**
+   * **어긋나면 지금 자리에서 다시 푼다.**
+   *
+   * ⚠️ **한 벌을 끝까지 밀어붙이면 안 된다.** 이 방은 우리만 있는 것이 아니다 —
+   * 트레이너가 눈에 들면 걸어와서 서고(`actor/approach`), 그 자리는 계획을 세운
+   * 뒤에 생긴다. 실측으로 같은 자리가 판마다 다르게 막혔다. 벽을 차기마다 다시
+   * 읽어도 **걷는 도중에** 옮겨 오는 것은 못 막는다.
+   *
+   * 그래서 계획을 **계획으로** 다룬다: 설 자리에 못 가거나 샌드백이 딴 데로 가면
+   * 그 자리에서 **다시 푼다.** 되돌리는 것이 아니다 — 찬 것은 그대로 두고 **지금
+   * 놓인 자리에서** 남은 길을 찾는 것이고, 정말 막혔으면 풀이가 「없다」고 답한다
+   */
+  let askAgain = null
+  for (let round = 0; round < REPLANS; round++) {
+    if (round > 0) {
+      note('다시 푼다', `${String(round)}번째 — ${String(askAgain)}`)
+      plan = await solveNow()
+      out.plans = [...(out.plans ?? []),
+        { round, ok: plan.ok === true, kicks: plan.kicks?.length ?? null, why: plan.why ?? null }]
+      if (plan.ok !== true) { out.why = `다시 푸니 길이 없다 — ${String(plan.why)}`; return out }
+      note('샌드백 풀이 (다시)', `${String(plan.kicks.length)}번 차면 열린다`)
+    }
+    askAgain = null
+    for (const [n, kick] of plan.kicks.entries()) {
     if (api.left() <= 0) { out.why = '시간이 다 됐다'; return out }
     const stood = await api.stepOn(VEILSTONE.map, kick.stand, Math.min(300_000, api.left()))
     if (stood !== 'arrived') {
-      out.why = `${String(n + 1)}번째 차기: 설 자리 (${String(kick.stand.x)},${String(kick.stand.z)})에 못 갔다 (${stood})`
-      return out
+      /**
+       * ⚠️ **「못 갔다」만 적으면 다음 판도 똑같이 선다.** 실측(2026-09-22
+       * 배지4 탐침 10판): 여덟 번을 차고 아홉째 설 자리 (20,18)로 가다 (11,14)
+       * 에서 90바퀴를 섰고, 다시 푼 세 판이 **같은 칸에서** 똑같이 섰다.
+       * 길이 없었으면 `stepOn`이 「설 길이 없다」로 적었을 테니, 길은 있었고
+       * **게임이 걸음을 거절한 것**이다 — 곧 우리 벽 모형에 없는 무언가다.
+       *
+       * 그래서 선 자리에서 **게임 자신에게** 묻는다 (`gameBlocked`·`gameSolid` —
+       * 게임이 실제로 쓰는 격자와 `solidNpcAt`이다). 우리 모형과 게임의 답을
+       * 나란히 적어 두면 다음 판을 안 버린다
+       */
+      const at = await api.now().then((w) => ({ map: w.map, x: w.x, z: w.z })).catch(() => null)
+      const around = []
+      if (at !== null && at.x !== null) {
+        for (const [dx, dz] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+          const x = at.x + dx, z = at.z + dz
+          const key = `${String(x)},${String(z)}`
+          // ⚠️ **사람은 칸 **중심**으로 물어야 한다** (`observe.solidAt` 머리말) —
+          // 정수는 칸 모서리라 옆에 선 사람을 놓친다. 격자는 칸 번호 그대로다
+          const game = await api.gameBlocked?.(x, z).catch(() => null) ?? null
+          const solid = await api.gameSolid?.(x + 0.5, z + 0.5).catch(() => null) ?? null
+          const shut = game?.blocked === true || (solid !== null && solid !== false)
+          // ⚠️ **모르는 것은 안 막는다** — 못 읽은 칸을 벽으로 세우면 길을 스스로 없앤다
+          if (shut) learned.add(key)
+          around.push({
+            at: [x, z],
+            // 우리가 벽으로 세운 것 (제품의 `featureWalls` + 사람)
+            mine: guards.includes(key),
+            game, solid, learned: shut,
+          })
+        }
+      }
+      // 선 자리 둘레 넉 칸 안에서 **우리가 벽으로 아는 것** — 게임의 답과 견준다
+      const near = (await api.featureWalls(VEILSTONE.box).catch(() => null) ?? [])
+        .filter((k) => {
+          const [x, z] = k.split(',').map(Number)
+          return at !== null && at.x !== null
+            && Math.abs(x - at.x) <= 4 && Math.abs(z - at.z) <= 4
+        })
+      out.stuck = {
+        ...(out.stuck ?? {}),
+        [`${String(n + 1)}번째`]: {
+          why: stood, at, goal: kick.stand,
+          facing: await api.facing().catch(() => null),
+          around,
+          nearWalls: near,
+          state: await api.veilstoneState().catch(() => null),
+          guards,
+        },
+      }
+      askAgain = `${String(n + 1)}번째 차기: 설 자리 (${String(kick.stand.x)},${String(kick.stand.z)})에 못 갔다 (${stood})`
+      if (learned.size > 0) {
+        note('게임에게 되물었다', `막혔다고 답한 칸 ${[...learned].join(' · ')}`)
+      }
+      break
     }
-    // 샌드백 쪽으로 돌아선다 — 그 칸은 막혀 있으므로 짧게 누르면 **돌기만** 한다
-    await api.tap(DIR_KEY[kick.dir], 40)
-    await api.tap('Space', 120)
-    // 미끄러지는 동안은 기다린다 (`veilstoneBusy`)
+    /**
+     * 미끄러지는 동안은 기다린다 (`veilstoneBusy`).
+     *
+     * ⚠️ **「안 바쁘다」를 기다림의 끝으로 쓰면 안 된다.** `busy`는 샌드백이
+     * 미끄러지기 **시작한 뒤에** 서는데, 찬 직후의 첫 읽기는 그보다 빠르다 —
+     * 실측(2026-09-22 배지4 탐침 2판): 첫 차기에서 곧바로 「안 바쁘다」가 나와
+     * 그대로 빠져나왔고, 그때 읽은 자리는 **차기 전 그대로**였다. 풀이는
+     * 옳았는데(계획의 `to`와 실제가 같은 칸이다) 판정만 틀려서 「계획과
+     * 다르다」로 접었다.
+     *
+     * 그래서 **시작을 본 뒤에 끝을 기다린다.** 두 기다림이 따로 필요하다:
+     *
+     *   ① `busy`가 **설 때까지** — 안 그러면 차기 전 자리를 읽는다 (위의 실측)
+     *   ② `busy`가 **앉을 때까지** — 멎은 자리라야 판정할 수 있다
+     *
+     * ⚠️ **바퀴 수는 시간이 아니다.** `settle`은 배틀·대사·스크립트가 없으면
+     * 곧바로 돌아오는데 **미끄러지는 샌드백은 그중 어느 것도 아니다** — 이 바퀴는
+     * 애니메이션보다 훨씬 빨리 돈다. 실측(배지4 탐침 3판): 「도착했나」만 보는
+     * 120바퀴로 네 칸짜리 넷은 넘겼는데 **다섯 칸짜리 다섯째**가 (4,17)·
+     * `busy true`로 상한에 걸렸다 — 한 칸 남기고 「계획과 다르다」였다.
+     * 바퀴를 늘리는 것은 같은 짐작을 크게 하는 것이라, **움직이는 동안 기다린다**로
+     * 바꾼다. 상한은 안전망일 뿐이다
+     */
+    const kickOnce = async () => {
+      /**
+       * ⚠️ **돌아서기를 한 번만 누르지 않는다.** 40ms 한 번은 `talkTo`가 쓰는
+       * 그 손인데, 그쪽은 **여러 번 되풀이하는 고리** 안에 있다. 차기에는 그
+       * 고리가 없어서 한 번 안 먹으면 그대로 실패였다 — 실측: 같은 넷째 차기가
+       * 두 판은 갔고 한 판은 안 갔다(주인공은 설 자리에 **서 있었고** 샌드백은
+       * 제자리, `busy`도 안 섰다). 걸음의 마지막 방향이 이미 그쪽이면 안 돌아도
+       * 되고 아니면 돌아야 하는데, 그 한 번이 떨어지면 A는 **빈 쪽**에 간다
+       */
+      /**
+       * **돌아선 것을 보고 누른다.** 방향키를 몇 번 누르든 그것으로는 모른다 —
+       * 제품이 내주는 `facing`을 읽어 맞을 때까지 돌린다
+       */
+      for (let turn = 0; turn < 5; turn++) {
+        if (await api.facing() === kick.dir) break
+        await api.tap(DIR_KEY[kick.dir], 80)
+      }
+      await api.tap('Space', 120)
+      let seen = null
+      let started = false
+      for (let i = 0; i < 600; i++) {
+        seen = await api.veilstoneState()
+        if (seen !== null) {
+          if (seen.busy === true) started = true
+          // 멎었다 — 움직이는 것을 봤거나, 아예 안 움직이는 것이 확실해졌다
+          else if (started || i >= 20) return seen
+        }
+        await api.settle()
+      }
+      return seen
+    }
+    const at = (state, spot) => state !== null
+      && state.bags.some(([x, z]) => x === spot.x && z === spot.z)
+
+    /**
+     * **안 움직였으면 다시 찬다** — 네 번까지.
+     *
+     * ⚠️ **「안 갔다」와 「딴 데 갔다」는 다른 일이다.** 샌드백이 **찬 자리
+     * 그대로**면 입력이 안 먹은 것이라 다시 해 볼 값이 있지만, 다른 칸으로
+     * 갔으면 모형이 틀린 것이라 **더 눌러도 나빠지기만 한다** — 차기는
+     * 되돌릴 수 없다. 그래서 되풀이는 「제자리」일 때만이다.
+     *
+     * 실측(2026-09-22 배지4 탐침 4·5판): 여덟째와 넷째가 각각 그 모양으로
+     * 섰고, 같은 넷째가 앞선 두 판에서는 갔다 — 자리도 세계도 계획 그대로였다
+     */
     let after = null
-    for (let i = 0; i < 80; i++) {
-      after = await api.veilstoneState()
-      if (after !== null && after.busy !== true) break
-      await api.settle()
+    let landed = false
+    let tries = 0
+    while (tries < 4 && !landed) {
+      if (tries > 0) {
+        const again = await api.stepOn(VEILSTONE.map, kick.stand, Math.min(120_000, api.left()))
+        if (again !== 'arrived') break
+      }
+      tries++
+      after = await kickOnce()
+      landed = at(after, kick.to)
+      if (!landed && !at(after, kick.bag)) break
     }
-    // 샌드백이 옮겨 갔으니 벽이 달라졌다 — 다음 걸음 전에 갈아 끼운다
+    if (landed && tries > 1) note(`차기 ${String(n + 1)}`, `${String(tries)}번째 누름에 먹었다`)
+    // 샌드백이 옮겨 갔으니 벽이 달라졌다 — 다음 걸음 전에 갈아 끼운다.
+    // ⚠️ **사람도 다시 읽는다** — 그 사이에 싸우러 온 트레이너가 자리를 옮겼다
+    guards = await guardsNow()
     const nowWalls = await api.featureWalls(VEILSTONE.box)
     if (nowWalls !== null) ctx.setWalls?.(VEILSTONE.map, withGuards(nowWalls))
-    const landed = after !== null
-      && after.bags.some(([x, z]) => x === kick.to.x && z === kick.to.z)
-    out.kicks.push({ n: n + 1, ...kick, landed })
+    out.kicks.push({
+      n: n + 1,
+      ...kick,
+      landed,
+      // ⚠️ 못 갔으면 **어디에 있는지**가 다음 판의 근거다 (`probe-must-be-verified-too`)
+      ...(landed ? {} : {
+        bagsAfter: after?.bags ?? null,
+        busyAfter: after?.busy ?? null,
+        // 주인공이 설 자리에 정말 서 있었나 — 「안 먹었다」와 「딴 데 섰다」를 가른다
+        whereAfter: await api.now().then((w) => ({ map: w.map, x: w.x, z: w.z })).catch(() => null),
+        // 그리고 **어느 쪽을 보고 있었나** — A는 보는 칸에 간다
+        facingAfter: await api.facing().catch(() => null),
+      }),
+    })
     note(`차기 ${String(n + 1)}/${String(plan.kicks.length)}`,
       `(${String(kick.bag.x)},${String(kick.bag.z)}) → (${String(kick.to.x)},${String(kick.to.z)})`
       + ` · ${landed ? '갔다' : '**계획과 다르다**'}`)
     if (!landed) {
-      out.why = `${String(n + 1)}번째 차기가 계획한 칸으로 안 갔다`
-      return out
+      askAgain = `${String(n + 1)}번째 차기가 계획한 칸으로 안 갔다`
+      break
     }
+    }
+    if (askAgain === null) break
+    if (api.left() <= 0) { out.why = askAgain; return out }
+  }
+  if (askAgain !== null) {
+    out.why = `${String(REPLANS)}번 다시 풀어도 안 됐다 — ${askAgain}`
+    return out
   }
 
   const front = await api.stepOn(VEILSTONE.map, VEILSTONE.front, Math.min(300_000, api.left()))
@@ -802,10 +1116,16 @@ export async function pastoriaClimb(api, ctx, { rounds = 16 } = {}) {
     /**
      * ⚠️ **사람은 장치 판정에 안 들어간다.** `featureWalls`는 격자와 물 높이를
      * 얹은 값이고 트레이너 여섯은 안 센다 — 그런데 그들이 선 칸은 못 지난다
-     * (이겨도 그 자리에 그대로 선다). 장막과 같은 자리다 (지시서 §4.2)
+     * (이겨도 그 자리에 그대로 선다). 장막과 같은 자리다 (지시서 §4.2).
+     *
+     * ⚠️ **지금 자리를 읽는다.** 트레이너는 주인공을 보면 **다가와서** 서므로
+     * 구운 배치표는 첫 배틀 뒤부터 틀리다 (`veilstoneKicks`의 그 실측)
      */
-    const walls = [...new Set([...read,
-      ...trainersOn(PASTORIA.map).map((t) => `${String(t.x)},${String(t.z)}`)])]
+    const live = await api.npcSpots(PASTORIA.map)
+    const guards = (live ?? trainersOn(PASTORIA.map).map((t) => [t.x, t.z]))
+      .map(([x, z]) => `${String(x)},${String(z)}`)
+    if (live === null) out.guards = '못 읽어 배치표로 갈음했다'
+    const walls = [...new Set([...read, ...guards])]
     ctx.setWalls?.(PASTORIA.map, walls)
     const state = await api.pastoriaState()
     if (state === null) { out.why = '들판 체육관 물 높이를 못 읽었다 (관측 불가)'; return out }
@@ -831,7 +1151,27 @@ export async function pastoriaClimb(api, ctx, { rounds = 16 } = {}) {
       // 지금 높이로 다시 가는 단추는 아무 일도 안 한다
       .filter((b) => b.water !== state.water)
     if (options.length === 0) {
+      /**
+       * ⚠️ **「없다」만 적으면 다음 판도 똑같이 선다.** 실측(2026-09-22 배지5
+       * 탐침 1판): 들어서자마자 물 0에서 이 줄로 끝났는데, 구운 격자로는
+       * (13,41) → (13,32) → (10,31) → (10,30)의 초록 단추(물 2)가 **닿는다.**
+       * 그러니 막은 것은 격자가 아니라 **지금 물 높이의 장치 벽**
+       * (`featureWalls`)이거나 사람이다. 그 셋을 나란히 적어 둔다
+       */
       out.why = `물 ${String(state.water)}에서 밟을 수 있는 새 단추가 없다`
+      out.stuck = {
+        water: state.water,
+        at: { x: here.x, z: here.z },
+        reach: spot.size,
+        guards,
+        buttons: pastoriaButtons().map((b) => ({
+          ...b,
+          닿는다: spot.has(`${String(b.x)},${String(b.z)}`),
+          밟아봤다: tried.has(`${String(b.x)},${String(b.z)}@${String(state.water)}`),
+          같은높이: b.water === state.water,
+          벽에있다: blocked.has(`${String(b.x)},${String(b.z)}`),
+        })),
+      }
       return out
     }
     options.sort((a, b) => (Math.abs(a.x - here.x) + Math.abs(a.z - here.z))
@@ -900,7 +1240,25 @@ const PASTORIA_RIVAL = { x: 589, z: 828 }
  *
  * @param stopAt 어느 맵까지 (기본 장막시티). `journey`는 자리마다 끊어 재므로 넘긴다
  */
-export async function hearthomeToVeilstone(api, ctx, { stopAt = MAP.veilstone, repel = true } = {}) {
+/**
+ * 연고시티에서 장막시티까지.
+ *
+ * ⚠️ **첫 자리가 라이벌전이다.** 209번도로 게이트(110) 안 (5,7)의 좌표 이벤트가
+ * 라이벌을 세운다 — 길을 걷다 만나는 것이 아니라 **반드시 붙는다.**
+ *
+ * 실측(2026-09-22 배지4 탐침 1판): 토대부기 L32 · 찌르버드 L33 · 비버통 L30으로
+ * 붙어 **전멸했다**(`상태 1` 그대로 · 맵 101로 되돌아옴). 가방에 약이 없었다 —
+ * 연고 체육관에서 아홉 개를 다 쓰고 나온 참이었고, 다음 구매는 **신수 마트**라
+ * 이 싸움보다 뒤다. `rideToHearthome`과 같은 자리의 같은 결함이다.
+ *
+ * 그래서 **떠나기 전에 연고 마트(87)에서 산다.**
+ *
+ * @param stopAt 여기까지만 간다
+ * @param repel 스프레이를 뿌리나
+ * @param potions 길에서 쓸 좋은상처약을 사서 쓰나 (연고 쪽에서 출발할 때만)
+ */
+export async function hearthomeToVeilstone(api, ctx,
+  { stopAt = MAP.veilstone, repel = true, potions = true } = {}) {
   const t0 = Date.now()
   const out = { steps: [] }
   const note = (what, detail) => { out.steps.push({ what, detail }); ctx.log(`  ${what} → ${detail}`) }
@@ -910,6 +1268,14 @@ export async function hearthomeToVeilstone(api, ctx, { stopAt = MAP.veilstone, r
   out.want = want
 
   if (want.includes(MAP.gate209)) {
+    // ⚠️ **라이벌보다 먼저 산다** (`ROAD_POTIONS`) — 게이트 안에서는 못 나간다
+    if (potions) {
+      out.potions = await api.buyAt(MAP.hearthomeMart, ITEM.superPotion, ROAD_POTIONS,
+        Math.min(300_000, api.left()))
+      note(`연고 마트 좋은상처약 ${String(ROAD_POTIONS)}개`,
+        out.potions.ok ? `${String(out.potions.bought)}개 샀다` : String(out.potions.why))
+      if (out.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.5, out.potions.bought)
+    }
     const gate = await api.goTo(MAP.gate209, Math.min(900_000, api.left()))
     out.gate209 = { went: gate }
     note('209번도로 게이트(110)', gate)
@@ -1077,7 +1443,8 @@ export async function veilstoneWarehouse(api, ctx) {
  * ⚠️ **라이벌전은 `pastoria == 1`일 때만 선다** — 창고를 안 했으면 상태 0이라
  * 아무 일도 안 난다. 그때는 「미실행」으로 적고 **PASS로 접지 않는다**
  */
-export async function veilstoneToPastoria(api, ctx, { stopAt = MAP.pastoria, repel = true } = {}) {
+export async function veilstoneToPastoria(api, ctx,
+  { stopAt = MAP.pastoria, repel = true, potions = true } = {}) {
   const t0 = Date.now()
   const out = { steps: [] }
   const note = (what, detail) => { out.steps.push({ what, detail }); ctx.log(`  ${what} → ${detail}`) }
@@ -1122,6 +1489,19 @@ export async function veilstoneToPastoria(api, ctx, { stopAt = MAP.pastoria, rep
   if (want.includes(MAP.pastoria)) {
     out.pastoria = { went: await walk(MAP.pastoria, '들판시티(120)') }
     if (out.pastoria.went === 'arrived') {
+      /**
+       * ⚠️ **라이벌전 전에 산다.** 체육관 앞 (589,828)의 좌표 이벤트는 **반드시**
+       * 붙는 싸움인데, 여기까지 오는 길(214·213)에서 약을 다 쓰고 닿기 쉽다 —
+       * 209 게이트에서 빈손으로 붙어 전멸한 것과 같은 자리다. 들판 마트(121)는
+       * 그 칸보다 **앞**이라 여기서 채울 수 있다
+       */
+      if (potions) {
+        out.potions = await api.buyAt(MAP.pastoriaMart, ITEM.superPotion, ROAD_POTIONS,
+          Math.min(300_000, api.left()))
+        note(`들판 마트 좋은상처약 ${String(ROAD_POTIONS)}개`,
+          out.potions.ok ? `${String(out.potions.bought)}개 샀다` : String(out.potions.why))
+        if (out.potions.ok) api.usePotions(ITEM.superPotion, '좋은상처약', 0.5, out.potions.bought)
+      }
       let v = await api.storyVars()
       out.pastoria.before = v?.pastoria ?? null
       if ((v?.pastoria ?? 0) === 1) {

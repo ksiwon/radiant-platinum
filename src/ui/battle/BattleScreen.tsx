@@ -206,6 +206,15 @@ export function BattleScreen() {
   const shiftAsk = useBattleStore((s) => s.shiftAsk)
   const answerShift = useBattleStore((s) => s.answerShift)
   const learnMove = useBattleStore((s) => s.learnMove)
+  /**
+   * 여는 중에 **무언가 잘못됐을 때 할 말** (`state/battleStore`의 `error`).
+   *
+   * ⚠️ **안 적으면 밖에서는 「멈췄다」로만 보인다.** 파일럿 보고(2026-09-22):
+   * 「배틀 배경으로 바뀌긴 했는데 BGM도 안 바뀌고 포켓몬들도 안 나오면서 그냥
+   * 멈췄다」 — 그때 화면에 있던 것은 「배틀 준비 중…」 한 줄뿐이라, 오래
+   * 걸리는 것인지 영영 안 오는 것인지 사람도 우리도 몰랐다
+   */
+  const trouble = useBattleStore((s) => s.error)
   const safari = useBattleStore((s) => s.safari)
   const safariAct = useBattleStore((s) => s.safariAct)
   // ⚠️ **세이브를 본다.** 배틀 안의 기술 칸(`moveSlotsOf`)이 아니다 — 레벨업으로
@@ -228,6 +237,10 @@ export function BattleScreen() {
     // 무대가 아예 없는 자리(타이틀에서 개발 콘솔로 여는 길)는 기다릴 것이 없다
     if (!staged) { useBattleStore.setState({ sceneReady: true }); return }
     const id = setTimeout(() => {
+      // ⚠️ **조용히 열지 않는다.** 여기로 온 판은 무대나 몸이 안 온 채로 여는
+      // 것이라, 포켓몬이 안 보이는 화면이 나올 수 있다. 그 까닭이 콘솔에 없으면
+      // 밖에서는 또 「멈췄다」가 된다
+      console.error(`배틀 무대가 ${String(STAGE_DEADLINE_MS / 1000)}초 안에 안 섰다 — 덜 갖춘 채로 연다`)
       useBattleStore.setState({ sceneReady: true })
     }, STAGE_DEADLINE_MS)
     return () => { clearTimeout(id) }
@@ -391,7 +404,9 @@ export function BattleScreen() {
       {!sceneReady
         ? <div className={css.wipeHold} />
         : <BattleOpenVeil />}
-      {!sceneReady ? <div className={css.waiting}>배틀 준비 중…</div> : <>
+      {!sceneReady
+        ? <div className={css.waiting}>{trouble ?? '배틀 준비 중…'}</div>
+        : <>
       {/*
         누구를 내보낼까. **화면 전체를 덮는다** — 파티 여섯과 고른 한 마리의
         속사정을 나란히 놓아야 교체를 결정할 근거가 화면에 있다 (§2.5)

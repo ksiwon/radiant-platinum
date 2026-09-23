@@ -2,8 +2,8 @@
 //
 // 원작 실내는 카메라가 고정이라 안 보이는 쪽 벽을 안 만들었다 — 문이 있는 앞벽이
 // 그렇고, 우리 화면에서는 그 자리가 통째로 검다. 여기서 보는 것은 셋이다:
-// **바닥이 끝나는데 벽이 없는 자리에만** 세우는가 · **출입구는 비우는가** ·
-// 베낄 벽이 없으면 **안 지어내는가**.
+// **바닥이 끝나는데 벽이 없는 자리에만** 세우는가 · **출입구에 문 모양 구멍을
+// 남기는가** · 베낄 벽이 없으면 **안 지어내는가**.
 import { describe, expect, it } from 'vitest'
 import { BufferAttribute, BufferGeometry } from 'three'
 import { floorRegions, roomWalls, tileKey, type RoomWalls } from './roomWalls'
@@ -102,15 +102,49 @@ describe('원작이 안 만든 실내 벽을 세운다', () => {
     expect(built!.count, '북쪽은 이미 벽이 있으므로 아홉이다').toBe(9)
   })
 
-  it('출입구도 바닥부터 세운다 — 한 칸도 안 비운다', () => {
-    // 통행은 격자가 정하고 워프는 그 칸에 올라서는 순간 터진다. 이 판은
-    // 그려지기만 하므로 문간을 세워도 못 나가지 않는다 (`roomWalls.ts` 머리말)
+  it('문간을 안 알려 주면 예전처럼 다 메운다', () => {
     const built = roomWalls(room(3, 3))!
-    expect(built.count, '동 3 · 서 3 · 남 3 — 문간이라고 빠지는 자리가 없다').toBe(9)
+    expect(built.count, '동 3 · 서 3 · 남 3').toBe(9)
     const pos = built.geometry.getAttribute('position') as BufferAttribute
     let lowest = Infinity
     for (let i = 0; i < pos.count; i++) lowest = Math.min(lowest, pos.getY(i))
     expect(lowest, '발치까지 선다').toBeCloseTo(0, 6)
+  })
+
+  /**
+   * ⚠️ **문간을 다 메우면 문이 사라진다.** 파일럿 보고(2026-09-22): 「건물 내부
+   * 문 쪽에는 벽이 없이 뚫려 있어야 하는데 어색하게 문 쪽 벽이 메워져 있다」.
+   * 실측으로 집 1층(맵 414) 문간 (8,12)에서 남쪽을 보면 줄무늬 벽 한 장뿐이었고,
+   * 그 판을 숨기면 뒤가 `#000001`이다 — 원작에는 거기 아무것도 없다
+   * (`pnpm shot door --eye=8.5,3,7 --gaze=8.5,1.2,13 --blame=400,350`).
+   *
+   * 통째로 비우는 것도 답이 아니다 — 그때는 문간에 선 사람의 정면이 통째로
+   * 검다. 그래서 **발치만** 비워 인방을 남긴다
+   */
+  it('문간에는 문 높이만큼 구멍을 남긴다 — 인방은 남는다', () => {
+    const door = cellKey(1, 2) // 남쪽 줄 가운데 칸
+    const built = roomWalls(room(3, 3), undefined, new Set([door]))!
+    expect(built.count, '판 수는 그대로다 — 낮아질 뿐 사라지지 않는다').toBe(9)
+    const pos = built.geometry.getAttribute('position') as BufferAttribute
+    /**
+     * z=3 선 위, 한가운데(x 1~2)에 걸친 판이 문간이다. 나머지는 그냥 벽.
+     *
+     * ⚠️ **꼭짓점 하나로 가르면 안 된다** — x=1은 문간 판과 그 옆 판이 함께
+     * 쓰는 꼭짓점이라, 옆 판의 발치가 문간 것으로 세어진다
+     */
+    let doorLow = Infinity, wallLow = Infinity, doorHigh = -Infinity
+    for (let t = 0; t < pos.count; t += 3) {
+      const mx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3
+      const mz = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3
+      const ys = [pos.getY(t), pos.getY(t + 1), pos.getY(t + 2)]
+      if (Math.abs(mz - 3) < 1e-6 && mx > 1 && mx < 2) {
+        doorLow = Math.min(doorLow, ...ys)
+        doorHigh = Math.max(doorHigh, ...ys)
+      } else wallLow = Math.min(wallLow, ...ys)
+    }
+    expect(doorLow, '문 높이까지는 비어 있다').toBeCloseTo(2.25, 6)
+    expect(doorHigh, '그 위로는 인방이 이어진다').toBeCloseTo(4, 6)
+    expect(wallLow, '옆 칸은 발치까지 서서 문설주가 된다').toBeCloseTo(0, 6)
   })
 
   it('베낄 벽이 하나도 없으면 안 지어낸다', () => {
@@ -373,5 +407,109 @@ describe('방 나누기', () => {
 
   it('바닥이 하나도 없으면 방도 없다', () => {
     expect(floorRegions([], () => false)).toEqual([])
+  })
+})
+
+/**
+ * **메운 구멍 — 원작이 덮는 띠에는 안 세운다.**
+ *
+ * 계단이 내려가느라 그 앞 칸에 바닥 삼각형이 없으면 `fillHoles`가 방의 일부로
+ * 메운다. 한동안 그 칸의 바깥 모서리를 **원작이 덮든 말든** 바닥부터 꼭대기까지
+ * 세웠고, 그러면 원작 벽 **앞에** 판이 한 장 더 선다 — 파일럿 보고(2026-09-22):
+ * 「벽에서 띄워진 채로 벽에 평행하게 판때기 하나가 세워져 있는 것 같다」.
+ *
+ * 실측(주인공 방 맵 415 · `pnpm shot room --hit=600,130 --blame=600,130`):
+ * 우리 판이 `z = 4.0`, 원작 벽이 `z = 3.6`이라 0.4칸 앞에 섰고, 숨기면
+ * 올리브(`#97915e`)가 나왔다 — 곧 원작 벽이 이미 그려지는 자리였다.
+ */
+describe('메운 구멍', () => {
+  /**
+   * 바닥 3×4에서 **(1,0) 한 칸이 없는** 방 — 구멍이 방의 **가장자리**에 있다.
+   *
+   * ⚠️ **한가운데에 구멍을 내면 이 갈래를 못 잰다.** 네 이웃이 다 바닥이면
+   * 그 칸에는 바깥 모서리가 없어서 판을 아예 안 세운다. 계단 자리가 그렇듯
+   * 구멍은 벽에 붙어 있어야 한다.
+   *
+   * 북쪽 벽(`z = 0` 선)의 `x = 1` 조각이 **구멍 너머**다 — `beyond`가 그 조각이
+   * 덮는 높이 구간이고, 그것이 「눈높이에 걸친다」여야 `fillHoles`가 그 칸을
+   * 방의 일부로 센다(`closedBeyond`)
+   */
+  function holed(beyond: [number, number][] = [[0, 4]]): Split {
+    const pos: number[] = []
+    const uv: number[] = []
+    const col: number[] = []
+    const index: number[] = []
+    const push = (
+      quad: readonly [number, number, number][], uvs: readonly [number, number][],
+    ): void => {
+      const base = pos.length / 3
+      for (const [i, p] of quad.entries()) {
+        pos.push(p[0], p[1], p[2])
+        uv.push(uvs[i]![0], uvs[i]![1])
+        col.push(1, 1, 1)
+      }
+      index.push(base, base + 1, base + 2, base, base + 2, base + 3)
+    }
+    for (let tz = 0; tz < 4; tz++) {
+      for (let tx = 0; tx < 3; tx++) {
+        if (tx === 1 && tz === 0) continue // 구멍 — 계단이 내려가는 자리
+        push([[tx, 0, tz], [tx + 1, 0, tz], [tx + 1, 0, tz + 1], [tx, 0, tz + 1]],
+          [[0, 0], [1, 0], [1, 1], [0, 1]])
+      }
+    }
+    const floorCount = index.length
+    // 북쪽 벽 (z = 0) — 구멍 아닌 칸은 바닥부터 4까지. 베낄 그림이 된다
+    for (const tx of [0, 2]) {
+      push([[tx, 0, 0], [tx + 1, 0, 0], [tx + 1, 4, 0], [tx, 4, 0]],
+        [[0, 1], [1, 1], [1, 0], [0, 0]])
+    }
+    // 구멍 **너머**의 벽 (z = 0 선의 x = 1 조각)
+    for (const [y0, y1] of beyond) {
+      push([[1, y0, 0], [2, y0, 0], [2, y1, 0], [1, y1, 0]],
+        [[0, 1], [1, 1], [1, 0], [0, 0]])
+    }
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3))
+    geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2))
+    geometry.setAttribute('color', new BufferAttribute(new Float32Array(col), 3))
+    geometry.setIndex(index)
+    return {
+      cells: new Map(), shadows: new Set(), geometry,
+      groups: [[0, floorCount, 0], [floorCount, index.length - floorCount, 1]],
+    }
+  }
+
+  /** `z = 0` 선 위, `x`가 1~2인 판이 몇 장인가 (삼각형 둘이 한 장이다) */
+  function onBeyondLine(built: RoomWalls): number {
+    const pos = built.geometry.getAttribute('position') as BufferAttribute
+    let tris = 0
+    for (let t = 0; t < pos.count; t += 3) {
+      const mz = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3
+      const mx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3
+      if (Math.abs(mz) < 0.05 && mx > 1 && mx < 2) tris++
+    }
+    return tris / 2
+  }
+
+  it('원작 벽이 그 띠를 다 덮으면 한 장도 안 세운다', () => {
+    const built = roomWalls(holed())!
+    expect(onBeyondLine(built), '원작 벽 앞에 판을 또 세우지 않는다').toBe(0)
+  })
+
+  it('⚠️ 그렇다고 안 세우는 것은 아니다 — 덜 덮으면 그 위를 메운다', () => {
+    // 원작 벽이 바닥+2에서 끝나는 자리다. 안 메우면 그 위로 광선이 넘어간다
+    // (무쇠탄갱이 그 모양이었다 — 벽이 2.8에서 끝나 202발이 샜다)
+    const built = roomWalls(holed([[0, 2]]))!
+    expect(onBeyondLine(built), '안 덮인 띠에는 세운다').toBeGreaterThan(0)
+    const pos = built.geometry.getAttribute('position') as BufferAttribute
+    let low = Infinity
+    for (let t = 0; t < pos.count; t += 3) {
+      const mz = (pos.getZ(t) + pos.getZ(t + 1) + pos.getZ(t + 2)) / 3
+      const mx = (pos.getX(t) + pos.getX(t + 1) + pos.getX(t + 2)) / 3
+      if (Math.abs(mz) < 0.05 && mx > 1 && mx < 2) {
+        low = Math.min(low, pos.getY(t), pos.getY(t + 1), pos.getY(t + 2))
+      }
+    }
+    expect(low, '원작 벽이 끝나는 높이에서 시작한다').toBeCloseTo(2, 5)
   })
 })

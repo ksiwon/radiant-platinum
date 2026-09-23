@@ -5,7 +5,53 @@
 // 542번 눌러 끝난 배틀이 「얼었다」로 적혔다(시간). 반대로 대사 0/12쪽은
 // 기계가 아무리 붐벼도 결함이다(내용)
 import { describe, expect, it } from 'vitest'
-import { BUSY, classify, isBusy, makeStall, pct, SHAPE, summarizeLoad } from './budget.mjs'
+import { BUSY, classify, isBusy, makePen, makeStall, pct, SHAPE, summarizeLoad } from './budget.mjs'
+
+describe('가둠 계수기', () => {
+  it('되밀림은 진행 계수기를 못 울린다 — 그래서 이것이 있다', () => {
+    // 실측의 그 모양: 게이트에서 (7,7)↔(7,8)을 오간다
+    const s = makeStall(90)
+    for (let i = 0; i < 500; i++) expect(s.note(`80|7|${String(7 + (i % 2))}`)).toBe(false)
+    expect(s.idle).toBe(0)
+  })
+
+  it('좁은 자리에서만 돌면 갇힌 것이다', () => {
+    const pen = makePen(300, 4)
+    let caught = -1
+    for (let i = 0; i < 400; i++) {
+      if (pen.note(80, 7, 7 + (i % 2)) && caught < 0) caught = i
+    }
+    expect(caught).toBe(299)
+    expect(pen.size).toBe(2)
+  })
+
+  it('걸어 나아가면 몇 바퀴를 돌든 안 울린다', () => {
+    const pen = makePen(300, 4)
+    for (let i = 0; i < 5000; i++) expect(pen.note(353, i % 97, Math.floor(i / 97))).toBe(false)
+  })
+
+  it('맵이 바뀌면 처음부터 다시 센다', () => {
+    const pen = makePen(10, 2)
+    for (let i = 0; i < 9; i++) pen.note(80, 7, 7)
+    expect(pen.count).toBe(9)
+    expect(pen.note(350, 3, 3)).toBe(false)
+    expect(pen.count).toBe(1)
+    expect(pen.map).toBe(350)
+  })
+
+  it('칸 수가 문턱을 넘으면 그 맵에서는 더 안 울린다', () => {
+    // 다섯 칸을 도는 것은 가둠이 아니다 (문턱 넷)
+    const pen = makePen(10, 4)
+    for (let i = 0; i < 1000; i++) expect(pen.note(350, i % 5, 0)).toBe(false)
+    expect(pen.size).toBe(5)
+  })
+
+  it('세는 값이 1 이상 정수가 아니면 만들 때 터진다', () => {
+    expect(() => makePen(0, 4)).toThrow()
+    expect(() => makePen(300, 0)).toThrow()
+    expect(() => makePen(1.5, 4)).toThrow()
+  })
+})
 
 describe('진행 계수기', () => {
   it('지문이 바뀌면 견딜 횟수가 처음으로 돌아간다', () => {

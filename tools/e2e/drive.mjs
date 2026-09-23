@@ -27,10 +27,10 @@
 // 이것을 게임의 결함으로 의심했는데, 막고 있던 것은 전부 **이 하네스가 건너뛴
 // 걸음**이었다.
 import { makeObserver, watchMapScene } from './observe.mjs'
-import { makeStall, SLOW, STALLED } from './budget.mjs'
+import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
 import {
-  allMaps, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf, planPath,
-  TILE_TABLE, trainersOn, warpsOf,
+  allMaps, PLAN, bikeSlopes, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
+  planPath, TILE_TABLE, trainersOn, warpsOf,
 } from './route.mjs'
 
 /** 방향키 하나가 옮기는 칸 */
@@ -59,6 +59,38 @@ const ROUND_MS = 330
  */
 const GO_PATIENCE = 90
 const STEP_PATIENCE = 90
+/**
+ * **가둠**으로 볼 자유 보행 바퀴 수와 칸 수 (`makePen`).
+ *
+ * 자유롭게 걷는 바퀴 120번을 칸 넷 안에서만 도는 것은 안 갇히고는 안 나온다 —
+ * 실측의 두 자리 모두 칸이 **둘**이었다(206번도로 게이트 · 209번도로 비탈).
+ *
+ * ⚠️ **바퀴 수를 벽시계로 옮겨 짐작하지 않는다.** 처음에 300으로 뒀는데,
+ * 오버월드 한 바퀴는 960×960 격자를 최대 세 번 훑으므로 한 바퀴가 **초 단위**다
+ * — 209번도로에서 같은 칸에 **10분**을 서 있는 동안 300을 못 채웠다. 바퀴는
+ * 기계 부하에 따라 길이가 변하는 자라서(그것이 `makeStall`의 요지다) 자리마다
+ * 얼마가 걸리는지는 재 봐야 안다
+ */
+const PEN_ROUNDS = 120
+
+/**
+ * 이보다 느리면 **판이 도는 게 아니라 기는 것**이다 (프레임/초).
+ *
+ * ⚠️ **안 나아가는 것과 못 나아가는 것을 가르는 자리다.** 견딤 계수기(`makeStall`
+ * ·`makePen`)는 **바퀴**를 세는데 바퀴는 벽시계로 돈다 — 화면이 4프레임/초로
+ * 기면 한 바퀴(`ROUND_MS`)에 게임은 서너 프레임밖에 못 간다. 그러면 걸음이
+ * 반 칸도 못 가고, 밖에서는 「120바퀴를 칸 4개 안에서만 걸었다」로 보인다.
+ *
+ * 실측(2026-09-23 대표 구간 · 축복시티 맵 3): 막혔다고 적힌 자리마다 계기판이
+ * **4~8프레임/초**였고, 같은 판에서 60프레임/초인 바퀴는 **13칸을 한 번에**
+ * 갔다. 게임 격자도 「안 막혔다」였고 사람도 없었다 — 막은 것은 지형이 아니라
+ * 프레임이었다 (`shots/jubi42/2026-09-22T18-11-06-688Z`).
+ *
+ * 그래서 기는 바퀴는 **안 센다.** 판정이 아니라 세는 잣대를 고치는 것이고,
+ * 총예산은 그대로라 정말 막힌 판은 여전히 예산에서 끝난다
+ */
+const CRAWL_FPS = 15
+const PEN_TILES = 4
 
 /**
  * 이야기를 끝까지 몬다.
@@ -1359,6 +1391,15 @@ export async function driveStory(page, {
      * 스크립트·배틀)이 열리거나 닫힘 · 남은 계획 길이가 줄어듦**
      */
     const stall = makeStall(GO_PATIENCE)
+    /** 움직이는데 안 나아가는가 (`makePen`) */
+    const pen = makePen(PEN_ROUNDS, PEN_TILES)
+    /** 화면이 기어서 **안 센** 바퀴 수 (`CRAWL_FPS`). 보고에만 쓴다 */
+    let crawled = 0
+    /**
+     * 지금 자전거를 타고 있나. **비탈이 있는 행렬에서만** 묻고, 이 여행 동안
+     * 들고 간다 — 타고 내리는 것은 이 바퀴 안에서 안 일어난다
+     */
+    let ridingNow = null
     /** 박동이 마지막으로 울린 때, 이 걸음이 시작한 때, 지나온 맵 자취 */
     let beatAt = Date.now()
     const t0Go = Date.now()
@@ -1407,11 +1448,26 @@ export async function driveStory(page, {
       if (stall.idle > 0 && spent < ROUND_MS) await page.waitForTimeout(ROUND_MS - spent)
       roundAt = Date.now()
       const s = await now()
-      if (stall.note(beat(s, planLeft))) {
+      /**
+       * **기는 바퀴는 안 센다** (`CRAWL_FPS`). 나아가지 못한 바퀴에서만 묻는다 —
+       * 잘 가고 있으면 계기판을 읽을 까닭이 없다
+       */
+      let crawling = false
+      if (stall.idle > 0 || pen.count > 0) {
+        const r = await obs.perf()
+        const fps = r.known ? r.value?.fps ?? null : null
+        crawling = fps !== null && fps < CRAWL_FPS
+        if (crawling) {
+          crawled++
+          // 프레임을 벌어 준다 — 다음 바퀴에 게임이 실제로 몇 칸 갈 수 있게
+          await page.waitForTimeout(ROUND_MS)
+        }
+      }
+      if (!crawling && stall.note(beat(s, planLeft))) {
         return done(`${STALLED} — ${String(GO_PATIENCE)}바퀴 동안 진행이 없다`
           + ` (맵 ${String(s.map)} · 칸 ${String(s.x)},${String(s.z)}`
           + ` · 씬 ${String(s.scene)}${s.script ? ' · 스크립트' : ''}`
-          + `${s.talk ? ' · 대사창' : ''})`)
+          + `${s.talk ? ' · 대사창' : ''}${crawled > 0 ? ` · 긴 바퀴 ${String(crawled)}` : ''})`)
       }
       if (verbose && t % 5 === 0) log(`    →${String(target)} ${t}: ${JSON.stringify(s)}`)
       /**
@@ -1444,6 +1500,16 @@ export async function driveStory(page, {
       if (!s.ok) { await page.waitForTimeout(200); continue }
       maps.add(s.map)
       if (s.map === target) return done('arrived')
+      /**
+       * ⚠️ **여기서만 센다.** 위의 `continue` 넷(배틀·대사·스크립트·아직 못
+       * 읽음)을 다 지난 바퀴라야 **자유 보행**이다. 컷신 동안 제자리에 선 것을
+       * 가둠으로 읽지 않으려면 이 자리여야 한다
+       */
+      if (!crawling && pen.note(s.map, s.x, s.z)) {
+        return done(`${STALLED} — 맵 ${String(s.map)}에서 ${String(pen.count)}바퀴를`
+          + ` 칸 ${String(pen.size)}개 안에서만 걸었다 (되밀리는 중이다)`
+          + `${crawled > 0 ? ` · 긴 바퀴 ${String(crawled)}` : ''}`)
+      }
 
       const here = matrixOf(s.map)
       const grid = gridOf(here)
@@ -1542,8 +1608,28 @@ export async function driveStory(page, {
        * @param into 일부러 들어갈 문들. 그 문 앞 칸만 걸음 금지에서 뺀다 —
        *   안 빼면 **들어가려는 문 앞에도 못 서서** 어느 문으로도 못 들어간다
        */
+      /**
+       * **걸어서는 진흙 비탈을 못 오른다** (`bikeSlopes`).
+       *
+       * ⚠️ 타고 있으면 오를 수 있으므로 **탄 채로는 안 막는다.** 비탈이 하나도
+       * 없는 행렬이 대부분이라, 있는 행렬에서만 「지금 타고 있나」를 묻는다
+       */
+      const slopes = bikeSlopes(here)
+      if (slopes.size > 0 && ridingNow === null) {
+        const r = await obs.riding()
+        ridingNow = r.known ? r.value : false
+      }
+      const noClimb = slopes.size === 0 || ridingNow === true
+        ? null
+        : (nx, nz, key) => key === 'ArrowUp' && slopes.has(`${String(nx)},${String(nz)}`)
       const path = (isGoal, why, door = false, into = []) => {
-        const opts = { enterBlockedGoal: door, avoidStep: noDoorStep(s.map, into) }
+        const banStep = noDoorStep(s.map, into)
+        const opts = {
+          enterBlockedGoal: door,
+          avoidStep: noClimb === null
+            ? banStep
+            : (nx, nz, key) => banStep(nx, nz, key) || noClimb(nx, nz, key),
+        }
         /**
          * **문에서 한 칸 떨어져서** 먼저 찾는다 (`doorBerth`). 못 찾으면 놓는다 —
          * 골목 안 가게처럼 문 앞을 지나야만 닿는 자리가 있다
@@ -1697,12 +1783,30 @@ export async function driveStory(page, {
          * 두 문 사이를 영영 오가지 않는다
          */
         if (keys === null) {
-          const back = others.filter((w) => w.to !== s.map)
-            .filter((w) => !usedDoors.has(`${String(s.map)}:${String(w.x)},${String(w.z)}`))
+          const leads = others.filter((w) => w.to !== s.map)
             .filter((w) => {
               const r = shut?.has(w.to) === true ? null : mapRoute(w.to, target, { without: shut })
               return Array.isArray(r) && r.length >= 1
             })
+          /**
+           * ⚠️ **들어온 문까지 빼면 못 나오는 방이 생긴다.**
+           *
+           * 「이미 지나온 문」을 빼는 것은 두 문 사이를 영영 오가지 않으려는
+           * 규칙인데, **문이 둘뿐이고 하나가 막힌 방**에서는 그 규칙이 방을
+           * 통째로 잠근다. 실측(2026-09-23 대표 구간): 험한 샛길(254)에 들어가
+           * (18,50)에서 **한 발도 못 나왔다** — 앞문 (28,44)는 깰 바위 너머라
+           * 못 가고, 들어온 문 (19,50)은 「지나온 문」이라 빠졌다. 그 뒤
+           * 영원시티·체육관·빌딩·마트가 **전부** 같은 줄로 무너졌다.
+           *
+           * 그래서 남는 것이 없으면 **지나온 문도 다시 센다.** 왔던 길로
+           * 되돌아가는 것은 사람도 하는 일이고, 갇히는 것보다 낫다
+           */
+          const fresh = leads.filter(
+            (w) => !usedDoors.has(`${String(s.map)}:${String(w.x)},${String(w.z)}`))
+          const back = fresh.length > 0 ? fresh : leads
+          if (back.length > 0 && fresh.length === 0 && verbose) {
+            log(`      ${String(s.map)}에서 남은 문이 없다 — 들어온 문으로 되돌아 나간다`)
+          }
           if (back.length > 0) {
             keys = use(path((x, z) => back.some((w) => w.x === x && w.z === z),
               '나갔다 다시 들어올 문', true, back))
@@ -1803,6 +1907,8 @@ export async function driveStory(page, {
     let offGrid = 0
     /** 여기도 시계가 아니라 진행으로 그만둔다 (지시서 H1 · `goTo`와 같은 자다) */
     const stall = makeStall(STEP_PATIENCE)
+    /** 화면이 기어서 **안 센** 바퀴 수 (`CRAWL_FPS` — `goTo`와 같은 자다) */
+    let crawled = 0
     /** 지난 바퀴의 남은 걸음 수 */
     let planLeft = -1
     let roundAt = Date.now()
@@ -1811,13 +1917,22 @@ export async function driveStory(page, {
       if (stall.idle > 0 && spent < ROUND_MS) await page.waitForTimeout(ROUND_MS - spent)
       roundAt = Date.now()
       const s = await settle()
+      // **기는 바퀴는 안 센다** (`CRAWL_FPS`) — 나아가지 못한 바퀴에서만 묻는다
+      let crawling = false
+      if (stall.idle > 0) {
+        const r = await obs.perf()
+        const fps = r.known ? r.value?.fps ?? null : null
+        crawling = fps !== null && fps < CRAWL_FPS
+        if (crawling) { crawled++; await page.waitForTimeout(ROUND_MS) }
+      }
       // ⚠️ **밟은 것을 먼저 본다.** 멈춤으로 접기 전에 `trail`을 봐야, 밟고
       // 장면에 끌려간 판이 「멈췄다」로 안 적힌다
-      if (stall.note(beat(s, planLeft))) {
+      if (!crawling && stall.note(beat(s, planLeft))) {
         if (passed()) return done('arrived')
         return done(`${STALLED} — ${String(STEP_PATIENCE)}바퀴 동안 진행이 없다`
           + ` (맵 ${String(s.map)} · 칸 ${String(s.x)},${String(s.z)}`
-          + ` · 씬 ${String(s.scene)}${s.script ? ' · 스크립트' : ''})`)
+          + ` · 씬 ${String(s.scene)}${s.script ? ' · 스크립트' : ''}`
+          + `${crawled > 0 ? ` · 긴 바퀴 ${String(crawled)}` : ''})`)
       }
       if (!s.ok) { await page.waitForTimeout(200); continue }
       if (s.map !== mapId) {
@@ -2484,12 +2599,19 @@ export async function driveStory(page, {
         /**
          * 「다른 기술을 잊게 하겠습니까?」 — 커서는 「예」에 선다.
          *
-         * · 첫 칸을 잊는다 → 예 · 첫 줄 (기본)
-         * · 거절한다 → ↓「아니오」 → 「포기하겠습니까?」의 「예」
+         * · 거절한다 → ↓「아니오」 → 「포기하겠습니까?」의 「예」 (**기본**)
          * · n번째 칸을 잊는다 → 예 · ↓를 n번
+         *
+         * ⚠️ **기본은 거절이다.** 한때 기본이 `0`(첫 칸을 잊는다)이었는데,
+         * 첫 칸은 대개 **제일 센 기술**이다 — 실측(2026-09-22 배지5 탐침 1판):
+         * 들판 체육관 앞에서 토대부기 L38→L39 사탕 한 알에 `광합성`을 배우며
+         * **지진을 잊었다**(`asks: [{at:1, answer:"0"}]`). 사탕은 **레벨을
+         * 맞추려고** 먹이는 것이지 기술을 바꾸려는 것이 아니고, 관장 앞에서
+         * 주력기를 잃는 것이 새 기술 하나보다 훨씬 나쁘다. 바꾸고 싶으면
+         * 부르는 쪽이 `forget`으로 **말해야** 한다 (`_candy42`가 그 길이다)
          */
         if (text.includes('잊게 하겠습니까')) {
-          const answer = answers.length > 0 ? answers.shift() : 0
+          const answer = answers.length > 0 ? answers.shift() : 'refuse'
           asks.push({ at: fed, answer: String(answer) })
           if (answer === 'refuse') {
             await tap('ArrowDown', 200)   // 아니오
@@ -2920,6 +3042,39 @@ export async function driveStory(page, {
   // ⚠️ **못 읽은 것과 「거기 없다」는 다르다.** 배포물에는 명부를 열 길이
   // 없으므로 `{ unknown: true }`를 돌려준다 — `null`(명부에 없다)과 섞으면
   // 「그 사람이 사라졌다」로 잘못 적힌다
+  /**
+   * 주인공이 **지금 어느 쪽을 보고 있나** (`DIR` — 북 0 · 남 1 · 서 2 · 동 3).
+   *
+   * ⚠️ **돌아섰다고 믿지 않는다.** 방향키 한 번으로 도는 것은 **그 칸이 막혀
+   * 있을 때**뿐이고, 떨어지기도 한다. A는 **보는 칸**에 가므로, 안 돌았으면
+   * 엉뚱한 칸에 눌린다 — 그때 아무 일도 안 일어나면 밖에서는 「입력이 안 먹었다」와
+   * 구별이 안 된다
+   */
+  const facing = async () => {
+    const r = await obs.facingDir()
+    return r.known ? r.value : null
+  }
+  /** 그 맵의 **지금** 사람 자리들. 못 읽으면 `null` — 빈 목록으로 안 접는다 */
+  /**
+   * **게임 자신에게 그 칸을 묻는다** (`observe.blockedAt` · `observe.solidAt`).
+   *
+   * ⚠️ **「길은 있는데 안 걸어진다」는 이 둘로만 갈린다.** 계획은 우리 격자로
+   * 세우고 막는 것은 게임이라, 어긋나면 하네스는 영영 같은 칸에 부딪힌다.
+   * 못 읽으면 `null`이다 — 「안 막혔다」로 접지 않는다
+   */
+  const gameBlocked = async (x, z) => {
+    const r = await obs.blockedAt(x, z)
+    return r.known ? r.value : null
+  }
+  const gameSolid = async (x, z) => {
+    const r = await obs.solidAt(x, z)
+    return r.known ? r.value : null
+  }
+
+  const npcSpots = async (mapId) => {
+    const r = await obs.npcSpots(mapId)
+    return r.known ? r.value : null
+  }
   const npcSpot = async (mapId, script) => {
     const r = await obs.npcSpot(mapId, script)
     return r.known ? r.value : { unknown: true, why: r.why }
@@ -3231,7 +3386,8 @@ export async function driveStory(page, {
       settle, now, tap, clearTalk,
       partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
       veilstoneState, pastoriaState, featureWalls, veilstonePlan,
-      teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor,
+      teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
+      gameBlocked, gameSolid,
       runAway, useItem, usePotions, stopPotions,
       fightThrough, getParcel, log, left, maps, trouble, battles,
       lakeVars, snapshot, lakeVerity,
@@ -3368,6 +3524,7 @@ export async function driveStory(page, {
     partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
     veilstoneState, pastoriaState, featureWalls, veilstonePlan,
     teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor,
+    gameBlocked, gameSolid,
     runAway, useItem, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 위에서는 트레이너전이 0일 때만
