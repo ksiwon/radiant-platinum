@@ -1260,7 +1260,35 @@ try {
         if (got !== 'arrived') {
           poketch.why = `축복시티에 못 닿았다 (${got})`
         } else {
-          const inSchool = await api.goTo(JUBILIFE.school.map, Math.min(240_000, api.left()))
+          /**
+           * ⚠️ **스쿨 문 (168,776) 앞에서 문이 안 열리는 판이 있다.** 대표 구간 1판·8판과
+           * 탐침(`_school43`) 한 판이 문 앞 (168,777)에 문을 마주 보고 서서 150~180초를
+           * 밀었는데 안 열렸다. 한 발 물러났다 다시 미는 것(`drive`의 제자리 걸음)으로는
+           * 안 풀렸고, **몇 칸 떨어진 데로 갔다 오면** 들어갔다(탐침 다음 판 · 7초).
+           * 원인은 아직 모른다 — 그래서 그 순간 제품의 문 판정 재료를 남기고, 사람이 하는
+           * 것처럼 떨어졌다 다시 온다. 남긴 줄이 다음 사람의 근거다 (REPAIR §72)
+           */
+          let inSchool = await api.goTo(JUBILIFE.school.map, Math.min(240_000, api.left()))
+          for (let again = 0; again < 2 && inSchool !== 'arrived' && api.left() > 120_000; again++) {
+            const seen = await page.evaluate(async () => {
+              const w = await import('/src/engine/map/world.ts')
+              const st = await import('/src/state/worldState.ts')
+              const mv = await import('/src/engine/input/move.ts')
+              const p = st.worldState.player
+              const door = w.world.grid ? w.doorEntry(w.world.grid, w.warpsOf(w.world.mapId),
+                { x: p.position.x, z: p.position.z, facing: p.facing }, { x: 0, z: -1 }) : null
+              return {
+                x: +p.position.x.toFixed(3), z: +p.position.z.toFixed(3), facing: +p.facing.toFixed(3),
+                push: mv.pushDirection(), armed: w.world.armed, pending: w.world.pending !== null,
+                doorIfUp: door ? door.to : null, map: w.world.mapId,
+              }
+            }).catch((e) => ({ error: String(e?.message ?? e) }))
+            await page.screenshot({ path: resolve(ROOT, `shots/journey/school-door-${String(again)}.png`) }).catch(() => {})
+            log(`  트레이너 스쿨 문이 안 열렸다 (${inSchool}) — ${JSON.stringify(seen)} · 떨어졌다 다시 온다`)
+            story.schoolDoor = [...(story.schoolDoor ?? []), { why: inSchool, seen }]
+            await api.stepOn(3, again === 0 ? { x: 160, z: 781 } : { x: 175, z: 782 }, Math.min(120_000, api.left()))
+            inSchool = await api.goTo(JUBILIFE.school.map, Math.min(180_000, api.left()))
+          }
           const metRival = inSchool === 'arrived'
             && await api.talkToNpc(JUBILIFE.school.map, JUBILIFE.school.rival,
               Math.min(180_000, api.left()))

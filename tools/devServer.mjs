@@ -4,6 +4,7 @@
 // 재는 것은 배포 경계가 아니라 **앱 동작**이다 (DEPLOY.md §2). 경계는
 // `tools/e2e/run.mjs`가 `dist/`를 정본 CSP 헤더로 띄워서 잰다.
 import { spawn } from 'node:child_process'
+import { get as httpGet } from 'node:http'
 import { createServer, connect as netConnect } from 'node:net'
 import { resolve } from 'node:path'
 
@@ -172,8 +173,19 @@ ${log}`)
     watch.timer = setInterval(() => { if (dead !== null) no(new Error(`vite가 죽었다 (${String(dead)})`)) }, 250)
   })
   try {
-    const r = await Promise.race([fetch(url, { signal: AbortSignal.timeout(left) }), died])
-    if (!r.ok) throw new Error(`첫 요청이 ${String(r.status)}`)
+    /**
+     * ⚠️ **`fetch`로 기다리면 300초에 끊긴다.** Node의 `fetch`(undici)는 응답 머리를
+     * 기본 300초(`headersTimeout`)까지만 기다리고 「fetch failed」를 던진다 —
+     * 위 `AbortSignal`의 예산과 상관없이다. 첫 요청이 170~330초인 이 프로젝트에서
+     * 2026-09-23~24 밤에만 두 번 그렇게 죽었다(지난 판은 332초에 떴다). 그래서
+     * 시간 상한을 우리 예산 하나만 두는 `node:http`로 기다린다
+     */
+    const status = await Promise.race([new Promise((ok, no) => {
+      const req = httpGet(url, (res) => { res.resume(); ok(res.statusCode ?? 0) })
+      req.on('error', no)
+      req.setTimeout(left, () => { req.destroy(new Error(`${String(Math.round(left / 1000))}초 안에 답이 없다`)) })
+    }), died])
+    if (status < 200 || status >= 300) throw new Error(`첫 요청이 ${String(status)}`)
   } catch (e) {
     if (dead !== null) throw give(`vite가 죽었다 (${String(dead)})`)
     throw give(`vite(${String(port)})가 첫 요청에 안 답했다 — ${String(e.message ?? e)}`)
