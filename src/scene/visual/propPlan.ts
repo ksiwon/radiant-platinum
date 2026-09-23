@@ -49,8 +49,28 @@ export function treeClaims(
   return claimsFor('tree', mesh, sheet, assetId, recipes, mode, 'prop', null)
 }
 
+/**
+ * 계단 레시피가 맡은 **비탈** (소품만). 우물 벽은 선택자로 못 잡아서 `stairs.stairClaims`가
+ * 모양으로 더한다 — 여기는 레시피가 고른 것만이다
+ */
+export function stairRampClaims(
+  mesh: ChunkMesh, sheet: TexSheet | null, assetId: number,
+  recipes: readonly VisualRecipe[], mode: RecipeMode,
+): Map<number, string> {
+  return claimsFor('stairs-down', mesh, sheet, assetId, recipes, mode, 'prop', null)
+}
+
+/** 방석·의자 레시피가 맡은 **눕힌 그림** (소품만 · `seats.propSeat`) */
+export function seatClaims(
+  shape: 'cushion' | 'stool',
+  mesh: ChunkMesh, sheet: TexSheet | null, assetId: number,
+  recipes: readonly VisualRecipe[], mode: RecipeMode,
+): Map<number, string> {
+  return claimsFor(shape, mesh, sheet, assetId, recipes, mode, 'prop', null)
+}
+
 function claimsFor(
-  geometryKind: 'cross-cards' | 'stand-card' | 'tree',
+  geometryKind: 'cross-cards' | 'stand-card' | 'tree' | 'stairs-down' | 'cushion' | 'stool',
   mesh: ChunkMesh, sheet: TexSheet | null, assetId: number,
   recipes: readonly VisualRecipe[], mode: RecipeMode,
   kind: 'prop' | 'chunk', texSet: number | null,

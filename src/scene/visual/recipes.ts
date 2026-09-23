@@ -413,10 +413,96 @@ const HONEY_TREE: VisualRecipe = {
   provenance: '크기는 잎 카드 더미의 높이, 색은 잎 카드가 찍는 텍셀과 그루터기 칸. 새 색 없음',
 }
 
+/**
+ * **내려가는 계단 우물** (`stair01` · 소품 105·156 · 파일럿 보고 ⑦ · `visual/stairs.propStairs`).
+ *
+ * 우물 안이 계단 그림을 그린 51° 비탈 한 장과 어두운 벽 셋이다. 원작 고정 카메라에서는
+ * 그늘로 내려가는 계단이지만, 3인칭에서는 비탈이 판 한 장이고 끝 벽이 **계단 위에 선
+ * 어두운 판때기**다 (`shots/room.png` · `--blame` 실측: 끝 벽 삼각형 #38).
+ *
+ * 선택자는 **비탈만** 잡는다 — 칸 0~24는 디딤 넷(`#ffd663`)·챌면(`#b59c63`)·턱(`#7b6b5a`)이
+ * 6텍셀마다 되풀이되는 자리다. 우물 벽은 한 텍셀 줄이라 선택자로 못 잡아서 빌더가 모양으로
+ * 더한다.
+ *
+ * ⚠️ **올라가는 계단(104·155)도 같은 픽셀·같은 각이다** (지문 `a37a218d` · 51.1~51.3°).
+ * 비탈 윗변이 바닥보다 높으면 빌더가 안 만든다 — 파일럿이 멀쩡하다고 한 쪽이다
+ *
+ * 검수 (2026-09-23, 사용자): 주인공 방 전후 — 기본 카메라 · 낮은 눈높이
+ * (`.audit/review69` · WebGL)
+ */
+const STAIR01_DOWN: VisualRecipe = {
+  id: 'stair01-down',
+  version: 1,
+  semantic: 'stairs',
+  outcome: 'replace',
+  geometry: 'stairs-down',
+  materialProfile: 'rom-lit',
+  anchor: 'source-local',
+  review: 'verified',
+  selectors: [{
+    kind: 'prop', tex: 'stair01', pal: 'stair01',
+    regionHashes: ['a37a218d'],
+    within: [0, 0, 24, 32],
+    leanDeg: [50.5, 51.5],
+  }],
+  provenance: '틀은 원본 비탈의 윗변·아랫변·폭, 디딤 수는 그림에 그려진 디딤을 센 것(4), 색은 원본 텍셀. 끝으로 갈수록 어두워지는 정도(끝 0.08)는 초기값',
+}
+
+/**
+ * **바닥에 깐 방석·의자** (파일럿 보고 ⑥ · `visual/seats.propSeat`).
+ *
+ * 16×16 그림 한 장이 바닥(방석 y 0.06 · 의자 y 0.16)에 누워 있다. 그림은 3/4 각도라
+ * 윗면 · 어두운 옆 띠 · (의자면) 다리 둘이 위에서부터 그려져 있다 — 텍셀을 줄마다 읽어
+ * 가른다(`seatBands`). 포켓몬센터 네 귀퉁이의 방석이 파일럿이 짚은 것이다
+ * (`pnpm shot center --blame=90,520` → `pc_s05b`).
+ *
+ * 의자는 그림자 판(재질 1 · 그림 없음)을 따로 갖고 있어 그것은 둔다
+ *
+ * 검수 (2026-09-23, 사용자): 포켓몬센터 방석 전경·확대 · 주인공 방 chair02 위·낮은 눈높이
+ * (`.audit/review69` · WebGL). chair01·03·04는 같은 빌더 · 같은 줄 배치다(`seats.test`)
+ */
+const SEAT_SHAPE = {
+  version: 1,
+  semantic: 'seat',
+  outcome: 'replace',
+  materialProfile: 'rom-lit',
+  anchor: 'ground-contact',
+  review: 'verified',
+} as const
+
+const flatSeat = (tex: string, pal: string, hash: string) => ({
+  kind: 'prop' as const, tex, pal, regionHashes: [hash], within: [0, 0, 16, 16] as const, leanDeg: [89.5, 90] as const,
+})
+
+const SEATS: readonly VisualRecipe[] = [
+  {
+    ...SEAT_SHAPE,
+    id: 'pc-cushion',
+    geometry: 'cushion',
+    selectors: [
+      flatSeat('pc_s05a', 'pc_s05a_pl', '8d31b17f'),
+      flatSeat('pc_s05b', 'pc_s05b_pl', '46829f99'),
+    ],
+    provenance: '발자국·윗면·옆 띠는 원본 그림의 줄. 높이는 그림이 윗면을 줄여 그린 비(8줄 ÷ 12열)에서 푼 0.34칸',
+  },
+  {
+    ...SEAT_SHAPE,
+    id: 'chair-stool',
+    geometry: 'stool',
+    selectors: [
+      flatSeat('chair01', 'chair01', '18711682'),
+      flatSeat('chair02', 'chair02', '4c6f8855'),
+      flatSeat('chair03', 'chair03', '48d10b25'),
+      flatSeat('chair04', 'chair04', '14b3810e'),
+    ],
+    provenance: '앉는 판·옆 띠·다리 열은 원본 그림의 줄과 열. 높이는 그림이 윗면을 줄여 그린 비에서 푼 값(chair01 0.44칸)',
+  },
+]
+
 export const VISUAL_RECIPES: readonly VisualRecipe[] = [
   IMPED_PLANTER, IMPED_PLANTER_SET0, IMPED_SHRUB, BF_UEKI_SHRUB, IMPED_FENCE,
   IMPED_BOLLARD_CHAIN, IMPED_BOLLARD_GRASS, PLANT01_CROSS, ...STANDING_PROPS,
-  ...STANDING_PROP_CARDS, HONEY_TREE,
+  ...STANDING_PROP_CARDS, HONEY_TREE, STAIR01_DOWN, ...SEATS,
 ]
 
 /**

@@ -46,6 +46,8 @@ import { planChunk, planterGroupOf, quadStarts } from './visual/chunkPlan'
 import { Planters, type PlanterGroup } from './visual/Planters'
 import { recipeMode, VISUAL_RECIPES } from './visual/recipes'
 import { crossCards, dropClaims, propTree, shellBody, standProp, treeClaims, type PropTree } from './visual/propPlan'
+import { propSeat } from './visual/seats'
+import { propStairs } from './visual/stairs'
 import { noteVisualDecisions } from './visual/readiness'
 import type { PartDecision } from './visual/types'
 import { isFeaturePlacement } from './movingProps'
@@ -530,7 +532,13 @@ function cachedBack(mesh: ChunkMesh, sheet: TexSheet | null, id: number): Back {
   const hit = backCache.get(id)
   if (hit !== undefined) return hit
   // 세울 카드는 빼고 센다 — 안 빼면 눕힌 자리에 비석이 한 장 더 선다 (`propPlan.shellBody`)
-  const body = shellBody(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  //
+  // ⚠️ **입체로 바꾼 것(계단·방석·의자)도 뺀다.** 안 빼면 메운 판이 옛 우물 모양을 −z 면에
+  // 눌러 담아, 새 계단의 옆벽과 **같은 평면**(소품 z −0.56)에 겹쳐 선다 — 3인칭에서
+  // 우물 안에 비스듬한 실금으로 보였다 (`shots/room.png` · `--hit` 실측)
+  const swapped = cachedSwapProp(id, mesh, sheet)
+  const plain = shellBody(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  const body = swapped === null ? plain : dropClaims(plain, swapped.claims)
   const paint = shellPaint(body, sheet)
   const band = wallStrip(body, sheet, wallSource(body, paint))
   let strip: Texture | null = null
@@ -618,21 +626,52 @@ function cachedTreeProp(
   return made
 }
 
+/**
+ * 원본 판을 **입체로 갈아 끼운** 소품 — 내려가는 계단(`visual/stairs.propStairs`) ·
+ * 방석·의자(`visual/seats.propSeat`). 몸통은 맡은 삼각형을 접어 뺀 것이고, 새 입체는
+ * 원본과 같은 재질 칸이라 합친 기하에 든다. 모델마다 하나고 안 버린다
+ * (`crossPropCache`와 같은 까닭)
+ */
+interface SwapProp {
+  body: BufferGeometry
+  made: BufferGeometry
+  /** 접어 뺀 원본 삼각형 — 메운 판을 셀 몸통에서도 뺀다 (`cachedBack`) */
+  claims: ReadonlyMap<number, string>
+}
+
+const swapPropCache = new Map<number, SwapProp | null>()
+
+function cachedSwapProp(id: number, mesh: ChunkMesh, sheet: TexSheet | null): SwapProp | null {
+  const hit = swapPropCache.get(id)
+  if (hit !== undefined) return hit
+  const made = propStairs(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+    ?? propSeat(mesh, sheet, id, VISUAL_RECIPES, recipeMode())
+  const out = made === null ? null : {
+    body: dropClaims(mesh, made.claims).geometry, made: made.geometry, claims: made.claims,
+  }
+  swapPropCache.set(id, out)
+  return out
+}
+
 function cachedMergedProp(
   id: number, mesh: BufferGeometry, back: BufferGeometry | null, cross: BufferGeometry | null,
-  materials: Material[],
+  swapped: BufferGeometry | null, materials: Material[],
 ): BufferGeometry | null {
   const hit = mergedPropCache.get(id)
   if (hit !== undefined) return hit
-  const made = back === null && cross === null
-    ? null : mergeByMaterial([mesh, back, cross], materials)
+  const made = back === null && cross === null && swapped === null
+    ? null : mergeByMaterial([mesh, back, cross, swapped], materials)
   mergedPropCache.set(id, made)
   return made
 }
 
-/** 그릴 몸통 — 세운 카드(`cachedStoodProp`) · 잎 카드를 뺀 것(`cachedTreeProp`) · 원본 */
+/**
+ * 그릴 몸통 — 세운 카드(`cachedStoodProp`) · 잎 카드를 뺀 것(`cachedTreeProp`) ·
+ * 입체로 갈아 끼운 판을 뺀 것(`cachedSwapProp`) · 원본
+ */
 function bodyOf(id: number, mesh: ChunkMesh, sheet: TexSheet | null): BufferGeometry {
-  return cachedStoodProp(id, mesh, sheet) ?? cachedTreeProp(id, mesh, sheet)?.body ?? mesh.geometry
+  return cachedStoodProp(id, mesh, sheet) ?? cachedTreeProp(id, mesh, sheet)?.body
+    ?? cachedSwapProp(id, mesh, sheet)?.body ?? mesh.geometry
 }
 
 /**
@@ -1378,7 +1417,8 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
             // 눕힌 카드를 세운 모델은 세운 몸통을 쓴다 (`cachedStoodProp`)
             geometry: cachedMergedProp(
               got.id, bodyOf(got.id, got.mesh, got.sheet), back.geometry,
-              cachedCrossProp(got.id, got.mesh, got.sheet), materials,
+              cachedCrossProp(got.id, got.mesh, got.sheet),
+              cachedSwapProp(got.id, got.mesh, got.sheet)?.made ?? null, materials,
             ) ?? bodyOf(got.id, got.mesh, got.sheet),
             materials,
           }]

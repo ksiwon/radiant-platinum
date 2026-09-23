@@ -105,6 +105,12 @@ const browser = await chromium.launch({
 })
 const page = await browser.newPage({ viewport: { width: 960, height: 640 } })
 page.setDefaultTimeout(120_000)
+// 표현 레시피 모드 — 새 레시피가 빈틈 수를 바꿨는지 가르려면 끄고 한 번 더 잰다
+// (`--visual=legacy`). `shot.mjs --visual`과 같은 자리다
+const visualMode = flag('visual', null)
+if (visualMode === 'candidate' || visualMode === 'legacy') {
+  await page.addInitScript((m) => { sessionStorage.setItem('pt.visualMode', m) }, visualMode)
+}
 page.setDefaultNavigationTimeout(180_000)
 const url = `http://localhost:${port}/`
 

@@ -2,6 +2,7 @@
 //
 //     pnpm shot forest                 확인 지점 하나
 //     pnpm shot forest --keys=z,z,z    뛰어든 뒤 키를 더 누른다
+//     pnpm shot room --visual=candidate   초안 표현 레시피를 켜고 찍는다 (검수 전후 비교)
 //     pnpm shot vsseeker --keys=z --keysAfter=120   마지막 키 뒤를 짧게 (짧은 연출)
 //     pnpm shot forest --hit=200,300   그림의 그 픽셀에 무엇이 있는지 되묻는다
 //     pnpm shot center --blame=480,320 그 픽셀을 **실제로 칠한** 메시를 숨겨 가며 찾는다
@@ -178,6 +179,12 @@ async function main() {
    */
   const browser = await chromium.launch({ args: gpuArgs(flag('gpu', 'software')) })
   const page = await browser.newPage({ viewport: DRIVE, deviceScaleFactor: 1 })
+  // 표현 레시피 모드 — 초안(`draft`)은 `candidate`에서만 돈다 (`visual/recipes.recipeMode`).
+  // 검수 전 전후를 같은 화각으로 찍으려고 둔다 (`firstPersonAudit --mode`와 같은 자리)
+  const visual = flag('visual', null)
+  if (visual === 'candidate' || visual === 'legacy') {
+    await page.addInitScript((m) => { sessionStorage.setItem('pt.visualMode', m) }, visual)
+  }
   /**
    * ⚠️ **playwright 기본 30초로는 첫 `goto`가 떨어진다.**
    *

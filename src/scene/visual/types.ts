@@ -8,7 +8,7 @@ export type SourceKind = 'chunk' | 'prop' | 'fldeff' | 'npc-gfx'
 /** 조각이 무엇인가. 검수 전에는 확정하지 않는다 */
 type Semantic =
   | 'tree' | 'rock' | 'planter' | 'shrub' | 'fence' | 'bollard' | 'rail' | 'sign'
-  | 'building' | 'wall' | 'ground' | 'grass' | 'flower' | 'water' | 'decal' | 'other'
+  | 'building' | 'wall' | 'ground' | 'grass' | 'flower' | 'water' | 'decal' | 'stairs' | 'seat' | 'other'
 
 /**
  * 원본을 어떻게 다루나.
@@ -93,6 +93,17 @@ type GeometryKind =
    * 세우지만 소품에는 그 길이 없었다 (FP-07 `tilted` 꼬리)
    */
   | 'stand-card'
+  /**
+   * 소품의 **내려가는 계단 우물**을 입체 계단으로 — 원작은 계단 그림을 그린 비탈 한 장과
+   * 어두운 벽 셋이다. 고정 카메라에서는 그늘로 내려가는 계단이지만 3D 카메라에서는
+   * 계단 위에 판때기가 서 보인다 (`visual/propPlan.propStairs`)
+   */
+  | 'stairs-down'
+  /**
+   * 바닥에 **눕혀 그린 앉을 것**을 세운다 — 방석(낮은 덩이)과 등받이 없는 의자(다리 넷).
+   * 원작은 3/4 각도로 그린 그림 한 장을 바닥에 깔았다 (`visual/seats.propSeat`)
+   */
+  | 'cushion' | 'stool'
 
 type MaterialProfile = 'rom-lit' | 'cutout-lit' | 'decal-unlit' | 'water'
 
