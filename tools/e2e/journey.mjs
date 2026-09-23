@@ -411,8 +411,13 @@ const PASTORIA_THIRD_LEVEL = 43
  */
 const PASTORIA_POTIONS = 12
 
-/** 숲에 들기 전 선두 레벨 (진화 18을 넘고, 숲을 통과한 판의 L19~21에 맞춘다) */
-const FOREST_LEVEL = 20
+/**
+ * 숲에 들기 전 선두 레벨. 숲 트레이너는 L11~14를 둘씩 낸다 — L20으로도 한 번
+ * 전멸했다(2026-09-23 대표 구간 4판 · `203→6`). 사탕은 공짜라 넉넉히 둔다
+ */
+const FOREST_LEVEL = 24
+/** 소포 심부름 뒤 202번도로에 나서기 전 선두 레벨 (위 `EARLY_LEAD_LEVEL` 자리) */
+const EARLY_LEAD_LEVEL = 16
 
 /** 갤럭시단 빌딩 앞 — 쥬피터를 한 번에 이긴 판의 값 (2026-09-22 · 아래 구간 23) */
 const JUPITER_LEAD_LEVEL = 30
@@ -1149,6 +1154,69 @@ try {
       await api.getParcel()
       await api.settle()
       log(`소포를 받으러 다녀왔다 — 지금 ${JSON.stringify(await marks())}`)
+      /**
+       * **사탕으로 올린다.** `slot`이 null이면 `species`인 첫 마리다.
+       * 모자란 만큼만 가방에 넣고 화면으로 먹인다. 결과는 한 줄 글로 돌려준다 —
+       * 레벨 맞추기와 같은 자리(`story.training`)에 적힌다
+       */
+      const candyUp = async (slot, species, level) => {
+        const party = (await api.partyState()) ?? []
+        const seen = party.map((one) => `${String(one.species)} L${String(one.level)}`)
+        /**
+         * ⚠️ **번호 하나로 찾으면 진화한 뒤 조용히 못 찾는다.** 찌르꼬(396)는
+         * L14에 찌르버드(397)가 되고 **L34에 찌르호크(398)**가 된다 — 장막·들판
+         * 체육관 앞의 사탕은 그 뒤라, 397만 찾으면 「먹일 마리가 파티에 없다」로
+         * 지나가고 새가 두 레벨 모자란 채 관장 앞에 선다. 한 줄이 계통 전체다
+         */
+        const family = STARLY_LINE.includes(species) ? STARLY_LINE : [species]
+        const at = slot ?? party.findIndex((one) => family.includes(one.species))
+        const mon = party[at]
+        /**
+         * ⚠️ **「못 했다」와 「할 자리가 없었다」를 가른다** (지시서
+         * JOURNEY21_NEXT_DECISIONS §2). 찌르꼬를 못 잡은 판에서는 이 걸음이
+         * **미실행**이지 실패가 아니다 — 그때의 실제 파티를 같이 적는다.
+         * 대신 잡기를 한 번 더 하거나 선두를 더 올리지 않는다
+         */
+        if (mon === undefined) {
+          return { ran: false, why: '먹일 마리가 파티에 없다', party: seen, fed: 0 }
+        }
+        const need = level - mon.level
+        if (need <= 0) return { ran: false, why: `이미 L${String(mon.level)}`, party: seen, fed: 0 }
+        const stocked = await page.evaluate(async ([pocket, item, n]) => {
+          const m = await import('/src/state/saveStore.ts')
+          return m.useSaveStore.getState().addItem(pocket, item, n)
+        }, [MEDICINE_POCKET, RARE_CANDY, need]).catch((e) => `넣기 실패 ${String(e?.message ?? e)}`)
+        if (stocked !== true) {
+          return { ran: false, why: `사탕을 못 넣었다 (${String(stocked)})`, party: seen, fed: 0 }
+        }
+        const fed = await api.feedCandy(at, level, Math.min(900_000, api.left()))
+        return {
+          ran: true, ok: fed.ok, why: fed.why ?? null, party: seen, fed: fed.fed,
+          from: `${String(mon.species)} L${String(mon.level)}`,
+          to: `${String(fed.species ?? '?')} L${String(fed.level ?? '?')}`,
+          asks: fed.asks ?? [], ms: fed.ms ?? null,
+        }
+      }
+
+      /** 사탕 걸음 하나를 한 줄 글로 — 로그에 적히는 그 줄이다 */
+      const candyLine = (got) => (got.ran
+        ? `${got.ok ? '됐다' : `못 했다 (${String(got.why)})`} · 사탕 ${String(got.fed)}알`
+          + ` · ${got.from}→${got.to} · ${String(Math.round((got.ms ?? 0) / 1000))}초`
+        : `**미실행** — ${got.why} (파티 ${JSON.stringify(got.party)})`)
+
+      /**
+       * ⚠️ **레벨은 시간을 쓰지 않게 사탕으로 먼저 맞춘다** (사람이 정한 규칙 ·
+       * `RARE_CANDY_20260917`). 막힌 자리가 나올 때마다 하나씩 넣다가 **203번도로에서
+       * 전멸을 일곱 번** 되풀이한 판이 있었다(2026-09-23 대표 구간 6판 · 3판 다섯 번).
+       * 판마다 전멸한 자리를 모으면 202·203번도로 · 무쇠게이트 · 영원의 숲이다 —
+       * 전부 소포 뒤 숲 앞까지라, 202번도로에 나서기 전에 한 번 올린다.
+       * 로안(꼬마돌 12 · 롱스톤 12 · 두개도스 14)까지 이것으로 덮는다
+       */
+      {
+        const early = await candyUp(0, null, EARLY_LEAD_LEVEL)
+        log(`  202번도로 앞 선두 사탕 (L${String(EARLY_LEAD_LEVEL)}) → ${candyLine(early)}`)
+        story.candySteps = [...(story.candySteps ?? []), { what: '202번도로 앞 선두', ...early }]
+      }
       // ── 축복시티: 포켓치를 받아 동쪽을 연다 (원작 차례. 위 JUBILIFE 참고) ──
       const poketch = { done: false, why: '' }
       if (api.left() > 0) {
@@ -1344,55 +1412,6 @@ try {
        * ⚠️ **레벨 노가다로 넘지 않는다.** 그것은 사람이 안 하는 길이고,
        * 「포획 후 저장·복원」(기획서 §7.2)을 이 구간이 처음 재는 자리이기도 하다
        */
-      /**
-       * **사탕으로 올린다.** `slot`이 null이면 `species`인 첫 마리다.
-       * 모자란 만큼만 가방에 넣고 화면으로 먹인다. 결과는 한 줄 글로 돌려준다 —
-       * 레벨 맞추기와 같은 자리(`story.training`)에 적힌다
-       */
-      const candyUp = async (slot, species, level) => {
-        const party = (await api.partyState()) ?? []
-        const seen = party.map((one) => `${String(one.species)} L${String(one.level)}`)
-        /**
-         * ⚠️ **번호 하나로 찾으면 진화한 뒤 조용히 못 찾는다.** 찌르꼬(396)는
-         * L14에 찌르버드(397)가 되고 **L34에 찌르호크(398)**가 된다 — 장막·들판
-         * 체육관 앞의 사탕은 그 뒤라, 397만 찾으면 「먹일 마리가 파티에 없다」로
-         * 지나가고 새가 두 레벨 모자란 채 관장 앞에 선다. 한 줄이 계통 전체다
-         */
-        const family = STARLY_LINE.includes(species) ? STARLY_LINE : [species]
-        const at = slot ?? party.findIndex((one) => family.includes(one.species))
-        const mon = party[at]
-        /**
-         * ⚠️ **「못 했다」와 「할 자리가 없었다」를 가른다** (지시서
-         * JOURNEY21_NEXT_DECISIONS §2). 찌르꼬를 못 잡은 판에서는 이 걸음이
-         * **미실행**이지 실패가 아니다 — 그때의 실제 파티를 같이 적는다.
-         * 대신 잡기를 한 번 더 하거나 선두를 더 올리지 않는다
-         */
-        if (mon === undefined) {
-          return { ran: false, why: '먹일 마리가 파티에 없다', party: seen, fed: 0 }
-        }
-        const need = level - mon.level
-        if (need <= 0) return { ran: false, why: `이미 L${String(mon.level)}`, party: seen, fed: 0 }
-        const stocked = await page.evaluate(async ([pocket, item, n]) => {
-          const m = await import('/src/state/saveStore.ts')
-          return m.useSaveStore.getState().addItem(pocket, item, n)
-        }, [MEDICINE_POCKET, RARE_CANDY, need]).catch((e) => `넣기 실패 ${String(e?.message ?? e)}`)
-        if (stocked !== true) {
-          return { ran: false, why: `사탕을 못 넣었다 (${String(stocked)})`, party: seen, fed: 0 }
-        }
-        const fed = await api.feedCandy(at, level, Math.min(900_000, api.left()))
-        return {
-          ran: true, ok: fed.ok, why: fed.why ?? null, party: seen, fed: fed.fed,
-          from: `${String(mon.species)} L${String(mon.level)}`,
-          to: `${String(fed.species ?? '?')} L${String(fed.level ?? '?')}`,
-          asks: fed.asks ?? [], ms: fed.ms ?? null,
-        }
-      }
-
-      /** 사탕 걸음 하나를 한 줄 글로 — 로그에 적히는 그 줄이다 */
-      const candyLine = (got) => (got.ran
-        ? `${got.ok ? '됐다' : `못 했다 (${String(got.why)})`} · 사탕 ${String(got.fed)}알`
-          + ` · ${got.from}→${got.to} · ${String(Math.round((got.ms ?? 0) / 1000))}초`
-        : `**미실행** — ${got.why} (파티 ${JSON.stringify(got.party)})`)
 
       /**
        * ⚠️ **영원 체육관에서는 한 판마다 낫는다.** 실측(2026-09-17 journey12):
