@@ -76,6 +76,15 @@ const BUDGET_MS = Number(flag('budget') ?? 21600) * 1000
  * 소스·하네스·이야기 표·세이브 넷을 다 본다
  */
 const FROM = flag('from')
+/**
+ * **하네스만 바뀐 판은 이어 달려도 된다** (`--from=23 --allow-harness`).
+ *
+ * 뒤 구간(쥬피터·배지 3~5)을 고칠 때마다 유채까지 46분을 다시 걷지 않으려는
+ * 값이다(2026-09-23 사용자와 정했다). 세이브는 게임 상태라, 그것을 만든 **게임
+ * 소스·자료·세이브**가 같으면 그 자리의 세상은 같다 — 그 셋은 여전히 잠근다.
+ * 바뀐 하네스 지문은 기록 첫머리에 찍는다. 이 판도 **진단**이다
+ */
+const ALLOW_HARNESS = args.includes('--allow-harness')
 
 /**
  * **레벨은 이상한사탕으로 맞춘다** (`docs/orders/RARE_CANDY_20260917.md`).
@@ -404,6 +413,10 @@ const PASTORIA_POTIONS = 12
 
 /** 숲에 들기 전 선두 레벨 (진화 18을 넘고, 숲을 통과한 판의 L19~21에 맞춘다) */
 const FOREST_LEVEL = 20
+
+/** 갤럭시단 빌딩 앞 — 쥬피터를 한 번에 이긴 판의 값 (2026-09-22 · 아래 구간 23) */
+const JUPITER_LEAD_LEVEL = 30
+const JUPITER_STARAVIA_LEVEL = 30
 
 /** 축복시티 마트. 볼을 여기서 산다 — 꽃향기까지 가면 잡을 자리를 이미 지난다 */
 const JUBILIFE_MART = 4
@@ -984,7 +997,8 @@ let ranToTheEnd = false
  * ⚠️ **안 되면 조용히 전체를 돈다.** 다만 왜 못 이어 달리는지는 화면에 적는다 —
  * 「신원이 다르다」로만 적으면 다음 사람이 무엇이 바뀌었는지 다시 찾아야 한다
  */
-const resume = FROM === null ? { ok: false, segment: null, why: '' } : resumableAt(FROM, SHORTCUTS)
+const resume = FROM === null ? { ok: false, segment: null, why: '' }
+  : resumableAt(FROM, SHORTCUTS, { allowHarness: ALLOW_HARNESS })
 if (FROM !== null) {
   console.log(resume.ok
     ? `  구간 ${resume.segment.id}에서 이어 달린다 — ${resume.segment.save}`
@@ -993,6 +1007,7 @@ if (FROM !== null) {
   → 새 게임부터 전부 돈다`)
   if (resume.ok) {
     console.log('  ⚠️ 이 판은 **진단**이다 — 건너뛴 구간은 미실행이고 전체 PASS에 안 보탠다')
+    for (const n of resume.notes ?? []) console.log(`  ⚠️ 하네스가 그 세이브를 만든 때와 다르다 — ${n}`)
   }
 }
 
@@ -1503,14 +1518,24 @@ try {
          */
         north.taught = await api.teachHm(HM06, ROCK_SMASH, Math.min(300_000, api.left()))
         log(`  바위깨기를 가르친다 → ${north.taught.ok ? `${String(north.taught.slot)}번째가 배웠다` : String(north.taught.why)}`)
-        if (api.left() > 300_000) {
+        /**
+         * ⚠️ **한 번 못 들어가면 한 번 더 간다.** 이 걸음이 실패하면 바위가 선 채로
+         * 남고, 뒤의 걸음은 바위를 모른다 — 254에 들어가 앞문이 막힌 것을 보고
+         * 들어온 문으로 나갔다가 맵 그래프가 다시 254로 들여보내서 **영원시티·
+         * 체육관·빌딩이 전부** 같은 줄로 무너졌다(2026-09-23 대표 구간 1·5판).
+         * 5판은 입구 앞에서 비껴 서서 들지 못했다 — 그것은 제품의 모서리 보정으로
+         * 고쳤다(`actor/player.cornerSlip`). 여기는 그래도 한 번 빗나간 판이
+         * 통째로 버려지지 않게 하는 자리다
+         */
+        for (let tries = 0; tries < 2 && north.smash?.ok !== true && api.left() > 300_000; tries++) {
           const inCave = await api.goTo(RAVAGED_PATH, Math.min(300_000, api.left()))
           north.cave = inCave
+          const again = tries > 0 ? ' (다시)' : ''
           if (inCave === 'arrived') {
             north.smash = await api.smashWay(RAVAGED_PATH, ROUTE_204_N, Math.min(600_000, api.left()))
-            log(`  험한 샛길의 바위 → ${north.smash.ok ? '길이 열렸다' : String(north.smash.why)}`
+            log(`  험한 샛길의 바위${again} → ${north.smash.ok ? '길이 열렸다' : String(north.smash.why)}`
               + ` (${String(north.smash.broke.length)}개 건드렸다)`)
-          } else log(`  험한 샛길(${String(RAVAGED_PATH)}) → ${inCave}`)
+          } else log(`  험한 샛길(${String(RAVAGED_PATH)})${again} → ${inCave}`)
         }
       }
 
@@ -1805,6 +1830,25 @@ try {
           log(`  ${stop.what} 앞 레벨 맞추기 (선두 L${String(FOREST_LEVEL)}) → ${trained}`)
           story.training = [...(story.training ?? []), { before: stop.what, result: trained }]
           story.candySteps = [...(story.candySteps ?? []), { what: '숲 앞 선두', ...got }]
+        }
+        /**
+         * ⚠️ **갤럭시단 빌딩에 들기 전에 쥬피터 몫을 맞춘다.**
+         *
+         * 쥬피터는 주뱃 21 · 스컹탱크 23이고 선두의 풀이 **둘 다 안 박힌다**
+         * (지시서 JOURNEY_BADGE345 표 — 주뱃 ¼, 스컹탱크 ½). 박히는 것은
+         * 찌르버드의 비행뿐이다. 사탕 자리가 숲(L20)과 유채(찌르꼬 L16) 다음에
+         * 연고 체육관까지 없어서, 빌딩에 그 레벨로 들어갔다. 실측(2026-09-23
+         * 대표 구간 4판): 선두 L20대 · 찌르버드 L16으로 **두 번 다** 졌고(75→69),
+         * 쥬피터가 안 비키면 깃발 129가 안 서서 자전거 뒤가 통째로 막힌다.
+         * 값은 쥬피터를 한 번에 이긴 판의 것이다(2026-09-22 · L30 · L30)
+         */
+        if (stop.id === '23') {
+          const lead = await candyUp(0, null, JUPITER_LEAD_LEVEL)
+          log(`  ${stop.what} 앞 선두 사탕 (L${String(JUPITER_LEAD_LEVEL)}) → ${candyLine(lead)}`)
+          story.candySteps = [...(story.candySteps ?? []), { what: '쥬피터 앞 선두', ...lead }]
+          const bird = await candyUp(null, STARAVIA, JUPITER_STARAVIA_LEVEL)
+          log(`  ${stop.what} 앞 찌르버드 사탕 (L${String(JUPITER_STARAVIA_LEVEL)}) → ${candyLine(bird)}`)
+          story.candySteps = [...(story.candySteps ?? []), { what: '쥬피터 앞 찌르버드', ...bird }]
         }
         /**
          * ⚠️ **체육관 앞에서 약을 산다** (지시서 §13.5의 3번).

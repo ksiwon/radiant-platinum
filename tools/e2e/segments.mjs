@@ -106,9 +106,13 @@ export function writeSegment(id, save, at, shortcuts = []) {
  * 다음 사람이 무엇이 바뀌었는지 다시 찾아야 한다 — 어느 값이 어떻게 달라졌는지
  * 그대로 돌려준다
  *
- * @returns `{ ok, segment, why }`
+ * @param allowHarness 하네스 지문만은 달라도 된다 (`journey --allow-harness`).
+ *   **뒤 구간을 고치는 동안** 앞 구간을 매번 다시 걷지 않으려는 값이다 — 세이브는
+ *   게임 상태이고, 그것을 만든 **게임 소스·자료**가 같으면 그 자리의 세상은 같다.
+ *   달라진 하네스 지문은 `notes`로 돌려주어 기록 첫머리에 찍는다. 이 판은 여전히 진단이다
+ * @returns `{ ok, segment, why, notes }`
  */
-export function resumableAt(id, shortcuts = []) {
+export function resumableAt(id, shortcuts = [], { allowHarness = false } = {}) {
   const book = readSegments()
   const want = identityNow(shortcuts).shortcuts
   const one = book.segments.find((x) => sameSlot(x, id, want))
@@ -122,14 +126,16 @@ export function resumableAt(id, shortcuts = []) {
     return { ok: false, segment: one, why: `세이브가 없다 (${one.save})` }
   }
   const now = { ...identityNow(shortcuts), save: digestOf(one.save) }
-  const drift = []
+  const drift = [], notes = []
   for (const key of ['shortcuts', 'source', 'harness', 'data', 'save']) {
     if (one.identity[key] !== now[key]) {
-      drift.push(`${key} ${String(one.identity[key])} → ${String(now[key])}`)
+      const line = `${key} ${String(one.identity[key])} → ${String(now[key])}`
+      if (key === 'harness' && allowHarness) notes.push(line)
+      else drift.push(line)
     }
   }
   if (drift.length > 0) {
-    return { ok: false, segment: one, why: `신원이 달라졌다 — ${drift.join(' · ')}` }
+    return { ok: false, segment: one, why: `신원이 달라졌다 — ${drift.join(' · ')}`, notes }
   }
-  return { ok: true, segment: one, why: '' }
+  return { ok: true, segment: one, why: '', notes }
 }

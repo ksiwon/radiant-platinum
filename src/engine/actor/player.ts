@@ -70,6 +70,14 @@ function bikeAtTopSpeed(): boolean {
 }
 /** 캐릭터 반지름(타일 단위). 벽에 얼굴이 박히지 않게 여유를 둔다 */
 const RADIUS = 0.3
+/**
+ * 모서리 보정이 옆으로 끌어 주는 가장 먼 거리 (타일).
+ *
+ * 한 칸 틈은 x가 칸 가운데 ±(0.5 − RADIUS) = ±0.2 안이어야 지난다. 그 밖에서
+ * 가운데까지는 많아야 0.5인데, 0.35로 둔다 — 이보다 멀면 몸의 절반 넘게 옆 칸
+ * 벽 앞에 서 있는 것이라 원작으로 치면 **그 옆 칸**에 선 사람이다
+ */
+const CORNER_ASSIST = 0.35
 /** 존이 없을 때(회색 박스 월드) 쓰는 경계 */
 const FALLBACK_ARENA = 19
 /** 지면을 따라붙는 속도. 클수록 계단에 딱 붙는다 */
@@ -110,6 +118,49 @@ function bumpDirection(
 }
 
 const desired = new Vector3()
+
+/**
+ * **모서리 보정** — 한 칸 틈 앞에서 조금 비껴 서 있으면 틈 가운데로 끌어 준다.
+ *
+ * 원작은 칸 단위로 걸어서 늘 칸 가운데에 선다. 우리는 반지름 0.3의 네 모서리로
+ * 판정하므로, 폭 한 칸짜리 입구(동굴 · 좁은 길목) 앞에서 가운데에서 0.2 넘게
+ * 비껴 서면 한쪽 모서리가 옆 벽 칸에 걸려 **앞을 아무리 밀어도 안 들어간다.**
+ * 실측(2026-09-23 대표 구간 1·5판): 204번도로 남쪽에서 험한 샛길 입구
+ * (171,705) 바로 아래 칸에 오른쪽으로 비껴 서서 **3분 동안 한 칸도 못 들었다**
+ * (초당 60프레임 · 녹화). 입구 좌우 (170,705)·(172,705)가 막힌 칸이다.
+ * 사람도 똑같이 걸린다.
+ *
+ * 그래서 **한 축만** 밀고 있고(원작처럼 네 방향 걸음) 그 축이 막혔는데, 지금 칸
+ * 가운데로 옮기면 그 걸음이 통과할 때만 옆으로 끌어 준다. 옆걸음은 한 프레임에
+ * 앞으로 가려던 거리까지만이다 — 순간이동하지 않는다. 그 칸에서도 앞이 막혔으면
+ * (진짜 벽) 아무 일도 안 한다
+ *
+ * @param push     밀고 있는 방향 (`pushDirection`)
+ * @param stepX/Z  이번 프레임에 가려던 거리 (거절되기 전)
+ */
+function cornerSlip(
+  push: { x: number, z: number }, refusedX: boolean, refusedZ: boolean,
+  stepX: number, stepZ: number,
+): void {
+  const p = worldState.player
+  const along = (refusedZ && !refusedX && Math.abs(push.z) > 0.2 && Math.abs(push.x) < 0.2)
+    ? 'z' : (refusedX && !refusedZ && Math.abs(push.x) > 0.2 && Math.abs(push.z) < 0.2) ? 'x' : null
+  if (along === null) return
+  const side = along === 'z' ? p.position.x : p.position.z
+  const step = along === 'z' ? stepZ : stepX
+  const middle = Math.floor(side) + 0.5
+  const off = middle - side
+  if (Math.abs(off) < 1e-4 || Math.abs(off) > CORNER_ASSIST || step === 0) return
+  // 가운데에 섰다면 앞으로 갈 수 있는가 — 아니면 진짜 벽이다
+  const opens = along === 'z'
+    ? !blocked(middle, p.position.z + step)
+    : !blocked(p.position.x + step, middle)
+  if (!opens) return
+  const slide = Math.sign(off) * Math.min(Math.abs(off), Math.abs(step))
+  if (along === 'z') {
+    if (!blocked(p.position.x + slide, p.position.z)) p.position.x += slide
+  } else if (!blocked(p.position.x, p.position.z + slide)) p.position.z += slide
+}
 
 /**
  * 한 축씩 나눠 판정한다 — 벽을 따라 미끄러지게 하려면 축을 합쳐 판정하면 안 된다.
@@ -442,6 +493,9 @@ export const playerSystem = {
       } else { p.velocity.x = 0; refusedX = true }
       if (may(p.position.z, nz, out?.z ?? 0, !blocked(p.position.x, nz))) p.position.z = nz
       else { p.velocity.z = 0; refusedZ = true }
+      if (!onWall && !stuck) {
+        cornerSlip(dir, refusedX, refusedZ, nx - p.position.x, nz - p.position.z)
+      }
       // **밀었는데 못 갔다** — 원작의 「걸음 시도가 충돌로 끝났다」다
       // (`actor/footstep` 머리말). 여기 말고는 알 자리가 없다: 축별 통행 판정을
       // 하는 것이 이 두 줄뿐이다
