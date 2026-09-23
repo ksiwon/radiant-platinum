@@ -65,9 +65,16 @@ describe('한 칸 틈 — 모서리 보정', () => {
     expect(got.z).toBeGreaterThan(4.9)
   })
 
-  it('0.35보다 멀리 비껴 섰으면 안 끌린다 — 몸 절반 넘게 옆 벽 앞이다', () => {
-    const got = walk(5.9, 0, -1)
-    expect(got.x).toBeCloseTo(5.9, 5)
+  it('칸 끝 가까이(0.375·0.45) 비껴 서도 같은 칸이면 들어간다 — 트레이너 스쿨 문', () => {
+    // 실측 자리: 168.875 · 168.125 (가운데에서 0.375)
+    expect(walk(5.875, 0, -1).z).toBeLessThan(5)
+    expect(walk(5.125, 0, -1).z).toBeLessThan(5)
+    expect(walk(5.95, 0, -1).z).toBeLessThan(5)
+  })
+
+  it('옆 칸에 섰으면 안 끌린다 — 그 칸 앞은 벽이다', () => {
+    const got = walk(6.1, 0, -1)
+    expect(got.x).toBeCloseTo(6.1, 5)
     expect(got.z).toBeGreaterThan(4.9)
   })
 
