@@ -410,6 +410,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 36,
     mapFeatures: null,
   }),
+
+  // 무엇으로 다니고 있었나 (REPAIR §87). 옛 리포트는 적은 적이 없으므로 걷기다 — 물 위에서
+  // 쓴 옛 리포트는 예전처럼 파도타기가 풀린 채 열린다
+  36: (data) => ({
+    ...data,
+    version: 37,
+    position: { ...(data.position as Record<string, unknown>), avatar: 0 },
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

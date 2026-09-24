@@ -532,6 +532,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     const at = back ?? useSaveStore.getState().position
     /** 다시 도는 것이면 얼굴은 이미 맞다 — 세이브 값으로 되돌리면 안 된다 */
     const facing = back === null ? useSaveStore.getState().position.facing : null
+    /**
+     * 무엇으로 다니고 있었나 (REPAIR §87) — 원작은 이어하기에서 세이브의 `playerState`로 주인공을 세운다
+     * (`PlayerAvatar_NewLoad`). 다시 도는 것이면 지금 상태가 맞으므로 안 건드린다
+     */
+    const avatar = back === null ? useSaveStore.getState().position.avatar : null
     /** 서는 높이 — 깨어진 세계는 적힌 값, 보통 맵은 그 값에 가장 가까운 격자 층 (`restoreGroundY`) */
     const distortion = isDistortionFloor(at.map)
 
@@ -543,6 +548,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       settle: (next) => {
         if (facing !== null) worldState.player.facing = facing
         enter(next, at.map, at.x, at.z, at.matrix, restoreGroundY(next, at, distortion))
+        // 물 위에서 쓴 리포트는 물 위에서 · 자전거면 자전거 곡까지 (`bike.ride`가 곡을 갈아 끼운다)
+        if (avatar === 2) worldState.player.surfing = true
+        else if (avatar === 1) fieldScripts.services.bike?.ride(true)
         // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
         // 먼저 덮으면 지워진다. 로딩 화면이 걷히는 그 순간을 이 인이 이어받는다
         coverScreen()

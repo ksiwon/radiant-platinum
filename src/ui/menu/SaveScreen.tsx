@@ -14,7 +14,7 @@ import { fieldScripts } from '../../engine/script/field'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
-import { worldState } from '../../state/worldState'
+import { avatarState, worldState } from '../../state/worldState'
 import { useMenuKeys } from './useMenuKeys'
 import { SaveInfo } from './SaveInfo'
 import * as css from './menuChrome.css'
@@ -83,6 +83,7 @@ export function SaveScreen() {
         facing: worldState.player.facing,
         // 깨어진 세계는 격자에 높이가 없다 (`state/save/schema`의 `position.y`)
         y: p.y,
+        avatar: avatarState(),
       })
       .then((got) => {
         setBackup({ started: got.backup.started, fileName: got.fileName })

@@ -156,3 +156,12 @@ export const worldState = {
 }
 
 export type WorldState = typeof worldState
+
+/**
+ * 주인공이 지금 무엇으로 다니는가 — 원작 `PLAYER_AVATAR_WALKING` 0 · `_CYCLING` 1 · `_SURFING` 2
+ * (`PlayerData.playerState`). 리포트가 이 값을 적고 이어하기가 되살린다 (`state/save/schema`의 `position.avatar`)
+ */
+export function avatarState(): 0 | 1 | 2 {
+  const p = worldState.player
+  return p.surfing ? 2 : p.cycling ? 1 : 0
+}

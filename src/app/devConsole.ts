@@ -16,7 +16,7 @@ import { createWild, fillPp, statsOf } from '../engine/pokemon/instance'
 import { world } from '../engine/map/world'
 import { cameraSystem, roomAt } from '../engine/actor/camera'
 import { useBattleStore } from '../state/battleStore'
-import { worldState } from '../state/worldState'
+import { avatarState, worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { useMenuStore } from '../state/menuStore'
 import { frontierStock } from '../engine/bag/frontierMart'
@@ -366,7 +366,7 @@ export function installDevConsole(): void {
       const here = world.mapId >= 0
         ? {
           map: world.mapId, matrix: world.matrix, x: p.x, z: p.z,
-          facing: worldState.player.facing, y: p.y,
+          facing: worldState.player.facing, y: p.y, avatar: avatarState(),
         }
         : save.position
       return save.report(here)

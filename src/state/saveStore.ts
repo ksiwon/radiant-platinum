@@ -193,6 +193,12 @@ export interface SaveData {
     map: number; matrix: number; x: number; z: number; facing: number
     /** 선 높이. 깨어진 세계에서만 쓴다 — 그 세계는 격자에 높이가 없다 */
     y: number | null
+    /**
+     * 무엇으로 다니고 있었나 — 걷기 0 · 자전거 1 · 파도타기 2 (`PlayerData.playerState`).
+     * 원작은 이것을 세이브에 담아 이어하기에서 그대로 세운다(`PlayerAvatar_NewLoad`) — 물 위에서 쓴
+     * 리포트가 물 위에서 열린다. 안 담으면 파도타기가 풀린 채 물 칸에 서서 한 걸음도 못 뗐다(REPAIR §87)
+     */
+    avatar: number
   }
   money: number
   /**
@@ -383,7 +389,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 36
+export const SAVE_VERSION = 37
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -404,7 +410,7 @@ export const MAX_MONEY = 999999
  * 그대로 두면 주인공이 칸 모서리에 서서 **문 쪽(남쪽)을 보고** 시작한다
  */
 export const START_LOCATION = {
-  map: 415, matrix: 129, x: 4.5, z: 6.5, facing: Math.PI, y: null,
+  map: 415, matrix: 129, x: 4.5, z: 6.5, facing: Math.PI, y: null, avatar: 0,
 } as const
 
 export function createNewSave(): SaveData {

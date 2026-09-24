@@ -287,6 +287,8 @@ const saveSchema = z.object({
      * 여태처럼 격자에 묻는다
      */
     y: z.number().finite().nullable(),
+    /** 걷기 0 · 자전거 1 · 파도타기 2 (`PlayerData.playerState` · REPAIR §87). 옛 리포트는 0이다 */
+    avatar: int(0, 2),
   }),
   money: int(0, 999999),
   healSpot: int(0, 255),

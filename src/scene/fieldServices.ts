@@ -172,7 +172,7 @@ import {
 } from '../engine/pokemon/breeding'
 import { canLearnTm } from '../engine/bag/fieldUse'
 import { useHatchStore } from '../state/hatchStore'
-import { worldState } from '../state/worldState'
+import { avatarState, worldState } from '../state/worldState'
 import { blackOut, healParty, loadHealTables, watchBlackOut, watchPartnerHeal } from './pokecenter'
 import { useDoorVisualStore } from './doorVisualStore'
 import { loadPropAnimSet } from './propAnim'
@@ -1210,6 +1210,7 @@ const services: FieldServices = {
           // 깨어진 세계는 격자에 높이가 없다 — 리포트가 안 들고 있으면 다시
           // 열 때 판을 못 고른다 (`state/save/schema`의 `position.y`)
           y: at.y,
+          avatar: avatarState(),
         })
         .then((got) => { saveOutcome = got.saved })
         .catch(() => { saveOutcome = false })
