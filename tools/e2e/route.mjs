@@ -190,6 +190,51 @@ export function encounterTiles(mapId) {
   return out
 }
 
+/**
+ * **물** — 파도타기를 타야 들어가는 칸 (`map/zone`의 `SURFABLE` · 롬
+ * `TILE_BEHAVIOR_FLAG_SURFABLE`).
+ *
+ * ⚠️ **격자에 통행 불가로 안 찍혀 있다.** 제품은 격자가 아니라 「파도타기 중인가」로
+ * 가른다(`PlayerAvatar_CheckCollision`의 `PLAYER_COLLISION_WATER`). 모르면 계획이 물
+ * 위로 걷는 길을 내고 물가에서 선다 — 218번도로가 그렇다(JOURNEY_BADGE67 §6).
+ *
+ * 표가 두 군데다 — `badges.test.mts`가 이 값이 제품의 `isSurfable`과 같은지 잠근다
+ */
+export const SURFABLE = new Set([
+  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x19, 0x22, 0x2a, 0x50, 0x51, 0x52, 0x53, 0x73, 0x78, 0x7c,
+])
+/**
+ * 물 위의 다리 셋 — **위는 땅이다** (`isOnWater`의 층 갈래). 걸어서 건너는 자리라
+ * 막지 않는다. 자전거길이 이 위에 있다
+ */
+const WATER_BRIDGES = new Set([0x73, 0x78, 0x7c])
+/** 폭포. 파도타기로도 못 오른다 — 폭포오르기는 이 구간 밖이다 */
+const WATERFALL = 0x13
+
+/**
+ * **한쪽으로만 막힌 칸** (`actor/edgeBlock` · 원작 `sub_02064004`). 무쇠·선단 체육관 따위에
+ * 있다. 지금 칸이 그 방향으로 나가는 것을 막거나, 들어갈 칸이 반대쪽에서 들어오는 것을
+ * 막으면 못 간다. 표가 두 군데다 — `badges.test.mts`가 제품과 같은지 잠근다
+ */
+const BLOCKS_OUT = [
+  new Set([0x32, 0x34, 0x35, 0x49]), // 북
+  new Set([0x33, 0x36, 0x37, 0x49]), // 남
+  new Set([0x31, 0x35, 0x37, 0x4a]), // 서
+  new Set([0x30, 0x34, 0x36, 0x4a]), // 동
+]
+const OPPOSITE = [1, 0, 3, 2]
+export function edgeBlocks(from, to, dx, dz) {
+  const d = dz < 0 && dx === 0 ? 0 : dz > 0 && dx === 0 ? 1 : dx < 0 && dz === 0 ? 2 : dx > 0 && dz === 0 ? 3 : -1
+  if (d < 0) return false
+  return BLOCKS_OUT[d].has(from) || BLOCKS_OUT[OPPOSITE[d]].has(to)
+}
+
+/** 그 칸이 파도타기로만 들어가는 물인가 (다리는 땅으로 친다) */
+export function waterAt(matrixId, x, z) {
+  const b = gridOf(matrixId).at(x, z) & 0x7fff
+  return SURFABLE.has(b) && !WATER_BRIDGES.has(b)
+}
+
 /** 방향키 하나가 옮기는 칸. `sceneMark`의 `data-tile`과 같은 축이다 */
 export const STEP = {
   ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
@@ -296,7 +341,10 @@ export const lastPlan = {
  */
 export function planPath(
   matrixId, from, isGoal,
-  { limit = NODE_CAP, avoid = null, avoidStep = null, cancelled = null, enterBlockedGoal = false } = {},
+  {
+    limit = NODE_CAP, avoid = null, avoidStep = null, cancelled = null, enterBlockedGoal = false,
+    surf = false,
+  } = {},
 ) {
   const t0 = performance.now()
   const grid = gridOf(matrixId)
@@ -324,6 +372,12 @@ export function planPath(
     return done(PLAN.invalid, null)
   }
 
+  /**
+   * **물을 지나가도 되는가.** 부르는 쪽이 켜거나(`surf` — 파도타기를 쓸 다리),
+   * **이미 물 위에서 출발하면** 켠다 — 파도타기 중인 사람에게 물을 막으면 한 걸음도
+   * 못 간다
+   */
+  const swim = surf || waterAt(matrixId, from.x, from.z)
   const s = scratchFor(grid)
   const run = ++s.run
   const { stamp, parent, dir, queue } = s
@@ -351,6 +405,11 @@ export function planPath(
       if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue
       const nid = nz * w + nx
       if (stamp[nid] === run) continue
+      const beh = grid.at(nx, nz) & 0x7fff
+      // 물 — 파도타기가 아니면 못 들어가고, 폭포는 파도타기로도 못 오른다
+      if (SURFABLE.has(beh) && !WATER_BRIDGES.has(beh) && (!swim || beh === WATERFALL)) continue
+      // 한쪽으로만 막힌 가장자리
+      if (edgeBlocks(grid.at(cx, cz) & 0x7fff, beh, dx, dz)) continue
       const blocked = grid.blocked(nx, nz)
       // ⚠️ **걸음 금지는 목표 예외를 안 탄다.** 아래 `enterBlockedGoal` 갈래는
       // 「막힌 칸이지만 거기가 목표다」를 위한 것인데, 걸음 금지가 막는 칸은

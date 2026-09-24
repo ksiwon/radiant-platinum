@@ -265,11 +265,11 @@ export const SUITES = {
     contract: 8,
     roster: () => listRoster(JOURNEY_CASES, 'tools/distribution/evidence.mjs'),
     harness: [
-      'tools/e2e/journey.mjs', 'tools/e2e/badges.mjs',
+      'tools/e2e/journey.mjs', 'tools/e2e/badges.mjs', 'tools/e2e/badges67.mjs',
       // ⚠️ **체육관 풀이도 도구다.** 장막의 샌드백 차례를 내는 탐색이 여기 있고
       // (`observe.veilstonePlan`이 페이지 안에서 부른다), 그것이 바뀌면 「자두
       // 앞에 섰다」의 뜻이 바뀐다 — 목록 밖에 있으면 봉투가 그 변화를 못 잡는다
-      'tools/e2e/gymSolve.mjs',
+      'tools/e2e/gymSolve.mjs', 'tools/e2e/gymSolve67.mjs',
       'tools/e2e/drive.mjs', 'tools/e2e/observe.mjs', 'tools/e2e/route.mjs',
       'tools/e2e/budget.mjs', 'tools/e2e/loadSpy.mjs',
       'tools/e2e/canvasShot.mjs', 'tools/e2e/terrainJudge.mjs', 'tools/e2e/stageProbe.mjs',

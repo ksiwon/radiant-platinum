@@ -7,12 +7,14 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { Behavior } from '../../src/engine/map/zone'
+import { Behavior, isSurfable } from '../../src/engine/map/zone'
+import { edgeBlocks as productEdgeBlocks } from '../../src/engine/actor/edgeBlock'
 import { PASTORIA_WATER } from '../../src/engine/world/pastoriaGym'
 import { VEILSTONE_GYM_MAP } from '../../src/engine/world/veilstoneGym'
 import { MAP, PASTORIA, pastoriaButtons, VEILSTONE } from './badges.mjs'
 import {
-  bikeSlopes, gridOf, matrixOf, missingData, npcsOf, planPath, slopeClimbBan, warpsOf,
+  bikeSlopes, edgeBlocks, gridOf, matrixOf, missingData, npcsOf, planPath, slopeClimbBan, SURFABLE, waterAt,
+  warpsOf,
 } from './route.mjs'
 
 /** 자료를 아직 안 구운 기계에서는 **미실행**이다. 통과가 아니다 */
@@ -107,6 +109,54 @@ describe.skipIf(!HAVE)('진흙 비탈', () => {
     const inside = matrixOf(47)
     expect(bikeSlopes(inside).size).toBe(0)
     expect(slopeClimbBan(inside)).toBeNull()
+  })
+})
+
+/**
+ * **물** (`route.mjs`의 `SURFABLE` · JOURNEY_BADGE67 §6.1). 격자에 통행 불가로 안
+ * 찍혀 있어서 모르면 계획이 물 위를 걷는 길을 낸다
+ */
+describe('물', () => {
+  it('하네스의 한쪽 막음 표가 제품의 것과 같다 — 거동값 짝 전부 · 네 방향', () => {
+    let mismatch = 0
+    for (let a = 0; a < 0x100; a++) {
+      for (let b = 0; b < 0x100; b++) {
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (edgeBlocks(a, b, dx, dz) !== productEdgeBlocks(a, b, dx, dz)) mismatch++
+        }
+      }
+    }
+    expect(mismatch).toBe(0)
+  })
+
+  it('하네스의 물 표가 제품의 isSurfable과 같다 — 거동값 전부', () => {
+    for (let b = 0; b < 0x100; b++) expect(SURFABLE.has(b), `거동값 0x${b.toString(16)}`).toBe(isSurfable(b))
+  })
+})
+
+describe.skipIf(!HAVE)('물 (자료)', () => {
+  /**
+   * 218번도로 — 축복 쪽 게이트에서 들어선 칸 (120,758) → 운하 쪽 게이트 워프.
+   * 파도타기 없이는 못 건넌다(롬의 길 그대로). 값은 2026-09-24에 이 계획으로 잰 것이다
+   */
+  it('218번도로는 파도타기로만 건넌다', () => {
+    const from = { x: 120, z: 758 }
+    const doors = warpsOf(MAP.route218).filter((w) => w.to === MAP.gate218Canalave)
+    expect(doors.length).toBeGreaterThan(0)
+    const goal = (x: number, z: number): boolean => doors.some((w) => w.x === x && w.z === z)
+    expect(planPath(0, from, goal, { enterBlockedGoal: true }).status).toBe('unreachable')
+    const wet = planPath(0, from, goal, { enterBlockedGoal: true, surf: true })
+    expect(wet.keys).not.toBeNull()
+    expect(wet.keys!.length).toBe(64)
+  })
+
+  it('물 위에서 출발하면 파도타기 중으로 본다 — 물을 막으면 한 걸음도 못 간다', () => {
+    const grid = gridOf(0)
+    let start: { x: number, z: number } | null = null
+    for (let x = 80; x < 120 && start === null; x++) if (waterAt(0, x, 758)) start = { x, z: 758 }
+    expect(start).not.toBeNull()
+    const land = (x: number, z: number): boolean => !waterAt(0, x, z) && !grid.blocked(x, z)
+    expect(planPath(0, start!, land).keys).not.toBeNull()
   })
 })
 

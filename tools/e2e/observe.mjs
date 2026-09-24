@@ -254,8 +254,60 @@ function devObserver(page) {
         explorerKit: v.checkFlag(121) === true,
         galacticLeft: v.checkFlag(129) === true,
         bicycle: v.checkFlag(130) === true,
+        /**
+         * **여섯째·일곱째 배지 길목** (`docs/orders/JOURNEY_BADGE67_20260924.md` §2.1).
+         * 같은 셈법이고, 스물아홉 개를 롬 목록으로 다시 세어 맞췄다(2026-09-24).
+         *
+         *   · 16500 `VAR_CELESTIC_TOWN_STATE`   태홍을 이기면 1 → 동굴을 나서면 2
+         *   · 16625 `VAR_CELESTIC_TOWN_ELDER_STATE` 장로 좌표 장면 0 → 1
+         *   · 16645 `VAR_ROUTE_218_GATE_TO_CANALAVE_CITY_STATE` 연구원 장면 0 → 1
+         *   · 16504 `VAR_CANALAVE_CITY_STATE`   다리 1 → 배지 6 2 → 3 → 도서관 4 → 5
+         *   · 16562 `VAR_CANALAVE_LIBRARY_STATE` 1 → 폭발 뒤 2
+         *   · 16535 `VAR_LAKE_VERITY_PROF_ROWAN_STATE` 진실호수에 들어서면 1
+         *   · 16552 `VAR_ROUTE_217_STATE` · 16516 `VAR_ACUITY_LAKEFRONT_STATE` 대사 장면 0 → 1
+         */
+        gruntEast: v.checkFlag(258) === true, gruntTalked: v.checkFlag(259) === true,
+        grunt213: v.checkFlag(280) === true, grunt213Left: v.checkFlag(260) === true,
+        valorGrunt: v.checkFlag(262) === true, psyduck: v.checkFlag(263) === true,
+        charm: v.checkFlag(166) === true, painting: v.checkFlag(167) === true,
+        blockade218: v.checkFlag(665) === true,
+        celestic: v.get(16500), celesticElder: v.get(16625), gate218: v.get(16645),
+        canalave: v.get(16504), library: v.get(16562),
+        valorExploded: v.checkFlag(168) === true, saturn: v.checkFlag(318) === true,
+        verityRowan: v.get(16535), verityLeft: v.checkFlag(186) === true,
+        coronetOpen: v.checkFlag(666) === true,
+        route217: v.get(16552), acuityFront: v.get(16516),
+        byronTm: v.checkFlag(146) === true, candiceTm: v.checkFlag(158) === true,
       }
     }),
+    /**
+     * **주인공이 지금 무엇을 타고 있나** — 파도타기·괴력(밀 수 있는가)·자전거.
+     * 게임이 판정에 쓰는 그 값들이다(`worldState.player`). 읽기만 한다
+     */
+    fieldState: () => read('주인공 상태를 못 읽었다', async () => {
+      const st = await import('/src/state/worldState.ts')
+      const p = st.worldState.player
+      return { surfing: p.surfing === true, strength: p.strength === true, cycling: p.cycling === true }
+    }),
+    /**
+     * **공중날기 화면 커서의 출발 칸과 목표 칸** (`ui/menu/FlyScreen`).
+     *
+     * 화면은 열릴 때 커서를 `FLY_SPOTS` 차례에서 **열린 첫 자리**에 두고, 방향키
+     * 한 번에 한 칸씩 옮긴다. 커서 자체는 화면 안의 상태라 밖에서 못 읽는다 — 그래서
+     * 같은 표를 **읽어서** 몇 칸 누를지 셈한다. 날았는지는 부르는 쪽이 맵으로 본다
+     */
+    flyPlan: (map) => read('타운맵을 못 읽었다', async (target) => {
+      const t = await import('/src/engine/map/townMap.ts')
+      const save = await import('/src/state/saveStore.ts')
+      const lit = save.useSaveStore.getState().flySpots
+      const open = t.FLY_SPOTS.find((one) => (lit & (1 << one.spawn)) !== 0) ?? null
+      const spot = t.FLY_SPOTS.find((one) => one.map === target) ?? null
+      return {
+        from: open === null ? null : { x: open.x, z: open.z },
+        to: spot === null ? null : { x: spot.x, z: spot.z },
+        unlocked: spot !== null && (lit & (1 << spot.spawn)) !== 0,
+      }
+    }, map),
     /**
      * **자전거를 타고 있는가.** 게임의 `CheckPlayerOnBike`가 읽는 그 값이다
      * (`scene/fieldServices`의 `bike.riding` = `worldState.player.cycling`).
@@ -559,6 +611,8 @@ function distObserver(page) {
     movePower: async () => unknown(NO_SRC),
     foeNow: async () => unknown(NO_SRC),
     storyVars: async () => unknown(NO_SRC),
+    fieldState: async () => unknown(NO_SRC),
+    flyPlan: async () => unknown(NO_SRC),
     bagState: async () => unknown(NO_SRC),
     shopStock: async () => unknown(NO_SRC),
     eternaWalls: async () => unknown(NO_SRC),

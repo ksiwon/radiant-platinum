@@ -2307,8 +2307,13 @@ try {
    * 찍혔다 (2026-09-17 journey12). 도착 결말은 꽃시계 줄에 적는다
    */
   const GYM_STOP = '21'
+  /**
+   * ⚠️ **넷째 배지 뒤 자리들도 뺀다.** 그 자리들은 아래에서 제 줄(32~40)을 따로 적는데
+   * 번호가 자리 번호와 겹친다 — 여기서 또 적으면 한 판에 32~37이 두 번 찍혀
+   * `evidence.idProblem`이 봉투를 거절한다(2026-09-24 `journey-from33-13`에서 보였다)
+   */
   for (const stop of AFTER_STOPS.filter((one) => !FIRST_BADGE_STOPS.has(one.id) && one.id !== GYM_STOP
-    && !THIRD_BADGE_STOPS.has(one.id))) {
+    && !THIRD_BADGE_STOPS.has(one.id) && !LATER_BADGE_STOPS.has(one.id))) {
     const got = seen.find((one) => one.id === stop.id)
     const j = stopVerdict(got?.verdict ?? '안 갔다')
     // 숲 줄에는 **동행**까지 적는다 — 붙었는지가 그 구간의 내용이다

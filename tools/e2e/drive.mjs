@@ -30,7 +30,7 @@ import { makeObserver, watchMapScene } from './observe.mjs'
 import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
 import {
   allMaps, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
-  planPath, slopeClimbBan, TILE_TABLE, trainersOn, warpsOf,
+  planPath, slopeClimbBan, TILE_TABLE, trainersOn, waterAt, warpsOf,
 } from './route.mjs'
 
 /** 방향키 하나가 옮기는 칸 */
@@ -272,8 +272,16 @@ export async function driveStory(page, {
     curEp?.moves.push({ how, at: at === null ? null : { x: at.x, z: at.z, map: at.map } })
   }
 
+  /**
+   * **물을 길로 칠 것인가** (`setSurf`). 파도타기를 배운 뒤 물을 건너야 하는 다리만
+   * 켠다 — 켜 두면 계획이 물을 지름길로 잡아 쓸데없이 물에 들었다 나왔다 한다
+   */
+  let surfMode = false
+  /** 파도타기를 시작한 기록. 결과에 적는다 */
+  const surfLog = []
+
   const planned = (matrix, from, isGoal, opts, why) => {
-    const r = planPath(matrix, from, isGoal, opts)
+    const r = planPath(matrix, from, isGoal, { surf: surfMode, ...opts })
     const row = {
       why, matrix, from: { ...from }, ...r.stats,
       // ⚠️ **어떤 정책으로 세운 계획인지가 없으면 비교가 안 된다** (§4.1)
@@ -1276,7 +1284,80 @@ export async function driveStory(page, {
     return at
   }
 
+  /**
+   * **파도타기를 시작한다** — 사람이 하는 길 그대로: 물 쪽으로 돌아서서 A →
+   * 「파도타기를 쓰겠습니까?」 예 (`FieldMoves_Water` → `UseSurf`).
+   *
+   * 물은 파도타기가 아니면 막혀 있어서 방향키를 눌러도 제자리에서 돌기만 한다
+   * (`actor/player`의 제자리 돌기). 탔는지는 글이 아니라 `fieldState.surfing`으로 본다
+   */
+  const surfStart = async (key) => {
+    const t0 = Date.now()
+    const before = await now()
+    await tap(key, 80)
+    await settle()
+    await tap('Space', 400)
+    await clearTalk()
+    let on = false
+    for (let i = 0; i < 50 && !on; i++) {
+      const f = await obs.fieldState()
+      on = f.known && f.value?.surfing === true
+      if (!on) await page.waitForTimeout(100)
+    }
+    // 물 칸으로 뛰어오르는 동안 기다린다 — 도착 칸에서 다음 계획을 세운다
+    await page.waitForTimeout(700)
+    const after = await now()
+    const row = {
+      ok: on, key, from: { map: before.map, x: before.x, z: before.z },
+      to: { map: after.map, x: after.x, z: after.z }, ms: Date.now() - t0,
+    }
+    surfLog.push(row)
+    log(`      파도타기 ${on ? '탔다' : '못 탔다'} (${String(before.x)},${String(before.z)}) ${key}`)
+    return row
+  }
+
+  /**
+   * 걸음 목록에서 **뭍에서 물로 드는 첫 걸음**의 번호. 없으면 -1.
+   * 다리 위는 땅으로 친다(`waterAt`)
+   */
+  const waterEntry = (keys, from, matrix) => {
+    let x = from.x
+    let z = from.z
+    for (let i = 0; i < keys.length; i++) {
+      const [dx, dz] = STEPV[keys[i]]
+      const wet = waterAt(matrix, x + dx, z + dz)
+      if (wet && !waterAt(matrix, x, z)) return i
+      x += dx
+      z += dz
+    }
+    return -1
+  }
+
+  /**
+   * 걸음을 밟는다. ⚠️ **파도타기 다리에서는 물에 들기 직전에 끊는다** — 거기까지
+   * 걷고, 물 쪽으로 돌아서 파도타기를 쓰고, 돌려준다. 나머지는 부르는 쪽이 물 위에서
+   * 다시 계획한다(`goTo`는 바퀴마다 다시 계획한다)
+   */
   const walk = async (keys, from, mapId, shun = null) => {
+    if (surfMode) {
+      const cut = waterEntry(keys, from, matrixOf(mapId))
+      if (cut >= 0) {
+        if (cut > 0) {
+          const dry = await walkSteps(keys.slice(0, cut), from, mapId, shun)
+          if (dry !== 'done') return dry
+        }
+        const f = await obs.fieldState()
+        if (!(f.known && f.value?.surfing === true)) {
+          const got = await surfStart(keys[cut])
+          if (!got.ok) return 'blocked'
+        }
+        return 'done'
+      }
+    }
+    return walkSteps(keys, from, mapId, shun)
+  }
+
+  const walkSteps = async (keys, from, mapId, shun = null) => {
     const doors = warpsOf(mapId)
     for (const leg of runs(keys, from)) {
       const legT0 = Date.now()
@@ -2419,6 +2500,124 @@ export async function driveStory(page, {
   }
 
   /**
+   * **공중날기로 그 마을에 간다** — 시작 메뉴 「공중날기」 → 타운맵 → 방향키 → 결정.
+   *
+   * ⚠️ **원작은 이 항목이 포켓몬 화면에 붙는다.** 제품이 시작 메뉴에 둔 것은 그 자리를
+   * 아직 안 만들어서다(`ui/menu/StartMenu`) — 사람도 지금은 이 길로 난다.
+   *
+   * 커서는 화면 안의 상태라 못 읽는다. 열린 첫 자리에서 시작해 방향키 한 번에 한 칸
+   * 가는 규칙을 **제품의 표로** 셈하고(`flyPlan`), 날았는지는 **맵**으로 본다
+   */
+  const flyTo = async (target, budgetMs = 120_000) => {
+    const t0 = Date.now()
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    const before = await now()
+    if (before.map === target) return { ok: true, already: true, ms: 0 }
+    const plan = await obs.flyPlan(target)
+    if (!plan.known) return { ok: false, unknown: true, why: `타운맵을 못 읽었다 (${String(plan.why)})` }
+    const { from, to, unlocked } = plan.value
+    if (!unlocked || from === null || to === null) return { ok: false, why: `맵 ${String(target)}은 아직 날 수 없다` }
+    await settle()
+    await tap('KeyC')
+    const rowAt = async () => page.evaluate(() => {
+      const all = [...document.querySelectorAll('[role="radiogroup"] [role="radio"]')]
+      return {
+        n: all.length,
+        at: all.findIndex((e) => e.getAttribute('aria-checked') === 'true'),
+        want: all.findIndex((e) => (e.textContent ?? '').includes('공중날기')),
+        texts: all.map((e) => (e.textContent ?? '').replace(/s+/g, ' ').trim()),
+      }
+    })
+    let menu = null
+    for (let i = 0; i < 20 && Date.now() < till; i++) {
+      menu = await rowAt().catch(() => null)
+      if (menu !== null && menu.n > 0) break
+      await page.waitForTimeout(250)
+    }
+    if (menu === null || menu.want < 0) {
+      await closeMenus()
+      return { ok: false, why: `시작 메뉴에 공중날기가 없다 (${JSON.stringify(menu?.texts ?? null)})` }
+    }
+    for (let i = 0; i < menu.n + 3; i++) {
+      const at = await rowAt()
+      if (at.at === menu.want) break
+      await tap(at.at < menu.want ? 'ArrowDown' : 'ArrowUp', 60)
+    }
+    await tap('Space', 400)
+    for (let i = 0; i < 30 && (await now()).menu !== 'fly'; i++) await page.waitForTimeout(200)
+    if ((await now()).menu !== 'fly') { await closeMenus(); return { ok: false, why: '타운맵이 안 열렸다' } }
+    // 커서는 열린 첫 자리에서 시작한다 — 화면이 그 값을 효과로 세우므로 한 박자 기다린다
+    await page.waitForTimeout(400)
+    const dx = to.x - from.x
+    const dz = to.z - from.z
+    for (let i = 0; i < Math.abs(dx); i++) await tap(dx > 0 ? 'ArrowRight' : 'ArrowLeft', 70)
+    for (let i = 0; i < Math.abs(dz); i++) await tap(dz > 0 ? 'ArrowDown' : 'ArrowUp', 70)
+    await tap('Space', 400)
+    let at = await now()
+    while (Date.now() < till && !(at.map === target && at.scene === 'overworld' && !at.restoring)) {
+      await page.waitForTimeout(250)
+      at = await now()
+    }
+    await settle()
+    const ok = at.map === target
+    if (!ok) await closeMenus()
+    log(`      공중날기 → 맵 ${String(target)} ${ok ? '닿았다' : `못 닿았다 (지금 ${String(at.map)})`}`)
+    return { ok, from, to, map: at.map, ms: Date.now() - t0, why: ok ? null : `맵이 ${String(at.map)}이다` }
+  }
+
+  /**
+   * **괴력으로 큰바위를 민다** — 바위 뒤 칸에 서서 바위 쪽을 보고 A → 「쓰겠습니까?」 예
+   * (`FieldMoves_Strength` → `DoStrengthFunc`) → 그 방향으로 `n`번 민다.
+   *
+   * 민 것은 **게임의 물체 자리**로 본다(`obstacleAt`). 밀고 나면 장애물 표에서 옛 칸을
+   * 지우고 새 칸을 넣는다 — 안 그러면 계획이 옛 칸을 막힌 채로 둔다
+   */
+  const strengthPush = async (mapId, boulder, key, n, budgetMs = 180_000) => {
+    const t0 = Date.now()
+    const [dx, dz] = STEPV[key]
+    const stand = { x: boulder.x - dx, z: boulder.z - dz }
+    const went = await stepOn(mapId, stand, budgetMs)
+    if (went !== 'arrived') return { ok: false, why: `바위 뒤 칸에 못 섰다 (${went})`, pushed: 0 }
+    await tap(key, 80)
+    await settle()
+    await tap('Space', 400)
+    await clearTalk()
+    const f = await obs.fieldState()
+    if (!(f.known && f.value?.strength === true)) {
+      return { ok: false, why: `괴력이 안 켜졌다 (${JSON.stringify(f.known ? f.value : f.why)})`, pushed: 0 }
+    }
+    let pushed = 0
+    let rock = { ...boulder }
+    for (let i = 0; i < n; i++) {
+      const next = { x: rock.x + dx, z: rock.z + dz }
+      const here = await now()
+      await page.keyboard.down(key)
+      let moved = false
+      for (let k = 0; k < 40 && !moved; k++) {
+        await page.waitForTimeout(50)
+        const r = await obs.obstacleAt(next.x, next.z)
+        moved = r.known && r.value !== null
+      }
+      await page.keyboard.up(key)
+      await page.waitForTimeout(300)
+      if (!moved) {
+        log(`      괴력 ${String(i + 1)}번째 밀기 — 바위가 안 옮겨졌다 (${String(here.x)},${String(here.z)})`)
+        break
+      }
+      obstacleGone(mapId, rock.x, rock.z)
+      standingObstacles.add(`${String(matrixOf(mapId))}:${String(next.x)},${String(next.z)}`)
+      rock = next
+      pushed++
+    }
+    await settle()
+    log(`      괴력 — ${String(pushed)}/${String(n)}번 밀었다 · 바위 (${String(rock.x)},${String(rock.z)})`)
+    return { ok: pushed === n, pushed, rock, ms: Date.now() - t0, why: pushed === n ? null : '다 못 밀었다' }
+  }
+
+  /** 파도타기 다리를 켜고 끈다 (`surfMode`) */
+  const setSurf = (on) => { surfMode = on === true }
+
+  /**
    * **도구 하나를 밭에서 쓴다** (`ui/menu/itemAction`의 그 갈래들).
    *
    * 지금 쓰는 자리는 **벌레회피스프레이**다 — 영원의 숲과 205번도로는 칸마다
@@ -2457,7 +2656,15 @@ export async function driveStory(page, {
    * ⚠️ **배웠는지는 파티로 확인한다.** 화면 글(「배웠다!」)로 재면 「이 포켓몬은
    * 배울 수 없다」와 구분이 글자 맞추기가 되고, 못 배운 판이 통과로 샌다
    */
-  const teachHm = async (item, move, budgetMs) => {
+  /**
+   * @param only 가르칠 **파티 자리들**. 주면 그 자리만 누른다 — 파도타기·괴력은
+   *   비버통, 공중날기는 찌르호크처럼 사람이 고르는 마리가 정해져 있다(JOURNEY_BADGE67 §7).
+   *   안 주면 예전처럼 빈 칸이 있는 마리부터 본다
+   * @param keep 칸이 찼을 때 **잊으면 안 되는 기술들**. 잊을 칸은 이 목록에 없는 첫
+   *   칸이다. ⚠️ 원작은 비전기술을 못 잊게 막는데 제품은 안 막는다(REPAIR §76) —
+   *   그래서 부르는 쪽이 비전기술을 여기 넣는다
+   */
+  const teachHm = async (item, move, budgetMs, { only = null, keep = [] } = {}) => {
     const t0 = Date.now()
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const knows = async () => {
@@ -2509,7 +2716,7 @@ export async function driveStory(page, {
      * 그것뿐인 판이 있고, 그때는 **무엇을 잊었는지가 결과에 적힌다**(`lost`)
      */
     const full = (i) => (movesBefore?.[i]?.moves.length ?? 0) >= 4
-    const roomy = (movesBefore ?? []).some((_, i) => !full(i))
+    const roomy = only === null && (movesBefore ?? []).some((_, i) => !full(i))
     for (let pass = 0; pass < (roomy ? 2 : 1) && learned < 0 && Date.now() < till; pass++) {
       if (pass > 0) {
         // 커서를 처음으로 되돌린다 — 파티 화면을 닫았다 열면 0에서 시작한다
@@ -2521,6 +2728,7 @@ export async function driveStory(page, {
     for (let i = 0; i < 6 && Date.now() < till; i++) {
       // 첫 바퀴에는 **칸이 찬 마리를 건너뛴다**
       if (pass === 0 && roomy && full(i)) { await tap('ArrowRight', 120); continue }
+      if (only !== null && !only.includes(i)) { await tap('ArrowRight', 120); continue }
       await tap('Space', 400)
       /**
        * **기술 칸이 다 찼으면 원작은 묻는다** (`PartyMenuCB_TeachMove`) —
@@ -2534,7 +2742,16 @@ export async function driveStory(page, {
         const text = await screen()
         said2.push(text.slice(0, 160))
         if (text.includes('잊게 하겠습니까')) { await tap('Space', 300); continue }
-        if (text.includes('어느 기술을')) { await tap('Space', 400); continue }
+        if (text.includes('어느 기술을')) {
+          const forget = (movesBefore?.[i]?.moves ?? []).findIndex((m) => !keep.includes(m))
+          // 지킬 것만 남았으면 「그만둔다」(다섯째 칸)로 물러난다 — 아무것도 안 잊는다
+          const down = forget < 0 ? (movesBefore?.[i]?.moves.length ?? 4) : forget
+          for (let k = 0; k < down; k++) await tap('ArrowDown', 120)
+          await tap('Space', 400)
+          continue
+        }
+        // 「그만둔다」 뒤의 「포기하겠습니까?」 — 예. 지킬 기술만 남은 마리는 배우지 않는다
+        if (text.includes('포기하겠습니까')) { await tap('Space', 400); continue }
         break
       }
       learned = await knows() ?? -1
@@ -3423,6 +3640,7 @@ export async function driveStory(page, {
     veilstoneState, pastoriaState, featureWalls, veilstonePlan,
     teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
+    flyTo, strengthPush, setSurf, surfLog, fieldState: () => obs.fieldState(),
     runAway, useItem, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만

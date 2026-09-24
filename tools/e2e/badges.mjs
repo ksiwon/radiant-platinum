@@ -26,6 +26,19 @@ export const ITEM = {
   repel: 79,
   /** 좋은상처약 */
   superPotion: 26,
+  // ── 여섯째·일곱째 배지 (JOURNEY_BADGE67 §2.2) ──
+  /** 비전머신03 (파도타기) — 봉신 동굴에서 태홍을 이기면 장로가 준다 */
+  hm03: 422,
+  /** 비전머신04 (괴력) — 강철섬 밖에서 현이가 준다 */
+  hm04: 423,
+  /** 고대의부적 — 210번도로 남에서 난천이 맡긴다 */
+  oldCharm: 439,
+  /** 비전신약 — 입지호수근처 조무래기를 이기면 난천이 준다 */
+  secretPotion: 464,
+  /** 고급상처약 — 배지 다섯이면 마트가 판다 (`engine/bag/mart.ts`의 tier 4) */
+  hyperPotion: 25,
+  /** 실버스프레이 */
+  superRepel: 76,
 }
 /** 베어가르기 기술 번호 */
 export const CUT = 15
@@ -54,6 +67,17 @@ export const MAP = {
   // 다섯째 배지 길 (지시서 §5.1)
   gate214: 381, route214: 380, valorLakefront: 336, route213: 373, gate213: 374,
   pastoria: 120, pastoriaMart: 121, pastoriaGym: 122, pastoriaCenter: 123,
+  // 여섯째·일곱째 배지 길 (JOURNEY_BADGE67 §2.3 · 줄 번호를 롬 이름으로 대조했다)
+  grandLakeLobby: 376, lakeValorDrained: 314, valorCavern: 316,
+  route210north: 363, celestic: 442, celesticCenter: 443, celesticCave: 449,
+  jubilife: 3, jubilifeCenter: 6, gate218Jubilife: 389, route218: 388, gate218Canalave: 390,
+  canalave: 33, canalaveMart: 34, canalaveGym: 35, canalaveCenter: 36,
+  library1F: 38, library2F: 39, library3F: 40, ironIsland: 288,
+  twinleaf: 411, route201: 342, verityLakefront: 334, lakeVerity: 312, sandgemCenter: 420,
+  route211west: 365, route211east: 366,
+  coronetNorth1: 218, coronetB1F: 219, coronetNorth2: 217,
+  route216: 383, route217: 385, acuityLakefront: 340,
+  snowpoint: 165, snowpointMart: 166, snowpointGym: 167, snowpointCenter: 168,
 }
 
 /**
@@ -1131,8 +1155,11 @@ function reachIn(blocked, from, box) {
  * 두 단추 사이를 영영 오간다.
  *
  * @param ctx `log`과, 길 찾기에 벽을 넣어 줄 `setWalls(mapId, keys)`
+ * @param goal 설 칸. 기본은 맥실러 앞이다. ⚠️ **나갈 때도 이 걸음이다** — 맥실러를 이긴
+ *   자리의 물 높이로는 문까지 길이 안 열릴 수 있다. 실측(2026-09-24 배지 6·7 탐침 1판):
+ *   맥실러 앞에서 문으로 곧장 `goTo`했더니 (10,3)~(11,5)를 2분 동안 맴돌았다
  */
-export async function pastoriaClimb(api, ctx, { rounds = 16 } = {}) {
+export async function pastoriaClimb(api, ctx, { rounds = 16, goal = PASTORIA.front, what = '맥실러 앞' } = {}) {
   const t0 = Date.now()
   const out = { presses: [] }
   const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
@@ -1162,13 +1189,13 @@ export async function pastoriaClimb(api, ctx, { rounds = 16 } = {}) {
 
     const blocked = new Set(walls)
     const spot = reachIn(blocked, { x: here.x, z: here.z }, PASTORIA.box)
-    if (spot.has(`${String(PASTORIA.front.x)},${String(PASTORIA.front.z)}`)) {
-      const went = await api.stepOn(PASTORIA.map, PASTORIA.front, Math.min(300_000, api.left()))
+    if (spot.has(`${String(goal.x)},${String(goal.z)}`)) {
+      const went = await api.stepOn(PASTORIA.map, goal, Math.min(300_000, api.left()))
       out.at = went
       out.ok = went === 'arrived'
       out.water = state.water
       out.ms = Date.now() - t0
-      note('맥실러 앞', `${went} · 물 ${String(state.water)} · 단추 ${String(out.presses.length)}번`)
+      note(what, `${went} · 물 ${String(state.water)} · 단추 ${String(out.presses.length)}번`)
       return out
     }
 
@@ -1221,7 +1248,7 @@ export async function pastoriaClimb(api, ctx, { rounds = 16 } = {}) {
     note(`단추 ${String(out.presses.length)} ${pick.what} (${String(pick.x)},${String(pick.z)})`,
       `${stood} · 물 ${String(state.water)} → ${String(after?.water)}`)
   }
-  out.why = `${String(rounds)}바퀴 안에 맥실러 앞에 못 섰다`
+  out.why = `${String(rounds)}바퀴 안에 ${what}에 못 섰다`
   out.ms = Date.now() - t0
   return out
 }
