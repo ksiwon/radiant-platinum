@@ -49,8 +49,11 @@ export interface IceView {
   behaviorAt: (tileX: number, tileZ: number) => number
   /** 그 칸 한가운데로 들어갈 수 있는가 */
   blockedAt: (tileX: number, tileZ: number) => boolean
-  /** 칸 한가운데의 지면 높이 */
-  heightAt: (tileX: number, tileZ: number) => number
+  /**
+   * 그 **점**의 지면 높이. 좌표는 칸 단위 실수다 — 칸 한가운데는 `(tx + 0.5, tz + 0.5)`.
+   * 비탈 칸 안에서 높이가 달라지는 것까지 읽어야 한다 (`heightChange`)
+   */
+  heightAt: (x: number, z: number) => number
   /**
    * 그 칸에 **눈덩이**가 서 있으면 깨고 참 (`ov5_021E06A8`). 없으면 거짓.
    * 눈덩이가 없는 맵·시험은 안 채워도 된다
@@ -128,15 +131,26 @@ export function lockDirection(vx: number, vz: number): { dx: number; dz: number 
 export const ICE_HEIGHT_EPSILON = 1 / 16
 
 /**
+ * 높이를 견줄 앞 점 — 칸 한가운데에서 **4분의 1칸** (`((16 << FX) >> 1) / 2` = 4/16칸)
+ */
+export const ICE_LOOK_AHEAD = 1 / 4
+
+/**
  * 높이가 오르는가 내리는가 (`PlayerAvatar_CheckIceHeightChange`).
  *
- * 원작은 **4분의 1칸 앞**을 본다 (`((16 << FX)>>1)/2` = 4/16칸). 우리는 칸
- * 한가운데 높이를 들고 있으므로 이웃 칸과 견준다 — 같은 것을 묻는다
+ * 원작은 선 칸 한가운데와 **4분의 1칸 앞**의 높이를 견준다. 그 점은 **아직 선 칸 안**이다 —
+ * 그래서 비탈은 **비탈 칸 위에서 한 번만** 잡힌다. 평평한 칸에서는 앞 칸이 비탈이어도
+ * 「그대로」다.
+ *
+ * ⚠️ **이웃 칸 한가운데와 견주면 비탈 하나를 두 번 센다** — 평평한 칸 → 비탈 칸에서 한 번,
+ * 비탈 칸 → 다음 평평한 칸에서 또 한 번. 전에 그렇게 옮겨서 선단 체육관의 무청 앞 턱
+ * (11,5)에 못 올랐다: (11,6)은 평평한 3단이라 원작은 속도 0 그대로 턱으로 미끄러져 서는데,
+ * 우리는 턱 칸 한가운데(3.5)를 보고 「오르막」으로 읽어 되밀었다(REPAIR §80)
  */
 export function heightChange(view: IceView, tileX: number, tileZ: number,
   dx: number, dz: number): HeightChange {
-  const here = view.heightAt(tileX, tileZ)
-  const next = view.heightAt(tileX + dx, tileZ + dz)
+  const here = view.heightAt(tileX + 0.5, tileZ + 0.5)
+  const next = view.heightAt(tileX + 0.5 + dx * ICE_LOOK_AHEAD, tileZ + 0.5 + dz * ICE_LOOK_AHEAD)
   if (Math.abs(here - next) < ICE_HEIGHT_EPSILON) return 'none'
   return here > next ? 'decrease' : 'increase'
 }
@@ -202,8 +216,14 @@ export function iceStep(view: IceView, pos: { x: number; z: number },
   if (view.behaviorAt(tx, tz) !== TILE_BEHAVIOR_ICE) {
     if (!iceSlide.active) return null
     // 마지막 칸(얼음이 아닌 첫 칸) 한가운데까지는 마저 간다
+    /**
+     * ⚠️ **다 왔으면 그 프레임은 속도 0을 낸다 — `null`이 아니다.** `null`은 「얼음이 안 잡았다」라
+     * 평소 이동이 미끄럼 속도(초당 8칸)를 이어받아 가감속으로 반 칸 넘게 흘러간다. 흘러서
+     * 앞 칸이 얼음이면 **남은 속도로 새 미끄럼이 잡힌다** — 선단 체육관 (1,8)에서 멈춰야 할
+     * 미끄럼이 (1,3)까지 갔다(탐침 추적 · REPAIR §81). 원작은 강제 이동이 칸 한가운데에서 끝난다
+     */
     const done = reachedTarget(pos)
-    if (done) { clearIceSlide(); return null }
+    if (done) { clearIceSlide(); return { vx: 0, vz: 0 } }
     return towardTarget(pos, runSpeed)
   }
 

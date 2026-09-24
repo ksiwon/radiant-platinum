@@ -227,8 +227,8 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
 const iceView: IceView = {
   behaviorAt: (tx, tz) => activeZone.grid?.behavior(tx, tz) ?? 0,
   blockedAt: (tx, tz) => blocked(tx + 0.5, tz + 0.5),
-  heightAt: (tx, tz) =>
-    activeZone.grid?.heightAtWorld(tx + 0.5, tz + 0.5, worldState.player.position.y) ?? 0,
+  heightAt: (x, z) =>
+    activeZone.grid?.heightAtWorld(x, z, worldState.player.position.y) ?? 0,
   breakAt: (tx, tz) => {
     if (!breakSnowballAt(tx, tz)) return false
     pushBikeCue(SFX.SNOWBALL_BREAK)

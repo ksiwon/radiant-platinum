@@ -477,7 +477,7 @@ function devObserver(page) {
       const view = {
         behaviorAt: (tx, tz) => grid.behavior(tx, tz),
         blockedAt: () => false,
-        heightAt: (tx, tz) => grid.heightAtWorld(tx + 0.5, tz + 0.5, p.y) ?? 0,
+        heightAt: (x, zz) => grid.heightAtWorld(x, zz, p.y) ?? 0,
       }
       const SNOWBALL = 118
       const actors = n.npcActors.list.filter((a) => a.visible)
