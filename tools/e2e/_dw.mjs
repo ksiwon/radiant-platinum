@@ -8,6 +8,7 @@
 //   e  선단 체육관을 나와 217번도로 비전머신08 → 락클라임 → 예지호수 장면
 //   f  장막시티 → 창고 → 아지트(갤럭시단의열쇠 · 태홍 → 마스터볼 · 새턴 → 호수 셋)
 //   g  축복 → 천관산 → 창기둥 → 깨진 창기둥 → 깨어진 세계 1F
+//   h  깨어진 세계 1F → 기라티나 방 (판 위 계획 — `distortionSolve.mjs`) · `--escape`면 1F 벽 속에서 걸어 나온다
 //   i  기라티나 방 → 마스터볼 → 송별의 샘
 //   여럿을 쉼표로 이어 준다. 다리마다 끝에 리포트를 남기고, 못 닿으면 거기서 멈춘다
 //
@@ -18,7 +19,7 @@ import { chromium } from 'playwright'
 import { freePort, startVite } from '../devServer.mjs'
 import { gpuArgs } from '../gpuFlags.mjs'
 import { driveStory } from './drive.mjs'
-import { MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ } from './badgesDW.mjs'
+import { MAP, candiceToAcuity, catchGiratina, coronetToSpear, veilstoneHQ, walkDistortion } from './badgesDW.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
 const args = process.argv.slice(2)
@@ -170,6 +171,9 @@ try {
         async () => (await v()).freed === true)) return
       if (legs.includes('g') && !await leg('g', 'probe-dw1f.rpsave', () => coronetToSpear(api, ctx),
         async () => (await api.now()).map === MAP.dw1F)) return
+      if (legs.includes('h') && !await leg('h', 'probe-giratina.rpsave',
+        () => walkDistortion(api, ctx, { escape: args.includes('--escape') }),
+        async () => { const st = await api.distortionState(); return st !== null && st.map === MAP.giratinaRoom })) return
       if (legs.includes('i')) {
         await leg('i', 'probe-sendoff.rpsave', () => catchGiratina(api, ctx),
           async () => (await api.now()).map === MAP.sendoffSpring && (await v()).giratinaCaught === true)
