@@ -307,6 +307,21 @@ function fluteFactorOf(item: Item): number | null {
   return null
 }
 
+/** 기술머신 수. 비전머신은 그 뒤에 이어 붙는다 (`NUM_TMS`) */
+const TM_COUNT = 92
+
+/**
+ * 비전머신이 가르치는 기술인가 (`Item_IsHMMove`) — 표의 뒤 여덟 칸.
+ *
+ * ⚠️ **이 기술은 못 잊는다.** 원작은 「어느 기술을 잊을까」에서 이것을 고르면
+ * 「중요한 기술입니다. 잊게 할 수 없습니다!」를 띄우고 다시 고르게 한다 — 필드(요약
+ * 화면)와 배틀(배틀 파티 화면) 둘 다다. 한동안 우리는 그냥 잊게 했다(REPAIR §76)
+ */
+export function isHmMove(move: number, tmMoves: readonly number[]): boolean {
+  for (let i = TM_COUNT; i < tmMoves.length; i++) if (tmMoves[i] === move) return true
+  return false
+}
+
 /** 기술머신·비전머신이 가르치는 기술 번호. 아니면 null */
 export function tmMove(item: Item, tmMoves: readonly number[]): number | null {
   const at = tmIndex(item)
@@ -319,7 +334,6 @@ export function tmMove(item: Item, tmMoves: readonly number[]): number | null {
  * 비전머신은 기술머신 92개 **뒤에** 이어 붙는다 — 원작의 `tmhm.narc`가 한 줄로
  * 100개다
  */
-const TM_COUNT = 92
 
 export function tmIndex(item: Item): number | null {
   const tm = /^ITEM_TM(\d\d)$/.exec(item.constant)

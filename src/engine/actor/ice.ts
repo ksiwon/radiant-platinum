@@ -56,6 +56,11 @@ export interface IceView {
    * 눈덩이가 없는 맵·시험은 안 채워도 된다
    */
   breakAt?: (tileX: number, tileZ: number) => boolean
+  /**
+   * 그 칸에서 (dx, dz)로 한 칸 가는 걸음을 **가장자리가** 막는가 (`actor/edgeBlock`).
+   * 선단 체육관의 0x49·0x4A가 그렇다. 없는 맵·시험은 안 채워도 된다
+   */
+  edgeBlockedAt?: (tileX: number, tileZ: number, dx: number, dz: number) => boolean
 }
 
 /** 미끄러지는 동안의 상태. 한 번에 하나뿐이라 모듈에 둔다 */
@@ -167,7 +172,7 @@ export function iceRunEnd(view: IceView, tileX: number, tileZ: number,
   for (let i = 0; i < MAX_RUN; i += 1) {
     const nx = x + dx
     const nz = z + dz
-    if (view.blockedAt(nx, nz)) break
+    if (view.blockedAt(nx, nz) || view.edgeBlockedAt?.(x, z, dx, dz) === true) break
     x = nx
     z = nz
     if (view.behaviorAt(x, z) !== TILE_BEHAVIOR_ICE) break
@@ -218,7 +223,7 @@ export function iceStep(view: IceView, pos: { x: number; z: number },
      * 속도 1이고(그래서 바로 아래 눈덩이가 깨진다), 속도 0에서 오르막이면 되밀린다
      */
     const first = iceSpeedAfter(0, heightChange(view, tx, tz, dir.dx, dir.dz))
-    if (first === null) return bounceBack(pos, tx, tz, runSpeed)
+    if (first === null) return bounceBack(view, pos, tx, tz, runSpeed)
     iceSlide.speed = first
     retarget(view, tx, tz)
   } else if (iceSlide.bouncing) {
@@ -244,7 +249,7 @@ export function iceStep(view: IceView, pos: { x: number; z: number },
     if (iceSlide.speed >= 1) view.breakAt?.(tx + iceSlide.dx, tz + iceSlide.dz)
     const next = iceSpeedAfter(iceSlide.speed,
       heightChange(view, tx, tz, iceSlide.dx, iceSlide.dz))
-    if (next === null) return bounceBack(pos, tx, tz, runSpeed)
+    if (next === null) return bounceBack(view, pos, tx, tz, runSpeed)
     iceSlide.speed = next
     retarget(view, tx, tz)
   }
@@ -256,10 +261,18 @@ export function iceStep(view: IceView, pos: { x: number; z: number },
 /**
  * ⚠️ **오르막에서 힘이 다하면 되밀린다** — 원작은 반대 방향으로 한 칸을
  * 느리게 걷고 얼음을 한 번 안 본다(`SetIgnoreTileBehavior`). 우리도
- * 방향을 뒤집고 그 한 칸까지만 간다
+ * 방향을 뒤집고 그 한 칸까지만 간다.
+ *
+ * ⚠️ **뒤가 막혔으면 되밀리지 않고 선다** — 원작이 되밀리기 전에 반대쪽 충돌을 보고
+ * 막혔으면 `FALSE`로 돌아간다(`TileMove_Ice`의 두 갈래)
  */
-function bounceBack(pos: { x: number; z: number }, tx: number, tz: number,
+function bounceBack(view: IceView, pos: { x: number; z: number }, tx: number, tz: number,
   runSpeed: number): IceStep {
+  const bx = -iceSlide.dx, bz = -iceSlide.dz
+  if (view.blockedAt(tx + bx, tz + bz) || view.edgeBlockedAt?.(tx, tz, bx, bz) === true) {
+    clearIceSlide()
+    return { vx: 0, vz: 0 }
+  }
   iceSlide.dx = -iceSlide.dx
   iceSlide.dz = -iceSlide.dz
   iceSlide.speed = 0

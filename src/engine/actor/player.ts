@@ -10,6 +10,7 @@ import { clearPanelSlide, panelStep } from './slidePanel'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
 import { breakSnowballAt, obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
+import { edgeBlocks, edgeCrossBlocked } from './edgeBlock'
 import { TOP_LEVEL, bikeSpeedAt, bikeSpeedLevel } from './bike'
 import { bikeRampHop, bikeSlopeStep, clearBikeSlip, isSlippingDownSlope, pushBikeCue } from './bikeTerrain'
 import { SFX } from '../audio/sfx'
@@ -233,6 +234,20 @@ const iceView: IceView = {
     pushBikeCue(SFX.SNOWBALL_BREAK)
     return true
   },
+  edgeBlockedAt: (tx, tz, dx, dz) => {
+    const grid = activeZone.grid
+    return grid !== null && edgeBlocks(grid.behavior(tx, tz), grid.behavior(tx + dx, tz + dz), dx, dz)
+  },
+}
+
+/**
+ * 이 축 걸음이 **한쪽으로만 막힌 칸의 가장자리**를 넘는가 (`actor/edgeBlock` ·
+ * `sub_02064004`). 무쇠·선단 체육관 따위에 있다 — 칸 전체가 막힌 것은 `blocked`가 본다
+ */
+function edgeBlocked(x0: number, z0: number, x1: number, z1: number): boolean {
+  const grid = activeZone.grid
+  if (!grid) return false
+  return edgeCrossBlocked((tx, tz) => grid.behavior(tx, tz), x0, z0, x1, z1, RADIUS)
 }
 
 export const playerSystem = {
@@ -499,10 +514,12 @@ export const playerSystem = {
         // 벽에서는 x 대신 y를 민다. x는 이미 판에 붙여 두었다
         if (stuck || !blocked(p.position.x, p.position.z, ny)) p.position.y = ny
         else p.velocity.y = 0
-      } else if (may(p.position.x, nx, out?.x ?? 0, !blocked(nx, p.position.z))) {
+      } else if (may(p.position.x, nx, out?.x ?? 0,
+        !blocked(nx, p.position.z) && !edgeBlocked(p.position.x, p.position.z, nx, p.position.z))) {
         p.position.x = nx
       } else { p.velocity.x = 0; refusedX = true }
-      if (may(p.position.z, nz, out?.z ?? 0, !blocked(p.position.x, nz))) p.position.z = nz
+      if (may(p.position.z, nz, out?.z ?? 0,
+        !blocked(p.position.x, nz) && !edgeBlocked(p.position.x, p.position.z, p.position.x, nz))) p.position.z = nz
       else { p.velocity.z = 0; refusedZ = true }
       if (!onWall && !stuck) {
         cornerSlip(dir, refusedX, refusedZ, nx - p.position.x, nz - p.position.z)

@@ -21,6 +21,13 @@
 
 import type { BoostStat } from '../../engine/battle/events'
 
+/**
+ * `TEXT_BANK_BATTLE_PARTY` — 배틀 파티 화면. 60이 「중요한 기술입니다. 잊게 할 수
+ * 없습니다!」(`BattleParty_Text_HMMovesCantBeForgotten`)다
+ */
+export const BATTLE_PARTY_BANK = 3
+export const BATTLE_PARTY_HM_CANT_FORGET = 60
+
 /** `TEXT_BANK_BATTLE_STRINGS` — 미국 롬 기준 뱅크 번호 */
 export const BATTLE_BANK = 368
 

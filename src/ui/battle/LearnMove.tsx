@@ -31,6 +31,11 @@ interface LearnMoveProps {
   typeName: (type: number) => string | undefined
   /** 답. `forget`이 null이면 안 배운다 */
   onAnswer: (forget: number | null) => void
+  /**
+   * 그 기술을 **못 잊으면** 띄울 글, 잊어도 되면 null. 비전기술이다 — 원작 배틀 파티
+   * 화면이 「중요한 기술입니다. 잊게 할 수 없습니다!」를 띄우고 다시 고르게 한다
+   */
+  lockedWhy?: (move: number) => string | null
 }
 
 type Stage = 'ask' | 'pick' | 'confirmGiveUp'
@@ -74,13 +79,19 @@ export function LearnMove(props: LearnMoveProps) {
 /** 어느 기술을 잊게 할까 — 네 칸 + 「그만둔다」 */
 function ForgetList(props: LearnMoveProps) {
   const rows = props.slots.filter((s) => s.move !== null)
-  // 마지막 줄은 "역시 그만둔다"다. 원작도 다섯 번째 칸으로 둔다
-  const cursor = useListCursor(rows.length + 1, (i) => {
+  /** 못 잊는 기술을 골랐을 때의 글. 다른 칸을 고르면 사라진다 */
+  const [refused, setRefused] = useState<string | null>(null)
+  const answer = (i: number): void => {
+    const id = i < rows.length ? rows[i]!.move : null
+    const why = id === null ? null : props.lockedWhy?.(id) ?? null
+    if (why !== null) { setRefused(why); return }
     props.onAnswer(i < rows.length ? i : null)
-  })
+  }
+  // 마지막 줄은 "역시 그만둔다"다. 원작도 다섯 번째 칸으로 둔다
+  const cursor = useListCursor(rows.length + 1, answer)
   return (
     <>
-      <div className={css.waiting}>어느 기술을 잊게 할까?</div>
+      <div className={css.waiting}>{refused ?? '어느 기술을 잊게 할까?'}</div>
       {rows.map((slot, i) => {
         const id = slot.move!
         const data = props.moveData(id)
@@ -98,7 +109,7 @@ function ForgetList(props: LearnMoveProps) {
                 <span className={css.ppMax}>/{slot.maxPp}</span>
               </span>
             )}
-            onClick={() => { props.onAnswer(i) }}
+            onClick={() => { answer(i) }}
           />
         )
       })}

@@ -270,3 +270,36 @@ describe('눈덩이', () => {
     expect(slideEast(view, 2)).toBe(1)
   })
 })
+
+describe('한쪽으로만 막힌 칸과 되밀림', () => {
+  const RUN = 8
+  const lineView = (map: string, heights: readonly number[], edge: (x: number, dx: number) => boolean): IceView => ({
+    behaviorAt: (tx, tz) => (tz === 0 && map[tx] === '.' ? TILE_BEHAVIOR_ICE : Behavior.NORMAL),
+    blockedAt: (tx, tz) => tz !== 0 || map[tx] === undefined || map[tx] === '#',
+    heightAt: (tx) => heights[tx] ?? 0,
+    edgeBlockedAt: (tx, tz, dx) => tz === 0 && edge(tx, dx),
+  })
+  const slide = (view: IceView, fromX: number, vx: number): number => {
+    const pos = { x: fromX + 0.5, z: 0.5 }
+    let input = { vx, vz: 0 }
+    for (let f = 0; f < 600; f++) {
+      const v = iceStep(view, pos, input, RUN)
+      input = { vx: 0, vz: 0 }
+      if (v === null || !isSliding()) break
+      pos.x += v.vx / 60
+    }
+    return Math.floor(pos.x)
+  }
+
+  it('가장자리가 막힌 칸 앞에서 선다 — 그 칸이 비어 있어도', () => {
+    // 3 → 4 걸음을 가장자리가 막는다 (4가 동서로 못 드는 칸이라 치자)
+    const v = lineView('_......#', [], (x, dx) => x === 3 && dx === 1)
+    expect(slide(v, 1, 4)).toBe(3)
+  })
+
+  it('되밀릴 뒤가 막혔으면 되밀리지 않고 선다', () => {
+    // 2에서 동쪽이 오르막(속도 0) — 뒤(1)로 가는 걸음을 가장자리가 막는다
+    const v = lineView('_...#', [0, 0, 0, 1, 1], (x, dx) => x === 2 && dx === -1)
+    expect(slide(v, 2, 4)).toBe(2)
+  })
+})

@@ -31,7 +31,7 @@ import { clampCursor, useMenuKeys } from './useMenuKeys'
 import { loadItems, loadMoves, type ItemTable, type MoveTable } from '../../data/gameData'
 import { planItemUse } from '../../engine/battle/meta/bagItem'
 import {
-  applyFieldPlan, fieldTarget, teachMoveCheck, tmIndex, tmMove,
+  applyFieldPlan, fieldTarget, isHmMove, teachMoveCheck, tmIndex, tmMove,
 } from '../../engine/bag/fieldUse'
 import { EvoClass, evolutionTarget } from '../../engine/pokemon/evolution'
 import { maxPpOf } from '../../engine/pokemon/instance'
@@ -68,6 +68,9 @@ const STATUS_LABEL: Record<string, string> = {
 const FIELD_BY_MOVE = new Map<number, FieldMoveId>(
   (Object.keys(FIELD_MOVES) as FieldMoveId[]).map((id) => [FIELD_MOVES[id].move, id]),
 )
+
+/** 요약 화면 뱅크의 「중요한 기술입니다. 잊게 할 수 없습니다!」 (`PokemonSummary_Text_HmMovesCantBeForgotten`) */
+const SUMMARY_HM_CANT_FORGET = 156
 
 /** 못 쓴 이유. 원작도 왜 안 되는지를 말해 준다 (`FIELD_MOVE_ERROR_*`) */
 const DENIAL: Record<string, string> = {
@@ -181,6 +184,8 @@ export function PartyScreen() {
   const [menuAt, setMenuAt] = useState(0)
   /** 파티 뱅크의 글. 갈래 메뉴의 낱말이 전부 여기서 온다 */
   const [partyText, setPartyText] = useState<string[]>([])
+  /** 요약 화면 뱅크(455) — 「중요한 기술입니다. 잊게 할 수 없습니다!」(156)가 여기 있다 */
+  const [summaryText, setSummaryText] = useState<string[]>([])
   /** 가방에서 들고 온 도구. 있으면 이 화면은 "누구에게 쓸까"다 (PARITY §4.1) */
   const usingItem = useMenuStore((s) => s.usingItem)
   const clearUsingItem = useMenuStore((s) => s.clearUsingItem)
@@ -220,11 +225,13 @@ export function PartyScreen() {
     void Promise.all([
       loadSpecies(), loadSpeciesNames(locale), loadMoveNames(locale),
       loadUiText('partyMenu', locale),
+      loadUiText('summary', locale).catch(() => [] as string[]),
     ])
-      .then(([table, list, moves, party]) => {
+      .then(([table, list, moves, party, summary]) => {
         if (!alive) return
         setSpecies(table); setNames(list); setMoveNames(moves)
         setPartyText(party)
+        setSummaryText(summary)
       })
       .catch(() => { /* 이름만 빈다 */ })
     return () => { alive = false }
@@ -481,7 +488,15 @@ export function PartyScreen() {
     return [
       ...mon.moves.map((one, i) => ({
         label: moveNames[one.move] ?? '',
-        run: () => { learnMove(spec, i) },
+        run: () => {
+          // 원작은 잊을 기술을 요약 화면에서 고르고, 거기서 비전기술을 막는다
+          // (`PokemonSummaryScreen_PrintHMMovesCantBeForgotten` · 뱅크 455의 156)
+          if (tables !== null && isHmMove(one.move, tables.items.tmMoves)) {
+            setNotice(summaryText[SUMMARY_HM_CANT_FORGET] ?? null)
+            return
+          }
+          learnMove(spec, i)
+        },
       })),
       { label: partyText[P.cancel] ?? '', run: () => { setMenu('learnStop'); setMenuAt(0) } },
     ]

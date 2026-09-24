@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { itemFileSchema, speciesFileSchema, type Item } from '../../data/schema'
 import { withData } from '../../data/romData.testkit'
 import {
-  canLearnTm, fieldAction, FieldUse, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
+  canLearnTm, fieldAction, FieldUse, isHmMove, MAP_TYPE_CAVE, repelStepsOf, teachMoveCheck,
   tmIndex, tmMove,
   type FieldContext,
 } from './fieldUse'
@@ -162,6 +162,13 @@ maybe('필드 도구', () => {
     expect(tmMove(named('ITEM_HM07'), file.tmMoves)).toBe(127)
     expect(tmMove(named('ITEM_HM08'), file.tmMoves)).toBe(431)
     expect(new Set(file.tmMoves).size).toBe(100)
+  })
+
+  it('비전기술 여덟만 못 잊는다 (`Item_IsHMMove` · REPAIR §76)', () => {
+    for (const move of [15, 19, 57, 70, 432, 249, 127, 431]) expect(isHmMove(move, file.tmMoves)).toBe(true)
+    // 기술머신 기술은 잊을 수 있다 — 지진(89)은 TM26이다
+    expect(isHmMove(89, file.tmMoves)).toBe(false)
+    expect(isHmMove(33, file.tmMoves)).toBe(false)
   })
 
   /**

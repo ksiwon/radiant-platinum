@@ -17,9 +17,10 @@ import type { Actor, SlotId } from '../../engine/battle/events'
 import { buildBeats, type Beat } from '../../engine/battle/playback'
 import type { BattleView, ViewMon } from '../../engine/battle/view'
 import {
-  loadDialogueBank, loadItemNames, loadLabels, loadMoveNames, loadMoves,
+  loadDialogueBank, loadItemNames, loadItems, loadLabels, loadMoveNames, loadMoves,
   loadSpecies, loadSpeciesNames,
 } from '../../data/gameData'
+import { isHmMove } from '../../engine/bag/fieldUse'
 import {
   MATCH_LABEL, moveMatch, shownType, type MoveMatch,
 } from '../../engine/battle/movePreview'
@@ -38,7 +39,9 @@ import { BattleBag } from './BattleBag'
 import { SwitchScreen } from './SwitchScreen'
 import { battleText, type BattleNames } from './messages'
 import { romLine } from './romLine'
-import { BATTLE_BANK, MOVE_BANK, MSG, STAT_BANK } from './romText'
+import {
+  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, MSG, STAT_BANK,
+} from './romText'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
 import { useDrain } from './hpDrain'
@@ -87,6 +90,11 @@ interface Extras {
   move(id: number): Move | undefined
   /** 그 모습의 타입 둘. 상성 표시가 본다 (§2.22) */
   typesOf(species: number, form: number): readonly number[] | null
+  /**
+   * 잊을 수 없는 기술이면 그 까닭(롬 글), 아니면 null — 비전기술이다
+   * (`CheckSelectedMoveIsHM` · REPAIR §76)
+   */
+  hmLock(move: number): string | null
 }
 
 /**
@@ -140,8 +148,11 @@ function useNames(): {
         console.error('랭크 이름표를 못 받았다', e)
         return [] as string[]
       }),
+      // 비전기술 잠금에 쓴다 — 없으면 잠그지 않을 뿐 배틀은 돈다
+      loadItems().catch(() => null),
+      loadDialogueBank(locale, BATTLE_PARTY_BANK).catch(() => [] as string[]),
     ])
-      .then(([species, moves, labels, table, items, dex, battleLines, usedLines, stats]) => {
+      .then(([species, moves, labels, table, items, dex, battleLines, usedLines, stats, itemTable, partyLines]) => {
         if (!alive) return
         setNames({ species, moves, abilities: labels.abilities, items, stats })
         setLines(battleLines)
@@ -152,6 +163,8 @@ function useNames(): {
           move: (id) => table.byId.get(id),
           // 표에 없는 번호가 오면 상성 칸을 비운다. 화면 하나 때문에 던지지 않는다
           typesOf: (id, form) => dex.byId.get(formSpeciesId(id, form))?.types ?? null,
+          hmLock: (id) => (itemTable !== null && isHmMove(id, itemTable.tmMoves)
+            ? partyLines[BATTLE_PARTY_HM_CANT_FORGET] ?? null : null),
         })
       })
       // ⚠️ **조용히 넘기지 않는다.** 한때 여기 「영어 원문으로 떨어진다」고
@@ -479,6 +492,7 @@ export function BattleScreen() {
                 moveName={(id) => names.moves[id] ?? `#${String(id)}`}
                 moveData={(id) => extras.move(id)}
                 typeName={(t) => extras.types[t]}
+                lockedWhy={(id) => extras.hmLock(id)}
                 onAnswer={(forget) => {
                   learnMove(script.ask!.key, script.ask!.move, forget)
                   script.resolve()
