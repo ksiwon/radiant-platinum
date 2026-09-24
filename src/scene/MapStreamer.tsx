@@ -362,6 +362,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 8로 남았는데 32×32칸에서 장치가 답한 칸이 0이다. 그래도 지운다:
       // 「지금 어느 장치인가」를 묻는 자리가 하나라도 생기면 그때는 샌다
       clearMapFeature()
+      // ⚠️ **세이브의 장치 버퍼도 워프할 때 지운다** (`PersistedMapFeatures_Init` · REPAIR §78).
+      // 이어하기 중에는 안 지운다 — 새 맵의 초기화가 그 값으로 다시 세운다
+      if (!worldState.restoring) useSaveStore.getState().setMapFeatures(null)
       resetPlatformLift()
       resetPastoriaGym()
       resetSunyshoreGym()

@@ -44,15 +44,50 @@ export const veilstoneSound: {
 } = { play: null, stop: null }
 
 /** 맵에 들어설 때 (`VeilstoneGym_DynamicMapFeaturesInit`) */
-export function initVeilstoneGym(map: number): boolean {
+export function initVeilstoneGym(map: number, saved?: readonly number[]): boolean {
   if (map !== VEILSTONE_GYM_MAP) return false
   setMapFeature(MAP_FEATURE.veilstoneGym)
-  active = {
-    bags: VEILSTONE_BAGS.map(([x, z]) => [x, z]),
-    stacks: new Set(VEILSTONE_STACKS.map(([x, z]) => veilstoneKey(x, z))),
-  }
+  // 이어하기면 세이브의 샌드백 자리와 선 타이어 (`veilstoneSnapshot` · REPAIR §78).
+  // 원작은 둘 다 맵 객체라 이어하기에서 제 자리로 산다
+  const bagCount = VEILSTONE_BAGS.length
+  const fits = saved !== undefined && saved.length === bagCount * 2 + 1
+  active = fits
+    ? {
+        bags: VEILSTONE_BAGS.map((_, i) => [saved[i * 2]!, saved[i * 2 + 1]!] as [number, number]),
+        stacks: new Set(VEILSTONE_STACKS.filter((_, i) => ((saved[bagCount * 2]! >> i) & 1) !== 0)
+          .map(([x, z]) => veilstoneKey(x, z))),
+      }
+    : {
+        bags: VEILSTONE_BAGS.map(([x, z]) => [x, z]),
+        stacks: new Set(VEILSTONE_STACKS.map(([x, z]) => veilstoneKey(x, z))),
+      }
   sliding = null
   return true
+}
+
+/**
+ * 세이브에 남길 지금 상태 — 샌드백 아홉의 칸(x, z 차례)과 아직 선 타이어 비트.
+ *
+ * ⚠️ **미끄러지는 중이면 다 간 뒤의 상태를 적는다** — 도착할 칸과 쓰러질 타이어.
+ * 원작은 샌드백이 맵 객체라 차는 순간 목적지가 정해진다
+ */
+export function veilstoneSnapshot(): number[] | null {
+  if (active === null) return null
+  const bags = active.bags.map(([x, z]) => [x, z])
+  let fallen: string | null = null
+  if (sliding !== null) {
+    const [dx, dz] = VEILSTONE_STEP[sliding.dir] ?? [0, 0]
+    const bag = bags[sliding.index]!
+    bag[0]! += dx * sliding.left
+    bag[1]! += dz * sliding.left
+    fallen = sliding.topple
+  }
+  let mask = 0
+  VEILSTONE_STACKS.forEach(([x, z], i) => {
+    const key = veilstoneKey(x, z)
+    if (active!.stacks.has(key) && key !== fallen) mask |= 1 << i
+  })
+  return [...bags.flat(), mask]
 }
 
 /** 미끄러지는 동안은 조작이 멈춘다 */

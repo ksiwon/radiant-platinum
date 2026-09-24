@@ -92,19 +92,21 @@ import {
   triggerPlatformLift,
 } from './platformLift'
 import {
-  initPastoriaGym, pastoriaBusy, pastoriaSound, pressPastoriaButton,
+  initPastoriaGym, pastoriaBusy, pastoriaSnapshot, pastoriaSound, pressPastoriaButton,
 } from './pastoriaGym'
 import {
-  initSunyshoreGym, pressSunyshoreButton, sunyshoreBusy, sunyshoreSound,
+  initSunyshoreGym, pressSunyshoreButton, sunyshoreBusy, sunyshoreSnapshot, sunyshoreSound,
 } from './sunyshoreGym'
 import { SUNYSHORE_GYM_MAPS, type SunyshoreButton } from '../engine/world/sunyshoreGym'
 import { advanceEternaClock, eternaBusy, eternaSound, initEternaGym } from './eternaGym'
-import { canalaveArrived, canalaveSound, canalaveStepped, initCanalaveGym } from './canalaveGym'
+import {
+  canalaveArrived, canalaveSnapshot, canalaveSound, canalaveStepped, initCanalaveGym,
+} from './canalaveGym'
 import {
   deactivateLakeGuardianUnits, initLakeGuardianUnits, lakeGuardianSound,
   lakeGuardianUnitsSettled,
 } from './lakeGuardianUnits'
-import { hitVeilstoneBag, initVeilstoneGym, veilstoneSound } from './veilstoneGym'
+import { hitVeilstoneBag, initVeilstoneGym, veilstoneSnapshot, veilstoneSound } from './veilstoneGym'
 import { initHearthomeGym } from './hearthomeGym'
 
 /**
@@ -190,6 +192,24 @@ import { vsSeekerServices } from './vsSeeker'
 import { addAccessory, canFitAccessory, removeAccessory } from '../engine/world/fashionCase'
 import type { FieldServices } from '../engine/script/world'
 import type { MartTable, Trainer } from '../data/schema'
+
+
+/**
+ * **이어하기일 때만** 세이브의 장치 상태를 준다 (`PersistedMapFeatures` · REPAIR §78).
+ *
+ * 원작은 워프할 때마다 장치 버퍼를 지우고 `OnTransition`이 처음 값을 쓰지만, 이어하기
+ * (`FieldTask_LoadSavedGameMap`)는 둘 다 안 해서 세이브 값이 산다. 우리는 이어하기에도
+ * `OnTransition`을 돌리므로(사람 자리를 깃발로 다시 세운다) 초기화가 여기서 갈린다
+ */
+function restoredFeatures(map: number): readonly number[] | undefined {
+  const saved = useSaveStore.getState().mapFeatures
+  return worldState.restoring && saved !== null && saved.map === map ? saved.data : undefined
+}
+
+/** 장치 상태를 세이브 스토어에 적는다. 리포트를 쓸 때 그대로 담긴다 */
+function keepFeatures(map: number, data: number[] | null): void {
+  useSaveStore.getState().setMapFeatures(data === null ? null : { map, data })
+}
 
 /** `TEXT_BANK_NPC_TRAINER_MESSAGES` — 트레이너 928명의 싸움 전후 대사 */
 const TRAINER_MESSAGE_BANK = 617
@@ -1769,19 +1789,46 @@ const services: FieldServices = {
     triggerPlatformLift: () => triggerPlatformLift(),
     platformLiftBusy: () => platformLiftBusy(),
     platformLiftNotUsedWhenEnteredMap: () => platformLiftNotUsedWhenEnteredMap(),
-    initPastoriaGym: () => { initPastoriaGym(mapWorld.mapId) },
-    pressPastoriaButton: () => pressPastoriaButton(propModelUnderPlayer()),
+    initPastoriaGym: () => {
+      initPastoriaGym(mapWorld.mapId, restoredFeatures(mapWorld.mapId))
+      keepFeatures(mapWorld.mapId, pastoriaSnapshot())
+    },
+    pressPastoriaButton: () => {
+      const moved = pressPastoriaButton(propModelUnderPlayer())
+      keepFeatures(mapWorld.mapId, pastoriaSnapshot())
+      return moved
+    },
     pastoriaBusy: () => pastoriaBusy(),
-    initSunyshoreGym: (room) => { initSunyshoreGym(SUNYSHORE_GYM_MAPS[room] ?? -1, mapWorld.enteredZ) },
-    pressSunyshoreButton: (button) => pressSunyshoreButton(button as SunyshoreButton),
+    initSunyshoreGym: (room) => {
+      const map = SUNYSHORE_GYM_MAPS[room] ?? -1
+      initSunyshoreGym(map, mapWorld.enteredZ, restoredFeatures(map))
+      keepFeatures(map, sunyshoreSnapshot())
+    },
+    pressSunyshoreButton: (button) => {
+      const turned = pressSunyshoreButton(button as SunyshoreButton)
+      keepFeatures(mapWorld.mapId, sunyshoreSnapshot())
+      return turned
+    },
     sunyshoreBusy: () => sunyshoreBusy(),
     initEternaGym: (state) => { initEternaGym(mapWorld.mapId, state) },
     advanceEternaClock: () => advanceEternaClock(),
     eternaBusy: () => eternaBusy(),
-    initCanalaveGym: () => { initCanalaveGym(mapWorld.mapId) },
-    stepOnFeature: () => { canalaveStepped() },
-    initVeilstoneGym: () => { initVeilstoneGym(mapWorld.mapId) },
-    kickBag: (x, z, dir) => hitVeilstoneBag(x, z, dir),
+    initCanalaveGym: () => {
+      initCanalaveGym(mapWorld.mapId, restoredFeatures(mapWorld.mapId))
+      keepFeatures(mapWorld.mapId, canalaveSnapshot())
+    },
+    stepOnFeature: () => {
+      if (canalaveStepped()) keepFeatures(mapWorld.mapId, canalaveSnapshot())
+    },
+    initVeilstoneGym: () => {
+      initVeilstoneGym(mapWorld.mapId, restoredFeatures(mapWorld.mapId))
+      keepFeatures(mapWorld.mapId, veilstoneSnapshot())
+    },
+    kickBag: (x, z, dir) => {
+      const hit = hitVeilstoneBag(x, z, dir)
+      keepFeatures(mapWorld.mapId, veilstoneSnapshot())
+      return hit
+    },
     initHearthomeGym: () => { initHearthomeGym(mapWorld.mapId, Math.random) },
   },
 

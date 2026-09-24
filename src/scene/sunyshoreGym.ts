@@ -8,7 +8,7 @@
 // 않는다(`SunyshoreGym_PressButton`이 태스크를 걸기 **전에** 적는다) — 그래서
 // 도는 도중에도 통행 판정은 이미 새 상태다
 import {
-  SUNYSHORE_BUTTON, SUNYSHORE_GEARS, SUNYSHORE_PROP_OFFSET, SUNYSHORE_SFX, SUNYSHORE_STEP,
+  SUNYSHORE_BUTTON, SUNYSHORE_GEARS, SUNYSHORE_PROP_OFFSET, SUNYSHORE_SFX, SUNYSHORE_STATES, SUNYSHORE_STEP,
   sunyshoreBlocked, sunyshoreGearAngle, sunyshoreNextState, sunyshoreRoomOf,
   sunyshoreStateOnEnter, sunyshoreTurnAngle, type SunyshoreButton,
 } from '../engine/world/sunyshoreGym'
@@ -44,17 +44,25 @@ export const sunyshoreSound: {
  * ⚠️ **처음 회전 상태가 방마다 다르다.** 앞 방에서 걸어 들어오면 0이고,
  * 뒤에서 돌아오면 2·1·0으로 선다 — 되돌아 나가는 길이 그때 열려 있어야 한다
  */
-export function initSunyshoreGym(map: number, enterZ: number): boolean {
+export function initSunyshoreGym(map: number, enterZ: number, saved?: readonly number[]): boolean {
   const room = sunyshoreRoomOf(map)
   if (room === null) return false
   setMapFeature(MAP_FEATURE.sunyshoreGym)
-  const state = sunyshoreStateOnEnter(room, enterZ)
+  // 이어하기면 세이브의 회전 상태 (`sunyshoreSnapshot` · REPAIR §78)
+  const kept = saved?.[0]
+  const state = kept !== undefined && Number.isInteger(kept) && kept >= 0 && kept < SUNYSHORE_STATES
+    ? kept : sunyshoreStateOnEnter(room, enterZ)
   active = {
     room, state,
     angle: (SUNYSHORE_GEARS[room] ?? []).map((g) => sunyshoreGearAngle(g, state)),
   }
   turning = null
   return true
+}
+
+/** 세이브에 남길 지금 상태 — 회전 상태 하나 */
+export function sunyshoreSnapshot(): number[] | null {
+  return active === null ? null : [active.state]
 }
 
 /** 지금 회전 상태. 이 체육관이 아니면 null */

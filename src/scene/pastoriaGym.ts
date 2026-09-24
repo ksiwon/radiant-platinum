@@ -56,10 +56,13 @@ export const pastoriaSound: {
  * ⚠️ **들어설 때마다 다시 시작하는 것은 맞다.** 원작도 이 자리를 지우고 다시
  * 적으므로, 나갔다 들어오면 풀던 것이 초록으로 돌아간다
  */
-export function initPastoriaGym(map: number): boolean {
+export function initPastoriaGym(map: number, saved?: readonly number[]): boolean {
   if (map !== PASTORIA_GYM_MAP) return false
   setMapFeature(MAP_FEATURE.pastoriaGym)
-  const pressed = PASTORIA_BUTTON.green
+  // 이어하기면 세이브의 단추 (`pastoriaSnapshot` · REPAIR §78)
+  const kept = saved?.[0]
+  const pressed: PastoriaButton = kept === PASTORIA_BUTTON.orange || kept === PASTORIA_BUTTON.blue
+    || kept === PASTORIA_BUTTON.green ? kept : PASTORIA_BUTTON.green
   const waterY = pastoriaWaterFor(pressed)
   active = { pressed, waterY }
   moving = null
@@ -67,6 +70,11 @@ export function initPastoriaGym(map: number): boolean {
   setHeightPlate(
     PASTORIA_PLATE, box.startTileX, box.startTileZ, box.sizeX, box.sizeZ, waterY)
   return true
+}
+
+/** 세이브에 남길 지금 상태 — 누른 단추 하나 (`PastoriaGymPersistedFeature`) */
+export function pastoriaSnapshot(): number[] | null {
+  return active === null ? null : [active.pressed]
 }
 
 /** 지금 물 높이(칸). 이 체육관이 아니면 null */

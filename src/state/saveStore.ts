@@ -135,6 +135,15 @@ import {
 type SaveFlags = Uint8Array<ArrayBuffer>
 type SaveVars = Uint16Array<ArrayBuffer>
 
+/**
+ * 한 맵의 장치 상태 (`PersistedMapFeatures`). `data`의 뜻은 장치마다 다르다 —
+ * 들판(누른 단추) · 운하(판 비트) · 장막(샌드백 자리와 선 타이어) · 물가(회전)
+ */
+interface MapFeatureSave {
+  map: number
+  data: number[]
+}
+
 export interface SaveData {
   version: number
   trainer: TrainerInfo
@@ -304,6 +313,15 @@ export interface SaveData {
    */
   hourPin: number | null
   /**
+   * 맵 장치의 지금 상태 (`PersistedMapFeatures`) — 체육관 퍼즐이 풀린 만큼.
+   *
+   * ⚠️ **이어하기에서만 읽는다.** 원작은 워프할 때마다 이 버퍼를 지우고 그 맵의
+   * `OnTransition`이 처음 값을 쓰지만, 이어하기(`FieldTask_LoadSavedGameMap`)는 둘 다
+   * 안 한다 — 세이브 값이 그대로 산다. 없으면 들판 체육관 맥실러 옆에서 리포트를
+   * 쓰고 이어할 때 물이 처음 높이로 돌아가 **나갈 길이 없었다**(REPAIR §78)
+   */
+  mapFeatures: MapFeatureSave | null
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -365,7 +383,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 35
+export const SAVE_VERSION = 36
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -460,6 +478,7 @@ export function createNewSave(): SaveData {
     mailbox: newMailbox(),
     easyChatUnlocks: newEasyChatUnlocks(),
     hourPin: null,
+    mapFeatures: null,
   }
 }
 
@@ -510,6 +529,8 @@ interface SaveStore extends SaveData {
   giveSiwonGift: () => void
   /** 리그 복도에서 시원을 만났다. 그 연출은 한 번만 돈다 */
   meetSiwon: () => void
+  /** 맵 장치의 지금 상태를 적는다 (`scene/fieldServices`가 바뀔 때마다 부른다) */
+  setMapFeatures: (value: MapFeatureSave | null) => void
   /**
    * 친밀도를 올린다. 0~255에서 멈춘다 (`MAX_FRIENDSHIP_VALUE`).
    *
@@ -761,6 +782,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     mailbox: s.mailbox,
     easyChatUnlocks: s.easyChatUnlocks,
     hourPin: s.hourPin,
+    mapFeatures: s.mapFeatures,
   }
 }
 
@@ -881,6 +903,7 @@ export const useSaveStore = create<SaveStore>()(
 
       giveSiwonGift: () => { set((st) => ({ siwonGiven: st.siwonGiven + 1 })) },
       meetSiwon: () => { set({ siwonMet: true }) },
+      setMapFeatures: (value) => { set({ mapFeatures: value }) },
 
       renameMon: (slot, nickname) => {
         set((st) => ({

@@ -697,6 +697,16 @@ const saveSchema = z.object({
    * 어긋난다
    */
   hourPin: z.number().min(0).max(24).nullable(),
+  /**
+   * 맵 장치의 지금 상태 (`PersistedMapFeatures` · REPAIR §78). 이어하기에서만 읽는다 —
+   * 원작도 이어하기에서는 이 버퍼를 안 지우고 `OnTransition`을 안 돌린다.
+   *
+   * ⚠️ **맨 뒤다** (CODEMAP §2.2)
+   */
+  mapFeatures: z.object({
+    map: int(0, 0xffff),
+    data: z.array(int(0, 0xffffffff)).max(64),
+  }).nullable(),
 })
 
 /**

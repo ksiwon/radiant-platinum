@@ -68,10 +68,13 @@ export const canalaveArrived: { settle: (() => void) | null } = { settle: null }
 const AXIS_AT = { x: 0, y: 1, z: 2 } as const
 
 /** 맵에 들어설 때 (`CanalaveGym_DynamicMapFeaturesInit`) */
-export function initCanalaveGym(map: number): boolean {
+export function initCanalaveGym(map: number, saved?: readonly number[]): boolean {
   if (map !== CANALAVE_GYM_MAP) return false
   setMapFeature(MAP_FEATURE.canalaveGym)
-  const states = canalaveInitialStates()
+  // 이어하기면 세이브의 판 비트 (`canalaveSnapshot` · REPAIR §78)
+  const kept = saved?.[0]
+  const states = kept !== undefined && Number.isInteger(kept) && kept >= 0 && kept < 2 ** CANALAVE_PLATFORMS.length
+    ? kept : canalaveInitialStates()
   const spots = CANALAVE_PLATFORMS.map((p, i) => canalavePlatformAt(p, canalaveInB(states, i)))
   active = {
     states,
@@ -81,6 +84,14 @@ export function initCanalaveGym(map: number): boolean {
   }
   moving = null
   return true
+}
+
+/**
+ * 세이브에 남길 지금 상태 — 판 스물넷의 A/B 비트 (`CanalaveGymPersistedFeature`).
+ * 움직이는 중이면 이미 목적지 비트다 — 원작도 밟는 순간 뒤집는다
+ */
+export function canalaveSnapshot(): number[] | null {
+  return active === null ? null : [active.states]
 }
 
 /** 판이 움직이는 동안은 조작이 멈춘다 */

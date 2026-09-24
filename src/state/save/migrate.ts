@@ -402,6 +402,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     position: { ...(data.position as Record<string, unknown>), y: null },
     hourPin: null,
   }),
+
+  // 맵 장치 상태 (REPAIR §78). 옛 리포트에는 적은 적이 없으므로 null이다 — 체육관
+  // 안에서 쓴 옛 리포트는 예전처럼 처음 자리로 선다
+  35: (data) => ({
+    ...data,
+    version: 36,
+    mapFeatures: null,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */
