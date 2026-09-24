@@ -116,3 +116,21 @@ export function startRestore(at: RestoreTarget, deps: RestoreDeps): () => void {
     if (mine()) useRestoreStore.getState().release()
   }
 }
+
+/**
+ * 리포트 자리에서 **설 높이**. `undefined`면 들어서는 쪽이 여태처럼 격자에 묻는다.
+ *
+ * - 깨어진 세계(`distortion`)는 적힌 높이를 그대로 쓴다. 격자에 높이가 없어서 0이 오고,
+ *   판을 고르는 `findPlatform`이 (x, y, z) 셋을 다 보므로 엉뚱한 판이 걸린다 (PARITY §6.10)
+ * - 보통 맵은 **적힌 높이에 가장 가까운 격자 층**을 고른다. 원작은 주인공 높이를 세이브에
+ *   담아 되살린다(`MapObject_Save`의 `y`·`unk_2C` → `MapObject_LoadSave`). 층이 여럿인
+ *   자리(운하 체육관 윗층 · 다리 위)에서 그것을 버리고 0 근처를 물으면 맨 아래층에 선다
+ *   (REPAIR §79). 높이는 여전히 격자가 내주므로 자료가 바뀌어도 자리가 따라간다
+ */
+export function restoreGroundY(
+  grid: Pick<MapGrid, 'heightAtWorld'>, at: RestoreTarget, distortion: boolean,
+): number | undefined {
+  if (at.y === null) return undefined
+  if (distortion) return at.y
+  return grid.heightAtWorld(at.x, at.z, at.y) ?? undefined
+}

@@ -9,7 +9,7 @@
 // 전역으로 껐다 — 앞 요청의 늦은 응답이 뒤 요청의 잠금을 푸는 자리였다.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MapGrid } from '../engine/map/grid'
-import { startRestore, type RestoreTarget } from './restoreWorld'
+import { restoreGroundY, startRestore, type RestoreTarget } from './restoreWorld'
 import { useRestoreStore } from '../state/restoreStore'
 import { worldState } from '../state/worldState'
 
@@ -282,5 +282,31 @@ describe('앞 요청이 뒤 요청을 건드리지 못한다', () => {
     await a.promise
     expect(settle).not.toHaveBeenCalled()
     expect(useRestoreStore.getState().phase).toBe('idle')
+  })
+})
+
+describe('설 높이 (REPAIR §79)', () => {
+  /** 층이 셋인 칸 — 0 · 6 · 12. 가까운 층을 준다 */
+  const LAYERED = {
+    heightAtWorld: (_x: number, _z: number, near = 0) =>
+      [0, 6, 12].reduce((a, b) => (Math.abs(b - near) < Math.abs(a - near) ? b : a)),
+  }
+  const at = (y: number | null): RestoreTarget => ({ map: 35, matrix: 0, x: 16.5, z: 4.5, y })
+
+  it('윗층에서 쓴 리포트는 윗층에 선다 — 0 근처를 묻지 않는다', () => {
+    expect(restoreGroundY(LAYERED, at(12), false)).toBe(12)
+    expect(restoreGroundY(LAYERED, at(6.2), false)).toBe(6)
+  })
+
+  it('높이는 격자가 낸다 — 적힌 값이 조금 어긋나도 층 위에 선다', () => {
+    expect(restoreGroundY(LAYERED, at(11.4), false)).toBe(12)
+  })
+
+  it('깨어진 세계는 적힌 값을 그대로 쓴다', () => {
+    expect(restoreGroundY(LAYERED, at(11.4), true)).toBe(11.4)
+  })
+
+  it('옛 리포트(높이 없음)는 들어서는 쪽에 맡긴다', () => {
+    expect(restoreGroundY(LAYERED, at(null), false)).toBeUndefined()
   })
 })

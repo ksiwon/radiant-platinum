@@ -17,7 +17,7 @@ import {
 } from '../engine/map/world'
 import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fade'
 import { restoreRetry } from '../state/restoreStore'
-import { startRestore } from './restoreWorld'
+import { restoreGroundY, startRestore } from './restoreWorld'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -531,16 +531,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     const at = back ?? useSaveStore.getState().position
     /** 다시 도는 것이면 얼굴은 이미 맞다 — 세이브 값으로 되돌리면 안 된다 */
     const facing = back === null ? useSaveStore.getState().position.facing : null
-    /**
-     * 서는 높이.
-     *
-     * ⚠️ **깨어진 세계에서만 준다.** 보통 맵은 격자가 다시 내주게 두어야
-     * 자료가 바뀌어도 자리가 따라간다 — 리포트에 적힌 높이를 그대로 믿으면
-     * 지형이 바뀐 자리에서 공중에 뜨거나 묻힌다. 그 세계는 반대다: 격자에
-     * 높이가 없어서 0이 오고, 판을 고르는 `findPlatform`이 (x, y, z) 셋을
-     * 다 보므로 엉뚱한 판이 걸린다 (PARITY §6.10)
-     */
-    const atY = isDistortionFloor(at.map) ? at.y ?? undefined : undefined
+    /** 서는 높이 — 깨어진 세계는 적힌 값, 보통 맵은 그 값에 가장 가까운 격자 층 (`restoreGroundY`) */
+    const distortion = isDistortionFloor(at.map)
 
     // 순서(늦은 응답·정리·재시도)는 `scene/restoreWorld`가 쥔다 — 여기서는
     // **들어서는 일**만 넘겨준다
@@ -549,7 +541,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       load: gridFor,
       settle: (next) => {
         if (facing !== null) worldState.player.facing = facing
-        enter(next, at.map, at.x, at.z, at.matrix, atY)
+        enter(next, at.map, at.x, at.z, at.matrix, restoreGroundY(next, at, distortion))
         // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
         // 먼저 덮으면 지워진다. 로딩 화면이 걷히는 그 순간을 이 인이 이어받는다
         coverScreen()
