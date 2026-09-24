@@ -484,11 +484,12 @@ describe('하네스가 씌우는 봉투', () => {
 })
 
 describe('대표 구간의 정본 목록', () => {
-  it('마흔한 자리이고, 하네스가 아니라 판정기가 갖고 있다', () => {
+  it('쉰일곱 자리이고, 하네스가 아니라 판정기가 갖고 있다', () => {
     // 첫 배지까지 열일곱 · 둘째 배지까지 여섯 (지시서 JOURNEY_BADGE2 §1) ·
-    // 셋째부터 다섯째 배지까지 열여덟 (JOURNEY_BADGE345 §3.2·§4.3·§5.3)
+    // 셋째부터 다섯째 배지까지 열여덟 (JOURNEY_BADGE345 §3.2·§4.3·§5.3) ·
+    // 여섯째·일곱째 배지까지 열여섯 (JOURNEY_BADGE67 §8.1)
     const roster = rosterOf('journey')
-    expect(roster.cases).toHaveLength(41)
+    expect(roster.cases).toHaveLength(57)
     expect(roster.from).toBe('tools/distribution/evidence.mjs')
   })
 

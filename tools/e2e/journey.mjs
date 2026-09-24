@@ -29,6 +29,9 @@ import {
   MAP as B3MAP, PASTORIA, pastoriaClimb, rideToHearthome, VEILSTONE, veilstoneKicks,
   veilstoneToPastoria, veilstoneWarehouse,
 } from './badges.mjs'
+import {
+  canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, pastoriaToCelestic, snowpointGym,
+} from './badges67.mjs'
 import { looksFlat, statsOf } from '../shot/png.mjs'
 import { WATCH_INIT, looksDrawn, missingShots, shootCanvas } from './canvasShot.mjs'
 import { judgeTerrain } from './terrainJudge.mjs'
@@ -369,11 +372,29 @@ const AFTER_STOPS = [
   // ── 여기부터 다섯째 배지 (지시서 JOURNEY_BADGE345 §5) ───────────────────────
   { id: '36', map: B3MAP.pastoria, what: '들판시티' },
   { id: '37', map: PASTORIA.map, what: '들판 체육관 (물 높이를 바꿔 맥실러 앞)' },
+  // ── 여기부터 여섯째·일곱째 배지 (지시서 JOURNEY_BADGE67) ─────────────────────
+  // ⚠️ **자리의 맵은 그 다리가 끝나는 맵이다.** 체육관 안에서 끝나는 다리(동관 · 무청)는
+  // 체육관이고, 섬·동굴에 다녀오는 다리는 돌아온 도시다 — 뒤의 `goTo`가 「이미 서 있다」로
+  // 곧바로 돌아오게. 다른 맵을 적으면 다녀온 곳에 다시 걸어 들어간다
+  { id: '38', map: B3MAP.pastoria, what: '들판시티 (체육관을 나서 대습초원 폭발 · 조무래기)' },
+  { id: '39', map: B3MAP.valorLakefront, what: '입지호수근처 (조무래기를 이기고 비전신약)' },
+  { id: '40', map: B3MAP.route210south, what: '210번도로 남 (고라파덕에게 비전신약)' },
+  { id: '41', map: B3MAP.celestic, what: '봉신마을 (동굴 앞 조무래기)' },
+  { id: '42', map: B3MAP.celestic, what: '봉신마을 (동굴에서 태홍 · 비전머신03 뒤)' },
+  { id: '43', map: B3MAP.canalave, what: '운하시티 (218번도로를 파도타기로 · 다리 라이벌전)' },
+  { id: '44', map: B3MAP.canalaveGym, what: '운하 체육관 (판을 타고 동관)' },
+  { id: '45', map: B3MAP.canalave, what: '운하시티 (강철섬 비전머신04 · 도서관 폭발 장면)' },
+  { id: '46', map: B3MAP.valorCavern, what: '입지호수 동굴 (새턴)' },
+  { id: '47', map: B3MAP.lakeVerity, what: '진실호수 (마스)' },
+  { id: '48', map: B3MAP.snowpoint, what: '선단시티 (괴력 · 천관산 · 216·217번도로)' },
+  { id: '49', map: B3MAP.snowpointGym, what: '선단 체육관 (얼음을 미끄러져 무청)' },
 ]
 /** 셋째 배지 자리들. 결과 줄을 따로 적는다 */
 const THIRD_BADGE_STOPS = new Set(['23', '24', '25', '26', '27', '28', '29', '30'])
 /** 넷째·다섯째 배지 자리들. 앞에서 밟을 걸음이 `badges.mjs`에 있다 */
 const LATER_BADGE_STOPS = new Set(['32', '33', '34', '35', '36', '37'])
+/** 여섯째·일곱째 배지 자리들. 앞에서 밟을 걸음이 `badges67.mjs`에 있다 */
+const SIXTH_BADGE_STOPS = new Set(['38', '39', '40', '41', '42', '43', '44', '45', '46', '47', '48', '49'])
 /**
  * 연고 체육관 앞 사탕 기준 — 선두와 찌르버드.
  *
@@ -1198,7 +1219,8 @@ try {
          * 체육관 앞의 사탕은 그 뒤라, 397만 찾으면 「먹일 마리가 파티에 없다」로
          * 지나가고 새가 두 레벨 모자란 채 관장 앞에 선다. 한 줄이 계통 전체다
          */
-        const family = STARLY_LINE.includes(species) ? STARLY_LINE : [species]
+        const family = Array.isArray(species) ? species
+          : STARLY_LINE.includes(species) ? STARLY_LINE : [species]
         const at = slot ?? party.findIndex((one) => family.includes(one.species))
         const mon = party[at]
         /**
@@ -1496,6 +1518,8 @@ try {
       const badge3 = {}
       /** 넷째·다섯째 배지 다리들의 결말 (`badges.mjs`) */
       const badge45 = {}
+      /** 여섯째·일곱째 배지 다리들의 결말 (`badges67.mjs`) */
+      const badge67 = {}
       const north = { scene: null, bought: null, caught: [] }
       const goNorth = async () => {
         if (api.left() <= 0) { north.scene = '시간이 다 됐다'; return }
@@ -1798,6 +1822,31 @@ try {
             if (inside === 'arrived') badge45.climb = await pastoriaClimb(api, ctx)
             else badge45.climb = { ok: false, why: `체육관에 못 들어갔다 (${inside})` }
           }
+        }
+        /**
+         * **여섯째·일곱째 배지의 다리들** (`badges67.mjs` · 지시서 JOURNEY_BADGE67 §8).
+         *
+         * ⚠️ **다리가 회복을 쥔다.** 태홍·다리 라이벌·관장 둘·새턴·마스 앞의 회복과 사탕은
+         * 다리 안에 있고, 재도전도 다리가 한다 — 아래 일반 회복을 다시 돌리지 않는다
+         */
+        if (SIXTH_BADGE_STOPS.has(stop.id) && !(skipBefore !== null && stop.id < skipBefore) && api.left() > 0) {
+          const ctx = { log, setWalls, candyUp: (slot, family, level) => candyUp(slot, family, level) }
+          const toCelestic = {
+            38: B3MAP.pastoria, 39: B3MAP.valorLakefront, 40: B3MAP.route210south,
+            41: B3MAP.celestic, 42: B3MAP.celesticCave,
+          }
+          if (toCelestic[stop.id] !== undefined) {
+            badge67.a = [...(badge67.a ?? []), { stop: stop.id, ...await pastoriaToCelestic(api, ctx, { stopAt: toCelestic[stop.id] }) }]
+          }
+          if (stop.id === '43') badge67.b = await celesticToCanalave(api, ctx)
+          if (stop.id === '44') badge67.gym6 = await canalaveGym(api, ctx)
+          const toLakes = { 45: B3MAP.canalave, 46: B3MAP.valorCavern, 47: B3MAP.lakeVerity }
+          if (toLakes[stop.id] !== undefined) {
+            badge67.lakes = [...(badge67.lakes ?? []), { stop: stop.id, ...await canalaveToLakes(api, ctx, { stopAt: toLakes[stop.id] }) }]
+          }
+          if (stop.id === '48') badge67.d = await coronetToSnowpoint(api, ctx)
+          if (stop.id === '49') badge67.gym7 = await snowpointGym(api, ctx)
+          preHealed = true
         }
         if (skipBefore !== null && stop.id < skipBefore) {
           log(`${stop.what}(${String(stop.map)}) → 건너뛴다 (미실행 · --from=${skipBefore})`)
@@ -2222,7 +2271,7 @@ try {
         }
       }
       return {
-        seen, metNpcs, heals, sprays, poketch, north, clock, potionBuy, badge3, badge45,
+        seen, metNpcs, heals, sprays, poketch, north, clock, potionBuy, badge3, badge45, badge67,
         vars: await api.storyVars(), bag: await api.bagState(),
         party: await api.partyState(), badges: (await readSave()).badges,
       }
@@ -2313,7 +2362,7 @@ try {
    * `evidence.idProblem`이 봉투를 거절한다(2026-09-24 `journey-from33-13`에서 보였다)
    */
   for (const stop of AFTER_STOPS.filter((one) => !FIRST_BADGE_STOPS.has(one.id) && one.id !== GYM_STOP
-    && !THIRD_BADGE_STOPS.has(one.id) && !LATER_BADGE_STOPS.has(one.id))) {
+    && !THIRD_BADGE_STOPS.has(one.id) && !LATER_BADGE_STOPS.has(one.id) && !SIXTH_BADGE_STOPS.has(one.id))) {
     const got = seen.find((one) => one.id === stop.id)
     const j = stopVerdict(got?.verdict ?? '안 갔다')
     // 숲 줄에는 **동행**까지 적는다 — 붙었는지가 그 구간의 내용이다
@@ -2584,6 +2633,91 @@ try {
     + ` · 사탕 걸음 ${(story.candySteps ?? []).filter((one) => String(one.what).startsWith('들판')).map((one) =>
       `${String(one.what)} ${one.ran ? `${String(one.fed)}알` : `미실행(${String(one.why)})`}`).join(' · ')}`)
   shots.push(await shot('after-gym5'))
+
+  // ── 여섯째·일곱째 배지 (지시서 JOURNEY_BADGE67 §8.1) ────────────────────────
+  //
+  // ⚠️ **줄 번호는 자리 번호와 다르다** (41~56 · 자리는 38~49). 동그라미 숫자는 ㊿까지라
+  // 51부터는 그냥 숫자다. PASS 조건은 전부 **읽기**다 — 변수·깃발·가방
+  const b67 = drive.extra?.badge67 ?? {}
+  const pass = (ok, stopId) => {
+    const { j } = stopLine(stopId)
+    return ok ? 'PASS' : j.status === 'BLOCKED' ? 'BLOCKED' : 'FAIL'
+  }
+  const vv = (key) => String(v3?.[key] ?? '?')
+  add('41', '들판 체육관을 나서 대습초원 폭발을 보고 조무래기를 쫓는다',
+    pass((v3?.pastoria ?? 0) >= 5 && v3?.gruntTalked === true, '38'),
+    `${stopLine('38').text} · 들판 상태 ${vv('pastoria')} (5 이상) · 조무래기 말 걸기 ${vv('gruntTalked')}`)
+  add('42', '213번도로·그랜드레이크 로비를 지나 입지호수근처에서 조무래기를 이기고 비전신약을 받는다',
+    pass((v3?.pastoria ?? 0) >= 6 && (has(B3.secretPotion) || v3?.psyduck === true), '39'),
+    `${stopLine('39').text} · 들판 상태 ${vv('pastoria')} (6이어야 난천을 만났다) · 213 조무래기 ${vv('grunt213Left')}`
+    + ` · 비전신약 ${has(B3.secretPotion) ? '있다' : '없다(썼거나 못 받았다)'}`)
+  add('43', '210번도로 고라파덕을 비키게 하고 난천에게 고대의부적을 받는다',
+    pass(v3?.psyduck === true, '40'),
+    `${stopLine('40').text} · 비전신약 씀 ${vv('psyduck')} · 고대의부적 ${has(B3.oldCharm) ? '있다' : '없다(전했거나 못 받았다)'}`)
+  add('44', '210번도로 북을 지나 봉신마을 동굴 앞 조무래기를 이긴다',
+    pass(v3?.charm === true, '41'),
+    `${stopLine('41').text} · 부적 전함 ${vv('charm')}`)
+  add('45', '봉신 동굴에서 태홍을 이기고 비전머신03을 받는다',
+    pass((v3?.celestic ?? 0) >= 2 && v3?.blockade218 === true && has(B3.hm03), '42'),
+    `${stopLine('42').text} · 봉신 상태 ${vv('celestic')} (2여야 난천 장면까지) · 218 봉쇄 풀림 ${vv('blockade218')}`
+    + ` · 비전머신03 ${has(B3.hm03) ? '있다' : '없다'}`)
+  {
+    const b = b67.b ?? {}
+    add('46', '파도타기로 218번도로를 건너 운하시티에 닿는다',
+      pass((v3?.gate218 ?? 0) >= 1 && b.surf?.ok === true, '43'),
+      `${stopLine('43').text} · 파도타기 배움 ${b.surf?.ok === true ? `${String(b.surf.slot)}번째` : String(b.surf?.why ?? '안 했다')}`
+      + ` · 공중날기 배움 ${b.fly?.ok === true ? `${String(b.fly.slot)}번째` : String(b.fly?.why ?? '안 했다')}`
+      + ` · 축복으로 날기 ${String(b.flyJubilife?.ok ?? '안 했다')} · 파도타기 탄 횟수 ${String(b.route218?.surfs ?? '?')}`
+      + ` · 게이트 연구원 ${vv('gate218')}`)
+    add('47', '운하시티 다리에서 라이벌을 이긴다',
+      pass((v3?.canalave ?? 0) >= 1, '43'),
+      `운하 상태 ${vv('canalave')} (1 이상) · 시도 ${JSON.stringify(b.bridge?.tries ?? [])}`
+      + ` · 사탕 ${JSON.stringify((b.candy ?? []).map((c) => `${c.what} ${c.ran ? `${String(c.fed)}알` : String(c.why)}`))}`)
+  }
+  {
+    const g6 = b67.gym6 ?? {}
+    const climbed = (g6.rounds ?? []).find((r) => r.climb?.ok === true)?.climb ?? null
+    add('48', '판을 타고 동관 앞 칸에 선다 (판 차례는 제품 표로 계산했다 — 사람은 판을 보고 푼다)',
+      pass(climbed !== null, '44'),
+      `${stopLine('44').text} · 판 ${String(climbed?.rides?.length ?? '?')}번 · 다시 푼 것 ${String(climbed?.replans ?? '?')}`
+      + ` · 판마다 ${JSON.stringify((climbed?.rides ?? []).map((r) => `#${String(r.ride)}→${String(r.got?.x)},${String(r.got?.z)}/${String(r.got?.floor)}`))}`)
+    add('49', '여섯째 배지를 받는다',
+      pass((v3?.canalave ?? 0) >= 2 && v3?.byronTm === true, '44'),
+      `운하 상태 ${vv('canalave')} · 기술머신91 ${vv('byronTm')} · 판 ${String((g6.rounds ?? []).length)}번 들어감`
+      + ` · 파티 ${JSON.stringify((g6.rounds ?? []).at(-1)?.party ?? null)}`)
+  }
+  add('50', '강철섬에서 현이에게 비전머신04를 받는다',
+    pass(has(B3.hm04), '45'),
+    `${stopLine('45').text} · 비전머신04 ${has(B3.hm04) ? '있다' : '없다'}`)
+  add('51', '운하도서관에서 입지호수 폭발 소식을 듣는다',
+    pass((v3?.library ?? 0) >= 2 && (v3?.canalave ?? 0) >= 5, '45'),
+    `도서관 상태 ${vv('library')} · 운하 상태 ${vv('canalave')} (5여야 마박사 장면까지) · 폭발 ${vv('valorExploded')}`)
+  add('52', '입지호수 동굴에서 새턴을 이긴다',
+    pass(v3?.saturn === true, '46'),
+    `${stopLine('46').text} · 새턴 ${vv('saturn')}`)
+  add('53', '진실호수에서 마스를 이긴다',
+    pass(v3?.verityLeft === true && v3?.coronetOpen === true, '47'),
+    `${stopLine('47').text} · 마스 ${vv('verityLeft')} · 천관산 조무래기 비킴 ${vv('coronetOpen')}`)
+  {
+    const d = b67.d ?? {}
+    add('54', '천관산 큰바위를 괴력으로 밀고 216·217번도로·예지호수근처를 지나 선단시티에 닿는다',
+      pass(d.push?.ok === true && (v3?.route217 ?? 0) >= 1 && (v3?.acuityFront ?? 0) >= 1, '48'),
+      `${stopLine('48').text} · 괴력 배움 ${d.strength?.ok === true ? `${String(d.strength.slot)}번째` : String(d.strength?.why ?? '안 했다')}`
+      + ` · 밀기 ${d.push?.ok === true ? `${String(d.push.pushed)}번` : String(d.push?.why ?? '안 했다')}`
+      + ` · 217 자두 장면 ${vv('route217')} · 예지호수근처 라이벌 장면 ${vv('acuityFront')}`)
+  }
+  {
+    const g7 = b67.gym7 ?? {}
+    const slid = (g7.rounds ?? []).find((r) => r.slide?.ok === true)?.slide ?? null
+    add('55', '얼음 위를 미끄러져 무청 옆 칸에 선다 (미끄럼 차례는 제품 규칙으로 계산했다 — 사람은 판을 보고 푼다)',
+      pass(slid !== null, '49'),
+      `${stopLine('49').text} · 미끄럼 ${String(slid?.moves?.length ?? '?')}번 · 깬 눈덩이 ${String(slid?.broke ?? '?')}`
+      + ` · 계획과 다른 수 ${String(slid?.off ?? '?')} · 다시 푼 것 ${String(slid?.replans ?? '?')}`)
+    add('56', '일곱째 배지를 받는다',
+      pass(v3?.candiceTm === true, '49'),
+      `기술머신72 ${vv('candiceTm')} · 무청 ${String((g7.rounds ?? []).length)}번 들어감`
+      + ` · 파티 ${JSON.stringify((g7.rounds ?? []).at(-1)?.party ?? null)}`)
+  }
 
   // ── ⑬ 끝 리포트 ──────────────────────────────────────────────────────────
   const endSave = await writeReport('end.rpsave')
