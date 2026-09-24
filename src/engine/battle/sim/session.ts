@@ -185,6 +185,57 @@ export interface BattleOptions {
    * 시작하자마자 승부를 내 버린다 — 부르는 쪽이 먼저 본다
    */
   doubles?: boolean
+  /**
+   * 두 번째 상대 트레이너 (PARITY §2.2b · REPAIR §82).
+   *
+   * 있으면 상대 쪽이 **트레이너 둘**이다 — `BATTLE_TYPE_TAG_DOUBLES`(내가 혼자)나
+   * `BATTLE_TYPE_TRAINER_WITH_AI_PARTNER`(편이 있다). 첫 상대가 자리 a를,
+   * 이쪽이 자리 b를 **각자의 파티로만** 채운다 (`OwnedSlots` 머리말).
+   * 있으면 더블이 저절로 켜진다
+   */
+  foe2?: SideSpec
+  /**
+   * 편 (PARITY §2.2b · `BATTLE_TYPE_AI`).
+   *
+   * 있으면 우리 쪽 자리 b가 **편의 것**이다 — 편의 파티로만 채우고 편의 AI가
+   * 고른다. 나는 자리 a만 고른다. 있으면 더블이 저절로 켜진다
+   */
+  partner?: SideSpec
+}
+
+/**
+ * 한 쪽의 **자리 주인** (PARITY §2.2b · REPAIR §82).
+ *
+ * 원작의 2vs2는 한 쪽에 **파티가 둘**이다. 자리 a(전투원 0·1)와 자리 b(전투원
+ * 2·3)가 저마다 제 파티를 들고, 쓰러지면 **제 파티에서만** 다음 마리를 낸다
+ * (`battle_controller_player.c` 4081 `BattleControllerPlayer_ReplaceFainted` —
+ * `BATTLE_TYPE_2vs2`면 `BattleSystem_GetParty(battleSys, i)`로 전투원마다 따로
+ * 센다). 제 파티가 바닥나면 그 자리는 **빈 채로** 남고 짝 혼자 싸운다.
+ *
+ * sim에는 그런 쪽이 없다 — `gameType: 'multi'`는 한 사람에게 파티 하나·자리
+ * 하나를 주므로 「혼자서 두 자리를 한 파티로 채우는」 태그 더블(나 혼자 vs 둘)을
+ * 못 담는다. 그래서 **더블 한 쪽에 두 파티를 이어 붙이고**, 누가 어느 자리의
+ * 것인지를 키로 적어 sim의 교체 후보를 그 자리 주인 것으로 거른다
+ * (`BattleSession.ownSlots`). 두 형식(나 혼자 vs 둘 · 편과 함께 vs 둘)이 한
+ * 틀로 돌고, 쪽 표시(`p1`·`p2`)와 네 자리(`p1a`…`p2b`)는 싱글·더블과 같다
+ */
+type OwnedSlots = ReadonlyMap<string, 0 | 1>
+
+/**
+ * 두 파티를 **한 쪽의 팀으로** 잇는다. sim은 더블에서 팀의 0·1번을 자리 a·b에
+ * 세우므로, 두 선두를 앞 두 칸에 두고 나머지를 뒤에 붙인다
+ */
+function joinTeams(a: readonly SideMon[], b: readonly SideMon[]): SideMon[] {
+  if (a.length === 0 || b.length === 0) return [...a, ...b]
+  return [a[0]!, b[0]!, ...a.slice(1), ...b.slice(1)]
+}
+
+/** 두 파티의 자리 주인표. 앞 파티가 자리 a(0), 뒤 파티가 자리 b(1)다 */
+function ownersOf(a: readonly SideMon[], b: readonly SideMon[]): OwnedSlots {
+  const out = new Map<string, 0 | 1>()
+  for (const m of a) out.set(m.key, 0)
+  for (const m of b) out.set(m.key, 1)
+  return out
 }
 
 /** 한 번 정산에서 각 쪽이 받은 줄 */
@@ -206,11 +257,25 @@ export class BattleSession {
   private readonly buffer: SideLines = { p1: [], p2: [] }
   private closed = false
   private destroyed = false
-  /** 이번 턴에 빈 턴 칸을 쓰기로 세워 둔 자리 (`lowerIdle`) */
-  private readonly armed: Record<SideId, { mon: unknown; turn: number } | null> =
-    { p1: null, p2: null }
+  /**
+   * 이번 턴에 빈 턴 칸을 쓰기로 세워 둔 마리들 (`lowerIdle`).
+   *
+   * ⚠️ **쪽마다 하나가 아니라 여럿이다.** 더블에서는 두 자리가 같은 턴에 턴을
+   * 비울 수 있다 — 두 자리가 다 도구를 쓰거나, 트레이너 둘이 저마다 제 도구를
+   * 쓴다. 하나만 들고 있으면 뒤에 세운 것이 앞의 것을 덮어서, 앞 자리의 칸이
+   * 턴이 돌기 전에 도로 눕혀지고 `|cant|nopp|`가 뜬다
+   */
+  private readonly armed: Record<SideId, { mon: unknown; turn: number }[]> =
+    { p1: [], p2: [] }
   /** 방금 세운 빈 턴 칸의 번호. 더블은 명령을 묶어 보내야 해서 밖에서 읽는다 */
   private readonly armedSlot: Record<SideId, number> = { p1: 0, p2: 0 }
+  /**
+   * 쪽마다의 자리 주인 (`OwnedSlots`). 트레이너가 하나인 쪽은 null이다 —
+   * 그 쪽은 원래대로 두 자리가 한 파티를 같이 쓴다
+   */
+  private readonly owners: Record<SideId, OwnedSlots | null> = { p1: null, p2: null }
+  /** 날려버리기·울부짖기가 지금 끌어내는 자리. 교체 후보를 그 자리 주인으로 거른다 */
+  private dragging: unknown = null
 
   constructor(options: BattleOptions) {
     this.raw = new BattleStreams.BattleStream()
@@ -229,19 +294,31 @@ export class BattleSession {
     // 안 읽는 갈래(전지적·관전·p3·p4)는 그냥 버퍼에 쌓인다. `push`가 배압을 걸지
     // 않으므로 막히지는 않고, 한 배틀 분량의 문자열이라 destroy에서 통째로 사라진다
 
+    // 트레이너가 둘인 쪽은 두 파티를 이어 한 팀으로 넣는다 (`OwnedSlots`)
+    const playerTeam = options.partner
+      ? joinTeams(options.player.team, options.partner.team)
+      : options.player.team
+    const foeTeam = options.foe2 ? joinTeams(options.foe.team, options.foe2.team) : options.foe.team
+    if (options.partner) this.owners.p1 = ownersOf(options.player.team, options.partner.team)
+    if (options.foe2) this.owners.p2 = ownersOf(options.foe.team, options.foe2.team)
+    const doubles = options.doubles === true || this.owners.p1 !== null || this.owners.p2 !== null
+
     const spec: Record<string, unknown> = {
-      formatid: options.doubles ? 'gen4doublescustomgame' : 'gen4customgame',
+      formatid: doubles ? 'gen4doublescustomgame' : 'gen4customgame',
     }
     if (options.seed) spec.seed = options.seed
     this.write(`>start ${JSON.stringify(spec)}`)
+    // 자리 주인을 가르는 손잡이는 **첫 교체보다 먼저** 걸어야 한다 — 배틀 객체는
+    // `>start`에서 서고, 첫 등판은 `>player p2`에서 돈다
+    if (this.owners.p1 !== null || this.owners.p2 !== null) this.ownSlots()
     this.write(`>player p1 ${JSON.stringify({
       name: options.player.name,
-      team: Teams.pack(options.player.team.map((m) => toSet(m, true, options.itemName))),
+      team: Teams.pack(playerTeam.map((m) => toSet(m, true, options.itemName))),
     })}`)
     // p2가 들어오는 순간 배틀이 시작되고 첫 `|request|`가 나간다. PP는 그 전에
     // 맞춰야 요청에 실린 숫자부터 우리 값이다 (실측으로 확인했다)
-    if (options.basePp) this.syncPp(0, options.player.team, options.basePp)
-    this.syncVitals(0, options.player.team)
+    if (options.basePp) this.syncPp(0, playerTeam, options.basePp)
+    this.syncVitals(0, playerTeam)
     // ⚠️ **여기서 눕혀야 한다.** `>player p2`가 들어오는 순간 배틀이 시작되고
     // 1턴 요청이 그 자리에서 만들어진다 — 그때 빈 턴 칸에 PP가 남아 있으면
     // sim이 "아직 쓸 기술이 있다"고 보고 발버둥을 안 준다. PP가 다 떨어진 채로
@@ -252,11 +329,11 @@ export class BattleSession {
     const foeIdle = options.foeIdle === true
     this.write(`>player p2 ${JSON.stringify({
       name: options.foe.name,
-      team: Teams.pack(options.foe.team.map((m) => toSet(m, foeIdle, options.itemName))),
+      team: Teams.pack(foeTeam.map((m) => toSet(m, foeIdle, options.itemName))),
     })}`)
-    if (options.basePp) this.syncPp(1, options.foe.team, options.basePp)
+    if (options.basePp) this.syncPp(1, foeTeam, options.basePp)
     // 상대 쪽도 맞춘다 — 배회 포켓몬이 맞은 채로 다시 나온다 (PARITY §6.3)
-    this.syncVitals(1, options.foe.team)
+    this.syncVitals(1, foeTeam)
     // 이제 상대 것도 눕힌다. 그쪽 첫 요청은 이미 나갔지만 상관없다 — 우리가
     // 그 칸을 쓸지 묻는 자리(`hasIdle`)는 요청이 아니라 개체를 본다
     this.lowerIdle()
@@ -307,6 +384,155 @@ export class BattleSession {
   }
 
   /**
+   * 트레이너가 둘인 쪽에서 **자리마다 제 파티로만** 채우게 한다 (`OwnedSlots`).
+   *
+   * sim의 교체 후보는 전부 `possibleSwitches(side)` 한 곳에서 나온다 — 쓰러진
+   * 뒤 채우기(`runAction`의 끝), 유턴·바톤터치(`selfSwitch`), 치유소원·초승달춤
+   * (`canSwitch(source.side)`), 날려버리기·울부짖기(`dragIn` → `getRandomSwitchable`).
+   * 그 한 곳을 **지금 채우는 자리의 주인 것**으로 거른다. 어느 자리인지는
+   * 부르는 쪽이 안 넘기므로 그 순간의 배틀 상태에서 읽는다:
+   *
+   *   · 날려버리기·울부짖기가 끌어내는 중이면 그 자리 (`dragIn`을 감싸 적는다)
+   *   · 기술이 도는 중이면 — 억지로 내보내는 기술(`forceSwitch`)은 **맞은 쪽**,
+   *     스스로 물러나는 기술(유턴·바톤터치·치유소원)은 **쓴 쪽**
+   *   · 그 밖(턴 끝에 쓰러진 자리를 세는 곳)은 쪽 전체 — 원래 값 그대로
+   *
+   * 원작에서 이 셋이 다 전투원마다 제 파티를 본다: 교체는
+   * `BattleControllerPlayer_ReplaceFainted`(4081), 날려버리기는 `battle_script.c`
+   * 5257(`BATTLE_TYPE_2vs2`면 맞은 전투원의 파티에서 고른다).
+   *
+   * ⚠️ **제 파티가 바닥난 자리는 빈 채로 둔다.** sim은 턴 끝마다 쓰러진 자리에
+   * `switchFlag`를 세우고(`checkFainted`), 쪽 전체에 벤치가 남아 있으면 그
+   * 자리를 채우라고 묻는다 — 짝의 벤치를 끌어다 쓰라는 것이다. 원작은 그 자리를
+   * 비운다(`selectedPartySlot = 6`). 그래서 `checkFainted` 뒤에 제 벤치가 없는
+   * 자리의 깃발을 도로 내린다
+   */
+  private ownSlots(): void {
+    const battle = this.raw.battle
+    if (!battle) return
+    type SimSide = (typeof battle.sides)[number]
+    type Mon = SimSide['pokemon'][number]
+    const ownersOn = (side: SimSide): OwnedSlots | null =>
+      this.owners[side.n === 0 ? 'p1' : 'p2']
+    /** 그 마리가 가진 자리. 표에 없으면 선 자리 번호다 */
+    const ownerOf = (owners: OwnedSlots, mon: { name: string; position: number }): number =>
+      owners.get(mon.name) ?? mon.position
+
+    // `possibleSwitches`는 sim의 타입에서 비공개다. 인스턴스에만 덮어쓴다
+    const open = battle as unknown as { possibleSwitches: (side: SimSide) => Mon[] }
+    const base = open.possibleSwitches.bind(battle)
+    open.possibleSwitches = (side) => {
+      const all = base(side)
+      const owners = ownersOn(side)
+      if (owners === null) return all
+      const who = this.switchingFor(side)
+      if (who === null) return all
+      const owner = ownerOf(owners, who)
+      return all.filter((p) => ownerOf(owners, p) === owner)
+    }
+
+    const drag = battle.actions.dragIn.bind(battle.actions)
+    battle.actions.dragIn = (side, pos) => {
+      this.dragging = side.active[pos] ?? null
+      try {
+        return drag(side, pos)
+      } finally {
+        this.dragging = null
+      }
+    }
+
+    /**
+     * ⚠️ **유턴·바톤터치의 깃발은 벤치를 안 보고 선다.** sim은 기술이 무언가를
+     * 해냈으면 `source.switchFlag = move.id`를 세우고(`spreadMoveHit`의 끝),
+     * 교체할 수 있는지는 행동이 끝난 뒤 **쪽 전체로** 다시 본다. 그러면 제 벤치가
+     * 없는 자리가 짝의 벤치 때문에 「바꿔라」를 받고, 넘기려 해도 sim이 거절한다
+     * (「Can't pass: You need to switch in」 — `multi.test.ts`의 유턴 판이 잡았다). 원작은 그 자리의
+     * 파티만 보므로 교체가 없다. 기술이 끝난 그 자리에서 깃발을 내린다
+     */
+    // 이름이 `use…`면 훅 규칙이 React 훅으로 읽는다 — sim의 메서드일 뿐이다
+    const runMove = battle.actions.useMove.bind(battle.actions)
+    battle.actions.useMove = (...args: Parameters<typeof runMove>) => {
+      const done = runMove(...args)
+      const user = args[1]
+      const owners = ownersOn(user.side)
+      if (owners !== null && user.switchFlag && user.hp) {
+        const owner = ownerOf(owners, user)
+        if (!base(user.side).some((p) => ownerOf(owners, p) === owner)) user.switchFlag = false
+      }
+      return done
+    }
+
+    const fainted = battle.checkFainted.bind(battle)
+    battle.checkFainted = () => {
+      fainted()
+      for (const side of battle.sides) {
+        const owners = ownersOn(side)
+        if (owners === null) continue
+        for (const mon of side.active) {
+          if (!mon?.fainted || !mon.switchFlag) continue
+          const owner = ownerOf(owners, mon)
+          const left = base(side).some((p) => ownerOf(owners, p) === owner)
+          if (!left) mon.switchFlag = false
+        }
+      }
+    }
+  }
+
+  /**
+   * 지금 교체 후보를 묻는 자리의 마리 (`ownSlots`). 모르면 null — 쪽 전체다.
+   *
+   * ⚠️ **억지 교체와 자진 교체가 보는 쪽이 다르다.** 울부짖기는 맞은 쪽의 벤치를,
+   * 유턴은 쓴 쪽의 벤치를 본다. 둘이 같은 쪽에 있으면(짝에게 울부짖기) 기술이
+   * 무엇인지로 가른다
+   */
+  private switchingFor(side: object): { name: string; position: number } | null {
+    const battle = this.raw.battle
+    if (!battle) return null
+    const dragging = this.dragging as { side: object; name: string; position: number } | null
+    if (dragging && dragging.side === side) return dragging
+    const move = battle.activeMove
+    const user = battle.activePokemon
+    const target = battle.activeTarget
+    if (move?.forceSwitch && target?.side === side) return target
+    if (user?.side === side) return user
+    if (target?.side === side) return target
+    return null
+  }
+
+  /** 그 쪽의 자리 주인표. 트레이너가 하나인 쪽이면 null */
+  ownersOf(side: SideId): OwnedSlots | null {
+    return this.owners[side]
+  }
+
+  /**
+   * 그 자리가 **실제로** 묶여 있는가 — 요청이 말하지 않는 것까지.
+   *
+   * 특성으로 묶인 자리(그림자밟기·개미지옥·자력)는 그 특성이 드러나기 전까지
+   * 요청에 `trapped`가 아니라 `maybeTrapped`로만 온다. 그 자리에서 교체를 고르면
+   * sim이 「The active Pokémon is trapped」로 거절한다 — 담금질에서 잡혔다.
+   * 원작은 교체 명령 자체가 그 자리에서 막힌다 (`Battler_IsTrapped` →
+   * 「교체할 수 없다」). 그래서 후보를 만들 때 실제 값을 본다
+   */
+  trappedAt(side: SideId, at: number): boolean {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
+    return mon !== undefined && mon !== null && !!mon.trapped
+  }
+
+  /**
+   * 그 자리에서 **실제로** 잠긴 기술 아이디 — 요청이 말하지 않는 것까지.
+   *
+   * 봉인은 건 쪽의 기술을 **숨긴 채로** 잠근다 (`disableMove(id, 'hidden')`) —
+   * 요청에는 멀쩡한 칸으로 오고, 고르면 sim이 「… is disabled」로 거절한다.
+   * 담금질에서 잡혔다. 원작도 봉인된 기술은 명령에서 막힌다
+   * (「봉인되어 있어 쓸 수 없다」)
+   */
+  lockedMovesAt(side: SideId, at: number): ReadonlySet<string> {
+    const mon = this.raw.battle?.sides[side === 'p1' ? 0 : 1]?.active[at]
+    if (!mon) return new Set()
+    return new Set(mon.moveSlots.filter((s) => s.disabled).map((s) => s.id))
+  }
+
+  /**
    * 빈 턴 칸의 PP를 **0으로 눕혀 둔다.** 쓸 때만 한 칸 세운다 (`useIdle`).
    *
    * ⚠️ **여기가 배틀을 통째로 얼려 놓던 자리다.** 빈 턴 칸에 PP를 남겨 두면
@@ -329,6 +555,9 @@ export class BattleSession {
       // 한쪽만 들어온 시점에도 불린다 — 상대가 오기 전에 우리 칸부터 눕힌다
       if (!side) continue
       const armed = this.armed[i === 0 ? 'p1' : 'p2']
+      // 지난 턴에 세운 것은 버린다 — 개체와 턴이 둘 다 맞아야 남는다
+      const live = armed.filter((a) => a.turn === battle.turn)
+      armed.splice(0, armed.length, ...live)
       for (const p of side.pokemon) {
         const slot = idleOf(p)
         if (!slot) continue
@@ -336,7 +565,7 @@ export class BattleSession {
         // 다른 쪽이 아직 안 골랐으면 턴이 안 돈다 — 그 사이에 눕히면 sim이
         // 실행할 때 PP가 없어 `|cant|nopp|`가 뜨고 볼을 던진 턴이 통째로 샌다.
         // 개체와 턴이 둘 다 그때 그대로일 때만 남긴다
-        if (armed && armed.mon === p && armed.turn === battle.turn) continue
+        if (live.some((a) => a.mon === p)) continue
         slot.pp = 0
       }
     }
@@ -359,7 +588,7 @@ export class BattleSession {
     const slot = idleOf(mon)
     if (!slot) return false
     slot.pp = 1
-    this.armed[side] = { mon, turn: this.raw.battle?.turn ?? -1 }
+    this.armed[side].push({ mon, turn: this.raw.battle?.turn ?? -1 })
     // ⚠️ 싱글에서만 여기서 곧바로 보낸다. 더블은 두 자리를 **한 줄로 묶어야**
     // 해서 부르는 쪽(`controller`)이 명령을 만든다 — 그래서 칸 번호만 돌려준다
     this.armedSlot[side] = mon.moveSlots.length

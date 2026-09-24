@@ -19,6 +19,35 @@ export function foeKey(index: number): string {
 }
 
 /**
+ * **두 번째 상대 트레이너**의 i번째 키 (PARITY §2.2b).
+ *
+ * 태그 배틀에서는 상대 쪽 한 팀에 두 파티가 이어 붙는다(`sim/session`의
+ * `OwnedSlots`). 키가 겹치면 누구의 마리인지 못 가르므로 앞머리를 따로 쓴다 —
+ * 원작의 전투원 번호(`BATTLER_ENEMY_2` = 3)를 따서 `p4`다
+ */
+export function foe2Key(index: number): string {
+  return `p4-${index}`
+}
+
+/** **편**의 i번째 키 (`BATTLER_PLAYER_2` = 2를 따서 `p3`). 세이브로 안 돌아간다 */
+export function allyKey(index: number): string {
+  return `p3-${index}`
+}
+
+/**
+ * 그 키를 낸 사람. 화면이 트레이너 이름을 고르고 파티 공을 가르는 데 쓴다.
+ *
+ * `player`·`partner`는 우리 쪽, `foe`·`foe2`는 상대 쪽이다
+ */
+export type KeyOwner = 'player' | 'partner' | 'foe' | 'foe2'
+export function ownerOfKey(key: string): KeyOwner {
+  if (key.startsWith('p3-')) return 'partner'
+  if (key.startsWith('p4-')) return 'foe2'
+  if (key.startsWith('p2-')) return 'foe'
+  return 'player'
+}
+
+/**
  * 배틀 결과를 파티에 반영한다. 새 배열을 돌려준다 — 세이브는 불변으로 다룬다.
  *
  * HP·상태이상·PP를 옮긴다. 경험치·노력치는 별도 계산이다.
