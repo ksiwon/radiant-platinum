@@ -59,6 +59,8 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
 
   interface Log {
     battle: number | null
+    /** 둘째 상대 (`StartTrainerBattle`의 둘째 인자). 싱글이면 0 */
+    second: number | null
     messages: number[]
     /** 다 걸어온 뒤 트레이너가 선 자리 */
     stopped: { x: number, z: number }
@@ -67,14 +69,14 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
     frames: number
   }
 
-  const play = (sightRange: number, double = false): Log => {
+  const play = (sightRange: number, double = false, vs2 = false): Log => {
     const vars = new VarStore()
     clearNpcs()
     addNpcFrom(placed(), vars)
-    if (double) addNpcFrom(placed(PARTNER_ID, 11), vars)
+    if (double || vs2) addNpcFrom(placed(PARTNER_ID, 11), vars)
     const actor = npcActors.byLocalID.get(LOCAL_ID)!
     const log: Log = {
-      battle: null, messages: [],
+      battle: null, second: null, messages: [],
       stopped: { x: 0, z: 0 }, playerDir: DIR.south, frames: 0,
     }
     const player = { x: 10, z: 10, dir: DIR.south, visible: true }
@@ -90,8 +92,9 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
         class: 0,
       }),
       trainerMessage: (index) => { log.messages.push(index); return '{PLAYER}!' },
-      startTrainerBattle: (id) => {
+      startTrainerBattle: (id, second) => {
         log.battle = id
+        log.second = second ?? 0
         log.stopped = { x: actor.x, z: actor.z }
         log.playerDir = player.dir
       },
@@ -121,6 +124,15 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
       world.approaching[1] = {
         localID: PARTNER_ID, trainerID: TRAINER, direction: DIR.south, sightRange,
         type: APPROACH_TYPE.doubles,
+      }
+    }
+    // 서로 다른 둘이 한꺼번에 본 자리 (`APPROACH_TYPE_VS2`). 갈래는 0번 자리의
+    // 것을 묻는다(`GetApproachingTrainerType`) — 둘 다 VS2다
+    if (vs2) {
+      world.approaching[0] = { ...world.approaching[0], type: APPROACH_TYPE.vs2 }
+      world.approaching[1] = {
+        localID: PARTNER_ID, trainerID: TRAINER + 1, direction: DIR.south, sightRange,
+        type: APPROACH_TYPE.vs2,
       }
     }
     for (let frame = 0; frame < 4000; frame++) {
@@ -171,6 +183,26 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
     const log = play(3, true)
     expect(log.messages).toEqual([MSG.preDouble1, MSG.preDouble2])
     expect(log.battle).toBe(TRAINER)
+    // 한 사람의 더블은 같은 번호를 두 번 넘긴다 (`Encounter_NewVsTrainer`의 가운데 갈래)
+    expect(log.second).toBe(TRAINER)
+  })
+
+  /**
+   * ⚠️ **서로 다른 두 트레이너가 한꺼번에 보면 둘과 싸운다** (PARITY §2.2b).
+   *
+   * `Battles_ApproachingTrainerVS2`: 첫 사람이 걸어와 제 싱글 대사를 하고, 둘째가
+   * 걸어와 제 싱글 대사를 한 뒤 `StartTrainerBattle 첫째, 둘째`다 — 둘째 인자가
+   * 다른 번호라 트레이너 둘과의 2vs2가 열린다
+   */
+  it('VS2는 둘이 차례로 걸어와 말하고, 두 번호로 배틀을 연다', () => {
+    const log = play(3, false, true)
+    expect(log.messages).toEqual([MSG.pre, MSG.pre])
+    expect(log.battle).toBe(TRAINER)
+    expect(log.second).toBe(TRAINER + 1)
+  })
+
+  it('싱글은 둘째 상대가 0이다', () => {
+    expect(play(4).second).toBe(0)
   })
 })
 

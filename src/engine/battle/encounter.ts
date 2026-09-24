@@ -94,6 +94,17 @@ export interface WildEncounter {
    * 다른 조우는 늘 undefined이고, 색은 성격값이 알아서 정한다
    */
   shiny?: boolean
+  /**
+   * 동행이 붙어 있을 때의 **둘째 야생**과 그 동행 (PARITY §2.2b).
+   *
+   * 원작은 동행 중에 풀숲을 밟으면 싱글 대신 `BATTLE_TYPE_AI_PARTNER`를 열고
+   * 칸을 **두 번** 굴린다 (`wild_encounters.c` 316~341 ·
+   * `TryGenerateGrassEncounter_DoubleBattle` 730). 둘 중 하나라도 리펠·특성에
+   * 막히면 그 걸음은 아무 일도 없다
+   */
+  second?: WildEncounter
+  /** 그 판의 편 트레이너 번호 (`VAR_PARTNER_TRAINER_ID`) */
+  partner?: number
 }
 
 export type Rng = () => number

@@ -19,7 +19,9 @@ import { mapById, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import { DIR, parseMovements } from './movement'
 import { APPROACH_TYPE, approachMovements, dirBetween } from '../actor/approach'
-import { FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED } from './vars'
+import {
+  FLAG_HAS_POKEDEX, SCRIPT_LOCAL_VARS_START, VAR_LAST_TALKED, VAR_PARTNER_TRAINER_ID,
+} from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { SFX } from '../audio/sfx'
@@ -2721,10 +2723,26 @@ on('PrintTrainerDialogue', (ctx) => {
   return true
 })
 
+/**
+ * 트레이너전 (`ScrCmd_StartTrainerBattle` · `scrcmd_trainer.c` 124).
+ *
+ * 인자가 둘이다 — 첫 상대와 **둘째 상대**(매크로의 기본값이 0이다). 눈이 마주친
+ * 두 사람이 한꺼번에 오면(`Battles_ApproachingTrainerVS2`) 둘째가 다른 번호로
+ * 온다. 원작은 여기서 형식을 가른다 (`Encounter_NewVsTrainer` · `encounter.c` 724):
+ *
+ *   둘째가 0 → 싱글 · 둘째가 첫 상대와 같다 → 한 사람의 더블
+ *   둘째가 다르다 → 트레이너 둘과의 2vs2 (동행이 있으면 편이 선다)
+ *
+ * ⚠️ **동행은 이 명령이 스스로 읽는다.** `SystemFlag_CheckHasPartner`가 서 있으면
+ * `VAR_PARTNER_TRAINER_ID`를 편으로 넘긴다 — 스크립트는 편을 안 적는다. 한동안
+ * 둘째 인자를 읽고 버려서, 둘이 한꺼번에 와도 첫 사람과만 싸웠다 (PARITY §2.2b)
+ */
 on('StartTrainerBattle', (ctx) => {
   const trainerID = ctx.readVar()
-  ctx.readVar() // 두 번째 상대. 더블 배틀에서만 쓴다
-  ctx.host.world.services.startTrainerBattle?.(trainerID)
+  const second = ctx.readVar()
+  const vars = ctx.host.vars
+  const partner = vars.checkFlag(SYSTEM_FLAG.hasPartner) ? vars.get(VAR_PARTNER_TRAINER_ID) : 0
+  ctx.host.world.services.startTrainerBattle?.(trainerID, second, partner)
   // 화면이 배틀로 넘어간다. 돌아올 때까지 이 자리에 선다
   ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
   return true
@@ -3169,6 +3187,11 @@ on('StartApproachingTrainerTask', (ctx) => {
   const slot = ctx.readVar()
   const at = ctx.host.world.approaching[slot]
   if (!at) return false
+  // 둘째 트레이너(VS2)는 제 차례에 느낌표를 띄운다 — 눈이 마주친 순간이 아니라
+  // 첫 사람의 말이 끝나고 걸어 나오는 이 자리다 (`script/field`의 `sightAt`)
+  if (slot === 1 && at.type === APPROACH_TYPE.vs2) {
+    ctx.host.world.services.emote?.(at.localID, 'exclaim')
+  }
   ctx.host.world.applyMovement(at.localID, approachMovements(at.direction, at.sightRange))
   // 주인공이 돌아본다. 원작은 다 걸어온 뒤에 도는데 우리는 걷는 목록을
   // 걸어 둔 참이라 여기서 돌린다 — 화면에서는 걸어오는 동안 이쪽이 먼저

@@ -706,14 +706,17 @@ const BREAK_SECONDS = 0.65
 const STRENGTH_SECONDS = 0.8
 
 const services: FieldServices = {
-  startTrainerBattle(trainerID: number): void {
+  startTrainerBattle(trainerID: number, second = 0, partner = 0): void {
     battleResult = null
     battleMask = null
     waiting = true
     // 조우 컷인이 먼저다 (`FieldTask_Encounter`) — 야생과 같은 여섯을 쓰고
-    // 번호만 여섯 뒤로 밀린다 (`CutInEffects_ForBattle`)
+    // 번호만 여섯 뒤로 밀린다 (`CutInEffects_ForBattle`).
+    //
+    // 둘째 상대와 동행은 가게가 가른다 (`battleStore.startTrainer`의 `BattleRules`
+    // — `Encounter_NewVsTrainer`의 셋 갈래를 그 자리에서 그대로 옮겼다)
     void cutInThenTrainerBattle(trainerID, () => {
-      void useBattleStore.getState().startTrainer(trainerID).catch((e: unknown) => {
+      void useBattleStore.getState().startTrainer(trainerID, { second, partner }).catch((e: unknown) => {
         // 배틀을 못 열면 스크립트가 영영 기다린다. 진 것으로 놓아준다
         battleResult = 'loss'
         battleMask = 2
@@ -1734,22 +1737,28 @@ const services: FieldServices = {
   },
 
   /**
-   * 태그 배틀 (`ScrCmd_StartTagBattle`).
+   * 태그 배틀 (`ScrCmd_StartTagBattle` · `scrcmd_trainer.c` 146).
    *
-   * ⚠️ **파트너가 안 붙는다.** 옆에서 같이 싸우는 사람은 배틀 쪽에 자리가
-   * 없어서(`@pkmn/sim`은 되지만 우리 컨트롤러가 2인용이다) 지금은 **앞의
-   * 상대 하나와 1:1**로 연다. 창기둥에서 마스·쥬피터를 함께 상대하는 장면이
-   * 마스 한 명이 된다 — 이야기는 그대로 지나가고 없는 것은 옆에 선 둘이다
+   * 편과 상대 둘을 **그대로** 넘긴다 — `Encounter_NewVsTrainer`가 둘째 상대가
+   * 다르고 편이 있으면 `BATTLE_TYPE_TRAINER_WITH_AI_PARTNER`를 연다. 창기둥에서
+   * 라이벌과 함께 마스·쥬피터를, 장막시티·축복시티에서 조무래기 둘을 상대한다.
+   *
+   * 결과는 트레이너전과 같은 길로 돌아온다 — 스크립트가 `CheckWonBattle`로
+   * 갈라 `BlackOutFromBattle`로 가거나 잇는다 (PARITY §2.2b)
    */
-  startTagBattle: (_partner, enemy1) => {
+  startTagBattle: (partner, enemy1, enemy2) => {
     battleResult = null
     battleMask = null
     waiting = true
     void cutInThenTrainerBattle(enemy1, () => {
-      void useBattleStore.getState().startTrainer(enemy1).catch(() => {
-        battleResult = 'loss'
-        waiting = false
-      })
+      void useBattleStore.getState().startTrainer(enemy1, { second: enemy2, partner })
+        .catch((e: unknown) => {
+          battleResult = 'loss'
+          battleMask = 2
+          waiting = false
+          console.error(`태그 배틀 #${String(enemy1)}·#${String(enemy2)} (편 #${String(partner)})을 못 열었다:`,
+            e instanceof Error ? e.message : String(e))
+        })
     })
   },
 

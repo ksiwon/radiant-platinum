@@ -13,7 +13,8 @@ import { addRecord, RECORD_EGGS_HATCHED, RECORD_STEPS } from '../engine/world/ga
 import { VAR_FRIENDSHIP_STEPS } from '../engine/actor/steps'
 import { HOLD_EFFECT_FRIENDSHIP_UP } from '../engine/pokemon/friendship'
 import { fieldScripts, scriptBusy, start } from '../engine/script/field'
-import { VARS_START } from '../engine/script/vars'
+import { VAR_PARTNER_TRAINER_ID, VARS_START } from '../engine/script/vars'
+import { SYSTEM_FLAG } from '../engine/script/commands'
 import { DIR } from '../engine/script/movement'
 import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
@@ -121,6 +122,11 @@ function publishMods(): void {
   mods.repelLevel = save.steps.repel > 0 ? battler?.level ?? 0 : 0
   mods.month = date.month
   mods.day = date.day
+  // 동행이 붙어 있으면 풀숲의 야생이 둘이다 (PARITY §2.2b · `SystemFlag_CheckHasPartner`).
+  // 번호가 0이면 편이 없는 것으로 친다 — 상호교류광장처럼 깃발만 서는 자리가 있다
+  const vars = fieldScripts.vars
+  encounters.partner = vars.checkFlag(SYSTEM_FLAG.hasPartner)
+    ? vars.get(VAR_PARTNER_TRAINER_ID) : 0
 }
 
 /**
