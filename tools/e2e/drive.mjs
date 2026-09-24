@@ -3408,18 +3408,34 @@ export async function driveStory(page, {
   // ⚠️ **`skipStory`는 진단용이다** — 세이브를 읽어 이미 그 자리에 선 판에서
   // **한 구간만** 다시 몰아 보려고 둔다. 대표 구간의 판정에는 안 쓴다:
   // 여기를 건너뛰면 그 판은 「걸어서 이어졌다」를 증명하지 않는다 (기획서 §1.4)
+  /**
+   * 뒤에 이어 가는 걸음(`after`)에 넘기는 **길잡이 한 벌**.
+   *
+   * ⚠️ **한 벌만 둔다.** 예전에는 `skipStory` 갈래와 새 게임 갈래가 목록을 따로
+   * 적었고, `npcSpots`·`facing`이 앞쪽에만 들어갔다. `--from`으로 이어 달린 판은
+   * 장막 체육관을 지났는데, 새 게임부터 한 판으로 처음 거기 닿은 13판(2026-09-24)이
+   * 문간에서 `api.npcSpots is not a function`으로 터졌다
+   */
+  const handles = () => ({
+    goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
+    settle, now, tap, clearTalk,
+    partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
+    veilstoneState, pastoriaState, featureWalls, veilstonePlan,
+    teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
+    gameBlocked, gameSolid,
+    runAway, useItem, usePotions, stopPotions,
+    fightThrough,
+    // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만
+    // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은
+    // **언제나** 소포가 있어야 한다 — 없으면 202번도로 서쪽이 막힌다
+    getParcel,
+    // 읽기만 하는 진단 손잡이. 짧은 재현이 막힌 자리를 그대로 적는 자리다
+    lakeVars, snapshot, lakeVerity,
+    log, left, maps, trouble, battles,
+  })
+
   if (skipStory) {
-    const only = after === null ? null : await after({
-      goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
-      settle, now, tap, clearTalk,
-      partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
-      veilstoneState, pastoriaState, featureWalls, veilstonePlan,
-      teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
-      gameBlocked, gameSolid,
-      runAway, useItem, usePotions, stopPotions,
-      fightThrough, getParcel, log, left, maps, trouble, battles,
-      lakeVars, snapshot, lakeVerity,
-    })
+    const only = after === null ? null : await after(handles())
     return {
       maps: [...maps], ...battles, shops, missed: [], trouble,
       plan: planSummary(), episodes: episodeSummary(), failedEpisodes: failedEpisodes(),
@@ -3546,23 +3562,7 @@ export async function driveStory(page, {
   // ⚠️ **길잡이를 그대로 넘긴다** (PT-03의 Journey가 여기서 이어 간다). 베껴
   // 쓰면 「문 앞에서 한 발 물러난다」·「사람 칸으로 걸어가지 않는다」처럼 실측으로
   // 얻은 요령이 두 벌이 되고, 언젠가 한쪽만 고쳐진다
-  const extra = after === null ? null : await after({
-    goTo, stepOn, talkTo, talkToNpc, npcSpot, grindForWild, catchInGrass, throwBalls,
-    settle, now, tap, clearTalk,
-    partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
-    veilstoneState, pastoriaState, featureWalls, veilstonePlan,
-    teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor,
-    gameBlocked, gameSolid,
-    runAway, useItem, usePotions, stopPotions,
-    fightThrough,
-    // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 위에서는 트레이너전이 0일 때만
-    // 부르는데(라이벌전이 이미 붙었으면 건너뛴다), 그 뒤로 더 가는 쪽은
-    // **언제나** 소포가 있어야 한다 — 없으면 202번도로 서쪽이 막힌다
-    getParcel,
-    // 읽기만 하는 진단 손잡이. 짧은 재현이 막힌 자리를 그대로 적는 자리다
-    lakeVars, snapshot, lakeVerity,
-    log, left, maps, trouble, battles,
-  })
+  const extra = after === null ? null : await after(handles())
 
   return {
     maps: [...maps].sort((a, b) => a - b),
