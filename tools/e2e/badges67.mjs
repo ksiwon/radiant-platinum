@@ -581,7 +581,8 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
     v = await vars()
     note('체육관 앞 라이벌', `운하 상태 ${String(v.canalave)} · 도서관 ${String(v.library)}`)
   }
-  {
+  // 운하 차례에서만 — `journey`는 자리마다(45·46·47) 이 다리를 다시 부른다. 호수에서 운하로 돌아가지 않는다
+  if ((v.canalave ?? 0) < 5) {
     const heal = await api.healAt(MAP.canalaveCenter, Math.min(300_000, api.left()))
     note('운하 센터(36) 회복', heal.ok ? '나았다' : String(heal.why))
   }
