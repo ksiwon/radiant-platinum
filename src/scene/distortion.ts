@@ -19,8 +19,8 @@ import { applyCamera, distortionCameraSwing, seatCamera } from './distortionCame
 import { applyCascade, distortionCascading } from './distortionCascade'
 import {
   distortionActive, distortionBehaviorAt, distortionBlockedAt, distortionData, distortionFloor,
-  distortionFrame, distortionFrontTile, distortionHooks, distortionJumpBlocked,
-  setDistortionFloor, setPlatformIndex, setState, state, toWorldTiles,
+  distortionFrame, distortionFrontTile, distortionGroundY, distortionHooks, distortionJumpBlocked,
+  platformIndex, setDistortionFloor, setPlatformIndex, setState, state, toWorldTiles,
 } from './distortionCore'
 import { distortionRiding, resetDistortionRide, startRide } from './distortionElevator'
 import { applyEvents, distortionEventRunning, resetDistortionEvents } from './distortionEvents'
@@ -173,6 +173,10 @@ distortionBridge.frontTile = distortionFrontTile
 distortionBridge.cameraSwing = distortionCameraSwing
 distortionBridge.frame = distortionFrame
 distortionBridge.inWorld = distortionActive
+distortionBridge.landY = () => {
+  const floor = distortionFloor()
+  return floor === null || platformIndex() >= 0 ? null : distortionGroundY(floor.map)
+}
 distortionBridge.behaviorAt = distortionBehaviorAt
 distortionBridge.jumpBlocked = distortionJumpBlocked
 distortionBridge.dropBoulder = dropBoulder

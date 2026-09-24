@@ -603,6 +603,9 @@ export const playerSystem = {
     // 타는 것은 A를 눌러야 하지만 내리는 것은 걸어 나오면 된다
     if (p.surfing && standing !== null && !isOnWater(standing, onElevatedBridge())) {
       p.surfing = false
+      // 깨어진 세계 판 밖이면 뭍 높이에 선다 — B5F 웅덩이(128)에서 뭍(129)으로 (REPAIR §84)
+      const land = distortionBridge.landY?.() ?? null
+      if (land !== null) p.position.y = land
     }
     // 다리 어귀를 밟았는가 · 다리에서 내려섰는가 (PARITY §1.16).
     // **밑을 지나가는 것과 위를 건너는 것이 이 한 값으로 갈린다**

@@ -424,6 +424,15 @@ export const distortionBridge: {
    */
   inWorld: (() => boolean) | null
   /**
+   * **판 밖 뭍의 높이** (지역 y) — 판 위이거나 깨어진 세계 밖이면 null.
+   *
+   * 물에서 뭍으로 올라설 때 쓴다(REPAIR §84). 원작은 폭포 끝에서 높이 계산을 되켜
+   * (`EventCmdCascadeDown_FinishCascading`의 `MapObject_SetHeightCalculationDisabled(…, FALSE)`) B5F 웅덩이
+   * 물(세계 y 128)에서 뭍(129)으로 오르면 지형을 따라 한 칸 오른다 — 승강 발판 셋이 그 129에 있다.
+   * 우리는 이 세계에서 지형을 안 따라가므로(위 `inWorld`) 뭍에 오르는 그 순간 한 번 붙인다
+   */
+  landY: (() => number | null) | null
+  /**
    * 그 칸의 성질. 판 위가 아니면 null — 그때는 부르는 쪽이 맵 격자를 본다.
    *
    * 두 칸 뛰기가 이걸 본다 (`DistWorld_GetTileBehaviorOnCurrentFloatingPlatform`)
@@ -454,7 +463,7 @@ export const distortionBridge: {
     ((boulder: { localID: number; x: number; z: number },
       step: { x: number; z: number }) => boolean) | null
 } = {
-  blockedAt: null, frame: null, inWorld: null, behaviorAt: null, jumpBlocked: null,
+  blockedAt: null, frame: null, inWorld: null, landY: null, behaviorAt: null, jumpBlocked: null,
   frontTile: null, cameraSwing: null, dropBoulder: null,
 }
 

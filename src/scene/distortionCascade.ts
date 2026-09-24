@@ -13,8 +13,7 @@ import {
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import {
-  FACING_YAW, bindPlatform, distortionData, distortionFloor, distortionGroundY, platformIndex, setState, state,
-  toLocalTiles, toWorldTiles,
+  FACING_YAW, bindPlatform, distortionData, distortionFloor, setState, state, toLocalTiles, toWorldTiles,
 } from './distortionCore'
 
 /**
@@ -142,16 +141,6 @@ function endCascade(run: Cascading): void {
   // 갈래를 안 가린다. 판이 없는 층이면 그대로 판 밖이다
   const [nwx, nwy, nwz] = toWorldTiles(p.x, p.y, p.z)
   bindPlatform(findPlatform(floor.platforms, nwx, nwy, nwz))
-  /**
-   * ⚠️ **판 밖이면 발을 지면에 붙인다** — 원작은 여기서 높이 계산을 되켠다
-   * (`EventCmdCascadeDown_FinishCascading`의 `MapObject_SetHeightCalculationDisabled(…, FALSE)`).
-   * 폭포는 42칸을 내려가 세계 y 128에 멈추는데 B5F 땅은 129다 — 안 붙이면 한 칸 낮게 떠서 **B5F의
-   * 승강 발판 셋(세계 y 129)이 하나도 안 탄다**(REPAIR §84). 판 위면 판이 높이를 쥐므로 그대로 둔다
-   */
-  if (platformIndex() < 0) {
-    const ground = distortionGroundY(floor.map)
-    if (ground !== null) p.y = ground
-  }
   // 다 내려선 자리에서 물소리를 끈다 (`Sound_StopEffect`)
   music.stopEffect(SFX.WATERFALL)
   // 물살에서 서쪽으로 걸어 나온다 (`..._MoveAway`) — 원작도 폭포 칸 위에 서 있지
