@@ -315,7 +315,12 @@ export async function coronetToSpear(api, ctx,
     await via(api, note, [MAP.hearthome, MAP.route208, MAP.coronetSouth, MAP.coronet2F], '천관산 2F로 — 208번도로 · 1F 남')
     const push = await api.strengthPush(MAP.coronet2F, CORONET_2F_BOULDER, 'ArrowDown', 1, Math.min(300_000, api.left()))
     note('2F 괴력 바위 (14,45)', push.ok ? `${String(push.pushed)}번 밀었다` : String(push.why))
-    await via(api, note, [MAP.coronet2F, MAP.coronet3F, MAP.coronetOutsideS, MAP.coronet4F, MAP.coronetOutsideN,
+    /**
+     * ⚠️ **4F 방1·2(212)는 경유 목록에 안 적는다** — 목적지를 212로 주면 앞 내다보기가 「212 안의 다음 문」을
+     * 모르고 아무 문으로나 든다. 동쪽 문으로 들면 폭포(0x13 — 폭포오르기·배지 8)로 막힌 주머니다(탐침 p6 (32,24)).
+     * 바깥 남(211)에서 곧장 바깥 북(210)을 노리면 212를 지나는 문을 서쪽 (7,25)로 고른다
+     */
+    await via(api, note, [MAP.coronet2F, MAP.coronet3F, MAP.coronetOutsideS, MAP.coronetOutsideN,
       MAP.coronet4Fr3, MAP.coronet5F, MAP.coronet6F, MAP.spearPillar], '창기둥으로 — 3F · 바깥 · 4F · 5F · 6F')
     api.setSurf(false)
   }
