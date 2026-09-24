@@ -220,6 +220,13 @@ const NAMED: Record<keyof typeof MSG, string> = {
   trSentOutPokemon: "TrSentOutPokemon",
   linkTrSentOutPokemon: "LinkTrSentOutPokemon",
   trUsedOneItem: "TrUsedOneItem",
+  youAreChallengedByTr1AndTr2: "YouAreChallengedByTr1AndTr2",
+  tr1SentOutPokemon1Tr2SentOutPokemon2: "Tr1SentOutPokemon1Tr2SentOutPokemon2",
+  trSentOutPokemon1AndPokemon2: "TrSentOutPokemon1AndPokemon2",
+  trSentOutPokemon1GoPokemon2: "TrSentOutPokemon1GoPokemon2",
+  goPokemon1AndPokemon2: "GoPokemon1AndPokemon2",
+  aWildPokemonAndPokemonAppeared: "AWildPokemonAndPokemonAppeared",
+  playerBeatTr1AndTr2: "PlayerBeatTr1AndTr2",
   willYouSwitchYourPokemon: "WillYouSwitchYourPokemon",
   playerIsOutOfUsablePokemon: "PlayerIsOutOfUsablePokemon",
   playerBlackedOut: "PlayerBlackedOut",
@@ -301,6 +308,7 @@ const BAG_NAMED: Record<keyof typeof BAG, string> = {
   pocketBalls: 'PocketNamePokeBalls',
   pocketBattleItems: 'PocketNameBattleItems',
   embargoBlockingItemUse: 'EmbargoBlockingItemUse',
+  cantUseBallTwoPokemon: 'CantUseBallTwoPokemon',
 }
 
 /** `PARTY`의 키 → 디컴프가 그 줄에 붙인 이름 (`BattleParty_Text_` 뒤) */

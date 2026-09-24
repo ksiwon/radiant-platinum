@@ -97,6 +97,11 @@ interface Loaded {
 interface Props {
   /** 야생전이 아니면 볼도 도망 도구도 못 쓴다 */
   wild: boolean
+  /**
+   * 상대 둘이 다 서 있는가 — 편과 함께 만난 야생 둘(`BATTLE_TYPE_AI_PARTNER`).
+   * 그 동안은 볼을 못 던진다 (`battle_bag.c` 454 `hasTwoOpponents`)
+   */
+  twoFoes?: boolean
   party: readonly PartySlot[]
   roster: Record<string, RosterEntry>
   /** 종족 이름. 별명이 없는 애를 부를 때 쓴다 */
@@ -130,7 +135,9 @@ function planSummary(plan: ItemPlan, stats: readonly string[]): string {
   return parts.join(' · ')
 }
 
-export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }: Props) {
+export function BattleBag({
+  wild, twoFoes = false, party, roster, names, onThrow, onUse, onBack,
+}: Props) {
   const [data, setData] = useState<Loaded | null>(null)
   // 원작도 회복 칸에서 시작한다 (`bag.c`의 `BagCursor_SetBattleCurrentCategory`)
   const [tab, setTab] = useState(0)
@@ -186,7 +193,7 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
   const isBall = chosen !== undefined && BALL_IDS.has(chosen.item)
   const escapes = item !== null && isEscapeItem(item)
   /** 그 도구를 지금 이 배틀에서 고를 수 있는가. 이유는 아래 `why`가 말한다 */
-  const pickable = !isBall && !escapes ? true : wild
+  const pickable = !isBall && !escapes ? true : wild && !(isBall && twoFoes)
 
   const slots = useMemo(
     () => (step === 'move' ? moveSlotsOf(party[target]?.key ?? '') : []),
@@ -347,8 +354,10 @@ export function BattleBag({ wild, party, roster, names, onThrow, onUse, onBack }
     ?? (roster[out.key] ? names?.species[roster[out.key].species] : null) ?? null : null
   const why = !pickable
     // 원작은 트레이너전에서도 볼을 던지게 두고 **배틀 쪽이** 이 줄을 찍는다.
-    // 우리는 여기서 미리 막으므로 그 줄을 이 자리에 놓는다 (`romText`의 주석)
-    ? (isBall ? romLine(battleLines, MSG.theTrainerBlockedTheBall)
+    // 우리는 여기서 미리 막으므로 그 줄을 이 자리에 놓는다 (`romText`의 주석).
+    // 야생 둘이 다 서 있으면 가방 뱅크의 줄이다 — 원작도 가방 화면이 막는다
+    ? (isBall && wild && twoFoes ? romLine(bagLines, BAG.cantUseBallTwoPokemon)
+      : isBall ? romLine(battleLines, MSG.theTrainerBlockedTheBall)
       // ⚠️ **도망 도구 쪽은 우리 말이다.** 롬의 그 줄(`CommonStrings_Text_
       // CantDoThatRightNow`)은 마박사가 세 쪽에 걸쳐 타이르는 글이라 한 줄짜리
       // 안내 칸에 안 들어간다 — 뜻만 옮겨 한 줄로 줄였다

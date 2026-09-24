@@ -14,7 +14,8 @@ import type { BattleView } from '../../engine/battle/view'
 import { useBattleStore } from '../../state/battleStore'
 import { useSaveStore } from '../../state/saveStore'
 import { playerModelPath } from '../playerModelPath'
-import { trainerThrowOrigin } from './battleBallMotion'
+import { trainerStandAt } from './battleBallMotion'
+import type { SlotId } from '../../engine/battle/events'
 import { TRAINER_CLIP, trainerFallbackPalette, trainerLost } from './battleTrainerVisual'
 import { trainerModelBundle } from '../../engine/actor/npcModels'
 import { unifySkeletons } from '../unifySkeleton'
@@ -22,8 +23,10 @@ import { unifySkeletons } from '../unifySkeleton'
 const loader = new GLTFLoader()
 const SECONDARY_OUTFIT = ['hair2', 'shoes2']
 
-function throwKey(view: BattleView | null, mine: boolean): string {
+function throwKey(view: BattleView | null, mine: boolean, only: SlotId | null = null): string {
   if (!view) return ''
+  // 한 쪽에 트레이너가 둘이면 **제 자리**의 교체에만 던지는 몸짓을 한다
+  if (only !== null) return view.active[only]?.key ?? ''
   const side = mine ? 'p1' : 'p2'
   return [view.active[`${side}a`]?.key ?? '', view.active[`${side}b`]?.key ?? ''].join('/')
 }
@@ -76,11 +79,17 @@ function TrainerActor({
   trainerClass,
   mine,
   view,
+  slot,
+  paired = false,
 }: {
   path: AssetPath | null
   trainerClass: number | null
   mine: boolean
   view: BattleView | null
+  /** 이 사람의 자리. 한 쪽에 한 사람이면 `a`다 */
+  slot: SlotId
+  /** 이 쪽에 트레이너가 둘인가 (PARITY §2.2b). 둘이면 자리대로 옆으로 비켜 선다 */
+  paired?: boolean
 }) {
   const host = useRef<Group>(null)
   const wrapper = useRef<Group>(null)
@@ -104,9 +113,9 @@ function TrainerActor({
   const rest = useRef<(() => void) | null>(null)
   /** 내 쪽에서 본 결말. 누가 진 동작을 하는지는 `trainerLost`가 가른다 */
   const outcome = useBattleStore((state) => state.outcome)
-  const origin = trainerThrowOrigin(mine ? 'p1a' : 'p2a')
+  const origin = trainerStandAt(slot, paired)
   const facing = Math.atan2(-origin[0], -origin[2])
-  const key = throwKey(view, mine)
+  const key = throwKey(view, mine, paired ? slot : null)
 
   /**
    * 클립 하나를 돌린다.
@@ -275,21 +284,46 @@ function TrainerActor({
 }
 
 /** Player and opponent bodies placed behind their Pokémon on the 3D battle arena. */
+/** 그 분류의 몸 파일. 못 구운 분류면 null — 절차형 몸으로 선다 */
+function bodyOf(trainerClass: number | null): AssetPath | null {
+  const bundle = trainerModelBundle(trainerClass)
+  return bundle ? `models/npc/${bundle}.glb` : null
+}
+
 export function BattleTrainers() {
   const kind = useBattleStore((state) => state.kind)
   const trainerClass = useBattleStore((state) => state.trainerClass)
+  // 트레이너가 넷인 판 (PARITY §2.2b) — 상대 둘은 자리 a·b에, 편은 내 옆에 선다
+  const foes = useBattleStore((state) => state.foes)
+  const partner = useBattleStore((state) => state.partner)
   const view = useBattleStore((state) => state.view)
   const gender = useSaveStore((state) => state.trainer.gender)
-  const opponentPath = useMemo<AssetPath | null>(() => {
-    const bundle = trainerModelBundle(trainerClass)
-    return bundle ? `models/npc/${bundle}.glb` : null
-  }, [trainerClass])
+  const opponentPath = useMemo(() => bodyOf(trainerClass), [trainerClass])
+  const second = foes[1] ?? null
+  const secondPath = useMemo(() => bodyOf(second?.classId ?? null), [second])
+  const partnerPath = useMemo(() => bodyOf(partner?.classId ?? null), [partner])
 
   return (
     <>
-      <TrainerActor path={playerModelPath(gender)} trainerClass={null} mine view={view} />
+      <TrainerActor
+        path={playerModelPath(gender)} trainerClass={null} mine view={view}
+        slot="p1a" paired={partner !== null}
+      />
+      {partner !== null && (
+        <TrainerActor
+          path={partnerPath} trainerClass={partner.classId} mine view={view} slot="p1b" paired
+        />
+      )}
       {kind === 'trainer' && (
-        <TrainerActor path={opponentPath} trainerClass={trainerClass} mine={false} view={view} />
+        <TrainerActor
+          path={opponentPath} trainerClass={trainerClass} mine={false} view={view}
+          slot="p2a" paired={second !== null}
+        />
+      )}
+      {kind === 'trainer' && second !== null && (
+        <TrainerActor
+          path={secondPath} trainerClass={second.classId} mine={false} view={view} slot="p2b" paired
+        />
       )}
     </>
   )

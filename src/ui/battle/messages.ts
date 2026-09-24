@@ -81,6 +81,13 @@ export interface TextContext {
    */
   foeClass?: string | null
   foeTrainer?: string | null
+  /**
+   * 그 마리를 낸 트레이너 (PARITY §2.2b). 한 쪽에 트레이너가 둘인 판에서 교체·도구
+   * 줄의 주어를 가른다 — 원작은 전투원마다 제 트레이너 이름을 넣는다
+   * (`LoadSendOutMessage`의 `params[0] = battlerData->battler`). 모르면 null이고,
+   * 그때는 `foeClass`·`foeTrainer`다
+   */
+  trainerOf?: (key: string) => { cls: string | null; name: string | null } | null
   /** 내 이름. 가방 도구를 쓴 주어다 — 원작도 플레이어 이름으로 부른다 */
   playerName?: string | null
   /**
@@ -541,7 +548,9 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
       // ⚠️ **트레이너전에서는 「야생」이 아니다.** 한동안 상대 쪽 교체가 전부
       // 이 야생 줄로 떨어져서 체육관 관장이 내보내도 「앗! 야생 켄타로스가
       // 튀어나왔다!」가 떴다. 롬은 그 자리에 분류·이름·포켓몬 세 칸짜리 줄을 쓴다
-      const sent = rom(ctx, MSG.trSentOutPokemon, ctx.foeClass ?? null, ctx.foeTrainer ?? null, bare)
+      const who2 = ctx.trainerOf?.(e.actor.name) ?? null
+      const sent = rom(ctx, MSG.trSentOutPokemon,
+        who2?.cls ?? ctx.foeClass ?? null, who2?.name ?? ctx.foeTrainer ?? null, bare)
       if (sent !== null) return sent
       // 분류가 없는 상대(통신·배틀팩토리)는 이름 한 칸짜리 짝을 쓴다
       const link = rom(ctx, MSG.linkTrSentOutPokemon, ctx.foeName ?? null, bare)
@@ -707,7 +716,10 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
 
     case 'trainerItem': {
       const item = names.items[e.item] ?? null
-      const line = rom(ctx, MSG.trUsedOneItem, ctx.foeClass ?? null, ctx.foeTrainer ?? null, item)
+      // 트레이너가 둘이면 **그 마리의 트레이너**가 쓴 것이다 (`aiContext.usedItem[battler >> 1]`)
+      const user = ctx.trainerOf?.(e.key) ?? null
+      const line = rom(ctx, MSG.trUsedOneItem,
+        user?.cls ?? ctx.foeClass ?? null, user?.name ?? ctx.foeTrainer ?? null, item)
       if (line !== null) return line
       // ⚠️ **분류가 없는 상대에게는 롬이 이 줄을 안 들고 있다** (통신·배틀팩토리).
       // 「내보냈다」·「걸어왔다」·「이겼다」 셋은 이름 한 칸짜리 짝이 있는데 이
@@ -864,6 +876,84 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
     default:
       return null
   }
+}
+
+/**
+ * 첫 등판의 두 줄을 **한 창**으로 (PARITY §2.2b · `LoadLeadMonMessage`).
+ *
+ * 더블의 첫 등판은 한 쪽에 공이 둘 날아가도 글은 한 줄이다 — 원작이 쪽마다
+ * `PrintFirstSendOutMessage` 한 번을 부르고, 형식에 따라 줄이 갈린다
+ * (`battle_display.c` 6028~6150):
+ *
+ *   상대 쪽  트레이너 둘 → `Tr1SentOutPokemon1Tr2SentOutPokemon2`
+ *            한 사람의 더블 → `TrSentOutPokemon1AndPokemon2`
+ *            야생 둘(편과 함께) → `AWildPokemonAndPokemonAppeared`
+ *   우리 쪽  편이 있다 → `TrSentOutPokemon1GoPokemon2` (편이 첫 칸)
+ *            내가 둘을 낸다 → `GoPokemon1AndPokemon2`
+ *
+ * 돌려주는 것은 사건 → 그 자리의 글이다. 한 쪽의 두 등판 중 **한 사건에만** 줄을
+ * 싣고 다른 하나는 null로 비운다 — 재생기는 글 없는 사건을 공만 던지는 박자로
+ * 편다(`buildBeats`). 야생은 두 마리가 **먼저 서 있고** 글이 뒤라서(`subscript_
+ * start_encounter.s` _079) 뒤 사건에 싣는다.
+ *
+ * 롬 줄을 못 채우면(뱅크가 안 왔다) 아무것도 안 돌려준다 — 사건마다의 줄로 떨어진다
+ */
+export function leadLines(
+  events: readonly BattleEvent[],
+  ctx: TextContext,
+  setup: {
+    /** 트레이너전인가. 아니면 야생이다 */
+    trainer: boolean
+    /** 편. 있으면 우리 쪽 첫 줄의 첫 칸이다 */
+    partner: { cls: string | null; name: string | null } | null
+  },
+): Map<BattleEvent, string | null> {
+  const out = new Map<BattleEvent, string | null>()
+  let from = 0
+  while (from < events.length && events[from]!.kind !== 'switch') from++
+  let to = from
+  while (to < events.length && events[to]!.kind === 'switch') to++
+  const lead = events.slice(from, to)
+    .filter((e): e is Extract<BattleEvent, { kind: 'switch' }> => e.kind === 'switch')
+  const bare = (key: string): string => ctx.bare?.(key) ?? key
+
+  const foe = lead.filter((e) => e.actor.side === 'p2')
+  if (foe.length === 2) {
+    const [a, b] = foe[0]!.actor.slot === 'p2a' ? [foe[0]!, foe[1]!] : [foe[1]!, foe[0]!]
+    let line: string | null
+    if (!setup.trainer) {
+      line = rom(ctx, MSG.aWildPokemonAndPokemonAppeared, bare(a.actor.name), bare(b.actor.name))
+    } else {
+      const ta = ctx.trainerOf?.(a.actor.name) ?? null
+      const tb = ctx.trainerOf?.(b.actor.name) ?? null
+      line = ta !== null && tb !== null && (ta.cls !== tb.cls || ta.name !== tb.name)
+        ? rom(ctx, MSG.tr1SentOutPokemon1Tr2SentOutPokemon2,
+          ta.cls, ta.name, bare(a.actor.name), tb.cls, tb.name, bare(b.actor.name))
+        : rom(ctx, MSG.trSentOutPokemon1AndPokemon2,
+          ta?.cls ?? ctx.foeClass ?? null, ta?.name ?? ctx.foeTrainer ?? null,
+          bare(a.actor.name), bare(b.actor.name))
+    }
+    if (line !== null) {
+      // 야생은 서 있는 둘 **뒤에** 글이 뜬다. 트레이너는 글이 먼저고 공이 뒤다
+      const [said, quiet] = setup.trainer ? [foe[0]!, foe[1]!] : [foe[1]!, foe[0]!]
+      out.set(said, line)
+      out.set(quiet, null)
+    }
+  }
+
+  const ours = lead.filter((e) => e.actor.side === 'p1')
+  if (ours.length === 2) {
+    const ally = setup.partner
+    const line = ally !== null
+      ? rom(ctx, MSG.trSentOutPokemon1GoPokemon2, ally.cls, ally.name,
+        bare(ours[0]!.actor.name), ctx.label(ours[1]!.actor))
+      : rom(ctx, MSG.goPokemon1AndPokemon2, ctx.label(ours[0]!.actor), ctx.label(ours[1]!.actor))
+    if (line !== null) {
+      out.set(ours[0]!, line)
+      out.set(ours[1]!, null)
+    }
+  }
+  return out
 }
 
 /** `Focus Punch` · `move: Focus Punch` → `focuspunch`. `conditionId`와 같은 접기다 */

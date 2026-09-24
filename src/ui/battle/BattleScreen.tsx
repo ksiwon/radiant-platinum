@@ -26,7 +26,7 @@ import {
 } from '../../engine/battle/movePreview'
 import { formSpeciesId } from '../../engine/pokemon/form'
 import type { Move } from '../../data/schema'
-import { useBattleStore, type RosterEntry } from '../../state/battleStore'
+import { useBattleStore, type RosterEntry, type TrainerTag } from '../../state/battleStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { withTopic } from '../korean'
@@ -37,10 +37,11 @@ import { useListCursor } from './listCursor'
 import { LearnMove } from './LearnMove'
 import { BattleBag } from './BattleBag'
 import { SwitchScreen } from './SwitchScreen'
-import { battleText, type BattleNames } from './messages'
-import { romLine } from './romLine'
+import { battleText, leadLines, type BattleNames } from './messages'
+import { ownerOfKey, type KeyOwner } from '../../engine/battle/aftermath'
+import { openingLine, closingLines } from './bookends'
 import {
-  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, MSG, STAT_BANK,
+  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, STAT_BANK,
 } from './romText'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
@@ -199,6 +200,12 @@ export function BattleScreen() {
   // 롬의 네 줄이 트레이너를 **두 칸으로** 받는다 (PARITY §2.24)
   const foeClass = useBattleStore((s) => s.foeClass)
   const foeTrainer = useBattleStore((s) => s.foeTrainer)
+  // 트레이너가 둘 이상인 판 (PARITY §2.2b). 사람마다 이름·공 줄·끝말이 따로다
+  const foes = useBattleStore((s) => s.foes)
+  const partner = useBattleStore((s) => s.partner)
+  const defeatLines = useBattleStore((s) => s.defeatLines)
+  const downKeys = useBattleStore((s) => s.downKeys)
+  const prize = useBattleStore((s) => s.prize)
   const view = useBattleStore((s) => s.view)
   const actions = useBattleStore((s) => s.actions)
   const canSpendTurn = useBattleStore((s) => s.canSpendTurn)
@@ -292,6 +299,18 @@ export function BattleScreen() {
     return kind === 'trainer' ? `상대 ${base}` : `야생 ${base}`
   }, [roster, names, kind])
 
+  /**
+   * 그 마리를 낸 트레이너 (PARITY §2.2b). 키 앞머리가 주인이다
+   * (`aftermath.ownerOfKey`) — 둘째 상대의 마리가 첫 상대 이름으로 불리면 안 된다
+   */
+  const trainerOf = useMemo(() => (key: string): TrainerTag | null => {
+    const who = ownerOfKey(key)
+    if (who === 'foe') return foes[0] ?? null
+    if (who === 'foe2') return foes[1] ?? null
+    if (who === 'partner') return partner
+    return null
+  }, [foes, partner])
+
   /** 자리 표시 없는 이름. 아직 안 나온 마리를 부를 때 쓴다 */
   const bare = useMemo(() => (key: string) => {
     const entry: RosterEntry | undefined = roster[key]
@@ -332,48 +351,34 @@ export function BattleScreen() {
   const beats = useMemo(() => {
     if (!names) return []
     const ctx = {
-      names, lines, moveLines, label, foeName, foeClass, foeTrainer, bare, playerName,
+      names, lines, moveLines, label, foeName, foeClass, foeTrainer, bare, playerName, trainerOf,
     }
+    // 더블의 첫 등판은 쪽마다 한 창이다 (`messages.leadLines`)
+    const leads = leadLines(events, ctx, { trainer: kind === 'trainer', partner })
     // 야생은 상대가 화면이 열릴 때 이미 서 있다 — 트레이너전은 글을 찍고
     // 공을 던진다 (`engine/battle/playback`의 `BeatOptions`)
-    const out = buildBeats(events, (e) => battleText(e, ctx), {
+    const out = buildBeats(events, (e) => {
+      if (leads.has(e)) return leads.get(e) ?? null
+      // ⚠️ **상금 줄은 끝말 뒤로 옮긴다.** 원작은 「이겼다!」 → 상대의 끝말 →
+      // 상금 차례다 (`subscript_battle_won.s` _087 → _121). 사건 자리에 두면
+      // 상금이 「이겼다!」보다 먼저 뜬다 — `bookends.closingLines`가 그 줄을 찍는다
+      if (e.kind === 'prize') return null
+      return battleText(e, ctx)
+    }, {
       foeOnStage: kind !== 'trainer',
     })
-    // 트레이너전은 누가 걸어왔는지부터 말한다. 사건이 아니라 판 자체의 사실이다.
-    // 롬은 분류·이름을 두 칸으로 받는 줄과 이름 한 칸짜리 줄을 따로 들고 있다
-    const challenge = kind !== 'trainer' ? null
-      : romLine(lines, MSG.youAreChallengedByTr, foeClass, foeTrainer)
-        ?? romLine(lines, MSG.youAreChallengedByLinkTr, foeName)
-    if (challenge !== null) out.unshift({ text: challenge, events: [], hold: 30 })
-    // 판이 끝나고 나오는 줄. **하나가 아니라 여럿이다** — 진 판은 원작이 창
-    // 셋을 잇는다 (`subscript_battle_lost.s`)
-    const tail: (string | null)[] = outcome === 'win'
-      ? [kind === 'trainer'
-        ? romLine(lines, MSG.playerDefeatedTr, foeClass, foeTrainer)
-          ?? romLine(lines, MSG.playerDefeatedLinkTr, foeName)
-        // ⚠️ **야생전은 원작이 아무 말도 안 한다.** 이긴 순간이 곧 배틀의 끝이라
-        // 줄이 없다(`subscript_battle_won.s`의 야생 갈래가 곧장 페이드로 간다) —
-        // 우리 화면은 로그가 그대로 서 있으므로 한 줄을 놓는다
-        : '배틀에서 이겼다!']
-      : outcome === 'loss'
-        // 「싸울 수 있는 포켓몬이 없다!」 → 「... ... ... ...」 → 「눈앞이 캄캄해졌다!」.
-        // 여태 마지막 하나만 띄워서, 지는 순간이 한 창으로 툭 끝났다.
-        // ⚠️ 사이의 상금 줄(34·35)은 아직 못 놓는다 — 진 판에 돈이 깎이는 일
-        // 자체가 없어서 채울 수가 없다
-        ? [
-          romLine(lines, MSG.playerIsOutOfUsablePokemon, playerName),
-          romLine(lines, MSG.blackedOutDotDotDot),
-          romLine(lines, MSG.playerBlackedOut, playerName),
-        ]
-        : []
-    // 포획·도망은 이미 그 순간의 이벤트가 말했다. 여기서 또 말하지 않는다
-    for (const text of tail) {
-      if (text !== null) out.push({ text, events: [], hold: 30 })
+    // 트레이너전은 누가 걸어왔는지부터 말하고, 끝나면 이긴 줄·끝말·상금이 잇는다.
+    // 사건이 아니라 판 자체의 사실이다 (`bookends`)
+    const ends = {
+      lines, kind, outcome, foes, foeName, foeClass, foeTrainer, defeatLines, prize, playerName,
     }
+    const challenge = openingLine(ends)
+    if (challenge !== null) out.unshift({ text: challenge, events: [], hold: 30 })
+    for (const text of closingLines(ends)) out.push({ text, events: [], hold: 30 })
     return out
   }, [
     events, names, lines, moveLines, label, bare, outcome, kind,
-    foeName, foeClass, foeTrainer, playerName,
+    foeName, foeClass, foeTrainer, playerName, trainerOf, foes, partner, defeatLines, prize,
   ])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
@@ -442,6 +447,7 @@ export function BattleScreen() {
         && !forced && page === 'bag' && actions.length > 0 && (
         <BattleBag
           wild={kind === 'wild'} party={party} roster={roster} names={names}
+          twoFoes={doubles && foe !== null && !foe.fainted && foeB !== null && !foeB.fainted}
           onThrow={(ball) => void throwBall(ball)}
           onUse={(item, key, slot) => void spendItem(item, key, slot)}
           onBack={() => { setPage('root') }}
@@ -449,7 +455,18 @@ export function BattleScreen() {
       )}
       <div className={css.field}>
         <div className={css.foeSlot}>
-          {foeName && <div className={css.foeTrainer}>{foeName}</div>}
+          {/*
+            트레이너마다 이름과 파티 공 한 줄 (`PartyGaugeData_New`). 트레이너가 둘이면
+            줄도 둘이다 — 어느 공이 누구 것인지가 여기서 읽힌다
+          */}
+          {kind === 'trainer' && foes.length > 0
+            ? foes.map((t, i) => (
+              <PartyGauge
+                key={t.id} label={t.label} owner={i === 0 ? 'foe' : 'foe2'}
+                roster={roster} down={downKeys} view={view}
+              />
+            ))
+            : foeName && <div className={css.foeTrainer}>{foeName}</div>}
           {[foe, foeB].map((m, i) => m && (
             <MonCard
               key={i}
@@ -460,6 +477,17 @@ export function BattleScreen() {
           ))}
         </div>
         <div className={css.mineSlot}>
+          {/* 편이 있으면 편의 이름과 공 줄을 먼저 — 자리 b가 그 사람의 것이다 */}
+          {partner !== null && (
+            <PartyGauge
+              label={partner.label} owner="partner" roster={roster} down={downKeys} view={view}
+            />
+          )}
+          {kind === 'trainer' && (
+            <PartyGauge
+              label={playerName} owner="player" roster={roster} down={downKeys} view={view}
+            />
+          )}
           {[mine, mineB].map((m, i) => m && (
             <MonCard
               key={i} mon={m} names={names} drainMs={script.holdMs} showHp
@@ -540,9 +568,10 @@ export function BattleScreen() {
               <RootMenu
                 canFight={moveActions.length > 0}
                 canSwitch={switchActions.length > 0}
-                // ⚠️ **더블에는 볼도 도망도 없다.** 우리 더블은 트레이너전뿐이고
-                // 원작도 트레이너전에서 둘 다 막는다
-                wild={kind === 'wild' && !doubles}
+                // ⚠️ **트레이너 더블에는 볼도 도망도 없다.** 편과 함께 만난 야생
+                // 둘(`BATTLE_TYPE_AI_PARTNER`)은 도망칠 수 있다 — 원작의 도망 판정은
+                // 배틀 형식을 안 보고 마주 선 상대 첫 자리와 견준다 (`battle_lib.c` 3284)
+                wild={kind === 'wild' && (!doubles || partner !== null)}
                 canSpend={canSpendTurn}
                 who={asking ? bare(asking.key) : null}
                 onPick={setPage}
@@ -581,6 +610,48 @@ function targetLabel(
     return self ? `${name} (자신)` : `${name} (짝)`
   }
   return `상대 ${name}`
+}
+
+/** 한 사람 파티의 최대 칸. 원작 공 줄도 여섯이다 (`MAX_PARTY_SIZE`) */
+const GAUGE_SLOTS = 6
+
+/**
+ * 한 사람의 이름과 파티 공 (PARITY §2.2b · `PartyGaugeData_Fill`).
+ *
+ * 공 하나가 그 사람 파티의 한 칸이다 — 멀쩡함·상태 이상·기절·빈 칸 넷으로
+ * 갈린다(`STOCK_STATUS_*`). 기절은 **재생기가 보여 준 만큼만** 센다(`downKeys`) —
+ * 정본을 보면 쓰러지는 연출보다 공이 먼저 꺼진다
+ */
+function PartyGauge(
+  { label, owner, roster, down, view }: {
+    label: string
+    owner: KeyOwner
+    roster: Record<string, RosterEntry>
+    down: readonly string[]
+    view: BattleView | null
+  },
+) {
+  const keys = Object.keys(roster)
+    .filter((k) => ownerOfKey(k) === owner)
+    .sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)))
+  const statusOf = (key: string): string | null => {
+    for (const m of [view?.active.p1a, view?.active.p1b, view?.active.p2a, view?.active.p2b]) {
+      if (m && m.key === key) return m.status === 'ok' ? null : m.status
+    }
+    return null
+  }
+  return (
+    <div className={css.gaugeRow}>
+      <span>{label}</span>
+      {Array.from({ length: GAUGE_SLOTS }, (_, i) => {
+        const key = keys[i]
+        const state = key === undefined ? 'empty'
+          : down.includes(key) ? 'fainted'
+            : statusOf(key) !== null ? 'status' : 'alive'
+        return <span key={i} className={css.gaugeBall[state]} aria-label={state} />
+      })}
+    </div>
+  )
 }
 
 const GENDER_MARK: Record<string, { mark: string; cls: string }> = {

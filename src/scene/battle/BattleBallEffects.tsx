@@ -15,6 +15,7 @@ import {
   captureDuration,
   captureResolveAt,
   throwArc,
+  trainerStandAt,
   trainerThrowOrigin,
   type Point3,
 } from './battleBallMotion'
@@ -128,7 +129,12 @@ function ShotVisual({
   const recall = useRef<Group>(null)
   const [x, z] = spotAt(shot.slot)
   const target = useMemo<Point3>(() => [x, 1.2, z], [x, z])
-  const source = trainerThrowOrigin(shot.kind === 'capture' ? 'p1a' : shot.slot)
+  // 트레이너가 둘인 쪽은 **그 자리의 주인**이 던진다 (PARITY §2.2b)
+  const paired = useBattleStore((s) => (shot.slot.startsWith('p1')
+    ? s.partner !== null : s.foes.length > 1))
+  const source = shot.kind === 'capture'
+    ? trainerThrowOrigin('p1a')
+    : trainerStandAt(shot.slot, paired)
   const resultAt = captureResolveAt(shot.shakes)
 
   useFrame(() => {

@@ -324,6 +324,22 @@ export const MSG = {
   /** 「{분류} {이름}은 / {포켓몬}을 내보냈다!」 */ trSentOutPokemon: 972,
   /** 분류 없는 짝 */ linkTrSentOutPokemon: 974,
   /** 「{분류} {이름}은 / {도구}를 썼다!」 */ trUsedOneItem: 858,
+
+  // ── 트레이너가 둘 이상인 판 (PARITY §2.2b · `battle_display.c` 5985~6150) ────────
+  //
+  // 원작은 첫 등판·걸어옴·이김을 **한 창에 두 사람을** 담는 줄로 따로 들고 있다.
+  // 한 줄씩 두 번 찍으면 창이 둘로 갈리고 차례도 원작과 어긋난다
+  /** 「{분류1} {이름1}과 / {분류2} {이름2}가 / 승부를 걸어왔다!」 */ youAreChallengedByTr1AndTr2: 992,
+  /** 「{분류1} {이름1}은 {포켓몬1}을 내보냈다! / {분류2} {이름2}는 {포켓몬2}를…」 */
+  tr1SentOutPokemon1Tr2SentOutPokemon2: 991,
+  /** 한 사람의 더블 — 「{분류} {이름}은 / {포켓몬1}과 {포켓몬2}를 내보냈다!」 */
+  trSentOutPokemon1AndPokemon2: 973,
+  /** 편이 있는 판 — 「{분류} {이름}은 {편의 포켓몬}을 내보냈다! / 가랏! {내 포켓몬}!」 */
+  trSentOutPokemon1GoPokemon2: 993,
+  /** 내가 두 자리를 채우는 더블 — 「가랏! {포켓몬1}! {포켓몬2}!」 */ goPokemon1AndPokemon2: 978,
+  /** 편과 함께 만난 야생 둘 — 「앗! 야생 {포켓몬1}과 / {포켓몬2}가 튀어나왔다!」 */
+  aWildPokemonAndPokemonAppeared: 967,
+  /** 「{분류1} {이름1}과 / {분류2} {이름2}의 / 승부에서 이겼다!」 */ playerBeatTr1AndTr2: 953,
   /**
    * 시합규칙 「교체」 — 세 칸짜리 한 줄에 물음까지 들어 있다.
    *
@@ -429,6 +445,11 @@ export const BAG = {
   /** 볼 */ pocketBalls: 26,
   /** 배틀용 */ pocketBattleItems: 27,
   /** 금제가 막았다. 빈칸 둘은 기술 이름과 이름 */ embargoBlockingItemUse: 46,
+  /**
+   * 「안돼! 2마리 있어서 / 목표를 정할 수가 없어...!」 — 편과 함께 만난 야생 둘이
+   * 다 서 있을 때 볼을 막는다 (`battle_bag.c` 454 `hasTwoOpponents`)
+   */
+  cantUseBallTwoPokemon: 44,
 } as const
 
 /**

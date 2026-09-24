@@ -1,4 +1,5 @@
 import type { SlotId } from '../../engine/battle/events'
+import { PAIR_DIR } from '../../engine/battle/shots'
 // ⚠️ **시간표는 엔진이 든다.** 박자를 만드는 쪽(`engine/battle/playback`)이 같은
 // 값을 봐야 포획 결과 글이 볼 연출을 기다린다 — 예전에는 이 초가 여기에만 있어서
 // 결과가 던지기와 같은 프레임에 떴다
@@ -48,6 +49,30 @@ export function throwArc(
 
 export function trainerThrowOrigin(slot: SlotId): Point3 {
   return slot.startsWith('p1') ? [-4.4, 1.65, 6.2] : [4.6, 1.65, -6.4]
+}
+
+/**
+ * 한 쪽에 트레이너가 **둘** 선 판에서 두 사람이 벌어지는 폭 (PARITY §2.2b).
+ *
+ * ⚠️ **재서 고른 값이 아니고 원작 값도 아니다.** 원작 DS는 트레이너 둘을 두 칸
+ * 그림으로 나란히 세우는데(`BattleDisplay_NewManagedSpriteTrainer`의 x 좌표가
+ * 전투원마다 다르다) 그 값을 우리 무대 척도로 옮긴 적이 없다. 한 사람 폭(어깨
+ * 0.5m)의 두 배를 넘겨 몸이 안 겹치게만 잡았다 — 화면 확인이 남았다 (REPAIR §82)
+ */
+const PAIRED_TRAINER_GAP = { p1: 0.8, p2: 1.3 } as const
+
+/**
+ * 그 자리의 트레이너가 서는 곳. 한 쪽에 한 사람이면 `trainerThrowOrigin`과 같다.
+ *
+ * 둘이면 자리 a의 주인이 화면 오른쪽, b의 주인이 왼쪽에 선다 — 포켓몬 발판이
+ * 벌어지는 방향(`shots`의 `PAIR_DIR`, 화면 왼쪽)과 같은 쪽이다
+ */
+export function trainerStandAt(slot: SlotId, paired: boolean): Point3 {
+  const base = trainerThrowOrigin(slot)
+  if (!paired) return base
+  const side = slot.startsWith('p1') ? 'p1' : 'p2'
+  const off = PAIRED_TRAINER_GAP[side] * (slot.endsWith('a') ? -1 : 1)
+  return [base[0] + PAIR_DIR[0] * off, base[1], base[2] + PAIR_DIR[2] * off]
 }
 
 export function ballShakeAngle(elapsed: number, shakes: number): number {

@@ -70,6 +70,38 @@ export const foeTrainer = style({
 })
 
 /**
+ * 트레이너 이름과 그 사람의 파티 공 한 줄 (PARITY §2.2b · `PartyGaugeData_New`).
+ *
+ * 트레이너가 둘인 쪽은 원작도 공 줄을 **사람마다** 따로 그린다 — 앞 칸이 자리 a의
+ * 파티, 뒤 칸이 자리 b의 파티다 (`battle_controller.c` 2132). 이름을 공 옆에 붙여
+ * 어느 줄이 누구 것인지 읽히게 한다
+ */
+export const gaugeRow = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: GAP.small,
+  marginBottom: 4,
+  fontSize: TEXT.small,
+  fontWeight: 700,
+  color: vars.ink.onDark,
+})
+
+/** 공 하나. 원작 `party_gauge`의 넷 — 멀쩡함·상태 이상·기절·빈 칸 */
+const ballBase = {
+  width: 10,
+  height: 10,
+  // 몬스터볼이라 실제로 둥글다 — `RADIUS.round`가 그 자리다
+  borderRadius: RADIUS.round,
+  border: `1px solid ${vars.bar.edge}`,
+} as const
+export const gaugeBall = styleVariants({
+  alive: { ...ballBase, background: vars.hp.green },
+  status: { ...ballBase, background: vars.status.par },
+  fainted: { ...ballBase, background: vars.status.fnt },
+  empty: { ...ballBase, background: 'transparent', opacity: 0.5 },
+})
+
+/**
  * 체력판.
  *
  * 원작 healthbox는 판이 **한쪽으로 비스듬하다.** 상대 것은 오른쪽 아래가,
