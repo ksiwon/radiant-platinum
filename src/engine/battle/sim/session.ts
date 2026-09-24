@@ -78,6 +78,9 @@ function idleOf(mon: { moveSlots: IdleSlot[] }): IdleSlot | null {
   return last.id === IDLE_MOVE_ID ? last : null
 }
 
+/** 빈 턴 칸을 잠그지 못하게 손본 개체. 한 번만 손본다 */
+const idleKeptOpen = new WeakSet<object>()
+
 /**
  * 우리 개체를 sim의 팀 항목으로.
  *
@@ -257,11 +260,50 @@ export class BattleSession {
     // 이제 상대 것도 눕힌다. 그쪽 첫 요청은 이미 나갔지만 상관없다 — 우리가
     // 그 칸을 쓸지 묻는 자리(`hasIdle`)는 요청이 아니라 개체를 본다
     this.lowerIdle()
+    this.keepIdleOpen()
     // ⚠️ **우리 쪽 마릿수를 여기서 다시 센다.** 배틀이 시작된 것은 바로 위의
     // `>player p2`고, sim의 'start'가 그 숫자를 팀 크기로 되돌려 놨다
     // (`countLeft`의 머리말). 체력은 안 되돌아가므로 다시 세기만 하면 된다
     this.countLeft(0)
     if (options.noCrit) this.blockCrits()
+  }
+
+  /**
+   * 빈 턴 칸을 **기술을 막는 효과가 못 잠그게** 한다.
+   *
+   * 가방·도망은 이 칸으로 턴을 비운다(`useIdle`). 그런데 칸이 물장구라 **변화
+   * 기술**이고, sim은 매 턴 `DisableMove`를 돌려 효과마다 `pokemon.disableMove`를
+   * 부른다 — 도발(변화 기술 전부) · 괴롭히기(방금 쓴 기술) · 사슬묶기 · 중력(물장구는
+   * 중력에 걸린다) · 봉인 · 구애 계열. 그러면 `hasIdle`이 거짓이 되어 **가방과 도망이
+   * 잠긴다.** 원작은 그 효과들이 **기술만** 막고 가방·도망은 그대로다.
+   *
+   * 실측(2026-09-24 대표 구간 12판): 207번도로 캠프보이의 불꽃숭이가 도발을 쓰자
+   * 명령 창의 가방이 「지금은 쓸 수 없다」가 됐다. 사람에게는 상처약을 못 쓰는
+   * 턴이고, 하네스는 잠긴 가방만 누르다 배틀에서 못 나왔다.
+   *
+   * ⚠️ **앙코르만은 그대로 잠근다.** 앙코르는 칸을 잠그는 것 말고도 고른 기술을
+   * 앙코르 기술로 **바꿔 친다**(`OverrideAction`). 열어 두면 도구를 쓴 턴에
+   * 공격까지 한다 — 잠긴 가방보다 더 틀린 게임이다
+   *
+   * 칸이 실제로 돌 때 효과가 막으면(도발·중력의 `BeforeMove`) 「못 썼다」 줄이
+   * 나는데, 그 줄은 컨트롤러가 지운다(`hushIdle`)
+   */
+  private keepIdleOpen(): void {
+    const battle = this.raw.battle
+    if (!battle) return
+    for (const side of battle.sides) {
+      if (!side) continue
+      for (const p of side.pokemon) {
+        if (idleKeptOpen.has(p) || !idleOf(p)) continue
+        idleKeptOpen.add(p)
+        const lock = p.disableMove.bind(p)
+        p.disableMove = (...args: Parameters<typeof lock>) => {
+          const id = String(args[0]).toLowerCase().replace(/[^a-z0-9]/g, '')
+          if (id === IDLE_MOVE_ID && !p.volatiles['encore']) return
+          lock(...args)
+        }
+      }
+    }
   }
 
   /**
@@ -340,7 +382,8 @@ export class BattleSession {
    * ① **기술에 묶인 턴** — 참기·역린·구르기·회복 턴. sim은 그때 요청에 묶인
    *    기술 **하나만** 담으므로(`getMoves`의 `lockedMove` 갈래) `move 5`가
    *    "그런 기술 없다"로 거절된다.
-   * ② **도발·앙코르·사슬묶기** — 물장구는 변화 기술이라 도발에 걸린다.
+   * ② **앙코르** — 앙코르 기술 말고는 다 잠근다. 도발·괴롭히기·사슬묶기·중력은
+   *    이 칸을 못 잠근다(`keepIdleOpen`) — 원작에서 그것들은 기술만 막는다.
    *
    * 둘 다 거절이 조용히 일어나고, 우리는 이미 요청을 비운 뒤라 **배틀이 선다.**
    * 담금질에서 참기 다음 턴에 도망친 판이 그렇게 굳었다 (씨앗 1077)

@@ -344,7 +344,12 @@ export class BattleController {
    * "하지만 아무 일도 일어나지 않았다!"가 뜬다 — 우리가 만든 칸이지 누가 고른
    * 수가 아니다.
    *
-   * **진짜 물장구는 안 지운다.** 우리가 보낸 쪽의 것만, 보낸 만큼만 지운다
+   * **진짜 물장구는 안 지운다.** 우리가 보낸 쪽의 것만, 보낸 만큼만 지운다.
+   *
+   * ⚠️ **막힌 빈 턴도 지운다.** 도발·중력 아래에서는 칸이 `BeforeMove`에서 막혀
+   * 「도발 때문에 물장구를 쓸 수 없다」(`cant`)가 나고, 구애 계열은 물장구 줄 뒤에
+   * 「실패했다」(`-fail`)를 붙인다. 원작에는 그 턴에 기술이 없다 — 가방을 쓴 턴이다
+   * (`session`의 `keepIdleOpen`)
    */
   private hushIdle(events: readonly BattleEvent[]): BattleEvent[] {
     const out: BattleEvent[] = []
@@ -355,7 +360,16 @@ export class BattleController {
         tail = true
         continue
       }
+      if (e.kind === 'cant' && e.move === IDLE_ROM_MOVE && this.spent[e.actor.side]) {
+        this.spent[e.actor.side] = false
+        tail = false
+        continue
+      }
       if (tail && e.kind === 'other' && e.cmd === '-activate' && e.args.includes(IDLE_ACTIVATE)) {
+        tail = false
+        continue
+      }
+      if (tail && e.kind === 'fail') {
         tail = false
         continue
       }

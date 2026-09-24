@@ -700,6 +700,63 @@ describe('「금제」가 걸리면 가방이 안 열린다', () => {
 })
 
 /**
+ * **기술을 막는 효과는 가방을 안 막는다** (`session`의 `keepIdleOpen`).
+ *
+ * 가방은 몰래 붙인 물장구 칸으로 턴을 비운다. 물장구가 변화 기술이라 도발이 그
+ * 칸까지 잠갔고, 명령 창의 가방이 「지금은 쓸 수 없다」가 됐다 — 실측(2026-09-24
+ * 대표 구간 12판, 207번도로 캠프보이의 불꽃숭이). 원작의 도발은 기술만 막는다
+ */
+describe('도발에 걸려도 가방은 열린다', () => {
+  const X_ATTACK = itemList.findIndex((i) => i.name === 'x_attack')
+  const bag = (id: number) => ({ id, data: itemTable.get(id) })
+  const TAUNT = 269
+  const ENCORE = 227
+  const TACKLE = 33
+
+  /** 상대에게 그 기술 하나만 쥐여 주고, 우리는 몸통박치기로 턴을 넘긴다 */
+  async function underFoe(move: number, volatile: string, seed: number) {
+    const foe = spawn(LUXRAY, 40, seed, 'p2-0')
+    foe.mon.moves = [{ move, pp: 20, ppUps: 0 }]
+    const mine = spawn(TURTWIG, 30, seed + 1, 'p1-0')
+    mine.mon.moves = [{ move: TACKLE, pp: 35, ppUps: 0 }]
+    const { controller } = await BattleController.start({
+      player: { name: '빛나', team: [mine] },
+      foe: { name: '상대', team: [foe] },
+      seed: [seed & 0xffff, 5, 5, 5],
+      random: rng(seed),
+      basePp: (m) => movesById.get(m)?.pp ?? 5,
+    })
+    for (let i = 0; i < 4 && !controller.state.active.p1a?.volatiles.has(volatile); i++) {
+      await controller.choose(controller.actions.find((a) => a.type === 'move')!)
+    }
+    expect(controller.state.active.p1a?.volatiles.has(volatile), `${volatile}이 안 걸렸다`).toBe(true)
+    return controller
+  }
+
+  it('도발 중에도 가방을 쓰고, 그 턴에는 기술도 「못 썼다」 줄도 없다', async () => {
+    const controller = await underFoe(TAUNT, 'taunt', 940)
+    expect(controller.canSpendTurn, '도발이 가방을 잠갔다').toBe(true)
+    const turn = controller.state.turn
+    const step = await controller.useBagItem(bag(X_ATTACK), 'p1-0')
+    expect(step.events.some((e) => e.kind === 'bagItem' && e.item === X_ATTACK),
+      '도구를 썼다는 사건이 없다').toBe(true)
+    expect(controller.state.turn, '턴이 안 넘어갔다').toBeGreaterThan(turn)
+    // 도발의 `BeforeMove`가 빈 칸을 막으면 「물장구를 쓸 수 없다」가 새어 나온다
+    expect(step.events.some((e) => (e.kind === 'move' || e.kind === 'cant') && e.actor.side === 'p1'),
+      '가방을 쓴 턴에 우리 쪽 기술 줄이 떴다').toBe(false)
+    // 한 번 더 — 괴롭히기처럼 「방금 쓴 칸」을 잠그는 효과가 있어도 이어서 쓴다
+    expect(controller.canSpendTurn, '두 번째 턴에 가방이 잠겼다').toBe(true)
+    controller.destroy()
+  }, 60_000)
+
+  it('앙코르 중에는 그대로 잠근다 — 열면 도구를 쓴 턴에 앙코르 기술까지 나간다', async () => {
+    const controller = await underFoe(ENCORE, 'encore', 950)
+    expect(controller.canSpendTurn).toBe(false)
+    controller.destroy()
+  }, 60_000)
+})
+
+/**
  * **담금질이 잡은 것들** (`soak.test.ts`).
  *
  * 무작위 1,200판을 굴려 찾은 자리다. 손으로 고른 판으로는 하나도 안 걸렸고,

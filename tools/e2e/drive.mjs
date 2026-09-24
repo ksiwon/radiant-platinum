@@ -812,6 +812,17 @@ export async function driveStory(page, {
        */
       const before = await panel()
       if (!commandReady(before)) return false
+      /**
+       * ⚠️ **가방이 잠긴 턴에는 손을 안 댄다** (앙코르·참기 — 원작도 그 턴은 기술뿐이다).
+       * 실측(2026-09-24 대표 구간 12판): 커서를 잠긴 가방으로 내리고 결정을 눌렀는데
+       * 아무 일도 없었고, 기술 고르기는 명령 창에서 안 움직이므로 바깥 바퀴가 그 자리에서
+       * Space만 800번 눌렀다 — 턴이 안 넘어가니 잠금도 안 풀린다. 커서를 안 옮기면
+       * 그 Space가 「싸운다」를 연다
+       */
+      if (before.some((t) => t.startsWith('가방') && t.includes('쓸 수 없다'))) {
+        potion.missTurn = turn
+        return false
+      }
       const t0 = Date.now()
       await tap('ArrowDown', 90)
       await tap('Space', 150)
