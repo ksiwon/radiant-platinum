@@ -397,6 +397,16 @@ export const playerSystem = {
     }
 
     const grid = activeZone.grid
+    /**
+     * **뛰는 쪽은 「밀고 있는 쪽」이다 — 남은 속도가 아니다** (REPAIR §110).
+     *
+     * 원작은 걸음을 **시작할 때** 누른 방향으로 턱·두 칸 건너뛰기를 본다(`PlayerAvatar_WillJump` ·
+     * `_WillJumpTwice` — 걸음의 방향이 곧 입력이다). 손을 떼면 그 칸에 선다. 우리는 손을 떼도 칸 한가운데까지
+     * 미끄러져 가는 속도가 남아서, 턱 바로 앞 칸에 들어서며 손을 떼도 **그 남은 속도로 뛰어내렸다** —
+     * 천관산 1F 남 (22,10)에서 아래로 걸어와 멈추려 해도 (22,11) 턱을 넘어 되돌아올 수 없는 아래로 떨어졌다.
+     * 얼음처럼 몸을 실어 나르는 동안은 입력이 없으니 그때만 속도를 본다
+     */
+    const intent = isSliding() ? p.velocity : desired
     if (grid instanceof MapGrid) {
       /**
        * 깨어진 세계의 **두 칸 건너뛰기** (`PlayerAvatar_WillJumpTwice`).
@@ -416,7 +426,7 @@ export const playerSystem = {
         const behaviorAt = (tx: number, tz: number) =>
           distortionBridge.behaviorAt?.(tx, p.position.y, tz) ?? grid.behavior(tx, tz)
         const land = distortionHop(
-          behaviorAt, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
+          behaviorAt, p.position.x, p.position.z, intent.x, intent.z)
         if (land !== null) {
           const dir = land.z !== p.position.z
             ? (land.z > p.position.z ? DIR.south : DIR.north)
@@ -428,7 +438,7 @@ export const playerSystem = {
         }
       }
 
-      const land = ledgeHop(grid, p.position.x, p.position.z, p.velocity.x, p.velocity.z)
+      const land = ledgeHop(grid, p.position.x, p.position.z, intent.x, intent.z)
       if (land) {
         startHop(land, HOP_TIME)
         return

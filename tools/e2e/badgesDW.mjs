@@ -42,10 +42,15 @@ const STORAGE_GRUNT = { x: 721, z: 593 }
 const WAREHOUSE_LOOKER = { x: 8, z: 8 }
 /** 아지트 B2F 갤럭시단의열쇠 도구 볼 */
 const HQ_KEY = { x: 20, z: 5 }
+/** B2F 열쇠 문 (14~15,8) — 열쇠 구역에서 창고 쪽(영역 0)으로 나가는 문. 그 앞에서 A · 「예」 */
+const HQ_B2F_DOOR = { x: 14, z: 8 }
 /** 아지트 정문 — 장막시티 워프 14 (714,589) → 1F 로비 (8,22). 워프 16은 막다른 칸이다 */
 const HQ_FRONT_DOOR = { x: 714, z: 589 }
 /** 1F 열쇠 문 (22~23,18) — 그 앞 칸에서 북으로 A */
 const HQ_1F_DOOR = { x: 22, z: 18 }
+/** 홀 연설 좌표 (20,12)·(20,13) · 서쪽 출구 (1,12) → 2F 낮잠방 (52,6) */
+const HALL_SPEECH = { x: 20, z: 12 }
+const HALL_WEST_EXIT = { x: 1, z: 12 }
 /** 2F 낮잠방 침대 — 말 걸면 회복 (`GalacticHQ2F_Bed`) */
 const HQ_BED = { x: 40, z: 5 }
 /** 4F 열쇠 문 (8~9,14) · 그 너머 태홍 좌표 (8,11) 폭 2 */
@@ -114,7 +119,10 @@ export async function candiceToAcuity(api, ctx, { levels = { lead: 64, bird: 62,
   if (!(await have(api, ITEM.hm08))) {
     const sprayed = await sprayBest(api)
     note('스프레이 (217번도로)', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
-    const took = await api.talkTo(MAP.route217, ROUTE217_HM08, Math.min(1_500_000, api.left()))
+    // ⚠️ `talkTo`는 그 맵 밖(센터 안)에서 부르면 바로 못 걸었다를 낸다 — 먼저 217번도로로 (탐침 p1)
+    const road = await api.goTo(MAP.route217, Math.min(1_500_000, api.left()))
+    note('217번도로(385)', road)
+    const took = await api.talkTo(MAP.route217, ROUTE217_HM08, Math.min(900_000, api.left()))
     await api.clearTalk(); await api.settle()
     note('비전머신08 (296,305)', `${took ? '말 걸었다' : '못 걸었다'} · 가방에 ${String(await have(api, ITEM.hm08))}`)
   }
@@ -198,6 +206,19 @@ export async function veilstoneHQ(api, ctx, { levels = { lead: 64, bird: 62, thi
   // 밖으로 → 정문으로 다시 (롬 §G-8·9)
   v = await vars()
   if ((v.hq4f ?? 0) < 1) {
+    /**
+     * ⚠️ **B2F 열쇠 문을 열고 창고로 나간다** (롬 §G-8). 길 계획은 문 객체를 몰라 1F로 되올라가서
+     * 로비를 찾는데, 로비는 1F 열쇠 문 너머라 「길을 못 찾았다」로 섰다(탐침 p2)
+     */
+    // 1F·2F·B1F에 있으면(되짚어 올라간 판) 먼저 B2F 열쇠 구역으로 내려온다 — 1F 계단 (11,3)이 그리 간다
+    if ([MAP.hq1F, MAP.hq2F, MAP.hqB1F].includes((await api.now()).map)) await walk(MAP.hqB2F, 'B2F 열쇠 구역으로', 600_000)
+    const here = await api.now()
+    if (here.map === MAP.hqB2F) {
+      const opened = await api.talkTo(MAP.hqB2F, HQ_B2F_DOOR, Math.min(300_000, api.left()))
+      await api.clearTalk(); await api.settle()
+      note('B2F 열쇠 문 (14,8)', opened ? '열었다' : '못 걸었다')
+      await via(api, note, [MAP.hqB2F, MAP.warehouse, MAP.veilstone], '창고로 — 장막시티')
+    }
     if ((await api.now()).map !== MAP.veilstone) await walk(MAP.veilstone, '아지트를 나선다 (장막시티로)', 1_200_000)
     await prepare(api, ctx, note, { center: MAP.veilstoneCenter, levels: null, what: '아지트 앞' })
     if ((await api.now()).map !== MAP.veilstone) await walk(MAP.veilstone, '장막시티로 나선다', 300_000)
@@ -208,10 +229,16 @@ export async function veilstoneHQ(api, ctx, { levels = { lead: 64, bird: 62, thi
     await api.clearTalk(); await api.settle()
     note('1F 열쇠 문 (22,18)', door ? '열었다' : '못 걸었다')
     await via(api, note, [MAP.hq1F, MAP.hq2F, MAP.hqHall], '홀로 — 1F 계단 (19,14) · 2F')
+    /**
+     * ⚠️ **연설 칸 (20,12)을 밟는다** — 홀 좌표 (20,12)·(20,13)은 서쪽 출구 (1,12)로 가는 유일한 길이다(롬 §G-11).
+     * 그냥 `goTo(2F)`를 부르면 들어온 문 (24,6)으로 되돌아 나가 연설도 낮잠방도 안 지난다(탐침 p3 — 홀 상태 0)
+     */
+    const speech = await api.stepOn(MAP.hqHall, HALL_SPEECH, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     v = await vars()
-    note('홀 연설', `홀 상태 ${String(v.hall)}`)
-    await walk(MAP.hq2F, '2F 낮잠방으로', 600_000)
+    note('홀 연설 (20,12)', `${speech} · 홀 상태 ${String(v.hall)}`)
+    const nap = await boardWarp(api, MAP.hqHall, HALL_WEST_EXIT, Math.min(300_000, api.left()))
+    note('홀 서쪽 출구 (1,12) → 2F 낮잠방', nap)
     const bed = await api.talkTo(MAP.hq2F, HQ_BED, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     note('낮잠방 침대 (40,5)', bed ? '쉬었다' : '못 걸었다')
@@ -267,6 +294,15 @@ export async function coronetToSpear(api, ctx,
 
   let v = await vars()
   if ((v.spear ?? 0) < 1 && (await api.now()).map !== MAP.spearPillar) {
+    /**
+     * ⚠️ **아지트 안에서는 공중날기가 안 된다** — 원작이 맵 헤더로 막는다(`field_move_tasks.c`의 공중날기 검사 ·
+     * `maps.json`의 fly 0). 제어실에서 걸어 나온다: 연구소 → 4F → 3F 패널 → 2F 낮잠방 → 홀 → 2F → 1F 로비 → 정문
+     */
+    const HQ = [MAP.hqControl, MAP.hqLab, MAP.hq4F, MAP.hq3F, MAP.hq2F, MAP.hqHall, MAP.hq1F]
+    if (HQ.includes((await api.now()).map)) {
+      const out = await api.goTo(MAP.veilstone, Math.min(1_800_000, api.left()))
+      note('아지트를 걸어 나온다 (장막시티로)', out)
+    }
     const fly = await api.flyTo(MAP.hearthome, Math.min(120_000, api.left()))
     note('공중날기 → 축복시티', fly.ok ? '닿았다' : String(fly.why))
     const bought = await api.buyAt(MAP.hearthomeMart, ITEM.hyperPotion, potions, Math.min(300_000, api.left()))
@@ -279,7 +315,12 @@ export async function coronetToSpear(api, ctx,
     await via(api, note, [MAP.hearthome, MAP.route208, MAP.coronetSouth, MAP.coronet2F], '천관산 2F로 — 208번도로 · 1F 남')
     const push = await api.strengthPush(MAP.coronet2F, CORONET_2F_BOULDER, 'ArrowDown', 1, Math.min(300_000, api.left()))
     note('2F 괴력 바위 (14,45)', push.ok ? `${String(push.pushed)}번 밀었다` : String(push.why))
-    await via(api, note, [MAP.coronet2F, MAP.coronet3F, MAP.coronetOutsideS, MAP.coronet4F, MAP.coronetOutsideN,
+    /**
+     * ⚠️ **4F 방1·2(212)는 경유 목록에 안 적는다** — 목적지를 212로 주면 앞 내다보기가 「212 안의 다음 문」을
+     * 모르고 아무 문으로나 든다. 동쪽 문으로 들면 폭포(0x13 — 폭포오르기·배지 8)로 막힌 주머니다(탐침 p6 (32,24)).
+     * 바깥 남(211)에서 곧장 바깥 북(210)을 노리면 212를 지나는 문을 서쪽 (7,25)로 고른다
+     */
+    await via(api, note, [MAP.coronet2F, MAP.coronet3F, MAP.coronetOutsideS, MAP.coronetOutsideN,
       MAP.coronet4Fr3, MAP.coronet5F, MAP.coronet6F, MAP.spearPillar], '창기둥으로 — 3F · 바깥 · 4F · 5F · 6F')
     api.setSurf(false)
   }
@@ -307,7 +348,32 @@ export async function coronetToSpear(api, ctx,
   return done()
 }
 
-// ── ④ 기라티나 방 → 마스터볼 → 송별의 샘 (지시서 §3.5) ─────────────────────────
+// ── ④ 깨어진 세계 (지시서 §3.4 · `tools/e2e/DISTORTION_HARNESS.md`) ──────────────
+
+/** 기라티나 방에 기라티나가 섰다 — 진행 13 (`VAR_DISTORTION_WORLD_PROGRESS`) */
+const giratinaHere = (st) => st.map === MAP.giratinaRoom && (st.progress ?? 0) >= 13
+
+/**
+ * **다리 H** — 1F에서 기라티나 방까지 판 위 계획(`distortionSolve.mjs`)으로 걷는다. 다리 하나를 밟고
+ * 다시 세우고, 어긋나면 그 자리에서 다시 세운다. **기라티나가 서면 멈춘다** — A는 다리 I가 누른다.
+ *
+ * @param escape 1F 도착이 벽 속이면(제품 틈 §6-1) 안전망으로 걸어 나오는 걸음을 먼저 준다
+ */
+export async function walkDistortion(api, ctx, { escape = false, budget = 5_400_000 } = {}) {
+  const t0 = Date.now()
+  const out = { steps: [] }
+  const note = noteOf(out, ctx)
+  const walked = await api.distortionWalk(Math.min(budget, api.left()), { escape, stopWhen: giratinaHere })
+  const st = await api.distortionState()
+  const v = (await api.storyVars()) ?? {}
+  out.walk = walked
+  note('깨어진 세계', `${walked.ok ? '닿았다' : '못 닿았다'} (${String(walked.why)}) · 맵 ${String(st?.map)} · 진행 ${String(v.distortion)}`)
+  out.ok = st !== null && giratinaHere(st)
+  out.ms = Date.now() - t0
+  return out
+}
+
+// ── ⑤ 기라티나 방 → 마스터볼 → 송별의 샘 (지시서 §3.5) ─────────────────────────
 
 /**
  * **다리 I** — 기라티나 방에 들어서 그림자 셋(진행 11·12·13)을 지나 기라티나에게 말을 걸고,
@@ -327,12 +393,12 @@ export async function catchGiratina(api, ctx) {
   out.masterBall = await have(api, ITEM.masterBall)
   if (!out.masterBall && !v.giratinaCaught) { note('마스터볼', '가방에 없다 — 던질 것이 없다'); return done() }
   if (!v.giratinaCaught && (v.distortion ?? 0) < 14) {
-    // 그림자 칸 셋을 차례로 밟는다 — (15,24) · (15,17) · (15,14)
-    for (const z of [24, 17, 14]) {
-      const stood = await api.stepOn(MAP.giratinaRoom, { x: 15, z }, Math.min(300_000, api.left()))
-      await api.clearTalk(); await api.settle()
+    // 그림자 칸 셋((15,24) · (15,17) · (15,14))은 두 칸 뛰기라 판 위 계획으로 간다 — 기라티나가 서면 멈춘다
+    if ((v.distortion ?? 0) < 13) {
+      const walked = await walkDistortion(api, ctx)
       v = await vars()
-      note(`기라티나 방 (15,${String(z)})`, `${stood} · 진행 ${String(v.distortion)}`)
+      note('기라티나 앞', `${walked.ok ? '섰다' : '못 섰다'} · 진행 ${String(v.distortion)}`)
+      if (!walked.ok) return done()
     }
     // 기라티나 쪽으로 돌아서 A — 배틀이 열리면 곧장 마스터볼
     await api.tap('ArrowUp', 80)
