@@ -9,9 +9,10 @@ import { clearIceSlide, iceStep, isSliding, type IceView } from './ice'
 import { clearPanelSlide, panelStep } from './slidePanel'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
-import { obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
+import { breakSnowballAt, obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
 import { TOP_LEVEL, bikeSpeedAt, bikeSpeedLevel } from './bike'
-import { bikeRampHop, bikeSlopeStep, clearBikeSlip, isSlippingDownSlope } from './bikeTerrain'
+import { bikeRampHop, bikeSlopeStep, clearBikeSlip, isSlippingDownSlope, pushBikeCue } from './bikeTerrain'
+import { SFX } from '../audio/sfx'
 import { onElevatedBridge, trackBridge } from './bridge'
 import { distortionBridge, PLATFORM_FLOOR } from '../world/distortion'
 import { surfaceHeading, surfaceVector } from './distortionSurface'
@@ -227,6 +228,11 @@ const iceView: IceView = {
   blockedAt: (tx, tz) => blocked(tx + 0.5, tz + 0.5),
   heightAt: (tx, tz) =>
     activeZone.grid?.heightAtWorld(tx + 0.5, tz + 0.5, worldState.player.position.y) ?? 0,
+  breakAt: (tx, tz) => {
+    if (!breakSnowballAt(tx, tz)) return false
+    pushBikeCue(SFX.SNOWBALL_BREAK)
+    return true
+  },
 }
 
 export const playerSystem = {

@@ -51,6 +51,11 @@ export interface IceView {
   blockedAt: (tileX: number, tileZ: number) => boolean
   /** 칸 한가운데의 지면 높이 */
   heightAt: (tileX: number, tileZ: number) => number
+  /**
+   * 그 칸에 **눈덩이**가 서 있으면 깨고 참 (`ov5_021E06A8`). 없으면 거짓.
+   * 눈덩이가 없는 맵·시험은 안 채워도 된다
+   */
+  breakAt?: (tileX: number, tileZ: number) => boolean
 }
 
 /** 미끄러지는 동안의 상태. 한 번에 하나뿐이라 모듈에 둔다 */
@@ -67,14 +72,20 @@ interface IceSlide {
   /** 멈출 칸 한가운데 */
   toX: number
   toZ: number
+  /**
+   * 오르막에서 되밀리는 한 걸음인가. 원작은 그 걸음에 `SetIgnoreTileBehavior`를
+   * 걸어 얼음을 안 본다 — 칸을 넘어도 다시 미끄러지지 않고 그 한 칸에서 선다
+   */
+  bouncing: boolean
 }
 
 export const iceSlide: IceSlide = {
-  active: false, dx: 0, dz: 0, speed: 0, tileX: 0, tileZ: 0, toX: 0, toZ: 0,
+  active: false, dx: 0, dz: 0, speed: 0, tileX: 0, tileZ: 0, toX: 0, toZ: 0, bouncing: false,
 }
 
 /** 맵을 옮기거나 배틀이 열리면 푼다 */
 export function clearIceSlide(): void {
+  iceSlide.bouncing = false
   iceSlide.active = false
   iceSlide.dx = 0
   iceSlide.dz = 0
@@ -201,30 +212,61 @@ export function iceStep(view: IceView, pos: { x: number; z: number },
     iceSlide.speed = 0
     iceSlide.tileX = tx
     iceSlide.tileZ = tz
+    /**
+     * ⚠️ **첫 걸음도 높이를 본다.** 원작 `TileMove_Ice`는 얼음 위 걸음마다 — 첫
+     * 걸음도 — 높이 변화로 속도를 정한다. 비탈 꼭대기에서 내려서면 첫 걸음부터
+     * 속도 1이고(그래서 바로 아래 눈덩이가 깨진다), 속도 0에서 오르막이면 되밀린다
+     */
+    const first = iceSpeedAfter(0, heightChange(view, tx, tz, dir.dx, dir.dz))
+    if (first === null) return bounceBack(pos, tx, tz, runSpeed)
+    iceSlide.speed = first
     retarget(view, tx, tz)
+  } else if (iceSlide.bouncing) {
+    // 되밀리는 걸음은 얼음을 안 본다 — 목표 칸까지 가서 선다
+    iceSlide.tileX = tx
+    iceSlide.tileZ = tz
   } else if (tx !== iceSlide.tileX || tz !== iceSlide.tileZ) {
     // 칸을 넘었다 — 원작이 한 칸에 한 번 돌리는 판정이 여기다
     iceSlide.tileX = tx
     iceSlide.tileZ = tz
+    /**
+     * **눈덩이는 부딪히면 깨진다** (`ov5_021E067C` → `ov5_021E06A8`). 원작은 강제
+     * 이동 중 한 걸음이 끝날 때마다 가는 쪽 칸을 보고, 속도가 1 이상이고 거기
+     * 선 물체가 눈덩이(118)면 지우고 `SEQ_SE_DP_FW291`을 낸다. 함수가 늘 0을
+     * 돌려주므로 미끄럼은 그대로 이어진다 — 지운 뒤 다음 걸음의 충돌 판정에는
+     * 이미 없다.
+     *
+     * ⚠️ **속도는 방금 지나온 걸음의 것이다.** 판정이 `TileMove_Ice`의 속도
+     * 갱신보다 먼저 돈다. 평평한 얼음은 속도 0이라 안 깨지고, **비탈을 내려와
+     * 속도가 붙어야** 깨진다 — 안내원이 「얼음 위를 달려 기세 좋게 부수는 거야」
+     * 라고 하는 그것이다. 걸어서 밀면 강제 이동이 아니라 안 깨진다
+     */
+    if (iceSlide.speed >= 1) view.breakAt?.(tx + iceSlide.dx, tz + iceSlide.dz)
     const next = iceSpeedAfter(iceSlide.speed,
       heightChange(view, tx, tz, iceSlide.dx, iceSlide.dz))
-    if (next === null) {
-      // ⚠️ **오르막에서 힘이 다하면 되밀린다** — 원작은 반대 방향으로 한 칸을
-      // 느리게 걷고 얼음을 한 번 안 본다(`SetIgnoreTileBehavior`). 우리도
-      // 방향을 뒤집고 그 한 칸까지만 간다
-      iceSlide.dx = -iceSlide.dx
-      iceSlide.dz = -iceSlide.dz
-      iceSlide.speed = 0
-      iceSlide.toX = tx + iceSlide.dx + 0.5
-      iceSlide.toZ = tz + iceSlide.dz + 0.5
-      return towardTarget(pos, runSpeed)
-    }
+    if (next === null) return bounceBack(pos, tx, tz, runSpeed)
     iceSlide.speed = next
     retarget(view, tx, tz)
   }
 
   if (reachedTarget(pos)) { clearIceSlide(); return { vx: 0, vz: 0 } }
   return towardTarget(pos, runSpeed * ICE_SPEED_RATIO[iceSlide.speed]!)
+}
+
+/**
+ * ⚠️ **오르막에서 힘이 다하면 되밀린다** — 원작은 반대 방향으로 한 칸을
+ * 느리게 걷고 얼음을 한 번 안 본다(`SetIgnoreTileBehavior`). 우리도
+ * 방향을 뒤집고 그 한 칸까지만 간다
+ */
+function bounceBack(pos: { x: number; z: number }, tx: number, tz: number,
+  runSpeed: number): IceStep {
+  iceSlide.dx = -iceSlide.dx
+  iceSlide.dz = -iceSlide.dz
+  iceSlide.speed = 0
+  iceSlide.bouncing = true
+  iceSlide.toX = tx + iceSlide.dx + 0.5
+  iceSlide.toZ = tz + iceSlide.dz + 0.5
+  return towardTarget(pos, runSpeed)
 }
 
 function retarget(view: IceView, tx: number, tz: number): void {

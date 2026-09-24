@@ -141,6 +141,8 @@ export const SFX = {
   BIKE_GEAR_DOWN: 1564,
   BIKE_SLOPE: 1620,
   BIKE_RAMP_FAR: 1622,
+  /** 눈덩이가 깨질 때 (`ov5_021E06A8`의 `SEQ_SE_DP_FW291` · 우리 SDAT 목차에서 이름으로 찾았다) */
+  SNOWBALL_BREAK: 1627,
 
   /**
    * `SEQ_SE_DP_EXP`. 경험치 바가 차는 동안 (`battle_display.c` 4928줄).

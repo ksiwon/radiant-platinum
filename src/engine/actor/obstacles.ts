@@ -58,6 +58,25 @@ export function pushBoulder(
   return true
 }
 
+/** `OBJ_EVENT_GFX_SNOWBALL`. 선단 체육관에 열아홉이 선다 */
+const SNOWBALL = 118
+
+/**
+ * 그 칸의 눈덩이를 깬다 (`ov5_021E06A8`의 `MapObject_Delete`). 깼으면 참.
+ *
+ * 부르는 쪽은 얼음 미끄럼 하나다(`actor/ice`의 `breakAt`). 숨김 깃발이 없는 물체라
+ * 맵을 다시 들어오면 되살아난다 — 바위깨기·풀베기와 같다
+ */
+export function breakSnowballAt(tx: number, tz: number): boolean {
+  for (const actor of npcActors.list) {
+    if (!actor.visible || actor.gfx !== SNOWBALL) continue
+    if (Math.round(actor.x) !== tx || Math.round(actor.z) !== tz) continue
+    actor.visible = false
+    return true
+  }
+  return false
+}
+
 export function obstacleAt(tx: number, tz: number): NpcActor | null {
   for (const actor of npcActors.list) {
     if (!actor.visible) continue
@@ -75,9 +94,10 @@ export function obstacleAt(tx: number, tz: number): NpcActor | null {
 //
 // ⚠️ **안 막으면 이야기 순서가 깨진다.** 210번도로의 골덕 넷(gfx 74, 숨김 플래그
 // 432)이 통과되어 **비밀의약 없이 신수마을로 걸어 올라갔다.** 선단 체육관의
-// 눈덩이 열아홉(gfx 118)도 안 막아서 미끄러져도 설 자리가 없었다 — 그
-// 눈덩이의 스크립트 2037은 원작에서도 `End` 한 줄뿐이라 **미는 물체가 아니라
-// 그냥 벽**이다. 그 벽이 곧 퍼즐인 이유는 `actor/ice`에 있다 (PARITY §1.29).
+// 눈덩이 열아홉(gfx 118)도 안 막아서 미끄러져도 설 자리가 없었다. 눈덩이의
+// 스크립트 2037은 `End` 한 줄뿐이라 말을 걸거나 밀어서는 아무 일도 없다 —
+// 다만 **비탈을 내려와 속도가 붙은 채 미끄러지다 부딪히면 깨진다**
+// (`breakSnowballAt` · `actor/ice` · PARITY §1.29).
 //
 // ⚠️ **판정 모양은 원작에서 그대로 못 베낀다.** 원작은 칸에 잠긴 이동이라
 // 「그 칸이냐」 한 줄이면 되지만 우리는 3D 자유 이동이라, 사람을 칸 전체로

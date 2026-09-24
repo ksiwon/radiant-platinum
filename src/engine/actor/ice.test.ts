@@ -204,3 +204,69 @@ describe('실제 자료', () => {
     expect([...count.values()].reduce((a, b) => a + b, 0)).toBe(835)
   })
 })
+
+/**
+ * 눈덩이 (`ov5_021E06A8`) — 선단 체육관 안내원이 「얼음 위를 달려 기세 좋게 부수는
+ * 거야」라고 하는 그것. `o`는 눈덩이다. 깨지기 전에는 막힌 칸이다
+ */
+describe('눈덩이', () => {
+  const RUN = 8
+
+  function yard(map: string, heights: readonly number[]) {
+    const broken = new Set<number>()
+    const ball = (tx: number, tz: number) => tz === 0 && map[tx] === 'o' && !broken.has(tx)
+    const view: IceView = {
+      behaviorAt: (tx, tz) => (tz === 0 && (map[tx] === '.' || map[tx] === 'o')
+        ? TILE_BEHAVIOR_ICE : Behavior.NORMAL),
+      blockedAt: (tx, tz) => tz !== 0 || map[tx] === undefined || map[tx] === '#' || ball(tx, tz),
+      heightAt: (tx) => heights[tx] ?? 0,
+      breakAt: (tx, tz) => {
+        if (!ball(tx, tz)) return false
+        broken.add(tx)
+        return true
+      },
+    }
+    return { view, broken }
+  }
+
+  /** 동쪽으로 한 번 밀고 멈출 때까지 프레임을 돌린다. 멈춘 칸을 낸다 */
+  function slideEast(view: IceView, fromX: number): number {
+    const pos = { x: fromX + 0.5, z: 0.5 }
+    let input = { vx: 4, vz: 0 }
+    for (let f = 0; f < 600; f++) {
+      const v = iceStep(view, pos, input, RUN)
+      input = { vx: 0, vz: 0 }
+      if (v === null || !isSliding()) break
+      pos.x += v.vx / 60
+    }
+    return Math.floor(pos.x)
+  }
+
+  it('평평한 얼음(속도 0)에서는 안 깨지고 그 앞에 선다', () => {
+    //                         0123456789
+    const { view, broken } = yard('_...o...#', [])
+    expect(slideEast(view, 1)).toBe(3)
+    expect(broken.size).toBe(0)
+  })
+
+  it('비탈을 내려와 속도가 붙으면 깨고 **계속 미끄러진다**', () => {
+    //                         0123456789
+    const { view, broken } = yard('_...o...#', [2, 2, 1, 1, 1, 1, 1, 1, 1])
+    expect(slideEast(view, 1)).toBe(7)
+    expect([...broken]).toEqual([4])
+  })
+
+  it('비탈 꼭대기에서 첫 걸음이 내리막이면 첫 걸음부터 속도 1이다', () => {
+    // 첫 걸음 (1 → 2)이 곧 내리막이다. 첫 걸음의 높이를 안 보면 속도 0으로 남아
+    // 바로 앞 눈덩이 (3)을 못 깬다
+    const { view, broken } = yard('_..o..#', [2, 2, 1, 1, 1, 1])
+    expect(slideEast(view, 1)).toBe(5)
+    expect([...broken]).toEqual([3])
+  })
+
+  it('속도 0에서 첫 걸음이 오르막이면 되밀린다', () => {
+    const { view } = yard('_...#', [0, 0, 0, 1, 1])
+    // 2에서 동쪽(3은 한 단 높다)으로 밀면 서쪽으로 한 칸 되밀린다
+    expect(slideEast(view, 2)).toBe(1)
+  })
+})
