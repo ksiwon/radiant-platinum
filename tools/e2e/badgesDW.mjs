@@ -42,6 +42,8 @@ const STORAGE_GRUNT = { x: 721, z: 593 }
 const WAREHOUSE_LOOKER = { x: 8, z: 8 }
 /** 아지트 B2F 갤럭시단의열쇠 도구 볼 */
 const HQ_KEY = { x: 20, z: 5 }
+/** B2F 열쇠 문 (14~15,8) — 열쇠 구역에서 창고 쪽(영역 0)으로 나가는 문. 그 앞에서 A · 「예」 */
+const HQ_B2F_DOOR = { x: 14, z: 8 }
 /** 아지트 정문 — 장막시티 워프 14 (714,589) → 1F 로비 (8,22). 워프 16은 막다른 칸이다 */
 const HQ_FRONT_DOOR = { x: 714, z: 589 }
 /** 1F 열쇠 문 (22~23,18) — 그 앞 칸에서 북으로 A */
@@ -114,7 +116,10 @@ export async function candiceToAcuity(api, ctx, { levels = { lead: 64, bird: 62,
   if (!(await have(api, ITEM.hm08))) {
     const sprayed = await sprayBest(api)
     note('스프레이 (217번도로)', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
-    const took = await api.talkTo(MAP.route217, ROUTE217_HM08, Math.min(1_500_000, api.left()))
+    // ⚠️ `talkTo`는 그 맵 밖(센터 안)에서 부르면 바로 못 걸었다를 낸다 — 먼저 217번도로로 (탐침 p1)
+    const road = await api.goTo(MAP.route217, Math.min(1_500_000, api.left()))
+    note('217번도로(385)', road)
+    const took = await api.talkTo(MAP.route217, ROUTE217_HM08, Math.min(900_000, api.left()))
     await api.clearTalk(); await api.settle()
     note('비전머신08 (296,305)', `${took ? '말 걸었다' : '못 걸었다'} · 가방에 ${String(await have(api, ITEM.hm08))}`)
   }
@@ -198,6 +203,19 @@ export async function veilstoneHQ(api, ctx, { levels = { lead: 64, bird: 62, thi
   // 밖으로 → 정문으로 다시 (롬 §G-8·9)
   v = await vars()
   if ((v.hq4f ?? 0) < 1) {
+    /**
+     * ⚠️ **B2F 열쇠 문을 열고 창고로 나간다** (롬 §G-8). 길 계획은 문 객체를 몰라 1F로 되올라가서
+     * 로비를 찾는데, 로비는 1F 열쇠 문 너머라 「길을 못 찾았다」로 섰다(탐침 p2)
+     */
+    // 1F·2F·B1F에 있으면(되짚어 올라간 판) 먼저 B2F 열쇠 구역으로 내려온다 — 1F 계단 (11,3)이 그리 간다
+    if ([MAP.hq1F, MAP.hq2F, MAP.hqB1F].includes((await api.now()).map)) await walk(MAP.hqB2F, 'B2F 열쇠 구역으로', 600_000)
+    const here = await api.now()
+    if (here.map === MAP.hqB2F) {
+      const opened = await api.talkTo(MAP.hqB2F, HQ_B2F_DOOR, Math.min(300_000, api.left()))
+      await api.clearTalk(); await api.settle()
+      note('B2F 열쇠 문 (14,8)', opened ? '열었다' : '못 걸었다')
+      await via(api, note, [MAP.hqB2F, MAP.warehouse, MAP.veilstone], '창고로 — 장막시티')
+    }
     if ((await api.now()).map !== MAP.veilstone) await walk(MAP.veilstone, '아지트를 나선다 (장막시티로)', 1_200_000)
     await prepare(api, ctx, note, { center: MAP.veilstoneCenter, levels: null, what: '아지트 앞' })
     if ((await api.now()).map !== MAP.veilstone) await walk(MAP.veilstone, '장막시티로 나선다', 300_000)
@@ -307,7 +325,32 @@ export async function coronetToSpear(api, ctx,
   return done()
 }
 
-// ── ④ 기라티나 방 → 마스터볼 → 송별의 샘 (지시서 §3.5) ─────────────────────────
+// ── ④ 깨어진 세계 (지시서 §3.4 · `tools/e2e/DISTORTION_HARNESS.md`) ──────────────
+
+/** 기라티나 방에 기라티나가 섰다 — 진행 13 (`VAR_DISTORTION_WORLD_PROGRESS`) */
+const giratinaHere = (st) => st.map === MAP.giratinaRoom && (st.progress ?? 0) >= 13
+
+/**
+ * **다리 H** — 1F에서 기라티나 방까지 판 위 계획(`distortionSolve.mjs`)으로 걷는다. 다리 하나를 밟고
+ * 다시 세우고, 어긋나면 그 자리에서 다시 세운다. **기라티나가 서면 멈춘다** — A는 다리 I가 누른다.
+ *
+ * @param escape 1F 도착이 벽 속이면(제품 틈 §6-1) 안전망으로 걸어 나오는 걸음을 먼저 준다
+ */
+export async function walkDistortion(api, ctx, { escape = false, budget = 5_400_000 } = {}) {
+  const t0 = Date.now()
+  const out = { steps: [] }
+  const note = noteOf(out, ctx)
+  const walked = await api.distortionWalk(Math.min(budget, api.left()), { escape, stopWhen: giratinaHere })
+  const st = await api.distortionState()
+  const v = (await api.storyVars()) ?? {}
+  out.walk = walked
+  note('깨어진 세계', `${walked.ok ? '닿았다' : '못 닿았다'} (${String(walked.why)}) · 맵 ${String(st?.map)} · 진행 ${String(v.distortion)}`)
+  out.ok = st !== null && giratinaHere(st)
+  out.ms = Date.now() - t0
+  return out
+}
+
+// ── ⑤ 기라티나 방 → 마스터볼 → 송별의 샘 (지시서 §3.5) ─────────────────────────
 
 /**
  * **다리 I** — 기라티나 방에 들어서 그림자 셋(진행 11·12·13)을 지나 기라티나에게 말을 걸고,
@@ -327,12 +370,12 @@ export async function catchGiratina(api, ctx) {
   out.masterBall = await have(api, ITEM.masterBall)
   if (!out.masterBall && !v.giratinaCaught) { note('마스터볼', '가방에 없다 — 던질 것이 없다'); return done() }
   if (!v.giratinaCaught && (v.distortion ?? 0) < 14) {
-    // 그림자 칸 셋을 차례로 밟는다 — (15,24) · (15,17) · (15,14)
-    for (const z of [24, 17, 14]) {
-      const stood = await api.stepOn(MAP.giratinaRoom, { x: 15, z }, Math.min(300_000, api.left()))
-      await api.clearTalk(); await api.settle()
+    // 그림자 칸 셋((15,24) · (15,17) · (15,14))은 두 칸 뛰기라 판 위 계획으로 간다 — 기라티나가 서면 멈춘다
+    if ((v.distortion ?? 0) < 13) {
+      const walked = await walkDistortion(api, ctx)
       v = await vars()
-      note(`기라티나 방 (15,${String(z)})`, `${stood} · 진행 ${String(v.distortion)}`)
+      note('기라티나 앞', `${walked.ok ? '섰다' : '못 섰다'} · 진행 ${String(v.distortion)}`)
+      if (!walked.ok) return done()
     }
     // 기라티나 쪽으로 돌아서 A — 배틀이 열리면 곧장 마스터볼
     await api.tap('ArrowUp', 80)

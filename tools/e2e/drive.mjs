@@ -1372,6 +1372,88 @@ export async function driveStory(page, {
     return row
   }
 
+  /** 깨어진 세계 — 계획의 걸음 하나를 밟고, 끝난 자리를 기대값과 견준다 */
+  const dwStep = async (q) => {
+    const look = async () => { const r = await obs.distortionState(); return r.known ? r.value : null }
+    const same = (a, e) => a !== null && a.map === e.map && a.x === e.x && a.y === e.y && a.z === e.z
+      && a.pi === e.pi && a.surf === e.surf
+    const idle = async (ms = 15_000) => {           // 묶인 동안(뛰기·승강·폭포·사건·바위·장면)을 기다린다
+      const till = Date.now() + ms
+      for (;;) {
+        const s = await now()
+        if (s.talk || s.script || s.scene !== 'overworld') { await settle(); continue }
+        const d = await look()
+        if (d !== null && !d.busy) break
+        if (Date.now() > till) return false
+        await page.waitForTimeout(50)
+      }
+      await page.waitForTimeout(250)               // 남은 속도가 죽기를 기다린다 (drive.mjs 1140-1152)
+      return true
+    }
+    const before = await look()
+    if (q.key === 'A') {
+      await tap('Space', 250)
+      if (q.prompt === 'surf' || q.prompt === 'strength') await clearTalk()   // 「예」
+      else await settle()                            // 말 → 장면·배틀 (기라티나는 §4-10)
+      await idle()
+    } else if (q.act === 'turn') {
+      await tap(q.key, 80)                           // 막힌 쪽 — 제자리에서 돌기만 한다
+    } else if (q.act === 'nudge') {
+      await page.keyboard.down(q.key); await page.waitForTimeout(40); await page.keyboard.up(q.key)
+      await page.waitForTimeout(300)
+    } else {
+      // 걷기·벽·뛰기·폭포·밀기: 칸(벽이면 y)이 바뀌거나 묶이는 순간 손을 뗀다
+      await page.keyboard.down(q.key)
+      const till = Date.now() + (q.act === 'push' || q.act === 'drop' ? 2_000 : 3_000)
+      for (;;) {
+        const d = await look()
+        if (d === null || d.busy || d.map !== before.map || d.x !== before.x || d.y !== before.y
+          || d.z !== before.z || Date.now() > till) break
+        await page.waitForTimeout(15)
+      }
+      await page.keyboard.up(q.key)
+      await idle(q.wait === 'cascade' ? 20_000 : 15_000)
+    }
+    const after = await look()
+    const ok = q.key === 'A' && q.prompt === 'talk' ? true
+      : same(after, q.expect) && (q.act !== 'turn' && q.act !== 'nudge' || after.facing === q.expect.facing)
+    return { ok, after }
+  }
+
+  /**
+   * 깨어진 세계를 걷는다 — **다리 하나를 밟고 다시 세운다.** 어긋나면 그 자리에서 다시 세운다.
+   * `used`는 이번 층에서 돈 사건 비트다(층이 바뀌면 0)
+   */
+  /**
+   * @param stopWhen `(state) => boolean` — 참이면 그 자리에서 멈춘다. 기라티나 방에서 기라티나가 선 뒤
+   *   (진행 13) A를 **이 걸음이 누르지 않게** 쓴다 — 거기서부터는 마스터볼 다리가 맡는다
+   */
+  const distortionWalk = async (budgetMs, { escape = false, stopWhen = null } = {}) => {
+    const till = Math.min(Date.now() + budgetMs, started + totalMs)
+    let used = 0
+    let lastMap = null
+    let misses = 0
+    while (Date.now() < till) {
+      await settle()
+      const st = await obs.distortionState()
+      if (!st.known || st.value === null) return { ok: true, why: '깨어진 세계를 나왔다' }
+      if (stopWhen !== null && stopWhen(st.value)) return { ok: true, why: '멈출 자리다', at: st.value }
+      if (st.value.map !== lastMap) { used = 0; lastMap = st.value.map }
+      const r = await obs.distortionPlan({ used, escape })
+      if (!r.known || r.value === null || !r.value.legs) return { ok: false, why: '계획이 없다', at: st.value }
+      const leg = r.value.legs[0]
+      for (const q of leg.steps) {
+        const { ok, after } = await dwStep(q)
+        if (q.event && ok) used |= 1 << q.event.index
+        if (!ok) { misses++; log(`      어긋남 ${q.key}/${q.act} 기대 ${JSON.stringify(q.expect)} 실제 ${JSON.stringify(after)}`); break }
+        misses = 0
+        if (after.map !== lastMap) break
+      }
+      if (misses >= 3) return { ok: false, why: '같은 자리에서 세 번 어긋났다', at: (await obs.distortionState()).value }
+    }
+    return { ok: false, why: '시간이 다 됐다' }
+  }
+
   /**
    * **워프 패널을 밟는다** — 패널 칸으로 한 칸 딛고, 짝 칸으로 옮겨 설 때까지 기다린다.
    *
@@ -2256,6 +2338,16 @@ export async function driveStory(page, {
    * 네 옆칸을 차례로 시도한다. 어느 쪽에서 접근할 수 있는지는 지형이 정한다
    */
   const talkTo = async (mapId, spot, budgetMs = 120_000, where = null) => {
+    /**
+     * ⚠️ **그 맵 밖에서 부르면 먼저 그 맵으로 간다.** 예전에는 곧장 「못 걸었다」로 돌아왔다 — 센터에서
+     * 회복하고 부르면 늘 그랬고(운하 선원 · 217번도로 비전머신08), 다리마다 앞에 `goTo`를 붙여 막았다
+     */
+    const t0 = Date.now()
+    if ((await now()).map !== mapId) {
+      const went = await goTo(mapId, budgetMs)
+      if (went !== 'arrived') return false
+      budgetMs = Math.max(0, budgetMs - (Date.now() - t0))
+    }
     const here = matrixOf(mapId)
     const doors = warpsOf(mapId)
     // 옆칸 넷. ⚠️ **계산대 너머도 넣는다** — 점원과 간호사는 계산대 뒤에 서고,
@@ -3840,6 +3932,9 @@ export async function driveStory(page, {
     canalaveState: async () => { const r = await obs.canalaveState(); return r.known ? r.value : null },
     snowpointPlan: async (goal) => { const r = await obs.snowpointPlan(goal); return r.known ? r.value : null },
     iceState: async () => { const r = await obs.iceState(); return r.known ? r.value : null },
+    distortionState: async () => { const r = await obs.distortionState(); return r.known ? r.value : null },
+    distortionPlan: async (arg) => { const r = await obs.distortionPlan(arg); return r.known ? r.value : null },
+    distortionWalk,
     runAway, useItem, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만

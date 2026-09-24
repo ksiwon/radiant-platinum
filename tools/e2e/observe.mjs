@@ -510,6 +510,124 @@ function devObserver(page) {
       return { start: { x: Math.floor(p.x), z: Math.floor(p.z) }, balls: balls.length, plan }
     }, goal),
     /** 선단 체육관 — 미끄러지는 중인가 */
+    /**
+     * **깨어진 세계 — 지금 자리** (`tools/e2e/DISTORTION_HARNESS.md` §3). 칸은 세계 칸이고 y는
+     * `Math.round`다(`scene/distortionCore.ts:114-121`). `busy`는 조작이 묶인 동안이다
+     */
+    distortionState: () => read('깨어진 세계 상태를 못 읽었다', async () => {
+      const core = await import('/src/scene/distortionCore.ts')
+      const W = await import('/src/engine/map/world.ts')
+      const st = await import('/src/state/worldState.ts')
+      const MV = await import('/src/engine/script/movement.ts')
+      if (!core.distortionActive()) return null
+      const p = st.worldState.player
+      const [x, y, z] = core.toWorldTiles(p.position.x, p.position.y, p.position.z)
+      const q = W.quarterOf(p.facing)
+      return {
+        map: W.world.mapId, x, y, z, pi: core.platformIndex(),
+        facing: [MV.DIR.south, MV.DIR.east, MV.DIR.north, MV.DIR.west][q],
+        surf: p.surfing === true, strength: p.strength === true,
+        busy: p.riding === true || p.hop.active === true || W.world.pending !== null,
+        progress: core.distortionHooks.progress?.() ?? null,
+        raw: { x: +p.position.x.toFixed(2), y: +p.position.y.toFixed(2), z: +p.position.z.toFixed(2) },
+      }
+    }),
+    /**
+     * **깨어진 세계 — 다음 할 일의 계획** (`tools/e2e/distortionSolve.mjs` `planNext`). 규칙은 전부
+     * 제품 모듈에서 꺼내 넘긴다(굽는 쪽이 하나). 사람·바위는 지금 층의 **살아 있는 배우**로, 다른 층은
+     * 표로 본다.
+     *
+     * @param arg.used 이번 층에 들어와서 이미 돈 사건의 비트(`distortionEvents.ts`의 `ranEvents`는
+     *   밖에서 못 읽는다 — 몰이꾼이 센다, §3)
+     * @param arg.escape 벽 속에서 시작했으면 안전망으로 나오는 걸음을 먼저 준다(기본 꺼짐, §6-1)
+     */
+    distortionPlan: (arg) => read('깨어진 세계 풀이를 못 돌렸다', async ({ used = 0, escape = false } = {}) => {
+      const D = await import('/src/engine/world/distortion.ts')
+      const E = await import('/src/engine/world/distortionElevator.ts')
+      const C = await import('/src/engine/world/distortionCascade.ts')
+      const B = await import('/src/engine/world/distortionBoulder.ts')
+      const MP = await import('/src/engine/world/distortionMovePlatform.ts')
+      const L = await import('/src/engine/actor/ledge.ts')
+      const O = await import('/src/engine/actor/obstacles.ts')
+      const Z = await import('/src/engine/map/zone.ts')
+      const MV = await import('/src/engine/script/movement.ts')
+      const F = await import('/src/engine/script/field.ts')
+      const W = await import('/src/engine/map/world.ts')
+      const WD = await import('/src/scene/worldData.ts')
+      const core = await import('/src/scene/distortionCore.ts')
+      const st = await import('/src/state/worldState.ts')
+      const N = await import('/src/engine/actor/npcs.ts')
+      const S = await import('/tools/e2e/distortionSolve.mjs')
+      const data = core.distortionData()
+      if (data === null || !core.distortionActive()) return null
+      // 층 격자 열 벌 — 층을 건너는 길 찾기가 다른 층도 본다. 깨어진 세계는 봉인하지 않는다
+      const grids = new Map()
+      for (const m of data.maps) {
+        const h = W.world.maps?.[m.map]
+        if (h !== undefined) grids.set(m.map, await WD.gridFor(h.matrix))
+      }
+      const map = W.world.mapId
+      const floor = D.mapOf(data, map)
+      const p = st.worldState.player
+      const [x, y, z] = core.toWorldTiles(p.position.x, p.position.y, p.position.z)
+      const hooks = core.distortionHooks
+      const inPit = new Set([E.DIST_OBJ.b6fMespritBoulderInPit, E.DIST_OBJ.b6fAzelfBoulderInPit,
+        E.DIST_OBJ.b6fUxieBoulderInPit])
+      const live = N.npcActors.list.filter((a) => a.visible)
+      const P = {
+        data, STEP: D.STEP, ATTRS_INVALID: D.ATTRS_INVALID, tileAttributes: D.tileAttributes,
+        blocked: D.blocked, tileBehavior: D.tileBehavior, findPlatform: D.findPlatform,
+        hasPlatformAt: D.hasPlatformAt, jumpAt: D.jumpAt, flagHolds: D.flagHolds,
+        connectionOf: D.connectionOf, mapOf: D.mapOf, TELEPORT: D.TELEPORT,
+        CYNTHIA_BLOCK: D.CYNTHIA_BLOCK, EVENT_CMD: D.EVENT_CMD, MAP: D.MAP, FLAG_COND: D.FLAG_COND,
+        PLATFORM: {
+          FLOOR: D.PLATFORM_FLOOR, WEST_WALL: D.PLATFORM_WEST_WALL, EAST_WALL: D.PLATFORM_EAST_WALL,
+          CEILING: D.PLATFORM_CEILING, NONE: D.PLATFORM_NONE,
+        },
+        elevatorAt: E.elevatorAt, elevatorLegs: E.elevatorLegs, upStartFlags: E.upStartFlags,
+        downEndFlags: E.downEndFlags, withFlag: E.withFlag, ELEVATOR_DIR: E.ELEVATOR_DIR,
+        PLATFORM_FLAG: E.PLATFORM_FLAG, cascadeAt: C.cascadeAt,
+        fallLocationAt: B.fallLocationAt, fallDestination: B.fallDestination, fellToB6F: B.fellToB6F,
+        fellIntoPit: B.fellIntoPit, fellIntoWrongPit: B.fellIntoWrongPit, puzzleSolved: B.puzzleSolved,
+        FALL_DEST: B.FALL_DEST, PUZZLE_FLAG: B.PUZZLE_FLAG, hopDirOf: MP.hopDirOf, HOP_TILES: MP.HOP_TILES,
+        distortionJump: L.distortionJump, HOP_TWICE_TILES: L.HOP_TWICE_TILES, ledgeHop: L.ledgeHop,
+        isOnWater: Z.isOnWater, isSurfable: Z.isSurfable, DIR_STEP: MV.DIR_STEP,
+        STRENGTH_BOULDER: O.STRENGTH_BOULDER, standableSpot: W.standableSpot,
+        grid: (m) => grids.get(m) ?? null,
+        groundY: (m) => core.distortionGroundY(m),
+        // 지금 층만 살아 있는 배우로 답한다. 바위는 `boulders`가 든다
+        solidAt: (m, lx, lz) => {
+          if (m !== map) return null
+          const a = O.solidNpcAt(lx + 0.5, lz + 0.5, p.position.y)
+          return a !== null && a.gfx !== O.STRENGTH_BOULDER
+        },
+        checkFlag: (flag) => F.fieldScripts.vars.checkFlag(flag),
+      }
+      const s = core.state()
+      const q = W.quarterOf(p.facing)
+      let start = {
+        map, x, y, z, pi: core.platformIndex(),
+        facing: [MV.DIR.south, MV.DIR.east, MV.DIR.north, MV.DIR.west][q],
+        surf: p.surfing === true, strength: p.strength === true,
+        progress: hooks.progress?.() ?? 0, cyrus: hooks.cyrusAppearance?.() ?? 0,
+        flags: s.platformFlags, puzzle: s.puzzleFlags, used,
+        boulders: live.filter((a) => a.gfx === O.STRENGTH_BOULDER).map((a) => ({
+          id: a.localID, x: Math.round(a.x) + floor.offsetX, z: Math.round(a.z) + floor.offsetZ,
+          fixed: inPit.has(a.localID),
+        })),
+      }
+      const out = escape ? S.planEscape(P, start) : null
+      if (out !== null && out.steps.length > 0) {
+        return { start, stage: { kind: 'escape' }, legs: [{ map, steps: out.steps, end: out.end }] }
+      }
+      const person = (id) => {
+        const a = N.npcActors.byLocalID.get(id)
+        return a === undefined ? null
+          : { x: Math.round(a.x) + floor.offsetX, z: Math.round(a.z) + floor.offsetZ }
+      }
+      const plan = S.planNext(P, start, person)
+      return plan === null ? { start, plan: null } : { start, stage: plan.stage, legs: plan.legs }
+    }, arg ?? {}),
     iceState: () => read('얼음 상태를 못 읽었다', async () => {
       const ice = await import('/src/engine/actor/ice.ts')
       const st = await import('/src/state/worldState.ts')
@@ -727,6 +845,8 @@ function distObserver(page) {
     canalaveState: async () => unknown(NO_SRC),
     snowpointPlan: async () => unknown(NO_SRC),
     iceState: async () => unknown(NO_SRC),
+    distortionState: async () => unknown(NO_SRC),
+    distortionPlan: async () => unknown(NO_SRC),
   }
 }
 
