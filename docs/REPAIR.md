@@ -4651,3 +4651,77 @@ if (Unk_020EE76C[dir](v1) == TRUE || Unk_020EE77C[dir](v2) == TRUE) return TRUE;
 
 하네스도 같이 고쳤다 — `snowpointSlide`가 「미끄러지는 중이 아니다」 한 번만 보고 자리를 읽어 **아직 미끄러지는
 자리**를 읽었다(추적에서 (1,26)으로 가는 미끄럼을 (6,26)에서 읽었다). 이제 멈춤 · 같은 칸을 셋 연달아 본다.
+
+## 82. 트레이너 둘과의 배틀이 **한 사람과의 싱글**이었다 — 둘째 상대와 편을 버렸다
+
+창기둥의 조무래기 둘(`StartTrainerBattle 521, 527`)이 조무래기 하나였고, 마스·쥬피터와 라이벌이 함께 서는
+판(`StartTagBattle 620, 528, 407`)이 **마스 하나와의 1:1**이었다. 축복시티·장막시티의 조무래기 둘과 짝, 동행
+(모미·현이·마이·오바·대엽)과 걷는 동안의 트레이너 둘·야생 둘도 같았다. 이야기는 지나갔고 없는 것은 옆에 선
+셋이었다 — 사용자의 말로 「더블도 무조건 되어야」 하는 자리다.
+
+**원작** — 형식은 스크립트가 아니라 `Encounter_NewVsTrainer`(`encounter.c` 724)가 인자 셋으로 가른다:
+
+| 둘째 상대 | 편 | 형식 |
+|---|---|---|
+| 0 | — | `BATTLE_TYPE_TRAINER` (싱글. 동행이 있어도 편은 안 선다) |
+| 첫 상대와 같다 | — | `BATTLE_TYPE_TRAINER_DOUBLES` (한 사람의 더블) |
+| 다르다 | 없다 | `BATTLE_TYPE_TAG_DOUBLES` (나 혼자 vs 둘) |
+| 다르다 | 있다 | `BATTLE_TYPE_TRAINER_WITH_AI_PARTNER` (편과 함께 vs 둘) |
+
+`ScrCmd_StartTrainerBattle`(`scrcmd_trainer.c` 124)은 **동행 깃발을 스스로 읽어** 편을 넘기고
+(`SystemFlag_CheckHasPartner` → `VAR_PARTNER_TRAINER_ID`), 동행 중의 풀숲은 `BATTLE_TYPE_AI_PARTNER`로 칸을
+두 번 굴린다(`wild_encounters.c` 316·730). 서로 다른 둘의 시야가 겹치면 둘이 같이 온다(`APPROACH_TYPE_VS2` ·
+`trainer_encounter.c` 96). 2vs2의 규칙은 넷이다:
+
+- **자리마다 파티가 따로다** — 쓰러지면 그 자리 주인의 파티에서만 채우고(`BattleControllerPlayer_ReplaceFainted` ·
+  `battle_controller_player.c` 4081), 바닥나면 그 자리는 빈다(`selectedPartySlot = 6`). 날려버리기도 맞은
+  전투원의 파티에서 고른다(`battle_script.c` 5257).
+- **이기는 셈** — 상대 쪽은 두 파티가 다 쓰러져야 이기고, 우리 쪽은 **내 파티만** 센다(4202 — 편이 서 있어도
+  진다).
+- **사람마다 제 것** — AI 비트(`TrainerAI_Init`)·도구 칸(`aiContext.trainerItems[battler >> 1]`)이 트레이너마다
+  따로고, 편이 있는 판은 도구를 아무도 안 쓴다(`BATTLE_TYPE_NO_AI_ITEMS`). 상금은 두 사람의 합이고 두 배가
+  없다(`battle_script.c` 3683).
+- **글이 두 사람을 한 창에 담는다** — 걸어옴 992 · 첫 등판 991/993 · 이김 953, 그 뒤 두 사람의 끝말이 차례로
+  (`subscript_battle_won.s` _087).
+
+**우리** — `commands.ts`의 `StartTrainerBattle`이 둘째 인자를 **읽고 버렸고**(「더블 배틀에서만 쓴다」),
+`startTagBattle`은 편과 둘째 상대를 버리고 첫 상대로 `startTrainer`를 불렀다. 컨트롤러가 두 사람용이라
+넷을 담을 자리가 없었다. 시선은 싱글·더블만 알고 VS2 갈래가 없었다. 동행 중의 풀숲은 싱글이었다.
+
+**sim에 얹은 방법** — `gameType: 'multi'`(p1~p4)는 쓰지 않았다. 그것은 한 사람에게 **파티 하나·자리 하나**를
+주므로 ①(내가 혼자 두 자리를 한 파티로 채운다)을 못 담는다. 대신 **더블 한 쪽에 두 파티를 이어 붙이고
+자리 주인을 키로 적었다** (`sim/session`의 `OwnedSlots`):
+
+- 팀은 `[a의 선두, b의 선두, a의 나머지…, b의 나머지…]`다 — sim이 0·1번을 자리 a·b에 세운다.
+- 교체 후보는 전부 `possibleSwitches(side)` 한 곳에서 나온다. 그 자리를 **지금 채우는 자리 주인의 것**으로
+  거른다: 날려버리기가 끄는 중이면 그 자리(`dragIn`을 감싼다), 기술이 도는 중이면 억지 교체는 맞은 쪽·자진
+  교체는 쓴 쪽. 턴 끝의 셈(쪽 전체)은 원래 값 그대로다.
+- `checkFainted` 뒤에 **제 벤치가 없는 자리의 깃발을 내린다** — 안 내리면 sim이 짝의 벤치로 그 자리를 채우라고
+  묻는다. 유턴·바톤터치는 벤치를 안 보고 깃발을 세우므로(`spreadMoveHit` 끝) `useMove` 뒤에서 같은 셈으로 내린다.
+- 우리 쪽 명령은 내 자리와 편 자리를 **한 줄로 묶는다**(`controller.sendP1`). 편 자리만 답하면 되는 요청(편의
+  마리가 쓰러져 편만 바꾸는 턴)은 나에게 안 묻고 스스로 넘긴다. 내 파티가 바닥나면 그 자리에서 판을 접는다
+  (`lostAlone`) — sim은 쪽 전체가 쓰러져야 끝내기 때문이다.
+
+쪽 표시(`p1`·`p2`)와 네 자리(`p1a`…`p2b`)가 싱글·더블과 같아서 뷰·재생기·무대가 손을 안 탔다. 키 앞머리가 곧
+주인이다 — 내 파티 `p1-`, 첫 상대 `p2-`, 편 `p3-`, 둘째 상대 `p4-` (`aftermath.ownerOfKey`).
+
+**담금질이 잡은 것 둘** — 둘 다 요청이 말하지 않는 것이다. 드러나지 않은 특성(그림자밟기·개미지옥·자력)에 묶인
+자리는 요청에 `maybeTrapped`로만 오고, 봉인은 기술을 숨긴 채로 잠근다(`disableMove(id, 'hidden')`) — 둘 다
+고르면 sim이 거절한다. 후보를 만들 때 sim의 실제 값을 본다(`session.trappedAt` · `lockedMovesAt`). 원작도 그
+자리에서 명령이 막힌다.
+
+**같이 고친 것** — 한 사람의 더블에서도 ① 둘째 자리가 쓰러진 마리로 서던 것(원작은 깨어 있는 둘째 마리 ·
+`battle_main.c` 1163), ② 첫 등판이 마리마다 한 창이던 것(973 · 978), ③ 이긴 뒤 상대의 끝말(`TRMSG_DEFEAT`,
+더블은 `_DOUBLE_BATTLE_DEFEAT_1`·`_2`)이 없고 상금이 「이겼다!」보다 먼저 뜨던 것. 그리고 넷이 되면서 곧바로
+걸리는 자리 둘을 미리 막았다 — 둘 다 **재서 본 실패가 아니라 코드를 읽고 막은 것**이다: ④ 세워 둔 빈 턴 칸의
+표(`session.armed`)가 쪽마다 하나라 두 자리가 같은 턴에 턴을 비우면(트레이너 둘이 저마다 도구를 쓰는 턴) 뒤에
+세운 것이 앞의 것을 덮는다, ⑤ 한 자리만 쓰러진 교체 턴에도 트레이너 도구 판단이 돌았다 — 그 요청은
+`forceSwitch`라 멀쩡한 자리가 `pass`만 받는데 빈 턴 칸은 기술 명령이다.
+
+**재는 법** — `npx vitest run src/engine/battle/sim/multi.test.ts` (자리 주인 · 빈 자리 · 울부짖기 · 유턴 ·
+편이 매 턴 둔다 · 내 파티만 세는 패배 · 담금질) · `src/state/multiBattle.test.ts` (롬의 창기둥 판 셋 · 상금 합 ·
+끝말 차례 · 야생 둘의 볼 막힘) · `src/engine/script/sightVs2.test.ts` · `approach.test.ts` · `story.test.ts`.
+길게는 `BATTLE_SOAK=150` — 무작위 종족 300판에 거절 0이다.
+
+**남은 것** — 편의 파티를 파티 화면에 흐리게 늘어놓는 원작 배치(우리는 내 파티만 띄운다), 트레이너 둘·편이
+서는 3D 좌표(`PAIRED_TRAINER_GAP`은 몸이 안 겹치게만 잡은 값이고 화면으로 아직 안 봤다).
