@@ -158,7 +158,7 @@ const PUSH_KEY = [
  *
  * 그래서 문과 같은 손을 쓴다 — **옆칸에 서서 그쪽으로 민다.**
  */
-async function boardWarp(api, mapId, warp, budgetMs) {
+export async function boardWarp(api, mapId, warp, budgetMs) {
   const grid = gridOf(matrixOf(mapId))
   const others = warpsOf(mapId)
   const sides = PUSH_KEY

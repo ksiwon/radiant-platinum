@@ -278,6 +278,20 @@ function devObserver(page) {
         coronetOpen: v.checkFlag(666) === true,
         route217: v.get(16552), acuityFront: v.get(16516),
         byronTm: v.checkFlag(146) === true, candiceTm: v.checkFlag(158) === true,
+        /**
+         * **배지 7 뒤 → 깨어진 세계** (`JOURNEY_DISTORTION` §2 — 번호 셈은 배지 6·7 문서와 같다)
+         *   · 16595 `VAR_LAKE_ACUITY_STATE` 1 → 예지호수 장면 2 · 깃발 547 장막 그런트 숨김(장면이 푼다)
+         *   · 16671 `VAR_VEILSTONE_CITY_GALACTIC_WAREHOUSE_STATE` 핸섬 「예」 3 → 창고 문 4
+         *   · 깃발 1251 갤럭시단의열쇠 · 16526 홀 연설 · 16598 4F 태홍(마스터볼) · 깃발 173 새턴 · 2429 호수 셋 해방
+         *   · 16553 `VAR_MT_CORONET_2F_STATE` 버튼 1 → 핸섬 2 · 16536 `VAR_SPEAR_PILLAR_STATE` 0 → 1 → 2 → 3
+         *   · 16579 깨진 창기둥 · 16469 `VAR_DISTORTION_WORLD_PROGRESS` 0 … 14 · 깃발 289 기라티나를 잡았다
+         *   · 16554 `VAR_EXITED_DISTORTION_WORLD_STATE` 포털 1 → 송별의 샘 **2**(끝) · 깃발 1175 비전머신08
+         */
+        hm08: v.checkFlag(1175) === true, acuity: v.get(16595), stashGrunt: v.checkFlag(547) === true,
+        galacticKey: v.checkFlag(1251) === true, hall: v.get(16526),
+        hq4f: v.get(16598), hqSaturn: v.checkFlag(173) === true, freed: v.checkFlag(2429) === true,
+        coronet2f: v.get(16553), spear: v.get(16536), spearDistorted: v.get(16579),
+        distortion: v.get(16469), giratinaCaught: v.checkFlag(289) === true, exitedDistortion: v.get(16554),
       }
     }),
     /**

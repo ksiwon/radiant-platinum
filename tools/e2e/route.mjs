@@ -129,6 +129,35 @@ export const warpsOf = (mapId) => {
   const { maps, events } = data()
   return events[String(maps[mapId]?.events)]?.warps ?? []
 }
+/**
+ * **워프 패널** — 같은 맵 안의 다른 칸으로 옮기는 워프(갤럭시단 아지트 · 천관산 2F·4F 등).
+ * 행렬마다 `{x, z, tx, tz}` 목록이다. 밟으면 짝 패널 칸에 선다(`events_*.json`의 짝 번호).
+ *
+ * ⚠️ **행렬을 여러 맵이 나눠 쓰면 쓰지 않는다** — 어느 맵의 워프인지 모르면 거짓 길이 된다
+ */
+const panelCache = new Map()
+export const panelsOf = (matrixId) => {
+  if (panelCache.has(matrixId)) return panelCache.get(matrixId)
+  const { maps } = data()
+  const users = Object.keys(maps).map(Number).filter((id) => maps[id]?.matrix === matrixId)
+  let pads = null
+  if (users.length === 1) {
+    const id = users[0]
+    const ws = warpsOf(id)
+    const self = ws.filter((w) => w.to === id)
+    if (self.length > 0) {
+      pads = new Map()
+      for (const w of self) {
+        const dest = ws[w.anchor]
+        if (dest !== undefined) pads.set(`${String(w.x)},${String(w.z)}`, { tx: dest.x, tz: dest.z })
+      }
+    }
+  }
+  panelCache.set(matrixId, pads)
+  return pads
+}
+/** 계획의 워프 패널 걸음 — `warp:ArrowLeft` 꼴. 걷는 쪽이 끊어서 밟고 옮겨 간 자리에서 다시 계획한다 */
+export const PANEL_PREFIX = 'warp:'
 export const npcsOf = (mapId) => {
   const { maps, events } = data()
   return events[String(maps[mapId]?.events)]?.npcs ?? []
@@ -210,6 +239,18 @@ export const SURFABLE = new Set([
 const WATER_BRIDGES = new Set([0x73, 0x78, 0x7c])
 /** 폭포. 파도타기로도 못 오른다 — 폭포오르기는 이 구간 밖이다 */
 const WATERFALL = 0x13
+
+/**
+ * **락클라임 벽** — 남북으로 타는 벽 0x4B · 동서로 타는 벽 0x4C (`fieldMoves.ts`의
+ * `TILE_BEHAVIOR_ROCK_CLIMB_*`). 격자에서는 통행 불가 비트가 서 있어 걸어서는 못 든다.
+ * 제품은 벽을 마주 보고 A → 「예」면 **같은 거동이 이어지는 만큼 가서 그 너머 한 칸에
+ * 내린다** — 너머가 막혔으면 안 탄다 (`script/field.ts`의 `runFieldMove` 'rockClimb').
+ * 방향은 벽과 맞아야 한다(`canRockClimb`) — 남북 벽은 위아래로, 동서 벽은 좌우로만
+ */
+export const ROCK_CLIMB_NS = 0x4b
+export const ROCK_CLIMB_EW = 0x4c
+/** 계획의 락클라임 걸음 — `climb:ArrowUp` 꼴. 걷는 쪽이 끊어서 A로 탄다 */
+export const CLIMB_PREFIX = 'climb:'
 
 /**
  * **한쪽으로만 막힌 칸** (`actor/edgeBlock` · 원작 `sub_02064004`). 무쇠·선단 체육관 따위에
@@ -343,7 +384,7 @@ export function planPath(
   matrixId, from, isGoal,
   {
     limit = NODE_CAP, avoid = null, avoidStep = null, cancelled = null, enterBlockedGoal = false,
-    surf = false,
+    surf = false, climb = false, panels = true,
   } = {},
 ) {
   const t0 = performance.now()
@@ -378,6 +419,8 @@ export function planPath(
    * 못 간다
    */
   const swim = surf || waterAt(matrixId, from.x, from.z)
+  /** 워프 패널 — 밟는 걸음이 곧 짝 칸으로 가는 한 걸음이다 (`panelsOf`) */
+  const pads = panels ? panelsOf(matrixId) : null
   const s = scratchFor(grid)
   const run = ++s.run
   const { stamp, parent, dir, queue } = s
@@ -405,7 +448,41 @@ export function planPath(
       if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue
       const nid = nz * w + nx
       if (stamp[nid] === run) continue
+      const pad = pads === null ? undefined : pads.get(`${String(nx)},${String(nz)}`)
+      if (pad !== undefined) {
+        const lid = pad.tz * w + pad.tx
+        if (stamp[lid] !== run) {
+          stamp[lid] = run
+          parent[lid] = id
+          dir[lid] = k + 9
+          queue[tail++] = lid
+          lastPlan.pushed++
+        }
+        continue
+      }
       const beh = grid.at(nx, nz) & 0x7fff
+      /**
+       * **락클라임 한 번이 한 걸음이다** (`climb`) — 벽 첫 칸을 마주 본 자리에서 벽이 끝난 너머
+       * 한 칸으로 곧장 간다. 제품과 같이 같은 거동이 이어지는 만큼 가고, 너머가 막혔으면 안 탄다
+       */
+      if (climb && ((beh === ROCK_CLIMB_NS && dz !== 0) || (beh === ROCK_CLIMB_EW && dx !== 0))) {
+        let ex = nx
+        let ez = nz
+        while ((grid.at(ex + dx, ez + dz) & 0x7fff) === beh) { ex += dx; ez += dz }
+        const lx = ex + dx
+        const lz = ez + dz
+        if (lx >= 0 && lz >= 0 && lx < w && lz < h && !grid.blocked(lx, lz)) {
+          const lid = lz * w + lx
+          if (stamp[lid] !== run && !(avoid !== null && avoid(lx, lz))) {
+            stamp[lid] = run
+            parent[lid] = id
+            dir[lid] = k + 5
+            queue[tail++] = lid
+            lastPlan.pushed++
+          }
+        }
+        continue
+      }
       // 물 — 파도타기가 아니면 못 들어가고, 폭포는 파도타기로도 못 오른다
       if (SURFABLE.has(beh) && !WATER_BRIDGES.has(beh) && (!swim || beh === WATERFALL)) continue
       // 한쪽으로만 막힌 가장자리
@@ -450,7 +527,9 @@ export function pathTo(matrixId, from, isGoal, opts = {}) {
 function walkBack(parent, dir, at) {
   const keys = []
   for (let node = at; parent[node] >= 0; node = parent[node]) {
-    keys.push(STEP_KEYS[dir[node] - 1])
+    const d = dir[node]
+    keys.push(d > 8 ? `${PANEL_PREFIX}${STEP_KEYS[d - 9]}`
+      : d > 4 ? `${CLIMB_PREFIX}${STEP_KEYS[d - 5]}` : STEP_KEYS[d - 1])
   }
   return keys.reverse()
 }

@@ -29,9 +29,28 @@
 import { makeObserver, watchMapScene } from './observe.mjs'
 import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
 import {
-  allMaps, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
+  allMaps, CLIMB_PREFIX, PANEL_PREFIX, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
   planPath, slopeClimbBan, TILE_TABLE, trainersOn, waterAt, warpsOf,
 } from './route.mjs'
+
+/**
+ * 배틀 가방 목록을 읽는다 — 페이지 안에서 돈다 (`page.evaluate(readBattleBag)`).
+ * 제품이 목록에 달아 둔 `data-*`만 본다(`ui/battle/BattleBag`)
+ */
+function readBattleBag() {
+  const list = document.querySelector('[data-battle-bag="items"]')
+  if (list === null) return null
+  return {
+    pocket: Number(list.getAttribute('data-pocket')),
+    cursor: Number(list.getAttribute('data-cursor')),
+    total: Number(list.getAttribute('data-items')),
+    rows: [...list.querySelectorAll('[data-item-id]')].map((el) => ({
+      item: Number(el.getAttribute('data-item-id')),
+      on: el.getAttribute('aria-selected') === 'true',
+      label: (el.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    })),
+  }
+}
 
 /** 방향키 하나가 옮기는 칸 */
 const STEPV = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
@@ -279,9 +298,15 @@ export async function driveStory(page, {
   let surfMode = false
   /** 파도타기를 시작한 기록. 결과에 적는다 */
   const surfLog = []
+  /**
+   * **락클라임 벽을 길로 칠 것인가** (`setClimb`). 비전머신08을 가르친 뒤의 다리만 켠다 —
+   * 벽은 한 번에 한 걸음(`climb:방향`)으로 계획에 들어오고 `walk`가 거기서 끊어 탄다
+   */
+  let climbMode = false
+  const climbLog = []
 
   const planned = (matrix, from, isGoal, opts, why) => {
-    const r = planPath(matrix, from, isGoal, { surf: surfMode, ...opts })
+    const r = planPath(matrix, from, isGoal, { surf: surfMode, climb: climbMode, ...opts })
     const row = {
       why, matrix, from: { ...from }, ...r.stats,
       // ⚠️ **어떤 정책으로 세운 계획인지가 없으면 비교가 안 된다** (§4.1)
@@ -1317,6 +1342,73 @@ export async function driveStory(page, {
   }
 
   /**
+   * **락클라임을 쓴다** — 벽 쪽으로 돌아서 A → 「락클라임을 쓰겠습니까?」 예 (`FieldMoves_RockyWall` →
+   * `UseRockClimb`). 제품은 벽 너머 한 칸까지 `hopTo`로 옮긴다(`runFieldMove` 'rockClimb'). 탔는지는
+   * 글이 아니라 **자리가 바뀌었는가**로 본다 — 벽 너머 칸에 멈춰 선 것까지 기다린다
+   */
+  const climbStart = async (key) => {
+    const t0 = Date.now()
+    const before = await now()
+    await tap(key, 80)
+    await settle()
+    await tap('Space', 400)
+    await clearTalk()
+    let after = await now()
+    let still = 0
+    for (let i = 0; i < 80 && still < 3; i++) {
+      await page.waitForTimeout(100)
+      const at = await now()
+      const moved = at.x !== before.x || at.z !== before.z
+      still = moved && at.x === after.x && at.z === after.z ? still + 1 : 0
+      after = at
+    }
+    const ok = after.x !== before.x || after.z !== before.z
+    const row = {
+      ok, key, from: { map: before.map, x: before.x, z: before.z },
+      to: { map: after.map, x: after.x, z: after.z }, ms: Date.now() - t0,
+    }
+    climbLog.push(row)
+    log(`      락클라임 ${ok ? '탔다' : '못 탔다'} (${String(before.x)},${String(before.z)}) ${key} → (${String(after.x)},${String(after.z)})`)
+    return row
+  }
+
+  /**
+   * **워프 패널을 밟는다** — 패널 칸으로 한 칸 딛고, 짝 칸으로 옮겨 설 때까지 기다린다.
+   *
+   * ⚠️ **패널에 올라서면 곧장 손을 뗀다.** 키를 쥔 채로 옮겨 가면 도착한 짝 패널에서 계속 걸어
+   * 나가 엉뚱한 칸에 선다(`stepOnce`는 목표 칸에 닿을 때까지 쥐는데, 패널 칸은 한 프레임만 밟힌다)
+   */
+  const panelStep = async (key, from) => {
+    const t0 = Date.now()
+    const [dx, dz] = STEPV[key]
+    const pad = { x: from.x + dx, z: from.z + dz }
+    lastKeyAt = Date.now()
+    await page.keyboard.down(key)
+    let at = null
+    for (let i = 0; i < 100; i++) {
+      at = await now()
+      if (at.talk || at.scene !== 'overworld') break
+      if (at.x !== from.x || at.z !== from.z) break
+      await page.waitForTimeout(10)
+    }
+    await page.keyboard.up(key)
+    // 옮겨 가는 연출 · 짝 칸 도착을 기다린다 — 자리가 패널도 출발 칸도 아니게 되고 멎을 때까지
+    let still = 0
+    let last = null
+    for (let i = 0; i < 60 && still < 3; i++) {
+      await page.waitForTimeout(100)
+      at = await now()
+      const tile = `${String(at.map)},${String(at.x)},${String(at.z)}`
+      const away = !(at.x === pad.x && at.z === pad.z) && !(at.x === from.x && at.z === from.z)
+      still = away && tile === last ? still + 1 : 0
+      last = tile
+    }
+    const ok = !(at.x === pad.x && at.z === pad.z) && !(at.x === from.x && at.z === from.z)
+    log(`      워프 패널 ${ok ? '옮겨 갔다' : '안 옮겨 갔다'} (${String(pad.x)},${String(pad.z)}) → (${String(at.x)},${String(at.z)}) · ${String(Date.now() - t0)}ms`)
+    return { ok, pad, to: { map: at.map, x: at.x, z: at.z } }
+  }
+
+  /**
    * 걸음 목록에서 **뭍에서 물로 드는 첫 걸음**의 번호. 없으면 -1.
    * 다리 위는 땅으로 친다(`waterAt`)
    */
@@ -1339,6 +1431,30 @@ export async function driveStory(page, {
    * 다시 계획한다(`goTo`는 바퀴마다 다시 계획한다)
    */
   const walk = async (keys, from, mapId, shun = null) => {
+    /**
+     * ⚠️ **락클라임 걸음에서 끊는다** — 거기까지 걷고(물이 끼면 아래 파도타기 갈래가 그 앞을 맡는다),
+     * 벽 앞 칸에 섰으면 벽을 탄다. 나머지는 `goTo`가 벽 너머에서 다시 계획한다
+     */
+    const climbAt = keys.findIndex((k) => k.startsWith(CLIMB_PREFIX) || k.startsWith(PANEL_PREFIX))
+    if (climbAt >= 0) {
+      if (climbAt > 0) {
+        const dry = await walk(keys.slice(0, climbAt), from, mapId, shun)
+        if (dry !== 'done') return dry
+      }
+      let x = from.x
+      let z = from.z
+      for (const k of keys.slice(0, climbAt)) { const [dx, dz] = STEPV[k]; x += dx; z += dz }
+      const here = await now()
+      // 앞 걸음이 파도타기로 끊겼거나 밀려났으면 벽·패널 앞이 아니다 — 다시 계획하게 돌려준다
+      if (here.x !== x || here.z !== z || here.map !== mapId) return 'done'
+      const special = keys[climbAt]
+      if (special.startsWith(PANEL_PREFIX)) {
+        const got = await panelStep(special.slice(PANEL_PREFIX.length), { x, z })
+        return got.ok ? 'done' : 'blocked'
+      }
+      const got = await climbStart(special.slice(CLIMB_PREFIX.length))
+      return got.ok ? 'done' : 'blocked'
+    }
     if (surfMode) {
       const cut = waterEntry(keys, from, matrixOf(mapId))
       if (cut >= 0) {
@@ -2616,6 +2732,8 @@ export async function driveStory(page, {
 
   /** 파도타기 다리를 켜고 끈다 (`surfMode`) */
   const setSurf = (on) => { surfMode = on === true }
+  /** 락클라임 다리를 켜고 끈다 (`climbMode`) */
+  const setClimb = (on) => { climbMode = on === true }
 
   /**
    * **도구 하나를 밭에서 쓴다** (`ui/menu/itemAction`의 그 갈래들).
@@ -3041,7 +3159,12 @@ export async function driveStory(page, {
    * ⚠️ **볼이 떨어지면 그만둔다.** 볼 주머니가 비면 줄이 하나도 안 뜨고,
    * 그때 결정을 눌러 봐야 아무 일이 없다 — 그 자리에서 배틀을 싸워 끝낸다
    */
-  const throwBalls = async (budgetMs, maxThrows = 4) => {
+  /**
+   * @param ball 던질 볼의 도구 번호. 없으면 **볼 주머니 첫 줄**(몬스터볼)이다. 주면 그 줄까지
+   *   커서를 옮긴다 — 기라티나에게 마스터볼(1)을 던질 때다. 마스터볼은 늦게 받아 주머니
+   *   끝에 선다(`engine/bag/bag.ts`는 받은 차례로 둔다)
+   */
+  const throwBalls = async (budgetMs, maxThrows = 4, { ball = null } = {}) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     const was = (await partyState())?.length ?? null
     let thrown = 0
@@ -3105,9 +3228,14 @@ export async function driveStory(page, {
        */
       const ballRow = async (rounds) => {
         for (let i = 0; i < rounds; i++) {
-          const list = await panel()
-          saw = list
-          if (list.some((t) => t.includes('몬스터볼'))) return true
+          if (ball !== null) {
+            const bag = await page.evaluate(readBattleBag)
+            if (bag !== null && bag.rows.some((r) => r.item === ball)) return true
+          } else {
+            const list = await panel()
+            saw = list
+            if (list.some((t) => t.includes('몬스터볼'))) return true
+          }
           await page.waitForTimeout(200)
         }
         return false
@@ -3125,11 +3253,37 @@ export async function driveStory(page, {
         ready = await ballRow(10)
       }
       if (!ready) {
-        why = `가방에 몬스터볼이 안 보인다 (${JSON.stringify(saw?.slice(0, 8))})`
+        why = `가방에 ${ball === null ? '몬스터볼' : `도구 ${String(ball)}`}이 안 보인다 (${JSON.stringify(saw?.slice(0, 8))})`
         await tap('KeyX', 90)
         break
       }
-      // ⑤ 첫 줄이 몬스터볼이다 — 커서는 주머니를 옮길 때마다 0으로 돌아간다
+      if (ball !== null) {
+        /**
+         * ⑤′ **그 볼 줄까지 커서를 옮긴다** (`captureBall.mjs`의 `throwBall`과 같은 걸음).
+         * ⚠️ 목록 끝에서 **안 감긴다** — 한 방향으로 끝까지 가도 없으면 반대로 돈다
+         */
+        let bag = await page.evaluate(readBattleBag)
+        let stood = bag?.rows.find((r) => r.on) ?? null
+        const span = Number.isFinite(bag?.total) ? bag.total : 40
+        for (const key of ['ArrowDown', 'ArrowUp']) {
+          let where = bag?.cursor ?? -1
+          for (let i = 0; i <= span && !(stood !== null && stood.item === ball); i++) {
+            await tap(key, 90)
+            bag = await page.evaluate(readBattleBag)
+            if (bag === null) { stood = null; break }
+            stood = bag.rows.find((r) => r.on) ?? null
+            if (bag.cursor === where) break
+            where = bag.cursor
+          }
+          if (stood !== null && stood.item === ball) break
+        }
+        if (stood === null || stood.item !== ball) {
+          why = `커서가 도구 ${String(ball)} 줄에 안 섰다 (${JSON.stringify(stood?.label ?? null)})`
+          await tap('KeyX', 90)
+          break
+        }
+      }
+      // ⑤ 첫 줄이 몬스터볼이다 — 커서는 주머니를 옮길 때마다 0으로 돌아간다 (`ball`을 주면 위에서 옮겼다)
       await tap('Space', 250)
       thrown++
 
@@ -3656,7 +3810,7 @@ export async function driveStory(page, {
     veilstoneState, pastoriaState, featureWalls, veilstonePlan,
     teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
-    flyTo, strengthPush, setSurf, surfLog, fieldState: () => obs.fieldState(),
+    flyTo, strengthPush, setSurf, surfLog, setClimb, climbLog, fieldState: () => obs.fieldState(),
     // 한 칸 걸음 — 체육관 풀이가 계획한 칸을 한 칸씩 밟는다. 판정은 부르는 쪽이 한다
     stepKey: (key, want) => stepOnce(key, want),
     /**

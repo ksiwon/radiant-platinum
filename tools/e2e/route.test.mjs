@@ -5,7 +5,7 @@
 // 구역·밟기·사람 옆칸에도 걸려 있었고, 그래서 걷다 마지막 한 걸음에서 막혀
 // 「길은 있는데 안 움직인다」가 됐다.
 import { describe, expect, it } from 'vitest'
-import { PLAN, gridOf, mapRoute, missingData, planPath } from './route.mjs'
+import { CLIMB_PREFIX, PANEL_PREFIX, PLAN, gridOf, mapRoute, matrixOf, missingData, planPath } from './route.mjs'
 
 /** 자료를 아직 안 구운 기계에서는 **미실행**이다. 통과가 아니다 */
 const HAVE = missingData().length === 0
@@ -149,5 +149,30 @@ describe.skipIf(!HAVE)('문 앞 걸음 금지', () => {
       expect(noStep(at.x, at.z, key), `(${at.x},${at.z})에 ${key}로 들어섰다`).toBe(false)
     }
     expect(at, '목표에 닿는다').toEqual({ x: 303, z: 524 })
+  })
+})
+
+/**
+ * **락클라임 · 워프 패널** — 배지 7 뒤 구간(`JOURNEY_DISTORTION`)이 여기에 걸린다.
+ * 벽은 통행 불가 비트가 서 있고, 패널은 같은 맵 안의 워프다 — 둘 다 걸어서는 없는 길이다
+ */
+describe.skipIf(!HAVE)('락클라임과 워프 패널', () => {
+  it('예지호수근처는 락클라임 없이 호수에 못 가고, 켜면 한 번 타서 간다', () => {
+    const m = matrixOf(340)
+    const lake = (x, z) => z === 230 && (x === 308 || x === 309)
+    expect(planPath(m, { x: 310, z: 245 }, lake).status).toBe(PLAN.unreachable)
+    const on = planPath(m, { x: 310, z: 245 }, lake, { climb: true })
+    expect(on.status).toBe(PLAN.found)
+    expect(on.keys.filter((k) => k.startsWith(CLIMB_PREFIX))).toEqual([`${CLIMB_PREFIX}ArrowUp`])
+  })
+
+  it('아지트 1F는 패널 없이는 2F 계단에 못 가고, 패널 둘을 밟아 간다 (롬 순서 §G-3)', () => {
+    const m = matrixOf(305)
+    const stairs = (x, z) => x === 4 && z === 3
+    expect(planPath(m, { x: 46, z: 4 }, stairs, { enterBlockedGoal: true, panels: false }).status)
+      .toBe(PLAN.unreachable)
+    const on = planPath(m, { x: 46, z: 4 }, stairs, { enterBlockedGoal: true })
+    expect(on.status).toBe(PLAN.found)
+    expect(on.keys.filter((k) => k.startsWith(PANEL_PREFIX)).length).toBe(2)
   })
 })

@@ -22,10 +22,10 @@ function powerOf(move) {
   return powerTable.get(move) ?? 0
 }
 
-/** 기술 번호 (`moves.txt` 줄 − 1) — 비전기술 넷 */
-export const MOVE = { cut: 15, fly: 19, surf: 57, strength: 70, rockSmash: 249 }
+/** 기술 번호 (`moves.txt` 줄 − 1) — 비전기술 */
+export const MOVE = { cut: 15, fly: 19, surf: 57, strength: 70, rockSmash: 249, rockClimb: 431 }
 /** 비전기술 — 가르칠 때 잊으면 안 되는 것들 (원작은 못 잊게 막는다 · REPAIR §76) */
-const HM_MOVES = [MOVE.cut, MOVE.fly, MOVE.surf, MOVE.strength, MOVE.rockSmash]
+const HM_MOVES = [MOVE.cut, MOVE.fly, MOVE.surf, MOVE.strength, MOVE.rockSmash, MOVE.rockClimb]
 
 /** 비버니 → 비버통. 파도타기·괴력을 배울 마리 (JOURNEY_BADGE67 §7) */
 export const BIDOOF_LINE = [399, 400]
@@ -58,7 +58,7 @@ const CAVE_CYRUS_SCRIPT = 2
  * 실측(2026-09-24 배지 6·7 탐침 3판): 213번도로에서 마지막 한 통을 쓰고 뒤로는 못 뿌렸다 —
  * 그래서 다리 A가 들판 마트에서 골드스프레이를 사 둔다
  */
-async function sprayBest(api) {
+export async function sprayBest(api) {
   const bag = (await api.bagState())?.items ?? []
   for (const item of [ITEM.maxRepel, ITEM.superRepel, ITEM.repel]) {
     if (!bag.some((one) => one.item === item && one.count > 0)) continue
@@ -76,7 +76,7 @@ async function sprayBest(api) {
  * 에서 213번도로(373)로 가라 했더니 체육관·센터·관측소 게이트를 차례로 들락날락했다.
  * 들판 ↔ 213은 게이트(374)로만 이어진다. 배지 4·5 다리가 게이트를 하나씩 적는 까닭과 같다
  */
-async function via(api, note, maps, what, budget = 900_000) {
+export async function via(api, note, maps, what, budget = 900_000) {
   const here = (await api.now()).map
   let last = 'arrived'
   for (const m of maps.slice(maps.indexOf(here) + 1)) {
@@ -504,7 +504,7 @@ export async function canalaveClimb(api, ctx, { rounds = 60, goal = CANALAVE_GOA
 /**
  * **관장 옆에서 말을 건다** — 설 칸에서 관장 쪽으로 돌아서 A. 배틀은 `settle`이 치른다
  */
-async function faceAndTalk(api, from, to) {
+export async function faceAndTalk(api, from, to) {
   const key = KEY_OF[`${String(Math.sign(to.x - from.x))},${String(Math.sign(to.z - from.z))}`]
   if (key === undefined) return false
   await api.tap(key, 80)
@@ -759,11 +759,18 @@ export async function coronetToSnowpoint(api, ctx,
  *
  * ⚠️ 풀이는 **제품의 얼음 규칙으로 계산했다 — 사람은 판을 보고 푼다.**
  */
-export async function snowpointSlide(api, ctx, { rounds = 80 } = {}) {
+/** 무청 옆 설 칸 셋 — 아래 · 왼쪽 · 오른쪽 */
+const CANDICE_SIDES = [[CANDICE.x, CANDICE.z + 1], [CANDICE.x - 1, CANDICE.z], [CANDICE.x + 1, CANDICE.z]]
+/** 선단 체육관 입구 — 문 (11,28) 바로 안쪽. 무청을 이긴 뒤 여기로 미끄러져 나간다 */
+export const SNOWPOINT_ENTRY = [[11, 27]]
+
+/**
+ * @param goals `[[x, z], …]` 설 칸들. 기본은 무청 옆이고, 나갈 때는 `SNOWPOINT_ENTRY`
+ */
+export async function snowpointSlide(api, ctx, { rounds = 80, goals = CANDICE_SIDES, what = '무청 옆' } = {}) {
   const t0 = Date.now()
   const out = { moves: [], replans: 0, broke: 0, off: 0 }
-  const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
-  const goals = [[CANDICE.x, CANDICE.z + 1], [CANDICE.x - 1, CANDICE.z], [CANDICE.x + 1, CANDICE.z]]
+  const note = (what2, detail) => { ctx.log(`  ${what2} → ${detail}`) }
   for (let i = 0; i < rounds && api.left() > 0; i++) {
     const here = await api.now()
     const hit = goals.find(([x, z]) => x === here.x && z === here.z)
@@ -771,13 +778,13 @@ export async function snowpointSlide(api, ctx, { rounds = 80 } = {}) {
       out.ok = true
       out.stand = { x: hit[0], z: hit[1] }
       out.ms = Date.now() - t0
-      note('무청 옆', `(${String(hit[0])},${String(hit[1])}) · 미끄럼 ${String(out.moves.length)}번 · 깬 눈덩이 ${String(out.broke)} · 계획과 다른 수 ${String(out.off)}`)
+      note(what, `(${String(hit[0])},${String(hit[1])}) · 미끄럼 ${String(out.moves.length)}번 · 깬 눈덩이 ${String(out.broke)} · 계획과 다른 수 ${String(out.off)}`)
       return out
     }
     const read = await api.snowpointPlan(goals)
     if (read === null || read.plan === null) {
       out.why = read === null ? '선단 풀이를 못 돌렸다'
-        : `(${String(here.x)},${String(here.z)})에서 무청 옆으로 가는 미끄럼 차례가 없다`
+        : `(${String(here.x)},${String(here.z)})에서 ${what}으로 가는 미끄럼 차례가 없다`
       out.stuck = { at: read?.start ?? here, balls: read?.balls ?? null }
       return out
     }
@@ -815,7 +822,7 @@ export async function snowpointSlide(api, ctx, { rounds = 80 } = {}) {
       }
     }
   }
-  out.why = `${String(rounds)}바퀴 안에 무청 옆에 못 섰다`
+  out.why = `${String(rounds)}바퀴 안에 ${what}에 못 섰다`
   out.ms = Date.now() - t0
   return out
 }
