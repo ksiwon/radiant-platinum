@@ -246,6 +246,14 @@ export const DIST_OBJ = {
   b6fMespritBoulderInPit: 144,
   b6fAzelfBoulderInPit: 145,
   b6fUxieBoulderInPit: 146,
+  // 호수의 셋. **층마다 차례가 다르다** — B5F는 유크시·아그놈·엠라이트,
+  // B6F는 엠라이트·유크시·아그놈이다 (`DistWorldMapObjectEventB5F/B6FLocalID`)
+  b5fUxie: 131,
+  b5fAzelf: 132,
+  b5fMesprit: 133,
+  b6fMesprit: 131,
+  b6fUxie: 132,
+  b6fAzelf: 133,
 } as const
 
 /**

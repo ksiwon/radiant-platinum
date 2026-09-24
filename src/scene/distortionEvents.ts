@@ -15,6 +15,7 @@ import {
   beginArrival, distortionShadowDone, finishDistortionShadow, startDistortionShadow,
   startGhostRun, tickArrival,
 } from './distortionGiratina'
+import { beginBoulderTuto, resetBoulderTuto, tickBoulderTuto } from './distortionTuto'
 
 /** 이미 돈 사건은 다시 안 돈다. 맵을 나가면 지운다 */
 const ranEvents = new Set<string>()
@@ -57,7 +58,9 @@ type EventCmd = { kind: number; params: Record<string, unknown> | null }
  * 다음 명령으로 넘어간다
  */
 function runEvent(cmds: readonly EventCmd[]): void {
-  running = { cmds, at: 0, frame: 0, slide: null, hop: null, shadow: false, arrival: false }
+  running = {
+    cmds, at: 0, frame: 0, slide: null, hop: null, shadow: false, arrival: false, tuto: false,
+  }
   advanceEvent()
 }
 
@@ -85,6 +88,8 @@ interface EventRun {
   shadow: boolean
   /** 기라티나가 내려서기를 기다리는 중인가 */
   arrival: boolean
+  /** 호수의 셋이 바위를 가르쳐 주는 중인가 (`distortionTuto`) */
+  tuto: boolean
 }
 
 let running: EventRun | null = null
@@ -106,6 +111,7 @@ const slid = new Map<number, [number, number, number]>()
 export function resetDistortionEvents(): void {
   running = null
   slid.clear()
+  resetBoulderTuto()
 }
 
 /** 사건 연출이 도는 중인가 */
@@ -165,8 +171,18 @@ function advanceEvent(): void {
       case EVENT_CMD.hideGiratinaRoomPlatforms:
         startGhostRun(false)
         break
+      // ⚠️ **이 셋을 「연출」로 넘기면 B6F의 호수의 셋이 영영 안 선다.**
+      // 다 가라앉으면서 세우는 `*_IN_B6F` 표식이 B6F 그 셋의 등장 조건이고,
+      // 웅덩이를 채울 때 도는 B6F 스크립트 5·6·7이 그 셋을 움직이고 지운다
+      case EVENT_CMD.showUxieBoulderTuto:
+      case EVENT_CMD.showAzelfBoulderTuto:
+      case EVENT_CMD.showMespritBoulderTuto:
+        if (beginBoulderTuto(cmd.kind)) { running.tuto = true; return }
+        break
+      // 자료에 남은 둘 — `addMapObject`(B1F에서 B2F의 시로나를 세운다, 다음 층
+      // 물체라 B2F에 들어설 때 배치표가 세운다)와 `setGiratinaAnimationFlag`
+      // (B4F 그림자 셋)는 여기서 안 돈다
       default:
-        // 남은 것은 전부 연출이다 (그림자·폭포·바위 안내·기라티나 도착)
         break
     }
   }
@@ -227,6 +243,10 @@ export function distortionEventTick(dt: number): void {
   } else if (run.arrival) {
     if (!tickArrival(dt)) return
     run.arrival = false
+    advanceEvent()
+  } else if (run.tuto) {
+    if (!tickBoulderTuto(dt)) return
+    run.tuto = false
     advanceEvent()
   } else if (run.slide !== null) tickSlide(run, run.slide)
   else if (run.hop !== null) tickHop(run, run.hop)

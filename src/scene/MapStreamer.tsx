@@ -613,6 +613,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     // 층에 들어설 때 그 층 사람들을 세우려면 숨김 플래그를 봐야 한다
     // (`AddMapObjectsForMap`). 스크립트 변수는 여기 있다
     distortionHooks.vars = () => fieldScripts.vars
+    // 사건이 거는 이동 목록(`MapObject_StartAnimation`)도 `ApplyMovement`와
+    // 같은 표·같은 대상 찾기로 돈다 — B5F에서 엠라이트가 주인공을 돌려세운다
+    distortionHooks.movements = () => fieldScripts.data?.meta.movements ?? null
+    distortionHooks.mapObject = (localID) => fieldScripts.world?.objects(localID) ?? null
     void initFieldScripts(locale).then(() => {
       setScriptsReady(true)
     })

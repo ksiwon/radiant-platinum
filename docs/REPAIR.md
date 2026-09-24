@@ -4651,3 +4651,63 @@ if (Unk_020EE76C[dir](v1) == TRUE || Unk_020EE77C[dir](v2) == TRUE) return TRUE;
 
 하네스도 같이 고쳤다 — `snowpointSlide`가 「미끄러지는 중이 아니다」 한 번만 보고 자리를 읽어 **아직 미끄러지는
 자리**를 읽었다(추적에서 (1,26)으로 가는 미끄럼을 (6,26)에서 읽었다). 이제 멈춤 · 같은 칸을 셋 연달아 본다.
+
+## 86. B5F의 바위 안내가 **아무 일도 안 했다** — B6F의 호수 셋이 영영 안 섰다
+
+깨어진 세계 B5F에서 바위 셋 앞의 사건 칸(유크시 (86,129,53)·(87,129,53) · 아그놈 (100,129,67~68) ·
+엠라이트 (80,129,67~68))을 밟으면 사건 명령 12·13·14(`EVENT_CMD_SHOW_UXIE/AZELF/MESPRIT_BOULDER_TUTO`)가 돈다.
+우리 사건 실행기(`scene/distortionEvents`의 `advanceEvent`)는 이 셋을 `default:`로 흘려보냈다 — 호수의 셋이
+솟지도 울지도 않았고, 끝에 세우는 퍼즐 표식도 안 섰다. **사람도 똑같이 겪는다.**
+
+**원작** (`overlay009/ov9_02249960.c`의 `EventCmdShow*BoulderTuto_*` · 상수 133~152줄) — 셋 다 뼈대가 같다.
+
+- Init: B5F의 그 마리(#131 유크시 · #132 아그놈 · #133 엠라이트, `manualAddOnly`)를 `AddMapObjectWithLocalID`로
+  세우고 운다(`Sound_PlayPokemonCry`). 이 한 프레임을 쓴다(`RES_CONTINUE`).
+- 솟기: 그림 어긋남 y에 프레임마다 `FX32_ONE * 2`, 목표 한 칸 전까지는 두 배. 목표는 17 · 13 · 9칸이다 —
+  셋이 판 **아래**(y 113 · 117 · 121)에 서 있어서 다 솟으면 셋 다 세계 y 130, 바닥(129) 한 칸 위다.
+- 가리키기: 유크시는 그림만 z로 1/16칸씩 바위 #130 위(−2칸)까지 가서 `yOffsets` 여덟 칸 표를 0→15→0으로
+  세 번 오르내리고(반 칸) +1칸까지 물러난다. 아그놈·엠라이트는 `MapObject_StartAnimation`으로
+  **이동 동작 목록**을 걸어 실제로 걷는다(`sAzelfBoulderTutoAnimation` · `sMespritBoulderTutoAnimation*`).
+  엠라이트는 **주인공에게도** 목록을 걸어 제자리에서 두 바퀴 돌린다. 표는 주인공의 세계 z가 67이면
+  Top, 아니면 Bottom — 엠라이트가 도는 원의 한가운데가 주인공이 선 줄이 되도록 북쪽 첫 걸음이 두 칸·한 칸으로 다르다.
+  목록이 끝난 프레임에 곧바로 가라앉기 시작한다(`RES_LOOP`).
+- 가라앉기: 속도에 0x200씩 붙여 `FX32_ONE * 2`까지, 어긋남이 한 칸 아래로 내려가면 지우고
+  `SetPersistedBoulderPuzzleFlag`로 `*_TUTO_SEEN`(10~12)과 `*_IN_B6F`(13~15)를 세운 뒤, B6F의 그 마리를 세운다.
+
+판정은 전부 `(offset >> 4) / FX32_ONE` — C 나눗셈이라 **0 쪽으로 자른다.** 음수 z에서 내림으로 읽으면
+유크시가 바위 앞에서 한 칸 일찍 선다. 프레임 수는 유크시 72·32·90·48·136, 아그놈 56·목록 160·104,
+엠라이트 40·목록 256·72다(목록 뒤 가라앉기 첫 프레임은 목록이 끝난 프레임과 겹친다).
+
+**왜 문제였나** — B6F의 셋(#131 엠라이트 · #132 유크시 · #133 아그놈)은 배치표 조건이 `boulderTrue` 15·13·14,
+곧 `*_IN_B6F`다. 그 표식을 세우는 자리가 이 사건뿐이라 B6F에 **한 번도 안 섰다.** 바위를 맞는 웅덩이에 넣으면
+도는 B6F 스크립트 5·6·7(`scripts_distortion_world_b6f.s`의 `CoordEvent_*BoulderInPit`)은 그 마리에게
+`ApplyMovement …, WarpOut`을 걸고 `DeleteDistortionWorldMapObject`로 지운다 — 대상이 없으니 걸음이 허공에
+걸렸다(우리 `applyMovement`가 대상 없음을 조용히 넘겨서 서지는 않았다). 웅덩이 위에 갇혀 있던 호수의 셋이
+풀려나는 장면이 통째로 빠졌다.
+
+**지금**
+
+- 규칙과 표는 `engine/world/distortionTuto` — 상수·목록 다섯·상태 기계(`tutoFrame`)를 원작 정수 산술 그대로 둔다.
+  목록은 동작 **이름**으로 적고 번호는 `scripts.json`의 이동 동작 표에서 찾는다.
+- 연출은 `scene/distortionTuto` — 세우기는 `distortionHooks.addObject`(기라티나 도착과 같은 길), 울음은
+  `music.playCry`, 그림 어긋남은 배우의 `offsetX/Y/Z`(칸 = 어긋남 ÷ `16 × FX32_ONE`), 목록은 스크립트의
+  `ApplyMovement`와 같은 `MovementRunner` · 같은 표 · 같은 대상 찾기(`distortionHooks.movements` ·
+  `mapObject` — `MapStreamer`가 `fieldScripts`에서 꽂는다). 60Hz 프레임을 쪼개지 않고 모아서 한 프레임씩 돈다.
+- 사건 실행기가 명령 12·13·14에서 선다(`running.tuto`). 도는 동안 `distortionEventRunning()`이 참이라
+  `MapStreamer`가 주인공을 묶는다(`riding`) — 다른 사건 칸도 안 걸린다.
+
+⛔ **B6F의 그 마리를 가라앉은 자리에서 곧바로 세우지는 않는다.** 원작은 지금 층과 다음 층의 물체를 같이 들고 있어서
+B5F에서 B6F 것을 세우지만, 우리는 지금 층 것만 세운다(`spawnFloorObjects`). 게다가 `distortionAddObject`는 번호를
+**지금 층의 표**에서 찾는데 번호가 층마다 128부터 다시 세므로, B5F에서 B6F 유크시 #132를 부르면 B5F의 아그놈 #132가
+선다. 그래서 표식이 그 일을 맡는다 — B6F에 들어서는 순간 조건 `boulderTrue *_IN_B6F`로 선다. B5F에서 판 아래로
+B6F의 셋이 내려다보이는 장면만 없다.
+
+시험은 둘이다. `engine/world/distortionTuto.test.ts`가 프레임 수(식으로 따로 편 값)와 C 자르기, 그리고 목록 다섯 ·
+솟는 높이 셋 · `yOffsets` · 맵 물체 번호를 **디컴프 원문과 맞대 본다.** `scene/distortionTuto.test.ts`는 실제
+`distortion.json`으로 칸을 밟아 셋이 끝까지 돌고(프레임 수 · 잠금 · 표식 둘 · B5F 물체 없음 · B6F에 그 그림으로 섬),
+엠라이트가 z 67/68에서 서로 다른 원을 돌며 주인공이 네 방향을 거쳐 서쪽을 보고 서는지, 그리고 B6F 웅덩이 스크립트
+5·6·7을 실제 바이트코드로 돌려 `ApplyMovement`가 그 마리에게 걸리고 지워지는지 본다(안내를 안 보면 걸음이 허공에
+걸리는 것도 같이 잰다).
+
+⚠️ `WarpOut`(동작 67)은 우리 이동 표에서 **한 프레임짜리 빈 동작**이다 — 원작의 솟아 사라지는 몸짓은 없다. 스크립트가
+곧바로 그 마리를 지우므로 결과는 같고, 모든 맵의 `WarpOut`이 같은 처지다.
