@@ -2446,8 +2446,9 @@ on('Warp', (ctx) => {
   const dest = mapById(to)
   if (!dest) return false
   // 워프 타일과 같은 길로 보낸다 — 씬이 `pending`을 보고 격자를 갈아 끼운다.
-  // 칸 가운데에 세운다(격자 좌표는 칸의 왼쪽 위 모서리다)
-  mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
+  // 칸 가운데에 세운다(격자 좌표는 칸의 왼쪽 위 모서리다). 롬 칸이라 깨어진 세계면
+  // 씬이 층 오프셋을 뺀다(`romWorld` · REPAIR §83)
+  mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing, romWorld: true }
   return false
 })
 

@@ -205,6 +205,12 @@ export interface PendingWarp {
   y?: number
   /** 문·계단 소리를 안 낸다. 승강 발판은 제 소리가 따로 있다 */
   silent?: boolean
+  /**
+   * 좌표가 **롬이 적은 칸**이다 — 스크립트 `Warp`. 깨어진 세계 층은 원작이 층들을 한 좌표계에 두어
+   * 그 칸이 세계 칸이라, 들어설 때 층 오프셋을 뺀다(`scene/distortionCore`의 `romTileToLocal`).
+   * 승강 발판·폭포는 이미 우리 칸으로 옮겨 주므로 안 세운다
+   */
+  romWorld?: boolean
 }
 
 /** `area_data.narc` — 영역이 어느 텍스처·소품 묶음을 쓰는가 */

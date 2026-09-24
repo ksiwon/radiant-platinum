@@ -80,6 +80,7 @@ import {
   distortionRideTick,
   distortionRiding,
   isDistortionFloor,
+  romTileToLocal,
 } from './distortion'
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
@@ -920,14 +921,24 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 격자를 **먼저** 걸어 둔다. 덮는 6프레임과 겹쳐 받으므로 페이드가
       // 기다림을 늘리지 않는다
       const loading = gridFor(target.matrix)
+      /**
+       * ⚠️ **롬 칸으로 깨어진 세계에 들면 층 오프셋을 뺀다** (REPAIR §83). 안 빼면 1F 도착 (55,40)이
+       * 우리 격자의 벽 속이라 사람이 판 밖 허공에 선다. 오프셋은 층 자료에 있으므로 먼저 받는다
+       */
+      const romDistortion = target.romWorld === true && isDistortionFloor(target.to)
+      const floorData = romDistortion ? distortionPreload() : Promise.resolve()
       if (mine) startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_OUT, COLOR_BLACK)
-      Promise.all([loading, mine ? untilFaded() : Promise.resolve()])
+      Promise.all([loading, mine ? untilFaded() : Promise.resolve(), floorData])
         .then(([next]) => {
           // 문 타일은 통행 불가라 그 위에 세우면 갇힌다. 원작은 걸어 나오는
           // 연출로 벗어나는데 우리는 그 자리를 한 칸 내려 준다 (world.ts)
           // 문이 아닌데 막힌 칸에 앉은 워프도 열넷 있다 — 거기 세우면 갇힌다
           let at = { x: target.x, z: target.z }
-          if (target.y === undefined) {
+          const local = romDistortion ? romTileToLocal(target.to, target.x, target.z) : null
+          if (local !== null) {
+            // 깨어진 세계는 판이 길이다 — 맵 격자의 문·막힌 칸 보정을 태우지 않는다
+            at = local
+          } else if (target.y === undefined) {
             const door = walkOutOfDoor(next, target.x, target.z)
             at = standableSpot(next, door.x, door.z)
           }

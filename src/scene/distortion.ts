@@ -39,7 +39,7 @@ export {
   distortionActive, distortionFloor, distortionGroundY, distortionHooks, distortionKind,
   distortionLoaded, distortionPlayerPos, distortionPreload, distortionPropPlaces,
   distortionPropShown, distortionRebindPlatform, distortionSpawn, distortionUnavailable,
-  groundYAt, isDistortionFloor,
+  groundYAt, isDistortionFloor, romTileToLocal,
 } from './distortionCore'
 export {
   distortionCascadePose, distortionCascadeTick, distortionCascading,

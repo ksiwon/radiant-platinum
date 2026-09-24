@@ -120,6 +120,22 @@ export function toWorldTiles(x: number, y: number, z: number): [number, number, 
   ]
 }
 
+/**
+ * **롬이 적은 칸 → 우리 맵 칸** — 스크립트 `Warp`가 깨어진 세계로 보낼 때.
+ *
+ * 원작은 깨어진 세계 여러 층을 한 좌표계에 둔다 — 스크립트의 도착 칸이 그 **세계 칸**이다:
+ * 깨진 창기둥 → 1F `(55, 40)`(`scripts_spear_pillar_distorted.s:72`)은 1F 포털 소품 (55, 289, 39)
+ * 바로 앞이고, B7F → 기라티나 방 `(15, 25)` · 기라티나 방 → B7F `(89, 57)` · 귀혼동굴 → 방
+ * `(116, 75)`도 같다. 우리 층 격자는 0에서 시작하므로 그 층의 오프셋을 뺀다(REPAIR §83).
+ * 층 자료를 아직 안 받았으면 `null` — 부르는 쪽이 받은 뒤에 다시 묻는다
+ */
+export function romTileToLocal(mapId: number, x: number, z: number): { x: number; z: number } | null {
+  if (data === null) return null
+  const m = mapOf(data, mapId)
+  if (m === null) return null
+  return { x: x - m.offsetX, z: z - m.offsetZ }
+}
+
 /** 세계 좌표 → 우리 맵 좌표 */
 export function toLocalTiles(x: number, y: number, z: number): [number, number, number] {
   if (floor === null) return [x, y, z]

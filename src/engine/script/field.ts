@@ -952,7 +952,12 @@ function tryTalk(): void {
   if (!header) return
 
   const p = worldState.player
-  const front = tileInFront(p.position.x, p.position.z, p.facing)
+  /**
+   * ⚠️ **앞 칸은 판이 정한다** (`frontTile`). 깨어진 세계 천장에서는 바라보는 각이 판 위의 로컬 각이라
+   * x·z로 세면 **등 뒤 칸**을 집는다 — B4F 천장 물가에서 물을 보고 A를 눌러도 등 뒤 땅을 봐서 파도타기가
+   * 안 떴다(REPAIR §85). 기술 창은 이미 이것을 썼다. 바닥 판과 판 밖에서는 값이 같다
+   */
+  const front = frontTile()
 
   // ⚠️ **장막시티 체육관의 샌드백이 사람보다 먼저다** (`field_control.c` 567줄).
   // 앞 칸에 샌드백이 있으면 말을 거는 대신 그것을 찬다 — 스크립트도 트리거도
