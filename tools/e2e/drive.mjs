@@ -3641,6 +3641,12 @@ export async function driveStory(page, {
     teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
     flyTo, strengthPush, setSurf, surfLog, fieldState: () => obs.fieldState(),
+    // 한 칸 걸음 — 체육관 풀이가 계획한 칸을 한 칸씩 밟는다. 판정은 부르는 쪽이 한다
+    stepKey: (key, want) => stepOnce(key, want),
+    canalavePlan: async (goal) => { const r = await obs.canalavePlan(goal); return r.known ? r.value : null },
+    canalaveState: async () => { const r = await obs.canalaveState(); return r.known ? r.value : null },
+    snowpointPlan: async (goal) => { const r = await obs.snowpointPlan(goal); return r.known ? r.value : null },
+    iceState: async () => { const r = await obs.iceState(); return r.known ? r.value : null },
     runAway, useItem, usePotions, stopPotions,
     fightThrough,
     // ⚠️ **소포를 받는 걸음도 같이 넘긴다.** 새 게임 갈래는 트레이너전이 0일 때만

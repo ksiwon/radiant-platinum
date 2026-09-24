@@ -92,18 +92,24 @@ export function solveCanalave({ start, states, platforms, blocked, goal, cap = 6
  * @param balls `[[x, z], …]` 지금 선 눈덩이
  * @param isIce `(x, z) => boolean`
  * @param wall `(x, z) => boolean` 눈덩이를 **뺀** 벽 (격자 · 사람)
+ * @param edge `(x, z, dx, dz) => boolean` 그 걸음을 **가장자리가** 막는가 (`actor/edgeBlock` —
+ *   선단 체육관의 0x49·0x4A 열세 칸)
  * @param heightChange `(x, z, dx, dz) => 'none'|'increase'|'decrease'` — 제품 함수
  * @param speedAfter `(speed, change) => number|null` — 제품의 `iceSpeedAfter`
  * @param goal `(x, z) => boolean`
  * @returns `{ moves: [{key, from, to, broke}], broke }` 또는 `null`
  */
-export function solveSnowpoint({ start, balls, isIce, wall, heightChange, speedAfter, goal, cap = 400_000 }) {
+export function solveSnowpoint({
+  start, balls, isIce, wall, edge = () => false, heightChange, speedAfter, goal, cap = 400_000,
+}) {
   const ballIndex = new Map(balls.map(([x, z], i) => [`${x},${z}`, i]))
   const hasBall = (mask, x, z) => {
     const i = ballIndex.get(`${x},${z}`)
     return i !== undefined && (mask & (1 << i)) !== 0
   }
-  const blocked = (mask, x, z) => wall(x, z) || hasBall(mask, x, z)
+  /** (x, z)에서 (dx, dz)로 한 칸 가는 걸음이 막혔나 */
+  const blocked = (mask, x, z, dx, dz) => wall(x + dx, z + dz) || hasBall(mask, x + dx, z + dz)
+    || edge(x, z, dx, dz)
 
   /** 한 번 미끄러진다. `{x, z, mask, broke}` */
   const slide = (x, z, dx, dz, mask) => {
@@ -111,15 +117,13 @@ export function solveSnowpoint({ start, balls, isIce, wall, heightChange, speedA
     const first = speedAfter(0, heightChange(x, z, dx, dz))
     if (first === null) {
       // 속도 0에서 오르막 — 한 칸 되밀린다. 뒤도 막혔으면 제자리다
-      return blocked(mask, x - dx, z - dz) ? { x, z, mask, broke } : { x: x - dx, z: z - dz, mask, broke }
+      return blocked(mask, x, z, -dx, -dz) ? { x, z, mask, broke } : { x: x - dx, z: z - dz, mask, broke }
     }
     let speed = first
     for (let n = 0; n < 64; n++) {
-      const nx = x + dx
-      const nz = z + dz
-      if (blocked(mask, nx, nz)) return { x, z, mask, broke }
-      x = nx
-      z = nz
+      if (blocked(mask, x, z, dx, dz)) return { x, z, mask, broke }
+      x += dx
+      z += dz
       if (!isIce(x, z)) return { x, z, mask, broke }
       // 칸을 넘었다 — 이 걸음의 속도로 앞 칸 눈덩이를 본다
       if (speed >= 1 && hasBall(mask, x + dx, z + dz)) {
@@ -127,7 +131,8 @@ export function solveSnowpoint({ start, balls, isIce, wall, heightChange, speedA
         broke++
       }
       const next = speedAfter(speed, heightChange(x, z, dx, dz))
-      if (next === null) return { x: x - dx, z: z - dz, mask, broke }
+      // 되밀린다 — 뒤가 막혔으면 제자리다(제품 `bounceBack`과 같다)
+      if (next === null) return blocked(mask, x, z, -dx, -dz) ? { x, z, mask, broke } : { x: x - dx, z: z - dz, mask, broke }
       speed = next
     }
     return { x, z, mask, broke }
@@ -153,7 +158,7 @@ export function solveSnowpoint({ start, balls, isIce, wall, heightChange, speedA
       } else {
         const nx = s.x + dx
         const nz = s.z + dz
-        if (blocked(s.mask, nx, nz)) continue
+        if (blocked(s.mask, s.x, s.z, dx, dz)) continue
         end = isIce(nx, nz) ? slide(nx, nz, dx, dz, s.mask) : { x: nx, z: nz, mask: s.mask, broke: 0 }
       }
       if (end.x === s.x && end.z === s.z && end.mask === s.mask) continue

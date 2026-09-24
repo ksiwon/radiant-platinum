@@ -416,6 +416,88 @@ function devObserver(page) {
         cap: a.cap ?? 40000,
       })
     }, arg),
+    /**
+     * **운하 체육관 — 판 풀이** (`gymSolve67.solveCanalave`). 판의 지금 자리·층 통행표·
+     * 사람이 선 칸을 **제품에서 읽어** 페이지 안에서 푼다(굽는 쪽이 하나).
+     *
+     * @param goal `{x, z, floor}`
+     */
+    canalavePlan: (goal) => read('운하 풀이를 못 돌렸다', async (g) => {
+      const w = await import('/src/engine/world/canalaveGym.ts')
+      const sc = await import('/src/scene/canalaveGym.ts')
+      const st = await import('/src/state/worldState.ts')
+      const n = await import('/src/engine/actor/npcs.ts')
+      const s = await import('/tools/e2e/gymSolve67.mjs')
+      let bits = 0
+      for (let i = 0; i < w.CANALAVE_PLATFORMS.length; i++) {
+        const t = sc.canalavePlatformTile(i)
+        if (t === null) return null
+        const b = w.CANALAVE_PLATFORMS[i].b
+        if (t[0] === b[0] && t[1] === b[1] && t[2] === b[2]) bits |= 1 << i
+      }
+      const p = st.worldState.player.position
+      const floor = w.canalaveFloorAt(p.y)
+      const people = n.npcActors.list.filter((a) => a.visible)
+        .map((a) => ({ x: Math.round(a.x), z: Math.round(a.z), floor: w.canalaveFloorAt(a.y) }))
+      const blocked = (f, x, z) => w.canalaveBlocked(f * w.CANALAVE_FLOOR_HEIGHT, x, z)
+        || people.some((q) => q.floor === f && q.x === x && q.z === z)
+      const start = { x: Math.floor(p.x), z: Math.floor(p.z), floor }
+      const plan = s.solveCanalave({ start, states: bits, platforms: w.CANALAVE_PLATFORMS, blocked, goal: g })
+      return { start, bits, plan }
+    }, goal),
+    /** 운하 체육관 — 판이 움직이는 중인가 · 주인공 층 */
+    canalaveState: () => read('운하 체육관 상태를 못 읽었다', async () => {
+      const w = await import('/src/engine/world/canalaveGym.ts')
+      const sc = await import('/src/scene/canalaveGym.ts')
+      const st = await import('/src/state/worldState.ts')
+      const p = st.worldState.player.position
+      return { busy: sc.canalaveBusy(), floor: w.canalaveFloorAt(p.y), x: Math.floor(p.x), z: Math.floor(p.z) }
+    }),
+    /**
+     * **선단 체육관 — 얼음 풀이** (`gymSolve67.solveSnowpoint`). 얼음 칸·높이·벽·눈덩이·
+     * 한쪽 막음 가장자리를 **제품의 그 함수들로** 읽어 푼다. 높이는 주인공이 선 층 근처로
+     * 읽는다(`heightAtWorld`의 `near`) — 이 방은 한 층이다.
+     *
+     * @param goal `[[x, z], …]` 설 칸들 (관장 옆)
+     */
+    snowpointPlan: (goal) => read('선단 풀이를 못 돌렸다', async (g) => {
+      const ice = await import('/src/engine/actor/ice.ts')
+      const z = await import('/src/engine/map/zone.ts')
+      const eb = await import('/src/engine/actor/edgeBlock.ts')
+      const st = await import('/src/state/worldState.ts')
+      const n = await import('/src/engine/actor/npcs.ts')
+      const s = await import('/tools/e2e/gymSolve67.mjs')
+      const grid = z.activeZone.grid
+      if (!grid) return null
+      const p = st.worldState.player.position
+      const view = {
+        behaviorAt: (tx, tz) => grid.behavior(tx, tz),
+        blockedAt: () => false,
+        heightAt: (tx, tz) => grid.heightAtWorld(tx + 0.5, tz + 0.5, p.y) ?? 0,
+      }
+      const SNOWBALL = 118
+      const actors = n.npcActors.list.filter((a) => a.visible)
+      const balls = actors.filter((a) => a.gfx === SNOWBALL).map((a) => [Math.round(a.x), Math.round(a.z)])
+      const people = new Set(actors.filter((a) => a.gfx !== SNOWBALL).map((a) => `${Math.round(a.x)},${Math.round(a.z)}`))
+      const goalSet = new Set(g.map(([x, zz]) => `${x},${zz}`))
+      const plan = s.solveSnowpoint({
+        start: { x: Math.floor(p.x), z: Math.floor(p.z) }, balls,
+        isIce: (x, zz) => ice.isIce(grid.behavior(x, zz)),
+        wall: (x, zz) => grid.isBlocked(x, zz) || people.has(`${x},${zz}`),
+        edge: (x, zz, dx, dz) => eb.edgeBlocks(grid.behavior(x, zz), grid.behavior(x + dx, zz + dz), dx, dz),
+        heightChange: (x, zz, dx, dz) => ice.heightChange(view, x, zz, dx, dz),
+        speedAfter: ice.iceSpeedAfter,
+        goal: (x, zz) => goalSet.has(`${x},${zz}`),
+      })
+      return { start: { x: Math.floor(p.x), z: Math.floor(p.z) }, balls: balls.length, plan }
+    }, goal),
+    /** 선단 체육관 — 미끄러지는 중인가 */
+    iceState: () => read('얼음 상태를 못 읽었다', async () => {
+      const ice = await import('/src/engine/actor/ice.ts')
+      const st = await import('/src/state/worldState.ts')
+      const p = st.worldState.player.position
+      return { sliding: ice.isSliding(), x: Math.floor(p.x), z: Math.floor(p.z) }
+    }),
     /** 들판 체육관 — 지금 물 높이와 움직이는 중인가 */
     pastoriaState: () => read('들판 체육관 상태를 못 읽었다', async () => {
       const p = await import('/src/scene/pastoriaGym.ts')
@@ -623,6 +705,10 @@ function distObserver(page) {
     veilstonePlan: async () => unknown(NO_SRC),
     featureWalls: async () => unknown(NO_SRC),
     pastoriaState: async () => unknown(NO_SRC),
+    canalavePlan: async () => unknown(NO_SRC),
+    canalaveState: async () => unknown(NO_SRC),
+    snowpointPlan: async () => unknown(NO_SRC),
+    iceState: async () => unknown(NO_SRC),
   }
 }
 

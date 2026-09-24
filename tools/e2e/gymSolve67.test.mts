@@ -72,6 +72,19 @@ describe('선단 체육관 풀이 — 제품의 얼음 규칙', () => {
     expect(solveSnowpoint({ ...l, start: { x: 0, z: 0 }, goal: (x) => x === 6 })).toBeNull()
   })
 
+  it('가장자리가 막으면 그 앞에서 선다', () => {
+    const l = lane('_......#')
+    const plan = solveSnowpoint({
+      ...l, edge: (x: number, _z: number, dx: number) => x === 3 && dx === 1,
+      start: { x: 0, z: 0 }, goal: (x: number) => x === 3,
+    })
+    expect(plan!.moves.at(-1)!.to).toEqual({ x: 3, z: 0 })
+    expect(solveSnowpoint({
+      ...l, edge: (x: number, _z: number, dx: number) => x === 3 && dx === 1,
+      start: { x: 0, z: 0 }, goal: (x: number) => x === 6,
+    })).toBeNull()
+  })
+
   it('비탈을 내려와 속도가 붙으면 깨고 지나간다', () => {
     const l = lane('_...o..#', [2, 2, 1, 1, 1, 1, 1, 1])
     const plan = solveSnowpoint({ ...l, start: { x: 0, z: 0 }, goal: (x) => x === 6 })
