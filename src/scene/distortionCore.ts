@@ -17,7 +17,7 @@ import {
   MAX_PERSISTED_PLATFORMS, hasPlatformAt, mapOf, tileAttributes, tileBehavior,
   type DistortionFrame, type DistortionState,
 } from '../engine/world/distortion'
-import { DIR } from '../engine/script/movement'
+import { DIR, type Movable, type MovementTable } from '../engine/script/movement'
 import { platformFlagShown } from '../engine/world/distortionElevator'
 import type { VarStore } from '../engine/script/vars'
 import { useSaveStore } from '../state/saveStore'
@@ -466,10 +466,21 @@ export const distortionHooks: {
   addObject: ((localID: number) => void) | null
   /** 스크립트 변수·플래그. 층에 들어설 때 사람을 세우려면 숨김 플래그를 봐야 한다 */
   vars: (() => VarStore) | null
+  /**
+   * 이동 동작 표 (`scripts.json`의 `movements`). 사건이 거는 이동 동작 목록
+   * (`MapObject_StartAnimation`)을 스크립트의 `ApplyMovement`와 **같은 표로** 돌린다
+   */
+  movements: (() => MovementTable | null) | null
+  /**
+   * 번호로 맵 물체를 찾는다 — `ApplyMovement`가 대상을 찾는 그 자리다.
+   * 255(`LOCALID_PLAYER`)면 주인공이다
+   */
+  mapObject: ((localID: number) => Movable | null) | null
 } = {
   runScript: null, progress: null, setProgress: null,
   giratinaAnim: null, cyrusAppearance: null, setCyrusAppearance: null,
   puzzleFinished: null, setPuzzleFinished: null, addObject: null, vars: null,
+  movements: null, mapObject: null,
 }
 
 /** 방향 번호 → 우리 yaw. `facing`은 `atan2(vx, vz)`라 0이 남쪽이다 */
