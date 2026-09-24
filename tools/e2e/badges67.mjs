@@ -7,7 +7,20 @@
 //
 // ⚠️ **한 다리가 실패해도 다음 다리를 조용히 건너뛰지 않는다.** 결말을 그대로 돌려주고,
 // 판정은 부르는 쪽이 한다.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { ITEM, MAP, PASTORIA, pastoriaClimb } from './badges.mjs'
+
+/** 기술 위력 — 제품 자료를 **읽는다**(`public/data/moves.json`). 변화 기술은 0, 죽기살기는 1이다 */
+let powerTable = null
+function powerOf(move) {
+  if (powerTable === null) {
+    const file = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../public/data/moves.json'), 'utf8'))
+    const list = Array.isArray(file) ? file : file.moves ?? Object.values(file)
+    powerTable = new Map(list.map((one) => [one.id, one.power ?? 0]))
+  }
+  return powerTable.get(move) ?? 0
+}
 
 /** 기술 번호 (`moves.txt` 줄 − 1) — 비전기술 넷 */
 export const MOVE = { cut: 15, fly: 19, surf: 57, strength: 70, rockSmash: 249 }
@@ -40,6 +53,40 @@ const CAVE_PAINTING_STAND = { x: 9, z: 3 }
 /** 봉신 동굴의 태홍 — 벽화를 이미 본 뒤 다시 붙을 때는 이 사람에게 말을 건다 */
 const CAVE_CYRUS_SCRIPT = 2
 
+/**
+ * **스프레이를 뿌린다** — 가진 것 가운데 가장 오래 가는 것부터(골드 → 실버 → 보통).
+ * 실측(2026-09-24 배지 6·7 탐침 3판): 213번도로에서 마지막 한 통을 쓰고 뒤로는 못 뿌렸다 —
+ * 그래서 다리 A가 들판 마트에서 골드스프레이를 사 둔다
+ */
+async function sprayBest(api) {
+  const bag = (await api.bagState())?.items ?? []
+  for (const item of [ITEM.maxRepel, ITEM.superRepel, ITEM.repel]) {
+    if (!bag.some((one) => one.item === item && one.count > 0)) continue
+    return api.useItem(item, Math.min(150_000, api.left()))
+  }
+  return { ok: false, why: '가방에 스프레이가 없다' }
+}
+
+/**
+ * **경유 맵을 차례로 걷는다** — 지금 선 맵이 목록에 있으면 그 다음부터.
+ *
+ * ⚠️ **게이트를 빼먹지 않는다.** 맵 그래프는 오버월드에서 **맞닿은 구역**을 한 걸음으로
+ * 보는데, 그 경계가 물가면 걸어서는 못 넘는다(물을 막은 뒤로 `unreachable`). 그러면
+ * `goTo`가 가까운 건물을 드나드는 갈래로 빠진다 — 실측(2026-09-24 탐침 4판): 들판시티(120)
+ * 에서 213번도로(373)로 가라 했더니 체육관·센터·관측소 게이트를 차례로 들락날락했다.
+ * 들판 ↔ 213은 게이트(374)로만 이어진다. 배지 4·5 다리가 게이트를 하나씩 적는 까닭과 같다
+ */
+async function via(api, note, maps, what, budget = 900_000) {
+  const here = (await api.now()).map
+  let last = 'arrived'
+  for (const m of maps.slice(maps.indexOf(here) + 1)) {
+    last = await api.goTo(m, Math.min(budget, api.left()))
+    note(`${what} — 맵 ${String(m)}`, last)
+    if (last !== 'arrived') break
+  }
+  return last
+}
+
 const noteOf = (out, ctx) => (what, detail) => {
   out.steps.push({ what, detail })
   ctx.log(`  ${what} → ${detail}`)
@@ -63,8 +110,7 @@ export async function pastoriaToCelestic(api, ctx,
   }
   const spray = async (what) => {
     if (!repel) return
-    const sprayed = await api.useItem(ITEM.superRepel, Math.min(150_000, api.left()))
-      .then((r) => (r.ok ? r : api.useItem(ITEM.repel, Math.min(150_000, api.left()))))
+    const sprayed = await sprayBest(api)
     note(`스프레이 (${what})`, sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
   }
   const done = () => { out.ms = Date.now() - t0; return out }
@@ -108,12 +154,17 @@ export async function pastoriaToCelestic(api, ctx,
     out.pastoria.grunt = { said, talked: v.gruntTalked === true }
     note('들판 조무래기에게 말 걸기 (637,812)', `${said ? '말 걸었다' : '못 걸었다'} · 깃발 ${String(v.gruntTalked)}`)
   }
+  // 스프레이 — 이 구간 끝(선단시티)까지 수풀·동굴이 길다. 들판 마트가 골드스프레이를 판다
+  if (repel && (v.pastoria ?? 0) >= 5 && !(((await api.bagState())?.items ?? []).some((one) => one.item === ITEM.maxRepel && one.count >= 4))) {
+    out.repels = await api.buyAt(MAP.pastoriaMart, ITEM.maxRepel, 8, Math.min(300_000, api.left()))
+    note('들판 마트 골드스프레이 8개', out.repels.ok ? `${String(out.repels.bought)}개 샀다` : String(out.repels.why))
+  }
   if (stopAt === MAP.pastoria) return done()
 
   // ④~⑥ 213번도로 조무래기 둘
   if ((await api.now()).map !== MAP.route213) {
     await spray('213번도로')
-    out.route213 = { went: await walk(MAP.route213, '213번도로(373)') }
+    out.route213 = { went: await via(api, note, [MAP.pastoria, MAP.gate213, MAP.route213], '213번도로로') }
   } else out.route213 = { went: 'arrived' }
   v = await vars()
   for (const [i, spot] of ROUTE213_GRUNT.entries()) {
@@ -127,8 +178,18 @@ export async function pastoriaToCelestic(api, ctx,
       `${said ? '말 걸었다' : '못 걸었다'} · 깃발 ${String(v[flag])}`)
   }
 
-  // ⑦~⑨ 로비를 지나 입지호수근처 — 조무래기 두 번(두 번째가 배틀) → 난천 → 비전신약
-  out.valor = { went: await walk(MAP.valorLakefront, '입지호수근처(336) — 그랜드레이크 로비를 지나') }
+  /**
+   * ⑦~⑨ **로비를 먼저 지난다** — 입지호수근처 조무래기 두 번(두 번째가 배틀) → 난천 → 비전신약.
+   *
+   * ⚠️ 213번도로는 그랜드레이크 로비(376)를 사이에 두고 **남북 두 구역**이다. 남쪽 모래밭에서는
+   * 입지호수근처로 걸어서 못 닿고(격자 unreachable), 로비의 남쪽 문으로 들어가 북쪽 문 (8,2)로
+   * 나서야 213 북쪽 (706,812)에 선다. 맵 그래프는 그 갈림을 몰라서 `goTo(336)`이 213과 들판
+   * 게이트(374) 사이를 12분 오갔다(2026-09-24 탐침 3판)
+   */
+  if ((await api.now()).map === MAP.route213) {
+    out.lobby = await walk(MAP.grandLakeLobby, '그랜드레이크 로비(376) — 213 남쪽에서 북쪽으로', 900_000)
+  }
+  out.valor = { went: await walk(MAP.valorLakefront, '입지호수근처(336) — 로비 북쪽 문으로') }
   v = await vars()
   for (const [i, spot] of VALOR_GRUNT.entries()) {
     if (i === 0 && v.valorGrunt === true) continue
@@ -150,7 +211,10 @@ export async function pastoriaToCelestic(api, ctx,
   v = await vars()
   if (v.psyduck !== true) {
     await spray('214·215번도로')
-    out.psyduck = { went: await walk(MAP.route210south, '210번도로 남(362) — 214·장막·215를 거꾸로', 2_400_000) }
+    out.psyduck = {
+      went: await via(api, note, [MAP.valorLakefront, MAP.route214, MAP.gate214, MAP.veilstone, MAP.gate215,
+        MAP.route215, MAP.route210south], '210번도로 남으로 — 214·장막·215를 거꾸로', 1_200_000),
+    }
     if (out.psyduck.went === 'arrived') {
       const said = await api.talkTo(MAP.route210south, PSYDUCK, Math.min(600_000, api.left()))
       await api.clearTalk(); await api.settle()
@@ -167,7 +231,9 @@ export async function pastoriaToCelestic(api, ctx,
   // ⑪ 210번도로 북 → 봉신마을 · 동굴 앞 조무래기(예 → 배틀)
   v = await vars()
   if (v.charm !== true) {
-    out.celestic = { went: await walk(MAP.celestic, '봉신마을(442) — 210번도로 북을 지나', 2_400_000) }
+    out.celestic = {
+      went: await via(api, note, [MAP.route210south, MAP.route210north, MAP.celestic], '봉신마을로 — 210번도로 북을 지나', 1_500_000),
+    }
     if (out.celestic.went === 'arrived') {
       const said = await api.talkTo(MAP.celestic, CELESTIC_GRUNT, Math.min(600_000, api.left()))
       await api.clearTalk(); await api.settle()
@@ -248,6 +314,8 @@ const IRON_SAILOR = { x: 99, z: 502 }
 const LIBRARY_RIVAL = { x: 37, z: 719 }
 /** 동관 (16, 높이 30, 3) — 4층 (16,4)에서 북쪽을 보고 말을 건다 */
 export const CANALAVE_GOAL = { x: 16, z: 4, floor: 3 }
+/** 운하 체육관 입구 — 문 (16,27) 바로 안쪽 칸, 0층 */
+const CANALAVE_ENTRY = { x: 16, z: 26, floor: 0 }
 const BYRON = { x: 16, z: 3 }
 /** 새턴 · 마스 스크립트 번호 */
 const SATURN_SCRIPT = 4
@@ -262,10 +330,20 @@ const KEY_OF = { '0,-1': 'ArrowUp', '0,1': 'ArrowDown', '-1,0': 'ArrowLeft', '1,
 const STEP_OF = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
 
 /**
- * **위력이 없는 기술** — 가르칠 때 먼저 잊을 것들. 우리 셋이 레벨로 배우는 것 중
- * 변화 기술과 죽기살기(283 · 위력이 상대 체력으로 정해진다)다
+ * **칸이 찼을 때 무엇을 지키나** — 비전기술이 아닌 것 가운데 **위력이 가장 낮은 하나**만
+ * 내놓고 나머지를 다 지킨다. 칸이 비어 있으면 아무것도 안 잊는다.
+ *
+ * ⚠️ 공격 기술만 넷인 마리가 있다 — 찌르호크(인파이트 · 돌진 · 전광석화 · 날개치기).
+ * 「공격 기술은 다 지킨다」로 두면 지킬 것만 남아 **공중날기를 못 배운다**(2026-09-24 탐침 5판)
  */
-const NON_ATTACKS = new Set([45, 39, 43, 81, 111, 133, 104, 355, 18, 97, 283, 74, 34])
+function keepAllButWeakest(party, line) {
+  const moves = (party.find((one) => line.includes(one.species))?.moves ?? []).map((m) => m.move)
+  if (moves.length < 4) return moves
+  const candidates = moves.filter((m) => !HM_MOVES.includes(m))
+  if (candidates.length === 0) return moves
+  const weakest = candidates.reduce((a, b) => (powerOf(b) < powerOf(a) ? b : a))
+  return moves.filter((m) => m !== weakest)
+}
 
 /**
  * **다리 B — 봉신에서 운하시티 다리 라이벌까지** (지시서 §3.3·§3.4 ①).
@@ -290,20 +368,24 @@ export async function celesticToCanalave(api, ctx,
   }
 
   // ① 비전머신 둘 — 비전기술과 공격 기술은 안 잊는다
-  const party = (await api.partyState()) ?? []
-  const attacks = (line) => (party.find((one) => line.includes(one.species))?.moves ?? [])
-    .map((m) => m.move).filter((id) => !NON_ATTACKS.has(id))
-  out.surf = await teachTo(api, ITEM.hm03, MOVE.surf, BIDOOF_LINE, { keep: attacks(BIDOOF_LINE) })
-  note('비전머신03 파도타기 → 비버통', out.surf.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.surf.lost ?? [])}` : String(out.surf.why))
-  out.fly = await teachTo(api, ITEM.hm02, MOVE.fly, STARLY_LINE, { keep: attacks(STARLY_LINE) })
-  note('비전머신02 공중날기 → 찌르호크', out.fly.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.fly.lost ?? [])}` : String(out.fly.why))
+  out.surf = await teachTo(api, ITEM.hm03, MOVE.surf, BIDOOF_LINE,
+    { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
+  note('비전머신03 파도타기 → 비버통', out.surf.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.surf.lost ?? [])}`
+    : `${String(out.surf.why)} · 화면 ${JSON.stringify(out.surf.said ?? []).slice(0, 500)}`)
+  out.fly = await teachTo(api, ITEM.hm02, MOVE.fly, STARLY_LINE,
+    { keep: keepAllButWeakest((await api.partyState()) ?? [], STARLY_LINE) })
+  note('비전머신02 공중날기 → 찌르호크', out.fly.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.fly.lost ?? [])}`
+    : `${String(out.fly.why)} · 화면 ${JSON.stringify(out.fly.said ?? []).slice(0, 500)}`)
 
   // ② 축복시티로 난다 → 218 게이트 → 218번도로를 파도타기로
   if ((await api.now()).map !== MAP.canalave) {
     out.flyJubilife = await api.flyTo(MAP.jubilife, Math.min(120_000, api.left()))
     note('공중날기 → 축복시티', out.flyJubilife.ok ? '닿았다' : String(out.flyJubilife.why))
     api.setSurf(true)
-    out.route218 = { went: await walk(MAP.gate218Canalave, '218번도로(388)를 파도타기로 → 운하 쪽 게이트(390)', 1_500_000) }
+    out.route218 = {
+      went: await via(api, note, [MAP.jubilife, MAP.gate218Jubilife, MAP.route218, MAP.gate218Canalave],
+        '218번도로를 파도타기로 → 운하 쪽 게이트', 1_200_000),
+    }
     api.setSurf(false)
     out.route218.surfs = api.surfLog.length
     await api.clearTalk(); await api.settle()
@@ -335,6 +417,9 @@ export async function celesticToCanalave(api, ctx,
       const again = await api.healAt(MAP.canalaveCenter, Math.min(300_000, api.left()))
       note(`다리 라이벌 재도전 앞 회복 (${String(round)})`, again.ok ? '나았다' : String(again.why))
     }
+    // ⚠️ **먼저 밖으로 나선다.** `stepOn`은 맵이 바뀌면 거기서 돌려준다 — 센터·마트 안에서
+    // 부르면 문을 나서는 순간 「warped」로 끝나고 다리 칸은 안 밟는다(탐침 5판에서 두 번)
+    await api.goTo(MAP.canalave, Math.min(300_000, api.left()))
     const stood = await api.stepOn(MAP.canalave, CANALAVE_BRIDGE, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     v = await vars()
@@ -353,23 +438,23 @@ export async function celesticToCanalave(api, ctx,
  *
  * ⚠️ 이 방의 풀이는 **제품의 표로 계산했다 — 사람은 판을 보고 푼다.** 판정 줄에도 그렇게 적는다
  */
-export async function canalaveClimb(api, ctx, { rounds = 60 } = {}) {
+export async function canalaveClimb(api, ctx, { rounds = 60, goal = CANALAVE_GOAL, what = '동관 앞' } = {}) {
   const t0 = Date.now()
   const out = { rides: [], replans: 0 }
   const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
   for (let i = 0; i < rounds && api.left() > 0; i++) {
     const st = await api.canalaveState()
     if (st === null) { out.why = '운하 체육관 상태를 못 읽었다 (관측 불가)'; return out }
-    if (st.x === CANALAVE_GOAL.x && st.z === CANALAVE_GOAL.z && st.floor === CANALAVE_GOAL.floor) {
+    if (st.x === goal.x && st.z === goal.z && st.floor === goal.floor) {
       out.ok = true
       out.ms = Date.now() - t0
-      note('동관 앞', `판 ${String(out.rides.length)}번 · 다시 푼 것 ${String(out.replans)}번`)
+      note(what, `판 ${String(out.rides.length)}번 · 다시 푼 것 ${String(out.replans)}번`)
       return out
     }
-    const read = await api.canalavePlan(CANALAVE_GOAL)
+    const read = await api.canalavePlan(goal)
     if (read === null || read.plan === null) {
       out.why = read === null ? '운하 풀이를 못 돌렸다'
-        : `(${String(st.x)},${String(st.z)}) ${String(st.floor)}층에서 동관 앞으로 가는 판 차례가 없다`
+        : `(${String(st.x)},${String(st.z)}) ${String(st.floor)}층에서 ${what}으로 가는 판 차례가 없다`
       out.stuck = read?.start ?? st
       return out
     }
@@ -379,13 +464,28 @@ export async function canalaveClimb(api, ctx, { rounds = 60 } = {}) {
       if (at === null) break
       if (at.scene === 'battle') { await api.fightThrough(); await api.settle(); break }
       if (at.talk || at.scene !== 'overworld') { await api.clearTalk(); await api.settle(); break }
-      if (at.x !== step.want.x || at.z !== step.want.z) break
+      if (step.ride === null && (at.x !== step.want.x || at.z !== step.want.z)) {
+        note(`걸음 ${step.key} (${String(step.want.x)},${String(step.want.z)})`, `계획과 다른 칸 (${String(at.x)},${String(at.z)}) — 다시 푼다`)
+        break
+      }
       if (step.ride !== null) {
+        /**
+         * 판이 사람을 들고 가는지 **잰다** — 판에 오른 뒤 2.5초 동안 원시 자리·높이·`riding`.
+         * 판정에는 안 쓰고 로그에 적는다(탐침 6판에서 판만 오르고 사람이 남는 일이 났다)
+         */
+        const trace = []
+        const t0r = Date.now()
+        for (let k = 0; k < 25; k++) {
+          const now2 = await api.canalaveState()
+          if (now2 !== null) trace.push(`${String(Date.now() - t0r)}:(${String(now2.px)},${String(now2.py)},${String(now2.pz)})${now2.busy ? 'b' : ''}${now2.riding ? 'r' : ''}`)
+          await new Promise((r) => { setTimeout(r, 100) })
+        }
         for (let k = 0; k < 80; k++) {
           const now2 = await api.canalaveState()
           if (now2 !== null && !now2.busy) break
           await api.settle()
         }
+        note(`판 #${String(step.ride)} 추적`, trace.join(' '))
         await api.settle()
         const after = await api.canalaveState()
         out.rides.push({ ride: step.ride, want: step.to, got: after })
@@ -396,7 +496,7 @@ export async function canalaveClimb(api, ctx, { rounds = 60 } = {}) {
       }
     }
   }
-  out.why = `${String(rounds)}바퀴 안에 동관 앞에 못 섰다`
+  out.why = `${String(rounds)}바퀴 안에 ${what}에 못 섰다`
   out.ms = Date.now() - t0
   return out
 }
@@ -424,6 +524,14 @@ export async function canalaveGym(api, ctx, { tries = 3 } = {}) {
   const out = { rounds: [] }
   const note = (what, detail) => { ctx.log(`  ${what} → ${detail}`) }
   for (let round = 0; round < tries && api.left() > 0; round++) {
+    /**
+     * ⚠️ **체육관 안이면 판을 타고 입구로 내려간 뒤에 나간다.** 길 계획은 이 방의 층을 몰라
+     * 위층에서 센터로 가라 하면 헤맨다(탐침 5판). 입구 칸은 (16,26) 0층이다
+     */
+    if ((await api.now()).map === MAP.canalaveGym) {
+      const down = await canalaveClimb(api, ctx, { goal: CANALAVE_ENTRY, what: '운하 체육관 입구' })
+      note('운하 체육관 입구로 내려가기', down.ok === true ? '내려왔다' : String(down.why))
+    }
     const heal = await api.healAt(MAP.canalaveCenter, Math.min(300_000, api.left()))
     note(`운하 체육관${round > 0 ? ` 재도전 ${String(round)}` : ''} 앞 회복`, heal.ok ? '나았다' : String(heal.why))
     const inside = await api.goTo(MAP.canalaveGym, Math.min(600_000, api.left()))
@@ -507,12 +615,14 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
   if (v.saturn !== true) {
     const fly = await api.flyTo(MAP.veilstone, Math.min(120_000, api.left()))
     note('공중날기 → 장막시티', fly.ok ? '닿았다' : String(fly.why))
-    await walk(MAP.valorCavern, '입지호수 동굴(316) — 214 · 입지호수근처 · 물 빠진 입지호수', 1_800_000)
+    await via(api, note, [MAP.veilstone, MAP.gate214, MAP.route214, MAP.valorLakefront, MAP.lakeValorDrained,
+      MAP.valorCavern], '입지호수 동굴로 — 214 · 입지호수근처 · 물 빠진 입지호수')
     for (let round = 0; round < 3 && v.saturn !== true && api.left() > 0; round++) {
       if (round > 0) {
         const heal = await api.healAt(MAP.veilstoneCenter, Math.min(300_000, api.left()))
         note(`새턴 재도전 앞 회복 (${String(round)})`, heal.ok ? '나았다' : String(heal.why))
-        await walk(MAP.valorCavern, '입지호수 동굴 다시', 1_800_000)
+        await via(api, note, [MAP.veilstone, MAP.gate214, MAP.route214, MAP.valorLakefront, MAP.lakeValorDrained,
+          MAP.valorCavern], '입지호수 동굴로 다시')
       }
       const said = await api.talkToNpc(MAP.valorCavern, SATURN_SCRIPT, Math.min(300_000, api.left()))
       await api.clearTalk(); await api.settle()
@@ -527,13 +637,13 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
   if (v.verityLeft !== true) {
     const fly = await api.flyTo(MAP.twinleaf, Math.min(120_000, api.left()))
     note('공중날기 → 떡잎마을', fly.ok ? '닿았다' : String(fly.why))
-    await walk(MAP.lakeVerity, '진실호수(312) — 201 · 진실호수근처', 1_200_000)
+    await via(api, note, [MAP.twinleaf, MAP.route201, MAP.verityLakefront, MAP.lakeVerity], '진실호수로 — 201 · 진실호수근처')
     await api.clearTalk(); await api.settle()
     for (let round = 0; round < 3 && v.verityLeft !== true && api.left() > 0; round++) {
       if (round > 0) {
         const heal = await api.healAt(MAP.sandgemCenter, Math.min(600_000, api.left()))
         note(`마스 재도전 앞 회복 (${String(round)})`, heal.ok ? '나았다' : String(heal.why))
-        await walk(MAP.lakeVerity, '진실호수 다시', 1_200_000)
+        await via(api, note, [MAP.sandgemCenter, MAP.twinleaf, MAP.route201, MAP.verityLakefront, MAP.lakeVerity], '진실호수로 다시')
       }
       const said = await api.talkToNpc(MAP.lakeVerity, MARS_SCRIPT, Math.min(300_000, api.left()))
       await api.clearTalk(); await api.settle()
@@ -558,20 +668,20 @@ export async function coronetToSnowpoint(api, ctx,
     return went
   }
   const spray = async (what) => {
-    const sprayed = await api.useItem(ITEM.superRepel, Math.min(150_000, api.left()))
-      .then((r) => (r.ok ? r : api.useItem(ITEM.repel, Math.min(150_000, api.left()))))
+    const sprayed = await sprayBest(api)
     note(`스프레이 (${what})`, sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
   }
 
   // ① 괴력 → 비버통 (비전기술만 지킨다 — 물대포 자리를 준다)
-  out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE)
+  out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE,
+    { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
   note('비전머신04 괴력 → 비버통', out.strength.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
 
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다
   if ((await api.now()).map !== MAP.coronetNorth1) {
     const fly = await api.flyTo(MAP.celestic, Math.min(120_000, api.left()))
     note('공중날기 → 봉신마을', fly.ok ? '닿았다' : String(fly.why))
-    await walk(MAP.coronetNorth1, '천관산 1F 북 방1(218) — 211번도로 동을 지나', 1_200_000)
+    await via(api, note, [MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
   }
   out.push = await api.strengthPush(MAP.coronetNorth1, CORONET_BOULDER, 'ArrowUp', 3, Math.min(300_000, api.left()))
   note('큰바위 (29,30) 괴력', out.push.ok ? `${String(out.push.pushed)}번 밀었다` : String(out.push.why))

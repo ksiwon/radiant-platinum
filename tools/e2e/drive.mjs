@@ -2738,20 +2738,36 @@ export async function driveStory(page, {
        * 사람도 대개 그것을 버린다(모부기면 몸통박치기다). 커서는 열 때마다
        * 0이라 옮길 것이 없다
        */
-      for (let step = 0; step < 4; step++) {
+      /**
+       * ⚠️ **「어느 기술을」을 먼저 본다.** 롬 글이 「어느 기술을 **잊게 하겠습니까**?」(59)라
+       * 첫 물음 「…다른 기술을 잊게 하겠습니까?」(52)를 가리는 말이 그 안에도 들어 있다. 차례가
+       * 거꾸로면 잊을 칸 고르기에서 커서를 안 옮기고 결정을 눌러 **첫 칸**을 잊는다.
+       *
+       * ⚠️ **잊은 뒤에는 글이 더 있다** — 「1, 2… 짠!」 · 「깨끗이 잊었다! 그리고…!」 ·
+       * 「배웠다!」(60 · 61). 그것을 넘겨야 배운다. 그래서 **배웠는지를 먼저 보고**, 아니면
+       * 글을 넘긴다. 이 갈래는 배지 6·7 전까지 판에서 한 번도 안 탔다 — 앞 구간은 빈 칸이
+       * 있는 마리에게만 가르쳤다(2026-09-24 탐침 4판에서 파도타기·공중날기 둘 다 못 배웠다)
+       */
+      let forgot = false
+      for (let step = 0; step < 14; step++) {
+        if ((await knows() ?? -1) >= 0) break
         const text = await screen()
-        said2.push(text.slice(0, 160))
-        if (text.includes('잊게 하겠습니까')) { await tap('Space', 300); continue }
+        // 앞의 계기판 글(FPS · 시계)을 떼고 적는다 — 160자로 자르면 물음이 안 남았다
+        said2.push(text.replace(/^[sS]*?디지털시계/, '').slice(0, 300))
         if (text.includes('어느 기술을')) {
           const forget = (movesBefore?.[i]?.moves ?? []).findIndex((m) => !keep.includes(m))
           // 지킬 것만 남았으면 「그만둔다」(다섯째 칸)로 물러난다 — 아무것도 안 잊는다
           const down = forget < 0 ? (movesBefore?.[i]?.moves.length ?? 4) : forget
           for (let k = 0; k < down; k++) await tap('ArrowDown', 120)
           await tap('Space', 400)
+          forgot = forget >= 0
           continue
         }
+        if (text.includes('잊게 하겠습니까')) { await tap('Space', 300); continue }
         // 「그만둔다」 뒤의 「포기하겠습니까?」 — 예. 지킬 기술만 남은 마리는 배우지 않는다
-        if (text.includes('포기하겠습니까')) { await tap('Space', 400); continue }
+        if (text.includes('포기하겠습니까')) { await tap('Space', 400); break }
+        // 잊은 뒤의 글 — 넘긴다. 잊기 전이면 물음이 아닌 글(「배울 수 없다」 따위)이라 그만둔다
+        if (forgot) { await tap('Space', 350); continue }
         break
       }
       learned = await knows() ?? -1
@@ -3643,6 +3659,29 @@ export async function driveStory(page, {
     flyTo, strengthPush, setSurf, surfLog, fieldState: () => obs.fieldState(),
     // 한 칸 걸음 — 체육관 풀이가 계획한 칸을 한 칸씩 밟는다. 판정은 부르는 쪽이 한다
     stepKey: (key, want) => stepOnce(key, want),
+    /**
+     * **판에 오르는 한 칸** — 그 칸에 닿았거나 **판이 움직이기 시작하면** 곧바로 키를 뗀다.
+     *
+     * ⚠️ `stepKey`로는 안 된다. 판이 주인공을 초당 9칸으로 옮기면 그 칸을 한 프레임만 밟아
+     * 폴링이 놓치고, 1.5초까지 키를 누른 채로 있다 — 판이 멈추는 순간 조작이 풀려 그 방향으로
+     * 걸어 내린다(2026-09-24 탐침 5판: 판 #10을 타다 (16,22)에 섰다)
+     */
+    rideStep: async (key, want) => {
+      lastKeyAt = Date.now()
+      const cap = Date.now() + 1_500
+      await page.keyboard.down(key)
+      let at = null
+      while (Date.now() < cap) {
+        at = await now()
+        if (at.talk || at.scene !== 'overworld') break
+        if (at.x === want.x && at.z === want.z) break
+        const st = await obs.canalaveState()
+        if (st.known && st.value?.busy === true) break
+        await page.waitForTimeout(10)
+      }
+      await page.keyboard.up(key)
+      return now()
+    },
     canalavePlan: async (goal) => { const r = await obs.canalavePlan(goal); return r.known ? r.value : null },
     canalaveState: async () => { const r = await obs.canalaveState(); return r.known ? r.value : null },
     snowpointPlan: async (goal) => { const r = await obs.snowpointPlan(goal); return r.known ? r.value : null },

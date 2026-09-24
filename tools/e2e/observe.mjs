@@ -451,7 +451,11 @@ function devObserver(page) {
       const sc = await import('/src/scene/canalaveGym.ts')
       const st = await import('/src/state/worldState.ts')
       const p = st.worldState.player.position
-      return { busy: sc.canalaveBusy(), floor: w.canalaveFloorAt(p.y), x: Math.floor(p.x), z: Math.floor(p.z) }
+      return {
+        busy: sc.canalaveBusy(), floor: w.canalaveFloorAt(p.y), x: Math.floor(p.x), z: Math.floor(p.z),
+        // 추적용 원시 값 — 판이 사람을 들고 가는지 가를 때 쓴다
+        px: +p.x.toFixed(2), py: +p.y.toFixed(2), pz: +p.z.toFixed(2), riding: st.worldState.player.riding === true,
+      }
     }),
     /**
      * **선단 체육관 — 얼음 풀이** (`gymSolve67.solveSnowpoint`). 얼음 칸·높이·벽·눈덩이·

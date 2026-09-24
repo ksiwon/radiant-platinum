@@ -39,6 +39,8 @@ export const ITEM = {
   hyperPotion: 25,
   /** 실버스프레이 */
   superRepel: 76,
+  /** 골드스프레이 — 250걸음. 배지 다섯이면 마트가 판다(tier 4) */
+  maxRepel: 77,
 }
 /** 베어가르기 기술 번호 */
 export const CUT = 15
