@@ -27,18 +27,25 @@ export function prizeMoney(input: PrizeInput): number {
   return money
 }
 
-/** 트레이너 데이터 한 명 → 상금. 배수표를 같이 받는다 */
+/**
+ * 트레이너 데이터 한 명 → 상금. 배수표를 같이 받는다.
+ *
+ * `doubles`를 안 주면 트레이너의 더블 표식을 따른다. ⚠️ **트레이너 둘과의 판은
+ * 거짓을 넘긴다** — 원작은 `BATTLE_TYPE_TAG`·`TRAINER_WITH_AI_PARTNER`를 더블보다
+ * 먼저 보고 두 배 없이 한 사람씩 더한다 (`battle_script.c` 3683)
+ */
 export function prizeFor(
   trainer: Trainer,
   prizeMul: readonly number[],
   amuletCoin = false,
+  doubles: boolean = trainer.double,
 ): number {
   const last = trainer.party[trainer.party.length - 1]
   if (!last) return 0
   return prizeMoney({
     mul: prizeMul[trainer.class] ?? 0,
     lastLevel: last.level,
-    doubles: trainer.double,
+    doubles,
     amuletCoin,
   })
 }

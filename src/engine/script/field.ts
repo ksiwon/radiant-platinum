@@ -1532,7 +1532,9 @@ function sightAt(
   header: MapHeader, grid: NonNullable<typeof mapWorld.grid>, x: number, z: number,
 ): boolean {
   const p = worldState.player.position
-  const seen = trainerInSight(
+  // ⚠️ **같은 시야 판정을 두 번 돌린다** — 둘째는 첫 사람을 뺀 채로다
+  // (`FindUndefeatedTrainerInSight`의 `knownTrainer`). 그래서 묻는 것을 하나로 묶는다
+  const look = (skip: Npc | null) => trainerInSight(
     // ⚠️ **배치표가 아니라 지금 선 칸이다** (`MapObject_GetX`). 순회·배회
     // 유형은 걸어 다니므로 처음 섰던 자리에 없다 — 217번도로 아홉 중 넷이
     // 30칸 넘게 떠나 있었고, 그 넷은 배치표 자리에서 허공을 보고 있었다.
@@ -1556,10 +1558,12 @@ function sightAt(
     // ⚠️ **이미 이긴 트레이너는 안 덤빈다.** 원작이 `Script_IsTrainerDefeated`로
     // 거른다 — 이게 없으면 이긴 사람 앞을 지날 때마다 다시 싸우게 된다.
     // 배틀 스크립트가 아닌 사람(3000 미만)은 애초에 트레이너가 아니다
-    (npc) => npc.script === NO_SCRIPT
+    (npc) => npc === skip
+      || npc.script === NO_SCRIPT
       || npc.script < SCRIPT_ID_OFFSET_SINGLE_BATTLES
       || fieldScripts.vars.checkFlag(TRAINER_DEFEATED_FLAGS_START + trainerIdOf(npc.script)),
   )
+  const seen = look(null)
   if (!seen) return false
 
   // ⚠️ **더블 트레이너는 짝과 함께 온다** — 짝을 못 찾으면 혼자 온다.
@@ -1568,12 +1572,27 @@ function sightAt(
   const world = fieldScripts.world
   if (world === null) return false
   const double = fieldScripts.services.trainer?.(trainerIdOf(seen.npc.script))?.double === true
+  // 두 마리가 싸울 수 있는가 (`FieldInput_Process` — `Party_HasTwoAliveMons`).
+  // ⚠️ **동행이 붙어 있으면 늘 참이다** — 편이 자리 b를 채운다 (`field_control.c` 184)
+  const twoAlive = (fieldScripts.services.aliveMons?.() ?? 0) >= 2
+    || fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner)
+  // ⚠️ **더블 트레이너는 두 마리가 없으면 아예 안 온다** (`FieldSystem_
+  // CheckForTrainersWantingBattle` — `isDoubleBattle`이면 `!hasTwoAliveMons`에서
+  // 곧장 거짓). 말을 걸면 「포켓몬이 두 마리 필요하다」가 뜨는 그 사람들이다
+  if (double && !twoAlive) return false
+  // ⚠️ **혼자 오는 트레이너 뒤에 둘째가 있으면 둘이 같이 온다** (`APPROACH_TYPE_VS2`).
+  // 원작은 첫 사람을 뺀 채로 시야를 한 번 더 훑어, 둘째가 있으면 트레이너 둘과의
+  // 2vs2다 (`trainer_encounter.c` 96~108). 한동안 이 갈래가 없어서 두 사람의 시야가
+  // 겹치는 자리에서 한 사람과만 싸우고 다른 한 사람은 그 뒤에 따로 걸어왔다
+  const other = !double && twoAlive ? look(seen.npc) : null
+  const type = double ? APPROACH_TYPE.doubles
+    : other !== null ? APPROACH_TYPE.vs2 : APPROACH_TYPE.singles
   const first: ApproachingTrainer = {
     localID: seen.npc.localID,
     trainerID: trainerIdOf(seen.npc.script),
     direction: seen.facing,
     sightRange: seen.distance,
-    type: double ? APPROACH_TYPE.doubles : APPROACH_TYPE.singles,
+    type,
   }
   // ⚠️ **적는 것이 스크립트를 시작한 뒤다.** 시작이 `world.reset()`을
   // 부르는데 그 안에서 지우면 첫 명령이 빈 자리를 읽는다
@@ -1582,14 +1601,31 @@ function sightAt(
   // ⚠️ **짝은 트레이너 번호가 같은 다른 사람이다** (`FindTrainerPartner`) —
   // 더블 한 쌍은 표에 트레이너 하나로 있고 맵에만 둘이 서 있다. 짝을 못
   // 찾으면 혼자 온다 (원작은 그 자리에서 `GF_ASSERT`로 선다)
-  world.approaching[1] = double ? partnerOf(seen.npc, first) : null
+  world.approaching[1] = double
+    ? partnerOf(seen.npc, first)
+    : other !== null
+      // 둘째는 **제 시야**로 온다 — 거리와 방향이 제 것이다 (`ApproachingTrainer_Init`)
+      ? {
+        localID: other.npc.localID,
+        trainerID: trainerIdOf(other.npc.script),
+        direction: other.facing,
+        sightRange: other.distance,
+        type,
+      }
+      : null
   // ⚠️ **머리 위 느낌표가 이 자리에서 뜬다** (`ApproachingTrainerTask_Unk_05`의
   // `ov5_021F5D8C`). 그리는 장치는 진작 있었는데 아무도 안 불러서, 눈이 마주친
   // 트레이너가 말없이 걸어왔다. 걷는 동작 목록이 이 표시의 길이만큼 앞에서
   // 멈춰 서 있다 (`actor/approach`의 `delaySteps(EMOTE_FRAMES)`)
   fieldScripts.services.emote?.(first.localID, 'exclaim')
+  // ⚠️ **둘째 트레이너(VS2)의 느낌표는 그 사람이 걸어 나올 때다.** 원작은 느낌표를
+  // 다가오는 작업 안에서 띄우고(`ApproachingTrainerTask`), VS2 스크립트는 첫 사람의
+  // 말이 끝난 뒤에야 둘째의 작업을 건다 (`Battles_ApproachingTrainerVS2`) —
+  // `StartApproachingTrainerTask`가 그 자리에서 띄운다. 더블의 짝은 같이 걸어서 지금이다
   const partner = world.approaching[1]
-  if (partner !== null) fieldScripts.services.emote?.(partner.localID, 'exclaim')
+  if (partner !== null && type === APPROACH_TYPE.doubles) {
+    fieldScripts.services.emote?.(partner.localID, 'exclaim')
+  }
   return true
 }
 

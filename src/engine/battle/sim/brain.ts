@@ -56,7 +56,10 @@ interface BrainOptions {
    * 지어낸 값이 된다
    */
   floor?: number
-  /** AI가 조종하는 쪽. 지금은 늘 p2다 */
+  /**
+   * AI가 조종하는 쪽. 상대 트레이너는 p2, **편**은 p1이다 (PARITY §2.2b) —
+   * 원작도 편 자리(`BATTLER_TYPE_PLAYER_SIDE_SLOT_2`)에 같은 트레이너 AI를 물린다
+   */
   side: SideId
   /**
    * 더블인가 (PARITY §2.2).
@@ -317,15 +320,28 @@ export class TrainerBrain {
   private choices(request: BattleRequest, view: BattleView, at = 0): BattleAction[] {
     const base = { hiddenSlot: idleSlotOf(request, at), at }
     if (this.options.doubles !== true) return legalActions(request, base)
-    const all = legalActions(request, {
+    const all = this.ownBench(legalActions(request, {
       ...base,
       doubles: true,
       foeAlive: this.aliveOn(view, this.foeSide),
       allyAlive: this.aliveOn(view, this.options.side)[at === 0 ? 1 : 0],
-    })
+    }))
     const foeOnly = all.filter((a) => a.type !== 'move' || a.target === undefined
       || a.target > 0)
     return foeOnly.some((a) => a.type === 'move') ? foeOnly : all
+  }
+
+  /**
+   * 교체 후보를 **제 파티**로 거른다 (PARITY §2.2b).
+   *
+   * 한 쪽에 트레이너가 둘이면(태그 배틀·편) 요청의 벤치에 짝의 마리도 실려
+   * 온다. 원작의 AI는 제 전투원의 파티만 본다 (`TrainerAI_PickSwitchIn`이
+   * `BattleSystem_GetParty(battleSys, battler)`를 돈다) — 트레이너가 하나인
+   * 쪽은 `team`이 쪽 전체라 아무것도 안 빠진다
+   */
+  private ownBench(actions: BattleAction[]): BattleAction[] {
+    return actions.filter((a) => a.type !== 'switch'
+      || this.options.team.some((m) => m.key === a.key))
   }
 
   /** 그 쪽 두 자리에 멀쩡한 마리가 서 있는가 */

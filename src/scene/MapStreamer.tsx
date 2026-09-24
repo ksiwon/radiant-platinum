@@ -1032,6 +1032,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
             form: e.form,
             roamer: e.roamer,
             shiny: e.shiny,
+            // 동행과 함께면 야생 둘과 편이 선다 (PARITY §2.2b · `BATTLE_TYPE_AI_PARTNER`)
+            ...(e.second && e.partner
+              ? { second: { species: e.second.species, level: e.second.level, form: e.second.form },
+                  partner: e.partner }
+              : {}),
           })
         }
       })

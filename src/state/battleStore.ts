@@ -6,6 +6,7 @@
 // 초기 청크에 715 kB가 실린다.
 import { create } from 'zustand'
 import {
+  loadDialogueBank,
   loadItems,
   loadMoves,
   loadSpecies,
@@ -17,7 +18,9 @@ import {
   type SpeciesTable,
 } from '../data/gameData'
 import type { Item, Species } from '../data/schema'
-import { foeKey, partyKey, applyResults } from '../engine/battle/aftermath'
+import {
+  allyKey, foe2Key, foeKey, ownerOfKey, partyKey, applyResults,
+} from '../engine/battle/aftermath'
 import {
   addRecord, addTrainerScore, RECORD_CAUGHT_POKEMON, RECORD_FAINTED_IN_BATTLE,
   RECORD_TRAINER_BATTLES_FOUGHT, RECORD_WILD_BATTLES_FOUGHT,
@@ -42,6 +45,7 @@ import {
 } from '../engine/battle/meta/reward'
 import { afterBattle as pokerusAfterBattle, doublesEvs } from '../engine/pokemon/pokerus'
 import { MAX_MONEY, prizeFor } from '../engine/battle/meta/prize'
+import type { Trainer } from '../data/schema'
 import { trainerMonToInstance } from '../engine/battle/meta/trainerParty'
 import { TrainerItems } from '../engine/battle/meta/trainerItems'
 import { applyEvents, emptyView, type BattleView } from '../engine/battle/view'
@@ -102,6 +106,35 @@ interface BattleRules {
   noCrit?: boolean
   /** 배회 포켓몬과의 판 (PARITY §6.3). 묶어 두지 않으면 상대가 달아난다 */
   roamer?: boolean
+  /**
+   * 두 번째 상대 트레이너 (PARITY §2.2b · `Encounter_NewVsTrainer`).
+   *
+   * 첫 상대와 **다른 번호**면 트레이너 둘과의 2vs2다 — 편이 없으면
+   * `BATTLE_TYPE_TAG_DOUBLES`, 있으면 `BATTLE_TYPE_TRAINER_WITH_AI_PARTNER`.
+   * 같은 번호면 한 사람의 더블(`BATTLE_TYPE_TRAINER_DOUBLES`)이다 (`encounter.c` 728)
+   */
+  second?: number
+  /**
+   * 편 트레이너 (`BATTLE_TYPE_AI` · `dto->trainerIDs[BATTLER_PLAYER_2]`).
+   *
+   * ⚠️ **상대가 둘일 때만 편이 선다.** 원작은 동행 중에 혼자 오는 트레이너와도
+   * 싸우는데, 그 판은 `BATTLE_TYPE_TRAINER`(싱글)라 편이 안 나온다 (`encounter.c` 728)
+   */
+  partner?: number
+}
+
+/**
+ * 배틀에 선 트레이너 한 사람 (PARITY §2.2b). 롬의 줄들이 분류와 이름을 **두 칸으로**
+ * 받으므로 둘을 따로 든다 (`foeClass`·`foeTrainer` 머리말)
+ */
+export interface TrainerTag {
+  id: number
+  cls: string | null
+  name: string | null
+  /** 분류와 이름을 이은 것. 화면 머리말에 쓴다 */
+  label: string
+  /** 트레이너 분류 번호. 무대의 몸을 고른다 */
+  classId: number
 }
 
 /**
@@ -175,6 +208,18 @@ interface WildStart {
    * 개체는 세이브에 있다 — 여기로는 **어느 자리인지**만 온다
    */
   roamer?: number | null
+  /**
+   * 동행이 붙어 있을 때의 **둘째 야생** (PARITY §2.2b · `BATTLE_TYPE_AI_PARTNER`).
+   *
+   * 원작은 동행 중에 풀숲에서 만나면 칸을 **두 번** 굴려 둘을 내보낸다
+   * (`wild_encounters.c` 730 `TryGenerateGrassEncounter_DoubleBattle`)
+   */
+  second?: { species: number; level: number; form?: number }
+  /**
+   * 동행 트레이너 (`VAR_PARTNER_TRAINER_ID`). 둘째 야생과 함께 온다 —
+   * 우리 쪽 자리 b에 서고 제 AI로 싸운다 (`wild_encounters.c` 341)
+   */
+  partner?: number
 }
 
 interface BattleState {
@@ -210,6 +255,25 @@ interface BattleState {
   /** Active opponent trainer identity, retained for the 3D battle stage. */
   trainerId: number | null
   trainerClass: number | null
+  /**
+   * 상대 트레이너 전부 (PARITY §2.2b). 야생이면 비고, 보통은 하나, 태그 배틀이면
+   * 둘이다 — 둘째가 자리 b의 주인이다 (`aftermath.ownerOfKey`의 `foe2`)
+   */
+  foes: TrainerTag[]
+  /** 편 (`BATTLE_TYPE_AI`). 우리 쪽 자리 b의 주인이다. 없으면 null */
+  partner: TrainerTag | null
+  /**
+   * 이긴 뒤 상대가 하는 말 (`TRMSG_DEFEAT` · `subscript_battle_won.s`).
+   *
+   * 트레이너마다 한 줄이고 **차례가 원작 그대로**다 — 태그 배틀은 첫 상대·둘째 상대,
+   * 한 사람의 더블은 `TRMSG_DOUBLE_BATTLE_DEFEAT_1`·`_2` 둘이다
+   */
+  defeatLines: string[]
+  /**
+   * 재생기가 **지금까지 쓰러뜨려 보인** 마리의 키. 파티 공(`PartyGauge`)이 이걸로
+   * 어두워진다 — 정본(`truth`)을 보면 쓰러지는 연출보다 공이 먼저 꺼진다
+   */
+  downKeys: string[]
 
   /**
    * 이기면 받을 상금. 야생이면 0.
@@ -463,6 +527,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   foeTrainer: null,
   trainerId: null,
   trainerClass: null,
+  foes: [],
+  partner: null,
+  defeatLines: [],
+  downKeys: [],
   prize: 0,
   view: null,
   truth: null,
@@ -480,7 +548,24 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   safari: null,
 
   startWild: async (wild) => {
-    set({ trainerId: null, trainerClass: null })
+    set({ trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [] })
+    // 동행과 함께 만난 야생 둘 (`BATTLE_TYPE_AI_PARTNER`). 편은 트레이너 자료에서 온다.
+    //
+    // ⚠️ **그 자료를 받기 전에 자리부터 잡는다** — `startTrainer` 머리말과 같은
+    // 까닭이다. 받는 동안 `phase`가 `'off'`면 필드가 그 틈에 새 스크립트를 건다
+    const paired = wild.second !== undefined && (wild.partner ?? 0) !== 0
+    let ally: Awaited<ReturnType<typeof partnerOf>> = null
+    if (paired) {
+      if (get().phase !== 'off') return
+      set({ phase: 'loading', sceneReady: false, kind: 'wild', error: null })
+      try {
+        ally = await partnerOf(wild.partner!)
+      } catch (e) {
+        // 편을 못 세우면 야생 한 마리와의 싱글로 연다 — 조우를 통째로 버리지 않는다
+        console.error('동행 트레이너를 못 읽었다', e)
+      }
+      if (ally) set({ partner: ally.tag })
+    }
     await open(
       set,
       get,
@@ -535,10 +620,31 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           }
         }
         roamerMet = at
-        return { name: '야생', team: [ready(fillPp(foe, pp), foeSpecies, foeKey(0))] }
+        const team = [ready(fillPp(foe, pp), foeSpecies, foeKey(0))]
+        // ⚠️ **둘째 야생은 같은 쪽의 둘째 마리다** — 야생에는 「트레이너 둘」이
+        // 없어서 자리 주인을 가를 것도 없다 (벤치가 없으니 채울 것도 없다)
+        const second = ally ? wild.second : undefined
+        if (second) {
+          const base2 = species.get(second.species)
+          const mon2 = createWild({
+            species: base2, level: second.level, rng: Math.random, otId: 0, otSecretId: 0,
+            bias: { nature: wildNature(lead, Math.random), gender: wildGender(lead, Math.random) },
+            compoundEyes: leadHas(lead, LeadAbility.COMPOUND_EYES),
+          })
+          mon2.form = second.form ?? 0
+          const sp2 = species.of(mon2)
+          mon2.hp = statsOf(mon2, sp2).hp
+          team.push(ready(fillPp(mon2, pp), sp2, foeKey(1)))
+        }
+        return { name: '야생', team }
       },
       undefined,
       wild.roamer == null ? undefined : { roamer: true },
+      undefined,
+      ally !== null && wild.second !== undefined,
+      // 둘일 때는 위에서 자리를 이미 잡았다
+      paired,
+      ally ? { partner: ally.build, partnerAi: ally.trainer.ai } : {},
     )
   },
 
@@ -571,39 +677,72 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (get().phase !== 'off') return
     set({
       phase: 'loading', sceneReady: false, kind: 'trainer', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
-      trainerId, trainerClass: null,
+      trainerId, trainerClass: null, foes: [], partner: null, defeatLines: [], downKeys: [],
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
       shiftAsk: null, safari: null,
     })
     try {
-      const [table, names, classes] = await Promise.all([
+      const locale = gameLocale()
+      const [table, names, classes, said] = await Promise.all([
         loadTrainers(),
-        loadTrainerNames(gameLocale()),
-        loadTrainerClasses(gameLocale()),
+        loadTrainerNames(locale),
+        loadTrainerClasses(locale),
+        // 이긴 뒤 상대가 하는 말 (`TRMSG_DEFEAT`). 없어도 배틀은 돈다 — 그 줄만 빈다
+        loadDialogueBank(locale, TRAINER_MESSAGE_BANK).catch(() => [] as string[]),
       ])
       const trainer = table.get(trainerId)
       metTrainer = trainerId
-      // 부적금화는 도구 데이터가 아직 없어서 안 본다
-      const prize = prizeFor(trainer, table.prizeMul)
-      if (!trainer.party.length) {
+      // ⚠️ **둘째 상대가 첫 상대와 다를 때만 2vs2다.** 같은 번호면 한 사람의
+      // 더블이고, 0이면 싱글이다 (`Encounter_NewVsTrainer` — `encounter.c` 728)
+      const secondId = options?.second ?? 0
+      const other = secondId !== 0 && secondId !== trainerId ? table.get(secondId) : null
+      // 편은 상대가 둘일 때만 선다 (`BattleRules.partner` 머리말)
+      const allyId = other && options?.partner ? options.partner : 0
+      const ally = allyId !== 0 ? table.get(allyId) : null
+      if (!trainer.party.length || (other && !other.party.length) || (ally && !ally.party.length)) {
         // ⚠️ **잡은 자리를 놓고 나간다.** 안 놓으면 `phase`가 `'loading'`에 묶여
         // 배틀 화면이 빈 채로 남는다
         set({ phase: 'off', trainerId: null, trainerClass: null,
           error: `트레이너 #${trainerId}은(는) 파티가 없다` })
         return
       }
-      // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
-      const label = [classes[trainer.class], names[trainerId]].filter(Boolean).join(' ')
+      const tag = (id: number, t: Trainer): TrainerTag => ({
+        id,
+        cls: classes[t.class] ?? null,
+        name: names[id] ?? null,
+        // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
+        label: [classes[t.class], names[id]].filter(Boolean).join(' '),
+        classId: t.class,
+      })
+      const first = tag(trainerId, trainer)
+      const foes = other ? [first, tag(secondId, other)] : [first]
+      const partner = ally ? tag(allyId, ally) : null
+      const label = first.label
+
+      // 상금 (`BattleScript_CalcPrizeMoney`). ⚠️ **트레이너 둘이면 둘의 합이고
+      // 두 배가 없다** — 두 배는 한 사람의 더블에만 붙는다 (`battle_script.c` 3683:
+      // `BATTLE_TYPE_TAG`·`TRAINER_WITH_AI_PARTNER`가 `DOUBLES`보다 먼저 걸린다).
+      // 부적금화는 도구 데이터가 아직 없어서 안 본다
+      const prize = other
+        ? prizeFor(trainer, table.prizeMul, false, false) + prizeFor(other, table.prizeMul, false, false)
+        : prizeFor(trainer, table.prizeMul)
+
+      set({ trainerId, trainerClass: trainer.class, foes, partner })
 
       // 트레이너가 들고 나오는 회복 도구. 개수도 종류도 롬 기록 그대로다 —
-      set({ trainerId, trainerClass: trainer.class })
-      // 라이벌은 상처약, 관장은 좋은상처약, 사천왕·챔피언은 회복약이다
-      let items: ControllerItems | undefined
-      if (trainer.items.length > 0) {
-        const bank = await loadItems()
-        items = { bag: new TrainerItems(trainer.items, bank), item: (id) => bank.get(id) }
-      }
+      // 라이벌은 상처약, 관장은 좋은상처약, 사천왕·챔피언은 회복약이다.
+      //
+      // ⚠️ **편이 있는 판에서는 아무도 도구를 안 쓴다.** `BATTLE_TYPE_NO_AI_ITEMS`에
+      // `BATTLE_TYPE_AI`가 들어 있다 (`constants/battle.h` 51 →
+      // `BattleControllerPlayer_InitAI`가 도구 칸을 안 채운다). 태그 더블(편 없음)은
+      // 두 트레이너가 **저마다** 제 도구를 쓴다
+      const bank = await loadItems()
+      const kit = (t: Trainer): ControllerItems | undefined => (!ally && t.items.length > 0
+        ? { bag: new TrainerItems(t.items, bank), item: (id) => bank.get(id) }
+        : undefined)
+      const items = kit(trainer)
+      const items2 = other ? kit(other) : undefined
 
       // 더블 배틀 (PARITY §2.2). 롬이 트레이너마다 적어 둔 표식이다 —
       // 928명 중 28명이 참이다.
@@ -611,33 +750,58 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // ⚠️ **양쪽 다 두 마리가 있어야 연다.** 원작은 스크립트가 먼저 세어 보고
       // "포켓몬이 두 마리 필요하다"로 막지만(§10 「글 칸 채우기」), 우리는 아직
       // 그 자리가 없다 — 한 마리로 더블을 열면 sim이 시작하자마자 승부를 낸다.
-      // 여기서 싱글로 떨어뜨리는 것이 그 사이의 방어선이다
+      // 여기서 싱글로 떨어뜨리는 것이 그 사이의 방어선이다.
+      //
+      // 트레이너 둘과의 판은 **늘 더블이다** — 한 마리뿐이어도 편이 있거나(편 자리)
+      // 원작 스크립트가 두 마리를 먼저 세어 본다(`CheckHasTwoAliveMons`)
       const able = useSaveStore.getState().party.filter((m) => !m.isEgg && m.hp > 0).length
-      const doubles = trainer.double && trainer.party.length >= 2 && able >= 2
+      const doubles = other !== null || (trainer.double && trainer.party.length >= 2 && able >= 2)
+
+      // 이긴 뒤의 말 (`subscript_battle_won.s`). 트레이너 둘이면 첫 상대·둘째 상대가
+      // 저마다 `TRMSG_DEFEAT`(1)을, 한 사람의 더블이면 같은 사람이
+      // `TRMSG_DOUBLE_BATTLE_DEFEAT_1`(4)·`_2`(8)을 잇는다
+      const said1 = (t: Trainer, type: number): string | null => {
+        const at = t.msg[String(type)]
+        const text = at === undefined ? undefined : said[at]
+        return text === undefined || text.trim() === '' ? null : text.replace(/\s+$/, '')
+      }
+      const defeat = other
+        ? [said1(trainer, 1), said1(other, 1)]
+        : doubles && trainer.double
+          ? [said1(trainer, 4), said1(trainer, 8)]
+          : [said1(trainer, 1)]
+      set({ defeatLines: defeat.filter((x): x is string => x !== null) })
+
+      const build = (t: Trainer, id: number, key: (i: number) => string): BuildFoe =>
+        ({ species, pp }) => ({
+          name: tag(id, t).label || '상대',
+          team: t.party.map((entry, i) => {
+            const sp = species.get(entry.species)
+            const mon = trainerMonToInstance(entry, sp, id, i)
+            mon.hp = statsOf(mon, sp).hp
+            return ready(fillPp(mon, pp), sp, key(i))
+          }),
+        })
 
       await open(
         set,
         get,
         'trainer',
         label,
-        classes[trainer.class] ?? null,
-        names[trainerId] ?? null,
+        first.cls,
+        first.name,
         prize,
-        ({ species, pp }) => ({
-          name: label || '상대',
-          team: trainer.party.map((entry, i) => {
-            const sp = species.get(entry.species)
-            const mon = trainerMonToInstance(entry, sp, trainerId, i)
-            mon.hp = statsOf(mon, sp).hp
-            return ready(fillPp(mon, pp), sp, foeKey(i))
-          }),
-        }),
+        build(trainer, trainerId, foeKey),
         trainer.ai,
         options,
         items,
         doubles,
         // 자리는 위에서 이미 잡았다 (머리말)
         true,
+        {
+          ...(other ? { foe2: build(other, secondId, foe2Key), ai2: other.ai, items2 } : {}),
+          ...(ally ? { partner: build(ally, allyId, allyKey), partnerAi: ally.ai } : {}),
+        },
       )
     } catch (e) {
       set({ phase: 'off', trainerId: null, trainerClass: null,
@@ -649,7 +813,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   startFactory: async ({ team, foe, label, ai, doubles }) => {
     rentalParty = team.map((m) => ({ ...m }))
     metTrainer = null
-    set({ trainerId: null, trainerClass: null })
+    set({ trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [] })
     await open(
       set,
       get,
@@ -674,7 +838,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     if (get().phase !== 'off') return
     set({
       phase: 'loading', sceneReady: false, kind: 'safari', foeName: null, foeClass: null, foeTrainer: null, prize: 0,
-      trainerId: null, trainerClass: null,
+      trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [], downKeys: [],
       view: null, truth: null, actions: [], party: [], canSpendTurn: false, doubles: false,
       atSlot: 0, pending: [], events: [], roster: {}, outcome: null, error: null,
       shiftAsk: null, safari: null,
@@ -907,7 +1071,14 @@ export const useBattleStore = create<BattleState>((set, get) => ({
 
   playEvents: (events) => {
     if (!events.length) return
-    set({ view: applyEvents(get().view ?? emptyView(), events) })
+    // 파티 공 (`PartyGauge`)은 **보여 준 만큼만** 어두워진다. 되살린 마리는 다시 켜진다
+    let down = get().downKeys
+    for (const e of events) {
+      if (e.kind === 'faint' && !down.includes(e.actor.name)) down = [...down, e.actor.name]
+      if ((e.kind === 'heal' || e.kind === 'switch') && down.includes(e.actor.name)
+        && e.condition.hp > 0) down = down.filter((k) => k !== e.actor.name)
+    }
+    set({ view: applyEvents(get().view ?? emptyView(), events), downKeys: down })
   },
 
   learnMove: (key, move, forget) => {
@@ -1017,7 +1188,11 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       const caught = controller.captured
       if (caught) {
         // 화면(`view`)이 아니라 정본을 본다 — 재생이 아직 못 따라왔을 수 있다
-        const seen = get().truth?.active.p2a
+        // ⚠️ **더블에서는 잡은 마리가 자리 b에 있을 수 있다** — 편과 함께 만난
+        // 야생 둘에서 한 마리가 먼저 쓰러지면 남은 쪽에 던진다 (`throwBall`)
+        const truth = get().truth
+        const seen = truth?.active.p2a?.key === caught.key ? truth.active.p2a
+          : truth?.active.p2b?.key === caught.key ? truth.active.p2b : truth?.active.p2a
         // 잡은 자리·잡은 레벨·오늘 날짜를 새긴다 (`Pokemon_SetCatchData` →
         // `sel = 0`). 자리는 맵 번호가 아니라 **지역명 번호**다 —
         // 원작도 `MapHeader_GetMapLabelTextID`를 넘긴다
@@ -1117,7 +1292,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       // 이긴 트레이너를 노트에 적는다 (PARITY §7.4). 관장·사천왕·챔피언은
       // 자리 일로, 나머지는 따로 있는 한 줄로 간다
       if (get().kind === 'trainer' && get().outcome === 'win' && metTrainer !== null) {
-        journalBeatTrainer(world.mapId, metTrainer)
+        // 트레이너 둘과의 판은 둘 다 이긴 사람이다 (`UpdateJournal`이 적의 전투원마다 돈다)
+        for (const foe of get().foes.length > 0 ? get().foes : [{ id: metTrainer }]) {
+          journalBeatTrainer(world.mapId, foe.id)
+        }
       }
       metTrainer = null
       // 레벨이 오른 자리를 진화 큐에 넘긴다. 이긴 판·잡은 판·도망친 판에서만이다
@@ -1144,6 +1322,10 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       prize: 0,
       trainerId: null,
       trainerClass: null,
+      foes: [],
+      partner: null,
+      defeatLines: [],
+      downKeys: [],
       view: null,
       truth: null,
       actions: [],
@@ -1156,6 +1338,41 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     })
   },
 }))
+
+/**
+ * 편 트레이너 한 사람 (PARITY §2.2b) — 이름표와 파티를 만드는 것.
+ *
+ * 동행이 붙은 채로 만난 야생 둘(`BATTLE_TYPE_AI_PARTNER`)이 쓴다. 트레이너전의
+ * 편은 `startTrainer`가 같은 모양으로 만든다
+ */
+async function partnerOf(id: number): Promise<{ tag: TrainerTag; trainer: Trainer; build: BuildFoe } | null> {
+  const locale = gameLocale()
+  const [table, names, classes] = await Promise.all([
+    loadTrainers(), loadTrainerNames(locale), loadTrainerClasses(locale),
+  ])
+  const trainer = table.get(id)
+  if (!trainer.party.length) return null
+  const tag: TrainerTag = {
+    id,
+    cls: classes[trainer.class] ?? null,
+    name: names[id] ?? null,
+    label: [classes[trainer.class], names[id]].filter(Boolean).join(' '),
+    classId: trainer.class,
+  }
+  return {
+    tag,
+    trainer,
+    build: ({ species, pp }) => ({
+      name: tag.label || '편',
+      team: trainer.party.map((entry, i) => {
+        const sp = species.get(entry.species)
+        const mon = trainerMonToInstance(entry, sp, id, i)
+        mon.hp = statsOf(mon, sp).hp
+        return ready(fillPp(mon, pp), sp, allyKey(i))
+      }),
+    }),
+  }
+}
 
 type SetState = (partial: Partial<BattleState>) => void
 type GetState = () => BattleState
@@ -1460,8 +1677,14 @@ function grantPrize(state: BattleState): BattleEvent[] {
  *
  * ⚠️ **맨 앞의 등판 묶음만 건드린다.** 뒤엣것을 옮기면 사건 차례가 흐트러지고,
  * 재생기는 이미 틀어 버린 앞자리를 못 고친다 (`buildBeats` 머리말)
+ *
+ * **우리 쪽은 편이 먼저다** (PARITY §2.2b).
+ * 편이 있는 판의 첫 등판 줄은 「{편}은 {편의 포켓몬}을 내보냈다! 가랏! {내
+ * 포켓몬}!」이다 (`TrSentOutPokemon1GoPokemon2` · `battle_display.c`
+ * `LoadLeadMonMessage`의 `BATTLE_TYPE_2vs2` 갈래 — 첫 칸이 편의 전투원이다).
+ * 편 자리(`p1b`)가 앞에 와야 줄과 공이 같은 차례로 선다
  */
-function foeFirst(events: readonly BattleEvent[]): BattleEvent[] {
+function leadOrder(events: readonly BattleEvent[]): BattleEvent[] {
   // ⚠️ **등판이 0번이 아니다.** 줄기는 `start`로 열린다 — 실측으로
   // `start | switch:p1a | switch:p2a | turn`이다. 0번부터 세면 이 함수가
   // 아무것도 안 하고 조용히 지나간다
@@ -1471,11 +1694,16 @@ function foeFirst(events: readonly BattleEvent[]): BattleEvent[] {
   while (to < events.length && events[to]!.kind === 'switch') to++
   const lead = events.slice(from, to)
   const foe = lead.filter((e) => e.kind === 'switch' && e.actor.side === 'p2')
-  if (foe.length === 0 || foe.length === lead.length) return [...events]
+  const ours = lead.filter((e) => !foe.includes(e))
+  const allyFirst = [
+    ...ours.filter((e) => e.kind === 'switch' && ownerOfKey(e.actor.name) === 'partner'),
+    ...ours.filter((e) => !(e.kind === 'switch' && ownerOfKey(e.actor.name) === 'partner')),
+  ]
+  if (foe.length === 0 && allyFirst.every((e, i) => e === ours[i])) return [...events]
   return [
     ...events.slice(0, from),
     ...foe,
-    ...lead.filter((e) => !foe.includes(e)),
+    ...allyFirst,
     ...events.slice(to),
   ]
 }
@@ -1503,6 +1731,26 @@ type Waiting = '규칙기' | '게임 자료' | '파티' | '심판'
 
 /** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
 type BuildFoe = (ctx: { species: SpeciesTable; pp: (move: number) => number }) => SideSpec
+
+/**
+ * 한 쪽에 트레이너가 둘인 판의 나머지 (PARITY §2.2b).
+ *
+ * `foe2`는 상대 쪽 자리 b의 주인(`BATTLER_ENEMY_2`), `partner`는 우리 쪽 자리 b의
+ * 주인(`BATTLER_PLAYER_2`)이다. AI 비트와 도구도 **사람마다 제 것**이다
+ */
+interface MultiSide {
+  foe2?: BuildFoe
+  ai2?: number
+  items2?: ControllerItems
+  partner?: BuildFoe
+  partnerAi?: number
+}
+
+/**
+ * 트레이너 대사 뱅크 (`TEXT_BANK_TRAINER_MESSAGES` · us 617). 이긴 뒤 상대가 하는
+ * 말(`TRMSG_DEFEAT`)이 여기 있다 — 필드의 `PrintTrainerDialogue`와 같은 뱅크다
+ */
+const TRAINER_MESSAGE_BANK = 617
 
 /**
  * 배틀을 연다. 야생·트레이너가 다른 것은 상대를 어떻게 만드느냐뿐이다.
@@ -1536,6 +1784,8 @@ async function open(
    * 그래서 `startTrainer`는 자료보다 **먼저** 잡고 여기에 참을 준다
    */
   claimed = false,
+  /** 트레이너가 넷인 판 · 편과 함께 만난 야생 둘 (PARITY §2.2b) */
+  multi: MultiSide = {},
 ): Promise<void> {
   if (!claimed && get().phase !== 'off') return
   set({
@@ -1559,6 +1809,7 @@ async function open(
     outcome: null,
     error: null,
     shiftAsk: null,
+    downKeys: [],
   })
 
   /**
@@ -1621,6 +1872,15 @@ async function open(
     // 따라가고 세이브 순서는 안 바뀐다 (`applyResults`가 키로 짝짓는다)
     const awake = team.findIndex((m) => m.mon.hp > 0)
     if (awake > 0) team.unshift(...team.splice(awake, 1))
+    // ⚠️ **내가 두 자리를 다 채우는 더블은 둘째도 깨어 있는 마리다.** 원작은 자리
+    // b에 「자리 a가 안 고른, 알이 아니고 체력이 남은 첫 마리」를 세운다
+    // (`battle_main.c` 1163 — `i > BATTLER_ENEMY_1`이면 짝의 칸을 건너뛴다).
+    // 그대로 두면 쓰러진 둘째 칸이 첫 등판에 선다. 편이 있으면 자리 b는 편의 것이다
+    const both = (doubles || multi.foe2 !== undefined) && multi.partner === undefined
+    if (both) {
+      const next = team.findIndex((m, i) => i > 0 && m.mon.hp > 0 && !m.mon.isEgg)
+      if (next > 1) team.splice(1, 0, ...team.splice(next, 1))
+    }
 
     // 몇 판 싸웠는가 (PARITY §7.5). ⚠️ **프론티어 판은 안 센다** — 원작의
     // 기록도 시설 쪽에 따로 있다 (§9.3)
@@ -1632,15 +1892,25 @@ async function open(
     }
 
     const foe = buildFoe({ species, pp })
-    foe.team.forEach((m, i) => {
-      roster[foeKey(i)] = {
-        side: 'p2',
-        species: m.mon.species,
-        form: m.mon.form,
-        nickname: null,
-        level: m.mon.level,
+    // 상대 쪽 두 파티와 편의 파티도 명부에 싣는다 — 키가 곧 주인이다
+    // (`aftermath.ownerOfKey`). 편의 마리는 우리 쪽이라 「상대 」가 안 붙는다
+    const foe2 = multi.foe2?.({ species, pp })
+    const partner = multi.partner?.({ species, pp })
+    for (const [side, list] of [
+      ['p2', foe.team], ['p2', foe2?.team ?? []], ['p1', partner?.team ?? []],
+    ] as const) {
+      for (const m of list) {
+        roster[m.key] = {
+          side,
+          species: m.mon.species,
+          form: m.mon.form,
+          nickname: null,
+          level: m.mon.level,
+        }
       }
-    })
+    }
+    // 둘이 서는 판이면 더블이다 (`sim/session`이 같은 셈을 한다)
+    const twoSided = doubles || foe2 !== undefined || partner !== undefined
 
     const trainer = useSaveStore.getState().trainer
     waiting = '심판'
@@ -1657,10 +1927,15 @@ async function open(
       ...(rules?.noCrit === true ? { noCrit: true } : {}),
       ...(rules?.roamer === true ? { roamer: true } : {}),
       ...(items ? { items } : {}),
-      ...(doubles ? { doubles: true } : {}),
+      ...(twoSided ? { doubles: true } : {}),
+      ...(foe2 ? { foe2 } : {}),
+      ...(foe2 && multi.ai2 !== undefined ? { ai2: { flags: multi.ai2, moves } } : {}),
+      ...(multi.items2 ? { items2: multi.items2 } : {}),
+      ...(partner ? { partner } : {}),
+      ...(partner && multi.partnerAi !== undefined ? { partnerAi: { flags: multi.partnerAi, moves } } : {}),
       // 시합규칙 「교체」는 트레이너전에만 뜻이 있다 — 야생은 다음 마리가 없다.
       // ⚠️ 더블에는 안 걸린다. 원작의 그 설정은 1대1 전용이다
-      ...(kind === 'trainer' && !doubles && useOptionsStore.getState().battleRule === 0
+      ...(kind === 'trainer' && !twoSided && useOptionsStore.getState().battleRule === 0
         ? { shift: true }
         : {}),
       // 남에게 받은 마리는 뱃지 수만큼만 말을 듣는다 (PARITY §2.18)
@@ -1675,7 +1950,7 @@ async function open(
     // 한 걸음 앞서 나간다 — 고치지 않으면 첫 타를 맞을 때까지 게이지만
     // 만피로 거짓말을 한다
     const met = roamerMet
-    const events = foeFirst(
+    const events = leadOrder(
       met === null
         ? step.events
         : step.events.map((e) =>
@@ -1690,11 +1965,13 @@ async function open(
       phase: 'running',
       // 늦게라도 열렸으면 하던 말은 지운다
       error: null,
-      truth: events === step.events ? step.view : applyEvents(emptyView(doubles), events),
+      truth: events === step.events ? step.view : applyEvents(emptyView(twoSided), events),
       // 빈 무대에서 시작한다. 등판도 재생기가 한 박자씩 올린다
-      view: emptyView(doubles),
+      view: emptyView(twoSided),
       events,
-      doubles,
+      doubles: twoSided,
+      // 처음부터 쓰러져 있는 내 마리는 파티 공이 처음부터 꺼져 있다
+      downKeys: team.filter((m) => m.mon.hp <= 0).map((m) => m.key),
       ...turnState(controller),
       roster,
       shiftAsk: controller.shiftAsk,

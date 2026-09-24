@@ -13,9 +13,9 @@
 // 그래서 시험이 보는 것은 "부르면 안 터지는가"가 아니라 **답 칸이 실제로
 // 바뀌는가**다.
 import { expect, it, describe } from 'vitest'
-import { HANDLERS } from './commands'
+import { HANDLERS, SYSTEM_FLAG } from './commands'
 import { ScriptContext } from './context'
-import { VarStore, FLAG_HAS_POKEDEX } from './vars'
+import { VarStore, FLAG_HAS_POKEDEX, VAR_PARTNER_TRAINER_ID } from './vars'
 import { FieldWorld, type FieldServices } from './world'
 
 /** 답이 들어올 자리 */
@@ -123,6 +123,47 @@ describe('이야기 길목', () => {
     })
     expect(got).toEqual([11, 22, 33])
     expect(r.tick()).toBe(true)
+  })
+
+  /**
+   * ⚠️ **둘째 상대를 버리지 않는다** (PARITY §2.2b · `ScrCmd_StartTrainerBattle`).
+   *
+   * 한동안 둘째 인자를 읽고 버려서 창기둥의 조무래기 둘(`TRAINER_GALACTIC_GRUNT_
+   * SPEAR_PILLAR_1, _2` = 521·527)이 한 사람이 됐다. 원작은 둘째가 첫 상대와
+   * 다르면 트레이너 둘과의 2vs2를 연다 (`Encounter_NewVsTrainer`)
+   */
+  it('트레이너전은 둘째 상대까지 넘기고, 동행이 없으면 편은 0이다', () => {
+    let got: [number, number | undefined, number | undefined] | null = null
+    const r = run('StartTrainerBattle', [...u16(521), ...u16(527)], {
+      startTrainerBattle: (a, b, partner) => { got = [a, b, partner] },
+      battleResult: () => null,
+    })
+    expect(got).toEqual([521, 527, 0])
+    // 배틀이 끝날 때까지 선다
+    expect(r.tick()).toBe(true)
+  })
+
+  it('⚠️ 동행이 붙어 있으면 그 사람이 편으로 간다 — 스크립트는 편을 안 적는다', () => {
+    // 영원의 숲: `SetVar VAR_PARTNER_TRAINER_ID, TRAINER_CHERYL_ETERNA_FOREST`
+    // → `SetHasPartner`. 그 뒤 눈이 마주친 둘과의 판에 모미가 선다
+    const vars = new VarStore()
+    const CHERYL = 608
+    vars.set(VAR_PARTNER_TRAINER_ID, CHERYL)
+    vars.setFlag(SYSTEM_FLAG.hasPartner)
+    let got: number[] | null = null
+    run('StartTrainerBattle', [...u16(100), ...u16(101)], {
+      startTrainerBattle: (a, b, partner) => { got = [a, b ?? -1, partner ?? -1] },
+      battleResult: () => null,
+    }, vars)
+    expect(got).toEqual([100, 101, CHERYL])
+
+    // 깃발이 내려가면 번호가 남아 있어도 편이 없다 (`ClearHasPartner`)
+    vars.clearFlag(SYSTEM_FLAG.hasPartner)
+    run('StartTrainerBattle', [...u16(100), ...u16(101)], {
+      startTrainerBattle: (a, b, partner) => { got = [a, b ?? -1, partner ?? -1] },
+      battleResult: () => null,
+    }, vars)
+    expect(got).toEqual([100, 101, 0])
   })
 
   it('독은 체력이 정확히 1일 때만 풀린다', () => {

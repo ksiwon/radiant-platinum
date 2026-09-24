@@ -37,6 +37,18 @@ export const VAR_DISTORTION_CYRUS = 16475
 export const VAR_BATTLE_FACTORY_CHALLENGE_TYPE = 16568
 export const VAR_BATTLE_FACTORY_CHALLENGE_LEVEL = 16569
 /**
+ * 따라다니는 동행의 트레이너 번호 (`VAR_PARTNER_TRAINER_ID` = 0x403F · PARITY §2.2b).
+ *
+ * 영원의 숲의 모미·도구섬의 현이·험한길의 마이·바람의 길의 오바·단단한산의 대엽이
+ * 스크립트에서 `SetVar VAR_PARTNER_TRAINER_ID, …`로 적고 `SetHasPartner`를 세운다.
+ * 그동안 트레이너 둘과 만나면 이 사람이 편으로 서고(`ScrCmd_StartTrainerBattle`),
+ * 풀숲의 야생은 둘이 나온다(`wild_encounters.c` 341).
+ *
+ * 값은 `vars_flags.txt`를 C 열거형처럼 센 것이다 — 이웃한 `VAR_SIZE_CONTEST_RECORD`가
+ * 0x4035로 이미 확정되어 있고(`script/commands`) 거기서 열 칸 뒤다
+ */
+export const VAR_PARTNER_TRAINER_ID = 0x403f
+/**
  * 물가시티가 어디까지 왔는가 (`VAR_SUNYSHORE_CITY_STATE` = 0x407E).
  *
  * 0이면 `SunyshoreCity_OnFrame_Flint`가 매 프레임 걸린다 — 그 스크립트는

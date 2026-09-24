@@ -13,7 +13,7 @@ import type {
 import type { Status } from '../../engine/pokemon/instance'
 import { DATA, withData } from '../../data/romData.testkit'
 import {
-  ACTIVATE_IDS, battleText, SINGLE_MOVE_IDS, SINGLE_TURN_IDS,
+  ACTIVATE_IDS, battleText, leadLines, SINGLE_MOVE_IDS, SINGLE_TURN_IDS,
   type BattleNames, type TextContext,
 } from './messages'
 import { BATTLE_BANK, MOVE_BANK, STAT_BANK } from './romText'
@@ -533,5 +533,74 @@ withBank('트레이너 줄', () => {
     expect(battleText({ kind: 'tie' }, link)).toBe('체육관 관장 동관과의\n승부에서 비겼다!')
     // 부를 이름이 없으면 우리 한 줄이다 — 야생전이 그렇다
     expect(battleText({ kind: 'tie' }, ctx)).toBe('무승부다!')
+  })
+})
+
+// ── 트레이너가 둘 이상인 판 (PARITY §2.2b) ────────────────────────────────────
+withBank('첫 등판 한 창 (`leadLines`)', () => {
+  const enter = (slot: Actor['slot'], name: string): BattleEvent => ({
+    kind: 'switch', actor: { slot, side: slot.startsWith('p1') ? 'p1' : 'p2', name },
+    species: 387, speciesName: 'Turtwig', level: 5, gender: 'male', shiny: false,
+    condition: { hp: 20, maxHp: 20, status: 'ok' }, forced: false,
+  })
+  /** 이름 → 트레이너. 키 앞머리가 주인이다 (`aftermath.ownerOfKey`) */
+  const trainers: Record<string, { cls: string; name: string }> = {
+    p2: { cls: '갤럭시단', name: '마스' },
+    p4: { cls: '갤럭시단', name: '쥬피터' },
+  }
+  const multi: TextContext = {
+    ...ctx,
+    label: (a) => (a.side === 'p1' ? '모부기' : '상대 팬텀'),
+    bare: (key) => (key.startsWith('p3') ? '엠페르트' : key.startsWith('p1') ? '모부기' : '팬텀'),
+    trainerOf: (key) => trainers[key.slice(0, 2)] ?? null,
+  }
+
+  it('트레이너 둘 — 두 사람이 한 창에서 저마다 내보내고, 편이 먼저 「가랏!」을 잇는다', () => {
+    const events: BattleEvent[] = [
+      { kind: 'start' },
+      enter('p2a', 'p2-0'), enter('p2b', 'p4-0'), enter('p1b', 'p3-0'), enter('p1a', 'p1-0'),
+    ]
+    const got = leadLines(events, multi, { trainer: true, partner: { cls: '포켓몬 트레이너', name: '라이벌' } })
+    const foe = got.get(events[1]!)!
+    // 롬 991번 — 「{분류1} {이름1}은 {포켓몬1}을 내보냈다! / {분류2} {이름2}는 …」
+    expect(foe).toContain('마스')
+    expect(foe).toContain('쥬피터')
+    expect(got.get(events[2]!)).toBeNull()
+    // 롬 993번 — 편이 첫 칸이고 내 마리가 「가랏!」 뒤다
+    const ours = got.get(events[3]!)!
+    expect(ours).toContain('라이벌')
+    expect(ours).toContain('엠페르트')
+    expect(ours).toContain('가랏! 모부기!')
+    expect(got.get(events[4]!)).toBeNull()
+  })
+
+  it('한 사람의 더블은 「{둘}을 내보냈다」 한 줄, 내 둘은 「가랏! {하나}! {둘}!」이다', () => {
+    const one: TextContext = { ...multi, trainerOf: () => ({ cls: '쌍둥이', name: '이향&미향' }) }
+    const events: BattleEvent[] = [
+      { kind: 'start' },
+      enter('p2a', 'p2-0'), enter('p2b', 'p2-1'), enter('p1a', 'p1-0'), enter('p1b', 'p1-1'),
+    ]
+    const got = leadLines(events, one, { trainer: true, partner: null })
+    expect(got.get(events[1]!)).toContain('이향&미향')
+    expect(got.get(events[2]!)).toBeNull()
+    expect(got.get(events[3]!)).toBe('가랏! 모부기! 모부기!')
+  })
+
+  it('야생 둘은 **둘이 선 뒤에** 글이 뜬다 — 줄을 뒤 사건에 싣는다', () => {
+    const events: BattleEvent[] = [{ kind: 'start' }, enter('p2a', 'p2-0'), enter('p2b', 'p2-1')]
+    const got = leadLines(events, multi, { trainer: false, partner: null })
+    expect(got.get(events[1]!)).toBeNull()
+    expect(got.get(events[2]!)).toContain('튀어나왔다')
+  })
+
+  it('싱글은 손대지 않는다', () => {
+    const events: BattleEvent[] = [{ kind: 'start' }, enter('p2a', 'p2-0'), enter('p1a', 'p1-0')]
+    expect(leadLines(events, multi, { trainer: true, partner: null }).size).toBe(0)
+  })
+
+  it('중간 교체는 **그 마리의 트레이너** 이름으로 부른다', () => {
+    const line = battleText(enter('p2b', 'p4-1'), multi)
+    expect(line).toContain('쥬피터')
+    expect(line).not.toContain('마스')
   })
 })

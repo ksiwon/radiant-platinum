@@ -104,8 +104,14 @@ const UNNAMED: NameSource = {
 export type ShopCurrency = 'money' | 'bp'
 
 export interface FieldServices {
-  /** 트레이너전을 연다 */
-  startTrainerBattle?: (trainerID: number) => void
+  /**
+   * 트레이너전을 연다 (`ScrCmd_StartTrainerBattle` → `Encounter_NewVsTrainer`).
+   *
+   * `second`는 둘째 상대(0이면 없다), `partner`는 동행(0이면 없다). 둘째가
+   * 첫 상대와 다르면 트레이너 둘과의 2vs2다 — 동행이 있으면 편이 옆에 선다
+   * (PARITY §2.2b)
+   */
+  startTrainerBattle?: (trainerID: number, second?: number, partner?: number) => void
   /**
    * 머리 위에 표시를 띄운다 (`ov5_021F5D8C`).
    *
@@ -1028,11 +1034,11 @@ export interface FieldServices {
    */
   startScriptedWildBattle?: (species: number, level: number) => void
   /**
-   * 태그 배틀 (`Encounter_NewVsTrainer`에 파트너를 붙인 것).
+   * 태그 배틀 (`Encounter_NewVsTrainer`에 편을 붙인 것 · PARITY §2.2b).
    *
-   * 창기둥에서 라이벌과 함께 마스·쥬피터를 상대한다. 파트너가 붙는 배틀은
-   * 아직 없어서, 붙는 날까지 **파트너 없이 2:2로** 연다 — 이야기는 지나가고
-   * 없는 것은 옆에 선 사람뿐이다
+   * 창기둥에서 라이벌과 함께 마스·쥬피터를, 장막시티·축복시티에서 갤럭시단
+   * 조무래기 둘을 상대한다. 편은 우리 쪽 자리 b에 서서 제 AI로 싸운다
+   * (`BATTLE_TYPE_TRAINER_WITH_AI_PARTNER`)
    */
   startTagBattle?: (partner: number, enemy1: number, enemy2: number) => void
   /**

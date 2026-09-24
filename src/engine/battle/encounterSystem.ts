@@ -93,6 +93,14 @@ export const encounters = {
    * 나가는 글과 워프」는 롬의 안내원 스크립트가 갖고 있다 — 씬이 그것을 돌린다
    */
   safariOutOfBalls: null as (() => void) | null,
+  /**
+   * 지금 따라다니는 동행의 트레이너 번호. 없으면 0 (PARITY §2.2b).
+   *
+   * 씬이 걸음마다 맞춘다 (`scene/stepSystem`) — `src/engine`은 세이브를 못 읽는다.
+   * 0이 아니면 풀숲 조우가 **야생 둘 + 편**의 더블이 되고, 배회·레이더는 안 나온다
+   * (`wild_encounters.c` 291~321 — `withPartner`면 두 갈래를 다 건너뛴다)
+   */
+  partner: 0,
   /** 씬이 처리해야 할 조우. 처리 후 null로 되돌린다 */
   pending: null as WildEncounter | null,
   /** 판정을 멈추는 스위치 — 전투 중이거나 워프 전이 중일 때 */
@@ -156,7 +164,10 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   // ⚠️ **무더기를 밟으면 관문을 안 본다** (PARITY §6.5). 원작이
   // `gettingEncounter = TRUE`로 덮어쓴다 — 흔들리는 풀은 반드시 나온다.
   // 그리고 그 판에서는 배회도 안 물어본다
-  const radar = kind === 'land' ? encounters.radarStep?.(tx, tz) ?? null : null
+  // 동행이 있으면 풀숲은 야생 둘과의 더블이다. 파도타기는 원작도 싱글이다 —
+  // `TryGenerateSurfEncounter`는 한 번만 굴린다 (`wild_encounters.c` 740)
+  const partner = kind === 'land' ? encounters.partner : 0
+  const radar = kind === 'land' && partner === 0 ? encounters.radarStep?.(tx, tz) ?? null : null
   if (radar === null && !shouldEncounter(rate, state, encounters.rng, where)) return
   // ⚠️ **관문을 지난 순간 유예 구간이 다시 열린다.** 뒤에서 리펠이나 특성이
   // 막아도 마찬가지다 — 원작도 `encounterAttempts = 0`을 막힌 길에서까지
@@ -169,7 +180,8 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
   // 표의 칸을 아예 안 굴린다. 뒤에 두면 배회는 「가끔 야생 대신」이 아니라
   // 「야생을 다 뽑고 나서 덮어쓰는 것」이 되어 확률이 달라진다
-  const roam = radar === null ? encounters.roamerHere?.(world.mapId, rng) ?? null : null
+  const roam = radar === null && encounters.partner === 0
+    ? encounters.roamerHere?.(world.mapId, rng) ?? null : null
   if (roam) {
     // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —
     // 뒤의 야생으로 넘어가지 않는다
@@ -207,6 +219,23 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   }
   // 모습은 맨 마지막에 정한다 — 원작도 개체를 다 만든 뒤 파티에 넣기 직전이다
   if (got) got.form = wildForm(table, got.species, rng)
+  if (got && partner !== 0) {
+    // ⚠️ **둘째도 같은 관문을 지난다** — 칸을 새로 굴리고, 리펠·특성이 막으면
+    // 이 걸음은 통째로 없던 일이다 (`TryGenerateWildMon`의 둘째 부름이 거짓이면
+    // `encounterSuccess`가 거짓이다)
+    const more = rollLand(table, rng, timeOfDayForHour(worldState.time.gameHour), {
+      swarming: encounters.swarmAt === world.mapId,
+      trophy: world.mapId === MAP_TROPHY_GARDEN ? encounters.trophy ?? undefined : undefined,
+      pick: (land) => forcedSlot(speciesOf(land), lead, typeOf, rng),
+      bump: (land, slot) => higherLevelSlot(land, lead, slot, rng),
+    })
+    if (!more || leadScaresOff(lead, more.level, rng) || repelBlocks(mods.repelLevel, more.level)) {
+      return
+    }
+    more.form = wildForm(table, more.species, rng)
+    encounters.pending = { ...got, second: more, partner }
+    return
+  }
   encounters.pending = got
 }
 
