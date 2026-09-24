@@ -74,3 +74,32 @@ describe('턱 — 미는 쪽으로만 뛴다', () => {
     expect(p.position.z).toBeGreaterThan(7)
   })
 })
+
+describe('턱 — 앞 칸 가운데에 닿고서야 뛴다', () => {
+  it('턱 앞 칸에 들어서고 몇 프레임 더 쥐었다 떼도 뛰지 않는다', () => {
+    activeZone.grid = ledgeRow()
+    reset(4.5)
+    const p = worldState.player
+    worldState.input.move.set(0, 1)
+    for (let i = 0; i < 120 && Math.floor(p.position.z) < 5; i++) run(1)
+    // 칸 가운데(5.5)에 닿기 전까지 더 쥔다 — 원작에서는 아직 그 칸으로 드는 걸음 중이다
+    while (p.position.z < 5.4) run(1)
+    worldState.input.move.set(0, 0)
+    run(90)
+    activeZone.grid = null
+    expect(p.hop.active).toBe(false)
+    expect(p.position.z).toBeLessThan(6)
+  })
+
+  it('계속 쥐고 있으면 가운데를 지나며 뛴다', () => {
+    activeZone.grid = ledgeRow()
+    reset(4.5)
+    const p = worldState.player
+    worldState.input.move.set(0, 1)
+    run(90)
+    worldState.input.move.set(0, 0)
+    run(30)
+    activeZone.grid = null
+    expect(p.position.z).toBeGreaterThan(7)
+  })
+})
