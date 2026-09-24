@@ -1567,8 +1567,15 @@ export async function driveStory(page, {
       const [ldx, ldz] = STEPV[leg.key]
       const beyond = { x: leg.want.x + ldx, z: leg.want.z + ldz }
       const doorAhead = doors.some((w) => w.x === beyond.x && w.z === beyond.z)
+      /**
+       * ⚠️ **다음 칸이 턱(뛰어내리는 칸 0x38~0x3B)이어도 마지막 한 칸은 딛는다.** 쥐고 가다 한 칸 더 밀리면
+       * 턱을 뛰어내려 **되돌아올 수 없는 아래**로 간다 — 천관산 1F 남 (22,10)에서 아래로 몰다가 (22,11) 턱을
+       * 넘어 남쪽 못가로 떨어져, 파도타기 세 번짜리 한 바퀴를 되풀이했다(탐침 p4)
+       */
+      const beyondBeh = gridOf(matrixOf(mapId)).at(beyond.x, beyond.z) & 0x7fff
+      const ledgeAhead = beyondBeh >= 0x38 && beyondBeh <= 0x3b
       let at
-      if (doorAhead) {
+      if (doorAhead || ledgeAhead) {
         if (leg.count > 1) {
           const shy = { x: leg.want.x - ldx, z: leg.want.z - ldz }
           at = await runKeys(leg.key, leg.count - 1, shy)

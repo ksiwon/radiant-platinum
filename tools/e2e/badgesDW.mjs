@@ -48,6 +48,9 @@ const HQ_B2F_DOOR = { x: 14, z: 8 }
 const HQ_FRONT_DOOR = { x: 714, z: 589 }
 /** 1F 열쇠 문 (22~23,18) — 그 앞 칸에서 북으로 A */
 const HQ_1F_DOOR = { x: 22, z: 18 }
+/** 홀 연설 좌표 (20,12)·(20,13) · 서쪽 출구 (1,12) → 2F 낮잠방 (52,6) */
+const HALL_SPEECH = { x: 20, z: 12 }
+const HALL_WEST_EXIT = { x: 1, z: 12 }
 /** 2F 낮잠방 침대 — 말 걸면 회복 (`GalacticHQ2F_Bed`) */
 const HQ_BED = { x: 40, z: 5 }
 /** 4F 열쇠 문 (8~9,14) · 그 너머 태홍 좌표 (8,11) 폭 2 */
@@ -226,10 +229,16 @@ export async function veilstoneHQ(api, ctx, { levels = { lead: 64, bird: 62, thi
     await api.clearTalk(); await api.settle()
     note('1F 열쇠 문 (22,18)', door ? '열었다' : '못 걸었다')
     await via(api, note, [MAP.hq1F, MAP.hq2F, MAP.hqHall], '홀로 — 1F 계단 (19,14) · 2F')
+    /**
+     * ⚠️ **연설 칸 (20,12)을 밟는다** — 홀 좌표 (20,12)·(20,13)은 서쪽 출구 (1,12)로 가는 유일한 길이다(롬 §G-11).
+     * 그냥 `goTo(2F)`를 부르면 들어온 문 (24,6)으로 되돌아 나가 연설도 낮잠방도 안 지난다(탐침 p3 — 홀 상태 0)
+     */
+    const speech = await api.stepOn(MAP.hqHall, HALL_SPEECH, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     v = await vars()
-    note('홀 연설', `홀 상태 ${String(v.hall)}`)
-    await walk(MAP.hq2F, '2F 낮잠방으로', 600_000)
+    note('홀 연설 (20,12)', `${speech} · 홀 상태 ${String(v.hall)}`)
+    const nap = await boardWarp(api, MAP.hqHall, HALL_WEST_EXIT, Math.min(300_000, api.left()))
+    note('홀 서쪽 출구 (1,12) → 2F 낮잠방', nap)
     const bed = await api.talkTo(MAP.hq2F, HQ_BED, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     note('낮잠방 침대 (40,5)', bed ? '쉬었다' : '못 걸었다')
@@ -285,6 +294,15 @@ export async function coronetToSpear(api, ctx,
 
   let v = await vars()
   if ((v.spear ?? 0) < 1 && (await api.now()).map !== MAP.spearPillar) {
+    /**
+     * ⚠️ **아지트 안에서는 공중날기가 안 된다** — 원작이 맵 헤더로 막는다(`field_move_tasks.c`의 공중날기 검사 ·
+     * `maps.json`의 fly 0). 제어실에서 걸어 나온다: 연구소 → 4F → 3F 패널 → 2F 낮잠방 → 홀 → 2F → 1F 로비 → 정문
+     */
+    const HQ = [MAP.hqControl, MAP.hqLab, MAP.hq4F, MAP.hq3F, MAP.hq2F, MAP.hqHall, MAP.hq1F]
+    if (HQ.includes((await api.now()).map)) {
+      const out = await api.goTo(MAP.veilstone, Math.min(1_800_000, api.left()))
+      note('아지트를 걸어 나온다 (장막시티로)', out)
+    }
     const fly = await api.flyTo(MAP.hearthome, Math.min(120_000, api.left()))
     note('공중날기 → 축복시티', fly.ok ? '닿았다' : String(fly.why))
     const bought = await api.buyAt(MAP.hearthomeMart, ITEM.hyperPotion, potions, Math.min(300_000, api.left()))
