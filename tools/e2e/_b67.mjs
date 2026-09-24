@@ -197,6 +197,70 @@ try {
        * `--ride=hold`(옛 `stepKey`) 또는 `--ride=early`(`rideStep`)로 밟고, 3초 동안 50ms마다
        * 주인공 자리·높이·`riding`·판 움직임을 적는다
        */
+      // 진단 — 선단 체육관에서 계획한 미끄럼을 몇 수 밟으며 프레임마다 적는다 (탐침 g7a — 멈춤이 판마다 다르다)
+      if (legs.includes('icetrace')) {
+        const went = await api.goTo(MAP.snowpointGym, Math.min(600_000, api.left()))
+        note('선단 체육관', went)
+        await page.evaluate(async () => {
+          const ice = await import('/src/engine/actor/ice.ts')
+          const st = await import('/src/state/worldState.ts')
+          const rows = []
+          window.__iceTrace = rows
+          let last = performance.now()
+          const tick = () => {
+            const t = performance.now()
+            const p = st.worldState.player.position
+            const s = ice.iceSlide
+            rows.push([Math.round(t), Math.round(t - last), +p.x.toFixed(2), +p.z.toFixed(2), s.active ? 1 : 0, s.dx, s.dz, s.speed,
+              s.toX, s.toZ, s.bouncing ? 1 : 0, +st.worldState.player.velocity.x.toFixed(2), +st.worldState.player.velocity.z.toFixed(2)])
+            last = t
+            if (rows.length < 20000) requestAnimationFrame(tick)
+          }
+          requestAnimationFrame(tick)
+        })
+        const STEP = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }
+        for (let i = 0; i < 6; i++) {
+          const read = await api.snowpointPlan([[11, 4], [10, 3], [12, 3]])
+          const move = read?.plan?.moves?.[0]
+          if (!move) { note('계획 없음', JSON.stringify(read?.start)); break }
+          const mark = await page.evaluate(() => window.__iceTrace.length)
+          const [dx, dz] = STEP[move.key]
+          await api.stepKey(move.key, { x: move.from.x + dx, z: move.from.z + dz })
+          for (let k = 0; k < 100; k++) { const s = await api.iceState(); if (s !== null && !s.sliding) break; await api.settle() }
+          await api.settle()
+          const here = await api.now()
+          const rows = await page.evaluate((m) => window.__iceTrace.slice(m), mark)
+          note(`수 ${String(i)} ${move.key} (${String(move.from.x)},${String(move.from.z)}) → 계획 (${String(move.to.x)},${String(move.to.z)}) · 실제 (${String(here.x)},${String(here.z)})`,
+            `프레임 ${String(rows.length)} · 최장 ${String(Math.max(...rows.map((r) => r[1])))}ms`)
+          writeFileSync(`${OUT}/icetrace-${String(i)}.json`, JSON.stringify(rows))
+        }
+        return
+      }
+      // 진단 — 선단 체육관 칸을 통째로 적는다 (탐침 d1 「무청 옆으로 가는 미끄럼 차례가 없다」)
+      if (legs.includes('icedump')) {
+        const went = await api.goTo(MAP.snowpointGym, Math.min(600_000, api.left()))
+        note('선단 체육관', went)
+        const dump = await page.evaluate(async () => {
+          const ice = await import('/src/engine/actor/ice.ts')
+          const z = await import('/src/engine/map/zone.ts')
+          const st = await import('/src/state/worldState.ts')
+          const n = await import('/src/engine/actor/npcs.ts')
+          const grid = z.activeZone.grid
+          const p = st.worldState.player.position
+          const tiles = []
+          for (let tz = 0; tz < 40; tz++) {
+            for (let tx = 0; tx < 32; tx++) {
+              tiles.push({ x: tx, z: tz, b: grid.behavior(tx, tz), w: grid.isBlocked(tx, tz), ice: ice.isIce(grid.behavior(tx, tz)),
+                h: grid.heightAtWorld(tx + 0.5, tz + 0.5, p.y) })
+            }
+          }
+          const actors = n.npcActors.list.map((a) => ({ gfx: a.gfx, x: a.x, z: a.z, visible: a.visible }))
+          return { player: { x: p.x, y: p.y, z: p.z }, tiles, actors }
+        })
+        writeFileSync(`${OUT}/ice.json`, JSON.stringify(dump))
+        note('얼음 칸 적음', `${OUT}/ice.json`)
+        return
+      }
       // 진단 — 괴력만 가르쳐 보고 화면 글을 그대로 적는다 (탐침 c4 「아무도 못 배웠다」)
       if (legs.includes('teach4')) {
         const party = (await api.partyState()) ?? []
@@ -256,7 +320,7 @@ try {
       if (legs.includes('c') && !await leg('c', 'probe-lakes.rpsave', () => canalaveToLakes(api, ctx),
         async () => (await v()).verityLeft === true)) return
       if (legs.includes('d') && !await leg('d', 'probe-snowpoint.rpsave', () => coronetToSnowpoint(api, ctx),
-        async () => (await api.now()).map === MAP.snowpoint)) return
+        async () => [MAP.snowpoint, MAP.snowpointMart, MAP.snowpointGym, MAP.snowpointCenter].includes((await api.now()).map))) return
       if (legs.includes('g7')) {
         await leg('g7', 'probe-badge7.rpsave', () => snowpointGym(api, ctx), async () => (await v()).candiceTm === true)
       }

@@ -677,7 +677,7 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
 // ── 일곱째 배지 — 천관산 → 선단 (지시서 §3.6 · §4.2) ─────────────────────────
 
 export async function coronetToSnowpoint(api, ctx,
-  { stopAt = MAP.snowpoint, levels = { lead: 58, bird: 56, third: 56 }, potions = 12 } = {}) {
+  { stopAt = null, levels = { lead: 58, bird: 56, third: 56 }, potions = 12 } = {}) {
   const t0 = Date.now()
   const out = { steps: [] }
   const note = noteOf(out, ctx)
@@ -707,26 +707,29 @@ export async function coronetToSnowpoint(api, ctx,
   note('비전머신04 괴력 → 비버통', out.strength.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
 
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다
-  if ((await api.now()).map !== MAP.coronetNorth1) {
-    const fly = await api.flyTo(MAP.celestic, Math.min(120_000, api.left()))
-    note('공중날기 → 봉신마을', fly.ok ? '닿았다' : String(fly.why))
-    // 마스전에서 둘이 쓰러진 채로 온다 (탐침 c4) — 천관산 야생 앞에서 먼저 센터에
-    const heal = await api.healAt(MAP.celesticCenter, Math.min(300_000, api.left()))
-    note('천관산 앞 회복 (봉신 센터)', heal.ok ? '나았다' : String(heal.why))
-    await via(api, note, [MAP.celesticCenter, MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
+  // 선단에서 이어 받은 판(`probe-snowpoint`)은 길을 건너뛰고 ③만 한다
+  if ((await api.now()).map !== MAP.snowpoint) {
+    if ((await api.now()).map !== MAP.coronetNorth1) {
+      const fly = await api.flyTo(MAP.celestic, Math.min(120_000, api.left()))
+      note('공중날기 → 봉신마을', fly.ok ? '닿았다' : String(fly.why))
+      // 마스전에서 둘이 쓰러진 채로 온다 (탐침 c4) — 천관산 야생 앞에서 먼저 센터에
+      const heal = await api.healAt(MAP.celesticCenter, Math.min(300_000, api.left()))
+      note('천관산 앞 회복 (봉신 센터)', heal.ok ? '나았다' : String(heal.why))
+      await via(api, note, [MAP.celesticCenter, MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
+    }
+    out.push = await api.strengthPush(MAP.coronetNorth1, CORONET_BOULDER, 'ArrowUp', 3, Math.min(300_000, api.left()))
+    note('큰바위 (29,30) 괴력', out.push.ok ? `${String(out.push.pushed)}번 밀었다` : String(out.push.why))
+    await walk(MAP.coronetB1F, '천관산 B1F(219)', 900_000)
+    await walk(MAP.coronetNorth2, '천관산 1F 북 방2(217)', 600_000)
+    await spray('216·217번도로')
+    await walk(MAP.route216, '216번도로(383)', 900_000)
+    await walk(MAP.route217, '217번도로(385)', 1_500_000)
+    await api.clearTalk(); await api.settle()
+    await spray('217번도로·예지호수근처')
+    await walk(MAP.acuityLakefront, '예지호수근처(340)', 900_000)
+    await api.clearTalk(); await api.settle()
+    await walk(MAP.snowpoint, '선단시티(165)', 900_000)
   }
-  out.push = await api.strengthPush(MAP.coronetNorth1, CORONET_BOULDER, 'ArrowUp', 3, Math.min(300_000, api.left()))
-  note('큰바위 (29,30) 괴력', out.push.ok ? `${String(out.push.pushed)}번 밀었다` : String(out.push.why))
-  await walk(MAP.coronetB1F, '천관산 B1F(219)', 900_000)
-  await walk(MAP.coronetNorth2, '천관산 1F 북 방2(217)', 600_000)
-  await spray('216·217번도로')
-  await walk(MAP.route216, '216번도로(383)', 900_000)
-  await walk(MAP.route217, '217번도로(385)', 1_500_000)
-  await api.clearTalk(); await api.settle()
-  await spray('217번도로·예지호수근처')
-  await walk(MAP.acuityLakefront, '예지호수근처(340)', 900_000)
-  await api.clearTalk(); await api.settle()
-  await walk(MAP.snowpoint, '선단시티(165)', 900_000)
   if (stopAt === MAP.snowpoint || (await api.now()).map !== MAP.snowpoint) return done()
 
   // ③ 선단 — 회복 · 사탕 · 약
@@ -783,10 +786,20 @@ export async function snowpointSlide(api, ctx, { rounds = 80 } = {}) {
       const first = { x: move.from.x + dx, z: move.from.z + dz }
       const at = await api.stepKey(move.key, first)
       if (at === null) break
-      for (let k = 0; k < 100; k++) {
+      /**
+       * ⚠️ **미끄럼이 끝나고 한 칸에 머무를 때까지 기다린다.** 「미끄러지는 중이 아니다」 한 번만 보고
+       * 읽으면 아직 미끄러지는 자리를 읽는다 — 프레임 추적(탐침 it1)에서 (1,26)으로 가는 미끄럼을
+       * (6,26)에서 읽었다. 멈춤 · 같은 칸 셋을 연달아 본다(80ms 간격)
+       */
+      let still = 0
+      let last = null
+      for (let k = 0; k < 150 && still < 3; k++) {
         const ice = await api.iceState()
-        if (ice !== null && !ice.sliding) break
-        await api.settle()
+        const tile = ice === null ? null : `${String(ice.x)},${String(ice.z)}`
+        still = ice !== null && !ice.sliding && tile === last ? still + 1 : 0
+        last = tile
+        if ((await api.now()).scene !== 'overworld') break
+        await new Promise((done) => { setTimeout(done, 80) })
       }
       await api.settle()
       const now2 = await api.now()
