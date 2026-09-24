@@ -336,7 +336,7 @@ const STEP_OF = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], Arrow
  * ⚠️ 공격 기술만 넷인 마리가 있다 — 찌르호크(인파이트 · 돌진 · 전광석화 · 날개치기).
  * 「공격 기술은 다 지킨다」로 두면 지킬 것만 남아 **공중날기를 못 배운다**(2026-09-24 탐침 5판)
  */
-function keepAllButWeakest(party, line) {
+export function keepAllButWeakest(party, line) {
   const moves = (party.find((one) => line.includes(one.species))?.moves ?? []).map((m) => m.move)
   if (moves.length < 4) return moves
   const candidates = moves.filter((m) => !HM_MOVES.includes(m))
@@ -565,6 +565,15 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
   const have = async (item) => ((await api.bagState())?.items ?? []).some((one) => one.item === item)
 
   // ③ 체육관을 나서면 라이벌 장면
+  /**
+   * ⚠️ **동관 앞(3층)에서 이어 받으면 판을 타고 입구로 내려간 뒤에 나간다.** 길 계획은 이 방의
+   * 층을 몰라 3층에서 `goTo(운하)`를 부르면 방 안을 헤맨다(탐침 c1 — 10분 동안 맵 35).
+   * 동관전에서 둘이 쓰러진 채이니 나가서 먼저 센터에 들른다(탐침 c1 — 입지호수에서 전멸)
+   */
+  if ((await api.now()).map === MAP.canalaveGym) {
+    const down = await canalaveClimb(api, ctx, { goal: CANALAVE_ENTRY, what: '운하 체육관 입구' })
+    note('운하 체육관 입구로 내려가기', down.ok === true ? '내려왔다' : String(down.why))
+  }
   let v = await vars()
   if ((v.canalave ?? 0) === 2) {
     await walk(MAP.canalave, '운하시티로 나선다 (라이벌 장면)', 300_000)
@@ -572,8 +581,14 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
     v = await vars()
     note('체육관 앞 라이벌', `운하 상태 ${String(v.canalave)} · 도서관 ${String(v.library)}`)
   }
+  {
+    const heal = await api.healAt(MAP.canalaveCenter, Math.min(300_000, api.left()))
+    note('운하 센터(36) 회복', heal.ok ? '나았다' : String(heal.why))
+  }
   // ④~⑥ 강철섬 — 현이가 바로 비전머신04를 준다
   if (!(await have(ITEM.hm04))) {
+    // ⚠️ `talkTo`는 그 맵 밖(센터 안)에서 부르면 바로 못 걸었다를 낸다 — 먼저 거리로 (탐침 c3)
+    if ((await api.now()).map !== MAP.canalave) await walk(MAP.canalave, '운하시티로 나선다', 300_000)
     const said = await api.talkTo(MAP.canalave, CANALAVE_SAILOR, Math.min(600_000, api.left()))
     await api.clearTalk(); await api.settle()
     let at = await api.now()
@@ -589,11 +604,12 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
     }
   }
   out.hm04 = await have(ITEM.hm04)
-  if (stopAt === MAP.ironIsland) return done()
+  if (stopAt === MAP.ironIsland || !out.hm04) return done()
 
   // ⑦~⑨ 도서관 — 문 앞 라이벌 → 3F 폭발 장면 → 나서면 마박사 장면
   v = await vars()
   if ((v.library ?? 0) < 2) {
+    if ((await api.now()).map !== MAP.canalave) await walk(MAP.canalave, '운하시티로 나선다', 300_000)
     const rival = await api.talkTo(MAP.canalave, LIBRARY_RIVAL, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
     note('도서관 앞 라이벌 (37,719)', rival ? '말 걸었다' : '못 걸었다')
@@ -608,13 +624,15 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
     v = await vars()
     note('도서관 앞 장면', `운하 상태 ${String(v.canalave)}`)
   }
-  if (stopAt === MAP.canalave) return done()
+  if (stopAt === MAP.canalave || (v.canalave ?? 0) < 5) return done()
 
   // 호수 ① — 장막으로 날아 입지호수 동굴의 새턴
   v = await vars()
   if (v.saturn !== true) {
     const fly = await api.flyTo(MAP.veilstone, Math.min(120_000, api.left()))
     note('공중날기 → 장막시티', fly.ok ? '닿았다' : String(fly.why))
+    const heal = await api.healAt(MAP.veilstoneCenter, Math.min(300_000, api.left()))
+    note('새턴 앞 회복 (장막 센터)', heal.ok ? '나았다' : String(heal.why))
     await via(api, note, [MAP.veilstone, MAP.gate214, MAP.route214, MAP.valorLakefront, MAP.lakeValorDrained,
       MAP.valorCavern], '입지호수 동굴로 — 214 · 입지호수근처 · 물 빠진 입지호수')
     for (let round = 0; round < 3 && v.saturn !== true && api.left() > 0; round++) {
@@ -637,7 +655,9 @@ export async function canalaveToLakes(api, ctx, { stopAt = MAP.lakeVerity } = {}
   if (v.verityLeft !== true) {
     const fly = await api.flyTo(MAP.twinleaf, Math.min(120_000, api.left()))
     note('공중날기 → 떡잎마을', fly.ok ? '닿았다' : String(fly.why))
-    await via(api, note, [MAP.twinleaf, MAP.route201, MAP.verityLakefront, MAP.lakeVerity], '진실호수로 — 201 · 진실호수근처')
+    const heal = await api.healAt(MAP.sandgemCenter, Math.min(600_000, api.left()))
+    note('마스 앞 회복 (잔모래 센터)', heal.ok ? '나았다' : String(heal.why))
+    await via(api, note, [MAP.sandgemCenter, MAP.twinleaf, MAP.route201, MAP.verityLakefront, MAP.lakeVerity], '진실호수로 — 201 · 진실호수근처')
     await api.clearTalk(); await api.settle()
     for (let round = 0; round < 3 && v.verityLeft !== true && api.left() > 0; round++) {
       if (round > 0) {
@@ -673,15 +693,27 @@ export async function coronetToSnowpoint(api, ctx,
   }
 
   // ① 괴력 → 비버통 (비전기술만 지킨다 — 물대포 자리를 준다)
-  out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE,
-    { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
+  /**
+   * ⚠️ **마스 장면 바로 뒤에서 가르치면 한 번 헛돈다** (탐침 c4 「아무도 못 배웠다」 — 같은 자리의
+   * 리포트를 이어서 가르치면 배운다). 글·장면을 걷고 한 번 더 해 본다
+   */
+  for (let round = 0; round < 2; round++) {
+    await api.clearTalk(); await api.settle()
+    out.strength = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE,
+      { keep: keepAllButWeakest((await api.partyState()) ?? [], BIDOOF_LINE) })
+    if (out.strength.ok) break
+    note('비전머신04 괴력 (헛돈 판의 화면)', JSON.stringify((out.strength.said ?? []).map((one) => one.slice(0, 120))))
+  }
   note('비전머신04 괴력 → 비버통', out.strength.ok ? `배웠다 · 잊은 것 ${JSON.stringify(out.strength.lost ?? [])}` : String(out.strength.why))
 
   // ② 봉신으로 날아 211번도로 동 → 천관산 1F 북 방1 — 큰바위를 민다
   if ((await api.now()).map !== MAP.coronetNorth1) {
     const fly = await api.flyTo(MAP.celestic, Math.min(120_000, api.left()))
     note('공중날기 → 봉신마을', fly.ok ? '닿았다' : String(fly.why))
-    await via(api, note, [MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
+    // 마스전에서 둘이 쓰러진 채로 온다 (탐침 c4) — 천관산 야생 앞에서 먼저 센터에
+    const heal = await api.healAt(MAP.celesticCenter, Math.min(300_000, api.left()))
+    note('천관산 앞 회복 (봉신 센터)', heal.ok ? '나았다' : String(heal.why))
+    await via(api, note, [MAP.celesticCenter, MAP.celestic, MAP.route211east, MAP.coronetNorth1], '천관산 1F 북 방1로 — 211번도로 동을 지나')
   }
   out.push = await api.strengthPush(MAP.coronetNorth1, CORONET_BOULDER, 'ArrowUp', 3, Math.min(300_000, api.left()))
   note('큰바위 (29,30) 괴력', out.push.ok ? `${String(out.push.pushed)}번 밀었다` : String(out.push.why))

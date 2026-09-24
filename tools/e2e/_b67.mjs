@@ -24,7 +24,8 @@ import { gpuArgs } from '../gpuFlags.mjs'
 import { driveStory } from './drive.mjs'
 import { ITEM, MAP, PASTORIA, pastoriaClimb } from './badges.mjs'
 import {
-  canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, pastoriaToCelestic, snowpointGym,
+  BIDOOF_LINE, MOVE, canalaveGym, canalaveToLakes, celesticToCanalave, coronetToSnowpoint, keepAllButWeakest,
+  pastoriaToCelestic, snowpointGym, teachTo,
 } from './badges67.mjs'
 
 const ROOT = resolve(import.meta.dirname, '../..')
@@ -196,6 +197,15 @@ try {
        * `--ride=hold`(옛 `stepKey`) 또는 `--ride=early`(`rideStep`)로 밟고, 3초 동안 50ms마다
        * 주인공 자리·높이·`riding`·판 움직임을 적는다
        */
+      // 진단 — 괴력만 가르쳐 보고 화면 글을 그대로 적는다 (탐침 c4 「아무도 못 배웠다」)
+      if (legs.includes('teach4')) {
+        const party = (await api.partyState()) ?? []
+        const keep = keepAllButWeakest(party, BIDOOF_LINE)
+        const got = await teachTo(api, ITEM.hm04, MOVE.strength, BIDOOF_LINE, { keep })
+        note('진단 괴력', JSON.stringify({ keep, ok: got.ok, why: got.why, lost: got.lost, before: got.movesBefore }))
+        for (const line of got.said ?? []) note('  화면', line.slice(0, 240))
+        return
+      }
       if (legs.includes('dbg6')) {
         const how = flag('ride', 'hold')
         await api.healAt(MAP.canalaveCenter, Math.min(300_000, api.left()))
@@ -230,17 +240,25 @@ try {
         out.g6 = await canalaveGym(api, ctx)
         await end('g6', 'probe-badge6.rpsave')
       }
-      if (legs.includes('c')) {
-        out.c = await canalaveToLakes(api, ctx)
-        await end('c', 'probe-lakes.rpsave')
+      /**
+       * ⚠️ **다리가 못 닿았으면 다음 다리를 안 돈다.** 탐침 c2는 운하에서 막힌 채로 d·g7까지
+       * 돌아 「천관산에서 괴력이 안 켜졌다」 같은 거짓 줄을 쌓았다. 못 닿은 자리의 리포트는
+       * `-못닿음`을 붙여 따로 둔다 — 다음 판이 이어 받을 파일을 덮지 않는다
+       */
+      const leg = async (what, file, run, reached) => {
+        out[what] = await run()
+        const ok = await reached()
+        await end(what, ok ? file : file.replace('.rpsave', '-못닿음.rpsave'))
+        if (!ok) note(`다리 ${what}`, '못 닿았다 — 여기서 멈춘다')
+        return ok
       }
-      if (legs.includes('d')) {
-        out.d = await coronetToSnowpoint(api, ctx)
-        await end('d', 'probe-snowpoint.rpsave')
-      }
+      const v = async () => (await api.storyVars()) ?? {}
+      if (legs.includes('c') && !await leg('c', 'probe-lakes.rpsave', () => canalaveToLakes(api, ctx),
+        async () => (await v()).verityLeft === true)) return
+      if (legs.includes('d') && !await leg('d', 'probe-snowpoint.rpsave', () => coronetToSnowpoint(api, ctx),
+        async () => (await api.now()).map === MAP.snowpoint)) return
       if (legs.includes('g7')) {
-        out.g7 = await snowpointGym(api, ctx)
-        await end('g7', 'probe-badge7.rpsave')
+        await leg('g7', 'probe-badge7.rpsave', () => snowpointGym(api, ctx), async () => (await v()).candiceTm === true)
       }
     },
   })

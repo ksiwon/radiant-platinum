@@ -2753,7 +2753,7 @@ export async function driveStory(page, {
         if ((await knows() ?? -1) >= 0) break
         const text = await screen()
         // 앞의 계기판 글(FPS · 시계)을 떼고 적는다 — 160자로 자르면 물음이 안 남았다
-        said2.push(text.replace(/^[sS]*?디지털시계/, '').slice(0, 300))
+        said2.push(text.replace(/^[\s\S]*?디지털시계/, '').slice(0, 300))
         if (text.includes('어느 기술을')) {
           const forget = (movesBefore?.[i]?.moves ?? []).findIndex((m) => !keep.includes(m))
           // 지킬 것만 남았으면 「그만둔다」(다섯째 칸)로 물러난다 — 아무것도 안 잊는다
