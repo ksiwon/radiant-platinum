@@ -201,7 +201,17 @@ export default defineConfig({
    * 같은 갈래). 기본 `exclude`를 그대로 두고 이 한 줄만 더한다
    */
   test: {
-    exclude: ['**/node_modules/**', '**/dist/**', '.audit/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', '.audit/**', '.claude/**'],
+  },
+  /**
+   * ⚠️ **`.claude/`는 안 본다.** 에이전트 작업 트리(`.claude/worktrees/*`)가 여기 생긴다 — 저장소를
+   * 통째로 한 벌 더 풀어 놓는 자리라 `index.html`까지 들어 있다. 감시가 그 HTML을 보면 **페이지를
+   * 통째로 다시 읽어서** 돌던 판이 죽는다: 실측(2026-09-24 journey 15판) — 작업 트리가 생긴 직후
+   * `Execution context was destroyed`로 끝났다. 시험 실행도 같은 자리의 시험 파일을 주워 가므로 위
+   * `exclude`에 같이 넣는다
+   */
+  server: {
+    watch: { ignored: ['**/.claude/**'] },
   },
   plugins: [
     // ⚠️ `pkmnDiet`이 먼저다 — `enforce: 'pre'`로 `resolveId`를 먼저 잡아야
