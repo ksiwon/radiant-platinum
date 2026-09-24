@@ -1417,6 +1417,9 @@ export async function driveStory(page, {
     let ridingNow = null
     /** 박동이 마지막으로 울린 때, 이 걸음이 시작한 때, 지나온 맵 자취 */
     let beatAt = Date.now()
+    /** 박동이 같은 칸을 몇 번 찍었나 — 그림을 한 번 남기는 데 쓴다 */
+    let beatSame = 0
+    let beatWhere = ''
     const t0Go = Date.now()
     const seenMaps = []
     /**
@@ -1503,6 +1506,19 @@ export async function driveStory(page, {
           + ` · 맵 ${String(s.map)} 칸 ${String(s.x)},${String(s.z)}`
           + ` · 지나온 맵 ${JSON.stringify(seenMaps.slice(-6))}`
           + ` · 쉰 바퀴 ${String(stall.idle)}`)
+        /**
+         * ⚠️ **같은 칸에서 세 번째 박동이면 그림을 남긴다.** 실측(2026-09-24 대표
+         * 구간 9판): 209번도로 (562,693)에서 20분을 같은 칸으로 찍었는데 배틀도
+         * 대사도 없었고, 무엇이 막았는지 볼 것이 하나도 없었다
+         */
+        const here = `${String(s.map)}:${String(s.x)},${String(s.z)}`
+        beatSame = here === beatWhere ? beatSame + 1 : 0
+        beatWhere = here
+        if (beatSame === 2) {
+          const file = `shots/journey/stall-${String(s.map)}-${String(s.x)}-${String(s.z)}.png`
+          await page.screenshot({ path: file }).catch(() => {})
+          log(`    같은 칸에서 3분째다 — 그림 ${file}`)
+        }
       }
       if (seenMaps.at(-1) !== s.map) {
         noteArrival(seenMaps.at(-1) ?? null, s.map, { x: s.x, z: s.z })
