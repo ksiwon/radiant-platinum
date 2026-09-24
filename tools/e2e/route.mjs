@@ -432,6 +432,26 @@ export function bikeSlopes(matrixId) {
 }
 
 /**
+ * 계획이 **북쪽으로 비탈에 들어서는 걸음**을 막는 함수 (`planPath`의 `avoidStep`).
+ * 비탈이 없는 행렬이면 `null`이다.
+ *
+ * ⚠️ **타고 있어도 막는다.** 북쪽은 **4단 전속력**일 때만 오른다(`actor/player`의
+ * `bikeAtTopSpeed` — 4단에서 페달 세 칸). 자전거는 3단으로 시작하고
+ * (`worldState`의 `bikeGear: 0` = `BIKE_GEAR.third`, 원작의 초기값) 하네스는 단
+ * 바꾸기(`B`)를 안 누르므로, **하네스의 자전거는 어떤 도움닫기로도 못 오른다.**
+ * 실측(2026-09-24 대표 구간 9판): 탄 채로 209번도로의 비탈 길(22걸음)을 골라
+ * (562,693)에서 20분을 미끄러졌다. 미끄러질 때마다 칸이 바뀌어 멈춤으로도 안 셌다.
+ *
+ * 비탈로만 닿는 자리는 그래서 `unreachable`이 된다 — 몇 시간을 미끄러지는 것보다
+ * 그쪽이 맞다. 사람은 B로 4단에 놓고 도움닫기해서 오른다
+ */
+export function slopeClimbBan(matrixId) {
+  const slopes = bikeSlopes(matrixId)
+  if (slopes.size === 0) return null
+  return (nx, nz, key) => key === 'ArrowUp' && slopes.has(`${String(nx)},${String(nz)}`)
+}
+
+/**
  * 맵 사이의 길. 워프 표를 그래프로 보고 너비 우선으로 찾는다.
  *
  * @returns 지나갈 맵 번호 목록 (`from` 포함, `to`로 끝난다). 없으면 null

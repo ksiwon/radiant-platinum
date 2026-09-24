@@ -29,8 +29,8 @@
 import { makeObserver, watchMapScene } from './observe.mjs'
 import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
 import {
-  allMaps, PLAN, bikeSlopes, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
-  planPath, TILE_TABLE, trainersOn, warpsOf,
+  allMaps, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
+  planPath, slopeClimbBan, TILE_TABLE, trainersOn, warpsOf,
 } from './route.mjs'
 
 /** 방향키 하나가 옮기는 칸 */
@@ -1410,11 +1410,6 @@ export async function driveStory(page, {
     const pen = makePen(PEN_ROUNDS, PEN_TILES)
     /** 화면이 기어서 **안 센** 바퀴 수 (`CRAWL_FPS`). 보고에만 쓴다 */
     let crawled = 0
-    /**
-     * 지금 자전거를 타고 있나. **비탈이 있는 행렬에서만** 묻고, 이 여행 동안
-     * 들고 간다 — 타고 내리는 것은 이 바퀴 안에서 안 일어난다
-     */
-    let ridingNow = null
     /** 박동이 마지막으로 울린 때, 이 걸음이 시작한 때, 지나온 맵 자취 */
     let beatAt = Date.now()
     /** 박동이 같은 칸을 몇 번 찍었나 — 그림을 한 번 남기는 데 쓴다 */
@@ -1640,19 +1635,10 @@ export async function driveStory(page, {
        *   안 빼면 **들어가려는 문 앞에도 못 서서** 어느 문으로도 못 들어간다
        */
       /**
-       * **걸어서는 진흙 비탈을 못 오른다** (`bikeSlopes`).
-       *
-       * ⚠️ 타고 있으면 오를 수 있으므로 **탄 채로는 안 막는다.** 비탈이 하나도
-       * 없는 행렬이 대부분이라, 있는 행렬에서만 「지금 타고 있나」를 묻는다
+       * **진흙 비탈은 오르지 않는다** — 걸어서도, 하네스의 3단 자전거로도
+       * (`slopeClimbBan`). 내려오는 걸음은 그대로 둔다
        */
-      const slopes = bikeSlopes(here)
-      if (slopes.size > 0 && ridingNow === null) {
-        const r = await obs.riding()
-        ridingNow = r.known ? r.value : false
-      }
-      const noClimb = slopes.size === 0 || ridingNow === true
-        ? null
-        : (nx, nz, key) => key === 'ArrowUp' && slopes.has(`${String(nx)},${String(nz)}`)
+      const noClimb = slopeClimbBan(here)
       const path = (isGoal, why, door = false, into = []) => {
         const banStep = noDoorStep(s.map, into)
         const opts = {

@@ -11,7 +11,9 @@ import { Behavior } from '../../src/engine/map/zone'
 import { PASTORIA_WATER } from '../../src/engine/world/pastoriaGym'
 import { VEILSTONE_GYM_MAP } from '../../src/engine/world/veilstoneGym'
 import { MAP, PASTORIA, pastoriaButtons, VEILSTONE } from './badges.mjs'
-import { bikeSlopes, gridOf, matrixOf, missingData, npcsOf, planPath, warpsOf } from './route.mjs'
+import {
+  bikeSlopes, gridOf, matrixOf, missingData, npcsOf, planPath, slopeClimbBan, warpsOf,
+} from './route.mjs'
 
 /** 자료를 아직 안 구운 기계에서는 **미실행**이다. 통과가 아니다 */
 const HAVE = missingData().length === 0
@@ -70,6 +72,41 @@ describe.skipIf(!HAVE)('진흙 비탈', () => {
     expect(walking.keys!.length).toBeGreaterThan(riding.keys!.length)
     expect(riding.keys!.length).toBe(22)
     expect(walking.keys!.length).toBe(38)
+  })
+
+  /**
+   * ⚠️ **탄 채로도 막는다** (`slopeClimbBan`). 하네스의 자전거는 3단이라 전속력이
+   * 안 되고, 전속력이 아니면 비탈에서 미끄러져 내려온다. 실측(2026-09-24 대표 구간
+   * 9판): 탄 채로 22걸음짜리 비탈 길을 골라 (562,693)에서 20분을 미끄러졌다.
+   *
+   * 막는 판단은 **타고 있는지를 묻지 않는다** — 묻는 인자가 없는 것이 잠금이다
+   */
+  it('계획은 탄 채로도 비탈을 오르지 않는다', () => {
+    const grid = gridOf(0)
+    const ban = slopeClimbBan(0)
+    expect(ban).not.toBeNull()
+    const toSolaceon = (x: number, z: number): boolean => grid.zoneAt(x, z) === MAP.solaceon
+    const slopes = bikeSlopes(0)
+    for (const from of [{ x: 562, z: 693 }, { x: 560, z: 707 }]) {
+      const plan = planPath(0, from, toSolaceon, { avoidStep: ban })
+      expect(plan.keys).not.toBeNull()
+      let x = from.x, z = from.z
+      for (const key of plan.keys!) {
+        const [dx, dz] = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[key as 'ArrowUp']
+        x += dx; z += dz
+        expect(key === 'ArrowUp' && slopes.has(`${String(x)},${String(z)}`)).toBe(false)
+      }
+    }
+    // 내려오는 걸음은 막지 않는다 — 비탈 꼭대기에서 남쪽으로
+    expect(ban!(562, 692, 'ArrowDown')).toBe(false)
+    expect(ban!(562, 692, 'ArrowUp')).toBe(true)
+  })
+
+  it('비탈이 없는 행렬에서는 아무것도 안 막는다', () => {
+    // 무쇠 체육관(47)은 실내 행렬이고 비탈이 없다
+    const inside = matrixOf(47)
+    expect(bikeSlopes(inside).size).toBe(0)
+    expect(slopeClimbBan(inside)).toBeNull()
   })
 })
 
