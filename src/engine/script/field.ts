@@ -1638,15 +1638,19 @@ function sightAt(
 const APPROACHING_TRAINER_SCRIPT = SCRIPT_ID_OFFSET_SINGLE_BATTLES + 928
 
 /**
- * 더블 한 쌍의 나머지 하나 (`FindTrainerPartner`).
+ * 더블 한 쌍의 나머지 하나 (`FindTrainerPartner` · `trainer_encounter.c` 356).
  *
- * ⚠️ **같은 스크립트를 가리키는 다른 객체**다 — 트레이너 번호가 같다.
- * 시야 거리와 방향은 **첫 사람 것을 그대로 쓴다** (`ApproachingTrainer_Init`)
+ * ⚠️ **스크립트가 아니라 트레이너 번호로 찾는다.** 둘의 스크립트는 다르다 — 첫 사람이
+ * 3000+번호−1, 짝이 5000+번호−1이다(209번도로 쌍둥이 3293·5293). 스크립트가 같기를
+ * 바라면 짝이 영영 안 걸려서 한 사람만 걸어오고, 짝의 대사가 비고, `StartTrainerBattle`이
+ * 둘째 인자 0으로 열린다. 시야 거리와 방향은 **첫 사람 것을 그대로 쓴다**
+ * (`ApproachingTrainer_Init`)
  */
 function partnerOf(npc: Npc, first: ApproachingTrainer): ApproachingTrainer | null {
+  const id = trainerIdOf(npc.script)
   for (const actor of npcActors.list) {
     if (actor.info.localID === npc.localID) continue
-    if (actor.info.script !== npc.script) continue
+    if (trainerIdOf(actor.info.script) !== id) continue
     const type = actor.info.trainerType
     if (type !== TRAINER_TYPE.normal && type !== TRAINER_TYPE.viewAllDirections) continue
     return { ...first, localID: actor.info.localID }

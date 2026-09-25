@@ -759,8 +759,14 @@ const services: FieldServices = {
     return trainerMessages[index] ?? ''
   },
 
+  /**
+   * 싸울 수 있는 마리 수 (`Party_GetUsableMonCount` → `Pokemon_CanBattle` ·
+   * `unk_02054884.c` 22). ⚠️ **알은 안 센다** — 알은 체력이 가득 찬 채로 만들어져서
+   * 체력만 보면 한 마리 + 알이 「두 마리」가 되어 더블 트레이너·VS2 시선·창기둥의
+   * 「두 마리 필요하다」가 틀린 쪽으로 열린다
+   */
   aliveMons(): number {
-    return useSaveStore.getState().party.filter((mon) => mon.hp > 0).length
+    return useSaveStore.getState().party.filter((mon) => !mon.isEgg && mon.hp > 0).length
   },
 
   /**

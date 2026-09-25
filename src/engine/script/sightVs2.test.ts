@@ -16,7 +16,9 @@ import type { EventFile, MapHeader, Npc } from '../map/world'
 import { world as mapWorld } from '../map/world'
 import type { MapGrid } from '../map/grid'
 import { worldState } from '../../state/worldState'
-import { buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG } from './commands'
+import {
+  buildCommands, SCRIPT_ID_OFFSET_DOUBLE_BATTLES, SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG,
+} from './commands'
 import { parseScriptMeta } from './data'
 import { enterMap, fieldScripts, makeWorld, resetSightTile, scriptStepSystem } from './field'
 import { addNpcFrom, clearNpcs } from '../actor/npcs'
@@ -125,6 +127,23 @@ maybe('두 트레이너의 시야', () => {
     const [first, second] = fieldScripts.world!.approaching
     expect(first?.type).toBe(APPROACH_TYPE.vs2)
     expect(second?.trainerID).toBe(B.trainer)
+  })
+
+  it('⑤ 더블 한 쌍은 **트레이너 번호로** 짝을 찾는다 — 짝의 스크립트는 5000번대다', () => {
+    // 209번도로 쌍둥이가 3293·5293이다 (`tools/jsoncnv/convert.py` 81). 스크립트가 같기를
+    // 바라면 짝이 안 걸려 한 사람만 걸어왔다 (`FindTrainerPartner` · `trainer_encounter.c` 356)
+    double = true
+    clearNpcs()
+    addNpcFrom(trainerAt(A, 10, 6, DIR.south), fieldScripts.vars)
+    addNpcFrom({
+      ...trainerAt({ localID: 52, trainer: A.trainer }, 11, 6, DIR.south),
+      script: SCRIPT_ID_OFFSET_DOUBLE_BATTLES + A.trainer - 1,
+    }, fieldScripts.vars)
+    walkIn()
+    const [first, second] = fieldScripts.world!.approaching
+    expect(first?.type).toBe(APPROACH_TYPE.doubles)
+    expect(second?.localID).toBe(52)
+    expect(second?.trainerID).toBe(A.trainer)
   })
 
   it('④ 더블 트레이너는 두 마리가 없으면 아예 안 온다', () => {

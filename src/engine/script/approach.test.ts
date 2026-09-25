@@ -9,7 +9,9 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES } from './commands'
+import {
+  buildCommands, SCRIPT_ID_OFFSET_DOUBLE_BATTLES, SCRIPT_ID_OFFSET_SINGLE_BATTLES,
+} from './commands'
 import { ScriptContext } from './context'
 import { entryOffset, fileBytes, parseScriptMeta, resolveScript } from './data'
 import { VarStore } from './vars'
@@ -48,13 +50,17 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
   afterEach(() => { clearNpcs() })
 
   /** 주인공 북쪽 네 칸에 서서 남쪽(주인공 쪽)을 보는 트레이너 */
-  const placed = (localID = LOCAL_ID, x = 10): Npc => ({
+  const placed = (localID = LOCAL_ID, x = 10, base = SCRIPT_ID_OFFSET_SINGLE_BATTLES): Npc => ({
     x, z: 6, height: 0, localID, sprite: 1, move: 0,
-    trainerType: 1, facing: DIR.south, script: SCRIPT_ID_OFFSET_SINGLE_BATTLES + TRAINER - 1,
+    trainerType: 1, facing: DIR.south, script: base + TRAINER - 1,
     flag: null, range: [0, 0], raw: [0, 0, 0, 0, 0, 0, 0, 4],
   })
 
-  /** 더블 한 쌍의 나머지 하나. **같은 스크립트**를 가리킨다 */
+  /**
+   * 더블 한 쌍의 나머지 하나. **스크립트가 다르고 트레이너 번호가 같다** — 첫 사람은
+   * 3000+번호−1, 짝은 5000+번호−1이다 (`tools/jsoncnv/convert.py` 81 · 209번도로
+   * 쌍둥이가 3293·5293). 원작은 번호로 짝을 찾는다 (`FindTrainerPartner` · 363)
+   */
   const PARTNER_ID = 4
 
   interface Log {
@@ -73,7 +79,8 @@ maybe('다가오는 트레이너 — 실제 스크립트', () => {
     const vars = new VarStore()
     clearNpcs()
     addNpcFrom(placed(), vars)
-    if (double || vs2) addNpcFrom(placed(PARTNER_ID, 11), vars)
+    if (double) addNpcFrom(placed(PARTNER_ID, 11, SCRIPT_ID_OFFSET_DOUBLE_BATTLES), vars)
+    else if (vs2) addNpcFrom(placed(PARTNER_ID, 11), vars)
     const actor = npcActors.byLocalID.get(LOCAL_ID)!
     const log: Log = {
       battle: null, second: null, messages: [],

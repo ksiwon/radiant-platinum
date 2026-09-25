@@ -2300,7 +2300,7 @@ on('GetSetNationalDexEnabled', (ctx) => {
 
 /** `include/constants/scripts.h` */
 export const SCRIPT_ID_OFFSET_SINGLE_BATTLES = 3000
-const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
+export const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
 /** `generated/vars_flags.txt` — 이 뒤로 트레이너 번호만큼 떨어진 자리가 그 사람 플래그다 */
 export const TRAINER_DEFEATED_FLAGS_START = 1360
 
@@ -2696,8 +2696,10 @@ on('GetTrainerMessageTypes', (ctx) => {
   const notEnough = ctx.readHalfWord()
   const world = ctx.host.world
   const double = world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true
+  // 짝인지는 스크립트 번호 하나로 갈린다 (`Script_GetTrainerBattlerIndex` ·
+  // `script_manager.c` 507 — 5000 이상이면 둘째). 트레이너 번호의 홀짝은 안 본다 —
+  // 5000번대 스크립트를 가진 열 쌍 중 여섯이 홀수 번호라 둘째가 첫째의 대사를 읽었다
   const second = world.scriptID >= SCRIPT_ID_OFFSET_DOUBLE_BATTLES
-    && trainerIdOf(world.scriptID) % 2 === 0
   ctx.host.vars.set(before, double ? (second ? TRMSG.preDouble2 : TRMSG.preDouble1) : TRMSG.pre)
   ctx.host.vars.set(after, double ? (second ? TRMSG.postDouble2 : TRMSG.postDouble1) : TRMSG.post)
   ctx.host.vars.set(notEnough, double
@@ -2780,13 +2782,45 @@ on('StopHoneyTreeShaking', (ctx) => {
   return false
 })
 
+/**
+ * 이긴 판인가 (`CheckPlayerWonBattle` · `field_battle_data_transfer.c` 512).
+ *
+ * ⚠️ **거짓은 졌다(2)·비겼다(3) 둘뿐이다.** 잡았다(4)·내가 달아났다(5)·상대가 달아났다(6)도
+ * 「이겼다」다 — 그래야 화강돌·레지 삼총사·디아루가를 잡거나 달아난 뒤에 눈앞이 캄캄해지지
+ * 않는다. 마스크를 못 받았으면(배틀을 못 열었다) 이긴 판이 아니다
+ */
+export function wonBattle(mask: number | null | undefined): boolean {
+  if (mask === null || mask === undefined) return false
+  return mask !== BATTLE_RESULT_LOSE && mask !== BATTLE_RESULT_DRAW
+}
+
+/** 진 판인가 (`CheckPlayerLostBattle` · 524). 거짓은 이겼다(1)·잡았다(4) 둘뿐이다 */
+export function lostBattle(mask: number | null | undefined): boolean {
+  if (mask === null || mask === undefined) return true
+  return mask !== BATTLE_RESULT_WIN && mask !== BATTLE_RESULT_CAPTURED
+}
+
+/** `constants/battle.h` 72 — 비겼다는 이김|짐이다 */
+const BATTLE_RESULT_WIN = 1
+const BATTLE_RESULT_LOSE = 2
+const BATTLE_RESULT_DRAW = 3
+
+/** 마스크. 없으면 옛 두 값으로 떨어진다 — 마스크를 안 주는 시험 서비스가 그 자리다 */
+function battleMaskOf(ctx: ScriptContext): number | null {
+  const services = ctx.host.world.services
+  const mask = services.battleMask?.()
+  if (mask !== undefined && mask !== null) return mask
+  const result = services.battleResult?.()
+  return result === 'win' ? BATTLE_RESULT_WIN : result === 'loss' ? BATTLE_RESULT_LOSE : null
+}
+
 on('CheckWonBattle', (ctx) => {
-  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleResult?.() === 'win' ? 1 : 0)
+  ctx.host.vars.set(ctx.readHalfWord(), wonBattle(battleMaskOf(ctx)) ? 1 : 0)
   return true
 })
 
 on('CheckLostBattle', (ctx) => {
-  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleResult?.() === 'loss' ? 1 : 0)
+  ctx.host.vars.set(ctx.readHalfWord(), lostBattle(battleMaskOf(ctx)) ? 1 : 0)
   return true
 })
 
@@ -2863,8 +2897,8 @@ on('GetTrainerRematchMessageTypes', (ctx) => {
   const notEnough = ctx.readHalfWord()
   const world = ctx.host.world
   const double = world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true
+  // 짝인지는 스크립트 번호 하나로 갈린다 (`Script_GetTrainerBattlerIndex`)
   const second = world.scriptID >= SCRIPT_ID_OFFSET_DOUBLE_BATTLES
-    && trainerIdOf(world.scriptID) % 2 === 0
   ctx.host.vars.set(before, double
     ? (second ? TRMSG.rematchDouble2 : TRMSG.rematchDouble1)
     : TRMSG.rematch)
