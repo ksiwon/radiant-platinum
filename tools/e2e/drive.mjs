@@ -1405,10 +1405,29 @@ export async function driveStory(page, {
       // 걷기·벽·뛰기·폭포·밀기: 칸(벽이면 y)이 바뀌거나 묶이는 순간 손을 뗀다
       await page.keyboard.down(q.key)
       const till = Date.now() + (q.act === 'push' || q.act === 'drop' ? 2_000 : 3_000)
+      if (q.act === 'hop') {
+        hopTrace = []
+        for (let i = 0; i < 4; i++) {
+          hopTrace.push(await page.evaluate(async () => {
+            const st = await import('/src/state/worldState.ts')
+            const w = st.worldState
+            return { move: [w.input.move.x, w.input.move.y], pos: [+w.player.position.x.toFixed(3), +w.player.position.z.toFixed(3)],
+              hop: w.player.hop.active, keys: [...(w.input.held ?? [])] }
+          }).catch((e) => String(e?.message ?? e)))
+          await page.waitForTimeout(40)
+        }
+      }
+      /**
+       * ⚠️ **뛰기는 칸이 바뀌어도 안 뗀다** — 계획의 뛰기는 「한 칸 걸어 들어가서 그대로 뛴다」를 한 누름으로 적는다.
+       * 원작도 그렇다: 쥔 채로 앞 칸에 들어선 걸음이 끝나면 다음 걸음이 뛰기다. 제품은 그 칸 가운데에 닿아야
+       * 뛰므로(REPAIR §111) 칸이 바뀌는 순간 떼면 안 뛴다(탐침 p15 — 1F (48→47)에서 떼어 (47)에 섰다).
+       * 뛰기가 서면(`busy`) 그때 뗀다
+       */
+      const holdThrough = q.act === 'hop'
       for (;;) {
         const d = await look()
-        if (d === null || d.busy || d.map !== before.map || d.x !== before.x || d.y !== before.y
-          || d.z !== before.z || Date.now() > till) break
+        const moved = d !== null && (d.map !== before.map || d.x !== before.x || d.y !== before.y || d.z !== before.z)
+        if (d === null || d.busy || (moved && !holdThrough) || Date.now() > till) break
         await page.waitForTimeout(15)
       }
       await page.keyboard.up(q.key)
@@ -1428,6 +1447,56 @@ export async function driveStory(page, {
    * @param stopWhen `(state) => boolean` — 참이면 그 자리에서 멈춘다. 기라티나 방에서 기라티나가 선 뒤
    *   (진행 13) A를 **이 걸음이 누르지 않게** 쓴다 — 거기서부터는 마스터볼 다리가 맡는다
    */
+  /**
+   * **뛰기가 어긋난 자리에서 제품의 판정을 그대로 읽는다** — 진단일 뿐, 판에 쓰지 않는다.
+   * 앞 칸 성질(판 → 격자)·`distortionHop`·난천 막기를 그 자리에서 물어 어느 줄이 뛰기를 막았는지 적는다
+   */
+  let hopTrace = []
+  let talkKey = ''
+  let talkRepeats = 0
+  /** **말이 안 걸리는 자리에서 제품의 판정을 읽는다** — 진단일 뿐 */
+  const talkProbe = () => page.evaluate(async () => {
+    const st = await import('/src/state/worldState.ts')
+    const F = await import('/src/engine/script/field.ts')
+    const N = await import('/src/engine/actor/npcs.ts')
+    const core = await import('/src/scene/distortionCore.ts')
+    const W = await import('/src/engine/map/world.ts')
+    const p = st.worldState.player
+    const front = F.frontTile()
+    const frame = core.distortionFrame()
+    const O = await import('/src/scene/distortionObjects.ts')
+    const before = N.npcActors.list.length
+    const hooks = { vars: core.distortionHooks.vars?.() != null, progress: core.distortionHooks.progress?.() ?? null,
+      npcMap: N.npcActors.mapId, map: W.world.mapId, valid: core.state().valid, floor: core.distortionFloor()?.map ?? null }
+    O.spawnFloorObjects(W.world.mapId, true)
+    const respawned = N.npcActors.list.map((a) => a.localID)
+    return {
+      hooks, before, respawned,
+      pos: [p.position.x, p.position.y, p.position.z], facing: p.facing, frameKind: frame?.kind ?? null,
+      front, npcAtFront: F.npcAt(W.world.mapId, front.x, front.z, F.fieldScripts.vars, front.y)?.localID ?? null,
+      npcs: N.npcActors.list.map((a) => ({ id: a.localID, x: a.x, z: a.z, y: a.y ?? null, h: a.height ?? null, script: a.script })).slice(0, 12),
+    }
+  }).catch((e) => String(e?.message ?? e))
+  const hopProbe = (key) => page.evaluate(async ([k]) => {
+    const st = await import('/src/state/worldState.ts')
+    const dw = await import('/src/engine/world/distortion.ts')
+    const lg = await import('/src/engine/actor/ledge.ts')
+    const zone = await import('/src/engine/map/zone.ts')
+    const p = st.worldState.player.position
+    const d = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[k]
+    const b = dw.distortionBridge
+    const tx = Math.floor(p.x), tz = Math.floor(p.z)
+    const grid = zone.activeZone.grid
+    const beh = (x, z) => b.behaviorAt?.(x, p.y, z) ?? grid?.behavior(x, z) ?? null
+    const frame = b.frame?.() ?? null
+    return {
+      pos: [p.x, p.y, p.z], frameKind: frame?.kind ?? null, gridIsMapGrid: grid?.constructor?.name ?? null,
+      frontBehaviour: beh(tx + d[0], tz + d[1]), frontBridge: b.behaviorAt?.(tx + d[0], p.y, tz + d[1]) ?? 'null',
+      hop: lg.distortionHop(beh, p.x, p.z, d[0], d[1], true),
+      blocked: b.jumpBlocked?.(p.x + d[0], p.z + d[1], { ArrowUp: 0, ArrowDown: 1, ArrowLeft: 2, ArrowRight: 3 }[k]) ?? null,
+    }
+  }, [key]).catch((e) => String(e?.message ?? e))
+
   const distortionWalk = async (budgetMs, { escape = false, stopWhen = null } = {}) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     let lastMap = null
@@ -1443,7 +1512,39 @@ export async function driveStory(page, {
       const leg = r.value.legs[0]
       for (const q of leg.steps) {
         const { ok, after } = await dwStep(q)
-        if (!ok) { misses++; log(`      어긋남 ${q.key}/${q.act} 기대 ${JSON.stringify(q.expect)} 실제 ${JSON.stringify(after)}`); break }
+        if (q.key === 'A' && q.prompt === 'talk') {
+          const key = `${String(after?.map)}:${String(after?.x)},${String(after?.y)},${String(after?.z)}`
+          talkRepeats = talkKey === key ? talkRepeats + 1 : 1
+          talkKey = key
+          if (talkRepeats === 3) log(`        말 진단 ${JSON.stringify(await talkProbe())}`)
+          if (talkRepeats >= 30) return { ok: false, why: `같은 자리에서 말이 안 걸린다 (${key})`, at: after }
+        }
+        if (process.env.DW_TRACE === '1') {
+          log(`        걸음 ${q.key}/${q.act} 기대 ${String(q.expect.x)},${String(q.expect.y)},${String(q.expect.z)} → ${String(after?.x)},${String(after?.y)},${String(after?.z)} raw ${JSON.stringify(after?.raw)}`)
+        }
+        if (!ok) {
+          misses++
+          log(`      어긋남 ${q.key}/${q.act} 기대 ${JSON.stringify(q.expect)} 실제 ${JSON.stringify(after)}`)
+          if (q.act === 'hop') {
+            log(`        뛰기 진단 ${JSON.stringify(await hopProbe(q.key))}`)
+            log(`        그 걸음의 누름 ${JSON.stringify(hopTrace)}`)
+            await page.keyboard.down(q.key)
+            const samples = []
+            for (let i = 0; i < 8; i++) {
+              await page.waitForTimeout(60)
+              samples.push(await page.evaluate(async () => {
+                const st = await import('/src/state/worldState.ts')
+                const w = st.worldState
+                return { move: [w.input.move.x, w.input.move.y], vel: [+w.player.velocity.x.toFixed(3), +w.player.velocity.z.toFixed(3)],
+                  pos: [+w.player.position.x.toFixed(3), +w.player.position.z.toFixed(3)], hop: w.player.hop.active,
+                  facing: +w.player.facing.toFixed(2), restoring: w.restoring ?? null, active: document.documentElement.dataset.gameActive ?? null }
+              }).catch((e) => String(e?.message ?? e)))
+            }
+            await page.keyboard.up(q.key)
+            log(`        누른 동안 ${JSON.stringify(samples)}`)
+          }
+          break
+        }
         misses = 0
         if (after.map !== lastMap) break
       }
