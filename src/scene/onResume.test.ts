@@ -88,3 +88,21 @@ describe('괴력 표식', () => {
     expect(fieldScripts.vars.checkFlag(2402)).toBe(false)
   })
 })
+
+// REPAIR §126 — 맵 지역 표식·변수는 맵을 옮길 때마다 비운다 (`FieldSystem_ClearLocalFlags`)
+describe('맵 지역 표식', () => {
+  it('들어설 때 0~63번 표식과 16384~16415 변수가 비워지고, 그 밖은 남는다', () => {
+    fieldScripts.vars = new VarStore()
+    const v = fieldScripts.vars
+    // FLAG_MAP_LOCAL_HIDE_OBSTACLE_2 = 33 — 천관산 2F 괴력 바위의 숨김 표식
+    v.setFlag(33); v.setFlag(63); v.setFlag(64)
+    v.set(16384, 7); v.set(16415, 9); v.set(16416, 5)
+    enterMap(350)
+    expect(v.checkFlag(33)).toBe(false)
+    expect(v.checkFlag(63)).toBe(false)
+    expect(v.checkFlag(64)).toBe(true)
+    expect(v.get(16384)).toBe(0)
+    expect(v.get(16415)).toBe(0)
+    expect(v.get(16416)).toBe(5)
+  })
+})

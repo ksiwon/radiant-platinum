@@ -156,6 +156,11 @@ export const VAR_LAST_TALKED = 0x800d
  * 세이브에 남는 부분과 스크립트 지역 부분을 한 객체에 담되 **따로 들고 있는다** —
  * 지역 칸은 스크립트가 끝나면 의미가 없고 세이브에 나가면 안 된다.
  */
+/** `FieldSystem_ClearLocalFlags`가 지우는 표식 바이트 수 — `(MAP_LOCAL_FLAGS_END − MAP_LOCAL_FLAGS_START + 1) / 8` = 64 / 8 */
+const MAP_LOCAL_FLAG_BYTES = 8
+/** `VAR_MAP_LOCAL_0x00`~`0x1F` — `VARS_START`부터 서른둘 */
+const MAP_LOCAL_VAR_COUNT = 32
+
 export class VarStore {
   readonly saved: Uint16Array
   readonly flags: Uint8Array
@@ -206,6 +211,18 @@ export class VarStore {
   clearFlag(id: number): void {
     if (id === NULL_FLAG) return
     if (id >> 3 < this.flags.length) this.flags[id >> 3]! &= ~(1 << (id & 7))
+  }
+
+  /**
+   * **맵 지역 표식·변수를 비운다** (`FieldSystem_ClearLocalFlags` · `script_manager.c:475`) — 맵이나 존을 옮길 때마다 (REPAIR §126).
+   *
+   * 원작 그대로 바이트로 지운다: 표식은 `MAP_LOCAL_FLAGS_START`(1)가 든 바이트부터 `(0x40 − 1 + 1) / 8` = 8바이트, 곧 0~63번이고,
+   * 변수는 `VAR_MAP_LOCAL_0x00`~`0x1F`(16384~16415) 서른둘이다. 베어 낸 나무·깬 바위·민 바위의 숨김 표식
+   * (`FLAG_MAP_LOCAL_HIDE_OBSTACLE_*`)이 이 안이라, 안 지우면 다른 맵의 같은 번호 장애물까지 영영 숨는다
+   */
+  clearMapLocals(): void {
+    this.flags.fill(0, 0, MAP_LOCAL_FLAG_BYTES)
+    this.saved.fill(0, 0, MAP_LOCAL_VAR_COUNT)
   }
 
   /** 스크립트 한 판이 시작될 때 지역 칸을 비운다 */

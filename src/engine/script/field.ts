@@ -567,6 +567,9 @@ export function enterMap(mapId: number): void {
   // 이 순서다 (`field_map_change.c`가 맵을 올리기 전에 `ON_TRANSITION`을 돈다)
   clearNpcPlacement()
   clearWarpOverrides()
+  // 맵 지역 표식·변수는 맵(존)을 옮길 때마다 비운다 — `OnTransition`보다 먼저다 (REPAIR §126 ·
+  // `FieldMapChange_UpdateGameData`의 첫 줄들 · 존 갈이도 같은 함수를 지난다 `fieldmap.c:417`)
+  fieldScripts.vars.clearMapLocals()
   runFixedInit(mapId, INIT_SCRIPT.onTransition)
   spawnNpcs(mapId, fieldScripts.vars)
   // 맵이 다 올라온 뒤 도는 것. 워프 자리를 옮기는 자리가 여기다
