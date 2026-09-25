@@ -283,6 +283,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     [locationNames],
   )
 
+  /**
+   * `enter`가 방금 `enterMap`을 부른 맵. 아래 「존만 바뀌는 경우」 효과가 그 맵에 또 부르지 않게 한다 (REPAIR §118)
+   */
+  const enteredByEnter = useRef<number | null>(null)
+
   /** 맵을 갈아 끼운다. 격자·플레이어 위치·존 이름을 한 번에 맞춘다 */
   const enter = useCallback(
     (
@@ -407,6 +412,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
       // 같은 프레임에 그릴 수 있다
       enterMap(mapId)
+      enteredByEnter.current = mapId
       // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
       // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)
       arriveAt(mapId)
@@ -728,8 +734,16 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 스폰이고, 복원이 목적지로 `enter`한 **같은 커밋**의 이 효과는 아직 옛
   // 값을 들고 돈다 — 그대로 부르면 방금 세운 목적지 위에 기본 스폰의 사람들이
   // 선다. `enter`가 `world.mapId`를 같은 자리에서 맞추므로 그것과 대조한다
+  //
+  // ⚠️ **`enter`가 이미 부른 맵이면 또 안 부른다** (REPAIR §118). `enter`가 `publishMap`으로 이 상태를 바꾸므로
+  // 워프·층 갈이마다 이 효과가 한 번 더 돌았다 — `OnTransition`이 두 번 돌고 배우를 두 번 세웠다. 깨어진 세계에서는
+  // 그 사이에 `distortionEnter`가 층 갈이 표식을 먹어 버려서, 두 번째 `OnTransition`이 세이브 자리를 비우고
+  // (`InitPersistedMapFeaturesForDistortionWorld`) `spawnNpcs`가 층의 사람을 지웠다 — B2F 벽의 난천이 없어서
+  // 말을 걸 수도, 진행도 5로 넘어갈 수도 없었다(탐침 p16·p18)
   useEffect(() => {
     if (world.mapId !== mapId) return
+    if (enteredByEnter.current === mapId) { enteredByEnter.current = null; return }
+    enteredByEnter.current = null
     enterMap(mapId)
   }, [mapId])
 
