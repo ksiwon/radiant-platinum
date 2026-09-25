@@ -89,7 +89,7 @@ export const FLAG_DISTORTION_WORLD_PUZZLE_FINISHED = 2477
  */
 export const FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1 = 2478
 /**
- * B6F에서 바위 수수께끼를 풀고 시로나가 길을 열었다 (`FLAG_DISTORTION_WORLD_STEPPING_STONES` = 0x977).
+ * B6F에서 바위 수수께끼를 풀고 난천이 길을 열었다 (`FLAG_DISTORTION_WORLD_STEPPING_STONES` = 0x977).
  *
  * B6F의 B7F행 승강 발판이 이것이 서야 나타난다 (`DistWorldMovingPlatformProp_AnimInit`)
  */

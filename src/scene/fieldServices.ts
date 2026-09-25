@@ -614,7 +614,7 @@ function watchBattle(): () => void {
  *
  * 깨어진 세계는 필드를 세울 때 그 층의 사람도 다시 센다 (`ov9_02249960.c` 1678줄의
  * `AddMapObjectsForCurrentAndNextMap`, `OnLoad` 다음). 기라티나 방이 그 자리다 —
- * `OnLoad`가 진행도를 14로 올리면 그 조건의 차원문(#131)과 시로나 말(#132)이 선다
+ * `OnLoad`가 진행도를 14로 올리면 그 조건의 차원문(#131)과 난천 말(#132)이 선다
  */
 function watchFieldReload(): () => void {
   let finish: BattleOutcome | null = null

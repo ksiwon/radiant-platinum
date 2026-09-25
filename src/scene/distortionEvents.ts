@@ -212,7 +212,7 @@ function advanceEvent(): void {
       case EVENT_CMD.showMespritBoulderTuto:
         if (beginBoulderTuto(cmd.kind)) { running.tuto = true; return }
         break
-      // 자료에 남은 하나 — `addMapObject`(B1F에서 B2F의 시로나를 세운다)는 다음 층 물체라 B2F에
+      // 자료에 남은 하나 — `addMapObject`(B1F에서 B2F의 난천을 세운다)는 다음 층 물체라 B2F에
       // 들어설 때 배치표가 세운다(조건 `progress == 4`). `deleteMapObject`는 자료에 없다
       default:
         break

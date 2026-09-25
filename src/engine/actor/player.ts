@@ -194,7 +194,7 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
       const beh = distortionBridge.behaviorAt?.(cx, y, cz)
       if (!surfing && beh !== null && beh !== undefined && isOnWater(beh, false)) return true
       // 판 위의 사람도 막는다 — 격자가 아니라 **그 사람의 높이**로 가른다
-      // (`PlayerAvatar_CheckDistortionMapObjectCollision`). B2F 서쪽 벽의 시로나가 여기서 걸린다
+      // (`PlayerAvatar_CheckDistortionMapObjectCollision`). B2F 서쪽 벽의 난천이 여기서 걸린다
       return solidNpcAtHeight(cx, cz, y) !== null
     }
     // 그 맵에만 있는 장치가 먼저다 (`DynamicMapFeatures_CheckCollision`) —
@@ -436,7 +436,7 @@ export const playerSystem = {
           const dir = land.z !== p.position.z
             ? (land.z > p.position.z ? DIR.south : DIR.north)
             : (land.x > p.position.x ? DIR.east : DIR.west)
-          // 시로나가 막는지는 **넘는 칸**(바로 앞 칸)으로 묻는다 — 원작이 `x + Dx(dir)`·`z + Dz(dir)`를
+          // 난천이 막는지는 **넘는 칸**(바로 앞 칸)으로 묻는다 — 원작이 `x + Dx(dir)`·`z + Dz(dir)`를
           // 넘긴다 (`PlayerAvatar_WillJumpTwice`)
           const over = DIR_STEP[dir] ?? { x: 0, z: 0 }
           if (distortionBridge.jumpBlocked?.(p.position.x + over.x, p.position.z + over.z, dir) !== true) {

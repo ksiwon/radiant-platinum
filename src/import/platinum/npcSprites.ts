@@ -42,7 +42,7 @@ const BERRY_GFX_LAST = BERRY_GFX_FIRST + 64 * 3
  * ⚠️ 그 층의 사람과 바위는 맵 헤더의 배치표(`events.narc`)가 아니라 `tw_arc`의
  * 제 표에 들어 있다 (`sMapObjectEvents`). 배치표만 훑으면 이 다섯이 통째로
  * 빠져서 **세워도 아무것도 안 그려진다** — 기라티나가 그래서 안 보였다.
- * 시로나·태홍·바위·호수 셋의 보통 그림은 다른 맵에도 서므로 이미 들어온다
+ * 난천·태홍·바위·호수 셋의 보통 그림은 다른 맵에도 서므로 이미 들어온다
  */
 const DIST_WORLD_ONLY = [
   'GIRATINA_ORIGIN',

@@ -126,7 +126,7 @@ function arrival1F(data: DistortionData): St {
 
 /** 스크립트가 끝나면 서는 진행도 — 시험의 이어 달리기만 쓴다(몰이꾼은 실제 값을 읽는다) */
 function talkEffect(s: St, id: number): St {
-  // B2F 시로나: 5. 주인공이 벽 한 칸 아래(y 232)에서 말을 걸었으면 한 칸 비켜선다(`MoveAction_107` — z+1)
+  // B2F 난천: 5. 주인공이 벽 한 칸 아래(y 232)에서 말을 걸었으면 한 칸 비켜선다(`MoveAction_107` — z+1)
   if (s.map === MAP.b2f && id === 128) return { ...s, progress: 5, z: s.y === 232 ? s.z + 1 : s.z }
   if (s.map === MAP.b6f && id === 134) return { ...s, progress: 7 } // `_b6f.s:34`
   if (s.map === MAP.b7f && id === 129) return { ...s, progress: 10 } // `_b7f.s:59`
@@ -221,15 +221,15 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(down!.end).toMatchObject({ map: MAP.b2f, x: 33, y: 225, z: 45 })
     })
 
-    it('B2F — 벽의 시로나에게 말을 걸어 비키게 하고, 윗단의 미끄러지는 판(사건)을 타고 (65,225,31)로 B3F', () => {
+    it('B2F — 벽의 난천에게 말을 걸어 비키게 하고, 윗단의 미끄러지는 판(사건)을 타고 (65,225,31)로 B3F', () => {
       const s: St = { ...arrival1F(data), map: MAP.b2f, x: 33, y: 225, z: 45, progress: 4 }
-      // 진행도 4의 시로나(30,233,20)는 서쪽 벽 통로를 막고 선다 — 판 위의 사람도 막는다(REPAIR §107)
+      // 진행도 4의 난천(30,233,20)는 서쪽 벽 통로를 막고 선다 — 판 위의 사람도 막는다(REPAIR §107)
       expect(planFloor(P, s, goalExit('elevator', 'down'))).toBeNull()
       const talk = planNext(P, s)
       expect(talk!.stage).toMatchObject({ kind: 'talk', localID: 128 })
       const leg = talk!.legs[0]!
       expect(leg.steps.at(-1)).toMatchObject({ key: 'A', prompt: 'talk' })
-      // 벽 위에서 마주 본다 — 앞 칸이 시로나의 세 축 그대로다
+      // 벽 위에서 마주 본다 — 앞 칸이 난천의 세 축 그대로다
       expect(leg.steps.at(-1)!.expect.pi).toBeGreaterThanOrEqual(0)
       const after = talkEffect(leg.end as St, 128)
       const down = planFloor(P, after, goalExit('elevator', 'down'))
@@ -312,7 +312,7 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(M.stepped(s, 0).event.index).toBe(go)
     })
 
-    it('기라티나를 이긴 뒤 시로나는 (15,14)에서 남쪽으로 넘는 (15,15)를 막는다', () => {
+    it('기라티나를 이긴 뒤 난천은 (15,14)에서 남쪽으로 넘는 (15,15)를 막는다', () => {
       const s: St = { ...arrival1F(data), map: MAP.giratinaRoom, x: 15, y: 1, z: 14, facing: 1, progress: 14 }
       expect(cynthiaBlocksJump(MAP.giratinaRoom, 15, 15, 1, 14)).toBe(true)
       expect(cynthiaBlocksJump(MAP.giratinaRoom, 15, 14, 1, 14)).toBe(false)
@@ -364,7 +364,7 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(puzzleSolved(plan!.end.puzzle)).toBe(true)
       const drops = plan!.legs.flatMap((l: any) => l.steps).filter((q: any) => q.act === 'drop')
       expect(drops.map((q: any) => q.push.dest)).toEqual([FALL_DEST.correctPit, FALL_DEST.correctPit, FALL_DEST.correctPit])
-      // 시로나(#134 @85,80)가 풀기 전에는 승강판 길을 막는다 — 풀고 말 걸면 (84,84)로 비킨다
+      // 난천(#134 @85,80)가 풀기 전에는 승강판 길을 막는다 — 풀고 말 걸면 (84,84)로 비킨다
       const blocked6 = floorExits(P, { ...plan!.end, progress: 6 }).filter((e) => e.exit.dir === 'down')
       const open7 = floorExits(P, { ...plan!.end, progress: 7 }).filter((e) => e.exit.dir === 'down')
       expect(blocked6).toEqual([])

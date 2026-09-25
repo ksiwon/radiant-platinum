@@ -59,7 +59,7 @@ maybe('B5F의 바위 안내 셋', () => {
     })
     vars = new VarStore()
     field = makeWorld(vars, [], meta.movements)
-    // B6F의 시로나가 서는 진행도 (`talkedToB3FCyrus`)
+    // B6F의 난천이 서는 진행도 (`talkedToB3FCyrus`)
     mod.distortionHooks.progress = () => 6
     mod.distortionHooks.runScript = () => false // 스크립트는 아래에서 따로 돌린다
     mod.distortionHooks.puzzleFinished = () => false

@@ -999,7 +999,7 @@ export interface FieldServices {
    * 갤럭시단아지트의 감금장치 셋
    * (`overlay006/lake_guardian_containment_units.c`).
    *
-   * 맵에 들어설 때 `init`이 서고, 시로나가 풀어 주는 자리에서 `open`이 돈다.
+   * 맵에 들어설 때 `init`이 서고, 난천이 풀어 주는 자리에서 `open`이 돈다.
    * `settled`가 참이 될 때까지 스크립트가 선다
    */
   lakeGuardianUnits?: {

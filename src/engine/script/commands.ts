@@ -4201,7 +4201,7 @@ on('ResetDistortionWorldPersistedCameraAngles', (ctx) => {
 /**
  * 깨어진 세계에만 있는 사람을 세운다 (`DistWorld_AddMapObjectWithLocalID`).
  *
- * 이 세계의 시로나·태홍·기라티나는 **맵 배치표에 없다.** 층이 이어져 흐르는
+ * 이 세계의 난천·태홍·기라티나는 **맵 배치표에 없다.** 층이 이어져 흐르는
  * 세계라 배치표로는 못 세우고, 스크립트와 사건이 번호로 불러다 세운다
  */
 on('AddDistortionWorldMapObject', (ctx) => {

@@ -18,7 +18,7 @@ export function applyTeleport(wx: number, wy: number, wz: number, dir: number): 
   for (const t of [TELEPORT.b7f, TELEPORT.giratinaRoom]) {
     if (floor.map !== t.map || dir !== t.dir) continue
     if (wx !== t.x || wy !== t.y || wz !== t.z) continue
-    // B7F 쪽은 시로나가 길을 열어 준 뒤에만 선다
+    // B7F 쪽은 난천이 길을 열어 준 뒤에만 선다
     if (t === TELEPORT.b7f && progress < 10) continue
     distortionHooks.runScript?.(t.script)
     return
@@ -37,9 +37,9 @@ const FX32_PER_TILE = 4096 * 16
 /**
  * 스크립트가 부른 사람 때문에 **비켜선** 사람들. 부른 번호 → 비켜선 번호들.
  *
- * ⚠️ **같은 사람이 두 자리에 서 있었다.** 1F 배치표에는 시로나가 둘 있다 —
- * 스크립트가 부르는 「차원문 앞 시로나」(#128 @55,40)와 늘 서 있는 「승강판
- * 시로나」(#129 @39,52, 진행도 ≤ 2)다. 원작 스크립트도 둘을 같이 세우지만
+ * ⚠️ **같은 사람이 두 자리에 서 있었다.** 1F 배치표에는 난천이 둘 있다 —
+ * 스크립트가 부르는 「차원문 앞 난천」(#128 @55,40)와 늘 서 있는 「승강판
+ * 난천」(#129 @39,52, 진행도 ≤ 2)다. 원작 스크립트도 둘을 같이 세우지만
  * (`scripts_distortion_world_1f.s`의 `OnFrame_FirstEntry`), 원작 화면은 위에서
  * 내려다보는 두 화면이라 16타일 떨어진 저쪽이 안 보인다. 우리 3인칭 화면에는
  * 둘이 같이 잡힌다 — 사용자가 「난천이 두 명」이라 한 것이 이것이다.
@@ -104,7 +104,7 @@ function addObjectRow(row: Record<string, unknown>, vars: VarStore, map?: number
  * `AddMapObjectsForCurrentAndNextMap`을 부르고, 층을 갈 때마다 다시 부른다
  * (`ov9_02249960.c` 7152줄). 우리는 스크립트가 `AddDistortionWorldMapObject`로
  * 부를 때만 세우고 있었다 — 그래서 기라티나도, 엠라이트·아그노무·유크시도,
- * 바위 수수께끼의 바위 아홉도, 각 층의 시로나·태홍도 한 번도 안 나타났다.
+ * 바위 수수께끼의 바위 아홉도, 각 층의 난천·태홍도 한 번도 안 나타났다.
  *
  * 거는 조건은 원작의 `CheckFlagConditionForObjectEvent`다: `manualAddOnly`는
  * 스크립트가 직접 부를 때만 서고(그래서 여기서는 건너뛴다), 나머지는

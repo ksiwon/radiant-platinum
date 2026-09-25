@@ -167,7 +167,7 @@ export function distortionModel(P) {
    * 그 칸이 막혔는가 — `player.ts:179-219`의 `shut()` 한 칸 몫.
    *
    * 판 위면 판을 본다: 막힘 비트 → 물(파도타기가 아니면) → **그 높이의 사람**(`solidNpcAtHeight` —
-   * B2F 서쪽 벽의 시로나, REPAIR §107). 바위는 판 위에 없다. 판 밖이면 격자 · 물 · 바위 · 사람
+   * B2F 서쪽 벽의 난천, REPAIR §107). 바위는 판 위에 없다. 판 밖이면 격자 · 물 · 바위 · 사람
    * (`player.ts:198-210`). 들판시티 따위의 장치 갈래(`mapFeatureBridge`)는 이 세계에서 늘 null이다
    * (`scene/mapFeatureCollision.ts` — 깨어진 세계 갈래가 없다. 시험이 격자에 그 성질이 없음을 잰다)
    */
@@ -405,7 +405,7 @@ export function distortionModel(P) {
     return { act, state: hit.state, exit: hit.exit ?? null, event: hit.event ?? null, ...extra }
   }
 
-  /** 시로나가 막아선 칸 — **넘는 칸**으로 묻는다 (`cynthiaBlocksJump` · REPAIR §103) */
+  /** 난천이 막아선 칸 — **넘는 칸**으로 묻는다 (`cynthiaBlocksJump` · REPAIR §103) */
   const jumpBlocked = (s, dir) => {
     const st = P.STEP[P.PLATFORM.FLOOR][dir]
     return P.cynthiaBlocksJump(s.map, s.x + st[0], s.z + st[2], dir, s.progress)
@@ -731,7 +731,7 @@ export const goalDown = () => (r) => {
  * 사람에게 말을 건다 — 그 사람을 앞 칸으로 두는 자리에 서서 그쪽으로 돌고 A (`field.ts`의 `tryTalk`).
  *
  * A의 앞 칸은 서 있는 판의 걸음 표로 한 걸음이다(`frontTile` — REPAIR §85). 깨어진 세계는 x·y·z 셋을 다
- * 견주므로(`Field_DistortionInteract` · REPAIR §107) 벽 위의 사람(B2F 시로나)은 벽 위에서 오르내림 쪽으로
+ * 견주므로(`Field_DistortionInteract` · REPAIR §107) 벽 위의 사람(B2F 난천)은 벽 위에서 오르내림 쪽으로
  * 마주 봐야 한다. 도는 키가 걸음이 되는 자리는 없다 — 사람이 그 칸을 막고 있어서 **제자리 돌기**다.
  *
  * @param target `{x, y?, z}` 세계 칸 — y가 없으면 x·z만 본다
@@ -1006,14 +1006,14 @@ export const STORY = [
   { map: 573, kind: 'event', progress: 2 },
   // B1F: 들어서면 장면(2→3), 엠라이트 칸 (15,257,58) → 4 (사건 표 574)
   { map: 574, kind: 'event', progress: 4 },
-  // B2F: 서쪽 벽의 시로나(#128 @30,233,20)가 벽의 통로를 막는다 — 말을 걸면 벽에서 한 칸 내려서고(106)
+  // B2F: 서쪽 벽의 난천(#128 @30,233,20)가 벽의 통로를 막는다 — 말을 걸면 벽에서 한 칸 내려서고(106)
   // → 5 (`scripts_distortion_world_b2f.s`). 판 위의 사람도 막으므로(REPAIR §107) 건너뛸 수 없다
   { map: 575, kind: 'talk', localID: 128, done: 5 },
   // B3F: 태홍 칸 (65,193,41) → 6
   { map: 576, kind: 'event', progress: 6 },
   // B5F: 바위 셋을 구멍으로 (`sBoulderFallLocations` 앞 셋 — `distortionBoulder.ts:79-81`)
   { map: 579, kind: 'drop' },
-  // B6F: 맞는 웅덩이 셋 → 시로나(#134) → 7 (`scripts_distortion_world_b6f.s:22-34`)
+  // B6F: 맞는 웅덩이 셋 → 난천(#134) → 7 (`scripts_distortion_world_b6f.s:22-34`)
   { map: 580, kind: 'pits' },
   { map: 580, kind: 'talk', localID: 134, done: 7 },
   // B7F: 사건 (84~86,65,76) → 9 · 태홍(#129) 배틀 이기면 → 10 (`_b7f.s:56-59`)

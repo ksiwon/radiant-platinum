@@ -353,7 +353,7 @@ export function distortionFrontTile(
 const frontStep = new Vector3()
 
 /**
- * 시로나가 막고 서서 못 뛰는가 (`DistWorld_IsBlockedByCynthia` — 규칙은 `cynthiaBlocksJump`).
+ * 난천이 막고 서서 못 뛰는가 (`DistWorld_IsBlockedByCynthia` — 규칙은 `cynthiaBlocksJump`).
  *
  * 기라티나를 이긴 **직후에만** 참이다 — (15,14)에서 남쪽으로 (15,15)를 넘어 뛰어 나가려는 것을
  * 막아 세운다. 다음 진행도로 넘어가면 풀린다. 받는 칸은 **넘으려는 앞 칸**(맵 좌표)이다
@@ -519,7 +519,7 @@ export interface DistortionPropPlace {
    * 원작이 그 발판을 `isGiratinaRoomElevator`로 세우고(`InitAnimManagerForMovingPlatform` — B6F · 자리 1),
    * 깃발이 안 섰으면 숨겨 두었다가 서면 `SEQ_SE_PL_SYUWA3`와 함께 나타낸다
    * (`DistWorldMovingPlatformProp_AnimInit`·`_AnimTick`, `ov9_02249960.c:6069-6076, 6224-6270`).
-   * 그 깃발은 바위 수수께끼를 푼 뒤 시로나의 스크립트가 세운다(`scripts_distortion_world_b6f.s`)
+   * 그 깃발은 바위 수수께끼를 푼 뒤 난천의 스크립트가 세운다(`scripts_distortion_world_b6f.s`)
    */
   steppingStones: boolean
 }

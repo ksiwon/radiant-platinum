@@ -246,7 +246,7 @@ export function changeMapFrame(path: DistortionElevatorPath): number {
 /**
  * 태우고 가는 사람 (`..._BeginMovement`).
  *
- * 두 자리뿐이다 — 1F에서 시로나와 같이 내려가는 것과, B6F에서 바위 수수께끼를
+ * 두 자리뿐이다 — 1F에서 난천과 같이 내려가는 것과, B6F에서 바위 수수께끼를
  * 푼 뒤 같이 내려가는 것. 진행도가 딱 그 값일 때만이다
  */
 export function passengerLocalID(map: number, progress: number): number | null {
@@ -265,7 +265,7 @@ export function passengerAfter(destMap: number): { localID: number; script: numb
  * `DIST_WORLD_MAP_OBJECT_*` — 이 세계에만 있는 사람·바위의 번호.
  *
  * ⚠️ **층마다 128에서 다시 센다** (`DIST_WORLD_MAP_OBJECT_BASE_LOCAL_ID`).
- * 그래서 같은 번호가 층이 다르면 다른 사람이다 — 128이 B1F에서는 시로나고
+ * 그래서 같은 번호가 층이 다르면 다른 사람이다 — 128이 B1F에서는 난천이고
  * B6F에서는 엠라이트의 바위다
  */
 export const DIST_OBJ = {

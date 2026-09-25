@@ -114,7 +114,7 @@ export const TELEPORT = {
 export const CYNTHIA_BLOCK = { x: 15, y: 1, z: 15 } as const
 
 /**
- * 시로나가 막고 서서 두 칸 뛰기가 안 되는가 (`DistWorld_IsBlockedByCynthia`).
+ * 난천이 막고 서서 두 칸 뛰기가 안 되는가 (`DistWorld_IsBlockedByCynthia`).
  *
  * ⚠️ **넘는 칸(바로 앞 칸)을 본다.** 부르는 `PlayerAvatar_WillJumpTwice`(`player_move.c:2001-2033`)가
  * `MapObject_GetX + Dx(dir)`·`GetZ + Dz(dir)` — 앞 칸 — 을 넘긴다. 그래서 (15,14)에 서서 남쪽으로
@@ -516,7 +516,7 @@ export const distortionBridge: {
    */
   cameraSwing: (() => { x: number, y: number, z: number } | null) | null
   /**
-   * 시로나가 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
+   * 난천이 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
    *
    * 넘으려는 **앞 칸**(맵 좌표)을 받는다(`cynthiaBlocksJump`). 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
    */

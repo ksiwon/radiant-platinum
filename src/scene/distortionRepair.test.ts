@@ -248,7 +248,7 @@ describe.runIf(real)('§114 스크립트 칸 앞의 막힌 칸을 밀어도 넘�
 })
 
 describe.runIf(real)('§107 판 위의 사람은 그 사람의 높이로 막고, 말은 세 축으로 건다', () => {
-  it('B2F 서쪽 벽의 시로나(30,233,20) — 같은 높이만 막고, 앞 칸의 높이가 맞아야 말이 걸린다', async () => {
+  it('B2F 서쪽 벽의 난천(30,233,20) — 같은 높이만 막고, 앞 칸의 높이가 맞아야 말이 걸린다', async () => {
     const { VarStore } = await import('../engine/script/vars')
     const { solidNpcAtHeight } = await import('../engine/actor/obstacles')
     const { npcAt } = await import('../engine/script/field')

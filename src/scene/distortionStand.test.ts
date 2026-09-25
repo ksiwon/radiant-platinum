@@ -112,7 +112,7 @@ describe.runIf(real)('층에 들어서면 그 층 사람이 선다', () => {
   })
 
   // ⚠️ 스크립트가 직접 부르는 것(`manualAddOnly`)은 들어서면서 세우지 않는다.
-  // 기라티나 방의 시로나·태홍이 그것이라, 세워 버리면 아직 오지 않은 사람이
+  // 기라티나 방의 난천·태홍이 그것이라, 세워 버리면 아직 오지 않은 사람이
   // 방에 미리 서 있는다
   it('스크립트가 부를 사람은 미리 안 선다', () => {
     mod.distortionHooks.progress = () => PROGRESS.giratinaArrived
@@ -141,12 +141,12 @@ describe.runIf(real)('층에 들어서면 그 층 사람이 선다', () => {
    * **같은 사람이 두 자리에 서면 안 된다** (사용자 지적: "깨어진 세계에서
    * 난천이 두 명 같이 보이는데?").
    *
-   * 1F 배치표에는 시로나가 둘이다 — 스크립트가 부르는 「차원문 앞」(#128
+   * 1F 배치표에는 난천이 둘이다 — 스크립트가 부르는 「차원문 앞」(#128
    * @55,40)과 늘 서 있는 「승강판」(#129 @39,52, 진행도 ≤ 2). 원작 스크립트도
    * 둘을 같이 세우는데(`scripts_distortion_world_1f.s`), 원작 화면은 위에서
    * 내려다보는 두 화면이라 16타일 떨어진 저쪽이 안 보인다
    */
-  it('스크립트가 시로나를 부르면 저쪽 시로나는 비켜서고, 지우면 돌아온다', () => {
+  it('스크립트가 난천을 부르면 저쪽 난천은 비켜서고, 지우면 돌아온다', () => {
     const vars = new VarStore()
     mod.distortionHooks.vars = () => vars
     mod.distortionHooks.progress = () => PROGRESS.none
@@ -154,7 +154,7 @@ describe.runIf(real)('층에 들어서면 그 층 사람이 선다', () => {
       distortion: { ...useSaveStore.getState().distortion, valid: false },
     })
     mod.distortionEnter(MAP.f1, 20, 1, 25)
-    // 들어서면 승강판 시로나만 선다 (`manualAddOnly`인 #128은 안 선다)
+    // 들어서면 승강판 난천만 선다 (`manualAddOnly`인 #128은 안 선다)
     expect(npcActors.byLocalID.has(129)).toBe(true)
     expect(npcActors.byLocalID.has(128)).toBe(false)
 

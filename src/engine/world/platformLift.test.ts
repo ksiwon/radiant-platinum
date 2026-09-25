@@ -74,7 +74,7 @@ describe('승강판 아홉 자리', () => {
   })
 
   it('밟는 좌표 트리거가 판 상자 안에 있다', () => {
-    // 챔피언방만 트리거가 없다 — 시로나를 이긴 뒤 이야기 스크립트가 태운다
+    // 챔피언방만 트리거가 없다 — 난천을 이긴 뒤 이야기 스크립트가 태운다
     for (const lift of PLATFORM_LIFTS) {
       const triggers = events[maps[lift.map]!.events]!.triggers
       const inside = triggers.filter((t) =>

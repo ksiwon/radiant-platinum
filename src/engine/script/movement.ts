@@ -106,8 +106,8 @@ export interface Movable {
  *   105  y + 1 · 서쪽을 본다        106  y − 1 · 동쪽을 본다
  *   107  z + 1 · 남쪽을 본다        108  z − 1 · 북쪽을 본다
  *
- * B2F 시로나의 스크립트(`scripts_distortion_world_b2f.s`)가 106으로 시로나를 벽에서 한 칸 내리고 107로
- * 주인공을 한 칸 비켜 세운다 — 이게 없으면 시로나가 벽의 통로(30,233,20)를 막은 채 남는다
+ * B2F 난천의 스크립트(`scripts_distortion_world_b2f.s`)가 106으로 난천을 벽에서 한 칸 내리고 107로
+ * 주인공을 한 칸 비켜 세운다 — 이게 없으면 난천이 벽의 통로(30,233,20)를 막은 채 남는다
  */
 export const WALL_STEP_ACTIONS: Readonly<Record<number, { dy: number, dz: number, face: number }>> = {
   105: { dy: 1, dz: 0, face: DIR.west },

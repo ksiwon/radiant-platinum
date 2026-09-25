@@ -57,7 +57,7 @@ interface Ride {
    * ⚠️ **닿는 층의 배치표에는 그 사람이 없다.** 원작은 새로 세우지 않고 타고
    * 온 객체의 번호만 갈아 끼운다 (`MapObject_SetLocalID` · `..._SetMapHeaderID`).
    * 우리는 층이 바뀌면 배우 목록을 다시 세우므로(`spawnNpcs`) 그 사람이
-   * 지워지는데, 닿는 층 표에서 찾으면 없다 — B1F의 시로나가 그래서 사라졌다.
+   * 지워지는데, 닿는 층 표에서 찾으면 없다 — B1F의 난천이 그래서 사라졌다.
    * 그래서 **타고 온 사람의 정보를 그대로 들고 가** 번호만 바꿔 다시 세운다
    */
   carry: { info: Npc; worldX: number; worldZ: number } | null
@@ -269,7 +269,7 @@ function changeFloor(leg: ElevatorLeg): void {
   // 다른 번호가 된다 — 원작은 **같은 객체의** `localID`를 갈아 끼운다
   // (`MapObject_SetLocalID` · `MapObject_SetMapHeaderID`). 닿는 층의 배치표에는
   // 그 사람이 아예 없으므로 거기서 찾아 세우면 아무도 안 나온다 (실측: B1F에
-  // 시로나가 없는데 대사만 떴다). 그래서 타고 온 사람을 **그대로 들고 간다**
+  // 난천이 없는데 대사만 떴다). 그래서 타고 온 사람을 **그대로 들고 간다**
   const after = ride.passenger === null ? null : passengerAfter(dest)
   if (ride.passenger !== null) {
     const actor = npcActors.byLocalID.get(ride.passenger)

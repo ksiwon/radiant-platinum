@@ -13,7 +13,7 @@ import { DISTORTION_TABLES } from './distortionTables'
 import { MovementRunner, WALL_STEP_ACTIONS, type Movable } from '../script/movement'
 import { SFX } from '../audio/sfx'
 
-describe('§103 시로나가 막는 칸은 넘는 칸이다 (`DistWorld_IsBlockedByCynthia`)', () => {
+describe('§103 난천이 막는 칸은 넘는 칸이다 (`DistWorld_IsBlockedByCynthia`)', () => {
   it('(15,14)에서 남쪽으로 넘는 (15,15)에서만, 진행도 14에서만', () => {
     expect(cynthiaBlocksJump(MAP.giratinaRoom, 15, 15, 1, 14)).toBe(true)
     // 서 있는 칸을 넘기면 한 번도 안 걸린다 — 예전 제품이 그랬다
