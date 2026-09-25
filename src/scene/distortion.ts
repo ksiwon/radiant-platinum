@@ -11,22 +11,27 @@
 // ⚠️ **밖에서는 이 파일 하나만 부른다.** 아래에서 갈래들을 그대로 다시 내보내
 // 두었으므로 `scene/distortion`을 부르던 자리는 그대로 둔다 — 갈래 파일을
 // 직접 부르면 이 차례를 건너뛰게 된다.
-import { findPlatform, initialHiddenGroups, mapOf } from '../engine/world/distortion'
+import { connectionOf, findPlatform, initialHiddenGroups, mapOf } from '../engine/world/distortion'
 import { distortionBridge } from '../engine/world/distortion'
 import { initialPlatformFlags } from '../engine/world/distortionElevator'
 import { initialPuzzleFlags } from '../engine/world/distortionBoulder'
 import { applyCamera, distortionCameraSwing, seatCamera } from './distortionCamera'
 import { applyCascade, distortionCascading } from './distortionCascade'
 import {
-  distortionActive, distortionBehaviorAt, distortionBlockedAt, distortionData, distortionFloor,
-  distortionFrame, distortionFrontTile, distortionGroundY, distortionHooks, distortionJumpBlocked,
-  platformIndex, setDistortionFloor, setPlatformIndex, setState, state, toWorldTiles,
+  armSteppingStones, bindPlatform, distortionActive, distortionBehaviorAt, distortionBlockedAt, distortionData,
+  distortionFloor, distortionFollowsGround, distortionFrame, distortionFrontTile, distortionGroundLift,
+  distortionHooks, distortionJumpBlocked, platformIndex, setDistortionFloor, setHeightCalc,
+  setPlatformIndex, setState, state, takeFloorLoad, tickSteppingStones, toWorldTiles,
 } from './distortionCore'
+import { SFX } from '../engine/audio/sfx'
+import { music } from '../engine/audio/music'
 import { distortionRiding, resetDistortionRide, startRide } from './distortionElevator'
 import { applyEvents, distortionEventRunning, resetDistortionEvents } from './distortionEvents'
 import { applyJump, resetDistortionJump } from './distortionJump'
 import { dropBoulder } from './distortionBoulder'
-import { applyTeleport, resetDistortionObjects, spawnFloorObjects } from './distortionObjects'
+import {
+  applyTeleport, distortionBoulderMoved, keepBoulderSpots, resetDistortionObjects, spawnFloorObjects,
+} from './distortionObjects'
 
 // ── 밖이 쓰는 것만 다시 내보낸다 ─────────────────────────────────────────────
 //
@@ -36,10 +41,11 @@ import { applyTeleport, resetDistortionObjects, spawnFloorObjects } from './dist
 // **밖에서 부를 수 있는 전부**이고, 실제로 부르는 자리를 세어서 적었다.
 export type { DistortionPropPlace } from './distortionCore'
 export {
-  distortionActive, distortionFloor, distortionGroundY, distortionHooks, distortionKind,
-  distortionLoaded, distortionPlayerPos, distortionPreload, distortionPropPlaces,
-  distortionPropShown, distortionRebindPlatform, distortionSpawn, distortionUnavailable,
-  groundYAt, isDistortionFloor, romTileToLocal,
+  distortionActive, distortionFloor, distortionFloorLoading, distortionGroundY, distortionHooks,
+  distortionKind, distortionLoaded, distortionPlayerPos, distortionPreload, distortionPropPlaces,
+  distortionPropOpacity, distortionPropShown, distortionRebindPlatform, distortionSpawn,
+  distortionUnavailable,
+  groundYAt, isDistortionFloor, resetDistortionPersisted, romTileToLocal, takeCarried,
 } from './distortionCore'
 export {
   distortionCascadePose, distortionCascadeTick, distortionCascading,
@@ -47,7 +53,7 @@ export {
 export { distortionCameraTick, distortionResetCamera } from './distortionCamera'
 export { distortionJumpTick, distortionJumping } from './distortionJump'
 export {
-  distortionEventRunning, distortionEventTick, distortionForgetEvents, distortionSlideAt,
+  distortionEventRunning, distortionEventTick, distortionSlideAt,
 } from './distortionEvents'
 export { distortionRideAt, distortionRideTick, distortionRiding } from './distortionElevator'
 export { distortionBoulderFalling, distortionBoulderTick } from './distortionBoulder'
@@ -57,9 +63,22 @@ export {
 } from './distortionGiratina'
 export { distortionAddObject, distortionRemoveObject } from './distortionObjects'
 
+/**
+ * 이 세계의 맵에 들어섰다 (`DistWorld_DynamicMapFeaturesInit` · 층 갈이면 `PrepareLoadingActiveFloor`).
+ *
+ * 들어서는 길이 셋이고 원작이 셋을 다르게 다룬다:
+ *
+ *   워프로 들어섰다   `OnTransition`이 세이브 자리를 비웠다(`resetDistortionPersisted`) → `valid`가 0이라
+ *                    `InitPersistedData`를 하고 **발밑에서 판을 찾는다** (`InitMapElements`)
+ *   이어하기          `valid`가 서 있다 → 적어 둔 판 번호를 그대로 잡고(`PrepareNewCurrentFloatingPlatform`),
+ *                    유령 소품 무리도 적어 둔 대로 세운다(`InitActiveGhostPropManager(…, FALSE)`)
+ *   층 갈이           세계는 그대로 서 있고 층만 갈아 싣는다 — **판은 풀리고**(`FreeFloatingPlatformManagerTerrainAttrs`
+ *                    — 판 번호가 「판 개수」가 된다) 유령 소품은 그 층 기본값이다(`SetPersistedHiddenGhostPropGroups(0)`
+ *                    → `InitActiveGhostPropManager(…, TRUE)`). 카메라와 높이 계산은 **건드리지 않는다** — 도는 중이면
+ *                    이어 돈다(`ov9_02249960.c:3944-3984`)
+ */
 export function distortionEnter(mapId: number, x: number, y: number, z: number): void {
-  // 발판 자리 번호는 **층마다** 다시 센다 — 앞 층에서 밀려 있던 값을 들고
-  // 오면 다음 층의 엉뚱한 판이 그만큼 옆으로 나가 서 있는다
+  const floorLoad = takeFloorLoad()
   resetDistortionEvents()
   resetDistortionObjects()
   const data = distortionData()
@@ -67,36 +86,57 @@ export function distortionEnter(mapId: number, x: number, y: number, z: number):
   const floor = mapOf(data, mapId)
   setDistortionFloor(floor)
   if (floor === null) { setPlatformIndex(-1); return }
+  armSteppingStones(mapId)
   const s = state()
   if (!s.valid) {
     const [wx, wy, wz] = toWorldTiles(x, y, z)
-    const platform = findPlatform(floor.platforms, wx, wy, wz)
-    setPlatformIndex(platform)
     // 처음 들어설 때 발판 자리와 바위 자리를 세운다 (`InitPersistedData`).
     // ⚠️ **들어선 층이 값을 바꾼다** — B7F로 들어오면 위로 갈 발판이 다 서 있다
     setState({
       valid: true,
-      platformIndex: Math.max(0, platform),
       platformFlags: initialPlatformFlags(mapId),
       puzzleFlags: initialPuzzleFlags(distortionHooks.puzzleFinished?.() ?? false),
       hiddenGroups: initialHiddenGroups(floor.visibleGroups),
     })
+    // 판이 없으면 「판 개수」가 적힌다 — 0을 적으면 다음에 판이 있는 층에서 판 0이 잡힌다
+    bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
     seatCamera()
+    initPlayer()
+    spawnFloorObjects(mapId)
+    return
+  }
+  if (floorLoad) {
+    bindPlatform(-1)
+    // 지금 층과 다음 층의 물체만 남는다 — 밀어 둔 바위도 그 둘 밖이면 배치표 자리로 돌아간다
+    keepBoulderSpots([mapId, connectionOf(data, mapId)?.next ?? -1])
+    if (s.hiddenGroups !== initialHiddenGroups(floor.visibleGroups)) {
+      setState({ hiddenGroups: initialHiddenGroups(floor.visibleGroups) })
+    }
     spawnFloorObjects(mapId)
     return
   }
   // 판 개수 이상이면 「어느 판도 아니다」다 — 보통 격자로 걷는다
   setPlatformIndex(s.platformIndex < floor.platforms.length ? s.platformIndex : -1)
   seatCamera()
+  initPlayer()
   spawnFloorObjects(mapId)
-  // ⚠️ **층을 갈아탈 때마다 소품 보임새를 그 층 기본값으로 되돌린다.**
-  // 원작이 층을 바꿀 때 `SetPersistedHiddenGhostPropGroups(system, 0)` 뒤에
-  // `InitActiveGhostPropManager(system, TRUE)`를 부른다 — 즉 이어받는 것이
-  // 아니라 **다시 세운다**. 안 그러면 앞 층에서 켠 무리가 다음 층에서 켜진
-  // 채로 남아, 아직 나오면 안 되는 발판이 미리 서 있는다
-  if (s.hiddenGroups !== initialHiddenGroups(floor.visibleGroups)) {
-    setState({ hiddenGroups: initialHiddenGroups(floor.visibleGroups) })
-  }
+}
+
+/**
+ * 세계가 설 때 주인공의 높이 계산을 정한다 (`InitPlayer`).
+ *
+ * 판 밖(`AVATAR_DISTORTION_STATE_ACTIVE`)이면 켜고 판 위면 끈다 (`ov9_02249960.c:2672-2680`)
+ */
+function initPlayer(): void {
+  setHeightCalc(platformIndex() < 0)
+}
+
+/**
+ * 소품 한 프레임 — B6F의 B7F행 발판이 깃발(2423)을 보고 나타난다 (`DistWorldMovingPlatformProp_AnimTick`).
+ * 처음 비치는 프레임에 소리를 낸다 (`PlaySoundIfNotActive(SEQ_SE_PL_SYUWA3)`)
+ */
+export function distortionPropTick(dt: number): void {
+  if (tickSteppingStones(dt)) void music.playEffect(SFX.DISTORTION_APPEAR)
 }
 
 /** 깨어진 세계를 나갔다 */
@@ -145,6 +185,20 @@ export function distortionStepped(x: number, y: number, z: number, dir: number):
   applyTeleport(wx, wy, wz, dir)
 }
 
+/**
+ * 선 자리에서 **막힌 쪽을 밀고 있다** (`DistWorld_CheckMapTransition`).
+ *
+ * 원작은 멈춰 선 채 보는 쪽 키를 누르고 있으면(`input->mapTransition` · `transitionDir`,
+ * `field_control.c:144-170, 318-320`) 스크립트 칸 둘을 다시 본다 — B7F (89,65,57)에서 북쪽, 기라티나 방
+ * (15,1,25)에서 남쪽. 그 앞 칸은 막혀 있어서(`distortionBlockedAt`) 밀면 부딪히는 걸음이 된다. 기라티나 방에서
+ * 남쪽을 보고 B7F (89,57)에 내려선 뒤 북쪽으로 돌아서 밀면 그대로 다시 넘어간다
+ */
+export function distortionBumped(x: number, y: number, z: number, dir: number): void {
+  if (!distortionActive() || distortionRiding() || distortionEventRunning()) return
+  const [wx, wy, wz] = toWorldTiles(x, y, z)
+  applyTeleport(wx, wy, wz, dir)
+}
+
 function applyTriggers(wx: number, wy: number, wz: number, dir: number): void {
   const floor = distortionFloor()
   if (floor === null) return
@@ -173,10 +227,9 @@ distortionBridge.frontTile = distortionFrontTile
 distortionBridge.cameraSwing = distortionCameraSwing
 distortionBridge.frame = distortionFrame
 distortionBridge.inWorld = distortionActive
-distortionBridge.landY = () => {
-  const floor = distortionFloor()
-  return floor === null || platformIndex() >= 0 ? null : distortionGroundY(floor.map)
-}
+distortionBridge.followsGround = distortionFollowsGround
+distortionBridge.groundLift = distortionGroundLift
 distortionBridge.behaviorAt = distortionBehaviorAt
 distortionBridge.jumpBlocked = distortionJumpBlocked
 distortionBridge.dropBoulder = dropBoulder
+distortionBridge.boulderMoved = distortionBoulderMoved

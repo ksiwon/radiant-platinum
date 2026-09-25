@@ -4150,14 +4150,19 @@ on('SetSubScene63', () => false)
 // ── 깨어진 세계와 전설 (PARITY §6.10) ────────────────────────────────────────
 
 /**
- * 깨어진 세계의 「맵마다 바뀌는 것」을 연다 (`PersistedMapFeatures_InitForDistortionWorld`).
+ * 깨어진 세계의 「맵마다 바뀌는 것」을 비운다 (`PersistedMapFeatures_InitForDistortionWorld`).
  *
- * ⚠️ **원작은 여기서 통째로 지운다.** 층마다의 `OnTransition`이 이걸 부르는데
- * `PersistedMapFeatures_InitWithID`가 버퍼를 0으로 밀어 버린다 — 그래서 층을
- * 넘을 때마다 서 있던 판도 카메라 각도 되잡힌다. 우리는 그 칸을 세이브에 따로
- * 두었으므로 지우지 않는다. 지우면 벽에 붙어 있다가 층을 옮긴 순간 떨어진다
+ * 원작은 버퍼를 통째로 0으로 민다(`persisted_map_features_init.c:139-146` — `valid`도 0). 그러면 세계가
+ * 설 때 `InitPersistedData`와 발밑 판 찾기를 다시 한다(`ov9_02249960.c:1662-1664, 3921-3931`).
+ *
+ * ⚠️ **워프로 들어설 때만 돈다.** 이 명령은 층마다의 `OnTransition`에 있는데, 원작에서 `OnTransition`은
+ * 워프·스크립트의 맵 갈이에서만 돈다. 승강 발판과 폭포의 층 갈이(`FieldMap_ChangeZoneDistortionWorld`)와
+ * 이어하기는 안 부른다 — 우리는 둘 다 같은 `enter`를 지나므로 받는 쪽(`resetDistortionPersisted`)이 가린다
  */
-on('InitPersistedMapFeaturesForDistortionWorld', () => false)
+on('InitPersistedMapFeaturesForDistortionWorld', (ctx) => {
+  ctx.host.world.services.distortion?.resetPersisted()
+  return false
+})
 
 /** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */
 on('ResetDistortionWorldPersistedCameraAngles', (ctx) => {

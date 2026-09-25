@@ -160,8 +160,10 @@ describe('물살에 눕고 흔들린다', () => {
       if (cam !== null) fired.push({ frame: f, at: cam.atTiles })
     }
     expect(fired.map((x) => x.at)).toEqual([-20, -36])
-    // −305/16도 내림하면 −20이다 — 딱 −320이 되는 프레임이 아니다
-    expect(cascadeOffset(down, fired[0]!.frame)).toBe(-305)
+    // ⚠️ `/ FX32_ONE`은 C 나눗셈이라 0 쪽으로 자른다 — −305/16은 −19다. 딱 −320이 되는 프레임에 켜진다.
+    // 내림으로 읽으면 열다섯 프레임 일찍 켜진다 (REPAIR §108)
+    expect(cascadeOffset(down, fired[0]!.frame)).toBe(-320)
+    expect(cascadeOffset(down, fired[0]!.frame - 1)).toBe(-319)
     expect(fired[0]!.frame).toBeLessThan(fired[1]!.frame)
   })
 

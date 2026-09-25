@@ -194,6 +194,38 @@ export function legFrames(path: DistortionElevatorPath): number {
   return frames
 }
 
+/**
+ * 타기 전에 떠는 폭, 프레임마다 (**타일** 단위) — `DistWorldElevatorPlatform_Vibrate`.
+ *
+ * `ELEVATOR_PLATFORM_VIBRATION_Y_DELTA`(= `FX32_ONE * 6`, 6/16타일)에서 시작해 프레임마다 부호를 뒤집고,
+ * 양수로 돌아올 때마다 4 이상이면 2를, 1보다 크면 1을 뺀다. 1에 닿으면 여덟 번을 더 떨고 0이 되어 끝난다 —
+ * 끝나는 프레임은 제자리다(`initialPlayerY`로 되돌린다). 그 스물두 프레임을 원작 산술 그대로 편다.
+ * 미끄러지는 판의 떨림(`distortionMovePlatform`의 `VIBRATION`)과 폭도 줄이는 법도 다르다.
+ *
+ * ⚠️ **한 번 타는 동안 한 번만 떤다.** `vibrationAnimDone`이 다리가 바뀌어도 남아서
+ * 두 다리짜리 자리(B3F↔B5F)의 둘째 다리는 곧바로 움직인다
+ */
+export const ELEVATOR_VIBRATION: readonly number[] = (() => {
+  const out: number[] = []
+  let delta = 6
+  let step = 0
+  for (;;) {
+    const shown = delta
+    delta = -delta
+    if (delta >= 0) {
+      if (delta >= 4) delta -= 2
+      else if (delta > 1) delta -= 1
+      else {
+        step++
+        if (step >= 8) delta -= 1
+      }
+      if (delta <= 0) { out.push(0); break }
+    }
+    out.push(shown)
+  }
+  return out.map((n) => n / 16)
+})()
+
 /** 층이 바뀌는 것은 몇 프레임째인가 */
 export function changeMapFrame(path: DistortionElevatorPath): number {
   const axes: [number, number][] = [
@@ -271,7 +303,30 @@ export function cyrusB4FWalk(tileX: number): { east: number; north: number } | n
   }
 }
 
-/** 태홍이 걸어 나가는 조건 (`..._EndMovement`의 마지막 `if`) */
+/**
+ * 태홍이 걷는 이동 목록 (`sCyrusB4FLeftmostAnimCmds` · `…Middle…` · `…Rightmost…`).
+ *
+ * 원작은 `MapObject_StartAnimation`으로 걸리고, 목록이 끝나야(`MapObject_HasAnimationEnded`) 지운다
+ * (`ov9_02249960.c:5531-5585`). 동작 이름은 `MOVEMENT_ACTION_WALK_NORMAL_*`이다
+ */
+export function cyrusB4FAnim(tileX: number): readonly (readonly [action: string, count: number])[] | null {
+  const walk = cyrusB4FWalk(tileX)
+  if (walk === null) return null
+  const out: (readonly [string, number])[] = []
+  if (walk.east > 0) out.push(['WALK_NORMAL_EAST', walk.east])
+  out.push(['WALK_NORMAL_NORTH', walk.north])
+  return out
+}
+
+/**
+ * 태홍이 걸어 나가는 조건 (`..._EndMovement`의 마지막 `if`).
+ *
+ * ⚠️ **`platformIndex`는 닿은 층의 발판 번호다.** 원작이 보는 `animator->template.index`는 마지막 다리의
+ * 층 갈이에서 **닿는 층의 틀로 갈아 끼운** 값이다(`DistWorldMovingPlatformPropAnimator_ChangeMaps` —
+ * `GetMovingPlatformTemplateForMap(dest, template.destIndex)`). 그래서 B3F의 3번 발판(95,193,70 ·
+ * `destIndex` 1)으로 처음 내려올 때 걸린다. 떠난 층의 번호(2)를 보면 그때는 안 걸리고, 번호가 1인
+ * B3F 발판(79,193,62 — 닿는 번호 0)으로 내려올 때 엉뚱하게 걸린다
+ */
 export function cyrusLeavesB4F(
   destMap: number, dir: number, platformIndex: number, appearance: number,
 ): boolean {

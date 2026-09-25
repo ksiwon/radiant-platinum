@@ -41,6 +41,26 @@ export const SFX = {
    */
   WATERFALL: 1488,
   /**
+   * `SEQ_SE_PL_FW089`. 깨어진 세계의 승강 발판 — 떨기 시작할 때 켜고(`ov9_02249960.c:5275`) 마지막
+   * 다리가 닿을 때 끈다(5471). 두 다리짜리 자리에서도 한 번만 켠다
+   */
+  DISTORTION_ELEVATOR: 1481,
+  /**
+   * `SEQ_SE_PL_FW089B`. B2F의 미끄러지는 판 — 떨기 시작할 때 켜고(6500) 다 가서 끈다(6650).
+   * 사건 하나에 판 밀기가 둘이라 두 번 난다
+   */
+  DISTORTION_SLIDE: 1482,
+  /**
+   * `SEQ_SE_PL_SYUWA3`. B6F에서 B7F로 가는 발판이 디딤돌 깃발(2423)로 나타날 때
+   * (`DistWorldMovingPlatformProp_AnimTick`, 6240)
+   */
+  DISTORTION_APPEAR: 1484,
+  /**
+   * `SEQ_SE_DP_SUTYA2`. 깨어진 세계에서 벽·천장으로 뛰어 내려설 때
+   * (`JumpOnFloatingPlatform`의 `..._MOVE_PLAYER` 끝, `ov9_02249960.c:2887`)
+   */
+  DISTORTION_LAND: 1607,
+  /**
    * `SEQ_SE_DP_ELEBETA2`. 승강기가 오르내리는 소리
    * (`overlay006/elevator_animation.c`의 `..._STATE_PLAY_WITH_SOUND`).
    *

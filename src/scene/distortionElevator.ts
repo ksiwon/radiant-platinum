@@ -4,22 +4,27 @@
 // **사람을 얹고 층을 갈아 끼우는 일**을 한다.
 import { connectionOf, findPlatform, mapOf } from '../engine/world/distortion'
 import {
-  ELEVATOR_DIR, changeMapFrame, cyrusB4FWalk, cyrusLeavesB4F, DIST_OBJ, downEndFlags,
-  elevatorAt, elevatorLegs, legFrames, passengerAfter, passengerLocalID, upStartFlags, withFlag,
-  type ElevatorLeg,
+  ELEVATOR_DIR, ELEVATOR_VIBRATION, changeMapFrame, cyrusB4FAnim, cyrusLeavesB4F, DIST_OBJ,
+  downEndFlags, elevatorAt, elevatorLegs, legFrames, passengerAfter, passengerLocalID, upStartFlags,
+  withFlag, type ElevatorLeg,
 } from '../engine/world/distortionElevator'
+import { MovementRunner, type MovementStep } from '../engine/script/movement'
+import { SFX } from '../engine/audio/sfx'
+import { music } from '../engine/audio/music'
 import { addNpcFrom, npcActors, removeNpc } from '../engine/actor/npcs'
 import { world, type Npc } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import {
-  bindPlatform, distortionData, distortionHooks, distortionFloor, setState, state, toLocalTiles, toWorldTiles,
+  beginFloorLoad, bindPlatform, distortionData, distortionHooks, distortionFloor, markCarried,
+  setHeightCalc, setState, state, toLocalTiles, toWorldTiles,
 } from './distortionCore'
 
 /**
  * 지금 타고 있는 발판의 자리 번호와 서 있는 칸 (맵 좌표).
  *
  * 타는 동안 그 발판은 주인공 발밑에 붙어 같이 간다 — 원작이 발판을 옮기고
- * 주인공을 그 위에 얹는다. 우리는 주인공 자리가 먼저 정해지므로 뒤집어 붙인다
+ * 주인공을 그 위에 얹는다. 우리는 주인공 자리가 먼저 정해지므로 뒤집어 붙인다.
+ * 다 내린 뒤 태홍이 걸어 나가는 동안은 발판이 닿은 자리에 서 있다
  */
 export function distortionRideAt(): { index: number; x: number; y: number; z: number } | null {
   if (ride === null) return null
@@ -58,15 +63,39 @@ interface Ride {
   carry: { info: Npc; worldX: number; worldZ: number } | null
   /** 층이 바뀐 뒤 그 사람을 아직 안 세웠다 */
   addPassenger: boolean
-  /** 발판의 자리 번호 (B4F의 태홍이 이걸 본다) */
+  /**
+   * 발판의 자리 번호 (B4F의 태홍이 이걸 본다).
+   *
+   * ⚠️ **마지막 다리의 층 갈이에서 닿는 층의 번호로 바뀐다** — 원작의 발판 객체가 그때 틀을 갈아 끼운다
+   * (`DistWorldMovingPlatformPropAnimator_ChangeMaps`가 `template.destIndex`의 틀을 싣는다)
+   */
   platformIndex: number
+  /** 닿는 층에서 이 발판이 몇 번인가 (`template.destIndex`) */
+  destIndex: number
+  /**
+   * 타기 전에 떠는 프레임 중 남은 것 (`ELEVATOR_PLATFORM_STATE_VIBRATE`).
+   * 첫 다리에서만 떤다 — `vibrationAnimDone`이 다리가 바뀌어도 남는다
+   */
+  vibrate: number
+  /**
+   * 다 내린 뒤 태홍이 걸어 나가는 중 (`..._CYRUS_B4F_START/END_ANIMATION`).
+   *
+   * 원작은 그동안 승강 발판 태스크를 안 끝낸다 — 목록이 끝나야(`MapObject_HasAnimationEnded`)
+   * 태홍을 지우고 `RES_FINISH`를 낸다. 그래서 그 사이 주인공은 못 움직인다
+   */
+  cyrus: MovementRunner | null
 }
 
 let ride: Ride | null = null
 
+/** 걷는 목록에 아직 안 돌린 프레임 몫 (화면 주사율과 60Hz를 잇는다) */
+let cyrusPending = 0
+
 /** 층을 나갈 때 타던 것을 버린다 (`distortionLeave`) */
 export function resetDistortionRide(): void {
+  if (ride !== null) music.stopEffect(SFX.DISTORTION_ELEVATOR)
   ride = null
+  cyrusPending = 0
 }
 
 /**
@@ -111,22 +140,34 @@ export function startRide(wx: number, wy: number, wz: number): boolean {
     carry: null,
     addPassenger: false,
     platformIndex: found.index,
+    destIndex: found.destIndex,
+    vibrate: ELEVATOR_VIBRATION.length,
+    cyrus: null,
   }
+  // 떨기 시작할 때 소리를 켠다 (`Sound_PlayEffect(SEQ_SE_PL_FW089)`). 마지막 다리가 닿을 때 끈다
+  void music.playEffect(SFX.DISTORTION_ELEVATOR)
   beginLeg()
   return true
 }
 
+/**
+ * 다리를 연다 (`DistWorldElevatorPlatform_BeginMovement`) — 다리마다 다시 지난다.
+ *
+ * 오르는 것이면 자리 표를 손보고, 주인공의 **높이 계산을 끈다**
+ * (`MapObject_SetHeightCalculationDisabled(playerMapObj, TRUE)`) — 발판이 높이를 쥔다
+ */
 function beginLeg(): void {
   if (ride === null) return
   const leg = ride.legs[ride.leg]
   if (leg === undefined) { ride = null; return }
+  setHeightCalc(false)
   if (ride.dir === ELEVATOR_DIR.up) {
     setState({ platformFlags: upStartFlags(state().platformFlags, leg.path.index) })
   }
 }
 
 /**
- * 한 프레임 (`..._MoveFirstHalf` · `..._ChangeMaps` · `..._MoveSecondHalf`).
+ * 한 프레임 (`..._Vibrate` · `..._MoveFirstHalf` · `..._ChangeMaps` · `..._MoveSecondHalf`).
  *
  * 원작이 프레임마다 `posDelta`를 더하므로 60분의 1초를 한 프레임으로 센다 —
  * 실제 화면이 몇 헤르츠든 걸리는 시간이 같다
@@ -138,8 +179,24 @@ export function distortionRideTick(dt: number): void {
   // 층을 받아 오는 동안은 멈춘다 (`IsFloorLoaderActive`). 안 그러면 아직 앞
   // 층의 좌표계로 계산해서 발판이 딴 데로 간다
   if (world.pending !== null) return
+  if (ride.cyrus !== null) { tickCyrus(ride.cyrus, dt); return }
   const leg = ride.legs[ride.leg]
   if (leg === undefined) { ride = null; return }
+
+  // 떤다 — 발판·주인공·같이 타는 사람이 제자리에서 오르내린다. 칸은 안 바뀐다
+  if (ride.vibrate > 0) {
+    const at = Math.floor(ELEVATOR_VIBRATION.length - ride.vibrate)
+    ride.vibrate = Math.max(0, ride.vibrate - dt * 60)
+    const shake = ride.vibrate > 0 ? ELEVATOR_VIBRATION[at] ?? 0 : 0
+    const [lx, ly, lz] = toLocalTiles(ride.from[0], ride.from[1], ride.from[2])
+    const p = worldState.player.position
+    p.set(lx + 0.5, ly + shake, lz + 0.5)
+    worldState.player.prevPosition.copy(p)
+    worldState.player.velocity.set(0, 0, 0)
+    markCarried()
+    movePassenger(p.y)
+    return
+  }
 
   const total = legFrames(leg.path)
   if (total <= 0) { ride = null; return }
@@ -166,6 +223,7 @@ export function distortionRideTick(dt: number): void {
   p.set(lx + 0.5, ly, lz + 0.5)
   worldState.player.prevPosition.copy(p)
   worldState.player.velocity.set(0, 0, 0)
+  markCarried()
   movePassenger(ly)
 
   if (!ride.changed && ride.frame >= changeMapFrame(leg.path)) {
@@ -204,6 +262,8 @@ function changeFloor(leg: ElevatorLeg): void {
     flags = withFlag(flags, leg.path.persistedFlagToSet, true)
     flags = withFlag(flags, leg.path.persistedFlagToClear, false)
     setState({ platformFlags: flags })
+    // 발판이 닿는 층의 틀로 갈아 끼운다 (`DistWorldMovingPlatformPropAnimator_ChangeMaps`)
+    ride.platformIndex = ride.destIndex
   }
   // ⚠️ **번호가 층마다 다시 128에서 센다.** 같이 타는 사람은 층이 바뀌는 순간
   // 다른 번호가 된다 — 원작은 **같은 객체의** `localID`를 갈아 끼운다
@@ -236,6 +296,8 @@ function changeFloor(leg: ElevatorLeg): void {
   const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
   ride.passenger = after?.localID ?? null
   ride.addPassenger = after !== null
+  // 워프가 아니라 층 갈이다 — 세이브를 안 지우고, 판은 풀고, 카메라는 이어 돈다 (`distortionEnter`)
+  beginFloorLoad()
   world.pending = {
     to: dest,
     matrix: matrixOf(dest),
@@ -271,38 +333,70 @@ function endLeg(leg: ElevatorLeg): void {
     return
   }
 
+  // 소리를 끈다 (`Sound_StopEffect(SEQ_SE_PL_FW089)`)
+  music.stopEffect(SFX.DISTORTION_ELEVATOR)
   if (ride.dir === ELEVATOR_DIR.down) {
     setState({ platformFlags: downEndFlags(state().platformFlags, leg.path.index) })
-    cyrusOffB4F()
   }
-  // 닿은 칸에서 발밑의 판을 다시 잡는다 (`FindAndPrepareNewCurrentFloatingPlatform`)
+  // 닿은 칸에 세우고 **높이 계산을 되켠다** (`PlayerAvatar_SetHeightCalculationEnabledAndUpdate(TRUE)`).
+  // ⚠️ 발밑의 판은 다시 안 잡는다 — 원작의 `EndMovement`에 그 줄이 없다. 층 갈이가 판을 풀어 두었고
+  // (`FreeFloatingPlatformManagerTerrainAttrs`) 닿는 칸 열두 자리가 다 판 밖이다
   const [lx, ly, lz] = toLocalTiles(at[0], at[1], at[2])
   const p = worldState.player.position
   p.set(lx + 0.5, ly, lz + 0.5)
   worldState.player.prevPosition.copy(p)
-  const found = floor === null ? -1 : findPlatform(floor.platforms, at[0], at[1], at[2])
-  bindPlatform(found)
+  markCarried()
+  if (floor !== null) {
+    const found = findPlatform(floor.platforms, at[0], at[1], at[2])
+    if (found >= 0) bindPlatform(found)
+  }
+  setHeightCalc(true)
+  const cyrus = cyrusOffB4F()
+  if (cyrus !== null) { ride.cyrus = cyrus; return }
   ride = null
 }
 
 /**
  * B4F에 처음 내려서면 태홍이 걸어 나간다 (`..._CyrusB4FStartAnimation`).
  *
- * 걸음 수만 옮긴다 — 서 있던 x가 셋 중 무엇이냐에 따라 동쪽으로 두 칸·한 칸·
- * 안 가고, 셋 다 북쪽 넷을 걸어 같은 자리에서 사라진다
+ * 서 있던 x가 셋 중 무엇이냐에 따라 동쪽으로 두 칸·한 칸·안 가고, 셋 다 북쪽 넷을 **걸어** 같은
+ * 자리에서 사라진다. 목록은 스크립트의 `ApplyMovement`와 같은 `MovementRunner` · 같은 표로 돈다
+ * (`distortionTuto`와 같은 길). 표가 아직 없으면 걸음 없이 곧바로 지운다 — 결과(지움 · 변수 1)는 같다
  */
-function cyrusOffB4F(): void {
+function cyrusOffB4F(): MovementRunner | null {
   const floor = distortionFloor()
-  if (ride === null || floor === null) return
+  if (ride === null || floor === null) return null
   const appearance = distortionHooks.cyrusAppearance?.() ?? 0
-  if (!cyrusLeavesB4F(floor.map, ride.dir, ride.platformIndex, appearance)) return
+  if (!cyrusLeavesB4F(floor.map, ride.dir, ride.platformIndex, appearance)) return null
   const actor = npcActors.list.find((a) => a.localID === DIST_OBJ.b4fCyrus)
-  if (actor === undefined) return
+  if (actor === undefined) return null
   const [wx] = toWorldTiles(actor.x, 0, actor.z)
-  const walk = cyrusB4FWalk(wx)
-  if (walk === null) return
-  actor.x += walk.east
-  actor.z -= walk.north
+  const anim = cyrusB4FAnim(wx)
+  const table = distortionHooks.movements?.() ?? null
+  const target = distortionHooks.mapObject?.(DIST_OBJ.b4fCyrus) ?? null
+  if (anim === null || table === null || target === null) { leaveCyrus(); return null }
+  const steps: MovementStep[] = anim.map(([name, count]) => ({
+    action: table.findIndex((a) => a?.name === name), count,
+  }))
+  cyrusPending = 0
+  return new MovementRunner(target, steps, table)
+}
+
+/** 목록이 끝나면 지우고 변수를 세운다 (`..._CyrusB4FEndAnimation`) */
+function leaveCyrus(): void {
   removeNpc(DIST_OBJ.b4fCyrus)
   distortionHooks.setCyrusAppearance?.(1)
+}
+
+/** 걷는 목록을 60Hz로 한 칸씩 돌린다. 끝나면 태우던 것도 끝난다 */
+function tickCyrus(runner: MovementRunner, dt: number): void {
+  cyrusPending += dt * 60
+  while (cyrusPending >= 1 - 1e-6 && !runner.done) {
+    cyrusPending -= 1
+    runner.tick()
+  }
+  if (!runner.done) return
+  cyrusPending = 0
+  leaveCyrus()
+  ride = null
 }

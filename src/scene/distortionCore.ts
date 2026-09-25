@@ -12,9 +12,9 @@ import { surfaceVector } from '../engine/actor/distortionSurface'
 import { loadDistortion } from '../data/gameData'
 import type { DistortionData, DistortionMap } from '../data/schema'
 import {
-  ATTRS_INVALID, CYNTHIA_BLOCK, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL, PLATFORM_FLOOR,
-  PLATFORM_NONE, PLATFORM_WEST_WALL, PROGRESS, TELEPORT, blocked, findPlatform, flagHolds,
-  MAX_PERSISTED_PLATFORMS, hasPlatformAt, mapOf, tileAttributes, tileBehavior,
+  ATTRS_INVALID, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL, PLATFORM_FLOOR,
+  PLATFORM_NONE, PLATFORM_WEST_WALL, TELEPORT, blocked, cynthiaBlocksJump, findPlatform, flagHolds,
+  MAX_PERSISTED_PLATFORMS, hasPlatformAt, mapOf, newDistortionState, tileAttributes, tileBehavior,
   type DistortionFrame, type DistortionState,
 } from '../engine/world/distortion'
 import { DIR, type Movable, type MovementTable } from '../engine/script/movement'
@@ -22,6 +22,7 @@ import { platformFlagShown } from '../engine/world/distortionElevator'
 import type { VarStore } from '../engine/script/vars'
 import { useSaveStore } from '../state/saveStore'
 import { worldState } from '../state/worldState'
+import { activeZone } from '../engine/map/zone'
 
 let data: DistortionData | null = null
 
@@ -108,6 +109,117 @@ export function state(): DistortionState {
 
 export function setState(next: Partial<DistortionState>): void {
   useSaveStore.setState({ distortion: { ...state(), ...next } })
+}
+
+// ── 층 갈이 · 옮겨짐 · 높이 계산 — 원작이 따로 들고 있는 세 상태 ─────────────────
+
+/**
+ * 지금 들어서는 맵이 **층 갈이**인가 (`FieldMap_ChangeZoneDistortionWorld`).
+ *
+ * 원작은 승강 발판·폭포가 층을 바꿀 때 워프를 안 탄다 — `FieldMapChange_UpdateGameDataDistortionWorld(…, 1)`이
+ * `PersistedMapFeatures_Init`도 `OnTransition`도 안 부르고(`field_map_change.c:305-330` · `fieldmap.c:456`),
+ * 새 층을 **활성 층으로 옮겨 싣기만** 한다(`PrepareLoadingActiveFloor`). 우리는 층 갈이도 워프와 같은
+ * `enter`를 지나므로, 승강 발판과 폭포가 `world.pending`을 걸 때 이 표식을 세우고 `distortionEnter`가
+ * 받아서 지운다. 이 표식이 곧 「세이브를 지우지 말고, 판은 풀고, 카메라는 이어 돌려라」다
+ */
+let floorLoad = false
+
+/** 승강 발판·폭포가 층을 부른다. `world.pending`을 거는 그 자리에서 부른다 */
+export function beginFloorLoad(): void {
+  floorLoad = true
+}
+
+/** 들어서는 중인 맵이 층 갈이인가. `distortionEnter`가 받기 전까지 선다 */
+export function distortionFloorLoading(): boolean {
+  return floorLoad
+}
+
+/** `distortionEnter`만 부른다 — 받고 지운다 */
+export function takeFloorLoad(): boolean {
+  const was = floorLoad
+  floorLoad = false
+  return was
+}
+
+/**
+ * 이 세계가 **주인공을 옮겼다** — 사건·승강 발판·판 뛰기·폭포가 자리를 바꾼 뒤다.
+ *
+ * ⚠️ **옮겨진 칸은 걸은 칸이 아니다.** 원작은 닿은 칸 처리(`DistWorld_HandlePlayerPositionChanged`)를
+ * `Field_ProcessStep`에서만 돌리고, 그것은 조작으로 한 걸음을 마쳤을 때만 온다(`field_control.c:200,706`).
+ * 미끄러지는 판이 내려놓은 칸, 승강 발판이 닿은 칸은 거기 안 든다. 그래서 걸음 자(`stepSystem`)는
+ * 이 표식을 보면 그 자리에서 다시 잰다 — 닿은 칸 처리도 걸음 수도 안 돈다.
+ * 표식은 옮긴 **마지막** 프레임까지 선다: 조작이 풀리는 프레임과 걸음 자가 도는 차례가 어긋나도 안 샌다
+ */
+let carried = false
+
+/** 이 세계의 연출이 주인공 자리를 옮겼다 */
+export function markCarried(): void {
+  carried = true
+}
+
+/** 걸음 자가 받는다 — 받고 지운다 */
+export function takeCarried(): boolean {
+  const was = carried
+  carried = false
+  return was
+}
+
+/**
+ * **높이 계산이 켜져 있는가** (`MapObject_IsHeightCalculationDisabled`의 반대).
+ *
+ * 원작이 켜고 끄는 자리 (`ov9_02249960.c`):
+ *
+ *   켠다   `InitPlayer`(2676 · 판 밖이면) · 승강 발판 끝(5500) · 미끄러지는 판 끝(6643 · 판 밖이면) ·
+ *          폭포 내려와 선 뒤(8411)
+ *   끈다   `InitPlayer`(판 위면) · 승강 발판 시작(5236) · 미끄러지는 판 시작(6495) · 판 뛰기 끝(2869 —
+ *          `floatingPlatformIndex`가 u16이라 `< 0`이 안 서서 늘 끈다) · 폭포 올라 천장에 선 뒤(8708)
+ *
+ * 켜져 있고 판 밖이면 주인공이 지형 높이를 딛는다(`followsGround`)
+ */
+let heightCalc = false
+
+export function setHeightCalc(on: boolean): void {
+  heightCalc = on
+}
+
+/** 지금 지형을 따라가는가 — 판 밖이고 높이 계산이 켜져 있다 */
+export function distortionFollowsGround(): boolean {
+  return floor !== null && platform < 0 && heightCalc
+}
+
+/**
+ * 그림만 띄우는 높이 (칸) — `distortionBridge.groundLift`.
+ *
+ * 지형을 딛는 동안 발밑 판의 실제 높이가 칸 높이보다 얼마나 위인가다. 깨어진 세계에서 0이 아닌 자리는
+ * B5F 웅덩이(판 0.5 · 칸 0)뿐이다
+ */
+export function distortionGroundLift(): number {
+  if (!distortionFollowsGround()) return 0
+  const p = worldState.player.position
+  const h = activeZone.grid?.heightAtWorld(Math.floor(p.x) + 0.5, Math.floor(p.z) + 0.5, p.y)
+  if (h === null || h === undefined) return 0
+  const lift = h - p.y
+  return lift > 0 && lift < 1 ? lift : 0
+}
+
+/**
+ * 깨어진 세계의 세이브 자리를 비운다 (`PersistedMapFeatures_InitForDistortionWorld`).
+ *
+ * 원작은 이 세계의 맵마다 `OnTransition`이 `InitPersistedMapFeaturesForDistortionWorld`를 부르고, 그것이
+ * 버퍼를 통째로 0으로 민다(`persisted_map_features_init.c:139-146` — `valid`도 0). 그러면 세계가 설 때
+ * `InitPersistedData`와 발밑 판 찾기(`FindAndPrepareNewCurrentFloatingPlatform`)를 다시 한다
+ * (`ov9_02249960.c:1662-1664, 3921-3931`). 워프가 아닌 길은 둘이고, 둘 다 안 지운다:
+ *
+ * · 층 갈이(승강 발판·폭포) — `OnTransition`이 아예 안 돈다(`distortionFloorLoading`)
+ * · 이어하기 — 원작은 `OnTransition`을 안 돌린다(`field_map_change.c:519-523`). 우리는 돌리므로 막는다
+ *
+ * ⚠️ **안 지우면 귀혼동굴 → 깨어진 세계 방(583)에서 못 움직인다.** B6F→B7F 승강 발판이 적어 둔 판 번호
+ * 0(판이 없는 B7F의 「판 개수」)이 남아, 그 방의 판 0(동쪽 벽 x=119)이 발밑 판으로 잡힌다. 도착 칸
+ * (116,65,75)는 그 벽 밖이라 사방이 「판 밖 = 막힘」이 되고, 벽 판에 붙이는 줄이 x를 벽으로 끌어간다
+ */
+export function resetDistortionPersisted(): void {
+  if (floorLoad || worldState.restoring) return
+  setState(newDistortionState())
 }
 
 /** 우리 맵 좌표 → 세계 좌표. y는 타일 단위 높이다 */
@@ -240,20 +352,15 @@ export function distortionFrontTile(
 const frontStep = new Vector3()
 
 /**
- * 시로나가 막고 서서 못 뛰는 칸인가 (`DistWorld_IsBlockedByCynthia`).
+ * 시로나가 막고 서서 못 뛰는가 (`DistWorld_IsBlockedByCynthia` — 규칙은 `cynthiaBlocksJump`).
  *
- * 기라티나를 이긴 **직후에만** 참이다 — 그 방에서 남쪽으로 뛰어 나가려는
- * 것을 한 칸으로 막아 세운다. 다음 진행도로 넘어가면 풀린다.
- *
- * ⚠️ 원작은 셋째 인자를 `tileY`라 부르면서 `..._TILE_Y`(1)와 견주는데,
- * 부르는 쪽은 거기에 **방향**을 넘긴다 (`PlayerAvatar_WillJumpTwice`).
- * 그래서 실제로 걸리는 것은 남쪽(`DIR_SOUTH` = 1)뿐이다. 그대로 옮긴다
+ * 기라티나를 이긴 **직후에만** 참이다 — (15,14)에서 남쪽으로 (15,15)를 넘어 뛰어 나가려는 것을
+ * 막아 세운다. 다음 진행도로 넘어가면 풀린다. 받는 칸은 **넘으려는 앞 칸**(맵 좌표)이다
  */
-export function distortionJumpBlocked(x: number, z: number, dir: number): boolean {
-  if (floor === null || floor.map !== MAP.giratinaRoom) return false
-  const [wx, , wz] = toWorldTiles(x, 0, z)
-  if (wx !== CYNTHIA_BLOCK.x || wz !== CYNTHIA_BLOCK.z || dir !== DIR.south) return false
-  return (distortionHooks.progress?.() ?? 0) === PROGRESS.battledGiratina
+export function distortionJumpBlocked(frontX: number, frontZ: number, dir: number): boolean {
+  if (floor === null) return false
+  const [wx, , wz] = toWorldTiles(frontX, 0, frontZ)
+  return cynthiaBlocksJump(floor.map, wx, wz, dir, distortionHooks.progress?.() ?? 0)
 }
 
 /**
@@ -293,18 +400,17 @@ export function bindPlatform(index: number): void {
 }
 
 /**
- * 이 세계에서 서 있는 높이 (맵 안 좌표). 한 층 내내 **한 값**이다.
+ * 이 세계에 **들어설 때** 서는 높이 (맵 안 좌표).
  *
- * ⚠️ **여기서는 지면을 따라가지 않는다.** 원작이 이 세계에 들어서면서
- * `MapObject_SetHeightCalculationDisabled(playerMapObj, TRUE)`를 건다
- * (`InitPlayer`) — 서쪽 벽에 붙어 있을 때만 푼다. 즉 주인공의 y는 지형에서
- * 읽는 값이 아니라 **들고 다니는 상태**고, 승강 발판·뛰는 자리·움직이는
- * 발판·벽 걷기만 그것을 바꾼다.
+ * 원작이 `LoadFloor`에서 한 줄로 적어 둔다 — `playerPos.y = mapOffset.y + MAP_OBJECT_TILE_SIZE`,
+ * 즉 **층 오프셋 + 한 칸**. 층을 오르내려도 그대로다: 승강 경로의 y 변화(−32·−14·−50)가 층
+ * 오프셋의 차이와 정확히 같아서 지역 y가 보존된다. 지형도 같은 값이다 — 실측(`bdhc` land 598~634)
+ * 열 층의 판이 다 지역 1.0이고, B5F 웅덩이만 0.5다(`terrainTileY`).
  *
- * 처음 서는 높이는 원작이 `LoadFloor`에서 한 줄로 적어 둔다 —
- * `playerPos.y = mapOffset.y + MAP_OBJECT_TILE_SIZE`, 즉 **층 오프셋 + 한 칸**.
- * 층을 오르내려도 그대로다: 승강 경로의 y 변화(−32·−14·−50)가 층 오프셋의
- * 차이와 정확히 같아서 지역 y가 보존된다.
+ * 들어선 뒤의 y는 들고 다니는 상태다: 판 위에서는 벽 걷기·뛰는 자리·승강 발판이 바꾸고, 판 밖에서
+ * 높이 계산이 켜져 있으면 지형을 딛는다. 원작 `InitPlayer`는 **판 밖(`ACTIVE`)이면 높이 계산을
+ * 켜고** 판 위면 끈다(`ov9_02249960.c:2672-2680` — 아바타 상태를 `FLOATING_PLATFORM_KIND_WEST_WALL`과
+ * 견주는데 그 값 1이 `AVATAR_DISTORTION_STATE_ACTIVE`와 같다).
  *
  * ⚠️ **판의 bounds나 배치표의 중앙값으로 짐작하면 안 된다.** 그렇게 하던 때
  * B2F에서 여덟 칸이 떴다 — 그 층의 바닥 판 넷이 세계 y=233(지역 9)에 있는데
@@ -406,6 +512,15 @@ export interface DistortionPropPlace {
   condVal: number
   /** 승강 발판이면 표에서의 자리 번호. 아니면 −1 */
   elevator: number
+  /**
+   * 디딤돌 깃발(2423)이 서야 보이는 승강 발판인가 — B6F의 1번(B7F로 가는 것) 하나다.
+   *
+   * 원작이 그 발판을 `isGiratinaRoomElevator`로 세우고(`InitAnimManagerForMovingPlatform` — B6F · 자리 1),
+   * 깃발이 안 섰으면 숨겨 두었다가 서면 `SEQ_SE_PL_SYUWA3`와 함께 나타낸다
+   * (`DistWorldMovingPlatformProp_AnimInit`·`_AnimTick`, `ov9_02249960.c:6069-6076, 6224-6270`).
+   * 그 깃발은 바위 수수께끼를 푼 뒤 시로나의 스크립트가 세운다(`scripts_distortion_world_b6f.s`)
+   */
+  steppingStones: boolean
 }
 
 const NO_FLAG = -1
@@ -418,7 +533,7 @@ export function distortionPropPlaces(mapId: number): DistortionPropPlace[] {
   for (const p of map.props) {
     out.push({
       kind: p.kind, x: p.x - map.offsetX, y: p.y - map.offsetY, z: p.z - map.offsetZ,
-      group: p.group, flag: NO_FLAG, cond: 0, condVal: 0, elevator: -1,
+      group: p.group, flag: NO_FLAG, cond: 0, condVal: 0, elevator: -1, steppingStones: false,
     })
   }
   for (const t of data.movingPlatforms.find((m) => m.map === mapId)?.platforms ?? []) {
@@ -426,6 +541,7 @@ export function distortionPropPlaces(mapId: number): DistortionPropPlace[] {
       kind: t.propKind,
       x: t.tileX - map.offsetX, y: t.tileY - map.offsetY, z: t.tileZ - map.offsetZ,
       group: -1, flag: t.persistedFlag, cond: 0, condVal: 0, elevator: t.index,
+      steppingStones: mapId === MAP.b6f && t.index === 1,
     })
   }
   for (const s of data.simpleProps.find((m) => m.map === mapId)?.props ?? []) {
@@ -433,6 +549,7 @@ export function distortionPropPlaces(mapId: number): DistortionPropPlace[] {
       kind: s.propKind,
       x: s.tileX - map.offsetX, y: s.tileY - map.offsetY, z: s.tileZ - map.offsetZ,
       group: -1, flag: NO_FLAG, cond: s.flagCond, condVal: s.flagCondVal, elevator: -1,
+      steppingStones: false,
     })
   }
   return out
@@ -442,6 +559,7 @@ export function distortionPropPlaces(mapId: number): DistortionPropPlace[] {
 export function distortionPropShown(p: DistortionPropPlace): boolean {
   const s = state()
   if (p.group >= 0) return (s.hiddenGroups & (1 << p.group)) === 0
+  if (p.steppingStones && distortionHooks.steppingStones?.() !== true) return false
   if (p.flag !== NO_FLAG) return platformFlagShown(p.flag, s.platformFlags)
   return flagHolds(p.cond, p.condVal, {
     progress: distortionHooks.progress?.() ?? 0,
@@ -451,12 +569,54 @@ export function distortionPropShown(p: DistortionPropPlace): boolean {
   })
 }
 
+/** `GHOST_PROP_OPACITY_MAX` — 소품의 알파는 0~31이다 */
+const PROP_OPACITY_MAX = 31
+
+/**
+ * B6F의 B7F행 발판이 나타나는 중 (`DistWorldMovingPlatformProp_AnimTick`).
+ *
+ * 층에 들어설 때 깃발(2423)이 아직 없으면 알파 0으로 숨겨 두고(`animated = TRUE`), 깃발이 서는 프레임부터
+ * `animStep`을 하나씩 올려 알파를 `animStep >> 1`로 둔다 — 31까지 62프레임이다. 첫 프레임에 소리를 낸다
+ * (`SEQ_SE_PL_SYUWA3`). 들어설 때 이미 깃발이 서 있으면 처음부터 다 보인다. null이면 안 도는 중이다
+ */
+let stones: { step: number } | null = null
+
+/** 층에 들어섰다 — 그 층의 B7F행 발판을 숨길지 정한다 (`..._AnimInit`) */
+export function armSteppingStones(mapId: number): void {
+  stones = mapId === MAP.b6f && distortionHooks.steppingStones?.() !== true ? { step: 0 } : null
+}
+
+/**
+ * 한 프레임. 깃발이 서면 알파를 올린다. 처음 올라가는 프레임이면 true — 부르는 쪽이 소리를 낸다
+ */
+export function tickSteppingStones(dt: number): boolean {
+  if (stones === null || distortionHooks.steppingStones?.() !== true) return false
+  const first = stones.step === 0
+  stones.step += dt * 60
+  if ((Math.floor(stones.step) >> 1) >= PROP_OPACITY_MAX) stones = null
+  return first
+}
+
+/** 그 소품의 알파 (0~1). 나타나는 중인 B7F행 발판만 1이 아니다 */
+export function distortionPropOpacity(p: DistortionPropPlace): number {
+  if (!p.steppingStones || stones === null) return 1
+  if (distortionHooks.steppingStones?.() !== true) return 0
+  return Math.min(PROP_OPACITY_MAX, Math.floor(stones.step) >> 1) / PROP_OPACITY_MAX
+}
+
 /** 스크립트를 돌려 달라고 밖에 부탁하는 자리. `MapStreamer`가 채운다 */
 export const distortionHooks: {
-  runScript: ((scriptId: number) => void) | null
+  /** 스크립트를 건다. 못 걸었으면(글 뱅크가 아직 안 왔다 따위) false — 부르는 쪽이 다음 프레임에 다시 건다 */
+  runScript: ((scriptId: number) => boolean) | null
+  /** 스크립트가 도는 중인가 (`scriptBusy`) — 사건이 제가 건 스크립트가 끝나기를 기다린다 */
+  scriptRunning: (() => boolean) | null
   progress: (() => number) | null
   setProgress: ((value: number) => void) | null
+  /** `FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1 + n` (2478 · 2479) — `SystemFlag_HandleGiratinaAnimation` */
   giratinaAnim: ((n: number) => boolean) | null
+  setGiratinaAnim: ((n: number) => void) | null
+  /** `FLAG_DISTORTION_WORLD_STEPPING_STONES` (2423) — B6F의 B7F행 승강 발판이 이 깃발로 나타난다 */
+  steppingStones: (() => boolean) | null
   cyrusAppearance: (() => number) | null
   setCyrusAppearance: ((value: number) => void) | null
   /** `FLAG_DISTORTION_WORLD_PUZZLE_FINISHED` (2477) */
@@ -477,8 +637,9 @@ export const distortionHooks: {
    */
   mapObject: ((localID: number) => Movable | null) | null
 } = {
-  runScript: null, progress: null, setProgress: null,
-  giratinaAnim: null, cyrusAppearance: null, setCyrusAppearance: null,
+  runScript: null, scriptRunning: null, progress: null, setProgress: null,
+  giratinaAnim: null, setGiratinaAnim: null, steppingStones: null,
+  cyrusAppearance: null, setCyrusAppearance: null,
   puzzleFinished: null, setPuzzleFinished: null, addObject: null, vars: null,
   movements: null, mapObject: null,
 }
