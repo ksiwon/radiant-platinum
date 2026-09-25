@@ -82,7 +82,14 @@ async function writeReport(page, saveAs) {
         if ((await marks(page)).menu === 'save') break
         await page.waitForTimeout(200)
       }
-      for (let i = 0; i < 20; i++) await tap('Space')
+      /**
+       * ⚠️ **리포트 화면이 닫히면 더 안 누른다** — 남은 A가 필드로 새면 앞 사람에게 말을 건다. 실측(탐침 p23): 기라티나 앞
+       * (진행 13)에서 쓴 뒤 남은 A가 기라티나에게 말을 걸어 배틀이 열렸고, 자동 배틀이 쓰러뜨려 마스터볼을 못 던졌다
+       */
+      for (let i = 0; i < 20; i++) {
+        if ((await marks(page)).menu !== 'save') break
+        await tap('Space')
+      }
     })(),
   ])
   if (download === null) return { ok: false, why: '백업 파일이 안 내려왔다' }
@@ -172,14 +179,28 @@ try {
       if (legs.includes('g') && !await leg('g', 'probe-dw1f.rpsave', () => coronetToSpear(api, ctx),
         async () => (await api.now()).map === MAP.dw1F)) return
       if (legs.includes('h') && !await leg('h', 'probe-giratina.rpsave',
-        () => walkDistortion(api, ctx, {
+        async () => {
+          /**
+           * `--candy=74,72,72` — 깨어진 세계에 든 뒤 가방에 사탕을 넣고 **화면으로** 먹인다(`ctx.candyUp` — 먹이는 것은 화면이다).
+           * 이 세계에는 회복할 곳이 B7F 태홍을 이긴 뒤 난천뿐이고 태홍의 다섯 중 넷이 선두(토대부기)에 상성 우위다 — 탐침 p22가
+           * L69·66·66으로 들었다가 전멸했다. 사탕으로 레벨을 맞추는 것은 이 판의 정상 행동이다(메모 journey-levels-by-candy)
+           */
+          const want = flag('candy', null)
+          if (want !== null) {
+            const levels = want.split(',').map(Number)
+            for (let slot = 0; slot < levels.length; slot++) {
+              note(`사탕 ${String(slot)}`, JSON.stringify(await ctx.candyUp(slot, null, levels[slot])))
+            }
+          }
+          return walkDistortion(api, ctx, {
           escape: args.includes('--escape'),
           onFloor: async (map) => {
             const kept = await writeReport(page, `probe-dw-${String(map)}.rpsave`)
             note(`층 리포트 ${String(map)}`, kept.ok ? String(kept.file) : String(kept.why))
             await api.settle()
           },
-        }),
+        })
+        },
         async () => { const st = await api.distortionState(); return st !== null && st.map === MAP.giratinaRoom })) return
       if (legs.includes('i')) {
         await leg('i', 'probe-sendoff.rpsave', () => catchGiratina(api, ctx),

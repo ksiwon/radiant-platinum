@@ -1575,7 +1575,8 @@ export async function driveStory(page, {
           break
         }
         misses = 0
-        if (after.map !== lastMap) break
+        // 세계를 나왔으면(`after`가 null — 전멸해 센터로 갔다 따위) 계획을 다시 세우는 쪽이 나온 것을 본다
+        if (after === null || after.map !== lastMap) break
       }
       if (misses >= 3) return { ok: false, why: '같은 자리에서 세 번 어긋났다', at: (await obs.distortionState()).value }
     }
