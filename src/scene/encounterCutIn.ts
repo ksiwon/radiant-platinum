@@ -38,6 +38,11 @@ function runCutIn(effect: number): Promise<void> {
   return new Promise((resolve) => waiting.push(resolve))
 }
 
+/** 컷인이 도는 중인가 — 원작에서는 `FieldTask_Encounter`가 도는 동안이다 */
+export function cutInRunning(): boolean {
+  return running !== null
+}
+
 /**
  * 맵을 옮기거나 배틀이 딴 길로 열리면 지운다.
  *
