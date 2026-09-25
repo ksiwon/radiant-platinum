@@ -645,7 +645,14 @@ function runFixedInit(mapId: number, type: number): void {
   const info = data.meta.files[target.file]
   if (!info || target.entry >= info.entries) return
 
-  vars.resetLocals()
+  // ⚠️ **도는 스크립트가 있으면 지역 칸(0x8000~)을 안 비운다.** 원작의 지역 칸은
+  // 스크립트 관리자 하나에 붙어 있고(`FieldSystem_GetVarPointer` →
+  // `FieldSystem_GetScriptMemberPtr`) 초기화 스크립트도 그 칸을 같이 쓴다
+  // (`FieldSystem_RunScript`는 관리자를 새로 안 만든다). 배틀에서 돌아와
+  // `OnLoad`가 도는 자리가 바로 그렇다 — 트레이너 스크립트가 배틀 전에 적어 둔
+  // `VAR_0x8004`(트레이너 번호)를 여기서 지우면 `SetTrainerFlag`가 0번을 세운다
+  const keepLocals = fieldScripts.ctx !== null
+  if (!keepLocals) vars.resetLocals()
   const ctx = new ScriptContext(
     { vars, world, commands: commands.map, common: commonScripts },
     fileBytes(data, target.file), target.file,
@@ -656,7 +663,43 @@ function runFixedInit(mapId: number, type: number): void {
   } catch (e) {
     noteScriptError(e, `초기 스크립트 파일 ${String(target.file)}#${String(target.entry)}`)
   }
-  vars.resetLocals()
+  if (!keepLocals) vars.resetLocals()
+}
+
+/**
+ * 배틀에서 필드로 돌아왔다 — **맵을 다시 올린다** (`FieldTransition_StartMap`).
+ *
+ * 원작은 배틀에 들어가며 필드를 통째로 내리고(`FieldTransition_FinishMap`),
+ * 돌아올 때 다시 세운다. 다시 세우는 `FieldMap_Init`이 `INIT_SCRIPT_ON_LOAD`를
+ * 돌린다 (`overlay005/fieldmap.c` 205줄). **`OnTransition`은 안 돈다** — 그것은
+ * 맵을 옮길 때만이다 (`field_map_change.c` 299줄).
+ *
+ * 이 한 번에 기대는 스크립트가 열두 곳이다. 전설 스크립트가 전부 같은 꼴이다:
+ *
+ *   SetFlag FLAG_MAP_LOCAL_REMOVE_OBJECT
+ *   StartLegendaryBattle …          ← 여기서 필드가 내려갔다 올라오며 OnLoad가 돈다
+ *   ClearFlag FLAG_MAP_LOCAL_REMOVE_OBJECT
+ *
+ *   …_OnLoad:  GoToIfSet FLAG_MAP_LOCAL_REMOVE_OBJECT, …_Remove   → 그 포켓몬을 지운다
+ *
+ * 깨어진 세계의 기라티나 방은 **진행도 14도 여기서만** 세운다
+ * (`scripts_distortion_world_giratina_room.s` 19–27). 이게 없으면 기라티나가 그 자리에
+ * 남고, 진행도 14에 서는 차원문(#131)이 영영 안 나와 **세계를 못 나간다**.
+ * 물 빠진 진실호수의 찌르꼬, 연고 체육관의 말뚝도 이 길로 치운다.
+ *
+ * ⚠️ **진 판에는 안 돈다.** 스크립트가 연 배틀에서 지면 원작은 필드를 다시
+ * 안 세우고 스크립트로 돌아간다(`FieldTask_Encounter`의
+ * `CheckPlayerWonEncounter == FALSE` 갈래) — 스크립트가 `BlackOutFromBattle`을
+ * 건다. 풀숲 야생에서 지면 곧바로 전멸 태스크로 넘어간다. 그래서 가르는 것은
+ * 부르는 쪽(`scene/fieldServices`)이 `CheckPlayerWonBattle`로 한다.
+ *
+ * ⚠️ `ON_RESUME`도 같은 자리에서 돌지만(`fieldmap.c` 224줄) 우리는 그 종류를
+ * 아직 어디에서도 안 돌린다 — 맵에 들어설 때도 안 돈다 (PARITY §2.10)
+ */
+export function reloadFieldMap(): void {
+  const mapId = mapWorld.mapId
+  if (mapId < 0) return
+  runFixedInit(mapId, INIT_SCRIPT.onLoad)
 }
 
 /**
