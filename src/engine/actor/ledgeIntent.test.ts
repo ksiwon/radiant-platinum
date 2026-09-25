@@ -103,3 +103,19 @@ describe('턱 — 앞 칸 가운데에 닿고서야 뛴다', () => {
     expect(p.position.z).toBeGreaterThan(7)
   })
 })
+
+describe('턱 — 서 있다가 누르면 곧장 뛴다', () => {
+  it('가운데에서 조금 비껴 서 있어도 턱 쪽을 누르면 뛴다', () => {
+    activeZone.grid = ledgeRow()
+    reset(5.2)
+    const p = worldState.player
+    run(2)
+    // 짧게 — 가운데(5.5)까지 걸어갈 틈이 없는 누름
+    worldState.input.move.set(0, 1)
+    run(2)
+    worldState.input.move.set(0, 0)
+    run(40)
+    activeZone.grid = null
+    expect(p.position.z).toBeGreaterThan(7)
+  })
+})

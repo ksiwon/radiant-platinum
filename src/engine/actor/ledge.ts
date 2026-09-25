@@ -77,12 +77,12 @@ export function distortionJump(behavior: number): readonly [number, number] | nu
  */
 export function distortionHop(
   behaviorAt: (tx: number, tz: number) => number,
-  x: number, z: number, vx: number, vz: number,
+  x: number, z: number, vx: number, vz: number, fromRest = true,
 ): { x: number; z: number } | null {
   const dx = Math.abs(vx) > Math.abs(vz) ? Math.sign(vx) : 0
   const dz = dx === 0 ? Math.sign(vz) : 0
   if (dx === 0 && dz === 0) return null
-  if (!reachedCentre(x, z, dx, dz)) return null
+  if (!fromRest && !reachedCentre(x, z, dx, dz)) return null
 
   const tx = Math.floor(x), tz = Math.floor(z)
   const jump = distortionJump(behaviorAt(tx + dx, tz + dz))
@@ -96,8 +96,11 @@ export function distortionHop(
  * 원작의 뛰기는 **걸음이 끝난 뒤** 다음 걸음으로 선다: 턱 앞 칸으로 들어서는 한 걸음을 다 걸어 그 칸 가운데에
  * 서고, 그때도 방향키를 쥐고 있어야 다음 걸음이 `PlayerAvatar_WillJump`에 걸린다(`player_move.c` — 걸음마다
  * `PlayerAvatar_SetMovement_*`가 새로 판정한다). 우리는 칸 경계를 넘자마자 뛰었다 — 턱 앞 칸에 막 들어서며
- * 손을 뗀 사람(탐침 p7 — 천관산 1F 남 (22,10))도 뛰어내렸다. 가운데는 서 있으면 늘 닿는 자리라
- * 멈춰 서서 미는 뛰기는 그대로다
+ * 손을 뗀 사람(탐침 p7 — 천관산 1F 남 (22,10))도 뛰어내렸다.
+ *
+ * ⚠️ **서 있다가 새로 누른 걸음은 이 검사를 안 탄다** (`fromRest`). 원작은 서 있으면 늘 칸 가운데라 누르자마자
+ * 뛰는데, 우리 사람은 멈춘 자리가 가운데에서 조금 비껴 있을 수 있다 — 그 자리에서 짧게 누르면 가운데까지 못 가
+ * 영영 안 뛰었다(탐침 p10 — 깨어진 세계 1F·B1F·B2F 두 칸 뛰기가 첫 번에 다섯 번 어긋났다)
  */
 function reachedCentre(x: number, z: number, dx: number, dz: number): boolean {
   const fx = x - Math.floor(x), fz = z - Math.floor(z)
@@ -136,13 +139,13 @@ function dirOf(dx: number, dz: number): number {
  * 턱에 스치듯 닿을 때마다 뛰어 버린다.
  */
 export function ledgeHop(
-  grid: LedgeGrid, x: number, z: number, vx: number, vz: number,
+  grid: LedgeGrid, x: number, z: number, vx: number, vz: number, fromRest = true,
 ): { x: number; z: number } | null {
   // 미는 쪽이 뚜렷해야 한다. 대각선으로 밀 때 어느 쪽으로 뛸지는 원작에 없다
   const dx = Math.abs(vx) > Math.abs(vz) ? Math.sign(vx) : 0
   const dz = dx === 0 ? Math.sign(vz) : 0
   if (dx === 0 && dz === 0) return null
-  if (!reachedCentre(x, z, dx, dz)) return null
+  if (!fromRest && !reachedCentre(x, z, dx, dz)) return null
 
   const tx = Math.floor(x), tz = Math.floor(z)
   // ⚠️ **영원시티 체육관의 시침이 먼저다** (`PlayerAvatar_WillJump`의 첫 줄).

@@ -127,6 +127,13 @@ function bumpDirection(
 }
 
 const desired = new Vector3()
+/**
+ * **서 있다가 새로 누른 걸음인가** — 턱·두 칸 뛰기의 가운데 검사를 건너뛴다 (`actor/ledge`의 `reachedCentre`).
+ * 누르기 시작한 칸을 벗어나거나 손을 떼면 풀린다 — 걸어 들어온 칸에서는 가운데까지 가야 뛴다(REPAIR §111)
+ */
+let pressFromRest = false
+let pressTile = ''
+let wasPressing = false
 
 /**
  * **모서리 보정** — 한 칸 틈 앞에서 조금 비껴 서 있으면 틈 가운데로 끌어 준다.
@@ -296,6 +303,10 @@ export const playerSystem = {
     // 칸이라 거리로 세는 것이 그 규칙 그대로고, 시간으로 세면 빠를수록 더 빨리
     // 오르는 되먹임이 생긴다. 멈추면 처음으로 돌아간다 (`ClearSpeed`)
     const moving = worldState.input.move.lengthSq() > 0.0001
+    const tileKey = `${String(Math.floor(p.position.x))},${String(Math.floor(p.position.z))}`
+    if (moving && !wasPressing) { pressFromRest = true; pressTile = tileKey }
+    if (!moving || tileKey !== pressTile) pressFromRest = false
+    wasPressing = moving
     p.pedalling = p.cycling && moving
       ? p.pedalling + Math.hypot(p.velocity.x, p.velocity.z) * dt
       : 0
@@ -431,7 +442,7 @@ export const playerSystem = {
         const behaviorAt = (tx: number, tz: number) =>
           distortionBridge.behaviorAt?.(tx, p.position.y, tz) ?? grid.behavior(tx, tz)
         const land = distortionHop(
-          behaviorAt, p.position.x, p.position.z, intent.x, intent.z)
+          behaviorAt, p.position.x, p.position.z, intent.x, intent.z, pressFromRest)
         if (land !== null) {
           const dir = land.z !== p.position.z
             ? (land.z > p.position.z ? DIR.south : DIR.north)
@@ -446,7 +457,7 @@ export const playerSystem = {
         }
       }
 
-      const land = ledgeHop(grid, p.position.x, p.position.z, intent.x, intent.z)
+      const land = ledgeHop(grid, p.position.x, p.position.z, intent.x, intent.z, pressFromRest)
       if (land) {
         startHop(land, HOP_TIME)
         return
