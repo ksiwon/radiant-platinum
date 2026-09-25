@@ -389,11 +389,11 @@ const giratinaHere = (st) => st.map === MAP.giratinaRoom && (st.progress ?? 0) >
  *
  * @param escape 1F 도착이 벽 속이면(제품 틈 §6-1) 안전망으로 걸어 나오는 걸음을 먼저 준다
  */
-export async function walkDistortion(api, ctx, { escape = false, budget = 5_400_000 } = {}) {
+export async function walkDistortion(api, ctx, { escape = false, budget = 5_400_000, onFloor = null } = {}) {
   const t0 = Date.now()
   const out = { steps: [] }
   const note = noteOf(out, ctx)
-  const walked = await api.distortionWalk(Math.min(budget, api.left()), { escape, stopWhen: giratinaHere })
+  const walked = await api.distortionWalk(Math.min(budget, api.left()), { escape, stopWhen: giratinaHere, onFloor })
   const st = await api.distortionState()
   const v = (await api.storyVars()) ?? {}
   out.walk = walked

@@ -172,7 +172,14 @@ try {
       if (legs.includes('g') && !await leg('g', 'probe-dw1f.rpsave', () => coronetToSpear(api, ctx),
         async () => (await api.now()).map === MAP.dw1F)) return
       if (legs.includes('h') && !await leg('h', 'probe-giratina.rpsave',
-        () => walkDistortion(api, ctx, { escape: args.includes('--escape') }),
+        () => walkDistortion(api, ctx, {
+          escape: args.includes('--escape'),
+          onFloor: async (map) => {
+            const kept = await writeReport(page, `probe-dw-${String(map)}.rpsave`)
+            note(`층 리포트 ${String(map)}`, kept.ok ? String(kept.file) : String(kept.why))
+            await api.settle()
+          },
+        }),
         async () => { const st = await api.distortionState(); return st !== null && st.map === MAP.giratinaRoom })) return
       if (legs.includes('i')) {
         await leg('i', 'probe-sendoff.rpsave', () => catchGiratina(api, ctx),
