@@ -568,6 +568,10 @@ export function enterMap(mapId: number): void {
   spawnNpcs(mapId, fieldScripts.vars)
   // 맵이 다 올라온 뒤 도는 것. 워프 자리를 옮기는 자리가 여기다
   runFixedInit(mapId, INIT_SCRIPT.onLoad)
+  // 그리고 **다 그린 뒤** 도는 것 (`INIT_SCRIPT_ON_RESUME` — `fieldmap.c` 224줄, `ON_LOAD`(205줄) 다음).
+  // 서른여섯 맵이 쓴다 — 자전거로드에서 다시 자전거에 묶고(206번도로), 교신 대기실에서 주인공을 숨기고
+  // (센터 2F 공용 9000), 오박사의 방향을 돌린다(224번도로)
+  runFixedInit(mapId, INIT_SCRIPT.onResume)
   // 스크립트가 가로챈 곡을 놓는다. 안 놓으면 그 방에서 튼 곡이 신오 전역을 따라온다
   fieldBgm.override = null
   // ⚠️ 덮개도 걷는다. 아웃만 걸고 워프하는 스크립트가 있어서, 안 걷으면 도착한
@@ -696,13 +700,14 @@ function runFixedInit(mapId: number, type: number): void {
  * 건다. 풀숲 야생에서 지면 곧바로 전멸 태스크로 넘어간다. 그래서 가르는 것은
  * 부르는 쪽(`scene/fieldServices`)이 `CheckPlayerWonBattle`로 한다.
  *
- * ⚠️ `ON_RESUME`도 같은 자리에서 돌지만(`fieldmap.c` 224줄) 우리는 그 종류를
- * 아직 어디에서도 안 돌린다 — 맵에 들어설 때도 안 돈다 (PARITY §2.10)
+ * `ON_RESUME`도 같은 자리에서 `ON_LOAD` 다음에 돈다(`fieldmap.c` 224줄) — 자전거로드에서 배틀을 치르고
+ * 돌아오면 206번도로의 `OnResume`이 다시 자전거에 묶는다
  */
 export function reloadFieldMap(): void {
   const mapId = mapWorld.mapId
   if (mapId < 0) return
   runFixedInit(mapId, INIT_SCRIPT.onLoad)
+  runFixedInit(mapId, INIT_SCRIPT.onResume)
 }
 
 /**
