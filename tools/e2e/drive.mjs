@@ -29,8 +29,8 @@
 import { makeObserver, watchMapScene } from './observe.mjs'
 import { makePen, makeStall, SLOW, STALLED } from './budget.mjs'
 import {
-  allMaps, CLIMB_PREFIX, PANEL_PREFIX, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, npcsOf,
-  planPath, slopeClimbBan, TILE_TABLE, trainersOn, waterAt, warpsOf,
+  allMaps, CLIMB_PREFIX, PANEL_PREFIX, PLAN, encounterTiles, grassAt, gridOf, mapRoute, matrixOf, nearestFlyable,
+  npcsOf, planPath, slopeClimbBan, TILE_TABLE, trainersOn, waterAt, warpsOf,
 } from './route.mjs'
 
 /**
@@ -2734,8 +2734,23 @@ export async function driveStory(page, {
   const flyTo = async (target, budgetMs = 120_000) => {
     const t0 = Date.now()
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
-    const before = await now()
+    let before = await now()
     if (before.map === target) return { ok: true, already: true, ms: 0 }
+    /**
+     * ⚠️ **헤더가 막는 맵에서는 제품이 안 난다** (`FieldMoves_CheckFly` · REPAIR §91) — 시작 메뉴에
+     * 항목이 아예 없다. 센터·가게·체육관·굴에서 부르는 자리가 많으므로 가장 가까운 바깥으로 먼저 걷는다
+     */
+    if (allMaps()[before.map]?.fly !== 1) {
+      const out = nearestFlyable(before.map)
+      if (out === null) return { ok: false, why: `맵 ${String(before.map)}에서는 못 날고 걸어 나갈 곳도 없다` }
+      log(`      공중날기 전에 걸어 나간다: 맵 ${String(before.map)} → ${String(out)}`)
+      const went = await goTo(out, Math.max(0, till - Date.now()))
+      before = await now()
+      if (before.map === target) return { ok: true, already: true, ms: Date.now() - t0 }
+      if (allMaps()[before.map]?.fly !== 1) {
+        return { ok: false, why: `날 수 있는 맵 ${String(out)}으로 못 나왔다 (${String(went)} · 지금 ${String(before.map)})` }
+      }
+    }
     const plan = await obs.flyPlan(target)
     if (!plan.known) return { ok: false, unknown: true, why: `타운맵을 못 읽었다 (${String(plan.why)})` }
     const { from, to, unlocked } = plan.value

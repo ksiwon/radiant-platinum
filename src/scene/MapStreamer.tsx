@@ -46,6 +46,7 @@ import { exitLook, setMouseActive } from '../engine/input/mouse'
 import { encounters, resetEncounterTile } from '../engine/battle/encounterSystem'
 import { installRoamers, roamersWalked, roamersWarped } from './roamers'
 import { installSafari, safariActive } from './safari'
+import { settleAvatarForWarp } from './warpArrival'
 import { journalArrived, journalChangedMap, journalEnterMap, journalResetWildWins } from './journal'
 import { resetStepTile } from './stepSystem'
 import { resetWalkSound } from './walkSound'
@@ -954,6 +955,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
             const door = walkOutOfDoor(next, target.x, target.z)
             at = standableSpot(next, door.x, door.z)
           }
+          // 워프면 자전거·파도타기를 내린다 (`FieldSystem_InitFlagsWarp`, REPAIR §92).
+          // ⚠️ **`enter` 앞이다** — 떠나는 맵 번호가 아직 `world.mapId`에 있어야 층 가기를 가린다
+          settleAvatarForWarp(world.mapId, target)
           enter(next, target.to, at.x, at.z, target.matrix, target.y,
             { x: target.x, z: target.z })
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간

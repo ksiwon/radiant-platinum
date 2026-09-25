@@ -83,6 +83,13 @@ export interface MapHeader {
    * 이 칸을 **둘 다** 본다 — 나가면 안 되는 굴이 있다
    */
   escapeRope: number
+  /**
+   * 이 맵에서 공중날기를 쓸 수 있는가 (`MapHeader_IsFlyAllowed`, 1비트).
+   *
+   * 593개 맵 중 78곳만 1이다 — 마을·도로 같은 바깥이다. 실내·굴·깨어진 세계
+   * 열한 층은 전부 0이라 거기서는 못 난다 (`FieldMoves_CheckFly`, REPAIR §91)
+   */
+  fly: number
 }
 
 export interface Warp {
@@ -306,7 +313,8 @@ export function setWarpDestination(index: number, to: number, anchor?: number): 
  * 연고시티 체육관이 이걸로 **틀린 문들만** 골라 되돌린다
  */
 export function warpIndexAt(mapId: number, x: number, z: number): number {
-  return (eventsOf(mapId)?.warps ?? []).findIndex((w) => w.x === x && w.z === z)
+  // 스크립트가 주는 칸은 **롬 칸**이다 — 층 오프셋을 빼기 전의 표와 견준다
+  return (rawEventsOf(mapId)?.warps ?? []).findIndex((w) => w.x === x && w.z === z)
 }
 
 /** 맵을 옮길 때 버린다. 초기화 스크립트가 돌기 **전**이어야 한다 */
@@ -382,10 +390,63 @@ export function triggersOf(mapId: number): Trigger[] {
   return eventsOf(mapId)?.triggers ?? []
 }
 
-function eventsOf(mapId: number): EventFile | null {
+/** 사건표 그대로 — 좌표가 **롬 칸**이다 */
+function rawEventsOf(mapId: number): EventFile | null {
   const m = mapById(mapId)
   if (!m || !world.events) return null
   return world.events[String(m.events)] ?? null
+}
+
+/**
+ * **롬 칸의 원점** — 그 맵의 롬 칸 (0,0)이 우리 격자의 어디인가 (REPAIR §90).
+ *
+ * ⚠️ **깨어진 세계만 0이 아니다.** 원작은 그 세계의 층 열한 개를 **한 좌표계**에
+ * 두어서(`ov9_02249960.c`의 `DistWorldMapInfo` 오프셋) 사건표·스크립트의 칸이 전부
+ * 그 세계 칸이다 — 1F 차원문 간판이 (55,39)이고 스크립트가 거기 앞 (55,40)으로
+ * 보낸다. 우리 층 격자는 0에서 시작하므로 **층 오프셋만큼 빼야** 우리 칸이다.
+ *
+ * 값은 층 자료(`distortion.json`)에 있어서 씬이 꽂는다(`scene/fieldServices`).
+ * 자료가 오기 전이거나 깨어진 세계 밖이면 null — 그대로 쓴다
+ */
+export const romOrigin: { of: ((mapId: number) => { x: number; z: number } | null) | null } = {
+  of: null,
+}
+
+/** 그 맵의 롬 칸 → 우리 칸 */
+export function romToLocal(mapId: number, x: number, z: number): { x: number; z: number } {
+  const o = romOrigin.of?.(mapId) ?? null
+  return o === null ? { x, z } : { x: x - o.x, z: z - o.z }
+}
+
+/** 그 맵의 우리 칸 → 롬 칸. 스크립트가 받는 좌표는 이쪽이다 (`GetPlayerMapPos`) */
+export function localToRom(mapId: number, x: number, z: number): { x: number; z: number } {
+  const o = romOrigin.of?.(mapId) ?? null
+  return o === null ? { x, z } : { x: x + o.x, z: z + o.z }
+}
+
+/** 원점을 옮긴 사건표. 원점이 같으면 다시 안 만든다 — 좌표 트리거가 매 프레임 읽는다 */
+const shifted = new Map<number, { ox: number; oz: number; src: EventFile; file: EventFile }>()
+
+/**
+ * 사건표를 **우리 칸으로** (`romOrigin`). 워프·사람·간판·좌표 트리거가 다 이 길로 온다 —
+ * 한 자리에서 옮겨야 말 거는 쪽과 밟는 쪽이 같은 칸을 본다
+ */
+function eventsOf(mapId: number): EventFile | null {
+  const raw = rawEventsOf(mapId)
+  if (raw === null) return null
+  const o = romOrigin.of?.(mapId) ?? null
+  if (o === null || (o.x === 0 && o.z === 0)) return raw
+  const hit = shifted.get(mapId)
+  if (hit !== undefined && hit.ox === o.x && hit.oz === o.z && hit.src === raw) return hit.file
+  const move = <T extends { x: number; z: number }>(e: T): T => ({ ...e, x: e.x - o.x, z: e.z - o.z })
+  const file: EventFile = {
+    warps: raw.warps.map(move),
+    npcs: raw.npcs.map(move),
+    signs: raw.signs.map(move),
+    triggers: raw.triggers.map(move),
+  }
+  shifted.set(mapId, { ox: o.x, oz: o.z, src: raw, file })
+  return file
 }
 
 /** 목적지 워프가 가리키는 도착 지점. 목적지가 실재하지 않으면 null */

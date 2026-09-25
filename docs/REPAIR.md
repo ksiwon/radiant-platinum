@@ -4840,6 +4840,167 @@ B6F의 셋이 내려다보이는 장면만 없다.
 스크립트 저장 · 개발 콘솔)가 `avatarState()`를 적고, 이어하기가 처음 들어설 때 파도타기를 켜거나 자전거에 태운다(자전거 곡까지 —
 `bike.ride`). 시험 `state/save/avatar.test.ts`.
 
+## 88. 배틀에서 돌아와도 **맵의 `OnLoad`가 안 돌았다** — 깨어진 세계를 못 나갔다
+
+**원작** — 배틀에 들어가며 필드를 통째로 내리고(`FieldTransition_FinishMap`), 지지 않은 판이면 돌아올 때 다시 세운다
+(`encounter.c`의 `FieldTask_Encounter` 204줄 · `FieldTask_WildEncounter` 416줄 → `FieldTransition_StartMap`). 다시 세우는
+`FieldMap_Init`이 `INIT_SCRIPT_ON_LOAD`를 돈다(`overlay005/fieldmap.c` 205줄). `OnTransition`은 안 돈다 — 그것은 맵을
+옮길 때(`FieldMapChange_UpdateGameData`)만이다. 진 판(비긴 판)은 `CheckPlayerWonEncounter`가 거짓이라 필드를 다시 안 세운다 —
+스크립트 배틀은 스크립트로 돌아가 `BlackOutFromBattle`을, 풀숲 야생은 곧바로 전멸 태스크를 건다.
+
+전설 스크립트 열둘이 이 한 번에 기댄다. 배틀 앞에 `FLAG_MAP_LOCAL_REMOVE_OBJECT`(142)를 세우고 뒤에서 지우는데, 그 사이에
+도는 `OnLoad`가 표식을 보고 그 포켓몬을 치운다. **깨어진 세계 기라티나 방은 진행도 14도 거기서만 세운다**
+(`scripts_distortion_world_giratina_room.s` 19–27: `ResetDistortionWorldPersistedCameraAngles` · 진행도 14 · `RemoveObject`).
+깨어진 세계는 필드를 세울 때 `OnLoad` 다음에 층의 물체를 다시 센다(`DistWorld_DynamicMapFeaturesInit`의
+`AddMapObjectsForCurrentAndNextMap` — 이미 선 것은 그대로 두고 조건이 새로 맞은 것만 세운다, `FindExistingMapObjectByEvent`).
+
+**왜 문제였나** — `OnLoad`를 맵에 들어설 때만 돌렸다(`enterMap`). 기라티나 방에서 싸우고 나면 진행도가 13에 남아
+조건 `progress == 14`인 차원문(#131)과 시로나의 말(#132)이 영영 안 섰고, 차원문 소품(`progress >= 14`)도 안 보였다 —
+**세계를 나갈 길이 없었다.** 기라티나도 그 자리에 남아 또 싸울 수 있었다. 귀혼동굴에서는 쓰러뜨려도 기라티나가 남아서, 같은 칸의
+차원문 간판(11,14)에 A가 닿지 않았다 — 방 583과 백금옥에 못 갔다.
+
+**지금**
+
+- 배틀 화면이 닫히면 `scene/fieldServices`의 `watchFieldReload`가 결과 마스크를 `CheckPlayerWonBattle`로 보고, 참이면
+  지금 맵의 `OnLoad`(`script/field`의 `reloadFieldMap`)를 돌리고 깨어진 세계면 층의 물체를 다시 센다(`spawnFloorObjects(…, true)`).
+  기다리던 스크립트는 다음 틱에 풀리므로 원작처럼 필드를 세운 **뒤에** 스크립트가 이어진다.
+- 도는 스크립트가 있으면 초기화 스크립트가 지역 칸(0x8000~)을 안 비운다 — 원작 `FieldSystem_RunScript`는 스크립트 관리자의
+  칸을 같이 쓴다. 트레이너 스크립트가 배틀 전에 적은 `VAR_0x8004`가 그대로 `SetTrainerFlag`까지 간다.
+- 기라티나 방에서 **지면** 원작도 필드를 안 세우고 전멸한다. 스크립트가 배틀 뒤에 142를 지우므로 다시 들어오면 진행도 13 그대로
+  기라티나가 서 있다 — 원작과 같다.
+
+⛔ `INIT_SCRIPT_ON_RESUME`은 여전히 어디서도 안 돈다. 원작은 같은 `FieldMap_Init`에서(224줄) 돌고, 메뉴·비전기술·도구에서
+돌아올 때도 필드를 다시 세운다(`FieldSystem_StartFieldMap` — `start_menu.c` · `field_move_tasks.c` · `item_use_functions.c`).
+우리는 **배틀 뒤의 `OnLoad`**만 옮겼다 — 깨어진 세계와 전설 열둘이 기대는 것이 그것이다. `OnResume`을 쓰는 맵 서른여섯(센터 2층 ·
+배틀타워 · 갤럭시단 관제실 등)과 메뉴 뒤의 `OnLoad`는 이 자리 밖이다.
+
+시험 `scene/battleReload.test.ts` — 롬 바이트코드를 그대로 돌리고 배틀만 가짜로 넣는다. 기라티나 방에서 잡음·이김·달아남이면
+진행도 14 · 기라티나 없음 · #131·#132가 섬, 지면 진행도 13 그대로 전멸. 귀혼동굴에서 쓰러뜨리면 그 칸의 A가 차원문 간판에 닿는다.
+`reloadFieldMap` 한 줄을 빼면 여덟 판이, 층 물체 다시 세기를 빼면 차원문 세 판이 떨어진다.
+
+## 89. 기라티나를 **잡아도 전멸로** 빠졌다 — `CheckWonBattle`을 「이긴 판만」으로 읽었다
+
+**원작** (`field_battle_data_transfer.c` 512–542) — 결과 마스크를 읽는 물음이 셋이다:
+
+| 결과 | 값 | `CheckPlayerWonBattle` | `CheckPlayerLostBattle` | `CheckPlayerDidNotCaptureWildMon` |
+|---|---|---|---|---|
+| WIN | 1 | 참 | 거짓 | 참 |
+| LOSE | 2 | 거짓 | 참 | 참 |
+| DRAW (승·패) | 3 | 거짓 | 참 | 참 |
+| CAPTURED_MON | 4 | 참 | 거짓 | 거짓 |
+| PLAYER_FLED (포획·승) | 5 | 참 | 참 | 참 |
+| ENEMY_FLED (포획·패) | 6 | 참 | 참 | 참 |
+
+「이겼나」는 **「지지 않았나」**다. 전설 스크립트는 전부 `CheckWonBattle` → 거짓이면 `BlackOut`, 그다음 `CheckDidNotCapture`로
+잡았나를 가른다(`scripts_turnback_cave_giratina_room.s` 37–41).
+
+**왜 문제였나** — `'win'`일 때만 1을 줬다(`caught`·`fled`·`foeFled`가 다 `'loss'`). 귀혼동굴에서 잡으면 전멸 갈래로 빠져
+숨김 표식 592가 **지워지고** 잡은 표식 289가 안 섰다 — 기라티나가 되살아나 또 잡혔다. 달아나도 전멸했다.
+`CheckLostBattle`도 거꾸로였다 — 달아난 판이 원작은 참인데 거짓이었다(풀무산 방 3의 VS시커 갈래가 그것을 본다).
+
+**지금** — `script/battleResult`에 원작 세 `switch`를 그대로 두고 명령 셋이 그것만 본다. 마스크를 안 주는 가짜 서비스(시험)는
+이김·짐을 마스크로 옮긴다. 결과를 읽는 다른 자리(동행 회복 `battle/aftermath`의 `shouldPartnerHeal`)는 이미 같은 규칙이다.
+
+시험 `script/battleResult.test.ts` — 여섯 값의 세 답과, 마스크 값·`switch`의 거짓 갈래를 디컴프 원문에서 다시 읽어 맞댄다.
+`scene/battleReload.test.ts`의 귀혼동굴 판: 잡음 → 289·592, 이김·달아남·상대 달아남 → 592만 · 기라티나 사라짐, 짐 → 592 지움 · 전멸.
+
+## 90. 깨어진 세계의 사건표·스크립트 좌표를 **층 칸으로** 읽었다 — 1F 차원문이 안 열렸다
+
+**원작** — 깨어진 세계 층 열한 개를 한 좌표계에 둔다(`DistWorldMapInfo`의 오프셋). 사건표(`events_distortion_world_1f.json`)의
+좌표도, 스크립트가 주고받는 칸도 그 **세계 칸**이다: 1F 차원문 간판 (55,39) · 1F 워프 (31,53) · B7F 태홍 장면의
+`GetPlayerMapPos` 비교값 86·74(`scripts_distortion_world_b7f.s` 62–107).
+
+**우리** — 층 격자가 0에서 시작한다(1F 오프셋 21·10 · B7F 74·32). §83이 `Warp`만 옮겼다.
+
+**왜 문제였나** — 1F 도착 칸 (34,30)에서 북쪽 (34,29)를 보고 A를 눌러도 간판이 (55,39)에 있어 **아무 일도 없었다** — 깨진
+창기둥으로 돌아가는 유일한 길이 막혔다. B7F에서 태홍에게 동쪽 (86,74)로 말을 걸면 비교가 한 번도 안 맞아 (85,75) 갈래를 탔고,
+주인공이 막힌 칸 (87,74)로 비켜선 뒤 (90,67)까지 벽 속을 걸었다.
+
+**지금** — `map/world`의 `romOrigin`(씬이 층 자료로 꽂는다 — `scene/fieldServices`)이 맵마다 롬 칸의 원점을 준다. 깨어진 세계
+층만 0이 아니다.
+
+- 사건표(워프·사람·간판·좌표 트리거)를 **읽는 한 자리**(`eventsOf`)에서 원점을 뺀다 — 말 거는 쪽과 밟는 쪽이 같은 칸을 본다.
+  롬 칸으로 워프를 찾는 `warpIndexAt`만 원래 표를 본다.
+- 스크립트에 주는 칸(`GetPlayerMapPos`)은 더하고, 받는 칸(`SetObjectEventPos` · `SetPosition` · `SetWarpEventPos` ·
+  `AddFreeCamera`)은 뺀다. 깨어진 세계 스크립트가 쓰는 좌표 명령은 `GetPlayerMapPos` · `AddFreeCamera` · `Warp`(§83) ·
+  `GetPlayer3DPos`(이미 세계 칸)가 전부다. 나머지 셋은 밖에서 원점이 0이라 값이 안 바뀐다.
+- 층 물체·사건·소품은 ov9 표에서 오고 이미 세계 칸을 옮겨 세운다(`scene/distortionObjects`).
+
+1F 워프 (31,53)은 옮기면 (10,43)인데 막힌 칸이다 — 원작에서도 발을 못 올리는 자리라 그대로다.
+시험 `scene/distortionRomTiles.test.ts` — 실제 `distortion.json`·`events.json`으로 간판 (34,29) · 워프 (10,43)와
+`warpIndexAt(31,53)`, B7F (12,42) ↔ (86,74), `GetPlayerMapPos` 바이트코드가 86·74를 적는지, 밖의 맵은 그대로인지 본다.
+
+## 91. 깨어진 세계 한복판에서도 **공중날기로 나갈 수 있었다** — 맵 헤더를 안 봤다
+
+**원작** (`FieldMoves_CheckFly` · `field_move_tasks.c` 367) — 뱃지 → `MapHeader_IsFlyAllowed` → 동행 → 사파리·팔파크 차례로 본다.
+헤더가 막으면 `FIELD_MOVE_ERROR_LOCATION` → 파티 화면이 뱅크 453의 104(`PartyMenu_Text_CantUseThatHere`)를 띄운다. 593개 맵 중
+515곳이 막혀 있다 — 실내·굴·깨어진 세계 열한 층이 다 그렇다.
+
+**우리** — 시작 메뉴의 지름길·파티 화면·타운맵 셋 다 뱃지와 기술만 봤다. 깨어진 세계·갤럭시단 아지트·천관산 한복판에서
+날아 나갈 수 있었다.
+
+**지금** — `script/fieldMoves`의 `flyDenial`이 원작 차례를 그대로 두고 `script/field`의 `flyVerdictNow`가 헤더·동행 표식·사파리를
+모아 묻는다. 시작 메뉴는 막히면 항목을 안 띄우고, 파티 화면은 롬 줄(104 · 76 뱃지 · 196 동행)을 띄우고, 타운맵은 날기 직전에
+다시 본다. 팔파크는 우리에게 없다. 순간이동·구멍파기는 우리 필드 기술에 아직 없다(`FIELD_MOVES` 아홉). 동굴탈출로프는 이미 헤더를
+본다(`CanUseEscapeRope` — 갈래가 동굴이고 `isEscapeRopeAllowed`).
+
+하네스 `tools/e2e`의 `flyTo`는 헤더가 막는 맵에서 **가장 가까운 날 수 있는 맵으로 먼저 걷는다**(`route.mjs`의 `nearestFlyable` —
+워프와 행렬 0 이웃의 너비 우선). 센터·마트·체육관·굴에서 부르는 자리가 여럿이다.
+시험 `script/fieldMoveMenu.test.ts` — 헤더 0이면 `notHere`, 뱃지가 먼저, 동행이면 `partner`, 사파리면 `notHere`, 그리고 롬 헤더 표에서
+573~583이 전부 0이고 떡잎마을이 1인지.
+
+## 92. 워프로 맵을 옮겨도 **자전거와 파도타기가 그대로였다**
+
+**원작** (`FieldSystem_InitFlagsWarp` · `field_map_change_flags.c` 90–94) — 워프(`FieldMapChange_UpdateGameData(…, FALSE)` — 문·계단·
+스크립트 `Warp`·공중날기·전멸)마다 자전거는 도착 맵의 `isBikeAllowed`가 0이면, 파도타기는 늘 걷기로 돌린다. 걸어서 맵 경계를 넘는
+것과 깨어진 세계의 층 가기(`FieldMap_ChangeZoneDistortionWorld` → `UpdateGameDataDistortionWorld(…, TRUE)`)는 `InitFlagsOnMapChange`를
+타서 안 내린다. 이어하기는 세이브의 `playerState`로 선다(§87).
+
+**왜 문제였나** — 자전거를 탄 채 귀혼동굴(자전거 됨)에서 차원문으로 깨어진 세계 방(자전거 안 됨)에 들면 벽과 천장을 자전거로
+달렸다. 자전거를 막는 맵이 다 같은 처지였다.
+
+**지금** — 규칙은 `map/warpAvatar`, 어느 옮김이 워프인가는 `scene/warpArrival`이 가른다: `world.pending` 가운데 **이웃 층으로 가고
+롬 칸 워프가 아닌 것**(승강 발판·폭포)만 층 가기다. `MapStreamer`가 새 맵을 세우기 직전에 부른다.
+시험 `scene/warpArrival.test.ts` — 규칙 셋, B4F → B5F 폭포에서 파도타기가 이어지는지, B7F → 기라티나 방 스크립트 워프는 워프인지,
+귀혼동굴 → 방 583에서 자전거가 내리는지, 문으로 들어가면 파도타기가 풀리는지.
+
+## 93. 승강 발판·폭포 한복판에서 **시작 메뉴와 리포트가 열렸다**
+
+**원작** — 필드 입력을 태스크가 없을 때만 받는다(`field_system.c`의 `HandleFieldInput`: `FieldSystem_IsRunningTask == FALSE`).
+시작 메뉴는 그 입력의 한 갈래고, 그마저 주인공이 걸음 한가운데가 아닐 때만이다(`overlay005/field_control.c` 127줄).
+깨어진 세계의 승강 발판(`CallElevatorPlatformHandler`)·판 사이 뛰기(`JumpOnFloatingPlatform`)·사건(`FieldTask_CallLoadedEventHandler` —
+판 밀기·폭포·호수 셋·기라티나 그림자)이 다 `FieldSystem_CreateTask`로 도는 필드 태스크다.
+
+**왜 문제였나** — 메뉴 층은 복원 중 · 스크립트 · 배틀만 봤다. 발판이 층을 가는 도중 리포트를 쓰면 허공의 높이와 바뀌는 중인 판이
+그대로 적혔다.
+
+**지금** — `scene/fieldTask`의 `fieldTaskRunning`(이 세계의 `riding` · 공중날기 연출 · 뛰는 걸음 · 걸린 워프 · 조우 컷인)이 참이면
+X도 등록 도구 키도 안 먹는다. 걷는 걸음 한가운데는 여전히 연다 — 우리 이동이 칸에 잠기지 않아 「걸음 끝」이 따로 없다.
+시험 `scene/fieldTask.test.ts`.
+
+## 94. 깨어진 세계 안에서 백금옥을 빼면 **기라티나가 어나더로 돌아갔다** · 나갈 때 도감에 안 적혔다
+
+**원작** — 파티 화면의 두 갈래, 가방에서 빈손에 쥐여 주기(`UpdatePokemonWithItem` · `party_menu/main.c` 2811)와 빼앗기
+(`PartyMenuCB_TakeItem` · `party_menu/context_menu.c` 231)가 맵 번호가 `MAP_HEADER_DISTORTION_WORLD_1F`(573)~`_TURNBACK_CAVE_ROOM`(583)이면
+`Pokemon_SetGiratinaFormByHeldItem`을 건너뛴다. 맞바꾸기(`SwapPokemonItem`)와 편지 떼기에는 이 검사가 없다. 모습은 세계를 나가는
+스크립트의 `SetPartyGiratinaForm`이 정하고, 그 명령은 알이 아닌 파티의 기라티나마다 `Pokedex_Capture`를 부른다(`scrcmd.c` 7092).
+
+**지금** — `pokemon/form`의 `heldItemKeepsGiratinaForm`, 가방의 쥐여 주기(빈손일 때만)와 파티의 빼앗기가 그것을 넘긴다.
+`SetPartyGiratinaForm`이 파티에 알 아닌 기라티나가 있으면 도감에 잡은 것으로 적는다. 우리 도감은 종 단위라 폼 차례(`UpdateForm`)·
+성별·언어는 적을 칸이 없다. 시험 `ui/menu/giratinaOrb.test.ts`.
+
+## 95. 오리진폼 기라티나전이 **깨어진 세계의 땅**이었다
+
+**원작** — `Encounter_NewVsGiratinaOrigin`(`encounter.c` 970–992)이 `dto->terrain = TERRAIN_GIRATINA`로 덮는다. 배경은 그대로
+`BACKGROUND_DISTORTION_WORLD`다. 땅이 정하는 것은 발판 그림·조우 폭발·자연의힘 계열·도롱마담 옷감이다.
+
+**지금** — `startWild`가 `terrain`을 받아 `open`이 밟은 칸으로 정한 땅을 덮는다. 조우 폭발이 깨어진 세계의 얼음 한 벌(21) 대신
+원작 표대로 실내 한 벌(11)을 쓴다. 도롱마담은 둘 다 모래땅이라 같다. 무대는 배경을 따르므로 그대로다.
+시험 `scene/battleReload.test.ts` — 기라티나 방 스크립트가 여는 판이 오리진폼 · `Terrain.GIRATINA`다.
+
+⛔ `BATTLE_STATUS_GIRATINA`의 등장 몸짓(`Task_SetGiratinaEncounter` — 옆에서 미끄러져 들어오는 대신 위에서 내려앉는다,
+`battle_display.c` 278·302)은 3D 배틀 무대의 일이라 아직 없다.
+
 ## 110. 턱 앞 칸에서 손을 떼도 **남은 속도로 턱을 뛰어내렸다**
 
 **원작** — 걸음은 칸 단위다. 걸음을 **시작할 때** 누른 방향으로 앞 칸을 보고 턱·두 칸 건너뛰기·도약대를 가른다
@@ -4869,3 +5030,4 @@ B6F의 셋이 내려다보이는 장면만 없다.
 **고친 것** — `ledgeHop`·`distortionHop`이 **미는 쪽으로 봐서 칸 가운데 이상**일 때만 뛴다(`reachedCentre`). 서 있는 자리는 늘
 가운데라 멈춰 서서 미는 뛰기는 그대로고, 계속 쥐고 걸어가면 가운데를 지나며 뛴다. 시험 `engine/actor/ledgeIntent.test.ts` —
 가운데 전에 손을 떼면 고치기 전에는 턱 너머에 섰다.
+

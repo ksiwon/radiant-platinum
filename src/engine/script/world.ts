@@ -483,6 +483,8 @@ export interface FieldServices {
     setActive: (active: boolean) => void
     /** 이번 판에 잡은 마리 (`TVBroadcast_GetSafariGameData`) */
     caught: () => number
+    /** 놀이 중인가 (`SystemFlag_CheckSafariGameActive`). 공중날기가 이것을 본다 */
+    active?: () => boolean
     /** 열차를 처음 세운다 (`PersistedMapFeatures_InitForGreatMarsh`) */
     initTram: () => void
     /** 열차를 그 자리로 보낸다. 도착할 때까지 스크립트가 선다 */

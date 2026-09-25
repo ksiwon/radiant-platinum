@@ -7,6 +7,7 @@ import { BINDINGS } from '../../engine/input/keys'
 import { worldState } from '../../state/worldState'
 import { fieldScripts } from '../../engine/script/field'
 import { runRegisteredItem } from '../../scene/registeredItem'
+import { fieldTaskRunning } from '../../scene/fieldTask'
 import { useBattleStore } from '../../state/battleStore'
 import { useMenuStore } from '../../state/menuStore'
 import { ChooseStarter } from '../field/ChooseStarter'
@@ -62,6 +63,9 @@ export function MenuLayer() {
       // 실제로 막는 코드가 없었다 — 배틀에서 X를 누르면 필드 시작 메뉴가
       // 배틀 위로 올라왔다. 배틀의 X는 한 단 물러나는 키다
       if (useBattleStore.getState().phase !== 'off') return
+      // ⚠️ **필드 태스크가 도는 동안도 안 열린다** (`HandleFieldInput`, REPAIR §93). 깨어진 세계의
+      // 승강 발판·폭포 한복판에서 리포트를 쓰면 허공의 높이와 바뀌는 중인 판이 그대로 적힌다
+      if (fieldTaskRunning()) return
       e.preventDefault()
       e.stopPropagation()
       // ⚠️ **Y는 메뉴를 안 연다.** 등록한 도구를 그 자리에서 쓴다 — 아무것도

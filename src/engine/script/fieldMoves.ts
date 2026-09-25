@@ -135,6 +135,44 @@ export function whyNot(id: FieldMoveId, who: Trainer): FieldMoveDenial | null {
   return null
 }
 
+/**
+ * 공중날기를 못 쓰는 까닭 (`FieldMoves_CheckFly`의 `FIELD_MOVE_ERROR_*`).
+ *
+ * `notHere`가 `LOCATION`(「여기서는 쓸 수 없습니다」), `partner`가 `PARTNER`
+ * (「함께 걷고 있을 때는 쓸 수 없습니다!」)다
+ */
+export type FlyDenial = FieldMoveDenial | 'notHere' | 'partner'
+
+/** 날려는 자리의 사정 — 원작 검사가 보는 셋이다 */
+export interface FlyPlace {
+  /** 맵 헤더의 `isFlyAllowed` (`MapHeader_IsFlyAllowed`) */
+  flyAllowed: boolean
+  /** 누가 따라다니는가 (`SystemFlag_CheckHasPartner`) */
+  hasPartner: boolean
+  /** 사파리 놀이 중인가 (`SystemFlag_CheckSafariGameActive`) */
+  inSafari: boolean
+}
+
+/**
+ * 공중날기를 쓸 수 있는가 (`FieldMoves_CheckFly`, `field_move_tasks.c` 367).
+ *
+ * 원작 차례 그대로다 — 뱃지 → **맵 헤더** → 동행 → 사파리·팔파크. 헤더가
+ * 막는 곳이 593개 맵 중 515곳이다: 실내·굴·깨어진 세계 열한 층이 다 그렇다.
+ * 이것이 없으면 깨어진 세계 한복판에서도 날아서 빠져나간다 (REPAIR §91).
+ *
+ * ⚠️ 파티(`party`)는 원작 검사에 없다 — 원작은 그 기술을 아는 마리의 갈래
+ * 메뉴에만 「공중날기」를 띄우므로 물을 일이 없다. 우리 시작 메뉴의 지름길이
+ * 그 자리를 대신 본다. 팔파크는 우리에게 없다
+ */
+export function flyDenial(who: Trainer, place: FlyPlace): FlyDenial | null {
+  const denial = whyNot('fly', who)
+  if (denial !== null) return denial
+  if (!place.flyAllowed) return 'notHere'
+  if (place.hasPartner) return 'partner'
+  if (place.inSafari) return 'notHere'
+  return null
+}
+
 /** 지금 여기서 실제로 나가는 기술. 없으면 null */
 export function fieldMoveHere(spot: FieldSpot, who: Trainer): FieldMoveId | null {
   return movesUsableHere(spot).find((id) => whyNot(id, who) === null) ?? null

@@ -29,6 +29,8 @@ import { tradeEvolutionItems } from '../../engine/pokemon/evolution'
 import { itemIcon } from './itemIcon'
 import { bagArt, pocketIcon } from './bagArt'
 import { withHeldItem } from './formChange'
+import { heldItemKeepsGiratinaForm } from '../../engine/pokemon/form'
+import { world as mapWorld } from '../../engine/map/world'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 import * as own from './bagScreen.css'
@@ -140,8 +142,11 @@ export function BagScreen() {
     if (!mon) return
     const held = mon.heldItem
     const next = [...party]
-    // 백금옥을 쥐여 주면 그 자리에서 오리진이 된다 (PARITY §3.4)
-    next[slot] = withHeldItem({ ...mon, heldItem: id }, data?.species, data?.moves)
+    // 백금옥을 쥐여 주면 그 자리에서 오리진이 된다 (PARITY §3.4).
+    // ⚠️ **빈손에 쥐여 줄 때만** 깨어진 세계가 모습을 붙든다 (`UpdatePokemonWithItem`의 맵 검사) —
+    // 맞바꾸기(`SwapPokemonItem`)에는 그 검사가 없어서 세계 안에서도 바뀐다 (REPAIR §94)
+    const keep = held === 0 && heldItemKeepsGiratinaForm(mapWorld.mapId)
+    next[slot] = withHeldItem({ ...mon, heldItem: id }, data?.species, data?.moves, keep)
     useSaveStore.setState({ party: next })
     removeItem(pocket, id, 1)
     if (held > 0) addItem(data?.items.get(held).pocket ?? 0, held, 1)

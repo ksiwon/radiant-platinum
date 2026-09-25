@@ -5,9 +5,8 @@
 // 실제로 두 줄뿐이다 — 우리가 항목을 흐리게 두면 그 느낌이 사라진다.
 import { useEffect, useState } from 'react'
 import { fillMenuText, loadUiText, START_MENU } from '../../data/uiText'
-import { fieldScripts } from '../../engine/script/field'
+import { fieldScripts, flyVerdictNow } from '../../engine/script/field'
 import { FLAG_HAS_POKEDEX } from '../../engine/script/vars'
-import { whyNot } from '../../engine/script/fieldMoves'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
@@ -27,7 +26,6 @@ export function StartMenu() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const party = useSaveStore((s) => s.party)
   const trainer = useSaveStore((s) => s.trainer)
-  const badges = useSaveStore((s) => s.badges)
   // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
   const locale = useGameLocale()
 
@@ -52,14 +50,13 @@ export function StartMenu() {
   /**
    * 공중날기를 쓸 수 있는가 (`FieldMoves_CheckFly`).
    *
-   * 원작은 이 항목이 시작 메뉴가 아니라 **포켓몬 화면**에 붙는다. 그 자리를
-   * 아직 안 만들어서 여기 둔다 — 조건은 원작 그대로다: 자갈뱃지와, 공중날기를
-   * 아는 파티원 하나
+   * 원작은 이 항목이 시작 메뉴가 아니라 **포켓몬 화면**에 붙는다. 여기 둔 것은
+   * 우리 지름길이다 — 조건은 원작 그대로다: 자갈뱃지 · 맵 헤더의 `isFlyAllowed` ·
+   * 동행 없음 · 사파리 밖, 그리고 공중날기를 아는 파티원 하나. 헤더가 막는 맵
+   * (실내·굴·깨어진 세계)에서는 항목이 안 뜬다 (REPAIR §91). 판정은 파티 화면·
+   * 타운맵과 같은 `flyVerdictNow` 한 자리다
    */
-  const canFly = whyNot('fly', {
-    badges,
-    knows: (move) => party.some((mon) => mon.moves.some((slot) => slot.move === move)),
-  }) === null
+  const canFly = flyVerdictNow() === null
 
   const entries: Entry[] = []
   if (hasDex) entries.push({ key: 'pokedex', label: label(START_MENU.pokedex), go: () => { push('pokedex') } })
