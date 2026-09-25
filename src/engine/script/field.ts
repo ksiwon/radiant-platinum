@@ -525,6 +525,9 @@ const playerMovable: Movable = {
   set x(v: number) { worldState.player.position.x = v + 0.5 },
   get z() { return worldState.player.position.z - 0.5 },
   set z(v: number) { worldState.player.position.z = v + 0.5 },
+  // 높이는 칸 그대로다 — 깨어진 세계의 벽 걸음(`WALL_STEP_ACTIONS`)만 옮긴다
+  get y() { return worldState.player.position.y },
+  set y(v: number) { worldState.player.position.y = v },
   get dir() { return QUARTER_TO_DIR[quarterOf(worldState.player.facing)]! },
   set dir(v: number) { worldState.player.facing = DIR_TO_FACING[v] ?? 0 },
   visible: true,

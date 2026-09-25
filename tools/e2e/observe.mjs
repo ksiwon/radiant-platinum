@@ -537,11 +537,9 @@ function devObserver(page) {
      * 제품 모듈에서 꺼내 넘긴다(굽는 쪽이 하나). 사람·바위는 지금 층의 **살아 있는 배우**로, 다른 층은
      * 표로 본다.
      *
-     * @param arg.used 이번 층에 들어와서 이미 돈 사건의 비트(`distortionEvents.ts`의 `ranEvents`는
-     *   밖에서 못 읽는다 — 몰이꾼이 센다, §3)
      * @param arg.escape 벽 속에서 시작했으면 안전망으로 나오는 걸음을 먼저 준다(기본 꺼짐, §6-1)
      */
-    distortionPlan: (arg) => read('깨어진 세계 풀이를 못 돌렸다', async ({ used = 0, escape = false } = {}) => {
+    distortionPlan: (arg) => read('깨어진 세계 풀이를 못 돌렸다', async ({ escape = false } = {}) => {
       const D = await import('/src/engine/world/distortion.ts')
       const E = await import('/src/engine/world/distortionElevator.ts')
       const C = await import('/src/engine/world/distortionCascade.ts')
@@ -594,12 +592,20 @@ function devObserver(page) {
         isOnWater: Z.isOnWater, isSurfable: Z.isSurfable, DIR_STEP: MV.DIR_STEP,
         STRENGTH_BOULDER: O.STRENGTH_BOULDER, standableSpot: W.standableSpot,
         grid: (m) => grids.get(m) ?? null,
-        groundY: (m) => core.distortionGroundY(m),
+        // 판 밖 지형의 칸 높이 — 제품이 딛는 그 규칙(`player.ts` → `terrainTileY`)
+        terrainY: (m, lx, lz) => D.terrainTileY(grids.get(m)?.heightAtWorld(lx + 0.5, lz + 0.5, 1)),
+        cynthiaBlocksJump: D.cynthiaBlocksJump,
+        initialPlatformFlags: E.initialPlatformFlags,
         // 지금 층만 살아 있는 배우로 답한다. 바위는 `boulders`가 든다
         solidAt: (m, lx, lz) => {
           if (m !== map) return null
           const a = O.solidNpcAt(lx + 0.5, lz + 0.5, p.position.y)
           return a !== null && a.gfx !== O.STRENGTH_BOULDER
+        },
+        // 판 위의 사람 — 그 사람의 높이로 가른다 (`solidNpcAtHeight`)
+        solidAtHeight: (m, lx, ly, lz) => {
+          if (m !== map) return null
+          return O.solidNpcAtHeight(lx + 0.5, lz + 0.5, ly) !== null
         },
         checkFlag: (flag) => F.fieldScripts.vars.checkFlag(flag),
       }
@@ -610,7 +616,10 @@ function devObserver(page) {
         facing: [MV.DIR.south, MV.DIR.east, MV.DIR.north, MV.DIR.west][q],
         surf: p.surfing === true, strength: p.strength === true,
         progress: hooks.progress?.() ?? 0, cyrus: hooks.cyrusAppearance?.() ?? 0,
-        flags: s.platformFlags, puzzle: s.puzzleFlags, used,
+        flags: s.platformFlags, puzzle: s.puzzleFlags,
+        // 높이 계산(판 밖에서만 뜻이 있다)과 그림자 표식 둘 (2478 · 2479)
+        hc: core.distortionFollowsGround(),
+        anim: (F.fieldScripts.vars.checkFlag(2478) ? 1 : 0) | (F.fieldScripts.vars.checkFlag(2479) ? 2 : 0),
         boulders: live.filter((a) => a.gfx === O.STRENGTH_BOULDER).map((a) => ({
           id: a.localID, x: Math.round(a.x) + floor.offsetX, z: Math.round(a.z) + floor.offsetZ,
           fixed: inPit.has(a.localID),
@@ -623,7 +632,10 @@ function devObserver(page) {
       const person = (id) => {
         const a = N.npcActors.byLocalID.get(id)
         return a === undefined ? null
-          : { x: Math.round(a.x) + floor.offsetX, z: Math.round(a.z) + floor.offsetZ }
+          : {
+            x: Math.round(a.x) + floor.offsetX, y: Math.round(a.y) + floor.offsetY,
+            z: Math.round(a.z) + floor.offsetZ,
+          }
       }
       const plan = S.planNext(P, start, person)
       return plan === null ? { start, plan: null } : { start, stage: plan.stage, legs: plan.legs }

@@ -28,13 +28,14 @@
 //      뛰는 자리(`jumpAt`) → 있으면 판을 갈아타고 끝. 없으면 폭포(`cascadeAt`)
 //   ② 바닥·판 밖이면 두 칸 뛰기(`player.ts:411-429` · `ledge.ts:78-90`) → 턱(`player.ts:431-435`)
 //   ③ 걸음 — 앞 칸이 막혔으면 제자리에서 돌기만 한다(`player.ts:568-595`)
-//   ④ **x나 z 칸이 바뀌었을 때만** 닿은 칸을 본다(`stepSystem.ts:340-344`): 판 다시 잡기 →
-//      승강 발판 → 사건 → 스크립트 칸(`scene/distortion.ts:140-146`)
+//   ④ 칸이 바뀌면 닿은 칸을 본다(`scene/stepSystem.ts`): 판 다시 잡기 → 승강 발판 → 사건 →
+//      스크립트 칸(`scene/distortion.ts`의 `distortionStepped`)
 //
-// ⚠️ **벽에서 오르내리는 걸음(y만 바뀜)은 ④가 안 돈다** — 걸음 자(`StepTrace`)가 x·z만 센다
-// (`engine/actor/stepTrace.ts:115-130`). 그리고 ①은 「칸 × 누른 방향」이 바뀔 때만 돈다 —
-// 벽에서 같은 키를 **누른 채로** 오르면 위 칸의 뛰는 자리가 안 걸린다. 그래서 몰이꾼은
-// 걸음마다 **손을 뗐다 다시 누른다**(DISTORTION_HARNESS.md §3).
+// 벽에서는 칸이 (y, z)다 — 오르내리는 걸음도 ①과 ④가 돈다(REPAIR §106). ①은 「칸 × 누른 방향」이
+// 바뀔 때마다 돌므로 누른 채로 올라가도 위 칸의 뛰는 자리가 걸린다.
+//
+// ⚠️ **옮겨진 칸은 걸은 칸이 아니다**(REPAIR §101). 사건(미끄러지는 판·뛰어내림)·승강 발판·판 뛰기·
+// 폭포가 내려놓은 칸에서는 ④가 안 돈다 — 그래서 사건은 다시 돌 수 있다(한 층에 한 번이 아니다).
 
 /** `DIR` 순서의 방향키 (`engine/script/movement.ts:21`) */
 export const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
@@ -64,14 +65,17 @@ const isWallKind = (P, kind) => kind === P.PLATFORM.WEST_WALL || kind === P.PLAT
  *   `tileAttributes` · `blocked` · `tileBehavior` · `findPlatform` · `hasPlatformAt` · `jumpAt` ·
  *   `flagHolds` · `connectionOf` · `mapOf` · `TELEPORT` · `CYNTHIA_BLOCK` · `EVENT_CMD` · `MAP` ·
  *   `elevatorAt` · `elevatorLegs` · `upStartFlags` · `downEndFlags` · `withFlag` · `ELEVATOR_DIR` ·
- *   `PLATFORM_FLAG` · `cascadeAt` · `groundY(map)`(판 밖 뭍 높이 — 그 층 지역 y · 물에서 올라설 때) · `fallLocationAt` · `fallDestination` · `fellToB6F` ·
+ *   `PLATFORM_FLAG` · `cascadeAt` · `terrainY(map, lx, lz)`(판 밖 지형의 칸 높이 — 지역 y, 판이 없으면 null ·
+ *   `terrainTileY(grid.heightAtWorld)`) · `cynthiaBlocksJump` · `initialPlatformFlags` · `fallLocationAt` ·
+ *   `fallDestination` · `fellToB6F` ·
  *   `fellIntoPit` · `fellIntoWrongPit` · `puzzleSolved` · `FALL_DEST` · `hopDirOf` · `HOP_TILES` ·
  *   `distortionJump` · `HOP_TWICE_TILES` · `ledgeHop` · `isOnWater` · `isSurfable` · `DIR_STEP` ·
  *   `FLAG_COND` · `STRENGTH_BOULDER` · `PUZZLE_FLAG` ·
  *
  *   `grid(map) → {isBlocked(lx,lz), behavior(lx,lz)} | null`(그 층의 `MapGrid` — `gridFor`) ·
  *   `solidAt(map, lx, lz) → boolean | null`(지금 층의 살아 있는 사람. null이면 표로 본다 —
- *   바위는 상태의 `boulders`가 든다) · `checkFlag(flag)`(숨김 플래그, 없어도 된다)
+ *   바위는 상태의 `boulders`가 든다) · `solidAtHeight(map, lx, ly, lz) → boolean | null`(판 위 — 사람의
+ *   높이로 가른다, 없어도 된다) · `checkFlag(flag)`(숨김 플래그, 없어도 된다)
  */
 export function distortionModel(P) {
   const floorOf = (map) => P.mapOf(P.data, map)
@@ -113,6 +117,27 @@ export function distortionModel(P) {
     return set.has(`${lx},${lz}`)
   }
 
+  /** 판 위의 사람 — 살아 있는 배우가 답하면 그것을, 아니면 표의 높이로 (`obstacles.ts` `solidNpcAtHeight`) */
+  const solidAtHeight = (s, lx, ly, lz) => {
+    const live = P.solidAtHeight?.(s.map, lx, ly, lz)
+    if (live !== null && live !== undefined) return live
+    const f = floorOf(s.map)
+    return tableActors(P, s).some((a) => a.gfx !== P.STRENGTH_BOULDER
+      && a.x - f.offsetX === lx && a.z - f.offsetZ === lz && a.y - f.offsetY === ly)
+  }
+
+  /**
+   * 판 밖 지형의 칸 높이 (세계 y) — 높이 계산이 켜져 있을 때만 (`player.ts` · REPAIR §105).
+   * 판이 없는 칸이면 그대로다
+   */
+  const groundAt = (s) => {
+    if (s.pi >= 0 || !s.hc) return s.y
+    const f = floorOf(s.map)
+    const [lx, , lz] = toLocal(f, s.x, s.y, s.z)
+    const t = P.terrainY(s.map, lx, lz)
+    return t === null || t === undefined ? s.y : f.offsetY + t
+  }
+
   /**
    * 그 칸의 성질 — 판이 먼저고, 판이 모르는 칸(판 밖·판 없음)이면 맵 격자다
    * (`distortionCore.ts:187-193` → `player.ts:416-417` · `field.ts:1122-1124`)
@@ -141,8 +166,8 @@ export function distortionModel(P) {
   /**
    * 그 칸이 막혔는가 — `player.ts:179-219`의 `shut()` 한 칸 몫.
    *
-   * 판 위면 **판만** 본다: 막힘 비트 → 물(파도타기가 아니면) (`player.ts:186-194`). 사람·바위는
-   * 판 위에서는 **안 본다** — 그 줄들이 판 갈래 뒤에 있다. 판 밖이면 격자 · 물 · 바위 · 사람
+   * 판 위면 판을 본다: 막힘 비트 → 물(파도타기가 아니면) → **그 높이의 사람**(`solidNpcAtHeight` —
+   * B2F 서쪽 벽의 시로나, REPAIR §107). 바위는 판 위에 없다. 판 밖이면 격자 · 물 · 바위 · 사람
    * (`player.ts:198-210`). 들판시티 따위의 장치 갈래(`mapFeatureBridge`)는 이 세계에서 늘 null이다
    * (`scene/mapFeatureCollision.ts` — 깨어진 세계 갈래가 없다. 시험이 격자에 그 성질이 없음을 잰다)
    */
@@ -154,7 +179,9 @@ export function distortionModel(P) {
       if (a !== P.ATTRS_INVALID) {
         if (P.blocked(a)) return true
         const beh = P.tileBehavior(a)
-        return !s.surf && beh !== null && beh !== undefined && P.isOnWater(beh, false)
+        if (!s.surf && beh !== null && beh !== undefined && P.isOnWater(beh, false)) return true
+        const [lx, ly, lz] = toLocal(f, x, y, z)
+        return solidAtHeight(s, lx, ly, lz)
       }
     }
     const g = P.grid(s.map)
@@ -188,7 +215,7 @@ export function distortionModel(P) {
   const ctxOf = (s) => ({
     progress: s.progress,
     state: { puzzleFlags: s.puzzle, platformFlags: s.flags, hiddenGroups: 0 },
-    // `distortionHooks.giratinaAnim`은 아무도 안 꽂는다(`MapStreamer.tsx:593-615`) → 늘 거짓
+    // 2478 + n (`MapStreamer`의 `distortionHooks.giratinaAnim`) — 사건 명령 8이 세운다
     giratinaAnim: (n) => ((s.anim ?? 0) & (1 << n)) !== 0,
     cyrusAppearance: s.cyrus ?? 0,
   })
@@ -224,8 +251,9 @@ export function distortionModel(P) {
     if (!up) flags = P.downEndFlags(flags, legs.at(-1).path.index)
     const f = floorOf(map)
     const pi = bindIndex(f, P.findPlatform(f.platforms, at[0], at[1], at[2]))
+    // 닿으면 높이 계산을 켠다 (`SetHeightCalculationEnabledAndUpdate(TRUE)`)
     return {
-      ...s, map, x: at[0], y: at[1], z: at[2], pi, flags, used: 0, strength: false,
+      ...s, map, x: at[0], y: at[1], z: at[2], pi, flags, hc: true, strength: false,
       boulders: null,
     }
   }
@@ -251,8 +279,9 @@ export function distortionModel(P) {
     const z = s.z + step.z * site.moveAway
     let flags = s.flags
     if (site.down) flags = P.withFlag(flags, P.PLATFORM_FLAG.b5f1, true)
+    // 내려오면 높이 계산을 켜고(웅덩이 128) 올라가 천장에 서면 끈다 (`..._FinishCascading`)
     const landed = {
-      ...s, map: dest, x, y, z, pi, flags, facing: 2, used: 0, strength: false, boulders: null,
+      ...s, map: dest, x, y, z, pi, flags, facing: 2, hc: site.down, strength: false, boulders: null,
     }
     return { ...landed, surf: landed.surf && P.isOnWater(behaviorAt(landed, x, y, z), false) }
   }
@@ -264,9 +293,11 @@ export function distortionModel(P) {
    * (`:272-287`). 둘 다 끝에서 판을 **갈래 안 가리고** 다시 잡는다. 나머지는 상태만 바꾸거나
    * 연출이다(`:128-171` — `default`로 떨어지는 7·8·10·12·13·14·2·3번은 **아무 일도 안 한다**)
    */
+  // 사건이 내려놓은 칸에서는 닿은 칸 처리가 **안 돈다**(옮겨진 칸) — 그래서 여기서 다음 사건을 안 부른다.
+  // 사건 하나는 몇 번이고 다시 돈다(REPAIR §101)
   const runEvent = (s, index, ev) => {
     const E = P.EVENT_CMD
-    let n = { ...s, used: s.used | (1 << index) }
+    let n = { ...s }
     const f = floorOf(s.map)
     let script = null
     let wait = false
@@ -283,7 +314,9 @@ export function distortionModel(P) {
             const x = n.x + (p.finalTileXOffset ?? 0)
             const y = n.y + (p.finalTileYOffset ?? 0)
             const z = n.z + (p.finalTileZOffset ?? 0)
-            n = { ...n, x, y, z, pi: bindIndex(f, P.findPlatform(f.platforms, x, y, z)) }
+            const pi = bindIndex(f, P.findPlatform(f.platforms, x, y, z))
+            // 판 밖에 내려놓으면 높이 계산을 켠다 (`EventCmdMovePlatform_EndMovement`)
+            n = { ...n, x, y, z, pi, hc: pi < 0 }
           }
           break
         case E.setMapObjectAnimation: {
@@ -298,6 +331,9 @@ export function distortionModel(P) {
         }
         // 셋 다 도는 동안 조작이 안 먹는다(`MapStreamer.tsx:874-877`의 `riding` —
         // 그림자·도착은 사건이 서고, 방 발판 무리는 `distortionGhostRunning`이 막는다)
+        case E.setGiratinaAnimationFlag:
+          n = { ...n, anim: (n.anim ?? 0) | (1 << (p.anim ?? 0)) }
+          break
         case E.showGiratinaShadow:
         case E.playGiratinaArrival:
         case E.showGiratinaRoomPlatforms:
@@ -334,7 +370,6 @@ export function distortionModel(P) {
       const ev = table[i]
       if (ev.x !== s.x || ev.y !== s.y || ev.z !== s.z) continue
       if (!P.flagHolds(ev.flagCond, ev.flagVal, ctx)) continue
-      if ((s.used & (1 << i)) !== 0) continue
       const run = runEvent(s, i, ev)
       return { event: { index: i, script: run.script, wait: run.wait, cmds: run.cmds }, state: run.state }
     }
@@ -350,9 +385,12 @@ export function distortionModel(P) {
       const x = w.x + f.offsetX
       const z = w.z + f.offsetZ
       const y = f.offsetY + 1
+      // 워프는 세이브 자리를 비운다(REPAIR §100) — 발밑의 판을 새로 찾고, 판 밖이면 높이 계산을 켜고,
+      // 발판 자리는 닿은 층의 첫 값이다(`InitPersistedData`)
+      const pi = bindIndex(f, P.findPlatform(f.platforms, x, y, z))
       const to = {
-        ...s, map: w.map, x, y, z, facing: w.facing, used: 0, strength: false, boulders: null,
-        pi: bindIndex(f, P.findPlatform(f.platforms, x, y, z)),
+        ...s, map: w.map, x, y, z, facing: w.facing, strength: false, boulders: null, pi, hc: pi < 0,
+        flags: P.initialPlatformFlags(w.map),
       }
       return { exit: { kind: 'teleport', script: t.script, to: w.map }, state: to }
     }
@@ -367,9 +405,11 @@ export function distortionModel(P) {
     return { act, state: hit.state, exit: hit.exit ?? null, event: hit.event ?? null, ...extra }
   }
 
-  /** 시로나가 막아선 칸 (`distortionCore.ts:236-241`) */
-  const jumpBlocked = (s, dir) => s.map === P.MAP.giratinaRoom && s.x === P.CYNTHIA_BLOCK.x
-    && s.z === P.CYNTHIA_BLOCK.z && dir === 1 && s.progress === 14
+  /** 시로나가 막아선 칸 — **넘는 칸**으로 묻는다 (`cynthiaBlocksJump` · REPAIR §103) */
+  const jumpBlocked = (s, dir) => {
+    const st = P.STEP[P.PLATFORM.FLOOR][dir]
+    return P.cynthiaBlocksJump(s.map, s.x + st[0], s.z + st[2], dir, s.progress)
+  }
 
   /**
    * 방향키를 한 번 누른다 (`dir` = `DIR`). 결과 하나를 준다.
@@ -389,15 +429,11 @@ export function distortionModel(P) {
     const f = floorOf(s.map)
     const j = P.jumpAt(f.jumps, s.x, s.y, s.z, dir)
     if (j !== null) {
+      // 뛰는 것은 옮겨지는 것이라 닿은 칸 처리가 안 돈다(REPAIR §101). 뛰고 나면 높이 계산은 늘 꺼진다
+      // (`JumpOnFloatingPlatform` — `u16 < 0`이 안 선다)
       const landed = {
         ...s, x: s.x + j.dx, y: s.y + j.dy, z: s.z + j.dz,
-        pi: bindIndex(f, j.platformIndex), facing: j.facing,
-      }
-      // 뛰는 동안에도 x·z 칸이 바뀌면 닿은 칸 처리가 돈다. 판은 뛰기가 끝날 때
-      // `jump.platformIndex`로 박힌다(`distortionJump.ts:76-79`) — 도중의 다시 잡기는 덮인다
-      if (j.dx !== 0 || j.dz !== 0) {
-        const hit = stepped(landed, j.facing)
-        if (hit !== null) return { act: 'jump', wait: 'jump', state: hit.state, exit: hit.exit ?? null, event: hit.event ?? null }
+        pi: bindIndex(f, j.platformIndex), facing: j.facing, hc: false,
       }
       return { act: 'jump', wait: 'jump', state: landed }
     }
@@ -459,24 +495,21 @@ export function distortionModel(P) {
       return { act: 'turn', state: { ...s, facing: dir } }
     }
     const moved = { ...s, x: tx, y: ty, z: tz, facing: dir }
-    // ⚠️ 뭍에 오르면 파도타기가 풀린다 (`player.ts`) — 판 밖이면 그 층 뭍 높이에 선다(REPAIR §84 ·
-    // `distortionBridge.landY`). B5F 웅덩이(128)에서 뭍(129)으로 올라서야 승강 발판이 탄다
-    if (moved.surf && !P.isOnWater(behaviorAt(moved, tx, ty, tz), false)) {
+    // 판 밖에서 높이 계산이 켜져 있으면 지형의 칸 높이를 딛는다 — B5F 웅덩이 128 · 뭍 129 (REPAIR §105)
+    moved.y = groundAt(moved)
+    // 뭍에 오르면 파도타기가 풀린다 (`player.ts`)
+    if (moved.surf && !P.isOnWater(behaviorAt(moved, moved.x, moved.y, moved.z), false)) {
       moved.surf = false
-      if (moved.pi < 0) {
-        const ground = P.groundY(moved.map)
-        if (ground !== null) moved.y = floorOf(moved.map).offsetY + ground
-      }
     }
-    // ④ x·z 칸이 바뀌어야 닿은 칸이 돈다 (`stepSystem.ts:340-344`). 벽의 오르내림은 안 돈다
-    if (walk[0] === 0 && walk[2] === 0) return { act: 'wall', state: moved }
+    // 벽의 오르내림도 한 걸음이다 — 떠나는 칸·닿은 칸 처리가 다 돈다 (REPAIR §106)
+    const act = walk[0] === 0 && walk[2] === 0 ? 'wall' : 'walk'
     const through = { x: tx, y: ty, z: tz }
     // ⚠️ **새 칸에 든 그 틱에 누른 키는 아직 눌려 있다** — 칸이 바뀌어 「칸 × 방향」이 달라졌으니
     // 떠나는 칸 처리가 새 칸에서 다시 돈다(`stepSystem.ts:327-334`, 같은 틱에 닿은 칸보다 먼저).
     // 몰이꾼은 칸이 바뀐 것을 본 **뒤에야** 손을 뗄 수 있다
     const again = onPress(moved, dir)
     if (again !== null) return { ...again, through }
-    const r = arrive(moved, dir, 'walk')
+    const r = arrive(moved, dir, act)
     // 승강 발판·기다리는 사건·스크립트는 조작을 묶어 속도를 지운다(`player.ts:264-280`)
     if (r.exit || (r.event && (r.event.wait || r.event.script !== null))) return r
     // ⚠️ **손을 떼도 속도가 남는다**(`player.ts:309` — `lerp`라 0이 안 된다). 두 칸 뛰기·턱은
@@ -506,15 +539,13 @@ export function distortionModel(P) {
       let script = null
       if (dest === P.FALL_DEST.b6f) puzzle = P.fellToB6F(puzzle, b.id)
       else if (dest === P.FALL_DEST.correctPit) {
-        // 맞는 웅덩이: 바위가 웅덩이 바위(#144~146)로 바뀌어 **그 표 자리에** 서고, 호수 셋의
-        // 스크립트가 선다 (`scene/distortionBoulder.ts:94-109` → `distortionObjects.ts:54-75`)
-        const after = P.fellIntoPit(puzzle, b.id)
+        // 맞는 웅덩이: 바위가 웅덩이 바위(#144~146)로 바뀌어 떨어진 칸에서 민 쪽으로 한 칸 더 간 자리에
+        // 서고, **웅덩이의** 스크립트가 선다 (`scene/distortionBoulder.ts` · REPAIR §109)
+        const after = P.fellIntoPit(puzzle, b.id, flag)
         if (after !== null) {
           puzzle = after.flags
           script = after.script
-          const row = P.data.mapObjects.find((m) => m.map === s.map)?.objects
-            .find((o) => o.localID === after.localID)
-          if (row !== undefined) boulders = [...boulders, { id: after.localID, x: row.x, z: row.z, fixed: true }]
+          boulders = [...boulders, { id: after.localID, x: nx + st[0], z: nz + st[2], fixed: true }]
         }
       } else puzzle = P.fellIntoWrongPit(puzzle, b.id)
       return {
@@ -577,7 +608,9 @@ export function distortionModel(P) {
       if (blockedCell({ ...s, surf: true }, t.x, t.y, t.z)) continue
       const turn = turnTo(s, dir)
       if (turn === null) continue
-      const on = { ...s, x: t.x, z: t.z, surf: true, facing: dir }
+      const hopped = { ...s, x: t.x, z: t.z, surf: true, facing: dir }
+      // 물에 올라서면 그 칸의 지형 높이를 딛는다 — 뭍(129)에서 B5F 웅덩이(128)로 (REPAIR §105)
+      const on = { ...hopped, y: groundAt(hopped) }
       out.push({ dir, nudge: turn.nudge, result: arrive(on, dir, 'surf', { wait: 'surf' }) })
     }
     return out
@@ -591,7 +624,7 @@ export function distortionModel(P) {
 
 // ── 한 층 안의 길 ────────────────────────────────────────────────────────────
 
-const keyOf = (s) => `${s.x},${s.y},${s.z},${s.pi},${s.surf ? 1 : 0},${s.used},${s.progress},${s.puzzle}`
+const keyOf = (s) => `${s.x},${s.y},${s.z},${s.pi},${s.surf ? 1 : 0},${s.hc ? 1 : 0},${s.progress},${s.puzzle},${s.anim ?? 0}`
 
 /** 몰이꾼에게 넘기는 기대값 — 세계 칸 · 지역 칸 · 판 번호 (`DISTORTION_HARNESS.md` §3) */
 function expectOf(M, s) {
@@ -617,8 +650,8 @@ function stepOf(M, key, r, extra = {}) {
 /**
  * 한 층 안에서 목표까지 — 방향키와 파도타기만으로 (BFS, 누름 수 최소).
  *
- * @param start 상태 `{map, x, y, z, pi, facing, surf, strength, progress, flags, puzzle, used,
- *   boulders:[{id,x,z}]}` (세계 칸)
+ * @param start 상태 `{map, x, y, z, pi, facing, surf, strength, progress, flags, puzzle, hc, anim,
+ *   boulders:[{id,x,z}]}` (세계 칸). `hc`는 높이 계산이 켜져 있는가, `anim`은 그림자 표식 둘(2478·2479)의 비트다
  * @param goal `(r, from) => boolean` — `r`은 `press`의 결과(나간 길 `exit` · 사건 `event` 포함)
  * @param opts.surf `'never' | 'auto'(마른 길이 없을 때만) | 'always'`
  * @param opts.stopAtScript 스크립트가 서는 사건을 **끝**으로 친다(기본 참) — 스크립트가 주인공을
@@ -695,36 +728,36 @@ export const goalDown = () => (r) => {
 }
 
 /**
- * 사람에게 말을 건다 — 옆 칸에 서서 그쪽으로 돌고 A (`field.ts:969-977`).
+ * 사람에게 말을 건다 — 그 사람을 앞 칸으로 두는 자리에 서서 그쪽으로 돌고 A (`field.ts`의 `tryTalk`).
  *
- * A의 앞 칸은 바라보는 쪽 한 걸음이다(`frontTile` — 사람은 판 밖 바닥에 선다). 도는 키가 걸음이 되는 자리는
- * 없다 — 사람이 그 칸을 막고 있어서 **제자리 돌기**다(`player.ts:568-595`).
+ * A의 앞 칸은 서 있는 판의 걸음 표로 한 걸음이다(`frontTile` — REPAIR §85). 깨어진 세계는 x·y·z 셋을 다
+ * 견주므로(`Field_DistortionInteract` · REPAIR §107) 벽 위의 사람(B2F 시로나)은 벽 위에서 오르내림 쪽으로
+ * 마주 봐야 한다. 도는 키가 걸음이 되는 자리는 없다 — 사람이 그 칸을 막고 있어서 **제자리 돌기**다.
  *
- * @param target `{x, z}` 세계 칸
+ * @param target `{x, y?, z}` 세계 칸 — y가 없으면 x·z만 본다
  */
 export function planTalk(P, start, target, opts = {}) {
   const M = distortionModel(P)
-  const stands = []
-  for (let dir = 0; dir < 4; dir++) {
-    // 사람은 판 밖 바닥에 선다 — 바닥 표로 한 걸음 앞이다
-    const [dx, , dz] = P.STEP[P.PLATFORM.FLOOR][dir]
-    stands.push({ x: target.x - dx, z: target.z - dz, dir })
+  const facing = (q) => {
+    for (let dir = 0; dir < 4; dir++) {
+      const t = M.aFront(q, dir)
+      if (t.x === target.x && t.z === target.z && (target.y === undefined || t.y === target.y)) return dir
+    }
+    return -1
   }
-  const here = stands.find((q) => q.x === start.x && q.z === start.z)
   let walk = { steps: [], end: start }
-  if (here === undefined) {
-    walk = planFloor(P, start, (r) => !r.exit && r.act !== 'turn'
-      && stands.some((q) => q.x === r.state.x && q.z === r.state.z), opts)
+  if (facing(start) < 0) {
+    walk = planFloor(P, start, (r) => !r.exit && r.act !== 'turn' && facing(r.state) >= 0, opts)
     if (walk === null) return null
   }
   const s = walk.end
-  const q = stands.find((one) => one.x === s.x && one.z === s.z)
-  const turn = M.turnTo(s, q.dir)
+  const dir = facing(s)
+  const turn = M.turnTo(s, dir)
   if (turn === null) return null
-  const faced = { ...s, facing: q.dir }
+  const faced = { ...s, facing: dir }
   const steps = [...walk.steps]
-  if (s.facing !== q.dir) {
-    steps.push(stepOf(M, KEYS[q.dir], { act: turn.nudge ? 'nudge' : 'turn', state: faced }))
+  if (s.facing !== dir) {
+    steps.push(stepOf(M, KEYS[dir], { act: turn.nudge ? 'nudge' : 'turn', state: faced }))
   }
   steps.push(stepOf(M, 'A', { act: 'talk', state: faced }, { prompt: 'talk', target }))
   return { steps, end: faced }
@@ -935,7 +968,8 @@ export function tableActors(P, s) {
     if (row.flagCond === P.FLAG_COND.manualAddOnly) continue
     if (!P.flagHolds(row.flagCond, row.flagCondVal, ctx)) continue
     if (row.hiddenFlag !== 0 && (P.checkFlag?.(row.hiddenFlag) ?? false)) continue
-    out.push({ id: row.localID, gfx: row.graphicsID, x: row.x, z: row.z })
+    // y는 고정소수점 세계 높이다 (`distortionObjects.ts`의 `FX32_PER_TILE`)
+    out.push({ id: row.localID, gfx: row.graphicsID, x: row.x, y: Math.round(row.y / 65536), z: row.z })
   }
   return out
 }
@@ -972,7 +1006,9 @@ export const STORY = [
   { map: 573, kind: 'event', progress: 2 },
   // B1F: 들어서면 장면(2→3), 엠라이트 칸 (15,257,58) → 4 (사건 표 574)
   { map: 574, kind: 'event', progress: 4 },
-  // B2F 시로나(4→5)는 선택이다 — B3F 사건이 4와 5를 둘 다 받는다(사건 표 576의 두 줄)
+  // B2F: 서쪽 벽의 시로나(#128 @30,233,20)가 벽의 통로를 막는다 — 말을 걸면 벽에서 한 칸 내려서고(106)
+  // → 5 (`scripts_distortion_world_b2f.s`). 판 위의 사람도 막으므로(REPAIR §107) 건너뛸 수 없다
+  { map: 575, kind: 'talk', localID: 128, done: 5 },
   // B3F: 태홍 칸 (65,193,41) → 6
   { map: 576, kind: 'event', progress: 6 },
   // B5F: 바위 셋을 구멍으로 (`sBoulderFallLocations` 앞 셋 — `distortionBoulder.ts:79-81`)
@@ -1021,7 +1057,7 @@ export function nextStage(P, s) {
  * 사건 스크립트도 옮긴다(`scripts_distortion_world_1f.s:40` 따위). 계획이 맞는지는 걸음마다
  * `expect`로 본다.
  *
- * @param person `(localID) => {x, z} | null` — 말 걸 사람의 **지금** 세계 칸(없으면 표)
+ * @param person `(localID) => {x, y?, z} | null` — 말 걸 사람의 **지금** 세계 칸(없으면 표)
  * @returns `{stage, legs: [{map, steps, end, exit?|drop?|talk?|event?}], end}` 또는 null
  */
 export function planNext(P, start, person = () => null) {
@@ -1055,7 +1091,7 @@ export function planNext(P, start, person = () => null) {
   const who = person(stage.localID)
     ?? tableActors(P, at).find((a) => a.id === stage.localID) ?? null
   if (who === null) return null
-  const r = planTalk(P, at, { x: who.x, z: who.z })
+  const r = planTalk(P, at, { x: who.x, y: who.y, z: who.z })
   if (r === null) return null
   return { stage, legs: [{ map: at.map, steps: r.steps, end: r.end, talk: stage.localID }], end: r.end }
 }

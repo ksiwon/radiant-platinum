@@ -70,6 +70,10 @@ export interface Movable {
   dir: number
   visible: boolean
   /**
+   * 서 있는 높이 (칸). 깨어진 세계의 벽 걸음(`WALL_STEP_ACTIONS`)만 옮긴다 — 없으면 그 걸음은 y를 안 건드린다
+   */
+  y?: number
+  /**
    * 그림만 어긋나는 만큼 (타일) — `MapObject_SetSpritePosOffset`.
    *
    * **서 있는 칸은 그대로다.** 연출이 프레임마다 고쳐 쓰고 그림을 세우는 쪽이
@@ -90,6 +94,30 @@ export interface Movable {
    */
   readonly params?: readonly number[]
 }
+
+/**
+ * 깨어진 세계 서쪽 벽의 한 칸 걸음 (`MOVEMENT_ACTION_105` ~ `108`).
+ *
+ * 이동 동작 표에는 이름 없는 번호로만 있다(`kind: 'other'`). 원작이 벽 위의 걸음을 따로 두었다 — 서쪽 벽에서
+ * 북·남·서·동을 누르면 이 넷이 나간다(`PlayerAvatar_SetMovement_DistortionWestWall`의 걸음 표). 넷 다
+ * `sub_02066824(mapObj, vec, face, turn, 8, …)`로 여덟 프레임에 한 칸이고(`FX32_CONST(2)` × 8 = 한 칸),
+ * y나 z 하나만 바뀐다 (`unk_020655F4.c`의 `sub_02066934` · `sub_02066968` · `sub_02066998` · `sub_020669CC`):
+ *
+ *   105  y + 1 · 서쪽을 본다        106  y − 1 · 동쪽을 본다
+ *   107  z + 1 · 남쪽을 본다        108  z − 1 · 북쪽을 본다
+ *
+ * B2F 시로나의 스크립트(`scripts_distortion_world_b2f.s`)가 106으로 시로나를 벽에서 한 칸 내리고 107로
+ * 주인공을 한 칸 비켜 세운다 — 이게 없으면 시로나가 벽의 통로(30,233,20)를 막은 채 남는다
+ */
+export const WALL_STEP_ACTIONS: Readonly<Record<number, { dy: number, dz: number, face: number }>> = {
+  105: { dy: 1, dz: 0, face: DIR.west },
+  106: { dy: -1, dz: 0, face: DIR.east },
+  107: { dy: 0, dz: 1, face: DIR.south },
+  108: { dy: 0, dz: -1, face: DIR.north },
+}
+
+/** 벽 걸음 하나의 프레임 수 */
+const WALL_STEP_FRAMES = 8
 
 /**
  * 목록 하나를 프레임 단위로 돌린다.
@@ -117,6 +145,8 @@ export class MovementRunner {
   tick(): void {
     if (this.done) return
     const step = this.steps[this.step]!
+    const wall = WALL_STEP_ACTIONS[step.action]
+    if (wall !== undefined) { this.wallStep(step, wall); return }
     const action = this.table[step.action]
     if (action === undefined || action === null) {
       // 표에 없는 번호. 건너뛰되 자리를 잃지는 않는다
@@ -147,6 +177,21 @@ export class MovementRunner {
       this.target.x = Math.round(this.target.x)
       this.target.z = Math.round(this.target.z)
     }
+    this.next(step)
+  }
+
+  /** 벽 걸음 한 프레임 (`WALL_STEP_ACTIONS`) */
+  private wallStep(step: MovementStep, wall: { dy: number, dz: number, face: number }): void {
+    if (!this.started) {
+      this.started = true
+      this.target.dir = wall.face
+    }
+    if (this.target.y !== undefined) this.target.y += wall.dy / WALL_STEP_FRAMES
+    this.target.z += wall.dz / WALL_STEP_FRAMES
+    this.frame++
+    if (this.frame < WALL_STEP_FRAMES) return
+    if (this.target.y !== undefined) this.target.y = Math.round(this.target.y)
+    this.target.z = Math.round(this.target.z)
     this.next(step)
   }
 
