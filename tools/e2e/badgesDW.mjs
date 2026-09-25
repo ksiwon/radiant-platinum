@@ -313,7 +313,12 @@ export async function coronetToSpear(api, ctx,
     const sprayed = await sprayBest(api)
     note('스프레이 (천관산)', sprayed.ok ? `뿌렸다 (남은 것 ${String(sprayed.left)})` : String(sprayed.why))
     await via(api, note, [MAP.hearthome, MAP.route208, MAP.coronetSouth, MAP.coronet2F], '천관산 2F로 — 208번도로 · 1F 남')
-    const push = await api.strengthPush(MAP.coronet2F, CORONET_2F_BOULDER, 'ArrowDown', 1, Math.min(300_000, api.left()))
+    /**
+     * ⚠️ **다섯 번 민다** — (14,45)에서 (14,50)까지. 바위가 선 x=14 줄은 폭 한 칸 통로(z 40~51)라, (14,47)까지는 막고
+     * (14,50)에 가야 (13,49)로 빠지는 길이 열린다(격자를 바위 자리마다 칠해 본 값 — 45·46·47이면 72칸, 50이면 451칸).
+     * 한 번만 밀고 지나간 예전 판들은 맵 지역 표식이 안 풀려 바위가 아예 없던 판이다(REPAIR §126)
+     */
+    const push = await api.strengthPush(MAP.coronet2F, CORONET_2F_BOULDER, 'ArrowDown', 5, Math.min(600_000, api.left()))
     note('2F 괴력 바위 (14,45)', push.ok ? `${String(push.pushed)}번 밀었다` : String(push.why))
     /**
      * ⚠️ **4F 방1·2(212)는 경유 목록에 안 적는다** — 목적지를 212로 주면 앞 내다보기가 「212 안의 다음 문」을

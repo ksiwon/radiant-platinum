@@ -131,6 +131,7 @@ try {
   const drive = await driveStory(page, {
     log: (l) => { console.log(`    ${l}`) },
     totalMs: BUDGET,
+    verbose: process.env.DW_VERBOSE === '1',
     skipStory: true,
     obstacles: (mapId, x, z) => roomWalls.get(mapId)?.has(`${String(x)},${String(z)}`) === true,
     after: async (api) => {
