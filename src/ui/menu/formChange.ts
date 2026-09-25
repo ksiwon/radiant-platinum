@@ -4,7 +4,7 @@
 // 때 아무것도 안 하는** 껍데기뿐이다 — 능력치를 못 세는 채로 폼만 바꾸면
 // 기라티나가 어나더의 수치로 오리진이 된다 (BUGS.md §2.15).
 import type { SpeciesLookup, MoveTable } from '../../data/gameData'
-import { afterHeldItem, type FormTables } from '../../engine/pokemon/form'
+import { afterHeldItem, SPECIES_GIRATINA, type FormTables } from '../../engine/pokemon/form'
 import { statsOf, type PokemonInstance } from '../../engine/pokemon/instance'
 
 /** 표 둘이 다 있어야 폼을 건드린다 */
@@ -28,7 +28,13 @@ export function withHeldItem(
   mon: PokemonInstance,
   species: SpeciesLookup | null | undefined,
   moves: MoveTable | null | undefined,
+  /**
+   * 그 자리가 모습을 붙드는 맵인가 (`heldItemKeepsGiratinaForm`) — 깨어진 세계 안의
+   * 쥐여 주기·빼앗기만 넘긴다. 맞바꾸기·편지 떼기는 원작에 그 검사가 없다
+   */
+  keepGiratinaForm = false,
 ): PokemonInstance {
+  if (keepGiratinaForm && mon.species === SPECIES_GIRATINA) return mon
   const tables = formTables(species, moves)
   return tables ? afterHeldItem(mon, tables) : mon
 }

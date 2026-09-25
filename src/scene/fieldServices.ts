@@ -855,6 +855,13 @@ const services: FieldServices = {
           ? (origin ? GIRATINA_ORIGIN : giratinaFormOf(mon.heldItem))
           : null
       ))
+      // ⚠️ **도감에도 적는다** (`ScrCmd_SetPartyGiratinaForm`의 뒤 반 · REPAIR §94) — 알이 아닌
+      // 기라티나마다 `Pokedex_Capture`를 부른다. 깨어진 세계를 나가며 어나더폼을 처음 본 것도
+      // 잡은 것으로 남는다. 우리 도감은 종 단위라 폼 차례(`UpdateForm`)는 적을 칸이 없다
+      const save = useSaveStore.getState()
+      if (save.party.some((mon) => mon.species === SPECIES_GIRATINA && !mon.isEgg)) {
+        save.markCaught(SPECIES_GIRATINA)
+      }
     },
     revertForms,
     rotomForms,
