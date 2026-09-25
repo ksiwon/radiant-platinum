@@ -4723,8 +4723,7 @@ if (Unk_020EE76C[dir](v1) == TRUE || Unk_020EE77C[dir](v2) == TRUE) return TRUE;
 끝말 차례 · 야생 둘의 볼 막힘) · `src/engine/script/sightVs2.test.ts` · `approach.test.ts` · `story.test.ts`.
 길게는 `BATTLE_SOAK=150` — 무작위 종족 300판에 거절 0이다.
 
-**남은 것** — 편의 파티를 파티 화면에 흐리게 늘어놓는 원작 배치(우리는 내 파티만 띄운다), 트레이너 둘·편이
-서는 3D 좌표(`PAIRED_TRAINER_GAP`은 몸이 안 겹치게만 잡은 값이고 화면으로 아직 안 봤다).
+파티 화면은 §120, 짝을 셈에 넣는 AI는 §121, 원작과의 줄별 대조는 §122, 짝으로 선 트레이너의 자리는 §123.
 
 ## 83. 깨진 창기둥에서 깨어진 세계로 들면 **벽 속에 섰다** — 롬 칸을 우리 칸으로 읽었다
 
@@ -4839,3 +4838,169 @@ B6F의 셋이 내려다보이는 장면만 없다.
 **고친 것** — `position.avatar`(0 걷기 · 1 자전거 · 2 파도타기 · 버전 37, 옛 리포트는 0). 리포트를 쓰는 세 자리(리포트 화면 ·
 스크립트 저장 · 개발 콘솔)가 `avatarState()`를 적고, 이어하기가 처음 들어설 때 파도타기를 켜거나 자전거에 태운다(자전거 곡까지 —
 `bike.ride`). 시험 `state/save/avatar.test.ts`.
+
+## 120. 편 배틀의 파티 화면에 **편의 포켓몬이 안 뜬다** — 원작도 안 띄운다
+
+「편의 포켓몬을 흐리게 늘어놓는 원작 배치」는 **이야기의 편 배틀에는 없다.** 파티 화면이 채울 마리를 고르는 곳은
+`battle_display.c` 4411이고 갈래가 둘이다:
+
+| 갈래 | 조건 | 채우는 것 |
+|---|---|---|
+| 합친 목록 | `(형식 & (LINK · 2vs2)) == (LINK · 2vs2)` 이거나 형식이 **정확히** `TRAINER_DOUBLES · 2vs2 · AI · FRONTIER` | 자리 a 주인의 파티를 짝수 칸(0·2·4), 자리 b 주인의 파티를 홀수 칸(1·3·5)에 (4433·4440) |
+| 그 밖 | — | `BattleSystem_GetParty(battler)` 하나 (4467) |
+
+첫 갈래는 **통신 2vs2와 배틀프론티어의 편 배틀**뿐이다. 이야기의 편 배틀(`BATTLE_TYPE_TRAINER_WITH_AI_PARTNER`
+= `TRAINER · DOUBLES · 2vs2 · AI`, `encounter.c` 734)은 `FRONTIER` 비트가 없어서, 동행과 만난 야생 둘
+(`BATTLE_TYPE_AI_PARTNER`)은 `TRAINER`까지 없어서 둘째 갈래로 떨어진다 — **내 파티만** 뜬다. 교체를 막는
+「편의 포켓몬과는 교체할 수 없다」(`CantSwitchWithPartnersPokemon`)도 `BattlePartyTask_CheckIf2V2Battle`
+(`battle_party.c` 1694)이 참일 때만 도는데, 그 함수가 `BATTLE_TYPE_AI_PARTNER`와
+`TRAINER_DOUBLES · 2vs2 · AI`(= 편 배틀) 둘을 **이름으로 뺀다** — 이야기에서는 그 줄이 뜰 자리가 없다. 요약 화면도 같은
+목록을 넘겨 연다. 가방에서 여는 파티(`battle_display.c` 3878)는 형식과 무관하게 `bagMenuData->battler`의 파티다.
+
+우리 교체 화면·가방 파티·요약은 이미 내 파티만 띄운다(`controller.party`가 `isMine`으로 거른다) — **원작과 같다.**
+합친 목록은 프론티어의 편 배틀(PARITY §9)이 서면 그 자리에서 쓴다: 편의 마리는 홀수 칸, 선택이 짝수 칸끼리만 오가고
+(`UpdateSelectedPartyIndex`의 `{0, 2, 4, 1, 3, 5}`), 편 칸을 고르면 위 줄이 뜬다.
+
+**재는 법** — `npx vitest run src/engine/battle/sim/multi.test.ts` (「나는 자리 a만 고르고…」가 매 턴 `controller.party`에 편의
+마리가 없는지 본다).
+
+## 121. 더블 AI가 **짝을 셈에 안 넣었다** — `AI_FLAG_TAG_STRATEGY`
+
+원작은 더블이면 트레이너 자료와 무관하게 이 비트를 켠다 (`TrainerAI_Init` · `trainer_ai.c` 252 — `BATTLE_TYPE_DOUBLES`면
+`thinkingMask |= AI_FLAG_TAG_STRATEGY`). 928명 중 자료에 이 비트를 가진 사람은 없다. 우리는 이 루틴이 없어서 **짝을 겨누는
+후보를 통째로 빼고** 상대 둘만 매겼다 — 짝의 저수에 물을 주는 수, 도우미, 지진이 짝을 치는지 같은 판단이 전부 없었다.
+
+**원작의 고르기** (`TrainerAI_MainDoubles` · 356):
+
+1. 겨눌 자리는 **나를 뺀 서 있는 셋**이다(상대 둘과 짝). 자리마다 `defender`를 바꿔 네 칸을 다 매긴다.
+2. 짝을 겨눈 벌에서는 TAG_STRATEGY만 돈다 — 다른 루틴은 전부 `IfTargetIsPartner Terminate`로 시작한다(`script.s`의
+   `Basic_Main`·`Expert_Main`·`EvalAttack_Main`… 첫 줄). `CHECK_HP`도 짝을 겨누면 `TagStrategy_Partner`로 뛰는데 켜는
+   트레이너가 없다.
+3. 자리마다 최고점 칸들 중 하나를 무작위로 고르고, **짝을 겨눈 벌의 최고점이 100 미만이면 −1**로 내린다(431).
+4. 자리들의 점수 중 최고인 것들에서 다시 무작위로 자리를 고른다. (칸, 자리) 쌍을 한 줄로 세워 뽑는 것과 몫이 다르다.
+5. 지압(`RANGE_USER_OR_ALLY`)은 고른 자리가 플레이어 쪽이면 자기 자신이다(462) — 우리 편 AI는 플레이어에게 지압을 못 쓴다.
+
+**TAG_STRATEGY** (`script.s` 6634~7691)를 `ai/tagStrategy.ts`로 옮겼다. 상대를 겨눈 벌은 반감 −1·−2(맞는 쪽의 **짝이 없으면**
+안 깎는다 — 주석은 「마지막 한 마리」라지만 코드는 `DEFENDER_PARTNER`의 체력 0을 본다), 짝의 기술까지 통틀어 제일 센 수면
+50%로 +1(`CheckIfHighestDamageWithPartner` · 2369), 효과가 굉장하면 +1, 그리고 지진·방전·파도타기·분연(짝까지 맞는다)·
+비바라기·쾌청·싸라기눈·모래바람·중력·트릭룸·손가락질·미래예지·스킬스왑·피뢰침·마중물·도우미를 가진 짝. 짝을 겨눈 벌은
+흡수 특성(타오르는불꽃·전기엔진·축전·저수·건조피부), 근성에게 도깨비불, 포이즌힐에게 독, 도우미, 시몬·리샘열매를 가진
+짝에게 뽐내기, 게으름·슬로스타트에게 위액·스킬스왑, 지압 말고는 **−30**이다.
+
+⚠️ **원작의 버그와 주석-코드 어긋남은 코드대로다** — 방전의 땅 검사가 물·비행 뒤라 물/땅 짝에게 −10(7252 BUG), 파도타기가
+바위를 안 봄(7291 BUG), 독 갈래가 독·강철 타입을 안 봄(7567 BUG), 분연의 건조피부 짝은 `ScoreMinus3`(주석은 +3), 솔라파워는
++1 뒤에 **반드시** 50%로 −2를 한 번 더 굴림(6812~6818의 흘러내림), 독 갈래의 체력 조건은 91% **초과면** −30(7575), 전기/다른
+타입 짝에게 부유를 넘기는 스킬스왑은 +1 뒤에 복안 갈래로 흘러 −30을 더 받음(7478~7488). 고치면 원작보다 똑똑해진다.
+
+**읽는 법의 원문** — 짝(`ATTACKER_PARTNER`)의 특성·도구·기술은 같은 편이라 **진짜 값**이다(`CheckBattlerAbility`의 `else`,
+`IfMoveKnown`의 `ATTACKER_PARTNER` 갈래가 `battleMons.moves`를 본다 — 짝이 서 있을 때만). 맞는 쪽을 `CheckBattlerAbility`로
+물을 때는 **찍지 않는다**(1212): 드러났으면 그 값, 그림자밟기·자력·개미지옥이면 진짜 값, 후보가 둘이면 **찾는 것이 후보에 있을 때
+「모름」**이고 없으면 첫 후보다 — 「피뢰침일지도 모르는」 상대는 피뢰침으로 안 친다(`AiMon.hasAbility`). `LoadBattlerAbility`는
+찍는다(1170). 그 트랩 특성 셋은 찍는 쪽에서도 진짜 값으로 읽는다(1182) — `brain.abilityOf`가 같이 따른다. 네 자리의 빠른 차례
+(`LoadBattlerSpeedRank` · 2056)는 원작처럼 부를 때마다 거품 정렬을 새로 돌린다(`ai/speed.ts`). 비교는
+`BattleSystem_CompareBattlerSpeed(…, TRUE)`(`battle_lib.c` 1188)의 차례 그대로 — 쓰러진 자리 → 선제의발톱·이바열매 →
+느림보꼬리 → 마이페이스 → 트릭룸 → 속도, 같으면 동전. `TRUE`라 기술 우선도는 안 본다. 짐 덜기만은 옮기지 않았다 — 켜지는
+깃발(`canUnburden`)을 sim이 알리지 않는다.
+
+**AI 비트** — 상대는 자료 값에 BDSP 바닥(111)과 TAG(128)를, **편은 자료 값에 TAG만** 얹는다. 바닥은 「상대가 쉬울 이유가
+없다」는 우리 선택이라 상대에게만 깐다. 창기둥의 라이벌(607·619·620)은 자료 값이 7이라 135로 둔다. 마스(528)·쥬피터(407)는
+15 | 111 | 128.
+
+**겨눔** — 한 마리를 겨누는 기술(`normal`)은 원작에서 짝도 겨눈다: 겨눔 화면의 배치 8·9가 자기 자리만 빼고 셋을 켠다
+(`battle_subscreen.c` 1339 `GetTargetSelectLayout` → 797 `sMoveTargetSlotFlags[8]` = {0, 1, 1, 1}). 플레이어 화면과 트레이너
+AI가 짝 칸을 받는다(`choice.allyTargets`). 야생은 안 받는다 — 원작 야생은 기술만 무작위로 고르고 대상은 상대 쪽에서 뽑는다
+(`battle_display.c` 3612).
+
+**같이 잡힌 것** — 짝 칸이 열리면서 담금질의 난수 길이 바뀌자 한 판(씨앗 22의 18턴)이 명령 없는 자리에서 섰다. 흉내내의
+앙코르가 **빈 턴 칸(물장구)**을 잠갔다 — 가방을 쓴 턴의 물장구가 「마지막에 쓴 기술」이 되어 있었다. 원작에서 도구를 쓴 턴에는
+기술이 없어서 `movePrevByBattler`가 그대로다. 빈 턴은 마지막 기술을 안 바꾼다(`session.keepIdleOpen`이 `moveUsed`를 감싼다).
+
+**재는 법** — `npx vitest run src/engine/battle/ai/tagStrategy.test.ts` (루틴의 폭 · 원작 버그 · 짝을 겨눈 벌에 다른 루틴이 안 도는지 ·
+−1 문턱 · 네 자리 순위) · `src/engine/battle/sim/multi.test.ts` (편·상대의 비트 · 편이 짝을 안 때린다) ·
+`src/engine/battle/sim/doubles.test.ts` (짝 칸) · `doublesItem.test.ts` (앙코르).
+
+## 122. 트레이너 넷의 판을 **원작과 줄마다 대조했다** — 어긋난 여섯
+
+REPAIR §82를 원작과 맞대 보았다. 맞는 것과 고친 것을 함께 적는다.
+
+**맞았다**
+
+| 무엇 | 원작 | 우리 |
+|---|---|---|
+| 형식 넷 | `Encounter_NewVsTrainer` · `encounter.c` 724 | `battleStore.startTrainer` (`BattleRules`) |
+| 자리마다 제 파티 · 빈 자리 · 울부짖기 | `battle_controller_player.c` 4081 · `battle_script.c` 5257 | `session.OwnedSlots` |
+| 편이 있으면 내 파티만 세서 진다 | `battle_controller_player.c` 4189~4209 | `controller.lostAlone` |
+| 상금 = 두 사람의 합, 두 배 없음 | `battle_script.c` 3659~3690 · 3711 | `battleStore` 상금 |
+| 이김 953 → 첫·둘째 끝말(`TRMSG_DEFEAT`) → 상금 | `subscript_battle_won.s` _087 → _121 | `bookends.closingLines` |
+| 우리 쪽 첫 등판 993(편 먼저)·978 · 야생 둘 967 → 993 | `battle_display.c` 6122·6151 · `subscript_start_encounter.s` _079 | `messages.leadLines` |
+| 중간 교체 972 · 도구 858은 그 마리의 트레이너 | `battle_display.c` 5942 · `subscript_use_potion.s` 8 | `messages.trainerOf` |
+| 도구: 태그 더블은 사람마다 제 가방, 편이 있으면 아무도 안 씀 | `battle_controller_player.c` 4801~4810 · `trainer_ai.c` 4069 | `controller.kits` |
+| 경험치는 내 파티만, 편이 쓰러뜨린 상대도 내 몫 | `battle_lib.c` 1462~1477 | `battleStore` 경험치 |
+| 볼은 야생 둘이 다 서 있으면 막힘 · 도망은 자리 a끼리 | `battle_controller.c` 869 · `battle_lib.c` 3284 | `controller.throwBall`·`run` |
+| VS2 — 첫 사람이 혼자 오는 트레이너일 때만 한 번 더 훑고, 두 마리(또는 동행)가 있어야 하며, 첫 사람이 걸어와 말한 **뒤에** 둘째가 「!」를 띄우고 걸어온다 | `trainer_encounter.c` 84~108 · `scripts_battles.s` 192~223 | `field.ts` 시선 · 공용 스크립트 |
+| 더블 트레이너는 두 마리가 없으면 아예 안 온다 — 밀어내기는 창기둥 스크립트뿐 | `trainer_encounter.c` 114 · `scripts_spear_pillar.s` 86~99 | 같다 (롬 스크립트) |
+| 동행 중의 야생 둘 — 걷는 조우만, 칸을 두 번 굴려 파티 1·3번 칸 | `wild_encounters.c` 340·730 | `encounterSystem` |
+| 태그 배틀에서 지면 보통의 눈앞이 캄캄해짐 | `scripts_spear_pillar.s` 115~122 · 176~200 | 롬 스크립트 그대로 |
+
+**어긋났다 — 고쳤다**
+
+1. **쌍둥이·커플이 한 사람만 걸어왔다.** 짝을 **같은 스크립트**로 찾았는데, 한 쌍의 스크립트는 3000+번호−1과 5000+번호−1로
+   다르다(209번도로 쌍둥이 3293·5293 · `tools/jsoncnv/convert.py` 81). 원작은 트레이너 번호로 찾는다
+   (`FindTrainerPartner` · `trainer_encounter.c` 356~375 — `GetTrainerIDFromMapObj`). 짝이 안 걸리면 둘째 대사가 비고
+   배틀이 둘째 인자 0으로 열렸다. `field.partnerOf`가 번호로 찾는다.
+2. **둘째가 첫째의 대사를 읽었다.** `GetTrainerMessageTypes`가 둘째를 「스크립트 5000번대이고 **번호가 짝수**」로 갈랐다.
+   원작은 스크립트 번호 하나다 (`Script_GetTrainerBattlerIndex` · `script_manager.c` 507). 5000번대 스크립트를 가진 열 쌍 중
+   여섯이 홀수 번호였다. 재대결 쪽(`GetTrainerRematchMessageTypes`)도 같다.
+3. **알이 한 마리로 셌다.** `aliveMons`가 체력만 봤는데 알은 체력이 가득 찬 채로 만들어진다. 원작은 알을 뺀다
+   (`Pokemon_CanBattle` · `unk_02054884.c` 22). 한 마리 + 알이 더블 트레이너·VS2·창기둥의 「두 마리 필요하다」를 통과했다.
+4. **잡거나 달아나도 졌다.** `CheckWonBattle`이 「이김」만 참이었다. 원작은 **짐·비김만 거짓**이고(`CheckPlayerWonBattle` ·
+   `field_battle_data_transfer.c` 512), `CheckLostBattle`은 **이김·잡음만 거짓**이다(524). 화강돌(`scripts_route_209.s` 78)·
+   레지 삼총사·디아루가를 잡거나 달아나면 눈앞이 캄캄해졌다. 결과 마스크로 가른다(`commands.wonBattle`·`lostBattle`).
+5. **조무래기 둘의 첫 등판이 한 사람의 줄이었다.** 991(「A는 X를 내보냈다! B는 Y를 내보냈다!」)을 두 트레이너의 **분류·이름이
+   다를 때만** 골랐다. 원작은 형식으로 고른다(`battle_display.c` 6073 — `TAG`나 `2vs2`면 무조건). 조무래기 쌍(521·527 ·
+   514·522 · 414·415 · 848·849)은 분류도 이름도 같아서 973으로 떨어졌다. 두 마리의 **주인**이 다르면 991이다.
+6. **공 줄이 사람마다였다.** 원작은 **쪽마다 한 줄**이다(`PartyGaugeData_New` · `battle_controller.c` 2122): 상대가 둘이면 첫
+   상대가 0~2번, 둘째가 3~5번 칸이고(`PartyGaugeData_Fill(…, 0)`·`(…, 3)`), 우리 쪽은 편이 있어도 내 파티만이다 — 합친 갈래는
+   통신 2vs2·프론티어 편 배틀·상대 쪽뿐이다(2132~2135). `ui/battle/partyGauge.gaugeSlots`.
+7. **내 마지막 마리가 쓰러진 뒤에도 그 턴이 이어졌다.** 원작은 기술 하나가 끝날 때마다 판이 끝났는지 본다
+   (`BattleControllerPlayer_MoveEnd` · `battle_controller_player.c` 3969). 편의 기술·턴 끝의 셈은 안 일어난다.
+   `controller.cutAfterLastFaint`가 그 줄 뒤를 버린다.
+8. **라이벌이 롬 이름이었다.** 원작은 라이벌 분류(63)의 이름을 **세이브의 라이벌 이름**으로 베낀다(`Trainer_Encounter` ·
+   `trainer_data.c` 39). 창기둥의 편도, 라이벌과의 싱글도 그렇다. `battleStore.trainerNameOf`.
+
+**남은 것** — 진 판의 돈(가장 높은 레벨 × 4 × 뱃지 배수 · `battle_system.c` 1522, 「상대에게 ○원을 건넸다」 35)은 이 판들만의
+일이 아니라 모든 패배의 일이라 여기서 안 다뤘다. VS2에서 주인공이 둘째 쪽으로 도는 시점이 원작보다 이르다(원작은 둘째가 다
+걸어온 뒤 · `trainer_encounter.c` 632~663, 우리는 둘째의 연출이 시작될 때) — 박자만 다르다. 달콤한향기는 아직 없어서 그 갈래의
+야생 둘도 없다(`wild_encounters.c` 527). 공 줄의 차례는 원작이 배틀 중 차례(`partyOrder`)고 우리는 파티 칸 차례다.
+
+**재는 법** — `npx vitest run src/engine/script/sightVs2.test.ts src/engine/script/approach.test.ts src/engine/script/battleResult.test.ts
+src/scene/aliveMons.test.ts src/ui/battle/messages.test.ts src/ui/battle/partyGauge.test.ts src/engine/battle/sim/multi.test.ts
+src/state/multiBattle.test.ts`.
+
+## 123. 짝으로 선 트레이너의 자리가 **지어낸 값**이었다 — 원작은 제 포켓몬 자리에 선다
+
+`PAIRED_TRAINER_GAP`(우리 쪽 0.8m · 상대 1.3m)은 몸이 안 겹치게만 잡은 값이었다. 원작을 찾아보니 **트레이너만의 더블 좌표가
+없다.** 트레이너 그림은 `gEncounterCoords[side]`(`battle_anim/ov12_022380BC.c` 16)에서 나와 `gBattlerEncounterX[side][0]`(25)로
+미끄러지는데(`battle_display.c` 525~538), `side`는 2vs2이거나 태그 배틀의 상대 쪽이면 **전투원 자리**(`battlerType`)이고 그 밖에는
+싱글 줄(`battlerType & 1`)이다. 그 두 표가 포켓몬 자리 표 그대로다:
+
+| 자리 | 화면 x (px) | y | 싱글 대비 |
+|---|---|---|---|
+| 싱글 우리 · 상대 | 64 · 192 | 112 · 50 | — |
+| 우리 a · b | 40 · 80 | 112 · 120 | −24 · +16 |
+| 상대 a · b | 216 · 176 | 50 · 42 | +24 · −16 |
+
+그래서 원작 화면에서 짝으로 선 트레이너는 늘 **제 포켓몬과 같은 화면 x**다. 누가 짝으로 서는지도 같은 갈래가 정한다: 태그 더블(나
+혼자)의 우리 쪽은 싱글 줄 하나, 편이 있으면 우리 둘, 상대가 둘이면 상대 둘, 한 사람의 더블은 싱글 줄 하나(`battle_script.c`
+737~750). `BattleTrainers`가 그렇게 `paired`를 준다.
+
+**옮기는 법** — 우리 싱글 자리는 DS 픽셀이 아니라 BDSP의 미터 값이라(`shots.SLOT` · `BattleDefaultPlacementData`) DS 픽셀을
+미터로 바꾸는 한 상수가 없다. 카메라를 거쳐 견준다: 트레이너를 제 발판과 **같은 화면 x**가 되게 시선 좌우(`PAIR_DIR`)로 민다.
+같은 화면 x는 카메라 깊이에 비례하므로 발판의 벌어짐(`shots.pairOffset`)에 **트레이너 깊이 ÷ 발판 깊이**를 곱한다
+(`shots.viewDepth` · `battleBallMotion.trainerStandAt`). 상대 쪽이 대략 1.2배, 우리 쪽이 0.58배다.
+
+⚠️ **발판의 벌어짐 자체는 여전히 찍어 보고 고른 값이다**(`PAIR` — 우리 0.45·0.02 · 상대 0.85·1.35). BDSP 덤프에는 더블 표가
+따로 있다(`battle_masterdatas`의 규칙 1 — 발판 (±2.2, 0, ±2.2), 트레이너 x ±1.0) — 그 표는 **제 더블 카메라**((4, 3.3, 7.2) · 화각 31)와
+짝이고, 우리 싱글 카메라로 보면 발판이 화면 밖이다. 그 카메라를 들일지는 화면을 보고 정할 일이라 여기서 안 바꿨다.
+
+**재는 법** — `npx vitest run src/scene/battle/battleBallMotion.test.ts` (네 자리 모두 트레이너와 발판의 화면 x 벌어짐이 같다).
