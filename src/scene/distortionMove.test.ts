@@ -121,4 +121,17 @@ describe.runIf(real)('밟으면 바닥이 통째로 미끄러진다', () => {
     // ⑤ 한 프레임에 안 끝났다
     expect(frames).toBeGreaterThan(VIBRATION.length + HOP_FRAMES)
   })
+
+  // REPAIR §124 — 칸 경계를 막 넘은 자리(비껴 선 자리)에서 사건이 서도 칸 가운데에서 떠나 칸 가운데에 내린다
+  it.runIf(spot)('칸 끝에 비껴 서서 밟아도 칸 가운데에 내린다', () => {
+    const b2f = data!.maps.find((m) => m.map === MAP.b2f)!
+    const lx = spot!.x - b2f.offsetX, ly = spot!.y - b2f.offsetY, lz = spot!.z - b2f.offsetZ
+    mod.distortionEnter(MAP.b2f, lx, ly, lz)
+    worldState.player.position.set(lx + 0.95, ly, lz + 0.08)
+    mod.distortionStepped(lx, ly, lz, 0)
+    runOut()
+    const p = worldState.player.position
+    expect(p.x - Math.floor(p.x)).toBeCloseTo(0.5, 3)
+    expect(p.z - Math.floor(p.z)).toBeCloseTo(0.5, 3)
+  })
 })

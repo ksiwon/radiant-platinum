@@ -221,6 +221,19 @@ function advanceEvent(): void {
 }
 
 /** 발판이 움직이기 시작한다 (`EventCmdMovePlatform_BeginMovement`) */
+/**
+ * **주인공을 그 칸 가운데에 세운다** (REPAIR §124). 원작의 사건은 걸음이 끝나 칸 가운데에 선 뒤에 돈다
+ * (`Field_ProcessStep` → `DistWorld_HandlePlayerPositionChanged`). 우리 걸음 자는 칸 경계를 넘는 순간 부르므로, 싣고 가는
+ * 사건이 그 자리를 그대로 출발점으로 쓰면 **칸 끝에 비껴 선 채** 실려 가 내려선다 — B2F 판에서 x .95에 내려서서 반지름이
+ * 옆의 막힌 칸에 걸려 한 걸음도 못 뗐다(탐침 p9·p19 — 세계 (51,233,45))
+ */
+function centreOnTile(): [number, number, number] {
+  const pos = worldState.player.position
+  pos.set(Math.floor(pos.x) + 0.5, Math.round(pos.y), Math.floor(pos.z) + 0.5)
+  worldState.player.prevPosition.copy(pos)
+  return [pos.x, pos.y, pos.z]
+}
+
 function beginSlide(p: Record<string, unknown>): boolean {
   if (running === null) return false
   const index = (p.platformIndex as number | undefined) ?? -1
@@ -232,14 +245,15 @@ function beginSlide(p: Record<string, unknown>): boolean {
   const delta = (p.posDelta as [number, number, number] | undefined) ?? [0, 0, 0]
   const total = platformFrames(final, delta)
   if (index < 0 || total <= 0) return false
+  const movePlayer = p.movePlayer === 1
   const pos = worldState.player.position
   running.slide = {
     index,
     final,
     from: [...(slid.get(index) ?? [0, 0, 0])] as [number, number, number],
     total,
-    movePlayer: p.movePlayer === 1,
-    rider: [pos.x, pos.y, pos.z],
+    movePlayer,
+    rider: movePlayer ? centreOnTile() : [pos.x, pos.y, pos.z],
   }
   // 태우고 가는 동안은 지형을 안 딛는다 (`EventCmdMovePlatform_BeginMovement`)
   if (running.slide.movePlayer) setHeightCalc(false)
@@ -255,8 +269,7 @@ function beginHop(p: Record<string, unknown>): boolean {
   // 자료에 있는 것은 주인공(`LOCALID_PLAYER` = 255)의 뛰기 넷뿐이다
   const dir = hopDirOf((p.movementAction as number | undefined) ?? -1)
   if (dir === null || (p.mapObjLocalID as number | undefined) !== 255) return false
-  const pos = worldState.player.position
-  running.hop = { dir, from: [pos.x, pos.y, pos.z] }
+  running.hop = { dir, from: centreOnTile() }
   worldState.player.facing = FACING_YAW[dir] ?? worldState.player.facing
   worldState.player.velocity.set(0, 0, 0)
   return true

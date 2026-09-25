@@ -5468,3 +5468,15 @@ src/state/multiBattle.test.ts`.
 짝이고, 우리 싱글 카메라로 보면 발판이 화면 밖이다. 그 카메라를 들일지는 화면을 보고 정할 일이라 여기서 안 바꿨다.
 
 **재는 법** — `npx vitest run src/scene/battle/battleBallMotion.test.ts` (네 자리 모두 트레이너와 발판의 화면 x 벌어짐이 같다).
+
+## 124. 깨어진 세계의 사건이 주인공을 **칸 끝에 비껴 선 채** 싣고 가 내려놓았다
+
+**원작** — 사건은 걸음이 끝나 칸 가운데에 선 뒤에 돈다(`Field_ProcessStep` → `DistWorld_HandlePlayerPositionChanged`). 미끄러지는 판
+(`EVENT_CMD_MOVE_PLATFORM`)과 사건의 뛰기(`EVENT_CMD_SET_MAP_OBJECT_ANIMATION`)는 그 가운데에서 떠나 칸 가운데에 내린다.
+
+**우리** — 걸음 자(`stepSystem`)가 칸 경계를 넘는 순간 사건을 부르고, 사건은 그때 자리를 그대로 출발점으로 썼다. 들어서는 쪽 끝(칸의 0.9 남짓)에서
+떠나 같은 만큼 비껴 내렸다 — B2F에서 x .95에 내려서면 반지름 0.3이 옆의 막힌 칸에 걸려 북쪽이 열려 있는데도 **한 걸음도 못 뗐다**
+(탐침 p9·p19 — 세계 (51,233,45)에서 ↑가 세 번 어긋났다 · 모서리 보정은 가운데에서 0.45까지라 0.455는 못 당긴다).
+
+**고친 것** — 싣고 가는 두 명령이 시작할 때 주인공을 그 칸 가운데에 세운다(`centreOnTile`). 시험 `scene/distortionMove.test.ts` — 칸 끝
+(0.95, 0.08)에서 밟아도 가운데에 내린다. 고치기 전에는 떨어졌다.
