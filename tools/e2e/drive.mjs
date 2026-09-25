@@ -1567,8 +1567,15 @@ export async function driveStory(page, {
       const [ldx, ldz] = STEPV[leg.key]
       const beyond = { x: leg.want.x + ldx, z: leg.want.z + ldz }
       const doorAhead = doors.some((w) => w.x === beyond.x && w.z === beyond.z)
+      /**
+       * ⚠️ **다음 칸이 턱(뛰어내리는 칸 0x38~0x3B)이어도 마지막 한 칸은 딛는다.** 쥐고 가다 한 칸 더 밀리면
+       * 턱을 뛰어내려 **되돌아올 수 없는 아래**로 간다 — 천관산 1F 남 (22,10)에서 아래로 몰다가 (22,11) 턱을
+       * 넘어 남쪽 못가로 떨어져, 파도타기 세 번짜리 한 바퀴를 되풀이했다(탐침 p4)
+       */
+      const beyondBeh = gridOf(matrixOf(mapId)).at(beyond.x, beyond.z) & 0x7fff
+      const ledgeAhead = beyondBeh >= 0x38 && beyondBeh <= 0x3b
       let at
-      if (doorAhead) {
+      if (doorAhead || ledgeAhead) {
         if (leg.count > 1) {
           const shy = { x: leg.want.x - ldx, z: leg.want.z - ldz }
           at = await runKeys(leg.key, leg.count - 1, shy)
@@ -2026,6 +2033,14 @@ export async function driveStory(page, {
               (x, z) => nextDoors.some((d) => d.x === x && d.z === z),
               {
                 enterBlockedGoal: true,
+                /**
+                 * ⚠️ **이 다리가 쓰는 비전기술로 잰다** — 안 넣으면 락클라임으로만 이어지는 옳은 문도
+                 * 「안 이어진다」로 빠져서 거름이 통째로 풀린다. 실측(탐침 p6): 천관산 바깥 남(211)에서
+                 * 4F(212)로 들 때 서쪽 문 (7,25)만 락클라임으로 바깥 북(210) 문에 닿는데, 거름이 풀려
+                 * 폭포(0x13)로 막힌 동쪽 주머니 (32,24)로 들었다
+                 */
+                surf: surfMode,
+                climb: climbMode,
                 // 다른 워프는 밟지 않는다 — 노리는 문만 목표다
                 avoid: (x, z) => there.some((o) => o.x === x && o.z === z)
                   && !nextDoors.some((d) => d.x === x && d.z === z),
@@ -2784,15 +2799,25 @@ export async function driveStory(page, {
     const t0 = Date.now()
     const [dx, dz] = STEPV[key]
     const stand = { x: boulder.x - dx, z: boulder.z - dz }
-    const went = await stepOn(mapId, stand, budgetMs)
-    if (went !== 'arrived') return { ok: false, why: `바위 뒤 칸에 못 섰다 (${went})`, pushed: 0 }
-    await tap(key, 80)
-    await settle()
-    await tap('Space', 400)
-    await clearTalk()
-    const f = await obs.fieldState()
-    if (!(f.known && f.value?.strength === true)) {
-      return { ok: false, why: `괴력이 안 켜졌다 (${JSON.stringify(f.known ? f.value : f.why)})`, pushed: 0 }
+    /**
+     * ⚠️ **세 번까지 다시 선다.** 바위 뒤 칸에 들어서는 걸음에 야생이 붙으면 돌아서기·A가 배틀
+     * 화면에 먹혀 괴력이 안 켜진다(탐침 p6 — 천관산 2F (14,44), 곧바로 야생 배틀 두 번)
+     */
+    let f = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const went = await stepOn(mapId, stand, Math.max(30_000, budgetMs - (Date.now() - t0)))
+      if (went !== 'arrived') return { ok: false, why: `바위 뒤 칸에 못 섰다 (${went})`, pushed: 0 }
+      await tap(key, 80)
+      await settle()
+      await tap('Space', 400)
+      await clearTalk()
+      f = await obs.fieldState()
+      if (f.known && f.value?.strength === true) break
+      log(`      괴력이 안 켜졌다 (${String(attempt + 1)}번째) — ${JSON.stringify(f.known ? f.value : f.why)}`)
+      await settle()
+    }
+    if (!(f?.known && f.value?.strength === true)) {
+      return { ok: false, why: `괴력이 안 켜졌다 (${JSON.stringify(f?.known ? f.value : f?.why)})`, pushed: 0 }
     }
     let pushed = 0
     let rock = { ...boulder }

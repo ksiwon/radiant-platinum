@@ -82,11 +82,27 @@ export function distortionHop(
   const dx = Math.abs(vx) > Math.abs(vz) ? Math.sign(vx) : 0
   const dz = dx === 0 ? Math.sign(vz) : 0
   if (dx === 0 && dz === 0) return null
+  if (!reachedCentre(x, z, dx, dz)) return null
 
   const tx = Math.floor(x), tz = Math.floor(z)
   const jump = distortionJump(behaviorAt(tx + dx, tz + dz))
   if (!jump || jump[0] !== dx || jump[1] !== dz) return null
   return { x: tx + dx * HOP_TWICE_TILES + 0.5, z: tz + dz * HOP_TWICE_TILES + 0.5 }
+}
+
+/**
+ * **그 칸 한가운데에 닿았는가** — 미는 쪽으로 봐서 가운데이거나 그 너머다 (REPAIR §111).
+ *
+ * 원작의 뛰기는 **걸음이 끝난 뒤** 다음 걸음으로 선다: 턱 앞 칸으로 들어서는 한 걸음을 다 걸어 그 칸 가운데에
+ * 서고, 그때도 방향키를 쥐고 있어야 다음 걸음이 `PlayerAvatar_WillJump`에 걸린다(`player_move.c` — 걸음마다
+ * `PlayerAvatar_SetMovement_*`가 새로 판정한다). 우리는 칸 경계를 넘자마자 뛰었다 — 턱 앞 칸에 막 들어서며
+ * 손을 뗀 사람(탐침 p7 — 천관산 1F 남 (22,10))도 뛰어내렸다. 가운데는 서 있으면 늘 닿는 자리라
+ * 멈춰 서서 미는 뛰기는 그대로다
+ */
+function reachedCentre(x: number, z: number, dx: number, dz: number): boolean {
+  const fx = x - Math.floor(x), fz = z - Math.floor(z)
+  const along = dx > 0 ? fx : dx < 0 ? 1 - fx : dz > 0 ? fz : 1 - fz
+  return along >= 0.5 - 1e-3
 }
 
 /** 턱 판정에 필요한 것의 전부 */
@@ -126,6 +142,7 @@ export function ledgeHop(
   const dx = Math.abs(vx) > Math.abs(vz) ? Math.sign(vx) : 0
   const dz = dx === 0 ? Math.sign(vz) : 0
   if (dx === 0 && dz === 0) return null
+  if (!reachedCentre(x, z, dx, dz)) return null
 
   const tx = Math.floor(x), tz = Math.floor(z)
   // ⚠️ **영원시티 체육관의 시침이 먼저다** (`PlayerAvatar_WillJump`의 첫 줄).
