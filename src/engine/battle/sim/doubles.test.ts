@@ -104,8 +104,9 @@ maybe('더블 배틀', () => {
       }
       const targeted = [...bySlot.values()].filter((ts) => ts.length > 1)
       expect(targeted.length, '대상을 고를 수 있는 기술이 하나도 없다').toBeGreaterThan(0)
-      // 상대 두 자리(1·2)가 후보다
-      for (const ts of targeted) expect(new Set(ts)).toEqual(new Set([1, 2]))
+      // 상대 두 자리(1·2)와 **짝(−2)**이 후보다 — 원작 겨눔 화면의 배치 8이 자기 자리만
+      // 빼고 셋을 켠다 (`battle_subscreen.c` 797 `sMoveTargetSlotFlags[8]` = {0, 1, 1, 1})
+      for (const ts of targeted) expect(new Set(ts)).toEqual(new Set([1, 2, -2]))
     } finally { controller.destroy() }
   })
 

@@ -379,6 +379,19 @@ export class BattleSession {
           if (id === IDLE_MOVE_ID && !p.volatiles['encore']) return
           lock(...args)
         }
+        // ⚠️ **빈 턴은 「마지막에 쓴 기술」을 안 바꾼다.** 원작에서 도구·볼을 쓴 턴에는
+        // 기술이 없어서 `movePrevByBattler`가 그대로다 — 앙코르·괴롭히기·사슬묶기는
+        // 그 전의 기술을 본다. 물장구를 마지막 기술로 두면 **앙코르가 빈 턴 칸을 잠가**
+        // 고를 명령이 하나도 없는 자리가 생긴다(담금질 씨앗 22의 18턴 — 흉내내의 앙코르)
+        const used = p.moveUsed.bind(p)
+        p.moveUsed = (...args: Parameters<typeof used>) => {
+          const before = { move: p.lastMove, loc: p.lastMoveTargetLoc }
+          used(...args)
+          if (args[0].id === IDLE_MOVE_ID) {
+            p.lastMove = before.move
+            p.lastMoveTargetLoc = before.loc
+          }
+        }
       }
     }
   }

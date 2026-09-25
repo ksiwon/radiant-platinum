@@ -49,6 +49,58 @@ export interface AiMon {
   volatiles: ReadonlySet<string>
   /** 이 쪽 진영에 걸린 것과 층수. `reflect`, `lightscreen`, `safeguard`, `spikes` */
   side: ReadonlyMap<string, number>
+  /**
+   * `CheckBattlerAbility`가 이 마리를 어떻게 읽는가 (`trainer_ai.c` 1212). 안 주면
+   * `ability`와 견준다.
+   *
+   * ⚠️ **맞은 쪽(`DEFENDER`·`DEFENDER_PARTNER`)은 찍지 않는다** — `LoadBattlerAbility`와
+   * 다르다. 드러났으면 그 값, 트랩 특성 셋은 진짜 값, 종족에 후보가 둘이면 **찾는 것이
+   * 후보에 있을 때 「모름」**(`AI_UNKNOWN`, 참이 아니다)이고 없으면 첫 후보다.
+   * 그래서 「피뢰침이 있을지도 모르는」 상대는 피뢰침으로 안 친다
+   */
+  hasAbility?: (expected: number) => boolean
+}
+
+/**
+ * 더블에서만 채우는 것 (`AI_FLAG_TAG_STRATEGY` · `TrainerAI_MainDoubles`).
+ *
+ * 원작 AI는 겨눌 수 있는 **세 자리 전부**(상대 둘과 제 짝)를 차례로 `defender`로 놓고
+ * 네 칸을 매긴다. 그때 스크립트가 묻는 자리 넷이 `AI_BATTLER_ATTACKER`·
+ * `…_ATTACKER_PARTNER`(= `attacker ^ 2`)·`…_DEFENDER`·`…_DEFENDER_PARTNER`
+ * (= `defender ^ 2`)다 (`trainer_ai.c` 2765 `AIScript_Battler`)
+ */
+export interface AiDoubles {
+  /**
+   * 이 벌의 `defender`가 제 짝인가 (`IfTargetIsPartner` — 두 자리의 끝 비트가 같다).
+   * 참이면 `foe`는 짝이고, TAG_STRATEGY 말고는 모든 루틴이 곧장 끝난다
+   */
+  targetIsAlly: boolean
+  /** 명령에 실을 겨눔 자리 번호 (`choice`의 1·2·−1·−2) */
+  target: number
+  /**
+   * 이 벌의 `defender`가 **플레이어 쪽**(p1)에 서 있는가. 지압의 대상 보정이 본다
+   * (`trainer_ai.c` 462 — `BattleSystem_GetBattlerSide(target) == 0`)
+   */
+  defenderOnPlayerSide: boolean
+  /**
+   * 내 짝 (`AI_BATTLER_ATTACKER_PARTNER`). 자리가 비었으면 null — 원작 자리의
+   * 체력이 0인 것과 같이 읽는다. **특성·도구·기술은 진짜 값이다** — 같은 편이다
+   */
+  ally: AiMon | null
+  /**
+   * 짝이 **실제로 가진** 기술 (`IfMoveKnown AI_BATTLER_ATTACKER_PARTNER` — 짝이 서
+   * 있을 때만 참). 데미지 비교에도 쓴다 (`CheckIfHighestDamageWithPartner`)
+   */
+  allyMoves: readonly AiMove[]
+  /** 맞는 쪽의 짝 (`AI_BATTLER_DEFENDER_PARTNER`). 비었으면 null */
+  foeAlly: AiMon | null
+  /**
+   * 네 자리를 빠른 차례로 세운 뒤의 순위. 0이 제일 빠르다 (`LoadBattlerSpeedRank`).
+   *
+   * ⚠️ **부를 때마다 다시 세운다** — 원작이 명령마다 거품 정렬을 새로 돌리고, 같은
+   * 속도는 그때마다 동전을 던진다
+   */
+  speedRank: (who: 'self' | 'ally') => number
 }
 
 /** AI가 고를 수 있는 기술 한 칸 */
@@ -114,6 +166,8 @@ export interface AiTurn {
    */
   protectChain: number
   random: () => number
+  /** 더블의 네 자리 (`AiDoubles`). 싱글은 없다 */
+  doubles?: AiDoubles
 }
 
 /** 랭크 → 배수. 4세대는 능력치와 명중/회피의 표가 다르다 */

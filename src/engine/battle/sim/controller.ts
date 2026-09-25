@@ -205,6 +205,8 @@ export class BattleController {
   private readonly kits: readonly (ControllerOptions['items'])[]
   /** 상황을 읽는 AI 전부. 정산마다 같은 사건을 다 본다 */
   private readonly brains: TrainerBrain[] = []
+  /** 그 쪽을 트레이너 AI가 두는가. 짝을 겨누는 후보를 여는 데 쓴다 */
+  private readonly thinks: Record<SideId, boolean>
   /**
    * **내 파티만** 바닥나서 진 판 (`BattleControllerPlayer_CheckBattleOver`).
    *
@@ -239,12 +241,12 @@ export class BattleController {
     const ours = [...options.player.team, ...(options.partner?.team ?? [])]
     const brainFor = (
       ai: NonNullable<ControllerOptions['ai']>, side: SideId, team: SideMon[], foes: SideMon[],
-      item: ((id: number) => Item) | undefined,
+      item: ((id: number) => Item) | undefined, floor?: number,
     ): TrainerBrain => new TrainerBrain({
       flags: ai.flags,
       moves: ai.moves,
       // 바닥은 `TrainerBrain`이 정한다. 재는 자리만 갈아 끼운다 (`floor`)
-      ...(ai.floor === undefined ? {} : { floor: ai.floor }),
+      ...(ai.floor !== undefined ? { floor: ai.floor } : floor !== undefined ? { floor } : {}),
       // 도구 보정을 AI가 보려면 표가 필요하다. 트레이너전에는 늘 있다
       item,
       random: this.random,
@@ -255,6 +257,8 @@ export class BattleController {
       // 벤치를 제 교체 후보로 센다 (`brain.choices`가 이 목록으로 거른다)
       team,
       foeTeam: foes,
+      // 짝(`attacker ^ 2`)은 다른 트레이너의 마리일 수 있다 — TAG_STRATEGY가 읽는다
+      sideTeam: side === 'p1' ? ours : this.foeTeam,
     })
     this.brain = options.ai
       ? brainFor(options.ai, 'p2', options.foe.team, ours, options.items?.item)
@@ -263,10 +267,14 @@ export class BattleController {
       ? brainFor(options.ai2 ?? options.ai!, 'p2', options.foe2.team, ours,
         (options.items2 ?? options.items)?.item)
       : null
+    // ⚠️ **편은 제 트레이너 자료의 비트 그대로다** — 바닥(`BDSP_TOP_FLAGS`)을 안 깐다.
+    // 바닥은 「상대가 쉬울 이유가 없다」는 우리 선택이라 상대에게만 깐다. 편이 받는 것은
+    // 자료 값과 더블이 켜는 TAG_STRATEGY뿐이다 (`TrainerAI_Init` · `trainer_ai.c` 250·252)
     const ally = options.partner && options.partnerAi
-      ? brainFor(options.partnerAi, 'p1', options.partner.team, this.foeTeam, undefined)
+      ? brainFor(options.partnerAi, 'p1', options.partner.team, this.foeTeam, undefined, 0)
       : null
     for (const b of [this.brain, second, ally]) if (b) this.brains.push(b)
+    this.thinks = { p1: ally !== null, p2: this.brain !== null || second !== null }
 
     const random = (side: SideId): FoePolicy => (r, at = 0) => chooseRandom(r, this.random, {
       hiddenSlot: idleSlotOf(r, at), at, doubles: this.doubles,
@@ -316,6 +324,8 @@ export class BattleController {
       doubles: this.doubles,
       foeAlive: this.aliveOn('p2'),
       allyAlive: this.aliveOn('p1')[at === 0 ? 1 : 0],
+      // 한 마리를 겨누는 기술로 짝도 겨눌 수 있다 — 원작 겨눔 화면의 배치 8·9
+      allyTargets: true,
     })).filter((a) => a.type !== 'switch'
       || (!taken.includes(a.index) && this.mayEnter('p1', at, a.key) && !this.hiddenTrap('p1', at)))
     // ⚠️ **벤치가 모자라면 남는 자리는 `pass`다.** 둘이 같이 쓰러졌는데 벤치에
@@ -1027,6 +1037,8 @@ export class BattleController {
         hiddenSlot: idleSlotOf(request, at), at, doubles: this.doubles,
         foeAlive: this.aliveOn(other),
         allyAlive: this.aliveOn(side)[at === 0 ? 1 : 0],
+        // 트레이너 AI는 짝을 겨눈 벌도 매긴다(`ai/tagStrategy`). 야생은 원작도 상대 쪽만 친다
+        allyTargets: this.thinks[side],
       }
       // ⚠️ **트레이너가 둘인 쪽은 제 파티로만 채운다** (`OwnedSlots`). 짝의 벤치를
       // 후보에 두면 AI가 남의 포켓몬을 불러낸다

@@ -260,6 +260,55 @@ maybe('억지 교체도 제 파티에서만', () => {
 })
 
 maybe('편과 함께 — 나와 편 vs 트레이너 둘', () => {
+  it('AI 비트 — 편은 자료 값 그대로(바닥 없음), 상대는 바닥을 깔고, 셋 다 TAG_STRATEGY가 켜진다', async () => {
+    const { controller } = await BattleController.start({
+      player: { name: '나', team: party('p1', [TURTWIG, CHIMCHAR], 34, 1) },
+      // 창기둥의 라이벌(607·619·620)과 마스(528)·쥬피터(407)의 `ai` 값 그대로다
+      partner: { name: '라이벌', team: party('p3', [PIPLUP, STARLY], 36, 21) },
+      partnerAi: { flags: 7, moves: { byId: movesById } },
+      foe: { name: '마스', team: party('p2', [ZUBAT, GLAMEOW], 34, 41) },
+      foe2: { name: '쥬피터', team: party('p4', [STUNKY, BIDOOF], 34, 81) },
+      ai: { flags: 15, moves: { byId: movesById } },
+      ai2: { flags: 15, moves: { byId: movesById } },
+      basePp,
+      random: rng(1),
+      seed: seedOf(1),
+    })
+    try {
+      const brains = (controller as unknown as { brains: { thinkingMask: number }[] }).brains
+      const TAG = 1 << 7
+      // 편: 7 | 128 — `TrainerAI_Init`이 자료 값에 더블의 TAG만 얹는다 (`trainer_ai.c` 250·252)
+      expect(brains[2]!.thinkingMask).toBe(7 | TAG)
+      // 상대: 15 | BDSP 바닥(111) | 128
+      expect(brains[0]!.thinkingMask).toBe(15 | 111 | TAG)
+      expect(brains[1]!.thinkingMask).toBe(15 | 111 | TAG)
+    } finally { controller.destroy() }
+  })
+
+  it('편 AI는 짝(나)을 때리지 않는다 — 짝을 겨눈 명령은 짝에게 쓸 이유가 있는 기술뿐이다', async () => {
+    // 편의 마리들은 짝에게 쓸 이유가 없는 기술만 가졌다 → 짝을 겨눈 벌은 늘 −30 → −1
+    let aimed = 0
+    for (let seed = 1; seed <= 4; seed++) {
+      const { controller } = await withPartner(seed)
+      try {
+        const sent: string[] = []
+        const session = (controller as unknown as { session: { send: (s: string) => void } }).session
+        const send = session.send.bind(session)
+        session.send = (line: string) => { sent.push(line); send(line) }
+        const random = rng(seed * 11)
+        for (let turns = 0; turns < 300 && !controller.ended; turns++) {
+          await controller.chooseTurn(pickTurn(controller, random))
+        }
+        // 우리 쪽 줄의 둘째 명령이 편 자리다. `-1`(자리 a = 나)을 겨누면 짝을 친 것이다
+        for (const line of sent.filter((l) => l.startsWith('p1 '))) {
+          const ally = line.slice(3).split(', ')[1]
+          if (ally !== undefined && / -1$/.test(ally)) aimed++
+        }
+      } finally { controller.destroy() }
+    }
+    expect(aimed).toBe(0)
+  }, 120_000)
+
   it('나는 자리 a만 고르고, 편은 서 있는 턴마다 제 수를 둔다', async () => {
     for (let seed = 1; seed <= 6; seed++) {
       const { controller, step } = await withPartner(seed)

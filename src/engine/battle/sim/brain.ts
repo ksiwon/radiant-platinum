@@ -13,12 +13,14 @@
 //
 // ⚠️ 지연 로딩 경계 (bridge.ts 주석 참고).
 import type { Move } from '../../../data/schema'
-import type { AiMon, AiMove, AiTurn } from '../ai/context'
+import type { AiDoubles, AiMon, AiMove, AiTurn } from '../ai/context'
 import type { BattleAction } from '../choice'
 import { legalActions, TARGET_FOE_A, TARGET_FOE_B } from '../choice'
-import type { BattleEvent, BattleRequest, SideId } from '../events'
+import type { BattleEvent, BattleRequest, SideId, SlotId } from '../events'
 import { trainerPolicy } from '../ai/policy'
-import { BDSP_TOP_FLAGS } from '../ai/score'
+import { AI_FLAG, BDSP_TOP_FLAGS } from '../ai/score'
+import { ABILITY } from '../ai/rom'
+import { speedRank, type SpeedMon } from '../ai/speed'
 import { postKoSwitchIn, shouldSwitch, type BenchMon } from '../ai/switching'
 import { abilitySlotOf, genderOf, statsOf } from '../../pokemon/instance'
 import type { BattleView, ViewMon } from '../view'
@@ -33,6 +35,11 @@ export interface MoveTable {
 
 /** 방어·판별의 기술 효과 번호. 연속 사용 횟수를 세는 데만 쓴다 */
 const PROTECT_EFFECT = 111
+
+/** 나오자마자 스스로 알리는 트랩 특성 — AI가 진짜 값을 읽는다 (`trainer_ai.c` 1182) */
+const TRAP_ABILITIES: ReadonlySet<number> = new Set([
+  ABILITY.SHADOW_TAG, ABILITY.MAGNET_PULL, ABILITY.ARENA_TRAP,
+])
 
 interface BrainOptions {
   /** 트레이너 데이터의 AI 비트 */
@@ -71,6 +78,13 @@ interface BrainOptions {
   doubles?: boolean
   team: SideMon[]
   foeTeam: SideMon[]
+  /**
+   * 같은 쪽에 선 마리 **전부** (짝 트레이너의 파티까지). 안 주면 `team`이다.
+   *
+   * TAG_STRATEGY가 짝(`AI_BATTLER_ATTACKER_PARTNER`)의 타입·특성·기술을 본다 —
+   * 짝이 다른 트레이너의 마리여도 원작은 `battleMons`를 그대로 읽는다
+   */
+  sideTeam?: SideMon[]
 }
 
 export class TrainerBrain {
@@ -99,7 +113,15 @@ export class TrainerBrain {
 
   constructor(options: BrainOptions) {
     this.options = options
+    // ⚠️ **더블이면 TAG_STRATEGY를 원작이 얹는다** — 자료와 무관하다
+    // (`TrainerAI_Init` · `trainer_ai.c` 252). 928명 중 아무도 이 비트를 안 갖고 있다
     this.flags = options.flags | (options.floor ?? BDSP_TOP_FLAGS)
+      | (options.doubles === true ? AI_FLAG.TAG_STRATEGY : 0)
+  }
+
+  /** 실제로 쓰는 AI 비트. 시험이 편·상대의 비트를 재는 데 쓴다 */
+  get thinkingMask(): number {
+    return this.flags
   }
 
   /** 상대편(우리) 쪽 표시 */
@@ -168,11 +190,32 @@ export class TrainerBrain {
    */
   private abilityOf(mon: SideMon, mine: boolean): number {
     const [a, b] = mon.species.abilities
-    if (mine) return abilitySlotOf(mon.mon.pid) === 1 && b ? b : a
+    const real = abilitySlotOf(mon.mon.pid) === 1 && b ? b : a
+    if (mine) return real
     const known = this.revealed.get(mon.key)
     if (known) return known
+    // 그림자밟기·자력·개미지옥은 나오자마자 스스로 알린다 — 원작이 진짜 값을 읽는다
+    // (`LoadBattlerAbility` · `trainer_ai.c` 1182)
+    if (TRAP_ABILITIES.has(real)) return real
     if (a && b) return this.options.random() < 0.5 ? a : b
     return a || b
+  }
+
+  /**
+   * `CheckBattlerAbility`가 맞는 쪽을 읽는 법 (`trainer_ai.c` 1212). 찍지 않는다 —
+   * 드러났으면 그 값, 트랩 특성이면 진짜 값, 후보가 둘이면 **찾는 것이 후보에 있을 때
+   * 「모름」**(`AI_UNKNOWN` — 참이 아니다)이고 없으면 첫 후보다
+   */
+  private abilityCheck(mon: SideMon): (expected: number) => boolean {
+    return (expected) => {
+      const known = this.revealed.get(mon.key)
+      if (known) return known === expected
+      const [a, b] = mon.species.abilities
+      const real = abilitySlotOf(mon.mon.pid) === 1 && b ? b : a
+      if (TRAP_ABILITIES.has(real)) return real === expected
+      if (a && b) return a !== expected && b !== expected ? a === expected : false
+      return (a || b) === expected
+    }
   }
 
   /**
@@ -195,8 +238,11 @@ export class TrainerBrain {
 
   /** 배틀에 나와 있는 한 마리를 AI가 보는 모습으로 */
   private toAiMon(mon: SideMon, seen: ViewMon, view: BattleView, mine: boolean): AiMon {
-    const team = mine ? this.options.team : this.options.foeTeam
+    const team = mine
+      ? (this.options.team.some((m) => m.key === mon.key) ? this.options.team : this.side)
+      : this.options.foeTeam
     return {
+      ...(mine ? {} : { hasAbility: this.abilityCheck(mon) }),
       species: mon.species.id,
       types: mon.species.types,
       level: mon.mon.level,
@@ -239,18 +285,25 @@ export class TrainerBrain {
     return out
   }
 
+  /** 같은 쪽 마리 전부 (`BrainOptions.sideTeam`) */
+  private get side(): SideMon[] {
+    return this.options.sideTeam ?? this.options.team
+  }
+
   /**
    * 지금 상황. 기술을 못 고르는 턴이면 빈 배열.
    *
    * ⚠️ **더블은 여러 벌이 나온다.** 원작은 겨눌 수 있는 자리마다 점수를 따로
-   * 매기므로(`TrainerAI_MainDoubles`), 겨눈 자리로 후보를 묶고 그 자리에 선
-   * 마리를 `foe`로 삼은 한 벌씩을 낸다. 싱글은 늘 한 벌이다
+   * 매긴다(`TrainerAI_MainDoubles`) — 상대 둘과 **제 짝**까지 셋이다. 벌마다 기술 네
+   * 칸을 다 매기고, 그 자리에 선 마리를 `foe`로 삼는다 (`buildDoubles`). 싱글은 늘
+   * 한 벌이다
    */
   buildTurns(request: BattleRequest, view: BattleView, at = 0): AiTurn[] {
     const mySeen = activeAt(view, this.options.side, at)
     if (!mySeen) return []
     const me = this.options.team.find((m) => m.key === mySeen.key)
     if (!me) return []
+    if (this.options.doubles === true) return this.buildDoubles(request, view, at, me, mySeen)
 
     const groups = new Map<number | undefined, BattleAction[]>()
     for (const a of this.choices(request, view, at)) {
@@ -291,6 +344,133 @@ export class TrainerBrain {
   }
 
   /**
+   * 더블의 벌들 (`TrainerAI_MainDoubles` · `trainer_ai.c` 356).
+   *
+   * 겨눌 자리는 **나를 뺀 서 있는 셋**이다 — 체력이 0인 자리는 건너뛴다. 벌마다 기술
+   * 칸은 한 번씩만 나온다(대상을 찍는 기술도 겨눈 자리는 벌이 정한다). 고른 (칸, 자리)를
+   * 명령으로 되돌리는 것은 `ai/policy`다
+   */
+  private buildDoubles(
+    request: BattleRequest, view: BattleView, at: number, me: SideMon, mySeen: ViewMon,
+  ): AiTurn[] {
+    const bySlot = new Map<number, BattleAction>()
+    for (const a of this.choices(request, view, at)) {
+      if (a.type === 'move' && !bySlot.has(a.slot)) bySlot.set(a.slot, a)
+    }
+    const moves = this.toAiMoves([...bySlot.values()])?.map(({ target: _t, ...m }) => m)
+    if (!moves || moves.length === 0) return []
+
+    const self = this.toAiMon(me, mySeen, view, true)
+    const allySeen = activeAt(view, this.options.side, at === 0 ? 1 : 0)
+    const allyMon = allySeen ? this.side.find((m) => m.key === allySeen.key) : undefined
+    // 짝은 **같은 편이라 진짜 값**이다. 쓰러진 채로 자리에 남았으면 체력 0으로 읽는다
+    // — 원작도 그 자리의 `battleMons`를 그대로 본다
+    const ally = allySeen && allyMon ? this.toAiMon(allyMon, allySeen, view, true) : null
+    const allyMoves = allyMon ? this.movesOf(allyMon) : []
+    const speed = this.speedMons(view)
+    const mySlot = (this.options.side === 'p1' ? 0 : 1) + at * 2
+    const rank = (who: 'self' | 'ally'): number => speedRank(
+      speed, who === 'self' ? mySlot : mySlot ^ 2,
+      { weather: view.weather, trickRoom: view.field.has('trickroom') }, this.options.random,
+    )
+
+    const out: AiTurn[] = []
+    const add = (
+      target: number, defSeen: ViewMon | null, defMon: SideMon | undefined,
+      foeAlly: AiMon | null, targetIsAlly: boolean,
+    ): void => {
+      if (!defSeen || defSeen.fainted || defSeen.hp <= 0 || !defMon) return
+      const doubles: AiDoubles = {
+        targetIsAlly,
+        target,
+        defenderOnPlayerSide: targetIsAlly === (this.options.side === 'p1'),
+        ally,
+        allyMoves,
+        foeAlly,
+        speedRank: rank,
+      }
+      out.push({
+        self,
+        // 짝을 겨눈 벌에서도 맞는 쪽 자리로 읽는다 — 특성은 `LoadBattlerAbility
+        // AI_BATTLER_DEFENDER`의 규칙(드러났거나 찍은 값)이다
+        foe: this.toAiMon(defMon, defSeen, view, false),
+        moves,
+        all: moves,
+        weather: view.weather,
+        field: view.field,
+        turn: this.turnsOut(mySeen.key),
+        foeKnownMoves: this.foeMoves,
+        foeLastMoveCategory: this.foeLast?.category ?? null,
+        protectChain: this.protectChain,
+        random: this.options.random,
+        doubles,
+      })
+    }
+    const foeAt = (i: number) => {
+      const seen = activeAt(view, this.foeSide, i)
+      const mon = seen ? this.options.foeTeam.find((m) => m.key === seen.key) : undefined
+      return { seen, mon, ai: seen && mon ? this.toAiMon(mon, seen, view, false) : null }
+    }
+    const fa = foeAt(0)
+    const fb = foeAt(1)
+    add(TARGET_FOE_A, fa.seen, fa.mon, fb.ai, false)
+    add(TARGET_FOE_B, fb.seen, fb.mon, fa.ai, false)
+    // 짝을 겨눈 벌의 「맞는 쪽의 짝」은 나 자신이다 (`defender ^ 2`)
+    add(at === 0 ? -2 : -1, allySeen, allyMon, self, true)
+    return out
+  }
+
+  /** 한 마리의 기술 칸 전부. PP와 무관하다 — 원작이 `battleMons.moves`를 본다 */
+  private movesOf(mon: SideMon): AiMove[] {
+    const out: AiMove[] = []
+    mon.mon.moves.forEach((slot, i) => {
+      const data = this.options.moves.byId.get(slot.move)
+      if (!data || slot.move === 0) return
+      out.push({
+        slot: i + 1,
+        id: slot.move,
+        effect: data.effect,
+        power: data.power,
+        type: data.type,
+        category: data.category,
+        accuracy: data.accuracy,
+        priority: data.priority,
+      })
+    })
+    return out
+  }
+
+  /**
+   * 네 자리의 스피드 재료. 전투원 번호 차례다 — 0 p1a · 1 p2a · 2 p1b · 3 p2b
+   * (`battle_main.c` 964). 전부 진짜 값이다 — 원작의 비교 함수가 `battleMons`를 본다
+   */
+  private speedMons(view: BattleView): (SpeedMon | null)[] {
+    const slots: SlotId[] = ['p1a', 'p2a', 'p1b', 'p2b']
+    const everyone = [...this.side, ...this.options.foeTeam, ...this.options.team]
+    return slots.map((slot) => {
+      const seen = view.active[slot]
+      const mon = seen ? everyone.find((m) => m.key === seen.key) : undefined
+      if (!seen || !mon) return null
+      const ability = this.abilityOf(mon, true)
+      const item = this.itemFacts(mon.mon.heldItem)
+      return {
+        speed: statsOf(mon.mon, mon.species).spe,
+        stage: seen.boosts.spe,
+        ability: seen.volatiles.has('gastroacid') ? ABILITY.NONE : ability,
+        itemEffect: item.itemEffect,
+        itemParam: item.itemParam,
+        species: mon.species.id,
+        status: seen.status,
+        hp: seen.fainted ? 0 : seen.hp,
+        maxHp: seen.maxHp,
+        tailwind: view.sideConditions[seen.side].has('tailwind'),
+        slowStart: this.turnsOut(mon.key) < 5,
+        itemNegated: ability === ABILITY.KLUTZ || seen.volatiles.has('embargo'),
+      }
+    })
+  }
+
+  /**
    * 그 후보가 겨눈 자리에 서 있는 마리.
    *
    * 대상을 안 찍는 후보(`target`이 없다 — 싱글 전부와 전체기)는 **마주 선
@@ -311,24 +491,22 @@ export class TrainerBrain {
    * (`session.ts`의 `IDLE_MOVE`) 그건 트레이너가 **도구를 쓰는 턴**에 기술을
    * 안 쓰게 하려고 우리가 붙인 칸이다. AI가 그걸 고르면 그냥 한 턴을 버린다.
    *
-   * ⚠️ **짝을 겨누는 후보도 뺀다.** 원작은 짝도 후보로 놓고 점수를 매기는데
-   * (`TrainerAI_MainDoubles`), 그것이 성립하는 것은 짝을 도우려는 갈래를
-   * `AI_FLAG_TAG_STRATEGY`가 따로 들고 있어서다. 그 루틴 없이 짝을 후보에
-   * 남기면 **효과가 굉장한 쪽이 제 짝**이라 자기편을 때린다. 다 빼서 고를 것이
-   * 없어지면 안 뺀다 — 도우미밖에 없는 마리가 그 자리다
+   * **짝을 겨누는 후보는 남긴다.** 원작도 짝을 후보로 놓고 점수를 매긴다
+   * (`TrainerAI_MainDoubles`). 짝을 겨눈 벌에는 TAG_STRATEGY만 돌아서 쓸 이유가 없는
+   * 수는 −30을 받고, 그 벌의 최고점이 100 미만이면 −1로 내려 고르지 않는다
+   * (`ai/tagStrategy` · `ai/policy.pickDoubles`)
    */
   private choices(request: BattleRequest, view: BattleView, at = 0): BattleAction[] {
     const base = { hiddenSlot: idleSlotOf(request, at), at }
     if (this.options.doubles !== true) return legalActions(request, base)
-    const all = this.ownBench(legalActions(request, {
+    return this.ownBench(legalActions(request, {
       ...base,
       doubles: true,
       foeAlive: this.aliveOn(view, this.foeSide),
       allyAlive: this.aliveOn(view, this.options.side)[at === 0 ? 1 : 0],
+      // 짝을 겨누는 후보도 남긴다 — 짝을 겨눈 벌은 TAG_STRATEGY가 따로 매긴다
+      allyTargets: true,
     }))
-    const foeOnly = all.filter((a) => a.type !== 'move' || a.target === undefined
-      || a.target > 0)
-    return foeOnly.some((a) => a.type === 'move') ? foeOnly : all
   }
 
   /**

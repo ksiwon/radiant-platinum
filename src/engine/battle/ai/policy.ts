@@ -82,6 +82,9 @@ export function trainerPolicy(options: PolicyOptions) {
     }
 
     const turns = build(request, at)
+    if (turns.length > 0 && turns.every((t) => t.doubles !== undefined)) {
+      return pickDoubles(turns, moves, flags, random)
+    }
     // 한 벌이라도 어긋나면 점수를 못 매긴다 — 아무것도 안 보내는 것보다는 낫다
     const counted = turns.reduce((n, t) => n + t.moves.length, 0)
     if (turns.length === 0 || counted !== moves.length) {
@@ -97,6 +100,64 @@ export function trainerPolicy(options: PolicyOptions) {
       ?? moves.find((m) => m.slot === best.slot)
       ?? moves[0]!
   }
+}
+
+type MoveAction = Extract<BattleAction, { type: 'move' }>
+
+/** 짝을 겨눈 벌의 최고점이 이보다 낮으면 그 벌은 −1로 친다 (`TrainerAI_MainDoubles` 431) */
+const ALLY_FLOOR = 100
+
+/**
+ * 더블의 고르기 (`TrainerAI_MainDoubles` · `trainer_ai.c` 356).
+ *
+ * 겨눌 자리마다 한 벌이다(상대 둘과 짝). 원작의 차례 그대로 두 번 뽑는다:
+ *
+ *   1. 벌마다 최고점 칸들 중 **하나를 무작위로** 고르고 그 벌의 점수로 삼는다.
+ *      짝을 겨눈 벌의 최고점이 100 미만이면 −1로 내린다 — 「짝에게는 쓸 이유가
+ *      없으면 안 쓴다」가 이 한 줄이다
+ *   2. 벌들의 점수 중 최고인 것들에서 **다시 무작위로** 겨눌 자리를 고른다
+ *
+ * ⚠️ **(칸, 자리) 쌍을 한 줄로 세워 뽑는 것과 다르다.** 동점 칸 수가 벌마다 다르면
+ * 자리마다 뽑힐 몫이 달라진다 — 원작은 자리를 먼저 공평하게 고른다.
+ *
+ * 고른 (칸, 자리)를 명령으로 되돌리는 법:
+ *
+ *   · 그 칸에 그 자리를 겨누는 후보가 있으면 그것 (단일 대상 기술)
+ *   · 없으면 그 칸의 후보 아무거나 (전체기·자기 자신 — 대상을 안 찍는다. 도우미처럼
+ *     짝만 찍는 기술은 상대를 겨눈 벌에서 골라도 짝에게 간다. 원작도 쏠 때 사거리로
+ *     대상을 다시 잡는다)
+ *   · ⚠️ **지압(`RANGE_USER_OR_ALLY`)은 고른 자리가 플레이어 쪽이면 자기 자신이다**
+ *     (`trainer_ai.c` 462 — `GetBattlerSide(target) == 0`). 그래서 우리 편 AI는 지압을
+ *     플레이어에게 못 쓴다 — 원작 그대로다
+ */
+function pickDoubles(
+  turns: readonly AiTurn[], moves: readonly MoveAction[], flags: number, random: () => number,
+): BattleAction {
+  const perTarget = turns.map((turn) => {
+    const scored = scoreMoves(turn, flags, scoreExpert)
+    let max = -Infinity
+    for (const s of scored) max = Math.max(max, s.score)
+    const tied = scored.filter((s) => s.score === max)
+    const pick = tied[Math.floor(random() * tied.length)] ?? tied[0]
+    const score = turn.doubles!.targetIsAlly && max < ALLY_FLOOR ? -1 : max
+    return { turn, move: pick?.move ?? null, score }
+  })
+  let best = -Infinity
+  for (const p of perTarget) best = Math.max(best, p.score)
+  const top = perTarget.filter((p) => p.score === best && p.move !== null)
+  const chosen = top[Math.floor(random() * top.length)] ?? top[0]
+  if (!chosen?.move) return moves[0]!
+  const slot = chosen.move.slot
+  const target = chosen.turn.doubles!.target
+  const same = moves.filter((m) => m.slot === slot)
+  // 지압 — 자기 자신을 겨누는 후보가 있으면 사거리가 「나 또는 짝」이다
+  const selfTarget = moves[0]?.at === 1 ? -2 : -1
+  const self = same.find((m) => m.target === selfTarget)
+  if (self && chosen.turn.doubles!.defenderOnPlayerSide) return self
+  return same.find((m) => m.target === target)
+    ?? same.find((m) => m.target === undefined)
+    ?? same[0]
+    ?? moves[0]!
 }
 
 /** 점수를 밖에서 들여다볼 때 쓴다. 테스트와 디버깅용이다 */
