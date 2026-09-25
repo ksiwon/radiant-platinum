@@ -219,7 +219,8 @@ export function distortionGroundLift(): number {
  */
 export function resetDistortionPersisted(): void {
   if (floorLoad || worldState.restoring) return
-  setState(newDistortionState())
+  // 통째로 갈아 끼운다 — 합치면 첫 값에 없는 칸(`boulders`)이 남는다
+  useSaveStore.setState({ distortion: newDistortionState() })
 }
 
 /** 우리 맵 좌표 → 세계 좌표. y는 타일 단위 높이다 */
