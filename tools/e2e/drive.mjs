@@ -3473,8 +3473,25 @@ export async function driveStory(page, {
       if (has(root, '도망칠 수 없다')) { why = '트레이너전이라 볼을 못 쓴다'; break }
 
       // ② 가방으로 (싸운다 → **가방**). 커서는 안 돌아간다 (`clampCursor`)
-      await tap('ArrowDown', 90)
-      await tap('Space', 150)
+      /**
+       * ⚠️ **가방이 열렸는지 보고 다시 누른다.** 명령 단이 막 뜬 프레임에 누르면 키가 안 먹어, ↓가 빠지고 A가 「싸운다」를
+       * 고르거나 아무것도 안 된다. 실측(full1): 기라티나 앞에서 명령 단 넷만 보다 「가방에 도구 1이 안 보인다」로 떨어져, 볼을
+       * 못 던지고 자동 배틀이 쓰러뜨렸다
+       */
+      let opened = false
+      for (let tries = 0; tries < 4 && !opened; tries++) {
+        if (tries > 0) {
+          for (let k = 0; k < 3; k++) await tap('KeyX', 150)
+          if (await waitFor((list) => has(list, '싸운다')) === null) break
+        }
+        await page.waitForTimeout(250)
+        await tap('ArrowDown', 120)
+        await tap('Space', 250)
+        for (let w = 0; w < 15 && !opened; w++) {
+          opened = (await page.evaluate(readBattleBag)) !== null
+          if (!opened) await page.waitForTimeout(200)
+        }
+      }
       /**
        * ③④ **몬스터볼이 보일 때까지 주머니를 넘긴다.**
        *
