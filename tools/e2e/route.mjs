@@ -635,6 +635,32 @@ export function mapRoute(from, to, { without = null } = {}) {
 }
 
 /**
+ * **공중날기가 되는 가장 가까운 맵** — 워프·행렬 0 이웃을 너비 우선으로 (`mapRoute`와 같은 그래프).
+ *
+ * 제품은 맵 헤더의 `isFlyAllowed`가 0인 맵에서 날지 않는다(`FieldMoves_CheckFly` · REPAIR §91) —
+ * 593개 맵 중 515곳, 실내·굴이 다 그렇다. 그래서 하네스는 거기서 먼저 걸어 나온다.
+ * 지금 맵이 이미 되면 그 맵을, 이어진 곳이 없으면(깨어진 세계는 워프가 없다) null을 준다
+ */
+export function nearestFlyable(from) {
+  const maps = data().maps
+  const seen = new Set([from])
+  const queue = [from]
+  let head = 0
+  while (head < queue.length) {
+    const cur = queue[head++]
+    if (maps[cur]?.fly === 1) return cur
+    const next = warpsOf(cur).map((w) => w.to)
+    if (matrixOf(cur) === 0) next.push(...sameMatrixNeighbours(cur))
+    for (const id of next) {
+      if (seen.has(id)) continue
+      seen.add(id)
+      queue.push(id)
+    }
+  }
+  return null
+}
+
+/**
  * 행렬 0에서 **걸어서 넘어갈 수 있는** 이웃 맵들.
  *
  * ⚠️ **「청크가 맞닿았다」는 「걸어갈 수 있다」가 아니다.** 오래 맞닿기만 보고

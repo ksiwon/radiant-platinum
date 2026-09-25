@@ -27,7 +27,7 @@ import {
   unlockedHidden,
   type TownMapCell,
 } from '../../engine/map/townMap'
-import { fieldScripts } from '../../engine/script/field'
+import { fieldScripts, flyVerdictNow } from '../../engine/script/field'
 import { loadTownMap } from '../../data/gameData'
 import { loadUiText } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
@@ -105,6 +105,10 @@ export function FlyScreen() {
 
   const fly = (): void => {
     if (!spot || !unlocked) return
+    // ⚠️ **떠나는 자리도 다시 본다** (`FieldMoves_CheckFly`, REPAIR §91). 이 화면은
+    // 시작 메뉴와 파티 화면이 헤더를 본 뒤에만 열리지만, 열린 채로 맵이 바뀌는 길을
+    // 하나라도 남기면 막힌 맵에서 난다 — 막혔으면 날지 않고 닫는다
+    if (flyVerdictNow() !== null) { closeAll(); return }
     const target = spawnWarp(spot.spawn, 'fly')
     if (!target) return
     // ⚠️ **날면 배회가 전부 흩어진다** (`FieldSystem_SetFlyFlags`, PARITY §6.3).

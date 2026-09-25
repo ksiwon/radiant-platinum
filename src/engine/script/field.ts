@@ -43,8 +43,8 @@ import { rockClimbSeconds, WATERFALL_SECONDS } from '../actor/heroClips'
 import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import {
-  FIELD_MOVES, fieldMoveHere, movesUsableHere, whyNot,
-  type FieldMoveId, type FieldSpot, type Trainer,
+  FIELD_MOVES, fieldMoveHere, flyDenial, movesUsableHere, whyNot,
+  type FieldMoveId, type FieldSpot, type FlyDenial, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
 import { APPROACH_TYPE, type ApproachingTrainer } from '../actor/approach'
@@ -1290,7 +1290,21 @@ export function runFieldMove(id: FieldMoveId, front: { x: number; z: number }): 
 }
 
 /** 기술 창에서 골랐을 때 어떻게 되는가 */
-type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere'
+type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere' | 'partner'
+
+/**
+ * 지금 여기서 날 수 있는가 (`FieldMoves_CheckFly`). 날 수 있으면 null.
+ *
+ * 시작 메뉴의 지름길 · 파티 화면의 갈래 · 타운맵의 마지막 한 걸음이 다 이것을
+ * 본다 — 한 자리에서만 보면 다른 길로 새어 나간다 (REPAIR §91)
+ */
+export function flyVerdictNow(): FlyDenial | null {
+  return flyDenial(trainerNow(), {
+    flyAllowed: mapById(mapWorld.mapId)?.fly === 1,
+    hasPartner: fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner),
+    inSafari: fieldScripts.services.safari?.active?.() === true,
+  })
+}
 
 /**
  * 파티 화면의 기술 칸에서 쓴다 (`FieldMoves_Set*Task`).
@@ -1315,9 +1329,10 @@ type FieldMoveVerdict = 'used' | 'fly' | 'badge' | 'party' | 'notHere'
 export function fieldMoveFromMenu(move: number): FieldMoveVerdict | null {
   const id = (Object.keys(FIELD_MOVES) as FieldMoveId[]).find((k) => FIELD_MOVES[k].move === move)
   if (id === undefined) return null
+  // 공중날기는 앞 칸이 아니라 **맵**을 본다 — 헤더가 막으면 거기서 끝이다
+  if (id === 'fly') return flyVerdictNow() ?? 'fly'
   const denial = whyNot(id, trainerNow())
   if (denial !== null) return denial
-  if (id === 'fly') return 'fly'
   const front = frontTile()
   const spot = spotAt(front)
   if (spot === null || !movesUsableHere(spot).includes(id)) return 'notHere'
