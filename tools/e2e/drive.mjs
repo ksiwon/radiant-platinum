@@ -1423,7 +1423,7 @@ export async function driveStory(page, {
        * 뛰므로(REPAIR §111) 칸이 바뀌는 순간 떼면 안 뛴다(탐침 p15 — 1F (48→47)에서 떼어 (47)에 섰다).
        * 뛰기가 서면(`busy`) 그때 뗀다
        */
-      const holdThrough = q.act === 'hop'
+      const holdThrough = q.act === 'hop' || q.act === 'ledge'
       for (;;) {
         const d = await look()
         const moved = d !== null && (d.map !== before.map || d.x !== before.x || d.y !== before.y || d.z !== before.z)
@@ -1452,6 +1452,19 @@ export async function driveStory(page, {
    * 앞 칸 성질(판 → 격자)·`distortionHop`·난천 막기를 그 자리에서 물어 어느 줄이 뛰기를 막았는지 적는다
    */
   let hopTrace = []
+  /** **같은 걸음이 되풀이될 때** 그 자리의 사람·바위·괴력을 읽는다 — 진단일 뿐 */
+  const loopProbe = () => page.evaluate(async () => {
+    const st = await import('/src/state/worldState.ts')
+    const F = await import('/src/engine/script/field.ts')
+    const N = await import('/src/engine/actor/npcs.ts')
+    const core = await import('/src/scene/distortionCore.ts')
+    const p = st.worldState.player
+    return {
+      pos: [p.position.x, p.position.y, p.position.z], facing: p.facing, strength: p.strength, front: F.frontTile(),
+      pi: core.platformIndex(), puzzle: core.state().puzzleFlags, boulders: core.state().boulders ?? null,
+      npcs: N.npcActors.list.map((a) => ({ id: a.localID, x: a.x, z: a.z, y: a.y ?? null, gfx: a.gfx ?? a.graphics ?? null })),
+    }
+  }).catch((e) => String(e?.message ?? e))
   let talkKey = ''
   let talkRepeats = 0
   /** **말이 안 걸리는 자리에서 제품의 판정을 읽는다** — 진단일 뿐 */
@@ -1497,7 +1510,10 @@ export async function driveStory(page, {
     }
   }, [key]).catch((e) => String(e?.message ?? e))
 
-  const distortionWalk = async (budgetMs, { escape = false, stopWhen = null } = {}) => {
+  const distortionWalk = async (budgetMs, { escape = false, stopWhen = null, onFloor = null } = {}) => {
+    /** 같은 걸음(키·동작·기대 자리)을 몇 번 되풀이했나 — 계획이 제자리를 도는 것을 잡는다 */
+    const seenSteps = new Map()
+    let seenAt = ''
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
     let lastMap = null
     let misses = 0
@@ -1506,12 +1522,25 @@ export async function driveStory(page, {
       const st = await obs.distortionState()
       if (!st.known || st.value === null) return { ok: true, why: '깨어진 세계를 나왔다' }
       if (stopWhen !== null && stopWhen(st.value)) return { ok: true, why: '멈출 자리다', at: st.value }
-      if (st.value.map !== lastMap) lastMap = st.value.map
+      if (st.value.map !== lastMap) {
+        lastMap = st.value.map
+        // 층에 닿을 때마다 리포트를 남긴다 — 막힌 층을 다시 잴 때 처음부터 안 걷게 (진단용, 판정과 무관)
+        if (onFloor !== null) await onFloor(st.value.map)
+      }
       const r = await obs.distortionPlan({ escape })
       if (!r.known || r.value === null || !r.value.legs) return { ok: false, why: '계획이 없다', at: st.value }
       const leg = r.value.legs[0]
       for (const q of leg.steps) {
         const { ok, after } = await dwStep(q)
+        const sig = `${q.key}/${q.act}@${JSON.stringify(q.expect)}`
+        const phase = `${String(after?.map)}:${String(after?.progress)}`
+        if (phase !== seenAt) { seenAt = phase; seenSteps.clear() }
+        const times = (seenSteps.get(sig) ?? 0) + 1
+        seenSteps.set(sig, times)
+        if (times === 8) {
+          log(`        되풀이 진단 ${sig} ${JSON.stringify(await loopProbe())}`)
+          return { ok: false, why: `같은 걸음을 여덟 번 되풀이했다 (${sig})`, at: after }
+        }
         if (q.key === 'A' && q.prompt === 'talk') {
           const key = `${String(after?.map)}:${String(after?.x)},${String(after?.y)},${String(after?.z)}`
           talkRepeats = talkKey === key ? talkRepeats + 1 : 1
@@ -1525,7 +1554,7 @@ export async function driveStory(page, {
         if (!ok) {
           misses++
           log(`      어긋남 ${q.key}/${q.act} 기대 ${JSON.stringify(q.expect)} 실제 ${JSON.stringify(after)}`)
-          if (q.act === 'hop') {
+          if (q.act === 'hop' || q.act === 'ledge') {
             log(`        뛰기 진단 ${JSON.stringify(await hopProbe(q.key))}`)
             log(`        그 걸음의 누름 ${JSON.stringify(hopTrace)}`)
             await page.keyboard.down(q.key)
