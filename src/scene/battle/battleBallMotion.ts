@@ -1,5 +1,5 @@
 import type { SlotId } from '../../engine/battle/events'
-import { PAIR_DIR } from '../../engine/battle/shots'
+import { PAIR_DIR, pairOffset, SLOT, viewDepth } from '../../engine/battle/shots'
 // ⚠️ **시간표는 엔진이 든다.** 박자를 만드는 쪽(`engine/battle/playback`)이 같은
 // 값을 봐야 포획 결과 글이 볼 연출을 기다린다 — 예전에는 이 초가 여기에만 있어서
 // 결과가 던지기와 같은 프레임에 떴다
@@ -52,26 +52,28 @@ export function trainerThrowOrigin(slot: SlotId): Point3 {
 }
 
 /**
- * 한 쪽에 트레이너가 **둘** 선 판에서 두 사람이 벌어지는 폭 (PARITY §2.2b).
+ * 그 자리의 트레이너가 서는 곳 (PARITY §2.2b · REPAIR §123). 한 쪽에 한 사람이면
+ * `trainerThrowOrigin`과 같다.
  *
- * ⚠️ **재서 고른 값이 아니고 원작 값도 아니다.** 원작 DS는 트레이너 둘을 두 칸
- * 그림으로 나란히 세우는데(`BattleDisplay_NewManagedSpriteTrainer`의 x 좌표가
- * 전투원마다 다르다) 그 값을 우리 무대 척도로 옮긴 적이 없다. 한 사람 폭(어깨
- * 0.5m)의 두 배를 넘겨 몸이 안 겹치게만 잡았다 — 화면 확인이 남았다 (REPAIR §82)
- */
-const PAIRED_TRAINER_GAP = { p1: 0.8, p2: 1.3 } as const
-
-/**
- * 그 자리의 트레이너가 서는 곳. 한 쪽에 한 사람이면 `trainerThrowOrigin`과 같다.
+ * ⚠️ **원작에는 트레이너만의 더블 좌표가 없다.** 트레이너 그림은 **제 포켓몬의 자리 줄을
+ * 그대로 쓴다** — `gEncounterCoords[side]`에서 나와 `gBattlerEncounterX[side][0]`로 미끄러지는데
+ * (`battle_display.c` 525~538), `side`가 2vs2와 태그 배틀의 상대 쪽에서만 전투원 자리
+ * (`battlerType`)고 그 밖에는 싱글 줄(`battlerType & 1`)이다. 그 표가 포켓몬 자리 표와
+ * 같은 표다(`ov12_022380BC.c` 16·25 — 상대 216·176px · 우리 40·80px). 그래서 원작
+ * 화면에서 트레이너는 늘 **제 포켓몬과 같은 화면 x**에 선다.
  *
- * 둘이면 자리 a의 주인이 화면 오른쪽, b의 주인이 왼쪽에 선다 — 포켓몬 발판이
- * 벌어지는 방향(`shots`의 `PAIR_DIR`, 화면 왼쪽)과 같은 쪽이다
+ * 그대로 옮긴다: 트레이너를 제 발판과 **같은 화면 x**가 되도록 `PAIR_DIR`로 민다. 같은
+ * 화면 x는 카메라 깊이에 비례하므로, 발판의 벌어짐(`shots.pairOffset`)에 **트레이너 깊이 ÷
+ * 발판 깊이**를 곱한다(`shots.viewDepth`). 누가 짝을 서는지는 원작의 `side` 갈래와 같다 —
+ * 부르는 쪽(`BattleTrainers`)이 편이 있을 때만 우리 쪽을, 상대가 둘일 때만 상대 쪽을
+ * `paired`로 준다
  */
 export function trainerStandAt(slot: SlotId, paired: boolean): Point3 {
   const base = trainerThrowOrigin(slot)
   if (!paired) return base
   const side = slot.startsWith('p1') ? 'p1' : 'p2'
-  const off = PAIRED_TRAINER_GAP[side] * (slot.endsWith('a') ? -1 : 1)
+  const pad: Point3 = [SLOT[side].x, 0, SLOT[side].z]
+  const off = pairOffset(slot as `${'p1' | 'p2'}${'a' | 'b'}`) * (viewDepth(base) / viewDepth(pad))
   return [base[0] + PAIR_DIR[0] * off, base[1], base[2] + PAIR_DIR[2] * off]
 }
 
