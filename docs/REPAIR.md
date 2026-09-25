@@ -5480,3 +5480,16 @@ src/state/multiBattle.test.ts`.
 
 **고친 것** — 싣고 가는 두 명령이 시작할 때 주인공을 그 칸 가운데에 세운다(`centreOnTile`). 시험 `scene/distortionMove.test.ts` — 칸 끝
 (0.95, 0.08)에서 밟아도 가운데에 내린다. 고치기 전에는 떨어졌다.
+
+## 125. 한 번 괴력을 쓰고 나면 **다시는 어느 바위도 못 밀었다** — 괴력 표식이 안 풀렸다
+
+**원작** — 괴력 상태는 표식 하나다(`FLAG_STRENGTH_ACTIVE` 2402 · `SystemFlag_HandleStrengthActive`). 맵을 옮길 때마다 푼다 —
+`FieldSystem_InitFlagsOnMapChange`와 `FieldSystem_InitFlagsWarp`(`field_map_change_flags.c:41,68`)가 부르고, 깨어진 세계 층 갈이
+(`FieldMapChange_UpdateGameDataDistortionWorld`)도 같은 둘을 지난다. 바위 스크립트(`FieldMoves_Boulder`)는 먼저 그 표식을 묻고, 서 있으면
+「괴력으로 움직일 수 있게 됐다」만 띄우고 끝난다.
+
+**우리** — 맵을 옮기면 몸 쪽 상태(`player.strength`)만 풀고 표식은 그대로 두었다. 괴력을 한 번 쓴 뒤로 표식이 세이브에 남아 있어서, 다음 맵의
+바위에서 스크립트가 「이미 쓰고 있다」 갈래로 빠졌고 몸은 안 켜졌다 — **밀 수 있는 바위가 하나도 없었다**. 실측(탐침 p6·p7): 천관산 2F (14,45)에서
+세 번 다 「괴력이 안 켜졌다」, (탐침 p21) 깨어진 세계 B5F 바위 #130 앞에서 A를 여덟 번. 사람도 똑같이 막힌다 — 그 층은 바위를 떨어뜨려야 B6F로 간다.
+
+**고친 것** — `enterMap`이 표식도 푼다. 시험 `scene/onResume.test.ts` 「괴력 표식」.

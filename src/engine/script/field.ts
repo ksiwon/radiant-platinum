@@ -544,6 +544,9 @@ const DIR_TO_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
  * NPC 세우기는 **동기**여야 한다 — 화면이 같은 프레임에 그 목록을 그린다.
  * 대사는 늦어도 되고, 실패해도 게임은 계속 돈다(글만 빈다)
  */
+/** `FLAG_STRENGTH_ACTIVE` (`generated/vars_flags.txt`) — `commands.ts`의 `DoStrengthFunc`와 같은 번호 */
+const FLAG_STRENGTH_ACTIVE = 2402
+
 export function enterMap(mapId: number): void {
   // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
   endCommon()
@@ -579,6 +582,12 @@ export function enterMap(mapId: number): void {
   resetFade()
   // 괴력은 맵마다 다시 쓴다 — 원작도 맵을 옮기면 풀린다
   worldState.player.strength = false
+  // ⚠️ **표식도 같이 푼다** (REPAIR §125 · `FieldSystem_InitFlagsOnMapChange`·`_InitFlagsWarp`의
+  // `SystemFlag_HandleStrengthActive(…, HANDLE_FLAG_CLEAR)` — 깨어진 세계 층 갈이도 같다). 원작은 이 표식 하나가 괴력
+  // 상태다. 우리 몸 쪽만 풀면 한 번 괴력을 쓴 뒤로 표식이 세이브에 남아, 다음 바위에서 스크립트가 「이미 괴력을
+  // 쓰고 있다」(`FieldMoves_StrenghtAlreadyActive`)로 빠지고 몸은 안 켜져 **어느 바위도 못 밀었다**(탐침 p6·p21 — 천관산 2F ·
+  // 깨어진 세계 B5F)
+  fieldScripts.vars.clearFlag(FLAG_STRENGTH_ACTIVE)
   // 얼음에서 미끄러지던 중에 워프하면 도착한 맵에서도 그 방향으로 밀린다
   // (`actor/ice`). 선단신전은 층마다 얼음이라 실제로 걸리는 자리다
   clearIceSlide()

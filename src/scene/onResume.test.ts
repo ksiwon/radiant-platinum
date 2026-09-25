@@ -78,3 +78,13 @@ maybe('OnResume', () => {
     })
   })
 })
+
+// REPAIR §125 — 괴력 표식은 맵을 옮기면 풀린다 (`FieldSystem_InitFlagsOnMapChange`)
+describe('괴력 표식', () => {
+  it('맵에 들어서면 `FLAG_STRENGTH_ACTIVE`(2402)가 풀린다', () => {
+    fieldScripts.vars = new VarStore()
+    fieldScripts.vars.setFlag(2402)
+    enterMap(350)
+    expect(fieldScripts.vars.checkFlag(2402)).toBe(false)
+  })
+})
