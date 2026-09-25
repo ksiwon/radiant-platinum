@@ -39,7 +39,7 @@ export interface SpeedMon {
 }
 
 /** 판 전체의 조건 */
-export interface SpeedField {
+interface SpeedField {
   weather: string | null
   trickRoom: boolean
 }

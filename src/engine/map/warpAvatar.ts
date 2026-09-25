@@ -14,7 +14,7 @@
 // 이 줄을 안 지난다. 이어하기도 안 지난다 — 세이브의 `playerState`로 선다(REPAIR §87).
 
 /** 주인공이 무엇으로 다니는가 — 걷기는 둘 다 거짓이다 */
-export interface AvatarState {
+interface AvatarState {
   surfing: boolean
   cycling: boolean
 }

@@ -26,7 +26,7 @@ import { world } from '../engine/map/world'
 import type { MapGrid } from '../engine/map/grid'
 
 /** 이 그림이 판때기가 아니라 소품인가 */
-export function propKindOf(gfx: number): number | null {
+function propKindOf(gfx: number): number | null {
   return PROP_KIND_BY_GFX.get(gfx) ?? null
 }
 

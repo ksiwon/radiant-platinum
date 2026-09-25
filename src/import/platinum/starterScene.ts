@@ -36,7 +36,7 @@ const MODELS = [1, 8, 3, 5, 7, 9]
 const CLIPS: Readonly<Record<number, number>> = { 1: 0, 3: 2, 5: 4, 7: 6 }
 
 /** JNT0 애니 하나의 프레임 수. 머리 네 글자로 자리가 맞는지 먼저 본다 */
-export function clipFrames(file: Uint8Array): number {
+function clipFrames(file: Uint8Array): number {
   const view = new DataView(file.buffer, file.byteOffset, file.byteLength)
   const at = view.getUint32(16, true)
   const tag = String.fromCharCode(file[at]!, file[at + 1]!, file[at + 2]!, file[at + 3]!)

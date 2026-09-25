@@ -144,7 +144,7 @@ export function spawnFloorObjects(mapId: number, keepExisting = false): void {
 // ── 배치표 자리를 떠난 바위 (`DistortionState.boulders`) ───────────────────────
 
 /** 그 층 그 번호의 바위가 선 자리 (세계 칸). 배치표 자리 그대로면 undefined */
-export function boulderSpot(map: number, localID: number): DistortionBoulderSpot | undefined {
+function boulderSpot(map: number, localID: number): DistortionBoulderSpot | undefined {
   return (state().boulders ?? []).find((b) => b.map === map && b.localID === localID)
 }
 

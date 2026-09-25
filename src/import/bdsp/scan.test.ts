@@ -172,8 +172,14 @@ function diskDirSource(root: string, prefix = ''): DirSource {
   }
 }
 
+/**
+ * 진짜 덤프의 파일 만 개 남짓을 **디스크에서 걸어 세는** 시험이라 기본 한도(5초)에 딱 붙는다 — 실측(2026-09-25): 혼자 돌려
+ * 5.2초, 브라우저 판과 같이 돌리면 5.0~5.3초로 떨어졌다. 셈 자체는 안 바뀌었으니 한도만 넉넉히 준다
+ */
+const DISK_WALK_MS = 30_000
+
 withBdsp('진짜 BDSP 폴더', () => {
-  it('⚠️ 폴더를 직접 골랐을 때 통과한다', async () => {
+  it('⚠️ 폴더를 직접 골랐을 때 통과한다', { timeout: DISK_WALK_MS }, async () => {
     // 공개 Importer가 받는 것과 **같은 계약**이다: 상대 경로가 뿌리 아래에서
     // 시작한다. 이 자리가 한때 `no-root`였다
     const got = await scanBdsp(diskDirSource(bdspRoot()!))
@@ -184,7 +190,7 @@ withBdsp('진짜 BDSP 폴더', () => {
     expect(got.files).toBeGreaterThan(10_000)
   })
 
-  it('⚠️ 상위 폴더를 골라도 같은 답이 나온다', async () => {
+  it('⚠️ 상위 폴더를 골라도 같은 답이 나온다', { timeout: DISK_WALK_MS }, async () => {
     const name = bdspRoot()!.split(/[\\/]/).pop()!
     const got = await scanBdsp(diskDirSource(bdspRoot()!, name))
     expect(got.ok ? 'ok' : `${got.reason}: ${got.why}`).toBe('ok')

@@ -155,7 +155,7 @@ function canSidestep(side: number): boolean {
 }
 
 /** 물뿌리개를 든다 (`BerryPatches_StartWatering`) */
-export function startWatering(): void {
+function startWatering(): void {
   const p = worldState.player
   watering.task = {
     state: 'watering',
@@ -168,7 +168,7 @@ export function startWatering(): void {
 }
 
 /** 물뿌리개를 벗는다 (`BerryPatches_EndWatering`) */
-export function endWatering(): void {
+function endWatering(): void {
   watering.task = null
 }
 

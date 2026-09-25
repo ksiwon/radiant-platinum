@@ -133,7 +133,7 @@ export const ICE_HEIGHT_EPSILON = 1 / 16
 /**
  * 높이를 견줄 앞 점 — 칸 한가운데에서 **4분의 1칸** (`((16 << FX) >> 1) / 2` = 4/16칸)
  */
-export const ICE_LOOK_AHEAD = 1 / 4
+const ICE_LOOK_AHEAD = 1 / 4
 
 /**
  * 높이가 오르는가 내리는가 (`PlayerAvatar_CheckIceHeightChange`).

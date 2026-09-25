@@ -144,7 +144,7 @@ export function whyNot(id: FieldMoveId, who: Trainer): FieldMoveDenial | null {
 export type FlyDenial = FieldMoveDenial | 'notHere' | 'partner'
 
 /** 날려는 자리의 사정 — 원작 검사가 보는 셋이다 */
-export interface FlyPlace {
+interface FlyPlace {
   /** 맵 헤더의 `isFlyAllowed` (`MapHeader_IsFlyAllowed`) */
   flyAllowed: boolean
   /** 누가 따라다니는가 (`SystemFlag_CheckHasPartner`) */
