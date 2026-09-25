@@ -13,6 +13,7 @@
 // 직접 부르면 이 차례를 건너뛰게 된다.
 import { connectionOf, findPlatform, initialHiddenGroups, mapOf } from '../engine/world/distortion'
 import { distortionBridge } from '../engine/world/distortion'
+import { world as mapWorld } from '../engine/map/world'
 import { initialPlatformFlags } from '../engine/world/distortionElevator'
 import { initialPuzzleFlags } from '../engine/world/distortionBoulder'
 import { applyCamera, distortionCameraSwing, seatCamera } from './distortionCamera'
@@ -21,7 +22,7 @@ import {
   armSteppingStones, bindPlatform, distortionActive, distortionBehaviorAt, distortionBlockedAt, distortionData,
   distortionFloor, distortionFollowsGround, distortionFrame, distortionFrontTile, distortionGroundLift,
   distortionHooks, distortionJumpBlocked, platformIndex, setDistortionFloor, setHeightCalc,
-  setPlatformIndex, setState, state, takeFloorLoad, tickSteppingStones, toWorldTiles,
+  setPlatformIndex, setState, state, takeFloorLoad, tickSteppingStones, toWorldTiles, isDistortionFloor,
 } from './distortionCore'
 import { SFX } from '../engine/audio/sfx'
 import { music } from '../engine/audio/music'
@@ -226,7 +227,12 @@ distortionBridge.blockedAt = distortionBlockedAt
 distortionBridge.frontTile = distortionFrontTile
 distortionBridge.cameraSwing = distortionCameraSwing
 distortionBridge.frame = distortionFrame
-distortionBridge.inWorld = distortionActive
+/**
+ * ⚠️ **층 자료가 오기 전에도 이 세계다** (REPAIR §119) — 이어하기는 자료를 받는 동안 몇 프레임을 판 없이 돈다. 그 사이에
+ * 「세계 밖」으로 읽으면 주인공이 보통 맵처럼 격자 지면을 따라가, B2F 위층(지역 9)에서 쓴 리포트가 바닥(지역 1)으로 끌려
+ * 내려간 뒤에 판을 골라 **사방이 막혔다**(탐침 p19)
+ */
+distortionBridge.inWorld = () => distortionActive() || isDistortionFloor(mapWorld.mapId)
 distortionBridge.followsGround = distortionFollowsGround
 distortionBridge.groundLift = distortionGroundLift
 distortionBridge.behaviorAt = distortionBehaviorAt
