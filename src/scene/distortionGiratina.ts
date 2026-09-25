@@ -8,6 +8,7 @@ import { music } from '../engine/audio/music'
 import { SPECIES_GIRATINA } from '../engine/pokemon/form'
 import { npcActors } from '../engine/actor/npcs'
 import { distortionHooks, setState, state, toLocalTiles } from './distortionCore'
+import { turnCamera } from './distortionCamera'
 
 /**
  * 세우고 거두는 무리 범위 (`GIRATINA_ROOM_PLATFORMS_*_GHOST_PROP_GROUP`).
@@ -25,12 +26,23 @@ const STEP_DELAY = 48
 /** 거둘 때의 첫 뜸 (`GIRATINA_ROOM_HIDE_PLATFORMS_INITIAL_DELAY`) */
 const HIDE_INITIAL_DELAY = 16
 
+/** 다 거둔 뒤 한 번 더 쉬는 뜸 (`GIRATINA_ROOM_HIDE_PLATFORMS_WAIT_DELAY`) */
+const HIDE_WAIT_DELAY = 8
+
+/**
+ * 발판이 설 때 카메라가 기우는 각 (`sGiratinaRoomPlatformsShownCameraAngle`) — x 0x10눈금을 0x14프레임에.
+ * 세우는 명령의 첫 상태가 이것이다 (`EventCmdShowGiratinaRoomPlatforms_DoCameraTransition`)
+ */
+const SHOWN_CAMERA = { angles: [0x10, 0, 0] as const, steps: 0x14 }
+
 interface GhostRun {
   /** 다음에 손댈 무리 */
   group: number
   /** 남은 프레임 */
   delay: number
   show: boolean
+  /** 다 거두고 마지막 뜸을 쉬는 중이다 (`EVENT_CMD_HIDE_GIRATINA_ROOM_PLATFORMS_STATE_WAIT`) */
+  waiting: boolean
 }
 
 let ghost: GhostRun | null = null
@@ -44,9 +56,10 @@ let ghost: GhostRun | null = null
  * 시작하고 첫 뜸도 서로 다르다 (36프레임 · 16프레임)
  */
 export function startGhostRun(show: boolean): void {
+  if (show) turnCamera(SHOWN_CAMERA.angles, SHOWN_CAMERA.steps)
   ghost = show
-    ? { group: GIRATINA_ROOM_GROUP.first, delay: SHOW_INITIAL_DELAY, show: true }
-    : { group: GIRATINA_ROOM_GROUP.last, delay: HIDE_INITIAL_DELAY, show: false }
+    ? { group: GIRATINA_ROOM_GROUP.first, delay: SHOW_INITIAL_DELAY, show: true, waiting: false }
+    : { group: GIRATINA_ROOM_GROUP.last, delay: HIDE_INITIAL_DELAY, show: false, waiting: false }
 }
 
 /** 발판이 서거나 거둬지는 중인가. 도는 동안은 조작을 막는다 */
@@ -55,10 +68,13 @@ export function distortionGhostRunning(): boolean {
 }
 
 /**
- * 한 프레임 (`EventCmdShowGiratinaRoomPlatforms_ShowPlatforms`).
+ * 한 프레임 (`EventCmdShowGiratinaRoomPlatforms_ShowPlatforms` · `EventCmdHideGiratinaRoomPlatforms_*`).
  *
  * 48프레임마다 한 무리씩이다. 한 번에 다 세우지 않는 이유가 있다 — 원작은
- * 발판이 하나씩 솟는 것을 보여 주고, 그 사이에 소리를 끊는다
+ * 발판이 하나씩 솟는 것을 보여 주고, 그 사이에 소리를 끊는다.
+ *
+ * 세울 때는 셋째 무리를 세운 그 프레임에 끝난다. 거둘 때는 첫 무리를 거둔 뒤 48프레임을 더 세고,
+ * 거기서 여덟 프레임을 한 번 더 쉬고 끝난다 (`ov9_02249960.c:9449-9480`)
  */
 export function distortionGhostTick(dt: number): void {
   const run = ghost
@@ -66,16 +82,18 @@ export function distortionGhostTick(dt: number): void {
   run.delay -= dt * 60
   if (run.delay > 0) return
 
+  if (run.waiting) { ghost = null; return }
+  if (!run.show && run.group < GIRATINA_ROOM_GROUP.first) {
+    run.waiting = true
+    run.delay = HIDE_WAIT_DELAY
+    return
+  }
   const s = state()
   const bit = 1 << run.group
   setState({ hiddenGroups: run.show ? s.hiddenGroups & ~bit : s.hiddenGroups | bit })
   run.delay = STEP_DELAY
   run.group += run.show ? 1 : -1
-
-  const done = run.show
-    ? run.group > GIRATINA_ROOM_GROUP.last
-    : run.group < GIRATINA_ROOM_GROUP.first
-  if (done) ghost = null
+  if (run.show && run.group > GIRATINA_ROOM_GROUP.last) ghost = null
 }
 
 /**

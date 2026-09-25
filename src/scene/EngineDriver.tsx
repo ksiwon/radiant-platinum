@@ -242,6 +242,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 플레이어 노드의 원점은 발밑(y=0) 기준이므로 보간값을 그대로 쓴다
       interpolated.copy(p.prevPosition).lerp(p.position, gameLoop.alpha)
       sceneRefs.player.position.copy(interpolated)
+      // 깨어진 세계에서 지형을 딛는 동안은 칸이 아니라 판의 높이에 선다 — B5F 웅덩이의 반 칸
+      // (`distortionBridge.groundLift`). 다른 곳은 0이다
+      sceneRefs.player.position.y += distortionBridge.groundLift?.() ?? 0
       const frame = distortionBridge.frame?.() ?? null
       const heading = surfaceHeading(frame, p.velocity.x, p.velocity.y, p.velocity.z, p.facing)
       surfaceQuaternion(frame, heading, playerRotation)

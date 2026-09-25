@@ -5,7 +5,10 @@
 import { FLAG_COND, TELEPORT, flagHolds } from '../engine/world/distortion'
 import { addNpcFrom, npcActors, removeNpc } from '../engine/actor/npcs'
 import type { VarStore } from '../engine/script/vars'
-import { distortionData, distortionHooks, distortionFloor, state, toLocalTiles } from './distortionCore'
+import {
+  distortionData, distortionHooks, distortionFloor, setState, state, toLocalTiles, toWorldTiles,
+} from './distortionCore'
+import type { DistortionBoulderSpot } from '../engine/world/distortion'
 
 /** 밟으면 스크립트가 서는 두 자리 (`DistWorld_HandlePlayerMovementEnd`) */
 export function applyTeleport(wx: number, wy: number, wz: number, dir: number): void {
@@ -71,12 +74,14 @@ export function distortionAddObject(localID: number, vars: VarStore): void {
       stoodAside.set(localID, twins)
     }
   }
-  addObjectRow(row, vars)
+  addObjectRow(row, vars, floor.map)
 }
 
-function addObjectRow(row: Record<string, unknown>, vars: VarStore): void {
+function addObjectRow(row: Record<string, unknown>, vars: VarStore, map?: number): void {
   const worldY = Math.round((row.y as number) / FX32_PER_TILE)
-  const [lx, ly, lz] = toLocalTiles(row.x as number, worldY, row.z as number)
+  // 배치표 자리를 떠난 바위면 그 자리에 세운다 (`DistortionState.boulders`)
+  const moved = map === undefined ? undefined : boulderSpot(map, row.localID as number)
+  const [lx, ly, lz] = toLocalTiles(moved?.x ?? (row.x as number), worldY, moved?.z ?? (row.z as number))
   const hidden = row.hiddenFlag as number
   addNpcFrom({
     x: lx, z: lz, height: ly,
@@ -128,8 +133,41 @@ export function spawnFloorObjects(mapId: number): void {
     if (!flagHolds(row.flagCond as number, row.flagCondVal as number, ctx)) continue
     const hidden = row.hiddenFlag as number
     if (hidden !== 0 && vars.checkFlag(hidden)) continue
-    addObjectRow(row, vars)
+    addObjectRow(row, vars, mapId)
   }
+}
+
+// ── 배치표 자리를 떠난 바위 (`DistortionState.boulders`) ───────────────────────
+
+/** 그 층 그 번호의 바위가 선 자리 (세계 칸). 배치표 자리 그대로면 undefined */
+export function boulderSpot(map: number, localID: number): DistortionBoulderSpot | undefined {
+  return (state().boulders ?? []).find((b) => b.map === map && b.localID === localID)
+}
+
+/** 그 바위가 그 자리(세계 칸)에 섰다. 떠났으면 `x`가 null이다 */
+export function setBoulderSpot(map: number, localID: number, x: number | null, z = 0): void {
+  const rest = (state().boulders ?? []).filter((b) => b.map !== map || b.localID !== localID)
+  setState({ boulders: x === null ? rest : [...rest, { map, localID, x, z }] })
+}
+
+/**
+ * 층을 갈았다 — 지금 층과 다음 층 것만 남긴다.
+ *
+ * 원작은 이 두 층의 맵 물체만 들고 있다. 내려가면 떠난 층의 물체를 지우고(`PrepareUnloadingActiveFloor`),
+ * 올라가면 두 층 아래 물체를 지운다(`PrepareUnloadingInactiveFloor`) — 지워진 층은 다음에 배치표에서 다시 선다
+ */
+export function keepBoulderSpots(maps: readonly number[]): void {
+  const all = state().boulders ?? []
+  const kept = all.filter((b) => maps.includes(b.map))
+  if (kept.length !== all.length) setState({ boulders: kept })
+}
+
+/** 괴력으로 민 바위의 자리를 적는다 (`distortionBridge.boulderMoved`) */
+export function distortionBoulderMoved(boulder: { localID: number; x: number; z: number }): void {
+  const floor = distortionFloor()
+  if (floor === null) return
+  const [wx, , wz] = toWorldTiles(Math.round(boulder.x), 0, Math.round(boulder.z))
+  setBoulderSpot(floor.map, boulder.localID, wx, wz)
 }
 
 export function distortionRemoveObject(localID: number): void {
@@ -156,6 +194,6 @@ export function distortionRemoveObject(localID: number): void {
     if (!flagHolds(row.flagCond as number, row.flagCondVal as number, ctx)) continue
     const hidden = row.hiddenFlag as number
     if (hidden !== 0 && vars.checkFlag(hidden)) continue
-    addObjectRow(row, vars)
+    addObjectRow(row, vars, floor.map)
   }
 }

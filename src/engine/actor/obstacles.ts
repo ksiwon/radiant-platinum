@@ -55,6 +55,8 @@ export function pushBoulder(
   if (obstacleAt(tx, tz) !== null) return false
   boulder.x = tx
   boulder.z = tz
+  // 깨어진 세계의 바위는 밀린 자리가 세이브에 남는다 (원작은 맵 물체째 담는다)
+  distortionBridge.boulderMoved?.(boulder)
   return true
 }
 
@@ -190,6 +192,31 @@ export function solidNpcAt(cx: number, cz: number, y: number): NpcActor | null {
       const ground = grid.heightAtWorld(actor.x + 0.5, actor.z + 0.5, y)
       if (ground !== null && Math.abs(ground - y) >= FLOOR_GAP) continue
     }
+    return actor
+  }
+  return null
+}
+
+/**
+ * 깨어진 세계 **판 위**에서 그 자리를 막고 선 사람·물체 (`PlayerAvatar_CheckDistortionMapObjectCollision`
+ * → `sub_02063F00(mapObj, x, y·2, z)`).
+ *
+ * 판 위에서는 원작이 판의 통행 자료를 본 **다음에** 맵 물체를 한 번 더 본다(`player_move.c:2211-2240`) —
+ * x·z가 같고 **그 물체의 높이**가 걸음이 닿는 칸 높이와 한 칸 안이어야 막힌다(`|objY − y·2| < 2`, 반 칸
+ * 단위). 격자 높이로 가르는 `solidNpcAt`으로는 벽 위의 사람이 안 걸린다 — B2F 서쪽 벽의 시로나
+ * (30,233,20)는 발밑 격자와 아홉 칸 떨어져 있어 통과됐다. 원작의 y는 반 칸 단위라 우리 칸 높이의 두 배로
+ * 견준다. 이미 겹쳐 선 사람을 안 막는 것은 `solidNpcAt`과 같은 까닭이다
+ *
+ * @param y 걸음이 닿는 칸의 높이 (맵 안 칸 단위)
+ */
+export function solidNpcAtHeight(cx: number, cz: number, y: number): NpcActor | null {
+  const p = worldState.player.position
+  for (const actor of npcActors.list) {
+    if (!actor.visible) continue
+    if (!covers(actor, cx, cz, 0)) continue
+    if (covers(actor, p.x, p.z, PLAYER_REACH)
+      && Math.abs(Math.round(actor.y * 2) - Math.round(p.y * 2)) < 2) continue
+    if (Math.abs(Math.round(actor.y * 2) - Math.round(y) * 2) >= 2) continue
     return actor
   }
   return null

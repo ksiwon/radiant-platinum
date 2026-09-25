@@ -27,10 +27,13 @@ import {
   initFieldScripts,
   initNewGame,
   loadVars,
+  scriptBusy,
   start,
 } from '../engine/script/field'
 import {
+  FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1,
   FLAG_DISTORTION_WORLD_PUZZLE_FINISHED,
+  FLAG_DISTORTION_WORLD_STEPPING_STONES,
   VAR_DISTORTION_CYRUS,
   VAR_DISTORTION_WORLD_PROGRESS,
 } from '../engine/script/vars'
@@ -60,7 +63,7 @@ import {
   distortionBoulderFalling,
   distortionBoulderTick,
   distortionEnter,
-  distortionForgetEvents,
+  distortionPropTick,
   distortionGhostRunning,
   groundYAt,
   distortionGhostTick,
@@ -409,7 +412,6 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // 깨어진 세계는 맵 격자가 아니라 「떠 있는 판」이 통행을 정한다 (PARITY §6.10).
       // 자료가 따로라 처음 들어설 때 한 번 받는다 — 받는 동안은 판이 없어서
       // 평범한 격자로 걷는다
-      distortionForgetEvents()
       if (isDistortionFloor(mapId)) {
         // ⚠️ **위에서 세운 높이를 그대로 쓴다.** 여기서 격자에 다시 물으면 0이
         // 오는데(그 세계는 격자에 높이가 없다) 판을 고르는 `findPlatform`이
@@ -599,10 +601,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     }
     // 깨어진 세계의 사건이 스크립트를 부르고 진행도를 세운다 (PARITY §6.10).
     // 그쪽은 세이브도 스크립트 VM도 못 보므로 여기서 꽂는다
+    // 스크립트를 걸었는지 알려 준다 — 사건은 그 스크립트가 **끝나야** 다음 명령으로 간다
+    // (`ScriptManager_Start(task, …)`가 사건 태스크의 하위로 건다)
     distortionHooks.runScript = (scriptID) => {
       const scripts = mapById(world.mapId)?.scripts
-      if (scripts !== undefined) start(scriptID, scripts)
+      return scripts !== undefined && start(scriptID, scripts)
     }
+    distortionHooks.scriptRunning = () => scriptBusy()
     distortionHooks.progress = () => fieldScripts.vars.get(VAR_DISTORTION_WORLD_PROGRESS)
     distortionHooks.setProgress = (value) => {
       fieldScripts.vars.set(VAR_DISTORTION_WORLD_PROGRESS, value)
@@ -611,6 +616,14 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionHooks.setCyrusAppearance = (value) => {
       fieldScripts.vars.set(VAR_DISTORTION_CYRUS, value)
     }
+    // B4F 그림자 둘의 표식 (`SystemFlag_HandleGiratinaAnimation`) — 사건 조건이 읽고 명령 8이 세운다
+    distortionHooks.giratinaAnim = (n) =>
+      fieldScripts.vars.checkFlag(FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1 + n)
+    distortionHooks.setGiratinaAnim = (n) => {
+      fieldScripts.vars.setFlag(FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1 + n)
+    }
+    distortionHooks.steppingStones = () =>
+      fieldScripts.vars.checkFlag(FLAG_DISTORTION_WORLD_STEPPING_STONES)
     distortionHooks.puzzleFinished = () =>
       fieldScripts.vars.checkFlag(FLAG_DISTORTION_WORLD_PUZZLE_FINISHED)
     distortionHooks.setPuzzleFinished = () => {
@@ -871,6 +884,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionJumpTick(dt)
     distortionBoulderTick(dt)
     distortionGhostTick(dt)
+    // B6F의 B7F행 발판이 깃발을 보고 나타난다
+    distortionPropTick(dt)
     // 지나가는 기라티나 그림자 넷 (`DistWorldGiratinaShadowProp`)
     distortionShadowTick(dt)
     // 밟으면 통째로 미끄러지는 발판 (`EVENT_CMD_MOVE_PLATFORM`) — B2F의 길이다

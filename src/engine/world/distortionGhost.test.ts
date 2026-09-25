@@ -108,5 +108,6 @@ describe('기라티나 방 발판', () => {
     expect([...dark].sort((a, b) => a - b)).toEqual([1, 2, 3])
     expect(typeof mod.distortionGhostTick).toBe('function')
     expect(mod.distortionGhostRunning()).toBe(false)
-  })
+    // 씬 모듈을 처음 싣는 시험이라 무거운 판에서는 5초를 넘긴다 — 재는 것은 순서다
+  }, 30_000)
 })

@@ -54,7 +54,6 @@ describe.runIf(real)('밟으면 바닥이 통째로 미끄러진다', () => {
 
   beforeEach(async () => {
     await mod.distortionPreload()
-    mod.distortionForgetEvents()
     useSaveStore.setState({
       distortion: {
         valid: false, hiddenGroups: 0, platformIndex: 0,
@@ -63,7 +62,7 @@ describe.runIf(real)('밟으면 바닥이 통째로 미끄러진다', () => {
       },
     })
     mod.distortionHooks.progress = () => 0
-    mod.distortionHooks.runScript = () => { /* 시험에서는 스크립트를 안 돌린다 */ }
+    mod.distortionHooks.runScript = () => false
     mod.distortionHooks.puzzleFinished = () => false
     mod.distortionHooks.vars = () => null as never
     world.pending = null
