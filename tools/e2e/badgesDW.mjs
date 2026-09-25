@@ -334,18 +334,48 @@ export async function coronetToSpear(api, ctx,
   if ((v.spear ?? 0) >= 1 && (v.spear ?? 0) < 3) {
     const mars = await api.stepOn(MAP.spearPillar, SPEAR_MARS, Math.min(300_000, api.left()))
     await api.clearTalk(); await api.settle()
+    /**
+     * ⚠️ **컷신 끝의 `Warp`는 맵을 갈아 끼우는 데 몇 초가 걸린다** — 스크립트가 끝난 직후에 맵을 읽으면 아직 220이다.
+     * 실측(탐침 p7): 여기서 곧장 읽어 「깨진 창기둥이 아니다」로 난천 장면을 건너뛰고 다리를 잃었다. 그 뒤에 쓴
+     * 리포트는 221에 서 있었다
+     */
+    await untilMap(api, (m) => m !== MAP.spearPillar, 60_000)
     v = await vars()
     note('마스·쥬피터 (31,32) → 컷신', `${mars} · 창기둥 상태 ${String(v.spear)} · 지금 맵 ${String((await api.now()).map)}`)
   }
   // 깨진 창기둥 — 난천 「준비됐니?」 예 → 깨어진 세계 1F
   if ((await api.now()).map === MAP.spearDistorted) {
-    await api.clearTalk(); await api.settle()
+    // 난천 「준비됐니?」에 예 — 프레임 스크립트가 서기까지, 끝의 워프가 1F를 세우기까지 기다린다
+    for (let i = 0; i < 6 && (await api.now()).map === MAP.spearDistorted; i++) {
+      await api.clearTalk(); await api.settle()
+      if (await untilMap(api, (m) => m !== MAP.spearDistorted, 15_000)) break
+      /**
+       * ⚠️ **장면이 이미 한 번 돌았으면 난천에게 말을 건다** — 프레임 표는 `VAR_SPEAR_PILLAR_DISTORTED_STATE`==1일 때만
+       * 돌고 곧 2로 바꾼다. 「아니오」로 끝났거나 장면 도중에 쓴 리포트를 이어하면 2라서, 원작도 난천(script 2
+       * `SpearPillarDistorted_Cynthia`)에게 말을 걸어 같은 물음을 다시 듣는다(`scripts_spear_pillar_distorted.s:120-135`)
+       */
+      const vv = await vars()
+      if ((vv.spearDistorted ?? 0) >= 2) {
+        const said = await api.talkToNpc(MAP.spearDistorted, 2, Math.min(120_000, api.left()))
+        note('깨진 창기둥 난천에게 말 건다', String(said))
+      }
+    }
   }
   const at = await api.now()
   out.map = at.map
   out.ok = at.map === MAP.dw1F
   note('깨어진 세계 1F', `지금 맵 ${String(at.map)} · 창기둥 상태 ${String(v.spear)}`)
   return done()
+}
+
+/** 맵이 `ok`를 만족할 때까지 기다린다 — 스크립트 워프가 격자를 받는 동안 */
+async function untilMap(api, ok, ms) {
+  const till = Date.now() + ms
+  while (Date.now() < till) {
+    if (ok((await api.now()).map)) return true
+    await new Promise((r) => { setTimeout(r, 500) })
+  }
+  return false
 }
 
 // ── ④ 깨어진 세계 (지시서 §3.4 · `tools/e2e/DISTORTION_HARNESS.md`) ──────────────
