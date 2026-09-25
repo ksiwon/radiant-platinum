@@ -5,22 +5,23 @@
 // 것뿐이고, 그 이유가 화면에 뜬다.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { afterEach, describe, it, expect, beforeEach } from 'vitest'
 import { parseScriptMeta, resolveScript } from './data'
 import { withData } from '../../data/romData.testkit'
 import {
   clearOverworldWeather, OVERWORLD_WEATHER, overworldWeather,
 } from '../world/overworldWeather'
-import { fieldMoveFromMenu, fieldScripts, makeWorld } from './field'
-import { buildCommands } from './commands'
+import { fieldMoveFromMenu, fieldScripts, flyVerdictNow, makeWorld } from './field'
+import { buildCommands, SYSTEM_FLAG } from './commands'
 import { VarStore } from './vars'
 import { BADGE, FIELD_MOVES } from './fieldMoves'
-import { world as mapWorld } from '../map/world'
+import { world as mapWorld, type MapHeader } from '../map/world'
 import { worldState } from '../../state/worldState'
 import { npcActors } from '../actor/npcs'
 import type { MapGrid } from '../map/grid'
 import type { NpcActor } from '../actor/npcs'
 import { stubFieldMoves } from './services.testkit'
+import type { FieldServices } from './world'
 
 const DATA = resolve(__dirname, '../../../public/data')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
@@ -31,6 +32,25 @@ function fakeGrid(behavior: number) {
     behavior: () => behavior,
     isBlocked: () => false,
   } as unknown as MapGrid
+}
+
+/** 사파리 서비스의 빈 판. 공중날기는 `active`만 본다 */
+const stubSafari: NonNullable<FieldServices['safari']> = {
+  setActive: () => { /* 안 본다 */ },
+  caught: () => 0,
+  initTram: () => { /* 안 본다 */ },
+  moveTram: () => { /* 안 본다 */ },
+  tramSettled: () => true,
+  tramAt: () => false,
+}
+
+/** 서 있는 맵의 헤더를 세운다. 공중날기만 헤더를 본다 */
+function standOn(header: { id?: number, fly: number }) {
+  const id = header.id ?? 411
+  const maps: MapHeader[] = []
+  maps[id] = { id, fly: header.fly } as unknown as MapHeader
+  mapWorld.maps = maps
+  mapWorld.mapId = id
 }
 
 /** 뱃지와 파티를 세운다 */
@@ -58,6 +78,14 @@ beforeEach(() => {
 })
 
 describe('기술 창에서 쓴다', () => {
+  // `standOn`이 세운 헤더가 뒤의 시험으로 새지 않게 되돌린다
+  const before = { maps: mapWorld.maps, mapId: mapWorld.mapId }
+  afterEach(() => {
+    mapWorld.maps = before.maps
+    mapWorld.mapId = before.mapId
+    fieldScripts.vars.clearFlag(SYSTEM_FLAG.hasPartner)
+  })
+
   it('비전머신이 아닌 기술은 아무것도 아니다', () => {
     trainer(0xff, [1])
     // 1번은 막치기다. 밖에서 쓸 것이 아니므로 null이 나와야 한다
@@ -109,11 +137,49 @@ describe('기술 창에서 쓴다', () => {
   })
 
   it('공중날기는 여기서 안 끝난다 — 어디로 갈지는 화면이 고른다', () => {
+    standOn({ fly: 1 })
     trainer(1 << BADGE.cobble, [FLY])
     expect(fieldMoveFromMenu(FLY)).toBe('fly')
     // 뱃지가 없으면 목적지를 물어보기 전에 걸린다
     trainer(0, [FLY])
     expect(fieldMoveFromMenu(FLY)).toBe('badge')
+  })
+
+  /**
+   * ⚠️ **맵 헤더가 막으면 못 난다** (`FieldMoves_CheckFly` · REPAIR §91). 깨어진 세계
+   * 열한 층이 전부 `isFlyAllowed = FALSE`다 — 안 막으면 이야기 한복판에서 날아 나간다
+   */
+  it('맵 헤더가 막으면 「여기서는 쓸 수 없습니다」다 — 깨어진 세계 1F', () => {
+    standOn({ id: 573, fly: 0 })
+    trainer(1 << BADGE.cobble, [FLY])
+    expect(fieldMoveFromMenu(FLY)).toBe('notHere')
+    expect(flyVerdictNow()).toBe('notHere')
+    // 뱃지가 먼저다 — 원작도 뱃지 → 헤더 차례로 본다
+    trainer(0, [FLY])
+    expect(fieldMoveFromMenu(FLY)).toBe('badge')
+  })
+
+  it('동행이 있으면 「함께 걷고 있을 때는」, 사파리 안이면 「여기서는」이다', () => {
+    standOn({ fly: 1 })
+    trainer(1 << BADGE.cobble, [FLY])
+    fieldScripts.vars.setFlag(SYSTEM_FLAG.hasPartner)
+    expect(fieldMoveFromMenu(FLY)).toBe('partner')
+    fieldScripts.vars.clearFlag(SYSTEM_FLAG.hasPartner)
+    fieldScripts.services = {
+      ...fieldScripts.services,
+      safari: { ...stubSafari, active: () => true },
+    }
+    expect(fieldMoveFromMenu(FLY)).toBe('notHere')
+  })
+
+  it('⚠️ 롬 헤더 표에서 깨어진 세계 열한 층이 전부 막혀 있다', () => {
+    const maps = (read('maps.json') as { maps: { id: number, fly: number }[] }).maps
+    for (let id = 573; id <= 583; id++) {
+      const header = maps.find((m) => m.id === id)
+      if (header) expect(header.fly, `맵 ${String(id)}`).toBe(0)
+    }
+    // 바깥은 열려 있다 — 떡잎마을
+    expect(maps.find((m) => m.id === 411)?.fly).toBe(1)
   })
 
   it('이미 타고 있으면 파도타기가 다시 안 나간다', () => {

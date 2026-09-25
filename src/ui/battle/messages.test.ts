@@ -574,6 +574,21 @@ withBank('첫 등판 한 창 (`leadLines`)', () => {
     expect(got.get(events[4]!)).toBeNull()
   })
 
+  it('⚠️ 분류와 이름이 같은 조무래기 둘도 991이다 — 주인이 다르면 트레이너 둘이다', () => {
+    const grunts: TextContext = { ...multi, trainerOf: () => ({ cls: '갤럭시단', name: '조무래기' }) }
+    const events: BattleEvent[] = [
+      { kind: 'start' },
+      enter('p2a', 'p2-0'), enter('p2b', 'p4-0'), enter('p1a', 'p1-0'), enter('p1b', 'p1-1'),
+    ]
+    const got = leadLines(events, grunts, { trainer: true, partner: null })
+    const tag = leadLines(events, multi, { trainer: true, partner: null }).get(events[1]!)!
+    const line = got.get(events[1]!)!
+    // 991은 이름 칸이 둘이다 — 「조무래기」가 두 번 나온다. 973은 한 번이다
+    expect(line.split('조무래기').length - 1).toBe(2)
+    // 같은 틀(991)이다 — 이름만 바뀐다
+    expect(line.replaceAll('조무래기', 'X')).toBe(tag.replace('마스', 'X').replace('쥬피터', 'X'))
+  })
+
   it('한 사람의 더블은 「{둘}을 내보냈다」 한 줄, 내 둘은 「가랏! {하나}! {둘}!」이다', () => {
     const one: TextContext = { ...multi, trainerOf: () => ({ cls: '쌍둥이', name: '이향&미향' }) }
     const events: BattleEvent[] = [

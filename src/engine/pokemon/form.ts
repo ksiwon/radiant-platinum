@@ -212,6 +212,32 @@ export function giratinaForm(heldItem: number): number {
   return heldItem === ITEM_GRISEOUS_ORB ? GIRATINA_ORIGIN : GIRATINA_ALTERED
 }
 
+/** `MAP_HEADER_DISTORTION_WORLD_1F` · `_TURNBACK_CAVE_ROOM` (`generated/map_headers.txt`) */
+const MAP_HEADER_DISTORTION_WORLD_1F = 573
+const MAP_HEADER_DISTORTION_WORLD_TURNBACK_CAVE_ROOM = 583
+
+/**
+ * 파티 화면에서 물건을 주고받아도 **기라티나의 모습을 안 바꾸는 맵**인가.
+ *
+ * 원작이 파티 화면의 두 갈래 — 가방에서 쥐여 주기(`UpdatePokemonWithItem` · `party_menu/main.c`
+ * 2811)와 빼앗기(`PartyMenuCB_TakeItem` · `party_menu/context_menu.c` 231) — 에서 맵 번호를 본다:
+ *
+ *     if (fieldSystem == NULL
+ *         || mapHeaderID < MAP_HEADER_DISTORTION_WORLD_1F
+ *         || mapHeaderID > MAP_HEADER_DISTORTION_WORLD_TURNBACK_CAVE_ROOM) {
+ *         Pokemon_SetGiratinaFormByHeldItem(mon);
+ *     }
+ *
+ * 깨어진 세계 안에서는 백금옥을 빼도 오리진이 그대로다 — 모습은 세계를 나가는 스크립트의
+ * `SetPartyGiratinaForm`이 정한다 (REPAIR §94).
+ *
+ * ⚠️ **맞바꾸기와 편지 떼기는 이 검사가 없다** (`SwapPokemonItem` · `PartyMenuCB_TakeMail_Remove`).
+ * 이미 물건을 든 마리에게 백금옥을 쥐여 주면 깨어진 세계 안에서도 모습이 바뀐다 — 원작 그대로 둔다
+ */
+export function heldItemKeepsGiratinaForm(mapId: number): boolean {
+  return mapId >= MAP_HEADER_DISTORTION_WORLD_1F && mapId <= MAP_HEADER_DISTORTION_WORLD_TURNBACK_CAVE_ROOM
+}
+
 export const SHAYMIN_LAND = 0
 export const SHAYMIN_SKY = 1
 

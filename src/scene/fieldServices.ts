@@ -24,7 +24,8 @@ import {
 import { canFit, quantity } from '../engine/bag/bag'
 import { commonStock, specialtyStock } from '../engine/bag/mart'
 import {
-  fieldActionDone, fieldScripts, resetStepFeatureTile, showFieldAction, useFieldMoveNow,
+  fieldActionDone, fieldScripts, reloadFieldMap, resetStepFeatureTile, showFieldAction,
+  useFieldMoveNow,
 } from '../engine/script/field'
 import { hmCutInDone, startHmCutInFor } from './hmCutInScene'
 import {
@@ -59,12 +60,17 @@ import { fieldBgm } from '../engine/audio/songs'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
 import {
-  mapById, setWarpDestination, setWarpEventPos, world as mapWorld,
+  mapById, romOrigin, setWarpDestination, setWarpEventPos, world as mapWorld,
 } from '../engine/map/world'
 import { LocationEvent } from '../engine/world/journal'
 import { journalGiven, journalGotItem, journalPlain, journalUsedMove } from './journal'
 import { poketchEnable, poketchEnabled, poketchHasApp, poketchRegister, poketchShow } from './poketch'
 import { relearnableMoves } from '../engine/pokemon/relearn'
+import {
+  BATTLE_RESULT_LOSE, BATTLE_RESULT_OF, playerWonBattle, type BattleOutcome,
+} from '../engine/script/battleResult'
+import { isDistortionFloor, romTileToLocal } from './distortionCore'
+import { spawnFloorObjects } from './distortionObjects'
 import {
   distortionAddObject, distortionPlayerPos, distortionRemoveObject, distortionResetCamera,
   finishDistortionShadow, resetDistortionPersisted, startDistortionShadow,
@@ -177,6 +183,7 @@ import { blackOut, healParty, loadHealTables, watchBlackOut, watchPartnerHeal } 
 import { useDoorVisualStore } from './doorVisualStore'
 import { loadPropAnimSet } from './propAnim'
 import { useBattleStore } from '../state/battleStore'
+import { Terrain } from '../engine/battle/terrain'
 import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
 import { mailboxCount } from '../engine/world/mail'
@@ -566,16 +573,6 @@ function makeEggMon(
   }
 }
 
-/**
- * 배틀이 어떻게 끝났는가 → 원작의 `BATTLE_RESULT_*` (`constants/battle.h`).
- *
- * 이겼다 1 · 졌다 2 · 잡았다 4. 나머지 셋은 그 셋을 겹친 값이다 —
- * 비긴 판 3(승|패) · 내가 달아난 판 5(포획|승) · 상대가 달아난 판 6(포획|패)
- */
-const BATTLE_RESULT_OF: Record<string, number> = {
-  win: 1, loss: 2, caught: 4, fled: 5, foeFled: 6,
-}
-
 /** `constants/string.h`의 `MON_NAME_LEN`. 우리가 정한 상한이 아니다 */
 const MON_NAME_LEN = 10
 
@@ -588,12 +585,51 @@ function watchBattle(): () => void {
   return useBattleStore.subscribe((state, prev) => {
     if (!waiting) return
     if (state.outcome !== null && prev.outcome === null) {
-      battleResult = state.outcome === 'win' ? 'win' : 'loss'
-      battleMask = BATTLE_RESULT_OF[state.outcome]
+      // 원작의 결과 마스크 (`constants/battle.h`) — 이겼나는 이 마스크로 가른다
+      // (`script/battleResult`). 잡은 판·달아난 판도 「지지 않았다」다
+      battleMask = BATTLE_RESULT_OF[state.outcome as BattleOutcome] ?? BATTLE_RESULT_LOSE
+      battleResult = playerWonBattle(battleMask) ? 'win' : 'loss'
     }
     // 화면이 닫혀야 스크립트를 놓아준다. 결과만 나오고 화면이 떠 있으면
     // 대사창이 배틀 위에 겹친다
     if (state.phase === 'off' && prev.phase !== 'off') waiting = false
+  })
+}
+
+/**
+ * 배틀 화면이 닫히면 **필드를 다시 세운다** (`FieldTransition_StartMap`, REPAIR §88).
+ *
+ * 원작은 배틀이 끝나 필드로 돌아올 때 맵을 다시 올리고, 그때 그 맵의 `OnLoad`가
+ * 돈다 (`script/field`의 `reloadFieldMap` 머리말). 스크립트가 연 배틀이든 풀숲의
+ * 야생이든 같다 — 둘 다 `FieldTransition_StartMap`을 지난다
+ * (`encounter.c`의 `FieldTask_Encounter` 204줄 · `FieldTask_WildEncounter` 416줄).
+ *
+ * ⚠️ **진 판(비긴 판)은 필드를 다시 안 세운다.** 두 태스크 다
+ * `CheckPlayerWonBattle`이 거짓이면 그 줄에 안 닿는다 — 스크립트 배틀은 스크립트로
+ * 돌아가 `BlackOutFromBattle`을, 야생은 곧바로 전멸 태스크를 건다.
+ *
+ * ⚠️ **스크립트가 다시 돌기 전이다.** 기다리던 스크립트는 다음 틱에야 풀리므로
+ * (`battleResult`가 이 같은 알림에서 풀린다) `OnLoad`가 먼저 돌고 스크립트가 그
+ * 결과를 본다 — 원작도 필드를 세운 뒤에 스크립트가 이어진다.
+ *
+ * 깨어진 세계는 필드를 세울 때 그 층의 사람도 다시 센다 (`ov9_02249960.c` 1678줄의
+ * `AddMapObjectsForCurrentAndNextMap`, `OnLoad` 다음). 기라티나 방이 그 자리다 —
+ * `OnLoad`가 진행도를 14로 올리면 그 조건의 차원문(#131)과 시로나 말(#132)이 선다
+ */
+function watchFieldReload(): () => void {
+  let finish: BattleOutcome | null = null
+  return useBattleStore.subscribe((state, prev) => {
+    if (state.outcome !== null && state.outcome !== prev.outcome) {
+      finish = state.outcome as BattleOutcome
+    }
+    if (state.phase !== 'off' || prev.phase === 'off') return
+    const had = finish
+    finish = null
+    // 배틀이 아예 못 열렸으면(결과 없음) 필드는 내려간 적이 없다
+    if (had === null) return
+    if (!playerWonBattle(BATTLE_RESULT_OF[had] ?? BATTLE_RESULT_LOSE)) return
+    reloadFieldMap()
+    if (isDistortionFloor(mapWorld.mapId)) spawnFloorObjects(mapWorld.mapId, true)
   })
 }
 
@@ -685,10 +721,19 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   const stop = watchBattle()
   const stopBlackOut = watchBlackOut()
   const stopPartnerHeal = watchPartnerHeal()
+  const stopReload = watchFieldReload()
+  // 깨어진 세계의 롬 칸 원점 = 그 층의 오프셋 (REPAIR §90). 사건표와 스크립트의
+  // 좌표가 이것으로 우리 칸이 된다 (`map/world`의 `romOrigin`)
+  romOrigin.of = (mapId) => {
+    const zero = romTileToLocal(mapId, 0, 0)
+    return zero === null ? null : { x: -zero.x, z: -zero.z }
+  }
   return () => {
+    romOrigin.of = null
     stop()
     stopBlackOut()
     stopPartnerHeal()
+    stopReload()
     fieldScripts.services = {}
   }
 }
@@ -759,8 +804,14 @@ const services: FieldServices = {
     return trainerMessages[index] ?? ''
   },
 
+  /**
+   * 싸울 수 있는 마리 수 (`Party_GetUsableMonCount` → `Pokemon_CanBattle` ·
+   * `unk_02054884.c` 22). ⚠️ **알은 안 센다** — 알은 체력이 가득 찬 채로 만들어져서
+   * 체력만 보면 한 마리 + 알이 「두 마리」가 되어 더블 트레이너·VS2 시선·창기둥의
+   * 「두 마리 필요하다」가 틀린 쪽으로 열린다
+   */
   aliveMons(): number {
-    return useSaveStore.getState().party.filter((mon) => mon.hp > 0).length
+    return useSaveStore.getState().party.filter((mon) => !mon.isEgg && mon.hp > 0).length
   },
 
   /**
@@ -811,6 +862,13 @@ const services: FieldServices = {
           ? (origin ? GIRATINA_ORIGIN : giratinaFormOf(mon.heldItem))
           : null
       ))
+      // ⚠️ **도감에도 적는다** (`ScrCmd_SetPartyGiratinaForm`의 뒤 반 · REPAIR §94) — 알이 아닌
+      // 기라티나마다 `Pokedex_Capture`를 부른다. 깨어진 세계를 나가며 어나더폼을 처음 본 것도
+      // 잡은 것으로 남는다. 우리 도감은 종 단위라 폼 차례(`UpdateForm`)는 적을 칸이 없다
+      const save = useSaveStore.getState()
+      if (save.party.some((mon) => mon.species === SPECIES_GIRATINA && !mon.isEgg)) {
+        save.markCaught(SPECIES_GIRATINA)
+      }
     },
     revertForms,
     rotomForms,
@@ -1667,7 +1725,10 @@ const services: FieldServices = {
     battleMask = null
     waiting = true
     void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
-      void useBattleStore.getState().startWild({ species, level, form: GIRATINA_ORIGIN })
+      // 땅도 기라티나 것이다 (`dto->terrain = TERRAIN_GIRATINA` · REPAIR §95)
+      void useBattleStore.getState().startWild({
+        species, level, form: GIRATINA_ORIGIN, terrain: Terrain.GIRATINA,
+      })
         .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
     })
   },

@@ -15,8 +15,11 @@ import {
 import {
   addNpc, npcActors, removeNpc, setNpcPlacement, switchMovementType,
 } from '../actor/npcs'
-import { mapById, world as mapWorld } from '../map/world'
+import { localToRom, mapById, romToLocal, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
+import {
+  BATTLE_RESULT_LOSE, BATTLE_RESULT_WIN, playerDidNotCapture, playerLostBattle, playerWonBattle,
+} from './battleResult'
 import { DIR, parseMovements } from './movement'
 import { APPROACH_TYPE, approachMovements, dirBetween } from '../actor/approach'
 import {
@@ -1139,9 +1142,9 @@ on('RemoveObject', (ctx) => {
 /** 배치표를 고친다. 지금 서 있는 사람이 아니라 **다음에 세울 사람**에게 먹는다 */
 on('SetObjectEventPos', (ctx) => {
   const localID = ctx.readVar()
-  const x = ctx.readVar()
-  const z = ctx.readVar()
-  setNpcPlacement(localID, { x, z })
+  // 롬 칸이다 — 깨어진 세계에서는 층 오프셋을 뺀다 (`map/world`의 `romOrigin`)
+  const at = romToLocal(mapWorld.mapId, ctx.readVar(), ctx.readVar())
+  setNpcPlacement(localID, { x: at.x, z: at.z })
   return false
 })
 
@@ -1165,7 +1168,9 @@ on('SetPosition', (ctx) => {
   const z = ctx.readVar()
   const dir = ctx.readVar()
   const target = ctx.host.world.objects(localID)
-  if (target) { target.x = x; target.z = z; target.dir = dir }
+  // 롬 칸이다 — 깨어진 세계에서는 층 오프셋을 뺀다 (`map/world`의 `romOrigin`)
+  const at = romToLocal(mapWorld.mapId, x, z)
+  if (target) { target.x = at.x; target.z = at.z; target.dir = dir }
   return false
 })
 
@@ -1526,9 +1531,14 @@ on('GetPlayerMapPos', (ctx) => {
    * 갈린 자리가 **정확히 z 522.5**였다. 그 스크립트는 이 값으로 갈래를 타고
    * **어디에도 안 맞으면 조용히 `End`** 한다 — 밖에서는 「밟았는데 아무 일도 안
    * 난다」로 보인다. 같은 꼴이 롬 스크립트 **63개 파일 144자리**에 있다
+   *
+   * ⚠️ **깨어진 세계에서는 세계 칸이다** (REPAIR §90). 원작은 그 세계 층들을 한
+   * 좌표계에 둔다 — B7F 태홍 뒤 장면이 이 값을 86·74와 견주므로(`_b7f.s` 62–107)
+   * 층 칸(오프셋을 뺀 값)을 주면 한 번도 안 맞아 주인공이 벽 쪽으로 걸어 들어간다
    */
-  ctx.host.vars.set(destX, Math.round(player?.x ?? 0))
-  ctx.host.vars.set(destZ, Math.round(player?.z ?? 0))
+  const at = localToRom(mapWorld.mapId, Math.round(player?.x ?? 0), Math.round(player?.z ?? 0))
+  ctx.host.vars.set(destX, at.x)
+  ctx.host.vars.set(destZ, at.z)
   return false
 })
 
@@ -2300,7 +2310,7 @@ on('GetSetNationalDexEnabled', (ctx) => {
 
 /** `include/constants/scripts.h` */
 export const SCRIPT_ID_OFFSET_SINGLE_BATTLES = 3000
-const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
+export const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
 /** `generated/vars_flags.txt` — 이 뒤로 트레이너 번호만큼 떨어진 자리가 그 사람 플래그다 */
 export const TRAINER_DEFEATED_FLAGS_START = 1360
 
@@ -2780,13 +2790,31 @@ on('StopHoneyTreeShaking', (ctx) => {
   return false
 })
 
+/**
+ * 방금 끝난 배틀의 결과 마스크 (`SCRIPT_MANAGER_BATTLE_RESULT`).
+ *
+ * 마스크를 안 주는 일감(시험의 가짜 판)은 이겼나 졌나 둘만 안다 — 그때는 그
+ * 둘을 마스크로 옮긴다. 결과가 아예 없으면 진 것으로 읽는다(예전과 같다)
+ */
+function battleMaskNow(ctx: ScriptContext): number {
+  const mask = ctx.host.world.services.battleMask?.()
+  if (mask !== undefined && mask !== null) return mask
+  return ctx.host.world.services.battleResult?.() === 'win' ? BATTLE_RESULT_WIN : BATTLE_RESULT_LOSE
+}
+
+/**
+ * 이겼는가 (`ScrCmd_CheckWonBattle` → `CheckPlayerWonBattle`).
+ *
+ * ⚠️ **「지지 않았는가」다** — 잡은 판·달아난 판도 참이다 (`script/battleResult` 머리말)
+ */
 on('CheckWonBattle', (ctx) => {
-  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleResult?.() === 'win' ? 1 : 0)
+  ctx.host.vars.set(ctx.readHalfWord(), playerWonBattle(battleMaskNow(ctx)) ? 1 : 0)
   return true
 })
 
+/** 졌는가 (`CheckPlayerLostBattle`). 이긴 판과 잡은 판만 거짓 — 달아난 판은 참이다 */
 on('CheckLostBattle', (ctx) => {
-  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.battleResult?.() === 'loss' ? 1 : 0)
+  ctx.host.vars.set(ctx.readHalfWord(), playerLostBattle(battleMaskNow(ctx)) ? 1 : 0)
   return true
 })
 
@@ -2971,9 +2999,6 @@ const SPECIES_PIKACHU = 25
 
 /** `SPECIES_REGIGIGAS`. 유적 셋의 석상이 이 마리의 「운명적 만남」만 본다 */
 const SPECIES_REGIGIGAS = 486
-
-/** `BATTLE_RESULT_CAPTURED_MON`. ⚠️ 도망 둘이 이 비트를 **같이 쓴다** */
-const BATTLE_RESULT_CAPTURED = 4
 
 /** 플래그 하나를 세우고/지우고/묻는 명령 셋을 한 번에 등록한다 */
 function systemFlag(flag: number, names: { set?: string, clear?: string, check?: string }): void {
@@ -3658,9 +3683,9 @@ on('SetObjectFlagIsPersistent', (ctx) => {
 
 on('SetWarpEventPos', (ctx) => {
   const index = ctx.readVar()
-  const x = ctx.readVar()
-  const z = ctx.readVar()
-  ctx.host.world.services.warpEvents?.setPos(index, x, z)
+  // 롬 칸이다 — 사건표를 옮긴 것과 같은 원점으로 옮긴다 (`map/world`의 `romOrigin`)
+  const at = romToLocal(mapWorld.mapId, ctx.readVar(), ctx.readVar())
+  ctx.host.world.services.warpEvents?.setPos(index, at.x, at.z)
   return false
 })
 
@@ -4001,9 +4026,10 @@ on('GiveEgg', (ctx) => {
 })
 
 on('AddFreeCamera', (ctx) => {
-  const x = ctx.readVar()
-  const z = ctx.readVar()
-  ctx.host.world.services.camera?.free(x, z)
+  // 롬 칸이다 — 깨어진 세계에서는 층 오프셋을 뺀다. 기라티나 방은 오프셋이 0이라
+  // 값이 안 바뀌지만, `GetPlayerMapPos`가 세계 칸을 주므로 받는 쪽도 맞춘다
+  const at = romToLocal(mapWorld.mapId, ctx.readVar(), ctx.readVar())
+  ctx.host.world.services.camera?.free(at.x, at.z)
   return false
 })
 
@@ -4263,7 +4289,7 @@ on('GetBattleResult', (ctx) => {
  */
 on('CheckDidNotCapture', (ctx) => {
   const dest = ctx.readHalfWord()
-  ctx.host.vars.set(dest, ctx.host.world.services.battleMask?.() === BATTLE_RESULT_CAPTURED ? 0 : 1)
+  ctx.host.vars.set(dest, playerDidNotCapture(battleMaskNow(ctx)) ? 1 : 0)
   return true
 })
 

@@ -72,6 +72,8 @@ export const safariServices = {
 
   caught: (): number => useSaveStore.getState().safari.caught,
 
+  active: (): boolean => safariActive(),
+
   /**
    * ⚠️ **이미 세워져 있으면 자리를 안 건드린다.** 우리 리포트는 열차 자리를
    * 늘 들고 있으므로, 원작이 갈래 번호로 하던 판정을 「자리가 이미 있다」로 읽는다 —

@@ -4723,8 +4723,7 @@ if (Unk_020EE76C[dir](v1) == TRUE || Unk_020EE77C[dir](v2) == TRUE) return TRUE;
 끝말 차례 · 야생 둘의 볼 막힘) · `src/engine/script/sightVs2.test.ts` · `approach.test.ts` · `story.test.ts`.
 길게는 `BATTLE_SOAK=150` — 무작위 종족 300판에 거절 0이다.
 
-**남은 것** — 편의 파티를 파티 화면에 흐리게 늘어놓는 원작 배치(우리는 내 파티만 띄운다), 트레이너 둘·편이
-서는 3D 좌표(`PAIRED_TRAINER_GAP`은 몸이 안 겹치게만 잡은 값이고 화면으로 아직 안 봤다).
+파티 화면은 §120, 짝을 셈에 넣는 AI는 §121, 원작과의 줄별 대조는 §122, 짝으로 선 트레이너의 자리는 §123.
 
 ## 83. 깨진 창기둥에서 깨어진 세계로 들면 **벽 속에 섰다** — 롬 칸을 우리 칸으로 읽었다
 
@@ -4839,6 +4838,167 @@ B6F의 셋이 내려다보이는 장면만 없다.
 스크립트 저장 · 개발 콘솔)가 `avatarState()`를 적고, 이어하기가 처음 들어설 때 파도타기를 켜거나 자전거에 태운다(자전거 곡까지 —
 `bike.ride`). 시험 `state/save/avatar.test.ts`.
 
+## 88. 배틀에서 돌아와도 **맵의 `OnLoad`가 안 돌았다** — 깨어진 세계를 못 나갔다
+
+**원작** — 배틀에 들어가며 필드를 통째로 내리고(`FieldTransition_FinishMap`), 지지 않은 판이면 돌아올 때 다시 세운다
+(`encounter.c`의 `FieldTask_Encounter` 204줄 · `FieldTask_WildEncounter` 416줄 → `FieldTransition_StartMap`). 다시 세우는
+`FieldMap_Init`이 `INIT_SCRIPT_ON_LOAD`를 돈다(`overlay005/fieldmap.c` 205줄). `OnTransition`은 안 돈다 — 그것은 맵을
+옮길 때(`FieldMapChange_UpdateGameData`)만이다. 진 판(비긴 판)은 `CheckPlayerWonEncounter`가 거짓이라 필드를 다시 안 세운다 —
+스크립트 배틀은 스크립트로 돌아가 `BlackOutFromBattle`을, 풀숲 야생은 곧바로 전멸 태스크를 건다.
+
+전설 스크립트 열둘이 이 한 번에 기댄다. 배틀 앞에 `FLAG_MAP_LOCAL_REMOVE_OBJECT`(142)를 세우고 뒤에서 지우는데, 그 사이에
+도는 `OnLoad`가 표식을 보고 그 포켓몬을 치운다. **깨어진 세계 기라티나 방은 진행도 14도 거기서만 세운다**
+(`scripts_distortion_world_giratina_room.s` 19–27: `ResetDistortionWorldPersistedCameraAngles` · 진행도 14 · `RemoveObject`).
+깨어진 세계는 필드를 세울 때 `OnLoad` 다음에 층의 물체를 다시 센다(`DistWorld_DynamicMapFeaturesInit`의
+`AddMapObjectsForCurrentAndNextMap` — 이미 선 것은 그대로 두고 조건이 새로 맞은 것만 세운다, `FindExistingMapObjectByEvent`).
+
+**왜 문제였나** — `OnLoad`를 맵에 들어설 때만 돌렸다(`enterMap`). 기라티나 방에서 싸우고 나면 진행도가 13에 남아
+조건 `progress == 14`인 차원문(#131)과 시로나의 말(#132)이 영영 안 섰고, 차원문 소품(`progress >= 14`)도 안 보였다 —
+**세계를 나갈 길이 없었다.** 기라티나도 그 자리에 남아 또 싸울 수 있었다. 귀혼동굴에서는 쓰러뜨려도 기라티나가 남아서, 같은 칸의
+차원문 간판(11,14)에 A가 닿지 않았다 — 방 583과 백금옥에 못 갔다.
+
+**지금**
+
+- 배틀 화면이 닫히면 `scene/fieldServices`의 `watchFieldReload`가 결과 마스크를 `CheckPlayerWonBattle`로 보고, 참이면
+  지금 맵의 `OnLoad`(`script/field`의 `reloadFieldMap`)를 돌리고 깨어진 세계면 층의 물체를 다시 센다(`spawnFloorObjects(…, true)`).
+  기다리던 스크립트는 다음 틱에 풀리므로 원작처럼 필드를 세운 **뒤에** 스크립트가 이어진다.
+- 도는 스크립트가 있으면 초기화 스크립트가 지역 칸(0x8000~)을 안 비운다 — 원작 `FieldSystem_RunScript`는 스크립트 관리자의
+  칸을 같이 쓴다. 트레이너 스크립트가 배틀 전에 적은 `VAR_0x8004`가 그대로 `SetTrainerFlag`까지 간다.
+- 기라티나 방에서 **지면** 원작도 필드를 안 세우고 전멸한다. 스크립트가 배틀 뒤에 142를 지우므로 다시 들어오면 진행도 13 그대로
+  기라티나가 서 있다 — 원작과 같다.
+
+⛔ `INIT_SCRIPT_ON_RESUME`은 여전히 어디서도 안 돈다. 원작은 같은 `FieldMap_Init`에서(224줄) 돌고, 메뉴·비전기술·도구에서
+돌아올 때도 필드를 다시 세운다(`FieldSystem_StartFieldMap` — `start_menu.c` · `field_move_tasks.c` · `item_use_functions.c`).
+우리는 **배틀 뒤의 `OnLoad`**만 옮겼다 — 깨어진 세계와 전설 열둘이 기대는 것이 그것이다. `OnResume`을 쓰는 맵 서른여섯(센터 2층 ·
+배틀타워 · 갤럭시단 관제실 등)과 메뉴 뒤의 `OnLoad`는 이 자리 밖이다.
+
+시험 `scene/battleReload.test.ts` — 롬 바이트코드를 그대로 돌리고 배틀만 가짜로 넣는다. 기라티나 방에서 잡음·이김·달아남이면
+진행도 14 · 기라티나 없음 · #131·#132가 섬, 지면 진행도 13 그대로 전멸. 귀혼동굴에서 쓰러뜨리면 그 칸의 A가 차원문 간판에 닿는다.
+`reloadFieldMap` 한 줄을 빼면 여덟 판이, 층 물체 다시 세기를 빼면 차원문 세 판이 떨어진다.
+
+## 89. 기라티나를 **잡아도 전멸로** 빠졌다 — `CheckWonBattle`을 「이긴 판만」으로 읽었다
+
+**원작** (`field_battle_data_transfer.c` 512–542) — 결과 마스크를 읽는 물음이 셋이다:
+
+| 결과 | 값 | `CheckPlayerWonBattle` | `CheckPlayerLostBattle` | `CheckPlayerDidNotCaptureWildMon` |
+|---|---|---|---|---|
+| WIN | 1 | 참 | 거짓 | 참 |
+| LOSE | 2 | 거짓 | 참 | 참 |
+| DRAW (승·패) | 3 | 거짓 | 참 | 참 |
+| CAPTURED_MON | 4 | 참 | 거짓 | 거짓 |
+| PLAYER_FLED (포획·승) | 5 | 참 | 참 | 참 |
+| ENEMY_FLED (포획·패) | 6 | 참 | 참 | 참 |
+
+「이겼나」는 **「지지 않았나」**다. 전설 스크립트는 전부 `CheckWonBattle` → 거짓이면 `BlackOut`, 그다음 `CheckDidNotCapture`로
+잡았나를 가른다(`scripts_turnback_cave_giratina_room.s` 37–41).
+
+**왜 문제였나** — `'win'`일 때만 1을 줬다(`caught`·`fled`·`foeFled`가 다 `'loss'`). 귀혼동굴에서 잡으면 전멸 갈래로 빠져
+숨김 표식 592가 **지워지고** 잡은 표식 289가 안 섰다 — 기라티나가 되살아나 또 잡혔다. 달아나도 전멸했다.
+`CheckLostBattle`도 거꾸로였다 — 달아난 판이 원작은 참인데 거짓이었다(풀무산 방 3의 VS시커 갈래가 그것을 본다).
+
+**지금** — `script/battleResult`에 원작 세 `switch`를 그대로 두고 명령 셋이 그것만 본다. 마스크를 안 주는 가짜 서비스(시험)는
+이김·짐을 마스크로 옮긴다. 결과를 읽는 다른 자리(동행 회복 `battle/aftermath`의 `shouldPartnerHeal`)는 이미 같은 규칙이다.
+
+시험 `script/battleResult.test.ts` — 여섯 값의 세 답과, 마스크 값·`switch`의 거짓 갈래를 디컴프 원문에서 다시 읽어 맞댄다.
+`scene/battleReload.test.ts`의 귀혼동굴 판: 잡음 → 289·592, 이김·달아남·상대 달아남 → 592만 · 기라티나 사라짐, 짐 → 592 지움 · 전멸.
+
+## 90. 깨어진 세계의 사건표·스크립트 좌표를 **층 칸으로** 읽었다 — 1F 차원문이 안 열렸다
+
+**원작** — 깨어진 세계 층 열한 개를 한 좌표계에 둔다(`DistWorldMapInfo`의 오프셋). 사건표(`events_distortion_world_1f.json`)의
+좌표도, 스크립트가 주고받는 칸도 그 **세계 칸**이다: 1F 차원문 간판 (55,39) · 1F 워프 (31,53) · B7F 태홍 장면의
+`GetPlayerMapPos` 비교값 86·74(`scripts_distortion_world_b7f.s` 62–107).
+
+**우리** — 층 격자가 0에서 시작한다(1F 오프셋 21·10 · B7F 74·32). §83이 `Warp`만 옮겼다.
+
+**왜 문제였나** — 1F 도착 칸 (34,30)에서 북쪽 (34,29)를 보고 A를 눌러도 간판이 (55,39)에 있어 **아무 일도 없었다** — 깨진
+창기둥으로 돌아가는 유일한 길이 막혔다. B7F에서 태홍에게 동쪽 (86,74)로 말을 걸면 비교가 한 번도 안 맞아 (85,75) 갈래를 탔고,
+주인공이 막힌 칸 (87,74)로 비켜선 뒤 (90,67)까지 벽 속을 걸었다.
+
+**지금** — `map/world`의 `romOrigin`(씬이 층 자료로 꽂는다 — `scene/fieldServices`)이 맵마다 롬 칸의 원점을 준다. 깨어진 세계
+층만 0이 아니다.
+
+- 사건표(워프·사람·간판·좌표 트리거)를 **읽는 한 자리**(`eventsOf`)에서 원점을 뺀다 — 말 거는 쪽과 밟는 쪽이 같은 칸을 본다.
+  롬 칸으로 워프를 찾는 `warpIndexAt`만 원래 표를 본다.
+- 스크립트에 주는 칸(`GetPlayerMapPos`)은 더하고, 받는 칸(`SetObjectEventPos` · `SetPosition` · `SetWarpEventPos` ·
+  `AddFreeCamera`)은 뺀다. 깨어진 세계 스크립트가 쓰는 좌표 명령은 `GetPlayerMapPos` · `AddFreeCamera` · `Warp`(§83) ·
+  `GetPlayer3DPos`(이미 세계 칸)가 전부다. 나머지 셋은 밖에서 원점이 0이라 값이 안 바뀐다.
+- 층 물체·사건·소품은 ov9 표에서 오고 이미 세계 칸을 옮겨 세운다(`scene/distortionObjects`).
+
+1F 워프 (31,53)은 옮기면 (10,43)인데 막힌 칸이다 — 원작에서도 발을 못 올리는 자리라 그대로다.
+시험 `scene/distortionRomTiles.test.ts` — 실제 `distortion.json`·`events.json`으로 간판 (34,29) · 워프 (10,43)와
+`warpIndexAt(31,53)`, B7F (12,42) ↔ (86,74), `GetPlayerMapPos` 바이트코드가 86·74를 적는지, 밖의 맵은 그대로인지 본다.
+
+## 91. 깨어진 세계 한복판에서도 **공중날기로 나갈 수 있었다** — 맵 헤더를 안 봤다
+
+**원작** (`FieldMoves_CheckFly` · `field_move_tasks.c` 367) — 뱃지 → `MapHeader_IsFlyAllowed` → 동행 → 사파리·팔파크 차례로 본다.
+헤더가 막으면 `FIELD_MOVE_ERROR_LOCATION` → 파티 화면이 뱅크 453의 104(`PartyMenu_Text_CantUseThatHere`)를 띄운다. 593개 맵 중
+515곳이 막혀 있다 — 실내·굴·깨어진 세계 열한 층이 다 그렇다.
+
+**우리** — 시작 메뉴의 지름길·파티 화면·타운맵 셋 다 뱃지와 기술만 봤다. 깨어진 세계·갤럭시단 아지트·천관산 한복판에서
+날아 나갈 수 있었다.
+
+**지금** — `script/fieldMoves`의 `flyDenial`이 원작 차례를 그대로 두고 `script/field`의 `flyVerdictNow`가 헤더·동행 표식·사파리를
+모아 묻는다. 시작 메뉴는 막히면 항목을 안 띄우고, 파티 화면은 롬 줄(104 · 76 뱃지 · 196 동행)을 띄우고, 타운맵은 날기 직전에
+다시 본다. 팔파크는 우리에게 없다. 순간이동·구멍파기는 우리 필드 기술에 아직 없다(`FIELD_MOVES` 아홉). 동굴탈출로프는 이미 헤더를
+본다(`CanUseEscapeRope` — 갈래가 동굴이고 `isEscapeRopeAllowed`).
+
+하네스 `tools/e2e`의 `flyTo`는 헤더가 막는 맵에서 **가장 가까운 날 수 있는 맵으로 먼저 걷는다**(`route.mjs`의 `nearestFlyable` —
+워프와 행렬 0 이웃의 너비 우선). 센터·마트·체육관·굴에서 부르는 자리가 여럿이다.
+시험 `script/fieldMoveMenu.test.ts` — 헤더 0이면 `notHere`, 뱃지가 먼저, 동행이면 `partner`, 사파리면 `notHere`, 그리고 롬 헤더 표에서
+573~583이 전부 0이고 떡잎마을이 1인지.
+
+## 92. 워프로 맵을 옮겨도 **자전거와 파도타기가 그대로였다**
+
+**원작** (`FieldSystem_InitFlagsWarp` · `field_map_change_flags.c` 90–94) — 워프(`FieldMapChange_UpdateGameData(…, FALSE)` — 문·계단·
+스크립트 `Warp`·공중날기·전멸)마다 자전거는 도착 맵의 `isBikeAllowed`가 0이면, 파도타기는 늘 걷기로 돌린다. 걸어서 맵 경계를 넘는
+것과 깨어진 세계의 층 가기(`FieldMap_ChangeZoneDistortionWorld` → `UpdateGameDataDistortionWorld(…, TRUE)`)는 `InitFlagsOnMapChange`를
+타서 안 내린다. 이어하기는 세이브의 `playerState`로 선다(§87).
+
+**왜 문제였나** — 자전거를 탄 채 귀혼동굴(자전거 됨)에서 차원문으로 깨어진 세계 방(자전거 안 됨)에 들면 벽과 천장을 자전거로
+달렸다. 자전거를 막는 맵이 다 같은 처지였다.
+
+**지금** — 규칙은 `map/warpAvatar`, 어느 옮김이 워프인가는 `scene/warpArrival`이 가른다: `world.pending` 가운데 **이웃 층으로 가고
+롬 칸 워프가 아닌 것**(승강 발판·폭포)만 층 가기다. `MapStreamer`가 새 맵을 세우기 직전에 부른다.
+시험 `scene/warpArrival.test.ts` — 규칙 셋, B4F → B5F 폭포에서 파도타기가 이어지는지, B7F → 기라티나 방 스크립트 워프는 워프인지,
+귀혼동굴 → 방 583에서 자전거가 내리는지, 문으로 들어가면 파도타기가 풀리는지.
+
+## 93. 승강 발판·폭포 한복판에서 **시작 메뉴와 리포트가 열렸다**
+
+**원작** — 필드 입력을 태스크가 없을 때만 받는다(`field_system.c`의 `HandleFieldInput`: `FieldSystem_IsRunningTask == FALSE`).
+시작 메뉴는 그 입력의 한 갈래고, 그마저 주인공이 걸음 한가운데가 아닐 때만이다(`overlay005/field_control.c` 127줄).
+깨어진 세계의 승강 발판(`CallElevatorPlatformHandler`)·판 사이 뛰기(`JumpOnFloatingPlatform`)·사건(`FieldTask_CallLoadedEventHandler` —
+판 밀기·폭포·호수 셋·기라티나 그림자)이 다 `FieldSystem_CreateTask`로 도는 필드 태스크다.
+
+**왜 문제였나** — 메뉴 층은 복원 중 · 스크립트 · 배틀만 봤다. 발판이 층을 가는 도중 리포트를 쓰면 허공의 높이와 바뀌는 중인 판이
+그대로 적혔다.
+
+**지금** — `scene/fieldTask`의 `fieldTaskRunning`(이 세계의 `riding` · 공중날기 연출 · 뛰는 걸음 · 걸린 워프 · 조우 컷인)이 참이면
+X도 등록 도구 키도 안 먹는다. 걷는 걸음 한가운데는 여전히 연다 — 우리 이동이 칸에 잠기지 않아 「걸음 끝」이 따로 없다.
+시험 `scene/fieldTask.test.ts`.
+
+## 94. 깨어진 세계 안에서 백금옥을 빼면 **기라티나가 어나더로 돌아갔다** · 나갈 때 도감에 안 적혔다
+
+**원작** — 파티 화면의 두 갈래, 가방에서 빈손에 쥐여 주기(`UpdatePokemonWithItem` · `party_menu/main.c` 2811)와 빼앗기
+(`PartyMenuCB_TakeItem` · `party_menu/context_menu.c` 231)가 맵 번호가 `MAP_HEADER_DISTORTION_WORLD_1F`(573)~`_TURNBACK_CAVE_ROOM`(583)이면
+`Pokemon_SetGiratinaFormByHeldItem`을 건너뛴다. 맞바꾸기(`SwapPokemonItem`)와 편지 떼기에는 이 검사가 없다. 모습은 세계를 나가는
+스크립트의 `SetPartyGiratinaForm`이 정하고, 그 명령은 알이 아닌 파티의 기라티나마다 `Pokedex_Capture`를 부른다(`scrcmd.c` 7092).
+
+**지금** — `pokemon/form`의 `heldItemKeepsGiratinaForm`, 가방의 쥐여 주기(빈손일 때만)와 파티의 빼앗기가 그것을 넘긴다.
+`SetPartyGiratinaForm`이 파티에 알 아닌 기라티나가 있으면 도감에 잡은 것으로 적는다. 우리 도감은 종 단위라 폼 차례(`UpdateForm`)·
+성별·언어는 적을 칸이 없다. 시험 `ui/menu/giratinaOrb.test.ts`.
+
+## 95. 오리진폼 기라티나전이 **깨어진 세계의 땅**이었다
+
+**원작** — `Encounter_NewVsGiratinaOrigin`(`encounter.c` 970–992)이 `dto->terrain = TERRAIN_GIRATINA`로 덮는다. 배경은 그대로
+`BACKGROUND_DISTORTION_WORLD`다. 땅이 정하는 것은 발판 그림·조우 폭발·자연의힘 계열·도롱마담 옷감이다.
+
+**지금** — `startWild`가 `terrain`을 받아 `open`이 밟은 칸으로 정한 땅을 덮는다. 조우 폭발이 깨어진 세계의 얼음 한 벌(21) 대신
+원작 표대로 실내 한 벌(11)을 쓴다. 도롱마담은 둘 다 모래땅이라 같다. 무대는 배경을 따르므로 그대로다.
+시험 `scene/battleReload.test.ts` — 기라티나 방 스크립트가 여는 판이 오리진폼 · `Terrain.GIRATINA`다.
+
+⛔ `BATTLE_STATUS_GIRATINA`의 등장 몸짓(`Task_SetGiratinaEncounter` — 옆에서 미끄러져 들어오는 대신 위에서 내려앉는다,
+`battle_display.c` 278·302)은 3D 배틀 무대의 일이라 아직 없다.
+
 ## 110. 턱 앞 칸에서 손을 떼도 **남은 속도로 턱을 뛰어내렸다**
 
 **원작** — 걸음은 칸 단위다. 걸음을 **시작할 때** 누른 방향으로 앞 칸을 보고 턱·두 칸 건너뛰기·도약대를 가른다
@@ -4868,6 +5028,172 @@ B6F의 셋이 내려다보이는 장면만 없다.
 **고친 것** — `ledgeHop`·`distortionHop`이 **미는 쪽으로 봐서 칸 가운데 이상**일 때만 뛴다(`reachedCentre`). 서 있는 자리는 늘
 가운데라 멈춰 서서 미는 뛰기는 그대로고, 계속 쥐고 걸어가면 가운데를 지나며 뛴다. 시험 `engine/actor/ledgeIntent.test.ts` —
 가운데 전에 손을 떼면 고치기 전에는 턱 너머에 섰다.
+
+## 120. 편 배틀의 파티 화면에 **편의 포켓몬이 안 뜬다** — 원작도 안 띄운다
+
+「편의 포켓몬을 흐리게 늘어놓는 원작 배치」는 **이야기의 편 배틀에는 없다.** 파티 화면이 채울 마리를 고르는 곳은
+`battle_display.c` 4411이고 갈래가 둘이다:
+
+| 갈래 | 조건 | 채우는 것 |
+|---|---|---|
+| 합친 목록 | `(형식 & (LINK · 2vs2)) == (LINK · 2vs2)` 이거나 형식이 **정확히** `TRAINER_DOUBLES · 2vs2 · AI · FRONTIER` | 자리 a 주인의 파티를 짝수 칸(0·2·4), 자리 b 주인의 파티를 홀수 칸(1·3·5)에 (4433·4440) |
+| 그 밖 | — | `BattleSystem_GetParty(battler)` 하나 (4467) |
+
+첫 갈래는 **통신 2vs2와 배틀프론티어의 편 배틀**뿐이다. 이야기의 편 배틀(`BATTLE_TYPE_TRAINER_WITH_AI_PARTNER`
+= `TRAINER · DOUBLES · 2vs2 · AI`, `encounter.c` 734)은 `FRONTIER` 비트가 없어서, 동행과 만난 야생 둘
+(`BATTLE_TYPE_AI_PARTNER`)은 `TRAINER`까지 없어서 둘째 갈래로 떨어진다 — **내 파티만** 뜬다. 교체를 막는
+「편의 포켓몬과는 교체할 수 없다」(`CantSwitchWithPartnersPokemon`)도 `BattlePartyTask_CheckIf2V2Battle`
+(`battle_party.c` 1694)이 참일 때만 도는데, 그 함수가 `BATTLE_TYPE_AI_PARTNER`와
+`TRAINER_DOUBLES · 2vs2 · AI`(= 편 배틀) 둘을 **이름으로 뺀다** — 이야기에서는 그 줄이 뜰 자리가 없다. 요약 화면도 같은
+목록을 넘겨 연다. 가방에서 여는 파티(`battle_display.c` 3878)는 형식과 무관하게 `bagMenuData->battler`의 파티다.
+
+우리 교체 화면·가방 파티·요약은 이미 내 파티만 띄운다(`controller.party`가 `isMine`으로 거른다) — **원작과 같다.**
+합친 목록은 프론티어의 편 배틀(PARITY §9)이 서면 그 자리에서 쓴다: 편의 마리는 홀수 칸, 선택이 짝수 칸끼리만 오가고
+(`UpdateSelectedPartyIndex`의 `{0, 2, 4, 1, 3, 5}`), 편 칸을 고르면 위 줄이 뜬다.
+
+**재는 법** — `npx vitest run src/engine/battle/sim/multi.test.ts` (「나는 자리 a만 고르고…」가 매 턴 `controller.party`에 편의
+마리가 없는지 본다).
+
+## 121. 더블 AI가 **짝을 셈에 안 넣었다** — `AI_FLAG_TAG_STRATEGY`
+
+원작은 더블이면 트레이너 자료와 무관하게 이 비트를 켠다 (`TrainerAI_Init` · `trainer_ai.c` 252 — `BATTLE_TYPE_DOUBLES`면
+`thinkingMask |= AI_FLAG_TAG_STRATEGY`). 928명 중 자료에 이 비트를 가진 사람은 없다. 우리는 이 루틴이 없어서 **짝을 겨누는
+후보를 통째로 빼고** 상대 둘만 매겼다 — 짝의 저수에 물을 주는 수, 도우미, 지진이 짝을 치는지 같은 판단이 전부 없었다.
+
+**원작의 고르기** (`TrainerAI_MainDoubles` · 356):
+
+1. 겨눌 자리는 **나를 뺀 서 있는 셋**이다(상대 둘과 짝). 자리마다 `defender`를 바꿔 네 칸을 다 매긴다.
+2. 짝을 겨눈 벌에서는 TAG_STRATEGY만 돈다 — 다른 루틴은 전부 `IfTargetIsPartner Terminate`로 시작한다(`script.s`의
+   `Basic_Main`·`Expert_Main`·`EvalAttack_Main`… 첫 줄). `CHECK_HP`도 짝을 겨누면 `TagStrategy_Partner`로 뛰는데 켜는
+   트레이너가 없다.
+3. 자리마다 최고점 칸들 중 하나를 무작위로 고르고, **짝을 겨눈 벌의 최고점이 100 미만이면 −1**로 내린다(431).
+4. 자리들의 점수 중 최고인 것들에서 다시 무작위로 자리를 고른다. (칸, 자리) 쌍을 한 줄로 세워 뽑는 것과 몫이 다르다.
+5. 지압(`RANGE_USER_OR_ALLY`)은 고른 자리가 플레이어 쪽이면 자기 자신이다(462) — 우리 편 AI는 플레이어에게 지압을 못 쓴다.
+
+**TAG_STRATEGY** (`script.s` 6634~7691)를 `ai/tagStrategy.ts`로 옮겼다. 상대를 겨눈 벌은 반감 −1·−2(맞는 쪽의 **짝이 없으면**
+안 깎는다 — 주석은 「마지막 한 마리」라지만 코드는 `DEFENDER_PARTNER`의 체력 0을 본다), 짝의 기술까지 통틀어 제일 센 수면
+50%로 +1(`CheckIfHighestDamageWithPartner` · 2369), 효과가 굉장하면 +1, 그리고 지진·방전·파도타기·분연(짝까지 맞는다)·
+비바라기·쾌청·싸라기눈·모래바람·중력·트릭룸·손가락질·미래예지·스킬스왑·피뢰침·마중물·도우미를 가진 짝. 짝을 겨눈 벌은
+흡수 특성(타오르는불꽃·전기엔진·축전·저수·건조피부), 근성에게 도깨비불, 포이즌힐에게 독, 도우미, 시몬·리샘열매를 가진
+짝에게 뽐내기, 게으름·슬로스타트에게 위액·스킬스왑, 지압 말고는 **−30**이다.
+
+⚠️ **원작의 버그와 주석-코드 어긋남은 코드대로다** — 방전의 땅 검사가 물·비행 뒤라 물/땅 짝에게 −10(7252 BUG), 파도타기가
+바위를 안 봄(7291 BUG), 독 갈래가 독·강철 타입을 안 봄(7567 BUG), 분연의 건조피부 짝은 `ScoreMinus3`(주석은 +3), 솔라파워는
++1 뒤에 **반드시** 50%로 −2를 한 번 더 굴림(6812~6818의 흘러내림), 독 갈래의 체력 조건은 91% **초과면** −30(7575), 전기/다른
+타입 짝에게 부유를 넘기는 스킬스왑은 +1 뒤에 복안 갈래로 흘러 −30을 더 받음(7478~7488). 고치면 원작보다 똑똑해진다.
+
+**읽는 법의 원문** — 짝(`ATTACKER_PARTNER`)의 특성·도구·기술은 같은 편이라 **진짜 값**이다(`CheckBattlerAbility`의 `else`,
+`IfMoveKnown`의 `ATTACKER_PARTNER` 갈래가 `battleMons.moves`를 본다 — 짝이 서 있을 때만). 맞는 쪽을 `CheckBattlerAbility`로
+물을 때는 **찍지 않는다**(1212): 드러났으면 그 값, 그림자밟기·자력·개미지옥이면 진짜 값, 후보가 둘이면 **찾는 것이 후보에 있을 때
+「모름」**이고 없으면 첫 후보다 — 「피뢰침일지도 모르는」 상대는 피뢰침으로 안 친다(`AiMon.hasAbility`). `LoadBattlerAbility`는
+찍는다(1170). 그 트랩 특성 셋은 찍는 쪽에서도 진짜 값으로 읽는다(1182) — `brain.abilityOf`가 같이 따른다. 네 자리의 빠른 차례
+(`LoadBattlerSpeedRank` · 2056)는 원작처럼 부를 때마다 거품 정렬을 새로 돌린다(`ai/speed.ts`). 비교는
+`BattleSystem_CompareBattlerSpeed(…, TRUE)`(`battle_lib.c` 1188)의 차례 그대로 — 쓰러진 자리 → 선제의발톱·이바열매 →
+느림보꼬리 → 마이페이스 → 트릭룸 → 속도, 같으면 동전. `TRUE`라 기술 우선도는 안 본다. 짐 덜기만은 옮기지 않았다 — 켜지는
+깃발(`canUnburden`)을 sim이 알리지 않는다.
+
+**AI 비트** — 상대는 자료 값에 BDSP 바닥(111)과 TAG(128)를, **편은 자료 값에 TAG만** 얹는다. 바닥은 「상대가 쉬울 이유가
+없다」는 우리 선택이라 상대에게만 깐다. 창기둥의 라이벌(607·619·620)은 자료 값이 7이라 135로 둔다. 마스(528)·쥬피터(407)는
+15 | 111 | 128.
+
+**겨눔** — 한 마리를 겨누는 기술(`normal`)은 원작에서 짝도 겨눈다: 겨눔 화면의 배치 8·9가 자기 자리만 빼고 셋을 켠다
+(`battle_subscreen.c` 1339 `GetTargetSelectLayout` → 797 `sMoveTargetSlotFlags[8]` = {0, 1, 1, 1}). 플레이어 화면과 트레이너
+AI가 짝 칸을 받는다(`choice.allyTargets`). 야생은 안 받는다 — 원작 야생은 기술만 무작위로 고르고 대상은 상대 쪽에서 뽑는다
+(`battle_display.c` 3612).
+
+**같이 잡힌 것** — 짝 칸이 열리면서 담금질의 난수 길이 바뀌자 한 판(씨앗 22의 18턴)이 명령 없는 자리에서 섰다. 흉내내의
+앙코르가 **빈 턴 칸(물장구)**을 잠갔다 — 가방을 쓴 턴의 물장구가 「마지막에 쓴 기술」이 되어 있었다. 원작에서 도구를 쓴 턴에는
+기술이 없어서 `movePrevByBattler`가 그대로다. 빈 턴은 마지막 기술을 안 바꾼다(`session.keepIdleOpen`이 `moveUsed`를 감싼다).
+
+**재는 법** — `npx vitest run src/engine/battle/ai/tagStrategy.test.ts` (루틴의 폭 · 원작 버그 · 짝을 겨눈 벌에 다른 루틴이 안 도는지 ·
+−1 문턱 · 네 자리 순위) · `src/engine/battle/sim/multi.test.ts` (편·상대의 비트 · 편이 짝을 안 때린다) ·
+`src/engine/battle/sim/doubles.test.ts` (짝 칸) · `doublesItem.test.ts` (앙코르).
+
+## 122. 트레이너 넷의 판을 **원작과 줄마다 대조했다** — 어긋난 여섯
+
+REPAIR §82를 원작과 맞대 보았다. 맞는 것과 고친 것을 함께 적는다.
+
+**맞았다**
+
+| 무엇 | 원작 | 우리 |
+|---|---|---|
+| 형식 넷 | `Encounter_NewVsTrainer` · `encounter.c` 724 | `battleStore.startTrainer` (`BattleRules`) |
+| 자리마다 제 파티 · 빈 자리 · 울부짖기 | `battle_controller_player.c` 4081 · `battle_script.c` 5257 | `session.OwnedSlots` |
+| 편이 있으면 내 파티만 세서 진다 | `battle_controller_player.c` 4189~4209 | `controller.lostAlone` |
+| 상금 = 두 사람의 합, 두 배 없음 | `battle_script.c` 3659~3690 · 3711 | `battleStore` 상금 |
+| 이김 953 → 첫·둘째 끝말(`TRMSG_DEFEAT`) → 상금 | `subscript_battle_won.s` _087 → _121 | `bookends.closingLines` |
+| 우리 쪽 첫 등판 993(편 먼저)·978 · 야생 둘 967 → 993 | `battle_display.c` 6122·6151 · `subscript_start_encounter.s` _079 | `messages.leadLines` |
+| 중간 교체 972 · 도구 858은 그 마리의 트레이너 | `battle_display.c` 5942 · `subscript_use_potion.s` 8 | `messages.trainerOf` |
+| 도구: 태그 더블은 사람마다 제 가방, 편이 있으면 아무도 안 씀 | `battle_controller_player.c` 4801~4810 · `trainer_ai.c` 4069 | `controller.kits` |
+| 경험치는 내 파티만, 편이 쓰러뜨린 상대도 내 몫 | `battle_lib.c` 1462~1477 | `battleStore` 경험치 |
+| 볼은 야생 둘이 다 서 있으면 막힘 · 도망은 자리 a끼리 | `battle_controller.c` 869 · `battle_lib.c` 3284 | `controller.throwBall`·`run` |
+| VS2 — 첫 사람이 혼자 오는 트레이너일 때만 한 번 더 훑고, 두 마리(또는 동행)가 있어야 하며, 첫 사람이 걸어와 말한 **뒤에** 둘째가 「!」를 띄우고 걸어온다 | `trainer_encounter.c` 84~108 · `scripts_battles.s` 192~223 | `field.ts` 시선 · 공용 스크립트 |
+| 더블 트레이너는 두 마리가 없으면 아예 안 온다 — 밀어내기는 창기둥 스크립트뿐 | `trainer_encounter.c` 114 · `scripts_spear_pillar.s` 86~99 | 같다 (롬 스크립트) |
+| 동행 중의 야생 둘 — 걷는 조우만, 칸을 두 번 굴려 파티 1·3번 칸 | `wild_encounters.c` 340·730 | `encounterSystem` |
+| 태그 배틀에서 지면 보통의 눈앞이 캄캄해짐 | `scripts_spear_pillar.s` 115~122 · 176~200 | 롬 스크립트 그대로 |
+
+**어긋났다 — 고쳤다**
+
+1. **쌍둥이·커플이 한 사람만 걸어왔다.** 짝을 **같은 스크립트**로 찾았는데, 한 쌍의 스크립트는 3000+번호−1과 5000+번호−1로
+   다르다(209번도로 쌍둥이 3293·5293 · `tools/jsoncnv/convert.py` 81). 원작은 트레이너 번호로 찾는다
+   (`FindTrainerPartner` · `trainer_encounter.c` 356~375 — `GetTrainerIDFromMapObj`). 짝이 안 걸리면 둘째 대사가 비고
+   배틀이 둘째 인자 0으로 열렸다. `field.partnerOf`가 번호로 찾는다.
+2. **둘째가 첫째의 대사를 읽었다.** `GetTrainerMessageTypes`가 둘째를 「스크립트 5000번대이고 **번호가 짝수**」로 갈랐다.
+   원작은 스크립트 번호 하나다 (`Script_GetTrainerBattlerIndex` · `script_manager.c` 507). 5000번대 스크립트를 가진 열 쌍 중
+   여섯이 홀수 번호였다. 재대결 쪽(`GetTrainerRematchMessageTypes`)도 같다.
+3. **알이 한 마리로 셌다.** `aliveMons`가 체력만 봤는데 알은 체력이 가득 찬 채로 만들어진다. 원작은 알을 뺀다
+   (`Pokemon_CanBattle` · `unk_02054884.c` 22). 한 마리 + 알이 더블 트레이너·VS2·창기둥의 「두 마리 필요하다」를 통과했다.
+4. **잡거나 달아나도 졌다.** `CheckWonBattle`이 「이김」만 참이었다. 원작은 **짐·비김만 거짓**이고(`CheckPlayerWonBattle` ·
+   `field_battle_data_transfer.c` 512), `CheckLostBattle`은 **이김·잡음만 거짓**이다(524). 화강돌(`scripts_route_209.s` 78)·
+   레지 삼총사·디아루가를 잡거나 달아나면 눈앞이 캄캄해졌다. 결과 마스크로 가른다(`commands.wonBattle`·`lostBattle`).
+5. **조무래기 둘의 첫 등판이 한 사람의 줄이었다.** 991(「A는 X를 내보냈다! B는 Y를 내보냈다!」)을 두 트레이너의 **분류·이름이
+   다를 때만** 골랐다. 원작은 형식으로 고른다(`battle_display.c` 6073 — `TAG`나 `2vs2`면 무조건). 조무래기 쌍(521·527 ·
+   514·522 · 414·415 · 848·849)은 분류도 이름도 같아서 973으로 떨어졌다. 두 마리의 **주인**이 다르면 991이다.
+6. **공 줄이 사람마다였다.** 원작은 **쪽마다 한 줄**이다(`PartyGaugeData_New` · `battle_controller.c` 2122): 상대가 둘이면 첫
+   상대가 0~2번, 둘째가 3~5번 칸이고(`PartyGaugeData_Fill(…, 0)`·`(…, 3)`), 우리 쪽은 편이 있어도 내 파티만이다 — 합친 갈래는
+   통신 2vs2·프론티어 편 배틀·상대 쪽뿐이다(2132~2135). `ui/battle/partyGauge.gaugeSlots`.
+7. **내 마지막 마리가 쓰러진 뒤에도 그 턴이 이어졌다.** 원작은 기술 하나가 끝날 때마다 판이 끝났는지 본다
+   (`BattleControllerPlayer_MoveEnd` · `battle_controller_player.c` 3969). 편의 기술·턴 끝의 셈은 안 일어난다.
+   `controller.cutAfterLastFaint`가 그 줄 뒤를 버린다.
+8. **라이벌이 롬 이름이었다.** 원작은 라이벌 분류(63)의 이름을 **세이브의 라이벌 이름**으로 베낀다(`Trainer_Encounter` ·
+   `trainer_data.c` 39). 창기둥의 편도, 라이벌과의 싱글도 그렇다. `battleStore.trainerNameOf`.
+
+**남은 것** — 진 판의 돈(가장 높은 레벨 × 4 × 뱃지 배수 · `battle_system.c` 1522, 「상대에게 ○원을 건넸다」 35)은 이 판들만의
+일이 아니라 모든 패배의 일이라 여기서 안 다뤘다. VS2에서 주인공이 둘째 쪽으로 도는 시점이 원작보다 이르다(원작은 둘째가 다
+걸어온 뒤 · `trainer_encounter.c` 632~663, 우리는 둘째의 연출이 시작될 때) — 박자만 다르다. 달콤한향기는 아직 없어서 그 갈래의
+야생 둘도 없다(`wild_encounters.c` 527). 공 줄의 차례는 원작이 배틀 중 차례(`partyOrder`)고 우리는 파티 칸 차례다.
+
+**재는 법** — `npx vitest run src/engine/script/sightVs2.test.ts src/engine/script/approach.test.ts src/engine/script/battleResult.test.ts
+src/scene/aliveMons.test.ts src/ui/battle/messages.test.ts src/ui/battle/partyGauge.test.ts src/engine/battle/sim/multi.test.ts
+src/state/multiBattle.test.ts`.
+
+## 123. 짝으로 선 트레이너의 자리가 **지어낸 값**이었다 — 원작은 제 포켓몬 자리에 선다
+
+`PAIRED_TRAINER_GAP`(우리 쪽 0.8m · 상대 1.3m)은 몸이 안 겹치게만 잡은 값이었다. 원작을 찾아보니 **트레이너만의 더블 좌표가
+없다.** 트레이너 그림은 `gEncounterCoords[side]`(`battle_anim/ov12_022380BC.c` 16)에서 나와 `gBattlerEncounterX[side][0]`(25)로
+미끄러지는데(`battle_display.c` 525~538), `side`는 2vs2이거나 태그 배틀의 상대 쪽이면 **전투원 자리**(`battlerType`)이고 그 밖에는
+싱글 줄(`battlerType & 1`)이다. 그 두 표가 포켓몬 자리 표 그대로다:
+
+| 자리 | 화면 x (px) | y | 싱글 대비 |
+|---|---|---|---|
+| 싱글 우리 · 상대 | 64 · 192 | 112 · 50 | — |
+| 우리 a · b | 40 · 80 | 112 · 120 | −24 · +16 |
+| 상대 a · b | 216 · 176 | 50 · 42 | +24 · −16 |
+
+그래서 원작 화면에서 짝으로 선 트레이너는 늘 **제 포켓몬과 같은 화면 x**다. 누가 짝으로 서는지도 같은 갈래가 정한다: 태그 더블(나
+혼자)의 우리 쪽은 싱글 줄 하나, 편이 있으면 우리 둘, 상대가 둘이면 상대 둘, 한 사람의 더블은 싱글 줄 하나(`battle_script.c`
+737~750). `BattleTrainers`가 그렇게 `paired`를 준다.
+
+**옮기는 법** — 우리 싱글 자리는 DS 픽셀이 아니라 BDSP의 미터 값이라(`shots.SLOT` · `BattleDefaultPlacementData`) DS 픽셀을
+미터로 바꾸는 한 상수가 없다. 카메라를 거쳐 견준다: 트레이너를 제 발판과 **같은 화면 x**가 되게 시선 좌우(`PAIR_DIR`)로 민다.
+같은 화면 x는 카메라 깊이에 비례하므로 발판의 벌어짐(`shots.pairOffset`)에 **트레이너 깊이 ÷ 발판 깊이**를 곱한다
+(`shots.viewDepth` · `battleBallMotion.trainerStandAt`). 상대 쪽이 대략 1.2배, 우리 쪽이 0.58배다.
+
+⚠️ **발판의 벌어짐 자체는 여전히 찍어 보고 고른 값이다**(`PAIR` — 우리 0.45·0.02 · 상대 0.85·1.35). BDSP 덤프에는 더블 표가
+따로 있다(`battle_masterdatas`의 규칙 1 — 발판 (±2.2, 0, ±2.2), 트레이너 x ±1.0) — 그 표는 **제 더블 카메라**((4, 3.3, 7.2) · 화각 31)와
+짝이고, 우리 싱글 카메라로 보면 발판이 화면 밖이다. 그 카메라를 들일지는 화면을 보고 정할 일이라 여기서 안 바꿨다.
+
+**재는 법** — `npx vitest run src/scene/battle/battleBallMotion.test.ts` (네 자리 모두 트레이너와 발판의 화면 x 벌어짐이 같다).
 
 ## 100. 귀혼동굴에서 깨어진 세계 방에 들면 **한 걸음도 못 뗐다** — 세이브 자리를 안 비웠다
 

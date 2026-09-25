@@ -37,13 +37,13 @@ import { EvoClass, evolutionTarget } from '../../engine/pokemon/evolution'
 import { maxPpOf } from '../../engine/pokemon/instance'
 import { canLevelUp, fieldFriendship, isLevelUpItem, levelUpOnce } from '../../engine/bag/rareCandy'
 import { isNight } from '../../engine/map/timeOfDay'
-import { mapById } from '../../engine/map/world'
+import { mapById, world as mapWorld } from '../../engine/map/world'
 import { useEvolutionStore } from '../../state/evolutionStore'
 import { useSessionStore } from '../../state/sessionStore'
 import { worldState } from '../../state/worldState'
 import type { Stats } from '../../data/schema'
 import {
-  canShayminSky, changeForm, ITEM_GRACIDEA, SHAYMIN_SKY, spriteKey,
+  canShayminSky, changeForm, heldItemKeepsGiratinaForm, ITEM_GRACIDEA, SHAYMIN_SKY, spriteKey,
 } from '../../engine/pokemon/form'
 import { formTables, withHeldItem } from './formChange'
 import { SHAYMIN_BEATS } from '../../engine/pokemon/formChangeBeat'
@@ -72,11 +72,16 @@ const FIELD_BY_MOVE = new Map<number, FieldMoveId>(
 /** 요약 화면 뱅크의 「중요한 기술입니다. 잊게 할 수 없습니다!」 (`PokemonSummary_Text_HmMovesCantBeForgotten`) */
 const SUMMARY_HM_CANT_FORGET = 156
 
-/** 못 쓴 이유. 원작도 왜 안 되는지를 말해 준다 (`FIELD_MOVE_ERROR_*`) */
-const DENIAL: Record<string, string> = {
-  badge: '아직 그 뱃지가 없다.',
-  party: '그 기술을 쓸 수 있는 포켓몬이 없다.',
-  notHere: '여기서는 쓸 수 없다.',
+/**
+ * 못 쓴 이유 → 파티 뱅크(453)의 줄 (`PartyMenu_SelectFieldMove`의 `switch`).
+ *
+ * `FIELD_MOVE_ERROR_LOCATION` 104 「여기서는 쓸 수 없습니다」 · `_BADGE` 76 · `_PARTNER` 196이다.
+ * 파티(`party`)는 원작에 없는 갈래라(그 기술을 아는 마리의 갈래 메뉴에서만 고른다) 롬 줄이 없다
+ */
+const DENIAL_LINE: Record<string, number> = {
+  badge: 76,
+  notHere: 104,
+  partner: 196,
 }
 
 /**
@@ -259,7 +264,8 @@ export function PartyScreen() {
     if (verdict === null) { setNotice('밖에서는 쓸 수 없는 기술이다.'); return }
     if (verdict === 'fly') { push('fly'); return }
     if (verdict === 'used') { closeAll(); return }
-    setNotice(DENIAL[verdict] ?? null)
+    const line = DENIAL_LINE[verdict]
+    setNotice(line === undefined ? '그 기술을 쓸 수 있는 포켓몬이 없다.' : plainText(partyText[line]))
   }
 
   /**
@@ -336,8 +342,10 @@ export function PartyScreen() {
     if (!selected || selected.heldItem === 0) { setNotice('아무것도 안 들고 있다.'); return }
     const held = selected.heldItem
     const next = [...party]
-    // 기라티나는 백금옥을 뺀 순간 어나더로 돌아간다 (PARITY §3.4)
-    next[at] = withHeldItem({ ...selected, heldItem: 0 }, species, tables?.moves)
+    // 기라티나는 백금옥을 뺀 순간 어나더로 돌아간다 (PARITY §3.4) — ⚠️ 깨어진 세계 안에서는
+    // 안 돌아간다 (`PartyMenuCB_TakeItem`의 맵 검사 · REPAIR §94)
+    next[at] = withHeldItem({ ...selected, heldItem: 0 }, species, tables?.moves,
+      heldItemKeepsGiratinaForm(mapWorld.mapId))
     useSaveStore.setState({ party: next })
     addItem(tables?.items.get(held).pocket ?? 0, held, 1)
   }

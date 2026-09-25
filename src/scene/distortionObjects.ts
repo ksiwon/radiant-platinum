@@ -115,7 +115,7 @@ function addObjectRow(row: Record<string, unknown>, vars: VarStore, map?: number
  * 다음 층 사람이 이 층 한복판에 서 버린다. 승강 발판을 같이 타는 사람은
  * `changeFloor`가 따로 옮긴다
  */
-export function spawnFloorObjects(mapId: number): void {
+export function spawnFloorObjects(mapId: number, keepExisting = false): void {
   const data = distortionData()
   if (data === null) return
   const vars = distortionHooks.vars?.()
@@ -129,6 +129,10 @@ export function spawnFloorObjects(mapId: number): void {
     cyrusAppearance: distortionHooks.cyrusAppearance?.() ?? 0,
   }
   for (const row of table.objects) {
+    // 배틀에서 돌아와 필드를 다시 세울 때(`keepExisting`)는 **서 있는 사람을 그대로
+    // 둔다** — 원작 `AddMapObjectFromEvent`가 같은 번호가 이미 있으면 새로 안
+    // 만든다(`FindExistingMapObjectByEvent`). 조건이 새로 맞은 사람만 선다
+    if (keepExisting && npcActors.byLocalID.has(row.localID as number)) continue
     if ((row.flagCond as number) === FLAG_COND.manualAddOnly) continue
     if (!flagHolds(row.flagCond as number, row.flagCondVal as number, ctx)) continue
     const hidden = row.hiddenFlag as number
