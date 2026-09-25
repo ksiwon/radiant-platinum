@@ -33,6 +33,7 @@ import { installFieldServices } from './fieldServices'
 import { cutInSystem, resetCutIn } from './encounterCutIn'
 import { distortionHooks, distortionPreload } from './distortionCore'
 import { distortionEnter, distortionLeave } from './distortion'
+import { Terrain } from '../engine/battle/terrain'
 
 const DATA = resolve(__dirname, '../../public/data')
 const read = (p: string): unknown => JSON.parse(readFileSync(resolve(DATA, p), 'utf8'))
@@ -77,6 +78,8 @@ maybe('배틀 뒤의 필드 다시 세우기', () => {
   let outcome: Exclude<BattleFinish, null> = 'win'
   /** 가짜 배틀이 몇 번 열렸나 — 0이면 시험이 아무것도 안 쟀다 */
   let battles = 0
+  /** 마지막으로 연 야생 판의 조건 */
+  let lastWild: { species: number, form?: number, terrain?: number } | null = null
 
   beforeEach(async () => {
     useBattleStore.getState().close()
@@ -94,11 +97,13 @@ maybe('배틀 뒤의 필드 다시 세우기', () => {
     worldState.input.interact = false
     worldState.input.cancel = false
     battles = 0
+    lastWild = null
 
     // 배틀 화면이 여는 판 한 번을 그대로 흉내 낸다: 결과가 서고(`outcome`) → 화면이 닫힌다(`phase: 'off'`)
     useBattleStore.setState({
-      startWild: () => {
+      startWild: (wild) => {
         battles++
+        lastWild = wild
         useBattleStore.setState({ phase: 'running', outcome: null })
         useBattleStore.setState({ phase: 'over', outcome })
         useBattleStore.setState({ phase: 'off', outcome: null })
@@ -237,6 +242,8 @@ maybe('배틀 뒤의 필드 다시 세우기', () => {
       expect(npcActors.byLocalID.has(DW_CYNTHIA_MESSAGE)).toBe(true)
       expect(vars.checkFlag(FLAG_CAUGHT_GIRATINA)).toBe(result === 'caught')
       expect(mapWorld.pending).toBeNull()
+      // 오리진폼 · 기라티나 땅 (`Encounter_NewVsGiratinaOrigin` · REPAIR §95)
+      expect(lastWild).toMatchObject({ species: 487, form: 1, terrain: Terrain.GIRATINA })
     })
 
     it('지면 필드를 다시 안 세운다 — 진행도 13 그대로 전멸한다', async () => {

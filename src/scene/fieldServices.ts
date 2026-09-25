@@ -183,6 +183,7 @@ import { blackOut, healParty, loadHealTables, watchBlackOut, watchPartnerHeal } 
 import { useDoorVisualStore } from './doorVisualStore'
 import { loadPropAnimSet } from './propAnim'
 import { useBattleStore } from '../state/battleStore'
+import { Terrain } from '../engine/battle/terrain'
 import { useCurrencyStore } from '../state/currencyStore'
 import { useMenuStore } from '../state/menuStore'
 import { mailboxCount } from '../engine/world/mail'
@@ -1718,7 +1719,10 @@ const services: FieldServices = {
     battleMask = null
     waiting = true
     void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
-      void useBattleStore.getState().startWild({ species, level, form: GIRATINA_ORIGIN })
+      // 땅도 기라티나 것이다 (`dto->terrain = TERRAIN_GIRATINA` · REPAIR §95)
+      void useBattleStore.getState().startWild({
+        species, level, form: GIRATINA_ORIGIN, terrain: Terrain.GIRATINA,
+      })
         .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
     })
   },

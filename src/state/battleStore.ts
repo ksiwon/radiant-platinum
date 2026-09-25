@@ -203,6 +203,13 @@ interface WildStart {
    */
   fateful?: boolean
   /**
+   * 땅을 부르는 쪽이 정한다 — 밟은 칸과 맵 배경(`CalcTerrain`)을 안 본다.
+   *
+   * 오리진폼 기라티나 하나뿐이다: `Encounter_NewVsGiratinaOrigin`이 `dto->terrain = TERRAIN_GIRATINA`로
+   * 덮는다(`encounter.c` 989). 배경은 그대로 깨어진 세계다 (REPAIR §95)
+   */
+  terrain?: TerrainId
+  /**
    * 배회 포켓몬이면 그 자리 번호 (PARITY §6.3).
    *
    * 개체는 세이브에 있다 — 여기로는 **어느 자리인지**만 온다
@@ -596,6 +603,9 @@ export const useBattleStore = create<BattleState>((set, get) => ({
         })
         foe.form = wild.form ?? 0
         if (wild.fateful === true) foe.origin = { ...foe.origin, fateful: true }
+        // ⚠️ **`open`이 밟은 칸으로 땅을 정한 뒤다** — 여기서 덮어야 조우 폭발(`burstMembers`)과
+        // 도롱마담 옷감이 그 땅을 본다
+        if (wild.terrain !== undefined) battleTerrain = wild.terrain
         // ⚠️ **레이더 사슬만 색을 못 박는다** (PARITY §6.5). 원작이 그 자리에서
         // 색이 다르게 나올 때까지 성격값을 다시 굴린다
         // (`CreateWildMonShinyWithGenderOrNature`) — 우리도 같은 자리에서 찾는다
