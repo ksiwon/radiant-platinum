@@ -603,6 +603,22 @@ export class BattleController {
     this.view = { ...this.view, ended: true }
   }
 
+  /**
+   * 내 마지막 마리가 쓰러진 **그 줄 뒤를** 버린다.
+   *
+   * 원작은 기술 하나가 끝날 때마다 판이 끝났는지 본다 (`BattleControllerPlayer_MoveEnd` →
+   * `CheckBattleOver` · `battle_controller_player.c` 3969). 그래서 내 마지막 마리가 쓰러지면
+   * 그 턴의 나머지 — 편의 기술, 턴 끝의 날씨·독 — 는 안 일어난다. sim은 턴을 통째로
+   * 정산해서 주므로 여기서 자른다
+   */
+  private cutAfterLastFaint(events: BattleEvent[]): void {
+    let last = -1
+    events.forEach((e, i) => {
+      if (e.kind === 'faint' && e.actor.side === 'p1' && this.isMine(e.actor.name)) last = i
+    })
+    if (last >= 0) events.length = last + 1
+  }
+
   /** 잡은 개체. 포획에 성공했을 때만 있다 */
   get captured(): SideMon | null {
     return this.caught
@@ -924,6 +940,7 @@ export class BattleController {
 
       // 편이 있으면 **내 파티가 다 쓰러진 순간** 진다 (`lostAlone`)
       this.checkAlone()
+      if (this.lostAlone) this.cutAfterLastFaint(events)
       if (this.view.ended) break
       // 우리가 고를 게 생겼으면 여기서 멈추고 화면에 넘긴다.
       //

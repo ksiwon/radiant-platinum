@@ -9,7 +9,7 @@
 //   · 영원의 숲 모미와 함께 만난 야생 둘 (`BATTLE_TYPE_AI_PARTNER`)
 import 'fake-indexeddb/auto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { useBattleStore } from './battleStore'
+import { trainerNameOf, useBattleStore } from './battleStore'
 import { createNewSave, useSaveStore } from './saveStore'
 import { createWild, fillPp, statsOf, wildMoves } from '../engine/pokemon/instance'
 import { expForLevel } from '../engine/pokemon/exp'
@@ -238,5 +238,14 @@ describe('판 이름', () => {
     expect(openingLine(ends)).toBeNull()
     // 끝말은 롬 대사라 뱅크와 상관없이 남는다
     expect(closingLines(ends)).toEqual(['끝말 하나', '끝말 둘'])
+  })
+})
+
+describe('라이벌의 이름 (`Trainer_Encounter` · `trainer_data.c` 39)', () => {
+  it('라이벌 분류(63)는 세이브의 라이벌 이름이다 — 창기둥의 편도', () => {
+    const names = ['', '롬이름']
+    expect(trainerNameOf(1, 63, names, '지우')).toBe('지우')
+    expect(trainerNameOf(1, 63, names, '')).toBe('롬이름')
+    expect(trainerNameOf(1, 72, names, '지우')).toBe('롬이름')
   })
 })

@@ -707,14 +707,17 @@ export const useBattleStore = create<BattleState>((set, get) => ({
           error: `트레이너 #${trainerId}은(는) 파티가 없다` })
         return
       }
-      const tag = (id: number, t: Trainer): TrainerTag => ({
-        id,
-        cls: classes[t.class] ?? null,
-        name: names[id] ?? null,
-        // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
-        label: [classes[t.class], names[id]].filter(Boolean).join(' '),
-        classId: t.class,
-      })
+      const tag = (id: number, t: Trainer): TrainerTag => {
+        const name = trainerNameOf(id, t.class, names, useSaveStore.getState().rivalName)
+        return {
+          id,
+          cls: classes[t.class] ?? null,
+          name,
+          // "체육관 관장 동관". 분류만 있고 이름이 비면 분류로 부른다
+          label: [classes[t.class], name].filter(Boolean).join(' '),
+          classId: t.class,
+        }
+      }
       const first = tag(trainerId, trainer)
       const foes = other ? [first, tag(secondId, other)] : [first]
       const partner = ally ? tag(allyId, ally) : null
@@ -1731,6 +1734,23 @@ type Waiting = '규칙기' | '게임 자료' | '파티' | '심판'
 
 /** 상대 쪽을 만드는 것. 야생 한 마리든 트레이너 여섯 마리든 모양은 같다 */
 type BuildFoe = (ctx: { species: SpeciesTable; pp: (move: number) => number }) => SideSpec
+
+/** `TRAINER_CLASS_RIVAL` (`generated/trainer_classes.txt`) */
+const TRAINER_CLASS_RIVAL = 63
+
+/**
+ * 트레이너의 이름 (`Trainer_Encounter` · `trainer_data.c` 39).
+ *
+ * ⚠️ **라이벌 분류는 롬 이름이 아니라 세이브의 라이벌 이름이다** — 원작이
+ * `MiscSaveBlock_RivalName`을 그대로 베낀다. 창기둥에서 편으로 서는 라이벌(607·619·620)도
+ * 그렇다. 세이브에 이름이 비었으면(시험·옛 세이브) 롬 이름으로 떨어진다
+ */
+export function trainerNameOf(
+  id: number, trainerClass: number, names: readonly (string | undefined)[], rivalName: string,
+): string | null {
+  if (trainerClass === TRAINER_CLASS_RIVAL && rivalName.trim() !== '') return rivalName
+  return names[id] ?? null
+}
 
 /**
  * 한 쪽에 트레이너가 둘인 판의 나머지 (PARITY §2.2b).

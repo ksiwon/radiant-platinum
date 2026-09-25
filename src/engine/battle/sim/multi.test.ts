@@ -358,11 +358,16 @@ maybe('편과 함께 — 나와 편 vs 트레이너 둘', () => {
       // 내 파티를 약하게 둔다 — 편보다 먼저 바닥나는 판이 나와야 잰다
       const { controller, step } = await withPartner(seed, 8)
       try {
-        await playOut(controller, rng(seed), step.events)
+        const played = await playOut(controller, rng(seed), step.events)
         const mine = controller.results('p1').filter((r) => owner(r.key) === 'p1')
         const ally = controller.results('p1').filter((r) => owner(r.key) === 'p3')
         if (mine.every((r) => r.fainted)) {
           expect(controller.finish, `씨앗 ${String(seed)}`).toBe('loss')
+          // 내 마지막 마리가 쓰러진 줄이 판의 마지막 줄이다 — 그 턴의 나머지(편의 기술,
+          // 턴 끝의 셈)는 안 일어난다 (`BattleControllerPlayer_MoveEnd` · 3969)
+          const tail = played.events.at(-1)
+          expect(tail?.kind, `씨앗 ${String(seed)}`).toBe('faint')
+          if (tail?.kind === 'faint') expect(owner(tail.actor.name)).toBe('p1')
           if (ally.some((r) => !r.fainted)) alone++
         } else {
           expect(controller.finish).toBe('win')

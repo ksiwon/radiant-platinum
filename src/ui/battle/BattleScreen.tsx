@@ -40,6 +40,7 @@ import { SwitchScreen } from './SwitchScreen'
 import { battleText, leadLines, type BattleNames } from './messages'
 import { ownerOfKey, type KeyOwner } from '../../engine/battle/aftermath'
 import { openingLine, closingLines } from './bookends'
+import { GAUGE_SLOTS, gaugeSlots } from './partyGauge'
 import {
   BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, STAT_BANK,
 } from './romText'
@@ -456,16 +457,17 @@ export function BattleScreen() {
       <div className={css.field}>
         <div className={css.foeSlot}>
           {/*
-            트레이너마다 이름과 파티 공 한 줄 (`PartyGaugeData_New`). 트레이너가 둘이면
-            줄도 둘이다 — 어느 공이 누구 것인지가 여기서 읽힌다
+            쪽마다 공 한 줄 (`PartyGaugeData_New`). 트레이너가 둘이면 한 줄에 첫 상대가
+            0~2번, 둘째가 3~5번 칸이다 (`partyGauge.gaugeSlots`)
           */}
           {kind === 'trainer' && foes.length > 0
-            ? foes.map((t, i) => (
+            ? (
               <PartyGauge
-                key={t.id} label={t.label} owner={i === 0 ? 'foe' : 'foe2'}
+                label={foes.map((t) => t.label).join(' · ')}
+                owners={foes.length > 1 ? ['foe', 'foe2'] : ['foe']}
                 roster={roster} down={downKeys} view={view}
               />
-            ))
+            )
             : foeName && <div className={css.foeTrainer}>{foeName}</div>}
           {[foe, foeB].map((m, i) => m && (
             <MonCard
@@ -477,15 +479,13 @@ export function BattleScreen() {
           ))}
         </div>
         <div className={css.mineSlot}>
-          {/* 편이 있으면 편의 이름과 공 줄을 먼저 — 자리 b가 그 사람의 것이다 */}
-          {partner !== null && (
-            <PartyGauge
-              label={partner.label} owner="partner" roster={roster} down={downKeys} view={view}
-            />
-          )}
+          {/*
+            우리 쪽 공 줄은 편이 있어도 **내 파티만**이다 — 이야기의 편 배틀은 합친 갈래를
+            안 탄다 (`battle_controller.c` 2132~2150)
+          */}
           {kind === 'trainer' && (
             <PartyGauge
-              label={playerName} owner="player" roster={roster} down={downKeys} view={view}
+              label={playerName} owners={['player']} roster={roster} down={downKeys} view={view}
             />
           )}
           {[mine, mineB].map((m, i) => m && (
@@ -612,28 +612,23 @@ function targetLabel(
   return `상대 ${name}`
 }
 
-/** 한 사람 파티의 최대 칸. 원작 공 줄도 여섯이다 (`MAX_PARTY_SIZE`) */
-const GAUGE_SLOTS = 6
-
 /**
- * 한 사람의 이름과 파티 공 (PARITY §2.2b · `PartyGaugeData_Fill`).
+ * 한 쪽의 이름과 파티 공 (PARITY §2.2b · `PartyGaugeData_Fill`).
  *
- * 공 하나가 그 사람 파티의 한 칸이다 — 멀쩡함·상태 이상·기절·빈 칸 넷으로
+ * 공 하나가 파티의 한 칸이다 — 멀쩡함·상태 이상·기절·빈 칸 넷으로
  * 갈린다(`STOCK_STATUS_*`). 기절은 **재생기가 보여 준 만큼만** 센다(`downKeys`) —
  * 정본을 보면 쓰러지는 연출보다 공이 먼저 꺼진다
  */
 function PartyGauge(
-  { label, owner, roster, down, view }: {
+  { label, owners, roster, down, view }: {
     label: string
-    owner: KeyOwner
+    owners: readonly KeyOwner[]
     roster: Record<string, RosterEntry>
     down: readonly string[]
     view: BattleView | null
   },
 ) {
-  const keys = Object.keys(roster)
-    .filter((k) => ownerOfKey(k) === owner)
-    .sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)))
+  const keys = gaugeSlots(Object.keys(roster), owners)
   const statusOf = (key: string): string | null => {
     for (const m of [view?.active.p1a, view?.active.p1b, view?.active.p2a, view?.active.p2b]) {
       if (m && m.key === key) return m.status === 'ok' ? null : m.status
