@@ -348,7 +348,17 @@ export async function coronetToSpear(api, ctx,
     // 난천 「준비됐니?」에 예 — 프레임 스크립트가 서기까지, 끝의 워프가 1F를 세우기까지 기다린다
     for (let i = 0; i < 6 && (await api.now()).map === MAP.spearDistorted; i++) {
       await api.clearTalk(); await api.settle()
-      await untilMap(api, (m) => m !== MAP.spearDistorted, 15_000)
+      if (await untilMap(api, (m) => m !== MAP.spearDistorted, 15_000)) break
+      /**
+       * ⚠️ **장면이 이미 한 번 돌았으면 난천에게 말을 건다** — 프레임 표는 `VAR_SPEAR_PILLAR_DISTORTED_STATE`==1일 때만
+       * 돌고 곧 2로 바꾼다. 「아니오」로 끝났거나 장면 도중에 쓴 리포트를 이어하면 2라서, 원작도 난천(script 2
+       * `SpearPillarDistorted_Cynthia`)에게 말을 걸어 같은 물음을 다시 듣는다(`scripts_spear_pillar_distorted.s:120-135`)
+       */
+      const vv = await vars()
+      if ((vv.spearDistorted ?? 0) >= 2) {
+        const said = await api.talkToNpc(MAP.spearDistorted, 2, Math.min(120_000, api.left()))
+        note('깨진 창기둥 난천에게 말 건다', String(said))
+      }
     }
   }
   const at = await api.now()
