@@ -2310,7 +2310,7 @@ on('GetSetNationalDexEnabled', (ctx) => {
 
 /** `include/constants/scripts.h` */
 export const SCRIPT_ID_OFFSET_SINGLE_BATTLES = 3000
-const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
+export const SCRIPT_ID_OFFSET_DOUBLE_BATTLES = 5000
 /** `generated/vars_flags.txt` — 이 뒤로 트레이너 번호만큼 떨어진 자리가 그 사람 플래그다 */
 export const TRAINER_DEFEATED_FLAGS_START = 1360
 
@@ -2706,8 +2706,10 @@ on('GetTrainerMessageTypes', (ctx) => {
   const notEnough = ctx.readHalfWord()
   const world = ctx.host.world
   const double = world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true
+  // 짝인지는 스크립트 번호 하나로 갈린다 (`Script_GetTrainerBattlerIndex` ·
+  // `script_manager.c` 507 — 5000 이상이면 둘째). 트레이너 번호의 홀짝은 안 본다 —
+  // 5000번대 스크립트를 가진 열 쌍 중 여섯이 홀수 번호라 둘째가 첫째의 대사를 읽었다
   const second = world.scriptID >= SCRIPT_ID_OFFSET_DOUBLE_BATTLES
-    && trainerIdOf(world.scriptID) % 2 === 0
   ctx.host.vars.set(before, double ? (second ? TRMSG.preDouble2 : TRMSG.preDouble1) : TRMSG.pre)
   ctx.host.vars.set(after, double ? (second ? TRMSG.postDouble2 : TRMSG.postDouble1) : TRMSG.post)
   ctx.host.vars.set(notEnough, double
@@ -2891,8 +2893,8 @@ on('GetTrainerRematchMessageTypes', (ctx) => {
   const notEnough = ctx.readHalfWord()
   const world = ctx.host.world
   const double = world.services.trainer?.(trainerIdOf(world.scriptID))?.double === true
+  // 짝인지는 스크립트 번호 하나로 갈린다 (`Script_GetTrainerBattlerIndex`)
   const second = world.scriptID >= SCRIPT_ID_OFFSET_DOUBLE_BATTLES
-    && trainerIdOf(world.scriptID) % 2 === 0
   ctx.host.vars.set(before, double
     ? (second ? TRMSG.rematchDouble2 : TRMSG.rematchDouble1)
     : TRMSG.rematch)
