@@ -98,6 +98,16 @@ interface ActionOptions {
   /** 우리 자리에 짝이 서 있는가. 짝을 겨누는 기술이 이걸 본다 */
   allyAlive?: boolean
   /**
+   * 한 마리를 겨누는 기술(`normal`)로 **짝도** 겨눌 수 있게 하는가.
+   *
+   * 원작은 된다 — 겨눔 화면의 배치 8·9가 자기 자리만 빼고 셋을 다 켠다
+   * (`battle_subscreen.c` 1339 `GetTargetSelectLayout` → `sMoveTargetSlotFlags[8]` =
+   * {0, 1, 1, 1}). 플레이어의 겨눔 화면과 트레이너 AI가 이걸 켠다(AI는 짝을 겨눈 벌을
+   * 따로 매긴다 · `ai/tagStrategy`). ⚠️ **야생은 안 켠다** — 원작 야생은 기술만 무작위로
+   * 고르고 대상은 상대 쪽에서 뽑는다 (`battle_display.c` 3612 `BattleSystem_Defender`)
+   */
+  allyTargets?: boolean
+  /**
    * 화면에서 감출 기술 칸 번호(1부터). 볼·도망이 쓰는 빈 턴 칸이다
    * (`session.ts`의 `IDLE_MOVE` 참고). 플레이어가 이걸 직접 고르면 안 된다
    */
@@ -294,8 +304,11 @@ function targetsFor(kind: string, at: number, options: ActionOptions): number[] 
   if (kind === 'adjacentAllyOrSelf') {
     return options.allyAlive ? [self, ally] : [self]
   }
-  // `any`는 짝까지 겨눌 수 있다 (원작도 아군을 때릴 수 있다)
-  if (kind === 'any' && options.allyAlive) return [...foes, ally]
+  // `any`는 짝까지 겨눌 수 있다 (원작도 아군을 때릴 수 있다). `normal`도 원작은
+  // 짝을 겨눌 수 있다 — 켜는 쪽이 정한다 (`allyTargets`)
+  if ((kind === 'any' || (kind === 'normal' && options.allyTargets === true)) && options.allyAlive) {
+    return [...foes, ally]
+  }
   return foes.length > 0 ? foes : [TARGET_FOE_A]
 }
 

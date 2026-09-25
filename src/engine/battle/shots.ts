@@ -99,3 +99,34 @@ export const PAIR_DIR: Vec3 = [LAT.x, 0, LAT.z]
  * 체력판이 있다. 앞뒤로도 엇갈려야 원작 DS의 **대각선 배치**가 된다
  */
 export const PAIR_DEPTH: Vec3 = [VIEW.x, 0, VIEW.z]
+
+/**
+ * 짝이 벌어지는 폭과, 짝 둘을 통째로 화면 **왼쪽**으로 미는 양 (PARITY §2.2).
+ *
+ * ⚠️ **네 값 다 찍어 보고 고른 것이지 원작 값이 아니다.** 원작 DS의 더블 자리는
+ * `gBattlerEncounterX`(`battle_anim/ov12_022380BC.c` 25)의 화면 픽셀이고, 우리 싱글 자리는
+ * BDSP의 미터 값이라 둘을 한 척도로 잇는 상수가 없다 — 카메라를 거쳐서만 견줄 수 있다.
+ *
+ * ⚠️ **쪽마다 다르다.** 내 자리는 카메라에서 3.9m, 상대는 7.7m다 — 같은
+ * 거리를 밀면 가까운 쪽이 화면에서 **두 배로** 움직여서 한 마리가 밖으로
+ * 나간다. 그래서 내 쪽은 대략 절반이다.
+ *
+ * ⚠️ **왼쪽으로 미는 이유가 체력판이다.** 오른쪽 절반을 판 둘과 명령 창이
+ * 쓰므로, 가운데를 기준으로 벌리면 바깥쪽 하나가 늘 판 뒤로 들어간다
+ */
+const PAIR: Readonly<Record<Side, { spread: number; bias: number }>> = {
+  p1: { spread: 0.45, bias: 0.02 },
+  p2: { spread: 0.85, bias: 1.35 },
+}
+
+/** 더블의 그 자리 발판이 쪽의 가운데에서 `PAIR_DIR`로 벌어지는 양(m). `a`가 오른쪽이다 */
+export function pairOffset(slot: `${Side}${'a' | 'b'}`): number {
+  const side: Side = slot.startsWith('p1') ? 'p1' : 'p2'
+  const sign = slot.endsWith('a') ? -1 : 1
+  return PAIR[side].spread * sign + PAIR[side].bias
+}
+
+/** 그 점이 카메라 앞으로 얼마나 떨어졌는가(m, 수평). 같은 화면 x로 옮길 때의 척도다 */
+export function viewDepth(point: Vec3): number {
+  return (CAMERA.position[0] - point[0]) * VIEW.x + (CAMERA.position[2] - point[2]) * VIEW.z
+}

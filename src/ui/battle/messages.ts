@@ -23,6 +23,7 @@ import type {
 } from '../../engine/battle/events'
 import type { Status } from '../../engine/pokemon/instance'
 import { withObject, withTopic } from '../korean'
+import { ownerOfKey } from '../../engine/battle/aftermath'
 import { romLine } from './romLine'
 import { forSide, moveUsedLine, MSG, STAT_SLOT } from './romText'
 
@@ -926,7 +927,12 @@ export function leadLines(
     } else {
       const ta = ctx.trainerOf?.(a.actor.name) ?? null
       const tb = ctx.trainerOf?.(b.actor.name) ?? null
-      line = ta !== null && tb !== null && (ta.cls !== tb.cls || ta.name !== tb.name)
+      // ⚠️ **991은 배틀 형식으로 고른다** (`battle_display.c` 6073 — `BATTLE_TYPE_TAG`나
+      // `2vs2`면 무조건). 두 마리의 주인이 다르면 트레이너 둘이다 — 이름을 견주면 안 된다:
+      // 조무래기 둘(521·527 · 514·522 · 414·415 · 848·849)은 분류도 이름도 같아서
+      // 「조무래기는 A와 B를 내보냈다」(973)로 떨어졌다
+      const two = ownerOfKey(a.actor.name) !== ownerOfKey(b.actor.name)
+      line = ta !== null && tb !== null && two
         ? rom(ctx, MSG.tr1SentOutPokemon1Tr2SentOutPokemon2,
           ta.cls, ta.name, bare(a.actor.name), tb.cls, tb.name, bare(b.actor.name))
         : rom(ctx, MSG.trSentOutPokemon1AndPokemon2,

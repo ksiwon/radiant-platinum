@@ -61,10 +61,32 @@ const ABILITY_NAMES: Record<keyof typeof ABILITY, string | null> = {
   NO_GUARD: 'No Guard',
   LEAF_GUARD: 'Leaf Guard',
   MOLD_BREAKER: 'Mold Breaker',
+  SAND_VEIL: 'Sand Veil',
+  CLOUD_NINE: 'Cloud Nine',
+  COMPOUND_EYES: 'Compound Eyes',
+  LIGHTNING_ROD: 'Lightning Rod',
+  SWIFT_SWIM: 'Swift Swim',
+  CHLOROPHYLL: 'Chlorophyll',
+  HUGE_POWER: 'Huge Power',
+  TRUANT: 'Truant',
+  PURE_POWER: 'Pure Power',
+  AIR_LOCK: 'Air Lock',
+  SNOW_CLOAK: 'Snow Cloak',
+  GLUTTONY: 'Gluttony',
+  SOLAR_POWER: 'Solar Power',
+  QUICK_FEET: 'Quick Feet',
+  STALL: 'Stall',
+  KLUTZ: 'Klutz',
+  FILTER: 'Filter',
+  SLOW_START: 'Slow Start',
+  STORM_DRAIN: 'Storm Drain',
+  ICE_BODY: 'Ice Body',
+  SOLID_ROCK: 'Solid Rock',
+  FLOWER_GIFT: 'Flower Gift',
 }
 
 describe('특성 번호', () => {
-  it('서른여섯 개가 전부 @pkmn 4세대 덱스와 같은 번호다', () => {
+  it('쉰여덟 개가 전부 @pkmn 4세대 덱스와 같은 번호다', () => {
     const bad: string[] = []
     for (const [key, name] of Object.entries(ABILITY_NAMES)) {
       if (name === null) continue

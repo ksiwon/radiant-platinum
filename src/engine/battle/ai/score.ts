@@ -16,6 +16,7 @@ import type { AiMon, AiMove, AiTurn } from './context'
 import { hpPercent, knownMoves } from './context'
 import { allDamage, estimateDamage, isDamageScored, killsWithMaxRoll } from './damage'
 import { ABILITY, EFFECT, RISKY_EFFECTS, SETUP_EFFECTS, SOUND_MOVES } from './rom'
+import { scoreTagStrategy } from './tagStrategy'
 import { effectivenessOf, TYPE } from './typeChart'
 
 /**
@@ -40,6 +41,12 @@ export const AI_FLAG = {
   PRIORITIZE_EXTREMES: 1 << 5,
   /** 넘겨 줄 것을 쌓기. 플래티넘은 아무도 안 켜고 BDSP의 강자 77명이 켠다 */
   BATON_PASS: 1 << 6,
+  /**
+   * 더블에서 짝을 셈에 넣기 (`ai/tagStrategy`). ⚠️ **자료가 안 켜도 원작이 켠다** —
+   * 더블 배틀이면 `TrainerAI_Init`이 마스크에 이 비트를 얹는다(`trainer_ai.c` 252).
+   * 트레이너 데이터에서는 928명 중 아무도 안 켠다
+   */
+  TAG_STRATEGY: 1 << 7,
 } as const
 
 /**
@@ -80,14 +87,13 @@ export const CHAMPION_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPE
 export const BDSP_TOP_FLAGS = AI_FLAG.BASIC | AI_FLAG.EVAL_ATTACK | AI_FLAG.EXPERT
   | AI_FLAG.SETUP_FIRST_TURN | AI_FLAG.PRIORITIZE_EXTREMES | AI_FLAG.BATON_PASS
 
-/** 원작에 있지만 플래티넘·BDSP 트레이너 데이터에서 한 번도 안 켜지는 플래그 */
+/**
+ * 원작에 있지만 플래티넘·BDSP 트레이너 데이터에서 한 번도 안 켜지는 플래그.
+ *
+ * ⚠️ **CHECK_HP도 짝을 겨눈 벌에서는 `TagStrategy_Partner`로 뛴다**(`script.s` 7694) —
+ * 켜는 트레이너가 없어서 옮기지 않았다. 켜면 그 자리를 같이 옮겨야 한다
+ */
 export const UNUSED_FLAGS = {
-  /**
-   * 더블 전용. ⚠️ **자료가 안 켜도 원작이 켠다** — 더블 배틀이면
-   * `TrainerAI_Init`이 마스크에 이 비트를 얹는다(`trainer_ai.c` 254줄).
-   * 우리는 아직 안 옮겼다 (PARITY §2.2)
-   */
-  TAG_STRATEGY: 1 << 7,
   CHECK_HP: 1 << 8,
   WEATHER: 1 << 9,
   HARASSMENT: 1 << 10,
@@ -717,6 +723,15 @@ interface ScoredMove {
  * 순서가 결과에 영향을 준다 — 확률 판정이 섞여 있어서다
  */
 export function scoreMoves(turn: AiTurn, flags: number, expert?: ExpertScorer): ScoredMove[] {
+  // ⚠️ **짝을 겨눈 벌에는 TAG_STRATEGY 하나만 돈다.** 나머지 루틴은 전부
+  // `IfTargetIsPartner Terminate`로 시작한다(`script.s`의 `*_Main` 첫 줄) — 짝에게
+  // 헛수 거르기·데미지 비교를 돌리면 짝을 때리는 수가 점수를 받는다
+  if (turn.doubles?.targetIsAlly === true) {
+    return turn.moves.map((move) => ({
+      move,
+      score: BASE_SCORE + (flags & AI_FLAG.TAG_STRATEGY ? scoreTagStrategy(turn, move) : 0),
+    }))
+  }
   const damages = allDamage(turn.moves, turn.self, turn.foe, turn.weather)
   return turn.moves.map((move, i) => {
     let score = BASE_SCORE
@@ -727,6 +742,7 @@ export function scoreMoves(turn: AiTurn, flags: number, expert?: ExpertScorer): 
     if (flags & AI_FLAG.RISKY) score += scoreRisky(turn, move)
     if (flags & AI_FLAG.PRIORITIZE_EXTREMES) score += scorePrioritizeExtremes(turn, move)
     if (flags & AI_FLAG.BATON_PASS) score += scoreBatonPass(turn, move)
+    if (flags & AI_FLAG.TAG_STRATEGY) score += scoreTagStrategy(turn, move)
     return { move, score }
   })
 }
