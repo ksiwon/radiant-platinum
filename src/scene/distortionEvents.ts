@@ -7,19 +7,28 @@ import { DIR_STEP } from '../engine/script/movement'
 import {
   HOP_FRAMES, HOP_TILES, VIBRATION, hopDirOf, hopLift, platformFrames,
 } from '../engine/world/distortionMovePlatform'
+import { SFX } from '../engine/audio/sfx'
+import { music } from '../engine/audio/music'
 import { worldState } from '../state/worldState'
 import {
-  FACING_YAW, bindPlatform, distortionData, distortionHooks, distortionFloor, setState, state, toWorldTiles,
+  FACING_YAW, bindPlatform, distortionData, distortionHooks, distortionFloor, markCarried, platformIndex,
+  setHeightCalc, setState, state, toWorldTiles,
 } from './distortionCore'
 import {
-  beginArrival, distortionShadowDone, finishDistortionShadow, startDistortionShadow,
-  startGhostRun, tickArrival,
+  beginArrival, distortionGhostRunning, distortionShadowDone, finishDistortionShadow,
+  startDistortionShadow, startGhostRun, tickArrival,
 } from './distortionGiratina'
 import { beginBoulderTuto, resetBoulderTuto, tickBoulderTuto } from './distortionTuto'
 
-/** 이미 돈 사건은 다시 안 돈다. 맵을 나가면 지운다 */
-const ranEvents = new Set<string>()
-
+/**
+ * 닿은 칸의 사건을 돌린다 (`HandleEventAt`, `ov9_02249960.c:6393-6410`).
+ *
+ * ⚠️ **돈 적이 있는지 기억하지 않는다.** 원작은 조건이 맞는 첫 줄을 **걸음마다** 다시 돌린다 —
+ * B2F의 미끄러지는 판 스물넷은 한 층 안에서 몇 번이고 다시 타고, 기라티나 방의 발판은 (15,23)·(15,24)를
+ * 오갈 때마다 섰다 거둬진다. 사건이 옮겨 놓은 칸에서 다음 사건이 또 도는 일은 **걸음 자가 막는다**:
+ * 옮겨진 칸은 걸은 칸이 아니다(`markCarried` → `stepSystem`). 한때 층마다 한 번만 돌게 막았는데, 그러면
+ * 되짚어 가는 길(P2N → P3S → P2N)이 층을 나갔다 올 때까지 끊겼다
+ */
 export function applyEvents(wx: number, wy: number, wz: number): void {
   const floor = distortionFloor()
   const data = distortionData()
@@ -32,12 +41,9 @@ export function applyEvents(wx: number, wy: number, wz: number): void {
     giratinaAnim: (n: number) => distortionHooks.giratinaAnim?.(n) ?? false,
     cyrusAppearance: distortionHooks.cyrusAppearance?.() ?? 0,
   }
-  for (const [i, event] of table.events.entries()) {
+  for (const event of table.events) {
     if (event.x !== wx || event.y !== wy || event.z !== wz) continue
     if (!flagHolds(event.flagCond, event.flagVal, ctx)) continue
-    const key = `${String(floor.map)}:${String(i)}`
-    if (ranEvents.has(key)) continue
-    ranEvents.add(key)
     runEvent(event.cmds)
     return
   }
@@ -60,6 +66,7 @@ type EventCmd = { kind: number; params: Record<string, unknown> | null }
 function runEvent(cmds: readonly EventCmd[]): void {
   running = {
     cmds, at: 0, frame: 0, slide: null, hop: null, shadow: false, arrival: false, tuto: false,
+    script: null, ghost: false,
   }
   advanceEvent()
 }
@@ -90,6 +97,17 @@ interface EventRun {
   arrival: boolean
   /** 호수의 셋이 바위를 가르쳐 주는 중인가 (`distortionTuto`) */
   tuto: boolean
+  /**
+   * 건 스크립트가 끝나기를 기다린다 (`EventCmdStartScript_Handle` → `_Finish`).
+   *
+   * 원작은 `ScriptManager_Start(task, …)`로 스크립트를 **이 사건 태스크의 하위 태스크로** 건다 — 스크립트가
+   * 끝나야 사건의 다음 명령이 돈다(`ov9_02249960.c:8760-8777`). 기라티나 방 (15,24)에서는 스크립트 7(울음 ·
+   * 말)이 끝난 **뒤에** 첫 그림자가 지나간다. `started`는 걸었는가다 — 글 뱅크가 아직 안 와서 못 걸었으면
+   * 다음 프레임에 다시 건다
+   */
+  script: { id: number, started: boolean } | null
+  /** 기라티나 방의 발판 무리가 다 서거나 거둬지기를 기다린다 (`EVENT_CMD_*_GIRATINA_ROOM_PLATFORMS`) */
+  ghost: boolean
 }
 
 let running: EventRun | null = null
@@ -133,9 +151,11 @@ function advanceEvent(): void {
     running.frame = 0
     const p = cmd.params ?? {}
     switch (cmd.kind) {
-      case EVENT_CMD.startScript:
-        distortionHooks.runScript?.(p.scriptID as number)
-        break
+      case EVENT_CMD.startScript: {
+        const id = p.scriptID as number
+        running.script = { id, started: distortionHooks.runScript?.(id) === true }
+        return
+      }
       case EVENT_CMD.setProgress:
         distortionHooks.setProgress?.(p.progress as number)
         break
@@ -165,11 +185,24 @@ function advanceEvent(): void {
       // ⚠️ **이 둘을 「연출」로 넘기면 기라티나 방에서 길이 안 생긴다.**
       // 발판 무리 1~3을 한 무리씩 세우는 것이 이 명령이고, 그게 없으면
       // 숨은 소품 여섯이 영영 안 나타나서 그 방에서 못 나간다
+      //
+      // 둘 다 끝날 때까지 **사건이 선다** — 원작의 명령 처리기가 `RES_FINISH`를 낼 때까지 다음으로 안 간다
+      // (`ov9_02249960.c:9401-9487`). 세울 때는 카메라가 먼저 아래로 기운다(`DoCameraTransition` — x 16눈금 ·
+      // 20프레임), 거둘 때는 다 거두고 여덟 프레임을 더 쉰다
       case EVENT_CMD.showGiratinaRoomPlatforms:
         startGhostRun(true)
-        break
+        running.ghost = true
+        return
       case EVENT_CMD.hideGiratinaRoomPlatforms:
         startGhostRun(false)
+        running.ghost = true
+        return
+      // B4F 그림자 셋의 표식 (`SystemFlag_HandleGiratinaAnimation(SET)` — 2478 · 2479).
+      // ⚠️ **이게 없으면 그 그림자가 B4F에 들 때마다 다시 지나간다** — 사건의 조건(`FLAG_COND_GIRATINA_SHADOW`)이
+      // 이 표식이 **안 섰을 때** 참이다. (98,161,56)과 (98,161,57)은 같은 표식 1을 보는 따로 된 두 사건이라,
+      // 이게 없으면 한 번 지나가는 길에 둘이 연달아 돈다
+      case EVENT_CMD.setGiratinaAnimationFlag:
+        distortionHooks.setGiratinaAnim?.(p.anim as number)
         break
       // ⚠️ **이 셋을 「연출」로 넘기면 B6F의 호수의 셋이 영영 안 선다.**
       // 다 가라앉으면서 세우는 `*_IN_B6F` 표식이 B6F 그 셋의 등장 조건이고,
@@ -179,9 +212,8 @@ function advanceEvent(): void {
       case EVENT_CMD.showMespritBoulderTuto:
         if (beginBoulderTuto(cmd.kind)) { running.tuto = true; return }
         break
-      // 자료에 남은 둘 — `addMapObject`(B1F에서 B2F의 시로나를 세운다, 다음 층
-      // 물체라 B2F에 들어설 때 배치표가 세운다)와 `setGiratinaAnimationFlag`
-      // (B4F 그림자 셋)는 여기서 안 돈다
+      // 자료에 남은 하나 — `addMapObject`(B1F에서 B2F의 시로나를 세운다)는 다음 층 물체라 B2F에
+      // 들어설 때 배치표가 세운다(조건 `progress == 4`). `deleteMapObject`는 자료에 없다
       default:
         break
     }
@@ -209,6 +241,10 @@ function beginSlide(p: Record<string, unknown>): boolean {
     movePlayer: p.movePlayer === 1,
     rider: [pos.x, pos.y, pos.z],
   }
+  // 태우고 가는 동안은 지형을 안 딛는다 (`EventCmdMovePlatform_BeginMovement`)
+  if (running.slide.movePlayer) setHeightCalc(false)
+  // 떨기 시작할 때 켜고 다 가서 끈다 (`SEQ_SE_PL_FW089B`)
+  void music.playEffect(SFX.DISTORTION_SLIDE)
   worldState.player.velocity.set(0, 0, 0)
   return true
 }
@@ -248,6 +284,18 @@ export function distortionEventTick(dt: number): void {
     if (!tickBoulderTuto(dt)) return
     run.tuto = false
     advanceEvent()
+  } else if (run.script !== null) {
+    if (!run.script.started) {
+      run.script.started = distortionHooks.runScript?.(run.script.id) === true
+      return
+    }
+    if (distortionHooks.scriptRunning?.() === true) return
+    run.script = null
+    advanceEvent()
+  } else if (run.ghost) {
+    if (distortionGhostRunning()) return
+    run.ghost = false
+    advanceEvent()
   } else if (run.slide !== null) tickSlide(run, run.slide)
   else if (run.hop !== null) tickHop(run, run.hop)
   else advanceEvent()
@@ -258,6 +306,7 @@ function place(x: number, y: number, z: number): void {
   p.set(x, y, z)
   worldState.player.prevPosition.copy(p)
   worldState.player.velocity.set(0, 0, 0)
+  markCarried()
 }
 
 function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>): void {
@@ -280,11 +329,14 @@ function tickSlide(run: EventRun, s: NonNullable<EventRun['slide']>): void {
   if (k < 1) return
   // 다 갔다 (`EventCmdMovePlatform_EndMovement`) — 닿은 칸에서 발밑의 판을
   // 다시 잡는다. 이걸 빼면 옮겨진 자리가 앞 판의 격자 밖이라 못 움직인다
+  // 판 밖에 내려놓았으면 높이 계산을 되켠다 (`AVATAR_DISTORTION_STATE_ACTIVE`면 켠다, 6639-6646)
   if (s.movePlayer && floor !== null) {
     const p = worldState.player.position
     const [wx, wy, wz] = toWorldTiles(p.x, p.y, p.z)
     bindPlatform(findPlatform(floor.platforms, wx, wy, wz))
+    setHeightCalc(platformIndex() < 0)
   }
+  music.stopEffect(SFX.DISTORTION_SLIDE)
   run.slide = null
   advanceEvent()
 }
@@ -304,9 +356,4 @@ function tickHop(run: EventRun, h: NonNullable<EventRun['hop']>): void {
   }
   run.hop = null
   advanceEvent()
-}
-
-/** 시험용 — 층을 나가면 사건 기억을 지운다 */
-export function distortionForgetEvents(): void {
-  ranEvents.clear()
 }

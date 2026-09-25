@@ -3,8 +3,12 @@
 // 뛸 자리는 층 자료의 `jumps`에 있고, 여기서는 **몇 프레임에 걸쳐 옮기고
 // 언제 판을 갈아 끼우는가**를 정한다.
 import { jumpAt } from '../engine/world/distortion'
+import { SFX } from '../engine/audio/sfx'
+import { music } from '../engine/audio/music'
 import { worldState } from '../state/worldState'
-import { FACING_YAW, bindPlatform, distortionFloor, toLocalTiles } from './distortionCore'
+import {
+  FACING_YAW, bindPlatform, distortionFloor, markCarried, setHeightCalc, toLocalTiles,
+} from './distortionCore'
 
 /**
  * 벽·천장으로 건너뛰는 자리 (`HandleFloatingPlatformJumpPointAt`).
@@ -72,9 +76,16 @@ export function distortionJumpTick(dt: number): void {
   )
   p.prevPosition.copy(p.position)
   p.velocity.set(0, 0, 0)
+  // 뛰는 것은 걸음이 아니다 — 원작은 필드 태스크가 옮긴다(`JumpOnFloatingPlatform`)
+  markCarried()
   if (j.frames < j.total) return
   // 다 옮긴 자리에서 판을 갈아 끼운다 — 여기서 중력 축이 바뀐다
   bindPlatform(j.platformIndex)
+  // ⚠️ **높이 계산은 늘 끈다.** 원작이 `floatingPlatformIndex < 0`이면 켜려 했지만 그 칸이 `u16`이라
+  // 0xFFFF(판 밖)도 음수가 아니다 (`ov9_02249960.c:2869-2873`) — 벽에서 판 밖으로 뛰어내려도 지형을 안 딛는다
+  setHeightCalc(false)
+  // 내려설 때 소리가 난다 (`Sound_PlayEffect(SEQ_SE_DP_SUTYA2)`)
+  void music.playEffect(SFX.DISTORTION_LAND)
   p.facing = FACING_YAW[j.facing] ?? p.facing
   jumping = null
 }

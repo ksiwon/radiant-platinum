@@ -21,8 +21,10 @@ import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { poketchStep } from './poketch'
 import {
-  distortionActive, distortionMoved, distortionRebindPlatform, distortionStepped,
+  distortionActive, distortionBumped, distortionKind, distortionMoved, distortionRebindPlatform,
+  distortionStepped, takeCarried,
 } from './distortion'
+import { PLATFORM_EAST_WALL, PLATFORM_WEST_WALL } from '../engine/world/distortion'
 import { pushDirection } from '../engine/input/move'
 import {
   dayNumber, elapseMinutes, minuteNumber, rollOver, swarmMap, trophySpecies,
@@ -190,6 +192,32 @@ const trace = new StepTrace()
 let lastMove = -1
 
 /**
+ * 자가 지금 벽의 두 축(y · z)을 재고 있는가 (PARITY §6.10).
+ *
+ * ⚠️ **벽에서는 오르내림이 한 걸음이다.** 원작은 걸음이 곧 한 칸 옮김이고 벽 위의 걸음은 y나 z를 바꾼다
+ * (`player_move.c`의 서·동쪽 벽 걸음 표). 그 걸음마다 떠나는 칸 처리(`DistWorld_HandlePlayerMoved`)와 닿은 칸
+ * 처리(`Field_ProcessStep` → `DistWorld_HandlePlayerPositionChanged`)가 돌고, 걸음 수도 는다. x·z만 재면
+ * 벽을 곧게 오르내리는 동안 칸이 한 번도 안 바뀌어 셋 다 빠진다 — B2F 세로 통로 끝(30,226,22)의 뛰는 자리,
+ * B4F 동쪽 벽(106,169,61~64)에서 천장으로 뛰는 자리와 y 168의 카메라가 그랬다.
+ *
+ * 벽에서는 x가 판에 붙어 있으므로 자에 (y + ½, z)를 준다 — 벽의 y 칸은 반올림(`toWorldTiles`)이라
+ * ½을 더해 내리면 같은 칸이 된다. 판을 갈아타 재는 면이 바뀌는 순간은 옮겨진 것이라(`takeCarried`)
+ * 거기서 자를 다시 놓는다
+ */
+let traceOnWall = false
+
+/** 자에 줄 첫 축 — 벽이면 y(½ 올림), 아니면 x */
+function traceAxis(p: { x: number, y: number }, wall: boolean): number {
+  return wall ? p.y + 0.5 : p.x
+}
+
+/** 지금 벽에 서 있는가 (서쪽·동쪽 벽 판) */
+function onWall(): boolean {
+  const kind = distortionKind()
+  return kind === PLATFORM_WEST_WALL || kind === PLATFORM_EAST_WALL
+}
+
+/**
  * 맵이 바뀌면 "같은 칸" 판정을 초기화한다.
  *
  * ⚠️ 안 하면 워프로 도착한 칸이 이미 밟은 것으로 남아, 그 칸을 벗어날 때까지
@@ -197,7 +225,8 @@ let lastMove = -1
  */
 export function resetStepTile(): void {
   const p = worldState.player.position
-  trace.reset(p.x, p.z)
+  traceOnWall = distortionActive() && onWall()
+  trace.reset(traceAxis(p, traceOnWall), p.z)
   lastMove = -1
   lastSlopeTile = -1
 }
@@ -320,7 +349,24 @@ export const stepSystem = {
     const p = worldState.player.position
     const tx = Math.floor(p.x), tz = Math.floor(p.z)
     const key = tz * grid.tileWidth + tx
-    const moved = trace.advance(p.x, p.z)
+    const dw = distortionActive()
+    const wall = dw && onWall()
+    // ⚠️ **깨어진 세계의 연출이 옮긴 자리는 걸음이 아니다** (`scene/distortionCore`의 `markCarried`).
+    // 원작은 조작으로 한 걸음을 마쳤을 때만 닿은 칸 처리와 걸음 수를 돌린다(`field_control.c:198-203`) —
+    // 미끄러지는 판·뛰어내림·승강 발판·판 뛰기·폭포는 필드 태스크가 옮기므로 안 든다. 그래서 B2F의 판이
+    // 내려놓은 칸(다음 판을 부르는 칸)에서 되돌아가는 판이 곧바로 서지 않고, 태워 간 여덟 칸이 걸음으로
+    // 안 세어진다. 자를 그 자리에 다시 놓고 이 틱은 거기서 끝낸다
+    if (dw && takeCarried()) {
+      traceOnWall = wall
+      trace.reset(traceAxis(p, wall), p.z)
+      lastMove = -1
+      return
+    }
+    if (wall !== traceOnWall) {
+      traceOnWall = wall
+      trace.reset(traceAxis(p, wall), p.z)
+    }
+    const moved = trace.advance(traceAxis(p, wall), p.z)
 
     // 진흙 비탈은 **칸이 바뀐 프레임에 한 번**이다 (PARITY §1.9)
     bikeSlopeAnim(tx, tz, key)
@@ -330,12 +376,20 @@ export const stepSystem = {
     // 칸과 누른 방향으로 돌린다 (`DistWorld_HandlePlayerMoved`). 도착한 칸에서
     // 돌리면 「방아쇠 칸에 서서 돌아선 뒤 걷기」가 빠져 블록이 안 나타난다.
     // 칸이나 방향이 바뀐 프레임에만 본다 — 누르고 있는 동안 매번 돌면 안 된다
-    if (distortionActive()) {
+    if (dw) {
       const dir = pushedDir()
-      const moveKey = dir < 0 ? -1 : key * 4 + dir
+      // 칸은 (x, y, z) 셋이다 — 벽을 오르내리면 y만 바뀐다
+      const tile = (Math.round(p.y) + 1024) * grid.tileWidth * grid.tileHeight + key
+      const moveKey = dir < 0 ? -1 : tile * 4 + dir
       if (moveKey !== lastMove) {
         lastMove = moveKey
         if (moveKey >= 0) distortionMoved(p.x, p.y, p.z, dir)
+      }
+      // 선 자리에서 보는 쪽으로 밀고 있다 — 막힌 칸 앞의 스크립트 칸이 여기서 선다
+      // (`DistWorld_CheckMapTransition` · `..._HandlePlayerMovementEnd`)
+      const bump = worldState.player.bumpDir
+      if (bump >= 0 && bump === facingDir() && moved.tiles.length === 0) {
+        distortionBumped(p.x, p.y, p.z, bump)
       }
     }
 
@@ -344,7 +398,7 @@ export const stepSystem = {
     //
     // ⚠️ **칸이 바뀐 틱에 한 번이다.** 지나온 칸이 여럿이어도 넘길 좌표는 지금
     // 자리 하나뿐이라, 칸마다 부르면 같은 자리를 되풀이해 묻게 된다
-    if (moved.tiles.length > 0 && distortionActive()) {
+    if (moved.tiles.length > 0 && dw) {
       distortionRebindPlatform(p.x, p.y, p.z)
       distortionStepped(p.x, p.y, p.z, facingDir())
     }

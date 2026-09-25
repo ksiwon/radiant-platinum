@@ -73,7 +73,7 @@ import { isDistortionFloor, romTileToLocal } from './distortionCore'
 import { spawnFloorObjects } from './distortionObjects'
 import {
   distortionAddObject, distortionPlayerPos, distortionRemoveObject, distortionResetCamera,
-  finishDistortionShadow, startDistortionShadow,
+  finishDistortionShadow, resetDistortionPersisted, startDistortionShadow,
 } from './distortion'
 import { usePreviewStore } from '../state/previewStore'
 import {
@@ -1831,6 +1831,7 @@ const services: FieldServices = {
   distortion: {
     addObject: (localID) => { distortionAddObject(localID, fieldScripts.vars) },
     removeObject: (localID) => { distortionRemoveObject(localID) },
+    resetPersisted: () => { resetDistortionPersisted() },
     resetCamera: () => { distortionResetCamera() },
     // ⚠️ 표가 비어 있으면 **띄우지 않는다.** 원작은 `GF_ASSERT`로 잡는 자리다
     startShadow: (index) => {

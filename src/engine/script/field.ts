@@ -525,6 +525,9 @@ const playerMovable: Movable = {
   set x(v: number) { worldState.player.position.x = v + 0.5 },
   get z() { return worldState.player.position.z - 0.5 },
   set z(v: number) { worldState.player.position.z = v + 0.5 },
+  // 높이는 칸 그대로다 — 깨어진 세계의 벽 걸음(`WALL_STEP_ACTIONS`)만 옮긴다
+  get y() { return worldState.player.position.y },
+  set y(v: number) { worldState.player.position.y = v },
   get dir() { return QUARTER_TO_DIR[quarterOf(worldState.player.facing)]! },
   set dir(v: number) { worldState.player.facing = DIR_TO_FACING[v] ?? 0 },
   visible: true,
@@ -957,11 +960,21 @@ export function tileInFront(x: number, z: number, facing: number): { x: number, 
  *
  * 플래그가 **서 있으면 숨은 것**이라는 규칙은 `spawnNpcs`가 이미 적용했다.
  */
-export function npcAt(mapId: number, x: number, z: number, vars: VarStore): Npc | null {
+export function npcAt(
+  mapId: number, x: number, z: number, vars: VarStore,
+  /**
+   * 깨어진 세계에서만 — 앞 칸의 높이 (맵 안 칸 단위).
+   *
+   * 그 세계는 원작이 **x·y·z 셋을 다** 견준다 (`Field_DistortionInteract` — `MapObject_GetY() / 2`).
+   * 벽에서는 앞뒤가 오르내림이라 x·z만 보면 같은 기둥의 딴 높이 사람에게 말이 걸린다
+   */
+  y?: number,
+): Npc | null {
   // 세워 둔 것이 **이 맵의 것일 때만** 쓴다. 아직 안 세웠으면 배치표로 떨어진다
   if (npcActors.mapId === mapId) {
     for (const actor of npcActors.list) {
       if (!actor.visible) continue
+      if (y !== undefined && Math.round(actor.y) !== y) continue
       if (Math.round(actor.x) === x && Math.round(actor.z) === z) return actor.info
     }
     return null
@@ -1014,7 +1027,7 @@ function tryTalk(): void {
     ? talkTile(grid, front, FACING_STEP[quarterOf(p.facing)]!)
     : front
 
-  const npc = npcAt(mapWorld.mapId, reach.x, reach.z, vars)
+  const npc = npcAt(mapWorld.mapId, reach.x, reach.z, vars, front.y)
   if (npc && npc.script !== NO_SCRIPT) {
     // 우리가 얹은 사람은 롬 스크립트가 없다 (SIWON.md). 번호가 표시일 뿐이라
     // `start()`에 넘기면 엉뚱한 자리를 밟는다
@@ -1161,15 +1174,16 @@ function tryFieldMove(front: { x: number; z: number }): void {
 }
 
 /** 지금 앞에 무엇이 있는가. 격자가 없거나 뛰는 중이면 null */
-function spotAt(front: { x: number; z: number }): FieldSpot | null {
+function spotAt(front: { x: number; z: number; y?: number }): FieldSpot | null {
   const p = worldState.player
   if (p.hop.active) return null
   const grid = mapWorld.grid
   if (!grid) return null
   return {
-    // 깨어진 세계의 물은 맵 격자가 아니라 판에 적혀 있다 (PARITY §6.10)
+    // 깨어진 세계의 물은 맵 격자가 아니라 판에 적혀 있다 (PARITY §6.10). 벽에서는 앞 칸이
+    // 오르내림이라 **앞 칸의 높이**로 묻는다 (`PlayerAvatar_GetDistortionFacingTileBehaviour`)
     frontBehavior:
-      distortionBridge.behaviorAt?.(front.x, p.position.y, front.z)
+      distortionBridge.behaviorAt?.(front.x, front.y ?? p.position.y, front.z)
       ?? grid.behavior(front.x, front.z),
     frontSprite: obstacleAt(front.x, front.z)?.gfx ?? null,
     quarter: quarterOf(p.facing),
@@ -1205,11 +1219,15 @@ function trainerNow(): Trainer {
  * 각이라(`surfaceHeading`), 천장에서 x·z로 세면 등 뒤 칸을 집는다. 바닥 판과
  * 판 밖에서는 값이 같다
  */
-export function frontTile(): { x: number; z: number } {
+export function frontTile(): { x: number; z: number; y?: number } {
   const p = worldState.player
   const dw = distortionBridge.frontTile?.(p.position.x, p.position.y, p.position.z, p.facing)
-  if (dw !== null && dw !== undefined) return { x: dw.x, z: dw.z }
-  return tileInFront(p.position.x, p.position.z, p.facing)
+  if (dw !== null && dw !== undefined) return { x: dw.x, z: dw.z, y: dw.y }
+  const front = tileInFront(p.position.x, p.position.z, p.facing)
+  // 깨어진 세계는 판 밖에서도 높이까지 견준다 (`PlayerAvatar_GetFacingDistortionWorldPos` — 판 밖이면
+  // 앞 칸의 높이가 지금 높이다). 그 밖의 맵은 높이를 안 넘긴다
+  if (distortionBridge.inWorld?.() === true) return { ...front, y: Math.round(p.position.y) }
+  return front
 }
 
 /**

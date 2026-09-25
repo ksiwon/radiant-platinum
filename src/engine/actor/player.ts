@@ -9,16 +9,18 @@ import { clearIceSlide, iceStep, isSliding, type IceView } from './ice'
 import { clearPanelSlide, panelStep } from './slidePanel'
 import { facingFromYaw } from '../input/mouse'
 import { pushDirection } from '../input/move'
-import { breakSnowballAt, obstacleAt, pushBoulder, solidNpcAt, STRENGTH_BOULDER } from './obstacles'
+import {
+  breakSnowballAt, obstacleAt, pushBoulder, solidNpcAt, solidNpcAtHeight, STRENGTH_BOULDER,
+} from './obstacles'
 import { edgeBlocks, edgeCrossBlocked } from './edgeBlock'
 import { TOP_LEVEL, bikeSpeedAt, bikeSpeedLevel } from './bike'
 import { bikeRampHop, bikeSlopeStep, clearBikeSlip, isSlippingDownSlope, pushBikeCue } from './bikeTerrain'
 import { SFX } from '../audio/sfx'
 import { onElevatedBridge, trackBridge } from './bridge'
-import { distortionBridge, PLATFORM_FLOOR } from '../world/distortion'
+import { distortionBridge, PLATFORM_FLOOR, terrainTileY } from '../world/distortion'
 import { surfaceHeading, surfaceVector } from './distortionSurface'
 import { mapFeatureBridge } from '../world/mapFeatures'
-import { DIR } from '../script/movement'
+import { DIR, DIR_STEP } from '../script/movement'
 import { cutInFrame } from '../battle/encounterCutIn'
 
 /**
@@ -190,7 +192,10 @@ function blocked(x: number, z: number, y = worldState.player.position.y): boolea
       // 폭포가 그 웅덩이에 있다. 맵 격자에는 안 적혀 있어서 판에 물어야 한다.
       // 파도타기 없이는 못 들어간다 (`player_move.c` 248줄과 같은 규칙)
       const beh = distortionBridge.behaviorAt?.(cx, y, cz)
-      return !surfing && beh !== null && beh !== undefined && isOnWater(beh, false)
+      if (!surfing && beh !== null && beh !== undefined && isOnWater(beh, false)) return true
+      // 판 위의 사람도 막는다 — 격자가 아니라 **그 사람의 높이**로 가른다
+      // (`PlayerAvatar_CheckDistortionMapObjectCollision`). B2F 서쪽 벽의 시로나가 여기서 걸린다
+      return solidNpcAtHeight(cx, cz, y) !== null
     }
     // 그 맵에만 있는 장치가 먼저다 (`DynamicMapFeatures_CheckCollision`) —
     // 들판시티의 물바닥처럼 **같은 칸이 물 높이에 따라 열리고 닫히는** 자리는
@@ -431,7 +436,10 @@ export const playerSystem = {
           const dir = land.z !== p.position.z
             ? (land.z > p.position.z ? DIR.south : DIR.north)
             : (land.x > p.position.x ? DIR.east : DIR.west)
-          if (distortionBridge.jumpBlocked?.(p.position.x, p.position.z, dir) !== true) {
+          // 시로나가 막는지는 **넘는 칸**(바로 앞 칸)으로 묻는다 — 원작이 `x + Dx(dir)`·`z + Dz(dir)`를
+          // 넘긴다 (`PlayerAvatar_WillJumpTwice`)
+          const over = DIR_STEP[dir] ?? { x: 0, z: 0 }
+          if (distortionBridge.jumpBlocked?.(p.position.x + over.x, p.position.z + over.z, dir) !== true) {
             startHop(land, HOP_TWICE_TIME)
             return
           }
@@ -549,10 +557,19 @@ export const playerSystem = {
     // ⚠️ **벽에 서 있으면 안 따라간다.** 그 y는 지면 높이가 아니라 걷고 있는
     // 축이라, 지면으로 끌어내리면 벽에 붙는 순간 바닥까지 미끄러진다
     //
-    // ⚠️ **깨어진 세계에서는 아예 안 따라간다.** 원작이 그 세계에 들어서면서
-    // 주인공의 높이 계산을 끈다 (`InitPlayer`) — 높이는 승강 발판·뛰는 자리·
-    // 벽 걷기가 정하는 상태고, 그 층 내내 한 값이다. 지형에서 읽으려 들면
-    // B2F에서 여덟 칸이 떠 버린다 (`scene/distortion`의 `DISTORTION_STAND_Y`)
+    // ⚠️ **깨어진 세계에서는 보통 맵처럼 따라가지 않는다.** 높이를 지형에서 읽는지는 원작이 켜고 끄는
+    // 상태다(`distortionBridge.followsGround`) — 판 위에서는 늘 꺼져 있고(판이 높이를 쥔다), 판 밖에서는
+    // 들어설 때·승강 발판·미끄러지는 판·폭포가 되켠다. 켜져 있으면 발밑 판의 높이를 **칸으로** 딛는다
+    // (`terrainTileY` — 원작의 칸 높이가 `MapObject_GetY() / 2`로 내린 값이다). 깨어진 세계의 지형은
+    // B5F 웅덩이(반 칸)만 빼고 다 평평해서, 이 규칙이 실제로 가르는 것은 웅덩이 128과 뭍 129다.
+    // 판이 없는 칸이면 그대로 둔다 — 원작도 `MapObject_RecalculateObjectHeight`가 못 찾으면 안 바꾼다
+    if (distortionBridge.inWorld?.() === true) {
+      if (!onWall && distortionBridge.followsGround?.() === true) {
+        const tile = terrainTileY(activeZone.grid?.heightAtWorld(
+          Math.floor(p.position.x) + 0.5, Math.floor(p.position.z) + 0.5, p.position.y))
+        if (tile !== null) p.position.y = tile
+      }
+    }
     const ground = onWall || distortionBridge.inWorld?.() === true
       ? null
       : activeZone.grid?.heightAtWorld(p.position.x, p.position.z, p.position.y)
@@ -613,9 +630,6 @@ export const playerSystem = {
     // 타는 것은 A를 눌러야 하지만 내리는 것은 걸어 나오면 된다
     if (p.surfing && standing !== null && !isOnWater(standing, onElevatedBridge())) {
       p.surfing = false
-      // 깨어진 세계 판 밖이면 뭍 높이에 선다 — B5F 웅덩이(128)에서 뭍(129)으로 (REPAIR §84)
-      const land = distortionBridge.landY?.() ?? null
-      if (land !== null) p.position.y = land
     }
     // 다리 어귀를 밟았는가 · 다리에서 내려섰는가 (PARITY §1.16).
     // **밑을 지나가는 것과 위를 건너는 것이 이 한 값으로 갈린다**

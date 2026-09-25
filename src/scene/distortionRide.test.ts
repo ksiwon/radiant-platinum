@@ -50,7 +50,6 @@ function rideOut(): number {
 describe.runIf(real)('승강 발판을 탄다', () => {
   beforeEach(async () => {
     await mod.distortionPreload()
-    mod.distortionForgetEvents()
     useSaveStore.setState({
       distortion: {
         valid: false, hiddenGroups: 0, platformIndex: 0,
@@ -59,7 +58,7 @@ describe.runIf(real)('승강 발판을 탄다', () => {
       },
     })
     mod.distortionHooks.progress = () => 0
-    mod.distortionHooks.runScript = () => { /* 시험에서는 스크립트를 안 돌린다 */ }
+    mod.distortionHooks.runScript = () => false
     mod.distortionHooks.puzzleFinished = () => false
     world.pending = null
     // ⚠️ **한 프레임 먼저 돌린다.** 씬이 프레임을 안 물려 주면 발판이 아예

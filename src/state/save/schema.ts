@@ -472,6 +472,10 @@ const saveSchema = z.object({
     cameraAngleZ: int(0, 0xffff),
     platformFlags: int(0, 0xffff),
     puzzleFlags: int(0, 0xffffffff),
+    // 배치표 자리를 떠난 바위 — 원작은 맵 물체로 담는다. 옛 리포트에는 없다
+    boulders: z.array(z.object({
+      map: int(0, 0xffff), localID: int(0, 0xff), x: int(0, 0xffff), z: int(0, 0xffff),
+    })).max(16).optional(),
   }),
 
   /**

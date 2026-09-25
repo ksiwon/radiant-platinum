@@ -49,7 +49,6 @@ maybe('B5F의 바위 안내 셋', () => {
 
   beforeEach(async () => {
     await mod.distortionPreload()
-    mod.distortionForgetEvents()
     clearNpcs()
     useSaveStore.setState({
       distortion: {
@@ -62,7 +61,7 @@ maybe('B5F의 바위 안내 셋', () => {
     field = makeWorld(vars, [], meta.movements)
     // B6F의 시로나가 서는 진행도 (`talkedToB3FCyrus`)
     mod.distortionHooks.progress = () => 6
-    mod.distortionHooks.runScript = () => { /* 스크립트는 아래에서 따로 돌린다 */ }
+    mod.distortionHooks.runScript = () => false // 스크립트는 아래에서 따로 돌린다
     mod.distortionHooks.puzzleFinished = () => false
     mod.distortionHooks.vars = () => vars
     mod.distortionHooks.addObject = (localID) => { mod.distortionAddObject(localID, vars) }
@@ -237,6 +236,7 @@ maybe('B5F의 바위 안내 셋', () => {
         distortion: {
           addObject: (id) => { mod.distortionAddObject(id, vars) },
           removeObject: (id) => { mod.distortionRemoveObject(id) },
+          resetPersisted: () => { /* 안 쓴다 */ },
           resetCamera: () => { /* 안 쓴다 */ },
           startShadow: () => { /* 안 쓴다 */ },
           finishShadow: () => { /* 안 쓴다 */ },

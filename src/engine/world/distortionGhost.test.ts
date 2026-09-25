@@ -56,7 +56,7 @@ describe('유령 소품 무리', () => {
 
     // ⚠️ **맵 581(B6F)의 유일한 방아쇠는 소품이 없는 무리 0을 가리킨다.**
     // 원작 자료가 그렇다 — 밟아도 아무것도 안 나타난다. 고치지 않고 그대로 둔다
-    // (승강 경로 20·21이 안 쓰이는 것과 같은 갈래다)
+    // (아무 발판도 안 쓰는 승강 경로 20·21과 같은 갈래다)
     it('방아쇠가 가리키는 무리에 소품이 있다 — 빈 방아쇠 하나만 빼고', () => {
       const empty: string[] = []
       for (const map of data!.maps) {
@@ -108,5 +108,6 @@ describe('기라티나 방 발판', () => {
     expect([...dark].sort((a, b) => a - b)).toEqual([1, 2, 3])
     expect(typeof mod.distortionGhostTick).toBe('function')
     expect(mod.distortionGhostRunning()).toBe(false)
-  })
+    // 씬 모듈을 처음 싣는 시험이라 무거운 판에서는 5초를 넘긴다 — 재는 것은 순서다
+  }, 30_000)
 })

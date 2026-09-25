@@ -162,6 +162,11 @@ export interface FieldServices {
     /** 배치표에 없는 사람을 번호로 세운다 (`DistWorld_AddMapObjectWithLocalID`) */
     addObject: (localID: number) => void
     removeObject: (localID: number) => void
+    /**
+     * 세이브의 깨어진 세계 자리를 비운다 (`PersistedMapFeatures_InitForDistortionWorld`).
+     * 층 갈이·이어하기 중이면 안 비운다 (`scene/distortionCore`의 `resetDistortionPersisted`)
+     */
+    resetPersisted: () => void
     /** 카메라 각을 0으로 (`DistWorld_ResetPersistedCameraAngles`) */
     resetCamera: () => void
     /** 기라티나 그림자를 띄운다. 번호는 `sGiratinaShadowExternal`의 자리다 */

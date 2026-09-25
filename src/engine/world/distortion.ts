@@ -113,6 +113,43 @@ export const TELEPORT = {
 /** 기라티나를 이긴 뒤 신오가 막고 서는 칸 (`GIRATINA_ROOM_POST_BATTLE_CYNTHIA_*`) */
 export const CYNTHIA_BLOCK = { x: 15, y: 1, z: 15 } as const
 
+/**
+ * 시로나가 막고 서서 두 칸 뛰기가 안 되는가 (`DistWorld_IsBlockedByCynthia`).
+ *
+ * ⚠️ **넘는 칸(바로 앞 칸)을 본다.** 부르는 `PlayerAvatar_WillJumpTwice`(`player_move.c:2001-2033`)가
+ * `MapObject_GetX + Dx(dir)`·`GetZ + Dz(dir)` — 앞 칸 — 을 넘긴다. 그래서 (15,14)에 서서 남쪽으로
+ * (15,15)를 넘으려 할 때 걸린다. 서 있는 칸을 넘기면 (15,15)에 설 일이 없어 한 번도 안 걸린다.
+ *
+ * ⚠️ 원작은 셋째 인자를 `tileY`라 부르면서 `..._TILE_Y`(1)와 견주는데, 부르는 쪽은 거기에
+ * **방향**을 넘긴다 — 그래서 실제로 걸리는 것은 남쪽(`DIR_SOUTH` = 1)뿐이다. x·z도 서로 바꿔 견주지만
+ * 둘 다 15라 같다. 그대로 옮긴다 (`ov9_02249960.c:9730-9746`)
+ *
+ * @param frontX 넘으려는 칸 (세계 좌표)
+ * @param frontZ 같음
+ */
+export function cynthiaBlocksJump(
+  map: number, frontX: number, frontZ: number, dir: number, progress: number,
+): boolean {
+  if (map !== MAP.giratinaRoom) return false
+  if (frontZ !== CYNTHIA_BLOCK.x || frontX !== CYNTHIA_BLOCK.z || dir !== CYNTHIA_BLOCK.y) return false
+  return progress === PROGRESS.battledGiratina
+}
+
+/**
+ * 판 밖에서 **지형이 주는 칸 높이** (`MapObject`의 높이 계산 → `GetPlayerPos`의 `MapObject_GetY() / 2`).
+ *
+ * 원작은 높이를 반 칸 단위(`MapObject_GetY`)로 들고 `GetPlayerPos`가 2로 나눠 **내린다**. 그래서 판
+ * 높이 1.0은 1칸, 0.5는 0칸이다. 깨어진 세계의 지형은 실측으로 층마다 지역 1.0 하나인데, B5F만
+ * 웅덩이 107칸이 0.5다(`bdhc` land 620~623 · 열린 물 칸 전부). 곧 **웅덩이는 세계 y 128, 뭍은 129**이고,
+ * 그 차이가 폭포를 거슬러 오르는 자리(104,128,76~79)와 승강 발판 셋(y 129)을 가른다.
+ *
+ * 판이 없는 칸이면 null — 원작도 그 칸에서는 높이를 안 바꾼다
+ */
+export function terrainTileY(height: number | null | undefined): number | null {
+  if (height === null || height === undefined) return null
+  return Math.floor(height + 1e-6)
+}
+
 /** 양끝을 **포함한다** (`DistWorldBounds_AreCoordinatesInBounds`) */
 export function inBounds(x: number, y: number, z: number, b: DistortionBounds): boolean {
   return y >= b.y && y <= b.y + b.sy
@@ -307,6 +344,23 @@ export interface DistortionState {
   platformFlags: number
   /** 바위 수수께끼 17자리 */
   puzzleFlags: number
+  /**
+   * 밀었거나 떨어져 **배치표 자리를 떠난 바위** (세계 칸).
+   *
+   * 원작은 이것을 이 버퍼가 아니라 **맵 물체 그대로** 세이브에 담는다 — 밀린 바위는 밀린 자리에서, B6F로 떨어진
+   * 바위는 떨어진 칸에서 이어하기가 다시 세운다. 그리고 층을 갈 때 지금 층과 다음 층의 물체만 들고 있어서,
+   * 그 둘을 벗어난 층의 바위는 배치표 자리로 돌아간다(`DeleteMapObjectsForMap` → 다시 `AddMapObjectsForMap`).
+   * 우리는 층마다 배우를 다시 세우므로 그 자리를 여기 적는다. 워프로 세계에 들어서면 버퍼와 함께 비워진다
+   */
+  boulders?: DistortionBoulderSpot[]
+}
+
+/** 배치표 자리를 떠난 바위 하나 — 층 · 번호 · 세계 칸 */
+export interface DistortionBoulderSpot {
+  map: number
+  localID: number
+  x: number
+  z: number
 }
 
 export function newDistortionState(): DistortionState {
@@ -415,23 +469,31 @@ export const distortionBridge: {
   /**
    * 지금 깨어진 세계 안인가.
    *
-   * ⚠️ **그 안에서는 지면을 따라가지 않는다.** 원작이 이 세계에 들어서면서
-   * 주인공의 높이 계산을 꺼 버린다 (`InitPlayer`의
-   * `MapObject_SetHeightCalculationDisabled(playerMapObj, TRUE)`) — y는 지형에서
-   * 읽는 값이 아니라 승강 발판·뛰는 자리·벽 걷기만 바꾸는 상태다.
-   * 지형에서 읽으려 들면 B2F에서 여덟 칸이 뜬다 (`scene/distortion`의
-   * `DISTORTION_STAND_Y`)
+   * ⚠️ **그 안에서는 보통 맵처럼 지면을 따라가지 않는다.** 높이를 지형에서 읽는지는 원작이
+   * 켜고 끄는 **상태**다(아래 `followsGround`). 판 위에서는 늘 꺼져 있고 y는 판·벽 걷기·
+   * 승강 발판·뛰는 자리가 정한다. 판 위에서 지형을 읽으려 들면 B2F에서 여덟 칸이 뜬다
    */
   inWorld: (() => boolean) | null
   /**
-   * **판 밖 뭍의 높이** (지역 y) — 판 위이거나 깨어진 세계 밖이면 null.
+   * **지금 지형을 따라가는가** — 판 밖이고 높이 계산이 켜져 있다.
    *
-   * 물에서 뭍으로 올라설 때 쓴다(REPAIR §84). 원작은 폭포 끝에서 높이 계산을 되켜
-   * (`EventCmdCascadeDown_FinishCascading`의 `MapObject_SetHeightCalculationDisabled(…, FALSE)`) B5F 웅덩이
-   * 물(세계 y 128)에서 뭍(129)으로 오르면 지형을 따라 한 칸 오른다 — 승강 발판 셋이 그 129에 있다.
-   * 우리는 이 세계에서 지형을 안 따라가므로(위 `inWorld`) 뭍에 오르는 그 순간 한 번 붙인다
+   * 원작은 판 밖(`AVATAR_DISTORTION_STATE_ACTIVE`)에서 높이 계산을 **되켠다**: 세계에 들어설 때
+   * (`InitPlayer` — ACTIVE면 켠다), 승강 발판이 닿을 때(`..._EndMovement`의
+   * `SetHeightCalculationEnabledAndUpdate(TRUE)`), 미끄러지는 판이 판 밖에 내려놓을 때
+   * (`EventCmdMovePlatform_EndMovement`), 폭포를 내려와 설 때(`EventCmdCascadeDown_FinishCascading`).
+   * 판으로 뛰거나(`JumpOnFloatingPlatform` — 늘 끈다) 폭포를 올라 천장에 서면 끈다.
+   * 그동안의 칸 높이는 `terrainTileY`다 — B5F 웅덩이 128, 뭍 129
    */
-  landY: (() => number | null) | null
+  followsGround: (() => boolean) | null
+  /**
+   * 그림만 얼마나 띄우는가 (칸) — 지형을 딛는 동안 발밑 판 높이와 칸 높이의 차.
+   *
+   * 원작은 높이를 반 칸 단위로 들고 그림은 판의 실제 높이에 선다 — B5F 웅덩이는 판이 지역 0.5라 칸 높이는
+   * 0(세계 128)이지만 그림은 물 위 0.5에 있다(`MapObject_RecalculateObjectHeight`가 `pos.y`를 판 높이로,
+   * `MapObject_GetY`를 반 칸 수로 둔다). 우리는 y를 칸으로 들고 있으므로 그 반 칸을 그리는 쪽이 더한다.
+   * 지형을 안 딛거나 평평한 곳이면 0
+   */
+  groundLift: (() => number) | null
   /**
    * 그 칸의 성질. 판 위가 아니면 null — 그때는 부르는 쪽이 맵 격자를 본다.
    *
@@ -456,15 +518,17 @@ export const distortionBridge: {
   /**
    * 시로나가 막고 선 자리라 못 뛰는가 (`DistWorld_IsBlockedByCynthia`).
    *
-   * 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
+   * 넘으려는 **앞 칸**(맵 좌표)을 받는다(`cynthiaBlocksJump`). 기라티나를 이긴 직후 그 방의 한 칸에서만 참이다
    */
-  jumpBlocked: ((x: number, z: number, dir: number) => boolean) | null
+  jumpBlocked: ((frontX: number, frontZ: number, dir: number) => boolean) | null
   dropBoulder:
     ((boulder: { localID: number; x: number; z: number },
       step: { x: number; z: number }) => boolean) | null
+  /** 괴력으로 바위를 한 칸 밀었다 — 그 자리를 적는다 (`DistortionState.boulders`) */
+  boulderMoved: ((boulder: { localID: number; x: number; z: number }) => void) | null
 } = {
-  blockedAt: null, frame: null, inWorld: null, landY: null, behaviorAt: null, jumpBlocked: null,
-  frontTile: null, cameraSwing: null, dropBoulder: null,
+  blockedAt: null, frame: null, inWorld: null, followsGround: null, groundLift: null, behaviorAt: null,
+  jumpBlocked: null, frontTile: null, cameraSwing: null, dropBoulder: null, boulderMoved: null,
 }
 
 /** 깨어진 세계의 맵인가 */

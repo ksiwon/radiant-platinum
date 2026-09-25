@@ -17,9 +17,10 @@
 // (스크립트 변수다) React 구독으로는 늦는다
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Mesh } from 'three'
+import { Mesh, type Material } from 'three'
 import {
-  distortionFloor, distortionPropPlaces, distortionPropShown, distortionRideAt, distortionShadowAt,
+  distortionFloor, distortionPropOpacity, distortionPropPlaces, distortionPropShown, distortionRideAt,
+  distortionShadowAt,
   distortionSlideAt, GIRATINA_SHADOW_KIND, isDistortionFloor,
   type DistortionPropPlace,
 } from './distortion'
@@ -54,6 +55,36 @@ export function DistortionProps({ mapId }: { mapId: number }) {
   const { byKind, offsets } = useLoadedProps(kinds)
 
   const meshes = useRef<(Mesh | null)[]>([])
+  /**
+   * B6F의 B7F행 발판이 나타나는 동안만 쓰는 제 재질 (`distortionPropOpacity`).
+   *
+   * 재질은 같은 종류의 소품끼리 나눠 쓰므로 알파를 거기 쓰면 딴 발판까지 흐려진다 — 나타나는 동안만
+   * 떼어 내 쓰고 다 나타나면 돌려놓는다
+   */
+  const faded = useRef(new Map<number, { shared: Material | Material[], own: Material[] }>())
+  const fade = (mesh: Mesh, i: number, alpha: number): void => {
+    const had = faded.current.get(i)
+    if (alpha >= 1) {
+      if (had !== undefined) {
+        mesh.material = had.shared
+        for (const m of had.own) m.dispose()
+        faded.current.delete(i)
+      }
+      return
+    }
+    let own = had?.own
+    if (own === undefined) {
+      const shared = mesh.material
+      own = (Array.isArray(shared) ? shared : [shared]).map((m) => {
+        const c = m.clone()
+        c.transparent = true
+        return c
+      })
+      faded.current.set(i, { shared, own })
+      mesh.material = Array.isArray(shared) ? own : own[0]!
+    }
+    for (const m of own) m.opacity = alpha
+  }
   const shadowRef = useRef<Mesh | null>(null)
 
   useFrame(() => {
@@ -75,6 +106,7 @@ export function DistortionProps({ mapId }: { mapId: number }) {
       const mesh = meshes.current[i]
       if (!mesh) continue
       mesh.visible = distortionPropShown(place)
+      if (place.steppingStones) fade(mesh, i, distortionPropOpacity(place))
       if (place.elevator < 0) continue
       const off = offsets[place.kind] ?? [0, 0, 0]
       // 타고 가는 동안 발판은 주인공 발밑에 붙어 같이 움직인다.

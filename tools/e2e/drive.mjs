@@ -1422,7 +1422,7 @@ export async function driveStory(page, {
 
   /**
    * 깨어진 세계를 걷는다 — **다리 하나를 밟고 다시 세운다.** 어긋나면 그 자리에서 다시 세운다.
-   * `used`는 이번 층에서 돈 사건 비트다(층이 바뀌면 0)
+   * 사건은 밟을 때마다 다시 돌므로(REPAIR §101) 돈 사건을 따로 세지 않는다
    */
   /**
    * @param stopWhen `(state) => boolean` — 참이면 그 자리에서 멈춘다. 기라티나 방에서 기라티나가 선 뒤
@@ -1430,7 +1430,6 @@ export async function driveStory(page, {
    */
   const distortionWalk = async (budgetMs, { escape = false, stopWhen = null } = {}) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
-    let used = 0
     let lastMap = null
     let misses = 0
     while (Date.now() < till) {
@@ -1438,13 +1437,12 @@ export async function driveStory(page, {
       const st = await obs.distortionState()
       if (!st.known || st.value === null) return { ok: true, why: '깨어진 세계를 나왔다' }
       if (stopWhen !== null && stopWhen(st.value)) return { ok: true, why: '멈출 자리다', at: st.value }
-      if (st.value.map !== lastMap) { used = 0; lastMap = st.value.map }
-      const r = await obs.distortionPlan({ used, escape })
+      if (st.value.map !== lastMap) lastMap = st.value.map
+      const r = await obs.distortionPlan({ escape })
       if (!r.known || r.value === null || !r.value.legs) return { ok: false, why: '계획이 없다', at: st.value }
       const leg = r.value.legs[0]
       for (const q of leg.steps) {
         const { ok, after } = await dwStep(q)
-        if (q.event && ok) used |= 1 << q.event.index
         if (!ok) { misses++; log(`      어긋남 ${q.key}/${q.act} 기대 ${JSON.stringify(q.expect)} 실제 ${JSON.stringify(after)}`); break }
         misses = 0
         if (after.map !== lastMap) break

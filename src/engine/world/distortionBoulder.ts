@@ -147,17 +147,36 @@ export function fellToB6F(flags: number, localID: number): number {
   return withPuzzleFlag(withPuzzleFlag(flags, pair.outside, true), pair.inB5F, false)
 }
 
-/** 맞는 웅덩이에 들어갔다 (`..._TickToCorrectPit`의 1·2단계) */
+/**
+ * 맞는 웅덩이에 들어갔다 (`..._TickToCorrectPit`의 1·2단계).
+ *
+ * ⚠️ **웅덩이 쪽과 바위 쪽이 나뉜다.** 원작은 채운 표식·풀려나는 호수의 셋·서는 스크립트를 **웅덩이**의
+ * 자리 번호(`boulder->flagIndex` — 떨어진 자리가 준 값)로 고르고, 바위의 번호로는 지울 「밖에 있다」 표식과
+ * 웅덩이 속 바위의 새 번호만 고른다(`ov9_02249960.c:7663-7729`). 바위마다 제 웅덩이로만 가면 둘이 같지만,
+ * 엠라이트의 바위를 아그놈의 웅덩이에 넣으면 아그놈의 웅덩이가 차고 아그놈이 풀려나고 스크립트 7이 선다 —
+ * 웅덩이 속 바위는 엠라이트 것(#144)이 그 웅덩이 자리에 선다
+ *
+ * @param pitFlag 떨어진 자리의 번호 (`fallLocationAt`). 안 주면 그 바위의 제 웅덩이다
+ */
 export function fellIntoPit(
-  flags: number, localID: number,
+  flags: number, localID: number, pitFlag?: number,
 ): { flags: number; localID: number; script: number } | null {
   const pair = BOULDER_BY_LOCAL_ID[localID]
   if (pair === undefined) return null
-  let next = withPuzzleFlag(flags, pair.pit, true)
+  const pit = PIT_OUTCOME[pitFlag ?? pair.pit]
+  if (pit === undefined) return null
+  let next = withPuzzleFlag(flags, pitFlag ?? pair.pit, true)
   next = withPuzzleFlag(next, pair.outside, false)
   // 웅덩이가 차면 그 위에 갇혀 있던 셋 중 하나가 풀린다
-  next = withPuzzleFlag(next, pair.mon, false)
-  return { flags: next, localID: pair.inPit, script: pair.script }
+  next = withPuzzleFlag(next, pit.mon, false)
+  return { flags: next, localID: pair.inPit, script: pit.script }
+}
+
+/** 웅덩이마다 풀려나는 호수의 셋과 서는 스크립트 (`..._TickToCorrectPit`의 2단계 `switch (boulder->flagIndex)`) */
+const PIT_OUTCOME: Readonly<Record<number, { mon: number; script: number }>> = {
+  [PUZZLE_FLAG.mespritBoulderInB6FPit]: { mon: PUZZLE_FLAG.mespritInB6F, script: 5 },
+  [PUZZLE_FLAG.azelfBoulderInB6FPit]: { mon: PUZZLE_FLAG.azelfInB6F, script: 7 },
+  [PUZZLE_FLAG.uxieBoulderInB6FPit]: { mon: PUZZLE_FLAG.uxieInB6F, script: 6 },
 }
 
 /** 틀린 웅덩이에 빠졌다 (`..._TickToWrongPit`). 바위가 B5F 자리로 되돌아간다 */

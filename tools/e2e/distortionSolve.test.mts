@@ -12,8 +12,10 @@ import { describe, expect, it } from 'vitest'
 import {
   ATTRS_INVALID, CYNTHIA_BLOCK, EVENT_CMD, FLAG_COND, MAP, PLATFORM_CEILING, PLATFORM_EAST_WALL,
   PLATFORM_FLOOR, PLATFORM_NONE, PLATFORM_WEST_WALL, STEP, TELEPORT, blocked, connectionOf,
-  findPlatform, flagHolds, hasPlatformAt, jumpAt, mapOf, tileAttributes, tileBehavior,
+  cynthiaBlocksJump, findPlatform, flagHolds, hasPlatformAt, jumpAt, mapOf, terrainTileY, tileAttributes,
+  tileBehavior,
 } from '../../src/engine/world/distortion'
+import { heightField } from '../../src/engine/map/height'
 import {
   ELEVATOR_DIR, PLATFORM_FLAG, downEndFlags, elevatorAt, elevatorLegs, initialPlatformFlags,
   upStartFlags, withFlag,
@@ -32,7 +34,6 @@ import { isOnWater, isSurfable } from '../../src/engine/map/zone'
 import { MapGrid, type MatrixMeta } from '../../src/engine/map/grid'
 import { DIR_STEP } from '../../src/engine/script/movement'
 import { standableSpot } from '../../src/engine/map/world'
-import { distortionGroundY } from '../../src/scene/distortionCore'
 import { withDistortionTables } from '../../src/data/distortionFile'
 import type { DistortionData, DistortionRom } from '../../src/data/schema'
 import {
@@ -44,6 +45,7 @@ const ROOT = resolve(import.meta.dirname, '../..')
 const DATA = resolve(ROOT, 'public/data')
 const HAVE = existsSync(resolve(DATA, 'distortion.json'))
   && existsSync(resolve(DATA, 'matrices/interiors.bin')) && existsSync(resolve(DATA, 'maps.json'))
+  && existsSync(resolve(DATA, 'bdhc.json')) && existsSync(resolve(DATA, 'bdhc.bin'))
 
 /** 층 자료(롬 반쪽 + 코드 표 — 제품이 합치는 그 함수)와 층마다의 `MapGrid` */
 function load(): { data: DistortionData, grids: Map<number, MapGrid> } {
@@ -57,6 +59,18 @@ function load(): { data: DistortionData, grids: Map<number, MapGrid> } {
   }
   const blob = readFileSync(resolve(DATA, 'matrices/interiors.bin'))
   const ab = blob.buffer.slice(blob.byteOffset, blob.byteOffset + blob.byteLength)
+  // 판 밖 지형의 높이(B5F 웅덩이 0.5)는 BDHC가 준다 — 제품이 쓰는 그 자료를 그대로 붙인다
+  const bdhc = JSON.parse(readFileSync(resolve(DATA, 'bdhc.json'), 'utf8')) as {
+    plateCount: number, planes: [number, number, number, number][], chunks: [number, number][],
+    fixedPerTile: number
+  }
+  const hb = readFileSync(resolve(DATA, 'bdhc.bin'))
+  const hab = hb.buffer.slice(hb.byteOffset, hb.byteOffset + hb.byteLength)
+  heightField.data = {
+    planes: bdhc.planes, chunks: bdhc.chunks, fixedPerTile: bdhc.fixedPerTile,
+    coords: new Int32Array(hab, 0, bdhc.plateCount * 4),
+    refs: new Uint16Array(hab, bdhc.plateCount * 16, bdhc.plateCount),
+  }
   const grids = new Map<number, MapGrid>()
   for (const m of data.maps) {
     const matrix = maps.find((q) => q.id === m.map)!.matrix
@@ -83,7 +97,10 @@ function productP(data: DistortionData, grids: Map<number, MapGrid>) {
     cascadeAt, fallLocationAt, fallDestination, fellToB6F, fellIntoPit, fellIntoWrongPit,
     puzzleSolved, FALL_DEST, PUZZLE_FLAG, hopDirOf, HOP_TILES, distortionJump, HOP_TWICE_TILES,
     ledgeHop, isOnWater, isSurfable, DIR_STEP, STRENGTH_BOULDER, standableSpot,
-    groundY: (map: number) => distortionGroundY(map),
+    // 판 밖 지형의 칸 높이 — 제품이 딛는 그 규칙(`player.ts` → `terrainTileY`)
+    terrainY: (map: number, lx: number, lz: number) =>
+      terrainTileY(grids.get(map)?.heightAtWorld(lx + 0.5, lz + 0.5, 1)),
+    cynthiaBlocksJump, initialPlatformFlags,
     grid: (map: number) => grids.get(map) ?? null,
     solidAt: () => null,
   }
@@ -91,7 +108,7 @@ function productP(data: DistortionData, grids: Map<number, MapGrid>) {
 
 type St = {
   map: number, x: number, y: number, z: number, pi: number, facing: number, surf: boolean,
-  strength: boolean, progress: number, flags: number, puzzle: number, used: number,
+  strength: boolean, progress: number, flags: number, puzzle: number, hc: boolean, anim?: number,
   boulders: { id: number, x: number, z: number, fixed?: boolean }[] | null
 }
 
@@ -102,13 +119,15 @@ function arrival1F(data: DistortionData): St {
   const f = mapOf(data, MAP.f1)!
   return {
     map: MAP.f1, x: 54, y: f.offsetY + 1, z: 40, pi: -1, facing: 3, surf: false, strength: false,
-    progress: 1, flags: initialPlatformFlags(MAP.f1), puzzle: initialPuzzleFlags(false), used: 0,
+    progress: 1, flags: initialPlatformFlags(MAP.f1), puzzle: initialPuzzleFlags(false), hc: true,
     boulders: null,
   }
 }
 
 /** 스크립트가 끝나면 서는 진행도 — 시험의 이어 달리기만 쓴다(몰이꾼은 실제 값을 읽는다) */
 function talkEffect(s: St, id: number): St {
+  // B2F 시로나: 5. 주인공이 벽 한 칸 아래(y 232)에서 말을 걸었으면 한 칸 비켜선다(`MoveAction_107` — z+1)
+  if (s.map === MAP.b2f && id === 128) return { ...s, progress: 5, z: s.y === 232 ? s.z + 1 : s.z }
   if (s.map === MAP.b6f && id === 134) return { ...s, progress: 7 } // `_b6f.s:34`
   if (s.map === MAP.b7f && id === 129) return { ...s, progress: 10 } // `_b7f.s:59`
   if (s.map === MAP.giratinaRoom && id === 128) return { ...s, progress: 14 } // `_giratina_room.s:25`
@@ -202,12 +221,22 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(down!.end).toMatchObject({ map: MAP.b2f, x: 33, y: 225, z: 45 })
     })
 
-    it('B2F — 벽을 타고 윗단에 올라 미끄러지는 판(사건)을 타고 (65,225,31)로 B3F', () => {
+    it('B2F — 벽의 시로나에게 말을 걸어 비키게 하고, 윗단의 미끄러지는 판(사건)을 타고 (65,225,31)로 B3F', () => {
       const s: St = { ...arrival1F(data), map: MAP.b2f, x: 33, y: 225, z: 45, progress: 4 }
-      const down = planFloor(P, s, goalExit('elevator', 'down'))
-      expect(down, HERE(s)).not.toBeNull()
+      // 진행도 4의 시로나(30,233,20)는 서쪽 벽 통로를 막고 선다 — 판 위의 사람도 막는다(REPAIR §107)
+      expect(planFloor(P, s, goalExit('elevator', 'down'))).toBeNull()
+      const talk = planNext(P, s)
+      expect(talk!.stage).toMatchObject({ kind: 'talk', localID: 128 })
+      const leg = talk!.legs[0]!
+      expect(leg.steps.at(-1)).toMatchObject({ key: 'A', prompt: 'talk' })
+      // 벽 위에서 마주 본다 — 앞 칸이 시로나의 세 축 그대로다
+      expect(leg.steps.at(-1)!.expect.pi).toBeGreaterThanOrEqual(0)
+      const after = talkEffect(leg.end as St, 128)
+      const down = planFloor(P, after, goalExit('elevator', 'down'))
+      expect(down, HERE(after)).not.toBeNull()
       expect(down!.end).toMatchObject({ map: MAP.b3f, x: 65, y: 193, z: 31 })
-      expect(down!.steps.some((q) => q.act === 'wall')).toBe(true)
+      // 벽을 오르내리는 걸음도 한 걸음이다 (REPAIR §106)
+      expect([...leg.steps, ...down!.steps].some((q) => q.act === 'wall')).toBe(true)
     })
 
     it('B3F — 태홍 칸(→6)을 지나 (96,193,43) 두 다리 승강판으로 B5F에 곧장 간다', () => {
@@ -265,6 +294,45 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(s).toMatchObject({ x: 15, z: 14, progress: 13 })
       const talk = planNext(P, s)
       expect(talk!.legs[0]!.steps.at(-1)).toMatchObject({ key: 'A', prompt: 'talk' })
+    })
+  })
+
+  describe('고친 규칙 (REPAIR §101 · §103 · §105)', () => {
+    it('B2F 미끄러지는 판은 몇 번이고 다시 탄다 — 내려놓은 칸은 걸은 칸이 아니다', () => {
+      const b2f = data.events.find((e) => e.map === MAP.b2f)!.events
+      const go = b2f.findIndex((e) => e.x === 33 && e.y === 225 && e.z === 36)
+      const back = b2f.findIndex((e) => e.x === 33 && e.y === 225 && e.z === 25)
+      const s: St = { ...arrival1F(data), map: MAP.b2f, x: 33, y: 225, z: 36, progress: 5 }
+      const first = M.stepped(s, 0)
+      expect(first.event.index).toBe(go)
+      // 판이 (33,225,25)에 내려놓는다 — 그 칸이 되돌아가는 사건 칸인데, 거기서 바로 안 돈다(`runEvent`)
+      expect(first.state).toMatchObject({ x: 33, y: 225, z: 25 })
+      // 걸어서 다시 밟으면 돈다 — 같은 층 안에서 되짚어 갈 수 있다
+      expect(M.stepped(first.state, 1).event.index).toBe(back)
+      expect(M.stepped(s, 0).event.index).toBe(go)
+    })
+
+    it('기라티나를 이긴 뒤 시로나는 (15,14)에서 남쪽으로 넘는 (15,15)를 막는다', () => {
+      const s: St = { ...arrival1F(data), map: MAP.giratinaRoom, x: 15, y: 1, z: 14, facing: 1, progress: 14 }
+      expect(cynthiaBlocksJump(MAP.giratinaRoom, 15, 15, 1, 14)).toBe(true)
+      expect(cynthiaBlocksJump(MAP.giratinaRoom, 15, 14, 1, 14)).toBe(false)
+      expect(M.press(s, 1).act).not.toBe('hop')
+      expect(M.press({ ...s, progress: 13 }, 1).act).toBe('hop')
+    })
+
+    it('B5F 뭍(129)에서 파도타기로 웅덩이에 들면 128이다 — 폭포를 거슬러 오르는 길이 산다', () => {
+      // 폭포 웅덩이 곁 주머니의 뭍 (101,129,67) — 폭포로 내려와 뭍에 올랐다가 다시 물에 드는 자리다.
+      // 예전에는 여기서 물에 들어도 129에 남아 거슬러 오르는 자리(104,128,76~79)가 안 걸렸다
+      const s: St = { ...arrival1F(data), map: MAP.b5f, x: 101, y: 129, z: 67, progress: 6, puzzle: 0 }
+      const up = planFloor(P, s, goalExit('cascade'), { surf: 'always' })
+      expect(up, HERE(s)).not.toBeNull()
+      const a = up!.steps.findIndex((q) => q.prompt === 'surf')
+      expect(up!.steps[a]!.expect).toMatchObject({ y: 128, surf: true })
+      expect(up!.end.map).toBe(MAP.b4f)
+      // 높이 계산이 꺼져 있으면(판 뛰기 뒤) 지형을 안 딛는다 — 뭍 높이 그대로다
+      const off = M.surfFrom({ ...s, hc: false })
+      expect(off.length).toBeGreaterThan(0)
+      for (const m of off) expect(m.result.state.y).toBe(129)
     })
   })
 
@@ -382,9 +450,9 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(exits.some((e) => e.exit.kind === 'elevator'), JSON.stringify(exits.map((e) => e.exit))).toBe(true)
     })
 
-    it('B5F 안내 사건(12·13·14)은 제품에서 아무 일도 안 한다 — 호수 셋이 B6F에 안 선다', () => {
-      // `distortionEvents.ts:168-170`의 `default`. 원작은 여기서 `…_IN_B6F`를 세운다
-      // (`ov9_02249960.c:9098,9187,9369`) — 그 깃발이 B6F의 유크시·아그놈·엠라이트 조건이다
+    it('B5F 안내 사건(12·13·14)의 깃발은 계획기가 안 따라간다 — 그 깃발 없이는 호수 셋이 B6F에 안 선다', () => {
+      // 제품은 안내가 `…_IN_B6F`를 세운다(REPAIR §86 · `ov9_02249960.c:9098,9187,9369`). 계획기는 안내 칸을 밟는
+      // 계획을 안 세우므로, 그 깃발이 없는 표로 보면 B6F의 셋이 없다 — 막는 자리에 서지 않아 길은 같다
       const kinds = data.events.find((e) => e.map === MAP.b5f)!.events.flatMap((e) => e.cmds.map((c) => c.kind))
       expect(new Set(kinds)).toEqual(new Set([EVENT_CMD.showUxieBoulderTuto, EVENT_CMD.showAzelfBoulderTuto,
         EVENT_CMD.showMespritBoulderTuto]))
@@ -420,3 +488,4 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
     expect(planRoute(P, s, (q: St) => q.map === MAP.b6f, { maxNodes: 40 })).toBeNull()
   })
 })
+

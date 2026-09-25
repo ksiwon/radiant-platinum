@@ -80,6 +80,20 @@ export const VAR_HALL_OF_ORIGIN_STATE = 0x4118
  * 서 있으면 바위 셋이 이미 웅덩이에 들어 있다 (`world/distortionBoulder`)
  */
 export const FLAG_DISTORTION_WORLD_PUZZLE_FINISHED = 2477
+/**
+ * B4F의 기라티나 그림자를 봤는가 (`FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1` = 2478, `_2` = 2479).
+ *
+ * 사건 명령 8(`SetGiratinaAnimationFlag`)이 `SystemFlag_HandleGiratinaAnimation(SET, anim)`으로 이 둘 중
+ * 하나를 세운다 — 번호는 `2478 + anim`이다. 사건의 조건 `FLAG_COND_GIRATINA_SHADOW`가 이것이 **안 섰을 때**
+ * 참이라, 서면 그 그림자는 다시 안 지나간다
+ */
+export const FLAG_DISTORTION_WORLD_GIRATINA_SHADOW_1 = 2478
+/**
+ * B6F에서 바위 수수께끼를 풀고 시로나가 길을 열었다 (`FLAG_DISTORTION_WORLD_STEPPING_STONES` = 0x977).
+ *
+ * B6F의 B7F행 승강 발판이 이것이 서야 나타난다 (`DistWorldMovingPlatformProp_AnimInit`)
+ */
+export const FLAG_DISTORTION_WORLD_STEPPING_STONES = 2423
 /** 여기부터는 스크립트 한 판만 사는 칸이다 */
 export const SCRIPT_LOCAL_VARS_START = 0x8000
 

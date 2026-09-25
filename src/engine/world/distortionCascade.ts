@@ -55,9 +55,17 @@ export interface CascadeSite {
    *
    * ⚠️ **내려간 뒤와 올라간 뒤가 다르다** — 내려가면 둘
    * (`WALK_SLOW_WEST` · `WALK_SLOWER_WEST`), 올라가면 셋(151 · 147 · 115)이다.
-   * 셋 다 −x고 프레임마다 8 → 4 → 2로 느려진다
+   * 올라간 뒤의 셋은 −x로 프레임마다 8 → 4 → 2(1/16칸)씩 느려진다
    */
   moveAway: number
+  /**
+   * 그 걸음 하나하나가 몇 프레임인가 — 한 걸음이 한 칸이다.
+   *
+   * 내려간 뒤는 `WALK_SLOW_WEST` 16 · `WALK_SLOWER_WEST` 32(이동 동작 표), 올라간 뒤는 151 · 147 · 115가
+   * `(−8, 0, 0)×2` · `(−4, 0, 0)×4` · `(−2, 0, 0)×8`이라 2 · 4 · 8이다 (`unk_020655F4.c`의
+   * `sub_02066CB8` · `sub_02066BF0` · `sub_02066B30`). 원작은 이 걸음을 **걸린다** — 순간이동이 아니다
+   */
+  moveAwayFrames: readonly number[]
   /**
    * 몸이 도는 차례 (`RotateMapObject`).
    *
@@ -122,7 +130,8 @@ export const CASCADES: readonly CascadeSite[] = [
   {
     map: MAP.b4f, x: 104, y: 170, z0: 76, z1: 79, dir: DIR.east, down: true,
     delta: -1, final: -0x298, mapLoad: -0x15 * CASCADE_UNIT,
-    slowFrames: 32, finishY: -0x2a, moveAway: 2,
+    slowFrames: 32, finishY: -0x2a, moveAway: 2, moveAwayFrames: [16, 32],
+    // `CASCADE_DOWN_BOBBING_DELTA` 1024 ÷ `FX32_ONE`
     bobMax: 4, bobDelta: 0.25,
     rotations: [
       { at: 'start', angle: 90, steps: 32 },
@@ -138,8 +147,9 @@ export const CASCADES: readonly CascadeSite[] = [
   {
     map: MAP.b5f, x: 104, y: 128, z0: 76, z1: 79, dir: DIR.east, down: false,
     delta: 8, final: 0x298, mapLoad: 0x14 * CASCADE_UNIT,
-    slowFrames: 4, finishY: 0x2a, moveAway: 3,
-    bobMax: 4, bobDelta: 0.25,
+    slowFrames: 4, finishY: 0x2a, moveAway: 3, moveAwayFrames: [2, 4, 8],
+    // `CASCADE_UP_BOBBING_DELTA` 512 ÷ `FX32_ONE` — 내려갈 때의 절반이다
+    bobMax: 4, bobDelta: 0.125,
     rotations: [
       { at: 'start', angle: -90, steps: 4 },
       { at: 'finish', angle: -90, steps: 2 },
@@ -199,11 +209,22 @@ export function cascadeFinishFrame(site: CascadeSite): number {
   return frame
 }
 
+/**
+ * 옮겨진 양을 칸으로 (`(currPosOffset.y >> 4) / FX32_ONE`).
+ *
+ * ⚠️ **0 쪽으로 자른다.** `>> 4`는 내림이지만 `FX32_ONE` 배수라 나머지가 없고, 뒤의 `/`가 C 나눗셈이라
+ * 음수도 0 쪽으로 간다. 내림으로 읽으면 내려가는 폭포에서 −305/16이 −20이 되어 카메라와 회전이 **열다섯
+ * 프레임 일찍** 켜진다 — 원작은 −320에서 켠다
+ */
+export function cascadeTiles(offset: number): number {
+  return Math.trunc(offset / CASCADE_UNIT)
+}
+
 /** 그 칸에 처음 드는 프레임 — 카메라와 회전이 여기서 켜진다 */
 function tileFrame(site: CascadeSite, atTiles: number): number {
   let frame = 0
   while (frame < 100_000) {
-    if (Math.floor(cascadeOffset(site, frame) / CASCADE_UNIT) === atTiles) return frame
+    if (cascadeTiles(cascadeOffset(site, frame)) === atTiles) return frame
     frame += 1
   }
   return frame
@@ -275,12 +296,26 @@ export function cascadeBobFix(site: CascadeSite, frame: number): number {
  * 그 프레임에 **새로** 켜지는 카메라 (없으면 null).
  *
  * 원작이 `(currPosOffset.y >> 4) / FX32_ONE == atTiles`를 보고 한 번만 켠다
- * (`cameraAngleState++`). 오른쪽으로 미는 것은 내림이라 −305/16도 −20이다 —
- * 그래서 「딱 −320이 되는 프레임」이 아니라 **그 칸에 처음 든 프레임**에 켜진다
+ * (`cameraAngleState++`) — 그 칸에 처음 든 프레임이다(`cascadeTiles`가 자른다)
  */
 export function cascadeCameraAt(site: CascadeSite, frame: number): CascadeCamera | null {
   for (const c of site.cameras) {
     if (tileFrame(site, c.atTiles) === frame) return c
   }
   return null
+}
+
+/**
+ * `from` 프레임 뒤부터 `to` 프레임까지 사이에 켜지는 카메라들 — 차례대로.
+ *
+ * 화면 프레임은 60Hz에 딱 안 맞아서 한 번에 1.02프레임씩 가기도 한다. 켜지는 프레임을 `===`로 찾으면
+ * 그 정수 프레임을 건너뛰는 판에 카메라가 **영영 안 돈다** — 그래서 지나온 구간으로 묻는다
+ */
+export function cascadeCamerasBetween(
+  site: CascadeSite, from: number, to: number,
+): CascadeCamera[] {
+  return site.cameras.filter((c) => {
+    const f = tileFrame(site, c.atTiles)
+    return f > from && f <= to
+  })
 }
