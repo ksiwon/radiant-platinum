@@ -18,16 +18,16 @@
 | 무엇 | 규칙 | 근거 |
 |---|---|---|
 | 방향키 → 세계 | 키의 `DIR`(↑0 ↓1 ←2 →3)이 `STEP[판 갈래][DIR]`의 줄이다. 입력이 카메라를 따라 돌지 않는다. 판 밖과 바닥은 ↑ z−1이다. 서쪽 벽은 ↑ y+1 · ← z+1이고, 동쪽 벽은 ↑ y+1 · ← z−1이다. 천장은 ↑ z+1 · → x+1이다. | `engine/input/move.ts:15-20`, `engine/actor/player.ts:305`, `engine/world/distortion.ts:224-229` |
-| 막힘 | 판 위에서는 판 격자만 본다. 막힘 비트를 보고, 파도타기가 아니면 물도 막힘이다. 사람과 바위는 **안 본다**. 판 밖에서는 맵 격자·물·바위·사람을 본다. 스크립트 칸 앞(B7F (89,56), 기라티나 방 (15,26))은 늘 막힘이다. | `player.ts:179-219`, `scene/distortionCore.ts:165-179` |
-| 누르는 순간 | 서 있는 칸 × 누른 방향으로 뛰는 자리(`jumpAt`)를 먼저 본다. 뛰면 16프레임 뒤에 판을 갈아 끼운다. 뛰는 자리가 없으면 폭포(`cascadeAt`)를 본다. 이 판정은 「칸 × 방향」이 바뀔 때만 돈다. | `scene/stepSystem.ts:327-334`, `scene/distortion.ts:124-132`, `scene/distortionJump.ts:41-80` |
-| 두 칸 뛰기 | 바닥 판이나 판 밖에서, 속도 방향 앞 칸이 0x5A~0x5D이면 3칸을 뛴다(24프레임). **속도의 부호만 본다.** 그래서 손을 뗀 뒤 남은 속도로도 뛴다. | `player.ts:411-429`, `actor/ledge.ts:38-90` |
+| 막힘 | 판 위에서는 판 격자를 본다. 막힘 비트를 보고, 파도타기가 아니면 물도 막힘이고, **그 높이의 사람**도 막는다(`solidNpcAtHeight` — B2F 서쪽 벽의 시로나, REPAIR §107). 판 밖에서는 맵 격자·물·바위·사람을 본다. 스크립트 칸 앞(B7F (89,56), 기라티나 방 (15,26))은 늘 막힘이다. | `engine/actor/player.ts`의 `blocked`, `actor/obstacles.ts`, `scene/distortionCore.ts`의 `distortionBlockedAt` |
+| 누르는 순간 | 서 있는 칸 × 누른 방향으로 뛰는 자리(`jumpAt`)를 먼저 본다. 뛰면 16프레임 뒤에 판을 갈아 끼우고 높이 계산을 끈다. 뛰는 자리가 없으면 폭포(`cascadeAt`)를 본다. 이 판정은 「칸(x,y,z) × 방향」이 바뀔 때마다 돈다 — 누른 채로 벽을 오르내려도 칸마다 돈다(REPAIR §106). | `scene/stepSystem.ts`, `scene/distortion.ts`의 `distortionMoved`, `scene/distortionJump.ts` |
+| 두 칸 뛰기 | 바닥 판이나 판 밖에서, **누른 방향** 앞 칸이 0x5A~0x5D이면 3칸을 뛴다(24프레임). 칸 가운데에 선 뒤에만 뛴다(REPAIR §110 · §111). 기라티나 방 진행도 14에서는 넘는 칸 (15,15)을 시로나가 막는다(`cynthiaBlocksJump` · REPAIR §103). | `player.ts`, `actor/ledge.ts` |
 | 턱 | 맵 격자로 보고, 판 갈래와는 상관없다. B3F·B5F·B6F에 있다. | `player.ts:431-435`, `ledge.ts:122-147` |
-| 닿은 칸 | **x나 z 칸이 바뀐 틱에만** 돈다. 판을 다시 잡고 → 승강 발판 → 사건 → 스크립트 칸 순서다. 벽에서 y만 바뀌는 걸음에서는 안 돈다. | `stepSystem.ts:340-344`, `actor/stepTrace.ts:115-130`, `scene/distortion.ts:140-146` |
+| 닿은 칸 | 칸(벽에서는 y·z)이 바뀐 틱에 돈다. 판을 다시 잡고 → 승강 발판 → 사건 → 스크립트 칸 순서다. **옮겨진 칸은 걸은 칸이 아니다** — 사건·승강 발판·판 뛰기·폭포가 내려놓은 칸에서는 안 돈다(`markCarried` · REPAIR §101). 스크립트 칸은 막힌 앞 칸을 밀어도 선다(REPAIR §114). | `scene/stepSystem.ts`, `scene/distortion.ts`의 `distortionStepped` · `distortionBumped` |
 | 승강 발판 | 세계 (x,y,z) **세 축이 정확히** 발판 칸과 같으면 밟는 순간 탄다. 기다리지 않는다. 다리마다 층이 바뀐다. 한 다리는 32칸에 128프레임(2.1초)이다. B3F→B5F는 두 다리로 4.3초, B6F→B7F는 3.3초다. | `engine/world/distortionElevator.ts:80-91,159-195`, `scene/distortionElevator.ts:97-286` |
 | 폭포 | B4F 천장 (104,170,76~79)에서 **→를 누르면** 내려간다(664프레임, 11.1초). B5F (104,128,76~79)에서 →를 누르면 올라간다(83프레임). 끝나면 서쪽으로 2칸(올라가면 3칸) 옮겨 선다. 파도타기는 그대로 남는다. | `engine/world/distortionCascade.ts:121-160`, `scene/distortionCascade.ts:69-156` |
-| 미끄러지는 판 (B2F) | 사건 칸을 밟으면 판이 떨고 → 태워 가고 → 주인공이 3칸 뛰어내린다. 사건 하나는 **층에 들어설 때마다 한 번**만 돈다. | `scene/distortionEvents.ts:22-43,243-287`, `MapStreamer.tsx:411` |
+| 미끄러지는 판 (B2F) | 사건 칸을 밟으면 판이 떨고 → 태워 가고 → 주인공이 3칸 뛰어내린다. 사건은 **밟을 때마다** 다시 돈다 — 내려놓은 칸에서 되돌아가는 판이 곧바로 서지 않을 뿐이다(REPAIR §101). | `scene/distortionEvents.ts` |
 | 괴력 | 바위를 마주 보고 A → 「예」를 고르면 `strength`가 켜진다. 층을 옮기면 꺼진다. 막힌 채 바위 쪽을 누르면 한 칸 민다. 앞 칸이 떨어지는 자리면 막힘을 안 보고 떨어뜨린다. 사람은 안 본다. | `script/field.ts:1210-1215,573-574`, `player.ts:471-479`, `actor/obstacles.ts:44-59`, `scene/distortionBoulder.ts:54-120` |
-| 파도타기 | A의 앞 칸이 물이면 「예」 → 앞 칸으로 x·z만 옮기고 판은 그대로다. 뭍에 오르면 저절로 내린다. | `field.ts:1098-1124,1216-1220`, `player.ts:597-606` |
+| 파도타기 | A의 앞 칸이 물이면 「예」 → 앞 칸으로 x·z만 옮기고 판은 그대로다. 뭍에 오르면 저절로 내린다. 판 밖에서 높이 계산이 켜져 있으면 지형의 칸 높이를 딛는다 — B5F 웅덩이 128 · 뭍 129(REPAIR §105). | `script/field.ts`, `player.ts` |
 | **A의 앞 칸** | 판을 아는 `frontTile()` — 바라보는 쪽 한 걸음(그 판 갈래의 `STEP`) | `field.ts`의 `tryTalk` (REPAIR §85) |
 | 조작이 묶이는 동안 | `player.riding`이 참이다. 승강 발판·바위 낙하·유령 발판·판 뛰기·사건·폭포 중 하나라도 돌면 선다. 이때 속도도 0이 된다. | `MapStreamer.tsx:874-877`, `player.ts:264-280` |
 
@@ -36,7 +36,7 @@
 | `act` | 무엇 |
 |---|---|
 | `walk` | 걷는다 |
-| `wall` | 벽에서 y로 오르내린다 |
+| `wall` | 벽에서 y로 오르내린다 — 한 걸음이다(닿은 칸 처리가 돈다) |
 | `turn` | 막혀서 돌기만 한다 |
 | `nudge` | 짧게 눌러 칸을 안 넘기고 돌아선다 |
 | `jump` | 판을 갈아탄다 |
@@ -86,11 +86,9 @@
      * 제품 모듈에서 꺼내 넘긴다(굽는 쪽이 하나). 사람·바위는 지금 층의 **살아 있는 배우**로, 다른 층은
      * 표로 본다.
      *
-     * @param arg.used 이번 층에 들어와서 이미 돈 사건의 비트(`distortionEvents.ts`의 `ranEvents`는
-     *   밖에서 못 읽는다 — 몰이꾼이 센다, §3)
      * @param arg.escape 벽 속에서 시작했으면 안전망으로 나오는 걸음을 먼저 준다(기본 꺼짐, §6-1)
      */
-    distortionPlan: (arg) => read('깨어진 세계 풀이를 못 돌렸다', async ({ used = 0, escape = false } = {}) => {
+    distortionPlan: (arg) => read('깨어진 세계 풀이를 못 돌렸다', async ({ escape = false } = {}) => {
       const D = await import('/src/engine/world/distortion.ts')
       const E = await import('/src/engine/world/distortionElevator.ts')
       const C = await import('/src/engine/world/distortionCascade.ts')
@@ -143,12 +141,20 @@
         isOnWater: Z.isOnWater, isSurfable: Z.isSurfable, DIR_STEP: MV.DIR_STEP,
         STRENGTH_BOULDER: O.STRENGTH_BOULDER, standableSpot: W.standableSpot,
         grid: (m) => grids.get(m) ?? null,
-        groundY: (m) => core.distortionGroundY(m),
+        // 판 밖 지형의 칸 높이 — 제품이 딛는 그 규칙(`player.ts` → `terrainTileY`)
+        terrainY: (m, lx, lz) => D.terrainTileY(grids.get(m)?.heightAtWorld(lx + 0.5, lz + 0.5, 1)),
+        cynthiaBlocksJump: D.cynthiaBlocksJump,
+        initialPlatformFlags: E.initialPlatformFlags,
         // 지금 층만 살아 있는 배우로 답한다. 바위는 `boulders`가 든다
         solidAt: (m, lx, lz) => {
           if (m !== map) return null
           const a = O.solidNpcAt(lx + 0.5, lz + 0.5, p.position.y)
           return a !== null && a.gfx !== O.STRENGTH_BOULDER
+        },
+        // 판 위의 사람 — 그 사람의 높이로 가른다 (`solidNpcAtHeight`)
+        solidAtHeight: (m, lx, ly, lz) => {
+          if (m !== map) return null
+          return O.solidNpcAtHeight(lx + 0.5, lz + 0.5, ly) !== null
         },
         checkFlag: (flag) => F.fieldScripts.vars.checkFlag(flag),
       }
@@ -159,7 +165,10 @@
         facing: [MV.DIR.south, MV.DIR.east, MV.DIR.north, MV.DIR.west][q],
         surf: p.surfing === true, strength: p.strength === true,
         progress: hooks.progress?.() ?? 0, cyrus: hooks.cyrusAppearance?.() ?? 0,
-        flags: s.platformFlags, puzzle: s.puzzleFlags, used,
+        flags: s.platformFlags, puzzle: s.puzzleFlags,
+        // 높이 계산(판 밖에서만 뜻이 있다)과 그림자 표식 둘 (2478 · 2479)
+        hc: core.distortionFollowsGround(),
+        anim: (F.fieldScripts.vars.checkFlag(2478) ? 1 : 0) | (F.fieldScripts.vars.checkFlag(2479) ? 2 : 0),
         boulders: live.filter((a) => a.gfx === O.STRENGTH_BOULDER).map((a) => ({
           id: a.localID, x: Math.round(a.x) + floor.offsetX, z: Math.round(a.z) + floor.offsetZ,
           fixed: inPit.has(a.localID),
@@ -172,7 +181,10 @@
       const person = (id) => {
         const a = N.npcActors.byLocalID.get(id)
         return a === undefined ? null
-          : { x: Math.round(a.x) + floor.offsetX, z: Math.round(a.z) + floor.offsetZ }
+          : {
+            x: Math.round(a.x) + floor.offsetX, y: Math.round(a.y) + floor.offsetY,
+            z: Math.round(a.z) + floor.offsetZ,
+          }
       }
       const plan = S.planNext(P, start, person)
       return plan === null ? { start, plan: null } : { start, stage: plan.stage, legs: plan.legs }
@@ -240,24 +252,27 @@
 
   /**
    * 깨어진 세계를 걷는다 — **다리 하나를 밟고 다시 세운다.** 어긋나면 그 자리에서 다시 세운다.
-   * `used`는 이번 층에서 돈 사건 비트다(층이 바뀌면 0)
+   * 사건은 밟을 때마다 다시 돌므로(REPAIR §101) 돈 사건을 따로 세지 않는다
    */
-  const distortionWalk = async (budgetMs, { escape = false } = {}) => {
+  /**
+   * @param stopWhen `(state) => boolean` — 참이면 그 자리에서 멈춘다. 기라티나 방에서 기라티나가 선 뒤
+   *   (진행 13) A를 **이 걸음이 누르지 않게** 쓴다 — 거기서부터는 마스터볼 다리가 맡는다
+   */
+  const distortionWalk = async (budgetMs, { escape = false, stopWhen = null } = {}) => {
     const till = Math.min(Date.now() + budgetMs, started + totalMs)
-    let used = 0
     let lastMap = null
     let misses = 0
     while (Date.now() < till) {
       await settle()
       const st = await obs.distortionState()
       if (!st.known || st.value === null) return { ok: true, why: '깨어진 세계를 나왔다' }
-      if (st.value.map !== lastMap) { used = 0; lastMap = st.value.map }
-      const r = await obs.distortionPlan({ used, escape })
+      if (stopWhen !== null && stopWhen(st.value)) return { ok: true, why: '멈출 자리다', at: st.value }
+      if (st.value.map !== lastMap) lastMap = st.value.map
+      const r = await obs.distortionPlan({ escape })
       if (!r.known || r.value === null || !r.value.legs) return { ok: false, why: '계획이 없다', at: st.value }
       const leg = r.value.legs[0]
       for (const q of leg.steps) {
         const { ok, after } = await dwStep(q)
-        if (q.event && ok) used |= 1 << q.event.index
         if (!ok) { misses++; log(`      어긋남 ${q.key}/${q.act} 기대 ${JSON.stringify(q.expect)} 실제 ${JSON.stringify(after)}`); break }
         misses = 0
         if (after.map !== lastMap) break
@@ -288,7 +303,7 @@
   4FPS로 떨어지는 순간이 있으므로(`drive.mjs` 1060~1075줄) 폭포에는 20초를 준다.
 - **`nudge`는 칸을 넘기면 안 된다.** 걸을 수 있는 쪽으로 돌아서기만 할 때 짧게(40ms) 누른다. 끝나고 칸이 같고 얼굴이 맞아야 한다. 칸이 바뀌었으면 다시 세우면 된다.
 - **A 뒤의 「예」.** 파도타기(`FieldMoves_Water`), 괴력(바위 스크립트 10002), B3F 태홍(예/아니오 둘 다 같다), 포털은 `clearTalk()`가 첫 칸 「예」를 고른다. `surfStart`와 같다(`drive.mjs` 1294줄). 탔는지는 `distortionState().surf`로, 켜졌는지는 `strength`로 본다.
-- **사건 비트(`used`)는 몰이꾼이 센다.** 기대값이 맞은 걸음에 `event`가 붙어 있으면 그 비트를 세운다. 층이 바뀌면 지운다(`MapStreamer.tsx:411`의 `distortionForgetEvents`). 안 세면 B2F의 미끄러지는 판을 두 번 타려는 계획이 나오고, 거기서 영영 어긋난다.
+- **사건은 셀 필요가 없다.** 제품이 사건을 밟을 때마다 다시 돌리고(REPAIR §101) 계획기도 같은 규칙이라, 몰이꾼은 돈 사건을 따로 적지 않는다. 사건이 내려놓은 칸에서 다음 사건이 안 도는 것도 둘이 같다.
 - **세이브는 물 위에서 쓰지 않는다.** 파도타기가 저장되지 않는다(`state/save/schema.ts:273-290`, 틈 문서 §7).
 
 ---
@@ -367,7 +382,7 @@ npx vitest run tools/e2e/distortionSolve.test.mts
   - 깨어진 세계 격자에 한쪽 막음 가장자리가 0칸, 물높이 막음이 0칸이다(계획기가 안 부르는 두 규칙이 해당 없음을 잰다).
 - **층마다 도착 → 할 일 → 나가는 길:** 1F, B1F, B2F, B3F, B4F(천장 파도타기와 폭포), B7F, 기라티나 방. 바위는 B5F 셋(폭포 뒤의 아그놈 포함)과 B6F 맞는 웅덩이 셋이다.
 - **이어 달리기:**
-  - 1F 도착부터 포털까지 다리 31개로 간다. 다리마다 몰이꾼처럼 첫 다리만 밟고 다시 세운다.
+  - 1F 도착부터 포털까지 다리 60개 안으로 간다(B2F 시로나에게 말 거는 다리가 있다). 다리마다 몰이꾼처럼 첫 다리만 밟고 다시 세운다.
   - 각 다리의 모든 걸음을 `press`로 다시 밟아 `expect`와 맞춘다.
 - **알려진 틈(§6)을 잰 것.**
 
@@ -378,20 +393,21 @@ npx vitest run tools/e2e/distortionSolve.test.mts
 1. **스크립트 워프의 롬 칸** — 깨진 창기둥 → 1F `(55,40)`은 세계 칸이다. 제품이 층 오프셋을 빼서 세운다
    (REPAIR §83 · `romTileToLocal`). 첫 장면이 서쪽으로 한 걸음 옮겨 세계 (54,40)에서 시작한다. `planEscape`는
    이제 쓸 일이 없지만 벽 속에서 시작한 판을 위해 남겨 둔다(기본 꺼짐).
-2. **B5F 웅덩이는 128, 뭍은 129** — 폭포는 웅덩이(128)에 세우고, 판 밖에서 물에서 뭍으로 올라서는 순간 뭍 높이에
-   선다(REPAIR §84 · `distortionBridge.landY`). 계획기도 같은 규칙을 `P.groundY`로 받는다. 폭포를 거슬러 오르는 자리는
-   물(128)이라 그대로 걸린다.
+2. **B5F 웅덩이는 128, 뭍은 129** — 판 밖에서 높이 계산이 켜져 있으면 제품이 지형의 칸 높이를 딛는다(REPAIR §105 ·
+   `terrainTileY`). 계획기도 같은 규칙을 `P.terrainY`로 받고 높이 계산 상태를 `hc`로 든다(세계가 서면 · 승강 발판 ·
+   판 밖에 내려놓는 판 · 폭포 내려서기가 켜고, 판 뛰기 · 폭포 오르기가 끈다). 뭍에서 물에 들면 128이라 거슬러 오르는
+   자리가 걸린다.
 3. **A의 앞 칸은 바라보는 쪽이다** — 천장에서도 그렇다(REPAIR §85 · `tryTalk`의 `frontTile()`). 계획기의 `aFront`는
    그 판 갈래의 걸음 표(`P.STEP`) 한 걸음이다. 물가에서는 물 쪽으로 돌기만 하면 된다(`nudge`가 안 나온다).
-4. **B5F 안내 사건 12·13·14가 아무 일도 안 한다.**
-   - `distortionEvents.ts:168-170`의 `default`로 떨어진다. 원작은 여기서 `…_IN_B6F`를 세운다(`ov9_02249960.c:9098,9187,9369`).
-   - 그래서 B6F의 유크시·아그놈·엠라이트(#131~133, 조건 `boulderTrue` 13·14·15)가 **한 번도 안 선다**(시험).
-   - 맞는 웅덩이 스크립트 5/6/7이 없는 객체에 `ApplyMovement`를 건다(`scripts_distortion_world_b6f.s:43-78`). 브라우저에서 이 스크립트가 끝나는지 확인해야 한다. 안 끝나면 막힘이다.
-5. **사건이 돌았는지 밖에서 못 읽는다.** `ranEvents`가 모듈 안에만 있다(`distortionEvents.ts:20`). 그래서 몰이꾼이 센다(§3).
-6. **안 쓰이는 명령이 조용히 넘어간다.**
-   - 기라티나 그림자 깃발(명령 8)이 넘어가서 B4F 그림자 사건이 층에 들 때마다 다시 돈다. 기다림이 한 번 늘 뿐이다.
-   - `addMapObject`(명령 2, B1F → B2F 시로나)도 넘어가지만, B2F 시로나는 표 조건(진행 4)으로 선다.
+4. **B5F 안내 사건 12·13·14는 제품에서 돈다**(REPAIR §86) — `…_IN_B6F`가 서서 B6F의 호수의 셋이 선다. 계획기는 그
+   명령의 깃발을 안 따라간다 — 안내 칸을 밟는 계획이 없고, B6F의 셋은 막는 자리에 서지 않는다.
+5. **B2F 시로나는 말을 걸어야 지나간다** — 진행도 4의 시로나(30,233,20)가 서쪽 벽 통로를 막는다(REPAIR §107). 말을
+   걸면 스크립트가 시로나를 벽에서 한 칸 내리고(106) 주인공이 y 232에서 걸었으면 z+1로 비킨다(107 · REPAIR §112).
+   `STORY`에 그 줄이 있다.
+6. **명령 2(`addMapObject`, B1F → B2F 시로나)는 넘어가지만** B2F 시로나는 표 조건(진행 4)으로 선다. 명령 8(그림자
+   표식)은 제품이 2478·2479를 세우고, 계획기도 `anim`으로 든다(REPAIR §102).
 7. **계획기가 근사하는 것** — 걸음에는 영향이 없다고 본 것.
-   - 판 뛰기 **도중에** 칸이 바뀔 때 닿은 칸 처리를 끝 칸 하나로 본다.
-   - 사람의 높이 차 판정(`solidNpcAt`의 `FLOOR_GAP`)을 표 쪽에서는 안 본다. 판 위에서는 원래 사람을 안 보고, 판 밖은 한 층 높이라서다.
+   - 판 뛰기 · 사건 · 승강 발판 · 폭포가 옮긴 칸은 닿은 칸 처리를 안 한다 — 제품과 같다(REPAIR §101).
+   - 판 밖의 사람 높이 차 판정(`solidNpcAt`의 `FLOOR_GAP`)을 표 쪽에서는 안 본다. 판 밖은 한 층 높이라서다. 판 위는
+     표의 높이로 본다(`solidAtHeight`).
    - 유령 소품(밟으면 나타나는 블록)은 통행에 안 쓰인다(`hiddenGroups`를 읽는 곳이 그림뿐이다 — `distortionCore.ts:428`, `distortion.ts:148-160`).

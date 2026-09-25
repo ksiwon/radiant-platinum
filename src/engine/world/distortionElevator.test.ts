@@ -107,7 +107,7 @@ describe.runIf(real)('실제 자료', () => {
     expect(chained.map((p) => p.index)).toEqual([8, 15])
   })
 
-  it('⚠️ 아무도 안 쓰는 경로 둘은 부호가 뒤집혀 있다 (20·21)', () => {
+  it('⚠️ 아무도 안 쓰는 경로가 둘이다 (20·21) — 부호가 뒤집힌 것은 21 하나다', () => {
     const used = new Set<number>()
     for (const map of d.movingPlatforms) {
       for (const t of map.platforms) {
@@ -124,6 +124,10 @@ describe.runIf(real)('실제 자료', () => {
     expect(bad?.finalTileYOffset).toBeLessThan(0)
     expect(bad?.posDelta[1]).toBeGreaterThan(0)
     expect(legFrames(bad!)).toBe(0)
+    // 20번은 멀쩡하다 — 위로 32칸, 걸음도 위쪽
+    const fine = pathAt(d.elevatorPaths, 20)!
+    expect(fine.finalTileYOffset).toBeGreaterThan(0)
+    expect(legFrames(fine)).toBeGreaterThan(0)
   })
 
   it('한 걸음이 네 칸이고 층 하나가 128프레임이다', () => {

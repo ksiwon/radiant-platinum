@@ -151,10 +151,12 @@ export interface ElevatorLeg {
 /**
  * 탈 경로를 미리 다 펼친다.
  *
- * ⚠️ **끝이 없는 표를 믿지 않는다.** 원작은 `nextIndex`를 따라가기만 하는데,
- * 표가 잘못되면 그대로 무한히 돈다 — 경로 스물둘 중 **둘(20·21)이 실제로
- * 그렇다**. `posDelta`의 부호가 목표와 반대라 영영 못 닿는다. 쓰는 발판이
- * 하나도 없어서 원작에서는 안 터지지만, 우리는 길이를 재서 막는다
+ * ⚠️ **끝이 없는 표를 믿지 않는다.** 원작은 `nextIndex`를 따라가기만 한다 — 표가 이어지는 고리를
+ * 이루면 영영 돈다. 지금 표에는 고리가 없지만(스물둘 다 `nextIndex`가 22 · 9 · 16이다) 길이를 재서 막는다.
+ *
+ * 경로 21은 **다리 하나가 못 멈춘다** — `finalTileYOffset` −32인데 `posDelta`가 +4라 영영 안 닿는다
+ * (`legFrames`가 0을 준다). 경로 20은 멀쩡하다. 둘 다 그 경로를 쓰는 발판이 없어서 원작에서도 안 탄다
+ * (`sElevatorPlatformPaths` · `sMovingPlatformTemplates*`, `ov9_02249960.c:10252-11040`)
  */
 export function elevatorLegs(
   paths: readonly DistortionElevatorPath[], first: number,

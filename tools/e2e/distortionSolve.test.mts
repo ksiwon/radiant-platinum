@@ -450,9 +450,9 @@ describe.runIf(HAVE)('깨어진 세계 풀이 — 제품 규칙', () => {
       expect(exits.some((e) => e.exit.kind === 'elevator'), JSON.stringify(exits.map((e) => e.exit))).toBe(true)
     })
 
-    it('B5F 안내 사건(12·13·14)은 제품에서 아무 일도 안 한다 — 호수 셋이 B6F에 안 선다', () => {
-      // `distortionEvents.ts:168-170`의 `default`. 원작은 여기서 `…_IN_B6F`를 세운다
-      // (`ov9_02249960.c:9098,9187,9369`) — 그 깃발이 B6F의 유크시·아그놈·엠라이트 조건이다
+    it('B5F 안내 사건(12·13·14)의 깃발은 계획기가 안 따라간다 — 그 깃발 없이는 호수 셋이 B6F에 안 선다', () => {
+      // 제품은 안내가 `…_IN_B6F`를 세운다(REPAIR §86 · `ov9_02249960.c:9098,9187,9369`). 계획기는 안내 칸을 밟는
+      // 계획을 안 세우므로, 그 깃발이 없는 표로 보면 B6F의 셋이 없다 — 막는 자리에 서지 않아 길은 같다
       const kinds = data.events.find((e) => e.map === MAP.b5f)!.events.flatMap((e) => e.cmds.map((c) => c.kind))
       expect(new Set(kinds)).toEqual(new Set([EVENT_CMD.showUxieBoulderTuto, EVENT_CMD.showAzelfBoulderTuto,
         EVENT_CMD.showMespritBoulderTuto]))
