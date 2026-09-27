@@ -5508,3 +5508,63 @@ src/state/multiBattle.test.ts`.
 
 **고친 것** — `enterMap`이 `OnTransition`보다 먼저 `VarStore.clearMapLocals()`를 부른다(원작과 같은 바이트 폭). 시험 `scene/onResume.test.ts` 「맵 지역 표식」 —
 33·63번과 16384·16415가 비고 64번·16416은 남는다.
+
+## 127. 승강기 방의 **「특별한 자리」가 걸어서 들 때 안 적혔다** — 등대 승강기가 물가시티로 되돌려 보냈다 · 승강기 문 여섯이 어디로도 안 갔다
+
+**원작** — 승강기 방 여섯(TV국 18 · 연고 두 집 105·114 · 백화점 142 · 리본신디케이트 463 · 등대 516)의 나가는 문 (3,6)은 목적지가
+`0xFFF`·`0x100`이다 — 「특별한 자리로 가라」는 뜻이다(`Field_MapConnection` · `field_control.c:1009`). 그 자리는 두 길로 적힌다: 층을 고르는
+스크립트의 `SetSpecialLocation`, 그리고 **그런 방에 걸어서 들 때** — 도착한 워프의 목적지가 `0x100`이면 들어온 문 자리를 그대로 옮긴다
+(`Field_SetMapConnection` · `field_map_change.c:225-239`). 등대 승강기는 둘째 길만 쓴다: `GetFloorsAbove`가 그 자리를 읽어(물가시티 1 · 등대 0)
+오를지 내릴지 가른다(`scripts_vista_lighthouse_elevator.s` · `field_menu.c:583`).
+
+**우리** — 첫째 길만 있었다(`commands.ts`의 모듈 변수). 그래서 물가시티에서 등대 승강기에 들면 자리가 비어 「위층 0」으로 **내려가** 물가시티
+(886,791)로 되돌려 놓았다 — 사람도 전진에게 못 간다. 실측(탐침 p2): 150 ↔ 516을 14분 동안 오갔다. 나가는 문 여섯은 `resolveWarp`가 목적지 맵
+4095를 못 찾아 「더미」로 버려서, 백화점·TV국처럼 층을 고른 뒤 걸어 나가는 승강기도 **문이 안 열렸다**.
+
+**고친 것** — `map/world`에 `specialLocation`과 `DYNAMIC_WARP_MAP`을 둔다. 걸어서 탄 워프의 도착 워프가 `0xFFF`면 들어온 문(맵 · 워프 번호 · 칸)을
+적고, `0xFFF`로 가는 문은 그 자리로 푼다(워프 번호가 있으면 그 워프 자리). `SetSpecialLocation`은 워프 번호와 칸까지 같은 자리에 쓴다.
+시험 `map/world.test.ts` 「승강기 방 — 특별한 자리」 · 「목적지가 없는 것은 승강기 문 6개뿐」(방 번호 여섯을 못 박는다).
+
+## 128. 엔딩 뒤 「이어하기」가 **리포트가 아니라 전당 방**에서 걸었다 — 크레딧 끝에 리셋이 없었다
+
+**원작** — 크레딧이 끝나면 `OS_ResetSystem(RESET_CLEAN)`으로 통째로 다시 켠다(`clear_game.c:165`). 전당이 쓴 리포트의 자리는 떡잎마을 집 2F
+(415 · (4,6) — `SetPlayerStartLocation`)이고, 다음 이어하기가 거기서 시작한다.
+
+**우리** — 크레딧이 라우터로 타이틀에 갔다(`navigate('/')`). 캔버스는 라우트 위에 떠 있어서(`app/App.tsx`) 맵·스크립트·주인공이 선 채로 기다렸고,
+「이어하기」는 리포트를 읽고도 **서 있던 그 자리**에서 다시 걸었다. 실측(탐침 p9): 리포트는 415였는데 전당 방(187) (8,−3)의 검은 화면에서
+복도 장면의 마박사 대사가 다시 돌았다. `_hof42`가 같은 것을 칸으로 쟀다 — 저장 415 · 디스크 415 · 세계 175.
+
+**고친 것** — 크레딧의 끝이 `location.assign(APP_ROOT)`다(설정의 「리포트 지우기」와 같은 손). `_hof42` 재측정: 타이틀에서 세계 −1 · 이어하기 뒤
+415 (4,6).
+
+## 129. 플레이 시간이 **늘 0:00이었다** — 더하는 함수를 부르는 곳이 없었다
+
+**원작** — 게임을 시작하면(`game_start.c`의 `PlayTime_Start`) 메인 고리가 매 프레임 흐른 초만큼 더하고(`main.c:143` · `play_time_manager.c`),
+999:59:59에서 선다(`play_time.c`).
+
+**우리** — `saveStore.addPlaytime`은 있었는데 부르는 곳이 **한 군데도** 없었다. 트레이너 카드 · 리포트 정보 · 타이틀 · 명예의 전당이 모두
+「0:00」이었다(탐침 p9의 전당 그림).
+
+**고친 것** — `engine/world/playTime`(`startPlayClock` · `addPlaytimeCapped`)을 `/play` 화면이 켠다. 초 단위로 더하고 모자란 몫은 다음에 넘긴다 —
+원작의 `Timer_TicksToSeconds` 뒤 차분과 같다. 시험 `engine/world/playTime.test.ts`.
+
+## 130. 처음 깬 사람도 **크레딧을 넘길 수 있었다**
+
+**원작** — 넘기기는 `ClearGamePlayerInfo.gameCompleted`에 달렸고, `ClearGame`이 그 값을 **깃발을 세우기 전에** 읽는다(`clear_game.c:190-204`).
+처음 깬 사람은 끝까지 본다.
+
+**우리** — 「전당 기록이 하나라도 있나」로 쟀다. 전당이 크레딧 **전에** 한 줄을 적으므로 처음 깬 판도 늘 1이라 넘겨졌다(탐침 p9 — 크레딧 0.5초).
+
+**고친 것** — `hallOfFame.clear()`가 깃발을 세우기 전 값을 `openHallOfFame(wasCleared)`로 넘기고 크레딧이 그것(`creditsSkippable`)을 본다.
+시험 `scene/fieldServices.test.ts` 「명예의 전당 — 크레딧 넘기기」. `_hof42` 재측정: 처음 깬 판 「넘기기」 없음.
+
+## 131. 명예의 전당이 쓴 리포트에 **엔딩 깃발이 안 들어갔다** — 다시 켜면 엔딩을 안 본 판이었다
+
+**원작** — `ClearGame`이 `FLAG_GAME_COMPLETED`를 세운 뒤 전당 장면 끝에서 저장한다(`clear_game.c:125-129`). 전당 방 스크립트가 그 앞에
+`VAR_PLAYER_HOUSE_POSTGAME_STATE`를 1로 둔다(`scripts_pokemon_league_hall_of_fame.s`) — 다시 켜면 엄마의 엔딩 뒤 장면과 후반부가 열린다.
+
+**우리** — 전당 화면의 저장이 **스크립트 깃발을 스토어로 안 끌어온 채** 리포트를 썼다(`SaveScreen`·`fieldServices`의 리포트는 먼저
+`commitScriptState`를 부른다). §128 전에는 이어하기가 메모리의 세계를 그대로 써서 가려졌고, 리셋이 생기자 드러났다. 실측(탐침 p10): 리셋 뒤
+이어하기에서 2404 꺼짐 · 16655 0 — 전당 기록과 자리(415)만 남았다.
+
+**고친 것** — `HallOfFameScreen`의 `finish`가 리포트 전에 `commitScriptState`를 부른다. `_hof42` 재측정: 디스크 2404 켜짐 · 리셋 뒤 이어하기 2404 켜짐.

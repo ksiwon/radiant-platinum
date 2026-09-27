@@ -23,9 +23,9 @@ function powerOf(move) {
 }
 
 /** 기술 번호 (`moves.txt` 줄 − 1) — 비전기술 */
-export const MOVE = { cut: 15, fly: 19, surf: 57, strength: 70, rockSmash: 249, rockClimb: 431 }
+export const MOVE = { cut: 15, fly: 19, surf: 57, strength: 70, rockSmash: 249, rockClimb: 431, waterfall: 127, defog: 432 }
 /** 비전기술 — 가르칠 때 잊으면 안 되는 것들 (원작은 못 잊게 막는다 · REPAIR §76) */
-const HM_MOVES = [MOVE.cut, MOVE.fly, MOVE.surf, MOVE.strength, MOVE.rockSmash, MOVE.rockClimb]
+const HM_MOVES = [MOVE.cut, MOVE.fly, MOVE.surf, MOVE.strength, MOVE.rockSmash, MOVE.rockClimb, MOVE.waterfall, MOVE.defog]
 
 /** 비버니 → 비버통. 파도타기·괴력을 배울 마리 (JOURNEY_BADGE67 §7) */
 export const BIDOOF_LINE = [399, 400]

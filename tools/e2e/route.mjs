@@ -237,7 +237,11 @@ export const SURFABLE = new Set([
  * 막지 않는다. 자전거길이 이 위에 있다
  */
 const WATER_BRIDGES = new Set([0x73, 0x78, 0x7c])
-/** 폭포. 파도타기로도 못 오른다 — 폭포오르기는 이 구간 밖이다 */
+/**
+ * 폭포. 파도타기로 걸어서는 못 오른다 — **폭포오르기** 한 번이 한 걸음이다(`waterfall`). 제품은 락클라임과
+ * 같은 갈래로 같은 거동이 이어지는 만큼 가서 그 너머 한 칸에 내린다(`script/field.ts`의 `runFieldMove`
+ * 'waterfall'). 그래서 계획의 걸음도 락클라임과 같은 `climb:방향`이다 — 걷는 쪽이 끊어서 A로 탄다
+ */
 const WATERFALL = 0x13
 
 /**
@@ -384,7 +388,7 @@ export function planPath(
   matrixId, from, isGoal,
   {
     limit = NODE_CAP, avoid = null, avoidStep = null, cancelled = null, enterBlockedGoal = false,
-    surf = false, climb = false, panels = true,
+    surf = false, climb = false, waterfall = false, panels = true,
   } = {},
 ) {
   const t0 = performance.now()
@@ -465,7 +469,10 @@ export function planPath(
        * **락클라임 한 번이 한 걸음이다** (`climb`) — 벽 첫 칸을 마주 본 자리에서 벽이 끝난 너머
        * 한 칸으로 곧장 간다. 제품과 같이 같은 거동이 이어지는 만큼 가고, 너머가 막혔으면 안 탄다
        */
-      if (climb && ((beh === ROCK_CLIMB_NS && dz !== 0) || (beh === ROCK_CLIMB_EW && dx !== 0))) {
+      const climbs = climb && ((beh === ROCK_CLIMB_NS && dz !== 0) || (beh === ROCK_CLIMB_EW && dx !== 0))
+      // 폭포오르기는 물 위에서만 — 폭포를 마주 본 파도타기 칸에서 쓴다 (`FieldMoves_CheckWaterfall`)
+      const falls = waterfall && beh === WATERFALL && waterAt(matrixId, cx, cz)
+      if (climbs || falls) {
         let ex = nx
         let ez = nz
         while ((grid.at(ex + dx, ez + dz) & 0x7fff) === beh) { ex += dx; ez += dz }

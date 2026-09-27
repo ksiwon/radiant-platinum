@@ -1327,12 +1327,16 @@ if (ACTS.has('3')) {
     // 여기서 가릴 것은 「아무것도 안 그렸는가」 하나다
     if (cpix.colors < 4) throw new Error(`크레딧이 통째로 비었다 (색 ${cpix.colors})`)
 
-    // 크레딧이 끝나면 타이틀로 되돌아간다 (PARITY §8.12)
+    // 크레딧이 끝나면 타이틀로 되돌아간다 (PARITY §8.12) — 통째로 다시 켜진다(`location.assign`)
+    //
+    // ⚠️ **처음 깬 판은 못 넘긴다** (REPAIR §130) — 두루마리가 다 흐를 때까지 기다린다. 시간으로 잰다:
+    // 바퀴 수로 재면 느린 기계에서 크레딧보다 먼저 끝난다
     let backToTitle = false
-    for (let i = 0; i < 900; i++) {
-      const at = await marks(page)
+    const titleBy = Date.now() + 300_000
+    while (Date.now() < titleBy) {
+      const at = await marks(page).catch(() => ({}))
       if (at.path === '/' || at.scene === 'title') { backToTitle = true; break }
-      await tap(page, 'KeyZ', 40)
+      await page.waitForTimeout(500)
     }
     if (!backToTitle) throw new Error('크레딧이 끝나도 타이틀로 안 간다')
     const bad = noise.slice(0, 3)

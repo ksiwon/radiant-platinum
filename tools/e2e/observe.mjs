@@ -292,6 +292,20 @@ function devObserver(page) {
         hq4f: v.get(16598), hqSaturn: v.checkFlag(173) === true, freed: v.checkFlag(2429) === true,
         coronet2f: v.get(16553), spear: v.get(16536), spearDistorted: v.get(16579),
         distortion: v.get(16469), giratinaCaught: v.checkFlag(289) === true, exitedDistortion: v.get(16554),
+        /**
+         * **송별의 샘 → 명예의 전당** (`JOURNEY_LEAGUE` §2 — 같은 셈법으로 `vars_flags.txt`를 세었다)
+         *   · 16550 `VAR_SANDGEM_TOWN_LAB_STATE` 송별의 샘 2 → 연구소 장면 3 · 16658 입지호수근처 막음 풀림 1
+         *   · 16510 `VAR_SUNYSHORE_CITY_STATE` 대엽 장면 1 → 전진 2 → 비전머신07 3 · 깃발 354 전진이 체육관으로
+         *   · 깃발 569 대엽 숨김(문에서 비켰다) · 깃발 154 비전머신07
+         *   · 16623 `VAR_RIVAL_BEAT_SUNYSHORE_GYM` 북 센터 라이벌전 1 · 깃발 175 문지기 비킴
+         *   · 깃발 176~179 사천왕 · 180 난천 · 2404 `FLAG_GAME_COMPLETED` · 16655 집 엔딩 뒤 1
+         */
+        sandgemLab: v.get(16550), valorOpen: v.get(16658), sunyshore: v.get(16510),
+        volknerBack: v.checkFlag(354) === true, flintAway: v.checkFlag(569) === true, hm07: v.checkFlag(154) === true,
+        rivalLeague: v.get(16623), guardMoved: v.checkFlag(175) === true,
+        aaron: v.checkFlag(176) === true, bertha: v.checkFlag(177) === true, flint: v.checkFlag(178) === true,
+        lucian: v.checkFlag(179) === true, cynthia: v.checkFlag(180) === true,
+        gameCompleted: v.checkFlag(2404) === true, housePostgame: v.get(16655),
       }
     }),
     /**
@@ -470,6 +484,43 @@ function devObserver(page) {
         // 추적용 원시 값 — 판이 사람을 들고 가는지 가를 때 쓴다
         px: +p.x.toFixed(2), py: +p.y.toFixed(2), pz: +p.z.toFixed(2), riding: st.worldState.player.riding === true,
       }
+    }),
+    /**
+     * **물가 체육관 — 톱니 풀이** (`gymSolve8.solveSunyshore`). 방·회전 상태·막힌 상자·단추 규칙은
+     * **제품의 그 함수들로** 읽고, 격자와 선 사람은 지금 것을 읽는다.
+     *
+     * @param arg `{ goal: [[x, z], …], buttons: [{x, z, button}] }` — 단추 칸은 구운 좌표 이벤트에서
+     *   부르는 쪽이 읽어 넘긴다(스크립트 번호 → 단추 종류만 하네스가 안다)
+     */
+    sunyshorePlan: (arg) => read('물가 풀이를 못 돌렸다', async (a) => {
+      const g = await import('/src/engine/world/sunyshoreGym.ts')
+      const sc = await import('/src/scene/sunyshoreGym.ts')
+      const W = await import('/src/engine/map/world.ts')
+      const z = await import('/src/engine/map/zone.ts')
+      const st = await import('/src/state/worldState.ts')
+      const n = await import('/src/engine/actor/npcs.ts')
+      const s = await import('/tools/e2e/gymSolve8.mjs')
+      const room = g.sunyshoreRoomOf(W.world.mapId)
+      const state = sc.sunyshoreState()
+      const grid = z.activeZone.grid
+      if (room === null || state === null || !grid) return null
+      const p = st.worldState.player.position
+      const people = new Set(n.npcActors.list.filter((q) => q.visible).map((q) => `${Math.round(q.x)},${Math.round(q.z)}`))
+      const blocked = (sx, x, zz) => grid.isBlocked(x, zz) || people.has(`${x},${zz}`) || g.sunyshoreBlocked(room, sx, x, zz) === true
+      const buttons = new Map(a.buttons.map((b) => [`${b.x},${b.z}`, b.button]))
+      const goalSet = new Set(a.goal.map(([x, zz]) => `${x},${zz}`))
+      const start = { x: Math.floor(p.x), z: Math.floor(p.z) }
+      const plan = s.solveSunyshore({
+        start, state, blocked, buttons, next: g.sunyshoreNextState, goal: (x, zz) => goalSet.has(`${x},${zz}`),
+      })
+      return { room, state, start, plan }
+    }, arg),
+    /** 물가 체육관 — 톱니가 도는 중인가 · 회전 상태 */
+    sunyshoreState: () => read('물가 체육관 상태를 못 읽었다', async () => {
+      const sc = await import('/src/scene/sunyshoreGym.ts')
+      const st = await import('/src/state/worldState.ts')
+      const p = st.worldState.player.position
+      return { state: sc.sunyshoreState(), busy: sc.sunyshoreBusy(), x: Math.floor(p.x), z: Math.floor(p.z) }
     }),
     /**
      * **선단 체육관 — 얼음 풀이** (`gymSolve67.solveSnowpoint`). 얼음 칸·높이·벽·눈덩이·
@@ -855,6 +906,8 @@ function distObserver(page) {
     pastoriaState: async () => unknown(NO_SRC),
     canalavePlan: async () => unknown(NO_SRC),
     canalaveState: async () => unknown(NO_SRC),
+    sunyshorePlan: async () => unknown(NO_SRC),
+    sunyshoreState: async () => unknown(NO_SRC),
     snowpointPlan: async () => unknown(NO_SRC),
     iceState: async () => unknown(NO_SRC),
     distortionState: async () => unknown(NO_SRC),

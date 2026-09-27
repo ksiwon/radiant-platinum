@@ -304,9 +304,14 @@ export async function driveStory(page, {
    */
   let climbMode = false
   const climbLog = []
+  /**
+   * **폭포를 길로 칠 것인가** (`setWaterfall`). 비전머신07을 가르친 뒤의 다리만 켠다 — 폭포 하나가
+   * 락클라임과 같은 `climb:방향` 한 걸음으로 계획에 들어오고, 타는 손도 같다(`climbStart`)
+   */
+  let waterfallMode = false
 
   const planned = (matrix, from, isGoal, opts, why) => {
-    const r = planPath(matrix, from, isGoal, { surf: surfMode, climb: climbMode, ...opts })
+    const r = planPath(matrix, from, isGoal, { surf: surfMode, climb: climbMode, waterfall: waterfallMode, ...opts })
     const row = {
       why, matrix, from: { ...from }, ...r.stats,
       // ⚠️ **어떤 정책으로 세운 계획인지가 없으면 비교가 안 된다** (§4.1)
@@ -1368,7 +1373,7 @@ export async function driveStory(page, {
       to: { map: after.map, x: after.x, z: after.z }, ms: Date.now() - t0,
     }
     climbLog.push(row)
-    log(`      락클라임 ${ok ? '탔다' : '못 탔다'} (${String(before.x)},${String(before.z)}) ${key} → (${String(after.x)},${String(after.z)})`)
+    log(`      락클라임·폭포 ${ok ? '탔다' : '못 탔다'} (${String(before.x)},${String(before.z)}) ${key} → (${String(after.x)},${String(after.z)})`)
     return row
   }
 
@@ -2170,6 +2175,7 @@ export async function driveStory(page, {
                  */
                 surf: surfMode,
                 climb: climbMode,
+                waterfall: waterfallMode,
                 // 다른 워프는 밟지 않는다 — 노리는 문만 목표다
                 avoid: (x, z) => there.some((o) => o.x === x && o.z === z)
                   && !nextDoors.some((d) => d.x === x && d.z === z),
@@ -2654,11 +2660,15 @@ export async function driveStory(page, {
    * `raw/decomp/…/scripts_jubilife_city_pokecenter_1f.s`). 자리로 찾지 않는
    * 까닭은 다른 사람들과 같다 — 걸어 다니는 이가 섞여 있다
    */
-  const healAt = async (centerMap, budgetMs) => {
+  /**
+   * @param nurse 간호사의 스크립트 번호. ⚠️ **리그 북 센터(175)는 8이다** — 첫 항목이 문지기(`DoorGuard`)라, 1로
+   *   부르면 문지기에게 말을 걸고 「HP가 0이다」로 끝났다(탐침 p8)
+   */
+  const healAt = async (centerMap, budgetMs, nurse = 1) => {
     const t0 = Date.now()
     const came = await goTo(centerMap, Math.min(budgetMs, left()))
     if (came !== 'arrived') return { ok: false, why: `센터에 못 갔다 (${String(came)})` }
-    const said = await talkToNpc(centerMap, 1, Math.min(120_000, left()))
+    const said = await talkToNpc(centerMap, nurse, Math.min(120_000, left()))
     await settle()
     const party = await partyState()
     const healed = fullyHealed(party)
@@ -2734,14 +2744,15 @@ export async function driveStory(page, {
    * @param item    도구 번호 (몬스터볼이 4다)
    * @param want    몇 개
    */
-  const buyAt = async (martMap, item, want, budgetMs) => {
+  /** @param clerk 점원의 스크립트 번호 — 센터 안 상점은 1이 아니다(리그 북 센터는 2) */
+  const buyAt = async (martMap, item, want, budgetMs, clerk = 1) => {
     const t0 = Date.now()
     const before = await bagState()
     if (before === null) return { ok: false, unknown: true, why: `가방을 못 읽었다 (${obs.kind})` }
     const held = (bag) => bag.items.find((one) => one.item === item)?.count ?? 0
     const came = await goTo(martMap, Math.min(budgetMs, left()))
     if (came !== 'arrived') return { ok: false, why: `마트에 못 갔다 (${String(came)})` }
-    const said = await talkToNpc(martMap, 1, Math.min(120_000, left()))
+    const said = await talkToNpc(martMap, clerk, Math.min(120_000, left()))
     if (said !== true) return { ok: false, why: '점원에게 못 걸었다' }
     // 가게가 열릴 때까지 넘긴다 — 인사 대사가 먼저 흐른다
     let opened = false
@@ -2995,6 +3006,8 @@ export async function driveStory(page, {
   const setSurf = (on) => { surfMode = on === true }
   /** 락클라임 다리를 켜고 끈다 (`climbMode`) */
   const setClimb = (on) => { climbMode = on === true }
+  /** 폭포오르기 다리를 켜고 끈다 (`waterfallMode`) */
+  const setWaterfall = (on) => { waterfallMode = on === true }
 
   /**
    * **도구 하나를 밭에서 쓴다** (`ui/menu/itemAction`의 그 갈래들).
@@ -3365,6 +3378,21 @@ export async function driveStory(page, {
   const hearthomeDoor = async () => {
     const r = await obs.hearthomeDoor()
     return r.known ? r.value : null
+  }
+
+  /**
+   * **바위 하나를 깬다** — 풀이가 고른 그 바위(`pushSolve`). `clearWay`와 달리 가까운 것을 고르지 않는다 —
+   * 챔피언로드 2F는 깨는 차례가 곧 길이다. 깼는지는 게임에게 묻는다(`obstacleAt`)
+   */
+  const smashRock = async (mapId, rock, budgetMs = 180_000) => {
+    const said = await talkTo(mapId, { x: rock.x, z: rock.z }, budgetMs)
+    await clearTalk()
+    await settle()
+    const still = await obs.obstacleAt(rock.x, rock.z)
+    const gone = still.known ? still.value === null : null
+    if (gone === true) obstacleGone(mapId, rock.x, rock.z)
+    log(`  바위 (${String(rock.x)},${String(rock.z)}) → ${said ? '말을 걸었다' : '못 걸었다'} · ${gone === null ? '확인 불가' : gone ? '깼다' : '그대로다'}`)
+    return { ok: gone === true, said, gone }
   }
 
   const smashWay = async (mapId, to, budgetMs, maxRocks = 4) =>
@@ -4086,9 +4114,9 @@ export async function driveStory(page, {
     settle, now, tap, clearTalk,
     partyState, healAt, fullyHealed, buyAt, storyVars, bagState, eternaWalls,
     veilstoneState, pastoriaState, featureWalls, veilstonePlan,
-    teachHm, feedCandy, smashWay, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
+    teachHm, feedCandy, smashWay, smashRock, clearWay, rideBike, riding, hearthomeDoor, npcSpots, facing,
     gameBlocked, gameSolid,
-    flyTo, strengthPush, setSurf, surfLog, setClimb, climbLog, fieldState: () => obs.fieldState(),
+    flyTo, strengthPush, setSurf, surfLog, setClimb, setWaterfall, climbLog, fieldState: () => obs.fieldState(),
     // 한 칸 걸음 — 체육관 풀이가 계획한 칸을 한 칸씩 밟는다. 판정은 부르는 쪽이 한다
     stepKey: (key, want) => stepOnce(key, want),
     /**
@@ -4116,6 +4144,8 @@ export async function driveStory(page, {
     },
     canalavePlan: async (goal) => { const r = await obs.canalavePlan(goal); return r.known ? r.value : null },
     canalaveState: async () => { const r = await obs.canalaveState(); return r.known ? r.value : null },
+    sunyshorePlan: async (arg) => { const r = await obs.sunyshorePlan(arg); return r.known ? r.value : null },
+    sunyshoreState: async () => { const r = await obs.sunyshoreState(); return r.known ? r.value : null },
     snowpointPlan: async (goal) => { const r = await obs.snowpointPlan(goal); return r.known ? r.value : null },
     iceState: async () => { const r = await obs.iceState(); return r.known ? r.value : null },
     distortionState: async () => { const r = await obs.distortionState(); return r.known ? r.value : null },
