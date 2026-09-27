@@ -92,6 +92,22 @@ export function screen(buf: Uint8Array): Screen {
 }
 
 /**
+ * `(cx, cy)` 칸의 배치 값 — **화면 블록 차례로** 읽는다.
+ *
+ * ⚠️ **256픽셀보다 넓은 배치는 한 줄로 이어져 있지 않다.** 게임은 NSCR을 VRAM에 그대로 붓는데
+ * (`graphics.c:301-312`), DS 글 BG의 VRAM은 32×32칸 블록 단위다 — 512×256이면 왼쪽 판 1024칸 뒤에
+ * 오른쪽 판 1024칸이 온다. 한 줄 64칸으로 읽으면 그림이 **접힌다**: 크레딧 첫 장이 위 96줄에
+ * 짝수 줄은 왼쪽 · 홀수 줄은 오른쪽으로 욱여 들어가고 나머지가 빈 색으로 남았다(REPAIR §132).
+ * 32칸 이하는 블록이 하나라 한 줄 읽기와 같다
+ */
+export function screenCell(scr: Screen, cx: number, cy: number): number {
+  const across = Math.ceil(scr.width / 32)
+  const block = Math.floor(cx / 32) + Math.floor(cy / 32) * across
+  const bw = Math.min(32, scr.width)
+  return scr.cells[block * 32 * Math.min(32, scr.height) + (cy % 32) * bw + (cx % 32)] ?? 0
+}
+
+/**
  * 타일 하나를 찍는다.
  *
  * 한 바이트가 픽셀 둘이고 **아래 니블이 왼쪽**이다. `alphaZero`면 0번 색을

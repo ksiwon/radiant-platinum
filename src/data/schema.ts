@@ -495,6 +495,11 @@ export const creditsSchema = z.object({
   scenes: z.array(z.object({
     w: z.number().int().positive(),
     h: z.number().int().positive(),
+    /**
+     * 뒤판 색 — 그림의 0번 색이 뚫린 자리에 보인다 (`ov99_021D4134.c:197-198`). 옛 설치본에는 없다 —
+     * 그때 그림은 0번 색을 칠한 채로 구워져 있어 뒤판이 안 보인다
+     */
+    backdrop: z.string().regex(/^#[0-9a-f]{6}$/).optional(),
   })),
 })
 

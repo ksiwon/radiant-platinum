@@ -55,6 +55,7 @@ try {
     const text = await page.evaluate(() => document.body.innerText)
     if (text.includes('Z 계속')) { log(`저장 뒤 (${String(i)}초)`, await state()); break }
     if (i >= 40 && i % 4 === 0) await page.keyboard.press('KeyZ')
+    if (i % 6 === 3) await page.screenshot({ path: resolve(ROOT, `shots/hof42-hof-${String(i).padStart(2, '0')}.png`) })
     await page.waitForTimeout(1000)
   }
   await page.screenshot({ path: resolve(ROOT, 'shots/hof42-saved.png') })
@@ -62,7 +63,13 @@ try {
   await page.waitForFunction(() => document.documentElement.dataset.menu === 'credits', null, { timeout: 30_000 })
   const skippable = await page.evaluate(() => document.body.innerText.includes('넘기기'))
   log('크레딧', { skippable })
-  // 처음 깬 판은 못 넘긴다 — 다 흐를 때까지 기다린다. 끝나면 통째로 다시 켜진다
+  // 처음 깬 판은 못 넘긴다 — 다 흐를 때까지 기다린다. 장면마다 한 장씩 찍는다. 끝나면 통째로 다시 켜진다
+  let prev = 0
+  for (const at of [4, 30, 60, 75, 100, 125]) {
+    await page.waitForTimeout((at - prev) * 1000)
+    prev = at
+    await page.screenshot({ path: resolve(ROOT, `shots/hof42-credits-${String(at).padStart(3, '0')}s.png`) }).catch(() => {})
+  }
   await page.waitForFunction(() => location.pathname === '/', null, { timeout: 300_000 })
   await page.getByRole('button', { name: '이어하기', exact: true }).waitFor({ timeout: 300_000 })
   await page.waitForTimeout(2000)

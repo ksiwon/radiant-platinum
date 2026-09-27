@@ -3,14 +3,15 @@
 // 엔딩이 흐르는 동안 뒤에 서 있는 그림이다. 없으면 크레딧이 검은 판 위의
 // 글자만 된다.
 //
-// graphic/ending.narc의 파일 셋이 배경 한 장이다 (`overlay099/ov99_021D1A54.c`):
+// graphic/ending.narc의 파일 셋이 배경 한 장이다 (`overlay099/ov99_021D1A54.c:446-470`):
 //
-//   팔레트 18+k   타일 9+k   배치 3+k     (위 화면)
+//   팔레트 18+k   타일 9+k   배치 3+k     (아래 화면 — `BG_LAYER_MAIN_2`)
+//   팔레트 21+k   타일 12+k  배치 6+k     (위 화면 — `BG_LAYER_SUB_3`)
 //
-// ⚠️ **위 화면 것만 쓴다.** 아래 화면(팔레트 21+k · 타일 12+k · 배치 6+k)에도
-// 같은 하늘이 깔리는데, 그쪽은 **3D 장면이 그 위에 서는 판**이다
-// (`gSystem.whichScreenIs3D = DS_SCREEN_SUB`). 두 장을 위아래로 이어 붙이면
-// 하늘이 두 번 나오는 그림이 된다. 그 3D 장면 일곱은 아직 없다 (PARITY §8.12).
+// ⚠️ **아래 화면 것을 쓴다 — 일부러다.** 크레딧은 3D를 아래로 돌리고 두 화면을 바꿔 단다
+// (`ov99_021D0D80.c:156-158`) — 그래서 메인 엔진(18+k)이 **아래**, 서브(21+k)가 위다. 위 화면은 글이
+// 흐르는 맑은 하늘이고, 아래 화면은 해·산 · 바다 · 은하가 걸린 지평선이다 — 그 위로 3D 장면 일곱이 선다.
+// 한 화면인 우리는 그 장면이 없으므로(PARITY §8.12) 장면의 뒤판인 아래 그림에 글을 얹는다
 //
 // ⚠️ **팔레트가 한 파일에 여럿이다.** 16색짜리 두세 벌이 들어 있고 어느 벌을
 // 쓸지는 **배치 칸의 위 4비트**가 정한다 — 한 벌만 읽으면 그림 절반이 딴 색이 된다.
@@ -20,8 +21,9 @@
 // 그림을 감아 돌려야 하므로(`background-repeat`) 한 장에 모아 두면 옆 장이
 // 딸려 나온다.
 //
-// ⚠️ **아래쪽이 넓게 한 색인 것은 원작 그림 그대로다.** 하늘이 위 96픽셀이고
-// 나머지는 단색인데, 원작은 그 위로 사람 스프라이트가 지나간다
+// ⚠️ **넓은 배치는 블록 차례다** — 512×256은 왼쪽 판 1024칸 뒤에 오른쪽 판이 온다(`cellAt` · REPAIR §132).
+// 한 줄로 읽으면 하늘이 위 96줄로 접히고 나머지가 0번 색으로 남는다. **0번 색은 뚫는다** — 그 뒤는
+// 뒤판 색이고(`backdrop`), 원작도 그렇게 깐다(`ov99_021D4134.c:197-198`)
 'use strict'
 const fs = require('fs')
 const path = require('path')
@@ -32,7 +34,7 @@ const { encodePng } = require('./png')
 const TILE = 8
 /** 장수. 일곱 장면이 이 셋을 돌려 쓴다 */
 const COUNT = 3
-/** 위 화면의 첫 파일 번호 — 팔레트·타일·배치 */
+/** 아래 화면의 첫 파일 번호 — 팔레트·타일·배치 (머리말) */
 const TOP = { pal: 18, chr: 9, scr: 3 }
 /** 배치표 한 줄 — `{줄번호 u16, 띠 위 y u16, 가운데정렬 u16}` */
 const ROW_BYTES = 6
@@ -137,11 +139,19 @@ function screen(buf) {
   return { width, height, cells }
 }
 
-/** 배치 한 판을 통째로 rgba 버퍼의 (ox, oy)에 찍는다 */
+/** `(cx, cy)` 칸의 배치 값 — 화면 블록(32×32칸) 차례로 읽는다 (`ntrgfx.ts`의 `screenCell`과 같다) */
+function cellAt(scr, cx, cy) {
+  const across = Math.ceil(scr.width / 32)
+  const block = Math.floor(cx / 32) + Math.floor(cy / 32) * across
+  const bw = Math.min(32, scr.width)
+  return scr.cells[block * 32 * Math.min(32, scr.height) + (cy % 32) * bw + (cx % 32)] ?? 0
+}
+
+/** 배치 한 판을 통째로 rgba 버퍼의 (ox, oy)에 찍는다. 0번 색은 뚫는다 */
 function paint(rgba, stride, ox, oy, { pal, chr, scr }) {
   for (let cy = 0; cy < scr.height; cy++) {
     for (let cx = 0; cx < scr.width; cx++) {
-      const cell = scr.cells[cy * scr.width + cx]
+      const cell = cellAt(scr, cx, cy)
       const tile = cell & 0x3ff
       const hflip = (cell & 0x400) !== 0, vflip = (cell & 0x800) !== 0
       const bank = ((cell >> 12) & 0xf) * 16
@@ -154,7 +164,7 @@ function paint(rgba, stride, ox, oy, { pal, chr, scr }) {
         const y = vflip ? TILE - 1 - py : py
         const rgb = pal[bank + idx] ?? [0, 0, 0]
         const at = ((oy + ty + y) * stride + ox + tx + x) * 4
-        rgba[at] = rgb[0]; rgba[at + 1] = rgb[1]; rgba[at + 2] = rgb[2]; rgba[at + 3] = 255
+        rgba[at] = rgb[0]; rgba[at + 1] = rgb[1]; rgba[at + 2] = rgb[2]; rgba[at + 3] = idx === 0 ? 0 : 255
       }
     }
   }
@@ -174,7 +184,9 @@ function main() {
   const sheets = []
   for (let k = 0; k < COUNT; k++) sheets.push(half(narc, TOP, k))
 
-  const sizes = sheets.map((s) => ({ w: s.scr.width * TILE, h: s.scr.height * TILE }))
+  const hex = (rgb) => `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`
+  // 뒤판 색 — 0번 벌의 0번 색 (`convertCredits`의 `backdropOf`와 같다)
+  const sizes = sheets.map((s) => ({ w: s.scr.width * TILE, h: s.scr.height * TILE, backdrop: hex(s.pal[0] ?? [0, 0, 0]) }))
   for (const [k, size] of sizes.entries()) {
     if (size.w < 256 || size.h < 192) {
       throw new Error(`${k}장째가 ${size.w}×${size.h}픽셀이다 — 화면보다 작다`)

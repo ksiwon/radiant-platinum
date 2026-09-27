@@ -31,13 +31,12 @@ import { atlasUrl } from '../../data/providers/atlas'
 import { loadUiText } from '../../data/uiText'
 import { parseMessage } from '../../engine/script/text'
 import {
-  creditsAt, creditsFrames, creditsRows, creditsScene, CREDIT_SCENE_PAN,
+  creditsAt, creditsFrames, creditsRows, creditsScene, creditsSceneStart, CREDIT_SCENE_PAN, CREDIT_SCENE_RUN,
 } from '../../engine/world/credits'
 import { APP_ROOT } from '../../data/assetBase'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
 import * as css from './credits.css'
-import { vars } from '../theme/contract.css'
 
 /** 원작 화면 크기. 자리를 백분율로 옮기는 데 쓴다 */
 const VIEW_W = 256
@@ -69,10 +68,23 @@ const OURS: readonly { text: string; centered?: boolean }[] = [
   { text: '    권리자의 허가를 뜻하지 않습니다.' },
 ]
 
-/** `{COLOR n}`의 색. 대사창과 같은 표다 (`ui/field/MessageBox`) */
-const COLORS: Record<number, string> = {
-  1: vars.emphasis.oneOnDark,
-  2: vars.emphasis.twoOnDark,
+/**
+ * `{COLOR n}`의 글자색과 그림자색 — 롬의 크레딧 팔레트다(`ending.narc` 85번 15벌 · `TEXT_COLOR(1, 2, 0)` ·
+ * `{COLOR n}`이 글자 2n+1 · 그림자 2n+2 — `render_text.c:111-112`).
+ *
+ * ⚠️ **그림자가 글을 살린다.** 한동안 대사창의 강조색(노랑 · 하늘)을 그림자 없이 썼는데, 노을 하늘 위에서
+ * 제목 줄(1번)이 거의 안 보였다. 원작 글은 하늘 위의 투명한 판에 서고 **한 도트 어두운 그림자**로만 읽힌다
+ */
+const COLORS: Record<number, { ink: string, shadow: string }> = {
+  0: { ink: '#e7e7e7', shadow: '#424242' },
+  1: { ink: '#ffdede', shadow: '#b56363' },
+  2: { ink: '#dedeff', shadow: '#636bb5' },
+}
+/** 한 도트 — 글꼴이 8도트 높이라 1em의 8분의 1 */
+const DOT = '0.125em'
+const runStyle = (color: number): CSSProperties => {
+  const c = COLORS[color] ?? COLORS[0]!
+  return { color: c.ink, textShadow: `${DOT} 0 0 ${c.shadow}, 0 ${DOT} 0 ${c.shadow}, ${DOT} ${DOT} 0 ${c.shadow}` }
 }
 
 /** 한 줄을 색 조각으로 자른다. 색 부호 말고는 다 글자다 */
@@ -102,7 +114,7 @@ function runsOf(raw: string): Run[] {
  * 세로가 요소 **높이**의 백분율인데 요소는 256×192다 — 둘 다 192로 나누면
  * 가로만 4/3배로 늘어난다. 실제로 그렇게 나가 있었다
  */
-function sceneStyle(at: number, size: { w: number; h: number }, frame: number): CSSProperties {
+function sceneStyle(at: number, size: { w: number; h: number; backdrop?: string }, frame: number): CSSProperties {
   const pan = CREDIT_SCENE_PAN[at] ?? { x: 0, y: 0 }
   // 원작의 BG 오프셋은 「창이 움직인다」라 그림은 반대로 간다.
   //
@@ -122,8 +134,14 @@ function sceneStyle(at: number, size: { w: number; h: number }, frame: number): 
   return {
     backgroundImage: `url(${atlasUrl(creditsImage(at))})`,
     backgroundSize: `${String(size.w * kx)}% ${String(size.h * ky)}%`,
-    backgroundPosition: `${String(dx * kx)}% ${String(dy * ky)}%`,
+    // ⚠️ **자리는 `%`로 못 적는다.** `background-position`의 백분율은 밀어낸 거리가 아니라 「그림의 p% 점을 판의
+    // p% 점에 맞춘다」여서, 판보다 큰 그림에서는 **방향이 뒤집히고** 판과 같은 폭이면 아예 안 움직인다. 그래서 첫
+    // 장이 거꾸로 흘러 오른쪽에 뒤판 띠가 섰고 둘째 장 위에 뒤판 띠가 섰다(REPAIR §132). 무대의 크기 단위
+    // (`cqw`·`cqh` — `credits.css`의 `stage`가 크기 컨테이너다)로 도트를 옮긴다
+    backgroundPosition: `${String(dx * kx)}cqw ${String(dy * ky)}cqh`,
     backgroundRepeat: 'repeat',
+    // 그림의 0번 색이 뚫린 자리에 보이는 뒤판 (`ov99_021D4134.c:197-198`)
+    backgroundColor: size.backdrop,
   }
 }
 
@@ -230,7 +248,8 @@ export function CreditsScreen() {
           <div
             key={i}
             className={`${css.scene} ${i === scene ? css.sceneOn : css.sceneOff}`}
-            style={sceneStyle(i, size, frame)}
+            style={sceneStyle(i, size, Math.min(CREDIT_SCENE_RUN[i] ?? 0,
+              Math.max(0, frame - creditsSceneStart(i, atlas.count, romFrames))))}
           />
         ))}
         <div className={css.roll}>
@@ -241,7 +260,7 @@ export function CreditsScreen() {
               style={{ top: `${String((y / VIEW_H) * 100)}%` }}
             >
               {runsOf(textOf(index)).map((run, i) => (
-                <span key={i} style={{ color: COLORS[run.color] }}>{run.text}</span>
+                <span key={i} style={runStyle(run.color)}>{run.text}</span>
               ))}
             </div>
           ))}

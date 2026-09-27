@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { DoubleSide, Group, Mesh } from 'three'
+import { Box3, DoubleSide, Group, Mesh, Vector3 } from 'three'
 import { normalizeModel, PLAYER_HEIGHT } from '../engine/model/normalize'
 import { type HallOfFameStagePhase, useHallOfFameStageStore } from '../state/hallOfFameStageStore'
 import { useMonBody } from './monBody'
 import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
-import { cinematicScale } from './cinematicMotion'
+import { hallFitScale } from './cinematicMotion'
 import { playerModelPath } from './playerModelPath'
 import { usePersonModel } from './personModel'
 
@@ -60,6 +60,12 @@ function HallMon({
   // 몸이 안 오면 절차형 몸을 쓴다
   const body = useMonBody(species, { form, gender, shiny })
   const shown = useRef(0)
+  /** 몸의 가로 폭(몸 단위) — 길고 넓은 몸이 옆 단상까지 덮지 않게 자를 때 쓴다 (`hallFitScale`) */
+  const wide = useMemo(() => {
+    if (!body) return 0
+    const size = new Box3().setFromObject(body.root).getSize(new Vector3())
+    return Math.max(size.x, size.z)
+  }, [body])
 
   useEffect(() => {
     shown.current = 0
@@ -71,7 +77,7 @@ function HallMon({
     shown.current += ((visible ? 1 : 0) - shown.current) * Math.min(1, delta * 5.5)
     const appear = shown.current
     node.visible = appear > 0.01
-    const base = body ? cinematicScale(body.tall) : 1
+    const base = body ? hallFitScale(body.tall, wide) : 1
     node.scale.setScalar(base * appear * (selected ? 1.06 : 0.9))
     node.position.set(
       position[0],

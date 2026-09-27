@@ -25,6 +25,8 @@ export const backdrop = style({
 
 export const stage = style({
   position: 'relative',
+  // 배경을 도트로 밀 때 자가 이 판이다 (`CreditsScreen`의 `sceneStyle` — `cqw`·`cqh`)
+  containerType: 'size',
   width: `min(100vw, calc(100vh * ${String(W / H)}))`,
   height: `min(100vh, calc(100vw * ${String(H / W)}))`,
   overflow: 'hidden',

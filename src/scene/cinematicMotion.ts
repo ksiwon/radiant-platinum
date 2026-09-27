@@ -125,3 +125,26 @@ export function cinematicScale(tall: number): number {
   if (!Number.isFinite(tall) || tall <= 0) return 1
   return Math.min(1.65, 2.45 / tall)
 }
+
+/**
+ * 명예의 전당 단상 하나 — 키와 가로 폭(월드 단위). 앞줄 셋이 1.75씩 떨어져 서고 앞줄이 카메라에 가까워, 연출의
+ * 키(2.45)로 세우면 앞줄의 큰 몸이 판을 넘는다 (`HallOfFameStage`의 `PARTY_POSITIONS`)
+ */
+export const HALL_SLOT_TALL = 2.0
+export const HALL_SLOT_WIDE = 1.6
+
+/**
+ * 명예의 전당 배율 — 키로 맞추고 **가로 폭으로 한 번 더** 자른다.
+ *
+ * ⚠️ **키만 보면 길고 넓은 몸이 판을 넘친다.** 기라티나는 키로 맞추면 날개가 옆 단상 둘을 덮고 판 밖으로 나갔다
+ * (탐침 p9 · `_hof42`의 전당 그림). 몸의 키와 Box3는 같은 단위다(`_box42` 실측: 기라티나 키 2.33 · 폭 2.62 ·
+ * 찌르호크 키 0.98 · 폭 3.11)
+ *
+ * @param tall 몸의 키 (`MonBody.tall`)
+ * @param wide 몸의 가로 폭 — Box3의 x·z 중 큰 쪽(0이면 모른다)
+ */
+export function hallFitScale(tall: number, wide: number): number {
+  const byTall = Number.isFinite(tall) && tall > 0 ? Math.min(1.65, HALL_SLOT_TALL / tall) : 1
+  if (!Number.isFinite(wide) || wide <= 0) return byTall
+  return Math.min(byTall, HALL_SLOT_WIDE / wide)
+}

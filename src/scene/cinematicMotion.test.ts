@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cinematicScale, evolutionPose, hatchPose, tradePose } from './cinematicMotion'
+import { cinematicScale, evolutionPose, hallFitScale, hatchPose, HALL_SLOT_TALL, HALL_SLOT_WIDE, tradePose } from './cinematicMotion'
 import { EVO_BEATS, EVO_CLAMP_FRAMES } from '../engine/pokemon/evolutionBeat'
 import { EGG_BEATS } from '../engine/pokemon/hatchBeat'
 
@@ -82,5 +82,13 @@ describe('cinematic 3D motion', () => {
   it('fits tall models without enlarging them beyond the stage limit', () => {
     expect(cinematicScale(4)).toBeCloseTo(0.6125)
     expect(cinematicScale(0.4)).toBe(1.65)
+  })
+
+  // 명예의 전당 — 넓은 몸은 단상 폭으로 한 번 더 자른다 (오리진폼 기라티나가 옆 단상 둘을 덮었다)
+  it('fits the Hall of Fame slot by height, then caps wide bodies', () => {
+    expect(hallFitScale(HALL_SLOT_TALL, 0)).toBe(1)
+    expect(hallFitScale(HALL_SLOT_TALL, HALL_SLOT_WIDE * 2)).toBeCloseTo(0.5)
+    // 작은 몸은 연출과 같은 상한까지만 키운다
+    expect(hallFitScale(0.2, 0)).toBe(1.65)
   })
 })

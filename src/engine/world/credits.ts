@@ -110,7 +110,7 @@ export function creditsAt(frame: number, rows: readonly CreditRow[] = CREDIT_ROW
  *
  * 원작이 `fx32`로 더하고 `/ FX32_ONE(4096)`으로 나눠 BG 오프셋에 넣는다 —
  * 첫 장은 가로로 `-0x40`(64분의 1픽셀), 둘째는 세로로 `+0x60`(128분의 3),
- * 셋째는 안 흐른다. ⚠️ **아주 느리다** — 130초 동안 첫 장이 122픽셀 간다.
+ * 셋째는 안 흐른다. 흐르는 것은 **그 장면이 도는 동안뿐이다** (`CREDIT_SCENE_RUN`).
  *
  * ⚠️ **BG 오프셋은 「그림이 아니라 창이」 움직이는 값이다.** 부호를 뒤집으면
  * 하늘이 반대로 흐른다
@@ -122,12 +122,32 @@ export const CREDIT_SCENE_PAN: readonly { x: number; y: number }[] = [
 ]
 
 /**
+ * 배경이 흐르는 프레임 수 — 원작 장면의 길이다. 첫 장 0~1830(`ov99_021D2C08.c:81`), 둘째 약 4815~6000
+ * (`ov99_021D3A40.c:48` · `ov99_021D2E28.c:108`), 셋째는 안 흐른다.
+ *
+ * ⚠️ **우리 장면은 셋으로 나눠 원작보다 길다** — 그대로 흘리면 창이 그림의 칠한 자리를 넘어 뒤판이 드러난다.
+ * 원작의 길이에서 멈추면 첫 장은 −28.6픽셀(그림 오른쪽 끝 32픽셀 띠가 딱 그만큼이다), 둘째는 27.8픽셀이다
+ */
+export const CREDIT_SCENE_RUN: readonly number[] = [1830, 1185, 0]
+
+/**
  * 몇 번째 배경인가 (0~`count-1`).
  *
  * ⚠️ **바뀌는 자리는 우리가 정했다.** 원작은 장면 일곱을 각자의 상태 기계가
  * 끝낼 때 넘기는데(`ov99_021D1D30`), 그 일곱이 오버레이 99 안의 3D 연출이라
  * 배경 그림만 있는 우리에게는 그 시각이 없다. 세 장을 **똑같이 나눈다**
  */
+/**
+ * 그 장면이 시작하는 프레임 — `creditsScene`의 경계.
+ *
+ * ⚠️ **배경은 장면마다 처음부터 흐른다.** 원작은 장면을 갈 때 흐름 값을 비운다(`ov99_021D1A54.c:440`) —
+ * 두루마리 전체의 프레임을 곱하면 둘째 장이 59~118픽셀을 흘러 가장자리를 넘었다(REPAIR §132)
+ */
+export function creditsSceneStart(scene: number, count: number, total = CREDITS_FRAMES): number {
+  if (count <= 0 || total <= 0 || scene <= 0) return 0
+  return Math.ceil((scene * total) / count)
+}
+
 export function creditsScene(frame: number, count: number, total = CREDITS_FRAMES): number {
   if (count <= 0 || total <= 0) return 0
   const at = Math.floor((frame / total) * count)
