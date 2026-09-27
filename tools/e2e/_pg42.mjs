@@ -1,10 +1,11 @@
 // 진단 — **엔딩 뒤 고친 것을 제자리에서 재 본다** (REPAIR §134~§139 · 판정이 아니라 진단이다)
 //
-//     node tools/e2e/_pg42.mjs [--case=r224|regi|ground|dex] [--headed]
+//     node tools/e2e/_pg42.mjs [--case=r224|regi|ground|dex|legends [--only=이름,…]] [--headed]
 //
 //   r224  224번도로 오박사 → 석판 이름 짓기(화면에 글을 넣고 Enter) → 흰 화면 워프 → 파도의길이 트였나(북쪽으로 걸어 472에 드나)
 //   regi  무쇠 유적 — 운명적 만남 레지기가스를 들고 점 일곱을 밟는다 → 석상(270) → 레지스틸 배틀이 열리나
 //   dex   마박사 연구소 — 신오 210을 다 보면 전국도감 · 포켓트레
+//   legends 전설 열둘 — 조건을 세우고 곁에서 A → 제 종족·레벨의 배틀이 열리나(크레세리아·새는 배회 · 깃발)
 //   ground 배틀그라운드 — 오늘의 넷이 서나(관장 겉모습) → 첫째에게 말을 걸어 재대결이 열리나
 //
 // ⚠️ **조건은 개발 모듈로 세운다** — 전국도감 · 배포 표식 · 편지 · 전당등록. 걸어서 거기까지 가는 판이 아니다(그건 다음 일).
@@ -26,6 +27,7 @@ const vite = await startVite(await freePort(), 'node_modules/.vite-pg')
 const browser = await chromium.launch({ args: gpuArgs('gl'), headless: !args.includes('--headed') })
 const page = await browser.newPage({ viewport: { width: 960, height: 640 } })
 page.on('pageerror', (e) => { console.error(`  pageerror ${String(e.message).slice(0, 160)}`) })
+page.on('console', (m) => { if (m.type() === 'error') console.error(`  console ${m.text().slice(0, 200)}`) })
 const log = (what, v) => { console.log(`  ${what} — ${typeof v === 'string' ? v : JSON.stringify(v)}`) }
 const tap = async (key, ms = 150, hold = 70) => {
   await page.keyboard.down(key); await page.waitForTimeout(hold); await page.keyboard.up(key); await page.waitForTimeout(ms)
@@ -56,12 +58,31 @@ const warp = async (base, map, x, z, facing, extra = {}) => {
       ...cp, id: `pg>${String(m)}`, map: m, spot: { kind: 'tile', x: tx, z: tz, facing: f },
       postGame: e.postGame ?? cp.postGame, story: [...(cp.story ?? []), ...(e.story ?? [])],
       items: [...(cp.items ?? []), ...(e.items ?? [])],
+      ...(e.hour === undefined ? {} : { hour: e.hour }),
     })
     if (e.nationalDex) save.useSaveStore.getState().obtainNationalDex()
   }, [base, map, x, z, facing, extra])
   await page.waitForFunction((m) => document.documentElement.dataset.map === String(m)
     && document.documentElement.dataset.restoring === undefined, map, { timeout: 120_000 })
   await page.waitForTimeout(5000)
+}
+/** 타이틀 → 확인 지점 표 → `/play`. `warpTo`는 `/play`가 떠 있어야 받는다 */
+const enterPlay = async () => {
+  await page.goto(vite.url, { waitUntil: 'load', timeout: 600_000 })
+  await page.getByRole('button', { name: '시작', exact: true }).waitFor({ timeout: 600_000 })
+  // ⚠️ **`warpTo`는 뛰어들 곳을 올려 두기만 한다** — `/play`가 떠 있어야 씬이 받는다. 타이틀의 확인 지점 표로
+  // 바탕 지점에 먼저 선다(`story.mjs`의 길)
+  await page.keyboard.press('Backquote')
+  await page.getByText('확인 지점').first().waitFor({ timeout: 30_000 })
+  const row = page.locator('[data-checkpoint="siwon"]').first()
+  await row.hover(); await page.waitForTimeout(150); await row.click()
+  // 기계가 바쁘면 클릭이 안 먹는 때가 있다 — 화면이 말하는 대로 Z(뛰어들기)를 한 번 더
+  const went = await page.waitForURL('**/play', { timeout: 20_000 }).then(() => true, () => false)
+  if (!went) { await row.hover(); await page.waitForTimeout(300); await page.keyboard.press('KeyZ') }
+  await page.waitForURL('**/play', { timeout: 400_000 })
+  await page.waitForFunction(() => document.documentElement.dataset.map !== undefined
+    && document.documentElement.dataset.restoring === undefined, null, { timeout: 180_000 })
+  await page.waitForTimeout(3000)
 }
 /** 대사를 넘긴다 — 물음이면 첫 칸(예) */
 const clear = async (n = 40) => {
@@ -74,18 +95,7 @@ const clear = async (n = 40) => {
 }
 
 try {
-  await page.goto(vite.url, { waitUntil: 'load', timeout: 600_000 })
-  await page.getByRole('button', { name: '시작', exact: true }).waitFor({ timeout: 600_000 })
-  // ⚠️ **`warpTo`는 뛰어들 곳을 올려 두기만 한다** — `/play`가 떠 있어야 씬이 받는다. 타이틀의 확인 지점 표로
-  // 바탕 지점에 먼저 선다(`story.mjs`의 길)
-  await page.keyboard.press('Backquote')
-  await page.getByText('확인 지점').first().waitFor({ timeout: 30_000 })
-  const row = page.locator('[data-checkpoint="siwon"]').first()
-  await row.hover(); await page.waitForTimeout(150); await row.click()
-  await page.waitForURL('**/play', { timeout: 60_000 })
-  await page.waitForFunction(() => document.documentElement.dataset.map !== undefined
-    && document.documentElement.dataset.restoring === undefined, null, { timeout: 180_000 })
-  await page.waitForTimeout(3000)
+  await enterPlay()
 
   if (CASE === 'r224') {
     // 전당등록 · 전국도감 · 오박사의 편지 · 배포 표식(쉐이미 0x1112) · 쉐이미 사건 상태 1 — 오박사를 세우는 것은 들어설 때의 스크립트다
@@ -321,8 +331,83 @@ try {
     log('장면 뒤', after)
     await page.screenshot({ path: `${OUT}/dex-after.png` })
   }
+  if (CASE === 'legends') {
+    // 전설 열둘 — 조건은 디컴프에서 읽었다(스크립트 줄은 각 줄 끝). 판마다 새로 들어간다: 배틀을 끝내지 않고 다음으로 넘어간다
+    const ONLY = flag('only', '')
+    const LEGENDS = [
+      { name: '히드런', map: 265, at: [7, 7], face: 'ArrowUp', story: [[16542, 1]], set: [293], clear: [288, 142, 477], want: [485, 50] }, // stark_mountain_room_3.s:23-32,73
+      { name: '디아루가', map: 584, at: [29, 18], face: 'ArrowUp', story: [[16580, 0]], clear: [208], want: [483, 70] }, // spear_pillar_dialga.s:31-43
+      { name: '펄기아', map: 585, at: [33, 18], face: 'ArrowUp', story: [[16581, 0]], clear: [209], want: [484, 70] },
+      { name: '다크라이', map: 321, at: [16, 14], face: 'ArrowUp', story: [[16451, 0x1209]], items: [[454, 1]], clear: [344], want: [491, 50] }, // newmoon_island_forest.s:12-25,44
+      { name: '쉐이미', map: 274, at: [911, 204], face: 'ArrowUp', story: [[16452, 0x1112]], items: [[452, 1]], clear: [291], want: [492, 30] }, // flower_paradise.s:12-26,46
+      { name: '레지기가스', map: 283, at: [11, 13], face: 'ArrowUp', set: [282], clear: [579, 283, 142], want: [486, 1] }, // snowpoint_temple_b5f.s:24-51
+      { name: '로토무', map: 300, at: [11, 4], face: 'ArrowUp', hour: 22, clear: [329, 2736], want: [479, 20] }, // old_chateau_back_middle_west_room.s:11-24
+      { name: '기라티나', map: 270, at: [11, 15], face: 'ArrowUp', clear: [289, 592, 142], want: [487, 47] }, // turnback_cave_giratina_room.s:35
+      { name: '유크시', map: 319, at: [14, 11], face: 'ArrowUp', clear: [481, 295, 142], want: [480, 50] }, // acuity_cavern.s:25-41
+      { name: '아그놈', map: 316, at: [16, 15], face: 'ArrowUp', clear: [480, 294, 142], want: [482, 50] }, // valor_cavern.s:39-55
+      { name: '크레세리아', map: 261, at: [15, 15], face: 'ArrowRight', story: [[16472, 0]], clear: [591, 287], roam: [1], flags: [591, 287] }, // fullmoon_island_forest.s:13-41
+      { name: '전설의 새(오박사)', map: 82, at: [4, 6], face: 'ArrowUp', story: [[16478, 0], [16479, 0], [16480, 0]], clear: [578, 152, 153, 281], roam: [3, 4, 5], flags: [153, 281], item: 252 }, // eterna_city_south_house.s:9-49
+    ].filter((l) => ONLY === '' || ONLY.split(',').includes(l.name))
+    const table = []
+    for (const [n, L] of LEGENDS.entries()) {
+      if (n > 0) await enterPlay()
+      // 깃발은 뛰기 **전에** — 들어서며 도는 OnTransition이 숨김을 정한다. VM과 세이브 두 군데에 적는다
+      await page.evaluate(async ([set, clear]) => {
+        const f = await import('/src/engine/script/field.ts')
+        const save = (await import('/src/state/saveStore.ts')).useSaveStore
+        const flags = Uint8Array.from(save.getState().flags)
+        for (const id of set) { f.forceFlag(id); flags[id >> 3] |= 1 << (id & 7) }
+        for (const id of clear) { f.fieldScripts.vars.clearFlag(id); flags[id >> 3] &= ~(1 << (id & 7)) }
+        save.setState({ flags })
+      }, [L.set ?? [], L.clear ?? []])
+      await warp('siwon', L.map, L.at[0], L.at[1], 0, { postGame: true, nationalDex: true, story: L.story ?? [], items: L.items ?? [], hour: L.hour })
+      await clear(20)
+      const standing = await page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
+        .filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx]))
+      await tap(L.face, 300, 90)
+      await tap('Space', 400)
+      let battle = false
+      for (let i = 0; i < 30 && !battle; i++) {
+        battle = await page.evaluate(() => document.documentElement.dataset.scene === 'battle')
+        if (!battle) {
+          const at = await now()
+          if (i < 4 || i % 10 === 0) log(`  ${L.name} ${String(i)}`, at)
+          if (L.want === undefined && i > 4 && !at.talk && at.script !== '1') break
+          await tap('Space', 500)
+        }
+      }
+      let got
+      if (L.want) {
+        await page.waitForTimeout(3500)
+        got = await page.evaluate(async () => {
+          const bs = (await import('/src/state/battleStore.ts')).useBattleStore.getState()
+          const foe = bs.view?.active?.p2a ?? bs.truth?.active?.p2a ?? null
+          return { scene: document.documentElement.dataset.scene, phase: bs.phase, foe: foe ? [foe.species, foe.level] : null }
+        })
+        got.ok = got.foe !== null && got.foe[0] === L.want[0] && got.foe[1] === L.want[1]
+      } else {
+        await clear(40)
+        got = await page.evaluate(async ([slots, fl, item]) => {
+          const s = (await import('/src/state/saveStore.ts')).useSaveStore.getState()
+          const v = (await import('/src/engine/script/field.ts')).fieldScripts.vars
+          return {
+            roam: slots.map((i) => [i, s.roamers[i]?.species, s.roamers[i]?.level, s.roamers[i]?.active]),
+            flags: fl.map((id) => [id, v.checkFlag(id)]),
+            item: item === null ? null : s.bag.flat().find((it) => it.item === item)?.count ?? 0,
+          }
+        }, [L.roam, L.flags, L.item ?? null])
+        got.ok = got.roam.every((r) => r[3] === true) && got.flags.every((f) => f[1]) && (got.item === null || got.item > 0)
+      }
+      log(`${got.ok ? '✅' : '❌'} ${L.name}`, { ...got, standing: got.ok ? undefined : standing })
+      table.push({ name: L.name, ...got })
+      await page.screenshot({ path: `${OUT}/legend-${String(n).padStart(2, '0')}.png` })
+    }
+    log('합계', `${String(table.filter((t) => t.ok).length)}/${String(table.length)}`)
+  }
 } catch (e) {
   console.error(`  터졌다 — ${String(e?.stack ?? e).slice(0, 700)}`)
+  await page.screenshot({ path: `${OUT}/crash.png` }).catch(() => {})
+  console.error(`  그때 — ${page.url()} ${JSON.stringify(await page.evaluate(() => ({ ...document.documentElement.dataset })).catch(() => null))}`)
 } finally {
   await browser.close()
   vite.child.kill()
