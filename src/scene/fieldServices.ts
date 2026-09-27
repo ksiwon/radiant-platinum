@@ -1634,15 +1634,17 @@ const services: FieldServices = {
   hallOfFame: {
     clear: () => {
       const vars = fieldScripts.vars
+      // 깃발을 세우기 **전에** 읽는다 — 크레딧 넘기기가 이 값이다 (`clearGameStruct->playerInfo.gameCompleted`)
+      const wasCleared = vars.checkFlag(SYSTEM_FLAG.gameCompleted)
       // ⚠️ **전당에 든 날은 처음 한 번만 적는다** (`if (CheckGameCompleted() == FALSE)`)
-      if (!vars.checkFlag(SYSTEM_FLAG.gameCompleted)) {
+      if (!wasCleared) {
         const save = useSaveStore.getState()
         useSaveStore.setState({ trainer: { ...save.trainer, firstClearedAt: Date.now() } })
       }
       // ⚠️ **이 깃발을 세우는 것은 스크립트가 아니다** (`SystemFlag_SetGameCompleted`가
       // `ClearGame()` 안에 있다). 여기서 안 세우면 후반부가 통째로 안 열린다
       vars.setFlag(SYSTEM_FLAG.gameCompleted)
-      useMenuStore.getState().openHallOfFame()
+      useMenuStore.getState().openHallOfFame(wasCleared)
     },
     victories: () => entryNumber(useSaveStore.getState().hallOfFame, 0),
     openPC: () => { useMenuStore.getState().push('pcHallOfFame') },

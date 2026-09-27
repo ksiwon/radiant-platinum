@@ -24,7 +24,6 @@
 // 잇는다 — 붙여 놓으면 남의 이름 옆에 우리 이름을 얹은 것처럼 읽힌다. 이 줄들만
 // 우리가 쓴 글이고, 그래서 롬에서 오는 글과 다른 배열에 따로 둔다.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { useNavigate } from 'react-router'
 import { music } from '../../engine/audio/music'
 import { creditsImage, loadCreditRows, loadCreditsAtlas } from '../../data/gameData'
 import type { CreditRows, CreditsAtlas } from '../../data/schema'
@@ -34,9 +33,9 @@ import { parseMessage } from '../../engine/script/text'
 import {
   creditsAt, creditsFrames, creditsRows, creditsScene, CREDIT_SCENE_PAN,
 } from '../../engine/world/credits'
+import { APP_ROOT } from '../../data/assetBase'
 import { useGameLocale } from '../../state/optionsStore'
 import { useMenuStore } from '../../state/menuStore'
-import { useSaveStore } from '../../state/saveStore'
 import * as css from './credits.css'
 import { vars } from '../theme/contract.css'
 
@@ -132,11 +131,10 @@ function sceneStyle(at: number, size: { w: number; h: number }, frame: number): 
 const BGM = 1186
 
 export function CreditsScreen() {
-  const navigate = useNavigate()
   const closeAll = useMenuStore((s) => s.closeAll)
   const locale = useGameLocale()
   // 한 번 깬 리포트인가. 넘기기가 이 값에 달렸다 (`v0->unk_00->gameCompleted`)
-  const cleared = useSaveStore((s) => s.hallOfFame.total > 0)
+  const cleared = useMenuStore((s) => s.creditsSkippable)
 
   const [lines, setLines] = useState<string[] | null>(null)
   /** 그 판의 배치표. 글과 **같은 판**이라야 자리가 맞는다 */
@@ -165,11 +163,18 @@ export function CreditsScreen() {
     return () => { music.stop() }
   }, [])
 
+  /**
+   * 타이틀로 — **통째로 다시 켠다** (`OS_ResetSystem(RESET_CLEAN)` · `clear_game.c:165`).
+   *
+   * ⚠️ **라우터로만 나가면 세계가 그대로 남는다.** 캔버스는 라우트 위에 떠 있어서(`app/App.tsx`) 타이틀에서도
+   * 맵과 스크립트가 선 채로 기다리고, 「이어하기」는 리포트가 아니라 **그 자리**에서 다시 걷는다 — 실측(탐침 p9 ·
+   * `_hof42`): 리포트는 떡잎마을 침실(415)인데 전당 방(187)에 서서 마박사의 대사가 다시 돌았다
+   */
   const leave = useCallback((): void => {
     music.stop()
     closeAll()
-    navigate('/')
-  }, [closeAll, navigate])
+    location.assign(APP_ROOT)
+  }, [closeAll])
 
   // 두루마리. 원작이 프레임마다 1픽셀 올리므로 60fps에 맞춘다 —
   // ⚠️ **경과 시간으로 센다.** 프레임 수로 세면 느린 기계에서 크레딧이 늘어진다

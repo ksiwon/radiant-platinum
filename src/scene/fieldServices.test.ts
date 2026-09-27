@@ -277,3 +277,33 @@ maybe('밟고 누르는 손잡이도 제 장치로 간다', () => {
     expect(handles().pressPastoriaButton()).toBe(false)
   })
 })
+
+/**
+ * 명예의 전당 (`ClearGame`) — 크레딧 넘기기는 **이번 전당 전에** 깬 리포트였는가다 (REPAIR §130).
+ *
+ * ⚠️ 전당이 크레딧 전에 한 줄을 적으므로 기록 수로 재면 처음 깬 사람도 넘길 수 있었다
+ */
+describe('명예의 전당 — 크레딧 넘기기', () => {
+  let stop: () => void
+  let unassets: () => void
+  beforeAll(() => {
+    unassets = installNodeAssets()
+    stop = installFieldServices()
+  })
+  afterAll(() => { stop(); unassets() })
+
+  it('처음 깨면 못 넘기고, 두 번째부터 넘긴다', async () => {
+    const { useMenuStore } = await import('../state/menuStore')
+    const { SYSTEM_FLAG } = await import('../engine/script/commands')
+    const vars = fieldScripts.vars
+    vars.clearFlag(SYSTEM_FLAG.gameCompleted)
+    fieldScripts.services.hallOfFame!.clear()
+    expect(useMenuStore.getState().creditsSkippable).toBe(false)
+    expect(vars.checkFlag(SYSTEM_FLAG.gameCompleted)).toBe(true)
+    useMenuStore.getState().closeAll()
+    fieldScripts.services.hallOfFame!.clear()
+    expect(useMenuStore.getState().creditsSkippable).toBe(true)
+    useMenuStore.getState().closeAll()
+    vars.clearFlag(SYSTEM_FLAG.gameCompleted)
+  })
+})

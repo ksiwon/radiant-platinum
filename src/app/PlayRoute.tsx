@@ -5,6 +5,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { setGameActive } from '../engine/input/keyboard'
+import { startPlayClock } from '../engine/world/playTime'
 import { BINDINGS } from '../engine/input/keys'
 import { exitLook, requestLook, setMouseActive } from '../engine/input/mouse'
 import { useOptionsStore } from '../state/optionsStore'
@@ -34,6 +35,10 @@ export function PlayRoute() {
   useEffect(() => {
     if (!useSaveStore.getState().hydrated) void useSaveStore.getState().loadReport()
   }, [])
+
+  // 플레이 시간 — 게임에 들어선 동안 흐른다 (`PlayTime_Start` · 메인 고리의 `PlayTime_IncrementTimer`).
+  // 메뉴·배틀·컷신도 이 화면 위에서 돌므로 가리지 않는다. 타이틀로 나가면 원작의 리셋처럼 멈춘다
+  useEffect(() => startPlayClock((ms) => { useSaveStore.getState().addPlaytime(ms) }), [])
 
   // V로 시점을 바꾼다. 휠과 설정 화면에도 같은 항목이 있고 값은 한 곳에만 있다.
   //

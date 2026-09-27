@@ -15,7 +15,7 @@ import {
 import {
   addNpc, npcActors, removeNpc, setNpcPlacement, switchMovementType,
 } from '../actor/npcs'
-import { localToRom, mapById, romToLocal, world as mapWorld } from '../map/world'
+import { localToRom, mapById, romToLocal, specialLocation, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import {
   BATTLE_RESULT_LOSE, BATTLE_RESULT_WIN, playerDidNotCapture, playerLostBattle, playerWonBattle,
@@ -4618,9 +4618,9 @@ on('InitPersistedMapFeaturesForHearthomeGym', (ctx) => {
 
 // ── 승강기 (PARITY §7.12) ────────────────────────────────────────────────────
 //
-// ⚠️ **길을 막지는 않는다.** 층을 고르는 목록도 워프도 스크립트에 통째로
-// 적혀 있어서 이 넷이 없어도 승강기는 돈다 — 없으면 「지금 몇 층인가」가
-// 안 뜰 뿐이다.
+// ⚠️ **등대 승강기는 이것으로 길을 가른다.** 층을 고르는 승강기는 목록도 워프도
+// 스크립트에 적혀 있지만, 등대 승강기는 `GetFloorsAbove` 하나로 오를지 내릴지
+// 정한다 — 자리가 틀리면 전진에게 못 간다 (REPAIR §127).
 
 /**
  * 승강기를 타기 전의 자리를 적어 둔다 (`FieldOverworldState_SetSpecialLocation`).
@@ -4630,16 +4630,19 @@ on('InitPersistedMapFeaturesForHearthomeGym', (ctx) => {
  */
 on('SetSpecialLocation', (ctx) => {
   const map = ctx.readVar()
-  ctx.readVar(); ctx.readVar(); ctx.readVar(); ctx.readVar()
-  specialLocation = map
+  const warp = ctx.readVar()
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  ctx.readVar()
+  // 워프 번호 0xFFFF는 `WARP_ID_NONE`이다 — 그때는 칸이 쓰인다
+  const at = romToLocal(map, x, z)
+  Object.assign(specialLocation, { map, warp: warp === 0xffff ? -1 : warp, x: at.x, z: at.z })
   return false
 })
 
-/** `FieldOverworldState_GetSpecialLocation`의 맵 번호만. 리포트에는 안 남는다 */
-let specialLocation = -1
-
+/** 자리는 `map/world`의 `specialLocation`이 든다 — 걸어서 드는 워프도 거기 적는다 */
 on('GetFloorsAbove', (ctx) => {
-  ctx.host.vars.set(ctx.readHalfWord(), floorsAbove(specialLocation))
+  ctx.host.vars.set(ctx.readHalfWord(), floorsAbove(specialLocation.map))
   return false
 })
 

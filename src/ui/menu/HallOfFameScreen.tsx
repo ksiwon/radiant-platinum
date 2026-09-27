@@ -25,6 +25,7 @@ import { SFX } from '../../engine/audio/sfx'
 import { genderOf, isShiny, type PokemonInstance } from '../../engine/pokemon/instance'
 import { metName } from '../../engine/pokemon/memo'
 import { metToday } from '../../engine/pokemon/origin'
+import { fieldScripts } from '../../engine/script/field'
 import {
   addHallOfFameEntry,
   HALL_OF_FAME_PARTY,
@@ -213,6 +214,10 @@ export function HallOfFameScreen() {
   const finish = useCallback((): void => {
     if (saved.current) return
     saved.current = true
+    // ⚠️ **스크립트가 세운 깃발을 먼저 스토어로 끌어온다** (`SaveScreen`과 같다). 안 그러면 `ClearGame`이 방금 세운
+    // `FLAG_GAME_COMPLETED`와 전당 방 스크립트의 `VAR_PLAYER_HOUSE_POSTGAME_STATE`가 리포트에 안 들어가, 다시 켜면
+    // 엔딩을 안 본 판이 된다 — 실측(탐침 p10): 리셋 뒤 이어하기에서 2404 꺼짐 · 16655 0 (REPAIR §131)
+    useSaveStore.getState().commitScriptState(fieldScripts.vars.saved, fieldScripts.vars.flags)
     const store = useSaveStore.getState()
     // 원작 차례 그대로다 — 회복이 먼저, 그다음 저장, 그다음 전당 기록
     healParty()

@@ -216,8 +216,19 @@ interface MenuStore {
   finishReminder: (learned: boolean) => void
   /** 상장을 연다 */
   openDiploma: (national: boolean) => void
-  /** 명예의 전당 장면을 연다 (`ClearGame`) */
-  openHallOfFame: () => void
+  /**
+   * 명예의 전당 장면을 연다 (`ClearGame`).
+   *
+   * @param wasCleared 이번 전당 **전에** 이미 깬 리포트였나 — 크레딧 넘기기가 이것에 달렸다
+   */
+  openHallOfFame: (wasCleared: boolean) => void
+  /**
+   * 크레딧을 넘길 수 있나 (`ClearGamePlayerInfo.gameCompleted`).
+   *
+   * ⚠️ **전당의 기록 수로 재면 안 된다** — 전당이 크레딧 **전에** 한 줄을 적으므로 처음 깬 사람도 1이 되어
+   * 넘길 수 있었다(REPAIR §130). 원작은 `ClearGame`이 깃발을 세우기 **전에** 읽어 둔 값을 넘긴다
+   */
+  creditsSkippable: boolean
   /** 크레딧으로 넘어간다. 전당이 리포트를 다 쓰면 스스로 부른다 (PARITY §8.12) */
   openCredits: () => void
   /** 스크립트가 한 마리를 고르라고 파티 화면을 연다 */
@@ -258,6 +269,7 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   diplomaNational: false,
   berryItem: 0,
   choosingMon: false,
+  creditsSkippable: false,
   trade: null,
   selectMove: null,
   selectedMoveSlot: null,
@@ -293,10 +305,10 @@ export const useMenuStore = create<MenuStore>()((set) => ({
 
   finishReminder: (learned) => { set({ reminderLearned: learned, reminder: null }) },
 
-  openHallOfFame: () => set(() => {
+  openHallOfFame: (wasCleared) => set(() => {
     const stack: MenuScreen[] = ['hallOfFame']
     capture(stack)
-    return { stack, top: 'hallOfFame' as const }
+    return { stack, top: 'hallOfFame' as const, creditsSkippable: wasCleared }
   }),
 
   /**

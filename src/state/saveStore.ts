@@ -5,6 +5,7 @@
 // IndexedDB에 썼는데, 그러면 "리포트"라는 것이 의미가 없다 — 리포트를 안 쓰고
 // 꺼도 다음에 켜면 걸어 둔 자리에 그대로 서 있다. 원작은 리포트를 쓴 그 순간만
 // 남긴다. 디스크로 나가는 문은 `report()` 하나뿐이다 (`state/report.ts`).
+import { addPlaytimeCapped } from '../engine/world/playTime'
 import { create } from 'zustand'
 import {
   backupReport, clearReport, readBackupDetailed, readReport, readReportDetailed,
@@ -840,7 +841,7 @@ export const useSaveStore = create<SaveStore>()(
         set({ vars: Uint16Array.from(vars), flags: Uint8Array.from(flags) }),
 
       addPlaytime: (ms) =>
-        set((s) => ({ trainer: { ...s.trainer, playtimeMs: s.trainer.playtimeMs + ms } })),
+        set((s) => ({ trainer: { ...s.trainer, playtimeMs: addPlaytimeCapped(s.trainer.playtimeMs, ms) } })),
 
       addItem: (pocket, item, count) => {
         const next = addItem(useSaveStore.getState().bag, pocket, item, count)

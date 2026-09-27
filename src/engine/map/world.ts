@@ -449,8 +449,37 @@ function eventsOf(mapId: number): EventFile | null {
   return file
 }
 
+/**
+ * **목적지를 「특별한 자리」로 미루는 워프** (`destHeaderID` 0xFFF · `destWarpID` 0x100).
+ *
+ * 승강기 방 여섯의 나가는 문(3,6)이 이것이다 — TV국 · 연고의 두 집 · 백화점 · 리본신디케이트 · 등대.
+ * 방이 하나를 여러 층이 돌려 쓰므로 문이 어디로 나가는지를 표에 못 적는다 (`Field_MapConnection`)
+ */
+export const DYNAMIC_WARP_MAP = 0xfff
+
+/**
+ * **특별한 자리** (`FieldOverworldState_GetSpecialLocation`) — 승강기가 어느 층에서 탔는지, 나가는 문이
+ * 어디로 가는지. 둘이 쓴다:
+ *
+ * · 그런 방에 **걸어서 들면** 들어온 문이 적힌다 (`Field_SetMapConnection` — 도착한 워프의 목적지가
+ *   0x100이면 입구 자리를 그대로 옮긴다). 등대 승강기가 이것으로 오르내림을 가른다
+ * · 층을 고르는 승강기 스크립트가 `SetSpecialLocation`으로 고쳐 쓴다
+ *
+ * ⚠️ 없으면 등대 승강기가 물가시티에서 타도 「위층이 없다」로 **내려가** 물가시티로 되돌려 보냈다
+ * (탐침 p2 · REPAIR §127). 리포트에는 안 남는다
+ */
+export const specialLocation: { map: number; warp: number; x: number; z: number } = { map: -1, warp: -1, x: 0, z: 0 }
+
 /** 목적지 워프가 가리키는 도착 지점. 목적지가 실재하지 않으면 null */
 export function resolveWarp(w: Warp, viaDoor = false): PendingWarp | null {
+  if (w.to === DYNAMIC_WARP_MAP) {
+    const at = specialLocation
+    const dest = mapById(at.map)
+    if (at.map < 0 || !dest) return null
+    // 워프 번호가 있으면 그 워프 자리가 이긴다 (`Field_SetMapConnection`의 `warpId != WARP_ID_NONE` 갈래)
+    const back = at.warp >= 0 ? warpsOf(at.map)[at.warp] : undefined
+    return { to: at.map, matrix: dest.matrix, x: (back?.x ?? at.x) + 0.5, z: (back?.z ?? at.z) + 0.5, viaDoor }
+  }
   const dest = mapById(w.to)
   if (!dest) return null
   const back = warpsOf(w.to)[w.anchor]
@@ -698,8 +727,14 @@ export const warpSystem = {
     const target = door
       ? resolveWarp(door, true)
       : resolveWarp(here!, world.grid?.behavior(tx, tz) === TILE_BEHAVIOR_DOOR)
-    // 목적지가 없는 워프가 6개 있다(더미). 밟아도 아무 일도 일어나지 않는 게 맞다
+    // 목적지 맵이 없는 워프는 밟아도 아무 일도 없다 · 특별한 자리가 안 적힌 채 승강기 문을 밟아도 그렇다
     if (!target) return
+    // 도착한 워프가 특별한 자리로 미루는 문이면 **여기가** 그 자리다 (`Field_SetMapConnection`)
+    const taken = door ?? here!
+    const arrival = taken.to === DYNAMIC_WARP_MAP ? undefined : warpsOf(taken.to)[taken.anchor]
+    if (arrival?.to === DYNAMIC_WARP_MAP) {
+      Object.assign(specialLocation, { map: world.mapId, warp: warps.indexOf(taken), x: taken.x, z: taken.z })
+    }
     world.armed = false
     world.pending = target
   },

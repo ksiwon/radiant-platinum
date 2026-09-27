@@ -19,6 +19,8 @@ import {
   disarmWarp,
   scriptBridge,
   warpSystem,
+  specialLocation,
+  DYNAMIC_WARP_MAP,
   type EventFile, type MapHeader, type Warp,
 } from './world'
 import { worldState } from '../../state/worldState'
@@ -354,8 +356,13 @@ maybe('워프 그래프', () => {
     expect(ok + over + silent).toBe(3555)
   })
 
-  it('전체 1213개 중 목적지가 없는 것은 6개뿐이다', () => {
+  /**
+   * ⚠️ **여섯은 더미가 아니다** — 승강기 방의 나가는 문이고, 목적지를 「특별한 자리」로 미룬다
+   * (`DYNAMIC_WARP_MAP` · REPAIR §127). 자리가 안 적혀 있으면 못 푸는 것이 맞다
+   */
+  it('전체 1213개 중 목적지가 없는 것은 승강기 문 6개뿐이다', () => {
     let total = 0, dangling = 0
+    Object.assign(specialLocation, { map: -1, warp: -1, x: 0, z: 0 })
     for (const m of world.maps!) {
       for (const w of warpsOf(m.id)) {
         total++
@@ -363,7 +370,9 @@ maybe('워프 그래프', () => {
       }
     }
     expect(total).toBe(1213)
-    expect(dangling).toBe(6) // 더미 워프. 밟아도 아무 일도 없는 게 맞다
+    expect(dangling).toBe(6)
+    const lifts = world.maps!.filter((m) => warpsOf(m.id).some((w) => w.to === DYNAMIC_WARP_MAP)).map((m) => m.id)
+    expect(lifts).toEqual([18, 105, 114, 142, 463, 516])
   })
 })
 
@@ -662,5 +671,43 @@ describe('발을 떼기 전에는 워프가 안 걸린다', () => {
     warpSystem.fixedUpdate()
     expect(world.armed).toBe(true)
     expect(step()?.to).toBe(1)
+  })
+})
+
+/**
+ * **승강기 방에 걸어서 들면 들어온 문이 「특별한 자리」가 된다** (`Field_SetMapConnection` · REPAIR §127).
+ *
+ * ⚠️ 없던 동안 등대 승강기가 물가시티에서 타도 내려가 물가시티로 되돌렸고(`GetFloorsAbove`가 자리를 못 받았다),
+ * 승강기 방 여섯의 나가는 문이 어디로도 안 갔다
+ */
+describe('승강기 방 — 특별한 자리', () => {
+  const CITY_DOOR: Warp = { x: 9, z: 4, to: 1, anchor: 0 }
+  const LIFT_EXIT: Warp = { x: 3, z: 6, to: DYNAMIC_WARP_MAP, anchor: 0x100 }
+  beforeAll(() => {
+    world.maps = [
+      { id: 0, events: 0, matrix: 0 } as MapHeader,
+      { id: 1, events: 1, matrix: 7 } as MapHeader,
+    ]
+    world.events = {
+      '0': { warps: [{ x: 1, z: 1, to: 1, anchor: 0 }, CITY_DOOR], npcs: [], signs: [], triggers: [] } as unknown as EventFile,
+      '1': { warps: [LIFT_EXIT], npcs: [], signs: [], triggers: [] } as unknown as EventFile,
+    }
+    world.grid = { behavior: () => 0, isBlocked: () => false } as unknown as MapGrid
+  })
+
+  it('들어온 문이 적히고, 나가는 문이 그리로 간다', () => {
+    Object.assign(specialLocation, { map: -1, warp: -1, x: 0, z: 0 })
+    expect(resolveWarp(LIFT_EXIT)).toBeNull()
+    world.mapId = 0
+    world.armed = true
+    world.pending = null
+    worldState.player.position.set(CITY_DOOR.x + 0.5, 0, CITY_DOOR.z + 0.5)
+    warpSystem.fixedUpdate()
+    // 방금 `null`을 넣었으므로 TS가 좁혀 둔다 — 갱신은 `fixedUpdate` 안에서 일어난다
+    expect((world.pending as { to: number } | null)?.to).toBe(1)
+    expect(specialLocation).toMatchObject({ map: 0, warp: 1 })
+    world.mapId = 1
+    const out = resolveWarp(LIFT_EXIT)
+    expect(out).toMatchObject({ to: 0, x: CITY_DOOR.x + 0.5, z: CITY_DOOR.z + 0.5 })
   })
 })
