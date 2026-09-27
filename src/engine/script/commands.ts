@@ -1568,6 +1568,51 @@ on('GetRandom', (ctx) => {
   return false
 })
 
+/** 배틀그라운드에 아무도 안 선 칸 (`BATTLEGROUND_TRAINER_NONE`) */
+export const BATTLEGROUND_TRAINER_NONE = 0xfff
+/**
+ * 배틀그라운드에 서는 사람의 겉모습 (`sBattlegroundGymLeaders` · `sBattlegroundStatTrainers` · `scrcmd.c:6741`).
+ * 번호는 `generated/object_events_gfx.txt`의 줄 − 1이다 — 관장 여덟(126~133)과 동행했던 다섯(141~145)
+ */
+const BATTLEGROUND_GYM_LEADERS = [126, 127, 128, 129, 130, 131, 132, 133] as const
+const BATTLEGROUND_STAT_TRAINERS = [141, 142, 143, 144, 145] as const
+
+/**
+ * 배틀그라운드 오늘의 넷 (`ScrCmd_GetRandomBattlegroundTrainers`).
+ *
+ * 첫째는 반드시 관장 하나고, 둘째·셋째는 **표 길이 + 1**로 굴려 끝 칸이면 비운다 — 여덟 번 겹치면 역시 비운다
+ * (`GetRandomBattlegroundGymLeaderID`). 넷째는 동행했던 사람 중 하나거나 빈다. 그 사람을 실제로 세울지는(동행했나 ·
+ * 벅이 떠났나) 스크립트가 따로 본다
+ */
+export function pickBattlegroundTrainers(rand: (bound: number) => number = randMod): [number, number, number, number] {
+  const pick = (count: number, taken: number[]): number => {
+    for (let tries = 0; ;) {
+      const r = rand(count + 1)
+      if (r === count) return count
+      if (++tries >= 8) return count
+      if (!taken.includes(r)) return r
+    }
+  }
+  const leaders = BATTLEGROUND_GYM_LEADERS.length
+  const first = rand(leaders)
+  const second = pick(leaders, [first])
+  const third = pick(leaders, [first, second])
+  const fourth = pick(BATTLEGROUND_STAT_TRAINERS.length, [])
+  const leader = (i: number) => BATTLEGROUND_GYM_LEADERS[i] ?? BATTLEGROUND_TRAINER_NONE
+  return [leader(first), leader(second), leader(third), BATTLEGROUND_STAT_TRAINERS[fourth] ?? BATTLEGROUND_TRAINER_NONE]
+}
+
+/**
+ * ⚠️ **없던 동안 넷 다 0이었다** — 0은 주인공의 겉모습이라, 첫째 자리에 주인공이 서고 나머지 셋은 NONE이 아니라서
+ * 숨지도 않았다(REPAIR §139)
+ */
+on('GetRandomBattlegroundTrainers', (ctx) => {
+  const dest = [ctx.readHalfWord(), ctx.readHalfWord(), ctx.readHalfWord(), ctx.readHalfWord()]
+  const picked = pickBattlegroundTrainers()
+  dest.forEach((d, i) => { ctx.host.vars.set(d, picked[i]!) })
+  return false
+})
+
 // ── 날마다 바뀌는 것 (PARITY §6.11) ──────────────────────────────────────────
 //
 // 신오방송국이 무리를 켜고, 포켓몬저택 사무실이 트로피가든에 한 마리씩 더한다.

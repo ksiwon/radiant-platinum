@@ -1,9 +1,10 @@
-// 진단 — **엔딩 뒤 고친 것 셋을 제자리에서 재 본다** (REPAIR §134~§137 · 판정이 아니라 진단이다)
+// 진단 — **엔딩 뒤 고친 것을 제자리에서 재 본다** (REPAIR §134~§139 · 판정이 아니라 진단이다)
 //
-//     node tools/e2e/_pg42.mjs [--case=r224|regi] [--headed]
+//     node tools/e2e/_pg42.mjs [--case=r224|regi|ground] [--headed]
 //
 //   r224  224번도로 오박사 → 석판 이름 짓기(화면에 글을 넣고 Enter) → 흰 화면 워프 → 파도의길이 트였나(북쪽으로 걸어 472에 드나)
 //   regi  무쇠 유적 — 운명적 만남 레지기가스를 들고 점 일곱을 밟는다 → 석상(270) → 레지스틸 배틀이 열리나
+//   ground 배틀그라운드 — 오늘의 넷이 서나(관장 겉모습) → 첫째에게 말을 걸어 재대결이 열리나
 //
 // ⚠️ **조건은 개발 모듈로 세운다** — 전국도감 · 배포 표식 · 편지 · 전당등록. 걸어서 거기까지 가는 판이 아니다(그건 다음 일).
 // 대사·이름·걸음·배틀은 전부 화면과 키다
@@ -237,6 +238,44 @@ try {
     })
     log('석상 A 뒤', b)
     await page.screenshot({ path: `${OUT}/regi-battle.png` })
+  }
+  if (CASE === 'ground') {
+    // 배틀그라운드 (454) — 들어서면 오늘의 넷을 뽑는다(§139). 환영 컷신이 먼저 돈다
+    await warp('siwon', 454, 7, 10, 0, { postGame: true })
+    await clear(30)
+    const who = await page.evaluate(async () => {
+      const n = await import('/src/engine/actor/npcs.ts')
+      const v = (await import('/src/engine/script/field.ts')).fieldScripts.vars
+      return {
+        picked: [0, 1, 2, 3].map((i) => v.get(16485 + i)),
+        hidden: [0, 1, 2, 3].map((i) => v.checkFlag(674 + i)),
+        standing: n.npcActors.list.filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx]),
+      }
+    })
+    log('오늘의 넷', who)
+    await page.screenshot({ path: `${OUT}/ground-four.png` })
+    // 첫째 (2,9) — (2,10)에서 북쪽을 보고 A, 물음엔 예
+    await page.evaluate(async () => {
+      const st = (await import('/src/state/worldState.ts')).worldState
+      st.player.position.set(2.5, st.player.position.y, 10.5)
+      st.player.prevPosition.copy(st.player.position)
+      ;(await import('/src/engine/script/field.ts')).resetTriggerTile()
+    })
+    await page.waitForTimeout(800)
+    await tap('ArrowUp', 300, 90)
+    await tap('Space', 400)
+    let battle = false
+    for (let i = 0; i < 40 && !battle; i++) {
+      battle = await page.evaluate(() => document.documentElement.dataset.scene === 'battle')
+      if (!battle) await tap('Space', 500)
+    }
+    await page.waitForTimeout(4000)
+    const b = await page.evaluate(async () => {
+      const bs = (await import('/src/state/battleStore.ts')).useBattleStore.getState()
+      return { scene: document.documentElement.dataset.scene, kind: bs.kind, trainer: bs.trainerId, cls: bs.trainerClass, foes: bs.foes.map((m) => [m.species, m.level]) }
+    })
+    log('첫째에게 말 건 뒤', b)
+    await page.screenshot({ path: `${OUT}/ground-battle.png` })
   }
 } catch (e) {
   console.error(`  터졌다 — ${String(e?.stack ?? e).slice(0, 700)}`)

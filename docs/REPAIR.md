@@ -5650,3 +5650,15 @@ src/state/multiBattle.test.ts`.
 
 **우리** — 「놓치면 영영 못 만난다」로 읽고 270 이상으로 쟀다. 270·280은 유적을 나서는 순간 0이 되므로 시원 앞에서는 늘 0 아니면
 290이다. **고친 것** — 290(잡았다)으로 잰다. SIWON.md의 그 줄과 다크라이 앞의 크레세리아 사슬(깃발 300)을 바로잡았다.
+
+## 139. 배틀그라운드에 **주인공 넷이 섰다** — 관장 재대결이 한 판도 안 열렸다
+
+**원작** — 들어설 때(`Battleground_OnTransition`) 하루 한 번 `GetRandomBattlegroundTrainers`가 넷을 뽑는다(`scrcmd.c:6761`): 첫째는
+관장 여덟 중 하나, 둘째·셋째는 **아홉**으로 굴려 끝 칸이면 비우고(여덟 번 겹쳐도 비운다), 넷째는 동행했던 다섯 중 하나거나 빈다.
+스크립트가 그 값을 겉모습 변수(`VAR_OBJ_GFX_ID_1~4`)로 옮기고, 빈 자리(0xFFF)와 같이 걸은 적 없는 넷째를 숨긴다.
+
+**우리** — 명령이 없어 넷 다 0이었다. 0은 주인공의 겉모습이고 NONE이 아니라서 아무도 안 숨었다 — 주인공 모습 넷이 서고, 말을 걸면
+`Battleground_SetTrainer`가 어느 관장과도 안 맞아 배틀 상대가 비었다.
+
+**고친 것** — `commands.ts`의 `pickBattlegroundTrainers`(원작 굴림 그대로 · 표는 `object_events_gfx.txt`의 줄 − 1). 시험
+`script/battleground.test.ts` — 굴림 순서를 박은 셋과, 원작 `OnTransition`을 마흔 번 돌려 겉모습 · 숨김이 뽑힌 넷을 따르는지.
