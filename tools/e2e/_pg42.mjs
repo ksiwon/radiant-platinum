@@ -1,9 +1,10 @@
 // 진단 — **엔딩 뒤 고친 것을 제자리에서 재 본다** (REPAIR §134~§139 · 판정이 아니라 진단이다)
 //
-//     node tools/e2e/_pg42.mjs [--case=r224|regi|ground] [--headed]
+//     node tools/e2e/_pg42.mjs [--case=r224|regi|ground|dex] [--headed]
 //
 //   r224  224번도로 오박사 → 석판 이름 짓기(화면에 글을 넣고 Enter) → 흰 화면 워프 → 파도의길이 트였나(북쪽으로 걸어 472에 드나)
 //   regi  무쇠 유적 — 운명적 만남 레지기가스를 들고 점 일곱을 밟는다 → 석상(270) → 레지스틸 배틀이 열리나
+//   dex   마박사 연구소 — 신오 210을 다 보면 전국도감 · 포켓트레
 //   ground 배틀그라운드 — 오늘의 넷이 서나(관장 겉모습) → 첫째에게 말을 걸어 재대결이 열리나
 //
 // ⚠️ **조건은 개발 모듈로 세운다** — 전국도감 · 배포 표식 · 편지 · 전당등록. 걸어서 거기까지 가는 판이 아니다(그건 다음 일).
@@ -276,6 +277,49 @@ try {
     })
     log('첫째에게 말 건 뒤', b)
     await page.screenshot({ path: `${OUT}/ground-battle.png` })
+  }
+  if (CASE === 'dex') {
+    // 마박사 연구소 (422) — 신오 210을 다 봤으면 오박사가 와서 전국도감을 켜고 포켓트레(431)를 준다
+    // 연구소 이야기 칸 3 — 깨어진 세계에서 돌아온 뒤다. 0이면 첫 방문(스타팅 고르기) 장면이 돈다
+    await warp('siwon', 422, 7, 10, 0, { postGame: true, story: [[16550, 3]] })
+    await clear(20)
+    const setup = await page.evaluate(async () => {
+      const save = (await import('/src/state/saveStore.ts')).useSaveStore
+      const f = await import('/src/engine/script/field.ts')
+      // 진단 — 본 것을 전부 채운다(전국 493). 신오 판정은 그중 210만 센다
+      for (let n = 1; n <= 493; n++) save.getState().markSeen(n)
+      // 영원시티 · 해안시티 첫 도착 (`SandgemTownLab_ProfRowanReactToPokedex` · `SetVarIfArrivedInSunyshoreCity`)
+      f.forceFlag(2490); f.forceFlag(2494)
+      return { national: save.getState().nationalDex, labState: f.fieldScripts.vars.get(16550) }
+    })
+    log('조건', setup)
+    log('선 사람', await page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
+      .filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx])))
+    // 이야기 칸 3이면 마박사는 (7,14)에서 남쪽을 본다(`SetProfRowanAndCounterpartPositions`) — 북쪽 (7,13)에서 남쪽을 보고 A
+    await page.evaluate(async () => {
+      const st = (await import('/src/state/worldState.ts')).worldState
+      st.player.position.set(7.5, st.player.position.y, 13.5)
+      st.player.prevPosition.copy(st.player.position)
+      ;(await import('/src/engine/script/field.ts')).resetTriggerTile()
+    })
+    await page.waitForTimeout(800)
+    await tap('ArrowDown', 300, 90)
+    await page.screenshot({ path: `${OUT}/dex-before.png` })
+    await tap('Space', 400)
+    // 긴 장면 — 오박사가 들어와 도감을 올리고 떠난 뒤 레이더를 준다
+    for (let i = 0; i < 120; i++) {
+      const at = await now()
+      if (i > 5 && !at.talk && at.script !== '1') break
+      await tap('Space', 450)
+    }
+    const after = await page.evaluate(async () => {
+      const s = (await import('/src/state/saveStore.ts')).useSaveStore.getState()
+      const f = await import('/src/engine/script/field.ts')
+      const radar = s.bag.flat().find((it) => it.item === 431) ?? null
+      return { national: s.nationalDex, radar, shown: f.fieldScripts.vars.checkFlag(272) }
+    })
+    log('장면 뒤', after)
+    await page.screenshot({ path: `${OUT}/dex-after.png` })
   }
 } catch (e) {
   console.error(`  터졌다 — ${String(e?.stack ?? e).slice(0, 700)}`)
