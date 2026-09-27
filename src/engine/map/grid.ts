@@ -32,6 +32,27 @@ export interface MatrixMeta {
   buildings: Record<string, Building[]>
   /** 오버월드에만 있다 */
   spawn?: { x: number; z: number; map: number }
+  /** 숨은 자리가 바꿔 끼우는 청크 — 오버월드에만 있다 (`map/matrixSwaps`) */
+  swaps?: MatrixSwap[]
+}
+
+/** 갈아 끼울 청크 하나 (`tools/extract/matrices.js`의 `swapCells`) */
+export interface MatrixSwapCell {
+  /** 행렬 칸 번호 */
+  i: number
+  land: number
+  /** 32×32 통행값, u16 LE를 base64로 */
+  tiles: string
+  buildings: Building[]
+}
+
+/** 숨은 자리 하나가 바꾸는 청크 묶음 */
+interface MatrixSwap {
+  /** `enum HiddenLocation` */
+  hidden: number
+  /** 열렸을 때 바꾸는가(파도의길) · 안 열렸을 때 바꾸는가(떠나는샘길) */
+  when: 'unlocked' | 'locked'
+  cells: MatrixSwapCell[]
 }
 
 export class MapGrid implements CollisionGrid {
@@ -74,6 +95,56 @@ export class MapGrid implements CollisionGrid {
       this.#zoneOfChunk[c.i] = c.zone
       this.#chunkByIndex.set(c.i, c)
     }
+  }
+
+  /** 갈아 끼우기 전의 원래 값 — 되돌릴 때 쓴다 (`swapChunk`) */
+  readonly #original = new Map<number, { tiles: Uint16Array; land: number; buildings: Building[] | undefined }>()
+  #revision = 0
+  /**
+   * 청크를 갈아 끼울 때마다 오른다. 그린 쪽(`ChunkModels`)이 이 값을 보고 다시 받는다.
+   * 사적 필드 뒤에 둔다 — 열거되는 속성은 `meta` 하나라야 한다(`gridPrivacy.test.ts`)
+   */
+  get revision(): number { return this.#revision }
+
+  /**
+   * 청크 한 칸을 갈아 끼운다 — 충돌 칸 · land_data 번호(모델·높이가 이 번호로 찾는다) · 소품
+   * (`MapMatrix_RevealSeabreakPath` · `MapMatrix_RevealSpringPath`). `null`이면 원래대로 되돌린다.
+   *
+   * @returns 바뀐 것이 있었나
+   */
+  swapChunk(i: number, next: { tiles: Uint16Array; land: number; buildings: Building[] } | null): boolean {
+    const c = this.#chunkByIndex.get(i)
+    if (!c) return false
+    const n = this.chunkTiles
+    const ox = c.mx * n
+    const oz = c.my * n
+    const was = this.#original.get(i)
+    if (next === null) {
+      if (was === undefined) return false
+      this.#write(ox, oz, was.tiles)
+      c.land = was.land
+      if (was.buildings === undefined) delete this.meta.buildings[String(i)]
+      else this.meta.buildings[String(i)] = was.buildings
+      this.#original.delete(i)
+      this.#revision++
+      return true
+    }
+    if (was === undefined) {
+      const tiles = new Uint16Array(n * n)
+      for (let z = 0; z < n; z++) tiles.set(this.#tiles.subarray((oz + z) * this.meta.tileWidth + ox, (oz + z) * this.meta.tileWidth + ox + n), z * n)
+      this.#original.set(i, { tiles, land: c.land, buildings: this.meta.buildings[String(i)] })
+    } else if (c.land === next.land) return false
+    this.#write(ox, oz, next.tiles)
+    c.land = next.land
+    if (next.buildings.length > 0) this.meta.buildings[String(i)] = next.buildings
+    else delete this.meta.buildings[String(i)]
+    this.#revision++
+    return true
+  }
+
+  #write(ox: number, oz: number, tiles: Uint16Array): void {
+    const n = this.chunkTiles
+    for (let z = 0; z < n; z++) this.#tiles.set(tiles.subarray(z * n, z * n + n), (oz + z) * this.meta.tileWidth + ox)
   }
 
   get tileWidth() { return this.meta.tileWidth }

@@ -62,13 +62,14 @@ const FLAG_CAUGHT_DARKRAI = 344
 const VAR_RUINS_STATE = [16489, 16490, 16491] as const
 
 /**
- * `RUINS_STATE_ACTIVATED_STATUE` (`include/constants/regi_ruins.h`).
+ * `RUINS_STATE_CAUGHT_REGI` (`include/constants/regi_ruins.h`) — **레지를 잡았다**.
  *
- * ⚠️ **「잡았다」(290)가 아니라 여기를 잰다.** 레지를 놓치면 상태가 280으로
- * 남는데 `OnTransition`의 되돌리기가 `< 280`이라 **그 레지는 다시 안 나온다** —
- * 잡은 것으로 재면 놓친 사람이 마지막 선물을 영영 못 받는다
+ * ⚠️ **석상을 깨운 값(270)으로는 못 잰다.** 유적 밖 맵(무쇠섬 B3F · 228번도로 · 천관산 북 방2)의 `OnTransition`이 상태를
+ * **290이 아니면 0으로** 되돌린다(`scripts_iron_island_b3f.s:18` `CallIfNe … RUINS_STATE_CAUGHT_REGI`). 그래서 시원에게
+ * 말 걸러 올 때쯤 상태는 0 아니면 290이다 — 270·280은 유적을 나서는 순간 사라진다. 놓친 레지는 다시 점을 밟아 또
+ * 만날 수 있으므로 잡은 것으로 재도 사람이 안 막힌다(REPAIR §138)
  */
-const RUINS_STATE_ACTIVATED_STATUE = 270
+const RUINS_STATE_CAUGHT_REGI = 290
 
 /** 선물 하나가 하는 일 */
 type SiwonGift =
@@ -158,7 +159,7 @@ export const SIWON_GIFTS: readonly SiwonEntry[] = [
     // Regigigas`). 눈설신전에서 잡는 마리로는 안 열린다 — 원작도 그렇다.
     // 레벨 1은 원작 배포(TRU 레지기가스)와 같다
     gift: { kind: 'mon', species: SIWON_SPECIES.regigigas, level: 1, fateful: true },
-    used: (p) => VAR_RUINS_STATE.some((v) => p.variable(v) >= RUINS_STATE_ACTIVATED_STATUE),
+    used: (p) => VAR_RUINS_STATE.some((v) => p.variable(v) >= RUINS_STATE_CAUGHT_REGI),
   },
   {
     at: 6,
@@ -206,4 +207,21 @@ export function distributionVarOf(gift: SiwonGift): { id: number; value: number 
     id: VAR_DISTRIBUTION_EVENT_FIRST + gift.event,
     value: DISTRIBUTION_MAGIC[gift.event]!,
   }
+}
+
+/** `VAR_SHAYMIN_EVENT_STATE` — 오박사의 편지를 받으면 0 → 1 */
+const VAR_SHAYMIN_EVENT_STATE = 16471
+
+/**
+ * 배포 변수 말고 **그 배포가 함께 세우는 변수** (`scrcmd_mystery_gift.c`의 `Init*Event`).
+ *
+ * ⚠️ **오박사의 편지는 쉐이미 사건 상태도 0에서 1로 올린다**(`InitShayminEvent` · `:576-588`). 안 올리면 224번도로의
+ * 마를 장면(`VAR_ROUTE_224_STATE`)과 편지를 읽은 뒤의 갈래가 원작과 달라진다(REPAIR §135)
+ */
+export function sideVarsOf(gift: SiwonGift, probe: SiwonProbe): { id: number; value: number }[] {
+  if (gift.kind !== 'item') return []
+  if (gift.event === DISTRIBUTION_EVENT.shaymin && probe.variable(VAR_SHAYMIN_EVENT_STATE) === 0) {
+    return [{ id: VAR_SHAYMIN_EVENT_STATE, value: 1 }]
+  }
+  return []
 }

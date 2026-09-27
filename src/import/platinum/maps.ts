@@ -304,6 +304,50 @@ interface BuiltMatrix {
   buildings: Record<number, Building[]>
 }
 
+/**
+ * **숨은 자리가 바꿔 끼우는 청크** (`map_matrix.c:196-230` · `field_map_change.c:382-388`) — 노드 쪽
+ * `tools/extract/matrices.js`의 `MATRIX_SWAPS`와 같은 표다. 파도의길(숨은 자리 3)이 열렸으면 115~118 → 119~122,
+ * 떠나는샘길(숨은 자리 2)이 안 열렸으면 네 칸을 176(바다)으로 (REPAIR §137)
+ */
+export const MATRIX_SWAPS: readonly {
+  hidden: number, when: 'unlocked' | 'locked', cells: readonly (readonly [number, number, number])[]
+}[] = [
+  { hidden: 3, when: 'unlocked', cells: [[28, 15, 119], [27, 16, 120], [28, 16, 121], [27, 17, 122]] },
+  { hidden: 2, when: 'locked', cells: [[23, 21, 176], [24, 21, 176], [23, 22, 176], [24, 22, 176]] },
+]
+
+/** 바이트를 base64로 — 노드의 `Buffer#toString('base64')`와 같은 글이다 */
+function base64Of(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x2000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x2000))
+  return btoa(bin)
+}
+
+/** 갈아 끼울 청크들 — 충돌 칸(u16 LE → base64)과 행렬 칸 좌표로 옮긴 소품 */
+function swapCells(width: number, lands: Uint8Array[]) {
+  return MATRIX_SWAPS.map((swap) => ({
+    hidden: swap.hidden,
+    when: swap.when,
+    cells: swap.cells.map(([mx, my, land]) => {
+      const L = parseLand(lands[land]!)
+      const perm = new DataView(L.perm.buffer, L.perm.byteOffset, L.perm.byteLength)
+      const tiles = new Uint16Array(CHUNK_TILES * CHUNK_TILES)
+      for (let ty = 0; ty < CHUNK_TILES; ty++) {
+        for (let tx = 0; tx < CHUNK_TILES; tx++) {
+          tiles[ty * CHUNK_TILES + tx] = patchTile(land, tx, ty, perm.getUint16((ty * CHUNK_TILES + tx) * 2, true))
+        }
+      }
+      const ox = mx * CHUNK_TILES
+      const oz = my * CHUNK_TILES
+      return {
+        i: my * width + mx, land,
+        tiles: base64Of(new Uint8Array(tiles.buffer, tiles.byteOffset, tiles.byteLength)),
+        buildings: parseObjects(L.objects).map((o) => ({ ...o, x: o.x + ox, z: o.z + oz })),
+      }
+    }),
+  }))
+}
+
 /** 행렬 하나를 평평한 u16 격자 + 메타로 편다 */
 function buildMatrix(matrixBuf: Uint8Array, lands: Uint8Array[], id: number): BuiltMatrix {
   const m = parseMatrix(matrixBuf)
@@ -563,6 +607,7 @@ export async function convertMaps(ctx: ConvertContext): Promise<Produced> {
     ...ow.meta,
     spawn: { ...findSpawn(ow.meta, ow.tiles, spawnMap.id), map: spawnMap.id },
     buildings: ow.buildings,
+    swaps: swapCells(ow.meta.width, lands),
   }))
   await breathe(ctx)
   ctx.onProgress?.(4, STEPS)

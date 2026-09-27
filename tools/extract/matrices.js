@@ -20,6 +20,45 @@ const { extractHeaders } = require('./headers')
 const OVERWORLD = 0
 const EMPTY_CHUNK = 0xffff
 
+/**
+ * **숨은 자리가 바꿔 끼우는 청크** (`map_matrix.c:196-230` · `field_map_change.c:382-388`).
+ *
+ * 원작은 맵을 옮길 때마다 행렬을 다시 읽고, 숨은 자리 변수에 따라 청크 몇 칸의 land_data를 갈아 끼운다 —
+ *   · 파도의길(숨은 자리 3)이 **열렸으면** (28,15)·(27,16)·(28,16)·(27,17)을 115~118 → 119~122 (길이 뚫린다)
+ *   · 떠나는샘길(숨은 자리 2)이 **안 열렸으면** (23,21)·(24,21)·(23,22)·(24,22)를 176 (바다)으로
+ * 우리 격자는 기본 행렬로 굽는다. 갈아 끼울 청크의 충돌 칸·소품을 **따로** 구워 두고 런타임이 바꾼다
+ * (`engine/map/matrixSwaps` · REPAIR §137). 브라우저 쪽(`import/platinum/maps.ts`)과 같은 표다
+ */
+const MATRIX_SWAPS = [
+  { hidden: 3, when: 'unlocked', cells: [[28, 15, 119], [27, 16, 120], [28, 16, 121], [27, 17, 122]] },
+  { hidden: 2, when: 'locked', cells: [[23, 21, 176], [24, 21, 176], [23, 22, 176], [24, 22, 176]] },
+]
+
+/** 갈아 끼울 청크 하나 — 충돌 칸(u16 LE를 base64로)과 행렬 칸 좌표로 옮긴 소품 */
+function swapCells(width, lands) {
+  return MATRIX_SWAPS.map((swap) => ({
+    hidden: swap.hidden,
+    when: swap.when,
+    cells: swap.cells.map(([mx, my, land]) => {
+      const L = parseLand(lands[land])
+      const tiles = new Uint16Array(CHUNK_TILES * CHUNK_TILES)
+      for (let ty = 0; ty < CHUNK_TILES; ty++) {
+        for (let tx = 0; tx < CHUNK_TILES; tx++) {
+          tiles[ty * CHUNK_TILES + tx] = patchTile(land, tx, ty, L.perm.readUInt16LE((ty * CHUNK_TILES + tx) * 2))
+        }
+      }
+      const ox = mx * CHUNK_TILES
+      const oz = my * CHUNK_TILES
+      const buildings = parseObjects(L.objects).map((o) => ({ ...o, x: o.x + ox, z: o.z + oz }))
+      return {
+        i: my * width + mx, land,
+        tiles: Buffer.from(tiles.buffer, tiles.byteOffset, tiles.byteLength).toString('base64'),
+        buildings,
+      }
+    }),
+  }))
+}
+
 /** 행렬 하나를 평평한 u16 격자 + 메타로 편다 */
 function buildMatrix(matrixBuf, lands, id) {
   const m = parseMatrix(matrixBuf)
@@ -95,6 +134,7 @@ function main() {
   const spawnMap = maps.find((m) => m.name === 'T01')
   ow.meta.spawn = { ...findSpawn(ow.meta, ow.tiles, spawnMap.id), map: spawnMap.id }
   ow.meta.buildings = ow.buildings
+  ow.meta.swaps = swapCells(ow.meta.width, lands)
   fs.writeFileSync(path.join(dir, '0.bin'),
     Buffer.from(ow.tiles.buffer, ow.tiles.byteOffset, ow.tiles.byteLength))
   const owMeta = writeJson('matrices/0.json', ow.meta)
@@ -128,4 +168,4 @@ function main() {
 }
 
 if (require.main === module) main()
-module.exports = { buildMatrix, findSpawn, OVERWORLD }
+module.exports = { buildMatrix, findSpawn, swapCells, MATRIX_SWAPS, OVERWORLD }

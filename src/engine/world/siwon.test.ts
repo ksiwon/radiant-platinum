@@ -131,7 +131,7 @@ describe('막히지 않는다', () => {
     return probe({
       flags,
       rotom: n >= 2 ? 0b00001 : 0,
-      vars: n >= 6 ? { [VAR_ROCK_PEAK_RUINS_STATE]: 270 } : {},
+      vars: n >= 6 ? { [VAR_ROCK_PEAK_RUINS_STATE]: 290 } : {},
     })
   }
 
@@ -141,15 +141,14 @@ describe('막히지 않는다', () => {
     }
   })
 
-  it('⚠️ 레지를 놓쳐도 마지막 선물을 받는다', () => {
-    // 석상은 깨웠는데(270) 못 잡은 상태(280). 이 자리에서 그 레지는 다시 안
-    // 나오므로, 「잡았다」로 재면 여기서 영영 막힌다
+  it('⚠️ 레지를 놓쳤으면 기다린다 — 유적 밖이 상태를 0으로 되돌려 다시 만날 수 있다', () => {
+    // 놓친 상태(280)는 유적을 나서는 순간 0이 된다(`scripts_iron_island_b3f.s:18`) — 사람이 막히지 않는다
     const missed = probe({
       flags: [...CLEARED, FLAG_CAUGHT_DARKRAI, FLAG_CAUGHT_SHAYMIN],
       rotom: 1,
       vars: { [VAR_ROCK_PEAK_RUINS_STATE]: 280 },
     })
-    expect(siwonTurn(6, missed).kind).toBe('gift')
+    expect(siwonTurn(6, missed)).toEqual({ kind: 'wait', at: 5 })
   })
 
   it('석상을 안 깨웠으면 아직 기다린다', () => {
@@ -343,12 +342,14 @@ decomp('시원이 읽는 롬의 수', () => {
 
 const regi = withDecomp('include/constants/regi_ruins.h')
 
-regi('석상을 깨운 값이 270이다 — 잡은 값(290)으로 재면 막힌다', () => {
+regi('잡은 값이 290이다 — 유적 밖이 290 말고는 0으로 되돌린다', () => {
   it('표와 같다', () => {
     const header = readFileSync(
       resolve(__dirname, '../../../raw/decomp/include/constants/regi_ruins.h'), 'utf8')
-    expect(header).toMatch(/RUINS_STATE_ACTIVATED_STATUE\s+270/)
-    expect(header).toMatch(/RUINS_STATE_DID_NOT_CATCH_REGI\s+280/)
+    expect(header).toMatch(/RUINS_STATE_CAUGHT_REGI\s+290/)
+    const b3f = readFileSync(
+      resolve(__dirname, '../../../raw/decomp/res/field/scripts/scripts_iron_island_b3f.s'), 'utf8')
+    expect(b3f).toMatch(/CallIfNe VAR_IRON_RUINS_STATE, RUINS_STATE_CAUGHT_REGI, IronIslandB3F_ResetIronRuinsState/)
   })
 })
 
@@ -455,5 +456,26 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
     expect(got).toEqual([SIWON_ITEM.secretKey])
     expect(said.join(' / ')).toContain('비밀의열쇠')
     expect(fieldScripts.lastError).toBeNull()
+  })
+})
+
+/**
+ * 오박사의 편지는 **쉐이미 사건 상태도** 올린다 (`InitShayminEvent` · REPAIR §135)
+ */
+describe('시원 — 편지가 함께 세우는 변수', () => {
+  const probeWith = (shaymin: number) => ({
+    flag: () => false, variable: (id: number) => (id === 16471 ? shaymin : 0), rotomForms: () => 0,
+  })
+  const letter = SIWON_GIFTS[3]!.gift
+
+  it('0이면 1로 올린다', async () => {
+    const { sideVarsOf } = await import('./siwon')
+    expect(sideVarsOf(letter, probeWith(0) as never)).toEqual([{ id: 16471, value: 1 }])
+  })
+
+  it('이미 진행 중이면 건드리지 않는다 · 다른 선물은 없다', async () => {
+    const { sideVarsOf } = await import('./siwon')
+    expect(sideVarsOf(letter, probeWith(2) as never)).toEqual([])
+    expect(sideVarsOf(SIWON_GIFTS[1]!.gift, probeWith(0) as never)).toEqual([])
   })
 })

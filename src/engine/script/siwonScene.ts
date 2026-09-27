@@ -11,7 +11,7 @@
 // ⚠️ **이 파일은 `field.ts`를 부르지 않는다.** 부르면 고리가 생긴다 —
 // 계획만 세우고 밟는 것은 `field.ts`가 한다
 import {
-  distributionVarOf, siwonTurn, SIWON_GIFTS, type SiwonProbe,
+  distributionVarOf, sideVarsOf, siwonTurn, SIWON_GIFTS, type SiwonProbe,
 } from '../world/siwon'
 import { siwonLines } from '../world/siwonText'
 
@@ -98,12 +98,14 @@ export function planSiwonTalk(deps: SiwonDeps): SiwonPlan {
       return { text: lines.bagFull, commit: null, giveItem: null }
     }
     const dist = distributionVarOf(gift)
+    const side = sideVarsOf(gift, deps.probe)
     return {
       text: say,
       // ⚠️ **물건과 배포 변수는 한 몸이다.** 변수를 안 세우면 가방에 물건만
       // 남고 자리는 그대로 잠겨 있다 (`CheckDistributionEvent`)
       commit: () => {
         if (dist) deps.setVar(dist.id, dist.value)
+        for (const v of side) deps.setVar(v.id, v.value)
         deps.countGiven()
       },
       // 가방에 넣는 것과 「받았다」는 원작 공용 스크립트에 넘긴다

@@ -4166,6 +4166,67 @@ on('OpenPokemonNamingScreen', (ctx) => {
   return true
 })
 
+// ── 레지 유적의 점 일곱 (`ScrCmd_ActivateRegiRuinsDot` · `ov5_021F6454.c:833-905`) ─────────────
+
+/** `DOT_TYPE_*` (`constants/regi_ruins.h`) → 그 유적의 점 자리 일곱. 차례가 곧 비트다 */
+const REGI_DOTS: Readonly<Record<number, readonly (readonly [number, number])[]>> = {
+  588: [[4, 7], [5, 5], [5, 9], [7, 7], [9, 5], [9, 9], [10, 7]], // 무쇠 유적
+  590: [[3, 7], [5, 7], [7, 5], [7, 7], [7, 9], [9, 7], [11, 7]], // 빙산 유적
+  592: [[5, 5], [5, 7], [5, 9], [7, 7], [9, 5], [9, 7], [9, 9]], // 바위산 유적
+}
+/** 일곱을 다 밟은 비트 · 그때 바뀌는 값 (`RUINS_STATE_ACTIVATED_ALL_DOTS`) */
+const REGI_ALL_DOTS = 0x7f
+const RUINS_STATE_ACTIVATED_ALL_DOTS = 260
+/** `SEQ_SE_PL_JUMP2` — 점을 밟은 소리 */
+const SFX_REGI_DOT = 1487
+
+/**
+ * 유적 바닥의 점 하나를 켠다. 서 있는 칸이 그 유적의 점이면 그 비트를 세우고, 일곱이 다 서면 260이 된다 —
+ * 스크립트가 그 값을 보고 석상을 깨운다(`ScrCmd_29F 1` → 270).
+ *
+ * ⚠️ **없던 동안 유적 상태가 영영 0이었다** — 레지락·레지아이스·레지스틸이 한 마리도 안 섰다(REPAIR §136)
+ */
+on('ActivateRegiRuinsDot', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const type = ctx.readVar()
+  const x = ctx.readVar()
+  const z = ctx.readVar()
+  let state = ctx.host.vars.get(dest)
+  const at = (REGI_DOTS[type] ?? []).findIndex(([dx, dz]) => dx === x && dz === z)
+  if (at >= 0) {
+    ctx.host.world.services.sound?.playEffect(SFX_REGI_DOT)
+    state |= 1 << at
+  }
+  if ((REGI_DOTS[type] !== undefined) && state === REGI_ALL_DOTS) state = RUINS_STATE_ACTIVATED_ALL_DOTS
+  ctx.host.vars.set(dest, state)
+  return false
+})
+
+/**
+ * 224번도로 석판의 이름 짓기 (`ScrCmd_OpenShayminTabletNamingScreen` → `sub_0203DFE8`).
+ *
+ * 답은 별명과 같은 뜻이다 — **1이 「안 새겼다」**(빈 글 · `returnCode`), 새기면 0이고 이름이 세이브에 든다
+ * (`MiscSaveBlock_SetTabletName` · `unk_0203D1B8.c:1195`). 스크립트가 1이면 「아무도 아니라니」로 되돌아 다시 연다.
+ *
+ * ⚠️ **없던 동안 답 칸에 앞 명령의 값(주인공 성별)이 남았다** — 여자 주인공은 1이라 석판 앞에서 영영 되돌았고,
+ * 남자 주인공은 빈 이름으로 지나갔다(REPAIR §134)
+ */
+on('OpenShayminTabletNamingScreen', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const tablet = ctx.host.world.services.tablet
+  const naming = ctx.host.world.services.naming
+  // 화면이 없으면 새긴 것으로 지나간다 — 1로 두면 스크립트가 끝없이 되돌아 연다
+  if (!tablet || !naming) { ctx.host.vars.set(dest, 0); return false }
+  tablet.open()
+  ctx.pause((c) => {
+    const name = naming.named()
+    if (name === null) return false
+    c.host.vars.set(dest, name === '' ? 1 : 0)
+    return true
+  })
+  return true
+})
+
 /** 깨어진 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
 on('ScrCmd_2FB', () => false)
 

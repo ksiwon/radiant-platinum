@@ -721,13 +721,18 @@ function disposeProps(list: readonly Prop[]): void {
 
 interface Props {
   grid: MapGrid
+  /**
+   * 청크를 갈아 끼운 횟수 (`MapGrid.revision` · `map/matrixSwaps`). 격자는 같은 객체라 이 값이 바뀌어야 다시 받는다 —
+   * 파도의길을 연 뒤 224번도로 북쪽이 옛 벽 모델로 남지 않게
+   */
+  revision?: number
   chunkIndex: number
   radius: number
   /** 영역의 텍스처 묶음 번호 (`maps.json`의 areas[map.area].tex) */
   texSet: number
 }
 
-export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
+export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: Props) {
   // 나무가 설 땅. 플레이어가 밟는 것과 **같은 자료**라 밑동이 발밑과 어긋나지
   // 않는다 — 잎 아래끝에 세우면 48,525그루 중 48,331그루가 뜬다 (`Foliage`)
   const groundAt = useCallback(
@@ -1299,7 +1304,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       // 여기서 놓이는 일이 없다
       dropMadeHere()
     }
-  }, [grid, chunkIndex, radius, texSet, groundAt, attempt])
+  }, [grid, revision, chunkIndex, radius, texSet, groundAt, attempt])
 
   /**
    * **커밋이 끝났다 — 이제 씬에 있다.** 밖에서 「지형이 섰는가」를 상태로
@@ -1426,7 +1431,7 @@ export function ChunkModels({ grid, chunkIndex, radius, texSet }: Props) {
       })
       .catch(() => { if (alive) { setProps([]); setPropTrees([]) } })
     return () => { alive = false }
-  }, [grid, chunkIndex, radius])
+  }, [grid, revision, chunkIndex, radius])
 
   // 소품 재질은 배치마다 새로 굽는다(위 참조). 창이 옮겨 가면 앞 창의 것을
   // 버려야 GPU에 쌓인다 — 그림 자체는 공유라 같이 안 버린다.

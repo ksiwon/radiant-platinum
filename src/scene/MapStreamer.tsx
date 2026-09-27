@@ -98,6 +98,7 @@ import { FeatureProps } from './FeatureProps'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { clearMapFeature } from '../engine/world/mapFeatures'
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
+import { applyMatrixSwaps } from '../engine/map/matrixSwaps'
 import { resetSunyshoreGym, sunyshoreTick } from './sunyshoreGym'
 import { eternaTick, resetEternaGym } from './eternaGym'
 import { canalaveBusy, canalaveTick, resetCanalaveGym } from './canalaveGym'
@@ -259,6 +260,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const startWild = useBattleStore((s) => s.startWild)
   const startSafari = useBattleStore((s) => s.startSafari)
   const [grid, setGrid] = useState(initial)
+  /** 숨은 자리로 청크를 갈아 끼운 횟수 — 격자는 같은 객체라 이것으로 다시 그리게 한다 (`applyMatrixSwaps`) */
+  const [gridRevision, setGridRevision] = useState(0)
   const [chunkIndex, setChunkIndex] = useState(() =>
     initial.chunkIndexAt(Math.floor(spawn.x), Math.floor(spawn.z)),
   )
@@ -326,6 +329,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
           },
         })
       }
+      // 숨은 자리가 바꾸는 청크 — 원작은 맵을 옮길 때마다 행렬을 다시 읽으며 맞춘다(`field_map_change.c:382-388`).
+      // 224번도로에서 석판을 새긴 스크립트가 같은 맵으로 `Warp`하는 것이 그래서 파도의길을 연다
+      if (applyMatrixSwaps(next, (id) => fieldScripts.vars.get(id))) setGridRevision(next.revision)
       setGrid(next)
       activeZone.grid = next
       world.grid = next
@@ -1172,7 +1178,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         전부 여기서 나온다 (DATA.md §2.2). 청크 하나가 파일 하나고 창 안의 것만
         받는다. 충돌·높이는 여전히 perm/BDHC가 잡으므로 이 층은 그림만 담당한다
       */}
-      <ChunkModels grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
+      <ChunkModels grid={grid} revision={gridRevision} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
       <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />
