@@ -9,7 +9,10 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { it, expect } from 'vitest'
-import { FLAG_HAS_POKEDEX, VarStore, VARS_START } from './vars'
+import {
+  FLAG_HAS_POKEDEX, VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
+  VAR_BATTLE_FACTORY_LOBBY_LOAD_ACTION, VAR_BATTLE_FACTORY_PRINT_STATE, VAR_MAP_LOCAL_0x03, VarStore, VARS_START,
+} from './vars'
 import { TRAINER_DEFEATED_FLAGS_START } from './commands'
 import { withDecomp } from '../../data/romData.testkit'
 
@@ -64,6 +67,14 @@ maybe('플래그 표', () => {
   it('다른 데서 쓰는 번호도 같은 표에서 나온다', () => {
     expect(flags.get('TRAINER_DEFEATED_FLAGS_START')).toBe(TRAINER_DEFEATED_FLAGS_START)
     expect(flags.get('VARS_START')).toBe(VARS_START)
+  })
+
+  it('배틀팩토리 로비와 장면이 주고받는 변수 (PARITY §9.3)', () => {
+    expect(flags.get('VAR_BATTLE_FACTORY_CHALLENGE_TYPE')).toBe(VAR_BATTLE_FACTORY_CHALLENGE_TYPE)
+    expect(flags.get('VAR_BATTLE_FACTORY_CHALLENGE_LEVEL')).toBe(VAR_BATTLE_FACTORY_CHALLENGE_LEVEL)
+    expect(flags.get('VAR_BATTLE_FACTORY_LOBBY_LOAD_ACTION')).toBe(VAR_BATTLE_FACTORY_LOBBY_LOAD_ACTION)
+    expect(flags.get('VAR_BATTLE_FACTORY_PRINT_STATE')).toBe(VAR_BATTLE_FACTORY_PRINT_STATE)
+    expect(flags.get('VAR_MAP_LOCAL_0x03')).toBe(VAR_MAP_LOCAL_0x03)
   })
 })
 

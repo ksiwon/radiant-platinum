@@ -37,6 +37,17 @@ export const VAR_DISTORTION_CYRUS = 16475
 export const VAR_BATTLE_FACTORY_CHALLENGE_TYPE = 16568
 export const VAR_BATTLE_FACTORY_CHALLENGE_LEVEL = 16569
 /**
+ * 시설 장면이 어떻게 끝났나 — 로비의 `OnFrame` 표가 이 값으로 갈린다 (`scripts_init_battle_factory.s`).
+ *
+ * 1 라운드를 마쳤다 · 2 쉬었다(다시 켜면 잇는다) · 3 졌다·포기했다 · 0xFF 도전 중.
+ * ⚠️ **0xFF로 남은 채 로비가 열리면 「저장 안 하고 껐다」다** — 장면이 끝날 때 반드시 적는다
+ */
+export const VAR_BATTLE_FACTORY_LOBBY_LOAD_ACTION = 16567
+/** 은·금 인쇄 — 0 없음 · 1 은 받을 차례 · 2 은 · 3 금 받을 차례 · 4 금. 장면이 1·3을, 로비가 2·4를 적는다 */
+export const VAR_BATTLE_FACTORY_PRINT_STATE = 16464
+/** 로비가 장면에 넘기는 「이어하기」 — 쉬었던 도전을 다시 여는 갈래만 1이다 (`BattleFactory_OnFrame_ResumeChallenge`) */
+export const VAR_MAP_LOCAL_0x03 = 16387
+/**
  * 따라다니는 동행의 트레이너 번호 (`VAR_PARTNER_TRAINER_ID` = 0x403F · PARITY §2.2b).
  *
  * 영원의 숲의 모미·도구섬의 현이·험한길의 마이·바람의 길의 오바·단단한산의 대엽이

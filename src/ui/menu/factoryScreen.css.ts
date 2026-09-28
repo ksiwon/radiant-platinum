@@ -34,12 +34,6 @@ export const column = style({
   minHeight: 0,
 })
 
-export const columnTitle = style({
-  fontSize: TEXT.small,
-  fontWeight: 700,
-  color: vars.ink.dim,
-})
-
 const monRow = style({
   display: 'grid',
   gridTemplateColumns: '32px minmax(0, 1fr) auto',
@@ -110,16 +104,20 @@ export const statLine = style({
 
 export const statName = style({ color: vars.ink.faint, fontSize: TEXT.tiny })
 
-export const banner = style({
+/**
+ * 물음 한 줄과 그 답 — 원작 아래 화면의 대사창과 메뉴 창 자리다.
+ * 공용 물음 창(`dialog.prompt`)을 쓰고 여기서는 자리만 잡는다
+ */
+export const talk = style({
   display: 'flex',
-  alignItems: 'baseline',
+  alignItems: 'flex-end',
+  justifyContent: 'center',
   gap: 12,
-  padding: `${GAP.small}px ${GAP.base}px`,
-  borderRadius: RADIUS.cell,
-  boxShadow: `inset 0 0 0 1px ${vars.window.rule}`,
-  fontSize: TEXT.small,
+  padding: '0 14px 12px',
 })
 
-export const bannerBig = style({ fontSize: 20, fontWeight: 700, color: vars.state.good })
-
-export const hintLine = style({ fontSize: 13, opacity: 0.8, marginTop: 6 })
+export const choices = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+})

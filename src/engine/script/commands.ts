@@ -850,6 +850,19 @@ on('LaunchBattleFrontierScene', (ctx) => {
 })
 
 /**
+ * 저장 안 하고 끈 팩토리 도전 (`ScrCmd_2C5` · `unk_0204F04C.c`) — 그 줄의 표식 · 최근 연승 · 최근 교환 수를 0으로.
+ *
+ * 로비가 열릴 때 `LOAD_ACTION`이 아직 0xFF(도전 중)면 `BattleFactory_OnFrame_DidntSaveBeforeQuit`가 이것을 부른다.
+ * 인자 둘은 변수다 — 도전 종류와 레벨
+ */
+on('ScrCmd_2C5', (ctx) => {
+  const type = ctx.readVar()
+  const level = ctx.readVar()
+  ctx.host.world.services.frontier?.dropStreak(type, level)
+  return false
+})
+
+/**
  * 힙이 새는지 본다 (`ScrCmd_CheckHeapMemory`).
  *
  * 원작의 **디버그 확인**이다 — 스크립트 앞에서 빈 힙을 적어 두고 뒤에서

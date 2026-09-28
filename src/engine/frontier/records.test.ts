@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest'
 import { ChallengeType } from './factory'
 import {
-  awardPrint, beginChallenge, factorySlot, FACTORY_SLOTS, finishChallenge, newFactoryRecords,
-  recordAt,
+  beginChallenge, clearSuspended, dropStreak, factorySlot, FACTORY_SLOTS, finishChallenge,
+  newFactoryRecords, recordAt, suspendChallenge, type FactorySuspended,
 } from './records'
 
 describe('넉 줄', () => {
@@ -59,13 +59,26 @@ describe('최고 기록', () => {
   })
 })
 
-describe('인쇄', () => {
-  it('금이 은을 덮고 은은 금을 못 덮는다', () => {
-    let all = awardPrint(newFactoryRecords(), 1)
-    expect(all.print).toBe(1)
-    all = awardPrint(all, 2)
-    expect(all.print).toBe(2)
-    all = awardPrint(all, 1)
-    expect(all.print).toBe(2)
+const PAUSED: FactorySuspended = {
+  challenge: ChallengeType.SINGLE, openLevel: false, battle: 3, trainers: [1, 2, 3, 4, 5, 6, 7],
+  party: [], partySets: [], defeated: [], defeatedSets: [],
+}
+
+describe('쉰다 (`ov104_02234148(…, 2)`)', () => {
+  it('지금 연승과 교환 수만 적는다 — 표식도 최고 기록도 그대로다', () => {
+    const before = finishChallenge(newFactoryRecords(), 0, 21, 3, true)
+    const after = suspendChallenge(before, 0, 24, 5, PAUSED)
+    expect(recordAt(after, 0)).toEqual({ streak: 24, trades: 5, best: 21, bestTrades: 3, active: true })
+    expect(after.suspended).toBe(PAUSED)
+    expect(clearSuspended(after).suspended).toBeNull()
+  })
+})
+
+describe('저장 안 하고 끈 판 (`ScrCmd_2C5`)', () => {
+  it('표식 · 최근 연승 · 최근 교환 수가 0이 되고 최고 기록은 남는다', () => {
+    const before = finishChallenge(newFactoryRecords(), 1, 14, 6, true)
+    const after = dropStreak(before, 1)
+    expect(recordAt(after, 1)).toEqual({ streak: 0, trades: 0, best: 14, bestTrades: 6, active: false })
+    expect(beginChallenge(after, 1)).toEqual({ streak: 0, trades: 0 })
   })
 })

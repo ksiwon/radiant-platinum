@@ -70,6 +70,16 @@ export function markTalk(on: boolean): void {
 }
 
 /**
+ * 배틀프런티어 시설 장면이 떠 있는가 — `data-frontier-stage="1"` (`ui/field/FrontierStage`).
+ *
+ * 무대가 선 동안 대사창이 암전 위로 올라간다. 밖에서는 「로비 스크립트가 선 것」과 「장면이 도는 것」을
+ * 가르는 값이다 — 둘 다 `data-script`가 서 있다
+ */
+export function markFrontierStage(on: boolean): void {
+  put('frontierStage', on ? '1' : null)
+}
+
+/**
  * 이어하기가 **저장한 자리를 아직 세우는 중인가** — `data-restoring="loading"`.
  *
  * ⚠️ **왜 필요한가.** 밖에서 「복원이 끝났다」를 알 길이 없어서, 검사가

@@ -31,9 +31,10 @@ import { hmCutInDone, startHmCutInFor } from './hmCutInScene'
 import { elevatorLightDone, startElevatorLight, stopElevatorLight } from './elevatorLight'
 import { healingFinalDone, healingTick, playHealingFinal, startHealing, stopHealing } from './healingMachine'
 import {
-  VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
+  VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE, VAR_MAP_LOCAL_0x03,
 } from '../engine/script/vars'
-import { useFactoryStore } from '../state/factoryStore'
+import { dropFactoryStreak } from '../state/factoryStore'
+import { factorySceneRunning, openFactoryScene } from './factoryScene'
 import { primeRegisteredItem } from './registeredItem'
 import { addRecord, addTrainerScore } from '../engine/world/gameRecords'
 import { ChallengeType } from '../engine/frontier/factory'
@@ -1342,21 +1343,24 @@ const services: FieldServices = {
   /**
    * 배틀프런티어 시설 (PARITY §9.3).
    *
-   * ⚠️ **다섯 중 배틀팩토리 하나뿐이다.** 나머지 넷은 §9라 장면 번호를
-   * 받아도 아무 일도 안 하고 스크립트가 그대로 지나간다 — 안 만든 것을
-   * 「열렸다가 곧 닫힌 것」으로 꾸미지 않는다
+   * ⚠️ **다섯 중 배틀팩토리 하나뿐이다.** 나머지 넷은 입구에서 막는다(`world/frontierGate`) —
+   * 장면 번호를 받아도 아무 일도 안 하고 스크립트가 그대로 지나간다.
+   *
+   * 로비가 넘기는 것은 변수 셋이다 — 종류 · 레벨 · 「이어하기」(`VAR_MAP_LOCAL_0x03`, 쉬었던 도전을 잇는
+   * `BattleFactory_OnFrame_ResumeChallenge`만 1을 적는다)
    */
   frontier: {
     openScene: (scene) => {
       if (scene !== FRONTIER_SCENE_FACTORY_CORRIDOR) return
-      const level = fieldScripts.ctx?.host.vars.get(VAR_BATTLE_FACTORY_CHALLENGE_LEVEL) ?? 0
-      const type = fieldScripts.ctx?.host.vars.get(VAR_BATTLE_FACTORY_CHALLENGE_TYPE) ?? 0
-      void useFactoryStore.getState().begin(
-        type === 1 ? ChallengeType.DOUBLE : ChallengeType.SINGLE,
-        level === 1,
+      const vars = fieldScripts.vars
+      openFactoryScene(
+        vars.get(VAR_BATTLE_FACTORY_CHALLENGE_TYPE) === 1 ? ChallengeType.DOUBLE : ChallengeType.SINGLE,
+        vars.get(VAR_BATTLE_FACTORY_CHALLENGE_LEVEL) === 1,
+        vars.get(VAR_MAP_LOCAL_0x03) === 1,
       )
     },
-    busy: () => useFactoryStore.getState().phase !== 'off',
+    busy: () => factorySceneRunning(),
+    dropStreak: (type, level) => { dropFactoryStreak(type, level) },
   },
 
   bike: {

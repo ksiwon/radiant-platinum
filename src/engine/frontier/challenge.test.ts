@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { ChallengeType } from './factory'
 import { BATTLES_PER_ROUND, STREAK_SILVER } from './factoryTables'
 import {
-  applySwap, chooseParty, currentTrainer, isRoundDone, openRound, roundReward, skipSwap, winBattle,
+  applySwap, chooseParty, currentTrainer, isRoundDone, openRound, resumeRound, roundReward, skipSwap, winBattle,
 } from './challenge'
 
 /** 자리 번호를 그대로 종족·도구로 쓰는 가짜 표 */
@@ -133,5 +133,22 @@ describe('이번 판 상대', () => {
     const round = chooseParty(fresh(), [0, 1, 2])
     expect(currentTrainer(round)).toBe(round.trainers[0])
     expect(currentTrainer(winBattle(round, walk(11), setOf))).toBe(round.trainers[1])
+  })
+})
+
+describe('쉬었던 라운드를 다시 편다 (`ov104_02233F1C`)', () => {
+  it('판 번호 · 트레이너 · 내 셋 · 바꿀 셋이 그대로고 다음 상대는 그 여섯을 피한다', () => {
+    const won = winBattle(winBattle(chooseParty(fresh(7, 2), [0, 1, 2]), walk(3), setOf), walk(4), setOf)
+    const back = resumeRound({
+      challenge: won.challenge, openLevel: won.openLevel, streak: won.streak, tradeCount: won.tradeCount,
+      battle: won.battle, trainers: won.trainers, party: won.party, defeated: won.swapPool, rng: walk(9), setOf,
+    })
+    expect(back).toMatchObject({ battle: 2, streak: 9, tradeCount: 2, round: 1, rentals: [] })
+    expect(back.trainers).toEqual(won.trainers)
+    expect(back.swapPool).toEqual(won.swapPool)
+    expect(currentTrainer(back)).toBe(won.trainers[2])
+    const taken = new Set([...back.party, ...back.swapPool].map((d) => setOf(d.set).species))
+    expect(back.opponents).toHaveLength(3)
+    for (const foe of back.opponents) expect(taken.has(setOf(foe.set).species)).toBe(false)
   })
 })

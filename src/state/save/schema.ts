@@ -196,6 +196,9 @@ const monSchema = z.object({
   mail: mailSchema.nullable(),
 })
 
+/** 팩토리 형 표의 한 자리와 개체값 (`engine/frontier/factory`의 `DrawnSet`) */
+const drawnSetSchema = z.object({ set: int(0, 0xffff), ivs: int(0, 31) })
+
 const bagSlotSchema = z.object({
   item: int(1, 511),
   count: int(1, MAX_QUANTITY),
@@ -553,6 +556,9 @@ const saveSchema = z.object({
    * ⚠️ **`active`가 연승을 잇는 유일한 고리다.** 라운드를 마치면 1이 서고 지면
    * 0이 된다 — 다음 도전이 저장된 연승을 이어받을지 0부터 갈지를 이 비트가
    * 정한다. 안 두면 라운드마다 연승이 끊긴다
+   *
+   * ⚠️ **인쇄는 여기 없다.** 원작은 변수 하나에 둔다(`VAR_BATTLE_FACTORY_PRINT_STATE` —
+   * 0 없음 · 1 은 받을 차례 · 2 은 · 3 금 받을 차례 · 4 금). 로비 스크립트가 그 값을 읽고 쓴다
    */
   factory: z.object({
     records: z.array(z.object({
@@ -562,8 +568,17 @@ const saveSchema = z.object({
       bestTrades: int(0, MAX_BATTLE_POINTS),
       active: z.boolean(),
     })).length(4),
-    /** 인쇄 — 0 없음 · 1 은 · 2 금. 은을 받은 뒤 금을 받으면 2가 된다 */
-    print: int(0, 2),
+    /** 「쉰다」로 접어 둔 도전 (`engine/frontier/records`의 `FactorySuspended`). 없으면 null */
+    suspended: z.object({
+      challenge: z.union([z.literal(0), z.literal(1)]),
+      openLevel: z.boolean(),
+      battle: int(1, 6),
+      trainers: z.array(int(0, 0xffff)).length(7),
+      party: z.array(monSchema).min(1).max(4),
+      partySets: z.array(drawnSetSchema).min(1).max(4),
+      defeated: z.array(monSchema).min(1).max(4),
+      defeatedSets: z.array(drawnSetSchema).min(1).max(4),
+    }).nullable(),
   }),
 
   /**

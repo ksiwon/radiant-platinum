@@ -81,11 +81,15 @@ export function arriveAt(mapId: number): void {
  *
  * 화면이 닫힌 **뒤에** 옮긴다. 결과가 나오자마자 옮기면 배틀 화면 뒤에서 맵이
  * 갈리고, 돌아왔을 때 어디인지 모르게 된다
+ *
+ * ⚠️ **배틀팩토리에서 지는 것은 전멸이 아니다.** 원작의 프런티어 갈래는 상대의 한마디만 띄우고 끝난다
+ * (`subscript_battle_lost.s`의 `_068`) — 싸운 것은 빌린 셋이고, 뒤처리는 시설 장면과 로비가 한다
+ * (`LOAD_ACTION` 3). 여기서 센터로 보내면 로비가 영영 안 열려 도전이 닫히지 않는다 (실측 `_factory.mjs`)
  */
 export function watchBlackOut(): () => void {
   let lost = false
   return useBattleStore.subscribe((state, prev) => {
-    if (state.outcome === 'loss' && prev.outcome !== 'loss') lost = true
+    if (state.outcome === 'loss' && prev.outcome !== 'loss' && state.kind !== 'factory') lost = true
     if (state.phase === 'off' && prev.phase !== 'off' && lost) {
       lost = false
       blackOut()

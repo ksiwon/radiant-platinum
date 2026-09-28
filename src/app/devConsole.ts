@@ -20,7 +20,7 @@ import { avatarState, worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { useMenuStore } from '../state/menuStore'
 import { frontierStock } from '../engine/bag/frontierMart'
-import { useFactoryStore } from '../state/factoryStore'
+import { openFactoryScene } from '../scene/factoryScene'
 import { ChallengeType } from '../engine/frontier/factory'
 import { factorySlot } from '../engine/frontier/records'
 import { activateRoamer } from '../scene/roamers'
@@ -420,8 +420,7 @@ export function installDevConsole(): void {
       const records = save.factory.records.map((r, i) =>
         (i === slot ? { ...r, streak, trades: 0, active: streak > 0 } : r))
       useSaveStore.setState({ factory: { ...save.factory, records } })
-      void useFactoryStore.getState()
-        .begin(double ? ChallengeType.DOUBLE : ChallengeType.SINGLE, openLevel)
+      openFactoryScene(double ? ChallengeType.DOUBLE : ChallengeType.SINGLE, openLevel, false)
       return `연승 ${String(streak)}에서 시작`
     },
   }

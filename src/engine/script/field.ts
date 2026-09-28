@@ -320,8 +320,26 @@ export function scriptBusy(): boolean {
 // 세워 두는 것과 같은 일을 여기서도 해야 한다 — 안 하면 대사창을 띄운 채로
 // 걸어 나갈 수 있다
 
-/** 지금 도는 우리 대사. 끝나면 `after`가 한 번 돈다 */
-let native: { after: (() => void) | null } | null = null
+/** 우리 글 끝에 붙는 메뉴 — 글이 다 찍히면 뜬다 (`askOurs`) */
+type OurMenu =
+  | { kind: 'yesno', cursor: number }
+  | { kind: 'list', entries: readonly { text: string, value: number }[], cursor: number, canCancel: boolean }
+
+/** 지금 도는 우리 대사. 끝나면 `after`가 한 번 돈다 — 메뉴가 붙었으면 고른 값을 받는다 */
+let native: {
+  after: ((choice: number) => void) | null
+  menu?: OurMenu
+  /** 메뉴를 띄웠는가. 띄운 뒤에는 세계의 메뉴가 닫히기를 기다린다 */
+  opened?: boolean
+  /** 메뉴 답이 잠깐 들어가는 변수의 원래 값 — 끝나면 되돌린다 */
+  saved?: number
+} | null = null
+
+/**
+ * 메뉴 답을 받는 변수. 세계의 메뉴는 답을 **변수에** 적는다 (`FieldWorld.choose`).
+ * 스크립트 임시 변수 하나를 잠깐 빌리고 끝나면 원래 값을 되돌린다
+ */
+const OUR_MENU_VAR = 0x8008
 
 /**
  * 우리 글 한 덩이를 창에 올리고, 다 읽고 버튼을 누르면 `after`를 부른다.
@@ -329,23 +347,70 @@ let native: { after: (() => void) | null } | null = null
  * 여러 쪽은 글 안의 `\r`이 나눈다 — 덩이를 쪼개 놓고 여기서 세지 않는다.
  * 그래야 넘기는 규칙이 원작 대사와 한 벌이다
  */
-function showOurText(text: string, after: (() => void) | null): void {
+function showOurText(text: string, after: (() => void) | null, menu?: OurMenu): void {
   const { world } = fieldScripts
   if (world === null) { after?.(); return }
-  native = { after }
+  native = menu === undefined ? { after } : { after, menu }
   world.showText(text)
+}
+
+/**
+ * 우리 글 한 덩이 — 다 읽고 버튼을 누르면 풀린다 (배틀팩토리 장면 · `state/factoryScene`).
+ * 세계가 없으면 곧바로 풀린다
+ */
+export function sayOurs(text: string): Promise<void> {
+  return new Promise((resolve) => { showOurText(text, () => { resolve() }) })
+}
+
+/**
+ * 글을 띄우고 다 찍히면 메뉴를 연다 — 원작의 `Message` 뒤 `ShowYesNoMenu`·`ShowListMenu`와 같은 차례다.
+ * 예/아니오는 `MENU_YES`·`MENU_NO`(B는 아니오), 목록은 항목 값(B는 `MENU_CANCEL`)을 돌려준다
+ */
+export function askOurs(text: string, menu: OurMenu): Promise<number> {
+  return new Promise((resolve) => {
+    if (fieldScripts.world === null) { resolve(MENU_CANCEL); return }
+    showOurText(text, null, menu)
+    native!.after = (choice) => { resolve(choice) }
+  })
 }
 
 /** 우리 대사 한 프레임. 스크립트 VM 자리에서 대신 돈다 */
 function stepOurText(world: FieldWorld): void {
   worldState.input.move.set(0, 0)
   worldState.player.velocity.set(0, 0, 0)
+  const now = native
+  if (now?.opened === true) {
+    chooseFromMenu(world)
+    world.tick()
+    if (world.menu !== null) return
+    const choice = fieldScripts.vars.get(OUR_MENU_VAR)
+    fieldScripts.vars.set(OUR_MENU_VAR, now.saved ?? 0)
+    native = null
+    world.closeBox(true)
+    now.after?.(choice)
+    return
+  }
   world.tick()
-  if (!world.printed || !frameInput.pressed) return
-  const done = native
+  if (!world.printed) return
+  // 메뉴가 붙은 글은 **누름을 안 기다린다** — 다 찍히면 곧바로 메뉴가 뜬다
+  if (now?.menu !== undefined) {
+    now.saved = fieldScripts.vars.get(OUR_MENU_VAR)
+    const menu = now.menu
+    if (menu.kind === 'yesno') {
+      world.openYesNo(OUR_MENU_VAR)
+      world.menuCursor = menu.cursor
+    } else {
+      world.initMenu(OUR_MENU_VAR, menu.cursor, menu.canCancel, 'local')
+      for (const entry of menu.entries) world.addMenuEntryText(entry.text, entry.value)
+      world.showMenu('list')
+    }
+    now.opened = true
+    return
+  }
+  if (!frameInput.pressed) return
   native = null
   world.closeBox(true)
-  done?.after?.()
+  now?.after?.(0)
 }
 
 /**

@@ -163,6 +163,13 @@ interface FactoryBout {
   /** 트레이너 AI 비트 (`BattleFactory_GetAIMask`) */
   readonly ai: number
   readonly doubles: boolean
+  /** 롬의 두 칸짜리 줄이 받는 분류와 이름 (`PlayerDefeatedTr`) */
+  readonly cls: string
+  readonly name: string
+  /** 진 뒤 상대의 말 — 뱅크 614의 `번호 × 3 + 2` (`TRMSG_DEFEAT`) */
+  readonly defeat: string | null
+  /** 이긴 뒤 상대의 말 — `번호 × 3 + 1` (`TRMSG_WIN`) */
+  readonly victory: string | null
 }
 
 /** 키로 찾는 개체 정보. 화면이 이름·모델을 고르는 데 쓴다 */
@@ -277,6 +284,13 @@ interface BattleState {
    * 한 사람의 더블은 `TRMSG_DOUBLE_BATTLE_DEFEAT_1`·`_2` 둘이다
    */
   defeatLines: string[]
+  /**
+   * 배틀팩토리에서 **졌을 때** 상대가 하는 말 (`TRMSG_WIN` = 뱅크 614의 `번호 × 3 + 1`).
+   *
+   * ⚠️ **프런티어에서 지면 「눈앞이 캄캄해졌다」가 없다** — `subscript_battle_lost.s`의 `_068` 갈래는
+   * 상대를 불러내 이 한 줄만 말하게 한다. 다른 판에서는 비어 있다
+   */
+  foeWinLines: string[]
   /**
    * 재생기가 **지금까지 쓰러뜨려 보인** 마리의 키. 파티 공(`PartyGauge`)이 이걸로
    * 어두워진다 — 정본(`truth`)을 보면 쓰러지는 연출보다 공이 먼저 꺼진다
@@ -538,6 +552,7 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   foes: [],
   partner: null,
   defeatLines: [],
+  foeWinLines: [],
   downKeys: [],
   prize: 0,
   view: null,
@@ -824,17 +839,20 @@ export const useBattleStore = create<BattleState>((set, get) => ({
     }
   },
 
-  startFactory: async ({ team, foe, label, ai, doubles }) => {
+  startFactory: async ({ team, foe, label, ai, doubles, cls, name, defeat, victory }) => {
     rentalParty = team.map((m) => ({ ...m }))
     metTrainer = null
-    set({ trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [] })
+    set({
+      trainerId: null, trainerClass: null, foes: [], partner: null,
+      defeatLines: defeat === null ? [] : [defeat], foeWinLines: victory === null ? [] : [victory],
+    })
     await open(
       set,
       get,
       'factory',
       label,
-      null,
-      null,
+      cls,
+      name,
       // 상금이 없다. 프론티어는 BP로 셈한다
       0,
       ({ species }) => ({

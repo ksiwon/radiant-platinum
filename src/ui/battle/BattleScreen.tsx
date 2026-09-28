@@ -205,6 +205,7 @@ export function BattleScreen() {
   const foes = useBattleStore((s) => s.foes)
   const partner = useBattleStore((s) => s.partner)
   const defeatLines = useBattleStore((s) => s.defeatLines)
+  const foeWinLines = useBattleStore((s) => s.foeWinLines)
   const downKeys = useBattleStore((s) => s.downKeys)
   const prize = useBattleStore((s) => s.prize)
   const view = useBattleStore((s) => s.view)
@@ -371,7 +372,7 @@ export function BattleScreen() {
     // 트레이너전은 누가 걸어왔는지부터 말하고, 끝나면 이긴 줄·끝말·상금이 잇는다.
     // 사건이 아니라 판 자체의 사실이다 (`bookends`)
     const ends = {
-      lines, kind, outcome, foes, foeName, foeClass, foeTrainer, defeatLines, prize, playerName,
+      lines, kind, outcome, foes, foeName, foeClass, foeTrainer, defeatLines, foeWinLines, prize, playerName,
     }
     const challenge = openingLine(ends)
     if (challenge !== null) out.unshift({ text: challenge, events: [], hold: 30 })
@@ -379,7 +380,7 @@ export function BattleScreen() {
     return out
   }, [
     events, names, lines, moveLines, label, bare, outcome, kind,
-    foeName, foeClass, foeTrainer, playerName, trainerOf, foes, partner, defeatLines, prize,
+    foeName, foeClass, foeTrainer, playerName, trainerOf, foes, partner, defeatLines, foeWinLines, prize,
   ])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다

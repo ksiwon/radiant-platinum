@@ -26,6 +26,7 @@ import { newFactoryRecords } from '../../engine/frontier/records'
 import { newGameRecords } from '../../engine/world/gameRecords'
 import { newMailbox } from '../../engine/world/mail'
 import { newEasyChatUnlocks } from '../../engine/world/easyChat'
+import { VAR_BATTLE_FACTORY_PRINT_STATE, VARS_START } from '../../engine/script/vars'
 import { safeParseSave } from './schema'
 import type { SaveData } from '../saveStore'
 
@@ -426,6 +427,24 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 38,
     chatotCry: null,
   }),
+
+  // 배틀팩토리 인쇄를 원작 자리로 (PARITY §9.3). 원작은 기록이 아니라 변수
+  // `VAR_BATTLE_FACTORY_PRINT_STATE`(저장 칸 80)에 둔다 — 은 1 → 2 · 금 2 → 4.
+  // 「쉰다」로 접은 도전은 옛 리포트에 있을 수 없다
+  38: (data) => {
+    const VAR_PRINT_STATE_SLOT = VAR_BATTLE_FACTORY_PRINT_STATE - VARS_START
+    const factory = data.factory as { records: unknown, print?: number, suspended?: unknown }
+    // 판 올리기는 이미 풀린 리포트 위에서 돈다 — `vars`는 `Uint16Array`다 (`schema.ts`의 `u16`)
+    const vars = new Uint16Array(data.vars as Uint16Array)
+    const print = factory.print ?? 0
+    if (print > 0) vars[VAR_PRINT_STATE_SLOT] = print === 2 ? 4 : 2
+    return {
+      ...data,
+      version: 39,
+      vars,
+      factory: { records: factory.records, suspended: factory.suspended ?? null },
+    }
+  },
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

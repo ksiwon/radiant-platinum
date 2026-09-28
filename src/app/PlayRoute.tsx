@@ -16,6 +16,7 @@ import { ControlHint } from '../ui/hud/ControlHint'
 import { CurrencyWindow } from '../ui/field/CurrencyWindow'
 import { SaveInfoWindow } from '../ui/field/SaveInfoWindow'
 import { MessageBox } from '../ui/field/MessageBox'
+import { FrontierStage } from '../ui/field/FrontierStage'
 import { FishingBox } from '../ui/field/FishingBox'
 import { PokemonPreview } from '../ui/field/PokemonPreview'
 import { HatchScreen } from '../ui/menu/HatchScreen'
@@ -103,6 +104,7 @@ export function PlayRoute() {
       <PokemonPreview />
       <HatchScreen />
       <FadeOverlay />
+      <FrontierStage />
       <HmCutInOverlay />
       <CutInOverlay />
       <PoketchWidget />

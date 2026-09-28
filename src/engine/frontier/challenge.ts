@@ -112,6 +112,47 @@ export function openRound(
   }
 }
 
+interface ResumeOptions {
+  readonly challenge: ChallengeType
+  readonly openLevel: boolean
+  readonly streak: number
+  readonly tradeCount: number
+  /** 다음에 치를 판 번호 1~6 */
+  readonly battle: number
+  readonly trainers: readonly number[]
+  readonly party: readonly DrawnSet[]
+  /** 쉬기 직전에 이긴 셋 — 바꿀 수 있는 것으로 돌아온다 */
+  readonly defeated: readonly DrawnSet[]
+  readonly rng: Rng
+  readonly setOf: SetLookup
+}
+
+/**
+ * 「쉰다」로 접었던 라운드를 다시 편다 (`ov104_02233F1C`).
+ *
+ * 원작이 리포트에서 되살리는 것은 트레이너 열넷 · 판 번호 · 내 셋 · 이긴 셋이다. **다음 상대는 없다** —
+ * 「계속한다」에서 뽑는다(`FrontierScrCmd_64`). 피할 목록이 이긴 판 직후와 같으므로(내 셋 + 이긴 셋)
+ * 여기서 뽑아도 같은 분포다. 빌린 여섯은 더는 없다
+ */
+export function resumeRound(
+  { challenge, openLevel, streak, tradeCount, battle, trainers, party, defeated, rng, setOf }: ResumeOptions,
+): FactoryRound {
+  const base = { challenge, openLevel, trainers }
+  return {
+    challenge,
+    openLevel,
+    streak,
+    tradeCount,
+    round: roundOf(streak),
+    trainers,
+    rentals: [],
+    party,
+    opponents: drawOpponents(base, battle, [...party, ...defeated], rng, setOf),
+    battle,
+    swapPool: defeated,
+  }
+}
+
 /** 빌린 여섯 중 셋을 고른다 (`ov104_0223449C`) */
 export function chooseParty(round: FactoryRound, picks: readonly number[]): FactoryRound {
   const want = playerPartySize(round.challenge)

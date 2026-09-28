@@ -138,7 +138,7 @@ maybe('나 혼자 vs 트레이너 둘 (`BATTLE_TYPE_TAG_DOUBLES`)', () => {
     const lines = await loadDialogueBank('ko', BATTLE_BANK)
     const ends = {
       lines, kind: end.kind, outcome: end.outcome, foes: end.foes, foeName: end.foeName,
-      foeClass: end.foeClass, foeTrainer: end.foeTrainer, defeatLines: end.defeatLines,
+      foeClass: end.foeClass, foeTrainer: end.foeTrainer, defeatLines: end.defeatLines, foeWinLines: [],
       prize: end.prize, playerName: '나',
     }
     const hello = openingLine(ends)
@@ -232,7 +232,7 @@ describe('판 이름', () => {
     const ends = {
       lines: [] as string[], kind: 'trainer' as const, outcome: 'win' as const,
       foes: [{ cls: '갤럭시단', name: '가' }, { cls: '갤럭시단', name: '나' }],
-      foeName: null, foeClass: null, foeTrainer: null, defeatLines: ['끝말 하나', '끝말 둘'],
+      foeName: null, foeClass: null, foeTrainer: null, defeatLines: ['끝말 하나', '끝말 둘'], foeWinLines: [],
       prize: 100, playerName: '나',
     }
     expect(openingLine(ends)).toBeNull()

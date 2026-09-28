@@ -738,6 +738,8 @@ export interface FieldServices {
     openScene: (scene: number) => void
     /** 장면이 아직 떠 있는가. 참인 동안 스크립트가 선다 */
     busy: () => boolean
+    /** `ScrCmd_2C5` — 그 줄의 연승을 끊는다. 종류 0 싱글 · 1 더블, 레벨 0 레벨50 · 1 오픈레벨 */
+    dropStreak: (type: number, level: number) => void
   }
   /**
    * 소지금·코인 창 (`FieldMenu_CreateMoneyWindow` · `FieldMenu_DrawCoinWindow`).

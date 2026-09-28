@@ -6,8 +6,9 @@
 //
 // ⚠️ **`active`가 연승을 잇는 유일한 고리다.** 라운드를 마치면 서고 지면 꺼진다 —
 // 도전을 열 때 이 비트가 서 있으면 저장된 연승을 이어받고, 아니면 0부터다
+import type { PokemonInstance } from '../pokemon/instance'
 import { MAX_STREAK } from './factoryTables'
-import { ChallengeType } from './factory'
+import { ChallengeType, type DrawnSet } from './factory'
 
 interface FactoryRecord {
   /** 지금 이어 가는 연승 */
@@ -22,10 +23,29 @@ interface FactoryRecord {
   readonly active: boolean
 }
 
+/**
+ * 「쉰다」로 끈 도전 (`BattleFactorySave` · `ov104_02234148(…, 2)`).
+ *
+ * 원작이 적는 것은 트레이너 열넷 · 판 번호 · 내 셋 · **방금 이긴** 셋이다 — 다음 상대는
+ * 다시 켠 뒤 「계속한다」에서 뽑는다. 개체는 PID까지 통째로 둔다(원작도 PID와 개체값을 적는다).
+ * 연승과 교환 수는 기록 줄(`streak` · `trades`)에 같이 적힌다
+ */
+export interface FactorySuspended {
+  readonly challenge: ChallengeType
+  readonly openLevel: boolean
+  /** 다음에 치를 판 번호 1~6 */
+  readonly battle: number
+  readonly trainers: readonly number[]
+  readonly party: readonly PokemonInstance[]
+  readonly partySets: readonly DrawnSet[]
+  readonly defeated: readonly PokemonInstance[]
+  readonly defeatedSets: readonly DrawnSet[]
+}
+
 export interface FactoryRecords {
   readonly records: readonly FactoryRecord[]
-  /** 0 없음 · 1 은 · 2 금 */
-  readonly print: number
+  /** 「쉰다」로 끈 도전. 없으면 null */
+  readonly suspended: FactorySuspended | null
 }
 
 /** 넉 줄 — 레벨50·오픈레벨 × 싱글·더블. 멀티 넷은 §9라 안 둔다 */
@@ -34,7 +54,7 @@ export const FACTORY_SLOTS = 4
 const EMPTY: FactoryRecord = { streak: 0, trades: 0, best: 0, bestTrades: 0, active: false }
 
 export function newFactoryRecords(): FactoryRecords {
-  return { records: Array.from({ length: FACTORY_SLOTS }, () => EMPTY), print: 0 }
+  return { records: Array.from({ length: FACTORY_SLOTS }, () => EMPTY), suspended: null }
 }
 
 /** `(isOpenLevel * 4) + challengeType`에서 멀티를 뺀 것 */
@@ -89,7 +109,33 @@ export function finishChallenge(
   })
 }
 
-/** 인쇄를 새긴다. 금이 은을 덮고, 은은 금을 못 덮는다 */
-export function awardPrint(all: FactoryRecords, print: 1 | 2): FactoryRecords {
-  return { ...all, print: Math.max(all.print, print) }
+/**
+ * 「쉰다」 — 지금 연승과 교환 수만 적고 도전을 접어 둔다 (`ov104_02234148(…, 2)`).
+ *
+ * ⚠️ **표식도 최고 기록도 안 건드린다.** 원작의 `param1 != 2` 갈래가 통째로 빠진다 —
+ * 쉬는 것은 끝난 것이 아니다
+ */
+export function suspendChallenge(
+  all: FactoryRecords, slot: number, streak: number, trades: number, suspended: FactorySuspended,
+): FactoryRecords {
+  const at = recordAt(all, slot)
+  const next = withSlot(all, slot, {
+    ...at, streak: Math.min(streak, MAX_STREAK), trades: Math.min(trades, MAX_STREAK),
+  })
+  return { ...next, suspended }
+}
+
+/** 접어 둔 도전을 꺼냈다 — 한 번 이으면 지운다 */
+export function clearSuspended(all: FactoryRecords): FactoryRecords {
+  return all.suspended === null ? all : { ...all, suspended: null }
+}
+
+/**
+ * 저장 안 하고 끈 도전 (`ScrCmd_2C5`) — 표식 · 최근 연승 · 최근 교환 수를 0으로.
+ *
+ * 로비가 다시 열릴 때 `LOAD_ACTION`이 아직 0xFF(도전 중)면 이 줄로 온다. 최고 기록은 남는다
+ */
+export function dropStreak(all: FactoryRecords, slot: number): FactoryRecords {
+  const at = recordAt(all, slot)
+  return withSlot(all, slot, { ...at, streak: 0, trades: 0, active: false })
 }

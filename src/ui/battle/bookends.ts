@@ -23,6 +23,8 @@ interface Bookends {
   foeTrainer: string | null
   /** 상대마다의 끝말 (`battleStore`의 `defeatLines`) */
   defeatLines: readonly string[]
+  /** 배틀팩토리에서 졌을 때 상대의 말 (`battleStore`의 `foeWinLines`) */
+  foeWinLines: readonly string[]
   prize: number
   playerName: string | null
 }
@@ -60,7 +62,8 @@ export function openingLine(b: Bookends): string | null {
 export function closingLines(b: Bookends): string[] {
   const out: (string | null)[] = []
   if (b.outcome === 'win') {
-    if (b.kind === 'trainer') {
+    // 시설전도 트레이너전과 같은 갈래다 — 상금 줄만 없다 (`subscript_battle_won.s`)
+    if (b.kind === 'trainer' || b.kind === 'factory') {
       const [one, two] = b.foes
       out.push(one !== undefined && two !== undefined
         ? romLine(b.lines, MSG.playerBeatTr1AndTr2, one.cls, one.name, two.cls, two.name)
@@ -76,6 +79,9 @@ export function closingLines(b: Bookends): string[] {
       // 우리 화면은 로그가 그대로 서 있으므로 한 줄을 놓는다
       out.push('배틀에서 이겼다!')
     }
+  } else if (b.outcome === 'loss' && b.kind === 'factory') {
+    // 프런티어에서 지면 상대가 이긴 말 한 줄뿐이다 (`subscript_battle_lost.s`의 `_068`)
+    out.push(...b.foeWinLines)
   } else if (b.outcome === 'loss') {
     out.push(
       romLine(b.lines, MSG.playerIsOutOfUsablePokemon, b.playerName),
