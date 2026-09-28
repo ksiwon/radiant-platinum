@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { loadUiText, NAMING_TEXT } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
+import { useSaveStore } from '../../state/saveStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { formatMessage, MessageSlots } from '../../engine/script/text'
 import * as chrome from './menuChrome.css'
@@ -25,6 +26,7 @@ const NAMING_BANK = 'naming'
 export function NameScreen() {
   const what = useMenuStore((s) => s.naming)
   const closeAll = useMenuStore((s) => s.closeAll)
+  const back = useMenuStore((s) => s.back)
   const locale = useGameLocale()
   const [prompt, setPrompt] = useState('')
   const [draft, setDraft] = useState(what?.initial ?? '')
@@ -39,7 +41,8 @@ export function NameScreen() {
         const slots = new MessageSlots()
         slots.set(0, what?.initial ?? '')
         // 무엇의 이름인가에 따라 물음이 다르다 — 별명은 1번, 석판은 6번이다
-        const line = what?.kind === 'tablet' ? NAMING_TEXT.tablet : NAMING_TEXT.pokemon
+        const line = what?.kind === 'tablet' ? NAMING_TEXT.tablet
+          : what?.kind === 'box' ? NAMING_TEXT.box : NAMING_TEXT.pokemon
         setPrompt(formatMessage(bank[line] ?? '', slots).trim())
       })
       .catch(() => { setPrompt('') })
@@ -52,6 +55,13 @@ export function NameScreen() {
    */
   const done = (name: string): void => {
     if (!what) return
+    // 박스 이름은 스크립트가 안 기다린다 — 곧바로 적고 박스 화면으로 돌아간다. 비우면 기본 이름이다
+    if (what.kind === 'box') {
+      const at = what.slot
+      useSaveStore.setState((st) => ({ boxNames: st.boxNames.map((n, i) => (i === at ? name.trim() || null : n)) }))
+      back()
+      return
+    }
     naming.answer = { name: name.trim(), slot: what.slot, kind: what.kind }
     closeAll()
   }

@@ -7,9 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { move } from './BoxScreen'
 
 describe('박스 안에서', () => {
-  it('끝에서 안 돈다 — 왼쪽 위에서 위나 왼쪽은 제자리다', () => {
-    expect(move({ pane: 'box', at: 0 }, 0, -1, 3)).toEqual({ pane: 'box', at: 0 })
+  it('끝에서 안 돈다 — 왼쪽 위에서 왼쪽은 제자리 · 위는 박스 이름 머리다', () => {
+    // 원작도 맨 윗줄 위가 박스 이름 칸이다 — 거기서 A가 점프 · 벽지 · 이름을 연다 (`BoxMenu_FillHeaderMenu`)
+    expect(move({ pane: 'box', at: 0 }, 0, -1, 3)).toEqual({ pane: 'header', at: 0 })
     expect(move({ pane: 'box', at: 0 }, -1, 0, 3)).toEqual({ pane: 'box', at: 0 })
+    expect(move({ pane: 'header', at: 0 }, 0, -1, 3)).toEqual({ pane: 'header', at: 0 })
+    expect(move({ pane: 'header', at: 0 }, 0, 1, 3)).toEqual({ pane: 'box', at: 0 })
   })
 
   it('한 줄이 6칸이다', () => {

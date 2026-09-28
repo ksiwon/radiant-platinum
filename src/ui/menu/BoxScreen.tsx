@@ -40,8 +40,46 @@ const K = 3
 /** 박스 칸의 아이콘 크기 (원작 32) */
 const SLOT_ICON = 32 * K
 
-/** 커서가 앉을 수 있는 곳 */
-type Pane = 'box' | 'party'
+/** 커서가 앉을 수 있는 곳 — 박스 이름 머리(`header`)는 박스 맨 윗줄 위다 */
+type Pane = 'box' | 'party' | 'header'
+
+/**
+ * 머리 메뉴 (`BoxMenu_FillHeaderMenu` · `box_app_manager.c`의 `BoxAppMan_BoxJumpAction` · `…_WallpaperMenu`).
+ * 항목 번호는 원작 `enum BoxMenuItem`이고 글은 보관 시스템 뱅크의 **24 + 항목**이다 — 점프 0 · 벽지 1 · 이름 2 ·
+ * 그만둔다 3 · 풍경1~3 · etc. 4~7 · 애호가1 · 2 8 · 9 · 벽지 10~33(숲 … 갤럭시단)
+ */
+const BOX_MENU = { jump: 0, wallpaper: 1, name: 2, cancel: 3, firstTheme: 4, friends1: 8, friends2: 9, firstWall: 10, firstFriendWall: 26 } as const
+const MENU_LABEL = 24
+/** 테마마다의 벽지 넷 (`sWallpaperPages`) */
+const WALL_PAGES = [[10, 11, 12, 13], [14, 15, 16, 17], [18, 19, 20, 21], [22, 23, 24, 25]] as const
+/** 박스 이름 칸 (`PCBoxes.names` — 여덟 글자) */
+const BOX_NAME_MAX = 8
+
+interface HeaderMenu {
+  kind: 'header' | 'jump' | 'theme' | 'walls'
+  /** 항목 — 점프면 박스 번호, 나머지는 `BOX_MENU` 번호 */
+  items: readonly number[]
+  at: number
+}
+
+/** 테마 줄 (`BoxMenu_FillWallpaperMenu`) — 애호가 줄은 푼 벽지가 있어야 서고, 다섯부터 둘째 줄이 선다 */
+function themeItems(unlocked: number): number[] {
+  const n = [...Array(8).keys()].filter((i) => (unlocked & (1 << i)) !== 0).length
+  return [4, 5, 6, 7, ...(n > 0 ? [BOX_MENU.friends1] : []), ...(n > 4 ? [BOX_MENU.friends2] : [])]
+}
+
+/** 그 테마의 벽지 (`BoxMenu_FillWallpaperSelectionMenu`) — 애호가 둘째 줄은 푼 것의 다섯째부터 넷이다 */
+function wallItems(theme: number, unlocked: number): number[] {
+  if (theme < BOX_MENU.friends1) return [...WALL_PAGES[theme - BOX_MENU.firstTheme]!]
+  let skip = theme === BOX_MENU.friends2 ? 4 : 0
+  const out: number[] = []
+  for (let i = 0; i < 8 && out.length < 4; i++) {
+    if ((unlocked & (1 << i)) === 0) continue
+    if (skip > 0) { skip--; continue }
+    out.push(BOX_MENU.firstFriendWall + i)
+  }
+  return out
+}
 
 interface Cursor {
   pane: Pane
@@ -91,6 +129,10 @@ export function BoxScreen() {
     () => ({ pane: mode === BOX_MODE.deposit ? 'party' : 'box', at: 0 }),
   )
   const [held, setHeld] = useState<Held | null>(null)
+  const [menu, setMenu] = useState<HeaderMenu | null>(null)
+  const unlockedWallpapers = useSaveStore((s) => s.unlockedWallpapers)
+  const boxNames = useSaveStore((s) => s.boxNames)
+  const pushNaming = useMenuStore((s) => s.pushNaming)
   const [notice, setNotice] = useState<string | null>(null)
   /** 도구 옮기기(3)에서 집어 든 도구. 어디서 집었는지까지 든다 */
   const [heldItem, setHeldItem] = useState<{ from: Held; item: number } | null>(null)
@@ -131,7 +173,46 @@ export function BoxScreen() {
 
   const step = (dx: number, dz: number) => () => {
     setNotice(null)
+    if (menu !== null) {
+      const d = dz !== 0 ? dz : dx
+      setMenu({ ...menu, at: Math.max(0, Math.min(menu.items.length - 1, menu.at + d)) })
+      return
+    }
+    // 머리에서 ←→는 박스를 넘긴다 (원작도 머리 칸의 화살표다)
+    if (cursor.pane === 'header' && dx !== 0) { setCurrentBox(wrapCursor(box, dx, BOX_COUNT)); return }
     setCursor((c) => move(c, dx, dz, party.length))
+  }
+
+  /** 박스의 이름 — 지은 것이 없으면 원작 기본 이름 */
+  const nameOfBox = (at: number): string => boxNames[at] ?? boxText[BOX_TEXT.boxName + at] ?? ''
+
+  /** 머리 메뉴에서 고른다 */
+  const pickMenu = (): void => {
+    if (menu === null) return
+    const item = menu.items[menu.at]
+    if (item === undefined) return
+    if (menu.kind === 'header') {
+      if (item === BOX_MENU.jump) setMenu({ kind: 'jump', items: [...Array(BOX_COUNT).keys()], at: box })
+      else if (item === BOX_MENU.wallpaper) setMenu({ kind: 'theme', items: themeItems(unlockedWallpapers), at: 0 })
+      else if (item === BOX_MENU.name) {
+        setMenu(null)
+        pushNaming({ kind: 'box', slot: box, initial: nameOfBox(box), max: BOX_NAME_MAX })
+      } else setMenu(null)
+      return
+    }
+    if (menu.kind === 'jump') { setCurrentBox(item); setMenu(null); return }
+    if (menu.kind === 'theme') { setMenu({ kind: 'walls', items: wallItems(item, unlockedWallpapers), at: 0 }); return }
+    // 벽지 — `PCBoxes_SetWallpaper(…, USE_CURRENT_BOX, menuItem - BOX_MENU_FIRST_WALLPAPER)`
+    const wall = item - BOX_MENU.firstWall
+    useSaveStore.setState((st) => ({ wallpapers: st.wallpapers.map((w, i) => (i === box ? wall : w)) }))
+    setMenu(null)
+  }
+
+  /** 머리 메뉴에서 한 단 물러난다 — 벽지에서는 테마로 (`WALLPAPER_MENU_PICK_THEME_INIT`) */
+  const backMenu = (): void => {
+    if (menu === null) return
+    if (menu.kind === 'walls') { setMenu({ kind: 'theme', items: themeItems(unlockedWallpapers), at: 0 }); return }
+    setMenu(null)
   }
 
   const turnBox = (d: number) => () => {
@@ -258,9 +339,22 @@ export function BoxScreen() {
       }
       setCursor((c) => ({ pane: c.pane === 'box' ? 'party' : 'box', at: 0 }))
     },
-    confirm: grab,
+    confirm: () => {
+      if (menu !== null) { pickMenu(); return }
+      if (cursor.pane === 'header') {
+        if (held !== null || heldItem !== null) return
+        // 비교하기에서는 점프만 선다 (`BoxMenu_FillHeaderMenu`)
+        const items = mode === BOX_MODE.compare
+          ? [BOX_MENU.jump, BOX_MENU.cancel]
+          : [BOX_MENU.jump, BOX_MENU.wallpaper, BOX_MENU.name, BOX_MENU.cancel]
+        setMenu({ kind: 'header', items, at: 0 })
+        return
+      }
+      grab()
+    },
     cancel: () => {
       setNotice(null)
+      if (menu !== null) { backMenu(); return }
       // ⚠️ **들고 있던 도구를 돌려놓고 닫는다.** 안 그러면 도구가 사라진다
       if (heldItem !== null) {
         const owner = monAtHeld(heldItem.from)
@@ -285,7 +379,7 @@ export function BoxScreen() {
 
   const nameOf = (mon: PokemonInstance): string => mon.nickname ?? names[mon.species] ?? ''
   const info = species && selected ? species.of(selected) : undefined
-  const boxName = boxText[BOX_TEXT.boxName + box] ?? ''
+  const boxName = nameOfBox(box)
   const title = pcText[PC_MENU.storageModes + mode] ?? ''
 
   const foot = mode === BOX_MODE.compare
@@ -318,7 +412,35 @@ export function BoxScreen() {
             className={own.wall}
             style={boxWallpaper(walls, wallpapers[box] ?? 0, K)}
           >
-            <div className={own.boxName}>{boxName}</div>
+            <div
+              className={own.boxName}
+              data-box-header={cursor.pane === 'header' ? 'on' : 'off'}
+              style={cursor.pane === 'header' ? { outline: '3px solid currentColor', outlineOffset: 2, borderRadius: 6 } : undefined}
+              onClick={() => { setCursor({ pane: 'header', at: 0 }) }}
+            >
+              {boxName}
+            </div>
+            {menu !== null && (
+              <div role="menu" data-box-menu={menu.kind} className={own.headerMenu}>
+                {menu.kind !== 'header' && (
+                  <div className={own.headerAsk}>
+                    {msg[menu.kind === 'jump' ? BOX_TEXT.jumpToBox : menu.kind === 'theme' ? BOX_TEXT.pickTheme : BOX_TEXT.pickWallpaper] ?? ''}
+                  </div>
+                )}
+                {menu.items.map((item, i) => (
+                  <div
+                    key={item}
+                    role="menuitem"
+                    aria-selected={i === menu.at}
+                    className={i === menu.at ? own.headerItemOn : own.headerItem}
+                    onPointerEnter={() => { setMenu({ ...menu, at: i }) }}
+                    onClick={() => { setMenu({ ...menu, at: i }); pickMenu() }}
+                  >
+                    {menu.kind === 'jump' ? nameOfBox(item) : boxText[MENU_LABEL + item] ?? ''}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className={own.grid}>
               {cursor.pane === 'box' && (
                 <span
@@ -456,9 +578,12 @@ function Gender({ mon, ratio }: { mon: PokemonInstance; ratio: number }) {
  * 파티는 세 칸씩 두 줄이라 위아래도 그 모양으로 움직인다
  */
 export function move(cursor: Cursor, dx: number, dz: number, partyCount: number): Cursor {
+  // 머리 — ↓로 박스 맨 윗줄에 내려선다
+  if (cursor.pane === 'header') return dz > 0 ? { pane: 'box', at: 0 } : cursor
   if (cursor.pane === 'box') {
     const col = cursor.at % BOX_COLS, row = Math.floor(cursor.at / BOX_COLS)
     if (dx > 0 && col === BOX_COLS - 1) return { pane: 'party', at: 0 }
+    if (dz < 0 && row === 0) return { pane: 'header', at: 0 }
     const nx = Math.max(0, Math.min(BOX_COLS - 1, col + dx))
     const nz = Math.max(0, Math.min(BOX_ROWS - 1, row + dz))
     return { pane: 'box', at: nz * BOX_COLS + nx }

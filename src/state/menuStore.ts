@@ -89,7 +89,7 @@ interface MenuStore {
    * `slot`은 파티 자리다. 상점 재고와 같은 이유로 여기 있다 — 화면을 여는
    * 인자라 컴포넌트가 못 받는다
    */
-  naming: { kind: 'pokemon' | 'tablet'; slot: number; initial: string; max: number } | null
+  naming: { kind: 'pokemon' | 'tablet' | 'box'; slot: number; initial: string; max: number } | null
   /**
    * 가방에서 고른 도구를 **누구에게** 쓰는 중인가 (PARITY §4.1).
    *
@@ -199,6 +199,8 @@ interface MenuStore {
   openBox: (mode: number) => void
   /** 이름 짓기 화면을 연다 */
   openNaming: (what: NonNullable<MenuStore['naming']>) => void
+  /** 떠 있는 화면 위에 이름 짓기를 쌓는다 — 박스 이름처럼 끝나면 그 화면으로 돌아가는 자리 */
+  pushNaming: (what: NonNullable<MenuStore['naming']>) => void
   /** 이어하기가 모험노트를 저절로 펼친다. 어느 쪽을 펼칠지를 같이 받는다 */
   openJournal: (page: number) => void
   /** 도구를 들고 파티 화면을 연다. 스택 위에 쌓는다 — B로 가방으로 돌아간다 */
@@ -427,6 +429,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
 
   openNaming: (what) => set(() => {
     const stack: MenuScreen[] = ['naming']
+    capture(stack)
+    return { stack, top: 'naming' as const, naming: what }
+  }),
+
+  pushNaming: (what) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'naming']
     capture(stack)
     return { stack, top: 'naming' as const, naming: what }
   }),

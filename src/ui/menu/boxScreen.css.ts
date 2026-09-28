@@ -15,7 +15,7 @@
 import { style, styleVariants } from '@vanilla-extract/css'
 import { RADIUS, TEXT } from '../theme/scale'
 import { vars } from '../theme/contract.css'
-import { PICKED } from '../theme/window.css'
+import { PICKED, WINDOW_SMALL } from '../theme/window.css'
 
 /** 원작 픽셀을 화면 픽셀로 옮기는 배수 */
 const K = 3
@@ -325,3 +325,39 @@ export const compareNote = style({
   textAlign: 'center',
   paddingTop: 6,
 })
+
+/**
+ * 머리 메뉴 (점프 · 벽지 · 이름). 원작은 박스 오른쪽에 창을 세운다 — 벽지 위 오른쪽 위에 얹는다
+ */
+export const headerMenu = style({
+  position: 'absolute',
+  right: 8,
+  top: 44,
+  zIndex: 5,
+  minWidth: 190,
+  padding: '8px 0',
+  ...WINDOW_SMALL,
+  fontSize: TEXT.base,
+  fontWeight: 700,
+})
+
+/** 머리 메뉴 위의 물음 (`BoxText_JumpToBox` 등) */
+export const headerAsk = style({
+  padding: '2px 16px 8px',
+  fontSize: TEXT.small,
+  color: vars.ink.dim,
+})
+
+export const headerItem = style({
+  position: 'relative',
+  padding: '4px 16px 4px 30px',
+  border: '0 solid transparent',
+})
+
+/** 고른 칸에 삼각 커서 — 원작도 색이 아니라 커서로 가리킨다 */
+export const headerItemOn = style([headerItem, {
+  ...PICKED,
+  selectors: {
+    '&::before': { content: '"▶"', position: 'absolute', left: 12 },
+  },
+}])

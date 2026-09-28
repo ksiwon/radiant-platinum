@@ -332,6 +332,10 @@ export const BOX_TEXT = {
   /** `pokemon_storage_system` 뱅크 */
   boxName: 6,
   wallpaperName: 28,
+  /** `box_messages` 뱅크 — 머리 메뉴의 물음 셋 (`BoxText_JumpToBox` · `_PickTheme` · `_Wallpaper`) */
+  jumpToBox: 8,
+  pickTheme: 9,
+  pickWallpaper: 10,
   /** `box_messages` 뱅크 */
   partyFull: 5,
   lastMon: 6,
