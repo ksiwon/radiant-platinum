@@ -6,6 +6,16 @@
 근거는 디컴프(`raw/decomp`)를 읽은 조사 넷이다 — 줄 번호는 모두 `raw/decomp` 기준. 크기: S 1시간 안 · M 1~4시간 · L 4시간 넘게.
 「끝났다」는 시험·걸어서 잰 판·스크린샷으로만 센다.
 
+## 지금 자리
+
+- **끝났다** — 1단계 전부(`810055f` · REPAIR §141 · §12 닫음) 빼고 둘: `MessageUnown`(안농 글꼴 추출이 필요하다 — 두 굽는 쪽) ·
+  `ScrCmd_2C5`(5단계로 옮겼다). 2단계에서 키우미집 고르기 · 타일 스크립트(책장·쓰레기통·진열대·벽 지도·자전거 거치대) ·
+  `OpenRegionMap` · 가방의 타운맵·나무열매·물뿌리개·퇴비·케이스 알림(`bd610e5`).
+- **다음** — 2단계 나머지: 필드 기술 넷(달콤한향기 = 꿀 · 순간이동 · 구멍파기 · 우유마시기/알낳기 — 원작 `field_move_tasks.c:707-880` ·
+  `ov5_021F101C.c` · `ov5_021F007C.c:422`), 자전거길, 승강기 불빛, REPAIR §15·§16. 그 뒤 게임 안에서 한 번에 걸어 잰다
+  (키우미집 · 책장 · 벽 지도 · 나무열매 심기).
+- 프런티어 넷의 원작 규칙 메모는 이 문서의 5단계 표와 `docs/orders/FRONTIER_RULES_20260928.md`(디컴프 줄 번호째 적은 원작 규칙)에 있다.
+
 ## 0. 조사가 드러낸 것 — 지금 ✅인데 틀린 줄
 
 - **PARITY §3.3 키우미집** — 맡길 때 파티 화면이 안 열리고(`OpenPartyMenuForDaycare` · `GetDayCarePartyMenuResult` · `SetMonSummary` · `GetMonPartySlot` 없음) **늘 맨 앞 마리를 가져간다.** 이름 칸 다섯(`BufferDaycareMonNicknames` ×3 · `BufferDaycareNicknameLevelGender` ×2)도 빈다.
