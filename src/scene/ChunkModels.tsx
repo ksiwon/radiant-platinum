@@ -987,7 +987,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
            * ⚠️ **맡았다고 다 눕혀 두지 않는다.** `hold`에 든 사각형은 세우기에서
            * 빠진다 — 대체물이 그 자리에 서기 때문이다. 그런데 `geometry: 'original'`
            * 레시피는 대체물을 안 만들고 **원작처럼 세워야** 하는 것들이라
-           * (자전거 거치대·금빛 기둥·다크펫 그림) `hold`에서 뺀다.
+           * (자전거 거치대·금빛 기둥·해골몽 그림) `hold`에서 뺀다.
            * 덩이(`plateLumps`)에서는 `claimed`로 이미 빠져 있다
            */
           const stood = vp === null ? undefined : quadStarts(mesh, vp.plan.standOffsets)

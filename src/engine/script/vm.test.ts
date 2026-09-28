@@ -62,7 +62,6 @@ maybe('스크립트 VM', () => {
   const items: { pocket?: number }[] = existsSync(ITEMS_FILE)
     ? JSON.parse(readFileSync(ITEMS_FILE, 'utf8')).items
     : []
-  let money = 3000
 
   /**
    * 훑을 때 쓰는 가방. 진입점마다 새로 만든다.
@@ -73,6 +72,9 @@ maybe('스크립트 VM', () => {
    */
   const sweepBag = (): FieldServices => {
     let pockets = emptyBag()
+    // ⚠️ **돈도 진입점마다 새로 센다.** 한때 파일 전체가 3,000원 하나를 나눠 써서, 앞 시험이 얼마를 썼느냐에 따라
+    // 뒤 시험이 닿는 갈래가 달라졌다 — 같은 시험이 혼자 돌 때와 같이 돌 때 답이 갈렸다(`AddToGameRecord`)
+    let money = 3000
     const at = (item: number): number => items[item]?.pocket ?? 0
     return {
       bag: {
@@ -611,8 +613,6 @@ const IDLE_COMMANDS = [
   // 가지로 간다 — 맡긴 마리가 있어야 열리는 쪽에 이 여덟이 있다
   // (opcode 순서대로 늘어놓는다)
   'CountPartyEggs',
-  // 값을 변수로 받아 돈을 깎는 쪽은 육성가와 상점 너머다
-  'RemoveMoney2',
   'MoveMonToPartyFromDaycareSlot',
   'ResetDaycarePersonalityAndStepCounter',
   'GiveEggFromDaycare',
@@ -665,9 +665,6 @@ const IDLE_COMMANDS = [
   // 쪽으로 빠진다. 셋 다 실제로 도는 것은 `script/fossil.test.ts`가 본다
   'GetFossilCount', 'GetSpeciesFromFossil', 'FindFossilAtThreshold',
   'CountPartyMonsBelowLevelThreshold',
-  // ⚠️ **대습초원 전망대는 안 만든다** (PARITY §7.7). 들판시티 전망대 안이라
-  // 훑기가 그 방까지 못 들어간다 — 길잡이등대 쌍안경 쪽은 밟힌다
-  'StartGreatMarshLookout',
   'FindPartySlotWithNature',
   // 상호교류광장 둘은 **따라다니는 마리가 있어야** 닿는다 (PARITY §7.8) — 훑기는
   // 파티가 비어 있어서 광장에 들어가는 갈래 자체가 안 열린다
@@ -775,10 +772,6 @@ const IDLE_COMMANDS = [
   'ResetDistortionWorldPersistedCameraAngles',
   'CheckPartyHasHeldItem',
   'LogLinkInfoInWiFiHistory',
-  // 기록에 **얼마를 더하는** 판 (PARITY §7.5). 열세 자리가 다 안 닿는 갈래
-  // 안쪽이라 안 밟힌다 — 하나씩 올리는 판(`IncrementGameRecord`)과 큰 값을
-  // 더하는 판(`…BigValue`)은 밟힌다
-  'AddToGameRecord',
   // 위와 같은 자리다 — 전당 항목을 고른 **뒤에** 나오는 줄이라 더 못 닿는다
   'CheckIsHallOfFameCorrupted',
 ]

@@ -139,6 +139,24 @@ describe('낡으면 낡은 그룹만', () => {
     expect(plan.regenerate).toEqual([])
   })
 
+  it('옛 판을 받아 주는 그룹은 낡았어도 롬을 다시 안 묻는다 — 포켓몬 그림 1판', () => {
+    const plan = planAssets({ pokegra: { format: 1 }, moves: { format: 1 } })
+    expect(plan.lagging).toEqual([{ group: 'pokegra', from: 1, to: groupFormat('pokegra') }])
+    expect(plan.regenerate).toEqual([])
+    expect(needsSource(plan)).toBe(false)
+    // 받아 주지 않는 판은 여전히 원본이 있어야 한다
+    expect(needsSource(planAssets({ pokegra: { format: 99 } }))).toBe(true)
+  })
+
+  it('옛 판 포켓몬 그림을 든 설치본은 그대로 뜬다', async () => {
+    const s = await install()
+    const manifest = await read(s)
+    // 필수 그룹이라 가짜 설치에도 늘 있다 (`required.ts`)
+    manifest.groups.pokegra!.format = 1
+    await s.root.write(INSTALL_FILE, encoder.encode(JSON.stringify(manifest)))
+    expect(await installReady(s.root)).not.toBeNull()
+  })
+
   it('낡아서 원본이 필요하면 설치본을 그대로 못 쓴다', async () => {
     const s = await install()
     const manifest = await read(s)

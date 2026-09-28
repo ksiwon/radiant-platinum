@@ -496,7 +496,7 @@ function survey(split: Split, paint?: (group: number) => boolean): {
       //
       // `standCutouts`가 세워 놓은 판(울타리·표지판·장식)도 세로면이라 여기
       // 걸린다. 그중에서 베끼면 **벽이 그 장식으로 도배된다** — 연고시티 체육관
-      // 문 방에서 다크펫 그림(`yomawaru.1`)이 방 벽 재질로 뽑혀 나왔다.
+      // 문 방에서 해골몽 그림(`yomawaru.1`)이 방 벽 재질로 뽑혀 나왔다.
       // 벽은 속이 찬 그림이다
       if (paint?.(group) === false) continue
       tris.push({

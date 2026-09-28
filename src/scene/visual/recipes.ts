@@ -155,7 +155,7 @@ const STANDING_PROPS: readonly VisualRecipe[] = [
       kind: 'chunk', tex: 'yomawaru.1', pal: 'yomawaru2',
       regionHashes: ['e1d70931'], within: [0, 0, 16, 32], leanDeg: [44.8, 45.2],
     }],
-    provenance: '다크펫 그림. 여럿이 이어진 것은 이미 담으로 남고 홀로 선 것만 덩이가 됐다',
+    provenance: '해골몽 그림. 여럿이 이어진 것은 이미 담으로 남고 홀로 선 것만 덩이가 됐다',
   },
   {
     ...STAND_SHAPE,

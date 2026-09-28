@@ -72,7 +72,7 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   trainers: 2,
   /**
    * 2 — 페라페의 **둘째 컷**(`441_front2.png`)이 붙는다 (`pokegra.SECOND_CUT_SPECIES`). 수다를 녹음할 때
-   * 미리보기 창이 두 컷을 번갈아 보인다 — 안 올리면 이미 깔린 사람은 첫 컷에 멈춰 있다
+   * 미리보기 창이 두 컷을 번갈아 보인다. ⚠️ **1도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 첫 컷에 멈춰 있을 뿐이다
    */
   pokegra: 2,
   /**
@@ -253,6 +253,27 @@ export function groupFormat(name: string): number {
 }
 
 /**
+ * **옛 판이라도 그대로 쓰는** 판 — 새 판이 더한 것이 없어도 게임이 제대로 도는 그룹.
+ *
+ * 판을 올리면 이미 깔린 사람은 **롬을 다시 골라야** 한다(`needsSource` → 부팅의 `outdated`). 그 값이 늘 맞는
+ * 것은 아니다: 포켓몬 그림 2판이 더한 것은 수다 녹음 창의 53프레임짜리 움직임 한 장이고, 없으면 첫 컷에
+ * 멈춰 있을 뿐이다. 실측으로 배포본(`origin/master`)과 견주면 올라간 판이 **이것 하나**라, 그대로 두면
+ * 모든 사람이 그 한 장 때문에 롬을 다시 고른다.
+ *
+ * 그래서 여기 적은 옛 판은 **낡았지만 쓸 수 있는 것**으로 센다(`planAssets`의 `lagging`). 롬을 다시 물을
+ * 까닭이 따로 생기면 그때 같이 다시 굽는다 — 설치기가 판이 다른 그룹을 다시 만들기 때문이다
+ * (`installer.resumableGroups`). 새로 까는 사람은 처음부터 새 판을 받는다
+ */
+const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
+  pokegra: [1],
+}
+
+/** 이 판의 그 그룹을 그대로 써도 되는가 */
+function acceptsFormat(group: string, from: number): boolean {
+  return from === groupFormat(group) || GROUP_ACCEPTS[group]?.includes(from) === true
+}
+
+/**
  * 옛 판 산출물을 **원본 없이** 지금 판으로 옮기는 함수.
  *
  * 원본이 필요하면 migration이 아니다 — 그건 재생성이다. 그 구별이 이 계약의
@@ -278,6 +299,8 @@ export function migrationFor(group: string, from: number): Migration | null {
 interface AssetPlan {
   /** 그대로 쓴다 */
   reuse: string[]
+  /** 낡았지만 그대로 쓴다 — 롬을 다시 고를 때 같이 굽는다 (`GROUP_ACCEPTS`) */
+  lagging: { group: string, from: number, to: number }[]
   /** 원본 없이 옮길 수 있다 */
   migrate: { group: string, from: number }[]
   /** 원본을 다시 골라야 한다 */
@@ -291,12 +314,13 @@ interface AssetPlan {
  * 하나가 낡았다고 나머지를 버리지 않는다
  */
 export function planAssets(installed: Readonly<Record<string, { format?: number }>>): AssetPlan {
-  const plan: AssetPlan = { reuse: [], migrate: [], regenerate: [] }
+  const plan: AssetPlan = { reuse: [], lagging: [], migrate: [], regenerate: [] }
   for (const [group, record] of Object.entries(installed)) {
     const from = record.format ?? 1
     const to = groupFormat(group)
     if (from === to) { plan.reuse.push(group); continue }
     if (migrationFor(group, from)) { plan.migrate.push({ group, from }); continue }
+    if (acceptsFormat(group, from)) { plan.lagging.push({ group, from, to }); continue }
     plan.regenerate.push({ group, from, to })
   }
   return plan
