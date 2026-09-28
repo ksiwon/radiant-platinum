@@ -139,7 +139,7 @@ export function MessageBox() {
           ))}
         </div>
       ))}
-      {view.text.waiting && <span className={css.arrow} aria-hidden>▼</span>}
+      {view.text.waiting && view.menu === null && <span className={css.arrow} aria-hidden>▼</span>}
     </>
   )
   return (

@@ -137,6 +137,12 @@ export const GROUPS = [
     match: oneOf('data/hallOfFameBg.png'),
   },
   {
+    // 포획 강좌의 가리키는 손 (`battle/indicator.c`). 202번도로에서 한 번 받는다
+    name: 'pointerHand',
+    make: 'pnpm extract:pointerHand',
+    match: oneOf('data/pointerHand.png'),
+  },
+  {
     // 게임코너 슬롯머신 (PARITY §7.6). 기계 앞에 앉을 때만 받는다
     name: 'slots',
     make: 'pnpm extract:slots',

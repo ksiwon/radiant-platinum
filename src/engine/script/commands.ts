@@ -347,7 +347,21 @@ on('OpenMessage', (ctx) => {
   return false
 })
 
+/**
+ * ⚠️ **읽기 전에 닫지 않는다.** 원작 `Message`는 끝에서 안 기다리므로(`world.printed`) `` 없이 끝난 글 바로 뒤의
+ * `CloseMessage`는 원작에서도 곧바로 닫는다 — 다만 원작은 글이 한 자씩 찍히는 동안 보이고, 우리는 쪽을 한 번에
+ * 올려서 한 프레임도 안 보인다. 그래서 끝 기다림이 아직 걸려 있으면 그 누름을 받고 닫는다. 원작 대본에서
+ * 그런 자리는 몇 곳뿐이다 — `CloseMessage` 앞 글 560 중 557이 ``로 끝나 이미 누름을 받았다
+ */
 on('CloseMessage', (ctx) => {
+  if (ctx.host.world.printer?.waiting === 'end') {
+    ctx.pause((c) => {
+      if (c.host.world.printer?.waiting === 'end') return false
+      c.host.world.closeBox(true)
+      return true
+    })
+    return true
+  }
   ctx.host.world.closeBox(true)
   return false
 })
@@ -3785,6 +3799,17 @@ on('CheckPartyPokerus', (ctx) => {
   for (let i = 0; party && i < party.count(); i++) if (party.pokerus(i) !== 0) { any = true; break }
   ctx.host.vars.set(dest, any ? 1 : 0)
   return false
+})
+
+/**
+ * 꽃집의 장식 교환 (`ScrCmd_ShowAccessoryShop` · `overlay007/accessory_shop.c`). 인자가 없다 — 가게가 닫힐 때까지 선다
+ */
+on('ShowAccessoryShop', (ctx) => {
+  const shop = ctx.host.world.services.accessoryShop
+  if (!shop) return false
+  shop.open()
+  ctx.pause((c) => c.host.world.services.accessoryShop?.busy() !== true)
+  return true
 })
 
 /** `VAR_CONSECUTIVE_BONUS_ROUND_WINS` — 슬롯머신이 올린다 */

@@ -440,8 +440,10 @@ handOff('시원이 건넨 것이 가방에 들어간다', () => {
     for (let frame = 0; frame < 600; frame++) {
       worldState.input.interact = frame % 4 === 0
       scriptSystem.fixedUpdate()
+      // 마지막 쪽이 **보였을 때** 적는다 — 원작 `Message`는 끝에서 누름을 안 받으므로(`world.printed`)
+      // 누름까지 받기를 기다리면 뒤따르는 `CloseMessage`가 같은 프레임에 창을 비워 그 줄을 놓친다
       const printer = fieldScripts.world?.printer
-      if (printer?.finished === true) {
+      if (printer && fieldScripts.world?.printed === true) {
         const line = printedText(printer)
         if (line !== '' && line !== said[said.length - 1]) said.push(line)
       }

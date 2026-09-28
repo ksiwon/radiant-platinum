@@ -733,6 +733,12 @@ export interface FieldServices {
    * 때까지 선다. 우리는 그 안을 네이티브 흐름으로 만들었다
    * (`state/factoryStore`), 그래서 필드 쪽 약속은 이 둘뿐이다
    */
+  /** 꽃향기마을 꽃집의 장식 교환 (`ScrCmd_ShowAccessoryShop` · PARITY §7.16) */
+  accessoryShop?: {
+    open: () => void
+    /** 가게가 떠 있는가. 참인 동안 스크립트가 선다 */
+    busy: () => boolean
+  }
   /** 게임코너 슬롯머신 (`ScrCmd_267` · PARITY §7.6) */
   slots?: {
     /** 기계 번호 0~11 */
@@ -1390,9 +1396,17 @@ export class FieldWorld {
     this.printer?.finish()
   }
 
-  /** `ScriptContext_WaitForFinishedPrinting` */
+  /**
+   * `ScriptContext_WaitForFinishedPrinting` — **마지막 쪽이 다 보였는가.**
+   *
+   * ⚠️ **원작 `Message`는 글 끝에서 누름을 안 받는다.** 누름은 글 안의 ``(쪽 넘김)이나 뒤따르는
+   * `WaitButton`이 받는다. 원작 대본이 그렇게 짜여 있다 — `CloseMessage` 앞 글 560 중 557이 ``로 끝나고,
+   * `WaitButton`(1,020) · 예/아니오(323) · 목록(71) 앞 글은 ``이 없다. 끝에서 한 번 더 기다리면 질문 뒤에
+   * 메뉴가 안 뜨고 ▼가 먼저 뜨며, `WaitTime` · `PlayFanfare`가 누를 때까지 밀리고, `WaitABPress`는 두 번 눌러야
+   * 한다. 그래서 끝 기다림(`'end'`)에 닿으면 곧바로 참이다 — 그 누름은 인쇄기가 창을 닫을 때까지 들고 있다
+   */
   get printed(): boolean {
-    return this.printer === null || this.printer.finished
+    return this.printer === null || this.printer.finished || this.printer.waiting === 'end'
   }
 
   openBox(): void {
@@ -1459,9 +1473,9 @@ export class FieldWorld {
    * 그것은 스크립트 뱅크에도 메뉴 뱅크에도 없고 기술 이름표에 있다 —
    * 원작도 그 자리에서 로더를 갈아 끼운다 (`MoveTutorManager_SetMessageLoader`)
    */
-  addMenuEntryText(text: string, value: number): void {
+  addMenuEntryText(text: string, value: number, alt: string | null = null): void {
     if (this.builder === null) return
-    this.builder.entries.push({ text, value, alt: null })
+    this.builder.entries.push({ text, value, alt })
   }
 
   /** `ShowMenu` · `ShowListMenu` 계열. 여기서부터 답을 기다린다 */

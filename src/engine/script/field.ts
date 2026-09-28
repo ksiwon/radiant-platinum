@@ -28,6 +28,7 @@ import {
 import { disguiseOf, setAmbientTables } from '../actor/ambient'
 import { frameTableScript, INIT_SCRIPT, parseInitScripts, type InitScripts } from './initScripts'
 import { fieldBgm } from '../audio/songs'
+import { SFX } from '../audio/sfx'
 import { distortionBridge } from '../world/distortion'
 import { HONEY_TREE_MODEL } from '../world/honeyTree'
 import {
@@ -323,7 +324,13 @@ export function scriptBusy(): boolean {
 /** 우리 글 끝에 붙는 메뉴 — 글이 다 찍히면 뜬다 (`askOurs`) */
 type OurMenu =
   | { kind: 'yesno', cursor: number }
-  | { kind: 'list', entries: readonly { text: string, value: number }[], cursor: number, canCancel: boolean }
+  | {
+    kind: 'list'
+    /** `alt`은 커서를 올린 줄의 설명 창이다 (`AddListMenuEntry`의 셋째 인자와 같은 자리) */
+    entries: readonly { text: string, value: number, alt?: string | null }[]
+    cursor: number
+    canCancel: boolean
+  }
 
 /** 지금 도는 우리 대사. 끝나면 `after`가 한 번 돈다 — 메뉴가 붙었으면 고른 값을 받는다 */
 let native: {
@@ -390,6 +397,9 @@ function stepOurText(world: FieldWorld): void {
     now.after?.(choice)
     return
   }
+  // ⚠️ **쪽을 넘긴 누름으로 창까지 닫지 않는다.** 마지막 쪽은 `printed`가 곧바로 참이라(원작 `Message`와 같다),
+  // 이번 프레임의 누름이 앞 쪽을 넘긴 것이면 그 쪽을 한 번은 보여 줘야 한다
+  const shown = world.printed
   world.tick()
   if (!world.printed) return
   // 메뉴가 붙은 글은 **누름을 안 기다린다** — 다 찍히면 곧바로 메뉴가 뜬다
@@ -401,13 +411,13 @@ function stepOurText(world: FieldWorld): void {
       world.menuCursor = menu.cursor
     } else {
       world.initMenu(OUR_MENU_VAR, menu.cursor, menu.canCancel, 'local')
-      for (const entry of menu.entries) world.addMenuEntryText(entry.text, entry.value)
+      for (const entry of menu.entries) world.addMenuEntryText(entry.text, entry.value, entry.alt ?? null)
       world.showMenu('list')
     }
     now.opened = true
     return
   }
-  if (!frameInput.pressed) return
+  if (!shown || !frameInput.pressed) return
   native = null
   world.closeBox(true)
   now?.after?.(0)
@@ -960,18 +970,25 @@ function tryStartScripts(): void {
  * 메뉴 커서.
  *
  * 예/아니오는 B가 곧바로 "아니오"다 — 원작도 B로 물러난다. 목록 메뉴의 B는
- * 취소(−2)고, 그마저 막힌 메뉴가 있어서 세계가 걸러낸다
+ * 취소(−2)고, 그마저 막힌 메뉴가 있어서 세계가 걸러낸다.
+ *
+ * 소리는 `SEQ_SE_CONFIRM` 하나다 — 커서가 **실제로 움직였을 때**, 고를 때, B로 물러날 때
+ * (`Menu_ProcessInput` · `FieldMenuManager_ListMenuTask`). 막힌 B와 끝에 닿아 안 움직인 커서는 조용하다
  */
 function chooseFromMenu(world: FieldWorld): void {
+  const beep = (): void => { fieldScripts.services.sound?.playEffect(SFX.MENU) }
+  const before = world.menuCursor
   if (edges.up) world.moveCursor(-1)
   if (edges.down) world.moveCursor(1)
+  if (world.menuCursor !== before) beep()
   if (world.menu?.kind === 'yesno') {
-    if (edges.b) world.choose(MENU_NO)
-    else if (edges.a) world.choose(world.menuCursor)
+    if (edges.b) { beep(); world.choose(MENU_NO) } else if (edges.a) { beep(); world.choose(world.menuCursor) }
     return
   }
-  if (edges.b) world.choose(MENU_CANCEL)
-  else if (edges.a) world.chooseAtCursor()
+  if (edges.b) {
+    if (world.menu?.canCancel === true) beep()
+    world.choose(MENU_CANCEL)
+  } else if (edges.a) { beep(); world.chooseAtCursor() }
 }
 
 function step(ctx: ScriptContext, world: FieldWorld): void {

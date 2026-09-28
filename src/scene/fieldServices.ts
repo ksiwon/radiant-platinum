@@ -38,6 +38,7 @@ import { useSlotStore } from '../state/slotStore'
 import { slotSetting } from '../engine/gameCorner/slotMachine'
 import { VAR_CONSECUTIVE_BONUS_ROUND_WINS } from '../engine/script/commands'
 import { factorySceneRunning, openFactoryScene } from './factoryScene'
+import { accessoryShopRunning, openAccessoryShop } from './accessoryShop'
 import { primeRegisteredItem } from './registeredItem'
 import {
   addRecord, addTrainerScore, RECORD_SLOT_BONUS_ROUNDS, SCORE_SLOT_MACHINE,
@@ -1302,6 +1303,10 @@ const services: FieldServices = {
    * 일어날 때 코인을 옮기고, 이번에 이은 삐삐 보너스가 적힌 것보다 길면 변수에 적고, 보너스 판 수를
    * `RECORD_UNK_014`에 더한다 (`ov101_021D0F3C` · `sub_0203E35C`)
    */
+  accessoryShop: {
+    open: openAccessoryShop,
+    busy: accessoryShopRunning,
+  },
   slots: {
     open: (machine) => {
       const save = useSaveStore.getState()

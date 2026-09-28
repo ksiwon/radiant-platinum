@@ -28,6 +28,7 @@ import { convertBagSprite } from './bagSprite'
 import { convertUnownFont } from './unownFont'
 import { convertSlots } from './slots'
 import { convertHallOfFameBg } from './hallOfFameBg'
+import { convertPointerHand } from './pointerHand'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
 import { convertParticles } from './particles'
@@ -277,6 +278,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/hallOfFameBg.png'],
     converter: 1,
     convert: convertHallOfFameBg,
+  },
+  {
+    // 가리키는 손 (포획 강좌) — `battle/indicator.c`
+    name: 'pointerHand',
+    outputs: ['data/pointerHand.png'],
+    converter: 1,
+    convert: convertPointerHand,
   },
   {
     // 게임코너 슬롯머신 (PARITY §7.6) — 위 · 아래 화면과 스프라이트 묶음 열일곱

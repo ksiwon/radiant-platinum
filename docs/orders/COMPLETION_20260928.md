@@ -64,7 +64,8 @@
 - **명예의 전당 배경** — 끝났다. 창 · 층 · 조명 · 색종이까지 원작 식으로 (PARITY §8.11 · `node tools/e2e/_hallOfFame.mjs` 여섯 ✓).
 - **포획 강좌** (`StartCatchingTutorial` · 202번도로) (L).
 - **슬롯머신** — 끝났다 (PARITY §7.6 · `node tools/e2e/_slots.mjs` 셋 ✓).
-- **액세서리 가게**(`ShowAccessoryShop`) · **별장 가구와 오르골** · **도서관 TV 뉴스**(`StartLibraryTV`) · **창기둥 → 깨어진 세계 워프 연출**(`DoDWWarp` 등) · **벽지 암호**(낱말 고르기 재사용) (각 M).
+- **액세서리 가게** — 끝났다 (PARITY §7.16). 필드 메뉴에 원작 소리(`SEQ_SE_CONFIRM`)도 붙었다.
+- **별장 가구와 오르골** · **도서관 TV 뉴스**(`StartLibraryTV`) · **창기둥 → 깨어진 세계 워프 연출**(`DoDWWarp` 등) · **벽지 암호**(낱말 고르기 재사용) (각 M).
 
 ## 4단계 — 큰 연출 (L · 합 약 40시간)
 
