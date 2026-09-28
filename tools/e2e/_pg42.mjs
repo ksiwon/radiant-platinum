@@ -7,6 +7,11 @@
 //   dex   마박사 연구소 — 신오 210을 다 보면 전국도감 · 포켓트레
 //   legends 전설 열둘 — 조건을 세우고 곁에서 A → 제 종족·레벨의 배틀이 열리나(크레세리아·새는 배회 · 깃발)
 //   ground 배틀그라운드 — 오늘의 넷이 서나(관장 겉모습) → 첫째에게 말을 걸어 재대결이 열리나
+//   fight  배틀에어리어 — 배에서 내리면 라이벌과 둘이서 전진·대엽과 태그 배틀이 열리나
+//   charon 천관산 셋째 방 — 찬미가 잡히고 214 · 방 상태가 서나
+//   rematch 사천왕 — 214가 서면 충호가 재대결 팀으로 나오나
+//   temple 설원 신전 B5F — 얼음을 미끄러져 레지기가스 앞까지 가나
+//   rotom  로토무의 방 — 맨 로토무 하나로 가전에 들어가나(파티 화면 없이) · 든 뒤에는 되돌리기가 뜨나
 //
 // ⚠️ **조건은 개발 모듈로 세운다** — 전국도감 · 배포 표식 · 편지 · 전당등록. 걸어서 거기까지 가는 판이 아니다(그건 다음 일).
 // 대사·이름·걸음·배틀은 전부 화면과 키다
@@ -403,6 +408,186 @@ try {
       await page.screenshot({ path: `${OUT}/legend-${String(n).padStart(2, '0')}.png` })
     }
     log('합계', `${String(table.filter((t) => t.ok).length)}/${String(table.length)}`)
+  }
+
+  // 여럿을 쉼표로 이으면(`--case=fight,rotom`) 한 서버에서 차례로 돈다 — 둘째부터는 타이틀로 다시 들어간다
+  const CASES = CASE.split(',')
+  let turns = 0
+  const turn = async (name) => {
+    if (!CASES.includes(name)) return false
+    if (turns++ > 0) await enterPlay()
+    console.log(`\n  ── ${name}`)
+    return true
+  }
+  /** 뛴 뒤 그 칸에 세운다 — 지나친 칸의 트리거를 안 친다 */
+  const standAt = async (x, z) => {
+    await page.evaluate(async ([tx, tz]) => {
+      const st = (await import('/src/state/worldState.ts')).worldState
+      st.player.position.set(tx + 0.5, st.player.position.y, tz + 0.5)
+      st.player.prevPosition.copy(st.player.position)
+      ;(await import('/src/engine/script/field.ts')).resetTriggerTile()
+    }, [x, z])
+    await page.waitForTimeout(800)
+  }
+  /** 대사를 넘기며 배틀이 열릴 때까지 */
+  const untilBattle = async (n = 60) => {
+    for (let i = 0; i < n; i++) {
+      if (await page.evaluate(() => document.documentElement.dataset.scene === 'battle')) return true
+      await tap('Space', 450)
+    }
+    return false
+  }
+  const battleInfo = () => page.evaluate(async () => {
+    const bs = (await import('/src/state/battleStore.ts')).useBattleStore.getState()
+    const a = bs.view?.active ?? {}
+    return {
+      scene: document.documentElement.dataset.scene, kind: bs.kind, doubles: bs.doubles,
+      foes: bs.foes.map((t) => t.id), partner: bs.partner?.id ?? null,
+      out: Object.entries(a).map(([k, m]) => [k, m?.species, m?.level]),
+    }
+  })
+  const vf = (vars, flags) => page.evaluate(async ([vs, fs]) => {
+    const v = (await import('/src/engine/script/field.ts')).fieldScripts.vars
+    return { vars: vs.map((id) => [id, v.get(id)]), flags: fs.map((id) => [id, v.checkFlag(id)]) }
+  }, [vars, flags])
+  const setFlags = (set, clear) => page.evaluate(async ([s, c]) => {
+    const f = await import('/src/engine/script/field.ts')
+    const save = (await import('/src/state/saveStore.ts')).useSaveStore
+    const flags = Uint8Array.from(save.getState().flags)
+    for (const id of s) { f.forceFlag(id); flags[id >> 3] |= 1 << (id & 7) }
+    for (const id of c) { f.fieldScripts.vars.clearFlag(id); flags[id >> 3] &= ~(1 << (id & 7)) }
+    save.setState({ flags })
+  }, [set, clear])
+
+  if (await turn('fight')) {
+    // 배틀에어리어 — 배에서 내리면 라이벌이 기다리고, 라이벌 + 주인공 대 전진 + 대엽의 태그 배틀(fight_area.s · snowpoint_city.s:210)
+    await setFlags([], [467, 468, 482])
+    await warp('siwon', 188, 623, 434, 0, { postGame: true, nationalDex: true, story: [[16513, 0], [16542, 0]] })
+    log('내린 자리', await now())
+    const opened = await untilBattle(80)
+    await page.waitForTimeout(4000)
+    const b = await battleInfo()
+    // 원작 — 상대 921(전진) · 922(대엽), 편은 스타팅에 따라 923~925
+    log(`${opened && b.foes.includes(921) && b.foes.includes(922) && b.partner !== null ? '✅' : '❌'} 태그 배틀`, b)
+    await page.screenshot({ path: `${OUT}/fight-tag.png` })
+  }
+  if (await turn('charon')) {
+    // 천관산 셋째 방 — 먼저 들어선 찬미를 국제경찰이 잡는다(stark_mountain_room_3.s). 끝나면 214 · 16542=1 · 16544=2
+    await setFlags([], [475, 476, 478, 563, 214])
+    await warp('siwon', 265, 7, 16, 0, { postGame: true, nationalDex: true, story: [[16542, 0]] })
+    log('선 사람', await page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
+      .filter((a) => a.visible).map((a) => [Math.round(a.x), Math.round(a.z), a.gfx])))
+    await page.keyboard.down('ArrowUp')
+    for (let i = 0; i < 30; i++) { await page.waitForTimeout(200); if ((await now()).script === '1') break }
+    await page.keyboard.up('ArrowUp')
+    log('걸은 뒤', await now())
+    await page.screenshot({ path: `${OUT}/charon-start.png` })
+    for (let i = 0; i < 150; i++) {
+      const at = await now()
+      if (i > 10 && !at.talk && at.script !== '1') break
+      if (at.scene === 'battle') { log('배틀이 열렸다', await battleInfo()); break }
+      await tap('Space', 450)
+    }
+    const after = await vf([16542, 16544], [214])
+    log(`${after.flags[0][1] && after.vars[0][1] === 1 && after.vars[1][1] === 2 ? '✅' : '❌'} 찬미 뒤`, after)
+    await page.screenshot({ path: `${OUT}/charon-after.png` })
+  }
+  if (await turn('rematch')) {
+    // 사천왕 재대결 — 214가 서면 방마다 `_REMATCH` 트레이너(pokemon_league_*.s). 들어서면 두 칸 북쪽으로 걷는다
+    await setFlags([214], [176])
+    await warp('siwon', 177, 8, 11, 0, { postGame: true, nationalDex: true })
+    await clear(20)
+    log('들어선 뒤', await now())
+    await page.keyboard.down('ArrowUp')
+    for (let i = 0; i < 40; i++) { await page.waitForTimeout(200); if ((await now()).z <= 6) break }
+    await page.keyboard.up('ArrowUp')
+    await tap('ArrowUp', 300, 90)
+    log('충호 앞', await now())
+    await tap('Space', 400)
+    const opened = await untilBattle(40)
+    await page.waitForTimeout(4000)
+    const b = await battleInfo()
+    // 원작 — 충호 재대결 866 · 선두 메가자리 Lv65
+    log(`${opened && b.foes[0] === 866 ? '✅' : '❌'} 충호 재대결`, b)
+    await page.screenshot({ path: `${OUT}/rematch-aaron.png` })
+  }
+  if (await turn('temple')) {
+    // 설원 신전 B5F — 얼음을 미끄러져 레지기가스 앞까지(snowpoint_temple_b5f.s). 길은 격자로 찾았고 높이는 안 봤다 — 멈춘 자리를 적는다
+    await setFlags([282], [579, 283, 142])
+    await warp('siwon', 283, 8, 4, 0, { postGame: true, nationalDex: true })
+    await clear(10)
+    const PATH = [['ArrowLeft', 7, 4], ['ArrowDown', 7, 17], ['ArrowDown', 7, 18], ['ArrowRight', 16, 18], ['ArrowUp', 16, 10],
+      ['ArrowLeft', 4, 10], ['ArrowDown', 4, 16], ['ArrowRight', 11, 16], ['ArrowUp', 11, 15], ['ArrowUp', 11, 14], ['ArrowUp', 11, 13]]
+    let ok = true
+    for (const [key, wx, wz] of PATH) {
+      await page.keyboard.down(key); await page.waitForTimeout(90); await page.keyboard.up(key)
+      // 미끄러짐이 멈출 때까지 — 같은 칸이 여섯 번 이어지면 멈춘 것이다
+      let last = ''; let same = 0
+      for (let i = 0; i < 80 && same < 6; i++) {
+        await page.waitForTimeout(120)
+        const at = await now(); const k = `${String(at.x)},${String(at.z)}`
+        same = k === last ? same + 1 : 0; last = k
+      }
+      const hit = last === `${String(wx)},${String(wz)}`
+      ok &&= hit
+      log(`${hit ? '·' : '✗'} ${key}`, `${last} (격자로 본 곳 ${String(wx)},${String(wz)})`)
+      if (!hit) break
+    }
+    await page.screenshot({ path: `${OUT}/temple-ice.png` })
+    if (ok) {
+      await tap('ArrowUp', 300, 90)
+      await tap('Space', 400)
+      const opened = await untilBattle(40)
+      await page.waitForTimeout(3500)
+      const b = await battleInfo()
+      log(`${opened && b.out.some((o) => o[1] === 486) ? '✅' : '❌'} 얼음 끝 레지기가스`, b)
+      await page.screenshot({ path: `${OUT}/temple-regigigas.png` })
+    }
+  }
+  if (await turn('rotom')) {
+    // 로토무의 방 (571) — 맨 로토무 하나로 전자레인지 → 예/아니오만 뜨고, 파티 화면 없이 그 로토무가 들어간다(REPAIR §140)
+    await setFlags([129], [])
+    await warp('siwon', 571, 4, 7, 0, { postGame: true, nationalDex: true, items: [[467, 1]], story: [[16454, 0x1103]] })
+    await clear(20)
+    await page.evaluate(async () => {
+      const save = await import('/src/state/saveStore.ts')
+      const { party } = save.useSaveStore.getState()
+      save.useSaveStore.setState({ party: [...party.slice(0, 5), { ...party[0], species: 479, form: 0, isEgg: false, nickname: null }] })
+    })
+    const mon = () => page.evaluate(async () => {
+      const m = (await import('/src/state/saveStore.ts')).useSaveStore.getState().party.find((p) => p.species === 479)
+      return m ? { form: m.form, moves: m.moves.map((s) => s.move) } : null
+    })
+    log('들고 간 로토무', await mon())
+    const menus = async (label) => {
+      const seen = []
+      await tap('ArrowUp', 300, 90)
+      await tap('Space', 400)
+      for (let i = 0; i < 40; i++) {
+        const at = await now()
+        // 스크립트 메뉴는 `FieldWorld.menu`에 선다(예/아니오도) — 칸 수가 곧 되돌리기가 붙었는가다
+        const sm = await page.evaluate(async () => {
+          const m = (await import('/src/engine/script/field.ts')).fieldScripts.world?.menu ?? null
+          return m === null ? null : `${m.kind}/${String(m.entries.length)}`
+        })
+        if (sm !== null) seen.push(`script:${sm}`)
+        if (at.menu !== undefined) seen.push(at.menu)
+        if (i > 4 && !at.talk && at.script !== '1' && at.menu === undefined) break
+        await tap('Space', 450)
+      }
+      log(`${label} — 지나간 메뉴`, [...new Set(seen)])
+      return seen
+    }
+    await standAt(4, 7)
+    const first = await menus('맨 로토무로 전자레인지')
+    const m1 = await mon()
+    // 원작 — 폼 1(히트) · 오버히트(315)를 안다 · 예/아니오 둘만 떴고 파티 화면(스크립트 메뉴가 아닌 화면)이 안 떴다
+    const onlyYesNo = first.every((s) => s === 'script:yesno/2')
+    log(`${m1?.form === 1 && m1.moves.includes(315) && onlyYesNo ? '✅' : '❌'} 들어갔다`, m1)
+    await page.screenshot({ path: `${OUT}/rotom-heat.png` })
+    await standAt(4, 7)
+    await menus('히트 로토무로 다시 전자레인지(되돌리기 메뉴가 떠야 한다)')
+    log('그 뒤', { mon: await mon(), ...(await vf([16667], [119])) })
   }
 } catch (e) {
   console.error(`  터졌다 — ${String(e?.stack ?? e).slice(0, 700)}`)
