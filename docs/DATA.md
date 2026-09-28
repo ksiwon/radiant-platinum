@@ -5120,6 +5120,20 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 너비가 0인 자리를 버리면 **110자**가 남는다 — 전각·반각 A~Z와 a~z · ！？ · !? · 공백 둘. 칸마다 글자표로
 풀어 **글자 → 칸**으로 적는다. 대사창이 받는 것이 이미 풀린 글이기 때문이다.
 
+### 2.21c dendou_demo — 명예의 전당 배경
+
+등록 장면(`cutscenes/hall_of_fame.c` 690~703 · 509)의 BG2 · BG3 판이다 (`pnpm extract:hallOfFameBg` ·
+`import/platinum/hallOfFameBg`) → `data/hallOfFameBg.png` 256×576 한 장 — 위에서부터 BG3 판 0 · BG3 판 1 · BG2.
+
+| | |
+|---|---|
+| 자리 | `/graphic/dendou_demo.narc` 다섯 칸 — 0 · 1 · 2 배치(LZ) · 3 타일(LZ, 4bpp · BG2와 BG3가 같이 쓴다) · 4 팔레트 |
+| 판 0 | BG3 — 한 마리씩일 때. 초록 바탕에 가운데 흰 띠 |
+| 판 1 | BG3 — 파티와 주인공일 때(`HallOfFame_State_ShowPartyAndPlayer`가 갈아 끼운다). 빨강 바탕, 아래에 가로줄 |
+| 판 2 | BG2 — 칸 1024개가 전부 타일 0x3F · 팔레트 1 · 색 15(검정)다. 창 안에서만 빠진다 |
+| 팔레트 | ⚠️ **머리는 16줄이라 적고 자료는 3줄(0x60)뿐이다** — 원작도 0x60만 싣는다(`Graphics_LoadPaletteFromOpenNARC(narc, 4, 0, 0, 0x60, …)`). 두 굽는 쪽 모두 줄 수를 자료 길이로 자른다 |
+| 뒤판색 | BG3 두 판의 0번 색 자리에는 팔레트 0의 0번(222 · 189 · 123)을 깐다. BG2는 0번을 뚫는다 |
+
 ### 2.22 tw_arc — 깨어진 세계는 맵 격자가 아니라 **떠 있는 판**이다
 
 `fielddata/tornworld/tw_arc.narc`의 0번이 맵 표고 1~10번이 층마다의 구역이다.

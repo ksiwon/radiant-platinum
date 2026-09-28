@@ -240,7 +240,7 @@ export const POKEDEX_TEXT = {
 
 /** 리포트 흐름 (`common_strings`). 16번은 `{STRVAR_1 3, 0, 1}` — 주인공 이름 + 은/는 */
 export const SAVE_TEXT = {
-  ask: 13, overwrite: 14, writing: 15, done: 16,
+  ask: 13, overwrite: 14, writing: 15, done: 16, failed: 18,
 } as const
 
 /**

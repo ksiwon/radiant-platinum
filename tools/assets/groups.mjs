@@ -131,6 +131,12 @@ export const GROUPS = [
     match: oneOf('data/pokeIcons.json', 'data/pokeIcons.png'),
   },
   {
+    // 명예의 전당 배경 (PARITY §8.11). 전당에 오를 때만 받는다
+    name: 'hallOfFameBg',
+    make: 'pnpm extract:hallOfFameBg',
+    match: oneOf('data/hallOfFameBg.png'),
+  },
+  {
     // 게임코너 슬롯머신 (PARITY §7.6). 기계 앞에 앉을 때만 받는다
     name: 'slots',
     make: 'pnpm extract:slots',

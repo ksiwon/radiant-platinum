@@ -34,7 +34,8 @@ function color(v) {
 
 function palettes(buf) {
   if (buf.subarray(0, 4).toString('ascii') !== 'RLCN') throw new Error('NCLR이 아니다')
-  const count = Math.max(1, Math.floor(buf.readUInt32LE(0x20) / 32))
+  // ⚠️ 머리의 크기가 실제 자료보다 클 수 있다 — dendou_demo는 16줄이라 적고 3줄만 싣는다
+  const count = Math.max(1, Math.min(Math.floor(buf.readUInt32LE(0x20) / 32), Math.floor((buf.length - 0x28) / 32)))
   const out = []
   for (let p = 0; p < count; p++) {
     const one = []

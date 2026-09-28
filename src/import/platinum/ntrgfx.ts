@@ -63,7 +63,10 @@ export function maybeLz77(src: Uint8Array): Uint8Array {
 export function palettes(buf: Uint8Array): Rgb[][] {
   if (magic(buf) !== 'RLCN') throw new Error('NCLR이 아니다')
   const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
-  const count = Math.max(1, Math.floor(view.getUint32(0x20, true) / PAL_BYTES))
+  // ⚠️ 머리의 크기가 실제 자료보다 클 수 있다 — `dendou_demo`는 16줄이라 적고 3줄만 싣는다
+  const count = Math.max(1, Math.min(
+    Math.floor(view.getUint32(0x20, true) / PAL_BYTES), Math.floor((buf.length - 0x28) / PAL_BYTES),
+  ))
   return Array.from({ length: count }, (_, p) =>
     Array.from({ length: COLORS }, (_, i) => color(view.getUint16(0x28 + (p * COLORS + i) * 2, true))))
 }

@@ -58,6 +58,14 @@ export const creditsImage = (at: number): string => `data/credits${String(at)}.p
 export const SIGNPOST_ATLAS = 'data/signposts.png'
 /** 신수유적 벽글의 안농 글꼴 (PARITY §6.8) */
 export const UNOWN_FONT_ATLAS = 'data/unownFont.png'
+/** 명예의 전당 배경 셋 (PARITY §8.11) — 위에서부터 한 마리씩 · 파티와 주인공 · 창 밖 */
+export const HALL_OF_FAME_BG_ATLAS = 'data/hallOfFameBg.png'
+
+/** 명예의 전당 배경을 받아 둔다 — 그림 한 장이라 표가 없다 */
+export function loadHallOfFameBg(): Promise<void> {
+  return pinAtlas(HALL_OF_FAME_BG_ATLAS).then(() => undefined)
+}
+
 /** 게임코너 슬롯머신 (PARITY §7.6) — 배경 번호 판 · 스프라이트 */
 export const SLOT_BG_ATLAS = 'data/slotBg.png'
 export const SLOT_SPRITE_ATLAS = 'data/slotSprites.png'

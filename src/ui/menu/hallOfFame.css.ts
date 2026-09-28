@@ -4,10 +4,10 @@
 // 장면이 되므로 **그 좌표를 그대로 쓴다** — 무대를 4:3으로 잡고 모든 값을
 // `px/256`·`px/192` 비율로 적는다.
 //
-// 밝은 판(`G2_SetWnd0Position`)이 이 화면의 뼈대다. 원작은 하드웨어 윈도
-// 하나로 「여기만 배경이 보인다」를 만들고 나머지는 검게 둔다. 우리는 반대로
-// 검은 무대 위에 그 사각형만 밝게 얹는다 — 보이는 결과가 같다.
-import { keyframes, style, styleVariants } from '@vanilla-extract/css'
+// 밝은 판(`G2_SetWnd0Position`)이 이 화면의 뼈대다. 원작은 창 안에서만 BG2(검정 한 장)를 빼서 그 뒤의 3D와
+// BG3 배경이 보이게 한다. 우리도 같다 — 검정 한 장(`shade`)에 창 자리만 뚫고, 그 뒤 캔버스가 원작 배경 · 몸 · 조명 ·
+// 색종이를 그린다 (`scene/HallOfFameStage` · 좌표는 `scene/hallOfFameChoreo`).
+import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { WINDOW_SMALL } from '../theme/window.css'
 
@@ -22,7 +22,7 @@ export const backdrop = style({
   position: 'fixed',
   inset: 0,
   zIndex: 400,
-  background: vars.scrim.over,
+  background: 'transparent',
   display: 'grid',
   placeItems: 'center',
   overflow: 'hidden',
@@ -34,50 +34,25 @@ export const stage = style({
   width: `min(100vw, calc(100vh * ${String(W / H)}))`,
   height: `min(100vh, calc(100vw * ${String(H / W)}))`,
   overflow: 'hidden',
+  // 4:3 밖은 검게 — 원작 화면 밖이다
+  boxShadow: `0 0 0 100vmax ${vars.scrim.black}`,
   // 글자 크기도 화면에 맞춰 줄어든다 — 원작의 8픽셀 글꼴이 화면 높이의 1/24다
   fontSize: `calc(min(100vh, calc(100vw * ${String(H / W)})) / 16)`,
 })
 
-/**
- * 무대 바닥. 원작은 `dendou_demo` 배경을 깔지만 우리는 그 타일맵을 아직 안
- * 굽는다 — 대신 조명이 도는 어두운 홀로 둔다 (§8.11)
- */
-export const floor = style({
+/** BG2 — 창 밖을 덮는 검정. 창 자리는 부르는 쪽이 `clip-path`로 프레임마다 뚫는다 */
+export const shade = style({
   position: 'absolute',
   inset: 0,
-  background: 'transparent',
+  background: vars.scrim.black,
+  clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 100%)',
 })
 
-const sweep = keyframes({
-  from: { transform: 'translateX(-50%) rotate(-14deg)' },
-  to: { transform: 'translateX(-50%) rotate(14deg)' },
-})
-
-/**
- * 무대 조명 여섯 (`HallOfFame_InitSpotlightsTask`).
- *
- * 원작이 여섯 줄기를 각각 다른 각도(±0.714·±0.429·±0.143)와 다른 자리
- * (20·60·40·140·120·160)에서 흔든다. 각도와 자리는 그 값 그대로고, 흔드는
- * 방식만 CSS가 한다
- */
-export const beam = style({
+/** BG1 — 글 판 하나. 한 마리가 나갈 때 판째 위로 걷힌다 (`Bg_SetOffset(Y)`) */
+export const textPlane = style({
   position: 'absolute',
-  bottom: '-10%',
-  width: pctX(26),
-  height: '120%',
-  transformOrigin: '50% 100%',
-  background: `linear-gradient(to top, ${vars.scrim.over}, transparent 78%)`,
-  filter: 'blur(3px)',
-  animation: `${sweep} 5.5s ease-in-out infinite alternate`,
+  inset: 0,
   pointerEvents: 'none',
-})
-
-/** 밝은 판 하나. 자리와 크기는 부르는 쪽이 인라인으로 준다 */
-export const pane = style({
-  position: 'absolute',
-  background: vars.scrim.over,
-  boxShadow: `inset 0 0 0 2px ${vars.window.edge}`,
-  overflow: 'hidden',
 })
 
 /**
@@ -94,7 +69,6 @@ export const line = style({
   fontWeight: 700,
   lineHeight: pctY(16),
   whiteSpace: 'pre',
-  transition: 'opacity 0.2s linear',
 })
 
 /** 가운데 정렬 한 줄 — 축하 인사와 주인공 정보 (`(256 - 글 너비) / 2`) */
@@ -102,50 +76,11 @@ export const centerLine = style({
   position: 'absolute',
   left: 0,
   width: '100%',
-  // ⚠️ **닫히는 띠보다 위다.** 원작에서 이 두 줄은 밝은 판(윈도 0) **밖**에
-  // 놓이는데, 글은 다른 BG 층이라 창에 안 잘린다 — 띠 아래에 두면 위아래 줄이
-  // 통째로 사라진다
-  zIndex: 2,
+  // 원작에서 이 두 줄은 창 **밖**에 놓이는데, 글(BG1)은 BG2보다 위라 검정 위에 뜬다
   textAlign: 'center',
   color: vars.paper.gilt,
   fontWeight: 700,
   whiteSpace: 'pre',
-})
-
-const fall = keyframes({
-  from: { transform: 'translateY(-12%) rotate(0deg)' },
-  to: { transform: 'translateY(115%) rotate(540deg)' },
-})
-
-/** 색종이 마흔여덟 (`NUM_CONFETTI`) */
-export const confetti = style({
-  position: 'absolute',
-  top: 0,
-  width: pctX(4),
-  height: pctY(6),
-  animation: `${fall} 2.4s linear infinite`,
-  pointerEvents: 'none',
-  zIndex: 2,
-})
-
-/** 검게 닫히는 띠 두 장 (`HallOfFame_WipeToBlack`) */
-export const wipe = styleVariants({
-  top: {
-    position: 'absolute',
-    left: 0,
-    width: '100%',
-    top: 0,
-    background: vars.scrim.black,
-    transition: 'height 0.4s linear',
-  },
-  bottom: {
-    position: 'absolute',
-    left: 0,
-    width: '100%',
-    bottom: 0,
-    background: vars.scrim.black,
-    transition: 'height 0.4s linear',
-  },
 })
 
 /** 화면 전체를 덮는 암전 */
@@ -172,10 +107,3 @@ export const dialog = style({
   whiteSpace: 'pre-wrap',
 })
 
-export const hint = style({
-  position: 'absolute',
-  right: pctX(8),
-  bottom: pctY(4),
-  color: vars.ink.onDarkDim,
-  fontSize: '0.7em',
-})

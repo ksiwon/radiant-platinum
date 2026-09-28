@@ -61,7 +61,7 @@
 
 - **포켓몬센터 회복 기계의 볼** (M · 모든 회복) — `overlay006/healing_machine_animation/pokecenter.c` · `hall_of_fame.c`.
 - **깨어진 세계 기라티나** — 그림자 날갯짓 nsbca · 몸 물들임 `(tint−base)·level>>4` (`ov9_02249960.c:7985-8003`) · 하늘 어두워짐(구름 스프라이트 9 · 팔레트 5가 통째로 없을 수 있다) (M~L).
-- **명예의 전당 배경** — `dendou_demo.narc` 추출(두 굽는 쪽) (M).
+- **명예의 전당 배경** — 끝났다. 창 · 층 · 조명 · 색종이까지 원작 식으로 (PARITY §8.11 · `node tools/e2e/_hallOfFame.mjs` 여섯 ✓).
 - **포획 강좌** (`StartCatchingTutorial` · 202번도로) (L).
 - **슬롯머신** — 끝났다 (PARITY §7.6 · `node tools/e2e/_slots.mjs` 셋 ✓).
 - **액세서리 가게**(`ShowAccessoryShop`) · **별장 가구와 오르골** · **도서관 TV 뉴스**(`StartLibraryTV`) · **창기둥 → 깨어진 세계 워프 연출**(`DoDWWarp` 등) · **벽지 암호**(낱말 고르기 재사용) (각 M).

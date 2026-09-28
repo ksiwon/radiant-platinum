@@ -15,14 +15,20 @@ describe('hall of fame 3D stage store', () => {
       ],
       'boy',
     )
-    useHallOfFameStageStore.getState().setCeremony('solo', 1)
+    useHallOfFameStageStore.getState().setCue('monIn', 1)
     expect(useHallOfFameStageStore.getState()).toMatchObject({
       mode: 'ceremony',
       phase: 'solo',
+      beat: 'monIn',
       selected: 1,
       gender: 'boy',
     })
-    useHallOfFameStageStore.getState().setCeremony('party')
+    // 창이 위로 걷히는 동안에도 그 마리는 남아 있다 (`Sprite_SetDrawFlag`는 다 걷힌 뒤다)
+    useHallOfFameStageStore.getState().setCue('monOut', 1)
+    expect(useHallOfFameStageStore.getState().phase).toBe('solo')
+    useHallOfFameStageStore.getState().setCue('monGap', 1)
+    expect(useHallOfFameStageStore.getState().phase).toBe('hidden')
+    useHallOfFameStageStore.getState().setCue('partyIn', 0)
     expect(useHallOfFameStageStore.getState().phase).toBe('party')
   })
 
