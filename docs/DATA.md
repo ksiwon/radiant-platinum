@@ -5164,6 +5164,27 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 | `data/pointerHand.png` 32×32 | `/graphic/ev_pokeselect.narc` 10 NCGR · 11 NCLR(첫 줄만) · 12 NCER(셀 하나 · 가운데가 원점) | 포획 강좌의 손 (`battle/indicator.c`) |
 | `data/wallpaperWords.json` | `pms_aikotoba.narc` 0번 `word_bank_o` — u32 낱말 번호 차례 | 벽지 암호가 싣는 **자리**의 표. 판마다 자리가 다르다(일본 `/arc/…` · 미국 `/resource/eng/…` · 한국 `/resource/kor/…`) — 설치본은 설치한 롬의 판을 굽고, 노드 쪽은 미국판을 굽는다(351개) |
 
+### 2.21f 이야기 연출의 모델 — 문 · 붉은 사슬 · 호수의 구슬
+
+필드 밖에서 도는 연출의 3D다 (`import/platinum/demoModels.ts` → `data/demo/`). 어느 아카이브의 몇 번인지는 원작 코드가 적는다:
+
+| 이름 | 아카이브 · 멤버 | 원작 |
+|---|---|---|
+| `portal` | `demo/title/titledemo.narc` 16 모델 · 18 BCA0(240) · 17 BTA0(240) | `dw_warp.c` — 타이틀 화면과 같은 셋이다 |
+| `redChain` | `arc/demo_tengan_gra.narc` 6 모델 · 4 BCA0(201) | `ov6_02240104` (5 BMA0는 아직 안 읽는다) |
+| `orbUxie` · `orbAzelf` · `orbMesprit` | 같은 아카이브 12·11 · 8·7 · 10·9 (BCA0 12) | `ov6_0223FCCC`의 표 |
+
+모델은 소품과 같은 `PT3C`이고, 애니는 원작 바이트를 그대로 `anims.bin`에 잇는다. 목차(`index.json`)가 모델마다
+시트 · 모델 속살(`propModelInfo`) · 애니 자리를 든다. **굽는 쪽 둘이 같은 함수를 부른다** — 노드 쪽
+(`tools/extract/demoModels.mjs`)은 롬을 열어 넘길 뿐이다.
+
+⚠️ **그림 알파로 비치는 재질을 따로 적는다**(`blend`). 문의 여덟 재질 중 넷이 A3I5다(고리 `op_ana01` · 빛줄기
+`op_ana03` · 밑바닥 `op_ana05`). 재질 알파가 다 31이라 그것만 보면 불투명으로 그려져 화면이 한 색으로 막혔다.
+
+⚠️ **SRT 채널의 깃발 0은 32비트 배열이다**(`nsbta.ts`의 `SAMPLED_32`). 맵 소품에는 16 · 32 · 48뿐이라 몰랐다 —
+문의 `op_ana04_lm3` V가 240표본 0 → 40,960이다. 16비트 배열과 같은 자(÷32 = 텍셀)로 읽으면 64텍셀 그림을 스무 바퀴 돌고
+제자리에 와서 240프레임 고리가 이어진다.
+
 ### 2.22 tw_arc — 깨어진 세계는 맵 격자가 아니라 **떠 있는 판**이다
 
 `fielddata/tornworld/tw_arc.narc`의 0번이 맵 표고 1~10번이 층마다의 구역이다.

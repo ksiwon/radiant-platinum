@@ -22,6 +22,16 @@
 
 ## 0. 조사가 드러낸 것 — 지금 ✅인데 틀린 줄
 
+- **⚠️ 갈림길 — 원작 한 틱은 1/30초다. 우리는 1/60초로 센다.** 본 루프가 한 바퀴에 V블랭크를 **둘** 기다린다 —
+  일을 마친 뒤 `frameCounter`가 0이면 한 번(`main.c:136-139`), 그리고 늘 한 번 더(`main.c:146`). `frameCounter`는 V블랭크
+  인터럽트만 올린다(`system.c:40`). 필드 일(맵 물체 · 필드 이펙트 · 스크립트 · 화면 페이드 `ExecScreenFade`)이 다 그 한
+  바퀴에 한 번 돈다. 증거 하나 더 — 걷기는 한 틱에 2유닛씩 8틱이다(`MovementAction_InitWalk(…, FX32_CONST(2), 8, …)` ·
+  `unk_020655F4.c:518`). 1/30초면 한 칸 0.267초 = 3.75칸/초로, 우리가 「원작 7.5칸/초가 너무 빨라」 늦춘 4.5칸/초
+  (`actor/player.ts`의 `WALK_SPEED`)와 거의 같다. 곧 **원작 프레임 수를 그대로 1/60초로 옮긴 자리는 전부 두 배
+  빠르다** — 페이드 · NPC 이동 동작 표(`actor/ambient`) · 컷신 대기(`WaitTime`) · 소품 애니(`scene/propAnim`의 `FRAME_MS`) ·
+  깨어진 세계 소품. 한 자리만 고치면 서로 어긋나므로 **안 고치고 둔다**(사용자 판단). 새로 넣는 연출도 지금 규약(1틱 =
+  1/60초)을 따른다.
+
 - **PARITY §3.3 키우미집** — 맡길 때 파티 화면이 안 열리고(`OpenPartyMenuForDaycare` · `GetDayCarePartyMenuResult` · `SetMonSummary` · `GetMonPartySlot` 없음) **늘 맨 앞 마리를 가져간다.** 이름 칸 다섯(`BufferDaycareMonNicknames` ×3 · `BufferDaycareNicknameLevelGender` ×2)도 빈다.
 - **PARITY §4.1** — 「열이 돈다」는 효과를 센 수다. 갈래로는 스물다섯 중 열다섯이 돌고, 범위 안에서 다섯이 빈다(아래 2단계).
 - **REPAIR §12** — 2026-08-25(`953e83d`)부터 두 굽는 쪽이 노드 행렬을 이미 곱한다. 그런데 `veilstoneGym.ts:157-166,208-211`이 `VEILSTONE_NODE`를 **한 번 더** 더해 샌드백·타이어가 4.5칸쯤 떠 있을 수 있다.

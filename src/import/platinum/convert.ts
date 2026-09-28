@@ -30,6 +30,7 @@ import { convertSlots } from './slots'
 import { convertHallOfFameBg } from './hallOfFameBg'
 import { convertPointerHand } from './pointerHand'
 import { convertLibraryTv } from './libraryTv'
+import { convertDemoModels } from './demoModels'
 import { convertWallpaperWords } from './wallpaperWords'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
@@ -287,6 +288,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/pointerHand.png'],
     converter: 1,
     convert: convertPointerHand,
+  },
+  {
+    // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델 (`demoModels.ts`)
+    name: 'demoModels',
+    outputs: ['data/demo/{이름}.bin', 'data/demo/{이름}.png', 'data/demo/anims.bin', 'data/demo/index.json'],
+    converter: 1,
+    convert: convertDemoModels,
   },
   {
     // 운하시티 도서관의 텔레비전 뉴스 — 그림 · 주사선 · 틀 (`library_tv/library_tv.c`)

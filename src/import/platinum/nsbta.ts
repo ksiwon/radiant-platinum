@@ -46,8 +46,14 @@ export interface SrtAnim {
   readonly tracks: readonly SrtTrack[]
 }
 
-/** 표본 채널의 깃발. 이 값**만** 배열이다 */
+/** 표본 채널의 깃발 — 16비트 배열 */
 const SAMPLED = 0x10
+/**
+ * 깃발 0 — **32비트 배열**이다. 맵 소품에는 없고(16 · 32 · 48뿐) 연출 모델에 있다 — 깨어진 세계로 가는 문의
+ * `op_ana04_lm3` V가 240표본 0 → 40,960으로 오른다. 자는 16비트 배열과 같다(÷32 = 텍셀): 64텍셀 그림을 스무 바퀴
+ * 돌고 제자리에 와서 240프레임 고리가 이어진다
+ */
+const SAMPLED_32 = 0
 
 /** 채널 여덟 바이트를 읽는다 */
 function channel(view: DataView, animAt: number, at: number): Channel {
@@ -56,6 +62,13 @@ function channel(view: DataView, animAt: number, at: number): Channel {
   // ⚠️ **비트로 가르면 안 된다.** 상수 깃발이 48(0x30)이라 0x10이 **서 있다** —
   // 마스크로 보면 상수를 배열로 읽어서 자전거 비탈의 U가 674까지 튀었다.
   // 문서대로 **16과 정확히 같을 때만** 배열이다 (롬 전체에서 16·32·48뿐이다)
+  if (flags === SAMPLED_32 && count > 0) {
+    const base = animAt + view.getUint32(at + 4, true)
+    return (frame) => {
+      const i = Math.min(count - 1, Math.max(0, Math.floor(frame)))
+      return view.getInt32(base + i * 4, true) / TEXEL
+    }
+  }
   if (flags !== SAMPLED || count === 0) {
     const v = fx32(view.getInt32(at + 4, true))
     return () => v

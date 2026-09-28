@@ -71,6 +71,7 @@ import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { MAP_FEATURE, setMapFeature } from '../engine/world/mapFeatures'
+import { useDwWarpStore } from '../state/dwWarpStore'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
 import {
@@ -1345,6 +1346,10 @@ const services: FieldServices = {
   libraryTv: {
     open: () => { useLibraryTvStore.getState().open() },
     busy: () => useLibraryTvStore.getState().on,
+  },
+  dwWarp: {
+    start: () => { useDwWarpStore.getState().start() },
+    busy: () => useDwWarpStore.getState().on,
   },
   slots: {
     open: (machine) => {

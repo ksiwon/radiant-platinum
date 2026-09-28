@@ -149,6 +149,12 @@ export const GROUPS = [
     match: oneOf('data/libraryTv.png'),
   },
   {
+    // 창기둥과 깨어진 세계로 가는 문 — 필드 밖 연출의 모델
+    name: 'demoModels',
+    make: 'pnpm extract:demoModels',
+    match: (p) => p.startsWith('data/demo/'),
+  },
+  {
     // 벽지 암호 낱말표 (축복TV 3층 · `GetWallpaperFromCustomMessageWords`)
     name: 'wallpaperWords',
     make: 'pnpm extract:wallpaperWords',

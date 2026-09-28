@@ -495,6 +495,57 @@ export function loadDistortionPropAnims(): Promise<DistortionPropAnims | null> {
   return distAnims
 }
 
+/** 연출 모델의 목차 (`data/demo/index.json` · `import/platinum/demoModels`) */
+interface DemoIndex {
+  models: Record<string, {
+    sheet: { w: number, h: number, items: [string, string, number, number, number, number][] } | null
+    info: DistortionPropModel
+    anims: { kind: 'BCA0' | 'BTA0' | 'BTP0', frames: number, at: number, size: number }[]
+    blend: number[]
+  }>
+}
+const demoMeshCache = new Map<string, Promise<ChunkMesh>>()
+let demoIndex: Promise<DemoIndex> | null = null
+let demoBytes: Promise<Uint8Array> | null = null
+const loadDemoIndex = (): Promise<DemoIndex> => {
+  demoIndex ??= (readJson(assets(), 'data/demo/index.json') as Promise<DemoIndex>)
+    .catch((e: unknown) => { demoIndex = null; throw e })
+  return demoIndex
+}
+
+/** 연출 모델 하나 — 문 · 붉은 사슬 · 호수의 구슬 (`DEMO_MODELS`의 이름) */
+export function loadDemoMesh(name: string): Promise<ChunkMesh> {
+  const hit = demoMeshCache.get(name)
+  if (hit) return hit
+  const promise = Promise.all([loadChunkFormat(), assets().bytes(`data/demo/${name}.bin`)])
+    .then(([fmt, buffer]) => build(buffer, fmt))
+    .catch((e: unknown) => {
+      if (demoMeshCache.get(name) === promise) demoMeshCache.delete(name)
+      throw e
+    })
+  demoMeshCache.set(name, promise)
+  return promise
+}
+
+/** 그 모델의 텍스처 */
+export function loadDemoSheet(name: string): Promise<TexSheet | null> {
+  return loadDemoIndex().then((idx) => {
+    const info = idx.models[name]?.sheet
+    return info ? sheetFrom(`data/demo/${name}.png`, info) : null
+  })
+}
+
+/** 그 모델의 애니 — 원작이 붙이는 차례 그대로 · 모델 속살 */
+export function loadDemoAnims(name: string): Promise<{ clips: (PropClip | null)[], info: DistortionPropModel, blend: number[] } | null> {
+  demoBytes ??= assets().bytes('data/demo/anims.bin').then((b) => new Uint8Array(b))
+    .catch((e: unknown) => { demoBytes = null; throw e })
+  return Promise.all([loadDemoIndex(), demoBytes]).then(([idx, bytes]) => {
+    const got = idx.models[name]
+    if (!got) return null
+    return { clips: got.anims.map((row) => readRawClip(row, bytes)), info: got.info, blend: got.blend }
+  })
+}
+
 export function loadDistortionPropOffsets(): Promise<readonly (readonly number[])[]> {
   return (readJson(assets(), 'data/distortionProps/index.json') as Promise<{
     offsets: number[][]

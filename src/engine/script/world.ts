@@ -744,6 +744,11 @@ export interface FieldServices {
     open: () => void
     busy: () => boolean
   }
+  /** 깨어진 세계로 빨려 드는 문 (`DoDWWarp` · `dw_warp.c`) — 스크립트는 연출이 끝날 때까지 선다 */
+  dwWarp?: {
+    start: () => void
+    busy: () => boolean
+  }
   /** 꽃향기마을 꽃집의 장식 교환 (`ScrCmd_ShowAccessoryShop` · PARITY §7.16) */
   accessoryShop?: {
     open: () => void

@@ -4767,8 +4767,19 @@ on('OpenShayminTabletNamingScreen', (ctx) => {
 /** 깨어진 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
 on('ScrCmd_2FB', () => false)
 
-/** 깨어진 세계 워프 (`FieldSystem_StartDWWarp`) */
-on('DoDWWarp', () => false)
+/**
+ * 깨어진 세계로 빨려 드는 문 (`ScrCmd_DoDWWarp` → `FieldSystem_StartDWWarp` · `dw_warp/dw_warp.c`).
+ *
+ * 필드 밖 앱이라 스크립트는 그 앱이 닫힐 때까지 선다(`ScriptContext_WaitForApplicationExit`). 워프 자체는 이 뒤의
+ * `Warp`가 한다 — 여기는 문이 다가오는 연출뿐이다 (`scene/DwWarpStage`)
+ */
+on('DoDWWarp', (ctx) => {
+  const warp = ctx.host.world.services.dwWarp
+  if (!warp) return false
+  warp.start()
+  ctx.pause((c) => c.host.world.services.dwWarp?.busy() !== true)
+  return true
+})
 
 /** 소리 장면을 63번으로 (`Sound_SetSceneAndPlayBGM(SOUND_SCENE_SUB_63, …)`) */
 on('SetSubScene63', () => false)

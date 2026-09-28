@@ -24,6 +24,8 @@ import { useMenuStore } from '../state/menuStore'
 import { useOptionsStore } from '../state/optionsStore'
 import { useRendererStore } from '../state/rendererStore'
 import { useCinematicStore } from '../state/cinematicStore'
+import { useDwWarpStore } from '../state/dwWarpStore'
+import { DwWarpStage } from './DwWarpStage'
 import { useHallOfFameStageStore } from '../state/hallOfFameStageStore'
 import { useIntroStageStore } from '../state/introStageStore'
 import { MusicDirector } from './MusicDirector'
@@ -39,6 +41,7 @@ export function Stage() {
   const choosing = useMenuStore((s) => s.top === 'chooseStarter')
   const cinematic = useCinematicStore((s) => s.scene !== 'off')
   const hallOfFame = useHallOfFameStageStore((s) => s.mode !== 'off')
+  const dwWarp = useDwWarpStore((s) => s.on)
   // 입력 리스너는 게임 청크에 속한다 — 초기 청크가 worldState(three 의존)를 끌어오지 않게 한다
   const intro = useIntroStageStore((s) => s.scene !== 'off')
   // 렌더러를 다시 세운 횟수. 정상 경로에서는 0 그대로다 (아래 `key`)
@@ -143,6 +146,7 @@ export function Stage() {
           {cinematic && <CinematicStage />}
           {intro && <IntroStage />}
           {hallOfFame && <HallOfFameStage />}
+          {dwWarp && <DwWarpStage />}
         </SceneBoundary>
         <EngineDriver />
         <MusicDirector />
