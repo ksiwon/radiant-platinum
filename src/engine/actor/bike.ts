@@ -4,7 +4,7 @@
 // 있는 자리가 정해져 있다. 셋 다 원작이 값으로 적어 두었다.
 import type { MapHeader } from '../map/world'
 import { isSurfable } from '../map/zone'
-import { isBikeBridge, onElevatedBridge } from './bridge'
+import { isBikeBridge, isBridge, onElevatedBridge } from './bridge'
 
 /** 자전거 (`items.ko.json` 450번). 열쇠도구라 쓰면 없어지지 않는다 */
 export const BIKE_ITEM = 450
@@ -210,6 +210,19 @@ let onCyclingRoad = false
 
 export function setOnCyclingRoad(on: boolean): void { onCyclingRoad = on }
 export function isOnCyclingRoad(): boolean { return onCyclingRoad }
+
+/**
+ * 자전거로드 내리막 (`PlayerAvatar_TileMove_CyclingRoadDown` · `PlayerAvatar_IsOnCyclingRoadBridge`).
+ *
+ * **손을 떼고 있으면** 남쪽으로 저절로 내려간다 — 자전거를 타고 · 자전거로드에 묶여 있고 · 다리 **위**의 다리 칸에
+ * 서 있을 때다. 원작은 그 걸음을 `WALK_FASTER`(한 칸 2프레임)로 걸고 속도를 `SPEED_3`으로 올려 둔다 — 전속력이다.
+ * 앞이 막혔으면 남쪽을 보고 선다. 방향키를 누르면 이 갈래를 안 탄다(`dir != DIR_NONE`)
+ */
+export function cyclingRoadCoasts(
+  pressing: boolean, cycling: boolean, behavior: number | null,
+): boolean {
+  return !pressing && cycling && onCyclingRoad && onElevatedBridge() && behavior !== null && isBridge(behavior)
+}
 
 /**
  * 상체가 앞으로 숙는 각(라디안). **원작은 단마다 다르게 숙인다.**

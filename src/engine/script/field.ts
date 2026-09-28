@@ -43,8 +43,8 @@ import { rockClimbSeconds, WATERFALL_SECONDS } from '../actor/heroClips'
 import { clearPanelSlide } from '../actor/slidePanel'
 import { clearIceSlide } from '../actor/ice'
 import {
-  FIELD_MOVES, fieldMoveHere, flyDenial, movesUsableHere, whyNot,
-  type FieldMoveId, type FieldSpot, type FlyDenial, type Trainer,
+  FIELD_MOVES, fieldMoveHere, flyDenial, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
+  type FieldMoveId, type FieldSpot, type FlyDenial, type MenuMoveId, type Trainer,
 } from './fieldMoves'
 import { TRAINER_TYPE, trainerInSight } from '../actor/sight'
 import { APPROACH_TYPE, type ApproachingTrainer } from '../actor/approach'
@@ -539,6 +539,16 @@ const QUARTER_TO_DIR = [DIR.south, DIR.east, DIR.north, DIR.west]
 const DIR_TO_FACING = [Math.PI, 0, -Math.PI / 2, Math.PI / 2]
 
 /**
+ * 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → `facing` 라디안.
+ *
+ * ⚠️ **이 표 하나만 쓴다.** 워프 도착 쪽이 따로 들고 있던 표가 한 칸씩 밀려 있어서(북 → 서 · 동 → 남)
+ * 스크립트 `Warp`가 적은 방향과 다르게 섰다 — 배틀팩토리에 `DIR_EAST`로 들어가면 남쪽을 봤다
+ */
+export function facingOfDir(dir: number): number {
+  return DIR_TO_FACING[dir] ?? 0
+}
+
+/**
  * 맵에 들어섰다. NPC를 세우고 그 맵의 대사 뱅크를 받는다.
  *
  * NPC 세우기는 **동기**여야 한다 — 화면이 같은 프레임에 그 목록을 그린다.
@@ -570,6 +580,10 @@ export function enterMap(mapId: number): void {
   // 맵 지역 표식·변수는 맵(존)을 옮길 때마다 비운다 — `OnTransition`보다 먼저다 (REPAIR §126 ·
   // `FieldMapChange_UpdateGameData`의 첫 줄들 · 존 갈이도 같은 함수를 지난다 `fieldmap.c:417`)
   fieldScripts.vars.clearMapLocals()
+  // 스크립트 · 자전거가 가로챈 곡을 놓는다 (`FieldBGM_ClearOverride` — 같은 함수의 **첫 줄**이다). 안 놓으면 그 방에서
+  // 튼 곡이 신오 전역을 따라온다. ⚠️ **스크립트보다 먼저다** — 206번도로의 `OnResume`이 여기서 자전거로드 곡을
+  // 거는데(`SetCyclingBGM`), 뒤에서 비우면 걸자마자 지워진다
+  fieldBgm.override = null
   runFixedInit(mapId, INIT_SCRIPT.onTransition)
   spawnNpcs(mapId, fieldScripts.vars)
   // 맵이 다 올라온 뒤 도는 것. 워프 자리를 옮기는 자리가 여기다
@@ -578,8 +592,6 @@ export function enterMap(mapId: number): void {
   // 서른여섯 맵이 쓴다 — 자전거로드에서 다시 자전거에 묶고(206번도로), 교신 대기실에서 주인공을 숨기고
   // (센터 2F 공용 9000), 오박사의 방향을 돌린다(224번도로)
   runFixedInit(mapId, INIT_SCRIPT.onResume)
-  // 스크립트가 가로챈 곡을 놓는다. 안 놓으면 그 방에서 튼 곡이 신오 전역을 따라온다
-  fieldBgm.override = null
   // ⚠️ 덮개도 걷는다. 아웃만 걸고 워프하는 스크립트가 있어서, 안 걷으면 도착한
   // 맵이 검은 화면 그대로 남는다
   resetFade()
@@ -1360,6 +1372,28 @@ export function flyVerdictNow(): FlyDenial | null {
     hasPartner: fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner),
     inSafari: fieldScripts.services.safari?.active?.() === true,
   })
+}
+
+/**
+ * 뱃지 없는 기술(순간이동 · 구멍파기 · 달콤한향기 · 우유마시기 · 알낳기)을 지금 여기서 쓸 수 있는가.
+ *
+ * 기술 번호가 그 다섯이 아니면 null. 판정은 `fieldMoves`의 `menuMoveDenial`이 하고 여기서는 자리만 모은다 —
+ * 실제로 쓰는 것은 화면 쪽이다(컷인 · 빙글 워프 · 분홍 덮개가 다 씬의 일이다)
+ */
+export function menuMoveVerdictNow(move: number): { id: MenuMoveId, denial: 'notHere' | 'partner' | null } | null {
+  const id = menuMoveOf(move)
+  if (id === null) return null
+  const header = mapById(mapWorld.mapId)
+  return {
+    id,
+    denial: menuMoveDenial(id, {
+      flyAllowed: header?.fly === 1,
+      mapType: header?.mapType ?? 0,
+      escapeRopeAllowed: header?.escapeRope === 1,
+      hasPartner: fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner),
+      inSafari: fieldScripts.services.safari?.active?.() === true,
+    }),
+  }
 }
 
 /**

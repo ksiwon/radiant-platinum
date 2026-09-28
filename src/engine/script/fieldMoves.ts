@@ -177,3 +177,65 @@ export function flyDenial(who: Trainer, place: FlyPlace): FlyDenial | null {
 export function fieldMoveHere(spot: FieldSpot, who: Trainer): FieldMoveId | null {
   return movesUsableHere(spot).find((id) => whyNot(id, who) === null) ?? null
 }
+
+/**
+ * 뱃지가 없는 필드 기술 — **기술 창에서만** 나간다 (`field_move_tasks.c`의 `FIELD_MOVE_TELEPORT` 이후).
+ *
+ * 기술 번호는 `generated/moves.txt`의 줄 번호다. 파티 화면이 기술 칸에 이 여섯을 비전기술과 **같은 줄에**
+ * 띄운다 (`sFieldMoves`) — 수다는 마이크로 녹음하는 기술이라 아직 안 띄운다
+ */
+export type MenuMoveId = 'teleport' | 'dig' | 'sweetScent' | 'milkDrink' | 'softboiled'
+
+export const MENU_MOVES: Readonly<Record<MenuMoveId, { move: number }>> = {
+  teleport: { move: 100 },
+  dig: { move: 91 },
+  sweetScent: { move: 230 },
+  milkDrink: { move: 208 },
+  softboiled: { move: 135 },
+}
+
+/** `MAP_TYPE_TOWN_CITY` (`data/map_headers.h`의 `enum MapType`) */
+const MAP_TYPE_TOWN_CITY = 1
+/** `MAP_TYPE_CAVE` */
+const MAP_TYPE_CAVE = 3
+
+/** 뱃지 없는 기술이 보는 자리의 사정 */
+interface MenuMovePlace {
+  /** `MapHeader_IsFlyAllowed` */
+  flyAllowed: boolean
+  /** `MapHeader_GetMapType` */
+  mapType: number
+  /** `MapHeader_IsEscapeRopeAllowed` */
+  escapeRopeAllowed: boolean
+  hasPartner: boolean
+  inSafari: boolean
+}
+
+/**
+ * 못 쓰는 까닭 (`FieldMoves_CheckTeleport` · `_CheckDig` · `_CheckSweetScent`). 쓸 수 있으면 null.
+ *
+ * - 순간이동: 헤더가 날기를 허락하고 **마을이 아니어야** 한다(`MapHeader_IsTeleportAllowed`) → 동행 → 사파리
+ * - 구멍파기: **굴이고 탈출로프를 허락해야** 한다 → 동행
+ * - 달콤한향기: 통신방·팔파크만 막는다. 날씨는 쓴 **뒤에** 본다 (`ov5_021F0438`)
+ * - 우유마시기·알낳기: 검사가 없다 — 체력은 파티 화면이 본다 (`PartyMenu_StartFieldMoveHPTransfer`)
+ */
+export function menuMoveDenial(id: MenuMoveId, place: MenuMovePlace): 'notHere' | 'partner' | null {
+  switch (id) {
+    case 'teleport':
+      if (!place.flyAllowed || place.mapType === MAP_TYPE_TOWN_CITY) return 'notHere'
+      if (place.hasPartner) return 'partner'
+      if (place.inSafari) return 'notHere'
+      return null
+    case 'dig':
+      if (place.mapType !== MAP_TYPE_CAVE || !place.escapeRopeAllowed) return 'notHere'
+      if (place.hasPartner) return 'partner'
+      return null
+    default:
+      return null
+  }
+}
+
+/** 기술 번호 → 뱃지 없는 기술. 아니면 null */
+export function menuMoveOf(move: number): MenuMoveId | null {
+  return (Object.keys(MENU_MOVES) as MenuMoveId[]).find((k) => MENU_MOVES[k].move === move) ?? null
+}

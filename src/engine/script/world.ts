@@ -1086,6 +1086,15 @@ export interface FieldServices {
     start: (kind: number) => void
     done: () => boolean
   }
+  /**
+   * 승강기 층수판 불빛 (`FieldSystem_PlayElevatorAnimation`). `done`이 null이면 길이를 모른다 — 소품 애니 표를
+   * 아직 못 받았다. 그때 명령은 소리가 멎는 것으로 잰다
+   */
+  elevatorLight?: {
+    start: (dir: number, loops: number) => void
+    done: () => boolean | null
+    stop: () => void
+  }
   /** 비전기술 컷인 (`HMCutIn_StartTask`). 파티 자리의 포켓몬이 나와서 쓴다 */
   hmCutIn?: {
     start: (slot: number) => void

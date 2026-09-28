@@ -2744,6 +2744,9 @@ on('WaitFanfare', (ctx) => {
   return true
 })
 
+/** `SEQ_PL_BICYCLE` (`generated/sdat.txt`의 닻으로 센 값) */
+const SEQ_PL_BICYCLE = 1189
+
 const setMusic: CommandFn = (ctx) => {
   const seq = ctx.readHalfWord()
   soundOf(ctx)?.setMusic(seq)
@@ -3852,41 +3855,38 @@ on('GetPreviousMapID', (ctx) => {
  * `SEQ_SE_DP_ELEBETA2`가 흐르는 동안 층수판 불빛이 돌고, 다 돌면 그 소리를
  * 끊고 `SEQ_SE_DP_PINPON`을 울린 뒤 **그 소리가 끝나야** 문이 열린다.
  *
- * ⚠️ **불빛 자체는 아직 없다.** 원작은 `elevator_lights`(소품 498)의 클립을
- * `loopCount`번 돌린다 — `PlayAnimation(tag, direction)`이라 **방향이 곧 클립
- * 번호**고(0 오름 · 1 내림), 애니가 끝나면 그때 소리를 끊는다. 우리는
- * **길이를 소리에서 잰다** — 지어낸 프레임 수를 두지 않는다.
- *
- * ⚠️ **여기 적혀 있던 「맵을 통째로 구운 청크라 그 소품만 따로 못 돌린다」는
- * 이제 사실이 아니다.** `scene/AnimatedProp`이 **배치마다 제 재질을 들고 제
- * 클립을 돌린다** — 문 스무 종과 자전거 진흙 비탈이 그 길로 돈다 (PARITY §1.9).
- * 실측으로 소품 498은 클립 둘(멤버 35·36 · BTA0 · 31프레임)을 목차에 그대로
- * 들고 있고 배치는 온 게임에 **하나**다. 곧 막는 것은 「청크라서」가 아니라
- * **「아직 안 이었다」**이고, 이을 때 먼저 정할 것은 **길이를 소리에서 잴
- * 것인가 애니에서 잴 것인가**다 (원작은 애니가 끝나면 소리를 끊는다 — 그 둘이
- * 우리 쪽에서 어긋나는지를 먼저 재야 한다).
+ * 불빛은 소품 498(`elevator_lights`)의 클립을 `loopCount`번 돌린다 — `PlayAnimation(tag, direction)`이라 **방향이 곧
+ * 클립 자리다**(0 오름 · 1 내림 · `scene/elevatorLight`). **길이는 불빛이 정한다** — 원작이 애니가 다 돈 것을 보고
+ * 소리를 끊는다(`WAIT_FOR_ANIMATION`). 배틀타워만 세 바퀴(3 × 31프레임)고 나머지 여섯은 네 바퀴다.
+ * 소품 표를 아직 못 받았으면 길이를 모르므로 소리가 멎는 것으로 잰다
  *
  * ⚠️ 소리가 안 붙어 있으면 여기서 서면 안 된다 (`WaitSE`와 같은 이유)
  */
 on('PlayElevatorAnimation', (ctx) => {
-  ctx.readVar() // 오르는가 내리는가 — 원작도 양쪽에 같은 소리를 적었다
-  ctx.readVar() // 몇 번 돌리는가 — 불빛의 바퀴 수다
+  // 오르는가 내리는가(클립 자리) · 몇 바퀴인가. 소리는 원작도 양쪽에 같은 것을 적었다
+  const dir = ctx.readVar()
+  const loops = ctx.readVar()
   const sound = soundOf(ctx)
-  if (sound === undefined) return true
-  sound.playEffect(SFX.ELEVATOR)
+  const light = ctx.host.world.services.elevatorLight
+  if (sound === undefined && light === undefined) return true
+  light?.start(dir, loops)
+  sound?.playEffect(SFX.ELEVATOR)
   ctx.scratch[0] = 0
   ctx.pause((c) => {
     const s = soundOf(c)
-    if (s === undefined) return true
+    const l = c.host.world.services.elevatorLight
     if (c.scratch[0] === 0) {
-      // 아직 오르는 중 — 소리가 멎으면 다 온 것이다
-      if (s.effectPlaying(SFX.ELEVATOR)) return false
-      s.stopEffect(SFX.ELEVATOR)
-      s.playEffect(SFX.ELEVATOR_DING)
+      // 불빛이 다 돌았는가 (`IsAnimationLoopFinished`). 길이를 모르면 소리가 멎는 것으로 잰다
+      const done = l?.done() ?? null
+      if (done === false) return false
+      if (done === null && s?.effectPlaying(SFX.ELEVATOR) === true) return false
+      s?.stopEffect(SFX.ELEVATOR)
+      l?.stop()
+      s?.playEffect(SFX.ELEVATOR_DING)
       c.scratch[0] = 1
       return false
     }
-    return !s.effectPlaying(SFX.ELEVATOR_DING)
+    return s === undefined || !s.effectPlaying(SFX.ELEVATOR_DING)
   })
   return true
 })
@@ -4472,6 +4472,17 @@ on('SetPlayerBike', (ctx) => {
 
 on('CheckPlayerOnBike', (ctx) => {
   ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.bike?.riding() === true ? 1 : 0)
+  return false
+})
+
+/**
+ * 자전거로드 곡을 건다 (`ScrCmd_SetCyclingBGM` → `FieldBGM_SetOverride(SEQ_PL_BICYCLE)`).
+ *
+ * 206번도로의 `OnResume`이 자전거로드 두 끝에서 부른다. 가로채기라 길을 다 내려갈 때까지 흐르고, 존을 넘으면
+ * 맵 진입이 비운다 — 자전거에 탈 때의 곡(`SEQ_BICYCLE` 1152)과 다른 곡이다
+ */
+on('SetCyclingBGM', (ctx) => {
+  soundOf(ctx)?.setMusic(SEQ_PL_BICYCLE)
   return false
 })
 

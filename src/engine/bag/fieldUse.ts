@@ -90,6 +90,11 @@ export type FieldItemAction =
   | { kind: 'flute'; factor: number }
   /** 동굴탈출로프 */
   | { kind: 'escapeRope' }
+  /**
+   * 달콤한꿀 — 달콤한향기와 **같은 과제**를 컷인 없이 건다 (`UseHoneyFromMenu` → `ov5_021F0488`).
+   * 꿀나무에 바르는 것은 나무에 말을 걸어서다. 검사가 없다(`sItemUseFuncs`의 둘째 칸이 NULL) — 날씨와 칸은 과제가 본다
+   */
+  | { kind: 'honey' }
   /** 자전거를 타거나 내린다 */
   | { kind: 'bike' }
   /** 낚싯대를 던진다 */
@@ -182,8 +187,6 @@ const MISSING: Partial<Record<number, string>> = {
   [FieldUse.EXPLORER_KIT]: '지하통로',
   [FieldUse.POFFIN_CASE]: '포핀',
   [FieldUse.PAL_PAD]: '친구수첩',
-  // ⚠️ **꿀나무가 아니라 달콤한향기다** (`UseHoneyFromMenu` → `ov5_021F0488`) — 나무에 바르는 것은 나무에 말을 걸어서다
-  [FieldUse.HONEY]: '달콤한향기',
   [FieldUse.VS_RECORDER]: '배틀레코더',
 }
 
@@ -299,6 +302,9 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       if (type === null) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       return { kind: 'mail', type }
     }
+
+    case FieldUse.HONEY:
+      return { kind: 'honey' }
 
     case FieldUse.ESCAPE_ROPE:
       // `CanUseEscapeRope` — 동굴이고 그 맵이 허락해야 한다

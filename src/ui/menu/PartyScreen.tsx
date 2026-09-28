@@ -19,8 +19,12 @@ import { loadMoveNames, loadSpecies, loadSpeciesNames, type SpeciesTable } from 
 import { fillMenuText, loadUiText } from '../../data/uiText'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
 import { hpColor } from '../../engine/battle/healthbar'
-import { FIELD_MOVES, type FieldMoveId } from '../../engine/script/fieldMoves'
-import { fieldMoveFromMenu } from '../../engine/script/field'
+import { FIELD_MOVES, MENU_MOVES, type FieldMoveId, type MenuMoveId } from '../../engine/script/fieldMoves'
+import { fieldMoveFromMenu, menuMoveVerdictNow } from '../../engine/script/field'
+import { HP_TRANSFER_SE, hpTransferAmount, hpTransferGiven, hpTransferTarget } from '../../engine/pokemon/hpTransfer'
+import { LocationEvent } from '../../engine/world/journal'
+import { beginSweetScent, beginWarpMove } from '../../scene/fieldMoveTask'
+import { journalPlain } from '../../scene/journal'
 import { useMenuStore } from '../../state/menuStore'
 import { MAIL_LINES, MAIL_WORDS_PER_LINE, mailTypeOfItem, toMailbox } from '../../engine/world/mail'
 import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
@@ -64,10 +68,16 @@ const STATUS_LABEL: Record<string, string> = {
 
 
 
-/** 기술 번호 → 비전머신 이름. 기술 칸에 표시를 붙이는 데 쓴다 */
-const FIELD_BY_MOVE = new Map<number, FieldMoveId>(
-  (Object.keys(FIELD_MOVES) as FieldMoveId[]).map((id) => [FIELD_MOVES[id].move, id]),
-)
+/**
+ * 갈래 메뉴에 띄우는 기술 (`sFieldMoves`) — 비전기술 아홉과 뱃지 없는 다섯.
+ *
+ * 원작 파티 화면은 열다섯을 **한 표로** 본다. 순간이동 · 구멍파기 · 달콤한향기 · 우유마시기 · 알낳기가
+ * 빠져 있어서 그 기술을 아는 마리의 갈래에 줄이 안 떴다
+ */
+const FIELD_MENU_MOVES = new Set<number>([
+  ...(Object.keys(FIELD_MOVES) as FieldMoveId[]).map((id) => FIELD_MOVES[id].move),
+  ...(Object.keys(MENU_MOVES) as MenuMoveId[]).map((id) => MENU_MOVES[id].move),
+])
 
 /** 요약 화면 뱅크의 「중요한 기술입니다. 잊게 할 수 없습니다!」 (`PokemonSummary_Text_HmMovesCantBeForgotten`) */
 const SUMMARY_HM_CANT_FORGET = 156
@@ -112,7 +122,28 @@ const P = {
   cancel: 152, give: 160, take: 161,
   /** 「맡긴다」 — 키우미집 갈래의 첫 줄 (`PartyMenu_Text_MailStore` · 갈래 번호 8) */
   store: 151,
+  /**
+   * 우유마시기 · 알낳기 — 36 「누구에게 쓰겠습니까?」 · 64 「○○의 HP가 n 회복되었다」 ·
+   * 131 「그 포켓몬에게는 쓸 수 없습니다」 · 138 「HP가 모자란다…」
+   */
+  useOnWhich: 36, hpRestored: 64, cantUseOnThat: 131, notEnoughHp: 138,
 } as const
+
+/**
+ * 우유마시기 · 알낳기로 체력을 나눠 주는 중 (`HP_TRANSFER_STATE_*`).
+ *
+ * `pick`이 받을 마리를 고르는 중, `give`가 쓰는 마리를 깎는 중, `take`가 받는 마리를 채우는 중이다 —
+ * 한 프레임에 1씩이다
+ */
+interface HpTransfer {
+  kind: 'milkDrink' | 'softboiled'
+  donor: number
+  amount: number
+  phase: 'pick' | 'give' | 'take'
+  target: number
+  given: number
+  count: number
+}
 
 /**
  * 기술 칸이 다 차서 **무엇을 잊을지 묻는 중**인 기술 하나.
@@ -193,6 +224,8 @@ export function PartyScreen() {
     { slot: number; before: Stats; after: Stats; show: 'gain' | 'value'; then: () => void } | null
   >(null)
   const [menuAt, setMenuAt] = useState(0)
+  /** 우유마시기 · 알낳기로 나눠 주는 중. null이면 아니다 */
+  const [transfer, setTransfer] = useState<HpTransfer | null>(null)
   /** 파티 뱅크의 글. 갈래 메뉴의 낱말이 전부 여기서 온다 */
   const [partyText, setPartyText] = useState<string[]>([])
   /** 요약 화면 뱅크(455) — 「중요한 기술입니다. 잊게 할 수 없습니다!」(156)가 여기 있다 */
@@ -266,7 +299,77 @@ export function PartyScreen() {
     setCursor(next)
   }
 
+  /**
+   * 뱃지 없는 다섯 (`FieldMoves_Check*` → `FieldMoves_Set*Task` · `PartyMenu_SelectMilkDrink`).
+   *
+   * 순간이동 · 구멍파기 · 달콤한향기는 화면을 닫고 **필드 과제**로 넘긴다(`FieldSystem_StartFieldMap`) —
+   * 컷인과 연출이 필드에서 돈다. 우유마시기 · 알낳기는 화면 안에서 받을 마리를 고른다
+   */
+  const runMenuMove = (move: number): boolean => {
+    const verdict = menuMoveVerdictNow(move)
+    if (verdict === null) return false
+    if (verdict.denial !== null) { setNotice(plainText(partyText[DENIAL_LINE[verdict.denial]!])); return true }
+    const id = verdict.id
+    if (id === 'teleport' || id === 'dig') {
+      if (beginWarpMove(id, at)) closeAll()
+      else setNotice(plainText(partyText[DENIAL_LINE.notHere]!))
+      return true
+    }
+    if (id === 'sweetScent') { if (beginSweetScent(at)) closeAll(); return true }
+    // `PartyMenu_StartFieldMoveHPTransfer`
+    if (!selected || !species) return true
+    const amount = hpTransferAmount({ hp: selected.hp, maxHp: fullHp(selected, species), isEgg: selected.isEgg })
+    if (amount === null) { setNotice(plainText(partyText[P.notEnoughHp])); return true }
+    setTransfer({ kind: id, donor: at, amount, phase: 'pick', target: at, given: 0, count: 0 })
+    return true
+  }
+
+  /** 받을 마리를 골랐다 (`CheckCanUseHPTransferFieldMove`) */
+  const pickTransferTarget = (): void => {
+    if (transfer === null || !species) return
+    const mon = party[at]
+    if (!mon) return
+    const slot = { hp: mon.hp, maxHp: fullHp(mon, species), isEgg: mon.isEgg }
+    const got = hpTransferTarget(transfer.donor, at, slot)
+    if (got === 'egg') { void music.playEffect(HP_TRANSFER_SE.buzz); return }
+    if (got === 'invalid') { setNotice(plainText(partyText[P.cantUseOnThat])); return }
+    void music.playEffect(HP_TRANSFER_SE.heal)
+    setTransfer({ ...transfer, phase: 'give', target: at, given: hpTransferGiven(transfer.amount, slot), count: 0 })
+  }
+
+  /**
+   * 한 프레임에 1씩 깎고 채운다 (`PartyMenu_HPTransferUpdateHP`). 세이브의 파티를 곧바로 고친다 —
+   * 원작도 한쪽이 끝날 때마다 `Pokemon_SetValue(MON_DATA_HP)`로 적는다
+   */
+  useEffect(() => {
+    if (transfer === null || transfer.phase === 'pick') return
+    const timer = window.setInterval(() => {
+      const now = useSaveStore.getState().party
+      const slot = transfer.phase === 'give' ? transfer.donor : transfer.target
+      const mon = now[slot]
+      if (!mon || !species) { setTransfer(null); return }
+      const next = [...now]
+      next[slot] = { ...mon, hp: mon.hp + (transfer.phase === 'give' ? -1 : 1) }
+      useSaveStore.setState({ party: next })
+      const count = transfer.count + 1
+      const full = transfer.phase === 'take' && next[slot]!.hp >= fullHp(mon, species)
+      if (count < transfer.given && !full) { setTransfer({ ...transfer, count }); return }
+      if (transfer.phase === 'give') {
+        void music.playEffect(HP_TRANSFER_SE.heal)
+        setTransfer({ ...transfer, phase: 'take', count: 0 })
+        return
+      }
+      // 다 채웠다. 노트는 맵 없이 적는다 (`JournalEntry_CreateEventUsedMove(…, 0, …)`)
+      journalPlain(transfer.kind === 'milkDrink' ? LocationEvent.USED_MILK_DRINK : LocationEvent.USED_SOFTBOILED)
+      setTransfer(null)
+      const who = next[slot]!
+      say(fillMenuText(partyText[P.hpRestored] ?? '', [who.nickname ?? names[who.species] ?? '', String(count)]))
+    }, 1000 / 60)
+    return () => { window.clearInterval(timer) }
+  }, [transfer, species, partyText, names])
+
   const runFieldMove = (move: number): void => {
+    if (runMenuMove(move)) return
     const verdict = fieldMoveFromMenu(move)
     if (verdict === null) { setNotice('밖에서는 쓸 수 없는 기술이다.'); return }
     if (verdict === 'fly') { push('fly'); return }
@@ -289,7 +392,7 @@ export function PartyScreen() {
     ]
     if (selected && !selected.isEgg) {
       for (const slot of selected.moves) {
-        if (!FIELD_BY_MOVE.has(slot.move)) continue
+        if (!FIELD_MENU_MOVES.has(slot.move)) continue
         const move = slot.move
         out.push({
           label: moveNames[move] ?? '',
@@ -743,6 +846,7 @@ export function PartyScreen() {
     confirm: () => {
       if (turnPage()) return
       setNotice(null)
+      if (transfer !== null) { if (transfer.phase === 'pick') pickTransferTarget(); return }
       if (inMenu) { choices[Math.min(menuAt, choices.length - 1)]?.run(); return }
       // 스크립트가 부른 고르기. 빈 파티에서는 고를 것이 없다
       if (choosingMon) {
@@ -763,6 +867,8 @@ export function PartyScreen() {
     cancel: () => {
       if (turnPage()) return
       setNotice(null)
+      // `PartyMenu_ResetCursor` — 커서는 그 자리에 두고 고르기만 그만둔다
+      if (transfer !== null) { if (transfer.phase === 'pick') setTransfer(null); return }
       // 기술머신 물음에서 B는 그 물음의 **「아니오」**와 같다 (원작의 yes/no 창)
       if (menu === 'learnAsk' || menu === 'learnForget') { setMenu('learnStop'); setMenuAt(0); return }
       if (menu === 'learnStop') { stopLearning(); return }
@@ -785,7 +891,9 @@ export function PartyScreen() {
    * 한때 오른쪽 상세 칸 밑에 붙어 있었는데 그 칸이 없어졌다. 원작도 이런 말은
    * 화면 아래 글상자에 한 줄로 뜬다
    */
-  const foot = pages[0] ?? notice ?? (inMenu
+  const foot = pages[0] ?? notice ?? (transfer !== null
+    ? plainText(partyText[P.useOnWhich])
+    : inMenu
     ? '↑↓ 고르기 · Z 결정 · X 되돌리기'
     : choosingMon
       ? '↑↓←→ 고르기 · Z 결정 · X 그만둔다'

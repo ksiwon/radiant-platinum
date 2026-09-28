@@ -174,7 +174,19 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   // 지나간다. 안 그러면 리펠을 뿌린 동안 유예가 안 닫혀서, 리펠이 끝나는
   // 순간 다음 걸음에 곧바로 튀어나온다
   state = newEncounterState()
+  draw(kind, table, partner, radar, true)
+}
 
+/**
+ * 관문을 지난 뒤 — 배회 · 칸 · 레벨 · 리펠과 특성 · 동행의 둘째를 뽑는다.
+ *
+ * `guarded`가 거짓이면 **리펠도 특성도 안 본다** — 달콤한향기가 그 길이다
+ * (`WildEncounters_TrySweetScentEncounter`: `repelActive = FALSE` · `ignoreAbilityBlock = TRUE`)
+ */
+function draw(
+  kind: 'land' | 'surf', table: EncounterTable, partner: number, radar: RadarStep | null, guarded: boolean,
+): void {
+  const mods = encounters.mods
   const rng = encounters.rng
   // ⚠️ **배회가 야생보다 먼저다.** 원작도 칸을 뽑기 전에 물어본다
   // (`TryEncounterRoamer`) — 여기 있으면 절반은 배회가 나오고, 그 판에서는
@@ -185,7 +197,7 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   if (roam) {
     // 리펠은 배회에도 걸린다. 막히면 그 걸음은 아무 일도 없다 —
     // 뒤의 야생으로 넘어가지 않는다
-    if (!repelBlocks(mods.repelLevel, roam.level)) encounters.pending = roam
+    if (!guarded || !repelBlocks(mods.repelLevel, roam.level)) encounters.pending = roam
     return
   }
   const lead = mods.lead
@@ -214,7 +226,7 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
   // ⚠️ **레벨을 뽑은 다음에 막는다.** 날카로운눈·위협도 리펠도 야생의 레벨을
   // 봐야 판정이 된다 — 원작도 `TryGenerateWildMon` 안, 칸과 레벨을 정한
   // 뒤에서 둘을 부른다 (`wild_encounters.c` 1136·1140)
-  if (got && (leadScaresOff(lead, got.level, rng) || repelBlocks(mods.repelLevel, got.level))) {
+  if (got && guarded && (leadScaresOff(lead, got.level, rng) || repelBlocks(mods.repelLevel, got.level))) {
     return
   }
   // 모습은 맨 마지막에 정한다 — 원작도 개체를 다 만든 뒤 파티에 넣기 직전이다
@@ -229,7 +241,7 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
       pick: (land) => forcedSlot(speciesOf(land), lead, typeOf, rng),
       bump: (land, slot) => higherLevelSlot(land, lead, slot, rng),
     })
-    if (!more || leadScaresOff(lead, more.level, rng) || repelBlocks(mods.repelLevel, more.level)) {
+    if (!more || (guarded && (leadScaresOff(lead, more.level, rng) || repelBlocks(mods.repelLevel, more.level)))) {
       return
     }
     more.form = wildForm(table, more.species, rng)
@@ -237,6 +249,38 @@ function rollAt(grid: NonNullable<typeof world.grid>, tx: number, tz: number): v
     return
   }
   encounters.pending = got
+}
+
+/** 선 칸의 갈래와 출현률 (`GetTileEncounterRateAndType`). 출현률이 0이면 null */
+function rateHere(): { kind: 'land' | 'surf', table: EncounterTable } | null {
+  const grid = world.grid
+  if (!grid) return null
+  const p = worldState.player.position
+  const kind = encounterKind(grid.behavior(Math.floor(p.x), Math.floor(p.z)))
+  const table = tableForCurrentMap()
+  if (kind === null || !table) return null
+  const rate = kind === 'surf' ? table.surf.rate : table.landRate
+  return rate > 0 ? { kind, table } : null
+}
+
+/** 선 칸에 출현률이 있는가 (`WildEncounters_TileHasEncounterRate`) */
+export function tileHasEncounterRate(): boolean {
+  return rateHere() !== null
+}
+
+/**
+ * 달콤한향기 · 달콤한꿀로 부르는 조우 (`WildEncounters_TrySweetScentEncounter`).
+ *
+ * 관문이 없다 — 반드시 나온다. 리펠도 특성(위협·날카로운눈)도 못 막고, 배회가 먼저이며(동행이 없을 때),
+ * 레이더 무더기로는 안 친다(원작이 `radarData`를 0으로 비운다). 걸었으면 참
+ */
+export function sweetScentEncounter(): boolean {
+  const here = rateHere()
+  if (here === null) return false
+  state = newEncounterState()
+  const partner = here.kind === 'land' ? encounters.partner : 0
+  draw(here.kind, here.table, partner, null, false)
+  return encounters.pending !== null
 }
 
 /**

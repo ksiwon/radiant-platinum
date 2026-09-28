@@ -25,6 +25,7 @@ import { useMenuStore } from '../../state/menuStore'
 import { fillMenuText, loadUiText } from '../../data/uiText'
 import { totalAccessories } from '../../engine/world/fashionCase'
 import { berryPatchAhead } from '../../scene/berryPatches'
+import { beginEscapeRope, beginSweetScent } from '../../scene/fieldMoveTask'
 
 /** `VAR_0x8000` = `SCRIPT_DATA_PARAMETER_0` */
 const SCRIPT_PARAM_0 = 0x8000
@@ -135,18 +136,19 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
       deps.consume(deps.pocket, deps.item, 1)
       deps.say(`${deps.name}을(를) 불었다!`)
       return true
-    case 'escapeRope': {
-      const exit = useSaveStore.getState().exit
-      if (!exit) { deps.say('돌아갈 자리가 없다.'); return false }
+    case 'escapeRope':
+      // 빙글 돌며 하얗게 덮이고 굴 입구에 선다 (`FieldWarp_InitEscapeRope` · `scene/fieldMoveTask`).
+      // 도착해서는 남쪽을 보고 선다 — 원작 들어오는 동작(`sFadeInWarpAnimation`)이 남쪽에서 끝난다
+      if (!beginEscapeRope()) { deps.say('돌아갈 자리가 없다.'); return false }
       deps.consume(deps.pocket, deps.item, 1)
-      world.pending = {
-        to: exit.map, matrix: exit.matrix, x: exit.x, z: exit.z, facing: exit.facing,
-        // 문으로 나오는 것이 아니라 굴 밖에 툭 선다. 원작도 문 여닫는 연출이 없다
-        viaDoor: false,
-      }
       deps.closeAll()
       return true
-    }
+    case 'honey':
+      // 달콤한향기와 같은 과제를 컷인 없이 건다. 하나를 쓰는 것은 가방이다 (`UseHoneyFromMenu`의 `Bag_TryRemoveItem`)
+      if (!beginSweetScent(null)) return false
+      deps.consume(deps.pocket, deps.item, 1)
+      deps.closeAll()
+      return true
     case 'fish':
       // 던지는 순간 가방을 닫는다. 원작도 낚싯대를 쓰면 가방이 사라지고
       // 필드 과제(`FieldTask_Fishing`)가 화면을 가져간다

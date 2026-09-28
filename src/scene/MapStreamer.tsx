@@ -56,7 +56,8 @@ import { resetWalkSound } from './walkSound'
 import { cutInThenBattle, resetCutIn } from './encounterCutIn'
 import { resetHmCutIn } from './hmCutInScene'
 import { frameStats, SPAN } from '../engine/loop/frameStats'
-import { resetStepFeatureTile } from '../engine/script/field'
+import { facingOfDir, resetStepFeatureTile } from '../engine/script/field'
+import { fieldMoveTaskBusy, fieldWarpArrived, resetFieldMoveTask } from './fieldMoveTask'
 import { resetBridge } from '../engine/actor/bridge'
 import { cameraSystem } from '../engine/actor/camera'
 import {
@@ -183,13 +184,6 @@ const INDOOR_FOG_FAR = 64
  */
 const DISTORTION_FOG_NEAR = 400
 const DISTORTION_FOG_FAR = 600
-
-/**
- * 원작 방향 번호(북 0 · 남 1 · 서 2 · 동 3) → `facing` 라디안.
- *
- * `atan2(vx, vz)`라 0이 +z(남쪽)다. 스크립트 워프가 도착 방향을 이 번호로 준다
- */
-const FACING_OF = [-Math.PI / 2, Math.PI, Math.PI / 2, 0]
 
 /**
  * 그림자 맵 한 변.
@@ -926,6 +920,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       || distortionCascading()
       || platformLiftBusy()
       || canalaveBusy() || veilstoneBusy()
+      || fieldMoveTaskBusy()
 
     const p = worldState.player.position
     const tx = Math.floor(p.x),
@@ -965,7 +960,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
        * 걸린다 — 그 자리에 우리 인을 얹으면 스크립트가 밝히기도 전에 우리가
        * 밝혀 버려서 장면이 두 번 번쩍인다. 스크립트가 도는 동안은 그쪽에 맡긴다
        */
-      const mine = scriptBridge.running?.() !== true
+      // 빙글 워프(로프 · 구멍파기 · 순간이동)는 제 덮개를 이미 걸었고 들어오는 연출도 제가 한다
+      const mine = scriptBridge.running?.() !== true && target.fieldWarp === undefined
       // 격자를 **먼저** 걸어 둔다. 덮는 6프레임과 겹쳐 받으므로 페이드가
       // 기다림을 늘리지 않는다
       const loading = gridFor(target.matrix)
@@ -997,7 +993,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
             { x: target.x, z: target.z })
           // 스크립트 워프만 방향을 함께 준다 (`ScrCmd_Warp`). 문·계단은 들어간
           // 방향 그대로 나오는 것이 맞아서 안 건드린다
-          if (target.facing !== undefined) worldState.player.facing = FACING_OF[target.facing] ?? 0
+          if (target.facing !== undefined) worldState.player.facing = facingOfDir(target.facing)
           // ⚠️ **`enter` 뒤다.** 그 안의 `enterMap`이 `resetFade`로 덮개를 걷으므로
           // (아웃만 걸고 워프하는 스크립트 때문에 걷어야 한다) 먼저 덮으면
           // 그대로 지워진다. 덮고 나서 밝힌다 — 원작도 갈아 끼운 뒤에 인이다
@@ -1006,11 +1002,14 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
             coverScreen(COLOR_BLACK)
             startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_IN, COLOR_BLACK)
           }
+          if (target.fieldWarp !== undefined) fieldWarpArrived()
         })
         .catch((e) => {
           console.error('워프 실패', e)
           // 못 갈아 끼웠는데 덮개를 그대로 두면 검은 화면에 갇힌다
           if (mine) resetFade()
+          // 빙글 워프는 하얀(순간이동은 검은) 덮개와 묶인 발을 제가 들고 있다 — 같이 푼다
+          if (target.fieldWarp !== undefined) { resetFade(); resetFieldMoveTask() }
         })
         .finally(() => {
           world.pending = null

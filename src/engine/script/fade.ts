@@ -105,3 +105,11 @@ export function coverScreen(color = 0): void {
 export function resetFade(): void {
   screenFade.now = null
 }
+
+/**
+ * 화면에 **비쳐 보이게** 얹는 색 한 겹 — 달콤한향기의 분홍이 이것이다 (`G2_SetBlendAlpha`).
+ *
+ * 페이드와 따로 산다. 원작도 페이드는 밝기 레지스터, 이것은 BG2의 알파 섞기라 둘이 겹칠 수 있다.
+ * `alpha`는 0~1(원작 몫 ÷ 16)이고 0이면 안 그린다
+ */
+export const screenTint = { alpha: 0, color: 'rgb(0, 0, 0)' }

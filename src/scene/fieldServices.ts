@@ -28,6 +28,7 @@ import {
   useFieldMoveNow,
 } from '../engine/script/field'
 import { hmCutInDone, startHmCutInFor } from './hmCutInScene'
+import { elevatorLightDone, startElevatorLight, stopElevatorLight } from './elevatorLight'
 import {
   VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
 } from '../engine/script/vars'
@@ -346,6 +347,11 @@ let previousMapId = 0
 /** 워프할 때마다 적는다. `MapStreamer`가 맵을 갈아 끼우기 **직전에** 부른다 */
 export function rememberPreviousMap(mapId: number): void {
   if (mapId >= 0) previousMapId = mapId
+}
+
+/** 방금 있던 맵. 곡을 고르는 쪽도 본다 — 자전거로드 문에서 들어섰는가 (`FieldBGM_GetAltMusicForCyclingRoad`) */
+export function previousMap(): number {
+  return previousMapId
 }
 
 /** 종족값·기술 표. 개체를 만들려면 둘 다 있어야 한다 */
@@ -1192,6 +1198,12 @@ const services: FieldServices = {
   breakObstacle: {
     start: (kind) => { showFieldAction(kind === 0 ? 'cut' : 'rockSmash', BREAK_SECONDS) },
     done: () => fieldActionDone(),
+  },
+
+  elevatorLight: {
+    start: (dir, loops) => { startElevatorLight(dir, loops) },
+    done: () => elevatorLightDone(),
+    stop: () => { stopElevatorLight() },
   },
 
   hmCutIn: {

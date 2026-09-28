@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { it, expect } from 'vitest'
-import { TRAINER_BATTLE, WILD_BATTLE, songForMap, wildSongFor } from './songs'
+import { TRAINER_BATTLE, WILD_BATTLE, fieldBgm, songForMap, wildSongFor, type FieldSongState } from './songs'
 import { SFX } from './sfx'
 import { TimeOfDay, timeOfDayForHour } from '../map/timeOfDay'
 import { world, type MapHeader } from '../map/world'
@@ -143,5 +143,42 @@ maybe('배틀 효과음', () => {
     for (const [name, id] of Object.entries(SFX)) {
       expect(songs[id], `${name}(${String(id)})`).toBeTruthy()
     }
+  })
+})
+
+maybe('원작이 헤더 곡 위에 얹는 것 (`FieldBGM_GetEffective`)', () => {
+  const nameOf = (song: number | null): string | null => (song === null ? null : index().songs[song]?.name ?? null)
+  const field = (over: Partial<FieldSongState> = {}): FieldSongState => ({
+    surfing: false, flag: () => false, prevMapId: null, x: 0, z: 0, ...over,
+  })
+
+  it('파도타기면 파도타기 곡이고 가로채기보다 앞이다 — 깨어진 세계만 빼고', () => {
+    world.maps = maps().maps
+    fieldBgm.override = 1152
+    expect(nameOf(songForMap(350, 12, field({ surfing: true })))).toBe('SEQ_NAMINORI')
+    fieldBgm.override = null
+    // 깨어진 세계 1F(573)는 물 위에서도 제 곡이다
+    expect(songForMap(573, 12, field({ surfing: true }))).toBe(world.maps[573]!.bgmDay)
+    world.maps = null
+  })
+
+  it('이야기 깃발이 곡을 갈아 끼운다 — 챔피언의 방 · 은하단 본부 1층', () => {
+    world.maps = maps().maps
+    const on = (id: number) => (flag: number) => flag === id
+    expect(nameOf(songForMap(185, 12, field({ flag: on(2443) })))).toBe('SEQ_SILENCE_FIELD')
+    expect(nameOf(songForMap(305, 12, field({ flag: on(2438) })))).toBe('SEQ_D_AGITO')
+    // 본부 깃발이 서면 1층도 도시 곡이다 — 1층 깃발은 그다음에야 본다
+    expect(nameOf(songForMap(305, 22, field({ flag: (f) => f === 2437 || f === 2438 })))).toBe('SEQ_CITY07_N')
+    expect(songForMap(185, 12, field())).toBe(world.maps[185]!.bgmDay)
+    world.maps = null
+  })
+
+  it('자전거로드 문에서 들어선 두 끝이면 자전거로드 곡이다', () => {
+    world.maps = maps().maps
+    expect(nameOf(songForMap(350, 12, field({ prevMapId: 80, x: 302, z: 576 })))).toBe('SEQ_PL_BICYCLE')
+    expect(nameOf(songForMap(350, 12, field({ prevMapId: 351, x: 306, z: 681 })))).toBe('SEQ_PL_BICYCLE')
+    expect(songForMap(350, 12, field({ prevMapId: 80, x: 302, z: 600 }))).toBe(world.maps[350]!.bgmDay)
+    expect(songForMap(350, 12, field({ prevMapId: 349, x: 302, z: 576 }))).toBe(world.maps[350]!.bgmDay)
+    world.maps = null
   })
 })

@@ -2,7 +2,8 @@
 //
 // **곡 번호는 지어내지 않는다.** 맵 헤더가 `bgmDay`·`bgmNight`를 들고 있고,
 // 헤더 593개가 내놓는 번호 1186개가 **전부** SDAT의 곡을 가리킨다(없는 번호 0개).
-// 그래서 여기서 할 일은 지금 선 맵의 헤더를 보고 낮/밤을 고르는 것뿐이다.
+// 여기서 할 일은 지금 선 맵의 헤더에서 낮/밤을 고르고, 원작이 그 위에 얹는 것(파도타기 · 이야기 깃발 ·
+// 자전거로드 · 가로채기)을 원작 차례로 얹는 것이다 (`audio/songs`의 `songForMap`).
 //
 // 낮/밤 경계는 하늘과 같은 표를 쓴다(`map/timeOfDay`) — 원작 `rtc.c`의 24칸이다.
 // 다만 **하늘처럼 섞지 않는다.** 곡은 섞을 수 없으니 경계에서 갈아탄다.
@@ -18,6 +19,9 @@ import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { useIntroStageStore } from '../state/introStageStore'
 import { useOptionsStore } from '../state/optionsStore'
+import { worldState } from '../state/worldState'
+import { fieldScripts } from '../engine/script/field'
+import { previousMap } from './fieldServices'
 
 /** 몇 초마다 곡을 다시 고를지. 맵과 시간대만 보므로 자주 볼 이유가 없다 */
 const CHECK_SECONDS = 1
@@ -66,7 +70,14 @@ export function MusicDirector() {
     // 준비하는 동안은 아무것도 안 고른다 — 지금 흐르던 곡이 그대로 흐른다
     if (phase !== 'off' && !sceneReady) return
     const want = phase === 'off'
-      ? songForMap(world.mapId, new Date().getHours())
+      ? songForMap(world.mapId, new Date().getHours(), {
+        // 파도타기 곡 · 이야기 깃발의 곡 · 자전거로드 곡 (`FieldBGM_GetEffective`)
+        surfing: worldState.player.surfing,
+        flag: (id) => fieldScripts.vars?.checkFlag(id) === true,
+        prevMapId: previousMap(),
+        x: Math.floor(worldState.player.position.x),
+        z: Math.floor(worldState.player.position.z),
+      })
       : kind === 'trainer' ? TRAINER_BATTLE
         : wildSongFor(foeSpecies ?? 0, world.mapId)
 

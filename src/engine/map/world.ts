@@ -213,6 +213,13 @@ export interface PendingWarp {
   /** 문·계단 소리를 안 낸다. 승강 발판은 제 소리가 따로 있다 */
   silent?: boolean
   /**
+   * 동굴탈출로프 · 구멍파기 · 순간이동의 빙글 워프로 왔다 (`FieldTask_ChangeMapByFieldWarp`).
+   *
+   * 덮개를 그쪽이 이미 걸어 두었으므로 씬이 검정 페이드를 또 걸지 않고, 갈아 끼운 뒤 들어오는 연출을
+   * 그쪽에 넘긴다 (`scene/fieldMoveTask`)
+   */
+  fieldWarp?: 'escapeRope' | 'dig' | 'teleport'
+  /**
    * 좌표가 **롬이 적은 칸**이다 — 스크립트 `Warp`. 깨어진 세계 층은 원작이 층들을 한 좌표계에 두어
    * 그 칸이 세계 칸이라, 들어설 때 층 오프셋을 뺀다(`scene/distortionCore`의 `romTileToLocal`).
    * 승강 발판·폭포는 이미 우리 칸으로 옮겨 주므로 안 세운다

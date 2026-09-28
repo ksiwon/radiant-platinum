@@ -12,7 +12,7 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   BADGE, FIELD_MOVES, TILE_BEHAVIOR_ROCK_CLIMB_EW, TILE_BEHAVIOR_ROCK_CLIMB_NS,
-  TILE_BEHAVIOR_WATERFALL, canRockClimb, fieldMoveHere, movesUsableHere, whyNot,
+  TILE_BEHAVIOR_WATERFALL, canRockClimb, fieldMoveHere, MENU_MOVES, menuMoveDenial, menuMoveOf, movesUsableHere, whyNot,
   type FieldSpot,
 } from './fieldMoves'
 import { Behavior } from '../map/zone'
@@ -130,5 +130,46 @@ describe('자격', () => {
     expect(fieldMoveHere(water, all(0, mon))).toBeNull()
     expect(fieldMoveHere(water, all((1 << BADGE.fen) - 1, mon))).toBeNull()
     expect(fieldMoveHere(water, all(1 << BADGE.fen, mon))).toBe('surf')
+  })
+})
+
+maybe('뱃지 없는 다섯', () => {
+  it('기술 번호가 롬 이름표와 맞는다', () => {
+    const names = JSON.parse(readFileSync(resolve(DATA, 'names/moves.ko.json'), 'utf8')) as string[]
+    expect(names[MENU_MOVES.teleport.move]).toBe('순간이동')
+    expect(names[MENU_MOVES.dig.move]).toBe('구멍파기')
+    expect(names[MENU_MOVES.sweetScent.move]).toBe('달콤한향기')
+    expect(names[MENU_MOVES.milkDrink.move]).toBe('우유마시기')
+    expect(names[MENU_MOVES.softboiled.move]).toBe('알낳기')
+  })
+})
+
+describe('순간이동 · 구멍파기 자격 (`FieldMoves_CheckTeleport` · `_CheckDig`)', () => {
+  const route = { flyAllowed: true, mapType: 2, escapeRopeAllowed: false, hasPartner: false, inSafari: false }
+  const cave = { flyAllowed: false, mapType: 3, escapeRopeAllowed: true, hasPartner: false, inSafari: false }
+
+  it('순간이동은 날 수 있는 **마을 밖**에서만 된다', () => {
+    expect(menuMoveDenial('teleport', route)).toBeNull()
+    // 마을 한복판은 날 수는 있어도 순간이동은 안 된다 (`MapHeader_IsTeleportAllowed`)
+    expect(menuMoveDenial('teleport', { ...route, mapType: 1 })).toBe('notHere')
+    expect(menuMoveDenial('teleport', cave)).toBe('notHere')
+    expect(menuMoveDenial('teleport', { ...route, hasPartner: true })).toBe('partner')
+    expect(menuMoveDenial('teleport', { ...route, inSafari: true })).toBe('notHere')
+  })
+
+  it('구멍파기는 탈출로프를 허락하는 굴에서만 된다', () => {
+    expect(menuMoveDenial('dig', cave)).toBeNull()
+    expect(menuMoveDenial('dig', { ...cave, escapeRopeAllowed: false })).toBe('notHere')
+    expect(menuMoveDenial('dig', route)).toBe('notHere')
+    expect(menuMoveDenial('dig', { ...cave, hasPartner: true })).toBe('partner')
+  })
+
+  it('달콤한향기 · 우유마시기 · 알낳기는 자리를 안 본다 — 날씨와 체력은 뒤에서 본다', () => {
+    for (const id of ['sweetScent', 'milkDrink', 'softboiled'] as const) {
+      expect(menuMoveDenial(id, cave)).toBeNull()
+      expect(menuMoveDenial(id, { ...route, hasPartner: true })).toBeNull()
+    }
+    expect(menuMoveOf(100)).toBe('teleport')
+    expect(menuMoveOf(15)).toBeNull()
   })
 })

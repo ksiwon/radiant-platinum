@@ -13,7 +13,7 @@ import {
   breakSnowballAt, obstacleAt, pushBoulder, solidNpcAt, solidNpcAtHeight, STRENGTH_BOULDER,
 } from './obstacles'
 import { edgeBlocks, edgeCrossBlocked } from './edgeBlock'
-import { TOP_LEVEL, bikeSpeedAt, bikeSpeedLevel } from './bike'
+import { BIKE_GEAR, TOP_LEVEL, bikeSpeedAt, bikeSpeedLevel, cyclingRoadCoasts } from './bike'
 import { bikeRampHop, bikeSlopeStep, clearBikeSlip, isSlippingDownSlope, pushBikeCue } from './bikeTerrain'
 import { SFX } from '../audio/sfx'
 import { onElevatedBridge, trackBridge } from './bridge'
@@ -410,6 +410,18 @@ export const playerSystem = {
       }
     } else if (!activeZone.grid) {
       clearBikeSlip()
+    }
+
+    /**
+     * **자전거로드 내리막** (PARITY §1.9 · `PlayerAvatar_TileMove_CyclingRoadDown`).
+     *
+     * 손을 떼면 남쪽으로 전속력(`SPEED_3`)이다. 속도 단도 전속력으로 올려 둔다 — 원작이 `PlayerAvatar_SetSpeed(SPEED_3)`를
+     * 거므로 다시 밟으면 그 단에서 이어진다(4단). 앞이 막히면 이동 쪽이 세우고 얼굴은 남쪽 그대로다
+     */
+    if (cyclingRoadCoasts(moving, p.cycling, activeZone.grid?.behaviorAtWorld(p.position.x, p.position.z) ?? null)) {
+      p.velocity.set(0, 0, WALK_SPEED * bikeSpeedAt(TOP_LEVEL, BIKE_GEAR.fourth))
+      p.facing = 0
+      p.pedalling = TOP_LEVEL
     }
 
     const grid = activeZone.grid

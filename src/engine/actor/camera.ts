@@ -326,6 +326,13 @@ let fovReady = false
  */
 let placeReady = false
 
+/**
+ * 동굴탈출로프 · 구멍파기 · 순간이동이 카메라를 당기는 비율 (`engine/world/fieldWarp`). 1이 제자리다.
+ *
+ * 원작이 프레임마다 `Camera_SetDistance`로 곧바로 세우므로 도는 동안은 감쇠를 안 태운다 — 컷인과 같다
+ */
+export const cameraDolly = { warp: 1 }
+
 export const cameraSystem = {
   /**
    * 지금 화면의 **화각(도)**. `EngineDriver`가 렌더 직전에 읽는다.
@@ -439,7 +446,8 @@ export const cameraSystem = {
       }
       // 조우 컷인이 팔을 당긴다 (`Camera_SetDistance`, `battle/encounterCutIn`).
       // 각은 그대로 두고 **길이만** 곱한다 — 원작이 거리 하나만 만진다
-      const dolly = cutInFrame.now?.dolly ?? 1
+      // 빙글 워프도 거리 하나만 당긴다 (`ov5_021F0EB0` · `world/fieldWarp`)
+      const dolly = (cutInFrame.now?.dolly ?? 1) * cameraDolly.warp
       if (dolly !== 1) offset.multiplyScalar(dolly)
       goal.copy(p).add(offset)
       look.copy(p)
@@ -471,7 +479,7 @@ export const cameraSystem = {
     // ⚠️ **컷인이 도는 동안은 안 늦춘다.** 원작이 `Camera_SetDistance`로 프레임마다
     // 곧바로 세우는데, 여기 감쇠(5)를 그대로 태우면 서른여덟 프레임짜리 돌진이
     // 8%밖에 안 먹혀 화면에서 아무 일도 안 일어난 것처럼 보인다
-    const t = cutInFrame.now !== null || !placeReady
+    const t = cutInFrame.now !== null || cameraDolly.warp !== 1 || !placeReady
       ? 1
       : 1 - Math.exp(-(first ? FIRST_DAMPING : THIRD.damping) * delta)
     placeReady = true

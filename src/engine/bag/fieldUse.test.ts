@@ -140,6 +140,11 @@ maybe('필드 도구', () => {
     expect(fieldAction(named('ITEM_EXPLORER_KIT'), town())).toEqual({ kind: 'missing', what: '지하통로' })
   })
 
+  it('달콤한꿀은 어디서든 달콤한향기 과제를 건다 — 검사가 없다 (`UseHoneyFromMenu`)', () => {
+    expect(fieldAction(named('ITEM_HONEY'), town())).toEqual({ kind: 'honey' })
+    expect(fieldAction(named('ITEM_HONEY'), town({ mapType: MAP_TYPE_CAVE }))).toEqual({ kind: 'honey' })
+  })
+
   it('나무열매 밭 셋 — 앞 밭의 상태로 갈린다 (`CanUseSprayDuck` · `CanUseMulch` · `UseBerryFromMenu`)', () => {
     const empty = { localID: 7, empty: true, canMulch: true, hasBerry: false }
     const mulched = { ...empty, canMulch: false }

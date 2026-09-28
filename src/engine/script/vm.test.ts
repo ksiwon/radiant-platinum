@@ -490,9 +490,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_055
+const RUNNING_SITES = 55_056
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 558
+const IMPLEMENTED_COMMANDS = 559
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -733,7 +733,10 @@ const IDLE_COMMANDS = [
   'CheckIsMysteryGiftPhrase', 'UnlockMysteryGift',
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
-  'ScrCmd_2B2', 'IsCommGameCodePlatinum',
+  'ScrCmd_2B2',
+  // 자전거로드 곡은 206번도로의 `OnResume`이 **앞 맵이 자전거로드 문일 때만** 건다 — 훑기는 앞 맵을 안 세운다
+  'SetCyclingBGM',
+  'IsCommGameCodePlatinum',
   // 로토무의 방에서 가전에 넣을 로토무를 고르는 줄이다 — 그 앞이 파티에 로토무가 있어야 지나가는 갈래다
   'CountRepeatedSpeciesInParty',
   // 저장 흐름의 **빠른 저장 갈래 안쪽**이라 안 밟힌다 (PARITY §4.12).

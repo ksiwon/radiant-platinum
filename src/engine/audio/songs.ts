@@ -96,13 +96,104 @@ export const fieldBgm = {
   override: null as number | 'stop' | null,
 }
 
-export function songForMap(mapId: number, hour: number): number | null {
-  if (fieldBgm.override !== null) {
-    return fieldBgm.override === 'stop' ? null : fieldBgm.override
-  }
+/** `SEQ_NAMINORI` — 파도타기 곡 */
+const SURF_SONG = 1151
+/** `SEQ_PL_BICYCLE` — 자전거로드 곡. 탈 때 곡(`SEQ_BICYCLE` 1152)과 다르다 */
+const CYCLING_ROAD_SONG = 1189
+
+/** 깨어진 세계 열 층 — 물 위에서도 파도타기 곡으로 안 간다 (`FieldBGM_GetEffective`의 `switch`) */
+const DISTORTION_FLOORS = new Set([573, 574, 575, 576, 577, 579, 580, 581, 582, 583])
+
+/**
+ * 이야기 깃발이 갈아 끼우는 곡 (`SystemFlag_GetAltMusicForHeader`).
+ *
+ * 맵 번호 · 깃발 · 곡(낮/밤)이 다 롬 목록에서 센 값이다 — 맵은 `generated/map_headers.txt`의 줄 − 1,
+ * 깃발은 `vars_flags.txt`의 열거, 곡은 `sdat.txt`의 닻. 은하단 본부는 1층만 따로 한 번 더 본다
+ */
+const ALT_SONGS: readonly { maps: readonly number[], flag: number, day: number, night: number }[] = [
+  // 비워진 입지호 · 입지호 동굴 — 아카기가 무너뜨린 뒤 (`FLAG_ALT_MUSIC_LAKE_VALOR`)
+  { maps: [314], flag: 2436, day: 1070, night: 1070 },
+  { maps: [316], flag: 2436, day: 1065, night: 1065 },
+  // 리샘호 · 엄격호 (`SEQ_D_LAKE`)
+  { maps: [312], flag: 2446, day: 1070, night: 1070 },
+  { maps: [318], flag: 2447, day: 1070, night: 1070 },
+  // 팔파크 (`SEQ_D_SAFARI`)
+  { maps: [251], flag: 2453, day: 1069, night: 1069 },
+  // 마빈 연구소 (`SEQ_OPENING2`)
+  { maps: [422], flag: 2451, day: 1098, night: 1098 },
+  // 은하단 본부 여덟 층 (`SEQ_CITY07_D/N`)
+  { maps: [305, 306, 307, 308, 309, 310, 494, 497], flag: 2437, day: 1016, night: 1045 },
+  // 은하단 본부 1층만 (`SEQ_D_AGITO`) — 위 깃발이 안 섰을 때만 본다
+  { maps: [305], flag: 2438, day: 1067, night: 1067 },
+  // 영원시티 은하단 빌딩 넷 (`SEQ_CITY04_D/N`)
+  { maps: [72, 73, 74, 75], flag: 2439, day: 1013, night: 1042 },
+  // 골짜기 발전소 (`SEQ_ROAD_C_D/N`)
+  { maps: [201], flag: 2440, day: 1023, night: 1052 },
+  // 꽃향기 꽃밭 · 224번도로 (`SEQ_TOWN03_D/N`)
+  { maps: [256], flag: 2441, day: 1006, night: 1035 },
+  { maps: [399], flag: 2442, day: 1006, night: 1035 },
+  // 챔피언의 방 (`SEQ_SILENCE_FIELD`)
+  { maps: [185], flag: 2443, day: 1001, night: 1001 },
+]
+
+/** 206번도로 · 자전거로드 남북 문 (`FieldBGM_GetAltMusicForCyclingRoad`) */
+const ROUTE_206 = 350
+const CYCLING_ROAD_GATES = new Set([80, 351])
+
+/** 곡을 고르는 데 쓰는 필드의 사정. 없으면 헤더와 가로채기만 본다 */
+export interface FieldSongState {
+  /** 파도타기 중인가 (`PLAYER_AVATAR_SURFING`) */
+  surfing: boolean
+  /** 이야기 깃발 */
+  flag: (id: number) => boolean
+  /** 바로 앞에 있던 맵 (`FieldOverworldState_GetPrevLocation`) */
+  prevMapId: number | null
+  /** 선 칸 */
+  x: number
+  z: number
+}
+
+/**
+ * 지금 맵에서 틀 곡 (`FieldBGM_GetEffective`).
+ *
+ * 원작 차례 그대로다 — ① 파도타기면 파도타기 곡(깨어진 세계만 빼고) ② 헤더의 낮/밤 곡 ③ 이야기 깃발이
+ * 갈아 끼운 곡 ④ 자전거로드 문에서 들어섰으면 자전거로드 곡 ⑤ 스크립트·자전거가 가로챈 곡.
+ * 레이더 곡은 레이더가 가로채기로 건다 (`scene/pokeRadar`). `'stop'`(`StopMusic`)은 무엇보다 먼저다
+ *
+ * ⚠️ **파도타기 곡이 가로채기보다 앞이다.** 원작이 파도타기를 가장 먼저 보고 곧바로 돌려준다
+ */
+export function songForMap(mapId: number, hour: number, field?: FieldSongState): number | null {
+  if (fieldBgm.override === 'stop') return null
+  if (field?.surfing === true && !DISTORTION_FLOORS.has(mapId)) return SURF_SONG
+  if (fieldBgm.override !== null) return fieldBgm.override
   const header = mapById(mapId)
   if (!header) return null
   const t = timeOfDayForHour(hour)
   const night = t === TimeOfDay.NIGHT || t === TimeOfDay.LATE_NIGHT
-  return night ? header.bgmNight : header.bgmDay
+  let song = night ? header.bgmNight : header.bgmDay
+  if (field === undefined) return song
+  const alt = altSong(mapId, night, field.flag)
+  if (alt !== null) song = alt
+  if (cyclingRoadSong(mapId, field)) song = CYCLING_ROAD_SONG
+  return song
+}
+
+function altSong(mapId: number, night: boolean, flag: (id: number) => boolean): number | null {
+  for (const row of ALT_SONGS) {
+    if (!row.maps.includes(mapId) || !flag(row.flag)) continue
+    return night ? row.night : row.day
+  }
+  return null
+}
+
+/**
+ * 206번도로에 **자전거로드 문에서** 들어섰고 자전거로드 두 끝(x 299~306 · z 576이나 681)에 섰는가.
+ *
+ * 원작은 문을 나선 그 칸에서만 참이다 — 길을 달려 내려가면 거짓이 되지만 곡은 이미 틀었으므로 계속 흐른다
+ * (`FieldBGM_TryFadeOut`이 같은 곡이면 안 바꾼다). 우리도 가로채기로 붙든다 (`SetCyclingBGM`)
+ */
+function cyclingRoadSong(mapId: number, field: FieldSongState): boolean {
+  if (mapId !== ROUTE_206 || field.prevMapId === null || !CYCLING_ROAD_GATES.has(field.prevMapId)) return false
+  if (field.x < 299 || field.x > 306) return false
+  return field.z === 576 || field.z === 681
 }

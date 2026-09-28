@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   BIKE_GEAR, BIKE_SPEEDS, THIRD_GEAR_LEVEL, TOP_LEVEL,
-  bikeBlock, bikeSpeedAt, bikeSpeedLevel,
+  bikeBlock, bikeSpeedAt, bikeSpeedLevel, cyclingRoadCoasts, setOnCyclingRoad,
 } from './bike'
 import { BRIDGE_START, resetBridge, trackBridge } from './bridge'
 import type { MapHeader } from '../map/world'
@@ -104,5 +104,28 @@ describe('여기서 탈 수 있는가', () => {
 
   it('이미 타고 있으면 어디서든 내릴 수 있다 — 다리만 빼고', () => {
     expect(bikeBlock(map(0), 0x03, false, true)).toBeNull()
+  })
+})
+
+describe('자전거로드 내리막 (`PlayerAvatar_TileMove_CyclingRoadDown`)', () => {
+  /** 남북 자전거 다리 (`TILE_BEHAVIOR_BIKE_BRIDGE_N_S`) */
+  const BIKE_BRIDGE_NS = 0x76
+
+  it('손을 떼고 · 자전거로 · 자전거로드에 묶여 · 다리 위에 있으면 내려간다', () => {
+    resetBridge()
+    trackBridge(BRIDGE_START)
+    trackBridge(BIKE_BRIDGE_NS)
+    setOnCyclingRoad(true)
+    expect(cyclingRoadCoasts(false, true, BIKE_BRIDGE_NS)).toBe(true)
+    // 누르고 있으면 · 걸어서면 · 묶이지 않았으면 안 내려간다
+    expect(cyclingRoadCoasts(true, true, BIKE_BRIDGE_NS)).toBe(false)
+    expect(cyclingRoadCoasts(false, false, BIKE_BRIDGE_NS)).toBe(false)
+    setOnCyclingRoad(false)
+    expect(cyclingRoadCoasts(false, true, BIKE_BRIDGE_NS)).toBe(false)
+    // 다리 밑이면(위 상태가 아니면) 안 내려간다
+    setOnCyclingRoad(true)
+    resetBridge()
+    expect(cyclingRoadCoasts(false, true, BIKE_BRIDGE_NS)).toBe(false)
+    setOnCyclingRoad(false)
   })
 })

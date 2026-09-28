@@ -29,6 +29,7 @@ import {
 } from './propAnim'
 import { useDoorVisualStore, type DoorVisual } from './doorVisualStore'
 import { slopePlayAt, useSlopeAnimStore } from './slopeAnimStore'
+import { ELEVATOR_LIGHTS_MODEL, elevatorLightFrame, elevatorLightSlot } from './elevatorLight'
 
 /**
  * 야도 체육관 단추 셋 (`pastoria_gym_*_button`).
@@ -113,6 +114,8 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
   const isDoor = DOOR_KIND[model] !== undefined
   /** 자전거 진흙 비탈인가 — 밟을 때 한 번만 돈다 (`scene/slopeAnimStore`) */
   const isSlope = set.table.slopes.includes(model)
+  /** 승강기 층수판 — 스크립트가 틀 때만 `loopCount`번 돈다 (`scene/elevatorLight`) */
+  const isLights = model === ELEVATOR_LIGHTS_MODEL
   const slopePlays = useSlopeAnimStore((s) => s.plays)
   const slope = isSlope ? slopePlayAt(slopePlays, tile[0], tile[1]) : null
   const doors = useDoorVisualStore((s) => s.doors)
@@ -167,10 +170,20 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
     const running = isDoor && door
       ? doorFrame(door, ids ?? [], (id) => set.clip(id)?.frames ?? 1)
       : null
+    const lightSlot = isLights ? elevatorLightSlot() : null
     for (const [slot, clip] of clips.entries()) {
       if (clip === null) continue
       let frame: number
-      if (clip.kind === 'BCA0' && isDoor) {
+      if (isLights) {
+        // ⚠️ **두 클립이 같은 재질을 만진다** — 도는 쪽 하나만 적고, 안 돌면 제자리(애니를 내린 그림)로 앉힌다
+        if (lightSlot === null) {
+          if (slot !== 0 || clip.kind !== 'BTA0') continue
+          for (const [i] of mesh.materials.entries()) mapped(materials[i])?.map?.offset.set(0, 0)
+          continue
+        }
+        if (slot !== lightSlot) continue
+        frame = elevatorLightFrame(slot, clip.frames) ?? 0
+      } else if (clip.kind === 'BCA0' && isDoor) {
         // 지금 도는 것이 이 자리의 클립일 때만 손댄다
         if (!running || running.slot !== slot) continue
         frame = running.frame

@@ -15,3 +15,17 @@ export const cover = style({
   background: vars.scrim.black,
   pointerEvents: 'none',
 })
+
+/**
+ * 비쳐 보이는 색 한 겹 (`screenTint`) — 달콤한향기의 분홍.
+ *
+ * 대사창보다 아래다. 원작도 분홍을 다 걷은 뒤에야 「아무 일도 없었다」가 뜨므로 둘이 겹칠 일이 없다
+ */
+export const tint = style({
+  position: 'fixed',
+  inset: 0,
+  zIndex: 150,
+  display: 'none',
+  opacity: 0,
+  pointerEvents: 'none',
+})

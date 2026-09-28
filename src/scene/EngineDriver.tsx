@@ -11,6 +11,7 @@ import { bikeGearSystem } from '../engine/actor/bikeGear'
 import { isSliding } from '../engine/actor/ice'
 import { npcSystem } from '../engine/actor/ambient'
 import { hmCutInTick } from './hmCutInScene'
+import { fieldMoveTaskTick } from './fieldMoveTask'
 import { objectFxTick } from '../engine/actor/objectFx'
 import { quakeOffset } from '../engine/world/fieldQuake'
 import { updateLocomotion } from '../engine/actor/locomotion'
@@ -110,6 +111,9 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 비전기술 컷인 (`PlayHMCutIn`). 이쪽도 원작 프레임 수로 재는 연출이라
       // 고정 스텝이다 — 기계가 빠르다고 포켓몬이 빨리 지나가면 안 된다
       gameLoop.register({ fixedUpdate: hmCutInTick })
+      // 기술 창 · 가방이 거는 필드 과제 — 빙글 워프와 달콤한향기 (`scene/fieldMoveTask`). 컷인 **뒤**다:
+      // 컷인이 끝난 그 프레임에 이어받는다. 카메라 앞이라 그 프레임의 팔 비율을 카메라가 곧바로 읽는다
+      gameLoop.register({ fixedUpdate: fieldMoveTaskTick })
       // 자전거 단 바꾸기는 **걸음 앞**이다 — 원작도 `PlayerAvatar_Move`가
       // 그 프레임의 입력으로 단을 먼저 바꾸고 그 단으로 걸음을 정한다
       gameLoop.register(bikeGearSystem)

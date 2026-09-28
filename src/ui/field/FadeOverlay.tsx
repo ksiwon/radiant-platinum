@@ -10,19 +10,30 @@
 //
 // 진하기를 굴리는 것은 여기가 아니라 세계다(`FieldWorld.tick`) — 원작 인자가
 // 프레임 수라 게임 시계로 세야 맞는다.
+//
+// 비쳐 보이는 한 겹(`screenTint` — 달콤한향기의 분홍)도 같은 방식으로 여기서 그린다
 import { useEffect, useRef } from 'react'
-import { fadeAlpha, screenFade } from '../../engine/script/fade'
+import { fadeAlpha, screenFade, screenTint } from '../../engine/script/fade'
 import * as css from './fadeOverlay.css'
 import { vars } from '../theme/contract.css'
 
 export function FadeOverlay() {
   const ref = useRef<HTMLDivElement>(null)
+  const tintRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let raf = 0
     let last = -1
+    let lastTint = -1
     const poll = (): void => {
       raf = requestAnimationFrame(poll)
+      const tint = tintRef.current
+      if (tint && screenTint.alpha !== lastTint) {
+        lastTint = screenTint.alpha
+        tint.style.opacity = String(lastTint)
+        tint.style.display = lastTint > 0 ? 'block' : 'none'
+        tint.style.background = screenTint.color
+      }
       const el = ref.current
       if (!el) return
       const alpha = fadeAlpha()
@@ -37,5 +48,10 @@ export function FadeOverlay() {
     return () => { cancelAnimationFrame(raf) }
   }, [])
 
-  return <div ref={ref} className={css.cover} aria-hidden />
+  return (
+    <>
+      <div ref={tintRef} className={css.tint} aria-hidden />
+      <div ref={ref} className={css.cover} aria-hidden />
+    </>
+  )
 }
