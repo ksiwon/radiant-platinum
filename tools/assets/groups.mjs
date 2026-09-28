@@ -131,6 +131,12 @@ export const GROUPS = [
     match: oneOf('data/pokeIcons.json', 'data/pokeIcons.png'),
   },
   {
+    // 신수유적 벽글을 안농 모양으로 찍는 글꼴 (PARITY §6.8). 벽글을 읽을 때만 받는다
+    name: 'unownFont',
+    make: 'pnpm extract:unownFont',
+    match: oneOf('data/unownFont.json', 'data/unownFont.png'),
+  },
+  {
     name: 'boxWallpapers',
     make: 'pnpm extract:boxWallpapers',
     match: oneOf('data/boxWallpapers.json', 'data/boxWallpapers.png'),

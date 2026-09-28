@@ -534,6 +534,15 @@ export const boxWallpapersSchema = z.object({
  * 도로 화살표 31장이 앞, 마을 약도 19장이 뒤다. 두 갈래 모두 **0번이 빈 판**이라
  * 그림 번호가 안 붙은 간판은 자연스럽게 빈 판으로 떨어진다
  */
+/**
+ * 안농 글꼴 (PARITY §6.8 · `tools/extract/unownFont.js`). 한 칸이 `size`×`size`이고 칸 차례가 `glyphs` 차례다 —
+ * 글자마다 [풀린 글자 · 원작 너비]
+ */
+export const unownFontSchema = z.object({
+  size: z.number().int().positive(),
+  glyphs: z.array(z.tuple([z.string().length(1), z.number().int().nonnegative()])).nonempty(),
+})
+
 export const signpostsSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -786,6 +795,7 @@ export type DistortionCamera = DistortionMap['cameras'][number]
 export type { DistortionMovingPlatform, DistortionElevatorPath } from '../engine/world/distortionTables'
 export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
+export type UnownFont = z.infer<typeof unownFontSchema>
 export type MartTable = z.infer<typeof martTableSchema>
 export type NpcTrades = z.infer<typeof npcTradesSchema>
 export type FrontierData = z.infer<typeof frontierSchema>

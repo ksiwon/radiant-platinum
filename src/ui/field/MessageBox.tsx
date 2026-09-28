@@ -10,6 +10,7 @@ import { fieldScripts } from '../../engine/script/field'
 import type { Line } from '../../engine/script/printer'
 import type { MenuEntry } from '../../engine/script/world'
 import { loadSignpostAtlas, signpostAtlas, signpostImage } from './signpost'
+import { loadUnownGlyphs, unownGlyph, unownReady } from './unownFont'
 import * as css from './messageBox.css'
 import { vars } from '../theme/contract.css'
 
@@ -37,6 +38,8 @@ interface View {
    * 대사창 테두리**를 쓴다 (`Window_DrawSignpost`)
    */
   signpost: { type: number, picture: number } | null
+  /** 안농 글꼴로 찍는 글인가 (`ScrCmd_MessageUnown`) */
+  unown: boolean
 }
 
 /** 나무 판으로 그리는 종류. `generated/signpost_types.txt`의 0과 1 */
@@ -55,7 +58,7 @@ function digest(view: View | null): string {
     ? ''
     : `${String(view.signpost.type)}/${String(view.signpost.picture)}`
   const shard = view.shardCost?.map((c) => `${c.name}:${String(c.need)}/${String(c.have)}`).join(',') ?? ''
-  return `${lines}#${String(view.text?.waiting)}#${menu}#${sign}#${shard}`
+  return `${lines}#${String(view.text?.waiting)}#${menu}#${sign}#${shard}#${String(view.unown)}`
 }
 
 function snapshot(): View | null {
@@ -73,6 +76,7 @@ function snapshot(): View | null {
       : { kind: menu.kind, entries: menu.entries, cursor: world.menuCursor, columns: menu.columns },
     signpost: world.signpost,
     shardCost: world.shardCost,
+    unown: world.font === 'unown' && unownReady(),
   }
 }
 
@@ -83,6 +87,7 @@ export function MessageBox() {
     // 간판 그림은 판이 처음 뜰 때가 아니라 미리 받아 둔다 — 판이 뜨는 순간에
     // 받으면 첫 간판만 그림 없이 지나간다
     loadSignpostAtlas()
+    loadUnownGlyphs()
     let raf = 0
     let last = ''
     const poll = (): void => {
@@ -124,7 +129,12 @@ export function MessageBox() {
               className={css.run}
               style={{ color: COLORS[run.color] ?? undefined, fontSize: run.size === 100 ? undefined : `${run.size}%` }}
             >
-              {run.text}
+              {view.unown
+                // 안농 글꼴 — 글자마다 롬 글리프를 놓는다. 글 자체는 화면 읽기 도구가 읽게 남긴다
+                ? <span aria-label={run.text}>
+                  {[...run.text].map((ch, k) => <span key={k} style={unownGlyph(ch) ?? undefined} aria-hidden />)}
+                </span>
+                : run.text}
             </span>
           ))}
         </div>

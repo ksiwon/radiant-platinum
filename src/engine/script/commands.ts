@@ -265,6 +265,17 @@ on('MessageVar', (ctx) => {
   return true
 })
 
+/**
+ * 안농 글꼴로 찍는다 (`ScrCmd_MessageUnown` · 신수유적 벽글 셋). 글 번호가 **두 바이트**다 —
+ * `Message`는 한 바이트다. 버튼은 뒤따르는 `WaitABPress`가 받는다
+ */
+on('MessageUnown', (ctx) => {
+  ctx.host.world.showMessage(ctx.readHalfWord())
+  ctx.host.world.font = 'unown'
+  ctx.pause(printed)
+  return true
+})
+
 on('MessageNoSkip', (ctx) => {
   // 원작에서는 A/B로 인쇄를 빨리 감지 못하는 글이다. 우리는 쪽을 통째로
   // 올리고 버튼 하나로만 넘어가므로 (`printer.ts`) 보통 글과 결과가 같다

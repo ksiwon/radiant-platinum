@@ -1219,6 +1219,11 @@ export class FieldWorld {
    * 갈린다). 실측으로 2번이 77곳 · 3번이 26곳이라 절반이 넘는다
    */
   signpost: { type: number, picture: number } | null = null
+  /**
+   * 어느 글꼴로 찍는가 (`ScriptMessageOptions.fontID`). 신수유적의 벽글만 안농 글꼴이다
+   * (`ScrCmd_MessageUnown`) — 새 글이 뜰 때마다 보통 글꼴로 돌아온다
+   */
+  font: 'message' | 'unown' = 'message'
   /** 지금 찍는 글. 다 찍어도 창을 닫기 전까지 남아 있다 */
   printer: MessagePrinter | null = null
   /**
@@ -1343,6 +1348,7 @@ export class FieldWorld {
    * 스크립트가 훨씬 많다
    */
   showMessage(id: number): void {
+    this.font = 'message'
     this.boxOpen = true
     this.lastMessage = id
     this.acked = false
@@ -1351,6 +1357,7 @@ export class FieldWorld {
 
   /** 트레이너 대사처럼 뱅크가 아니라 다른 데서 온 글을 올린다 */
   showText(text: string): void {
+    this.font = 'message'
     this.boxOpen = true
     this.acked = false
     this.printer = new MessagePrinter(text, this.slots)

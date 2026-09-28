@@ -25,6 +25,7 @@ import { convertNpcSprites } from './npcSprites'
 import { convertItemIcons, convertPokeIcons } from './icons'
 import { convertBoxWallpapers } from './boxWallpapers'
 import { convertBagSprite } from './bagSprite'
+import { convertUnownFont } from './unownFont'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
 import { convertParticles } from './particles'
@@ -267,6 +268,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/bagSprite.png', 'data/bagPockets.png', 'data/bagSprite.json'],
     converter: 1,
     convert: convertBagSprite,
+  },
+  {
+    // 신수유적 벽글의 안농 글꼴 (PARITY §6.8 · `ScrCmd_MessageUnown`)
+    name: 'unownFont',
+    outputs: ['data/unownFont.png', 'data/unownFont.json'],
+    converter: 1,
+    convert: convertUnownFont,
   },
   {
     name: 'boxWallpapers',

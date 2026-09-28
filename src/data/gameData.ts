@@ -7,7 +7,7 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   bagSpriteSchema,
-  boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, unownFontSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
@@ -18,7 +18,7 @@ import {
   scriptFileSchema,
   speciesFileSchema, trainerFileSchema, townMapSchema, poketchMapSchema,
   type BagSprite,
-  type BoxWallpapers, type CreditRows, type CreditsAtlas, type Signposts, type Item, type ItemIcons, type Labels,
+  type BoxWallpapers, type CreditRows, type CreditsAtlas, type Signposts, type UnownFont, type Item, type ItemIcons, type Labels,
   type MartTable, type MotionTiming, type Move, type NpcTrades, type PokeIcons, type ScriptFile,
   type Species, type Trainer, type TownMapFile, type PoketchMapFile,
   type PokedexHabitat, type PokedexSort, type Berries, type DistortionData,
@@ -56,6 +56,8 @@ export const BAG_POCKET_ATLAS = 'data/bagPockets.png'
 /** 크레딧 배경 한 장의 자리 (PARITY §8.12). 장마다 크기가 달라 파일도 따로다 */
 export const creditsImage = (at: number): string => `data/credits${String(at)}.png`
 export const SIGNPOST_ATLAS = 'data/signposts.png'
+/** 신수유적 벽글의 안농 글꼴 (PARITY §6.8) */
+export const UNOWN_FONT_ATLAS = 'data/unownFont.png'
 /** 포켓치 지도. 가로가 지도 갈래 둘, 세로가 액정 색 여덟이다 */
 export const POKETCH_MAP_ATLAS = 'data/poketchMap.png'
 
@@ -347,6 +349,11 @@ export function loadCreditRows(locale: DataLocale): Promise<CreditRows> {
 }
 
 /** 간판 판 그림 아틀라스. 그림은 `data/signposts.png`다 */
+export function loadUnownFont(): Promise<UnownFont> {
+  return fetchJson('unownFont.json', (v) => unownFontSchema.parse(v))
+    .then(async (a) => { await pinAtlas(UNOWN_FONT_ATLAS); return a })
+}
+
 export function loadSignposts(): Promise<Signposts> {
   return fetchJson('signposts.json', (v) => signpostsSchema.parse(v))
     .then(async (a) => { await pinAtlas(SIGNPOST_ATLAS); return a })

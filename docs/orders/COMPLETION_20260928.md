@@ -8,8 +8,7 @@
 
 ## 지금 자리
 
-- **끝났다** — 1단계 전부(`810055f` · REPAIR §141 · §12 닫음) 빼고 둘: `MessageUnown`(안농 글꼴 추출이 필요하다 — 두 굽는 쪽) ·
-  `ScrCmd_2C5`(5단계로 옮겼다). 2단계에서 키우미집 고르기 · 타일 스크립트(책장·쓰레기통·진열대·벽 지도·자전거 거치대) ·
+- **끝났다** — 1단계 전부(`810055f` · REPAIR §141 · §12 닫음). `MessageUnown`은 안농 글꼴을 두 굽는 쪽으로 굽고 닫았다(DATA §2.21b · `node tools/e2e/_unown.mjs` 둘 ✓). 2단계에서 키우미집 고르기 · 타일 스크립트(책장·쓰레기통·진열대·벽 지도·자전거 거치대) ·
   `OpenRegionMap` · 가방의 타운맵·나무열매·물뿌리개·퇴비·케이스 알림(`bd610e5`).
 - **2단계도 끝났다** — 필드 기술 다섯(달콤한향기·꿀 · 순간이동 · 구멍파기 · 우유마시기·알낳기)과 빙글 워프(탈출로프 포함) ·
   자전거로드 내리막과 그 곡 · 원작 차례의 곡 고르기(파도타기 · 이야기 깃발 열한 자리) · 승강기 불빛(`f709868`) · REPAIR §15 닫음 ·
@@ -18,7 +17,8 @@
 - **물음 둘도 닫았다** — 수다는 마이크로, 마이크가 없으면 그 자리의 게임 소리로 배운다(`9f394b9` · PARITY §1.8).
   REPAIR §16 연고 체육관 판은 시선에 따라 기운다 — 3인칭 원작 45° · 1인칭 수평이면 선다(`c827bd2`).
 - **3단계** — 회복기의 볼(PARITY §1.21 · `node tools/e2e/_healing.mjs` 다섯 ✓) · 깨어진 세계 하늘과 기라티나 도착(PARITY §8.6b · `node tools/e2e/_distortionSky.mjs` 여섯 ✓).
-- **5단계** — 네 시설 입구를 막았다(PARITY §9.3 끝 · `node tools/e2e/_frontierGate.mjs` 여섯 ✓). 다음은 팩토리 마무리.
+- **5단계** — 네 시설 입구를 막았다(`0a55cf6` · `node tools/e2e/_frontierGate.mjs` 여섯 ✓). 팩토리 장면을 원작 차례로(`7789d38` · PARITY §9.3 ·
+  `node tools/e2e/_factory.mjs` 열일곱 ✓). 남은 것은 복도·배틀룸 그림(아래).
 
 ## 0. 조사가 드러낸 것 — 지금 ✅인데 틀린 줄
 
@@ -40,12 +40,10 @@
 | `Get`/`SetNewsPressDeadline` | `scrcmd.c:5388/5395` · `unk_020559DC.c:99-107` | 신문사 의뢰가 늘 「마감 지남」 |
 | `CalcHiddenPowerType` | `ov5_021F6454.c:633` | 잠재파워 타입이 늘 노말 |
 | `TryGetRandomMassageGirlAccessory` · `BufferAccessoryNameWithArticle` ×2 | `scrcmd.c:5882` · `scrcmd_strings.c:543` | 마사지 액세서리가 늘 0번 · 선물 줄의 이름이 빈다 |
-| `MessageUnown` ×3 | `scrcmd.c:1289` | 신수유적 벽글이 빈 채로 버튼을 기다린다 |
 | `CheckShouldShowGhost` ×2 | `scrcmd.c:6322` | 숲의 양옥 유령(10%)이 안 나온다 |
 | `SetBgEventPos` (골짜기발전소 · 운하 여관) | `scrcmd.c:4620` | 열쇠를 쓴 뒤에도 「발전소 열쇠를 쓸까?」를 또 묻는다 |
 | `ScrCmd_29F` ×9 | `ov6_0223E140.c:520/607` (진폭 2·16프레임 / 4·24프레임) | 폭발·레지 깨어남의 화면 흔들림 |
 | `Get`/`ClearSpiritombCounter` (§6.14) | `scrcmd.c:5357,5932` | 세는 쪽은 지하통로라 늘 0 — 원작 그대로 「오래전에 지어졌다」로 닫는다 |
-| `ScrCmd_2C5` (팩토리) | `scripts_battle_factory.s:419` | 저장 안 하고 끈 판의 연승을 안 지운다 |
 | REPAIR §12 | 위 §0 | `VEILSTONE_NODE` 빼고 바닥 높이를 재서 닫는다 |
 
 ## 2단계 — 범위 안 기능 빈틈 (S~M · 합 약 20시간)
@@ -91,6 +89,9 @@
   - 시설 트레이너의 인사(뱅크 614 `번호×3`)와 진 뒤 대사(`×3+2`) · 수철 등장(35~37)과 이긴 뒤(38·39) · 기록 `RECORD_BATTLE_FACTORY_VICTORIES`(60) ·
     `RECORD_UNK_059`(수철전)이 빠졌다.
   - 확인: 장면 차례를 시험이 원작 갈래대로 밟는다(새 도전 일곱 판 · 셋째 판 패배 · 쉬고 잇기 · 포기 · 스물한 판째 수철) · 게임 안에서 한 라운드.
+  - **남은 것 — 복도와 배틀룸 그림.** 지금은 장면 동안 검은 무대 위에 대사창만 뜬다. 원작은 2D 배경
+    (`frontier_bg` — `battle_factory_corridor`·`_corridor_floor`·`_battle_room` NSCR, 8비트 타일 `battle_factory.png`,
+    확장 팔레트 다섯)에 주인공 · 안내원 · 상대가 걸어 들어온다. 두 굽는 쪽이 딸린다.
 
 ### 차후 업데이트 — 네 시설을 열 때의 근거
 
