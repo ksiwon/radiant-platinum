@@ -30,6 +30,7 @@ import {
 import { useDoorVisualStore, type DoorVisual } from './doorVisualStore'
 import { slopePlayAt, useSlopeAnimStore } from './slopeAnimStore'
 import { ELEVATOR_LIGHTS_MODEL, elevatorLightFrame, elevatorLightSlot } from './elevatorLight'
+import { healingFrame, isHealingModel } from './healingMachine'
 
 /**
  * 야도 체육관 단추 셋 (`pastoria_gym_*_button`).
@@ -116,6 +117,8 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
   const isSlope = set.table.slopes.includes(model)
   /** 승강기 층수판 — 스크립트가 틀 때만 `loopCount`번 돈다 (`scene/elevatorLight`) */
   const isLights = model === ELEVATOR_LIGHTS_MODEL
+  /** 회복기의 볼과 화면 — 회복할 때 한 번만 돈다 (`scene/healingMachine`) */
+  const isHealing = isHealingModel(model)
   const slopePlays = useSlopeAnimStore((s) => s.plays)
   const slope = isSlope ? slopePlayAt(slopePlays, tile[0], tile[1]) : null
   const doors = useDoorVisualStore((s) => s.doors)
@@ -140,6 +143,8 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
   )
 
   const groups = useRef(new Map<number, Group>())
+  /** BTP0가 갈아 끼우기 전의 그림 — 한 번짜리 클립이 끝나면 이리로 돌아간다 (애니를 내린 그림) */
+  const rest = useRef(new Map<number, Texture | null>())
 
   // BTP0가 갈아 끼울 그림을 미리 잘라 둔다 — 프레임 안에서 자르면 끊긴다
   const swaps = useMemo(() => {
@@ -197,6 +202,16 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
         // 그 자리가 곧 클립의 0프레임이다 — 실측으로 두 클립 다 V가 0에서 시작해
         // −128까지 흐른다. 마지막 프레임에 두면 흙이 밀린 채로 굳는다
         frame = since >= clip.frames ? 0 : since
+      } else if (isHealing) {
+        const at = healingFrame(model, clip.frames)
+        if (at === null) {
+          for (const [i, map] of rest.current) {
+            const mat = mapped(materials[i])
+            if (mat && mat.map !== map) { mat.map = map; mat.needsUpdate = true }
+          }
+          continue
+        }
+        frame = at
       } else if (loops) {
         frame = free % clip.frames
       } else {
@@ -231,6 +246,7 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
           let hit = track.keys[0]
           for (const k of track.keys) if (k.frame <= frame) hit = k
           const next = hit ? swaps.get(`${hit.texture} ${hit.palette}`) : undefined
+          if (!rest.current.has(i)) rest.current.set(i, mat.map)
           if (next && mat.map !== next) {
             mat.map = next
             mat.needsUpdate = true

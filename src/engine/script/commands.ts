@@ -27,6 +27,9 @@ import {
 } from './vars'
 import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
+import {
+  healBallCount, healBallTick, healFinalTick, SEQ_HEAL_FANFARE, SFX_HEAL_BALL, type HealingKind,
+} from '../world/healingMachine'
 import { SFX } from '../audio/sfx'
 import { flickerDone, shakeDone, startFlicker, startShake } from '../actor/objectFx'
 import { quakeDone, quakeTick, startQuake } from '../world/fieldQuake'
@@ -2822,26 +2825,59 @@ on('HealParty', (ctx) => {
 
 /**
  * 회복기 위에 볼이 하나씩 놓이는 연출 (`ScrCmd_PlayPokecenterHealingAnimation` ·
- * `ScrCmd_PlayHallOfFameHealingAnimation`).
+ * `ScrCmd_PlayHallOfFameHealingAnimation` · 박자는 `engine/world/healingMachine`).
  *
- * ⚠️ **소리만 난다.** 원작은 회복기 소품을 찾아 그 위에 미니 몬스터볼 모델을
- * 파티 마릿수만큼 12프레임 간격으로 얹고, 다 놓이면 한 번 돌린다
- * (`overlay006/healing_machine_animation/`). 우리는 소품을 **맵 메시에 구워
- * 두어서** 소품 하나를 자리 잡아 새로 띄울 길이 아직 없다 (PARITY §8.11).
+ * **스크립트가 연출이 끝날 때까지 선다** — 원작 명령이 필드 작업을 걸고 TRUE를 돌린다. 볼 i가 틱 `1 + 17i`에
+ * 놓이며 `SEQ_SE_DP_BOWA`가 울리고, 다 놓이면 볼과 화면의 클립이 한 번 돌며 팡파르 `SEQ_ASA`가 난다. 클립이
+ * 다 돌고 팡파르가 끝나야 간호순이 돌아선다. 명예의 전당은 같은 박자에 소리가 없다.
+ *
+ * 그 맵에 회복기가 없으면(원작은 `GF_ASSERT`로 멎는다) 볼 없이 팡파르만 기다린다.
+ * 클립 길이를 모르면(소품 애니 표를 못 받았다) 팡파르로 잰다.
  *
  * 인자는 **꼭 읽는다** — 폭이 2바이트다
  */
-const healingAnimation: CommandFn = (ctx) => {
-  ctx.readVar()
-  ctx.host.world.services.sound?.playEffect(SFX_HEAL)
-  return false
+const healingAnimation = (kind: HealingKind): CommandFn => (ctx) => {
+  const count = ctx.readVar()
+  const machine = ctx.host.world.services.healingMachine
+  const center = kind === 'center'
+  if (machine?.start(kind, count) !== true) {
+    if (!center) return false
+    const sound = soundOf(ctx)
+    if (sound === undefined) return false
+    sound.playFanfare(SEQ_HEAL_FANFARE)
+    ctx.pause((c) => soundOf(c)?.fanfarePlaying() !== true)
+    return true
+  }
+  // [0] 소리 낸 볼 수 · [1] 클립을 틀었나
+  ctx.scratch[0] = 0
+  ctx.scratch[1] = 0
+  ctx.pause((c) => {
+    const m = c.host.world.services.healingMachine
+    if (m === undefined) return true
+    const s = soundOf(c)
+    const tick = m.tick()
+    const balls = healBallCount(count)
+    while ((c.scratch[0] ?? 0) < balls && tick >= healBallTick(c.scratch[0] ?? 0)) {
+      if (center) s?.playEffect(SFX_HEAL_BALL)
+      c.scratch[0] = (c.scratch[0] ?? 0) + 1
+    }
+    if (c.scratch[1] === 0) {
+      if (tick < healFinalTick(count)) return false
+      m.playFinal()
+      if (center) s?.playFanfare(SEQ_HEAL_FANFARE)
+      c.scratch[1] = 1
+      return false
+    }
+    if (m.finalDone() === false) return false
+    if (center && s?.fanfarePlaying() === true) return false
+    m.stop()
+    return true
+  })
+  return true
 }
 
-/** `SEQ_SE_DP_KAIFUKU`. 회복기가 내는 소리 */
-const SFX_HEAL = 1516
-
-on('PlayPokecenterHealingAnimation', healingAnimation)
-on('PlayHallOfFameHealingAnimation', healingAnimation)
+on('PlayPokecenterHealingAnimation', healingAnimation('center'))
+on('PlayHallOfFameHealingAnimation', healingAnimation('hallOfFame'))
 
 on('SetBlackOutWarpId', (ctx) => {
   // 인자는 **1부터 센 번호**다 (`MapSpawnIdToIndex`가 하나를 뺀다).

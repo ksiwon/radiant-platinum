@@ -96,6 +96,7 @@ import { ItemBalls } from './ItemBalls'
 import { DisguisePlates } from './DisguisePlates'
 import { EmoteMarks } from './EmoteMarks'
 import { FeatureProps } from './FeatureProps'
+import { HealingBalls } from './HealingBalls'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { clearMapFeature } from '../engine/world/mapFeatures'
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
@@ -1216,6 +1217,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <EmoteMarks grid={grid} layer={layer} />
       {/* 장치가 움직이는 소품. 청크가 그리는 목록에서 빼고 여기서 세운다 (§7.12) */}
       <FeatureProps />
+      {/* 회복기 위의 볼. 간호순이 회복할 때만 선다 (§8.11) */}
+      <HealingBalls />
       <InteractionPrompt grid={grid} layer={layer} />
     </group>
   )

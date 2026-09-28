@@ -19,6 +19,7 @@ import { tickFade } from './fade'
 import { MessageSlots } from './text'
 import type { VarStore } from './vars'
 import type { LotteryEntry } from '../world/gameCorner'
+import type { HealingKind } from '../world/healingMachine'
 
 /** `constants/menu.h` */
 export const MENU_YES = 0
@@ -1113,6 +1114,18 @@ export interface FieldServices {
   elevatorLight?: {
     start: (dir: number, loops: number) => void
     done: () => boolean | null
+    stop: () => void
+  }
+  /**
+   * 회복기 위에 볼이 놓인다 (`FieldSystem_PlayHealingAnimation_*`). `start`가 false면 그 맵에 회복기가 없다.
+   * `finalDone`이 null이면 클립 길이를 모른다 — 소품 애니 표를 아직 못 받았다
+   */
+  healingMachine?: {
+    start: (kind: HealingKind, count: number) => boolean
+    /** 시작한 뒤 몇 틱째인가 */
+    tick: () => number
+    playFinal: () => void
+    finalDone: () => boolean | null
     stop: () => void
   }
   /** 비전기술 컷인 (`HMCutIn_StartTask`). 파티 자리의 포켓몬이 나와서 쓴다 */

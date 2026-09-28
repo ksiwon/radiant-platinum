@@ -29,6 +29,7 @@ import {
 } from '../engine/script/field'
 import { hmCutInDone, startHmCutInFor } from './hmCutInScene'
 import { elevatorLightDone, startElevatorLight, stopElevatorLight } from './elevatorLight'
+import { healingFinalDone, healingTick, playHealingFinal, startHealing, stopHealing } from './healingMachine'
 import {
   VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE,
 } from '../engine/script/vars'
@@ -1208,6 +1209,14 @@ const services: FieldServices = {
     start: (dir, loops) => { startElevatorLight(dir, loops) },
     done: () => elevatorLightDone(),
     stop: () => { stopElevatorLight() },
+  },
+
+  healingMachine: {
+    start: (kind, count) => startHealing(kind, count),
+    tick: () => healingTick() ?? 0,
+    playFinal: () => { playHealingFinal() },
+    finalDone: () => healingFinalDone(),
+    stop: () => { stopHealing() },
   },
 
   hmCutIn: {
