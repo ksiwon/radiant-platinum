@@ -5662,3 +5662,20 @@ src/state/multiBattle.test.ts`.
 
 **고친 것** — `commands.ts`의 `pickBattlegroundTrainers`(원작 굴림 그대로 · 표는 `object_events_gfx.txt`의 줄 − 1). 시험
 `script/battleground.test.ts` — 굴림 순서를 박은 셋과, 원작 `OnTransition`을 마흔 번 돌려 겉모습 · 숨김이 뽑힌 넷을 따르는지.
+
+## 140. 로토무의 방이 **맨 로토무도 가전에 든 로토무로** 셌다 — 되돌리기 메뉴가 떴다
+
+**원작** — `ScrCmd_GetPartyRotomCountAndFirst`(`ov5_021F6454.c:585`)는 **폼이 `ROTOM_FORM_BASE`가 아닌** 로토무만 세고, 첫
+자리도 그 가운데서 잡는다. 스크립트는 이 수로 셋을 가른다 — 가전 앞에서 1 이상이면 예/아니오/되돌리기 메뉴를 띄우고(`scripts_rotoms_room.s:119`),
+되돌리기에서 2 이상이면 파티에서 고르게 하며(`:151`), 빈 가전 자리(`ApplianceSpot`)에서 0이면 「여기에 가전이 있었다」로 끝낸다(`:494`).
+가전에 넣을 로토무를 고를 때는 `ScrCmd_CountRepeatedSpeciesInParty`(`scrcmd_party.c:607`)로 알이 아닌 로토무를 **폼과 상관없이** 세어,
+하나면 `FindPartySlotWithSpecies`로 바로 그 자리를 잡고 여럿이면 파티 화면을 연다(`:132`).
+
+**우리** — 첫째는 폼을 안 보고 알이 아닌 로토무를 다 셌다. 맨 로토무 하나만 데려가도 되돌리기 메뉴가 떴고, 되돌리기를 고르면 맨
+로토무를 「모터에서 나왔다」고 되돌렸으며, 빈 가전 자리가 「여기에 가전이 있었다」 대신 되돌리기를 권했다. 둘째는 명령이 없어
+`VAR_RESULT`가 앞 메뉴의 답(0)으로 남았고, 로토무가 하나여도 늘 파티 화면이 열렸다.
+
+**고친 것** — `fieldServices.ts`의 `rotomCount`가 폼 0을 빼고 센다. `CountRepeatedSpeciesInParty`는 원작 그대로 — 종을 주면 알이 아닌
+그 종의 수, `SPECIES_NONE`이면 알이 아닌 것 가운데 같은 종이 둘 이상인지(1/0). 이 명령을 쓰는 스크립트는 로토무의 방 하나다.
+시험 `scene/rotomCount.test.ts`. ⚠️ **화면에서는 아직 안 걸었다** — `node tools/e2e/_pg42.mjs --case=rotom`이 맨 로토무 하나로 전자레인지 앞에서
+예/아니오 둘만 뜨는지 · 파티 화면 없이 히트 로토무가 되는지 · 다시 말 걸면 되돌리기가 붙는지를 잰다.

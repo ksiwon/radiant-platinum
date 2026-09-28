@@ -487,9 +487,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_004
+const RUNNING_SITES = 55_005
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 533
+const IMPLEMENTED_COMMANDS = 534
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -716,6 +716,8 @@ const IDLE_COMMANDS = [
   // `SetSpecialBGM`과 같다 — 필드 스크립트에 0회다
   'IsSequencePlaying',
   'ScrCmd_2B2', 'IsCommGameCodePlatinum',
+  // 로토무의 방에서 가전에 넣을 로토무를 고르는 줄이다 — 그 앞이 파티에 로토무가 있어야 지나가는 갈래다
+  'CountRepeatedSpeciesInParty',
   // 저장 흐름의 **빠른 저장 갈래 안쪽**이라 안 밟힌다 (PARITY §4.12).
   // 우리는 「빠른 저장」을 아예 답하지 않으므로 그 갈래로 안 간다 —
   // 그래도 만들어 두는 이유는 안 만들면 결과 변수가 앞 갈래 값으로 남아서다

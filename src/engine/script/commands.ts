@@ -1923,6 +1923,14 @@ on('FindPartySlotWithSpecies', (ctx) => {
   return false
 })
 
+/** 파티에 그 종이 몇 마리인가 — 로토무의 방은 하나면 파티 화면 없이 그 자리를 잡는다 (REPAIR §140) */
+on('CountRepeatedSpeciesInParty', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const species = ctx.readVar()
+  ctx.host.vars.set(dest, ctx.host.world.services.party?.countSpecies(species) ?? 0)
+  return false
+})
+
 on('FindPartySlotWithFatefulEncounterSpecies', (ctx) => {
   const dest = ctx.readHalfWord()
   const species = ctx.readVar()

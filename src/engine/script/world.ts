@@ -355,6 +355,8 @@ export interface FieldServices {
     findWithMove: (move: number) => number
     findWithNature: (nature: number) => number
     findWithSpecies: (species: number) => number
+    /** 알 아닌 그 종의 수. 종이 0이면 같은 종이 둘 이상인지를 1/0으로 (`ScrCmd_CountRepeatedSpeciesInParty`) */
+    countSpecies: (species: number) => number
     findFateful: (species: number) => number
     /** 기술 한 칸을 비운다 (`Pokemon_ClearMoveSlot`) */
     clearMoveSlot: (slot: number, moveSlot: number) => void

@@ -873,10 +873,13 @@ const services: FieldServices = {
     revertForms,
     rotomForms,
     rotomCount: () => {
+      // ⚠️ **맨 로토무는 안 센다.** 원작이 `form != ROTOM_FORM_BASE`만 센다 — 세면 맨 로토무에게
+      // 되돌리기 메뉴가 뜨고 빈 가전 자리가 되돌리기를 권한다 (REPAIR §140)
       const party = useSaveStore.getState().party
-      const first = party.findIndex((m) => m.species === SPECIES_ROTOM && !m.isEgg)
+      const inAppliance = (m: (typeof party)[number]) => m.species === SPECIES_ROTOM && m.form !== 0 && !m.isEgg
+      const first = party.findIndex(inAppliance)
       return {
-        count: party.filter((m) => m.species === SPECIES_ROTOM && !m.isEgg).length,
+        count: party.filter(inAppliance).length,
         // 원작의 `PARTY_SLOT_NONE`. 없으면 스크립트가 이 값으로 갈라진다
         first: first < 0 ? 0xff : first,
       }
@@ -910,6 +913,11 @@ const services: FieldServices = {
     ),
     findWithNature: (nature) => findSlot((m) => natureOf(m.pid) === nature),
     findWithSpecies: (species) => findSlot((m) => m.species === species),
+    countSpecies: (species) => {
+      const party = useSaveStore.getState().party.filter((m) => !m.isEgg)
+      if (species !== 0) return party.filter((m) => m.species === species).length
+      return new Set(party.map((m) => m.species)).size < party.length ? 1 : 0
+    },
     findFateful: (species) => findSlot((m) => m.species === species && m.origin.fateful),
     clearMoveSlot: (slot, moveSlot) => { editMoves(slot, moveSlot, null) },
     setMoveSlot: (slot, moveSlot, move) => { editMoves(slot, moveSlot, move) },

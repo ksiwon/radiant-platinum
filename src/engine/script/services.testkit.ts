@@ -38,6 +38,7 @@ export const stubParty: NonNullable<FieldServices['party']> = {
   findWithMove: () => 6,
   findWithNature: () => 0xff,
   findWithSpecies: () => 0xff,
+  countSpecies: () => 0,
   findFateful: () => 0xff,
   clearMoveSlot: () => { /* 안 본다 */ },
   setMoveSlot: () => { /* 안 본다 */ },
