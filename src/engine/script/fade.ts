@@ -97,6 +97,14 @@ export function coverScreen(color = 0): void {
 }
 
 /**
+ * 덮개를 **그 진하기로** 세워 둔다 — 연출이 매 틱 진하기를 정할 때 (창기둥의 붉은 맥동이 검게 닫히는 9틱).
+ * 원작은 밝기 레지스터가 아니라 섞기 몫으로 어두워지지만, 화면에 보이는 것은 같다
+ */
+export function holdCover(alpha: number, color = 0): void {
+  screenFade.now = { from: alpha, to: alpha, elapsed: 0, frames: 1, color: fadeColor(color) }
+}
+
+/**
  * 덮개를 걷는다.
  *
  * ⚠️ 맵을 옮길 때 꼭 불러야 한다. 아웃만 걸고 워프한 스크립트가 있으면, 안 걷을

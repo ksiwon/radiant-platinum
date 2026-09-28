@@ -4667,16 +4667,18 @@ on('ForceBicycling', (ctx) => {
 // 답해서 이야기를 지나가게 한다. 없는 것은 연출뿐이다.
 
 /**
- * 창기둥이 일그러지는 연출 (`ov6_02243004`).
+ * 창기둥의 필드 연출 (`ScrCmd_20D` → `ov6_02243004`).
  *
- * 갈래가 둘이다 — 0이면 시작하고, 1이면 **끝났는가**를 답한다. 스크립트가
- * 그 답이 0인 동안 되돌아 돈다(`SpearPillar_WaitThenWarpToSpearPillarDistorted`).
- * 연출이 없으니 곧바로 끝났다고 답한다
+ * 갈래를 받아 답을 적는다 — 0이 붉은 사슬을 세우고 1이 **끝났는가**를 답한다(스크립트가 그 답이 0인 동안 되돌아 돈다 ·
+ * `SpearPillar_WaitThenWarpToSpearPillarDistorted`). 연출은 `scene/spearPillarFx`다. 원작도 한 틱 쉰다(`return TRUE`).
+ * 연출이 없는 판(시험)에서는 곧바로 끝났다고 답한다
  */
 on('ScrCmd_20D', (ctx) => {
-  ctx.readByte()
-  ctx.host.vars.set(ctx.readHalfWord(), 1)
-  return false
+  const mode = ctx.readByte()
+  const dest = ctx.readHalfWord()
+  const fx = ctx.host.world.services.spearPillarFx
+  ctx.host.vars.set(dest, fx ? fx(mode) : 1)
+  return true
 })
 
 /**

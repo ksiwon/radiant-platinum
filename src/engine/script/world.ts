@@ -744,6 +744,11 @@ export interface FieldServices {
     open: () => void
     busy: () => boolean
   }
+  /**
+   * 창기둥의 필드 연출 (`ScrCmd_20D` → `ov6_02243004`). 갈래 번호를 그대로 받는다 — 0 붉은 사슬 · 1 끝났나 ·
+   * 4 호수의 구슬 · 6 끝났나. 답은 끝났으면 1이다
+   */
+  spearPillarFx?: (mode: number) => number
   /** 깨어진 세계로 빨려 드는 문 (`DoDWWarp` · `dw_warp.c`) — 스크립트는 연출이 끝날 때까지 선다 */
   dwWarp?: {
     start: () => void
