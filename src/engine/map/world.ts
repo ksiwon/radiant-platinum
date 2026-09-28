@@ -265,6 +265,15 @@ export const world = {
    * 승강판이 이 값으로 층을 가른다 — 아래층 문의 z로 들어왔으면 아래층이다
    * (`PersistedMapFeatures_InitForPlatformLift`)
    */
+  /**
+   * **진입 스크립트가 도는 동안** 주인공이 선 칸 (`OnTransition` · `OnLoad` · `OnResume`). 그 밖에는 null.
+   *
+   * ⚠️ **원작은 그때 주인공이 아직 문 칸에 있다.** 문을 나서는 걸음은 맵이 다 선 뒤의 연출이라
+   * `GetPlayerMapPos`가 문 칸(`location`)을 준다. 우리는 문 칸이 막혀 있어 한 칸 내려 세우므로
+   * (`walkOutOfDoor`) 그대로 물으면 한 칸 어긋난다 — 206번도로의 `OnResume`이 「z가 576인가」를 보는데
+   * 우리는 577에 서 있어서 자전거로드 묶음과 그 곡이 영영 안 걸렸다
+   */
+  arrival: null as { x: number; z: number } | null,
   enteredX: 0,
   enteredZ: 0,
 }

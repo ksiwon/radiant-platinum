@@ -411,7 +411,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       disarmWarp()
       // NPC를 세우고 대사 뱅크를 받는다. 세우기는 이 자리에서 바로 끝나야
       // 같은 프레임에 그릴 수 있다
-      enterMap(mapId)
+      // 원작 도착 칸을 넘긴다 — 진입 스크립트가 문 칸을 본다. 깨어진 세계는 층 칸을 세계 칸으로 따로 옮기므로 안 넘긴다
+      enterMap(mapId, isDistortionFloor(mapId) ? undefined : { x: world.enteredX, z: world.enteredZ })
       enteredByEnter.current = mapId
       // 포켓몬센터에 들어섰으면 부활 지점이 여기로 옮겨진다. 마을 바깥이면
       // 공중날기 자리가 열린다 — 원작도 맵 전환마다 이걸 본다 (`scene/pokecenter`)

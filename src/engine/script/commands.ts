@@ -1537,7 +1537,10 @@ on('GetPlayerMapPos', (ctx) => {
    * 좌표계에 둔다 — B7F 태홍 뒤 장면이 이 값을 86·74와 견주므로(`_b7f.s` 62–107)
    * 층 칸(오프셋을 뺀 값)을 주면 한 번도 안 맞아 주인공이 벽 쪽으로 걸어 들어간다
    */
-  const at = localToRom(mapWorld.mapId, Math.round(player?.x ?? 0), Math.round(player?.z ?? 0))
+  // 진입 스크립트가 도는 동안은 원작 도착 칸이다 — 그때 원작 주인공은 아직 문 칸에 있다 (`mapWorld.arrival`)
+  const arrival = mapWorld.arrival
+  const at = arrival !== null ? arrival
+    : localToRom(mapWorld.mapId, Math.round(player?.x ?? 0), Math.round(player?.z ?? 0))
   ctx.host.vars.set(destX, at.x)
   ctx.host.vars.set(destZ, at.z)
   return false

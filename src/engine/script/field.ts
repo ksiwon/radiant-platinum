@@ -557,7 +557,11 @@ export function facingOfDir(dir: number): number {
 /** `FLAG_STRENGTH_ACTIVE` (`generated/vars_flags.txt`) — `commands.ts`의 `DoStrengthFunc`와 같은 번호 */
 const FLAG_STRENGTH_ACTIVE = 2402
 
-export function enterMap(mapId: number): void {
+/**
+ * @param arrival 워프로 들어섰으면 원작이 적은 도착 칸(`location`). 진입 스크립트가 도는 동안만
+ *   `GetPlayerMapPos`가 이 칸을 본다 (`mapWorld.arrival`). 존만 넘은 것이면 없다 — 걸어서 선 칸이 곧 그 칸이다
+ */
+export function enterMap(mapId: number, arrival?: { x: number; z: number }): void {
   // 맵을 옮기면 창에 걸린 구역 뱅크는 뜻이 없다. 맵 뱅크가 다시 기준이다
   endCommon()
   bankPending = false
@@ -584,6 +588,7 @@ export function enterMap(mapId: number): void {
   // 튼 곡이 신오 전역을 따라온다. ⚠️ **스크립트보다 먼저다** — 206번도로의 `OnResume`이 여기서 자전거로드 곡을
   // 거는데(`SetCyclingBGM`), 뒤에서 비우면 걸자마자 지워진다
   fieldBgm.override = null
+  mapWorld.arrival = arrival ?? null
   runFixedInit(mapId, INIT_SCRIPT.onTransition)
   spawnNpcs(mapId, fieldScripts.vars)
   // 맵이 다 올라온 뒤 도는 것. 워프 자리를 옮기는 자리가 여기다
@@ -592,6 +597,7 @@ export function enterMap(mapId: number): void {
   // 서른여섯 맵이 쓴다 — 자전거로드에서 다시 자전거에 묶고(206번도로), 교신 대기실에서 주인공을 숨기고
   // (센터 2F 공용 9000), 오박사의 방향을 돌린다(224번도로)
   runFixedInit(mapId, INIT_SCRIPT.onResume)
+  mapWorld.arrival = null
   // ⚠️ 덮개도 걷는다. 아웃만 걸고 워프하는 스크립트가 있어서, 안 걷으면 도착한
   // 맵이 검은 화면 그대로 남는다
   resetFade()
