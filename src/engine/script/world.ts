@@ -383,9 +383,23 @@ export interface FieldServices {
    * 안 골랐으면 `PARTY_SLOT_NONE`(0xFF)
    */
   chooseMon?: {
-    open: () => void
+    /** `daycare`면 키우미집 갈래(맡긴다 · 능력치를 본다 · 그만둔다)로 연다. `slot`에서 커서가 시작한다 */
+    open: (opts?: { daycare?: boolean, slot?: number }) => void
     picked: () => number
+    /** 키우미집 갈래에서 「능력치를 본다」로 닫았는가 (`PARTY_MENU_EXIT_CODE_SUMMARY`) */
+    summary: () => boolean
   }
+  /**
+   * 그 자리의 요약 화면 (`FieldSystem_GetPartyMenuMonSummary` · `ScrCmd_SetMonSummary`).
+   *
+   * 닫히면 `slot()`이 그때 보던 자리를 준다 (`PokemonSummary_GetPartySlot`) — 안에서 다른 마리로 넘어갈 수 있다
+   */
+  monSummary?: {
+    open: (slot: number) => void
+    slot: () => number
+  }
+  /** 타운맵을 보기 전용으로 연다 (`ScrCmd_OpenRegionMap` · `TOWN_MAP_MODE_WALL_MAP`) — 닫힐 때까지 스크립트가 선다 */
+  townMap?: { open: () => void }
   /**
    * NPC 교환 넷 (PARITY §10 · `overlay006/npc_trade.c`).
    *
@@ -950,7 +964,7 @@ export interface FieldServices {
     /** 알 자리를 비운다 (`Daycare_ResetPersonalityAndStepCounter`) */
     resetEgg: () => void
     /** 맡긴 마리의 별명·레벨·성별 (글 칸을 채우는 데 쓴다) */
-    info: (slot: number) => { name: string, level: number, gender: number } | null
+    info: (slot: number) => { name: string, level: number, gender: number, ot: string } | null
   }
   /** 알을 뺀 파티 수·알 수·첫 알 아닌 자리 (`scrcmd_party.c`) */
   eggs?: {

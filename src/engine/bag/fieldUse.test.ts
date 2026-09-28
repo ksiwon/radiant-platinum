@@ -43,11 +43,12 @@ maybe('필드 도구', () => {
     expect(fieldAction(named('ITEM_FIRE_STONE'), town())).toEqual({ kind: 'party', use: 'evoStone' })
   })
 
-  it('묻는 갈래가 정확히 149종이다 — 회복 38 · 기술머신 100 · 돌 10 · 그라시데아 1', () => {
+  it('묻는 갈래가 정확히 213종이다 — 회복 38 · 나무열매 64 · 기술머신 100 · 돌 10 · 그라시데아 1', () => {
+    // 나무열매는 앞에 빈 밭이 없으면 회복 도구처럼 먹인다 (`UseBerryFromMenu` → `UseHealingItemFromMenu`)
     // ⚠️ 숫자를 세는 이유: 갈래를 하나 빠뜨리면 그 도구들이 조용히 "못 쓴다"가
     // 된다. 눈으로는 안 보이고 세면 보인다
     const asks = file.items.filter((it) => fieldAction(it, town()).kind === 'party')
-    expect(asks).toHaveLength(149)
+    expect(asks).toHaveLength(213)
     const byUse = new Map<string, number>()
     for (const it of asks) {
       const got = fieldAction(it, town())
@@ -55,7 +56,7 @@ maybe('필드 도구', () => {
       byUse.set(got.use, (byUse.get(got.use) ?? 0) + 1)
     }
     expect([...byUse].sort())
-      .toEqual([['evoStone', 10], ['gracidea', 1], ['heal', 38], ['tmhm', 100]])
+      .toEqual([['evoStone', 10], ['gracidea', 1], ['heal', 38 + 64], ['tmhm', 100]])
   })
 
   it('⚠️ 지닌 채 교환하던 열하나가 밖에서 열린다 — 표만 보면 다 막힌다', () => {
@@ -74,9 +75,9 @@ maybe('필드 도구', () => {
     }
     // 목록에 없는 도구까지 열리지는 않는다
     expect(fieldAction(named('ITEM_POKE_BALL'), town({ evoItems: constants })).kind).toBe('blocked')
-    // 열하나가 더해져 묻는 갈래는 160종이 된다
+    // 열하나가 더해져 묻는 갈래는 224종이 된다
     const asks = file.items.filter((it) => fieldAction(it, town({ evoItems: constants })).kind === 'party')
-    expect(asks).toHaveLength(149 + 11)
+    expect(asks).toHaveLength(213 + 11)
   })
 
   it('리펠 셋만 걸음을 갖고, 그 값이 롬에서 온다', () => {
@@ -130,13 +131,37 @@ maybe('필드 도구', () => {
   })
 
   it('계통이 없는 것과 원작이 막는 것을 가른다', () => {
-    // 타운맵은 **우리가 아직 안 만든 것**이지 원작이 막는 것이 아니다
-    expect(fieldAction(named('ITEM_TOWN_MAP'), town())).toEqual({ kind: 'missing', what: '타운맵' })
+    // 타운맵은 어디서든 보기 전용으로 열린다 (`UseTownMapFromMenu`)
+    expect(fieldAction(named('ITEM_TOWN_MAP'), town())).toEqual({ kind: 'townMap' })
     // 몬스터볼은 원작도 밖에서 못 쓴다 (`ITEM_USE_FUNC_NONE`)
     expect(fieldAction(named('ITEM_POKE_BALL'), town()).kind).toBe('blocked')
     // ⚠️ **탐험세트는 지하통로로 가는 유일한 입구다** — 지하통로가 범위 밖이라
     // 「없음」으로 답한다. 들어오는 워프가 0개인 것은 `script/comm.test.ts`가 잰다
     expect(fieldAction(named('ITEM_EXPLORER_KIT'), town())).toEqual({ kind: 'missing', what: '지하통로' })
+  })
+
+  it('나무열매 밭 셋 — 앞 밭의 상태로 갈린다 (`CanUseSprayDuck` · `CanUseMulch` · `UseBerryFromMenu`)', () => {
+    const empty = { localID: 7, empty: true, canMulch: true, hasBerry: false }
+    const mulched = { ...empty, canMulch: false }
+    const growing = { localID: 7, empty: false, canMulch: false, hasBerry: true }
+    const berry = named('ITEM_ORAN_BERRY')
+    expect(fieldAction(berry, town({ berryAhead: empty }))).toEqual({ kind: 'commonScript', id: 2801, localID: 7, withItem: true })
+    expect(fieldAction(berry, town({ berryAhead: growing }))).toEqual({ kind: 'party', use: 'heal' })
+    const duck = named('ITEM_SPRAYDUCK')
+    expect(fieldAction(duck, town({ berryAhead: growing }))).toEqual({ kind: 'commonScript', id: 2802, localID: 7, withItem: true })
+    expect(fieldAction(duck, town({ berryAhead: empty })).kind).toBe('blocked')
+    expect(fieldAction(duck, town({ berryAhead: growing, hasPartner: true })).kind).toBe('blocked')
+    const mulch = named('ITEM_GROWTH_MULCH')
+    expect(fieldAction(mulch, town({ berryAhead: empty }))).toEqual({ kind: 'commonScript', id: 2803, localID: 7, withItem: true })
+    expect(fieldAction(mulch, town({ berryAhead: mulched })).kind).toBe('blocked')
+    expect(fieldAction(mulch, town()).kind).toBe('blocked')
+  })
+
+  it('가방 안 알림 넷 — 코인케이스 · 실케이스 · 액세서리케이스 · 포인트카드', () => {
+    expect(fieldAction(named('ITEM_COIN_CASE'), town())).toEqual({ kind: 'bagMessage', what: 'coins' })
+    expect(fieldAction(named('ITEM_SEAL_CASE'), town())).toEqual({ kind: 'bagMessage', what: 'seals' })
+    expect(fieldAction(named('ITEM_FASHION_CASE'), town())).toEqual({ kind: 'bagMessage', what: 'fashion' })
+    expect(fieldAction(named('ITEM_POINT_CARD'), town())).toEqual({ kind: 'bagMessage', what: 'points' })
   })
 
   it('기술머신 번호가 TM01→0 · HM01→92로 이어진다', () => {

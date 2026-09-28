@@ -84,7 +84,7 @@ import { addCoins, canAddCoins, subtractCoins } from '../engine/world/coins'
 import { overworldWeather } from '../engine/world/overworldWeather'
 import { addBattlePoints, spendBattlePoints } from '../engine/bag/frontierMart'
 import { sizeFactor } from '../engine/world/sizeContest'
-import { partyChoice } from '../ui/menu/partyChoice'
+import { partyChoice, summaryLast } from '../ui/menu/partyChoice'
 import { itemChoice } from '../ui/menu/itemChoice'
 import { pushesLevel } from '../engine/battle/encounterLead'
 import { hiddenPowerType } from '../engine/battle/movePreview'
@@ -948,9 +948,17 @@ const services: FieldServices = {
   },
 
   chooseMon: {
-    open: () => { useMenuStore.getState().openPartyToChoose() },
+    open: (opts) => { useMenuStore.getState().openPartyToChoose(opts) },
     picked: () => partyChoice.slot,
+    summary: () => partyChoice.summary,
   },
+
+  monSummary: {
+    open: (slot) => { useMenuStore.getState().openSummary(slot) },
+    slot: () => summaryLast.slot,
+  },
+
+  townMap: { open: () => { useMenuStore.getState().openTownMap() } },
 
   /**
    * 요약 화면을 기술 고르기로 연다 (`FieldSystem_OpenSummaryScreenSelectMove`).
@@ -1493,11 +1501,14 @@ const services: FieldServices = {
       const table = speciesTable
       if (!held || !table) return null
       const ratio = table.get(held.mon.species).genderRatio
-      const gender = genderOf(held.mon.pid, ratio)
+      // ⚠️ **별명 없는 니드런은 성별 표를 안 붙인다** — 이름에 이미 ♂·♀가 들어 있다 (`Daycare_BufferNicknameLevelGender`)
+      const nidoran = (held.mon.species === 29 || held.mon.species === 32) && held.mon.nickname === null
+      const gender = nidoran ? 'genderless' : genderOf(held.mon.pid, ratio)
       return {
         name: held.mon.nickname ?? speciesNames[held.mon.species] ?? '',
         level: held.mon.level,
         gender: gender === 'female' ? 1 : gender === 'male' ? 0 : 2,
+        ot: held.mon.origin.otName,
       }
     },
   },

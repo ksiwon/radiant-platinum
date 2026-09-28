@@ -106,7 +106,14 @@ export type FieldItemAction =
    * ⚠️ **쓸 수 있는지도 그 스크립트가 묻는다.** 여기서 미리 걸러내면 못 쓰는
    * 자리에서 원작의 대사 대신 우리 말이 나간다 — VS시커와 같은 길이다
    */
-  | { kind: 'commonScript'; id: number }
+  | { kind: 'commonScript'; id: number; localID?: number; withItem?: boolean }
+  /** 타운맵을 보기 전용으로 연다 (`UseTownMapFromMenu` · `TOWN_MAP_MODE_ITEM`) */
+  | { kind: 'townMap' }
+  /**
+   * 가방 안에서 한 줄 알림 (`BagContext_FormatUsageMessage`) — 코인케이스 · 실케이스 · 액세서리케이스 · 포인트카드.
+   * 글은 롬 가방 뱅크의 57 · 92 · 93 · 97이고 수는 부르는 쪽이 채운다
+   */
+  | { kind: 'bagMessage'; what: 'coins' | 'seals' | 'fashion' | 'points' }
   /** 편지를 쓴다 (PARITY §4.8). `type`이 편지지 번호다 */
   | { kind: 'mail'; type: number }
   /** 원작도 여기서는 못 쓴다. `why`가 그 이유다 */
@@ -120,6 +127,11 @@ export interface FieldContext {
   mapId: number
   /** 그 맵의 `mapType` */
   mapType: number
+  /**
+   * 앞 칸의 나무열매 밭 (`BerryPatches_GetPatchFlags` · `berry_patch_manager.c:230`). 밭이 아니면 null.
+   * `empty`는 아무것도 안 자란다 · `canMulch`는 그중 퇴비도 없다 · `hasBerry`는 무엇이 자란다
+   */
+  berryAhead?: { localID: number, empty: boolean, canMulch: boolean, hasBerry: boolean } | null
   /** 그 맵이 탈출로프를 허락하는가 (`isEscapeRopeAllowed`) */
   escapeRopeAllowed: boolean
   /** 남은 리펠 걸음. 남아 있으면 새로 못 쓴다 */
@@ -167,16 +179,23 @@ export interface FieldContext {
 
 /** 아직 계통이 없는 갈래의 이름. 화면이 그대로 보여 준다 */
 const MISSING: Partial<Record<number, string>> = {
-  [FieldUse.TOWN_MAP]: '타운맵',
   [FieldUse.EXPLORER_KIT]: '지하통로',
-  [FieldUse.BERRY]: '나무열매 밭',
   [FieldUse.POFFIN_CASE]: '포핀',
   [FieldUse.PAL_PAD]: '친구수첩',
-  [FieldUse.SPRAYDUCK]: '나무열매 밭',
-  [FieldUse.MULCH]: '나무열매 밭',
-  [FieldUse.HONEY]: '꿀나무',
+  // ⚠️ **꿀나무가 아니라 달콤한향기다** (`UseHoneyFromMenu` → `ov5_021F0488`) — 나무에 바르는 것은 나무에 말을 걸어서다
+  [FieldUse.HONEY]: '달콤한향기',
   [FieldUse.VS_RECORDER]: '배틀레코더',
 }
+
+/** 가방 안에서 한 줄로 답하는 넷 (`BagContext_FormatUsageMessage`). 이름으로 가르는 것이 원작이다 */
+const BAG_MESSAGES: Readonly<Record<string, 'coins' | 'seals' | 'fashion' | 'points'>> = {
+  ITEM_COIN_CASE: 'coins', ITEM_SEAL_CASE: 'seals', ITEM_FASHION_CASE: 'fashion', ITEM_POINT_CARD: 'points',
+}
+
+/** `SCRIPT_ID(BERRY_TREE_INTERACTIONS, n)` — 심기 1 · 물뿌리개 2 · 퇴비 3 (`scripts_berry_tree_interaction.s`) */
+const BERRY_SCRIPT_PLANT = 2801
+const BERRY_SCRIPT_SPRAYDUCK = 2802
+const BERRY_SCRIPT_MULCH = 2803
 
 /**
  * 도구 하나가 지금 하는 일.
@@ -202,6 +221,34 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
     // 원작도 막는 자리가 없다
     case FieldUse.JOURNAL:
       return { kind: 'screen', screen: 'journal' }
+
+    // 타운맵 (`UseTownMapFromMenu`). 어디서든 열린다 — 보기만 한다
+    case FieldUse.TOWN_MAP:
+      return { kind: 'townMap' }
+
+    // 나무열매 (`UseBerryFromMenu`) — **늘 쓸 수 있다**(`CanUseBerry`). 앞이 빈 밭이면 심고, 아니면 회복 도구처럼 먹인다
+    case FieldUse.BERRY: {
+      const patch = ctx.berryAhead ?? null
+      if (patch?.empty === true) {
+        return { kind: 'commonScript', id: BERRY_SCRIPT_PLANT, localID: patch.localID, withItem: true }
+      }
+      return { kind: 'party', use: 'heal' }
+    }
+
+    // 물뿌리개 (`CanUseSprayDuck`) — 동행이 없고, 앞 밭에 무엇이 자라야 한다
+    case FieldUse.SPRAYDUCK: {
+      if (ctx.hasPartner === true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      const patch = ctx.berryAhead ?? null
+      if (patch?.hasBerry !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      return { kind: 'commonScript', id: BERRY_SCRIPT_SPRAYDUCK, localID: patch.localID, withItem: true }
+    }
+
+    // 퇴비 넷 (`CanUseMulch`) — 앞 밭이 비었고 퇴비도 없어야 한다
+    case FieldUse.MULCH: {
+      const patch = ctx.berryAhead ?? null
+      if (patch?.canMulch !== true) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
+      return { kind: 'commonScript', id: BERRY_SCRIPT_MULCH, localID: patch.localID, withItem: true }
+    }
 
     case FieldUse.OLD_ROD:
     case FieldUse.GOOD_ROD:
@@ -265,8 +312,10 @@ export function fieldAction(item: Item, ctx: FieldContext): FieldItemAction {
       // 가르는 것은 이름이 아니라 **효과값**이다 — 리펠은 걸음 수를 들고 있다
       const factor = fluteFactorOf(item)
       if (factor !== null) return { kind: 'flute', factor }
+      const message = BAG_MESSAGES[item.constant]
+      if (message !== undefined) return { kind: 'bagMessage', what: message }
       const steps = repelStepsOf(item)
-      if (steps === null) return { kind: 'missing', what: '그 화면' }
+      if (steps === null) return { kind: 'blocked', why: '지금은 쓸 수 없다.' }
       // `TryUseRepel` — 남아 있으면 새로 안 쓴다. 개수도 안 깎는다
       if (ctx.repelSteps > 0) return { kind: 'blocked', why: '아직 효과가 남아 있다.' }
       return { kind: 'repel', steps }

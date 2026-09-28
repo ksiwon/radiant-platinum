@@ -121,7 +121,7 @@ export const allDoneServices = {
   },
   trainerInfo: { ...stubTrainerInfo, hasBadge: () => true },
   labels: stubLabels,
-  chooseMon: { open: () => {}, picked: () => 0 },
+  chooseMon: { open: () => {}, picked: () => 0, summary: () => false },
   boxes: { nickname: () => '', lotteryEntries: () => ({ party: [], boxes: [] }) },
   tablet: { name: () => '', open: () => {} },
   appearance: { get: () => 0, set: () => {} },

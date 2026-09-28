@@ -1064,6 +1064,7 @@ function tryTalk(): void {
 
   // 그래도 없으면 타일이 하는 말을 본다 (`Field_TileBehaviorToScript`)
   if (tryPC(front, header.scripts)) return
+  if (tryTileScript(front, header.scripts)) return
   tryFieldMove(front)
 }
 
@@ -1108,6 +1109,26 @@ function tryPC(front: { x: number; z: number }, mapFile: number): boolean {
   if (grid.behavior(front.x, front.z) !== TILE_BEHAVIOR_PC) return false
   if (QUARTER_TO_DIR[quarterOf(worldState.player.facing)] !== DIR.north) return false
   return start(COMMON_SCRIPT_PC, mapFile)
+}
+
+/**
+ * 앞 칸의 거동값이 부르는 공용 스크립트 (`Field_TileBehaviorToScript` · `field_control.c:650-698`).
+ *
+ * 책장 넷 · 쓰레기통 · 가게 진열대 셋은 `BG_EVENTS`(2500~)의 한 줄짜리 `EventMessage`고, 벽 지도는 타운맵을
+ * 보기 전용으로 연다(2508 · `OpenRegionMap`), 자전거 거치대는 공용 30번(2030)이다. 방향을 안 본다 — PC와 TV만 북쪽을
+ * 볼 때 걸린다. ⚠️ 없던 동안 454칸 가운데 간판(BG 사건)이 덮은 10칸 말고는 A에 아무 반응이 없었다.
+ *
+ * ⚠️ **TV(0x86 → 10100)는 안 잇는다.** 방송이 없어서(PARITY §7.5) 이으면 `CallTVBroadcast`가 광고 갈래로 가고 그
+ * 글(`MessageFromBank`)이 없어 빈 창에서 버튼을 기다린다
+ */
+const TILE_SCRIPTS: ReadonlyMap<number, number> = new Map([
+  [0xe0, 2500], [0xea, 2501], [0xe1, 2502], [0xe2, 2503], [0xe4, 2504],
+  [0xe5, 2505], [0xeb, 2506], [0xec, 2507], [0x85, 2508], [0xdb, 2030],
+])
+
+function tryTileScript(front: { x: number; z: number }, mapFile: number): boolean {
+  const script = TILE_SCRIPTS.get(mapWorld.grid?.behavior(front.x, front.z) ?? -1)
+  return script !== undefined && start(script, mapFile)
 }
 
 /**

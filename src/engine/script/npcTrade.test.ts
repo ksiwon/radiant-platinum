@@ -73,7 +73,7 @@ maybe('NPC 교환 — 스크립트 넷', () => {
     const vars = new VarStore()
     if (site.pre !== null) vars.setFlag(site.pre)
     const services: FieldServices = {
-      chooseMon: { open: () => { log.opened++ }, picked: () => picked },
+      chooseMon: { open: () => { log.opened++ }, picked: () => picked, summary: () => false },
       party: {
         ...STUB_PARTY,
         species: (slot) => (slot === picked ? species : 0),

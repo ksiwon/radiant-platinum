@@ -34,6 +34,21 @@ export function berryPatchObjects(): { patch: number; x: number; z: number }[] {
 }
 
 /**
+ * 앞 칸의 밭과 그 상태 (`BerryPatches_GetPatchFlags`). 밭이 아니면 null — 가방의 나무열매 · 물뿌리개 · 퇴비가 이것을 본다.
+ *
+ * 빈 밭이면 `empty`, 그중 퇴비도 없으면 `canMulch`, 무엇이 자라면 `hasBerry`다
+ */
+export function berryPatchAhead(
+  x: number, z: number,
+): { localID: number, empty: boolean, canMulch: boolean, hasBerry: boolean } | null {
+  const actor = npcActors.list.find((a) => a.info.sprite === BERRY_SOIL_GFX && Math.round(a.x) === x && Math.round(a.z) === z)
+  if (actor === undefined) return null
+  const patch = patchesOf()[actor.params[0] ?? -1]
+  const empty = patch === undefined || patch.growthStage === BERRY_STAGE.none
+  return { localID: actor.localID, empty, canMulch: empty && (patch?.mulchType ?? 0) === 0, hasBerry: !empty }
+}
+
+/**
  * 화면에 들어왔는지 재는 자리. 씬이 카메라를 물려 준다 (`BerryPatchProps`).
  *
  * 안 물려 있으면 아무 밭도 안 자란다 — 원작도 절두체 판정이 없으면 그렇다

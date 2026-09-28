@@ -490,9 +490,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_041
+const RUNNING_SITES = 55_055
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 551
+const IMPLEMENTED_COMMANDS = 558
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -600,6 +600,8 @@ const IDLE_COMMANDS = [
   'HarvestBerry',
   'OpenPartyMenuForUnionRoomBattle',
   // 남에게 받은 마리인지 묻는 자리도 파티 너머다
+  // 키우미집 「능력치를 본다」 갈래 — 훑기의 파티 화면은 늘 「맡긴다」로 답한다
+  'SetMonSummary', 'GetMonPartySlot',
   'CheckIsPartyMonOutsider',
   // ⚠️ **육성가 여덟은 파티가 있어야 닿는다.** 아저씨·아주머니의 대사가 전부
   // `GetDaycareState`로 갈리는데, 훑기는 세이브를 안 붙이므로 늘 "없음"(0)
@@ -617,6 +619,8 @@ const IDLE_COMMANDS = [
   'StorePartyMonIntoDaycare',
   // 친밀도를 올리고 기술칸을 읽는 자리도 파티 너머다
   'ScrCmd_1B3', 'CountMailInMailbox',
+  // 둘을 맡긴 뒤 찾아갈 때 — 훑기는 늘 빈 키우미집이다
+  'BufferDaycareNicknameLevelGender',
   'GetDaycareCompatibilityLevel',
   // ⚠️ **크기 대회 넷은 총어를 데리고 있어야 닿는다.** 222번도로 동쪽 집의
   // 첫 갈래가 `CheckPartyHasSpecies SPECIES_REMORAID`라, 파티가 빈 훑기는

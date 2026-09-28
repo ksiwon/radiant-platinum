@@ -1694,17 +1694,112 @@ on('MoveMonToPartyFromDaycareSlot', (ctx) => {
   return false
 })
 
+/**
+ * 찾아갈 값 (`ScrCmd_BufferDaycarePriceBySlot` · `DaycareMon_BufferDaycarePrice`) — 오른 레벨 × 100 + 100.
+ *
+ * ⚠️ **글 칸도 채운다** — 0번에 별명, 1번에 값. 없던 동안은 「{별명}을 돌려받으려면 {값}원」의 두 칸이 비었다
+ */
 on('BufferDaycarePriceBySlot', (ctx) => {
   const dest = ctx.readHalfWord()
   const slot = ctx.readVar()
-  ctx.host.vars.set(dest, ctx.host.world.services.daycare?.price(slot).money ?? 0)
+  const care = ctx.host.world.services.daycare
+  const money = care?.price(slot).money ?? 0
+  ctx.host.world.slots.set(0, care?.info(slot)?.name ?? '')
+  ctx.host.world.slots.set(1, String(money))
+  ctx.host.vars.set(dest, money)
   return false
 })
 
+/**
+ * 오른 레벨 수 (`ScrCmd_BufferDaycareGainedLevelsBySlot` · `DaycareMon_BufferGainedLevels`).
+ *
+ * ⚠️ **글 칸도 채운다** — 0번에 별명, 1번에 오른 수. 맡긴 자리가 비었으면 칸을 안 건드리고 0이다
+ */
 on('BufferDaycareGainedLevelsBySlot', (ctx) => {
   const dest = ctx.readHalfWord()
   const slot = ctx.readVar()
-  ctx.host.vars.set(dest, ctx.host.world.services.daycare?.price(slot).levels ?? 0)
+  const care = ctx.host.world.services.daycare
+  const info = care?.info(slot) ?? null
+  const levels = info === null ? 0 : care?.price(slot).levels ?? 0
+  if (info !== null) {
+    ctx.host.world.slots.set(0, info.name)
+    ctx.host.world.slots.set(1, String(levels))
+  }
+  ctx.host.vars.set(dest, levels)
+  return false
+})
+
+/** 성별 표 (`StringTemplate_SetGenderMarker`) — 0 수컷 · 1 암컷 · 그 밖은 빈 글 */
+const genderMarker = (gender: number): string => (gender === 0 ? '♂' : gender === 1 ? '♀' : '')
+
+/**
+ * 맡긴 둘의 이름 (`ScrCmd_BufferDaycareMonNicknames` · `ov5_021E72BC`) — 0번에 첫째 별명, 2번에 첫째의 어버이,
+ * 1번에 둘째 별명. 빈 자리는 칸을 안 건드린다. 없던 동안은 할아버지의 「{별명}은 잘 지내고 있다」가 빈 이름으로 떴다
+ */
+on('BufferDaycareMonNicknames', (ctx) => {
+  const care = ctx.host.world.services.daycare
+  const first = care?.info(0) ?? null
+  const second = care?.info(1) ?? null
+  if (first !== null) {
+    ctx.host.world.slots.set(0, first.name)
+    ctx.host.world.slots.set(2, first.ot)
+  }
+  if (second !== null) ctx.host.world.slots.set(1, second.name)
+  return false
+})
+
+/**
+ * 찾아갈 마리 고르는 줄 (`ScrCmd_BufferDaycareNicknameLevelGender` · `Daycare_BufferNicknameLevelGender`) — 네 인자가
+ * 다 변수다: 별명 칸 · 레벨 칸 · 성별 칸 · 맡긴 자리. 레벨은 **맡긴 동안 오른 뒤의** 레벨이다
+ */
+on('BufferDaycareNicknameLevelGender', (ctx) => {
+  const nameSlot = ctx.readVar()
+  const levelSlot = ctx.readVar()
+  const genderSlot = ctx.readVar()
+  const slot = ctx.readVar()
+  const care = ctx.host.world.services.daycare
+  const info = care?.info(slot) ?? null
+  if (info === null) return false
+  ctx.host.world.slots.set(nameSlot, info.name)
+  ctx.host.world.slots.set(levelSlot, String(info.level + (care?.price(slot).levels ?? 0)))
+  ctx.host.world.slots.set(genderSlot, genderMarker(info.gender))
+  return false
+})
+
+/**
+ * 맡길 마리를 고르는 파티 화면 (`ScrCmd_OpenPartyMenuForDaycare` · `PARTY_MENU_MODE_DAYCARE`).
+ *
+ * 인자는 커서가 설 자리다 — 요약에서 돌아올 때 그 자리로 다시 연다. 없던 동안은 화면이 안 열리고 0x8000에 남은 0으로
+ * **늘 맨 앞 마리를 맡겼다**
+ */
+on('OpenPartyMenuForDaycare', (ctx) => {
+  const slot = ctx.readVar()
+  ctx.host.world.services.chooseMon?.open({ daycare: true, slot })
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+/** 그 화면의 답 (`ScrCmd_GetDayCarePartyMenuResult`) — 고른 자리(안 골랐으면 0xFF)와 「능력치를 본다」였는가 */
+on('GetDayCarePartyMenuResult', (ctx) => {
+  const slotDest = ctx.readHalfWord()
+  const summaryDest = ctx.readHalfWord()
+  const choose = ctx.host.world.services.chooseMon
+  ctx.host.vars.set(slotDest, choose?.picked() ?? PARTY_SLOT_NONE)
+  ctx.host.vars.set(summaryDest, choose?.summary() === true ? 1 : 0)
+  return false
+})
+
+/** 그 자리의 요약 화면 (`ScrCmd_SetMonSummary`). 닫힐 때까지 선다 */
+on('SetMonSummary', (ctx) => {
+  const slot = ctx.readVar()
+  ctx.host.world.services.monSummary?.open(slot)
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
+
+/** 요약 화면이 닫힐 때 보던 자리 (`ScrCmd_GetMonPartySlot` · `PokemonSummary_GetPartySlot`) */
+on('GetMonPartySlot', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.services.monSummary?.slot() ?? 0)
   return false
 })
 
@@ -2559,6 +2654,16 @@ on('PlayBoatCutscene', (ctx) => {
  * 것이 없다 — 다만 **자리는 지나가야 한다**
  */
 on('ReturnToField', () => false)
+
+/**
+ * 벽에 걸린 지도 (`ScrCmd_OpenRegionMap` · `scrcmd.c:3227`) — 타운맵을 보기 전용으로 연다. 닫힐 때까지 선다.
+ * 벽 지도 칸(거동값 0x85)에서 A를 누르면 `BgEvents_TownMap`이 이 줄로 온다
+ */
+on('OpenRegionMap', (ctx) => {
+  ctx.host.world.services.townMap?.open()
+  ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
+  return true
+})
 
 // ── 화면 페이드 ──────────────────────────────────────────────────────────────
 //

@@ -110,6 +110,8 @@ const P = {
   statNames: 185, statGain: 191, statValue: 192, levelUp: 193, levelLearned: 194,
   switch_: 145, summary: 146, item: 147, mail: 148, mailRead: 149, mailTake: 150,
   cancel: 152, give: 160, take: 161,
+  /** 「맡긴다」 — 키우미집 갈래의 첫 줄 (`PartyMenu_Text_MailStore` · 갈래 번호 8) */
+  store: 151,
 } as const
 
 /**
@@ -158,13 +160,17 @@ export function PartyScreen() {
   const locale = useGameLocale()
   const [names, setNames] = useState<string[]>([])
   const [moveNames, setMoveNames] = useState<string[]>([])
-  const [cursor, setCursor] = useState(0)
+  // 스크립트가 자리를 주고 열었으면 거기서 시작한다 — 키우미집은 요약에서 돌아올 때 그 자리로 다시 연다
+  const [cursor, setCursor] = useState(() => {
+    const m = useMenuStore.getState()
+    return m.choosingMon ? m.chooseStart : 0
+  })
   /** 자리를 바꾸려고 집어 든 카드. null이면 안 집었다 */
   const [held, setHeld] = useState<number | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   /** 떠 있는 갈래 메뉴. null이면 카드를 고르는 중이다 */
   const [menu, setMenu] = useState<
-    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | null
+    'root' | 'item' | 'mail' | 'learnAsk' | 'learnStop' | 'learnForget' | 'daycare' | null
   >(null)
   /**
    * 기술 칸이 다 차서 **무엇을 잊을지 묻는 중**. null이면 안 묻고 있다.
@@ -201,6 +207,7 @@ export function PartyScreen() {
    * 기술가르침·크기 대회·교환이 전부 이 길로 온다
    */
   const choosingMon = useMenuStore((s) => s.choosingMon)
+  const chooseDaycare = useMenuStore((s) => s.chooseDaycare)
   const [tables, setTables] = useState<{ items: ItemTable; moves: MoveTable } | null>(null)
 
   // ⚠️ 도구를 들고 왔을 때만 받으면 **「뺏는다」가 주머니를 모른다.** 표가
@@ -299,6 +306,27 @@ export function PartyScreen() {
         ? { label: text(P.mail), run: () => { setMenu('mail'); setMenuAt(0) } }
         : { label: text(P.item), run: () => { setMenu('item'); setMenuAt(0) } })
     }
+    out.push({ label: text(P.cancel), run: () => { setMenu(null) } })
+    return out
+  }
+
+  /**
+   * 키우미집 갈래 (`sub_020801B8`) — 맡긴다 · 능력치를 본다 · 그만둔다. **알은 앞의 것이 없다.**
+   *
+   * 「능력치를 본다」는 여기서 요약을 안 연다 — 원작도 파티 화면을 닫고(`PARTY_MENU_EXIT_CODE_SUMMARY`) 스크립트가
+   * 요약 화면을 연 뒤, 그 자리로 파티 화면을 다시 연다
+   */
+  const daycareChoices = (): Choice[] => {
+    const text = (id: number): string => partyText[id] ?? ''
+    const pick = (summary: boolean) => (): void => {
+      partyChoice.slot = at
+      partyChoice.summary = summary
+      setMenu(null)
+      closeAll()
+    }
+    const out: Choice[] = []
+    if (selected && !selected.isEgg) out.push({ label: text(P.store), run: pick(false) })
+    out.push({ label: text(P.summary), run: pick(true) })
     out.push({ label: text(P.cancel), run: () => { setMenu(null) } })
     return out
   }
@@ -511,6 +539,7 @@ export function PartyScreen() {
   }
 
   const choices = menu === 'root' ? rootChoices()
+    : menu === 'daycare' ? daycareChoices()
     : menu === 'item' ? itemChoices()
       : menu === 'mail' ? mailChoices()
         : menu === 'learnAsk' ? learnAskChoices()
@@ -718,7 +747,9 @@ export function PartyScreen() {
       // 스크립트가 부른 고르기. 빈 파티에서는 고를 것이 없다
       if (choosingMon) {
         if (party.length === 0) return
+        if (chooseDaycare) { setMenu('daycare'); setMenuAt(0); return }
         partyChoice.slot = at
+        partyChoice.summary = false
         closeAll()
         return
       }
@@ -738,7 +769,7 @@ export function PartyScreen() {
       if (menu === 'item') { setMenu('root'); setMenuAt(0); return }
       if (inMenu) { setMenu(null); return }
       // 안 고르고 나간다. 원작도 이때 `PARTY_SLOT_NONE`을 준다
-      if (choosingMon) { partyChoice.slot = PARTY_SLOT_NONE; closeAll(); return }
+      if (choosingMon) { partyChoice.slot = PARTY_SLOT_NONE; partyChoice.summary = false; closeAll(); return }
       if (held !== null) { setHeld(null); return }
       back()
     },
@@ -790,7 +821,8 @@ export function PartyScreen() {
               onGrab={() => {
                 // 스크립트가 고르라고 연 화면에서는 자리를 못 바꾼다 — 집는
                 // 순간 Z가 「놓기」가 되어 고를 길이 사라진다
-                if (choosingMon) { partyChoice.slot = i; closeAll(); return }
+                if (choosingMon && chooseDaycare) { setCursor(i); setMenu('daycare'); setMenuAt(0); return }
+                if (choosingMon) { partyChoice.slot = i; partyChoice.summary = false; closeAll(); return }
                 if (held === null) setHeld(i)
                 else { swapParty(held, i); setHeld(null); setCursor(i) }
               }}

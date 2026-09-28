@@ -33,6 +33,8 @@ import { loadUiText } from '../../data/uiText'
 import { useMenuStore } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { useSessionStore } from '../../state/sessionStore'
+import { worldState } from '../../state/worldState'
+import { localToRom, mapById, world as mapWorld } from '../../engine/map/world'
 import { useGameLocale } from '../../state/optionsStore'
 import { useAssetImage } from '../../data/providers/useAssetUrl'
 import { assets, readJson } from '../../data/providers/assetProvider'
@@ -47,6 +49,22 @@ import { ZOOM, ZOOM_IN } from './flyScreen.css'
 /** 커서가 처음 서는 칸. 갈 수 있는 첫 곳으로 간다 */
 const HOME = { x: 3, z: 27 }
 
+/**
+ * 커서가 처음 설 칸 — **주인공이 있는 블록**이다 (`TownMap_Init` → `initialCursorX = playerX / 32`).
+ *
+ * 실내·동굴이면 들어오기 전 바깥 자리(`FieldOverworldState_GetExitLocation` — 우리 `save.exit`)다. 자리를 모르면 원작처럼
+ * 떡잎마을(3,27)이다. 날기·벽 지도·타운맵 도구가 다 같다
+ */
+function playerBlock(): { x: number, z: number } {
+  const header = mapById(mapWorld.mapId)
+  const p = worldState.player.position
+  const exit = useSaveStore.getState().exit
+  const at = header?.matrix === 0 ? localToRom(mapWorld.mapId, Math.floor(p.x), Math.floor(p.z))
+    : exit === null ? null : localToRom(exit.map, Math.floor(exit.x), Math.floor(exit.z))
+  if (at === null || (at.x === 0 && at.z === 0)) return HOME
+  return { x: Math.floor(at.x / 32), z: Math.floor(at.z / 32) }
+}
+
 export function FlyScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const back = useMenuStore((s) => s.back)
@@ -58,7 +76,8 @@ export function FlyScreen() {
   const [notes, setNotes] = useState<string[]>([])
   /** 지역명 (`names/locations.*.json`). 이름은 이쪽에서 온다 */
   const [names, setNames] = useState<string[]>([])
-  const [at, setAt] = useState(HOME)
+  const viewOnly = useMenuStore((s) => s.townMapView)
+  const [at, setAt] = useState(playerBlock)
   const [zoomed, setZoomed] = useState(false)
   const sheet = useAssetImage('data/townMap.png')
 
@@ -83,12 +102,6 @@ export function FlyScreen() {
     }
   }, [locale])
 
-  // 커서를 갈 수 있는 첫 곳에 세운다. 아무 데도 못 가면 떡잎마을 자리다
-  useEffect(() => {
-    const open = FLY_SPOTS.find((s) => (flySpots & (1 << s.spawn)) !== 0)
-    if (open) setAt({ x: open.x, z: open.z })
-  }, [flySpots])
-
   // 숨은 자리 넷은 이야기가 열기 전에는 지도에 아예 없다 (PARITY §5)
   const hidden = unlockedHidden((id) => fieldScripts.vars.get(id))
   const cellHere = cellAt(cells, at.x, at.z, hidden)
@@ -104,6 +117,8 @@ export function FlyScreen() {
   }
 
   const fly = (): void => {
+    // 벽 지도와 타운맵 도구는 보기만 한다 — A가 아무것도 안 한다 (`TownMap_HandleInput_WallMap` · `_Item`)
+    if (viewOnly) return
     if (!spot || !unlocked) return
     // ⚠️ **떠나는 자리도 다시 본다** (`FieldMoves_CheckFly`, REPAIR §91). 이 화면은
     // 시작 메뉴와 파티 화면이 헤더를 본 뒤에만 열리지만, 열린 채로 맵이 바뀌는 길을
@@ -142,7 +157,7 @@ export function FlyScreen() {
     <MenuScreen
       title="타운맵"
       note={`갈 수 있는 곳 ${String(open)}`}
-      foot={<span>↑↓←→ 옮기기 · Tab {zoomed ? '전체' : '확대'} · Z 날아간다 · X 뒤로</span>}
+      foot={<span>↑↓←→ 옮기기 · Tab {zoomed ? '전체' : '확대'}{viewOnly ? '' : ' · Z 날아간다'} · X 뒤로</span>}
     >
       <div className={own.stage}>
         <div className={own.viewport}>

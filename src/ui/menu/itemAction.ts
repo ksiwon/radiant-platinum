@@ -21,6 +21,32 @@ import { SCRIPT_VS_SEEKER } from '../../scene/vsSeeker'
 import type { MenuScreen as MenuScreenName } from '../../state/menuStore'
 import { useSaveStore } from '../../state/saveStore'
 import { worldState } from '../../state/worldState'
+import { useMenuStore } from '../../state/menuStore'
+import { fillMenuText, loadUiText } from '../../data/uiText'
+import { totalAccessories } from '../../engine/world/fashionCase'
+import { berryPatchAhead } from '../../scene/berryPatches'
+
+/** `VAR_0x8000` = `SCRIPT_DATA_PARAMETER_0` */
+const SCRIPT_PARAM_0 = 0x8000
+
+/** 가방 뱅크(`TEXT_BANK_BAG`)의 한 줄 알림 넷 — 57 코인 · 92 실 · 93 액세서리·벽지 · 97 BP (`BagContext_FormatUsageMessage`) */
+const BAG_MESSAGE_LINE = { coins: 57, seals: 92, fashion: 93, points: 97 } as const
+let bagText: string[] | null = null
+/** 가방을 열 때 한 번 받아 둔다 — 알림은 그 자리에서 바로 떠야 한다 */
+function prefetchBagText(): void {
+  if (bagText !== null) return
+  void loadUiText('bag').then((t) => { bagText = t }).catch(() => { /* 알림이 빈다 */ })
+}
+
+function bagMessageLine(what: keyof typeof BAG_MESSAGE_LINE): string {
+  const save = useSaveStore.getState()
+  // 실(볼 장식)은 계통이 없어 0장이다. 벽지(콘테스트 배경)도 콘테스트가 범위 밖이라 0장이다
+  const values = what === 'coins' ? [String(save.coins)]
+    : what === 'seals' ? ['0']
+      : what === 'fashion' ? [String(totalAccessories(save.fashionCase)), '0']
+        : [String(save.battlePoints)]
+  return fillMenuText(bagText?.[BAG_MESSAGE_LINE[what]] ?? '', values)
+}
 
 /**
  * 지금 이 자리의 사정 (`engine/bag/fieldUse`의 `FieldContext`).
@@ -33,9 +59,11 @@ export function fieldContextNow(evoItems: ReadonlySet<string> | undefined): Fiel
   const p = worldState.player
   const grid = world.grid
   const front = frontTile()
+  prefetchBagText()
   return {
     mapId: world.mapId,
     mapType: header?.mapType ?? 0,
+    berryAhead: berryPatchAhead(front.x, front.z),
     escapeRopeAllowed: header?.escapeRope === 1,
     repelSteps: useSaveStore.getState().steps.repel,
     waterAhead: grid !== null && isSurfable(grid.behavior(front.x, front.z)),
@@ -148,8 +176,19 @@ export function performItemAction(action: FieldItemAction, deps: ItemActionDeps)
     case 'commonScript':
       // 천계의피리가 이 길이다. VS시커와 같다 — **쓸 수 있는지까지 롬이
       // 묻는다.** 창기둥이 아니면 원작이 「뜻이 없을 것 같다」로 닫는다
-      startScript(action.id, mapById(world.mapId)?.scripts ?? -1)
+      //
+      // 나무열매 밭 셋(심기 · 물뿌리개 · 퇴비)은 **앞의 밭을 상대로** 걸고 도구 번호를 0x8000에 넣는다
+      // (`sub_020685AC` — 앞 객체로 `ScriptManager_Start` · `SCRIPT_DATA_PARAMETER_0` = 도구)
+      if (!startScript(action.id, mapById(world.mapId)?.scripts ?? -1, action.localID ?? 0)) return false
+      if (action.withItem === true) fieldScripts.vars.set(SCRIPT_PARAM_0, deps.item)
       deps.closeAll()
+      return true
+    case 'townMap':
+      // 보기 전용 타운맵 (`TOWN_MAP_MODE_ITEM`). B로 가방에 돌아온다
+      useMenuStore.getState().openTownMap()
+      return true
+    case 'bagMessage':
+      deps.say(bagMessageLine(action.what))
       return true
     case 'mail':
       // ⚠️ **누구에게 지니게 할지부터 고른다** (`ItemUseFunc_Mail`). 글을 다

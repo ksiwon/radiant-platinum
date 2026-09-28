@@ -15,6 +15,7 @@
 // `OpenSummaryScreenTeachMove`). 원작도 같은 화면 하나를 모드만 바꿔 쓴다 —
 // 기술 쪽으로 고정하고, 마리를 넘기는 ↑↓를 **칸 고르기**로 돌리고, Z가 곧 답이다.
 // 기술 삭제사와 조각 교사 셋이 이 모드 없이는 한 발짝도 못 나간다.
+import { summaryLast } from './partyChoice'
 import { useEffect, useMemo, useState } from 'react'
 import {
   loadItemIcons, loadItemNames, loadLabels, loadMoveNames, loadMoves, loadSpecies,
@@ -108,6 +109,8 @@ export function SummaryScreen() {
   const picking = useMenuStore((s) => s.selectMove)
   const finishPick = useMenuStore((s) => s.finishSelectMove)
   const [at, setAt] = useState(opened)
+  // 닫힐 때 보던 자리를 스크립트가 묻는다 (`GetMonPartySlot` · 키우미집)
+  useEffect(() => { summaryLast.slot = at }, [at])
   const [page, setPage] = useState<Page>(picking === null ? 'info' : 'moves')
   const [moveAt, setMoveAt] = useState(0)
 

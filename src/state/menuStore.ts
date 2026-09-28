@@ -163,6 +163,17 @@ interface MenuStore {
    */
   choosingMon: boolean
   /**
+   * 키우미집이 연 고르기인가 (`PARTY_MENU_MODE_DAYCARE`) — Z가 바로 고르기가 아니라 「맡긴다 · 능력치를 본다 · 그만둔다」
+   * 갈래가 뜬다(알이면 뒤의 둘). 커서는 `chooseStart`에서 시작한다
+   */
+  chooseDaycare: boolean
+  chooseStart: number
+  /**
+   * 타운맵을 **보기만** 하는가 (`TOWN_MAP_MODE_WALL_MAP` · `TOWN_MAP_MODE_ITEM`) — 벽 지도와 타운맵 도구다. A는 아무것도 안 하고
+   * B로만 닫는다(`TownMap_HandleInput_WallMap`). 거짓이면 공중날기다
+   */
+  townMapView: boolean
+  /**
    * 스크립트가 요약 화면을 **기술 고르기**로 열었는가
    * (`FieldSystem_OpenSummaryScreenSelectMove` · `…TeachMove`).
    *
@@ -232,7 +243,9 @@ interface MenuStore {
   /** 크레딧으로 넘어간다. 전당이 리포트를 다 쓰면 스스로 부른다 (PARITY §8.12) */
   openCredits: () => void
   /** 스크립트가 한 마리를 고르라고 파티 화면을 연다 */
-  openPartyToChoose: () => void
+  openPartyToChoose: (opts?: { daycare?: boolean, slot?: number }) => void
+  /** 타운맵을 보기 전용으로 연다 (벽 지도 · 타운맵 도구) */
+  openTownMap: () => void
   /** 스크립트가 요약 화면을 기술 고르기로 연다 */
   openSummaryToSelectMove: (what: NonNullable<MenuStore['selectMove']>) => void
   /** 기술 고르기가 끝났다. 스크립트가 `selectedMoveSlot`을 읽는다 */
@@ -269,15 +282,27 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   diplomaNational: false,
   berryItem: 0,
   choosingMon: false,
+  chooseDaycare: false,
+  chooseStart: 0,
+  townMapView: false,
   creditsSkippable: false,
   trade: null,
   selectMove: null,
   selectedMoveSlot: null,
 
-  openPartyToChoose: () => set(() => {
+  openPartyToChoose: (opts) => set(() => {
     const stack: MenuScreen[] = ['party']
     capture(stack)
-    return { stack, top: 'party' as const, choosingMon: true, usingItem: null }
+    return {
+      stack, top: 'party' as const, choosingMon: true, usingItem: null,
+      chooseDaycare: opts?.daycare === true, chooseStart: opts?.slot ?? 0,
+    }
+  }),
+
+  openTownMap: () => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'fly']
+    capture(stack)
+    return { stack, top: 'fly' as const, townMapView: true }
   }),
 
   openSummaryToSelectMove: (what) => set(() => {
@@ -430,12 +455,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     // 파티 화면에서 물러나면 들고 있던 도구도 내려놓는다
     return {
       stack, top: stack[stack.length - 1] ?? null,
-      usingItem: null, giveTo: null, choosingMon: false,
+      usingItem: null, giveTo: null, choosingMon: false, townMapView: false,
     }
   }),
 
   closeAll: () => set(() => {
     capture([])
-    return { stack: [], top: null, usingItem: null, giveTo: null, choosingMon: false }
+    return { stack: [], top: null, usingItem: null, giveTo: null, choosingMon: false, chooseDaycare: false, townMapView: false }
   }),
 }))
