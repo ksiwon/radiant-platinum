@@ -18,11 +18,17 @@
 // 그림·팔레트를 쓰면 `materialsFor`가 **같은 객체**를 돌려준다. 그 둘은 원래
 // 콜 하나로 그릴 수 있는 것이었다.
 import { BufferAttribute, BufferGeometry, type Material } from 'three'
+import { LEAN_BACK, LEAN_HINGE } from './cardLean'
 
 /** 이 기하들이 함께 쓰는 정점 속성. 하나라도 없으면 그 자리를 0으로 채운다 */
-const ATTRS: readonly (readonly [string, number])[] = [
+const BASE_ATTRS: readonly (readonly [string, number])[] = [
   ['position', 3], ['normal', 3], ['uv', 2], ['color', 3],
 ]
+/**
+ * 세운 판의 경첩 (`cardLean`). **조각 하나라도 들고 있을 때만** 싣는다 — 판이 없는 청크까지
+ * 정점마다 여섯 칸을 더 달 이유가 없다. 없는 조각의 자리는 0(안 눕힌다)이다
+ */
+const LEAN_ATTRS: readonly (readonly [string, number])[] = [[LEAN_HINGE, 4], [LEAN_BACK, 2]]
 
 /**
  * `parts`를 한 기하로 합친다. `materials`는 **그대로 쓴다** — 그룹의 재질
@@ -48,6 +54,9 @@ export function mergeByMaterial(
 
   let verts = 0
   for (const g of list) verts += g.getAttribute('position').count
+  const ATTRS = list.some((g) => g.getAttribute(LEAN_HINGE) !== undefined)
+    ? [...BASE_ATTRS, ...LEAN_ATTRS]
+    : BASE_ATTRS
 
   const merged = new Map<string, Float32Array>()
   for (const [name, size] of ATTRS) merged.set(name, new Float32Array(verts * size))

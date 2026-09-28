@@ -6,9 +6,10 @@
 // 청크 좌표계: 모델이 −16~+16 타일로 **가운데 정렬**돼 있으므로 행렬 칸의
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
 import {
   ClampToEdgeWrapping, DataTexture, DoubleSide, MeshBasicMaterial, NearestFilter,
-  SRGBColorSpace,
+  SRGBColorSpace, Vector3,
   type BufferAttribute, type BufferGeometry, type Material, type Texture,
 } from 'three'
 import type { MapGrid } from '../engine/map/grid'
@@ -38,7 +39,8 @@ import { cardShells, type CardShells } from './cards'
 import { floorRegions, floorTiles, roomWalls, type RoomWalls } from './roomWalls'
 import { isOutdoors, mapById, warpsOf, world } from '../engine/map/world'
 import { markTerrain, openTerrainRequest, traceTerrain } from './terrainMark'
-import { cameraSystem, type RoomBox } from '../engine/actor/camera'
+import { cameraSystem, roomPitchDeg, type RoomBox } from '../engine/actor/camera'
+import { applyLean, hasLean, leanAngle, leanRigOf } from './cardLean'
 import { PropFade } from './PropFade'
 import { mergeByMaterial } from './mergeGroups'
 import { bestSet, lendersFor, lendKey, missingIn, pickSheet } from './chunkSheets'
@@ -104,6 +106,29 @@ function TerrainMesh({ geometry, materials, name = '지형' }: {
       )}
     </>
   )
+}
+
+const lookDir = new Vector3()
+
+/**
+ * 세운 판을 **보는 각에 맞춰 도로 눕힌다** (`cardLean` · REPAIR §16).
+ *
+ * 방에서만 건다 — 원작 렌즈 각을 쓰는 곳이 방이고(`roomPitchDeg`), 들판은 우리 26.6° 렌즈라
+ * 세운 판이 원작과 거의 같게 읽힌다(비끼는 각 26.6° → 0.89배). 비율은 화면이 **지금
+ * 내려다보는 각**이 준다: 3인칭 방은 원작 45° 그대로 · 1인칭 수평 시선은 세운 판 그대로다
+ */
+function LeanCards({ lands }: { lands: readonly Land[] }) {
+  const leaning = useMemo(() => lands.filter((p) => hasLean(p.merged)), [lands])
+  useFrame(({ camera }) => {
+    if (leaning.length === 0) return
+    const lens = roomPitchDeg()
+    camera.getWorldDirection(lookDir)
+    const view = (Math.asin(Math.max(-1, Math.min(1, -lookDir.y))) * 180) / Math.PI
+    // 눕힐 각은 판마다 원작 각(45° · 63.4°)에 이 비율을 곱한 것이다
+    const ratio = lens === null ? 0 : leanAngle(view, lens, 1)
+    for (const p of leaning) if (p.merged) applyLean(p.merged, ratio)
+  })
+  return null
 }
 
 /** 청크 지형. 소품과 달리 숲 바닥을 메울 판을 하나 더 갖는다 */
@@ -352,7 +377,7 @@ function cachedShells(
   const made = cardShells(
     mesh, cutout,
     (split.geometry.getAttribute('position') as BufferAttribute).array as Float32Array,
-    sheet, lumps)
+    sheet, lumps, leanRigOf(split.geometry))
   shellCache.set(key, made)
   return made
 }
@@ -1516,6 +1541,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
 
   return (
     <group>
+      <LeanCards lands={batch.lands} />
       {/*
         땅도 그림자를 던진다 — 나무·절벽이 청크 모델 안에 들어 있어서 여기서
         안 던지면 숲이 통째로 그림자를 안 만든다

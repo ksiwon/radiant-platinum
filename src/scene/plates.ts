@@ -26,6 +26,7 @@
 //
 // 겹치는 값이 하나도 없다.
 import { BufferAttribute, BufferGeometry } from 'three'
+import { LEAN_BACK, LEAN_HINGE } from './cardLean'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 
 /** 이 값을 넘게 투명하면 오려 낸 그림이다. 지형은 전부 0%라 경계에 여유가 크다 */
@@ -509,7 +510,7 @@ export function splitFoliage(
   // 누워 있는 오려 낸 판(울타리·표지판)을 세운다. 원본은 안 건드린다 —
   // 청크는 캐시돼 있고 텍스처 묶음이 다르면 오려 낸 판도 달라진다.
   // 맡긴 사각형은 덩이처럼 **세우지 않는다** — 걷는 것은 `lumps`만이다
-  const position = standCutouts(mesh, cutout, source,
+  const { position, rig } = standCutouts(mesh, cutout, source,
     hold === undefined || hold.size === 0 ? lumps : new Set([...(lumps ?? []), ...hold]))
   const index = src.getIndex()!.array
   const cells = new Map<number, Cell>()
@@ -585,6 +586,11 @@ export function splitFoliage(
   geometry.setAttribute('position', position === source
     ? src.getAttribute('position')
     : new BufferAttribute(position, 3))
+  // 세운 판의 경첩. 방 렌즈에서 보는 각에 맞춰 도로 눕힌다 (`cardLean`)
+  if (rig !== null) {
+    geometry.setAttribute(LEAN_HINGE, new BufferAttribute(rig.hinge, 4))
+    geometry.setAttribute(LEAN_BACK, new BufferAttribute(rig.back, 2))
+  }
   geometry.setIndex(kept)
   for (const [start, count, group] of groups) {
     if (count > 0) geometry.addGroup(start, count, group)
@@ -647,19 +653,35 @@ export function leaning(lean: number): boolean {
   return STAND_ANGLES.some((a) => Math.abs(deg - a) <= STAND_SLACK)
 }
 
+/**
+ * 세운 판의 경첩 — 도로 눕힐 때 쓴다 (`cardLean`).
+ *
+ * `o`는 경첩 위의 점(가장 낮은 정점), `back`은 원작이 눕혀 둔 쪽(수평 단위), `rest`는
+ * 원작이 눕혀 둔 각(라디안, 수직에서)이다
+ */
+export interface StandHinge {
+  ox: number, oy: number, oz: number
+  bx: number, bz: number
+  rest: number
+}
+
 /** 판 하나를 세운다. 정점 자리를 제자리에서 고친다 (소품도 쓴다 — `visual/propPlan.standProp`) */
-export function standCard(pos: Float32Array, verts: number[], n: [number, number, number]): void {
+export function standCard(
+  pos: Float32Array, verts: number[], n: [number, number, number],
+): StandHinge | null {
   // 경첩은 판 평면의 수평 방향이다. 판이 수평이면 경첩이 없다
   const hx = n[2], hz = -n[0]
   const hl = Math.hypot(hx, hz)
-  if (hl < 1e-6) return
+  if (hl < 1e-6) return null
   const ux = hx / hl, uz = hz / hl
   // 오르막은 판 안에서 제일 위를 보는 방향 — 경첩과 법선에 둘 다 수직이다
   let sx = n[1] * uz, sy = n[2] * ux - n[0] * uz, sz = -n[1] * ux
   const sl = Math.hypot(sx, sy, sz)
-  if (sl < 1e-6) return
+  if (sl < 1e-6) return null
   sx /= sl; sy /= sl; sz /= sl
   if (sy < 0) { sx = -sx; sy = -sy; sz = -sz }
+  // 오르막의 수평 성분이 원작이 눕혀 둔 쪽이다
+  const bl = Math.hypot(sx, sz)
 
   let low = verts[0]!
   for (const i of verts) if (pos[i * 3 + 1]! < pos[low * 3 + 1]!) low = i
@@ -672,6 +694,14 @@ export function standCard(pos: Float32Array, verts: number[], n: [number, number
     pos[i * 3 + 1] = oy + up
     pos[i * 3 + 2] = oz + along * uz
   }
+  if (bl < 1e-6) return null
+  return { ox, oy, oz, bx: sx / bl, bz: sz / bl, rest: Math.acos(Math.min(1, sy)) }
+}
+
+/** 세운 판의 경첩을 정점마다 (`cardLean.LEAN_HINGE` · `LEAN_BACK`) */
+export interface LeanRig {
+  hinge: Float32Array
+  back: Float32Array
 }
 
 /**
@@ -682,9 +712,10 @@ export function standCard(pos: Float32Array, verts: number[], n: [number, number
  */
 function standCutouts(
   mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array, lumps?: LumpSet,
-): Float32Array {
+): { position: Float32Array, rig: LeanRig | null } {
   const index = mesh.geometry.getIndex()!.array
   let out: Float32Array | null = null
+  let rig: LeanRig | null = null
   mesh.groups.forEach(([, start, count], group) => {
     if (cutout[group] !== true) return
     if (isFoliage(mesh, group, cutout) || isBakedShadow(mesh, group)) return
@@ -737,10 +768,19 @@ function standCutouts(
       // 이미 선 것(0°)과 땅에 깔린 것(90°)은 여기서 저절로 빠진다
       if (!leaning(Math.abs(part.n[1]) / len)) continue
       out ??= position.slice()
-      standCard(out, [...part.verts], [part.n[0] / len, part.n[1] / len, part.n[2] / len])
+      const verts = [...part.verts]
+      const h = standCard(out, verts, [part.n[0] / len, part.n[1] / len, part.n[2] / len])
+      if (h === null) continue
+      const count = position.length / 3
+      rig ??= { hinge: new Float32Array(count * 4), back: new Float32Array(count * 2) }
+      for (const i of verts) {
+        rig.hinge[i * 4] = h.ox; rig.hinge[i * 4 + 1] = h.oy; rig.hinge[i * 4 + 2] = h.oz
+        rig.hinge[i * 4 + 3] = h.rest
+        rig.back[i * 2] = h.bx; rig.back[i * 2 + 1] = h.bz
+      }
     }
   })
-  return out ?? position
+  return { position: out ?? position, rig }
 }
 
 /**

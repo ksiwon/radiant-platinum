@@ -81,14 +81,26 @@ const MAP_TYPE_INDOOR = 4
 const MAP_TYPE_POKEMON_CENTER = 5
 const CAMERA_INTERIOR = 4
 function roomLens(): { distance: number, height: number, damping: number } | null {
+  const deg = roomPitchDeg()
+  if (deg === null) return null
+  const rad = (deg * Math.PI) / 180
+  return { distance: INDOOR_SLANT * Math.cos(rad), height: INDOOR_SLANT * Math.sin(rad), damping: 5 }
+}
+
+/**
+ * 지금 맵이 방이면 **원작 렌즈의 내림각(도)**, 아니면 null (`roomLens`와 같은 잣대).
+ *
+ * 세운 판을 도로 눕히는 쪽(`scene/cardLean`)도 이것을 본다 — 원작이 판을 45°로 눕혀 둔 것은
+ * 이 각으로 내려다보라고 그린 것이다. 깨어진 세계는 방이 아니다(렌즈가 따로 있다)
+ */
+export function roomPitchDeg(): number | null {
+  if (distortionBridge.inWorld?.() === true) return null
   const header = mapById(mapWorld.mapId)
   if (header === null) return null
   const room = header.mapType === MAP_TYPE_INDOOR || header.mapType === MAP_TYPE_POKEMON_CENTER
     || header.camera === CAMERA_INTERIOR
   if (!room) return null
-  const deg = FIELD_CAMERA_PITCH[header.camera] ?? FIELD_CAMERA_PITCH[CAMERA_INTERIOR]!
-  const rad = (deg * Math.PI) / 180
-  return { distance: INDOOR_SLANT * Math.cos(rad), height: INDOOR_SLANT * Math.sin(rad), damping: 5 }
+  return FIELD_CAMERA_PITCH[header.camera] ?? FIELD_CAMERA_PITCH[CAMERA_INTERIOR]!
 }
 
 /** 방의 테두리 (월드 타일). 씬이 그려진 바닥에서 재어 넘겨 준다 */

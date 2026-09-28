@@ -22,6 +22,7 @@
 // 겹이 된다 — 판을 가운데 두고 둘레만 세우면, 두께가 한 텍셀이라 가운데에
 // 떠 있는 것이 보이지 않는다. 삼각형도 실루엣 길이에만 비례한다.
 import { BufferAttribute, BufferGeometry } from 'three'
+import { LEAN_BACK, LEAN_HINGE } from './cardLean'
 import type { ChunkMesh, TexSheet } from './chunkMesh'
 import { isBakedShadow, isFoliage } from './plates'
 
@@ -233,11 +234,14 @@ export interface CardShells {
  * 울타리·표지판·덤불이다.
  *
  * `position`은 **세운 뒤**의 자리여야 한다(`plates.standCutouts`). 눕은 판에
- * 옆면을 세우면 두께가 엉뚱한 쪽으로 붙는다
+ * 옆면을 세우면 두께가 엉뚱한 쪽으로 붙는다.
+ *
+ * `rig`는 세운 판의 경첩이다(`plates.LeanRig`). 주면 옆면이 **그 판의 경첩**을 물려받아
+ * 판과 한 몸으로 도로 눕는다 (`cardLean`)
  */
 export function cardShells(
   mesh: ChunkMesh, cutout: readonly boolean[], position: Float32Array, sheet: TexSheet | null,
-  lumps?: ReadonlySet<number>,
+  lumps?: ReadonlySet<number>, rig?: { hinge: ArrayLike<number>, back: ArrayLike<number> } | null,
 ): CardShells | null {
   if (!sheet) return null
   const uv = (mesh.geometry.getAttribute('uv') as BufferAttribute | undefined)?.array as
@@ -248,6 +252,9 @@ export function cardShells(
   const groups: [number, number, number][] = []
   const position3: number[] = []
   const texcoord: number[] = []
+  const hinge4: number[] = []
+  const back2: number[] = []
+  let leaning = false
 
   mesh.groups.forEach(([, start, count], group) => {
     if (cutout[group] !== true) return
@@ -305,18 +312,31 @@ export function cardShells(
     }
 
     const into = { position: [] as number[], uv: [] as number[] }
+    const intoHinge: number[] = [], intoBack: number[] = []
     for (const part of byRoot.values()) {
       const len = Math.hypot(...part.n)
       if (len < 1e-9) continue
       // 누워 있으면 판때기가 아니라 지형이다
       if (Math.abs(part.n[1]) / len >= UPRIGHT) continue
-      shellPart([...part.verts], position, uv, sheet, item, spec.rep, into)
+      const verts = [...part.verts]
+      const before = into.position.length / 3
+      shellPart(verts, position, uv, sheet, item, spec.rep, into)
+      // 판의 경첩을 옆면 정점마다 물려준다. 세운 판이 아니면 0(안 눕힌다)이다
+      const own = rig == null ? undefined : verts.find((i) => (rig.hinge[i * 4 + 3] ?? 0) > 0)
+      for (let k = before; k < into.position.length / 3; k++) {
+        if (own === undefined) { intoHinge.push(0, 0, 0, 0); intoBack.push(0, 0); continue }
+        leaning = true
+        for (let a = 0; a < 4; a++) intoHinge.push(rig!.hinge[own * 4 + a]!)
+        intoBack.push(rig!.back[own * 2]!, rig!.back[own * 2 + 1]!)
+      }
     }
     if (into.position.length === 0) return
     groups.push([position3.length / 3, into.position.length / 3, group])
     // 전개 연산자로 밀면 안 된다 — 판이 많은 청크에서 인자 수가 스택을 넘긴다
     for (const v of into.position) position3.push(v)
     for (const v of into.uv) texcoord.push(v)
+    for (const v of intoHinge) hinge4.push(v)
+    for (const v of intoBack) back2.push(v)
   })
 
   if (position3.length === 0) return null
@@ -328,6 +348,10 @@ export function cardShells(
   // 옆면은 원작 판의 그늘을 물려받을 것이 없으므로 흰색이 맞는 값이다
   const white = new Float32Array(position3.length).fill(1)
   geometry.setAttribute('color', new BufferAttribute(white, 3))
+  if (leaning) {
+    geometry.setAttribute(LEAN_HINGE, new BufferAttribute(new Float32Array(hinge4), 4))
+    geometry.setAttribute(LEAN_BACK, new BufferAttribute(new Float32Array(back2), 2))
+  }
   for (const [start, count, group] of groups) geometry.addGroup(start, count, group)
   geometry.computeVertexNormals()
   geometry.computeBoundingSphere()
