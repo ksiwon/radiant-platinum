@@ -35,6 +35,7 @@ export type { Berry } from './schema'
 import { assets, onProviderSwap, readJson } from './providers/assetProvider'
 import { pinAtlas } from './providers/atlas'
 import { formSpeciesId } from '../engine/pokemon/form'
+import { withWildHabitats } from '../engine/battle/wildAdditions'
 import {
   EXTRA_ITEM_DESCRIPTIONS, EXTRA_ITEM_NAMES, EXTRA_ITEMS, withExtraItems,
 } from '../engine/bag/extraItems'
@@ -397,7 +398,8 @@ export function loadPokedexSort(locale: DataLocale): Promise<PokedexSort> {
 
 /** 도감 서식지 지도 (PARITY §5) */
 export function loadPokedexHabitat(): Promise<PokedexHabitat> {
-  return fetchJson('pokedexHabitat.json', (v) => pokedexHabitatSchema.parse(v))
+  // 원작 밖에서 더한 야생의 자리도 같이 그린다 (PARITY §6.13)
+  return fetchJson('pokedexHabitat.json', (v) => withWildHabitats(pokedexHabitatSchema.parse(v)))
 }
 
 /** 나무열매 64종 (PARITY §5 `berry_tag` · §4.6) */

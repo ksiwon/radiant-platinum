@@ -616,6 +616,62 @@ try {
     log(`${second.some((s) => s.startsWith('script:') && s.endsWith('/3')) ? '✅' : '❌'} 되돌리기가 붙었다`, second)
     log('그 뒤', { mon: await mon(), ...(await vf([16667], [119])) })
   }
+  if (await turn('wild')) {
+    // 원작 밖에서 더한 야생 (PARITY §6.13) — 로스트타워 1F 밤. 걸어서 만나고, 무엇이 나왔는지 적고, 도망친다.
+    // 기대: 스무 판 남짓이면 니로우(198)·무우마(200)가 한 번씩은 나온다(각 5%), 해골몽(355)은 10%
+    const N = Number(flag('n', '40'))
+    await warp('siwon', 357, 10, 12, 0, { postGame: true, nationalDex: true, hour: 22 })
+    await clear(10)
+    log('선 자리', await now())
+    const panel = async () => (await page.locator('button').allInnerTexts())
+      .map((t) => t.replace(/\s+/g, ' ').trim()).filter((t) => t !== '' && !t.startsWith('FPS'))
+    // ⚠️ **배틀이 끝나도 화면 판(view)은 남는다** — 새 배틀이 열린 그 순간에 읽으면 앞 판의 상대를 읽는다.
+    // 첫 판에 여섯 번 내리 같은 고오스 Lv20이 적혔다. 그래서 도망친 뒤 판이 `off`로 내려간 것을 보고, 새 판이 `running`이 된 뒤에 읽는다
+    const foe = () => page.evaluate(async () => {
+      const bs = (await import('/src/state/battleStore.ts')).useBattleStore.getState()
+      const m = bs.view?.active?.p2a ?? null
+      return { kind: bs.kind, phase: bs.phase, key: m?.key ?? null, hp: m?.hp ?? null, species: m?.species ?? null, level: m?.level ?? null }
+    })
+    const seen = new Map()
+    const rows = []
+    for (let n = 0; n < N; n++) {
+      // 동서로 오가며 걷는다 — 배틀이 열릴 때까지
+      let opened = false
+      for (let leg = 0; leg < 40 && !opened; leg++) {
+        const key = leg % 2 === 0 ? 'ArrowRight' : 'ArrowLeft'
+        await page.keyboard.down(key)
+        for (let i = 0; i < 12 && !opened; i++) {
+          await page.waitForTimeout(100)
+          opened = await page.evaluate(() => document.documentElement.dataset.scene === 'battle')
+        }
+        await page.keyboard.up(key)
+      }
+      if (!opened) { log('배틀이 안 열렸다', await now()); break }
+      // 상대가 읽힐 때까지
+      let f = await foe()
+      for (let i = 0; i < 60 && (f.phase !== 'running' || f.species === null); i++) { await page.waitForTimeout(200); f = await foe() }
+      rows.push(f)
+      seen.set(f.species, (seen.get(f.species) ?? 0) + 1)
+      if (f.species === 198 || f.species === 200) await page.screenshot({ path: `${OUT}/wild-${String(f.species)}.png` })
+      // 도망친다 — 싸운다·가방·포켓몬·도망친다 차례라 ↓ 셋에 결정. 못 도망치면(원작 확률) 첫 단이 다시 뜨고 또 한다.
+      // 판이 `off`로 내려갈 때까지 — 안 내려갔으면 다음 판에서 앞 상대를 또 읽는다
+      let down = false
+      const till = Date.now() + 90_000
+      while (!down && Date.now() < till) {
+        if ((await foe()).phase === 'off' && (await now()).scene !== 'battle') { down = true; break }
+        const list = await panel()
+        if (list.some((t) => t.startsWith('싸운다'))) {
+          for (let i = 0; i < 3; i++) await tap('ArrowDown', 80)
+          await tap('Space', 300)
+        } else await tap('Space', 200)
+      }
+      await clear(10)
+      log(`${String(n + 1)}번째`, { ...f, down })
+      if (!down) { log('도망이 안 끝났다', await now()); break }
+    }
+    log('나온 종', Object.fromEntries(seen))
+    log(`${seen.has(198) && seen.has(200) ? '✅' : '❌'} 니로우 · 무우마`, `${String(rows.length)}판`)
+  }
 } catch (e) {
   console.error(`  터졌다 — ${String(e?.stack ?? e).slice(0, 700)}`)
   await page.screenshot({ path: `${OUT}/crash.png` }).catch(() => {})

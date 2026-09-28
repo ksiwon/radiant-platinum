@@ -9,6 +9,7 @@ import { Behavior } from '../map/zone'
 import { RADAR_SLOTS } from '../world/pokeRadar'
 import { SPECIES_GASTRODON, SPECIES_SHELLOS, SPECIES_UNOWN } from '../pokemon/form'
 import { TimeOfDay, type TimeOfDayId } from '../map/timeOfDay'
+import { SHARE_CHANCE, shareAt, type LandShare } from './wildAdditions'
 
 /** 4세대 육상 12슬롯 가중치 (합 100) */
 export const LAND_SLOT_RATES = [20, 20, 10, 10, 10, 10, 5, 5, 4, 4, 1, 1] as const
@@ -50,6 +51,8 @@ export interface EncounterTable {
   oldRod: WaterTable
   goodRod: WaterTable
   superRod: WaterTable
+  /** 원작 밖에서 반으로 나눠 쓰는 칸 (`wildAdditions.ts`). 롬 자료에는 없고 읽을 때 얹는다 */
+  shares?: LandShare[]
 }
 
 /**
@@ -309,6 +312,10 @@ export function rollLand(
   const slot = swaps.bump ? swaps.bump(land, picked) : picked
   const s = land[slot]
   if (!s || s.species <= 0) return null
+  // 원작 밖에서 나눠 쓰는 칸 (PARITY §6.13) — 특성이 집은 칸과 레이더가 세운 칸은 안 나눈다
+  const radarSlot = swaps.radarHard === true && RADAR_SLOTS.includes(slot)
+  const shared = forced === null && !radarSlot ? shareAt(table, slot, s.species) : null
+  if (shared !== null && rng() < SHARE_CHANCE) return { species: shared, level: s.level, slot, form: 0, roamer: null }
   return { species: s.species, level: s.level, slot, form: 0, roamer: null }
 }
 

@@ -36,6 +36,7 @@ import { loadNpcSprites, type NpcSprite } from '../engine/actor/sprites'
 import { assets, readJson } from '../data/providers/assetProvider'
 import { gameLocale } from '../state/optionsStore'
 import type { EncountersEx, EncounterTable } from '../engine/battle/encounter'
+import { applyWildAdditions } from '../engine/battle/wildAdditions'
 
 // 주소를 만들지 않는다 — 공개판에서 이 자료는 OPFS에서 온다 (IMPORT.md §7)
 async function json<T>(path: string): Promise<T> {
@@ -163,6 +164,8 @@ export async function bootWorld(): Promise<WorldBoot> {
   world.areas = mapsFile.areas
   world.events = eventsFile.events
   encounters.tables = encFile.tables
+  // 롬에 길이 없는 신오도감 여덟 종 (PARITY §6.13) — 롬 자료는 그대로 두고 읽을 때 얹는다
+  applyWildAdditions(encounters.tables, world.maps)
   encounters.ex = exFile
   heightField.data = bindHeights(bdhcMeta, bdhcBin)
   loadNpcSprites(sprites)
