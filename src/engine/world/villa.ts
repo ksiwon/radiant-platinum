@@ -18,6 +18,37 @@ export const VILLA_FURNITURE_COUNT = 20
 /** 산 가구의 깃발 (`FLAG_VILLA_FURNITURE_TABLE` = `FLAG_VILLA_FURNITURE_START`) */
 export const FLAG_VILLA_FURNITURE_START = 2455
 
+/** `MAP_HEADER_VILLA` · `MAP_HEADER_RESORT_AREA` (`generated/map_headers.txt`의 줄 − 1) */
+const VILLA_MAP = 464
+const RESORT_AREA_MAP = 457
+
+/** 오늘의 손님과 그 말 (`VAR_RESORT_VILLA_VISITOR` · `…_MESSAGE_NUM`) · 손님이 안에 · 밖에 섰다 (`FLAG_VILLA_VISITOR_*`) */
+const VAR_RESORT_VILLA_VISITOR = 16462
+const VAR_RESORT_VILLA_VISITOR_MESSAGE_NUM = 16474
+const FLAG_VILLA_VISITOR_INSIDE = 2475
+const FLAG_VILLA_VISITOR_OUTSIDE = 2476
+
+interface VillaVars {
+  set: (id: number, value: number) => void
+  checkFlag: (id: number) => boolean
+  clearFlag: (id: number) => void
+}
+
+/**
+ * 날이 바뀌면 손님을 새로 뽑는다 (`SystemVars_UpdateVillaVisitor`). 별장 · 리조트 에어리어에 서 있으면 안 뽑는다 —
+ * 보는 앞에서 손님이 바뀌지 않게. `next`는 `LCRNG_Next`(0~0xFFFF)다
+ */
+export function updateVillaVisitor(vars: VillaVars, mapId: number, next: () => number): void {
+  if (mapId === RESORT_AREA_MAP || mapId === VILLA_MAP) return
+  vars.clearFlag(FLAG_VILLA_VISITOR_INSIDE)
+  vars.clearFlag(FLAG_VILLA_VISITOR_OUTSIDE)
+  let owned = 0
+  for (let t = 0; t < VILLA_FURNITURE_COUNT; t++) if (vars.checkFlag(FLAG_VILLA_FURNITURE_START + t)) owned++
+  const { visitor, message } = rollVillaVisitor(owned, next)
+  vars.set(VAR_RESORT_VILLA_VISITOR, visitor)
+  vars.set(VAR_RESORT_VILLA_VISITOR_MESSAGE_NUM, message)
+}
+
 /** 가구 소품의 모델 번호 — `map_prop_models.order`의 `villa_furniture_*` 스물(559~578) */
 export const VILLA_FURNITURE_MODEL_START = 559
 

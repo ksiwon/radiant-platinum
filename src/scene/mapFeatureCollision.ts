@@ -14,6 +14,8 @@ import { sunyshoreBlockedAt } from './sunyshoreGym'
 import { eternaBlockedAt } from './eternaGym'
 import { canalaveBlockedAt } from './canalaveGym'
 import { veilstoneBlockedAt } from './veilstoneGym'
+import { fieldScripts } from '../engine/script/field'
+import { FLAG_VILLA_FURNITURE_START, villaBlocked } from '../engine/world/villa'
 
 /**
  * 그 칸이 막혔는가.
@@ -49,6 +51,9 @@ function featureBlocked(tileX: number, tileZ: number, height: number): boolean |
       return canalaveBlockedAt(tileX, tileZ, height)
     case MAP_FEATURE.veilstoneGym:
       return veilstoneBlockedAt(tileX, tileZ)
+    case MAP_FEATURE.villa:
+      // 산 가구만 막는다. 안 막은 칸은 격자로 내려간다 (`Villa_DynamicMapFeaturesCheckCollision`)
+      return villaBlocked((t) => fieldScripts.vars.checkFlag(FLAG_VILLA_FURNITURE_START + t), tileX, tileZ) ? true : null
     default:
       return null
   }

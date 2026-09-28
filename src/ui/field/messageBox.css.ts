@@ -87,6 +87,18 @@ export const menuItem = style({
   paddingLeft: 22,
 })
 
+/** 값 칸이 있는 줄 — 이름은 왼쪽, 값은 오른쪽 끝에 모은다 (원작 `{CURSOR_X n}`의 열) */
+export const menuRow = style({
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: GAP.wide * 3,
+})
+
+export const menuColumn = style({
+  fontVariantNumeric: 'tabular-nums',
+  whiteSpace: 'pre',
+})
+
 /** 고른 칸에 삼각 커서를 세운다. 원작도 색이 아니라 커서로 가리킨다 */
 export const menuItemOn = style([menuItem, {
   position: 'relative',

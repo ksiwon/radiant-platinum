@@ -101,6 +101,7 @@ import { DisguisePlates } from './DisguisePlates'
 import { EmoteMarks } from './EmoteMarks'
 import { FeatureProps } from './FeatureProps'
 import { HealingBalls } from './HealingBalls'
+import { VillaFurniture } from './VillaFurniture'
 import { DistortionSky } from './DistortionSky'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { clearMapFeature } from '../engine/world/mapFeatures'
@@ -1237,6 +1238,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <FeatureProps />
       {/* 회복기 위의 볼. 간호순이 회복할 때만 선다 (§8.11) */}
       <HealingBalls />
+      {/* 별장의 산 가구 (§7.17) */}
+      <VillaFurniture />
       <InteractionPrompt grid={grid} layer={layer} />
     </group>
   )

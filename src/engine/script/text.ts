@@ -241,6 +241,23 @@ export function tokensToText(tokens: readonly MessageToken[]): string {
     .join('')
 }
 
+/**
+ * 목록 항목의 글 (`FieldMenuManager_AddListMenuEntry`) — 원작은 **넣는 그 자리에서** 칸을 채운다. 별장 주문서처럼 항목마다
+ * 값을 새로 버퍼에 넣고 바로 항목을 더하는 스크립트가 있어서, 보여 줄 때 채우면 전부 마지막 값이 된다.
+ *
+ * `{CURSOR_X n}` 뒤는 **값 칸**이다 — 원작은 그 픽셀로 커서를 밀어 값을 한 줄로 세운다(주문서의 값 · 「------」).
+ * 맨 앞의 `CURSOR_X`는 가운데 맞춤이라 버린다
+ */
+export function formatMenuEntry(raw: string, slots: MessageSlots): { text: string, column?: string } {
+  const tokens = fillSlots(parseMessage(raw), slots)
+  const at = tokens.findIndex((t) => t.kind === 'cursorX')
+  if (at < 0) return { text: tokensToText(tokens) }
+  const head = tokensToText(tokens.slice(0, at))
+  const tail = tokensToText(tokens.slice(at + 1))
+  if (head.trim() === '') return { text: tail }
+  return { text: head, column: tail.trim() }
+}
+
 /** 편의 — 해석 · 칸 채우기 · 글로 되돌리기를 한 번에 */
 export function formatMessage(raw: string, slots: MessageSlots): string {
   return tokensToText(fillSlots(parseMessage(raw), slots))

@@ -23,6 +23,8 @@ export const RECORD_STEPS = 0
 /** `RECORD_TRAINER_SCORE` — 트레이너 카드의 점수 */
 export const RECORD_TRAINER_SCORE = 1
 export const RECORD_BERRIES_PLANTED = 4
+/** 명예의 전당에 든 횟수 — 별장 피아노가 열 번을 본다 */
+export const RECORD_TIMES_ENTERED_HALL_OF_FAME = 73
 export const RECORD_WILD_BATTLES_FOUGHT = 7
 export const RECORD_TRAINER_BATTLES_FOUGHT = 8
 export const RECORD_CAUGHT_POKEMON = 9

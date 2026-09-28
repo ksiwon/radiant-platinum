@@ -42,7 +42,7 @@ import { accessoryShopRunning, openAccessoryShop } from './accessoryShop'
 import { useLibraryTvStore } from '../state/libraryTvStore'
 import { primeRegisteredItem } from './registeredItem'
 import {
-  addRecord, addTrainerScore, RECORD_SLOT_BONUS_ROUNDS, SCORE_SLOT_MACHINE,
+  addRecord, addTrainerScore, recordValue, RECORD_SLOT_BONUS_ROUNDS, SCORE_SLOT_MACHINE,
 } from '../engine/world/gameRecords'
 import { ChallengeType } from '../engine/frontier/factory'
 import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTables'
@@ -70,6 +70,7 @@ import { BOX_MODE, countAll, freeSlots } from '../engine/pokemon/boxes'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
+import { MAP_FEATURE, setMapFeature } from '../engine/world/mapFeatures'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
 import {
@@ -1372,6 +1373,7 @@ const services: FieldServices = {
     score: (event) => {
       useSaveStore.setState((s) => ({ records: addTrainerScore(s.records, event) }))
     },
+    get: (id) => recordValue(useSaveStore.getState().records, id),
   },
 
   /**
@@ -1495,6 +1497,7 @@ const services: FieldServices = {
     setMusic: (seq) => { fieldBgm.override = seq },
     sequencePlaying: (seq) => music.playing === seq || music.isEffectPlaying(seq),
     fadeVolume: (volume, frames) => { music.fadeVolume(volume, frames) },
+    musicOverride: () => fieldBgm.override,
   },
 
   boxFreeSlots: () => freeSlots(useSaveStore.getState().boxes),
@@ -2065,6 +2068,7 @@ const services: FieldServices = {
       return hit
     },
     initHearthomeGym: () => { initHearthomeGym(mapWorld.mapId, Math.random) },
+    initVilla: () => { setMapFeature(MAP_FEATURE.villa) },
   },
 
   /** 전설을 만나기 전의 미리보기 창 */

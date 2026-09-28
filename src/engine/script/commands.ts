@@ -38,7 +38,10 @@ import { clearOverworldWeather, overworldWeather } from '../world/overworldWeath
 import {
   gameCornerPrize, lotteryWinner, VAR_LOTTERY_ID_HIGH, VAR_LOTTERY_ID_LOW,
 } from '../world/gameCorner'
-import { SCORE_BADGE_EARNED, SCORE_HALL_OF_FAME_ENTRY } from '../world/gameRecords'
+import {
+  RECORD_BERRIES_PLANTED, RECORD_TIMES_ENTERED_HALL_OF_FAME, SCORE_BADGE_EARNED, SCORE_HALL_OF_FAME_ENTRY,
+} from '../world/gameRecords'
+import { villaFurnitureAllowed } from '../world/villa'
 import { fossilAtThreshold, fossilCount, speciesFromFossil } from '../world/fossil'
 import {
   AMITY_GIFT_COUNT, amityFound, amityGiftId, amityGiftIsAccessory, VAR_AMITY_STEPS,
@@ -2814,6 +2817,42 @@ on('PlayTrainerEncounterBGM', (ctx) => {
   return true
 })
 
+/** `SEQ_PL_TOWN02` — 음악상자가 트는 곡 (`sdat.txt`의 닻으로 센 값) */
+const SEQ_PL_TOWN02 = 1218
+/** `GetCurrentBGM`이 적는 값 — 가로챈 것이 없으면 0(헤더 곡) · `StopMusic`이면 0xFFFF */
+const BGM_HEADER = 0
+const BGM_STOPPED = 0xffff
+
+/**
+ * 지금 곡을 적어 둔다 (`ScrCmd_GetCurrentBGM`). 원작은 울리는 곡의 번호를 적는다 — 우리 곡은 헤더에서 늘 다시 고르므로
+ * 가로챈 것만 적고 나머지는 「헤더 곡」으로 적는다. `SetFieldScene`이 그대로 되돌린다
+ */
+on('GetCurrentBGM', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const now = soundOf(ctx)?.musicOverride?.() ?? null
+  ctx.host.vars.set(dest, now === null ? BGM_HEADER : now === 'stop' ? BGM_STOPPED : now)
+  return false
+})
+
+/** 별장 음악상자 (`ScrCmd_SetScenePlayBGMMusicBox`). 한 프레임 쉰다 */
+on('SetScenePlayBGMMusicBox', (ctx) => {
+  soundOf(ctx)?.setMusic(SEQ_PL_TOWN02)
+  return true
+})
+
+/** 필드 곡으로 돌아간다 (`ScrCmd_SetFieldScene`) — 곡은 `GetCurrentBGM`이 적어 둔 값이다. 한 프레임 쉰다 */
+on('SetFieldScene', (ctx) => {
+  const bgm = ctx.readVar()
+  soundOf(ctx)?.setMusic(bgm === BGM_HEADER ? null : bgm === BGM_STOPPED ? 'stop' : bgm)
+  return true
+})
+
+/** A나 B를 누르고 있는가 (`ScrCmd_CheckABPress` — `heldKeys`다, 새로 눌린 것이 아니다) */
+on('CheckABPress', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.world.heldFresh ? 1 : 0)
+  return false
+})
+
 on('StopMusic', (ctx) => {
   ctx.readHalfWord() // 원작도 안 쓴다 — 지금 곡을 끈다
   soundOf(ctx)?.setMusic('stop')
@@ -3372,6 +3411,8 @@ on('ShowDiplomaNationalDex', (ctx) => {
 on('ClearGame', (ctx) => {
   // 명예의 전당 한 번이 스코어 35다 (PARITY §7.5)
   ctx.host.world.services.records?.score(SCORE_HALL_OF_FAME_ENTRY)
+  // 별장 피아노가 열 번을 본다 (`clear_game.c` 210줄)
+  ctx.host.world.services.records?.add(RECORD_TIMES_ENTERED_HALL_OF_FAME, 1)
   ctx.host.world.services.hallOfFame?.clear()
   ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
   return true
@@ -5244,6 +5285,32 @@ on('InitPersistedMapFeaturesForHearthomeGym', (ctx) => {
   return false
 })
 
+/**
+ * 별장이다 (`PersistedMapFeatures_InitForVilla`). 산 가구가 서고 칸을 막고, A가 가구마다의 스크립트를 부른다 —
+ * 전부 깃발에서 읽으므로 여기서는 갈래만 세운다
+ */
+on('InitPersistedMapFeaturesForVilla', (ctx) => {
+  ctx.host.world.services.mapFeatures?.initVilla?.()
+  return false
+})
+
+/** 시설 다섯의 인쇄 상태 — 타워 · 팩토리 · 홀 · 캐슬 · 룰렛 (`VAR_BATTLE_*_PRINT_STATE` = 16463~16467) */
+const VAR_BATTLE_TOWER_PRINT_STATE = 16463
+
+/**
+ * 그 가구를 살 조건을 채웠는가 (`ScrCmd_CheckMetFurnitureRequirements` · `ov5_021F6454.c`). 번호는 **가구 + 1**이다.
+ * 조건은 기록과 시설 인쇄다 (`engine/world/villa`)
+ */
+on('CheckMetFurnitureRequirements', (ctx) => {
+  const furniture = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const get = ctx.host.world.services.records?.get
+  const prints = [0, 1, 2, 3, 4].map((i) => ctx.host.vars.get(VAR_BATTLE_TOWER_PRINT_STATE + i))
+  const ok = villaFurnitureAllowed(furniture, { record: (id) => get?.(id) ?? 0, prints })
+  ctx.host.vars.set(dest, ok ? 1 : 0)
+  return false
+})
+
 // ── 승강기 (PARITY §7.12) ────────────────────────────────────────────────────
 //
 // ⚠️ **등대 승강기는 이것으로 길을 가른다.** 층을 고르는 승강기는 목록도 워프도
@@ -5525,6 +5592,8 @@ on('SetBerryMulch', (ctx) => {
 on('PlantBerry', (ctx) => {
   const item = ctx.readVar()
   ctx.host.world.services.berryPatches?.plant(berryPatchId(ctx), item)
+  // 별장 벽시계가 쉰 번을 본다
+  ctx.host.world.services.records?.add(RECORD_BERRIES_PLANTED, 1)
   return false
 })
 

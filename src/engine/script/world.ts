@@ -16,7 +16,7 @@ import { MovementRunner, type Movable, type MovementStep, type MovementTable } f
 import type { ApproachingTrainer } from '../actor/approach'
 import type { EmoteKind } from '../actor/emote'
 import { tickFade } from './fade'
-import { MessageSlots } from './text'
+import { formatMenuEntry, MessageSlots } from './text'
 import type { VarStore } from './vars'
 import type { LotteryEntry } from '../world/gameCorner'
 import type { HealingKind } from '../world/healingMachine'
@@ -38,6 +38,8 @@ export const LIST_MENU_NO_SELECTION_YET = 0xeeee
 /** 목록 메뉴 항목 하나 */
 export interface MenuEntry {
   text: string
+  /** 값 칸 — 원작 `{CURSOR_X n}` 뒤의 글이다 (`formatMenuEntry`) */
+  column?: string
   /** 고르면 결과 변수에 들어갈 값. 나열 순서와 다를 수 있다 */
   value: number
   /** 커서를 올리면 아래에 따로 뜨는 설명 (`AddListMenuEntry`의 셋째 인자) */
@@ -238,6 +240,8 @@ export interface FieldServices {
     kickBag?: (tileX: number, tileZ: number, dir: number) => boolean
     /** 연고시티 체육관의 문 고르기. 틀린 문들의 목적지를 되돌린다 */
     initHearthomeGym: () => void
+    /** 별장의 가구 (`PersistedMapFeatures_InitForVilla`). 선 가구는 깃발이 정한다 */
+    initVilla?: () => void
   }
   /**
    * 귀혼동굴의 다음 방을 굴린다 (`ScrCmd_InitTurnbackCave`).
@@ -694,6 +698,8 @@ export interface FieldServices {
   records?: {
     add: (id: number, amount: number) => void
     score: (event: number) => void
+    /** 지금 값 (`GameRecords_GetRecordValue`) */
+    get?: (id: number) => number
   }
   /**
    * 스크립트가 리포트를 쓴다 (`CommonScript_SaveGame` · PARITY §4.12).
@@ -858,6 +864,8 @@ export interface FieldServices {
     sequencePlaying: (seq: number) => boolean
     /** 곡을 갈지 않고 소리만 줄였다 키운다. 음량은 원작대로 0~127 */
     fadeVolume: (volume: number, frames: number) => void
+    /** 지금 가로챈 곡 — null이면 맵 헤더의 곡이다 (`GetCurrentBGM`이 적어 뒀다 되돌린다) */
+    musicOverride?: () => number | 'stop' | null
   }
   /**
    * 날마다 바뀌는 것 (PARITY §6.11).
@@ -1482,7 +1490,7 @@ export class FieldWorld {
     if (this.builder === null) return
     const bank = this.builder.scope === 'global' ? this.menuEntryTexts : this.bank
     this.builder.entries.push({
-      text: bank[stringID] ?? '',
+      ...formatMenuEntry(bank[stringID] ?? '', this.slots),
       value,
       alt: altID === null ? null : bank[altID] ?? null,
     })
@@ -1538,6 +1546,12 @@ export class FieldWorld {
   /** 이번 프레임에 A나 B가 눌렸는가 */
   get pressed(): boolean {
     return this.input().pressed
+  }
+
+  /** A나 B를 누르고 있는가 — 스크립트가 선 뒤에 누른 것만 (`PrinterInput.fresh`) */
+  get heldFresh(): boolean {
+    const input = this.input()
+    return input.fresh ?? input.held
   }
 
   /** 한 프레임. 인쇄기와 걷는 것들을 돌린다 */

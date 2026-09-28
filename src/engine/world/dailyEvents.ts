@@ -1,11 +1,13 @@
 // 날이 바뀔 때 스크립트 변수·깃발에 하는 일 (`FieldSystem_HandleDailyEvents` · `unk_020559DC.c:87-117`)
 //
 // 씨앗을 굴리는 쪽(`daily.ts`의 `rollOver`)과 포켓러스(`pokerus.ts`)는 따로 있다. 여기는 **변수와 깃발**만 본다 —
-// 원작 순서 그대로: 하루 깃발을 지우고 → 신문사 마감을 줄이고 → 오늘의 레벨을 굴리고 → 숨은 도구 몇 개를 되살린다.
+// 원작 순서 그대로: 하루 깃발을 지우고 → 신문사 마감을 줄이고 → 오늘의 레벨을 굴리고 → 별장 손님을 뽑고 → 숨은 도구 몇 개를
+// 되살린다.
 //
 // ⚠️ **하루 깃발이 한 번도 안 지워지고 있었다.** 그래서 한 번 받은 하루 선물·배틀그라운드의 오늘의 넷·숲의 양옥
 // 로토무 같은 「오늘 한 번」이 첫날 뒤로 영영 닫혀 있었다 (COMPLETION 1단계)
 import { VAR_DAILY_RANDOM_LEVEL, VAR_NEWS_PRESS_DEADLINE, rollDailyRandomLevel } from '../script/commands'
+import { updateVillaVisitor } from './villa'
 
 /** `DAILY_FLAGS_START` · `DAILY_FLAGS_END` — 이 사이를 통째로 0으로 민다 (`FieldSystem_ClearDailyFlags`) */
 export const DAILY_FLAGS_START = 2720
@@ -26,6 +28,7 @@ const FLOAROMA_MEADOW_HONEY: readonly number[] = [788, 789, 949, 950, 951, 952]
 interface DailyVars {
   get: (id: number) => number
   set: (id: number, value: number) => void
+  checkFlag: (id: number) => boolean
   clearFlag: (id: number) => void
 }
 
@@ -44,6 +47,7 @@ export function handleDailyEvents(
   const deadline = vars.get(VAR_NEWS_PRESS_DEADLINE)
   vars.set(VAR_NEWS_PRESS_DEADLINE, deadline > days ? deadline - days : 0)
   vars.set(VAR_DAILY_RANDOM_LEVEL, rollDailyRandomLevel(rand))
+  updateVillaVisitor(vars, mapId, () => rand(0x10000))
   for (let i = 0; i < 2; i++) {
     const [map, flag] = IRON_ISLAND_STAR_PIECES[rand(IRON_ISLAND_STAR_PIECES.length)]!
     if (map !== mapId) vars.clearFlag(flag)

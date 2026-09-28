@@ -43,6 +43,13 @@ export interface Line {
 export interface PrinterInput {
   pressed: boolean
   held: boolean
+  /**
+   * 누르고 있되 **스크립트가 선 뒤에 누른 것**인가 (`CheckABPress`). 없으면 `held`와 같다.
+   *
+   * ⚠️ 원작에는 없는 구분이다. 원작은 대사가 글자씩 찍히는 사이에 손을 뗀다 — 우리는 쪽을 통째로 올려서, 말을 건
+   * A가 아직 눌린 채로 음악상자의 「A · B로 멈춘다」에 닿아 켜자마자 꺼졌다
+   */
+  fresh?: boolean
 }
 
 const NO_INPUT: PrinterInput = { pressed: false, held: false }

@@ -31,6 +31,8 @@ import { fieldBgm } from '../audio/songs'
 import { SFX } from '../audio/sfx'
 import { distortionBridge } from '../world/distortion'
 import { HONEY_TREE_MODEL } from '../world/honeyTree'
+import { FLAG_VILLA_FURNITURE_START, villaTalkAt } from '../world/villa'
+import { MAP_FEATURE, mapFeature } from '../world/mapFeatures'
 import {
   COMMON_SCRIPT_GIVE_ITEM, EGG_GIVER_TRAVELING_MAN, planSiwonTalk, siwonCameoText,
   VAR_GIVE_COUNT, VAR_GIVE_ITEM,
@@ -852,6 +854,8 @@ function tryFrameTable(): void {
  * 인쇄기와 대기 명령이 같은 프레임에 따로 물어보기 때문이다
  */
 let frameInput: PrinterInput = { pressed: false, held: false }
+/** 스크립트가 설 때 이미 누르고 있던 A · B — 손을 뗄 때까지 `fresh`가 아니다 */
+let staleHold = false
 
 /** 눌린 순간만 잡는다. 누르고 있는 동안 계속 참이면 메뉴가 한 번에 지나간다 */
 const edges = { a: false, b: false, up: false, down: false }
@@ -873,7 +877,9 @@ function readInput(): void {
     last[key] = now[key]
   }
   // A와 B 둘 다 대사창을 넘긴다 (`ScriptContext_CheckABPress`)
-  frameInput = { pressed: edges.a || edges.b, held: now.a || now.b }
+  const held = now.a || now.b
+  if (!held) staleHold = false
+  frameInput = { pressed: edges.a || edges.b, held, fresh: held && !staleHold }
 }
 
 export const scriptSystem = {
@@ -1178,7 +1184,22 @@ function tryTalk(): void {
   // 그래도 없으면 타일이 하는 말을 본다 (`Field_TileBehaviorToScript`)
   if (tryPC(front, header.scripts)) return
   if (tryTileScript(front, header.scripts)) return
+  if (tryVillaFurniture(front, header.scripts)) return
   tryFieldMove(front)
+}
+
+/**
+ * 별장의 산 가구에 A를 누른다 (`FieldSystem_TrySetVillaFurnitureScript` · `field_control.c` 313줄) — 타일 판정 다음이다.
+ *
+ * ⚠️ **텔레비전은 안 잇는다.** 공용 방송(10100)이 없어서(PARITY §7.5) 이으면 빈 창에서 선다 — 타일 TV와 같은 사정이다
+ */
+function tryVillaFurniture(front: { x: number; z: number }, mapFile: number): boolean {
+  if (mapFeature() !== MAP_FEATURE.villa) return false
+  const vars = fieldScripts.vars
+  const north = QUARTER_TO_DIR[quarterOf(worldState.player.facing)] === DIR.north
+  const script = villaTalkAt((t) => vars.checkFlag(FLAG_VILLA_FURNITURE_START + t), front.x, front.z, north)
+  if (script === null || script === 'tv') return false
+  return start(script, mapFile)
 }
 
 /** `SCRIPT_ID(COMMON_SCRIPTS, 8)` — `CommonScript_HoneyTree` */
@@ -1976,6 +1997,7 @@ export function start(scriptID: number, mapFile: number, localID = 0): boolean {
 
   vars.resetLocals()
   vars.set(VAR_LAST_TALKED, localID)
+  staleHold = frameInput.held
   world.reset()
   world.target = npcActors.byLocalID.get(localID) ?? null
   world.lastMessage = null

@@ -178,7 +178,9 @@ export function MessageBox() {
               aria-checked={view.menu?.cursor === i}
               className={view.menu?.cursor === i ? css.menuItemOn : css.menuItem}
             >
-              {entry.text}
+              {entry.column === undefined
+                ? entry.text
+                : <span className={css.menuRow}><span>{entry.text}</span><span className={css.menuColumn}>{entry.column}</span></span>}
             </div>
           ))}
         </div>

@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
-  rollVillaVisitor, VILLA_FURNITURE, VILLA_FURNITURE_MODEL_START, VILLA_SLOTS, villaBlocked, villaFurnitureAllowed,
+  rollVillaVisitor, updateVillaVisitor, VILLA_FURNITURE, VILLA_FURNITURE_MODEL_START, VILLA_SLOTS, villaBlocked, villaFurnitureAllowed,
   villaTalkAt,
 } from './villa'
+import { VarStore } from '../script/vars'
 
 const F = VILLA_FURNITURE
 const all = (): boolean => true
@@ -38,6 +39,20 @@ describe('별장 가구', () => {
     expect(rollVillaVisitor(12, seq(90, 14, 3))).toEqual({ visitor: 14, message: 3 })
     expect(rollVillaVisitor(12, seq(91, 7))).toEqual({ visitor: 0xff, message: 7 % 5 })
     expect(rollVillaVisitor(0, seq(25, 5, 0))).toEqual({ visitor: 1, message: 0 })
+  })
+
+  it('날이 바뀌면 — 별장 · 리조트 에어리어 밖에서만 새로 뽑고, 선 손님 깃발 둘을 지운다', () => {
+    const v = new VarStore()
+    v.setFlag(2475); v.setFlag(2476)
+    v.set(16462, 9)
+    // 리조트 에어리어(457)에 서 있으면 그대로다
+    updateVillaVisitor(v, 457, () => 0)
+    expect([v.checkFlag(2475), v.checkFlag(2476), v.get(16462)]).toEqual([true, true, 9])
+    // 가구 여덟(깃발 2455~) — 75% 줄 · 손님 열둘 중에서
+    for (let t = 0; t < 8; t++) v.setFlag(2455 + t)
+    const rolls = [75, 13, 7]
+    updateVillaVisitor(v, 0, () => rolls.shift()!)
+    expect([v.checkFlag(2475), v.checkFlag(2476), v.get(16462), v.get(16474)]).toEqual([false, false, 1, 2])
   })
 })
 
