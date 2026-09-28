@@ -659,7 +659,7 @@ export function leaning(lean: number): boolean {
  * `o`는 경첩 위의 점(가장 낮은 정점), `back`은 원작이 눕혀 둔 쪽(수평 단위), `rest`는
  * 원작이 눕혀 둔 각(라디안, 수직에서)이다
  */
-export interface StandHinge {
+interface StandHinge {
   ox: number, oy: number, oz: number
   bx: number, bz: number
   rest: number
@@ -699,7 +699,7 @@ export function standCard(
 }
 
 /** 세운 판의 경첩을 정점마다 (`cardLean.LEAN_HINGE` · `LEAN_BACK`) */
-export interface LeanRig {
+interface LeanRig {
   hinge: Float32Array
   back: Float32Array
 }

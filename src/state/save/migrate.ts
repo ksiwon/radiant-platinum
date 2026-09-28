@@ -418,6 +418,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     version: 37,
     position: { ...(data.position as Record<string, unknown>), avatar: 0 },
   }),
+
+  // 페라페가 배운 말 (PARITY §1.8 · 수다). 옛 리포트에는 녹음할 길이 없었으므로 null이다 —
+  // 페라페는 제 울음소리로 운다
+  37: (data) => ({
+    ...data,
+    version: 38,
+    chatotCry: null,
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

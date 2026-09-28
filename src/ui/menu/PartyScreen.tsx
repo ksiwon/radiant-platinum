@@ -20,7 +20,7 @@ import { fillMenuText, loadUiText } from '../../data/uiText'
 import { genderOf, maxHp } from '../../engine/pokemon/instance'
 import { hpColor } from '../../engine/battle/healthbar'
 import { FIELD_MOVES, MENU_MOVES, type FieldMoveId, type MenuMoveId } from '../../engine/script/fieldMoves'
-import { fieldMoveFromMenu, menuMoveVerdictNow } from '../../engine/script/field'
+import { beginChatter, fieldMoveFromMenu, menuMoveVerdictNow } from '../../engine/script/field'
 import { HP_TRANSFER_SE, hpTransferAmount, hpTransferGiven, hpTransferTarget } from '../../engine/pokemon/hpTransfer'
 import { LocationEvent } from '../../engine/world/journal'
 import { beginSweetScent, beginWarpMove } from '../../scene/fieldMoveTask'
@@ -69,9 +69,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 
 /**
- * 갈래 메뉴에 띄우는 기술 (`sFieldMoves`) — 비전기술 아홉과 뱃지 없는 다섯.
+ * 갈래 메뉴에 띄우는 기술 (`sFieldMoves`) — 비전기술 아홉과 뱃지 없는 여섯.
  *
- * 원작 파티 화면은 열다섯을 **한 표로** 본다. 순간이동 · 구멍파기 · 달콤한향기 · 우유마시기 · 알낳기가
+ * 원작 파티 화면은 열다섯을 **한 표로** 본다. 순간이동 · 구멍파기 · 달콤한향기 · 우유마시기 · 알낳기 · 수다가
  * 빠져 있어서 그 기술을 아는 마리의 갈래에 줄이 안 떴다
  */
 const FIELD_MENU_MOVES = new Set<number>([
@@ -300,10 +300,11 @@ export function PartyScreen() {
   }
 
   /**
-   * 뱃지 없는 다섯 (`FieldMoves_Check*` → `FieldMoves_Set*Task` · `PartyMenu_SelectMilkDrink`).
+   * 뱃지 없는 여섯 (`FieldMoves_Check*` → `FieldMoves_Set*Task` · `PartyMenu_SelectMilkDrink`).
    *
    * 순간이동 · 구멍파기 · 달콤한향기는 화면을 닫고 **필드 과제**로 넘긴다(`FieldSystem_StartFieldMap`) —
-   * 컷인과 연출이 필드에서 돈다. 우유마시기 · 알낳기는 화면 안에서 받을 마리를 고른다
+   * 컷인과 연출이 필드에서 돈다. 수다도 화면을 닫고 녹음 스크립트로 간다(`FieldMoves_ChatterTask`).
+   * 우유마시기 · 알낳기는 화면 안에서 받을 마리를 고른다
    */
   const runMenuMove = (move: number): boolean => {
     const verdict = menuMoveVerdictNow(move)
@@ -316,6 +317,7 @@ export function PartyScreen() {
       return true
     }
     if (id === 'sweetScent') { if (beginSweetScent(at)) closeAll(); return true }
+    if (id === 'chatter') { if (beginChatter(at)) closeAll(); return true }
     // `PartyMenu_StartFieldMoveHPTransfer`
     if (!selected || !species) return true
     const amount = hpTransferAmount({ hp: selected.hp, maxHp: fullHp(selected, species), isEgg: selected.isEgg })

@@ -71,6 +71,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   trainers: 2,
   /**
+   * 2 — 페라페의 **둘째 컷**(`441_front2.png`)이 붙는다 (`pokegra.SECOND_CUT_SPECIES`). 수다를 녹음할 때
+   * 미리보기 창이 두 컷을 번갈아 보인다 — 안 올리면 이미 깔린 사람은 첫 컷에 멈춰 있다
+   */
+  pokegra: 2,
+  /**
    * 13 — **걷는 자세가 원작 동작이 된다** (`engine/actor/clipGait`). 주인공 몸에
    * 걷기·뛰기(`HERO_GAIT_CLIPS`)를, 치비 몸에 제 걷기·뛰기·서기
    * (`CHIBI_GAIT_CLIPS`)를 싣는다. 트레이너 몸은 그대로다 — 원작에서 등신 걷기를

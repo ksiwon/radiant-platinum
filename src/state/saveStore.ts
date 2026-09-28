@@ -329,6 +329,14 @@ export interface SaveData {
    */
   mapFeatures: MapFeatureSave | null
   /**
+   * 페라페가 배운 말 (`SAVE_TABLE_ENTRY_CHATOT` · `engine/pokemon/chatotCry`) — 1000바이트를 base64로.
+   * null이면 배운 말이 없다(`ChatotCry.valid == FALSE`) — 페라페가 제 울음소리로 운다.
+   *
+   * ⚠️ **파티에 페라페가 없으면 잊는다.** 원작이 박스를 닫을 때 파티에 페라페가 없으면 지운다
+   * (`BoxAppMan_Exit`의 `ChatotCry_ResetStatus`)
+   */
+  chatotCry: string | null
+  /**
    * 모험노트 열 쪽 (PARITY §7.4). 0번이 오늘이고 뒤로 갈수록 옛날이다.
    *
    * ⚠️ **노트를 받기 전에는 아무것도 안 적힌다.** 자리는 새 게임부터 있지만
@@ -390,7 +398,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 37
+export const SAVE_VERSION = 38
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -486,6 +494,7 @@ export function createNewSave(): SaveData {
     easyChatUnlocks: newEasyChatUnlocks(),
     hourPin: null,
     mapFeatures: null,
+    chatotCry: null,
   }
 }
 
@@ -790,6 +799,7 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     easyChatUnlocks: s.easyChatUnlocks,
     hourPin: s.hourPin,
     mapFeatures: s.mapFeatures,
+    chatotCry: s.chatotCry,
   }
 }
 

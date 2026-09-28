@@ -12,6 +12,7 @@ import type { ItemPlan } from '../meta/bagItem'
 import type { PokemonInstance, Status } from '../../pokemon/instance'
 import { abilityOf, genderOf, maxPpOf, natureOf } from '../../pokemon/instance'
 import { romMove, simAbility, simItem, simMove, simSpecies } from './bridge'
+import type { ChatterOdds } from '../dex/mechanics'
 
 /** 성격 번호 → sim이 아는 이름. stats.ts의 격자 순서와 같은 순서다 */
 const NATURE_NAMES = [
@@ -171,6 +172,13 @@ export interface BattleOptions {
    */
   noCrit?: boolean
   /**
+   * 수다가 혼란을 거는 확률(%) — 우리 쪽 · 상대 쪽 (`dex/mechanics`의 `chatterModifyMove`).
+   *
+   * 원작은 **내 쪽 전투원만** 세이브의 녹음을 받는다(`FieldBattleDTO_CopyChatotCryToBattler(…, BATTLER_PLAYER_1)`) —
+   * 상대 페라페는 빈 녹음이라 1%다. 안 주면 양쪽 다 1%다
+   */
+  chatterOdds?: readonly [number, number]
+  /**
    * 상대에게도 맨 뒤에 빈 턴 칸을 붙인다 (`IDLE_MOVE`).
    *
    * **도구를 든 트레이너에게만 붙인다.** 도구를 쓰는 턴에 기술을 안 쓰게 하는
@@ -311,6 +319,10 @@ export class BattleSession {
     // 자리 주인을 가르는 손잡이는 **첫 교체보다 먼저** 걸어야 한다 — 배틀 객체는
     // `>start`에서 서고, 첫 등판은 `>player p2`에서 돈다
     if (this.owners.p1 !== null || this.owners.p2 !== null) this.ownSlots()
+    // 수다의 확률은 기술이 쓰일 때 배틀 객체에서 읽는다 (`ChatterOdds`)
+    if (options.chatterOdds && this.raw.battle) {
+      (this.raw.battle as unknown as ChatterOdds).chatterOdds = options.chatterOdds
+    }
     this.write(`>player p1 ${JSON.stringify({
       name: options.player.name,
       team: Teams.pack(playerTeam.map((m) => toSet(m, true, options.itemName))),

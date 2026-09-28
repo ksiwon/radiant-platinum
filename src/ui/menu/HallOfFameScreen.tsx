@@ -287,6 +287,7 @@ export function HallOfFameScreen() {
   useEffect(() => {
     if (beat !== 'monText1') return
     const mon = party[at]
+    // 페라페는 배운 말로 운다 — 리그의 전당은 `Sound_PlayPokemonCry`다(PC의 전당만 제 울음소리로 되돌린다)
     if (mon) void music.playCry(mon.species)
   }, [beat, at, party])
 

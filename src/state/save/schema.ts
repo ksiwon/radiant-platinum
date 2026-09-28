@@ -713,6 +713,13 @@ const saveSchema = z.object({
     map: int(0, 0xffff),
     data: z.array(int(0, 0xffffffff)).max(64),
   }).nullable(),
+  /**
+   * 페라페가 배운 말 — 1000바이트의 base64(1336자). null이면 배운 말이 없다
+   * (`engine/pokemon/chatotCry`).
+   *
+   * ⚠️ **맨 뒤다** (CODEMAP §2.2)
+   */
+  chatotCry: z.string().length(1336).nullable(),
 })
 
 /**

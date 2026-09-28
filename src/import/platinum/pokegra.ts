@@ -127,6 +127,15 @@ export function boundsOf(rgba: Uint8Array): Box | null {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
 }
 
+/**
+ * **둘째 컷**까지 싣는 종족 — 페라페 하나다.
+ *
+ * 원작이 둘째 컷을 보여 주는 자리는 미리보기 창의 움직임(`pokemon_preview_anim` 둘째 줄: 컷 0 · 1을
+ * 1·8·32·4·4·4프레임씩 번갈아) 하나고, 그 움직임을 거는 스크립트는 수다 녹음 하나다
+ * (`SetPokemonPreviewAnim` — `scripts_record_chatot_cry.s`). 수다를 배우는 것은 페라페뿐이다
+ */
+export const SECOND_CUT_SPECIES: readonly number[] = [441]
+
 /** 앞모습(상대)과 뒷모습(내 것). 암 칸이 비면 수 칸을 쓴다 */
 const PICK: readonly (readonly [string, readonly number[]])[] = [
   ['back', [1, 0]],
@@ -169,6 +178,9 @@ export async function convertPokegra(ctx: ConvertContext): Promise<Produced> {
       if (!box) continue
       out.set(`data/pokemon/${String(s)}_${name}.png`, await encodePng(rgba, CUT, CUT))
       entry[name] = box
+      if (name === 'front' && SECOND_CUT_SPECIES.includes(s)) {
+        out.set(`data/pokemon/${String(s)}_front2.png`, await encodePng(toRgba(px, palette, 1), CUT, CUT))
+      }
     }
     if (Object.keys(entry).length > 0) meta[s] = entry
   }

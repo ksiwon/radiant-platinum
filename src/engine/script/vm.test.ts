@@ -490,9 +490,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_056
+const RUNNING_SITES = 55_062
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 559
+const IMPLEMENTED_COMMANDS = 565
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -510,6 +510,9 @@ const IDLE_COMMANDS = [
   'ShowStartMenu',
   // 필드 스크립트에 **한 번도 안 나온다**. 프런티어 쪽 것이라 닿을 자리가 없다
   'SetSpecialBGM',
+  // 수다 녹음(스크립트 8900)의 **배운 갈래**다. 훑기에는 녹음할 곳이 없어서(`services.chatot`이 없다)
+  // 늘 「배우지 못했다」로 간다 — 앞의 둘(`CheckRecordedChatotCryIsPlayable` · `TryRecordChatotCry`)만 밟힌다
+  'StopRecordingChatotCry', 'StoreRecordedChatotCry',
   // 돈을 주는 자리는 상점·복권처럼 목록 메뉴 너머에 있다
   'GiveMoney',
   // ⚠️ **코인은 게임코너 안에서만 움직인다.** 슬롯도 룰렛도 목록 메뉴로
@@ -724,6 +727,8 @@ const IDLE_COMMANDS = [
   // 1로 바꿔 놓고(방송이 끝나는 장면), 훑기는 변수를 이어 쓰므로 뒤에 오는
   // `OnTransition`의 `== 0` 갈래가 이미 닫혀 있다
   'SetInitialVolumeForSequence',
+  // 같은 배운 갈래의 미리보기 움직임이다
+  'SetPokemonPreviewAnim', 'WaitPokemonPreviewAnim',
   // ⚠️ **BP를 주는 명령이 필드 스크립트에 0회다** (PARITY §12.3) — 원작도
   // 시설 코드가 직접 준다. 배틀팩토리는 스크립트가 아니라 우리 쪽 흐름이
   // 준다 (§9.3). 읽고 찍는 둘은 교환 코너의 목록 메뉴 너머다 — 창을 여는

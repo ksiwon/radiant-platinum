@@ -10,6 +10,9 @@ import { getAudioContext, onAudioUnlock } from './unlock'
 import { RingCounter, type Ring } from './ringing'
 import { assets, readJson } from '../../data/providers/assetProvider'
 import type { RenderReply, RenderRequest } from './renderWorker'
+import {
+  CHATOT_CRY_RATE, chatotCrySpeed, SPECIES_CHATOT, upsampleChatotCry,
+} from '../pokemon/chatotCry'
 
 /** 곡 하나를 얼마나 길게 펴 볼 것인가 (초). 도돌이표를 만나면 거기서 멈춘다 */
 const MAX_SECONDS = 240
@@ -99,6 +102,11 @@ export class Music {
   private readonly ringing = new RingCounter(RING_CAP_MS)
   /** 울음소리도 같은 함정이 있다 (`WaitCry`). 번호가 없으므로 한 칸만 쓴다 */
   private readonly cries = new RingCounter(RING_CAP_MS)
+  /**
+   * 페라페가 배운 말 (`SOUND_SYSTEM_PARAM_CHATOT_CRY` — 세이브의 것을 가리킨다). null이면 배운 말이 없다.
+   * `MusicDirector`가 세이브에서 넣어 준다
+   */
+  private chatot: Uint8Array | null = null
 
   /**
    * 소리를 낼 수 있게 만든다.
@@ -160,6 +168,19 @@ export class Music {
   }
 
   get awake(): boolean { return this.ctx !== null }
+
+  /** 페라페가 배운 말을 갈아 끼운다 (`SoundSystem_Init`이 세이브의 것을 넘긴다) */
+  setChatotCry(raw: Uint8Array | null): void {
+    this.chatot = raw
+  }
+
+  /**
+   * 지금 **스피커로 나가는 소리** 전부가 지나는 자리 — 마이크가 없을 때 페라페가 이것을 듣는다
+   * (`audio/chatotRecord`). 아직 안 깨어났으면 null
+   */
+  output(): AudioNode | null {
+    return this.master
+  }
 
   private getIndex(): Promise<SoundIndex> {
     this.index ??= readJson(assets(), 'data/sound/index.json') as Promise<SoundIndex>
@@ -407,9 +428,17 @@ export class Music {
    * `SEQ_PV`에 창고만 종족 것으로 갈아 끼운다. 기절할 때는 원작대로 3.5반음
    * 내린다
    */
-  async playCry(species: number, opts?: { faint?: boolean }): Promise<void> {
+  async playCry(
+    species: number, opts?: { faint?: boolean, defaultChatot?: boolean },
+  ): Promise<void> {
     if (!this.ctx) return
     if (species < 1 || species > MAX_CRY_SPECIES) return
+    // 페라페는 배운 말이 있으면 그것으로 운다 (`Sound_PlayPokemonCry`의 `SPECIES_CHATOT` 갈래).
+    // 기절도 그렇다 — `Sound_CanPlayChatotCry`가 `POKECRY_FAINT`를 받는다(3.5반음을 안 내린다)
+    if (species === SPECIES_CHATOT && this.chatot !== null && opts?.defaultChatot !== true) {
+      this.playChatot(this.chatot)
+      return
+    }
     const faint = opts?.faint === true
     const cry = this.cries.start(CRY_SEQ)
     let buf = null
@@ -426,6 +455,46 @@ export class Music {
     if (!buf) { cry.release(); return }
     this.oneShot(buf, 1, cry)
   }
+
+  /**
+   * 배운 말을 튼다 (`Sound_Impl_PlayChatotCry`) — 2kHz · 빠르기 1.0~1.25배(`chatotCrySpeed`).
+   *
+   * 울음소리 칸(`WaitCry`)으로 센다 — 녹음 뒤 스크립트의 `PlayCry SPECIES_CHATOT` · `WaitCry`가
+   * 새로 배운 말이 끝날 때까지 선다
+   */
+  private playChatot(raw: Uint8Array): void {
+    const ctx = this.ctx
+    if (!ctx) return
+    const cry = this.cries.start(CRY_SEQ)
+    const samples = chatotBufferSamples(raw)
+    const buf = ctx.createBuffer(1, samples.length, CHATOT_BUFFER_RATE)
+    buf.copyToChannel(samples as Float32Array<ArrayBuffer>, 0)
+    const bus = this.bus
+    if (!bus) { cry.release(); return }
+    const g = ctx.createGain()
+    g.connect(bus)
+    const src = ctx.createBufferSource()
+    src.buffer = buf
+    src.playbackRate.value = chatotCrySpeed(Math.random())
+    src.connect(g)
+    src.onended = () => { g.disconnect(); cry.release() }
+    src.start()
+    cry.by((buf.duration / src.playbackRate.value + 0.5) * 1000)
+  }
+}
+
+/**
+ * 담은 녹음을 트는 버퍼의 빠르기. 2kHz를 **네 칸씩 그대로 늘려** 8kHz로 싣는다 — 브라우저의 버퍼는
+ * 3kHz 밑을 못 받고, DS 소리 칩은 샘플 사이를 안 이어서(보간 없음) 계단 그대로가 원작 소리다
+ */
+const CHATOT_BUFFER_RATE = CHATOT_CRY_RATE * 4
+
+/** 녹음 → 8kHz 버퍼 한 채널 (−1~1) */
+function chatotBufferSamples(raw: Uint8Array): Float32Array {
+  const pcm = upsampleChatotCry(raw)
+  const out = new Float32Array(pcm.length * 4)
+  for (let i = 0; i < pcm.length; i++) out.fill(pcm[i]! / 128, i * 4, i * 4 + 4)
+  return out
 }
 
 /** 울음소리가 쓰는 악보와 악기표. 시험이 본다 */

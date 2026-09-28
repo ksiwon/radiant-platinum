@@ -76,7 +76,9 @@ import {
   distortionAddObject, distortionPlayerPos, distortionRemoveObject, distortionResetCamera,
   finishDistortionShadow, resetDistortionPersisted, startDistortionShadow,
 } from './distortion'
-import { usePreviewStore } from '../state/previewStore'
+import { previewAnimating, usePreviewStore } from '../state/previewStore'
+import { startChatotRecording, stopChatotRecording } from '../engine/audio/chatotRecord'
+import { decodeChatotCry, encodeChatotCry, storeChatotCry } from '../engine/pokemon/chatotCry'
 import {
   TURNBACK_WARP_COUNT, turnbackDestination, turnbackEntryWarp,
 } from '../engine/world/turnbackCave'
@@ -249,6 +251,8 @@ let battleResult: 'win' | 'loss' | null = null
 let battleMask: number | null = null
 /** 마지막으로 튼 팡파르. `WaitFanfare`가 이것이 끝나기를 기다린다 */
 let fanfare: number | null = null
+/** 페라페가 들은 것 (2kHz 8비트). `StopRecordingChatotCry`가 채우고 `StoreRecordedChatotCry`가 담는다 */
+let heardChatot: Int8Array | null = null
 /** 배틀을 스크립트가 열었는가. 야생 조우까지 여기 걸리면 안 된다 */
 let waiting = false
 
@@ -1957,8 +1961,28 @@ const services: FieldServices = {
 
   /** 전설을 만나기 전의 미리보기 창 */
   preview: {
-    draw: (species, gender) => { usePreviewStore.getState().draw(species, gender) },
+    draw: (species, gender, form) => { usePreviewStore.getState().draw(species, gender, form) },
     remove: () => { usePreviewStore.getState().remove() },
+    animate: () => { usePreviewStore.getState().animate() },
+    animating: () => previewAnimating(),
+  },
+
+  /**
+   * 페라페가 배우는 말 (`scrcmd_sound.c`). 받은 것은 `store`까지 여기 들고 있다 — 원작도 웨이브 버퍼에
+   * 받아 두었다가 `StoreRecordedChatotCry`에서 세이브로 옮긴다
+   */
+  chatot: {
+    playable: () => decodeChatotCry(useSaveStore.getState().chatotCry) !== null,
+    record: async () => {
+      heardChatot = null
+      return (await startChatotRecording()) !== null
+    },
+    stop: () => { heardChatot = stopChatotRecording() },
+    store: () => {
+      if (heardChatot === null) return
+      useSaveStore.setState({ chatotCry: encodeChatotCry(storeChatotCry(heardChatot)) })
+      heardChatot = null
+    },
   },
 
   /**

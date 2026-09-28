@@ -4835,8 +4835,65 @@ on('DrawPokemonPreview', (ctx) => {
 on('DrawPokemonPreviewFromPartySlot', (ctx) => {
   const at = ctx.readVar()
   const species = ctx.host.world.services.party?.species(at) ?? 0
-  ctx.host.world.services.preview?.draw(species, GENDER_NONE)
+  const form = ctx.host.world.services.party?.form(at) ?? 0
+  ctx.host.world.services.preview?.draw(species, GENDER_NONE, form)
   ctx.host.world.services.seeSpecies?.(species)
+  return false
+})
+
+/**
+ * 창의 포켓몬을 움직인다 (`ScrCmd_SetPokemonPreviewAnim`) — 두 컷을 원작 박자로 번갈아 보인다.
+ * 쓰는 스크립트는 수다 녹음 하나다
+ */
+on('SetPokemonPreviewAnim', (ctx) => {
+  ctx.host.world.services.preview?.animate()
+  return false
+})
+
+/** 그 움직임이 끝날 때까지 선다 (`ScrCmd_WaitPokemonPreviewAnim`). 인자는 원작도 안 쓴다 */
+on('WaitPokemonPreviewAnim', (ctx) => {
+  ctx.readHalfWord()
+  const preview = ctx.host.world.services.preview
+  if (preview === undefined) return false
+  ctx.pause(() => !preview.animating())
+  return true
+})
+
+// ── 페라페가 배우는 말 (수다 · `scrcmd_sound.c`) ──────────────────────────────
+
+on('CheckRecordedChatotCryIsPlayable', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, ctx.host.world.services.chatot?.playable() === true ? 1 : 0)
+  return false
+})
+
+/**
+ * 받기 시작한다 (`ScrCmd_TryRecordChatotCry`). 시작했으면 참이다.
+ *
+ * ⚠️ **답이 나올 때까지 선다.** 원작은 마이크를 곧바로 열지만 브라우저는 처음 한 번 권한을 묻는다 —
+ * 그동안 스크립트가 `WaitTime 30`으로 넘어가면 받는 1초가 권한 창 뒤로 지나가 버린다
+ */
+on('TryRecordChatotCry', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const chatot = ctx.host.world.services.chatot
+  if (chatot === undefined) { ctx.host.vars.set(dest, 0); return false }
+  let started: boolean | null = null
+  chatot.record().then((ok) => { started = ok }, () => { started = false })
+  ctx.pause(() => {
+    if (started === null) return false
+    ctx.host.vars.set(dest, started ? 1 : 0)
+    return true
+  })
+  return true
+})
+
+on('StopRecordingChatotCry', (ctx) => {
+  ctx.host.world.services.chatot?.stop()
+  return false
+})
+
+on('StoreRecordedChatotCry', (ctx) => {
+  ctx.host.world.services.chatot?.store()
   return false
 })
 

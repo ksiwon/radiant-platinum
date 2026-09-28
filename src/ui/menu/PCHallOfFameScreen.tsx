@@ -113,7 +113,8 @@ export function PCHallOfFameScreen() {
 
   // 커서가 앉은 마리가 운다 (`Sound_PlayPokemonCry`)
   useEffect(() => {
-    if (mon) void music.playCry(mon.species, undefined)
+    // PC의 전당은 페라페도 제 울음소리다 (`Sound_SetUsingDefaultChatotCry(TRUE)` · `pc_hall_of_fame/display.c`)
+    if (mon) void music.playCry(mon.species, { defaultChatot: true })
   }, [mon?.species, mon?.form]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 옛 줄로 (`PCHallOfFame_LoadLeftEntry`) */

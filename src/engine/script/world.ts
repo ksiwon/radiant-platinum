@@ -246,8 +246,28 @@ export interface FieldServices {
   turnbackCave?: (pillarsSeen: number, roomsVisited: number) => void
   /** 전설을 만나기 전의 미리보기 창 (`ScrCmd_DrawPokemonPreview`) */
   preview?: {
-    draw: (species: number, gender: number) => void
+    /** `form`은 파티 자리로 그릴 때만 준다 (`DrawPokemonPreviewFromStruct`) */
+    draw: (species: number, gender: number, form?: number) => void
     remove: () => void
+    /** 두 컷을 번갈아 보인다 (`SetPokemonPreviewAnim`) */
+    animate: () => void
+    /** 그 움직임이 아직 도는가 (`WaitPokemonPreviewAnim`) */
+    animating: () => boolean
+  }
+  /**
+   * 페라페가 배우는 말 (`scrcmd_sound.c`의 `*ChatotCry` · `engine/pokemon/chatotCry`).
+   *
+   * 받는 쪽이 마이크를 못 쓰면 게임 소리를 받는다(`audio/chatotRecord`) — 둘 다 안 되면 `record`가 거짓이다
+   */
+  chatot?: {
+    /** 배운 말이 있는가 (`Sound_IsRecordedChatotCryPlayable`) */
+    playable: () => boolean
+    /** 받기 시작한다. 받기 시작했으면 참 (`Sound_StartRecordingChatotCry` → `MIC_RESULT_SUCCESS`) */
+    record: () => Promise<boolean>
+    /** 받기를 멈춘다 */
+    stop: () => void
+    /** 받은 것을 세이브에 담는다 (`ChatotCry_StoreAudio`) */
+    store: () => void
   }
   /** 트레이너 자료 (더블 여부·대사 색인·갈래) */
   trainer?: (id: number) => {

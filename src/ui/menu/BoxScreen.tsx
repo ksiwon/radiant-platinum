@@ -26,6 +26,7 @@ import type { BoxSpot } from '../../engine/pokemon/boxes'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
+import { SPECIES_CHATOT } from '../../engine/pokemon/chatotCry'
 import { LocationEvent } from '../../engine/world/journal'
 import { journalPlain } from '../../scene/journal'
 import { MenuScreen } from './MenuScreen'
@@ -272,6 +273,12 @@ export function BoxScreen() {
       // ⚠️ **연 것만으로는 안 적는다** — 원작도 실제로 옮겼을 때만 깃발을 세운다
       // (`BoxAppMan_FlagRecordBoxUseInJournal`)
       if (moved.current) journalPlain(LocationEvent.USED_PC_BOX)
+      // 파티에 페라페가 없으면 배운 말을 잊는다 (`BoxAppMan_Exit`의 `ChatotCry_ResetStatus`).
+      // ⚠️ **페라페 알도 페라페로 친다** — `Party_HasSpecies`가 `MON_DATA_SPECIES`(알 속의 종족)를 본다
+      const save = useSaveStore.getState()
+      if (save.chatotCry !== null && !save.party.some((m) => m.species === SPECIES_CHATOT)) {
+        useSaveStore.setState({ chatotCry: null })
+      }
       back()
     },
   })

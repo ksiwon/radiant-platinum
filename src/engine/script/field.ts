@@ -1398,8 +1398,25 @@ export function menuMoveVerdictNow(move: number): { id: MenuMoveId, denial: 'not
       escapeRopeAllowed: header?.escapeRope === 1,
       hasPartner: fieldScripts.vars.checkFlag(SYSTEM_FLAG.hasPartner),
       inSafari: fieldScripts.services.safari?.active?.() === true,
+      inDistortion: distortionBridge.inWorld?.() === true,
     }),
   }
+}
+
+/** `SCRIPT_ID(RECORD_CHATOT_CRY, 0)` — `scripts.json`의 구간표가 `{from: 8900, file: 424}`다 */
+const RECORD_CHATOT_CRY_SCRIPT = 8900
+
+/**
+ * 수다 — 페라페에게 말을 가르친다 (`FieldMoves_ChatterTask`).
+ *
+ * 원작 태스크가 하는 일이 둘뿐이다: 녹음 스크립트로 넘기고(`ScriptManager_Change`) 파티 자리를
+ * `VAR_0x8000`에 넣는다(`FieldSystem_SetScriptParameters`). 창 · 대사 · 녹음은 스크립트가 낸다
+ */
+export function beginChatter(slot: number): boolean {
+  if (!start(RECORD_CHATOT_CRY_SCRIPT, currentMapFile(), 0)) return false
+  // ⚠️ **`start` 뒤다** — 그 안의 `resetLocals()`가 앞서 넣은 것을 지운다
+  fieldScripts.vars.set(SCRIPT_LOCAL_VARS_START, slot)
+  return true
 }
 
 /**

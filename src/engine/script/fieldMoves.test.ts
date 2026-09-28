@@ -133,7 +133,7 @@ describe('자격', () => {
   })
 })
 
-maybe('뱃지 없는 다섯', () => {
+maybe('뱃지 없는 여섯', () => {
   it('기술 번호가 롬 이름표와 맞는다', () => {
     const names = JSON.parse(readFileSync(resolve(DATA, 'names/moves.ko.json'), 'utf8')) as string[]
     expect(names[MENU_MOVES.teleport.move]).toBe('순간이동')
@@ -141,12 +141,17 @@ maybe('뱃지 없는 다섯', () => {
     expect(names[MENU_MOVES.sweetScent.move]).toBe('달콤한향기')
     expect(names[MENU_MOVES.milkDrink.move]).toBe('우유마시기')
     expect(names[MENU_MOVES.softboiled.move]).toBe('알낳기')
+    expect(names[MENU_MOVES.chatter.move]).toBe('수다')
   })
 })
 
 describe('순간이동 · 구멍파기 자격 (`FieldMoves_CheckTeleport` · `_CheckDig`)', () => {
-  const route = { flyAllowed: true, mapType: 2, escapeRopeAllowed: false, hasPartner: false, inSafari: false }
-  const cave = { flyAllowed: false, mapType: 3, escapeRopeAllowed: true, hasPartner: false, inSafari: false }
+  const route = {
+    flyAllowed: true, mapType: 2, escapeRopeAllowed: false, hasPartner: false, inSafari: false, inDistortion: false,
+  }
+  const cave = {
+    flyAllowed: false, mapType: 3, escapeRopeAllowed: true, hasPartner: false, inSafari: false, inDistortion: false,
+  }
 
   it('순간이동은 날 수 있는 **마을 밖**에서만 된다', () => {
     expect(menuMoveDenial('teleport', route)).toBeNull()
@@ -171,5 +176,12 @@ describe('순간이동 · 구멍파기 자격 (`FieldMoves_CheckTeleport` · `_C
     }
     expect(menuMoveOf(100)).toBe('teleport')
     expect(menuMoveOf(15)).toBeNull()
+  })
+
+  it('수다는 깨어진 세계에서만 막힌다 (`FieldMoves_CheckChatter`) — 동행도 굴도 안 본다', () => {
+    expect(menuMoveDenial('chatter', cave)).toBeNull()
+    expect(menuMoveDenial('chatter', { ...route, hasPartner: true })).toBeNull()
+    expect(menuMoveDenial('chatter', { ...route, inDistortion: true })).toBe('notHere')
+    expect(menuMoveOf(448)).toBe('chatter')
   })
 })

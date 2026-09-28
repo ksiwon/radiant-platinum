@@ -12,9 +12,15 @@ import { beforeAll, expect, it } from 'vitest'
 import { resetGameDataCache } from '../../../data/gameData'
 import { installNodeAssets, withData } from '../../../data/romData.testkit'
 import { movesById, spawn } from '../sim/fixtures.testkit'
-import { BattleSession } from '../sim/session'
+import { BattleSession, type SideMon } from '../sim/session'
 import { primeBattleDex, resetBattleDex } from './provider'
 import { Moves, Pokedex } from './tables'
+
+const CHATOT = 441
+const SNORLAX = 143
+const PIDGEY = 16
+const CHATTER = 448
+const SPLASH = 150
 
 /** 모부기 · 불꽃숭이 · 팽도리 */
 const TURTWIG = 387
@@ -102,4 +108,43 @@ withData('species.json', 'moves.json', 'items.json')('껍데기를 낀 채로 �
     expect(typeof gen4.data.Items.leftovers?.onResidual).toBe('function')
     expect(gen4.items.get('cheriberry').isBerry).toBe(true)
   })
+
+  /**
+   * 수다의 혼란 확률은 **녹음이 정한다** (`BtlCmd_CheckChatterActivation` · `mechanics.chatterModifyMove`).
+   *
+   * ⚠️ **sim의 구현 그대로는 배포판에서 한 번도 안 걸었다.** 그쪽이 `species.name !== 'Chatot'`로 막는데
+   * 이 표는 이름 자리에 id를 넣는다 — 페라페도 늘 0%였다. 판을 여러 번 열어 첫 턴에 걸린 비율을 센다
+   */
+  it('수다 — 이름 자리는 id다 · 크게 배운 말 31% · 배운 말 없음 1% · 페라페가 아니면 0', async () => {
+    const { Dex } = await import('@pkmn/sim')
+    expect(Dex.forGen(4).species.get('chatot').name).toBe('chatot')
+    const only = (side: SideMon, move: number): SideMon => {
+      side.mon.moves = [{ move, pp: movesById.get(move)?.pp ?? 20, ppUps: 0 }]
+      return side
+    }
+    const confused = async (attacker: number, odds: readonly [number, number] | undefined, trials: number) => {
+      let hit = 0
+      for (let i = 0; i < trials; i++) {
+        const battle = new BattleSession({
+          player: { name: '나', team: [only(spawn(attacker, 50, 1000 + i, 'p1-0'), CHATTER)] },
+          foe: { name: '야생', team: [only(spawn(SNORLAX, 100, 5000 + i, 'p2-0'), SPLASH)] },
+          seed: [i & 0xffff, (i * 7) & 0xffff, 3, 4],
+          ...(odds ? { chatterOdds: odds } : {}),
+        })
+        await battle.settle()
+        battle.send('p1 move 1')
+        battle.send('p2 move 1')
+        const lines = (await battle.settle()).p1
+        if (lines.some((l) => l.startsWith('|-start|p2a:') && l.includes('confusion'))) hit++
+        battle.destroy()
+      }
+      return hit
+    }
+    // 이항분포 400회: p 0.31의 σ ≈ 9.2 · p 0.01의 σ ≈ 2 — 넉넉히 ±4σ
+    const loud = await confused(CHATOT, [31, 1], 400)
+    expect(loud).toBeGreaterThan(124 - 37)
+    expect(loud).toBeLessThan(124 + 37)
+    expect(await confused(CHATOT, undefined, 400)).toBeLessThan(13)
+    expect(await confused(PIDGEY, [31, 31], 100)).toBe(0)
+  }, 180_000)
 })

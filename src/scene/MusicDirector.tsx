@@ -19,6 +19,8 @@ import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { useIntroStageStore } from '../state/introStageStore'
 import { useOptionsStore } from '../state/optionsStore'
+import { useSaveStore } from '../state/saveStore'
+import { decodeChatotCry } from '../engine/pokemon/chatotCry'
 import { worldState } from '../state/worldState'
 import { fieldScripts } from '../engine/script/field'
 import { previousMap } from './fieldServices'
@@ -55,6 +57,10 @@ export function MusicDirector() {
 
   // 원작 옵션 17·18번 (스테레오 · 모노)
   useEffect(() => { music.setMono(sound === 1) }, [sound])
+
+  // 페라페가 배운 말 — 소리 체계가 세이브의 것을 가리킨다 (`SoundSystem_Init(chatotCry, …)`)
+  const chatot = useSaveStore((s) => s.chatotCry)
+  useEffect(() => { music.setChatotCry(decodeChatotCry(chatot)) }, [chatot])
 
   // 메뉴 소리는 미리 펴 둔다. 안 그러면 첫 커서 이동에서 452KB를 받느라 소리가 늦다
   useEffect(() => { void music.prewarm([SFX.MENU]) }, [])

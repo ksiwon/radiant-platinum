@@ -40,9 +40,41 @@ export function withMechanics(rom: Mechanics, mechanics: Mechanics | undefined):
   return mechanics ? { ...mechanics, ...rom } : rom
 }
 
+/**
+ * 배틀이 들고 있는 **수다의 확률(%)** — 쪽마다 하나 (`sim/session`이 배틀 객체에 붙인다).
+ * 없으면 녹음이 없는 페라페의 값(1%)이다
+ */
+export interface ChatterOdds { chatterOdds?: readonly [number, number] }
+
+/** 녹음이 없는 페라페의 확률 (`chatotCry.chatterChance(0)`) */
+const CHATTER_UNRECORDED = 1
+
+/**
+ * 수다 (`BtlCmd_CheckChatterActivation`) — 혼란 확률이 **녹음이 정한다**: 1 · 11 · 31%.
+ *
+ * ⚠️ **sim의 구현을 그대로 두면 한 번도 안 건다.** 그쪽은 `species.name !== 'Chatot'`이면 0으로 만드는데,
+ * 우리 표는 이름 자리에 id(`chatot`)를 넣는다(`provider.ts`) — 페라페도 늘 0이었다. 원작은 종족 번호를 보고
+ * (`ATTACKING_MON.species == SPECIES_CHATOT`), 변신한 몸이면 안 건다 — 변신은 sim에서 종족이 바뀌므로 id가 같은 뜻이다
+ */
+function chatterModifyMove(
+  this: ChatterOdds,
+  move: { secondaries?: { volatileStatus?: string, chance?: number }[] | null },
+  pokemon: { species: { id: string }, side: { n: number } },
+): void {
+  const confusion = move.secondaries?.find((x) => x.volatileStatus === 'confusion')
+  if (!confusion) return
+  if (pokemon.species.id !== 'chatot') { confusion.chance = 0; return }
+  confusion.chance = this.chatterOdds?.[pokemon.side.n === 0 ? 0 : 1] ?? CHATTER_UNRECORDED
+}
+
+/** 원작 규칙으로 갈아 끼운 기술 효과. sim의 표보다 앞선다 */
+const ROM_MOVE_RULES: Record<string, Mechanics> = {
+  chatter: { ...MOVE_MECHANICS.chatter, onModifyMove: chatterModifyMove },
+}
+
 export const MechanicsRegistry = {
   species: (id: string): Mechanics | undefined => SPECIES_MECHANICS[id],
-  move: (id: string): Mechanics | undefined => MOVE_MECHANICS[id],
+  move: (id: string): Mechanics | undefined => ROM_MOVE_RULES[id] ?? MOVE_MECHANICS[id],
   ability: (id: string): Mechanics | undefined => ABILITY_MECHANICS[id],
   item: (id: string): Mechanics | undefined => ITEM_MECHANICS[id],
   type: (id: string): Mechanics | undefined => TYPE_MECHANICS[id],

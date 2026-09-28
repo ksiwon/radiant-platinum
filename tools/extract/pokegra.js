@@ -117,6 +117,15 @@ function boundsOf(rgba) {
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 }
 }
 
+/**
+ * **둘째 컷**까지 싣는 종족 — 페라페 하나다.
+ *
+ * 원작이 둘째 컷을 보여 주는 자리는 미리보기 창의 움직임(`pokemon_preview_anim` 둘째 줄: 컷 0 · 1을
+ * 1·8·32·4·4·4프레임씩 번갈아) 하나고, 그 움직임을 거는 스크립트는 수다 녹음 하나다
+ * (`SetPokemonPreviewAnim` — `scripts_record_chatot_cry.s`). 수다를 배우는 것은 페라페뿐이다
+ */
+const SECOND_CUT_SPECIES = [441]
+
 function main() {
   const rom = openRom(process.argv[2])
   const narc = rom.narc('/poketool/pokegra/pl_pokegra.narc')
@@ -149,6 +158,11 @@ function main() {
         path.join(OUT_DIR, `${s}_${name}.png`), encodePng(rgba, CUT, CUT))
       entry[name] = box
       wrote++
+      if (name === 'front' && SECOND_CUT_SPECIES.includes(s)) {
+        fs.writeFileSync(
+          path.join(OUT_DIR, `${s}_front2.png`), encodePng(toRgba(px, palette, 1), CUT, CUT))
+        wrote++
+      }
     }
     if (Object.keys(entry).length > 0) meta[s] = entry
   }

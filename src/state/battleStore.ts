@@ -77,6 +77,7 @@ import { markBattle } from '../app/sceneMark'
 import { useEvolutionStore } from './evolutionStore'
 import { useMenuStore } from './menuStore'
 import { dexSet, playerTrainer, useSaveStore } from './saveStore'
+import { chatterActivation, chatterChance, decodeChatotCry } from '../engine/pokemon/chatotCry'
 import { worldState } from './worldState'
 
 /** 컨트롤러에 넘길 트레이너 도구 묶음 */
@@ -1956,6 +1957,11 @@ async function open(
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
       ...(rules?.noCrit === true ? { noCrit: true } : {}),
       ...(rules?.roamer === true ? { roamer: true } : {}),
+      // 수다의 확률은 페라페가 배운 말이 정한다 — 우리 쪽만 세이브의 녹음이다 (`engine/pokemon/chatotCry`)
+      chatterOdds: [
+        chatterChance(chatterActivation(decodeChatotCry(useSaveStore.getState().chatotCry))),
+        chatterChance(0),
+      ],
       ...(items ? { items } : {}),
       ...(twoSided ? { doubles: true } : {}),
       ...(foe2 ? { foe2 } : {}),

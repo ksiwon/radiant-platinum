@@ -74,7 +74,9 @@ export function BattleSound() {
         // 앞을 보든 뒤를 보든 `BOWA2`를 내고 좌우만 갈라 준다
         if (mon.side === 'p1') void music.playEffect(SFX.THROW)
         void music.playEffect(SFX.SEND_OUT)
-        if (mon.species !== null) void music.playCry(mon.species)
+        // 배운 말은 **내 쪽 페라페**만 쓴다 — 상대 전투원의 칸은 빈 녹음이다
+        // (`FieldBattleDTO_CopyChatotCryToBattler(dto, 세이브의 것, BATTLER_PLAYER_1)`)
+        if (mon.species !== null) void music.playCry(mon.species, { defaultChatot: mon.side !== 'p1' })
         seen.current[slot] = { key: mon.key, fainted: mon.presence === 'down' }
         continue
       }
@@ -87,7 +89,8 @@ export function BattleSound() {
         // 원작은 기절 울음을 3.5반음 내려서 낸다 (`POKECRY_FAINT`)
         if (mon.species !== null) {
           const species = mon.species
-          setTimeout(() => { void music.playCry(species, { faint: true }) }, FAINT_CRY_DELAY)
+          const defaultChatot = mon.side !== 'p1'
+          setTimeout(() => { void music.playCry(species, { faint: true, defaultChatot }) }, FAINT_CRY_DELAY)
         }
       }
       seen.current[slot] = { key: mon.key, fainted: mon.presence === 'down' }
