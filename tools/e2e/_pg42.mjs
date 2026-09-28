@@ -472,7 +472,8 @@ try {
     await page.screenshot({ path: `${OUT}/fight-tag.png` })
   }
   if (await turn('charon')) {
-    // 천관산 셋째 방 — 먼저 들어선 찬미를 국제경찰이 잡는다(stark_mountain_room_3.s). 끝나면 214 · 16542=1 · 16544=2
+    // 천관산 셋째 방 — 먼저 들어선 찬미를 국제경찰이 잡는다(stark_mountain_room_3.s). 방 끝에서 16544=2 · 214 · 16542=1을 세우고 바깥(262)의
+    // (751,233)으로 워프한다 — 바깥 OnFrame이 상태 2를 보고 루커의 작별을 돌린 뒤 3으로 올린다(stark_mountain_outside.s:143)
     await setFlags([], [475, 476, 478, 563, 214])
     await warp('siwon', 265, 7, 16, 0, { postGame: true, nationalDex: true, story: [[16542, 0]] })
     log('선 사람', await page.evaluate(async () => (await import('/src/engine/actor/npcs.ts')).npcActors.list
@@ -488,8 +489,8 @@ try {
       if (at.scene === 'battle') { log('배틀이 열렸다', await battleInfo()); break }
       await tap('Space', 450)
     }
-    const after = await vf([16542, 16544], [214])
-    log(`${after.flags[0][1] && after.vars[0][1] === 1 && after.vars[1][1] === 2 ? '✅' : '❌'} 찬미 뒤`, after)
+    const after = { ...(await vf([16542, 16544], [214])), at: await now() }
+    log(`${after.flags[0][1] && after.vars[0][1] === 1 && after.vars[1][1] === 3 && after.at.map === 262 ? '✅' : '❌'} 찬미 뒤`, after)
     await page.screenshot({ path: `${OUT}/charon-after.png` })
   }
   if (await turn('rematch')) {
@@ -520,7 +521,11 @@ try {
       ['ArrowLeft', 4, 10], ['ArrowDown', 4, 16], ['ArrowRight', 11, 16], ['ArrowUp', 11, 15], ['ArrowUp', 11, 14], ['ArrowUp', 11, 13]]
     let ok = true
     for (const [key, wx, wz] of PATH) {
-      await page.keyboard.down(key); await page.waitForTimeout(90); await page.keyboard.up(key)
+      // 짧게 누르면 방향만 돈다 — 자리가 바뀔 때까지 누르고 뗀다(얼음 위면 뗀 뒤에도 미끄러진다)
+      const from = await now()
+      await page.keyboard.down(key)
+      for (let i = 0; i < 30; i++) { await page.waitForTimeout(40); const p = await now(); if (p.x !== from.x || p.z !== from.z) break }
+      await page.keyboard.up(key)
       // 미끄러짐이 멈출 때까지 — 같은 칸이 여섯 번 이어지면 멈춘 것이다
       let last = ''; let same = 0
       for (let i = 0; i < 80 && same < 6; i++) {
@@ -535,8 +540,25 @@ try {
     }
     await page.screenshot({ path: `${OUT}/temple-ice.png` })
     if (ok) {
+      // 진단 — 얼음 뒤에 A가 안 먹으면 무엇이 남았는가: 자리(소수) · 얼굴 · 얼음 상태 · 도는 스크립트 · 앞 칸 사람
+      const diag = () => page.evaluate(async () => {
+        const st = (await import('/src/state/worldState.ts')).worldState
+        const ice = await import('/src/engine/actor/ice.ts')
+        const f = await import('/src/engine/script/field.ts')
+        const n = await import('/src/engine/actor/npcs.ts')
+        const p = st.player.position
+        return {
+          pos: [p.x.toFixed(3), p.y.toFixed(3), p.z.toFixed(3)], facing: st.player.facing.toFixed(3),
+          sliding: ice.isSliding(), slide: { ...ice.iceSlide }, script: f.fieldScripts.ctx !== null, front: f.frontTile(),
+          near: n.npcActors.list.filter((a) => a.visible && Math.abs(a.x - p.x) < 3 && Math.abs(a.z - p.z) < 3)
+            .map((a) => [a.x.toFixed(2), a.y.toFixed(2), a.z.toFixed(2), a.gfx]),
+        }
+      })
+      log('얼음 끝 상태', await diag())
       await tap('ArrowUp', 300, 90)
+      log('위를 누른 뒤', await diag())
       await tap('Space', 400)
+      log('A 뒤', { ...(await diag()), at: await now() })
       const opened = await untilBattle(40)
       await page.waitForTimeout(3500)
       const b = await battleInfo()
@@ -581,12 +603,17 @@ try {
     await standAt(4, 7)
     const first = await menus('맨 로토무로 전자레인지')
     const m1 = await mon()
-    // 원작 — 폼 1(히트) · 오버히트(315)를 안다 · 예/아니오 둘만 떴고 파티 화면(스크립트 메뉴가 아닌 화면)이 안 떴다
-    const onlyYesNo = first.every((s) => s === 'script:yesno/2')
+    // 원작 — 폼 1(히트) · 오버히트(315)를 안다. 네 기술을 다 알아서 「배우려 한다」 예/아니오 → 요약 화면(잊을 기술 · `OpenSummaryScreenTeachMove`)
+    // → 「잊는다」 예/아니오를 탄다. 셋째 칸(되돌리기)이 붙은 메뉴와 파티 화면은 없어야 한다
+    const onlyYesNo = first.every((s) => s === 'script:yesno/2' || s === 'summary')
     log(`${m1?.form === 1 && m1.moves.includes(315) && onlyYesNo ? '✅' : '❌'} 들어갔다`, m1)
     await page.screenshot({ path: `${OUT}/rotom-heat.png` })
+    // 들어간 뒤 마박사가 들어오는 OnFrame(16667)이 돈다 — 끝날 때까지 넘긴다
+    await clear(80)
     await standAt(4, 7)
-    await menus('히트 로토무로 다시 전자레인지(되돌리기 메뉴가 떠야 한다)')
+    log('다시 선 자리', await now())
+    const second = await menus('히트 로토무로 다시 전자레인지(되돌리기 메뉴가 떠야 한다)')
+    log(`${second.some((s) => s.startsWith('script:') && s.endsWith('/3')) ? '✅' : '❌'} 되돌리기가 붙었다`, second)
     log('그 뒤', { mon: await mon(), ...(await vf([16667], [119])) })
   }
 } catch (e) {

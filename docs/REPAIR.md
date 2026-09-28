@@ -5677,5 +5677,6 @@ src/state/multiBattle.test.ts`.
 
 **고친 것** — `fieldServices.ts`의 `rotomCount`가 폼 0을 빼고 센다. `CountRepeatedSpeciesInParty`는 원작 그대로 — 종을 주면 알이 아닌
 그 종의 수, `SPECIES_NONE`이면 알이 아닌 것 가운데 같은 종이 둘 이상인지(1/0). 이 명령을 쓰는 스크립트는 로토무의 방 하나다.
-시험 `scene/rotomCount.test.ts`. ⚠️ **화면에서는 아직 안 걸었다** — `node tools/e2e/_pg42.mjs --case=rotom`이 맨 로토무 하나로 전자레인지 앞에서
-예/아니오 둘만 뜨는지 · 파티 화면 없이 히트 로토무가 되는지 · 다시 말 걸면 되돌리기가 붙는지를 잰다.
+시험 `scene/rotomCount.test.ts`. **실측** (2026-09-28 · `_pg42 --case=rotom`): 기술 넷을 다 아는 맨 로토무 하나로 전자레인지 → 예/아니오 둘만 뜨고
+(되돌리기 칸 없음 · 파티 화면 없음) 「오버히트를 배우려 한다」 → 요약 화면에서 잊을 기술 → 폼 1 · 기술 [315,235,242,202]. 들어간 가전은 숨고 그 자리의
+`ApplianceSpot`이 「되돌리기」 한 칸 메뉴를 띄워, 고르면 폼 0 · 오버히트가 빠진 [235,242,202]가 된다.
