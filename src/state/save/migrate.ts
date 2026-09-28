@@ -445,6 +445,14 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
       factory: { records: factory.records, suspended: factory.suspended ?? null },
     }
   },
+
+  // 벽지 암호와 박스 이름 (PARITY §4.x). 옛 리포트는 둘 다 쓸 길이 없었다 — 푼 벽지 없음 · 이름은 기본(박스 열여덟)
+  39: (data) => ({
+    ...data,
+    version: 40,
+    unlockedWallpapers: 0,
+    boxNames: Array.from({ length: 18 }, () => null),
+  }),
 }
 
 /** 이 표로 닿을 수 있는 가장 낮은 버전 */

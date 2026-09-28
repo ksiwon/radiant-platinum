@@ -7,7 +7,7 @@
 // 메커니즘은 다시 받을 필요가 없고, 배틀 계산은 이름을 아예 필요로 하지 않는다.
 import {
   bagSpriteSchema,
-  boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, unownFontSchema, slotSpritesSchema, itemFileSchema, itemIconsSchema, labelsSchema,
+  boxWallpapersSchema, creditRowsSchema, creditsSchema, signpostsSchema, unownFontSchema, wallpaperWordsSchema, slotSpritesSchema, itemFileSchema, itemIconsSchema, labelsSchema,
   berriesSchema, distortionSchema, pokedexHabitatSchema, pokedexSortSchema,
   frontierSchema,
   martTableSchema, motionTimingSchema, moveFileSchema, nameListSchema, npcTradesSchema,
@@ -64,6 +64,18 @@ export const HALL_OF_FAME_BG_ATLAS = 'data/hallOfFameBg.png'
 /** 명예의 전당 배경을 받아 둔다 — 그림 한 장이라 표가 없다 */
 export function loadHallOfFameBg(): Promise<void> {
   return pinAtlas(HALL_OF_FAME_BG_ATLAS).then(() => undefined)
+}
+
+/** 포획 강좌의 가리키는 손 (`battle/indicator.c`) — 32×32 한 장 */
+export const POINTER_HAND_ATLAS = 'data/pointerHand.png'
+export function loadPointerHand(): Promise<void> {
+  return pinAtlas(POINTER_HAND_ATLAS).then(() => undefined)
+}
+
+/** 도서관 텔레비전 판 셋 (`library_tv/library_tv.c`) — 256×640 */
+export const LIBRARY_TV_ATLAS = 'data/libraryTv.png'
+export function loadLibraryTv(): Promise<void> {
+  return pinAtlas(LIBRARY_TV_ATLAS).then(() => undefined)
 }
 
 /** 게임코너 슬롯머신 (PARITY §7.6) — 배경 번호 판 · 스프라이트 */
@@ -366,6 +378,11 @@ export function loadSlotSprites(): Promise<SlotSprites> {
       await Promise.all([pinAtlas(SLOT_BG_ATLAS), pinAtlas(SLOT_SPRITE_ATLAS)])
       return a
     })
+}
+
+/** 벽지 암호 낱말표 — 설치한 롬의 판 (`password_word_bank.c`) */
+export function loadWallpaperWords(): Promise<readonly number[]> {
+  return fetchJson('wallpaperWords.json', (v) => wallpaperWordsSchema.parse(v).words)
 }
 
 export function loadUnownFont(): Promise<UnownFont> {

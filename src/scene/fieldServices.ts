@@ -36,9 +36,10 @@ import {
 import { dropFactoryStreak } from '../state/factoryStore'
 import { useSlotStore } from '../state/slotStore'
 import { slotSetting } from '../engine/gameCorner/slotMachine'
-import { VAR_CONSECUTIVE_BONUS_ROUND_WINS } from '../engine/script/commands'
+import { counterpartStarter, VAR_CONSECUTIVE_BONUS_ROUND_WINS, VAR_PLAYER_STARTER } from '../engine/script/commands'
 import { factorySceneRunning, openFactoryScene } from './factoryScene'
 import { accessoryShopRunning, openAccessoryShop } from './accessoryShop'
+import { useLibraryTvStore } from '../state/libraryTvStore'
 import { primeRegisteredItem } from './registeredItem'
 import {
   addRecord, addTrainerScore, RECORD_SLOT_BONUS_ROUNDS, SCORE_SLOT_MACHINE,
@@ -48,6 +49,9 @@ import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTable
 import { cameraSystem } from '../engine/actor/camera'
 import { dexHas } from '../engine/pokemon/dex'
 import { allToughWordsUnlocked, unlockToughWord } from '../engine/world/easyChat'
+import { useEasyChatAskStore } from '../state/easyChatAskStore'
+import { fillMenuText } from '../data/uiText'
+import { loadWallpaperWords } from '../data/gameData'
 import { loadWordLookup, type WordLookup } from '../ui/menu/easyChatWords'
 import { loadPokedexSort } from '../data/gameData'
 /** 종족 번호의 끝. 전국도감이 이 수만큼이다 */
@@ -352,6 +356,12 @@ let sinnohList: readonly number[] | null = null
 let toughWordNames: readonly string[] = []
 /** 낱말 번호 → 글자. 낱말 고르기가 채운 칸을 대사가 읽는다 */
 let easyChatWordText: WordLookup = () => ''
+/** 신비한 선물 암호 뱅크 (`TEXT_BANK_MYSTERY_GIFT_PHRASE` · 0 암호 · 1 낱말 넷의 틀) */
+let mysteryGiftPhrase: readonly string[] | null = null
+const MYSTERY_GIFT_PHRASE_BANK = 372
+/** 벽지 암호 낱말표 — 처음 물을 때 받는다 */
+let wallpaperWords: readonly number[] | null = null
+let wallpaperWordsAsked = false
 
 /** 방금 있던 맵 (`FieldOverworldState_GetPrevLocation`) */
 let previousMapId = 0
@@ -715,6 +725,9 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   void loadWordLookup(locale)
     .then((get) => { easyChatWordText = get })
     .catch(() => { /* 낱말 글자만 빈다 */ })
+  void loadDialogueBank(locale, MYSTERY_GIFT_PHRASE_BANK)
+    .then((bank) => { mysteryGiftPhrase = bank })
+    .catch(() => { mysteryGiftPhrase = [] })
   void loadMoves().then((table) => { moveTable = table }).catch(() => { /* 못 준다 */ })
   // 포켓치 앱 이름 25개. 스크립트가 대사에 끼워 넣는다 (PARITY §7.3)
   void loadDialogueBank(locale, POKETCH_APP_NAME_BANK)
@@ -1052,6 +1065,27 @@ const services: FieldServices = {
       return { entry: got.entry, text: toughWordNames[got.entry] ?? '' }
     },
     wordText: (word) => easyChatWordText(word),
+    ask: (count, words) => { useEasyChatAskStore.getState().open({ count, words }) },
+    answer: () => useEasyChatAskStore.getState().take(),
+    isMysteryGiftPhrase: (words) => {
+      if (mysteryGiftPhrase === null) return null
+      const [phrase, frame] = mysteryGiftPhrase
+      if (phrase === undefined || frame === undefined) return false
+      return fillMenuText(frame, words.map((w) => easyChatWordText(w))) === fillMenuText(phrase, [])
+    },
+  },
+
+  wallpapers: {
+    bank: () => {
+      if (!wallpaperWordsAsked) {
+        wallpaperWordsAsked = true
+        void loadWallpaperWords().then((w) => { wallpaperWords = w }).catch(() => { wallpaperWords = [] })
+      }
+      return wallpaperWords
+    },
+    trainerIdLow: () => useSaveStore.getState().trainer.id & 0xffff,
+    has: (w) => (useSaveStore.getState().unlockedWallpapers & (1 << w)) !== 0,
+    unlock: (w) => { useSaveStore.setState((s) => ({ unlockedWallpapers: s.unlockedWallpapers | (1 << w) })) },
   },
 
   trainerInfo: {
@@ -1306,6 +1340,10 @@ const services: FieldServices = {
   accessoryShop: {
     open: openAccessoryShop,
     busy: accessoryShopRunning,
+  },
+  libraryTv: {
+    open: () => { useLibraryTvStore.getState().open() },
+    busy: () => useLibraryTvStore.getState().on,
   },
   slots: {
     open: (machine) => {
@@ -1805,6 +1843,26 @@ const services: FieldServices = {
    * 전용 곡을 고른다 (`audio/songs`). 그래서 `StartWildBattle`과
    * `StartLegendaryBattle`이 한 길을 쓴다 (`script/world`에 근거를 적어 뒀다)
    */
+  /**
+   * 잡는 법 강습 (`FieldBattleDTO_NewCatchingTutorial`). 동료는 반대 성별 주인공 · 이름은 맞수 이름 뱅크 · 파트너는
+   * 내 것에서 남은 하나(`SystemVars_GetPlayerCounterpartStarter`). 컷인은 야생 것이다(`EncEffects_CutInEffect`)
+   */
+  startCatchingTutorial: () => {
+    battleResult = null
+    battleMask = null
+    waiting = true
+    const gender = useSaveStore.getState().trainer.gender === 'girl' ? 'boy' : 'girl'
+    const name = fieldScripts.world?.names.counterpart() ?? ''
+    const species = counterpartStarter(fieldScripts.vars.get(VAR_PLAYER_STARTER))
+    void cutInThenBattle({ trainer: false, foeLevel: 2 }, () => {
+      void useBattleStore.getState().startTutorial({ species, name, gender }).catch(() => {
+        battleResult = 'loss'
+        battleMask = 2
+        waiting = false
+      })
+    })
+  },
+
   startScriptedWildBattle: (species, level) => {
     battleResult = null
     battleMask = null

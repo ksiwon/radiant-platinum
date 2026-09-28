@@ -297,7 +297,9 @@ export function BattleTrainers() {
   const foes = useBattleStore((state) => state.foes)
   const partner = useBattleStore((state) => state.partner)
   const view = useBattleStore((state) => state.view)
-  const gender = useSaveStore((state) => state.trainer.gender)
+  // 잡는 법 강습이면 동료(반대 성별 주인공)가 선다 (`FieldBattleDTO_NewCatchingTutorial`)
+  const mine = useSaveStore((state) => state.trainer.gender)
+  const gender = useBattleStore((state) => state.ally?.gender) ?? mine
   const opponentPath = useMemo(() => bodyOf(trainerClass), [trainerClass])
   const second = foes[1] ?? null
   const secondPath = useMemo(() => bodyOf(second?.classId ?? null), [second])

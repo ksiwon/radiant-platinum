@@ -104,10 +104,10 @@ export function BattleSound() {
    * 들린다 — 원작은 `effectiveness`로 갈라 세 소리를 쓴다
    * (`BattleDisplay_FlyMoveHitSoundEffect`)
    */
-  // 잡았을 때와 도망쳤을 때. 배틀이 끝나는 방식마다 소리가 다르다
+  // 도망쳤을 때. ⚠️ **잡았을 때의 소리는 여기서 안 낸다** — 판 상태는 볼을 던지는 순간 서므로 흔들기 전에 울렸다.
+  // 흔들림이 끝난 박자가 낸다 (`victoryCue` · `SEQ_SE_DP_GETTING`)
   const outcome = useBattleStore((s) => s.outcome)
   useEffect(() => {
-    if (outcome === 'caught') void music.playEffect(SFX.CAUGHT)
     if (outcome === 'fled') void music.playEffect(SFX.FLEE)
   }, [outcome])
 

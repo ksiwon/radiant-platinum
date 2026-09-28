@@ -733,6 +733,11 @@ export interface FieldServices {
    * 때까지 선다. 우리는 그 안을 네이티브 흐름으로 만들었다
    * (`state/factoryStore`), 그래서 필드 쪽 약속은 이 둘뿐이다
    */
+  /** 운하시티 도서관의 텔레비전 뉴스 (`StartLibraryTV`) — 보여 주기만 한다 */
+  libraryTv?: {
+    open: () => void
+    busy: () => boolean
+  }
   /** 꽃향기마을 꽃집의 장식 교환 (`ScrCmd_ShowAccessoryShop` · PARITY §7.16) */
   accessoryShop?: {
     open: () => void
@@ -939,6 +944,21 @@ export interface FieldServices {
     /** 하나를 풀고 그 글자를 준다. 다 풀렸으면 `null` */
     unlockTough: () => { entry: number, text: string } | null
     wordText: (word: number) => string
+    /** 낱말 하나 · 둘을 묻는 화면을 연다 (`sub_0203D80C`) */
+    ask?: (count: 1 | 2, words: readonly number[]) => void
+    /** 답 — 아직이면 null. 한 번 가져가면 비워진다 */
+    answer?: () => { ok: boolean, words: readonly number[] } | null
+    /** 신비한 선물 암호인가 (`MysteryGiftPhrase_EveryoneHappyWiFiConnection`). 뱅크가 아직이면 null */
+    isMysteryGiftPhrase?: (words: readonly [number, number, number, number]) => boolean | null
+  }
+  /** 박스 벽지 암호 (`GetWallpaperFromCustomMessageWords`) */
+  wallpapers?: {
+    /** 낱말표 — 아직이면 null이고 받기 시작한다 */
+    bank: () => readonly number[] | null
+    /** 트레이너 ID의 아래 16비트 (`TrainerInfo_ID_LowHalf`) */
+    trainerIdLow: () => number
+    has: (wallpaper: number) => boolean
+    unlock: (wallpaper: number) => void
   }
   /** 지금 이 맵의 날씨 번호 (`FieldOverworldState_GetWeather`) */
   weather?: () => number
@@ -1101,6 +1121,8 @@ export interface FieldServices {
    * 한 길로 둬도 결과가 원작과 같다 — 이름을 「전설」로 두면 그것이 안 보인다
    */
   startScriptedWildBattle?: (species: number, level: number) => void
+  /** 잡는 법 강습 (`StartCatchingTutorial` · `Encounter_NewCatchingTutorial`) — 202번도로. 결과는 안 쓴다 */
+  startCatchingTutorial?: () => void
   /**
    * 태그 배틀 (`Encounter_NewVsTrainer`에 편을 붙인 것 · PARITY §2.2b).
    *

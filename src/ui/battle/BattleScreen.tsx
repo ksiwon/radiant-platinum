@@ -8,7 +8,7 @@
 // 사건을 시간축에 펴는 것은 `engine/battle/playback.ts`다. 이 화면은 그 재생기가
 // 지금까지 접은 뷰만 그린다 — sim의 최종 상태를 직접 보지 않는다. 기술 연출과
 // 카메라 컷(PLAN §7.3·§7.4)은 아직 없다.
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BURST, burstWhite } from '../../engine/battle/encounterBurst'
 import { encounterBurst } from '../../scene/battle/stageRefs'
 import type { BattleAction } from '../../engine/battle/choice'
@@ -42,10 +42,15 @@ import { ownerOfKey, type KeyOwner } from '../../engine/battle/aftermath'
 import { openingLine, closingLines } from './bookends'
 import { GAUGE_SLOTS, gaugeSlots } from './partyGauge'
 import {
-  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, STAT_BANK,
+  BATTLE_BANK, BATTLE_PARTY_BANK, BATTLE_PARTY_HM_CANT_FORGET, MOVE_BANK, MSG, STAT_BANK,
 } from './romText'
+import { romLine } from './romLine'
+import { TutorialPilot } from './TutorialPilot'
+import { lockMenuKeysToPilot } from '../menu/useMenuKeys'
 import { typeColor } from './typeColor'
 import { useBattlePlayback } from './useBattlePlayback'
+import { markVictory } from './victoryCue'
+import { music } from '../../engine/audio/music'
 import { useDrain } from './hpDrain'
 import { CommandButton } from './CommandButton'
 import * as css from './battleScreen.css'
@@ -179,6 +184,9 @@ function useNames(): {
   return { names, extras, lines, moveLines }
 }
 
+/** 잡는 법 강습의 가방 — 몬스터볼 스물 (`Bag_TryAddItem(dto->bag, ITEM_POKE_BALL, 20, …)`) */
+const TUTORIAL_BAG = [[{ item: 4, count: 20 }]] as const
+
 export function BattleScreen() {
   const phase = useBattleStore((s) => s.phase)
   /**
@@ -194,8 +202,10 @@ export function BattleScreen() {
   const caughtDex = useSaveStore((s) => s.pokedex.caught)
   // 기술 칸의 상성은 **상대해 본 종에게만** 뜬다 (§2.22)
   const battledDex = useSaveStore((s) => s.pokedex.battled)
-  // 가방 도구를 쓴 주어. 원작도 플레이어 이름으로 부른다
-  const playerName = useSaveStore((s) => s.trainer.name)
+  // 가방 도구를 쓴 주어. 원작도 플레이어 이름으로 부른다 — 잡는 법 강습이면 동료의 이름이다
+  const ally = useBattleStore((s) => s.ally)
+  const savedName = useSaveStore((s) => s.trainer.name)
+  const playerName = ally?.name ?? savedName
   const kind = useBattleStore((s) => s.kind)
   const foeName = useBattleStore((s) => s.foeName)
   // 롬의 네 줄이 트레이너를 **두 칸으로** 받는다 (PARITY §2.24)
@@ -225,6 +235,13 @@ export function BattleScreen() {
   const run = useBattleStore((s) => s.run)
   const close = useBattleStore((s) => s.close)
   const playEvents = useBattleStore((s) => s.playEvents)
+  const trainerClass = useBattleStore((s) => s.trainerClass)
+  const setVictorySong = useBattleStore((s) => s.setVictorySong)
+  /** 박자가 단 곡 · 효과음 신호 (`victoryCue`) */
+  const cueBeat = useCallback((beat: Beat) => {
+    if (beat.music !== undefined) setVictorySong(beat.music)
+    if (beat.sound !== undefined) void music.playEffect(beat.sound)
+  }, [setVictorySong])
   const shiftAsk = useBattleStore((s) => s.shiftAsk)
   const answerShift = useBattleStore((s) => s.answerShift)
   const learnMove = useBattleStore((s) => s.learnMove)
@@ -376,21 +393,44 @@ export function BattleScreen() {
     }
     const challenge = openingLine(ends)
     if (challenge !== null) out.unshift({ text: challenge, events: [], hold: 30 })
-    for (const text of closingLines(ends)) out.push({ text, events: [], hold: 30 })
+    const closing = closingLines(ends)
+    for (const text of closing) out.push({ text, events: [], hold: 30 })
+    markVictory(out, { kind, outcome, trainerClass: foes[0]?.classId ?? trainerClass, closing: closing.length })
     return out
   }, [
     events, names, lines, moveLines, label, bare, outcome, kind,
-    foeName, foeClass, foeTrainer, playerName, trainerOf, foes, partner, defeatLines, foeWinLines, prize,
+    foeName, foeClass, foeTrainer, playerName, trainerOf, foes, partner, defeatLines, foeWinLines, prize, trainerClass,
   ])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다
   // ⚠️ **무대가 서기 전에는 박자를 안 푼다.** 첫 박자가 등판이라, 여기서
   // 미리 흘리면 아직 안 온 몸 대신 빈 발판에 대고 「나와라!」가 뜬다
-  const script = useBattlePlayback(sceneReady ? beats : NO_BEATS, playEvents)
+  const script = useBattlePlayback(sceneReady ? beats : NO_BEATS, playEvents, cueBeat)
   // 아직 재생 중이면 A가 빨리 감기다. 메뉴 키와 겹치면 안 된다.
   // ⚠️ **묻는 자리에서는 빨리 감기를 끈다** — 안 그러면 Z 한 번이 물음을
   // 넘기면서 동시에 답으로도 먹혀 아무거나 골라진다
   const reading = !script.caughtUp
+
+  // ── 잡는 법 강습 ─────────────────────────────────────────────────────────────
+  // 손이 누르는 동안 사람 키는 안 받는다. 둘째 턴의 한 줄은 글창에 손이 대신 올린다
+  const [pilotLine, setPilotLine] = useState<string | null>(null)
+  useEffect(() => {
+    lockMenuKeysToPilot(ally !== null)
+    if (ally === null) setPilotLine(null)
+    return () => { lockMenuKeysToPilot(false) }
+  }, [ally])
+  const tutorialLine = ally === null ? null
+    : romLine(lines, ally.gender === 'girl' ? MSG.okTheGotIsHPDownTimeItsReadyForAPokeBall : MSG.allRightIGotItsHPDownTimeToThrowAPokeBall)
+  // 「잡았다!」 뒤 30프레임 쉬고 16프레임에 검게 닫힌다 — 누르기를 안 기다린다 (`SEQ_CATCH_MON_SET_CAUGHT_SPECIES`)
+  const [closing, setClosing] = useState(false)
+  useEffect(() => {
+    if (ally === null) { setClosing(false); return }
+    if (phase !== 'over' || reading) return
+    const frame = 1000 / 60
+    const dim = setTimeout(() => { setClosing(true) }, 30 * frame)
+    const done = setTimeout(close, (30 + 16) * frame)
+    return () => { clearTimeout(dim); clearTimeout(done) }
+  }, [ally, phase, reading, close])
   // 글창 클릭도 A와 같은 길이다. ⚠️ **키와 같은 조건을 건다** — 안 그러면
   // 명령 메뉴가 떠 있을 때나 「어느 기술을 잊게 할까?」 앞에서 클릭이 재생기에
   // 한 번 더 들어간다 (`useMenuKeys`의 조건과 짝이다)
@@ -416,6 +456,16 @@ export function BattleScreen() {
   return (
     <div className={shell}>
       <Suspense fallback={null}><BattleSound /></Suspense>
+      {ally !== null && phase === 'running' && <TutorialPilot line={tutorialLine} onLine={setPilotLine} />}
+      {ally !== null && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute', inset: 0, zIndex: 50, background: '#000', pointerEvents: 'none',
+            opacity: closing ? 1 : 0, transition: 'opacity 267ms linear',
+          }}
+        />
+      )}
       {/*
         ⚠️ **준비가 끝날 때까지 안 걷는다.** 클래스만 갈아 끼우므로 이 판은
         여전히 **한 번만** 마운트된다 — 걷는 애니메이션은 클래스가 붙는
@@ -453,6 +503,7 @@ export function BattleScreen() {
           onThrow={(ball) => void throwBall(ball)}
           onUse={(item, key, slot) => void spendItem(item, key, slot)}
           onBack={() => { setPage('root') }}
+          {...(ally !== null ? { bagOverride: TUTORIAL_BAG } : {})}
         />
       )}
       <div className={css.field}>
@@ -502,7 +553,7 @@ export function BattleScreen() {
         {/* 로그는 판이 아니라 글이다. 무대를 가리지 않게 상자를 없앴다 */}
         <div className={css.log} onClick={tapLog}>
           <div className={css.logText}>
-            {script.text}
+            {pilotLine ?? script.text}
             {reading && <span className={css.nextArrow} aria-hidden>▼</span>}
           </div>
         </div>
@@ -527,7 +578,7 @@ export function BattleScreen() {
                   script.resolve()
                 }}
               />
-            ) : reading ? null : phase === 'over' ? (
+            ) : reading ? null : phase === 'over' ? (ally !== null ? null : (
               <button
                 className={`${css.button} ${css.buttonOn}`}
                 style={{ ['--tint' as string]: css.TINT.run }}
@@ -540,7 +591,7 @@ export function BattleScreen() {
                   <span className={css.label}>계속</span>
                 </span>
               </button>
-            ) : shiftAsk !== null ? (
+            )) : shiftAsk !== null ? (
               // 시합규칙 「교체」 — 상대가 다음 마리를 내보내기 전에 묻는다.
               // 여기서 바꾸면 턴을 안 쓴다
               <YesNo
@@ -735,9 +786,10 @@ function RootMenu(
   },
 ) {
   const entries = [
-    { label: '싸운다', sub: '기술을 고른다', tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') } },
+    { label: '싸운다', pilot: 'fight', sub: '기술을 고른다', tint: css.TINT.fight, on: canFight, go: () => { onPick('fight') } },
     {
       label: '가방',
+      pilot: 'bag',
       sub: canSpend ? '도구를 쓴다' : '지금은 쓸 수 없다',
       tint: css.TINT.bag, on: canSpend, go: () => { onPick('bag') },
     },
@@ -764,6 +816,7 @@ function RootMenu(
           label={entry.label}
           sub={entry.sub}
           tint={entry.tint}
+          {...('pilot' in entry ? { pilot: entry.pilot } : {})}
           onClick={entry.go}
           disabled={!entry.on}
         />
@@ -972,6 +1025,7 @@ function MoveRows(
                 <span className={css.ppMax}>/{action.maxPp}</span>
               </span>
             )}
+            pilot={`move-${String(i)}`}
             onClick={() => { onPick(action) }}
           />
         )

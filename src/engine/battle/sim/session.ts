@@ -172,6 +172,11 @@ export interface BattleOptions {
    */
   noCrit?: boolean
   /**
+   * **모든 기술이 맞는다** — 잡는 법 강습 (`BattleControllerPlayer_CheckMoveHitAccuracy`가 강습이면 곧바로 0을 돌려준다).
+   * 양쪽 다다 — 비버니의 몸통박치기도 안 빗나간다
+   */
+  sureHit?: boolean
+  /**
    * 수다가 혼란을 거는 확률(%) — 우리 쪽 · 상대 쪽 (`dex/mechanics`의 `chatterModifyMove`).
    *
    * 원작은 **내 쪽 전투원만** 세이브의 녹음을 받는다(`FieldBattleDTO_CopyChatotCryToBattler(…, BATTLER_PLAYER_1)`) —
@@ -355,6 +360,7 @@ export class BattleSession {
     // (`countLeft`의 머리말). 체력은 안 되돌아가므로 다시 세기만 하면 된다
     this.countLeft(0)
     if (options.noCrit) this.blockCrits()
+    if (options.sureHit) this.alwaysHit()
   }
 
   /**
@@ -666,6 +672,13 @@ export class BattleSession {
     const battle = this.raw.battle
     if (!battle) return
     battle.onEvent('CriticalHit', battle.format, () => false)
+  }
+
+  /** 명중 판정을 건너뛴다 — `hitStepAccuracy`가 `Accuracy` 사건의 답이 참이면 굴리지 않는다 */
+  private alwaysHit(): void {
+    const battle = this.raw.battle
+    if (!battle) return
+    battle.onEvent('Accuracy', battle.format, () => true)
   }
 
   /**

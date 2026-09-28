@@ -42,6 +42,15 @@ const CODES: Record<string, keyof MenuKeys> = {
 for (const code of BINDINGS.register) CODES[code] = 'register'
 
 /**
+ * 사람 키를 잠근다 — 잡는 법 강습 동안 화면은 손이 보내는 **만든 키**(`isTrusted` 거짓)만 받는다
+ * (`ui/battle/TutorialPilot`). 원작도 그동안 입력을 안 본다(`GetCatchTutorialInput`)
+ */
+let pilotOnly = false
+export function lockMenuKeysToPilot(on: boolean): void {
+  pilotOnly = on
+}
+
+/**
  * 화면이 떠 있는 동안만 듣는다.
  *
  * 핸들러를 ref에 담아 두는 이유: 커서 자리가 바뀔 때마다 새 함수가 오는데,
@@ -59,6 +68,7 @@ export function useMenuKeys(handlers: MenuKeys, enabled = true): void {
       // 못한다. 화면마다 `enabled`로 끄고 있었지만 하나라도 빠뜨리면 그 칸이
       // 죽는다 — 칸이 임자인 키는 여기서 통째로 비켜 준다
       if (typingInto(e.target)) return
+      if (pilotOnly && e.isTrusted) { e.preventDefault(); e.stopPropagation(); return }
       const action = CODES[e.code]
       if (action === undefined) return
       const fn = ref.current[action]

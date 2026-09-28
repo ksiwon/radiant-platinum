@@ -109,6 +109,11 @@ interface Props {
   onThrow: (ball: BallId) => void
   onUse: (item: number, key: string, moveSlot?: number) => void
   onBack: () => void
+  /**
+   * 리포트 대신 보여 줄 가방 — 잡는 법 강습의 몬스터볼 스물(`Bag_TryAddItem(dto->bag, ITEM_POKE_BALL, 20, …)`).
+   * 없으면 리포트의 가방이다
+   */
+  bagOverride?: readonly (readonly { item: number, count: number }[])[]
 }
 
 /**
@@ -136,7 +141,7 @@ function planSummary(plan: ItemPlan, stats: readonly string[]): string {
 }
 
 export function BattleBag({
-  wild, twoFoes = false, party, roster, names, onThrow, onUse, onBack,
+  wild, twoFoes = false, party, roster, names, onThrow, onUse, onBack, bagOverride,
 }: Props) {
   const [data, setData] = useState<Loaded | null>(null)
   // 원작도 회복 칸에서 시작한다 (`bag.c`의 `BagCursor_SetBattleCurrentCategory`)
@@ -145,7 +150,8 @@ export function BattleBag({
   const [step, setStep] = useState<Step>('item')
   const [target, setTarget] = useState(0)
   const [slot, setSlot] = useState(0)
-  const bag = useSaveStore((s) => s.bag)
+  const savedBag = useSaveStore((s) => s.bag)
+  const bag = bagOverride ?? savedBag
   const plan = useBattleStore((s) => s.plan)
   const moveSlotsOf = useBattleStore((s) => s.moveSlotsOf)
   // 「금제」가 걸려 있으면 도구를 못 쓴다. 이유가 "효과가 없다"와 다르므로
@@ -375,6 +381,7 @@ export function BattleBag({
             <button
               key={c.name}
               className={i === tab ? css.tab.on : css.tab.off}
+              data-pilot={`pocket-${String(i)}`}
               onPointerDown={() => { setTab(i); setCursor(0) }}
             >
               {romLine(bagLines, c.line) ?? c.name}
@@ -405,6 +412,7 @@ export function BattleBag({
                 data-item-id={one.item}
                 data-item-row={index}
                 data-item-count={one.count}
+                data-pilot={`item-${String(index)}`}
                 aria-selected={index === at}
                 onPointerEnter={() => { setCursor(index) }}
                 onClick={() => { setCursor(index); pickItem() }}

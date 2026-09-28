@@ -42,6 +42,11 @@ export interface CatchContext {
   inWater: boolean
   /** 밤이거나 동굴인가. 다크볼이 쓴다 */
   darkness: boolean
+  /**
+   * 늘 잡힌다 — 잡는 법 강습 (`BATTLE_TYPE_ALWAYS_CATCH` → `BattleScript_CalcCatchShakes`가 곧바로
+   * `BALL_3_SHAKES_SUCCESS`를 낸다). 원작은 파크(범위 밖)도 이 갈래다
+   */
+  sure?: boolean
 }
 
 const TYPE_BUG = 6
@@ -135,7 +140,7 @@ export function throwBall(
   ctx: CatchContext,
   random: () => number,
 ): CatchResult {
-  if (ball === Ball.MASTER) return { caught: true, shakes: 4 }
+  if (ctx.sure === true || ball === Ball.MASTER) return { caught: true, shakes: 4 }
 
   const a = catchValue(target, ballBonus(ball, ctx), statusBonus(target.status))
   if (a >= 255) return { caught: true, shakes: 4 }

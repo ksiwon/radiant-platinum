@@ -52,6 +52,7 @@ interface Playback {
 export function useBattlePlayback(
   beats: readonly Beat[],
   apply: (events: readonly BattleEvent[]) => void,
+  cue?: (beat: Beat) => void,
 ): Playback {
   const [text, setText] = useState('')
   const [caughtUp, setCaughtUp] = useState(true)
@@ -59,8 +60,8 @@ export function useBattlePlayback(
   const [ask, setAsk] = useState<LearnPrompt | null>(null)
 
   // 프레임 루프가 최신 값을 봐야 한다. 의존성으로 걸면 루프가 매번 다시 선다
-  const latest = useRef({ beats, apply })
-  latest.current = { beats, apply }
+  const latest = useRef({ beats, apply, cue })
+  latest.current = { beats, apply, cue }
 
   const runner = useRef<BeatRunner | null>(null)
   runner.current ??= new BeatRunner({
@@ -69,6 +70,7 @@ export function useBattlePlayback(
     apply: (events) => { latest.current.apply(events) },
     ask: setAsk,
     caughtUp: setCaughtUp,
+    cue: (beat) => { latest.current.cue?.(beat) },
   })
 
   useEffect(() => {

@@ -14,7 +14,8 @@ import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
-import { TRAINER_BATTLE, songForMap, wildSongFor } from '../engine/audio/songs'
+import { songForMap } from '../engine/audio/songs'
+import { battleSongFor } from '../engine/audio/battleSongs'
 import { world } from '../engine/map/world'
 import { useBattleStore } from '../state/battleStore'
 import { useIntroStageStore } from '../state/introStageStore'
@@ -51,6 +52,10 @@ export function MusicDirector() {
   const kind = useBattleStore((s) => s.kind)
   // 야생은 **누가 나왔는지**가 곡을 정한다. 기라티나는 전용 곡이다 (`songs.ts`)
   const foeSpecies = useBattleStore((s) => s.view?.active.p2a?.species ?? null)
+  // 첫 상대의 분류가 배틀 곡을 고른다 (`EncEffects_GetEffectPair`) — 태그 배틀은 첫 상대다
+  const foeClass = useBattleStore((s) => s.foes[0]?.classId ?? s.trainerClass)
+  const doubles = useBattleStore((s) => s.doubles)
+  const victorySong = useBattleStore((s) => s.victorySong)
   const sound = useOptionsStore((s) => s.sound)
   const since = useRef(0)
   const last = useRef<number | null>(null)
@@ -84,8 +89,7 @@ export function MusicDirector() {
         x: Math.floor(worldState.player.position.x),
         z: Math.floor(worldState.player.position.z),
       })
-      : kind === 'trainer' ? TRAINER_BATTLE
-        : wildSongFor(foeSpecies ?? 0, world.mapId)
+      : victorySong ?? battleSongFor({ kind, trainerClass: foeClass, doubles, foeSpecies: foeSpecies ?? 0, mapId: world.mapId })
 
     if (want === last.current) return
     last.current = want

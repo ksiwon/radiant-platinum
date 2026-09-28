@@ -10,7 +10,7 @@ import type { ReactNode } from 'react'
 import * as css from './battleScreen.css'
 
 export function CommandButton({
-  on, label, sub, right, tint, disabled, onClick,
+  on, label, sub, right, tint, disabled, pilot, onClick,
 }: {
   /** 커서가 이 칸에 있는가. 삼각형과 밝기가 여기서 갈린다 */
   on: boolean
@@ -26,6 +26,8 @@ export function CommandButton({
   /** 칸 색 (`--tint`). 안 주면 css의 기본값이다 */
   tint?: string
   disabled?: boolean
+  /** 잡는 법 강습의 손이 찾는 이름 (`data-pilot`) */
+  pilot?: string
   onClick: () => void
 }) {
   return (
@@ -34,6 +36,7 @@ export function CommandButton({
       style={tint === undefined ? undefined : { ['--tint' as string]: tint }}
       onClick={onClick}
       disabled={disabled}
+      data-pilot={pilot}
     >
       {on && <span className={css.caret} aria-hidden />}
       <span className={css.face}>

@@ -335,4 +335,6 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('slots — 슬롯 배경 번호 판 셋과 스프라이트 108칸', async () => { await parity('slots') }, 60_000)
   it('hallOfFameBg — 명예의 전당 배경 셋', async () => { await parity('hallOfFameBg') }, 60_000)
   it('pointerHand — 포획 강좌의 손', async () => { await parity('pointerHand') }, 60_000)
+  it('libraryTv — 도서관 텔레비전 판 셋', async () => { await parity('libraryTv') }, 60_000)
+  it('wallpaperWords — 벽지 암호 낱말표', async () => { await parity('wallpaperWords') }, 60_000)
 })

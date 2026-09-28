@@ -1360,8 +1360,8 @@ opcode나 파일 밖 접근으로 터진다. 4079개 전부 **해독 오류 0**�
 | | 자리 |
 |---|---|
 | 닿는 명령 자리 | 55,778 |
-| 그중 도는 것 | **55,068 (98.7%)** |
-| 안 도는 것 | 710 (서로 다른 명령 184종) |
+| 그중 도는 것 | **55,082 (98.8%)** |
+| 안 도는 것 | 696 (서로 다른 명령 179종) |
 
 ⚠️ **닿는 자리 수가 한 번 315만큼 늘었다 — 세는 법이 틀려 있었다.** 여섯 명령은
 길이가 첫 인자 값에 달렸는데(`DoStrengthFunc`·`DoFlashFunc`·`DoDefogFunc`·
@@ -5143,6 +5143,26 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 | 판 2 | BG2 — 칸 1024개가 전부 타일 0x3F · 팔레트 1 · 색 15(검정)다. 창 안에서만 빠진다 |
 | 팔레트 | ⚠️ **머리는 16줄이라 적고 자료는 3줄(0x60)뿐이다** — 원작도 0x60만 싣는다(`Graphics_LoadPaletteFromOpenNARC(narc, 4, 0, 0, 0x60, …)`). 두 굽는 쪽 모두 줄 수를 자료 길이로 자른다 |
 | 뒤판색 | BG3 두 판의 0번 색 자리에는 팔레트 0의 0번(222 · 189 · 123)을 깐다. BG2는 0번을 뚫는다 |
+
+### 2.21d library_tv · intro_tv — 도서관 텔레비전
+
+`pnpm extract:libraryTv` · `import/platinum/libraryTv` → `data/libraryTv.png` 256×640 — 위에서부터 BG3 · BG1 · BG0.
+
+| 판 | 자리 | 형식 |
+|---|---|---|
+| BG3 뉴스 그림 | `/graphic/library_tv.narc` 2 타일 · 4 배치 | 8bpp(`GX_BG_COLORMODE_256`) · 0번 자리는 검정 |
+| BG1 주사선 | `/demo/intro/intro_tv.narc` 2 타일 · 5 배치 | 4bpp · 칸이 전부 타일 0이라 **세로 8픽셀마다 같다** · 0번은 뚫는다 |
+| BG0 틀 | `intro_tv` 1 타일 · 4 배치 | 4bpp · 안쪽 칸은 타일 0(전부 0번)이라 뚫린다 |
+| 팔레트 | `library_tv` 3 — 256색 | BG0 · BG1의 16색 판도 **이 한 벌의 줄**을 쓴다(`Graphics_LoadPalette(library_tv, 3, 0, 0, …)`만 싣는다). 0번은 `Bg_MaskPalette(…, 0)`로 검정 |
+
+`library_tv` 0 · 1은 안에 든 NARC다 — 이 화면은 안 쓴다.
+
+### 2.21e 작은 것 둘 — 가리키는 손 · 암호 낱말표
+
+| 자료 | 자리 | 무엇 |
+|---|---|---|
+| `data/pointerHand.png` 32×32 | `/graphic/ev_pokeselect.narc` 10 NCGR · 11 NCLR(첫 줄만) · 12 NCER(셀 하나 · 가운데가 원점) | 포획 강좌의 손 (`battle/indicator.c`) |
+| `data/wallpaperWords.json` | `pms_aikotoba.narc` 0번 `word_bank_o` — u32 낱말 번호 차례 | 벽지 암호가 싣는 **자리**의 표. 판마다 자리가 다르다(일본 `/arc/…` · 미국 `/resource/eng/…` · 한국 `/resource/kor/…`) — 설치본은 설치한 롬의 판을 굽고, 노드 쪽은 미국판을 굽는다(351개) |
 
 ### 2.22 tw_arc — 깨어진 세계는 맵 격자가 아니라 **떠 있는 판**이다
 

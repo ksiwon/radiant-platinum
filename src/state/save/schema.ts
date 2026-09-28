@@ -254,6 +254,10 @@ const saveSchema = z.object({
   boxes: z.array(boxSchema).length(BOX_COUNT),
   currentBox: int(0, BOX_COUNT - 1),
   wallpapers: z.array(int(0, 63)).length(BOX_COUNT),
+  /** 암호로 푼 벽지 여덟 — 비트 하나씩 (`PCBoxes.unlockedWallpapers`) */
+  unlockedWallpapers: int(0, 0xff),
+  /** 박스 이름 — null이면 원작 기본 이름(`BOX n`)이다 (`PCBoxes.names` · 여덟 글자) */
+  boxNames: z.array(z.string().max(16).nullable()).length(BOX_COUNT),
   bag: bagSchema,
   badges: int(0, 0xff),
   pokedex: z.object({

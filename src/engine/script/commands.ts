@@ -54,6 +54,7 @@ import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
 import { compareSize, SIZE_RECORD_INITIAL, SIZE_RESULT, sizeParts } from '../world/sizeContest'
 import { SCRIPT_EVENT_TYPES } from '../world/journal'
+import { checkWallpaperPassword, UNLOCKABLE_WALLPAPERS } from '../world/wallpaperPassword'
 import {
   HIDDEN_LOCATION_COUNT, HIDDEN_LOCATION_MAGIC, VAR_HIDDEN_LOCATION_FIRST,
 } from '../map/townMap'
@@ -1315,7 +1316,7 @@ function rivalStarter(mine: number): number {
 }
 
 /** `SystemVars_GetPlayerCounterpartStarter` — 남은 하나다 */
-function counterpartStarter(mine: number): number {
+export function counterpartStarter(mine: number): number {
   if (mine === STARTER.turtwig) return STARTER.piplup
   if (mine === STARTER.chimchar) return STARTER.turtwig
   return STARTER.chimchar
@@ -3802,6 +3803,17 @@ on('CheckPartyPokerus', (ctx) => {
 })
 
 /**
+ * 도서관 텔레비전의 뉴스 (`ScrCmd_StartLibraryTV` · `library_tv.c`). 필드가 어두워진 뒤 불린다 — 끝날 때까지 선다
+ */
+on('StartLibraryTV', (ctx) => {
+  const tv = ctx.host.world.services.libraryTv
+  if (!tv) return false
+  tv.open()
+  ctx.pause((c) => c.host.world.services.libraryTv?.busy() !== true)
+  return true
+})
+
+/**
  * 꽃집의 장식 교환 (`ScrCmd_ShowAccessoryShop` · `overlay007/accessory_shop.c`). 인자가 없다 — 가게가 닫힐 때까지 선다
  */
 on('ShowAccessoryShop', (ctx) => {
@@ -4343,6 +4355,18 @@ on('StartLegendaryBattle', (ctx) => {
  * 졌으면 `BlackOutFromBattle`(전멸), 포획으로 끝났으면 로토무가 없는데
  * `SetFlag 329`(잡았다)가 섰다
  */
+/**
+ * 잡는 법 강습 (`ScrCmd_StartCatchingTutorial` · `Encounter_NewCatchingTutorial`). 인자가 없다 — 반대 성별 주인공이
+ * 제 파트너로 비버니를 잡아 보인다. 배틀이 닫힐 때까지 선다
+ */
+on('StartCatchingTutorial', (ctx) => {
+  const start = ctx.host.world.services.startCatchingTutorial
+  if (!start) return false
+  start()
+  ctx.pause((c) => c.host.world.services.battleResult?.() !== null)
+  return true
+})
+
 on('StartWildBattle', (ctx) => {
   const species = ctx.readVar()
   const level = ctx.readVar()
@@ -5946,18 +5970,78 @@ on('MysteryGiftGive', (ctx) => {
   return false
 })
 
-/** 타이틀에 「신비한 선물」 줄을 여는 암호. 그 말이 아니다 */
+/**
+ * 타이틀에 「신비한 선물」 줄을 여는 암호인가 (`ScrCmd_CheckIsMysteryGiftPhrase`) — 낱말 넷을 암호 뱅크(372)의 틀에 넣은
+ * 글이 「EVERYONE HAPPY / WI-FI CONNECTION」과 같으면 참.
+ *
+ * ⚠️ **답 칸이 첫 인자다** — 한동안 넷째 낱말 칸(`VAR_0x8003`)에 답을 쓰고 `VAR_RESULT`는 남은 값 그대로 뒀다.
+ * 벽지 암호가 틀린 자리에서 그 남은 값이 0xFF라 「신비한 선물을 풀었다」 갈래로 새었다
+ */
 on('CheckIsMysteryGiftPhrase', (ctx) => {
-  ctx.readVar()
-  ctx.readVar()
-  ctx.readVar()
-  ctx.readVar()
-  ctx.host.vars.set(ctx.readHalfWord(), 0)
-  return false
+  const dest = ctx.readHalfWord()
+  const words = [ctx.readVar(), ctx.readVar(), ctx.readVar(), ctx.readVar()] as const
+  const check = ctx.host.world.services.easyChat?.isMysteryGiftPhrase
+  if (!check) { ctx.host.vars.set(dest, 0); return false }
+  // 뱅크를 받는 동안 선다
+  ctx.pause((c) => {
+    const yes = check(words)
+    if (yes === null) return false
+    c.host.vars.set(dest, yes ? 1 : 0)
+    return true
+  })
+  return true
 })
 
-/** 그래서 열 것도 없다 (`ScrCmd_UnlockMysteryGift`) */
+/**
+ * 타이틀의 「신비한 선물」 줄을 연다 (`SystemData_SetMysteryGiftUnlocked`). ⚠️ **신비한 선물은 통신이라 범위 밖이다**
+ * (PARITY §9.4) — 원작 대사는 그대로 흐르고 여는 줄만 없다
+ */
 on('UnlockMysteryGift', () => false)
+
+/**
+ * 낱말 하나 · 둘을 묻는다 (`ScrCmd_ChooseCustomMessageWord` · `…TwoCustomMessageWords` → `sub_0203D80C`).
+ * 첫 인자는 안 쓴다. 답 칸에 결정했는지(1 · 0), 낱말 칸에 고른 낱말 — 그만두면 낱말 칸은 처음(0xFFFF) 그대로다
+ */
+const askWords = (count: 1 | 2): CommandFn => (ctx) => {
+  ctx.readVar()
+  const result = ctx.readHalfWord()
+  const dests = Array.from({ length: count }, () => ctx.readHalfWord())
+  for (const d of dests) ctx.host.vars.set(d, 0xffff)
+  const chat = ctx.host.world.services.easyChat
+  if (!chat?.ask || !chat.answer) { ctx.host.vars.set(result, 0); return false }
+  chat.ask(count, dests.map(() => 0xffff))
+  ctx.pause((c) => {
+    const got = c.host.world.services.easyChat?.answer?.() ?? null
+    if (got === null) return false
+    c.host.vars.set(result, got.ok ? 1 : 0)
+    if (got.ok) got.words.forEach((w, i) => { if (dests[i] !== undefined) c.host.vars.set(dests[i], w) })
+    return true
+  })
+  return true
+}
+on('ChooseCustomMessageWord', askWords(1))
+on('ChooseTwoCustomMessageWords', askWords(2))
+
+/**
+ * 낱말 넷으로 벽지를 푼다 (`ScrCmd_GetWallpaperFromCustomMessageWords` · `engine/world/wallpaperPassword`).
+ * 틀리면 0xFF · 이미 풀었으면 0 · 새로 풀면 벽지 번호 + 1
+ */
+on('GetWallpaperFromCustomMessageWords', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const words = [ctx.readVar(), ctx.readVar(), ctx.readVar(), ctx.readVar()] as const
+  const walls = ctx.host.world.services.wallpapers
+  if (!walls) { ctx.host.vars.set(dest, 0xff); return false }
+  ctx.pause((c) => {
+    const bank = walls.bank()
+    if (bank === null) return false
+    const w = checkWallpaperPassword(bank, walls.trainerIdLow(), words)
+    if (w < 0 || w > UNLOCKABLE_WALLPAPERS - 1) c.host.vars.set(dest, 0xff)
+    else if (walls.has(w)) c.host.vars.set(dest, 0)
+    else { walls.unlock(w); c.host.vars.set(dest, w + 1) }
+    return true
+  })
+  return true
+})
 
 /**
  * 팔파크 (`scrcmd_catching_show.c`).

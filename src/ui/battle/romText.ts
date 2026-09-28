@@ -274,6 +274,9 @@ export const MSG = {
 
   // 볼과 도망. 흔들린 횟수만큼 줄이 이어져 있다 (863 + 흔들린 수)
   /** 붙잡았다 */ gotchaPokemonWasCaught: 867,
+  // 잡는 법 강습 둘째 턴 — 동료의 성별로 갈린다 (`+ BattleSystem_GetTrainerGender(…, 0)`: 남자 0 · 여자 1)
+  /** 「좋아! 체력을 줄였다…」 (빛나) */ allRightIGotItsHPDownTimeToThrowAPokeBall: 1226,
+  /** 「OK! 체력이 줄었어…」 */ okTheGotIsHPDownTimeItsReadyForAPokeBall: 1227,
   /** 0번 흔들렸다 */ ohNoThePokemonBrokeFree: 863,
   /** 무사히 도망쳤다 */ gotAwaySafely: 781,
   /** 못 도망친다 */ cantEscape: 42,

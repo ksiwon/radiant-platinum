@@ -162,6 +162,10 @@ export interface SaveData {
   currentBox: number
   /** 박스마다의 벽지 번호 (`PCBoxes.wallpapers`) */
   wallpapers: number[]
+  /** 암호로 푼 벽지 (`PCBoxes_UnlockWallpaper`) — 비트 0~7이 벽지 16~23이다 */
+  unlockedWallpapers: number
+  /** 박스 이름. null이면 기본 이름이다 */
+  boxNames: (string | null)[]
   bag: Pockets
   badges: number // 비트마스크
   /**
@@ -398,7 +402,7 @@ export interface SaveData {
   factory: FactoryRecords
 }
 
-export const SAVE_VERSION = 39
+export const SAVE_VERSION = 40
 
 /** 원작 상한. 이걸 넘으면 돈이 안 늘어난다 */
 export const MAX_MONEY = 999999
@@ -446,6 +450,8 @@ export function createNewSave(): SaveData {
     boxes: emptyBoxes(),
     currentBox: 0,
     wallpapers: Array.from({ length: BOX_COUNT }, (_, i) => defaultWallpaper(i)),
+    unlockedWallpapers: 0,
+    boxNames: Array.from({ length: BOX_COUNT }, () => null),
     // 원작도 빈 가방으로 시작한다. 몬스터볼은 예진호수에서 마박사가 준다
     bag: emptyBag(),
     badges: 0,
@@ -759,6 +765,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     boxes: s.boxes,
     currentBox: s.currentBox,
     wallpapers: s.wallpapers,
+    unlockedWallpapers: s.unlockedWallpapers,
+    boxNames: s.boxNames,
     bag: s.bag,
     badges: s.badges,
     pokedex: s.pokedex,

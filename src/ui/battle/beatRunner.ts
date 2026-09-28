@@ -84,6 +84,8 @@ interface BeatSink {
   ask: (prompt: LearnPrompt | null) => void
   /** 박자를 다 소화했는가 */
   caughtUp: (done: boolean) => void
+  /** 박자가 곡 · 효과음 신호를 달고 있다 (`Beat.music` · `Beat.sound`) */
+  cue?: (beat: Beat) => void
 }
 
 /**
@@ -171,6 +173,7 @@ export class BeatRunner {
         // 쉼에만 설정의 빠르기를 곱한다 — `beat.hold`는 원작이 정한 프레임 수고
         // (`playback.ts`) 그 값은 자료라서 안 건드린다
         const { hold, wait } = beatFrames(beat, scale)
+        if (beat.music !== undefined || beat.sound !== undefined) this.sink.cue?.(beat)
         this.sink.hold(frameMs(hold))
         this.sink.apply(beat.events)
         this.applied = true

@@ -567,6 +567,9 @@ export const slotSpritesSchema = z.object({
  * 안농 글꼴 (PARITY §6.8 · `tools/extract/unownFont.js`). 한 칸이 `size`×`size`이고 칸 차례가 `glyphs` 차례다 —
  * 글자마다 [풀린 글자 · 원작 너비]
  */
+/** 벽지 암호 낱말표 (`data/wallpaperWords.json`) — 낱말 번호의 차례 */
+export const wallpaperWordsSchema = z.object({ words: z.array(z.number().int().nonnegative()) })
+
 export const unownFontSchema = z.object({
   size: z.number().int().positive(),
   glyphs: z.array(z.tuple([z.string().length(1), z.number().int().nonnegative()])).nonempty(),

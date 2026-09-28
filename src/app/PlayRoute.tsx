@@ -17,6 +17,8 @@ import { CurrencyWindow } from '../ui/field/CurrencyWindow'
 import { SaveInfoWindow } from '../ui/field/SaveInfoWindow'
 import { MessageBox } from '../ui/field/MessageBox'
 import { FrontierStage } from '../ui/field/FrontierStage'
+import { LibraryTvLayer } from '../ui/field/LibraryTvLayer'
+import { EasyChatAskLayer } from '../ui/menu/EasyChatAskLayer'
 import { FishingBox } from '../ui/field/FishingBox'
 import { PokemonPreview } from '../ui/field/PokemonPreview'
 import { HatchScreen } from '../ui/menu/HatchScreen'
@@ -105,11 +107,13 @@ export function PlayRoute() {
       <HatchScreen />
       <FadeOverlay />
       <FrontierStage />
+      <LibraryTvLayer />
       <HmCutInOverlay />
       <CutInOverlay />
       <PoketchWidget />
       <ControlHint />
       <MenuLayer />
+      <EasyChatAskLayer />
       {/*
         ⚠️ **제일 뒤에 그린다.** 저장한 자리를 세우는 동안은 그 위의 대사창·
         메뉴가 아직 「저장한 곳이 아닌 세계」의 것이라 다 덮어야 한다

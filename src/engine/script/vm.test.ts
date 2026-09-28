@@ -492,9 +492,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_068
+const RUNNING_SITES = 55_082
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 569
+const IMPLEMENTED_COMMANDS = 574
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -565,6 +565,8 @@ const IDLE_COMMANDS = [
   // `GetTimeOfDay`가 밤일 때만 열리고(훑기의 시계는 낮이다), 209번도로 무덤은
   // 지하통로 인사 수를 세는 `GetSpiritombCounter` 뒤에 있다 (PARITY §6.11)
   'StartWildBattle',
+  // 잡는 법 강습은 202번도로의 좌표 사건 너머다 — 맞수가 기다리는 깃발이 서야 밟힌다
+  'StartCatchingTutorial',
   // ⚠️ **꿀 나무 셋은 가방에 꿀이 있어야 열린다.** 훑기의 가방은 비어 있어서
   // `CheckItem ITEM_HONEY`가 0을 주고, 그러면 「맨 나무」 대사로 끝난다 —
   // 상태를 묻는 `GetHoneyTreeStatus`까지는 밟힌다 (PARITY §6.6)
@@ -695,8 +697,12 @@ const IDLE_COMMANDS = [
   // 부르는 자리에 닿지 않는다 — 만든 이유는 안 만들면 방송 스크립트가
   // 인자를 명령으로 읽고 서기 때문이다
   'CallTVInterview',
+  // 한 낱말을 묻는 자리(방송국 2층 · 물가시티 집)는 대화 너머다. 두 낱말(축복TV 3층)은 「예」로 밟히지만 훑기의
+  // 낱말 화면은 답을 안 하므로 벽지 판정까지는 못 간다
+  'ChooseCustomMessageWord',
   'BufferCustomMessageWord',
   'GetPartyMonType',
+  'GetWallpaperFromCustomMessageWords',
   'PlayPCShutDownAnimation',
   // 박스 안의 별명을 부르는 자리는 **보관 시스템 화면 너머**다
   'BufferMonNicknameFromPC',

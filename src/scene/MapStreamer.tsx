@@ -39,6 +39,10 @@ import {
 } from '../engine/script/vars'
 import { installFieldServices, rememberPreviousMap } from './fieldServices'
 import { loadGenericNames, pickName, type NameKind } from '../data/genericNames'
+import { loadDialogueBank } from '../data/gameData'
+
+/** `TEXT_BANK_COUNTERPART_NAMES` (`generated/text_banks.txt`) */
+const COUNTERPART_NAMES_BANK = 553
 import { useSaveStore } from '../state/saveStore'
 import { useGameLocale, useOptionsStore } from '../state/optionsStore'
 import { worldState } from '../state/worldState'
@@ -587,6 +591,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   // 스크립트 바이트코드는 한 벌뿐이라 한 번만 받는다. 대사는 맵마다 다르므로
   // 존이 바뀔 때마다 그 맵의 뱅크를 받는다 — 한 맵이 쓰는 것은 몇 KB다
   const [generic, setGeneric] = useState<string[]>([])
+  /** 반대 성별 주인공의 이름 (`TEXT_BANK_COUNTERPART_NAMES` — 0 남 · 1 여) */
+  const [counterpartNames, setCounterpartNames] = useState<string[]>([])
   // 설정의 언어. 바뀌면 이름표도 스크립트 글도 여기서 다시 받는다
   const locale = useGameLocale()
   useEffect(() => {
@@ -603,9 +609,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         )
       },
       rival: () => useSaveStore.getState().rivalName || fallback('rival'),
-      // 주인공의 반대 성별 주인공
-      counterpart: () =>
-        fallback(useSaveStore.getState().trainer.gender === 'girl' ? 'playerMale' : 'playerFemale'),
+      // 주인공의 반대 성별 주인공 — 롬의 두 이름 중 `TrainerInfo_Gender ^ 1`번 (`StringTemplate_SetCounterpartName`)
+      counterpart: () => counterpartNames[useSaveStore.getState().trainer.gender === 'girl' ? 0 : 1] ?? '',
     }
     // 플래그 하나가 NPC의 등장 조건이라, 저장이 안 되면 다음에 켤 때
     // 이야기가 통째로 되감긴다
@@ -660,7 +665,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       uninstall()
       fieldScripts.onScriptEnd = null
     }
-  }, [generic, locale])
+  }, [generic, counterpartNames, locale])
 
   // 배회 포켓몬을 조우 시스템에 꽂는다 (PARITY §6.3)
   useEffect(() => installRoamers(), [])
@@ -674,6 +679,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       .catch(() => {
         /* 이름이 비면 대사에 빈칸이 난다 */
       })
+    loadDialogueBank(locale, COUNTERPART_NAMES_BANK)
+      .then(setCounterpartNames)
+      .catch(() => { /* 이름이 비면 대사에 빈칸이 난다 */ })
   }, [locale])
 
   // 플래그·변수를 붓는다. 새 판이면 원작의 초기화 스크립트를 **돌려서** 세운다 —

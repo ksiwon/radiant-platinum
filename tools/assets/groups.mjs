@@ -143,6 +143,18 @@ export const GROUPS = [
     match: oneOf('data/pointerHand.png'),
   },
   {
+    // 도서관 텔레비전 뉴스 (`StartLibraryTV`). 운하시티 도서관 3층에서 한 번 받는다
+    name: 'libraryTv',
+    make: 'pnpm extract:libraryTv',
+    match: oneOf('data/libraryTv.png'),
+  },
+  {
+    // 벽지 암호 낱말표 (축복TV 3층 · `GetWallpaperFromCustomMessageWords`)
+    name: 'wallpaperWords',
+    make: 'pnpm extract:wallpaperWords',
+    match: oneOf('data/wallpaperWords.json'),
+  },
+  {
     // 게임코너 슬롯머신 (PARITY §7.6). 기계 앞에 앉을 때만 받는다
     name: 'slots',
     make: 'pnpm extract:slots',

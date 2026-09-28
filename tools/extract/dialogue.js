@@ -249,6 +249,11 @@ const EXTRA_BANKS = [
   // 슬롯머신의 말 셋 (PARITY §7.6) — 「코인이 세 개 없다」 · 「5만 개가 됐다」 · 「코인이 없다」. 오버레이 101이
   // 직접 여는 뱅크라 스크립트가 안 가리킨다 (`ov101_021D13C8`)
   'TEXT_BANK_UNK_0544',
+  // 반대 성별 주인공의 이름 둘 (`BufferCounterpartName` · 잡는 법 강습) — 스크립트가 안 가리키고 코드가 연다
+  // (`FieldBattleDTO_NewCatchingTutorial` · `StringTemplate_SetCounterpartName`)
+  'TEXT_BANK_COUNTERPART_NAMES',
+  // 신비한 선물 암호 (`ScrCmd_CheckIsMysteryGiftPhrase`) — 암호와 낱말 넷의 틀
+  'TEXT_BANK_MYSTERY_GIFT_PHRASE',
   // 프런티어 트레이너 315명의 이름과 대사 945줄(= 315 × 인사·이김·짐).
   // 필드 트레이너와 표가 아예 다르다 (`pl_btdtr.narc`)
   'TEXT_BANK_FRONTIER_TRAINER_NAMES', 'TEXT_BANK_FRONTIER_TRAINER_MESSAGES',

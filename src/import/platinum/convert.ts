@@ -29,6 +29,8 @@ import { convertUnownFont } from './unownFont'
 import { convertSlots } from './slots'
 import { convertHallOfFameBg } from './hallOfFameBg'
 import { convertPointerHand } from './pointerHand'
+import { convertLibraryTv } from './libraryTv'
+import { convertWallpaperWords } from './wallpaperWords'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
 import { convertParticles } from './particles'
@@ -285,6 +287,20 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/pointerHand.png'],
     converter: 1,
     convert: convertPointerHand,
+  },
+  {
+    // 운하시티 도서관의 텔레비전 뉴스 — 그림 · 주사선 · 틀 (`library_tv/library_tv.c`)
+    name: 'libraryTv',
+    outputs: ['data/libraryTv.png'],
+    converter: 1,
+    convert: convertLibraryTv,
+  },
+  {
+    // 벽지 암호의 낱말표 (`password_word_bank.c`) — 설치한 롬의 판을 따른다
+    name: 'wallpaperWords',
+    outputs: ['data/wallpaperWords.json'],
+    converter: 1,
+    convert: convertWallpaperWords,
   },
   {
     // 게임코너 슬롯머신 (PARITY §7.6) — 위 · 아래 화면과 스프라이트 묶음 열일곱

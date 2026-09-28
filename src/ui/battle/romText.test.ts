@@ -185,6 +185,8 @@ const NAMED: Record<keyof typeof MSG, string> = {
   pokemonIsHurtByPoison: "PokemonIsHurtByPoison_Ally",
   pokemonIsHurtByItsBurn: "PokemonIsHurtByItsBurn_Ally",
   gotchaPokemonWasCaught: "GotchaPokemonWasCaught",
+  allRightIGotItsHPDownTimeToThrowAPokeBall: "AllRightIGotItsHPDownTimeToThrowAPokeBall",
+  okTheGotIsHPDownTimeItsReadyForAPokeBall: "OKTheGotIsHPDownTimeItsReadyForAPokeBall",
   ohNoThePokemonBrokeFree: "OhNoThePokemonBrokeFree",
   gotAwaySafely: "GotAwaySafely",
   cantEscape: "CantEscape",

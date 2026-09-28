@@ -85,6 +85,8 @@ type ControllerItems = NonNullable<Parameters<(typeof BattleController)['start']
 
 /** 신오의 첫 파트너. 나로 이벤트가 생기면 이 임시 지급은 사라진다 */
 const STARTER = 387 // 모부기
+/** 잡는 법 강습의 상대 (`SPECIES_BIDOOF`) */
+const SPECIES_BIDOOF = 399
 
 type BattlePhase = 'off' | 'loading' | 'running' | 'over'
 
@@ -107,6 +109,8 @@ interface BattleRules {
   noCrit?: boolean
   /** 배회 포켓몬과의 판 (PARITY §6.3). 묶어 두지 않으면 상대가 달아난다 */
   roamer?: boolean
+  /** 모든 기술이 맞는다 — 잡는 법 강습 (`sim/session`의 `sureHit`) */
+  sureHit?: boolean
   /**
    * 두 번째 상대 트레이너 (PARITY §2.2b · `Encounter_NewVsTrainer`).
    *
@@ -237,6 +241,16 @@ interface WildStart {
   partner?: number
 }
 
+/**
+ * 잡는 법 강습의 동료 (`FieldBattleDTO_NewCatchingTutorial`) — 반대 성별 주인공이 제 파트너 Lv5로 선다.
+ * 이름은 맞수 이름 뱅크 · 성별은 주인공의 반대다
+ */
+interface TutorialAlly {
+  species: number
+  name: string
+  gender: 'boy' | 'girl'
+}
+
 interface BattleState {
   phase: BattlePhase
   /**
@@ -351,6 +365,19 @@ interface BattleState {
   events: BattleEvent[]
   roster: Record<string, RosterEntry>
   outcome: BattleFinish
+  /**
+   * 이긴 곡 (`SEQ_VICTORY_*`). 박자가 신호를 단 줄에 닿으면 선다(`ui/battle/victoryCue`) — 배틀 곡을 이 곡이 덮는다.
+   * 판이 열릴 때 비운다
+   */
+  victorySong: number | null
+  setVictorySong: (song: number) => void
+  /**
+   * 잡는 법 강습의 동료 (`StartCatchingTutorial`). 있으면 우리 쪽 트레이너는 그 사람이고, 화면은 사람 입력 대신 손이
+   * 누르며(`ui/battle/TutorialPilot`), 판이 끝나면 스스로 닫힌다. **리포트는 하나도 안 바뀐다**
+   */
+  ally: { name: string, gender: 'boy' | 'girl' } | null
+  /** 잡는 법 강습 (202번도로) — 비버니 Lv2 하나 · 몬스터볼 스물의 버리는 가방 */
+  startTutorial: (ally: TutorialAlly) => Promise<void>
   error: string | null
   startWild: (wild: WildStart) => Promise<void>
   /** 트레이너전을 연다. `trainerId`는 trdata 번호다 */
@@ -472,6 +499,8 @@ function foeVitals(slot: number, maxHp: number | null): { hp: number; status: St
  * 레벨이 50이나 100으로 고정인 판에 경험치를 주면 그 자리에서 규칙이 무너진다
  */
 let rentalParty: PokemonInstance[] | null = null
+/** 잡는 법 강습의 동료 — 판이 열려 있는 동안만 선다 (`startTutorial`) */
+let tutorialAlly: TutorialAlly | null = null
 
 /**
  * 도는 중인 사파리 판 (PARITY §2.19). 컨트롤러가 없는 갈래라 여기가 그 자리다.
@@ -519,6 +548,15 @@ function ready(mon: PokemonInstance, species: Species, key: string): SideMon {
 function ensureParty(table: SpeciesLookup, pp: (move: number) => number): PokemonInstance[] {
   // 배틀팩토리는 **빌린 셋**으로 싸운다. 리포트의 파티는 시설에 맡겨 두었다
   if (rentalParty) return rentalParty
+  // 잡는 법 강습 — 동료의 파트너를 빌린 셋처럼 세운다. 그러면 도감 · 경험치 · 기록 · 판 닫기가 전부 시설 판의 길로
+  // 가서 리포트를 안 건드린다 (`Pokemon_InitWith(…, 5, INIT_IVS_RANDOM, …)`)
+  if (tutorialAlly) {
+    const base = table.get(tutorialAlly.species)
+    const mon = createWild({ species: base, level: 5, rng: Math.random, otId: 0, otSecretId: 0 })
+    mon.hp = statsOf(mon, base).hp
+    rentalParty = [fillPp(mon, pp)]
+    return rentalParty
+  }
   const save = useSaveStore.getState()
   let party = save.party
 
@@ -566,12 +604,29 @@ export const useBattleStore = create<BattleState>((set, get) => ({
   events: [],
   roster: {},
   outcome: null,
+  victorySong: null,
+  setVictorySong: (song) => { set({ victorySong: song }) },
+  ally: null,
   error: null,
   shiftAsk: null,
   safari: null,
 
+  startTutorial: async (t) => {
+    if (get().phase !== 'off') return
+    tutorialAlly = t
+    set({ trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [], ally: { name: t.name, gender: t.gender } })
+    await open(set, get, 'wild', null, null, null, 0, ({ species, pp }) => {
+      // 무늬 없는 비버니 Lv2 — 선두 특성도 안 탄다(조우가 아니다)
+      const base = species.get(SPECIES_BIDOOF)
+      const foe = createWild({ species: base, level: 2, rng: Math.random, otId: 0, otSecretId: 0 })
+      const sp = species.of(foe)
+      foe.hp = statsOf(foe, sp).hp
+      return { name: '야생', team: [ready(fillPp(foe, pp), sp, foeKey(0))] }
+    }, undefined, { noCrit: true, sureHit: true })
+  },
+
   startWild: async (wild) => {
-    set({ trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [] })
+    set({ trainerId: null, trainerClass: null, foes: [], partner: null, defeatLines: [], ally: null })
     // 동행과 함께 만난 야생 둘 (`BATTLE_TYPE_AI_PARTNER`). 편은 트레이너 자료에서 온다.
     //
     // ⚠️ **그 자료를 받기 전에 자리부터 잡는다** — `startTrainer` 머리말과 같은
@@ -1033,13 +1088,15 @@ export const useBattleStore = create<BattleState>((set, get) => ({
      * 우리에게 아직 없다 — 생기면 그때 여기에 갈래가 하나 는다.
      * 사파리는 제 볼을 따로 세므로(`engine/battle/safariBattle`) 여기 안 온다
      */
-    spendFromBag(await loadItems(), ball)
+    // 잡는 법 강습은 안 깎는다 — 원작 조건의 둘째다. 가방도 스물짜리 버리는 가방이다
+    if (tutorialAlly === null) spendFromBag(await loadItems(), ball)
     await advance(set, get, (c) =>
       c.throwBall(ball, {
         // 시간대·지형은 아직 없다. 다이브·다크볼이 보정을 못 받는다는 뜻이다
         caughtBefore: false,
         inWater: false,
         darkness: false,
+        sure: tutorialAlly !== null,
       }),
     )
   },
@@ -1200,12 +1257,13 @@ export const useBattleStore = create<BattleState>((set, get) => ({
       controller.destroy()
       current = null
       rentalParty = null
+      tutorialAlly = null
       participants = new Set()
       leveledUp = new Set()
       set({
         phase: 'off', kind: 'wild', foeName: null, foeClass: null, foeTrainer: null, prize: 0, trainerId: null, trainerClass: null,
         view: null, truth: null, actions: [], party: [], canSpendTurn: false, events: [],
-        roster: {}, outcome: null, shiftAsk: null,
+        roster: {}, outcome: null, shiftAsk: null, ally: null,
       })
       return
     }
@@ -1933,7 +1991,7 @@ async function open(
 
     // 몇 판 싸웠는가 (PARITY §7.5). ⚠️ **프론티어 판은 안 센다** — 원작의
     // 기록도 시설 쪽에 따로 있다 (§9.3)
-    if (kind !== 'factory') {
+    if (kind !== 'factory' && tutorialAlly === null) {
       useSaveStore.setState((st) => ({
         records: addRecord(st.records,
           kind === 'wild' ? RECORD_WILD_BATTLES_FOUGHT : RECORD_TRAINER_BATTLES_FOUGHT, 1),
@@ -1964,7 +2022,7 @@ async function open(
     const trainer = useSaveStore.getState().trainer
     waiting = '심판'
     const { controller, step } = await BattleController.start({
-      player: { name: trainer.name || '나', team },
+      player: { name: tutorialAlly?.name || trainer.name || '나', team },
       foe,
       // 기술 칸에 남은 PP를 띄우려면 최대치를 알아야 한다. sim 값은 못 쓴다
       basePp: pp,
@@ -1974,6 +2032,7 @@ async function open(
       // 야생은 AI가 없다. 원작도 야생은 사실상 무작위로 둔다
       ...(aiFlags === undefined ? {} : { ai: { flags: aiFlags, moves } }),
       ...(rules?.noCrit === true ? { noCrit: true } : {}),
+      ...(rules?.sureHit === true ? { sureHit: true } : {}),
       ...(rules?.roamer === true ? { roamer: true } : {}),
       // 수다의 확률은 페라페가 배운 말이 정한다 — 우리 쪽만 세이브의 녹음이다 (`engine/pokemon/chatotCry`)
       chatterOdds: [
@@ -2017,6 +2076,7 @@ async function open(
     trackDex(events, roster)
     set({
       phase: 'running',
+      victorySong: null,
       // 늦게라도 열렸으면 하던 말은 지운다
       error: null,
       truth: events === step.events ? step.view : applyEvents(emptyView(twoSided), events),
