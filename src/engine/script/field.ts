@@ -9,9 +9,10 @@ import { loadDialogueBank, loadScriptBytes, loadScriptMeta, type DataLocale } fr
 import { markScript } from '../../app/sceneMark'
 import {
   BG_EVENT_DIR, BG_EVENT_TYPE, clearWarpOverrides, hideFlagOf, mapById, npcsOf, NO_SCRIPT,
-  scriptBridge, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, world as mapWorld,
+  scriptBridge, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, warpGateBridge, world as mapWorld,
   type MapHeader, type Npc, type Sign,
 } from '../map/world'
+import { deferredFacilityNotice } from '../world/frontierGate'
 import { worldState, type FieldActionFxKind } from '../../state/worldState'
 import {
   buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG,
@@ -347,6 +348,17 @@ function stepOurText(world: FieldWorld): void {
   done?.after?.()
 }
 
+/**
+ * 막힌 시설의 문 앞 (`world/frontierGate`). 워프가 터지기 직전에 `warpSystem`이 묻는다 —
+ * 막으면 우리 글 한 덩이를 띄우고 true
+ */
+function refuseDeferredWarp(to: number): boolean {
+  const text = deferredFacilityNotice(to, locale)
+  if (text === null || native !== null || fieldScripts.world === null) return false
+  showOurText(text, null)
+  return true
+}
+
 /** 시원이 이번에 할 일을 세우고 밟는다 */
 function talkToSiwon(mapFile: number): void {
   const { world, vars, services } = fieldScripts
@@ -428,6 +440,7 @@ export async function initFieldScripts(which: DataLocale = 'ko'): Promise<void> 
   // `LockAll`이 멈출 것을 못 찾는다
   setAmbientTables(meta)
   fieldScripts.world = makeWorld(fieldScripts.vars)
+  warpGateBridge.refuse = refuseDeferredWarp
   // 전역 메뉴가 항목 글을 여기서 읽는다. 맵과 무관하므로 한 번만 받는다
   loadDialogueBank(which, MENU_ENTRIES_BANK)
     .then((bank) => { if (fieldScripts.world) fieldScripts.world.menuEntryTexts = bank })

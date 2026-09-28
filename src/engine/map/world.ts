@@ -715,6 +715,12 @@ export function disarmWarp(): void {
  */
 export const scriptBridge: { running: (() => boolean) | null } = { running: null }
 
+/**
+ * 문을 열기 직전에 묻는다 — 이 목적지를 막는가. 막으면 안내를 띄우고 true (`world/frontierGate` · `script/field`).
+ * 다리로 둔 이유는 `scriptBridge`와 같다
+ */
+export const warpGateBridge: { refuse: ((to: number) => boolean) | null } = { refuse: null }
+
 export const warpSystem = {
   fixedUpdate() {
     if (world.mapId < 0 || world.pending) return
@@ -770,6 +776,8 @@ export const warpSystem = {
     if (arrival?.to === DYNAMIC_WARP_MAP) {
       Object.assign(specialLocation, { map: world.mapId, warp: warps.indexOf(taken), x: taken.x, z: taken.z })
     }
+    // 차후 업데이트까지 닫아 둔 시설 — 문 앞에 멈추고 안내만 띄운다. 손을 떼야 다시 묻는다
+    if (warpGateBridge.refuse?.(taken.to) === true) { world.armed = false; return }
     world.armed = false
     world.pending = target
   },
