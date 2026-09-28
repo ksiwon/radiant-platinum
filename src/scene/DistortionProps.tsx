@@ -30,7 +30,7 @@ import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import { worldState } from '../state/worldState'
 import { loadDistortionPropAnims, type DistortionPropAnims } from './chunkMesh'
-import { nodeMatrixAt, splitByNode, uvOffsetAt } from './propAnim'
+import { nodeMatricesAt, splitByNode, uvOffsetAt } from './propAnim'
 import {
   distortionFloor, distortionPropOpacity, distortionPropPlaces, distortionPropShown, distortionRideAt,
   distortionShadowAt,
@@ -251,11 +251,13 @@ export function DistortionProps({ mapId }: { mapId: number }) {
         if (isSimpleAnimated(place.kind) && clip !== null) jointFrame = c.ticks % Math.max(1, clip.frames)
       }
       if (jointFrame !== null && clip?.kind === 'BCA0' && info) {
-        for (const [node, group] of joints.current[i] ?? []) {
-          const base = info.nodes[node]
-          if (!base) continue
+        const at = joints.current[i] ?? new Map<number, Group>()
+        const mats = nodeMatricesAt(info, clip.anim, at.keys(), jointFrame)
+        for (const [node, group] of at) {
+          const mat = mats.get(node)
+          if (!mat) continue
           group.matrixAutoUpdate = false
-          group.matrix.copy(nodeMatrixAt(base, clip.anim, node, jointFrame))
+          group.matrix.copy(mat)
           group.matrixWorldNeedsUpdate = true
         }
       }

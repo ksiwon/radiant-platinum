@@ -15,7 +15,7 @@ import { narcEntry } from './nds'
 import { readDict, parseModel, parseNodes, parsePolygons } from './nsbmd'
 import { parseTex0 } from './nitrotex'
 import {
-  blocks, readSbc, parseMaterials, buildMesh, packChunk, placeByNode, wantedItems, type Vertex,
+  blocks, readSbc, parseMaterials, buildMesh, packChunk, placePair, wantedItems, type Vertex,
 } from './chunks'
 import { bakeSheet, type Sheet } from './sheets'
 import { framesOf, propModelInfo } from './propAnims'
@@ -81,8 +81,8 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
     const header = parseModel(file, view, modelAt)
     const materials = parseMaterials(file, view, modelAt, header)
     const polygons = parsePolygons(file, view, modelAt, header)
-    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     const nodes = parseNodes(file, view, modelAt)
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
 
     const verts: Vertex[] = []
     const indices: number[] = []
@@ -92,7 +92,7 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
       const mat = materials[pair.material]
       if (!poly || !mat) throw new Error(`${spec.name}: SBC가 없는 것을 가리킨다`)
       const mesh = buildMesh(poly.dl, header.upScale, mat)
-      placeByNode(mesh.verts, nodes[pair.node])
+      placePair(mesh.verts, pair, nodes)
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

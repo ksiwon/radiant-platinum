@@ -27,9 +27,10 @@ function openProp(file) {
   const dict = readDict(file, view, mdlAt + 8)
   const modelAt = mdlAt + view.getUint32(dict[0].at, true)
   const header = parseModel(file, view, modelAt)
+  const nodes = parseNodes(file, view, modelAt)
   return {
-    nodes: parseNodes(file, view, modelAt),
-    pairs: readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset),
+    nodes,
+    pairs: readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes),
     materials: parseMaterials(file, view, modelAt, header),
   }
 }

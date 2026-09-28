@@ -25,7 +25,7 @@ const { openRom, writeJson, ROOT } = require('./rom')
 const { readDict, parseModel, parseNodes, parsePolygons } = require('../spike/nsbmd')
 const { parseTex0, decode } = require('../spike/nitrotex')
 const {
-  readSbc, parseMaterials, buildMesh, placeByNode, VERTEX_BYTES, POS_SCALE,
+  readSbc, parseMaterials, buildMesh, placeByNode, placePair, VERTEX_BYTES, POS_SCALE,
 } = require('./chunks')
 const { encodePng } = require('./png')
 
@@ -80,15 +80,15 @@ function bake(file, outDir, id) {
   const header = parseModel(file, modelAt)
   const materials = parseMaterials(file, modelAt, header)
   const polygons = parsePolygons(file, modelAt, header)
-  const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
   const nodes = parseNodes(file, modelAt)
+  const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
 
   const verts = []
   const indices = []
   const submeshes = []
   for (const pair of pairs) {
     const mesh = buildMesh(polygons[pair.polygon].dl, header.upScale, materials[pair.material])
-    placeByNode(mesh.verts, nodes[pair.node])
+    placePair(mesh.verts, pair, nodes)
     const base = verts.length
     verts.push(...mesh.verts)
     submeshes.push([pair.material, indices.length, mesh.indices.length])

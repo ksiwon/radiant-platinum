@@ -10,11 +10,11 @@
 // 드는데, 그것을 안 곱하면 정점색 흰색이 그대로 나가 **회색 벽이 하얗게 뜬다**
 // (DATA.md §2.2 — 맵 청크와 건물 소품에서 고친 것과 같은 자리다).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DoubleSide, FrontSide, MeshBasicMaterial, type Material } from 'three'
+import { DoubleSide, FrontSide, MeshBasicMaterial, type DataTexture, type Material } from 'three'
 import {
   dropMaterial,
   loadDistortionPropMesh, loadDistortionPropOffsets, loadDistortionPropSheet, ownMap,
-  sliceTexture,
+  sliceTexture, softAlpha,
   type ChunkMesh, type TexSheet,
 } from './chunkMesh'
 import { markSeeThrough } from './fx/seeThrough'
@@ -41,9 +41,13 @@ export function propMaterials(mesh: ChunkMesh, sheet: TexSheet | null): Material
     const hit = cache.get(key)
     if (hit) return hit
     const item = sheet?.items.find((s) => s.tex === spec.tex && s.pal === (spec.pal ?? ''))
-    const translucent = spec.a < 31
+    const map = item && sheet ? sliceTexture(sheet, item, spec.rep) : null
+    // ⚠️ **그림이 알파를 번지게 쓰면 섞는다** — 청크 재질(`makeMaterial`)과 같은 규칙이다. A3I5 · A5I3 그림은 재질 알파가
+    // 31이어도 텍셀마다 알파가 있다(깨어진 세계의 문 고리 · 구슬). 재질 알파만 보면 불투명으로 잘려 한 색 판이 된다
+    const pixels = (map as DataTexture | null)?.image as { data?: Uint8Array } | undefined
+    const translucent = spec.a < 31 || (pixels?.data !== undefined && softAlpha(pixels.data))
     const made = new MeshBasicMaterial({
-      map: item && sheet ? sliceTexture(sheet, item, spec.rep) : null,
+      map,
       // ⚠️ **텍스처가 없는 재질은 확산색이 유일한 색이다.** 정점색이 흰색
       // 하나뿐이라 이걸 안 곱하면 새까만 기라티나 그림자가 하얗게 뜬다
       ...(spec.d ? { color: (spec.d[0] << 16) | (spec.d[1] << 8) | spec.d[2] } : {}),

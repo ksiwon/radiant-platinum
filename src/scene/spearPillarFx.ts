@@ -7,6 +7,10 @@
 // 화면에는 둘을 쓴다 — 빨강은 비쳐 보이는 한 겹(`screenTint`), 검게 닫는 것은 페이드 덮개(`holdCover`).
 // 사슬 모델은 `SpearPillarChain`이 그린다
 import { chainCover, chainStart, chainTick, type ChainFx } from '../engine/world/spearPillarFx'
+import { lakeOrbsStart, lakeOrbsTick, type LakeOrbs } from '../engine/world/lakeOrbs'
+import { music } from '../engine/audio/music'
+import { facingOfDir } from '../engine/script/field'
+import { worldState } from '../state/worldState'
 import { holdCover, screenTint } from '../engine/script/fade'
 import { npcActors } from '../engine/actor/npcs'
 import { world as mapWorld } from '../engine/map/world'
@@ -16,12 +20,20 @@ const RED = 'rgb(222, 0, 0)'
 /** 사슬이 서는 사람 — 아카기 (`MapObjMan_LocalMapObjByIndex(…, 1)` · `LOCALID_CYRUS`) */
 const CHAIN_OBJECT = 1
 
+/** 흰 밝기의 색 (`GX_SetMasterBrightness` 양수) */
+const WHITE = 0x7fff
+/** 구슬 연출의 사람 — 난천 0 · 엠라이트 1 (`ov6_0223EB4C`의 `unk_10C` · `unk_108`) */
+const CYNTHIA = 0
+const MESPRIT = 1
+
 export const spearPillarLive: {
   chain: ChainFx | null
+  /** 호수의 구슬 셋 (4 · 6) */
+  orbs: LakeOrbs | null
   /** 사슬이 선 자리(월드 칸) — 세울 때 한 번 잰다 (`MapObject_GetPosPtr`) */
   at: readonly [number, number, number] | null
   acc: number
-} = { chain: null, at: null, acc: 0 }
+} = { chain: null, orbs: null, at: null, acc: 0 }
 
 /** 0 — 세운다 (`ov6_0223E6EC`) */
 export function startRedChain(): void {
@@ -45,8 +57,47 @@ export function redChainDone(): boolean {
   return true
 }
 
+/** 4 — 호수의 구슬 셋을 띄운다 (`ov6_0223FCCC`) */
+export function startLakeOrbs(): void {
+  spearPillarLive.orbs = lakeOrbsStart()
+  spearPillarLive.acc = 0
+}
+
+/** 6 — 끝났는가 (`ov6_0223FCF4(…) == 6`). 끝났으면 거둔다 */
+export function lakeOrbsDone(): boolean {
+  const o = spearPillarLive.orbs
+  if (o === null) return true
+  if (o.state !== 6) return false
+  spearPillarLive.orbs = null
+  holdCover(0, WHITE)
+  return true
+}
+
 /** 필드 한 프레임 — 틱을 세어 민다 */
 export function spearPillarFxTick(dt: number): void {
+  const o = spearPillarLive.orbs
+  if (o !== null) {
+    spearPillarLive.acc += Math.min(dt, 0.25) * 60
+    let ticks = Math.floor(spearPillarLive.acc)
+    spearPillarLive.acc -= ticks
+    while (ticks-- > 0 && o.state !== 6) {
+      for (const ev of lakeOrbsTick(o)) {
+        if (ev.kind === 'cry') void music.playCry(ev.species)
+        else if (ev.kind === 'se') void music.playEffect(ev.seq)
+        else if (ev.kind === 'mesprit') {
+          const m = npcActors.byLocalID.get(MESPRIT)
+          if (m) m.visible = ev.visible
+        } else {
+          const c = npcActors.byLocalID.get(CYNTHIA)
+          if (c) c.dir = ev.cynthia
+          worldState.player.facing = facingOfDir(ev.player)
+        }
+      }
+    }
+    // 흰 밝기 — 온 화면이 16분의 몇만큼 희어진다
+    holdCover(o.bright / 16, WHITE)
+    return
+  }
   const c = spearPillarLive.chain
   if (c === null) return
   spearPillarLive.acc += Math.min(dt, 0.25) * 60

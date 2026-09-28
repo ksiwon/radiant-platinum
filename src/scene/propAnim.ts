@@ -127,6 +127,52 @@ export function nodeMatrixAt(base: NodeBase, anim: JntAnim, node: number, frame:
   return now.multiply(xform(base.m, base.s, base.t).invert())
 }
 
+/** 노드 하나의 이 프레임 제 행렬 (트랙이 없는 채널은 모델 값) */
+function localAt(base: NodeBase, anim: JntAnim, node: number, frame: number): Matrix4 {
+  const track = anim.tracks.find((t) => t.node === node)
+  const got = track?.frames[Math.min(anim.frames - 1, Math.max(0, Math.floor(frame)))]
+  return xform(got?.m ?? base.m, got?.s ?? base.s, got?.t ?? base.t)
+}
+
+/**
+ * 이 프레임에 노드마다 걸 **그룹 행렬** — 노드 사슬까지 (`chunks.nodeChain`).
+ *
+ * 사슬이 없는 모델(거의 다)은 `nodeMatrixAt`과 같다. 사슬이 있으면 자식이 **부모의 움직임 위에** 선다 — 원작 SBC가
+ * 행렬 더미로 그렇게 곱한다. 굽는 쪽이 사슬로 셈한 기본 자세를 정점에 발라 두었으므로 되돌리는 것도 사슬 셈이다:
+ * `애니의 세계 행렬 × 기본의 세계 행렬⁻¹`
+ */
+export function nodeMatricesAt(
+  info: { nodes: readonly NodeBase[], parents?: readonly number[] },
+  anim: JntAnim, nodes: Iterable<number>, frame: number,
+): Map<number, Matrix4> {
+  const out = new Map<number, Matrix4>()
+  const parents = info.parents
+  if (!parents) {
+    for (const node of nodes) {
+      const base = info.nodes[node]
+      if (base) out.set(node, nodeMatrixAt(base, anim, node, frame))
+    }
+    return out
+  }
+  const live = new Map<number, Matrix4>(), rest = new Map<number, Matrix4>()
+  const worldOf = (id: number, moving: boolean): Matrix4 => {
+    const memo = moving ? live : rest
+    const hit = memo.get(id)
+    if (hit) return hit
+    const base = info.nodes[id]
+    const local = !base ? new Matrix4() : moving ? localAt(base, anim, id, frame) : xform(base.m, base.s, base.t)
+    const up = parents[id] ?? -1
+    const made = up >= 0 && up !== id ? worldOf(up, moving).clone().multiply(local) : local
+    memo.set(id, made)
+    return made
+  }
+  for (const node of nodes) {
+    if (!info.nodes[node]) continue
+    out.set(node, worldOf(node, true).clone().multiply(worldOf(node, false).clone().invert()))
+  }
+  return out
+}
+
 /** 이 애니가 움직이는 노드들 */
 export function movedNodes(anim: JntAnim): Set<number> {
   return new Set(anim.tracks.map((t) => t.node))

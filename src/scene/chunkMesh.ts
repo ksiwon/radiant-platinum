@@ -464,6 +464,8 @@ interface DistortionPropModel {
   nodes: readonly NodeBase[]
   materials: readonly string[]
   uv: readonly (readonly [number, number])[]
+  /** 노드 사슬 — 사슬이 결과를 바꾸는 모델에만 있다 (`chunks.nodeChain`) */
+  parents?: readonly number[]
 }
 
 let distAnims: Promise<DistortionPropAnims | null> | null = null

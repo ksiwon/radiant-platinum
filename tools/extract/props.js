@@ -14,7 +14,7 @@ const { openRom, writeJson, ROOT } = require('./rom')
 const { readDict, parseModel, parsePolygons, parseNodes } = require('../spike/nsbmd')
 const { parseTex0, decode } = require('../spike/nitrotex')
 const {
-  readSbc, parseMaterials, buildMesh, placeByNode, materialSpec, VERTEX_BYTES, POS_SCALE,
+  readSbc, parseMaterials, buildMesh, placeByNode, placePair, materialSpec, VERTEX_BYTES, POS_SCALE,
 } = require('./chunks')
 const { encodePng } = require('./png')
 
@@ -114,17 +114,17 @@ function main() {
     const header = parseModel(file, modelAt)
     const materials = parseMaterials(file, modelAt, header)
     const polygons = parsePolygons(file, modelAt, header)
-    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     // 소품도 조각을 노드 행렬로 놓는다 — 590개에 노드 650개, 그중 이동 84 ·
     // 회전 10 · 크기 12이고 노드가 여럿인 소품이 25개다 (`nsbmd.parseNodes`)
     const nodes = parseNodes(file, modelAt)
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
 
     const verts = []
     const indices = []
     const submeshes = []
     for (const pair of pairs) {
       const mesh = buildMesh(polygons[pair.polygon].dl, header.upScale, materials[pair.material])
-      placeByNode(mesh.verts, nodes[pair.node])
+      placePair(mesh.verts, pair, nodes)
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

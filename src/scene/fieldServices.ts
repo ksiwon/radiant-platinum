@@ -72,7 +72,7 @@ import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { MAP_FEATURE, setMapFeature } from '../engine/world/mapFeatures'
 import { useDwWarpStore } from '../state/dwWarpStore'
-import { redChainDone, startRedChain } from './spearPillarFx'
+import { lakeOrbsDone, redChainDone, startLakeOrbs, startRedChain } from './spearPillarFx'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
 import {
@@ -1351,8 +1351,9 @@ const services: FieldServices = {
   spearPillarFx: (mode) => {
     if (mode === 0) { startRedChain(); return 0 }
     if (mode === 1) return redChainDone() ? 1 : 0
-    // 4 · 6 — 호수의 구슬은 아직 없다. 곧바로 끝났다고 답해 이야기만 지나간다
-    return mode === 6 ? 1 : 0
+    if (mode === 4) { startLakeOrbs(); return 0 }
+    if (mode === 6) return lakeOrbsDone() ? 1 : 0
+    return 0
   },
   dwWarp: {
     start: () => { useDwWarpStore.getState().start() },

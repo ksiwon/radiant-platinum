@@ -21,7 +21,7 @@ import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { loadDemoAnims, loadDemoMesh, loadDemoSheet, type ChunkMesh } from './chunkMesh'
 import { propMaterials } from './propMeshes'
 import { markSeeThrough } from './fx/seeThrough'
-import { nodeMatrixAt, splitByNode, uvOffsetAt, type PropClip } from './propAnim'
+import { nodeMatricesAt, splitByNode, uvOffsetAt, type PropClip } from './propAnim'
 import { fadeDone, startFade } from '../engine/script/fade'
 import { music } from '../engine/audio/music'
 import { useDwWarpStore } from '../state/dwWarpStore'
@@ -145,11 +145,12 @@ export function DwWarpStage() {
       if (clip === null) continue
       const frame = w.anim % clip.frames
       if (clip.kind === 'BCA0') {
+        const mats = nodeMatricesAt(model.info, clip.anim, joints.current.keys(), frame)
         for (const [node, group] of joints.current) {
-          const base = model.info.nodes[node]
-          if (!base) continue
+          const mat = mats.get(node)
+          if (!mat) continue
           group.matrixAutoUpdate = false
-          group.matrix.copy(nodeMatrixAt(base, clip.anim, node, frame))
+          group.matrix.copy(mat)
           group.matrixWorldNeedsUpdate = true
         }
       } else if (clip.kind === 'BTA0') {

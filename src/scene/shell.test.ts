@@ -276,7 +276,8 @@ maybe('소품 빠진 면', () => {
     // 물리면 189종·469,175칸이 뚫려 있었다
     expect(bad).toEqual(['19−Z:6'])
     expect(open, `뚫린 칸 ${String(open)}/${String(seenAll)}`).toBe(6)
-    expect(seenAll).toBe(7144176)
+    // 노드 사슬(`chunks.nodeChain`)로 575 · 581의 조각이 부모 위에 선 뒤 두 칸 줄었다 (7,144,176 → 7,144,174)
+    expect(seenAll).toBe(7144174)
     expect(filled).toBe(352)
     // 한 장짜리라 건너뛴 방향
     expect(sheets).toBe(110)

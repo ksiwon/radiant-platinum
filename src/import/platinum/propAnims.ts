@@ -117,6 +117,8 @@ interface PropModelInfo {
   materials: readonly string[]
   /** 재질마다 **텍셀 → 정규화 UV** 배수 [U, V]. BTA0 이동값을 이걸로 나눈다 */
   uv: readonly (readonly [number, number])[]
+  /** 노드 사슬 (`chunks.nodeChain`) — 사슬이 결과를 바꾸는 모델에만 있다 */
+  parents?: readonly number[]
 }
 
 /** 굽는 쪽 둘이 같이 보는 표 (`data/props/anims.json`) */
@@ -162,10 +164,12 @@ interface PropAnimIndex {
  */
 export function propModelInfo(
   nodes: readonly NodeXform[],
-  pairs: readonly { node: number }[],
+  pairs: readonly { node: number, parents?: readonly number[] }[],
   materials: readonly Material[],
 ): PropModelInfo {
+  const parents = pairs.find((p) => p.parents)?.parents
   return {
+    ...(parents ? { parents: [...parents] } : {}),
     submeshNodes: pairs.map((p) => p.node),
     nodes: nodes.map((n) => ({ m: [...n.m], s: [...n.s], t: [...n.t] })),
     materials: materials.map((m) => m.name),

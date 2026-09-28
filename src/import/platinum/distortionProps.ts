@@ -22,7 +22,7 @@ import { narcEntry } from './nds'
 import { readDict, parseModel, parseNodes, parsePolygons } from './nsbmd'
 import { parseTex0 } from './nitrotex'
 import {
-  blocks, readSbc, parseMaterials, buildMesh, packChunk, placeByNode, wantedItems, type Vertex,
+  blocks, readSbc, parseMaterials, buildMesh, packChunk, placePair, wantedItems, type Vertex,
 } from './chunks'
 import { bakeSheet, type Sheet } from './sheets'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
@@ -52,8 +52,8 @@ export async function convertDistortionProps(ctx: ConvertContext): Promise<Produ
     const header = parseModel(file, view, modelAt)
     const materials = parseMaterials(file, view, modelAt, header)
     const polygons = parsePolygons(file, view, modelAt, header)
-    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     const nodes = parseNodes(file, view, modelAt)
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
     if (PROP_ANIM_INDEX[kind] !== undefined) models[String(kind)] = propModelInfo(nodes, pairs, materials)
 
     const verts: Vertex[] = []
@@ -64,7 +64,7 @@ export async function convertDistortionProps(ctx: ConvertContext): Promise<Produ
       const mat = materials[pair.material]
       if (!poly || !mat) throw new Error(`소품 ${String(kind)}: SBC가 없는 것을 가리킨다`)
       const mesh = buildMesh(poly.dl, header.upScale, mat)
-      placeByNode(mesh.verts, nodes[pair.node])
+      placePair(mesh.verts, pair, nodes)
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

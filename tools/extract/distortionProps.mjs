@@ -22,7 +22,7 @@ const { openRom, writeJson, ROOT } = require('./rom')
 const { readDict, parseModel, parseNodes, parsePolygons } = require('../spike/nsbmd')
 const { parseTex0, decode } = require('./../spike/nitrotex')
 const {
-  readSbc, parseMaterials, buildMesh, placeByNode, materialSpec, VERTEX_BYTES, POS_SCALE,
+  readSbc, parseMaterials, buildMesh, placeByNode, placePair, materialSpec, VERTEX_BYTES, POS_SCALE,
 } = require('./chunks')
 const { encodePng } = require('./png')
 
@@ -67,9 +67,10 @@ function modelInfo(buf) {
   const dict = readDictTs(file, view, found.MDL0 + 8)
   const modelAt = found.MDL0 + view.getUint32(dict[0].at, true)
   const header = parseModelTs(file, view, modelAt)
+  const nodes = parseNodesTs(file, view, modelAt)
   return propModelInfo(
-    parseNodesTs(file, view, modelAt),
-    readSbcTs(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset),
+    nodes,
+    readSbcTs(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes),
     parseMaterialsTs(file, view, modelAt, header),
   )
 }
@@ -98,8 +99,8 @@ function main() {
     const header = parseModel(file, modelAt)
     const materials = parseMaterials(file, modelAt, header)
     const polygons = parsePolygons(file, modelAt, header)
-    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     const nodes = parseNodes(file, modelAt)
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
     if (PROP_ANIM_INDEX[kind] !== undefined) models[String(kind)] = modelInfo(file)
 
     const verts = []
@@ -107,7 +108,7 @@ function main() {
     const submeshes = []
     for (const pair of pairs) {
       const mesh = buildMesh(polygons[pair.polygon].dl, header.upScale, materials[pair.material])
-      placeByNode(mesh.verts, nodes[pair.node])
+      placePair(mesh.verts, pair, nodes)
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

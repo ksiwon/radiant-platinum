@@ -64,6 +64,104 @@ interface Pair {
   polygon: number
   /** 이 조각이 매달린 노드. `NODE(id, 보임)`이 정한다 (`nsbmd.parseNodes`) */
   node: number
+  /** 사슬로 셈한 이 조각의 행렬 — 제 노드 행렬과 다를 때만 있다 (`nodeChain`) */
+  world?: WorldXform
+  /** 모델의 노드 사슬 — 어느 조각이든 `world`가 있을 때만 붙는다 */
+  parents?: readonly number[]
+}
+
+/** 사슬로 셈한 행렬 — 3×3(배율까지 먹인 것, 행 우선) · 이동(유닛) · 법선 행렬 */
+interface WorldXform { m: readonly number[], t: readonly number[], n: readonly number[] }
+
+/**
+ * **노드 사슬** — SBC가 행렬 더미로 짓는 부모 자식 (`NODEDESC` · `MTX`).
+ *
+ * 원작은 노드 행렬을 제 것만 쓰지 않는다. `NODEDESC(노드, 부모, 속성 [, 넣을 칸] [, 꺼낼 칸])`이 **지금 행렬**(꺼낼 칸이
+ * 있으면 그 칸)에 제 행렬을 곱하고, 넣을 칸이 있으면 그 결과를 더미에 적는다. `MTX(칸)`은 더미에서 꺼낸다. 조각은
+ * 그리는 순간의 지금 행렬로 선다. 그래서 자식은 부모의 행렬 위에 선다.
+ *
+ * ⚠️ **거의 다 한 겹이라 몰랐다.** 실측(2026-09-29) — 맵 소품 590개 중 사슬이 결과를 바꾸는 것이 **둘**(575 · 581 —
+ * 일그러진 창기둥의 구멍)이고, 청크 666개는 **0**, 필드 이펙트 소품은 덩굴꽃(0x92) 하나, 연출 모델은 깨어진 세계의 문과
+ * 붉은 사슬이다. 나머지는 사슬로 셈해도 제 행렬과 같다 — 그 조각은 **이전 그대로** 굽는다(바이트가 안 바뀐다).
+ *
+ * 조각마다 그 세계 행렬(`world`)을 붙이고, 사슬 자체(`parents` — 노드마다 누구 위에 곱했나, −1은 단위)도 붙인다.
+ * 화면 쪽이 관절 애니를 되돌릴 때 사슬을 다시 곱는다 (`scene/propAnim`의 `nodeMatricesAt`)
+ */
+export function nodeChain(
+  buf: Uint8Array, at: number, end: number, nodes: readonly NodeXform[],
+): { parents: number[], draw: number[], world: (WorldXform | null)[] } {
+  const parents: number[] = []
+  const draw: number[] = []
+  const slot: number[] = []
+  let cur = -1
+  let p = at
+  while (p < end) {
+    const raw = buf[p++]!
+    const op = raw & 0x1f
+    const flags = raw >> 5
+    if (op === 0x01) break
+    if (op === 0x06) {
+      const id = buf[p]!
+      p += 3
+      const dest = (flags & 1) !== 0 ? buf[p++]! : -1
+      const src = (flags & 2) !== 0 ? buf[p++]! : -1
+      if (src >= 0) cur = slot[src] ?? -1
+      parents[id] = cur
+      cur = id
+      if (dest >= 0) slot[dest] = id
+      continue
+    }
+    const n = sbcOperands(op, flags)
+    if (op === 0x03) cur = slot[buf[p]!] ?? -1
+    if (op === 0x05) draw.push(cur)
+    p += n
+  }
+  const world: (WorldXform | null)[] = []
+  const worldOf = (id: number): WorldXform => {
+    const hit = world[id]
+    if (hit) return hit
+    const node = nodes[id]
+    const s = node ? node.s : [1, 1, 1]
+    const r = node ? node.m : [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    const lm = [r[0]! * s[0]!, r[1]! * s[1]!, r[2]! * s[2]!, r[3]! * s[0]!, r[4]! * s[1]!, r[5]! * s[2]!, r[6]! * s[0]!, r[7]! * s[1]!, r[8]! * s[2]!]
+    const lt = node ? node.t : [0, 0, 0]
+    const up = parents[id] ?? -1
+    let m = lm, t: number[] = [lt[0]!, lt[1]!, lt[2]!]
+    if (up >= 0 && up !== id) {
+      const a = worldOf(up)
+      m = []
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) m.push(a.m[i * 3]! * lm[j]! + a.m[i * 3 + 1]! * lm[3 + j]! + a.m[i * 3 + 2]! * lm[6 + j]!)
+      }
+      t = [0, 1, 2].map((i) => a.m[i * 3]! * lt[0]! + a.m[i * 3 + 1]! * lt[1]! + a.m[i * 3 + 2]! * lt[2]! + a.t[i]!)
+    }
+    // 법선 행렬 — 3×3의 역전치 (배율이 섞여도 방향이 맞다)
+    const [a0, a1, a2, b0, b1, b2, c0, c1, c2] = m as [number, number, number, number, number, number, number, number, number]
+    const det = a0 * (b1 * c2 - b2 * c1) - a1 * (b0 * c2 - b2 * c0) + a2 * (b0 * c1 - b1 * c0)
+    const k = det === 0 ? 0 : 1 / det
+    const nrm = [
+      (b1 * c2 - b2 * c1) * k, (b2 * c0 - b0 * c2) * k, (b0 * c1 - b1 * c0) * k,
+      (a2 * c1 - a1 * c2) * k, (a0 * c2 - a2 * c0) * k, (a1 * c0 - a0 * c1) * k,
+      (a1 * b2 - a2 * b1) * k, (a2 * b0 - a0 * b2) * k, (a0 * b1 - a1 * b0) * k,
+    ]
+    const w = { m, t, n: nrm }
+    world[id] = w
+    return w
+  }
+  for (const id of new Set(draw)) if (id >= 0) worldOf(id)
+  return { parents, draw, world }
+}
+
+/** 사슬 행렬이 제 노드 행렬과 같은가 — 같으면 이전 그대로 굽는다 */
+function sameAsLocal(w: WorldXform, node: NodeXform | undefined): boolean {
+  const s = node ? node.s : [1, 1, 1]
+  const r = node ? node.m : [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  const t = node ? node.t : [0, 0, 0]
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) if (Math.abs(w.m[i * 3 + j]! - r[i * 3 + j]! * s[j]!) > 1e-9) return false
+    if (Math.abs(w.t[i]! - t[i]!) > 1e-9) return false
+  }
+  return true
 }
 
 /**
@@ -72,7 +170,21 @@ interface Pair {
  * ⚠️ **순서대로 1:1이 아니다.** 청크 0을 보면 재질 4가 폴리곤 13을, 재질 0이
  * 폴리곤 9를 그린다. 번호 순서로 짝지으면 땅에 아스팔트가, 길에 잔디가 깔린다
  */
-export function readSbc(buf: Uint8Array, at: number, end: number): Pair[] {
+export function readSbc(buf: Uint8Array, at: number, end: number, nodes?: readonly NodeXform[]): Pair[] {
+  const pairs = readSbcPairs(buf, at, end)
+  if (!nodes) return pairs
+  const chain = nodeChain(buf, at, end, nodes)
+  let any = false
+  pairs.forEach((pair, i) => {
+    const id = chain.draw[i] ?? -1
+    const w = id >= 0 ? chain.world[id] : null
+    if (w && !sameAsLocal(w, nodes[pair.node])) { pair.world = w; any = true }
+  })
+  if (any) for (const pair of pairs) pair.parents = chain.parents
+  return pairs
+}
+
+function readSbcPairs(buf: Uint8Array, at: number, end: number): Pair[] {
   const pairs: Pair[] = []
   let material = 0
   // ⚠️ **어느 노드에 매달렸는지도 같이 적는다.** `NODE(id, 보임)`이 그 뒤 조각의
@@ -475,6 +587,34 @@ export function coverBox(verts: Vertex[]): [number, number, number, number] | nu
  * 으로 타일로 옮겨 놓았으므로 노드 이동도 16으로 나눈다. 원작이 조각에
  * `upScale`을 먼저 먹이고(`POSSCALE`) 노드 행렬을 바깥에 두는 차례라 그렇다
  */
+/** 사슬 행렬로 옮긴다 (`nodeChain`) — 법선은 역전치로 돌리고 길이를 지킨다 */
+export function placeByWorld(verts: Vertex[], w: WorldXform): void {
+  const m = w.m, n = w.n
+  for (const v of verts) {
+    const x = v.pos[0], y = v.pos[1], z = v.pos[2]
+    v.pos = [
+      m[0]! * x + m[1]! * y + m[2]! * z + w.t[0]! / UNITS_PER_TILE,
+      m[3]! * x + m[4]! * y + m[5]! * z + w.t[1]! / UNITS_PER_TILE,
+      m[6]! * x + m[7]! * y + m[8]! * z + w.t[2]! / UNITS_PER_TILE,
+    ]
+    const len = Math.hypot(v.normal[0], v.normal[1], v.normal[2])
+    const d = [
+      n[0]! * v.normal[0] + n[1]! * v.normal[1] + n[2]! * v.normal[2],
+      n[3]! * v.normal[0] + n[4]! * v.normal[1] + n[5]! * v.normal[2],
+      n[6]! * v.normal[0] + n[7]! * v.normal[1] + n[8]! * v.normal[2],
+    ]
+    const dl = Math.hypot(d[0]!, d[1]!, d[2]!)
+    const k = dl === 0 ? 0 : len / dl
+    v.normal = d.map((c) => Math.max(-127, Math.min(127, Math.round(c * k)))) as Vec3
+  }
+}
+
+/** 조각을 제자리로 — 사슬 행렬이 있으면 그것으로, 없으면 제 노드 행렬로 */
+export function placePair(verts: Vertex[], pair: Pair, nodes: readonly NodeXform[]): void {
+  if (pair.world) placeByWorld(verts, pair.world)
+  else placeByNode(verts, nodes[pair.node])
+}
+
 export function placeByNode(verts: Vertex[], node: NodeXform | undefined): void {
   if (!node) return
   const still = node.t.every((v) => v === 0) && node.s.every((v) => v === 1)
@@ -679,17 +819,17 @@ async function convertProps(ctx: ConvertContext, out: Produced): Promise<void> {
     const header = parseModel(file, view, modelAt)
     const materials = parseMaterials(file, view, modelAt, header)
     const polygons = parsePolygons(file, view, modelAt, header)
-    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     // 소품도 조각을 노드 행렬로 놓는다 — 590개에 노드 650개, 그중 이동 84 ·
     // 회전 10 · 크기 12이고 노드가 여럿인 소품이 25개다 (`nsbmd.parseNodes`)
     const nodes = parseNodes(file, view, modelAt)
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
 
     const verts: Vertex[] = []
     const indices: number[] = []
     const submeshes: [number, number, number][] = []
     for (const pair of pairs) {
       const mesh = buildMesh(polygons[pair.polygon]!.dl, header.upScale, materials[pair.material]!)
-      placeByNode(mesh.verts, nodes[pair.node])
+      placePair(mesh.verts, pair, nodes)
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])

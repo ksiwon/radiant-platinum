@@ -253,6 +253,8 @@ export const propAnimsSchema = z.object({
     })),
     materials: z.array(z.string()),
     uv: z.array(z.tuple([z.number(), z.number()])),
+    /** 노드 사슬 (`chunks.nodeChain`) — 사슬이 결과를 바꾸는 소품(575 · 581)에만 있다 */
+    parents: z.array(z.number().int()).optional(),
   })),
 })
 

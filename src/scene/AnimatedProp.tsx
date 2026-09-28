@@ -25,7 +25,7 @@ import { sliceTexture, splitShadow, type ChunkMesh, type TexSheet } from './chun
 import { retireTexture } from './retireTexture'
 import { DOOR_KIND } from '../import/platinum/propAnims'
 import {
-  FRAME_MS, nodeMatrixAt, splitByNode, uvOffsetAt, type PropAnimSet,
+  FRAME_MS, nodeMatricesAt, splitByNode, uvOffsetAt, type PropAnimSet,
 } from './propAnim'
 import { useDoorVisualStore, type DoorVisual } from './doorVisualStore'
 import { slopePlayAt, useSlopeAnimStore } from './slopeAnimStore'
@@ -219,15 +219,16 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
       }
 
       if (clip.kind === 'BCA0') {
+        const mats = nodeMatricesAt(info, clip.anim, groups.current.keys(), frame)
         for (const [node, group] of groups.current) {
-          const base = info.nodes[node]
-          if (!base) continue
+          const mat = mats.get(node)
+          if (!mat) continue
           // ⚠️ **`decompose`로 넘기면 안 된다.** 미닫이의 마지막 프레임은 X
           // 배율이 **0**이라 행렬이 특이해지는데, three의 `decompose`는 그때
           // 배율을 (1,1,1)로 돌려준다 — 문짝이 문틀에 들어가기 직전에 도로
           // 커진다. 행렬을 그대로 얹는다
           group.matrixAutoUpdate = false
-          group.matrix.copy(nodeMatrixAt(base, clip.anim, node, frame))
+          group.matrix.copy(mat)
           group.matrixWorldNeedsUpdate = true
         }
       } else if (clip.kind === 'BTA0') {

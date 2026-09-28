@@ -65,7 +65,98 @@ function sbcOperands(op, flags) {
  * ⚠️ **순서대로 1:1이 아니다.** 청크 0을 보면 재질 4가 폴리곤 13을, 재질 0이
  * 폴리곤 9를 그린다. 번호 순서로 짝지으면 땅에 아스팔트가, 길에 잔디가 깔린다
  */
-function readSbc(buf, at, end) {
+/**
+ * 노드 사슬 (`NODEDESC` · `MTX`) — `src/import/platinum/chunks.ts`의 `nodeChain`과 **셈 차례까지 같다**.
+ * 사슬이 결과를 바꾸는 모델은 맵 소품 둘 · 필드 이펙트 하나 · 연출 둘뿐이고 청크는 0이다 (그쪽 머리말)
+ */
+function nodeChain(buf, at, end, nodes) {
+  const parents = []
+  const draw = []
+  const slot = []
+  let cur = -1
+  let p = at
+  while (p < end) {
+    const raw = buf[p++]
+    const op = raw & 0x1f
+    const flags = raw >> 5
+    if (op === 0x01) break
+    if (op === 0x06) {
+      const id = buf[p]
+      p += 3
+      const dest = (flags & 1) !== 0 ? buf[p++] : -1
+      const src = (flags & 2) !== 0 ? buf[p++] : -1
+      if (src >= 0) cur = slot[src] ?? -1
+      parents[id] = cur
+      cur = id
+      if (dest >= 0) slot[dest] = id
+      continue
+    }
+    const n = sbcOperands(op, flags)
+    if (op === 0x03) cur = slot[buf[p]] ?? -1
+    if (op === 0x05) draw.push(cur)
+    p += n
+  }
+  const world = []
+  const worldOf = (id) => {
+    const hit = world[id]
+    if (hit) return hit
+    const node = nodes[id]
+    const s = node ? node.s : [1, 1, 1]
+    const r = node ? node.m : [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    const lm = [r[0] * s[0], r[1] * s[1], r[2] * s[2], r[3] * s[0], r[4] * s[1], r[5] * s[2], r[6] * s[0], r[7] * s[1], r[8] * s[2]]
+    const lt = node ? node.t : [0, 0, 0]
+    const up = parents[id] ?? -1
+    let m = lm, t = [lt[0], lt[1], lt[2]]
+    if (up >= 0 && up !== id) {
+      const a = worldOf(up)
+      m = []
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) m.push(a.m[i * 3] * lm[j] + a.m[i * 3 + 1] * lm[3 + j] + a.m[i * 3 + 2] * lm[6 + j])
+      }
+      t = [0, 1, 2].map((i) => a.m[i * 3] * lt[0] + a.m[i * 3 + 1] * lt[1] + a.m[i * 3 + 2] * lt[2] + a.t[i])
+    }
+    const [a0, a1, a2, b0, b1, b2, c0, c1, c2] = m
+    const det = a0 * (b1 * c2 - b2 * c1) - a1 * (b0 * c2 - b2 * c0) + a2 * (b0 * c1 - b1 * c0)
+    const k = det === 0 ? 0 : 1 / det
+    const nrm = [
+      (b1 * c2 - b2 * c1) * k, (b2 * c0 - b0 * c2) * k, (b0 * c1 - b1 * c0) * k,
+      (a2 * c1 - a1 * c2) * k, (a0 * c2 - a2 * c0) * k, (a1 * c0 - a0 * c1) * k,
+      (a1 * b2 - a2 * b1) * k, (a2 * b0 - a0 * b2) * k, (a0 * b1 - a1 * b0) * k,
+    ]
+    const w = { m, t, n: nrm }
+    world[id] = w
+    return w
+  }
+  for (const id of new Set(draw)) if (id >= 0) worldOf(id)
+  return { parents, draw, world }
+}
+
+function sameAsLocal(w, node) {
+  const s = node ? node.s : [1, 1, 1]
+  const r = node ? node.m : [1, 0, 0, 0, 1, 0, 0, 0, 1]
+  const t = node ? node.t : [0, 0, 0]
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) if (Math.abs(w.m[i * 3 + j] - r[i * 3 + j] * s[j]) > 1e-9) return false
+    if (Math.abs(w.t[i] - t[i]) > 1e-9) return false
+  }
+  return true
+}
+
+function readSbc(buf, at, end, nodes) {
+  const pairs = readSbcPairs(buf, at, end)
+  if (!nodes) return pairs
+  const chain = nodeChain(buf, at, end, nodes)
+  let any = false
+  pairs.forEach((pair, i) => {
+    const id = chain.draw[i] ?? -1
+    const w = id >= 0 ? chain.world[id] : null
+    if (w && !sameAsLocal(w, nodes[pair.node])) { pair.world = w; any = true }
+  })
+  if (any) for (const pair of pairs) pair.parents = chain.parents
+  return pairs
+}
+
+function readSbcPairs(buf, at, end) {
   const pairs = []
   let material = 0
   // ⚠️ **어느 노드에 매달렸는지도 같이 적는다.** `NODE(id, 보임)`이 그 뒤 조각의
@@ -300,6 +391,33 @@ function materialSpec(m) {
  * 으로 타일로 옮겨 놓았으므로 노드 이동도 16으로 나눠야 한다. 원작이 조각에
  * `upScale`을 먼저 먹이고(`POSSCALE`) 노드 행렬을 바깥에 두는 차례라 그렇다
  */
+/** 사슬 행렬로 옮긴다 — `chunks.ts`의 `placeByWorld`와 같다 */
+function placeByWorld(verts, w) {
+  const m = w.m, n = w.n
+  for (const v of verts) {
+    const x = v.pos[0], y = v.pos[1], z = v.pos[2]
+    v.pos = [
+      m[0] * x + m[1] * y + m[2] * z + w.t[0] / UNITS_PER_TILE,
+      m[3] * x + m[4] * y + m[5] * z + w.t[1] / UNITS_PER_TILE,
+      m[6] * x + m[7] * y + m[8] * z + w.t[2] / UNITS_PER_TILE,
+    ]
+    const len = Math.hypot(v.normal[0], v.normal[1], v.normal[2])
+    const d = [
+      n[0] * v.normal[0] + n[1] * v.normal[1] + n[2] * v.normal[2],
+      n[3] * v.normal[0] + n[4] * v.normal[1] + n[5] * v.normal[2],
+      n[6] * v.normal[0] + n[7] * v.normal[1] + n[8] * v.normal[2],
+    ]
+    const dl = Math.hypot(d[0], d[1], d[2])
+    const k = dl === 0 ? 0 : len / dl
+    v.normal = d.map((c) => Math.max(-127, Math.min(127, Math.round(c * k))))
+  }
+}
+
+function placePair(verts, pair, nodes) {
+  if (pair.world) placeByWorld(verts, pair.world)
+  else placeByNode(verts, nodes[pair.node])
+}
+
 function placeByNode(verts, node) {
   if (!node) return
   const still = node.t[0] === 0 && node.t[1] === 0 && node.t[2] === 0
@@ -578,7 +696,7 @@ function main() {
 }
 
 module.exports = {
-  readSbc, parseMaterials, buildMesh, placeByNode, chunkModel, materialSpec,
+  readSbc, parseMaterials, buildMesh, placeByNode, placePair, chunkModel, materialSpec,
   VERTEX_BYTES, POS_SCALE, UV_SCALE, UNITS_PER_TILE,
 }
 
