@@ -733,6 +733,13 @@ export interface FieldServices {
    * 때까지 선다. 우리는 그 안을 네이티브 흐름으로 만들었다
    * (`state/factoryStore`), 그래서 필드 쪽 약속은 이 둘뿐이다
    */
+  /** 게임코너 슬롯머신 (`ScrCmd_267` · PARITY §7.6) */
+  slots?: {
+    /** 기계 번호 0~11 */
+    open: (machine: number) => void
+    /** 화면이 떠 있는가. 참인 동안 스크립트가 선다 */
+    busy: () => boolean
+  }
   frontier?: {
     /** `FRONTIER_SCENE_*`. 안 만든 시설이면 아무 일도 안 한다 */
     openScene: (scene: number) => void

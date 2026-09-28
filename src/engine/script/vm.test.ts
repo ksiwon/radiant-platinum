@@ -492,9 +492,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_066
+const RUNNING_SITES = 55_067
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 567
+const IMPLEMENTED_COMMANDS = 568
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -709,6 +709,8 @@ const IDLE_COMMANDS = [
   // 파티에 세꿀버리가 있어야 묻는 줄이다
   'CheckPartyCombeeGenderCount',
   'HidePoketch',
+  // 슬롯머신 — 게임코너 기계 열둘이 코인케이스를 먼저 물어 훑기의 빈 가방에서는 「케이스가 없다」로 닫힌다
+  'ScrCmd_267',
   // ⚠️ **흔드는 자리는 눈덮인신전 지하 5층 하나뿐이다.** 레지기가스가 깨어나는
   // 그 장면인데, 그 앞이 레지 셋을 파티에서 세는 갈래라 훑기가 못 지나간다
   'ShakeObject',

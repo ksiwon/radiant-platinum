@@ -3788,7 +3788,22 @@ on('CheckPartyPokerus', (ctx) => {
 })
 
 /** `VAR_CONSECUTIVE_BONUS_ROUND_WINS` — 슬롯머신이 올린다 */
-const VAR_CONSECUTIVE_BONUS_ROUND_WINS = 16448
+export const VAR_CONSECUTIVE_BONUS_ROUND_WINS = 16448
+
+/**
+ * 슬롯머신에 앉는다 (`ScrCmd_267` · `sub_0203E414`). 인자는 기계 번호(0~11) 변수다 — 게임코너 스크립트가
+ * 기계마다 `VAR_0x8004`에 적고 부른다. 화면이 닫힐 때까지 선다.
+ *
+ * 코인 · 연속 보너스 변수 · 기록은 화면을 닫으며 서비스가 옮긴다 (`ov101_021D0F3C` · `sub_0203E35C`)
+ */
+on('ScrCmd_267', (ctx) => {
+  const machine = ctx.readVar()
+  const slots = ctx.host.world.services.slots
+  if (!slots) return false
+  slots.open(machine)
+  ctx.pause((c) => c.host.world.services.slots?.busy() !== true)
+  return true
+})
 
 /**
  * 보너스 판을 열 번 넘게 이었는가 (`ScrCmd_CheckBonusRoundStreak` · `scrcmd.c:5963`).

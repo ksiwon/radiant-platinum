@@ -26,6 +26,7 @@ import { convertItemIcons, convertPokeIcons } from './icons'
 import { convertBoxWallpapers } from './boxWallpapers'
 import { convertBagSprite } from './bagSprite'
 import { convertUnownFont } from './unownFont'
+import { convertSlots } from './slots'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
 import { convertParticles } from './particles'
@@ -268,6 +269,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/bagSprite.png', 'data/bagPockets.png', 'data/bagSprite.json'],
     converter: 1,
     convert: convertBagSprite,
+  },
+  {
+    // 게임코너 슬롯머신 (PARITY §7.6) — 위 · 아래 화면과 스프라이트 묶음 열일곱
+    name: 'slots',
+    outputs: ['data/slotBg.png', 'data/slotSprites.png', 'data/slotSprites.json'],
+    converter: 1,
+    convert: convertSlots,
   },
   {
     // 신수유적 벽글의 안농 글꼴 (PARITY §6.8 · `ScrCmd_MessageUnown`)

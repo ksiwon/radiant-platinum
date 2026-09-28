@@ -131,6 +131,12 @@ export const GROUPS = [
     match: oneOf('data/pokeIcons.json', 'data/pokeIcons.png'),
   },
   {
+    // 게임코너 슬롯머신 (PARITY §7.6). 기계 앞에 앉을 때만 받는다
+    name: 'slots',
+    make: 'pnpm extract:slots',
+    match: oneOf('data/slotBg.png', 'data/slotSprites.png', 'data/slotSprites.json'),
+  },
+  {
     // 신수유적 벽글을 안농 모양으로 찍는 글꼴 (PARITY §6.8). 벽글을 읽을 때만 받는다
     name: 'unownFont',
     make: 'pnpm extract:unownFont',

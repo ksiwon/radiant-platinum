@@ -332,4 +332,5 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('townMap — 신오 지도 한 장', async () => { await parity('townMap') }, 60_000)
   it('distortion — 판 열 층과 통행 격자 열두 벌 · 하늘', async () => { await parity('distortion') }, 60_000)
   it('unownFont — 안농 글꼴 110자', async () => { await parity('unownFont') }, 60_000)
+  it('slots — 슬롯 배경 번호 판 셋과 스프라이트 108칸', async () => { await parity('slots') }, 60_000)
 })

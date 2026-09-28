@@ -534,6 +534,35 @@ export const boxWallpapersSchema = z.object({
  * 도로 화살표 31장이 앞, 마을 약도 19장이 뒤다. 두 갈래 모두 **0번이 빈 판**이라
  * 그림 번호가 안 붙은 간판은 자연스럽게 빈 판으로 떨어진다
  */
+/** 셀 애니 한 줄 — [셀 · 머무는 프레임 · 옮김 x · y] */
+const animFrameSchema = z.tuple([z.number().int(), z.number().int(), z.number().int(), z.number().int()])
+
+/**
+ * 슬롯머신 스프라이트 묶음 (PARITY §7.6 · `import/platinum/slots`). 셀마다 [아틀라스 x · y · 폭 · 높이 · 원점에서의 x · y],
+ * 애니마다 되감을 자리 · 재생 방식 · 프레임들
+ */
+const row555 = z.array(z.number().int().min(0).max(0xffff)).length(16)
+
+export const slotSpritesSchema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  /** 팔레트 — BGR555 그대로. `bg`는 배경 열여섯 줄, 나머지는 한 줄씩 (`import/platinum/slots` 머리말) */
+  palettes: z.object({
+    bg: z.array(row555).min(13),
+    m5: row555, m6: row555, m7: row555, l74: row555, l75: row555, l76: row555,
+  }),
+  sets: z.record(z.string(), z.object({
+    cells: z.array(z.tuple([
+      z.number().int(), z.number().int(), z.number().int(), z.number().int(), z.number().int(), z.number().int(),
+    ])),
+    anims: z.array(z.object({
+      loop: z.number().int().nonnegative(),
+      mode: z.number().int().nonnegative(),
+      frames: z.array(animFrameSchema),
+    })),
+  })),
+})
+
 /**
  * 안농 글꼴 (PARITY §6.8 · `tools/extract/unownFont.js`). 한 칸이 `size`×`size`이고 칸 차례가 `glyphs` 차례다 —
  * 글자마다 [풀린 글자 · 원작 너비]
@@ -796,6 +825,7 @@ export type { DistortionMovingPlatform, DistortionElevatorPath } from '../engine
 export type Berry = Berries['berries'][number]
 export type Signposts = z.infer<typeof signpostsSchema>
 export type UnownFont = z.infer<typeof unownFontSchema>
+export type SlotSprites = z.infer<typeof slotSpritesSchema>
 export type MartTable = z.infer<typeof martTableSchema>
 export type NpcTrades = z.infer<typeof npcTradesSchema>
 export type FrontierData = z.infer<typeof frontierSchema>

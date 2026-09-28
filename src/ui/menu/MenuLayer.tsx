@@ -15,6 +15,7 @@ import { BagScreen } from './BagScreen'
 import { BoxScreen } from './BoxScreen'
 import { EvolutionScreen } from './EvolutionScreen'
 import { FactoryScreen } from './FactoryScreen'
+import { SlotScreen } from './SlotScreen'
 import { TradeScreen } from './TradeScreen'
 import { NameScreen } from './NameScreen'
 import { OptionsScreen } from './OptionsScreen'
@@ -99,6 +100,7 @@ export function MenuLayer() {
     case 'chooseStarter': return <ChooseStarter />
     case 'evolution': return <EvolutionScreen />
     case 'factory': return <FactoryScreen />
+    case 'slots': return <SlotScreen />
     case 'trade': return <TradeScreen />
     case 'naming': return <NameScreen />
     case 'hallOfFame': return <HallOfFameScreen />

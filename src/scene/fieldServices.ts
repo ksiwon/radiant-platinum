@@ -34,9 +34,14 @@ import {
   VAR_BATTLE_FACTORY_CHALLENGE_LEVEL, VAR_BATTLE_FACTORY_CHALLENGE_TYPE, VAR_MAP_LOCAL_0x03,
 } from '../engine/script/vars'
 import { dropFactoryStreak } from '../state/factoryStore'
+import { useSlotStore } from '../state/slotStore'
+import { slotSetting } from '../engine/gameCorner/slotMachine'
+import { VAR_CONSECUTIVE_BONUS_ROUND_WINS } from '../engine/script/commands'
 import { factorySceneRunning, openFactoryScene } from './factoryScene'
 import { primeRegisteredItem } from './registeredItem'
-import { addRecord, addTrainerScore } from '../engine/world/gameRecords'
+import {
+  addRecord, addTrainerScore, RECORD_SLOT_BONUS_ROUNDS, SCORE_SLOT_MACHINE,
+} from '../engine/world/gameRecords'
 import { ChallengeType } from '../engine/frontier/factory'
 import { FRONTIER_SCENE_FACTORY_CORRIDOR } from '../engine/frontier/factoryTables'
 import { cameraSystem } from '../engine/actor/camera'
@@ -1290,6 +1295,33 @@ const services: FieldServices = {
   },
 
   /** 게임 기록과 트레이너 스코어 (PARITY §7.5) */
+  /**
+   * 게임코너 슬롯머신 (PARITY §7.6 · `sub_0203E414`).
+   *
+   * 앉을 때 트레이너 스코어 사건 5를 올리고(`TRAINER_SCORE_EVENT_UNK_05`), 설정은 그날의 씨앗으로 섞은 표에서 고른다.
+   * 일어날 때 코인을 옮기고, 이번에 이은 삐삐 보너스가 적힌 것보다 길면 변수에 적고, 보너스 판 수를
+   * `RECORD_UNK_014`에 더한다 (`ov101_021D0F3C` · `sub_0203E35C`)
+   */
+  slots: {
+    open: (machine) => {
+      const save = useSaveStore.getState()
+      useSaveStore.setState((s) => ({ records: addTrainerScore(s.records, SCORE_SLOT_MACHINE) }))
+      useSlotStore.getState().open({
+        machine,
+        setting: slotSetting(save.daily.rand, machine),
+        coins: save.coins,
+        onClose: (outcome) => {
+          useSaveStore.setState((s) => ({ coins: outcome.coins, records: addRecord(s.records, RECORD_SLOT_BONUS_ROUNDS, outcome.bonusRounds) }))
+          const vars = fieldScripts.vars
+          if (outcome.bestStreak > vars.get(VAR_CONSECUTIVE_BONUS_ROUND_WINS)) {
+            vars.set(VAR_CONSECUTIVE_BONUS_ROUND_WINS, outcome.bestStreak)
+          }
+        },
+      })
+    },
+    busy: () => useSlotStore.getState().session !== null,
+  },
+
   records: {
     add: (id, amount) => {
       useSaveStore.setState((s) => ({ records: addRecord(s.records, id, amount) }))

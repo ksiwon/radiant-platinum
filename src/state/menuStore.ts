@@ -35,6 +35,7 @@ export type MenuScreen =
   // 배틀팩토리 (PARITY §9.3). 시설 스크립트가 열고, **일곱 판이 끝날 때까지
   // 스스로 다시 뜬다** — 배틀과 번갈아 도는 화면이라 사용자가 못 닫는다
   | 'factory'
+  | 'slots'
   // NPC 교환 장면. 스크립트가 `StartNPCTrade`로 열고 `trade`가 어느 교환인지를 든다
   | 'trade'
   // 이름 짓기. 스크립트가 열고 `naming`이 무엇의 이름인지를 든다

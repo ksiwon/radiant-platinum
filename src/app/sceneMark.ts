@@ -80,6 +80,18 @@ export function markFrontierStage(on: boolean): void {
 }
 
 /**
+ * 슬롯머신 — `data-slot="1"`(원작 상태 번호) · `data-slot-coins`(CREDIT) · `data-slot-bonus`(삐삐 보너스 연속 판).
+ *
+ * 캔버스 두 장뿐인 화면이라 밖에서는 「레버를 기다리는가 · 도는가 · 보너스인가」가 안 보인다.
+ * 값을 써서 기계를 움직일 길은 없다
+ */
+export function markSlot(state: { state: number, coins: number, streak: number } | null): void {
+  put('slot', state === null ? null : String(state.state))
+  put('slotCoins', state === null ? null : String(state.coins))
+  put('slotBonus', state === null ? null : String(state.streak))
+}
+
+/**
  * 이어하기가 **저장한 자리를 아직 세우는 중인가** — `data-restoring="loading"`.
  *
  * ⚠️ **왜 필요한가.** 밖에서 「복원이 끝났다」를 알 길이 없어서, 검사가

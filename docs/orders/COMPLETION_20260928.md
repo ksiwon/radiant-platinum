@@ -23,7 +23,6 @@
 ## 0. 조사가 드러낸 것 — 지금 ✅인데 틀린 줄
 
 - **PARITY §3.3 키우미집** — 맡길 때 파티 화면이 안 열리고(`OpenPartyMenuForDaycare` · `GetDayCarePartyMenuResult` · `SetMonSummary` · `GetMonPartySlot` 없음) **늘 맨 앞 마리를 가져간다.** 이름 칸 다섯(`BufferDaycareMonNicknames` ×3 · `BufferDaycareNicknameLevelGender` ×2)도 빈다.
-- **PARITY §7.6 게임코너** — 슬롯머신(`ScrCmd_267`)이 없어 코인을 벌 수 없다.
 - **PARITY §4.1** — 「열이 돈다」는 효과를 센 수다. 갈래로는 스물다섯 중 열다섯이 돌고, 범위 안에서 다섯이 빈다(아래 2단계).
 - **REPAIR §12** — 2026-08-25(`953e83d`)부터 두 굽는 쪽이 노드 행렬을 이미 곱한다. 그런데 `veilstoneGym.ts:157-166,208-211`이 `VEILSTONE_NODE`를 **한 번 더** 더해 샌드백·타이어가 4.5칸쯤 떠 있을 수 있다.
 
@@ -64,7 +63,7 @@
 - **깨어진 세계 기라티나** — 그림자 날갯짓 nsbca · 몸 물들임 `(tint−base)·level>>4` (`ov9_02249960.c:7985-8003`) · 하늘 어두워짐(구름 스프라이트 9 · 팔레트 5가 통째로 없을 수 있다) (M~L).
 - **명예의 전당 배경** — `dendou_demo.narc` 추출(두 굽는 쪽) (M).
 - **포획 강좌** (`StartCatchingTutorial` · 202번도로) (L).
-- **슬롯머신** (`ScrCmd_267`) (L).
+- **슬롯머신** — 끝났다 (PARITY §7.6 · `node tools/e2e/_slots.mjs` 셋 ✓).
 - **액세서리 가게**(`ShowAccessoryShop`) · **별장 가구와 오르골** · **도서관 TV 뉴스**(`StartLibraryTV`) · **창기둥 → 깨어진 세계 워프 연출**(`DoDWWarp` 등) · **벽지 암호**(낱말 고르기 재사용) (각 M).
 
 ## 4단계 — 큰 연출 (L · 합 약 40시간)

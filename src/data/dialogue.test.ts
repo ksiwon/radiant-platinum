@@ -45,8 +45,8 @@ maybe('대사', () => {
     // 배틀 글 1,269줄(368 — PARITY §2.24. 배틀은 제 VM이 도는 자리라
     // 스크립트가 이 뱅크를 안 가리킨다) · 기술을 쓰는 줄 1,404개(0) ·
     // 랭크 이름 아홉(551) · 배틀 안 가방 49줄(2)과 파티 96줄(3) —
-    // 그 둘도 배틀이 제 뱅크를 직접 여는 자리다 (PARITY §2.26)
-    expect(index.banks.length).toBe(499)
+    // 그 둘도 배틀이 제 뱅크를 직접 여는 자리다 (PARITY §2.26) · 슬롯머신의 말 셋(544 — PARITY §7.6)
+    expect(index.banks.length).toBe(500)
     expect(index.locales).toEqual(['en', 'ko', 'ja'])
     // 번호가 오름차순이고 겹치지 않는다
     const nums = index.banks.map((b) => b.index)

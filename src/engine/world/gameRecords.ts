@@ -29,6 +29,8 @@ export const RECORD_CAUGHT_POKEMON = 9
 export const RECORD_CAUGHT_FISH = 10
 export const RECORD_EGGS_HATCHED = 11
 export const RECORD_POKEMON_EVOLVED = 12
+/** `RECORD_UNK_014` — 슬롯머신 삐삐 보너스를 한 판 수 (`ov101_021D0F3C`) */
+export const RECORD_SLOT_BONUS_ROUNDS = 14
 export const RECORD_BATTLE_TOWER_CHALLENGES = 15
 /** `RECORD_FAINTED_IN_BATTLE` — 랭킹 일곱째 줄 */
 export const RECORD_FAINTED_IN_BATTLE = 41
@@ -42,6 +44,8 @@ export const SCORE_CAUGHT_SPECIES = 22
 export const SCORE_BADGE_EARNED = 23
 export const SCORE_HALL_OF_FAME_ENTRY = 24
 export const SCORE_BATTLE_FACTORY_ROUND = 38
+/** `TRAINER_SCORE_EVENT_UNK_05` — 슬롯머신에 앉았다 (`sub_0203E414`) */
+export const SCORE_SLOT_MACHINE = 5
 
 type GameRecordsState = readonly number[]
 
