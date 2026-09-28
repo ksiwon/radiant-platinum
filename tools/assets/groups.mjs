@@ -61,7 +61,7 @@ export const GROUPS = [
   {
     name: 'distortion',
     make: 'pnpm extract:distortion',
-    match: oneOf('data/distortion.json'),
+    match: oneOf('data/distortion.json', 'data/distortionSky.png', 'data/distortionSky.json'),
   },
   {
     name: 'pokedexSort',

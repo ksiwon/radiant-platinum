@@ -360,7 +360,7 @@ export const GROUPS: readonly GroupSpec[] = [
     // 사건·발판·승강 경로는 오버레이 코드 표라 `gen:distortionTables`가 굽는다
     // (`distortion.ts` 머리말)
     name: 'distortion',
-    outputs: ['data/distortion.json'],
+    outputs: ['data/distortion.json', 'data/distortionSky.png', 'data/distortionSky.json'],
     converter: 1,
     convert: convertDistortion,
   },

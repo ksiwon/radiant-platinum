@@ -21,6 +21,7 @@ import { narcEntry } from './nds'
 import {
   breathe, check, json, readRomFile, type ConvertContext, type Produced,
 } from './convertTypes'
+import { bakeDistortionSky, SKY_NARC } from './distortionSky'
 
 const MAIN = '/fielddata/tornworld/tw_arc.narc'
 const ATTR = '/fielddata/tornworld/tw_arc_attr.narc'
@@ -212,7 +213,14 @@ export async function convertDistortion(ctx: ConvertContext): Promise<Produced> 
     }
   }
 
+  // 하늘 배경과 구름 (`distortionSky`)
+  const sky = await bakeDistortionSky(await readRomFile(ctx, SKY_NARC))
+
   check(ctx)
   ctx.onProgress?.(STEPS, STEPS)
-  return new Map([['data/distortion.json', json({ maps, attrs })]])
+  return new Map([
+    ['data/distortion.json', json({ maps, attrs })],
+    ['data/distortionSky.png', sky.png],
+    ['data/distortionSky.json', json(sky.sheet)],
+  ])
 }

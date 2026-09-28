@@ -15,7 +15,7 @@
 // 가져가면 판때기도 안 서고 모델도 아직 없어서 그 자리가 **빈다**
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Group } from 'three'
+import { Color, Group, Mesh, SRGBColorSpace, type Material } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { MapGrid } from '../engine/map/grid'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
@@ -41,6 +41,39 @@ interface Slot {
   disposed: boolean
   /** 어느 마리인가 (`번호/모습`). 자리를 뜨면 이 이름의 통으로 돌아간다 */
   kind: string
+  /** 지금 걸린 몸빛 단계 (`Movable.darkness`) */
+  dark?: number
+}
+
+type Tinted = Material & { color?: Color }
+
+/**
+ * 몸빛을 검정 쪽으로 섞는다 — 원작은 팔레트 16색을 `base + ((0 − base) · level >> 4)`로 바꾼다
+ * (`CalculateTintedColor(…, COLOR_BLACK, …)`). 그 식은 sRGB 5비트에서 `base · (1 − level/16)`이라
+ * 재질 색에 그 배율을 sRGB로 건다.
+ *
+ * ⚠️ **처음 물들일 때 재질을 떼어 낸다.** 모델은 받은 것을 나눠 쓰므로(`loadMonModel`) 그대로 칠하면
+ * 배틀의 같은 종도 같이 검어진다
+ */
+function applyDarkness(slot: Slot, level: number): void {
+  if ((slot.dark ?? 0) === level || slot.body === null) return
+  slot.dark = level
+  const k = 1 - Math.min(16, Math.max(0, level)) / 16
+  slot.body.root.traverse((o) => {
+    if (!(o instanceof Mesh)) return
+    const own = o.userData.darkOwn === true
+    if (!own && level === 0) return
+    if (!own) {
+      o.material = Array.isArray(o.material) ? o.material.map((m: Material) => m.clone()) : (o.material as Material).clone()
+      o.userData.darkOwn = true
+    }
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material]) as Tinted[]) {
+      if (m.color === undefined) continue
+      const base = (m.userData.baseColor as Color | undefined) ?? m.color.clone()
+      m.userData.baseColor = base
+      m.color.setRGB(k, k, k, SRGBColorSpace).multiply(base)
+    }
+  })
 }
 
 interface Props {
@@ -134,6 +167,7 @@ export function NpcMonModels({ grid, layer, taken, onStanding }: Props) {
       slot.outer.visible = true
       if (slot.body !== null) {
         slot.body.mixer.update(delta)
+        applyDarkness(slot, actor.darkness ?? 0)
         // ⚠️ **다 구워지길 기다렸다가 가져가면 안 된다.** 이 집합이 모델 붙는
         // 박자에 맞춰 흔들리면 부모 상태가 프레임마다 밀린다 (`NpcModels`의
         // 같은 자리에 실측을 적어 뒀다)

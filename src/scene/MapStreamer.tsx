@@ -97,6 +97,7 @@ import { DisguisePlates } from './DisguisePlates'
 import { EmoteMarks } from './EmoteMarks'
 import { FeatureProps } from './FeatureProps'
 import { HealingBalls } from './HealingBalls'
+import { DistortionSky } from './DistortionSky'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { clearMapFeature } from '../engine/world/mapFeatures'
 import { pastoriaTick, resetPastoriaGym } from './pastoriaGym'
@@ -157,6 +158,9 @@ const VIEW_RADIUS = 2
  * 지금까지 그랬듯 동굴을 공중에 띄운다
  */
 const INDOOR_VOID = '#05070a'
+
+/** 깨어진 세계 진행도 — 하늘 갈래가 이것으로 갈린다 (`DistortionSky`) */
+const distortionProgress = (): number => fieldScripts.vars.get(VAR_DISTORTION_WORLD_PROGRESS)
 /**
  * 실내 안개 거리(타일).
  *
@@ -1090,6 +1094,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         400이면 far(200) 밖으로 나가지 않는 한 어디서 봐도 지평선이 보인다.
         안개는 끈다: 안 그러면 하늘 자체가 안개색으로 뭉개진다
       */}
+      {/*
+        깨어진 세계는 하늘 돔 대신 원작 하늘이 화면에 붙는다 — 배경 한 장과 도는 구름 아홉 (§8.6b)
+      */}
+      {distortion && (
+        <DistortionSky mapId={mapId} progress={distortionProgress} />
+      )}
       {sky && outdoors && (
         <mesh ref={skyRef} renderOrder={-1}>
           <sphereGeometry args={[190, 32, 20]} />

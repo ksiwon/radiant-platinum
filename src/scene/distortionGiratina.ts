@@ -9,6 +9,10 @@ import { SPECIES_GIRATINA } from '../engine/pokemon/form'
 import { npcActors } from '../engine/actor/npcs'
 import { distortionHooks, setState, state, toLocalTiles } from './distortionCore'
 import { turnCamera } from './distortionCamera'
+import { MAP } from '../engine/world/distortion'
+import {
+  ARRIVAL_SKY_STEP, ARRIVAL_SKY_TARGET, ARRIVAL_SPRITE_START, ARRIVAL_SPRITE_STEP, darknessLevel,
+} from '../engine/world/distortionSky'
 
 /**
  * 세우고 거두는 무리 범위 (`GIRATINA_ROOM_PLATFORMS_*_GHOST_PROP_GROUP`).
@@ -238,9 +242,10 @@ export function distortionShadowDone(): boolean {
  * 원작이 `AddMapObjectWithLocalID`로 따로 세운다. 이걸 빼면 이야기대로 걸어
  * 들어왔을 때 (15,13)이 빈 채로 남는다 — 실제로 그랬다.
  *
- * ⚠️ **몸빛과 하늘빛은 아직 없다.** 원작은 팔레트를 16단계로 물들이는데
- * (`SPRITE_PALETTE_MAX_TINT_LEVEL`) 우리 오버월드 포켓몬은 GLB 재질이라
- * 그 층이 없다. 길이만 원작 그대로 둔다
+ * 하늘은 세울 때부터 프레임당 `8 ÷ 90`단계씩 12까지 어두워지고(`…_SKY_DARKNESS_DELTA`), **다 어두워져야**
+ * 내려서기가 끝난다. 몸은 16단계 검정에서 시작해 내려선 뒤 프레임당 `16 ÷ 90`단계씩 밝아진다 —
+ * 팔레트를 검정 쪽으로 섞는 원작 식을 모델 재질 색으로 건다(`Movable.darkness` · `NpcMonModels`).
+ * 하늘은 그 방을 나갈 때까지 연출이 쥔다 (`SetSkyBackgroundDarknessCalculationDisabled`)
  */
 const ARRIVAL_LIFT = 10
 
@@ -272,13 +277,27 @@ interface ArrivalRun {
 
 let arrival: ArrivalRun | null = null
 
+/** 내려서기가 하늘을 쥐었다 — 그 방과 어둡기 fx. 방을 나가면 풀린다 */
+let heldSky: { map: number, fx: number } | null = null
+
+/**
+ * 연출이 쥔 하늘 어둡기(0~12). 안 쥐었으면 null — 하늘은 주인공 높이로 잰다 (`scene/DistortionSky`)
+ */
+export function arrivalSky(mapId: number): number | null {
+  if (heldSky === null) return null
+  if (heldSky.map !== mapId) { heldSky = null; return null }
+  return darknessLevel(heldSky.fx)
+}
+
 
 export function beginArrival(): boolean {
   distortionHooks.addObject?.(GIRATINA_LOCAL_ID)
   const target = npcActors.byLocalID.get(GIRATINA_LOCAL_ID)
   if (target === undefined) return false
   target.offsetY = ARRIVAL_LIFT
+  target.darkness = darknessLevel(ARRIVAL_SPRITE_START)
   arrival = { target, lift: ARRIVAL_LIFT, after: 0 }
+  heldSky = { map: MAP.giratinaRoom, fx: 0 }
   void music.playEffect(SFX.GIRATINA_ARRIVE)
   return true
 }
@@ -288,7 +307,9 @@ export function tickArrival(dt: number): boolean {
   const run = arrival
   if (run === null) return true
   const steps = dt * 60
-  if (run.lift > 0) {
+  if (heldSky !== null) heldSky.fx = Math.min(ARRIVAL_SKY_TARGET, heldSky.fx + ARRIVAL_SKY_STEP * steps)
+  const dark = heldSky === null || heldSky.fx >= ARRIVAL_SKY_TARGET
+  if (run.lift > 0 || !dark) {
     run.lift = Math.max(0, run.lift
       - (run.lift > ARRIVAL_SLOW_AT ? ARRIVAL_FAST : ARRIVAL_SLOW) * steps)
     run.target.offsetY = run.lift
@@ -296,7 +317,9 @@ export function tickArrival(dt: number): boolean {
   }
   run.target.offsetY = 0
   run.after += steps
+  run.target.darkness = darknessLevel(Math.max(0, ARRIVAL_SPRITE_START - ARRIVAL_SPRITE_STEP * Math.floor(run.after)))
   if (run.after < ARRIVAL_BRIGHTEN + ARRIVAL_WAIT) return false
+  run.target.darkness = 0
   arrival = null
   return true
 }

@@ -185,6 +185,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   distortionProps: 3,
   /**
+   * 2 — **하늘이 선다** (`data/distortionSky.png` · `.json`). 원작 배경 한 장과 도는 구름 일곱이다 —
+   * 그전에는 깨어진 세계 뒤가 검은 빈 공간이었다. ⚠️ **1도 그대로 쓴다**(`GROUP_ACCEPTS`) — 없으면 하늘만 검다
+   */
+  distortion: 2,
+  /**
    * 5 — **굴의 새까만 천장을 안 굽는다.** 불투명·그림 없음·확산 검정짜리 납작한
    * 판이 바닥에서 2칸 넘게 떠 있으면 원작이 위를 가리려고 깔아 둔 뚜껑이다 —
    * 우리 3인칭은 그 위에서 보므로 강철섬에서 화면의 92%가 검었다. 청크 51개 ·
@@ -266,6 +271,7 @@ export function groupFormat(name: string): number {
  */
 const GROUP_ACCEPTS: Readonly<Record<string, readonly number[]>> = {
   pokegra: [1],
+  distortion: [1],
 }
 
 /** 이 판의 그 그룹을 그대로 써도 되는가 */

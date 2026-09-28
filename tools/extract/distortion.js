@@ -16,7 +16,10 @@
 // ⚠️ **`bounds`는 양끝을 포함한다.** `size`가 개수가 아니라 **차이**다
 // (`start + size`까지가 안이다). 개수로 읽으면 판마다 한 줄씩 좁아진다.
 'use strict'
-const { openRom, writeJson } = require('./rom')
+const fs = require('fs')
+const path = require('path')
+const { openRom, writeJson, ROOT } = require('./rom')
+const { encodePng } = require('./png')
 
 // ── tw_arc ───────────────────────────────────────────────────────────────────
 
@@ -131,6 +134,135 @@ function readMapFile(buf) {
   return { platforms, jumps, cameras, props, triggers, visibleGroups: visible }
 }
 
+// ── 하늘 (`/data/tw_arc_etc.narc`) ─────────────────────────────────────────────
+//
+// 깨어진 세계의 하늘 배경 한 장과 도는 구름 일곱 (`InitSkyBackground` · `InitSkyClouds`).
+// ⚠️ **브라우저 쪽(`src/import/platinum/distortionSky.ts`)과 한 줄씩 같아야 한다** — 머리말도 그쪽에 있다
+
+const SKY_W = 256
+const SKY_H = 192
+const TILE = 8
+const TILE_BYTES = 32
+const CLOUD_CELLS = [0x3, 0x6, 0x9, 0xc, 0xf, 0x12, 0x15]
+const CLOUD_CHARS = [0x4, 0x7, 0xa, 0xd, 0x10, 0x13, 0x16]
+const CLOUD_PALETTE = 0x18
+const CLOUD_PALETTES = 5
+const OBJ_SIZE = [
+  [[8, 8], [16, 16], [32, 32], [64, 64]],
+  [[16, 8], [32, 8], [32, 16], [64, 32]],
+  [[8, 16], [8, 32], [16, 32], [32, 64]],
+]
+
+function color5(v) {
+  const r = v & 0x1f, g = (v >> 5) & 0x1f, b = (v >> 10) & 0x1f
+  return [(r << 3) | (r >> 2), (g << 3) | (g >> 2), (b << 3) | (b >> 2)]
+}
+
+/** NCLR 여러 벌 */
+function skyPalettes(buf) {
+  if (buf.subarray(0, 4).toString('latin1') !== 'RLCN') throw new Error('NCLR이 아니다')
+  const count = Math.max(1, Math.floor(buf.readUInt32LE(0x20) / 32))
+  return Array.from({ length: count }, (_, p) =>
+    Array.from({ length: 16 }, (_, i) => color5(buf.readUInt16LE(0x28 + (p * 16 + i) * 2))))
+}
+
+function skyChars(buf) {
+  if (buf.subarray(0, 4).toString('latin1') !== 'RGCN') throw new Error('NCGR이 아니다')
+  const size = buf.readUInt32LE(0x28)
+  return buf.subarray(0x30, 0x30 + size)
+}
+
+function drawSkyTile(rgba, sheetW, ox, oy, data, tile, pal, { hflip = false, vflip = false, sprite = false } = {}) {
+  for (let i = 0; i < 64; i++) {
+    const byte = data[tile * TILE_BYTES + (i >> 1)] ?? 0
+    const idx = i & 1 ? byte >> 4 : byte & 0xf
+    if (idx === 0 && sprite) continue
+    const px = i & 7, py = i >> 3
+    const x = hflip ? 7 - px : px
+    const y = vflip ? 7 - py : py
+    const c = pal[idx] ?? [0, 0, 0]
+    const at = ((oy + y) * sheetW + ox + x) * 4
+    rgba[at] = c[0]; rgba[at + 1] = c[1]; rgba[at + 2] = c[2]; rgba[at + 3] = 255
+  }
+}
+
+const s9 = (v) => (v & 0x100 ? (v & 0x1ff) - 0x200 : v & 0x1ff)
+const s8 = (v) => (v & 0x80 ? (v & 0xff) - 0x100 : v & 0xff)
+
+function cellOams(buf) {
+  if (buf.subarray(0, 4).toString('latin1') !== 'RECN') throw new Error('NCER이 아니다')
+  const cells = buf.readUInt16LE(0x18), bank = buf.readUInt16LE(0x1a)
+  if (cells !== 1 || bank !== 0) throw new Error(`셀 ${cells}개 · 갈래 ${bank} — 한 칸짜리가 아니다`)
+  const at = 0x18 + buf.readUInt32LE(0x1c)
+  const count = buf.readUInt16LE(at)
+  const oamAt = at + 8 + buf.readUInt32LE(at + 4)
+  const out = []
+  for (let k = 0; k < count; k++) {
+    const a0 = buf.readUInt16LE(oamAt + k * 6), a1 = buf.readUInt16LE(oamAt + k * 6 + 2), a2 = buf.readUInt16LE(oamAt + k * 6 + 4)
+    if (a0 & 0x2000) throw new Error('256색 OAM — 16색만 읽는다')
+    const size = OBJ_SIZE[a0 >> 14]?.[a1 >> 14]
+    if (!size) throw new Error(`OAM 모양 ${a0 >> 14}`)
+    out.push({ x: s9(a1), y: s8(a0), w: size[0], h: size[1], tile: a2 & 0x3ff, pal: a2 >> 12, hflip: (a1 & 0x1000) !== 0, vflip: (a1 & 0x2000) !== 0 })
+  }
+  return out
+}
+
+function extractSky(rom) {
+  const narc = rom.narc('/data/tw_arc_etc.narc')
+  const skyPal = skyPalettes(narc[1])[0]
+  const skyData = skyChars(narc[0])
+  const scr = narc[2]
+  if (scr.subarray(0, 4).toString('latin1') !== 'RCSN') throw new Error('NSCR이 아니다')
+  const scrW = scr.readUInt16LE(0x18) / TILE, scrH = scr.readUInt16LE(0x1a) / TILE
+  if (scrW < SKY_W / TILE || scrH < SKY_H / TILE) throw new Error('하늘 배치가 화면보다 작다')
+
+  const cloudPals = skyPalettes(narc[CLOUD_PALETTE]).slice(0, CLOUD_PALETTES)
+  const clouds = CLOUD_CELLS.map((c, i) => {
+    const oams = cellOams(narc[c])
+    const data = skyChars(narc[CLOUD_CHARS[i]])
+    const x0 = Math.min(...oams.map((o) => o.x)), y0 = Math.min(...oams.map((o) => o.y))
+    const x1 = Math.max(...oams.map((o) => o.x + o.w)), y1 = Math.max(...oams.map((o) => o.y + o.h))
+    return { oams, data, x0, y0, w: x1 - x0, h: y1 - y0 }
+  })
+
+  const rects = []
+  let cx = 0, cy = SKY_H, row = 0
+  for (const c of clouds) {
+    if (cx + c.w > SKY_W) { cx = 0; cy += row; row = 0 }
+    rects.push([cx, cy, c.w, c.h, -c.x0, -c.y0])
+    cx += c.w
+    row = Math.max(row, c.h)
+  }
+  const width = SKY_W, height = cy + row
+  const rgba = new Uint8Array(width * height * 4)
+
+  for (let ty = 0; ty < SKY_H / TILE; ty++) {
+    for (let tx = 0; tx < SKY_W / TILE; tx++) {
+      const cell = scr.readUInt16LE(0x24 + (ty * scrW + tx) * 2)
+      if (cell >> 12 !== 0) throw new Error(`하늘 칸 (${tx},${ty})이 팔레트 ${cell >> 12}을 쓴다 — 0만 싣는다`)
+      drawSkyTile(rgba, width, tx * TILE, ty * TILE, skyData, cell & 0x3ff, skyPal, { hflip: (cell & 0x400) !== 0, vflip: (cell & 0x800) !== 0 })
+    }
+  }
+
+  for (const [i, c] of clouds.entries()) {
+    const [rx, ry, , , ox, oy] = rects[i]
+    for (const o of [...c.oams].reverse()) {
+      const pal = cloudPals[o.pal] ?? []
+      const across = o.w / TILE
+      for (let t = 0; t < across * (o.h / TILE); t++) {
+        const col = t % across, rowT = Math.floor(t / across)
+        const px = o.hflip ? across - 1 - col : col
+        const py = o.vflip ? o.h / TILE - 1 - rowT : rowT
+        const tile = o.tile + t
+        if ((tile + 1) * TILE_BYTES > c.data.length) throw new Error(`구름 ${i}: 타일 ${tile}이 없다`)
+        drawSkyTile(rgba, width, rx + ox + o.x + px * TILE, ry + oy + o.y + py * TILE, c.data, tile, pal, { hflip: o.hflip, vflip: o.vflip, sprite: true })
+      }
+    }
+  }
+
+  return { png: encodePng(rgba, width, height), sheet: { width, height, sky: [0, 0, SKY_W, SKY_H], clouds: rects } }
+}
+
 // ── 걷기 ─────────────────────────────────────────────────────────────────────
 
 function extract() {
@@ -192,6 +324,10 @@ function main() {
   console.log(`  떠 있는 판 ${platformCount} · 뛰는 자리 ${jumpCount} · 카메라 ${cameraCount}`)
   console.log(`  통행 격자 ${data.attrs.length}벌 · 유령 소품 ${propCount}`)
   console.log('  층 이음·사건·발판·승강 경로는 pnpm gen:distortionTables가 소스에 굽는다')
+  const sky = extractSky(openRom())
+  fs.writeFileSync(path.join(ROOT, 'public/data/distortionSky.png'), sky.png)
+  const meta = writeJson('distortionSky.json', sky.sheet)
+  console.log(`  하늘 ${sky.sheet.width}×${sky.sheet.height} · 구름 ${sky.sheet.clouds.length} → ${meta.rel}`)
 }
 
 if (require.main === module) main()

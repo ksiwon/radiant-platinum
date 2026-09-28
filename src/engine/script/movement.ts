@@ -83,6 +83,11 @@ export interface Movable {
   offsetX?: number
   offsetY?: number
   offsetZ?: number
+  /**
+   * 몸빛을 검게 물들이는 단계 0~16 (`CalculateTintedColor(…, COLOR_BLACK, level)`). 없으면 0이다 —
+   * 깨어진 세계의 기라티나가 새까맣게 내려와 밝아진다(`scene/distortionGiratina`)
+   */
+  darkness?: number
   /** `generated/movement_types.txt`의 번호. 주인공은 없다 */
   readonly movementType?: number
   /**
