@@ -12,7 +12,10 @@
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PROP_MODEL_INDEX, PROP_POS_OFFSET } from '../../src/import/platinum/fldeffProps.ts'
+import { PROP_ANIM_INDEX, PROP_MODEL_INDEX, PROP_POS_OFFSET } from '../../src/import/platinum/fldeffProps.ts'
+import { buildFldeffPropAnims, propModelInfo } from '../../src/import/platinum/propAnims.ts'
+import { readDict as readDictTs, parseModel as parseModelTs, parseNodes as parseNodesTs } from '../../src/import/platinum/nsbmd.ts'
+import { blocks as blocksTs, parseMaterials as parseMaterialsTs, readSbc as readSbcTs } from '../../src/import/platinum/chunks.ts'
 
 const require = createRequire(import.meta.url)
 const { openRom, writeJson, ROOT } = require('./rom')
@@ -53,6 +56,24 @@ function blocks(buf) {
   return out
 }
 
+/**
+ * 애니가 있는 소품의 모델 속살 — **브라우저 변환기와 같은 함수로** 읽는다 (`propAnims.mjs`의 `openProp`과 같다).
+ * 여기 스파이크 쪽 해석기로 읽으면 재질 이름 · 텍셀 배수가 한 자리라도 갈릴 수 있다
+ */
+function modelInfo(buf) {
+  const file = new Uint8Array(buf.buffer, buf.byteOffset, buf.length)
+  const view = new DataView(file.buffer, file.byteOffset, file.byteLength)
+  const found = blocksTs(file, view)
+  const dict = readDictTs(file, view, found.MDL0 + 8)
+  const modelAt = found.MDL0 + view.getUint32(dict[0].at, true)
+  const header = parseModelTs(file, view, modelAt)
+  return propModelInfo(
+    parseNodesTs(file, view, modelAt),
+    readSbcTs(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset),
+    parseMaterialsTs(file, view, modelAt, header),
+  )
+}
+
 function main() {
   const rom = openRom()
   const fldeff = rom.narc('/data/mmodel/fldeff.narc')
@@ -60,6 +81,7 @@ function main() {
   fs.mkdirSync(outDir, { recursive: true })
 
   const index = []
+  const models = {}
   let bytes = 0, sheets = 0, noTex = 0, totalTris = 0
 
   for (let kind = 0; kind < MODEL_INDEX.length; kind++) {
@@ -78,6 +100,7 @@ function main() {
     const polygons = parsePolygons(file, modelAt, header)
     const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     const nodes = parseNodes(file, modelAt)
+    if (PROP_ANIM_INDEX[kind] !== undefined) models[String(kind)] = modelInfo(file)
 
     const verts = []
     const indices = []
@@ -164,8 +187,13 @@ function main() {
     totalTris += indices.length / 3
   }
 
+  const anims = buildFldeffPropAnims((at) => {
+    const f = fldeff[at]
+    return f === undefined ? null : new Uint8Array(f.buffer, f.byteOffset, f.length)
+  }, PROP_ANIM_INDEX)
+  fs.writeFileSync(path.join(outDir, 'anims.bin'), anims.bytes)
   const out = writeJson('distortionProps/index.json', {
-    count: MODEL_INDEX.length, sheets: index, offsets: POS_OFFSET,
+    count: MODEL_INDEX.length, sheets: index, offsets: POS_OFFSET, anims: anims.members, models,
   })
   console.log(
     `깨어진 세계 소품 ${MODEL_INDEX.length}개 → 삼각형 ${totalTris} · ` +

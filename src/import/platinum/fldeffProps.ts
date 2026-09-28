@@ -11,6 +11,17 @@
 // **안 그려지던 물체 열 종**(29~38).
 
 /**
+ * 소품 종류 → 그 소품의 애니 멤버 (`sPropAnimSetNARCIndexByKind` · `sPropAnimInfoByKind`, `ov9_02249960.c`).
+ *
+ * 실측 — 폭포 0xC8이 BTA0(물이 흐른다), 덩굴꽃 0xBF · 바위 0xC0 · 문 0xC1이 BCA0(자라고 · 솟고 · 돈다),
+ * 기라티나 그림자 0xC6이 BTA0다. ⚠️ **그림자의 BTA0는 화면에 아무 일도 안 한다** — 모델에 TEX0가 없어서
+ * 옮길 그림이 없다(0x90은 MDL0 하나뿐이다). 그래도 원작 표 그대로 싣는다
+ */
+export const PROP_ANIM_INDEX: Readonly<Record<number, number>> = {
+  20: 0xc6, 21: 0xc8, 22: 0xbf, 23: 0xc0, 24: 0xc1,
+}
+
+/**
  * 소품 종류 → `fldeff.narc` 파일 번호.
  *
  * 0~24는 `sProp3DModelNARCIndexByKind`를 그대로 옮긴 것이다

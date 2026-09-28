@@ -15,6 +15,7 @@ import { assets, readJson } from '../data/providers/assetProvider'
 import { decodePng } from '../import/platinum/png'
 import { markSeeThrough } from './fx/seeThrough'
 import { retireTexture } from './retireTexture'
+import { readRawClip, type NodeBase, type PropClip } from './propAnim'
 
 /** `chunks/index.json` — 파일 하나에 담긴 규격 */
 interface ChunkFormat {
@@ -450,6 +451,50 @@ export function loadDistortionPropSheet(kind: number): Promise<TexSheet | null> 
  * 원작이 칸 한가운데(`+0.5`)에 이 값을 더해 소품을 세운다. 빼먹으면 발판이
  * 한 칸 위에 떠서 사람이 그 속을 걷는다 (`tools/extract/distortionProps.js`)
  */
+/** 필드 이펙트 소품의 애니 한 벌 (`data/distortionProps/anims.bin` · 목차의 `anims` · `models`) */
+export interface DistortionPropAnims {
+  /** 소품 종류마다 그 애니 — 없으면 undefined */
+  clip: (kind: number) => PropClip | null
+  /** 소품 종류마다 모델 속살 (`propModelInfo`) */
+  model: (kind: number) => DistortionPropModel | undefined
+}
+
+interface DistortionPropModel {
+  submeshNodes: readonly number[]
+  nodes: readonly NodeBase[]
+  materials: readonly string[]
+  uv: readonly (readonly [number, number])[]
+}
+
+let distAnims: Promise<DistortionPropAnims | null> | null = null
+
+/**
+ * 폭포 · 덩굴꽃 · 바위 · 문의 애니 (`sPropAnimSetNARCIndexByKind`). 원작 바이트를 그대로 받아 화면 쪽이 푼다 —
+ * 맵 소품의 `anims.bin`과 같은 길이다. 못 받으면 소품이 그냥 안 움직인다
+ */
+export function loadDistortionPropAnims(): Promise<DistortionPropAnims | null> {
+  distAnims ??= Promise.all([
+    readJson(assets(), 'data/distortionProps/index.json') as Promise<{
+      anims?: Record<string, { kind: 'BCA0' | 'BTA0' | 'BTP0', frames: number, at: number, size: number }>
+      models?: Record<string, DistortionPropModel>
+    }>,
+    assets().bytes('data/distortionProps/anims.bin').then((b) => new Uint8Array(b)),
+  ]).then(([idx, bytes]) => {
+    const cache = new Map<number, PropClip | null>()
+    return {
+      clip: (kind: number) => {
+        if (cache.has(kind)) return cache.get(kind) ?? null
+        const row = idx.anims?.[String(kind)]
+        const made = row === undefined ? null : readRawClip(row, bytes)
+        cache.set(kind, made)
+        return made
+      },
+      model: (kind: number) => idx.models?.[String(kind)],
+    }
+  }).catch(() => null)
+  return distAnims
+}
+
 export function loadDistortionPropOffsets(): Promise<readonly (readonly number[])[]> {
   return (readJson(assets(), 'data/distortionProps/index.json') as Promise<{
     offsets: number[][]

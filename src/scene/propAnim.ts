@@ -30,7 +30,7 @@ const UNITS_PER_TILE = 16
 export const FRAME_MS = 1000 / 60
 
 /** 애니 멤버 하나를 푼 것 */
-type PropClip =
+export type PropClip =
   | { kind: 'BCA0', frames: number, anim: JntAnim }
   | { kind: 'BTA0', frames: number, anim: SrtAnim }
   | { kind: 'BTP0', frames: number, anim: PatAnim }
@@ -66,6 +66,13 @@ export function loadPropAnimSet(): Promise<PropAnimSet | null> {
 function readClip(table: PropAnimsFile, bytes: Uint8Array, member: number): PropClip | null {
   const row = table.members[member]
   if (!row) return null
+  return readRawClip(row, bytes)
+}
+
+/** 이어 붙인 바이트에서 멤버 하나를 푼다 — 맵 소품과 필드 이펙트 소품(`loadDistortionPropAnims`)이 같이 쓴다 */
+export function readRawClip(
+  row: { kind: 'BCA0' | 'BTA0' | 'BTP0', frames: number, at: number, size: number }, bytes: Uint8Array,
+): PropClip | null {
   const raw = bytes.subarray(row.at, row.at + row.size)
   try {
     if (row.kind === 'BCA0') {
@@ -85,7 +92,7 @@ function readClip(table: PropAnimsFile, bytes: Uint8Array, member: number): Prop
 }
 
 /** 노드 하나의 기본 변환 (`propModelInfo`가 실은 것) */
-interface NodeBase {
+export interface NodeBase {
   m: readonly number[]
   s: readonly number[]
   t: readonly number[]

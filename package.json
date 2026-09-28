@@ -83,7 +83,7 @@
     "extract:textbanks": "node tools/extract/textbanks.js",
     "extract:items": "node tools/extract/items.js",
     "extract:berries": "node tools/extract/berries.js",
-    "extract:distortionProps": "node --experimental-strip-types tools/extract/distortionProps.mjs",
+    "extract:distortionProps": "node --experimental-strip-types --import ./tools/extract/tsResolve.mjs tools/extract/distortionProps.mjs",
     "extract:distortion": "node tools/extract/distortion.js",
     "extract:pokedexSort": "node tools/extract/pokedexSort.js",
     "extract:pokedexHabitat": "node tools/extract/pokedexHabitat.js",

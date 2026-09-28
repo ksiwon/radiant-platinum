@@ -40,7 +40,7 @@ withRom('en')('깨어진 세계 소품 — 굽는 쪽 둘이 바이트로 같다
       else diff.push(`${path}: 크기는 같은데 내용이 다르다`)
     }
     expect(diff.slice(0, 5), `${String(diff.length)}개가 어긋난다`).toEqual([])
-    // 소품 39 + 목차
-    expect(same).toBe(40)
+    // 소품 39 + 목차 + 애니 바이트(`anims.bin`)
+    expect(same).toBe(41)
   }, 300_000)
 })

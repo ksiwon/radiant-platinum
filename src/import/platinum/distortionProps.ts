@@ -26,7 +26,8 @@ import {
 } from './chunks'
 import { bakeSheet, type Sheet } from './sheets'
 import { breathe, check, json, type ConvertContext, type Produced } from './convertTypes'
-import { PROP_MODEL_INDEX, PROP_POS_OFFSET } from './fldeffProps'
+import { PROP_ANIM_INDEX, PROP_MODEL_INDEX, PROP_POS_OFFSET } from './fldeffProps'
+import { buildFldeffPropAnims, propModelInfo } from './propAnims'
 
 const NARC = '/data/mmodel/fldeff.narc'
 
@@ -36,6 +37,8 @@ export async function convertDistortionProps(ctx: ConvertContext): Promise<Produ
 
   const out: Produced = new Map()
   const sheets: (Sheet | null)[] = []
+  /** 애니가 있는 소품만의 모델 속살 — 맵 소품과 같은 꼴이다 (`propModelInfo`) */
+  const models: Record<string, ReturnType<typeof propModelInfo>> = {}
 
   for (const [kind, at] of PROP_MODEL_INDEX.entries()) {
     const file = narcEntry(narc, at)
@@ -51,6 +54,7 @@ export async function convertDistortionProps(ctx: ConvertContext): Promise<Produ
     const polygons = parsePolygons(file, view, modelAt, header)
     const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     const nodes = parseNodes(file, view, modelAt)
+    if (PROP_ANIM_INDEX[kind] !== undefined) models[String(kind)] = propModelInfo(nodes, pairs, materials)
 
     const verts: Vertex[] = []
     const indices: number[] = []
@@ -86,8 +90,10 @@ export async function convertDistortionProps(ctx: ConvertContext): Promise<Produ
     await breathe(ctx)
   }
 
+  const anims = buildFldeffPropAnims((at) => narcEntry(narc, at), PROP_ANIM_INDEX)
+  out.set('data/distortionProps/anims.bin', anims.bytes)
   out.set('data/distortionProps/index.json', json({
-    count: PROP_MODEL_INDEX.length, sheets, offsets: PROP_POS_OFFSET,
+    count: PROP_MODEL_INDEX.length, sheets, offsets: PROP_POS_OFFSET, anims: anims.members, models,
   }))
   return out
 }

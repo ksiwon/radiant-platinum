@@ -11,10 +11,10 @@
 > `poketchMap` · `signposts` · `starterScene` · `trainerSprites` · `npcTrades` ·
 > `berries` · `credits` · `frontier` · `pokedex` · `townMap`
 > (`src/import/platinum/convert.test.ts`) · `text` · `maps` · `chunks` ·
-> `pokegra` · `scripts` · `sound` (같은 이름의 `*.test.ts`).
+> `pokegra` · `scripts` · `sound` · `distortionProps` (같은 이름의 `*.test.ts`).
 >
-> 아직 안 맞대 본 다섯은 `species` · `encounters` · `trainers` · `spawns` ·
-> `distortionProps`다. 변환기는 있고 노드 산출물과 견주는 시험만 없다.
+> 아직 안 맞대 본 넷은 `species` · `encounters` · `trainers` · `spawns`다.
+> 변환기는 있고 노드 산출물과 견주는 시험만 없다.
 >
 > ⚠️ **`text`·`maps`는 세 지역판에서 다 잰다.** 미국판만 재던 동안 한국판·
 > 일본판에서만 어긋나는 것은 게임 안에서만 보였다 — 실제로 §2.11의 뱅크 번호가
@@ -5190,8 +5190,11 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 `tw_arc_attr`가 주지만 발판·바위·덩굴은 필드 이펙트 아카이브의 NSBMD
 스물다섯이다 (`/data/mmodel/fldeff.narc` 0x7C~0x94). 어느 종류가 몇 번인지는
 오버레이의 `sProp3DModelNARCIndexByKind`가 정한다.
-→ `data/distortionProps/<종류>.{bin,png}` (`tools/extract/distortionProps.js`),
-건물 소품과 같은 `PT3C` 형식이다.
+→ `data/distortionProps/<종류>.{bin,png}` (`tools/extract/distortionProps.mjs`),
+건물 소품과 같은 `PT3C` 형식이다. 폭포 · 덩굴꽃 · 바위 · 문 · 기라티나 그림자의 애니 다섯
+(`sPropAnimSetNARCIndexByKind` — 0xC8 · 0xBF · 0xC0 · 0xC1 · 0xC6, 합 4,188바이트)은 맵 소품처럼 **원작 바이트를
+그대로** 이어 `data/distortionProps/anims.bin`에 싣고, 목차(`index.json`)의 `anims`가 자리 · 꼴 · 프레임 수를,
+`models`가 그 다섯의 모델 속살(`propModelInfo`)을 든다.
 
 ⚠️ **소품 보임새의 처음 값은 뒤집힌 것이다.**
 `hiddenGhostPropGroups = ~defaultVisiblePropGroups` (24비트). 0으로 두면 스물네

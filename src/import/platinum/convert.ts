@@ -359,7 +359,7 @@ export const GROUPS: readonly GroupSpec[] = [
     name: 'distortionProps',
     outputs: [
       'data/distortionProps/{종류}.bin', 'data/distortionProps/{종류}.png',
-      'data/distortionProps/index.json',
+      'data/distortionProps/index.json', 'data/distortionProps/anims.bin',
     ],
     converter: 1,
     convert: convertDistortionProps,

@@ -177,7 +177,7 @@ export function propModelInfo(
 }
 
 /** `BCA0`·`BTP0`·`BTA0` 머리에서 프레임 수를 읽는다 */
-function framesOf(member: Uint8Array): Pick<PropAnimMember, 'kind' | 'frames'> | null {
+export function framesOf(member: Uint8Array): Pick<PropAnimMember, 'kind' | 'frames'> | null {
   if (member.length < 24) return null
   const tag = String.fromCharCode(member[0]!, member[1]!, member[2]!, member[3]!)
   if (tag !== 'BCA0' && tag !== 'BTP0' && tag !== 'BTA0') return null
@@ -193,6 +193,30 @@ function framesOf(member: Uint8Array): Pick<PropAnimMember, 'kind' | 'frames'> |
   if (count === 0 || itemSize < 4) return { kind: tag, frames: 0 }
   const first = block + view.getUint32(p, true)
   return { kind: tag, frames: view.getUint16(first + 4, true) }
+}
+
+/**
+ * 필드 이펙트 소품의 애니 (`fldeffProps`의 `PROP_ANIM_INDEX`) — 맵 소품과 같이 **원작 바이트를 그대로** 잇는다.
+ * 열쇠가 소품 종류다. 굽는 쪽 둘이 같이 부른다
+ */
+export function buildFldeffPropAnims(
+  entry: (at: number) => Uint8Array | null, index: Readonly<Record<number, number>>,
+): { members: Record<string, PropAnimMember>, bytes: Uint8Array } {
+  const members: Record<string, PropAnimMember> = {}
+  const parts: Uint8Array[] = []
+  let total = 0
+  for (const [kind, at] of Object.entries(index)) {
+    const raw = entry(at)
+    const got = raw === null ? null : framesOf(raw)
+    if (got === null || raw === null) throw new Error(`fldeff ${String(at)}이 애니가 아니다`)
+    members[kind] = { ...got, at: total, size: raw.length }
+    parts.push(raw)
+    total += raw.length
+  }
+  const bytes = new Uint8Array(total)
+  let o = 0
+  for (const p of parts) { bytes.set(p, o); o += p.length }
+  return { members, bytes }
 }
 
 /**
