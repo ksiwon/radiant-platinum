@@ -460,7 +460,7 @@ export const TEXT_BANK_NAMES = [
   // NPC 교환 — 장면의 네 줄과 별명·트레이너 이름 여덟 (PARITY §10)
   'trade', 'npc_trade_names',
   // 장식 100가지의 이름 (PARITY §7.16). 콘테스트는 범위 밖이지만 이름표는 쓴다
-  'contest_accessory_names',
+  'contest_accessory_names', 'contest_accessory_names_with_articles',
   // 크레딧 237줄 (PARITY §8.12). 디컴프도 이름을 못 붙인 뱅크라 번호로 부른다
   'unk_0548',
   // 우편과 낱말 고르기 (PARITY §4.8). 화면 글 넷과 **낱말이 든 뱅크 일곱**이다 —

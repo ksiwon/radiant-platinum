@@ -299,6 +299,14 @@ export interface FieldServices {
     level: (slot: number) => number
     /** 성격 번호 (`Pokemon_GetNature`). 자리가 비었으면 0(노력) */
     nature: (slot: number) => number
+    /** 성별 (`MON_DATA_GENDER`) — 0 수컷 · 1 암컷 · 2 성별 없음. 빈 자리면 2 */
+    gender: (slot: number) => number
+    /** 포켓러스 한 바이트 (`MON_DATA_POKERUS`). 0이면 걸린 적 없다 */
+    pokerus: (slot: number) => number
+    /** 잠재파워의 타입 (`CalcHiddenPowerTypeAndPower`). 빈 자리면 0 */
+    hiddenPowerType: (slot: number) => number
+    /** 알인가 (`MON_DATA_IS_EGG`) */
+    isEgg: (slot: number) => boolean
     friendship: (slot: number) => number
     addFriendship: (slot: number, amount: number) => void
     hasMove: (slot: number, move: number) => boolean
@@ -554,6 +562,7 @@ export interface FieldServices {
      * 없는 표를 억지로 만들지 않는다
      */
     itemWithArticle: (item: number) => string
+    accessoryWithArticle: (accessory: number) => string
     itemPlural: (item: number) => string
     speciesWithArticle: (species: number) => string
     trainerClassWithArticle: (trainerClass: number) => string

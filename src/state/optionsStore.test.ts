@@ -84,7 +84,7 @@ describe('언어 — 우리가 연 자리', () => {
     // 했지만 실제로는 일본판이 26줄로 다시 쓴 것이었고(미국판 28줄), 그래서
     // (키, 엔트리 수)로 짝을 짓는 표가 못 알아본 것뿐이다
     //
-    // 393·394·413·620은 **미국 롬에만 있다** — 조사가 붙은 판과 복수형이라
+    // 387·393·394·413·620은 **미국 롬에만 있다** — 조사가 붙은 판과 복수형이라
     // 한국어에도 일본어에도 그런 표가 없다.
     //
     // 전부 우리 실수가 아니다. 이 수가 늘면 추출이 어긋난 것이다
@@ -94,9 +94,9 @@ describe('언어 — 우리가 연 자리', () => {
       { banks: { index: number }[] }).banks
     for (const locale of LANGUAGES) {
       const missing = banks.filter((b) => !existsSync(resolve(dir, locale, `${String(b.index)}.json`)))
-      const articles = [393, 394, 413, 620]
+      const articles = [387, 393, 394, 413, 620]
       expect(missing.map((b) => b.index), locale).toEqual(
-        locale === 'ja' ? [393, 394, 413, 414, 620] : locale === 'ko' ? articles : [],
+        locale === 'ja' ? [387, 393, 394, 413, 414, 620] : locale === 'ko' ? articles : [],
       )
     }
   })

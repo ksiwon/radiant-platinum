@@ -34,6 +34,7 @@ import { berryPatchesStep, elapseBerries } from './berryPatches'
 import { safariFieldStep } from './safari'
 import { amityStep, VAR_AMITY_STEPS } from '../engine/world/amity'
 import { elapseDays } from '../engine/pokemon/pokerus'
+import { handleDailyEvents } from '../engine/world/dailyEvents'
 import { encounters } from '../engine/battle/encounterSystem'
 import { radarStep } from './pokeRadar'
 import { vsSeekerFieldStep } from './vsSeeker'
@@ -272,7 +273,9 @@ function bikeSlopeAnim(tx: number, tz: number, key: number): void {
 function checkDay(): void {
   const save = useSaveStore.getState()
   const now = today()
-  const daily = rollOver(save.daily, now.stamp)
+  // ⚠️ **세이브의 변수가 VM에 붓기 전에는 날을 안 넘긴다** (`varsReady`) — 넘기면 하루 깃발을 빈 VM에서 지우고
+  // 날짜만 옮겨 놔서, 곧 부어지는 어제의 깃발이 오늘도 그대로 산다
+  const daily = fieldScripts.varsReady ? rollOver(save.daily, now.stamp) : save.daily
   if (daily !== save.daily) {
     // 포켓루스는 **하루에 한 칸씩** 낫는다 (`Party_UpdatePokerusStatus`).
     // 며칠을 안 켰으면 그만큼 한꺼번에 깎이고, 나흘을 넘겼으면 통째로 낫는다.
@@ -281,6 +284,8 @@ function checkDay(): void {
     // 것과 같은 이유로, 균주도 시계를 돌려 가며 늘릴 수 없어야 한다
     const days = Math.max(0, now.stamp - save.daily.day)
     useSaveStore.setState({ daily, party: elapseDays(save.party, days) })
+    // 하루 깃발 · 신문사 마감 · 오늘의 레벨 · 되살아나는 숨은 도구 (`FieldSystem_HandleDailyEvents`)
+    handleDailyEvents(fieldScripts.vars, days, mapWorld.mapId, (n) => Math.floor(Math.random() * n))
   }
   // 조우 시스템은 세이브를 못 읽는다 (PLAN §3.2). 갈아 끼울 값을 여기서 넘긴다
   encounters.swarmAt = swarmMap(daily)

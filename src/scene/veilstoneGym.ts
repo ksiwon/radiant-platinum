@@ -154,16 +154,16 @@ export function veilstoneProps(): FeatureProp[] {
     }
     out.push({
       key: `샌드백${String(i)}`, model: VEILSTONE_MODEL.bag, from: 'fldeff',
-      x: fx + 0.5 + VEILSTONE_NODE.bag[0], y: VEILSTONE_NODE.bag[1],
-      z: fz + 0.5 + VEILSTONE_NODE.bag[2],
+      // 노드 이동(샌드백 y +4.475 · 타이어 y +0.5 z −0.375)은 굽는 쪽이 정점에 이미 곱해 두었다 — 여기서 더하면
+      // 샌드백이 4.5칸 떠 있다 (REPAIR §12 · 구운 파일의 샌드백 y 0~4.16 · 타이어 −0.02~0.83)
+      x: fx + 0.5, y: 0, z: fz + 0.5,
     })
   }
   for (const key of now.stacks) {
     const [x, z] = key.split(',').map(Number)
     out.push({
       key: `타이어${key}`, model: VEILSTONE_MODEL.stack, from: 'fldeff',
-      x: (x ?? 0) + 0.5 + VEILSTONE_NODE.stack[0], y: VEILSTONE_NODE.stack[1],
-      z: (z ?? 0) + 0.5 + VEILSTONE_NODE.stack[2],
+      x: (x ?? 0) + 0.5, y: 0, z: (z ?? 0) + 0.5,
     })
   }
   return out
@@ -177,39 +177,6 @@ export function veilstoneProps(): FeatureProp[] {
  * 소품과 같은 아카이브·같은 형식이라 그쪽 파이프라인에 이어 붙였고, 번호는
  * 그 목록에서의 자리다 (`tools/extract/distortionProps.js`)
  */
-/**
- * 모델이 제 노드에 적어 둔 이동. **한 타일이 16유닛**이라 그 값을 16으로 나눈 것이다.
- *
- * ⚠️ **없으면 샌드백이 통째로 바닥 밑에 그려진다.** 우리 SBC 리더가 노드 명령을
- * 안 읽고 재질·폴리곤 짝만 가져와서(`import/platinum/chunks`의 `readSbc`),
- * 노드에 붙은 이동이 통째로 사라진다. 자리 표에 없는 값이라 아무도 안 잡았다 —
- * 스무 개가 `visible: true`로 제자리에 서 있는데 화면에는 하나도 안 나왔다.
- *
- * 실측(`fldeff.narc`의 노드 사전):
- *
- *   샌드백(113)      polySurface26  t = (0, 71.600, 0)   → y +4.475
- *   서 있는 타이어(114) pCube1         t = (0, 8.000, −6.000) → y +0.5 · z −0.375
- *
- * 견줘 보면 맞는다: 샌드백 기하가 y −4.48~−0.31이라 4.475를 올리면 밑동이
- * 바닥에 닿고, 타이어는 −0.52~0.33이라 0.5를 올리면 −0.02~0.83이 된다.
- *
- * ⚠️ **높이는 화면으로 봤고 z는 못 봤다.** 샌드백을 올리니 받침이 바닥에 닿은
- * 빨간 자루가 실제로 떴다(실측). 타이어의 z −0.375는 표에서 온 값이고, 그 방은
- * 카메라가 벽에 껴서 아직 눈으로 확인 못 했다 — 축 방향이 롬과 같은지도 안 쟀다.
- * 한 칸의 3/8이라 틀려도 제 칸을 벗어나지는 않는다
- *
- * ⚠️ **여기서만 고친다. 굽는 쪽에 넣으면 안 된다.** 이 롬의 자산은 노드 이동이
- * **이미 정점에 구워져 있는 자리가 있다** — 맵 청크 666개 중 이동을 단 채로
- * 그려지는 노드가 207개이고(청크 181의 `h_01floor1`이 −15타일), 그런데도 실내가
- * 지금 제대로 나온다. 깨어진 세계도 주인공이 판에 발을 딛고 선다. 전부 붙이면
- * 지금 맞는 것들이 어긋난다 — 샌드백만 안 구워져 있었다
- * ([REPAIR.md](../../docs/REPAIR.md) §12)
- */
-const VEILSTONE_NODE = {
-  stack: [0, 8 / 16, -6 / 16],
-  bag: [0, 71.6 / 16, 0],
-} as const
-
 const VEILSTONE_MODEL = { toppled: 25, stack: 26, bag: 27 } as const
 
 /** 한 프레임 (`VeilstoneGym_AnimationState_MovePunchingBag`) */

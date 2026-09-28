@@ -197,6 +197,9 @@ const EXTRA_BANKS = [
   'TEXT_BANK_SPECIAL_MET_LOCATION_NAMES',
   // 메모의 날짜가 달을 **이름으로** 찍는다 (`StringTemplate_SetMonthName`)
   'TEXT_BANK_MONTH_NAMES',
+  // 조사가 붙은 장식 이름 — 스크립트가 `BufferAccessoryNameWithArticle`로 부른다. 브라우저 쪽은 뱅크를 다 굽는다
+  // (`import/platinum/text.ts`) — 여기만 빠지면 개발 서버에서만 맨 이름이 된다. 한국·일본 롬에는 짝이 없다
+  'TEXT_BANK_CONTEST_ACCESSORY_NAMES_WITH_ARTICLES',
   // 타운맵이 커서 아래 칸의 이름을 여기서 읽는다 (`tmap_block.dat`의 `areaDescString`)
   'TEXT_BANK_TOWN_MAP',
   // 모험노트 103줄. 요일 일곱 · 자리 일과 서른아홉 · 잡음/쓰러뜨림 여덟 ·

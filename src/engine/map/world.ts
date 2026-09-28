@@ -317,10 +317,23 @@ export function warpIndexAt(mapId: number, x: number, z: number): number {
   return (rawEventsOf(mapId)?.warps ?? []).findIndex((w) => w.x === x && w.z === z)
 }
 
+/**
+ * 이번 맵 방문 동안만 사는 간판 자리 수정 (`MapHeaderData_SetBgEventPos`).
+ *
+ * 워프와 같은 쓰임이다 — 골짜기발전소는 열쇠로 문을 연 뒤 「발전소 열쇠를 쓸까?」 간판을 맵 바깥(243,650)으로 밀고,
+ * 운하시티는 여관 문이 닫힌 동안 「꽉 닫혀 있다」 간판을 문 칸으로 끌어온다. 칸은 스크립트가 준 **롬 칸**을 옮겨 받는다
+ */
+const signMoved = new Map<number, { x: number, z: number }>()
+
+export function setBgEventPos(index: number, x: number, z: number): void {
+  signMoved.set(index, { x, z })
+}
+
 /** 맵을 옮길 때 버린다. 초기화 스크립트가 돌기 **전**이어야 한다 */
 export function clearWarpOverrides(): void {
   warpMoved.clear()
   warpRetargeted.clear()
+  signMoved.clear()
 }
 
 export function warpsOf(mapId: number): Warp[] {
@@ -383,7 +396,13 @@ export function npcByLocalID(mapId: number, localID: number): Npc | null {
 }
 
 export function signsOf(mapId: number): Sign[] {
-  return eventsOf(mapId)?.signs ?? []
+  const list = eventsOf(mapId)?.signs ?? []
+  // 수정은 **지금 서 있는 맵**에만 걸린다 (워프와 같다)
+  if (signMoved.size === 0 || mapId !== world.mapId) return list
+  return list.map((s, i) => {
+    const at = signMoved.get(i)
+    return at === undefined ? s : { ...s, x: at.x, z: at.z }
+  })
 }
 
 export function triggersOf(mapId: number): Trigger[] {

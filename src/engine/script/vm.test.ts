@@ -366,10 +366,13 @@ maybe('스크립트 VM', () => {
     //
     // ⚠️ **복권 당첨 번호 둘이 난수라 수를 못 박을 수 없다** (PARITY §7.6) —
     // `RandomizeJubilifeLottery`가 새 게임에서 한 번 돈다. 0이 나올 수도 있어서
-    // **여섯 이하**로만 잰다
+    // **일곱 이하**로만 잰다 — 오늘의 레벨(`InitDailyRandomLevel`, 2~99)도 새 게임에서 한 번 굴린다
     const nonZero = [...vars.saved].filter((v) => v !== 0)
-    expect(nonZero.length).toBeGreaterThanOrEqual(4)
-    expect(nonZero.length).toBeLessThanOrEqual(6)
+    expect(nonZero.length).toBeGreaterThanOrEqual(5)
+    expect(nonZero.length).toBeLessThanOrEqual(7)
+    // `VAR_DAILY_RANDOM_LEVEL` — `rand % 98 + 2`라 0이 없다
+    expect(vars.get(16449)).toBeGreaterThanOrEqual(2)
+    expect(vars.get(16449)).toBeLessThanOrEqual(99)
     expect(nonZero).toContain(33_280)
   })
 
@@ -487,9 +490,9 @@ const LOOPING_ENTRIES_YES = 30
  * 설명하고 문서를 같이 고친다
  */
 const REACHED_SITES = 55_778
-const RUNNING_SITES = 55_005
+const RUNNING_SITES = 55_041
 /** 만든 명령 수. 표는 840종이고 나머지는 폭만 알고 건너뛴다 */
-const IMPLEMENTED_COMMANDS = 534
+const IMPLEMENTED_COMMANDS = 551
 
 /**
  * 구현은 했지만 실제 스크립트에는 안 나오는 명령.
@@ -661,7 +664,11 @@ const IDLE_COMMANDS = [
   'FindPartySlotWithNature',
   // 상호교류광장 둘은 **따라다니는 마리가 있어야** 닿는다 (PARITY §7.8) — 훑기는
   // 파티가 비어 있어서 광장에 들어가는 갈래 자체가 안 열린다
+  // 화강돌 인사 수 — 무덤 스크립트가 쐐기돌을 끼운 뒤에만 읽는다 (PARITY §6.14)
+  'GetSpiritombCounter',
   'ClearAmitySquareStepCount', 'CalcAmitySquareFoundAccessory',
+  // 신문사 의뢰 — 기자에게 「예」로 답한 뒤의 갈래다
+  'GetNewsPressDeadline',
   'EnableSwarms',
   // ⚠️ **기술 되살리기 다섯은 파티에서 한 마리를 고른 뒤에 온다.** 고르는
   // 명령(`SelectMoveTutorPokemon` 갈래)이 아직 없어서 훑기가 그 앞에서 멈춘다 —
@@ -695,11 +702,18 @@ const IDLE_COMMANDS = [
   'ChangeDeoxysForm',
   // 포켓치를 잠깐 치우는 쪽은 실제 스크립트에 안 나온다 — 되살리는
   // `ShowPoketch`만 쓰인다
+  // 파티에 세꿀버리가 있어야 묻는 줄이다
+  'CheckPartyCombeeGenderCount',
   'HidePoketch',
   // ⚠️ **흔드는 자리는 눈덮인신전 지하 5층 하나뿐이다.** 레지기가스가 깨어나는
   // 그 장면인데, 그 앞이 레지 셋을 파티에서 세는 갈래라 훑기가 못 지나간다
   'ShakeObject',
-  'HasCoinsFromValue', 'CheckCanAddCoins',
+  // 마사지는 하루 한 번 갈래 안쪽 · 화강돌을 지우는 것은 무덤이 열린 뒤다
+  'TryGetRandomMassageGirlAccessory', 'ClearSpiritombCounter',
+  'HasCoinsFromValue',
+  // 코인케이스가 있어야 가는 갈래 — 훑기는 가방이 비었다
+  'CheckBonusRoundStreak',
+  'CheckCanAddCoins',
   // 장식을 도로 빼는 자리는 원작 스크립트에 아예 없다 — 명령만 있다
   'ScrCmd_RemoveAccessory',
   // TV가 켜진 방의 첫 음량이다. 같은 파일에서 **앞선 진입점**이 그 변수를
@@ -740,6 +754,8 @@ const IDLE_COMMANDS = [
   // ⚠️ **로토무 가전 방 셋은 로토무가 있어야 열린다.** `scripts_rotoms_room.s`
   // 하나에 다 모여 있고, 그 앞이 `GetPartyRotomCountAndFirst`로 파티를 세는
   // 갈래다 — 세이브 없는 훑기는 0마리로 답해서 「아무 일도 안 일어났다」로 빠진다
+  // 기타리스트가 파티에서 고른 **뒤**에 센다
+  'CalcHiddenPowerType',
   'GetRotomFormsInSave', 'SetRotomForm', 'GetPartyMonForm2',
   'GetOverworldWeather',
   // ⚠️ **기라티나를 이긴 뒤에만 도는 줄이다** (`…_RemoveGiratina`). 그 방의

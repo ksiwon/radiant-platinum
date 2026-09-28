@@ -15,7 +15,7 @@ import {
 import {
   addNpc, npcActors, removeNpc, setNpcPlacement, switchMovementType,
 } from '../actor/npcs'
-import { localToRom, mapById, romToLocal, specialLocation, world as mapWorld } from '../map/world'
+import { localToRom, mapById, romToLocal, setBgEventPos, specialLocation, world as mapWorld } from '../map/world'
 import { fadeDone, startFade } from './fade'
 import {
   BATTLE_RESULT_LOSE, BATTLE_RESULT_WIN, playerDidNotCapture, playerLostBattle, playerWonBattle,
@@ -29,6 +29,7 @@ import { VAR_ETERNA_GYM_FLOWER_CLOCK_STATE } from '../world/eternaGym'
 import { floorsAbove, floorTextIndex } from '../world/elevators'
 import { SFX } from '../audio/sfx'
 import { flickerDone, shakeDone, startFlicker, startShake } from '../actor/objectFx'
+import { quakeDone, quakeTick, startQuake } from '../world/fieldQuake'
 import { TREE_STATUS } from '../world/honeyTree'
 import { clearOverworldWeather, overworldWeather } from '../world/overworldWeather'
 import {
@@ -3415,6 +3416,50 @@ on('GetPartyMonFootprintType', (ctx) => {
   return false
 })
 
+/** `LOCAL_DEX_GOAL` — 신오도감 210칸, 뺄 것 0 (`pokedex.h`) */
+const LOCAL_DEX_GOAL = 210
+/** `FIRST_ARRIVAL_ETERNA_CITY`의 깃발 — 다 봤어도 그 전이면 「너무 이르다」 줄 (`SystemFlag_HandleFirstArrivalToZone`) */
+const FLAG_FIRST_ARRIVAL_ETERNA_CITY = 2490
+
+/**
+ * 도감 평가의 글 번호 (`Pokedex_GetRatingMessageID_Local` · `_National` · `unk_0205DFC4.c:72-211`).
+ *
+ * 번호는 `pokedex_ratings` 뱅크의 차례다 — 신오는 본 수로 6~17 · 다 차면 4(영원시티 전이면 5), 전국은 잡은 수로
+ * 22~40 · 다 차면 41/42. 410~429와 끝은 주인공 성별로 갈린다
+ */
+export function pokedexRatingMessage(national: boolean, count: number, eternaReached: boolean, female: boolean): number {
+  if (!national) {
+    const upTo = [15, 30, 45, 60, 80, 100, 120, 140, 160, 180, 200, LOCAL_DEX_GOAL - 1]
+    const i = upTo.findIndex((n) => count <= n)
+    if (i >= 0) return 6 + i
+    return eternaReached ? 4 : 5
+  }
+  const upTo = [39, 59, 89, 119, 149, 189, 229, 269, 309, 349, 379, 409]
+  const i = upTo.findIndex((n) => count <= n)
+  if (i >= 0) return 22 + i
+  if (count <= 429) return female ? 35 : 34
+  const rest = [449, 459, 469, 475, 481]
+  const j = rest.findIndex((n) => count <= n)
+  if (j >= 0) return 36 + j
+  return female ? 42 : 41
+}
+
+/**
+ * 도감 평가 (`ScrCmd_LoadPokedexRating` · `scrcmd.c:3978`) — 마박사·오박사·PC의 박사 칸이 이 번호를 `MessageVar`로 찍는다.
+ *
+ * ⚠️ 없던 동안은 답 칸이 비어 뱅크 0·1번(「보여 주러 왔구나」)이 평가 자리에 찍혔다
+ */
+on('LoadPokedexRating', (ctx) => {
+  const national = ctx.readByte() !== 0
+  const dest = ctx.readHalfWord()
+  const info = ctx.host.world.services.trainerInfo
+  const count = info?.dexCount(national, national) ?? 0
+  ctx.host.vars.set(dest, pokedexRatingMessage(
+    national, count, ctx.host.vars.checkFlag(FLAG_FIRST_ARRIVAL_ETERNA_CITY), info?.gender() === 1,
+  ))
+  return false
+})
+
 /** 신오도감에서 본 수 (`ScrCmd_GetLocalDexSeenCount`) */
 on('GetLocalDexSeenCount', (ctx) => {
   const dest = ctx.readHalfWord()
@@ -3537,6 +3582,153 @@ on('CheckItemIsPlate', (ctx) => {
   const item = ctx.readVar()
   const dest = ctx.readHalfWord()
   ctx.host.vars.set(dest, item >= ITEM_FIRST_PLATE && item <= ITEM_LAST_PLATE ? 1 : 0)
+  return false
+})
+
+/** `ITEM_TM01` · `ITEM_HM08` — 기술머신 92장 뒤에 비전머신 8장이 이어진다 (`Item_IsTMHM`) */
+const ITEM_TM01 = 328
+const ITEM_HM08 = 427
+
+/**
+ * 기술머신·비전머신인가 (`ScrCmd_IsItemTMHM` · `scrcmd_item.c:70`).
+ *
+ * ⚠️ **모든 볼과 숨은 도구가 이 줄을 지난다** (`scripts_visible_items.s` · `scripts_hidden_items.s`). 없던 동안은
+ * 바로 앞 `AddItem`이 남긴 1이 답 칸에 있어서, 무엇을 주워도 「기술머신을 찾았다 + 빈 기술 이름」 줄로 갔다 (COMPLETION 1단계)
+ */
+on('IsItemTMHM', (ctx) => {
+  const item = ctx.readVar()
+  ctx.host.vars.set(ctx.readHalfWord(), item >= ITEM_TM01 && item <= ITEM_HM08 ? 1 : 0)
+  return false
+})
+
+/**
+ * 파티에 포켓러스가 있는가 (`ScrCmd_CheckPartyPokerus` · `scrcmd_party.c:463`).
+ *
+ * ⚠️ 없던 동안은 간호순 스크립트의 답 칸(0x8006)에 앞 줄 `CountPartyNonEggs`의 값이 남았다 — **한 마리 파티면 1**이라
+ * 「포켓러스일지도」를 말하고 깃발을 세워, 진짜로 걸렸을 때의 안내가 영영 안 나왔다
+ */
+on('CheckPartyPokerus', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const party = ctx.host.world.services.party
+  let any = false
+  for (let i = 0; party && i < party.count(); i++) if (party.pokerus(i) !== 0) { any = true; break }
+  ctx.host.vars.set(dest, any ? 1 : 0)
+  return false
+})
+
+/** `VAR_CONSECUTIVE_BONUS_ROUND_WINS` — 슬롯머신이 올린다 */
+const VAR_CONSECUTIVE_BONUS_ROUND_WINS = 16448
+
+/**
+ * 보너스 판을 열 번 넘게 이었는가 (`ScrCmd_CheckBonusRoundStreak` · `scrcmd.c:5963`).
+ *
+ * ⚠️ 없던 동안은 앞 줄(코인케이스 확인)의 1이 남아 게임코너 점원이 기술머신64를 **그냥 줬다**
+ */
+on('CheckBonusRoundStreak', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_CONSECUTIVE_BONUS_ROUND_WINS) >= 10 ? 1 : 0)
+  return false
+})
+
+/** `SPECIES_COMBEE` */
+const SPECIES_COMBEE = 415
+/** `MON_GENDER_MALE` · `MON_GENDER_FEMALE` */
+const GENDER_MALE = 0
+const GENDER_FEMALE = 1
+
+/**
+ * 세꿀버리 암수가 몇 가지인가 (`ScrCmd_CheckPartyCombeeGenderCount` · `scrcmd.c:5772`) — 0 · 1 · 2.
+ *
+ * 알은 안 센다. 답을 준 뒤 **한 프레임 쉰다**(`return TRUE`). 없던 동안은 늘 0이라 강철보호대를 못 얻었다
+ */
+on('CheckPartyCombeeGenderCount', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const party = ctx.host.world.services.party
+  let male = false
+  let female = false
+  for (let i = 0; party && i < party.count(); i++) {
+    if (party.species(i) !== SPECIES_COMBEE) continue
+    const g = party.gender(i)
+    if (g === GENDER_MALE) male = true
+    if (g === GENDER_FEMALE) female = true
+  }
+  ctx.host.vars.set(dest, male && female ? 2 : male || female ? 1 : 0)
+  return true
+})
+
+/** `VAR_DAILY_RANDOM_LEVEL` · `VAR_NEWS_PRESS_DEADLINE` · `VAR_SPIRITOMB_COUNTER` (`system_vars.c`) */
+export const VAR_DAILY_RANDOM_LEVEL = 16449
+export const VAR_NEWS_PRESS_DEADLINE = 16443
+const VAR_SPIRITOMB_COUNTER = 16446
+
+/** 오늘의 레벨 — 2~99 (`SystemVars_InitDailyRandomLevel` · `system_vars.c:267`). 날이 바뀔 때도 새로 굴린다 */
+export function rollDailyRandomLevel(rand: (bound: number) => number = randMod): number {
+  return rand(98) + 2
+}
+
+/**
+ * 오늘의 레벨 (`ScrCmd_Get`/`InitDailyRandomLevel`). 221번도로 집이 이 레벨의 마리를 보여 달라고 한다 —
+ * 없던 동안은 0이라 검은띠·달인의띠·기합의띠를 못 얻었다. 새 게임이 한 번 굴리고(`scripts_init_new_game.s`) 날마다 굴린다
+ */
+on('GetDailyRandomLevel', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_DAILY_RANDOM_LEVEL))
+  return false
+})
+on('InitDailyRandomLevel', (ctx) => {
+  ctx.host.vars.set(VAR_DAILY_RANDOM_LEVEL, rollDailyRandomLevel())
+  return false
+})
+
+/** 신문사 의뢰의 남은 날 (`ScrCmd_Set`/`GetNewsPressDeadline`). 날이 바뀔 때마다 줄어든다 (`FieldSystem_HandleDailyEvents`) */
+on('SetNewsPressDeadline', (ctx) => {
+  ctx.host.vars.set(VAR_NEWS_PRESS_DEADLINE, ctx.readVar())
+  return false
+})
+on('GetNewsPressDeadline', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_NEWS_PRESS_DEADLINE))
+  return false
+})
+
+/**
+ * 화강돌 인사 수 (`ScrCmd_Get`/`ClearSpiritombCounter` · `scrcmd.c:5357,5932` · PARITY §6.14).
+ *
+ * ⚠️ **올리는 쪽은 지하통로다**(`underground/player.c:237`) — 범위 밖이라 늘 0이고, 209번도로 무덤은 원작 그대로
+ * 「오래전에 지어졌다」로 끝난다. 읽고 지우는 것만 원작대로 둔다
+ */
+on('GetSpiritombCounter', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), ctx.host.vars.get(VAR_SPIRITOMB_COUNTER))
+  return false
+})
+on('ClearSpiritombCounter', (ctx) => {
+  ctx.host.vars.set(VAR_SPIRITOMB_COUNTER, 0)
+  return false
+})
+
+/**
+ * 잠재파워를 못 배우는 종 (`ScrCmd_CalcHiddenPowerType` · `ov5_021F6454.c:645-662`) — 캐터피·단데기·뿔충이·딱충이·
+ * 잉어킹·메타몽·마자용·루브도·개무소·실쿤·카스쿤·마자·메탕·도롱충이·세꿀버리·귀뚤뚜기
+ */
+const NO_HIDDEN_POWER = new Set([10, 11, 13, 14, 129, 132, 202, 235, 265, 266, 268, 360, 374, 412, 415, 401])
+
+/**
+ * 그 마리의 잠재파워 타입 (`ScrCmd_CalcHiddenPowerType`). 못 배우는 종이면 0xFFFF(-1).
+ *
+ * 알이면 종을 안 보고 타입을 센다 — 원작도 알일 때 목록을 건너뛴다(스크립트가 그 앞에서 알을 거른다).
+ * 없던 동안은 답이 0이라 장막시티 경품 교환소의 기타리스트가 모든 마리를 노말로 말했다
+ */
+on('CalcHiddenPowerType', (ctx) => {
+  const slot = ctx.readVar()
+  const dest = ctx.readHalfWord()
+  const party = ctx.host.world.services.party
+  if (!party) { ctx.host.vars.set(dest, 0); return false }
+  const cant = !party.isEgg(slot) && NO_HIDDEN_POWER.has(party.species(slot))
+  ctx.host.vars.set(dest, cant ? 0xffff : party.hiddenPowerType(slot))
+  return false
+})
+
+/** 숲의 양옥 유령이 설까 (`ScrCmd_CheckShouldShowGhost` · `scrcmd.c:6322`) — `rand % 101 <= 확률` */
+on('CheckShouldShowGhost', (ctx) => {
+  const pct = Math.min(100, ctx.readByte())
+  ctx.host.vars.set(ctx.readHalfWord(), randMod(101) <= pct ? 1 : 0)
   return false
 })
 
@@ -3733,6 +3925,14 @@ on('SetInitialVolumeForSequence', (ctx) => {
 on('SetObjectFlagIsPersistent', (ctx) => {
   ctx.readVar() // 맵 안 번호
   ctx.readByte() // 켜는가 끄는가
+  return false
+})
+
+/** 간판 자리를 옮긴다 (`ScrCmd_SetBgEventPos` · `scrcmd.c:4620`). 워프와 같이 롬 칸을 받아 층 원점으로 옮긴다 */
+on('SetBgEventPos', (ctx) => {
+  const index = ctx.readVar()
+  const at = romToLocal(mapWorld.mapId, ctx.readVar(), ctx.readVar())
+  setBgEventPos(index, at.x, at.z)
   return false
 })
 
@@ -4555,6 +4755,20 @@ on('FlickerObject', (ctx) => {
  * 선단신전 B5F의 레지기가스 한 자리다 — `8, 90, 3, 0`이라 한 프레임에 90도씩
  * 돌아 네 프레임이 한 바퀴고, 여덟 바퀴를 x로만 ±3/16타일 떤다
  */
+/**
+ * 화면 흔들림 (`ScrCmd_29F` · `scrcmd.c:6374`) — 0이면 작게 16번, 아니면 크게 24번 줄어들며 (`engine/world/fieldQuake`).
+ *
+ * 스크립트는 흔들림이 끝날 때까지 선다. 없던 동안은 레지 유적이 깨어나고 도서관이 터지는 자리가 조용히 지나갔다
+ */
+on('ScrCmd_29F', (ctx) => {
+  const kind = ctx.readVar()
+  startQuake(kind === 0 ? 0 : 1, soundOf(ctx) ?? null)
+  // ⚠️ **스크립트 프레임이 흔들림을 민다** — 원작도 흔들림이 스크립트를 대신해 도는 필드 태스크다(`FieldTask_InitCall`).
+  // 다시 묻는 것은 프레임마다 한 번이다(`ScriptContext.step`)
+  ctx.pause(() => { quakeTick(1 / 60); return quakeDone() })
+  return true
+})
+
 on('ShakeObject', (ctx) => {
   const localID = ctx.readVar()
   const times = ctx.readVar()
@@ -5211,6 +5425,39 @@ on('ScrCmd_RemoveAccessory', (ctx) => {
   const accessory = ctx.readVar()
   const amount = ctx.readVar()
   ctx.host.world.services.fashionCase?.remove(accessory, amount)
+  return false
+})
+
+/**
+ * 조사가 붙은 장식 이름 (`ScrCmd_BufferAccessoryNameWithArticle` · `scrcmd_strings.c:543`).
+ *
+ * 한국·일본 롬에는 그 표가 없어 맨 이름이 들어간다. 없던 동안은 축복TV 2층과 백화점 1층의 선물 줄에서 이름이 비었다
+ */
+on('BufferAccessoryNameWithArticle', (ctx) => {
+  const slot = ctx.readByte()
+  const accessory = ctx.readVar()
+  ctx.host.world.slots.set(slot, ctx.host.world.services.labels?.accessoryWithArticle(accessory) ?? '')
+  return false
+})
+
+/** `ACCESSORY_PRETTY_DEWDROP` ~ `ACCESSORY_GLITTER_POWDER` (`generated/accessories.txt`의 줄 − 1) */
+const ACCESSORY_PRETTY_DEWDROP = 34
+const NUM_MASSAGE_GIRL_ACCESSORIES = 16
+
+/**
+ * 마사지 아가씨가 줄 장식 (`ScrCmd_TryGetRandomMassageGirlAccessory` · `scrcmd.c:5882`).
+ *
+ * 열여섯 가지 가운데 **케이스에 더 들어가는 것** 중 하나를 고르고, 하나도 없으면 0xFFFF(-1)다. 없던 동안은 답이 0이라
+ * 날마다 0번 장식을 줬다
+ */
+on('TryGetRandomMassageGirlAccessory', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const fashion = ctx.host.world.services.fashionCase
+  const open: number[] = []
+  for (let i = 0; i < NUM_MASSAGE_GIRL_ACCESSORIES; i++) {
+    if (fashion?.canFit(ACCESSORY_PRETTY_DEWDROP + i, 1) === true) open.push(ACCESSORY_PRETTY_DEWDROP + i)
+  }
+  ctx.host.vars.set(dest, open.length === 0 ? 0xffff : open[randMod(open.length)]!)
   return false
 })
 

@@ -87,6 +87,7 @@ import { sizeFactor } from '../engine/world/sizeContest'
 import { partyChoice } from '../ui/menu/partyChoice'
 import { itemChoice } from '../ui/menu/itemChoice'
 import { pushesLevel } from '../engine/battle/encounterLead'
+import { hiddenPowerType } from '../engine/battle/movePreview'
 import {
   honeyTreeLevel, honeyTreeOf, honeyTreeSpecies, honeyTreeStatus, isMunchlaxTree,
   slatherTree, TREE_STATUS, unslatherTree, type HoneyTreeState,
@@ -287,6 +288,7 @@ let locationNames: readonly string[] = []
  * 남고 `orPlain`이 맨 이름표로 떨어뜨린다 — 없는 것을 지어내지 않는다
  */
 let itemArticleNames: readonly string[] = []
+let accessoryArticleNames: readonly string[] = []
 let itemPluralNames: readonly string[] = []
 let speciesArticleNames: readonly string[] = []
 let trainerClassArticleNames: readonly string[] = []
@@ -671,6 +673,8 @@ export function installFieldServices(locale: DataLocale = 'ko'): () => void {
   // 아래 넷은 미국 롬에만 있다. 못 받는 것이 정상이라 조용히 넘긴다
   void loadDialogueBank(locale, UI_BANK.itemNamesWithArticles)
     .then((bank) => { itemArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
+  void loadDialogueBank(locale, UI_BANK.accessoryNamesWithArticles)
+    .then((bank) => { accessoryArticleNames = bank }).catch(() => { /* 맨 이름표로 */ })
   void loadDialogueBank(locale, UI_BANK.itemNamesPlural)
     .then((bank) => { itemPluralNames = bank }).catch(() => { /* 맨 이름표로 */ })
   void loadDialogueBank(locale, UI_BANK.speciesNamesWithArticles)
@@ -840,6 +844,19 @@ const services: FieldServices = {
       const mon = useSaveStore.getState().party[slot]
       return mon === undefined ? 0 : natureOf(mon.pid)
     },
+    // 성별은 성격값과 종의 성비에서 나온다 (`Pokemon_GetGender`). 종 표가 아직 없으면 성별 없음으로 답한다
+    gender: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      if (mon === undefined || speciesTable === null) return 2
+      const g = genderOf(mon.pid, speciesTable.get(mon.species).genderRatio)
+      return g === 'male' ? 0 : g === 'female' ? 1 : 2
+    },
+    pokerus: (slot) => useSaveStore.getState().party[slot]?.pokerus ?? 0,
+    hiddenPowerType: (slot) => {
+      const mon = useSaveStore.getState().party[slot]
+      return mon === undefined ? 0 : hiddenPowerType(mon.ivs)
+    },
+    isEgg: (slot) => useSaveStore.getState().party[slot]?.isEgg === true,
     friendship: (slot) => useSaveStore.getState().party[slot]?.friendship ?? 0,
     // 지금 맵과 소지품의 홀드 효과는 세이브가 모른다. 여기가 둘 다 아는
     // 자리라 얹어서 넘긴다 (`pokemon/friendship`)
@@ -1133,6 +1150,7 @@ const services: FieldServices = {
     tmMove: (item) => moveNames[tmhmMove(item)] ?? '',
     item: (item) => itemNames[item] ?? '',
     itemWithArticle: (item) => orPlain(itemArticleNames, itemNames, item),
+    accessoryWithArticle: (accessory) => orPlain(accessoryArticleNames, accessoryNames, accessory),
     itemPlural: (item) => orPlain(itemPluralNames, itemNames, item),
     speciesWithArticle: (s) => orPlain(speciesArticleNames, speciesNames, s),
     trainerClassWithArticle: (c) => orPlain(trainerClassArticleNames, trainerClassNames, c),

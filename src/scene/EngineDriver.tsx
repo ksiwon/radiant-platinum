@@ -12,6 +12,7 @@ import { isSliding } from '../engine/actor/ice'
 import { npcSystem } from '../engine/actor/ambient'
 import { hmCutInTick } from './hmCutInScene'
 import { objectFxTick } from '../engine/actor/objectFx'
+import { quakeOffset } from '../engine/world/fieldQuake'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { restorePose } from '../engine/actor/clipGait'
 import { cameraSystem } from '../engine/actor/camera'
@@ -48,6 +49,8 @@ const playerRotation = new Quaternion()
 const cascadeRoll = new Quaternion()
 const FORWARD_AXIS = new Vector3(0, 0, 1)
 const WORLD_UP = new Vector3(0, 1, 0)
+/** 흔들린 바라볼 점 — 프레임마다 새로 안 만든다 */
+const quakeTarget = new Vector3()
 
 export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
   const { gl, scene, camera } = useThree()
@@ -313,7 +316,13 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     state.camera.position.copy(shot.position)
     state.camera.up.copy(cinematicStage.active || starterStage.active || battleStage.active
       ? WORLD_UP : worldState.camera.up)
-    state.camera.lookAt(shot.target)
+    // 화면 흔들림은 필드 카메라만 민다 — 원작이 바라보는 점과 카메라를 같이 x로 옮긴다 (`ov6_0223FFE4` · `Camera_TrackTarget`)
+    const quake = shot === worldState.camera ? quakeOffset() : 0
+    if (quake !== 0) {
+      state.camera.position.x += quake
+      quakeTarget.copy(shot.target).setX(shot.target.x + quake)
+      state.camera.lookAt(quakeTarget)
+    } else state.camera.lookAt(shot.target)
     const lens = state.camera as PerspectiveCamera
     // 필드 화각은 **카메라 시스템**이 낸다 — 깨어진 세계는 8.09도로 갈아 낀다
     const fov = cinematicStage.active ? cinematicStage.fov

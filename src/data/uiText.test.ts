@@ -52,6 +52,7 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
   natureNames: 'nature_names',
   accessoryNames: 'contest_accessory_names',
   itemNamesWithArticles: 'item_names_with_articles',
+  accessoryNamesWithArticles: 'contest_accessory_names_with_articles',
   itemNamesPlural: 'item_names_plural',
   speciesNamesWithArticles: 'species_name_with_articles',
   trainerClassNamesWithArticles: 'trainer_class_names_with_articles',
@@ -77,7 +78,7 @@ const NAMED: Record<keyof typeof UI_BANK, TextBankName> = {
  * 미국 롬에만 있는 표라 안 실리는 것이 맞다
  */
 const EN_ONLY: readonly (keyof typeof UI_BANK)[] = [
-  'itemNamesWithArticles', 'itemNamesPlural',
+  'itemNamesWithArticles', 'itemNamesPlural', 'accessoryNamesWithArticles',
   'speciesNamesWithArticles', 'trainerClassNamesWithArticles',
 ]
 

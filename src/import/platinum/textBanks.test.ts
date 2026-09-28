@@ -128,7 +128,7 @@ describe('뱅크 자리 계산', () => {
    */
   const EN_ONLY = new Set([
     'item_names_with_articles', 'item_names_plural',
-    'species_name_with_articles', 'trainer_class_names_with_articles',
+    'species_name_with_articles', 'trainer_class_names_with_articles', 'contest_accessory_names_with_articles',
   ])
 
   it('코드가 쓰는 이름이 세 로케일에 있다 — 달 이름과 조사 판만 빼고', () => {

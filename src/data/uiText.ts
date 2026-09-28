@@ -99,6 +99,7 @@ export const UI_BANK = {
    * 떨어져야 한다 (`fieldServices`의 `orPlain`)
    */
   itemNamesWithArticles: 393,
+  accessoryNamesWithArticles: 387,
   itemNamesPlural: 394,
   speciesNamesWithArticles: 413,
   trainerClassNamesWithArticles: 620,
