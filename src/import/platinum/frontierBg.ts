@@ -11,6 +11,10 @@
 // 굽는 것: 복도 256×192(0번 색은 뚫는다 — 바닥이 비친다) · 바닥 256×512(끝까지 — 돌아가는 것을 이어 붙이려고) ·
 // 배틀룸 256×192 다섯 장(팔레트 0~4). 바탕은 검정이다(`frontier_graphics.c` 686).
 //
+// 발밑 그림자도 여기서 굽는다 — 장면의 사람마다 `wifi2dchar.narc` 0 · 1 · 2(셀 · 애니 · 타일)로 그림자 스프라이트를 하나 더 세운다
+// (`ov63_0222AE60.c` · `ov63_0222B7E8`). 팔레트는 **처음 실린 사람의 것**이라(`0x200 + v3`) 주인공 남 · 여(13 · 15번)로 두 장이다.
+// 16×8이고 셀 원점이 (8, 5)다 — 사람 스프라이트 자리 + (8, 14)에 선다(`ov63_0222B238`)
+//
 // ⚠️ **아핀 확장 판은 한 줄로 이어 읽는다.** 글 BG(32×32칸 블록 · `ntrgfx.screenCell`)와 다르다 — 하드웨어가 폭 64칸이면
 // 64칸씩 한 줄로 읽는다. 256폭 판은 두 읽기가 같다.
 //
@@ -18,9 +22,11 @@
 import { narcEntry } from './nds'
 import type { Rgb } from './nitrotex'
 import { chars, maybeLz77, palettes, screen, TILE } from './ntrgfx'
+import { cellBank, cellBox, drawCell } from './ntrcell'
 import { encodePng } from './png'
 import { check, readRomFile, type ConvertContext, type Produced } from './convertTypes'
 
+const WIFI2DCHAR = '/graphic/wifi2dchar.narc'
 const NARC = '/frontier/graphic/frontier_bg.narc'
 /** `frontier_backgrounds.order`의 차례 */
 const MEMBER = { tiles: 0, room: 1, corridor: 2, floor: 3, palette: 129 } as const
@@ -79,6 +85,20 @@ export async function convertFrontierBg(ctx: ConvertContext): Promise<Produced> 
   for (let p = 0; p < FACTORY_PALETTES; p++) {
     out.set(`data/frontier/factoryRoom${String(p)}.png`, await encodePng(draw(192, tiles, room, pals, false, p), W, 192))
     check(ctx)
+  }
+  // 발밑 그림자 — 셀 0 · 타일 2 · 주인공 팔레트 (남 13 · 여 15)
+  const chars2d = await readRomFile(ctx, WIFI2DCHAR)
+  const take2d = (at: number): Uint8Array => {
+    const b = narcEntry(chars2d, at)
+    if (!b) throw new Error(`wifi2dchar ${String(at)}번이 없다`)
+    return maybeLz77(b)
+  }
+  const shadow = cellBank(take2d(0)).cells[0]!
+  const [, , sw, sh] = cellBox(shadow)
+  for (const [name, pal] of [['shadowMale', 13], ['shadowFemale', 15]] as const) {
+    const rgba = new Uint8Array(sw * sh * 4)
+    drawCell(rgba, sw, 0, 0, shadow, chars(take2d(2)).data, palettes(take2d(pal)))
+    out.set(`data/frontier/${name}.png`, await encodePng(rgba, sw, sh))
   }
   return out
 }

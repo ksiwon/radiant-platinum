@@ -374,6 +374,11 @@ let wallpaperWordsAsked = false
 let previousMapId = 0
 
 /** 워프할 때마다 적는다. `MapStreamer`가 맵을 갈아 끼우기 **직전에** 부른다 */
+/** 트레이너 이름 (`TEXT_BANK_NPC_TRAINER_NAMES`) — 못 받았으면 빈 글 */
+export function trainerNameById(id: number): string {
+  return trainerNames[id] ?? ''
+}
+
 export function rememberPreviousMap(mapId: number): void {
   if (mapId >= 0) previousMapId = mapId
 }

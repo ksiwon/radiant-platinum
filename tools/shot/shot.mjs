@@ -480,6 +480,22 @@ async function main() {
       await page.evaluate(() => { globalThis.pt.cutIn(0, -1) })
       await page.setViewportSize(DRIVE)
     }
+    // 배틀팩토리에서 배틀로 넘어가는 연출 — `--factoryWipes=0:30,1:60`(1이면 수철:틱). `shots/factory-1-60.png`처럼 찍는다
+    const factoryWipes = flag('factoryWipes')
+    if (factoryWipes) {
+      await page.setViewportSize(VIEWPORT)
+      await page.waitForTimeout(3000)
+      for (const pair of factoryWipes.split(',')) {
+        const [brain, at] = pair.split(':').map(Number)
+        await page.evaluate(([b, t]) => { globalThis.pt.factoryWipe(b === 1, t) }, [brain ?? 0, at ?? 30])
+        await page.waitForTimeout(1500)
+        const file = resolve(OUT, `factory-${String(brain)}-${String(at)}.png`)
+        writeFileSync(file, await page.screenshot())
+        console.log(`   팩토리 ${String(brain)}:${String(at)}  ${file}`)
+      }
+      await page.evaluate(() => { globalThis.pt.factoryWipe(false, -1) })
+      await page.setViewportSize(DRIVE)
+    }
     const wild = flag('wild')
     if (wild) {
       const [species, level, form] = wild.split(':').map(Number)

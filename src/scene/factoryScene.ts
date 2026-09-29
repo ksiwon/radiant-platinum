@@ -18,6 +18,12 @@ import {
 } from '../engine/frontier/factoryScene'
 import { opponentGfx } from '../engine/frontier/stageMotion'
 import { closeFactoryStage, factoryStageStep, type StageStep } from './factoryStage'
+import { trainerNameById } from './fieldServices'
+import { cutInSong } from './encounterCutIn'
+import { frontierBattleSong } from '../engine/audio/battleSongs'
+
+/** 수철 (`NPCTrainerNames_Text_factory_head_thorton_dummy`) */
+const THORTON_NAME = 903
 
 /** 주인공 그림 (`OBJ_EVENT_GFX_PLAYER_M` · `_F`) — `GetPlayerObjEventGfx` */
 const PLAYER_M_GFX = 0
@@ -75,7 +81,10 @@ function host(): FactorySceneHost {
                 await until(() => !sound.effectPlaying(SCENE_SOUND.door))
               },
             }
-              : { kind: cue }
+              : cue === 'brainBattle' ? { kind: 'brainBattle', name: trainerNameById(THORTON_NAME) }
+                : { kind: cue }
+      // 시설 명령이 넘어가는 연출의 첫 틱에 배틀 곡을 튼다 — 곡 지휘자가 조우 컷인과 같은 자리를 본다
+      if (cue === 'battle' || cue === 'brainBattle') cutInSong.now = frontierBattleSong(cue === 'brainBattle')
       await factoryStageStep(step, playerGfx)
     },
     sound: async (seq) => {
@@ -119,7 +128,12 @@ function host(): FactorySceneHost {
     partyNames: () => store().partyNames(),
     rental: () => store().rental(),
     trade: () => store().trade(),
-    fight: () => store().fight(),
+    fight: () => {
+      const fought = store().fight()
+      // 배틀 가게가 같은 곡을 고른다 — 여기서 놓아야 배틀이 끝난 뒤 로비 곡으로 돌아간다
+      cutInSong.now = null
+      return fought
+    },
     won: () => { store().won() },
     finishRound: () => store().finishRound(),
     giveBattlePoints: (bp) => { giveFactoryBattlePoints(bp) },

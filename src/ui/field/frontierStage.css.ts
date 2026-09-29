@@ -51,6 +51,17 @@ export const person = style({
   imageRendering: 'pixelated',
 })
 
+/** 배틀로 넘어가는 연출의 위층 — 브레인 컷인 · 어둡기 · 번쩍임 (사람 위 · 암전 밑) */
+export const overlay = style({
+  position: 'absolute',
+  inset: 0,
+  width: 256,
+  height: 192,
+  zIndex: 1000,
+  imageRendering: 'pixelated',
+  pointerEvents: 'none',
+})
+
 /** 암전 (`FadeScreenIn` · `Out`) */
 export const fade = style({
   position: 'absolute',

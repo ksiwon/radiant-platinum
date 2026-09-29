@@ -21,6 +21,10 @@ import { useSaveStore } from '../state/saveStore'
 import { useMenuStore } from '../state/menuStore'
 import { frontierStock } from '../engine/bag/frontierMart'
 import { openFactoryScene } from '../scene/factoryScene'
+import { pinFactoryTransition } from '../scene/factoryStage'
+import { opponentGfx } from '../engine/frontier/stageMotion'
+import { trainerNameById } from '../scene/fieldServices'
+import { useFactoryStore } from '../state/factoryStore'
 import { ChallengeType } from '../engine/frontier/factory'
 import { factorySlot } from '../engine/frontier/records'
 import { activateRoamer } from '../scene/roamers'
@@ -422,6 +426,17 @@ export function installDevConsole(): void {
       useSaveStore.setState({ factory: { ...save.factory, records } })
       openFactoryScene(double ? ChallengeType.DOUBLE : ChallengeType.SINGLE, openLevel, false)
       return `연승 ${String(streak)}에서 시작`
+    },
+    /**
+     * 배틀팩토리에서 배틀로 넘어가는 연출을 그 틱에 세워 둔다 — `brain`이면 수철 컷인, 아니면 띠 늘이기.
+     * 무대만 세우고 장면은 안 돈다(글 · 메뉴 없음). `pt.factoryWipe(false, -1)`로 거둔다 · `tick`이 −2 아래면 그 틱의 수철 연기다
+     */
+    factoryWipe: (brain = false, tick = 30) => {
+      if (tick === -1) { useFactoryStore.setState({ phase: 'off' }); return }
+      useFactoryStore.setState({ phase: 'scene' })
+      const gfx = useSaveStore.getState().trainer.gender === 'girl' ? 97 : 0
+      // 보통 상대는 분류 90의 그림 하나로 세운다 — 연출은 사람을 안 본다
+      pinFactoryTransition(brain, tick, gfx, opponentGfx(90), trainerNameById(903))
     },
   }
   ;(globalThis as unknown as { pt: typeof pt }).pt = pt

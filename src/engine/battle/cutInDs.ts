@@ -153,13 +153,17 @@ export class WindowFade {
  */
 export class BrightnessFade {
   private k = 0
-  private acc = 0
-  value = 0
-  constructor(private readonly target: number, private readonly n: number) {}
+  private acc: number
+  value: number
+  /** `from`은 `BRIGHTNESS_IN`의 시작 밝기다(흰색이면 16에서 0으로) */
+  constructor(private readonly target: number, private readonly n: number, private readonly from = 0) {
+    this.acc = from * 128
+    this.value = from
+  }
   exec(): void {
     this.k++
     if (this.k === 1) return
-    if (this.k <= this.n) this.acc += Math.trunc((this.target * 128) / this.n)
+    if (this.k <= this.n) this.acc += Math.trunc(((this.target - this.from) * 128) / this.n)
     else this.acc = this.target * 128
     this.value = Math.trunc(this.acc / 128)
   }

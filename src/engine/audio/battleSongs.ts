@@ -77,6 +77,9 @@ export function battleSongFor(q: BattleSongQuery): number {
   return song
 }
 
+/** 시설 배틀 곡 — 넘어가는 연출의 첫 틱에 튼다 (`FrontierScrCmd_3F` · `FrontierScrCmd_47`) */
+export const frontierBattleSong = (brain: boolean): number => (brain ? SONG.frontierBrain : SONG.trainer)
+
 /** 트레이너를 이겼을 때의 곡 (`battle_controller_player.c` — 결판이 난 순간 튼다) */
 export function trainerVictorySong(trainerClass: number | null): number {
   if (trainerClass === null) return VICTORY.trainer

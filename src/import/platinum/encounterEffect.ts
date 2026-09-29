@@ -10,6 +10,10 @@
 //   playerMale · playerFemale  사천왕전의 주인공 얼굴(147 · 151) — ⚠️ **원작은 얼굴 팔레트가 아니라 트레이너 앞모습 팔레트를 쓴다**
 //                              (`EncounterEffect_BlendTrainerSpritePltt` → `trfgra.narc` 1 + 종류 × 5). 주인공은 둘이 달라서 그것으로 굽는다.
 //                              어두울 때는 성별을 **뒤바꿔** 싣는다(원작 버그) — `…Swap`이 그것이다
+//   factoryHead                팩토리헤드 수철의 얼굴 (113 · 114 · 115) — 프런티어 브레인 컷인 (`overlay104/ov104_0223DC7C.c`)
+//   factoryHeadBannerK         그 띠 (132 NSCR · 133 NCGR · 134 NCLR) — 256×192 온 화면 · 팔레트 여덟을 한 틱에 하나씩 돌린다(`ov104_0223E6BC`)
+//                              그래서 팔레트 K(0~7)마다 한 장이다. 칸마다의 팔레트 번호는 안 본다(`Bg_ChangeTilemapRectPalette(…, 12)`)
+//   frontierVsSolid · Outline  프런티어 VS 표 (144 · 145 셀 0 · 1, 팔레트 51)
 //   eliteParticle1 · 2.spa     사천왕전의 입자 (107 `elite_particle_1` · 108 `elite_particle_2`) — 바이트 그대로, 읽는 것은
 //                              실행 중에 `engine/battle/spl/resource`가 한다 (입자 묶음 `particles.ts`와 같은 방식)
 //
@@ -34,6 +38,10 @@ const ELITES = [[87, 39], [91, 43], [95, 44], [99, 45], [103, 46]].map(([mug, ba
 const LEAGUE = { tiles: 40, cells: 41 }
 /** 주인공 얼굴 — 남 · 여 (EC:3233-3241) */
 const PLAYER_MUG = [147, 151] as const
+/** 팩토리헤드 (`sFrontierBrainsEncounterParams[1]`) — 얼굴 팔레트 · 띠 NSCR (+1 NCGR · +2 NCLR) */
+const FACTORY_HEAD = { mug: 113, banner: 132 }
+/** 프런티어 VS 표 NCGR (+1 NCER) */
+const FRONTIER_VS = 144
 /** 사천왕전의 입자 (`ov5_021DF0CC(narc, 107 · 108)`) */
 const ELITE_PARTICLES = [107, 108] as const
 /** 띠가 서는 BG 줄 — 배치 256×256의 5~12줄(y 40~103)만 차 있다 */
@@ -120,6 +128,36 @@ export async function convertEncounterEffect(ctx: ConvertContext): Promise<Produ
     index[name] = await cellPng(name, mug + 1, mug + 2, 0, front[g]!)
     index[`${name}Swap`] = await cellPng(`${name}Swap`, mug + 1, mug + 2, 0, front[1 - g]!)
   }
+  // 프런티어 브레인 — 팩토리헤드만 (다른 넷은 시설이 닫혀 있다)
+  index.factoryHead = await cellPng('factoryHead', FACTORY_HEAD.mug + 1, FACTORY_HEAD.mug + 2, 0, palettes(take(FACTORY_HEAD.mug)))
+  {
+    const pals = palettes(take(FACTORY_HEAD.banner + 2))
+    const data = chars(take(FACTORY_HEAD.banner + 1)).data
+    const scr = screen(take(FACTORY_HEAD.banner))
+    for (let k = 0; k < 8; k++) {
+      const pal = pals[k]
+      if (!pal) throw new Error(`팩토리헤드 띠: 팔레트 ${String(k)}이 없다`)
+      const rgba = new Uint8Array(256 * 192 * 4)
+      for (let cy = 0; cy < 24; cy++) {
+        for (let cx = 0; cx < 32; cx++) {
+          const cell = screenCell(scr, cx, cy)
+          const tile = cell & 0x3ff
+          if (tile === 0) continue
+          drawTile(rgba, 256, cx * TILE, cy * TILE, data, tile, pal, {
+            hflip: (cell & 0x400) !== 0, vflip: (cell & 0x800) !== 0, alphaZero: true,
+          })
+        }
+      }
+      const file = `data/encounterEffect/factoryHeadBanner${String(k)}.png`
+      out.set(file, await encodePng(rgba, 256, 192))
+      index[`factoryHeadBanner${String(k)}`] = { file, x: 0, y: 0, w: 256, h: 192 }
+    }
+  }
+  const vs = palettes(take(51))
+  index.frontierVsSolid = await cellPng('frontierVsSolid', FRONTIER_VS, FRONTIER_VS + 1, 0, vs)
+  index.frontierVsOutline = await cellPng('frontierVsOutline', FRONTIER_VS, FRONTIER_VS + 1, 1, vs)
+  check(ctx)
+
   // 사천왕전의 입자 두 벌
   for (const [k, at] of ELITE_PARTICLES.entries()) out.set(`data/encounterEffect/eliteParticle${String(k + 1)}.spa`, take(at))
   out.set('data/encounterEffect/index.json', json(index))

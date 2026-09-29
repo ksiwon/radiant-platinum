@@ -302,8 +302,8 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     // 배틀팩토리 복도 · 배틀룸 판 (`frontier_bg.narc` · `frontierBg.ts`)
     name: 'frontierBg',
-    outputs: ['data/frontier/factoryCorridor.png', 'data/frontier/factoryFloor.png', 'data/frontier/factoryRoom{0~4}.png'],
-    converter: 1,
+    outputs: ['data/frontier/factoryCorridor.png', 'data/frontier/factoryFloor.png', 'data/frontier/factoryRoom{0~4}.png', 'data/frontier/shadow{Male,Female}.png'],
+    converter: 2,
     convert: convertFrontierBg,
   },
   {

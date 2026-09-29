@@ -87,7 +87,7 @@ export type SceneVar = 'loadAction' | 'printState'
  *   복도로(문 소리까지) · close 로비로 돌아가기 전 암전
  */
 type StageCue =
-  | 'open' | 'appOut' | 'appIn' | 'goIn' | 'toRoom' | 'opponent' | 'thorton' | 'battle' | 'afterBattle' | 'leaveRoom' | 'close'
+  | 'open' | 'appOut' | 'appIn' | 'goIn' | 'toRoom' | 'opponent' | 'thorton' | 'battle' | 'brainBattle' | 'afterBattle' | 'leaveRoom' | 'close'
 
 /** 상대 정보에 들어갈 이름들 — 첫 셋의 종족 · 첫 마리의 첫 기술 · 제일 많은 타입(없으면 null) */
 export interface OpponentInfo {
@@ -201,7 +201,8 @@ async function enterAndFight(h: FactorySceneHost): Promise<boolean> {
     await h.stage('opponent')
     await h.trainerIntro(h.trainer())
   }
-  await h.stage('battle')
+  // `_0A41` — 수철이면 브레인 컷인(`FrontierScrCmd_47 2`) · 아니면 트레이너 곡과 띠 늘이기(`FrontierScrCmd_3F 3`)
+  await h.stage(head !== 0 ? 'brainBattle' : 'battle')
   const won = await h.fight()
   await h.stage('afterBattle')
   if (!won) {

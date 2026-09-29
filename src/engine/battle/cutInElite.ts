@@ -18,64 +18,18 @@
 // 얼굴 뒤가 된다(`Bg_SetPriority(BG_LAYER_MAIN_0, 1)`).
 //
 // ⚠️ **틱은 1/60초로 센다** (COMPLETION_20260928 §0의 갈림길)
-import type { CutInFrame, CutInParticle, CutInSprite } from './encounterCutIn'
+import type { CutInFrame, CutInSprite } from './encounterCutIn'
 import { frameOf, type SpecialCutIn } from './cutInTrainer'
 import { BrightnessFade, DsFlash, FX, fx, LinearS32, QuadFX, VsStamp } from './cutInDs'
 import type { CutInContext } from './cutInBanner'
-import { makeEmitter, type SplEmitter } from './spl/emitter'
-import { cosIdx, FX32_ONE, sinIdx } from './spl/fx'
-import { FX16_ONE, type SplFile } from './spl/resource'
+import { makeEmitter } from './spl/emitter'
+import type { SplFile } from './spl/resource'
+import { orthoQuads, type OrthoEmitter } from './cutInParticles'
 
 /** 사천왕 넷 · 챔피언 (`sEliteFourChampionEncounterParams` · EC:2730) — 트레이너 번호 · 얼굴 떠는 틱 */
 const ELITES = [[261, 32], [262, 32], [263, 32], [264, 32], [267, 9]] as const
-/** 입자 카메라 — 정사영 위아래 ±4가 192줄 (`sParticleSystemDefaultCameraPos` (0, 0, 4) · 반화각 45° → top = tan 45° × 4) */
-const PX_PER_UNIT = 192 / 8
 /** 얼린 들판의 어둡기 — 1 − 4/16 */
 const FROZEN_DARK = 12 / 16
-
-interface Live { file: SplFile, index: number, emitter: SplEmitter }
-
-/** 입자를 DS 픽셀 사각형으로 (`SPLDraw_Billboard` — 107 · 108은 일곱 리소스가 다 빌보드다) */
-function quadsOf(live: readonly Live[]): CutInParticle[] {
-  const out: CutInParticle[] = []
-  const span = (tiles: number, flip: boolean): number => (flip ? -1 : 1) * (1 << tiles)
-  // 늦게 선 이미터가 먼저 그려진다 (`SPL_DRAW_ORDER_REVERSE`)
-  for (let e = live.length - 1; e >= 0; e--) {
-    const { file, index, emitter } = live[e]!
-    const res = file.resources[index]!
-    const h = res.header
-    const put = (p: SplEmitter['particles'][number], child: boolean): void => {
-      const alpha = (p.baseAlpha * (p.animAlpha + 1)) >> 5
-      if (alpha === 0) return
-      let sy = p.baseScale / FX32_ONE
-      let sx = sy * (h.aspectRatio / FX16_ONE)
-      const anim = p.animScale / FX16_ONE
-      if (h.scaleAnimDir === 0) { sx *= anim; sy *= anim } else if (h.scaleAnimDir === 1) sx *= anim
-      else sy *= anim
-      const tex = file.textures[child ? res.child!.texture : p.texture]
-      if (tex === undefined) return
-      const s = sinIdx(p.rotation) / FX32_ONE, c = cosIdx(p.rotation) / FX32_ONE
-      const k = PX_PER_UNIT
-      out.push({
-        tex,
-        x: 128 + ((p.position.x + p.emitterPos.x) / FX32_ONE) * k,
-        y: 96 - ((p.position.y + p.emitterPos.y) / FX32_ONE) * k,
-        // 월드 y가 위라 화면으로 뒤집는다
-        ax: c * sx * k, ay: -s * sx * k, bx: -s * sy * k, by: -c * sy * k,
-        qx: child ? 0 : h.polygonX / FX16_ONE, qy: child ? 0 : h.polygonY / FX16_ONE,
-        us: child ? span(res.child!.textureTileCountS, res.child!.flipTextureS) : span(h.textureTileCountS, h.flipTextureS),
-        vs: child ? span(res.child!.textureTileCountT, res.child!.flipTextureT) : span(h.textureTileCountT, h.flipTextureT),
-        r: (p.color & 31) / 31, g: ((p.color >>> 5) & 31) / 31, b: ((p.color >>> 10) & 31) / 31,
-        a: alpha / 31,
-      })
-    }
-    const kids = (): void => { for (const p of emitter.children) put(p, true) }
-    if (h.flags.drawChildrenFirst) kids()
-    if (!h.flags.hideParent) for (const p of emitter.particles) put(p, false)
-    if (!h.flags.drawChildrenFirst) kids()
-  }
-  return out
-}
 
 /** 20~24 사천왕 · 챔피언 */
 class EliteFour implements SpecialCutIn {
@@ -88,7 +42,7 @@ class EliteFour implements SpecialCutIn {
   private ready = false
   private readyNext = false
   private spa: SplFile | null = null
-  private live: Live[] = []
+  private live: OrthoEmitter[] = []
   private particlesFront = true
   private xl: QuadFX | null = null
   private xr: QuadFX | null = null
@@ -277,7 +231,7 @@ class EliteFour implements SpecialCutIn {
     }
     this.f.draw!.sprites = sprites
     if (this.nameOn) draw.name = { text: this.name, x: 168, y: 104, w: 88 }
-    if (this.live.length > 0) draw.particles = { front: this.particlesFront, quads: quadsOf(this.live) }
+    if (this.live.length > 0) draw.particles = { front: this.particlesFront, quads: orthoQuads(this.live) }
   }
 }
 
