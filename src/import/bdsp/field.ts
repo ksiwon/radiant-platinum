@@ -27,7 +27,7 @@ class FieldError extends Error {
 type Props = Record<string, UnityValue>
 const num = (v: UnityValue | undefined, fallback = 0): number => (typeof v === 'number' ? v : fallback)
 
-export interface FieldStat {
+interface FieldStat {
   /** 세운 메시 (사본 포함) */
   placed: number
   /** 고유 메시 · 재질 조합 */

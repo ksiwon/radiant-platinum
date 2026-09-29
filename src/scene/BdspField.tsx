@@ -20,11 +20,11 @@ const loader = new GLTFLoader()
 /** 플레이어 둘레 이만큼(칸) 안에 상자가 걸리는 지역을 세운다 */
 const REACH = 80
 
-export interface FieldEntry { name: string, box: readonly [number, number, number, number] }
+interface FieldEntry { name: string, box: readonly [number, number, number, number] }
 
 let index: Promise<readonly FieldEntry[]> | null = null
 /** 구워 둔 지역들 (`models/field/index.json`). 없는 설치본이면 빈 목록 — 그때는 원작 그림 그대로다 */
-export function fieldIndex(): Promise<readonly FieldEntry[]> {
+function fieldIndex(): Promise<readonly FieldEntry[]> {
   index ??= assets().text('models/field/index.json')
     // ⚠️ **대습지(`safari`)는 안 세운다** — 상자가 (22~104, 24~128)라 바깥 좌표가 아니다(제 행렬의 좌표로 보인다). 짝을 재기 전까지 뺀다
     .then((t) => ((JSON.parse(t) as { fields?: FieldEntry[] }).fields ?? []).filter((f) => /^area\d+$/.test(f.name)))
@@ -33,7 +33,7 @@ export function fieldIndex(): Promise<readonly FieldEntry[]> {
 }
 
 /** 이 자리(칸)를 덮는 지역이 있나 */
-export function fieldCovers(fields: readonly FieldEntry[], x: number, z: number, pad = 0): boolean {
+function fieldCovers(fields: readonly FieldEntry[], x: number, z: number, pad = 0): boolean {
   return fields.some((f) => x >= f.box[0] - pad && x <= f.box[2] + pad && z >= f.box[1] - pad && z <= f.box[3] + pad)
 }
 

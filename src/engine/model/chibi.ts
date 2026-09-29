@@ -113,7 +113,7 @@ export const CHIBI_ARM = 0.68
  * (0.064~0.078)의 1.8배 · 폭이 0.096~0.109(등신 0.070~0.106)다. 길이는 0.132~0.150으로 등신(0.140~0.172) 안이라 둔다.
  * 높이 0.128 × 0.55 ≈ 0.070 · 폭 0.101 × 0.85 ≈ 0.086
  */
-export const CHIBI_FOOT = { up: 0.55, side: 0.85 } as const
+const CHIBI_FOOT = { up: 0.55, side: 0.85 } as const
 
 /** 뼈의 **길이축** — 자식 뼈가 놓인 로컬 축 (0 · 1 · 2). 자식이 없으면 X */
 function lengthAxis(bone: Object3D): number {
@@ -232,7 +232,7 @@ export const CHIBI_GROW = 2.09
  *   리오      0.028   0.092     ← 등신 셋. 평균 (0.034, 0.091)
  *   치비 여덟  0.020~0.024 · 0.144~0.151   (옮기기 전 · 목뼈에서 잰 값)
  */
-export const CHIBI_HEAD_SEAT = { forward: 0.034, up: 0.091 } as const
+const CHIBI_HEAD_SEAT = { forward: 0.034, up: 0.091 } as const
 
 /** 재는 틀 — 래퍼의 부모(무대에 선 자리)다. 부모가 없으면 월드 */
 const WORLD = new Group()

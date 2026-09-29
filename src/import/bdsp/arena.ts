@@ -123,7 +123,7 @@ function alphaOf(kind: string): Record<string, unknown> {
 }
 
 /** 번들의 재질을 glTF 재질 · 그림으로 — 무대와 야외(`field.ts`)가 같이 쓴다 */
-export interface Looks {
+interface Looks {
   images: Record<string, unknown>[]
   textures: Record<string, unknown>[]
   materials: Record<string, unknown>[]

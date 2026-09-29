@@ -47,7 +47,7 @@ const FIELDS = 'Environments/fields'
  * 방 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `ROOM_TEXTURE`와 같아야 한다. 방 255벌을 원본 해상도(512~1024)로 구우면
  * 설치본이 수백 MB 는다
  */
-export const ROOM_TEXTURE = 512
+const ROOM_TEXTURE = 512
 const MASTERDATAS = 'Dpr/masterdatas'
 /** 자전거. 오버월드에서 타는 물건이라 인물과 같은 자리에서 굽는다 */
 // ⚠️ **`ob1003_00`이 아니다** — 원작이 주인공을 태우는 자전거는 이쪽이다

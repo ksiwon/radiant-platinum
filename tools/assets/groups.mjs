@@ -274,6 +274,18 @@ export const GROUPS = [
     match: under('models/arena/'),
   },
   {
+    // 실내 방 — BDSP가 입체로 다시 지은 건물 안 117벌 (docs/DATA.md §2.17.5)
+    name: 'room',
+    make: 'pnpm extract:rooms',
+    match: under('models/room/'),
+  },
+  {
+    // 바깥 — BDSP 야외 지역 13벌 + 대습지. 굽는 쪽은 설치기와 같은 타입스크립트다 (docs/DATA.md §2.17.6)
+    name: 'field',
+    make: 'pnpm extract:fields',
+    match: under('models/field/'),
+  },
+  {
     // 종·폼 본체는 `extract:pokemon`이, 이로치 팔레트와 여성 개체는
     // `extract:pokemonVariants`가 굽는다 — 한 그룹이지만 명령이 둘이다
     name: 'pokemon3d',
