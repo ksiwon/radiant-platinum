@@ -144,3 +144,23 @@ export class WindowFade {
     return rows
   }
 }
+
+/**
+ * 밝기 페이드 (`StartScreenFade(FADE_MAIN_ONLY, FADE_TYPE_BRIGHTNESS_OUT, …, 색, n, 1)` · `screen_fade_funcs.c` `sub_02010238` ·
+ * `sub_02010318`) — 거는 틱에 0을 세우고, 다음 틱부터 한 단에 `trunc(16 × 128 ÷ n)`씩 (÷ 128로 내림) 오르다 n번째 단에 끝값.
+ * 그다음 틱에 풀리고(`IsScreenFadeDone`) 그 뒤 틱의 `switch`가 본다
+ */
+export class BrightnessFade {
+  private k = 0
+  private acc = 0
+  value = 0
+  constructor(private readonly target: number, private readonly n: number) {}
+  exec(): void {
+    this.k++
+    if (this.k === 1) return
+    if (this.k <= this.n) this.acc += Math.trunc((this.target * 128) / this.n)
+    else this.acc = this.target * 128
+    this.value = Math.trunc(this.acc / 128)
+  }
+  get done(): boolean { return this.k >= this.n + 2 }
+}

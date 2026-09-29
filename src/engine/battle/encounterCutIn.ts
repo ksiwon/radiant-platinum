@@ -116,7 +116,7 @@ export interface CutInFrame {
   draw?: CutInDraw
   /** 카메라 각을 기본에서 얼마나 옮기는가 (도) — 전설 · 환상 컷인의 카메라 컷 (`Camera_SetAngleAroundTarget`) */
   orbit?: { pitch: number, yaw: number }
-  /** 화각을 기본의 몇 배로 (`Camera_SetFOV`) */
+  /** 반화각의 tan을 기본의 몇 배로 — 곧 확대율의 역수 (`Camera_SetFOV`) */
   fovScale?: number
   /** 화면 잔상 (`FieldMotionBlur_Start(eva, evb)`) — 없으면 끈다 */
   blur?: { eva: number, evb: number }

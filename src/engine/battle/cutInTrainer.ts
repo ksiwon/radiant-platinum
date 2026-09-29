@@ -28,7 +28,7 @@ const TURN = 0xffff
 const BIG = 'ballBig', SMALL = 'ballSmall'
 
 const empty = (): CutInDraw => ({ paint: [], sprites: [], mask: [], rows: null })
-const frameOf = (): CutInFrame => ({
+export const frameOf = (): CutInFrame => ({
   flash: 0, slice: null, ripple: null, iris: 1, black: 0, dolly: 1, done: false, draw: empty(),
 })
 const allBlack = (): [number, number][][] => Array.from({ length: 192 }, () => [])
@@ -36,34 +36,42 @@ const allBlack = (): [number, number][][] => Array.from({ length: 192 }, () => [
 /** 한 컷인 — 틱마다 한 프레임 */
 export interface SpecialCutIn { tick(): CutInFrame }
 
-/** 번쩍임 · 끝 검정 · 틱 셈이 같은 뼈대 */
-abstract class Base implements SpecialCutIn {
+/** 번쩍임 · 끝 검정 · 틱 셈이 같은 뼈대 — 띠 컷인(`cutInBanner`)도 이것을 쓴다 */
+export abstract class CutInBase implements SpecialCutIn {
   protected state = 0
   protected flash: DsFlash | null = null
   protected fade: WindowFade | null = null
   protected f: CutInFrame = frameOf()
   protected dolly = 1
   protected sprites: CutInSprite[] = []
+  /** 번쩍임 말고 위 화면 밝기를 따로 쥘 때 (−16~16 · `GX_SetMasterBrightness` · 밝기 페이드) */
+  protected bright: number | null = null
+  /** 끝을 흰색으로 (`BRIGHTNESS_OUT` · `COLOR_WHITE`) — 관장 · 사천왕 · 전설은 희게 끝난다 */
+  protected endWhite = false
   private finished = false
-  constructor(private readonly flashColor: number) {}
+  constructor(private readonly flashColor: number, private readonly flashes = 2) {}
   tick(): CutInFrame {
     this.f = frameOf()
-    if (this.finished) { this.f.black = 1; this.f.done = true; return this.f }
+    if (this.finished) { this.end(); return this.f }
     // 0 자리 잡기 → 1 번쩍임 → 2 끝나기를 기다린다 (F24에 보고 3으로)
     if (this.state === 0) this.state = 1
-    else if (this.state === 1) { this.flash = new DsFlash(this.flashColor, 2); this.state = 2 } else if (this.state === 2) {
+    else if (this.state === 1) { this.flash = new DsFlash(this.flashColor, this.flashes); this.state = 2 } else if (this.state === 2) {
       this.waiting()
       if (this.flash!.done) { this.opened(); this.state = 3 }
     } else this.step()
     if (!this.finished) this.after()
     this.flash?.tick()
     this.fade?.exec()
-    this.f.flash = (this.flash?.value ?? 0) / 16
+    this.f.flash = (this.bright ?? this.flash?.value ?? 0) / 16
     this.f.draw!.sprites = this.sprites
     if (this.fade) this.f.draw!.rows = this.fade.rows()
     this.f.dolly = this.dolly
-    if (this.finished) { this.f.black = 1; this.f.done = true }
+    if (this.finished) this.end()
     return this.f
+  }
+  private end(): void {
+    this.f.done = true
+    if (this.endWhite) { this.f.flash = 1; this.f.black = 0 } else this.f.black = 1
   }
   /** 번쩍이는 동안 (`case 2`) */
   protected waiting(): void {}
@@ -78,7 +86,7 @@ abstract class Base implements SpecialCutIn {
 }
 
 /** 6 풀숲 · 낮음 (`EncounterEffect_Trainer_Grass_LowerLevel` · EC:663-825) */
-class GrassLower extends Base {
+class GrassLower extends CutInBase {
   private scale: QuadFX | null = null
   private rot: LinearS32 | null = null
   private x: QuadFX | null = null
@@ -133,7 +141,7 @@ class GrassLower extends Base {
 }
 
 /** 7 풀숲 · 높음 (EC:827-969) */
-class GrassHigher extends Base {
+class GrassHigher extends CutInBase {
   private x: LinearFX | null = null
   private rot: LinearS32 | null = null
   private sx: QuadFX | null = null
@@ -199,7 +207,7 @@ class Shake {
 }
 
 /** 8 물 · 낮음 (EC:971-1141) */
-class WaterLower extends Base {
+class WaterLower extends CutInBase {
   private counter = 12
   private shake = new Shake()
   private alpha: LinearS32 | null = null
@@ -253,7 +261,7 @@ class WaterLower extends Base {
 
 /** 9 물 · 높음 (EC:1143-1354) — 기둥 셋: 공 x · 돌림 방향 · 다음까지 기다림 (`case 3~5`의 `unk_2A0`) */
 const WATER_COLUMNS = [{ x: 43, sign: 1, wait: 4 }, { x: 215, sign: -1, wait: 2 }, { x: 129, sign: 1, wait: 0 }] as const
-class WaterHigher extends Base {
+class WaterHigher extends CutInBase {
   private counter = 14
   private shake = new Shake()
   private launched = 0
@@ -298,7 +306,7 @@ class WaterHigher extends Base {
 }
 
 /** 10 굴 · 낮음 (EC:1356-1479) */
-class CaveLower extends Base {
+class CaveLower extends CutInBase {
   private y: QuadFX | null = null
   private scale: QuadFX | null = null
   private rot: LinearS32 | null = null
@@ -342,7 +350,7 @@ class CaveLower extends Base {
 /** 11 굴 · 높음 (EC:1481-1692) — 공 셋 (`case 3~5` — 셈 0 · 1 · 3) · 칸 마흔여덟의 열 차례 */
 const CAVE_BALLS = [{ x: 128, sign: 1, wait: 1 }, { x: 208, sign: -1, wait: 3 }, { x: 48, sign: 1, wait: 0 }] as const
 const CELL_COLUMNS = [0, 2, 5, 7, 1, 6, 3, 4] as const
-class CaveHigher extends Base {
+class CaveHigher extends CutInBase {
   private counter = 0
   private launched = 0
   private balls: { y: LinearS32, rot: LinearS32, x: number, running: boolean }[] = []
@@ -386,7 +394,7 @@ class CaveHigher extends Base {
 }
 
 /** 29 프런티어 (EC:1710-1821) */
-class Frontier extends Base {
+class Frontier extends CutInBase {
   private alpha: LinearS32 | null = null
   private scale: QuadFX | null = null
   constructor() { super(16) }
@@ -412,7 +420,7 @@ class Frontier extends Base {
 }
 
 /** 30 더블 (EC:1823-1940) */
-class Double extends Base {
+class Double extends CutInBase {
   private a: QuadFX | null = null
   private b: QuadFX | null = null
   constructor() { super(16) }
@@ -444,7 +452,7 @@ const GRUNT_ROWS = [
   [260, 128, -30, 0, 100, 20, 4, 2], [-16, 128, 30, 160, 100, -20, 3, 1], [0, 128, 30, -16, 100, 20, 4, -3],
   [140, 128, -10, 160, 100, -20, 2, -2], [260, 128, -30, 80, 100, 1, 3, -3], [0, 128, 30, 160, 100, -20, 3, 1],
 ] as const
-class GalacticGrunt extends Base {
+class GalacticGrunt extends CutInBase {
   private delay = 0
   private launched = 0
   private balls: { x: QuadFX, y: QuadFX, scale: QuadFX, rot: LinearS32, running: boolean }[] = []

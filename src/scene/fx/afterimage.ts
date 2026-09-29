@@ -11,15 +11,24 @@
 // 안 섞이지만, 멈춰 있는 글창은 섞여도 그대로라 보이는 차이가 없다
 import { RenderTarget, Vector2, QuadMesh, NodeMaterial, RendererUtils, TempNode, NodeUpdateType } from 'three/webgpu'
 import { mix, texture, uniform, uv } from 'three/tsl'
+import { cutInFrame } from '../../engine/battle/encounterCutIn'
 import type { Node, NodeFrame, TextureNode } from 'three/webgpu'
 
 type Mixed = ReturnType<typeof mix>
 
-/** 켜는 쪽 (`scene/SpearPillarMovieStage`) */
+/** 켜는 쪽 (`scene/SpearPillarMovieStage`) — 창기둥 영상은 새 화면 4 · 앞 화면 12다 */
 export const afterimageState = { on: false }
+const MOVIE = { eva: 4, evb: 12 }
 
-/** 앞 화면의 몫 — 12 ÷ 16 */
-const KEEP = 12 / 16
+/**
+ * 지금 섞는 몫. 조우 컷인이 제 것을 들면 그것이 먼저다 — 환상 3 · 15, 전설 5 · 13 (`FieldMotionBlur_Start`).
+ *
+ * ⚠️ **합이 16을 넘으면 밝아진다.** 원작 붙잡기가 (A × eva + B × evb) ÷ 16을 31에서 자른다 — 환상 컷인은 멈춘 그림이 세 배까지
+ * 밝아져 희게 바랜다. 그래서 여기서도 1에서 자른다
+ */
+function blend(): { eva: number, evb: number } | null {
+  return cutInFrame.now?.blur ?? (afterimageState.on ? MOVIE : null)
+}
 
 const size = new Vector2()
 const quad = new QuadMesh()
@@ -33,6 +42,7 @@ class TrailNode extends TempNode {
   private readonly compTex: TextureNode
   private readonly oldTex: TextureNode
   private readonly keep = uniform(0)
+  private readonly gain = uniform(1)
   private readonly on = uniform(0)
   private material: NodeMaterial | null = null
   private fresh = true
@@ -48,7 +58,8 @@ class TrailNode extends TempNode {
 
   override updateBefore(frame: NodeFrame): boolean | undefined {
     const renderer = frame.renderer
-    if (!afterimageState.on || renderer === null || this.material === null) {
+    const mixing = blend()
+    if (mixing === null || renderer === null || this.material === null) {
       this.fresh = true
       this.on.value = 0
       return undefined
@@ -61,7 +72,8 @@ class TrailNode extends TempNode {
     this.old.texture.type = type as never
     this.comp.setSize(size.x, size.y)
     this.old.setSize(size.x, size.y)
-    this.keep.value = this.fresh ? 0 : KEEP
+    this.keep.value = this.fresh ? 0 : mixing.evb / 16
+    this.gain.value = this.fresh ? 1 : mixing.eva / 16
     this.fresh = false
     this.oldTex.value = this.old.texture
     quad.material = this.material
@@ -80,7 +92,7 @@ class TrailNode extends TempNode {
 
   override setup(): Node {
     const fresh = this.source.sample(uv())
-    const composite = mix(fresh, this.oldTex.sample(uv()), this.keep)
+    const composite = fresh.mul(this.gain).add(this.oldTex.sample(uv()).mul(this.keep)).min(1)
     this.material ??= new NodeMaterial()
     this.material.name = '잔상'
     this.material.fragmentNode = composite

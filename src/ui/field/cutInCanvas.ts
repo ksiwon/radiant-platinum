@@ -11,6 +11,7 @@
 import { assets } from '../../data/providers/assetProvider'
 import { decodePng } from '../../import/platinum/png'
 import type { CutInDraw, CutInSprite } from '../../engine/battle/encounterCutIn'
+import { vars } from '../theme/contract.css'
 
 /** 목차 한 칸 — 셀 원점 기준 경계 상자 */
 interface CellImage { file: string, x: number, y: number, w: number, h: number }
@@ -80,9 +81,10 @@ export function drawCutIn(ctx: CanvasRenderingContext2D, draw: CutInDraw, images
   }
   for (const [x, y, rw, rh] of draw.paint) rect(x, y, rw, rh)
   if (draw.banner && images) drawBanner(ctx, draw.banner, images, sx, sy)
+  // 이름 판(BG2)은 우선순위가 같은 스프라이트 밑이다
+  if (draw.name) drawName(ctx, draw.name, sx, sy)
   // 목록 앞이 위다 — 뒤에서부터 그린다
   if (images) for (let i = draw.sprites.length - 1; i >= 0; i--) drawSprite(ctx, draw.sprites[i]!, images, sx, sy)
-  if (draw.name) drawName(ctx, draw.name, sx, sy)
 
   ctx.fillStyle = '#000'
   for (const [x, y, rw, rh] of draw.mask) rect(x, y, rw, rh)
@@ -180,18 +182,26 @@ function drawBanner(ctx: CanvasRenderingContext2D, b: NonNullable<CutInDraw['ban
   }
 }
 
-/** 주인공 이름 (`TEXT_BANK_UNK_0359`의 글자 자리) — 흰 글자에 검은 그림자 */
+/** 픽셀 글꼴 — 대사창과 같은 것 (`vars.font.pixel`은 `var(--…)`라 캔버스가 못 읽는다 — 풀어서 쓴다) */
+function pixelFont(el: HTMLCanvasElement): string {
+  const name = /var\((--[^),]+)/.exec(vars.font.pixel)?.[1]
+  const got = name ? getComputedStyle(el).getPropertyValue(name).trim() : ''
+  return got || getComputedStyle(el).fontFamily
+}
+
+/**
+ * 트레이너 이름 (`TEXT_BANK_UNK_0359` 0번 = 이름 하나 · `FONT_SYSTEM` · `TEXT_COLOR(1, 2, 0)`) — 창 왼끝에서 흰 글자,
+ * 그림자는 `enc_fade.NCLR`의 2번 (74, 82, 82)
+ */
 function drawName(ctx: CanvasRenderingContext2D, n: NonNullable<CutInDraw['name']>, sx: number, sy: number): void {
   ctx.save()
-  const px = Math.round(12 * sy)
-  ctx.font = `${String(px)}px ${getComputedStyle(document.body).fontFamily}`
+  ctx.font = `${String(Math.round(12 * sy))}px ${pixelFont(ctx.canvas)}`
   ctx.textBaseline = 'top'
-  ctx.textAlign = 'center'
-  const cx = (n.x + n.w / 2) * sx
-  const y = n.y * sy
-  ctx.fillStyle = 'rgba(0,0,0,0.9)'
-  ctx.fillText(n.text, cx + sy, y + sy)
+  ctx.textAlign = 'left'
+  const x = n.x * sx, y = (n.y + 2) * sy
+  ctx.fillStyle = 'rgb(74, 82, 82)'
+  ctx.fillText(n.text, x + sy, y + sy)
   ctx.fillStyle = '#fff'
-  ctx.fillText(n.text, cx, y)
+  ctx.fillText(n.text, x, y)
   ctx.restore()
 }

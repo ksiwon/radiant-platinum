@@ -320,6 +320,7 @@ const FLIP_TIME = 16 / 60
  * 180도에서 길이가 0이 되어 화면이 뒤집히는 순간 방향을 잃는다
  */
 const tilt = new Quaternion()
+const orbitAxis = new Vector3()
 const tiltGoal = new Quaternion()
 let tiltReady = false
 /** 화각도 첫 프레임에는 앉힌다 — 안 그러면 맵을 열 때마다 렌즈가 빨려 들어간다 */
@@ -459,6 +460,13 @@ export const cameraSystem = {
       // 조우 컷인이 팔을 당긴다 (`Camera_SetDistance`, `battle/encounterCutIn`).
       // 각은 그대로 두고 **길이만** 곱한다 — 원작이 거리 하나만 만진다
       // 빙글 워프도 거리 하나만 당긴다 (`ov5_021F0EB0` · `world/fieldWarp`)
+      // 전설 · 환상 컷인의 카메라 컷 (`Camera_SetAngleAroundTarget`) — 기본 각에서 옮긴 만큼 겨눔점을 돌아 선다.
+      // 축은 기울기(`tilt`)를 따라 돈다 — 깨어진 세계의 기라티나도 제 바닥 기준으로 돈다
+      const orbit = cutInFrame.now?.orbit
+      if (orbit && (orbit.pitch !== 0 || orbit.yaw !== 0)) {
+        offset.applyAxisAngle(orbitAxis.copy(X_AXIS).applyQuaternion(tilt), orbit.pitch * DEG)
+          .applyAxisAngle(orbitAxis.copy(Y_AXIS).applyQuaternion(tilt), orbit.yaw * DEG)
+      }
       const dolly = (cutInFrame.now?.dolly ?? 1) * cameraDolly.warp
       if (dolly !== 1) offset.multiplyScalar(dolly)
       goal.copy(p).add(offset)
@@ -504,7 +512,11 @@ export const cameraSystem = {
      */
     cameraSystem.drift = Math.max(cam.position.distanceTo(goal), cam.target.distanceTo(look))
 
-    const wantFov = inDistortion ? DISTORTION_FOV : FIELD_FOV
+    // 컷인이 화각을 바꾸면 **tan의 몫**으로 옮긴다 (`Camera_SetFOV` — 원작 반각의 tan 비가 곧 확대율이다)
+    const lensFov = inDistortion ? DISTORTION_FOV : FIELD_FOV
+    const zoom = cutInFrame.now?.fovScale
+    const wantFov = zoom === undefined ? lensFov
+      : (2 * Math.atan(Math.tan((lensFov * DEG) / 2) * zoom)) / DEG
     if (!fovReady) { cameraSystem.fov = wantFov; fovReady = true }
     cameraSystem.fov += (wantFov - cameraSystem.fov) * t
   },
