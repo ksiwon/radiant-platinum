@@ -133,7 +133,7 @@ describe('splitByNode', () => {
     const zero = parts.get(0)!
     expect(zero.getIndex()!.count).toBe(6)
     expect(zero.groups.map((g) => [g.start, g.count, g.materialIndex]))
-      .toEqual([[0, 3, 0], [3, 3, 0]])
+      .toEqual([[0, 3, 0], [3, 3, 2]])
     expect([...(zero.getIndex()!.array as Uint16Array)]).toEqual([0, 1, 2, 6, 7, 8])
     // 정점은 **같은 것**을 가리킨다 — GPU에 두 벌 안 올린다
     expect(zero.getAttribute('position')).toBe(pos)

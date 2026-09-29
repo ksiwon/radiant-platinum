@@ -39,7 +39,7 @@ const UV_SCALE = 16
 const VERTEX_BYTES = 24
 
 /** SBC 명령별 피연산자 수. `flags`는 상위 3비트다 */
-function sbcOperands(op: number, flags: number): number {
+function sbcOperands(op: number, flags: number, buf: Uint8Array, p: number): number {
   switch (op) {
     case 0x00: return 0 // NOP
     case 0x01: return 0 // RET
@@ -47,11 +47,14 @@ function sbcOperands(op: number, flags: number): number {
     case 0x03: return 1 // MTX
     case 0x04: return 1 // MAT
     case 0x05: return 1 // SHP
-    case 0x06: return flags === 0 ? 2 : 4 // NODEDESC — 깃발이 서면 행렬 자리 둘이 더 붙는다
-    case 0x07: return 3 // BB
-    case 0x08: return 3 // BBY
-    case 0x09: return 3 // NODEMIX (맵에는 안 나온다)
-    case 0x0a: return 5 // CALLDL
+    // ⚠️ **깃발 비트마다 자리가 하나씩 붙는다** — 0비트 넣을 행렬 자리 · 1비트 꺼낼 행렬 자리. 옛 표(깃발 0이면 2 · 서면 4)는
+    // 셋째 바이트가 늘 0이라 NOP로 읽혀 맞아떨어졌을 뿐이다. 깃발 3(자리 둘)과 BB에서 어긋나 창기둥 영상의 검은 구슬이
+    // 조각 0개 · 유크시가 3/13개로 구워졌다 (`.audit/probe/sbcDiff.mjs` — 소품 · 땅은 짝이 하나도 안 바뀐다)
+    case 0x06: return 3 + (flags & 1) + ((flags >> 1) & 1) // NODEDESC 노드 · 부모 · 속성
+    case 0x07: return 1 + (flags & 1) + ((flags >> 1) & 1) // BB 노드
+    case 0x08: return 1 + (flags & 1) + ((flags >> 1) & 1) // BBY 노드
+    case 0x09: return 2 + buf[p + 1]! * 3 // NODEMIX 자리 · 개수 · (자리 · 노드 · 몫) × 개수
+    case 0x0a: return 8 // CALLDL 주소 u32 · 크기 u32
     case 0x0b: return 0 // POSSCALE
     case 0x0c: return 2 // ENVMAP
     case 0x0d: return 2 // PRJMAP
@@ -112,9 +115,17 @@ export function nodeChain(
       if (dest >= 0) slot[dest] = id
       continue
     }
-    const n = sbcOperands(op, flags)
+    const n = sbcOperands(op, flags, buf, p)
     if (op === 0x03) cur = slot[buf[p]!] ?? -1
     if (op === 0x05) draw.push(cur)
+    // 광고판도 행렬 자리를 꺼내고 넣는다 — 노드는 안 바꾼다 (돌림만 카메라로 갈아 낀다)
+    if (op === 0x07 || op === 0x08) {
+      const q = p + 1
+      const dest = (flags & 1) !== 0 ? buf[q]! : -1
+      const src = (flags & 2) !== 0 ? buf[q + (flags & 1)]! : -1
+      if (src >= 0) cur = slot[src] ?? -1
+      if (dest >= 0) slot[dest] = cur
+    }
     p += n
   }
   const world: (WorldXform | null)[] = []
@@ -188,6 +199,23 @@ export function readSbc(buf: Uint8Array, at: number, end: number, nodes?: readon
   return pairs
 }
 
+/**
+ * 광고판 노드 — `BB`(카메라를 곧장 본다) · `BBY`(y축만 세운 채 돈다). `[노드, 0 BB · 1 BBY]`.
+ * 연출 모델(창기둥 영상의 검은 구슬 번개)만 쓴다 — 굽는 쪽 하나(`demoModels`)가 부른다
+ */
+export function sbcBillboards(buf: Uint8Array, at: number, end: number): [number, 0 | 1][] {
+  const out: [number, 0 | 1][] = []
+  let p = at
+  while (p < end) {
+    const raw = buf[p++]!
+    const op = raw & 0x1f
+    if (op === 0x01) break
+    if (op === 0x07 || op === 0x08) out.push([buf[p]!, op === 0x07 ? 0 : 1])
+    p += sbcOperands(op, raw >> 5, buf, p)
+  }
+  return out
+}
+
 function readSbcPairs(buf: Uint8Array, at: number, end: number): Pair[] {
   const pairs: Pair[] = []
   let material = 0
@@ -199,7 +227,7 @@ function readSbcPairs(buf: Uint8Array, at: number, end: number): Pair[] {
     const raw = buf[p++]!
     const op = raw & 0x1f
     const flags = raw >> 5
-    const n = sbcOperands(op, flags)
+    const n = sbcOperands(op, flags, buf, p)
     const args: number[] = []
     for (let i = 0; i < n; i++) args.push(buf[p++]!)
     if (op === 0x04) material = args[0]!
@@ -231,6 +259,8 @@ export interface Material {
    * 이것이 유일한 색이다** — `packChunk`가 그때만 `d`로 싣는다
    */
   diffuse: [number, number, number]
+  /** 환경색 (`diffAmb`의 위 15비트, RGB5 → 8비트) — 빛을 켠 재질이 빛 색에 곱해 늘 받는 몫이다 */
+  ambient: [number, number, number]
   /** 켠 빛 (`polyAttr` 0~3비트). 켜져 있으면 법선 명령이 정점색을 조명으로 덮는다 */
   lights: number
   texture: string | null
@@ -273,6 +303,7 @@ export function parseMaterials(
       alpha: (polyAttr >> 16) & 0x1f,
       faces: (polyAttr >> 6) & 3,
       diffuse: rgb5(diffAmb & 0x7fff),
+      ambient: rgb5((diffAmb >>> 16) & 0x7fff),
       lights: polyAttr & 15,
       texture: null,
       palette: null,

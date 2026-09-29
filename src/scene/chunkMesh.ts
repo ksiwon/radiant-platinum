@@ -101,7 +101,7 @@ export function loadChunkMesh(index: number): Promise<ChunkMesh> {
   return promise
 }
 
-function build(buffer: ArrayBuffer, fmt: ChunkFormat): ChunkMesh {
+function build(buffer: ArrayBuffer, fmt: ChunkFormat, romNormals = false): ChunkMesh {
   const view = new DataView(buffer)
   const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3))
   if (magic !== 'PT3C') throw new Error(`청크 파일이 아니다 (${magic})`)
@@ -142,6 +142,16 @@ function build(buffer: ArrayBuffer, fmt: ChunkFormat): ChunkMesh {
   // 삼각형 1628개 = 1.98) 이웃 면과 공유하는 정점이 없다. 부드럽게 뭉개질 자리가
   // 없으니 비인덱스로 펼 필요도 없다
   geometry.computeVertexNormals()
+  // 연출 모델은 원작 두 빛으로 명암을 넣는다 — 그때는 **롬 법선이 정답이다** (원작 하드웨어가 그 값으로 셈한다).
+  // 동굴 입구 막기(`withSills`)는 청크에만 있어 정점 차례가 파일 그대로다
+  if (romNormals && allPos.length === position.length) {
+    const normal = geometry.getAttribute('normal')
+    for (let i = 0; i < n; i++) {
+      const o = head + i * stride + 16
+      normal.setXYZ(i, view.getInt8(o) / 127, view.getInt8(o + 1) / 127, view.getInt8(o + 2) / 127)
+    }
+    normal.needsUpdate = true
+  }
   // 서브메시마다 재질이 다르다. three는 그룹 순서대로 재질 배열을 쓴다
   meta.submeshes.forEach(([, start, count], i) => { geometry.addGroup(start, count, i) })
   geometry.computeBoundingSphere()
@@ -466,6 +476,8 @@ interface DistortionPropModel {
   uv: readonly (readonly [number, number])[]
   /** 노드 사슬 — 사슬이 결과를 바꾸는 모델에만 있다 (`chunks.nodeChain`) */
   parents?: readonly number[]
+  /** 기본 자세를 굽는 데 대신 쓴 배율 — 원래 배율 0인 노드 (`demoModels`) */
+  rest?: readonly (readonly number[] | null)[]
 }
 
 let distAnims: Promise<DistortionPropAnims | null> | null = null
@@ -504,6 +516,8 @@ interface DemoIndex {
     info: DistortionPropModel
     anims: { kind: 'BCA0' | 'BTA0' | 'BTP0' | 'BMA0' | 'BVA0', frames: number, at: number, size: number }[]
     blend: number[]
+    light: number[][]
+    billboard?: [number, 0 | 1][]
   }>
 }
 const demoMeshCache = new Map<string, Promise<ChunkMesh>>()
@@ -520,7 +534,7 @@ export function loadDemoMesh(name: string): Promise<ChunkMesh> {
   const hit = demoMeshCache.get(name)
   if (hit) return hit
   const promise = Promise.all([loadChunkFormat(), assets().bytes(`data/demo/${name}.bin`)])
-    .then(([fmt, buffer]) => build(buffer, fmt))
+    .then(([fmt, buffer]) => build(buffer, fmt, true))
     .catch((e: unknown) => {
       if (demoMeshCache.get(name) === promise) demoMeshCache.delete(name)
       throw e
@@ -538,13 +552,15 @@ export function loadDemoSheet(name: string): Promise<TexSheet | null> {
 }
 
 /** 그 모델의 애니 — 원작이 붙이는 차례 그대로 · 모델 속살 */
-export function loadDemoAnims(name: string): Promise<{ clips: (PropClip | null)[], info: DistortionPropModel, blend: number[] } | null> {
+export function loadDemoAnims(name: string): Promise<{
+  clips: (PropClip | null)[], info: DistortionPropModel, blend: number[], light: number[][], billboard: [number, 0 | 1][]
+} | null> {
   demoBytes ??= assets().bytes('data/demo/anims.bin').then((b) => new Uint8Array(b))
     .catch((e: unknown) => { demoBytes = null; throw e })
   return Promise.all([loadDemoIndex(), demoBytes]).then(([idx, bytes]) => {
     const got = idx.models[name]
     if (!got) return null
-    return { clips: got.anims.map((row) => readRawClip(row, bytes)), info: got.info, blend: got.blend }
+    return { clips: got.anims.map((row) => readRawClip(row, bytes)), info: got.info, blend: got.blend, light: got.light ?? [], billboard: got.billboard ?? [] }
   })
 }
 

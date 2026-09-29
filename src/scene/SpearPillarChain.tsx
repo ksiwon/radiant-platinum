@@ -7,7 +7,7 @@ import { useFrame } from '@react-three/fiber'
 import type { BufferGeometry, Group, Material } from 'three'
 import { loadDemoAnims, loadDemoMesh, loadDemoSheet, type ChunkMesh } from './chunkMesh'
 import { propMaterials } from './propMeshes'
-import { nodeMatricesAt, splitByNode, type PropClip } from './propAnim'
+import { nodeMatricesAt, splitByNode, submeshesOf, type PropClip } from './propAnim'
 import { spearPillarLive } from './spearPillarFx'
 import { ORB_ORDER, orbTiles } from '../engine/world/lakeOrbs'
 
@@ -48,7 +48,7 @@ function Orb({ name }: { name: string }) {
       .then(([mesh, sheet, anims]) => {
         if (!alive || anims === null) return
         const materials = propMaterials(mesh, sheet)
-        for (const i of anims.blend) {
+        for (const i of anims.blend.flatMap((rom) => submeshesOf(mesh, rom))) {
           const m = materials[i]
           if (!m) continue
           m.transparent = true

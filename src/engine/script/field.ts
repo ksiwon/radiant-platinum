@@ -372,6 +372,18 @@ export function sayOurs(text: string): Promise<void> {
 }
 
 /**
+ * 떠 있는 우리 글을 누름 없이 거둔다 — 원작 `Text_RemovePrinter`처럼 연출이 스스로 글을 내릴 때다(창기둥 영상의 마지막 대사).
+ * 기다리던 쪽은 풀린다. 메뉴가 붙은 글은 안 건드린다
+ */
+export function dropOurs(): void {
+  const now = native
+  if (now === null || now.menu !== undefined) return
+  native = null
+  fieldScripts.world?.closeBox(true)
+  now.after?.(0)
+}
+
+/**
  * 글을 띄우고 다 찍히면 메뉴를 연다 — 원작의 `Message` 뒤 `ShowYesNoMenu`·`ShowListMenu`와 같은 차례다.
  * 예/아니오는 `MENU_YES`·`MENU_NO`(B는 아니오), 목록은 항목 값(B는 `MENU_CANCEL`)을 돌려준다
  */

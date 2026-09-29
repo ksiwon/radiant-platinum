@@ -21,7 +21,7 @@ import { cinematicStage, CINEMATIC_ORIGIN } from './battle/stageRefs'
 import { loadDemoAnims, loadDemoMesh, loadDemoSheet, type ChunkMesh } from './chunkMesh'
 import { propMaterials } from './propMeshes'
 import { markSeeThrough } from './fx/seeThrough'
-import { nodeMatricesAt, splitByNode, uvOffsetAt, type PropClip } from './propAnim'
+import { nodeMatricesAt, romMaterial, splitByNode, submeshesOf, uvOffsetAt, type PropClip } from './propAnim'
 import { fadeDone, startFade } from '../engine/script/fade'
 import { music } from '../engine/audio/music'
 import { useDwWarpStore } from '../state/dwWarpStore'
@@ -75,7 +75,7 @@ export function DwWarpStage() {
           markSeeThrough(m, true)
         }
         // 그림 알파(A3I5 · A5I3)로 비치는 재질 — 고리와 성운이 겹쳐 보여야 한다 (`demoModels`의 `blend`)
-        for (const i of anims.blend) {
+        for (const i of anims.blend.flatMap((rom) => submeshesOf(mesh, rom))) {
           const m = materials[i]
           if (!m) continue
           m.transparent = true
@@ -155,10 +155,11 @@ export function DwWarpStage() {
         }
       } else if (clip.kind === 'BTA0') {
         for (const [i, spec] of model.mesh.materials.entries()) {
-          const name = model.info.materials[i]
+          const rom = romMaterial(model.mesh, i)
+          const name = model.info.materials[rom]
           const map = mapped(model.materials[i])?.map
           if (name === undefined || !map || spec.tex === null) continue
-          const [u, v] = uvOffsetAt(clip.anim, name, model.info.uv[i] ?? [0, 0], frame)
+          const [u, v] = uvOffsetAt(clip.anim, name, model.info.uv[rom] ?? [0, 0], frame)
           map.offset.set(u, v)
         }
       }

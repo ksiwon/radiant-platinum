@@ -754,6 +754,11 @@ export interface FieldServices {
     start: () => void
     busy: () => boolean
   }
+  /** 창기둥 영상 (`ScrCmd_2FB` · `overlay100`) — 스크립트는 영상이 끝날 때까지 선다 */
+  spearPillarMovie?: {
+    start: () => void
+    busy: () => boolean
+  }
   /** 꽃향기마을 꽃집의 장식 교환 (`ScrCmd_ShowAccessoryShop` · PARITY §7.16) */
   accessoryShop?: {
     open: () => void

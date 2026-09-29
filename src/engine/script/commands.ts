@@ -4766,8 +4766,19 @@ on('OpenShayminTabletNamingScreen', (ctx) => {
   return true
 })
 
-/** 깨어진 세계로 넘어가는 영상 (`sub_020985E4`). 화면만 없고 워프는 뒤가 한다 */
-on('ScrCmd_2FB', () => false)
+/**
+ * 창기둥 영상 (`ScrCmd_2FB` → `sub_020985E4` · `overlay100`) — 디아루가 · 펄기아 · 호수의 셋 · 기라티나.
+ *
+ * 필드 밖 앱이라 스크립트는 앱이 닫힐 때까지 선다(`FieldTask_InitCall`). 뒤의 깃발 · `Warp`는 스크립트가 한다
+ * (`scene/spearPillarMovie`)
+ */
+on('ScrCmd_2FB', (ctx) => {
+  const movie = ctx.host.world.services.spearPillarMovie
+  if (!movie) return false
+  movie.start()
+  ctx.pause((c) => c.host.world.services.spearPillarMovie?.busy() !== true)
+  return true
+})
 
 /**
  * 깨어진 세계로 빨려 드는 문 (`ScrCmd_DoDWWarp` → `FieldSystem_StartDWWarp` · `dw_warp/dw_warp.c`).

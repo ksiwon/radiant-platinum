@@ -35,13 +35,16 @@ describe('SBC', () => {
     expect(() => readSbc(b, 0, b.length)).toThrow(/모르는 SBC/)
   })
 
-  it('NODEDESC는 깃발에 따라 폭이 다르다', () => {
-    // 깃발 없는 NODEDESC(2바이트) → 그 뒤 SHP가 제대로 읽힌다
-    const plain = Uint8Array.from([0x06, 1, 2, 0x05, 7, 0x01])
+  it('NODEDESC · BB는 깃발 비트마다 한 자리씩 길어진다', () => {
+    // 깃발 없는 NODEDESC — 노드 · 부모 · 속성 셋. 속성이 0이 아니면 옛 표(둘)로는 SHP를 놓친다
+    const plain = Uint8Array.from([0x06, 1, 2, 5, 0x05, 7, 0x01])
     expect(readSbc(plain, 0, plain.length)).toEqual([{ material: 0, polygon: 7, node: 0 }])
-    // 깃발이 선 NODEDESC(4바이트)
-    const flagged = Uint8Array.from([0x26, 1, 2, 3, 4, 0x05, 7, 0x01])
-    expect(readSbc(flagged, 0, flagged.length)).toEqual([{ material: 0, polygon: 7, node: 0 }])
+    // 넣을 칸 · 꺼낼 칸이 둘 다 선 NODEDESC(다섯)
+    const both = Uint8Array.from([0x66, 1, 2, 0, 3, 4, 0x05, 7, 0x01])
+    expect(readSbc(both, 0, both.length)).toEqual([{ material: 0, polygon: 7, node: 0 }])
+    // 광고판 BB — 노드 하나 (창기둥 영상의 검은 구슬이 `07 00`으로 시작한다)
+    const bb = Uint8Array.from([0x07, 0, 0x04, 6, 0x05, 7, 0x01])
+    expect(readSbc(bb, 0, bb.length)).toEqual([{ material: 6, polygon: 7, node: 0 }])
   })
 
   // ⚠️ **조각이 어느 노드에 매달렸는지가 자리를 정한다.** 안 적으면 노드가
@@ -87,7 +90,7 @@ describe('디스플레이 리스트', () => {
   const material = (lights: number): Material => ({
     name: 'm', origWidth: 8, origHeight: 8, magW: 1, magH: 1,
     repeatS: false, repeatT: false, flipS: false, flipT: false,
-    alpha: 31, faces: 2, diffuse: [206, 206, 206], lights, texture: 'x', palette: 'x',
+    alpha: 31, faces: 2, diffuse: [206, 206, 206], ambient: [206, 206, 206], lights, texture: 'x', palette: 'x',
   })
 
   it('⚠️ 빛을 켠 재질에서는 법선이 정점색을 덮는다 — 색 0을 굽지 않는다', () => {

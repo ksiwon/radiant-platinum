@@ -72,6 +72,8 @@ import { SFX } from '../engine/audio/sfx'
 import { fieldBgm } from '../engine/audio/songs'
 import { MAP_FEATURE, setMapFeature } from '../engine/world/mapFeatures'
 import { useDwWarpStore } from '../state/dwWarpStore'
+import { useSpearPillarMovieStore } from '../state/spearPillarMovieStore'
+import { startSpearPillarMovie } from './spearPillarMovie'
 import { lakeOrbsDone, redChainDone, startLakeOrbs, startRedChain } from './spearPillarFx'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
@@ -667,7 +669,11 @@ function watchFieldReload(): () => void {
 }
 
 /** 스크립트가 쓰는 바깥 세계를 붙인다. 정리 함수를 돌려준다 */
+/** 붙인 언어 — 필드 밖 연출이 제 글 뱅크를 받을 때 쓴다(창기둥 영상) */
+let servicesLocale: DataLocale = 'ko'
+
 export function installFieldServices(locale: DataLocale = 'ko'): () => void {
+  servicesLocale = locale
   // Y로 바로 쓰는 도구 (PARITY §4.4). 키를 누른 뒤에 표를 받으면 첫 Y가
   // 아무 일도 안 하고 지나가서 「등록이 안 됐다」로 보인다
   primeRegisteredItem()
@@ -1358,6 +1364,10 @@ const services: FieldServices = {
   dwWarp: {
     start: () => { useDwWarpStore.getState().start() },
     busy: () => useDwWarpStore.getState().on,
+  },
+  spearPillarMovie: {
+    start: () => { startSpearPillarMovie(servicesLocale) },
+    busy: () => useSpearPillarMovieStore.getState().on,
   },
   slots: {
     open: (machine) => {

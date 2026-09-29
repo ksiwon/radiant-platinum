@@ -22,6 +22,7 @@ import { float, mrt, output, pass, perspectiveDepthToViewZ, uniform, vec2 } from
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { COVER } from './seeThrough'
 import { cutInWarp } from './cutInWarp'
+import { trail } from './afterimage'
 
 export interface PostChain {
   /**
@@ -208,7 +209,8 @@ function withOutline(renderer: WebGPURenderer, scene: Scene, camera: Camera): Bu
       .mul(cover.sample(warp.uv).r)
 
     // 밀려 나간 자리는 검다 — 원작이 창 밖을 그렇게 둔다
-    const shaded = color.sample(warp.uv).mul(float(1).sub(edge)).mul(warp.inside)
+    // 창기둥 영상의 잔상(`fx/afterimage`)이 켜져 있으면 섞은 화면을 읽는다. 꺼져 있으면 그대로다
+    const shaded = trail(color, warp.uv as never).mul(float(1).sub(edge)).mul(warp.inside)
     const glow = bloom(shaded, 0.28, 0.4, 0.92)
     post.outputNode = shaded.add(glow)
     return {
@@ -231,7 +233,7 @@ function bloomOnly(renderer: WebGPURenderer, scene: Scene, camera: Camera): Buil
     const post = new RenderPipeline(renderer)
     const warp = cutInWarp()
     const scenePass = pass(scene, camera)
-    const color = scenePass.getTextureNode('output').sample(warp.uv).mul(warp.inside)
+    const color = trail(scenePass.getTextureNode('output'), warp.uv as never).mul(warp.inside)
     const glow = bloom(color, 0.3, 0.4, 0.9)
     post.outputNode = color.add(glow)
     return {

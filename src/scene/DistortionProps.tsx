@@ -30,7 +30,7 @@ import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
 import { worldState } from '../state/worldState'
 import { loadDistortionPropAnims, type DistortionPropAnims } from './chunkMesh'
-import { nodeMatricesAt, splitByNode, uvOffsetAt } from './propAnim'
+import { nodeMatricesAt, romMaterial, splitByNode, uvOffsetAt } from './propAnim'
 import {
   distortionFloor, distortionPropOpacity, distortionPropPlaces, distortionPropShown, distortionRideAt,
   distortionShadowAt,
@@ -208,10 +208,11 @@ export function DistortionProps({ mapId }: { mapId: number }) {
       if (clip?.kind !== 'BTA0' || !info || !isSimpleAnimated(kind)) continue
       const frame = c.ticks % Math.max(1, clip.frames)
       for (const [m, spec] of got.mesh.materials.entries()) {
-        const name = info.materials[m]
+        const rom = romMaterial(got.mesh, m)
+        const name = info.materials[rom]
         const map = mapped(got.materials[m])?.map
         if (name === undefined || !map || spec.tex === null) continue
-        const [u, v] = uvOffsetAt(clip.anim, name, info.uv[m] ?? [0, 0], frame)
+        const [u, v] = uvOffsetAt(clip.anim, name, info.uv[rom] ?? [0, 0], frame)
         map.offset.set(u, v)
       }
     }

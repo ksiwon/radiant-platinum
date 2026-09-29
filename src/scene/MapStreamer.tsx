@@ -104,6 +104,7 @@ import { HealingBalls } from './HealingBalls'
 import { VillaFurniture } from './VillaFurniture'
 import { SpearPillarChain } from './SpearPillarChain'
 import { spearPillarFxTick } from './spearPillarFx'
+import { spearPillarMovieFrameTick } from './spearPillarMovie'
 import { DistortionSky } from './DistortionSky'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { clearMapFeature } from '../engine/world/mapFeatures'
@@ -922,6 +923,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     distortionShadowTick(dt)
     // 창기둥의 붉은 맥동 — 스크립트와 따로 돈다 (`ScrCmd_20D`)
     spearPillarFxTick(dt)
+    // 창기둥 영상 (`ScrCmd_2FB`) — 스크립트는 서 있고 필드 틱이 민다
+    spearPillarMovieFrameTick(dt)
     // 밟으면 통째로 미끄러지는 발판 (`EVENT_CMD_MOVE_PLATFORM`) — B2F의 길이다
     distortionEventTick(dt)
     // 리그·강철섬의 승강판 (PARITY §7.12). 타는 동안은 판이 자리를 정한다

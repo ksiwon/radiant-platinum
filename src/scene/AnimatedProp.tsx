@@ -25,7 +25,7 @@ import { sliceTexture, splitShadow, type ChunkMesh, type TexSheet } from './chun
 import { retireTexture } from './retireTexture'
 import { DOOR_KIND } from '../import/platinum/propAnims'
 import {
-  FRAME_MS, nodeMatricesAt, splitByNode, uvOffsetAt, type PropAnimSet,
+  FRAME_MS, nodeMatricesAt, romMaterial, splitByNode, uvOffsetAt, type PropAnimSet,
 } from './propAnim'
 import { useDoorVisualStore, type DoorVisual } from './doorVisualStore'
 import { slopePlayAt, useSlopeAnimStore } from './slopeAnimStore'
@@ -233,14 +233,16 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
         }
       } else if (clip.kind === 'BTA0') {
         for (const [i, spec] of mesh.materials.entries()) {
-          const name = info.materials[i]
+          const rom = romMaterial(mesh, i)
+          const name = info.materials[rom]
           const map = mapped(materials[i])?.map
           if (name === undefined || !map || spec.tex === null) continue
-          const [u, v] = uvOffsetAt(clip.anim, name, info.uv[i] ?? [0, 0], frame)
+          const [u, v] = uvOffsetAt(clip.anim, name, info.uv[rom] ?? [0, 0], frame)
           map.offset.set(u, v)
         }
       } else if (clip.kind === 'BTP0') {
-        for (const [i, name] of info.materials.entries()) {
+        for (const i of mesh.materials.keys()) {
+          const name = info.materials[romMaterial(mesh, i)]
           const track = clip.anim.tracks.find((t) => t.material === name)
           const mat = mapped(materials[i])
           if (!track || !mat) continue

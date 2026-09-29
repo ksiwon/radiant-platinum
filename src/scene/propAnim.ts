@@ -110,6 +110,9 @@ export interface NodeBase {
   t: readonly number[]
 }
 
+/** 노드마다 기본 자세를 굽는 데 쓴 배율 — 원래 배율이 0이라 대신 쓴 것 (`demoModels`의 `rest`) */
+type RestScales = readonly (readonly number[] | null)[] | undefined
+
 /** 행 우선 3×3 + 배율 + 이동(유닛) → 타일 자의 4×4 */
 function xform(m: readonly number[], s: readonly number[], t: readonly number[]): Matrix4 {
   const out = new Matrix4().set(
@@ -132,11 +135,13 @@ function xform(m: readonly number[], s: readonly number[], t: readonly number[])
  *
  * 트랙이 없는 채널은 모델 값을 그대로 쓴다 (`JntFrame`의 `null`이 그 뜻이다)
  */
-export function nodeMatrixAt(base: NodeBase, anim: JntAnim, node: number, frame: number): Matrix4 {
+export function nodeMatrixAt(
+  base: NodeBase, anim: JntAnim, node: number, frame: number, rest?: readonly number[] | null,
+): Matrix4 {
   const track = anim.tracks.find((t) => t.node === node)
   const got = track?.frames[Math.min(anim.frames - 1, Math.max(0, Math.floor(frame)))]
   const now = xform(got?.m ?? base.m, got?.s ?? base.s, got?.t ?? base.t)
-  return now.multiply(xform(base.m, base.s, base.t).invert())
+  return now.multiply(xform(base.m, rest ?? base.s, base.t).invert())
 }
 
 /** 노드 하나의 이 프레임 제 행렬 (트랙이 없는 채널은 모델 값) */
@@ -154,7 +159,7 @@ function localAt(base: NodeBase, anim: JntAnim, node: number, frame: number): Ma
  * `애니의 세계 행렬 × 기본의 세계 행렬⁻¹`
  */
 export function nodeMatricesAt(
-  info: { nodes: readonly NodeBase[], parents?: readonly number[] },
+  info: { nodes: readonly NodeBase[], parents?: readonly number[], rest?: RestScales },
   anim: JntAnim, nodes: Iterable<number>, frame: number,
 ): Map<number, Matrix4> {
   const out = new Map<number, Matrix4>()
@@ -162,7 +167,7 @@ export function nodeMatricesAt(
   if (!parents) {
     for (const node of nodes) {
       const base = info.nodes[node]
-      if (base) out.set(node, nodeMatrixAt(base, anim, node, frame))
+      if (base) out.set(node, nodeMatrixAt(base, anim, node, frame, info.rest?.[node]))
     }
     return out
   }
@@ -172,7 +177,8 @@ export function nodeMatricesAt(
     const hit = memo.get(id)
     if (hit) return hit
     const base = info.nodes[id]
-    const local = !base ? new Matrix4() : moving ? localAt(base, anim, id, frame) : xform(base.m, base.s, base.t)
+    const local = !base ? new Matrix4() : moving ? localAt(base, anim, id, frame)
+      : xform(base.m, info.rest?.[id] ?? base.s, base.t)
     const up = parents[id] ?? -1
     const made = up >= 0 && up !== id ? worldOf(up, moving).clone().multiply(local) : local
     memo.set(id, made)
@@ -183,6 +189,19 @@ export function nodeMatricesAt(
     out.set(node, worldOf(node, true).clone().multiply(worldOf(node, false).clone().invert()))
   }
   return out
+}
+
+/** 노드의 기본 자세 세계 행렬 — 굽는 쪽이 정점에 발라 둔 것 (사슬이 있으면 사슬 셈) */
+export function restWorld(
+  info: { nodes: readonly NodeBase[], parents?: readonly number[], rest?: RestScales }, node: number,
+): Matrix4 {
+  const at = (id: number, depth: number): Matrix4 => {
+    const base = info.nodes[id]
+    const local = base ? xform(base.m, info.rest?.[id] ?? base.s, base.t) : new Matrix4()
+    const up = info.parents?.[id] ?? -1
+    return up >= 0 && up !== id && depth < 64 ? at(up, depth + 1).multiply(local) : local
+  }
+  return at(node, 0)
 }
 
 /** 이 애니가 움직이는 노드들 */
@@ -202,6 +221,22 @@ export function movedNodes(anim: JntAnim): Set<number> {
 const splitCache = new WeakMap<ChunkMesh, Map<number, BufferGeometry>>()
 
 /**
+ * 서브메시 차례 → 롬 재질 번호.
+ *
+ * ⚠️ **재질 배열은 서브메시마다다** (`ChunkMesh.materials` · `propMaterials`). 롬 재질 번호(`propModelInfo.materials` ·
+ * `uv` · 굽는 쪽의 `blend` · `light`)와 차례가 다르다 — SBC가 그리는 차례가 서브메시 차례라서다. 창기둥 영상의 땅은
+ * 9 · 10 · 6 · 2 · …로 그린다. 둘을 섞으면 그림이 남의 면에 붙는다 (실측: 소품 249 · 연출 모델 13)
+ */
+export const romMaterial = (mesh: ChunkMesh, sub: number): number => mesh.groups[sub]?.[0] ?? sub
+
+/** 그 롬 재질을 그리는 서브메시들 */
+export function submeshesOf(mesh: ChunkMesh, rom: number): number[] {
+  const out: number[] = []
+  mesh.groups.forEach(([mat], i) => { if (mat === rom) out.push(i) })
+  return out
+}
+
+/**
  * 소품 기하를 **노드마다** 쪼갠다.
  *
  * 정점·UV·법선은 **나눠 쓴다** — 쪼개는 것은 색인뿐이라 GPU에 같은 것을 여러
@@ -214,11 +249,12 @@ export function splitByNode(
   if (hit) return hit
   const index = mesh.geometry.getIndex()
   if (!index) return new Map()
+  // 그룹의 재질 칸은 **서브메시 차례**다 — 재질 배열이 그 차례다 (`romMaterial`)
   const byNode = new Map<number, { at: number, count: number, material: number }[]>()
-  mesh.groups.forEach(([material, start, count], i) => {
+  mesh.groups.forEach(([, start, count], i) => {
     const node = submeshNodes[i] ?? 0
     const list = byNode.get(node) ?? []
-    list.push({ at: start, count, material })
+    list.push({ at: start, count, material: i })
     byNode.set(node, list)
   })
 

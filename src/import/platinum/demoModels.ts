@@ -15,10 +15,11 @@ import { narcEntry } from './nds'
 import { readDict, parseModel, parseNodes, parsePolygons } from './nsbmd'
 import { parseTex0 } from './nitrotex'
 import {
-  blocks, readSbc, parseMaterials, buildMesh, packChunk, placePair, wantedItems, type Vertex,
+  blocks, readSbc, parseMaterials, buildMesh, packChunk, placePair, sbcBillboards, wantedItems, type Vertex,
 } from './chunks'
 import { bakeSheet, type Sheet } from './sheets'
 import { framesOf, propModelInfo } from './propAnims'
+import { patTextures, readNsbtp } from './nsbtp'
 import { breathe, check, json, readRomFile, type ConvertContext, type Produced } from './convertTypes'
 
 const TITLE_DEMO = '/demo/title/titledemo.narc'
@@ -94,13 +95,22 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
 
   const models: Record<string, {
     sheet: Sheet | null
-    info: ReturnType<typeof propModelInfo>
+    info: ReturnType<typeof propModelInfo> & { rest?: ([number, number, number] | null)[] }
     anims: AnimRow[]
     /**
      * 그림 알파로 비치는 재질 (재질 차례). 그림이 A3I5(1) · A5I3(6)이면 텍셀마다 알파가 있다 — 문의 고리 · 성운이 그렇다.
      * 재질 알파(31)만 보면 불투명으로 그려 화면이 한 색으로 막힌다
      */
     blend: number[]
+    /**
+     * 재질마다의 빛 — `[켠 빛, 확산 r g b, 환경 r g b]`(RGB5). 영상이 원작 두 빛으로 명암을 넣는다(`ov100_021D47A0`).
+     * 굽는 메시는 빛을 켠 정점을 흰색으로 둔다(`buildMesh`) — 명암은 화면이 법선으로 다시 낸다
+     */
+    light: number[][]
+    /** 기본 자세를 굽는 데 대신 쓴 배율 (노드마다 · 안 바꾼 노드는 null) — 없으면 모두 원래 배율이다 */
+    rest?: ([number, number, number] | null)[]
+    /** 광고판 노드 `[노드, 0 BB · 1 BBY]` — 그 노드의 조각은 카메라를 본다 (`sbcBillboards`) */
+    billboard: [number, 0 | 1][]
   }> = {}
   const parts: Uint8Array[] = []
   let total = 0
@@ -119,7 +129,12 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
     const materials = parseMaterials(file, view, modelAt, header)
     const polygons = parsePolygons(file, view, modelAt, header)
     const nodes = parseNodes(file, view, modelAt)
-    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, nodes)
+    // ⚠️ **기본 자세 배율이 0인 노드는 1로 굽는다.** 원작은 노드 공간의 정점에 그 틱의 행렬을 곱하지만 우리는 기본 자세로 발라
+    // 굽는다 — 배율 0이면 정점이 한 점(한 면)으로 눌려 애니가 되살릴 수 없다. 유크시 · 엠라이트 · 아그놈의 빛무리, 기라티나
+    // 그림자(x 0), 기둥에서 떨어지는 방울(전부 0)이 그렇다. 화면은 이 대신 쓴 배율(`rest`)로 되돌린다
+    const flat = (v: number): boolean => Math.abs(v) < 1e-6
+    const bakeNodes = nodes.map((n) => (n.s.some(flat) ? { ...n, s: n.s.map((v) => (flat(v) ? 1 : v)) as typeof n.s } : n))
+    const pairs = readSbc(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset, bakeNodes)
 
     const verts: Vertex[] = []
     const indices: number[] = []
@@ -129,7 +144,7 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
       const mat = materials[pair.material]
       if (!poly || !mat) throw new Error(`${spec.name}: SBC가 없는 것을 가리킨다`)
       const mesh = buildMesh(poly.dl, header.upScale, mat)
-      placePair(mesh.verts, pair, nodes)
+      placePair(mesh.verts, pair, bakeNodes)
       const base = verts.length
       verts.push(...mesh.verts)
       submeshes.push([pair.material, indices.length, mesh.indices.length])
@@ -147,7 +162,13 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
         if (fmt === 1 || fmt === 6) blend.push(i)
       }
       const palAt = new Map(tex0.palettes.map((p) => [p.name, p.offset]))
-      baked = await bakeSheet(tex0, wantedItems(materials, tex0), palAt)
+      // ⚠️ **BTP0가 부르는 그림도 같이 굽는다** — 재질은 첫 그림 하나만 가리킨다. 주인공(`pl_boy01c`)은 32장을 갈아 끼운다
+      const pat: [string, string][] = []
+      for (const member of spec.anims) {
+        const raw = narcEntry(narc, member)
+        if (raw !== null && String.fromCharCode(...raw.subarray(0, 4)) === 'BTP0') pat.push(...patTextures(readNsbtp(raw)))
+      }
+      baked = await bakeSheet(tex0, wantedItems(materials, tex0, pat), palAt)
     }
     if (baked) out.set(`data/demo/${spec.name}.png`, baked.png)
 
@@ -160,7 +181,14 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
       parts.push(raw)
       total += raw.length
     }
-    models[spec.name] = { sheet: baked?.sheet ?? null, info: propModelInfo(nodes, pairs, materials), anims, blend }
+    const five = (c: readonly number[]): number[] => c.map((v) => v >> 3)
+    const light = materials.map((m) => [m.lights, ...five(m.diffuse), ...five(m.ambient)])
+    const billboard = sbcBillboards(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
+    const info = propModelInfo(nodes, pairs, materials)
+    const rest = bakeNodes.map((n, i) => (n === nodes[i] ? null : [...n.s] as [number, number, number]))
+    models[spec.name] = {
+      sheet: baked?.sheet ?? null, info: rest.some((r) => r !== null) ? { ...info, rest } : info, anims, blend, light, billboard,
+    }
 
     check(ctx)
     ctx.onProgress?.(n + 1, DEMO_MODELS.length)

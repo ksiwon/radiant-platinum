@@ -337,16 +337,22 @@ export class Music {
    * 여러 개가 동시에 나도 되므로 붙였다 끝나면 떼기만 한다 — BGM처럼 하나만
    * 살아 있을 이유가 없다
    */
-  private oneShot(buf: AudioBuffer, gain: number, tag?: Ring): void {
+  private oneShot(buf: AudioBuffer, gain: number, tag?: Ring, pan = 0): void {
     const ctx = this.ctx, bus = this.bus
     if (!ctx || !bus) { tag?.release(); return }
     const g = ctx.createGain()
     g.gain.value = gain
-    g.connect(bus)
+    // 좌우 (`Sound_PlayPannedEffect` · `Sound_PlayPokemonCryEx`의 −128~127) — 가운데면 끼우지 않는다
+    const panner = pan !== 0 && typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null
+    if (panner) {
+      panner.pan.value = Math.max(-1, Math.min(1, pan / 127))
+      g.connect(panner)
+      panner.connect(bus)
+    } else g.connect(bus)
     const src = ctx.createBufferSource()
     src.buffer = buf
     src.connect(g)
-    src.onended = () => { g.disconnect(); tag?.release() }
+    src.onended = () => { g.disconnect(); panner?.disconnect(); tag?.release() }
     src.start()
     // ⚠️ **`onended`만 믿으면 안 된다.** 문맥이 멈춰 있으면(`suspended`) 소스가
     // 영영 안 끝나고, 그러면 아래 `isEffectPlaying`이 영영 참이다. 소리 길이는
@@ -402,18 +408,23 @@ export class Music {
     }
   }
 
-  /** 효과음 하나 */
-  async playEffect(song: number, gain = 1): Promise<void> {
+  /**
+   * 효과음 하나. `pan`은 원작 좌우(−128~127), `pitch`는 원작 높낮이(1/64반음 · `Sound_SetPitchForSequence`)다
+   */
+  async playEffect(song: number, gain = 1, opts?: { pan?: number, pitch?: number }): Promise<void> {
     if (!this.ctx) return
     const done = this.ringing.start(song)
+    const pitch = opts?.pitch ?? 0
     // ⚠️ **터져도 놓아 준다.** 여기서 던지면 `void`로 부른 쪽은 아무것도 못
     // 하고, 센 것이 안 돌아와 `WaitSE`가 영영 선다
     let buf = null
     try {
-      buf = await this.render(`se:${String(song)}`, song, { maxSeconds: SHORT_SECONDS })
+      buf = await this.render(`se:${String(song)}${pitch !== 0 ? `:${String(pitch)}` : ''}`, song, {
+        maxSeconds: SHORT_SECONDS, ...(pitch !== 0 ? { transpose: pitch / 64 } : {}),
+      })
     } catch { /* 소리만 빠진다 — 게임은 계속 돈다 */ }
     if (!buf) { done.release(); return }
-    this.oneShot(buf, gain, done)
+    this.oneShot(buf, gain, done, opts?.pan ?? 0)
   }
 
   /** 나는 중인 소리를 끊는다 (`Sound_StopEffect`) */
@@ -429,7 +440,7 @@ export class Music {
    * 내린다
    */
   async playCry(
-    species: number, opts?: { faint?: boolean, defaultChatot?: boolean },
+    species: number, opts?: { faint?: boolean, defaultChatot?: boolean, pan?: number, volume?: number },
   ): Promise<void> {
     if (!this.ctx) return
     if (species < 1 || species > MAX_CRY_SPECIES) return
@@ -453,7 +464,8 @@ export class Music {
       )
     } catch { /* 울음소리만 빠진다 */ }
     if (!buf) { cry.release(); return }
-    this.oneShot(buf, 1, cry)
+    // 음량 0~127 (`Sound_PlayPokemonCryEx`) — 안 주면 가득
+    this.oneShot(buf, (opts?.volume ?? 127) / 127, cry, opts?.pan ?? 0)
   }
 
   /**
