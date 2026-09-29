@@ -74,6 +74,15 @@ export interface Beat {
    */
   ask?: LearnPrompt
   /**
+   * 쉼이 끝나도 **사람이 누를 때까지** 선다 (Z · Space · 글창 클릭).
+   *
+   * 등판 글에만 붙는다(사용자 결정 2026-09-29 · `docs/orders/VISUAL_20260929.md`) — 몸이 선 것을 보고 글을 읽은 뒤 넘기게 한다.
+   * 원작은 등판 글도 `WaitButtonABTime 30`으로 저절로 넘어간다
+   */
+  press?: boolean
+  /** 이 박자가 시작될 때 **글창을 비운다** — 등판 연출 동안 앞 글(「내보냈다」)이 남아 있지 않게 */
+  clear?: boolean
+  /**
    * 이 박자가 시작될 때 갈아 틀 곡 · 낼 효과음 (`ui/battle/victoryCue`).
    *
    * 원작은 이긴 곡을 **그 줄이 찍히는 자리**에서 튼다 — 판이 끝난 뒤가 아니다. 판 상태(`outcome`)는 계산이 끝나는
@@ -183,6 +192,10 @@ interface BeatOptions {
    * 공을 그 뒤에 던진다 (`subscript_start_encounter.s` _000 대 _118)
    */
   foeOnStage?: boolean
+  /**
+   * 등판 글에서 누를 때까지 설까 (`Beat.press`). 사람이 누를 수 없는 판(잡는 법 강습 — 손이 대신 누른다)은 끈다
+   */
+  pressSendOut?: boolean
 }
 
 /**
@@ -204,7 +217,7 @@ interface BeatOptions {
 export function buildBeats(
   events: readonly BattleEvent[],
   text: (e: BattleEvent) => string | null,
-  { foeOnStage = false }: BeatOptions = {},
+  { foeOnStage = false, pressSendOut = false }: BeatOptions = {},
 ): Beat[] {
   const out: Beat[] = []
   let view: BattleView = emptyView()
@@ -220,13 +233,15 @@ export function buildBeats(
    * 창을 새로 열었는데, 그러자 「모부기의 / 공격이 떨어졌다!」가 반 문장씩 두 번
    * 떴다 — 시험은 전부 초록이었고 **화면에서만 보였다**. 창을 가르는 것은 빈 줄이다
    */
-  const say = (line: string | null, hold: number): void => {
+  const say = (line: string | null, hold: number, press = false): void => {
     if (line === null) return
     for (const part of line.split('\n\n')) {
       const page = part.trim()
       if (page === '' || page === lastLine) continue
       lastLine = page
-      out.push({ text: page, events: [], hold })
+      const beat: Beat = { text: page, events: [], hold }
+      if (press) beat.press = true
+      out.push(beat)
     }
   }
 
@@ -299,21 +314,21 @@ export function buildBeats(
         break
 
       case 'switch': {
-        // ⚠️ **글이 먼저고 몸이 그 뒤다.** 원작이 `PrintSendOutMessage` →
-        // `ThrowPokeball` → `PokemonSlideIn` 차례로 적어 두었다. 뒤집으면
-        // 포켓몬이 먼저 서 있고 「가랏!」이 그 뒤에 뜬다
+        // ⚠️ **몸이 먼저 서고 글이 그 뒤다** — 사용자 결정(2026-09-29). 원작은 거꾸로
+        // `PrintSendOutMessage` → `ThrowPokeball` → `PokemonSlideIn` 차례라 「가랏!」이 뜬 뒤에 공이
+        // 날아간다(야생만 `SetPokemonEncounter BTLSCR_ENEMY`가 글보다 앞이라 화면이 열릴 때 이미 서 있다).
+        // 우리는 공 · 미끄러짐이 다 끝나 몸이 선 것을 보여 주고 나서 글을 찍고, 누를 때까지 선다(`pressSendOut`).
+        // 쉼 길이는 원작 값 그대로다 — 여는 등판 `WaitTime 96`/`112` · 야생 조우 `WaitTime 122` · 판 도중 `WaitTime 72`
         const first = !sentOut.has(e.actor.side)
         sentOut.add(e.actor.side)
-        // 야생만 예외다 — `SetPokemonEncounter BTLSCR_ENEMY`가 글보다 앞이라
-        // **화면이 열릴 때 이미 서 있다.** 여기서 글을 기다리게 하면 조우 연출이
-        // 빈 발판에서 터진다 (`scene/battle/EncounterBurst`)
-        if (first && e.actor.side === 'p2' && foeOnStage) {
-          show([e], HOLD_ENCOUNTER, 'presentation')
-          say(text(e), HOLD_MESSAGE)
-          break
-        }
-        say(text(e), HOLD_MESSAGE)
-        show([e], first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT, 'presentation')
+        const hold = first && e.actor.side === 'p2' && foeOnStage ? HOLD_ENCOUNTER
+          : first ? HOLD_FIRST_SEND_OUT[e.actor.side] : HOLD_SEND_OUT
+        show([e], hold, 'presentation')
+        // 몸이 서는 동안은 글창을 비운다 — 앞 등판의 「내보냈다」나 트레이너의 「승부를 걸어왔다」(이 목록 밖에서 맨 앞에 붙는다 ·
+        // `bookends.openingLine`)가 다음 마리가 날아오는 동안 남아 있으면 누가 나오는지 헷갈린다
+        out[out.length - 1]!.clear = true
+        lastLine = null
+        say(text(e), HOLD_MESSAGE, pressSendOut)
         break
       }
 

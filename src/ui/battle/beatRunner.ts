@@ -118,6 +118,8 @@ export class BeatRunner {
   private locked = false
   /** 묻는 박자에서 답을 받았는가. 받으면 그 박자를 넘긴다 */
   private answered = false
+  /** 누를 때까지 서는 박자(`Beat.press`)를 눌렀는가 */
+  private pressed = false
   private printed = ''
   private done = true
   /**
@@ -159,6 +161,7 @@ export class BeatRunner {
       // 대사처럼 누름을 기다리게 하면 한 턴에 예닐곱 번을 눌러야 한다.
       // 그래서 여기서는 쪽 넘김까지 `finish()`로 다 푼다
       if (!this.applied) {
+        if (beat.clear === true && this.printed !== '') { this.printed = ''; this.sink.text('') }
         if (beat.text !== null && this.printer === null) {
           this.printer = new MessagePrinter(beat.text, this.slots)
           this.printer.finish()
@@ -199,7 +202,11 @@ export class BeatRunner {
         if (this.holdLeft > 0 || this.readLeft > 0) return
       }
 
-      // ④ 물음. 답이 올 때까지 여기서 선다 — 프레임은 계속 도므로 화면은 살아 있다
+      // ④ 누름. 등판 글은 사람이 넘길 때까지 선다 (`Beat.press`)
+      if (beat.press === true && !this.pressed) return
+      this.pressed = false
+
+      // ⑤ 물음. 답이 올 때까지 여기서 선다 — 프레임은 계속 도므로 화면은 살아 있다
       if (beat.ask !== undefined && !this.answered) {
         this.sink.ask(beat.ask)
         return
@@ -228,6 +235,8 @@ export class BeatRunner {
     if (beat !== undefined && holdsLocked(beat)) return
     if (this.locked) return
     this.holdLeft = 0
+    // 글이 이미 찍힌 뒤에만 누름으로 센다 — 앞 박자에서 누른 것이 새 등판 글을 곧장 넘기면 안 된다
+    if (beat?.press === true && this.applied) this.pressed = true
   }
 
   /** 물음에 답했다 */

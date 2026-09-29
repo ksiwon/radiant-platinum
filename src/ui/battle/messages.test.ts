@@ -561,17 +561,18 @@ withBank('첫 등판 한 창 (`leadLines`)', () => {
       enter('p2a', 'p2-0'), enter('p2b', 'p4-0'), enter('p1b', 'p3-0'), enter('p1a', 'p1-0'),
     ]
     const got = leadLines(events, multi, { trainer: true, partner: { cls: '포켓몬 트레이너', name: '라이벌' } })
-    const foe = got.get(events[1]!)!
+    // 줄은 **뒤 사건에** 싣는다 — 둘이 다 선 뒤에 한 창이 뜬다 (등판은 몸이 먼저 · 사용자 결정)
+    const foe = got.get(events[2]!)!
     // 롬 991번 — 「{분류1} {이름1}은 {포켓몬1}을 내보냈다! / {분류2} {이름2}는 …」
     expect(foe).toContain('마스')
     expect(foe).toContain('쥬피터')
-    expect(got.get(events[2]!)).toBeNull()
+    expect(got.get(events[1]!)).toBeNull()
     // 롬 993번 — 편이 첫 칸이고 내 마리가 「가랏!」 뒤다
-    const ours = got.get(events[3]!)!
+    const ours = got.get(events[4]!)!
     expect(ours).toContain('라이벌')
     expect(ours).toContain('엠페르트')
     expect(ours).toContain('가랏! 모부기!')
-    expect(got.get(events[4]!)).toBeNull()
+    expect(got.get(events[3]!)).toBeNull()
   })
 
   it('⚠️ 분류와 이름이 같은 조무래기 둘도 991이다 — 주인이 다르면 트레이너 둘이다', () => {
@@ -581,8 +582,8 @@ withBank('첫 등판 한 창 (`leadLines`)', () => {
       enter('p2a', 'p2-0'), enter('p2b', 'p4-0'), enter('p1a', 'p1-0'), enter('p1b', 'p1-1'),
     ]
     const got = leadLines(events, grunts, { trainer: true, partner: null })
-    const tag = leadLines(events, multi, { trainer: true, partner: null }).get(events[1]!)!
-    const line = got.get(events[1]!)!
+    const tag = leadLines(events, multi, { trainer: true, partner: null }).get(events[2]!)!
+    const line = got.get(events[2]!)!
     // 991은 이름 칸이 둘이다 — 「조무래기」가 두 번 나온다. 973은 한 번이다
     expect(line.split('조무래기').length - 1).toBe(2)
     // 같은 틀(991)이다 — 이름만 바뀐다
@@ -596,9 +597,10 @@ withBank('첫 등판 한 창 (`leadLines`)', () => {
       enter('p2a', 'p2-0'), enter('p2b', 'p2-1'), enter('p1a', 'p1-0'), enter('p1b', 'p1-1'),
     ]
     const got = leadLines(events, one, { trainer: true, partner: null })
-    expect(got.get(events[1]!)).toContain('이향&미향')
-    expect(got.get(events[2]!)).toBeNull()
-    expect(got.get(events[3]!)).toBe('가랏! 모부기! 모부기!')
+    expect(got.get(events[2]!)).toContain('이향&미향')
+    expect(got.get(events[1]!)).toBeNull()
+    expect(got.get(events[4]!)).toBe('가랏! 모부기! 모부기!')
+    expect(got.get(events[3]!)).toBeNull()
   })
 
   it('야생 둘은 **둘이 선 뒤에** 글이 뜬다 — 줄을 뒤 사건에 싣는다', () => {

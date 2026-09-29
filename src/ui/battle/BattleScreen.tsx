@@ -385,6 +385,8 @@ export function BattleScreen() {
       return battleText(e, ctx)
     }, {
       foeOnStage: kind !== 'trainer',
+      // 등판 글은 누를 때까지 선다 — 잡는 법 강습은 손이 대신 누르므로 끈다 (`TutorialPilot`)
+      pressSendOut: ally === null,
     })
     // 트레이너전은 누가 걸어왔는지부터 말하고, 끝나면 이긴 줄·끝말·상금이 잇는다.
     // 사건이 아니라 판 자체의 사실이다 (`bookends`)
@@ -400,6 +402,7 @@ export function BattleScreen() {
   }, [
     events, names, lines, moveLines, label, bare, outcome, kind,
     foeName, foeClass, foeTrainer, playerName, trainerOf, foes, partner, defeatLines, foeWinLines, prize, trainerClass,
+    ally,
   ])
 
   // 박자를 하나씩 흘린다. 다 소화하기 전에는 명령이 안 뜬다 — 원작의 순서다

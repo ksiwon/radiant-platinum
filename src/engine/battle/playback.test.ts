@@ -232,23 +232,35 @@ describe('박자 순서', () => {
     }
   })
 
-  it('글이 먼저고 몸이 그 뒤다 — 원작이 `PrintSendOutMessage` 다음에 공을 던진다', () => {
+  it('몸이 먼저 서고 글이 그 뒤다 — 사용자 결정 (원작은 `PrintSendOutMessage` 다음에 공을 던진다)', () => {
     const beats = buildBeats([enter(p1, 20)], say)
-    expect(beats.map((b) => (b.text ?? b.events[0]?.kind))).toEqual(['가라! party-0!', 'switch'])
-    // 여는 등판은 `WaitTime 96`이다
-    expect(beats[1]!.hold).toBe(96)
+    expect(beats.map((b) => (b.text ?? b.events[0]?.kind))).toEqual(['switch', '가라! party-0!'])
+    // 여는 등판은 원작 `WaitTime 96`을 그대로 쉰다 — 공 · 미끄러짐이 다 끝난 뒤에 글이 뜬다
+    expect(beats[0]!.hold).toBe(96)
+    expect(beats[0]!.presentation).toBe(true)
   })
 
-  it('야생만 몸이 먼저다 — 화면이 열릴 때 이미 서 있다', () => {
+  it('야생도 트레이너전도 몸이 먼저다 — 쉼은 원작 값 그대로', () => {
     const wild = buildBeats([enter(p2, 20)], say, { foeOnStage: true })
     expect(wild[0]!.events[0]?.kind).toBe('switch')
     // `PlayEncounterAnimation` 뒤의 `WaitTime 122`
     expect(wild[0]!.hold).toBe(122)
     expect(wild[1]!.text).toBe('가라! foe-0!')
-    // 트레이너전은 반대다 — 글을 찍고 공을 던진다 (`WaitTime 112`)
+    // 트레이너전의 여는 등판은 `WaitTime 112`
     const tr = buildBeats([enter(p2, 20)], say, { foeOnStage: false })
-    expect(tr[0]!.text).toBe('가라! foe-0!')
-    expect(tr[1]!.hold).toBe(112)
+    expect(tr[0]!.events[0]?.kind).toBe('switch')
+    expect(tr[0]!.hold).toBe(112)
+    expect(tr[1]!.text).toBe('가라! foe-0!')
+  })
+
+  it('등판 글만 누를 때까지 선다 — 기술 · 데미지 글은 저절로 흐른다', () => {
+    const beats = buildBeats([enter(p2, 20), enter(p1, 20), move(p1, '몸통박치기'), hit(p2, 8, 20)], say,
+      { foeOnStage: true, pressSendOut: true })
+    const pressed = beats.filter((b) => b.press === true).map((b) => b.text)
+    expect(pressed).toEqual(['가라! foe-0!', '가라! party-0!'])
+    // 끄면(잡는 법 강습 — 손이 대신 누른다) 아무 데도 안 선다
+    const pilot = buildBeats([enter(p2, 20), enter(p1, 20)], say, { foeOnStage: true })
+    expect(pilot.some((b) => b.press === true)).toBe(false)
   })
 
   it('판 도중 교체는 72프레임이다 — 여는 등판보다 짧다', () => {

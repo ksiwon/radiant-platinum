@@ -894,8 +894,7 @@ export function battleText(e: BattleEvent, ctx: TextContext): string | null {
  *
  * 돌려주는 것은 사건 → 그 자리의 글이다. 한 쪽의 두 등판 중 **한 사건에만** 줄을
  * 싣고 다른 하나는 null로 비운다 — 재생기는 글 없는 사건을 공만 던지는 박자로
- * 편다(`buildBeats`). 야생은 두 마리가 **먼저 서 있고** 글이 뒤라서(`subscript_
- * start_encounter.s` _079) 뒤 사건에 싣는다.
+ * 편다(`buildBeats`). 등판은 몸이 먼저 서고 글이 뒤라서 **뒤 사건에** 싣는다 — 두 마리가 다 선 뒤에 한 줄이 뜬다.
  *
  * 롬 줄을 못 채우면(뱅크가 안 왔다) 아무것도 안 돌려준다 — 사건마다의 줄로 떨어진다
  */
@@ -940,10 +939,10 @@ export function leadLines(
           bare(a.actor.name), bare(b.actor.name))
     }
     if (line !== null) {
-      // 야생은 서 있는 둘 **뒤에** 글이 뜬다. 트레이너는 글이 먼저고 공이 뒤다
-      const [said, quiet] = setup.trainer ? [foe[0]!, foe[1]!] : [foe[1]!, foe[0]!]
-      out.set(said, line)
-      out.set(quiet, null)
+      // 서 있는 둘 **뒤에** 글이 뜬다 — 뒤 사건에 싣는다. 원작은 트레이너전만 글이 먼저지만, 등판은 몸이 먼저 서고 글이
+      // 뒤다(사용자 결정 · `engine/battle/playback`의 `switch`)
+      out.set(foe[1]!, line)
+      out.set(foe[0]!, null)
     }
   }
 
@@ -955,8 +954,8 @@ export function leadLines(
         bare(ours[0]!.actor.name), ctx.label(ours[1]!.actor))
       : rom(ctx, MSG.goPokemon1AndPokemon2, ctx.label(ours[0]!.actor), ctx.label(ours[1]!.actor))
     if (line !== null) {
-      out.set(ours[0]!, line)
-      out.set(ours[1]!, null)
+      out.set(ours[1]!, line)
+      out.set(ours[0]!, null)
     }
   }
   return out
