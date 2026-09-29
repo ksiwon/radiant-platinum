@@ -157,7 +157,8 @@ export function PropFade({ geometry, materials, children }: Props) {
     if (!node) return
     // 1인칭은 눈이 곧 플레이어라 가릴 사이가 없다 — 코앞의 벽이 사라지면 더 이상하다
     let want = 1
-    if (worldState.camera.mode !== 'first') {
+    // 스크립트가 숨긴 주인공은 드러낼 까닭이 없다 — 배로 건너가기에서 떠나는 배가 카메라 앞에서 흐려졌다
+    if (worldState.camera.mode !== 'first' && !worldState.player.hidden) {
       const world = box.current.copy(local).applyMatrix4(node.matrixWorld)
       const p = worldState.player.position
       aim.set(p.x, p.y + AIM_HEIGHT, p.z)

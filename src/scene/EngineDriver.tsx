@@ -273,7 +273,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       // 뼈의 자식이다. 그래서 **살덩이 조각만** 끄고 뼈와 나머지는 켜 둔다
       const first = worldState.camera.mode === 'first'
       // 모델이 아직 안 왔을 때의 폴백(`GreyBox`)만 그룹째 끈다
-      sceneRefs.player.visible = showPlayerSkin(sceneRefs.playerSkin, first) || !first
+      // 스크립트가 숨긴 주인공은 통째로 끈다 (`worldState.player.hidden` · 배에 오른 뒤)
+      sceneRefs.player.visible = !worldState.player.hidden && (showPlayerSkin(sceneRefs.playerSkin, first) || !first)
     }
 
     // 보행 포즈. 시뮬레이션이 아니라 표현이라 고정 스텝이 아닌 렌더 델타로 돈다 —

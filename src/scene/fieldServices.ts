@@ -74,6 +74,8 @@ import { MAP_FEATURE, setMapFeature } from '../engine/world/mapFeatures'
 import { useDwWarpStore } from '../state/dwWarpStore'
 import { useSpearPillarMovieStore } from '../state/spearPillarMovieStore'
 import { startSpearPillarMovie } from './spearPillarMovie'
+import { startBoatCutscene } from './boatCutscene'
+import { useBoatStore } from '../state/boatStore'
 import { lakeOrbsDone, redChainDone, startLakeOrbs, startRedChain } from './spearPillarFx'
 import { timeOfDayForHour } from '../engine/map/timeOfDay'
 import { isSoothing } from '../engine/pokemon/friendship'
@@ -1364,6 +1366,10 @@ const services: FieldServices = {
   dwWarp: {
     start: () => { useDwWarpStore.getState().start() },
     busy: () => useDwWarpStore.getState().on,
+  },
+  boat: {
+    start: (dir, facing, to, x, z) => { startBoatCutscene(dir, { to, x, z, facing }) },
+    busy: () => useBoatStore.getState().on,
   },
   spearPillarMovie: {
     start: () => { startSpearPillarMovie(servicesLocale) },

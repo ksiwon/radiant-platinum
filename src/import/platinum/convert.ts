@@ -32,6 +32,7 @@ import { convertPointerHand } from './pointerHand'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
+import { convertAreaLight } from './areaLight'
 import { convertWallpaperWords } from './wallpaperWords'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
@@ -303,6 +304,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/frontier/factoryCorridor.png', 'data/frontier/factoryFloor.png', 'data/frontier/factoryRoom{0~4}.png'],
     converter: 1,
     convert: convertFrontierBg,
+  },
+  {
+    // 지역 빛 네 벌 — 시간마다 바뀌는 빛 · 재질색 (`arealight.narc` · `areaLight.ts`)
+    name: 'areaLight',
+    outputs: ['data/areaLight.json'],
+    converter: 1,
+    convert: convertAreaLight,
   },
   {
     // 운하시티 도서관의 텔레비전 뉴스 — 그림 · 주사선 · 틀 (`library_tv/library_tv.c`)

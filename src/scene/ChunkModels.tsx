@@ -5,7 +5,7 @@
 //
 // 청크 좌표계: 모델이 −16~+16 타일로 **가운데 정렬**돼 있으므로 행렬 칸의
 // 한가운데에 놓는다. 높이는 모델이 스스로 갖고 있어서 따로 안 올린다.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import {
   ClampToEdgeWrapping, DataTexture, DoubleSide, MeshBasicMaterial, NearestFilter,
@@ -55,6 +55,8 @@ import type { PartDecision } from './visual/types'
 import { isFeaturePlacement } from './movingProps'
 import { isDistortionFloor } from './distortionCore'
 import { AnimatedProp, hasPropAnim, usePropAnimSet } from './AnimatedProp'
+import { ShipDrift } from './ShipDrift'
+import { isShipProp } from '../engine/world/boatCutscene'
 import { loadPropAnimSet } from './propAnim'
 
 /** 한 청크가 몇 타일인가. 모델이 그 절반씩 양쪽으로 뻗는다 */
@@ -1613,7 +1615,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
         붙일 때 라디안인지 다시 봐야 한다
       */}
       {props.map((p) => (
-        <group key={p.key} position={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>
+        <PropPlace key={p.key} p={p}>
           {/*
             3인칭에서 카메라와 플레이어 사이에 든 건물은 흐려진다. 나무는 이미
             비켜 주는데 집은 안 비켜서 화면의 절반이 지붕이 됐다 (`PropFade`)
@@ -1642,8 +1644,18 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
               <TerrainMesh geometry={p.geometry} materials={p.materials} name="소품" />
             )}
           </PropFade>
-        </group>
+        </PropPlace>
       ))}
     </group>
   )
+}
+
+/**
+ * 소품 하나의 자리 — 배 소품(운하 34 · 선단 538)만 배로 건너가기가 밀 수 있게 감싼다 (`ShipDrift`)
+ */
+function PropPlace({ p, children }: { p: Prop, children: ReactNode }) {
+  if (isShipProp(p.index)) {
+    return <ShipDrift id={p.key} model={p.index} at={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>{children}</ShipDrift>
+  }
+  return <group position={[p.x, p.y, p.z]} rotation={p.rot} scale={p.scale}>{children}</group>
 }

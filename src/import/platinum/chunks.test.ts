@@ -90,7 +90,7 @@ describe('디스플레이 리스트', () => {
   const material = (lights: number): Material => ({
     name: 'm', origWidth: 8, origHeight: 8, magW: 1, magH: 1,
     repeatS: false, repeatT: false, flipS: false, flipT: false,
-    alpha: 31, faces: 2, diffuse: [206, 206, 206], ambient: [206, 206, 206], lights, texture: 'x', palette: 'x',
+    alpha: 31, faces: 2, diffuse: [206, 206, 206], ambient: [206, 206, 206], specular: [0, 0, 0], emission: [0, 0, 0], lights, texture: 'x', palette: 'x',
   })
 
   it('⚠️ 빛을 켠 재질에서는 법선이 정점색을 덮는다 — 색 0을 굽지 않는다', () => {

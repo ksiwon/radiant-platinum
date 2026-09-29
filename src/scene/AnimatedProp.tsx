@@ -27,6 +27,8 @@ import { DOOR_KIND } from '../import/platinum/propAnims'
 import {
   FRAME_MS, nodeMatricesAt, romMaterial, splitByNode, uvOffsetAt, type PropAnimSet,
 } from './propAnim'
+import { bridgeFrame } from './boatCutscene'
+import { BRIDGE_PROPS } from '../engine/world/boatCutscene'
 import { useDoorVisualStore, type DoorVisual } from './doorVisualStore'
 import { slopePlayAt, useSlopeAnimStore } from './slopeAnimStore'
 import { ELEVATOR_LIGHTS_MODEL, elevatorLightFrame, elevatorLightSlot } from './elevatorLight'
@@ -119,6 +121,8 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
   const isLights = model === ELEVATOR_LIGHTS_MODEL
   /** 회복기의 볼과 화면 — 회복할 때 한 번만 돈다 (`scene/healingMachine`) */
   const isHealing = isHealingModel(model)
+  /** 운하 다리 둘 — 배로 건너가기가 들 때만 돈다 */
+  const isBridge = (BRIDGE_PROPS as readonly number[]).includes(model)
   const slopePlays = useSlopeAnimStore((s) => s.plays)
   const slope = isSlope ? slopePlayAt(slopePlays, tile[0], tile[1]) : null
   const doors = useDoorVisualStore((s) => s.doors)
@@ -211,6 +215,11 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
           }
           continue
         }
+        frame = at
+      } else if (isBridge) {
+        // 운하 다리 — 배가 14칸을 가면 한 번 들린다 (`scene/boatCutscene` · `MapPropOneShotAnimationManager_PlayAnimation`)
+        const at = bridgeFrame(model)
+        if (at === null) continue
         frame = at
       } else if (loops) {
         frame = free % clip.frames

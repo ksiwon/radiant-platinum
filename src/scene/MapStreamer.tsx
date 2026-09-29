@@ -105,6 +105,7 @@ import { VillaFurniture } from './VillaFurniture'
 import { SpearPillarChain } from './SpearPillarChain'
 import { spearPillarFxTick } from './spearPillarFx'
 import { spearPillarMovieFrameTick } from './spearPillarMovie'
+import { boatFrameTick } from './boatCutscene'
 import { DistortionSky } from './DistortionSky'
 import { platformLiftBusy, platformLiftTick, resetPlatformLift } from './platformLift'
 import { clearMapFeature } from '../engine/world/mapFeatures'
@@ -357,6 +358,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       worldState.player.position.set(x, atY ?? groundYAt(next, mapId, x, z, 0), z)
       worldState.player.prevPosition.copy(worldState.player.position)
       worldState.player.velocity.set(0, 0, 0)
+      // 맵을 세우면 주인공 물체를 새로 만든다 — 숨긴 것이 풀린다
+      worldState.player.hidden = false
       setChunkIndex(next.chunkIndexAt(Math.floor(x), Math.floor(z)))
       setZone(displayName(mapId))
       setMapId(mapId)
@@ -925,6 +928,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     spearPillarFxTick(dt)
     // 창기둥 영상 (`ScrCmd_2FB`) — 스크립트는 서 있고 필드 틱이 민다
     spearPillarMovieFrameTick(dt)
+    // 배로 건너가기 (`ScrCmd_PlayBoatCutscene`) — 배를 밀고 배 앱을 돌리고 워프한다
+    boatFrameTick(dt)
     // 밟으면 통째로 미끄러지는 발판 (`EVENT_CMD_MOVE_PLATFORM`) — B2F의 길이다
     distortionEventTick(dt)
     // 리그·강철섬의 승강판 (PARITY §7.12). 타는 동안은 판이 자리를 정한다
@@ -1020,7 +1025,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
           // (아웃만 걸고 워프하는 스크립트 때문에 걷어야 한다) 먼저 덮으면
           // 그대로 지워진다. 덮고 나서 밝힌다 — 원작도 갈아 끼운 뒤에 인이다
           // (`FieldTransition_StartMapAndFadeIn`: 맵을 세우고 → 지명을 띄우고 → 인)
-          if (mine) {
+          if (mine || target.fadeIn === true) {
             coverScreen(COLOR_BLACK)
             startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_IN, COLOR_BLACK)
           }

@@ -754,6 +754,14 @@ export interface FieldServices {
     start: () => void
     busy: () => boolean
   }
+  /**
+   * 배로 건너가기 (`ScrCmd_PlayBoatCutscene`) — 배를 밀고 건너기 앱을 돌리고 맵을 간다. 스크립트는 다 끝날 때까지 선다.
+   * 방향은 원작 `BOAT_TRAVEL_DIR_*` · 도착 방향은 원작 방향 번호 · 자리는 롬 칸
+   */
+  boat?: {
+    start: (dir: number, facing: number, to: number, x: number, z: number) => void
+    busy: () => boolean
+  }
   /** 창기둥 영상 (`ScrCmd_2FB` · `overlay100`) — 스크립트는 영상이 끝날 때까지 선다 */
   spearPillarMovie?: {
     start: () => void

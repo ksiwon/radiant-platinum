@@ -49,8 +49,12 @@ const shown = (s) => s?.platforms.filter((p) => p.opacity === 31) ?? []
 verdict('1F — 틱이 1초에 60쯤 흐른다', b.s !== null && a.s !== null && Math.abs((b.s.ticks - a.s.ticks) - 60) <= 12, { map: b.map, dt: (b.s?.ticks ?? 0) - (a.s?.ticks ?? 0) })
 const ys = shown(b.s).map((p) => p.y)
 verdict('1F — 보이는 발판이 제각각 둥실거린다 (높이 0 ~ −3/8칸, 서로 다르다)', ys.length > 0 && ys.every((y) => y <= 0 && y >= -0.375) && new Set(ys).size > 1, { n: ys.length, ys: ys.slice(0, 8) })
-const moved = shown(a.s).some((p, i) => shown(b.s)[i] !== undefined && shown(b.s)[i].y !== p.y)
-verdict('1F — 1초 뒤 높이가 바뀌었다', moved, {})
+// ⚠️ 둥실거림은 32틱에 한 바퀴다(진행 0~8을 한 틱에 ½씩 오간다) — 1초가 딱 64틱이면 같은 높이에 선다. 250ms 뒤를 하나 더 본다
+await page.waitForTimeout(250)
+const c3 = await read()
+const differs = (x, y) => shown(x.s).some((p, i) => shown(y.s)[i] !== undefined && shown(y.s)[i].y !== p.y)
+const moved = differs(a, b) || differs(b, c3)
+verdict('1F — 1초 · 1.25초 뒤 높이가 바뀌었다', moved, { dt: (b.s?.ticks ?? 0) - (a.s?.ticks ?? 0), dt2: (c3.s?.ticks ?? 0) - (b.s?.ticks ?? 0) })
 
 await page.evaluate(async () => {
   const { CHECKPOINTS } = await import('/src/engine/dev/checkpoints.ts')

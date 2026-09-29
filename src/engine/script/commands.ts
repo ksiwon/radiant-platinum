@@ -2674,23 +2674,26 @@ on('Warp', (ctx) => {
  * `.byte .byte .short .short .short` **리터럴**이다. 한 칸이라도 어긋나면 그 뒤
  * 스크립트가 통째로 밀린다.
  *
- * `travelDir`는 배가 어느 쪽으로 가는가(`BOAT_TRAVEL_DIR_*`)로, **연출에만** 쓰인다 —
- * 어느 배 모델을 찾고 운하 다리를 올릴지가 그 값으로 갈린다. 우리는 아직 배가
- * 뜨는 장면이 없어서 읽고 버린다 (PARITY §1.26). 자리는 `scene/CinematicStage`다.
- * 목적지는 원작도 `FieldTask_ChangeMapToLocation(…, x, z, exitDir)` 한 줄이라
- * `Warp`와 같은 길로 보낸다
+ * `travelDir`는 배가 어느 쪽으로 가는가(`BOAT_TRAVEL_DIR_*`)다 — 어느 배 소품을 밀고 운하 다리를 올릴지, 건너기 앱이
+ * 어느 배 모델을 돌릴지가 그 값으로 갈린다(`scene/boatCutscene` · PARITY §1.26). 목적지는 원작도
+ * `FieldTask_ChangeMapToLocation(…, x, z, exitDir)` 한 줄이라 `Warp`와 같은 길로 보낸다 — 연출이 없으면 곧바로다
  */
 on('PlayBoatCutscene', (ctx) => {
-  ctx.readByte() // travelDir — 연출용이라 우리는 안 쓴다
+  const travelDir = ctx.readByte()
   const facing = ctx.readByte()
   const to = ctx.readHalfWord()
   const x = ctx.readHalfWord()
   const z = ctx.readHalfWord()
   const dest = mapById(to)
   if (!dest) return false
-  mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
-  // 원작이 `TRUE`를 돌려준다 — 연출이 화면을 가져가므로 그 프레임은 거기서
-  // 끝난다. 우리는 연출이 없지만 자리는 그대로 둔다
+  const boat = ctx.host.world.services.boat
+  if (!boat) {
+    mapWorld.pending = { to, matrix: dest.matrix, x: x + 0.5, z: z + 0.5, viaDoor: false, facing }
+    return true
+  }
+  // 원작이 `FieldTask_InitCall`로 장면을 걸고 `TRUE`를 돌려준다 — 스크립트는 장면이 끝날 때까지 선다
+  boat.start(travelDir, facing, to, x, z)
+  ctx.pause((c) => c.host.world.services.boat?.busy() !== true)
   return true
 })
 

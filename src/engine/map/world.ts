@@ -213,6 +213,11 @@ export interface PendingWarp {
   /** 문·계단 소리를 안 낸다. 승강 발판은 제 소리가 따로 있다 */
   silent?: boolean
   /**
+   * 갈아 끼운 뒤 검은 데서 6단계로 밝힌다 — 스크립트가 도는 중이어도 (`FieldTransition_StartMapAndFadeIn`).
+   * 배로 건너가기가 쓴다: 배 앱이 화면을 검게 닫은 채 넘기고, 뒤의 스크립트는 `ReleaseAll; End`뿐이다
+   */
+  fadeIn?: boolean
+  /**
    * 동굴탈출로프 · 구멍파기 · 순간이동의 빙글 워프로 왔다 (`FieldTask_ChangeMapByFieldWarp`).
    *
    * 덮개를 그쪽이 이미 걸어 두었으므로 씬이 검정 페이드를 또 걸지 않고, 갈아 끼운 뒤 들어오는 연출을

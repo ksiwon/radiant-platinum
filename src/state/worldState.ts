@@ -18,6 +18,11 @@ export const worldState = {
     facing: 0,
     grounded: true,
     /**
+     * 스크립트가 주인공을 숨겼다 (`SET_INVISIBLE` · `ApplyMovement LOCALID_PLAYER`) — 배에 오르고 나서가 그렇다.
+     * 맵에 들어서면 풀린다 — 원작도 맵을 세울 때 주인공 물체를 새로 만든다
+     */
+    hidden: false,
+    /**
      * 턱을 넘는 중. `t`가 0에서 1까지 가는 동안 입력도 충돌도 안 본다 —
      * 원작도 뛰는 동안은 조작이 안 먹는다 (`actor/ledge`).
      *

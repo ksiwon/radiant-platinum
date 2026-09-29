@@ -213,20 +213,23 @@ function parseNodes(buf, modelAt) {
  *
  * 축에 나란한 90도 회전에 남은 평면의 회전을 얹은 꼴이라 NSBMD가 아홉 값 대신
  * **A·B 둘과 깃발**로 적는다. `idx`가 ±1이 앉는 칸(행 우선 0~8)이고, 그 행과
- * 열을 뺀 2×2에 `[A B; C D]`가 들어간다 (기본값 `C = −B` · `D = A`).
+ * 열을 뺀 2×2에 `[A B; C D]`가 들어간다 (기본값 `C = B` · `D = A`).
  *
- * 깃발 세 개가 부호를 뒤집는다 — 0x0100이 C, 0x0200이 D, 0x0400이 ±1이다.
+ * 부호 깃발 셋 (NitroSystem `NNS_G3D_SRTFLAG_*`): 0x0100 `PIVOT_MINUS`(±1) · 0x0200 `SIGN_REVC` · 0x0400 `SIGN_REVD`.
  * (0xF800은 청크 917노드 **전부**에 서 있어 뜻이 없다)
+ *
+ * ⚠️ **옛 풀이는 깃발을 한 칸씩 밀어 읽고 C 기본을 −B로 두었다.** 회전이 거울이 됐다 — 롬 모델 전체의 피벗 128개 중
+ * 옛 풀이의 행렬식 −1이 75개, 이 풀이는 0개다(`.audit/probe/pivotRules.mjs`). 배 모델(운하 노드 0 · 선단 선체)이
+ * 뒤집혀 밖에서 보는 면이 다 뒷면이 됐다
  */
 function pivotMatrix(idx, flag, a, b) {
   const m = [0, 0, 0, 0, 0, 0, 0, 0, 0]
   const row = Math.floor(idx / 3), col = idx % 3
-  m[idx] = (flag & 0x0400) !== 0 ? -1 : 1
+  m[idx] = (flag & 0x0100) !== 0 ? -1 : 1
   const rows = [0, 1, 2].filter((r) => r !== row)
   const cols = [0, 1, 2].filter((c) => c !== col)
-  let c = -b, d = a
-  if ((flag & 0x0100) !== 0) c = -c
-  if ((flag & 0x0200) !== 0) d = -d
+  const c = (flag & 0x0200) !== 0 ? -b : b
+  const d = (flag & 0x0400) !== 0 ? -a : a
   m[rows[0] * 3 + cols[0]] = a
   m[rows[0] * 3 + cols[1]] = b
   m[rows[1] * 3 + cols[0]] = c

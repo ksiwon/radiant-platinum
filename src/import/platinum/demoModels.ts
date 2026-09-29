@@ -24,6 +24,8 @@ import { breathe, check, json, readRomFile, type ConvertContext, type Produced }
 
 const TITLE_DEMO = '/demo/title/titledemo.narc'
 const TENGAN = '/arc/demo_tengan_gra.narc'
+const SHIP = '/arc/ship_demo.narc'
+const SHIP_PL = '/arc/ship_demo_pl.narc'
 
 interface DemoModel {
   /** 굽는 이름 — `data/demo/<name>.{bin,png}` */
@@ -68,6 +70,13 @@ export const DEMO_MODELS: readonly DemoModel[] = [
   { name: 'giratinaE', narc: TENGAN, model: 38, anims: [37, 39] },
   { name: 'shadowA', narc: TENGAN, model: 41, anims: [40] },
   { name: 'shadowB', narc: TENGAN, model: 42, anims: [] },
+  // ── 배로 건너가기 (`cutscenes/boat_cutscene`) — `narcMemberIndexes[travelDir]`의 모델 · 애니 차례 그대로 (90프레임) ──
+  // 운하 배 (`canalave_ship.c`) — 남 → 북(섬에서 운하로) · 북 → 남(운하에서 섬으로). 표의 1 · 2번은 선단 쪽이라 안 쓴다
+  { name: 'shipToCanalave', narc: SHIP, model: 2, anims: [0, 1, 3, 4] },
+  { name: 'shipFromCanalave', narc: SHIP, model: 17, anims: [15, 16, 18, 19] },
+  // 선단 배 (`snowpoint_ship.c`) — 동 → 서(싸움의섬에서 선단으로) · 서 → 동(선단에서 싸움의섬으로). 0 · 2 · 3번이 같은 벌이다
+  { name: 'shipToSnowpoint', narc: SHIP_PL, model: 5, anims: [7, 6, 4] },
+  { name: 'shipFromSnowpoint', narc: SHIP_PL, model: 1, anims: [3, 2, 0] },
 ]
 
 /** 애니 머리 — 맵 소품의 셋(`framesOf`)에 재질 색(BMA0)과 보임(BVA0)을 더한다. 프레임 수 자리는 같다 */
@@ -103,7 +112,7 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
      */
     blend: number[]
     /**
-     * 재질마다의 빛 — `[켠 빛, 확산 r g b, 환경 r g b]`(RGB5). 영상이 원작 두 빛으로 명암을 넣는다(`ov100_021D47A0`).
+     * 재질마다의 빛 — `[켠 빛, 확산 r g b, 환경 r g b, 반사 r g b, 방사 r g b]`(RGB5). 영상이 원작 두 빛으로 명암을 넣는다(`ov100_021D47A0`).
      * 굽는 메시는 빛을 켠 정점을 흰색으로 둔다(`buildMesh`) — 명암은 화면이 법선으로 다시 낸다
      */
     light: number[][]
@@ -182,7 +191,7 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
       total += raw.length
     }
     const five = (c: readonly number[]): number[] => c.map((v) => v >> 3)
-    const light = materials.map((m) => [m.lights, ...five(m.diffuse), ...five(m.ambient)])
+    const light = materials.map((m) => [m.lights, ...five(m.diffuse), ...five(m.ambient), ...five(m.specular), ...five(m.emission)])
     const billboard = sbcBillboards(file, modelAt + header.sbcOffset, modelAt + header.materialsOffset)
     const info = propModelInfo(nodes, pairs, materials)
     const rest = bakeNodes.map((n, i) => (n === nodes[i] ? null : [...n.s] as [number, number, number]))

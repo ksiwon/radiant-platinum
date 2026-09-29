@@ -161,6 +161,12 @@ export const GROUPS = [
     match: (p) => p.startsWith('data/frontier/'),
   },
   {
+    // 지역 빛 네 벌 — 배로 건너가기의 배가 받는다
+    name: 'areaLight',
+    make: 'pnpm extract:areaLight',
+    match: oneOf('data/areaLight.json'),
+  },
+  {
     // 벽지 암호 낱말표 (축복TV 3층 · `GetWallpaperFromCustomMessageWords`)
     name: 'wallpaperWords',
     make: 'pnpm extract:wallpaperWords',

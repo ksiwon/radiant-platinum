@@ -632,7 +632,10 @@ const playerMovable: Movable = {
   set y(v: number) { worldState.player.position.y = v },
   get dir() { return QUARTER_TO_DIR[quarterOf(worldState.player.facing)]! },
   set dir(v: number) { worldState.player.facing = DIR_TO_FACING[v] ?? 0 },
-  visible: true,
+  // ⚠️ **그림이 이 값을 본다** (`EngineDriver`). 그냥 칸이던 동안은 `SET_INVISIBLE`이 적기만 하고 아무도 안 읽어서,
+  // 배에 올라탄 주인공이 부두에 그대로 서서 떠나는 배를 봤다
+  get visible() { return !worldState.player.hidden },
+  set visible(v: boolean) { worldState.player.hidden = !v },
 }
 
 /** 사분면(0 +z · 1 +x · 2 −z · 3 −x) → 원작 방향 */

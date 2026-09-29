@@ -261,6 +261,9 @@ export interface Material {
   diffuse: [number, number, number]
   /** 환경색 (`diffAmb`의 위 15비트, RGB5 → 8비트) — 빛을 켠 재질이 빛 색에 곱해 늘 받는 몫이다 */
   ambient: [number, number, number]
+  /** 반사색 · 방사색 (`specEmi`의 아래 · 위 15비트) */
+  specular: [number, number, number]
+  emission: [number, number, number]
   /** 켠 빛 (`polyAttr` 0~3비트). 켜져 있으면 법선 명령이 정점색을 조명으로 덮는다 */
   lights: number
   texture: string | null
@@ -289,6 +292,7 @@ export function parseMaterials(
     const texImageParam = view.getUint32(at + 20, true)
     const polyAttr = view.getUint32(at + 12, true)
     const diffAmb = view.getUint32(at + 4, true)
+    const specEmi = view.getUint32(at + 8, true)
     return {
       name: e.name,
       // 형식·크기는 TEX0 쪽이 정본이고, 재질은 UV를 나눌 원본 크기를 갖는다
@@ -304,6 +308,8 @@ export function parseMaterials(
       faces: (polyAttr >> 6) & 3,
       diffuse: rgb5(diffAmb & 0x7fff),
       ambient: rgb5((diffAmb >>> 16) & 0x7fff),
+      specular: rgb5(specEmi & 0x7fff),
+      emission: rgb5((specEmi >>> 16) & 0x7fff),
       lights: polyAttr & 15,
       texture: null,
       palette: null,

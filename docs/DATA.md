@@ -5183,6 +5183,13 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 | 1 호수 (`ov100_021D13E4.c`) | `lakeBg`(60) · `uxie`(59, 57 · 58 — 301) · `mesprit`(45, 43 · 44 — 151) · `azelf`(17, 15 · 16 — 151) |
 | 2 기라티나 (`ov100_021D1C44.c`) | `drip`(53, 51 · 52) · `orb`(55, BCA0 54 · BTA0 56) · `giratinaA`~`E`(26 · 29 · 32 · 35 · 38, BCA0 + BTA0 — 121 · 61 · 121 · 61 · 241) · `shadowA`(41, BCA0 40) · `shadowB`(42) |
 
+배로 건너가기의 배 앱 (`canalave_ship.c` · `snowpoint_ship.c`의 `narcMemberIndexes[travelDir]` — 90프레임):
+
+| 이름 | 아카이브 · 모델 (애니) | 방향 |
+|---|---|---|
+| `shipToCanalave` · `shipFromCanalave` | `arc/ship_demo.narc` 2 (0 BCA0 · 1 BMA0 · 3 BTA0 · 4 BTP0) · 17 (15 · 16 · 18 · 19) | 남 → 북 · 북 → 남 (표의 1 · 2번은 선단 쪽이라 안 쓴다) |
+| `shipToSnowpoint` · `shipFromSnowpoint` | `arc/ship_demo_pl.narc` 5 (7 BCA0 · 6 BMA0 · 4 BTA0) · 1 (3 · 2 · 0) | 동 → 서 · 서 → 동 (0 · 2 · 3번이 같은 벌) |
+
 모델은 소품과 같은 `PT3C`이고, 애니는 원작 바이트를 그대로 `anims.bin`에 잇는다. 목차(`index.json`)가 모델마다
 시트 · 모델 속살(`propModelInfo`) · 애니 자리를 든다. **굽는 쪽 둘이 같은 함수를 부른다** — 노드 쪽
 (`tools/extract/demoModels.mjs`)은 롬을 열어 넘길 뿐이다.
@@ -5194,7 +5201,7 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 
 | 칸 | 무엇 |
 |---|---|
-| `light` | 재질마다 `[켠 빛, 확산 r g b, 환경 r g b]`(RGB5). 굽는 메시는 빛을 켠 정점을 흰색으로 두므로 명암은 화면이 **롬 법선**으로 다시 낸다 (`SpearPillarMovieStage`) |
+| `light` | 재질마다 `[켠 빛, 확산 · 환경 · 반사 · 방사 r g b]`(RGB5). 굽는 메시는 빛을 켠 정점을 흰색으로 두므로 명암은 화면이 **롬 법선**으로 다시 낸다 (`SpearPillarMovieStage`) |
 | `billboard` | 광고판 노드 `[노드, 0 BB · 1 BBY]` — 검은 구슬의 번개 셋(노드 0 · 2 · 3). 화면이 그 노드의 돌림만 카메라 것으로 갈아 낀다 |
 | `info.rest` | 기본 자세를 굽는 데 **대신 쓴 배율**(노드마다 · 안 바꾼 노드는 null). 아래 ⚠️ |
 
@@ -5229,6 +5236,21 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 
 굽는 것: 복도 256×192(0번 색은 뚫는다 — 바닥이 비친다) · 바닥 256×512 · 배틀룸 256×192 다섯 장(팔레트 0~4). 굽는 쪽 둘이 같은 함수를
 부른다(`tools/extract/frontierBg.mjs`).
+
+### 2.21h arealight.narc — 지역 빛 네 벌
+
+`data/arealight.narc`의 네 멤버가 필드의 빛이다 (`import/platinum/areaLight.ts` → `data/areaLight.json` · `overlay005/area_light.c`). 지역마다
+`area_data.narc`의 `areaLightArchiveID`(u16 · 6바이트째)가 하나를 고른다 — 0 바깥(시간으로 바뀐다) 22지역 · 1 50지역 · 2 3지역
+(`.audit/probe/areaLightIds.mjs`). 한 벌은 **글**이고 틀 열다섯을 `EOF`까지 잇는다:
+
+    끝 시각(자정부터 초 ÷ 2),
+    켬,r,g,b,x,y,z,     × 빛 넷 — 켬이 1이 아니면 없는 빛(색 0) · 방향은 fx16이고 ±4096에서 자른다
+    확산 r,g,b, · 환경 · 반사 · 방사
+    (빈 줄)
+
+지금 틀은 끝 시각이 지금보다 뒤인 첫 틀이다(`AreaLightManager_New`). 쓰는 곳은 배로 건너가기의 배 앱이다 — 배 모델이 이 빛과 재질색을
+받는다(`NNS_G3dMdlUseGlb*`). 빛 셈은 원작 하드웨어 식이다(GBATEK · `scene/demoInstance`): 방사 + Σ 켠 빛 [반사 × 빛색 × max(0, −H·N)² +
+확산 × 빛색 × max(0, −L·N) + 환경 × 빛색], `H = (L + (0, 0, −1)) / 2` — 시점 공간이다. 굽는 쪽 둘이 같은 함수를 부른다(`tools/extract/areaLight.mjs`).
 
 ### 2.22 tw_arc — 깨어진 세계는 맵 격자가 아니라 **떠 있는 판**이다
 
@@ -5790,6 +5812,13 @@ NSBMD의 그리기 명령(SBC)은 노드 행렬을 **행렬 더미**로 곱한�
 (`pair.world` · `placeByWorld`) — 나머지는 바이트가 그대로다. 사슬 자체(`parents`)는 그 다섯의 모델 속살에만 실리고,
 화면 쪽이 관절 애니를 되돌릴 때 `애니의 세계 행렬 × 기본의 세계 행렬⁻¹`로 다시 곱한다 (`propAnim.nodeMatricesAt`).
 581은 판 하나(노드 0)에 고리 넷(노드 1~4)이 매달려 **고리만 돈다** — 사슬 없이 돌리면 고리와 판이 따로 놀았다.
+
+⚠️ **피벗꼴 회전은 NitroSystem 깃발로 푼다** (`nsbmd.pivotMatrix` · `NNS_G3D_SRTFLAG_*`): ±1 칸은 `(flag >> 4) & 0xf`, 0x0100
+`PIVOT_MINUS`(그 칸이 −1) · 0x0200 `SIGN_REVC` · 0x0400 `SIGN_REVD`, 남은 2×2가 `[A B; C D]`이고 **`C = B` · `D = A`가 기본**이다. 옛 풀이는
+깃발을 한 칸씩 밀어 읽고 C 기본을 −B로 두어 회전을 거울로 읽었다. 실측(`.audit/probe/pivotRules.mjs` — 롬 모델 전체의 피벗 128개): 옛 풀이의
+행렬식 −1이 75개, 이 풀이는 0개다. 바뀐 노드 103개가 모델 33개에 있다 — 소품 146 · 214 · 439 · 440 · 475 · 540 · 575 · 청크 286~288 · 321 · 323 ·
+520 · 521 · 588 · 필드 이펙트 111 · 145 · 148 · 연출 모델(유크시 · 엠라이트 · 아그놈 · 기둥 · 은하 · 배 넷 …). 거울 노드 아래의 면은 밖에서 보면
+뒷면이라 잘려 나갔다(운하 배 앱의 배가 테두리만 남았다).
 
 ⚠️ **SBC 명령의 인자 수는 깃발 비트마다 하나씩 붙는다** (`sbcOperands`): `NODEDESC` 3(노드 · 부모 · 속성) · `BB` · `BBY` 1(노드)
 에 0비트(넣을 칸) · 1비트(꺼낼 칸)마다 하나, `NODEMIX` 2 + 3 × 개수, `CALLDL` 8(주소 · 크기 u32 둘). 옛 표(`NODEDESC` 깃발 0이면 2 ·
