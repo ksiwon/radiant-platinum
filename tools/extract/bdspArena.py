@@ -438,7 +438,8 @@ def bake_rooms(names: list[str]) -> int:
         print(f"  {name}  삼각형 {stat['삼각형']:>7,} · 재질 {stat['재질']:>2} · {stat['바이트'] / 1e6:.1f}MB")
     # 목차는 **구운 것 전부**다 — 한 벌만 다시 구워도 목차가 줄지 않게 폴더를 센다
     made = sorted(p.stem for p in ROOM_OUT.glob("*.glb"))
-    (ROOM_OUT / "index.json").write_text(json.dumps({"rooms": made}, indent=1), encoding="utf-8")
+    # ⚠️ **브라우저 설치기와 같은 바이트로 쓴다** — `JSON.stringify`처럼 빈칸 없이(`json()` · 설치본을 노드 산출물과 바이트로 견준다)
+    (ROOM_OUT / "index.json").write_text(json.dumps({"rooms": made}, separators=(",", ":")), encoding="utf-8")
     print(f"모두 {total / 1e6:.1f}MB · 목차 {len(made)}벌")
     return 0
 
