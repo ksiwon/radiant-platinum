@@ -292,17 +292,14 @@ describe('명예의 전당 — 크레딧 넘기기', () => {
   })
   afterAll(() => { stop(); unassets() })
 
-  it('처음 깨면 못 넘기고, 두 번째부터 넘긴다', async () => {
+  it('전당에 들면 깬 깃발을 세우고 전당을 연다', async () => {
     const { useMenuStore } = await import('../state/menuStore')
     const { SYSTEM_FLAG } = await import('../engine/script/commands')
     const vars = fieldScripts.vars
     vars.clearFlag(SYSTEM_FLAG.gameCompleted)
     fieldScripts.services.hallOfFame!.clear()
-    expect(useMenuStore.getState().creditsSkippable).toBe(false)
     expect(vars.checkFlag(SYSTEM_FLAG.gameCompleted)).toBe(true)
-    useMenuStore.getState().closeAll()
-    fieldScripts.services.hallOfFame!.clear()
-    expect(useMenuStore.getState().creditsSkippable).toBe(true)
+    expect(useMenuStore.getState().top).toBe('hallOfFame')
     useMenuStore.getState().closeAll()
     vars.clearFlag(SYSTEM_FLAG.gameCompleted)
   })

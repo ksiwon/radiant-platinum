@@ -13,16 +13,16 @@
 // 지키고 자리는 안 지킨다 — 일본판은 목록이 127번째 줄부터 갈려 열네 자리가
 // 어긋났고, 한국판은 뱅크 237칸 중 뒤 28칸이 비어서 빈 줄 스물여덟이 흘렀다.
 //
-// ⚠️ **넘기는 것은 한 번 깬 뒤부터다** — 원작이 `gameCompleted`일 때만 START를
-// 받는다. 처음 끝낸 사람에게는 흐르는 것을 보여 준다.
+// ⚠️ **처음 깬 판에서도 바로 넘긴다** (사용자 결정 · 2026-09-29). 원작은 `gameCompleted`일 때만 START를 받아 처음
+// 끝낸 사람은 131초를 다 봐야 한다 — 우리는 Z · X · Enter · Esc · Space 한 번에 롬 목록을 건너뛰고 만든 사람 화면으로 간다.
 //
 // ⚠️ **3D 장면 일곱은 없다.** 원작은 아래 화면에 장면 일곱을 3D로 돌리고 그 위로
 // 사람이 지나간다(`ov99_021D1A54.c`의 상태 기계 일곱). 우리는 위 화면 배경 세
 // 장만 굽는다 — 바뀌는 자리도 그래서 우리가 정한 것이다 (`creditsScene`).
 //
-// ⚠️ **끝에 우리 몫이 붙는다** (`OURS`). 롬의 목록과 **화면 하나를 통째로 띄워**
-// 잇는다 — 붙여 놓으면 남의 이름 옆에 우리 이름을 얹은 것처럼 읽힌다. 이 줄들만
-// 우리가 쓴 글이고, 그래서 롬에서 오는 글과 다른 배열에 따로 둔다.
+// ⚠️ **끝에 우리 몫이 붙는다** — 두루마리가 아니라 **따로 서는 한 화면**이다(`MakerScreen`). 롬 목록과 섞어 흘리면
+// 남의 이름 옆에 우리 이름을 얹은 것처럼 읽힌다. 롬 목록이 다 흐르거나 넘기면 그 화면이 서고, 한 번 더 누르면
+// 타이틀로 간다(원작 FIN의 자리다).
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { music } from '../../engine/audio/music'
 import { creditsImage, loadCreditRows, loadCreditsAtlas } from '../../data/gameData'
@@ -43,30 +43,66 @@ const VIEW_W = 256
 const VIEW_H = 192
 
 /**
- * 롬의 목록 뒤에 붙는 **우리 몫**.
+ * 만든 사람 화면의 글 — **우리가 쓴 글은 여기뿐이다.** 소개와 다른 게임은 만든 사람의 누리집(siwon.it.kr)에 적힌 그대로다.
  *
- * 여기만 우리가 쓴 글이다. 색 부호는 롬 것과 같은 규칙이라(`{COLOR 2}`가 항목
- * 이름) 대사창과 같은 함수가 그대로 읽는다.
- *
- * ⚠️ **고지 넉 줄을 빼지 않는다** — 타이틀 화면과 같은 문장이고(COPYRIGHT §11)
- * 게임을 끝까지 본 사람이 마지막으로 읽는 자리다
+ * ⚠️ **고지 줄을 빼지 않는다** — 타이틀 화면과 같은 문장이고(COPYRIGHT §11) 게임을 끝까지 본 사람이 마지막으로 읽는 자리다.
+ * 그래서 돈이 오가는 링크(후원 · 판매)는 안 싣는다 — 「무료 · 비영리」와 부딪친다
  */
-const OURS: readonly { text: string; centered?: boolean }[] = [
-  { text: '{COLOR 1}Radiant Platinum{COLOR 0}', centered: true },
-  { text: '비공식 팬 프로젝트', centered: true },
-  { text: '' },
-  { text: '{COLOR 2}제작{COLOR 0}' },
-  { text: '    Siwon J. Park' },
-  { text: '' },
-  { text: '{COLOR 2}원작 해석{COLOR 0}' },
-  { text: '    pret/pokeplatinum' },
-  { text: '' },
-  { text: '{COLOR 2}고지{COLOR 0}' },
-  { text: '    비공식·비제휴 팬 프로젝트입니다.' },
-  { text: '    관련 상표와 저작물은 각 권리자의 것이며,' },
-  { text: '    무료·비영리·BYOR는' },
-  { text: '    권리자의 허가를 뜻하지 않습니다.' },
-]
+const MAKER = {
+  title: 'Radiant Platinum',
+  tagline: '포켓몬스터 플래티넘을 브라우저 3D로 다시 만든 비공식 팬 프로젝트',
+  name: 'Siwon J. Park',
+  about: 'KAIST 산업디자인 · 전산학부 — 교육과 의료를 위한 AI 서비스를 설계하고 만듭니다',
+  links: [
+    { label: 'siwon.it.kr', href: 'https://siwon.it.kr/' },
+    { label: 'github.com/ksiwon', href: 'https://github.com/ksiwon' },
+  ],
+  games: [
+    { title: 'Pokemon Aegis', about: '1025마리가 다 나오는 타워 디펜스', label: 'aegis.siwon.it.kr', href: 'https://aegis.siwon.it.kr/' },
+    { title: 'Pokerhythm', about: 'DS 포켓몬 곡 557개로 만든 리듬 게임', label: 'pokerhythm.siwon.it.kr', href: 'https://pokerhythm.siwon.it.kr/' },
+  ],
+  thanks: 'pret/pokeplatinum',
+  notice: [
+    '비공식·비제휴 팬 프로젝트입니다.',
+    '관련 상표와 저작물은 각 권리자의 것이며,',
+    '무료·비영리·BYOR는 권리자의 허가를 뜻하지 않습니다.',
+  ],
+} as const
+
+/** 만든 사람 화면 — 두루마리가 끝나거나 넘기면 서서, 누를 때까지 머문다 */
+function MakerScreen() {
+  const plain = runStyle(0)
+  const accent = runStyle(1)
+  const label = runStyle(2)
+  const link = (l: { label: string, href: string }) => (
+    <a key={l.href} className={css.makerLink} style={plain} href={l.href} target="_blank" rel="noopener noreferrer">{l.label}</a>
+  )
+  return (
+    <div className={css.maker}>
+      <div className={css.makerTitle} style={accent}>{MAKER.title}</div>
+      <div className={css.makerSmall} style={plain}>{MAKER.tagline}</div>
+
+      <div className={css.makerLabel} style={label}>만든 사람</div>
+      <div className={css.makerName} style={plain}>{MAKER.name}</div>
+      <div className={css.makerSmall} style={plain}>{MAKER.about}</div>
+      <div className={css.makerRow}>{MAKER.links.map(link)}</div>
+
+      <div className={css.makerLabel} style={label}>다른 게임</div>
+      {MAKER.games.map((g) => (
+        <div key={g.href} className={css.makerGame}>
+          <span style={accent}>{g.title}</span>
+          <span className={css.makerSmall} style={plain}>{g.about}</span>
+          {link(g)}
+        </div>
+      ))}
+
+      <div className={css.makerFoot}>
+        <div><span style={label}>원작 해석</span> <span style={plain}>{MAKER.thanks}</span></div>
+        {MAKER.notice.map((n) => <div key={n}>{n}</div>)}
+      </div>
+    </div>
+  )
+}
 
 /**
  * `{COLOR n}`의 글자색과 그림자색 — 롬의 크레딧 팔레트다(`ending.narc` 85번 15벌 · `TEXT_COLOR(1, 2, 0)` ·
@@ -151,8 +187,8 @@ const BGM = 1186
 export function CreditsScreen() {
   const closeAll = useMenuStore((s) => s.closeAll)
   const locale = useGameLocale()
-  // 한 번 깬 리포트인가. 넘기기가 이 값에 달렸다 (`v0->unk_00->gameCompleted`)
-  const cleared = useMenuStore((s) => s.creditsSkippable)
+  /** 롬 목록이 끝났거나 넘겼다 — 만든 사람 화면이 선다 */
+  const [maker, setMaker] = useState(false)
 
   const [lines, setLines] = useState<string[] | null>(null)
   /** 그 판의 배치표. 글과 **같은 판**이라야 자리가 맞는다 */
@@ -198,48 +234,44 @@ export function CreditsScreen() {
   // ⚠️ **경과 시간으로 센다.** 프레임 수로 세면 느린 기계에서 크레딧이 늘어진다
   const started = useRef<number | null>(null)
   useEffect(() => {
-    if (lines === null || table === null) return
-    const until = creditsFrames(creditsRows(table.rows, OURS.map((l) => l.centered ?? false)))
+    if (lines === null || table === null || maker) return
+    const until = creditsFrames(table.rows)
     let raf = 0
     const tick = (now: number): void => {
       started.current ??= now
       const at = Math.floor(((now - started.current) / 1000) * 60)
-      if (at >= until) { leave(); return }
+      if (at >= until) { setMaker(true); return }
       setFrame(at)
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => { cancelAnimationFrame(raf) }
-  }, [lines, table, leave])
+  }, [lines, table, maker])
 
-  // 넘기기. 한 번 깬 리포트에서만 받는다
+  // 넘기기 — 두루마리에서는 만든 사람 화면으로, 거기서는 타이틀로
   useEffect(() => {
-    if (!cleared) return
     const onKey = (e: KeyboardEvent): void => {
-      if (e.code !== 'KeyZ' && e.code !== 'KeyX' && e.code !== 'Enter' && e.code !== 'Escape') return
+      if (!['KeyZ', 'KeyX', 'Enter', 'Escape', 'Space'].includes(e.code)) return
       e.preventDefault()
       e.stopPropagation()
-      leave()
+      if (e.repeat) return
+      if (maker) leave()
+      else setMaker(true)
     }
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('keydown', onKey, true) }
-  }, [cleared, leave])
+  }, [maker, leave])
 
   /** 롬 목록만 흐르는 데 걸리는 프레임. **배경 셋을 나누는 자가 이것이다** */
   const romFrames = table === null ? 0 : creditsFrames(table.rows)
   const scene = atlas ? creditsScene(frame, atlas.count, romFrames) : 0
-  const rows = table === null ? [] : creditsRows(table.rows, OURS.map((l) => l.centered ?? false))
   /**
-   * 그 줄의 글. 롬의 목록을 지나면 우리 몫이다.
-   *
-   * ⚠️ **자리를 세는 자가 배치표다.** 뱅크가 표보다 길 수 있다 — 한국 롬의
-   * 뱅크는 237칸인데 배치표는 209줄이고 뒤 28칸이 빈 글이다. 뱅크 길이로 세면
-   * 우리 몫이 그 28칸만큼 밀려 엉뚱한 줄에 붙는다
+   * ⚠️ **자리를 세는 자가 배치표다.** 뱅크가 표보다 길 수 있다 — 한국 롬의 뱅크는 237칸인데 배치표는 209줄이고
+   * 뒤 28칸이 빈 글이다. 뱅크 길이로 세면 빈 줄 스물여덟이 흐른다
    */
-  const romLines = table?.rows.length ?? 0
+  const rows = table === null ? [] : creditsRows(table.rows, [])
   const shown = creditsAt(frame, rows)
-  const textOf = (index: number): string =>
-    index < romLines ? lines?.[index] ?? '' : OURS[index - romLines]?.text ?? ''
+  const textOf = (index: number): string => lines?.[index] ?? ''
 
   return (
     <div className={css.backdrop}>
@@ -252,7 +284,8 @@ export function CreditsScreen() {
               Math.max(0, frame - creditsSceneStart(i, atlas.count, romFrames))))}
           />
         ))}
-        <div className={css.roll}>
+        {maker && <MakerScreen />}
+        <div className={css.roll} style={{ display: maker ? 'none' : undefined }}>
           {shown.map(({ index, y, centered }) => (
             <div
               key={index}
@@ -265,7 +298,7 @@ export function CreditsScreen() {
             </div>
           ))}
         </div>
-        {cleared && <div className={css.hint}>Z 넘기기</div>}
+        <div className={css.hint}>{maker ? 'Z 타이틀로' : 'Z 넘기기'}</div>
       </div>
     </div>
   )

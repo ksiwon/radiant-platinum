@@ -3,7 +3,7 @@
 // 명예의 전당과 같은 잣대로 잡는다: 원작 256×192 한 화면을 4:3 무대로 세우고
 // 모든 자리를 `px/256`·`px/192` 비율로 적는다. 두루마리 자리가 픽셀이라
 // 비율을 안 지키면 줄 간격이 원작과 어긋난다.
-import { style, styleVariants } from '@vanilla-extract/css'
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 
 /** 원작 화면 크기 */
@@ -82,5 +82,58 @@ export const hint = style({
   right: pctX(8),
   bottom: pctY(6),
   fontSize: '0.7em',
+  color: vars.ink.onDarkDim,
+})
+
+/**
+ * 만든 사람 화면 (`MakerScreen`) — 두루마리 자리에 서는 한 장. 글자 크기는 무대의 글꼴(화면 높이의 1/24)을 자로 쓴다.
+ *
+ * 판을 늘어놓지 않는다 — 가운데 한 줄기로 제목 · 사람 · 다른 게임 · 고지가 내려오고, 뒤의 배경을 아래로 갈수록 어둡게 눌러 글을 읽힌다
+ */
+export const maker = style({
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.35em',
+  padding: `0 ${pctX(16)}`,
+  textAlign: 'center',
+  background: 'linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0.8))',
+  animation: `${keyframes({ from: { opacity: 0 }, to: { opacity: 1 } })} 500ms ease-out`,
+})
+
+export const makerTitle = style({ fontSize: '1.9em', marginBottom: '0.1em' })
+
+export const makerSmall = style({ fontSize: '0.72em', lineHeight: 1.5 })
+
+export const makerLabel = style({ fontSize: '0.8em', marginTop: '1.1em' })
+
+export const makerName = style({ fontSize: '1.3em' })
+
+export const makerRow = style({ display: 'flex', gap: '1.4em', justifyContent: 'center', marginTop: '0.2em' })
+
+export const makerGame = style({
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'center',
+  flexWrap: 'wrap',
+  columnGap: '0.8em',
+})
+
+export const makerLink = style({
+  fontSize: '0.72em',
+  textDecoration: 'underline',
+  textUnderlineOffset: '0.2em',
+  pointerEvents: 'auto',
+  cursor: 'pointer',
+  selectors: { '&:hover': { opacity: 0.8 } },
+})
+
+export const makerFoot = style({
+  marginTop: '1.4em',
+  fontSize: '0.6em',
+  lineHeight: 1.6,
   color: vars.ink.onDarkDim,
 })
