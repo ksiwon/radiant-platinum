@@ -171,8 +171,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 그 구를 깎아 연기 가닥을 만드는데 glTF에 그 단계가 없다. 몸을 감싸는
    * 여섯 껍데기가 빠지면서 두 종의 glb 바이트가 달라진다
    * (`import/bdsp/albedo.ts`의 `carvedShells`)
+   *
+   * 4 — **눈·입이 제 칸을 읽는다** (`_ColorBaseU`). 옛 판은 왼눈이 반쯤 감긴 칸 · 입이 옆 칸을 읽어 얼굴이 일그러지고
+   * 슬퍼 보였다(눈 609 · 입 149 재질). glb의 UV 바이트와 구운 눈 그림이 달라진다
    */
-  monModels: 3,
+  monModels: 4,
   /**
    * 2 — **텍스처 없는 재질에 확산색을 실어 준다.**
    *

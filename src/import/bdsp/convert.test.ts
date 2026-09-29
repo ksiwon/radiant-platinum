@@ -252,6 +252,20 @@ suite('포켓몬', () => {
     expect(catalog.get('387/0/0/1')).toBeDefined()
   }, 120_000)
 
+  it('눈·입은 표정 칸 값(`_ColorBaseU`)을 1층 오프셋에 먹는다 — 두 눈이 뜬 눈 칸 하나를 거울로 읽는다', () => {
+    const trio = mon('pm0387_00_00')
+    if (trio.length !== 3) return
+    const baked = bakeAlbedo(openEnvironment(trio.map(bytes)), { maxSize: 256, mainProps: ['_Col0Tex', '_MainTex'] })
+    const eyes = baked.filter((m) => /-[LR]Eye$/.test(m.name))
+    expect(eyes.map((m) => m.name).sort()).toEqual(['pm0387_00_00-LEye', 'pm0387_00_00-REye'])
+    // 배율 (2,1)에 −0.5 — 모부기 오른눈 u 0.029~0.210 → −0.44~−0.08(거울로 0.08~0.44) · 왼눈 u 0.290~0.471 → 0.08~0.44.
+    // 둘 다 왼쪽 칸(뜬 눈)이다. 오프셋이 0이면 왼눈이 0.58~0.94 — **반쯤 감긴 칸**이다 (DATA.md `_ColorBaseU`)
+    for (const eye of eyes) {
+      expect(eye.look.uv).toEqual([2, 1, -0.5, 0])
+      expect(eye.look.wrap[0]).toBe(33648) // MIRRORED_REPEAT
+    }
+  }, 120_000)
+
   it('번들 셋을 합쳐야 메시가 나온다', async () => {
     const trio = mon('pm0387_00_00')
     expect(trio.length).toBe(3)

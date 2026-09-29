@@ -453,6 +453,15 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
 
         main_tex = slots[found].read()
         nums = floats_of(props)
+        # ⚠️ **칸을 고르는 값(`_ColorBaseU/V`)을 1층 오프셋에 더한다** (docs/orders/VISUAL_20260929.md §1).
+        # 눈·입 그림은 표정 여덟 칸(2열×4줄) 아틀라스다. 메시 UV에 배율 (2,1)만 먹이면 오른눈은 왼쪽 칸(뜬 눈),
+        # 왼눈은 **오른쪽 칸(반쯤 감긴 눈)**에 앉아 두 눈이 다른 표정이 된다 — 얼굴이 일그러지고 입이 슬퍼 보였다.
+        # −0.5를 더하면 오른눈이 음수로 가서 거울 반복(`m_WrapU 2`)으로 같은 칸을 읽는다. 0이 아닌 재질은 전 종에서
+        # 눈 609 · 입 149 · 몸 셋이다 (`.audit/probe/colorBaseScan.py`). 2층(홍채)은 이 오프셋으로 되짚으므로 같이 맞는다
+        base_u, base_v = nums.get("_ColorBaseU", 0.0), nums.get("_ColorBaseV", 0.0)
+        if base_u or base_v:
+            sx, sy, ox, oy = uvs[found]
+            uvs[found] = (sx, sy, ox + base_u, oy + base_v)
         # 재질이 어떻게 그려지는지는 **재질이 적어 둔다.** 짐작하면 안 된다.
         #
         # ⚠️ **안 적어 둔 재질도 있다.** 사람(`pc####`·`tr####`)과 소품

@@ -550,7 +550,13 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
     const main = textureAt.get(slots.get(found)!)!()
     const width = main.width
     const height = main.height
-    const st = uvs.get(found)!
+    // ⚠️ **칸을 고르는 값(`_ColorBaseU/V`)을 1층 오프셋에 더한다** (docs/orders/VISUAL_20260929.md §1). 눈·입 그림은
+    // 표정 여덟 칸 아틀라스라 배율 (2,1)만 먹이면 왼눈이 **반쯤 감긴 칸**에 앉는다. −0.5를 더하면 거울 반복으로 두 눈이 같은
+    // 칸을 읽는다. 2층(홍채)은 이 오프셋으로 되짚으므로 같이 맞는다 — 노드 쪽 `bdsp_bake_albedo.py`와 같은 식이다
+    const [sx0, sy0, ox0, oy0] = uvs.get(found)!
+    const st: [number, number, number, number] = [
+      sx0, sy0, ox0 + num(floats.get('_ColorBaseU')), oy0 + num(floats.get('_ColorBaseV')),
+    ]
 
     // 재질이 어떻게 그려지는지는 **재질이 적어 둔다.** 짐작하면 안 된다.
     // ⚠️ **안 적어 둔 재질도 있다** — 사람과 소품의 셰이더에는 `_BlendMode`도
