@@ -24,11 +24,11 @@ import { markCutIn } from '../app/sceneMark'
 let running: SpecialCutIn | null = null
 
 /**
- * 화면에 그릴 수 있는 원작 셈 컷인 — 덮개(`CutInOverlay`)가 `CutInFrame.draw`를 그리게 되면 번호를 넣는다.
+ * 화면에 그릴 수 있는 원작 셈 컷인 (`cutInTrainer` — 덮개 `ui/field/cutInCanvas`가 `CutInFrame.draw`를 그린다).
  *
- * ⚠️ **안 그려지는 것을 걸면 공 없는 번쩍임만 남는다** — 그때까지는 들판 여섯(먼저 만든 `EncounterCutIn`)으로 돈다
+ * ⚠️ **안 그려지는 것을 걸면 공 없는 번쩍임만 남는다** — 여기 없는 번호는 들판 여섯(`EncounterCutIn`)이나 지형대로 돈다
  */
-const DRAWN: ReadonlySet<number> = new Set()
+const DRAWN: ReadonlySet<number> = new Set([6, 7, 8, 9, 10, 11, 27, 29, 30])
 
 /** 번호 하나의 컷인 — 그릴 수 있는 것은 `cutInTrainer`가 든다 */
 function cutInOf(effect: number): SpecialCutIn {

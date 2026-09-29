@@ -372,6 +372,8 @@ export class EncounterCutIn {
   private camera: Quadratic | null = null
   private counter = 0
   private band = 0
+  /** 물결이 흐른 줄 — 한 틱에 여덟 줄 (`scrollSpeed 800 ÷ 100`) */
+  private flow = 0
   private dolly = 1
   private frame: CutInFrame = { ...CLEAR }
 
@@ -481,13 +483,15 @@ export class EncounterCutIn {
         break
       case 3:
         this.counter -= 1
-        this.frame.ripple = { amplitude: acrossOf(v.amplitude), cycles: v.cycles }
+        this.frame.ripple = { amplitude: acrossOf(v.amplitude), cycles: v.cycles, phase: this.flow }
+        this.flow = (this.flow + 8) % DS_HEIGHT
         if (this.counter < 0) { this.state = 4; this.counter = WATER_FADE }
         break
       case 4:
         // 물결은 검어지는 동안에도 돈다 — 원작이 `ScreenShakeEffect_Finish`를
         // 페이드가 **끝난 뒤**에 부른다 (`case 6`)
-        this.frame.ripple = { amplitude: acrossOf(v.amplitude), cycles: v.cycles }
+        this.frame.ripple = { amplitude: acrossOf(v.amplitude), cycles: v.cycles, phase: this.flow }
+        this.flow = (this.flow + 8) % DS_HEIGHT
         this.frame.black = 1 - this.counter / WATER_FADE
         this.counter -= 1
         if (this.counter < 0) this.state = 5

@@ -30,13 +30,21 @@ const TINY = 1e-6
  * 식을 조금만 고쳐도 타입이 안 맞는다. 쓰는 쪽은 `.sample(…)`·`.mul(…)`만 부른다.
  *
  * 조각의 부호는 **띠 번호의 홀짝**이다 — 원작이 `(vCount / pixelsPerSlice) % 2`로
- * 가르는 그 줄이다. 짝수 띠가 +, 홀수 띠가 −로 밀린다
+ * 가르는 그 줄이다. 짝수 띠가 +, 홀수 띠가 −로 밀린다. 오프셋이 양수면 그림이 **왼쪽으로** 간다(원작 `BGxHOFS`가 그렇다)
+ *
+ * ⚠️ **`uv().y`는 위가 0이다** — 후처리 사각형(`QuadMesh`)이 그렇게 깔린다. 그래서 `y × 192`가 곧 원작 주사선이다.
+ *
+ * 물결은 원작 사인 표 그대로다 (`ScreenScrollManager_CreateSineTable` · `UpdateScrollX`): 줄 L이
+ * `표[(흐른 줄 + L) % 192]`만큼 밀리고, 흐른 줄은 한 틱에 `800 ÷ 100` = 여덟 줄이다. 트레이너 물 컷인은 두 줄마다 부호를
+ * 뒤집는다 (`ScreenShakeEffect_InvertBuffer(…, 2)` — `(L / 2) % 2`가 1인 줄)
  */
 export function cutInWarp() {
   const band = uniform(0)
   const offset = uniform(0)
   const amplitude = uniform(0)
   const cycles = uniform(0)
+  const phase = uniform(0)
+  const interleave = uniform(0)
 
   const base = uv()
   // 띠 번호의 홀짝 → +1 / −1. 띠 높이가 0이면 번호가 터지므로 아래끝을 둔다.
@@ -44,7 +52,10 @@ export function cutInWarp() {
   const parity = floor(base.y.div(band.max(float(TINY))))
   const sign = mod(parity, float(2)).mul(float(-2)).add(float(1))
   const slice = offset.mul(sign)
-  const ripple = amplitude.mul(sin(base.y.mul(cycles).mul(float(PI2))))
+  const line = base.y.mul(float(192))
+  const flip = mod(floor(line.div(float(2))), float(2)).mul(float(-2)).add(float(1))
+  const turn = float(1).sub(interleave).add(interleave.mul(flip))
+  const ripple = amplitude.mul(sin(line.add(phase).div(float(192)).mul(cycles).mul(float(PI2)))).mul(turn)
   const x = base.x.add(slice).add(ripple)
 
   return {
@@ -57,6 +68,8 @@ export function cutInWarp() {
       offset.value = at?.slice?.offset ?? 0
       amplitude.value = at?.ripple?.amplitude ?? 0
       cycles.value = at?.ripple?.cycles ?? 0
+      phase.value = at?.ripple?.phase ?? 0
+      interleave.value = at?.ripple?.interleave === true ? 1 : 0
     },
   }
 }

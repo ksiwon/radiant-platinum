@@ -33,3 +33,14 @@ export const iris = style({
   display: 'none',
   background: vars.scrim.black,
 })
+
+/**
+ * DS 그림판 (`CutInFrame.draw`) — 공 · 띠 · 얼굴 · 칠한 검정 · 창. 조리개와 번쩍임 밑이다: 원작 마스터 밝기는 스프라이트까지 덮는다
+ */
+export const canvas = style({
+  ...full,
+  zIndex: 348,
+  width: '100%',
+  height: '100%',
+  display: 'none',
+})

@@ -192,8 +192,13 @@ describe('물 — 화면이 물결친다', () => {
     // `(0xffff / 192) * 2` · `FX32_CONST(12)` ↔ `* 3` · `15`
     const low = run(CutIn.WATER_LOWER).find((f) => f.ripple !== null)?.ripple
     const high = run(CutIn.WATER_HIGHER).find((f) => f.ripple !== null)?.ripple
-    expect(low).toEqual({ amplitude: 12 / 256, cycles: 2 })
-    expect(high).toEqual({ amplitude: 15 / 256, cycles: 3 })
+    expect(low).toEqual({ amplitude: 12 / 256, cycles: 2, phase: 0 })
+    expect(high).toEqual({ amplitude: 15 / 256, cycles: 3, phase: 0 })
+  })
+
+  it('물결은 한 틱에 여덟 줄씩 흐른다 (`scrollSpeed 800 ÷ 100`)', () => {
+    const phases = run(CutIn.WATER_LOWER).flatMap((f) => (f.ripple ? [f.ripple.phase] : []))
+    expect(phases.slice(0, 4)).toEqual([0, 8, 16, 24])
   })
 
   it('물결이 검어지는 동안에도 돈다', () => {

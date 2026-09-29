@@ -21,6 +21,7 @@
 //     pnpm shot center --wild=479:30:2                그 폼과 야생전을 연다
 //     pnpm shot center --trainer=326                  그 트레이너와의 배틀을 연다
 //     pnpm shot forest --cutin=1:24                   조우 컷인을 그 프레임에 세워 찍는다
+//     pnpm shot forest --cutins=6:40,9:42             여럿을 한 판에 (shots/cutin-6-40.png …)
 //     pnpm shot center --dex=479 --wild=479:30:2      상대해 본 것으로 적고 연다
 //     pnpm shot --list                 확인 지점 목록
 //
@@ -462,6 +463,22 @@ async function main() {
       await page.evaluate(([e, f]) => { globalThis.pt.cutIn(e, f) },
         [effect ?? 0, frame ?? 12])
       await page.waitForTimeout(600)
+    }
+    // 여럿을 한 판에 — `--cutins=6:40,9:42`. 서버와 맵을 한 번만 세우고 `shots/cutin-6-40.png`처럼 따로 찍는다
+    const cutins = flag('cutins')
+    if (cutins) {
+      await page.setViewportSize(VIEWPORT)
+      await page.waitForTimeout(3000)
+      for (const pair of cutins.split(',')) {
+        const [effect, frame] = pair.split(':').map(Number)
+        await page.evaluate(([e, f]) => { globalThis.pt.cutIn(e, f) }, [effect ?? 0, frame ?? 12])
+        await page.waitForTimeout(1500)
+        const file = resolve(OUT, `cutin-${String(effect)}-${String(frame)}.png`)
+        writeFileSync(file, await page.screenshot())
+        console.log(`   컷인 ${String(effect)}:${String(frame)}  ${file}`)
+      }
+      await page.evaluate(() => { globalThis.pt.cutIn(0, -1) })
+      await page.setViewportSize(DRIVE)
     }
     const wild = flag('wild')
     if (wild) {

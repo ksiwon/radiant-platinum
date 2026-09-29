@@ -1,7 +1,7 @@
 // 조우 컷인의 덮개 (`scene/encounterCutIn`)
 //
-// 컷인이 화면에 얹는 것 셋 중 둘이 여기다 — **번쩍임**과 **조리개**다. 나머지
-// 하나(화면을 찢고 물결치게 하는 것)는 3D 그림 자체를 미는 것이라 후처리가
+// 컷인이 화면에 얹는 것 넷 중 셋이 여기다 — **번쩍임** · **조리개** · **DS 그림판**(공 · 띠 · 얼굴 · 창,
+// `cutInCanvas`)이다. 나머지 하나(화면을 찢고 물결치게 하는 것)는 3D 그림 자체를 미는 것이라 후처리가
 // 한다 (`scene/fx/post`).
 //
 // `FadeOverlay`와 같은 방식이다: rAF로 들여다보고 **스타일을 직접 만진다** —
@@ -9,6 +9,7 @@
 import { useEffect, useRef } from 'react'
 import { cutInFrame } from '../../engine/battle/encounterCutIn'
 import * as css from './cutInOverlay.css'
+import { drawCutIn, loadCutInImages, type CutInImages } from './cutInCanvas'
 import { vars } from '../theme/contract.css'
 
 /**
@@ -23,17 +24,45 @@ const OPEN = 'farthest-corner'
 export function CutInOverlay() {
   const flashRef = useRef<HTMLDivElement>(null)
   const irisRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     let raf = 0
     let lastFlash = Number.NaN
     let lastIris = Number.NaN
+    let lastDraw: unknown = null
+    let lastSize = ''
+    let images: CutInImages | null = null
+    let asked = false
     const poll = (): void => {
       raf = requestAnimationFrame(poll)
       const at = cutInFrame.now
       const flash = flashRef.current
       const iris = irisRef.current
       if (!flash || !iris) return
+
+      // DS 그림판 — 프레임이 바뀌었거나 창 크기가 바뀌었을 때만 다시 그린다
+      const board = canvasRef.current
+      const draw = at?.draw ?? null
+      if (board) {
+        if (draw && !asked) {
+          asked = true
+          // 첫 컷인에서 읽는다 — 그 판의 첫 몇 틱은 공이 안 나오는 번쩍임이라 늦지 않는다
+          loadCutInImages().then((got) => { images = got; lastDraw = null }, () => { asked = false })
+        }
+        const w = Math.round(board.clientWidth * devicePixelRatio), h = Math.round(board.clientHeight * devicePixelRatio)
+        const size = `${String(w)}x${String(h)}`
+        if (draw !== lastDraw || size !== lastSize) {
+          lastDraw = draw
+          lastSize = size
+          board.style.display = draw ? 'block' : 'none'
+          if (draw && w > 0 && h > 0) {
+            if (board.width !== w || board.height !== h) { board.width = w; board.height = h }
+            const ctx = board.getContext('2d')
+            if (ctx) drawCutIn(ctx, draw, images, w, h)
+          }
+        }
+      }
 
       // 번쩍임(±1)과 마지막 검정을 한 판이 같이 그린다 — 둘 다 「화면을 한 색으로
       // 덮는 정도」고 동시에 서는 일이 없다 (검어질 때는 번쩍임이 이미 끝났다)
@@ -63,6 +92,7 @@ export function CutInOverlay() {
 
   return (
     <>
+      <canvas ref={canvasRef} className={css.canvas} aria-hidden />
       <div ref={irisRef} className={css.iris} aria-hidden />
       <div ref={flashRef} className={css.cover} aria-hidden />
     </>
