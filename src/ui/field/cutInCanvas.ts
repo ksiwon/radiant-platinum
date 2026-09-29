@@ -6,11 +6,14 @@
 //                    닫히는 줄의 차례가 원작 주사선 그대로다. 원 · 반원 창은 넓은 화면에서 옆으로 퍼진 타원이 된다
 //   스프라이트 크기   **높이 하나로** 키운다 — 공이 찌그러지면 안 된다
 //
-// 차례는 원작 화면 합성이다: 3D · 바탕 어둡게 → BG3(칠한 검정 · 띠) → 스프라이트(목록 앞이 위) → 창 밖 검정.
+// 차례는 원작 화면 합성이다: 3D · 바탕 어둡게 → BG3(칠한 검정 · 띠) → 뒤 입자 → 스프라이트(우선순위 1) → 이름(BG2) → 앞 입자(BG0 · 0)
+// → 스프라이트(우선순위 0) → 창 밖 검정. 목록 안에서는 앞이 위다.
 // 돌림은 `NNS_G2dRotZ(sin, cos)`의 행 벡터 셈이라 y가 아래로 가는 화면에서 **양수가 시계 방향**이다 — 캔버스 `rotate`와 같다.
 import { assets } from '../../data/providers/assetProvider'
 import { decodePng } from '../../import/platinum/png'
-import type { CutInDraw, CutInSprite } from '../../engine/battle/encounterCutIn'
+import type { CutInDraw, CutInParticle, CutInSprite } from '../../engine/battle/encounterCutIn'
+import type { SplTexture } from '../../engine/battle/spl/resource'
+import { splTextureRgba } from '../../engine/battle/spl/texture'
 import { vars } from '../theme/contract.css'
 
 /** 목차 한 칸 — 셀 원점 기준 경계 상자 */
@@ -81,10 +84,20 @@ export function drawCutIn(ctx: CanvasRenderingContext2D, draw: CutInDraw, images
   }
   for (const [x, y, rw, rh] of draw.paint) rect(x, y, rw, rh)
   if (draw.banner && images) drawBanner(ctx, draw.banner, images, sx, sy)
-  // 이름 판(BG2)은 우선순위가 같은 스프라이트 밑이다
+  const sprites = (front: boolean): void => {
+    if (!images) return
+    // 목록 앞이 위다 — 뒤에서부터 그린다
+    for (let i = draw.sprites.length - 1; i >= 0; i--) {
+      const s = draw.sprites[i]!
+      if ((s.front === true) === front) drawSprite(ctx, s, images, sx, sy)
+    }
+  }
+  if (draw.particles && !draw.particles.front) drawParticles(ctx, draw.particles.quads, sx, sy)
+  sprites(false)
+  // 이름 판(BG2 · 0)은 우선순위 1 스프라이트 위 · 0 스프라이트 밑이다
   if (draw.name) drawName(ctx, draw.name, sx, sy)
-  // 목록 앞이 위다 — 뒤에서부터 그린다
-  if (images) for (let i = draw.sprites.length - 1; i >= 0; i--) drawSprite(ctx, draw.sprites[i]!, images, sx, sy)
+  if (draw.particles?.front) drawParticles(ctx, draw.particles.quads, sx, sy)
+  sprites(true)
 
   ctx.fillStyle = '#000'
   for (const [x, y, rw, rh] of draw.mask) rect(x, y, rw, rh)
@@ -203,5 +216,107 @@ function drawName(ctx: CanvasRenderingContext2D, n: NonNullable<CutInDraw['name'
   ctx.fillText(n.text, x + sy, y + sy)
   ctx.fillStyle = '#fff'
   ctx.fillText(n.text, x, y)
+  ctx.restore()
+}
+
+/** 입자 텍스처 — 푼 것 · 되풀이를 편 것 · 색을 곱한 것을 차례로 받아 둔다 */
+const particleBase = new WeakMap<SplTexture, HTMLCanvasElement>()
+const particleTiled = new WeakMap<SplTexture, Map<string, HTMLCanvasElement>>()
+const particleTint = new WeakMap<HTMLCanvasElement, Map<number, HTMLCanvasElement>>()
+
+function baseOf(tex: SplTexture): HTMLCanvasElement {
+  let c = particleBase.get(tex)
+  if (!c) {
+    c = document.createElement('canvas')
+    c.width = tex.width
+    c.height = tex.height
+    c.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(splTextureRgba(tex)), tex.width, tex.height), 0, 0)
+    particleBase.set(tex, c)
+  }
+  return c
+}
+
+/**
+ * UV를 `us × vs`배로 늘린 한 장 — 텍스처 제 감싸기(`repeatS` 되풀이 · `flipS` 거울 · 아니면 가장자리 늘이기)대로 편다.
+ * 음수 폭은 통째로 뒤집는다 (`flipTextureS`)
+ */
+function tiledOf(tex: SplTexture, us: number, vs: number): HTMLCanvasElement {
+  const key = `${String(us)},${String(vs)}`
+  let byKey = particleTiled.get(tex)
+  if (!byKey) { byKey = new Map(); particleTiled.set(tex, byKey) }
+  let c = byKey.get(key)
+  if (c) return c
+  const base = baseOf(tex)
+  const nx = Math.abs(us), ny = Math.abs(vs)
+  c = document.createElement('canvas')
+  c.width = tex.width * nx
+  c.height = tex.height * ny
+  const g = c.getContext('2d')!
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      g.save()
+      g.translate(i * tex.width, j * tex.height)
+      if (i > 0 && !tex.repeatS) {
+        // 되풀이가 없으면 오른쪽 끝 한 줄을 늘인다
+        g.drawImage(base, tex.width - 1, 0, 1, tex.height, 0, 0, tex.width, tex.height)
+        g.restore()
+        continue
+      }
+      if (j > 0 && !tex.repeatT) {
+        g.drawImage(base, 0, tex.height - 1, tex.width, 1, 0, 0, tex.width, tex.height)
+        g.restore()
+        continue
+      }
+      const mx = tex.flipS && i % 2 === 1, my = tex.flipT && j % 2 === 1
+      g.translate(mx ? tex.width : 0, my ? tex.height : 0)
+      g.scale(mx ? -1 : 1, my ? -1 : 1)
+      g.drawImage(base, 0, 0)
+      g.restore()
+    }
+  }
+  byKey.set(key, c)
+  return c
+}
+
+/** 색을 곱한 것 — 5비트 색이라 가짓수가 적다 */
+function tintOf(src: HTMLCanvasElement, r: number, g: number, b: number): HTMLCanvasElement {
+  if (r >= 1 && g >= 1 && b >= 1) return src
+  const key = (Math.round(r * 31) << 10) | (Math.round(g * 31) << 5) | Math.round(b * 31)
+  let byKey = particleTint.get(src)
+  if (!byKey) { byKey = new Map(); particleTint.set(src, byKey) }
+  let c = byKey.get(key)
+  if (c) return c
+  c = document.createElement('canvas')
+  c.width = src.width
+  c.height = src.height
+  const x = c.getContext('2d')!
+  x.fillStyle = `rgb(${String(Math.round(r * 255))},${String(Math.round(g * 255))},${String(Math.round(b * 255))})`
+  x.fillRect(0, 0, c.width, c.height)
+  x.globalCompositeOperation = 'multiply'
+  x.drawImage(src, 0, 0)
+  x.globalCompositeOperation = 'destination-in'
+  x.drawImage(src, 0, 0)
+  byKey.set(key, c)
+  return c
+}
+
+/**
+ * 입자 사각형 (`CutInParticle`) — 자리는 화면 몫, 축은 높이로 키운다(스프라이트와 같다). 입자는 번지는 얼룩이라 보간을 켠다
+ * (`spl/texture`의 `LinearFilter`와 같은 까닭)
+ */
+function drawParticles(ctx: CanvasRenderingContext2D, quads: readonly CutInParticle[], sx: number, sy: number): void {
+  ctx.save()
+  ctx.imageSmoothingEnabled = true
+  for (const q of quads) {
+    const img = tintOf(tiledOf(q.tex, q.us, q.vs), q.r, q.g, q.b)
+    const w = img.width, h = img.height
+    // 텍스처 (0, 0)은 C + (qx − 1)A + (qy + 1)B · 한 픽셀이 2A/w · −2B/h. 음수 UV 폭이면 그 축을 뒤집는다
+    const fx = q.us < 0 ? -1 : 1, fy = q.vs < 0 ? -1 : 1
+    const ox = q.x * sx + ((q.qx - fx) * q.ax + (q.qy + fy) * q.bx) * sy
+    const oy = q.y * sy + ((q.qx - fx) * q.ay + (q.qy + fy) * q.by) * sy
+    ctx.globalAlpha = q.a
+    ctx.setTransform((2 * fx * q.ax * sy) / w, (2 * fx * q.ay * sy) / w, (-2 * fy * q.bx * sy) / h, (-2 * fy * q.by * sy) / h, ox, oy)
+    ctx.drawImage(img, 0, 0)
+  }
   ctx.restore()
 }

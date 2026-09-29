@@ -5252,6 +5252,33 @@ CSS로 그리고 안에 붙는 그림만 원작 것을 쓴다 → `data/signpost
 받는다(`NNS_G3dMdlUseGlb*`). 빛 셈은 원작 하드웨어 식이다(GBATEK · `scene/demoInstance`): 방사 + Σ 켠 빛 [반사 × 빛색 × max(0, −H·N)² +
 확산 × 빛색 × max(0, −L·N) + 환경 × 빛색], `H = (L + (0, 0, −1)) / 2` — 시점 공간이다. 굽는 쪽 둘이 같은 함수를 부른다(`tools/extract/areaLight.mjs`).
 
+### 2.21i field_encounteffect.narc — 조우 컷인의 그림
+
+`graphic/field_encounteffect.narc` (`import/platinum/encounterEffect.ts` → `data/encounterEffect/`). 멤버 차례는
+`res/trainers/classes/field_encounteffect.order`(줄 번호 − 1)다:
+
+| 멤버 | 무엇 | 굽는 것 |
+|---|---|---|
+| 0 · 2~4 · 5~7 | 트레이너 팔레트 · 작은 공(64×64) · 큰 공(128×128 · 셀 1 윗반 · 2 아랫반) | `ballSmall` · `ballBig` — 반은 그리는 쪽이 셀 원점에서 자른다 |
+| 1 · 8 · 10 | 갤럭시 「G」 128×128 | `galactic` |
+| 51 · 52 · 53 | VS 표 (셀 0 속 찬 것 · 1 테두리) | `vsSolid` · `vsOutline` |
+| 55 + 4i … | 관장 여덟의 얼굴 96×64 (NCLR · NCGR · NCER · NANR) | `leaderN` |
+| 15 + 3i … | 관장 띠 (NCLR · NCGR · NSCR) — 배치 256×256 중 5~12줄(y 40~103)만 차 있다 · 9~12줄은 뒤집힌 칸 | `leaderNBanner` 256×64 (팔레트를 0번으로 다시 매기고 타일 0은 비운다 — `ov5_021DE3D0`) |
+| 87 · 91 · 95 · 99 · 103 | 사천왕 넷 · 난천 얼굴 | `eliteN` |
+| 40 · 41 · 42 + 39 · 43~46 | 리그 띠 — 셀 스물셋(0~11 팔레트 0~11 · 12~22는 180° 돈 것)과 사람마다 팔레트 열둘 | `eliteNBanner` — 셀을 세로로 이어 한 장 |
+| 147 · 151 | 주인공 얼굴 (남 · 여) | `playerMale` · `playerFemale` · `…Swap` |
+| 107 · 108 | 사천왕전 입자 `.spa` | `eliteParticle1 · 2.spa` — 바이트 그대로, 읽는 것은 실행 중에 `engine/battle/spl/resource` |
+| 11 | 이름 판 팔레트 (1 흰색 · 2 (74, 82, 82)) | 안 굽는다 — 두 색을 그리는 쪽이 든다 |
+
+⚠️ **주인공 얼굴은 얼굴 팔레트가 아니라 트레이너 앞모습 팔레트다** (`EncounterEffect_BlendTrainerSpritePltt` → `poketool/trgra/trfgra.narc`
+1 + 종류 × 5). 관장 · 사천왕은 두 팔레트가 같고 주인공만 다르다. 사천왕전은 어두울 때 **성별을 뒤바꿔** 싣는다(원작 버그 —
+`v0->unk_368 ? 0 : 1`) — 그것이 `…Swap`이다.
+
+셀 그림은 셀의 경계 상자로 찍고 목차(`index.json`)가 경계 상자의 왼쪽 위(셀 원점 기준)를 든다 — 원작 스프라이트가 셀 원점에 서므로
+그리는 쪽은 그 자리를 그대로 쓴다. 이름은 롬 트레이너 이름이다(`TEXT_BANK_UNK_0359` 0번이 이름 칸 하나뿐이다 — 강석 246 · 유채 315 ·
+맥실러 316 · 자두 317 · 멜리사 318 · 무청 319 · 동관 250 · 전진 320 · 충호 261 · 들국화 262 · 대엽 263 · 오엽 264 · 난천 267).
+굽는 쪽 둘이 같은 함수를 부른다(`tools/extract/encounterEffect.mjs`).
+
 ### 2.22 tw_arc — 깨어진 세계는 맵 격자가 아니라 **떠 있는 판**이다
 
 `fielddata/tornworld/tw_arc.narc`의 0번이 맵 표고 1~10번이 층마다의 구역이다.

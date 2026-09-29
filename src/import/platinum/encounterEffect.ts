@@ -10,6 +10,8 @@
 //   playerMale · playerFemale  사천왕전의 주인공 얼굴(147 · 151) — ⚠️ **원작은 얼굴 팔레트가 아니라 트레이너 앞모습 팔레트를 쓴다**
 //                              (`EncounterEffect_BlendTrainerSpritePltt` → `trfgra.narc` 1 + 종류 × 5). 주인공은 둘이 달라서 그것으로 굽는다.
 //                              어두울 때는 성별을 **뒤바꿔** 싣는다(원작 버그) — `…Swap`이 그것이다
+//   eliteParticle1 · 2.spa     사천왕전의 입자 (107 `elite_particle_1` · 108 `elite_particle_2`) — 바이트 그대로, 읽는 것은
+//                              실행 중에 `engine/battle/spl/resource`가 한다 (입자 묶음 `particles.ts`와 같은 방식)
 //
 // 셀 그림은 셀의 경계 상자 크기로 찍고 목차(`index.json`)가 경계 상자의 왼쪽 위(셀 원점 기준)를 든다 — 원작 스프라이트는 셀 원점에 선다.
 //
@@ -32,6 +34,8 @@ const ELITES = [[87, 39], [91, 43], [95, 44], [99, 45], [103, 46]].map(([mug, ba
 const LEAGUE = { tiles: 40, cells: 41 }
 /** 주인공 얼굴 — 남 · 여 (EC:3233-3241) */
 const PLAYER_MUG = [147, 151] as const
+/** 사천왕전의 입자 (`ov5_021DF0CC(narc, 107 · 108)`) */
+const ELITE_PARTICLES = [107, 108] as const
 /** 띠가 서는 BG 줄 — 배치 256×256의 5~12줄(y 40~103)만 차 있다 */
 const BANNER_ROWS = [5, 13] as const
 
@@ -116,6 +120,8 @@ export async function convertEncounterEffect(ctx: ConvertContext): Promise<Produ
     index[name] = await cellPng(name, mug + 1, mug + 2, 0, front[g]!)
     index[`${name}Swap`] = await cellPng(`${name}Swap`, mug + 1, mug + 2, 0, front[1 - g]!)
   }
+  // 사천왕전의 입자 두 벌
+  for (const [k, at] of ELITE_PARTICLES.entries()) out.set(`data/encounterEffect/eliteParticle${String(k + 1)}.spa`, take(at))
   out.set('data/encounterEffect/index.json', json(index))
   return out
 }

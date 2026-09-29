@@ -26,7 +26,7 @@ const wrap = (repeat: boolean, flip: boolean): Wrapping =>
  * @param tex `readSpa`가 읽은 것. `data`와 `palette`는 파일 바이트를 가리키는
  *   조각이라 여기서 새로 자르지 않는다
  */
-function splTextureRgba(tex: SplTexture): Uint8Array {
+export function splTextureRgba(tex: SplTexture): Uint8Array {
   const data = new DataView(tex.data.buffer, tex.data.byteOffset, tex.data.byteLength)
   const pal = new DataView(tex.palette.buffer, tex.palette.byteOffset, tex.palette.byteLength)
   // `.spa`는 같은 비트를 `palColor0`이라 부른다 — 뜻은 같다 (팔레트 0번이 투명한가)

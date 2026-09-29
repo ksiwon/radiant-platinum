@@ -15,6 +15,9 @@
 import { cutInForBattle, cutInFrame, EncounterCutIn, specialCutInFor } from '../engine/battle/encounterCutIn'
 import { trainerCutIn, type SpecialCutIn } from '../engine/battle/cutInTrainer'
 import { bannerCutIn, type CutInContext } from '../engine/battle/cutInBanner'
+import { eliteCutIn } from '../engine/battle/cutInElite'
+import { readSpa, type SplFile } from '../engine/battle/spl/resource'
+import { assets } from '../data/providers/assetProvider'
 import { terrainOf } from '../engine/battle/terrain'
 import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
@@ -30,15 +33,20 @@ let running: SpecialCutIn | null = null
  *
  * ⚠️ **안 그려지는 것을 걸면 공 없는 번쩍임만 남는다** — 여기 없는 번호는 들판 여섯(`EncounterCutIn`)이나 지형대로 돈다
  */
-const DRAWN: ReadonlySet<number> = new Set([6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 25, 26, 27, 28, 29, 30])
+const DRAWN: ReadonlySet<number> = new Set(Array.from({ length: 25 }, (_, i) => i + 6))
 
-/** 이름을 적는 컷인 (관장 · 사천왕 · 챔피언) — 이름표가 오기를 기다린 뒤에 건다 */
+/** 이름을 적는 컷인 (관장 · 사천왕 · 챔피언) — 이름표가 오기를 기다린 뒤에 건다. 사천왕 · 챔피언은 입자 두 벌도 */
 const NAMED = (effect: number): boolean => effect >= 12 && effect <= 24
 let trainerNames: readonly string[] = []
+let eliteParticles: (SplFile | null)[] = [null, null]
 let namesLoading: Promise<void> | null = null
-/** 트레이너 이름표 — 못 받으면 이름 칸만 빈다 */
+/** 트레이너 이름표 · 사천왕 입자 — 못 받으면 이름 칸이 비고 입자 없이 돈다 */
 function namesReady(): Promise<void> {
-  namesLoading ??= loadTrainerNames(gameLocale()).then((n) => { trainerNames = n }, () => { namesLoading = null })
+  namesLoading ??= Promise.all([
+    loadTrainerNames(gameLocale()).then((n) => { trainerNames = n }),
+    Promise.all([1, 2].map(async (n) => readSpa(new Uint8Array(await assets().bytes(`data/encounterEffect/eliteParticle${String(n)}.spa`)))))
+      .then((got) => { eliteParticles = got }, () => { /* 입자만 빈다 */ }),
+  ]).then(() => undefined, () => { namesLoading = null })
   return namesLoading
 }
 
@@ -46,13 +54,15 @@ function context(): CutInContext {
   return {
     trainerName: (id) => trainerNames[id] ?? '',
     playerGender: useSaveStore.getState().trainer.gender === 'girl' ? 1 : 0,
+    particles: (n) => eliteParticles[n - 1] ?? null,
   }
 }
 
 /** 번호 하나의 컷인 — 그릴 수 있는 것은 `cutInTrainer` · `cutInBanner`가 든다 */
 function cutInOf(effect: number): SpecialCutIn {
   if (!DRAWN.has(effect)) return new EncounterCutIn(effect)
-  return trainerCutIn(effect) ?? bannerCutIn(effect, context()) ?? new EncounterCutIn(effect)
+  const ctx = context()
+  return trainerCutIn(effect) ?? bannerCutIn(effect, ctx) ?? eliteCutIn(effect, ctx) ?? new EncounterCutIn(effect)
 }
 let waiting: (() => void)[] = []
 

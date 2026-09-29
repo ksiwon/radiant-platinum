@@ -7,6 +7,7 @@
 // 새로 건 태스크는 **다음 틱부터** 돈다(`sys_task_manager.c:140-165`).
 //
 // ⚠️ **틱은 1/60초로 센다** (COMPLETION_20260928 §0의 갈림길)
+import type { CutInSprite } from './encounterCutIn'
 
 /** `FX_Mul` — 반올림 (`+0x800 >> 12`) */
 export const fxMul = (a: number, b: number): number => Math.floor((a * b + 0x800) / 4096)
@@ -163,4 +164,29 @@ export class BrightnessFade {
     this.value = Math.trunc(this.acc / 128)
   }
   get done(): boolean { return this.k >= this.n + 2 }
+}
+
+/** VS 표 넷 (`ov5_021E5128` · `ov5_021E51B4`) — 테두리 셋이 2배에서 1배로 줄며 세 틱마다 하나씩, 넷째(속 찬 것)는 1배 */
+export class VsStamp {
+  private readonly scale = [0, 1, 2, 3].map((i) => new LinearFX(fx(i < 3 ? 2 : 1), fx(1), 6))
+  private delay = 0
+  count = 0
+  constructor(private readonly x: number, private readonly y: number) {}
+  /** 한 번 부른다 — 넷 다 제 크기면 참 */
+  step(): boolean {
+    let all = true
+    if (this.count < 4) {
+      all = false
+      if (--this.delay <= 0) { this.delay = 3; this.count++ }
+    }
+    for (let i = 0; i < this.count; i++) if (!this.scale[i]!.update()) all = false
+    return all
+  }
+  /** 목록 앞이 위 — 먼저 선 것이 앞이다 */
+  sprites(): CutInSprite[] {
+    return this.scale.slice(0, this.count).map((s, i) => {
+      const k = s.value / FX
+      return { img: i < 3 ? 'vsOutline' : 'vsSolid', x: this.x, y: this.y, scaleX: k, scaleY: k }
+    })
+  }
 }

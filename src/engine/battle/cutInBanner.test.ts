@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { bannerCutIn } from './cutInBanner'
 import type { CutInFrame } from './encounterCutIn'
 
-const ctx = { trainerName: (id: number) => `#${String(id)}`, playerGender: 0 }
+const ctx = { trainerName: (id: number) => `#${String(id)}`, playerGender: 0, particles: () => null }
 /** F0부터 끝난 틱까지 */
 function run(effect: number): CutInFrame[] {
   const cut = bannerCutIn(effect, ctx)!

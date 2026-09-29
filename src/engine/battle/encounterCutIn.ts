@@ -15,6 +15,7 @@
 // 그대로 못 옮긴 값은 그 자리에 원작 값과 우리 값을 같이 적어 두었다.
 import { Terrain, type TerrainId } from './terrain'
 import { TRAINER_CLASS } from '../audio/battleSongs'
+import type { SplTexture } from './spl/resource'
 
 /** `enum EncEffectCutIn` (`enc_effects.h`) 차례 그대로 */
 export const CutIn = {
@@ -142,6 +143,33 @@ export interface CutInSprite {
   mosaic?: number
   /** 띠의 몇째 셀 (리그 띠 — 세로로 이어 구운 한 장) */
   frame?: number
+  /** OBJ 우선순위 0 — 이름 판(BG2)과 앞 입자(BG0) 위에 선다. 없으면 1(그 밑) */
+  front?: boolean
+}
+
+/**
+ * 입자 사각형 하나 (`SPLDraw_Billboard` — 정사영 입자 카메라 (0, 0, 4) · 위아래 ±4가 192줄이다). 자리 · 축은 DS 픽셀이고
+ * y가 아래로 간다. 텍스처 (0, 0)이 `C + (qx − 1)A + (qy + 1)B`에 선다
+ */
+export interface CutInParticle {
+  tex: SplTexture
+  x: number
+  y: number
+  ax: number
+  ay: number
+  bx: number
+  by: number
+  /** 사각형 비낌 (`polygonX · Y`) */
+  qx: number
+  qy: number
+  /** UV 폭 — 되풀이 횟수(2의 거듭제곱) · 음수면 뒤집기 */
+  us: number
+  vs: number
+  /** 0~1 (5비트 색) */
+  r: number
+  g: number
+  b: number
+  a: number
 }
 
 /** 그 컷인이 한 프레임에 그리는 것 (DS 좌표) */
@@ -160,6 +188,8 @@ export interface CutInDraw {
   darken?: number
   /** 이름 — 주인공 이름 자리 (`TEXT_BANK_UNK_0359`) · DS 픽셀 왼쪽 위 */
   name?: { text: string, x: number, y: number, w: number }
+  /** 3D 입자 (BG0) — `front`면 우선순위 0이라 이름 판 · 뒤 스프라이트 위, 아니면 그 밑. 그리는 차례대로 */
+  particles?: { front: boolean, quads: CutInParticle[] }
 }
 
 /**

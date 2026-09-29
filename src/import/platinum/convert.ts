@@ -316,8 +316,8 @@ export const GROUPS: readonly GroupSpec[] = [
   {
     // 조우 컷인의 그림 — 몬스터볼 · VS · 관장 · 사천왕 띠와 얼굴 (`field_encounteffect.narc` · `encounterEffect.ts`)
     name: 'encounterEffect',
-    outputs: ['data/encounterEffect/{이름}.png', 'data/encounterEffect/index.json'],
-    converter: 1,
+    outputs: ['data/encounterEffect/{이름}.png', 'data/encounterEffect/eliteParticle{1~2}.spa', 'data/encounterEffect/index.json'],
+    converter: 2,
     convert: convertEncounterEffect,
   },
   {

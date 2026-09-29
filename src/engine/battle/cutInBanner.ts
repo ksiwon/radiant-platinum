@@ -18,7 +18,8 @@
 // ⚠️ **틱은 1/60초로 센다** (COMPLETION_20260928 §0의 갈림길)
 import { CutInBase, type SpecialCutIn } from './cutInTrainer'
 import type { CutInSprite } from './encounterCutIn'
-import { BrightnessFade, FX, fx, fxDiv, fxMul, LinearFX, LinearS32, QuadFX } from './cutInDs'
+import { BrightnessFade, FX, fx, fxDiv, fxMul, LinearS32, QuadFX, VsStamp } from './cutInDs'
+import type { SplFile } from './spl/resource'
 import { cosIdx, sinIdx } from './spl/fx'
 
 /** 컷인이 화면에 적는 것 — 이름은 롬 트레이너 이름이다 (`EncounterEffect_GetGymLeaderName` · `TEXT_BANK_UNK_0359` 0번 = 이름 하나) */
@@ -27,31 +28,8 @@ export interface CutInContext {
   trainerName(id: number): string
   /** 주인공 성별 — 0 남 · 1 여 (`TrainerInfo_Gender`) */
   playerGender: number
-}
-
-/** VS 표 넷 (`ov5_021E5128` · `ov5_021E51B4`) — 테두리 셋이 2배에서 1배로 줄며 세 틱마다 하나씩, 넷째(속 찬 것)는 1배 */
-class VsStamp {
-  private readonly scale = [0, 1, 2, 3].map((i) => new LinearFX(fx(i < 3 ? 2 : 1), fx(1), 6))
-  private delay = 0
-  count = 0
-  constructor(private readonly x: number, private readonly y: number) {}
-  /** 한 번 부른다 — 넷 다 제 크기면 참 */
-  step(): boolean {
-    let all = true
-    if (this.count < 4) {
-      all = false
-      if (--this.delay <= 0) { this.delay = 3; this.count++ }
-    }
-    for (let i = 0; i < this.count; i++) if (!this.scale[i]!.update()) all = false
-    return all
-  }
-  /** 목록 앞이 위 — 먼저 선 것이 앞이다 */
-  sprites(): CutInSprite[] {
-    return this.scale.slice(0, this.count).map((s, i) => {
-      const k = s.value / FX
-      return { img: i < 3 ? 'vsOutline' : 'vsSolid', x: this.x, y: this.y, scaleX: k, scaleY: k }
-    })
-  }
+  /** 사천왕전의 입자 (1 · 2 = `elite_particle_1 · 2`) — 못 받았으면 null이고 입자 없이 돈다 */
+  particles(n: 1 | 2): SplFile | null
 }
 
 /** 관장 여덟의 트레이너 번호 (`sGymLeaderEncounterParams` · EC:2607) — 이름이 여기서 온다 */
@@ -160,8 +138,9 @@ class GymLeader extends CutInBase {
       this.scroll = (this.scroll + 30) % 512
     }
     const sprites: CutInSprite[] = []
-    if (this.x) sprites.push({ img: `leader${String(this.leader)}`, x: this.x.value / FX, y: 66, dark: this.lit ? 0 : 14 / 16 })
-    if (this.vsOn) sprites.push(...this.vs.sprites())
+    // 얼굴은 우선순위 0으로 올린다(`Sprite_SetExplicitPriority(…, 0)`) · VS도 0 — 이름 판(BG2 · 0) 위다
+    if (this.x) sprites.push({ img: `leader${String(this.leader)}`, x: this.x.value / FX, y: 66, dark: this.lit ? 0 : 14 / 16, front: true })
+    if (this.vsOn) sprites.push(...this.vs.sprites().map((s) => ({ ...s, front: true })))
     this.sprites = sprites
     if (this.lit) {
       draw.darken = 14 / 16
