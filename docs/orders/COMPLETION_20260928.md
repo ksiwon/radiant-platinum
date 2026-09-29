@@ -12,6 +12,9 @@
   `pnpm check` 초록. 컷인은 실제 흐름에서도 찍었다(`node .audit/probe/playCutins.mjs grass:246` — 거기서 배틀이 열리는 틈에 명령 메뉴가
   먼저 뜨던 것을 잡았다 · REPAIR §142). 남은 것은 아래 줄마다 적힌 「원작 캡처와 맞대 보는 일」(사람 몫)과 배포다. 보고서
   `.audit/report-completion-20260929.html`.
+- **배포했다 (2026-09-29 · `53de5a9`)** — `pnpm verify:deploy` 통과 · `pnpm e2e` **PASS 29 · FAIL 0 · BLOCKED 0**. ⚠️ **나중에 돌릴 판 넷**
+  (사용자 결정 — 기계 부담): 이야기 훑기(§142 뒤 지문) · `pnpm gpu:loss` · `pnpm render:first` · `pnpm journey`(DEPLOY.md blocker ⑦ ⑩ ⑪ ⑫).
+  맵 전환 검은 화면이 두 번째 방문에서 짧아지는지도 안 쟀다(REPAIR §8.3의 그 줄).
 - **끝났다** — 1단계 전부(`810055f` · REPAIR §141 · §12 닫음). `MessageUnown`은 안농 글꼴을 두 굽는 쪽으로 굽고 닫았다(DATA §2.21b · `node tools/e2e/_unown.mjs` 둘 ✓). 2단계에서 키우미집 고르기 · 타일 스크립트(책장·쓰레기통·진열대·벽 지도·자전거 거치대) ·
   `OpenRegionMap` · 가방의 타운맵·나무열매·물뿌리개·퇴비·케이스 알림(`bd610e5`).
 - **2단계도 끝났다** — 필드 기술 다섯(달콤한향기·꿀 · 순간이동 · 구멍파기 · 우유마시기·알낳기)과 빙글 워프(탈출로프 포함) ·
