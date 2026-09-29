@@ -24,9 +24,17 @@ import { worldState } from '../state/worldState'
 import { useSaveStore } from '../state/saveStore'
 import { loadTrainerNames, loadTrainers } from '../data/gameData'
 import { gameLocale } from '../state/optionsStore'
+import { battleSongFor } from '../engine/audio/battleSongs'
 import { markCutIn } from '../app/sceneMark'
 
 let running: SpecialCutIn | null = null
+
+/**
+ * 컷인과 함께 트는 배틀 곡 — **컷인 첫 틱에 곡이 바뀐다** (`FieldTask_RunEncounterEffect` 0단계가 `EncounterEffect_Start` 바로 뒤에
+ * `Sound_SetSceneAndPlayBGM(SOUND_SCENE_BATTLE, …)`). 곡 지휘자(`scene/MusicDirector`)가 본다. 배틀이 열리면 배틀 가게가 같은 곡을
+ * 고르므로 다시 안 튼다
+ */
+export const cutInSong: { now: number | null } = { now: null }
 
 /**
  * 화면에 그릴 수 있는 원작 셈 컷인 (`cutInTrainer` — 덮개 `ui/field/cutInCanvas`가 `CutInFrame.draw`를 그린다).
@@ -94,6 +102,7 @@ export function cutInRunning(): boolean {
  */
 export function resetCutIn(): void {
   running = null
+  cutInSong.now = null
   cutInFrame.now = null
   markCutIn(null)
   const woken = waiting
@@ -170,6 +179,13 @@ export async function cutInThenBattle(
 ): Promise<void> {
   const effect = cutInFor(o)
   if (NAMED(effect)) await namesReady()
+  cutInSong.now = battleSongFor({
+    kind: o.trainer ? 'trainer' : 'wild',
+    trainerClass: o.trainer ? (o.trainerClass ?? null) : null,
+    doubles: o.doubles ?? false,
+    foeSpecies: o.foeSpecies ?? 0,
+    mapId: mapWorld.mapId,
+  })
   await runCutIn(effect)
   open()
   resetCutIn()

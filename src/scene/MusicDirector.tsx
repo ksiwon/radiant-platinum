@@ -8,7 +8,7 @@
 // 낮/밤 경계는 하늘과 같은 표를 쓴다(`map/timeOfDay`) — 원작 `rtc.c`의 24칸이다.
 // 다만 **하늘처럼 섞지 않는다.** 곡은 섞을 수 없으니 경계에서 갈아탄다.
 //
-// 배틀에 들어가면 필드 곡을 멈추고 배틀 곡으로 바꾼다. 나오면 되돌린다 —
+// 배틀에 들어가면(조우 컷인의 첫 틱 — `scene/encounterCutIn`의 `cutInSong`) 필드 곡을 멈추고 배틀 곡으로 바꾼다. 나오면 되돌린다 —
 // 필드 곡은 처음부터 다시 시작한다(원작도 그렇다).
 import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
@@ -25,6 +25,7 @@ import { decodeChatotCry } from '../engine/pokemon/chatotCry'
 import { worldState } from '../state/worldState'
 import { fieldScripts } from '../engine/script/field'
 import { previousMap } from './fieldServices'
+import { cutInSong } from './encounterCutIn'
 
 /** 몇 초마다 곡을 다시 고를지. 맵과 시간대만 보므로 자주 볼 이유가 없다 */
 const CHECK_SECONDS = 1
@@ -46,7 +47,8 @@ export function MusicDirector() {
    *
    * ⚠️ **배틀 곡을 `phase`만 보고 틀면 빈 화면에서 먼저 난다.** 모델이 오기까지
    * 몇 초가 걸려서 곡·조우 연출·포켓몬이 따로 놀았다. 그동안은 **걷던 곳의
-   * 곡을 그대로 둔다** — 원작도 배틀 화면을 다 세우고 곡을 바꾼다
+   * 곡을 그대로 둔다** — 컷인을 거치는 배틀은 컷인 첫 틱에 이미 배틀 곡이라(원작 `FieldTask_RunEncounterEffect`) 이 기다림이
+   * 곡을 안 바꾸고, 컷인 없이 열리는 배틀만 여기서 기다린다
    */
   const sceneReady = useBattleStore((s) => s.sceneReady)
   const kind = useBattleStore((s) => s.kind)
@@ -74,6 +76,12 @@ export function MusicDirector() {
     // 오프닝이 끝나면 필드 곡을 **다시 고르게** 남겨 둔다 — 마지막에 고른 것을
     // 그대로 들고 있으면 같은 곡이라는 이유로 안 틀고 오프닝 곡이 계속 흐른다
     if (intro) { last.current = null; return }
+    // 조우 컷인이 돌면 **그 첫 틱에** 배틀 곡으로 갈아탄다 (`FieldTask_RunEncounterEffect`) — 1초 간격을 안 기다린다
+    const pending = cutInSong.now
+    if (pending !== null && phase === 'off') {
+      if (last.current !== pending) { last.current = pending; void music.play(pending) }
+      return
+    }
     since.current += delta
     if (since.current < CHECK_SECONDS) return
     since.current = 0
