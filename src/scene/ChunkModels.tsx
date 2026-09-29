@@ -757,9 +757,14 @@ interface Props {
   radius: number
   /** 영역의 텍스처 묶음 번호 (`maps.json`의 areas[map.area].tex) */
   texSet: number
+  /**
+   * 원작 지형 · 소품을 **안 그린다** — BDSP 방이 그 자리에 선다 (`BdspRoom`). 배치 계산은 그대로 한다: 방 벽(1인칭 앞벽)과
+   * 카메라 방 상자가 원작 바닥에서 나온다
+   */
+  dsHidden?: boolean
 }
 
-export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: Props) {
+export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, dsHidden = false }: Props) {
   // 나무가 설 땅. 플레이어가 밟는 것과 **같은 자료**라 밑동이 발밑과 어긋나지
   // 않는다 — 잎 아래끝에 세우면 48,525그루 중 48,331그루가 뜬다 (`Foliage`)
   const groundAt = useCallback(
@@ -1543,7 +1548,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
 
   return (
     <group>
-      <LeanCards lands={batch.lands} />
+      {!dsHidden && <LeanCards lands={batch.lands} />}
       {/*
         땅도 그림자를 던진다 — 나무·절벽이 청크 모델 안에 들어 있어서 여기서
         안 던지면 숲이 통째로 그림자를 안 만든다
@@ -1568,12 +1573,12 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
 
             ⚠️ 합치면 **메운 바닥도 그림자를 던진다.** 원래는 받기만 했다
           */}
-          <TerrainMesh geometry={p.merged ?? p.geometry} materials={p.materials} />
+          {!dsHidden && <TerrainMesh geometry={p.merged ?? p.geometry} materials={p.materials} />}
           {/*
             원작이 안 만든 실내 앞벽. 카메라가 도는 화면에서는 그 자리가
             통째로 검게 뚫려 보인다 (`roomWalls.ts`)
           */}
-          {p.room && (
+          {p.room && !dsHidden && (
             <mesh name="방 벽" geometry={p.room.geometry} material={p.materials} receiveShadow />
           )}
         </group>
@@ -1614,7 +1619,7 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet }: 
         크기 1이라 단위를 확인할 자리가 없다 — 0이 아닌 값이 나오는 실내·던전을
         붙일 때 라디안인지 다시 봐야 한다
       */}
-      {props.map((p) => (
+      {!dsHidden && props.map((p) => (
         <PropPlace key={p.key} p={p}>
           {/*
             3인칭에서 카메라와 플레이어 사이에 든 건물은 흐려진다. 나무는 이미

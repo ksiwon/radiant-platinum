@@ -96,6 +96,7 @@ import {
 import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
+import { BdspRoom, useBdspRoom } from './BdspRoom'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
 import { ItemBalls } from './ItemBalls'
@@ -280,6 +281,7 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const sunRef = useRef<DirectionalLight>(null)
   const charKeyRef = useRef<PointLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
+  const room = useBdspRoom(mapId)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -1223,7 +1225,12 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         전부 여기서 나온다 (DATA.md §2.2). 청크 하나가 파일 하나고 창 안의 것만
         받는다. 충돌·높이는 여전히 perm/BDHC가 잡으므로 이 층은 그림만 담당한다
       */}
-      <ChunkModels grid={grid} revision={gridRevision} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
+      <ChunkModels
+        grid={grid} revision={gridRevision} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet}
+        dsHidden={room !== null}
+      />
+      {/* 실내는 BDSP 방이 있으면 그것이 선다 — 원작 칸 좌표 그대로다 (`BdspRoom`) */}
+      {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}
       <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />

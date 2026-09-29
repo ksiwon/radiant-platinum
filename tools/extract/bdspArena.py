@@ -131,7 +131,7 @@ def lanes(raw, n: int, want: int, fallback: list[float]) -> np.ndarray:
     return a.reshape(n, -1)[:, :want].copy()
 
 
-def export(bundle: Path, out: Path, far: float | None) -> dict:
+def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None) -> dict:
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
     if not filters:
@@ -172,7 +172,7 @@ def export(bundle: Path, out: Path, far: float | None) -> dict:
     samplers: list[dict] = []
     # ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
     # 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
-    spec = bake(bundle, albedo, None)
+    spec = bake(bundle, albedo, None, max_size)
     st_of = {}
     for png in sorted(albedo.glob("*_albedo.png")):
         name = png.name[: -len("_albedo.png")]
@@ -394,6 +394,14 @@ ROOT = Path(__file__).resolve().parents[2]
 TABLE = ROOT / "src/engine/battle/arena.ts"
 GROUND = require_dir("bdsp.arenas") / "ground"
 OUTDIR = ROOT / "public/models/arena"
+#: 실내 방 (docs/orders/VISUAL_20260929.md §5). 이름이 원작 내부 맵 이름과 같다(`C01R0101` ↔ `maps.json`의 `name`)
+ROOMS = require_dir("bdsp.environments") / "prefab_map"
+ROOM_OUT = ROOT / "public/models/room"
+#: 방 그림 긴 변의 상한. 방 225벌을 원본 해상도(512~1024)로 구우면 설치본이 수백 MB 는다
+ROOM_TEXTURE = 512
+#: **던전(`d##`)은 안 굽는다** — 동굴 · 탄광 · 숲은 기하가 무겁다(138벌 856MB · 한 벌에 삼각형 39만 개). 원작도 입체인 자리라
+#: 야외와 함께 기하를 줄이는 길(양자화)을 갖춘 뒤에 다룬다. 건물 안 117벌은 146MB다
+DUNGEON = "d"
 
 
 def wanted() -> list[str]:
@@ -411,6 +419,30 @@ def wanted() -> list[str]:
     return sorted(set(names))
 
 
+def room_names() -> list[str]:
+    """방 번들 전부 (`prefab_map`의 파일 255벌).
+
+    ⚠️ **우리 맵과 짝이 맞는 것만 고르지 않는다.** 짝은 실행 때 맺는다(`scene/BdspRoom`의 `roomFor` — 이름이 먼저 · 없으면 같은
+    행렬의 다른 맵). 여기서 고르면 브라우저 설치기도 `maps.json`을 읽어 같은 표를 세워야 하고, 두 굽는 쪽이 갈라질 자리가 는다
+    """
+    return sorted(p.name for p in ROOMS.iterdir() if p.is_file() and not p.name.startswith(DUNGEON))
+
+
+def bake_rooms(names: list[str]) -> int:
+    names = names or room_names()
+    print(f"방 {len(names)}벌")
+    total = 0
+    for name in names:
+        stat = export(ROOMS / name, ROOM_OUT / f"{name}.glb", None, ROOM_TEXTURE)
+        total += stat["바이트"]
+        print(f"  {name}  삼각형 {stat['삼각형']:>7,} · 재질 {stat['재질']:>2} · {stat['바이트'] / 1e6:.1f}MB")
+    # 목차는 **구운 것 전부**다 — 한 벌만 다시 구워도 목차가 줄지 않게 폴더를 센다
+    made = sorted(p.stem for p in ROOM_OUT.glob("*.glb"))
+    (ROOM_OUT / "index.json").write_text(json.dumps({"rooms": made}, indent=1), encoding="utf-8")
+    print(f"모두 {total / 1e6:.1f}MB · 목차 {len(made)}벌")
+    return 0
+
+
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser()
@@ -418,9 +450,14 @@ def main() -> int:
     ap.add_argument("-o", "--out", type=Path)
     ap.add_argument("--all", action="store_true",
                     help=f"{TABLE.name}에 실린 무대를 전부 굽는다")
+    ap.add_argument("--rooms", nargs="*", default=None,
+                    help="실내 방을 굽는다. 이름을 안 주면 전부")
     ap.add_argument("--far", type=float, default=None,
                     help="무대 한가운데에서 이보다 먼 메시는 버린다 (m)")
     args = ap.parse_args()
+
+    if args.rooms is not None:
+        return bake_rooms(args.rooms)
 
     if args.all:
         names = wanted()

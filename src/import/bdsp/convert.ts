@@ -38,6 +38,13 @@ const PERSONS = 'Characters/persons'
 const POKEMON_BATTLE = 'Pokemon Database/pokemons/battle'
 const POKEMON_COMMON = 'Pokemon Database/pokemons/common'
 const ARENA_GROUND = 'Environments/bg/arenas/ground'
+/** 실내 방 (docs/orders/VISUAL_20260929.md §5 · `scene/BdspRoom`) */
+const ROOMS = 'Environments/prefab_map'
+/**
+ * 방 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `ROOM_TEXTURE`와 같아야 한다. 방 255벌을 원본 해상도(512~1024)로 구우면
+ * 설치본이 수백 MB 는다
+ */
+export const ROOM_TEXTURE = 512
 const MASTERDATAS = 'Dpr/masterdatas'
 /** 자전거. 오버월드에서 타는 물건이라 인물과 같은 자리에서 굽는다 */
 // ⚠️ **`ob1003_00`이 아니다** — 원작이 주인공을 태우는 자전거는 이쪽이다
@@ -839,6 +846,54 @@ async function convertArenas(ctx: ConvertContext): Promise<Produced> {
   return out
 }
 
+// ── rooms ────────────────────────────────────────────────────────────────────
+//
+// **실내를 BDSP 방으로** (docs/orders/VISUAL_20260929.md §5). 방 번들은 무대와 같은 꼴(정적 메시 + 재질)이라 무대 변환기로 굽는다.
+// 짝은 실행 때 맺는다(`scene/BdspRoom`의 `roomFor`) — 여기서는 번들 전부를 굽는다. 노드 쪽 `bdspArena.py --rooms`와 같은 목록이다
+
+/** 방 번들 이름들 — `prefab_map` 바로 아래 파일 */
+export function roomBundles(paths: Iterable<string>): string[] {
+  const head = `${ROOMS.toLowerCase()}/`
+  const out: string[] = []
+  for (const p of paths) {
+    const key = p.toLowerCase()
+    if (!key.startsWith(head)) continue
+    const rest = key.slice(head.length)
+    // 던전(`d##`)은 안 굽는다 — 노드 쪽 `bdspArena.py`의 `DUNGEON`과 같다 (기하가 무겁다 · 138벌 856MB)
+    if (rest !== '' && !rest.includes('/') && !rest.startsWith('d')) out.push(rest)
+  }
+  return [...new Set(out)].sort()
+}
+
+async function convertRooms(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  const out: Produced = new Map()
+  const names = roomBundles(at.keys())
+  const made: string[] = []
+  const missing: string[] = []
+  let done = 0
+  for (const name of names) {
+    check(ctx)
+    const path = lookup(at, `${ROOMS}/${name}`)
+    const env = path ? await environmentOf(src, [path]) : null
+    if (!env) missing.push(name)
+    else {
+      try {
+        const { glb } = await exportArena(env, encodePng, { name, maxSize: ROOM_TEXTURE })
+        put(ctx, out, `models/room/${name}.glb`, glb)
+        made.push(name)
+      } catch { missing.push(name) }
+    }
+    done++
+    ctx.onProgress?.(done, names.length)
+    await breathe(ctx)
+  }
+  requireAll('실내 방', names.length, missing)
+  put(ctx, out, 'models/room/index.json', json({ rooms: made }))
+  return out
+}
+
 // ── motionTiming ─────────────────────────────────────────────────────────────
 //
 // **때리는 순간은 종마다 다르다.** 한 박자로 때리면 모부기도 리아코도 같은 때에
@@ -950,6 +1005,12 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['models/arena/{무대}.glb', 'models/arena/index.json'],
     converter: 1,
     convert: convertArenas,
+  },
+  {
+    name: 'rooms',
+    outputs: ['models/room/{방}.glb', 'models/room/index.json'],
+    converter: 1,
+    convert: convertRooms,
   },
   {
     name: 'motionTiming',
