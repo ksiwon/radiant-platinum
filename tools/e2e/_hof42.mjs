@@ -63,14 +63,19 @@ try {
   await page.waitForFunction(() => document.documentElement.dataset.menu === 'credits', null, { timeout: 30_000 })
   const skippable = await page.evaluate(() => document.body.innerText.includes('넘기기'))
   log('크레딧', { skippable })
-  // 처음 깬 판은 못 넘긴다 — 다 흐를 때까지 기다린다. 장면마다 한 장씩 찍는다. 끝나면 통째로 다시 켜진다
+  // 두루마리를 몇 장 찍고 Z로 넘긴다 — 만든 사람 화면을 찍고 한 번 더 Z. 타이틀은 통째로 다시 켜진다
   let prev = 0
-  for (const at of [4, 30, 60, 75, 100, 125]) {
+  for (const at of [4, 30, 60]) {
     await page.waitForTimeout((at - prev) * 1000)
     prev = at
     await page.screenshot({ path: resolve(ROOT, `shots/hof42-credits-${String(at).padStart(3, '0')}s.png`) }).catch(() => {})
   }
-  await page.waitForFunction(() => location.pathname === '/', null, { timeout: 300_000 })
+  await page.keyboard.press('KeyZ')
+  await page.waitForSelector('[data-credits="maker"]', { timeout: 10_000 })
+  await page.waitForTimeout(1000)
+  await page.screenshot({ path: resolve(ROOT, 'shots/hof42-maker.png') }).catch(() => {})
+  await page.keyboard.press('KeyZ')
+  await page.waitForFunction(() => location.pathname === '/', null, { timeout: 60_000 })
   await page.getByRole('button', { name: '이어하기', exact: true }).waitFor({ timeout: 300_000 })
   await page.waitForTimeout(2000)
   log('타이틀', { ...(await state()), marks: await marks() })

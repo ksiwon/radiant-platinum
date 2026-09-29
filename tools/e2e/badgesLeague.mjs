@@ -629,12 +629,19 @@ async function watchEnding(api, ctx, page) {
   }
   out.creditsMs = Date.now() - t0
   if (out.credits && ctx.out) await page.screenshot({ path: `${ctx.out}/크레딧.png` }).catch(() => {})
-  // ⚠️ **처음 깬 판은 크레딧을 못 넘긴다** (REPAIR §130) — 누르지 않고 다 흐르기를 기다린다. 끝나면 통째로 다시 켜진다
-  const titleBy = Date.now() + 300_000
+  // 처음 깬 판에서도 Z 한 번에 만든 사람 화면으로, 한 번 더에 타이틀로 (PARITY §8.12). 타이틀은 통째로 다시 켜진다
+  const part = () => page.evaluate(() => document.querySelector('[data-credits]')?.getAttribute('data-credits') ?? null).catch(() => null)
+  const titleBy = Date.now() + 120_000
   while (!out.title && Date.now() < titleBy) {
     const m = await marks().catch(() => ({}))
     if (m.pathname === '/' || m.scene === 'title') { out.title = true; break }
-    await page.waitForTimeout(500)
+    const p = await part()
+    if (p === 'maker' && !out.maker) {
+      out.maker = true
+      if (ctx.out) await page.screenshot({ path: `${ctx.out}/만든사람.png` }).catch(() => {})
+    }
+    if (p !== null) await page.keyboard.press('KeyZ')
+    await page.waitForTimeout(1500)
   }
   out.titleMs = Date.now() - t0
   return out

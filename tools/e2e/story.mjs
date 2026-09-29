@@ -1327,21 +1327,32 @@ if (ACTS.has('3')) {
     // 여기서 가릴 것은 「아무것도 안 그렸는가」 하나다
     if (cpix.colors < 4) throw new Error(`크레딧이 통째로 비었다 (색 ${cpix.colors})`)
 
-    // 크레딧이 끝나면 타이틀로 되돌아간다 (PARITY §8.12) — 통째로 다시 켜진다(`location.assign`)
-    //
-    // ⚠️ **처음 깬 판은 못 넘긴다** (REPAIR §130) — 두루마리가 다 흐를 때까지 기다린다. 시간으로 잰다:
-    // 바퀴 수로 재면 느린 기계에서 크레딧보다 먼저 끝난다
+    // 처음 깬 판에서도 Z 한 번에 두루마리를 넘겨 만든 사람 화면으로, 한 번 더에 타이틀로 (PARITY §8.12)
+    // — 타이틀은 통째로 다시 켜진다(`location.assign`)
+    const creditsPart = () => page.evaluate(() => document.querySelector('[data-credits]')?.getAttribute('data-credits') ?? null)
+      .catch(() => null)
+    let onMaker = false
+    for (let i = 0; i < 20 && !onMaker; i++) {
+      if (await creditsPart() === 'maker') { onMaker = true; break }
+      await tap(page, 'KeyZ', 60)
+      await page.waitForTimeout(500)
+    }
+    if (!onMaker) throw new Error('크레딧에서 Z를 눌러도 만든 사람 화면으로 안 넘어간다')
+    await page.waitForTimeout(1_000)
+    writeFileSync(resolve(OUT, '99-maker.png'), await page.screenshot())
     let backToTitle = false
-    const titleBy = Date.now() + 300_000
+    const titleBy = Date.now() + 60_000
+    let pressed = 0
     while (Date.now() < titleBy) {
       const at = await marks(page).catch(() => ({}))
       if (at.path === '/' || at.scene === 'title') { backToTitle = true; break }
-      await page.waitForTimeout(500)
+      if (pressed < 3 && await creditsPart() === 'maker') { await tap(page, 'KeyZ', 60); pressed++ }
+      await page.waitForTimeout(1_000)
     }
-    if (!backToTitle) throw new Error('크레딧이 끝나도 타이틀로 안 간다')
+    if (!backToTitle) throw new Error('만든 사람 화면에서 Z를 눌러도 타이틀로 안 간다')
     const bad = noise.slice(0, 3)
     if (bad.length > 0) throw new Error(`콘솔: ${bad.join(' / ')}`)
-    add('③', 'ending', '명예의 전당 → 크레딧 → 타이틀', 'PASS',
+    add('③', 'ending', '명예의 전당 → 크레딧 → 만든 사람 → 타이틀', 'PASS',
       `전당 ${(hof / 1000).toFixed(1)}초 · 크레딧까지 ${(credits / 1000).toFixed(1)}초 · `
       + `크레딧 색 ${cpix.colors} · 타이틀 복귀 ${((Date.now() - t0) / 1000).toFixed(0)}초 · 콘솔 0건`)
   } catch (e) {

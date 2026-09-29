@@ -274,7 +274,8 @@ export function CreditsScreen() {
   const textOf = (index: number): string => lines?.[index] ?? ''
 
   return (
-    <div className={css.backdrop}>
+    // 하네스가 두 장을 가른다 — 두루마리 · 만든 사람 (`story.mjs` ③ · `badgesLeague.mjs`)
+    <div className={css.backdrop} data-credits={maker ? 'maker' : 'roll'}>
       <div className={css.stage}>
         {atlas?.scenes.map((size, i) => (
           <div
