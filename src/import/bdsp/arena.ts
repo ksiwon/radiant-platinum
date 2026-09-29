@@ -40,7 +40,7 @@ function pairs(entries: UnityValue): Map<string, UnityValue> {
 
 // ── 월드 행렬 ────────────────────────────────────────────────────────────────
 
-type Mat4 = Float64Array
+export type Mat4 = Float64Array
 
 /** Transform 하나의 로컬 행렬 (Unity 좌표계 그대로, 행 우선 4×4) */
 function localMatrix(t: Props): Mat4 {
@@ -84,7 +84,7 @@ function multiply(a: Mat4, b: Mat4): Mat4 {
 }
 
 /** 부모를 타고 올라가 월드 행렬을 만든다. 뼈가 없으므로 이걸 정점에 굽는다 */
-function worldOf(env: Environment, pathId: number, cache: Map<number, Mat4>): Mat4 {
+export function worldOf(env: Environment, pathId: number, cache: Map<number, Mat4>): Mat4 {
   const had = cache.get(pathId)
   if (had) return had
   const v = env.read(pathId) as Props | null
@@ -122,71 +122,26 @@ function alphaOf(kind: string): Record<string, unknown> {
   return { alphaMode: 'MASK', alphaCutoff: 0.5 }
 }
 
-// ── 내보내기 ─────────────────────────────────────────────────────────────────
-
-interface ArenaOptions {
-  /** 무대 한가운데에서 이보다 먼 메시는 버린다 (m). null이면 전부 */
-  far?: number | null
-  /**
-   * 텍스처 긴 변 상한.
-   *
-   * ⚠️ **무대는 줄이지 않는다.** 인물·포켓몬은 화면에 드는 크기가 정해져 있어
-   * 256이면 텍셀이 남지만, 무대 바닥은 배율 (11, 11)로 되풀이하는 그림이라
-   * 줄이면 발밑 전체가 뭉갠다. 개발 추출기도 여기는 원본 그대로 굽는다
-   */
-  maxSize?: number | null
-  /** glTF 노드·메시에 적을 이름. 개발 추출기는 번들 이름을 적는다 */
-  name?: string
+/** 번들의 재질을 glTF 재질 · 그림으로 — 무대와 야외(`field.ts`)가 같이 쓴다 */
+export interface Looks {
+  images: Record<string, unknown>[]
+  textures: Record<string, unknown>[]
+  materials: Record<string, unknown>[]
+  samplers: { wrapS: number, wrapT: number }[]
+  /** 재질 이름 → glTF 재질 번호 */
+  slotOf: Map<string, number>
+  /** 재질 이름 → 밑그림 UV 배율 · 오프셋 */
+  uvOf: Map<string, [number, number, number, number]>
+  /** Material pathID → 재질 이름 */
+  materialName: Map<number, string>
 }
 
-interface ArenaStat {
-  meshes: number
-  dropped: number
-  vertices: number
-  triangles: number
-  materials: number
-  draws: number
-  width: number
-  height: number
-  depth: number
-  bytes: number
-  problems: string[]
-}
-
-interface Part {
-  positions: Float32Array
-  normals: Float32Array
-  uvs: Float32Array
-  indices: Uint32Array
-}
-
-/** 정점당 `want`개 값으로 편다. 없거나 개수가 안 맞으면 `fallback`으로 채운다 */
-function lanes(
-  raw: Float32Array | undefined, dim: number | undefined,
-  n: number, want: number, fallback: readonly number[],
-): Float32Array {
-  const out = new Float32Array(n * want)
-  if (!raw || dim === undefined || dim < want || raw.length < n * dim) {
-    for (let i = 0; i < n; i++) for (let k = 0; k < want; k++) out[i * want + k] = fallback[k]!
-    return out
-  }
-  // ⚠️ **성분 개수가 3이라고 가정하면 안 된다.** BDSP 무대 메시의 법선 스트림이
-  // 정점당 4성분으로 들어 있는 것이 있다 (`g001`에서 10,444 = 2,611 × 4)
-  for (let i = 0; i < n; i++) for (let k = 0; k < want; k++) out[i * want + k] = raw[i * dim + k]!
-  return out
-}
-
-export async function exportArena(
+export async function bakeLooks(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
-  options: ArenaOptions = {},
-): Promise<{ glb: Uint8Array, stat: ArenaStat }> {
-  const far = options.far ?? null
-  const name = options.name ?? 'arena'
-  const filters = env.ofType('MeshFilter')
-  if (filters.length === 0) throw new ArenaError('MeshFilter가 없다')
-
-  // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
+  buf: GlbBuffer,
+  maxSize: number | null,
+): Promise<Looks> {
   const renderType = new Map<string, string>()
   const materialName = new Map<number, string>()
   for (const e of env.ofType('Material')) {
@@ -198,7 +153,6 @@ export async function exportArena(
     renderType.set(mat, (tags.get('RenderType') as string | undefined) ?? 'Opaque')
   }
 
-  const buf = new GlbBuffer()
   const images: Record<string, unknown>[] = []
   const textures: Record<string, unknown>[] = []
   const materials: Record<string, unknown>[] = []
@@ -211,7 +165,7 @@ export async function exportArena(
   // ⚠️ **이름순으로 세운다.** 재질 차례가 곧 프리미티브 차례이고, 번들 안
   // 오브젝트 차례는 덤프마다 달라질 수 있다. 개발 추출기도 이름순이라
   // (`sorted(albedo.glob(...))`) parity를 바로 잴 수 있다
-  const baked = bakeAlbedo(env, { maxSize: options.maxSize ?? null })
+  const baked = bakeAlbedo(env, { maxSize })
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   for (const m of baked) {
     const png = await encodePng(m.pixels, m.width, m.height)
@@ -268,6 +222,78 @@ export async function exportArena(
     materials.push(plain)
     slotOf.set(mat, materials.length - 1)
   }
+
+  return { images, textures, materials, samplers, slotOf, uvOf, materialName }
+}
+
+// ── 내보내기 ─────────────────────────────────────────────────────────────────
+
+interface ArenaOptions {
+  /** 무대 한가운데에서 이보다 먼 메시는 버린다 (m). null이면 전부 */
+  far?: number | null
+  /**
+   * 텍스처 긴 변 상한.
+   *
+   * ⚠️ **무대는 줄이지 않는다.** 인물·포켓몬은 화면에 드는 크기가 정해져 있어
+   * 256이면 텍셀이 남지만, 무대 바닥은 배율 (11, 11)로 되풀이하는 그림이라
+   * 줄이면 발밑 전체가 뭉갠다. 개발 추출기도 여기는 원본 그대로 굽는다
+   */
+  maxSize?: number | null
+  /** glTF 노드·메시에 적을 이름. 개발 추출기는 번들 이름을 적는다 */
+  name?: string
+}
+
+interface ArenaStat {
+  meshes: number
+  dropped: number
+  vertices: number
+  triangles: number
+  materials: number
+  draws: number
+  width: number
+  height: number
+  depth: number
+  bytes: number
+  problems: string[]
+}
+
+interface Part {
+  positions: Float32Array
+  normals: Float32Array
+  uvs: Float32Array
+  indices: Uint32Array
+}
+
+/** 정점당 `want`개 값으로 편다. 없거나 개수가 안 맞으면 `fallback`으로 채운다 */
+export function lanes(
+  raw: Float32Array | undefined, dim: number | undefined,
+  n: number, want: number, fallback: readonly number[],
+): Float32Array {
+  const out = new Float32Array(n * want)
+  if (!raw || dim === undefined || dim < want || raw.length < n * dim) {
+    for (let i = 0; i < n; i++) for (let k = 0; k < want; k++) out[i * want + k] = fallback[k]!
+    return out
+  }
+  // ⚠️ **성분 개수가 3이라고 가정하면 안 된다.** BDSP 무대 메시의 법선 스트림이
+  // 정점당 4성분으로 들어 있는 것이 있다 (`g001`에서 10,444 = 2,611 × 4)
+  for (let i = 0; i < n; i++) for (let k = 0; k < want; k++) out[i * want + k] = raw[i * dim + k]!
+  return out
+}
+
+export async function exportArena(
+  env: Environment,
+  encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
+  options: ArenaOptions = {},
+): Promise<{ glb: Uint8Array, stat: ArenaStat }> {
+  const far = options.far ?? null
+  const name = options.name ?? 'arena'
+  const filters = env.ofType('MeshFilter')
+  if (filters.length === 0) throw new ArenaError('MeshFilter가 없다')
+
+  // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
+  const buf = new GlbBuffer()
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName } =
+    await bakeLooks(env, encodePng, buf, options.maxSize ?? null)
 
   const cache = new Map<number, Mat4>()
   /** 재질 슬롯 → 그 재질로 그리는 조각들 */

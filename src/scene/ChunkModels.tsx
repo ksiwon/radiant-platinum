@@ -758,8 +758,8 @@ interface Props {
   /** 영역의 텍스처 묶음 번호 (`maps.json`의 areas[map.area].tex) */
   texSet: number
   /**
-   * 원작 지형 · 소품을 **안 그린다** — BDSP 방이 그 자리에 선다 (`BdspRoom`). 배치 계산은 그대로 한다: 방 벽(1인칭 앞벽)과
-   * 카메라 방 상자가 원작 바닥에서 나온다
+   * 원작 지형 · 소품을 **안 그린다** — BDSP 방(`BdspRoom`)이나 지역(`BdspField`)이 그 자리에 선다. 나무 · 바위 · 화단 · 풀 · 꽃 ·
+   * 물도 같이 뺀다(BDSP가 제 것을 세운다). 배치 계산은 그대로 한다: 방 벽(1인칭 앞벽)과 카메라 방 상자가 원작 바닥에서 나온다
    */
   dsHidden?: boolean
 }
@@ -1587,33 +1587,33 @@ export function ChunkModels({ grid, revision = 0, chunkIndex, radius, texSet, ds
         나무. 원작은 판때기 한 장이라 옆·뒤에서 종잇장이 된다 — 자리와 폭과
         색만 가져와 입체로 세운다 (`plates.ts`)
       */}
-      <Foliage groups={foliage} ground={groundAt} clear={clearAt} />
+      {!dsHidden && <Foliage groups={foliage} ground={groundAt} clear={clearAt} />}
       {/*
         소품의 잎 카드를 바꾼 입체 나무 — 꿀나무. 비켜설 자리(`clear`)는 안 준다:
         막힘 상자에 **제 소품**(그루터기)이 들어 있어서 주면 제 자리에서 안 자란다
       */}
-      <Foliage groups={propTrees} ground={groundAt} />
+      {!dsHidden && <Foliage groups={propTrees} ground={groundAt} />}
       {/*
         물가의 바위. 원작은 45°로 눕힌 판 한 장이라(실측 1,001장이 전부 그렇다)
         세우면 새까만 달걀이 물 위에 늘어선다 — 자리와 폭만 가져온다 (`Rocks.tsx`)
       */}
-      <Rocks groups={rocks} />
-      <Planters groups={planters} />
+      {!dsHidden && <Rocks groups={rocks} />}
+      {!dsHidden && <Planters groups={planters} />}
       {/*
         긴 풀. 원작은 바닥 그림이라 1인칭에서 초록 장판이 된다 — 거동값
         `0x0002`인 칸에만 포기를 세운다 (`Grass.tsx`)
       */}
-      <Grass field={grass} />
+      {!dsHidden && <Grass field={grass} />}
       {/*
         화단. 원작은 바닥 그림이라 3인칭에서 잔디 위에 뿌린 색종이가 된다 —
         그 칸에 실제로 서는 꽃송이를 얹는다 (`Flowers.tsx`)
       */}
-      <Flowers field={flowers} />
+      {!dsHidden && <Flowers field={flowers} />}
       {/*
         물. 원작은 바닥 도트라 1인칭에서 파란 장판이 된다 — 거동값 `0x0015`·
         `0x0010`인 칸 위에 실제로 출렁이는 면을 얹는다 (`Water.tsx`)
       */}
-      <Water field={water} />
+      {!dsHidden && <Water field={water} />}
       {/*
         회전·크기는 배치 기록이 준다. 오버월드 468곳은 실측으로 전부 회전 0 ·
         크기 1이라 단위를 확인할 자리가 없다 — 0이 아닌 값이 나오는 실내·던전을

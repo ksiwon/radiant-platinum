@@ -29,6 +29,7 @@ import { openEnvironment, type Environment } from './environment'
 import { exportModel } from './model'
 import { bakeAlbedo } from './albedo'
 import { exportArena } from './arena'
+import { exportField } from './field'
 import { className, openBundle, readSerializedFile } from './unityfs'
 import type { UnityValue } from './typetree'
 
@@ -40,6 +41,8 @@ const POKEMON_COMMON = 'Pokemon Database/pokemons/common'
 const ARENA_GROUND = 'Environments/bg/arenas/ground'
 /** 실내 방 (docs/orders/VISUAL_20260929.md §5 · `scene/BdspRoom`) */
 const ROOMS = 'Environments/prefab_map'
+/** 야외 지역 (docs/orders/VISUAL_20260929.md §2 · `scene/BdspField`) */
+const FIELDS = 'Environments/fields'
 /**
  * 방 그림 긴 변의 상한 — 노드 쪽 `bdspArena.py`의 `ROOM_TEXTURE`와 같아야 한다. 방 255벌을 원본 해상도(512~1024)로 구우면
  * 설치본이 수백 MB 는다
@@ -894,6 +897,54 @@ async function convertRooms(ctx: ConvertContext): Promise<Produced> {
   return out
 }
 
+// ── fields ───────────────────────────────────────────────────────────────────
+//
+// **야외를 BDSP 지역으로** (docs/orders/VISUAL_20260929.md §2 · `field.ts`). 지역 번들(`area###` · 대습지 `safari`)마다 glb 하나다.
+// 배틀 배경용 `battle001`은 뺀다. ⚠️ **개발 산출물도 이 함수가 만든다** (`tools/spike/bdspGroups.mjs fields --out public`) —
+// 파이썬 짝이 없으므로 두 굽는 쪽이 갈릴 자리가 없다
+
+/** 야외 지역 번들 이름들 */
+export function fieldBundles(paths: Iterable<string>): string[] {
+  const head = `${FIELDS.toLowerCase()}/`
+  const out: string[] = []
+  for (const p of paths) {
+    const key = p.toLowerCase()
+    if (!key.startsWith(head)) continue
+    const rest = key.slice(head.length)
+    if (/^(area\d+|safari)$/.test(rest)) out.push(rest)
+  }
+  return [...new Set(out)].sort()
+}
+
+async function convertFields(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  const out: Produced = new Map()
+  const names = fieldBundles(at.keys())
+  const made: { name: string, box: [number, number, number, number] }[] = []
+  const missing: string[] = []
+  let done = 0
+  for (const name of names) {
+    check(ctx)
+    const path = lookup(at, `${FIELDS}/${name}`)
+    const env = path ? await environmentOf(src, [path]) : null
+    if (!env) missing.push(name)
+    else {
+      try {
+        const { glb, stat } = await exportField(env, encodePng, { name, maxSize: ROOM_TEXTURE })
+        put(ctx, out, `models/field/${name}.glb`, glb)
+        made.push({ name, box: stat.box })
+      } catch { missing.push(name) }
+    }
+    done++
+    ctx.onProgress?.(done, names.length)
+    await breathe(ctx)
+  }
+  requireAll('야외 지역', names.length, missing)
+  put(ctx, out, 'models/field/index.json', json({ fields: made }))
+  return out
+}
+
 // ── motionTiming ─────────────────────────────────────────────────────────────
 //
 // **때리는 순간은 종마다 다르다.** 한 박자로 때리면 모부기도 리아코도 같은 때에
@@ -1011,6 +1062,12 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['models/room/{방}.glb', 'models/room/index.json'],
     converter: 1,
     convert: convertRooms,
+  },
+  {
+    name: 'fields',
+    outputs: ['models/field/{지역}.glb', 'models/field/index.json'],
+    converter: 1,
+    convert: convertFields,
   },
   {
     name: 'motionTiming',

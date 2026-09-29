@@ -97,6 +97,7 @@ import { gridFor } from './worldData'
 import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
+import { BdspField, useBdspFields } from './BdspField'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
 import { ItemBalls } from './ItemBalls'
@@ -282,6 +283,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const charKeyRef = useRef<PointLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
   const room = useBdspRoom(mapId)
+  const outdoor = mapById(mapId)?.matrix === 0
+  const { near: fieldsNear } = useBdspFields(outdoor)
+  /** BDSP가 그림을 쥐는가 — 방이 섰거나, 바깥이고 둘레에 지역이 걸린다 */
+  const bdspDraws = room !== null || (outdoor && fieldsNear.length > 0)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -1227,23 +1232,25 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       */}
       <ChunkModels
         grid={grid} revision={gridRevision} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet}
-        dsHidden={room !== null}
+        dsHidden={bdspDraws}
       />
+      {/* 바깥은 BDSP 지역이 선다 — 원작 좌표 그대로다 (`BdspField`) */}
+      {outdoor && <BdspField near={fieldsNear} />}
       {/* 실내는 BDSP 방이 있으면 그것이 선다 — 원작 칸 좌표 그대로다 (`BdspRoom`) */}
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}
-      <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />
+      {!bdspDraws && <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />}
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />
       {/* 나무열매 밭 — 흙 위에 자란 것이 선다 (PARITY §4.6) */}
       <BerryPatchProps grid={grid} layer={layer} />
-      <DoorAnimations grid={grid} />
+      {!bdspDraws && <DoorAnimations grid={grid} />}
       <DistortionProps mapId={mapId} />
       {/*
         간판·눈덩이·책·방문 (PARITY §1.27). 배치표에 있는데 원작에 판때기가
         없어서 **아무것도 안 서던** 열 종이다 — 원작에서 3D 오브젝트라 같은
         아카이브(`fldeff.narc`)에서 온다
       */}
-      <ObjectProps grid={grid} layer={layer} mapId={mapId} />
+      {!bdspDraws && <ObjectProps grid={grid} layer={layer} mapId={mapId} />}
       <FieldWeather kind={weather} />
 
       {/*
