@@ -5762,3 +5762,15 @@ src/state/multiBattle.test.ts`.
 **시험** — `script/smallCommands.test.ts`(답 칸에 엉뚱한 값을 먼저 넣고 명령이 덮는지) · `world/dailyEvents.test.ts` · `world/fieldQuake.test.ts`
 (원작 상태기계의 +·0·−·0 한 벌 · 1번의 7/8 감쇠 · 소리 차례). 조사가 붙은 장식 이름(387)은 미국 롬에만 있어 노드 쪽 추출에 더했다
 (브라우저 쪽은 뱅크를 다 굽는다).
+
+## 142. 배틀이 열리는 틈에 **명령 메뉴가 등판 글보다 먼저** 떴다
+
+**원작** — 트레이너가 걸어온 줄과 등판을 다 보여 준 뒤에야 명령을 묻는다.
+
+**우리** — 실제 흐름(관장 강석 · `startTrainerBattle` → 컷인 12 → 배틀)을 50ms마다 찍으니, 무대가 서는 그 렌더(`sceneReady`)에
+박자 넷과 명령 둘이 같이 와 있었고 **명령 메뉴가 검은 막 밑에 섰다**(0.3초 장면). 재생기는 다음 프레임에야 한 걸음 밟아서, 박자가
+막 들어온 렌더에는 「다 소화했다」가 남아 있었다. 세션 첫 배틀에서는 이름표를 받는 동안 박자가 비어 1초 넘게 그랬다.
+
+**고친 것** — 「다 소화했다」를 재생기가 선 자리와 **지금 박자 수**로 같이 본다(`ui/battle/useBattlePlayback`의 `caughtUpNow`).
+이름표가 오기 전에도 읽는 중으로 친다(`BattleScreen`의 `reading`). 시험 `ui/battle/caughtUp.test.ts`. 탐침
+`node .audit/probe/playCutins.mjs grass:246` — 고친 뒤 무대가 서는 렌더에 메뉴 없음 · 0.3초 장면은 「▼」만.

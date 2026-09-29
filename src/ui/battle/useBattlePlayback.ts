@@ -49,6 +49,11 @@ interface Playback {
  * `apply`는 사건을 뷰에 접는 함수다(스토어). 박자마다 **글을 다 찍은 뒤에** 부른다 —
  * 이 한 줄이 "메시지보다 체력이 먼저 닳는" 문제를 막는 자리다.
  */
+/** 재생기가 말한 「다 소화했다」와 **지금 박자 수**를 같이 본다 — 선 자리가 박자 수보다 앞이면 아직이다 */
+export function caughtUpNow(said: boolean, at: number, beats: number): boolean {
+  return said && at >= beats
+}
+
 export function useBattlePlayback(
   beats: readonly Beat[],
   apply: (events: readonly BattleEvent[]) => void,
@@ -105,5 +110,7 @@ export function useBattlePlayback(
     runner.current?.resolve()
   }, [])
 
-  return { text, caughtUp, holdMs, ask, advance, resolve }
+  // ⚠️ **새 박자가 온 그 렌더에 벌써 「아직」이다.** 재생기는 다음 프레임에야 한 걸음 밟으므로, 상태만 보면 박자가 막 들어온
+  // 한두 프레임 동안 「다 소화했다」가 남는다 — 배틀이 열리는 그 틈에 명령 메뉴가 등판 글보다 먼저 떴다(실측 300ms)
+  return { text, caughtUp: caughtUpNow(caughtUp, runner.current?.index ?? 0, beats.length), holdMs, ask, advance, resolve }
 }
