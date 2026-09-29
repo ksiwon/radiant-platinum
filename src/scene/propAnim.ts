@@ -21,6 +21,8 @@ import type { PropAnimsFile } from '../data/schema'
 import { readNsbca, type JntAnim } from '../import/platinum/nsbca'
 import { readNsbta, type SrtAnim } from '../import/platinum/nsbta'
 import { readNsbtp, type PatAnim } from '../import/platinum/nsbtp'
+import { readNsbma, type MatAnim } from '../import/platinum/nsbma'
+import { readNsbva, type VisAnim } from '../import/platinum/nsbva'
 import type { ChunkMesh } from './chunkMesh'
 
 /** 노드 이동값이 유닛이다 — 정점은 타일이라 열여섯으로 나눈다 (`placeByNode`) */
@@ -32,6 +34,8 @@ export const FRAME_MS = 1000 / 60
 /** 애니 멤버 하나를 푼 것 */
 export type PropClip =
   | { kind: 'BCA0', frames: number, anim: JntAnim }
+  | { kind: 'BMA0', frames: number, anim: MatAnim }
+  | { kind: 'BVA0', frames: number, anim: VisAnim }
   | { kind: 'BTA0', frames: number, anim: SrtAnim }
   | { kind: 'BTP0', frames: number, anim: PatAnim }
 
@@ -71,10 +75,18 @@ function readClip(table: PropAnimsFile, bytes: Uint8Array, member: number): Prop
 
 /** 이어 붙인 바이트에서 멤버 하나를 푼다 — 맵 소품과 필드 이펙트 소품(`loadDistortionPropAnims`)이 같이 쓴다 */
 export function readRawClip(
-  row: { kind: 'BCA0' | 'BTA0' | 'BTP0', frames: number, at: number, size: number }, bytes: Uint8Array,
+  row: { kind: 'BCA0' | 'BTA0' | 'BTP0' | 'BMA0' | 'BVA0', frames: number, at: number, size: number }, bytes: Uint8Array,
 ): PropClip | null {
   const raw = bytes.subarray(row.at, row.at + row.size)
   try {
+    if (row.kind === 'BMA0') {
+      const anim = readNsbma(raw)[0]
+      return anim ? { kind: 'BMA0', frames: row.frames, anim } : null
+    }
+    if (row.kind === 'BVA0') {
+      const anim = readNsbva(raw)[0]
+      return anim ? { kind: 'BVA0', frames: row.frames, anim } : null
+    }
     if (row.kind === 'BCA0') {
       const anim = readNsbca(raw)[0]
       return anim ? { kind: 'BCA0', frames: row.frames, anim } : null

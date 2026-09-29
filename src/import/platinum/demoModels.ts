@@ -40,9 +40,46 @@ export const DEMO_MODELS: readonly DemoModel[] = [
   { name: 'orbUxie', narc: TENGAN, model: 12, anims: [11] },
   { name: 'orbAzelf', narc: TENGAN, model: 8, anims: [7] },
   { name: 'orbMesprit', narc: TENGAN, model: 10, anims: [9] },
+  // ── 창기둥 영상 (`overlay100`) — 애니 차례는 원작이 붙이는 칸 차례다 (`ov100_021D4B4C(칸, …)`) ──
+  // 장면 0 (`ov100_021D2F0C.c`) — 부르기
+  { name: 'pillarMap', narc: TENGAN, model: 46, anims: [] },
+  { name: 'pillars', narc: TENGAN, model: 24, anims: [22, 23] },
+  { name: 'darkOrb', narc: TENGAN, model: 79, anims: [77, 78, 80, 81] },
+  { name: 'blob', narc: TENGAN, model: 65, anims: [] },
+  { name: 'dialga', narc: TENGAN, model: 66, anims: [67] },
+  { name: 'palkia', narc: TENGAN, model: 68, anims: [69] },
+  { name: 'hero', narc: TENGAN, model: 61, anims: [62] },
+  { name: 'heroine', narc: TENGAN, model: 63, anims: [64] },
+  { name: 'cyrus', narc: TENGAN, model: 13, anims: [14] },
+  { name: 'galaxy', narc: TENGAN, model: 84, anims: [82, 83] },
+  // 장면 1 (`ov100_021D13E4.c`) — 호수의 셋
+  { name: 'lakeBg', narc: TENGAN, model: 60, anims: [] },
+  { name: 'uxie', narc: TENGAN, model: 59, anims: [57, 58] },
+  { name: 'mesprit', narc: TENGAN, model: 45, anims: [43, 44] },
+  { name: 'azelf', narc: TENGAN, model: 17, anims: [15, 16] },
+  // 장면 2 (`ov100_021D1C44.c`) — 기라티나
+  { name: 'drip', narc: TENGAN, model: 53, anims: [51, 52] },
+  { name: 'orb', narc: TENGAN, model: 55, anims: [54, 56] },
+  { name: 'giratinaA', narc: TENGAN, model: 26, anims: [25, 27] },
+  { name: 'giratinaB', narc: TENGAN, model: 29, anims: [28, 30] },
+  { name: 'giratinaC', narc: TENGAN, model: 32, anims: [31, 33] },
+  { name: 'giratinaD', narc: TENGAN, model: 35, anims: [34, 36] },
+  { name: 'giratinaE', narc: TENGAN, model: 38, anims: [37, 39] },
+  { name: 'shadowA', narc: TENGAN, model: 41, anims: [40] },
+  { name: 'shadowB', narc: TENGAN, model: 42, anims: [] },
 ]
 
-interface AnimRow { kind: 'BCA0' | 'BTA0' | 'BTP0', frames: number, at: number, size: number }
+/** 애니 머리 — 맵 소품의 셋(`framesOf`)에 재질 색(BMA0)과 보임(BVA0)을 더한다. 프레임 수 자리는 같다 */
+function animHeader(member: Uint8Array): Pick<AnimRow, 'kind' | 'frames'> | null {
+  const tag = String.fromCharCode(member[0]!, member[1]!, member[2]!, member[3]!)
+  if (tag === 'BMA0' || tag === 'BVA0') {
+    const got = framesOf(new Uint8Array([...'BCA0'].map((c) => c.charCodeAt(0)).concat([...member.subarray(4)])))
+    return got ? { kind: tag, frames: got.frames } : null
+  }
+  return framesOf(member)
+}
+
+interface AnimRow { kind: 'BCA0' | 'BTA0' | 'BTP0' | 'BMA0' | 'BVA0', frames: number, at: number, size: number }
 
 export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> {
   const out: Produced = new Map()
@@ -117,7 +154,7 @@ export async function convertDemoModels(ctx: ConvertContext): Promise<Produced> 
     const anims: AnimRow[] = []
     for (const member of spec.anims) {
       const raw = narcEntry(narc, member)
-      const got = raw === null ? null : framesOf(raw)
+      const got = raw === null ? null : animHeader(raw)
       if (raw === null || got === null) throw new Error(`${spec.narc} ${String(member)}번이 애니가 아니다`)
       anims.push({ ...got, at: total, size: raw.length })
       parts.push(raw)

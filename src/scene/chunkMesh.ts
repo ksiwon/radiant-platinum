@@ -502,7 +502,7 @@ interface DemoIndex {
   models: Record<string, {
     sheet: { w: number, h: number, items: [string, string, number, number, number, number][] } | null
     info: DistortionPropModel
-    anims: { kind: 'BCA0' | 'BTA0' | 'BTP0', frames: number, at: number, size: number }[]
+    anims: { kind: 'BCA0' | 'BTA0' | 'BTP0' | 'BMA0' | 'BVA0', frames: number, at: number, size: number }[]
     blend: number[]
   }>
 }

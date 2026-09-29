@@ -239,7 +239,7 @@ export function AnimatedProp({ model, tile, mesh, sheet, materials, whole, fill,
           const [u, v] = uvOffsetAt(clip.anim, name, info.uv[i] ?? [0, 0], frame)
           map.offset.set(u, v)
         }
-      } else {
+      } else if (clip.kind === 'BTP0') {
         for (const [i, name] of info.materials.entries()) {
           const track = clip.anim.tracks.find((t) => t.material === name)
           const mat = mapped(materials[i])

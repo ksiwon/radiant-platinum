@@ -106,7 +106,8 @@ export function nodeChain(
       const dest = (flags & 1) !== 0 ? buf[p++]! : -1
       const src = (flags & 2) !== 0 ? buf[p++]! : -1
       if (src >= 0) cur = slot[src] ?? -1
-      parents[id] = cur
+      // 같은 노드를 두 번 적으면 처음 것을 쓴다 — 되도는 사슬이 생기지 않게
+      if (parents[id] === undefined) parents[id] = cur
       cur = id
       if (dest >= 0) slot[dest] = id
       continue
@@ -117,6 +118,7 @@ export function nodeChain(
     p += n
   }
   const world: (WorldXform | null)[] = []
+  const visiting = new Set<number>()
   const worldOf = (id: number): WorldXform => {
     const hit = world[id]
     if (hit) return hit
@@ -125,7 +127,8 @@ export function nodeChain(
     const r = node ? node.m : [1, 0, 0, 0, 1, 0, 0, 0, 1]
     const lm = [r[0]! * s[0]!, r[1]! * s[1]!, r[2]! * s[2]!, r[3]! * s[0]!, r[4]! * s[1]!, r[5]! * s[2]!, r[6]! * s[0]!, r[7]! * s[1]!, r[8]! * s[2]!]
     const lt = node ? node.t : [0, 0, 0]
-    const up = parents[id] ?? -1
+    const up = visiting.has(id) ? -1 : parents[id] ?? -1
+    visiting.add(id)
     let m = lm, t: number[] = [lt[0]!, lt[1]!, lt[2]!]
     if (up >= 0 && up !== id) {
       const a = worldOf(up)
@@ -146,6 +149,7 @@ export function nodeChain(
     ]
     const w = { m, t, n: nrm }
     world[id] = w
+    visiting.delete(id)
     return w
   }
   for (const id of new Set(draw)) if (id >= 0) worldOf(id)
