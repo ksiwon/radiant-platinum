@@ -182,11 +182,6 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    */
   monModels: 4,
   /**
-   * 2 — 무대의 창빛 · 조명 줄기 · 물 · 표식 서른다섯 재질이 반투명(`RenderType Transparent`)으로 선다. 예전에는 문턱 0.5로
-   * 오려 내서 통째로 빠지거나 딱딱한 판으로 섰다 (`import/bdsp/albedo.ts`의 `untaggedAlpha`)
-   */
-  arenas: 2,
-  /**
    * 2 — **텍스처 없는 재질에 확산색을 실어 준다.**
    *
    * 기라티나 그림자(갈래 20)가 화면에 **하얗게** 떴다. 텍스처가 없고 정점색이

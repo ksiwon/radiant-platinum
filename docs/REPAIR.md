@@ -5786,8 +5786,8 @@ src/state/multiBattle.test.ts`.
 
 **고친 것** — `Transparent` → 반투명, `Opaque`이면서 그림 알파 평균이 0.1 아래 → 불투명, 나머지 → 오려내기
 (`bdsp_bake_albedo.py`의 `untagged_alpha` · `import/bdsp/albedo.ts`의 `untaggedAlpha`). ⚠️ `Opaque`를 다 불투명으로 돌리면 안 된다 —
-머리카락(`_LIGHTING_HAIR`)도 `Opaque`인데 가닥을 알파로 오린다. 무대의 창빛 · 조명 줄기 · 물 서른다섯 재질이 반투명이 됐다.
-설치 판 `npcModels 14` · `arenas 2`. 시험 `import/bdsp/albedo.test.ts`.
+머리카락(`_LIGHTING_HAIR`)도 `Opaque`인데 가닥을 알파로 오린다. 무대(`bdspArena`)는 이미 `RenderType`을 따로 읽고 있어서
+이 규칙이 안 걸린다. 설치 판 `npcModels 14`. 시험 `import/bdsp/albedo.test.ts`.
 
 ## 144. 전신 모델이 없는 사람(치비)의 **목 · 팔 · 발**이 어색했다
 
