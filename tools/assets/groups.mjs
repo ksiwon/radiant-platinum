@@ -155,6 +155,12 @@ export const GROUPS = [
     match: (p) => p.startsWith('data/demo/'),
   },
   {
+    // 배틀팩토리 복도 · 배틀룸 판
+    name: 'frontierBg',
+    make: 'pnpm extract:frontierBg',
+    match: (p) => p.startsWith('data/frontier/'),
+  },
+  {
     // 벽지 암호 낱말표 (축복TV 3층 · `GetWallpaperFromCustomMessageWords`)
     name: 'wallpaperWords',
     make: 'pnpm extract:wallpaperWords',

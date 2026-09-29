@@ -49,6 +49,8 @@ function fake(plan: Plan) {
       return Promise.resolve(pick)
     },
     trainerIntro: (trainer) => { log.push(`intro:${String(trainer)}`); return Promise.resolve() },
+    // 무대는 차례에 안 적는다 — 수철의 등장만 글 자리를 가르므로 적는다
+    stage: (cue) => { if (cue === 'thorton') log.push('stage:thorton'); return Promise.resolve() },
     sound: (seq) => { log.push(`se:${String(seq)}`); return Promise.resolve() },
     fanfare: (seq) => { log.push(`fanfare:${String(seq)}`); return Promise.resolve() },
     save: () => { log.push('save'); return Promise.resolve() },
@@ -180,7 +182,8 @@ describe('시설장 수철 (싱글만 · 스물한·마흔아홉 판째)', () =>
     expect(log.filter((l) => l.startsWith('headApproaching'))).toHaveLength(1)
     const intro = log.indexOf('thortonIntro(하,나,둘,17)')
     expect(intro).toBeGreaterThan(notice)
-    expect(log[intro - 1]).toBe(`se:${String(SCENE_SOUND.thorton)}`)
+    // 연기 속 수철 — 소리는 무대가 낸다 (`_154A`)
+    expect(log[intro - 1]).toBe('stage:thorton')
     expect(log[intro + 1]).toBe(`record:${String(SCENE_RECORD.headBattles)}`)
     expect(log.slice(intro + 2, intro + 6)).toEqual([
       'fight', `record:${String(SCENE_RECORD.victories)}`, `printState=${String(PRINT_STATE.silverPending)}`, 'beatThorton(21)',

@@ -31,6 +31,7 @@ import { convertHallOfFameBg } from './hallOfFameBg'
 import { convertPointerHand } from './pointerHand'
 import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
+import { convertFrontierBg } from './frontierBg'
 import { convertWallpaperWords } from './wallpaperWords'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
@@ -295,6 +296,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/demo/{이름}.bin', 'data/demo/{이름}.png', 'data/demo/anims.bin', 'data/demo/index.json'],
     converter: 1,
     convert: convertDemoModels,
+  },
+  {
+    // 배틀팩토리 복도 · 배틀룸 판 (`frontier_bg.narc` · `frontierBg.ts`)
+    name: 'frontierBg',
+    outputs: ['data/frontier/factoryCorridor.png', 'data/frontier/factoryFloor.png', 'data/frontier/factoryRoom{0~4}.png'],
+    converter: 1,
+    convert: convertFrontierBg,
   },
   {
     // 운하시티 도서관의 텔레비전 뉴스 — 그림 · 주사선 · 틀 (`library_tv/library_tv.c`)

@@ -18,6 +18,47 @@ export const stage = style({
   pointerEvents: 'none',
 })
 
+/** 원작 화면 한 장 (256×192) — 창에 맞춰 키운다 */
+export const screen = style({
+  position: 'absolute',
+  left: '50%',
+  top: '50%',
+  width: 256,
+  height: 192,
+  overflow: 'hidden',
+  background: vars.scrim.black,
+  imageRendering: 'pixelated',
+})
+
+export const layer = style({
+  position: 'absolute',
+  inset: 0,
+  width: 256,
+  height: 192,
+  imageRendering: 'pixelated',
+})
+
+/** 배틀룸의 불 — 켜진 벌의 그 자리만 덮는다 */
+export const light = style({
+  position: 'absolute',
+  imageRendering: 'pixelated',
+})
+
+/** 걷는 사람 — 필드의 걷는 그림 한 장 */
+export const person = style({
+  position: 'absolute',
+  backgroundRepeat: 'no-repeat',
+  imageRendering: 'pixelated',
+})
+
+/** 암전 (`FadeScreenIn` · `Out`) */
+export const fade = style({
+  position: 'absolute',
+  inset: 0,
+  background: vars.scrim.black,
+  pointerEvents: 'none',
+})
+
 /** 무대가 선 동안 — `sceneMark`의 `data-frontier-stage` */
 const ON = 'html[data-frontier-stage]'
 globalStyle(`${ON} ${frame}`, { zIndex: STAGE_Z + 10 })

@@ -48,6 +48,9 @@ const DIST_WORLD_ONLY = [
   'OBJ_EVENT_GFX_DIST_WORLD_B6F_AZELF',
 ]
 
+/** 시설 장면에만 서는 사람 — `src/import/platinum/npcSprites.ts`의 `FRONTIER_ONLY`와 같다 */
+const FRONTIER_ONLY = ['OBJ_EVENT_GFX_THORTON']
+
 /** 「그림이 없다」 (`OBJ_EVENT_GFX_NONE`). 보이지 않는 판정용 객체가 쓴다 */
 const NO_GRAPHICS = 8192
 
@@ -283,7 +286,7 @@ function main() {
     if (sprites.has(gfx) && !used.has(gfx)) used.set(gfx, 0)
   }
   // 깨어진 세계 사람들도 배치표에 없다 (`DIST_WORLD_ONLY`)
-  for (const n of DIST_WORLD_ONLY) {
+  for (const n of [...DIST_WORLD_ONLY, ...FRONTIER_ONLY]) {
     const id = ids.get(n)
     if (id !== undefined && !used.has(id)) used.set(id, 0)
   }

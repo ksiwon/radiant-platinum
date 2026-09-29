@@ -195,6 +195,8 @@ interface FactoryState {
   partyNames: () => readonly string[]
   /** 이번 판 상대 트레이너의 번호 */
   trainer: () => number
+  /** 이번 판 상대의 트레이너 분류 (`FrontierTrainerBase.trainerType`) — 장면이 그 그림을 세운다 */
+  trainerClass: () => number
   /** 그 트레이너의 인사 (뱅크 614의 `번호 × 3`) */
   trainerIntro: (trainer: number) => string
   /** 라운드 번호 (`unk_0E`) */
@@ -429,6 +431,11 @@ export const useFactoryStore = create<FactoryState>((set, get) => ({
   trainer: () => {
     const { round } = get()
     return round ? currentTrainer(round) : 0
+  },
+  trainerClass: () => {
+    const { round } = get()
+    if (!round || !tables) return 0
+    return tables.frontier.trainers[currentTrainer(round)]?.type ?? 0
   },
 
   trainerIntro: (trainer) => tables?.trainerLines[trainer * 3] ?? '',

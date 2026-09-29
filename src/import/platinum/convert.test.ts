@@ -337,5 +337,6 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('pointerHand — 포획 강좌의 손', async () => { await parity('pointerHand') }, 60_000)
   it('libraryTv — 도서관 텔레비전 판 셋', async () => { await parity('libraryTv') }, 60_000)
   it('demoModels — 문 · 붉은 사슬 · 호수의 구슬 셋', async () => { await parity('demoModels') }, 60_000)
+  it('frontierBg — 팩토리 복도 · 바닥 · 배틀룸 다섯', async () => { await parity('frontierBg') }, 60_000)
   it('wallpaperWords — 벽지 암호 낱말표', async () => { await parity('wallpaperWords') }, 60_000)
 })

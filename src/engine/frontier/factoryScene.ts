@@ -79,6 +79,16 @@ export const SCENE_RECORD = {
 /** `VAR_BATTLE_FACTORY_LOBBY_LOAD_ACTION` · `VAR_BATTLE_FACTORY_PRINT_STATE` 두 칸 */
 export type SceneVar = 'loadAction' | 'printState'
 
+/**
+ * 무대의 한 토막 — 판 · 사람 · 암전 (`scene/factoryStage`). 스크립트의 걸음 · 암전 · 문 소리 자리 그대로다:
+ *
+ *   open 복도에 들어선다 · appOut/appIn 빌리기 · 바꾸기 화면 앞뒤 · goIn 문으로 · toRoom 배틀룸에 들어가 불을 켠다 ·
+ *   opponent 상대가 들어온다 · thorton 연기 속 수철(소리까지) · battle/afterBattle 배틀 앞뒤 · leaveRoom 상대가 나가고
+ *   복도로(문 소리까지) · close 로비로 돌아가기 전 암전
+ */
+type StageCue =
+  | 'open' | 'appOut' | 'appIn' | 'goIn' | 'toRoom' | 'opponent' | 'thorton' | 'battle' | 'afterBattle' | 'leaveRoom' | 'close'
+
 /** 상대 정보에 들어갈 이름들 — 첫 셋의 종족 · 첫 마리의 첫 기술 · 제일 많은 타입(없으면 null) */
 export interface OpponentInfo {
   readonly species: readonly string[]
@@ -100,6 +110,8 @@ export interface FactorySceneHost {
   list(text: number, options: readonly number[], slots?: readonly string[]): Promise<number | null>
   /** 시설 트레이너의 인사 (뱅크 614의 `번호 × 3`) */
   trainerIntro(trainer: number): Promise<void>
+  /** 무대의 한 토막 — 끝날 때까지 선다 (`StageCue`) */
+  stage(cue: StageCue): Promise<void>
   sound(seq: number): Promise<void>
   fanfare(seq: number): Promise<void>
   /** 「리포트를 작성하고 있습니다」를 띄운 채 쓴다 (`_137B`) */
@@ -165,25 +177,38 @@ async function returnAndSave(h: FactorySceneHost, announce: boolean): Promise<vo
   if (announce) await h.say(SCENE_TEXT.returnPokemon)
   await h.save()
   await h.sound(SCENE_SOUND.save)
+  // `_1303` · `_115C` — 검게 닫고 로비로
+  await h.stage('close')
 }
 
 /** 배틀룸에 들어가 한 판 (`_07DC` → `_084E` → `_0AD0`). 이겼으면 참 */
 async function enterAndFight(h: FactorySceneHost): Promise<boolean> {
   await h.say(SCENE_TEXT.goIn)
+  // `_07DC` → `_084E` — 과학자가 비켜서고 문으로 · 문 소리 · 배틀룸
+  await h.stage('goIn')
   await h.sound(SCENE_SOUND.door)
+  await h.stage('toRoom')
   const head = printAtNext(h.challenge(), h.streak())
   if (head !== 0) {
-    // `_14E6` · `_150B` — 연기 속에서 수철이 나오고 빌린 셋을 읊는다. 넷째 칸은 10~99 사이 아무 수다
-    await h.sound(SCENE_SOUND.thorton)
+    // `_14E6` · `_150B` — 연기 속에서 수철이 나오고(`_154A` — 소리는 무대가 낸다) 빌린 셋을 읊는다. 넷째 칸은
+    // 10~99 사이 아무 수다
+    await h.stage('thorton')
     const names = h.partyNames()
     const slots = [names[0] ?? '', names[1] ?? '', names[2] ?? '', String(10 + h.random(90))]
     await h.say(head === 1 ? SCENE_TEXT.thortonIntro : SCENE_TEXT.thortonIntroGold, slots)
     h.addRecord(SCENE_RECORD.headBattles)
   } else {
+    await h.stage('opponent')
     await h.trainerIntro(h.trainer())
   }
+  await h.stage('battle')
   const won = await h.fight()
-  if (!won) return false
+  await h.stage('afterBattle')
+  if (!won) {
+    // `_1233` — 상대가 나가고 복도로
+    await h.stage('leaveRoom')
+    return false
+  }
   h.addRecord(SCENE_RECORD.victories)
   // `_15AA` · `_15DE` — 은은 아직 없을 때만, 금은 은을 가진 뒤에만 「받을 차례」가 선다
   if (head === 1) {
@@ -193,6 +218,8 @@ async function enterAndFight(h: FactorySceneHost): Promise<boolean> {
     if (h.getVar('printState') === PRINT_STATE.silver) h.setVar('printState', PRINT_STATE.goldPending)
     await h.say(SCENE_TEXT.beatThortonGold, [String(nextStreak(h))])
   }
+  // `_0B30` — 상대가 나가고 복도로
+  await h.stage('leaveRoom')
   return true
 }
 
@@ -212,10 +239,14 @@ export async function runFactoryScene(h: FactorySceneHost, resume: boolean): Pro
   let headNoticed = false
   let atMenu = skipHeadNotice
 
+  // `_0407` — 복도에 들어선다 (쉬었다 이어도 같다)
+  await h.stage('open')
   if (!atMenu) {
     await sayOpponentInfo(h)
     await h.say(SCENE_TEXT.choosePokemon)
+    await h.stage('appOut')
     await h.rental()
+    await h.stage('appIn')
   }
 
   for (;;) {
@@ -279,6 +310,10 @@ export async function runFactoryScene(h: FactorySceneHost, resume: boolean): Pro
 
     // `_0E9F` — 계속한다
     await sayOpponentInfo(h)
-    if (await h.yesNo(SCENE_TEXT.tradeQuestion, true)) await h.trade()
+    if (await h.yesNo(SCENE_TEXT.tradeQuestion, true)) {
+      await h.stage('appOut')
+      await h.trade()
+      await h.stage('appIn')
+    }
   }
 }

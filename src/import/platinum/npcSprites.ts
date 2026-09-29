@@ -52,6 +52,12 @@ const DIST_WORLD_ONLY = [
   'DIST_WORLD_B6F_AZELF',
 ]
 
+/**
+ * **시설 장면에만 서는 사람** — 배틀팩토리 배틀룸의 수철이다(`FrontierScrCmd_24 _0160` · 그림 215).
+ * 필드 배치표 어디에도 없어서 배치표만 훑으면 빠진다. 장면은 필드의 걷는 그림을 그대로 쓴다 (`ui/field/FrontierStage`)
+ */
+const FRONTIER_ONLY = ['THORTON']
+
 /** BMD0/BTX0 안에서 TEX0 블록 자리를 찾는다. 없으면 -1 */
 function texBlock(buf: Uint8Array, view: DataView): number {
   for (let i = 0, n = view.getUint16(14, true); i < n; i++) {
@@ -153,7 +159,7 @@ export async function convertNpcSprites(ctx: ConvertContext): Promise<Produced> 
 
   const rows = new Map<number, SpriteRow>(SPRITE_TABLE.map((r) => [r[0], r]))
   const used = await placedSprites(ctx)
-  for (const who of [...PLAYERS, ...DIST_WORLD_ONLY]) {
+  for (const who of [...PLAYERS, ...DIST_WORLD_ONLY, ...FRONTIER_ONLY]) {
     const row = SPRITE_TABLE.find((r) => r[1] === who)
     if (row && !used.has(row[0])) used.set(row[0], 0)
   }

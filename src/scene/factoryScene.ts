@@ -14,8 +14,14 @@ import {
 } from '../engine/script/vars'
 import { ChallengeType } from '../engine/frontier/factory'
 import {
-  runFactoryScene, SCENE_TEXT, type FactorySceneHost, type SceneEnd,
+  runFactoryScene, SCENE_SOUND, SCENE_TEXT, type FactorySceneHost, type SceneEnd,
 } from '../engine/frontier/factoryScene'
+import { opponentGfx } from '../engine/frontier/stageMotion'
+import { closeFactoryStage, factoryStageStep, type StageStep } from './factoryStage'
+
+/** 주인공 그림 (`OBJ_EVENT_GFX_PLAYER_M` · `_F`) — `GetPlayerObjEventGfx` */
+const PLAYER_M_GFX = 0
+const PLAYER_F_GFX = 97
 import {
   factoryTables, giveFactoryBattlePoints, useFactoryStore,
 } from '../state/factoryStore'
@@ -55,6 +61,23 @@ function host(): FactorySceneHost {
       return picked >= 0 ? picked : null
     },
     trainerIntro: (trainer) => sayOurs(store().trainerIntro(trainer)),
+    stage: async (cue) => {
+      const sound = services().sound
+      const playerGfx = useSaveStore.getState().trainer.gender === 'girl' ? PLAYER_F_GFX : PLAYER_M_GFX
+      const step: StageStep =
+        cue === 'opponent' ? { kind: 'opponent', gfx: opponentGfx(store().trainerClass()) }
+          : cue === 'thorton' ? { kind: 'thorton', sound: () => { sound?.playEffect(SCENE_SOUND.thorton) } }
+            : cue === 'leaveRoom' ? {
+              kind: 'leaveRoom',
+              door: async () => {
+                if (!sound) return
+                sound.playEffect(SCENE_SOUND.door)
+                await until(() => !sound.effectPlaying(SCENE_SOUND.door))
+              },
+            }
+              : { kind: cue }
+      await factoryStageStep(step, playerGfx)
+    },
     sound: async (seq) => {
       const sound = services().sound
       if (!sound) return
@@ -129,6 +152,7 @@ export function openFactoryScene(challenge: ChallengeType, openLevel: boolean, r
   })()
     .catch((e: unknown) => { console.error('배틀팩토리 장면', e) })
     .finally(() => {
+      closeFactoryStage()
       useFactoryStore.getState().close()
       running = false
     })

@@ -79,6 +79,9 @@ async function pushUntilQuiet(cap = 300) {
     if (!quiet) quietSince = -1
     if (quiet && Date.now() - quietSince > 1500) return { ok: true, taps: i, s }
     if (quiet) { await page.waitForTimeout(250); continue }
+    // ⚠️ **대사창이 떠 있을 때만 누른다** — 무대가 걷는 동안 누른 Z가 쌓여 있다가 로비에 돌아온 순간 접수원에게 다시
+    // 말을 걸어 새 도전을 연다 (복도 · 배틀룸 걸음이 붙은 뒤로 그 틈이 생겼다)
+    if (!s.talk) { await page.waitForTimeout(150); continue }
     await tap()
   }
   return { ok: false, taps: cap, s: await state() }
@@ -199,8 +202,9 @@ for (let attempt = 0; attempt < 4 && !won; attempt++) {
   const f = await fight()
   verdict('첫 판이 열리고 닫힌다', f.opened && f.closed, f)
   if (!f.closed) break
-  await page.waitForTimeout(800)
-  const s = await state()
+  // 배틀룸을 나와 복도로 돌아온 뒤 첫 말이 뜰 때까지 기다린다 — 판 수는 그때 올라 있다 (상대가 나가고 문을 지나는 동안은 아직이다)
+  let s = await state()
+  for (let i = 0; i < 60 && !s.talk && s.stage; i++) { await page.waitForTimeout(200); s = await state() }
   // 이기면 장면이 곧바로 판 수를 올린다 (`BF_FUNC_UNK_14`) — 지면 0에 남는다
   if (s.battle === 1) {
     won = true
