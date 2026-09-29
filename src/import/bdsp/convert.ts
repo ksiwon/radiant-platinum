@@ -115,6 +115,14 @@ async function index(src: BdspSource): Promise<Map<string, string>> {
  * 포켓몬 557/557 · 무대 30/30 · 사람 108/108(번들 116벌). **셋 다 빠진 것이 없다** —
  * 그래서 「하나라도 모자라면 선다」가 지금 덤프에서 거짓 실패를 안 낸다
  */
+/**
+ * 굽겠다고 **셀 것이 하나도 없으면** 던진다 — 목록을 덤프에서 세는 그룹(방 · 야외)은 BDSP 폴더가 비었을 때 0개를 「다 구웠다」로 치고
+ * 빈 목차를 써서 **설치됨**이 됐다(e2e 09 — 롬만 준 판에서 `rooms=[]` · `fields=[]`). 그러면 나중에 BDSP를 넣어도 다시 안 굽는다
+ */
+function requireSome(what: string, found: number): void {
+  if (found === 0) throw new Error(`BDSP ${what}을 하나도 못 찾았습니다 — 폴더에 없습니다`)
+}
+
 function requireAll(what: string, attempted: number, missing: readonly string[]): void {
   if (missing.length === 0) return
   const head = missing.slice(0, 5).join(' · ')
@@ -873,6 +881,7 @@ async function convertRooms(ctx: ConvertContext): Promise<Produced> {
   const at = await index(src)
   const out: Produced = new Map()
   const names = roomBundles(at.keys())
+  requireSome('실내 방', names.length)
   const made: string[] = []
   const missing: string[] = []
   let done = 0
@@ -921,6 +930,7 @@ async function convertFields(ctx: ConvertContext): Promise<Produced> {
   const at = await index(src)
   const out: Produced = new Map()
   const names = fieldBundles(at.keys())
+  requireSome('야외 지역', names.length)
   const made: { name: string, box: [number, number, number, number] }[] = []
   const missing: string[] = []
   let done = 0
