@@ -18,6 +18,8 @@ import {
 import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fade'
 import { restoreRetry } from '../state/restoreStore'
 import { restoreGroundY, startRestore } from './restoreWorld'
+import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
+import { terrainLanded } from './terrainMark'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -1025,11 +1027,20 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
           // (아웃만 걸고 워프하는 스크립트 때문에 걷어야 한다) 먼저 덮으면
           // 그대로 지워진다. 덮고 나서 밝힌다 — 원작도 갈아 끼운 뒤에 인이다
           // (`FieldTransition_StartMapAndFadeIn`: 맵을 세우고 → 지명을 띄우고 → 인)
+          if (target.fieldWarp !== undefined) fieldWarpArrived()
           if (mine || target.fadeIn === true) {
             coverScreen(COLOR_BLACK)
-            startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_IN, COLOR_BLACK)
+            /**
+             * ⚠️ **새 맵의 파이프라인을 덮개 밑에서 굽고 나서 밝힌다** (REPAIR §8). 곧바로 밝히면 지형이 서는 첫 프레임에 재질
+             * 서른 몇의 파이프라인이 동기로 서면서 GPU 프로세스가 수 초를 멎는다. 그동안은 전이(`world.pending`)를 쥐고 있어
+             * 발도 안 떨어진다 — 원작의 검은 6프레임이 굽는 동안만큼 길어진다
+             */
+            beginAsyncPipelines()
+            return settleAsyncPipelines(terrainLanded).then(() => {
+              startFade(WARP_FADE_STEPS, WARP_FADE_FRAMES, FADE_IN, COLOR_BLACK)
+            })
           }
-          if (target.fieldWarp !== undefined) fieldWarpArrived()
+          return undefined
         })
         .catch((e) => {
           console.error('워프 실패', e)

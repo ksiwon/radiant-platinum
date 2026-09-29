@@ -1,0 +1,90 @@
+// 맵을 갈아 끼우는 동안만 렌더 파이프라인을 **비동기로** 굽는다 (REPAIR §8)
+//
+// 맵을 나가는 한 프레임이 2.5~7.9초 멎던 임자가 여기다. 크로미움 트레이스(`.audit/probe/warpProfile.mjs` · `TRACE=1`)로 보니 그 프레임
+// 안에서 GPU 프로세스 주 스레드가 `DeviceBase::APICreateRenderPipeline` → `ShaderModuleD3D12::Compile` → `CompileShaderFXC`를
+// **서른세 번 연달아** 돌았다(합 7,792ms · 하나에 최장 632ms). 렌더러의 자바스크립트는 그동안 쉬고 있었다 — 그래서 CPU 표본에는
+// `(idle)`만 찍혔다. 새 맵의 재질마다 파이프라인이 처음 서는 그 프레임에 three가 `device.createRenderPipeline`(동기)을 부르기 때문이다.
+//
+// three에는 이미 비동기 갈래가 있다 — `Pipelines.getForRender(renderObject, promises)`에 배열을 주면 `createRenderPipelineAsync`로
+// 굽고(Dawn이 작업 스레드에서 굽는다), 다 될 때까지 그 물체는 **안 그린다**(`Renderer._renderObjectDirect`의 `isReady`). 배열을 주는
+// 길이 `compileAsync()` 하나뿐이라 여기서 `updateForRender` 한 자리를 감싸, **켜 둔 동안만** 그 갈래로 보낸다.
+//
+// ⚠️ **늘 켜 두지 않는다.** 켜 두면 처음 나오는 것은 파이프라인이 설 때까지 안 그려진다 — 스무 프레임짜리 기술 입자는 처음 한 번을
+// 통째로 잃는다. 그래서 워프가 **검은 덮개를 든 동안에만** 켜고, 다 구워지면 끈 뒤에 밝힌다 (`scene/MapStreamer`)
+//
+// ⚠️ **three의 속을 감싼다.** `_pipelines`와 두 메서드가 없으면(판이 바뀌면) 아무것도 안 하고 경고만 남긴다 — 그때는 예전처럼 동기로 굽는다
+import type { WebGPURenderer } from 'three/webgpu'
+
+interface PipelinesLike {
+  getForRender(renderObject: unknown, promises?: Promise<unknown>[] | null): unknown
+  updateForRender(renderObject: unknown): void
+}
+
+const state = {
+  on: false,
+  /** 탐침이 전후를 잰다 — 끄면 워프도 예전처럼 동기로 굽는다 (`setAsyncPipelinesAllowed`) */
+  allowed: true,
+  /** 굽는 중인 것 — three가 `createRenderPipeline(…, promises)`에서 채운다 */
+  pending: [] as Promise<unknown>[],
+  installed: false,
+}
+
+/** 렌더러가 선 뒤에 한 번 (`Stage`) */
+export function installAsyncPipelines(renderer: WebGPURenderer): void {
+  const pipelines = (renderer as unknown as { _pipelines?: PipelinesLike })._pipelines
+  if (!pipelines || typeof pipelines.getForRender !== 'function' || typeof pipelines.updateForRender !== 'function') {
+    console.warn('[asyncPipelines] three의 파이프라인 자리가 달라졌다 — 동기로 굽는다')
+    return
+  }
+  pipelines.updateForRender = function updateForRender(renderObject: unknown): void {
+    this.getForRender(renderObject, state.on ? state.pending : null)
+  }
+  state.installed = true
+}
+
+/** 덮개를 든 동안 켠다 */
+export function beginAsyncPipelines(): void {
+  if (state.installed && state.allowed) state.on = true
+}
+
+/** 전후를 재는 탐침만 쓴다 (`.audit/probe/warpStall.mjs`) */
+export function setAsyncPipelinesAllowed(on: boolean): void {
+  state.allowed = on
+}
+
+const nextFrame = (): Promise<void> => new Promise((resolve) => {
+  if (typeof requestAnimationFrame === 'undefined') setTimeout(resolve, 16)
+  else requestAnimationFrame(() => { resolve() })
+})
+
+/**
+ * 새로 굽는 것이 **이어서 두 프레임 없고** `landed()`가 참일 때까지 기다렸다가 끈다.
+ *
+ * ⚠️ **시한이 있다** (`capMs`). 굽기가 안 풀리면 검은 화면에 갇힌다 — 그보다 한 번 멎는 편이 낫다. 끄면 남은 것은 다음 프레임에
+ * 동기로 굽는다
+ */
+export async function settleAsyncPipelines(landed: () => boolean, capMs = 12_000): Promise<{ waitedMs: number, compiled: number }> {
+  const t0 = performance.now()
+  let compiled = 0
+  let quiet = 0
+  while (performance.now() - t0 < capMs) {
+    await nextFrame()
+    if (state.pending.length > 0) {
+      const batch = state.pending.splice(0)
+      compiled += batch.length
+      quiet = 0
+      await Promise.allSettled(batch)
+      continue
+    }
+    if (landed()) quiet++
+    if (quiet >= 2) break
+  }
+  state.on = false
+  state.pending.length = 0
+  return { waitedMs: Math.round(performance.now() - t0), compiled }
+}
+
+/** 밖에서 읽는다 — 켜져 있는가 · 굽는 중인 것 (탐침 · 시험) */
+export function asyncPipelinesState(): { on: boolean, pending: number, installed: boolean } {
+  return { on: state.on, pending: state.pending.length, installed: state.installed }
+}

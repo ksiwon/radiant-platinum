@@ -110,6 +110,24 @@ export function terrainTrace(): readonly { t: number, req: number, step: string,
   return trace.map((r) => ({ ...r }))
 }
 
+/**
+ * 워프가 덮개를 든 동안 묻는다 — **새 맵의 지형이 씬에 섰는가** (`terrainReady`의 ③④⑤만).
+ *
+ * `terrainReady`는 전이가 남았으면(`world.pending`) 늘 「아직」이다 — 워프는 덮개를 걷기 전까지 전이를 쥐고 있으므로 그것으로는
+ * 못 묻는다 (`scene/asyncPipelines`의 `settleAsyncPipelines`)
+ */
+export function terrainLanded(): boolean {
+  const grid = world.grid
+  if (grid === null) return false
+  const p = worldState.player.position
+  const chunk = grid.chunkIndexAt(Math.floor(p.x), Math.floor(p.z))
+  if (terrainWanted.matrix !== world.matrix || terrainWanted.chunkIndex !== chunk) return false
+  if (terrainMark.req !== terrainWanted.req) return false
+  if (terrainMark.failed) return true
+  if (terrainMark.want > 0 && terrainMark.placed === 0) return false
+  return perfSnapshot.frames - terrainMark.frame >= 1
+}
+
 /** 카메라가 「닿았다」고 볼 잔여 거리 (월드 단위 = 타일) */
 const CAMERA_SETTLED = 0.25
 

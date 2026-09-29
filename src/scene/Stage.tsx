@@ -4,6 +4,7 @@ import { Canvas } from '@react-three/fiber'
 import { NeutralToneMapping, PCFSoftShadowMap } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { EngineDriver } from './EngineDriver'
+import { installAsyncPipelines } from './asyncPipelines'
 import { fieldCamera } from './fieldCamera'
 import { SceneBoundary } from '../ui/screens/SceneBoundary'
 import { PlayerCapsule } from './GreyBox'
@@ -222,6 +223,8 @@ async function makeRenderer(
   // ⚠️ **원래 것을 지우지 않는다.** three는 이 안에서 `_isDeviceLost`를
   // 세워 다음 프레임을 그리지 않게 하는데, 갈아 끼우면 그 멈춤이
   // 사라져 죽은 장치에 계속 명령을 보낸다
+  // 맵을 갈아 끼우는 동안만 파이프라인을 비동기로 굽는다 (REPAIR §8 · `scene/asyncPipelines`)
+  installAsyncPipelines(renderer)
   const wasLost = renderer.onDeviceLost.bind(renderer)
   // 인자 타입은 three가 준다 (`DeviceLostInfo`) — 우리가 다시 적지 않는다
   renderer.onDeviceLost = (info) => {

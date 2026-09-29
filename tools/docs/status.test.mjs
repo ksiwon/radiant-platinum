@@ -74,6 +74,11 @@ describe('REPAIR §0의 갈래와 §11의 문장', () => {
     const at = repair.indexOf('## 11. 남은 것')
     expect(at, '§11').toBeGreaterThan(-1)
     const said = repair.slice(at, at + 400)
+    // 남은 것이 없으면 세는 문장이 「없다.」 하나다 — 그때는 §0 표에도 열린 줄이 없어야 한다
+    if (/^## 11\. 남은 것\s+\*\*없다\.\*\*/.test(said)) {
+      expect(openIds()).toEqual([])
+      return
+    }
     // 머리말 다음 문장이 남은 것을 세는 줄이다 — 「… 다섯이다.」까지가 그 목록이고
     // 그 뒤는 끝난 것의 목록이라, 세는 문장이 끝나는 자리에서 자른다
     const cut = said.indexOf('이다.')
