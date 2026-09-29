@@ -7,11 +7,13 @@
 // 서고 땅 높이도 같다(`field.ts` 머리말). 충돌 · 높이 · 워프 · 사람은 원작 자료가 그대로 쥔다 — 이 층은 그림만이다.
 //
 // ⚠️ **지역 통째로 받는다.** 한 지역이 260칸 사방이라 청크처럼 쪼개지 않는다. 플레이어 둘레(`REACH`)에 상자가 걸리는 지역만 세운다
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { AdditiveBlending, Mesh, type Group, type Material } from 'three'
+import { AdditiveBlending, Mesh, Vector3, type Group, type Material } from 'three'
 import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
+import { fieldFade, type FieldFade } from './fieldFade'
 
 const loader = new GLTFLoader()
 
@@ -63,8 +65,23 @@ export function useBdspFields(outdoor: boolean): { fields: readonly FieldEntry[]
 /** 창빛 · 조명 줄기 — 더해지는 빛으로 (`BdspRoom`과 같은 사정) */
 const isLightShaft = (m: Material): boolean => /_(Window)?Light_\d/.test(m.name)
 
+/** 주인공의 어느 높이를 겨누는가 — `PropFade`의 `AIM_HEIGHT`와 같다 */
+const AIM = 1.2
+
 function FieldArea({ name }: { name: string }) {
   const [scene, setScene] = useState<Group | null>(null)
+  const fade = useRef<FieldFade | null>(null)
+  const tick = useRef(0)
+  const cam = useRef(new Vector3())
+  const aim = useRef(new Vector3())
+  useFrame(({ camera }) => {
+    // 세 프레임에 한 번 — 인스턴스가 지역 하나에 수천이다
+    if (!fade.current || (tick.current++ % 3) !== 0) return
+    const p = worldState.player.position
+    camera.getWorldPosition(cam.current)
+    aim.current.set(p.x, p.y + AIM, p.z)
+    fade.current.update(cam.current, aim.current, worldState.camera.mode !== 'first')
+  })
   useEffect(() => {
     let alive = true
     const path = `models/field/${name}.glb`
@@ -87,6 +104,7 @@ function FieldArea({ name }: { name: string }) {
             o.castShadow = false
           }
         })
+        fade.current = fieldFade(gltf.scene)
         setScene(gltf.scene)
       })
       .catch((e: unknown) => { console.error(`지역 ${name}을 못 세웠다`, e) })
