@@ -153,7 +153,12 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 달라지므로 이미 깔린 사람도 이 그룹만 다시 굽게 한다 — 안 올리면 설치본의
    * 주인공이 계속 절차형으로만 낚시한다
    */
-  npcModels: 13,
+  /**
+   * 14 — **`_BlendMode`가 없는 재질의 오려내기를 재질의 `RenderType`이 정한다** (`import/bdsp/albedo.ts`의 `untaggedAlpha`).
+   * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
+   * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
+   */
+  npcModels: 14,
   /**
    * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
    *
@@ -176,6 +181,11 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 슬퍼 보였다(눈 609 · 입 149 재질). glb의 UV 바이트와 구운 눈 그림이 달라진다
    */
   monModels: 4,
+  /**
+   * 2 — 무대의 창빛 · 조명 줄기 · 물 · 표식 서른다섯 재질이 반투명(`RenderType Transparent`)으로 선다. 예전에는 문턱 0.5로
+   * 오려 내서 통째로 빠지거나 딱딱한 판으로 섰다 (`import/bdsp/albedo.ts`의 `untaggedAlpha`)
+   */
+  arenas: 2,
   /**
    * 2 — **텍스처 없는 재질에 확산색을 실어 준다.**
    *

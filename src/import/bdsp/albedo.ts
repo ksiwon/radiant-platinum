@@ -65,6 +65,22 @@ const GLTF_WRAP: Readonly<Record<number, number>> = { 0: 10497, 1: 33071, 2: 336
 const GLTF_ALPHA: Readonly<Record<number, string>> = { 0: 'OPAQUE', 1: 'BLEND', 2: 'BLEND' }
 
 /**
+ * `_BlendMode`가 없는 재질(사람 · 소품)의 오려내기 — **재질의 `RenderType` 태그가 임자다** (docs/orders/VISUAL_20260929.md §3).
+ *
+ * ⚠️ **전부 `MASK`로 두면 몸이 통째로 사라진다.** 쪽찐 할머니(`fc2016_00`) 옷은 `Opaque`인데 그림 알파가 거의 다 0이라
+ * 문턱에서 통째로 잘렸고, 사이클리스트 헬멧 · 안경알은 `Transparent`인데 알파 0.3~0.4라 역시 잘렸다. ⚠️ 머리카락도
+ * `Opaque`인데 가닥을 알파로 오리므로, `Opaque`는 **그림 알파가 거의 비었을 때만** 불투명이다. 노드 쪽
+ * `bdsp_bake_albedo.py`의 `untagged_alpha`와 같은 식이다
+ */
+export const EMPTY_ALPHA = 0.1
+
+export function untaggedAlpha(tag: string | null, alphaMean: number): 'OPAQUE' | 'MASK' | 'BLEND' {
+  if (tag === 'Transparent') return 'BLEND'
+  if (tag === 'Opaque' && alphaMean < EMPTY_ALPHA) return 'OPAQUE'
+  return 'MASK'
+}
+
+/**
  * ⚠️ **개발 추출기는 이 계산을 float32로 한다** (numpy `dtype=np.float32`).
  * 우리가 float64로 하면 같은 식이어도 마지막 자리가 갈리고, 그 차이가 256으로
  * 줄이는 자리에서 **최대 3/255까지 벌어졌다**. 곱셈·덧셈마다 32비트로 되접어
@@ -573,6 +589,12 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
 
     const src = main.pixels
     const n = width * height
+    if (blend === null) {
+      let sum = 0
+      for (let i = 0; i < n; i++) sum += src[i * 4 + 3]!
+      const tag = pairs(v.stringTagMap).get('RenderType')
+      look.alpha = untaggedAlpha(typeof tag === 'string' ? tag : null, sum / 255 / n)
+    }
     const lin = new Float32Array(n * 3)
     for (let i = 0; i < n; i++) {
       lin[i * 3] = TO_LINEAR[src[i * 4]!]!

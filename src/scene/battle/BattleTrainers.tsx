@@ -19,9 +19,9 @@ import type { SlotId } from '../../engine/battle/events'
 import { TRAINER_CLIP, trainerFallbackPalette, trainerLost } from './battleTrainerVisual'
 import { trainerModelBundle } from '../../engine/actor/npcModels'
 import { unifySkeletons } from '../unifySkeleton'
+import { isAltOutfit } from '../personModel'
 
 const loader = new GLTFLoader()
-const SECONDARY_OUTFIT = ['hair2', 'shoes2']
 
 function throwKey(view: BattleView | null, mine: boolean, only: SlotId | null = null): string {
   if (!view) return ''
@@ -217,7 +217,7 @@ function TrainerActor({
               }
             : null
           root.traverse((object: Object3D) => {
-            if (SECONDARY_OUTFIT.some((part) => object.name.includes(part))) object.visible = false
+            if (isAltOutfit(object.name)) object.visible = false
             if (object instanceof Mesh) object.castShadow = true
           })
           // ⚠️ **굽고 나서 세운다.** 스킨 사람 하나에 정점 프로그램 하나고, 그

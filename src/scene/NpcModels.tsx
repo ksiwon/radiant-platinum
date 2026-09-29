@@ -34,6 +34,7 @@ import { RUN_SPEED, WALK_SPEED } from '../engine/actor/player'
 import { DIR_STEP } from '../engine/script/movement'
 import { BDSP_TO_WORLD, normalizeModel } from '../engine/model/normalize'
 import { isChibi, shapeChibi } from '../engine/model/chibi'
+import { isAltOutfit } from './personModel'
 import { worldState } from '../state/worldState'
 import { world } from '../engine/map/world'
 import { groundYAt } from './distortion'
@@ -442,7 +443,8 @@ function build(
     // 가리켜서 여럿이 같은 자세로 함께 움직인다. `SkeletonUtils.clone`이 뼈까지
     // 새로 짓고 스킨을 다시 묶는다
     const body = cloneSkinned(scene)
-    body.traverse((o) => { o.castShadow = true })
+    // 대체 복장(모자 안 쓴 머리카락 · 둘째 신발)은 끈다 — 빛나가 NPC로 설 때 모자를 뚫고 나왔다 (`personModel`)
+    body.traverse((o) => { o.castShadow = true; if (isAltOutfit(o.name)) o.visible = false })
     inner.add(body)
     // 원본 키를 먼저 재고, 거기에 BDSP 단위 배수를 곱한 키로 다시 맞춘다.
     // 발밑도 이때 원점에 온다 — 그 자체가 정규화가 하는 일이다

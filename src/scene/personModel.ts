@@ -26,8 +26,19 @@ import { unifySkeletons } from './unifySkeleton'
  */
 const loader = new GLTFLoader()
 
-/** 기본 복장과 겹쳐 z-fighting을 내는 대체 복장 조각 — 꺼 둔다 */
+/**
+ * 기본 복장과 겹치는 대체 복장 조각 — 꺼 둔다. 원작 번들이 **꺼 둔 렌더러**다(`m_Enabled 0` · 빛나 `hair2Skin`은 모자를
+ * 안 쓴 머리카락이라 켜 두면 모자를 뚫고 나온다).
+ *
+ * ⚠️ **사람을 세우는 자리가 다 이것을 거쳐야 한다** (`isAltOutfit`). 필드 NPC(`NpcModels`)만 빠져 있어서, 광휘로 하는 판에
+ * 이야기에 나오는 빛나의 모자 위로 머리카락이 얼룩처럼 비어져 나왔다 (배포판에서 짚였다)
+ */
 const ALT_OUTFIT = ['hair2', 'shoes2']
+
+/** 이 조각이 대체 복장인가 — 세우는 쪽이 꺼 둔다 */
+export function isAltOutfit(name: string): boolean {
+  return ALT_OUTFIT.some((part) => name.includes(part))
+}
 
 /**
  * 받아 온 사람 씬을 세울 수 있게 손질한다.
@@ -40,7 +51,7 @@ export function preparePersonModel(scene: Object3D): void {
   // 조각마다 뼈 수가 다르면 그 수만큼 셰이더가 갈린다 (`unifySkeleton`)
   unifySkeletons(scene)
   scene.traverse((object: Object3D) => {
-    if (ALT_OUTFIT.some((name) => object.name.includes(name))) object.visible = false
+    if (isAltOutfit(object.name)) object.visible = false
     if (!(object instanceof Mesh)) return
     object.castShadow = true
     // 알베도는 `tools/extract/bdsp_bake_albedo.py`가 이미 구워 넣었다

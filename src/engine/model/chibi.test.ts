@@ -9,7 +9,7 @@ import {
   Uint16BufferAttribute, Vector3,
 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { CHIBI_GROW, CHIBI_HAND, CHIBI_HEAD, CHIBI_LEG, isChibi, shapeChibi } from './chibi'
+import { CHIBI_GROW, CHIBI_HAND, CHIBI_HEAD, CHIBI_LEG, isChibi, shapeChibi, CHIBI_ARM } from './chibi'
 
 /** 발밑 0 · 목 1 · 머리끝 2인 사람 하나. 머리는 목 관절을 원점으로 줄어든다 */
 const NATIVE = 2
@@ -93,7 +93,8 @@ describe('shapeChibi', () => {
   // 팔을 내리고 서고(`updateLocomotion`), 그러면 팔의 길이축이 세로가 되어
   // 다리와 같은 대접을 받는다 — 길이는 키 늘림, 단면은 굵기다. 실측으로
   // 위팔관절~손이 24.2%로 등신 24.7~26.1% 안이다 (`.audit/probe/armSpan.mjs`)
-  it('팔 마디와 팔뼈 배율을 안 건드린다', () => {
+  // 단면만은 조인다 — 치비 위팔이 등신 어른만큼 굵어서 주인공 옆에 서면 팔이 두꺼웠다 (`CHIBI_ARM`)
+  it('팔 마디와 팔뼈 길이는 안 건드리고 위팔 단면만 조인다', () => {
     const { inner, body, arm, fore, hand } = rig()
     const was = { arm: arm.position.clone(), fore: fore.position.x, hand: hand.position.x }
     shapeChibi(inner, body, NATIVE)
@@ -102,7 +103,8 @@ describe('shapeChibi', () => {
     expect(fore.position.x).toBeCloseTo(was.fore, 6)
     expect(hand.position.x).toBeCloseTo(was.hand, 6)
     expect(arm.scale.x).toBeCloseTo(1, 6)
-    expect(arm.scale.y).toBeCloseTo(1, 6)
+    expect(arm.scale.y).toBeCloseTo(CHIBI_ARM, 6)
+    expect(arm.scale.z).toBeCloseTo(CHIBI_ARM, 6)
     expect(fore.scale.y).toBeCloseTo(1, 6)
   })
 

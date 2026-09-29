@@ -12,7 +12,7 @@
 //
 // ⚠️ **뼈를 늘리는 리타깃이 아니다.** 축을 눌러서 얻은 비율이라 팔다리 길이는
 // 그대로다. 아래 각 상수에 무엇이 남는지 적어 둔다.
-import { type Object3D } from 'three'
+import { Group, Matrix3, Matrix4, Quaternion, Vector3, type Object3D, type SkinnedMesh } from 'three'
 import { normalizeModel } from './normalize'
 
 /**
@@ -85,6 +85,68 @@ const CHIBI_SLIM = 1
  */
 export const CHIBI_LEG = 0.7
 
+/**
+ * **위팔의 단면**을 조이는 배수 — 팔이 굵었다 (docs/orders/VISUAL_20260929.md §3).
+ *
+ * 몸 굵기를 그대로 두는 값(`CHIBI_SLIM`)이 팔에도 가서 치비 위팔이 굵었다. **팔 방향에 수직인 단면**으로 재면
+ * (`.audit/probe/npcView.mjs`의 `armFB` · `armLR` — 선 자세 · 위팔에 가장 무겁게 매달린 정점) 키 대비:
+ *
+ *                   앞뒤    좌우
+ *   광휘            0.044   0.046
+ *   신사 (외투)     0.076   0.071
+ *   리오            0.062   0.055
+ *   치비 여섯       0.074~0.113 · 0.073~0.113   ← 조이기 전 (×0.85로 잰 값을 되돌린 것)
+ *
+ * ×0.68이면 치비가 0.050~0.077로 등신 어른 둘 사이에 온다.
+ *
+ * ⚠️ **월드 z 폭으로 재면 안 된다** — 선 자세에서 팔이 앞으로 기운 만큼 길이가 섞여 거의 안 줄어 보인다.
+ * ⚠️ **앞뒤 축을 월드 방향으로 고르면 안 된다.** 바인드 자세의 팔 비틀림이 몸마다 달라 어떤 몸은 앞뒤 대신 가로가 줄었다.
+ * 그래서 **길이축(아래팔뼈 쪽)만 빼고** 단면 둘을 같이 조인다 — 다리와 같은 식이다(`CHIBI_LEG`). 길이는 손대지 않는다
+ * (아래 ⛔ 팔 절)
+ */
+export const CHIBI_ARM = 0.68
+
+/**
+ * **발(신발)의 높이 · 폭**을 조이는 배수 — 발이 비정상적으로 컸다.
+ *
+ * 몸을 세로로 두 배 넘게 세우는 늘림(`CHIBI_GROW`)이 신발까지 늘여서, 치비 발은 높이가 키의 0.119~0.137로 등신 셋
+ * (0.064~0.078)의 1.8배 · 폭이 0.096~0.109(등신 0.070~0.106)다. 길이는 0.132~0.150으로 등신(0.140~0.172) 안이라 둔다.
+ * 높이 0.128 × 0.55 ≈ 0.070 · 폭 0.101 × 0.85 ≈ 0.086
+ */
+export const CHIBI_FOOT = { up: 0.55, side: 0.85 } as const
+
+/** 뼈의 **길이축** — 자식 뼈가 놓인 로컬 축 (0 · 1 · 2). 자식이 없으면 X */
+function lengthAxis(bone: Object3D): number {
+  const child = bone.children.find((c) => c.type === 'Bone')
+  if (!child) return 0
+  const p = child.position
+  const a = [Math.abs(p.x), Math.abs(p.y), Math.abs(p.z)]
+  return a.indexOf(Math.max(...a))
+}
+
+/** 위팔 · 발 */
+const UPPER_ARM = ['LArm', 'RArm'] as const
+const FOOT = ['LFoot', 'RFoot'] as const
+
+/**
+ * 뼈의 로컬 축 중 **그 월드 방향에 가장 가까운 것**에 배수를 건다. 바인드 자세에서 정한다 — 뼈마다 로컬 축이 달라서
+ * (다리 · 팔은 X가 길이축이지만 발은 다르다) 이름으로 못 박지 않는다. 축은 뼈를 따라 도므로 자세가 바뀌어도 그 부위를 조인다
+ */
+function squashAlong(bone: Object3D, frame: Object3D, world: Vector3, k: number): void {
+  const q = new Quaternion()
+  bone.getWorldQuaternion(q)
+  const back = new Quaternion()
+  frame.getWorldQuaternion(back)
+  q.premultiply(back.invert())
+  let best = 0, dot = -1
+  for (let i = 0; i < 3; i++) {
+    const axis = new Vector3(i === 0 ? 1 : 0, i === 1 ? 1 : 0, i === 2 ? 1 : 0).applyQuaternion(q)
+    const d = Math.abs(axis.dot(world))
+    if (d > dot) { dot = d; best = i }
+  }
+  bone.scale.setComponent(best, bone.scale.getComponent(best) * k)
+}
+
 /** 다리 사슬의 맨 위 */
 const LEG_ROOT = ['LThigh', 'RThigh'] as const
 
@@ -155,6 +217,104 @@ export const CHIBI_HAND = 0.5
  */
 export const CHIBI_GROW = 2.09
 
+/**
+ * 줄인 머리를 **목 위 어디에 얹을까** — 키 대비, 목뼈 관절에서 머리 한가운데까지 (앞 · 위).
+ *
+ * ⚠️ **목 관절을 원점으로 줄이면 머리가 뒤로 밀리고 목이 길어진다** (docs/orders/VISUAL_20260929.md §3). 치비의 목
+ * 관절은 커다란 머리의 **뒤통수 아래**에 있어서, 거기를 중심으로 ×0.24로 줄이면 작은 머리가 어깨선 뒤에 얹히고 목이
+ * 길게 드러난다 — 옆에서 보면 턱이 뒤로 빠진 채 목이 가늘게 선다. 배포판에서 「목의 모양 · 자세가 어색하다」로 짚였다.
+ *
+ * 값의 근거 — 선 자세에서 머리뼈 아래 정점(스킨을 먹인 자리)의 한가운데를 잰 값 (`.audit/probe/npcView.mjs`):
+ *
+ *              앞      위
+ *   광휘      0.036   0.092
+ *   신사      0.038   0.088
+ *   리오      0.028   0.092     ← 등신 셋. 평균 (0.034, 0.091)
+ *   치비 여덟  0.020~0.024 · 0.144~0.151   (옮기기 전 · 목뼈에서 잰 값)
+ */
+export const CHIBI_HEAD_SEAT = { forward: 0.034, up: 0.091 } as const
+
+/** 재는 틀 — 래퍼의 부모(무대에 선 자리)다. 부모가 없으면 월드 */
+const WORLD = new Group()
+function frameOf(inner: Object3D): Object3D {
+  return inner.parent ?? WORLD
+}
+
+/** 스킨을 먹인 정점을 `frame` 좌표계로 하나씩. 둘째 인자는 그 정점이 가장 무겁게 매달린 뼈다 */
+function eachSkinned(body: Object3D, frame: Object3D, visit: (v: Vector3, bone: Object3D | null) => void): void {
+  const toFrame = new Matrix4().copy(frame.matrixWorld).invert()
+  const v = new Vector3()
+  body.traverse((o) => {
+    const mesh = o as SkinnedMesh
+    if (!mesh.isSkinnedMesh) return
+    const pos = mesh.geometry.getAttribute('position')
+    const idx = mesh.geometry.getAttribute('skinIndex')
+    const wt = mesh.geometry.getAttribute('skinWeight')
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i)
+      mesh.applyBoneTransform(i, v)
+      let best = -1, heavy = -1
+      for (let k = 0; k < 4; k++) {
+        const w = wt.getComponent(i, k)
+        if (w > heavy) { heavy = w; best = idx.getComponent(i, k) }
+      }
+      visit(v.applyMatrix4(mesh.matrixWorld).applyMatrix4(toFrame), mesh.skeleton.bones[best] ?? null)
+    }
+  })
+}
+
+/**
+ * 머리의 한가운데 — **머리뼈와 그 아래 뼈(머리카락 · 모자)에 가장 무겁게 매달린 정점**의 평균, `frame` 좌표계로.
+ *
+ * ⚠️ 「목 관절보다 위」로 고르면 안 된다 — 머리를 내려 앉히면 정점 일부가 문턱 아래로 빠져 한가운데가 도로 위로 뜬다
+ */
+function headCentroid(body: Object3D, frame: Object3D, head: Object3D): Vector3 | null {
+  const under = new Set<Object3D>()
+  head.traverse((o) => { under.add(o) })
+  const sum = new Vector3()
+  let n = 0
+  eachSkinned(body, frame, (v, bone) => { if (bone && under.has(bone)) { sum.add(v); n++ } })
+  return n > 0 ? sum.divideScalar(n) : null
+}
+
+/** 발바닥과 정수리의 높이 — `frame` 좌표계로 */
+function standingSpan(body: Object3D, frame: Object3D): { lo: number, hi: number } {
+  let lo = Infinity, hi = -Infinity
+  eachSkinned(body, frame, (v) => { lo = Math.min(lo, v.y); hi = Math.max(hi, v.y) })
+  return hi > lo ? { lo, hi } : { lo: 0, hi: 0 }
+}
+
+/**
+ * 줄인 머리를 목 위 제자리에 앉힌다 (`CHIBI_HEAD_SEAT`). 머리뼈의 **자리**만 옮긴다 — 클립은 머리뼈 자리 트랙을 안 싣으므로
+ * (`engine/actor/clipGait`의 `trimGaitClip`) 걷고 서는 동안에도 그대로다
+ */
+function seatHead(inner: Object3D, body: Object3D, height: number): void {
+  const frame = frameOf(inner)
+  frame.updateMatrixWorld(true)
+  const toFrame = new Matrix4().copy(frame.matrixWorld).invert()
+  for (const head of bonesNamed(body, 'Head')) {
+    const neck = head.parent
+    if (!neck) continue
+    // 두 번 불러도 쌓이지 않게 **원래 자리에서** 옮긴다
+    const from = (head.userData.seatFrom as Vector3 | undefined) ?? head.position.clone()
+    head.userData.seatFrom = from
+    head.position.copy(from)
+    frame.updateMatrixWorld(true)
+    // 기준은 **목뼈** 관절이다 — 치비는 목뼈 → 머리뼈 사이(목)가 길어서, 머리뼈 관절에서 재면 목이 긴 채로 남는다
+    const at = new Vector3().setFromMatrixPosition(neck.matrixWorld).applyMatrix4(toFrame)
+    const centre = headCentroid(body, frame, head)
+    if (!centre) continue
+    // 모델은 +z를 본다(앞). 바라는 자리와 지금 자리의 차를 목뼈 좌표로 옮겨 머리뼈 자리에 더한다
+    const want = new Vector3(at.x, at.y + CHIBI_HEAD_SEAT.up * height, at.z + CHIBI_HEAD_SEAT.forward * height)
+    const delta = want.sub(centre)
+    const frameToNeck = new Matrix3().setFromMatrix4(
+      new Matrix4().copy(neck.matrixWorld).invert().multiply(frame.matrixWorld),
+    )
+    head.position.add(delta.applyMatrix3(frameToNeck))
+    frame.updateMatrixWorld(true)
+  }
+}
+
 /** 이 번들이 치비인가 — 필드용(`fc`)만 그렇다 */
 export const isChibi = (tag: string): boolean => /^fc\d/.test(tag)
 
@@ -223,7 +383,25 @@ export function shapeChibi(
   inner: Object3D, body: Object3D, nativeHeight: number,
 ): number {
   const heads = bonesNamed(body, 'Head')
-  for (const bone of heads) bone.scale.setScalar(CHIBI_HEAD)
+  for (const bone of heads) {
+    bone.scale.setScalar(CHIBI_HEAD)
+    // 앞서 앉혀 둔 자리가 있으면 원래 자리로 — 그래야 키를 원본으로 잰다 (`seatHead`)
+    const from = bone.userData.seatFrom as Vector3 | undefined
+    if (from) bone.position.copy(from)
+  }
+  // 위팔 단면 · 발 높이와 폭 (`CHIBI_ARM` · `CHIBI_FOOT`). 바인드 자세에서 축을 고르므로 **배율을 먼저 1로** 돌린다 —
+  // 두 번 불러도 쌓이지 않는다
+  const frame0 = frameOf(inner)
+  body.updateMatrixWorld(true)
+  for (const arm of bonesNamed(body, ...UPPER_ARM)) {
+    arm.scale.setScalar(CHIBI_ARM)
+    arm.scale.setComponent(lengthAxis(arm), 1)
+  }
+  for (const foot of bonesNamed(body, ...FOOT)) {
+    foot.scale.setScalar(1)
+    squashAlong(foot, frame0, new Vector3(0, 1, 0), CHIBI_FOOT.up)
+    squashAlong(foot, frame0, new Vector3(1, 0, 0), CHIBI_FOOT.side)
+  }
   for (const hand of bonesNamed(body, 'LHand', 'RHand')) {
     hand.scale.setScalar(CHIBI_HAND)
     // 손가락은 같이 줄어들어야 하고, 든 물건은 제 크기를 지켜야 한다
@@ -251,6 +429,40 @@ export function shapeChibi(
     thigh.scale.set(1, CHIBI_LEG, CHIBI_LEG)
   }
   // 부르는 쪽이 뼈 자리를 월드에서 재므로 바뀐 배율을 먼저 반영한다
+  inner.updateMatrixWorld(true)
+  seatHead(inner, body, height)
+  // 머리를 내려 앉힌 만큼(목이 짧아진 만큼) 키가 준다 — 세로만 도로 맞춘다. 발밑은 래퍼 원점에 그대로 둔다
+  // (`normalizeModel`을 다시 부르면 균등 배율로 돌아가 굵기 보정이 지워진다)
+  // 세로가 바뀌면 머리를 둥글게 펴는 값도 따라가고, 그러면 키가 또 조금 바뀐다 — 몇 번 되풀이해 맞춘다
+  for (let pass = 0; pass < 8; pass++) {
+    inner.updateMatrixWorld(true)
+    const { lo, hi } = standingSpan(body, frameOf(inner))
+    if (hi - lo <= 1e-6) break
+    const k = height / (hi - lo)
+    inner.scale.y *= k
+    // 발바닥을 틀 원점에 다시 붙인다 — 발을 조이면 신발 바닥이 발목 쪽으로 올라가 사람이 뜬다
+    inner.position.y *= k
+    inner.updateMatrixWorld(true)
+    const ground = standingSpan(body, frameOf(inner)).lo
+    inner.position.y -= ground
+    const again = (CHIBI_HEAD * inner.scale.y) / girth
+    for (const bone of heads) bone.scale.set(CHIBI_HEAD, again, again)
+    if (Math.abs(k - 1) < 1e-9 && Math.abs(ground) < 1e-9) break
+  }
+  // 든 물건은 위팔을 조인 배율(`CHIBI_ARM`)까지 물려받는다 — 월드에서 몸통과 같은 배율로 되돌린다
+  inner.updateMatrixWorld(true)
+  const worldScale = new Vector3()
+  for (const hand of bonesNamed(body, 'LHand', 'RHand')) {
+    for (const child of hand.children) {
+      if (child.type !== 'Bone' || FINGER.test(child.name)) continue
+      child.getWorldScale(worldScale)
+      child.scale.set(
+        child.scale.x * inner.scale.x / worldScale.x,
+        child.scale.y * inner.scale.y / worldScale.y,
+        child.scale.z * inner.scale.z / worldScale.z,
+      )
+    }
+  }
   inner.updateMatrixWorld(true)
   return height
 }

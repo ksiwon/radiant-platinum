@@ -9,7 +9,7 @@
 // 그래서 파이썬 원문을 읽어서 표를 꺼내 견준다. 눈으로 맞추는 대신 시험이 센다.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { MASK_CHANNEL_PROPS, VARIATION_CHANNEL_PROPS } from './albedo'
+import { EMPTY_ALPHA, MASK_CHANNEL_PROPS, VARIATION_CHANNEL_PROPS, untaggedAlpha } from './albedo'
 
 const PY = 'tools/extract/bdsp_bake_albedo.py'
 
@@ -26,6 +26,25 @@ function pyConst(src: string, name: string): readonly string[] {
   if (!list) throw new Error(`${name}의 값을 못 읽었다: ${value}`)
   return list[1]!.split(',').map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
 }
+
+describe('`_BlendMode` 없는 재질의 오려내기 (`untaggedAlpha`)', () => {
+  const src = readFileSync(PY, 'utf8')
+  it('문턱이 개발 추출기와 같다', () => {
+    const m = /^EMPTY_ALPHA\s*=\s*([0-9.]+)/m.exec(src)
+    expect(m, `${PY}에 EMPTY_ALPHA가 없다`).not.toBeNull()
+    expect(Number(m![1])).toBe(EMPTY_ALPHA)
+  })
+  it('반투명 태그는 반투명 · 알파를 안 쓰는 불투명은 불투명 · 나머지는 오려내기', () => {
+    // 사이클리스트 헬멧(알파 0.4) · 안경알
+    expect(untaggedAlpha('Transparent', 0.4)).toBe('BLEND')
+    // 쪽찐 할머니 옷 — 그림 알파 평균 0.023
+    expect(untaggedAlpha('Opaque', 0.023)).toBe('OPAQUE')
+    // 머리카락은 `Opaque`인데 가닥을 알파로 오린다
+    expect(untaggedAlpha('Opaque', 0.6)).toBe('MASK')
+    expect(untaggedAlpha('TransparentCutout', 0.05)).toBe('MASK')
+    expect(untaggedAlpha(null, 0)).toBe('MASK')
+  })
+})
 
 describe('알베도 색 채널 표', () => {
   const src = readFileSync(PY, 'utf8')

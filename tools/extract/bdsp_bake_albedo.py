@@ -138,6 +138,35 @@ def raw_wrap(tex) -> tuple[int, int]:
 GLTF_ALPHA = {0: "OPAQUE", 1: "BLEND", 2: "BLEND"}
 
 
+# `_BlendMode`가 없는 재질(사람 · 소품)의 오려내기 — **재질의 `RenderType` 태그가 임자다** (docs/orders/VISUAL_20260929.md §3).
+#
+# ⚠️ **전부 `MASK`로 두면 몸이 통째로 사라진다.** 쪽찐 할머니(`fc2016_00`)와 `fc2022_00`의 옷은 `RenderType Opaque`인데
+# 그림 알파가 거의 다 0이라(정점 자리 평균 0/255) 문턱 0.5에서 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었다. 사이클리스트
+# 헬멧(`tr1012`·`tr1013`)과 안경알은 `Transparent`(큐 3000)인데 알파 0.3~0.4라 역시 통째로 잘렸다 (`.audit/probe/cutoutScan.py`).
+#
+# ⚠️ **`Opaque`라고 다 불투명으로 돌리면 안 된다** — 머리카락(`_LIGHTING_HAIR`)도 `Opaque`인데 가닥을 알파로 오린다.
+# 그래서 `Opaque`는 **그림 알파가 거의 비었을 때만**(평균 `EMPTY_ALPHA` 아래) 불투명이다 — 알파를 안 쓰는 그림이다
+EMPTY_ALPHA = 0.1
+
+
+def render_type(d: dict) -> str | None:
+    """재질의 `stringTagMap`에 적힌 `RenderType` (`Opaque` · `TransparentCutout` · `Transparent`)"""
+    for pair in d.get("stringTagMap", []) or []:
+        k, v = (pair[0], pair[1]) if isinstance(pair, (list, tuple)) else (pair.get("first"), pair.get("second"))
+        if k == "RenderType":
+            return v
+    return None
+
+
+def untagged_alpha(tag: str | None, alpha_mean: float) -> str:
+    """`_BlendMode`가 없는 재질의 glTF `alphaMode`"""
+    if tag == "Transparent":
+        return "BLEND"
+    if tag == "Opaque" and alpha_mean < EMPTY_ALPHA:
+        return "OPAQUE"
+    return "MASK"
+
+
 def floats_of(props) -> dict[str, float]:
     return {k: float(v) for k, v in prop_pairs(props.get("m_Floats", []))}
 
@@ -483,6 +512,8 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         main = main_tex.image.convert("RGBA")
         w, h = main.size
         col = np.asarray(main, dtype=np.float32) / 255.0
+        if blend is None:
+            spec[name]["alpha"] = untagged_alpha(render_type(d), float(col[..., 3].mean()))
         rgb_lin = srgb_to_linear(col[..., :3])
 
         # 2층. **불투명한 재질의 알파는 불투명도가 아니라 여기를 꺼내는
