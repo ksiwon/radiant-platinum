@@ -167,6 +167,12 @@ export const GROUPS = [
     match: oneOf('data/areaLight.json'),
   },
   {
+    // 조우 컷인의 그림 — 관장 · 사천왕 · 갤럭시 컷인이 받는다
+    name: 'encounterEffect',
+    make: 'pnpm extract:encounterEffect',
+    match: (p) => p.startsWith('data/encounterEffect/'),
+  },
+  {
     // 벽지 암호 낱말표 (축복TV 3층 · `GetWallpaperFromCustomMessageWords`)
     name: 'wallpaperWords',
     make: 'pnpm extract:wallpaperWords',

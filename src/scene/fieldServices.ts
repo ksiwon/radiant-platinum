@@ -818,7 +818,7 @@ const services: FieldServices = {
         console.error(`트레이너 #${String(trainerID)} 배틀을 못 열었다:`,
           e instanceof Error ? e.message : String(e))
       })
-    })
+    }, { second })
   },
 
   battleResult(): 'win' | 'loss' | null {
@@ -1899,7 +1899,7 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+    void cutInThenBattle({ trainer: false, foeLevel: level, foeSpecies: species }, () => {
       void useBattleStore.getState().startWild({ species, level }).catch(() => {
         battleResult = 'loss'
         battleMask = 2
@@ -1919,7 +1919,7 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+    void cutInThenBattle({ trainer: false, foeLevel: level, foeSpecies: species }, () => {
       // 땅도 기라티나 것이다 (`dto->terrain = TERRAIN_GIRATINA` · REPAIR §95)
       void useBattleStore.getState().startWild({
         species, level, form: GIRATINA_ORIGIN, terrain: Terrain.GIRATINA,
@@ -1974,7 +1974,7 @@ const services: FieldServices = {
       battleResult = null
       battleMask = null
       waiting = true
-      void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+      void cutInThenBattle({ trainer: false, foeLevel: level, foeSpecies: species }, () => {
         void useBattleStore.getState().startWild({ species, level })
           .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
       })
@@ -1987,7 +1987,7 @@ const services: FieldServices = {
     battleResult = null
     battleMask = null
     waiting = true
-    void cutInThenBattle({ trainer: false, foeLevel: level }, () => {
+    void cutInThenBattle({ trainer: false, foeLevel: level, foeSpecies: species }, () => {
       void useBattleStore.getState().startWild({ species, level, fateful: true })
         .catch(() => { battleResult = 'loss'; battleMask = 2; waiting = false })
     })
@@ -2016,7 +2016,7 @@ const services: FieldServices = {
           console.error(`태그 배틀 #${String(enemy1)}·#${String(enemy2)} (편 #${String(partner)})을 못 열었다:`,
             e instanceof Error ? e.message : String(e))
         })
-    })
+    }, { second: enemy2 })
   },
 
   /** 도감에 봤다고 적는다 (`FieldSystem_WriteSpeciesSeen`) */

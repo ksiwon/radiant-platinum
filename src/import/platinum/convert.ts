@@ -33,6 +33,7 @@ import { convertLibraryTv } from './libraryTv'
 import { convertDemoModels } from './demoModels'
 import { convertFrontierBg } from './frontierBg'
 import { convertAreaLight } from './areaLight'
+import { convertEncounterEffect } from './encounterEffect'
 import { convertWallpaperWords } from './wallpaperWords'
 import { convertPoketchMap } from './poketchMap'
 import { convertSignposts } from './signposts'
@@ -311,6 +312,13 @@ export const GROUPS: readonly GroupSpec[] = [
     outputs: ['data/areaLight.json'],
     converter: 1,
     convert: convertAreaLight,
+  },
+  {
+    // 조우 컷인의 그림 — 몬스터볼 · VS · 관장 · 사천왕 띠와 얼굴 (`field_encounteffect.narc` · `encounterEffect.ts`)
+    name: 'encounterEffect',
+    outputs: ['data/encounterEffect/{이름}.png', 'data/encounterEffect/index.json'],
+    converter: 1,
+    convert: convertEncounterEffect,
   },
   {
     // 운하시티 도서관의 텔레비전 뉴스 — 그림 · 주사선 · 틀 (`library_tv/library_tv.c`)

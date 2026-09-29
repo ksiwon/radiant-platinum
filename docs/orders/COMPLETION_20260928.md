@@ -85,6 +85,11 @@
 
 - **배로 건너가기** — 끝났다 (§1.26 · `node tools/e2e/_boat.mjs` 여덟 ✓ · `--from=snowpoint` 여덟 ✓). 배 앱의 모습은 원작 캡처와 맞대 보는 일이 남았다.
 - **조우 컷인** (§2.23) — 트레이너 여섯(지금은 야생 것으로 근사) + 관장·사천왕·챔피언·전설·갤럭시단 등 12~30번. `field_encounteffect` 추출 (12~20시간).
+  - 된 것: 그림 굽기(`encounterEffect` 그룹 — 공 · VS · G · 관장 얼굴과 띠 · 리그 띠 · 주인공 얼굴), 원작 셈(`cutInDs` — fx32 보간 · 번쩍임 · 창 페이드 넷),
+    트레이너 여섯 · 조무래기 · 프런티어 · 더블(`cutInTrainer` — 끝 틱을 조사표와 맞댔다), 고르기(`specialCutInFor`)와 부르는 자리의 분류 · 더블 · 종족.
+  - 남은 것: 덮개가 `CutInFrame.draw`를 그리기(그때까지 `scene/encounterCutIn`의 `DRAWN`이 비어 있어 들판 여섯으로 돈다) · 물결의 phase/interleave ·
+    잔상 eva/evb · 카메라 orbit/fovScale · 관장 · 사천왕/챔피언(SPA 107/108) · 갤럭시 간부 · 신화 · 전설 · 화면 확인 · DATA §2.21i · PARITY §2.23.
+    원작 수치는 두 조사표(`raw/work/cutin/` — 로컬, 트레이너 · 띠)에 있다 — 옮길 때 DATA §2.21i로 올린다.
 - **크레딧 3D 장면 일곱과 FIN** (§8.12 · `overlay099`) (10시간 넘게).
 - **맵을 나갈 때 멎음** (REPAIR §8 · 최장 2.5~2.8초) — CDP 트레이스로 원인부터. 확인은 `warpCostGpu.mjs`에서 최장 프레임 100ms 아래.
 

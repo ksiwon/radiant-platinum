@@ -12,7 +12,8 @@
 //
 // ⚠️ **③이 ②를 기다리는 것이 요점이다.** 안 기다리면 배틀 화면이 컷인 위로
 // 덮여서, 두 번 번쩍이는 동안 화면에 이미 체력 상자가 서 있다.
-import { cutInForBattle, cutInFrame, EncounterCutIn } from '../engine/battle/encounterCutIn'
+import { cutInForBattle, cutInFrame, EncounterCutIn, specialCutInFor } from '../engine/battle/encounterCutIn'
+import { trainerCutIn, type SpecialCutIn } from '../engine/battle/cutInTrainer'
 import { terrainOf } from '../engine/battle/terrain'
 import { mapById, world as mapWorld } from '../engine/map/world'
 import { worldState } from '../state/worldState'
@@ -20,7 +21,19 @@ import { useSaveStore } from '../state/saveStore'
 import { loadTrainers } from '../data/gameData'
 import { markCutIn } from '../app/sceneMark'
 
-let running: EncounterCutIn | null = null
+let running: SpecialCutIn | null = null
+
+/**
+ * 화면에 그릴 수 있는 원작 셈 컷인 — 덮개(`CutInOverlay`)가 `CutInFrame.draw`를 그리게 되면 번호를 넣는다.
+ *
+ * ⚠️ **안 그려지는 것을 걸면 공 없는 번쩍임만 남는다** — 그때까지는 들판 여섯(먼저 만든 `EncounterCutIn`)으로 돈다
+ */
+const DRAWN: ReadonlySet<number> = new Set()
+
+/** 번호 하나의 컷인 — 그릴 수 있는 것은 `cutInTrainer`가 든다 */
+function cutInOf(effect: number): SpecialCutIn {
+  return (DRAWN.has(effect) ? trainerCutIn(effect) : null) ?? new EncounterCutIn(effect)
+}
 let waiting: (() => void)[] = []
 
 /**
@@ -31,7 +44,7 @@ let waiting: (() => void)[] = []
  */
 function runCutIn(effect: number): Promise<void> {
   if (running === null) {
-    running = new EncounterCutIn(effect)
+    running = cutInOf(effect)
     cutInFrame.now = null
     markCutIn(effect)
   }
@@ -83,7 +96,25 @@ export const cutInSystem = {
  * ⚠️ **파도타기 중이면 물이다.** 그때 밟고 선 칸이 실제로 물 거동값이라
  * `terrainOf`가 알아서 물을 낸다 — 여기서 따로 갈라 두면 두 자리가 갈린다
  */
-function cutInFor(o: { trainer: boolean, foeLevel: number }): number {
+/** 배틀 하나의 조우 — 컷인이 보는 것 (`FieldBattleDTO`의 그 몫) */
+interface CutInBattle {
+  trainer: boolean
+  foeLevel: number
+  /** 첫 상대의 분류 (`dto->trainer[1].header.trainerType`) */
+  trainerClass?: number
+  /** `BATTLE_TYPE_DOUBLES` */
+  doubles?: boolean
+  /** 야생의 「싸울 수 있는 첫 마리」 종족 */
+  foeSpecies?: number
+}
+
+function cutInFor(o: CutInBattle): number {
+  const special = specialCutInFor({
+    trainerClass: o.trainer ? (o.trainerClass ?? -1) : null,
+    doubles: o.doubles ?? false,
+    foeSpecies: o.foeSpecies ?? 0,
+  })
+  if (special !== null && DRAWN.has(special)) return special
   const here = mapWorld.grid?.behaviorAtWorld(
     worldState.player.position.x, worldState.player.position.z) ?? null
   // ⚠️ **선두가 아니라 「싸울 수 있는 첫 마리」다** (`Party_FindFirstEligibleBattler`).
@@ -105,7 +136,7 @@ function cutInFor(o: { trainer: boolean, foeLevel: number }): number {
  * 컷인의 마지막 검정이 배틀 위에 영영 남는다
  */
 export async function cutInThenBattle(
-  o: { trainer: boolean, foeLevel: number }, open: () => void,
+  o: CutInBattle, open: () => void,
 ): Promise<void> {
   await runCutIn(cutInFor(o))
   open()
@@ -123,13 +154,25 @@ export async function cutInThenBattle(
  * ⚠️ **못 받으면 컷인 없이 연다.** 소리·연출 때문에 배틀 자체가 안 열리면 안 된다
  */
 export async function cutInThenTrainerBattle(
-  trainerID: number, open: () => void,
+  trainerID: number, open: () => void, pair: { second?: number } = {},
 ): Promise<void> {
-  let foeLevel: number
+  let battle: CutInBattle
   try {
-    foeLevel = (await loadTrainers()).get(trainerID).party[0]?.level ?? 0
+    const table = await loadTrainers()
+    const trainer = table.get(trainerID)
+    // 더블은 배틀 가게와 같은 자로 잰다 (`battleStore.startTrainer`의 `doubles`) — 트레이너 둘이면 늘 더블이고, 한 사람의 더블은
+    // 양쪽 다 두 마리가 있어야 선다. 편(`partner`)은 상대가 둘일 때만 서므로 따로 안 본다
+    const second = pair.second ?? 0
+    const other = second !== 0 && second !== trainerID
+    const able = useSaveStore.getState().party.filter((m) => !m.isEgg && m.hp > 0).length
+    battle = {
+      trainer: true,
+      foeLevel: trainer.party[0]?.level ?? 0,
+      trainerClass: trainer.class,
+      doubles: other || (trainer.double && trainer.party.length >= 2 && able >= 2),
+    }
   } catch { open(); return }
-  await cutInThenBattle({ trainer: true, foeLevel }, open)
+  await cutInThenBattle(battle, open)
 }
 
 /**
@@ -145,7 +188,7 @@ export async function cutInThenTrainerBattle(
 export function pinCutIn(effect: number, frame: number): void {
   resetCutIn()
   if (frame < 0) return
-  const cut = new EncounterCutIn(effect)
+  const cut = cutInOf(effect)
   let at = cut.tick()
   for (let i = 0; i < frame; i += 1) at = cut.tick()
   cutInFrame.now = at

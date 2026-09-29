@@ -1088,7 +1088,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       // ⚠️ **사파리도 건다.** `FieldTask_SafariEncounter`(`encounter.c` 458줄)도
       // 같은 첫 걸음에서 `FieldTransition_StartEncounterEffect`를 부른다 —
       // 여섯 갈래가 다 그렇다
-      void cutInThenBattle({ trainer: false, foeLevel: e.level }, () => {
+      void cutInThenBattle({
+        trainer: false, foeLevel: e.level, foeSpecies: e.species, doubles: Boolean(e.second && e.partner),
+      }, () => {
         if (safariActive()) void startSafari({ species: e.species, level: e.level, form: e.form })
         else {
           void startWild({

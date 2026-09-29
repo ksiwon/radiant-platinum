@@ -339,5 +339,6 @@ withRom('en')('뒤늦게 옮긴 그룹 — 개발 산출물과 같다', () => {
   it('demoModels — 문 · 붉은 사슬 · 호수의 구슬 셋', async () => { await parity('demoModels') }, 60_000)
   it('frontierBg — 팩토리 복도 · 바닥 · 배틀룸 다섯', async () => { await parity('frontierBg') }, 60_000)
   it('areaLight — 지역 빛 네 벌', async () => { await parity('areaLight') }, 60_000)
+  it('encounterEffect — 조우 컷인의 그림', async () => { await parity('encounterEffect') }, 60_000)
   it('wallpaperWords — 벽지 암호 낱말표', async () => { await parity('wallpaperWords') }, 60_000)
 })

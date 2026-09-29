@@ -14,6 +14,7 @@
 // 기본값 666.922로 나눈 배율이다 (`field_camera.c`의 `CAMERA_TYPE_DEFAULT`).
 // 그대로 못 옮긴 값은 그 자리에 원작 값과 우리 값을 같이 적어 두었다.
 import { Terrain, type TerrainId } from './terrain'
+import { TRAINER_CLASS } from '../audio/battleSongs'
 
 /** `enum EncEffectCutIn` (`enc_effects.h`) 차례 그대로 */
 export const CutIn = {
@@ -74,7 +75,7 @@ export const cutInShape = (cutIn: number): 'grass' | 'water' | 'cave' => {
 }
 
 /** 화면 한 프레임의 모습. 그리는 것은 `scene/encounterCutIn`이 한다 */
-interface CutInFrame {
+export interface CutInFrame {
   /**
    * 화면을 덮는 밝기. **+1이 흰색 · −1이 검정**이다.
    *
@@ -96,7 +97,13 @@ interface CutInFrame {
    * 원작 `ScreenShakeEffect_Start(…, (0xffff / 192) * n, FX32_CONST(a), …)`에서
    * n이 곧 도는 횟수고(주사선 192줄에 0xffff가 한 바퀴다) a가 픽셀 진폭이다
    */
-  ripple: { amplitude: number, cycles: number } | null
+  ripple: {
+    amplitude: number, cycles: number
+    /** 물결이 흘러간 줄 수 (원작 `scrollPos / 100` — 한 틱에 여덟 줄) */
+    phase?: number
+    /** 두 줄마다 부호를 뒤집는다 (`ScreenShakeEffect_InvertBuffer(…, 2)` — 트레이너 물 컷인) */
+    interleave?: boolean
+  } | null
   /** 조리개. 1이면 다 보이고 0이면 다 닫혔다 (`FADE_TYPE_CIRCLE_OUT`) */
   iris: number
   /** 검게 덮은 정도. 0~1 (`FADE_TYPE_BRIGHTNESS_OUT`과 마지막 검정) */
@@ -105,6 +112,54 @@ interface CutInFrame {
   dolly: number
   /** 이 프레임에 끝났는가. 참이면 배틀을 연다 */
   done: boolean
+  /** DS 위 화면(256×192) 좌표로 그리는 것 — 캔버스 덮개가 그린다 (`scene/cutInDraw` · `ui/field/CutInCanvas`) */
+  draw?: CutInDraw
+  /** 카메라 각을 기본에서 얼마나 옮기는가 (도) — 전설 · 환상 컷인의 카메라 컷 (`Camera_SetAngleAroundTarget`) */
+  orbit?: { pitch: number, yaw: number }
+  /** 화각을 기본의 몇 배로 (`Camera_SetFOV`) */
+  fovScale?: number
+  /** 화면 잔상 (`FieldMotionBlur_Start(eva, evb)`) — 없으면 끈다 */
+  blur?: { eva: number, evb: number }
+}
+
+/** 스프라이트 하나 — 자리는 DS 픽셀(셀 원점), 크기 · 돌림은 원작 값 */
+export interface CutInSprite {
+  /** 그림 이름 (`data/encounterEffect/index.json`의 열쇠) */
+  img: string
+  x: number
+  y: number
+  scaleX?: number
+  scaleY?: number
+  /** 65536이 한 바퀴 (`Sprite_SetAffineZRotation`) */
+  rot?: number
+  /** 0~1 (반투명 OAM의 섞기 몫 ÷ 16) */
+  alpha?: number
+  /** 큰 공의 윗반 · 아랫반만 (셀 1 · 2) */
+  half?: 'top' | 'bottom'
+  /** 검정 쪽으로 섞은 몫 0~1 (`EncounterEffect_BlendTrainerSpritePltt(…, f)` — f ÷ 16) */
+  dark?: number
+  /** 모자이크 한 칸 크기 (픽셀 · 1이면 끈다) */
+  mosaic?: number
+  /** 띠의 몇째 셀 (리그 띠 — 세로로 이어 구운 한 장) */
+  frame?: number
+}
+
+/** 그 컷인이 한 프레임에 그리는 것 (DS 좌표) */
+export interface CutInDraw {
+  /** 스프라이트 **밑**에 칠한 검정 — BG3 창 (`ov5_021DE89C`) · 칸 [x, y, 폭, 높이] */
+  paint: [number, number, number, number][]
+  /** 앞에서 뒤로 — 원작 스프라이트 목록은 앞 칸이 위다 */
+  sprites: CutInSprite[]
+  /** 스프라이트 **위**를 덮는 검정 — 창 밖 (`WND0`/`WND1` outside = 없음) · 칸 */
+  mask: [number, number, number, number][]
+  /** 줄마다 보이는 칸 — 192줄 × [x0, x1)… 이 칸만 보이고 나머지는 검정 (원 · 반원 · X 닦기 · 가르기). null이면 다 보인다 */
+  rows: (readonly (readonly [number, number])[])[] | null
+  /** 관장 띠 (BG3) — 가로 밀기 · 줄마다 드러난 왼끝(이 x부터 오른쪽이 보인다) */
+  banner?: { img: string, scroll: number, reveal: readonly number[] | null }
+  /** 3D · 바탕만 어둡게 (`G2_SetBlendBrightness(BG0 | BD, −v)` ÷ 16) */
+  darken?: number
+  /** 이름 — 주인공 이름 자리 (`TEXT_BANK_UNK_0359`) · DS 픽셀 왼쪽 위 */
+  name?: { text: string, x: number, y: number, w: number }
 }
 
 /**
@@ -130,7 +185,7 @@ const CLEAR: CutInFrame = {
  * 곧 `n`단 보간이 **n+1 프레임**을 먹는다. 3단 밝기 변화가 네 프레임인 까닭이고,
  * 번쩍임 전체 길이가 여기서 나온다
  */
-class Linear {
+export class Linear {
   private step = 0
   value: number
 
@@ -481,4 +536,61 @@ export class EncounterCutIn {
     }
     this.frame.dolly = Math.max(DOLLY_MIN, this.dolly)
   }
+}
+
+/** 특별 컷인 번호 (`sEncounterEffectTaskFuncs`의 차례) */
+const SPECIAL_CUT_IN = {
+  leaderRoark: 12, leaderGardenia: 13, leaderWake: 14, leaderMaylene: 15, leaderFantina: 16, leaderCandice: 17,
+  leaderByron: 18, leaderVolkner: 19, eliteAaron: 20, eliteBertha: 21, eliteFlint: 22, eliteLucian: 23,
+  championCynthia: 24, mythical: 25, legendary: 26, galacticGrunt: 27, galacticBoss: 28, frontier: 29, double: 30,
+} as const
+
+const K = SPECIAL_CUT_IN
+const C = TRAINER_CLASS
+/** 트레이너 분류 → 컷인 (`EncEffects_TrainerClassEffect` → `sEncEffectsTable`의 `cutInEffect`) — 없으면 지형대로 (라이벌도) */
+const CLASS_CUT_IN: ReadonlyMap<number, number> = new Map([
+  [C.leaderRoark, K.leaderRoark], [C.leaderGardenia, K.leaderGardenia], [C.leaderWake, K.leaderWake],
+  [C.leaderMaylene, K.leaderMaylene], [C.leaderFantina, K.leaderFantina], [C.leaderCandice, K.leaderCandice],
+  [C.leaderByron, K.leaderByron], [C.leaderVolkner, K.leaderVolkner],
+  [C.eliteFourAaron, K.eliteAaron], [C.eliteFourBertha, K.eliteBertha], [C.eliteFourFlint, K.eliteFlint],
+  [C.eliteFourLucian, K.eliteLucian], [C.championCynthia, K.championCynthia],
+  [C.galacticBoss, K.galacticBoss], [C.commanderMars, K.galacticBoss], [C.commanderJupiter, K.galacticBoss],
+  [C.commanderSaturn, K.galacticBoss], [C.galacticGruntMale, K.galacticGrunt], [C.galacticGruntFemale, K.galacticGrunt],
+])
+/** 갤럭시단 분류 — 더블이어도 제 컷인이다 */
+const GALACTIC_CLASSES: ReadonlySet<number> = new Set([
+  C.galacticBoss, C.commanderMars, C.commanderJupiter, C.commanderSaturn, C.galacticGruntMale, C.galacticGruntFemale,
+])
+/**
+ * 종족 → 컷인 (`EncEffects_WildPokemonEffect`) — 크레세리아 · 엠라이트 · 세 새는 지형대로. 레지 셋은 팔파크에서만 지형대로인데
+ * 팔파크는 범위 밖이다(통신)
+ */
+const SPECIES_CUT_IN: ReadonlyMap<number, number> = new Map([
+  [492, K.mythical], [487, K.mythical], [377, K.mythical], [378, K.mythical], [379, K.mythical],
+  [486, K.mythical], [485, K.mythical], [491, K.mythical], [479, K.mythical],
+  [480, K.legendary], [482, K.legendary], [483, K.legendary], [484, K.legendary], [493, K.legendary],
+])
+
+/**
+ * 특별 컷인 (`EncEffects_GetEffectPair` → `EncEffects_CutInEffectForPair`) — null이면 지형대로(`cutInForBattle`).
+ *
+ * ⚠️ **차례가 곧 규칙이다**: 갤럭시단은 더블이어도 제 것이다. 그 밖의 더블은 전기 관장이어도 더블 컷인이다(곡만 관장 곡).
+ * 야생은 특별한 종족이 먼저고 그다음 더블이다.
+ *
+ * 시설 판(`BATTLE_TYPE_FRONTIER`)과 통신 판의 갈래(프런티어 컷인 29)는 옮기지 않았다 — 시설 안의 배틀은 조우 효과를 안 거치고
+ * (`frscrcmd.c` `FrontierScrCmd_3F`가 곡만 틀고 제 스크립트가 화면을 닫는다) 통신은 범위 밖이다
+ */
+export function specialCutInFor(q: {
+  trainerClass: number | null
+  doubles: boolean
+  foeSpecies: number
+}): number | null {
+  if (q.trainerClass === null) {
+    const special = SPECIES_CUT_IN.get(q.foeSpecies)
+    if (special !== undefined) return special
+    return q.doubles ? K.double : null
+  }
+  if (GALACTIC_CLASSES.has(q.trainerClass)) return CLASS_CUT_IN.get(q.trainerClass)!
+  if (q.doubles) return K.double
+  return CLASS_CUT_IN.get(q.trainerClass) ?? null
 }
