@@ -32,6 +32,13 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 2 — 빛 재질(입구 `PokeCenLight` 등)에 더하기 · 발광 · 켜지는 때를 싣는다 (DATA.md §2.17.6 · docs/orders/VISUAL_20260930.md §2).
+   *
+   * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 옛 지역 glb는 그 재질을 흰 반투명 판으로 들고 있어서 포켓몬센터 · 프렌들리숍 ·
+   * 체육관 입구가 하얀 상자로 막힌 채 남는다
+   */
+  fields: 2,
+  /**
    * 크레딧 — 2에서 **배치표를 사용자 롬에서** 읽는다 (PARITY §8.12).
    *
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 지금까지 두루마리의 y 좌표는

@@ -11,7 +11,7 @@
 // 중앙값이 0.0이다 (`.audit/probe/bdspGroundH.py`)
 //
 // ⚠️ **굽는 쪽은 이것 하나다.** 개발 산출물(`tools/extract/bdspFields.mjs`)도 이 파일을 돌린다 — 두 굽는 쪽이 갈릴 자리를 안 만든다
-import { bakeLooks, lanes, worldOf, type Mat4 } from './arena'
+import { bakeLooks, lanes, worldOf, type ImageShare, type Mat4 } from './arena'
 import {
   ARRAY_BUFFER, ELEMENT_BUFFER, FLOAT, GlbBuffer, UINT, USHORT, verifyGlb, writeGlb, type Gltf,
 } from './glb'
@@ -101,7 +101,7 @@ function columnMajor(m: Mat4): number[] {
 export async function exportField(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
-  options: { name?: string, maxSize?: number | null } = {},
+  options: { name?: string, maxSize?: number | null, share?: ImageShare } = {},
 ): Promise<{ glb: Uint8Array, stat: FieldStat }> {
   const name = options.name ?? 'field'
   const filters = env.ofType('MeshFilter')
@@ -109,7 +109,7 @@ export async function exportField(
 
   const buf = new GlbBuffer()
   const { images, textures, materials, samplers, slotOf, uvOf, materialName } =
-    await bakeLooks(env, encodePng, buf, options.maxSize ?? null, true)
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null, lights: true, share: options.share })
 
   // ── 메시 · 재질 조합마다 세울 자리를 모은다 ──
   const cache = new Map<number, Mat4>()

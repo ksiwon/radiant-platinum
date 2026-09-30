@@ -98,6 +98,7 @@ import { useDevWarp } from './useDevWarp'
 import { ChunkModels } from './ChunkModels'
 import { BdspRoom, useBdspRoom } from './BdspRoom'
 import { BdspField, useBdspFields } from './BdspField'
+import { BdspDungeon, openAir, useBdspDungeon } from './BdspDungeon'
 import { NpcMonModels } from './NpcMonModels'
 import { NpcSprites } from './NpcSprites'
 import { ItemBalls } from './ItemBalls'
@@ -283,10 +284,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const charKeyRef = useRef<PointLight>(null)
   const [mapId, setMapId] = useState(spawn.map)
   const room = useBdspRoom(mapId)
+  const dungeon = useBdspDungeon(mapId)
   const outdoor = mapById(mapId)?.matrix === 0
   const { near: fieldsNear } = useBdspFields(outdoor)
-  /** BDSP가 그림을 쥐는가 — 방이 섰거나, 바깥이고 둘레에 지역이 걸린다 */
-  const bdspDraws = room !== null || (outdoor && fieldsNear.length > 0)
+  /** BDSP가 그림을 쥐는가 — 방이나 던전이 섰거나, 바깥이고 둘레에 지역이 걸린다 */
+  const bdspDraws = room !== null || dungeon !== null || (outdoor && fieldsNear.length > 0)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -805,7 +807,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 부감이라 맵 바깥을 볼 일이 없었지만 우리 3인칭은 가장자리 너머를 본다 —
    * 챔피언로드가 파란 하늘 위의 판때기로 찍혔고 천관산 위에도 하늘이 걸렸다
    */
-  const outdoors = isOutdoors(mapById(mapId))
+  // ⚠️ **BDSP로 선 던전은 제 바깥 배경을 따른다** — 호숫가 · 숲 위가 검게 비지 않게 (`openAir`)
+  const outdoors = isOutdoors(mapById(mapId)) || (dungeon !== null && openAir(mapById(mapId)))
   /** 깨어진 세계인가 — 여기만 아래를 보는 면을 걸어 다닌다 (`DOWN_DIR`) */
   const distortion = isDistortionFloor(mapId)
   /**
@@ -1238,6 +1241,8 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {outdoor && <BdspField near={fieldsNear} />}
       {/* 실내는 BDSP 방이 있으면 그것이 선다 — 원작 칸 좌표 그대로다 (`BdspRoom`) */}
       {room !== null && <BdspRoom key={`${room}@${String(mapId)}`} name={room} mapId={mapId} />}
+      {/* 던전(호수 · 숲 · 동굴 · 탑)도 BDSP가 있으면 그것이 선다 — 방과 같은 자리다 (`BdspDungeon`) */}
+      {dungeon !== null && <BdspDungeon key={dungeon} name={dungeon} />}
       {!bdspDraws && <Ledges grid={grid} chunkIndex={chunkIndex} radius={VIEW_RADIUS} texSet={texSet} />}
       {/* 흔들리는 풀 무더기 (PARITY §6.5). 레이더를 켠 동안만 선다 */}
       <RadarPatches grid={grid} />

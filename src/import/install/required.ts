@@ -53,7 +53,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
  * BDSP에서 나와야 하는 것.
  *
  * ⚠️ **목록을 줄여서 `ready`에 도달하게 만들지 않는다.** 그러면 3D가 통째로 빈
- * 설치본이 "완료"가 된다. 다섯 다 `bdsp/convert.ts`가 만든다
+ * 설치본이 "완료"가 된다. 여덟 다 `bdsp/convert.ts`가 만든다
  */
 export const REQUIRED_BDSP_GROUPS = [
   'npcModels',  // 사람 모델
@@ -65,6 +65,11 @@ export const REQUIRED_BDSP_GROUPS = [
   // 빠진 설치본은 부팅이 `outdated`로 보내고, 설치기는 온전한 그룹을 건너뛰고
   // 이것만 굽는다 (`installer.test.ts`)
   'monVariants',
+  // 실내 방 · 야외 지역 · 던전 — 그림이 BDSP다 (DATA.md §2.17.5~7). 없어도 게임은 돌지만 원작 그림 그대로 서서, 1인칭으로 돌아보면
+  // 합성 벽과 빈 뒷면이 드러난다. ⚠️ **여기 있어야 이미 깐 사람도 받는다** — 위 `monVariants`와 같은 까닭이다
+  'rooms',
+  'fields',
+  'dungeons',
 ] as const
 
 export const REQUIRED_GROUPS: readonly string[] = [

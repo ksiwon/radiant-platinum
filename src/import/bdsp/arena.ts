@@ -155,13 +155,68 @@ interface Looks {
 const ADD_SRC = 5
 const ADD_DST = 1
 
+/**
+ * 그림을 glb 밖 **공용 자리**에 두는 손잡이 — 픽셀을 받아 glTF `uri`(glb에서 본 상대 주소)를 돌려준다.
+ *
+ * 던전이 쓴다 (docs/orders/VISUAL_20260930.md §1). 던전 138곳이 같은 그림을 평균 4.8번 되풀이해서(쓰임 4,735 · 고유 983)
+ * glb마다 실으면 464MB 중 약 ⅔가 사본이다. 같은 픽셀은 한 파일로 두고 glb들이 그 주소를 나눠 가진다
+ */
+export type ImageShare = (rgba: Uint8Array, width: number, height: number) => Promise<string>
+
+interface LookOptions {
+  /** 텍스처 긴 변 상한. null이면 원본 */
+  maxSize?: number | null
+  /** 빛 재질(더하기 · 발광)을 싣는가 — 위 머리말 */
+  lights?: boolean
+  /** 그림을 공용 자리에 둔다 (`ImageShare`). 없으면 glb 안에 싣는다 */
+  share?: ImageShare
+}
+
+/** 감마 값 → 선형. 재질에 박힌 색은 감마다 (`albedo.ts`의 레이어 색과 같은 자리) */
+const toLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+
+/**
+ * 그림 있는 재질에 곱할 색 — 빛 재질을 싣는 쪽만 (`lights`).
+ *
+ * 층 그림을 밑그림으로 쓴 재질은 `_LayerColor`를 곱한다. **반투명 겹그림**(길 가장자리 그러데이션 `Grad_01` · 뿌리 그림자 ·
+ * 입구 그림자 …)은 `_Color` × `_ColorIntensity`와 `_Color`의 알파를 곱한다 — `Grad_01`은 (0.11, 0.1, 0.1) · 0.7이라 어둡게 번지는
+ * 띠인데, 안 곱하면 **하얀 띠**가 길을 두른다. 세기가 0인 겹그림은 더하는 빛이 아니면 안 보인다(바탕이 0이다 — 물웅덩이 `Puddle_01`).
+ * 불투명한 것은 그대로 둔다 — 밑그림이 이미 색이다
+ */
+function tintOf(
+  look: { floats: Map<string, UnityValue>, colors: Map<string, UnityValue> } | undefined,
+  layer: boolean, add: boolean, see: boolean,
+): number[] | null {
+  if (!look) return null
+  const rgb = (key: string): [number, number, number, number] | null => {
+    const c = look.colors.get(key) as Props | undefined
+    return c ? [toLinear(num(c.r, 1)), toLinear(num(c.g, 1)), toLinear(num(c.b, 1)), num(c.a, 1)] : null
+  }
+  if (layer) {
+    const c = rgb('_LayerColor')
+    return c ? [c[0], c[1], c[2], 1] : null
+  }
+  if (!see && !add) return null
+  const c = rgb('_Color')
+  if (!c) return null
+  const k = look.floats.has('_ColorIntensity') ? num(look.floats.get('_ColorIntensity')) : 1
+  const clamp = (x: number): number => Math.min(1, Math.max(0, x))
+  return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), k === 0 && !add ? 0 : clamp(c[3])]
+}
+
 export async function bakeLooks(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
   buf: GlbBuffer,
-  maxSize: number | null,
-  lights = false,
+  options: LookOptions = {},
 ): Promise<Looks> {
+  const maxSize = options.maxSize ?? null
+  const lights = options.lights ?? false
+  /** 그림 한 장을 glTF 그림으로 — 공용 자리가 있으면 거기 두고 주소만, 없으면 glb 안에 싣는다 */
+  const image = async (px: Uint8Array, w: number, h: number, name: string): Promise<Record<string, unknown>> => {
+    if (options.share) return { uri: await options.share(px, w, h), name }
+    return { bufferView: buf.view(await encodePng(px, w, h)), mimeType: 'image/png', name }
+  }
   const renderType = new Map<string, string>()
   const materialName = new Map<number, string>()
   for (const e of env.ofType('Material')) {
@@ -174,15 +229,32 @@ export async function bakeLooks(
   }
   /** 더해서 그리는 재질 (`ADD_SRC` · `ADD_DST`) */
   const additive = new Set<string>()
+  /** 재질마다 색 · 수 · 물린 그림 칸 — 빛 재질을 싣는 쪽만 쓴다 */
+  const looks = new Map<string, { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, slots: Set<string> }>()
   if (lights) {
     for (const e of env.ofType('Material')) {
       const v = env.readEntry(e) as Props | null
       if (!v) continue
-      const floats = pairs(((v.m_SavedProperties ?? {}) as Props).m_Floats)
-      if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) {
-        additive.add((v.m_Name as string | undefined) ?? '?')
+      const saved = (v.m_SavedProperties ?? {}) as Props
+      const floats = pairs(saved.m_Floats)
+      const mat = (v.m_Name as string | undefined) ?? '?'
+      const slots = new Set<string>()
+      for (const [k, raw] of pairs(saved.m_TexEnvs)) {
+        if (num(((raw as Props).m_Texture as Props | undefined)?.m_PathID) !== 0) slots.add(k)
       }
+      looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots })
+      if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) additive.add(mat)
     }
+  }
+  /**
+   * **밑그림이 층 그림에 있는 재질** — `_MainTex`가 없거나 `_ColorIntensity`가 0이라 바탕이 안 보이고 `_LayerTex` × `_LayerColor`가
+   * 색을 낸다. 던전 땅 · 벽(`M_C_001_Ground_05_02` · `M_D_004_Floor_01_1F_01` …)이 그렇다 — 밑그림만 찾으면 그림 없는 재질로 떨어져
+   * 흰(바탕 `_Color`) 또는 검은(× 세기 0) 판이 된다
+   */
+  const layered = new Set<string>()
+  for (const [mat, l] of looks) {
+    const k = l.floats.has('_ColorIntensity') ? num(l.floats.get('_ColorIntensity')) : 1
+    if (l.slots.has('_LayerTex') && (!l.slots.has('_MainTex') || k === 0)) layered.add(mat)
   }
   const textureAt = new Map<number, { entry: ReturnType<Environment['ofType']>[number], read: Texture | null }>()
   for (const e of env.ofType('Texture2D')) textureAt.set(e.object.pathId, { entry: e, read: null })
@@ -198,7 +270,7 @@ export async function bakeLooks(
       const tw = Math.max(1, Math.round(w * k)); const th = Math.max(1, Math.round(h * k))
       px = resize(px, w, h, tw, th); w = tw; h = th
     }
-    images.push({ bufferView: buf.view(await encodePng(px, w, h)), mimeType: 'image/png', name: t.name })
+    images.push(await image(px, w, h, t.name))
     // 발광 그림은 되풀이하지 않는 한 장이다 — 원작 반복 방식(0 Repeat · 1 Clamp)을 그대로 둔다
     const wrap = t.wrapU === 1 ? 33071 : 10497
     let sampler = samplers.findIndex((s) => s.wrapS === wrap && s.wrapT === wrap)
@@ -219,19 +291,24 @@ export async function bakeLooks(
   // ⚠️ **이름순으로 세운다.** 재질 차례가 곧 프리미티브 차례이고, 번들 안
   // 오브젝트 차례는 덤프마다 달라질 수 있다. 개발 추출기도 이름순이라
   // (`sorted(albedo.glob(...))`) parity를 바로 잴 수 있다
-  const baked = bakeAlbedo(env, { maxSize })
+  const main = bakeAlbedo(env, { maxSize }).filter((m) => !layered.has(m.name))
+  const layer = layered.size === 0 ? [] : bakeAlbedo(env, { maxSize, mainProps: ['_LayerTex'] }).filter((m) => layered.has(m.name))
+  const baked = [...main, ...layer]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
   for (const m of baked) {
-    const png = await encodePng(m.pixels, m.width, m.height)
-    images.push({ bufferView: buf.view(png), mimeType: 'image/png', name: m.name })
+    images.push(await image(m.pixels, m.width, m.height, m.name))
     const want = { wrapS: m.look.wrap[0], wrapT: m.look.wrap[1] }
     let sampler = samplers.findIndex((s) => s.wrapS === want.wrapS && s.wrapT === want.wrapT)
     if (sampler < 0) { samplers.push(want); sampler = samplers.length - 1 }
     textures.push({ source: images.length - 1, sampler })
+    const tint = lights
+      ? tintOf(looks.get(m.name), layered.has(m.name), additive.has(m.name), renderType.get(m.name) === 'Transparent')
+      : null
     materials.push({
       name: m.name,
       pbrMetallicRoughness: {
         baseColorTexture: { index: textures.length - 1 },
+        ...(tint ? { baseColorFactor: tint } : {}),
         metallicFactor: 0,
         roughnessFactor: 0.9,
       },
@@ -272,7 +349,9 @@ export async function bakeLooks(
     // 4배를 실을 수 없다
     const glow = colors.get('_EmissionColor') as Props | undefined
     const strength = num(floats.get('_EmissionColorIntensity'))
-    if (glow && strength > 0) {
+    // ⚠️ **빛 재질을 싣는 쪽은 발광 그림이 있을 때만 빛낸다** (아래). 물(`Water_03` · `LakeWater_01` · `SeaWater_*`)은 발광 그림 없이
+    // `_EmissionColor` 흰색 × 4.8을 들고 있는데, 물 셰이더가 반사에 쓰는 값이다 — 늘 켠 흰 발광으로 옮기면 호수와 바다가 하얗게 탄다
+    if (glow && strength > 0 && !lights) {
       plain.emissiveFactor = [num(glow.r), num(glow.g), num(glow.b)]
     }
     if (lights) {
@@ -368,7 +447,7 @@ export async function exportArena(
   // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
   const buf = new GlbBuffer()
   const { images, textures, materials, samplers, slotOf, uvOf, materialName } =
-    await bakeLooks(env, encodePng, buf, options.maxSize ?? null)
+    await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null })
 
   const cache = new Map<number, Mat4>()
   /** 재질 슬롯 → 그 재질로 그리는 조각들 */

@@ -286,6 +286,13 @@ export const GROUPS = [
     match: under('models/field/'),
   },
   {
+    // 던전 — 호수 · 숲 · 동굴 · 탑 138벌. 인스턴싱 + 던전끼리 나눠 쓰는 그림(`tex/`). 굽는 쪽은 설치기와 같은 타입스크립트다
+    // (docs/orders/VISUAL_20260930.md §1)
+    name: 'dungeon',
+    make: 'pnpm extract:dungeons',
+    match: under('models/dungeon/'),
+  },
+  {
     // 종·폼 본체는 `extract:pokemon`이, 이로치 팔레트와 여성 개체는
     // `extract:pokemonVariants`가 굽는다 — 한 그룹이지만 명령이 둘이다
     name: 'pokemon3d',

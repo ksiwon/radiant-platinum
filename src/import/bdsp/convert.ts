@@ -870,7 +870,7 @@ export function roomBundles(paths: Iterable<string>): string[] {
     const key = p.toLowerCase()
     if (!key.startsWith(head)) continue
     const rest = key.slice(head.length)
-    // 던전(`d##`)은 안 굽는다 — 노드 쪽 `bdspArena.py`의 `DUNGEON`과 같다 (기하가 무겁다 · 138벌 856MB)
+    // 던전(`d##`)은 여기서 안 굽는다 — 인스턴싱과 공용 그림으로 따로 굽는다(`convertDungeons`). 노드 쪽 `bdspArena.py`의 `DUNGEON`과 같다
     if (rest !== '' && !rest.includes('/') && !rest.startsWith('d')) out.push(rest)
   }
   return [...new Set(out)].sort()
@@ -903,6 +903,76 @@ async function convertRooms(ctx: ConvertContext): Promise<Produced> {
   }
   requireAll('실내 방', names.length, missing)
   put(ctx, out, 'models/room/index.json', json({ rooms: made }))
+  return out
+}
+
+// ── dungeons ─────────────────────────────────────────────────────────────────
+//
+// **던전을 BDSP로** (docs/orders/VISUAL_20260930.md §1). 호수 · 숲 · 동굴 · 탑 138벌(`prefab_map/d##…`)이다. 방과 같은 자리
+// (원작 칸 좌표 · 행렬 원점)에 서지만 굽는 법은 야외다 — 숲 · 동굴은 같은 나무 · 바위를 수백 번 세우므로 인스턴싱(`field.ts`)을 쓴다.
+//
+// ⚠️ **그림은 던전끼리 한 벌이다.** 던전마다 실으면 464MB이고 그중 약 ⅔가 같은 그림의 사본이다(쓰임 4,735 · 고유 983). 구운 픽셀이
+// 같은 그림은 `models/dungeon/tex/{해시}.png` 한 장으로 두고 glb가 그 주소를 가리킨다 — 모두 156MB(glb 116 · 그림 407장 40).
+// 해시는 픽셀의 SHA-1이라 굽는 차례와 상관없이 같은 이름이 나온다. ⚠️ **개발 산출물도 이 함수가 만든다** (`tools/spike/bdspGroups.mjs`)
+
+/** 던전 번들 이름들 — `prefab_map` 바로 아래의 `d…` */
+export function dungeonBundles(paths: Iterable<string>): string[] {
+  const head = `${ROOMS.toLowerCase()}/`
+  const out: string[] = []
+  for (const p of paths) {
+    const key = p.toLowerCase()
+    if (!key.startsWith(head)) continue
+    const rest = key.slice(head.length)
+    if (/^d\d/.test(rest) && !rest.includes('/')) out.push(rest)
+  }
+  return [...new Set(out)].sort()
+}
+
+/** 픽셀 → 공용 그림 이름. 크기까지 넣어 잰다 — 같은 바이트가 다른 모양일 수 있다 */
+export async function textureKey(rgba: Uint8Array, width: number, height: number): Promise<string> {
+  const head = new TextEncoder().encode(`${String(width)}x${String(height)}:`)
+  const all = new Uint8Array(head.byteLength + rgba.byteLength)
+  all.set(head); all.set(rgba, head.byteLength)
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-1', all))
+  return [...digest.subarray(0, 10)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+async function convertDungeons(ctx: ConvertContext): Promise<Produced> {
+  const src = requireBdsp(ctx)
+  const at = await index(src)
+  const out: Produced = new Map()
+  const names = dungeonBundles(at.keys())
+  requireSome('던전', names.length)
+  const made: { name: string, box: [number, number, number, number] }[] = []
+  const missing: string[] = []
+  const pooled = new Set<string>()
+  const share = async (rgba: Uint8Array, width: number, height: number): Promise<string> => {
+    const key = await textureKey(rgba, width, height)
+    if (!pooled.has(key)) {
+      pooled.add(key)
+      put(ctx, out, `models/dungeon/tex/${key}.png`, await encodePng(rgba, width, height))
+    }
+    return `tex/${key}.png`
+  }
+  let done = 0
+  for (const name of names) {
+    check(ctx)
+    const path = lookup(at, `${ROOMS}/${name}`)
+    const env = path ? await environmentOf(src, [path]) : null
+    if (!env) missing.push(name)
+    else {
+      try {
+        const { glb, stat } = await exportField(env, encodePng, { name, maxSize: ROOM_TEXTURE, share })
+        put(ctx, out, `models/dungeon/${name}.glb`, glb)
+        made.push({ name, box: stat.box })
+      } catch { missing.push(name) }
+    }
+    done++
+    ctx.onProgress?.(done, names.length)
+    await breathe(ctx)
+  }
+  requireAll('던전', names.length, missing)
+  put(ctx, out, 'models/dungeon/index.json', json({ dungeons: made }))
   return out
 }
 
@@ -1078,6 +1148,12 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
     outputs: ['models/field/{지역}.glb', 'models/field/index.json'],
     converter: 1,
     convert: convertFields,
+  },
+  {
+    name: 'dungeons',
+    outputs: ['models/dungeon/{던전}.glb', 'models/dungeon/tex/{해시}.png', 'models/dungeon/index.json'],
+    converter: 1,
+    convert: convertDungeons,
   },
   {
     name: 'motionTiming',
