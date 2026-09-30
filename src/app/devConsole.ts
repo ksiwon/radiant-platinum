@@ -187,6 +187,8 @@ export function installDevConsole(): void {
       worst: +frameStats.percentile(1).toFixed(1),
       calls: perfSnapshot.drawCalls,
       tri: perfSnapshot.triangles,
+      textures: perfSnapshot.textures,
+      geometries: perfSnapshot.geometries,
       backend: perfSnapshot.backend,
       spans: Object.fromEntries([...frameStats.spans].map(([name, v]) => [name, {
         first: +v.first.toFixed(1), worst: +v.worst.toFixed(1),

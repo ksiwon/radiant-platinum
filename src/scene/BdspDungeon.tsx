@@ -15,6 +15,7 @@ import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 import { roomFor } from './BdspRoom'
 import { bdspLights, type BdspLights } from './bdspLights'
+import { disposeTree } from './disposeTree'
 import { fieldFade, type FieldFade } from './fieldFade'
 
 const ROOT = 'models/dungeon'
@@ -86,6 +87,7 @@ export function BdspDungeon({ name }: { name: string }) {
     let alive = true
     const provider = assets()
     const held: string[] = []
+    let built: Group | null = null
     const load = async (): Promise<Group> => {
       const glb = await provider.bytes(`${ROOT}/${name}.glb`)
       const urls = new Map<string, string>()
@@ -101,7 +103,8 @@ export function BdspDungeon({ name }: { name: string }) {
     }
     load()
       .then((root) => {
-        if (!alive) return
+        if (!alive) { disposeTree(root); return }
+        built = root
         root.traverse((o) => {
           if (!(o instanceof Mesh)) return
           o.receiveShadow = true
@@ -115,7 +118,8 @@ export function BdspDungeon({ name }: { name: string }) {
       })
       .catch((e: unknown) => { console.error(`던전 ${name}을 못 세웠다`, e) })
       .finally(() => { for (const p of held) provider.releaseObjectUrl(p) })
-    return () => { alive = false }
+    // ⚠️ **떼면 버린다** (`disposeTree`) — 나눠 쓰는 그림도 던전마다 새로 풀어 올리므로 그 벌은 이 던전 몫이다
+    return () => { alive = false; if (built) disposeTree(built) }
   }, [name])
   return scene ? <primitive object={scene} /> : null
 }

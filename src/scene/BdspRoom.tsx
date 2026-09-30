@@ -20,6 +20,7 @@ import {
 } from 'three'
 import { assets } from '../data/providers/assetProvider'
 import { mapById, warpsOf, world } from '../engine/map/world'
+import { disposeTree } from './disposeTree'
 import { DOOR_OPEN } from './roomWalls'
 import { worldState } from '../state/worldState'
 
@@ -291,10 +292,12 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
     let alive = true
     const path = `models/room/${name}.glb`
     const provider = assets()
+    let held: Group | null = null
     provider.objectUrl(path)
       .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
       .then((gltf) => {
-        if (!alive) return
+        if (!alive) { disposeTree(gltf.scene); return }
+        held = gltf.scene
         const top: Object3D[] = []
         gltf.scene.traverse((o) => {
           if (!(o instanceof Mesh)) return
@@ -316,7 +319,8 @@ export function BdspRoom({ name, mapId }: { name: string, mapId: number }) {
         setScene(gltf.scene)
       })
       .catch((e: unknown) => { console.error(`방 ${name}을 못 세웠다`, e) })
-    return () => { alive = false }
+    // ⚠️ **떼면 버린다** (`disposeTree`)
+    return () => { alive = false; if (held) disposeTree(held) }
   }, [name, mapId])
 
   useFrame(() => {

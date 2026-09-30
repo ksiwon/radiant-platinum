@@ -15,6 +15,7 @@ import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 import { fieldFade, type FieldFade } from './fieldFade'
 import { bdspLights, type BdspLights } from './bdspLights'
+import { disposeTree } from './disposeTree'
 
 const loader = new GLTFLoader()
 
@@ -89,10 +90,12 @@ function FieldArea({ name }: { name: string }) {
     let alive = true
     const path = `models/field/${name}.glb`
     const provider = assets()
+    let held: Group | null = null
     provider.objectUrl(path)
       .then((url) => loader.loadAsync(url).finally(() => { provider.releaseObjectUrl(path) }))
       .then((gltf) => {
-        if (!alive) return
+        if (!alive) { disposeTree(gltf.scene); return }
+        held = gltf.scene
         gltf.scene.traverse((o) => {
           if (!(o instanceof Mesh)) return
           o.receiveShadow = true
@@ -114,7 +117,8 @@ function FieldArea({ name }: { name: string }) {
         setScene(gltf.scene)
       })
       .catch((e: unknown) => { console.error(`지역 ${name}을 못 세웠다`, e) })
-    return () => { alive = false }
+    // ⚠️ **떼면 버린다** (`disposeTree`) — 걸어서 지역이 갈릴 때마다 한 벌이 남았다
+    return () => { alive = false; if (held) disposeTree(held) }
   }, [name])
   return scene ? <primitive object={scene} /> : null
 }

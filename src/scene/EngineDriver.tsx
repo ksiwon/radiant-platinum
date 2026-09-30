@@ -372,6 +372,8 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
     perfSnapshot.frameMs = gameLoop.stats.frameMs
     perfSnapshot.drawCalls = info?.render?.drawCalls ?? 0
     perfSnapshot.triangles = info?.render?.triangles ?? 0
+    perfSnapshot.textures = info?.memory?.textures ?? 0
+    perfSnapshot.geometries = info?.memory?.geometries ?? 0
   }, 1)
 
   return null

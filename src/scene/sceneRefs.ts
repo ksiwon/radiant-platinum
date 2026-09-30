@@ -70,6 +70,9 @@ export const perfSnapshot = {
   frameMs: 0,
   drawCalls: 0,
   triangles: 0,
+  /** 렌더러가 쥔 그림 · 형상 수 (`info.memory`) — 맵을 옮겨 다녀도 늘기만 하면 치운 층이 GPU를 안 놓은 것이다 */
+  textures: 0,
+  geometries: 0,
   backend: '?',
   /**
    * 이번 판에 터진 스크립트 수와 마지막 한 줄 (`engine/script/field`).
