@@ -212,7 +212,14 @@ export function HallOfFameScreen() {
     void useSaveStore
       .getState()
       .report(START_LOCATION)
-      .then(() => {
+      .then((got) => {
+        // ⚠️ **`report`는 실패해도 안 던진다** — `saved: false`로 돌려준다. 결과를 안 보면 못 쓴
+        // 리포트에도 「기록했다」가 뜨고, 사람은 엔딩이 남은 줄 알고 끈다
+        if (!got.saved) {
+          setSaveFailed(true)
+          setBeat('saved')
+          return
+        }
         void music.playEffect(SFX.SAVE)
         setBeat('saved')
       })

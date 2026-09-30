@@ -794,8 +794,8 @@ function snapshot(s: SaveStore, position: SaveData['position']): SaveData {
     registeredItem: s.registeredItem,
     battlePoints: s.battlePoints,
     factory: s.factory,
-    // ⚠️ **스키마와 같은 자리에 둔다.** 검사합이 `JSON.stringify`라
-    // 키 차례가 다르면 다시 읽은 리포트가 「다르다」로 떨어진다
+    // 스키마와 같은 자리에 둔다. 차례가 달라도 저장은 된다 — 쓰기 전에 스키마
+    // 모양으로 다시 세운다 (`state/report.ts`의 `writeReportVerified`)
     honeyTrees: s.honeyTrees,
     radar: s.radar,
     berryPatches: s.berryPatches,
@@ -1006,7 +1006,9 @@ export const useSaveStore = create<SaveStore>()(
         const data = await readReport(SAVE_VERSION)
         set({ hydrated: true })
         if (!data) return false
-        set({ ...data, loaded: true })
+        // ⚠️ **새 판 표식을 내린다** — 가져오기·되찾기와 같다. 남아 있으면 필드가 뜰 때
+        // 불러온 판 위에서 `scripts_init_new_game`이 돌아 플래그를 새 게임 것으로 덮는다
+        set({ ...data, loaded: true, pendingInit: false })
         return true
       },
 

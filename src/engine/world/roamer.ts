@@ -147,7 +147,10 @@ export function newRecentRoutes(): RecentRoutes {
  */
 export function trackRoute(at: RecentRoutes, newMap: number): RecentRoutes {
   if (at.current === newMap) return at
-  return { previous: at.current, current: newMap }
+  // ⚠️ **칸 차례를 `RecentRoutes`·세이브 스키마와 같게 둔다** (current → previous). 뒤집혀
+  // 있을 때는 배회가 도는 판에서 맵을 한 번 넘기만 하면 그 뒤 리포트가 전부 「다시 읽은
+  // 리포트가 다르다」로 떨어졌다 — 검사합이 `JSON.stringify`라 차례까지 본다
+  return { current: newMap, previous: at.current }
 }
 
 export type Rng = () => number

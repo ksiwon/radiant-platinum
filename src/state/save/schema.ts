@@ -182,8 +182,7 @@ const monSchema = z.object({
   /**
    * 포켓루스 한 바이트 (`engine/pokemon/pokerus.ts`).
    *
-   * ⚠️ **마지막 칸이다.** `PokemonInstance`의 칸 차례와 여기가 같아야
-   * 검사합이 맞는다 — 새 칸은 양쪽 다 끝에 붙인다
+   * `PokemonInstance`와 같은 차례로 둔다 — 새 칸은 양쪽 다 끝에 붙인다
    */
   pokerus: int(0, 255),
   /**
@@ -263,8 +262,7 @@ const saveSchema = z.object({
   pokedex: z.object({
     seen: u8(DEX_BYTES),
     caught: u8(DEX_BYTES),
-    // ⚠️ **맨 뒤에 붙인다.** 읽어들일 때 스키마 차례대로 다시 세우므로,
-    // 사이에 끼우면 예전에 쓴 리포트와 바이트가 어긋난다
+    // 맨 뒤에 붙인다 (CODEMAP §2.2)
     battled: u8(DEX_BYTES),
     /**
      * 본 안농 글자를 **본 차례대로** (PARITY §6.8).
@@ -333,10 +331,6 @@ const saveSchema = z.object({
    * 세지 않고, 그 맵을 벗어나는 순간 끝이다. 그래도 저장한다 — 원작이
    * 리펠 걸음과 **같은 구조체**에 넣어 두어서, 같은 맵에서 리포트를 다시
    * 열면 피리가 그대로 살아 있다.
-   *
-   * ⚠️ **칸의 차례가 스키마와 같아야 한다.** 체크섬이 `JSON.stringify`라
-   * 키 순서가 다르면 "다시 읽은 리포트가 다르다"로 떨어진다 — `saveStore`의
-   * `snapshot()`과 이 스키마를 같은 차례로 둔다
    */
   flute: int(0, 2),
   /**
@@ -588,8 +582,7 @@ const saveSchema = z.object({
   /**
    * 꿀 나무 21그루 (PARITY §6.6) — `PlayerHoneyTreeStates`.
    *
-   * ⚠️ **맨 뒤에 붙인다.** 검사합이 `JSON.stringify`라 칸 차례가 스토어의
-   * `snapshot()`과 같아야 한다.
+   * 맨 뒤에 붙인다 (CODEMAP §2.2).
    *
    * ⚠️ **바르는 순간 무엇이 붙을지가 정해진다.** 그루마다 남은 분·무리·자리·
    * 표·흔들림을 다 적어 두지 않으면 여섯 시간 뒤에 그 답을 다시 만들 수가 없다
@@ -718,8 +711,7 @@ const saveSchema = z.object({
    * 밤으로 돌려놓는 수밖에 없었다 — 그것은 「배포본에서 세이브로 다 본다」가
    * 아니다. 사람이 실제로 논 리포트는 늘 null이다.
    *
-   * ⚠️ **맨 뒤다** (CODEMAP §2.2). 사이에 끼우면 앞서 쓴 리포트와 바이트 차례가
-   * 어긋난다
+   * ⚠️ **맨 뒤다** (CODEMAP §2.2)
    */
   hourPin: z.number().min(0).max(24).nullable(),
   /**

@@ -120,10 +120,20 @@ export async function writeReportVerified(data: SaveData): Promise<WriteResult> 
   const before = safeParseSave(data)
   if (!before.ok) return { ok: false, why: `쓰려는 리포트가 스키마를 어긴다 — ${before.why}` }
 
-  const want = checksum(encodePayload(data))
+  // ⚠️ **스키마를 지난 모양을 쓰고, 그것으로 잰다.** 검사합이 `JSON.stringify`라 칸
+  // 차례까지 보는데, 되읽은 쪽은 늘 스키마 차례로 선다. 스토어의 값을 그대로 재면
+  // 객체 하나의 칸 차례만 달라도 「다르다」로 떨어져 리포트를 영영 못 썼다 — 실제로
+  // `trackRoute`가 `{ previous, current }`로 돌려주고 있어서 배회가 도는 판은 맵을
+  // 한 번 넘은 뒤로 저장이 전부 실패했다 (`saveRoundTrip.test.ts`). 차례는 뜻이 없고,
+  // 여기서 잡을 것은 structured clone이 잃는 것이다.
+  //
+  // 스키마에 없는 칸은 여기서 떨어진다 — 읽을 때도 어차피 떨어지는 칸이다. 스키마가
+  // `SaveData`의 칸을 다 드는지는 `saveRoundTrip.test.ts`의 「꽉 찬 판」이 잰다
+  const canonical = before.save
+  const want = checksum(encodePayload(canonical))
 
   try {
-    await set(TMP, data, dbStore)
+    await set(TMP, canonical, dbStore)
   } catch (e) {
     return { ok: false, why: `임시 슬롯에 못 썼다 — ${message(e)}` }
   }

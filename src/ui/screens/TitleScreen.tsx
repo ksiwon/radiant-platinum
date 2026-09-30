@@ -25,6 +25,8 @@ import { useNavigate } from 'react-router'
 import { loadUiText, MAIN_MENU } from '../../data/uiText'
 import { readReportDetailed } from '../../state/report'
 import { useMenuStore } from '../../state/menuStore'
+import { useSessionStore } from '../../state/sessionStore'
+import { APP_ROOT } from '../../data/assetBase'
 import { useGameLocale } from '../../state/optionsStore'
 import {
   dexHas, SAVE_VERSION, useSaveStore,
@@ -82,7 +84,29 @@ const MoreMenu = lazy(() =>
 
 const DEX_MAX = 493
 
+/**
+ * 타이틀 — **이 탭에서 이미 세계를 세웠으면 통째로 다시 켠다** (원작의 리셋).
+ *
+ * ⚠️ **라우터로만 돌아오면 세계가 그대로 남는다.** 캔버스는 라우트 위에 떠 있어서
+ * (`app/App.tsx`의 영속 Canvas) 타이틀에서도 맵과 스크립트가 선 채로 기다리고,
+ * 필드가 리포트를 붓는 자리(`MapStreamer`의 복원 · `loadVars`)는 **처음 한 번만** 돈다.
+ * 그 위에서 「이어하기」·「불러오기」·「되찾기」를 누르면 스토어만 리포트로 바뀌고
+ * 자리와 스크립트 플래그는 **리포트를 안 쓴 그 판의 것**이 남는다 — 다음 리포트가 그
+ * 둘을 섞어서 쓴다. 「시작」도 같아서 새 판이 옛 판의 자리에서 열린다.
+ * 크레딧이 같은 까닭으로 `location.assign`으로 나간다(`CreditsScreen`의 `leave` · 실측 p9).
+ *
+ * 돌아오는 길이 여럿이라(Escape · 복원 실패 창의 「타이틀로」 · 브라우저 뒤로) 나가는
+ * 쪽이 아니라 **닿는 쪽**에서 한 번에 막는다
+ */
 export function TitleScreen() {
+  const stale = useSessionStore((s) => s.stageMounted)
+  useEffect(() => {
+    if (stale) location.replace(APP_ROOT)
+  }, [stale])
+  return stale ? null : <TitleMenu />
+}
+
+function TitleMenu() {
   const navigate = useNavigate()
   const [text, setText] = useState<string[]>([])
   const [report, setReport] = useState<SaveData | null | undefined>(undefined)

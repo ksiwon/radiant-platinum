@@ -66,9 +66,8 @@ export interface PokemonInstance {
   /**
    * 어디서 왔는가 (`origin.ts`). 요약 화면의 트레이너 메모가 이것만으로 쓰인다.
    *
-   * ⚠️ **칸 차례를 지킨다.** 여기가 마지막 칸이고 `save/schema.ts`도 마지막이다 —
-   * 리포트를 다시 읽으면 zod가 스키마 차례로 세우므로, 둘이 어긋나면
-   * `JSON.stringify`가 다른 글을 내고 검사합이 깨진다
+   * 칸 차례는 `save/schema.ts`와 같게 둔다. 어긋나도 리포트는 써진다 — 쓰기 전에
+   * 스키마 차례로 다시 세운다 (`state/report.ts`의 `writeReportVerified`)
    */
   origin: Origin
   /**

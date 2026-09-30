@@ -129,13 +129,9 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = {
     const gender = who?.gender === 'boy' ? 'male' : 'female'
     const blank = { location: 0, date: null }
     const origin = { otName: name, otGender: gender, met: blank, metLevel: 0, egg: blank, fateful: false }
-    const stamp = (mon: unknown): unknown =>
-      mon === null || typeof mon !== 'object' ? mon : { ...mon, origin }
-    const party = Array.isArray(data.party) ? data.party.map(stamp) : data.party
-    const boxes = Array.isArray(data.boxes)
-      ? data.boxes.map((box) => (Array.isArray(box) ? box.map(stamp) : box))
-      : data.boxes
-    return { ...data, version: 12, party, boxes }
+    // ⚠️ **육성가 마리까지 새긴다** (`stampMons`). 판 10에서 생긴 육성가에 맡겨 둔 마리를
+    // 빠뜨리면 마지막 스키마가 `daycare.slots.0.mon.origin`에서 걸려 **리포트 전체**를 못 읽는다
+    return { ...data, version: 12, ...stampMons(data, { origin }) }
   },
 
   /**
