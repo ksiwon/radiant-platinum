@@ -382,9 +382,79 @@ function bonesNamed(body: Object3D, ...names: readonly string[]): Object3D[] {
 export function shapeChibi(
   inner: Object3D, body: Object3D, nativeHeight: number,
 ): number {
+  const key = firstGeometry(body)
+  const known = key ? headFitOf.get(key) : undefined
+  if (known !== undefined) return shapeOnce(inner, body, nativeHeight, known.k, known.height)
+  // 배수 1로 한 번 세워 키를 정하고(`CHIBI_GROW`), 그 키를 지킨 채 머리만 재어 줄인다 — 머리를 줄인 만큼 사람이 작아지면 안 된다
+  const height = shapeOnce(inner, body, nativeHeight, 1, null)
+  let k = 1
+  for (let pass = 0; pass < 4; pass++) {
+    const span = headSpan(body, frameOf(inner))
+    if (!span) break
+    const s = Math.min(1, (CHIBI_HEAD_FIT.height * height) / span.height, (CHIBI_HEAD_FIT.width * height) / span.width)
+    if (s > 0.995) break
+    k *= s
+    shapeOnce(inner, body, nativeHeight, k, height)
+  }
+  if (key) headFitOf.set(key, { k, height })
+  return height
+}
+
+/**
+ * 머리가 **키 대비 이만큼을 넘지 않게** 줄인다 — 높이와 폭 둘 다 (docs/orders/VISUAL_20260930.md §3).
+ *
+ * ⚠️ **배수 하나(`CHIBI_HEAD`)로는 사람마다 흩어진다.** 치비마다 머리 비중이 달라서, ×0.24 한 값으로 세우면 머리 높이가 키의
+ * 16.7~24.3%, 폭이 20.2~27.3%로 갈린다. 목 위에 앉힌 뒤(`CHIBI_HEAD_SEAT`) 세로를 다시 맞추며 머리도 같이 늘었다. 배포판에서
+ * 「2등신 모델을 키운 NPC는 얼굴이 커서 뚱뚱해 보인다」로 짚였다.
+ *
+ * 값의 근거 — 사용자가 괜찮다고 한 **주인공과 현이**(등신)를 **이 함수가 재는 잣대 그대로** 잰 값이다: 바인드 자세, 머리뼈와 그 아래
+ * 뼈(머리카락 · 모자)에 가장 무겁게 매달린 정점 (`headSpan` · `.audit/probe/chibiHead.mjs`의 「기본자세」 칸):
+ *
+ *              높이    폭
+ *   주인공      21.8%  21.2%
+ *   현이        22.6%  25.3%
+ *   치비 일곱   19.5~28.6% · 20.2~27.3%   ← 줄이기 전
+ *
+ * 「뚱뚱해 보인다」는 **폭**이다 — 폭은 두 사람의 평균(23.3%)을 넘지 않게, 높이는 둘 중 큰 쪽(22.6%)을 넘는 것만 줄인다.
+ * ⚠️ 잣대를 섞으면 안 된다 — 선 자세에서 `Head` 뼈에만 매달린 정점으로 잰 값(주인공 21.4% · 현이 18.9%)을 기준으로 삼았더니
+ * 머리카락까지 재는 이쪽과 어긋나서, 치비가 주인공보다 작은 머리로 줄었다(fc2038 높이 17.0% · 폭 14.5%).
+ *
+ * 이보다 작은 머리는 안 키운다 — 넘는 쪽만 줄인다
+ */
+const CHIBI_HEAD_FIT = { height: 0.226, width: 0.233 } as const
+
+/** 모델마다 한 번만 잰다 — 복제본은 지오메트리를 나눠 쓴다 (`SkeletonUtils.clone`) */
+const headFitOf = new WeakMap<object, { k: number, height: number }>()
+
+function firstGeometry(body: Object3D): object | null {
+  let g: object | null = null
+  body.traverse((o) => { if (!g && (o as SkinnedMesh).isSkinnedMesh) g = (o as SkinnedMesh).geometry })
+  return g
+}
+
+/** 머리(머리뼈와 그 아래 뼈에 가장 무겁게 매달린 정점)의 높이 · 폭 — `frame` 좌표계로. 모델은 +z를 보므로 폭이 x다 */
+function headSpan(body: Object3D, frame: Object3D): { height: number, width: number } | null {
+  const under = new Set<Object3D>()
+  for (const head of bonesNamed(body, 'Head')) head.traverse((o) => { under.add(o) })
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+  frame.updateMatrixWorld(true)
+  eachSkinned(body, frame, (v, bone) => {
+    if (!bone || !under.has(bone)) return
+    x0 = Math.min(x0, v.x); x1 = Math.max(x1, v.x); y0 = Math.min(y0, v.y); y1 = Math.max(y1, v.y)
+  })
+  return x1 > x0 && y1 > y0 ? { height: y1 - y0, width: x1 - x0 } : null
+}
+
+/**
+ * 한 벌 세운다. `headK`는 머리 배수(`CHIBI_HEAD`)에 더 곱할 값, `fixedHeight`는 세울 키 — `null`이면 `CHIBI_GROW`로 정한다
+ */
+function shapeOnce(
+  inner: Object3D, body: Object3D, nativeHeight: number, headK: number, fixedHeight: number | null,
+): number {
+  const HEAD = CHIBI_HEAD * headK
   const heads = bonesNamed(body, 'Head')
   for (const bone of heads) {
-    bone.scale.setScalar(CHIBI_HEAD)
+    bone.scale.setScalar(HEAD)
     // 앞서 앉혀 둔 자리가 있으면 원래 자리로 — 그래야 키를 원본으로 잰다 (`seatHead`)
     const from = bone.userData.seatFrom as Vector3 | undefined
     if (from) bone.position.copy(from)
@@ -411,7 +481,7 @@ export function shapeChibi(
   }
   // 머리를 줄인 **뒤에** 키를 잰다 — 그래야 머리카락이 키를 안 정한다
   const shrunk = normalizeModel(inner, body, 1).nativeHeight
-  const height = shrunk * CHIBI_GROW
+  const height = fixedHeight ?? shrunk * CHIBI_GROW
   const fit = normalizeModel(inner, body, height)
   // 머리를 줄인 만큼 몸이 짧아졌고, 정규화가 그만큼 통째로 키웠다. 그 늘림을
   // 굵기에서 도로 뺀다 (`CHIBI_SLIM`)
@@ -422,8 +492,8 @@ export function shapeChibi(
   // 눌린 만큼 머리는 도로 둥글게 편다.
   // ⚠️ **머리뼈의 로컬 축은 X가 위, Y가 좌우, Z가 앞이다** — 실측했다
   // (바인드에서 X축이 월드 +Y를 가리킨다). 그래서 가로 보정이 y·z로 간다
-  const round = (CHIBI_HEAD * fit.scale) / girth
-  for (const bone of heads) bone.scale.set(CHIBI_HEAD, round, round)
+  const round = (HEAD * fit.scale) / girth
+  for (const bone of heads) bone.scale.set(HEAD, round, round)
   // 다리만 따로 조인다. 길이축(로컬 X)은 그대로 두고 단면만 줄인다
   for (const thigh of bonesNamed(body, ...LEG_ROOT)) {
     thigh.scale.set(1, CHIBI_LEG, CHIBI_LEG)
@@ -445,8 +515,8 @@ export function shapeChibi(
     inner.updateMatrixWorld(true)
     const ground = standingSpan(body, frameOf(inner)).lo
     inner.position.y -= ground
-    const again = (CHIBI_HEAD * inner.scale.y) / girth
-    for (const bone of heads) bone.scale.set(CHIBI_HEAD, again, again)
+    const again = (HEAD * inner.scale.y) / girth
+    for (const bone of heads) bone.scale.set(HEAD, again, again)
     if (Math.abs(k - 1) < 1e-9 && Math.abs(ground) < 1e-9) break
   }
   // 든 물건은 위팔을 조인 배율(`CHIBI_ARM`)까지 물려받는다 — 월드에서 몸통과 같은 배율로 되돌린다
