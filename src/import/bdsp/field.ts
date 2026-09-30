@@ -109,7 +109,7 @@ export async function exportField(
 
   const buf = new GlbBuffer()
   const { images, textures, materials, samplers, slotOf, uvOf, materialName } =
-    await bakeLooks(env, encodePng, buf, options.maxSize ?? null)
+    await bakeLooks(env, encodePng, buf, options.maxSize ?? null, true)
 
   // ── 메시 · 재질 조합마다 세울 자리를 모은다 ──
   const cache = new Map<number, Mat4>()

@@ -14,6 +14,7 @@ import { AdditiveBlending, Mesh, Vector3, type Group, type Material } from 'thre
 import { assets } from '../data/providers/assetProvider'
 import { worldState } from '../state/worldState'
 import { fieldFade, type FieldFade } from './fieldFade'
+import { bdspLights, type BdspLights } from './bdspLights'
 
 const loader = new GLTFLoader()
 
@@ -71,12 +72,14 @@ const AIM = 1.2
 function FieldArea({ name }: { name: string }) {
   const [scene, setScene] = useState<Group | null>(null)
   const fade = useRef<FieldFade | null>(null)
+  const lights = useRef<BdspLights | null>(null)
   const tick = useRef(0)
   const cam = useRef(new Vector3())
   const aim = useRef(new Vector3())
   useFrame(({ camera }) => {
     // 세 프레임에 한 번 — 인스턴스가 지역 하나에 수천이다
     if (!fade.current || (tick.current++ % 3) !== 0) return
+    lights.current?.update(worldState.time.gameHour)
     const p = worldState.player.position
     camera.getWorldPosition(cam.current)
     aim.current.set(p.x, p.y + AIM, p.z)
@@ -104,7 +107,10 @@ function FieldArea({ name }: { name: string }) {
             o.castShadow = false
           }
         })
+        // ⚠️ **흐림이 먼저다.** `fieldFade`가 건물 재질을 복제해 갈아 끼우므로, 빛을 먼저 펴면 발광을 맞추는 쪽이 버려진 재질을 쥔다
         fade.current = fieldFade(gltf.scene)
+        lights.current = bdspLights(gltf.scene)
+        lights.current.update(worldState.time.gameHour)
         setScene(gltf.scene)
       })
       .catch((e: unknown) => { console.error(`지역 ${name}을 못 세웠다`, e) })

@@ -15,7 +15,7 @@ import {
   verifyGlb, writeGlb, type Gltf,
 } from './glb'
 import { meshFrom, CHANNEL, type MeshData } from './mesh'
-import { resource } from './texture'
+import { readTexture, resize, resource, type Texture } from './texture'
 import type { Environment } from './environment'
 import type { UnityValue } from './typetree'
 
@@ -136,11 +136,31 @@ interface Looks {
   materialName: Map<number, string>
 }
 
+/**
+ * **빛 재질** — 원작이 더해서 그리고 밤에만 켜는 것 (docs/orders/VISUAL_20260930.md §2).
+ *
+ * 포켓몬센터 · 프렌들리숍 · 체육관 입구마다 `PokeCenLight` 한 벌이 선다. 원작 값은 `_SrcBlend 5 · _DstBlend 1`(SrcAlpha, One —
+ * **더한다**)에 `_ColorIntensity 0`이라 바탕색이 0이다 — **낮에는 아무것도 안 보인다.** 빛은 `_EmissionTex`(입구 앞 빛 웅덩이
+ * 그림) × `_EmissionColor` × `_EmissionColorIntensity`(5.8)로만 나고 `_EmissionOnTime`(0.4)부터 켜진다. `RenderType`만 보면
+ * Transparent라 흰 반투명 판(가로 3.6 · 높이 1.8 · 깊이 4칸)이 입구를 막고 섰다.
+ *
+ * glTF에는 더하기도 시각도 없으므로 `extras`에 싣고 실행 쪽이 편다 (`scene/bdspLights`):
+ *
+ *   add      더해서 그린다
+ *   glow     발광 세기 (`emissiveFactor`는 0~1이라 5.8을 못 싣는다)
+ *   emitOn   발광이 켜지는 어둠 (`_EmissionOnTime`)
+ *
+ * ⚠️ **야외만 켠다.** 무대 · 방은 노드 굽는 쪽(`bdspArena.py`)과 바이트가 같아야 한다 — 그쪽에 없는 것을 이쪽에서만 쓰면 둘이 갈린다
+ */
+const ADD_SRC = 5
+const ADD_DST = 1
+
 export async function bakeLooks(
   env: Environment,
   encodePng: (rgba: Uint8Array, width: number, height: number) => Promise<Uint8Array>,
   buf: GlbBuffer,
   maxSize: number | null,
+  lights = false,
 ): Promise<Looks> {
   const renderType = new Map<string, string>()
   const materialName = new Map<number, string>()
@@ -151,6 +171,40 @@ export async function bakeLooks(
     materialName.set(e.object.pathId, mat)
     const tags = pairs(v.stringTagMap)
     renderType.set(mat, (tags.get('RenderType') as string | undefined) ?? 'Opaque')
+  }
+  /** 더해서 그리는 재질 (`ADD_SRC` · `ADD_DST`) */
+  const additive = new Set<string>()
+  if (lights) {
+    for (const e of env.ofType('Material')) {
+      const v = env.readEntry(e) as Props | null
+      if (!v) continue
+      const floats = pairs(((v.m_SavedProperties ?? {}) as Props).m_Floats)
+      if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) {
+        additive.add((v.m_Name as string | undefined) ?? '?')
+      }
+    }
+  }
+  const textureAt = new Map<number, { entry: ReturnType<Environment['ofType']>[number], read: Texture | null }>()
+  for (const e of env.ofType('Texture2D')) textureAt.set(e.object.pathId, { entry: e, read: null })
+  /** 발광 그림 — 그대로 읽어 줄이기만 한다. 레이어 색 · 마스크를 곱하는 `bakeAlbedo`의 틀이 아니다 */
+  const emissionImage = async (pid: number): Promise<number | null> => {
+    const at = textureAt.get(pid)
+    if (!at) return null
+    at.read ??= readTexture(env.read(pid) as Props, at.entry.bundle)
+    const t = at.read
+    let [w, h, px] = [t.width, t.height, t.pixels]
+    if (maxSize !== null && Math.max(w, h) > maxSize) {
+      const k = maxSize / Math.max(w, h)
+      const tw = Math.max(1, Math.round(w * k)); const th = Math.max(1, Math.round(h * k))
+      px = resize(px, w, h, tw, th); w = tw; h = th
+    }
+    images.push({ bufferView: buf.view(await encodePng(px, w, h)), mimeType: 'image/png', name: t.name })
+    // 발광 그림은 되풀이하지 않는 한 장이다 — 원작 반복 방식(0 Repeat · 1 Clamp)을 그대로 둔다
+    const wrap = t.wrapU === 1 ? 33071 : 10497
+    let sampler = samplers.findIndex((s) => s.wrapS === wrap && s.wrapT === wrap)
+    if (sampler < 0) { samplers.push({ wrapS: wrap, wrapT: wrap }); sampler = samplers.length - 1 }
+    textures.push({ source: images.length - 1, sampler })
+    return textures.length - 1
   }
 
   const images: Record<string, unknown>[] = []
@@ -183,6 +237,7 @@ export async function bakeLooks(
       },
       ...alphaOf(renderType.get(m.name) ?? 'Opaque'),
       doubleSided: true,
+      ...(additive.has(m.name) ? { alphaMode: 'BLEND', extras: { add: true } } : {}),
     })
     slotOf.set(m.name, materials.length - 1)
     // ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
@@ -216,8 +271,28 @@ export async function bakeLooks(
     // 스스로 빛나는 것. 세기까지는 안 옮긴다 — glTF의 `emissiveFactor`는 0~1이라
     // 4배를 실을 수 없다
     const glow = colors.get('_EmissionColor') as Props | undefined
-    if (glow && num(floats.get('_EmissionColorIntensity')) > 0) {
+    const strength = num(floats.get('_EmissionColorIntensity'))
+    if (glow && strength > 0) {
       plain.emissiveFactor = [num(glow.r), num(glow.g), num(glow.b)]
+    }
+    if (lights) {
+      // 바탕색에 `_ColorIntensity`를 곱한다 — 빛 재질은 0이라 낮에 안 보인다
+      const k = floats.has('_ColorIntensity') ? num(floats.get('_ColorIntensity')) : 1
+      const pbr = plain.pbrMetallicRoughness as { baseColorFactor: number[] }
+      pbr.baseColorFactor = [num(base.r, 1) * k, num(base.g, 1) * k, num(base.b, 1) * k, num(base.a, 1)]
+      const extras: Record<string, unknown> = {}
+      if (additive.has(mat)) { plain.alphaMode = 'BLEND'; extras.add = true }
+      const tex = pairs(saved.m_TexEnvs).get('_EmissionTex') as Props | undefined
+      const pid = num((tex?.m_Texture as Props | undefined)?.m_PathID)
+      if (glow && strength > 0 && pid !== 0) {
+        const index = await emissionImage(pid)
+        if (index !== null) {
+          plain.emissiveTexture = { index }
+          extras.glow = strength
+          extras.emitOn = num(floats.get('_EmissionOnTime'))
+        }
+      }
+      if (Object.keys(extras).length > 0) plain.extras = extras
     }
     materials.push(plain)
     slotOf.set(mat, materials.length - 1)

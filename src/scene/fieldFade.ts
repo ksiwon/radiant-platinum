@@ -98,9 +98,13 @@ export function fieldFade(root: Object3D): FieldFade {
       if (box.max.y - box.min.y < TALL) return
       // 땅 · 절벽처럼 넓게 깔린 것은 늘 선분에 걸린다 — 흐리면 발밑이 사라진다. 건물 한 채만 한 것까지만 (`WIDE`)
       if (box.max.x - box.min.x > WIDE || box.max.z - box.min.z > WIDE) return
-      const mats = (Array.isArray(o.material) ? o.material : [o.material]).map((x: Material) => {
+      const own = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
+      // 더해서 그리는 빛(`bdspLights`)은 가리는 것이 아니다 — 입구 빛 웅덩이가 카메라 앞에 와도 흐릴 까닭이 없다
+      if (own.every((x) => x.userData.add === true)) return
+      const mats = own.map((x: Material) => {
         const c = x.clone()
-        c.userData.wasTransparent = x.transparent
+        // ⚠️ **원래 값으로 되돌린다.** 1 · 켬으로 되돌리면 원래 반투명한 유리가 흐림을 한 번 겪은 뒤 불투명하게 굳는다
+        c.userData.rest = { transparent: x.transparent, opacity: x.opacity, depthWrite: x.depthWrite }
         return c
       })
       o.material = Array.isArray(o.material) ? mats : mats[0]!
@@ -147,9 +151,10 @@ export function fieldFade(root: Object3D): FieldFade {
         if (fade === sol.faded) continue
         sol.faded = fade
         for (const mat of sol.materials) {
-          mat.transparent = fade || mat.userData.wasTransparent === true
-          mat.opacity = fade ? GHOST : 1
-          mat.depthWrite = !fade
+          const rest = mat.userData.rest as { transparent: boolean, opacity: number, depthWrite: boolean }
+          mat.transparent = fade || rest.transparent
+          mat.opacity = fade ? Math.min(GHOST, rest.opacity) : rest.opacity
+          mat.depthWrite = fade ? false : rest.depthWrite
           mat.needsUpdate = true
         }
       }
