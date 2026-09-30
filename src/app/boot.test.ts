@@ -160,6 +160,20 @@ describe('공개판 + 설치본 없음', () => {
     expect(assets().kind).toBe('absent')
   })
 
+  it('⚠️ 다 깐 뒤에 필수가 늘었으면 outdated다 — 하다 만 것이 아니다', async () => {
+    // `monVariants`가 선택 그룹이던 때 안 켜고 깐 설치본. 그 판에서는 도장까지 찍혔다
+    const s = await installed()
+    const got = JSON.parse(new TextDecoder().decode((await s.root.read(INSTALL_FILE))!)) as {
+      groups: Record<string, unknown>
+    }
+    delete got.groups.monVariants
+    await s.root.write(INSTALL_FILE, enc.encode(JSON.stringify(got)))
+
+    const state = await boot(prod(s.root, s.assets))
+    expect(state).toEqual({ kind: 'install', reason: 'outdated', detail: '새로 굽는 그룹: monVariants' })
+    expect(assets().kind).toBe('absent')
+  })
+
   it('기록이 깨졌으면 invalid다 — none과 구별한다', async () => {
     const root = memoryPackStore()
     await root.write(INSTALL_FILE, enc.encode('{ 반쯤 쓰다 만'))

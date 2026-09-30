@@ -80,12 +80,10 @@ function loadMonIndex(): Promise<MonIndex> {
 /**
  * 이로치 색과 암컷 몸.
  *
- * ⚠️ **설치본에는 사용자가 켰을 때만 있다** — `monVariants`는 선택 그룹이라
- * (231MB) 설치 화면의 「더 구울 수 있는 것」에서 켜야 굽는다
- * (`import/groups.ts`의 `groupsOptional`).
- *
- * 그래서 여기서 빈 목차로 떨어지는 것은 **고장이 아니라 정해진 일**이다 —
- * 안 켜면 이로치가 배틀에 평범한 색으로 서고, 색 판정 자체는 원작대로 돈다
+ * `monVariants`는 필수 그룹이라(`import/install/required.ts`) `ready` 설치본에는
+ * 늘 있다. 그래도 **빈 목차로 떨어지는 길은 남긴다** — 개발 서버에서
+ * `pnpm extract:pokemonVariants`를 안 돌렸거나 파일을 못 읽으면 이로치가 배틀에
+ * 평범한 색으로 서고 암컷도 수컷 몸으로 선다. 색 판정 자체는 원작대로 돈다
  * (`isShiny`)
  */
 function loadMonVariantIndex(): Promise<MonVariantIndex> {

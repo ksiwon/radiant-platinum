@@ -134,7 +134,7 @@ export const REQUIRED_PLATINUM_GROUPS = [
   'distortion', 'trainerSprites', 'particles',
 ]
 
-export const REQUIRED_BDSP_GROUPS = ['npcModels', 'monModels', 'arenas', 'motionTiming']
+export const REQUIRED_BDSP_GROUPS = ['npcModels', 'monModels', 'arenas', 'motionTiming', 'monVariants']
 
 export const REQUIRED_GROUPS = [...REQUIRED_PLATINUM_GROUPS, ...REQUIRED_BDSP_GROUPS]
 

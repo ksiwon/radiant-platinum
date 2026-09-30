@@ -53,13 +53,18 @@ export const REQUIRED_PLATINUM_GROUPS = [
  * BDSP에서 나와야 하는 것.
  *
  * ⚠️ **목록을 줄여서 `ready`에 도달하게 만들지 않는다.** 그러면 3D가 통째로 빈
- * 설치본이 "완료"가 된다. 넷 다 `bdsp/convert.ts`가 만든다
+ * 설치본이 "완료"가 된다. 다섯 다 `bdsp/convert.ts`가 만든다
  */
 export const REQUIRED_BDSP_GROUPS = [
   'npcModels',  // 사람 모델
   'monModels',  // 포켓몬 모델
   'arenas',     // 배틀 무대
   'motionTiming', // 종마다 다른 타격 프레임. 없으면 배틀이 첫 수에서 멈춘다
+  // 이로치 색과 암컷 몸. 없어도 배틀은 돌지만 이로치가 평범한 색으로 선다.
+  // ⚠️ **여기 있어야 이미 깐 사람도 받는다** — 위 `particles`와 같은 까닭이다.
+  // 빠진 설치본은 부팅이 `outdated`로 보내고, 설치기는 온전한 그룹을 건너뛰고
+  // 이것만 굽는다 (`installer.test.ts`)
+  'monVariants',
 ] as const
 
 export const REQUIRED_GROUPS: readonly string[] = [

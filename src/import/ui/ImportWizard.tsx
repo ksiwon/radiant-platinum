@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ValidationReport } from '../worker/protocol'
 import { spawnImportWorker, WorkerCancelled, type ImportClient } from '../worker/client'
 import { explain, SUPPORTED, type Validation } from '../platinum/validate'
-import { groupsBlocked, groupsOptional, groupsReady, groupsToInstall } from '../groups'
+import { ALL_GROUPS, groupsBlocked, groupsReady } from '../groups'
 import type { BdspScan } from '../bdsp/scan'
 import { formatBytes, NEEDED_BYTES, requestPersist, storageState, type StorageState } from '../install/storage'
 import {
@@ -335,9 +335,7 @@ export function ImportWizard({ onClose, onReady, why }: {
     void runInstall({
       ...stores(),
       locale: platinum.release.locale,
-      // ⚠️ **선택 그룹은 켠 것만 간다.** 다 넣으면 이로치 231MB를 안 볼 사람도
-      // 굽는다 (`groups.ts`의 `groupsToInstall`)
-      groups: groupsToInstall([...extras]),
+      groups: ALL_GROUPS,
       produce,
       signal,
       onEvent: (e: InstallEvent) => {
@@ -438,11 +436,8 @@ export function ImportWizard({ onClose, onReady, why }: {
    */
   const broke = phase === 'failed' || failed.length > 0 || leftover
 
-  /** 사용자가 켠 선택 그룹들. 설치를 시작할 때 목록에 함께 실린다 */
-  const [extras, setExtras] = useState<ReadonlySet<string>>(() => new Set())
   const ready = groupsReady()
   const blocked = groupsBlocked()
-  const optional = groupsOptional()
   const stillMissing = missingRequired(ready.map((g) => g.name))
   // 설치를 시작할 수 있는가. **BDSP와 공간도 조건이다** (§2.3)
   const canInstall = Boolean(
@@ -506,8 +501,8 @@ export function ImportWizard({ onClose, onReady, why }: {
         {why && why.reason !== 'none' && (
           <div className={css.banner}>
             {why.reason === 'outdated'
-              ? '설치본은 그대로 있습니다. 변환기가 바뀐 그룹만 다시 만들면 됩니다 — '
-                + '나머지는 건너뜁니다.'
+              ? '설치본은 그대로 있습니다. 변환기가 바뀌었거나 새로 생긴 그룹만 만들면 '
+                + '됩니다 — 나머지는 건너뜁니다.'
               : why.reason === 'partial'
                 ? '지난 설치가 끝나지 않았습니다. 끝난 그룹은 그대로 두고 이어서 합니다.'
                 : why.reason === 'invalid'
@@ -806,36 +801,6 @@ export function ImportWizard({ onClose, onReady, why }: {
             </ul>
           )}
         </section>
-
-        {/* ── 더 구울 수 있는 것 ──────────────────────────────────── */}
-        {optional.length > 0 && (
-          <section className={css.step}>
-            <div className={css.stepHead}>
-              더 구울 수 있는 것
-              <span className={css.stepNote}>{`${String(extras.size)}/${String(optional.length)}개 켬`}</span>
-            </div>
-            <ul className={css.list}>
-              {optional.map((g) => (
-                <li key={g.name}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={extras.has(g.name)}
-                      disabled={phase === 'installing'}
-                      onChange={(e) => {
-                        const next = new Set(extras)
-                        if (e.target.checked) next.add(g.name)
-                        else next.delete(g.name)
-                        setExtras(next)
-                      }}
-                    />
-                    {' '}<b>{g.name}</b> — {g.optional}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
 
         {/* ── 남은 일 ─────────────────────────────────────────────── */}
         <section className={css.step}>

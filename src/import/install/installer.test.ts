@@ -300,6 +300,51 @@ describe('끊기고 다시 잇기', () => {
     expect(await installReady(s.root)).not.toBeNull()
   })
 
+  it('⚠️ 필수가 늘면 이미 다 깐 사람도 그 그룹 하나만 굽는다 — 이로치·암컷 몸', async () => {
+    // `monVariants`가 선택 그룹이던 때 스위치를 안 켜고 깐 설치본을 흉내낸다.
+    // 그 판에서는 필수가 다 있었으므로 `ready`에 도장까지 찍혀 있다
+    const added = 'monVariants'
+    expect(REQUIRED_GROUPS).toContain(added)
+    const s = stores()
+    const before = FULL.filter((g) => g.name !== added)
+    await run(s, before)
+    const old = JSON.parse(dec.decode((await s.root.read(INSTALL_FILE))!)) as Record<string, unknown>
+    const at = AT.toISOString()
+    await s.root.write(INSTALL_FILE, enc.encode(JSON.stringify({
+      ...old, state: 'ready', finishedAt: at,
+      commit: { at, appVersion: '0.0.1', buildId: 'aaaaaaa', assetFormat: 1 },
+    })))
+    const kept = (await readInstall(s.root))
+    expect(kept.kind).toBe('ok')
+    if (kept.kind !== 'ok') return
+    expect(kept.value.state).toBe('ready')
+    expect(kept.value.groups[added]).toBeUndefined()
+
+    // ① 그대로는 게임이 안 열린다 — 도장이 있어도 필수가 빠졌다
+    expect(await installReady(s.root)).toBeNull()
+
+    // ② 원본을 다시 고르면 **빠진 것 하나만** 돈다. 나머지는 파일을 확인하고 건너뛴다
+    const ran: string[] = []
+    const again = FULL.map((g) => ({
+      ...g,
+      convert: (c: Parameters<NonNullable<GroupSpec['convert']>>[0]) => { ran.push(g.name); return g.convert!(c) },
+    }))
+    const seen: InstallEvent[] = []
+    const manifest = await run(s, again, { onEvent: (e) => seen.push(e) })
+
+    expect(ran).toEqual([added])
+    const resumed = seen.find((e) => e.kind === 'resumed')
+    expect(resumed?.kind === 'resumed' ? [...resumed.skipped].sort() : null)
+      .toEqual(before.map((g) => g.name).sort())
+    // 이미 있던 것은 기록째로 남는다 — 다시 쓴 것이 아니다
+    for (const g of before) expect(manifest.groups[g.name]).toEqual(kept.value.groups[g.name])
+    expect(manifest.groups[added]!.files.map((f) => f.path)).toEqual([`data/${added}.json`])
+
+    // ③ 이제 게임이 열린다
+    expect(manifest.state).toBe('ready')
+    expect(await installReady(s.root)).not.toBeNull()
+  })
+
   it('계약 판이 바뀌면 저널을 안 믿는다', async () => {
     const s = stores()
     await run(s, PARTIAL)

@@ -26,6 +26,7 @@ import {
 import { verifiedPackStore, type VerifiedStore } from '../data/providers/verifiedPackStore'
 import { needsSource, planAssets } from '../import/install/assetFormat'
 import { installReady, readInstall, type InstallManifest } from '../import/install/installer'
+import { missingRequired } from '../import/install/required'
 import { setContentContract } from '../state/save/contract'
 import { setAvailableLocales } from '../state/optionsStore'
 
@@ -35,7 +36,7 @@ type InstallReason =
   | 'partial'      // 하다 말았다. 이어서 할 수 있다
   | 'invalid'      // 기록이 깨졌다. 다시 설치해야 한다 (리포트는 그대로)
   | 'unsupported'  // 이 브라우저로는 못 한다 (OPFS 없음)
-  | 'outdated'     // 설치물 모양이 낡았고 **원본 없이는** 못 옮기는 그룹이 있다
+  | 'outdated'     // 설치물 모양이 낡았거나 필수 그룹이 새로 생겼다 — **원본이 있어야** 굽는다
 
 export type BootState =
   | { kind: 'play'; source: 'dev' | 'opfs'; manifest: InstallManifest | null }
@@ -133,6 +134,13 @@ async function decide(env: BootEnv): Promise<BootState> {
     if (got.value.state === 'ready' && needsSource(stale)) {
       const names = stale.regenerate.map((r) => r.group).join(' · ')
       return { kind: 'install', reason: 'outdated', detail: `다시 만들 그룹: ${names}` }
+    }
+    // ⚠️ **다 깔았는데 필수가 늘어난 사람도 `outdated`다.** 하다 만 것이 아니다 —
+    // 그 설치 뒤에 필수 그룹이 새로 생겼다(`monVariants`·`particles`). `partial`로
+    // 보내면 화면이 「지난 설치가 끝나지 않았습니다」라고 한다
+    const added = missingRequired(Object.keys(got.value.groups))
+    if (got.value.state === 'ready' && added.length > 0) {
+      return { kind: 'install', reason: 'outdated', detail: `새로 굽는 그룹: ${added.join(' · ')}` }
     }
     return { kind: 'install', reason: 'partial', detail: `상태: ${got.value.state}` }
   }

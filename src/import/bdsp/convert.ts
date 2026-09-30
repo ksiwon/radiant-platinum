@@ -1088,14 +1088,13 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
   /**
    * 이로치 색과 암컷 몸 (PLAN §16.10 · `scene/battle/monModel`).
    *
-   * ⚠️ **물어보고 굽는다.** 3,375개 · 231MB라 설치 총량이 3분의 1 늘어 932MB가
-   * 된다 — 필수로 두면 이로치를 안 볼 사람도 그만큼 굽는다. 그래서 설치 화면의
-   * 스위치 하나로 두고(`optional`), 안 켜면 이로치가 **평범한 색으로 선다**
-   * (색 판정 자체는 원작대로 돈다 — `isShiny`).
-   *
-   * ⚠️ **안 켠 것과 못 구운 것을 화면이 가른다.** 켜지 않은 그룹은
-   * 「더 구울 수 있는 것」에 뜨고, 못 옮긴 변환은 「아직 안 옮긴 변환」에 뜬다
-   * (`ImportWizard` · `groupsOptional`)
+   * ⚠️ **늘 굽는다 — 필수 그룹이다** (`install/required.ts`). 노드 산출물 실측
+   * 3,369개 · 246.8MB(이로치 그림 3,180 · 63.2MB, 암컷 몸 94 · 91.6MB, 암컷
+   * 이로치 몸 94 · 91.7MB, 목차 1)로 설치에서 제일 무거운 축이지만, 빠지면
+   * 이로치가 배틀에 **평범한 색으로 서고** 암컷 몸 94종이 수컷 몸으로 선다 —
+   * 색 판정은 원작대로 도는데(`isShiny`) 화면만 그것을 못 보인다.
+   * 필수 목록에 두는 것이 이미 깐 사람에게 이 그룹을 굽게 하는 길이기도 하다
+   * (`required.ts`의 `particles` 옆 ⚠️)
    */
   {
     name: 'monVariants',
@@ -1103,8 +1102,6 @@ export const BDSP_GROUPS: readonly GroupSpec[] = [
       'models/pokemon/variants/female[-shiny]/{도감}[-{폼}].glb',
       'models/pokemon/variants/index.json'],
     converter: 1,
-    optional: '이로치 색과 암컷 몸 — 231MB를 더 굽는다.'
-      + ' 안 켜면 이로치가 배틀에 평범한 색으로 선다',
     convert: convertMonVariants,
   },
 ]
