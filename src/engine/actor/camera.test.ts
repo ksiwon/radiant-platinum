@@ -10,7 +10,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
 import {
-  aimPitch, cameraDolly, cameraSystem, clampToRoom, firstPersonView, roomAt, scriptCameraActive, type RoomBox,
+  aimPitch, cameraDolly, cameraSystem, clampToRoom, eyeForward, eyeProbeStale, firstPersonView, roomAt,
+  scriptCameraActive, type EyeProbeMemo, type RoomBox,
 } from './camera'
 import { worldState } from '../../state/worldState'
 import { cutInFrame } from '../battle/encounterCutIn'
@@ -244,5 +245,135 @@ describe('타고 있으면 1인칭 눈도 그만큼 든다', () => {
     cameraSystem.mountLift = 0.89
     cameraSystem.update(1 / 60)
     expect(worldState.camera.position.distanceTo(eyeAt(0.89))).toBeLessThan(1e-9)
+  })
+})
+
+// 문 앞 칸에서 1인칭 눈이 문틀 · 바깥문 속에 들었다 (영원시티 센터 · 배틀프런티어). 머리에서 시선으로 쏜 레이가
+// 맞으면 그 앞 틈(near 0.1 + 0.05)까지만 내민다
+describe('1인칭 눈은 앞을 막은 면 앞에서 멈춘다', () => {
+  const head = new Vector3(305.5, 8.38, 531.5)
+  const north = new Vector3(0, 0, -1)
+
+  it('안 맞으면 예전처럼 0.12 내민다', () => {
+    expect(eyeForward(head, north, null)).toBe(0.12)
+  })
+
+  it('멀리 맞으면 그대로다', () => {
+    expect(eyeForward(head, north, new Vector3(305.5, 8.38, 530.5))).toBe(0.12)
+  })
+
+  // 실측 자리: area002 바깥문 판이 머리 0.20 앞이다 — 0.12를 내밀면 눈에서 0.08, near 안쪽이다
+  it('⚠️ 머리 0.20 앞이 막혔으면 0.05만 내민다', () => {
+    expect(eyeForward(head, north, new Vector3(305.5, 8.38, 531.3))).toBeCloseTo(0.05, 9)
+  })
+
+  it('틈보다 가까우면 머리에 머문다 — 뒤로는 안 뺀다', () => {
+    expect(eyeForward(head, north, new Vector3(305.5, 8.38, 531.42))).toBe(0)
+    // 레이를 쏜 뒤 지나쳐 걸어가 맞은 자리가 뒤로 갔어도 같다
+    expect(eyeForward(head, north, new Vector3(305.5, 8.38, 531.9))).toBe(0)
+  })
+
+  it('맞은 자리를 지금 시선에 투영한다 — 옆으로 비낀 것은 그만큼 멀다', () => {
+    const east = new Vector3(1, 0, 0)
+    // 시선(동쪽)으로 0.2 · 옆으로 0.3 비낀 자리는 시선으로 0.2다
+    expect(eyeForward(head, east, new Vector3(305.7, 8.38, 531.2))).toBeCloseTo(0.05, 9)
+  })
+})
+
+describe('레이는 머리가 움직이거나 돌 때만 다시 쏜다', () => {
+  const memo = (over: Partial<EyeProbeMemo> = {}): EyeProbeMemo => ({
+    ready: true, at: new Vector3(10, 1.38, 10), yaw: 0, age: 0, hit: null, ...over,
+  })
+
+  it('쏜 적이 없으면 쏜다', () => {
+    expect(eyeProbeStale(memo({ ready: false }), new Vector3(10, 1.38, 10), 0)).toBe(true)
+  })
+
+  it('제자리 · 같은 방향이면 안 쏜다', () => {
+    expect(eyeProbeStale(memo(), new Vector3(10.1, 1.38, 10.1), 0.1)).toBe(false)
+  })
+
+  it('0.25보다 움직이면 쏜다', () => {
+    expect(eyeProbeStale(memo(), new Vector3(10, 1.38, 10.3), 0)).toBe(true)
+  })
+
+  it('10도보다 돌면 쏜다 — 각은 감아서 잰다', () => {
+    expect(eyeProbeStale(memo(), new Vector3(10, 1.38, 10), (15 * Math.PI) / 180)).toBe(true)
+    const near0 = memo({ yaw: (359 * Math.PI) / 180 })
+    expect(eyeProbeStale(near0, new Vector3(10, 1.38, 10), (1 * Math.PI) / 180)).toBe(false)
+  })
+
+  it('가만히 서 있어도 반 초가 지나면 쏜다 — 지역 glb가 늦게 선다', () => {
+    expect(eyeProbeStale(memo({ age: 0.49 }), new Vector3(10, 1.38, 10), 0)).toBe(false)
+    expect(eyeProbeStale(memo({ age: 0.5 }), new Vector3(10, 1.38, 10), 0)).toBe(true)
+  })
+})
+
+describe('씬이 꽂은 레이가 1인칭 눈을 끌어온다', () => {
+  afterEach(() => {
+    worldState.camera.mode = 'third'
+    cameraSystem.eyeProbe = null
+    cameraSystem.snap()
+  })
+
+  /** z = `wallZ`에 선 북향 벽 — 북쪽으로 쏜 레이만 맞는다 */
+  const wallAt = (wallZ: number, calls: { n: number }) => (h: Vector3, d: Vector3, reach: number): Vector3 | null => {
+    calls.n++
+    if (d.z >= 0) return null
+    const t = (h.z - wallZ) / -d.z
+    return t >= 0 && t <= reach ? h.clone().addScaledVector(d, t) : null
+  }
+
+  it('⚠️ 문 앞에 서서 북쪽을 보면 눈이 문 판 앞 0.15에서 멈춘다', () => {
+    const calls = { n: 0 }
+    cameraSystem.eyeProbe = wallAt(9.8, calls)
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.yaw = 0
+    worldState.camera.mode = 'first'
+    cameraSystem.snap()
+    cameraSystem.update(1 / 60)
+    expect(worldState.camera.position.z).toBeCloseTo(9.95, 9)
+    expect(worldState.camera.position.y).toBeCloseTo(1.38, 9)
+  })
+
+  it('막힌 것이 없으면 눈은 예전 자리다', () => {
+    const calls = { n: 0 }
+    cameraSystem.eyeProbe = wallAt(5, calls)
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.yaw = 0
+    worldState.camera.mode = 'first'
+    cameraSystem.snap()
+    cameraSystem.update(1 / 60)
+    expect(worldState.camera.position.distanceTo(eyeAt())).toBeLessThan(1e-9)
+  })
+
+  it('가만히 서 있으면 반 초에 한 번만 쏜다', () => {
+    const calls = { n: 0 }
+    cameraSystem.eyeProbe = wallAt(9.8, calls)
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.yaw = 0
+    worldState.camera.mode = 'first'
+    cameraSystem.snap()
+    for (let i = 0; i < 20; i++) cameraSystem.update(1 / 60)
+    expect(calls.n).toBe(1)
+    for (let i = 0; i < 20; i++) cameraSystem.update(1 / 60)
+    expect(calls.n).toBe(2)
+  })
+
+  it('쏜 뒤 벽 쪽으로 걸어 들어가면 다시 안 쏴도 그만큼 물러난다', () => {
+    const calls = { n: 0 }
+    cameraSystem.eyeProbe = wallAt(9.6, calls)
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.yaw = 0
+    worldState.camera.mode = 'first'
+    cameraSystem.snap()
+    cameraSystem.update(1 / 60)
+    // 처음엔 벽이 머리 0.4 앞이라 0.12를 다 내민다
+    expect(worldState.camera.position.z).toBeCloseTo(9.88, 9)
+    // 0.2 들어오면 벽이 머리 0.2 앞이다 — 0.05만 내민다. 0.25 안이라 레이는 새로 안 쏜다
+    worldState.player.position.set(10, 0, 9.8)
+    for (let i = 0; i < 25; i++) cameraSystem.update(1 / 60)
+    expect(calls.n).toBe(1)
+    expect(worldState.camera.position.z).toBeCloseTo(9.75, 2)
   })
 })

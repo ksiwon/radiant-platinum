@@ -265,6 +265,13 @@ export function roomAt(rooms: readonly RoomBox[], x: number, z: number): RoomBox
 export const FIELD_FOV = 55
 
 /**
+ * 필드 렌즈의 near(미터). `Stage`의 카메라가 이 값으로 선다 (`scene/fieldCamera`).
+ *
+ * 1인칭 눈을 벽에서 띄우는 틈(`EYE_GAP`)이 이 값에 걸려 있다 — 렌즈를 바꾸면 틈도 같이 바뀐다
+ */
+export const FIELD_NEAR = 0.1
+
+/**
  * **깨어진 세계의 렌즈** (`ov9_02249960`의 `DISTORTION_WORLD_CAMERA_BASE_*`).
  *
  * `BASE_DISTANCE 0x29AEC1` = 666.92units ÷ 16 = **41.683칸**,
@@ -298,11 +305,90 @@ const FIRST_DAMPING = 12
 /** 시선이 닿는 거리. 목표점을 너무 가까이 두면 고개가 파르르 떨린다 */
 const LOOK_AHEAD = 6
 
+/**
+ * 1인칭 눈과 앞을 막은 면 사이에 남기는 틈(미터) — 렌즈 near에 0.05를 더한다.
+ *
+ * ⚠️ **near보다 가까이 붙으면 그 면이 잘려 나가 벽 속이 보인다.** 눈을 0.12 내밀면 앞 면과의 거리가 그만큼 준다 —
+ * 영원시티 센터 문 앞 칸(305, 531)에서 area002의 바깥문 판(`M_C_001_DoorOuter_02`)이 머리 0.20 앞이라 눈에서 0.08,
+ * near 안쪽이다 (glb 삼각형에 레이를 쏴서 잼). 면에 수직으로 서면 화면 어디서나 거리가 같으므로 앞으로 쏜 레이
+ * 하나가 화면 전체를 지킨다.
+ *
+ * ⚠️ **그 자리의 근본은 배치다.** area002는 이 센터를 area003보다 **한 칸 남쪽**(z +1)에 두고 둘 다 선다 —
+ * 원작 문(소품 70)은 z 530.06, area003 문은 530.32, area002 문은 531.32다. 그래서 주인공이 area002의 현관 기둥
+ * (좌우 0.55) 사이에 선다. 이 틈은 앞만 지키고, 옆 기둥이 화면을 채우는 것은 못 고친다
+ */
+const EYE_GAP = FIELD_NEAR + 0.05
+/**
+ * 다시 쏘기 전에 머리가 움직여도 되는 거리(미터) · 돌아도 되는 각 · 지나도 되는 시간(초).
+ *
+ * ⚠️ **매 프레임 쏘지 않는다.** 레이는 씬 전체를 훑는다(`scene/fieldCamera`의 `probeEye`). 그 사이에는 맞은 **자리**를
+ * 쥐고 지금 시선에 투영해 거리를 낸다(`eyeForward`) — 벽 쪽으로 걸어 들어가도 그만큼 줄어든다. 그래서 레이는
+ * 움직일 몫(`EYE_PROBE_MOVE`)까지 더 길게 쏜다. 가만히 서 있어도 반 초마다 다시 쏜다 — 지역 glb가 늦게 서면
+ * (`BdspField`) 첫 레이는 빈 씬을 본다
+ */
+const EYE_PROBE_MOVE = 0.25
+const EYE_PROBE_TURN = 10 * DEG
+const EYE_PROBE_AGE = 0.5
+/** 한 번 쏘는 길이 — 눈이 나갈 몫 + 틈 + 다시 쏘기 전 움직일 몫 */
+const EYE_PROBE_REACH = EYE_FORWARD + EYE_GAP + EYE_PROBE_MOVE
+
+/** 마지막으로 쏜 레이. `hit`은 맞은 월드 자리, 안 맞았으면 null */
+export interface EyeProbeMemo {
+  ready: boolean
+  /** 쏜 머리 자리와 그때의 yaw */
+  at: Vector3
+  yaw: number
+  /** 쏜 뒤 지난 시간(초) */
+  age: number
+  hit: Vector3 | null
+}
+
+/** 새로 쏴야 하는가 — 머리가 `EYE_PROBE_MOVE`보다 움직였거나 `EYE_PROBE_TURN`보다 돌았거나 `EYE_PROBE_AGE`가 지났다 */
+export function eyeProbeStale(memo: EyeProbeMemo, head: Vector3, yaw: number): boolean {
+  if (!memo.ready || memo.age >= EYE_PROBE_AGE) return true
+  if (memo.at.distanceToSquared(head) > EYE_PROBE_MOVE * EYE_PROBE_MOVE) return true
+  // 각은 감아 놓고 잰다 — 359도와 1도는 2도 차이다
+  return Math.abs(Math.atan2(Math.sin(yaw - memo.yaw), Math.cos(yaw - memo.yaw))) > EYE_PROBE_TURN
+}
+
+/**
+ * **눈을 머리에서 앞으로 얼마나 내밀까** (미터). 0 ~ `EYE_FORWARD`.
+ *
+ * 맞은 자리를 시선(`ahead`, 수평 단위 벡터)에 투영해 그 앞 `EYE_GAP`까지만 내민다. 머리보다 뒤로는 안 뺀다 —
+ * 1인칭에서 몸은 꺼져 있으니 머리 속은 비어 있고, 뒤로 빼면 등 뒤의 것에 박힐 수 있다
+ */
+export function eyeForward(head: Vector3, ahead: Vector3, hit: Vector3 | null): number {
+  if (hit === null) return EYE_FORWARD
+  const along = (hit.x - head.x) * ahead.x + (hit.y - head.y) * ahead.y + (hit.z - head.z) * ahead.z
+  return Math.min(EYE_FORWARD, Math.max(0, along - EYE_GAP))
+}
+
+const eyeMemo: EyeProbeMemo = { ready: false, at: new Vector3(), yaw: 0, age: 0, hit: null }
+const eyeHit = new Vector3()
+
+/** 이번 프레임 눈을 내밀 거리. 씬이 레이를 안 꽂았으면(시험 · 씬이 서기 전) 예전 그대로 `EYE_FORWARD`다 */
+function eyeAhead(head: Vector3, ahead: Vector3, yaw: number, delta: number): number {
+  const probe = cameraSystem.eyeProbe
+  if (probe === null) return EYE_FORWARD
+  eyeMemo.age += delta
+  if (eyeProbeStale(eyeMemo, head, yaw)) {
+    const hit = probe(head, ahead, EYE_PROBE_REACH)
+    eyeMemo.hit = hit === null ? null : eyeHit.copy(hit)
+    eyeMemo.at.copy(head)
+    eyeMemo.yaw = yaw
+    eyeMemo.age = 0
+    eyeMemo.ready = true
+  }
+  return eyeForward(head, ahead, eyeMemo.hit)
+}
+
 const goal = new Vector3()
 const look = new Vector3()
 const free = new Vector3()
 const offset = new Vector3()
 const view = new Vector3()
+const head = new Vector3()
+const ahead = new Vector3()
 
 /**
  * 중력이 도는 데 걸리는 시간(초). 원작의 `movementAnimSteps` 16프레임이다 —
@@ -439,6 +525,15 @@ export const cameraSystem = {
   rooms: [] as readonly RoomBox[],
 
   /**
+   * 머리(`head`)에서 시선(`dir`, 단위 벡터)으로 `reach`까지 쏴서 **처음 맞은 월드 자리**를 낸다. 안 맞으면 null.
+   * 씬이 꽂는다 (`scene/fieldCamera`) — `src/engine`은 씬을 못 본다.
+   *
+   * 1인칭 눈은 머리에서 0.12 앞인데 그 사이에 벽 검사가 없었다. 바닥 칸은 걸을 수 있어도 그 위로 BDSP 문틀 ·
+   * 차양이 넘어와 있으면 눈이 그 속에 든다 (`eyeForward`). 꽂혀 있지 않으면 눈은 예전 자리 그대로다
+   */
+  eyeProbe: null as ((head: Vector3, dir: Vector3, reach: number) => Vector3 | null) | null,
+
+  /**
    * 다음 프레임의 기울기를 **돌리지 말고 그대로** 잡는다.
    *
    * 맵이 바뀔 때 부른다 — 벽에 붙어 있다가 밖으로 나가면 새 맵 첫 화면이
@@ -449,6 +544,8 @@ export const cameraSystem = {
     tiltReady = false
     fovReady = false
     placeReady = false
+    // 앞 맵에서 쏜 레이는 새 맵의 벽이 아니다
+    eyeMemo.ready = false
   },
 
   update(delta: number) {
@@ -471,7 +568,11 @@ export const cameraSystem = {
      * V · 휠로 시점을 바꿀 때도, 컷신이 렌즈를 잠시 3인칭으로 돌렸다 놓을 때도
      * 여기서 같이 잡힌다 — 갈리는 것을 **렌즈**로 보기 때문이다
      */
-    if (lastLensFirst !== null && lastLensFirst !== first) placeReady = false
+    if (lastLensFirst !== null && lastLensFirst !== first) {
+      placeReady = false
+      // 3인칭으로 있던 동안 씬이 바뀌었을 수 있다 — 눈에 들어오는 프레임에 새로 쏜다
+      eyeMemo.ready = false
+    }
     lastLensFirst = first
     const frame = distortionBridge.frame?.() ?? null
     // 1인칭은 눈이 사람 머리에 붙어 있다 — 8도로 보면 코앞만 보인다
@@ -493,11 +594,10 @@ export const cameraSystem = {
       // 눈은 수평으로만 앞으로 내민다. 위아래까지 따라가면 고개를 들 때 눈이
       // 뒤통수 밖으로 나가 제 모자가 화면에 걸린다.
       // 타고 있으면 몸이 든 만큼 눈도 든다 (`mountLift`)
-      tilted(
-        Math.sin(cam.yaw) * EYE_FORWARD, EYE_HEIGHT + cameraSystem.mountLift,
-        -Math.cos(cam.yaw) * EYE_FORWARD, offset,
-      )
-      goal.copy(p).add(offset)
+      tilted(0, EYE_HEIGHT + cameraSystem.mountLift, 0, head).add(p)
+      tilted(Math.sin(cam.yaw), 0, -Math.cos(cam.yaw), ahead)
+      // 앞이 막혔으면 그 앞 틈까지만 내민다 (`eyeForward`)
+      goal.copy(head).addScaledVector(ahead, eyeAhead(head, ahead, cam.yaw, delta))
       tilted(fx, fy, fz, view).multiplyScalar(LOOK_AHEAD)
       look.copy(goal).add(view)
     } else {
