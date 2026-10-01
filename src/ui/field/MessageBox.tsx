@@ -4,11 +4,11 @@
 // zustand를 안 쓰는 이유: 글자가 프레임 단위로 늘어나는데 그걸 스토어에 밀어
 // 넣으면 매 프레임 리렌더가 트리 전체로 번진다. 대신 rAF로 들여다보고 **글이
 // 실제로 바뀐 프레임에만** setState 한다 — 보통 속도면 초당 12번쯤이다.
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type CSSProperties } from 'react'
 import { markTalk } from '../../app/sceneMark'
 import { fieldScripts } from '../../engine/script/field'
 import type { Line } from '../../engine/script/printer'
-import type { MenuEntry } from '../../engine/script/world'
+import { LIST_MENU_MAX_DISPLAY, type MenuEntry } from '../../engine/script/world'
 import { loadSignpostAtlas, signpostAtlas, signpostImage } from './signpost'
 import { loadUnownGlyphs, unownGlyph, unownReady } from './unownFont'
 import * as css from './messageBox.css'
@@ -17,8 +17,15 @@ import { vars } from '../theme/contract.css'
 interface MenuView {
   kind: 'yesno' | 'list'
   entries: readonly MenuEntry[]
+  /** 커서가 선 항목 번호 (목록 전체에서) */
   cursor: number
   columns: number
+  /**
+   * 보이는 창 — 첫 항목 번호와 줄 수. 목록 메뉴(`ListMenu`)는 여덟 줄 창이 커서를 따라 굴러가고
+   * (`world.menuTop`), 나머지는 전부 보인다
+   */
+  top: number
+  shown: number
 }
 
 interface View {
@@ -53,7 +60,7 @@ function digest(view: View | null): string {
     .join('|') ?? ''
   const menu = view.menu === null
     ? ''
-    : `${view.menu.kind}/${String(view.menu.cursor)}/${view.menu.entries.map((e) => e.text).join(',')}`
+    : `${view.menu.kind}/${String(view.menu.cursor)}/${String(view.menu.top)}/${view.menu.entries.map((e) => e.text).join(',')}`
   const sign = view.signpost === null
     ? ''
     : `${String(view.signpost.type)}/${String(view.signpost.picture)}`
@@ -73,7 +80,14 @@ function snapshot(): View | null {
       : null,
     menu: menu === null
       ? null
-      : { kind: menu.kind, entries: menu.entries, cursor: world.menuCursor, columns: menu.columns },
+      : {
+        kind: menu.kind,
+        entries: menu.entries,
+        cursor: world.menuCursor,
+        columns: menu.columns,
+        top: menu.widget === 'listMenu' ? world.menuTop : 0,
+        shown: menu.widget === 'listMenu' ? LIST_MENU_MAX_DISPLAY : menu.entries.length,
+      },
     signpost: world.signpost,
     shardCost: world.shardCost,
     unown: world.font === 'unown' && unownReady(),
@@ -167,28 +181,40 @@ export function MessageBox() {
           className={view.menu.kind === 'yesno' ? css.menu : css.listMenu}
           role="radiogroup"
           aria-label={view.menu.kind === 'yesno' ? '예 아니오' : '선택'}
-          style={view.menu.columns > 1
-            ? { gridTemplateColumns: `repeat(${view.menu.columns}, max-content)` }
-            : undefined}
+          style={view.menu.columns > 1 ? columnFirst(view.menu.entries.length, view.menu.columns) : undefined}
         >
-          {view.menu.entries.map((entry, i) => (
-            <div
-              key={`${entry.value}/${i}`}
-              role="radio"
-              aria-checked={view.menu?.cursor === i}
-              className={view.menu?.cursor === i ? css.menuItemOn : css.menuItem}
-            >
-              {entry.column === undefined
-                ? entry.text
-                : <span className={css.menuRow}><span>{entry.text}</span><span className={css.menuColumn}>{entry.column}</span></span>}
-            </div>
-          ))}
+          {/* 목록 메뉴는 창에 든 줄만 그린다 — 번호는 목록 전체의 것이다 */}
+          {view.menu.entries.map((entry, i) => ({ entry, i }))
+            .slice(view.menu.top, view.menu.top + view.menu.shown)
+            .map(({ entry, i }) => (
+              <div
+                key={`${entry.value}/${i}`}
+                role="radio"
+                aria-checked={view.menu?.cursor === i}
+                className={view.menu?.cursor === i ? css.menuItemOn : css.menuItem}
+              >
+                {entry.column === undefined
+                  ? entry.text
+                  : <span className={css.menuRow}><span>{entry.text}</span><span className={css.menuColumn}>{entry.column}</span></span>}
+              </div>
+            ))}
         </div>
       )}
       {/* 커서를 올린 항목의 설명. 목록 메뉴에만 있고, 없는 항목이 더 많다 */}
       {alt !== null && <div className={css.altText}>{alt}</div>}
     </div>
   )
+}
+
+/**
+ * 여러 열 메뉴의 칸 차례 — **열부터 채운다** (`menu.c`의 `DrawWholeMenu` · `choices[열 × 줄 수 + 줄]`).
+ * 커서도 같은 차례로 움직이므로(`world.moveCursor`) 줄부터 채우는 격자로 그리면 →가 엉뚱한 칸을 가리킨다
+ */
+function columnFirst(count: number, columns: number): CSSProperties {
+  return {
+    gridTemplateRows: `repeat(${Math.ceil(count / columns)}, max-content)`,
+    gridAutoFlow: 'column',
+  }
 }
 
 /**

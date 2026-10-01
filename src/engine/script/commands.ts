@@ -52,7 +52,7 @@ import { rematchTrainerID, VsSeekerResult } from '../world/vsSeeker'
 import {
   FLAG_UNLOCKED_VS_SEEKER_LVL_1, MOVEMENT_TYPE_LOOK, MOVEMENT_TYPE_VS_SEEKER_SPIN,
 } from '../world/vsSeekerTable'
-import { LIST_MENU_NO_SELECTION_YET, MENU_CANCEL, type ShopCurrency } from './world'
+import { LIST_MENU_NO_SELECTION_YET, MENU_CANCEL, type MenuShape, type ShopCurrency } from './world'
 import { SPECIES_DEOXYS } from '../pokemon/form'
 import { appearanceClass, appearanceOf, appearanceVariants } from '../world/appearance'
 import { compareSize, SIZE_RECORD_INITIAL, SIZE_RESULT, sizeParts } from '../world/sizeContest'
@@ -437,11 +437,23 @@ const LIST_MENU_ENTRY_NO_ALT_TEXT = 0xff
 const chosen: ResumeFn = (ctx) =>
   ctx.host.world.vars.get(ctx.scratch[0]!) !== LIST_MENU_NO_SELECTION_YET
 
-const showMenu = (columns: (ctx: ScriptContext) => number): CommandFn => (ctx) => {
-  ctx.host.world.showMenu('list', columns(ctx))
+/**
+ * `Show…`의 몸통. `shape`가 원작 부품을 고른다 — `ShowMenu`·`ShowMenuMultiColumn`은 `Menu`, `ShowListMenu` 셋은
+ * 쪽 넘김이 켜진 `ListMenu`다 (`field_menu.c` · `FieldMenuManager_InitListMenuTemplate`의 `PAGER_MODE_LEFT_RIGHT_PAD`)
+ */
+const showMenu = (
+  columns: (ctx: ScriptContext) => number,
+  shape: (ctx: ScriptContext) => MenuShape = () => ({}),
+): CommandFn => (ctx) => {
+  // 인자 차례가 곧 바이트 차례다 — 열 수(바이트)를 먼저, 부품 인자(변수)를 나중에 읽는다
+  const cols = columns(ctx)
+  ctx.host.world.showMenu('list', cols, shape(ctx))
   ctx.pause(chosen)
   return true
 }
+
+/** 필드 목록 메뉴 — 누르고 있으면 되풀이 · 여덟 줄 창 · ←→ 쪽 넘김 */
+const FIELD_LIST_MENU: MenuShape = { widget: 'listMenu', pager: true }
 
 on('ShowStartMenu', (ctx) => {
   // 스크립트가 여는 시작 메뉴다 (튜토리얼에서 "가방을 열어 봐" 하는 자리).
@@ -456,15 +468,34 @@ on('ShowStartMenu', (ctx) => {
 // 재고는 스크립트가 안 준다. 일반 상점은 **뱃지 수**로 늘어나고(`ScrCmd_PokeMartCommon`)
 // 지역 상점은 번호로 목록을 고른다. 두 경우 다 실제 목록은 코드에 박힌 표라,
 // 여기서는 무엇을 열지만 정하고 표는 붙이는 쪽(`scene/fieldServices.ts`)이 푼다.
+//
+// 장막백화점 계산대는 산 횟수를 센다(`Shop_Start`의 `incBuyCount`) — 점원의 단골 인사가 그것으로 갈린다
+// (`CheckIsDepartmentStoreRegular`). 세는 계산대는 `ScrCmd_PokeMartSpecialties`의 일곱과 `ScrCmd_PokeMartDecor`의 둘이다
 const openShop = (
-  stock: (ctx: ScriptContext) => readonly number[], currency: ShopCurrency = 'money',
+  stock: (ctx: ScriptContext) => readonly number[] | DepartmentStoreStock, currency: ShopCurrency = 'money',
 ): CommandFn => (ctx) => {
   // ⚠️ 인자를 **먼저** 읽는다. 서비스가 안 붙어 있어도 바이트는 지나가야 한다
-  const items = stock(ctx)
-  ctx.host.world.services.openShop?.(items, currency)
+  const got = stock(ctx)
+  if ('items' in got) {
+    const vars = ctx.host.vars
+    ctx.host.world.services.openShop?.(got.items, currency, () => { countDepartmentStorePurchase(vars) })
+  } else {
+    ctx.host.world.services.openShop?.(got, currency)
+  }
   ctx.pause((c) => c.host.world.services.menuOpen?.() !== true)
   return true
 }
+
+/** 산 횟수를 세는 계산대의 재고 */
+interface DepartmentStoreStock {
+  items: readonly number[]
+}
+
+/**
+ * 산 횟수를 세는 지역 상점 번호 — `MART_SPECIALTIES_ID_VEILSTONE_1F_RIGHT` · `_1F_LEFT` · `_2F_UP` · `_2F_MID` ·
+ * `_3F_UP` · `_3F_DOWN` · `_B1F` (`generated/mart_specialties_id.txt`의 차례 — 0부터 센다)
+ */
+export const DEPARTMENT_STORE_SPECIALTIES = [8, 9, 10, 11, 12, 13, 19] as const
 
 on('PokeMartCommon', openShop((ctx) => {
   // 인자는 안 쓰인다 (`u16 unused = ScriptContext_GetVar(ctx)`). 그래도 읽는다
@@ -474,7 +505,8 @@ on('PokeMartCommon', openShop((ctx) => {
 
 on('PokeMartSpecialties', openShop((ctx) => {
   const martID = ctx.readVar()
-  return ctx.host.world.services.martStock?.specialties(martID) ?? []
+  const items = ctx.host.world.services.martStock?.specialties(martID) ?? []
+  return (DEPARTMENT_STORE_SPECIALTIES as readonly number[]).includes(martID) ? { items } : items
 }))
 
 /**
@@ -486,7 +518,8 @@ on('PokeMartSpecialties', openShop((ctx) => {
  */
 on('PokeMartDecor', openShop((ctx) => {
   const martID = ctx.readVar()
-  return isDecorMart(martID) ? EVOLUTION_COUNTER_STOCK : []
+  // 원작 두 번호(4층 위·아래)가 다 센다 — 다른 번호는 대본에 없다
+  return isDecorMart(martID) ? { items: EVOLUTION_COUNTER_STOCK } : []
 }))
 
 /**
@@ -925,11 +958,20 @@ on('CountAliveMonsAndBoxMons', (ctx) => {
 })
 
 on('ShowMenu', showMenu(() => 1))
-on('ShowListMenu', showMenu(() => 1))
+on('ShowListMenu', showMenu(() => 1, () => FIELD_LIST_MENU))
 on('ShowMenuMultiColumn', showMenu((ctx) => Math.max(1, ctx.readByte())))
-// 폭과 커서 기억은 화면이 알아서 한다 — 인자는 읽어서 버려야 그 뒤가 안 밀린다
-on('ShowListMenuSetWidth', showMenu((ctx) => { ctx.readVar(); return 1 }))
-on('ShowListMenuRememberCursor', showMenu((ctx) => { ctx.readVar(); ctx.readVar(); return 1 }))
+// 폭은 화면이 알아서 잡는다 — 인자는 읽어서 버려야 그 뒤가 안 밀린다
+on('ShowListMenuSetWidth', showMenu((ctx) => { ctx.readVar(); return 1 }, () => FIELD_LIST_MENU))
+/**
+ * 커서를 기억하는 목록 (`ScrCmd_ShowListMenuRememberCursor`) — 인자 둘은 **변수 번호**다(`ScriptContext_GetVarPointer`).
+ * 창 첫 줄과 창 안 줄을 거기서 읽어 되살리고, 움직일 때마다 거기 적는다. 경품 교환소가 하나 바꾸고 다시 띄울 때
+ * 커서가 그 자리에 남는 까닭이다 (`scripts_veilstone_city_prize_exchange.s` 94 · `scripts_battle_frontier_records.s` 178)
+ */
+on('ShowListMenuRememberCursor', showMenu(() => 1, (ctx) => {
+  const offsetVar = ctx.readHalfWord()
+  const cursorVar = ctx.readHalfWord()
+  return { ...FIELD_LIST_MENU, remember: { offsetVar, cursorVar } }
+}))
 
 // ── 가방과 돈 ────────────────────────────────────────────────────────────────
 //
@@ -2221,7 +2263,8 @@ on('ShowMoveTutorMoveSelectionMenu', (ctx) => {
   }
   // 마지막 줄은 「그만둔다」 (`MenuEntries_Text_Exit`) — 원작도 전역 뱅크에서 읽는다
   world.addMenuEntry(MENU_ENTRY_EXIT, MENU_CANCEL)
-  world.showMenu('list')
+  // 원작도 쪽 넘김이 켜진 여덟 줄 `ListMenu`다 (`scrcmd_move_tutor.c`의 `maxDisplay = 8` · `PAGER_MODE_LEFT_RIGHT_PAD`)
+  world.showMenu('list', 1, FIELD_LIST_MENU)
   ctx.scratch[0] = dest
   ctx.pause((c) => c.host.world.vars.get(c.scratch[0]!) !== LIST_MENU_NO_SELECTION_YET)
   return true
@@ -3726,6 +3769,98 @@ on('CheckLocalDexCompleted', (ctx) => {
 on('CheckNationalDexCompleted', (ctx) => {
   const dest = ctx.readHalfWord()
   ctx.host.vars.set(dest, ctx.host.world.services.trainerInfo?.dexCompleted(true) === true ? 1 : 0)
+  return false
+})
+
+// ── 결과 변수에 답을 적는 명령 셋 (PARITY §10.1) ────────────────────────────
+//
+// ⚠️ **비워 두면 앞 스크립트가 남긴 `VAR_RESULT`로 갈린다.** 스크립트 첫머리에 그 칸을 비우는 줄이 없다 — 지역 칸은
+// 판이 끝날 때 비우지만 같은 판 안에서 앞 명령이 적은 값은 남는다. 간호사는 금카드 인사(`GoToIfGe VAR_RESULT,
+// TRAINER_CARD_LEVEL_GOLD` · `scripts_common.s` 99·129)를, 백화점 점원은 단골 인사를, 빛나·광휘는 생일 대사를 그 값으로 고른다
+
+/** 트레이너 카드 등급을 올리는 다섯 조건 (`TrainerCase_CalculateTrainerCardLevel`) */
+interface TrainerCardLevelInput {
+  /** 전당에 들어갔는가 (`SystemFlag_CheckGameCompleted`) */
+  gameCompleted: boolean
+  /** 전국도감을 **잡은 것으로** 채웠는가 (`Pokedex_NationalDexCompleted`) */
+  nationalDexCompleted: boolean
+  /** 배틀타워 다섯 갈래 중 하나라도 최고 연승 100 이상인가 */
+  towerStreak100: boolean
+  /** 콘테스트 다섯 부문 중 하나라도 마스터랭크 우승인가 */
+  contestMaster: boolean
+  /** 지하통로 비밀기지 깃발이 백금인가 (`UndergroundRecord_HasPlatBaseFlag`) */
+  undergroundPlatBase: boolean
+}
+
+/**
+ * 카드 등급 — 조건 하나에 한 칸 (`TRAINER_CARD_LEVEL_NORMAL` 0 … `_BLACK` 5 · `constants/trainer_card_levels.h`).
+ * 원작도 조건의 **개수**만 센다 — 어느 것이 섰는지는 안 본다
+ */
+export function trainerCardLevel(c: TrainerCardLevelInput): number {
+  return [c.gameCompleted, c.nationalDexCompleted, c.towerStreak100, c.contestMaster, c.undergroundPlatBase]
+    .filter(Boolean).length
+}
+
+/**
+ * 트레이너 카드 등급 (`ScrCmd_GetTrainerCardLevel`) — 전국 간호사가 금카드(4) 이상이면 인사와 맡기는 동작을 바꾼다.
+ *
+ * ⚠️ **셋은 늘 거짓이다.** 배틀타워는 차후 업데이트까지 막혀 있어(`world/frontierGate`) 연승이 없고, 콘테스트와
+ * 지하통로는 범위 밖이다 — 그러니 지금 오를 수 있는 것은 전당과 전국도감 둘, 최대 2(브론즈)다. 간호사의 금카드 갈래(4 이상)는
+ * 그 셋 가운데 둘이 더 서야 열리므로 우리 판에서는 안 열린다. 타워가 열리면 `towerStreak100`을 그 기록으로 잇는다
+ */
+on('GetTrainerCardLevel', (ctx) => {
+  const dest = ctx.readHalfWord()
+  ctx.host.vars.set(dest, trainerCardLevel({
+    gameCompleted: ctx.host.vars.checkFlag(SYSTEM_FLAG.gameCompleted),
+    nationalDexCompleted: ctx.host.world.services.trainerInfo?.dexCompleted(true) === true,
+    towerStreak100: false,
+    contestMaster: false,
+    undergroundPlatBase: false,
+  }))
+  return false
+})
+
+/**
+ * 장막백화점에서 산 횟수 (`VAR_DEPARTMENT_STORE_REGULAR_COUNTER` · `system_vars.c`).
+ *
+ * 번호는 `vars_flags.txt`를 C 열거형으로 센 값이다 — 바로 앞 줄 `VAR_DAILY_RANDOM_LEVEL`이 16449다.
+ * 원작은 백화점 계산대(`PokeMartSpecialties`의 장막 일곱 · `PokeMartDecor`)에서 **한 번 살 때마다** 하나 올리고 10000에서 멈춘다
+ * (`Shop_FinishPurchase` → `SystemVars_IncrementDepartmentStoreBuyCount`). 우리는 그 계산대를 열 때 `openShop`에
+ * `onPurchase`를 건넨다(`countDepartmentStorePurchase`).
+ *
+ * ⚠️ **상점 화면이 그것을 불러야 오른다.** 안 부르면 셈은 늘 0이고 점원은 처음 온 손님 인사만 한다 — 단골 인사가 잘못
+ * 나오는 일은 없다
+ */
+export const VAR_DEPARTMENT_STORE_REGULAR_COUNTER = 16450
+
+/** 산 횟수는 여기서 멈춘다 (`SystemVars_IncrementDepartmentStoreBuyCount`) */
+const DEPARTMENT_STORE_BUY_COUNT_MAX = 10000
+
+/** 백화점에서 한 번 샀다 (`SystemVars_IncrementDepartmentStoreBuyCount`) — 상점 화면이 `openShop`의 `onPurchase`로 부른다 */
+export function countDepartmentStorePurchase(vars: { get(id: number): number; set(id: number, value: number): void }): void {
+  const count = vars.get(VAR_DEPARTMENT_STORE_REGULAR_COUNTER)
+  vars.set(VAR_DEPARTMENT_STORE_REGULAR_COUNTER, Math.min(DEPARTMENT_STORE_BUY_COUNT_MAX, count + 1))
+}
+
+/** 단골로 보는 구매 횟수 (`ScrCmd_CheckIsDepartmentStoreRegular`의 `>= 5`) */
+const DEPARTMENT_STORE_REGULAR_PURCHASES = 5
+
+/** 백화점 단골인가 (`ScrCmd_CheckIsDepartmentStoreRegular`) — 2·3·4층 점원이 이 값으로 인사를 가른다 */
+on('CheckIsDepartmentStoreRegular', (ctx) => {
+  const dest = ctx.readHalfWord()
+  const count = ctx.host.vars.get(VAR_DEPARTMENT_STORE_REGULAR_COUNTER)
+  ctx.host.vars.set(dest, count >= DEPARTMENT_STORE_REGULAR_PURCHASES ? 1 : 0)
+  return false
+})
+
+/**
+ * 오늘이 주인공 생일인가 (`ScrCmd_CheckIsTodayPlayerBirthday`) — 늘 거짓이다.
+ *
+ * 원작은 DS 본체에 적힌 주인의 생일(`SystemData_GetOwnerBirthMonth`·`…DayOfMonth`)을 오늘과 견준다. 우리에게는 그 자료가
+ * 없고, 묻는 화면을 지어내지도 않는다. 그래서 빛나·광휘의 생일 갈래(`scripts_counterpart_talk.s` 42)는 안 열린다
+ */
+on('CheckIsTodayPlayerBirthday', (ctx) => {
+  ctx.host.vars.set(ctx.readHalfWord(), 0)
   return false
 })
 

@@ -46,6 +46,41 @@ export interface MenuEntry {
   alt: string | null
 }
 
+/**
+ * 어느 원작 부품으로 뜨는 메뉴인가 — **커서 규칙이 둘이다.**
+ *
+ *   `menu`      `Menu` (`ShowMenu` · `ShowMenuMultiColumn` · 예/아니오 · `menu.c`). 눌린 순간만 움직이고(`JOY_NEW`),
+ *               여러 열이면 **열부터 채운다**(↑↓ ±1 · ←→ ±줄 수). 한 열에 넷 이상이면 끝에서 감긴다
+ *   `listMenu`  `ListMenu` (`ShowListMenu` 계열 · 기술 교사 · `list_menu.c`). 누르고 있으면 되풀이하고(`JOY_REPEAT`),
+ *               여덟 줄 창이 굴러가며 끝에서 안 감긴다. ←→는 한 창씩 넘긴다(`PAGER_MODE_LEFT_RIGHT_PAD`)
+ */
+type MenuWidget = 'menu' | 'listMenu'
+
+/**
+ * `field_menu.c`의 `MENU_LOOPAROUND_MIN_OPTIONS` — 한 열짜리 `Menu`가 이만큼 넘으면 끝에서 감긴다
+ * (`FieldMenuManager_SetupSingleColumnMenu`). 여러 열 메뉴와 예/아니오는 안 감긴다(`loopAround` 0)
+ */
+export const MENU_LOOPAROUND_MIN_OPTIONS = 4
+
+/** `field_menu.c`의 `LIST_MENU_MAX_DISPLAY` — 목록 창에 한 번에 보이는 줄. 항목이 적으면 그 수다(`ListMenu_New`) */
+export const LIST_MENU_MAX_DISPLAY = 8
+
+/** 커서를 기억하는 목록 (`ShowListMenuRememberCursor`) — 창 첫 줄과 창 안 줄을 이 두 변수에 두고 읽고 쓴다 */
+interface RememberedCursor {
+  /** 창 첫 줄의 항목 번호를 둘 변수 (`listOffsetPtr`) */
+  offsetVar: number
+  /** 창 안에서 커서가 선 줄을 둘 변수 (`cursorPosPtr`) */
+  cursorVar: number
+}
+
+/** `showMenu`의 부품 고르기. 비우면 `ShowMenu`다 */
+export interface MenuShape {
+  widget?: MenuWidget
+  /** ←→ 쪽 넘김. 필드 목록은 켜져 있고(`FieldMenuManager_InitListMenuTemplate`) 프런티어·꽃집 목록은 꺼져 있다 */
+  pager?: boolean
+  remember?: RememberedCursor | null
+}
+
 /** 지금 답을 기다리는 메뉴 */
 interface PendingMenu {
   /** `yesno`는 창 안에 붙고, `list`는 따로 뜬다 */
@@ -57,6 +92,10 @@ interface PendingMenu {
   canCancel: boolean
   /** `ShowMenuMultiColumn`. 보통은 1이다 */
   columns: number
+  widget: MenuWidget
+  /** ←→가 한 창씩 넘기는가 (`listMenu`만) */
+  pager: boolean
+  remember: RememberedCursor | null
 }
 
 /**
@@ -814,9 +853,12 @@ export interface FieldServices {
    *
    * 재고를 스크립트가 안 준다 — 명령이 뱃지 수나 상점 번호만 주고 실제 목록은
    * 코드에 박혀 있다 (`include/data/mart_items.h`). 그 표를 푸는 것은 붙이는
-   * 쪽 일이다
+   * 쪽 일이다.
+   *
+   * `onPurchase`는 장막백화점 계산대에만 온다(`Shop_Start`의 `incBuyCount`) — 산 것을 확인하는 글을 넘길 때
+   * **한 번 살 때마다 한 번** 부른다(`Shop_FinishPurchase`). 단골 셈(`CheckIsDepartmentStoreRegular`)이 이것으로 오른다
    */
-  openShop?: (items: readonly number[], currency?: ShopCurrency) => void
+  openShop?: (items: readonly number[], currency?: ShopCurrency, onPurchase?: () => void) => void
   /**
    * 보관 시스템을 연다 (`ScrCmd_OpenPokemonStorage`).
    *
@@ -1300,8 +1342,13 @@ export class FieldWorld {
    */
   lastMessage: number | null = null
   menu: PendingMenu | null = null
-  /** 예/아니오에서 지금 가리키는 칸. 원작도 "예"에서 시작한다 */
+  /** 커서가 선 항목 번호 (목록 전체에서). 예/아니오는 "예"에서 시작한다 — 원작도 그렇다 */
   menuCursor = MENU_YES
+  /**
+   * 목록 창 첫 줄의 항목 번호 (`ListMenu.listPos`). `listMenu`만 굴러가고 나머지는 늘 0이다.
+   * 창 안에서 커서가 선 줄은 `menuCursor - menuTop`이다 (`ListMenu.cursorPos`)
+   */
+  menuTop = 0
 
   readonly names: NameSource
 
@@ -1489,8 +1536,13 @@ export class FieldWorld {
       entries: [{ text: '예', value: MENU_YES, alt: null }, { text: '아니오', value: MENU_NO, alt: null }],
       canCancel: true,
       columns: 1,
+      // `Menu_MakeYesNoChoice` — 한 열 두 줄 `Menu`이고 안 감긴다 (`menu.c`의 `loopAround = FALSE`)
+      widget: 'menu',
+      pager: false,
+      remember: null,
     }
     this.menuCursor = MENU_YES
+    this.menuTop = 0
   }
 
   // ── 목록 메뉴 ──────────────────────────────────────────────────────────────
@@ -1531,13 +1583,55 @@ export class FieldWorld {
     this.builder.entries.push({ text, value, alt })
   }
 
-  /** `ShowMenu` · `ShowListMenu` 계열. 여기서부터 답을 기다린다 */
-  showMenu(kind: 'list', columns = 1): void {
+  /**
+   * `ShowMenu` · `ShowListMenu` 계열. 여기서부터 답을 기다린다.
+   *
+   * `listMenu`는 창을 맨 위에 두고 커서를 `Init…`의 줄에 세운다(`ListMenu_New(…, 0, initialCursorPos)`).
+   * 기억하는 목록은 두 변수의 값으로 창과 커서를 되살린다(`FieldMenuManager_ShowListMenuWithCursorPosition`)
+   */
+  showMenu(kind: 'list', columns = 1, shape: MenuShape = {}): void {
     if (this.builder === null) return
     const { dest, cursor, canCancel, entries } = this.builder
     this.builder = null
-    this.menu = { kind, dest, entries, canCancel, columns }
-    this.menuCursor = Math.min(cursor, Math.max(0, entries.length - 1))
+    const widget = shape.widget ?? 'menu'
+    const remember = widget === 'listMenu' ? shape.remember ?? null : null
+    this.menu = {
+      kind, dest, entries, canCancel, columns, widget,
+      pager: widget === 'listMenu' && shape.pager === true,
+      remember,
+    }
+    const last = Math.max(0, entries.length - 1)
+    if (widget === 'menu') {
+      this.menuTop = 0
+      this.menuCursor = Math.min(cursor, last)
+      return
+    }
+    const shown = this.listRows()
+    // ⚠️ 원작은 받은 값을 그대로 쓴다. 우리는 창 밖으로 나가지 않게만 눌러 둔다 — 원작 대본의 값은 늘 안쪽이다
+    // (기억하는 목록은 경품 교환소·프런티어 기록 둘이고, 둘 다 스크립트 첫머리에서 두 변수를 0으로 비운다)
+    const maxTop = Math.max(0, entries.length - shown)
+    let top = remember === null ? 0 : Math.min(this.vars.get(remember.offsetVar), maxTop)
+    let row = remember === null ? cursor : this.vars.get(remember.cursorVar)
+    if (row > shown - 1) {
+      top = Math.min(maxTop, top + row - Math.max(0, shown - 1))
+      row = Math.max(0, shown - 1)
+    }
+    this.menuTop = top
+    this.menuCursor = Math.min(top + row, last)
+    this.rememberCursor()
+  }
+
+  /** 목록 창의 줄 수 — 여덟, 항목이 적으면 그 수 (`ListMenu_New`가 `maxDisplay`를 `count`로 줄인다) */
+  private listRows(): number {
+    return Math.min(LIST_MENU_MAX_DISPLAY, this.menu?.entries.length ?? 0)
+  }
+
+  /** 기억하는 목록이면 지금 창과 커서를 두 변수에 적는다 (`ListMenuCursorCallback` — 띄울 때와 움직일 때마다 돈다) */
+  private rememberCursor(): void {
+    const remember = this.menu?.remember ?? null
+    if (remember === null) return
+    this.vars.set(remember.offsetVar, this.menuTop)
+    this.vars.set(remember.cursorVar, this.menuCursor - this.menuTop)
   }
 
   /** 지금 메뉴가 정말 떠 있는가. 항목이 하나도 없으면 띄울 것이 없다 */
@@ -1559,11 +1653,86 @@ export class FieldWorld {
     this.choose(entry === undefined ? MENU_NOTHING_CHOSEN : entry.value)
   }
 
-  /** 커서를 움직인다. 끝에서 돌지 않는다 — 원작도 안 돈다 */
-  moveCursor(delta: number): void {
-    if (this.menu === null) return
-    const last = this.menu.entries.length - 1
-    this.menuCursor = Math.max(0, Math.min(last, this.menuCursor + delta))
+  /**
+   * 커서를 움직인다 — `dy`는 ↓가 +, `dx`는 →가 +. 한 번에 한 방향이고, 크기만큼 한 칸씩 되풀이한다.
+   *
+   * 규칙은 부품이 정한다 (`MenuWidget`):
+   *   `menu`      `TryMovingCursor` — 여러 열이면 ↑↓는 그 열 안에서 ±1, ←→는 ±줄 수다(항목이 **열부터** 찬다).
+   *               한 열에 넷 이상이면 끝에서 감기고, 아니면 끝에서 선다
+   *   `listMenu`  `UpdateOffsetsForScroll` — ↑↓는 창 안 커서가 가운데 줄에 닿으면 창을 굴린다. 끝에서 안 감긴다.
+   *               ←→는 쪽 넘김이 켜진 목록에서만 창 줄 수만큼 ↑↓를 되풀이한다(`ListMenu_ProcessInput`)
+   */
+  moveCursor(dy: number, dx = 0): void {
+    const menu = this.menu
+    if (menu === null || menu.entries.length === 0) return
+    if (menu.widget === 'listMenu') {
+      if (dx !== 0 && !menu.pager) return
+      const steps = dx !== 0 ? Math.abs(dx) * this.listRows() : Math.abs(dy)
+      const down = (dx !== 0 ? dx : dy) > 0
+      for (let i = 0; i < steps; i++) this.stepListMenu(down)
+      this.rememberCursor()
+      return
+    }
+    const dir = dy < 0 ? 'up' : dy > 0 ? 'down' : dx < 0 ? 'left' : 'right'
+    const steps = Math.abs(dy !== 0 ? dy : dx)
+    for (let i = 0; i < steps; i++) this.stepMenu(dir)
+  }
+
+  /** `Menu` 한 칸 (`menu.c`의 `TryMovingCursor`) */
+  private stepMenu(dir: 'up' | 'down' | 'left' | 'right'): void {
+    const menu = this.menu!
+    const count = menu.entries.length
+    const xSize = Math.max(1, menu.columns)
+    // 여러 열이면 줄 수는 올림이다 (`FieldMenuManager_ShowMultiColumnMenu`). 한 열이면 항목 수 그대로다
+    const ySize = Math.ceil(count / xSize)
+    // 한 열짜리 넷 이상만 감긴다 — 여러 열 메뉴는 `memset` 0이 그대로 남고, 예/아니오는 두 줄이다
+    const loop = xSize === 1 && count >= MENU_LOOPAROUND_MIN_OPTIONS
+    const pos = this.menuCursor
+    let next: number
+    if (dir === 'up') {
+      if (ySize <= 1) return
+      if (pos % ySize === 0) { if (!loop) return; next = pos + (ySize - 1) } else next = pos - 1
+    } else if (dir === 'down') {
+      if (ySize <= 1) return
+      if (pos % ySize === ySize - 1) { if (!loop) return; next = pos - (ySize - 1) } else next = pos + 1
+    } else if (dir === 'left') {
+      if (xSize <= 1) return
+      if (pos < ySize) { if (!loop) return; next = pos + ySize * (xSize - 1) } else next = pos - ySize
+    } else {
+      if (xSize <= 1) return
+      if (pos >= ySize * (xSize - 1)) { if (!loop) return; next = pos % ySize } else next = pos + ySize
+    }
+    // ⚠️ 마지막 열이 덜 찬 칸에는 안 선다. 원작은 머리줄(`MENU_HEADER`)만 막아서 빈 칸에도 서지만, 롬 대본의 여러 열
+    // 메뉴는 트레이너즈스쿨 칠판 하나(여섯 항목 · 두 열)라 빈 칸이 없다
+    if (next >= count) return
+    this.menuCursor = next
+  }
+
+  /** `ListMenu` 한 줄 (`list_menu.c`의 `UpdateOffsetsForScroll` — 머리줄은 대본에 없다) */
+  private stepListMenu(down: boolean): void {
+    const count = this.menu!.entries.length
+    const shown = this.listRows()
+    let top = this.menuTop
+    let row = this.menuCursor - top
+    // 창을 굴리기 시작하는 줄 — 내려갈 때는 가운데 아래(여덟이면 4), 올라갈 때는 가운데 위(3)
+    const half = Math.floor(shown / 2) + (shown % 2)
+    if (down) {
+      const pivot = shown === 1 ? 0 : half
+      if (top === count - shown) {
+        if (row >= shown - 1) return
+        row++
+      } else if (row < pivot) row++
+      else { top++; row = pivot }
+    } else {
+      const pivot = shown === 1 ? 0 : shown - half - 1
+      if (top === 0) {
+        if (row <= 0) return
+        row--
+      } else if (row > pivot) row--
+      else { top--; row = pivot }
+    }
+    this.menuTop = top
+    this.menuCursor = top + row
   }
 
   /** 이번 프레임에 A나 B가 눌렸는가 */
@@ -1600,6 +1769,7 @@ export class FieldWorld {
     this.target = null
     this.slots.clear()
     this.menu = null
+    this.menuTop = 0
     this.builder = null
     this.signpost = null
   }

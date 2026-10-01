@@ -12,7 +12,7 @@ import {
   scriptBridge, signsOf, talkTile, TILE_BEHAVIOR_PC, triggersOf, warpGateBridge, world as mapWorld,
   type MapHeader, type Npc, type Sign,
 } from '../map/world'
-import { deferredFacilityNotice } from '../world/frontierGate'
+import { deferredFacilityNotice, deferredScriptNotice } from '../world/frontierGate'
 import { worldState, type FieldActionFxKind } from '../../state/worldState'
 import {
   buildCommands, SCRIPT_ID_OFFSET_SINGLE_BATTLES, SYSTEM_FLAG,
@@ -404,7 +404,10 @@ function stepOurText(world: FieldWorld): void {
     chooseFromMenu(world)
     world.tick()
     if (world.menu !== null) return
-    const choice = fieldScripts.vars.get(OUR_MENU_VAR)
+    // ⚠️ **변수는 16비트다** — B로 물러나면 `MENU_CANCEL`(−2)이 0xFFFE로 읽힌다. 스크립트는 같은 폭으로 견주니 괜찮지만
+    // 우리 쪽은 수로 받으므로 되돌려 준다. 안 그러면 꽃집·팩토리 목록이 B를 「65534번째 항목」으로 읽는다
+    const raw = fieldScripts.vars.get(OUR_MENU_VAR)
+    const choice = raw === (MENU_CANCEL & 0xffff) ? MENU_CANCEL : raw
     fieldScripts.vars.set(OUR_MENU_VAR, now.saved ?? 0)
     native = null
     world.closeBox(true)
@@ -426,7 +429,9 @@ function stepOurText(world: FieldWorld): void {
     } else {
       world.initMenu(OUR_MENU_VAR, menu.cursor, menu.canCancel, 'local')
       for (const entry of menu.entries) world.addMenuEntryText(entry.text, entry.value, entry.alt ?? null)
-      world.showMenu('list')
+      // 우리 목록을 띄우는 두 자리(배틀팩토리 · 꽃집)가 원작에서는 쪽 넘김 없는 `ListMenu`다
+      // (`ov104_02231F74.c` · `accessory_shop.c`의 `PAGER_MODE_NONE`)
+      world.showMenu('list', 1, { widget: 'listMenu', pager: false })
     }
     now.opened = true
     return
@@ -445,6 +450,25 @@ function refuseDeferredWarp(to: number): boolean {
   const text = deferredFacilityNotice(to, locale)
   if (text === null || native !== null || fieldScripts.world === null) return false
   showOurText(text, null)
+  return true
+}
+
+/**
+ * 막아 둔 롬 스크립트 (`world/frontierGate`의 `deferredScriptNotice`) — 대습초원 전망대 망원경이다. `start()`가 맨 앞에서 묻는다.
+ *
+ * ⚠️ **스크립트가 서기 전에 끊는다.** 그 스크립트는 100원을 받고(`RemoveMoney`) 계산대 소리까지 낸 **뒤에야** 안 만든
+ * `StartGreatMarshLookout`에 닿는다 — 명령 쪽에서 막으면 돈만 먹는 기계가 된다. 막은 판은 롬 스크립트가 한 줄도 안 돈다.
+ * 소리는 그 스크립트의 첫 줄(`PlaySE SEQ_SE_CONFIRM`) 하나만 남긴다 — 말을 건 것에 대한 대답이다
+ *
+ * @returns 막았으면 true. 이미 우리 글이 떠 있어도 롬 스크립트는 안 건다
+ */
+function refuseDeferredScript(scriptID: number): boolean {
+  const text = deferredScriptNotice(mapWorld.mapId, scriptID, locale)
+  if (text === null) return false
+  if (native === null) {
+    fieldScripts.services.sound?.playEffect(SFX.MENU)
+    showOurText(text, null)
+  }
   return true
 }
 
@@ -872,12 +896,30 @@ let frameInput: PrinterInput = { pressed: false, held: false }
 /** 스크립트가 설 때 이미 누르고 있던 A · B — 손을 뗄 때까지 `fresh`가 아니다 */
 let staleHold = false
 
-/** 눌린 순간만 잡는다. 누르고 있는 동안 계속 참이면 메뉴가 한 번에 지나간다 */
-const edges = { a: false, b: false, up: false, down: false }
-const last = { a: false, b: false, up: false, down: false }
+/** 눌린 순간만 잡는다(`JOY_NEW`). 누르고 있는 동안 계속 참이면 메뉴가 한 번에 지나간다 */
+const edges = { a: false, b: false, up: false, down: false, left: false, right: false }
+const last = { a: false, b: false, up: false, down: false, left: false, right: false }
+
+/**
+ * 누르고 있으면 되풀이되는 방향 (`JOY_REPEAT`) — **목록 메뉴 커서만** 읽는다(`ListMenu_ProcessInput`).
+ * 대사 넘김과 `Menu`는 `edges`다 — 거기에 되풀이가 섞이면 쪽이 저절로 넘어간다
+ */
+const repeats = { up: false, down: false, left: false, right: false }
+
+/**
+ * 되풀이 박자 (`system.c`의 `gSystem.autorepeatDelay` 8 · `autorepeatRate` 4 — 필드는 `SetAutorepeat`로 안 바꾼다).
+ * 처음 누른 프레임에 한 번, 같은 키를 그대로 누르고 있으면 8프레임 뒤부터 4프레임마다 한 번이다
+ */
+const AUTOREPEAT_DELAY = 8
+const AUTOREPEAT_RATE = 4
+
+/** 지난 프레임에 누르고 있던 키 묶음과 남은 박자 — 원작처럼 **키 묶음 하나**로 잰다(하나라도 바뀌면 처음부터) */
+const pad = { held: 0, timer: AUTOREPEAT_DELAY }
 
 /** 방향키가 이만큼 기울면 눌린 것으로 본다 */
 const STICK = 0.5
+
+const KEYS = ['a', 'b', 'up', 'down', 'left', 'right'] as const
 
 function readInput(): void {
   const input = worldState.input
@@ -886,15 +928,33 @@ function readInput(): void {
     b: input.cancel,
     up: input.move.y < -STICK,
     down: input.move.y > STICK,
+    left: input.move.x < -STICK,
+    right: input.move.x > STICK,
   }
-  for (const key of ['a', 'b', 'up', 'down'] as const) {
+  let held = 0
+  KEYS.forEach((key, i) => {
     edges[key] = now[key] && !last[key]
     last[key] = now[key]
+    if (now[key]) held |= 1 << i
+  })
+  // `ReadKeypadAndTouchpad` — 새로 눌린 키, 또는 묶음이 그대로일 때 박자가 다 되면 누르고 있는 키 전부
+  let repeatable = held & ~pad.held
+  if (held !== 0 && held === pad.held) {
+    if (--pad.timer === 0) {
+      repeatable = held
+      pad.timer = AUTOREPEAT_RATE
+    }
+  } else {
+    pad.timer = AUTOREPEAT_DELAY
+  }
+  pad.held = held
+  for (const key of ['up', 'down', 'left', 'right'] as const) {
+    repeats[key] = (repeatable & (1 << KEYS.indexOf(key))) !== 0
   }
   // A와 B 둘 다 대사창을 넘긴다 (`ScriptContext_CheckABPress`)
-  const held = now.a || now.b
-  if (!held) staleHold = false
-  frameInput = { pressed: edges.a || edges.b, held, fresh: held && !staleHold }
+  const ab = now.a || now.b
+  if (!ab) staleHold = false
+  frameInput = { pressed: edges.a || edges.b, held: ab, fresh: ab && !staleHold }
 }
 
 export const scriptSystem = {
@@ -994,22 +1054,30 @@ function tryStartScripts(): void {
  * 취소(−2)고, 그마저 막힌 메뉴가 있어서 세계가 걸러낸다.
  *
  * 소리는 `SEQ_SE_CONFIRM` 하나다 — 커서가 **실제로 움직였을 때**, 고를 때, B로 물러날 때
- * (`Menu_ProcessInput` · `FieldMenuManager_ListMenuTask`). 막힌 B와 끝에 닿아 안 움직인 커서는 조용하다
+ * (`Menu_ProcessInput` · `ListMenuSysTaskCallback`). 막힌 B와 끝에 닿아 안 움직인 커서는 조용하다
+ *
+ * 차례도 원작대로다 — A, B, ↑, ↓, ←, → 가운데 **처음 걸린 하나만** 한다. 방향은 부품마다 읽는 것이 다르다:
+ * `Menu`는 눌린 순간(`JOY_NEW`), `ListMenu`는 되풀이(`JOY_REPEAT`)다 (`world`의 `MenuWidget`)
  */
 function chooseFromMenu(world: FieldWorld): void {
   const beep = (): void => { fieldScripts.services.sound?.playEffect(SFX.MENU) }
-  const before = world.menuCursor
-  if (edges.up) world.moveCursor(-1)
-  if (edges.down) world.moveCursor(1)
-  if (world.menuCursor !== before) beep()
   if (world.menu?.kind === 'yesno') {
-    if (edges.b) { beep(); world.choose(MENU_NO) } else if (edges.a) { beep(); world.choose(world.menuCursor) }
-    return
-  }
-  if (edges.b) {
+    if (edges.a) { beep(); world.choose(world.menuCursor); return }
+    if (edges.b) { beep(); world.choose(MENU_NO); return }
+  } else if (edges.a) {
+    beep(); world.chooseAtCursor(); return
+  } else if (edges.b) {
     if (world.menu?.canCancel === true) beep()
     world.choose(MENU_CANCEL)
-  } else if (edges.a) { beep(); world.chooseAtCursor() }
+    return
+  }
+  const keys = world.menu?.widget === 'listMenu' ? repeats : edges
+  const before = world.menuCursor
+  if (keys.up) world.moveCursor(-1)
+  else if (keys.down) world.moveCursor(1)
+  else if (keys.left) world.moveCursor(0, -1)
+  else if (keys.right) world.moveCursor(0, 1)
+  if (world.menuCursor !== before) beep()
 }
 
 function step(ctx: ScriptContext, world: FieldWorld): void {
@@ -1977,6 +2045,8 @@ export function resetSightTile(): void {
 export function start(scriptID: number, mapFile: number, localID = 0): boolean {
   const { data, commands, world, vars } = fieldScripts
   if (data === null || commands === null || world === null) return false
+  // 막아 둔 스크립트면 우리 안내 한 쪽으로 닫는다 — 돈을 받는 줄보다 앞이어야 한다
+  if (refuseDeferredScript(scriptID)) return true
 
   const target = resolveScript(data.meta, scriptID, mapFile)
   if (!target) return false
