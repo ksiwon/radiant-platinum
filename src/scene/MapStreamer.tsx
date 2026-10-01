@@ -7,7 +7,7 @@
 // setState는 청크를 넘거나 맵이 바뀌는 순간에만 부른다. 프레임마다 부르면 R3F
 // 프로젝트가 죽는다(PLAN §3.2). 인스턴스 개수는 최대치로 한 번 잡고 mesh.count만
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight, Vector3 } from 'three'
 import { activeZone } from '../engine/map/zone'
@@ -19,7 +19,8 @@ import { coverScreen, fadeDone, resetFade, startFade } from '../engine/script/fa
 import { restoreRetry } from '../state/restoreStore'
 import { restoreGroundY, startRestore } from './restoreWorld'
 import { beginAsyncPipelines, settleAsyncPipelines } from './asyncPipelines'
-import { terrainLanded } from './terrainMark'
+import { bdspShowing, bdspWanted, terrainLanded } from './terrainMark'
+import { bdspVersion, expectBdsp, subscribeBdsp } from './bdspReady'
 import { arriveAt } from './pokecenter'
 import { music } from '../engine/audio/music'
 import { SFX } from '../engine/audio/sfx'
@@ -129,7 +130,7 @@ import { RadarPatches } from './RadarPatches'
 import { BerryPatchProps } from './BerryPatchProps'
 import './mapFeatureCollision'
 import { DistortionProps } from './DistortionProps'
-import { ObjectProps } from './ObjectProps'
+import { bakedVentActors, ObjectProps } from './ObjectProps'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
 import { Ledges } from './Ledges'
@@ -141,7 +142,6 @@ import { useDoorVisualStore } from './doorVisualStore'
 import { useSlopeAnimStore } from './slopeAnimStore'
 import { InteractionPrompt } from './InteractionPrompt'
 import { npcActors, type NpcActor } from '../engine/actor/npcs'
-import { PROP_KIND_BY_GFX } from '../import/platinum/fldeffProps'
 import {
   BACK_DIR,
   CHAR_KEY_COLOR,
@@ -232,6 +232,34 @@ const SHADOW_SPAN = 30
  */
 const SHADOW_TEXEL = (2 * SHADOW_SPAN) / SHADOW_MAP
 
+/** 그림자 카메라의 앞뒤(타일). 정사영이라 깊이가 이 사이에 고르게 0~1로 펴진다 — `shadow-bias` 1이 139칸이다 */
+const SHADOW_NEAR = 1
+const SHADOW_FAR = 140
+
+/**
+ * 받는 면을 제 법선으로 미는 거리(타일) — **그림자 텍셀 2.5칸**(0.0732칸).
+ *
+ * ⚠️ **한 텍셀(0.03)로는 비스듬한 면이 제 그림자를 받는다.** 해와 거의 나란한 면은 텍셀 하나 안에서 깊이가 `텍셀 × tanα`만큼
+ * 벌어지는데, `PCFSoftShadowMap`이 둘레 ±1텍셀을 더 읽으므로 법선으로 **1.5텍셀 넘게** 밀어야 한다. 0.03은 그보다 모자라
+ * BDSP 바위 · 연석 · 절벽 · 동굴 비탈에 가는 줄무늬(그림자 여드름)가 촘촘히 꼈다(`wayward_cave` · `eterna_city` ·
+ * `oreburgh_gate` · `mt_coronet` · `victory_road` · `iron_island` · `route_227`). 2.5텍셀이면 PCF가 읽는 둘레를 덮고 한 텍셀이 남는다.
+ *
+ * 서 있는 것의 발치가 뜨는지(peter-panning)는 셈으로 잰다 — 해 고도 θ = asin(42/51.6) = 54.5°(`SUN_DIR`). 평평한 땅에 선
+ * 나무 · 집 벽의 그림자가 밑동에서 떨어지는 폭은 `깊이 바이어스 × cosθ`뿐이다: 땅을 위로 민 점에서 해 쪽으로 쏜 선도 같은
+ * 줄기 · 벽에 맞으므로 **법선 바이어스는 이 폭에 안 든다.** 0.03일 때나 이 값일 때나 0.167 × 0.581 = **0.097칸**(텍셀 3.3개)이다.
+ * 법선으로 미는 폭보다 얇은 가림(0.073칸 미만)만 그림자가 빠진다
+ */
+const SHADOW_NORMAL_BIAS = SHADOW_TEXEL * 2.5
+
+/**
+ * 깊이 바이어스 — 그림자 카메라 깊이(0~1) 단위. −0.0012 × 139칸 = **빛 쪽으로 0.167칸**.
+ *
+ * 나뭇잎은 알파로 오려 낸 판이라 자기 그림자가 얼룩진다 — 살짝 밀어 둔다. ⚠️ **여드름은 이것을 키워 고치지 않는다.** 깊이로
+ * 미는 것은 해를 마주한 면에서만 듣고(비스듬한 면은 `cosα`만큼만 먹는다) 발치는 그대로 더 뜬다 — −0.002(0.278칸)로 키우면
+ * 위 폭이 0.162칸으로 1.7배가 된다. 비스듬한 면은 법선 쪽(`SHADOW_NORMAL_BIAS`)이 맡는다
+ */
+const SHADOW_BIAS = -0.0012
+
 /**
  * 해 쪽 정규 기저. **그림자 카메라가 `lookAt`으로 세우는 축과 같다** — 앞이
  * `position − target`(= `SUN_DIR`), 오른쪽이 `up × 앞`, 위가 `앞 × 오른쪽`이다
@@ -275,39 +303,6 @@ const DARK_FAR = 4
 
 /** 날씨가 걷힐 때 원작 창이 다시 벌어지는 시간(초) — 30프레임 (`ov5_021DB6E0`의 마지막 인자) */
 const CAVE_WEATHER_FADE = 30 / 60
-
-/**
- * **BDSP 맵에 없는 소품 종류** (`ObjectProps`) — 눈덩이(종류 35)와 로토무 방 벽(종류 38).
- *
- * BDSP가 그림을 쥐면 `ObjectProps`를 통째로 내렸는데, 그러면 BDSP에 없는 것까지 빠진다 —
- * 선녀시티 체육관(`C09GYM0101`)의 눈덩이 19개가 **보이지 않는 벽**이 되어 미는 퍼즐을
- * 눈 감고 풀어야 했다. 실측(glb 정점 · 배치 칸 한가운데에서 가장 가까운 조각):
- *
- * | 종류 | BDSP에 있나 |
- * | --- | --- |
- * | 간판 여섯(91~96) | 바깥 189곳 중 **179곳**이 1.2칸 안에 `SignBoard`·`Guide`·`Post` · 던전 D03R0101·D31도 0.2~0.4칸 |
- * | 책(183) | 방 넷 다 0.29칸에 `Book_03` |
- * | 사천왕 방문(209) | 방 넷 다 0.04~0.10칸에 `DoorInner` |
- * | 눈덩이(118) | 체육관 방에 없다 — 가장 가까운 것이 계단(`OutStair`) 0.64칸 |
- * | 로토무 방 벽(262) | 없다 — 가장 가까운 것이 방 벽(`ComWall_05`) 1.12칸 |
- *
- * 그래서 **이 둘만 있는 맵**에서는 BDSP 위에도 세운다. BDSP가 그리는 종류와 한 맵에 섞인
- * 곳은 없다(눈덩이 19개는 다 `C09GYM0101`, 벽은 `C04R0201` 하나다) — 섞이면 `ObjectProps`가
- * 종류를 골라 세워야 한다. 그 전에는 간판이 두 겹이 되므로 통째로 내린다
- */
-const PROPS_BDSP_LACKS: ReadonlySet<number> = new Set([35, 38])
-
-/** 이 맵의 소품이 **전부** BDSP에 없는 종류인가. 소품이 없으면 false다 — 세울 것이 없다 */
-function propsOverBdsp(list: readonly NpcActor[]): boolean {
-  let any = false
-  for (const actor of list) {
-    const kind = PROP_KIND_BY_GFX.get(actor.gfx)
-    if (kind === undefined) continue
-    if (!PROPS_BDSP_LACKS.has(kind)) return false
-    any = true
-  }
-  return any
-}
 
 interface Props {
   initial: MapGrid
@@ -376,18 +371,19 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const dungeon = useBdspDungeon(mapId)
   const outdoor = mapById(mapId)?.matrix === 0
   const { near: fieldsNear } = useBdspFields(outdoor)
-  /** BDSP가 그림을 쥐는가 — 방이나 던전이 섰거나, 바깥이고 둘레에 지역이 걸린다 */
-  const bdspDraws = room !== null || dungeon !== null || (outdoor && fieldsNear.length > 0)
+  /** 지금 그려야 할 BDSP 층의 열쇠 — 방 · 던전 · 둘레 지역. 워프 덮개가 이것들이 서기를 기다린다 (`terrainLanded`) */
+  const bdspKeys = useMemo(
+    () => bdspWanted(room, dungeon, outdoor ? fieldsNear : []), [room, dungeon, outdoor, fieldsNear])
+  useEffect(() => { expectBdsp(bdspKeys) }, [bdspKeys])
+  // 비우는 것은 떠날 때 한 번이다 — 남겨 두면 다음 마운트 전까지 덮개가 이 맵의 열쇠를 기다린다
+  useEffect(() => () => { expectBdsp([]) }, [])
+  // 서기 표(`bdspReady`)가 바뀔 때마다 다시 그린다 — 아래가 그 표를 읽는다
+  useSyncExternalStore(subscribeBdsp, bdspVersion)
   /**
-   * 이 맵의 소품이 BDSP 위에도 서야 하는가 (`PROPS_BDSP_LACKS`). 사람 목록이 **이 맵의 것이
-   * 된 뒤에** 한 번 잰다 — 맵을 옮긴 직후에는 앞 맵 사람들이 남아 있다 (`npcActors.mapId`)
+   * BDSP가 그림을 쥐는가 — 원하는 층 중 하나라도 **실제로 서서 그려졌을 때만** 참이다 (`bdspShowing`). 받는 동안은 원작 그림이
+   * 그대로 선다 — 이름만 정해졌을 때 숨기면 205번도로가 하늘과 사람만 남았다
    */
-  const [lacking, setLacking] = useState<{ map: number, over: boolean } | null>(null)
-  useFrame(() => {
-    if (npcActors.mapId !== mapId || lacking?.map === mapId) return
-    setLacking({ map: mapId, over: propsOverBdsp(npcActors.list) })
-  })
-  const propsShown = !bdspDraws || (lacking?.map === mapId && lacking.over)
+  const bdspDraws = bdspShowing(bdspKeys)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -1083,9 +1079,18 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const [standingMons, setStandingMons] = useState<ReadonlySet<NpcActor>>(() => new Set())
   /** 입체가 이미 맡은 배치 전부. 판때기는 여기 든 사람을 안 세운다 */
   const [standingBalls, setStandingBalls] = useState<ReadonlySet<NpcActor>>(() => new Set())
+  /**
+   * BDSP 지역이 원통 모델로 이미 세운 환풍구 (`ObjectProps`의 `bakedVentActors`). 붙은 층의 환풍구 자리는 층이 붙고 뗄 때
+   * 바뀌고 사람 목록은 맵을 옮길 때 바뀐다 — 둘 다 React 바깥이라 프레임마다 견주고 바뀐 때만 갈아 끼운다
+   */
+  const [standingVents, setStandingVents] = useState<ReadonlySet<NpcActor>>(() => new Set())
+  useFrame(() => {
+    const next = bakedVentActors(npcActors.list, standingVents)
+    if (next !== standingVents) setStandingVents(next)
+  })
   const standing = useMemo(
-    () => new Set([...standingPeople, ...standingMons, ...standingBalls]),
-    [standingPeople, standingMons, standingBalls],
+    () => new Set([...standingPeople, ...standingMons, ...standingBalls, ...standingVents]),
+    [standingPeople, standingMons, standingBalls, standingVents],
   )
 
   // 지금 서 있는 층. 다리처럼 판이 겹치는 자리에서 어느 쪽을 그릴지 고른다.
@@ -1358,11 +1363,10 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
         shadow-camera-right={SHADOW_SPAN}
         shadow-camera-top={SHADOW_SPAN}
         shadow-camera-bottom={-SHADOW_SPAN}
-        shadow-camera-near={1}
-        shadow-camera-far={140}
-        // 나뭇잎은 알파로 오려 낸 판이라 자기 그림자가 얼룩진다. 살짝 밀어 둔다
-        shadow-bias={-0.0012}
-        shadow-normalBias={0.03}
+        shadow-camera-near={SHADOW_NEAR}
+        shadow-camera-far={SHADOW_FAR}
+        shadow-bias={SHADOW_BIAS}
+        shadow-normalBias={SHADOW_NORMAL_BIAS}
       />
       {/* 카메라 쪽에서 넣는 필. 우리를 향한 절벽면이 정면광을 못 받는다 */}
       <directionalLight position={[...FILL_DIR]} intensity={lit.fill} color={lit.skyColor} />
@@ -1430,16 +1434,16 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       <RadarPatches grid={grid} />
       {/* 나무열매 밭 — 흙 위에 자란 것이 선다 (PARITY §4.6) */}
       <BerryPatchProps grid={grid} layer={layer} />
-      {!bdspDraws && <DoorAnimations grid={grid} />}
+      <DoorAnimations grid={grid} bdsp={bdspDraws} />
       <DistortionProps mapId={mapId} />
       {/*
         간판·눈덩이·책·방문 (PARITY §1.27). 배치표에 있는데 원작에 판때기가
         없어서 **아무것도 안 서던** 열 종이다 — 원작에서 3D 오브젝트라 같은
         아카이브(`fldeff.narc`)에서 온다.
 
-        BDSP가 그리는 맵에서는 BDSP에 없는 종류만 있을 때 선다 (`PROPS_BDSP_LACKS`)
+        BDSP가 그리는 맵에서는 BDSP가 그 자리에 구운 것만 거른다 — 간판은 자리마다, 책 · 사천왕 방문은 종류째 (`propShown`)
       */}
-      {propsShown && <ObjectProps grid={grid} layer={layer} mapId={mapId} />}
+      <ObjectProps grid={grid} layer={layer} mapId={mapId} bdsp={bdspDraws} />
       <FieldWeather kind={weather} />
 
       {/*

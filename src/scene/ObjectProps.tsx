@@ -22,7 +22,9 @@
 // 구워져 있는 곳이 많다**(`isBakedSign`) — 그 자리에서만 원작 간판을 안 세운다.
 // 실측(바깥 간판 189곳 · 칸 한가운데에서 1.2칸 안): 간판 26/29 · 우편함 2/2 ·
 // 게시판 59/64(`Guide`) · 화살표 70/72 · 체육관 8/8 · 팁 14/14, 합 179곳이 BDSP에
-// 있다. 나머지 열 곳(2~13칸 떨어짐)은 원작 것을 세운다 — 맵 통째로 내리면 빠진다
+// 있다(던전 D03R0101 · D31도 0.2~0.4칸). 나머지 열 곳(2~13칸 떨어짐)은 원작 것을 세운다 — 맵 통째로 내리면 빠진다.
+// 책(방 넷 다 0.29칸에 `Book_03`)과 사천왕 방문(방 넷 다 0.04~0.10칸에 `DoorInner`)은 종류째 BDSP에 있다
+// (`BDSP_BAKED_KINDS`) · 눈덩이와 로토무 방 벽은 BDSP에 없어 늘 선다
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { InstancedMesh, Matrix4, Mesh, Vector3, type Material, type Object3D } from 'three'
@@ -51,18 +53,22 @@ const SIGN_MATCH = 1.2
 const bakedSigns = new Set<readonly [number, number]>()
 
 /**
- * BDSP 층이 붙을 때 그 안의 간판 자리를 등록한다. 돌려준 함수로 뗀다.
- * 씬이 제자리(원점)에 놓인 채로 부른다 — BDSP 층은 행렬 원점에 그대로 선다
+ * BDSP 층이 붙을 때 그 안의 간판 자리와 환풍구 자리(`bakedVents`)를 등록한다. 돌려준 함수로 뗀다.
+ * 씬이 제자리(원점)에 놓인 채로 부른다 — BDSP 층은 행렬 원점에 그대로 선다.
+ *
+ * ⚠️ **환풍구도 여기서 적는다** — 붙고 떼는 자리가 간판과 같다(`BdspRoom` · `BdspField` · `BdspDungeon`이 이 하나를 부른다)
  */
 export function holdBdspSigns(root: Object3D): () => void {
   root.updateMatrixWorld(true)
-  const mine: (readonly [number, number])[] = []
+  const signs: (readonly [number, number])[] = []
+  const vents: (readonly [number, number])[] = []
   const at = new Matrix4()
   const c = new Vector3()
   root.traverse((o) => {
     if (!(o instanceof Mesh)) return
     const mats = (Array.isArray(o.material) ? o.material : [o.material]) as Material[]
-    if (!mats.some(isBakedSign)) return
+    const into = mats.some(isBakedSign) ? signs : mats.some(isBakedVent) ? vents : null
+    if (into === null) return
     o.geometry.computeBoundingBox()
     const box = o.geometry.boundingBox
     if (!box) return
@@ -72,15 +78,19 @@ export function holdBdspSigns(root: Object3D): () => void {
       for (let i = 0; i < o.count; i++) {
         o.getMatrixAt(i, at)
         const w = center.clone().applyMatrix4(at.premultiply(o.matrixWorld))
-        mine.push([w.x, w.z])
+        into.push([w.x, w.z])
       }
     } else {
       const w = center.applyMatrix4(o.matrixWorld)
-      mine.push([w.x, w.z])
+      into.push([w.x, w.z])
     }
   })
-  for (const p of mine) bakedSigns.add(p)
-  return () => { for (const p of mine) bakedSigns.delete(p) }
+  for (const p of signs) bakedSigns.add(p)
+  for (const p of vents) bakedVents.add(p)
+  return () => {
+    for (const p of signs) bakedSigns.delete(p)
+    for (const p of vents) bakedVents.delete(p)
+  }
 }
 
 /** 이 자리(월드 x, z)에 BDSP가 구운 간판이 있는가 */
@@ -89,9 +99,88 @@ export function bakedSignNear(x: number, z: number): boolean {
   return false
 }
 
+// ── 환풍구 ────────────────────────────────────────────────────────────────────────────────────────────────
+//
+// 환풍구(`OBJ_EVENT_GFX_VENT` — 그림 182 · `generated/object_events_gfx.txt` 183줄)는 원작에서 **판때기**다(`spriteTable`의
+// `venthole`). 그런데 BDSP 지역은 같은 자리에 원통 모델(`M_C_001_Intake_01`)을 구워 두어서, 판때기를 그대로 세우면 한 물체가
+// 모델과 도트 판 두 벌로 선다(209번도로 · 1인칭에서 모델 뒤로 판이 삐져나온다).
+//
+// 실측(배치 65곳 · 지역 glb 13벌의 `Intake` 인스턴스 101개 · 칸 한가운데에서 가장 가까운 것): **63곳이 0.00칸**이고
+// 둘은 1.00칸 — 이웃 칸의 환풍구다(`events_fight_area` 648,438 · `events_route_212_south` 462,826). 그 둘은 BDSP에 없으므로 판때기가 선다.
+// 방 · 던전 glb에는 `Intake`가 없다(환풍구 열여덟 맵이 다 바깥이다).
+//
+// ⚠️ **판만 거른다.** 배치는 그대로라 통행(`actor/obstacles`)과 말 걸기(스크립트 2027)는 안 바뀐다
+
+/** `OBJ_EVENT_GFX_VENT` */
+export const VENT_GFX = 182
+
+/** BDSP가 구워 둔 환풍구 재질 (`M_C_001_Intake_01`) */
+export function isBakedVent(m: Material): boolean {
+  return /_Intake_\d/.test(m.name)
+}
+
+/** 배치 칸 한가운데와 BDSP 환풍구 한가운데가 이만큼(칸) 안이면 같은 환풍구다 — 짝은 다 0.00칸, 이웃 칸은 1.00칸이다 */
+const VENT_MATCH = 0.5
+
+/** 지금 씬에 붙은 BDSP 층들의 환풍구 자리 (x, z) */
+const bakedVents = new Set<readonly [number, number]>()
+
+/** 이 자리(월드 x, z)에 BDSP가 구운 환풍구가 있는가 */
+export function bakedVentNear(x: number, z: number): boolean {
+  for (const [sx, sz] of bakedVents) if (Math.hypot(sx - x, sz - z) < VENT_MATCH) return true
+  return false
+}
+
+/**
+ * 배치 중 BDSP가 모델로 이미 세운 환풍구들 — 판때기(`NpcSprites`)가 건너뛸 몫이다. 지난 값(`was`)과 같으면 그것을 그대로
+ * 돌려준다(프레임마다 불러도 상태를 안 흔든다)
+ */
+export function bakedVentActors(list: readonly NpcActor[], was: ReadonlySet<NpcActor>): ReadonlySet<NpcActor> {
+  let n = 0
+  let same = true
+  for (const actor of list) {
+    if (actor.gfx !== VENT_GFX || !bakedVentNear(actor.x + 0.5, actor.z + 0.5)) continue
+    n++
+    if (!was.has(actor)) same = false
+  }
+  if (same && n === was.size) return was
+  const out = new Set<NpcActor>()
+  for (const actor of list) {
+    if (actor.gfx === VENT_GFX && bakedVentNear(actor.x + 0.5, actor.z + 0.5)) out.add(actor)
+  }
+  return out
+}
+
 /** 이 그림이 판때기가 아니라 소품인가 */
 function propKindOf(gfx: number): number | null {
   return PROP_KIND_BY_GFX.get(gfx) ?? null
+}
+
+/**
+ * **종류째 BDSP 방에 구워진 소품** — 책(36)과 사천왕 방문(37). 실측(glb 정점 · 배치 칸 한가운데에서 가장 가까운 조각):
+ *
+ * | 종류 | BDSP에 있나 |
+ * | --- | --- |
+ * | 책(그림 183) | 방 넷 다 0.29칸에 `Book_03` |
+ * | 사천왕 방문(그림 209) | 방 넷 다 0.04~0.10칸에 `DoorInner` |
+ * | 눈덩이(그림 118) | 체육관 방에 없다 — 가장 가까운 것이 계단(`OutStair`) 0.64칸 |
+ * | 로토무 방 벽(그림 262) | 없다 — 가장 가까운 것이 방 벽(`ComWall_05`) 1.12칸 |
+ *
+ * 간판(29~34)은 자리마다 견준다(`bakedSignNear`). 눈덩이 · 로토무 방 벽(`C04R0201` 하나)은 BDSP 위에서도 선다 — 안 세우면
+ * 선녀시티 체육관(`C09GYM0101`)의 눈덩이 19개가 **보이지 않는 벽**이 되어 미는 퍼즐을 눈 감고 풀어야 한다
+ */
+const BDSP_BAKED_KINDS: ReadonlySet<number> = new Set([36, 37])
+
+/**
+ * 이 소품을 세우는가. 숨은 사람은 안 세우고(사천왕 방문과 로토무 방 벽은 이야기가 진행되면 플래그로 사라진다 — 그것을 보는
+ * 것이 `visible`이다), BDSP가 그 자리에 구워 둔 것이면 두 벌이 되므로 안 세운다
+ *
+ * @param bdsp BDSP 층이 서서 원작 그림을 숨겼는가 (`MapStreamer`의 `bdspDraws`)
+ */
+export function propShown(kind: number, x: number, z: number, visible: boolean, bdsp: boolean): boolean {
+  if (!visible) return false
+  if (SIGN_KINDS.has(kind) && bakedSignNear(x, z)) return false
+  return !(bdsp && BDSP_BAKED_KINDS.has(kind))
 }
 
 interface Props {
@@ -99,9 +188,11 @@ interface Props {
   layer: number
   /** 맵이 바뀌면 배치를 다시 훑는다 */
   mapId: number
+  /** BDSP 층이 서서 원작 그림을 숨겼는가 — 종류째 BDSP에 있는 것(`BDSP_BAKED_KINDS`)을 거른다 */
+  bdsp: boolean
 }
 
-export function ObjectProps({ grid, layer, mapId }: Props) {
+export function ObjectProps({ grid, layer, mapId, bdsp }: Props) {
   /**
    * 이 맵에서 소품으로 서야 하는 사람들.
    *
@@ -133,10 +224,7 @@ export function ObjectProps({ grid, layer, mapId }: Props) {
       if (!mesh) continue
       const x = at.actor.x + 0.5
       const z = at.actor.z + 0.5
-      // ⚠️ **숨은 사람은 안 세운다.** 사천왕 방문과 로토무 방 벽은 이야기가
-      // 진행되면 플래그로 사라진다 — 그 플래그를 보는 것이 `visible`이다.
-      // BDSP가 그 자리에 간판을 구워 두었으면 두 벌이 되므로 안 세운다
-      mesh.visible = at.actor.visible && !(SIGN_KINDS.has(at.kind) && bakedSignNear(x, z))
+      mesh.visible = propShown(at.kind, x, z, at.actor.visible, bdsp)
       if (!mesh.visible) continue
       const off = offsets[at.kind] ?? [0, 0, 0]
       mesh.position.set(

@@ -15,6 +15,7 @@ import { cameraSystem } from '../engine/actor/camera'
 import { world } from '../engine/map/world'
 import { worldState } from '../state/worldState'
 import { perfSnapshot } from './sceneRefs'
+import { bdspReady, bdspSettled } from './bdspReady'
 
 /**
  * 마지막으로 **씬에 반영된** 청크 한 벌. `ChunkModels`가 커밋 뒤에 적는다.
@@ -111,10 +112,13 @@ export function terrainTrace(): readonly { t: number, req: number, step: string,
 }
 
 /**
- * 워프가 덮개를 든 동안 묻는다 — **새 맵의 지형이 씬에 섰는가** (`terrainReady`의 ③④⑤만).
+ * 워프가 덮개를 든 동안 묻는다 — **새 맵의 지형이 씬에 섰는가** (`terrainReady`의 ③④⑤만) · **BDSP 층도 섰는가** (`bdspSettled`).
  *
  * `terrainReady`는 전이가 남았으면(`world.pending`) 늘 「아직」이다 — 워프는 덮개를 걷기 전까지 전이를 쥐고 있으므로 그것으로는
- * 못 묻는다 (`scene/asyncPipelines`의 `settleAsyncPipelines`)
+ * 못 묻는다 (`scene/asyncPipelines`의 `settleAsyncPipelines`).
+ *
+ * ⚠️ **BDSP 층을 같이 기다린다.** 원작 지형만 기다리면 덮개가 걷힌 뒤에 BDSP glb가 와서 방이나 마을이 한꺼번에 튀어나온다.
+ * 못 받은 glb는 「섰다」로 센다(`bdspReady` 머리말) — 끝까지 안 오는 것은 `settleAsyncPipelines`의 상한이 끊는다
  */
 export function terrainLanded(): boolean {
   const grid = world.grid
@@ -123,9 +127,33 @@ export function terrainLanded(): boolean {
   const chunk = grid.chunkIndexAt(Math.floor(p.x), Math.floor(p.z))
   if (terrainWanted.matrix !== world.matrix || terrainWanted.chunkIndex !== chunk) return false
   if (terrainMark.req !== terrainWanted.req) return false
+  if (!bdspSettled()) return false
   if (terrainMark.failed) return true
   if (terrainMark.want > 0 && terrainMark.placed === 0) return false
   return perfSnapshot.frames - terrainMark.frame >= 1
+}
+
+/**
+ * 지금 그려야 할 BDSP 열쇠 — 방 · 던전 · 둘레 지역 (`bdspReady`의 열쇠는 목차 이름 그대로다). `MapStreamer`가 `expectBdsp`로 알린다
+ */
+export function bdspWanted(room: string | null, dungeon: string | null, fields: readonly string[]): string[] {
+  const out: string[] = []
+  if (room !== null) out.push(room)
+  if (dungeon !== null) out.push(dungeon)
+  out.push(...fields)
+  return out
+}
+
+/**
+ * **BDSP가 지금 그림을 쥐는가** — 원하는 열쇠 중 하나라도 실제로 서서 그려졌을 때만 참이다. 참이면 원작 지형을 숨긴다
+ * (`ChunkModels`의 `dsHidden`).
+ *
+ * ⚠️ **이름이 정해진 것만으로 숨기면 허공이 보인다.** 예전에는 둘레 지역 이름 목록이 서자마자 원작 땅을 숨겼는데, 지역 glb는
+ * 받고 풀어서 늦게 온다 — 영원의 숲에서 205번도로로 나선 첫 화면이 하늘과 사람뿐이었다(story `20-forest`).
+ * 실패한 열쇠는 안 선 것으로 센다 — 그때는 원작 그림이 그대로 남는다
+ */
+export function bdspShowing(keys: readonly string[]): boolean {
+  return keys.some((k) => bdspReady(k))
 }
 
 /** 카메라가 「닿았다」고 볼 잔여 거리 (월드 단위 = 타일) */

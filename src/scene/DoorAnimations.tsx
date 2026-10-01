@@ -284,6 +284,24 @@ function BdspDoor({ door, clip, found }: { door: DoorVisual, clip: DoorClip, fou
 }
 
 /**
+ * 문 하나를 누가 돌리는가 — `bdsp` 구운 BDSP 문짝 · `ours` 우리 문짝(`Door`) · `null` 아무도(원작 소품이 제 클립으로 돈다).
+ *
+ * ⚠️ **BDSP 위에서는 우리 문짝을 안 세운다.** 우리 문짝은 갈색 문틀 · 검은 통로 판을 통째로 세우는 것이라, 구운 문짝을 못 찾은
+ * 문(문짝이 문 칸에서 `LEAF_REACH` 밖)에 세우면 BDSP 벽 앞에 상자 문이 하나 더 선다. 그 문은 안 움직이고 워프만 걸린다
+ *
+ * @param found 그 문 칸 둘레에서 찾은 구운 문짝 수 (`bdspDoorLeaves`)
+ * @param bdsp BDSP 층이 서서 원작 그림을 숨겼는가
+ */
+export function pickDoor(
+  found: number, model: number, anims: PropAnimsFile | null, bdsp: boolean,
+): 'bdsp' | 'ours' | null {
+  if (found > 0) return 'bdsp'
+  if (bdsp) return null
+  if (DOOR_KIND[model] !== undefined && anims?.props[String(model)] !== undefined) return null
+  return 'ours'
+}
+
+/**
  * 배치가 **없는** 문 자리에만 우리 문짝을 세운다.
  *
  * ⚠️ **원작 문짝이 있으면 그것이 돈다.** 소품 배치가 있는 자리는
@@ -291,9 +309,13 @@ function BdspDoor({ door, clip, found }: { door: DoorVisual, clip: DoorClip, fou
  * 직접 돌린다 — 여기서 또 세우면 문이 두 겹이 된다. 남는 것은 `propModelAt`이
  * 문 모델을 못 찾는 자리뿐이고, 거기서는 세울 원작 메시가 아예 없다.
  *
- * ⚠️ **BDSP가 선 자리는 구운 문짝이 먼저다** (`BdspDoor`). 원작 소품이 숨어 있으므로 원작 문짝 클립은 안 돈다
+ * ⚠️ **BDSP가 선 자리는 구운 문짝이 먼저다** (`BdspDoor`). 원작 소품이 숨어 있으므로 원작 문짝 클립은 안 돈다 (`pickDoor`)
  */
-export function DoorAnimations({ grid }: { grid: MapGrid }) {
+export function DoorAnimations({ grid, bdsp }: {
+  grid: MapGrid
+  /** BDSP 층이 서서 원작 그림을 숨겼는가 (`MapStreamer`의 `bdspDraws`) — 그 위에는 우리 문틀을 안 세운다 */
+  bdsp: boolean
+}) {
   // ⚠️ **셀렉터 안에서 배열을 만들면 안 된다.** zustand 5는 `useSyncExternalStore`에
   // `Object.is`로만 견주므로 `Object.values`가 매번 새 배열을 돌려주면 스냅숏이
   // 늘 바뀐 것으로 보인다 — 무한 렌더로 `<Canvas>`가 통째로 죽어서 필드 화면이
@@ -317,11 +339,10 @@ export function DoorAnimations({ grid }: { grid: MapGrid }) {
         const y = grid.heightAtWorld(door.x + 0.5, door.z + 0.5, 0) ?? 0
         // BDSP가 서면 구운 문짝이 그 자리에 있다 — 원작 소품은 숨었으므로 그 문짝을 원작 클립으로 돌린다
         const found = bdspDoorLeaves(door.x, door.z, y)
-        if (found.length > 0) {
-          return <BdspDoor key={door.tag} door={door} clip={doorClip(model, anims)} found={found} />
-        }
-        if (DOOR_KIND[model] !== undefined && anims?.props[String(model)] !== undefined) return null
-        return <Door key={door.tag} door={door} clip={doorClip(model, anims)} y={y} />
+        const pick = pickDoor(found.length, model, anims, bdsp)
+        if (pick === 'bdsp') return <BdspDoor key={door.tag} door={door} clip={doorClip(model, anims)} found={found} />
+        if (pick === 'ours') return <Door key={door.tag} door={door} clip={doorClip(model, anims)} y={y} />
+        return null
       })}
     </group>
   )

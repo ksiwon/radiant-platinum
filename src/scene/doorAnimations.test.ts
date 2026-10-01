@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { propAnimsSchema, type PropAnimsFile } from '../data/schema'
 import { Box3, BoxGeometry, Group, InstancedMesh, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from 'three'
-import { bdspDoorLeaves, doorClip, holdBdspDoors, isDoorLeaf, leafPose, progress } from './DoorAnimations'
+import { bdspDoorLeaves, doorClip, holdBdspDoors, isDoorLeaf, leafPose, pickDoor, progress } from './DoorAnimations'
 
 const ROOT = resolve(__dirname, '../..')
 const BAKED = resolve(ROOT, 'public/data/props/anims.json')
@@ -140,5 +140,27 @@ describe('BDSP 문짝 (`holdBdspDoors` · `leafPose`)', () => {
     expect(progress(door, clip, 1000 + clip.openMs / 2)).toBeCloseTo(0.5, 6)
     expect(progress(door, clip, 1000 + clip.openMs)).toBe(1)
     expect(progress({ ...door, phase: 'closing' }, clip, 1000 + clip.shutMs)).toBe(0)
+  })
+})
+
+describe('문 하나를 누가 돌리나 (`pickDoor`)', () => {
+  /** 나무 여닫이(소품 66)가 클립 표에 있다 */
+  const anims = { props: { 66: [0, 1] }, members: [{ frames: 8 }, { frames: 8 }] } as unknown as PropAnimsFile
+
+  it('구운 BDSP 문짝을 찾았으면 그것이 돈다', () => {
+    expect(pickDoor(1, 66, anims, true)).toBe('bdsp')
+    expect(pickDoor(2, -1, null, false)).toBe('bdsp')
+  })
+
+  it('BDSP 위에서는 문짝을 못 찾아도 우리 문틀을 안 세운다 — BDSP 벽 앞에 상자 문이 하나 더 선다', () => {
+    expect(pickDoor(0, -1, anims, true)).toBe(null)
+    expect(pickDoor(0, 66, anims, true)).toBe(null)
+  })
+
+  it('원작 그림 위에서는 원작 문 모델이 클립으로 돌고, 모델이 없는 자리에만 우리 문짝이 선다', () => {
+    expect(pickDoor(0, 66, anims, false)).toBe(null)
+    expect(pickDoor(0, -1, anims, false)).toBe('ours')
+    // 클립 표가 없으면 원작 모델도 못 돈다 — 우리 문짝이 대신한다
+    expect(pickDoor(0, 66, null, false)).toBe('ours')
   })
 })
