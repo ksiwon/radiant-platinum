@@ -7,7 +7,7 @@
 // 안 본 포켓몬은 이름조차 안 나온다. 본 것은 이름과 키·몸무게까지, 잡은 것만
 // 설명문이 열린다. 원작의 규칙이고, 그게 도감을 채우는 동기가 된다.
 //
-// 오른쪽 쪽이 셋이다 (←→로 넘긴다):
+// 오른쪽 쪽이 셋이다 (←→로 넘긴다. 모습이 여럿이면 폼 쪽 끝에서 한 번 더 밀어야 넘어간다):
 //
 //   정보    이름·분류·키·몸무게·설명문
 //   서식지  30×30 칸 지도 위의 들판과 던전 (`zukan_enc_platinum`)
@@ -23,9 +23,10 @@ import {
 import { loadUiText, POKEDEX_TEXT } from '../../data/uiText'
 import {
   FILTER_NAME_COUNT, FILTER_SHAPE_COUNT, FILTER_TYPE_COUNT, FILTER_TYPE_OF, NO_FILTER,
-  SORT_ORDER_COUNT, dexList, type DexQuery,
+  SORT_ORDER_COUNT, SortOrder, dexList, type DexQuery,
 } from '../../engine/pokemon/dexSort'
 import { formCount } from '../../engine/pokemon/form'
+import { withTopic } from '../korean'
 import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { dexHas, useSaveStore } from '../../state/saveStore'
@@ -47,12 +48,92 @@ const SEARCH_ROWS = ['도감', '정렬', '이름', '타입 1', '타입 2', '모�
 const SORT_LABELS = ['번호순', '가나다순', '무거운 순', '가벼운 순', '큰 순', '작은 순']
 
 /**
- * 이름 뭉치 아홉의 이름표.
+ * 이름 뭉치 아홉의 이름표 자리 — 도감 뱅크 54~62 (`pl_msg_pokedex_abc` … `_yz`,
+ * `FilterNameMessage`).
  *
- * ⚠️ **글자는 로케일마다 다르다.** 미국판은 ABC·DEF…인데 한국판은 같은 자리가
- * 가·나·다… 뭉치다 — 목록의 **자리**가 규약이라 이름표만 우리가 붙인다
+ * ⚠️ **글자도 뭉치 수도 로케일마다 다르다.** 미국판은 ABC … YZ 아홉, 일본판은
+ * あいうえお … らりるれろ 아홉인데, 한국판은 ᄀᄂ · ᄃᄅ · ᄆᄇ · ᄉᄋ · ᄌᄎ · ᄏᄐ · ᄑᄒ
+ * **일곱**이고 61·62는 빈 줄이다. 목록도 맞춰서 `nameVwx`·`nameYz`가 0종이다
+ * (실측 · 한국 롬 `zukan_data.narc`). 각 뭉치 첫 음절의 초성이 이름표와 맞는지는
+ * `pokedexNameGroups.test.ts`가 지킨다
  */
-const NAME_LABELS = ['전부', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+const NAME_TEXT_FIRST = 54
+/** 「서식지 불명」 (`pl_msg_pokedex_areaunknown`) — 원작이 분포 지도 위에 띄운다 */
+const AREA_UNKNOWN_TEXT = 35
+
+/**
+ * 첫소리 자모(U+1100~) → 홀로 쓰는 자모. 롬은 첫소리 자모를 쓰는데, 글꼴이
+ * 그것을 음절 조각으로 그려 「ᄀᄂ」가 깨져 보인다
+ */
+const CHOSEONG = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ'
+
+/**
+ * 롬의 이름 뭉치 이름표를 화면 글로. 한국판 「ᄀᄂ」는 「ㄱ·ㄴ」이 된다 —
+ * 붙여 쓰면 「ㄱㄴ」이 줄임말처럼 읽힌다. 다른 로케일은 그대로다
+ */
+export function nameGroupLabel(raw: string): string {
+  const out: string[] = []
+  let jamo = false
+  for (const ch of raw.trim()) {
+    const at = ch.charCodeAt(0) - 0x1100
+    const isJamo = at >= 0 && at < CHOSEONG.length
+    if (isJamo && jamo) out.push('·')
+    out.push(isJamo ? CHOSEONG[at]! : ch)
+    jamo = isJamo
+  }
+  return out.join('')
+}
+
+/**
+ * 이름 거르기를 한 칸 옮긴다. ⚠️ **이름표가 빈 자리는 건너뛴다** — 한국판의
+ * 여덟째·아홉째는 이름표도 목록도 비어 있어서, 고르면 빈 칸에 빈 결과가 뜬다.
+ * `ui`가 아직 안 왔으면 아홉 자리를 다 돈다
+ */
+export function stepNameFilter(at: number, delta: number, ui: readonly string[]): number {
+  const slots = [0]
+  for (let i = 1; i < FILTER_NAME_COUNT; i++) {
+    if (!ui.length || (ui[NAME_TEXT_FIRST + i - 1] ?? '').trim() !== '') slots.push(i)
+  }
+  const here = Math.max(0, slots.indexOf(at))
+  return slots[wrapCursor(here, delta, slots.length)]!
+}
+
+/** 폼 쪽의 자리 */
+const FORM_PAGE = PAGES.indexOf('폼')
+
+/**
+ * ←→ 한 번. 폼 쪽에서 모습이 여럿이면 모습을 넘기고, **끝에서 한 번 더 밀면
+ * 쪽을 넘긴다** — 안 그러면 안농 폼 쪽에 들어간 뒤 ←→가 28가지 모습만 돌아
+ * 다른 쪽으로 못 나간다. 오른쪽으로 들어오면 첫 모습, 왼쪽으로 들어오면 끝
+ * 모습에 선다. 폼 쪽을 떠나면 첫 모습으로 돌아간다 — 정보 쪽 그림도 그 모습이다
+ */
+export function stepPage(
+  page: number, form: number, forms: number, delta: -1 | 1,
+): { page: number; form: number } {
+  if (page === FORM_PAGE && forms > 1) {
+    const next = form + delta
+    if (next >= 0 && next < forms) return { page, form: next }
+  }
+  const next = wrapCursor(page, delta, PAGES.length)
+  return { page: next, form: next === FORM_PAGE && delta < 0 ? Math.max(0, forms - 1) : 0 }
+}
+
+/**
+ * 마지막으로 본 종 (`PokedexMemory.currentSpecies`). 원작은 필드가 들고 있다가
+ * 도감을 다시 열면 그 종에 커서를 둔다 (`pokedex_main.c`)
+ */
+let lastSpecies = 0
+
+/**
+ * 도감을 열 때의 첫 커서. 목록에 그 종이 있으면 그 줄, 없으면 맨 위다 —
+ * 원작도 못 찾으면 자리를 안 옮긴다 (`PokedexSort_SetCurrentStatusIndexWithSpecies`)
+ */
+export function restoreCursor(
+  order: readonly { species: number }[], species: number,
+): number {
+  if (species === 0) return 0
+  return Math.max(0, order.findIndex((e) => e.species === species))
+}
 
 /** 몸 모양 열넷 (`enum FilterForm`) */
 const SHAPE_LABELS = [
@@ -82,7 +163,8 @@ export function PokedexScreen() {
   const [data, setData] = useState<Loaded | null>(null)
   // 설정의 언어. 바뀌면 이름과 설명을 그 언어로 다시 받는다
   const locale = useGameLocale()
-  const [cursor, setCursor] = useState(0)
+  // null이면 아직 안 움직였다 — 목록이 오면 마지막으로 본 종에 선다
+  const [cursor, setCursor] = useState<number | null>(null)
   const [page, setPage] = useState(0)
   const [form, setForm] = useState(0)
   const [search, setSearch] = useState<number | null>(null)
@@ -129,8 +211,12 @@ export function PokedexScreen() {
       effective.type2, effective.shape],
   )
 
-  const at = Math.min(cursor, Math.max(0, order.length - 1))
+  const at = cursor === null
+    ? restoreCursor(order, lastSpecies)
+    : Math.min(cursor, Math.max(0, order.length - 1))
   const entry = order[at]
+  const current = entry?.species ?? 0
+  useEffect(() => { if (current !== 0) lastSpecies = current }, [current])
   const species = entry && !entry.blank ? entry.species : 0
   const seen = species !== 0
   const caught = species !== 0 && dexHas(dex.caught, species)
@@ -148,7 +234,7 @@ export function PokedexScreen() {
       // 잡을 수 없는 종 283마리가 빈 칸으로 늘어선다
       if (row === 0) return national ? { ...q, national: !q.national } : q
       if (row === 1) return { ...q, sort: wrapCursor(q.sort, delta, SORT_ORDER_COUNT) }
-      if (row === 2) return { ...q, name: wrapCursor(q.name, delta, FILTER_NAME_COUNT) }
+      if (row === 2) return { ...q, name: stepNameFilter(q.name, delta, data?.ui ?? []) }
       if (row === 3) return { ...q, type1: wrapCursor(q.type1, delta, FILTER_TYPE_COUNT) }
       if (row === 4) return { ...q, type2: wrapCursor(q.type2, delta, FILTER_TYPE_COUNT) }
       return { ...q, shape: wrapCursor(q.shape, delta, FILTER_SHAPE_COUNT) }
@@ -169,18 +255,12 @@ export function PokedexScreen() {
       cancel: () => { setQuery(NO_FILTER); setSearch(null); setCursor(0) },
     }
     : {
-      up: () => { setCursor((c) => clampCursor(c, -1, order.length)); setForm(0) },
-      down: () => { setCursor((c) => clampCursor(c, 1, order.length)); setForm(0) },
-      pageUp: () => { setCursor((c) => clampCursor(c, -PAGE, order.length)); setForm(0) },
-      pageDown: () => { setCursor((c) => clampCursor(c, PAGE, order.length)); setForm(0) },
-      left: () => {
-        if (page === 2 && forms > 1) { setForm((f) => wrapCursor(f, -1, forms)); return }
-        setPage((p) => wrapCursor(p, -1, PAGES.length))
-      },
-      right: () => {
-        if (page === 2 && forms > 1) { setForm((f) => wrapCursor(f, 1, forms)); return }
-        setPage((p) => wrapCursor(p, 1, PAGES.length))
-      },
+      up: () => { setCursor(clampCursor(at, -1, order.length)); setForm(0) },
+      down: () => { setCursor(clampCursor(at, 1, order.length)); setForm(0) },
+      pageUp: () => { setCursor(clampCursor(at, -PAGE, order.length)); setForm(0) },
+      pageDown: () => { setCursor(clampCursor(at, PAGE, order.length)); setForm(0) },
+      left: () => { const next = stepPage(page, shown, forms, -1); setPage(next.page); setForm(next.form) },
+      right: () => { const next = stepPage(page, shown, forms, 1); setPage(next.page); setForm(next.form) },
       tab: () => { setSearch(0) },
       // 원작 도감은 A를 누르면 운다 (`pokedex/infomain.c`의 `POKECRY_POKEDEX`).
       // 본 적 없는 칸은 이름도 `?????`라 울리지 않는다
@@ -202,8 +282,8 @@ export function PokedexScreen() {
       title={effective.national ? '전국도감' : '도감'}
       note={`${label(POKEDEX_TEXT.seen)} ${String(counts.seen)} · ${label(POKEDEX_TEXT.caught)} ${String(counts.caught)}`}
       foot={search !== null
-        ? '↑↓ 줄 · ←→ 값 · Z 닫는다 · X 물음을 지운다'
-        : `↑↓ 고르기 · Q/E 한 쪽씩 · ←→ ${PAGES[page]} · Tab 검색 · Z 울음소리 · X 닫기`}
+        ? '↑↓ 줄 · ←→ 값 · Z 닫기 · X 물음을 지운다'
+        : `↑↓ 고르기 · Q/E 한 쪽씩 · ←→ ${page === FORM_PAGE && forms > 1 ? '모습·쪽' : PAGES[page]} · Tab 검색 · Z 울음소리 · X 닫기`}
     >
       <div className={css.stage}>
         <div className={css.list}>
@@ -236,6 +316,7 @@ export function PokedexScreen() {
             ? (
               <SearchPanel
                 row={search} query={query} types={data?.types ?? []} national={national}
+                ui={data?.ui ?? []}
               />
             )
             : seen
@@ -272,7 +353,12 @@ export function PokedexScreen() {
                       </div>
                     </>
                   )}
-                  {page === 1 && <Habitat habitat={data?.habitat ?? null} species={species} caught={caught} />}
+                  {page === 1 && (
+                    <Habitat
+                      habitat={data?.habitat ?? null} species={species} caught={caught}
+                      unknown={label(AREA_UNKNOWN_TEXT)}
+                    />
+                  )}
                   {page === 2 && (
                     <Forms
                       form={shown} forms={forms}
@@ -304,17 +390,22 @@ function dexNumber(
 
 /** 검색 창 — 정렬 하나와 거르기 셋 */
 function SearchPanel(
-  { row, query, types, national }: {
+  { row, query, types, national, ui }: {
     row: number
     query: DexQuery
     types: readonly string[]
     national: boolean
+    /** 도감 뱅크 — 이름 뭉치 이름표가 여기 있다 */
+    ui: readonly string[]
   },
 ) {
   const value = (i: number): string => {
-    if (i === 0) return !national ? '신오 (전국은 아직)' : query.national ? '전국' : '신오'
+    // 전국도감을 안 열었으면 고를 것이 없다 — 신오만 적는다
+    if (i === 0) return national && query.national ? '전국' : '신오'
     if (i === 1) return SORT_LABELS[query.sort] ?? ''
-    if (i === 2) return NAME_LABELS[query.name] ?? ''
+    if (i === 2) {
+      return query.name === 0 ? '전부' : nameGroupLabel(ui[NAME_TEXT_FIRST + query.name - 1] ?? '')
+    }
     // ⚠️ **거르기 자리와 타입 번호가 다르다.** 표에 ???(9번)이 없어서
     // 강철 다음이 바로 불꽃이다 — 이름은 `FILTER_TYPE_OF`로 되짚는다
     if (i === 3) return typeLabel(types, query.type1)
@@ -330,9 +421,10 @@ function SearchPanel(
           <span className={own.searchValue}>◂ {value(i)} ▸</span>
         </div>
       ))}
-      <p className={own.searchNote}>
-        ⚠️ 가나다순 말고는 <b>잡아 본 것만</b> 나온다 — 무게도 키도 잡아야 아는 것이다.
-      </p>
+      {/* 무게·키 순은 잡은 것만 남는다 — `keepUncaught`가 가나다순에만 켜진다 (`dexSort`) */}
+      {query.sort !== SortOrder.NUMERICAL && query.sort !== SortOrder.ALPHABETICAL && (
+        <p className={own.searchNote}>잡아 본 것만 나온다</p>
+      )}
     </div>
   )
 }
@@ -351,10 +443,12 @@ function typeLabel(types: readonly string[], at: number): string {
  * 가리키고, 들판은 자기 안에 8×4 비트 무늬를 들고 있다 (`FieldCoordinates`)
  */
 function Habitat(
-  { habitat, species, caught }: {
+  { habitat, species, caught, unknown }: {
     habitat: PokedexHabitat | null
     species: number
     caught: boolean
+    /** 자리가 없을 때의 글 — 롬의 「서식지 불명」 */
+    unknown: string
   },
 ) {
   const cells = useMemo(() => {
@@ -426,7 +520,7 @@ function Habitat(
         {/* ⚠️ 자리가 없는 것과 아직 못 잡은 것은 다르다 */}
         {!caught ? '잡아야 서식지가 열린다'
           : any ? '풀숲은 칸으로, 굴은 점으로 찍는다'
-            : '신오에서 저절로 나오지 않는다'}
+            : unknown}
       </p>
     </div>
   )
@@ -443,7 +537,7 @@ function Forms(
   },
 ) {
   if (forms <= 1) {
-    return <p className={own.habitatNote}>{name}은(는) 모습이 하나뿐이다</p>
+    return <p className={own.habitatNote}>{withTopic(name)} 모습이 하나뿐이다</p>
   }
   return (
     <div className={own.forms}>
@@ -464,7 +558,7 @@ function Forms(
         ))}
       </div>
       <p className={own.habitatNote}>
-        ←→ 로 {forms}가지 모습을 넘긴다 ({form + 1}/{forms})
+        ←→로 {forms}가지 모습을 넘긴다 ({form + 1}/{forms})
       </p>
     </div>
   )
