@@ -15,6 +15,7 @@ import { useMenuStore } from '../../state/menuStore'
 import { useGameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { avatarState, worldState } from '../../state/worldState'
+import { vars } from '../theme/contract.css'
 import { useMenuKeys } from './useMenuKeys'
 import { SaveInfo } from './SaveInfo'
 import * as css from './menuChrome.css'
@@ -30,6 +31,89 @@ type Phase = 'ask' | 'overwrite' | 'writing' | 'done' | 'failed'
  * 그 자리에 "백업 파일 받기"를 남긴다
  */
 type Backup = { started: boolean; fileName: string } | null
+
+/**
+ * 지금 키가 하는 일.
+ *
+ * - `answer` — 「작성할까요?」·「덮어써도 괜찮습니까?」의 예/아니오
+ * - `retry` — 다 썼는데 백업 다운로드가 막혔다. 「백업 파일 받기 / 닫기」를 고른다
+ * - `close` — 다 썼거나 못 썼다. 결정 키로 닫는다
+ * - `wait` — 쓰는 중. 아무 키도 안 먹는다
+ *
+ * ⚠️ **`retry`는 커서로 고른다.** 한때 「백업 파일 받기」가 맨 `<button>`뿐이었다.
+ * `useMenuKeys`가 Enter·Space·Z를 먼저 가로채므로 Tab으로 단추에 가도 키로는 못
+ * 눌렀고, 결정 키는 창을 닫아 버렸다 — 마우스로만 다시 받을 수 있었다
+ */
+type SaveKeys = 'answer' | 'retry' | 'close' | 'wait'
+
+export function saveKeys(phase: Phase, backup: Backup): SaveKeys {
+  if (phase === 'ask' || phase === 'overwrite') return 'answer'
+  if (phase === 'writing') return 'wait'
+  if (phase === 'done' && backup && !backup.started) return 'retry'
+  return 'close'
+}
+
+/**
+ * 아래 안내 줄. **그 자리에서 실제로 먹는 키만** 적는다 — 다 쓴 뒤에는 X가 아무것도
+ * 안 하므로 「X 그만둔다」를 안 띄운다
+ */
+export const SAVE_HINT: Record<SaveKeys, string> = {
+  answer: '←→ 고르기 · Z 결정 · X 그만둔다',
+  retry: '←→ 고르기 · Z 결정',
+  close: 'Z 닫기',
+  wait: '',
+}
+
+/** 키가 부르는 일 — 화면이 넘겨준다 */
+interface SaveActs {
+  setYes: (yes: boolean) => void
+  /** 리포트를 쓴다 */
+  write: () => void
+  /** 시작 메뉴로 물러난다 */
+  back: () => void
+  /** 막힌 백업 파일을 다시 받는다 */
+  retryBackup: () => void
+  closeAll: () => void
+}
+
+/**
+ * 리포트 화면의 키.
+ *
+ * ⚠️ **가로로 놓였어도 ↑↓도 받는다.** 필드 예/아니오는 ↑↓로 고르므로(`field`의
+ * `chooseFromMenu`) 그 손버릇이 여기서 죽으면 안 된다. 커서는 실제로 옮겨졌을
+ * 때만 `true`를 내서 운다 (`useMenuKeys`의 `Handler`)
+ */
+export function saveMenuKeys(keys: SaveKeys, yes: boolean, act: SaveActs): Parameters<typeof useMenuKeys>[0] {
+  const choosing = keys === 'answer' || keys === 'retry'
+  const toYes = (): boolean => { if (!choosing || yes) return false; act.setYes(true); return true }
+  const toNo = (): boolean => { if (!choosing || !yes) return false; act.setYes(false); return true }
+  return {
+    up: toYes,
+    down: toNo,
+    left: toYes,
+    right: toNo,
+    confirm: () => {
+      if (keys === 'answer') { if (yes) act.write(); else act.back(); return }
+      // 키 누름도 사용자 동작이라 다운로드가 다시 통과하는 일이 많다
+      if (keys === 'retry') { if (yes) act.retryBackup(); else act.closeAll(); return }
+      if (keys === 'close') { act.closeAll(); return }
+      return false
+    },
+    // 다 쓴 뒤에는 X가 아무것도 안 한다 — 안내에도 안 적는다
+    cancel: () => { if (keys !== 'answer') return false; act.back() },
+  }
+}
+
+/**
+ * 못 썼을 때의 대사 — 롬의 「리포트 작성에 실패했습니다」 한 줄이다
+ * (전당 화면 `HallOfFameScreen`과 같은 줄).
+ *
+ * ⚠️ **원인 문장(`report`의 `why`)은 여기 안 붙인다.** '스키마', '임시 슬롯' 같은
+ * 개발 말이라 대사창에 섞이면 안 읽힌다. 제보용으로 부른 쪽이 `console.warn`에 남긴다
+ */
+export function failedLine(common: readonly string[]): string {
+  return common[SAVE_TEXT.failed] ?? ''
+}
 
 export function SaveScreen() {
   const [common, setCommon] = useState<string[]>([])
@@ -48,7 +132,6 @@ export function SaveScreen() {
   const [phase, setPhase] = useState<Phase>(
     () => (useSaveStore.getState().loaded ? 'overwrite' : 'ask'),
   )
-  const [failure, setFailure] = useState<string | null>(null)
   const [backup, setBackup] = useState<Backup>(null)
   const [yes, setYes] = useState(true)
   const back = useMenuStore((s) => s.back)
@@ -87,12 +170,13 @@ export function SaveScreen() {
       })
       .then((got) => {
         setBackup({ started: got.backup.started, fileName: got.fileName })
-        if (got.saved) { setPhase('done'); return }
-        setFailure(got.why ?? null)
+        // 막혔으면 커서는 「백업 파일 받기」에서 시작한다
+        if (got.saved) { setYes(true); setPhase('done'); return }
+        console.warn('[report] 리포트를 쓰지 못했다', got.why)
         setPhase('failed')
       })
       .catch((e: unknown) => {
-        setFailure(e instanceof Error ? e.message : String(e))
+        console.warn('[report] 리포트를 쓰지 못했다', e)
         setPhase('failed')
       })
   }
@@ -105,20 +189,12 @@ export function SaveScreen() {
     })
   }
 
-  const asking = phase === 'ask' || phase === 'overwrite'
-  useMenuKeys({
-    left: () => { setYes(true) },
-    right: () => { setYes(false) },
-    confirm: () => {
-      if (asking) { if (yes) write(); else back(); return }
-      if (phase === 'done' || phase === 'failed') closeAll()
-    },
-    cancel: () => { if (asking) back() },
-  })
+  const keys = saveKeys(phase, backup)
+  useMenuKeys(saveMenuKeys(keys, yes, { setYes, write, back, retryBackup, closeAll }))
 
   const line = phase === 'overwrite' ? common[SAVE_TEXT.overwrite]
     : phase === 'writing' ? common[SAVE_TEXT.writing]
-      : phase === 'failed' ? `리포트를 쓰지 못했다${failure === null ? '' : `\n${failure}`}`
+      : phase === 'failed' ? failedLine(common)
         : phase === 'done' ? fillMenuText(common[SAVE_TEXT.done] ?? '', [save.trainer.name])
           : common[SAVE_TEXT.ask]
 
@@ -129,7 +205,7 @@ export function SaveScreen() {
 
         <div className={own.prompt}>{line}</div>
 
-        {asking && (
+        {keys === 'answer' && (
           <div className={own.choices}>
             <span className={yes ? own.choiceOn : own.choice}>{entries[YES_NO.yes] ?? '예'}</span>
             <span className={yes ? own.choice : own.choiceOn}>{entries[YES_NO.no] ?? '아니오'}</span>
@@ -142,17 +218,26 @@ export function SaveScreen() {
           그때 리포트까지 실패한 것처럼 보이면 안 된다 (IMPORT.md §10)
         */}
         {backup && phase === 'done' && (
-          <div className={own.backup}>
+          <div
+            className={own.backup}
+            // 이모지 대신 경고색이다 — OS 이모지는 창 글꼴과 색이 튄다
+            style={backup.started ? undefined : { color: vars.state.bad, fontWeight: 700 }}
+          >
             {backup.started
               ? `백업 파일도 받았다 — ${backup.fileName}`
-              : '⚠️ 브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'}
-            {!backup.started && (
-              <button className={own.backupButton} onClick={retryBackup}>백업 파일 받기</button>
-            )}
+              : '브라우저가 백업 파일 다운로드를 막았다. 리포트는 남아 있다'}
+          </div>
+        )}
+
+        {/* 마우스로도 누른다. 클릭도 사용자 동작이라 다운로드가 통과한다 */}
+        {keys === 'retry' && (
+          <div className={own.choices}>
+            <span className={yes ? own.choiceOn : own.choice} onClick={retryBackup}>백업 파일 받기</span>
+            <span className={yes ? own.choice : own.choiceOn} onClick={closeAll}>닫기</span>
           </div>
         )}
       </div>
-      <div className={css.hint}>←→ 고르기 · Z 결정 · X 그만둔다</div>
+      <div className={css.hint}>{SAVE_HINT[keys]}</div>
     </div>
   )
 }
