@@ -134,6 +134,8 @@ interface Looks {
   uvOf: Map<string, [number, number, number, number]>
   /** Material pathID → 재질 이름 */
   materialName: Map<number, string>
+  /** `KHR_texture_transform`을 쓴 재질이 있는가 — 있으면 glTF `extensionsUsed`에 적어야 로더가 읽는다 */
+  transformed: boolean
 }
 
 /**
@@ -176,12 +178,15 @@ interface LookOptions {
 const toLinear = (c: number): number => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
 
 /**
- * 그림 있는 재질에 곱할 색 — 빛 재질을 싣는 쪽만 (`lights`).
+ * 그림 있는 재질에 곱할 색.
  *
  * 층 그림을 밑그림으로 쓴 재질은 `_LayerColor`를 곱한다. **반투명 겹그림**(길 가장자리 그러데이션 `Grad_01` · 뿌리 그림자 ·
  * 입구 그림자 …)은 `_Color` × `_ColorIntensity`와 `_Color`의 알파를 곱한다 — `Grad_01`은 (0.11, 0.1, 0.1) · 0.7이라 어둡게 번지는
  * 띠인데, 안 곱하면 **하얀 띠**가 길을 두른다. 세기가 0인 겹그림은 더하는 빛이 아니면 안 보인다(바탕이 0이다 — 물웅덩이 `Puddle_01`).
- * 불투명한 것은 그대로 둔다 — 밑그림이 이미 색이다
+ * 불투명한 것은 그대로 둔다 — 밑그림이 이미 색이다.
+ *
+ * ⚠️ **방 · 무대도 곱한다** (`tinted`). 뿌리 그림자 `M_C_001_RootShadow_01`은 그림이 순백(RGB 255 · 알파만 모양)이고 색은 `_Color`
+ * (0.113, 0.102, 0.102) × 세기 0.5 · 알파 0.325에 있다 — 안 곱하면 가구 밑이 **흰 후광**으로 뜬다(방 97벌 · 도서관 · 센터 · 등대)
  */
 function tintOf(
   look: { floats: Map<string, UnityValue>, colors: Map<string, UnityValue> } | undefined,
@@ -202,6 +207,35 @@ function tintOf(
   const k = look.floats.has('_ColorIntensity') ? num(look.floats.get('_ColorIntensity')) : 1
   const clamp = (x: number): number => Math.min(1, Math.max(0, x))
   return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), k === 0 && !add ? 0 : clamp(c[3])]
+}
+
+/**
+ * 빛 재질을 안 싣는 쪽(방 · 무대)에서 색을 곱하는 재질 — 층 그림이거나, 더하지 않는 반투명 겹그림.
+ *
+ * ⚠️ **더하는 재질은 손대지 않는다.** 방의 창빛 · 문빛 · 조명 줄기(`roomShell`의 `isLightShaft`)와 무대의 창빛(`battle/arenaLight`)은
+ * 실행 쪽이 이름으로 골라 더하기로 편다. 바탕 `_Color`가 0 · 세기가 0인 것이 대부분이라(`EntranceLight` (0, 0, 0) · 0) 여기서
+ * 곱하면 더할 빛이 0이 되어 통째로 사라진다
+ */
+function tinted(layer: boolean, add: boolean, see: boolean): boolean {
+  return layer || (see && !add)
+}
+
+/**
+ * 플립북 그림의 **첫 칸** — `KHR_texture_transform`의 배율 · 오프셋 (glTF UV, 위가 0).
+ *
+ * TV 화면 `M_C_001_Video_03`(방 12벌 — 주인공 집 `t01r0101` 1층 거실 등)은 2048×1024 한 장에 영상 칸 8×8을 담고 셰이더가
+ * `_PatternH` · `_PatternV` · `_StartFrameIndex`(45)로 한 칸만 잘라 보인다. 자르지 않으면 **아틀라스가 통째로** 화면에 비친다.
+ *
+ * ⚠️ **칸 번호는 아래 줄부터 센다** (유니티 UV는 왼쪽 아래가 원점). 그림에 찬 칸은 위에서부터 42칸(5줄 + 2칸)이라, 위에서
+ * 세면 45번은 **빈 검은 칸**이다 — 원작이 빈 칸을 첫 화면으로 골랐을 리가 없다. 아래에서 세면 위에서 셋째 줄 여섯째 칸이다.
+ * 칸을 넘기는 것(`_SwitchingTime` · `_AutoSwitch`)은 아직 안 옮긴다 — 첫 칸에 머문다
+ */
+export function flipbookCell(columns: number, rows: number, start: number): { offset: [number, number], scale: [number, number] } | null {
+  if (!(columns >= 1 && rows >= 1) || columns * rows <= 1) return null
+  const cell = ((Math.trunc(start) % (columns * rows)) + columns * rows) % (columns * rows)
+  const col = cell % columns
+  const fromBottom = Math.floor(cell / columns)
+  return { offset: [col / columns, (rows - 1 - fromBottom) / rows], scale: [1 / columns, 1 / rows] }
 }
 
 export async function bakeLooks(
@@ -227,34 +261,38 @@ export async function bakeLooks(
     const tags = pairs(v.stringTagMap)
     renderType.set(mat, (tags.get('RenderType') as string | undefined) ?? 'Opaque')
   }
-  /** 더해서 그리는 재질 (`ADD_SRC` · `ADD_DST`) */
+  /** 더해서 그리는 재질 (`ADD_SRC` · `ADD_DST`). 더하기 · 발광을 싣는 것은 빛 재질을 싣는 쪽만이다 */
   const additive = new Set<string>()
-  /** 재질마다 색 · 수 · 물린 그림 칸 — 빛 재질을 싣는 쪽만 쓴다 */
+  /** 재질마다 색 · 수 · 물린 그림 칸 */
   const looks = new Map<string, { floats: Map<string, UnityValue>, colors: Map<string, UnityValue>, slots: Set<string> }>()
-  if (lights) {
-    for (const e of env.ofType('Material')) {
-      const v = env.readEntry(e) as Props | null
-      if (!v) continue
-      const saved = (v.m_SavedProperties ?? {}) as Props
-      const floats = pairs(saved.m_Floats)
-      const mat = (v.m_Name as string | undefined) ?? '?'
-      const slots = new Set<string>()
-      for (const [k, raw] of pairs(saved.m_TexEnvs)) {
-        if (num(((raw as Props).m_Texture as Props | undefined)?.m_PathID) !== 0) slots.add(k)
-      }
-      looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots })
-      if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) additive.add(mat)
+  for (const e of env.ofType('Material')) {
+    const v = env.readEntry(e) as Props | null
+    if (!v) continue
+    const saved = (v.m_SavedProperties ?? {}) as Props
+    const floats = pairs(saved.m_Floats)
+    const mat = (v.m_Name as string | undefined) ?? '?'
+    const slots = new Set<string>()
+    for (const [k, raw] of pairs(saved.m_TexEnvs)) {
+      if (num(((raw as Props).m_Texture as Props | undefined)?.m_PathID) !== 0) slots.add(k)
     }
+    looks.set(mat, { floats, colors: pairs(saved.m_Colors), slots })
+    if (num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST) additive.add(mat)
   }
   /**
    * **밑그림이 층 그림에 있는 재질** — `_MainTex`가 없거나 `_ColorIntensity`가 0이라 바탕이 안 보이고 `_LayerTex` × `_LayerColor`가
    * 색을 낸다. 던전 땅 · 벽(`M_C_001_Ground_05_02` · `M_D_004_Floor_01_1F_01` …)이 그렇다 — 밑그림만 찾으면 그림 없는 재질로 떨어져
-   * 흰(바탕 `_Color`) 또는 검은(× 세기 0) 판이 된다
+   * 흰(바탕 `_Color`) 또는 검은(× 세기 0) 판이 된다. 방에서는 굽도리 벽 `ComWall_0x`(검정 — 운하 체육관 `c05r1101` 기둥의 검은
+   * 계단 띠)와 물가 체육관 `c08gym0101~0103`의 `…_02` 바닥 · 벽(흰 판)이 그랬다.
+   *
+   * ⚠️ **빛 재질을 안 싣는 쪽은 더하는 재질을 층 그림으로 안 돌린다** (`tinted`와 같은 까닭). 조명 줄기 `SpotLight_01`은 바탕 세기가
+   * 0이지만 줄기 모양이 밑그림(`GradLightMask_02_M`)에 있고 층 그림은 알파가 꽉 찬 구름 무늬다 — 돌리면 실행 쪽이 네모난 구름
+   * 판을 더해 그린다
    */
   const layered = new Set<string>()
   for (const [mat, l] of looks) {
     const k = l.floats.has('_ColorIntensity') ? num(l.floats.get('_ColorIntensity')) : 1
-    if (l.slots.has('_LayerTex') && (!l.slots.has('_MainTex') || k === 0)) layered.add(mat)
+    if (!l.slots.has('_LayerTex') || (l.slots.has('_MainTex') && k !== 0)) continue
+    if (lights || !additive.has(mat)) layered.add(mat)
   }
   const textureAt = new Map<number, { entry: ReturnType<Environment['ofType']>[number], read: Texture | null }>()
   for (const e of env.ofType('Texture2D')) textureAt.set(e.object.pathId, { entry: e, read: null })
@@ -291,30 +329,44 @@ export async function bakeLooks(
   // ⚠️ **이름순으로 세운다.** 재질 차례가 곧 프리미티브 차례이고, 번들 안
   // 오브젝트 차례는 덤프마다 달라질 수 있다. 개발 추출기도 이름순이라
   // (`sorted(albedo.glob(...))`) parity를 바로 잴 수 있다
-  const main = bakeAlbedo(env, { maxSize }).filter((m) => !layered.has(m.name))
+  //
+  // ⚠️ 더하는 물(`additiveWater`)은 빛 재질을 안 싣는 쪽만 보통 섞기로 옮겨 굽는다 — 싣는 쪽은 더하기를 그대로 싣는다
+  const main = bakeAlbedo(env, { maxSize, additiveWater: !lights }).filter((m) => !layered.has(m.name))
   const layer = layered.size === 0 ? [] : bakeAlbedo(env, { maxSize, mainProps: ['_LayerTex'] }).filter((m) => layered.has(m.name))
   const baked = [...main, ...layer]
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+  let transformed = false
   for (const m of baked) {
     images.push(await image(m.pixels, m.width, m.height, m.name))
     const want = { wrapS: m.look.wrap[0], wrapT: m.look.wrap[1] }
     let sampler = samplers.findIndex((s) => s.wrapS === want.wrapS && s.wrapT === want.wrapT)
     if (sampler < 0) { samplers.push(want); sampler = samplers.length - 1 }
     textures.push({ source: images.length - 1, sampler })
+    const look = looks.get(m.name)
+    const lay = layered.has(m.name)
+    const add = additive.has(m.name)
+    const see = renderType.get(m.name) === 'Transparent'
     const tint = lights
-      ? tintOf(looks.get(m.name), layered.has(m.name), additive.has(m.name), renderType.get(m.name) === 'Transparent')
-      : null
+      ? tintOf(look, lay, add, see)
+      : tinted(lay, add, see) ? tintOf(look, lay, false, see) : null
+    // 플립북은 첫 칸만 (`flipbookCell`) — 층 그림 재질에는 칸이 없다
+    const cell = lay || !look ? null
+      : flipbookCell(num(look.floats.get('_PatternH'), 1), num(look.floats.get('_PatternV'), 1), num(look.floats.get('_StartFrameIndex')))
+    if (cell) transformed = true
     materials.push({
       name: m.name,
       pbrMetallicRoughness: {
-        baseColorTexture: { index: textures.length - 1 },
+        baseColorTexture: {
+          index: textures.length - 1,
+          ...(cell ? { extensions: { KHR_texture_transform: cell } } : {}),
+        },
         ...(tint ? { baseColorFactor: tint } : {}),
         metallicFactor: 0,
         roughnessFactor: 0.9,
       },
       ...alphaOf(renderType.get(m.name) ?? 'Opaque'),
       doubleSided: true,
-      ...(additive.has(m.name) ? { alphaMode: 'BLEND', extras: { add: true } } : {}),
+      ...(lights && add ? { alphaMode: 'BLEND', extras: { add: true } } : {}),
     })
     slotOf.set(m.name, materials.length - 1)
     // ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
@@ -377,7 +429,7 @@ export async function bakeLooks(
     slotOf.set(mat, materials.length - 1)
   }
 
-  return { images, textures, materials, samplers, slotOf, uvOf, materialName }
+  return { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed }
 }
 
 // ── 내보내기 ─────────────────────────────────────────────────────────────────
@@ -446,7 +498,7 @@ export async function exportArena(
 
   // 재질 이름 → RenderType. 짐작하지 않고 번들이 적어 둔 것을 읽는다
   const buf = new GlbBuffer()
-  const { images, textures, materials, samplers, slotOf, uvOf, materialName } =
+  const { images, textures, materials, samplers, slotOf, uvOf, materialName, transformed } =
     await bakeLooks(env, encodePng, buf, { maxSize: options.maxSize ?? null })
 
   const cache = new Map<number, Mat4>()
@@ -623,7 +675,7 @@ export async function exportArena(
     primitives.push(prim)
   }
 
-  const gltf: Gltf = {
+  const gltf: Gltf & { extensionsUsed?: string[] } = {
     asset: { version: '2.0', generator: 'radiant-platinum bdsp arena' },
     scene: 0,
     scenes: [{ nodes: [0] }],
@@ -638,6 +690,8 @@ export async function exportArena(
   }
   // 빈 배열은 glTF가 안 받는다
   if (samplers.length > 0) gltf.samplers = samplers
+  // TV 화면의 첫 칸 (`flipbookCell`)
+  if (transformed) gltf.extensionsUsed = ['KHR_texture_transform']
 
   const glb = writeGlb(gltf, buf.bytes())
   return {

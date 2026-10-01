@@ -32,12 +32,45 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
   moves: 1,
   marts: 1,
   /**
+   * 3 — **문 너머 가짜 실내(`RoomInner`) 바닥과 같은 높이로 겹친 바깥 면을 굽기에서 잘라 낸다** (`import/bdsp/field.ts`). 원작은
+   * `_ZOffset`으로 실내 바닥을 앞으로 당겨 이기는데 glTF에는 깊이 밀기가 없어서, 관문 · 집 문간에서 체크 바닥과 풀이 얼룩으로 싸웠다.
+   * 옛 지역 glb는 그 면을 그대로 들고 있다.
+   *
    * 2 — 빛 재질(입구 `PokeCenLight` 등)에 더하기 · 발광 · 켜지는 때를 싣는다 (DATA.md §2.17.6 · docs/orders/VISUAL_20260930.md §2).
    *
    * ⚠️ **이미 깔린 것을 그냥 두면 안 된다.** 옛 지역 glb는 그 재질을 흰 반투명 판으로 들고 있어서 포켓몬센터 · 프렌들리숍 ·
    * 체육관 입구가 하얀 상자로 막힌 채 남는다
    */
-  fields: 2,
+  fields: 3,
+  /**
+   * 2 — **방 재질의 색 · 층 그림 · TV 칸을 싣는다** (`import/bdsp/arena.ts` · 노드 쪽 `bdspArena.py --rooms`와 같은 바이트).
+   *
+   * · 반투명 겹그림(뿌리 그림자 `RootShadow_01` 97벌 · `Grad_01` 14벌 · 유리 …)에 `_Color` × 세기 · 알파를 곱한다 — 그림이 순백이라
+   *   안 곱하면 가구 밑이 **흰 후광**으로 떴다
+   * · 층 그림 재질(굽도리 벽 `ComWall_0x` — `ComWall_09`만 76벌 · 물가 체육관 `…_02` 바닥 · 벽 …)을 `_LayerTex` × `_LayerColor`로 굽는다
+   *   — 검은 판 · 흰 판이었다
+   * · TV 화면 `Video_03`(12벌)이 영상 아틀라스 8×8의 한 칸만 비친다 (`KHR_texture_transform`)
+   *
+   * 실측으로 117벌 중 116벌의 재질이 바뀌고 145.8 → **156.8MB**다
+   */
+  rooms: 2,
+  /**
+   * 2 — 무대에도 방과 같은 규칙을 먹인다 (층 그림 바닥 · 벽 11재질 · 반투명 겹그림 `M_CB_029_Mark_03`의 색). 그리고 **더하는 물을 보통 섞기로 옮겨
+   * 굽는다** (`import/bdsp/albedo.ts`의 `additiveWater`) — 물 체육관 무대 `g027`의 회색 물결이 알파 1로 바닥과 뒷벽을 덮어 흑백
+   * 노이즈로 보였다. 30벌 중 8벌의 재질 · 그림이 바뀐다
+   */
+  arenas: 2,
+  /**
+   * 2 — **능력 변화 무늬 묶음(`statChange.bin`)이 붙는다** (`import/platinum/particles.ts`의 `STAT_CHANGE_BG`). 능력이 오르고
+   * 내릴 때 몸 실루엣 안에서 흐르는 배경 무늬 넷(`pl_batt_bg.narc` 멤버 열둘)이다. 옛 판에는 그 묶음이 없다
+   */
+  particles: 2,
+  /**
+   * 2 — **가방이 열리고 고른 볼이 흔들린다** (`import/platinum/starterScene.ts`). 관절 애니 넷(`psel_all` 41프레임 · `psel_mb_a~c`
+   * 73프레임)을 원작 바이트 그대로 `data/starter/anims.bin`에 잇고, 되돌리는 데 드는 모델 속살 · 노드 사슬과 글창 팔레트 첫 줄
+   * (분류 · 이름을 칠하는 `{COLOR n}`)을 `index.json`에 싣는다. 옛 판은 덮인 가방과 열린 가방을 갈아 끼우기만 했다
+   */
+  starterScene: 2,
   /**
    * 크레딧 — 2에서 **배치표를 사용자 롬에서** 읽는다 (PARITY §8.12).
    *
@@ -161,11 +194,15 @@ export const GROUP_FORMAT: Readonly<Record<string, number>> = {
    * 주인공이 계속 절차형으로만 낚시한다
    */
   /**
+   * 15 — **길에 떨어진 몬스터볼이 몬스터볼이다** (`models/pokeball.glb` — 이 그룹이 굽는다). `ob02xx_00` 줄의 첫째 `ob0201_00`을
+   * 집었는데 그것은 마스터볼이었다(윗반구 보라 · 분홍 혹 · M). 그림으로 재서 빨강 · 하양인 `ob0204_00`으로 바꿨다
+   * (`import/bdsp/convert.ts`의 `POKEBALL`)
+   *
    * 14 — **`_BlendMode`가 없는 재질의 오려내기를 재질의 `RenderType`이 정한다** (`import/bdsp/albedo.ts`의 `untaggedAlpha`).
    * 쪽찐 할머니 · `fc2022`의 옷이 통째로 잘려 머리 · 손 · 발만 떠 있었고, 사이클리스트 헬멧 · 안경알이 사라졌다.
    * 파도타기 · 공중날기 포켓몬(`models/pcParts.glb`)의 눈도 알파가 거의 0이라 잘려 있었다
    */
-  npcModels: 14,
+  npcModels: 15,
   /**
    * 2 — 재질을 못 찾은 **껍데기 하나만** 버린다. 종을 통째로 버리지 않는다.
    *

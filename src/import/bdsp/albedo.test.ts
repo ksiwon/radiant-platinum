@@ -8,8 +8,11 @@
 //
 // 그래서 파이썬 원문을 읽어서 표를 꺼내 견준다. 눈으로 맞추는 대신 시험이 센다.
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { EMPTY_ALPHA, MASK_CHANNEL_PROPS, VARIATION_CHANNEL_PROPS, untaggedAlpha } from './albedo'
+import { EMPTY_ALPHA, MASK_CHANNEL_PROPS, VARIATION_CHANNEL_PROPS, bakeAlbedo, untaggedAlpha } from './albedo'
+import { openEnvironment } from './environment'
+import { bdspDir, withLocal } from '../../data/romData.testkit'
 
 const PY = 'tools/extract/bdsp_bake_albedo.py'
 
@@ -63,4 +66,33 @@ describe('알베도 색 채널 표', () => {
     expect([...VARIATION_CHANNEL_PROPS]).toEqual([...MASK_CHANNEL_PROPS])
     expect(VARIATION_CHANNEL_PROPS[0]).toBe('_SkinColor')
   })
+})
+
+describe('더하는 물 (`additiveWater`)', () => {
+  const src = readFileSync(PY, 'utf8')
+  it('이름 규칙이 개발 추출기와 같다', () => {
+    expect(/^ADDITIVE_WATER\s*=\s*"Water"/m.test(src), `${PY}에 ADDITIVE_WATER가 없다`).toBe(true)
+    expect(/^ADD_SRC, ADD_DST = 5\.0, 1\.0/m.test(src)).toBe(true)
+  })
+})
+
+const ARENAS = bdspDir('arenas')
+const g027 = ARENAS ? join(ARENAS, 'ground', 'g027') : null
+withLocal('BDSP 무대 g027', g027)('더하는 물 — 원본 번들', () => {
+  it('물결 그림이 바닥을 덮지 않는다 — 더할 빛만큼의 알파로 굽는다', () => {
+    const env = openEnvironment([new Uint8Array(readFileSync(g027!))])
+    const pick = (additiveWater: boolean) => bakeAlbedo(env, { additiveWater }).find((m) => m.name === 'M_B_027_Water_02')!
+    const alphaMax = (px: Uint8Array): number => {
+      let most = 0
+      for (let i = 3; i < px.length; i += 4) most = Math.max(most, px[i]!)
+      return most
+    }
+    // 그대로 구우면 회색 물결이 알파 1로 깔린다
+    expect(alphaMax(pick(false).pixels)).toBe(255)
+    // `_Color` (0.104, 0.144, 0.15) 감마 → 선형 최대 0.0199 × 그림 최대 1 → 5/255
+    expect(alphaMax(pick(true).pixels)).toBe(5)
+    // 다른 재질은 그대로다
+    const floor = (additiveWater: boolean) => bakeAlbedo(env, { additiveWater }).find((m) => m.name === 'M_CB_027_Floor_01')!.pixels
+    expect(floor(true)).toEqual(floor(false))
+  }, 120_000)
 })

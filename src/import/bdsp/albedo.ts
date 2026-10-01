@@ -268,7 +268,28 @@ export interface BakeOptions {
    * 같은 표를 본다** (`tools/extract/npcModels.mjs`)
    */
   recolor?: Readonly<Record<string, Readonly<Record<string, string>>>>
+  /**
+   * **더하는 물을 보통 섞기로 옮겨 굽는다** (`ADDITIVE_WATER`) — 빛 재질(더하기)을 안 싣는 무대 · 방만 켠다.
+   * 노드 쪽 `bdsp_bake_albedo.py`의 `additive_water`와 같은 식이다
+   */
+  additiveWater?: boolean
 }
+
+/**
+ * 더하는 물 — 이름에 `Water`가 들고 `_SrcBlend 5 · _DstBlend 1`(SrcAlpha, One — **더한다**)인 재질.
+ *
+ * 물 체육관 배틀 무대 `g027`의 `M_B_027_Water_02`가 그렇다. 그림 `T_B_027_Water_02_C`는 알파가 꽉 찬 회색 물결(평균 51/255)이고
+ * 원작은 그것을 `_Color` (0.104, 0.144, 0.15)에 곱해 바닥 위에 **더한다** — 짙은 청록이라 더해지는 빛은 선형 0.02를 안 넘는다.
+ * glTF에는 더하기가 없고 무대 실행 쪽(`battle/arenaLight`)은 `Light`·`Window` 이름만 더하므로, 그대로 보통 섞기로 실으면 회색 물결이
+ * 알파 1로 **바닥을 통째로 덮었다**(흑백 노이즈 바닥 · 뒷벽).
+ *
+ * 그래서 더할 빛 A = 그림 × `_Color` × `_ColorIntensity` × (그림 알파 × `_Color` 알파)(선형)를 **알파를 곱한 보통 섞기**로 옮긴다:
+ * 알파 α = max(A), 색 = A / α. 그리면 src·α = A가 그대로 더해지고, 바닥이 α만큼 덜 비치는 몫(α · 바닥)만 원작과 갈린다 — α가 0.02
+ * 아래라 바닥 밝기의 2% 안쪽이다. 물 셰이더의 `_BlendTex`(`WaterMask` — `_BlendUVIndex` 1, 둘째 UV)는 둘째 UV를 안 실어서 못 옮긴다
+ */
+const ADDITIVE_WATER = /Water/
+const ADD_SRC = 5
+const ADD_DST = 1
 
 /** `#rrggbb` → 셰이더 색. **감마 값 그대로** 넣는다 — 읽을 때 선형으로 돈다 */
 function hexColor(text: string): { r: number, g: number, b: number, a: number } {
@@ -646,6 +667,15 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
     }
     const layers = MASK_CHANNEL_PROPS.map(layerColor)
 
+    // 더하는 물 (`ADDITIVE_WATER`) — 그 재질의 `_Color`(감마 → 선형) · 세기 · 알파. 노드 쪽과 같은 차례로 곱한다
+    const water = options.additiveWater === true && ADDITIVE_WATER.test(name)
+      && num(floats.get('_SrcBlend')) === ADD_SRC && num(floats.get('_DstBlend')) === ADD_DST
+    const base = (colors.get('_Color') ?? {}) as Record<string, number>
+    const waterColor = [base.r ?? 1, base.g ?? 1, base.b ?? 1].map((c) => srgbToLinear(f32(c)))
+    const waterK = f32(floats.has('_ColorIntensity') ? num(floats.get('_ColorIntensity')) : 1)
+    const waterA = f32(base.a ?? 1)
+    const glow = new Float32Array(3)
+
     const outPixels = new Uint8Array(n * 4)
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -669,14 +699,30 @@ export function bakeAlbedo(env: Environment, options: BakeOptions = {}): BakedMa
         // 어느 채널에도 안 속한(검정) 자리는 틴트 없이 밑그림 그대로 둔다
         const rest = f32(1 - Math.min(1, coverage))
         tr = f32(tr + rest); tg = f32(tg + rest); tb = f32(tb + rest)
-        const sr = linearToSrgb(f32(lin[i * 3]! * tr))
-        const sg = linearToSrgb(f32(lin[i * 3 + 1]! * tg))
-        const sb = linearToSrgb(f32(lin[i * 3 + 2]! * tb))
+        let lr = f32(lin[i * 3]! * tr)
+        let lg = f32(lin[i * 3 + 1]! * tg)
+        let lb = f32(lin[i * 3 + 2]! * tb)
+        let alpha = -1
+        if (water) {
+          // 더할 빛 A, 알파 max(A), 색 A / max(A) — `ADDITIVE_WATER`
+          const w = f32(f32(src[i * 4 + 3]! / 255) * waterA)
+          glow[0] = f32(f32(f32(lr * waterColor[0]!) * waterK) * w)
+          glow[1] = f32(f32(f32(lg * waterColor[1]!) * waterK) * w)
+          glow[2] = f32(f32(f32(lb * waterColor[2]!) * waterK) * w)
+          const most = Math.max(glow[0], glow[1], glow[2])
+          lr = most > 0 ? f32(glow[0] / most) : 0
+          lg = most > 0 ? f32(glow[1] / most) : 0
+          lb = most > 0 ? f32(glow[2] / most) : 0
+          alpha = roundHalfEven(f32(Math.min(1, Math.max(0, most)) * 255))
+        }
+        const sr = linearToSrgb(lr)
+        const sg = linearToSrgb(lg)
+        const sb = linearToSrgb(lb)
         outPixels[i * 4] = roundHalfEven(f32(Math.min(1, Math.max(0, sr)) * 255))
         outPixels[i * 4 + 1] = roundHalfEven(f32(Math.min(1, Math.max(0, sg)) * 255))
         outPixels[i * 4 + 2] = roundHalfEven(f32(Math.min(1, Math.max(0, sb)) * 255))
         // 불투명하다고 적힌 재질은 알파를 채운다. 남겨 두면 다른 데서 또 오려 낸다
-        outPixels[i * 4 + 3] = opaque ? 255 : src[i * 4 + 3]!
+        outPixels[i * 4 + 3] = alpha >= 0 ? alpha : opaque ? 255 : src[i * 4 + 3]!
       }
     }
 

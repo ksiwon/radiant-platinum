@@ -137,6 +137,19 @@ def raw_wrap(tex) -> tuple[int, int]:
 # 배경에 더하는데 여기서는 반투명으로 얹는다. 불빛이 원작보다 덜 밝게 나온다
 GLTF_ALPHA = {0: "OPAQUE", 1: "BLEND", 2: "BLEND"}
 
+# **더하는 물을 보통 섞기로 옮겨 굽는다** (`bake(…, additive_water=True)` — 빛 재질(더하기)을 안 싣는 무대 · 방만).
+#
+# 이름에 `Water`가 들고 `_SrcBlend 5 · _DstBlend 1`(SrcAlpha, One — **더한다**)인 재질이다. 물 체육관 배틀 무대 `g027`의
+# `M_B_027_Water_02`가 그렇다 — 그림은 알파가 꽉 찬 회색 물결이고 원작은 그것을 `_Color` (0.104, 0.144, 0.15)에 곱해 바닥 위에
+# 더한다. glTF에는 더하기가 없고 무대 실행 쪽(`battle/arenaLight`)은 `Light`·`Window` 이름만 더하므로, 그대로 실으면 회색 물결이
+# 알파 1로 **바닥을 통째로 덮었다**(흑백 노이즈 바닥 · 뒷벽).
+#
+# 더할 빛 A = 그림 × `_Color` × `_ColorIntensity` × (그림 알파 × `_Color` 알파)(선형)를 알파를 곱한 보통 섞기로 옮긴다:
+# 알파 α = max(A), 색 = A / α. 바닥이 α만큼 덜 비치는 몫만 원작과 갈리는데 α가 0.02 아래다.
+# ⚠️ **브라우저 변환기와 같아야 한다** (`src/import/bdsp/albedo.ts`의 `ADDITIVE_WATER`) — 곱하는 차례까지 같다
+ADDITIVE_WATER = "Water"
+ADD_SRC, ADD_DST = 5.0, 1.0
+
 
 # `_BlendMode`가 없는 재질(사람 · 소품)의 오려내기 — **재질의 `RenderType` 태그가 임자다** (docs/orders/VISUAL_20260929.md §3).
 #
@@ -410,7 +423,8 @@ def carved_shells(env, main_props: tuple[str, ...]) -> set[str]:
 def bake(bundle, outdir: Path, color_index: int | None = None,
          max_size: int | None = None,
          main_props: tuple[str, ...] = ("_MainTex",),
-         recolor: dict | None = None) -> dict[str, dict]:
+         recolor: dict | None = None,
+         additive_water: bool = False) -> dict[str, dict]:
     """번들의 머티리얼을 평범한 albedo PNG로 굽는다.
 
     돌려주는 것은 **머티리얼 이름 → 그 그림을 어떻게 읽어야 하는가**다:
@@ -558,6 +572,16 @@ def bake(bundle, outdir: Path, color_index: int | None = None,
         # 불투명하다고 적힌 재질은 알파를 통째로 채운다. 남겨 두면 KTX2로
         # 옮길 때나 다른 곳에서 다시 오려 낼 빌미가 된다
         opacity = np.ones_like(col[..., 3:4]) if opaque else col[..., 3:4]
+        # 더하는 물 — 더할 빛 A, 알파 max(A), 색 A / max(A) (`ADDITIVE_WATER`)
+        if (additive_water and ADDITIVE_WATER in name
+                and nums.get("_SrcBlend") == ADD_SRC and nums.get("_DstBlend") == ADD_DST):
+            c = colors.get("_Color") or {}
+            water = srgb_to_linear(np.array([c.get("r", 1.0), c.get("g", 1.0), c.get("b", 1.0)], dtype=np.float32))
+            add = (out_lin * water * np.float32(nums.get("_ColorIntensity", 1.0))
+                   * (col[..., 3:4] * np.float32(c.get("a", 1.0))))
+            most = add.max(axis=2, keepdims=True)
+            out_lin = np.where(most > 0, add / np.where(most > 0, most, np.float32(1)), np.float32(0))
+            opacity = most
         out = np.concatenate([linear_to_srgb(out_lin), opacity], axis=2)
         img = Image.fromarray((np.clip(out, 0, 1) * 255).round().astype(np.uint8), "RGBA")
 

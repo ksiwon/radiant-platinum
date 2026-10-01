@@ -34,7 +34,7 @@ import numpy as np
 import UnityPy
 from UnityPy.helpers import MeshHelper
 
-from bdsp_bake_albedo import bake, prop_pairs
+from bdsp_bake_albedo import bake, prop_pairs, srgb_to_linear_scalar
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from tools.raw.sources import require_dir
@@ -131,6 +131,55 @@ def lanes(raw, n: int, want: int, fallback: list[float]) -> np.ndarray:
     return a.reshape(n, -1)[:, :want].copy()
 
 
+#: 더해서 그리는 재질 — `_SrcBlend 5 · _DstBlend 1` (SrcAlpha, One)
+ADD_SRC, ADD_DST = 5.0, 1.0
+
+
+def tint_of(floats: dict, colors: dict, layer: bool, see: bool) -> list[float] | None:
+    """그림 있는 재질에 곱할 색 — 브라우저 변환기 `arena.ts`의 `tintOf`(더하지 않는 갈래)와 같은 식이다.
+
+    층 그림을 밑그림으로 쓴 재질은 `_LayerColor`를 곱한다. **반투명 겹그림**(뿌리 그림자 `RootShadow_01` · 길 가장자리
+    `Grad_01` …)은 `_Color` × `_ColorIntensity`와 `_Color`의 알파를 곱한다 — `RootShadow_01`은 그림이 순백(RGB 255 · 알파만
+    모양)이고 색이 (0.113, 0.102, 0.102) × 0.5 · 알파 0.325에 있어서, 안 곱하면 가구 밑이 **흰 후광**으로 뜬다.
+    세기가 0인 겹그림은 바탕이 0이라 안 보인다. 색은 감마로 적혀 있다 — 선형으로 내려서 싣는다
+    """
+    def rgb(key: str):
+        c = colors.get(key)
+        if not c:
+            return None
+        return [srgb_to_linear_scalar(c.get(k, 1.0)) for k in ("r", "g", "b")] + [c.get("a", 1.0)]
+
+    if layer:
+        c = rgb("_LayerColor")
+        return None if c is None else [c[0], c[1], c[2], 1]
+    if not see:
+        return None
+    c = rgb("_Color")
+    if c is None:
+        return None
+    k = floats.get("_ColorIntensity", 1.0)
+
+    def clamp(x: float) -> float:
+        return min(1.0, max(0.0, x))
+
+    return [clamp(c[0] * k), clamp(c[1] * k), clamp(c[2] * k), 0 if k == 0 else clamp(c[3])]
+
+
+def flipbook_cell(columns: float, rows: float, start: float) -> dict | None:
+    """플립북 그림의 **첫 칸** — `KHR_texture_transform`의 배율 · 오프셋 (glTF UV, 위가 0). `arena.ts`의 `flipbookCell`과 같다.
+
+    TV 화면 `M_C_001_Video_03`은 한 장에 영상 칸 8×8을 담고 셰이더가 `_PatternH` · `_PatternV` · `_StartFrameIndex`(45)로 한 칸만
+    잘라 보인다. ⚠️ 칸 번호는 **아래 줄부터** 센다 — 그림에 찬 칸은 위에서부터 42칸이라 위에서 세면 45번은 빈 검은 칸이다
+    """
+    if not (columns >= 1 and rows >= 1) or columns * rows <= 1:
+        return None
+    columns, rows = int(columns), int(rows)
+    cell = int(start) % (columns * rows)
+    col = cell % columns
+    from_bottom = cell // columns
+    return {"offset": [col / columns, (rows - 1 - from_bottom) / rows], "scale": [1 / columns, 1 / rows]}
+
+
 def export(bundle: Path, out: Path, far: float | None, max_size: int | None = None) -> dict:
     env = UnityPy.load(str(bundle))
     filters = [o.read() for o in env.objects if o.type.name == "MeshFilter"]
@@ -149,12 +198,19 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     # 여태 **전부 오려 내기**로 구웠다. 그래서 체육관 안 창빛이 흰 널빤지로
     # 서 있었다 — 지난번 천관산 빛기둥과 같은 실수를 무대 쪽에서 한 번 더 한 것이다
     kinds = {}
+    #: 재질마다 수 · 색 · 물린 그림 칸 (`arena.ts`의 `looks`)
+    looks: dict[str, tuple[dict, dict, set]] = {}
     for obj in env.objects:
         if obj.type.name != "Material":
             continue
         d = obj.read_typetree()
         tags = dict(d.get("stringTagMap") or [])
-        kinds[d.get("m_Name", "?")] = tags.get("RenderType", "Opaque")
+        name = d.get("m_Name", "?")
+        kinds[name] = tags.get("RenderType", "Opaque")
+        props = d.get("m_SavedProperties", {})
+        slots = {k for k, v in prop_pairs(props.get("m_TexEnvs", []))
+                 if isinstance(v, dict) and v.get("m_Texture", {}).get("m_PathID", 0) != 0}
+        looks[name] = (dict(prop_pairs(props.get("m_Floats", []))), dict(prop_pairs(props.get("m_Colors", []))), slots)
 
     def alpha_of(name: str) -> dict:
         kind = kinds.get(name, "Opaque")
@@ -165,39 +221,75 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
         # 잎 사이가 사각형으로 막힌다. 문턱은 유니티의 `_Cutoff` 기본값이다
         return {"alphaMode": "MASK", "alphaCutoff": 0.5}
 
+    # 더해서 그리는 재질 — 실행 쪽이 이름으로 골라 더한다(방 `roomShell` · 무대 `arenaLight`). 여기서는 색을 안 곱한다
+    additive = {n for n, (f, _, _) in looks.items()
+                if f.get("_SrcBlend") == ADD_SRC and f.get("_DstBlend") == ADD_DST}
+    # **밑그림이 층 그림에 있는 재질** — `_MainTex`가 없거나 `_ColorIntensity`가 0이라 바탕이 안 보이고 `_LayerTex` × `_LayerColor`가
+    # 색을 낸다. 굽도리 벽 `ComWall_0x`가 검정으로(운하 체육관 `c05r1101` 기둥의 검은 계단 띠), 물가 체육관 `c08gym0101~0103`의
+    # `…_02` 바닥 · 벽이 흰 판으로 구워졌던 자리다. ⚠️ 더하는 재질은 안 돌린다 — 조명 줄기 `SpotLight_01`은 줄기 모양이 밑그림에
+    # 있고 층 그림은 알파가 꽉 찬 구름 무늬라 네모난 구름 판이 된다 (`arena.ts`의 `layered`와 같다)
+    layered = set()
+    for n, (f, _, slots) in looks.items():
+        if "_LayerTex" not in slots or ("_MainTex" in slots and f.get("_ColorIntensity", 1.0) != 0):
+            continue
+        if n not in additive:
+            layered.add(n)
+
     # 알베도는 번들 통째로 한 번만 굽는다. BDSP 셰이더를 런타임에 재현하지 않기
-    # 위해서다 (`bdsp_bake_albedo` 머리말)
+    # 위해서다 (`bdsp_bake_albedo` 머리말). 층 그림 재질은 `_LayerTex`로 한 번 더 굽는다
     albedo = out.parent / f".{out.stem}_albedo"
+    layer_dir = out.parent / f".{out.stem}_layer"
     images, textures, materials, by_name = [], [], [], {}
     samplers: list[dict] = []
     # ⚠️ **재질이 적어 둔 UV 배율을 먹여야 한다.** 무대 바닥이 배율 (11, 11)로
     # 되풀이하는 그림이다 — 안 먹이면 타일 121장이 한 장으로 늘어난다
-    spec = bake(bundle, albedo, None, max_size)
+    spec = bake(bundle, albedo, None, max_size, additive_water=True)
+    baked = [(png.name[: -len("_albedo.png")], png, spec) for png in albedo.glob("*_albedo.png")]
+    baked = [b for b in baked if b[0] not in layered]
+    if layered:
+        layer_spec = bake(bundle, layer_dir, None, max_size, main_props=("_LayerTex",))
+        baked += [(png.name[: -len("_albedo.png")], png, layer_spec) for png in layer_dir.glob("*_albedo.png")
+                  if png.name[: -len("_albedo.png")] in layered]
+    # ⚠️ **재질 이름순이다** — 브라우저 변환기와 같은 차례라야 프리미티브 차례가 같다. 파일 이름(`…_albedo.png`)으로 세우면
+    # `ComWall_09`와 `ComWall_09_01`의 차례가 뒤집힌다
     st_of = {}
-    for png in sorted(albedo.glob("*_albedo.png")):
-        name = png.name[: -len("_albedo.png")]
+    transformed = False
+    for name, png, sp in sorted(baked, key=lambda b: b[0]):
         images.append({
             "bufferView": buf.view(png.read_bytes()), "mimeType": "image/png", "name": name,
         })
-        st_of[name] = tuple(spec.get(name, {}).get("uv", (1.0, 1.0, 0.0, 0.0)))
-        want = dict(zip(("wrapS", "wrapT"), spec.get(name, {}).get("wrap", (10497, 10497))))
+        st_of[name] = tuple(sp.get(name, {}).get("uv", (1.0, 1.0, 0.0, 0.0)))
+        want = dict(zip(("wrapS", "wrapT"), sp.get(name, {}).get("wrap", (10497, 10497))))
         if want not in samplers:
             samplers.append(want)
         textures.append({"source": len(images) - 1, "sampler": samplers.index(want)})
+        floats, colors, _ = looks.get(name, ({}, {}, set()))
+        lay = name in layered
+        see = kinds.get(name) == "Transparent"
+        tint = tint_of(floats, colors, lay, see) if lay or (see and name not in additive) else None
+        cell = None if lay else flipbook_cell(floats.get("_PatternH", 1.0), floats.get("_PatternV", 1.0),
+                                              floats.get("_StartFrameIndex", 0.0))
+        transformed = transformed or cell is not None
+        tex = {"index": len(textures) - 1}
+        if cell:
+            tex["extensions"] = {"KHR_texture_transform": cell}
+        pbr = {"baseColorTexture": tex}
+        if tint:
+            pbr["baseColorFactor"] = tint
+        pbr["metallicFactor"] = 0.0
+        pbr["roughnessFactor"] = 0.9
         materials.append({
             "name": name,
-            "pbrMetallicRoughness": {
-                "baseColorTexture": {"index": len(textures) - 1},
-                "metallicFactor": 0.0,
-                "roughnessFactor": 0.9,
-            },
+            "pbrMetallicRoughness": pbr,
             **alpha_of(name),
             "doubleSided": True,
         })
         by_name[name] = len(materials) - 1
-        png.unlink()
-    if albedo.is_dir():
-        albedo.rmdir()
+    for d in (albedo, layer_dir):
+        if d.is_dir():
+            for png in d.glob("*.png"):
+                png.unlink()
+            d.rmdir()
 
     # ⚠️ **그림 없는 재질도 재질이다.** 무대에는 `_MainTex`가 아예 없는 재질이
     # 섞여 있다 — g010의 **바닷물**(`_Color` 0, 0.295, 0.502)과 g006의 굴 안
@@ -359,6 +451,9 @@ def export(bundle: Path, out: Path, far: float | None, max_size: int | None = No
     # 빈 배열은 glTF가 안 받는다
     if samplers:
         gltf["samplers"] = samplers
+    # TV 화면의 첫 칸 (`flipbook_cell`) — 적어 두어야 로더가 읽는다
+    if transformed:
+        gltf["extensionsUsed"] = ["KHR_texture_transform"]
     write_glb(out, gltf, bytes(buf.blob))
 
     every = np.concatenate([c[0] for chunks in parts.values() for c in chunks])
