@@ -10,6 +10,8 @@
 //   도형   대본에 이미터가 없는 기술(46개)과 입자 자료를 아직 못 받은 그 한 번.
 //          틀 다섯에 타입 색을 갈아 끼운다 (`engine/battle/vfx`)
 //
+// 상태 이상·능력 변화 연출(원작 「부분 연출」)은 `StatusVfx`가 따로 돌고 여기서 같이 세운다.
+//
 // ⚠️ **입자가 서면 도형은 물러난다.** 둘을 겹쳐 그리면 같은 자리에 두 벌이
 // 포개져 무엇이 원작인지 알아볼 수 없다. 무대에 거는 것은 어느 쪽이든 돈다.
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -35,6 +37,7 @@ import {
   type MoveVisualSignature,
 } from './moveElements'
 import { SplParticles } from './SplParticles'
+import { StatusVfx } from './StatusVfx'
 import { moveAnimFrames } from '../../engine/battle/moveLength'
 import { preloadSplPack, splFileFor, splPackReader, SPL_WAZA } from './splPack'
 import { splMetre, type Vec3 } from './splPlace'
@@ -571,7 +574,24 @@ export function MoveVfx({
     })
   }, [cast, table, anims, spotAt])
 
-  if (!shot) return null
+  return (
+    <>
+      {/*
+        상태 이상·능력 변화 연출 (원작 「부분 연출」). 기술 연출과 같은 깃발 아래에 선다 —
+        원작도 「전투 애니메이션」을 끄면 `PlayBattleAnimation`이 이 여덟을 안 튼다
+        (`BtlCmd_PlayBattleAnimation`의 `BattleSystem_AreAnimationsOn`)
+      */}
+      <StatusVfx spotAt={spotAt} />
+      {shot && <MoveShot shot={shot} setShot={setShot} />}
+    </>
+  )
+}
+
+/** 기술 한 번 — 도형과 원작 입자 */
+function MoveShot({ shot, setShot }: {
+  shot: Shot
+  setShot: (next: (now: Shot | null) => Shot | null) => void
+}) {
   return (
     <>
       <Shape

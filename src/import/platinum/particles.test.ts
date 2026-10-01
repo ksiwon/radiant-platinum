@@ -7,7 +7,10 @@ import { expect, it } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bytesSource, openNds } from './nds'
-import { PARTICLE_NARCS, packNarc, type ParticleIndex } from './particles'
+import {
+  PARTICLE_NARCS, STAT_CHANGE_BG, STAT_CHANGE_H, STAT_CHANGE_W, packMembers, packNarc,
+  statChangePattern, type ParticleIndex,
+} from './particles'
 import { readSpa } from '../../engine/battle/spl/resource'
 import { DATA, romPath, withRom } from '../../data/romData.testkit'
 
@@ -35,6 +38,55 @@ withRom('en')('입자 자료 — 굽는 쪽 둘', () => {
       members += pack.at.length
     }
     expect(members).toBe(623)
+
+    // 능력 변화 무늬도 같은 자리표에 같은 방식으로 실린다
+    const bg = await fs!.read(STAT_CHANGE_BG.path)
+    expect(bg, STAT_CHANGE_BG.path).not.toBeNull()
+    const { bytes, pack } = packMembers(bg!, STAT_CHANGE_BG.table.flat(), STAT_CHANGE_BG.name)
+    const node = new Uint8Array(readFileSync(resolve(dir, `${STAT_CHANGE_BG.name}.bin`)))
+    expect(Buffer.from(bytes).equals(Buffer.from(node)), 'statChange 바이트').toBe(true)
+    expect(pack).toEqual(index[STAT_CHANGE_BG.name])
+    expect(pack.at).toHaveLength(12)
+  })
+
+  it('능력 변화 무늬 넷이 원작 색으로 펴진다', () => {
+    const dir = resolve(DATA, 'particles')
+    const index = JSON.parse(
+      readFileSync(resolve(dir, 'index.json'), 'utf8')) as ParticleIndex
+    const bin = new Uint8Array(readFileSync(resolve(dir, `${STAT_CHANGE_BG.name}.bin`)))
+    const pack = index[STAT_CHANGE_BG.name]!
+    // 무늬마다 가로·세로 되풀이(픽셀). 256·512를 나눠야 한 장을 되풀이해 깔 수 있다
+    const period = [[32, 32], [32, 32], [32, 64], [64, 64]] as const
+    const colours = new Map<string, number>()
+    for (const row of [0, 1, 2, 3] as const) {
+      const rgba = statChangePattern(bin, pack, row)
+      expect(rgba.length).toBe(STAT_CHANGE_W * STAT_CHANGE_H * 4)
+      const px = (x: number, y: number): number => {
+        const o = (y * STAT_CHANGE_W + x) * 4
+        return (rgba[o]! << 24 | rgba[o + 1]! << 16 | rgba[o + 2]! << 8 | rgba[o + 3]!) >>> 0
+      }
+      // 0번(투명) 픽셀이 하나도 없다 — 몸 실루엣 안이 빈틈없이 물든다
+      let clear = 0
+      for (let i = 3; i < rgba.length; i += 4) if (rgba[i] === 0) clear++
+      expect(clear, `줄 ${String(row)} 투명 픽셀`).toBe(0)
+      const [pw, ph] = period[row]
+      for (let y = 0; y < STAT_CHANGE_H; y += 7) {
+        for (let x = 0; x < STAT_CHANGE_W; x += 5) {
+          expect(px(x, y)).toBe(px((x + pw) % STAT_CHANGE_W, (y + ph) % STAT_CHANGE_H))
+        }
+      }
+      colours.set(String(row), px(0, 0))
+    }
+    // 오름은 주황(0x122 팔레트) · 내림은 파랑(0x11F) — 두 장이 바뀌어 실리면 화살이 거꾸로 선다
+    const up = statChangePattern(bin, pack, 0)
+    const down = statChangePattern(bin, pack, 1)
+    const mean = (rgba: Uint8Array, c: number): number => {
+      let s = 0
+      for (let i = c; i < rgba.length; i += 4) s += rgba[i]!
+      return s / (rgba.length / 4)
+    }
+    expect(mean(up, 0)).toBeGreaterThan(mean(up, 2))
+    expect(mean(down, 2)).toBeGreaterThan(mean(down, 0))
   })
 
   it('자리표대로 잘라 내면 그대로 읽힌다', () => {

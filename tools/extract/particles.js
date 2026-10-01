@@ -27,6 +27,22 @@ const NARCS = [
   { name: 'common', path: '/particledata/particledata.narc' },
 ]
 
+/**
+ * 능력 변화 무늬 — 입자가 아니라 배경 판이다. 줄마다 타일·팔레트·배치 셋이고, 이름과 줄
+ * 차례가 브라우저 쪽 `STAT_CHANGE_BG`와 같아야 한다 (`script_funcs_stat_change.c`의
+ * `sStatChangeNarcMemberTable`). 여기서도 **자르기만** 한다 — 푸는 것은 실행 중이다
+ */
+const STAT_CHANGE_BG = {
+  name: 'statChange',
+  path: '/battle/graphic/pl_batt_bg.narc',
+  table: [
+    [0x3c, 0x122, 0x3d],
+    [0x36, 0x11f, 0x37],
+    [0x38, 0x120, 0x39],
+    [0x3a, 0x121, 0x3b],
+  ],
+}
+
 /** 바이트로 ` `·A·P·S */
 const MAGIC = 0x53504120
 
@@ -64,10 +80,32 @@ function main() {
     bytes += total
   }
 
+  {
+    const narc = rom.narc(STAT_CHANGE_BG.path)
+    const at = []
+    const size = []
+    const parts = []
+    let total = 0
+    for (const m of STAT_CHANGE_BG.table.flat()) {
+      const raw = narc.get ? narc.get(m) : narc[m]
+      // ⚠️ **없는 멤버면 선다** — 건너뛰면 `줄 × 3`이 밀려 팔레트 자리에서 타일을 읽는다
+      if (!raw || raw.length === 0) throw new Error(`${STAT_CHANGE_BG.name} ${m}번이 없다`)
+      const member = Buffer.from(raw)
+      at.push(total)
+      size.push(member.length)
+      parts.push(member)
+      total += member.length
+    }
+    writeFileSync(resolve(OUT, `${STAT_CHANGE_BG.name}.bin`), Buffer.concat(parts))
+    index[STAT_CHANGE_BG.name] = { at, size }
+    members += at.length
+    bytes += total
+  }
+
   const json = resolve(OUT, 'index.json')
   mkdirSync(dirname(json), { recursive: true })
   writeFileSync(json, `${JSON.stringify(index)}\n`)
-  console.log(`입자 ${NARCS.length}묶음 · 멤버 ${members}개 · ${(bytes / 1048576).toFixed(2)}MiB`
+  console.log(`입자 ${NARCS.length}묶음 + 능력 변화 무늬 · 멤버 ${members}개 · ${(bytes / 1048576).toFixed(2)}MiB`
     + ` → public/data/particles/`)
 }
 

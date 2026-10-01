@@ -6,8 +6,9 @@
 //
 // sim을 import 하지 않으므로 UI가 마음대로 가져다 써도 지연 로딩 경계가 안 깨진다.
 import type { Gender, Status } from '../pokemon/instance'
-import type { BattleEvent, BoostStat, Condition, Effectiveness, SideId, SlotId } from './events'
+import type { BattleEvent, BoostStat, Cause, Condition, Effectiveness, SideId, SlotId } from './events'
 import { SLOTS, slotId } from './events'
+import type { StatusAnimKey } from './vfx'
 
 export const BOOST_STATS: readonly BoostStat[] = [
   'atk',
@@ -140,6 +141,25 @@ export interface BattleView {
    * 틀고(`Task_UpdateExpGauge` `case 0`) 막대가 다 차면 끈다
    */
   lastReward: { exp: number; levelUp: boolean; seq: number } | null
+  /**
+   * 방금 튼 상태 이상·능력 변화 연출 (원작 「부분 연출」 · `engine/battle/vfx`의 `STATUS_ANIMS`).
+   * 무대(`scene/battle/StatusVfx`)가 `seq`가 바뀔 때 그 자리 몸에서 한 번 돈다.
+   *
+   * `kind`는 이 연출을 부른 사건이다 — 걸림(`status`·`volatile`) · 상태 피해(`damage`) ·
+   * 못 움직임(`cant`·`activate`) · 능력 변화(`boost`·`setboost`).
+   *
+   * `moveSeq`는 **한 기술 안의 능력 변화를 한 번으로 묶는** 열쇠다. 원작은 둘 이상을 바꾸는
+   * 기술(코스모파워·명상…)에서 첫 변화만 연출하고 나머지는 글만 낸다
+   * (`subscript_update_stat_stage.s`의 `SYSCTL_UPDATE_STAT_STAGES`). 특성·도구가 바꾼 것은
+   * 따로 돌므로 null이다
+   */
+  lastEffect: {
+    slot: SlotId
+    key: StatusAnimKey
+    kind: 'status' | 'volatile' | 'damage' | 'cant' | 'activate' | 'boost' | 'setboost'
+    moveSeq: number | null
+    seq: number
+  } | null
   /** Most recent capture attempt, retained long enough for the 3D stage to play it once. */
   lastBall: {
     slot: SlotId
@@ -158,6 +178,7 @@ export function emptyView(doubles = false): BattleView {
     lastMove: null,
     lastHit: null,
     lastReward: null,
+    lastEffect: null,
     turn: 0,
     doubles,
     active: { p1a: null, p1b: null, p2a: null, p2b: null },
@@ -291,6 +312,10 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       const hurt = patch(view, e.actor.slot, (m) => withCondition(m, e.condition))
       const previousHp = view.active[e.actor.slot]?.hp ?? e.condition.hp
       const amount = Math.max(0, previousHp - e.condition.hp)
+      // 독·화상 피해 — 원작은 「독의 데미지를 입었다!」 글 뒤에 연출을 틀고 게이지를 깎는다
+      // (`subscript_poison_damage.s` 23줄 · `subscript_burn_damage.s` 17줄)
+      const residual = residualAnim(e.from)
+      if (residual !== null) return withEffect(hurt, e.actor.slot, residual, 'damage')
       if (e.hit === undefined) return hurt
       return {
         ...hurt,
@@ -370,26 +395,57 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
         ...m, hp: 0, fainted: true, presence: 'down' as const,
       }))
 
-    case 'status':
-      return patch(view, e.actor.slot, (m) => ({ ...m, status: e.status }))
+    case 'status': {
+      const next = patch(view, e.actor.slot, (m) => ({ ...m, status: e.status }))
+      // ⚠️ **잠자기는 연출이 없다.** `subscript_rest.s`는 체력판 표시만 바꾸고
+      // `PlayBattleAnimation`을 안 부른다 — 하품·최면술로 잠들 때(`subscript_fall_asleep`)와 다르다
+      if (e.from?.kind === 'move' && e.from.id === MOVE_REST) return next
+      const key = STATUS_ANIM[e.status]
+      return key === undefined ? next : withEffect(next, e.actor.slot, key, 'status')
+    }
+
+    case 'cant': {
+      // 잠들어 있다 · 얼어 있다 · 몸이 저려 움직일 수 없다 — 글 뒤에 그 연출을 한 번 더 튼다
+      // (`subscript_sleeping.s` · `subscript_frozen.s` · `subscript_fully_paralyzed.s`)
+      const key = CANT_ANIM[e.reason]
+      return key === undefined ? view : withEffect(view, e.actor.slot, key, 'cant')
+    }
+
+    case 'activate':
+      // 「혼란하고 있다!」 — 기술을 내기 전에 원작이 글 다음에 튼다 (`subscript_confused.s` 9줄).
+      // 스스로를 공격하는 갈래(`subscript_hurt_self_in_confusion.s`)도 같은 연출 한 번이다
+      if (e.actor === null || e.effect.id !== 'confusion') return view
+      return withEffect(view, e.actor.slot, 'confused', 'activate')
 
     case 'curestatus':
       // 대타·교체로 이미 다른 애가 나와 있을 수 있다. 지금 걸린 것과 같을 때만 푼다
       return patch(view, e.actor.slot, (m) => (m.status === e.status ? { ...m, status: 'ok' } : m))
 
-    case 'boost':
-      return patch(view, e.actor.slot, (m) => ({
+    case 'boost': {
+      const next = patch(view, e.actor.slot, (m) => ({
         ...m,
         // 4세대 랭크는 ±6에서 멈춘다
         boosts: { ...m.boosts, [e.stat]: clampBoost(m.boosts[e.stat] + e.amount) },
       }))
+      // 「더 오르지 않는다!」(0)는 연출 없이 글만이다 (`BtlCmd_ChangeStatStage`의 `jumpNoChange`)
+      if (e.amount === 0) return next
+      return withEffect(next, e.actor.slot, e.amount > 0 ? 'statBoost' : 'statDrop', 'boost',
+        e.from ? null : view.lastMove?.seq ?? null)
+    }
 
     // 배북. 더하는 게 아니라 그 값으로 못 박는다
-    case 'setboost':
-      return patch(view, e.actor.slot, (m) => ({
+    case 'setboost': {
+      const was = view.active[e.actor.slot]?.boosts[e.stat] ?? 0
+      const next = patch(view, e.actor.slot, (m) => ({
         ...m,
         boosts: { ...m.boosts, [e.stat]: clampBoost(e.amount) },
       }))
+      // 배북·분노의경혈이 다 오름 연출을 튼다 (`subscript_belly_drum.s` 15줄 ·
+      // `subscript_critical_hit.s` 13줄)
+      const to = clampBoost(e.amount)
+      if (to === was) return next
+      return withEffect(next, e.actor.slot, to > was ? 'statBoost' : 'statDrop', 'setboost')
+    }
 
     // 흑안개. **선 자리 전부**를 되돌린다 — 한 쪽만 지우면 상대의 랭크가 남는다
     case 'clearboosts': {
@@ -425,11 +481,15 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
       return next === view.field ? view : { ...view, field: next }
     }
 
-    case 'volatile':
-      return patch(view, e.actor.slot, (m) => {
-        const next = toggle(m.volatiles, e.effect.id, e.start)
-        return next === m.volatiles ? m : { ...m, volatiles: next }
+    case 'volatile': {
+      const next = patch(view, e.actor.slot, (m) => {
+        const set = toggle(m.volatiles, e.effect.id, e.start)
+        return set === m.volatiles ? m : { ...m, volatiles: set }
       })
+      // 혼란에 빠졌다 (`subscript_confuse.s` 32줄 — 난동이 끝나 지쳐 혼란할 때도 같은 대본이다)
+      if (!e.start || e.effect.id !== 'confusion') return next
+      return withEffect(next, e.actor.slot, 'confused', 'volatile')
+    }
 
     case 'win':
       return { ...view, ended: true, winner: e.winner }
@@ -460,6 +520,58 @@ export function applyEvent(view: BattleView, e: BattleEvent): BattleView {
     default:
       return view
   }
+}
+
+/** `MOVE_REST` (`generated/moves.txt`의 157번째 줄 = 156) */
+const MOVE_REST = 156
+
+/** 걸린 상태 → 그 연출 (`Battler_StatusCondition`과 같은 짝 — 맹독도 독 연출이다) */
+const STATUS_ANIM: Partial<Record<Status, StatusAnimKey>> = {
+  slp: 'asleep', psn: 'poisoned', tox: 'poisoned', brn: 'burned', frz: 'frozen', par: 'paralyzed',
+}
+
+/** `|cant|`의 까닭 → 그 연출. 잠·얼음·마비 셋만 원작이 연출을 붙인다 */
+const CANT_ANIM: Partial<Record<string, StatusAnimKey>> = {
+  slp: 'asleep', frz: 'frozen', par: 'paralyzed',
+}
+
+/** 상태 피해의 원인 → 그 연출. 독·맹독·화상만 피해를 준다 */
+function residualAnim(from: Cause | null): StatusAnimKey | null {
+  if (from?.kind !== 'status') return null
+  if (from.name === 'psn' || from.name === 'tox') return 'poisoned'
+  if (from.name === 'brn') return 'burned'
+  return null
+}
+
+/** 능력 변화를 부른 사건 둘 — 같은 기술 안에서 묶이는 것은 이 둘끼리다 */
+const STAT_KINDS: ReadonlySet<string> = new Set(['boost', 'setboost'])
+
+/**
+ * 부분 연출 하나를 싣는다.
+ *
+ * ⚠️ **대타 뒤의 마리에는 안 튼다.** 원작 `BattleSystem_ShouldShowStatusEffect`가 대타출동이
+ * 서 있으면 이 여덟을 다 거른다(늘 트는 것은 교체·날씨·대타 연출뿐이다)
+ *
+ * ⚠️ **한 기술 안의 능력 변화는 한 번이다.** 바로 앞 연출이 같은 기술(`moveSeq`) · 같은 자리 ·
+ * 같은 방향의 능력 변화면 안 싣는다 — 원작이 둘째부터 `SYSCTL_UPDATE_STAT_STAGES`로 건너뛴다.
+ * 방향이 바뀌면 다시 튼다: 저주는 스피드 내림 · 공격 오름을 각각 틀고 방어 오름만 건너뛴다
+ * (`subscript_curse_normal.s` — 둘째 호출 앞에서야 `SYSCTL_STAT_STAGE_CHANGE_SHOWN`을 켠다)
+ */
+function withEffect(
+  view: BattleView,
+  slot: SlotId,
+  key: StatusAnimKey,
+  kind: NonNullable<BattleView['lastEffect']>['kind'],
+  moveSeq: number | null = null,
+): BattleView {
+  const mon = view.active[slot]
+  if (!mon || mon.volatiles.has('substitute')) return view
+  const prev = view.lastEffect
+  if (
+    prev !== null && moveSeq !== null && prev.moveSeq === moveSeq && prev.slot === slot
+    && prev.key === key && STAT_KINDS.has(prev.kind) && STAT_KINDS.has(kind)
+  ) return view
+  return { ...view, lastEffect: { slot, key, kind, moveSeq, seq: (prev?.seq ?? 0) + 1 } }
 }
 
 function clampBoost(n: number): number {
