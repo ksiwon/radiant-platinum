@@ -39,6 +39,15 @@ interface PatchNote {
 
 export const NOTES: PatchNote[] = [
   {
+    v: 'v0.2',
+    date: '2026-10-01',
+    items: [
+      { kind: 'change', text: '건물 안, 바깥 길과 마을, 호수·숲·동굴이 BDSP 3D로 섭니다. 1인칭으로 보면 건물의 천장과 남쪽 벽까지 있습니다.' },
+      { kind: 'add', text: '트레이너, 관장, 갤럭시단 보스, 사천왕과 챔피언, 전설의 포켓몬을 만나면 컷인이 나옵니다.' },
+      { kind: 'add', text: '배틀팩토리를 할 수 있습니다. 배틀프런티어의 나머지 시설은 차후 업데이트에서 엽니다.' },
+    ],
+  },
+  {
     v: 'v0.1',
     date: '2026-09-04',
     items: [
