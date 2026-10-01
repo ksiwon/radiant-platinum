@@ -9,8 +9,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { bankIndex, type TextBankName } from '../import/platinum/textBanks'
 import {
-  BAG_MENU, BOX_TEXT, fillMenuText, MAILBOX_TEXT, MAIN_MENU, OPTIONS_TEXT, PARTY_GIVE, POKEDEX_TEXT,
-  SAVE_TEXT, START_MENU, UI_BANK, YES_NO,
+  BAG_MENU, BOX_TEXT, fillMenuText, MAILBOX_TEXT, MAIN_MENU, MART_TEXT, OPTIONS_TEXT, PARTY_GIVE,
+  partyHeader, POKEDEX_TEXT, SAVE_TEXT, START_MENU, UI_BANK, YES_NO,
 } from './uiText'
 import { withData, withDecomp } from './romData.testkit'
 
@@ -269,5 +269,31 @@ maybe('한국어 판의 새 줄', () => {
   it('메일박스의 물음에 주인 이름이 들어간다', () => {
     expect(fillMenuText(bank(UI_BANK.mailbox)[MAILBOX_TEXT.ask]!, ['빛나']))
       .toBe('빛나의\n메일을 어떻게 하겠습니까?')
+  })
+
+  it('상점의 확인 줄이 도구 · 개수 · 값 칸을 받는다', () => {
+    const shop = bank(UI_BANK.shop)
+    expect(fillMenuText(shop[MART_TEXT.confirm]!, ['몬스터볼', '10', '2,000']))
+      .toBe('몬스터볼 10개로군요\n총 2,000원입니다.')
+    expect(fillMenuText(shop[MART_TEXT.bpConfirm]!, ['기합의띠', '1', '48']))
+      .toBe('기합의띠 1개로군요\n총 48BP입니다')
+    // 기술머신은 기술 이름이 3번 칸이다
+    expect(fillMenuText(shop[MART_TEXT.tmConfirm]!, ['기술머신01', '1', '3,000', '힘껏펀치']))
+      .toContain('힘껏펀치')
+    expect(fillMenuText(shop[MART_TEXT.thanks]!, ['몬스터볼', '볼'])).toContain('볼 포켓에 넣었다')
+  })
+
+  it('상점의 거절 줄 셋이 롬 글이다', () => {
+    const shop = bank(UI_BANK.shop)
+    expect(shop[MART_TEXT.noMoney]).toBe('돈이 부족하시군요!')
+    expect(shop[MART_TEXT.noRoom]).toContain('가지고 다닐 수 없어요!')
+    expect(shop[MART_TEXT.noBP]).toContain('BP가 부족한 것 같습니다')
+  })
+})
+
+describe('파티 머리 글', () => {
+  it('숫자를 명사구 뒤에 두고 동사 뒤에 매달지 않는다', () => {
+    expect(partyHeader(5, 6)).toBe('전투 가능 5마리 · 파티 6/6')
+    expect(partyHeader(1, 3)).not.toMatch(/있다/)
   })
 })

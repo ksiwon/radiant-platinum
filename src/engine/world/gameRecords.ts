@@ -34,6 +34,14 @@ export const RECORD_POKEMON_EVOLVED = 12
 /** `RECORD_UNK_014` — 슬롯머신 삐삐 보너스를 한 판 수 (`ov101_021D0F3C`) */
 export const RECORD_SLOT_BONUS_ROUNDS = 14
 export const RECORD_BATTLE_TOWER_CHALLENGES = 15
+/**
+ * 상점에서 쓴 돈과 BP (`Shop_ConfirmItemPurchase`). ⚠️ **칸이 따로다** — 프런티어 교환 코너에서 쓴 BP는
+ * 돈 쓴 기록에 안 들어간다
+ */
+export const RECORD_MONEY_SPENT = 35
+export const RECORD_BATTLE_POINTS_SPENT = 69
+/** `RECORD_UNK_050` — 몬스터볼 열 개에 프레미어볼 덤을 받은 횟수 (`Shop_FinishPurchase`) */
+export const RECORD_PREMIER_BALLS_RECEIVED = 50
 /** `RECORD_FAINTED_IN_BATTLE` — 랭킹 일곱째 줄 */
 export const RECORD_FAINTED_IN_BATTLE = 41
 

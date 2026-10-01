@@ -19,9 +19,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   loadBagSprite, loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoves,
-  loadSpecies, loadSpeciesNames, type ItemTable, type MoveTable, type SpeciesTable,
+  loadSpecies, type ItemTable, type MoveTable, type SpeciesTable,
 } from '../../data/gameData'
-import { BAG_MENU, fillMenuText, loadUiText, PARTY_GIVE, YES_NO } from '../../data/uiText'
+import { BAG_MENU, fillMenuText, loadUiText, YES_NO } from '../../data/uiText'
 import { POCKET_BERRIES, POCKET_SIZE, POCKET_TMHMS } from '../../engine/bag/bag'
 import { BINDINGS } from '../../engine/input/keys'
 import { keyList } from '../../engine/input/keyNames'
@@ -58,8 +58,11 @@ const BIG_ICON = 80
 const BAG_ART = 192
 /** 주머니 아이콘. 원작이 16픽셀이라 역시 정수배 */
 const POCKET_ICON = 32
-/** `POCKET_MAIL` (`bag.h`). 이 주머니의 「쓴다」 자리는 「본다」다 */
-const POCKET_MAIL = 5
+/**
+ * `POCKET_MAIL` (`constants/items.h`). 이 주머니의 「쓴다」 자리는 「본다」다.
+ * 편지지가 드나드는 주머니라 메일 화면·메일박스도 이 번호를 쓴다
+ */
+export const POCKET_MAIL = 5
 
 interface Loaded {
   items: ItemTable
@@ -79,11 +82,8 @@ interface Loaded {
   pockets: string[]
   /** 가방 뱅크 — 갈래 이름과 버리기 흐름의 말 (`BAG_MENU`) */
   bagText: string[]
-  /** 파티 메뉴 뱅크 — 건네줄 때의 말 (`PARTY_GIVE`) */
-  partyText: string[]
   /** 메뉴 뱅크 — 예·아니오 (`YES_NO`) */
   menuText: string[]
-  speciesNames: string[]
   /**
    * 종족·기술 표.
    *
@@ -185,7 +185,7 @@ export function trashStep(count: number, limit: number, key: 'up' | 'down' | 'le
   }
 }
 
-/** 건네줄 마리를 골랐을 때 일어나는 일 (`ProcessItemApplication`) */
+/** 건네줄 마리를 골랐을 때 일어나는 일 (`ProcessItemApplication`). 파티 화면의 건네주기가 이것으로 갈린다 */
 type GiveVerdict = 'given' | 'swap' | 'mustRemoveMail' | 'cannotHold'
 
 /**
@@ -207,14 +207,15 @@ function oneLine(text: string): string {
   return text.replace(/[\n\r\f]+/g, ' ').trim()
 }
 
-/** 메뉴가 떠 있는 동안의 단계 */
+/**
+ * 메뉴가 떠 있는 동안의 단계.
+ *
+ * ⚠️ **「건네준다」는 여기 없다.** 원작은 가방을 닫고 파티 화면을 건네주기(`PARTY_MENU_MODE_GIVE_ITEM`)로 연다 —
+ * 마리 고르기·맞바꿀지 묻기·말이 다 그 화면의 일이고(`ProcessItemApplication`), 끝나면 가방으로 돌아온다
+ */
 type Menu =
   /** 갈래 메뉴. 항목은 연 순간에 정한다 — 그 자리의 앞 칸·자전거가 갈래를 바꾼다 */
   | { kind: 'actions'; list: readonly BagAction[] }
-  /** 누구에게 건네줄까 — 파티 여섯 */
-  | { kind: 'give' }
-  /** 이미 든 것과 맞바꿀까 */
-  | { kind: 'swap'; slot: number }
   /** 몇 개 버릴까 */
   | { kind: 'count'; n: number }
   /** 그만큼 버려도 괜찮나 */
@@ -243,13 +244,13 @@ export function BagScreen() {
   const [menuAt, setMenuAt] = useState(0)
   const back = useMenuStore((s) => s.back)
   const bag = useSaveStore((s) => s.bag)
-  const party = useSaveStore((s) => s.party)
   const money = useSaveStore((s) => s.money)
   // 가방 그림이 남·여 두 벌이다 (`bag_sprite_{male,female}`)
   const gender = useSaveStore((s) => s.trainer.gender)
   const removeItem = useSaveStore((s) => s.removeItem)
   const addItem = useSaveStore((s) => s.addItem)
   const openPartyWithItem = useMenuStore((s) => s.openPartyWithItem)
+  const openPartyToGive = useMenuStore((s) => s.openPartyToGive)
   const giveTo = useMenuStore((s) => s.giveTo)
   const pickPocket = useMenuStore((s) => s.pickPocket)
   const closeAll = useMenuStore((s) => s.closeAll)
@@ -264,8 +265,7 @@ export function BagScreen() {
     void Promise.all([
       loadItems(), loadItemNames(locale), loadItemDescriptions(locale),
       loadItemIcons(), loadUiText('bagPockets', locale), loadSpecies(), loadMoves(),
-      loadUiText('bag', locale), loadUiText('partyMenu', locale), loadUiText('menuEntries', locale),
-      loadSpeciesNames(locale),
+      loadUiText('bag', locale), loadUiText('menuEntries', locale),
       // ⚠️ **이 하나만 낱개로 받는다.** 나머지는 다 필수 그룹이라 없으면
       // 애초에 게임이 안 열리는데, 이것은 아니다 — 한 뭉치로 묶으면 그림
       // 한 장 때문에 도구 목록까지 같이 없어진다 (위 `bag` 주석)
@@ -273,12 +273,12 @@ export function BagScreen() {
     ])
       .then(([
         items, names, descriptions, icons, pockets, species, moves,
-        bagText, partyText, menuText, speciesNames, bag,
+        bagText, menuText, bag,
       ]) => {
         if (alive) {
           setData({
             items, names, descriptions, icons, bag, pockets, species, moves,
-            bagText, partyText, menuText, speciesNames,
+            bagText, menuText,
           })
         }
       })
@@ -306,7 +306,6 @@ export function BagScreen() {
   const at = Math.max(0, Math.min(pos[shown] ?? 0, slots.length - 1))
   const selected = slots[at]
   const itemName = (id: number): string => data?.names[id] ?? ''
-  const monName = (mon: PokemonInstance): string => mon.nickname ?? data?.speciesNames[mon.species] ?? ''
   const line = (bank: readonly string[] | undefined, n: number, values: readonly string[] = []): string =>
     fillMenuText(bank?.[n] ?? '', values)
 
@@ -429,13 +428,13 @@ export function BagScreen() {
       case 'give':
         // 메일은 지니게 하면서 **글부터 쓴다** (`PARTY_MENU_EXIT_CODE_WRITE_MAIL`) —
         // 「쓴다」와 같은 파티 화면 길이 그 일을 한다
+        setOpen(null)
         if (mailTypeOfItem(id) !== null) {
-          setOpen(null)
           openPartyWithItem({ item: id, use: 'mail' })
           return
         }
-        setOpen({ kind: 'give' })
-        setMenuAt(0)
+        // 파티 화면이 「어느 포켓몬에게 건네줄까?」로 뜬다 (`BAG_EXIT_CODE_GIVE_ITEM` → `PARTY_MENU_MODE_GIVE_ITEM`)
+        openPartyToGive(id)
         return
       case 'trash':
         // 하나뿐이면 개수를 안 묻고 곧바로 괜찮은지 묻는다 (`ItemActionFunc_Trash`)
@@ -456,36 +455,6 @@ export function BagScreen() {
     }
   }
 
-  /** 건네줄 마리를 골랐다 (`ProcessItemApplication`) */
-  const giveToSlot = (slot: number): void => {
-    if (!data || !selected) return
-    const mon = party[slot]
-    if (!mon) return
-    const id = selected.item
-    const from = data.items.get(id).pocket ?? shown
-    const verdict = giveVerdict(mon, id)
-    if (verdict === 'swap') { setOpen({ kind: 'swap', slot }); setMenuAt(0); return }
-    setOpen(null)
-    if (verdict === 'cannotHold') {
-      setNotice(oneLine(line(data.partyText, PARTY_GIVE.cannotHold, [monName(mon), itemName(id)])))
-      return
-    }
-    if (verdict === 'mustRemoveMail') { setNotice(oneLine(line(data.partyText, PARTY_GIVE.mustRemoveMail))); return }
-    attachItem(slot, id, from)
-    setNotice(oneLine(line(data.partyText, PARTY_GIVE.given, [monName(mon), itemName(id)])))
-  }
-
-  const swapYes = (slot: number): void => {
-    if (!data || !selected) return
-    const mon = party[slot]
-    setOpen(null)
-    if (!mon) return
-    const id = selected.item
-    const old = mon.heldItem
-    attachItem(slot, id, data.items.get(id).pocket ?? shown)
-    setNotice(oneLine(line(data.partyText, PARTY_GIVE.swapped, ['', itemName(old), itemName(id)])))
-  }
-
   const trashYes = (n: number): void => {
     if (!data || !selected) return
     const id = selected.item
@@ -500,8 +469,7 @@ export function BagScreen() {
   /** 지금 창에 깔린 줄 수 — 커서가 그 안에서 돈다 */
   const rows = open === null ? 0
     : open.kind === 'actions' ? open.list.length
-      : open.kind === 'give' ? party.length
-        : open.kind === 'count' ? 0 : 2
+      : open.kind === 'count' ? 0 : 2
 
   const menuMove = (d: number): boolean => {
     if (rows === 0) return false
@@ -519,8 +487,6 @@ export function BagScreen() {
     const i = Math.min(pick, Math.max(0, rows - 1))
     switch (open.kind) {
       case 'actions': { const a = open.list[i]; if (a) runAction(a); return }
-      case 'give': giveToSlot(i); return
-      case 'swap': if (i === 0) swapYes(open.slot); else setOpen(null); return
       case 'count': setOpen({ kind: 'trash', n: open.n }); setMenuAt(0); return
       case 'trash': if (i === 0) trashYes(open.n); else setOpen(null); return
     }
@@ -582,11 +548,6 @@ export function BagScreen() {
   const askLine = (open: Menu, data: Loaded, name: string): string => {
     switch (open.kind) {
       case 'actions': return line(data.bagText, BAG_MENU.selected, [name])
-      case 'give': return line(data.partyText, PARTY_GIVE.which)
-      case 'swap': {
-        const mon = party[open.slot]
-        return line(data.partyText, PARTY_GIVE.swapAsk, [mon ? monName(mon) : '', itemName(mon?.heldItem ?? 0)])
-      }
       case 'count': return line(data.bagText, BAG_MENU.trashHowMany, [name])
       case 'trash': return line(data.bagText, BAG_MENU.trashOk, [name, String(open.n)])
     }
@@ -595,12 +556,8 @@ export function BagScreen() {
   /** 창에 깔 줄들 */
   const choices: string[] = !open || !data ? []
     : open.kind === 'actions' ? open.list.map((a) => data.bagText[BAG_ACTION_LINE[a]] ?? '')
-      : open.kind === 'give' ? party.map((m) => {
-        const held = m.heldItem > 0 ? ` · ${itemName(m.heldItem)}` : ''
-        return `${monName(m)}${held}`
-      })
-        : open.kind === 'count' ? []
-          : [data.menuText[YES_NO.yes] ?? '', data.menuText[YES_NO.no] ?? '']
+      : open.kind === 'count' ? []
+        : [data.menuText[YES_NO.yes] ?? '', data.menuText[YES_NO.no] ?? '']
 
   const mode = open?.kind === 'count' ? 'count'
     : open ? 'menu'
@@ -615,7 +572,7 @@ export function BagScreen() {
         + ` · ${String(slots.length)}/${String(POCKET_SIZE[shown] ?? 0)}칸`}
     >
       {/* 갈래 창이 이 칸의 오른쪽 아래 구석에 붙는다 — 설명 칸 위에 겹치는 것이 원작이다 */}
-      <div className={own.stage} style={{ position: 'relative' }}>
+      <div className={own.stage}>
         {/* 왼쪽 — 가방이 선다. 열린 칸이 지금 주머니를 말한다 */}
         <div className={own.bay}>
           <span

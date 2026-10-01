@@ -227,6 +227,14 @@ export const SFX = {
    * 가방에서 팔 때(`applications/bag/main.c:2804`의 `ResolveSale`)
    */
   CASH_REGISTER: 1604,
+  /**
+   * `SEQ_SE_DP_BAG_004`. 개수 창의 수가 바뀔 때 (`Shop_SelectPurchaseMenu`, `overlay007/shop_menu.c:1000`) —
+   * 상점 목록에서 줄을 옮길 때도 같은 소리다(`Shop_MenuCursorCallback`, 703줄).
+   *
+   * ⚠️ 메뉴 소리(`MENU`)가 아니다. 번호는 우리가 구운 SDAT 목차에서 이름으로 찾았다
+   * (`public/data/sound/index.json`의 1592째 · `generated/sdat.txt`에서 `REGI`보다 12줄 앞)
+   */
+  BAG_COUNT: 1592,
 } as const
 
 export type SfxName = keyof typeof SFX

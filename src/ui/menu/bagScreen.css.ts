@@ -14,15 +14,19 @@ import { style } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { GAP, RADIUS, TEXT } from '../theme/scale'
 import { RULE } from '../theme/window.css'
+import * as chrome from './menuChrome.css'
 
 /**
  * 본문 — 왼쪽 가방 칸 · 오른쪽 목록 · 아래 설명.
  *
  * 원작 비율은 왼쪽이 112/256 = 44%인데, 우리 창은 훨씬 넓어서 그대로 두면
  * 목록 줄이 우스꽝스럽게 길어진다. 가방 칸을 **픽셀로 못 박고** 남는 폭을
- * 목록에 준다 — 창이 넓어지면 목록이 넓어지는 것이 아니라 여백이 는다
+ * 목록에 준다 — 창이 넓어지면 목록이 넓어지는 것이 아니라 여백이 는다.
+ *
+ * 갈래 창(`partyScreen.css`의 `choices`)이 이 칸의 오른쪽 아래 구석에 붙는다 — 설명 칸 위에 겹치는 것이 원작이다
  */
 export const stage = style({
+  position: 'relative',
   flex: '1 1 auto',
   minHeight: 0,
   display: 'grid',
@@ -190,3 +194,9 @@ export const registered = style({
   boxShadow: `inset 0 0 0 1px ${vars.pick.edge}`,
   color: vars.pick.text,
 })
+
+/**
+ * 목록 · 상세 두 칸짜리 바탕(`menuChrome.css`의 `stage`)에 갈래 창을 붙일 자리를 낸다 — 메일박스의 갈래와
+ * 상점의 예·아니오가 이 칸의 오른쪽 아래 구석에 뜬다 (`partyScreen.css`의 `choices`)
+ */
+export const anchorStage = style([chrome.stage, { position: 'relative' }])

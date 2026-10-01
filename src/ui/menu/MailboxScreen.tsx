@@ -13,6 +13,9 @@
 //
 // ⚠️ **다시 지니게 하는 것은 지닌 도구가 빈 마리에게만** — 편지지도 지닌
 // 도구라 자리가 하나뿐이다. 알은 못 고른다 (`PARTY_MENU_MODE_MAILBOX`).
+//
+// ⚠️ **「메일을 읽는다」는 메일 앱의 읽기 화면을 연다** (`FieldSystem_LaunchMailApp_Read`의
+// `MAIL_CONTEXT_MAILBOX`) — 파티의 마리가 지닌 편지를 읽는 것과 같은 화면이다. 닫으면 이 목록으로 돌아온다.
 import { useEffect, useMemo, useState } from 'react'
 import { loadItemNames, loadSpeciesNames } from '../../data/gameData'
 import { fillMenuText, loadUiText, MAILBOX_TEXT, PARTY_GIVE, YES_NO } from '../../data/uiText'
@@ -26,8 +29,10 @@ import { gameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { loadWordLookup, type WordLookup } from './easyChatWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { POCKET_MAIL } from './BagScreen'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
+import * as bagCss from './bagScreen.css'
 // 갈래 창은 파티 화면 것을 그대로 쓴다 — 오른쪽 아래 구석의 창 하나다
 import * as menu from './partyScreen.css'
 
@@ -58,8 +63,6 @@ export function mailGiveVerdict(mon: Pick<PokemonInstance, 'isEgg' | 'heldItem'>
 /** 메뉴가 떠 있는 동안의 단계 */
 type Open =
   | { kind: 'menu' }
-  /** 메일을 읽는다 — 줄 셋을 그대로 편다 */
-  | { kind: 'read' }
   /** 「내용은 지워져 버립니다 괜찮겠습니까?」 */
   | { kind: 'eraseAsk' }
   /** 「내용을 지웠습니다 포켓몬에게 지니게 하겠습니까?」 */
@@ -70,7 +73,6 @@ type Open =
 /** 바닥 안내. 메뉴가 떠 있으면 그 단계의 키만 적는다 */
 export function mailboxFoot(open: Open['kind'] | null): string {
   if (open === null) return '↑↓ 고르기 · Z 결정 · X 닫기'
-  if (open === 'read') return 'X 닫기'
   return '↑↓ 고르기 · Z 결정 · X 그만둔다'
 }
 
@@ -95,6 +97,13 @@ export function MailboxScreen() {
   const [menuAt, setMenuAt] = useState(0)
   /** 한 줄 알림. 원작이 이어 띄우는 말이 둘일 때가 있어 줄 목록이다 */
   const [notice, setNotice] = useState<readonly string[]>([])
+  /**
+   * 메일 화면에서 돌아오며 받은 말 (`mailboxNotice`). 글을 받기 전에 비울 수 있게 화면이 붙들고, 가게는 바로
+   * 비운다 — 남겨 두면 다음에 연 메일박스에서 또 뜬다
+   */
+  const [returned, setReturned] = useState(() => useMenuStore.getState().mailboxNotice)
+  const setMailboxNotice = useMenuStore((s) => s.setMailboxNotice)
+  useEffect(() => { setMailboxNotice(null) }, [setMailboxNotice])
 
   useEffect(() => {
     let live = true
@@ -145,7 +154,8 @@ export function MailboxScreen() {
     const got = clearMailAt(mailbox, here.slot)
     if (!got) return
     useSaveStore.setState({ mailbox: got.box })
-    const kept = useSaveStore.getState().addItem(0, got.item, 1)
+    // 편지지는 메일 주머니로 간다 (`POCKET_MAIL`) — 도구 주머니에 넣으면 메일 주머니에서 안 보인다
+    const kept = useSaveStore.getState().addItem(POCKET_MAIL, got.item, 1)
     setNotice([flat(say[kept ? MAILBOX_TEXT.toBag : MAILBOX_TEXT.bagFull] ?? '')])
     shrink()
   }
@@ -179,10 +189,10 @@ export function MailboxScreen() {
   /**
    * 지운 편지지를 그 마리에게 지니게 하며 새 글을 쓴다 (`sub_02072878`).
    *
-   * 편지지를 가방에 먼저 넣고 편지 화면을 쓰기로 연다 — 다 쓰면 그 화면이 가방에서
-   * 한 장을 꺼내 붙인다(`MailScreen`의 `attach`). 쓰다 물러나면 편지지는 가방에
-   * 남는다 — 원작이 그 길에서 가방으로 넣는 것과 같다.
-   * ⚠️ 가방이 꽉 차 넣을 수 없으면 쓰러 가지 않고 「메일을 버렸습니다」로 끝난다
+   * ⚠️ **편지지는 가방을 안 거친다.** 원작은 그 칸에 새 글을 써 넣고 그대로 마리에게 옮긴다
+   * (`MailApp_CopyWrittenMailToMailboxSlot` → `Mail_TransferFromMailboxToMon`) — 가방이 꽉 차 있어도 쓸 수 있다.
+   * 쓰다 그만두면 그때 편지지를 가방에 넣고(`sub_020726B4` → `sub_02073060`) 꽉 찼으면 버린다 — 그 말은
+   * 메일 화면이 맡기고(`mailboxNotice`) 이 목록이 돌아와 띄운다
    */
   const writeFor = (slot: number): void => {
     const mon = party[slot]
@@ -196,13 +206,10 @@ export function MailboxScreen() {
     useSaveStore.setState({ mailbox: got.box })
     setOpen(null)
     shrink()
-    if (!useSaveStore.getState().addItem(0, got.item, 1)) {
-      setNotice([flat(say[MAILBOX_TEXT.bagFull] ?? '')])
-      return
-    }
     setNotice([])
+    // 다 쓰면 이 목록으로 돌아온다 (`sub_02072878`이 끝에 `sub_02072370`으로 간다)
     openMail({
-      mode: 'write', type, item: got.item, slot,
+      mode: 'write', type, item: got.item, slot, from: 'mailbox',
       lines: Array.from({ length: MAIL_LINES }, () =>
         Array.from({ length: MAIL_WORDS_PER_LINE }, () => EASY_CHAT_WORD_NONE)),
     })
@@ -211,7 +218,10 @@ export function MailboxScreen() {
   const runAction = (action: MailboxAction): void => {
     setMenuAt(0)
     switch (action) {
-      case 'read': setOpen({ kind: 'read' }); return
+      case 'read':
+        setOpen(null)
+        if (here) openMail({ mode: 'read', from: 'mailbox', slot: here.slot })
+        return
       // 예·아니오의 커서는 **예**에서 시작한다 (`Menu_MakeYesNoChoice`)
       case 'erase': setOpen({ kind: 'eraseAsk' }); return
       case 'give': setOpen({ kind: 'pick', purpose: 'give' }); return
@@ -220,7 +230,7 @@ export function MailboxScreen() {
   }
 
   /** 지금 창에 깔린 줄 */
-  const choices: string[] = open === null || open.kind === 'read' ? []
+  const choices: string[] = open === null ? []
     : open.kind === 'menu' ? MAILBOX_ACTIONS.map((a) => say[ACTION_LINE[a]] ?? '')
       : open.kind === 'pick' ? party.map((m) => monName(m))
         : [menuText[YES_NO.yes] ?? '', menuText[YES_NO.no] ?? '']
@@ -235,7 +245,6 @@ export function MailboxScreen() {
     }
     const i = Math.min(pick, Math.max(0, choices.length - 1))
     switch (open.kind) {
-      case 'read': setOpen(null); return
       case 'menu': { const a = MAILBOX_ACTIONS[i]; if (a) runAction(a); return }
       case 'eraseAsk':
         if (i === 0) { setOpen({ kind: 'erasedGive' }); setMenuAt(0) } else setOpen(null)
@@ -278,12 +287,26 @@ export function MailboxScreen() {
     return true
   }
 
+  /** 돌아오며 받은 말은 다음 키에서 걷는다 */
+  const settle = (): void => { if (returned !== null) setReturned(null) }
+
   useMenuKeys({
-    up: () => move(-1),
-    down: () => move(1),
-    confirm: () => { confirm() },
-    cancel,
+    up: () => { settle(); return move(-1) },
+    down: () => { settle(); return move(1) },
+    confirm: () => { settle(); confirm() },
+    cancel: () => { settle(); cancel() },
   })
+
+  /** 메일 화면에서 돌아오며 받은 말을 글로 채운다 */
+  const returnedLines = (): string[] => {
+    if (returned === null) return []
+    if (returned.kind !== 'given') {
+      return [flat(say[returned.kind === 'toBag' ? MAILBOX_TEXT.toBag : MAILBOX_TEXT.bagFull] ?? '')]
+    }
+    const mon = party[returned.slot]
+    return [flat(fillMenuText(partyText[PARTY_GIVE.given] ?? '', [mon ? monName(mon) : '', itemNames[returned.item] ?? '']))]
+  }
+  const shownNotice = notice.length > 0 ? notice : returnedLines()
 
   /** 창 위의 물음 */
   const ask = (): string => {
@@ -293,7 +316,6 @@ export function MailboxScreen() {
       case 'eraseAsk': return flat(say[MAILBOX_TEXT.eraseAsk] ?? '')
       case 'erasedGive': return flat(say[MAILBOX_TEXT.erasedGive] ?? '')
       case 'pick': return flat(partyText[PARTY_GIVE.which] ?? '')
-      case 'read': return ''
     }
   }
 
@@ -304,7 +326,7 @@ export function MailboxScreen() {
       foot={mailboxFoot(open?.kind ?? null)}
     >
       {/* 갈래 창이 이 칸의 오른쪽 아래 구석에 붙는다 */}
-      <div className={css.stage} style={{ position: 'relative' }}>
+      <div className={bagCss.anchorStage}>
         <ul className={css.list}>
           {filled.map((e, i) => (
             <li key={e.slot} className={i === at ? css.rowOn : css.row}>
@@ -315,17 +337,11 @@ export function MailboxScreen() {
           {filled.length === 0 && <li className={css.rowDim}>메일이 없다</li>}
         </ul>
         <div className={css.detail}>
-          {here && open?.kind === 'read' && (
-            // 읽는다 — 줄 셋을 원작 편지처럼 한 줄씩 편다
-            <div className={css.detailText}>
-              {here.mail.lines.map((words) => wordsOf(words)).join('\n')}
-            </div>
-          )}
-          {here && open?.kind !== 'read' && <div className={css.detailText}>{preview(here.mail.lines)}</div>}
-          {notice.map((text, i) => <div key={i} className={css.detailText}>{text}</div>)}
+          {here && <div className={css.detailText}>{preview(here.mail.lines)}</div>}
+          {shownNotice.map((text, i) => <div key={i} className={css.detailText}>{text}</div>)}
         </div>
 
-        {open !== null && open.kind !== 'read' && (
+        {open !== null && (
           <div className={menu.choices}>
             <div className={menu.choiceAsk}>{ask()}</div>
             {choices.map((label, i) => (

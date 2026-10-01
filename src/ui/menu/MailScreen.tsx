@@ -3,7 +3,11 @@
 // 편지지 한 장에 낱말로 세 줄을 쓴다. 한 줄은 낱말 둘까지다.
 //
 // ⚠️ **쓰는 길과 읽는 길이 한 화면이다** — 원작도 `writeMode` 하나로 가른다.
-// 읽는 쪽에서는 낱말 칸에 커서가 아예 안 간다.
+// 읽는 쪽에서는 낱말 칸에 커서가 아예 안 간다. 읽는 편지는 파티의 마리가 지닌 것이거나
+// 메일박스의 한 칸이다 (`MAIL_CONTEXT_PARTY` · `MAIL_CONTEXT_MAILBOX`).
+//
+// ⚠️ **메일박스에서 지운 편지지에 쓰면 메일박스로 돌아간다** (`sub_02072878`) — 가방이나 파티에서
+// 연 쓰기는 다 쓰면 메뉴 스택을 통째로 걷는다 (`closeAll`).
 //
 // ⚠️ **편지에 아이콘 셋이 새겨진다** — 편지를 붙이는 자리부터 파티 끝까지 최대
 // 셋이고, 나중에 파티가 바뀌어도 그림은 안 바뀐다 (`Mail_SetTrainerAndIconData`).
@@ -12,6 +16,7 @@
 // 되돌린다.
 import { useEffect, useMemo, useState } from 'react'
 import { loadItemNames } from '../../data/gameData'
+import type { Mail } from '../../engine/world/mail'
 import { loadUiText } from '../../data/uiText'
 import { EASY_CHAT_WORD_NONE } from '../../engine/world/easyChat'
 import {
@@ -22,6 +27,7 @@ import { gameLocale } from '../../state/optionsStore'
 import { useSaveStore } from '../../state/saveStore'
 import { loadWordLookup, type WordLookup } from './easyChatWords'
 import { clampCursor, useMenuKeys } from './useMenuKeys'
+import { POCKET_MAIL } from './BagScreen'
 import { MenuScreen } from './MenuScreen'
 import * as css from './menuChrome.css'
 
@@ -41,13 +47,26 @@ export function mailFoot(writing: boolean): string {
   return writing ? '화살표 키 자리 · Z 단어 · 마지막 칸에서 Z 결정 · X 그만둔다' : 'X 닫기'
 }
 
+/**
+ * 읽을 편지 — 파티 자리가 지닌 것이거나 메일박스의 한 칸 (`FieldSystem_LaunchMailApp_Read`). 없으면 null
+ */
+export function readingMail(
+  at: { from: 'party' | 'mailbox'; slot: number },
+  party: readonly { mail?: Mail | null }[],
+  mailbox: readonly Mail[],
+): Mail | null {
+  return at.from === 'mailbox' ? mailbox[at.slot] ?? null : party[at.slot]?.mail ?? null
+}
+
 export function MailScreen() {
   const back = useMenuStore((s) => s.back)
   const closeAll = useMenuStore((s) => s.closeAll)
   const openEasyChat = useMenuStore((s) => s.openEasyChat)
   const mail = useMenuStore((s) => s.mail)
   const party = useSaveStore((s) => s.party)
+  const mailbox = useSaveStore((s) => s.mailbox)
   const trainer = useSaveStore((s) => s.trainer)
+  const setMailboxNotice = useMenuStore((s) => s.setMailboxNotice)
   const [say, setSay] = useState<readonly string[]>([])
   const [lookup, setLookup] = useState<WordLookup | null>(null)
   const [itemNames, setItemNames] = useState<readonly string[]>([])
@@ -69,7 +88,7 @@ export function MailScreen() {
     return () => { live = false }
   }, [])
 
-  const held = mail?.mode === 'read' ? party[mail.slot]?.mail ?? null : null
+  const held = mail?.mode === 'read' ? readingMail(mail, party, mailbox) : null
   const writing = mail?.mode === 'write'
   const type = mail?.mode === 'write' ? mail.type : held?.type ?? 0
   const lines = useMemo(
@@ -100,9 +119,27 @@ export function MailScreen() {
     const next = [...party]
     next[mail.slot] = { ...target, mail: written, heldItem: mailItemOfType(mail.type) }
     useSaveStore.setState({ party: next })
-    // 편지지는 열쇠도구가 아니라 보통 도구 주머니(0)다
-    useSaveStore.getState().removeItem(0, mail.item, 1)
+    if (mail.from === 'mailbox') {
+      // 메일박스의 편지지는 가방을 안 거쳤다 — 뺄 것이 없다 (`MailboxScreen`의 `writeFor`)
+      setMailboxNotice({ kind: 'given', slot: mail.slot, item: mailItemOfType(mail.type) })
+      back()
+      return
+    }
+    // ⚠️ 편지지는 **메일 주머니**에 든다 (`POCKET_MAIL`). 도구 주머니(0)에서 빼면 아무것도 안 빠지고 한 장이 남는다
+    useSaveStore.getState().removeItem(POCKET_MAIL, mail.item, 1)
     closeAll()
+  }
+
+  /**
+   * 그만둔다. 메일박스에서 온 쓰기면 그때 편지지를 가방에 넣는다 — 꽉 찼으면 버린다 (`sub_020726B4` →
+   * `sub_02073060`). 그 말은 돌아간 메일박스가 한다
+   */
+  const leave = (): void => {
+    if (mail?.mode === 'write' && mail.from === 'mailbox') {
+      const kept = useSaveStore.getState().addItem(POCKET_MAIL, mail.item, 1)
+      setMailboxNotice({ kind: kept ? 'toBag' : 'bagFull' })
+    }
+    back()
   }
 
   useMenuKeys({
@@ -119,7 +156,7 @@ export function MailScreen() {
         word: at % MAIL_WORDS_PER_LINE,
       })
     },
-    cancel: () => { back() },
+    cancel: leave,
   })
 
   if (!mail) return null

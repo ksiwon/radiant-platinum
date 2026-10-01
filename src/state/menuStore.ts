@@ -77,6 +77,11 @@ interface MenuStore {
    */
   shopCurrency: ShopCurrency
   /**
+   * 산 것을 확인하는 글을 넘길 때마다 부를 것 (`Shop_Start`의 `incBuyCount`). 장막백화점 계산대만 준다 —
+   * 단골 셈(`CheckIsDepartmentStoreRegular`)이 이것으로 오른다. 없으면 null이다
+   */
+  shopOnPurchase: (() => void) | null
+  /**
    * 보관 시스템을 어느 갈래로 열었는가 (`OpenPokemonStorage`의 인자).
    *
    * 0 맡긴다 · 1 꺼낸다 · 2 옮긴다. 상점 재고와 같은 이유로 여기 있다 —
@@ -117,6 +122,14 @@ interface MenuStore {
    */
   giveTo: number | null
   /**
+   * 가방의 「건네준다」가 파티 화면을 **건네주기**로 열었는가 (`PARTY_MENU_MODE_GIVE_ITEM`). 그 도구 번호다.
+   *
+   * `giveTo`와 방향이 거꾸로다 — 이쪽은 도구를 먼저 고르고 마리를 고른다. 파티 화면이 「어느 포켓몬에게
+   * 건네줄까?」로 뜨고, 고른 마리에게 붙인 뒤 말을 넘기면 **가방으로 돌아간다** (`ResetWindowOnInput`의
+   * `PARTY_MENU_EXIT_CODE_RETURN_TO_BAG`). null이면 평소의 파티 화면이다
+   */
+  givingItem: number | null
+  /**
    * 스크립트가 고르라고 연 가방인가 (`ScrCmd_OpenBag`). 그 주머니 번호고
    * null이면 평소의 가방이다.
    *
@@ -138,9 +151,29 @@ interface MenuStore {
    * `slot`이 파티 자리이고, 쓰는 중이면 `item`이 가방에서 뺄 편지지다
    */
   mail:
-    | { mode: 'write'; type: number; item: number; slot: number; lines: number[][] }
-    | { mode: 'read'; slot: number }
+    | {
+      mode: 'write'; type: number; item: number; slot: number; lines: number[][]
+      /**
+       * 메일박스에서 지운 편지지에 새로 쓰는 길인가 (`sub_02072878`). 그러면 다 쓴 뒤 **메일박스로
+       * 돌아간다** — 원작이 그 길 끝에서 메일박스 목록을 다시 연다(`sub_02072370`)
+       */
+      from?: 'mailbox'
+    }
+    /**
+     * `from`이 어디서 읽는지다 — 파티 자리(`MAIL_CONTEXT_PARTY`)이거나 메일박스 칸(`MAIL_CONTEXT_MAILBOX`).
+     * 메일박스의 「메일을 읽는다」도 같은 메일 앱 읽기 화면을 연다 (`FieldSystem_LaunchMailApp_Read`)
+     */
+    | { mode: 'read'; from: 'party' | 'mailbox'; slot: number }
     | null
+  /**
+   * 메일 화면에서 메일박스로 돌아와 띄울 한 줄. 메일박스가 받아 글로 채워 띄우고 비운다.
+   *
+   * - `given` — 지운 편지지에 다 썼다. 원작은 파티 화면을 `PARTY_MENU_MODE_GIVE_MAIL`로 열어 「{0}에게 {1}
+   *   지니게 했다!」를 말한다 (`UpdatePokemonFormWithItem`)
+   * - `toBag` · `bagFull` — 쓰다 그만뒀다. 편지지가 가방으로 가거나, 꽉 찼으면 버려진다
+   *   (`sub_020726B4` → `sub_02073060`)
+   */
+  mailboxNotice: { kind: 'given'; slot: number; item: number } | { kind: 'toBag' | 'bagFull' } | null
   /** 낱말 고르기가 채울 자리. 편지의 몇째 줄 몇째 낱말인가 */
   easyChatAt: { line: number; word: number } | null
   /** 마지막 되살리기가 실제로 가르쳤는가 (`keepOldMove`). 스크립트가 이 값으로 갈린다 */
@@ -193,8 +226,11 @@ interface MenuStore {
   selectedMoveSlot: number | null
   open: (screen: MenuScreen) => void
   push: (screen: MenuScreen) => void
-  /** 상점을 연다. 재고와 **무엇으로 값을 받는지**를 같이 받는다 */
-  openShop: (items: readonly number[], currency?: ShopCurrency) => void
+  /**
+   * 상점을 연다. 재고와 **무엇으로 값을 받는지**를 같이 받는다. `onPurchase`는 장막백화점 계산대만 준다
+   * (`engine/script/world`의 `openShop`)
+   */
+  openShop: (items: readonly number[], currency?: ShopCurrency, onPurchase?: () => void) => void
   /** 보관 시스템을 연다 */
   openBox: (mode: number) => void
   /** 이름 짓기 화면을 연다 */
@@ -215,6 +251,10 @@ interface MenuStore {
   setMailWord: (word: number) => void
   /** 도구를 건네주려고 가방을 쌓는다 */
   openBagToGive: (slot: number) => void
+  /** 가방의 「건네준다」 — 그 도구를 들고 파티 화면을 쌓는다. B로 가방으로 돌아간다 */
+  openPartyToGive: (item: number) => void
+  /** 메일박스로 돌아가며 띄울 줄을 맡긴다 / 비운다 */
+  setMailboxNotice: (notice: MenuStore['mailboxNotice']) => void
   /**
    * 스크립트가 「가방에서 하나 골라라」로 연다 (`FieldSystem_CreateBagContext`).
    *
@@ -260,14 +300,17 @@ export const useMenuStore = create<MenuStore>()((set) => ({
   top: null,
   shopStock: [],
   shopCurrency: 'money',
+  shopOnPurchase: null,
   boxMode: 0,
   naming: null,
   usingItem: null,
   summarySlot: 0,
   journalAt: 0,
   mail: null,
+  mailboxNotice: null,
   easyChatAt: null,
   giveTo: null,
+  givingItem: null,
   pickPocket: null,
   reminder: null,
   reminderLearned: false,
@@ -357,6 +400,14 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     return { stack, top: 'bag' as const, giveTo: slot }
   }),
 
+  openPartyToGive: (item) => set((s) => {
+    const stack: MenuScreen[] = [...s.stack, 'party']
+    capture(stack)
+    return { stack, top: 'party' as const, givingItem: item, usingItem: null }
+  }),
+
+  setMailboxNotice: (notice) => { set({ mailboxNotice: notice }) },
+
   openBagToPick: (pocket) => set(() => {
     const stack: MenuScreen[] = ['bag']
     capture(stack)
@@ -401,11 +452,12 @@ export const useMenuStore = create<MenuStore>()((set) => ({
 
   clearUsingItem: () => { set({ usingItem: null }) },
 
-  openShop: (items, currency) => set(() => {
+  openShop: (items, currency, onPurchase) => set(() => {
     const stack: MenuScreen[] = ['shop']
     capture(stack)
     return {
       stack, top: 'shop' as const, shopStock: [...items], shopCurrency: currency ?? 'money',
+      shopOnPurchase: onPurchase ?? null,
     }
   }),
 
@@ -452,12 +504,15 @@ export const useMenuStore = create<MenuStore>()((set) => ({
     // 파티 화면에서 물러나면 들고 있던 도구도 내려놓는다
     return {
       stack, top: stack[stack.length - 1] ?? null,
-      usingItem: null, giveTo: null, choosingMon: false, townMapView: false,
+      usingItem: null, giveTo: null, givingItem: null, choosingMon: false, townMapView: false,
     }
   }),
 
   closeAll: () => set(() => {
     capture([])
-    return { stack: [], top: null, usingItem: null, giveTo: null, choosingMon: false, chooseDaycare: false, townMapView: false }
+    return {
+      stack: [], top: null, usingItem: null, giveTo: null, givingItem: null,
+      choosingMon: false, chooseDaycare: false, townMapView: false, shopOnPurchase: null,
+    }
   }),
 }))

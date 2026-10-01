@@ -158,6 +158,39 @@ export const TRADE_TEXT = {
 /** 소지금 창 (`FieldMenu_CreateMoneyWindow` · `..._PrintMoneyToWindow`) */
 export const MONEY_WINDOW_TEXT = { label: 18, amount: 19 } as const
 
+/**
+ * 상점에서 사는 흐름의 줄 (`shop` 뱅크 · `overlay007/shop_menu.c`). 번호가 곧 `pl_msg_00000543_000NN`이다.
+ *
+ * 돈 가게와 BP 가게(프런티어)가 줄을 따로 쓴다 — 고르는 쪽이 `martType`으로 가른다. 기술머신은 확인 줄에 기술
+ * 이름이 붙는 판이 따로 있다(`Item_MoveForTMHM`). 칸은 0 도구 · 1 개수 · 2 값 · 3 기술이다
+ */
+export const MART_TEXT = {
+  /** 「돈이 부족하시군요!」 · 「죄송합니다... BP가 부족한 것 같습니다...」 — 고르자마자 (`Shop_SelectBuyMenu`) */
+  noMoney: 3, noBP: 37,
+  /** 「{0}\n몇 개 구입하시겠습니까?」 · BP판 */
+  howMany: 4, bpHowMany: 33,
+  /** 「{0} {1}개로군요\n총 {2}원입니다.」 — 결제 전 확인 (`Shop_ShowPurchaseMessage`) */
+  confirm: 5, bpConfirm: 35, tmConfirm: 27, bpTmConfirm: 36,
+  /** 「네 여기 있습니다 … {0}\n{1} 포켓에 넣었다」 — 칸 1이 주머니 이름이다 (`Shop_SelectConfirmPurchase`) */
+  thanks: 6,
+  /** 「그 이상은\n가지고 다닐 수 없어요!」 — 개수를 고른 뒤 칸이 모자라면 */
+  noRoom: 7,
+  /** 「프레미어볼 1개를\n서비스로 드리겠습니다!」 (`Shop_FinishPurchase`) */
+  premier: 10,
+  /** 개수 창 셋 — 「{0}개 갖고 있음」 · 「x{0}」 · 「{0}원」 / 「{0}BP」 (`Shop_ShowQtyWithinInventory` · `…TotalItemPurchase`) */
+  inBag: 20, quantity: 21, total: 22, bpTotal: 34,
+} as const
+
+/**
+ * 파티 화면 머리의 한 줄 — 싸울 수 있는 마리와 데리고 있는 마리.
+ *
+ * ⚠️ **롬 글이 아니다.** 원작 파티 화면에는 이 줄이 없고(판 여섯이 그 자체로 말한다) 우리 창 머리에만 붙는다.
+ * 그래서 숫자를 동사 뒤에 매달지 않고 명사구로 둔다 — 「싸울 수 있다 6」은 읽다가 걸린다
+ */
+export function partyHeader(alive: number, size: number): string {
+  return `전투 가능 ${String(alive)}마리 · 파티 ${String(size)}/6`
+}
+
 /** 코인 창의 문장 틀 (`FieldMenu_PrintCoinsToWindow` — `menu_entries` 뱅크) */
 export const COIN_WINDOW_TEXT = 197
 

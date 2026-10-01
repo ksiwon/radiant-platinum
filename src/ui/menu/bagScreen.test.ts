@@ -14,6 +14,7 @@ import { BINDINGS } from '../../engine/input/keys'
 import { keyList } from '../../engine/input/keyNames'
 import { ITEM_GRISEOUS_ORB, SPECIES_GIRATINA } from '../../engine/pokemon/form'
 import { MAIL_ITEM_FIRST } from '../../engine/world/mail'
+import { useMenuStore } from '../../state/menuStore'
 
 const {
   BAG_ACTION_LINE, bagActions, bagFoot, bagMemory, giveVerdict, recallCursor, trashStep,
@@ -88,6 +89,29 @@ describe('건네주기 (`ProcessItemApplication`)', () => {
   it('백금옥은 기라티나만 — 빈손이어도 못 지닌다', () => {
     expect(giveVerdict({ species: 1, heldItem: 0 }, ITEM_GRISEOUS_ORB)).toBe('cannotHold')
     expect(giveVerdict({ species: SPECIES_GIRATINA, heldItem: 0 }, ITEM_GRISEOUS_ORB)).toBe('given')
+  })
+})
+
+describe('「건네준다」는 파티 화면으로 넘어간다 (`PARTY_MENU_MODE_GIVE_ITEM`)', () => {
+  afterEach(() => { useMenuStore.getState().closeAll() })
+
+  it('도구를 들고 파티 화면이 가방 위에 쌓이고, 물러나면 가방이다', () => {
+    useMenuStore.getState().open('bag')
+    useMenuStore.getState().openPartyToGive(POTION)
+    expect(useMenuStore.getState().stack).toEqual(['bag', 'party'])
+    expect(useMenuStore.getState().givingItem).toBe(POTION)
+    // 다른 길(쓴다)의 도구를 끌고 오지 않는다
+    expect(useMenuStore.getState().usingItem).toBeNull()
+    useMenuStore.getState().back()
+    expect(useMenuStore.getState().top).toBe('bag')
+    expect(useMenuStore.getState().givingItem).toBeNull()
+  })
+
+  it('메뉴를 다 닫아도 들고 있던 도구를 내려놓는다', () => {
+    useMenuStore.getState().open('bag')
+    useMenuStore.getState().openPartyToGive(POTION)
+    useMenuStore.getState().closeAll()
+    expect(useMenuStore.getState().givingItem).toBeNull()
   })
 })
 

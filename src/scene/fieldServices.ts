@@ -1505,7 +1505,7 @@ const services: FieldServices = {
   openStartMenu: () => { useMenuStore.getState().open('start') },
   menuOpen: () => useMenuStore.getState().stack.length > 0,
 
-  openShop: (stock, currency) => { useMenuStore.getState().openShop(stock, currency ?? 'money') },
+  openShop: (stock, currency, onPurchase) => { useMenuStore.getState().openShop(stock, currency ?? 'money', onPurchase) },
 
   /** 보관 시스템 다섯 갈래 (`OpenPokemonStorage`) */
   openStorage: (mode) => {
