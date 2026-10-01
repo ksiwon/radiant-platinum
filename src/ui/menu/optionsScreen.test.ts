@@ -1,4 +1,4 @@
-// 설정 화면의 글 (`OptionsScreen.tsx`의 `resetText` · `verifyNote`)
+// 설정 화면의 글 (`OptionsScreen.tsx`의 `resetText` · `verifyNote` · `optionsFoot`)
 //
 // 「처음부터」는 지우기 전에 세이브 파일을 받고 백업 슬롯에 한 벌을 남긴다
 // (`saveStore`의 `resetSave` → `backupBeforeOverwrite`). 설명이 '되돌릴 수 없다'고
@@ -11,7 +11,7 @@ vi.mock('../../import/install/groupLabels', () => ({
   groupLabel: (id: string, lang = 'ko') => `<${lang}:${id}>`,
 }))
 
-const { resetText, verifyNote } = await import('./OptionsScreen')
+const { optionsFoot, resetText, verifyNote } = await import('./OptionsScreen')
 
 const LANGS = [0, 1, 2] as const
 
@@ -91,5 +91,15 @@ describe('「에셋 확인」의 결과', () => {
   it('온전하거나 개발판이면 경고가 아니다', () => {
     expect(verifyNote({ ok: 5, broken: [], groups: [] }, 0)).toEqual({ text: '파일 5개가 전부 온전합니다', warn: false })
     expect(verifyNote(null, 0).warn).toBe(false)
+  })
+})
+
+describe('바닥 안내', () => {
+  // X는 설정을 닫는다. 한국어만 「닫기」고 영어·일본어가 'Back'·'もどる'면 다른 일로 읽힌다
+  it('세 언어 모두 X를 「닫기」로 말한다', () => {
+    expect(optionsFoot(0)).toMatch(/X 닫기$/)
+    expect(optionsFoot(1)).toMatch(/X Close$/)
+    expect(optionsFoot(2)).toMatch(/X 閉じる$/)
+    for (const lang of LANGS) expect(optionsFoot(lang)).not.toMatch(/Back|もどる/)
   })
 })

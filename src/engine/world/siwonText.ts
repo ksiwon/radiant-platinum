@@ -31,7 +31,13 @@ interface SiwonLines {
   wait: Readonly<Record<number, string>>
   /** 일곱을 다 줬다 */
   done: string
-  /** 파티가 가득 찼다 */
+  /**
+   * 파티가 가득 찼다.
+   *
+   * ⚠️ **무엇이 찼고 어떻게 비우는지 말한다.** 「손이 모자라다」·「hands are full」·
+   * 「てが ふさがる」는 일손·바쁨의 말이라 뜻이 엇나가고, 「자리를 비운다」만으로는
+   * 가방인지 파티인지 모른다. 비우는 길은 상자에 맡기는 것이다
+   */
   partyFull: string
   /** 가방이 그 물건을 더 못 받는다 */
   bagFull: string
@@ -93,8 +99,8 @@ const KO: SiwonLines = {
     + '닫힌 문은 다 열었으니까,\n'
     + '나머지는 네 이야기야. 잘 가.',
   partyFull:
-    '손이 모자라 보이는데.\n'
-    + '한 자리 비우고 다시 와 줘.',
+    '데리고 다니는 포켓몬이 꽉 찼네.\n'
+    + '한 마리 맡기고 다시 와 줘.',
   bagFull:
     '가방이 그걸 더는 못 받는대.\n'
     + '자리를 만들고 다시 와 줘.',
@@ -163,8 +169,8 @@ const EN: SiwonLines = {
     + 'Every shut door is open.\n'
     + 'The rest is your story. Take care.',
   partyFull:
-    'Looks like your hands are full.\n'
-    + 'Make room and come back.',
+    'Your party is full.\n'
+    + 'Leave one in a Box and come back.',
   bagFull:
     'Your Bag can’t take another one.\n'
     + 'Make room and come back.',
@@ -232,8 +238,8 @@ const JA: SiwonLines = {
     + 'とじた とびらは ぜんぶ あいた。\n'
     + 'あとは きみの ものがたりだ。またね。',
   partyFull:
-    'てが ふさがってるみたいだ。\n'
-    + 'ひとつ あけてから また きて。',
+    'てもちが いっぱいだね。\n'
+    + 'いっぴき あずけてから また きて。',
   bagFull:
     'バッグが もう うけとれないって。\n'
     + 'あけてから また きて。',

@@ -133,6 +133,19 @@ export function verifyNote(
   }
 }
 
+/**
+ * 바닥 안내. X는 이 화면을 **닫는다** — 세 언어가 같은 동작을 말한다.
+ *
+ * ⚠️ 영어·일본어만 'Back'·'もどる'로 두면 한국어 「닫기」와 다른 일을 하는 것처럼 읽힌다
+ */
+export function optionsFoot(language: Language): string {
+  return pickLang(language,
+    '↑↓ 항목 · ←→ 값 · Z 결정 · X 닫기',
+    '↑↓ Item · ←→ Value · Z Set · X Close',
+    '↑↓ 項目 · ←→ 値 · Z 決定 · X 閉じる',
+  )
+}
+
 interface Row {
   key: keyof Options | 'reset' | 'verify'
   label: string
@@ -322,11 +335,7 @@ export function OptionsScreen() {
   return (
     <MenuScreen
       title={at(OPTIONS_TEXT.title) || our('설정', 'OPTIONS', '設定')}
-      foot={our(
-        '↑↓ 항목 · ←→ 값 · Z 결정 · X 닫기',
-        '↑↓ Item · ←→ Value · Z Set · X Back',
-        '↑↓ 項目 · ←→ 値 · Z 決定 · X もどる',
-      )}
+      foot={optionsFoot(options.language)}
     >
       <div className={own.center}>
         <div className={own.rows}>
