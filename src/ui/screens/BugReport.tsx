@@ -20,6 +20,7 @@
 // ⚠️ **아이기스·포케리듬과 같은 서식을 쓴다.** 받는 함이 하나라 제목에 게임
 // 이름을 박는다 — 안 그러면 셋의 제보가 섞인다.
 import { useEffect, useRef, useState } from 'react'
+import { menuBeep } from '../../engine/audio/lazy'
 import { useMenuKeys } from '../menu/useMenuKeys'
 import { VERSION } from './patchLog'
 import * as css from './bugReport.css'
@@ -34,7 +35,7 @@ const TO = 'getosukuri@gmail.com'
 const MAX_TITLE = 60
 const MAX_BODY = 2000
 
-type Phase = 'idle' | 'sending' | 'done' | 'fail'
+export type Phase = 'idle' | 'sending' | 'done' | 'fail'
 
 /**
  * 사람이 안 적어 주는 것들.
@@ -50,6 +51,33 @@ function machine(): string {
   ].join('\n')
 }
 
+/**
+ * 창 아래 안내.
+ *
+ * ⚠️ **X는 안 적는다.** 창이 뜨면 첫 칸에 포커스가 가 있어서 X는 글자로 들어간다.
+ * 입력칸 안에서도 맞는 것은 Esc 하나다(`escClosesForm`). 적은 글을 붙잡아 두지
+ * 않으므로 사라진다는 것을 같은 줄에서 말한다
+ */
+export const BUG_HINT = 'Esc 닫기 (적은 글은 사라집니다)'
+
+/**
+ * 폼 안에서 누른 키가 창을 닫는가.
+ *
+ * ⚠️ `useMenuKeys`는 글자 칸으로 간 키를 **통째로** 비켜 준다(`typingInto`) —
+ * X·Backspace가 글자를 못 치게 되기 때문이다. Esc는 글자가 아닌데 같이 비켜져서,
+ * 열자마자(첫 칸에 포커스) 안내대로 눌러도 안 닫혔다. 그 비켜주기를 고치면 입력칸이
+ * 있는 모든 화면에 번지므로, 이 폼만 Esc를 따로 받는다.
+ *
+ * 받지 않는 때:
+ *   · **보내는 중** — 답을 못 받은 채 창이 사라지면 갔는지 모른다
+ *   · **한글 조합 중** — Esc는 조합을 끝내는 키다. 그 한 번에 창까지 닫히면 안 된다
+ *   · **누르고 있어 다시 온 키**(`repeat`) — `useMenuKeys`의 `ONCE`처럼 물러나기는
+ *     새로 누른 것만 받는다
+ */
+export function escClosesForm(key: string, composing: boolean, repeat: boolean, phase: Phase): boolean {
+  return key === 'Escape' && !composing && !repeat && phase !== 'sending'
+}
+
 interface Props { onClose: () => void }
 
 export function BugReport({ onClose }: Props) {
@@ -62,7 +90,8 @@ export function BugReport({ onClose }: Props) {
 
   // ⚠️ **보내는 중에는 안 닫는다.** 답을 못 받은 채 창이 사라지면 갔는지 모르니
   // 같은 제보를 두 번 쓰게 된다. `useMenuKeys`는 글자 칸으로 간 키를 이미
-  // 비켜 주므로(`typingInto`), 치는 중에 X가 창을 닫지는 않는다
+  // 비켜 주므로(`typingInto`), 치는 중에 X가 창을 닫지는 않는다. 칸 안의 Esc는
+  // 폼이 따로 받는다(`escClosesForm`)
   useMenuKeys({ cancel: onClose }, phase !== 'sending')
 
   const ready = title.trim() !== '' && body.trim() !== '' && phase !== 'sending'
@@ -116,7 +145,19 @@ export function BugReport({ onClose }: Props) {
             </div>
           </>
         ) : (
-          <form className={css.form} onSubmit={(e) => { void send(e) }}>
+          <form
+            className={css.form}
+            onSubmit={(e) => { void send(e) }}
+            onKeyDown={(e) => {
+              if (!escClosesForm(e.key, e.nativeEvent.isComposing, e.repeat, phase)) return
+              // 필드 쪽 Escape 처리로 새지 않게 여기서 끊는다. 소리는 칸 밖에서 누른
+              // Esc(`useMenuKeys`)와 같게 낸다
+              e.preventDefault()
+              e.stopPropagation()
+              menuBeep()
+              onClose()
+            }}
+          >
             <p className={css.intro}>만든 사람에게 곧장 갑니다. 계정도 로그인도 없습니다.</p>
 
             <label className={css.row}>
@@ -158,7 +199,7 @@ export function BugReport({ onClose }: Props) {
             )}
 
             <div className={css.foot}>
-              <span className={css.hint}>X·Esc 닫기</span>
+              <span className={css.hint}>{BUG_HINT}</span>
               <button
                 type="button"
                 className={css.close}
