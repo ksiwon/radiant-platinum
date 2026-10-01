@@ -1075,6 +1075,73 @@ maybe('숲 바닥에 빈 칸이 없다', () => {
     // 여기가 이 시험의 전부다
     expect(t.bare).toBe(0)
   }, 600_000)
+
+  /**
+   * ⚠️ **BDSP 관문 방 안에는 메운 바닥도 세운 판도 없다.**
+   *
+   * 213번도로 관문 안 체크무늬 바닥에 흙·풀 얼룩이 앉았고(I-p12-2) 연고시티 관문 문간에 갈색 쐐기가 섰다(I-p08-15). 메운
+   * 바닥(`floorPatch`)과 세운 관문 판(`standCutouts`)이 의심이었는데, 재 보니 **둘 다 방 안에 한 조각도 없다** —
+   *
+   *     213번도로 관문 (청크 20,25 · 소품 40 @ 643,813)  방 안 칸이 전부 걷는 높이(y 1.0)에 원작 바닥이 있다
+   *       (`ngrass` · `nsand` · `nsandp`). 메운 칸은 숲 줄 z ≤ 809 · z ≥ 816뿐이다
+   *     연고시티 관문 (청크 14,21 · 소품 39 @ 459,681)   메운 칸은 x ≤ 455 · x ≥ 462뿐이고, 관문 판
+   *       (`area4_gate_a` 세로 · `area4_gate_b` 아치)은 45°가 아니라 하나도 안 선다
+   *
+   * 방의 자리는 BDSP 지역 glb의 방 바닥(`M_C_001_RoomInner_13`)에서 쟀다 — area013 · area007 x 640.0~646.0 · z 810.7~815.3,
+   * area004 · area007 x 456.7~461.3 · z 677.3~684.0. 얼룩은 이 층이 아니라 **원작 지형 그 자체**(같은 높이의 `ngrass`·`nsandp`)다
+   */
+  it('BDSP 관문 방 안을 메우지도 세우지도 않는다', () => {
+    heightField.data = loadHeight()
+    const fmt = read('chunks/index.json') as Fmt
+    const maps = read('maps.json') as { maps: { area: number }[], areas: { tex: number }[] }
+    const meta = read('matrices/0.json') as MatrixMeta
+    const texOf = (zone: number) => maps.areas[maps.maps[zone]?.area ?? 0]?.tex ?? 0
+    const at = new Map(meta.chunks.map((c) => [`${String(c.mx)},${String(c.my)}`, c]))
+    const groundAt = (x: number, z: number, near: number) => {
+      const c = at.get(`${String(Math.floor(x / CHUNK))},${String(Math.floor(z / CHUNK))}`)
+      return c ? heightInChunk(c.land, x - c.mx * CHUNK, z - c.my * CHUNK, near) : null
+    }
+    const rooms = [
+      { gate: [643, 813], box: [640.0, 646.0, 810.7, 815.3] },
+      { gate: [459, 681], box: [456.7, 461.3, 677.3, 684.0] },
+    ] as const
+    for (const { gate: [gx, gz], box: [x0, x1, z0, z1] } of rooms) {
+      const c = at.get(`${String(Math.floor(gx / CHUNK))},${String(Math.floor(gz / CHUNK))}`)!
+      const mesh = readChunk(c.land, fmt)
+      const sheet = sheetFor(texOf(c.zone))
+      const split = splitFoliage(mesh, cutoutGroups(mesh, sheet))
+      const source = floorSource(split, (g) => canBorrowFloor(mesh, g))
+      const originX = c.mx * CHUNK + CHUNK / 2
+      const originZ = c.my * CHUNK + CHUNK / 2
+      const inside = (x: number, z: number) => x > x0 && x < x1 && z > z0 && z < z1
+      const patch = floorPatch(
+        split, (x, z, near) => groundAt(x + originX, z + originZ, near), [], source,
+        (g) => {
+          const name = mesh.materials[g]?.tex ?? ''
+          return { name, rank: groundRank(sheet, name) }
+        })!
+      const pos = patch.geometry.getAttribute('position') as BufferAttribute
+      const normal = patch.geometry.getAttribute('normal') as BufferAttribute
+      let laid = 0
+      // 칸 하나가 정점 여섯이다. 바닥(법선 +Y)만 센다 — 턱 옆면은 원작 관문 기둥의 벽이다
+      for (let i = 0; i < pos.count; i += 6) {
+        if (normal.getY(i) < 0.5) continue
+        const cx = (pos.getX(i) + pos.getX(i + 1)) / 2 + originX
+        const cz = (pos.getZ(i) + pos.getZ(i + 1)) / 2 + originZ
+        if (inside(cx, cz)) laid++
+      }
+      expect(laid, `${String(gx)},${String(gz)} 메운 칸`).toBe(0)
+
+      const before = (mesh.geometry.getAttribute('position') as BufferAttribute).array
+      const after = (split.geometry.getAttribute('position') as BufferAttribute).array
+      let stood = 0
+      for (let i = 0; i < before.length; i += 3) {
+        if (!inside(before[i]! + originX, before[i + 2]! + originZ)) continue
+        if (Math.abs(before[i + 1]! - after[i + 1]!) > 1e-4) stood++
+      }
+      expect(stood, `${String(gx)},${String(gz)} 세운 정점`).toBe(0)
+    }
+  })
 })
 
 /**
