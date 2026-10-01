@@ -15,6 +15,7 @@ import {
   handMount, keepOnly,
 } from './pcParts'
 import { assets } from '../data/providers/assetProvider'
+import { cameraSystem } from '../engine/actor/camera'
 
 interface Props {
   /**
@@ -224,6 +225,9 @@ export function FieldActionEffects({ bodyRef }: Props) {
     }
   }, [bodyRef])
 
+  // 떠날 때 눈높이를 내려 둔다 — 몸이 없는데 들린 값이 남으면 1인칭 눈이 떠 있다
+  useEffect(() => () => { cameraSystem.mountLift = 0 }, [])
+
   useFrame(({ clock }, delta) => {
     const time = clock.elapsedTime
     const surfing = worldState.player.surfing
@@ -261,6 +265,11 @@ export function FieldActionEffects({ bodyRef }: Props) {
         body.position.x += (0 - body.position.x) * Math.min(1, delta * 9)
         body.position.z += (0 - body.position.z) * Math.min(1, delta * 9)
       }
+      // 1인칭 눈도 몸이 든 만큼 든다 — **매끈해진 값**을 넘겨야 타고 내릴 때 눈이
+      // 몸과 같이 오르내린다. 새에 실려 가는 동안은 몸이 제 높이를 따로 들므로 0이다
+      cameraSystem.mountLift = flyPose.visible ? 0 : body.position.y
+    } else {
+      cameraSystem.mountLift = 0
     }
     if (waveARef.current) {
       const phase = (time * 0.85) % 1

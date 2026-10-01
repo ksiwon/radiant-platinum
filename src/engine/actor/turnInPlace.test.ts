@@ -85,8 +85,8 @@ describe('막힌 쪽으로도 돈다', () => {
   })
 
   it('1인칭은 카메라가 곧 얼굴이라 해당 없다', () => {
-    // yaw 0이면 북쪽을 본다 (`input/mouse`의 `facingFromYaw`). 동쪽 벽을 밀어도
+    // 1인칭은 들어올 때 시선을 얼굴에서 심는다 (`seatLook`) — 북쪽(facing π)이면 yaw 0이다. 동쪽 벽을 밀어도
     // 얼굴은 시선이 정한다 — 3인칭이었다면 위 시험대로 동쪽이 됐을 자리다
-    expect(shove(1, 0, 0, 'first').dir).toBe(2)
+    expect(shove(1, 0, Math.PI, 'first').dir).toBe(2)
   })
 })

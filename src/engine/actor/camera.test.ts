@@ -7,9 +7,13 @@
 // 실측이 왜 이 둘을 낳았는지는 `camera.ts`의 `aimPitch` 머리말에 있다 —
 // 건물에 들어서면 주인공이 늘 앞벽에 붙어 서므로 카메라가 갈 5.5칸 뒤는
 // 그려진 바닥 밖이다.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Vector3 } from 'three'
-import { aimPitch, clampToRoom, roomAt, type RoomBox } from './camera'
+import {
+  aimPitch, cameraDolly, cameraSystem, clampToRoom, firstPersonView, roomAt, scriptCameraActive, type RoomBox,
+} from './camera'
+import { worldState } from '../../state/worldState'
+import { cutInFrame } from '../battle/encounterCutIn'
 
 /** 세로줄 끝을 상자와 같게 채운 상자. 줄마다 다른 자리는 따로 만든다 */
 const box = (minX: number, minZ: number, maxX: number, maxZ: number): RoomBox => ({
@@ -121,5 +125,124 @@ describe('굴에서는 자리를 물린다', () => {
 
   it('높이는 안 건드린다 — 물리는 것은 평면 자리뿐이다', () => {
     expect(clampToRoom(at(99, 99), CENTER, 1).y).toBe(4)
+  })
+})
+
+// ⚠️ **설정의 시점과 지금 렌즈는 다르다** (`firstPersonView`). 스크립트가 카메라를
+// 쥐는 동안은 1인칭이어도 3인칭으로 본다 — 1인칭 눈으로는 북쪽에서 벌어지는 사건이
+// 화면 밖이고, 빙글 워프의 당기기도 아무 일이 없었다
+describe('스크립트 카메라 동안은 3인칭 렌즈다', () => {
+  afterEach(() => {
+    worldState.camera.mode = 'third'
+    cameraSystem.free = null
+    cameraDolly.warp = 1
+    cutInFrame.now = null
+    cameraSystem.mountLift = 0
+  })
+
+  it('1인칭 설정이면 1인칭 렌즈다', () => {
+    worldState.camera.mode = 'first'
+    expect(scriptCameraActive()).toBe(false)
+    expect(firstPersonView()).toBe(true)
+  })
+
+  it('시점 이동(`AddFreeCamera`) 동안은 3인칭이다 — 설정은 그대로다', () => {
+    worldState.camera.mode = 'first'
+    cameraSystem.free = { x: 3, z: 4 }
+    expect(scriptCameraActive()).toBe(true)
+    expect(firstPersonView()).toBe(false)
+    expect(worldState.camera.mode).toBe('first')
+  })
+
+  it('빙글 워프가 당기는 동안도 · 조우 컷인 동안도 같다', () => {
+    worldState.camera.mode = 'first'
+    cameraDolly.warp = 0.6
+    expect(firstPersonView()).toBe(false)
+    cameraDolly.warp = 1
+    cutInFrame.now = {} as NonNullable<typeof cutInFrame.now>
+    expect(firstPersonView()).toBe(false)
+  })
+
+  it('3인칭 설정은 늘 3인칭이다', () => {
+    expect(firstPersonView()).toBe(false)
+  })
+})
+
+/** 1인칭 눈이 있어야 할 자리 — 주인공 발밑에서 눈높이 1.38 · 앞으로 0.12 */
+const eyeAt = (lift = 0): Vector3 => {
+  const p = worldState.player.position
+  const yaw = worldState.camera.yaw
+  return new Vector3(p.x + Math.sin(yaw) * 0.12, p.y + 1.38 + lift, p.z - Math.cos(yaw) * 0.12)
+}
+
+describe('렌즈가 갈리는 프레임에는 미끄러지지 않고 앉는다', () => {
+  afterEach(() => {
+    worldState.camera.mode = 'third'
+    cameraSystem.free = null
+    cameraSystem.mountLift = 0
+  })
+
+  // 보이는 것(천장 · 남쪽 벽 · 몸)은 같은 프레임에 뒤집힌다. 자리가 감쇠로 따라가면
+  // 그 0.2초 동안 벽 뒷면이나 제 머리 속을 본다
+  it('3인칭에서 V를 누른 프레임에 바로 눈자리다', () => {
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.yaw = 0
+    worldState.camera.mode = 'third'
+    for (let i = 0; i < 120; i++) cameraSystem.update(1 / 60)
+    expect(worldState.camera.position.distanceTo(eyeAt())).toBeGreaterThan(5)
+    worldState.camera.mode = 'first'
+    cameraSystem.update(1 / 60)
+    expect(worldState.camera.position.distanceTo(eyeAt())).toBeLessThan(1e-9)
+    expect(cameraSystem.drift).toBeLessThan(1e-9)
+  })
+
+  it('1인칭에서 나오는 프레임에도 바로 3인칭 자리다 — 머리 속을 안 본다', () => {
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.mode = 'first'
+    for (let i = 0; i < 60; i++) cameraSystem.update(1 / 60)
+    worldState.camera.mode = 'third'
+    cameraSystem.update(1 / 60)
+    expect(cameraSystem.drift).toBeLessThan(1e-9)
+    expect(worldState.camera.position.y).toBeGreaterThan(3)
+  })
+
+  it('컷신이 렌즈를 잠시 돌렸다 놓을 때도 앉는다', () => {
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.mode = 'first'
+    for (let i = 0; i < 60; i++) cameraSystem.update(1 / 60)
+    cameraSystem.free = { x: 10, z: 4 }
+    cameraSystem.update(1 / 60)
+    expect(cameraSystem.drift).toBeLessThan(1e-9)
+    cameraSystem.free = null
+    cameraSystem.update(1 / 60)
+    expect(worldState.camera.position.distanceTo(eyeAt())).toBeLessThan(1e-9)
+  })
+
+  it('렌즈가 그대로면 예전처럼 감쇠로 따라간다', () => {
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.mode = 'third'
+    for (let i = 0; i < 120; i++) cameraSystem.update(1 / 60)
+    worldState.player.position.set(12, 0, 10)
+    cameraSystem.update(1 / 60)
+    expect(cameraSystem.drift).toBeGreaterThan(1)
+  })
+})
+
+// 파도타기는 몸을 포켓몬 등판 위로 0.89칸 올린다 (`SURF_MOUNT.stand`) — 눈이
+// 발 높이 기준에 남으면 등판을 기어가는 높이에서 물을 본다
+describe('타고 있으면 1인칭 눈도 그만큼 든다', () => {
+  afterEach(() => {
+    worldState.camera.mode = 'third'
+    cameraSystem.mountLift = 0
+  })
+
+  it('몸이 든 만큼 눈이 오른다', () => {
+    worldState.player.position.set(10, 0, 10)
+    worldState.camera.mode = 'first'
+    cameraSystem.update(1 / 60)
+    cameraSystem.snap()
+    cameraSystem.mountLift = 0.89
+    cameraSystem.update(1 / 60)
+    expect(worldState.camera.position.distanceTo(eyeAt(0.89))).toBeLessThan(1e-9)
   })
 })

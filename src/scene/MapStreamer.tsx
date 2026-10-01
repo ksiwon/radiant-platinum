@@ -9,7 +9,7 @@
 // 바꾼다 — args를 바꾸면 InstancedMesh가 통째로 다시 만들어진다.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight } from 'three'
+import { BackSide, Color, DirectionalLight, Fog, Mesh, PointLight, Vector3 } from 'three'
 import { activeZone } from '../engine/map/zone'
 import { MapGrid } from '../engine/map/grid'
 import {
@@ -133,14 +133,15 @@ import { ObjectProps } from './ObjectProps'
 import { NpcModels } from './NpcModels'
 import { FieldWeather } from './FieldWeather'
 import { Ledges } from './Ledges'
-import { fieldWeatherKind, weatherFogProfile } from './weatherVisual'
-import { enterMapWeather } from '../engine/world/overworldWeather'
+import { fieldWeatherKind, weatherFogProfile, type FieldWeatherKind } from './weatherVisual'
+import { enterMapWeather, overworldWeather } from '../engine/world/overworldWeather'
 import { SYSTEM_FLAG } from '../engine/script/commands'
 import { DoorAnimations } from './DoorAnimations'
 import { useDoorVisualStore } from './doorVisualStore'
 import { useSlopeAnimStore } from './slopeAnimStore'
 import { InteractionPrompt } from './InteractionPrompt'
-import type { NpcActor } from '../engine/actor/npcs'
+import { npcActors, type NpcActor } from '../engine/actor/npcs'
+import { PROP_KIND_BY_GFX } from '../import/platinum/fldeffProps'
 import {
   BACK_DIR,
   CHAR_KEY_COLOR,
@@ -220,6 +221,94 @@ function currentLook(): TimeLook {
 /** 그림자 절두체 반경(타일). 렌더 창(±80)보다 좁다 — 가까운 것만 그림자를 진다 */
 const SHADOW_SPAN = 30
 
+/**
+ * 그림자 맵 한 텍셀이 덮는 폭(타일) — ±30칸을 2048로 나눈 **0.0293칸**.
+ *
+ * ⚠️ **절두체를 주인공 실수 좌표로 옮기면 그림자 가장자리가 지글거린다.** 걷기
+ * 4.5칸/s면 한 프레임이 0.075칸이라 매 프레임 래스터 격자가 텍셀 몇 분의 일씩
+ * 어긋나고, 서 있는 나무와 집의 그림자 윤곽이 계단처럼 기어가며 반짝인다
+ * (shadow swimming). PCF로도 다 안 가려진다. 그래서 절두체를 **빛 공간에서
+ * 이 폭의 배수로만** 옮긴다
+ */
+const SHADOW_TEXEL = (2 * SHADOW_SPAN) / SHADOW_MAP
+
+/**
+ * 해 쪽 정규 기저. **그림자 카메라가 `lookAt`으로 세우는 축과 같다** — 앞이
+ * `position − target`(= `SUN_DIR`), 오른쪽이 `up × 앞`, 위가 `앞 × 오른쪽`이다
+ * (three `Matrix4.lookAt`, 카메라 `up`은 기본값 +Y). 축이 어긋나면 배수로 옮겨도
+ * 텍셀 격자에 안 맞는다
+ */
+const SUN_AXIS = new Vector3(...SUN_DIR).normalize()
+const SUN_RIGHT = new Vector3(0, 1, 0).cross(SUN_AXIS).normalize()
+const SUN_UP = new Vector3().crossVectors(SUN_AXIS, SUN_RIGHT)
+const shadowAt = new Vector3()
+
+/**
+ * 주인공 자리를 **그림자 텍셀 격자에 맞춘** 절두체 한가운데.
+ *
+ * 빛 공간의 좌우·위아래만 내림하고 깊이 축은 그대로 둔다 — 깊이는 래스터 격자와
+ * 상관이 없다. 절두체는 여전히 주인공에게서 한 텍셀 안이다
+ */
+function shadowCenter(x: number, y: number, z: number, out: Vector3): Vector3 {
+  const a = Math.floor((x * SUN_RIGHT.x + y * SUN_RIGHT.y + z * SUN_RIGHT.z) / SHADOW_TEXEL) * SHADOW_TEXEL
+  const b = Math.floor((x * SUN_UP.x + y * SUN_UP.y + z * SUN_UP.z) / SHADOW_TEXEL) * SHADOW_TEXEL
+  const c = x * SUN_AXIS.x + y * SUN_AXIS.y + z * SUN_AXIS.z
+  return out.copy(SUN_RIGHT).multiplyScalar(a).addScaledVector(SUN_UP, b).addScaledVector(SUN_AXIS, c)
+}
+
+/** 굴·실내에서 화면에 걸리는 날씨 — 이 셋만 실내 안개를 바꾼다 (`caveFog`) */
+const CAVE_WEATHER: ReadonlySet<FieldWeatherKind> = new Set<FieldWeatherKind>(['fog', 'deepFog', 'dark'])
+
+/**
+ * **어둠 날씨의 시야 원**(타일) — 주인공 너머로 잰 안개 거리.
+ *
+ * 원작은 안개가 아니라 **원형 창**이다 (`ov5_021DB04C`): 화면 (128, 84)를 가운데로
+ * 반지름 256px에서 **32px**로 30프레임에 걸쳐 조이고(`ov5_021DB6E0`), 그 밖을 BG2의
+ * 어둠이 덮는다. 필드 한 칸이 16px이라 **두 칸**이다 — 그 안은 또렷하므로 `near`가 2다.
+ *
+ * ⚠️ **`far` 4는 우리 값이다.** 원작 창은 칼같이 끊기는데, 안개는 시선 깊이로
+ * 걸리는 띠라 2에서 끊으면 비스듬히 보는 3인칭에서 발치 반쪽이 잘린다. 두 칸에
+ * 걸쳐 녹인다
+ */
+const DARK_NEAR = 2
+const DARK_FAR = 4
+
+/** 날씨가 걷힐 때 원작 창이 다시 벌어지는 시간(초) — 30프레임 (`ov5_021DB6E0`의 마지막 인자) */
+const CAVE_WEATHER_FADE = 30 / 60
+
+/**
+ * **BDSP 맵에 없는 소품 종류** (`ObjectProps`) — 눈덩이(종류 35)와 로토무 방 벽(종류 38).
+ *
+ * BDSP가 그림을 쥐면 `ObjectProps`를 통째로 내렸는데, 그러면 BDSP에 없는 것까지 빠진다 —
+ * 선녀시티 체육관(`C09GYM0101`)의 눈덩이 19개가 **보이지 않는 벽**이 되어 미는 퍼즐을
+ * 눈 감고 풀어야 했다. 실측(glb 정점 · 배치 칸 한가운데에서 가장 가까운 조각):
+ *
+ * | 종류 | BDSP에 있나 |
+ * | --- | --- |
+ * | 간판 여섯(91~96) | 바깥 189곳 중 **179곳**이 1.2칸 안에 `SignBoard`·`Guide`·`Post` · 던전 D03R0101·D31도 0.2~0.4칸 |
+ * | 책(183) | 방 넷 다 0.29칸에 `Book_03` |
+ * | 사천왕 방문(209) | 방 넷 다 0.04~0.10칸에 `DoorInner` |
+ * | 눈덩이(118) | 체육관 방에 없다 — 가장 가까운 것이 계단(`OutStair`) 0.64칸 |
+ * | 로토무 방 벽(262) | 없다 — 가장 가까운 것이 방 벽(`ComWall_05`) 1.12칸 |
+ *
+ * 그래서 **이 둘만 있는 맵**에서는 BDSP 위에도 세운다. BDSP가 그리는 종류와 한 맵에 섞인
+ * 곳은 없다(눈덩이 19개는 다 `C09GYM0101`, 벽은 `C04R0201` 하나다) — 섞이면 `ObjectProps`가
+ * 종류를 골라 세워야 한다. 그 전에는 간판이 두 겹이 되므로 통째로 내린다
+ */
+const PROPS_BDSP_LACKS: ReadonlySet<number> = new Set([35, 38])
+
+/** 이 맵의 소품이 **전부** BDSP에 없는 종류인가. 소품이 없으면 false다 — 세울 것이 없다 */
+function propsOverBdsp(list: readonly NpcActor[]): boolean {
+  let any = false
+  for (const actor of list) {
+    const kind = PROP_KIND_BY_GFX.get(actor.gfx)
+    if (kind === undefined) continue
+    if (!PROPS_BDSP_LACKS.has(kind)) return false
+    any = true
+  }
+  return any
+}
+
 interface Props {
   initial: MapGrid
   spawn: { x: number; z: number; map: number }
@@ -289,6 +378,16 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   const { near: fieldsNear } = useBdspFields(outdoor)
   /** BDSP가 그림을 쥐는가 — 방이나 던전이 섰거나, 바깥이고 둘레에 지역이 걸린다 */
   const bdspDraws = room !== null || dungeon !== null || (outdoor && fieldsNear.length > 0)
+  /**
+   * 이 맵의 소품이 BDSP 위에도 서야 하는가 (`PROPS_BDSP_LACKS`). 사람 목록이 **이 맵의 것이
+   * 된 뒤에** 한 번 잰다 — 맵을 옮긴 직후에는 앞 맵 사람들이 남아 있다 (`npcActors.mapId`)
+   */
+  const [lacking, setLacking] = useState<{ map: number, over: boolean } | null>(null)
+  useFrame(() => {
+    if (npcActors.mapId !== mapId || lacking?.map === mapId) return
+    setLacking({ map: mapId, over: propsOverBdsp(npcActors.list) })
+  })
+  const propsShown = !bdspDraws || (lacking?.map === mapId && lacking.over)
 
   /** 맵 헤더 id → 표시용 지역명. 집 내부는 그 마을 이름을 그대로 쓴다 */
   /** 이 맵의 텍스처 묶음. 영역 표가 아직 없으면 0번으로 뜬다 */
@@ -780,7 +879,9 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
   }, [mapId])
 
   // 시점은 설정에 있고 카메라는 프레임 상태를 본다. 그 사이를 여기서 잇는다 —
-  // 카메라 시스템이 zustand를 구독하면 프레임마다 스토어를 읽게 된다
+  // 카메라 시스템이 zustand를 구독하면 프레임마다 스토어를 읽게 된다.
+  // 자리는 여기서 앉히지 않는다 — 렌즈가 갈리는 프레임에 카메라가 스스로 앉는다
+  // (`actor/camera`의 `lastLensFirst`). 컷신이 렌즈를 잠시 돌렸다 놓을 때도 같은 길이다
   const viewMode = useOptionsStore((s) => s.view)
   useEffect(() => {
     const first = viewMode === 1
@@ -818,13 +919,24 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
    * 맑음이 된다 (`field_map_change.c`). 이게 없으면 안개제거를 써도 화면이
    * 그대로라 그 비전기술이 아무 일도 안 하는 기술이 된다
    */
-  const weather = useMemo(() => {
+  const entered = useMemo(() => {
     const flags = fieldScripts.vars
-    return fieldWeatherKind(enterMapWeather(mapById(mapId)?.weather ?? 0, {
+    return enterMapWeather(mapById(mapId)?.weather ?? 0, {
       flash: flags.checkFlag(SYSTEM_FLAG.flashActive),
       defog: flags.checkFlag(SYSTEM_FLAG.defogActive),
-    }))
+    })
   }, [mapId])
+  /**
+   * 맵 **안에서** 바뀐 날씨. 다른 맵에서 적힌 것이면 안 쓰고 들어설 때 값(`entered`)을 쓴다.
+   *
+   * ⚠️ **들어설 때만 읽으면 플래시를 써도 굴이 그대로 어둡다.** 원작 기술 스크립트가
+   * 그 자리에서 날씨를 맑게 되돌리는데(`FieldMoves_UseFlashFromMenu`의 `ScrCmd_0C3` ·
+   * 안개제거의 `ScrCmd_0C4`), 화면은 다음 맵에 들어설 때까지 몰랐다. 날씨 값은
+   * `overworldWeather`에 있으므로 프레임마다 견준다
+   */
+  const [liveWeather, setLiveWeather] = useState<{ map: number, code: number } | null>(null)
+  const weatherCode = liveWeather !== null && liveWeather.map === mapId ? liveWeather.code : entered
+  const weather = fieldWeatherKind(weatherCode)
 
   const [look, setLook] = useState<TimeLook>(() => currentLook())
   /**
@@ -843,20 +955,70 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     const next = currentLook()
     // 색 하나만 비교하면 된다. 같은 시간대 안에서는 값이 그대로다
     if (next.fog !== look.fog || next.sun !== look.sun) setLook(next)
+    // 값 하나 견주기라 싸다. 바뀐 프레임에만 부른다
+    if (overworldWeather.value !== weatherCode) setLiveWeather({ map: mapId, code: overworldWeather.value })
   })
-  const sky = useMemo(() => makeSkyTexture(look), [look])
+  /** 날씨가 안개·하늘을 물들이는 몫. 안개(아래 effect)와 하늘 돔이 **같은 값**을 쓴다 */
+  const atmosphere = useMemo(() => weatherFogProfile(weather), [weather])
+  /**
+   * ⚠️ **하늘도 날씨를 탄다.** 안개만 물들이면 회청색 빗안개에 묻힌 땅 위로 맑은
+   * 파랑 그라디언트가 떠서 먼 지형과 하늘 사이에 밝은 금이 선다 — 1인칭은 하늘이
+   * 화면 절반이라 더 눈에 띈다 (`fx/sky`의 `skyStops`)
+   */
+  const sky = useMemo(() => makeSkyTexture(look, atmosphere), [look, atmosphere])
+  // 시간대·날씨가 바뀔 때마다 새 캔버스 텍스처가 서므로 지난 것은 놓는다
+  useEffect(() => () => sky?.dispose(), [sky])
 
   // 안개와 배경색도 시간대를 탄다. `Stage`가 만들어 둔 것을 여기서 밀어 준다 —
   // 밤에 낮 안개가 남으면 먼 지형만 훤하다
   const scene = useThree((s) => s.scene)
+  /**
+   * **굴·실내에 걸린 날씨 안개** — 동굴과 탑의 안개 · 깊은 안개 · 어둠 (PARITY §8.3).
+   *
+   * ⚠️ **그전에는 야외에서만 날씨를 썼다.** 실내는 늘 24~64였고, 그래서 어둠 날씨인
+   * 미혹의 동굴(맵 284 — 어둠 맵은 이 하나다)이 플래시 없이도 보통 굴과 같았고 안개
+   * 낀 굴에서 안개제거를 써도 달라지는 것이 없었다. 비전기술 둘이 아무 일도 안 했다.
+   *
+   * ⚠️ **거리는 카메라가 아니라 주인공 너머로 잰다.** 실내 3인칭 눈은 주인공에서
+   * 6.4~8.9칸이라, 실내 값(24)에 날씨 배율(깊은 안개 0.15)을 그냥 곱하면 3.6칸에서
+   * 안개가 시작돼 **주인공부터 묻힌다.** 그래서 「눈에서 주인공까지」에 날씨 거리를
+   * 얹는다 — 1인칭이면 그 몫이 0이라 눈에서 바로 잰다. 눈 자리가 프레임마다
+   * 움직이므로 `useFrame`이 쓴다.
+   *
+   * `mix`는 0~1이다 — 맵 안에서 걷히면(플래시 · 안개제거) 원작 창처럼 30프레임에
+   * 걸쳐 풀린다. 맵에 들어설 때는 덮개 밑이라 바로 건다
+   */
+  const caveFog = useRef<{
+    near: number, far: number, color: Color, background: Color, want: number, mix: number, map: number,
+  } | null>(null)
   useEffect(() => {
     const fog = scene.fog
-    const atmosphere = weatherFogProfile(weather)
     const fogColor = new Color(outdoors ? look.fog : INDOOR_VOID)
     const background = new Color(outdoors ? look.stops[0]![1] : INDOOR_VOID)
     if (outdoors) {
       fogColor.lerp(new Color(atmosphere.tint), atmosphere.mix)
       background.lerp(fogColor, atmosphere.mix * 0.42)
+    }
+    // 굴·실내의 날씨 안개는 셋만 건다 — 실내에 걸린 비 같은 것은 안 그린다.
+    // 깨어진 세계는 제 안개가 따로다
+    const indoorWeather = !outdoors && !distortion
+    const prev = caveFog.current
+    if (indoorWeather && CAVE_WEATHER.has(weather)) {
+      const color = new Color(INDOOR_VOID).lerp(new Color(atmosphere.tint), atmosphere.mix)
+      const dark = weather === 'dark'
+      caveFog.current = {
+        near: dark ? DARK_NEAR : INDOOR_FOG_NEAR * atmosphere.nearScale,
+        far: dark ? DARK_FAR : INDOOR_FOG_FAR * atmosphere.farScale,
+        color,
+        background: new Color(INDOOR_VOID).lerp(color, atmosphere.mix * 0.42),
+        want: 1,
+        mix: prev !== null && prev.map === mapId ? prev.mix : 1,
+        map: mapId,
+      }
+    } else if (prev !== null) {
+      // 같은 맵에서 걷힌 것이면 풀리는 동안 남겨 둔다. 맵이 바뀌었으면 버린다
+      if (indoorWeather && prev.map === mapId) prev.want = 0
+      else caveFog.current = null
     }
     // 실내·동굴은 시간대를 안 탄다. 창문 하나 없는 방이 밖에 따라 어두워지면
     // 그게 더 이상하고, 무엇보다 **맵 밖이 안 보여야 한다**
@@ -876,7 +1038,25 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (scene.background instanceof Color) {
       scene.background.copy(background)
     }
-  }, [scene, look, outdoors, distortion, weather])
+  }, [scene, look, outdoors, distortion, weather, atmosphere, mapId])
+
+  // 굴·실내 날씨 안개를 눈 자리에 맞춰 민다 (`caveFog`). 위 effect가 둔 실내 값 위에 덮는다 —
+  // effect는 프레임 사이에 돌고 이것은 그리기 직전에 돌므로 실내 값이 화면에 한 장도 안 나간다
+  useFrame((_, dt) => {
+    const cave = caveFog.current
+    const fog = scene.fog
+    if (cave === null || !(fog instanceof Fog)) return
+    const step = dt / CAVE_WEATHER_FADE
+    cave.mix = cave.want > cave.mix ? Math.min(cave.want, cave.mix + step) : Math.max(cave.want, cave.mix - step)
+    const eye = worldState.camera.position.distanceTo(worldState.player.position)
+    const k = cave.mix
+    fog.near = INDOOR_FOG_NEAR + (eye + cave.near - INDOOR_FOG_NEAR) * k
+    fog.far = INDOOR_FOG_FAR + (eye + cave.far - INDOOR_FOG_FAR) * k
+    fog.color.set(INDOOR_VOID).lerp(cave.color, k)
+    if (scene.background instanceof Color) scene.background.set(INDOOR_VOID).lerp(cave.background, k)
+    // 다 풀렸으면 놓는다 — 그 뒤는 위 effect가 둔 실내 값 그대로다
+    if (cave.want === 0 && k === 0) caveFog.current = null
+  })
 
   /**
    * 그림 번호 → BDSP 갈래. 추출기가 **구워 낸 것만** 담아 준다
@@ -968,11 +1148,13 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
     if (l !== layer) setLayer(l)
 
     // 그림자 절두체를 플레이어 위로 옮긴다. 원점에 고정해 두면 마을을 벗어나는
-    // 순간 그림자가 통째로 사라진다 — 신오가 960타일이라 한 판에 안 들어온다
+    // 순간 그림자가 통째로 사라진다 — 신오가 960타일이라 한 판에 안 들어온다.
+    // 옮기는 폭은 그림자 텍셀의 배수다 (`shadowCenter`)
     const sun = sunRef.current
     if (sun) {
-      sun.position.set(p.x + SUN_DIR[0], p.y + SUN_DIR[1], p.z + SUN_DIR[2])
-      sun.target.position.set(p.x, p.y, p.z)
+      const c = shadowCenter(p.x, p.y, p.z, shadowAt)
+      sun.position.set(c.x + SUN_DIR[0], c.y + SUN_DIR[1], c.z + SUN_DIR[2])
+      sun.target.position.copy(c)
       sun.target.updateMatrixWorld()
     }
 
@@ -1253,9 +1435,11 @@ export function MapStreamer({ initial, spawn, locationNames }: Props) {
       {/*
         간판·눈덩이·책·방문 (PARITY §1.27). 배치표에 있는데 원작에 판때기가
         없어서 **아무것도 안 서던** 열 종이다 — 원작에서 3D 오브젝트라 같은
-        아카이브(`fldeff.narc`)에서 온다
+        아카이브(`fldeff.narc`)에서 온다.
+
+        BDSP가 그리는 맵에서는 BDSP에 없는 종류만 있을 때 선다 (`PROPS_BDSP_LACKS`)
       */}
-      {!bdspDraws && <ObjectProps grid={grid} layer={layer} mapId={mapId} />}
+      {propsShown && <ObjectProps grid={grid} layer={layer} mapId={mapId} />}
       <FieldWeather kind={weather} />
 
       {/*

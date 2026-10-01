@@ -16,7 +16,7 @@ import { objectFxTick } from '../engine/actor/objectFx'
 import { quakeOffset } from '../engine/world/fieldQuake'
 import { updateLocomotion } from '../engine/actor/locomotion'
 import { restorePose } from '../engine/actor/clipGait'
-import { cameraSystem } from '../engine/actor/camera'
+import { cameraSystem, firstPersonView } from '../engine/actor/camera'
 import { warpSystem } from '../engine/map/world'
 import { fieldScripts, scriptStepSystem, scriptSystem } from '../engine/script/field'
 import { encounterSystem } from '../engine/battle/encounterSystem'
@@ -270,8 +270,12 @@ export function EngineDriver({ bloom: useBloom = true }: { bloom?: boolean }) {
       //
       // ⚠️ **그룹째 끄면 타고 있는 것까지 사라진다** (FIRST_PERSON §9.2) —
       // 자전거·파도타기·공중날기는 이 그룹의 자식이고 낚싯대·물뿌리개는 손
-      // 뼈의 자식이다. 그래서 **살덩이 조각만** 끄고 뼈와 나머지는 켜 둔다
-      const first = worldState.camera.mode === 'first'
+      // 뼈의 자식이다. 그래서 **살덩이 조각만** 화면에서 지우고 뼈와 나머지는
+      // 켜 둔다. 조각도 켜진 채라 그림자는 진다 (`playerVisibility`)
+      //
+      // ⚠️ **설정이 아니라 지금 렌즈를 본다** (`firstPersonView`) — 스크립트가
+      // 카메라를 쥔 동안은 1인칭이어도 3인칭으로 비추므로 몸이 있어야 한다
+      const first = firstPersonView()
       // 모델이 아직 안 왔을 때의 폴백(`GreyBox`)만 그룹째 끈다
       // 스크립트가 숨긴 주인공은 통째로 끈다 (`worldState.player.hidden` · 배에 오른 뒤)
       sceneRefs.player.visible = !worldState.player.hidden && (showPlayerSkin(sceneRefs.playerSkin, first) || !first)

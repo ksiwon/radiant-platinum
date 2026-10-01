@@ -22,6 +22,7 @@ import { surfaceHeading, surfaceVector } from './distortionSurface'
 import { mapFeatureBridge } from '../world/mapFeatures'
 import { DIR, DIR_STEP } from '../script/movement'
 import { cutInFrame } from '../battle/encounterCutIn'
+import { scriptCameraActive } from './camera'
 
 /**
  * 걷기·달리기 속도 (타일/초).
@@ -262,9 +263,46 @@ function edgeBlocked(x0: number, z0: number, x1: number, z1: number): boolean {
   return edgeCrossBlocked((tx, tz) => grid.behavior(tx, tz), x0, z0, x1, z1, RADIUS)
 }
 
+/**
+ * 1인칭이 **마지막으로 몸에 준 얼굴**. 1인칭이 아니면 `null`이다.
+ *
+ * 1인칭은 시선이 몸을 돌린다(아래 `facingFromYaw`). 그런데 몸을 돌리는 쪽이
+ * 시선 말고도 있다 — 워프 도착(`ScrCmd_Warp`의 방향) · 문을 나서는 얼굴 · 스크립트의
+ * 돌려세우기 · 불러오기. 그 값이 다음 스텝에 시선으로 **도로 덮이면** 남쪽을 보던
+ * 사람이 V를 누르자마자 북쪽(yaw 0)을 보고, 집에서 나오자마자 방금 나온 문을 보며
+ * W를 누르면 그 문으로 되돌아 들어간다.
+ *
+ * 그래서 몸 쪽이 바뀐 것을 **여기 적어 둔 값과 견줘** 알아챈다 — 워프 자리마다
+ * 손잡이를 걸지 않아도 바깥에서 얼굴을 바꾼 것은 다 잡힌다
+ */
+let lookFacing: number | null = null
+
+/**
+ * 1인칭 시선을 몸이 보는 쪽에서 **다시 심는다**. 심었으면 true.
+ *
+ * 1인칭에 막 들어왔거나 · 바깥에서 얼굴이 바뀌었거나 · 스크립트가 카메라를 쥔
+ * 동안이면(`scriptCameraActive` — 그동안은 3인칭 렌즈라 마우스가 돌릴 시선이
+ * 없다) yaw를 `facingFromYaw`의 역으로 맞추고 고개를 바로 든다
+ */
+function seatLook(facing: number): boolean {
+  const cam = worldState.camera
+  if (cam.mode !== 'first') {
+    lookFacing = null
+    return false
+  }
+  if (lookFacing !== null && facing === lookFacing && !scriptCameraActive()) return false
+  cam.yaw = Math.PI - facing
+  cam.pitch = 0
+  lookFacing = facing
+  return true
+}
+
 export const playerSystem = {
   fixedUpdate(dt: number) {
     const p = worldState.player
+    // 이동 기준(`pushDirection`)이 yaw를 읽기 **전에** 심는다 — 들어온 첫 스텝부터
+    // 누른 쪽이 보는 쪽이어야 한다
+    const seated = seatLook(p.facing)
     // 부딪히는 걸음은 **이 프레임의 사건**이다 (`actor/footstep`). 아래 어느
     // 갈래로 빠져나가도 낡은 값이 남지 않게 여기서 먼저 비운다 — 타거나 뛰는
     // 동안은 조작이 아예 안 먹으므로 그 갈래들은 −1로 나가는 것이 맞다
@@ -610,7 +648,10 @@ export const playerSystem = {
     // 말을 걸 때(`tileInFront`) 눈에 보이는 사람에게 걸린다. 3인칭은 원작대로
     // 걸어간 쪽을 본다
     if (worldState.camera.mode === 'first') {
-      p.facing = facingFromYaw(worldState.camera.yaw)
+      // 방금 얼굴에서 시선을 심었으면 얼굴은 그대로 둔다 — `π − (π − f)`는 부동소수로
+      // f와 한 끝이 다를 수 있다
+      if (!seated) p.facing = facingFromYaw(worldState.camera.yaw)
+      lookFacing = p.facing
     } else if (p.velocity.lengthSq() > 0.01) {
       // yaw는 **판 위의 로컬 좌표**로 둔다 — 세계 속도를 판의 기저로 되돌리면
       // 벽에서도 천장에서도 같은 식이 된다 (`surfaceHeading`)

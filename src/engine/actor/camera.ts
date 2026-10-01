@@ -346,6 +346,36 @@ let placeReady = false
  */
 export const cameraDolly = { warp: 1 }
 
+/**
+ * **스크립트나 연출이 카메라를 쥐고 있는가** — 시점 이동(`AddFreeCamera`) ·
+ * 조우 컷인(전설 · 환상의 공전까지) · 빙글 워프의 당기기.
+ *
+ * 셋 다 카메라를 **주인공 밖에서 본 자리**로 옮기는 연출이라 1인칭 눈에는 걸 데가
+ * 없다. 그동안은 1인칭이어도 3인칭 렌즈로 본다 (`firstPersonView`)
+ */
+export function scriptCameraActive(): boolean {
+  return cameraSystem.free !== null || cutInFrame.now !== null || cameraDolly.warp !== 1
+}
+
+/**
+ * **지금 화면이 1인칭 렌즈로 그려지는가.**
+ *
+ * ⚠️ **`worldState.camera.mode`와 다르다.** 그쪽은 설정이 고른 시점이고 조작(마우스 ·
+ * 이동 기준)도 그쪽을 따른다. 이것은 **눈이 실제로 어디 있나**다 — 스크립트가
+ * 카메라를 쥐는 동안(`scriptCameraActive`)은 설정이 1인칭이어도 3인칭 렌즈다.
+ * 설정 값을 바꿔 버리면 컷신이 끝나도 1인칭으로 안 돌아온다.
+ *
+ * 눈이 어디 있는지에 따라 갈리는 것은 **전부 이것을 본다** — 몸을 지우는 것
+ * (`scene/EngineDriver`) · 방 천장 · 앞을 가리는 것 걷기. 하나라도 설정 값을 보면
+ * 컷신 동안 3인칭 카메라가 천장에 막히거나 머리 없는 몸을 비춘다
+ */
+export function firstPersonView(): boolean {
+  return worldState.camera.mode === 'first' && !scriptCameraActive()
+}
+
+/** 지난 프레임의 렌즈. 갈리는 프레임에 자리를 앉힌다 (`update`) */
+let lastLensFirst: boolean | null = null
+
 export const cameraSystem = {
   /**
    * 지금 화면의 **화각(도)**. `EngineDriver`가 렌더 직전에 읽는다.
@@ -376,11 +406,23 @@ export const cameraSystem = {
    * 우리는 따라갈 점만 갈아 끼운다 — 세울 객체가 없으니 그편이 짧다.
    * `RestoreCamera`가 null로 되돌린다.
    *
-   * ⚠️ **1인칭에는 안 먹인다.** 1인칭 눈은 주인공 머리에 붙어 있고 시선을
-   * 마우스가 정하는데, 그 눈을 딴 데로 옮기면 컷신 동안 제 몸이 안 보이는
-   * 자리에서 마우스만 도는 상태가 된다. 컷신은 3인칭 것이다
+   * ⚠️ **1인칭이어도 먹는다 — 그동안은 3인칭 렌즈로 본다** (`firstPersonView`).
+   * 1인칭 눈을 그 자리로 옮기면 제 몸이 안 보이는 자리에서 마우스만 돌고, 눈을
+   * 그대로 두면 사건이 화면 밖에서 벌어진다. 컷신은 3인칭 것이라 렌즈만 잠시
+   * 바꾸고 설정(`worldState.camera.mode`)은 안 건드린다
    */
   free: null as { x: number, z: number } | null,
+
+  /**
+   * 타고 있는 것이 몸을 **들어 올린 높이** (타일). 1인칭 눈이 그만큼 같이 오른다.
+   *
+   * 파도타기는 몸을 포켓몬 등판 꼭대기로 올리는데(`SURF_MOUNT.stand` ≈ 0.89칸,
+   * `scene/FieldActionEffects`) 눈이 발 높이 기준 1.38에 남으면 등판 바로 위를
+   * 기어가는 높이에서 물을 본다. `FieldActionEffects`가 몸과 **같이 매끈해진 값**을
+   * 프레임마다 적는다 — 타고 내릴 때 눈도 몸과 같이 오르내린다. 새에 실려 가는
+   * 동안은 0이다(그 높이는 몸이 따로 든다)
+   */
+  mountLift: 0,
 
   /**
    * 지금 맵의 방들. 씬이 지형을 세울 때마다 넣어 준다 (`scene/ChunkModels`).
@@ -412,10 +454,25 @@ export const cameraSystem = {
   update(delta: number) {
     const cam = worldState.camera
     const at = cameraSystem.free
-    const p = at === null || cam.mode === 'first'
+    // 설정이 아니라 **지금 렌즈**다 — 스크립트가 카메라를 쥐면 1인칭도 3인칭으로 본다
+    const first = firstPersonView()
+    const p = at === null || first
       ? worldState.player.position
       : free.set(at.x, worldState.player.position.y, at.z)
-    const first = cam.mode === 'first'
+    /**
+     * ⚠️ **렌즈가 갈리는 프레임에는 미끄러지지 않고 앉는다.**
+     *
+     * 보이는 것은 같은 프레임에 뒤집힌다 — 1인칭이 되는 순간 방 천장과 남쪽 벽이
+     * 켜지고(`scene/BdspRoom`) 몸이 꺼지며, 3인칭이 되는 순간 몸이 켜진다
+     * (`scene/EngineDriver`). 그런데 자리가 감쇠로 따라가면 3인칭 → 1인칭은 방 위
+     * 6.36칸에서 눈까지 내려오는 0.2초 동안 벽 뒷면과 천장 윗면이 화면을 덮고,
+     * 1인칭 → 3인칭은 켜진 머리 속(얼굴 안쪽)을 몇 프레임 본다.
+     *
+     * V · 휠로 시점을 바꿀 때도, 컷신이 렌즈를 잠시 3인칭으로 돌렸다 놓을 때도
+     * 여기서 같이 잡힌다 — 갈리는 것을 **렌즈**로 보기 때문이다
+     */
+    if (lastLensFirst !== null && lastLensFirst !== first) placeReady = false
+    lastLensFirst = first
     const frame = distortionBridge.frame?.() ?? null
     // 1인칭은 눈이 사람 머리에 붙어 있다 — 8도로 보면 코앞만 보인다
     const inDistortion = !first && distortionBridge.inWorld?.() === true
@@ -434,9 +491,10 @@ export const cameraSystem = {
       const fz = -Math.cos(cam.yaw) * flat
       const fy = Math.sin(cam.pitch)
       // 눈은 수평으로만 앞으로 내민다. 위아래까지 따라가면 고개를 들 때 눈이
-      // 뒤통수 밖으로 나가 제 모자가 화면에 걸린다
+      // 뒤통수 밖으로 나가 제 모자가 화면에 걸린다.
+      // 타고 있으면 몸이 든 만큼 눈도 든다 (`mountLift`)
       tilted(
-        Math.sin(cam.yaw) * EYE_FORWARD, EYE_HEIGHT,
+        Math.sin(cam.yaw) * EYE_FORWARD, EYE_HEIGHT + cameraSystem.mountLift,
         -Math.cos(cam.yaw) * EYE_FORWARD, offset,
       )
       goal.copy(p).add(offset)
