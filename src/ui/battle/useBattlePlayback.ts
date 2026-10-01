@@ -15,7 +15,7 @@ import type { BattleEvent } from '../../engine/battle/events'
 import type { Beat, LearnPrompt } from '../../engine/battle/playback'
 import { battleClock, watchVisibility } from '../../engine/battle/presentationClock'
 import { battlePaceScale } from '../../state/optionsStore'
-import { BeatRunner } from './beatRunner'
+import { BeatRunner, type LevelPanelShot } from './beatRunner'
 
 export { beatFrames } from './beatRunner'
 
@@ -30,8 +30,17 @@ interface Playback {
    * 이 값이 있으면 **재생기가 멈춰 있다** — `resolve()`를 불러야 다음 박자로 간다
    */
   ask: LearnPrompt | null
-  /** 물음에 답했다. 재생기를 다시 굴린다 */
-  resolve: () => void
+  /**
+   * 물음에 답했다. 재생기를 다시 굴린다. `after`는 답 뒤에 이어 찍을 박자다 —
+   * 그것까지 다 돈 뒤에 박자 목록의 다음으로 간다 (`BeatRunner.resolve`)
+   */
+  resolve: (after?: readonly Beat[]) => void
+  /** 누름을 기다리고 서 있는가 (`Beat.press`). 글창의 ▼는 이때만 뜬다 */
+  waitingPress: boolean
+  /** 지금 A·Z가 무엇이든 줄이는가. 「Z 넘기기」는 이때만 뜬다 */
+  skippable: boolean
+  /** 지금 박자가 띄우는 레벨업 능력치 창. 없으면 null */
+  levelPanel: LevelPanelShot | null
   /**
    * 방금 접은 박자의 쉼 길이(ms). 체력바가 이 시간 동안 줄어든다.
    *
@@ -63,6 +72,9 @@ export function useBattlePlayback(
   const [caughtUp, setCaughtUp] = useState(true)
   const [holdMs, setHoldMs] = useState(0)
   const [ask, setAsk] = useState<LearnPrompt | null>(null)
+  const [waitingPress, setWaitingPress] = useState(false)
+  const [skippable, setSkippable] = useState(false)
+  const [levelPanel, setLevelPanel] = useState<LevelPanelShot | null>(null)
 
   // 프레임 루프가 최신 값을 봐야 한다. 의존성으로 걸면 루프가 매번 다시 선다
   const latest = useRef({ beats, apply, cue })
@@ -76,6 +88,9 @@ export function useBattlePlayback(
     ask: setAsk,
     caughtUp: setCaughtUp,
     cue: (beat) => { latest.current.cue?.(beat) },
+    waitingPress: setWaitingPress,
+    skippable: setSkippable,
+    panel: setLevelPanel,
   })
 
   useEffect(() => {
@@ -106,11 +121,14 @@ export function useBattlePlayback(
     runner.current?.advance(latest.current.beats)
   }, [])
 
-  const resolve = useCallback(() => {
-    runner.current?.resolve()
+  const resolve = useCallback((after?: readonly Beat[]) => {
+    runner.current?.resolve(after)
   }, [])
 
   // ⚠️ **새 박자가 온 그 렌더에 벌써 「아직」이다.** 재생기는 다음 프레임에야 한 걸음 밟으므로, 상태만 보면 박자가 막 들어온
   // 한두 프레임 동안 「다 소화했다」가 남는다 — 배틀이 열리는 그 틈에 명령 메뉴가 등판 글보다 먼저 떴다(실측 300ms)
-  return { text, caughtUp: caughtUpNow(caughtUp, runner.current?.index ?? 0, beats.length), holdMs, ask, advance, resolve }
+  return {
+    text, caughtUp: caughtUpNow(caughtUp, runner.current?.index ?? 0, beats.length), holdMs, ask, advance, resolve,
+    waitingPress, skippable, levelPanel,
+  }
 }

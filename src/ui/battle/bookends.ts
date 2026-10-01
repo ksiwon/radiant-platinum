@@ -30,13 +30,25 @@ interface Bookends {
 }
 
 /**
+ * 트레이너가 서 있는 판인가 — 트레이너전과 배틀팩토리다.
+ *
+ * ⚠️ **팩토리도 트레이너전이다.** 롬의 프런티어 배틀은 `BATTLE_TYPE_TRAINER`를 단다.
+ * `kind === 'trainer'`만 보면 팩토리에서 「야생 ○○의 몸통박치기!」가 떴고, 끝 줄만
+ * 트레이너 쪽이라 시작과 끝의 결이 갈렸다
+ */
+export function hasTrainer(kind: Bookends['kind']): boolean {
+  return kind === 'trainer' || kind === 'factory'
+}
+
+/**
  * 트레이너전의 첫 줄 — 누가 걸어왔는가. 야생이면 null.
  *
  * 롬은 분류·이름을 두 칸으로 받는 줄과 이름 한 칸짜리 줄을 따로 들고 있고,
- * 트레이너가 둘이면 두 사람을 한 줄에 담는다 (`YouAreChallengedByTr1AndTr2`)
+ * 트레이너가 둘이면 두 사람을 한 줄에 담는다 (`YouAreChallengedByTr1AndTr2`).
+ * 분류가 없는 상대(배틀팩토리)는 이름 한 칸짜리 줄로 떨어진다
  */
 export function openingLine(b: Bookends): string | null {
-  if (b.kind !== 'trainer') return null
+  if (!hasTrainer(b.kind)) return null
   const [one, two] = b.foes
   if (one !== undefined && two !== undefined) {
     return romLine(b.lines, MSG.youAreChallengedByTr1AndTr2, one.cls, one.name, two.cls, two.name)
@@ -63,7 +75,7 @@ export function closingLines(b: Bookends): string[] {
   const out: (string | null)[] = []
   if (b.outcome === 'win') {
     // 시설전도 트레이너전과 같은 갈래다 — 상금 줄만 없다 (`subscript_battle_won.s`)
-    if (b.kind === 'trainer' || b.kind === 'factory') {
+    if (hasTrainer(b.kind)) {
       const [one, two] = b.foes
       out.push(one !== undefined && two !== undefined
         ? romLine(b.lines, MSG.playerBeatTr1AndTr2, one.cls, one.name, two.cls, two.name)

@@ -5,6 +5,7 @@
 // 여기는 React도 `requestAnimationFrame`도 모르고 **흐른 ms만** 받는다.
 //
 // 한 박자의 계약은 `engine/battle/playback.ts`가 정한다: **글 → 화면 → 쉼**.
+import type { Stats } from '../../data/schema'
 import type { BattleEvent } from '../../engine/battle/events'
 import type { Beat, LearnPrompt } from '../../engine/battle/playback'
 import { frameMs } from '../../engine/battle/presentationClock'
@@ -72,6 +73,25 @@ export function beatFrames(beat: Beat, scale: number): { hold: number, wait: num
   return { hold, wait: hold + read }
 }
 
+/**
+ * 레벨업 능력치 창 한 벌 — 그 마리, 오른 레벨, 오르기 전·뒤 능력치 (`Beat.levelPanel`).
+ *
+ * 원작은 레벨마다 「+오른 폭」 창 → 「새 값」 창을 띄운다
+ * (`battle_script.c`의 `SEQ_GET_EXP_LEVEL_UP_SUMMARY_PRINT_DIFF` → `…_PRINT_TRUE`).
+ * 박자는 누를 때까지 서고(`press`), 창을 그리고 넘기는 것은 화면이다 (`BattleScreen`)
+ */
+export interface LevelPanelShot {
+  key: string
+  level: number
+  before: Stats
+  after: Stats
+}
+
+/** 박자에 창이 달려 있으면 그것. 박자를 만드는 쪽(`playback`)이 레벨 줄 뒤에 단다 */
+function levelPanelOf(beat: Beat): LevelPanelShot | null {
+  return (beat as Beat & { levelPanel?: LevelPanelShot }).levelPanel ?? null
+}
+
 /** 재생기가 바깥에 알리는 것. 훅이 상태로 받고 시험은 배열로 받는다 */
 interface BeatSink {
   /** 글창에 올릴 글이 바뀌었다 */
@@ -86,6 +106,18 @@ interface BeatSink {
   caughtUp: (done: boolean) => void
   /** 박자가 곡 · 효과음 신호를 달고 있다 (`Beat.music` · `Beat.sound`) */
   cue?: (beat: Beat) => void
+  /**
+   * 누름을 기다리고 서 있는가 (`Beat.press`). 글창의 ▼는 이때만 뜬다 —
+   * 원작도 입력을 기다릴 때만 커서를 띄운다
+   */
+  waitingPress?: (on: boolean) => void
+  /**
+   * 지금 A·Z가 **무엇이든 줄이는가.** 글 읽는 시간이 남았거나 잠기지 않은 쉼이다.
+   * 연출·게이지 동안은 눌러도 아무 일이 없으므로 「Z 넘기기」를 안 띄운다
+   */
+  skippable?: (on: boolean) => void
+  /** 이 박자가 띄우는 레벨업 능력치 창 (`Beat.levelPanel`). 없으면 null */
+  panel?: (panel: LevelPanelShot | null) => void
 }
 
 /**
@@ -131,6 +163,17 @@ export class BeatRunner {
    * 남은 것은 다음 걸음으로 넘긴다
    */
   private carry = 0
+  /**
+   * 물음 뒤에 끼우는 박자 (`resolve`가 준다). 박자 목록 **밖에서** 와서, 물은 박자가
+   * 끝나면 목록의 다음 박자보다 먼저 돈다 — 기술을 잊고 배운 결과 줄이 그렇다
+   * (`SEQ_GET_EXP_ONE_TWO_POOF` 이후)
+   */
+  private extra: Beat[] = []
+  /** 답과 함께 온, 아직 안 끼운 박자. 물은 박자가 끝나는 순간 `extra`로 간다 */
+  private afterAsk: readonly Beat[] = []
+  private shownPress = false
+  private shownSkip = false
+  private shownPanel: LevelPanelShot | null = null
   private readonly slots = new MessageSlots()
 
   constructor(private readonly sink: BeatSink) {}
@@ -147,10 +190,20 @@ export class BeatRunner {
    * 컴파일) 하나에 「글 → 연출 → 게이지 → 다음 글」이 통째로 지나가면 안 된다
    */
   step(beats: readonly Beat[], stepMs: number, scale: number): void {
+    this.walk(beats, stepMs, scale)
+    this.report(this.current(beats))
+  }
+
+  /** 지금 박자. 물음 뒤에 끼운 박자가 있으면 그것이 먼저다 */
+  private current(beats: readonly Beat[]): Beat | undefined {
+    return this.extra[0] ?? beats[this.at]
+  }
+
+  private walk(beats: readonly Beat[], stepMs: number, scale: number): void {
     let budget = stepMs + this.carry
     this.carry = 0
     for (let chain = 0; chain < CHAIN_LIMIT; chain++) {
-      const beat = beats[this.at]
+      const beat = this.current(beats)
       if (!beat) { this.tellCaughtUp(true); return }
       this.tellCaughtUp(false)
 
@@ -211,9 +264,17 @@ export class BeatRunner {
         this.sink.ask(beat.ask)
         return
       }
-      if (this.answered) { this.answered = false; this.sink.ask(null) }
-
-      this.at++
+      if (this.answered) {
+        this.answered = false
+        this.sink.ask(null)
+        this.extra.push(...this.afterAsk)
+        this.afterAsk = []
+        this.at++
+      } else if (this.extra[0] === beat) {
+        this.extra.shift()
+      } else {
+        this.at++
+      }
       this.applied = false
       this.locked = false
     }
@@ -230,18 +291,34 @@ export class BeatRunner {
    * 기절이 접혔다
    */
   advance(beats: readonly Beat[]): void {
+    const beat = this.current(beats)
     this.readLeft = 0
-    const beat = beats[this.at]
-    if (beat !== undefined && holdsLocked(beat)) return
-    if (this.locked) return
-    this.holdLeft = 0
-    // 글이 이미 찍힌 뒤에만 누름으로 센다 — 앞 박자에서 누른 것이 새 등판 글을 곧장 넘기면 안 된다
-    if (beat?.press === true && this.applied) this.pressed = true
+    if (!(beat !== undefined && holdsLocked(beat)) && !this.locked) {
+      this.holdLeft = 0
+      // 글이 이미 찍힌 뒤에만 누름으로 센다 — 앞 박자에서 누른 것이 새 등판 글을 곧장 넘기면 안 된다
+      if (beat?.press === true && this.applied) this.pressed = true
+    }
+    this.report(beat)
   }
 
-  /** 물음에 답했다 */
-  resolve(): void {
+  /**
+   * 물음에 답했다. `after`는 답 뒤에 이어 찍을 박자다 — 물은 박자가 끝나면 목록의
+   * 다음 박자보다 먼저 돌고, 그것까지 다 돈 뒤에 재생이 이어진다
+   */
+  resolve(after: readonly Beat[] = []): void {
     this.answered = true
+    this.afterAsk = after
+  }
+
+  /** 누름·건너뛰기·레벨 창 셋을 바깥에 알린다. 바뀐 것만 보낸다 */
+  private report(beat: Beat | undefined): void {
+    const on = beat !== undefined && this.applied
+    const press = on && beat.press === true && !this.pressed
+    const skip = on && !press && (this.readLeft > 0 || (!this.locked && this.holdLeft > 0))
+    const panel = on ? levelPanelOf(beat) : null
+    if (press !== this.shownPress) { this.shownPress = press; this.sink.waitingPress?.(press) }
+    if (skip !== this.shownSkip) { this.shownSkip = skip; this.sink.skippable?.(skip) }
+    if (panel !== this.shownPanel) { this.shownPanel = panel; this.sink.panel?.(panel) }
   }
 
   private tellCaughtUp(now: boolean): void {

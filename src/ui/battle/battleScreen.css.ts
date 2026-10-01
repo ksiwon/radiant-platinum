@@ -6,7 +6,7 @@
 import { globalStyle, keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { vars } from '../theme/contract.css'
 import { EDGE, GAP, RADIUS, TEXT } from '../theme/scale'
-import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG, WINDOW } from '../theme/window.css'
+import { BAR_FILL, BAR_TRACK, PICKED, STATUS_TAG, WINDOW, WINDOW_SMALL } from '../theme/window.css'
 
 /**
  * 떠 있는 판의 재질 — **창 한 벌 그대로다** (DESIGN.md §3).
@@ -192,8 +192,16 @@ export const barTrack = style({
   ...BAR_TRACK,
 })
 
+/**
+ * 채운 쪽.
+ *
+ * 색(`--lit`·`--body`)은 여기서 안 정한다 — **게이지가 지금 보이는 픽셀 수**로 훅이
+ * 프레임마다 고른다 (`hpDrain`의 `shownColor` · 원작 `App_BarColor`). 목표 체력으로
+ * 고르면 바가 아직 초록 길이인데 색이 먼저 빨강이 된다. 첫 그림 전의 기본은 초록이다
+ */
 export const barFill = style({
   ...BAR_FILL,
+  vars: { '--lit': vars.hp.greenLit, '--body': vars.hp.green },
   // ⚠️ **폭은 전환하지 않는다.** 줄어드는 시간은 재생기가 정하고
   // (`playback.drainFrames` — 프레임당 한 칸이라 많이 맞을수록 오래 걸린다)
   // 그 시간을 미는 것은 공통 연출 시계다 (`ui/battle/hpDrain`). CSS 전환은
@@ -204,12 +212,36 @@ export const barFill = style({
 })
 
 /**
- * 색 셋. **경계는 `engine/battle/healthbar`가 정한다** — 비율이 아니라
- * 픽셀 수로 가른다(원작 `App_BarColor`)
+ * 경험치 줄 — 내 판에만 있다 (`HEALTHBOX_INFO_NOT_ON_ENEMY`가 상대 판에서 `EXP_GAUGE`를 뺀다).
+ *
+ * HP 줄보다 **얇다.** 원작 판도 HP 게이지 아래 한 줄짜리 띠다 — 두꺼우면 둘째 HP 줄로 읽힌다.
+ * 색은 HP와 다른 파랑이다 (`bar.exp` · `bar.expLit`)
  */
-export const barGreen = style({ vars: { '--lit': vars.hp.greenLit, '--body': vars.hp.green } })
-export const barYellow = style({ vars: { '--lit': vars.hp.yellowLit, '--body': vars.hp.yellow } })
-export const barRed = style({ vars: { '--lit': vars.hp.redLit, '--body': vars.hp.red } })
+export const expRow = style({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  marginTop: 5,
+})
+
+export const expTag = style({
+  fontSize: 9,
+  fontWeight: 800,
+  fontStyle: 'italic',
+  color: vars.ink.dim,
+})
+
+export const expTrack = style({
+  position: 'relative',
+  flex: 1,
+  height: 5,
+  ...BAR_TRACK,
+})
+
+export const expFill = style({
+  ...BAR_FILL,
+  vars: { '--lit': vars.bar.expLit, '--body': vars.bar.exp },
+})
 
 export const hpText = style({
   marginTop: 4,
@@ -274,14 +306,19 @@ export const log = style({
   fontFamily: vars.font.pixel,
 })
 
+/** 글창의 줄 높이(em)와 줄 수. 최소 높이가 이 둘의 곱이라 따로 놀 수 없다 */
+const LOG_LINE = 1.5
+const LOG_LINES = 2
+
 /** 지금 찍는 중인 글. 한 번에 한 문장만 있는다 — 원작의 박자다 */
 export const logText = style({
   whiteSpace: 'pre-line',
   fontSize: TEXT.title,
-  lineHeight: 1.5,
+  lineHeight: LOG_LINE,
   color: vars.ink.strong,
-  // 두 줄치를 비워 둔다. 문장이 짧아질 때마다 명령 칸이 위아래로 흔들리면 안 된다
-  minHeight: '2.2em',
+  // 두 줄치를 비워 둔다. 한 줄 문장(「급소에 맞았다!」)과 두 줄 문장이 번갈아 뜰 때
+  // 창이 줄었다 늘었다 하면 안 된다 — 예전 2.2em은 1.5줄 남짓이라 0.8em씩 출렁였다
+  minHeight: `${String(LOG_LINE * LOG_LINES)}em`,
 })
 
 const blink = keyframes({
@@ -603,18 +640,94 @@ export const openVeil = style({
  * 준비 중 알림.
  *
  * ⚠️ **막보다 위다.** 막이 준비가 끝날 때까지 덮고 있으므로 밑에 두면 아무것도
- * 안 보인다 — 오래 걸리는 판에서 「멈췄나」로 읽힌다
+ * 안 보인다 — 오래 걸리는 판에서 「멈췄나」로 읽힌다.
+ *
+ * ⚠️ **누름을 안 먹는다.** 화면 전체를 덮는 판이라 클릭을 받으면 그 밑의 단추가
+ * 안 눌린다 — 「필드로 돌아가기」(`loadingBack`)만 따로 받는다
  */
-export const waiting = style({
+export const loading = style({
   position: 'fixed',
   inset: 0,
   zIndex: 401,
   display: 'grid',
   placeContent: 'center',
+  justifyItems: 'center',
+  gap: GAP.base,
   padding: 12,
   fontSize: 13,
   color: vars.ink.onDark,
+  pointerEvents: 'none',
+})
+
+/** 깜빡이는 것은 글뿐이다. 단추까지 깜빡이면 눌러도 되는 것인지 헷갈린다 */
+export const loadingText = style({
   animation: `${pulse} 1.1s ease-in-out infinite`,
+})
+
+/** 배틀이 안 열릴 때 필드로 나가는 단추. 막 위에서 이것만 누름을 받는다 */
+export const loadingBack = style({
+  ...WINDOW_SMALL,
+  pointerEvents: 'auto',
+  appearance: 'none',
+  font: 'inherit',
+  fontSize: TEXT.small,
+  fontWeight: 700,
+  color: vars.ink.strong,
+  padding: `${GAP.small}px ${GAP.wide}px`,
+  cursor: 'pointer',
+})
+
+/**
+ * 명령 칸 맨 위의 물음 한 줄 — 「어느 기술을 잊게 할까?」·「배우겠는가?」.
+ *
+ * ⚠️ **떠 있는 판이 아니다.** 한때 이 자리가 준비 중 알림(`loading`)을 같이 썼다 —
+ * 화면 한가운데에 13px로 깜빡이며 떠서 로딩 중처럼 보였고, 화면 전체를 덮어
+ * 그 밑의 예·아니오와 기술 칸이 마우스로 안 눌렸다. 다른 명령 글과 같은 잉크로
+ * 칸 위에 반듯이 선다 (`askWho`와 같은 자리)
+ */
+export const waiting = style({
+  color: vars.ink.onDark,
+  font: 'inherit',
+  fontSize: 15,
+  fontWeight: 700,
+  lineHeight: 1.4,
+  whiteSpace: 'pre-line',
+  padding: '2px 6px 6px',
+  flex: '0 0 auto',
+})
+
+/**
+ * 배틀이 닫히는 검은 막 — 16프레임에 내려앉는다.
+ *
+ * 들어갈 때는 흰 막과 조우 연출이 있는데 나올 때 아무것도 없으면 한 프레임 만에
+ * 걷던 필드로 돌아간다. 원작도 끝나면 화면을 검게 내렸다가 필드를 다시 연다
+ */
+export const closeVeil = style({
+  position: 'absolute',
+  inset: 0,
+  zIndex: 50,
+  background: vars.scrim.black,
+  pointerEvents: 'none',
+  opacity: 0,
+  transition: 'opacity 267ms linear',
+})
+
+export const closeVeilOn = style({ opacity: 1 })
+
+/**
+ * 배틀의 레벨업 능력치 창 (`LevelPanel`) — 명령 칸 위, 내 체력판 옆이다.
+ *
+ * 원작은 아래 화면 대신 위 화면 오른쪽에 띄운다(`SEQ_GET_EXP_LEVEL_UP_SUMMARY_INIT`).
+ * 우리 한 화면에서는 글창을 안 덮는 오른쪽 열이 그 자리다
+ */
+export const levelPanel = style({
+  ...WINDOW_SMALL,
+  alignSelf: 'stretch',
+  boxSizing: 'border-box',
+  padding: `${GAP.small}px ${GAP.base}px`,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
 })
 
 /**

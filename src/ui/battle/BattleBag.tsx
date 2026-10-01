@@ -16,7 +16,7 @@
 // 못 쓰는 도구를 미리 잠그지 않는다. 원작도 고르게 두고, 아무 일도 안 일어나면
 // 그제서야 "효과가 없을 것 같다"를 띄우고 턴을 안 쓴다 — 우리는 대상 칸에서
 // 그것을 미리 보여 준다(`planFor`가 화면과 규칙 양쪽의 정본이다).
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   loadItemDescriptions, loadItemIcons, loadItemNames, loadItems, loadMoveNames,
   type ItemTable,
@@ -32,6 +32,7 @@ import { useSaveStore } from '../../state/saveStore'
 import { useBattleStore, type RosterEntry } from '../../state/battleStore'
 import { clampCursor, useMenuKeys, wrapCursor } from '../menu/useMenuKeys'
 import { itemIcon } from '../menu/itemIcon'
+import { withSubject } from '../korean'
 import type { BattleNames } from './messages'
 import { PartyCards, type PartyCard } from './PartyCards'
 import { romLine } from './romLine'
@@ -79,9 +80,43 @@ const BALL_IDS = new Set<number>(Object.values(Ball))
  */
 const EMBARGO_MOVE = 373
 
-const STATUS_NOUN: Record<string, string> = {
-  slp: '잠', psn: '독', tox: '맹독', brn: '화상', frz: '얼음', par: '마비',
+/**
+ * 상태가 낫는 것을 말하는 한 줄. 낱말에 「낫는다」를 붙이면 「잠 낫는다」·「얼음
+ * 낫는다」가 된다 — 상태마다 우리말로 말하는 동사가 다르다 (원작 글창도 「잠에서
+ * 깨어났다」·「얼음 상태가 나았다」처럼 상태마다 다른 줄을 쓴다)
+ */
+const STATUS_CURE: Record<string, string> = {
+  slp: '잠에서 깬다',
+  frz: '얼음이 녹는다',
+  psn: '독이 낫는다',
+  tox: '독이 낫는다',
+  brn: '화상이 낫는다',
+  par: '마비가 풀린다',
 }
+
+/**
+ * 가방이 **배틀 하나 동안** 기억하는 자리 (`BagCursor`의 배틀 몫).
+ *
+ * 원작은 배틀이 시작될 때만 지우고(`BagCursor_ResetBattle`) 그 뒤에는 갈래와 갈래마다의
+ * 자리, 마지막에 쓴 도구를 남긴다 (`bag.c`의 `BagCursor_GetBattleCategoryPosition` ·
+ * `GetLastUsedBattleItem` · `SetBattleCurrentCategory`). 가방 화면은 열 때마다 새로
+ * 서므로 컴포넌트 밖에 둔다 — 안에 두면 몬스터볼을 던질 때마다 「→로 볼 갈래 → ↓」를
+ * 처음부터 다시 해야 했다
+ */
+interface BagMemory {
+  tab: number
+  cursorByTab: number[]
+  /** 마지막에 쓴(던진) 도구와 그 갈래. 다시 열면 그 도구에 선다 */
+  lastUsed: { item: number; tab: number } | null
+}
+
+const freshMemory = (): BagMemory => ({ tab: 0, cursorByTab: [0, 0, 0, 0], lastUsed: null })
+let memory = freshMemory()
+
+// 배틀이 새로 열릴 때 지운다 — 원작도 회복 칸 첫 줄에서 시작한다
+useBattleStore.subscribe((s, prev) => {
+  if (prev.phase === 'off' && s.phase !== 'off') memory = freshMemory()
+})
 
 /** 지금 어느 단인가. 원작의 화면 전환과 같은 셋이다 */
 type Step = 'item' | 'target' | 'move'
@@ -106,6 +141,12 @@ interface Props {
   roster: Record<string, RosterEntry>
   /** 종족 이름. 별명이 없는 애를 부를 때 쓴다 */
   names: BattleNames | null
+  /**
+   * 지금 명령을 묻고 있는 마리의 키. 더블에서 둘째 자리를 묻는 중이면 그 마리다 —
+   * 배틀용 도구는 대상을 안 묻고 이 마리에게 간다 (원작은 가방을 연 전투원에게 쓴다).
+   * 없으면 나와 있는 첫 마리다
+   */
+  askKey?: string
   onThrow: (ball: BallId) => void
   onUse: (item: number, key: string, moveSlot?: number) => void
   onBack: () => void
@@ -130,10 +171,10 @@ function planSummary(plan: ItemPlan, stats: readonly string[]): string {
   const parts: string[] = []
   if (plan.revive) parts.push('되살아난다')
   if (plan.heal > 0) parts.push(`체력 ${String(plan.heal)} 회복`)
-  for (const s of plan.cure) parts.push(`${STATUS_NOUN[s] ?? s} 낫는다`)
+  for (const s of plan.cure) parts.push(STATUS_CURE[s] ?? `${s} 상태가 낫는다`)
   for (const v of plan.clear) parts.push(v === 'confusion' ? '혼란이 풀린다' : '헤롱헤롱이 풀린다')
   if (plan.mist) parts.push('능력이 안 떨어진다')
-  for (const b of plan.boosts) parts.push(`${stats[STAT_SLOT[b]] ?? b} 올라간다`)
+  for (const b of plan.boosts) parts.push(`${withSubject(stats[STAT_SLOT[b]] ?? b)} 올라간다`)
   if (plan.focusEnergy) parts.push('급소에 잘 맞는다')
   const pp = plan.pp.reduce((sum, one) => sum + one.amount, 0)
   if (pp > 0) parts.push(`PP ${String(pp)} 회복`)
@@ -141,12 +182,24 @@ function planSummary(plan: ItemPlan, stats: readonly string[]): string {
 }
 
 export function BattleBag({
-  wild, twoFoes = false, party, roster, names, onThrow, onUse, onBack, bagOverride,
+  wild, twoFoes = false, party, roster, names, askKey, onThrow, onUse, onBack, bagOverride,
 }: Props) {
   const [data, setData] = useState<Loaded | null>(null)
-  // 원작도 회복 칸에서 시작한다 (`bag.c`의 `BagCursor_SetBattleCurrentCategory`)
-  const [tab, setTab] = useState(0)
-  const [cursor, setCursor] = useState(0)
+  // 배틀 첫 가방은 회복 칸에서 시작하고(`bag.c`의 `BagCursor_SetBattleCurrentCategory`),
+  // 그 뒤에는 이 배틀에서 마지막에 선 갈래와 자리로 연다 (`memory`)
+  const [tab, setTabState] = useState(memory.tab)
+  const [cursorByTab, setCursorByTab] = useState<number[]>(() => [...memory.cursorByTab])
+  const cursor = cursorByTab[tab] ?? 0
+  const setCursor = (next: number | ((c: number) => number)): void => {
+    setCursorByTab((all) => {
+      const out = [...all]
+      out[tab] = typeof next === 'function' ? next(all[tab] ?? 0) : next
+      return out
+    })
+  }
+  const setTab = (next: number | ((t: number) => number)): void => {
+    setTabState((t) => (typeof next === 'function' ? next(t) : next))
+  }
   const [step, setStep] = useState<Step>('item')
   const [target, setTarget] = useState(0)
   const [slot, setSlot] = useState(0)
@@ -155,8 +208,13 @@ export function BattleBag({
   const plan = useBattleStore((s) => s.plan)
   const moveSlotsOf = useBattleStore((s) => s.moveSlotsOf)
   // 「금제」가 걸려 있으면 도구를 못 쓴다. 이유가 "효과가 없다"와 다르므로
-  // 화면이 따로 안다 — 규칙 자체는 `embargoBlocks` 하나뿐이다
-  const embargo = useBattleStore((s) => s.truth?.active.p1a?.volatiles.has('embargo') ?? false)
+  // 화면이 따로 안다 — 규칙 자체는 `embargoBlocks` 하나뿐이다.
+  // ⚠️ **묻고 있는 마리를 본다.** 더블 둘째 자리에서 첫 자리만 보면 금제가 엉뚱한 쪽에 걸린다
+  const embargo = useBattleStore((s) => {
+    const active = s.truth?.active
+    const mine = askKey !== undefined && active?.p1b?.key === askKey ? active.p1b : active?.p1a
+    return mine?.volatiles.has('embargo') ?? false
+  })
   // 설정의 언어. 바뀌면 글을 그 언어로 다시 받는다
   const locale = useGameLocale()
 
@@ -191,6 +249,26 @@ export function BattleBag({
   )
   const at = Math.min(cursor, Math.max(0, list.length - 1))
   const chosen = list[at]
+
+  // 마지막에 쓴 도구가 아직 이 갈래에 있으면 그 줄에 선다. 다 써서 없어졌으면
+  // 남긴 자리를 줄어든 목록에 맞춘다 (`clampCursor`)
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current || data === null) return
+    restored.current = true
+    const last = memory.lastUsed
+    const row = last !== null && last.tab === tab ? list.findIndex((one) => one.item === last.item) : -1
+    setCursor(row >= 0 ? row : clampCursor(cursor, 0, list.length))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 여는 순간 한 번만 맞춘다
+  }, [data])
+  // 움직일 때마다 남긴다 — 닫히는 길(쓰기·던지기·뒤로)이 여럿이라 닫을 때 모으면 하나를 빠뜨린다
+  useEffect(() => {
+    memory = { ...memory, tab, cursorByTab: [...cursorByTab] }
+  }, [tab, cursorByTab])
+  /** 쓴 도구를 남긴다. 다음에 가방을 열면 그 줄에 선다 */
+  const remember = (item: number): void => {
+    memory = { ...memory, lastUsed: { item, tab } }
+  }
   const item = chosen && data ? data.items.get(chosen.item) : null
   const page = Math.floor(at / PER_PAGE)
   const pages = Math.max(1, Math.ceil(list.length / PER_PAGE))
@@ -235,20 +313,30 @@ export function BattleBag({
   const commit = (i: number, moveSlot?: number): void => {
     const key = party[i]?.key
     if (chosen === undefined || key === undefined) return
+    remember(chosen.item)
     onUse(chosen.item, key, moveSlot)
+  }
+
+  /**
+   * 지금 명령을 묻고 있는 마리의 파티 칸. 더블 둘째 자리면 그 마리다 — 첫 `active`로
+   * 잡으면 오른쪽 포켓몬에게 고른 플러스파워가 왼쪽에 갔다
+   */
+  const asking = (): number => {
+    const seat = askKey !== undefined ? party.findIndex((p) => p.key === askKey) : -1
+    return seat >= 0 ? seat : party.findIndex((p) => p.active)
   }
 
   const pickItem = (): void => {
     if (chosen === undefined || item === null || !pickable) return
     if (!needsTarget(item) && embargoBlocks(item, embargo)) return
-    if (isBall) { onThrow(chosen.item as BallId); return }
-    // 배틀용·도망 도구는 대상을 안 묻는다. 나와 있는 한 마리에게 바로 간다
+    if (isBall) { remember(chosen.item); onThrow(chosen.item as BallId); return }
+    // 배틀용·도망 도구는 대상을 안 묻는다. 지금 묻고 있는 마리에게 바로 간다
     if (!needsTarget(item)) {
-      const out = party.findIndex((p) => p.active)
-      if (escapes) { onUse(chosen.item, party[out]?.key ?? '') } else if (out >= 0) commit(out)
+      const out = asking()
+      if (escapes) { remember(chosen.item); onUse(chosen.item, party[out]?.key ?? '') } else if (out >= 0) commit(out)
       return
     }
-    setTarget(Math.max(0, party.findIndex((p) => p.active)))
+    setTarget(Math.max(0, asking()))
     setStep('target')
   }
 
@@ -262,8 +350,9 @@ export function BattleBag({
     step === 'item' ? {
       up: () => { setCursor((c) => clampCursor(c, -1, list.length)) },
       down: () => { setCursor((c) => clampCursor(c, 1, list.length)) },
-      left: () => { setTab((t) => wrapCursor(t, -1, CATEGORY.length)); setCursor(0) },
-      right: () => { setTab((t) => wrapCursor(t, 1, CATEGORY.length)); setCursor(0) },
+      // 갈래를 넘기면 그 갈래에서 마지막에 섰던 줄로 간다 (`BagCursor_GetBattleCategoryPosition`)
+      left: () => { setTab((t) => wrapCursor(t, -1, CATEGORY.length)) },
+      right: () => { setTab((t) => wrapCursor(t, 1, CATEGORY.length)) },
       confirm: pickItem,
       cancel: onBack,
     } : step === 'target' ? {
@@ -354,8 +443,8 @@ export function BattleBag({
   }
 
   // ── 무엇을 쓸까 ───────────────────────────────────────────────────────────
-  /** 나와 있는 한 마리. 배틀용 도구는 대상을 안 묻고 이 마리에게 간다 */
-  const out = party.find((p) => p.active)
+  /** 지금 묻고 있는 마리. 배틀용 도구는 대상을 안 묻고 이 마리에게 간다 */
+  const out = party[asking()]
   const outName = out ? roster[out.key]?.nickname
     ?? (roster[out.key] ? names?.species[roster[out.key].species] : null) ?? null : null
   const why = !pickable
@@ -382,7 +471,7 @@ export function BattleBag({
               key={c.name}
               className={i === tab ? css.tab.on : css.tab.off}
               data-pilot={`pocket-${String(i)}`}
-              onPointerDown={() => { setTab(i); setCursor(0) }}
+              onPointerDown={() => { setTab(i) }}
             >
               {romLine(bagLines, c.line) ?? c.name}
             </button>

@@ -9,7 +9,10 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { MAX_STEP_MS } from '../../engine/battle/presentationClock'
-import { drainAt, nextDrain, type Drain } from './hpDrain'
+import { FRAME_SECONDS } from '../../engine/battle/presentationClock'
+import {
+  drainAt, nextDrain, shownColor, shownHp, slideAt, SLIDE_FRAMES, type Drain,
+} from './hpDrain'
 
 const CSS_SOURCE = new URL('./battleScreen.css.ts', import.meta.url)
 const SCREEN_SOURCE = new URL('./BattleScreen.tsx', import.meta.url)
@@ -68,6 +71,74 @@ describe('연타로 맞으면 보이던 자리에서 이어 간다', () => {
   })
 })
 
+describe('숫자와 색도 게이지가 보이는 값을 따른다 (`HealthBox_DrawCurrentHP` · `App_BarColor`)', () => {
+  /** 40/40 → 4/40. 36칸이라 36프레임이다 */
+  const HIT: Drain = { from: 1, to: 0.1, at: 0, secs: 0.6 }
+
+  it('맞자마자 숫자가 끝값으로 안 간다 — 가운데서는 가운데 숫자다', () => {
+    expect(shownHp(drainAt(HIT, 0), 40)).toBe(40)
+    expect(shownHp(drainAt(HIT, 0.3), 40)).toBe(22)
+    expect(shownHp(drainAt(HIT, 0.6), 40)).toBe(4)
+  })
+
+  it('색은 보이는 픽셀이 고른다 — 바가 아직 길면 아직 초록이다', () => {
+    // 끝값 4/40은 4픽셀이라 빨강이지만, 가운데 22/40은 26픽셀이라 초록이다
+    expect(shownColor(drainAt(HIT, 0.6), 40)).toBe('red')
+    expect(shownColor(drainAt(HIT, 0.3), 40)).toBe('green')
+    // 노랑 구간(10~24픽셀)을 지나는 자리도 있다 — 12/40은 14픽셀
+    expect(shownColor(12 / 40, 40)).toBe('yellow')
+  })
+
+  it('끝에서는 목표 체력과 정확히 같다 — 반올림이 한 칸 비껴가지 않는다', () => {
+    for (const [hp, max] of [[7, 13], [1, 300], [299, 300], [0, 55]] as const) {
+      expect(shownHp(hp / max, max)).toBe(hp)
+    }
+  })
+})
+
+describe('경험치 바는 레벨을 넘으면 빈 게이지에서 다시 찬다', () => {
+  it('restart면 보이던 값(가득)에서 잇지 않는다', () => {
+    const full: Drain = { from: 0.4, to: 1, at: 0, secs: 0.5 }
+    const again = nextDrain(full, 0.3, 0.2, 1, true)
+    expect(again.from).toBe(0)
+    expect(drainAt(again, 1)).toBe(0)
+    expect(drainAt(again, 1.1)).toBeCloseTo(0.15, 10)
+    expect(drainAt(again, 1.2)).toBeCloseTo(0.3, 10)
+  })
+
+  it('restart가 아니면 거꾸로 줄어드는 길이 된다 — 그래서 restart가 있다', () => {
+    const full: Drain = { from: 0.4, to: 1, at: 0, secs: 0.5 }
+    expect(nextDrain(full, 0.3, 0.2, 1).from).toBe(1)
+  })
+})
+
+describe('체력판이 미끄러진다 (`HealthBox_Scroll`)', () => {
+  const span = SLIDE_FRAMES * FRAME_SECONDS
+
+  it('160을 24씩 — 7프레임이다', () => {
+    expect(SLIDE_FRAMES).toBe(7)
+  })
+
+  it('들어올 시각까지는 밖에 있고 7프레임에 걸쳐 들어온다', () => {
+    expect(slideAt(0, 1.2, null)).toBe(1)
+    expect(slideAt(1.2, 1.2, null)).toBe(1)
+    expect(slideAt(1.2 + span / 2, 1.2, null)).toBeCloseTo(0.5, 10)
+    expect(slideAt(1.2 + span, 1.2, null)).toBe(0)
+    expect(slideAt(9, 1.2, null)).toBe(0)
+  })
+
+  it('쓰러지면 그 순간부터 7프레임에 나간다', () => {
+    expect(slideAt(3, 0, 3)).toBe(0)
+    expect(slideAt(3 + span / 2, 0, 3)).toBeCloseTo(0.5, 10)
+    expect(slideAt(3 + span, 0, 3)).toBe(1)
+  })
+
+  it('시계가 서면 판도 선다', () => {
+    const seen = Array.from({ length: 20 }, () => slideAt(1.25, 1.2, null))
+    expect(new Set(seen).size).toBe(1)
+  })
+})
+
 describe('제품이 CSS 벽시계로 안 돌아간다', () => {
   it('체력바에 width 전환이 없다', () => {
     const css = readFileSync(CSS_SOURCE, 'utf8')
@@ -80,7 +151,7 @@ describe('제품이 CSS 벽시계로 안 돌아간다', () => {
   it('카드가 시계에 붙은 훅을 쓴다', () => {
     const screen = readFileSync(SCREEN_SOURCE, 'utf8')
     expect(screen).toContain("from './hpDrain'")
-    expect(screen).toMatch(/useDrain\(ratio, drainMs\)/)
+    expect(screen).toMatch(/useDrain\(ratio, drainMs[,)]/)
     // `--drain` CSS 변수는 더 이상 쓰이지 않는다
     expect(screen).not.toContain('--drain')
   })
